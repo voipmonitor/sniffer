@@ -1,3 +1,8 @@
+/* Martin Vit support@voipmonitor.org
+ * This program is free software, distributed under the terms of
+ * the GNU General Public License Version 2.
+*/
+
 /* Calls are stored into indexed array. 
  * Into one calltable is stored SIP call-id and IP-port of SDP session
  */

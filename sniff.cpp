@@ -1,3 +1,8 @@
+/* Martin Vit support@voipmonitor.org
+ * This program is free software, distributed under the terms of
+ * the GNU General Public License Version 2.
+*/
+
 /*
 This unit reads and parse packets from network interface or file 
 and insert them into Call class. 

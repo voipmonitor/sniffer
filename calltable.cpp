@@ -1,3 +1,8 @@
+/* Martin Vit support@voipmonitor.org
+ * This program is free software, distributed under the terms of
+ * the GNU General Public License Version 2. 
+*/
+
 /**
   * This file implements Calltable and Call class. Calltable implements operations 
   * on Call list. Call class implements operations on one call. 
