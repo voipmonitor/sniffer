@@ -1,5 +1,6 @@
 * text=auto !eol
 /Makefile -text
+/README -text
 /calltable.cpp -text
 /calltable.h -text
 /cdrtable.sql -text
