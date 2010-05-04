@@ -4,6 +4,14 @@
 /calltable.h -text
 /cdrtable.sql -text
 jitterbuffer/abstract_jb.c -text
+jitterbuffer/asterisk.h -text
+jitterbuffer/astmm.c -text
+jitterbuffer/fixedjitterbuf.c -text
+jitterbuffer/fixedjitterbuf.h -text
+jitterbuffer/frame.c -text
+jitterbuffer/jitterbuf.c -text
+jitterbuffer/jitterbuf.h -text
+jitterbuffer/utils.c -text
 /rtp.cpp -text
 /rtp.h -text
 /sniff.cpp -text
