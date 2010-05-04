@@ -1,1 +1,12 @@
 * text=auto !eol
+/Makefile -text
+/calltable.cpp -text
+/calltable.h -text
+/cdrtable.sql -text
+jitterbuffer/abstract_jb.c -text
+/rtp.cpp -text
+/rtp.h -text
+/sniff.cpp -text
+/sniff.h -text
+/voipmonitor.cpp -text
+/voipmonitor.h -text
