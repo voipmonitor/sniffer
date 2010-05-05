@@ -39,6 +39,7 @@ tar xzf mysql++-3.0.9.tar.gz
 cd mysql++-3.0.9
 ./configure
 make install
+ldconfig
 cd ../voipmonitor
 make
 make install
