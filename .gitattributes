@@ -29,6 +29,7 @@ jitterbuffer/asterisk/lock.h -text
 jitterbuffer/asterisk/logger.h -text
 jitterbuffer/asterisk/md5.h -text
 jitterbuffer/asterisk/options.h -text
+jitterbuffer/asterisk/paths.h -text
 jitterbuffer/asterisk/poll-compat.h -text
 jitterbuffer/asterisk/sched.h -text
 jitterbuffer/asterisk/sha1.h -text
