@@ -22,6 +22,7 @@ jitterbuffer/asterisk/linkedlists.h -text
 jitterbuffer/asterisk/logger.h -text
 jitterbuffer/asterisk/md5.h -text
 jitterbuffer/asterisk/options.h -text
+jitterbuffer/asterisk/sched.h -text
 jitterbuffer/asterisk/sha1.h -text
 jitterbuffer/asterisk/strings.h -text
 jitterbuffer/asterisk/term.h -text
