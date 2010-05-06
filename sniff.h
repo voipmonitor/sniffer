@@ -13,7 +13,7 @@ struct iphdr {
 #elif defined (__BIG_ENDIAN)
         uint8_t version:4,
                 ihl:4;
-#elif
+#else
 #error Endian not defined
 #endif
         uint8_t tos;
