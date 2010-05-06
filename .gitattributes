@@ -9,6 +9,7 @@ jitterbuffer/asterisk.h -text
 jitterbuffer/asterisk/abstract_jb.h -text
 jitterbuffer/asterisk/channel.h -text
 jitterbuffer/asterisk/cli.h -text
+jitterbuffer/asterisk/compat.h -text
 jitterbuffer/asterisk/dsp.h -text
 jitterbuffer/asterisk/file.h -text
 jitterbuffer/asterisk/frame.h -text
