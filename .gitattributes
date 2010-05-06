@@ -13,6 +13,7 @@ jitterbuffer/asterisk/channel.h -text
 jitterbuffer/asterisk/cli.h -text
 jitterbuffer/asterisk/compat.h -text
 jitterbuffer/asterisk/compiler.h -text
+jitterbuffer/asterisk/config.h -text
 jitterbuffer/asterisk/dsp.h -text
 jitterbuffer/asterisk/file.h -text
 jitterbuffer/asterisk/frame.h -text
