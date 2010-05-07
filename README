@@ -1,0 +1,45 @@
+What is VoIPmonitor
+-------------------
+
+VoIPmonitor is open source live network packet sniffer which analyze SIP 
+and RTP protocol. It can run as daemon or analyzes already captured pcap 
+files. For each detected VoIP call voipmonitor calculates statistics about 
+loss, burstiness, latency and predicts MOS (Meaning Opinion Score) according 
+to ITU-T G.107 E-model. These statistics are saved to MySQL database and each 
+call is saved as pcap dump. Web PHP application (it is not part of open 
+source sniffer) filters data from database and graphs latency and loss 
+distribution. Voipmonitor also detects improperly terminated calls when 
+BYE or OK was not seen. To accuratly transform latency to loss packets, 
+voipmonitor simulates fixed and adaptive jitterbuffer.
+
+Key features
+------------
+
+- Fast C++ SIP/RTP packet analyzer
+- Predicts MOS-LQE score according to ITU-T G.107 E-model
+- Detailed delay/loss statistics stored to MySQL
+- Each call is saved as standalone pcap file
+
+What is required
+----------------
+
+- C and C++ compiler (gcc,g++)
+- libpcap-dev package >= 0.8 (almost in every linux distribution)
+- MySQL++ library from http://tangentsoft.net/mysql++/
+
+
+Compile
+-------
+
+This howto is for Debian Lenny and Etch (for Debian sarge, change libmysqlclient15-dev to libmysqlclient14-dev)
+
+apt-get install libpcap-dev libmysqlclient15-dev
+wget http://tangentsoft.net/mysql++/releases/mysql++-3.0.9.tar.gz
+tar xzf mysql++-3.0.9.tar.gz
+cd mysql++-3.0.9
+./configure
+make install
+ldconfig
+cd ../voipmonitor
+make
+make install
