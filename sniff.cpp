@@ -43,6 +43,8 @@ using namespace std;
 
 
 Calltable *calltable;
+extern int opt_saveSIP;	  	// save SIP packets to pcap file?
+extern int opt_saveRTP;	 	// save RTP packets to pcap file?
 extern int opt_packetbuffered;	  // Make .pcap files writing ‘‘packet-buffered’’
 extern int verbosity;
 extern int terminating;
@@ -188,11 +190,16 @@ void readdump(pcap_t *handle) {
 			// packet (RTP) by destination:port is already part of some stored call 
 			call->read_rtp((unsigned char*) data, datalen, &header, header_ip->saddr);
 			call->set_last_packet_time(header.ts.tv_sec);
-			save_packet(call, &header, packet);
+			if(opt_saveRTP) {
+				save_packet(call, &header, packet);
+			}
 		} else if ((call = calltable->find_by_ip_port(header_ip->saddr, htons(header_udp->source)))){	
+			// packet (RTP) by source:port is already part of some stored call 
 			call->read_rtp((unsigned char*) data, datalen, &header, header_ip->saddr);
 			call->set_last_packet_time(header.ts.tv_sec);
-			save_packet(call, &header, packet);
+			if(opt_saveRTP) {
+				save_packet(call, &header, packet);
+			}
 		} else if (htons(header_udp->source) == 5060 || htons(header_udp->dest) == 5060) {
 			// packet is from or to port 5060 
 			data[datalen]=0;
@@ -264,10 +271,14 @@ void readdump(pcap_t *handle) {
 					// store this call only if it starts with invite
 					call = calltable->add(s, l, header.ts.tv_sec);
 					call->set_first_packet_time(header.ts.tv_sec);
-					mkdir(call->dirname(), 0777);
-					strcpy(call->fbasename, str1);
-					sprintf(str2, "%s/%s.pcap", call->dirname(), str1);
-					call->set_f_pcap(pcap_dump_open(handle, str2));
+
+					// opening dump file
+					if(opt_saveSIP or opt_saveRTP) {
+						mkdir(call->dirname(), 0777);
+						strcpy(call->fbasename, str1);
+						sprintf(str2, "%s/%s.pcap", call->dirname(), str1);
+						call->set_f_pcap(pcap_dump_open(handle, str2));
+					}
 
 					//check and save CSeq for later to compare with OK 
 					s = gettag(data, datalen, "CSeq:", &l);
@@ -355,8 +366,9 @@ void readdump(pcap_t *handle) {
 					}
 				}
 			}
-
-			save_packet(call, &header, packet);
+			if(opt_saveSIP) {
+				save_packet(call, &header, packet);
+			}
 		} else {
 			// we are not interested in this packet
 			if (verbosity >= 6){

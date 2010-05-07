@@ -40,6 +40,9 @@ int opt_packetbuffered = 0;	// Make .pcap files writing ‘‘packet-buffered’
 				// writen file anytime, it will be consistent.
 					
 int opt_fork = 1;		// fork or run foreground 
+int opt_saveSIP = 0;		// save SIP packets to pcap file?
+int opt_saveRTP = 0;		// save RTP packets to pcap file?
+int opt_saveGRAPH = 0;		// save GRAPH data to *.graph file? 
 int verbosity = 0;		// debug level
 
 char mysql_host[256] = "localhost";
@@ -137,7 +140,7 @@ int main(int argc, char *argv[]) {
 
 	while(1) {
 		char c;
-		c = getopt_long(argc, argv, "f:i:r:d:v:h:b:u:p:knU", NULL, NULL);
+		c = getopt_long(argc, argv, "f:i:r:d:v:h:b:u:p:knUSRG", NULL, NULL);
 		//"i:r:d:v:h:b:u:p:fnU", NULL, NULL);
 		if (c == -1)
 			break;
@@ -179,13 +182,25 @@ int main(int argc, char *argv[]) {
 			case 'f':
 				strncpy(user_filter, optarg, sizeof(user_filter));
 				break;
+			case 'S':
+				opt_saveSIP = 1;
+				break;
+			case 'R':
+				opt_saveRTP = 1;
+				break;
+			case 'G':
+				opt_saveGRAPH = 1;
+				break;
 		}
 	}
 	if ((fname == NULL) && (ifname == NULL)){
 		printf( "voipmonitor version %s\n"
-				"Usage: voipmonitor [-knU] [-i <interface>] [-f <pcap filter>] [-r <file>] [-d <pcap dump directory>] [-v level]\n"
+				"Usage: voipmonitor [-knUSRG] [-i <interface>] [-f <pcap filter>] [-r <file>] [-d <pcap dump directory>] [-v level]\n"
 				"                 [-h <mysql server>] [-b <mysql database] [-u <mysql username>] [-p <mysql password>]\n"
 				"                 [-f <pcap filter>]\n"
+				" -S   save SIP packets to pcap file. Default is disabled.\n"
+				" -R   save RTP packets to pcap file. Default is disabled.\n"
+				" -G   save GRAPH data to graph file. Default is disabled.\n"
 				" -r   read packets from file.\n"
 				" -f   additional pcap filter. Builint filter is always udp (udp and (<pcap filter>)).Maximum size is 2040 chars\n"
 				" -d   where to store pcap files - default /var/spool/voipmonitor\n"

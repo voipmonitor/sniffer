@@ -25,6 +25,7 @@ Each Call class contains two RTP classes.
 #include "jitterbuffer/asterisk/strings.h"
 
 extern int verbosity;
+extern int opt_saveGRAPH;	//save GRAPH data?
 
 using namespace std;
 
@@ -347,15 +348,18 @@ RTP::update_stats() {
 		else 
 			stats.slost[10]++;
 
-		nintervals += lost - stats.last_lost;
-		while(nintervals > 20) {
-			if(gfile.is_open())
-			gfile << endl;
-			nintervals -= 20;
+		if(opt_saveGRAPH) {
+			nintervals += lost - stats.last_lost;
+			while(nintervals > 20) {
+				if(gfile.is_open()){
+					gfile << endl;
+				}
+				nintervals -= 20;
+			}
 		}
 
 	} else {
-		if(gfile.is_open()) {
+		if(opt_saveGRAPH && gfile.is_open()){
 			if(nintervals > 20) {
 				/* after 20 packets, send new line */
 				gfile << endl;

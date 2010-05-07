@@ -32,6 +32,7 @@
 using namespace std;
 
 extern int verbosity;
+extern int opt_saveGRAPH;	// save GRAPH data to graph file? 
 static mysqlpp::Connection con(false);
 
 /* constructor */
@@ -120,7 +121,9 @@ Call::read_rtp(unsigned char* data, unsigned long datalen, struct pcap_pkthdr *h
 	// adding new RTP source
 	if(ssrc_n < MAX_SSRC_PER_CALL) {
 		sprintf(rtp[ssrc_n].gfilename, "%s/%s.%d.graph", dirname(), fbasename, ssrc_n);
-		rtp[ssrc_n].gfile.open(rtp[ssrc_n].gfilename);
+		if(opt_saveGRAPH) {
+			rtp[ssrc_n].gfile.open(rtp[ssrc_n].gfilename);
+		}
 		rtp[ssrc_n].read(data, datalen, header, saddr, seeninviteok);
 		this->rtp[ssrc_n].ssrc = tmprtp.getSSRC();
 		ssrc_n++;
@@ -347,7 +350,7 @@ Calltable::cleanup( time_t currtime ) {
 		// RTPTIMEOUT seconds of inactivity will save this call and remove from call table
 		if(currtime == 0 || (currtime - (*call)->get_last_packet_time() > RTPTIMEOUT)){
 			if ((*call)->get_f_pcap() != NULL){
-				pcap_dump_flush(call->get_f_pcap());
+				pcap_dump_flush((*call)->get_f_pcap());
 				pcap_dump_close((*call)->get_f_pcap());
 				(*call)->set_f_pcap(NULL);
 			}
