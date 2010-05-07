@@ -347,6 +347,7 @@ Calltable::cleanup( time_t currtime ) {
 		// RTPTIMEOUT seconds of inactivity will save this call and remove from call table
 		if(currtime == 0 || (currtime - (*call)->get_last_packet_time() > RTPTIMEOUT)){
 			if ((*call)->get_f_pcap() != NULL){
+				pcap_dump_flush(call->get_f_pcap());
 				pcap_dump_close((*call)->get_f_pcap());
 				(*call)->set_f_pcap(NULL);
 			}
