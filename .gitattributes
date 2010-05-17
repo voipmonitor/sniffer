@@ -4,6 +4,14 @@
 /calltable.cpp -text
 /calltable.h -text
 /cdrtable.sql -text
+gzstream/COPYING.LIB -text
+gzstream/Makefile -text
+gzstream/README -text
+gzstream/gzstream.C -text
+gzstream/gzstream.h -text
+gzstream/test_gunzip.C -text
+gzstream/test_gzip.C -text
+gzstream/version -text
 jitterbuffer/abstract_jb.c -text
 jitterbuffer/asterisk.h -text
 jitterbuffer/asterisk/abstract_jb.h -text

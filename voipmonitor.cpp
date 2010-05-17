@@ -43,6 +43,8 @@ int opt_fork = 1;		// fork or run foreground
 int opt_saveSIP = 0;		// save SIP packets to pcap file?
 int opt_saveRTP = 0;		// save RTP packets to pcap file?
 int opt_saveGRAPH = 0;		// save GRAPH data to *.graph file? 
+int opt_gzipGRAPH = 0;		// compress GRAPH data ? 
+int opt_gzipPCAP = 0;		// compress PCAP data ? 
 int verbosity = 0;		// debug level
 
 char mysql_host[256] = "localhost";
@@ -133,24 +135,51 @@ int main(int argc, char *argv[]) {
 	
 	char *opt_chdir = "/var/spool/voipmonitor";
 
+        int option_index = 0;
+        static struct option long_options[] = {
+            {"gzip-graph", 0, 0, '1'},
+            {"gzip-pcap", 0, 0, '2'},
+            {"save-sip", 0, 0, 'S'},
+            {"save-rtp", 0, 0, 'R'},
+            {"save-graph", 2, 0, 'G'},
+            {"mysql-server", 1, 0, 'h'},
+            {"mysql-database", 1, 0, 'b'},
+            {"mysql-username", 1, 0, 'u'},
+            {"mysql-password", 1, 0, 'p'},
+            {0, 0, 0, 0}
+        };
+
 	terminating = 0;
 
 	umask(0000);
 
 	openlog("voipmonitor", LOG_CONS | LOG_PERROR, LOG_DAEMON);
 
+
 	while(1) {
 		char c;
-		c = getopt_long(argc, argv, "f:i:r:d:v:h:b:t:u:p:knUSRG", NULL, NULL);
+		c = getopt_long(argc, argv, "f:i:r:d:v:h:b:t:u:p:knUSRG", long_options, &option_index);
 		//"i:r:d:v:h:b:u:p:fnU", NULL, NULL);
 		if (c == -1)
 			break;
 
 		switch (c) {
+			/*
+			case 0:
+				printf ("option %s\n", long_options[option_index].name);
+				break;
+			*/
+			case '1':
+				opt_gzipGRAPH = 1;
+				break;
+			case '2':
+				opt_gzipPCAP = 1;
+				break;
 			case 'i':
 				ifname = optarg;
 				break;
 			case 'v':
+				printf("test\n");
 				verbosity = atoi(optarg);
 				break;
 			case 'r':
@@ -194,6 +223,9 @@ int main(int argc, char *argv[]) {
 				break;
 			case 'G':
 				opt_saveGRAPH = 1;
+				if(optarg && optarg[0] == 'g') {
+					opt_gzipGRAPH = 1;
+				}
 				break;
 		}
 	}
@@ -202,22 +234,48 @@ int main(int argc, char *argv[]) {
 				"Usage: voipmonitor [-knUSRG] [-i <interface>] [-f <pcap filter>] [-r <file>] [-d <pcap dump directory>] [-v level]\n"
 				"                 [-h <mysql server>] [-b <mysql database] [-u <mysql username>] [-p <mysql password>]\n"
 				"                 [-f <pcap filter>]\n"
-				" -S   save SIP packets to pcap file. Default is disabled.\n"
-				" -R   save RTP packets to pcap file. Default is disabled.\n"
-				" -G   save GRAPH data to graph file. Default is disabled.\n"
-				" -r   read packets from file.\n"
-				" -f   additional pcap filter. Builint filter is always udp (udp and (<pcap filter>)).Maximum size is 2040 chars\n"
-				" -d   where to store pcap files - default /var/spool/voipmonitor\n"
+				" -S, --save-sip\n"
+				"      save SIP packets to pcap file. Default is disabled.\n"
+				"\n"
+				" -R, --save-rtp\n"
+   				"      save RTP packets to pcap file. Default is disabled.\n"
+				"\n"
+				" -G, --save-graph=[gzip|plain]\n"
+				"      save GRAPH data to graph file. Default is disabled. Default format is plain. For gzip format use --save-graph=gzip\n"
+				"\n"
+				" -r <file>\n"
+				"      read packets from <file>.\n"
+				"\n"
+				" -f <filter>\n"
+				"      additional pcap filter. Builint filter is always udp (udp and (<pcap filter>)).Maximum size is 2040 chars\n"
+				"\n"
+				" -d <dir>\n"
+				"      where to store pcap files - default /var/spool/voipmonitor\n"
+				"\n"
 				" -k   Do not fork or detach from controlling terminal.\n"
+				"\n"
 				" -n   Do not put the interface into promiscuous mode.\n"
+				"\n"
 				" -U   make .pcap files writing ‘‘packet-buffered’’ - more slow method,\n"
 				"	  but you can use partitialy writen file anytime, it will be consistent.\n"
-				" -h   mysql server - default localhost\n"
-				" -b   mysql database - default voipmonitor\n"
-				" -t   mysql table - default cdr\n"
-				" -u   mysql username - default root\n"
-				" -p   mysql password - default is empty\n"
-				" -v   set verbosity level (higher number is more verbose).\n"
+				"\n"
+				" -h <hostname>, --mysql-server=<hostname>\n"
+				"      mysql server - default localhost\n"
+				"\n"
+				" -b <database>, --mysql-database\n"
+				"      mysql database, default voipmonitor\n"
+				"\n"
+				" -t <table>, --mysql-table=<table>\n"
+				"      mysql table, default cdr\n"
+				"\n"
+				" -u <username>, --mysql-username=<username>\n"
+				"      mysql username, default root\n"
+				"\n"
+				" -p <password>, --mysql-password=<password>\n"
+				"      mysql password, default is empty\n"
+				"\n"
+				" -v <level number>\n"
+				"      set verbosity level (higher number is more verbose).\n"
 				, RTPSENSOR_VERSION);
 		return 1;
 	}

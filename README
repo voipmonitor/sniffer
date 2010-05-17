@@ -26,6 +26,7 @@ What is required
 - C and C++ compiler (gcc,g++)
 - libpcap-dev package >= 0.8 (almost in every linux distribution)
 - MySQL++ library from http://tangentsoft.net/mysql++/
+- zlib ibrary 
 
 
 Compile
@@ -33,7 +34,7 @@ Compile
 
 This howto is for Debian Lenny and Etch (for Debian sarge, change libmysqlclient15-dev to libmysqlclient14-dev)
 
-apt-get install libpcap-dev libmysqlclient15-dev
+apt-get install libpcap-dev libmysqlclient15-dev zlib1g-dev
 wget http://tangentsoft.net/mysql++/releases/mysql++-3.0.9.tar.gz
 tar xzf mysql++-3.0.9.tar.gz
 cd mysql++-3.0.9

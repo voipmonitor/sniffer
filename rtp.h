@@ -7,6 +7,7 @@
 #include <netinet/in.h>
 #include <fstream>
 #include <iostream>
+#include "gzstream/gzstream.h"
 
 //#include "jitterbuffer/asterisk/channel.h"
 #include "jitterbuffer/asterisk/abstract_jb.h"
@@ -110,6 +111,7 @@ class RTP {
 public: 
 	u_int32_t ssrc;		//!< ssrc of this RTP class
 	u_int32_t saddr;	//!< last source IP adress 
+	ogzstream gfileGZ;	//!< file for storing packet statistics with GZIP compression
 	ofstream gfile;		//!< file for storing packet statistics
 	char gfilename[1024];	//!< file name of this file 
 	struct ast_channel *channel_fix1;

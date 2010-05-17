@@ -26,6 +26,7 @@ Each Call class contains two RTP classes.
 
 extern int verbosity;
 extern int opt_saveGRAPH;	//save GRAPH data?
+extern int opt_gzipGRAPH;	//save GRAPH data?
 
 using namespace std;
 
@@ -351,23 +352,43 @@ RTP::update_stats() {
 		if(opt_saveGRAPH) {
 			nintervals += lost - stats.last_lost;
 			while(nintervals > 20) {
-				if(gfile.is_open()){
-					gfile << endl;
+				if(opt_gzipGRAPH) {
+					// compressed
+					if(gfileGZ.is_open()) {
+						gfile << endl;
+					}
+				} else {
+					// uncompressed
+					if(gfile.is_open()) {
+						gfile << endl;
+					}
 				}
 				nintervals -= 20;
 			}
 		}
-
 	} else {
-		if(opt_saveGRAPH && gfile.is_open()){
-			if(nintervals > 20) {
-				/* after 20 packets, send new line */
-				gfile << endl;
-				nintervals -= 20;
+		if(opt_saveGRAPH) {
+			if(opt_gzipGRAPH && gfileGZ.is_open()) {
+				// compressed
+				if(nintervals > 20) {
+					/* after 20 packets, send new line */
+					gfileGZ << endl;
+					nintervals -= 20;
+				}
+				//gfile << s->fdelay << ":" << transit << ";";
+				gfileGZ << s->fdelay << ":" << jitter << ";";
+				nintervals++;
+			} else if(gfile.is_open()) {
+				// uncompressed
+				if(nintervals > 20) {
+					/* after 20 packets, send new line */
+					gfile << endl;
+					nintervals -= 20;
+				}
+				//gfile << s->fdelay << ":" << transit << ";";
+				gfile << s->fdelay << ":" << jitter << ";";
+				nintervals++;
 			}
-			//gfile << s->fdelay << ":" << transit << ";";
-			gfile << s->fdelay << ":" << jitter << ";";
-			nintervals++;
 		}
 	}
 	stats.last_lost = lost;
