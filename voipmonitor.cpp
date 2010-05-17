@@ -47,6 +47,7 @@ int verbosity = 0;		// debug level
 
 char mysql_host[256] = "localhost";
 char mysql_database[256] = "voipmonitor";
+char mysql_table[256] = "cdr";
 char mysql_user[256] = "root";
 char mysql_password[256] = "";
 
@@ -140,7 +141,7 @@ int main(int argc, char *argv[]) {
 
 	while(1) {
 		char c;
-		c = getopt_long(argc, argv, "f:i:r:d:v:h:b:u:p:knUSRG", NULL, NULL);
+		c = getopt_long(argc, argv, "f:i:r:d:v:h:b:t:u:p:knUSRG", NULL, NULL);
 		//"i:r:d:v:h:b:u:p:fnU", NULL, NULL);
 		if (c == -1)
 			break;
@@ -172,6 +173,9 @@ int main(int argc, char *argv[]) {
 				break;
 			case 'b':
 				strncpy(mysql_database, optarg, sizeof(mysql_database));
+				break;
+			case 't':
+				strncpy(mysql_table, optarg, sizeof(mysql_table));
 				break;
 			case 'u':
 				strncpy(mysql_user, optarg, sizeof(mysql_user));
@@ -210,6 +214,7 @@ int main(int argc, char *argv[]) {
 				"	  but you can use partitialy writen file anytime, it will be consistent.\n"
 				" -h   mysql server - default localhost\n"
 				" -b   mysql database - default voipmonitor\n"
+				" -t   mysql table - default cdr\n"
 				" -u   mysql username - default root\n"
 				" -p   mysql password - default is empty\n"
 				" -v   set verbosity level (higher number is more verbose).\n"

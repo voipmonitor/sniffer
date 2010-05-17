@@ -164,6 +164,7 @@ Call::saveToMysql() {
 
 	extern char mysql_host[256];
 	extern char mysql_database[256];
+	extern char mysql_table[256];
 	extern char mysql_user[256];
 	extern char mysql_password[256];
 
@@ -195,7 +196,7 @@ Call::saveToMysql() {
 	 * 	0 - call was not answered 
 	 */
 	
-	query << "INSERT INTO cdr set caller = " << quote << caller << ", called = " << quote << called <<
+	query << "INSERT INTO `" << mysql_table << "` SET caller = " << quote << caller << ", called = " << quote << called <<
 		", duration = " << duration() << ", calldate = FROM_UNIXTIME(" << calltime() << ")" <<
 		", fbasename = " << quote << fbasename << 
 		", sighup = " << quote << (sighup ? 1 : 0) << 
