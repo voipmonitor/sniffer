@@ -152,7 +152,7 @@ int get_ip_port_from_sdp(char *sdp_text, in_addr_t *addr, unsigned short *port){
 }
 
 void readdump(pcap_t *handle) {
-	struct pcap_pkthdr header;	// The header that pcap gives us
+	struct pcap_pkthdr *header;	// The header that pcap gives us
 	const u_char *packet;		// The actual packet 
 	unsigned long last_cleanup = 0;	// Last cleaning time
 	struct iphdr *header_ip;
@@ -163,16 +163,24 @@ void readdump(pcap_t *handle) {
 	unsigned long l;
 	char str1[1024],str2[1024];
 	int sip_method = 0;
+	int res;
 	Call *call;
 
-	while (!terminating && (packet = pcap_next(handle, &header))){
+	while (!terminating) {
+		res = pcap_next_ex(handle, &header, &packet);
+		if(res == -2) {
+			//packets are being read from a ``savefile'', and there are no more packets to read from the savefile.
+			syslog(LOG_NOTICE,"End of pcap file, exiting\n");
+			break;
+		}
+
 
 		// checking and cleaning calltable every 15 seconds (if some packet arrive) 
-		if (header.ts.tv_sec - last_cleanup > 15){
+		if (header->ts.tv_sec - last_cleanup > 15){
 			if (last_cleanup >= 0){
-				calltable->cleanup(header.ts.tv_sec);
+				calltable->cleanup(header->ts.tv_sec);
 			}
-			last_cleanup = header.ts.tv_sec;
+			last_cleanup = header->ts.tv_sec;
 		}
 	
 		header_ip = (struct iphdr *) ((char*)packet + sizeof(struct ether_header));
@@ -185,20 +193,20 @@ void readdump(pcap_t *handle) {
 		// prepare packet pointers 
 		header_udp = (struct udphdr *) ((char *) header_ip + sizeof(*header_ip));
 		data = (char *) header_udp + sizeof(*header_udp);
-		datalen = header.len - ((unsigned long) data - (unsigned long) packet); 
+		datalen = header->len - ((unsigned long) data - (unsigned long) packet); 
 		if ((call = calltable->find_by_ip_port(header_ip->daddr, htons(header_udp->dest)))){	
 			// packet (RTP) by destination:port is already part of some stored call 
-			call->read_rtp((unsigned char*) data, datalen, &header, header_ip->saddr);
-			call->set_last_packet_time(header.ts.tv_sec);
+			call->read_rtp((unsigned char*) data, datalen, header, header_ip->saddr);
+			call->set_last_packet_time(header->ts.tv_sec);
 			if(opt_saveRTP) {
-				save_packet(call, &header, packet);
+				save_packet(call, header, packet);
 			}
 		} else if ((call = calltable->find_by_ip_port(header_ip->saddr, htons(header_udp->source)))){	
 			// packet (RTP) by source:port is already part of some stored call 
-			call->read_rtp((unsigned char*) data, datalen, &header, header_ip->saddr);
-			call->set_last_packet_time(header.ts.tv_sec);
+			call->read_rtp((unsigned char*) data, datalen, header, header_ip->saddr);
+			call->set_last_packet_time(header->ts.tv_sec);
 			if(opt_saveRTP) {
-				save_packet(call, &header, packet);
+				save_packet(call, header, packet);
 			}
 		} else if (htons(header_udp->source) == 5060 || htons(header_udp->dest) == 5060) {
 			// packet is from or to port 5060 
@@ -269,8 +277,8 @@ void readdump(pcap_t *handle) {
 				// packet does not belongs to some call yet
 				if (sip_method == INVITE) {
 					// store this call only if it starts with invite
-					call = calltable->add(s, l, header.ts.tv_sec);
-					call->set_first_packet_time(header.ts.tv_sec);
+					call = calltable->add(s, l, header->ts.tv_sec);
+					call->set_first_packet_time(header->ts.tv_sec);
 
 					// opening dump file
 					if(opt_saveSIP or opt_saveRTP) {
@@ -294,7 +302,7 @@ void readdump(pcap_t *handle) {
 				}
 			} else {
 				// packet is already part of call
-				call->set_last_packet_time(header.ts.tv_sec);
+				call->set_last_packet_time(header->ts.tv_sec);
 				// check if it is BYE or OK(RES2XX)
 				if(sip_method == INVITE) {
 					//check and save CSeq for later to compare with OK 
@@ -367,7 +375,7 @@ void readdump(pcap_t *handle) {
 				}
 			}
 			if(opt_saveSIP) {
-				save_packet(call, &header, packet);
+				save_packet(call, header, packet);
 			}
 		} else {
 			// we are not interested in this packet
