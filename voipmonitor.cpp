@@ -52,6 +52,8 @@ char mysql_database[256] = "voipmonitor";
 char mysql_table[256] = "cdr";
 char mysql_user[256] = "root";
 char mysql_password[256] = "";
+char opt_pidfile[] = "/var/run/voipmonitor.pid";
+
 
 
 pthread_t call_thread;		// ID of worker thread (storing CDR)
@@ -65,6 +67,7 @@ void sigint_handler(int param)
 	calltable->cleanup(0);
 	terminating = 1;
 	pthread_join(call_thread, NULL);
+	unlink(opt_pidfile);
 	exit(1);
 }
 
@@ -75,6 +78,7 @@ void sigterm_handler(int param)
 	calltable->cleanup(0);
 	terminating = 1;
 	pthread_join(call_thread, NULL);
+	unlink(opt_pidfile);
 	exit(1);
 }
 
@@ -115,7 +119,21 @@ static void daemonize(void)
 		exit(0);
 	} else {
 		// child
+		FILE* f;
+		pid_t vmon_pid;
+
 		setsid();
+
+		// write pid file to opt_pidfile
+		vmon_pid = getpid();
+		f = fopen(opt_pidfile, "w");
+		if (f) {
+		       fprintf(f, "%ld\n", (long)vmon_pid);
+		       fclose(f);
+		} else {
+		       syslog(LOG_ERR,"Error occurs while writing pid file to %s\n", opt_pidfile);
+		}
+
 		// close std descriptors (otherwise problems detaching ssh)
 		close(0); open("/dev/null", O_RDONLY);
 		close(1); open("/dev/null", O_WRONLY);
@@ -146,6 +164,7 @@ int main(int argc, char *argv[]) {
             {"mysql-database", 1, 0, 'b'},
             {"mysql-username", 1, 0, 'u'},
             {"mysql-password", 1, 0, 'p'},
+            {"pid-file", 1, 0, 'P'},
             {0, 0, 0, 0}
         };
 
@@ -212,6 +231,9 @@ int main(int argc, char *argv[]) {
 			case 'p':
 				strncpy(mysql_password, optarg, sizeof(mysql_password));
 				break;
+			case 'P':
+				strncpy(opt_pidfile, optarg, sizeof(opt_pidfile));
+				break;
 			case 'f':
 				strncpy(user_filter, optarg, sizeof(user_filter));
 				break;
@@ -273,6 +295,9 @@ int main(int argc, char *argv[]) {
 				"\n"
 				" -p <password>, --mysql-password=<password>\n"
 				"      mysql password, default is empty\n"
+				"\n"
+				" -P <pid file>, --pid-file=<pid file>\n"
+				"      pid file, default /var/run/voipmonitor.pid\n"
 				"\n"
 				" -v <level number>\n"
 				"      set verbosity level (higher number is more verbose).\n"
@@ -352,4 +377,6 @@ int main(int argc, char *argv[]) {
 		terminating = 1;
 		pthread_join(call_thread, NULL);
 	}
+
+	unlink(opt_pidfile);
 }
