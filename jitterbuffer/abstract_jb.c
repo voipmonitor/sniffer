@@ -305,7 +305,9 @@ int ast_jb_put(struct ast_channel *chan, struct ast_frame *f, struct timeval *my
 	if (f->frametype != AST_FRAME_VOICE) {
 		if (f->frametype == AST_FRAME_DTMF && ast_test_flag(jb, JB_CREATED)) {
 			if(debug) fprintf(stdout, "JB_PUT {now=%ld}: Received DTMF frame. Force resynching jb...\n", now);
-			   jbimpl->force_resync(jbobj);
+			if(ast_test_flag(jb, JB_CREATED)) {
+				jbimpl->force_resync(jbobj);
+			}
 			/* dont resync! it causes DROPs 
 			   jbimpl->force_resync(jbobj);
 			*/
@@ -315,7 +317,9 @@ int ast_jb_put(struct ast_channel *chan, struct ast_frame *f, struct timeval *my
 
 	if (f->marker) {
 		if(debug) fprintf(stdout, "JB_PUT {now=%ld}: marker bit set, Force resynching jb...\n", now);
-		jbimpl->force_resync(jbobj);
+		if(ast_test_flag(jb, JB_CREATED)) {
+			jbimpl->force_resync(jbobj);
+		}
 	}
 
 	/* We consider an enabled jitterbuffer should receive frames with valid timing info. */
