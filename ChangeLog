@@ -1,3 +1,7 @@
+version 1.2.1
+-------------
+- fix random crashing (dereferencing NULL pointer) in jitterbuffer simulator. 
+
 version 1.2
 -----------
 
