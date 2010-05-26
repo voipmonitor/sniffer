@@ -1,0 +1,15 @@
+version 1.2.1
+-------------
+- fix random crashing (dereferencing NULL pointer) in jitterbuffer simulator. 
+
+version 1.2
+-----------
+
+- fix bug: On some systems (gentoo libpcap-1.0) when live capturing, 
+  voipmonitor ends after few seconds. It was caused by pcap_next function 
+  which returns NULL frame. Instead of pcap_next, use
+  pcap_next_ex which returns status code. 
+- make mysql table optional with `cdr` as default
+- support for graph compress via gzstream library (included)
+- new long options (--mysql-user, etc.)
+- add support for pid file to make start scripts happy (thanks Vladislav Krakhalev)
