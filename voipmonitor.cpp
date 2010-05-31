@@ -101,10 +101,9 @@ void *storing_cdr( void *dummy ) {
 		if(terminating) {
 			break;
 		}
-		
-		/* sleep one second but only if running as daemon */
-		if(opt_fork)
-			sleep(1);
+	
+		//TODO: it would be nice if this can be EVENT driven instead of sleeping
+		sleep(1);
 	}
 	return NULL;
 }
