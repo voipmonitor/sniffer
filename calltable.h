@@ -21,6 +21,7 @@
 #define MAX_CALL_ID 32		//!< max len of stored call-id
 #define MAX_FNAME 256		//!< max len of stored call-id
 #define RTPTIMEOUT 300
+#define MAXNODE 50000
 
 
 /**
@@ -43,6 +44,7 @@ public:
 	char *dirname();		//!< name of the directory to store files for the Call
 	char ua[MAX_IP_PER_CALL][1024];	//!< user agent 
 	RTP tmprtp;			//!< temporary structure used to decode information from frame
+	void *calltable;		//!< reference to calltable
 	
 	/**
 	 * constructor
@@ -50,9 +52,16 @@ public:
 	 * @param call_id unique identification of call parsed from packet
 	 * @param call_id_len lenght of the call_id buffer
 	 * @param time time of the first packet
+	 * @param ct reference to calltable
 	 * 
 	*/
-	Call(char *call_id, unsigned long call_id_len, time_t time);
+	Call(char *call_id, unsigned long call_id_len, time_t time, void *ct);
+
+	/**
+	 * destructor
+	 * 
+	*/
+	~Call();
 
 	/**
 	 * @brief find Call by IP adress and port. 
@@ -168,7 +177,6 @@ public:
 	*/
 	void dump();
 
-	
 private:
 	in_addr_t addr[MAX_IP_PER_CALL];	//!< IP address from SDP (indexed together with port)
 	unsigned short port[MAX_IP_PER_CALL];	//!< port number from SDP (indexed together with IP)
@@ -252,8 +260,46 @@ public:
 	*/
 	int cleanup( time_t currtime );
 
+	/**
+	 * @brief add call to hash table
+	 *
+	*/
+	void hashAdd(in_addr_t addr, unsigned short port, Call* call);
+
+	/**
+	 * @brief add call to hash table
+	 *
+	*/
+	Call *hashfind_by_ip_port(in_addr_t addr, unsigned short port);
+
+	/**
+	 * @brief remove call from hash
+	 *
+	*/
+	void hashRemove(in_addr_t addr, unsigned short port);
+
 private:
 	pthread_mutex_t qlock;	//!< mutex locking calls_queue
-	
 
+	struct hash_node {
+		Call *call;
+		hash_node *next;
+		u_int32_t addr;
+		u_int16_t port;
+	};
+
+	void *calls_hash[MAXNODE];
+
+	unsigned int tuplehash(u_int32_t addr, u_int16_t port) {
+		unsigned int key;
+
+		key = (unsigned int)(addr * port);
+		key += ~(key << 15);
+		key ^=  (key >> 10);
+		key +=  (key << 3);
+		key ^=  (key >> 6);
+		key += ~(key << 11);
+		key ^=  (key >> 16);
+		return key % MAXNODE;
+	}
 };

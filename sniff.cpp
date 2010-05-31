@@ -194,14 +194,18 @@ void readdump(pcap_t *handle) {
 		header_udp = (struct udphdr *) ((char *) header_ip + sizeof(*header_ip));
 		data = (char *) header_udp + sizeof(*header_udp);
 		datalen = header->len - ((unsigned long) data - (unsigned long) packet); 
-		if ((call = calltable->find_by_ip_port(header_ip->daddr, htons(header_udp->dest)))){	
+		// TODO: remove if hash will be stable
+		//if ((call = calltable->find_by_ip_port(header_ip->daddr, htons(header_udp->dest)))){	
+		if ((call = calltable->hashfind_by_ip_port(header_ip->daddr, htons(header_udp->dest)))){	
 			// packet (RTP) by destination:port is already part of some stored call 
 			call->read_rtp((unsigned char*) data, datalen, header, header_ip->saddr);
 			call->set_last_packet_time(header->ts.tv_sec);
 			if(opt_saveRTP) {
 				save_packet(call, header, packet);
 			}
-		} else if ((call = calltable->find_by_ip_port(header_ip->saddr, htons(header_udp->source)))){	
+		// TODO: remove if hash will be stable
+		//} else if ((call = calltable->find_by_ip_port(header_ip->saddr, htons(header_udp->source)))){	
+		} else if ((call = calltable->hashfind_by_ip_port(header_ip->saddr, htons(header_udp->source)))){	
 			// packet (RTP) by source:port is already part of some stored call 
 			call->read_rtp((unsigned char*) data, datalen, header, header_ip->saddr);
 			call->set_last_packet_time(header->ts.tv_sec);
@@ -367,6 +371,7 @@ void readdump(pcap_t *handle) {
 					s = gettag(data,datalen,"User-Agent:", &l);
 					// store RTP stream
 					call->add_ip_port(tmp_addr, tmp_port, s, l);
+					calltable->hashAdd(tmp_addr, tmp_port, call);
 	
 				} else {
 					if(verbosity >= 2){

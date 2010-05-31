@@ -37,7 +37,7 @@ extern int opt_gzipGRAPH;	// compress GRAPH data to graph file?
 static mysqlpp::Connection con(false);
 
 /* constructor */
-Call::Call(char *call_id, unsigned long call_id_len, time_t time) {
+Call::Call(char *call_id, unsigned long call_id_len, time_t time, void *ct) {
 	ipport_n = 0;
 	ssrc_n = 0;
 	first_packet_time = time;
@@ -54,6 +54,16 @@ Call::Call(char *call_id, unsigned long call_id_len, time_t time) {
 	byecseq[0] = '\0';
 	invitecseq[0] = '\0';
 	sighup = false;
+	calltable = ct;
+}
+
+/* destructor */
+Call::~Call(){
+	Calltable *ct = (Calltable *)calltable;
+
+	for(int i = 0; i < ipport_n; i++) {
+		ct->hashRemove(this->addr[i], this->port[i]);
+	}
 }
 
 
@@ -184,7 +194,7 @@ Call::saveToMysql() {
 	}
 	
 	//mysqlpp::Connection con(false);
-        if(!con.connected()) {
+	if(!con.connected()) {
 		con.connect(mysql_database, mysql_host, mysql_user, mysql_password);
 		if(!con) {
 			syslog(LOG_ERR,"DB connection failed: %s", con.error());
@@ -313,10 +323,74 @@ Call::dump(){
 	printf("-end call dump  %p----------------------------\n", this);
 }
 
+/* add node to hash. collisions are linked list of nodes*/
+void
+Calltable::hashAdd(in_addr_t addr, unsigned short port, Call* call) {
+	u_int32_t h;
+	hash_node *node = NULL;
+
+	h = tuplehash(addr, port);
+
+	// check if there is not already call in hash 
+	for (node = (hash_node *)calls_hash[h]; node != NULL; node = node->next) {
+		if ((node->addr == addr) && (node->port == port)) {
+			// there is already same call, overwrite it, but this should probably does not occur 
+			node->call = call;
+			return;
+		}
+	}
+
+	// adding to hash at first position
+	node = (hash_node *)malloc(sizeof(hash_node));
+	memset(node, 0x0, sizeof(hash_node));
+	node->addr = addr;
+	node->port = port;
+	node->call = call;
+	node->next = (hash_node *)calls_hash[h];
+	calls_hash[h] = node;
+}
+
+/* remove node from hash */
+void
+Calltable::hashRemove(in_addr_t addr, unsigned short port) {
+	hash_node *node = NULL, *prev = NULL;
+	int h;
+
+	h = tuplehash(addr, port);
+	for (node = (hash_node *)calls_hash[h]; node != NULL; node = node->next) {
+		if (node->addr == addr && node->port == port) {
+			if (prev == NULL) {
+				calls_hash[h] = node->next;
+				free(node);
+				return;
+			} else {
+				prev->next = node->next;
+				free(node);
+				return;
+			}
+		}
+		prev = node;
+	}
+}
+
+/* find call in hash */
+Call*
+Calltable::hashfind_by_ip_port(in_addr_t addr, unsigned short port) {
+	hash_node *node = NULL;
+	u_int32_t h;
+
+	h = tuplehash(addr, port);
+	for (node = (hash_node *)calls_hash[h]; node != NULL; node = node->next) {
+		if ((node->addr == addr) && (node->port == port)) {
+			return node->call;
+		}
+	}
+	return NULL;
+}
 
 Call*
 Calltable::add(char *call_id, unsigned long call_id_len, time_t time) {
-	Call *newcall = new Call(call_id, call_id_len, time);
+	Call *newcall = new Call(call_id, call_id_len, time, this);
 	calls_list.push_front(newcall);
 	return newcall;
 }
