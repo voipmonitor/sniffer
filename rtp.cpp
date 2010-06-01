@@ -147,7 +147,7 @@ RTP::jitterbuffer(struct ast_channel *channel) {
 		// difference is too big, reseting last_ts to current packet. If we dont check this it could happen to run while cycle endlessly
 		memcpy(&channel->last_ts, &header->ts, sizeof(struct timeval));
 		ast_jb_put(channel, frame, &header->ts);
-		syslog(LOG_ERR, "This should not happen, big timestamp jump (msdiff:%d packetization: %d) in this file: %s\n", msdiff, packetization, gfilename);
+		if(verbosity > 4) syslog(LOG_ERR, "big timestamp jump (msdiff:%d packetization: %d) in this file: %s\n", msdiff, packetization, gfilename);
 		return;
 	}
 
