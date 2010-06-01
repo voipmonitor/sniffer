@@ -284,6 +284,26 @@ Call::saveToMysql() {
 
 	if(verbosity > 2) cout << query << "\n";
 	query.store();
+	if(con.errnum()) {
+		if(con.errnum() == 2006) {
+			//error:'MySQL server has gone away'
+			syslog(LOG_ERR,"Reconnecting to database");
+			con.disconnect();
+			con.connect(mysql_database, mysql_host, mysql_user, mysql_password);
+			if(!con) {
+				syslog(LOG_ERR,"DB connection failed: %s", con.error());
+				return 1;
+			}
+			// try to store cdr again
+			query.store();
+			if(con.errnum()) {
+				syslog(LOG_ERR,"Error in query errnum:'%d' error:'%s'", con.errnum(), con.error());
+				return 0;
+			}
+
+		}
+		syslog(LOG_ERR,"Error in query errnum:'%d' error:'%s'", con.errnum(), con.error());
+	}
 
 	return 0;
 }
