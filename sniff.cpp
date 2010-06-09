@@ -168,7 +168,20 @@ void readdump(pcap_t *handle) {
 
 	while (!terminating) {
 		res = pcap_next_ex(handle, &header, &packet);
-		if(res == -2) {
+
+		if(!packet) {
+			if(verbosity > 2) {
+				syslog(LOG_NOTICE,"NULL PACKET, pcap response is %d",res);
+			}
+			continue;
+		}
+
+		if(res == -1) {
+			// error returned, sometimes it returs error 
+			if(verbosity > 2) {
+				syslog(LOG_NOTICE,"Error reading packets\n");
+			continue;
+		} else if(res == -2) {
 			//packets are being read from a ``savefile'', and there are no more packets to read from the savefile.
 			syslog(LOG_NOTICE,"End of pcap file, exiting\n");
 			break;
