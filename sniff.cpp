@@ -169,7 +169,7 @@ void readdump(pcap_t *handle) {
 	while (!terminating) {
 		res = pcap_next_ex(handle, &header, &packet);
 
-		if(!packet) {
+		if(!packet and res != -2) {
 			if(verbosity > 2) {
 				syslog(LOG_NOTICE,"NULL PACKET, pcap response is %d",res);
 			}
