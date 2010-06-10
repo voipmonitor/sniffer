@@ -180,6 +180,7 @@ void readdump(pcap_t *handle) {
 			// error returned, sometimes it returs error 
 			if(verbosity > 2) {
 				syslog(LOG_NOTICE,"Error reading packets\n");
+			}
 			continue;
 		} else if(res == -2) {
 			//packets are being read from a ``savefile'', and there are no more packets to read from the savefile.
