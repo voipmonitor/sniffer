@@ -50,6 +50,7 @@ Call::Call(char *call_id, unsigned long call_id_len, time_t time, void *ct) {
 	seenbye = false;
 	seenbyeandok = false;
 	caller[0] = '\0';
+       callername[0] = '\0';
 	called[0] = '\0';
 	byecseq[0] = '\0';
 	invitecseq[0] = '\0';
@@ -210,8 +211,8 @@ Call::saveToMysql() {
 	 * 	1 - call was answered but there was no bye 
 	 * 	0 - call was not answered 
 	 */
-	
-	query << "INSERT INTO `" << mysql_table << "` SET caller = " << quote << caller << ", called = " << quote << called <<
+	query << "INSERT INTO `" << mysql_table << "` SET caller = " << quote << caller << ",  callername = " << quote << callername << 
+		", called = " << quote << called <<
 		", duration = " << duration() << ", calldate = FROM_UNIXTIME(" << calltime() << ")" <<
 		", fbasename = " << quote << fbasename << 
 		", sighup = " << quote << (sighup ? 1 : 0) << 

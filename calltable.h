@@ -32,6 +32,7 @@ public:
 	unsigned long call_id_len;	//!< length of call-id 	
 	char call_id[MAX_CALL_ID];	//!< call-id from SIP session
 	char fbasename[MAX_FNAME];	//!< basename of file 
+	char callername[256];		//!< callerid name from SIP header
 	char caller[256];		//!< From: xxx 
 	char called[256];		//!< To: xxx
 	char byecseq[32];		//!< To: xxx

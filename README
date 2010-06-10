@@ -44,3 +44,9 @@ ldconfig
 cd ../voipmonitor
 make
 make install
+
+MySQL
+-----
+cat cdrtable.sql |mysql databaseName
+
+

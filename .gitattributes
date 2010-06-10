@@ -5,6 +5,7 @@
 /calltable.cpp -text
 /calltable.h -text
 /cdrtable.sql -text
+/cdrtable.sql.1.2.1-1.3 -text
 gzstream/COPYING.LIB -text
 gzstream/Makefile -text
 gzstream/README -text

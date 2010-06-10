@@ -3,6 +3,7 @@ CREATE TABLE `cdr` (
   `calldate` datetime NOT NULL,
   `duration` int(32) unsigned NOT NULL,
   `caller` varchar(255) NOT NULL,
+  `callername` varchar(255) NOT NULL,
   `called` varchar(255) NOT NULL,
   `fbasename` varchar(255) NOT NULL,
   `bye` tinyint(2) NOT NULL default 2,

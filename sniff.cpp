@@ -88,6 +88,28 @@ char * gettag(const void *ptr, unsigned long len, const char *tag, unsigned long
 	return rc;
 }
 
+int get_sip_peercnam(char *data, int data_len, char *tag, char *peername, int peername_len){
+	unsigned long r, r2, peername_tag_len;
+	char *peername_tag = gettag(data, data_len, tag, &peername_tag_len);
+	if ((r = (unsigned long)memmem(peername_tag, peername_tag_len, "\"", 1)) == 0){
+		goto fail_exit;
+	}
+	r += 1;
+	if ((r2 = (unsigned long)memmem(peername_tag, peername_tag_len, "\" <", 3)) == 0){
+		goto fail_exit;
+	}
+	if (r2 <= r){
+		goto fail_exit;
+	}
+	memcpy(peername, (void*)r, r2 - r);
+	memset(peername + (r2 - r), 0, 1);
+	return 0;
+fail_exit:
+	strcpy(peername, "empty");
+	return 1;
+}
+
+
 int get_sip_peername(char *data, int data_len, char *tag, char *peername, int peername_len){
 	unsigned long r, r2, peername_tag_len;
 	char *peername_tag = gettag(data, data_len, tag, &peername_tag_len);
@@ -370,6 +392,7 @@ void readdump(pcap_t *handle) {
 			
 			/* this logic updates call on last INVITES */
 			if (sip_method == INVITE) {
+				get_sip_peercnam(data,datalen,"From:", call->callername, sizeof(call->callername));
 				get_sip_peername(data,datalen,"From:", call->caller, sizeof(call->caller));
 				get_sip_peername(data,datalen,"To:", call->called, sizeof(call->called));
 				call->seeninvite = true;
