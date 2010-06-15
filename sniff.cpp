@@ -88,6 +88,28 @@ char * gettag(const void *ptr, unsigned long len, const char *tag, unsigned long
 	return rc;
 }
 
+int get_sip_peercnam(char *data, int data_len, char *tag, char *peername, int peername_len){
+	unsigned long r, r2, peername_tag_len;
+	char *peername_tag = gettag(data, data_len, tag, &peername_tag_len);
+	if ((r = (unsigned long)memmem(peername_tag, peername_tag_len, "\"", 1)) == 0){
+		goto fail_exit;
+	}
+	r += 1;
+	if ((r2 = (unsigned long)memmem(peername_tag, peername_tag_len, "\" <", 3)) == 0){
+		goto fail_exit;
+	}
+	if (r2 <= r){
+		goto fail_exit;
+	}
+	memcpy(peername, (void*)r, r2 - r);
+	memset(peername + (r2 - r), 0, 1);
+	return 0;
+fail_exit:
+	strcpy(peername, "empty");
+	return 1;
+}
+
+
 int get_sip_peername(char *data, int data_len, char *tag, char *peername, int peername_len){
 	unsigned long r, r2, peername_tag_len;
 	char *peername_tag = gettag(data, data_len, tag, &peername_tag_len);
@@ -168,7 +190,21 @@ void readdump(pcap_t *handle) {
 
 	while (!terminating) {
 		res = pcap_next_ex(handle, &header, &packet);
-		if(res == -2) {
+
+		if(!packet and res != -2) {
+			if(verbosity > 2) {
+				syslog(LOG_NOTICE,"NULL PACKET, pcap response is %d",res);
+			}
+			continue;
+		}
+
+		if(res == -1) {
+			// error returned, sometimes it returs error 
+			if(verbosity > 2) {
+				syslog(LOG_NOTICE,"Error reading packets\n");
+			}
+			continue;
+		} else if(res == -2) {
 			//packets are being read from a ``savefile'', and there are no more packets to read from the savefile.
 			syslog(LOG_NOTICE,"End of pcap file, exiting\n");
 			break;
@@ -356,6 +392,7 @@ void readdump(pcap_t *handle) {
 			
 			/* this logic updates call on last INVITES */
 			if (sip_method == INVITE) {
+				get_sip_peercnam(data,datalen,"From:", call->callername, sizeof(call->callername));
 				get_sip_peername(data,datalen,"From:", call->caller, sizeof(call->caller));
 				get_sip_peername(data,datalen,"To:", call->called, sizeof(call->called));
 				call->seeninvite = true;
