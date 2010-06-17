@@ -490,6 +490,9 @@ void burstr_calculate(struct ast_channel *chan, u_int32_t received, double *burs
 	if(verbosity > 4) printf("\n");
 	if(received > 0 && bursts > 0) {
 		*burstr = (double)((double)lost / (double)bursts) / (double)(1.0 / ( 1.0 - (double)lost / (double)received ));
+		if(*burstr < 0) {
+			*burstr = - *burstr;
+		}
 	} else {
 		*burstr = 0;
 	}

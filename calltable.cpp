@@ -219,7 +219,7 @@ Call::saveToMysql() {
 		", bye = " << quote << ( seeninviteok ? (seenbye ? (seenbyeandok ? 3 : 2) : 1) : 0);
 	char c;
 	if(ssrc_n > 0) {
-		/* sort all RTP streams by received packets descend and save only those two with the biggest received packets. */
+		/* sort all RTP streams by received packets + loss packets descend and save only those two with the biggest received packets. */
 		int indexes[MAX_SSRC_PER_CALL];
 		// init indexex
 		for(int i = 0; i < MAX_SSRC_PER_CALL; i++) {
@@ -228,7 +228,7 @@ Call::saveToMysql() {
 		// bubble sort
 		for(int k = 0; k < MAX_SSRC_PER_CALL; k++) {
 			for(int j = 0; j < MAX_SSRC_PER_CALL; j++) {
-				if(rtp[indexes[k]].stats.received > rtp[indexes[j]].stats.received) {
+				if((rtp[indexes[k]].stats.received + rtp[indexes[k]].stats.lost) > ( rtp[indexes[j]].stats.received + rtp[indexes[j]].stats.lost)) {
 					int kTmp = indexes[k];
 					indexes[k] = indexes[j];
 					indexes[j] = kTmp;
