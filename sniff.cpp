@@ -208,6 +208,9 @@ void readdump(pcap_t *handle) {
 			//packets are being read from a ``savefile'', and there are no more packets to read from the savefile.
 			syslog(LOG_NOTICE,"End of pcap file, exiting\n");
 			break;
+		} else if(res == 0) {
+			//continue on timeout when reading live packets
+			continue;
 		}
 
 
