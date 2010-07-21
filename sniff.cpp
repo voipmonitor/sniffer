@@ -373,9 +373,21 @@ void readdump(pcap_t *handle) {
 						if(verbosity > 2)
 							syslog(LOG_NOTICE, "Cseq: %s\n", data);
 						if(strncmp(s, call->byecseq, l) == 0) {
+							// terminate successfully acked call, put it into mysql CDR queue and remove it from calltable 
 							call->seenbyeandok = true;
+							if(opt_saveSIP) {
+								save_packet(call, header, packet);
+							}
+							if (call->get_f_pcap() != NULL){
+								pcap_dump_flush(call->get_f_pcap());
+								pcap_dump_close(call->get_f_pcap());
+								call->set_f_pcap(NULL);
+							}
+							calltable->calls_queue.push(call);	// push it to CDR queue 
+							calltable->calls_list.remove(call);
 							if(verbosity > 2)
 								syslog(LOG_NOTICE, "Call closed\n");
+							continue;
 						} else if(strncmp(s, call->invitecseq, l) == 0) {
 							call->seeninviteok = true;
 							if(verbosity > 2)
