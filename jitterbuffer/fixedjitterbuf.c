@@ -217,7 +217,7 @@ int fixed_jb_put(struct fixed_jb *jb, void *data, long ms, long ts, long now)
 	/* do not allow frames shorter than 2 ms */
 	ASSERT(ms >= 2);
 	ASSERT(ts >= 0);
-	ASSERT(now >= 0);
+        // TODO: implement pcap reordering queue, ASSERT(now >= 0);
 
 	
 	delivery = jb->rxcore + jb->delay + ts;
