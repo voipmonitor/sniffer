@@ -1,3 +1,13 @@
+version 1.4
+-----------
+
+- put terminated calls with BYE->OK immediately into CDR database and not wait 5 minutes for packet inactivity
+- Comment out ASSERT in jitterbuffer which prevents crashes in cases, where pcap delivers reordered packets.
+- continue on timeout when reading live packets, it prevents crashes dereferencing packet structure which can points to uninitialized value or to invalid memory
+- For very high packet loss there were problem with bursts calculation and MOS were not reflecting such high packet loss. There were calls with mos 4.5 and 55% packet loss. Now it is fixed.
+- For calls with more than two RTP streams (typically one is early media and after connect another two RTP streams represent each side which changes ssrc) voipmonitor saves statistics for two RTP streams only. Two streams are chosen based on received packets. But for very high losses it was choosen not ones with the highest received packets. I've fixed this to sort it based on received packet + packet loss to avoid this.
+
+
 version 1.3
 -----------
 - hash search function for classifying RTP packets to its Call structure. This will speedup voipmonitor for high call volumes. 
