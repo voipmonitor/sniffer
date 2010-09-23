@@ -46,6 +46,12 @@ public:
 	char ua[MAX_IP_PER_CALL][1024];	//!< user agent 
 	RTP tmprtp;			//!< temporary structure used to decode information from frame
 	void *calltable;		//!< reference to calltable
+
+	time_t progress_time;		//!< time in seconds of 18X response
+	time_t first_rtp_time;		//!< time in seconds of first RTP packet
+	time_t connect_time;		//!< time in seconds of 200 OK
+	time_t last_packet_time;	
+	time_t first_packet_time;	
 	
 	/**
 	 * constructor
@@ -184,8 +190,6 @@ private:
 	int ipport_n;				//!< last index of addr and port array 
 	RTP rtp[MAX_SSRC_PER_CALL];		//!< array of RTP streams
 	int ssrc_n;				//!< last index of rtp array
-	time_t last_packet_time;	
-	time_t first_packet_time;	
 	pcap_dumper_t *f_pcap;
 	char sdirname[255];
 };

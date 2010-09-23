@@ -50,12 +50,15 @@ Call::Call(char *call_id, unsigned long call_id_len, time_t time, void *ct) {
 	seenbye = false;
 	seenbyeandok = false;
 	caller[0] = '\0';
-       callername[0] = '\0';
+	callername[0] = '\0';
 	called[0] = '\0';
 	byecseq[0] = '\0';
 	invitecseq[0] = '\0';
 	sighup = false;
 	calltable = ct;
+	progress_time = 0;
+	first_rtp_time = 0;
+	connect_time = 0;
 }
 
 /* destructor */
@@ -121,6 +124,11 @@ Call::find_by_ip_port(in_addr_t addr, unsigned short port){
 /* analyse rtp packet */
 void
 Call::read_rtp(unsigned char* data, unsigned long datalen, struct pcap_pkthdr *header, u_int32_t saddr) {
+
+	if(first_rtp_time == 0) {
+		first_rtp_time = header->ts.tv_sec;
+	}
+	
 	//RTP tmprtp; moved to Call structure to avoid creating and destroying class which is not neccessary
 	tmprtp.fill(data, datalen, header, saddr);
 	for(int i = 0; i < ssrc_n; i++) {
@@ -213,7 +221,11 @@ Call::saveToMysql() {
 	 */
 	query << "INSERT INTO `" << mysql_table << "` SET caller = " << quote << caller << ",  callername = " << quote << callername << 
 		", called = " << quote << called <<
-		", duration = " << duration() << ", calldate = FROM_UNIXTIME(" << calltime() << ")" <<
+		", duration = " << duration() << 
+		", progress_time = " << (progress_time - first_packet_time) << 
+		", first_rtp_time = " << (first_rtp_time  - first_packet_time) << 
+		", connect_duration = " << (duration - connect_time) << 
+		", calldate = FROM_UNIXTIME(" << calltime() << ")" <<
 		", fbasename = " << quote << fbasename << 
 		", sighup = " << quote << (sighup ? 1 : 0) << 
 		", bye = " << quote << ( seeninviteok ? (seenbye ? (seenbyeandok ? 3 : 2) : 1) : 0);

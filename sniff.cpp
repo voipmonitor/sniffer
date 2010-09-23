@@ -40,6 +40,7 @@ using namespace std;
 #define RES4XX 6
 #define RES5XX 7
 #define RES6XX 8
+#define RES18X 9
 
 
 Calltable *calltable;
@@ -287,6 +288,10 @@ void readdump(pcap_t *handle) {
 				if(verbosity > 2) 
 					 syslog(LOG_NOTICE,"SIP msg: 2XX\n");
 				sip_method = RES2XX;
+			} else if ((datalen > 9) && !(memmem(data, 10, "SIP/2.0 18", 10) == 0)) {
+				if(verbosity > 2) 
+					 syslog(LOG_NOTICE,"SIP msg: 18X\n");
+				sip_method = RES18X;
 			/*
 			} else if ((datalen > 8) && !(memmem(data, 9, "SIP/2.0 3", 9) == 0)) {
 				if(verbosity > 2) 
@@ -368,6 +373,10 @@ void readdump(pcap_t *handle) {
 					}
 				} else if(sip_method == RES2XX) {
 
+					if(!call->connect_time) {
+						call->connect_time = header->ts.tv_sec;
+					}
+
 					// if it is OK check for BYE
 					if((s = gettag(data, datalen, "CSeq:", &l))) {
 						if(verbosity > 2)
@@ -394,6 +403,8 @@ void readdump(pcap_t *handle) {
 								syslog(LOG_NOTICE, "Call answered\n");
 						}
 					}
+				} else if(sip_method == RES18X) {
+					call->progress_time = header->ts.tv_sec;
 				}
 				/*
 				} else if(sip_method == RES3XX || sip_method == RES4XX || sip_method == RES5XX || sip_method == RES6XX) {
