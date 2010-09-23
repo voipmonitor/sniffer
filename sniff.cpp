@@ -23,6 +23,7 @@ and insert them into Call class.
 #include <syslog.h>
 
 #include <pcap.h>
+#include <pcap/sll.h>
 
 #include "calltable.h"
 #include "sniff.h"
@@ -178,6 +179,8 @@ void readdump(pcap_t *handle) {
 	struct pcap_pkthdr *header;	// The header that pcap gives us
 	const u_char *packet;		// The actual packet 
 	unsigned long last_cleanup = 0;	// Last cleaning time
+	struct ether_header *header_eth;
+	struct sll_header *header_sll;
 	struct iphdr *header_ip;
 	struct udphdr *header_udp;
 	char *data;
@@ -187,6 +190,8 @@ void readdump(pcap_t *handle) {
 	char str1[1024],str2[1024];
 	int sip_method = 0;
 	int res;
+	int protocol;
+	unsigned int offset;
 	Call *call;
 
 	while (!terminating) {
@@ -223,12 +228,39 @@ void readdump(pcap_t *handle) {
 			last_cleanup = header->ts.tv_sec;
 		}
 	
-		header_ip = (struct iphdr *) ((char*)packet + sizeof(struct ether_header));
+                switch(pcap_datalink(handle)) {
+                        case DLT_LINUX_SLL:
+                                header_sll = (struct sll_header *) (char*)packet;
+                                protocol = header_sll->sll_protocol;
+                                offset = sizeof(struct sll_header);
+                                break;
+                        case DLT_EN10MB:
+				header_eth = (struct ether_header *) (char*)(packet);
+                                if(header_eth->ether_type == 129) {
+                                        // VLAN tag
+                                        offset = 4;
+                                        //XXX: this is very ugly hack, please do it right! (it will work for "08 00" which is IPV4 but not for others! (find vlan_header or something)
+                                        protocol = *(packet + sizeof(struct ether_header) + 2);
+                                } else {
+                                        offset = 0;
+                                        protocol = header_eth->ether_type;
+                                }
+                                offset += sizeof(struct ether_header);
+                                break;
+                }
+
+                if(protocol != 8) {
+                        // not ipv4 
+                        continue;
+                }
+
+		header_ip = (struct iphdr *) ((char*)packet + offset);
 
 		if (header_ip->protocol != IPPROTO_UDP) {
 			//packet is not UDP, we are not interested, go to the next packet
 			continue;
 		}
+
 
 		// prepare packet pointers 
 		header_udp = (struct udphdr *) ((char *) header_ip + sizeof(*header_ip));

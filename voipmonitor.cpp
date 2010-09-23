@@ -268,7 +268,7 @@ int main(int argc, char *argv[]) {
 				"      read packets from <file>.\n"
 				"\n"
 				" -f <filter>\n"
-				"      additional pcap filter. Builint filter is always udp (udp and (<pcap filter>)).Maximum size is 2040 chars\n"
+				"      Pcap filter. If you will use only UDP, put here udp. Warning: If you set protocol to 'udp' pcap discards VLAN packets. Maximum size is 2040 chars\n"
 				"\n"
 				" -d <dir>\n"
 				"      where to store pcap files - default /var/spool/voipmonitor\n"
@@ -342,28 +342,28 @@ int main(int argc, char *argv[]) {
 
 	chdir(opt_chdir);
 
-	char filter_exp[2048] = "udp";		// The filter expression
+	char filter_exp[2048] = "";		// The filter expression
 	struct bpf_program fp;		// The compiled filter 
 
 	if(*user_filter != '\0') {
-		snprintf(filter_exp, sizeof(filter_exp), "udp and (%s)", user_filter);
-	}
+		snprintf(filter_exp, sizeof(filter_exp), "%s", user_filter);
 
-	// Compile and apply the filter
-	if (pcap_compile(handle, &fp, filter_exp, 0, net) == -1) {
-		fprintf(stderr, "Couldn't parse filter %s: %s\n", filter_exp, pcap_geterr(handle));
-		return(2);
-	}
-	if (pcap_setfilter(handle, &fp) == -1) {
-		fprintf(stderr, "Couldn't install filter %s: %s\n", filter_exp, pcap_geterr(handle));
-		return(2);
+		// Compile and apply the filter
+		if (pcap_compile(handle, &fp, filter_exp, 0, net) == -1) {
+			fprintf(stderr, "Couldn't parse filter %s: %s\n", filter_exp, pcap_geterr(handle));
+			return(2);
+		}
+		if (pcap_setfilter(handle, &fp) == -1) {
+			fprintf(stderr, "Couldn't install filter %s: %s\n", filter_exp, pcap_geterr(handle));
+			return(2);
+		}
 	}
 
 	// filters are ok, we can daemonize 
 	if (opt_fork){
 		daemonize();
 	}
-
+	
 	// start thread processing queued cdr 
 	pthread_create(&call_thread, NULL, storing_cdr, NULL);
 	

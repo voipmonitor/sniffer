@@ -224,7 +224,7 @@ Call::saveToMysql() {
 		", duration = " << duration() << 
 		", progress_time = " << (progress_time - first_packet_time) << 
 		", first_rtp_time = " << (first_rtp_time  - first_packet_time) << 
-		", connect_duration = " << (duration - connect_time) << 
+		", connect_duration = " << (duration() - connect_time) << 
 		", calldate = FROM_UNIXTIME(" << calltime() << ")" <<
 		", fbasename = " << quote << fbasename << 
 		", sighup = " << quote << (sighup ? 1 : 0) << 

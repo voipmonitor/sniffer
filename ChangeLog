@@ -4,6 +4,12 @@ version 1.5
 	connect_duration - duration between 200 OK and end of call
 	progress_time - number of seconds between first INVITE and 180 or 183 progress message
 	first_rtp_time - number of seconds from first INVITE and first RTP packet 
+- VLAN support
+	voipmonitor can now read VLAN tag packets
+	hard-wired udp filter for pcap was removed (it is now on user)
+- pcap frame support
+	voipmonitor can now sniff on all interfaces (-i any)
+
 
 version 1.4
 -----------
