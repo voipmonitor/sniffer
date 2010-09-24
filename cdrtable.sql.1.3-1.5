@@ -1,3 +1,9 @@
 alter table cdr add progress_time int(8) after duration;
 alter table cdr add first_rtp_time int(8) after duration;
 alter table cdr add connect_duration int(8) after duration;
+
+alter table cdr add `sipcallerip` int(32) unsigned NOT NULL;
+alter table cdr add `sipcalledip` int(32) unsigned NOT NULL;
+alter table cdr add KEY `sipcallerip` (`sipcallerip`);
+alter table cdr add KEY `sipcalledip` (`sipcalledip`);
+

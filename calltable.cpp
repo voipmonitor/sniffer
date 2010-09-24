@@ -220,6 +220,8 @@ Call::saveToMysql() {
 	 * 	0 - call was not answered 
 	 */
 	query << "INSERT INTO `" << mysql_table << "` SET caller = " << quote << caller << ",  callername = " << quote << callername << 
+		", sipcallerip = " << quote << htonl(sipcallerip) <<
+		", sipcalledip = " << quote << htonl(sipcalledip) <<
 		", called = " << quote << called <<
 		", duration = " << duration() << 
 		", progress_time = " << (progress_time - first_packet_time) << 

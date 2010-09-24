@@ -9,7 +9,10 @@ version 1.5
 	hard-wired udp filter for pcap was removed (it is now on user)
 - pcap frame support
 	voipmonitor can now sniff on all interfaces (-i any)
+- new sipcallerip and sipcalledip columns in cdr SQL table. It saves SIP
+source/destination IP address because RTP can be different. 
 
+UPGRADE: cat cdrtable.sql.1.2.3-1.5 | mysql voipmonitor
 
 version 1.4
 -----------
@@ -19,6 +22,7 @@ version 1.4
 - continue on timeout when reading live packets, it prevents crashes dereferencing packet structure which can points to uninitialized value or to invalid memory
 - For very high packet loss there were problem with bursts calculation and MOS were not reflecting such high packet loss. There were calls with mos 4.5 and 55% packet loss. Now it is fixed.
 - For calls with more than two RTP streams (typically one is early media and after connect another two RTP streams represent each side which changes ssrc) voipmonitor saves statistics for two RTP streams only. Two streams are chosen based on received packets. But for very high losses it was choosen not ones with the highest received packets. I've fixed this to sort it based on received packet + packet loss to avoid this.
+- (no CDR SQL table change) 
 
 
 version 1.3

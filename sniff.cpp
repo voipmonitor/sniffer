@@ -359,6 +359,8 @@ void readdump(pcap_t *handle) {
 					// store this call only if it starts with invite
 					call = calltable->add(s, l, header->ts.tv_sec);
 					call->set_first_packet_time(header->ts.tv_sec);
+					call->sipcallerip = header_ip->saddr;
+					call->sipcalledip = header_ip->daddr;
 
 					// opening dump file
 					if(opt_saveSIP or opt_saveRTP) {

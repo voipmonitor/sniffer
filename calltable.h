@@ -52,6 +52,9 @@ public:
 	time_t connect_time;		//!< time in seconds of 200 OK
 	time_t last_packet_time;	
 	time_t first_packet_time;	
+
+	u_int32_t sipcallerip;		//!< SIP signalling source IP address
+	u_int32_t sipcalledip;		//!< SIP signalling destination IP address
 	
 	/**
 	 * constructor
