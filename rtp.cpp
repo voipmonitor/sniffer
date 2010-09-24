@@ -99,6 +99,7 @@ RTP::RTP() {
 	packetization = 0;
 	last_packetization = 0;
 	packetization_iterator = 0;
+	payload = 0;
 }
 
 /* destructor */
