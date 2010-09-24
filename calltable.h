@@ -210,7 +210,15 @@ public:
 	 * @brief constructor
 	 *
 	*/
-	Calltable() { pthread_mutex_init(&qlock, NULL); };
+	Calltable();
+	/*
+	Calltable() { 
+		pthread_mutex_init(&qlock, NULL); 
+		printf("SS:%d\n", sizeof(calls_hash));
+		printf("SS:%s\n", 1);
+		memset(calls_hash, 0x0, sizeof(calls_hash) * MAXNODE);
+	};
+	*/
 
 	/**
 	 * @brief lock calls_queue structure 

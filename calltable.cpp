@@ -364,6 +364,13 @@ Call::dump(){
 	printf("-end call dump  %p----------------------------\n", this);
 }
 
+/* constructor */
+Calltable::Calltable() {
+	pthread_mutex_init(&qlock, NULL);
+	memset(calls_hash, 0x0, sizeof(calls_hash));
+};
+
+
 /* add node to hash. collisions are linked list of nodes*/
 void
 Calltable::hashAdd(in_addr_t addr, unsigned short port, Call* call) {
