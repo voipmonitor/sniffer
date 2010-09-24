@@ -23,7 +23,7 @@ and insert them into Call class.
 #include <syslog.h>
 
 #include <pcap.h>
-#include <pcap/sll.h>
+//#include <pcap/sll.h>
 
 #include "calltable.h"
 #include "sniff.h"

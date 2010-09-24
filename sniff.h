@@ -5,6 +5,16 @@
 
 void readdump(pcap_t *handle);
 
+/* this is copied from libpcap sll.h header file, which is not included in debian distribution */
+#define SLL_ADDRLEN       8               /* length of address field */
+struct sll_header {
+	u_int16_t sll_pkttype;          /* packet type */
+	u_int16_t sll_hatype;           /* link-layer address type */
+	u_int16_t sll_halen;            /* link-layer address length */
+	u_int8_t sll_addr[SLL_ADDRLEN]; /* link-layer address */
+	u_int16_t sll_protocol;         /* protocol */
+};
+
 #if 1
 struct iphdr {
 #if defined(__LITTLE_ENDIAN)
