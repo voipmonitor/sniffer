@@ -43,6 +43,7 @@ Call::Call(char *call_id, unsigned long call_id_len, time_t time, void *ct) {
 	first_packet_time = time;
 	last_packet_time = time;
 	memcpy(this->call_id, call_id, MIN(call_id_len, MAX_CALL_ID));
+	this->call_id[MIN(call_id_len, MAX_CALL_ID)] = '\0';
 	this->call_id_len = call_id_len;
 	f_pcap = NULL;
 	seeninvite = false;
@@ -92,7 +93,12 @@ Call::add_ip_port(in_addr_t addr, unsigned short port, char *ua, unsigned long u
 	}
 	// add ip and port
 	if(ipport_n >= MAX_IP_PER_CALL){
-		syslog(LOG_ERR,"no more space for next media stream (IP:port), raise MAX_IP_PER_CALL");
+		char tmp[18];
+		struct in_addr in;
+		in.s_addr = addr;
+		strcpy(tmp, inet_ntoa(in));
+
+		syslog(LOG_ERR,"callid [%s]: no more space for next media stream [%s:%d], raise MAX_IP_PER_CALL", call_id, tmp, port);
 		return -1;
 	}
 	this->addr[ipport_n] = addr;

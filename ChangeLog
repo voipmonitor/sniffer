@@ -11,6 +11,8 @@ version 1.5
 	voipmonitor can now sniff on all interfaces (-i any)
 - new sipcallerip and sipcalledip columns in cdr SQL table. It saves SIP
 source/destination IP address because RTP can be different. 
+- try to solve problem with "voipmonitor: no more space for next media stream
+(IP:port), raise MAX_IP_PER_CALL"
 
 UPGRADE: cat cdrtable.sql.1.2.3-1.5 | mysql voipmonitor
 

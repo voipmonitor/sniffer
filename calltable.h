@@ -16,7 +16,7 @@
 
 #include "rtp.h"
 
-#define MAX_IP_PER_CALL 5	//!< total maxumum of SDP sessions for one call-id
+#define MAX_IP_PER_CALL 10	//!< total maxumum of SDP sessions for one call-id
 #define MAX_SSRC_PER_CALL 10	//!< total maxumum of SDP sessions for one call-id
 #define MAX_CALL_ID 32		//!< max len of stored call-id
 #define MAX_FNAME 256		//!< max len of stored call-id
