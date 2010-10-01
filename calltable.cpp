@@ -83,6 +83,13 @@ Call::dirname() {
 /* add ip adress and port to this call */
 int
 Call::add_ip_port(in_addr_t addr, unsigned short port, char *ua, unsigned long ua_len) {
+
+	if(verbosity >= 4) {
+		struct in_addr in;
+		in.s_addr = addr;
+		printf("call:[%p] ip:[%s] port:[%d]\n", this, inet_ntoa(in), port);
+	}
+	
 	if(ipport_n > 0) {
 		// check, if there is already IP:port
 		for(int i = 0; i < ipport_n; i++) {
