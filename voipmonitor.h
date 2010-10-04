@@ -3,4 +3,4 @@
  * the GNU General Public License Version 2.
 */
 
-#define RTPSENSOR_VERSION "1.3"
+#define RTPSENSOR_VERSION "1.5"
