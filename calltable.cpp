@@ -82,7 +82,7 @@ Call::dirname() {
 
 /* add ip adress and port to this call */
 int
-Call::add_ip_port(in_addr_t addr, unsigned short port, char *ua, unsigned long ua_len) {
+Call::add_ip_port(in_addr_t addr, unsigned short port, char *ua, unsigned long ua_len, bool iscaller) {
 
 	if(verbosity >= 4) {
 		struct in_addr in;
@@ -110,6 +110,7 @@ Call::add_ip_port(in_addr_t addr, unsigned short port, char *ua, unsigned long u
 	}
 	this->addr[ipport_n] = addr;
 	this->port[ipport_n] = port;
+	this->iscaller[ipport_n] = iscaller;
 	if(ua) {
 		memcpy(this->ua[ipport_n], ua, ua_len);
 		this->ua[ipport_n][ua_len] = '\0';
@@ -261,6 +262,14 @@ Call::saveToMysql() {
 					indexes[j] = kTmp;
 				}
 			}
+		}
+
+		// a_ is always caller, so check if we need to swap indexes
+		if (!iscaller[indexes[0]]) {
+			int tmp;
+			tmp = indexes[1];
+			indexes[1] = indexes[0];
+			indexes[0] = tmp;
 		}
 
 		// save only two streams with the biggest received packets

@@ -108,7 +108,7 @@ public:
 	 * 
 	 * @return return 0 on success, 1 if IP and port is duplicated and -1 on failure
 	*/
-	int add_ip_port(in_addr_t addr, unsigned short port, char *ua, unsigned long ua_len);
+	int add_ip_port(in_addr_t addr, unsigned short port, char *ua, unsigned long ua_len, bool iscaller);
 
 	/**
 	 * @brief get file descriptor of the writing pcap file  
@@ -190,6 +190,7 @@ public:
 private:
 	in_addr_t addr[MAX_IP_PER_CALL];	//!< IP address from SDP (indexed together with port)
 	unsigned short port[MAX_IP_PER_CALL];	//!< port number from SDP (indexed together with IP)
+	bool iscaller[MAX_IP_PER_CALL];         //!< is that RTP stream from CALLER party? 
 	int ipport_n;				//!< last index of addr and port array 
 	RTP rtp[MAX_SSRC_PER_CALL];		//!< array of RTP streams
 	int ssrc_n;				//!< last index of rtp array

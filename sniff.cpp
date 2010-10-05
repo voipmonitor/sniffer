@@ -450,8 +450,8 @@ void readdump(pcap_t *handle) {
 				*/
 			}
 			
-			/* this logic updates call on last INVITES */
-			if (sip_method == INVITE) {
+			/* this logic updates call on the first INVITES */
+			if (sip_method == INVITE && !call->seeninvite) {
 				get_sip_peercnam(data,datalen,"From:", call->callername, sizeof(call->callername));
 				get_sip_peername(data,datalen,"From:", call->caller, sizeof(call->caller));
 				get_sip_peername(data,datalen,"To:", call->called, sizeof(call->called));
@@ -467,7 +467,7 @@ void readdump(pcap_t *handle) {
 					// prepare User-Agent
 					s = gettag(data,datalen,"User-Agent:", &l);
 					// store RTP stream
-					call->add_ip_port(tmp_addr, tmp_port, s, l);
+					call->add_ip_port(tmp_addr, tmp_port, s, l, sip_method == INVITE);
 					calltable->hashAdd(tmp_addr, tmp_port, call);
 	
 				} else {
