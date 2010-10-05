@@ -171,14 +171,14 @@ public:
 	 *
 	 * @return lenght of the call in seconds
 	*/
-	unsigned int duration() { return last_packet_time - first_packet_time; };
+	int duration() { return last_packet_time - first_packet_time; };
 	
 	/**
 	 * @brief return start of the call which is first seen packet 
 	 *
 	 * @param timestamp in seconds from UNIX epoch
 	*/
-	unsigned int calltime() { return first_packet_time; };
+	int calltime() { return first_packet_time; };
 
 
 	/**

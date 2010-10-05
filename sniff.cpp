@@ -307,6 +307,8 @@ void readdump(pcap_t *handle) {
 			if ((datalen > 5) && !(memmem(data, 6, "INVITE", 6) == 0)) {
 				if(verbosity > 2) 
 					 syslog(LOG_NOTICE,"SIP msg: INVITE\n");
+					 data[datalen] = '\0';
+					 printf("%s\n", data);
 				sip_method = INVITE;
 			} else if ((datalen > 2) && !(memmem(data, 3, "BYE", 3) == 0)) {
 				if(verbosity > 2) 
