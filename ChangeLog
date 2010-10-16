@@ -4,9 +4,6 @@ version 2.0
 version - contact support@voipmonitor.org.
 - codec dynamic payload is now properly decodec from SDP
 - voipmonitor now calculates MOS for iLBC and G.729 
-
-version 1.5
------------
 - new measure parameters
 	connect_duration - duration between 200 OK and end of call
 	progress_time - number of seconds between first INVITE and 180 or 183 progress message
@@ -23,7 +20,7 @@ source/destination IP address because RTP can be different.
 - a_* columns in database should always belongs to caller
 - fix cdr.caller/cdr.called which were swapped in cases of sip re-invites.  
 
-UPGRADE: cat cdrtable.sql.1.3-1.5 | mysql voipmonitor
+UPGRADE: cat cdrtable.sql.1.3-2.0 | mysql voipmonitor
 
 version 1.4
 -----------
