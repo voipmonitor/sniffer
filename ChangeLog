@@ -1,3 +1,10 @@
+version 2.0
+-----------
+- pcap to WAV convertor from ALAW/ULAW. Decoding from other codecs are in commercial
+version - contact support@voipmonitor.org.
+- codec dynamic payload is now properly decodec from SDP
+- voipmonitor now calculates MOS for iLBC and G.729 
+
 version 1.5
 -----------
 - new measure parameters

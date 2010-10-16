@@ -44,6 +44,7 @@
 #include "asterisk/abstract_jb.h"
 #include "fixedjitterbuf.h"
 #include "jitterbuf.h"
+#include "../codecs.h"
 
 /*! Internal jb flags */
 enum {
@@ -388,6 +389,9 @@ static void jb_get_and_deliver(struct ast_channel *chan, struct timeval *mynow)
 	struct ast_frame *f;
 	long now;
 	int interpolation_len, res;
+	int i;
+	short int stmp;
+	short int zero = 0;
 	
 	now = get_now(jb, NULL, mynow);
 	jb->next = jbimpl->next(jbobj);
@@ -405,7 +409,17 @@ static void jb_get_and_deliver(struct ast_channel *chan, struct timeval *mynow)
 		
 		switch(res) {
 		case JB_IMPL_OK:
-			/* deliver the frame */ 	//ast_write(chan, f);
+			/* deliver the frame */
+			//ast_write(chan, f);
+			if(chan->rawstream) {
+				//write frame to file
+				stmp = (short int)f->datalen;
+				if(chan->codec == PAYLOAD_SPEEX || chan->codec == PAYLOAD_G723) fwrite(&stmp, 1, sizeof(short int), chan->rawstream);   // write packet len
+				fwrite(f->data, 1, f->datalen, chan->rawstream);
+				//save last frame
+				memcpy(chan->lastbuf, f->data, f->datalen);
+				chan->lastbuflen = f->datalen;
+			}
 			if(debug) fprintf(stdout, "\tJB_GET {now=%ld}: %s frame with ts=%ld and len=%ld and seq=%d\n", now, jb_get_actions[res], f->ts, f->len, f->seqno);
 			/* if frame is marked do not put previous interpolated frames to statistics 
 			 * also if there is no seqno gaps between frames and time differs 
@@ -422,6 +436,21 @@ static void jb_get_and_deliver(struct ast_channel *chan, struct timeval *mynow)
 			ast_frfree(f);
 			break;
 		case JB_IMPL_DROP:
+			if(chan->rawstream) {
+				if(chan->codec == PAYLOAD_SPEEX || chan->codec == PAYLOAD_G723) {
+					fwrite(&zero, 1, sizeof(short int), chan->rawstream);   // write zero packet
+				} else {
+					// write previouse frame (better than zero frame)
+					if(chan->lastbuflen) {
+						fwrite(chan->lastbuf, 1, chan->lastbuflen, chan->rawstream);
+					} else {
+						// write empty frame
+						for(i = 0; i < chan->last_datalen; i++) {
+							fputc(0, chan->rawstream);
+						}
+					}
+				}
+			}
 			if(debug) fprintf(stdout, "\tJB_GET {now=%ld}: %s frame with ts=%ld and len=%ld\n",
 				now, jb_get_actions[res], f->ts, f->len);
 			ast_frfree(f);
@@ -430,12 +459,42 @@ static void jb_get_and_deliver(struct ast_channel *chan, struct timeval *mynow)
 		case JB_IMPL_INTERP:
 			/* interpolate a frame */
 			/* deliver the interpolated frame */
+			if(chan->rawstream) {
+				if(chan->codec == PAYLOAD_SPEEX || chan->codec == PAYLOAD_G723) {
+					fwrite(&zero, 1, sizeof(short int), chan->rawstream);   // write zero packet
+				} else {
+					// write previouse frame (better than zero frame)
+					if(chan->lastbuflen) {
+						fwrite(chan->lastbuf, 1, chan->lastbuflen, chan->rawstream);
+					} else {
+						// write empty frame
+						for(i = 0; i < chan->last_datalen; i++) {
+							fputc(0, chan->rawstream);
+						}
+					}
+				}
+			}
 			//ast_write(chan, f);
 			if(debug) fprintf(stdout, "\tJB_GET {now=%ld}: Interpolated frame with len=%d\n", now, interpolation_len);
 			// if marker bit, reset counter
 			chan->last_loss_burst++;
 			break;
 		case JB_IMPL_NOFRAME:
+			if(chan->rawstream) {
+				if(chan->codec == PAYLOAD_SPEEX || chan->codec == PAYLOAD_G723) {
+					fwrite(&zero, 1, sizeof(short int), chan->rawstream);   // write zero packet
+				} else {
+					// write previouse frame (better than zero frame)
+					if(chan->lastbuflen) {
+						fwrite(chan->lastbuf, 1, chan->lastbuflen, chan->rawstream);
+					} else {
+						// write empty frame
+						for(i = 0; i < chan->last_datalen; i++) {
+							fputc(0, chan->rawstream);
+						}
+					}
+				}
+			}
 			if(debug) fprintf(stdout, 
 				"JB_IMPL_NOFRAME is retuned from the %s jb when now=%ld >= next=%ld, jbnext=%ld!\n",
 				jbimpl->name, now, jb->next, jbimpl->next(jbobj));

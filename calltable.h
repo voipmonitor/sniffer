@@ -20,6 +20,7 @@
 #define MAX_SSRC_PER_CALL 10	//!< total maxumum of SDP sessions for one call-id
 #define MAX_CALL_ID 32		//!< max len of stored call-id
 #define MAX_FNAME 256		//!< max len of stored call-id
+#define MAX_RTPMAP 20          //!< max rtpmap records
 #define RTPTIMEOUT 300
 #define MAXNODE 50000
 
@@ -44,6 +45,7 @@ public:
 	bool sighup;			//!< true if call is saving during sighup
 	char *dirname();		//!< name of the directory to store files for the Call
 	char ua[MAX_IP_PER_CALL][1024];	//!< user agent 
+	int rtpmap[MAX_IP_PER_CALL][20]; //!< rtpmap for every rtp stream
 	RTP tmprtp;			//!< temporary structure used to decode information from frame
 	void *calltable;		//!< reference to calltable
 
@@ -85,6 +87,8 @@ public:
 	*/
 	Call *find_by_ip_port(in_addr_t addr, unsigned short port);
 
+	int get_index_by_ip_port(in_addr_t addr, unsigned short port);
+
 	/**
 	 * @brief read RTP packet 
 	 *
@@ -96,7 +100,7 @@ public:
 	 * @param saddr source IP adress of the packet
 	 * 
 	*/
-	void read_rtp( unsigned char *data, unsigned long datalen, struct pcap_pkthdr *header,  u_int32_t saddr);
+	void read_rtp( unsigned char *data, unsigned long datalen, struct pcap_pkthdr *header,  u_int32_t saddr, unsigned short port);
 
 	/**
 	 * @brief adds RTP stream to the this Call 
@@ -108,7 +112,7 @@ public:
 	 * 
 	 * @return return 0 on success, 1 if IP and port is duplicated and -1 on failure
 	*/
-	int add_ip_port(in_addr_t addr, unsigned short port, char *ua, unsigned long ua_len, bool iscaller);
+	int add_ip_port(in_addr_t addr, unsigned short port, char *ua, unsigned long ua_len, bool iscaller, int *rtpmap);
 
 	/**
 	 * @brief get file descriptor of the writing pcap file  
@@ -161,6 +165,13 @@ public:
 	void set_first_packet_time(time_t mtime) { first_packet_time = mtime; };
 
 	/**
+	 * @brief convert raw files to one WAV
+	 *
+	*/
+	int convertRawToWav();
+ 
+	/**
+
 	 * @brief transfer Call to another queue which periodicaly stores Call to MySQL
 	 *
 	*/

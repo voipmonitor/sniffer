@@ -25,6 +25,7 @@ and insert them into Call class.
 #include <pcap.h>
 //#include <pcap/sll.h>
 
+#include "codecs.h"
 #include "calltable.h"
 #include "sniff.h"
 
@@ -175,6 +176,57 @@ int get_ip_port_from_sdp(char *sdp_text, in_addr_t *addr, unsigned short *port){
 	return 0;
 }
 
+int mimeSubtypeToInt(char *mimeSubtype) {
+       if(strcmp(mimeSubtype,"G729") == 0)
+	       return PAYLOAD_G729;
+       else if(strcmp(mimeSubtype,"GSM") == 0)
+	       return PAYLOAD_GSM;
+       else if(strcmp(mimeSubtype,"G723") == 0)
+	       return PAYLOAD_G723;
+       else if(strcmp(mimeSubtype,"PCMA") == 0)
+	       return PAYLOAD_PCMA;
+       else if(strcmp(mimeSubtype,"PCMU") == 0)
+	       return PAYLOAD_PCMU;
+       else if(strcmp(mimeSubtype,"iLBC") == 0)
+	       return PAYLOAD_ILBC;
+       else if(strcmp(mimeSubtype,"speex") == 0)
+	       return PAYLOAD_SPEEX;
+       else if(strcmp(mimeSubtype,"SPEEX") == 0)
+	       return PAYLOAD_SPEEX;
+       else
+	       return 0;
+}
+
+int get_rtpmap_from_sdp(char *sdp_text, int *rtpmap){
+       unsigned long l;
+       char *s, *z;
+       char s1[20];
+       int codec;
+       char mimeSubtype[128];
+       int i = 0;
+       s = gettag(sdp_text, strlen(sdp_text), "m=audio ", &l);
+       if(!l) {
+	       return 0;
+       }
+       do {
+	       s = gettag(s, strlen(sdp_text), "a=rtpmap:", &l);
+	       if(l && (z = strchr(s, '\r'))) {
+		       *z = '\0';
+	       } else {
+		       break;
+	       }
+	       if (sscanf(s, "%30u %[^/]/", &codec, mimeSubtype) == 2) {
+		       // store payload type and its codec into one integer with 1000 offset
+		       rtpmap[i] = mimeSubtypeToInt(mimeSubtype) + 1000*codec;
+		       //printf("PAYLOAD: rtpmap:%d codec:%d, mimeSubtype [%d] [%s]\n", rtpmap[i], codec, mimeSubtypeToInt(mimeSubtype), mimeSubtype);
+	       }
+	       i++;
+       } while(l);
+       rtpmap[i] = 0; //terminate rtpmap field
+       return 0;
+}
+
+
 void readdump(pcap_t *handle) {
 	struct pcap_pkthdr *header;	// The header that pcap gives us
 	const u_char *packet;		// The actual packet 
@@ -270,16 +322,16 @@ void readdump(pcap_t *handle) {
 		//if ((call = calltable->find_by_ip_port(header_ip->daddr, htons(header_udp->dest)))){	
 		if ((call = calltable->hashfind_by_ip_port(header_ip->daddr, htons(header_udp->dest)))){	
 			// packet (RTP) by destination:port is already part of some stored call 
-			call->read_rtp((unsigned char*) data, datalen, header, header_ip->saddr);
+			call->read_rtp((unsigned char*) data, datalen, header, header_ip->saddr, htons(header_udp->source));
 			call->set_last_packet_time(header->ts.tv_sec);
 			if(opt_saveRTP) {
 				save_packet(call, header, packet);
 			}
 		// TODO: remove if hash will be stable
 		//} else if ((call = calltable->find_by_ip_port(header_ip->saddr, htons(header_udp->source)))){	
-		} else if ((call = calltable->hashfind_by_ip_port(header_ip->saddr, htons(header_udp->source)))){	
+		} else if ((call = calltable->hashfind_by_ip_port(header_ip->saddr, htons(header_udp->source)))){
 			// packet (RTP) by source:port is already part of some stored call 
-			call->read_rtp((unsigned char*) data, datalen, header, header_ip->saddr);
+			call->read_rtp((unsigned char*) data, datalen, header, header_ip->saddr, htons(header_udp->source));
 			call->set_last_packet_time(header->ts.tv_sec);
 			if(opt_saveRTP) {
 				save_packet(call, header, packet);
@@ -463,11 +515,13 @@ void readdump(pcap_t *handle) {
 				// we have found SDP, add IP and port to the table
 				in_addr_t tmp_addr;
 				unsigned short tmp_port;
+				int rtpmap[MAX_RTPMAP];
 				if (!get_ip_port_from_sdp(strstr(data, "\r\n\r\n") + 1, &tmp_addr, &tmp_port)){
 					// prepare User-Agent
 					s = gettag(data,datalen,"User-Agent:", &l);
 					// store RTP stream
-					call->add_ip_port(tmp_addr, tmp_port, s, l, sip_method == INVITE);
+					get_rtpmap_from_sdp(strstr(data, "\r\n\r\n") + 1, rtpmap);
+					call->add_ip_port(tmp_addr, tmp_port, s, l, sip_method == INVITE, rtpmap);
 					calltable->hashAdd(tmp_addr, tmp_port, call);
 	
 				} else {

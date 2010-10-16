@@ -161,7 +161,8 @@ static int resynch_jb(struct fixed_jb *jb, void *data, long ms, long ts, long no
 	offset = diff - jb->tail->ms;
 	
 	/* Do we really need to resynch, or this is just a frame for dropping? */
-	if(debug) fprintf(stdout, "resync_jb: offset %ld, force:%d\n", offset, jb->force_resynch);
+	if(debug) fprintf(stdout, "resync_jb: offset %ld, threshold %d force:%d\n", offset, jb->conf.resync_threshold, jb->force_resynch);
+
 
 	if ( !jb->force_resynch && (offset < jb->conf.resync_threshold && offset > -jb->conf.resync_threshold)) {
 		if(debug) fprintf(stdout, "dropping\n");
@@ -246,9 +247,11 @@ int fixed_jb_put(struct fixed_jb *jb, void *data, long ms, long ts, long now)
 		frame = frame->prev;
 	}
 	
-	/* Check if the new delivery time is not covered already by the chosen frame */
+	/* Check if the new delivery time is not covered already by the chosen frame
+	 * be tolerant (10ms) (iLBC from asterisk is coming 20/40/20/40/20 ms
+	 * XXX: check if that 10ms tolerant does not brake statistics on various loss or delay samples */
 	if (jb->force_resynch || frame && (frame->delivery == delivery ||
-		         delivery < frame->delivery + frame->ms ||
+			 delivery + 10 < frame->delivery + frame->ms ||
 		         (frame->next && delivery + ms > frame->next->delivery)))
 	{
 		/* TODO: Should we check for resynch here? Be careful to do not allow threshold smaller than
@@ -256,7 +259,7 @@ int fixed_jb_put(struct fixed_jb *jb, void *data, long ms, long ts, long now)
 		
 		/* should drop the frame, but let first resynch_jb() check if this is not a jump in ts, or
 		   the force resynch flag was not set. */
-		if(debug) fprintf(stdout, "put: check if the new delivery time is not covered already by the chosen frame\n");
+		if(debug) fprintf(stdout, "put: check if the new delivery time is not covered already by the chosen frame %d, delivery %d frame->delivery %d frame->ms %d ms %d frame->next->delivery %d\n",jb->force_resynch, delivery, frame->delivery, frame->ms, (frame->next) ? frame->next->delivery : 0);
 		res = resynch_jb(jb, data, ms, ts, now);
 		jb->force_resynch = 0;
 		return res;
@@ -337,8 +340,11 @@ int fixed_jb_get(struct fixed_jb *jb, struct fixed_jb_frame *frame, long now, lo
 		return FIXED_JB_DROP;
 	}
 	
-	/* isn't it too early to play the first frame available? */
-	if (now < jb->frames->delivery) {
+	/* isn't it too early to play the first frame available?
+	 * be tolerant 20ms
+	 */
+	if (now + 20 < jb->frames->delivery) {
+
 		/* yes - should interpolate one frame */
 		/* this can happen if sequence number is ok but timestamp in frame is bigger than previous. that comes from asterisk servers which generates its own sequence but timestamp not */
 		if(debug) fprintf(stdout, "\tisn't it too early to play the first frame available? now(%ld) <  jb->frames->delivery (%ld)\n", now, jb->frames->delivery);

@@ -19,14 +19,17 @@ Each Call class contains two RTP classes.
 #include <pcap.h>
 
 #include "rtp.h"
+#include "codecs.h"
 #include "jitterbuffer/asterisk/channel.h"
 #include "jitterbuffer/asterisk/frame.h"
 #include "jitterbuffer/asterisk/abstract_jb.h"
 #include "jitterbuffer/asterisk/strings.h"
 
 extern int verbosity;
+extern int opt_saveRAW;                //save RTP payload RAW data?
+extern int opt_saveWAV;                //save RTP payload RAW data?
 extern int opt_saveGRAPH;	//save GRAPH data?
-extern int opt_gzipGRAPH;	//save GRAPH data?
+extern int opt_gzipGRAPH;	//save gzip GRAPH data?
 
 using namespace std;
 
@@ -74,21 +77,28 @@ RTP::RTP() {
 	saddr = 0;
 	ssrc = 0;
 	gfilename[0] = '\0';
+	gfileRAW = NULL;
 
 	channel_fix1 = (ast_channel*)calloc(1, sizeof(*channel_fix1));
 	channel_fix1->jitter_impl = 0; // fixed
 	channel_fix1->jitter_max = 50; 
-	channel_fix1->jitter_resync_threshold = 50; 
+	channel_fix1->jitter_resync_threshold = 50;
+	channel_fix1->last_datalen = 0;
+	channel_fix1->lastbuflen = 0;
 
 	channel_fix2 = (ast_channel*)calloc(1, sizeof(*channel_fix2));
 	channel_fix2->jitter_impl = 0; // fixed
 	channel_fix2->jitter_max = 200; 
 	channel_fix2->jitter_resync_threshold = 200; 
+	channel_fix2->last_datalen = 0;
+	channel_fix2->lastbuflen = 0;
 
 	channel_adapt = (ast_channel*)calloc(1, sizeof(*channel_adapt));
 	channel_adapt->jitter_impl = 1; // adaptive
 	channel_adapt->jitter_max = 500; 
 	channel_adapt->jitter_resync_threshold = 500; 
+	channel_adapt->last_datalen = 0;
+	channel_adapt->lastbuflen = 0;
 
 	//channel->name = "SIP/fixed";
 	frame = (ast_frame*)calloc(1, sizeof(*frame));
@@ -100,6 +110,7 @@ RTP::RTP() {
 	last_packetization = 0;
 	packetization_iterator = 0;
 	payload = 0;
+	codec = 0;
 }
 
 /* destructor */
@@ -121,13 +132,26 @@ RTP::~RTP() {
 #if 1
 /* simulate jitterbuffer */
 void
-RTP::jitterbuffer(struct ast_channel *channel) {
+RTP::jitterbuffer(struct ast_channel *channel, int savePayload) {
 	struct timeval tsdiff;	
 	frame->ts = getTimestamp() / 8;
 	frame->len = packetization;
 	frame->marker = getMarker();
 	frame->seqno = getSeqNum();
+	channel->codec = codec;
 	memcpy(&frame->delivery, &header->ts, sizeof(struct timeval));
+
+       if(savePayload) {
+	       frame->data = payload_data;
+	       frame->datalen = payload_len;
+	       channel->rawstream = gfileRAW;
+	       //printf("[%p]\n", channel->rawstream);
+	       if(payload_len) {
+		       channel->last_datalen = payload_len;
+	       }
+       } else {
+	       channel->rawstream = NULL;
+       }
 
 	// create jitter buffer structures 
 	ast_jb_do_usecheck(channel, &header->ts);
@@ -233,6 +257,61 @@ RTP::read(unsigned char* data, size_t len, struct pcap_pkthdr *header,  u_int32_
 	u_int16_t seq = getSeqNum();
 	int curpayload = getPayload();
 
+       /* find out codec */
+       if(codec == 0) {
+	       for(int i = 0; i < MAX_RTPMAP && rtpmap[i] != 0 ; i++) {
+		       if(curpayload == rtpmap[i] / 1000) {
+			       codec = rtpmap[i] - curpayload * 1000;
+		       }
+	       }
+       }
+
+       /* get RTP payload header and datalen */
+       if(opt_saveRAW || opt_saveWAV) {
+	       payload_data = data + sizeof(RTPFixedHeader);
+	       payload_len = len - sizeof(RTPFixedHeader);
+	       if(getPadding()) {
+		       /*
+			* If set, this packet contains one or more additional padding
+			* bytes at the end which are not part of the payload. The last
+			* byte of the padding contains a count of how many padding bytes
+			* should be ignored. Padding may be needed by some encryption
+			* algorithms with fixed block sizes or for carrying several RTP
+			* packets in a lower-layer protocol data unit.
+			*/
+		       payload_len -= ((u_int8_t *)data)[payload_len - 1];
+	       }
+	       if(getCC() > 0) {
+		       /*
+			* The number of CSRC identifiers that follow the fixed header.
+			*/
+		       payload_data += 4 * getCC();
+		       payload_len -= 4 * getCC();
+	       }
+	       if(getExtension()) {
+		       /*
+			* If set, the fixed header is followed by exactly one header extension.
+			*/
+		       extension_hdr_t *rtpext;
+		       if (payload_len < 4)
+			       payload_len = 0;
+
+		       // the extension, if present, is after the CSRC list.
+		       rtpext = (extension_hdr_t *)((u_int8_t *)payload_data);
+		       payload_data += sizeof(extension_hdr_t) + rtpext->length;
+		       payload_len -= sizeof(extension_hdr_t) + rtpext->length;
+	       }
+	       /*
+		* this is not VAD friendly
+
+	       if(gfileRAW.is_open()) {
+		       //gfileRAW.write((const char*)payload_data, payload_len);
+	       }
+	       */
+       }
+
+
+
 	if(!payload) {
 		/* save payload to statistics based on first payload. TODO: what if payload is dynamically changing? */
 		payload = curpayload;
@@ -243,37 +322,44 @@ RTP::read(unsigned char* data, size_t len, struct pcap_pkthdr *header,  u_int32_
 	} else {
 		frame->frametype = AST_FRAME_VOICE;
 	}
-	
-	/* ignoring iLBC codec because asterisk is sending once 20ms and once 40ms and I'm not able to determine packet length from the packet 
-	 * also start jitterbuffer simulator only whan call is answered 
-	*/
-	if(seeninviteok and curpayload != 99 and curpayload != 97) {
+
+	if(seeninviteok) {
 		if(packetization_iterator < 5) {
-			/* until we dont know packetization length, do not activate jitter buffer simulators 
+			/* until we dont know packetization length, do not activate jitter buffer simulators
 			 * also switch to jitterbuffuer only if 5 consecutive packets have the same packetization
 			 */
-			if(seq == (last_seq + 1)) {
-				// sequence numbers are ok, we can calculate packetization
-				packetization = (getTimestamp() - s->lastTimeStamp) / 8;
-				if(last_packetization == packetization and packetization > 0) {
-					packetization_iterator++;
-				} else {
-					packetization_iterator = 0;
-				}
-				last_packetization = packetization;
-			}
-
-			if(packetization_iterator >= 5) {
-				channel_fix1->packetization = channel_fix2->packetization = channel_adapt->packetization = (getTimestamp() - s->lastTimeStamp) / 8;
+			if(codec == PAYLOAD_ILBC || codec == PAYLOAD_G723) {
+				packetization = 30;
+				channel_fix1->packetization = channel_fix2->packetization = channel_adapt->packetization = packetization;
 				//printf("packetization: %d\n", packetization);
-				jitterbuffer(channel_fix1);
-				jitterbuffer(channel_fix2);
-				jitterbuffer(channel_adapt);
+				jitterbuffer(channel_fix1, 0);
+				jitterbuffer(channel_fix2, opt_saveRAW || opt_saveWAV);
+				jitterbuffer(channel_adapt, 0);
+				packetization_iterator = 6;
+			} else {
+				if(seq == (last_seq + 1)) {
+					// sequence numbers are ok, we can calculate packetization
+					packetization = (getTimestamp() - s->lastTimeStamp) / 8;
+					if(last_packetization == packetization and packetization > 0) {
+						packetization_iterator++;
+					} else {
+						packetization_iterator = 0;
+					}
+					last_packetization = packetization;
+				}
+
+				if(packetization_iterator >= 5) {
+					channel_fix1->packetization = channel_fix2->packetization = channel_adapt->packetization = (getTimestamp() - s->lastTimeStamp) / 8;
+					//printf("packetization: %d\n", packetization);
+					jitterbuffer(channel_fix1, 0);
+					jitterbuffer(channel_fix2, opt_saveRAW || opt_saveWAV);
+					jitterbuffer(channel_adapt, 0);
+				}
 			}
 		} else {
-				jitterbuffer(channel_fix1);
-				jitterbuffer(channel_fix2);
-				jitterbuffer(channel_adapt);
+			jitterbuffer(channel_fix1, 0);
+			jitterbuffer(channel_fix2, opt_saveRAW || opt_saveWAV);
+			jitterbuffer(channel_adapt, 0);
 		}
 	}
 

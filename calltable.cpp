@@ -26,12 +26,18 @@
 #include <mysql++.h>
 
 #include "calltable.h"
+#include "format_wav.h"
+#include "codecs.h"
+#include "codec_alaw.h"
+#include "codec_ulaw.h"
 
 #define MIN(x,y) ((x) < (y) ? (x) : (y))
 
 using namespace std;
 
 extern int verbosity;
+extern int opt_saveRAW;                // save RTP payload RAW data?
+extern int opt_saveWAV;                // save RTP payload RAW data?
 extern int opt_saveGRAPH;	// save GRAPH data to graph file? 
 extern int opt_gzipGRAPH;	// compress GRAPH data to graph file? 
 static mysqlpp::Connection con(false);
@@ -82,8 +88,7 @@ Call::dirname() {
 
 /* add ip adress and port to this call */
 int
-Call::add_ip_port(in_addr_t addr, unsigned short port, char *ua, unsigned long ua_len, bool iscaller) {
-
+Call::add_ip_port(in_addr_t addr, unsigned short port, char *ua, unsigned long ua_len, bool iscaller, int *rtpmap) {
 	if(verbosity >= 4) {
 		struct in_addr in;
 		in.s_addr = addr;
@@ -94,6 +99,8 @@ Call::add_ip_port(in_addr_t addr, unsigned short port, char *ua, unsigned long u
 		// check, if there is already IP:port
 		for(int i = 0; i < ipport_n; i++) {
 			if(this->addr[i] == addr && this->port[i] == port){
+				// reinit rtpmap
+				memcpy(this->rtpmap[i], rtpmap, MAX_RTPMAP * sizeof(int)); //XXX: is it neccessary?
 				return 1;
 			}
 		}
@@ -110,6 +117,7 @@ Call::add_ip_port(in_addr_t addr, unsigned short port, char *ua, unsigned long u
 	}
 	this->addr[ipport_n] = addr;
 	this->port[ipport_n] = port;
+	memcpy(this->rtpmap[ipport_n], rtpmap, MAX_RTPMAP * sizeof(int));
 	this->iscaller[ipport_n] = iscaller;
 	if(ua) {
 		memcpy(this->ua[ipport_n], ua, ua_len);
@@ -119,7 +127,6 @@ Call::add_ip_port(in_addr_t addr, unsigned short port, char *ua, unsigned long u
 	}
 	ipport_n++;
 	return 0;
-		
 }
 
 /* Return reference to Call if IP:port was found, otherwise return NULL */
@@ -135,9 +142,21 @@ Call::find_by_ip_port(in_addr_t addr, unsigned short port){
 	return NULL;
 }
 
-/* analyse rtp packet */
+int
+Call::get_index_by_ip_port(in_addr_t addr, unsigned short port){
+	for(int i = 0; i < ipport_n; i++) {
+		if(this->addr[i] == addr && this->port[i] == port){
+			// we have found it
+			return i;
+		}
+	}
+	// not found
+	return -1;
+}
+
+/* analyze rtp packet */
 void
-Call::read_rtp(unsigned char* data, unsigned long datalen, struct pcap_pkthdr *header, u_int32_t saddr) {
+Call::read_rtp(unsigned char* data, unsigned long datalen, struct pcap_pkthdr *header, u_int32_t saddr, unsigned short port) {
 
 	if(first_rtp_time == 0) {
 		first_rtp_time = header->ts.tv_sec;
@@ -162,6 +181,15 @@ Call::read_rtp(unsigned char* data, unsigned long datalen, struct pcap_pkthdr *h
 				rtp[ssrc_n].gfile.open(rtp[ssrc_n].gfilename);
 			}
 		}
+		if(opt_saveRAW || opt_saveWAV) {
+			char tmp[1024];
+			sprintf(tmp, "%s/%s.%d.raw", dirname(), fbasename, ssrc_n);
+			//rtp[ssrc_n].gfileRAW.open(tmp, ios::binary);
+			rtp[ssrc_n].gfileRAW = fopen(tmp, "w");
+		}
+		int i = get_index_by_ip_port(saddr, port);
+		memcpy(this->rtp[ssrc_n].rtpmap, rtpmap[i], MAX_RTPMAP * sizeof(int));
+
 		rtp[ssrc_n].read(data, datalen, header, saddr, seeninviteok);
 		this->rtp[ssrc_n].ssrc = tmprtp.getSSRC();
 		ssrc_n++;
@@ -194,6 +222,245 @@ double calculate_mos(double ppl, double burstr, int version) {
 	return mos;
 }
 
+ int convertALAW2WAV(char *fname1, char *fname2, char *fname3) {
+        unsigned char *bitstream_buf1;
+        unsigned char *bitstream_buf2;
+        int16_t buf_out1;
+        int16_t buf_out2;
+        unsigned char *p1;
+        unsigned char *f1;
+        unsigned char *p2;
+        unsigned char *f2;
+        long file_size1;
+        long file_size2;
+
+        //TODO: move it to main program to not init it overtimes or make alaw_init not reinitialize
+        alaw_init();
+ 
+        int inFrameSize = 1;
+        int outFrameSize = 2;
+ 
+        FILE *f_in1 = fopen(fname1, "r");
+        FILE *f_in2 = fopen(fname2, "r");
+        FILE *f_out = fopen(fname3, "w");
+        if(!f_in1 || !f_in2 || !f_out) {
+                syslog(LOG_ERR,"One of files [%s,%s,%s] cannot be opened. Failed converting raw to wav\n", fname1, fname2, fname3);
+                return -1;
+        }
+ 
+        wav_write_header(f_out);
+ 
+        fseek(f_in1, 0, SEEK_END);
+        file_size1 = ftell(f_in1);
+        fseek(f_in1, 0, SEEK_SET);
+ 
+        fseek(f_in2, 0, SEEK_END);
+        file_size2 = ftell(f_in2);
+        fseek(f_in2, 0, SEEK_SET);
+ 
+        bitstream_buf1 = (unsigned char *)malloc(file_size1);
+        bitstream_buf2 = (unsigned char *)malloc(file_size2);
+        fread(bitstream_buf1, file_size1, 1, f_in1);
+        fread(bitstream_buf2, file_size2, 1, f_in2);
+        p1 = bitstream_buf1;
+        f1 = bitstream_buf1 + file_size1;
+        p2 = bitstream_buf2;
+        f2 = bitstream_buf2 + file_size2;
+        while(p1 < f1 || p2 < f2 ) {
+                if(p1 < f1 && p2 < f2) {
+                        buf_out1 = ALAW(*p1);
+                        buf_out2 = ALAW(*p2);
+                        slinear_saturated_add(&buf_out1, &buf_out2);
+                        p1 += inFrameSize;
+                        p2 += inFrameSize;
+                        fwrite(&buf_out1, sizeof(buf_out1), 1, f_out);
+                } else if ( p1 < f1 ) {
+                        buf_out1 = ALAW(*p1);
+                        p1 += inFrameSize;
+                        fwrite(&buf_out1, outFrameSize, 1, f_out);
+                } else {
+                        buf_out1 = ALAW(*p2);
+                        p2 += inFrameSize;
+                        fwrite(&buf_out2, outFrameSize, 1, f_out);
+                }
+        }
+ 
+        wav_update_header(f_out);
+ 
+        if(bitstream_buf1)
+                free(bitstream_buf1);
+        if(bitstream_buf2)
+                free(bitstream_buf2);
+ 
+        fclose(f_out);
+        fclose(f_in1);
+        fclose(f_in2);
+ 
+        return 0;
+ }
+ 
+int convertULAW2WAV(char *fname1, char *fname2, char *fname3) {
+	unsigned char *bitstream_buf1;
+	unsigned char *bitstream_buf2;
+	int16_t buf_out1;
+	int16_t buf_out2;
+	unsigned char *p1;
+	unsigned char *f1;
+	unsigned char *p2;
+	unsigned char *f2;
+	long file_size1;
+	long file_size2;
+ 
+	//TODO: move it to main program to not init it overtimes or make ulaw_init not reinitialize
+	ulaw_init();
+ 
+	int inFrameSize = 1;
+	int outFrameSize = 2;
+ 
+	FILE *f_in1 = fopen(fname1, "r");
+	FILE *f_in2 = fopen(fname2, "r");
+	FILE *f_out = fopen(fname3, "w");
+	if(!f_in1 || !f_in2 || !f_out) {
+		syslog(LOG_ERR,"One of files [%s,%s,%s] cannot be opened. Failed converting raw to wav\n", fname1, fname2, fname3);
+		return -1;
+	}
+ 
+	wav_write_header(f_out);
+ 
+	fseek(f_in1, 0, SEEK_END);
+	file_size1 = ftell(f_in1);
+	fseek(f_in1, 0, SEEK_SET);
+ 
+	fseek(f_in2, 0, SEEK_END);
+	file_size2 = ftell(f_in2);
+	fseek(f_in2, 0, SEEK_SET);
+ 
+	bitstream_buf1 = (unsigned char *)malloc(file_size1);
+	bitstream_buf2 = (unsigned char *)malloc(file_size2);
+	fread(bitstream_buf1, file_size1, 1, f_in1);
+	fread(bitstream_buf2, file_size2, 1, f_in2);
+	p1 = bitstream_buf1;
+	f1 = bitstream_buf1 + file_size1;
+	p2 = bitstream_buf2;
+	f2 = bitstream_buf2 + file_size2;
+ 
+	while(p1 < f1 || p2 < f2 ) {
+		if(p1 < f1 && p2 < f2) {
+			buf_out1 = ULAW(*p1);
+			buf_out2 = ULAW(*p2);
+			slinear_saturated_add(&buf_out1, &buf_out2);
+			p1 += inFrameSize;
+			p2 += inFrameSize;
+			fwrite(&buf_out1, sizeof(buf_out1), 1, f_out);
+		} else if ( p1 < f1 ) {
+			buf_out1 = ULAW(*p1);
+			p1 += inFrameSize;
+			fwrite(&buf_out1, outFrameSize, 1, f_out);
+		} else {
+			buf_out1 = ULAW(*p2);
+			p2 += inFrameSize;
+			fwrite(&buf_out2, outFrameSize, 1, f_out);
+		}
+	}
+ 
+	wav_update_header(f_out);
+ 
+	if(bitstream_buf1)
+		free(bitstream_buf1);
+	if(bitstream_buf2)
+		free(bitstream_buf2);
+ 
+	fclose(f_out);
+	fclose(f_in1);
+	fclose(f_in2);
+ 
+	return 0;
+}
+
+int
+Call::convertRawToWav() {
+ 
+	char fname1[1024];
+	char fname2[1024];
+	char fname3[1024];
+	int payloadtype = 0;
+ 
+	/* sort all RTP streams by received packets + loss packets descend and save only those two with the biggest received packets. */
+	int indexes[MAX_SSRC_PER_CALL];
+	// init indexex
+	for(int i = 0; i < MAX_SSRC_PER_CALL; i++) {
+		indexes[i] = i;
+	}
+	// bubble sort
+	for(int k = 0; k < ssrc_n; k++) {
+		for(int j = 0; j < ssrc_n; j++) {
+			if((rtp[indexes[k]].stats.received + rtp[indexes[k]].stats.lost) > ( rtp[indexes[j]].stats.received + rtp[indexes[j]].stats.lost)) {
+				int kTmp = indexes[k];
+				indexes[k] = indexes[j];
+				indexes[j] = kTmp;
+			}
+		}
+	}
+ 
+	sprintf(fname1, "%s/%s.%d.raw", dirname(), fbasename, indexes[0]);
+	sprintf(fname2, "%s/%s.%d.raw", dirname(), fbasename, indexes[1]);
+	sprintf(fname3, "%s/%s.wav", dirname(), fbasename);
+ 
+	//printf("r1: %d, r2: %d, r3: %d \n\n", rtp[indexes[0]][0].rtpmap, rtpmap[indexes[1]][0], rtpmap[indexes[2]][0]);
+ 
+	for(int i = 0; i < MAX_RTPMAP && rtp[indexes[0]].rtpmap[i] != 0; i++) {
+		if((rtp[indexes[0]].payload == (rtp[indexes[0]].rtpmap[i] / 1000)) && (rtp[indexes[1]].payload == (rtp[indexes[0]].rtpmap[i]) / 1000)) {
+			// need to extract 97 from 98097
+			payloadtype = rtp[indexes[0]].rtpmap[i] - rtp[indexes[0]].payload * 1000;
+		}
+	}
+ 
+	char cmd[4092];
+ 
+	switch(payloadtype) {
+	case PAYLOAD_PCMA:
+		if(verbosity > 1) syslog(LOG_ERR, "Converting PCMA to WAV.\n");
+		convertALAW2WAV(fname1, fname2, fname3);
+		break;
+	case PAYLOAD_PCMU:
+		if(verbosity > 1) syslog(LOG_ERR, "Converting PCMA to WAV.\n");
+		convertULAW2WAV(fname1, fname2, fname3);
+		break;
+/*
+	case PAYLOAD_GSM:
+		if(verbosity > 1) syslog(LOG_ERR, "Converting GSM to WAV.\n");
+		convertGSM2WAV(fname1, fname2, fname3);
+		break;
+	case PAYLOAD_G729:
+		snprintf(cmd, 4092, "g7292wav \"%s\" \"%s\" \"%s\"", fname1, fname2, fname3);
+		if(verbosity > 1) syslog(LOG_ERR, "Converting G.729 to WAV.\n");
+		system(cmd);
+		break;
+	case PAYLOAD_G723:
+		snprintf(cmd, 4092, "g7232wav \"%s\" \"%s\" \"%s\"", fname1, fname2, fname3);
+		if(verbosity > 1) syslog(LOG_ERR, "Converting G.723 to WAV.\n");
+		system(cmd);
+		break;
+	case PAYLOAD_ILBC:
+		if(verbosity > 1) syslog(LOG_ERR, "Converting iLBC to WAV.\n");
+		convertiLBC2WAV(fname1, fname2, fname3);
+		break;
+	case PAYLOAD_SPEEX:
+		if(verbosity > 1) syslog(LOG_ERR, "Converting speex to WAV.\n");
+		convertSPEEX2WAV(fname1, fname2, fname3);
+		break;
+*/
+	default:
+		syslog(LOG_ERR, "Call cannot be converted to WAV, unknown payloadtype [%d]\n", payloadtype);
+	}
+ 
+	if(!opt_saveRAW) {
+		unlink(fname1);
+		unlink(fname2);
+	}
+ 
+	return 0;
+}
 
 /* TODO: implement failover -> write INSERT into file */
 int
@@ -254,8 +521,8 @@ Call::saveToMysql() {
 			indexes[i] = i;
 		}
 		// bubble sort
-		for(int k = 0; k < MAX_SSRC_PER_CALL; k++) {
-			for(int j = 0; j < MAX_SSRC_PER_CALL; j++) {
+		for(int k = 0; k < ssrc_n; k++) {
+			for(int j = 0; j < ssrc_n; j++) {
 				if((rtp[indexes[k]].stats.received + rtp[indexes[k]].stats.lost) > ( rtp[indexes[j]].stats.received + rtp[indexes[j]].stats.lost)) {
 					int kTmp = indexes[k];
 					indexes[k] = indexes[j];

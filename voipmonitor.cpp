@@ -42,6 +42,8 @@ int opt_packetbuffered = 0;	// Make .pcap files writing ‘‘packet-buffered’
 int opt_fork = 1;		// fork or run foreground 
 int opt_saveSIP = 0;		// save SIP packets to pcap file?
 int opt_saveRTP = 0;		// save RTP packets to pcap file?
+int opt_saveRAW = 0;		// save RTP packets to pcap file?
+int opt_saveWAV = 0;		// save RTP packets to pcap file?
 int opt_saveGRAPH = 0;		// save GRAPH data to *.graph file? 
 int opt_gzipGRAPH = 0;		// compress GRAPH data ? 
 int opt_gzipPCAP = 0;		// compress PCAP data ? 
@@ -92,7 +94,11 @@ void *storing_cdr( void *dummy ) {
 			calltable->unlock_calls_queue();
 			
 			call->saveToMysql();
-			
+
+			if(opt_saveWAV) {
+				call->convertRawToWav();
+			}
+
 			calltable->lock_calls_queue();
 			calltable->calls_queue.pop();
 			calltable->unlock_calls_queue();
@@ -158,6 +164,8 @@ int main(int argc, char *argv[]) {
             {"gzip-pcap", 0, 0, '2'},
             {"save-sip", 0, 0, 'S'},
             {"save-rtp", 0, 0, 'R'},
+            {"save-raw", 0, 0, 'A'},
+            {"save-wav", 0, 0, 'W'},
             {"save-graph", 2, 0, 'G'},
             {"mysql-server", 1, 0, 'h'},
             {"mysql-database", 1, 0, 'b'},
@@ -176,7 +184,7 @@ int main(int argc, char *argv[]) {
 
 	while(1) {
 		char c;
-		c = getopt_long(argc, argv, "f:i:r:d:v:h:b:t:u:p:knUSRG", long_options, &option_index);
+		c = getopt_long(argc, argv, "f:i:r:d:v:h:b:t:u:p:knUSRAWG", long_options, &option_index);
 		//"i:r:d:v:h:b:u:p:fnU", NULL, NULL);
 		if (c == -1)
 			break;
@@ -197,7 +205,6 @@ int main(int argc, char *argv[]) {
 				ifname = optarg;
 				break;
 			case 'v':
-				printf("test\n");
 				verbosity = atoi(optarg);
 				break;
 			case 'r':
@@ -242,6 +249,12 @@ int main(int argc, char *argv[]) {
 			case 'R':
 				opt_saveRTP = 1;
 				break;
+			case 'A':
+				opt_saveRAW = 1;
+				break;
+			case 'W':
+				opt_saveWAV = 1;
+				break;
 			case 'G':
 				opt_saveGRAPH = 1;
 				if(optarg && optarg[0] == 'g') {
@@ -252,7 +265,7 @@ int main(int argc, char *argv[]) {
 	}
 	if ((fname == NULL) && (ifname == NULL)){
 		printf( "voipmonitor version %s\n"
-				"Usage: voipmonitor [-knUSRG] [-i <interface>] [-f <pcap filter>] [-r <file>] [-d <pcap dump directory>] [-v level]\n"
+				"Usage: voipmonitor [-knUSRAWG] [-i <interface>] [-f <pcap filter>] [-r <file>] [-d <pcap dump directory>] [-v level]\n"
 				"                 [-h <mysql server>] [-b <mysql database] [-u <mysql username>] [-p <mysql password>]\n"
 				"                 [-f <pcap filter>]\n"
 				" -S, --save-sip\n"
@@ -260,6 +273,12 @@ int main(int argc, char *argv[]) {
 				"\n"
 				" -R, --save-rtp\n"
    				"      save RTP packets to pcap file. Default is disabled.\n"
+				"\n"
+				" -W, --save-wav\n"
+				"      save RTP packets and covert it to one WAV file. Default is disabled.\n"
+				"\n"
+				" -A, --save-raw\n"
+				"      save RTP payload to RAW format. Default is disabled.\n"
 				"\n"
 				" -G, --save-graph=[gzip|plain]\n"
 				"      save GRAPH data to graph file. Default is disabled. Default format is plain. For gzip format use --save-graph=gzip\n"
@@ -278,7 +297,7 @@ int main(int argc, char *argv[]) {
 				" -n   Do not put the interface into promiscuous mode.\n"
 				"\n"
 				" -U   make .pcap files writing ‘‘packet-buffered’’ - more slow method,\n"
-				"	  but you can use partitialy writen file anytime, it will be consistent.\n"
+				"	  but you can use partialy writen file anytime, it will be consistent.\n"
 				"\n"
 				" -h <hostname>, --mysql-server=<hostname>\n"
 				"      mysql server - default localhost\n"

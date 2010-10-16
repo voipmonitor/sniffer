@@ -341,6 +341,7 @@ enum ast_channel_state {
  */
 struct ast_channel {
 
+	FILE *rawstream;
 	unsigned int last_seqno;
 	unsigned int last_ms;
 	int jb_reseted;
@@ -351,7 +352,11 @@ struct ast_channel {
 	int jitter_impl;
 	int jitter_max;
 	int jitter_resync_threshold;
+	int last_datalen;
 	struct timeval last_ts;       /*!< The time that an in process digit began, or the last digit ended */
+	char lastbuf[1024];
+	int lastbuflen;
+	int codec;
 	
 	/*! \brief Technology (point to channel driver) */
 	const struct ast_channel_tech *tech;

@@ -12,6 +12,8 @@
 //#include "jitterbuffer/asterisk/channel.h"
 #include "jitterbuffer/asterisk/abstract_jb.h"
 
+#define MAX_RTPMAP 20
+
 
 using namespace std;
 
@@ -108,11 +110,17 @@ The RTP header has the following format:
  * This class implements operations on RTP strem
  */
 class RTP {
+       /* extension header */
+       typedef struct {
+	       u_int16_t profdef;
+	       u_int16_t length; // length of extension in 32bits, this header exluded.
+       } extension_hdr_t;
 public: 
 	u_int32_t ssrc;		//!< ssrc of this RTP class
 	u_int32_t saddr;	//!< last source IP adress 
 	ogzstream gfileGZ;	//!< file for storing packet statistics with GZIP compression
 	ofstream gfile;		//!< file for storing packet statistics
+	FILE *gfileRAW;         //!< file for storing RTP payload in RAW format
 	char gfilename[1024];	//!< file name of this file 
 	struct ast_channel *channel_fix1;
 	struct ast_channel *channel_fix2;
@@ -124,6 +132,12 @@ public:
 	int last_packetization;	//!< last packetization in millisenocds
 	int packetization_iterator;	
 	int payload;
+	int codec;
+	int rtpmap[MAX_RTPMAP];
+	unsigned char* data;    //!< pointer to UDP payload
+	size_t len;		//!< lenght of UDP payload
+	unsigned char* payload_data;    //!< pointer to RTP payload
+	size_t payload_len;	//!< lenght of RTP payload
 
 	struct stats_t {
 		u_int32_t	d50;	//!< delay from 0 to 50
@@ -163,7 +177,7 @@ public:
 	 * @param channel pointer to the channel structure which holds statistics and jitterbuffer data
 	 *
         */
-	void jitterbuffer(struct ast_channel *channel);
+	void jitterbuffer(struct ast_channel *channel, int savePayload);
 
         /**
 	 * @brief read RTP packet
@@ -243,10 +257,38 @@ public:
 	 * this function gets number of received packets
 	 *
 	 * @return received packets
-        */
+	*/
 	const int getMarker() { return getHeader()->marker; };
 
-        /**
+	/**
+	 * @brief get padding
+	 *
+	 * this function gets padding bit from rtp header
+	 *
+	 * @return padding bit
+	*/
+	const unsigned char getPadding() { return getHeader()->padding; };
+ 
+	 /**
+	 * @brief get cc
+	 *
+	 * this function gets the number of CSRC identifiers that follow the fixed header.
+	 *
+	 * @return 4bits number (integer)
+	*/
+	const int getCC() { return getHeader()->cc; };
+ 
+	 /**
+	 * @brief get extension
+	 *
+	 * this function gets X, Extension. 1 bit.
+	 *
+	 * @return 1bit
+	*/
+	const int getExtension() { return getHeader()->extension; };
+ 
+	 /**
+
 	 * @brief prints debug informations
 	 *
 	 * this function prints statistics data on stdout 
@@ -287,8 +329,6 @@ private:
 		double avgdelay;
 	} source;
 
-	unsigned char* data;
-	size_t len;
 	struct pcap_pkthdr *header;
 	struct timeval ts;
 	source *s;

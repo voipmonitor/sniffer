@@ -1,7 +1,7 @@
-objects = calltable.o rtp.o voipmonitor.o sniff.o jitterbuffer/astmm.o jitterbuffer/utils.o jitterbuffer/fixedjitterbuf.o jitterbuffer/jitterbuf.o jitterbuffer/abstract_jb.o jitterbuffer/frame.o gzstream/gzstream.o gzstream/libgzstream.a
+objects = codec_alaw.o codec_ulaw.o format_wav.o calltable.o rtp.o voipmonitor.o sniff.o jitterbuffer/astmm.o jitterbuffer/utils.o jitterbuffer/fixedjitterbuf.o jitterbuffer/jitterbuf.o jitterbuffer/abstract_jb.o jitterbuffer/frame.o gzstream/gzstream.o gzstream/libgzstream.a
 args = -g3 -Wall
 #args = -O2 -Wall
-CFLAGS+=-I /usr/local/include/mysql++/ -I /usr/include/mysql/ -g3 -Wall -I jitterbuffer/ 
+CFLAGS+=-I /usr/local/include/mysql++/ -I /usr/include/mysql++/ -I /usr/include/mysql/ -g3 -Wall -I jitterbuffer/  -L/usr/local/lib/
 LIBS=-lpthread -lmysqlpp -lpcap -lgzstream -lz -Lgzstream/
 
 
@@ -14,6 +14,14 @@ gzstream/gzstream.o : gzstream/gzstream.C gzstream/gzstream.h
 gzstream/libgzstream.a : gzstream/gzstream.o
 	ar cr gzstream/libgzstream.a gzstream/gzstream.o
 
+codec_alaw.o : codec_alaw.cpp codec_alaw.h
+	g++ -c codec_alaw.cpp $(args) ${CFLAGS}
+
+codec_ulaw.o : codec_ulaw.cpp codec_ulaw.h
+	g++ -c codec_ulaw.cpp $(args) ${CFLAGS}
+
+format_wav.o : format_wav.cpp format_wav.h
+	g++ -c format_wav.cpp $(args) ${CFLAGS}
 
 calltable.o : calltable.cpp calltable.h
 	g++ -c calltable.cpp $(args) ${CFLAGS}
