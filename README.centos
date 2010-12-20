@@ -1,0 +1,74 @@
+What is required
+================
+
+- C and C++ compiler (gcc,g++)
+- libpcap-dev package >= 0.8 (almost in every linux distribution)
+- MySQL++ library from http://tangentsoft.net/mysql++/
+- zlib ibrary 
+
+- Make sure mysql is installed when building CentOS
+- Under the Web Server include the mysql-devel and php-mysql packages
+
+Pre-Build
+=========
+
+libpcap-devel
+-------------
+yum install libpcap-devel
+
+mysql++
+-------
+wget http://tangentsoft.net/mysql++/releases/mysql++-3.0.9.tar.gz
+tar xzf mysql++-3.0.9.tar.gz
+cd mysql++-3.0.9
+./configure
+make install
+ldconfig
+cp /usr/local/lib/libmysqlpp.so.3 /usr/lib/
+
+php-gd
+------
+yum install php-gd
+
+Build voipmonitor
+=================
+tar zxf voipmonitor-2.0.tar.gz
+cd ../voipmonitor-2.0
+make
+make install
+
+
+Post Build
+==========
+
+Start mysql
+-----------
+chkconfig mysqld on
+service mysqld start
+
+Create the voipmonitor DB
+-------------------------
+mysql
+	mysql> create database voipmonitor;
+	mysql> exit
+
+Create the CDR Table
+--------------------
+cat cdrtable.sql | mysql voipmonitor
+
+
+Web Interface
+=============
+
+Enable Apache
+-------------
+chkconfig httpd on
+service httpd start
+
+Install the voipmonitor Interface
+---------------------------------
+cp -r voipmonitor-unencoded/* /var/www/html
+
+Restart HTTP service
+--------------------
+sevice httpd restart

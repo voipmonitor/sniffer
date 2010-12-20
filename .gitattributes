@@ -2,6 +2,7 @@
 /ChangeLog -text
 /Makefile -text
 /README -text
+/README.centos -text
 /calltable.cpp -text
 /calltable.h -text
 /cdrtable.sql -text
