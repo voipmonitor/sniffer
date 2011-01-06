@@ -70,10 +70,19 @@ Call::Call(char *call_id, unsigned long call_id_len, time_t time, void *ct) {
 
 /* destructor */
 Call::~Call(){
+	int i;
 	Calltable *ct = (Calltable *)calltable;
 
-	for(int i = 0; i < ipport_n; i++) {
+	for(i = 0; i < ipport_n; i++) {
 		ct->hashRemove(this->addr[i], this->port[i]);
+	}
+
+	/* close RAW files */
+	for(i = 0; i <= ssrc_n; i++) {
+		if(rtp[i].gfileRAW) {
+			fclose(rtp[i].gfileRAW);
+			rtp[i].gfileRAW = NULL;
+		}
 	}
 }
 
