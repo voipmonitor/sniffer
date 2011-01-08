@@ -66,6 +66,8 @@ Call::Call(char *call_id, unsigned long call_id_len, time_t time, void *ct) {
 	progress_time = 0;
 	first_rtp_time = 0;
 	connect_time = 0;
+	for
+	gfileRAW
 }
 
 /* destructor */
@@ -195,6 +197,8 @@ Call::read_rtp(unsigned char* data, unsigned long datalen, struct pcap_pkthdr *h
 			sprintf(tmp, "%s/%s.%d.raw", dirname(), fbasename, ssrc_n);
 			//rtp[ssrc_n].gfileRAW.open(tmp, ios::binary);
 			rtp[ssrc_n].gfileRAW = fopen(tmp, "w");
+		} else {
+			rtp[ssrc_n].gfileRAW = NULL;
 		}
 		int i = get_index_by_ip_port(saddr, port);
 		memcpy(this->rtp[ssrc_n].rtpmap, rtpmap[i], MAX_RTPMAP * sizeof(int));
