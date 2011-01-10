@@ -66,8 +66,6 @@ Call::Call(char *call_id, unsigned long call_id_len, time_t time, void *ct) {
 	progress_time = 0;
 	first_rtp_time = 0;
 	connect_time = 0;
-	for
-	gfileRAW
 }
 
 /* destructor */
