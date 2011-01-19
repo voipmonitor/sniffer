@@ -437,10 +437,11 @@ Call::convertRawToWav() {
 		if(verbosity > 1) syslog(LOG_ERR, "Converting PCMA to WAV.\n");
 		convertULAW2WAV(fname1, fname2, fname3);
 		break;
-/*
+/* following decoders are not included in free version. Please contact support@voipmonitor.org */
 	case PAYLOAD_GSM:
+		snprintf(cmd, 4092, "voipmonitor-gsm \"%s\" \"%s\" \"%s\"", fname1, fname2, fname3);
 		if(verbosity > 1) syslog(LOG_ERR, "Converting GSM to WAV.\n");
-		convertGSM2WAV(fname1, fname2, fname3);
+		system(cmd);
 		break;
 	case PAYLOAD_G729:
 		snprintf(cmd, 4092, "g7292wav \"%s\" \"%s\" \"%s\"", fname1, fname2, fname3);
@@ -453,14 +454,15 @@ Call::convertRawToWav() {
 		system(cmd);
 		break;
 	case PAYLOAD_ILBC:
+		snprintf(cmd, 4092, "voipmonitor-ilbc \"%s\" \"%s\" \"%s\"", fname1, fname2, fname3);
 		if(verbosity > 1) syslog(LOG_ERR, "Converting iLBC to WAV.\n");
-		convertiLBC2WAV(fname1, fname2, fname3);
+		system(cmd);
 		break;
 	case PAYLOAD_SPEEX:
+		snprintf(cmd, 4092, "voipmonitor-speex \"%s\" \"%s\" \"%s\"", fname1, fname2, fname3);
 		if(verbosity > 1) syslog(LOG_ERR, "Converting speex to WAV.\n");
-		convertSPEEX2WAV(fname1, fname2, fname3);
+		system(cmd);
 		break;
-*/
 	default:
 		syslog(LOG_ERR, "Call cannot be converted to WAV, unknown payloadtype [%d]\n", payloadtype);
 	}
