@@ -434,7 +434,7 @@ Call::convertRawToWav() {
 		convertALAW2WAV(fname1, fname2, fname3);
 		break;
 	case PAYLOAD_PCMU:
-		if(verbosity > 1) syslog(LOG_ERR, "Converting PCMA to WAV.\n");
+		if(verbosity > 1) syslog(LOG_ERR, "Converting PCMU to WAV.\n");
 		convertULAW2WAV(fname1, fname2, fname3);
 		break;
 /* following decoders are not included in free version. Please contact support@voipmonitor.org */
