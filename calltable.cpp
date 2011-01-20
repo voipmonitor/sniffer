@@ -394,7 +394,7 @@ Call::convertRawToWav() {
 	char fname1[1024];
 	char fname2[1024];
 	char fname3[1024];
-	int payloadtype = 0;
+	int payloadtype = -1;
  
 	/* sort all RTP streams by received packets + loss packets descend and save only those two with the biggest received packets. */
 	int indexes[MAX_SSRC_PER_CALL];
@@ -418,14 +418,44 @@ Call::convertRawToWav() {
 	sprintf(fname3, "%s/%s.wav", dirname(), fbasename);
  
 	//printf("r1: %d, r2: %d, r3: %d \n\n", rtp[indexes[0]][0].rtpmap, rtpmap[indexes[1]][0], rtpmap[indexes[2]][0]);
- 
-	for(int i = 0; i < MAX_RTPMAP && rtp[indexes[0]].rtpmap[i] != 0; i++) {
-		if((rtp[indexes[0]].payload == (rtp[indexes[0]].rtpmap[i] / 1000)) && (rtp[indexes[1]].payload == (rtp[indexes[0]].rtpmap[i]) / 1000)) {
-			// need to extract 97 from 98097
-			payloadtype = rtp[indexes[0]].rtpmap[i] - rtp[indexes[0]].payload * 1000;
+
+	//
+	// check if payload type is dynamic (96 - 127) for both directions (a and b)
+	//
+	int adirectionpt = -1;
+	int bdirectionpt = -1;
+	// a direction
+	if(rtp[indexes[0]].payload >= 96 && rtp[indexes[0]].payload <= 127) {
+		// dynamic payload has to be extracted from rtpmap
+		for(int i = 0; i < MAX_RTPMAP && rtp[indexes[0]].rtpmap[i] != 0; i++) {
+			if(rtp[indexes[0]].payload == (rtp[indexes[0]].rtpmap[i] / 1000)) {
+				adirectionpt = rtp[indexes[0]].rtpmap[i] - rtp[indexes[0]].payload * 1000; // need to extract 97 from 98097
+				break;
+			}
 		}
+	} else {
+		// not dynamic payload, use RFC payloads
+		adirectionpt = rtp[indexes[0]].payload;
 	}
- 
+	// b direction
+	if(rtp[indexes[1]].payload >= 96 && rtp[indexes[1]].payload <= 127) {
+		// dynamic payload has to be extracted from rtpmap
+		for(int i = 0; i < MAX_RTPMAP && rtp[indexes[1]].rtpmap[i] != 0; i++) {
+			if(rtp[indexes[1]].payload == (rtp[indexes[1]].rtpmap[i] / 1000)) {
+				bdirectionpt = rtp[indexes[1]].rtpmap[i] - rtp[indexes[1]].payload * 1000; // need to extract 97 from 98097
+				break;
+			}
+		}
+	} else {
+		// not dynamic payload, use RFC payloads
+		bdirectionpt = rtp[indexes[1]].payload;
+	}
+	// if both directions have the same codec so we can convert it to wav
+	if(adirectionpt == bdirectionpt) {
+		payloadtype = adirectionpt;
+	}
+	// end of check payload type
+
 	char cmd[4092];
  
 	switch(payloadtype) {
