@@ -198,32 +198,34 @@ int mimeSubtypeToInt(char *mimeSubtype) {
 }
 
 int get_rtpmap_from_sdp(char *sdp_text, int *rtpmap){
-       unsigned long l;
-       char *s, *z;
-       char s1[20];
-       int codec;
-       char mimeSubtype[128];
-       int i = 0;
-       s = gettag(sdp_text, strlen(sdp_text), "m=audio ", &l);
-       if(!l) {
-	       return 0;
-       }
-       do {
-	       s = gettag(s, strlen(sdp_text), "a=rtpmap:", &l);
-	       if(l && (z = strchr(s, '\r'))) {
-		       *z = '\0';
-	       } else {
-		       break;
-	       }
-	       if (sscanf(s, "%30u %[^/]/", &codec, mimeSubtype) == 2) {
-		       // store payload type and its codec into one integer with 1000 offset
-		       rtpmap[i] = mimeSubtypeToInt(mimeSubtype) + 1000*codec;
-		       //printf("PAYLOAD: rtpmap:%d codec:%d, mimeSubtype [%d] [%s]\n", rtpmap[i], codec, mimeSubtypeToInt(mimeSubtype), mimeSubtype);
-	       }
-	       i++;
-       } while(l);
-       rtpmap[i] = 0; //terminate rtpmap field
-       return 0;
+	 unsigned long l;
+	 char *s, *z;
+	 char s1[20];
+	 int codec;
+	 char mimeSubtype[128];
+	 int i = 0;
+	 s = gettag(sdp_text, strlen(sdp_text), "m=audio ", &l);
+	 if(!l) {
+		 return 0;
+	 }
+	 do {
+		 s = gettag(s, strlen(sdp_text), "a=rtpmap:", &l);
+		 if(l && (z = strchr(s, '\0'))) {
+			 *z = '\0';
+		 } else {
+			 break;
+		 }
+		 if (sscanf(s, "%30u %[^/]/", &codec, mimeSubtype) == 2) {
+			 // store payload type and its codec into one integer with 1000 offset
+			 rtpmap[i] = mimeSubtypeToInt(mimeSubtype) + 1000*codec;
+			 //printf("PAYLOAD: rtpmap:%d codec:%d, mimeSubtype [%d] [%s]\n", rtpmap[i], codec, mimeSubtypeToInt(mimeSubtype), mimeSubtype);
+		 }
+		 // return '\r' into sdp_text
+		*z = '\r';
+		i++;
+	 } while(l);
+	 rtpmap[i] = 0; //terminate rtpmap field
+	 return 0;
 }
 
 
