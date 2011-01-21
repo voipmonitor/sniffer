@@ -233,82 +233,82 @@ double calculate_mos(double ppl, double burstr, int version) {
 	return mos;
 }
 
- int convertALAW2WAV(char *fname1, char *fname2, char *fname3) {
-        unsigned char *bitstream_buf1;
-        unsigned char *bitstream_buf2;
-        int16_t buf_out1;
-        int16_t buf_out2;
-        unsigned char *p1;
-        unsigned char *f1;
-        unsigned char *p2;
-        unsigned char *f2;
-        long file_size1;
-        long file_size2;
+int convertALAW2WAV(char *fname1, char *fname2, char *fname3) {
+	unsigned char *bitstream_buf1;
+	unsigned char *bitstream_buf2;
+	int16_t buf_out1;
+	int16_t buf_out2;
+	unsigned char *p1;
+	unsigned char *f1;
+	unsigned char *p2;
+	unsigned char *f2;
+	long file_size1;
+	long file_size2;
 
-        //TODO: move it to main program to not init it overtimes or make alaw_init not reinitialize
-        alaw_init();
+	//TODO: move it to main program to not init it overtimes or make alaw_init not reinitialize
+	alaw_init();
  
-        int inFrameSize = 1;
-        int outFrameSize = 2;
+	int inFrameSize = 1;
+	int outFrameSize = 2;
  
-        FILE *f_in1 = fopen(fname1, "r");
-        FILE *f_in2 = fopen(fname2, "r");
-        FILE *f_out = fopen(fname3, "w");
-        if(!f_in1 || !f_in2 || !f_out) {
-                syslog(LOG_ERR,"One of files [%s,%s,%s] cannot be opened. Failed converting raw to wav\n", fname1, fname2, fname3);
-                return -1;
-        }
+	FILE *f_in1 = fopen(fname1, "r");
+	FILE *f_in2 = fopen(fname2, "r");
+	FILE *f_out = fopen(fname3, "w");
+	if(!f_in1 || !f_in2 || !f_out) {
+		syslog(LOG_ERR,"One of files [%s,%s,%s] cannot be opened. Failed converting raw to wav\n", fname1, fname2, fname3);
+		return -1;
+	}
  
-        wav_write_header(f_out);
+	wav_write_header(f_out);
  
-        fseek(f_in1, 0, SEEK_END);
-        file_size1 = ftell(f_in1);
-        fseek(f_in1, 0, SEEK_SET);
+	fseek(f_in1, 0, SEEK_END);
+	file_size1 = ftell(f_in1);
+	fseek(f_in1, 0, SEEK_SET);
  
-        fseek(f_in2, 0, SEEK_END);
-        file_size2 = ftell(f_in2);
-        fseek(f_in2, 0, SEEK_SET);
+	fseek(f_in2, 0, SEEK_END);
+	file_size2 = ftell(f_in2);
+	fseek(f_in2, 0, SEEK_SET);
  
-        bitstream_buf1 = (unsigned char *)malloc(file_size1);
-        bitstream_buf2 = (unsigned char *)malloc(file_size2);
-        fread(bitstream_buf1, file_size1, 1, f_in1);
-        fread(bitstream_buf2, file_size2, 1, f_in2);
-        p1 = bitstream_buf1;
-        f1 = bitstream_buf1 + file_size1;
-        p2 = bitstream_buf2;
-        f2 = bitstream_buf2 + file_size2;
-        while(p1 < f1 || p2 < f2 ) {
-                if(p1 < f1 && p2 < f2) {
-                        buf_out1 = ALAW(*p1);
-                        buf_out2 = ALAW(*p2);
-                        slinear_saturated_add(&buf_out1, &buf_out2);
-                        p1 += inFrameSize;
-                        p2 += inFrameSize;
-                        fwrite(&buf_out1, sizeof(buf_out1), 1, f_out);
-                } else if ( p1 < f1 ) {
-                        buf_out1 = ALAW(*p1);
-                        p1 += inFrameSize;
-                        fwrite(&buf_out1, outFrameSize, 1, f_out);
-                } else {
-                        buf_out1 = ALAW(*p2);
-                        p2 += inFrameSize;
-                        fwrite(&buf_out2, outFrameSize, 1, f_out);
-                }
-        }
+	bitstream_buf1 = (unsigned char *)malloc(file_size1);
+	bitstream_buf2 = (unsigned char *)malloc(file_size2);
+	fread(bitstream_buf1, file_size1, 1, f_in1);
+	fread(bitstream_buf2, file_size2, 1, f_in2);
+	p1 = bitstream_buf1;
+	f1 = bitstream_buf1 + file_size1;
+	p2 = bitstream_buf2;
+	f2 = bitstream_buf2 + file_size2;
+	while(p1 < f1 || p2 < f2 ) {
+		if(p1 < f1 && p2 < f2) {
+			buf_out1 = ALAW(*p1);
+			buf_out2 = ALAW(*p2);
+			slinear_saturated_add(&buf_out1, &buf_out2);
+			p1 += inFrameSize;
+			p2 += inFrameSize;
+			fwrite(&buf_out1, sizeof(buf_out1), 1, f_out);
+		} else if ( p1 < f1 ) {
+			buf_out1 = ALAW(*p1);
+			p1 += inFrameSize;
+			fwrite(&buf_out1, outFrameSize, 1, f_out);
+		} else {
+			buf_out1 = ALAW(*p2);
+			p2 += inFrameSize;
+			fwrite(&buf_out2, outFrameSize, 1, f_out);
+		}
+	}
  
-        wav_update_header(f_out);
+	wav_update_header(f_out);
  
-        if(bitstream_buf1)
-                free(bitstream_buf1);
-        if(bitstream_buf2)
-                free(bitstream_buf2);
+	if(bitstream_buf1)
+		free(bitstream_buf1);
+	if(bitstream_buf2)
+		free(bitstream_buf2);
  
-        fclose(f_out);
-        fclose(f_in1);
-        fclose(f_in2);
+	fclose(f_out);
+	fclose(f_in1);
+	fclose(f_in2);
  
-        return 0;
- }
+	return 0;
+}
  
 int convertULAW2WAV(char *fname1, char *fname2, char *fname3) {
 	unsigned char *bitstream_buf1;
