@@ -111,6 +111,7 @@ RTP::RTP() {
 	packetization_iterator = 0;
 	payload = 0;
 	codec = -1;
+	prev_codec = -1;
 }
 
 /* destructor */
@@ -257,14 +258,17 @@ RTP::read(unsigned char* data, size_t len, struct pcap_pkthdr *header,  u_int32_
 	u_int16_t seq = getSeqNum();
 	int curpayload = getPayload();
 
-       /* find out codec */
-       if(codec == -1) {
-	       for(int i = 0; i < MAX_RTPMAP && rtpmap[i] != 0 ; i++) {
-		       if(curpayload == rtpmap[i] / 1000) {
-			       codec = rtpmap[i] - curpayload * 1000;
-		       }
-	       }
-       }
+	/* find out codec */
+	if(codec == -1) {
+		if(curpayload >= 96 && curpayload <= 127) {
+			// for dynamic payload we look into rtpmap
+			for(int i = 0; i < MAX_RTPMAP && rtpmap[i] != 0 ; i++) {
+				if(curpayload == rtpmap[i] / 1000) {
+					codec = rtpmap[i] - curpayload * 1000;
+				}
+			}
+		}
+	}
 
        /* get RTP payload header and datalen */
        if(opt_saveRAW || opt_saveWAV) {
