@@ -100,7 +100,7 @@ public:
 	 * @param saddr source IP adress of the packet
 	 * 
 	*/
-	void read_rtp( unsigned char *data, unsigned long datalen, struct pcap_pkthdr *header,  u_int32_t saddr, unsigned short port);
+	void read_rtp( unsigned char *data, unsigned long datalen, struct pcap_pkthdr *header,  u_int32_t saddr, unsigned short port, int iscaller);
 
 	/**
 	 * @brief adds RTP stream to the this Call 
@@ -292,13 +292,13 @@ public:
 	 * @brief add call to hash table
 	 *
 	*/
-	void hashAdd(in_addr_t addr, unsigned short port, Call* call);
+	void hashAdd(in_addr_t addr, unsigned short port, Call* call, int iscaller);
 
 	/**
 	 * @brief add call to hash table
 	 *
 	*/
-	Call *hashfind_by_ip_port(in_addr_t addr, unsigned short port);
+	Call *hashfind_by_ip_port(in_addr_t addr, unsigned short port, int *iscaller);
 
 	/**
 	 * @brief remove call from hash
@@ -312,6 +312,7 @@ private:
 	struct hash_node {
 		Call *call;
 		hash_node *next;
+		int iscaller;
 		u_int32_t addr;
 		u_int16_t port;
 	};

@@ -161,7 +161,7 @@ static int resynch_jb(struct fixed_jb *jb, void *data, long ms, long ts, long no
 	offset = diff - jb->tail->ms;
 	
 	/* Do we really need to resynch, or this is just a frame for dropping? */
-	if(debug) fprintf(stdout, "resync_jb: offset %ld, threshold %d force:%d\n", offset, jb->conf.resync_threshold, jb->force_resynch);
+	//if(debug) fprintf(stdout, "resync_jb: offset %ld, threshold %d force:%d\n", offset, jb->conf.resync_threshold, jb->force_resynch);
 
 
 	if ( !jb->force_resynch && (offset < jb->conf.resync_threshold && offset > -jb->conf.resync_threshold)) {
@@ -259,7 +259,7 @@ int fixed_jb_put(struct fixed_jb *jb, void *data, long ms, long ts, long now)
 		
 		/* should drop the frame, but let first resynch_jb() check if this is not a jump in ts, or
 		   the force resynch flag was not set. */
-		if(debug) fprintf(stdout, "put: check if the new delivery time is not covered already by the chosen frame %d, delivery %d frame->delivery %d frame->ms %d ms %d frame->next->delivery %d\n",jb->force_resynch, delivery, frame->delivery, frame->ms, (frame->next) ? frame->next->delivery : 0);
+		//if(debug) fprintf(stdout, "put: check if the new delivery time is not covered already by the chosen frame %d, delivery %d frame->delivery %d frame->ms %d ms %d frame->next->delivery %d\n",jb->force_resynch, delivery, frame->delivery, frame->ms, (frame->next) ? frame->next->delivery : 0);
 		res = resynch_jb(jb, data, ms, ts, now);
 		jb->force_resynch = 0;
 		return res;

@@ -142,7 +142,7 @@ static struct ast_jb_impl avail_impl[] =
 	}
 };
 
-static int default_impl = 1;
+//static int default_impl = 1;
 
 
 /*! Abstract return codes */

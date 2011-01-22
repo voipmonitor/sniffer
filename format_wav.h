@@ -3,6 +3,7 @@
 #include <malloc.h>
 #include <stdlib.h>
 #include <string.h>
+#include <syslog.h>
 
 
 #define WAV_BUF_SIZE		320
@@ -36,3 +37,4 @@
 void slinear_saturated_add(short *input, short *value);
 int wav_write_header(FILE *f);
 int wav_update_header(FILE *f);
+int wav_mix(char *in1, char *in2, char *out);

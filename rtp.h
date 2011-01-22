@@ -121,7 +121,10 @@ public:
 	ogzstream gfileGZ;	//!< file for storing packet statistics with GZIP compression
 	ofstream gfile;		//!< file for storing packet statistics
 	FILE *gfileRAW;         //!< file for storing RTP payload in RAW format
+	FILE *gfileRAWInfo;     //!< file for storing list of stored RAW files
 	char gfilename[1024];	//!< file name of this file 
+	char basefilename[1024];
+	int rawiterator;	//!< iterator for raw file name 
 	struct ast_channel *channel_fix1;
 	struct ast_channel *channel_fix2;
 	struct ast_channel *channel_adapt;
@@ -132,12 +135,14 @@ public:
 	int last_packetization;	//!< last packetization in millisenocds
 	int packetization_iterator;	
 	int payload;
+	int prev_payload;
 	int codec;
 	int rtpmap[MAX_RTPMAP];
 	unsigned char* data;    //!< pointer to UDP payload
 	size_t len;		//!< lenght of UDP payload
 	unsigned char* payload_data;    //!< pointer to RTP payload
 	size_t payload_len;	//!< lenght of RTP payload
+	int ssrc_index;		//!< index 
 
 	struct stats_t {
 		u_int32_t	d50;	//!< delay from 0 to 50

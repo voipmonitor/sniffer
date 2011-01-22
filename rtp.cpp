@@ -110,6 +110,8 @@ RTP::RTP() {
 	last_packetization = 0;
 	packetization_iterator = 0;
 	payload = 0;
+	prev_payload = -1;
+	rawiterator = 0;
 	codec = -1;
 }
 
@@ -127,6 +129,13 @@ RTP::~RTP() {
 	free(channel_fix2);
 	free(channel_adapt);
 	free(frame);
+
+	if(gfileRAW) {
+		fclose(gfileRAW);
+	}
+	if(gfileRAWInfo) {
+		fclose(gfileRAWInfo);
+	}
 }
 
 #if 1
@@ -257,24 +266,45 @@ RTP::read(unsigned char* data, size_t len, struct pcap_pkthdr *header,  u_int32_
 	u_int16_t seq = getSeqNum();
 	int curpayload = getPayload();
 
-	/* find out codec */
-	if(codec == -1) {
+	/* codec changed */
+	if(codec == -1 || ((curpayload != prev_payload) && (curpayload != 101 && prev_payload != 101))) {
 		if(curpayload >= 96 && curpayload <= 127) {
-			// for dynamic payload we look into rtpmap
+			/* for dynamic payload we look into rtpmap */
 			for(int i = 0; i < MAX_RTPMAP && rtpmap[i] != 0 ; i++) {
 				if(curpayload == rtpmap[i] / 1000) {
 					codec = rtpmap[i] - curpayload * 1000;
 				}
 			}
+		} else {
+			codec = curpayload;
+		}
+
+		if(opt_saveRAW || opt_saveWAV) {
+			/* open file for raw codec */
+			char tmp[1024];
+			sprintf(tmp, "%s.%d.%d.%d.raw", basefilename, ssrc_index, rawiterator, codec);
+			gfileRAW = fopen(tmp, "w");
+
+			/* write file info to "playlist" */
+			sprintf(tmp, "%s.rawInfo", basefilename);
+			gfileRAWInfo = fopen(tmp, "a");
+			if(gfileRAWInfo) {
+				fprintf(gfileRAWInfo, "%d:%d:%d\n", ssrc_index, rawiterator, codec);
+				fclose(gfileRAWInfo);
+			}
+
+			rawiterator++;
 		}
 	}
 
-       /* get RTP payload header and datalen */
-       if(opt_saveRAW || opt_saveWAV) {
-	       payload_data = data + sizeof(RTPFixedHeader);
-	       payload_len = len - sizeof(RTPFixedHeader);
-	       if(getPadding()) {
-		       /*
+	prev_payload = curpayload;
+	
+	/* get RTP payload header and datalen */
+	if(opt_saveRAW || opt_saveWAV) {
+		payload_data = data + sizeof(RTPFixedHeader);
+		payload_len = len - sizeof(RTPFixedHeader);
+		if(getPadding()) {
+			/*
 			* If set, this packet contains one or more additional padding
 			* bytes at the end which are not part of the payload. The last
 			* byte of the padding contains a count of how many padding bytes
@@ -282,38 +312,36 @@ RTP::read(unsigned char* data, size_t len, struct pcap_pkthdr *header,  u_int32_
 			* algorithms with fixed block sizes or for carrying several RTP
 			* packets in a lower-layer protocol data unit.
 			*/
-		       payload_len -= ((u_int8_t *)data)[payload_len - 1];
-	       }
-	       if(getCC() > 0) {
-		       /*
+			payload_len -= ((u_int8_t *)data)[payload_len - 1];
+		}
+		if(getCC() > 0) {
+			/*
 			* The number of CSRC identifiers that follow the fixed header.
 			*/
-		       payload_data += 4 * getCC();
-		       payload_len -= 4 * getCC();
-	       }
-	       if(getExtension()) {
-		       /*
+			payload_data += 4 * getCC();
+			payload_len -= 4 * getCC();
+		}
+		if(getExtension()) {
+			/*
 			* If set, the fixed header is followed by exactly one header extension.
 			*/
-		       extension_hdr_t *rtpext;
-		       if (payload_len < 4)
-			       payload_len = 0;
+			extension_hdr_t *rtpext;
+			if (payload_len < 4)
+				payload_len = 0;
 
-		       // the extension, if present, is after the CSRC list.
-		       rtpext = (extension_hdr_t *)((u_int8_t *)payload_data);
-		       payload_data += sizeof(extension_hdr_t) + rtpext->length;
-		       payload_len -= sizeof(extension_hdr_t) + rtpext->length;
-	       }
-	       /*
+			// the extension, if present, is after the CSRC list.
+			rtpext = (extension_hdr_t *)((u_int8_t *)payload_data);
+			payload_data += sizeof(extension_hdr_t) + rtpext->length;
+			payload_len -= sizeof(extension_hdr_t) + rtpext->length;
+		}
+		/*
 		* this is not VAD friendly
 
-	       if(gfileRAW.is_open()) {
-		       //gfileRAW.write((const char*)payload_data, payload_len);
-	       }
-	       */
-       }
-
-
+		if(gfileRAW.is_open()) {
+			//gfileRAW.write((const char*)payload_data, payload_len);
+		}
+		*/
+	}
 
 	if(!payload) {
 		/* save payload to statistics based on first payload. TODO: what if payload is dynamically changing? */

@@ -297,6 +297,7 @@ void ast_smoother_free(struct ast_smoother *s)
 	free(s);
 }
 
+/*
 static struct ast_frame *ast_frame_header_new(void)
 {
 	struct ast_frame *f;
@@ -308,6 +309,7 @@ static struct ast_frame *ast_frame_header_new(void)
 	
 	return f;
 }
+*/
 
 #if !defined(LOW_MEMORY)
 static void frame_cache_cleanup(void *data)
@@ -762,7 +764,7 @@ struct ast_format_list ast_codec_pref_getsize(struct ast_codec_pref *pref, int f
 	return fmt;
 }
 
-
+#if 0
 static unsigned char get_n_bits_at(unsigned char *data, int n, int bit)
 {
 	int byte = bit / 8;       /* byte containing first bit */
@@ -781,8 +783,7 @@ static unsigned char get_n_bits_at(unsigned char *data, int n, int bit)
 
 	return (ret & (0xff >> (8 - n)));
 }
-
-
+#endif
 
 int ast_frame_adjust_volume(struct ast_frame *f, int adjustment)
 {

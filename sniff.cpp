@@ -200,7 +200,6 @@ int mimeSubtypeToInt(char *mimeSubtype) {
 int get_rtpmap_from_sdp(char *sdp_text, int *rtpmap){
 	 unsigned long l;
 	 char *s, *z;
-	 char s1[20];
 	 int codec;
 	 char mimeSubtype[128];
 	 int i = 0;
@@ -245,6 +244,7 @@ void readdump(pcap_t *handle) {
 	int sip_method = 0;
 	int res;
 	int protocol;
+	int iscaller;
 	unsigned int offset;
 	Call *call;
 
@@ -322,18 +322,18 @@ void readdump(pcap_t *handle) {
 		datalen = header->len - ((unsigned long) data - (unsigned long) packet); 
 		// TODO: remove if hash will be stable
 		//if ((call = calltable->find_by_ip_port(header_ip->daddr, htons(header_udp->dest)))){	
-		if ((call = calltable->hashfind_by_ip_port(header_ip->daddr, htons(header_udp->dest)))){	
+		if ((call = calltable->hashfind_by_ip_port(header_ip->daddr, htons(header_udp->dest), &iscaller))){	
 			// packet (RTP) by destination:port is already part of some stored call 
-			call->read_rtp((unsigned char*) data, datalen, header, header_ip->saddr, htons(header_udp->source));
+			call->read_rtp((unsigned char*) data, datalen, header, header_ip->saddr, htons(header_udp->source), iscaller);
 			call->set_last_packet_time(header->ts.tv_sec);
 			if(opt_saveRTP) {
 				save_packet(call, header, packet);
 			}
 		// TODO: remove if hash will be stable
 		//} else if ((call = calltable->find_by_ip_port(header_ip->saddr, htons(header_udp->source)))){	
-		} else if ((call = calltable->hashfind_by_ip_port(header_ip->saddr, htons(header_udp->source)))){
+		} else if ((call = calltable->hashfind_by_ip_port(header_ip->saddr, htons(header_udp->source), &iscaller))){
 			// packet (RTP) by source:port is already part of some stored call 
-			call->read_rtp((unsigned char*) data, datalen, header, header_ip->saddr, htons(header_udp->source));
+			call->read_rtp((unsigned char*) data, datalen, header, header_ip->saddr, htons(header_udp->source), iscaller);
 			call->set_last_packet_time(header->ts.tv_sec);
 			if(opt_saveRTP) {
 				save_packet(call, header, packet);
@@ -524,7 +524,7 @@ void readdump(pcap_t *handle) {
 					// store RTP stream
 					get_rtpmap_from_sdp(strstr(data, "\r\n\r\n") + 1, rtpmap);
 					call->add_ip_port(tmp_addr, tmp_port, s, l, sip_method == INVITE, rtpmap);
-					calltable->hashAdd(tmp_addr, tmp_port, call);
+					calltable->hashAdd(tmp_addr, tmp_port, call, sip_method == INVITE);
 	
 				} else {
 					if(verbosity >= 2){

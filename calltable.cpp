@@ -77,7 +77,7 @@ Call::~Call(){
 		ct->hashRemove(this->addr[i], this->port[i]);
 	}
 
-	/* close RAW files */
+	/* check if there is some unclosed RAW files */
 	for(i = 0; i <= ssrc_n; i++) {
 		if(rtp[i].gfileRAW) {
 			fclose(rtp[i].gfileRAW);
@@ -165,7 +165,7 @@ Call::get_index_by_ip_port(in_addr_t addr, unsigned short port){
 
 /* analyze rtp packet */
 void
-Call::read_rtp(unsigned char* data, unsigned long datalen, struct pcap_pkthdr *header, u_int32_t saddr, unsigned short port) {
+Call::read_rtp(unsigned char* data, unsigned long datalen, struct pcap_pkthdr *header, u_int32_t saddr, unsigned short port, int iscaller) {
 
 	if(first_rtp_time == 0) {
 		first_rtp_time = header->ts.tv_sec;
@@ -182,6 +182,7 @@ Call::read_rtp(unsigned char* data, unsigned long datalen, struct pcap_pkthdr *h
 	}
 	// adding new RTP source
 	if(ssrc_n < MAX_SSRC_PER_CALL) {
+		rtp[ssrc_n].ssrc_index = ssrc_n; 
 		sprintf(rtp[ssrc_n].gfilename, "%s/%s.%d.graph%s", dirname(), fbasename, ssrc_n, opt_gzipGRAPH ? ".gz" : "");
 		if(opt_saveGRAPH) {
 			if(opt_gzipGRAPH) {
@@ -190,6 +191,9 @@ Call::read_rtp(unsigned char* data, unsigned long datalen, struct pcap_pkthdr *h
 				rtp[ssrc_n].gfile.open(rtp[ssrc_n].gfilename);
 			}
 		}
+		rtp[ssrc_n].gfileRAW = NULL;
+		sprintf(rtp[ssrc_n].basefilename, "%s/%s.i%d", dirname(), fbasename, iscaller);
+		/*
 		if(opt_saveRAW || opt_saveWAV) {
 			char tmp[1024];
 			sprintf(tmp, "%s/%s.%d.raw", dirname(), fbasename, ssrc_n);
@@ -198,6 +202,7 @@ Call::read_rtp(unsigned char* data, unsigned long datalen, struct pcap_pkthdr *h
 		} else {
 			rtp[ssrc_n].gfileRAW = NULL;
 		}
+		*/
 		int i = get_index_by_ip_port(saddr, port);
 		memcpy(this->rtp[ssrc_n].rtpmap, rtpmap[i], MAX_RTPMAP * sizeof(int));
 
@@ -233,17 +238,12 @@ double calculate_mos(double ppl, double burstr, int version) {
 	return mos;
 }
 
-int convertALAW2WAV(char *fname1, char *fname2, char *fname3) {
+int convertALAW2WAV(char *fname1, char *fname3) {
 	unsigned char *bitstream_buf1;
-	unsigned char *bitstream_buf2;
 	int16_t buf_out1;
-	int16_t buf_out2;
 	unsigned char *p1;
 	unsigned char *f1;
-	unsigned char *p2;
-	unsigned char *f2;
 	long file_size1;
-	long file_size2;
 
 	//TODO: move it to main program to not init it overtimes or make alaw_init not reinitialize
 	alaw_init();
@@ -252,75 +252,45 @@ int convertALAW2WAV(char *fname1, char *fname2, char *fname3) {
 	int outFrameSize = 2;
  
 	FILE *f_in1 = fopen(fname1, "r");
-	FILE *f_in2 = fopen(fname2, "r");
-	FILE *f_out = fopen(fname3, "w");
-	if(!f_in1 || !f_in2 || !f_out) {
-		syslog(LOG_ERR,"One of files [%s,%s,%s] cannot be opened. Failed converting raw to wav\n", fname1, fname2, fname3);
+	FILE *f_out = fopen(fname3, "a");
+	if(!f_in1 || !f_out) {
+		syslog(LOG_ERR,"One of files [%s,%s] cannot be opened. Failed converting raw to wav\n", fname1, fname3);
 		return -1;
 	}
  
-	wav_write_header(f_out);
+	// wav_write_header(f_out);
  
 	fseek(f_in1, 0, SEEK_END);
 	file_size1 = ftell(f_in1);
 	fseek(f_in1, 0, SEEK_SET);
  
-	fseek(f_in2, 0, SEEK_END);
-	file_size2 = ftell(f_in2);
-	fseek(f_in2, 0, SEEK_SET);
- 
 	bitstream_buf1 = (unsigned char *)malloc(file_size1);
-	bitstream_buf2 = (unsigned char *)malloc(file_size2);
 	fread(bitstream_buf1, file_size1, 1, f_in1);
-	fread(bitstream_buf2, file_size2, 1, f_in2);
 	p1 = bitstream_buf1;
 	f1 = bitstream_buf1 + file_size1;
-	p2 = bitstream_buf2;
-	f2 = bitstream_buf2 + file_size2;
-	while(p1 < f1 || p2 < f2 ) {
-		if(p1 < f1 && p2 < f2) {
-			buf_out1 = ALAW(*p1);
-			buf_out2 = ALAW(*p2);
-			slinear_saturated_add(&buf_out1, &buf_out2);
-			p1 += inFrameSize;
-			p2 += inFrameSize;
-			fwrite(&buf_out1, sizeof(buf_out1), 1, f_out);
-		} else if ( p1 < f1 ) {
-			buf_out1 = ALAW(*p1);
-			p1 += inFrameSize;
-			fwrite(&buf_out1, outFrameSize, 1, f_out);
-		} else {
-			buf_out1 = ALAW(*p2);
-			p2 += inFrameSize;
-			fwrite(&buf_out2, outFrameSize, 1, f_out);
-		}
+	while(p1 < f1) {
+		buf_out1 = ALAW(*p1);
+		p1 += inFrameSize;
+		fwrite(&buf_out1, outFrameSize, 1, f_out);
 	}
  
-	wav_update_header(f_out);
+	// wav_update_header(f_out);
  
 	if(bitstream_buf1)
 		free(bitstream_buf1);
-	if(bitstream_buf2)
-		free(bitstream_buf2);
  
 	fclose(f_out);
 	fclose(f_in1);
-	fclose(f_in2);
- 
+
 	return 0;
 }
  
-int convertULAW2WAV(char *fname1, char *fname2, char *fname3) {
+int convertULAW2WAV(char *fname1, char *fname3) {
 	unsigned char *bitstream_buf1;
-	unsigned char *bitstream_buf2;
 	int16_t buf_out1;
-	int16_t buf_out2;
 	unsigned char *p1;
 	unsigned char *f1;
-	unsigned char *p2;
-	unsigned char *f2;
 	long file_size1;
-	long file_size2;
  
 	//TODO: move it to main program to not init it overtimes or make ulaw_init not reinitialize
 	ulaw_init();
@@ -329,61 +299,36 @@ int convertULAW2WAV(char *fname1, char *fname2, char *fname3) {
 	int outFrameSize = 2;
  
 	FILE *f_in1 = fopen(fname1, "r");
-	FILE *f_in2 = fopen(fname2, "r");
-	FILE *f_out = fopen(fname3, "w");
-	if(!f_in1 || !f_in2 || !f_out) {
-		syslog(LOG_ERR,"One of files [%s,%s,%s] cannot be opened. Failed converting raw to wav\n", fname1, fname2, fname3);
+	FILE *f_out = fopen(fname3, "a");
+	if(!f_in1 || !f_out) {
+		syslog(LOG_ERR,"One of files [%s,%s] cannot be opened. Failed converting raw to wav\n", fname1, fname3);
 		return -1;
 	}
  
-	wav_write_header(f_out);
+	// wav_write_header(f_out);
  
 	fseek(f_in1, 0, SEEK_END);
 	file_size1 = ftell(f_in1);
 	fseek(f_in1, 0, SEEK_SET);
  
-	fseek(f_in2, 0, SEEK_END);
-	file_size2 = ftell(f_in2);
-	fseek(f_in2, 0, SEEK_SET);
- 
 	bitstream_buf1 = (unsigned char *)malloc(file_size1);
-	bitstream_buf2 = (unsigned char *)malloc(file_size2);
 	fread(bitstream_buf1, file_size1, 1, f_in1);
-	fread(bitstream_buf2, file_size2, 1, f_in2);
 	p1 = bitstream_buf1;
 	f1 = bitstream_buf1 + file_size1;
-	p2 = bitstream_buf2;
-	f2 = bitstream_buf2 + file_size2;
  
-	while(p1 < f1 || p2 < f2 ) {
-		if(p1 < f1 && p2 < f2) {
-			buf_out1 = ULAW(*p1);
-			buf_out2 = ULAW(*p2);
-			slinear_saturated_add(&buf_out1, &buf_out2);
-			p1 += inFrameSize;
-			p2 += inFrameSize;
-			fwrite(&buf_out1, sizeof(buf_out1), 1, f_out);
-		} else if ( p1 < f1 ) {
-			buf_out1 = ULAW(*p1);
-			p1 += inFrameSize;
-			fwrite(&buf_out1, outFrameSize, 1, f_out);
-		} else {
-			buf_out1 = ULAW(*p2);
-			p2 += inFrameSize;
-			fwrite(&buf_out2, outFrameSize, 1, f_out);
-		}
+	while(p1 < f1) {
+		buf_out1 = ULAW(*p1);
+		p1 += inFrameSize;
+		fwrite(&buf_out1, outFrameSize, 1, f_out);
 	}
  
-	wav_update_header(f_out);
+	// wav_update_header(f_out);
  
 	if(bitstream_buf1)
 		free(bitstream_buf1);
-	if(bitstream_buf2)
-		free(bitstream_buf2);
  
 	fclose(f_out);
 	fclose(f_in1);
-	fclose(f_in2);
  
 	return 0;
 }
@@ -391,116 +336,85 @@ int convertULAW2WAV(char *fname1, char *fname2, char *fname3) {
 int
 Call::convertRawToWav() {
  
-	char fname1[1024];
-	char fname2[1024];
-	char fname3[1024];
 	int payloadtype = -1;
- 
-	/* sort all RTP streams by received packets + loss packets descend and save only those two with the biggest received packets. */
-	int indexes[MAX_SSRC_PER_CALL];
-	// init indexex
-	for(int i = 0; i < MAX_SSRC_PER_CALL; i++) {
-		indexes[i] = i;
-	}
-	// bubble sort
-	for(int k = 0; k < ssrc_n; k++) {
-		for(int j = 0; j < ssrc_n; j++) {
-			if((rtp[indexes[k]].stats.received + rtp[indexes[k]].stats.lost) > ( rtp[indexes[j]].stats.received + rtp[indexes[j]].stats.lost)) {
-				int kTmp = indexes[k];
-				indexes[k] = indexes[j];
-				indexes[j] = kTmp;
-			}
-		}
-	}
- 
-	sprintf(fname1, "%s/%s.%d.raw", dirname(), fbasename, indexes[0]);
-	sprintf(fname2, "%s/%s.%d.raw", dirname(), fbasename, indexes[1]);
-	sprintf(fname3, "%s/%s.wav", dirname(), fbasename);
- 
-	//printf("r1: %d, r2: %d, r3: %d \n\n", rtp[indexes[0]][0].rtpmap, rtpmap[indexes[1]][0], rtpmap[indexes[2]][0]);
+	char tmp[1024];
+	char cmd[1024];
+	char wav0[1024];
+	char wav1[1024];
+	char out[1024];
 
-	//
-	// check if payload type is dynamic (96 - 127) for both directions (a and b)
-	//
-	int adirectionpt = -1;
-	int bdirectionpt = -1;
-	// a direction
-	if(rtp[indexes[0]].payload >= 96 && rtp[indexes[0]].payload <= 127) {
-		// dynamic payload has to be extracted from rtpmap
-		for(int i = 0; i < MAX_RTPMAP && rtp[indexes[0]].rtpmap[i] != 0; i++) {
-			if(rtp[indexes[0]].payload == (rtp[indexes[0]].rtpmap[i] / 1000)) {
-				adirectionpt = rtp[indexes[0]].rtpmap[i] - rtp[indexes[0]].payload * 1000; // need to extract 97 from 98097
-				break;
-			}
-		}
-	} else {
-		// not dynamic payload, use RFC payloads
-		adirectionpt = rtp[indexes[0]].payload;
-	}
-	// b direction
-	if(rtp[indexes[1]].payload >= 96 && rtp[indexes[1]].payload <= 127) {
-		// dynamic payload has to be extracted from rtpmap
-		for(int i = 0; i < MAX_RTPMAP && rtp[indexes[1]].rtpmap[i] != 0; i++) {
-			if(rtp[indexes[1]].payload == (rtp[indexes[1]].rtpmap[i] / 1000)) {
-				bdirectionpt = rtp[indexes[1]].rtpmap[i] - rtp[indexes[1]].payload * 1000; // need to extract 97 from 98097
-				break;
-			}
-		}
-	} else {
-		// not dynamic payload, use RFC payloads
-		bdirectionpt = rtp[indexes[1]].payload;
-	}
-	// if both directions have the same codec so we can convert it to wav
-	if(adirectionpt == bdirectionpt) {
-		payloadtype = adirectionpt;
-	}
-	// end of check payload type
+	sprintf(wav0, "%s/%s.i0.wav", dirname(), fbasename);
+	sprintf(wav1, "%s/%s.i1.wav", dirname(), fbasename);
+	sprintf(out, "%s/%s.wav", dirname(), fbasename);
 
-	char cmd[4092];
- 
-	switch(payloadtype) {
-	case PAYLOAD_PCMA:
-		if(verbosity > 1) syslog(LOG_ERR, "Converting PCMA to WAV.\n");
-		convertALAW2WAV(fname1, fname2, fname3);
-		break;
-	case PAYLOAD_PCMU:
-		if(verbosity > 1) syslog(LOG_ERR, "Converting PCMU to WAV.\n");
-		convertULAW2WAV(fname1, fname2, fname3);
-		break;
-/* following decoders are not included in free version. Please contact support@voipmonitor.org */
-	case PAYLOAD_GSM:
-		snprintf(cmd, 4092, "voipmonitor-gsm \"%s\" \"%s\" \"%s\"", fname1, fname2, fname3);
-		if(verbosity > 1) syslog(LOG_ERR, "Converting GSM to WAV.\n");
-		system(cmd);
-		break;
-	case PAYLOAD_G729:
-		snprintf(cmd, 4092, "g7292wav \"%s\" \"%s\" \"%s\"", fname1, fname2, fname3);
-		if(verbosity > 1) syslog(LOG_ERR, "Converting G.729 to WAV.\n");
-		system(cmd);
-		break;
-	case PAYLOAD_G723:
-		snprintf(cmd, 4092, "g7232wav \"%s\" \"%s\" \"%s\"", fname1, fname2, fname3);
-		if(verbosity > 1) syslog(LOG_ERR, "Converting G.723 to WAV.\n");
-		system(cmd);
-		break;
-	case PAYLOAD_ILBC:
-		snprintf(cmd, 4092, "voipmonitor-ilbc \"%s\" \"%s\" \"%s\"", fname1, fname2, fname3);
-		if(verbosity > 1) syslog(LOG_ERR, "Converting iLBC to WAV.\n");
-		system(cmd);
-		break;
-	case PAYLOAD_SPEEX:
-		snprintf(cmd, 4092, "voipmonitor-speex \"%s\" \"%s\" \"%s\"", fname1, fname2, fname3);
-		if(verbosity > 1) syslog(LOG_ERR, "Converting speex to WAV.\n");
-		system(cmd);
-		break;
-	default:
-		syslog(LOG_ERR, "Call cannot be converted to WAV, unknown payloadtype [%d]\n", payloadtype);
+	/* process all files in playlist for each direction */
+	for(int i = 0; i <= 1; i++) {
+		char *wav = i ? wav1 : wav0;
+
+		/* open playlist */
+		FILE *pl;
+		char line[8];
+		char rawInfo[1024];
+		sprintf(rawInfo, "%s/%s.i%d.rawInfo", dirname(), fbasename, i);
+		pl = fopen(rawInfo, "r");
+		if(!pl) {
+			syslog(LOG_ERR, "Cannot open %s\n", tmp);
+			return 1;
+		}
+		while(fgets(line, 8, pl)) {
+			char raw[1024];
+			int ssrc_index, rawiterator, codec;
+			line[strlen(line)] = '\0'; // remove '\n' which is last character
+			sscanf(line, "%d:%d:%d", &ssrc_index, &rawiterator, &codec);
+			sprintf(raw, "%s/%s.i%d.%d.%d.%d.raw", dirname(), fbasename, i, ssrc_index, rawiterator, codec);
+
+			switch(codec) {
+			case PAYLOAD_PCMA:
+				if(verbosity > 1) syslog(LOG_ERR, "Converting PCMA to WAV.\n");
+				convertALAW2WAV(raw, wav);
+				break;
+			case PAYLOAD_PCMU:
+				if(verbosity > 1) syslog(LOG_ERR, "Converting PCMU to WAV.\n");
+				convertULAW2WAV(raw, wav);
+				break;
+		/* following decoders are not included in free version. Please contact support@voipmonitor.org */
+			case PAYLOAD_GSM:
+				snprintf(cmd, 4092, "voipmonitor-gsm \"%s\" \"%s\"", raw, wav);
+				if(verbosity > 1) syslog(LOG_ERR, "Converting GSM to WAV.\n");
+				system(cmd);
+				break;
+			case PAYLOAD_G729:
+				snprintf(cmd, 4092, "voipmonitor-g729 \"%s\" \"%s\"", raw, wav);
+				if(verbosity > 1) syslog(LOG_ERR, "Converting G.729 to WAV.\n");
+				system(cmd);
+				break;
+			case PAYLOAD_G723:
+				snprintf(cmd, 4092, "voipmonitor-g723 \"%s\" \"%s\"", raw, wav);
+				if(verbosity > 1) syslog(LOG_ERR, "Converting G.723 to WAV.\n");
+				system(cmd);
+				break;
+			case PAYLOAD_ILBC:
+				snprintf(cmd, 4092, "voipmonitor-ilbc \"%s\" \"%s\"", raw, wav);
+				if(verbosity > 1) syslog(LOG_ERR, "Converting iLBC to WAV.\n");
+				system(cmd);
+				break;
+			case PAYLOAD_SPEEX:
+				snprintf(cmd, 4092, "voipmonitor-speex \"%s\" \"%s\"", raw, wav);
+				if(verbosity > 1) syslog(LOG_ERR, "Converting speex to WAV.\n");
+				system(cmd);
+				break;
+			default:
+				syslog(LOG_ERR, "Call cannot be converted to WAV, unknown payloadtype [%d]\n", payloadtype);
+			}
+			//unlink(raw);
+		}
+		unlink(rawInfo);
 	}
- 
-	if(!opt_saveRAW) {
-		unlink(fname1);
-		unlink(fname2);
-	}
+
+	wav_mix(wav0, wav1, out);
+	unlink(wav0);
+	unlink(wav1);
+	
  
 	return 0;
 }
@@ -699,7 +613,7 @@ Calltable::Calltable() {
 
 /* add node to hash. collisions are linked list of nodes*/
 void
-Calltable::hashAdd(in_addr_t addr, unsigned short port, Call* call) {
+Calltable::hashAdd(in_addr_t addr, unsigned short port, Call* call, int iscaller) {
 	u_int32_t h;
 	hash_node *node = NULL;
 
@@ -720,6 +634,7 @@ Calltable::hashAdd(in_addr_t addr, unsigned short port, Call* call) {
 	node->addr = addr;
 	node->port = port;
 	node->call = call;
+	node->iscaller = iscaller;
 	node->next = (hash_node *)calls_hash[h];
 	calls_hash[h] = node;
 }
@@ -749,13 +664,14 @@ Calltable::hashRemove(in_addr_t addr, unsigned short port) {
 
 /* find call in hash */
 Call*
-Calltable::hashfind_by_ip_port(in_addr_t addr, unsigned short port) {
+Calltable::hashfind_by_ip_port(in_addr_t addr, unsigned short port, int *iscaller) {
 	hash_node *node = NULL;
 	u_int32_t h;
 
 	h = tuplehash(addr, port);
 	for (node = (hash_node *)calls_hash[h]; node != NULL; node = node->next) {
 		if ((node->addr == addr) && (node->port == port)) {
+			*iscaller = node->iscaller;
 			return node->call;
 		}
 	}
