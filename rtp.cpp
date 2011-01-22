@@ -111,7 +111,6 @@ RTP::RTP() {
 	packetization_iterator = 0;
 	payload = 0;
 	codec = -1;
-	prev_codec = -1;
 }
 
 /* destructor */
