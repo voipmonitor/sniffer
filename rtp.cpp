@@ -78,6 +78,7 @@ RTP::RTP() {
 	ssrc = 0;
 	gfilename[0] = '\0';
 	gfileRAW = NULL;
+	gfileRAWInfo = NULL;
 
 	channel_fix1 = (ast_channel*)calloc(1, sizeof(*channel_fix1));
 	channel_fix1->jitter_impl = 0; // fixed
