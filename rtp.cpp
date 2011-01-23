@@ -132,9 +132,11 @@ RTP::~RTP() {
 
 	if(gfileRAW) {
 		fclose(gfileRAW);
+		gfileRAW = NULL;
 	}
 	if(gfileRAWInfo) {
 		fclose(gfileRAWInfo);
+		gfileRAWInfo = NULL;
 	}
 }
 
@@ -291,6 +293,7 @@ RTP::read(unsigned char* data, size_t len, struct pcap_pkthdr *header,  u_int32_
 			if(gfileRAWInfo) {
 				fprintf(gfileRAWInfo, "%d:%d:%d\n", ssrc_index, rawiterator, codec);
 				fclose(gfileRAWInfo);
+				gfileRAWInfo = NULL;
 			}
 
 			rawiterator++;
