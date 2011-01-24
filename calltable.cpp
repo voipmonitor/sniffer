@@ -76,14 +76,6 @@ Call::~Call(){
 	for(i = 0; i < ipport_n; i++) {
 		ct->hashRemove(this->addr[i], this->port[i]);
 	}
-
-	/* check if there is some unclosed RAW files */
-	for(i = 0; i <= ssrc_n; i++) {
-		if(rtp[i].gfileRAW) {
-			fclose(rtp[i].gfileRAW);
-			rtp[i].gfileRAW = NULL;
-		}
-	}
 }
 
 

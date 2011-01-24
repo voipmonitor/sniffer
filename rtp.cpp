@@ -78,7 +78,6 @@ RTP::RTP() {
 	ssrc = 0;
 	gfilename[0] = '\0';
 	gfileRAW = NULL;
-	gfileRAWInfo = NULL;
 
 	channel_fix1 = (ast_channel*)calloc(1, sizeof(*channel_fix1));
 	channel_fix1->jitter_impl = 0; // fixed
@@ -133,11 +132,6 @@ RTP::~RTP() {
 
 	if(gfileRAW) {
 		fclose(gfileRAW);
-		gfileRAW = NULL;
-	}
-	if(gfileRAWInfo) {
-		fclose(gfileRAWInfo);
-		gfileRAWInfo = NULL;
 	}
 }
 
@@ -290,11 +284,10 @@ RTP::read(unsigned char* data, size_t len, struct pcap_pkthdr *header,  u_int32_
 
 			/* write file info to "playlist" */
 			sprintf(tmp, "%s.rawInfo", basefilename);
-			gfileRAWInfo = fopen(tmp, "a");
+			FILE *gfileRAWInfo = fopen(tmp, "a");
 			if(gfileRAWInfo) {
 				fprintf(gfileRAWInfo, "%d:%d:%d\n", ssrc_index, rawiterator, codec);
 				fclose(gfileRAWInfo);
-				gfileRAWInfo = NULL;
 			}
 
 			rawiterator++;
