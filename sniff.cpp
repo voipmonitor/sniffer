@@ -408,7 +408,7 @@ void readdump(pcap_t *handle) {
 
 			// find call */
 			if (!(call = calltable->find_by_call_id(s, l))){
-				// packet does not belongs to some call yet
+				// packet does not belongs to any call yet
 				if (sip_method == INVITE) {
 					// store this call only if it starts with invite
 					call = calltable->add(s, l, header->ts.tv_sec);
@@ -523,8 +523,8 @@ void readdump(pcap_t *handle) {
 					s = gettag(data,datalen,"User-Agent:", &l);
 					// store RTP stream
 					get_rtpmap_from_sdp(strstr(data, "\r\n\r\n") + 1, rtpmap);
-					call->add_ip_port(tmp_addr, tmp_port, s, l, sip_method == INVITE, rtpmap);
-					calltable->hashAdd(tmp_addr, tmp_port, call, sip_method == INVITE);
+					call->add_ip_port(tmp_addr, tmp_port, s, l, call->sipcallerip == header_ip->saddr, rtpmap);
+					calltable->hashAdd(tmp_addr, tmp_port, call, call->sipcallerip == header_ip->saddr);
 	
 				} else {
 					if(verbosity >= 2){
