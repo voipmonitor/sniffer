@@ -400,7 +400,7 @@ Call::convertRawToWav() {
 			}
 			//unlink(raw);
 		}
-		fclose(rawInfo);
+		fclose(pl);
 		unlink(rawInfo);
 	}
 
