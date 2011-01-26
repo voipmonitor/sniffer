@@ -350,7 +350,7 @@ Call::convertRawToWav() {
 		sprintf(rawInfo, "%s/%s.i%d.rawInfo", dirname(), fbasename, i);
 		pl = fopen(rawInfo, "r");
 		if(!pl) {
-			syslog(LOG_ERR, "Cannot open %s\n", tmp);
+			syslog(LOG_ERR, "Cannot open %s\n", rawInfo);
 			return 1;
 		}
 		while(fgets(line, 8, pl)) {
@@ -400,6 +400,7 @@ Call::convertRawToWav() {
 			}
 			//unlink(raw);
 		}
+		fclose(rawInfo);
 		unlink(rawInfo);
 	}
 
