@@ -280,6 +280,10 @@ RTP::read(unsigned char* data, size_t len, struct pcap_pkthdr *header,  u_int32_
 			/* open file for raw codec */
 			char tmp[1024];
 			sprintf(tmp, "%s.%d.%d.%d.raw", basefilename, ssrc_index, rawiterator, codec);
+			if(gfileRAW) {
+				//there is already opened gfileRAW
+				fclose(gfileRAW);
+			}
 			gfileRAW = fopen(tmp, "w");
 
 			/* write file info to "playlist" */
