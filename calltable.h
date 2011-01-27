@@ -96,7 +96,7 @@ public:
 	 * 
 	 * @return nothing
 	*/
-	void Call::closeRawFiles();
+	void closeRawFiles();
 	
 	/**
 	 * @brief read RTP packet 
