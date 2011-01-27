@@ -78,6 +78,18 @@ Call::~Call(){
 	}
 }
 
+void
+Call::closeRawFiles() {
+	FILE *tmp;
+	for(int i = 0; i < ssrc_n; i++) {
+		if(rtp[i].gfileRAW) {
+			/* preventing race condition as gfileRAW is checking for NULL pointer in rtp classes */ 
+			tmp = rtp[i].gfileRAW;
+			rtp[i].gfileRAW = NULL;
+			fclose(tmp);
+		}
+	}
+}
 
 /* returns name of the directory in format YYYY-MM-DD */
 char *
@@ -165,6 +177,10 @@ Call::read_rtp(unsigned char* data, unsigned long datalen, struct pcap_pkthdr *h
 	
 	//RTP tmprtp; moved to Call structure to avoid creating and destroying class which is not neccessary
 	tmprtp.fill(data, datalen, header, saddr);
+	if(tmprtp.getSSRC() == 0) {
+		// invalid ssrc
+		return;
+	}
 	for(int i = 0; i < ssrc_n; i++) {
 		if(rtp[i].ssrc == tmprtp.getSSRC()) {
 			// found 
@@ -329,7 +345,6 @@ int
 Call::convertRawToWav() {
  
 	int payloadtype = -1;
-	char tmp[1024];
 	char cmd[1024];
 	char wav0[1024];
 	char wav1[1024];
@@ -398,7 +413,7 @@ Call::convertRawToWav() {
 			default:
 				syslog(LOG_ERR, "Call cannot be converted to WAV, unknown payloadtype [%d]\n", payloadtype);
 			}
-			//unlink(raw);
+			unlink(raw);
 		}
 		fclose(pl);
 		unlink(rawInfo);

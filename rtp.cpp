@@ -384,14 +384,14 @@ RTP::read(unsigned char* data, size_t len, struct pcap_pkthdr *header,  u_int32_
 					channel_fix1->packetization = channel_fix2->packetization = channel_adapt->packetization = (getTimestamp() - s->lastTimeStamp) / 8;
 					//printf("packetization: %d\n", packetization);
 					jitterbuffer(channel_fix1, 0);
-					jitterbuffer(channel_fix2, opt_saveRAW || opt_saveWAV);
-					jitterbuffer(channel_adapt, 0);
+					jitterbuffer(channel_fix2, 0);
+					jitterbuffer(channel_adapt, opt_saveRAW || opt_saveWAV);
 				}
 			}
 		} else {
 			jitterbuffer(channel_fix1, 0);
-			jitterbuffer(channel_fix2, opt_saveRAW || opt_saveWAV);
-			jitterbuffer(channel_adapt, 0);
+			jitterbuffer(channel_fix2, 0);
+			jitterbuffer(channel_adapt, opt_saveRAW || opt_saveWAV);
 		}
 	}
 

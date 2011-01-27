@@ -96,6 +96,8 @@ void *storing_cdr( void *dummy ) {
 			call->saveToMysql();
 
 			if(opt_saveWAV) {
+				/* we have to close all raw files as there can be data in buffers */
+				call->closeRawFiles();
 				call->convertRawToWav();
 			}
 

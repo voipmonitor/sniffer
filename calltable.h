@@ -90,6 +90,15 @@ public:
 	int get_index_by_ip_port(in_addr_t addr, unsigned short port);
 
 	/**
+	 * @brief close all rtp[].gfileRAW
+	 *
+	 * close all RTP[].gfileRAW to flush writes 
+	 * 
+	 * @return nothing
+	*/
+	void Call::closeRawFiles();
+	
+	/**
 	 * @brief read RTP packet 
 	 *
 	 * Used for reading RTP packet 
