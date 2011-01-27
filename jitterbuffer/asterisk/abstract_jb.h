@@ -221,6 +221,8 @@ void ast_jb_get_config(const struct ast_channel *chan, struct ast_jb_conf *conf)
  */
 void ast_jb_empty_and_reset(struct ast_channel *c0);
 
+void jb_fixed_flush_deliver(struct ast_channel *chan);
+
 #if defined(__cplusplus) || defined(c_plusplus)
 }
 #endif

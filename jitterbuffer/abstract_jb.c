@@ -379,6 +379,31 @@ void ast_jb_get_and_deliver(struct ast_channel *c0, struct timeval *mynow)
 	
 }
 
+void jb_fixed_flush_deliver(struct ast_channel *chan)
+{
+        struct ast_jb *jb = &chan->jb;
+        struct ast_jb_impl *jbimpl = jb->impl;
+        struct ast_frame *f;
+        struct fixed_jb_frame ff;
+        short int stmp;
+
+	if(!(struct fixed_jb*)jb->jbobj) {
+		return;
+	}
+	
+        while (fixed_jb_flush((struct fixed_jb*)jb->jbobj, &ff)) {
+                if(chan->rawstream) { 
+                        f = ff.data;
+                        //write frame to file
+                        stmp = (short int)f->datalen;
+                        if(chan->codec == PAYLOAD_SPEEX || chan->codec == PAYLOAD_G723) fwrite(&stmp, 1, sizeof(short int), chan->rawstream);   // write packet len
+                        fwrite(f->data, 1, f->datalen, chan->rawstream);
+                        //save last frame
+                        memcpy(chan->lastbuf, f->data, f->datalen);
+                        chan->lastbuflen = f->datalen; 
+                }       
+        }       
+}       
 
 static void jb_get_and_deliver(struct ast_channel *chan, struct timeval *mynow)
 {
@@ -392,12 +417,12 @@ static void jb_get_and_deliver(struct ast_channel *chan, struct timeval *mynow)
 	int i;
 	short int stmp;
 	short int zero = 0;
-	
+
 	now = get_now(jb, NULL, mynow);
 	jb->next = jbimpl->next(jbobj);
 	if (now < jb->next) {
 		// here we are buffering frames 
-		if(debug) fprintf(stdout, "\tJB_GET {now=%ld}: now < next=%ld\n", now, jb->next);
+		if(debug) fprintf(stdout, "\tJB_GET {now=%ld}: now < next=%ld (still buffering)\n", now, jb->next);
 		return;
 	}
 	

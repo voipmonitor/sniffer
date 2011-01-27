@@ -85,6 +85,8 @@ int fixed_jb_remove(struct fixed_jb *jb, struct fixed_jb_frame *frameout);
 
 void fixed_jb_set_force_resynch(struct fixed_jb *jb);
 
+int fixed_jb_flush(struct fixed_jb *jb, struct fixed_jb_frame *frame);
+
 #if defined(__cplusplus) || defined(c_plusplus)
 }
 #endif

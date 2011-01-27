@@ -293,6 +293,14 @@ public:
  
 	 /**
 
+	 * @brief flushes frames from jitterbuffer
+	 *
+	 * this function flushes all frames from jitterbuffer fixed implementation and writes it to raw files
+        */
+	void jitterbuffer_fixed_flush(struct ast_channel *channel);
+
+	 /**
+
 	 * @brief prints debug informations
 	 *
 	 * this function prints statistics data on stdout 

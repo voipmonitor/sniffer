@@ -312,6 +312,16 @@ int fixed_jb_put(struct fixed_jb *jb, void *data, long ms, long ts, long now)
 }
 
 
+int fixed_jb_flush(struct fixed_jb *jb, struct fixed_jb_frame *frame)
+{
+	if (jb->frames) {
+		get_jb_head(jb, frame);
+		return 1;
+	} else {
+		return 0;
+	}
+}
+
 int fixed_jb_get(struct fixed_jb *jb, struct fixed_jb_frame *frame, long now, long interpl)
 {
 	ASSERT(now >= 0);
