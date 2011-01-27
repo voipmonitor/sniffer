@@ -176,6 +176,8 @@ int wav_mix(char *in1, char *in2, char *out) {
 
 	wav_update_header(f_out);
 	fclose(f_out);
+	fclose(f_in1);
+	fclose(f_in2);
 
 	return 0;
 }
