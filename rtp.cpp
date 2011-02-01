@@ -393,7 +393,7 @@ RTP::read(unsigned char* data, size_t len, struct pcap_pkthdr *header,  u_int32_
 					jitterbuffer(channel_adapt, 0);
 				} else {
 					// we dont know packetization yet, but its better to have at least one for call recording so pretend 20ms
-					channel_fix1->packetization = channel_fix2->packetization = channel_adapt->packetization = 20;
+					packetization = channel_fix1->packetization = channel_fix2->packetization = channel_adapt->packetization = 20;
 					jitterbuffer(channel_fix1, 0);
 					jitterbuffer(channel_fix2, opt_saveRAW || opt_saveWAV);
 					jitterbuffer(channel_adapt, 0);
