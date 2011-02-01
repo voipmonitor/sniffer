@@ -48,6 +48,8 @@ using namespace std;
 Calltable *calltable;
 extern int opt_saveSIP;	  	// save SIP packets to pcap file?
 extern int opt_saveRTP;	 	// save RTP packets to pcap file?
+extern int opt_saveRAW;	 	
+extern int opt_saveWAV;	 	
 extern int opt_packetbuffered;	  // Make .pcap files writing ‘‘packet-buffered’’
 extern int verbosity;
 extern int terminating;
@@ -416,11 +418,11 @@ void readdump(pcap_t *handle) {
 					call->set_first_packet_time(header->ts.tv_sec);
 					call->sipcallerip = header_ip->saddr;
 					call->sipcalledip = header_ip->daddr;
+					strcpy(call->fbasename, str1);
 
 					// opening dump file
 					if(opt_saveSIP or opt_saveRTP) {
 						mkdir(call->dirname(), 0777);
-						strcpy(call->fbasename, str1);
 						sprintf(str2, "%s/%s.pcap", call->dirname(), str1);
 						call->set_f_pcap(pcap_dump_open(handle, str2));
 					}
