@@ -46,6 +46,7 @@ int opt_saveRAW = 0;		// save RTP packets to pcap file?
 int opt_saveWAV = 0;		// save RTP packets to pcap file?
 int opt_saveGRAPH = 0;		// save GRAPH data to *.graph file? 
 int opt_gzipGRAPH = 0;		// compress GRAPH data ? 
+int opt_nocdr = 0;		// do not save cdr?
 int opt_gzipPCAP = 0;		// compress PCAP data ? 
 int verbosity = 0;		// debug level
 
@@ -92,8 +93,10 @@ void *storing_cdr( void *dummy ) {
 			calltable->lock_calls_queue();
 			call = calltable->calls_queue.front();
 			calltable->unlock_calls_queue();
-			
-			call->saveToMysql();
+		
+			if(!opt_nocdr) {
+				call->saveToMysql();
+			}
 
 			if(opt_saveWAV) {
 				/* we have to close all raw files as there can be data in buffers */
@@ -168,6 +171,7 @@ int main(int argc, char *argv[]) {
             {"save-rtp", 0, 0, 'R'},
             {"save-raw", 0, 0, 'A'},
             {"save-wav", 0, 0, 'W'},
+            {"no-cdr", 0, 0, 'c'},
             {"save-graph", 2, 0, 'G'},
             {"mysql-server", 1, 0, 'h'},
             {"mysql-database", 1, 0, 'b'},
@@ -186,7 +190,7 @@ int main(int argc, char *argv[]) {
 
 	while(1) {
 		char c;
-		c = getopt_long(argc, argv, "f:i:r:d:v:h:b:t:u:p:knUSRAWG", long_options, &option_index);
+		c = getopt_long(argc, argv, "f:i:r:d:v:h:b:t:u:p:kncUSRAWG", long_options, &option_index);
 		//"i:r:d:v:h:b:u:p:fnU", NULL, NULL);
 		if (c == -1)
 			break;
@@ -211,6 +215,9 @@ int main(int argc, char *argv[]) {
 				break;
 			case 'r':
 				fname = optarg;
+				break;
+			case 'c':
+				opt_nocdr = 1;
 				break;
 			case 'd':
 				opt_chdir = optarg;
@@ -267,9 +274,12 @@ int main(int argc, char *argv[]) {
 	}
 	if ((fname == NULL) && (ifname == NULL)){
 		printf( "voipmonitor version %s\n"
-				"Usage: voipmonitor [-knUSRAWG] [-i <interface>] [-f <pcap filter>] [-r <file>] [-d <pcap dump directory>] [-v level]\n"
+				"Usage: voipmonitor [-kncUSRAWG] [-i <interface>] [-f <pcap filter>] [-r <file>] [-d <pcap dump directory>] [-v level]\n"
 				"                 [-h <mysql server>] [-b <mysql database] [-u <mysql username>] [-p <mysql password>]\n"
 				"                 [-f <pcap filter>]\n"
+				" -c, --no-cdr\n"
+				"      do no save CDR to MySQL database.\n"
+				"\n"
 				" -S, --save-sip\n"
 				"      save SIP packets to pcap file. Default is disabled.\n"
 				"\n"
