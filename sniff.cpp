@@ -199,19 +199,20 @@ int mimeSubtypeToInt(char *mimeSubtype) {
 	       return 0;
 }
 
-int get_rtpmap_from_sdp(char *sdp_text, int *rtpmap){
-	 unsigned long l;
+int get_rtpmap_from_sdp(char *sdp_text, unsigned long len, int *rtpmap){
+	 unsigned long l = 0;
 	 char *s, *z;
 	 int codec;
 	 char mimeSubtype[128];
 	 int i = 0;
-	 s = gettag(sdp_text, strlen(sdp_text), "m=audio ", &l);
+
+	 s = gettag(sdp_text, len, "m=audio ", &l);
 	 if(!l) {
 		 return 0;
 	 }
 	 do {
-		 s = gettag(s, strlen(sdp_text), "a=rtpmap:", &l);
-		 if(l && (z = strchr(s, '\0'))) {
+		 s = gettag(s, len - (s - sdp_text), "a=rtpmap:", &l);
+		 if(l && (z = strchr(s, '\r'))) {
 			 *z = '\0';
 		 } else {
 			 break;
@@ -232,7 +233,7 @@ int get_rtpmap_from_sdp(char *sdp_text, int *rtpmap){
 
 void readdump(pcap_t *handle) {
 	struct pcap_pkthdr *header;	// The header that pcap gives us
-	const u_char *packet;		// The actual packet 
+	const u_char *packet = NULL;		// The actual packet 
 	unsigned long last_cleanup = 0;	// Last cleaning time
 	struct ether_header *header_eth;
 	struct sll_header *header_sll;
@@ -521,11 +522,13 @@ void readdump(pcap_t *handle) {
 				in_addr_t tmp_addr;
 				unsigned short tmp_port;
 				int rtpmap[MAX_RTPMAP];
+				char *tmp;
 				if (!get_ip_port_from_sdp(strstr(data, "\r\n\r\n") + 1, &tmp_addr, &tmp_port)){
 					// prepare User-Agent
 					s = gettag(data,datalen,"User-Agent:", &l);
 					// store RTP stream
-					get_rtpmap_from_sdp(strstr(data, "\r\n\r\n") + 1, rtpmap);
+					tmp = strstr(data, "\r\n\r\n") + 1;
+					get_rtpmap_from_sdp(tmp, datalen - (tmp - data), rtpmap);
 					call->add_ip_port(tmp_addr, tmp_port, s, l, call->sipcallerip == header_ip->saddr, rtpmap);
 					calltable->hashAdd(tmp_addr, tmp_port, call, call->sipcallerip == header_ip->saddr);
 	
