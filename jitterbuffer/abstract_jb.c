@@ -384,25 +384,26 @@ void jb_fixed_flush_deliver(struct ast_channel *chan)
         struct ast_jb *jb = &chan->jb;
         struct ast_jb_impl *jbimpl = jb->impl;
         struct ast_frame *f;
-        struct fixed_jb_frame ff;
+        struct fixed_jb_frame *ff;
         short int stmp;
 
 	if(!(struct fixed_jb*)jb->jbobj) {
 		return;
 	}
 	
-        while (fixed_jb_flush((struct fixed_jb*)jb->jbobj, &ff)) {
-                if(chan->rawstream) { 
-                        f = ff.data;
-                        //write frame to file
-                        stmp = (short int)f->datalen;
-                        if(chan->codec == PAYLOAD_SPEEX || chan->codec == PAYLOAD_G723) fwrite(&stmp, 1, sizeof(short int), chan->rawstream);   // write packet len
-                        fwrite(f->data, 1, f->datalen, chan->rawstream);
-                        //save last frame
-                        memcpy(chan->lastbuf, f->data, f->datalen);
-                        chan->lastbuflen = f->datalen; 
-                }       
-        }       
+	while (fixed_jb_flush((struct fixed_jb*)jb->jbobj, ff)) {
+		if(chan->rawstream) { 
+			f = ff->data;
+			//write frame to file
+			stmp = (short int)f->datalen;
+			if(chan->codec == PAYLOAD_SPEEX || chan->codec == PAYLOAD_G723) fwrite(&stmp, 1, sizeof(short int), chan->rawstream);   // write packet len
+			fwrite(f->data, 1, f->datalen, chan->rawstream);
+			//save last frame
+			memcpy(chan->lastbuf, f->data, f->datalen);
+			chan->lastbuflen = f->datalen; 
+		}       
+	}
+	free(ff);
 }       
 
 static void jb_get_and_deliver(struct ast_channel *chan, struct timeval *mynow)

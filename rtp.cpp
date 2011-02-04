@@ -153,17 +153,19 @@ RTP::jitterbuffer(struct ast_channel *channel, int savePayload) {
 	channel->codec = codec;
 	memcpy(&frame->delivery, &header->ts, sizeof(struct timeval));
 
-       if(savePayload) {
-	       frame->data = payload_data;
-	       frame->datalen = payload_len;
-	       channel->rawstream = gfileRAW;
-	       //printf("[%p]\n", channel->rawstream);
-	       if(payload_len) {
-		       channel->last_datalen = payload_len;
-	       }
-       } else {
-	       channel->rawstream = NULL;
-       }
+	if(savePayload) {
+		frame->data = payload_data;
+		frame->datalen = payload_len;
+		channel->rawstream = gfileRAW;
+		//printf("[%p]\n", channel->rawstream);
+		if(payload_len) {
+			channel->last_datalen = payload_len;
+		}
+	} else {
+		frame->datalen = 0;
+		frame->data = NULL;
+		channel->rawstream = NULL;
+	}
 
 	// create jitter buffer structures 
 	ast_jb_do_usecheck(channel, &header->ts);

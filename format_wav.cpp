@@ -175,6 +175,10 @@ int wav_mix(char *in1, char *in2, char *out) {
 	}
 
 	wav_update_header(f_out);
+	if(bitstream_buf1)
+		free(bitstream_buf1);
+	if(bitstream_buf2)
+		free(bitstream_buf2);
 	fclose(f_out);
 	fclose(f_in1);
 	fclose(f_in2);
