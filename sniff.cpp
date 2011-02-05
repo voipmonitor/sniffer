@@ -96,6 +96,9 @@ char * gettag(const void *ptr, unsigned long len, const char *tag, unsigned long
 int get_sip_peercnam(char *data, int data_len, char *tag, char *peername, int peername_len){
 	unsigned long r, r2, peername_tag_len;
 	char *peername_tag = gettag(data, data_len, tag, &peername_tag_len);
+	if(!peername_tag_len) {
+		goto fail_exit;
+	}
 	if ((r = (unsigned long)memmem(peername_tag, peername_tag_len, "\"", 1)) == 0){
 		goto fail_exit;
 	}
@@ -103,11 +106,11 @@ int get_sip_peercnam(char *data, int data_len, char *tag, char *peername, int pe
 	if ((r2 = (unsigned long)memmem(peername_tag, peername_tag_len, "\" <", 3)) == 0){
 		goto fail_exit;
 	}
-	if (r2 <= r){
+	if (r2 <= r || ((r2 - r) > peername_len) ){
 		goto fail_exit;
 	}
 	memcpy(peername, (void*)r, r2 - r);
-	memset(peername + (r2 - r), 0, 1);
+	peername[r2 - r] = '\0';
 	return 0;
 fail_exit:
 	strcpy(peername, "empty");
@@ -118,6 +121,9 @@ fail_exit:
 int get_sip_peername(char *data, int data_len, char *tag, char *peername, int peername_len){
 	unsigned long r, r2, peername_tag_len;
 	char *peername_tag = gettag(data, data_len, tag, &peername_tag_len);
+	if(!peername_tag_len) {
+		goto fail_exit;
+	}
 	if ((r = (unsigned long)memmem(peername_tag, peername_tag_len, "sip:", 4)) == 0){
 		goto fail_exit;
 	}
@@ -125,11 +131,11 @@ int get_sip_peername(char *data, int data_len, char *tag, char *peername, int pe
 	if ((r2 = (unsigned long)memmem(peername_tag, peername_tag_len, "@", 1)) == 0){
 		goto fail_exit;
 	}
-	if (r2 <= r){
+	if (r2 <= r || ((r2 - r) > peername_len)  ){
 		goto fail_exit;
 	}
 	memcpy(peername, (void*)r, r2 - r);
-	memset(peername + (r2 - r), 0, 1);
+	peername[r2 - r] = '\0';
 	return 0;
 fail_exit:
 	strcpy(peername, "empty");
