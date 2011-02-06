@@ -345,7 +345,7 @@ int main(int argc, char *argv[]) {
 	bpf_u_int32 net;		// Holds the network address for the device.
 	bpf_u_int32 mask;		// Holds the subnet mask associated with device.
 	char errbuf[PCAP_ERRBUF_SIZE];	// Returns error text and is only set when the pcap_lookupnet subroutine fails.
-	pcap_t *handle;			// pcap handler 
+	pcap_t *handle = NULL;			// pcap handler 
 
 	if (ifname){
 		printf("Capturing on interface: %s\n", ifname);
@@ -402,7 +402,7 @@ int main(int argc, char *argv[]) {
 		net = 0;
 		mask = 0;
 		handle = pcap_open_offline(fname, errbuf);
-		if (handle == NULL) {
+		if(handle == NULL) {
 			fprintf(stderr, "Couldn't open pcap file '%s': %s\n", ifname, errbuf);
 			return(2);
 		}
