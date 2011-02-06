@@ -355,12 +355,49 @@ int main(int argc, char *argv[]) {
 			net = 0;
 			mask = 0;
 		}
+/*
 		handle = pcap_open_live(ifname, 1600, opt_promisc, 1000, errbuf);
 		if (handle == NULL) {
 			fprintf(stderr, "Couldn't open inteface '%s': %s\n", ifname, errbuf);
 			return(2);
 		}
-	}else{
+*/
+
+		/* to set own pcap_set_buffer_size it must be this way and not useing pcap_lookupnet */
+
+		int status = 0;
+		if((handle = pcap_create(ifname, errbuf)) == NULL) {
+			fprintf(stderr, "pcap_create failed on iface '%s': %s\n", ifname, errbuf);
+			return(2);
+		}
+		if((status = pcap_set_snaplen(handle, 3200)) != 0) {
+			fprintf(stderr, "error pcap_set_snaplen\n");
+			return(2);
+		}
+		if((status = pcap_set_promisc(handle, opt_promisc)) != 0) {
+			fprintf(stderr, "error pcap_set_promisc\n");
+			return(2);
+		}
+		if((status = pcap_set_timeout(handle, 1000)) != 0) {
+			fprintf(stderr, "error pcap_set_timeout\n");
+			return(2);
+		}
+
+		/* this is not possible for libpcap older than 1.0.0 so now voipmonitor requires libpcap > 1.0.0
+			set ring buffer size to 5M to prevent packet drops whan CPU goes high or on very high traffic 
+			- default is 2MB for libpcap > 1.0.0
+			- for libpcap < 1.0.0 it is controled by /proc/sys/net/core/rmem_default which is very low 
+		*/
+		if((status = pcap_set_buffer_size(handle, 5*1024*1024)) != 0) {
+			fprintf(stderr, "error pcap_set_buffer_size\n");
+			return(2);
+		}
+
+		if((status = pcap_activate(handle)) != 0) {
+			fprintf(stderr, "error pcap_activate\n");
+			return(2);
+		}
+	} else {
 		printf("Reading file: %s\n", fname);
 		net = 0;
 		mask = 0;

@@ -24,7 +24,7 @@ What is required
 ----------------
 
 - C and C++ compiler (gcc,g++)
-- libpcap-dev package >= 0.8 (almost in every linux distribution)
+- libpcap-dev package >= 1.0.0
 - MySQL++ library from http://tangentsoft.net/mysql++/
 - zlib ibrary 
 

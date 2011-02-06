@@ -106,7 +106,7 @@ int get_sip_peercnam(char *data, int data_len, char *tag, char *peername, int pe
 	if ((r2 = (unsigned long)memmem(peername_tag, peername_tag_len, "\" <", 3)) == 0){
 		goto fail_exit;
 	}
-	if (r2 <= r || ((r2 - r) > peername_len) ){
+	if (r2 <= r || ((r2 - r) > (unsigned long)peername_len) ){
 		goto fail_exit;
 	}
 	memcpy(peername, (void*)r, r2 - r);
@@ -131,7 +131,7 @@ int get_sip_peername(char *data, int data_len, char *tag, char *peername, int pe
 	if ((r2 = (unsigned long)memmem(peername_tag, peername_tag_len, "@", 1)) == 0){
 		goto fail_exit;
 	}
-	if (r2 <= r || ((r2 - r) > peername_len)  ){
+	if (r2 <= r || ((r2 - r) > (unsigned long)peername_len)  ){
 		goto fail_exit;
 	}
 	memcpy(peername, (void*)r, r2 - r);
@@ -256,6 +256,9 @@ void readdump(pcap_t *handle) {
 	int iscaller;
 	unsigned int offset;
 	Call *call;
+	struct pcap_stat ps;
+	unsigned int lostpacket = 0;
+	unsigned int lostpacketif = 0;
 
 	while (!terminating) {
 		res = pcap_next_ex(handle, &header, &packet);
@@ -281,7 +284,6 @@ void readdump(pcap_t *handle) {
 			//continue on timeout when reading live packets
 			continue;
 		}
-
 
 		// checking and cleaning calltable every 15 seconds (if some packet arrive) 
 		if (header->ts.tv_sec - last_cleanup > 15){
@@ -324,6 +326,13 @@ void readdump(pcap_t *handle) {
 			continue;
 		}
 
+		/* pcap statistics */
+		pcap_stats(handle, &ps);
+		if (lostpacket < ps.ps_drop || lostpacketif < ps.ps_ifdrop) {
+			syslog(LOG_ERR, "error: libpcap or interface dropped some packets! rx:%i drop:%i ifdrop:%i\n", ps.ps_recv, ps.ps_drop, ps.ps_ifdrop);
+			lostpacket = ps.ps_drop;
+			lostpacketif = ps.ps_ifdrop;
+		}
 
 		// prepare packet pointers 
 		header_udp = (struct udphdr *) ((char *) header_ip + sizeof(*header_ip));
