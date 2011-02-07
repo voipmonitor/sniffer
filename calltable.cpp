@@ -109,13 +109,6 @@ Call::add_ip_port(in_addr_t addr, unsigned short port, char *ua, unsigned long u
 		printf("call:[%p] ip:[%s] port:[%d]\n", this, inet_ntoa(in), port);
 	}
 
-	if(ua_len) {
-		memcpy(this->ua[ipport_n], ua, ua_len);
-		this->ua[ipport_n][ua_len] = '\0';
-	} else {
-		this->ua[ipport_n][0] = '\0';
-	}
-	
 	if(ipport_n > 0) {
 		// check, if there is already IP:port
 		for(int i = 0; i < ipport_n; i++) {
@@ -136,6 +129,23 @@ Call::add_ip_port(in_addr_t addr, unsigned short port, char *ua, unsigned long u
 		syslog(LOG_ERR,"callid [%s]: no more space for next media stream [%s:%d], raise MAX_IP_PER_CALL", call_id, tmp, port);
 		return -1;
 	}
+
+	if(iscaller) {
+		if(ua_len) {
+			memcpy(this->a_ua, ua, ua_len);
+			this->a_ua[ua_len] = '\0';
+		} else {
+			this->a_ua[0] = '\0';
+		}
+	} else {
+		if(ua_len) {
+			memcpy(this->b_ua, ua, ua_len);
+			this->b_ua[ua_len] = '\0';
+		} else {
+			this->b_ua[0] = '\0';
+		}
+	}
+
 	this->addr[ipport_n] = addr;
 	this->port[ipport_n] = port;
 	memcpy(this->rtpmap[ipport_n], rtpmap, MAX_RTPMAP * sizeof(int));
@@ -509,9 +519,10 @@ Call::saveToMysql() {
 		// save only two streams with the biggest received packets
 		for(int i = 0; i < 2; i++) {
 			c = i == 0 ? 'a' : 'b';
+			int d = iscaller[i] == 0 ? 0 : 1;
 
 			query << " , " << c << "_index = " << quote << indexes[i];
-			query << " , " << c << "_ua = " << quote << ua[indexes[i]];
+			query << " , " << c << "_ua = " << quote << (i == 0 ? a_ua : b_ua);
 			query << " , " << c << "_received = " << rtp[indexes[i]].stats.received;
 			query << " , " << c << "_lost = " << rtp[indexes[i]].stats.lost;
 			query << " , " << c << "_avgjitter = " << quote << int(ceil(rtp[indexes[i]].stats.avgjitter));

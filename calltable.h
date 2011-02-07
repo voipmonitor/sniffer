@@ -44,7 +44,8 @@ public:
 	bool seenbyeandok;		//!< true if we see SIP OK TO BYE OR TO CANEL within the Call
 	bool sighup;			//!< true if call is saving during sighup
 	char *dirname();		//!< name of the directory to store files for the Call
-	char ua[MAX_IP_PER_CALL][1024];	//!< user agent 
+	char a_ua[1024];		//!< caller user agent 
+	char b_ua[1024];		//!< callee user agent 
 	int rtpmap[MAX_IP_PER_CALL][20]; //!< rtpmap for every rtp stream
 	RTP tmprtp;			//!< temporary structure used to decode information from frame
 	void *calltable;		//!< reference to calltable
