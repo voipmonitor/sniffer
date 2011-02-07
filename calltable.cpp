@@ -66,6 +66,8 @@ Call::Call(char *call_id, unsigned long call_id_len, time_t time, void *ct) {
 	progress_time = 0;
 	first_rtp_time = 0;
 	connect_time = 0;
+	a_ua[0] = '\0';
+	b_ua[0] = '\0';
 }
 
 /* destructor */
@@ -130,20 +132,10 @@ Call::add_ip_port(in_addr_t addr, unsigned short port, char *ua, unsigned long u
 		return -1;
 	}
 
-	if(iscaller) {
-		if(ua_len) {
-			memcpy(this->a_ua, ua, ua_len);
-			this->a_ua[ua_len] = '\0';
-		} else {
-			this->a_ua[0] = '\0';
-		}
-	} else {
-		if(ua_len) {
-			memcpy(this->b_ua, ua, ua_len);
-			this->b_ua[ua_len] = '\0';
-		} else {
-			this->b_ua[0] = '\0';
-		}
+	if(ua_len && ua_len < 1024) {
+		char *tmp = iscaller ? this->a_ua : this->b_ua;
+		memcpy(tmp, ua, ua_len);
+		tmp[ua_len] = '\0';
 	}
 
 	this->addr[ipport_n] = addr;
@@ -519,7 +511,6 @@ Call::saveToMysql() {
 		// save only two streams with the biggest received packets
 		for(int i = 0; i < 2; i++) {
 			c = i == 0 ? 'a' : 'b';
-			int d = iscaller[i] == 0 ? 0 : 1;
 
 			query << " , " << c << "_index = " << quote << indexes[i];
 			query << " , " << c << "_ua = " << quote << (i == 0 ? a_ua : b_ua);
