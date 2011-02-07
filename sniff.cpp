@@ -259,6 +259,7 @@ void readdump(pcap_t *handle) {
 	struct pcap_stat ps;
 	unsigned int lostpacket = 0;
 	unsigned int lostpacketif = 0;
+	int pcapstatres = 0;
 
 	while (!terminating) {
 		res = pcap_next_ex(handle, &header, &packet);
@@ -327,8 +328,8 @@ void readdump(pcap_t *handle) {
 		}
 
 		/* pcap statistics */
-		pcap_stats(handle, &ps);
-		if (lostpacket < ps.ps_drop || lostpacketif < ps.ps_ifdrop) {
+		pcapstatres = pcap_stats(handle, &ps);
+		if (pcapstatres == 0 && (lostpacket < ps.ps_drop || lostpacketif < ps.ps_ifdrop)) {
 			syslog(LOG_ERR, "error: libpcap or interface dropped some packets! rx:%i drop:%i ifdrop:%i\n", ps.ps_recv, ps.ps_drop, ps.ps_ifdrop);
 			lostpacket = ps.ps_drop;
 			lostpacketif = ps.ps_ifdrop;

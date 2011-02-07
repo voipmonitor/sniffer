@@ -108,6 +108,13 @@ Call::add_ip_port(in_addr_t addr, unsigned short port, char *ua, unsigned long u
 		in.s_addr = addr;
 		printf("call:[%p] ip:[%s] port:[%d]\n", this, inet_ntoa(in), port);
 	}
+
+	if(ua_len) {
+		memcpy(this->ua[ipport_n], ua, ua_len);
+		this->ua[ipport_n][ua_len] = '\0';
+	} else {
+		this->ua[ipport_n][0] = '\0';
+	}
 	
 	if(ipport_n > 0) {
 		// check, if there is already IP:port
@@ -133,12 +140,6 @@ Call::add_ip_port(in_addr_t addr, unsigned short port, char *ua, unsigned long u
 	this->port[ipport_n] = port;
 	memcpy(this->rtpmap[ipport_n], rtpmap, MAX_RTPMAP * sizeof(int));
 	this->iscaller[ipport_n] = iscaller;
-	if(ua) {
-		memcpy(this->ua[ipport_n], ua, ua_len);
-		this->ua[ipport_n][ua_len] = '\0';
-	} else {
-		this->ua[ipport_n][0] = '\0';
-	}
 	ipport_n++;
 	return 0;
 }
