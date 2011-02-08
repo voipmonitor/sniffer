@@ -195,6 +195,7 @@ Call::read_rtp(unsigned char* data, unsigned long datalen, struct pcap_pkthdr *h
 	// adding new RTP source
 	if(ssrc_n < MAX_SSRC_PER_CALL) {
 		rtp[ssrc_n].ssrc_index = ssrc_n; 
+		rtp[ssrc_n].iscaller = iscaller; 
 		sprintf(rtp[ssrc_n].gfilename, "%s/%s.%d.graph%s", dirname(), fbasename, ssrc_n, opt_gzipGRAPH ? ".gz" : "");
 		if(opt_saveGRAPH) {
 			if(opt_gzipGRAPH) {
@@ -501,7 +502,7 @@ Call::saveToMysql() {
 		}
 
 		// a_ is always caller, so check if we need to swap indexes
-		if (!iscaller[indexes[0]]) {
+		if (!rtp[indexes[0]].iscaller) {
 			int tmp;
 			tmp = indexes[1];
 			indexes[1] = indexes[0];

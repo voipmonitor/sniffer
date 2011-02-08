@@ -142,6 +142,7 @@ public:
 	unsigned char* payload_data;    //!< pointer to RTP payload
 	size_t payload_len;	//!< lenght of RTP payload
 	int ssrc_index;		//!< index 
+	int iscaller;		//!< flag which indicates if RTP stream is part of caller or callee
 
 	struct stats_t {
 		u_int32_t	d50;	//!< delay from 0 to 50

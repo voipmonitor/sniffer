@@ -113,6 +113,10 @@ RTP::RTP() {
 	prev_payload = -1;
 	rawiterator = 0;
 	codec = -1;
+	for(int i = 0; i < MAX_RTPMAP; i++) {
+		rtpmap[i] = 0;
+	}
+	
 }
 
 /* destructor */
