@@ -538,6 +538,7 @@ void readdump(pcap_t *handle) {
 				in_addr_t tmp_addr;
 				unsigned short tmp_port;
 				int rtpmap[MAX_RTPMAP];
+				memset(&rtpmap, 0, sizeof(int) * MAX_RTPMAP);
 				char *tmp;
 				if (!get_ip_port_from_sdp(strstr(data, "\r\n\r\n") + 1, &tmp_addr, &tmp_port)){
 					// prepare User-Agent

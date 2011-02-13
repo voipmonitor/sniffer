@@ -279,8 +279,8 @@ RTP::read(unsigned char* data, size_t len, struct pcap_pkthdr *header,  u_int32_
 	if(codec == -1 || ((curpayload != prev_payload) && (curpayload != 101 && prev_payload != 101))) {
 		if(curpayload >= 96 && curpayload <= 127) {
 			/* for dynamic payload we look into rtpmap */
-			for(int i = 0; i < MAX_RTPMAP && rtpmap[i] != 0 ; i++) {
-				if(curpayload == rtpmap[i] / 1000) {
+			for(int i = 0; i < MAX_RTPMAP; i++) {
+				if(rtpmap[i] != 0 && curpayload == rtpmap[i] / 1000) {
 					codec = rtpmap[i] - curpayload * 1000;
 				}
 			}
