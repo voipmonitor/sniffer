@@ -119,22 +119,6 @@ int ast_jb_do_usecheck(struct ast_channel *c0, struct timeval *ts);
 //int ast_jb_do_usecheck(struct ast_channel *c0, struct ast_channel *c1);
 
 
-
-/*!
- * \brief Calculates the time, left to the closest delivery moment in a bridge.
- * \param c0 first bridged channel.
- * \param c1 second bridged channel.
- * \param time_left bridge time limit, or -1 if not set.
- *
- * Called from ast_generic_bridge() to determine the maximum time to wait for
- * activity in ast_waitfor_n() call. If neihter of the channels is using jb,
- * this function returns the time limit passed.
- *
- * \return maximum time to wait.
- */
-int ast_jb_get_when_to_wakeup(struct ast_channel *c0, struct ast_channel *c1, int time_left);
-
-
 /*!
  * \brief Puts a frame into a channel jitterbuffer.
  * \param chan channel.

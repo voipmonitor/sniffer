@@ -252,46 +252,6 @@ int ast_jb_do_usecheck(struct ast_channel *c0, struct timeval *ts)
 	return inuse;
 }
 
-int ast_jb_get_when_to_wakeup(struct ast_channel *c0, struct ast_channel *c1, int time_left)
-{
-	//struct ast_jb *jb0 = &c0->jb;
-	//struct ast_jb *jb1 = &c1->jb;
-	//int c0_use_jb = ast_test_flag(jb0, JB_USE);
-	//int c0_jb_is_created = ast_test_flag(jb0, JB_CREATED);
-	//int c1_use_jb = ast_test_flag(jb1, JB_USE);
-	//int c1_jb_is_created = ast_test_flag(jb1, JB_CREATED);
-	int wait, wait0, wait1;
-	struct timeval tv_now;
-	
-	if (time_left == 0) {
-		/* No time left - the bridge will be retried */
-		/* TODO: Test disable this */
-		/*return 0;*/
-	}
-	
-	if (time_left < 0) {
-		time_left = INT_MAX;
-	}
-	
-	gettimeofday(&tv_now, NULL);
-	
-//	wait0 = (c0_use_jb && c0_jb_is_created) ? jb0->next - get_now(jb0, &tv_now) : time_left;
-//	wait1 = (c1_use_jb && c1_jb_is_created) ? jb1->next - get_now(jb1, &tv_now) : time_left;
-	
-	wait = wait0 < wait1 ? wait0 : wait1;
-	wait = wait < time_left ? wait : time_left;
-	
-	if (wait == INT_MAX) {
-		wait = -1;
-	} else if (wait < 1) {
-		/* don't let wait=0, because this can cause the pbx thread to loop without any sleeping at all */
-		wait = 1;
-	}
-	
-	return wait;
-}
-
-
 int ast_jb_put(struct ast_channel *chan, struct ast_frame *f, struct timeval *mynow)
 {
 	struct ast_jb *jb = &chan->jb;
@@ -305,13 +265,13 @@ int ast_jb_put(struct ast_channel *chan, struct ast_frame *f, struct timeval *my
 
 	if (f->frametype != AST_FRAME_VOICE) {
 		if (f->frametype == AST_FRAME_DTMF && ast_test_flag(jb, JB_CREATED)) {
-			if(debug) fprintf(stdout, "JB_PUT {now=%ld}: Received DTMF frame. Force resynching jb...\n", now);
+			if(debug) fprintf(stdout, "JB_PUT {now=%ld}: Received DTMF frame.\n", now);
+                        /* this is causing drops if RAW data is recording. deactivate it. Hope it will not cause problems (tested on previously recorded DTMF pcap patterns and it is the same)
+			//if(debug) fprintf(stdout, "JB_PUT {now=%ld}: Received DTMF frame. Force resynching jb...\n", now);
 			if(ast_test_flag(jb, JB_CREATED)) {
 				jbimpl->force_resync(jbobj);
 			}
-			/* dont resync! it causes DROPs 
-			   jbimpl->force_resync(jbobj);
-			*/
+                        */
 		}
 		return -1;
 	}
@@ -382,7 +342,6 @@ void ast_jb_get_and_deliver(struct ast_channel *c0, struct timeval *mynow)
 void jb_fixed_flush_deliver(struct ast_channel *chan)
 {
         struct ast_jb *jb = &chan->jb;
-        struct ast_jb_impl *jbimpl = jb->impl;
         struct ast_frame *f;
         struct fixed_jb_frame ff;
         short int stmp;
@@ -466,9 +425,10 @@ static void jb_get_and_deliver(struct ast_channel *chan, struct timeval *mynow)
 				if(chan->codec == PAYLOAD_SPEEX || chan->codec == PAYLOAD_G723) {
 					fwrite(&zero, 1, sizeof(short int), chan->rawstream);   // write zero packet
 				} else {
-					// write previouse frame (better than zero frame)
+					// write previouse frame (better than zero frame), but only once
 					if(chan->lastbuflen) {
 						fwrite(chan->lastbuf, 1, chan->lastbuflen, chan->rawstream);
+                                                chan->lastbuflen = 0;
 					} else {
 						// write empty frame
 						for(i = 0; i < chan->last_datalen; i++) {
@@ -489,9 +449,10 @@ static void jb_get_and_deliver(struct ast_channel *chan, struct timeval *mynow)
 				if(chan->codec == PAYLOAD_SPEEX || chan->codec == PAYLOAD_G723) {
 					fwrite(&zero, 1, sizeof(short int), chan->rawstream);   // write zero packet
 				} else {
-					// write previouse frame (better than zero frame)
+					// write previouse frame (better than zero frame), but only once
 					if(chan->lastbuflen) {
 						fwrite(chan->lastbuf, 1, chan->lastbuflen, chan->rawstream);
+                                                chan->lastbuflen = 0;
 					} else {
 						// write empty frame
 						for(i = 0; i < chan->last_datalen; i++) {
@@ -510,9 +471,10 @@ static void jb_get_and_deliver(struct ast_channel *chan, struct timeval *mynow)
 				if(chan->codec == PAYLOAD_SPEEX || chan->codec == PAYLOAD_G723) {
 					fwrite(&zero, 1, sizeof(short int), chan->rawstream);   // write zero packet
 				} else {
-					// write previouse frame (better than zero frame)
+					// write previouse frame (better than zero frame), but only once
 					if(chan->lastbuflen) {
 						fwrite(chan->lastbuf, 1, chan->lastbuflen, chan->rawstream);
+                                                chan->lastbuflen = 0;
 					} else {
 						// write empty frame
 						for(i = 0; i < chan->last_datalen; i++) {
@@ -544,7 +506,7 @@ static int create_jb(struct ast_channel *chan, struct ast_frame *frr, struct tim
 	struct ast_jb_conf *jbconf = &jb->conf;
 	struct ast_jb_impl *jbimpl = jb->impl;
 	void *jbobj;
-	struct ast_channel *bridged;
+	struct ast_channel *bridged = NULL;
 	long now;
 	char logfile_pathname[20 + AST_JB_IMPL_NAME_SIZE + 2*AST_CHANNEL_NAME + 1];
 	char name1[AST_CHANNEL_NAME], name2[AST_CHANNEL_NAME], *tmp;
