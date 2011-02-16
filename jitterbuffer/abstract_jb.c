@@ -355,7 +355,7 @@ void jb_fixed_flush_deliver(struct ast_channel *chan)
 			f = ff.data;
 			//write frame to file
 			stmp = (short int)f->datalen;
-			if(chan->codec == PAYLOAD_SPEEX || chan->codec == PAYLOAD_G723) fwrite(&stmp, 1, sizeof(short int), chan->rawstream);   // write packet len
+			if(chan->codec == PAYLOAD_SPEEX || chan->codec == PAYLOAD_G723 || chan->codec == PAYLOAD_G729) fwrite(&stmp, 1, sizeof(short int), chan->rawstream);   // write packet len
 			fwrite(f->data, 1, f->datalen, chan->rawstream);
 			//save last frame
 			memcpy(chan->lastbuf, f->data, f->datalen);
@@ -399,7 +399,7 @@ static void jb_get_and_deliver(struct ast_channel *chan, struct timeval *mynow)
 			if(chan->rawstream) {
 				//write frame to file
 				stmp = (short int)f->datalen;
-				if(chan->codec == PAYLOAD_SPEEX || chan->codec == PAYLOAD_G723) fwrite(&stmp, 1, sizeof(short int), chan->rawstream);   // write packet len
+				if(chan->codec == PAYLOAD_SPEEX || chan->codec == PAYLOAD_G723 || chan->codec == PAYLOAD_G729) fwrite(&stmp, 1, sizeof(short int), chan->rawstream);   // write packet len
 				fwrite(f->data, 1, f->datalen, chan->rawstream);
 				//save last frame
 				memcpy(chan->lastbuf, f->data, f->datalen);
@@ -422,13 +422,12 @@ static void jb_get_and_deliver(struct ast_channel *chan, struct timeval *mynow)
 			break;
 		case JB_IMPL_DROP:
 			if(chan->rawstream) {
-				if(chan->codec == PAYLOAD_SPEEX || chan->codec == PAYLOAD_G723) {
+				if(chan->codec == PAYLOAD_SPEEX || chan->codec == PAYLOAD_G723 || chan->codec == PAYLOAD_G729) {
 					fwrite(&zero, 1, sizeof(short int), chan->rawstream);   // write zero packet
 				} else {
 					// write previouse frame (better than zero frame), but only once
 					if(chan->lastbuflen) {
 						fwrite(chan->lastbuf, 1, chan->lastbuflen, chan->rawstream);
-                                                chan->lastbuflen = 0;
 					} else {
 						// write empty frame
 						for(i = 0; i < chan->last_datalen; i++) {
@@ -446,13 +445,12 @@ static void jb_get_and_deliver(struct ast_channel *chan, struct timeval *mynow)
 			/* interpolate a frame */
 			/* deliver the interpolated frame */
 			if(chan->rawstream) {
-				if(chan->codec == PAYLOAD_SPEEX || chan->codec == PAYLOAD_G723) {
+				if(chan->codec == PAYLOAD_SPEEX || chan->codec == PAYLOAD_G723 || chan->codec == PAYLOAD_G729) {
 					fwrite(&zero, 1, sizeof(short int), chan->rawstream);   // write zero packet
 				} else {
 					// write previouse frame (better than zero frame), but only once
 					if(chan->lastbuflen) {
 						fwrite(chan->lastbuf, 1, chan->lastbuflen, chan->rawstream);
-                                                chan->lastbuflen = 0;
 					} else {
 						// write empty frame
 						for(i = 0; i < chan->last_datalen; i++) {
@@ -468,13 +466,12 @@ static void jb_get_and_deliver(struct ast_channel *chan, struct timeval *mynow)
 			break;
 		case JB_IMPL_NOFRAME:
 			if(chan->rawstream) {
-				if(chan->codec == PAYLOAD_SPEEX || chan->codec == PAYLOAD_G723) {
+				if(chan->codec == PAYLOAD_SPEEX || chan->codec == PAYLOAD_G723 || chan->codec == PAYLOAD_G729) {
 					fwrite(&zero, 1, sizeof(short int), chan->rawstream);   // write zero packet
 				} else {
 					// write previouse frame (better than zero frame), but only once
 					if(chan->lastbuflen) {
 						fwrite(chan->lastbuf, 1, chan->lastbuflen, chan->rawstream);
-                                                chan->lastbuflen = 0;
 					} else {
 						// write empty frame
 						for(i = 0; i < chan->last_datalen; i++) {
