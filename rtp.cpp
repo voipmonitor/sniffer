@@ -294,6 +294,7 @@ RTP::read(unsigned char* data, size_t len, struct pcap_pkthdr *header,  u_int32_
 			sprintf(tmp, "%s.%d.%d.%d.raw", basefilename, ssrc_index, rawiterator, codec);
 			if(gfileRAW) {
 				//there is already opened gfileRAW
+                                jitterbuffer_fixed_flush(channel_fix2);
 				fclose(gfileRAW);
 			}
 			gfileRAW = fopen(tmp, "w");
