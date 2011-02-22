@@ -1,3 +1,50 @@
+version 2.1
+-----------
+
+New features:
+
+- WAV convertor can now handle codec changes during call, reinvite or without
+reinvite. It also covers cases whan each direction have different codecs. All 
+streams are combined together and is perfectly synchronised. DTMF is also handled 
+well. Free version supports G.711, commercial supports G.729/G.723/iLBC/GSM/Speex 
+contact support@voipmonitor.org
+- voipmonitor now requires libpcap >= 1.0.0 which implements ring buffer. This
+buffer is storing all packets incoming on ethernet interface so voipmonitor does 
+not miss single packet on CPU/IO peaks. If so, it is logged to syslog.
+Hadrcoded value is 5MB which should be enough. It can be tweak in source code.
+Default ring buffer in libpcap < 1.0.0 relies on /proc/sys/net/core/rmem_default 
+which differs system to system and is low in general for accurate sniffing higher 
+traffic (on debian etch it is 135KB). Thanks to AronHopkins
+(https://sourceforge.net/tracker/?func=detail&aid=3109439&group_id=312498&atid=1315315)
+- implement -c option for not storing CDR into databse. It is usefull whan
+converting pcap to WAV etc.
+
+Bug fixes:
+
+- fix MySQL crashes and garbled values. Fix useragent cdr field which was sometimes 
+uninitialized thus empty or garbled with random data due to bad logic in code. This 
+would also cause crashes in MySQL++. 
+-  fix open files leak introduced in version 2.0 when converting to WAV files.
+It caused stop writing any file to disk.
+- stored pcap: do not modify SDP body after rtpmap\r\n, \r was
+substituted to \0 which can make problems parsing by voipmonitor again and
+possibly another SIP parsers (wireshark is ok). If affects only if recording
+to wav with dynamic payload types 
+- make sure "iscaller" is detected properly and not based on first INVITE as
+there can be reINVITES 
+- do not put invalid SSRC into call table, this was causing nasty bugs if
+converting to wav
+- to minimize sync delay for wav convertor change jitter from fixed to
+adaptive
+- Whan recording calls to raw(wav) jitterbuffer was not flushing remaining
+packets. If there were several rtp payload changes it leads to out of sync
+audio.
+- 5 first frames were always ignored and this leads to the same issue - out of
+sync and missing audio
+- always set fbasename
+- fix "a_ is always caller, so check if we need to swap indexes" logic which
+was completely wrong.
+
 version 2.0
 -----------
 - pcap to WAV convertor from ALAW/ULAW. Decoding from other codecs are in commercial
