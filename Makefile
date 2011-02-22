@@ -1,8 +1,10 @@
 objects = codec_alaw.o codec_ulaw.o format_wav.o calltable.o rtp.o voipmonitor.o sniff.o jitterbuffer/astmm.o jitterbuffer/utils.o jitterbuffer/fixedjitterbuf.o jitterbuffer/jitterbuf.o jitterbuffer/abstract_jb.o jitterbuffer/frame.o gzstream/gzstream.o gzstream/libgzstream.a
 args = -g3 -Wall
 #args = -O2 -Wall
-CFLAGS+=-I /usr/local/include/mysql++/ -I /usr/include/mysql++/ -I /usr/include/mysql/ -g3 -Wall -I jitterbuffer/  -L/usr/local/lib/
-LIBS=-lpthread -lmysqlpp -lpcap -lgzstream -lz -Lgzstream/
+CFLAGS+=-I /usr/local/include/mysql++/ -I /usr/include/mysql++/ -I /usr/include/mysql/ -g3 -Wall -I jitterbuffer/  -L/usr/local/lib/ -Lgzstream/
+LIBS=-lpthread -lmysqlpp -lpcap -lgzstream -lz 
+#if you want to compile it statically uncomment this line
+#LIBS=-static -lpthread -L/usr/lib/mysql -lmysqlpp -lmysqlclient -lpcap -lgzstream -lz 
 
 
 voipmonitor : $(objects) 
