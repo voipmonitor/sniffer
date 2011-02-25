@@ -545,7 +545,7 @@ void readdump(pcap_t *handle) {
 					s = gettag(data,datalen,"User-Agent:", &l);
 					// store RTP stream
 					if((tmp = strstr(data, "\r\n\r\n"))) {
-						get_rtpmap_from_sdp(tmp + 1, datalen - (tmp - data), rtpmap);
+						get_rtpmap_from_sdp(tmp + 1, datalen - (tmp + 1 - data), rtpmap);
 					}
 					call->add_ip_port(tmp_addr, tmp_port, s, l, call->sipcallerip == header_ip->saddr, rtpmap);
 					calltable->hashAdd(tmp_addr, tmp_port, call, call->sipcallerip == header_ip->saddr);
