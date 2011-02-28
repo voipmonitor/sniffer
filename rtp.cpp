@@ -305,8 +305,9 @@ RTP::read(unsigned char* data, size_t len, struct pcap_pkthdr *header,  u_int32_
 			if(gfileRAWInfo) {
 				fprintf(gfileRAWInfo, "%d:%d:%d\n", ssrc_index, rawiterator, codec);
 				fclose(gfileRAWInfo);
+			} else {
+				syslog(LOG_ERR, "Cannot open file %s.rawInfo for writing\n", basefilename);
 			}
-
 			rawiterator++;
 		}
 	}
