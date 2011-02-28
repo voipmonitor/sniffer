@@ -533,26 +533,24 @@ void readdump(pcap_t *handle) {
 			}
 			// SDP examination
 			s = gettag(data,datalen,"Content-Type:",&l);
-			if(l > 0 && strncasecmp(s, "application/sdp", l) == 0 && strstr(data, "\r\n\r\n") != NULL){
+			char *tmp = strstr(data, "\r\n\r\n");;
+			if(l > 0 && strncasecmp(s, "application/sdp", l) == 0 && tmp != NULL){
 				// we have found SDP, add IP and port to the table
 				in_addr_t tmp_addr;
 				unsigned short tmp_port;
 				int rtpmap[MAX_RTPMAP];
 				memset(&rtpmap, 0, sizeof(int) * MAX_RTPMAP);
-				char *tmp;
-				if (!get_ip_port_from_sdp(strstr(data, "\r\n\r\n") + 1, &tmp_addr, &tmp_port)){
+				if (!get_ip_port_from_sdp(tmp + 1, &tmp_addr, &tmp_port)){
 					// prepare User-Agent
 					s = gettag(data,datalen,"User-Agent:", &l);
 					// store RTP stream
-					if((tmp = strstr(data, "\r\n\r\n"))) {
-						get_rtpmap_from_sdp(tmp + 1, datalen - (tmp + 1 - data), rtpmap);
-					}
+					get_rtpmap_from_sdp(tmp + 1, datalen - (tmp + 1 - data), rtpmap);
 					call->add_ip_port(tmp_addr, tmp_port, s, l, call->sipcallerip == header_ip->saddr, rtpmap);
 					calltable->hashAdd(tmp_addr, tmp_port, call, call->sipcallerip == header_ip->saddr);
 	
 				} else {
 					if(verbosity >= 2){
-						syslog(LOG_ERR, "Can't get ip/port from SDP:\n%s\n\n",strstr(data,"\r\n\r\n") + 1);
+						syslog(LOG_ERR, "Can't get ip/port from SDP:\n%s\n\n", tmp + 1);
 					}
 				}
 			}
