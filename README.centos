@@ -2,7 +2,7 @@ What is required
 ================
 
 - C and C++ compiler (gcc,g++)
-- libpcap-dev package >= 0.8 (almost in every linux distribution)
+- libpcap-dev package >= 1.0
 - MySQL++ library from http://tangentsoft.net/mysql++/
 - zlib ibrary 
 
@@ -14,7 +14,12 @@ Pre-Build
 
 libpcap-devel
 -------------
-yum install libpcap-devel
+wget http://www.tcpdump.org/release/libpcap-1.1.1.tar.gz
+tar xzf libpcap-1.1.1.tar.gz
+cd libpcap*
+./configure
+make
+make install
 
 mysql++
 -------
