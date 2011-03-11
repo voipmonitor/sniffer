@@ -366,13 +366,10 @@ void readdump(pcap_t *handle) {
 			   messages use the same Call-ID. For example, when a user agent receives a 
 			   BYE message, it knows which call to hang up based on the Call-ID.
 			*/
-			if(!(s = gettag(data,datalen,"Call-ID:", &l))) {
+			s = gettag(data,datalen,"Call-ID:", &l);
+			if(l == 0 || l > 1023)
 				continue;
 			} else {
-				if(l > 1023) {
-					//XXX: funkce gettag nam vraci nekdy hodne dlouhe l, coz je bug, opravit az bude cas!
-					continue;
-				}
 				memcpy(str1,s,l);
 				str1[l] = '\0';
 			}
@@ -446,7 +443,7 @@ void readdump(pcap_t *handle) {
 
 					//check and save CSeq for later to compare with OK 
 					s = gettag(data, datalen, "CSeq:", &l);
-					if(l) {
+					if(l && l < 32) {
 						memcpy(call->invitecseq, s, l);
 						call->invitecseq[l] = '\0';
 						if(verbosity > 2)
@@ -463,7 +460,7 @@ void readdump(pcap_t *handle) {
 				if(sip_method == INVITE) {
 					//check and save CSeq for later to compare with OK 
 					s = gettag(data, datalen, "CSeq:", &l);
-					if(l) {
+					if(l && l < 32) {
 						memcpy(call->invitecseq, s, l);
 						call->invitecseq[l] = '\0';
 						if(verbosity > 2)
@@ -471,7 +468,8 @@ void readdump(pcap_t *handle) {
 					}
 				} else if(sip_method == BYE || sip_method == CANCEL) {
 					//check and save CSeq for later to compare with OK 
-					if((s = gettag(data, datalen, "CSeq:", &l))) {
+					s = gettag(data, datalen, "CSeq:", &l);
+					if(l && l < 32) {
 						memcpy(call->byecseq, s, l);
 						call->byecseq[l] = '\0';
 						call->seenbye = true;
@@ -486,7 +484,8 @@ void readdump(pcap_t *handle) {
 					}
 
 					// if it is OK check for BYE
-					if((s = gettag(data, datalen, "CSeq:", &l))) {
+					s = gettag(data, datalen, "CSeq:", &l);
+					if(l) {
 						if(verbosity > 2)
 							syslog(LOG_NOTICE, "Cseq: %s\n", data);
 						if(strncmp(s, call->byecseq, l) == 0) {
