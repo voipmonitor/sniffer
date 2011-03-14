@@ -446,12 +446,14 @@ Call::saveToMysql() {
 	double burstr, lossr;
 
 	/* we are not interested in calls which do not have RTP */
+/*
 	if(rtp[0].saddr == 0 && rtp[1].saddr == 0) {
 		if(verbosity > 1)
 			syslog(LOG_ERR,"This call does not have RTP. SKipping SQL.\n");
 
-		return 0;
+		//return 0;
 	}
+*/
 	
 	//mysqlpp::Connection con(false);
 	if(!con.connected()) {
