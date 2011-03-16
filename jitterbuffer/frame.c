@@ -373,7 +373,25 @@ struct ast_frame *ast_frdup(const struct ast_frame *f)
 		srclen = strlen(f->src);
 	if (srclen > 0)
 		len += srclen + 1;
-	
+/*
+==1448== Invalid write of size 1
+==1448==    at 0x4026964: memcpy (mc_replace_strmem.c:497)
+==1448==    by 0x805EE2C: ast_frdup (frame.c:395)
+==1448==    by 0x805CF30: ast_jb_put (abstract_jb.c:294)
+==1448==    by 0x8054C6C: RTP::jitterbuffer(ast_channel*, int) (rtp.cpp:233)
+==1448==    by 0x8055619: RTP::read(unsigned char*, unsigned int, pcap_pkthdr*, unsigned int, int) (rtp.cpp:412)
+==1448==    by 0x804DB9E: Call::read_rtp(unsigned char*, unsigned long, pcap_pkthdr*, unsigned int, unsigned short, int) (calltable.cpp:191)
+==1448==    by 0x80584D0: readdump(pcap*) (sniff.cpp:346)
+==1448==    by 0x80576A8: main (voipmonitor.cpp:439)
+==1448==  Address 0x46d2a2c is not stack'd, malloc'd or (recently) free'd
+
+I'm not able to figure out, whats wrong with this memcpy (first memcpy from this text). 
+As you can see from above valgrind output, its writing 1 byte after mallocked memory. 
+I will increase 1 byte to malloc to avoid this, but would like to know why it is so :)
+
+*/
+	len++;
+
 	if (!buf) {
 		if (!(buf = calloc(1, len)))
 			return NULL;
