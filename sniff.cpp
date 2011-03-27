@@ -28,6 +28,7 @@ and insert them into Call class.
 #include "codecs.h"
 #include "calltable.h"
 #include "sniff.h"
+#include "voipmonitor.h"
 
 using namespace std;
 
@@ -546,6 +547,10 @@ void readdump(pcap_t *handle) {
 					get_rtpmap_from_sdp(tmp + 1, datalen - (tmp + 1 - data), rtpmap);
 					call->add_ip_port(tmp_addr, tmp_port, s, l, call->sipcallerip == header_ip->saddr, rtpmap);
 					calltable->hashAdd(tmp_addr, tmp_port, call, call->sipcallerip == header_ip->saddr);
+#ifdef NAT
+					call->add_ip_port(header_ip->saddr, tmp_port, s, l, call->sipcallerip == header_ip->saddr, rtpmap);
+					calltable->hashAdd(header_ip->saddr, tmp_port, call, call->sipcallerip == header_ip->saddr);
+#endif
 	
 				} else {
 					if(verbosity >= 2){
