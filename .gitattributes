@@ -3,6 +3,7 @@
 /Makefile -text
 /README -text
 /README.centos -text
+/README.piaf -text
 /calltable.cpp -text
 /calltable.h -text
 /cdrtable.sql -text
