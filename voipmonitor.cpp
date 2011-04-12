@@ -189,7 +189,7 @@ int main(int argc, char *argv[]) {
 
 
 	while(1) {
-		char c;
+		int c;
 		c = getopt_long(argc, argv, "f:i:r:d:v:h:b:t:u:p:kncUSRAWG", long_options, &option_index);
 		//"i:r:d:v:h:b:u:p:fnU", NULL, NULL);
 		if (c == -1)
