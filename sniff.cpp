@@ -287,10 +287,18 @@ void readdump(pcap_t *handle) {
 			continue;
 		}
 
+
 		// checking and cleaning calltable every 15 seconds (if some packet arrive) 
 		if (header->ts.tv_sec - last_cleanup > 15){
 			if (last_cleanup >= 0){
 				calltable->cleanup(header->ts.tv_sec);
+			}
+			/* also do every 15 seconds pcap statistics */
+			pcapstatres = pcap_stats(handle, &ps);
+			if (pcapstatres == 0 && (lostpacket < ps.ps_drop || lostpacketif < ps.ps_ifdrop)) {
+				syslog(LOG_ERR, "error: libpcap or interface dropped some packets! rx:%i drop:%i ifdrop:%i\n", ps.ps_recv, ps.ps_drop, ps.ps_ifdrop);
+				lostpacket = ps.ps_drop;
+				lostpacketif = ps.ps_ifdrop;
 			}
 			last_cleanup = header->ts.tv_sec;
 		}
@@ -328,13 +336,6 @@ void readdump(pcap_t *handle) {
 			continue;
 		}
 
-		/* pcap statistics */
-		pcapstatres = pcap_stats(handle, &ps);
-		if (pcapstatres == 0 && (lostpacket < ps.ps_drop || lostpacketif < ps.ps_ifdrop)) {
-			syslog(LOG_ERR, "error: libpcap or interface dropped some packets! rx:%i drop:%i ifdrop:%i\n", ps.ps_recv, ps.ps_drop, ps.ps_ifdrop);
-			lostpacket = ps.ps_drop;
-			lostpacketif = ps.ps_ifdrop;
-		}
 
 		// prepare packet pointers 
 		header_udp = (struct udphdr *) ((char *) header_ip + sizeof(*header_ip));
