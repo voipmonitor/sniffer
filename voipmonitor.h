@@ -3,5 +3,5 @@
  * the GNU General Public License Version 2.
 */
 
-#define RTPSENSOR_VERSION "2.2"
+#define RTPSENSOR_VERSION "2.1.2"
 #define NAT
