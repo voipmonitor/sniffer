@@ -437,8 +437,10 @@ void readdump(pcap_t *handle) {
 					strcpy(call->fbasename, str1);
 
 					// opening dump file
-					if(opt_saveSIP or opt_saveRTP) {
+					if(opt_saveSIP or opt_saveRTP or opt_saveRAW or opt_saveWAV) {
 						mkdir(call->dirname(), 0777);
+					}
+					if(opt_saveSIP or opt_saveRTP) {
 						sprintf(str2, "%s/%s.pcap", call->dirname(), str1);
 						call->set_f_pcap(pcap_dump_open(handle, str2));
 					}

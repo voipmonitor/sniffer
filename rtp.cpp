@@ -298,6 +298,9 @@ RTP::read(unsigned char* data, size_t len, struct pcap_pkthdr *header,  u_int32_
 				fclose(gfileRAW);
 			}
 			gfileRAW = fopen(tmp, "w");
+			if(!gfileRAW) {
+				syslog(LOG_ERR, "Cannot open file %s for writing\n", tmp);
+			}
 
 			/* write file info to "playlist" */
 			sprintf(tmp, "%s.rawInfo", basefilename);
