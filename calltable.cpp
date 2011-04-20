@@ -265,9 +265,15 @@ int convertALAW2WAV(char *fname1, char *fname3) {
 	int outFrameSize = 2;
  
 	FILE *f_in1 = fopen(fname1, "r");
-	FILE *f_out = fopen(fname3, "a");
-	if(!f_in1 || !f_out) {
-		syslog(LOG_ERR,"One of files [%s,%s] cannot be opened. Failed converting raw to wav\n", fname1, fname3);
+	if(!f_in1) {
+		syslog(LOG_ERR,"File [%s] cannot be opened for read", fname1);
+		return -1;
+	}
+
+	FILE *f_out = fopen(fname3, "w");
+	if(!f_out) {
+		fclose(f_in1);
+		syslog(LOG_ERR,"File [%s] cannot be opened for write", fname3);
 		return -1;
 	}
  
@@ -278,6 +284,12 @@ int convertALAW2WAV(char *fname1, char *fname3) {
 	fseek(f_in1, 0, SEEK_SET);
  
 	bitstream_buf1 = (unsigned char *)malloc(file_size1);
+	if(!bitstream_buf1) {
+		syslog(LOG_ERR,"Cannot malloc bitsream_buf1[%d]", file_size1);
+		fclose(f_in1);
+		fclose(f_out);
+		return 1;
+	}
 	fread(bitstream_buf1, file_size1, 1, f_in1);
 	p1 = bitstream_buf1;
 	f1 = bitstream_buf1 + file_size1;
@@ -289,8 +301,7 @@ int convertALAW2WAV(char *fname1, char *fname3) {
  
 	// wav_update_header(f_out);
  
-	if(bitstream_buf1)
-		free(bitstream_buf1);
+	free(bitstream_buf1);
  
 	fclose(f_out);
 	fclose(f_in1);
@@ -312,9 +323,15 @@ int convertULAW2WAV(char *fname1, char *fname3) {
 	int outFrameSize = 2;
  
 	FILE *f_in1 = fopen(fname1, "r");
-	FILE *f_out = fopen(fname3, "a");
-	if(!f_in1 || !f_out) {
-		syslog(LOG_ERR,"One of files [%s,%s] cannot be opened. Failed converting raw to wav\n", fname1, fname3);
+	if(!f_in1) {
+		syslog(LOG_ERR,"File [%s] cannot be opened for read", fname1);
+		return -1;
+	}
+		
+	FILE *f_out = fopen(fname3, "w");
+	if(!f_out) {
+		fclose(f_in1);
+		syslog(LOG_ERR,"File [%s] cannot be opened for write", fname3);
 		return -1;
 	}
  
@@ -325,6 +342,12 @@ int convertULAW2WAV(char *fname1, char *fname3) {
 	fseek(f_in1, 0, SEEK_SET);
  
 	bitstream_buf1 = (unsigned char *)malloc(file_size1);
+	if(!bitstream_buf1) {
+		fclose(f_in1);
+		fclose(f_out);
+		syslog(LOG_ERR,"Cannot malloc bitsream_buf1[%d]", file_size1);
+		return 1;
+	}
 	fread(bitstream_buf1, file_size1, 1, f_in1);
 	p1 = bitstream_buf1;
 	f1 = bitstream_buf1 + file_size1;

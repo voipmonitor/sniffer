@@ -121,8 +121,8 @@ int wav_mix(char *in1, char *in2, char *out) {
 	FILE *f_in2;
 	FILE *f_out;
 
-	char *bitstream_buf1;
-	char *bitstream_buf2;
+	char *bitstream_buf1 = NULL;
+	char *bitstream_buf2 = NULL;
 	char *p1;
 	char *f1;
 	char *p2;
@@ -132,11 +132,22 @@ int wav_mix(char *in1, char *in2, char *out) {
 
 	/* combine two wavs */
 	f_in1 = fopen(in1, "r");
+	if(!f_in1) {
+		syslog(LOG_ERR,"File [%s] cannot be opened for read.\n", in1);
+		return 1;
+	}
 	f_in2 = fopen(in2, "r");
+	if(!f_in2) {
+		fclose(f_in1);
+		syslog(LOG_ERR,"File [%s] cannot be opened for read.\n", in2);
+		return 1;
+	}
 	f_out = fopen(out, "w");
-
-	if(!f_in1 || !f_in2 || !f_out) {
-		syslog(LOG_ERR,"One of files [%s,%s,%s] cannot be opened.\n", in1, in2, out);
+	if(!f_out) {
+		fclose(f_in1);
+		fclose(f_in2);
+		fclose(f_out);
+		syslog(LOG_ERR,"File [%s] cannot be opened for write.\n", out);
 		return 1;
 	}
 
@@ -151,7 +162,22 @@ int wav_mix(char *in1, char *in2, char *out) {
 	fseek(f_in2, 0, SEEK_SET);
 
 	bitstream_buf1 = (char *)malloc(file_size1);
+	if(!bitstream_buf1) {
+		fclose(f_in1);
+		fclose(f_in2);
+		fclose(f_out);
+		syslog(LOG_ERR,"Cannot malloc bitsream_buf1[%d]", file_size1);
+		return 1;
+	}
 	bitstream_buf2 = (char *)malloc(file_size2);
+	if(!bitstream_buf2) {
+		fclose(f_in1);
+		fclose(f_in2);
+		fclose(f_out);
+		free(bitstream_buf1);
+		syslog(LOG_ERR,"Cannot malloc bitsream_buf2[%d]", file_size1);
+		return 1;
+	}
 	fread(bitstream_buf1, file_size1, 1, f_in1);
 	fread(bitstream_buf2, file_size2, 1, f_in2);
 	p1 = bitstream_buf1;
