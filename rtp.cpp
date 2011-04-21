@@ -19,6 +19,7 @@ Each Call class contains two RTP classes.
 #include <pcap.h>
 
 #include "rtp.h"
+#include "calltable.h"
 #include "codecs.h"
 #include "jitterbuffer/asterisk/channel.h"
 #include "jitterbuffer/asterisk/frame.h"
@@ -111,7 +112,6 @@ RTP::RTP() {
 	packetization_iterator = 0;
 	payload = 0;
 	prev_payload = -1;
-	rawiterator = 0;
 	codec = -1;
 	for(int i = 0; i < MAX_RTPMAP; i++) {
 		rtpmap[i] = 0;
@@ -290,12 +290,27 @@ RTP::read(unsigned char* data, size_t len, struct pcap_pkthdr *header,  u_int32_
 
 		if(opt_saveRAW || opt_saveWAV) {
 			/* open file for raw codec */
+			unsigned long unique = getTimestamp();
 			char tmp[1024];
-			sprintf(tmp, "%s.%d.%d.%d.raw", basefilename, ssrc_index, rawiterator, codec);
+			sprintf(tmp, "%s.%d.%lu.%d.raw", basefilename, ssrc_index, unique, codec);
 			if(gfileRAW) {
 				//there is already opened gfileRAW
                                 jitterbuffer_fixed_flush(channel_fix2);
 				fclose(gfileRAW);
+			} else {
+				/* look for the last RTP stream belonging to this direction and let jitterbuffer put silence 
+				 * which fills potentionally gap between this and previouse RTP so it will stay in sync with
+				 * the other direction of call 
+				 */
+				Call *owner = (Call*)call_owner;
+				RTP *prevrtp = (RTP*)(owner->rtp_prev[iscaller]);
+				if(prevrtp && prevrtp != this) {
+					prevrtp->data = data; 
+					prevrtp->len = len;
+					prevrtp->header = header;
+					prevrtp->saddr =  saddr;
+					prevrtp->jitterbuffer(prevrtp->channel_fix2, opt_saveRAW || opt_saveWAV);
+				}
 			}
 			gfileRAW = fopen(tmp, "w");
 			if(!gfileRAW) {
@@ -306,12 +321,11 @@ RTP::read(unsigned char* data, size_t len, struct pcap_pkthdr *header,  u_int32_
 			sprintf(tmp, "%s.rawInfo", basefilename);
 			FILE *gfileRAWInfo = fopen(tmp, "a");
 			if(gfileRAWInfo) {
-				fprintf(gfileRAWInfo, "%d:%d:%d\n", ssrc_index, rawiterator, codec);
+				fprintf(gfileRAWInfo, "%d:%lu:%d\n", ssrc_index, unique, codec);
 				fclose(gfileRAWInfo);
 			} else {
 				syslog(LOG_ERR, "Cannot open file %s.rawInfo for writing\n", basefilename);
 			}
-			rawiterator++;
 		}
 	}
 

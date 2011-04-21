@@ -68,6 +68,13 @@ Call::Call(char *call_id, unsigned long call_id_len, time_t time, void *ct) {
 	connect_time = 0;
 	a_ua[0] = '\0';
 	b_ua[0] = '\0';
+	for(int i = 0; i < MAX_SSRC_PER_CALL; i++) {
+		rtp[i].call_owner = this;
+	}
+	rtp_cur[0] = NULL;
+	rtp_cur[1] = NULL;
+	rtp_prev[0] = NULL;
+	rtp_prev[1] = NULL;
 }
 
 /* destructor */
@@ -196,6 +203,10 @@ Call::read_rtp(unsigned char* data, unsigned long datalen, struct pcap_pkthdr *h
 	if(ssrc_n < MAX_SSRC_PER_CALL) {
 		rtp[ssrc_n].ssrc_index = ssrc_n; 
 		rtp[ssrc_n].iscaller = iscaller; 
+		if(rtp_cur[iscaller]) {
+			rtp_prev[iscaller] = rtp_cur[iscaller];
+		}
+		rtp_cur[iscaller] = &rtp[ssrc_n]; 
 		sprintf(rtp[ssrc_n].gfilename, "%s/%s.%d.graph%s", dirname(), fbasename, ssrc_n, opt_gzipGRAPH ? ".gz" : "");
 		if(opt_saveGRAPH) {
 			if(opt_gzipGRAPH) {
@@ -285,7 +296,7 @@ int convertALAW2WAV(char *fname1, char *fname3) {
  
 	bitstream_buf1 = (unsigned char *)malloc(file_size1);
 	if(!bitstream_buf1) {
-		syslog(LOG_ERR,"Cannot malloc bitsream_buf1[%d]", file_size1);
+		syslog(LOG_ERR,"Cannot malloc bitsream_buf1[%ld]", file_size1);
 		fclose(f_in1);
 		fclose(f_out);
 		return 1;
@@ -345,7 +356,7 @@ int convertULAW2WAV(char *fname1, char *fname3) {
 	if(!bitstream_buf1) {
 		fclose(f_in1);
 		fclose(f_out);
-		syslog(LOG_ERR,"Cannot malloc bitsream_buf1[%d]", file_size1);
+		syslog(LOG_ERR,"Cannot malloc bitsream_buf1[%ld]", file_size1);
 		return 1;
 	}
 	fread(bitstream_buf1, file_size1, 1, f_in1);
@@ -388,7 +399,7 @@ Call::convertRawToWav() {
 
 		/* open playlist */
 		FILE *pl;
-		char line[8];
+		char line[256];
 		char rawInfo[1024];
 		sprintf(rawInfo, "%s/%s.i%d.rawInfo", dirname(), fbasename, i);
 		pl = fopen(rawInfo, "r");
@@ -396,12 +407,13 @@ Call::convertRawToWav() {
 			syslog(LOG_ERR, "Cannot open %s\n", rawInfo);
 			return 1;
 		}
-		while(fgets(line, 8, pl)) {
+		while(fgets(line, 256, pl)) {
 			char raw[1024];
-			int ssrc_index, rawiterator, codec;
+			int ssrc_index, codec;
+			unsigned long int rawiterator;
 			line[strlen(line)] = '\0'; // remove '\n' which is last character
-			sscanf(line, "%d:%d:%d", &ssrc_index, &rawiterator, &codec);
-			sprintf(raw, "%s/%s.i%d.%d.%d.%d.raw", dirname(), fbasename, i, ssrc_index, rawiterator, codec);
+			sscanf(line, "%d:%lu:%d", &ssrc_index, &rawiterator, &codec);
+			sprintf(raw, "%s/%s.i%d.%d.%lu.%d.raw", dirname(), fbasename, i, ssrc_index, rawiterator, codec);
 
 			switch(codec) {
 			case PAYLOAD_PCMA:

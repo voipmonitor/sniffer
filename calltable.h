@@ -6,6 +6,10 @@
 /* Calls are stored into indexed array. 
  * Into one calltable is stored SIP call-id and IP-port of SDP session
  */
+
+#ifndef CALLTABLE_H
+#define CALLTABLE_H
+
 #include <queue>
 
 #include <arpa/inet.h>
@@ -55,6 +59,9 @@ public:
 	time_t connect_time;		//!< time in seconds of 200 OK
 	time_t last_packet_time;	
 	time_t first_packet_time;	
+
+	void *rtp_cur[2];		//!< last RTP structure in direction 0 and 1 (iscaller = 1)
+	void *rtp_prev[2];		//!< previouse RTP structure in direction 0 and 1 (iscaller = 1)
 
 	u_int32_t sipcallerip;		//!< SIP signalling source IP address
 	u_int32_t sipcalledip;		//!< SIP signalling destination IP address
@@ -342,3 +349,5 @@ private:
 		return key % MAXNODE;
 	}
 };
+
+#endif

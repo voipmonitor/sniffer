@@ -3,7 +3,8 @@
  * the GNU General Public License Version 2.
 */
 
-
+#ifndef RTP_H
+#define RTP_H
 #include <netinet/in.h>
 #include <fstream>
 #include <iostream>
@@ -12,7 +13,7 @@
 //#include "jitterbuffer/asterisk/channel.h"
 #include "jitterbuffer/asterisk/abstract_jb.h"
 
-#define MAX_RTPMAP 20
+#define MAX_RTPMAP 30
 
 
 using namespace std;
@@ -143,6 +144,7 @@ public:
 	size_t payload_len;	//!< lenght of RTP payload
 	int ssrc_index;		//!< index 
 	int iscaller;		//!< flag which indicates if RTP stream is part of caller or callee
+	void *call_owner;	//!< which Call owns us
 
 	struct stats_t {
 		u_int32_t	d50;	//!< delay from 0 to 50
@@ -379,3 +381,4 @@ private:
 	void init_seq(u_int16_t seq);
 	int update_seq(u_int16_t seq);
 };
+#endif

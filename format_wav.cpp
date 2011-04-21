@@ -166,7 +166,7 @@ int wav_mix(char *in1, char *in2, char *out) {
 		fclose(f_in1);
 		fclose(f_in2);
 		fclose(f_out);
-		syslog(LOG_ERR,"Cannot malloc bitsream_buf1[%d]", file_size1);
+		syslog(LOG_ERR,"Cannot malloc bitsream_buf1[%ld]", file_size1);
 		return 1;
 	}
 	bitstream_buf2 = (char *)malloc(file_size2);
@@ -175,7 +175,7 @@ int wav_mix(char *in1, char *in2, char *out) {
 		fclose(f_in2);
 		fclose(f_out);
 		free(bitstream_buf1);
-		syslog(LOG_ERR,"Cannot malloc bitsream_buf2[%d]", file_size1);
+		syslog(LOG_ERR,"Cannot malloc bitsream_buf2[%ld]", file_size1);
 		return 1;
 	}
 	fread(bitstream_buf1, file_size1, 1, f_in1);
