@@ -281,7 +281,7 @@ int convertALAW2WAV(char *fname1, char *fname3) {
 		return -1;
 	}
 
-	FILE *f_out = fopen(fname3, "w");
+	FILE *f_out = fopen(fname3, "a"); // THIS HAS TO BE APPEND!
 	if(!f_out) {
 		fclose(f_in1);
 		syslog(LOG_ERR,"File [%s] cannot be opened for write", fname3);
@@ -339,7 +339,7 @@ int convertULAW2WAV(char *fname1, char *fname3) {
 		return -1;
 	}
 		
-	FILE *f_out = fopen(fname3, "w");
+	FILE *f_out = fopen(fname3, "a"); // THIS HAS TO BE APPEND!
 	if(!f_out) {
 		fclose(f_in1);
 		syslog(LOG_ERR,"File [%s] cannot be opened for write", fname3);
@@ -453,15 +453,15 @@ Call::convertRawToWav() {
 			default:
 				syslog(LOG_ERR, "Call cannot be converted to WAV, unknown payloadtype [%d]\n", payloadtype);
 			}
-			unlink(raw);
+			//unlink(raw);
 		}
 		fclose(pl);
-		unlink(rawInfo);
+		//unlink(rawInfo);
 	}
 
 	wav_mix(wav0, wav1, out);
-	unlink(wav0);
-	unlink(wav1);
+	//unlink(wav0);
+	//unlink(wav1);
 	
  
 	return 0;
