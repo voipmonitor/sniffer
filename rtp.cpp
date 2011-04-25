@@ -176,7 +176,7 @@ RTP::jitterbuffer(struct ast_channel *channel, int savePayload) {
 		frame->datalen = payload_len;
 		channel->rawstream = gfileRAW;
 		//printf("[%p]\n", channel->rawstream);
-		if(payload_len) {
+		if(payload_len > 0) {
 			channel->last_datalen = payload_len;
 		}
 	} else {

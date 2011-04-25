@@ -390,7 +390,7 @@ struct ast_frame *ast_frdup(const struct ast_frame *f)
 	   get freed. */
 	out->mallocd = AST_MALLOCD_HDR;
 	out->offset = AST_FRIENDLY_OFFSET;
-	if (out->datalen) {
+	if (out->datalen > 0) {
 		out->data = buf + sizeof(*out) + AST_FRIENDLY_OFFSET;
 		memcpy(out->data, f->data, out->datalen);	
 	}
