@@ -30,6 +30,7 @@
 #include "codecs.h"
 #include "codec_alaw.h"
 #include "codec_ulaw.h"
+#include "jitterbuffer/asterisk/time.h"
 
 #define MIN(x,y) ((x) < (y) ? (x) : (y))
 
@@ -388,32 +389,77 @@ Call::convertRawToWav() {
 	char wav0[1024];
 	char wav1[1024];
 	char out[1024];
+	char rawInfo[1024];
+	char line[1024];
+	struct timeval tv0, tv1;
+	FILE *pl;
+	int ssrc_index, codec;
+	unsigned long int rawiterator;
+	FILE *wav = NULL;
 
 	sprintf(wav0, "%s/%s.i0.wav", dirname(), fbasename);
 	sprintf(wav1, "%s/%s.i1.wav", dirname(), fbasename);
 	sprintf(out, "%s/%s.wav", dirname(), fbasename);
+
+	/* do synchronisation - calculate difference between start of both RTP direction and put silence to achieve proper synchronisation */
+	/* first direction */
+	sprintf(rawInfo, "%s/%s.i%d.rawInfo", dirname(), fbasename, 0);
+	pl = fopen(rawInfo, "r");
+	if(!pl) {
+		syslog(LOG_ERR, "Cannot open %s\n", rawInfo);
+		return 1;
+	}
+	fgets(line, 1024, pl);
+	fclose(pl);
+	sscanf(line, "%d:%lu:%d:%ld:%ld", &ssrc_index, &rawiterator, &codec, &tv0.tv_sec, &tv0.tv_usec);
+	/* second direction */
+	sprintf(rawInfo, "%s/%s.i%d.rawInfo", dirname(), fbasename, 1);
+	pl = fopen(rawInfo, "r");
+	if(!pl) {
+		fclose(pl);
+		syslog(LOG_ERR, "Cannot open %s\n", rawInfo);
+		return 1;
+	}
+	fgets(line, 1024, pl);
+	fclose(pl);
+	sscanf(line, "%d:%lu:%d:%ld:%ld", &ssrc_index, &rawiterator, &codec, &tv1.tv_sec, &tv1.tv_usec);
+	/* calculate difference in milliseconds */
+	int msdiff = ast_tvdiff_ms(tv1, tv0);
+	if(msdiff < 0) {
+		/* add msdiff [ms] silence to i1 stream */
+		wav = fopen(wav0, "w");
+	} else {
+		wav = fopen(wav1, "w");
+	}
+	if(!wav) {
+		syslog(LOG_ERR, "Cannot open %s or %s\n", wav0, wav1);
+		return 1;
+	}
+	/* write silence of msdiff duration */
+	short int zero = 0;
+	for(int i = 0; i < (abs(msdiff) / 20) * 160; i++) {
+		fwrite(&zero, 1, 2, wav);
+	}
+	fclose(wav);
+	/* end synchronisation */
 
 	/* process all files in playlist for each direction */
 	for(int i = 0; i <= 1; i++) {
 		char *wav = i ? wav1 : wav0;
 
 		/* open playlist */
-		FILE *pl;
-		char line[256];
-		char rawInfo[1024];
 		sprintf(rawInfo, "%s/%s.i%d.rawInfo", dirname(), fbasename, i);
 		pl = fopen(rawInfo, "r");
 		if(!pl) {
+			if(i == 1) fclose(pl);
 			syslog(LOG_ERR, "Cannot open %s\n", rawInfo);
 			return 1;
 		}
 		while(fgets(line, 256, pl)) {
 			char raw[1024];
-			int ssrc_index, codec;
-			unsigned long int rawiterator;
 			line[strlen(line)] = '\0'; // remove '\n' which is last character
-			sscanf(line, "%d:%lu:%d", &ssrc_index, &rawiterator, &codec);
-			sprintf(raw, "%s/%s.i%d.%d.%lu.%d.raw", dirname(), fbasename, i, ssrc_index, rawiterator, codec);
+			sscanf(line, "%d:%lu:%d:%ld:%ld", &ssrc_index, &rawiterator, &codec, &tv0.tv_sec, &tv0.tv_usec);
+			sprintf(raw, "%s/%s.i%d.%d.%lu.%d.%ld.%ld.raw", dirname(), fbasename, i, ssrc_index, rawiterator, codec, tv0.tv_sec, tv0.tv_usec);
 
 			switch(codec) {
 			case PAYLOAD_PCMA:

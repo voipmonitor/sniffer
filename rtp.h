@@ -128,11 +128,13 @@ public:
 	struct ast_channel *channel_fix1;
 	struct ast_channel *channel_fix2;
 	struct ast_channel *channel_adapt;
+	struct ast_channel *channel_record;
 	struct ast_frame *frame;
 	int lastframetype;		//!< last packet sequence number
 	int last_seq;		//!< last packet sequence number
 	int packetization;	//!< packetization in millisenocds
 	int last_packetization;	//!< last packetization in millisenocds
+	int last_ts;		//!< last timestamp 
 	int packetization_iterator;	
 	int payload;
 	int prev_payload;

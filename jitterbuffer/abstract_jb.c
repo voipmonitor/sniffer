@@ -276,7 +276,7 @@ int ast_jb_put(struct ast_channel *chan, struct ast_frame *f, struct timeval *my
 		return -1;
 	}
 
-	if (f->marker) {
+	if (chan->resync && f->marker) {
 		if(debug) fprintf(stdout, "JB_PUT {now=%ld}: marker bit set, Force resynching jb...\n", now);
 		if(ast_test_flag(jb, JB_CREATED)) {
 			jbimpl->force_resync(jbobj);
@@ -445,7 +445,9 @@ static void jb_get_and_deliver(struct ast_channel *chan, struct timeval *mynow)
 			/* interpolate a frame */
 			/* deliver the interpolated frame */
 			if(chan->rawstream) {
+				if(debug) fprintf(stdout, "writing?\n");
 				if(chan->codec == PAYLOAD_SPEEX || chan->codec == PAYLOAD_G723 || chan->codec == PAYLOAD_G729) {
+					if(debug) fprintf(stdout, "writing!\n");
 					fwrite(&zero, 1, sizeof(short int), chan->rawstream);   // write zero packet
 				} else {
 					// write previouse frame (better than zero frame), but only once

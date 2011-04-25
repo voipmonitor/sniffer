@@ -86,6 +86,7 @@ RTP::RTP() {
 	channel_fix1->jitter_resync_threshold = 50;
 	channel_fix1->last_datalen = 0;
 	channel_fix1->lastbuflen = 0;
+	channel_fix1->resync = 1;
 
 	channel_fix2 = (ast_channel*)calloc(1, sizeof(*channel_fix2));
 	channel_fix2->jitter_impl = 0; // fixed
@@ -93,6 +94,7 @@ RTP::RTP() {
 	channel_fix2->jitter_resync_threshold = 200; 
 	channel_fix2->last_datalen = 0;
 	channel_fix2->lastbuflen = 0;
+	channel_fix2->resync = 1;
 
 	channel_adapt = (ast_channel*)calloc(1, sizeof(*channel_adapt));
 	channel_adapt->jitter_impl = 1; // adaptive
@@ -100,6 +102,16 @@ RTP::RTP() {
 	channel_adapt->jitter_resync_threshold = 500; 
 	channel_adapt->last_datalen = 0;
 	channel_adapt->lastbuflen = 0;
+	channel_adapt->resync = 1;
+
+	channel_record = (ast_channel*)calloc(1, sizeof(*channel_record));
+	channel_record->jitter_impl = 0; // fixed
+	channel_record->jitter_max = 200; 
+	channel_record->jitter_resync_threshold = 200; 
+	channel_record->last_datalen = 0;
+	channel_record->lastbuflen = 0;
+	channel_record->resync = 0;
+
 
 	//channel->name = "SIP/fixed";
 	frame = (ast_frame*)calloc(1, sizeof(*frame));
@@ -129,9 +141,11 @@ RTP::~RTP() {
 	ast_jb_destroy(channel_fix1);
 	ast_jb_destroy(channel_fix2);
 	ast_jb_destroy(channel_adapt);
+	ast_jb_destroy(channel_record);
 	free(channel_fix1);
 	free(channel_fix2);
 	free(channel_adapt);
+	free(channel_record);
 	free(frame);
 
 	if(gfileRAW) {
@@ -142,7 +156,7 @@ RTP::~RTP() {
 
 /* flush jitterbuffer */
 void RTP::jitterbuffer_fixed_flush(struct ast_channel *jchannel) {
-	jb_fixed_flush_deliver(channel_fix2);
+	jb_fixed_flush_deliver(channel_record);
 }
 
 #if 1
@@ -234,35 +248,6 @@ RTP::jitterbuffer(struct ast_channel *channel, int savePayload) {
 }
 #endif
 
-/* simulate jitterbuffer */
-#if 0
-void
-RTP::jitterbuffer(struct ast_channel *channel) {
-        frame->ts = getTimestamp() / 8;
-        frame->len = packetization;
-        memcpy(&frame->delivery, &header->ts, sizeof(struct timeval));
-
-        ast_jb_do_usecheck(channel, &header->ts);
-
-        if(!channel->jb_reseted) {
-                ast_jb_empty_and_reset(channel);
-                channel->jb_reseted = 1;
-                memcpy(&channel->last_ts, &header->ts, sizeof(struct timeval));
-                ast_jb_put(channel, frame, &header->ts);
-        }
-
-        // tohle se musi spustit kazdych 20 ms. Jelikoz je RTP::read funkce spustena az s prichozim paketem, mezi kterymi je zposdeni napr. 200ms nebo naopak mezi nimi je rozdil 1ms, musime si to osetrit
-        while( (timeval2micro(channel->last_ts) + packetization * 1000) < timeval2micro(header->ts) ) {
-                ast_jb_get_and_deliver(channel, &channel->last_ts);
-                /* adding packetization time to last_ts time */
-                // XXX: we are using temporary ast_tvadd pointer for coyping (compiler is warning about this, but it is ok. or make it better if you want)
-                memcpy(&channel->last_ts, &ast_tvadd(channel->last_ts, ast_samp2tv(packetization, 1000)), sizeof(struct timeval));
-        }
-
-        ast_jb_put(channel, frame, &header->ts);
-}
-#endif
-
 /* read rtp packet */
 void
 RTP::read(unsigned char* data, size_t len, struct pcap_pkthdr *header,  u_int32_t saddr, int seeninviteok) {
@@ -292,10 +277,10 @@ RTP::read(unsigned char* data, size_t len, struct pcap_pkthdr *header,  u_int32_
 			/* open file for raw codec */
 			unsigned long unique = getTimestamp();
 			char tmp[1024];
-			sprintf(tmp, "%s.%d.%lu.%d.raw", basefilename, ssrc_index, unique, codec);
+			sprintf(tmp, "%s.%d.%lu.%d.%ld.%ld.raw", basefilename, ssrc_index, unique, codec, header->ts.tv_sec, header->ts.tv_usec);
 			if(gfileRAW) {
 				//there is already opened gfileRAW
-                                jitterbuffer_fixed_flush(channel_fix2);
+                                jitterbuffer_fixed_flush(channel_record);
 				fclose(gfileRAW);
 			} else {
 				/* look for the last RTP stream belonging to this direction and let jitterbuffer put silence 
@@ -306,10 +291,9 @@ RTP::read(unsigned char* data, size_t len, struct pcap_pkthdr *header,  u_int32_
 				RTP *prevrtp = (RTP*)(owner->rtp_prev[iscaller]);
 				if(prevrtp && prevrtp != this) {
 					prevrtp->data = data; 
-					prevrtp->len = len;
 					prevrtp->header = header;
 					prevrtp->saddr =  saddr;
-					prevrtp->jitterbuffer(prevrtp->channel_fix2, opt_saveRAW || opt_saveWAV);
+					prevrtp->jitterbuffer(prevrtp->channel_record, opt_saveRAW || opt_saveWAV);
 				}
 			}
 			gfileRAW = fopen(tmp, "w");
@@ -321,7 +305,7 @@ RTP::read(unsigned char* data, size_t len, struct pcap_pkthdr *header,  u_int32_
 			sprintf(tmp, "%s.rawInfo", basefilename);
 			FILE *gfileRAWInfo = fopen(tmp, "a");
 			if(gfileRAWInfo) {
-				fprintf(gfileRAWInfo, "%d:%lu:%d\n", ssrc_index, unique, codec);
+				fprintf(gfileRAWInfo, "%d:%lu:%d:%ld:%ld\n", ssrc_index, unique, codec, header->ts.tv_sec, header->ts.tv_usec);
 				fclose(gfileRAWInfo);
 			} else {
 				syslog(LOG_ERR, "Cannot open file %s.rawInfo for writing\n", basefilename);
@@ -387,47 +371,33 @@ RTP::read(unsigned char* data, size_t len, struct pcap_pkthdr *header,  u_int32_
 	}
 
 	if(seeninviteok) {
-		if(packetization_iterator < 5) {
-			/* until we dont know packetization length, do not activate jitter buffer simulators
-			 * also switch to jitterbuffuer only if 5 consecutive packets have the same packetization
-			 */
-			if(codec == PAYLOAD_ILBC || codec == PAYLOAD_G723) {
-				packetization = 30;
-				channel_fix1->packetization = channel_fix2->packetization = channel_adapt->packetization = packetization;
-				//printf("packetization: %d\n", packetization);
-				jitterbuffer(channel_fix1, 0);
-				jitterbuffer(channel_fix2, opt_saveRAW || opt_saveWAV);
-				jitterbuffer(channel_adapt, 0);
-				packetization_iterator = 6;
+		if(packetization_iterator == 0) {
+			if(seq == (last_seq + 1)) {
+				// sequence numbers are ok, we can calculate packetization
+				packetization = (getTimestamp() - s->lastTimeStamp) / 8;
+				last_packetization = packetization;
+				last_ts = getTimestamp();
+				packetization_iterator++;
 			} else {
-				if(seq == (last_seq + 1)) {
-					// sequence numbers are ok, we can calculate packetization
-					packetization = (getTimestamp() - s->lastTimeStamp) / 8;
-					if(last_packetization == packetization and packetization > 0) {
-						packetization_iterator++;
-					} else {
-						packetization_iterator = 0;
-					}
-					last_packetization = packetization;
-				}
-
-				if(packetization_iterator >= 5) {
-					channel_fix1->packetization = channel_fix2->packetization = channel_adapt->packetization = (getTimestamp() - s->lastTimeStamp) / 8;
-					jitterbuffer(channel_fix1, 0);
-					jitterbuffer(channel_fix2, opt_saveRAW || opt_saveWAV);
-					jitterbuffer(channel_adapt, 0);
-				} else {
-					// we dont know packetization yet, but its better to have at least one for call recording so pretend 20ms
-					packetization = channel_fix1->packetization = channel_fix2->packetization = channel_adapt->packetization = 20;
-					jitterbuffer(channel_fix1, 0);
-					jitterbuffer(channel_fix2, opt_saveRAW || opt_saveWAV);
-					jitterbuffer(channel_adapt, 0);
-				}
+				packetization_iterator = 0;
+			}
+		} else if(packetization_iterator == 1) {
+			if(seq == (last_seq + 1)) {
+				// sequence numbers are ok, we can calculate packetization
+				packetization = (getTimestamp() - last_ts) / 8;
+				packetization = (packetization + last_packetization) / 2;
+				packetization_iterator++;
+				channel_fix1->packetization = channel_fix2->packetization = channel_adapt->packetization = channel_record->packetization = packetization;
+			} else {
+				packetization_iterator = 0;
 			}
 		} else {
 			jitterbuffer(channel_fix1, 0);
 			jitterbuffer(channel_fix2, opt_saveRAW || opt_saveWAV);
 			jitterbuffer(channel_adapt, 0);
+			if(opt_saveRAW || opt_saveWAV) {
+				jitterbuffer(channel_record, opt_saveRAW || opt_saveWAV);
+			}
 		}
 	}
 

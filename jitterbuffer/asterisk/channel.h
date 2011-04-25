@@ -357,6 +357,7 @@ struct ast_channel {
 	char lastbuf[1024];
 	int lastbuflen;
 	int codec;
+	int resync; 	/*!< if jitterbuffer resync is allowed */
 	
 	/*! \brief Technology (point to channel driver) */
 	const struct ast_channel_tech *tech;
