@@ -349,7 +349,7 @@ void jb_fixed_flush_deliver(struct ast_channel *chan)
 	if(!(struct fixed_jb*)jb->jbobj) {
 		return;
 	}
-	
+
 	while ( fixed_jb_flush((struct fixed_jb*)jb->jbobj, &ff)) {
 		if(chan->rawstream) { 
 			f = ff.data;

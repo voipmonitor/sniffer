@@ -149,6 +149,7 @@ RTP::~RTP() {
 	free(frame);
 
 	if(gfileRAW) {
+		jitterbuffer_fixed_flush(channel_record);
 		fclose(gfileRAW);
 	}
 
@@ -180,10 +181,44 @@ RTP::jitterbuffer(struct ast_channel *channel, int savePayload) {
 	memcpy(&frame->delivery, &header->ts, sizeof(struct timeval));
 
 	if(savePayload) {
+		/* get RTP payload header and datalen */
+		payload_data = data + sizeof(RTPFixedHeader);
+		payload_len = len - sizeof(RTPFixedHeader);
+		if(getPadding()) {
+			/*
+			* If set, this packet contains one or more additional padding
+			* bytes at the end which are not part of the payload. The last
+			* byte of the padding contains a count of how many padding bytes
+			* should be ignored. Padding may be needed by some encryption
+			* algorithms with fixed block sizes or for carrying several RTP
+			* packets in a lower-layer protocol data unit.
+			*/
+			payload_len -= ((u_int8_t *)data)[payload_len - 1];
+		}
+		if(getCC() > 0) {
+			/*
+			* The number of CSRC identifiers that follow the fixed header.
+			*/
+			payload_data += 4 * getCC();
+			payload_len -= 4 * getCC();
+		}
+		if(getExtension()) {
+			/*
+			* If set, the fixed header is followed by exactly one header extension.
+			*/
+			extension_hdr_t *rtpext;
+			if (payload_len < 4)
+				payload_len = 0;
+
+			// the extension, if present, is after the CSRC list.
+			rtpext = (extension_hdr_t *)((u_int8_t *)payload_data);
+			payload_data += sizeof(extension_hdr_t) + rtpext->length;
+			payload_len -= sizeof(extension_hdr_t) + rtpext->length;
+		}
+
 		frame->data = payload_data;
 		frame->datalen = payload_len;
 		channel->rawstream = gfileRAW;
-		//printf("[%p]\n", channel->rawstream);
 		if(payload_len > 0) {
 			channel->last_datalen = payload_len;
 		}
@@ -299,8 +334,9 @@ RTP::read(unsigned char* data, size_t len, struct pcap_pkthdr *header,  u_int32_
 				RTP *prevrtp = (RTP*)(owner->rtp_prev[iscaller]);
 				if(prevrtp && prevrtp != this) {
 					prevrtp->data = data; 
+					prevrtp->len = len;
 					prevrtp->header = header;
-					prevrtp->saddr =  saddr;
+					prevrtp->saddr = saddr;
 					prevrtp->jitterbuffer(prevrtp->channel_record, opt_saveRAW || opt_saveWAV);
 				}
 			}
@@ -323,50 +359,6 @@ RTP::read(unsigned char* data, size_t len, struct pcap_pkthdr *header,  u_int32_
 
 	prev_payload = curpayload;
 	
-	/* get RTP payload header and datalen */
-	if(opt_saveRAW || opt_saveWAV) {
-		payload_data = data + sizeof(RTPFixedHeader);
-		payload_len = len - sizeof(RTPFixedHeader);
-		if(getPadding()) {
-			/*
-			* If set, this packet contains one or more additional padding
-			* bytes at the end which are not part of the payload. The last
-			* byte of the padding contains a count of how many padding bytes
-			* should be ignored. Padding may be needed by some encryption
-			* algorithms with fixed block sizes or for carrying several RTP
-			* packets in a lower-layer protocol data unit.
-			*/
-			payload_len -= ((u_int8_t *)data)[payload_len - 1];
-		}
-		if(getCC() > 0) {
-			/*
-			* The number of CSRC identifiers that follow the fixed header.
-			*/
-			payload_data += 4 * getCC();
-			payload_len -= 4 * getCC();
-		}
-		if(getExtension()) {
-			/*
-			* If set, the fixed header is followed by exactly one header extension.
-			*/
-			extension_hdr_t *rtpext;
-			if (payload_len < 4)
-				payload_len = 0;
-
-			// the extension, if present, is after the CSRC list.
-			rtpext = (extension_hdr_t *)((u_int8_t *)payload_data);
-			payload_data += sizeof(extension_hdr_t) + rtpext->length;
-			payload_len -= sizeof(extension_hdr_t) + rtpext->length;
-		}
-		/*
-		* this is not VAD friendly
-
-		if(gfileRAW.is_open()) {
-			//gfileRAW.write((const char*)payload_data, payload_len);
-		}
-		*/
-	}
-
 	if(!payload) {
 		/* save payload to statistics based on first payload. TODO: what if payload is dynamically changing? */
 		payload = curpayload;
@@ -389,6 +381,11 @@ RTP::read(unsigned char* data, size_t len, struct pcap_pkthdr *header,  u_int32_
 			} else {
 				packetization_iterator = 0;
 			}
+			/* for recording, we cannot loose any packet */
+			if(opt_saveRAW || opt_saveWAV) {
+				packetization = channel_record->packetization = 20;
+				jitterbuffer(channel_record, opt_saveRAW || opt_saveWAV);
+			}
 		} else if(packetization_iterator == 1) {
 			if(seq == (last_seq + 1)) {
 				// sequence numbers are ok, we can calculate packetization
@@ -396,15 +393,26 @@ RTP::read(unsigned char* data, size_t len, struct pcap_pkthdr *header,  u_int32_
 				packetization = (packetization + last_packetization) / 2;
 				packetization_iterator++;
 				channel_fix1->packetization = channel_fix2->packetization = channel_adapt->packetization = channel_record->packetization = packetization;
+				jitterbuffer(channel_fix1, 0);
+				jitterbuffer(channel_fix2, 0);
+				jitterbuffer(channel_adapt, 0);
+				if(opt_saveRAW || opt_saveWAV) {
+					jitterbuffer(channel_record, 1);
+				}
 			} else {
 				packetization_iterator = 0;
+				/* for recording, we cannot loose any packet */
+				if(opt_saveRAW || opt_saveWAV) {
+					packetization = channel_record->packetization = 20;
+					jitterbuffer(channel_record, 1);
+				}
 			}
 		} else {
 			jitterbuffer(channel_fix1, 0);
 			jitterbuffer(channel_fix2, 0);
 			jitterbuffer(channel_adapt, 0);
 			if(opt_saveRAW || opt_saveWAV) {
-				jitterbuffer(channel_record, opt_saveRAW || opt_saveWAV);
+				jitterbuffer(channel_record, 1);
 			}
 		}
 	}
