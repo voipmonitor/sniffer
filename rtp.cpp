@@ -401,7 +401,7 @@ RTP::read(unsigned char* data, size_t len, struct pcap_pkthdr *header,  u_int32_
 			}
 		} else {
 			jitterbuffer(channel_fix1, 0);
-			jitterbuffer(channel_fix2, opt_saveRAW || opt_saveWAV);
+			jitterbuffer(channel_fix2, 0);
 			jitterbuffer(channel_adapt, 0);
 			if(opt_saveRAW || opt_saveWAV) {
 				jitterbuffer(channel_record, opt_saveRAW || opt_saveWAV);
