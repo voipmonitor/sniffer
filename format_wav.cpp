@@ -146,7 +146,6 @@ int wav_mix(char *in1, char *in2, char *out) {
 	if(!f_out) {
 		fclose(f_in1);
 		fclose(f_in2);
-		fclose(f_out);
 		syslog(LOG_ERR,"File [%s] cannot be opened for write.\n", out);
 		return 1;
 	}
