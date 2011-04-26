@@ -416,7 +416,6 @@ Call::convertRawToWav() {
 	sprintf(rawInfo, "%s/%s.i%d.rawInfo", dirname(), fbasename, 1);
 	pl = fopen(rawInfo, "r");
 	if(!pl) {
-		fclose(pl);
 		syslog(LOG_ERR, "Cannot open %s\n", rawInfo);
 		return 1;
 	}
@@ -451,7 +450,6 @@ Call::convertRawToWav() {
 		sprintf(rawInfo, "%s/%s.i%d.rawInfo", dirname(), fbasename, i);
 		pl = fopen(rawInfo, "r");
 		if(!pl) {
-			if(i == 1) fclose(pl);
 			syslog(LOG_ERR, "Cannot open %s\n", rawInfo);
 			return 1;
 		}
