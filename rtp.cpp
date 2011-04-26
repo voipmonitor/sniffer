@@ -151,6 +151,14 @@ RTP::~RTP() {
 	if(gfileRAW) {
 		fclose(gfileRAW);
 	}
+
+	if(opt_saveGRAPH) {
+		if(opt_gzipGRAPH) {
+			gfileGZ.close();
+		} else {
+			gfile.close();
+		}
+	}
 }
 
 
