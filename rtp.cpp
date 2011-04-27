@@ -372,7 +372,7 @@ RTP::read(unsigned char* data, size_t len, struct pcap_pkthdr *header,  u_int32_
 
 	if(seeninviteok) {
 		if(packetization_iterator == 0) {
-			if(seq == (last_seq + 1)) {
+			if(seq == (last_seq + 1) && curpayload != 101) {
 				// sequence numbers are ok, we can calculate packetization
 				packetization = (getTimestamp() - s->lastTimeStamp) / 8;
 				last_packetization = packetization;
@@ -387,17 +387,22 @@ RTP::read(unsigned char* data, size_t len, struct pcap_pkthdr *header,  u_int32_
 				jitterbuffer(channel_record, opt_saveRAW || opt_saveWAV);
 			}
 		} else if(packetization_iterator == 1) {
-			if(seq == (last_seq + 1)) {
+			if(seq == (last_seq + 1) && curpayload != 101) {
 				// sequence numbers are ok, we can calculate packetization
 				packetization = (getTimestamp() - last_ts) / 8;
 				packetization = (packetization + last_packetization) / 2;
-				packetization_iterator++;
-				channel_fix1->packetization = channel_fix2->packetization = channel_adapt->packetization = channel_record->packetization = packetization;
-				jitterbuffer(channel_fix1, 0);
-				jitterbuffer(channel_fix2, 0);
-				jitterbuffer(channel_adapt, 0);
-				if(opt_saveRAW || opt_saveWAV) {
-					jitterbuffer(channel_record, 1);
+				if(packetization <= 0) {
+					// packetization failed, fall back to start
+					packetization_iterator = 0;
+				} else {
+					packetization_iterator++;
+					channel_fix1->packetization = channel_fix2->packetization = channel_adapt->packetization = channel_record->packetization = packetization;
+					jitterbuffer(channel_fix1, 0);
+					jitterbuffer(channel_fix2, 0);
+					jitterbuffer(channel_adapt, 0);
+					if(opt_saveRAW || opt_saveWAV) {
+						jitterbuffer(channel_record, 1);
+					}
 				}
 			} else {
 				packetization_iterator = 0;
