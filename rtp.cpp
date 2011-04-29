@@ -215,9 +215,8 @@ RTP::jitterbuffer(struct ast_channel *channel, int savePayload) {
 			payload_data += sizeof(extension_hdr_t) + rtpext->length;
 			payload_len -= sizeof(extension_hdr_t) + rtpext->length;
 		}
-
 		frame->data = payload_data;
-		frame->datalen = payload_len;
+		frame->datalen = payload_len > 0 ? payload_len : 0; /* ensure that datalen is never negative */
 		channel->rawstream = gfileRAW;
 		if(payload_len > 0) {
 			channel->last_datalen = payload_len;
