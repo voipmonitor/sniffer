@@ -396,7 +396,7 @@ static void jb_get_and_deliver(struct ast_channel *chan, struct timeval *mynow)
 		case JB_IMPL_OK:
 			/* deliver the frame */
 			//ast_write(chan, f);
-			if(chan->rawstream && f->data) {
+			if(chan->rawstream && f->data && f->datalen > 0) {
 				//write frame to file
 				stmp = (short int)f->datalen;
 				if(chan->codec == PAYLOAD_SPEEX || chan->codec == PAYLOAD_G723 || chan->codec == PAYLOAD_G729) fwrite(&stmp, 1, sizeof(short int), chan->rawstream);   // write packet len
