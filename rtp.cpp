@@ -137,6 +137,12 @@ RTP::~RTP() {
 	if(packetization)
 		RTP::dump();
 	*/
+
+	if(gfileRAW) {
+		jitterbuffer_fixed_flush(channel_record);
+		fclose(gfileRAW);
+	}
+
 	delete s;
 	ast_jb_destroy(channel_fix1);
 	ast_jb_destroy(channel_fix2);
@@ -147,11 +153,6 @@ RTP::~RTP() {
 	free(channel_adapt);
 	free(channel_record);
 	free(frame);
-
-	if(gfileRAW) {
-		jitterbuffer_fixed_flush(channel_record);
-		fclose(gfileRAW);
-	}
 
 	if(opt_saveGRAPH) {
 		if(opt_gzipGRAPH) {
@@ -219,7 +220,7 @@ RTP::jitterbuffer(struct ast_channel *channel, int savePayload) {
 		frame->datalen = payload_len > 0 ? payload_len : 0; /* ensure that datalen is never negative */
 		channel->rawstream = gfileRAW;
 		if(payload_len > 0) {
-			channel->last_datalen = payload_len;
+			channel->last_datalen = frame->datalen;
 		}
 	} else {
 		frame->datalen = 0;
@@ -292,7 +293,7 @@ RTP::jitterbuffer(struct ast_channel *channel, int savePayload) {
 
 /* read rtp packet */
 void
-RTP::read(unsigned char* data, size_t len, struct pcap_pkthdr *header,  u_int32_t saddr, int seeninviteok) {
+RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t saddr, int seeninviteok) {
 
 	this->data = data; 
 	this->len = len;
@@ -440,7 +441,7 @@ RTP::read(unsigned char* data, size_t len, struct pcap_pkthdr *header,  u_int32_
 
 /* fill internal structures by the input RTP packet */
 void
-RTP::fill(unsigned char* data, size_t len, struct pcap_pkthdr *header,  u_int32_t saddr) {
+RTP::fill(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t saddr) {
 	this->data = data; 
 	this->len = len;
 	this->header = header;

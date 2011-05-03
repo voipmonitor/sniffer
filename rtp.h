@@ -141,9 +141,9 @@ public:
 	int codec;
 	int rtpmap[MAX_RTPMAP];
 	unsigned char* data;    //!< pointer to UDP payload
-	size_t len;		//!< lenght of UDP payload
+	int len;		//!< lenght of UDP payload
 	unsigned char* payload_data;    //!< pointer to RTP payload
-	size_t payload_len;	//!< lenght of RTP payload
+	int payload_len;	//!< lenght of RTP payload
 	int ssrc_index;		//!< index 
 	int iscaller;		//!< flag which indicates if RTP stream is part of caller or callee
 	void *call_owner;	//!< which Call owns us
@@ -199,7 +199,7 @@ public:
 	 * @param saddr source IP adress of the packet
 	 *
         */
-	void read(unsigned char* data, size_t len, struct pcap_pkthdr *header,  u_int32_t saddr, int seeninviteok);
+	void read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t saddr, int seeninviteok);
 
 
         /**
@@ -213,7 +213,7 @@ public:
 	 * @param saddr source IP adress of the packet
 	 *
         */
-	void fill(unsigned char* data, size_t len, struct pcap_pkthdr *header,  u_int32_t saddr);
+	void fill(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t saddr);
 
 	
         /**
