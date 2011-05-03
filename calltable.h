@@ -93,7 +93,7 @@ public:
 	 * 
 	 * @return reference to the finded Call or NULL if not found. 
 	*/
-	Call *find_by_ip_port(in_addr_t addr, unsigned short port);
+	Call *find_by_ip_port(in_addr_t addr, unsigned short port, int *iscaller);
 
 	int get_index_by_ip_port(in_addr_t addr, unsigned short port);
 
@@ -290,7 +290,7 @@ public:
 	 *
 	 * @return reference of the Call if found, otherwise return NULL
 	*/
-	Call *find_by_ip_port(in_addr_t addr, unsigned short port);
+	Call *find_by_ip_port(in_addr_t addr, unsigned short port, int *iscaller);
 
 	/**
 	 * @brief Save inactive calls to MySQL and delete it from list

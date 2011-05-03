@@ -156,10 +156,11 @@ Call::add_ip_port(in_addr_t addr, unsigned short port, char *ua, unsigned long u
 
 /* Return reference to Call if IP:port was found, otherwise return NULL */
 Call*
-Call::find_by_ip_port(in_addr_t addr, unsigned short port){
+Call::find_by_ip_port(in_addr_t addr, unsigned short port, int *iscaller){
 	for(int i = 0; i < ipport_n; i++) {
 		if(this->addr[i] == addr && this->port[i] == port){
 			// we have found it
+			*iscaller = this->iscaller[i];
 			return this;
 		}
 	}
@@ -775,7 +776,7 @@ Calltable::hashfind_by_ip_port(in_addr_t addr, unsigned short port, int *iscalle
 Call*
 Calltable::add(char *call_id, unsigned long call_id_len, time_t time) {
 	Call *newcall = new Call(call_id, call_id_len, time, this);
-	calls_list.push_front(newcall);
+	calls_list.push_back(newcall);
 	return newcall;
 }
 
@@ -793,10 +794,10 @@ Calltable::find_by_call_id(char *call_id, unsigned long call_id_len) {
 
 /* find Call by ip addr and port (mathing RTP proto to call) and return reference to this Call */
 Call*
-Calltable::find_by_ip_port(in_addr_t addr, unsigned short port) {
+Calltable::find_by_ip_port(in_addr_t addr, unsigned short port, int *iscaller) {
 	// Calls iterator (whole table) 
 	for (call = calls_list.begin(); call != calls_list.end(); ++call) {
-		if((*call)->find_by_ip_port(addr, port))
+		if((*call)->find_by_ip_port(addr, port, iscaller))
 			// we have found it
 			return *call;
 	}

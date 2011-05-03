@@ -342,7 +342,7 @@ void readdump(pcap_t *handle) {
 		data = (char *) header_udp + sizeof(*header_udp);
 		datalen = header->len - ((unsigned long) data - (unsigned long) packet); 
 		// TODO: remove if hash will be stable
-		//if ((call = calltable->find_by_ip_port(header_ip->daddr, htons(header_udp->dest)))){	
+		//if ((call = calltable->find_by_ip_port(header_ip->daddr, htons(header_udp->dest), &iscaller))){	
 		if ((call = calltable->hashfind_by_ip_port(header_ip->daddr, htons(header_udp->dest), &iscaller))){	
 			// packet (RTP) by destination:port is already part of some stored call 
 			call->read_rtp((unsigned char*) data, datalen, header, header_ip->saddr, htons(header_udp->source), iscaller);
@@ -351,7 +351,7 @@ void readdump(pcap_t *handle) {
 				save_packet(call, header, packet);
 			}
 		// TODO: remove if hash will be stable
-		//} else if ((call = calltable->find_by_ip_port(header_ip->saddr, htons(header_udp->source)))){	
+		//} else if ((call = calltable->find_by_ip_port(header_ip->saddr, htons(header_udp->source), &iscaller))){	
 		} else if ((call = calltable->hashfind_by_ip_port(header_ip->saddr, htons(header_udp->source), &iscaller))){
 			// packet (RTP) by source:port is already part of some stored call 
 			// as we are searching by source address and find some call, revert iscaller 
