@@ -438,6 +438,9 @@ int main(int argc, char *argv[]) {
 	// start reading packets
 	readdump(handle);
 
+	// close handler
+	pcap_close(handle);
+
 	// here we go when readdump finished. When reading from interface, do nothing, because cleanups is done in sigint_* functions
 	if(!ifname) {
 		calltable->cleanup(0);
