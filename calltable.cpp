@@ -828,7 +828,9 @@ Calltable::cleanup( time_t currtime ) {
 					syslog(LOG_NOTICE, "Set call->sighup\n");
 			}
 			/* move call to queue for mysql processing */
-			calls_queue.push((*call));
+			lock_calls_queue();
+			calls_queue.push(*call);
+			unlock_calls_queue();
 			calls_list.erase(call++);
 		} else {
 			++call;

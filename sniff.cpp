@@ -503,7 +503,9 @@ void readdump(pcap_t *handle) {
 								pcap_dump_close(call->get_f_pcap());
 								call->set_f_pcap(NULL);
 							}
-							calltable->calls_queue.push(call);	// push it to CDR queue 
+							calltable->lock_calls_queue();
+							calltable->calls_queue.push(call);	// push it to CDR queue at the end of queue
+							calltable->unlock_calls_queue();
 							calltable->calls_list.remove(call);
 							if(verbosity > 2)
 								syslog(LOG_NOTICE, "Call closed\n");
