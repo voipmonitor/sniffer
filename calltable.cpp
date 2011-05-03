@@ -776,7 +776,7 @@ Calltable::hashfind_by_ip_port(in_addr_t addr, unsigned short port, int *iscalle
 Call*
 Calltable::add(char *call_id, unsigned long call_id_len, time_t time) {
 	Call *newcall = new Call(call_id, call_id_len, time, this);
-	calls_list.push_back(newcall);
+	calls_list.push_front(newcall);
 	return newcall;
 }
 
