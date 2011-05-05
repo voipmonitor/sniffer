@@ -19,6 +19,7 @@
 #include <pthread.h>
 #include <unistd.h>
 #include <syslog.h>
+#include <sys/resource.h>
 
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -426,6 +427,20 @@ int main(int argc, char *argv[]) {
 			return(2);
 		}
 	}
+
+	// set maximum open files 
+	struct rlimit rlp;
+	rlp.rlim_cur = 65535;
+	rlp.rlim_max = 65535;
+	setrlimit(RLIMIT_NOFILE, &rlp);
+	getrlimit(RLIMIT_NOFILE, &rlp);
+	if(rlp.rlim_cur != 65535) {
+		printf("Warning, max open files is: %d consider rise this to 65535 with ulimitc -n 65535\n", rlp.rlim_cur);
+	}
+	// set core file dump to 3GB so if voipmonitor crashes it will produce coredump
+	rlp.rlim_cur = 1024 * 1024 * 1024 * 3;
+	rlp.rlim_max = 1024 * 1024 * 1024 * 3;
+	setrlimit(RLIMIT_CORE, &rlp);
 
 	// filters are ok, we can daemonize 
 	if (opt_fork){
