@@ -370,7 +370,7 @@ void readdump(pcap_t *handle) {
 			   BYE message, it knows which call to hang up based on the Call-ID.
 			*/
 			s = gettag(data,datalen,"Call-ID:", &l);
-			if(l == 0 || l > 1023) {
+			if(l <= 0 || l > 1023) {
 				continue;
 			} else {
 				memcpy(str1,s,l);
