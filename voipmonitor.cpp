@@ -49,7 +49,7 @@ int opt_saveGRAPH = 0;		// save GRAPH data to *.graph file?
 int opt_gzipGRAPH = 0;		// compress GRAPH data ? 
 int opt_nocdr = 0;		// do not save cdr?
 int opt_gzipPCAP = 0;		// compress PCAP data ? 
-int verbosity = 0;		// debug level
+int verbosity = 0;		// cebug level
 
 char mysql_host[256] = "localhost";
 char mysql_database[256] = "voipmonitor";
@@ -96,12 +96,14 @@ void *storing_cdr( void *dummy ) {
 			calltable->unlock_calls_queue();
 		
 			if(!opt_nocdr) {
+				if(verbosity > 0) printf("storing_cdr to MySQL. Queue[%d]\n", calltable->calls_queue.size());
 				call->saveToMysql();
 			}
 
 			if(opt_saveWAV) {
 				/* we have to close all raw files as there can be data in buffers */
 				call->closeRawFiles();
+				if(verbosity > 0) printf("converting RAW file to WAV Queue[%d]\n", calltable->calls_queue.size());
 				call->convertRawToWav();
 			}
 

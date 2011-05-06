@@ -90,14 +90,12 @@ Call::~Call(){
 
 void
 Call::closeRawFiles() {
-	FILE *tmp;
 	for(int i = 0; i < ssrc_n; i++) {
 		if(rtp[i].gfileRAW) {
 			rtp[i].jitterbuffer_fixed_flush(rtp[i].channel_record);
 			/* preventing race condition as gfileRAW is checking for NULL pointer in rtp classes */ 
-			tmp = rtp[i].gfileRAW;
+			fclose(rtp[i].gfileRAW);
 			rtp[i].gfileRAW = NULL;
-			fclose(tmp);
 		}
 	}
 }
@@ -219,16 +217,6 @@ Call::read_rtp(unsigned char* data, unsigned long datalen, struct pcap_pkthdr *h
 		}
 		rtp[ssrc_n].gfileRAW = NULL;
 		sprintf(rtp[ssrc_n].basefilename, "%s/%s.i%d", dirname(), fbasename, iscaller);
-		/*
-		if(opt_saveRAW || opt_saveWAV) {
-			char tmp[1024];
-			sprintf(tmp, "%s/%s.%d.raw", dirname(), fbasename, ssrc_n);
-			//rtp[ssrc_n].gfileRAW.open(tmp, ios::binary);
-			rtp[ssrc_n].gfileRAW = fopen(tmp, "w");
-		} else {
-			rtp[ssrc_n].gfileRAW = NULL;
-		}
-		*/
 		int i = get_index_by_ip_port(saddr, port);
 		memcpy(this->rtp[ssrc_n].rtpmap, rtpmap[i], MAX_RTPMAP * sizeof(int));
 
@@ -289,6 +277,8 @@ int convertALAW2WAV(char *fname1, char *fname3) {
 		syslog(LOG_ERR,"File [%s] cannot be opened for write", fname3);
 		return -1;
 	}
+	char f_out_buffer[32768];
+	setvbuf(f_out, f_out_buffer, _IOFBF, 32768);
  
 	// wav_write_header(f_out);
  
@@ -347,6 +337,8 @@ int convertULAW2WAV(char *fname1, char *fname3) {
 		syslog(LOG_ERR,"File [%s] cannot be opened for write", fname3);
 		return -1;
 	}
+	char f_out_buffer[32768];
+	setvbuf(f_out, f_out_buffer, _IOFBF, 32768);
  
 	// wav_write_header(f_out);
  
@@ -435,6 +427,9 @@ Call::convertRawToWav() {
 		syslog(LOG_ERR, "Cannot open %s or %s\n", wav0, wav1);
 		return 1;
 	}
+        char wav_buffer[32768];
+        setvbuf(wav, wav_buffer, _IOFBF, 32768);
+
 	/* write silence of msdiff duration */
 	short int zero = 0;
 	for(int i = 0; i < (abs(msdiff) / 20) * 160; i++) {

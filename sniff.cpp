@@ -290,6 +290,7 @@ void readdump(pcap_t *handle) {
 
 		// checking and cleaning calltable every 15 seconds (if some packet arrive) 
 		if (header->ts.tv_sec - last_cleanup > 15){
+			if(verbosity > 0) printf("Total calls [%d] calls in queue[%d]\n", calltable->calls_list.size(), calltable->calls_queue.size());
 			if (last_cleanup >= 0){
 				calltable->cleanup(header->ts.tv_sec);
 			}

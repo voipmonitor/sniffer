@@ -149,6 +149,8 @@ int wav_mix(char *in1, char *in2, char *out) {
 		syslog(LOG_ERR,"File [%s] cannot be opened for write.\n", out);
 		return 1;
 	}
+	char f_out_buffer[32768];
+	setvbuf(f_out, f_out_buffer, _IOFBF, 32768);
 
 	wav_write_header(f_out);
 

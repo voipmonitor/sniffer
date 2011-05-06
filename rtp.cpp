@@ -341,6 +341,7 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 				}
 			}
 			gfileRAW = fopen(tmp, "w");
+			setvbuf(gfileRAW, gfileRAW_buffer, _IOFBF, 32768);
 			if(!gfileRAW) {
 				syslog(LOG_ERR, "Cannot open file %s for writing\n", tmp);
 			}
