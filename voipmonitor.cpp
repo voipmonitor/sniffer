@@ -30,6 +30,7 @@
 #include "calltable.h"
 #include "voipmonitor.h"
 #include "sniff.h"
+#include "simpleini/SimpleIni.h"
 
 using namespace std;
 
@@ -57,6 +58,12 @@ char mysql_table[256] = "cdr";
 char mysql_user[256] = "root";
 char mysql_password[256] = "";
 char opt_pidfile[] = "/var/run/voipmonitor.pid";
+char user_filter[2048] = "";
+char ifname[1024];	// Specifies the name of the network device to use for 
+			// the network lookup, for example, eth0
+int opt_promisc = 1;	// put interface to promisc mode?
+
+char opt_chdir[1024];
 
 
 
@@ -154,17 +161,113 @@ static void daemonize(void)
 	}
 }
 
+bool FileExists(string strFilename) { 
+	struct stat stFileInfo; 
+	int intStat; 
+
+	// Attempt to get the file attributes 
+	intStat = stat(strFilename.c_str(),&stFileInfo); 
+	if(intStat == 0) { 
+		// We were able to get the file attributes 
+		// so the file obviously exists. 
+		return true; 
+	} else { 
+		// We were not able to get the file attributes. 
+		// This may mean that we don't have permission to 
+		// access the folder which contains this file. If you 
+		// need to do that level of checking, lookup the 
+		// return values of stat which will give you 
+		// more details on why stat failed. 
+		return false; 
+	} 
+}
+
+int yesno(const char *arg) {
+	if(arg[0] == 'y' or arg[0] == 1) 
+		return 1;
+	else
+		return 0;
+}
+
+int load_config() {
+	string fname;
+	if(FileExists("~/voipmonitor.conf")) {
+		fname = "~/voipmonitor.conf";
+	} else if(FileExists("/etc/voipmonitor.conf")) {
+		fname = "/etc/voipmonitor.conf";
+	} else {
+		return 1;
+	}
+
+	printf("Loading configuration from file %s\n", fname.c_str());
+
+	CSimpleIniA ini;
+	ini.SetUnicode();
+	ini.LoadFile(fname.c_str());
+	const char *value;
+
+	if(value = ini.GetValue("general", "interface", NULL)) {
+		strncpy(ifname, value, sizeof(ifname));
+	}
+	if(value = ini.GetValue("general", "nocdr", NULL)) {
+		opt_nocdr = yesno(value);
+	}
+	if(value = ini.GetValue("general", "savesip", NULL)) {
+		opt_saveSIP = yesno(value);
+	}
+	if(value = ini.GetValue("general", "savertp", NULL)) {
+		opt_saveRTP = yesno(value);
+	}
+	if(value = ini.GetValue("general", "savewav", NULL)) {
+		opt_saveWAV = yesno(value);
+	}
+	if(value = ini.GetValue("general", "savewav", NULL)) {
+		switch(value[0]) {
+		case 'y':
+		case '1':
+		case 'p':
+			opt_saveGRAPH = 1;
+			break;
+		case 'g':
+			opt_saveGRAPH = 1;
+			opt_gzipGRAPH = 1;
+		}
+	}
+	if(value = ini.GetValue("general", "filter", NULL)) {
+		strncpy(user_filter, value, sizeof(user_filter));
+	}
+	if(value = ini.GetValue("general", "spooldir", NULL)) {
+		strncpy(opt_chdir, value, sizeof(opt_chdir));
+	}
+
+	if(value = ini.GetValue("general", "promisc", NULL)) {
+		opt_promisc = yesno(value);
+	}
+	if(value = ini.GetValue("general", "myqslhost", NULL)) {
+		strncpy(mysql_host, value, sizeof(mysql_host));
+	}
+	if(value = ini.GetValue("general", "mysqldb", NULL)) {
+		strncpy(mysql_database, optarg, sizeof(mysql_database));
+	}
+	if(value = ini.GetValue("general", "mysqltable", NULL)) {
+		strncpy(mysql_table, optarg, sizeof(mysql_table));
+	}
+	if(value = ini.GetValue("general", "mysqlusername", NULL)) {
+		strncpy(mysql_user, optarg, sizeof(mysql_user));
+	}
+	if(value = ini.GetValue("general", "mysqlpassword", NULL)) {
+		strncpy(mysql_password, optarg, sizeof(mysql_password));
+	}
+	return 0;
+}
+
 int main(int argc, char *argv[]) {
 
 	/* parse arguments */
 
 	char *fname = NULL;	// pcap file to read on 
-	char *ifname = NULL;	// Specifies the name of the network device to use for 
-				// the network lookup, for example, eth0
-	int opt_promisc = 1;	// put interface to promisc mode?
-	char user_filter[2048] = "";
-	
-	char *opt_chdir = "/var/spool/voipmonitor";
+	ifname[0] = '\0';
+	strcpy(opt_chdir, "/var/spool/voipmonitor");
 
         int option_index = 0;
         static struct option long_options[] = {
@@ -190,7 +293,10 @@ int main(int argc, char *argv[]) {
 
 	openlog("voipmonitor", LOG_CONS | LOG_PERROR, LOG_DAEMON);
 
+	/* try to load configuration from file first */
+	load_config();
 
+	/* command line arguments overrides configuration in voipmonitor.conf file */
 	while(1) {
 		int c;
 		c = getopt_long(argc, argv, "f:i:r:d:v:h:b:t:u:p:kncUSRAWG", long_options, &option_index);
@@ -211,7 +317,7 @@ int main(int argc, char *argv[]) {
 				opt_gzipPCAP = 1;
 				break;
 			case 'i':
-				ifname = optarg;
+				strncpy(ifname, optarg, sizeof(ifname));
 				break;
 			case 'v':
 				verbosity = atoi(optarg);
@@ -223,7 +329,7 @@ int main(int argc, char *argv[]) {
 				opt_nocdr = 1;
 				break;
 			case 'd':
-				opt_chdir = optarg;
+				strncpy(opt_chdir, optarg, sizeof(opt_chdir));
 				break;
 			case 'k':
 				opt_fork = 0;
@@ -275,8 +381,9 @@ int main(int argc, char *argv[]) {
 				break;
 		}
 	}
-	if ((fname == NULL) && (ifname == NULL)){
+	if ((fname == NULL) && (ifname[0] == '\0')){
 		printf( "voipmonitor version %s\n"
+				"You have to provide <-i interfce> or <-r pcap_file> or set interface in configuration file\n"
 				"Usage: voipmonitor [-kncUSRAWG] [-i <interface>] [-f <pcap filter>] [-r <file>] [-d <pcap dump directory>] [-v level]\n"
 				"                 [-h <mysql server>] [-b <mysql database] [-u <mysql username>] [-p <mysql password>]\n"
 				"                 [-f <pcap filter>]\n"
@@ -350,7 +457,7 @@ int main(int argc, char *argv[]) {
 	char errbuf[PCAP_ERRBUF_SIZE];	// Returns error text and is only set when the pcap_lookupnet subroutine fails.
 	pcap_t *handle = NULL;			// pcap handler 
 
-	if (ifname){
+	if (fname == NULL && ifname[0] != '\0'){
 		printf("Capturing on interface: %s\n", ifname);
 		// Find the properties for interface 
 		if (pcap_lookupnet(ifname, &net, &mask, errbuf) == -1) {
@@ -437,11 +544,11 @@ int main(int argc, char *argv[]) {
 	setrlimit(RLIMIT_NOFILE, &rlp);
 	getrlimit(RLIMIT_NOFILE, &rlp);
 	if(rlp.rlim_cur != 65535) {
-		printf("Warning, max open files is: %d consider rise this to 65535 with ulimitc -n 65535\n", rlp.rlim_cur);
+		printf("Warning, max open files is: %d consider rise this to 65535 with ulimitc -n 65535\n", (int)rlp.rlim_cur);
 	}
-	// set core file dump to 3GB so if voipmonitor crashes it will produce coredump
-	rlp.rlim_cur = 1024 * 1024 * 1024 * 3;
-	rlp.rlim_max = 1024 * 1024 * 1024 * 3;
+	// set core file dump to unlimited size
+	rlp.rlim_cur = UINT_MAX;
+	rlp.rlim_max = UINT_MAX;
 	setrlimit(RLIMIT_CORE, &rlp);
 
 	// filters are ok, we can daemonize 
@@ -459,7 +566,7 @@ int main(int argc, char *argv[]) {
 	pcap_close(handle);
 
 	// here we go when readdump finished. When reading from interface, do nothing, because cleanups is done in sigint_* functions
-	if(!ifname) {
+	if(ifname[0] == '\0') {
 		calltable->cleanup(0);
 		terminating = 1;
 		pthread_join(call_thread, NULL);

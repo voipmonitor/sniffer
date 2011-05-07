@@ -1,0 +1,61 @@
+#!/bin/sh
+
+PATH=/sbin:/bin:/usr/sbin:/usr/bin:/usr/local/bin:/usr/local/sbin
+TERM="linux";
+ARGS="-i eth0"
+PIDFILE=/var/run/voipmonitor.pid
+
+case "$1" in
+  start)
+  	if [ -f $PIDFILE ]; then
+		PID=`cat $PIDFILE`
+		NAME=`ps -o comm= $PID`
+		if [ "$NAME" == "voipmonitor" ]; then
+			echo "Voipmonitor is already running"
+		else
+			rm $PIDFILE
+			echo -n "Starting voipmonitor: "
+			voipmonitor --pid-file /var/run/voipmonitor.pid $ARGS
+		fi
+	else
+		echo -n "Starting voipmonitor: "
+		voipmonitor --pid-file /var/run/voipmonitor.pid $ARGS
+	fi
+        ;;
+  stop)
+  	if [ -f $PIDFILE ]; then
+		PID=`cat $PIDFILE`
+		NAME=`ps -o comm= $PID`
+		if [ "$NAME" == "voipmonitor" ]; then
+			echo "Sending kill signal to voipmonitor"
+			kill $PID
+		else
+			echo "voipmonitor is not running";
+			rm $PIDFILE
+		fi
+	else
+		echo "voipmonitor is not running";
+	fi
+        ;;
+  force-stop)
+  	if [ -f $PIDFILE ]; then
+		PID=`cat $PIDFILE`
+		NAME=`ps -o comm= $PID`
+		if [ "$NAME" == "voipmonitor" ]; then
+			echo "Sending kill signal to voipmonitor"
+			kill -9 $PID
+		else
+			echo "voipmonitor is not running";
+			rm $PIDFILE
+		fi
+	else
+		echo "voipmonitor is not running";
+	fi
+        ;;
+  *)
+  	echo "Usage: /etc/init.d/voipmonitor {start|stop|force-stopn}"
+        ;;
+esac
+
+exit 0
+

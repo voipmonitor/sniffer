@@ -20,6 +20,11 @@ Key features
 - Detailed delay/loss statistics stored to MySQL
 - Each call is saved as standalone pcap file
 
+Sponsors and contributors
+-------------------------
+- Telephonic http://telephonic.ca
+* init script, configuration file
+
 What is required
 ----------------
 
