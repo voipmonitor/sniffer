@@ -94,7 +94,7 @@ char * gettag(const void *ptr, unsigned long len, const char *tag, unsigned long
 	return rc;
 }
 
-int get_sip_peercnam(char *data, int data_len, char *tag, char *peername, int peername_len){
+int get_sip_peercnam(char *data, int data_len, const char *tag, char *peername, int peername_len){
 	unsigned long r, r2, peername_tag_len;
 	char *peername_tag = gettag(data, data_len, tag, &peername_tag_len);
 	if(!peername_tag_len) {

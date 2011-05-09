@@ -282,8 +282,9 @@ RTP::jitterbuffer(struct ast_channel *channel, int savePayload) {
 			channel->last_loss_burst = 0;
 		}
 		ast_jb_get_and_deliver(channel, &channel->last_ts);
-		/* adding packetization time to last_ts time */ // XXX: we are using temporary ast_tvadd pointer for coyping (compiler is warning about this, but I dont see problem. Make it better if you want)
-		memcpy(&channel->last_ts, &ast_tvadd(channel->last_ts, ast_samp2tv(packetization, 1000)), sizeof(struct timeval));
+		/* adding packetization time to last_ts time */ 
+		struct timeval tmp = ast_tvadd(channel->last_ts, ast_samp2tv(packetization, 1000));
+		memcpy(&channel->last_ts, &tmp, sizeof(struct timeval));
 		msdiff -= packetization;
 	}
 

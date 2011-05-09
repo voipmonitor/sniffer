@@ -250,9 +250,9 @@ int fixed_jb_put(struct fixed_jb *jb, void *data, long ms, long ts, long now)
 	/* Check if the new delivery time is not covered already by the chosen frame
 	 * be tolerant (10ms) (iLBC from asterisk is coming 20/40/20/40/20 ms
 	 * XXX: check if that 10ms tolerant does not brake statistics on various loss or delay samples */
-	if (jb->force_resynch || frame && (frame->delivery == delivery ||
-			 delivery + 10 < frame->delivery + frame->ms ||
-		         (frame->next && delivery + ms > frame->next->delivery)))
+	if (jb->force_resynch || (frame && (frame->delivery == delivery ||
+			(delivery + 10 < frame->delivery + frame->ms) ||
+		         (frame->next && (delivery + ms > frame->next->delivery)))))
 	{
 		/* TODO: Should we check for resynch here? Be careful to do not allow threshold smaller than
 		   the size of the jb */
