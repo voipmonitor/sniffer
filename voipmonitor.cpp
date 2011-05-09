@@ -4,6 +4,7 @@
 */
 
 #include <queue>
+#include <climits>
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -206,22 +207,22 @@ int load_config() {
 	ini.LoadFile(fname.c_str());
 	const char *value;
 
-	if(value = ini.GetValue("general", "interface", NULL)) {
+	if((value = ini.GetValue("general", "interface", NULL))) {
 		strncpy(ifname, value, sizeof(ifname));
 	}
-	if(value = ini.GetValue("general", "nocdr", NULL)) {
+	if((value = ini.GetValue("general", "nocdr", NULL))) {
 		opt_nocdr = yesno(value);
 	}
-	if(value = ini.GetValue("general", "savesip", NULL)) {
+	if((value = ini.GetValue("general", "savesip", NULL))) {
 		opt_saveSIP = yesno(value);
 	}
-	if(value = ini.GetValue("general", "savertp", NULL)) {
+	if((value = ini.GetValue("general", "savertp", NULL))) {
 		opt_saveRTP = yesno(value);
 	}
-	if(value = ini.GetValue("general", "savewav", NULL)) {
+	if((value = ini.GetValue("general", "savewav", NULL))) {
 		opt_saveWAV = yesno(value);
 	}
-	if(value = ini.GetValue("general", "savewav", NULL)) {
+	if((value = ini.GetValue("general", "savewav", NULL))) {
 		switch(value[0]) {
 		case 'y':
 		case '1':
@@ -233,29 +234,29 @@ int load_config() {
 			opt_gzipGRAPH = 1;
 		}
 	}
-	if(value = ini.GetValue("general", "filter", NULL)) {
+	if((value = ini.GetValue("general", "filter", NULL))) {
 		strncpy(user_filter, value, sizeof(user_filter));
 	}
-	if(value = ini.GetValue("general", "spooldir", NULL)) {
+	if((value = ini.GetValue("general", "spooldir", NULL))) {
 		strncpy(opt_chdir, value, sizeof(opt_chdir));
 	}
 
-	if(value = ini.GetValue("general", "promisc", NULL)) {
+	if((value = ini.GetValue("general", "promisc", NULL))) {
 		opt_promisc = yesno(value);
 	}
-	if(value = ini.GetValue("general", "myqslhost", NULL)) {
+	if((value = ini.GetValue("general", "myqslhost", NULL))) {
 		strncpy(mysql_host, value, sizeof(mysql_host));
 	}
-	if(value = ini.GetValue("general", "mysqldb", NULL)) {
+	if((value = ini.GetValue("general", "mysqldb", NULL))) {
 		strncpy(mysql_database, optarg, sizeof(mysql_database));
 	}
-	if(value = ini.GetValue("general", "mysqltable", NULL)) {
+	if((value = ini.GetValue("general", "mysqltable", NULL))) {
 		strncpy(mysql_table, optarg, sizeof(mysql_table));
 	}
-	if(value = ini.GetValue("general", "mysqlusername", NULL)) {
+	if((value = ini.GetValue("general", "mysqlusername", NULL))) {
 		strncpy(mysql_user, optarg, sizeof(mysql_user));
 	}
-	if(value = ini.GetValue("general", "mysqlpassword", NULL)) {
+	if((value = ini.GetValue("general", "mysqlpassword", NULL))) {
 		strncpy(mysql_password, optarg, sizeof(mysql_password));
 	}
 	return 0;
