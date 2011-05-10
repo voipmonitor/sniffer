@@ -21,7 +21,7 @@ case "$1" in
 		echo -n "Starting voipmonitor: "
 		voipmonitor --pid-file /var/run/voipmonitor.pid $ARGS
 	fi
-        ;;
+	;;
   stop)
   	if [ -f $PIDFILE ]; then
 		PID=`cat $PIDFILE`
@@ -36,7 +36,7 @@ case "$1" in
 	else
 		echo "voipmonitor is not running";
 	fi
-        ;;
+	;;
   force-stop)
   	if [ -f $PIDFILE ]; then
 		PID=`cat $PIDFILE`
@@ -51,10 +51,21 @@ case "$1" in
 	else
 		echo "voipmonitor is not running";
 	fi
-        ;;
+	;;
+  restart|force-reload)
+	#
+	#       If the "reload" option is implemented, move the "force-reload"
+	#       option to the "reload" entry above. If not, "force-reload" is
+	#       just the same as "restart".
+	#
+	$0 stop
+	echo "waiting 2 seconds";
+	sleep 2
+	$0 start
+	;;
   *)
-  	echo "Usage: /etc/init.d/voipmonitor {start|stop|force-stopn}"
-        ;;
+  	echo "Usage: /etc/init.d/voipmonitor {start|stop|force-stop|restart}"
+	;;
 esac
 
 exit 0

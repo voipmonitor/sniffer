@@ -248,16 +248,16 @@ int load_config() {
 		strncpy(mysql_host, value, sizeof(mysql_host));
 	}
 	if((value = ini.GetValue("general", "mysqldb", NULL))) {
-		strncpy(mysql_database, optarg, sizeof(mysql_database));
+		strncpy(mysql_database, value, sizeof(mysql_database));
 	}
 	if((value = ini.GetValue("general", "mysqltable", NULL))) {
-		strncpy(mysql_table, optarg, sizeof(mysql_table));
+		strncpy(mysql_table, value, sizeof(mysql_table));
 	}
 	if((value = ini.GetValue("general", "mysqlusername", NULL))) {
-		strncpy(mysql_user, optarg, sizeof(mysql_user));
+		strncpy(mysql_user, value, sizeof(mysql_user));
 	}
 	if((value = ini.GetValue("general", "mysqlpassword", NULL))) {
-		strncpy(mysql_password, optarg, sizeof(mysql_password));
+		strncpy(mysql_password, value, sizeof(mysql_password));
 	}
 	return 0;
 }
