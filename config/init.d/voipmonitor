@@ -1,8 +1,14 @@
 #!/bin/sh
 
+# chkconfig: 2345 90 10
+# description: voipmonitor 
+# on centos, run chkconfig --add voipmonitor
+# on debian, run update-rc.d voipmonitor defaults 
+
 PATH=/sbin:/bin:/usr/sbin:/usr/bin:/usr/local/bin:/usr/local/sbin
 TERM="linux";
-ARGS="-i eth0"
+# uncomment and change interface if you do not have voipmonitor.conf 
+#ARGS="-i eth0"
 PIDFILE=/var/run/voipmonitor.pid
 
 case "$1" in

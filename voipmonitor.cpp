@@ -222,7 +222,7 @@ int load_config() {
 	if((value = ini.GetValue("general", "savewav", NULL))) {
 		opt_saveWAV = yesno(value);
 	}
-	if((value = ini.GetValue("general", "savewav", NULL))) {
+	if((value = ini.GetValue("general", "savegraph", NULL))) {
 		switch(value[0]) {
 		case 'y':
 		case '1':
@@ -232,6 +232,7 @@ int load_config() {
 		case 'g':
 			opt_saveGRAPH = 1;
 			opt_gzipGRAPH = 1;
+			break;
 		}
 	}
 	if((value = ini.GetValue("general", "filter", NULL))) {
