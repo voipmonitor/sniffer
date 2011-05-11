@@ -585,13 +585,14 @@ Call::saveToMysql() {
 			indexes[1] = indexes[0];
 			indexes[0] = tmp;
 		}
+		query << " , " << "a_ua = " << quote << a_ua;
+		query << " , " << "b_ua = " << quote << b_ua;
 
 		// save only two streams with the biggest received packets
 		for(int i = 0; i < 2; i++) {
 			c = i == 0 ? 'a' : 'b';
 
 			query << " , " << c << "_index = " << quote << indexes[i];
-			query << " , " << c << "_ua = " << quote << (i == 0 ? a_ua : b_ua);
 			query << " , " << c << "_received = " << rtp[indexes[i]].stats.received;
 			query << " , " << c << "_lost = " << rtp[indexes[i]].stats.lost;
 			query << " , " << c << "_avgjitter = " << quote << int(ceil(rtp[indexes[i]].stats.avgjitter));
@@ -769,8 +770,10 @@ Calltable::hashfind_by_ip_port(in_addr_t addr, unsigned short port, int *iscalle
 }
 
 Call*
-Calltable::add(char *call_id, unsigned long call_id_len, time_t time) {
+Calltable::add(char *call_id, unsigned long call_id_len, time_t time, u_int32_t saddr, unsigned short port) {
 	Call *newcall = new Call(call_id, call_id_len, time, this);
+	newcall->saddr = saddr;
+	newcall->sport = port;
 	calls_list.push_front(newcall);
 	return newcall;
 }

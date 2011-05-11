@@ -52,6 +52,8 @@ int opt_gzipGRAPH = 0;		// compress GRAPH data ?
 int opt_nocdr = 0;		// do not save cdr?
 int opt_gzipPCAP = 0;		// compress PCAP data ? 
 int verbosity = 0;		// cebug level
+int opt_rtp_oneleg = 0;		// if == 1 then save RTP stream only for first INVITE leg in case you are 
+				// sniffing on SIP proxy where voipmonitor see both SIP leg. 
 
 char mysql_host[256] = "localhost";
 char mysql_database[256] = "voipmonitor";
@@ -210,6 +212,9 @@ int load_config() {
 	if((value = ini.GetValue("general", "interface", NULL))) {
 		strncpy(ifname, value, sizeof(ifname));
 	}
+	if((value = ini.GetValue("general", "rtp-firstleg", NULL))) {
+		opt_rtp_oneleg = yesno(value);
+	}
 	if((value = ini.GetValue("general", "nocdr", NULL))) {
 		opt_nocdr = yesno(value);
 	}
@@ -286,6 +291,7 @@ int main(int argc, char *argv[]) {
             {"mysql-username", 1, 0, 'u'},
             {"mysql-password", 1, 0, 'p'},
             {"pid-file", 1, 0, 'P'},
+            {"rtp-firstleg", 0, 0, 3},
             {0, 0, 0, 0}
         };
 
@@ -317,6 +323,9 @@ int main(int argc, char *argv[]) {
 				break;
 			case '2':
 				opt_gzipPCAP = 1;
+				break;
+			case '3':
+				opt_rtp_oneleg = 1;
 				break;
 			case 'i':
 				strncpy(ifname, optarg, sizeof(ifname));
@@ -388,7 +397,17 @@ int main(int argc, char *argv[]) {
 				"You have to provide <-i interfce> or <-r pcap_file> or set interface in configuration file\n"
 				"Usage: voipmonitor [-kncUSRAWG] [-i <interface>] [-f <pcap filter>] [-r <file>] [-d <pcap dump directory>] [-v level]\n"
 				"                 [-h <mysql server>] [-b <mysql database] [-u <mysql username>] [-p <mysql password>]\n"
-				"                 [-f <pcap filter>]\n"
+				"                 [-f <pcap filter>] [--rtp-firstleg]\n"
+				"\n"
+				" --rtp-firstleg\n"
+				"      this is important option if voipmonitor is sniffing on SIP proxy and see both RTP leg of CALL.\n"
+				"      in that case use this option. It will analyze RTP only for the first LEG and not each 4 RTP\n"
+				"      streams which will confuse voipmonitor. Drawback of this switch is that voipmonitor will analyze\n"
+				"      SDP only for SIP packets which have the same IP and port of the first INVITE source IP\n"
+				"      and port. It means it will not work in case where phone sends INVITE from a.b.c.d:1024 and\n"
+				"      SIP proxy replies to a.b.c.d:5060. If you have better idea how to solve this problem better\n"
+				"      please contact support@voipmonitor.org\n"
+				"\n"
 				" -c, --no-cdr\n"
 				"      do no save CDR to MySQL database.\n"
 				"\n"

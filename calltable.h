@@ -53,6 +53,8 @@ public:
 	int rtpmap[MAX_IP_PER_CALL][20]; //!< rtpmap for every rtp stream
 	RTP tmprtp;			//!< temporary structure used to decode information from frame
 	void *calltable;		//!< reference to calltable
+	u_int32_t saddr;		//!< source IP address of first INVITE
+	unsigned short sport;		//!< source port of first INVITE
 
 	time_t progress_time;		//!< time in seconds of 18X response
 	time_t first_rtp_time;		//!< time in seconds of first RTP packet
@@ -270,7 +272,7 @@ public:
 	 *
 	 * @return reference of the new Call class
 	*/
-	Call *add(char *call_id, unsigned long call_id_len, time_t time);
+	Call *add(char *call_id, unsigned long call_id_len, time_t time, u_int32_t saddr, unsigned short port);
 
 	/**
 	 * @brief find Call by call_id

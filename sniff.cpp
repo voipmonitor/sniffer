@@ -54,6 +54,7 @@ extern int opt_saveWAV;
 extern int opt_packetbuffered;	  // Make .pcap files writing ‘‘packet-buffered’’
 extern int verbosity;
 extern int terminating;
+extern int rtp_oneleg = 1;
 
 /* save packet into file */
 void save_packet(Call *call, struct pcap_pkthdr *header, const u_char *packet) {
@@ -431,7 +432,7 @@ void readdump(pcap_t *handle) {
 				// packet does not belongs to any call yet
 				if (sip_method == INVITE) {
 					// store this call only if it starts with invite
-					call = calltable->add(s, l, header->ts.tv_sec);
+					call = calltable->add(s, l, header->ts.tv_sec, header_ip->saddr, htons(header_udp->source));
 					call->set_first_packet_time(header->ts.tv_sec);
 					call->sipcallerip = header_ip->saddr;
 					call->sipcalledip = header_ip->daddr;
@@ -458,7 +459,12 @@ void readdump(pcap_t *handle) {
 					// SIP packet does not belong to any call and it is not INVITE 
 					continue;
 				}
-			} else {
+			/* check if SIP packet belongs to the first leg */
+			} else if(rtp_oneleg == 0 || (rtp_oneleg &&
+				(call->saddr == header_ip->saddr && call->sport == htons(header_udp->source)) || 
+				(call->saddr == header_ip->daddr && call->sport == htons(header_udp->dest))))
+
+				{
 				// packet is already part of call
 				call->set_last_packet_time(header->ts.tv_sec);
 				// check if it is BYE or OK(RES2XX)
@@ -537,30 +543,37 @@ void readdump(pcap_t *handle) {
 				get_sip_peername(data,datalen,"To:", call->called, sizeof(call->called));
 				call->seeninvite = true;
 			}
-			// SDP examination
-			s = gettag(data,datalen,"Content-Type:",&l);
-			char *tmp = strstr(data, "\r\n\r\n");;
-			if(l > 0 && strncasecmp(s, "application/sdp", l) == 0 && tmp != NULL){
-				// we have found SDP, add IP and port to the table
-				in_addr_t tmp_addr;
-				unsigned short tmp_port;
-				int rtpmap[MAX_RTPMAP];
-				memset(&rtpmap, 0, sizeof(int) * MAX_RTPMAP);
-				if (!get_ip_port_from_sdp(tmp + 1, &tmp_addr, &tmp_port)){
-					// prepare User-Agent
-					s = gettag(data,datalen,"User-Agent:", &l);
-					// store RTP stream
-					get_rtpmap_from_sdp(tmp + 1, datalen - (tmp + 1 - data), rtpmap);
-					call->add_ip_port(tmp_addr, tmp_port, s, l, call->sipcallerip == header_ip->saddr, rtpmap);
-					calltable->hashAdd(tmp_addr, tmp_port, call, call->sipcallerip == header_ip->saddr);
+			// SDP examination only in case it is SIP msg belongs to first leg
+
+			if(rtp_oneleg == 0 || (rtp_oneleg &&
+				(call->saddr == header_ip->saddr && call->sport == htons(header_udp->source)) || 
+				(call->saddr == header_ip->daddr && call->sport == htons(header_udp->dest)))) 
+				{
+
+				s = gettag(data,datalen,"Content-Type:",&l);
+				char *tmp = strstr(data, "\r\n\r\n");;
+				if(l > 0 && strncasecmp(s, "application/sdp", l) == 0 && tmp != NULL){
+					// we have found SDP, add IP and port to the table
+					in_addr_t tmp_addr;
+					unsigned short tmp_port;
+					int rtpmap[MAX_RTPMAP];
+					memset(&rtpmap, 0, sizeof(int) * MAX_RTPMAP);
+					if (!get_ip_port_from_sdp(tmp + 1, &tmp_addr, &tmp_port)){
+						// prepare User-Agent
+						s = gettag(data,datalen,"User-Agent:", &l);
+						// store RTP stream
+						get_rtpmap_from_sdp(tmp + 1, datalen - (tmp + 1 - data), rtpmap);
+						call->add_ip_port(tmp_addr, tmp_port, s, l, call->sipcallerip == header_ip->saddr, rtpmap);
+						calltable->hashAdd(tmp_addr, tmp_port, call, call->sipcallerip == header_ip->saddr);
 #ifdef NAT
-					call->add_ip_port(header_ip->saddr, tmp_port, s, l, call->sipcallerip == header_ip->saddr, rtpmap);
-					calltable->hashAdd(header_ip->saddr, tmp_port, call, call->sipcallerip == header_ip->saddr);
+						call->add_ip_port(header_ip->saddr, tmp_port, s, l, call->sipcallerip == header_ip->saddr, rtpmap);
+						calltable->hashAdd(header_ip->saddr, tmp_port, call, call->sipcallerip == header_ip->saddr);
 #endif
-	
-				} else {
-					if(verbosity >= 2){
-						syslog(LOG_ERR, "Can't get ip/port from SDP:\n%s\n\n", tmp + 1);
+		
+					} else {
+						if(verbosity >= 2){
+							syslog(LOG_ERR, "Can't get ip/port from SDP:\n%s\n\n", tmp + 1);
+						}
 					}
 				}
 			}

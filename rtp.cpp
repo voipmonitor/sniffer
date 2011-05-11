@@ -122,7 +122,7 @@ RTP::RTP() {
 	packetization = 0;
 	last_packetization = 0;
 	packetization_iterator = 0;
-	payload = 0;
+	payload = -1;
 	prev_payload = -1;
 	codec = -1;
 	for(int i = 0; i < MAX_RTPMAP; i++) {
@@ -361,9 +361,10 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 
 	prev_payload = curpayload;
 	
-	if(!payload) {
+	if(payload < 0) {
 		/* save payload to statistics based on first payload. TODO: what if payload is dynamically changing? */
-		payload = curpayload;
+		payload = codec;
+		printf("saving payload:[%d]\n", payload);
 	}
 
 	if(curpayload == 101) {
