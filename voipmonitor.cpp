@@ -291,7 +291,7 @@ int main(int argc, char *argv[]) {
             {"mysql-username", 1, 0, 'u'},
             {"mysql-password", 1, 0, 'p'},
             {"pid-file", 1, 0, 'P'},
-            {"rtp-firstleg", 0, 0, 3},
+            {"rtp-firstleg", 0, 0, '3'},
             {0, 0, 0, 0}
         };
 
@@ -470,6 +470,7 @@ int main(int argc, char *argv[]) {
 	signal(SIGTERM,sigterm_handler);
 	
 	calltable = new Calltable;
+	printf("f:[%d]\n", opt_rtp_firstleg);
 
 	// preparing pcap reading and pcap filters 
 	
