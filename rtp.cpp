@@ -364,7 +364,6 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 	if(payload < 0) {
 		/* save payload to statistics based on first payload. TODO: what if payload is dynamically changing? */
 		payload = codec;
-		printf("saving payload:[%d]\n", payload);
 	}
 
 	if(curpayload == 101) {
