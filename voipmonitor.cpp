@@ -52,7 +52,7 @@ int opt_gzipGRAPH = 0;		// compress GRAPH data ?
 int opt_nocdr = 0;		// do not save cdr?
 int opt_gzipPCAP = 0;		// compress PCAP data ? 
 int verbosity = 0;		// cebug level
-int opt_rtp_oneleg = 0;		// if == 1 then save RTP stream only for first INVITE leg in case you are 
+int opt_rtp_firstleg = 0;		// if == 1 then save RTP stream only for first INVITE leg in case you are 
 				// sniffing on SIP proxy where voipmonitor see both SIP leg. 
 
 char mysql_host[256] = "localhost";
@@ -213,7 +213,7 @@ int load_config() {
 		strncpy(ifname, value, sizeof(ifname));
 	}
 	if((value = ini.GetValue("general", "rtp-firstleg", NULL))) {
-		opt_rtp_oneleg = yesno(value);
+		opt_rtp_firstleg = yesno(value);
 	}
 	if((value = ini.GetValue("general", "nocdr", NULL))) {
 		opt_nocdr = yesno(value);
@@ -325,7 +325,7 @@ int main(int argc, char *argv[]) {
 				opt_gzipPCAP = 1;
 				break;
 			case '3':
-				opt_rtp_oneleg = 1;
+				opt_rtp_firstleg = 1;
 				break;
 			case 'i':
 				strncpy(ifname, optarg, sizeof(ifname));
