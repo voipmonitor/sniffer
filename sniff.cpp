@@ -54,7 +54,7 @@ extern int opt_saveWAV;
 extern int opt_packetbuffered;	  // Make .pcap files writing ‘‘packet-buffered’’
 extern int verbosity;
 extern int terminating;
-extern int rtp_oneleg = 1;
+extern int opt_rtp_oneleg;
 
 /* save packet into file */
 void save_packet(Call *call, struct pcap_pkthdr *header, const u_char *packet) {
@@ -460,7 +460,7 @@ void readdump(pcap_t *handle) {
 					continue;
 				}
 			/* check if SIP packet belongs to the first leg */
-			} else if(rtp_oneleg == 0 || (rtp_oneleg &&
+			} else if(opt_rtp_oneleg == 0 || (opt_rtp_oneleg &&
 				(call->saddr == header_ip->saddr && call->sport == htons(header_udp->source)) || 
 				(call->saddr == header_ip->daddr && call->sport == htons(header_udp->dest))))
 
@@ -545,7 +545,7 @@ void readdump(pcap_t *handle) {
 			}
 			// SDP examination only in case it is SIP msg belongs to first leg
 
-			if(rtp_oneleg == 0 || (rtp_oneleg &&
+			if(opt_rtp_oneleg == 0 || (opt_rtp_oneleg &&
 				(call->saddr == header_ip->saddr && call->sport == htons(header_udp->source)) || 
 				(call->saddr == header_ip->daddr && call->sport == htons(header_udp->dest)))) 
 				{
