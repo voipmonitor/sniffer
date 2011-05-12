@@ -301,6 +301,10 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 	this->header = header;
 	this->saddr =  saddr;
 
+	if(getVersion() != 2) {
+		return;
+	}
+
 	u_int16_t seq = getSeqNum();
 	int curpayload = getPayload();
 
@@ -363,7 +367,7 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 	
 	if(payload < 0) {
 		/* save payload to statistics based on first payload. TODO: what if payload is dynamically changing? */
-		payload = codec;
+		payload = curpayload;
 	}
 
 	if(curpayload == 101) {

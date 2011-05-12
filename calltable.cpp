@@ -188,7 +188,7 @@ Call::read_rtp(unsigned char* data, unsigned long datalen, struct pcap_pkthdr *h
 	
 	//RTP tmprtp; moved to Call structure to avoid creating and destroying class which is not neccessary
 	tmprtp.fill(data, datalen, header, saddr);
-	if(tmprtp.getSSRC() == 0) {
+	if(tmprtp.getSSRC() == 0 || tmprtp.getVersion() != 2) {
 		// invalid ssrc
 		return;
 	}

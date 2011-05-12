@@ -216,6 +216,14 @@ public:
         */
 	void fill(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t saddr);
 
+	/**
+	 * @brief get version
+	 *
+	 * this function gets version from rtp header
+	 *
+	 * @return padding RTP version
+	*/
+	const unsigned char getVersion() { return getHeader()->version; };
 	
         /**
 	 * @brief get sequence sumber
