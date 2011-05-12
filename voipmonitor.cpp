@@ -54,6 +54,7 @@ int opt_gzipPCAP = 0;		// compress PCAP data ?
 int verbosity = 0;		// cebug level
 int opt_rtp_firstleg = 0;		// if == 1 then save RTP stream only for first INVITE leg in case you are 
 				// sniffing on SIP proxy where voipmonitor see both SIP leg. 
+int opt_sip_register = 0;	// if == 1 save REGISTER messages
 
 char mysql_host[256] = "localhost";
 char mysql_database[256] = "voipmonitor";
@@ -104,13 +105,18 @@ void *storing_cdr( void *dummy ) {
 			calltable->lock_calls_queue();
 			call = calltable->calls_queue.front();
 			calltable->unlock_calls_queue();
-		
+	
+
 			if(!opt_nocdr) {
-				if(verbosity > 0) printf("storing_cdr to MySQL. Queue[%d]\n", calltable->calls_queue.size());
-				call->saveToMysql();
+				if(verbosity > 0) printf("storing to MySQL. Queue[%d]\n", calltable->calls_queue.size());
+				if(call->type == INVITE) {
+					call->saveToMysql();
+				} else if(call->type == REGISTER){
+					call->saveRegisterToMysql();
+				}
 			}
 
-			if(opt_saveWAV) {
+			if(opt_saveWAV && call->type == INVITE) {
 				/* we have to close all raw files as there can be data in buffers */
 				call->closeRawFiles();
 				if(verbosity > 0) printf("converting RAW file to WAV Queue[%d]\n", calltable->calls_queue.size());
@@ -215,6 +221,9 @@ int load_config() {
 	if((value = ini.GetValue("general", "rtp-firstleg", NULL))) {
 		opt_rtp_firstleg = yesno(value);
 	}
+	if((value = ini.GetValue("general", "sip-register", NULL))) {
+		opt_rtp_firstleg = yesno(value);
+	}
 	if((value = ini.GetValue("general", "nocdr", NULL))) {
 		opt_nocdr = yesno(value);
 	}
@@ -292,6 +301,7 @@ int main(int argc, char *argv[]) {
             {"mysql-password", 1, 0, 'p'},
             {"pid-file", 1, 0, 'P'},
             {"rtp-firstleg", 0, 0, '3'},
+            {"sip-register", 0, 0, '4'},
             {0, 0, 0, 0}
         };
 
@@ -326,6 +336,9 @@ int main(int argc, char *argv[]) {
 				break;
 			case '3':
 				opt_rtp_firstleg = 1;
+				break;
+			case '4':
+				opt_sip_register = 1;
 				break;
 			case 'i':
 				strncpy(ifname, optarg, sizeof(ifname));
@@ -407,6 +420,9 @@ int main(int argc, char *argv[]) {
 				"      and port. It means it will not work in case where phone sends INVITE from a.b.c.d:1024 and\n"
 				"      SIP proxy replies to a.b.c.d:5060. If you have better idea how to solve this problem better\n"
 				"      please contact support@voipmonitor.org\n"
+				"\n"
+				" --sip-messages\n"
+				"      save REGISTER messages\n"
 				"\n"
 				" -c, --no-cdr\n"
 				"      do no save CDR to MySQL database.\n"

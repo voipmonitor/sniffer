@@ -109,3 +109,17 @@ CREATE TABLE `cdr` (
   KEY `b_burstr_f2` (`b_burstr_f2`),
   KEY `b_burstr_adapt` (`b_burstr_adapt`)
 ) ENGINE=InnoDB;
+
+CREATE TABLE `register` (
+  `ID` int(32) unsigned NOT NULL auto_increment,
+  `calldate` datetime NOT NULL,
+  `sipcallerip` int(32) unsigned NOT NULL,
+  `sipcalledip` int(32) unsigned NOT NULL,
+  `fbasename` varchar(255) NOT NULL,
+  `sighup` tinyint(2) NOT NULL default 0,
+  PRIMARY KEY  (`ID`),
+  KEY `calldate` (`calldate`),
+  KEY `sipcallerip` (`sipcallerip`),
+  KEY `sipcalledip` (`sipcalledip`)
+) ENGINE=InnoDB;
+

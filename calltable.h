@@ -28,12 +28,23 @@
 #define RTPTIMEOUT 300
 #define MAXNODE 50000
 
+#define INVITE 1
+#define BYE 2
+#define CANCEL 3
+#define RES2XX 4
+#define RES3XX 5
+#define RES4XX 6
+#define RES5XX 7
+#define RES6XX 8
+#define RES18X 9
+#define REGISTER 10
 
 /**
   * This class implements operations on call
 */
 class Call {
 public:
+	int type;			//!< type of call, INVITE or REGISTER
 	unsigned long call_id_len;	//!< length of call-id 	
 	char call_id[MAX_CALL_ID];	//!< call-id from SIP session
 	char fbasename[MAX_FNAME];	//!< basename of file 
@@ -190,11 +201,16 @@ public:
 	int convertRawToWav();
  
 	/**
-
-	 * @brief transfer Call to another queue which periodicaly stores Call to MySQL
+	 * @brief save call to mysql
 	 *
 	*/
 	int saveToMysql();
+
+	/**
+	 * @brief save register msgs to mysql
+	 *
+	*/
+	int saveRegisterToMysql();
 
 	/**
 	 * @brief calculate duration of the call

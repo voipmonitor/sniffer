@@ -660,6 +660,60 @@ Call::saveToMysql() {
 	return 0;
 }
 
+/* TODO: implement failover -> write INSERT into file */
+int
+Call::saveRegisterToMysql() {
+	using namespace mysqlpp;
+
+	extern char mysql_host[256];
+	extern char mysql_database[256];
+	char *mysql_table = "register";
+	extern char mysql_user[256];
+	extern char mysql_password[256];
+
+	if(!con.connected()) {
+		con.connect(mysql_database, mysql_host, mysql_user, mysql_password);
+		if(!con) {
+			syslog(LOG_ERR,"DB connection failed: %s", con.error());
+			return 1;
+		}
+	} 
+	mysqlpp::Query query = con.query();
+	/* walk two first RTP and store it to MySQL. */
+
+	query << "INSERT INTO `" << mysql_table << "` SET " <<
+		"  sipcallerip = " << quote << htonl(sipcallerip) <<
+		", sipcalledip = " << quote << htonl(sipcalledip) <<
+		", calldate = FROM_UNIXTIME(" << calltime() << ")" <<
+		", fbasename = " << quote << fbasename << 
+		", sighup = " << quote << (sighup ? 1 : 0);
+
+	if(verbosity > 2) cout << query << "\n";
+	query.store();
+	if(con.errnum()) {
+		if(con.errnum() == 2006) {
+			//error:'MySQL server has gone away'
+			syslog(LOG_ERR,"Reconnecting to database");
+			con.disconnect();
+			con.connect(mysql_database, mysql_host, mysql_user, mysql_password);
+			if(!con) {
+				syslog(LOG_ERR,"DB connection failed: %s", con.error());
+				return 1;
+			}
+			// try to store cdr again
+			query.store();
+			if(con.errnum()) {
+				syslog(LOG_ERR,"Error in query errnum:'%d' error:'%s'", con.errnum(), con.error());
+				return 0;
+			}
+
+		}
+		syslog(LOG_ERR,"Error in query errnum:'%d' error:'%s'", con.errnum(), con.error());
+	}
+
+	return 0;
+}
+
 /* for debug purpose */
 void
 Call::dump(){

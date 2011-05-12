@@ -35,17 +35,6 @@ using namespace std;
 #define MAX(x,y) ((x) > (y) ? (x) : (y))
 #define MIN(x,y) ((x) < (y) ? (x) : (y))
 
-#define INVITE 1
-#define BYE 2
-#define CANCEL 3
-#define RES2XX 4
-#define RES3XX 5
-#define RES4XX 6
-#define RES5XX 7
-#define RES6XX 8
-#define RES18X 9
-
-
 Calltable *calltable;
 extern int opt_saveSIP;	  	// save SIP packets to pcap file?
 extern int opt_saveRTP;	 	// save RTP packets to pcap file?
@@ -55,6 +44,7 @@ extern int opt_packetbuffered;	  // Make .pcap files writing ‘‘packet-buffer
 extern int verbosity;
 extern int terminating;
 extern int opt_rtp_firstleg;
+extern int opt_sip_register;
 
 /* save packet into file */
 void save_packet(Call *call, struct pcap_pkthdr *header, const u_char *packet) {
@@ -383,6 +373,10 @@ void readdump(pcap_t *handle) {
 				if(verbosity > 2) 
 					 syslog(LOG_NOTICE,"SIP msg: INVITE\n");
 				sip_method = INVITE;
+			} else if ((datalen > 7) && !(memmem(data, 8, "REGISTER", 8) == 0)) {
+				if(verbosity > 2) 
+					 syslog(LOG_NOTICE,"SIP msg: REGISTER\n");
+				sip_method = REGISTER;
 			} else if ((datalen > 2) && !(memmem(data, 3, "BYE", 3) == 0)) {
 				if(verbosity > 2) 
 					 syslog(LOG_NOTICE,"SIP msg: BYE\n");
@@ -430,12 +424,13 @@ void readdump(pcap_t *handle) {
 			// find call */
 			if (!(call = calltable->find_by_call_id(s, l))){
 				// packet does not belongs to any call yet
-				if (sip_method == INVITE) {
+				if (sip_method == INVITE || (opt_sip_register && sip_method == REGISTER)) {
 					// store this call only if it starts with invite
 					call = calltable->add(s, l, header->ts.tv_sec, header_ip->saddr, htons(header_udp->source));
 					call->set_first_packet_time(header->ts.tv_sec);
 					call->sipcallerip = header_ip->saddr;
 					call->sipcalledip = header_ip->daddr;
+					call->type = sip_method;
 					strcpy(call->fbasename, str1);
 
 					// opening dump file
