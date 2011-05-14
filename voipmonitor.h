@@ -5,3 +5,6 @@
 
 #define RTPSENSOR_VERSION "2.2"
 #define NAT
+
+#define FORMAT_WAV	1
+#define FORMAT_OGG	2

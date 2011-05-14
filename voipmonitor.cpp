@@ -55,6 +55,7 @@ int verbosity = 0;		// cebug level
 int opt_rtp_firstleg = 0;		// if == 1 then save RTP stream only for first INVITE leg in case you are 
 				// sniffing on SIP proxy where voipmonitor see both SIP leg. 
 int opt_sip_register = 0;	// if == 1 save REGISTER messages
+int opt_audio_format = FORMAT_WAV;	// define format for audio writing (if -W option)
 
 char mysql_host[256] = "localhost";
 char mysql_database[256] = "voipmonitor";
@@ -233,8 +234,19 @@ int load_config() {
 	if((value = ini.GetValue("general", "savertp", NULL))) {
 		opt_saveRTP = yesno(value);
 	}
-	if((value = ini.GetValue("general", "savewav", NULL))) {
-		opt_saveWAV = yesno(value);
+	if((value = ini.GetValue("general", "saveaudio", NULL))) {
+		switch(value[0]) {
+		case 'y':
+		case '1':
+		case 'w':
+			opt_saveWAV = 1;
+			opt_audio_format = FORMAT_WAV;
+			break;
+		case 'o':
+			opt_saveWAV = 1;
+			opt_audio_format = FORMAT_OGG;
+			break;
+		}
 	}
 	if((value = ini.GetValue("general", "savegraph", NULL))) {
 		switch(value[0]) {
@@ -292,7 +304,7 @@ int main(int argc, char *argv[]) {
             {"save-sip", 0, 0, 'S'},
             {"save-rtp", 0, 0, 'R'},
             {"save-raw", 0, 0, 'A'},
-            {"save-wav", 0, 0, 'W'},
+            {"save-audio", 0, 0, 'W'},
             {"no-cdr", 0, 0, 'c'},
             {"save-graph", 2, 0, 'G'},
             {"mysql-server", 1, 0, 'h'},
@@ -302,6 +314,7 @@ int main(int argc, char *argv[]) {
             {"pid-file", 1, 0, 'P'},
             {"rtp-firstleg", 0, 0, '3'},
             {"sip-register", 0, 0, '4'},
+            {"audio-format", 1, 0, '5'},
             {0, 0, 0, 0}
         };
 
@@ -339,6 +352,13 @@ int main(int argc, char *argv[]) {
 				break;
 			case '4':
 				opt_sip_register = 1;
+				break;
+			case '5':
+				if(optarg[0] == 'o') {
+					opt_audio_format = FORMAT_OGG;
+				} else {
+					opt_audio_format = FORMAT_WAV;
+				}
 				break;
 			case 'i':
 				strncpy(ifname, optarg, sizeof(ifname));
@@ -433,8 +453,11 @@ int main(int argc, char *argv[]) {
 				" -R, --save-rtp\n"
    				"      save RTP packets to pcap file. Default is disabled.\n"
 				"\n"
-				" -W, --save-wav\n"
+				" -W, --save-audio\n"
 				"      save RTP packets and covert it to one WAV file. Default is disabled.\n"
+				"\n"
+				" --audio-format <wav|ogg>\n"
+				"      Save to WAV or OGG audio format. Default is WAV.\n"
 				"\n"
 				" -A, --save-raw\n"
 				"      save RTP payload to RAW format. Default is disabled.\n"
@@ -486,7 +509,6 @@ int main(int argc, char *argv[]) {
 	signal(SIGTERM,sigterm_handler);
 	
 	calltable = new Calltable;
-	printf("f:[%d]\n", opt_rtp_firstleg);
 
 	// preparing pcap reading and pcap filters 
 	

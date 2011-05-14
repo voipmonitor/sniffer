@@ -25,8 +25,10 @@
 
 #include <mysql++.h>
 
+#include "voipmonitor.h"
 #include "calltable.h"
 #include "format_wav.h"
+#include "format_ogg.h"
 #include "codecs.h"
 #include "codec_alaw.h"
 #include "codec_ulaw.h"
@@ -41,6 +43,7 @@ extern int opt_saveRAW;                // save RTP payload RAW data?
 extern int opt_saveWAV;                // save RTP payload RAW data?
 extern int opt_saveGRAPH;	// save GRAPH data to graph file? 
 extern int opt_gzipGRAPH;	// compress GRAPH data to graph file? 
+extern int opt_audio_format;	// define format for audio writing (if -W option)
 static mysqlpp::Connection con(false);
 
 /* constructor */
@@ -392,7 +395,14 @@ Call::convertRawToWav() {
 
 	sprintf(wav0, "%s/%s.i0.wav", dirname(), fbasename);
 	sprintf(wav1, "%s/%s.i1.wav", dirname(), fbasename);
-	sprintf(out, "%s/%s.wav", dirname(), fbasename);
+	switch(opt_audio_format) {
+	case FORMAT_WAV:
+		sprintf(out, "%s/%s.wav", dirname(), fbasename);
+		break;
+	case FORMAT_OGG:
+		sprintf(out, "%s/%s.ogg", dirname(), fbasename);
+		break;
+	}
 
 	/* do synchronisation - calculate difference between start of both RTP direction and put silence to achieve proper synchronisation */
 	/* first direction */
@@ -499,7 +509,14 @@ Call::convertRawToWav() {
 		unlink(rawInfo);
 	}
 
-	wav_mix(wav0, wav1, out);
+	switch(opt_audio_format) {
+	case FORMAT_WAV:
+		wav_mix(wav0, wav1, out);
+		break;
+	case FORMAT_OGG:
+		ogg_mix(wav0, wav1, out);
+		break;
+	}
 	unlink(wav0);
 	unlink(wav1);
 	

@@ -16,6 +16,10 @@
 /codecs.h -text
 config/init.d/voipmonitor -text
 config/voipmonitor.conf -text
+/format_ogg.cpp -text
+/format_ogg.h -text
+/format_slinear.cpp -text
+/format_slinear.h -text
 /format_wav.cpp -text
 /format_wav.h -text
 gzstream/COPYING.LIB -text

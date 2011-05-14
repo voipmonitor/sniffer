@@ -1,10 +1,10 @@
-objects = codec_alaw.o codec_ulaw.o format_wav.o calltable.o rtp.o voipmonitor.o sniff.o jitterbuffer/astmm.o jitterbuffer/utils.o jitterbuffer/fixedjitterbuf.o jitterbuffer/jitterbuf.o jitterbuffer/abstract_jb.o jitterbuffer/frame.o gzstream/gzstream.o gzstream/libgzstream.a
+objects = codec_alaw.o codec_ulaw.o format_slinear.o format_wav.o format_ogg.o calltable.o rtp.o voipmonitor.o sniff.o jitterbuffer/astmm.o jitterbuffer/utils.o jitterbuffer/fixedjitterbuf.o jitterbuffer/jitterbuf.o jitterbuffer/abstract_jb.o jitterbuffer/frame.o gzstream/gzstream.o gzstream/libgzstream.a
 args = -g3 -Wall
 #args = -O2 -Wall
 CFLAGS+=-I /usr/local/include/mysql++/ -I /usr/include/mysql++/ -I /usr/include/mysql/ -g3 -Wall -I jitterbuffer/  -L/usr/local/lib/ -Lgzstream/
-LIBS=-lpthread -lmysqlpp -lpcap -lgzstream -lz 
+LIBS=-lpthread -lmysqlpp -lpcap -lgzstream -lz -lvorbis -lvorbisenc
 #if you want to compile it statically uncomment this line
-#LIBS=-static -lpthread -L/usr/lib/mysql -lmysqlpp -lmysqlclient -lpcap -lgzstream -lz 
+#LIBS=-static -lpthread -L/usr/lib/mysql -lmysqlpp -lmysqlclient -lpcap -lgzstream -lz -lvorbis -lvorbisenc
 
 
 voipmonitor : $(objects) 
@@ -22,8 +22,14 @@ codec_alaw.o : codec_alaw.cpp codec_alaw.h
 codec_ulaw.o : codec_ulaw.cpp codec_ulaw.h
 	g++ -c codec_ulaw.cpp $(args) ${CFLAGS}
 
+format_slinear.o : format_slinear.cpp format_slinear.h
+	g++ -c format_slinear.cpp $(args) ${CFLAGS}
+
 format_wav.o : format_wav.cpp format_wav.h
 	g++ -c format_wav.cpp $(args) ${CFLAGS}
+
+format_ogg.o : format_ogg.cpp format_ogg.h
+	g++ -c format_ogg.cpp $(args) ${CFLAGS}
 
 calltable.o : calltable.cpp calltable.h
 	g++ -c calltable.cpp $(args) ${CFLAGS}
