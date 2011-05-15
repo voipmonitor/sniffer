@@ -2,7 +2,7 @@
 
 # chkconfig: 2345 90 10
 # description: voipmonitor 
-# on centos, run chkconfig --add voipmonitor
+# on centos, run chkconfig --add voipmonitor; chkconfig voipmonitor on
 # on debian, run update-rc.d voipmonitor defaults 
 
 PATH=/sbin:/bin:/usr/sbin:/usr/bin:/usr/local/bin:/usr/local/sbin
