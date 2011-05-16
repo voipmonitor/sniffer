@@ -377,7 +377,7 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 	}
 
 	if(seeninviteok) {
-		if(packetization_iterator == 0) {
+		if(packetization_iterator == 0 && s->lastTimeStamp != 0) {
 			if(seq == (last_seq + 1) && curpayload != 101) {
 				// sequence numbers are ok, we can calculate packetization
 				packetization = (getTimestamp() - s->lastTimeStamp) / 8;
