@@ -106,8 +106,8 @@ RTP::RTP() {
 
 	channel_record = (ast_channel*)calloc(1, sizeof(*channel_record));
 	channel_record->jitter_impl = 0; // fixed
-	channel_record->jitter_max = 200; 
-	channel_record->jitter_resync_threshold = 200; 
+	channel_record->jitter_max = 500; 
+	channel_record->jitter_resync_threshold = 1000; 
 	channel_record->last_datalen = 0;
 	channel_record->lastbuflen = 0;
 	channel_record->resync = 0;
@@ -308,6 +308,7 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 	u_int16_t seq = getSeqNum();
 	int curpayload = getPayload();
 
+	
 	/* codec changed */
 	if(codec == -1 || ((curpayload != prev_payload) && (curpayload != 101 && prev_payload != 101))) {
 		if(curpayload >= 96 && curpayload <= 127) {
@@ -377,12 +378,11 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 	}
 
 	if(seeninviteok) {
-		if(packetization_iterator == 0 && s->lastTimeStamp != 0) {
+		if(packetization_iterator == 0 && last_ts != 0) {
 			if(seq == (last_seq + 1) && curpayload != 101) {
 				// sequence numbers are ok, we can calculate packetization
-				packetization = (getTimestamp() - s->lastTimeStamp) / 8;
+				packetization = (getTimestamp() - last_ts) / 8;
 				last_packetization = packetization;
-				last_ts = getTimestamp();
 				packetization_iterator++;
 			} else {
 				packetization_iterator = 0;
@@ -428,6 +428,7 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 		}
 	}
 
+	last_ts = getTimestamp();
 	last_seq = seq;
 
 	if(first) {
