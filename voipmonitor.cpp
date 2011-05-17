@@ -55,6 +55,7 @@ int verbosity = 0;		// cebug level
 int opt_rtp_firstleg = 0;		// if == 1 then save RTP stream only for first INVITE leg in case you are 
 				// sniffing on SIP proxy where voipmonitor see both SIP leg. 
 int opt_sip_register = 0;	// if == 1 save REGISTER messages
+int opt_ringbuffer = 10;	// ring buffer in MB 
 int opt_audio_format = FORMAT_WAV;	// define format for audio writing (if -W option)
 
 char mysql_host[256] = "localhost";
@@ -219,6 +220,9 @@ int load_config() {
 	if((value = ini.GetValue("general", "interface", NULL))) {
 		strncpy(ifname, value, sizeof(ifname));
 	}
+	if((value = ini.GetValue("general", "ringbuffer", NULL))) {
+		opt_ringbuffer = atoi(value);
+	}
 	if((value = ini.GetValue("general", "rtp-firstleg", NULL))) {
 		opt_rtp_firstleg = yesno(value);
 	}
@@ -315,6 +319,7 @@ int main(int argc, char *argv[]) {
             {"rtp-firstleg", 0, 0, '3'},
             {"sip-register", 0, 0, '4'},
             {"audio-format", 1, 0, '5'},
+            {"ring-buffer", 1, 0, '6'},
             {0, 0, 0, 0}
         };
 
@@ -359,6 +364,9 @@ int main(int argc, char *argv[]) {
 				} else {
 					opt_audio_format = FORMAT_WAV;
 				}
+				break;
+			case '6':
+				opt_ringbuffer = atoi(optarg);
 				break;
 			case 'i':
 				strncpy(ifname, optarg, sizeof(ifname));
@@ -430,7 +438,13 @@ int main(int argc, char *argv[]) {
 				"You have to provide <-i interfce> or <-r pcap_file> or set interface in configuration file\n"
 				"Usage: voipmonitor [-kncUSRAWG] [-i <interface>] [-f <pcap filter>] [-r <file>] [-d <pcap dump directory>] [-v level]\n"
 				"                 [-h <mysql server>] [-b <mysql database] [-u <mysql username>] [-p <mysql password>]\n"
-				"                 [-f <pcap filter>] [--rtp-firstleg]\n"
+				"                 [-f <pcap filter>] [--rtp-firstleg] [--ring-buffer <n>]\n"
+				"\n"
+				" -S, --save-sip\n"
+				"      save SIP packets to pcap file. Default is disabled.\n"
+				"\n"
+				" -R, --save-rtp\n"
+   				"      save RTP packets to pcap file. Default is disabled.\n"
 				"\n"
 				" --rtp-firstleg\n"
 				"      this is important option if voipmonitor is sniffing on SIP proxy and see both RTP leg of CALL.\n"
@@ -441,23 +455,22 @@ int main(int argc, char *argv[]) {
 				"      SIP proxy replies to a.b.c.d:5060. If you have better idea how to solve this problem better\n"
 				"      please contact support@voipmonitor.org\n"
 				"\n"
-				" --sip-messages\n"
-				"      save REGISTER messages\n"
-				"\n"
-				" -c, --no-cdr\n"
-				"      do no save CDR to MySQL database.\n"
-				"\n"
-				" -S, --save-sip\n"
-				"      save SIP packets to pcap file. Default is disabled.\n"
-				"\n"
-				" -R, --save-rtp\n"
-   				"      save RTP packets to pcap file. Default is disabled.\n"
-				"\n"
 				" -W, --save-audio\n"
 				"      save RTP packets and covert it to one WAV file. Default is disabled.\n"
 				"\n"
 				" --audio-format <wav|ogg>\n"
 				"      Save to WAV or OGG audio format. Default is WAV.\n"
+				"\n"
+				" --sip-messages\n"
+				"      save REGISTER messages\n"
+				"\n"
+				" --ring-buffer\n"
+				"      Set ring buffer in MB (feature of newer >= 2.6.31 kernels). If you see voipmonitor dropping packets in syslog\n"
+				"      upgrade to newer kernel and increase --ring-buffer to higher MB. It is buffer between pcap library and voipmonitor.\n"
+				"      The most reason why voipmonitor drops packets is waiting for I/O operations (switching to ext4 from ext3 also helps.\n"
+				"\n"
+				" -c, --no-cdr\n"
+				"      do no save CDR to MySQL database.\n"
 				"\n"
 				" -A, --save-raw\n"
 				"      save RTP payload to RAW format. Default is disabled.\n"
@@ -558,7 +571,7 @@ int main(int argc, char *argv[]) {
 			- default is 2MB for libpcap > 1.0.0
 			- for libpcap < 1.0.0 it is controled by /proc/sys/net/core/rmem_default which is very low 
 		*/
-		if((status = pcap_set_buffer_size(handle, 5*1024*1024)) != 0) {
+		if((status = pcap_set_buffer_size(handle, opt_ringbuffer * 1024 * 1024)) != 0) {
 			fprintf(stderr, "error pcap_set_buffer_size\n");
 			return(2);
 		}

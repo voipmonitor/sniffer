@@ -288,7 +288,7 @@ void readdump(pcap_t *handle) {
 			/* also do every 15 seconds pcap statistics */
 			pcapstatres = pcap_stats(handle, &ps);
 			if (pcapstatres == 0 && (lostpacket < ps.ps_drop || lostpacketif < ps.ps_ifdrop)) {
-				syslog(LOG_ERR, "error: libpcap or interface dropped some packets! rx:%i drop:%i ifdrop:%i\n", ps.ps_recv, ps.ps_drop, ps.ps_ifdrop);
+				syslog(LOG_ERR, "error: libpcap or interface dropped some packets! rx:%i drop:%i ifdrop:%i increase --ring-buffer (kernel >= 2.6.31 needed)\n", ps.ps_recv, ps.ps_drop, ps.ps_ifdrop);
 				lostpacket = ps.ps_drop;
 				lostpacketif = ps.ps_ifdrop;
 			}
