@@ -181,6 +181,12 @@ RTP::jitterbuffer(struct ast_channel *channel, int savePayload) {
 	channel->codec = codec;
 	memcpy(&frame->delivery, &header->ts, sizeof(struct timeval));
 
+	/* protect for endless loops (it cannot happen in theory but to be sure */
+	if(packetization <= 0) {
+		syslog(LOG_ERR, "packetization is 0 in jitterbuffer function.");
+		return;
+	}
+
 	if(savePayload) {
 		/* get RTP payload header and datalen */
 		payload_data = data + sizeof(RTPFixedHeader);
