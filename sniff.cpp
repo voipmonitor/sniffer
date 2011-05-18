@@ -362,11 +362,15 @@ void readdump(pcap_t *handle) {
 			*/
 			s = gettag(data,datalen,"Call-ID:", &l);
 			if(l <= 0 || l > 1023) {
-				continue;
-			} else {
-				memcpy(str1,s,l);
-				str1[l] = '\0';
+				// try also compact header
+				s = gettag(data,datalen,"i:", &l);
+				if(l <= 0 || l > 1023) {
+					continue;
+				}
 			}
+
+			memcpy(str1,s,l);
+			str1[l] = '\0';
 
 			// parse SIP method 
 			if ((datalen > 5) && !(memmem(data, 6, "INVITE", 6) == 0)) {
@@ -546,6 +550,10 @@ void readdump(pcap_t *handle) {
 				{
 
 				s = gettag(data,datalen,"Content-Type:",&l);
+				if(l <= 0 || l > 1023) {
+					//try compact header
+					s = gettag(data,datalen,"c:",&l);
+				}
 				char *tmp = strstr(data, "\r\n\r\n");;
 				if(l > 0 && strncasecmp(s, "application/sdp", l) == 0 && tmp != NULL){
 					// we have found SDP, add IP and port to the table
