@@ -378,14 +378,14 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 	}
 
 	if(seeninviteok) {
-		if(packetization_iterator == 0 && last_ts != 0) {
-			if(seq == (last_seq + 1) && curpayload != 101) {
+		if(packetization_iterator == 0) {
+			if(last_ts != 0 && seq == (last_seq + 1) && curpayload != 101) {
 				// sequence numbers are ok, we can calculate packetization
 				packetization = (getTimestamp() - last_ts) / 8;
-				last_packetization = packetization;
-				packetization_iterator++;
-			} else {
-				packetization_iterator = 0;
+				if(packetization > 0) {
+					last_packetization = packetization;
+					packetization_iterator++;
+				}
 			}
 			/* for recording, we cannot loose any packet */
 			if(opt_saveRAW || opt_saveWAV) {
