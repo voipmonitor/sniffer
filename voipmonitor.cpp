@@ -617,7 +617,7 @@ int main(int argc, char *argv[]) {
 	setrlimit(RLIMIT_NOFILE, &rlp);
 	getrlimit(RLIMIT_NOFILE, &rlp);
 	if(rlp.rlim_cur != 65535) {
-		printf("Warning, max open files is: %d consider rise this to 65535 with ulimitc -n 65535\n", (int)rlp.rlim_cur);
+		printf("Warning, max open files is: %d consider raise this to 65535 with ulimit -n 65535\n", (int)rlp.rlim_cur);
 	}
 	// set core file dump to unlimited size
 	rlp.rlim_cur = UINT_MAX;
