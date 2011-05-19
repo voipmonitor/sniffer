@@ -119,6 +119,7 @@ RTP::RTP() {
 	lastframetype = AST_FRAME_VOICE;
 	//frame->src = "DUMMY";
 	last_seq = 0;
+	last_ts = 0;
 	packetization = 0;
 	last_packetization = 0;
 	packetization_iterator = 0;
