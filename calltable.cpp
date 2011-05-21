@@ -79,6 +79,8 @@ Call::Call(char *call_id, unsigned long call_id_len, time_t time, void *ct) {
 	rtp_cur[1] = NULL;
 	rtp_prev[0] = NULL;
 	rtp_prev[1] = NULL;
+	lastSIPresponse[0] = '\0';
+	lastSIPresponseNum = 0;
 }
 
 /* destructor */
@@ -575,6 +577,8 @@ Call::saveToMysql() {
 		", calldate = FROM_UNIXTIME(" << calltime() << ")" <<
 		", fbasename = " << quote << fbasename << 
 		", sighup = " << quote << (sighup ? 1 : 0) << 
+		", lastSIPresponse = " << quote << lastSIPresponse << 
+		", lastSIPresponseNum = " << quote << lastSIPresponseNum << 
 		", bye = " << quote << ( seeninviteok ? (seenbye ? (seenbyeandok ? 3 : 2) : 1) : 0);
 	char c;
 	if(ssrc_n > 0) {
@@ -742,6 +746,7 @@ Call::dump(){
 	printf("-call dump %p---------------------------------\n", this);
 	printf("callid:%s\n", buf);
 	printf("last packet time:%d\n", (int)get_last_packet_time());
+	printf("last SIP response [%d] [%s]\n", lastSIPresponseNum, lastSIPresponse);
 	
 	// print assigned IP:port 
 	if(ipport_n > 0) {

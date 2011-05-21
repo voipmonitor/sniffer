@@ -252,6 +252,8 @@ void readdump(pcap_t *handle) {
 	unsigned int lostpacket = 0;
 	unsigned int lostpacketif = 0;
 	int pcapstatres = 0;
+	char lastSIPresponse[128];
+	int lastSIPresponseNum;
 
 	while (!terminating) {
 		res = pcap_next_ex(handle, &header, &packet);
@@ -397,7 +399,6 @@ void readdump(pcap_t *handle) {
 				if(verbosity > 2) 
 					 syslog(LOG_NOTICE,"SIP msg: 18X\n");
 				sip_method = RES18X;
-			/*
 			} else if ((datalen > 8) && !(memmem(data, 9, "SIP/2.0 3", 9) == 0)) {
 				if(verbosity > 2) 
 					 syslog(LOG_NOTICE,"SIP msg: 3XX\n");
@@ -414,7 +415,6 @@ void readdump(pcap_t *handle) {
 				if(verbosity > 2) 
 					 syslog(LOG_NOTICE,"SIP msg: 6XX\n");
 				sip_method = RES6XX;
-			*/
 			} else {
 				if(verbosity > 2) {
 					char a[100];
@@ -423,6 +423,23 @@ void readdump(pcap_t *handle) {
 					 syslog(LOG_NOTICE,"SIP msg: 1XX or Unknown msg %s\n", a);
 				}
 				sip_method = 0;
+			}
+			lastSIPresponse[0] = '\0';
+			lastSIPresponseNum = 0;
+			if(sip_method > 0 && sip_method != INVITE && sip_method != REGISTER && sip_method != CANCEL) {
+				char *tmp = strstr(data, "\r");
+				if(tmp) {
+					// 8 is len of [SIP/2.0 ], 128 is max buffer size
+					strncpy(lastSIPresponse, data + 8, (datalen > 128) ? 128 : datalen);
+					lastSIPresponse[tmp - data - 8] = '\0';
+					char num[4];
+					strncpy(num, data + 8, 3);
+					num[3] = '\0';
+					lastSIPresponseNum = atoi(num);
+					if(lastSIPresponseNum == 0) {
+						if(verbosity > 0) syslog(LOG_NOTICE, "lastSIPresponseNum = 0 [%s]\n", lastSIPresponse);
+					}
+				} 
 			}
 
 			// find call */
@@ -466,6 +483,11 @@ void readdump(pcap_t *handle) {
 				{
 				// packet is already part of call
 				call->set_last_packet_time(header->ts.tv_sec);
+				if(lastSIPresponse[0] != '\0') {
+					strncpy(call->lastSIPresponse, lastSIPresponse, 128);
+					call->lastSIPresponseNum = lastSIPresponseNum;
+				}
+
 				// check if it is BYE or OK(RES2XX)
 				if(sip_method == INVITE) {
 					//check and save CSeq for later to compare with OK 
