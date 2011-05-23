@@ -96,7 +96,10 @@ int get_sip_peercnam(char *data, int data_len, const char *tag, char *peername, 
 	}
 	r += 1;
 	if ((r2 = (unsigned long)memmem(peername_tag, peername_tag_len, "\" <", 3)) == 0){
-		goto fail_exit;
+		// try without " "
+		if ((r2 = (unsigned long)memmem(peername_tag, peername_tag_len, "\"<", 2)) == 0){
+			goto fail_exit;
+		}
 	}
 	if (r2 <= r || ((r2 - r) > (unsigned long)peername_len) ){
 		goto fail_exit;
@@ -563,9 +566,24 @@ void readdump(pcap_t *handle) {
 			
 			/* this logic updates call on the first INVITES */
 			if (sip_method == INVITE && !call->seeninvite) {
-				get_sip_peercnam(data,datalen,"From:", call->callername, sizeof(call->callername));
-				get_sip_peername(data,datalen,"From:", call->caller, sizeof(call->caller));
-				get_sip_peername(data,datalen,"To:", call->called, sizeof(call->called));
+				int res;
+				res = get_sip_peercnam(data,datalen,"From:", call->callername, sizeof(call->callername));
+				if(res) {
+					// try compact header
+					res = get_sip_peercnam(data,datalen,"f:", call->callername, sizeof(call->callername));
+					printf("trying [%d] [%s]\n", res, call->callername);
+					exit;
+				}
+				res = get_sip_peername(data,datalen,"From:", call->caller, sizeof(call->caller));
+				if(res) {
+					// try compact header
+					get_sip_peername(data,datalen,"f:", call->caller, sizeof(call->caller));
+				}
+				res = get_sip_peername(data,datalen,"To:", call->called, sizeof(call->called));
+				if(res) {
+					// try compact header
+					get_sip_peername(data,datalen,"t:", call->called, sizeof(call->called));
+				}
 				call->seeninvite = true;
 			}
 			// SDP examination only in case it is SIP msg belongs to first leg
