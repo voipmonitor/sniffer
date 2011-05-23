@@ -440,6 +440,9 @@ void readdump(pcap_t *handle) {
 						if(verbosity > 0) syslog(LOG_NOTICE, "lastSIPresponseNum = 0 [%s]\n", lastSIPresponse);
 					}
 				} 
+			} else if(sip_method == CANCEL) {
+				lastSIPresponseNum = 487;
+				strcpy(lastSIPresponse, "487 Request Terminated CANCEL");
 			}
 
 			// find call */
@@ -483,7 +486,8 @@ void readdump(pcap_t *handle) {
 				{
 				// packet is already part of call
 				call->set_last_packet_time(header->ts.tv_sec);
-				if(lastSIPresponse[0] != '\0') {
+				// save lastSIPresponseNum but only if previouse was not 487 (CANCEL)
+				if(lastSIPresponse[0] != '\0' && call->lastSIPresponseNum != 487) {
 					strncpy(call->lastSIPresponse, lastSIPresponse, 128);
 					call->lastSIPresponseNum = lastSIPresponseNum;
 				}
