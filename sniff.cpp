@@ -570,9 +570,7 @@ void readdump(pcap_t *handle) {
 				res = get_sip_peercnam(data,datalen,"From:", call->callername, sizeof(call->callername));
 				if(res) {
 					// try compact header
-					res = get_sip_peercnam(data,datalen,"f:", call->callername, sizeof(call->callername));
-					printf("trying [%d] [%s]\n", res, call->callername);
-					exit;
+					get_sip_peercnam(data,datalen,"f:", call->callername, sizeof(call->callername));
 				}
 				res = get_sip_peername(data,datalen,"From:", call->caller, sizeof(call->caller));
 				if(res) {
