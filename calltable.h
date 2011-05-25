@@ -204,6 +204,12 @@ public:
 	int convertRawToWav();
  
 	/**
+	 * @brief build query 
+	 *
+	*/
+	int buildQuery(mysqlpp::Query *query);
+
+	/**
 	 * @brief save call to mysql
 	 *
 	*/

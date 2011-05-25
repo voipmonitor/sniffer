@@ -44,6 +44,12 @@ extern int opt_saveWAV;                // save RTP payload RAW data?
 extern int opt_saveGRAPH;	// save GRAPH data to graph file? 
 extern int opt_gzipGRAPH;	// compress GRAPH data to graph file? 
 extern int opt_audio_format;	// define format for audio writing (if -W option)
+extern char mysql_host[256];
+extern char mysql_database[256];
+extern char mysql_table[256];
+extern char mysql_user[256];
+extern char mysql_password[256];
+
 static mysqlpp::Connection con(false);
 
 /* constructor */
@@ -521,43 +527,13 @@ Call::convertRawToWav() {
 	}
 	unlink(wav0);
 	unlink(wav1);
-	
  
 	return 0;
 }
 
-/* TODO: implement failover -> write INSERT into file */
 int
-Call::saveToMysql() {
+Call::buildQuery(mysqlpp::Query *query) {
 	using namespace mysqlpp;
-
-	extern char mysql_host[256];
-	extern char mysql_database[256];
-	extern char mysql_table[256];
-	extern char mysql_user[256];
-	extern char mysql_password[256];
-
-	double burstr, lossr;
-
-	/* we are not interested in calls which do not have RTP */
-/*
-	if(rtp[0].saddr == 0 && rtp[1].saddr == 0) {
-		if(verbosity > 1)
-			syslog(LOG_ERR,"This call does not have RTP. SKipping SQL.\n");
-
-		//return 0;
-	}
-*/
-	
-	//mysqlpp::Connection con(false);
-	if(!con.connected()) {
-		con.connect(mysql_database, mysql_host, mysql_user, mysql_password);
-		if(!con) {
-			syslog(LOG_ERR,"DB connection failed: %s", con.error());
-			return 1;
-		}
-	} 
-	mysqlpp::Query query = con.query();
 	/* walk two first RTP and store it to MySQL. */
 
 	/* bye 
@@ -566,7 +542,9 @@ Call::saveToMysql() {
 	 * 	1 - call was answered but there was no bye 
 	 * 	0 - call was not answered 
 	 */
-	query << "INSERT INTO `" << mysql_table << "` SET caller = " << quote << caller << ",  callername = " << quote << callername << 
+	char c;
+	double burstr, lossr;
+	*query << "INSERT INTO `" << mysql_table << "` SET caller = " << quote << caller << ",  callername = " << quote << callername << 
 		", sipcallerip = " << quote << htonl(sipcallerip) <<
 		", sipcalledip = " << quote << htonl(sipcalledip) <<
 		", called = " << quote << called <<
@@ -580,7 +558,6 @@ Call::saveToMysql() {
 		", lastSIPresponse = " << quote << lastSIPresponse << 
 		", lastSIPresponseNum = " << quote << lastSIPresponseNum << 
 		", bye = " << quote << ( seeninviteok ? (seenbye ? (seenbyeandok ? 3 : 2) : 1) : 0);
-	char c;
 	if(ssrc_n > 0) {
 		/* sort all RTP streams by received packets + loss packets descend and save only those two with the biggest received packets. */
 		int indexes[MAX_SSRC_PER_CALL];
@@ -606,56 +583,86 @@ Call::saveToMysql() {
 			indexes[1] = indexes[0];
 			indexes[0] = tmp;
 		}
-		query << " , " << "a_ua = " << quote << a_ua;
-		query << " , " << "b_ua = " << quote << b_ua;
+		*query << " , " << "a_ua = " << quote << a_ua;
+		*query << " , " << "b_ua = " << quote << b_ua;
 
 		// save only two streams with the biggest received packets
 		for(int i = 0; i < 2; i++) {
 			c = i == 0 ? 'a' : 'b';
 
-			query << " , " << c << "_index = " << quote << indexes[i];
-			query << " , " << c << "_received = " << rtp[indexes[i]].stats.received;
-			query << " , " << c << "_lost = " << rtp[indexes[i]].stats.lost;
-			query << " , " << c << "_avgjitter = " << quote << int(ceil(rtp[indexes[i]].stats.avgjitter));
-			query << " , " << c << "_maxjitter = " << quote << int(ceil(rtp[indexes[i]].stats.maxjitter)); 
-			query << " , " << c << "_payload = " << quote << rtp[indexes[i]].payload; 
+			*query << " , " << c << "_index = " << quote << indexes[i];
+			*query << " , " << c << "_received = " << rtp[indexes[i]].stats.received;
+			*query << " , " << c << "_lost = " << rtp[indexes[i]].stats.lost;
+			*query << " , " << c << "_avgjitter = " << quote << int(ceil(rtp[indexes[i]].stats.avgjitter));
+			*query << " , " << c << "_maxjitter = " << quote << int(ceil(rtp[indexes[i]].stats.maxjitter)); 
+			*query << " , " << c << "_payload = " << quote << rtp[indexes[i]].payload; 
 
 			/* build a_sl1 - b_sl10 fields */
 			for(int j = 1; j < 11; j++) {
-				query << " , " << c << "_sl" << j << " = " << rtp[indexes[i]].stats.slost[j];
+				*query << " , " << c << "_sl" << j << " = " << rtp[indexes[i]].stats.slost[j];
 			}
 			/* build a_d50 - b_d300 fileds */
-			query << " , " << c << "_d50 = " << rtp[indexes[i]].stats.d50;
-			query << " , " << c << "_d70 = " << rtp[indexes[i]].stats.d70;
-			query << " , " << c << "_d90 = " << rtp[indexes[i]].stats.d90;
-			query << " , " << c << "_d120 = " << rtp[indexes[i]].stats.d120;
-			query << " , " << c << "_d150 = " << rtp[indexes[i]].stats.d150;
-			query << " , " << c << "_d200 = " << rtp[indexes[i]].stats.d200;
-			query << " , " << c << "_d300 = " << rtp[indexes[i]].stats.d300;
+			*query << " , " << c << "_d50 = " << rtp[indexes[i]].stats.d50;
+			*query << " , " << c << "_d70 = " << rtp[indexes[i]].stats.d70;
+			*query << " , " << c << "_d90 = " << rtp[indexes[i]].stats.d90;
+			*query << " , " << c << "_d120 = " << rtp[indexes[i]].stats.d120;
+			*query << " , " << c << "_d150 = " << rtp[indexes[i]].stats.d150;
+			*query << " , " << c << "_d200 = " << rtp[indexes[i]].stats.d200;
+			*query << " , " << c << "_d300 = " << rtp[indexes[i]].stats.d300;
 			
 			/* store source addr */
-			query << " , " << c << "_saddr = " << htonl(rtp[indexes[i]].saddr);
+			*query << " , " << c << "_saddr = " << htonl(rtp[indexes[i]].saddr);
 
 			/* calculate lossrate and burst rate */
 			burstr_calculate(rtp[indexes[i]].channel_fix1, rtp[indexes[i]].stats.received, &burstr, &lossr);
-			query << " , " << c << "_lossr_f1 = " << lossr;
-			query << " , " << c << "_burstr_f1 = " << burstr;
-			query << " , " << c << "_mos_f1 = " << quote << calculate_mos(lossr, burstr, 1);
+			*query << " , " << c << "_lossr_f1 = " << lossr;
+			*query << " , " << c << "_burstr_f1 = " << burstr;
+			*query << " , " << c << "_mos_f1 = " << quote << calculate_mos(lossr, burstr, 1);
 
 			/* Jitterbuffer MOS statistics */
 			burstr_calculate(rtp[indexes[i]].channel_fix2, rtp[indexes[i]].stats.received, &burstr, &lossr);
-			query << " , " << c << "_lossr_f2 = " << lossr;
-			query << " , " << c << "_burstr_f2 = " << burstr;
-			query << " , " << c << "_mos_f2 = " << quote << calculate_mos(lossr, burstr, 1);
+			*query << " , " << c << "_lossr_f2 = " << lossr;
+			*query << " , " << c << "_burstr_f2 = " << burstr;
+			*query << " , " << c << "_mos_f2 = " << quote << calculate_mos(lossr, burstr, 1);
 
 			burstr_calculate(rtp[indexes[i]].channel_adapt, rtp[indexes[i]].stats.received, &burstr, &lossr);
-			query << " , " << c << "_lossr_adapt = " << lossr;
-			query << " , " << c << "_burstr_adapt = " << burstr;
-			query << " , " << c << "_mos_adapt = " << quote << calculate_mos(lossr, burstr, 1);
+			*query << " , " << c << "_lossr_adapt = " << lossr;
+			*query << " , " << c << "_burstr_adapt = " << burstr;
+			*query << " , " << c << "_mos_adapt = " << quote << calculate_mos(lossr, burstr, 1);
 		}
 	}
+	return 0;
+}
 
-	if(verbosity > 2) cout << query << "\n";
+/* TODO: implement failover -> write INSERT into file */
+int
+Call::saveToMysql() {
+	using namespace mysqlpp;
+
+
+	/* we are not interested in calls which do not have RTP */
+/*
+	if(rtp[0].saddr == 0 && rtp[1].saddr == 0) {
+		if(verbosity > 1)
+			syslog(LOG_ERR,"This call does not have RTP. SKipping SQL.\n");
+
+		//return 0;
+	}
+*/
+	
+	//mysqlpp::Connection con(false);
+	if(!con.connected()) {
+		con.connect(mysql_database, mysql_host, mysql_user, mysql_password);
+		if(!con) {
+			syslog(LOG_ERR,"DB connection failed: %s", con.error());
+			return 1;
+		}
+	} 
+
+	mysqlpp::Query query = con.query();
+	buildQuery(&query);
+
+	if(verbosity > 0) cout << query << "\n";
 	query.store();
 	if(con.errnum()) {
 		if(con.errnum() == 2006) {
@@ -668,6 +675,8 @@ Call::saveToMysql() {
 				return 1;
 			}
 			// try to store cdr again
+			mysqlpp::Query query = con.query();
+			buildQuery(&query);
 			query.store();
 			if(con.errnum()) {
 				syslog(LOG_ERR,"Error in query errnum:'%d' error:'%s'", con.errnum(), con.error());
