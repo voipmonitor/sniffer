@@ -240,7 +240,7 @@ int load_config() {
 		opt_rtp_firstleg = yesno(value);
 	}
 	if((value = ini.GetValue("general", "sip-register", NULL))) {
-		opt_rtp_firstleg = yesno(value);
+		opt_sip_register = yesno(value);
 	}
 	if((value = ini.GetValue("general", "nocdr", NULL))) {
 		opt_nocdr = yesno(value);
