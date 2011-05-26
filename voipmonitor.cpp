@@ -103,8 +103,12 @@ void sigterm_handler(int param)
 void *storing_cdr( void *dummy ) {
 	Call *call;
 	while(1) {
-		while (calltable->calls_queue.size() > 0) {
+		while (1) {
 			calltable->lock_calls_queue();
+			if(calltable->calls_queue.size() == 0) {
+				calltable->unlock_calls_queue();
+				break;
+			}
 			call = calltable->calls_queue.front();
 			calltable->unlock_calls_queue();
 	
@@ -128,7 +132,16 @@ void *storing_cdr( void *dummy ) {
 			calltable->lock_calls_queue();
 			calltable->calls_queue.pop();
 			calltable->unlock_calls_queue();
-			delete call;
+
+			/* if we delete call here directly, destructors and another cleaning functions can be
+			 * called in the middle of working with call or another structures inside main thread
+			 * so put it in deletequeue and delete it in the main thread. Another way can be locking
+			 * call structure for every case in main thread but it can slow down thinks for each 
+			 * processing packet.
+			*/
+			calltable->lock_calls_deletequeue();
+			calltable->calls_deletequeue.push(call);
+			calltable->unlock_calls_deletequeue();
 		}
 		if(terminating) {
 			break;

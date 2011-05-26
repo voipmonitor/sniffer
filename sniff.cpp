@@ -298,6 +298,14 @@ void readdump(pcap_t *handle) {
 				lostpacketif = ps.ps_ifdrop;
 			}
 			last_cleanup = header->ts.tv_sec;
+			/* delete all calls */
+			calltable->lock_calls_deletequeue();
+			while (calltable->calls_deletequeue.size() > 0) {
+				call = calltable->calls_deletequeue.front();
+				calltable->calls_deletequeue.pop();
+				delete call;
+			}
+			calltable->unlock_calls_deletequeue();
 		}
 	
                 switch(pcap_datalink(handle)) {

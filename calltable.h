@@ -259,6 +259,7 @@ private:
 class Calltable {
 public:
 	queue<Call*> calls_queue; //!< this queue is used for asynchronous storing CDR by the worker thread
+	queue<Call*> calls_deletequeue; //!< this queue is used for asynchronous storing CDR by the worker thread
 	list<Call*> calls_list; //!< 
 	list<Call*>::iterator call;
 	
@@ -281,12 +282,14 @@ public:
 	 *
 	*/
 	void lock_calls_queue() { pthread_mutex_lock(&qlock); };
+	void lock_calls_deletequeue() { pthread_mutex_lock(&qdellock); };
 
 	/**
 	 * @brief unlock calls_queue structure 
 	 *
 	*/
 	void unlock_calls_queue() { pthread_mutex_unlock(&qlock); };
+	void unlock_calls_deletequeue() { pthread_mutex_unlock(&qdellock); };
 	
 	/**
 	 * @brief add Call to Calltable
@@ -351,7 +354,8 @@ public:
 	void hashRemove(in_addr_t addr, unsigned short port);
 
 private:
-	pthread_mutex_t qlock;	//!< mutex locking calls_queue
+	pthread_mutex_t qlock;		//!< mutex locking calls_queue
+	pthread_mutex_t qdellock;	//!< mutex locking calls_deletequeue
 
 	struct hash_node {
 		Call *call;
