@@ -665,6 +665,7 @@ Call::saveToMysql() {
 	if(verbosity > 0) cout << query << "\n";
 	query.store();
 	if(con.errnum()) {
+		syslog(LOG_ERR,"Error in query errnum:'%d' error:'%s'", con.errnum(), con.error());
 		if(con.errnum() == 2006) {
 			//error:'MySQL server has gone away'
 			syslog(LOG_ERR,"Reconnecting to database");
@@ -684,7 +685,6 @@ Call::saveToMysql() {
 			}
 
 		}
-		syslog(LOG_ERR,"Error in query errnum:'%d' error:'%s'", con.errnum(), con.error());
 	}
 
 	return 0;
