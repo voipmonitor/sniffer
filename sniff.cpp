@@ -371,7 +371,7 @@ void readdump(pcap_t *handle) {
 			if(opt_saveRTP) {
 				save_packet(call, header, packet);
 			}
-		} else if (htons(header_udp->source) == 60606 || htons(header_udp->dest) == 60606) {
+		} else if (htons(header_udp->source) == 5060 || htons(header_udp->dest) == 5060) {
 			// packet is from or to port 5060 
 			data[datalen]=0;
 			/* No, this isn't the phone number of the caller. It uniquely represents 
