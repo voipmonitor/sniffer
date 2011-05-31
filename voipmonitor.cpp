@@ -348,7 +348,7 @@ int main(int argc, char *argv[]) {
 	/* command line arguments overrides configuration in voipmonitor.conf file */
 	while(1) {
 		int c;
-		c = getopt_long(argc, argv, "f:i:r:d:v:h:b:t:u:p:kncUSRAWG", long_options, &option_index);
+		c = getopt_long(argc, argv, "f:i:r:d:v:h:b:t:u:p:P:kncUSRAWG", long_options, &option_index);
 		//"i:r:d:v:h:b:u:p:fnU", NULL, NULL);
 		if (c == -1)
 			break;
