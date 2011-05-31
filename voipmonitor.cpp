@@ -541,18 +541,18 @@ int main(int argc, char *argv[]) {
 
 	// preparing pcap reading and pcap filters 
 	
-	bpf_u_int32 net;		// Holds the network address for the device.
 	bpf_u_int32 mask;		// Holds the subnet mask associated with device.
 	char errbuf[PCAP_ERRBUF_SIZE];	// Returns error text and is only set when the pcap_lookupnet subroutine fails.
 	pcap_t *handle = NULL;			// pcap handler 
 
 	if (fname == NULL && ifname[0] != '\0'){
+		bpf_u_int32 net;
+
 		printf("Capturing on interface: %s\n", ifname);
 		// Find the properties for interface 
 		if (pcap_lookupnet(ifname, &net, &mask, errbuf) == -1) {
-			fprintf(stderr, "Couldn't get netmask for interface %s: %s\n", ifname, errbuf);
-			net = 0;
-			mask = 0;
+			// if not available, use default
+			mask = PCAP_NETMASK_UNKNOWN;
 		}
 /*
 		handle = pcap_open_live(ifname, 1600, opt_promisc, 1000, errbuf);
@@ -598,8 +598,7 @@ int main(int argc, char *argv[]) {
 		}
 	} else {
 		printf("Reading file: %s\n", fname);
-		net = 0;
-		mask = 0;
+		mask = PCAP_NETMASK_UNKNOWN;
 		handle = pcap_open_offline(fname, errbuf);
 		if(handle == NULL) {
 			fprintf(stderr, "Couldn't open pcap file '%s': %s\n", ifname, errbuf);
@@ -616,7 +615,7 @@ int main(int argc, char *argv[]) {
 		snprintf(filter_exp, sizeof(filter_exp), "%s", user_filter);
 
 		// Compile and apply the filter
-		if (pcap_compile(handle, &fp, filter_exp, 0, net) == -1) {
+		if (pcap_compile(handle, &fp, filter_exp, 0, mask) == -1) {
 			fprintf(stderr, "Couldn't parse filter %s: %s\n", filter_exp, pcap_geterr(handle));
 			return(2);
 		}
