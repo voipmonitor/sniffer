@@ -166,7 +166,7 @@ int get_ip_port_from_sdp(char *sdp_text, in_addr_t *addr, unsigned short *port){
 	s=gettag(sdp_text,strlen(sdp_text), "c=IN IP4 ", &l);
 	memset(s1, '\0', sizeof(s1));
 	memcpy(s1, s, MIN(l, 19));
-	if ((long)(*addr = inet_addr(s1)) == -1){
+	if ((int32_t)(*addr = inet_addr(s1)) == -1){
 		*addr = 0;
 		*port = 0;
 		return 1;
@@ -371,7 +371,7 @@ void readdump(pcap_t *handle) {
 			if(opt_saveRTP) {
 				save_packet(call, header, packet);
 			}
-		} else if (htons(header_udp->source) == 5060 || htons(header_udp->dest) == 5060) {
+		} else if (htons(header_udp->source) == 60606 || htons(header_udp->dest) == 60606) {
 			// packet is from or to port 5060 
 			data[datalen]=0;
 			/* No, this isn't the phone number of the caller. It uniquely represents 
