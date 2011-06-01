@@ -654,7 +654,7 @@ int main(int argc, char *argv[]) {
 	pcap_close(handle);
 
 	// here we go when readdump finished. When reading from interface, do nothing, because cleanups is done in sigint_* functions
-	if(ifname[0] == '\0') {
+	if(fname) {
 		calltable->cleanup(0);
 		terminating = 1;
 		pthread_join(call_thread, NULL);
