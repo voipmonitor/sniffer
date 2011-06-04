@@ -792,6 +792,7 @@ Call::dump(){
 /* constructor */
 Calltable::Calltable() {
 	pthread_mutex_init(&qlock, NULL);
+	pthread_mutex_init(&qdellock, NULL);
 	memset(calls_hash, 0x0, sizeof(calls_hash));
 };
 
