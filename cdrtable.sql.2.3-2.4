@@ -1,5 +1,6 @@
 ALTER TABLE cdr ADD lastSIPresponse VARCHAR(128) DEFAULT NULL;
 ALTER TABLE cdr ADD lastSIPresponseNum INT(3) DEFAULT NULL;
+ALTER TABLE cdr ADD whohanged ENUM('caller','calee') DEFAULT NULL;
 ALTER TABLE cdr ADD KEY `lastSIPresponse` (`lastSIPresponse`);
 ALTER TABLE cdr ADD KEY `lastSIPresponseNum` (`lastSIPresponseNum`);
 ALTER TABLE cdr ADD KEY `bye` (`bye`);

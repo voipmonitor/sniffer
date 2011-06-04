@@ -530,6 +530,8 @@ void readdump(pcap_t *handle) {
 							syslog(LOG_NOTICE, "Seen bye\n");
 							
 					}
+					// save who hanged up 
+					call->whohanged = (call->sipcallerip == header_ip->saddr) ? 0 : 1;
 				} else if(sip_method == RES2XX) {
 
 					if(!call->connect_time) {

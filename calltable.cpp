@@ -62,6 +62,7 @@ Call::Call(char *call_id, unsigned long call_id_len, time_t time, void *ct) {
 	this->call_id[MIN(call_id_len, MAX_CALL_ID)] = '\0';
 	this->call_id_len = call_id_len;
 	f_pcap = NULL;
+	whohanged = -1;
 	seeninvite = false;
 	seeninviteok = false;
 	seenbye = false;
@@ -558,6 +559,14 @@ Call::buildQuery(mysqlpp::Query *query) {
 		", lastSIPresponse = " << quote << lastSIPresponse << 
 		", lastSIPresponseNum = " << quote << lastSIPresponseNum << 
 		", bye = " << quote << ( seeninviteok ? (seenbye ? (seenbyeandok ? 3 : 2) : 1) : 0);
+
+	switch(whohanged) {
+	case 0:
+		*query << " , whohanged = 'caller'";
+		break;
+	case 1:
+		*query << " , whohanged = 'callee'";
+	}
 	if(ssrc_n > 0) {
 		/* sort all RTP streams by received packets + loss packets descend and save only those two with the biggest received packets. */
 		int indexes[MAX_SSRC_PER_CALL];
