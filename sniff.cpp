@@ -241,7 +241,7 @@ void readdump(pcap_t *handle) {
 	struct iphdr *header_ip;
 	struct udphdr *header_udp;
 	char *data;
-	unsigned long datalen;
+	int datalen;
 	char *s;
 	unsigned long l;
 	char str1[1024],str2[1024];
@@ -351,7 +351,10 @@ void readdump(pcap_t *handle) {
 		// prepare packet pointers 
 		header_udp = (struct udphdr *) ((char *) header_ip + sizeof(*header_ip));
 		data = (char *) header_udp + sizeof(*header_udp);
-		datalen = header->len - ((unsigned long) data - (unsigned long) packet); 
+		datalen = (int)(header->len - ((unsigned long) data - (unsigned long) packet)); 
+		if(datalen < 0) {
+			continue;
+		}
 		// TODO: remove if hash will be stable
 		//if ((call = calltable->find_by_ip_port(header_ip->daddr, htons(header_udp->dest), &iscaller))){	
 		if ((call = calltable->hashfind_by_ip_port(header_ip->daddr, htons(header_udp->dest), &iscaller))){	

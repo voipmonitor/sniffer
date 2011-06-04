@@ -134,7 +134,7 @@ public:
 	 * @param saddr source IP adress of the packet
 	 * 
 	*/
-	void read_rtp( unsigned char *data, unsigned long datalen, struct pcap_pkthdr *header,  u_int32_t saddr, unsigned short port, int iscaller);
+	void read_rtp( unsigned char *data, int datalen, struct pcap_pkthdr *header,  u_int32_t saddr, unsigned short port, int iscaller);
 
 	/**
 	 * @brief adds RTP stream to the this Call 

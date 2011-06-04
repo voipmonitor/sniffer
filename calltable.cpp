@@ -192,7 +192,7 @@ Call::get_index_by_ip_port(in_addr_t addr, unsigned short port){
 
 /* analyze rtp packet */
 void
-Call::read_rtp(unsigned char* data, unsigned long datalen, struct pcap_pkthdr *header, u_int32_t saddr, unsigned short port, int iscaller) {
+Call::read_rtp(unsigned char* data, int datalen, struct pcap_pkthdr *header, u_int32_t saddr, unsigned short port, int iscaller) {
 
 	if(first_rtp_time == 0) {
 		first_rtp_time = header->ts.tv_sec;
