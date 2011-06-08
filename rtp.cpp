@@ -360,7 +360,7 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 			}
 			gfileRAW = fopen(tmp, "w");
 			if(!gfileRAW_buffer) {
-				gfileRAW_buffer = malloc(32768 * sizeof(char));
+				gfileRAW_buffer = (char*)malloc(32768 * sizeof(char));
 			}
 			setvbuf(gfileRAW, gfileRAW_buffer, _IOFBF, 32768);
 			if(!gfileRAW) {
