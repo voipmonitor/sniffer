@@ -601,6 +601,8 @@ Call::buildQuery(mysqlpp::Query *query) {
 
 		// save only two streams with the biggest received packets
 		for(int i = 0; i < 2; i++) {
+			if(!rtp[indexes[i]]) continue;
+			
 			c = i == 0 ? 'a' : 'b';
 
 			*query << " , " << c << "_index = " << quote << indexes[i];
