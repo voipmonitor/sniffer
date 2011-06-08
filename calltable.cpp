@@ -85,6 +85,9 @@ Call::Call(char *call_id, unsigned long call_id_len, time_t time, void *ct) {
 	rtp_prev[1] = NULL;
 	lastSIPresponse[0] = '\0';
 	lastSIPresponseNum = 0;
+	for(int i = 0; i < MAX_SSRC_PER_CALL; i++) {
+		rtp[i] = NULL;
+	}
 }
 
 /* destructor */

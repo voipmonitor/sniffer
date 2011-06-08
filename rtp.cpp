@@ -129,9 +129,6 @@ RTP::RTP() {
 	for(int i = 0; i < MAX_RTPMAP; i++) {
 		rtpmap[i] = 0;
 	}
-	for(int i = 0; i < MAX_SSRC_PER_CALL; i++) {
-		rtp[i] = NULL;
-	}
 	gfileRAW_buffer = NULL;
 	
 }
