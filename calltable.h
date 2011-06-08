@@ -248,7 +248,7 @@ private:
 	unsigned short port[MAX_IP_PER_CALL];	//!< port number from SDP (indexed together with IP)
 	bool iscaller[MAX_IP_PER_CALL];         //!< is that RTP stream from CALLER party? 
 	int ipport_n;				//!< last index of addr and port array 
-	RTP rtp[MAX_SSRC_PER_CALL];		//!< array of RTP streams
+	RTP *rtp[MAX_SSRC_PER_CALL];		//!< array of RTP streams
 	int ssrc_n;				//!< last index of rtp array
 	pcap_dumper_t *f_pcap;
 	char sdirname[255];

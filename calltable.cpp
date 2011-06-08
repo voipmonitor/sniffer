@@ -79,9 +79,6 @@ Call::Call(char *call_id, unsigned long call_id_len, time_t time, void *ct) {
 	connect_time = 0;
 	a_ua[0] = '\0';
 	b_ua[0] = '\0';
-	for(int i = 0; i < MAX_SSRC_PER_CALL; i++) {
-		rtp[i].call_owner = this;
-	}
 	rtp_cur[0] = NULL;
 	rtp_cur[1] = NULL;
 	rtp_prev[0] = NULL;
@@ -98,16 +95,21 @@ Call::~Call(){
 	for(i = 0; i < ipport_n; i++) {
 		ct->hashRemove(this->addr[i], this->port[i]);
 	}
+
+	for(int i = 0; i < ssrc_n; i++) {
+		delete rtp[i];
+	}
+
 }
 
 void
 Call::closeRawFiles() {
 	for(int i = 0; i < ssrc_n; i++) {
-		if(rtp[i].gfileRAW) {
-			rtp[i].jitterbuffer_fixed_flush(rtp[i].channel_record);
+		if(rtp[i]->gfileRAW) {
+			rtp[i]->jitterbuffer_fixed_flush(rtp[i]->channel_record);
 			/* preventing race condition as gfileRAW is checking for NULL pointer in rtp classes */ 
-			fclose(rtp[i].gfileRAW);
-			rtp[i].gfileRAW = NULL;
+			fclose(rtp[i]->gfileRAW);
+			rtp[i]->gfileRAW = NULL;
 		}
 	}
 }
@@ -205,35 +207,37 @@ Call::read_rtp(unsigned char* data, int datalen, struct pcap_pkthdr *header, u_i
 		return;
 	}
 	for(int i = 0; i < ssrc_n; i++) {
-		if(rtp[i].ssrc == tmprtp.getSSRC()) {
+		if(rtp[i]->ssrc == tmprtp.getSSRC()) {
 			// found 
-			rtp[i].read(data, datalen, header, saddr, seeninviteok);
+			rtp[i]->read(data, datalen, header, saddr, seeninviteok);
 			return;
 		}
 	}
 	// adding new RTP source
 	if(ssrc_n < MAX_SSRC_PER_CALL) {
-		rtp[ssrc_n].ssrc_index = ssrc_n; 
-		rtp[ssrc_n].iscaller = iscaller; 
+		rtp[ssrc_n] = new RTP;
+		rtp[ssrc_n]->call_owner = this;
+		rtp[ssrc_n]->ssrc_index = ssrc_n; 
+		rtp[ssrc_n]->iscaller = iscaller; 
 		if(rtp_cur[iscaller]) {
 			rtp_prev[iscaller] = rtp_cur[iscaller];
 		}
-		rtp_cur[iscaller] = &rtp[ssrc_n]; 
-		sprintf(rtp[ssrc_n].gfilename, "%s/%s.%d.graph%s", dirname(), fbasename, ssrc_n, opt_gzipGRAPH ? ".gz" : "");
+		rtp_cur[iscaller] = rtp[ssrc_n]; 
+		sprintf(rtp[ssrc_n]->gfilename, "%s/%s.%d.graph%s", dirname(), fbasename, ssrc_n, opt_gzipGRAPH ? ".gz" : "");
 		if(opt_saveGRAPH) {
 			if(opt_gzipGRAPH) {
-				rtp[ssrc_n].gfileGZ.open(rtp[ssrc_n].gfilename);
+				rtp[ssrc_n]->gfileGZ.open(rtp[ssrc_n]->gfilename);
 			} else {
-				rtp[ssrc_n].gfile.open(rtp[ssrc_n].gfilename);
+				rtp[ssrc_n]->gfile.open(rtp[ssrc_n]->gfilename);
 			}
 		}
-		rtp[ssrc_n].gfileRAW = NULL;
-		sprintf(rtp[ssrc_n].basefilename, "%s/%s.i%d", dirname(), fbasename, iscaller);
+		rtp[ssrc_n]->gfileRAW = NULL;
+		sprintf(rtp[ssrc_n]->basefilename, "%s/%s.i%d", dirname(), fbasename, iscaller);
 		int i = get_index_by_ip_port(saddr, port);
-		memcpy(this->rtp[ssrc_n].rtpmap, rtpmap[i], MAX_RTPMAP * sizeof(int));
+		memcpy(this->rtp[ssrc_n]->rtpmap, rtpmap[i], MAX_RTPMAP * sizeof(int));
 
-		rtp[ssrc_n].read(data, datalen, header, saddr, seeninviteok);
-		this->rtp[ssrc_n].ssrc = tmprtp.getSSRC();
+		rtp[ssrc_n]->read(data, datalen, header, saddr, seeninviteok);
+		this->rtp[ssrc_n]->ssrc = tmprtp.getSSRC();
 		ssrc_n++;
 	}
 }
@@ -577,7 +581,7 @@ Call::buildQuery(mysqlpp::Query *query) {
 		// bubble sort
 		for(int k = 0; k < ssrc_n; k++) {
 			for(int j = 0; j < ssrc_n; j++) {
-				if((rtp[indexes[k]].stats.received + rtp[indexes[k]].stats.lost) > ( rtp[indexes[j]].stats.received + rtp[indexes[j]].stats.lost)) {
+				if((rtp[indexes[k]]->stats.received + rtp[indexes[k]]->stats.lost) > ( rtp[indexes[j]]->stats.received + rtp[indexes[j]]->stats.lost)) {
 					int kTmp = indexes[k];
 					indexes[k] = indexes[j];
 					indexes[j] = kTmp;
@@ -586,7 +590,7 @@ Call::buildQuery(mysqlpp::Query *query) {
 		}
 
 		// a_ is always caller, so check if we need to swap indexes
-		if (!rtp[indexes[0]].iscaller) {
+		if (!rtp[indexes[0]]->iscaller) {
 			int tmp;
 			tmp = indexes[1];
 			indexes[1] = indexes[0];
@@ -600,41 +604,41 @@ Call::buildQuery(mysqlpp::Query *query) {
 			c = i == 0 ? 'a' : 'b';
 
 			*query << " , " << c << "_index = " << quote << indexes[i];
-			*query << " , " << c << "_received = " << rtp[indexes[i]].stats.received;
-			*query << " , " << c << "_lost = " << rtp[indexes[i]].stats.lost;
-			*query << " , " << c << "_avgjitter = " << quote << int(ceil(rtp[indexes[i]].stats.avgjitter));
-			*query << " , " << c << "_maxjitter = " << quote << int(ceil(rtp[indexes[i]].stats.maxjitter)); 
-			*query << " , " << c << "_payload = " << quote << rtp[indexes[i]].payload; 
+			*query << " , " << c << "_received = " << rtp[indexes[i]]->stats.received;
+			*query << " , " << c << "_lost = " << rtp[indexes[i]]->stats.lost;
+			*query << " , " << c << "_avgjitter = " << quote << int(ceil(rtp[indexes[i]]->stats.avgjitter));
+			*query << " , " << c << "_maxjitter = " << quote << int(ceil(rtp[indexes[i]]->stats.maxjitter)); 
+			*query << " , " << c << "_payload = " << quote << rtp[indexes[i]]->payload; 
 
 			/* build a_sl1 - b_sl10 fields */
 			for(int j = 1; j < 11; j++) {
-				*query << " , " << c << "_sl" << j << " = " << rtp[indexes[i]].stats.slost[j];
+				*query << " , " << c << "_sl" << j << " = " << rtp[indexes[i]]->stats.slost[j];
 			}
 			/* build a_d50 - b_d300 fileds */
-			*query << " , " << c << "_d50 = " << rtp[indexes[i]].stats.d50;
-			*query << " , " << c << "_d70 = " << rtp[indexes[i]].stats.d70;
-			*query << " , " << c << "_d90 = " << rtp[indexes[i]].stats.d90;
-			*query << " , " << c << "_d120 = " << rtp[indexes[i]].stats.d120;
-			*query << " , " << c << "_d150 = " << rtp[indexes[i]].stats.d150;
-			*query << " , " << c << "_d200 = " << rtp[indexes[i]].stats.d200;
-			*query << " , " << c << "_d300 = " << rtp[indexes[i]].stats.d300;
+			*query << " , " << c << "_d50 = " << rtp[indexes[i]]->stats.d50;
+			*query << " , " << c << "_d70 = " << rtp[indexes[i]]->stats.d70;
+			*query << " , " << c << "_d90 = " << rtp[indexes[i]]->stats.d90;
+			*query << " , " << c << "_d120 = " << rtp[indexes[i]]->stats.d120;
+			*query << " , " << c << "_d150 = " << rtp[indexes[i]]->stats.d150;
+			*query << " , " << c << "_d200 = " << rtp[indexes[i]]->stats.d200;
+			*query << " , " << c << "_d300 = " << rtp[indexes[i]]->stats.d300;
 			
 			/* store source addr */
-			*query << " , " << c << "_saddr = " << htonl(rtp[indexes[i]].saddr);
+			*query << " , " << c << "_saddr = " << htonl(rtp[indexes[i]]->saddr);
 
 			/* calculate lossrate and burst rate */
-			burstr_calculate(rtp[indexes[i]].channel_fix1, rtp[indexes[i]].stats.received, &burstr, &lossr);
+			burstr_calculate(rtp[indexes[i]]->channel_fix1, rtp[indexes[i]]->stats.received, &burstr, &lossr);
 			*query << " , " << c << "_lossr_f1 = " << lossr;
 			*query << " , " << c << "_burstr_f1 = " << burstr;
 			*query << " , " << c << "_mos_f1 = " << quote << calculate_mos(lossr, burstr, 1);
 
 			/* Jitterbuffer MOS statistics */
-			burstr_calculate(rtp[indexes[i]].channel_fix2, rtp[indexes[i]].stats.received, &burstr, &lossr);
+			burstr_calculate(rtp[indexes[i]]->channel_fix2, rtp[indexes[i]]->stats.received, &burstr, &lossr);
 			*query << " , " << c << "_lossr_f2 = " << lossr;
 			*query << " , " << c << "_burstr_f2 = " << burstr;
 			*query << " , " << c << "_mos_f2 = " << quote << calculate_mos(lossr, burstr, 1);
 
-			burstr_calculate(rtp[indexes[i]].channel_adapt, rtp[indexes[i]].stats.received, &burstr, &lossr);
+			burstr_calculate(rtp[indexes[i]]->channel_adapt, rtp[indexes[i]]->stats.received, &burstr, &lossr);
 			*query << " , " << c << "_lossr_adapt = " << lossr;
 			*query << " , " << c << "_burstr_adapt = " << burstr;
 			*query << " , " << c << "_mos_adapt = " << quote << calculate_mos(lossr, burstr, 1);
@@ -783,7 +787,7 @@ Call::dump(){
 	printf("Call statistics:\n");
 	if(ssrc_n > 0) {
 		for(int i = 0; i < ssrc_n; i++) {
-			rtp[i].dump();
+			rtp[i]->dump();
 		}
 	}
 	printf("-end call dump  %p----------------------------\n", this);
