@@ -122,7 +122,7 @@ public:
 	ogzstream gfileGZ;	//!< file for storing packet statistics with GZIP compression
 	ofstream gfile;		//!< file for storing packet statistics
 	FILE *gfileRAW;         //!< file for storing RTP payload in RAW format
-	char gfileRAW_buffer[32768];
+	char *gfileRAW_buffer;
 	char gfilename[1024];	//!< file name of this file 
 	char basefilename[1024];
 	int rawiterator;	//!< iterator for raw file name 
