@@ -445,6 +445,8 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 		s->probation = MIN_SEQUENTIAL;
 		s->lastTimeRec = header->ts;
 		s->lastTimeStamp = getTimestamp();
+		s->received++;
+		stats.received++;
 	} else {
 		if(update_seq(seq)) {
 			update_stats();
@@ -589,6 +591,8 @@ RTP::init_seq(u_int16_t seq) {
 int
 RTP::update_seq(u_int16_t seq) {
 	u_int16_t udelta = seq - s->max_seq;
+	s->received++;
+	stats.received++;
 	/*
 	* Source is not valid until MIN_SEQUENTIAL packets with
 	* sequential sequence numbers have been received.
@@ -600,8 +604,6 @@ RTP::update_seq(u_int16_t seq) {
 			s->max_seq = seq;
 			if (s->probation == 0) {
 				init_seq(seq);
-				s->received++;
-				stats.received++;
 				return 1;
 			}
 		} else {
@@ -634,8 +636,6 @@ RTP::update_seq(u_int16_t seq) {
 	} else {
 		 /* duplicate or reordered packet */
 	}
-	stats.received++;
-	s->received++;
 	return 1;
 }	
 

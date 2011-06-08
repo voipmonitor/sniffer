@@ -369,7 +369,7 @@ void readdump(pcap_t *handle) {
 		} else if ((call = calltable->hashfind_by_ip_port(header_ip->saddr, htons(header_udp->source), &iscaller))){
 			// packet (RTP) by source:port is already part of some stored call 
 			// as we are searching by source address and find some call, revert iscaller 
-			call->read_rtp((unsigned char*) data, datalen, header, header_ip->saddr, htons(header_udp->source), !iscaller);
+			call->read_rtp((unsigned char*) data, datalen, header, header_ip->saddr, htons(header_udp->source), iscaller);
 			call->set_last_packet_time(header->ts.tv_sec);
 			if(opt_saveRTP) {
 				save_packet(call, header, packet);
@@ -627,11 +627,11 @@ void readdump(pcap_t *handle) {
 						s = gettag(data,datalen,"User-Agent:", &l);
 						// store RTP stream
 						get_rtpmap_from_sdp(tmp + 1, datalen - (tmp + 1 - data), rtpmap);
-						call->add_ip_port(tmp_addr, tmp_port, s, l, call->sipcallerip == header_ip->saddr, rtpmap);
-						calltable->hashAdd(tmp_addr, tmp_port, call, call->sipcallerip == header_ip->saddr);
+						call->add_ip_port(tmp_addr, tmp_port, s, l, call->sipcallerip != header_ip->saddr, rtpmap);
+						calltable->hashAdd(tmp_addr, tmp_port, call, call->sipcallerip != header_ip->saddr);
 #ifdef NAT
-						call->add_ip_port(header_ip->saddr, tmp_port, s, l, call->sipcallerip == header_ip->saddr, rtpmap);
-						calltable->hashAdd(header_ip->saddr, tmp_port, call, call->sipcallerip == header_ip->saddr);
+						call->add_ip_port(header_ip->saddr, tmp_port, s, l, call->sipcallerip != header_ip->saddr, rtpmap);
+						calltable->hashAdd(header_ip->saddr, tmp_port, call, call->sipcallerip != header_ip->saddr);
 #endif
 		
 					} else {
