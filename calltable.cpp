@@ -99,8 +99,11 @@ Call::~Call(){
 		ct->hashRemove(this->addr[i], this->port[i]);
 	}
 
-	for(int i = 0; i < ssrc_n; i++) {
-		delete rtp[i];
+	for(int i = 0; i < MAX_IP_PER_CALL; i++) {
+		// lets check whole array as there can be holes due rtp[0] <=> rtp[1] swaps in mysql rutine
+		if(rtp[i]) {
+			delete rtp[i];
+		}
 	}
 
 }
