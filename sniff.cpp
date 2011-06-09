@@ -36,6 +36,7 @@ using namespace std;
 #define MIN(x,y) ((x) < (y) ? (x) : (y))
 
 Calltable *calltable;
+extern int calls;
 extern int opt_saveSIP;	  	// save SIP packets to pcap file?
 extern int opt_saveRTP;	 	// save RTP packets to pcap file?
 extern int opt_saveRAW;	 	
@@ -310,6 +311,7 @@ void readdump(pcap_t *handle) {
 				call = calltable->calls_deletequeue.front();
 				calltable->calls_deletequeue.pop();
 				delete call;
+				calls--;
 			}
 			calltable->unlock_calls_deletequeue();
 		}
@@ -573,14 +575,21 @@ void readdump(pcap_t *handle) {
 				} else if(sip_method == RES18X) {
 					call->progress_time = header->ts.tv_sec;
 				}
-				/*
-				} else if(sip_method == RES3XX || sip_method == RES4XX || sip_method == RES5XX || sip_method == RES6XX) {
-						call->seenbye = true;
-						call->seenbyeandok = true;
-						if(verbosity > 2)
-							syslog(LOG_NOTICE, "Call closed2\n");
-				}
+
+				/* if call ends with some of SIP [456]XX response code, we can immediately close it and 
+				   do not wait to timeout as for very high call rate it consumes memory and CPU 
 				*/
+				if( ((call->saddr == header_ip->saddr && call->sport == htons(header_udp->source)) || (call->saddr == header_ip->daddr && call->sport == htons(header_udp->dest)))
+					&&
+				    (sip_method == RES3XX || sip_method == RES4XX || sip_method == RES5XX || sip_method == RES6XX) && lastSIPresponseNum != 401 && lastSIPresponseNum != 407 ) {
+						calltable->lock_calls_queue();
+						calltable->calls_queue.push(call);	// push it to CDR queue at the end of queue
+						calltable->unlock_calls_queue();
+						calltable->calls_list.remove(call);
+//						if(verbosity > 2)
+							syslog(LOG_NOTICE, "Call closed [%d]\n", lastSIPresponseNum);
+						continue;
+				}
 			}
 			
 			/* this logic updates call on the first INVITES */

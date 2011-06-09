@@ -38,6 +38,7 @@ using namespace std;
 /* global variables */
 
 extern Calltable *calltable;
+extern int calls;
 int opt_packetbuffered = 0;	// Make .pcap files writing ‘‘packet-buffered’’ 
 				// more slow method, but you can use partitialy 
 				// writen file anytime, it will be consistent.
@@ -103,6 +104,7 @@ void sigterm_handler(int param)
 void *storing_cdr( void *dummy ) {
 	Call *call;
 	while(1) {
+		if(verbosity > 0) syslog(LOG_ERR,"calls[%d]\n", calls);
 		while (1) {
 			calltable->lock_calls_queue();
 			if(calltable->calls_queue.size() == 0) {

@@ -49,6 +49,7 @@ extern char mysql_database[256];
 extern char mysql_table[256];
 extern char mysql_user[256];
 extern char mysql_password[256];
+int calls = 0;
 
 static mysqlpp::Connection con(false);
 
@@ -879,6 +880,7 @@ Calltable::hashfind_by_ip_port(in_addr_t addr, unsigned short port, int *iscalle
 Call*
 Calltable::add(char *call_id, unsigned long call_id_len, time_t time, u_int32_t saddr, unsigned short port) {
 	Call *newcall = new Call(call_id, call_id_len, time, this);
+	calls++;
 	newcall->saddr = saddr;
 	newcall->sport = port;
 	calls_list.push_front(newcall);
