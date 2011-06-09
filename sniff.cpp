@@ -586,7 +586,7 @@ void readdump(pcap_t *handle) {
 						calltable->calls_queue.push(call);	// push it to CDR queue at the end of queue
 						calltable->unlock_calls_queue();
 						calltable->calls_list.remove(call);
-//						if(verbosity > 2)
+						if(verbosity > 2)
 							syslog(LOG_NOTICE, "Call closed [%d]\n", lastSIPresponseNum);
 						continue;
 				}
