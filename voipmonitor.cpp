@@ -77,27 +77,40 @@ char opt_chdir[1024];
 pthread_t call_thread;		// ID of worker thread (storing CDR)
 int terminating;		// if set to 1, worker thread will terminate
 
+void terminate2() {
+	Call *call;
+	calltable->cleanup(0);
+	terminating = 1;
+	pthread_join(call_thread, NULL);
+	/* this should be really empty, but just in case check it */
+	while(calltable->calls_queue.size() != 0) {
+			call = calltable->calls_queue.front();
+			calltable->calls_queue.pop();
+			delete call;
+			calls--;
+	}
+	while(calltable->calls_deletequeue.size() != 0) {
+			call = calltable->calls_deletequeue.front();
+			calltable->calls_deletequeue.pop();
+			delete call;
+			calls--;
+	}
+	unlink(opt_pidfile);
+	exit(1);
+}
 
 /* handler for INTERRUPT signal */
 void sigint_handler(int param)
 {
 	syslog(LOG_ERR, "SIGINT received, terminating\n");
-	calltable->cleanup(0);
-	terminating = 1;
-	pthread_join(call_thread, NULL);
-	unlink(opt_pidfile);
-	exit(1);
+	terminate2();
 }
 
 /* handler for TERMINATE signal */
 void sigterm_handler(int param)
 {
 	syslog(LOG_ERR, "SIGTERM received, terminating\n");
-	calltable->cleanup(0);
-	terminating = 1;
-	pthread_join(call_thread, NULL);
-	unlink(opt_pidfile);
-	exit(1);
+	terminate2();
 }
 
 /* cycle calls_queue and save it to MySQL */
