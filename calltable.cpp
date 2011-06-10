@@ -613,7 +613,7 @@ Call::buildQuery(mysqlpp::Query *query) {
 			c = i == 0 ? 'a' : 'b';
 
 			*query << " , " << c << "_index = " << quote << indexes[i];
-			*query << " , " << c << "_received = " << rtp[indexes[i]]->stats.received;
+			*query << " , " << c << "_received = " << (rtp[indexes[i]]->stats.received + 2); // received is always 2 packet less compared to wireshark (add it here)
 			*query << " , " << c << "_lost = " << rtp[indexes[i]]->stats.lost;
 			*query << " , " << c << "_avgjitter = " << quote << int(ceil(rtp[indexes[i]]->stats.avgjitter));
 			*query << " , " << c << "_maxjitter = " << quote << int(ceil(rtp[indexes[i]]->stats.maxjitter)); 
