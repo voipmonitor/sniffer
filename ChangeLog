@@ -1,3 +1,21 @@
+version 2.2
+------------------------------------------------------------------------
+
+- do not fetch pcap stats for every packet as it is causing major CPU load.
+Fetch it only once per 15 seconds. Before this patch 56Mbit network caused
+100% CPU. Now it is abou
+t 10% with jitterbuffer simulator off.
+- fix 100% CPU running on Feroceon 88FR131 rev 1 (v5l) ARM - Linux debian
+2.6.34.6 #1 PREEMPT Thu Aug 26 22:04:51 MDT 2010 armv5tel GNU/Linux
+getopt_long returns int not char which converts -1 to 255 on that platform.
+- add how-to install voipmonitor in Pbx In A Flash
+- Support cases where voipmonitor is running on SIP server which is behind NAT
+(endpoints are registering to public IP and SIP server has private IP
+address). If you would lik
+e to disable this feature, edit voipmonitor.h and delete #define NAT
+- fix old bug and add checks to not write over buffers
+- update centos instructions to meat libpcap >= 1.x requirments
+
 version 2.1
 -----------
 
