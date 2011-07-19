@@ -1,3 +1,93 @@
+version 3.0
+===========
+
+Upgrade from 2.2:
+-----------------
+
+cat cdrtable.sql.2.2-3.0 | mysql voipmonitor # this will take many time
+depending on number of cdr records. 
+
+
+Buf fixes:
+----------
+- fix memory leak and double CDR during wav recording 
+- fix crashes caused by bad fclose
+- fix memory corruptions and race condition causing crashes
+- Statistics from caller (a_*) was swapped to caller in some cases. 
+- Fix ab_received packet. It didnt correspond to what wireshark sees. It was
+always two packet less.
+- Despite the documentation, the only the long form --pid-file was parsed. Add
+missing -P option.
+- currently voipmonitor <= 2.2 insists on IPv4 addresses on the sniffing 
+interface. That's not necessary, often it's error prone. Furthermore the original 
+code provided the IP address to the pcap library, but they expect the netmask. So
+the code was wrong and might be a cause for sporadic errors with filter compilation.
+- ignore packets where datalen < 0 (corrupted packets? just in case?)
+- check if RTP packet is really RTP packet by checking RTP version bit which
+has to be equel 2. Without this check, some packets like STUN was confusing 
+voipmonitor and graph file and raw file was created for each non RTP UDP packet 
+which has the same SRC/DST port.
+- calculation of packetization was wrong for G723 in case of 60ms which causes
+drops on WAV recording. Simplify and fix packetization.
+- fix out of sync WAV recording in case where both RTP streams do not start at
+the same time (probably the most cases are for those who sends 200 OK
+immediately after 180 RINGING to simulate progress inband).
+- Fix recording WAV and RAW rtp for calls with more than one reINVITEs. Name of
+files were not unique and some raw files overwrited previouse file so final
+file was not in sync and shuffled.
+- Fix sync WAV issue for cases where RTP stream is not sending for a while
+before reINVITE.  
+- fix handling malloc and open files failures
+- rise MAX_IP_PER_CALL to 30 
+
+New features:
+-------------
+
+- implement --ring-buffer and set it in MB (feature of newer >= 2.6.31 kernels). 
+If you see voipmonitor dropping packets in syslog upgrade to newer kernel and 
+increase --ring-buffer to higher MB. It is buffer between pcap library and 
+voipmonitor. The most reason why voipmonitor drops packets is waiting for I/O 
+operations (switching to ext4 from ext3 also helps.
+- Implement configuration file. See config/voipmonitor.org. Config is read
+only if --config-file /etc/voipmonitor.conf specified on command line
+- Implement generic init script. See config/init.d/voipmonitor
+(thanks Telephonic http://telephonic.ca for sponsoring this work)
+- do not allocate 30 RTP classes for each call, allocate it only whan needed. It
+saves RAM and CPU.
+- Implement new cdr.whohanged column which represents who hanged up or canceled
+call.
+- Implement lastSIPresponse and lastSIPresponseNum (cat cdrtable.sql.2.3-2.4
+|mysql voipmonitor) you can now filter calls by bad response - example 
+SELECT * FROM cdr WHERE lastSIPresponseNum >= 400 (403 Wrong password or domain)
+- support compact headers according to rfc3261.txt section 20. Compact headers
+means that Call-ID: is replaced by i:. This resulted that voipmonitor ignored
+all calls with compact headers on.
+- add --rtp-oneleg option which is important option if voipmonitor is sniffing on 
+SIP proxy and see both RTP leg of CALL. in that case use this option. It will 
+analyze RTP only for the first LEG and not each 4 RTP streams which will confuse 
+voipmonitor. Drawback of this switch is that voipmonitor will analyze SDP only 
+for SIP packets which have the same IP and port of the first INVITE source IP 
+and port. It means it will not work in case where phone sends INVITE from 
+a.b.c.d:1024 and SIP proxy replies to a.b.c.d:5060. If you have better idea 
+how to solve this problem better please contact support@voipmonitor.org
+- Implement SIP register messages storing to PCAP and MySQL new table register. 
+This feature is optional with --sip-register new switch and configuration option 
+in voipmonitor.conf.
+- implement native conversion to OGG vorbis audio, now you can choose if you
+want to record to wav or ogg. Ogg is about 25kbps. It can be configured in 
+voipmonitor.conf or --audio-format = <wav|ogg> on command line
+- raise jitterbuffer for recording stream from 200 to 500 which improves
+dejittering audio
+- Put write buffers for RAW and WAV files which solves IO throughput. Now it
+can convert wav files in realtime for 200 concurent calls on usual sata 2GB
+disk and ext4 fs. Before this change queue was filling by calls until it
+reached memory limit and voipmonitor crashed. But I'm not recommending writing
+WAV file in realtime as it uses a lot of RAM and can cause instability. 
+- Change core dump to unlimited
+- change default maximum opened files from system default (usually 1024) to
+65535 to not block writes for very large network traffic
+- make core dump if voipmonitor crashes to voipmonitor directory 
+
 version 2.2
 ------------------------------------------------------------------------
 
