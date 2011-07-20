@@ -10,6 +10,7 @@ TERM="linux";
 # uncomment and change interface if you do not have voipmonitor.conf 
 #ARGS="-i eth0"
 PIDFILE=/var/run/voipmonitor.pid
+CONFIGFILE=/etc/voipmonitor.conf
 
 case "$1" in
   start)
@@ -21,11 +22,11 @@ case "$1" in
 		else
 			rm $PIDFILE
 			echo -n "Starting voipmonitor: "
-			voipmonitor --pid-file /var/run/voipmonitor.pid $ARGS
+			voipmonitor --config-file $CONFIGFILE /etc/voipmonitor.conf --pid-file /var/run/voipmonitor.pid $ARGS
 		fi
 	else
 		echo -n "Starting voipmonitor: "
-		voipmonitor --pid-file /var/run/voipmonitor.pid $ARGS
+		voipmonitor --config-file $CONFIGFILE --pid-file /var/run/voipmonitor.pid $ARGS
 	fi
 	;;
   stop)

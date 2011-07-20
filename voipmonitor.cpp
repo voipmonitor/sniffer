@@ -59,6 +59,7 @@ int opt_sip_register = 0;	// if == 1 save REGISTER messages
 int opt_ringbuffer = 10;	// ring buffer in MB 
 int opt_audio_format = FORMAT_WAV;	// define format for audio writing (if -W option)
 
+char configfile[1024] = "";		// ring buffer in MB 
 char mysql_host[256] = "localhost";
 char mysql_database[256] = "voipmonitor";
 char mysql_table[256] = "cdr";
@@ -200,12 +201,12 @@ static void daemonize(void)
 	}
 }
 
-bool FileExists(string strFilename) { 
+bool FileExists(char *strFilename) { 
 	struct stat stFileInfo; 
 	int intStat; 
 
 	// Attempt to get the file attributes 
-	intStat = stat(strFilename.c_str(),&stFileInfo); 
+	intStat = stat(strFilename, &stFileInfo); 
 	if(intStat == 0) { 
 		// We were able to get the file attributes 
 		// so the file obviously exists. 
@@ -228,21 +229,16 @@ int yesno(const char *arg) {
 		return 0;
 }
 
-int load_config() {
-	string fname;
-	if(FileExists("~/voipmonitor.conf")) {
-		fname = "~/voipmonitor.conf";
-	} else if(FileExists("/etc/voipmonitor.conf")) {
-		fname = "/etc/voipmonitor.conf";
-	} else {
+int load_config(char *fname) {
+	if(!FileExists(fname)) {
 		return 1;
 	}
 
-	printf("Loading configuration from file %s\n", fname.c_str());
+	printf("Loading configuration from file %s\n", fname);
 
 	CSimpleIniA ini;
 	ini.SetUnicode();
-	ini.LoadFile(fname.c_str());
+	ini.LoadFile(fname);
 	const char *value;
 
 	if((value = ini.GetValue("general", "interface", NULL))) {
@@ -348,6 +344,7 @@ int main(int argc, char *argv[]) {
             {"sip-register", 0, 0, '4'},
             {"audio-format", 1, 0, '5'},
             {"ring-buffer", 1, 0, '6'},
+            {"config-file", 1, 0, '7'},
             {0, 0, 0, 0}
         };
 
@@ -356,9 +353,6 @@ int main(int argc, char *argv[]) {
 	umask(0000);
 
 	openlog("voipmonitor", LOG_CONS | LOG_PERROR, LOG_DAEMON);
-
-	/* try to load configuration from file first */
-	load_config();
 
 	/* command line arguments overrides configuration in voipmonitor.conf file */
 	while(1) {
@@ -394,7 +388,12 @@ int main(int argc, char *argv[]) {
 				}
 				break;
 			case '6':
+				printf("ring buf\n");
 				opt_ringbuffer = atoi(optarg);
+				break;
+			case '7':
+				strncpy(configfile, optarg, sizeof(configfile));
+				load_config(configfile);
 				break;
 			case 'i':
 				strncpy(ifname, optarg, sizeof(ifname));

@@ -2,9 +2,9 @@ objects = codec_alaw.o codec_ulaw.o format_slinear.o format_wav.o format_ogg.o c
 args = -g3 -Wall
 #args = -O2 -Wall
 CFLAGS+=-I /usr/local/include/mysql++/ -I /usr/include/mysql++/ -I /usr/include/mysql/ -g3 -Wall -I jitterbuffer/  -L/usr/local/lib/ -Lgzstream/
-LIBS=-lpthread -lmysqlpp -lpcap -lgzstream -lz -lvorbis -lvorbisenc
+LIBS=-lpthread -lmysqlpp -lpcap -lgzstream -lz -lvorbis -lvorbisenc -logg
 #if you want to compile it statically uncomment this line
-#LIBS=-static -lpthread -L/usr/lib/mysql -lmysqlpp -lmysqlclient -lpcap -lgzstream -lz -lvorbis -lvorbisenc
+#LIBS=-static -lpthread -L/usr/lib/mysql -lmysqlpp -lmysqlclient -lpcap -lgzstream -lz -lvorbis -lvorbisenc -logg
 
 
 voipmonitor : $(objects) 
