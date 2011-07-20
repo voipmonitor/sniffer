@@ -325,33 +325,7 @@ int main(int argc, char *argv[]) {
 	ifname[0] = '\0';
 	strcpy(opt_chdir, "/var/spool/voipmonitor");
 
-
-	/* try to load configuration from file first */
         int option_index = 0;
-        static struct option long_options0[] = {
-            {"config-file", 1, 0, '7'},
-            {0, 0, 0, 0}
-	};
-	while(1) {
-		int c;
-		c = getopt_long(argc, argv, "", long_options0, &option_index);
-		//"i:r:d:v:h:b:u:p:fnU", NULL, NULL);
-		if (c == -1)
-			break;
-
-		switch (c) {
-			case '7':
-				strncpy(configfile, optarg, sizeof(configfile));
-				load_config(configfile);
-				break;
-		}
-	}
-
-        option_index = 0;
-	// resets getopt internals so we can use it again
-	optind = 1;
-	opterr = 1;
-	optopt = 63;
         static struct option long_options[] = {
             {"gzip-graph", 0, 0, '1'},
             {"gzip-pcap", 0, 0, '2'},
@@ -370,6 +344,7 @@ int main(int argc, char *argv[]) {
             {"sip-register", 0, 0, '4'},
             {"audio-format", 1, 0, '5'},
             {"ring-buffer", 1, 0, '6'},
+            {"config-file", 1, 0, '7'},
             {0, 0, 0, 0}
         };
 
@@ -415,6 +390,10 @@ int main(int argc, char *argv[]) {
 			case '6':
 				printf("ring buf\n");
 				opt_ringbuffer = atoi(optarg);
+				break;
+			case '7':
+				strncpy(configfile, optarg, sizeof(configfile));
+				load_config(configfile);
 				break;
 			case 'i':
 				strncpy(ifname, optarg, sizeof(ifname));
