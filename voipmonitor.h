@@ -3,7 +3,7 @@
  * the GNU General Public License Version 2.
 */
 
-#define RTPSENSOR_VERSION "3.0"
+#define RTPSENSOR_VERSION "3.0.1"
 #define NAT
 
 #define FORMAT_WAV	1
