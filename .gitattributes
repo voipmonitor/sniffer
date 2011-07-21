@@ -5,6 +5,7 @@
 /README.centos -text
 /README.debian -text
 /README.piaf -text
+/README.ubuntu-10.04LTS -text
 /calltable.cpp -text
 /calltable.h -text
 /cdrtable.sql -text
