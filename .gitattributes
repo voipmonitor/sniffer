@@ -4,6 +4,7 @@
 /README -text
 /README.centos -text
 /README.debian -text
+/README.gentoo -text
 /README.piaf -text
 /README.ubuntu-10.04LTS -text
 /calltable.cpp -text

@@ -1,0 +1,54 @@
+Install voipmonitor dependencies
+================================
+
+emerge libpcap zlib
+
+install mysql++ from source
+===========================
+
+emerge --onlydeps mysql++
+
+wget http://tangentsoft.net/mysql++/releases/mysql++-3.1.0.tar.gz
+tar xzf mysql++-3.1.0.tar.gz
+
+Open /path/to/mysql++/ssx/genv2.cpp with your favorite editor and add the following line:
+#include <cstring>
+
+between these two lines:
+
+#include <typeinfo>
+
+using namespace std;
+
+Save and exit.
+
+cd /path/to/mysql++
+./configure
+make
+make install
+ldconfig
+
+Install voipmonitor
+===================
+
+cd /path/to/voipmonitor
+make clean
+make
+make install
+cp config/voipmonitor.conf /etc/
+cp config/init.d/voipmonitor /etc/init.d/
+
+Edit the config file, prepare the mysql table and run voipmonitor
+
+
+Install voipmonitor
+--------------------------------
+
+cd /path/to/voipmonitor
+make
+make install
+cp config/voipmonitor.conf /etc/
+cp config/init.d/voipmonitor /etc/init.d/
+
+Edit the config file, prepare the mysql table and run voipmonitor
+
