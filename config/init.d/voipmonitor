@@ -22,7 +22,7 @@ case "$1" in
 		else
 			rm $PIDFILE
 			echo -n "Starting voipmonitor: "
-			voipmonitor --config-file $CONFIGFILE /etc/voipmonitor.conf --pid-file /var/run/voipmonitor.pid $ARGS
+			voipmonitor --config-file $CONFIGFILE --pid-file /var/run/voipmonitor.pid $ARGS
 		fi
 	else
 		echo -n "Starting voipmonitor: "
