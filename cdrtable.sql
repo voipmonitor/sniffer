@@ -11,7 +11,7 @@ CREATE TABLE `cdr` (
   `sipcallerip` int(32) unsigned NOT NULL,
   `sipcalledip` int(32) unsigned NOT NULL,
   `fbasename` varchar(255) NOT NULL,
-  `whohanged` ENUM('caller','calee') DEFAULT NULL,
+  `whohanged` ENUM('caller','callee') DEFAULT NULL,
   `bye` tinyint(2) NOT NULL default 2,
   `lastSIPresponse` varchar(128) default NULL,
   `lastSIPresponseNum` int(3) default NULL,
