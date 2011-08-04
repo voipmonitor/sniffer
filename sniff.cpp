@@ -251,7 +251,7 @@ void readdump(pcap_t *handle) {
 	char str1[1024],str2[1024];
 	int sip_method = 0;
 	int res;
-	int protocol;
+	int protocol = 0;
 	int iscaller;
 	unsigned int offset;
 	Call *call;
@@ -262,6 +262,7 @@ void readdump(pcap_t *handle) {
 	char lastSIPresponse[128];
 	int lastSIPresponseNum;
 	int pcapstatresCount = 0;
+	int pcap_dlink = pcap_datalink(handle);
 
 	while (!terminating) {
 		res = pcap_next_ex(handle, &header, &packet);
@@ -319,7 +320,7 @@ void readdump(pcap_t *handle) {
 			calltable->unlock_calls_deletequeue();
 		}
 	
-                switch(pcap_datalink(handle)) {
+                switch(pcap_dlink) {
                         case DLT_LINUX_SLL:
                                 header_sll = (struct sll_header *) (char*)packet;
                                 protocol = header_sll->sll_protocol;
@@ -338,6 +339,12 @@ void readdump(pcap_t *handle) {
                                 }
                                 offset += sizeof(struct ether_header);
                                 break;
+			case DLT_RAW:
+				offset = 0;
+				protocol = 8;
+				break;
+			default:
+				printf("This datalink number [%d] is not supported yet. For more information write to support@voipmonitor.org\n", pcap_dlink);
                 }
 
                 if(protocol != 8) {
