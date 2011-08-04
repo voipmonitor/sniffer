@@ -20,6 +20,7 @@ and insert them into Call class.
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <net/ethernet.h>
+#include <netinet/tcp.h>
 #include <syslog.h>
 
 #include <pcap.h>
@@ -241,9 +242,11 @@ void readdump(pcap_t *handle) {
 	struct sll_header *header_sll;
 	struct iphdr *header_ip;
 	struct udphdr *header_udp;
+	struct udphdr header_udp_tmp;
+	struct tcphdr *header_tcp;
 	char *data;
 	int datalen;
-	char *s;
+	char *s, *tmp;
 	unsigned long l;
 	char str1[1024],str2[1024];
 	int sip_method = 0;
@@ -344,16 +347,29 @@ void readdump(pcap_t *handle) {
 
 		header_ip = (struct iphdr *) ((char*)packet + offset);
 
-		if (header_ip->protocol != IPPROTO_UDP) {
-			//packet is not UDP, we are not interested, go to the next packet
+		header_udp = &header_udp_tmp;
+		if (header_ip->protocol == IPPROTO_UDP) {
+			// prepare packet pointers 
+			header_udp = (struct udphdr *) ((char *) header_ip + sizeof(*header_ip));
+			data = (char *) header_udp + sizeof(*header_udp);
+			datalen = (int)(header->len - ((unsigned long) data - (unsigned long) packet)); 
+		} else if (header_ip->protocol == IPPROTO_TCP) {
+			// prepare packet pointers 
+			header_tcp = (struct tcphdr *) ((char *) header_ip + sizeof(*header_ip));
+			data = (char *) header_tcp + sizeof(struct tcphdr);
+			datalen = (int)(header->len - ((unsigned long) data - (unsigned long) packet)); 
+			if (!(htons(header_tcp->source) == 5060 || htons(header_tcp->dest) == 5060)) {
+				// not interested in TCP packet other than SIP port
+				continue;
+			}
+			header_udp->source = header_tcp->source;
+			header_udp->dest = header_tcp->dest;
+		} else {
+			//packet is not UDP and is not TCP, we are not interested, go to the next packet
 			continue;
 		}
 
 
-		// prepare packet pointers 
-		header_udp = (struct udphdr *) ((char *) header_ip + sizeof(*header_ip));
-		data = (char *) header_udp + sizeof(*header_udp);
-		datalen = (int)(header->len - ((unsigned long) data - (unsigned long) packet)); 
 		if(datalen < 0) {
 			continue;
 		}
@@ -379,6 +395,20 @@ void readdump(pcap_t *handle) {
 		} else if (htons(header_udp->source) == 5060 || htons(header_udp->dest) == 5060) {
 			// packet is from or to port 5060 
 			data[datalen]=0;
+
+#if 0
+			/* ugly and dirty hack to detect two SIP messages in one TCP packet. */
+			tmp = strstr(data, "SIP/2.0 ");
+			if(tmp) {
+				tmp = strstr(tmp + 8, "SIP/2.0 ");
+				if(tmp) {
+					// second SIP message in one packet. Skip the first packet for now. TODO: process both packets
+					datalen -= tmp - data;
+					data = tmp;
+				}
+			}
+#endif
+
 			/* No, this isn't the phone number of the caller. It uniquely represents 
 			   the whole call, or dialog, between the two user agents. All related SIP 
 			   messages use the same Call-ID. For example, when a user agent receives a 

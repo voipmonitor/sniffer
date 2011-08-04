@@ -106,7 +106,7 @@ RTP::RTP() {
 
 	channel_record = (ast_channel*)calloc(1, sizeof(*channel_record));
 	channel_record->jitter_impl = 0; // fixed
-	channel_record->jitter_max = 500; 
+	channel_record->jitter_max = 60; 
 	channel_record->jitter_resync_threshold = 1000; 
 	channel_record->last_datalen = 0;
 	channel_record->lastbuflen = 0;
@@ -319,10 +319,9 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 
 	u_int16_t seq = getSeqNum();
 	int curpayload = getPayload();
-
 	
 	/* codec changed */
-	if(codec == -1 || ((curpayload != prev_payload) && (curpayload != 101 && prev_payload != 101))) {
+	if((codec == -1 || (curpayload != prev_payload)) && (curpayload != 101 && prev_payload != 101)) {
 		if(curpayload >= 96 && curpayload <= 127) {
 			/* for dynamic payload we look into rtpmap */
 			for(int i = 0; i < MAX_RTPMAP; i++) {
@@ -379,8 +378,6 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 		}
 	}
 
-	prev_payload = curpayload;
-	
 	if(payload < 0) {
 		/* save payload to statistics based on first payload. TODO: what if payload is dynamically changing? */
 		payload = curpayload;
@@ -392,9 +389,16 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 		frame->frametype = AST_FRAME_VOICE;
 	}
 
+	if(curpayload == 4) {
+		// default payload for g723 will be 30
+		default_payload = 30;
+	} else {
+		default_payload = 20;
+	}
+
 	if(seeninviteok) {
 		if(packetization_iterator == 0) {
-			if(last_ts != 0 && seq == (last_seq + 1) && curpayload != 101) {
+			if(last_ts != 0 && seq == (last_seq + 1) && (prev_payload != 101 && curpayload != 101)) {
 				// sequence numbers are ok, we can calculate packetization
 				packetization = (getTimestamp() - last_ts) / 8;
 				if(packetization > 0) {
@@ -404,11 +408,11 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 			}
 			/* for recording, we cannot loose any packet */
 			if(opt_saveRAW || opt_saveWAV) {
-				packetization = channel_record->packetization = 20;
+				packetization = channel_record->packetization = default_payload;
 				jitterbuffer(channel_record, opt_saveRAW || opt_saveWAV);
 			}
 		} else if(packetization_iterator == 1) {
-			if(seq == (last_seq + 1) && curpayload != 101) {
+			if(seq == (last_seq + 1) && curpayload != 101 && prev_payload != 101) {
 				// sequence numbers are ok, we can calculate packetization
 				packetization = (getTimestamp() - last_ts) / 8;
 				packetization = (packetization + last_packetization) / 2;
@@ -429,7 +433,7 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 				packetization_iterator = 0;
 				/* for recording, we cannot loose any packet */
 				if(opt_saveRAW || opt_saveWAV) {
-					packetization = channel_record->packetization = 20;
+					packetization = channel_record->packetization = default_payload;
 					jitterbuffer(channel_record, 1);
 				}
 			}
@@ -442,6 +446,7 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 			}
 		}
 	}
+	prev_payload = curpayload;
 
 	last_ts = getTimestamp();
 	last_seq = seq;
