@@ -230,6 +230,14 @@ RTP::jitterbuffer(struct ast_channel *channel, int savePayload) {
 		}
 		frame->data = payload_data;
 		frame->datalen = payload_len > 0 ? payload_len : 0; /* ensure that datalen is never negative */
+
+		if(getPayload() == PAYLOAD_G723) {
+			// voipmonitor does not handle SID packets well (silence packets) it causes out of sync
+			if((unsigned char)payload_data[0] & 2)  {
+				return;
+			}
+		}
+
 		channel->rawstream = gfileRAW;
 		if(payload_len > 0) {
 			channel->last_datalen = frame->datalen;
@@ -239,6 +247,7 @@ RTP::jitterbuffer(struct ast_channel *channel, int savePayload) {
 		frame->data = NULL;
 		channel->rawstream = NULL;
 	}
+
 
 	// create jitter buffer structures 
 	ast_jb_do_usecheck(channel, &header->ts);
@@ -389,11 +398,11 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 		frame->frametype = AST_FRAME_VOICE;
 	}
 
-	if(curpayload == 4) {
+	if(curpayload == PAYLOAD_G723) {
 		// default payload for g723 will be 30
-		default_payload = 30;
+		default_packetization = 30;
 	} else {
-		default_payload = 20;
+		default_packetization = 20;
 	}
 
 	if(seeninviteok) {
@@ -408,7 +417,7 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 			}
 			/* for recording, we cannot loose any packet */
 			if(opt_saveRAW || opt_saveWAV) {
-				packetization = channel_record->packetization = default_payload;
+				packetization = channel_record->packetization = default_packetization;
 				jitterbuffer(channel_record, opt_saveRAW || opt_saveWAV);
 			}
 		} else if(packetization_iterator == 1) {
@@ -433,7 +442,7 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 				packetization_iterator = 0;
 				/* for recording, we cannot loose any packet */
 				if(opt_saveRAW || opt_saveWAV) {
-					packetization = channel_record->packetization = default_payload;
+					packetization = channel_record->packetization = default_packetization;
 					jitterbuffer(channel_record, 1);
 				}
 			}

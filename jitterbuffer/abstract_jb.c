@@ -365,6 +365,37 @@ void jb_fixed_flush_deliver(struct ast_channel *chan)
 	}
 }       
 
+void save_empty_frame(struct ast_channel *chan) {
+	if(chan->rawstream) {
+		int i;
+		short int zero = 0;
+		//write frame to file
+		if(chan->codec == PAYLOAD_SPEEX || chan->codec == PAYLOAD_G723 || chan->codec == PAYLOAD_G729) {
+			if(chan->codec == PAYLOAD_G723) {
+				for(i = 1; (i * 30) <= chan->packetization; i++) {
+					fwrite(&zero, 1, sizeof(short int), chan->rawstream);   // write zero packet
+				}
+			} else if(chan->codec == PAYLOAD_G729) {
+				for(i = 1; (i * 20) <= chan->packetization; i++) {
+					fwrite(&zero, 1, sizeof(short int), chan->rawstream);   // write zero packet
+				}
+			} else {
+				fwrite(&zero, 1, sizeof(short int), chan->rawstream);   // write zero packet
+			}
+		} else {
+			// write previouse frame (better than zero frame), but only once
+			if(chan->lastbuflen) {
+				fwrite(chan->lastbuf, 1, chan->lastbuflen, chan->rawstream);
+			} else {
+				// write empty frame
+				for(i = 0; i < chan->last_datalen; i++) {
+					fputc(0, chan->rawstream);
+				}
+			}
+		}
+	}
+}
+
 static void jb_get_and_deliver(struct ast_channel *chan, struct timeval *mynow)
 {
 	struct ast_jb *jb = &chan->jb;
@@ -374,15 +405,14 @@ static void jb_get_and_deliver(struct ast_channel *chan, struct timeval *mynow)
 	struct ast_frame *f;
 	long now;
 	int interpolation_len, res;
-	int i;
 	short int stmp;
-	short int zero = 0;
 
 	now = get_now(jb, NULL, mynow);
 	jb->next = jbimpl->next(jbobj);
 	if (now < jb->next) {
 		// here we are buffering frames 
 		if(debug) fprintf(stdout, "\tJB_GET {now=%ld}: now < next=%ld (still buffering)\n", now, jb->next);
+		save_empty_frame(chan);
 		return;
 	}
 	
@@ -421,70 +451,23 @@ static void jb_get_and_deliver(struct ast_channel *chan, struct timeval *mynow)
 			ast_frfree(f);
 			break;
 		case JB_IMPL_DROP:
-			if(chan->rawstream) {
-				if(chan->codec == PAYLOAD_SPEEX || chan->codec == PAYLOAD_G723 || chan->codec == PAYLOAD_G729) {
-					fwrite(&zero, 1, sizeof(short int), chan->rawstream);   // write zero packet
-				} else {
-					// write previouse frame (better than zero frame), but only once
-					if(chan->lastbuflen) {
-						fwrite(chan->lastbuf, 1, chan->lastbuflen, chan->rawstream);
-					} else {
-						// write empty frame
-						for(i = 0; i < chan->last_datalen; i++) {
-							fputc(0, chan->rawstream);
-						}
-					}
-				}
-			}
-			if(debug) fprintf(stdout, "\tJB_GET {now=%ld}: %s frame with ts=%ld and len=%ld\n",
-				now, jb_get_actions[res], f->ts, f->len);
+			save_empty_frame(chan);
+			if(debug) fprintf(stdout, "\tJB_GET {now=%ld}: %s frame with ts=%ld and len=%ld seq=%d\n", now, jb_get_actions[res], f->ts, f->len, f->seqno);
 			ast_frfree(f);
 			chan->last_loss_burst++;
 			break;
 		case JB_IMPL_INTERP:
 			/* interpolate a frame */
 			/* deliver the interpolated frame */
-			if(chan->rawstream) {
-				if(debug) fprintf(stdout, "writing?\n");
-				if(chan->codec == PAYLOAD_SPEEX || chan->codec == PAYLOAD_G723 || chan->codec == PAYLOAD_G729) {
-					if(debug) fprintf(stdout, "writing!\n");
-					fwrite(&zero, 1, sizeof(short int), chan->rawstream);   // write zero packet
-				} else {
-					// write previouse frame (better than zero frame), but only once
-					if(chan->lastbuflen) {
-						fwrite(chan->lastbuf, 1, chan->lastbuflen, chan->rawstream);
-					} else {
-						// write empty frame
-						for(i = 0; i < chan->last_datalen; i++) {
-							fputc(0, chan->rawstream);
-						}
-					}
-				}
-			}
+			save_empty_frame(chan);
 			//ast_write(chan, f);
 			if(debug) fprintf(stdout, "\tJB_GET {now=%ld}: Interpolated frame with len=%d\n", now, interpolation_len);
 			// if marker bit, reset counter
 			chan->last_loss_burst++;
 			break;
 		case JB_IMPL_NOFRAME:
-			if(chan->rawstream) {
-				if(chan->codec == PAYLOAD_SPEEX || chan->codec == PAYLOAD_G723 || chan->codec == PAYLOAD_G729) {
-					fwrite(&zero, 1, sizeof(short int), chan->rawstream);   // write zero packet
-				} else {
-					// write previouse frame (better than zero frame), but only once
-					if(chan->lastbuflen) {
-						fwrite(chan->lastbuf, 1, chan->lastbuflen, chan->rawstream);
-					} else {
-						// write empty frame
-						for(i = 0; i < chan->last_datalen; i++) {
-							fputc(0, chan->rawstream);
-						}
-					}
-				}
-			}
-			if(debug) fprintf(stdout, 
-				"JB_IMPL_NOFRAME is retuned from the %s jb when now=%ld >= next=%ld, jbnext=%ld!\n",
-				jbimpl->name, now, jb->next, jbimpl->next(jbobj));
+			save_empty_frame(chan);
+			if(debug) fprintf(stdout, "JB_IMPL_NOFRAME is retuned from the %s jb when now=%ld >= next=%ld, jbnext=%ld!\n", jbimpl->name, now, jb->next, jbimpl->next(jbobj));
 			if(debug) fprintf(stdout, "\tJB_GET {now=%ld}: No frame for now!?\n", now);
 			chan->last_loss_burst++;
 			return;
@@ -563,8 +546,8 @@ static int create_jb(struct ast_channel *chan, struct ast_frame *frr, struct tim
 			if(debug) fprintf(stdout, "JB_PUT_FIRST {now=%ld}: Queued frame with ts=%ld and len=%ld\n",
 				now, frr->ts, frr->len);
 		} else {
-			if(debug) fprintf(stdout, "JB_PUT_FIRST {now=%ld}: Dropped frame with ts=%ld and len=%ld\n",
-				now, frr->ts, frr->len);
+			if(debug) fprintf(stdout, "JB_PUT_FIRST {now=%ld}: Dropped frame with ts=%ld and len=%ld seq=%d\n",
+				now, frr->ts, frr->len, frr->seqno);
 		}
 	}
 
