@@ -149,6 +149,8 @@ public:
 	int iscaller;		//!< flag which indicates if RTP stream is part of caller or callee
 	void *call_owner;	//!< which Call owns us
 	int default_packetization;
+	int sid;
+	int prev_sid;
 
 	struct stats_t {
 		u_int32_t	d50;	//!< delay from 0 to 50

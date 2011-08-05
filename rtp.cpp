@@ -130,6 +130,8 @@ RTP::RTP() {
 		rtpmap[i] = 0;
 	}
 	gfileRAW_buffer = NULL;
+	sid = false;
+	prev_sid = false;
 	
 }
 
@@ -234,7 +236,13 @@ RTP::jitterbuffer(struct ast_channel *channel, int savePayload) {
 		if(getPayload() == PAYLOAD_G723) {
 			// voipmonitor does not handle SID packets well (silence packets) it causes out of sync
 			if((unsigned char)payload_data[0] & 2)  {
-				return;
+				/* check if jitterbuffer is already created. If not we have to create it because 
+				   if call starts with SID packets first it will than cause out of sync calls 
+				*/
+				if(ast_test_flag(&channel->jb, (1 << 2))) {
+					// jitterbuffer is created so we can skip SID packets now
+					return;
+				}
 			}
 		}
 
@@ -316,7 +324,6 @@ RTP::jitterbuffer(struct ast_channel *channel, int savePayload) {
 /* read rtp packet */
 void
 RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t saddr, int seeninviteok) {
-
 	this->data = data; 
 	this->len = len;
 	this->header = header;
@@ -398,16 +405,23 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 		frame->frametype = AST_FRAME_VOICE;
 	}
 
-	if(curpayload == PAYLOAD_G723) {
-		// default payload for g723 will be 30
-		default_packetization = 30;
-	} else {
-		default_packetization = 20;
-	}
-
 	if(seeninviteok) {
+		if(packetization_iterator == 0 || packetization_iterator == 1) {
+			// we dont know packetization yet. Behave differently n G723 codec 
+			if(curpayload == PAYLOAD_G723) {
+				default_packetization = 30;
+				/* check if RTP packet is not Silence packet (SID). Silence packets can have different
+				   packetization and if call starts with SID packets it will guess wrong packetization.
+				   typical sitation is for 60ms packetization and 30ms SID packetization */
+				payload_data = data + sizeof(RTPFixedHeader);
+				sid = (unsigned char)payload_data[0] & 2;
+			} else {
+				sid = false;
+				default_packetization = 20;
+			}
+		}
 		if(packetization_iterator == 0) {
-			if(last_ts != 0 && seq == (last_seq + 1) && (prev_payload != 101 && curpayload != 101)) {
+			if(last_ts != 0 && seq == (last_seq + 1) && (prev_payload != 101 && curpayload != 101) && !sid && !prev_sid) {
 				// sequence numbers are ok, we can calculate packetization
 				packetization = (getTimestamp() - last_ts) / 8;
 				if(packetization > 0) {
@@ -421,7 +435,7 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 				jitterbuffer(channel_record, opt_saveRAW || opt_saveWAV);
 			}
 		} else if(packetization_iterator == 1) {
-			if(seq == (last_seq + 1) && curpayload != 101 && prev_payload != 101) {
+			if(seq == (last_seq + 1) && curpayload != 101 && prev_payload != 101 && !sid && !prev_sid) {
 				// sequence numbers are ok, we can calculate packetization
 				packetization = (getTimestamp() - last_ts) / 8;
 				packetization = (packetization + last_packetization) / 2;
@@ -456,6 +470,7 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 		}
 	}
 	prev_payload = curpayload;
+	prev_sid = sid;
 
 	last_ts = getTimestamp();
 	last_seq = seq;
