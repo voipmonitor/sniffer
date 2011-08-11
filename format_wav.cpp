@@ -7,7 +7,7 @@ int wav_write_header(FILE *f)
 	unsigned int bhz = htoll(16000);
 	unsigned int hs = htoll(16);
 	unsigned short fmt = htols(1);
-	unsigned short chans = htols(1);
+	unsigned short chans = htols(2);
 	unsigned short bysam = htols(2);
 	unsigned short bisam = htols(16);
 	unsigned int size = htoll(0);
@@ -116,6 +116,7 @@ int wav_mix(char *in1, char *in2, char *out) {
 	char *f1;
 	char *p2;
 	char *f2;
+	short int zero = 0;
 	long file_size1;
 	long file_size2;
 
@@ -177,14 +178,24 @@ int wav_mix(char *in1, char *in2, char *out) {
 
 	while(p1 < f1 || p2 < f2 ) {
 		if(p1 < f1 && p2 < f2) {
+			/* mono */
+			/*
 			slinear_saturated_add((short int*)p1, (short int*)p2);
 			fwrite(p1, 2, 1, f_out);
 			p1 += 2;
 			p2 += 2;
+			*/
+			/* stereo */
+			fwrite(p1, 2, 1, f_out);
+			fwrite(p2, 2, 1, f_out);
+			p1 += 2;
+			p2 += 2;
 		} else if ( p1 < f1 ) {
 			fwrite(p1, 2, 1, f_out);
+			fwrite(&zero, 2, 1, f_out);
 			p1 += 2;
 		} else {
+			fwrite(&zero, 2, 1, f_out);
 			fwrite(p2, 2, 1, f_out);
 			p2 += 2;
 		}
