@@ -106,6 +106,12 @@ Call::~Call(){
 			delete rtp[i];
 		}
 	}
+
+	if (get_f_pcap() != NULL){
+		pcap_dump_flush(get_f_pcap());
+		pcap_dump_close(get_f_pcap());
+		set_f_pcap(NULL);
+	}
 }
 
 void
