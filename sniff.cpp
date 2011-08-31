@@ -394,7 +394,7 @@ void readdump(pcap_t *handle) {
 		} else if ((call = calltable->hashfind_by_ip_port(header_ip->saddr, htons(header_udp->source), &iscaller))){
 			// packet (RTP) by source:port is already part of some stored call 
 			// as we are searching by source address and find some call, revert iscaller 
-			call->read_rtp((unsigned char*) data, datalen, header, header_ip->saddr, htons(header_udp->source), iscaller);
+			call->read_rtp((unsigned char*) data, datalen, header, header_ip->saddr, htons(header_udp->source), !iscaller);
 			call->set_last_packet_time(header->ts.tv_sec);
 			if(opt_saveRTP) {
 				save_packet(call, header, packet);
