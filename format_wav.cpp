@@ -4,11 +4,11 @@
 int wav_write_header(FILE *f)
 {
 	unsigned int hz=htoll(8000);
-	unsigned int bhz = htoll(16000);
+	unsigned int bhz = htoll(16000*2);
 	unsigned int hs = htoll(16);
 	unsigned short fmt = htols(1);
 	unsigned short chans = htols(2);
-	unsigned short bysam = htols(2);
+	unsigned short bysam = htols(2*2);
 	unsigned short bisam = htols(16);
 	unsigned int size = htoll(0);
 	/* Write a wav header, ignoring sizes which will be filled in later */
