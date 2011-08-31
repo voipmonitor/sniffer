@@ -132,7 +132,6 @@ RTP::RTP() {
 	gfileRAW_buffer = NULL;
 	sid = false;
 	prev_sid = false;
-	
 }
 
 /* destructor */
@@ -405,7 +404,8 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 		frame->frametype = AST_FRAME_VOICE;
 	}
 
-	if(seeninviteok) {
+// voipmonitor now handles RTP streams including progress  XXX: remove this comment if it will be confirmed stable enough
+//	if(seeninviteok) {
 		if(packetization_iterator == 0 || packetization_iterator == 1) {
 			// we dont know packetization yet. Behave differently n G723 codec 
 			if(curpayload == PAYLOAD_G723) {
@@ -468,7 +468,7 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 				jitterbuffer(channel_record, 1);
 			}
 		}
-	}
+//	}
 	prev_payload = curpayload;
 	prev_sid = sid;
 
