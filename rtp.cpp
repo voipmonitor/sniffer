@@ -157,7 +157,7 @@ RTP::~RTP() {
 	free(channel_record);
 	free(frame);
 
-	if(opt_saveGRAPH) {
+	if(opt_saveGRAPH || opt_gzipGRAPH) {
 		if(opt_gzipGRAPH) {
 			gfileGZ.close();
 		} else {

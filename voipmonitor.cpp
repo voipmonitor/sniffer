@@ -669,9 +669,22 @@ int main(int argc, char *argv[]) {
 
 	// here we go when readdump finished. When reading from interface, do nothing, because cleanups is done in sigint_* functions
 	if(fname) {
+		Call *call;
 		calltable->cleanup(0);
 		terminating = 1;
 		pthread_join(call_thread, NULL);
+		while(calltable->calls_queue.size() != 0) {
+				call = calltable->calls_queue.front();
+				calltable->calls_queue.pop();
+				delete call;
+				calls--;
+		}
+		while(calltable->calls_deletequeue.size() != 0) {
+				call = calltable->calls_deletequeue.front();
+				calltable->calls_deletequeue.pop();
+				delete call;
+				calls--;
+		}
 	}
 
 	unlink(opt_pidfile);
