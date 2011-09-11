@@ -299,7 +299,7 @@ int load_config(char *fname) {
 	if((value = ini.GetValue("general", "promisc", NULL))) {
 		opt_promisc = yesno(value);
 	}
-	if((value = ini.GetValue("general", "myqslhost", NULL))) {
+	if((value = ini.GetValue("general", "mysqlhost", NULL))) {
 		strncpy(mysql_host, value, sizeof(mysql_host));
 	}
 	if((value = ini.GetValue("general", "mysqldb", NULL))) {
