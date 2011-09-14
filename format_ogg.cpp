@@ -131,7 +131,7 @@ static void ogg_close(struct vorbis_desc *s, FILE *f)
         vorbis_comment_clear(&s->vc);
         vorbis_info_clear(&s->vi);
 
-	ogg_sync_clear(&s->oy);
+	ogg_sync_destroy(&s->oy);
 }
 
 
