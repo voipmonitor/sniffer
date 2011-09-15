@@ -619,6 +619,10 @@ void readdump(pcap_t *handle) {
 				if( ((call->saddr == header_ip->saddr && call->sport == htons(header_udp->source)) || (call->saddr == header_ip->daddr && call->sport == htons(header_udp->dest)))
 					&&
 				    (sip_method == RES3XX || sip_method == RES4XX || sip_method == RES5XX || sip_method == RES6XX) && lastSIPresponseNum != 401 && lastSIPresponseNum != 407 ) {
+				    		// save packet as we are ending loop here
+						if(opt_saveSIP) {
+							save_packet(call, header, packet);
+						}
 						calltable->lock_calls_queue();
 						calltable->calls_queue.push(call);	// push it to CDR queue at the end of queue
 						calltable->unlock_calls_queue();
