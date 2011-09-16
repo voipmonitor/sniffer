@@ -118,10 +118,12 @@ void
 Call::closeRawFiles() {
 	for(int i = 0; i < ssrc_n; i++) {
 		if(rtp[i]->gfileRAW) {
+			FILE *tmp;
 			rtp[i]->jitterbuffer_fixed_flush(rtp[i]->channel_record);
 			/* preventing race condition as gfileRAW is checking for NULL pointer in rtp classes */ 
-			fclose(rtp[i]->gfileRAW);
+			tmp = rtp[i]->gfileRAW;
 			rtp[i]->gfileRAW = NULL;
+			fclose(tmp);
 		}
 	}
 }
