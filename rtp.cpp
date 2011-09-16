@@ -375,8 +375,14 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 			gfileRAW = fopen(tmp, "w");
 			if(!gfileRAW_buffer) {
 				gfileRAW_buffer = (char*)malloc(32768 * sizeof(char));
+				if(gfileRAW_buffer == NULL) {
+					syslog(LOG_ERR, "Cannot allocate memory for gfileRAW_buffer - low memory this is FATAL");
+					exit(2);
+				}
 			}
-			setvbuf(gfileRAW, gfileRAW_buffer, _IOFBF, 32768);
+			if(gfileRAW_buffer) {
+				setvbuf(gfileRAW, gfileRAW_buffer, _IOFBF, 32768);
+			}
 			if(!gfileRAW) {
 				syslog(LOG_ERR, "Cannot open file %s for writing\n", tmp);
 			}
@@ -445,6 +451,8 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 				} else {
 					packetization_iterator++;
 					channel_fix1->packetization = channel_fix2->packetization = channel_adapt->packetization = channel_record->packetization = packetization;
+					if(verbosity > 3) printf("[%u] packetization:[%d]\n", getSSRC(), packetization);
+
 					jitterbuffer(channel_fix1, 0);
 					jitterbuffer(channel_fix2, 0);
 					jitterbuffer(channel_adapt, 0);
