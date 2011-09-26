@@ -139,8 +139,6 @@ void *storing_cdr( void *dummy ) {
 			}
 
 			if(opt_saveWAV && call->type == INVITE) {
-				/* we have to close all raw files as there can be data in buffers */
-				call->closeRawFiles();
 				if(verbosity > 0) printf("converting RAW file to WAV Queue[%d]\n", calltable->calls_queue.size());
 				call->convertRawToWav();
 			}

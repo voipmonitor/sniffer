@@ -941,6 +941,8 @@ Calltable::cleanup( time_t currtime ) {
 				if(verbosity > 2)
 					syslog(LOG_NOTICE, "Set call->sighup\n");
 			}
+			// we have to close all raw files as there can be data in buffers 
+			call->closeRawFiles();
 			/* move call to queue for mysql processing */
 			lock_calls_queue();
 			calls_queue.push(*call);

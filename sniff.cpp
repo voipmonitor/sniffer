@@ -596,6 +596,8 @@ void readdump(pcap_t *handle) {
 								pcap_dump_close(call->get_f_pcap());
 								call->set_f_pcap(NULL);
 							}
+							// we have to close all raw files as there can be data in buffers 
+							call->closeRawFiles();
 							calltable->lock_calls_queue();
 							calltable->calls_queue.push(call);	// push it to CDR queue at the end of queue
 							calltable->unlock_calls_queue();
@@ -623,6 +625,8 @@ void readdump(pcap_t *handle) {
 						if(opt_saveSIP) {
 							save_packet(call, header, packet);
 						}
+						// we have to close all raw files as there can be data in buffers 
+						call->closeRawFiles();
 						calltable->lock_calls_queue();
 						calltable->calls_queue.push(call);	// push it to CDR queue at the end of queue
 						calltable->unlock_calls_queue();
