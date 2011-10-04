@@ -5,6 +5,7 @@ What is required
 - libpcap-dev package >= 1.0
 - MySQL++ library from http://tangentsoft.net/mysql++/
 - zlib ibrary 
+- Libogg, Libvorbis 
 
 - Make sure mysql is installed when building CentOS
 - Under the Web Server include the mysql-devel and php-mysql packages
@@ -34,6 +35,10 @@ cp /usr/local/lib/libmysqlpp.so.3 /usr/lib/
 php-gd
 ------
 yum install php-gd
+
+ogg vorbis
+----------
+yum install  libogg libogg-devel vorbis-tools libvorbis libvorbis-devel
 
 Build voipmonitor
 =================
