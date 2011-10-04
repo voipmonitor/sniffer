@@ -13,6 +13,8 @@ What is required
 Pre-Build
 =========
 
+yum groupinstall 'Development Tools'
+
 libpcap-devel
 -------------
 wget http://www.tcpdump.org/release/libpcap-1.1.1.tar.gz
@@ -24,54 +26,49 @@ make install
 
 mysql++
 -------
+yum install mysql-devel
 wget http://tangentsoft.net/mysql++/releases/mysql++-3.0.9.tar.gz
 tar xzf mysql++-3.0.9.tar.gz
 cd mysql++-3.0.9
 ./configure
 make install
+(add /usr/local/lib to /etc/ld.so.conf)
 ldconfig
-cp /usr/local/lib/libmysqlpp.so.3 /usr/lib/
-
-php-gd
-------
-yum install php-gd
 
 ogg vorbis
 ----------
-yum install  libogg libogg-devel vorbis-tools libvorbis libvorbis-devel
+yum install libogg libogg-devel vorbis-tools libvorbis libvorbis-devel
 
 Build voipmonitor
 =================
-tar zxf voipmonitor-2.0.tar.gz
-cd ../voipmonitor-2.0
+yum install subversion
+svn co https://voipmonitor.svn.sourceforge.net/svnroot/voipmonitor/trunk voipmonitor-svn
+cd voipmonitor-svn
 make
 make install
-
+mkdir /var/spool/voipmonitor
+chown apache /var/spool/voipmonitor
 
 Post Build
 ==========
 
 Start mysql
 -----------
+yum install mysql-server
 chkconfig mysqld on
 service mysqld start
-
-Create the voipmonitor DB
--------------------------
-mysql
-	mysql> create database voipmonitor;
-	mysql> exit
-
-Create the CDR Table
---------------------
+mysqladmin create voipmonitor
 cat cdrtable.sql | mysql voipmonitor
-
+cp config/voipmonitor.conf /etc/
+#edit file /etc/voipmonitor.conf to your needs
+cp config/init.d/voipmonitor /etc/init.d/
 
 Web Interface
 =============
 
 Enable Apache
 -------------
+yum install httpd php php-gd php-mysql
 chkconfig httpd on
 service httpd start
 
@@ -81,4 +78,4 @@ cp -r voipmonitor-unencoded/* /var/www/html
 
 Restart HTTP service
 --------------------
-sevice httpd restart
+service httpd restart
