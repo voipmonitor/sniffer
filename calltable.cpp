@@ -39,6 +39,7 @@
 using namespace std;
 
 extern int verbosity;
+extern int opt_rtcp;
 extern int opt_saveRAW;                // save RTP payload RAW data?
 extern int opt_saveWAV;                // save RTP payload RAW data?
 extern int opt_saveGRAPH;	// save GRAPH data to graph file? 
@@ -98,6 +99,10 @@ Call::~Call(){
 
 	for(i = 0; i < ipport_n; i++) {
 		ct->hashRemove(this->addr[i], this->port[i]);
+		if(opt_rtcp) {
+			ct->hashRemove(this->addr[i], this->port[i] + 1);
+		}
+
 	}
 
 	for(int i = 0; i < MAX_SSRC_PER_CALL; i++) {
@@ -819,7 +824,7 @@ Calltable::Calltable() {
 
 /* add node to hash. collisions are linked list of nodes*/
 void
-Calltable::hashAdd(in_addr_t addr, unsigned short port, Call* call, int iscaller) {
+Calltable::hashAdd(in_addr_t addr, unsigned short port, Call* call, int iscaller, int is_rtcp) {
 	u_int32_t h;
 	hash_node *node = NULL;
 
@@ -841,6 +846,7 @@ Calltable::hashAdd(in_addr_t addr, unsigned short port, Call* call, int iscaller
 	node->port = port;
 	node->call = call;
 	node->iscaller = iscaller;
+	node->is_rtcp = is_rtcp;
 	node->next = (hash_node *)calls_hash[h];
 	calls_hash[h] = node;
 }
@@ -870,7 +876,7 @@ Calltable::hashRemove(in_addr_t addr, unsigned short port) {
 
 /* find call in hash */
 Call*
-Calltable::hashfind_by_ip_port(in_addr_t addr, unsigned short port, int *iscaller) {
+Calltable::hashfind_by_ip_port(in_addr_t addr, unsigned short port, int *iscaller, int *is_rtcp) {
 	hash_node *node = NULL;
 	u_int32_t h;
 
@@ -878,6 +884,7 @@ Calltable::hashfind_by_ip_port(in_addr_t addr, unsigned short port, int *iscalle
 	for (node = (hash_node *)calls_hash[h]; node != NULL; node = node->next) {
 		if ((node->addr == addr) && (node->port == port)) {
 			*iscaller = node->iscaller;
+			*is_rtcp = node->is_rtcp;
 			return node->call;
 		}
 	}

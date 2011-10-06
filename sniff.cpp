@@ -40,9 +40,11 @@ Calltable *calltable;
 extern int calls;
 extern int opt_saveSIP;	  	// save SIP packets to pcap file?
 extern int opt_saveRTP;	 	// save RTP packets to pcap file?
+extern int opt_saveRTCP;	// save RTCP packets to pcap file?
 extern int opt_saveRAW;	 	
 extern int opt_saveWAV;	 	
 extern int opt_packetbuffered;	  // Make .pcap files writing ‘‘packet-buffered’’
+extern int opt_rtcp;		  // Make .pcap files writing ‘‘packet-buffered’’
 extern int verbosity;
 extern int terminating;
 extern int opt_rtp_firstleg;
@@ -246,7 +248,7 @@ void readdump(pcap_t *handle) {
 	struct tcphdr *header_tcp;
 	char *data;
 	int datalen;
-	char *s, *tmp;
+	char *s;
 	unsigned long l;
 	char str1[1024],str2[1024];
 	int sip_method = 0;
@@ -263,6 +265,7 @@ void readdump(pcap_t *handle) {
 	int lastSIPresponseNum;
 	int pcapstatresCount = 0;
 	int pcap_dlink = pcap_datalink(handle);
+	int is_rtcp = 0;
 
 	while (!terminating) {
 		res = pcap_next_ex(handle, &header, &packet);
@@ -382,8 +385,12 @@ void readdump(pcap_t *handle) {
 		}
 		// TODO: remove if hash will be stable
 		//if ((call = calltable->find_by_ip_port(header_ip->daddr, htons(header_udp->dest), &iscaller))){	
-		if ((call = calltable->hashfind_by_ip_port(header_ip->daddr, htons(header_udp->dest), &iscaller))){	
+		if ((call = calltable->hashfind_by_ip_port(header_ip->daddr, htons(header_udp->dest), &iscaller, &is_rtcp))){	
 			// packet (RTP) by destination:port is already part of some stored call 
+			if(is_rtcp && (opt_saveRTP || opt_saveRTCP)) {
+				save_packet(call, header, packet);
+				continue;
+			}
 			call->read_rtp((unsigned char*) data, datalen, header, header_ip->saddr, htons(header_udp->source), iscaller);
 			call->set_last_packet_time(header->ts.tv_sec);
 			if(opt_saveRTP) {
@@ -391,8 +398,12 @@ void readdump(pcap_t *handle) {
 			}
 		// TODO: remove if hash will be stable
 		//} else if ((call = calltable->find_by_ip_port(header_ip->saddr, htons(header_udp->source), &iscaller))){	
-		} else if ((call = calltable->hashfind_by_ip_port(header_ip->saddr, htons(header_udp->source), &iscaller))){
+		} else if ((call = calltable->hashfind_by_ip_port(header_ip->saddr, htons(header_udp->source), &iscaller, &is_rtcp))){
 			// packet (RTP) by source:port is already part of some stored call 
+			if(is_rtcp && (opt_saveRTP || opt_saveRTCP)) {
+				save_packet(call, header, packet);
+				continue;
+			}
 			// as we are searching by source address and find some call, revert iscaller 
 			call->read_rtp((unsigned char*) data, datalen, header, header_ip->saddr, htons(header_udp->source), !iscaller);
 			call->set_last_packet_time(header->ts.tv_sec);
@@ -682,10 +693,16 @@ void readdump(pcap_t *handle) {
 						// store RTP stream
 						get_rtpmap_from_sdp(tmp + 1, datalen - (tmp + 1 - data), rtpmap);
 						call->add_ip_port(tmp_addr, tmp_port, s, l, call->sipcallerip != header_ip->saddr, rtpmap);
-						calltable->hashAdd(tmp_addr, tmp_port, call, call->sipcallerip != header_ip->saddr);
+						calltable->hashAdd(tmp_addr, tmp_port, call, call->sipcallerip != header_ip->saddr, 0);
+						if(opt_rtcp) {
+							calltable->hashAdd(tmp_addr, tmp_port + 1, call, call->sipcallerip != header_ip->saddr, 1); //add rtcp
+						}
 #ifdef NAT
 						call->add_ip_port(header_ip->saddr, tmp_port, s, l, call->sipcallerip != header_ip->saddr, rtpmap);
-						calltable->hashAdd(header_ip->saddr, tmp_port, call, call->sipcallerip != header_ip->saddr);
+						calltable->hashAdd(header_ip->saddr, tmp_port, call, call->sipcallerip != header_ip->saddr, 0);
+						if(opt_rtcp) {
+							calltable->hashAdd(header_ip->saddr, tmp_port, call, call->sipcallerip != header_ip->saddr, 1);
+						}
 #endif
 		
 					} else {

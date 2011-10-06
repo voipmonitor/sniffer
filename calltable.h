@@ -340,13 +340,13 @@ public:
 	 * @brief add call to hash table
 	 *
 	*/
-	void hashAdd(in_addr_t addr, unsigned short port, Call* call, int iscaller);
+	void hashAdd(in_addr_t addr, unsigned short port, Call* call, int iscaller, int isrtcp);
 
 	/**
 	 * @brief add call to hash table
 	 *
 	*/
-	Call *hashfind_by_ip_port(in_addr_t addr, unsigned short port, int *iscaller);
+	Call *hashfind_by_ip_port(in_addr_t addr, unsigned short port, int *iscaller, int *isrtcp);
 
 	/**
 	 * @brief remove call from hash
@@ -364,6 +364,7 @@ private:
 		int iscaller;
 		u_int32_t addr;
 		u_int16_t port;
+		u_int16_t is_rtcp;
 	};
 
 	void *calls_hash[MAXNODE];

@@ -46,10 +46,12 @@ int opt_packetbuffered = 0;	// Make .pcap files writing ‘‘packet-buffered’
 int opt_fork = 1;		// fork or run foreground 
 int opt_saveSIP = 0;		// save SIP packets to pcap file?
 int opt_saveRTP = 0;		// save RTP packets to pcap file?
+int opt_saveRTCP = 0;		// save RTCP packets to pcap file?
 int opt_saveRAW = 0;		// save RTP packets to pcap file?
 int opt_saveWAV = 0;		// save RTP packets to pcap file?
 int opt_saveGRAPH = 0;		// save GRAPH data to *.graph file? 
 int opt_gzipGRAPH = 0;		// compress GRAPH data ? 
+int opt_rtcp = 1;		// pair RTP+1 port to RTCP and save it. 
 int opt_nocdr = 0;		// do not save cdr?
 int opt_gzipPCAP = 0;		// compress PCAP data ? 
 int verbosity = 0;		// cebug level
@@ -260,6 +262,9 @@ int load_config(char *fname) {
 	if((value = ini.GetValue("general", "savertp", NULL))) {
 		opt_saveRTP = yesno(value);
 	}
+	if((value = ini.GetValue("general", "savertcp", NULL))) {
+		opt_saveRTCP = yesno(value);
+	}
 	if((value = ini.GetValue("general", "saveaudio", NULL))) {
 		switch(value[0]) {
 		case 'y':
@@ -329,6 +334,7 @@ int main(int argc, char *argv[]) {
             {"gzip-pcap", 0, 0, '2'},
             {"save-sip", 0, 0, 'S'},
             {"save-rtp", 0, 0, 'R'},
+            {"save-rtcp", 0, 0, '8'},
             {"save-raw", 0, 0, 'A'},
             {"save-audio", 0, 0, 'W'},
             {"no-cdr", 0, 0, 'c'},
@@ -392,6 +398,9 @@ int main(int argc, char *argv[]) {
 			case '7':
 				strncpy(configfile, optarg, sizeof(configfile));
 				load_config(configfile);
+				break;
+			case '8':
+				opt_saveRTCP = 1;
 				break;
 			case 'i':
 				strncpy(ifname, optarg, sizeof(ifname));
@@ -469,7 +478,10 @@ int main(int argc, char *argv[]) {
 				"      save SIP packets to pcap file. Default is disabled.\n"
 				"\n"
 				" -R, --save-rtp\n"
-   				"      save RTP packets to pcap file. Default is disabled.\n"
+   				"      save RTP packets to pcap file. Default is disabled. Whan enabled RTCP packets will be saved too.\n"
+				"\n"
+				" --save-rtcp\n"
+   				"      save RTCP packets to pcap file. You can enable SIP signalization + only RTCP packets and not RTP packets.\n"
 				"\n"
 				" --sip-register\n"
    				"      save SIP register requests to cdr.register table and to pcap file.\n"
