@@ -21,6 +21,8 @@
 /codecs.h -text
 config/init.d/voipmonitor -text
 config/voipmonitor.conf -text
+/filter_mysql.cpp -text
+/filter_mysql.h -text
 /format_ogg.cpp -text
 /format_ogg.h -text
 /format_slinear.cpp -text
@@ -80,6 +82,8 @@ jitterbuffer/frame.c -text
 jitterbuffer/jitterbuf.c -text
 jitterbuffer/jitterbuf.h -text
 jitterbuffer/utils.c -text
+/manager.cpp -text
+/manager.h -text
 /rtp.cpp -text
 /rtp.h -text
 simpleini/ConvertUTF.c -text
@@ -104,5 +108,7 @@ simpleini/testsi-UTF8.ini -text
 simpleini/testsi.cpp -text
 /sniff.cpp -text
 /sniff.h -text
+/tools.cpp -text
+/tools.h -text
 /voipmonitor.cpp -text
 /voipmonitor.h -text

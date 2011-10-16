@@ -39,6 +39,9 @@
 using namespace std;
 
 extern int verbosity;
+extern int opt_sip_register;
+extern int opt_saveRTP;
+extern int opt_saveSIP;
 extern int opt_rtcp;
 extern int opt_saveRAW;                // save RTP payload RAW data?
 extern int opt_saveWAV;                // save RTP payload RAW data?
@@ -90,6 +93,9 @@ Call::Call(char *call_id, unsigned long call_id_len, time_t time, void *ct) {
 	for(int i = 0; i < MAX_SSRC_PER_CALL; i++) {
 		rtp[i] = NULL;
 	}
+	fifo1 = 0;
+	fifo2 = 0;
+	listening_worker_run = NULL;
 }
 
 /* destructor */
@@ -110,6 +116,11 @@ Call::~Call(){
 		if(rtp[i]) {
 			delete rtp[i];
 		}
+	}
+	
+	// tell listening_worker to stop listening
+	if(listening_worker_run) {
+		*listening_worker_run = 0;
 	}
 
 	if (get_f_pcap() != NULL){
@@ -243,7 +254,7 @@ Call::read_rtp(unsigned char* data, int datalen, struct pcap_pkthdr *header, u_i
 		}
 		rtp_cur[iscaller] = rtp[ssrc_n]; 
 		sprintf(rtp[ssrc_n]->gfilename, "%s/%s.%d.graph%s", dirname(), fbasename, ssrc_n, opt_gzipGRAPH ? ".gz" : "");
-		if(opt_saveGRAPH) {
+		if(flags & FLAG_SAVEGRAPH) {
 			if(opt_gzipGRAPH) {
 				rtp[ssrc_n]->gfileGZ.open(rtp[ssrc_n]->gfilename);
 			} else {
@@ -897,6 +908,23 @@ Calltable::add(char *call_id, unsigned long call_id_len, time_t time, u_int32_t 
 	calls++;
 	newcall->saddr = saddr;
 	newcall->sport = port;
+	
+	//flags
+	if(opt_saveSIP) 
+		newcall->flags |= FLAG_SAVESIP;
+
+	if(opt_saveRTP) 
+		newcall->flags |= FLAG_SAVERTP;
+
+	if(opt_saveWAV) 
+		newcall->flags |= FLAG_SAVEWAV;
+
+	if(opt_saveGRAPH) 
+		newcall->flags |= FLAG_SAVEGRAPH;
+
+	if(opt_sip_register) 
+		newcall->flags |= FLAG_SAVEREGISTER;
+
 	calls_list.push_front(newcall);
 	return newcall;
 }

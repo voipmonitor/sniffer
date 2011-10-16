@@ -1,3 +1,29 @@
+CREATE TABLE `filter_ip` (
+  `id` int(32) NOT NULL auto_increment,
+  `ip` int(32) unsigned default NULL,
+  `mask` int(8) default NULL,
+  `rtp` tinyint(1) default '0',
+  `sip` tinyint(1) default '0',
+  `register` tinyint(1) default '0',
+  `graph` tinyint(1) default '0',
+  `wav` tinyint(1) default '0',
+  `note` TEXT,
+  PRIMARY KEY  (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=latin1;
+
+CREATE TABLE `filter_telnum` (
+  `id` int(32) NOT NULL auto_increment,
+  `prefix` int(32) unsigned default NULL,
+  `fixed_len` int(32) unsigned default 0,
+  `rtp` tinyint(1) default '0',
+  `sip` tinyint(1) default '0',
+  `register` tinyint(1) default '0',
+  `graph` tinyint(1) default '0',
+  `wav` tinyint(1) default '0',
+  `note` TEXT,
+  PRIMARY KEY  (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=latin1;
+
 CREATE TABLE `cdr` (
   `ID` int(32) unsigned NOT NULL auto_increment,
   `calldate` datetime NOT NULL,

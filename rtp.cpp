@@ -87,6 +87,7 @@ RTP::RTP() {
 	channel_fix1->last_datalen = 0;
 	channel_fix1->lastbuflen = 0;
 	channel_fix1->resync = 1;
+	channel_fix1->fifofd = 0;
 
 	channel_fix2 = (ast_channel*)calloc(1, sizeof(*channel_fix2));
 	channel_fix2->jitter_impl = 0; // fixed
@@ -95,6 +96,7 @@ RTP::RTP() {
 	channel_fix2->last_datalen = 0;
 	channel_fix2->lastbuflen = 0;
 	channel_fix2->resync = 1;
+	channel_fix2->fifofd = 0;
 
 	channel_adapt = (ast_channel*)calloc(1, sizeof(*channel_adapt));
 	channel_adapt->jitter_impl = 1; // adaptive
@@ -103,6 +105,7 @@ RTP::RTP() {
 	channel_adapt->last_datalen = 0;
 	channel_adapt->lastbuflen = 0;
 	channel_adapt->resync = 1;
+	channel_adapt->fifofd = 0;
 
 	channel_record = (ast_channel*)calloc(1, sizeof(*channel_record));
 	channel_record->jitter_impl = 0; // fixed
@@ -111,6 +114,7 @@ RTP::RTP() {
 	channel_record->last_datalen = 0;
 	channel_record->lastbuflen = 0;
 	channel_record->resync = 0;
+	channel_record->fifofd = 0;
 
 
 	//channel->name = "SIP/fixed";
@@ -157,7 +161,8 @@ RTP::~RTP() {
 	free(channel_record);
 	free(frame);
 
-	if(opt_saveGRAPH || opt_gzipGRAPH) {
+	Call *owner = (Call*)call_owner;
+	if(opt_saveGRAPH || (owner && (owner->flags & FLAG_SAVEGRAPH))) {
 		if(opt_gzipGRAPH) {
 			gfileGZ.close();
 		} else {
@@ -246,6 +251,13 @@ RTP::jitterbuffer(struct ast_channel *channel, int savePayload) {
 		}
 
 		channel->rawstream = gfileRAW;
+
+		Call *owner = (Call*)call_owner;
+		if(iscaller)
+			channel->fifofd = owner->fifo1;
+		else
+			channel->fifofd = owner->fifo2;
+
 		if(payload_len > 0) {
 			channel->last_datalen = frame->datalen;
 		}
@@ -328,6 +340,12 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 	this->header = header;
 	this->saddr =  saddr;
 
+	Call *owner = (Call*)call_owner;
+	if(owner) {
+		int fifo1 = owner->fifo1;
+		int fifo2 = owner->fifo2;
+	}
+
 	if(getVersion() != 2) {
 		return;
 	}
@@ -348,7 +366,15 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 			codec = curpayload;
 		}
 
-		if(opt_saveRAW || opt_saveWAV) {
+		if(iscaller) {
+			owner->last_callercodec = codec;
+		} else {
+			owner->last_calledcodec = codec;
+		}
+
+		if(opt_saveRAW || (owner && (owner->flags & FLAG_SAVEWAV)) ||
+			fifo1 || fifo2 // if recording requested 
+		) {
 			/* open file for raw codec */
 			unsigned long unique = getTimestamp();
 			char tmp[1024];
@@ -362,14 +388,13 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 				 * which fills potentionally gap between this and previouse RTP so it will stay in sync with
 				 * the other direction of call 
 				 */
-				Call *owner = (Call*)call_owner;
 				RTP *prevrtp = (RTP*)(owner->rtp_prev[iscaller]);
 				if(prevrtp && prevrtp != this) {
 					prevrtp->data = data; 
 					prevrtp->len = len;
 					prevrtp->header = header;
 					prevrtp->saddr = saddr;
-					prevrtp->jitterbuffer(prevrtp->channel_record, opt_saveRAW || opt_saveWAV);
+					prevrtp->jitterbuffer(prevrtp->channel_record, opt_saveRAW || (owner->flags & FLAG_SAVEWAV) || fifo1 || fifo2);
 				}
 			}
 			gfileRAW = fopen(tmp, "w");
@@ -436,9 +461,11 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 				}
 			}
 			/* for recording, we cannot loose any packet */
-			if(opt_saveRAW || opt_saveWAV) {
+			if(opt_saveRAW || (owner->flags & FLAG_SAVEWAV) ||
+				fifo1 || fifo2 // if recording requested 
+			){
 				packetization = channel_record->packetization = default_packetization;
-				jitterbuffer(channel_record, opt_saveRAW || opt_saveWAV);
+				jitterbuffer(channel_record, opt_saveRAW || (owner->flags & FLAG_SAVEWAV) || fifo1 || fifo2);
 			}
 		} else if(packetization_iterator == 1) {
 			if(seq == (last_seq + 1) && curpayload != 101 && prev_payload != 101 && !sid && !prev_sid) {
@@ -456,14 +483,18 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 					jitterbuffer(channel_fix1, 0);
 					jitterbuffer(channel_fix2, 0);
 					jitterbuffer(channel_adapt, 0);
-					if(opt_saveRAW || opt_saveWAV) {
+					if(opt_saveRAW || (owner->flags & FLAG_SAVEWAV) ||
+						fifo1 || fifo2 // if recording requested 
+					){
 						jitterbuffer(channel_record, 1);
 					}
 				}
 			} else {
 				packetization_iterator = 0;
 				/* for recording, we cannot loose any packet */
-				if(opt_saveRAW || opt_saveWAV) {
+				if(opt_saveRAW || (owner->flags & FLAG_SAVEWAV) ||
+					fifo1 || fifo2 // if recording requested 
+				){
 					packetization = channel_record->packetization = default_packetization;
 					jitterbuffer(channel_record, 1);
 				}
@@ -472,7 +503,9 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 			jitterbuffer(channel_fix1, 0);
 			jitterbuffer(channel_fix2, 0);
 			jitterbuffer(channel_adapt, 0);
-			if(opt_saveRAW || opt_saveWAV) {
+			if(opt_saveRAW || (owner->flags & FLAG_SAVEWAV) ||
+				fifo1 || fifo2 // if recording requested 
+			){
 				jitterbuffer(channel_record, 1);
 			}
 		}
@@ -516,6 +549,8 @@ RTP::update_stats() {
 	struct timeval tsdiff;	
 	double tsdiff2;
 
+	Call *owner = (Call*)call_owner;
+
 	/* if payload == 101 (EVENT) dont make delayes on this because it confuses stats */
 	if(getPayload() == 101)
 		return;
@@ -554,7 +589,7 @@ RTP::update_stats() {
 		else 
 			stats.slost[10]++;
 
-		if(opt_saveGRAPH) {
+		if(owner && (owner->flags & FLAG_SAVEGRAPH)) {
 			nintervals += lost - stats.last_lost;
 			while(nintervals > 20) {
 				if(opt_gzipGRAPH) {
@@ -572,7 +607,7 @@ RTP::update_stats() {
 			}
 		}
 	} else {
-		if(opt_saveGRAPH) {
+		if(owner && (owner->flags & FLAG_SAVEGRAPH)) {
 			if(opt_gzipGRAPH && gfileGZ.is_open()) {
 				// compressed
 				if(nintervals > 20) {

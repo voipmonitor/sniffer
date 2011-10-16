@@ -39,6 +39,12 @@
 #define RES18X 9
 #define REGISTER 10
 
+#define FLAG_SAVERTP		(1 << 0)
+#define FLAG_SAVESIP		(1 << 1)
+#define FLAG_SAVEREGISTER	(1 << 2)
+#define FLAG_SAVEWAV		(1 << 3)
+#define FLAG_SAVEGRAPH		(1 << 4)
+
 /**
   * This class implements operations on call
 */
@@ -82,6 +88,16 @@ public:
 
 	char lastSIPresponse[128];
 	int lastSIPresponseNum;
+
+	int last_callercodec;		//!< Last caller codec 
+	int last_calledcodec;		//!< Last called codec 
+
+	int fifo1;
+	int fifo2;
+
+	unsigned int flags;		//!< structure holding FLAGS*
+
+	int *listening_worker_run;
 	
 	/**
 	 * constructor

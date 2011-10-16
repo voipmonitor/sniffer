@@ -32,6 +32,8 @@
 #include "voipmonitor.h"
 #include "sniff.h"
 #include "simpleini/SimpleIni.h"
+#include "manager.h"
+#include "filter_mysql.h"
 
 using namespace std;
 
@@ -60,8 +62,9 @@ int opt_rtp_firstleg = 0;		// if == 1 then save RTP stream only for first INVITE
 int opt_sip_register = 0;	// if == 1 save REGISTER messages
 int opt_ringbuffer = 10;	// ring buffer in MB 
 int opt_audio_format = FORMAT_WAV;	// define format for audio writing (if -W option)
+int opt_manager_port = 5029;	// manager api TCP port
 
-char configfile[1024] = "";		// ring buffer in MB 
+char configfile[1024] = "";	// config file name
 char mysql_host[256] = "localhost";
 char mysql_database[256] = "voipmonitor";
 char mysql_table[256] = "cdr";
@@ -75,9 +78,16 @@ int opt_promisc = 1;	// put interface to promisc mode?
 
 char opt_chdir[1024];
 
+IPfilter *ipfilter = NULL;		// IP filter based on MYSQL 
+IPfilter *ipfilter_reload = NULL;	// IP filter based on MYSQL for reload purpose
+int ipfilter_reload_do = 0;	// for reload in main thread
 
+TELNUMfilter *telnumfilter = NULL;		// IP filter based on MYSQL 
+TELNUMfilter *telnumfilter_reload = NULL;	// IP filter based on MYSQL for reload purpose
+int telnumfilter_reload_do = 0;	// for reload in main thread
 
-pthread_t call_thread;		// ID of worker thread (storing CDR)
+pthread_t call_thread;		// ID of worker storing CDR thread 
+pthread_t manager_thread;	// ID of worker manager thread 
 int terminating;		// if set to 1, worker thread will terminate
 
 void terminate2() {
@@ -140,7 +150,7 @@ void *storing_cdr( void *dummy ) {
 				}
 			}
 
-			if(opt_saveWAV && call->type == INVITE) {
+			if((call->flags & FLAG_SAVEWAV) && call->type == INVITE) {
 				if(verbosity > 0) printf("converting RAW file to WAV Queue[%d]\n", calltable->calls_queue.size());
 				call->convertRawToWav();
 			}
@@ -262,6 +272,9 @@ int load_config(char *fname) {
 	if((value = ini.GetValue("general", "savertp", NULL))) {
 		opt_saveRTP = yesno(value);
 	}
+	if((value = ini.GetValue("general", "manager-port", NULL))) {
+		opt_manager_port = atoi(value);
+	}
 	if((value = ini.GetValue("general", "savertcp", NULL))) {
 		opt_saveRTCP = yesno(value);
 	}
@@ -320,6 +333,24 @@ int load_config(char *fname) {
 	return 0;
 }
 
+void reload_config() {
+	load_config(configfile);
+
+	if(ipfilter_reload)
+		delete ipfilter_reload;
+
+	ipfilter_reload = new IPfilter;
+	ipfilter_reload->load();
+	ipfilter_reload_do = 1;
+
+	if(telnumfilter_reload)
+		delete telnumfilter_reload;
+
+	telnumfilter_reload = new TELNUMfilter;
+	telnumfilter_reload->load();
+	telnumfilter_reload_do = 1;
+}
+
 int main(int argc, char *argv[]) {
 
 	/* parse arguments */
@@ -334,7 +365,7 @@ int main(int argc, char *argv[]) {
             {"gzip-pcap", 0, 0, '2'},
             {"save-sip", 0, 0, 'S'},
             {"save-rtp", 0, 0, 'R'},
-            {"save-rtcp", 0, 0, '8'},
+            {"save-rtcp", 0, 0, '9'},
             {"save-raw", 0, 0, 'A'},
             {"save-audio", 0, 0, 'W'},
             {"no-cdr", 0, 0, 'c'},
@@ -349,6 +380,7 @@ int main(int argc, char *argv[]) {
             {"audio-format", 1, 0, '5'},
             {"ring-buffer", 1, 0, '6'},
             {"config-file", 1, 0, '7'},
+            {"manager-port", 1, 0, '8'},
             {0, 0, 0, 0}
         };
 
@@ -400,6 +432,9 @@ int main(int argc, char *argv[]) {
 				load_config(configfile);
 				break;
 			case '8':
+				opt_manager_port = atoi(optarg);
+				break;
+			case '9':
 				opt_saveRTCP = 1;
 				break;
 			case 'i':
@@ -469,10 +504,10 @@ int main(int argc, char *argv[]) {
 	}
 	if ((fname == NULL) && (ifname[0] == '\0')){
 		printf( "voipmonitor version %s\n"
-				"You have to provide <-i interfce> or <-r pcap_file> or set interface in configuration file\n"
-				"Usage: voipmonitor [-kncUSRAWG] [-i <interface>] [-f <pcap filter>] [-r <file>] [-d <pcap dump directory>] [-v level]\n"
-				"                 [-h <mysql server>] [-b <mysql database] [-u <mysql username>] [-p <mysql password>]\n"
-				"                 [-f <pcap filter>] [--rtp-firstleg] [--ring-buffer <n>]\n"
+				"Usage: voipmonitor [--config-file /etc/voipmonitor.conf] [-kncUSRAWG] [-i <interface>] [-f <pcap filter>]\n"
+				"       [-r <file>] [-d <pcap dump directory>] [-v level] [-h <mysql server>] [-b <mysql database]\n"
+				"       [-u <mysql username>] [-p <mysql password>] [-f <pcap filter>] [--rtp-firstleg]\n"
+				"       [--ring-buffer <n>] [--manager-port <n>]\n"
 				"\n"
 				" -S, --save-sip\n"
 				"      save SIP packets to pcap file. Default is disabled.\n"
@@ -552,8 +587,13 @@ int main(int argc, char *argv[]) {
 				" -P <pid file>, --pid-file=<pid file>\n"
 				"      pid file, default /var/run/voipmonitor.pid\n"
 				"\n"
+				" --manager-port <port number>\n"
+				"      to which TCP port should manager interface bind. Defaults to 5029.\n\n"
+				"You have to provide <-i interfce> or <-r pcap_file> or set interface in configuration file\n\n"
+				"\n"
 				" -v <level number>\n"
-				"      set verbosity level (higher number is more verbose).\n"
+				"      set verbosity level (higher number is more verbose).\n\n"
+				"You have to provide <-i interfce> or <-r pcap_file> or set interface in configuration file\n\n"
 				, RTPSENSOR_VERSION);
 		return 1;
 	}
@@ -663,6 +703,13 @@ int main(int argc, char *argv[]) {
 	rlp.rlim_max = UINT_MAX;
 	setrlimit(RLIMIT_CORE, &rlp);
 
+	ipfilter = new IPfilter;
+	ipfilter->load();
+//	ipfilter->dump();
+
+	telnumfilter = new TELNUMfilter;
+	telnumfilter->load();
+
 	// filters are ok, we can daemonize 
 	if (opt_fork){
 		daemonize();
@@ -670,7 +717,10 @@ int main(int argc, char *argv[]) {
 	
 	// start thread processing queued cdr 
 	pthread_create(&call_thread, NULL, storing_cdr, NULL);
-	
+
+	// start manager thread 	
+	pthread_create(&manager_thread, NULL, manager_server, NULL);
+
 	// start reading packets
 	readdump(handle);
 

@@ -30,6 +30,7 @@ and insert them into Call class.
 #include "calltable.h"
 #include "sniff.h"
 #include "voipmonitor.h"
+#include "filter_mysql.h"
 
 using namespace std;
 
@@ -49,6 +50,14 @@ extern int verbosity;
 extern int terminating;
 extern int opt_rtp_firstleg;
 extern int opt_sip_register;
+
+extern IPfilter *ipfilter;
+extern IPfilter *ipfilter_reload;
+extern int ipfilter_reload_do;
+
+extern TELNUMfilter *telnumfilter;
+extern TELNUMfilter *telnumfilter_reload;
+extern int telnumfilter_reload_do;
 
 /* save packet into file */
 void save_packet(Call *call, struct pcap_pkthdr *header, const u_char *packet) {
@@ -292,6 +301,20 @@ void readdump(pcap_t *handle) {
 			continue;
 		}
 
+		// check, if ipfilter should be reloaded. Reloading is done in this section to avoid mutex locking around ipfilter structure
+		if(ipfilter_reload_do) {
+			delete ipfilter;
+			ipfilter = ipfilter_reload;
+			ipfilter_reload = NULL;
+			ipfilter_reload_do = 0; 
+		}
+
+		if(telnumfilter_reload_do) {
+			delete telnumfilter;
+			telnumfilter = telnumfilter_reload;
+			telnumfilter_reload = NULL;
+			telnumfilter_reload_do = 0; 
+		}
 
 		// checking and cleaning calltable every 15 seconds (if some packet arrive) 
 		if (header->ts.tv_sec - last_cleanup > 15){
@@ -393,7 +416,7 @@ void readdump(pcap_t *handle) {
 			}
 			call->read_rtp((unsigned char*) data, datalen, header, header_ip->saddr, htons(header_udp->source), iscaller);
 			call->set_last_packet_time(header->ts.tv_sec);
-			if(opt_saveRTP) {
+			if(call->flags & FLAG_SAVERTP) {
 				save_packet(call, header, packet);
 			}
 		// TODO: remove if hash will be stable
@@ -407,7 +430,7 @@ void readdump(pcap_t *handle) {
 			// as we are searching by source address and find some call, revert iscaller 
 			call->read_rtp((unsigned char*) data, datalen, header, header_ip->saddr, htons(header_udp->source), !iscaller);
 			call->set_last_packet_time(header->ts.tv_sec);
-			if(opt_saveRTP) {
+			if(call->flags & FLAG_SAVERTP) {
 				save_packet(call, header, packet);
 			}
 		} else if (htons(header_udp->source) == 5060 || htons(header_udp->dest) == 5060) {
@@ -525,13 +548,36 @@ void readdump(pcap_t *handle) {
 					call->sipcallerip = header_ip->saddr;
 					call->sipcalledip = header_ip->daddr;
 					call->type = sip_method;
+					ipfilter->add_call_flags(&(call->flags), ntohl(header_ip->saddr), ntohl(header_ip->daddr));
 					strcpy(call->fbasename, str1);
 
+					/* this logic updates call on the first INVITES */
+					if (sip_method == INVITE) {
+						int res;
+						res = get_sip_peercnam(data,datalen,"From:", call->callername, sizeof(call->callername));
+						if(res) {
+							// try compact header
+							get_sip_peercnam(data,datalen,"f:", call->callername, sizeof(call->callername));
+						}
+						res = get_sip_peername(data,datalen,"From:", call->caller, sizeof(call->caller));
+						if(res) {
+							// try compact header
+							get_sip_peername(data,datalen,"f:", call->caller, sizeof(call->caller));
+						}
+						res = get_sip_peername(data,datalen,"To:", call->called, sizeof(call->called));
+						if(res) {
+							// try compact header
+							get_sip_peername(data,datalen,"t:", call->called, sizeof(call->called));
+						}
+						call->seeninvite = true;
+						telnumfilter->add_call_flags(&(call->flags), call->caller, call->called);
+					}
+
 					// opening dump file
-					if(opt_saveSIP or opt_saveRTP or opt_saveRAW or opt_saveWAV) {
+					if(call->flags & (FLAG_SAVESIP | FLAG_SAVEREGISTER | FLAG_SAVERTP | FLAG_SAVEWAV)) {
 						mkdir(call->dirname(), 0777);
 					}
-					if(opt_saveSIP or opt_saveRTP) {
+					if(call->flags & (FLAG_SAVESIP | FLAG_SAVEREGISTER | FLAG_SAVERTP)) {
 						sprintf(str2, "%s/%s.pcap", call->dirname(), str1);
 						call->set_f_pcap(pcap_dump_open(handle, str2));
 					}
@@ -579,6 +625,9 @@ void readdump(pcap_t *handle) {
 						memcpy(call->byecseq, s, l);
 						call->byecseq[l] = '\0';
 						call->seenbye = true;
+						if(call->listening_worker_run) {
+							*(call->listening_worker_run) = 0;
+						}
 						if(verbosity > 2)
 							syslog(LOG_NOTICE, "Seen bye\n");
 							
@@ -599,7 +648,7 @@ void readdump(pcap_t *handle) {
 						if(strncmp(s, call->byecseq, l) == 0) {
 							// terminate successfully acked call, put it into mysql CDR queue and remove it from calltable 
 							call->seenbyeandok = true;
-							if(opt_saveSIP) {
+							if(call->flags & (FLAG_SAVESIP | FLAG_SAVEREGISTER)) {
 								save_packet(call, header, packet);
 							}
 							if (call->get_f_pcap() != NULL){
@@ -648,28 +697,8 @@ void readdump(pcap_t *handle) {
 				}
 			}
 			
-			/* this logic updates call on the first INVITES */
-			if (sip_method == INVITE && !call->seeninvite) {
-				int res;
-				res = get_sip_peercnam(data,datalen,"From:", call->callername, sizeof(call->callername));
-				if(res) {
-					// try compact header
-					get_sip_peercnam(data,datalen,"f:", call->callername, sizeof(call->callername));
-				}
-				res = get_sip_peername(data,datalen,"From:", call->caller, sizeof(call->caller));
-				if(res) {
-					// try compact header
-					get_sip_peername(data,datalen,"f:", call->caller, sizeof(call->caller));
-				}
-				res = get_sip_peername(data,datalen,"To:", call->called, sizeof(call->called));
-				if(res) {
-					// try compact header
-					get_sip_peername(data,datalen,"t:", call->called, sizeof(call->called));
-				}
-				call->seeninvite = true;
-			}
-			// SDP examination only in case it is SIP msg belongs to first leg
 
+			// SDP examination only in case it is SIP msg belongs to first leg
 			if(opt_rtp_firstleg == 0 || (opt_rtp_firstleg &&
 				(call->saddr == header_ip->saddr && call->sport == htons(header_udp->source)) || 
 				(call->saddr == header_ip->daddr && call->sport == htons(header_udp->dest)))) 
@@ -712,7 +741,7 @@ void readdump(pcap_t *handle) {
 					}
 				}
 			}
-			if(opt_saveSIP) {
+			if(call->flags & (FLAG_SAVESIP | FLAG_SAVEREGISTER)) {
 				save_packet(call, header, packet);
 			}
 		} else {

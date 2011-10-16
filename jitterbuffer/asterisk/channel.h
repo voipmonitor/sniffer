@@ -342,6 +342,7 @@ enum ast_channel_state {
 struct ast_channel {
 
 	FILE *rawstream;
+	int fifofd;
 	unsigned int last_seqno;
 	unsigned int last_ms;
 	int jb_reseted;

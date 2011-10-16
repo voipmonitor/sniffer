@@ -8,3 +8,5 @@
 
 #define FORMAT_WAV	1
 #define FORMAT_OGG	2
+
+void reload_config();

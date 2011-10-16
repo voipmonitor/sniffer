@@ -351,12 +351,20 @@ void jb_fixed_flush_deliver(struct ast_channel *chan)
 	}
 
 	while ( fixed_jb_flush((struct fixed_jb*)jb->jbobj, &ff)) {
-		if(chan->rawstream) { 
+		if(chan->rawstream || chan->fifofd) { 
 			f = ff.data;
 			//write frame to file
 			stmp = (short int)f->datalen;
-			if(chan->codec == PAYLOAD_SPEEX || chan->codec == PAYLOAD_G723 || chan->codec == PAYLOAD_G729) fwrite(&stmp, 1, sizeof(short int), chan->rawstream);   // write packet len
-			fwrite(f->data, 1, f->datalen, chan->rawstream);
+			if(chan->codec == PAYLOAD_SPEEX || chan->codec == PAYLOAD_G723 || chan->codec == PAYLOAD_G729) {
+				if(chan->rawstream)
+					fwrite(&stmp, 1, sizeof(short int), chan->rawstream);   // write packet len
+				if(chan->fifofd > 0)
+					write(chan->fifofd, &stmp, sizeof(short int));   // write packet len
+			}
+			if(chan->rawstream)
+				fwrite(f->data, 1, f->datalen, chan->rawstream);
+			if(chan->fifofd > 0)
+				write(chan->fifofd, f->data, f->datalen);
 			//save last frame
 			memcpy(chan->lastbuf, f->data, f->datalen);
 			chan->lastbuflen = f->datalen; 
@@ -369,18 +377,25 @@ void save_empty_frame(struct ast_channel *chan) {
 	if(chan->rawstream) {
 		int i;
 		short int zero = 0;
+		int zero2 = 0;
 		//write frame to file
 		if(chan->codec == PAYLOAD_SPEEX || chan->codec == PAYLOAD_G723 || chan->codec == PAYLOAD_G729) {
 			if(chan->codec == PAYLOAD_G723) {
 				for(i = 1; (i * 30) <= chan->packetization; i++) {
 					fwrite(&zero, 1, sizeof(short int), chan->rawstream);   // write zero packet
+					if(chan->fifofd > 0)
+						write(chan->fifofd, &zero, sizeof(short int));   // write packet len
 				}
 			} else if(chan->codec == PAYLOAD_G729) {
 				for(i = 1; (i * 20) <= chan->packetization; i++) {
 					fwrite(&zero, 1, sizeof(short int), chan->rawstream);   // write zero packet
+					if(chan->fifofd > 0)
+						write(chan->fifofd, &zero, sizeof(short int));   // write packet len
 				}
 			} else {
 				fwrite(&zero, 1, sizeof(short int), chan->rawstream);   // write zero packet
+				if(chan->fifofd > 0)
+					write(chan->fifofd, &zero, sizeof(short int));   // write packet len
 			}
 		} else {
 			// write previouse frame (better than zero frame), but only once
@@ -390,6 +405,8 @@ void save_empty_frame(struct ast_channel *chan) {
 				// write empty frame
 				for(i = 0; i < chan->last_datalen; i++) {
 					fputc(0, chan->rawstream);
+					if(chan->fifofd > 0)
+						write(chan->fifofd, &zero2, sizeof(char));   // write packet len
 				}
 			}
 		}
@@ -406,6 +423,7 @@ static void jb_get_and_deliver(struct ast_channel *chan, struct timeval *mynow)
 	long now;
 	int interpolation_len, res;
 	short int stmp;
+	int res2;
 
 	now = get_now(jb, NULL, mynow);
 	jb->next = jbimpl->next(jbobj);
@@ -426,11 +444,21 @@ static void jb_get_and_deliver(struct ast_channel *chan, struct timeval *mynow)
 		case JB_IMPL_OK:
 			/* deliver the frame */
 			//ast_write(chan, f);
-			if(chan->rawstream && f->data && f->datalen > 0) {
+			if((chan->rawstream || chan->fifofd) && f->data && f->datalen > 0) {
 				//write frame to file
 				stmp = (short int)f->datalen;
-				if(chan->codec == PAYLOAD_SPEEX || chan->codec == PAYLOAD_G723 || chan->codec == PAYLOAD_G729) fwrite(&stmp, 1, sizeof(short int), chan->rawstream);   // write packet len
-				fwrite(f->data, 1, f->datalen, chan->rawstream);
+				if(chan->codec == PAYLOAD_SPEEX || chan->codec == PAYLOAD_G723 || chan->codec == PAYLOAD_G729) {
+					if(chan->rawstream)
+						fwrite(&stmp, 1, sizeof(short int), chan->rawstream);   // write packet len
+					if(chan->fifofd > 0)
+						write(chan->fifofd, &stmp, sizeof(short int));   // write packet len
+				}
+				if(chan->rawstream)
+					fwrite(f->data, 1, f->datalen, chan->rawstream);
+				if(chan->fifofd > 0) {
+					res2 = write(chan->fifofd, f->data, f->datalen);
+					//fprintf(stdout, "WRITING! fd[%d] size[%d]\n", chan->fifofd, res2);
+				}
 				//save last frame
 				memcpy(chan->lastbuf, f->data, f->datalen);
 				chan->lastbuflen = f->datalen;

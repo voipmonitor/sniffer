@@ -1,4 +1,4 @@
-objects = codec_alaw.o codec_ulaw.o format_slinear.o format_wav.o format_ogg.o calltable.o rtp.o voipmonitor.o sniff.o jitterbuffer/astmm.o jitterbuffer/utils.o jitterbuffer/fixedjitterbuf.o jitterbuffer/jitterbuf.o jitterbuffer/abstract_jb.o jitterbuffer/frame.o gzstream/gzstream.o gzstream/libgzstream.a
+objects = codec_alaw.o codec_ulaw.o format_slinear.o format_wav.o format_ogg.o calltable.o rtp.o voipmonitor.o sniff.o jitterbuffer/astmm.o jitterbuffer/utils.o jitterbuffer/fixedjitterbuf.o jitterbuffer/jitterbuf.o jitterbuffer/abstract_jb.o jitterbuffer/frame.o gzstream/gzstream.o gzstream/libgzstream.a manager.o tools.o filter_mysql.o
 args = -g3 -Wall
 #args = -O2 -Wall
 CFLAGS+=-I /usr/local/include/mysql++/ -I /usr/include/mysql++/ -I /usr/include/mysql/ -g3 -Wall -I jitterbuffer/  -L/usr/local/lib/ -Lgzstream/
@@ -42,6 +42,15 @@ voipmonitor.o : voipmonitor.cpp voipmonitor.h
 
 sniff.o : sniff.cpp sniff.h
 	g++ -c sniff.cpp $(args) ${CFLAGS}
+
+manager.o : manager.cpp manager.h
+	g++ -c manager.cpp $(args) ${CFLAGS}
+
+tools.o : tools.cpp tools.h
+	g++ -c tools.cpp $(args) ${CFLAGS}
+
+filter_mysql.o : filter_mysql.cpp filter_mysql.h
+	g++ -c filter_mysql.cpp $(args) ${CFLAGS}
 
 clean :
 	rm -f $(objects) voipmonitor gzstream/*.o libgzstream.a
