@@ -341,10 +341,8 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 	this->saddr =  saddr;
 
 	Call *owner = (Call*)call_owner;
-	if(owner) {
-		int fifo1 = owner->fifo1;
-		int fifo2 = owner->fifo2;
-	}
+	int fifo1 = owner->fifo1;
+	int fifo2 = owner->fifo2;
 
 	if(getVersion() != 2) {
 		return;
