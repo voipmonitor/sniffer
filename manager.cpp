@@ -218,8 +218,8 @@ void *manager_server(void *dummy) {
 				 * sipcalledip htonl(sipcalledip)
 				*/
 				//XXX: escape " or replace it to '
-				sprintf(outbuf + strlen(outbuf), ",[\"%u\", \"%s\", \"%d\", \"%d\", \"%s\", \"%s\", \"%s\", \"%d\", \"%d\", \"%u\", \"%u\"]",
-					(unsigned int)*call, (*call)->call_id, (*call)->last_callercodec, (*call)->last_callercodec, (*call)->caller, 
+				sprintf(outbuf + strlen(outbuf), ",[\"%p\", \"%s\", \"%d\", \"%d\", \"%s\", \"%s\", \"%s\", \"%d\", \"%d\", \"%u\", \"%u\"]",
+					*call, (*call)->call_id, (*call)->last_callercodec, (*call)->last_callercodec, (*call)->caller, 
 					(*call)->callername, (*call)->called, (*call)->calltime(), (*call)->duration(), htonl((*call)->sipcallerip), 
 					htonl((*call)->sipcalledip));
 			}
@@ -239,8 +239,8 @@ void *manager_server(void *dummy) {
 			char fifo1[1024];
 			char fifo2[1024];
 			char fifo3[1024];
-			unsigned int callreference;
-			sscanf(buf, "listen %u %s", &callreference, fifo);
+			void *callreference;
+			sscanf(buf, "listen %p %s", &callreference, fifo);
 			//printf("listen %u %s\n", callreference, fifo);
 			sprintf(fifo1, "%s.0", fifo);
 			sprintf(fifo2, "%s.1", fifo);
@@ -248,7 +248,7 @@ void *manager_server(void *dummy) {
 			list<Call*>::iterator call;
 			//XXX MUTEX!
 			for (call = calltable->calls_list.begin(); call != calltable->calls_list.end(); ++call) {
-				if((unsigned int)(*call) == callreference) {
+				if(*call == callreference) {
 					//cerr << "founded" << endl;
 					//TODO handle returned values
 					struct listening_worker_arg *args = (struct listening_worker_arg*)malloc(sizeof(listening_worker_arg));
