@@ -200,7 +200,7 @@ void *manager_server(void *dummy) {
 			}
 		} else if(strstr(buf, "listcalls") != NULL) {
 			list<Call*>::iterator call;
-			char *outbuf = (char*)malloc(1024*20*sizeof(char));
+			char *outbuf = (char*)malloc(1024*200*sizeof(char));
 			if(outbuf == NULL) {
 				syslog(LOG_NOTICE,"Cannot allocate memory\n");
 				continue;
