@@ -9,6 +9,7 @@
 #include <string>
 #include <fcntl.h>
 #include <errno.h>
+#include <syslog.h>
 
 #include "voipmonitor.h"
 #include "format_slinear.h"
@@ -200,6 +201,10 @@ void *manager_server(void *dummy) {
 		} else if(strstr(buf, "listcalls") != NULL) {
 			list<Call*>::iterator call;
 			char *outbuf = (char*)malloc(1024*20*sizeof(char));
+			if(outbuf == NULL) {
+				syslog(LOG_NOTICE,"Cannot allocate memory\n");
+				continue;
+			}
 			/* headers */
 			sprintf(outbuf, "[[\"callreference\", \"callid\", \"callercodec\", \"calledcodec\", \"caller\", \"callername\", \"called\", \"calldate\", \"duration\", \"callerip\", \"calledip\"]");
 			for (call = calltable->calls_list.begin(); call != calltable->calls_list.end(); ++call) {
@@ -221,6 +226,7 @@ void *manager_server(void *dummy) {
 			sprintf(outbuf + strlen(outbuf), "]");
 			if ((size = send(client, outbuf, strlen(outbuf), 0)) == -1){
 				cerr << "Error sending data to client" << endl;
+				free(outbuf);
 				close(client);
 				continue;
 			}
@@ -243,7 +249,7 @@ void *manager_server(void *dummy) {
 			//XXX MUTEX!
 			for (call = calltable->calls_list.begin(); call != calltable->calls_list.end(); ++call) {
 				if((unsigned int)(*call) == callreference) {
-					cerr << "founded" << endl;
+					//cerr << "founded" << endl;
 					//TODO handle returned values
 					struct listening_worker_arg *args = (struct listening_worker_arg*)malloc(sizeof(listening_worker_arg));
 					args->call = *call;
