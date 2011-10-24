@@ -4,7 +4,6 @@
 #include <sys/types.h>
 #include <error.h>
 #include <poll.h>
-#include <stropts.h>
 #include <fcntl.h>
 #include <sys/time.h>
 #include <time.h>
