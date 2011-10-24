@@ -389,7 +389,7 @@ void readdump(pcap_t *handle) {
 		} else if (header_ip->protocol == IPPROTO_TCP) {
 			// prepare packet pointers 
 			header_tcp = (struct tcphdr *) ((char *) header_ip + sizeof(*header_ip));
-			data = (char *) header_tcp + sizeof(struct tcphdr);
+			data = (char *) header_tcp + (header_tcp->doff * 4);
 			datalen = (int)(header->len - ((unsigned long) data - (unsigned long) packet)); 
 			if (!(htons(header_tcp->source) == 5060 || htons(header_tcp->dest) == 5060)) {
 				// not interested in TCP packet other than SIP port
