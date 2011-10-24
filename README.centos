@@ -62,6 +62,8 @@ cat cdrtable.sql | mysql voipmonitor
 cp config/voipmonitor.conf /etc/
 #edit file /etc/voipmonitor.conf to your needs
 cp config/init.d/voipmonitor /etc/init.d/
+chkconfig --add voipmonitor
+chkconfig voipmonitor on
 
 Web Interface
 =============
