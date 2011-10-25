@@ -97,6 +97,7 @@ Call::Call(char *call_id, unsigned long call_id_len, time_t time, void *ct) {
 	fifo2 = 0;
 	listening_worker_run = NULL;
 	tmprtp.call_owner = this;
+	flags = 0;
 }
 
 /* destructor */
