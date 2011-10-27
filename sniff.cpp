@@ -533,9 +533,11 @@ void readdump(pcap_t *handle) {
 						if(verbosity > 0) syslog(LOG_NOTICE, "lastSIPresponseNum = 0 [%s]\n", lastSIPresponse);
 					}
 				} 
+/* XXX: remove it once tested
 			} else if(sip_method == CANCEL) {
 				lastSIPresponseNum = 487;
 				strcpy(lastSIPresponse, "487 Request Terminated CANCEL");
+*/
 			}
 
 			// find call */
@@ -602,7 +604,7 @@ void readdump(pcap_t *handle) {
 				{
 				// packet is already part of call
 				call->set_last_packet_time(header->ts.tv_sec);
-				// save lastSIPresponseNum but only if previouse was not 487 (CANCEL)
+				// save lastSIPresponseNum but only if previouse was not 487 (CANCEL) TODO: check if this is still neccessery to check != 487
 				if(lastSIPresponse[0] != '\0' && call->lastSIPresponseNum != 487) {
 					strncpy(call->lastSIPresponse, lastSIPresponse, 128);
 					call->lastSIPresponseNum = lastSIPresponseNum;
@@ -618,7 +620,7 @@ void readdump(pcap_t *handle) {
 						if(verbosity > 2)
 							syslog(LOG_NOTICE, "Seen invite, CSeq: %s\n", call->invitecseq);
 					}
-				} else if(sip_method == BYE || sip_method == CANCEL) {
+				} else if(sip_method == BYE) {
 					//check and save CSeq for later to compare with OK 
 					s = gettag(data, datalen, "CSeq:", &l);
 					if(l && l < 32) {
@@ -634,6 +636,9 @@ void readdump(pcap_t *handle) {
 					}
 					// save who hanged up 
 					call->whohanged = (call->sipcallerip == header_ip->saddr) ? 0 : 1;
+				} else if(sip_method == CANCEL) {
+					// CANCEL continues with Status: 200 canceling; 200 OK; 487 Req. terminated; ACK. 
+					// TODO: imrpove it and dont let it be in memory for timouet but immediate. 
 				} else if(sip_method == RES2XX) {
 
 					if(!call->connect_time) {
