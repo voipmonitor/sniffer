@@ -98,6 +98,8 @@ Call::Call(char *call_id, unsigned long call_id_len, time_t time, void *ct) {
 	listening_worker_run = NULL;
 	tmprtp.call_owner = this;
 	flags = 0;
+	lastcallerrtp = NULL;
+	lastcalledrtp = NULL;
 }
 
 /* destructor */
@@ -247,6 +249,31 @@ Call::read_rtp(unsigned char* data, int datalen, struct pcap_pkthdr *header, u_i
 	}
 	// adding new RTP source
 	if(ssrc_n < MAX_SSRC_PER_CALL) {
+		// close previouse graph files to save RAM 
+		if(flags & FLAG_SAVEGRAPH) {
+			if(opt_gzipGRAPH) {
+				if(iscaller) {
+					if(lastcallerrtp && lastcallerrtp->gfileGZ.is_open()) {
+						lastcallerrtp->gfileGZ.close();
+					}
+				} else {
+					if(lastcalledrtp && lastcalledrtp->gfileGZ.is_open()) {
+						lastcalledrtp->gfileGZ.close();
+					}
+				}
+			} else {
+				if(iscaller) {
+					if(lastcallerrtp && lastcallerrtp->gfile.is_open()) {
+						lastcallerrtp->gfile.close();
+					}
+				} else {
+					if(lastcalledrtp && lastcalledrtp->gfile.is_open()) {
+						lastcalledrtp->gfile.close();
+					}
+				}
+			}
+		}
+
 		rtp[ssrc_n] = new RTP;
 		rtp[ssrc_n]->call_owner = this;
 		rtp[ssrc_n]->ssrc_index = ssrc_n; 
@@ -271,6 +298,11 @@ Call::read_rtp(unsigned char* data, int datalen, struct pcap_pkthdr *header, u_i
 		rtp[ssrc_n]->read(data, datalen, header, saddr, seeninviteok);
 		this->rtp[ssrc_n]->ssrc = tmprtp.getSSRC();
 		ssrc_n++;
+		if(iscaller) {
+			lastcallerrtp = rtp[ssrc_n];
+		} else {
+			lastcalledrtp = rtp[ssrc_n];
+		}
 	}
 }
 
@@ -744,7 +776,7 @@ Call::saveRegisterToMysql() {
 
 	extern char mysql_host[256];
 	extern char mysql_database[256];
-	char *mysql_table = "register";
+	const char *mysql_table = "register";
 	extern char mysql_user[256];
 	extern char mysql_password[256];
 
@@ -832,6 +864,12 @@ Calltable::Calltable() {
 	pthread_mutex_init(&qlock, NULL);
 	pthread_mutex_init(&qdellock, NULL);
 	memset(calls_hash, 0x0, sizeof(calls_hash));
+};
+
+/* destructor */
+Calltable::~Calltable() {
+	pthread_mutex_destroy(&qlock);
+	pthread_mutex_destroy(&qdellock);
 };
 
 
@@ -967,7 +1005,8 @@ Calltable::cleanup( time_t currtime ) {
 		if(currtime == 0 || (currtime - (*call)->get_last_packet_time() > RTPTIMEOUT)) {
 			if ((*call)->get_f_pcap() != NULL){
 				pcap_dump_flush((*call)->get_f_pcap());
-				pcap_dump_close((*call)->get_f_pcap());
+				if ((*call)->get_f_pcap() != NULL) 
+					pcap_dump_close((*call)->get_f_pcap());
 				(*call)->set_f_pcap(NULL);
 			}
 			if(currtime == 0) {

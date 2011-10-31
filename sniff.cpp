@@ -50,6 +50,7 @@ extern int verbosity;
 extern int terminating;
 extern int opt_rtp_firstleg;
 extern int opt_sip_register;
+extern char *sipportmatrix;
 
 extern IPfilter *ipfilter;
 extern IPfilter *ipfilter_reload;
@@ -126,7 +127,7 @@ fail_exit:
 }
 
 
-int get_sip_peername(char *data, int data_len, char *tag, char *peername, int peername_len){
+int get_sip_peername(char *data, int data_len, const char *tag, char *peername, int peername_len){
 	unsigned long r, r2, peername_tag_len;
 	char *peername_tag = gettag(data, data_len, tag, &peername_tag_len);
 	if(!peername_tag_len) {
@@ -150,7 +151,7 @@ fail_exit:
 	return 1;
 }
 
-int get_sip_branch(char *data, int data_len, char *tag, char *branch, int branch_len){
+int get_sip_branch(char *data, int data_len, const char *tag, char *branch, int branch_len){
 	unsigned long r, r2, branch_tag_len;
 	char *branch_tag = gettag(data, data_len, tag, &branch_tag_len);
 	if ((r = (unsigned long)memmem(branch_tag, branch_tag_len, "branch=", 7)) == 0){
@@ -318,7 +319,7 @@ void readdump(pcap_t *handle) {
 
 		// checking and cleaning calltable every 15 seconds (if some packet arrive) 
 		if (header->ts.tv_sec - last_cleanup > 15){
-			if(verbosity > 0) printf("Total calls [%d] calls in queue[%d]\n", calltable->calls_list.size(), calltable->calls_queue.size());
+			if(verbosity > 0) printf("Total calls [%d] calls in queue[%d]\n", (int)calltable->calls_list.size(), (int)calltable->calls_queue.size());
 			if (last_cleanup >= 0){
 				calltable->cleanup(header->ts.tv_sec);
 			}
@@ -391,7 +392,7 @@ void readdump(pcap_t *handle) {
 			header_tcp = (struct tcphdr *) ((char *) header_ip + sizeof(*header_ip));
 			data = (char *) header_tcp + (header_tcp->doff * 4);
 			datalen = (int)(header->len - ((unsigned long) data - (unsigned long) packet)); 
-			if (!(htons(header_tcp->source) == 5060 || htons(header_tcp->dest) == 5060)) {
+			if (!(sipportmatrix[htons(header_tcp->source)] || sipportmatrix[htons(header_tcp->dest)])) {
 				// not interested in TCP packet other than SIP port
 				continue;
 			}
@@ -433,8 +434,7 @@ void readdump(pcap_t *handle) {
 			if(call->flags & FLAG_SAVERTP) {
 				save_packet(call, header, packet);
 			}
-		} else if (htons(header_udp->source) == 5060 || htons(header_udp->dest) == 5060) {
-			// packet is from or to port 5060 
+		} else if (sipportmatrix[htons(header_udp->source)] || sipportmatrix[htons(header_udp->dest)]) {
 			data[datalen]=0;
 
 #if 0
@@ -598,8 +598,8 @@ void readdump(pcap_t *handle) {
 				}
 			/* check if SIP packet belongs to the first leg */
 			} else if(opt_rtp_firstleg == 0 || (opt_rtp_firstleg &&
-				(call->saddr == header_ip->saddr && call->sport == htons(header_udp->source)) || 
-				(call->saddr == header_ip->daddr && call->sport == htons(header_udp->dest))))
+				((call->saddr == header_ip->saddr && call->sport == htons(header_udp->source)) || 
+				(call->saddr == header_ip->daddr && call->sport == htons(header_udp->dest)))))
 
 				{
 				// packet is already part of call
@@ -705,8 +705,8 @@ void readdump(pcap_t *handle) {
 
 			// SDP examination only in case it is SIP msg belongs to first leg
 			if(opt_rtp_firstleg == 0 || (opt_rtp_firstleg &&
-				(call->saddr == header_ip->saddr && call->sport == htons(header_udp->source)) || 
-				(call->saddr == header_ip->daddr && call->sport == htons(header_udp->dest)))) 
+				((call->saddr == header_ip->saddr && call->sport == htons(header_udp->source)) || 
+				(call->saddr == header_ip->daddr && call->sport == htons(header_udp->dest)))))
 				{
 
 				s = gettag(data,datalen,"Content-Type:",&l);

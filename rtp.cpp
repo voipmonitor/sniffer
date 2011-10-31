@@ -163,9 +163,9 @@ RTP::~RTP() {
 
 	Call *owner = (Call*)call_owner;
 	if(opt_saveGRAPH || (owner && (owner->flags & FLAG_SAVEGRAPH))) {
-		if(opt_gzipGRAPH) {
+		if(opt_gzipGRAPH && gfileGZ.is_open()) {
 			gfileGZ.close();
-		} else {
+		} else if(gfile.is_open()){
 			gfile.close();
 		}
 	}
@@ -373,6 +373,7 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 		if(opt_saveRAW || (owner && (owner->flags & FLAG_SAVEWAV)) ||
 			fifo1 || fifo2 // if recording requested 
 		) {
+			syslog(LOG_ERR, "converting WAV! [%u] [%d] [%d]\n", owner->flags, fifo1, fifo2);
 			/* open file for raw codec */
 			unsigned long unique = getTimestamp();
 			char tmp[1024];

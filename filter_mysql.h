@@ -22,7 +22,7 @@
 
 class IPfilter {
 private:
-        typedef struct t_node {
+        struct t_node {
 		unsigned int ip;
 		int mask;
 		unsigned int flags;
@@ -44,13 +44,13 @@ public:
 
 class TELNUMfilter {
 private:
-	typedef struct t_payload {
+	struct t_payload {
 		char prefix[32];
 		unsigned int ip;
 		int mask;
 		unsigned int flags;
 	};
-        typedef struct t_node_tel {
+        struct t_node_tel {
                 t_node_tel *nodes[10];
                 t_payload *payload;
         };

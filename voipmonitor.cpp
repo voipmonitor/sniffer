@@ -89,27 +89,10 @@ int telnumfilter_reload_do = 0;	// for reload in main thread
 pthread_t call_thread;		// ID of worker storing CDR thread 
 pthread_t manager_thread;	// ID of worker manager thread 
 int terminating;		// if set to 1, worker thread will terminate
+char *sipportmatrix;		// matrix of sip ports to monitor
 
 void terminate2() {
-	Call *call;
-	calltable->cleanup(0);
 	terminating = 1;
-	pthread_join(call_thread, NULL);
-	/* this should be really empty, but just in case check it */
-	while(calltable->calls_queue.size() != 0) {
-			call = calltable->calls_queue.front();
-			calltable->calls_queue.pop();
-			delete call;
-			calls--;
-	}
-	while(calltable->calls_deletequeue.size() != 0) {
-			call = calltable->calls_deletequeue.front();
-			calltable->calls_deletequeue.pop();
-			delete call;
-			calls--;
-	}
-	unlink(opt_pidfile);
-	exit(1);
 }
 
 /* handler for INTERRUPT signal */
@@ -142,7 +125,7 @@ void *storing_cdr( void *dummy ) {
 	
 
 			if(!opt_nocdr) {
-				if(verbosity > 0) printf("storing to MySQL. Queue[%d]\n", calltable->calls_queue.size());
+				if(verbosity > 0) printf("storing to MySQL. Queue[%d]\n", (int)calltable->calls_queue.size());
 				if(call->type == INVITE) {
 					call->saveToMysql();
 				} else if(call->type == REGISTER){
@@ -151,7 +134,7 @@ void *storing_cdr( void *dummy ) {
 			}
 
 			if((call->flags & FLAG_SAVEWAV) && call->type == INVITE) {
-				if(verbosity > 0) printf("converting RAW file to WAV Queue[%d]\n", calltable->calls_queue.size());
+				if(verbosity > 0) printf("converting RAW file to WAV Queue[%d]\n", (int)calltable->calls_queue.size());
 				call->convertRawToWav();
 			}
 
@@ -248,8 +231,21 @@ int load_config(char *fname) {
 
 	CSimpleIniA ini;
 	ini.SetUnicode();
+	ini.SetMultiKey(true);
 	ini.LoadFile(fname);
 	const char *value;
+	CSimpleIniA::TNamesDepend values;
+
+	// sip ports
+	if (ini.GetAllValues("general", "sipport", values)) {
+		CSimpleIni::TNamesDepend::const_iterator i = values.begin();
+		for (; i != values.end(); ++i) {
+			sipportmatrix[atoi(i->pItem)] = 1;
+		}
+	} else {
+		// default is 5060 port
+		sipportmatrix[5060] = 1;
+	}
 
 	if((value = ini.GetValue("general", "interface", NULL))) {
 		strncpy(ifname, value, sizeof(ifname));
@@ -358,6 +354,7 @@ int main(int argc, char *argv[]) {
 	char *fname = NULL;	// pcap file to read on 
 	ifname[0] = '\0';
 	strcpy(opt_chdir, "/var/spool/voipmonitor");
+	sipportmatrix = (char*)calloc(0, sizeof(char) * 65537);
 
         int option_index = 0;
         static struct option long_options[] = {
@@ -727,25 +724,25 @@ int main(int argc, char *argv[]) {
 	// close handler
 	pcap_close(handle);
 
-	// here we go when readdump finished. When reading from interface, do nothing, because cleanups is done in sigint_* functions
-	if(fname) {
-		Call *call;
-		calltable->cleanup(0);
-		terminating = 1;
-		pthread_join(call_thread, NULL);
-		while(calltable->calls_queue.size() != 0) {
-				call = calltable->calls_queue.front();
-				calltable->calls_queue.pop();
-				delete call;
-				calls--;
-		}
-		while(calltable->calls_deletequeue.size() != 0) {
-				call = calltable->calls_deletequeue.front();
-				calltable->calls_deletequeue.pop();
-				delete call;
-				calls--;
-		}
+	// flush all queues
+	Call *call;
+	calltable->cleanup(0);
+	terminating = 1;
+	pthread_join(call_thread, NULL);
+	while(calltable->calls_queue.size() != 0) {
+			call = calltable->calls_queue.front();
+			calltable->calls_queue.pop();
+			delete call;
+			calls--;
+	}
+	while(calltable->calls_deletequeue.size() != 0) {
+			call = calltable->calls_deletequeue.front();
+			calltable->calls_deletequeue.pop();
+			delete call;
+			calls--;
 	}
 
+	delete calltable;
+	free(sipportmatrix);
 	unlink(opt_pidfile);
 }

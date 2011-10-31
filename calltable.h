@@ -69,6 +69,8 @@ public:
 	char b_ua[1024];		//!< callee user agent 
 	int rtpmap[MAX_IP_PER_CALL][20]; //!< rtpmap for every rtp stream
 	RTP tmprtp;			//!< temporary structure used to decode information from frame
+	RTP *lastcallerrtp;		//!< last RTP stream from caller
+	RTP *lastcalledrtp;		//!< last RTP stream from called
 	void *calltable;		//!< reference to calltable
 	u_int32_t saddr;		//!< source IP address of first INVITE
 	unsigned short sport;		//!< source port of first INVITE
@@ -293,6 +295,12 @@ public:
 		memset(calls_hash, 0x0, sizeof(calls_hash) * MAXNODE);
 	};
 	*/
+
+	/**
+	 * destructor
+	 * 
+	*/
+	~Calltable();
 
 	/**
 	 * @brief lock calls_queue structure 
