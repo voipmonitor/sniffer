@@ -32,7 +32,7 @@ tar xzf mysql++-3.0.9.tar.gz
 cd mysql++-3.0.9
 ./configure
 make install
-(add /usr/local/lib to /etc/ld.so.conf)
+echo "/usr/local/lib" >> /etc/ld.so.conf
 ldconfig
 
 ogg vorbis
