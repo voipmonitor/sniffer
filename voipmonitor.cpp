@@ -354,7 +354,7 @@ int main(int argc, char *argv[]) {
 	char *fname = NULL;	// pcap file to read on 
 	ifname[0] = '\0';
 	strcpy(opt_chdir, "/var/spool/voipmonitor");
-	sipportmatrix = (char*)calloc(0, sizeof(char) * 65537);
+	sipportmatrix = (char*)calloc(1, sizeof(char) * 65537);
 
         int option_index = 0;
         static struct option long_options[] = {
