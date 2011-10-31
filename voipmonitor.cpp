@@ -239,12 +239,11 @@ int load_config(char *fname) {
 	// sip ports
 	if (ini.GetAllValues("general", "sipport", values)) {
 		CSimpleIni::TNamesDepend::const_iterator i = values.begin();
+		// reset default port 
+		sipportmatrix[5060] = 0;
 		for (; i != values.end(); ++i) {
 			sipportmatrix[atoi(i->pItem)] = 1;
 		}
-	} else {
-		// default is 5060 port
-		sipportmatrix[5060] = 1;
 	}
 
 	if((value = ini.GetValue("general", "interface", NULL))) {
@@ -360,6 +359,8 @@ int main(int argc, char *argv[]) {
 	ifname[0] = '\0';
 	strcpy(opt_chdir, "/var/spool/voipmonitor");
 	sipportmatrix = (char*)calloc(1, sizeof(char) * 65537);
+	// set default SIP port to 5060
+	sipportmatrix[5060] = 1;
 
         int option_index = 0;
         static struct option long_options[] = {
