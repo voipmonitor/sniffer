@@ -351,7 +351,15 @@ void readdump(pcap_t *handle) {
                         case DLT_LINUX_SLL:
                                 header_sll = (struct sll_header *) (char*)packet;
                                 protocol = header_sll->sll_protocol;
-                                offset = sizeof(struct sll_header);
+                                if(header_sll->sll_protocol == 129) {
+                                        // VLAN tag
+					protocol = *(short *)((char*)packet + 16 + 2);
+                                        offset = 4;
+                                } else {
+                                        offset = 0;
+                                        protocol = header_sll->sll_protocol;
+                                }
+				offset += sizeof(struct sll_header);
                                 break;
                         case DLT_EN10MB:
 				header_eth = (struct ether_header *) (char*)(packet);
