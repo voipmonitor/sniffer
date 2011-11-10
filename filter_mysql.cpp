@@ -317,6 +317,10 @@ TELNUMfilter::add_call_flags(unsigned int *flags, char *telnum_src, char *telnum
 	if(!lastpayload) {
 		//src not found, try dst
 		for(unsigned int i = 0; i < strlen(telnum_dst); i++) {
+			if(telnum_dst[i] < 48 || telnum_dst[i] > 57) {
+				//stop on non digit
+				break;
+			}
 			if(!tmp->nodes[telnum_dst[i] - 48]) {
 				break;
 			}
