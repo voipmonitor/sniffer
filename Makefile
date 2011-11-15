@@ -1,8 +1,8 @@
-objects = codec_alaw.o codec_ulaw.o format_slinear.o format_wav.o format_ogg.o calltable.o rtp.o voipmonitor.o sniff.o jitterbuffer/astmm.o jitterbuffer/utils.o jitterbuffer/fixedjitterbuf.o jitterbuffer/jitterbuf.o jitterbuffer/abstract_jb.o jitterbuffer/frame.o gzstream/gzstream.o gzstream/libgzstream.a manager.o tools.o filter_mysql.o
+objects = codec_alaw.o codec_ulaw.o format_slinear.o format_wav.o format_ogg.o calltable.o rtp.o voipmonitor.o sniff.o jitterbuffer/astmm.o jitterbuffer/utils.o jitterbuffer/fixedjitterbuf.o jitterbuffer/jitterbuf.o jitterbuffer/abstract_jb.o jitterbuffer/frame.o gzstream/gzstream.o gzstream/libgzstream.a manager.o tools.o filter_mysql.o hash.o
 args = -g3 -Wall
 #args = -O2 -Wall
 CFLAGS+=-I /usr/local/include/mysql++/ -I /usr/include/mysql++/ -I /usr/include/mysql/ -g3 -Wall -I jitterbuffer/  -L/usr/local/lib/ -Lgzstream/
-LIBS=-lpthread -lmysqlpp -lpcap -lgzstream -lz -lvorbis -lvorbisenc -logg
+LIBS=-lpthread -lmysqlpp -lpcap -lgzstream -lz -lvorbis -lvorbisenc -logg  #-lnids
 #if you want to compile it statically uncomment this line
 #LIBS=-static -lpthread -L/usr/lib/mysql -lmysqlpp -lmysqlclient -lpcap -lgzstream -lz -lvorbis -lvorbisenc -logg
 
@@ -51,6 +51,9 @@ tools.o : tools.cpp tools.h
 
 filter_mysql.o : filter_mysql.cpp filter_mysql.h
 	g++ -c filter_mysql.cpp $(args) ${CFLAGS}
+
+hash.o : hash.cpp hash.h
+	g++ -c hash.cpp $(args) ${CFLAGS}
 
 clean :
 	rm -f $(objects) voipmonitor gzstream/*.o libgzstream.a

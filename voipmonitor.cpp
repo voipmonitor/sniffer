@@ -17,6 +17,8 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <net/ethernet.h>
+#include <netinet/in.h>
+#include <netinet/in_systm.h>
 #include <pthread.h>
 #include <unistd.h>
 #include <syslog.h>
@@ -90,6 +92,8 @@ pthread_t call_thread;		// ID of worker storing CDR thread
 pthread_t manager_thread;	// ID of worker manager thread 
 int terminating;		// if set to 1, worker thread will terminate
 char *sipportmatrix;		// matrix of sip ports to monitor
+
+pcap_t *handle = NULL;		// pcap handler 
 
 void terminate2() {
 	terminating = 1;
@@ -362,30 +366,30 @@ int main(int argc, char *argv[]) {
 	// set default SIP port to 5060
 	sipportmatrix[5060] = 1;
 
-        int option_index = 0;
-        static struct option long_options[] = {
-            {"gzip-graph", 0, 0, '1'},
-            {"gzip-pcap", 0, 0, '2'},
-            {"save-sip", 0, 0, 'S'},
-            {"save-rtp", 0, 0, 'R'},
-            {"save-rtcp", 0, 0, '9'},
-            {"save-raw", 0, 0, 'A'},
-            {"save-audio", 0, 0, 'W'},
-            {"no-cdr", 0, 0, 'c'},
-            {"save-graph", 2, 0, 'G'},
-            {"mysql-server", 1, 0, 'h'},
-            {"mysql-database", 1, 0, 'b'},
-            {"mysql-username", 1, 0, 'u'},
-            {"mysql-password", 1, 0, 'p'},
-            {"pid-file", 1, 0, 'P'},
-            {"rtp-firstleg", 0, 0, '3'},
-            {"sip-register", 0, 0, '4'},
-            {"audio-format", 1, 0, '5'},
-            {"ring-buffer", 1, 0, '6'},
-            {"config-file", 1, 0, '7'},
-            {"manager-port", 1, 0, '8'},
-            {0, 0, 0, 0}
-        };
+	int option_index = 0;
+	static struct option long_options[] = {
+	    {"gzip-graph", 0, 0, '1'},
+	    {"gzip-pcap", 0, 0, '2'},
+	    {"save-sip", 0, 0, 'S'},
+	    {"save-rtp", 0, 0, 'R'},
+	    {"save-rtcp", 0, 0, '9'},
+	    {"save-raw", 0, 0, 'A'},
+	    {"save-audio", 0, 0, 'W'},
+	    {"no-cdr", 0, 0, 'c'},
+	    {"save-graph", 2, 0, 'G'},
+	    {"mysql-server", 1, 0, 'h'},
+	    {"mysql-database", 1, 0, 'b'},
+	    {"mysql-username", 1, 0, 'u'},
+	    {"mysql-password", 1, 0, 'p'},
+	    {"pid-file", 1, 0, 'P'},
+	    {"rtp-firstleg", 0, 0, '3'},
+	    {"sip-register", 0, 0, '4'},
+	    {"audio-format", 1, 0, '5'},
+	    {"ring-buffer", 1, 0, '6'},
+	    {"config-file", 1, 0, '7'},
+	    {"manager-port", 1, 0, '8'},
+	    {0, 0, 0, 0}
+	};
 
 	terminating = 0;
 
@@ -610,7 +614,6 @@ int main(int argc, char *argv[]) {
 	
 	bpf_u_int32 mask;		// Holds the subnet mask associated with device.
 	char errbuf[PCAP_ERRBUF_SIZE];	// Returns error text and is only set when the pcap_lookupnet subroutine fails.
-	pcap_t *handle = NULL;			// pcap handler 
 
 	if (fname == NULL && ifname[0] != '\0'){
 		bpf_u_int32 net;
@@ -723,9 +726,9 @@ int main(int argc, char *argv[]) {
 
 	// start manager thread 	
 	pthread_create(&manager_thread, NULL, manager_server, NULL);
-
 	// start reading packets
-	readdump(handle);
+//	readdump_libnids(handle);
+	readdump_libpcap(handle);
 
 	// close handler
 	pcap_close(handle);

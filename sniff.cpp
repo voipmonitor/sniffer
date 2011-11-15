@@ -20,17 +20,27 @@ and insert them into Call class.
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <net/ethernet.h>
+#include <netinet/ip.h>
 #include <netinet/tcp.h>
 #include <syslog.h>
 
 #include <pcap.h>
 //#include <pcap/sll.h>
 
+#define int_ntoa(x)     inet_ntoa(*((struct in_addr *)&x))
+#define MAX_TCPSTREAMS 1024
+
+//#define HAS_NIDS 1
+#ifdef HAS_NIDS
+#include <nids.h>
+#endif
+
 #include "codecs.h"
 #include "calltable.h"
 #include "sniff.h"
 #include "voipmonitor.h"
 #include "filter_mysql.h"
+#include "hash.h"
 
 using namespace std;
 
@@ -51,6 +61,7 @@ extern int terminating;
 extern int opt_rtp_firstleg;
 extern int opt_sip_register;
 extern char *sipportmatrix;
+extern pcap_t *handle;
 
 extern IPfilter *ipfilter;
 extern IPfilter *ipfilter_reload;
@@ -59,6 +70,20 @@ extern int ipfilter_reload_do;
 extern TELNUMfilter *telnumfilter;
 extern TELNUMfilter *telnumfilter_reload;
 extern int telnumfilter_reload_do;
+
+struct tcp_stream2 {
+	char *data;
+	int datalen;
+	pcap_pkthdr header;
+	u_char *packet;
+	u_int next_seq;
+	u_int hash;
+	time_t ts;
+	tcp_stream2 *next;
+};
+
+tcp_stream2 *tcp_streams_hashed[MAX_TCPSTREAMS];
+list<tcp_stream2*> tcp_streams_list;
 
 /* save packet into file */
 void save_packet(Call *call, struct pcap_pkthdr *header, const u_char *packet) {
@@ -245,11 +270,688 @@ int get_rtpmap_from_sdp(char *sdp_text, unsigned long len, int *rtpmap){
 	 return 0;
 }
 
+Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int dest, char *data, int datalen,
+	pcap_t *handle, pcap_pkthdr *header, const u_char *packet, int istcp, int dontsave) {
 
-void readdump(pcap_t *handle) {
+	Call *call;
+	int iscaller;
+	int is_rtcp = 0;
+	unsigned long last_cleanup = 0;	// Last cleaning time
+	char *s;
+	unsigned long l;
+	char callidstr[1024],str2[1024];
+	int sip_method = 0;
+	char lastSIPresponse[128];
+	int lastSIPresponseNum;
+	int pcapstatres = 0;
+	int pcapstatresCount = 0;
+	struct pcap_stat ps;
+	unsigned int lostpacket = 0;
+	unsigned int lostpacketif = 0;
+
+	// checking and cleaning stuff every 15 seconds (if some packet arrive) 
+	if (header->ts.tv_sec - last_cleanup > 15){
+		if(verbosity > 0) printf("Total calls [%d] calls in queue[%d]\n", (int)calltable->calls_list.size(), (int)calltable->calls_queue.size());
+		if (last_cleanup >= 0){
+			calltable->cleanup(header->ts.tv_sec);
+		}
+		/* also do every 15 seconds pcap statistics */
+		pcapstatres = pcap_stats(handle, &ps);
+		if (pcapstatres == 0 && (lostpacket < ps.ps_drop || lostpacketif < ps.ps_ifdrop)) {
+			if(pcapstatresCount) {
+				syslog(LOG_ERR, "error: libpcap or interface dropped some packets! rx:%i drop:%i ifdrop:%i increase --ring-buffer (kernel >= 2.6.31 needed)\n", ps.ps_recv, ps.ps_drop, ps.ps_ifdrop);
+			} else {
+				// do not show first error, it is normal on startup. 
+				pcapstatresCount++;
+			}
+			lostpacket = ps.ps_drop;
+			lostpacketif = ps.ps_ifdrop;
+		}
+		last_cleanup = header->ts.tv_sec;
+		/* delete all calls */
+		calltable->lock_calls_deletequeue();
+		while (calltable->calls_deletequeue.size() > 0) {
+			call = calltable->calls_deletequeue.front();
+			calltable->calls_deletequeue.pop();
+			delete call;
+			calls--;
+		}
+		calltable->unlock_calls_deletequeue();
+
+		// clean tcp_streams_list
+		list<tcp_stream2*>::iterator stream;
+		for (stream = tcp_streams_list.begin(); stream != tcp_streams_list.end();) {
+			if((header->ts.tv_sec - (*stream)->ts) > (15 * 60)) {
+				// remove tcp stream after 15 minutes
+				tcp_stream2 *next, *tmpstream;
+				tmpstream = tcp_streams_hashed[(*stream)->hash];
+				tcp_streams_hashed[(*stream)->hash] = NULL;
+				while(tmpstream) {
+					free(tmpstream->data);
+					free(tmpstream->packet);
+					next = tmpstream->next;
+					free(tmpstream);
+					tmpstream = next;
+				}
+				tcp_streams_list.erase(stream++);
+			} else {
+				++stream;
+			}
+		}
+	}
+	
+	// TODO: remove if hash will be stable
+	//if ((call = calltable->find_by_ip_port(daddr, dest, &iscaller))){	
+	if ((call = calltable->hashfind_by_ip_port(daddr, dest, &iscaller, &is_rtcp))){	
+		// packet (RTP) by destination:port is already part of some stored call 
+		if(!dontsave && is_rtcp && (opt_saveRTP || opt_saveRTCP)) {
+			save_packet(call, header, packet);
+			return call;
+		}
+		call->read_rtp((unsigned char*) data, datalen, header, saddr, source, iscaller);
+		call->set_last_packet_time(header->ts.tv_sec);
+		if(!dontsave && call->flags & FLAG_SAVERTP) {
+			save_packet(call, header, packet);
+		}
+	// TODO: remove if hash will be stable
+	//} else if ((call = calltable->find_by_ip_port(saddr, source, &iscaller))){	
+	} else if ((call = calltable->hashfind_by_ip_port(saddr, source, &iscaller, &is_rtcp))){
+		// packet (RTP) by source:port is already part of some stored call 
+		if(!dontsave && is_rtcp && (opt_saveRTP || opt_saveRTCP)) {
+			save_packet(call, header, packet);
+			return call;
+		}
+		// as we are searching by source address and find some call, revert iscaller 
+		call->read_rtp((unsigned char*) data, datalen, header, saddr, source, !iscaller);
+		call->set_last_packet_time(header->ts.tv_sec);
+		if(!dontsave && call->flags & FLAG_SAVERTP) {
+			save_packet(call, header, packet);
+		}
+	} else if (sipportmatrix[source] || sipportmatrix[dest]) {
+
+#if 0
+		/* ugly and dirty hack to detect two SIP messages in one TCP packet. */
+		tmp = strstr(data, "SIP/2.0 ");
+		if(tmp) {
+			tmp = strstr(tmp + 8, "SIP/2.0 ");
+			if(tmp) {
+				// second SIP message in one packet. Skip the first packet for now. TODO: process both packets
+				datalen -= tmp - data;
+				data = tmp;
+			}
+		}
+#endif
+
+		/* not that Call-ID  isn't the phone number of the caller. It uniquely represents 
+		   the whole call, or dialog, between the two user agents. All related SIP 
+		   messages use the same Call-ID. For example, when a user agent receives a 
+		   BYE message, it knows which call to hang up based on the Call-ID.
+		*/
+		s = gettag(data,datalen,"Call-ID:", &l);
+		if(l <= 0 || l > 1023) {
+			// try also compact header
+			s = gettag(data,datalen,"i:", &l);
+			if(l <= 0 || l > 1023) {
+				// no Call-ID found in packet
+				// if packet is tcp, check if belongs to some TCP stream for reassemling 
+				u_int hash = mkhash(saddr, source, daddr, dest) % MAX_TCPSTREAMS;
+				if(istcp && tcp_streams_hashed[hash] != NULL) {
+					// it belongs, append to end
+
+					// create stream node
+					tcp_stream2 *stream = (tcp_stream2*)malloc(sizeof(tcp_stream2));
+					tcp_stream2 *tmpstream;
+					stream->next = NULL;
+					stream->ts = header->ts.tv_sec;
+					stream->hash = hash;
+					tcp_streams_list.push_back(stream);
+
+					// append new created node at the end of list of TCP packets within this TCP connection
+					for(tmpstream = tcp_streams_hashed[hash]; tmpstream->next; tmpstream = tmpstream->next) {};
+					tmpstream->next = stream;
+
+					//copy data
+					stream->data = (char*)malloc(sizeof(char) * datalen);
+					memcpy(stream->data, data, datalen);
+					stream->datalen = datalen;
+
+					//copy header
+					memcpy((void*)(&stream->header), header, sizeof(pcap_pkthdr));
+
+					//copy packet
+					stream->packet = (u_char*)malloc(sizeof(u_char) * header->len);
+					memcpy(stream->packet, packet, header->len);
+
+					// check if this TCP packet was the last packet 
+					if(data[datalen - 2] == 0x0d && data[datalen - 1] == 0x0a) {
+						tcp_streams_list.remove(tcp_streams_hashed[hash]);
+						int newlen = 0;
+						// get SIP packet length from all TCP packets
+						for(tmpstream = tcp_streams_hashed[hash]; tmpstream->next; tmpstream = tmpstream->next) {
+							newlen += tmpstream->datalen;
+						};
+						// allocate structure for whole SIP packet
+						u_char *newdata = (u_char*)malloc(sizeof(u_char) * newlen);
+						int len2 = 0;
+						// concatenate all TCP packets to one SIP packet
+						for(tmpstream = tcp_streams_hashed[hash]; tmpstream->next; tmpstream = tmpstream->next) {
+							memcpy(newdata + len2, tmpstream->data, tmpstream->datalen);
+							len2 += tmpstream->datalen;
+						};
+						// process SIP packet
+						Call *call = process_packet(saddr, source, daddr, dest, (char*)newdata, newlen, handle, header, packet, 0, 1);
+						// remove TCP stream
+						free(newdata);
+						tcp_stream2 *next;
+						tmpstream = tcp_streams_hashed[hash];
+						while(tmpstream) {
+							if(call) {
+								// if packet belongs to (or created) call, save each packets to pcap and destroy TCP stream
+								save_packet(call, &tmpstream->header, (const u_char*)tmpstream->packet);
+							}
+							free(tmpstream->data);
+							free(tmpstream->packet);
+							next = tmpstream->next;
+							free(tmpstream);
+							tmpstream = next;
+						}
+						tcp_streams_hashed[hash] = NULL;
+					}
+					return NULL;
+				} else {
+					// no call-id and it belongs to no stream, skip 
+					return NULL;
+				}
+			}
+		}
+
+		memcpy(callidstr, s, l);
+		callidstr[l] = '\0';
+
+		// Call-ID is present
+		if(istcp) {
+			u_int hash = mkhash(saddr, source, daddr, dest) % MAX_TCPSTREAMS;
+			// check if TCP packet contains the whole SIP message
+			if(!(data[datalen - 2] == 0x0d && data[datalen - 1] == 0x0a)) {
+				// SIP message is not complete, save packet 
+				if(tcp_streams_hashed[hash]) {
+					// there is already stream 
+					syslog(LOG_NOTICE,"DEBUG: this TCP stream with Call-ID[%s] should not happen! fix voipmonitor", callidstr);
+				} else {
+					// create stream node
+					tcp_stream2 *stream = (tcp_stream2*)malloc(sizeof(tcp_stream2));
+					tcp_streams_list.push_back(stream);
+					stream->next = NULL;
+					stream->ts = header->ts.tv_sec;
+					stream->hash = hash;
+					tcp_streams_hashed[hash] = stream;
+
+					//copy data
+					stream->data = (char*)malloc(sizeof(char) * datalen);
+					stream->datalen = datalen;
+					memcpy(stream->data, data, datalen);
+
+					//copy header
+					memcpy((void*)(&stream->header), header, sizeof(pcap_pkthdr));
+
+					//copy packet
+					stream->packet = (u_char*)malloc(sizeof(u_char) * header->len);
+					memcpy(stream->packet, packet, header->len);
+					return NULL;
+				}
+			} else if(tcp_streams_hashed[hash]) {
+				syslog(LOG_NOTICE,"TCP packet contains Call-ID[%s] and is already part of TCP stream which should not happen. fix voipmonitor", callidstr);
+			}
+		}
+
+
+
+		// parse SIP method 
+		if ((datalen > 5) && !(memmem(data, 6, "INVITE", 6) == 0)) {
+			if(verbosity > 2) 
+				 syslog(LOG_NOTICE,"SIP msg: INVITE\n");
+			sip_method = INVITE;
+		} else if ((datalen > 7) && !(memmem(data, 8, "REGISTER", 8) == 0)) {
+			if(verbosity > 2) 
+				 syslog(LOG_NOTICE,"SIP msg: REGISTER\n");
+			sip_method = REGISTER;
+		} else if ((datalen > 2) && !(memmem(data, 3, "BYE", 3) == 0)) {
+			if(verbosity > 2) 
+				 syslog(LOG_NOTICE,"SIP msg: BYE\n");
+			sip_method = BYE;
+		} else if ((datalen > 5) && !(memmem(data, 6, "CANCEL", 6) == 0)) {
+			if(verbosity > 2) 
+				 syslog(LOG_NOTICE,"SIP msg: CANCEL\n");
+			sip_method = CANCEL;
+		} else if ((datalen > 8) && !(memmem(data, 9, "SIP/2.0 2", 9) == 0)) {
+			if(verbosity > 2) 
+				 syslog(LOG_NOTICE,"SIP msg: 2XX\n");
+			sip_method = RES2XX;
+		} else if ((datalen > 9) && !(memmem(data, 10, "SIP/2.0 18", 10) == 0)) {
+			if(verbosity > 2) 
+				 syslog(LOG_NOTICE,"SIP msg: 18X\n");
+			sip_method = RES18X;
+		} else if ((datalen > 8) && !(memmem(data, 9, "SIP/2.0 3", 9) == 0)) {
+			if(verbosity > 2) 
+				 syslog(LOG_NOTICE,"SIP msg: 3XX\n");
+			sip_method = RES3XX;
+		} else if ((datalen > 8) && !(memmem(data, 9, "SIP/2.0 4", 9) == 0)) {
+			if(verbosity > 2) 
+				 syslog(LOG_NOTICE,"SIP msg: 4XX\n");
+			sip_method = RES4XX;
+		} else if ((datalen > 8) && !(memmem(data, 9, "SIP/2.0 5", 9) == 0)) {
+			if(verbosity > 2) 
+				 syslog(LOG_NOTICE,"SIP msg: 5XX\n");
+			sip_method = RES5XX;
+		} else if ((datalen > 8) && !(memmem(data, 9, "SIP/2.0 6", 9) == 0)) {
+			if(verbosity > 2) 
+				 syslog(LOG_NOTICE,"SIP msg: 6XX\n");
+			sip_method = RES6XX;
+		} else {
+			if(verbosity > 2) {
+				syslog(LOG_NOTICE,"SIP msg: 1XX or Unknown msg \n");
+			}
+			sip_method = 0;
+		}
+		lastSIPresponse[0] = '\0';
+		lastSIPresponseNum = 0;
+		if(sip_method > 0 && sip_method != INVITE && sip_method != REGISTER && sip_method != CANCEL) {
+			char a = data[datalen - 1];
+			data[datalen - 1] = 0;
+			char *tmp = strstr(data, "\r");
+			if(tmp) {
+				// 8 is len of [SIP/2.0 ], 128 is max buffer size
+				strncpy(lastSIPresponse, data + 8, (datalen > 128) ? 128 : datalen);
+				lastSIPresponse[tmp - data - 8] = '\0';
+				char num[4];
+				strncpy(num, data + 8, 3);
+				num[3] = '\0';
+				lastSIPresponseNum = atoi(num);
+				if(lastSIPresponseNum == 0) {
+					if(verbosity > 0) syslog(LOG_NOTICE, "lastSIPresponseNum = 0 [%s]\n", lastSIPresponse);
+				}
+			} 
+			data[datalen - 1] = a;
+/* XXX: remove it once tested
+		} else if(sip_method == CANCEL) {
+			lastSIPresponseNum = 487;
+			strcpy(lastSIPresponse, "487 Request Terminated CANCEL");
+*/
+		}
+
+		// find call */
+		if (!(call = calltable->find_by_call_id(s, l))){
+			// packet does not belongs to any call yet
+			if (sip_method == INVITE || (opt_sip_register && sip_method == REGISTER)) {
+				// store this call only if it starts with invite
+				call = calltable->add(s, l, header->ts.tv_sec, saddr, source);
+				call->set_first_packet_time(header->ts.tv_sec);
+				call->sipcallerip = saddr;
+				call->sipcalledip = daddr;
+				call->type = sip_method;
+				ipfilter->add_call_flags(&(call->flags), ntohl(saddr), ntohl(daddr));
+				strcpy(call->fbasename, callidstr);
+
+				/* this logic updates call on the first INVITES */
+				if (sip_method == INVITE) {
+					int res;
+					res = get_sip_peercnam(data,datalen,"From:", call->callername, sizeof(call->callername));
+					if(res) {
+						// try compact header
+						get_sip_peercnam(data,datalen,"f:", call->callername, sizeof(call->callername));
+					}
+					res = get_sip_peername(data,datalen,"From:", call->caller, sizeof(call->caller));
+					if(res) {
+						// try compact header
+						get_sip_peername(data,datalen,"f:", call->caller, sizeof(call->caller));
+					}
+					res = get_sip_peername(data,datalen,"To:", call->called, sizeof(call->called));
+					if(res) {
+						// try compact header
+						get_sip_peername(data,datalen,"t:", call->called, sizeof(call->called));
+					}
+					call->seeninvite = true;
+					telnumfilter->add_call_flags(&(call->flags), call->caller, call->called);
+				}
+
+				// opening dump file
+				if(call->flags & (FLAG_SAVESIP | FLAG_SAVEREGISTER | FLAG_SAVERTP | FLAG_SAVEWAV)) {
+					mkdir(call->dirname(), 0777);
+				}
+				if(call->flags & (FLAG_SAVESIP | FLAG_SAVEREGISTER | FLAG_SAVERTP)) {
+					sprintf(str2, "%s/%s.pcap", call->dirname(), callidstr);
+					call->set_f_pcap(pcap_dump_open(handle, str2));
+				}
+
+				//check and save CSeq for later to compare with OK 
+				s = gettag(data, datalen, "CSeq:", &l);
+				if(l && l < 32) {
+					memcpy(call->invitecseq, s, l);
+					call->invitecseq[l] = '\0';
+					if(verbosity > 2)
+						syslog(LOG_NOTICE, "Seen invite, CSeq: %s\n", call->invitecseq);
+				}
+			} else {
+				// SIP packet does not belong to any call and it is not INVITE 
+				return NULL;
+			}
+		/* check if SIP packet belongs to the first leg */
+		} else if(opt_rtp_firstleg == 0 || (opt_rtp_firstleg &&
+			((call->saddr == saddr && call->sport == source) || 
+			(call->saddr == daddr && call->sport == dest))))
+
+			{
+			// packet is already part of call
+			call->set_last_packet_time(header->ts.tv_sec);
+			// save lastSIPresponseNum but only if previouse was not 487 (CANCEL) TODO: check if this is still neccessery to check != 487
+			if(lastSIPresponse[0] != '\0' && call->lastSIPresponseNum != 487) {
+				strncpy(call->lastSIPresponse, lastSIPresponse, 128);
+				call->lastSIPresponseNum = lastSIPresponseNum;
+			}
+
+			// check if it is BYE or OK(RES2XX)
+			if(sip_method == INVITE) {
+				//check and save CSeq for later to compare with OK 
+				s = gettag(data, datalen, "CSeq:", &l);
+				if(l && l < 32) {
+					memcpy(call->invitecseq, s, l);
+					call->invitecseq[l] = '\0';
+					if(verbosity > 2)
+						syslog(LOG_NOTICE, "Seen invite, CSeq: %s\n", call->invitecseq);
+				}
+			} else if(sip_method == BYE) {
+				//check and save CSeq for later to compare with OK 
+				s = gettag(data, datalen, "CSeq:", &l);
+				if(l && l < 32) {
+					memcpy(call->byecseq, s, l);
+					call->byecseq[l] = '\0';
+					call->seenbye = true;
+					if(call->listening_worker_run) {
+						*(call->listening_worker_run) = 0;
+					}
+					if(verbosity > 2)
+						syslog(LOG_NOTICE, "Seen bye\n");
+						
+				}
+				// save who hanged up 
+				call->whohanged = (call->sipcallerip == saddr) ? 0 : 1;
+			} else if(sip_method == CANCEL) {
+				// CANCEL continues with Status: 200 canceling; 200 OK; 487 Req. terminated; ACK. 
+				// TODO: imrpove it and dont let it be in memory for timouet but immediate. 
+			} else if(sip_method == RES2XX) {
+
+				if(!call->connect_time) {
+					call->connect_time = header->ts.tv_sec;
+				}
+
+				// if it is OK check for BYE
+				s = gettag(data, datalen, "CSeq:", &l);
+				if(l) {
+					if(verbosity > 2) {
+						char a = data[datalen - 1];
+						data[datalen - 1] = 0;
+						syslog(LOG_NOTICE, "Cseq: %s\n", data);
+						data[datalen - 1] = a;
+					}
+					if(strncmp(s, call->byecseq, l) == 0) {
+						// terminate successfully acked call, put it into mysql CDR queue and remove it from calltable 
+						call->seenbyeandok = true;
+						if(!dontsave && call->flags & (FLAG_SAVESIP | FLAG_SAVEREGISTER)) {
+							save_packet(call, header, packet);
+						}
+						if (call->get_f_pcap() != NULL){
+							pcap_dump_flush(call->get_f_pcap());
+							pcap_dump_close(call->get_f_pcap());
+							call->set_f_pcap(NULL);
+						}
+						// we have to close all raw files as there can be data in buffers 
+						call->closeRawFiles();
+						calltable->lock_calls_queue();
+						calltable->calls_queue.push(call);	// push it to CDR queue at the end of queue
+						calltable->unlock_calls_queue();
+						calltable->calls_list.remove(call);
+						if(verbosity > 2)
+							syslog(LOG_NOTICE, "Call closed\n");
+						return call;
+					} else if(strncmp(s, call->invitecseq, l) == 0) {
+						call->seeninviteok = true;
+						if(verbosity > 2)
+							syslog(LOG_NOTICE, "Call answered\n");
+					}
+				}
+			} else if(sip_method == RES18X) {
+				call->progress_time = header->ts.tv_sec;
+			}
+
+			/* if call ends with some of SIP [456]XX response code, we can immediately close it and 
+			   do not wait to timeout as for very high call rate it consumes memory and CPU 
+			*/
+			if( ((call->saddr == saddr && call->sport == source) || (call->saddr == daddr && call->sport == dest))
+				&&
+			    (sip_method == RES3XX || sip_method == RES4XX || sip_method == RES5XX || sip_method == RES6XX) && lastSIPresponseNum != 401 && lastSIPresponseNum != 407 ) {
+					// save packet as we are ending loop here
+					if(!dontsave && opt_saveSIP) {
+						save_packet(call, header, packet);
+					}
+					// we have to close all raw files as there can be data in buffers 
+					call->closeRawFiles();
+					calltable->lock_calls_queue();
+					calltable->calls_queue.push(call);	// push it to CDR queue at the end of queue
+					calltable->unlock_calls_queue();
+					calltable->calls_list.remove(call);
+					if(verbosity > 2)
+						syslog(LOG_NOTICE, "Call closed [%d]\n", lastSIPresponseNum);
+					return call;
+			}
+		}
+		
+
+		// SDP examination only in case it is SIP msg belongs to first leg
+		if(opt_rtp_firstleg == 0 || (opt_rtp_firstleg &&
+			((call->saddr == saddr && call->sport == source) || 
+			(call->saddr == daddr && call->sport == dest))))
+			{
+
+			s = gettag(data,datalen,"Content-Type:",&l);
+			if(l <= 0 || l > 1023) {
+				//try compact header
+				s = gettag(data,datalen,"c:",&l);
+			}
+			char a = data[datalen - 1];
+			data[datalen - 1] = 0;
+			char *tmp = strstr(data, "\r\n\r\n");;
+			if(l > 0 && strncasecmp(s, "application/sdp", l) == 0 && tmp != NULL){
+				// we have found SDP, add IP and port to the table
+				in_addr_t tmp_addr;
+				unsigned short tmp_port;
+				int rtpmap[MAX_RTPMAP];
+				memset(&rtpmap, 0, sizeof(int) * MAX_RTPMAP);
+				if (!get_ip_port_from_sdp(tmp + 1, &tmp_addr, &tmp_port)){
+					// prepare User-Agent
+					s = gettag(data,datalen,"User-Agent:", &l);
+					// store RTP stream
+					get_rtpmap_from_sdp(tmp + 1, datalen - (tmp + 1 - data), rtpmap);
+					call->add_ip_port(tmp_addr, tmp_port, s, l, call->sipcallerip != saddr, rtpmap);
+					calltable->hashAdd(tmp_addr, tmp_port, call, call->sipcallerip != saddr, 0);
+					if(opt_rtcp) {
+						calltable->hashAdd(tmp_addr, tmp_port + 1, call, call->sipcallerip != saddr, 1); //add rtcp
+					}
+#ifdef NAT
+					call->add_ip_port(saddr, tmp_port, s, l, call->sipcallerip != saddr, rtpmap);
+					calltable->hashAdd(saddr, tmp_port, call, call->sipcallerip != saddr, 0);
+					if(opt_rtcp) {
+						calltable->hashAdd(saddr, tmp_port, call, call->sipcallerip != saddr, 1);
+					}
+#endif
+	
+				} else {
+					if(verbosity >= 2){
+						syslog(LOG_ERR, "Can't get ip/port from SDP:\n%s\n\n", tmp + 1);
+					}
+				}
+			}
+			data[datalen - 1] = a;
+		}
+		if(!dontsave && call->flags & (FLAG_SAVESIP | FLAG_SAVEREGISTER)) {
+			save_packet(call, header, packet);
+		}
+
+		return call;
+	} else {
+		// we are not interested in this packet
+		if (verbosity >= 6){
+			char st1[16];
+			char st2[16];
+			struct in_addr in;
+
+			in.s_addr = saddr;
+			strcpy(st1, inet_ntoa(in));
+			in.s_addr = daddr;
+			strcpy(st2, inet_ntoa(in));
+			syslog(LOG_ERR, "Skipping udp packet %s:%d->%s:%d\n", st1, source, st2, dest);
+		}
+		return NULL;
+	}
+
+	return NULL;
+}
+
+#ifdef HAS_NIDS
+void
+libnids_tcp_callback(struct tcp_stream *a_tcp, void **this_time_not_needed) {
+	char buf[1024];
+//	return;
+//	strcpy (buf, adres (a_tcp->addr)); // we put conn params into buf
+	if (a_tcp->nids_state == NIDS_JUST_EST) {
+		// connection described by a_tcp is established
+		// here we decide, if we wish to follow this stream
+		// sample condition: if (a_tcp->addr.dest!=23) return;
+		// in this simple app we follow each stream, so..
+		a_tcp->client.collect++; // we want data received by a client
+		a_tcp->server.collect++; // and by a server, too
+		a_tcp->server.collect_urg++; // we want urgent data received by a
+		 // server
+#ifdef WE_WANT_URGENT_DATA_RECEIVED_BY_A_CLIENT
+		a_tcp->client.collect_urg++; // if we don't increase this value,
+				 // we won't be notified of urgent data
+				 // arrival
+#endif
+		fprintf (stderr, "%s established\n", buf);
+		return;
+		}
+	if (a_tcp->nids_state == NIDS_CLOSE) {
+		// connection has been closed normally
+		fprintf (stderr, "%s closing\n", buf);
+		return;
+	}
+	if (a_tcp->nids_state == NIDS_RESET) {
+		// connection has been closed by RST
+		fprintf (stderr, "%s reset\n", buf);
+		return;
+	}
+	if (a_tcp->nids_state == NIDS_DATA){
+		printf("[%d] [%d]\n", a_tcp->client.count_new, a_tcp->server.count_new);
+		// new data has arrived; gotta determine in what direction
+		// and if it's urgent or not
+
+		struct half_stream *hlf;
+
+		if (a_tcp->server.count_new_urg) {
+			// new byte of urgent data has arrived
+			strcat(buf,"(urgent->)");
+			buf[strlen(buf)+1]=0;
+			buf[strlen(buf)]=a_tcp->server.urgdata;
+			write(1,buf,strlen(buf));
+			return;
+		}
+		// We don't have to check if urgent data to client has arrived,
+		// because we haven't increased a_tcp->client.collect_urg variable.
+		// So, we have some normal data to take care of.
+		if (a_tcp->client.count_new) {
+			printf("CLIENT !!! \n");
+			// new data for the client
+			hlf = &a_tcp->client; // from now on, we will deal with hlf var,
+					// which will point to client side of conn
+			strcat (buf, "(<-)"); // symbolic direction of data
+		} else {
+			printf("SERVER !!! \n");
+			hlf = &a_tcp->server; // analogical
+			strcat (buf, "(->)");
+		}
+		fprintf(stderr,"%s",buf); // we print the connection parameters
+						// (saddr, daddr, sport, dport) accompanied
+						// by data flow direction (-> or <-)
+
+		 write(2,hlf->data,hlf->count_new); // we print the newly arrived data
+
+	}
+	return;
+}
+#endif
+
+
+#ifdef HAS_NIDS
+void
+libnids_udp_callback(struct tuple4 *addr, u_char *data, int len, struct ip *pkt) {
+	process_packet(addr->saddr, addr->source, addr->daddr, addr->dest, (char*)data, len, handle, nids_last_pcap_header, nids_last_pcap_data, 0, 0);
+	return;
+}
+
+void readdump_libnids(pcap_t *handle) {
 	struct pcap_pkthdr *header;	// The header that pcap gives us
 	const u_char *packet = NULL;		// The actual packet 
-	unsigned long last_cleanup = 0;	// Last cleaning time
+	static struct nids_chksum_ctl ctl;
+	int res;
+
+	nids_params.pcap_desc = handle;
+	if (!nids_init ()) {
+	    fprintf (stderr, "%s\n", nids_errbuf);
+	    exit (1);
+	}
+
+	/* turn off TCP checksums */
+	ctl.netaddr = inet_addr("0.0.0.0");
+	ctl.mask = inet_addr("0.0.0.0");
+	ctl.action = NIDS_DONT_CHKSUM;
+	nids_register_chksum_ctl(&ctl, 1);
+
+	/* register tcp and udp handlers */
+//	nids_register_tcp((void*)libnids_tcp_callback);
+	nids_register_udp((void*)libnids_udp_callback);
+
+	/* read packets from libpcap in a loop */
+	while (!terminating) {
+		res = pcap_next_ex(handle, &header, &packet);
+
+		if(!packet and res != -2) {
+			if(verbosity > 2) {
+				syslog(LOG_NOTICE,"NULL PACKET, pcap response is %d",res);
+			}
+			continue;
+		}
+
+		if(res == -1) {
+			// error returned, sometimes it returs error 
+			if(verbosity > 2) {
+				syslog(LOG_NOTICE,"Error reading packets\n");
+			}
+			continue;
+		} else if(res == -2) {
+			//packets are being read from a ``savefile'', and there are no more packets to read from the savefile.
+			syslog(LOG_NOTICE,"End of pcap file, exiting\n");
+			break;
+		} else if(res == 0) {
+			//continue on timeout when reading live packets
+			continue;
+		}
+		nids_pcap_handler(NULL, header, (u_char*)packet);
+	}
+}
+#endif
+
+void readdump_libpcap(pcap_t *handle) {
+	struct pcap_pkthdr *header;	// The header that pcap gives us
+	const u_char *packet = NULL;		// The actual packet 
 	struct ether_header *header_eth;
 	struct sll_header *header_sll;
 	struct iphdr *header_ip;
@@ -258,24 +960,14 @@ void readdump(pcap_t *handle) {
 	struct tcphdr *header_tcp;
 	char *data;
 	int datalen;
-	char *s;
-	unsigned long l;
-	char str1[1024],str2[1024];
-	int sip_method = 0;
 	int res;
 	int protocol = 0;
-	int iscaller;
 	unsigned int offset;
-	Call *call;
-	struct pcap_stat ps;
-	unsigned int lostpacket = 0;
-	unsigned int lostpacketif = 0;
-	int pcapstatres = 0;
-	char lastSIPresponse[128];
-	int lastSIPresponseNum;
-	int pcapstatresCount = 0;
 	int pcap_dlink = pcap_datalink(handle);
-	int is_rtcp = 0;
+	int istcp = 0;
+
+	init_hash();
+	memset(tcp_streams_hashed, 0, sizeof(tcp_stream2*) * MAX_TCPSTREAMS);
 
 	while (!terminating) {
 		res = pcap_next_ex(handle, &header, &packet);
@@ -317,75 +1009,45 @@ void readdump(pcap_t *handle) {
 			telnumfilter_reload_do = 0; 
 		}
 
-		// checking and cleaning calltable every 15 seconds (if some packet arrive) 
-		if (header->ts.tv_sec - last_cleanup > 15){
-			if(verbosity > 0) printf("Total calls [%d] calls in queue[%d]\n", (int)calltable->calls_list.size(), (int)calltable->calls_queue.size());
-			if (last_cleanup >= 0){
-				calltable->cleanup(header->ts.tv_sec);
-			}
-			/* also do every 15 seconds pcap statistics */
-			pcapstatres = pcap_stats(handle, &ps);
-			if (pcapstatres == 0 && (lostpacket < ps.ps_drop || lostpacketif < ps.ps_ifdrop)) {
-				if(pcapstatresCount) {
-					syslog(LOG_ERR, "error: libpcap or interface dropped some packets! rx:%i drop:%i ifdrop:%i increase --ring-buffer (kernel >= 2.6.31 needed)\n", ps.ps_recv, ps.ps_drop, ps.ps_ifdrop);
-				} else {
-					// do not show first error, it is normal on startup. 
-					pcapstatresCount++;
-				}
-				lostpacket = ps.ps_drop;
-				lostpacketif = ps.ps_ifdrop;
-			}
-			last_cleanup = header->ts.tv_sec;
-			/* delete all calls */
-			calltable->lock_calls_deletequeue();
-			while (calltable->calls_deletequeue.size() > 0) {
-				call = calltable->calls_deletequeue.front();
-				calltable->calls_deletequeue.pop();
-				delete call;
-				calls--;
-			}
-			calltable->unlock_calls_deletequeue();
-		}
-	
-                switch(pcap_dlink) {
-                        case DLT_LINUX_SLL:
-                                header_sll = (struct sll_header *) (char*)packet;
-                                protocol = header_sll->sll_protocol;
-                                if(header_sll->sll_protocol == 129) {
-                                        // VLAN tag
+		switch(pcap_dlink) {
+			case DLT_LINUX_SLL:
+				header_sll = (struct sll_header *) (char*)packet;
+				protocol = header_sll->sll_protocol;
+				if(header_sll->sll_protocol == 129) {
+					// VLAN tag
 					protocol = *(short *)((char*)packet + 16 + 2);
-                                        offset = 4;
-                                } else {
-                                        offset = 0;
-                                        protocol = header_sll->sll_protocol;
-                                }
+					offset = 4;
+				} else {
+					offset = 0;
+					protocol = header_sll->sll_protocol;
+				}
 				offset += sizeof(struct sll_header);
-                                break;
-                        case DLT_EN10MB:
+				break;
+			case DLT_EN10MB:
 				header_eth = (struct ether_header *) (char*)(packet);
-                                if(header_eth->ether_type == 129) {
-                                        // VLAN tag
-                                        offset = 4;
-                                        //XXX: this is very ugly hack, please do it right! (it will work for "08 00" which is IPV4 but not for others! (find vlan_header or something)
-                                        protocol = *(packet + sizeof(struct ether_header) + 2);
-                                } else {
-                                        offset = 0;
-                                        protocol = header_eth->ether_type;
-                                }
-                                offset += sizeof(struct ether_header);
-                                break;
+				if(header_eth->ether_type == 129) {
+					// VLAN tag
+					offset = 4;
+					//XXX: this is very ugly hack, please do it right! (it will work for "08 00" which is IPV4 but not for others! (find vlan_header or something)
+					protocol = *(packet + sizeof(struct ether_header) + 2);
+				} else {
+					offset = 0;
+					protocol = header_eth->ether_type;
+				}
+				offset += sizeof(struct ether_header);
+				break;
 			case DLT_RAW:
 				offset = 0;
 				protocol = 8;
 				break;
 			default:
 				printf("This datalink number [%d] is not supported yet. For more information write to support@voipmonitor.org\n", pcap_dlink);
-                }
+		}
 
-                if(protocol != 8) {
-                        // not ipv4 
-                        continue;
-                }
+		if(protocol != 8) {
+			// not ipv4 
+			continue;
+		}
 
 		header_ip = (struct iphdr *) ((char*)packet + offset);
 
@@ -395,7 +1057,9 @@ void readdump(pcap_t *handle) {
 			header_udp = (struct udphdr *) ((char *) header_ip + sizeof(*header_ip));
 			data = (char *) header_udp + sizeof(*header_udp);
 			datalen = (int)(header->len - ((unsigned long) data - (unsigned long) packet)); 
+			istcp = 0;
 		} else if (header_ip->protocol == IPPROTO_TCP) {
+			istcp = 1;
 			// prepare packet pointers 
 			header_tcp = (struct tcphdr *) ((char *) header_ip + sizeof(*header_ip));
 			data = (char *) header_tcp + (header_tcp->doff * 4);
@@ -415,363 +1079,8 @@ void readdump(pcap_t *handle) {
 		if(datalen < 0) {
 			continue;
 		}
-		// TODO: remove if hash will be stable
-		//if ((call = calltable->find_by_ip_port(header_ip->daddr, htons(header_udp->dest), &iscaller))){	
-		if ((call = calltable->hashfind_by_ip_port(header_ip->daddr, htons(header_udp->dest), &iscaller, &is_rtcp))){	
-			// packet (RTP) by destination:port is already part of some stored call 
-			if(is_rtcp && (opt_saveRTP || opt_saveRTCP)) {
-				save_packet(call, header, packet);
-				continue;
-			}
-			call->read_rtp((unsigned char*) data, datalen, header, header_ip->saddr, htons(header_udp->source), iscaller);
-			call->set_last_packet_time(header->ts.tv_sec);
-			if(call->flags & FLAG_SAVERTP) {
-				save_packet(call, header, packet);
-			}
-		// TODO: remove if hash will be stable
-		//} else if ((call = calltable->find_by_ip_port(header_ip->saddr, htons(header_udp->source), &iscaller))){	
-		} else if ((call = calltable->hashfind_by_ip_port(header_ip->saddr, htons(header_udp->source), &iscaller, &is_rtcp))){
-			// packet (RTP) by source:port is already part of some stored call 
-			if(is_rtcp && (opt_saveRTP || opt_saveRTCP)) {
-				save_packet(call, header, packet);
-				continue;
-			}
-			// as we are searching by source address and find some call, revert iscaller 
-			call->read_rtp((unsigned char*) data, datalen, header, header_ip->saddr, htons(header_udp->source), !iscaller);
-			call->set_last_packet_time(header->ts.tv_sec);
-			if(call->flags & FLAG_SAVERTP) {
-				save_packet(call, header, packet);
-			}
-		} else if (sipportmatrix[htons(header_udp->source)] || sipportmatrix[htons(header_udp->dest)]) {
-			data[datalen]=0;
 
-#if 0
-			/* ugly and dirty hack to detect two SIP messages in one TCP packet. */
-			tmp = strstr(data, "SIP/2.0 ");
-			if(tmp) {
-				tmp = strstr(tmp + 8, "SIP/2.0 ");
-				if(tmp) {
-					// second SIP message in one packet. Skip the first packet for now. TODO: process both packets
-					datalen -= tmp - data;
-					data = tmp;
-				}
-			}
-#endif
-
-			/* No, this isn't the phone number of the caller. It uniquely represents 
-			   the whole call, or dialog, between the two user agents. All related SIP 
-			   messages use the same Call-ID. For example, when a user agent receives a 
-			   BYE message, it knows which call to hang up based on the Call-ID.
-			*/
-			s = gettag(data,datalen,"Call-ID:", &l);
-			if(l <= 0 || l > 1023) {
-				// try also compact header
-				s = gettag(data,datalen,"i:", &l);
-				if(l <= 0 || l > 1023) {
-					continue;
-				}
-			}
-
-			memcpy(str1,s,l);
-			str1[l] = '\0';
-
-			// parse SIP method 
-			if ((datalen > 5) && !(memmem(data, 6, "INVITE", 6) == 0)) {
-				if(verbosity > 2) 
-					 syslog(LOG_NOTICE,"SIP msg: INVITE\n");
-				sip_method = INVITE;
-			} else if ((datalen > 7) && !(memmem(data, 8, "REGISTER", 8) == 0)) {
-				if(verbosity > 2) 
-					 syslog(LOG_NOTICE,"SIP msg: REGISTER\n");
-				sip_method = REGISTER;
-			} else if ((datalen > 2) && !(memmem(data, 3, "BYE", 3) == 0)) {
-				if(verbosity > 2) 
-					 syslog(LOG_NOTICE,"SIP msg: BYE\n");
-				sip_method = BYE;
-			} else if ((datalen > 5) && !(memmem(data, 6, "CANCEL", 6) == 0)) {
-				if(verbosity > 2) 
-					 syslog(LOG_NOTICE,"SIP msg: CANCEL\n");
-				sip_method = CANCEL;
-			} else if ((datalen > 8) && !(memmem(data, 9, "SIP/2.0 2", 9) == 0)) {
-				if(verbosity > 2) 
-					 syslog(LOG_NOTICE,"SIP msg: 2XX\n");
-				sip_method = RES2XX;
-			} else if ((datalen > 9) && !(memmem(data, 10, "SIP/2.0 18", 10) == 0)) {
-				if(verbosity > 2) 
-					 syslog(LOG_NOTICE,"SIP msg: 18X\n");
-				sip_method = RES18X;
-			} else if ((datalen > 8) && !(memmem(data, 9, "SIP/2.0 3", 9) == 0)) {
-				if(verbosity > 2) 
-					 syslog(LOG_NOTICE,"SIP msg: 3XX\n");
-				sip_method = RES3XX;
-			} else if ((datalen > 8) && !(memmem(data, 9, "SIP/2.0 4", 9) == 0)) {
-				if(verbosity > 2) 
-					 syslog(LOG_NOTICE,"SIP msg: 4XX\n");
-				sip_method = RES4XX;
-			} else if ((datalen > 8) && !(memmem(data, 9, "SIP/2.0 5", 9) == 0)) {
-				if(verbosity > 2) 
-					 syslog(LOG_NOTICE,"SIP msg: 5XX\n");
-				sip_method = RES5XX;
-			} else if ((datalen > 8) && !(memmem(data, 9, "SIP/2.0 6", 9) == 0)) {
-				if(verbosity > 2) 
-					 syslog(LOG_NOTICE,"SIP msg: 6XX\n");
-				sip_method = RES6XX;
-			} else {
-				if(verbosity > 2) {
-					char a[100];
-					strncpy(a, data, 20);
-					a[20] = '\0';
-					 syslog(LOG_NOTICE,"SIP msg: 1XX or Unknown msg %s\n", a);
-				}
-				sip_method = 0;
-			}
-			lastSIPresponse[0] = '\0';
-			lastSIPresponseNum = 0;
-			if(sip_method > 0 && sip_method != INVITE && sip_method != REGISTER && sip_method != CANCEL) {
-				char *tmp = strstr(data, "\r");
-				if(tmp) {
-					// 8 is len of [SIP/2.0 ], 128 is max buffer size
-					strncpy(lastSIPresponse, data + 8, (datalen > 128) ? 128 : datalen);
-					lastSIPresponse[tmp - data - 8] = '\0';
-					char num[4];
-					strncpy(num, data + 8, 3);
-					num[3] = '\0';
-					lastSIPresponseNum = atoi(num);
-					if(lastSIPresponseNum == 0) {
-						if(verbosity > 0) syslog(LOG_NOTICE, "lastSIPresponseNum = 0 [%s]\n", lastSIPresponse);
-					}
-				} 
-/* XXX: remove it once tested
-			} else if(sip_method == CANCEL) {
-				lastSIPresponseNum = 487;
-				strcpy(lastSIPresponse, "487 Request Terminated CANCEL");
-*/
-			}
-
-			// find call */
-			if (!(call = calltable->find_by_call_id(s, l))){
-				// packet does not belongs to any call yet
-				if (sip_method == INVITE || (opt_sip_register && sip_method == REGISTER)) {
-					// store this call only if it starts with invite
-					call = calltable->add(s, l, header->ts.tv_sec, header_ip->saddr, htons(header_udp->source));
-					call->set_first_packet_time(header->ts.tv_sec);
-					call->sipcallerip = header_ip->saddr;
-					call->sipcalledip = header_ip->daddr;
-					call->type = sip_method;
-					ipfilter->add_call_flags(&(call->flags), ntohl(header_ip->saddr), ntohl(header_ip->daddr));
-					strcpy(call->fbasename, str1);
-
-					/* this logic updates call on the first INVITES */
-					if (sip_method == INVITE) {
-						int res;
-						res = get_sip_peercnam(data,datalen,"From:", call->callername, sizeof(call->callername));
-						if(res) {
-							// try compact header
-							get_sip_peercnam(data,datalen,"f:", call->callername, sizeof(call->callername));
-						}
-						res = get_sip_peername(data,datalen,"From:", call->caller, sizeof(call->caller));
-						if(res) {
-							// try compact header
-							get_sip_peername(data,datalen,"f:", call->caller, sizeof(call->caller));
-						}
-						res = get_sip_peername(data,datalen,"To:", call->called, sizeof(call->called));
-						if(res) {
-							// try compact header
-							get_sip_peername(data,datalen,"t:", call->called, sizeof(call->called));
-						}
-						call->seeninvite = true;
-						telnumfilter->add_call_flags(&(call->flags), call->caller, call->called);
-					}
-
-					// opening dump file
-					if(call->flags & (FLAG_SAVESIP | FLAG_SAVEREGISTER | FLAG_SAVERTP | FLAG_SAVEWAV)) {
-						mkdir(call->dirname(), 0777);
-					}
-					if(call->flags & (FLAG_SAVESIP | FLAG_SAVEREGISTER | FLAG_SAVERTP)) {
-						sprintf(str2, "%s/%s.pcap", call->dirname(), str1);
-						call->set_f_pcap(pcap_dump_open(handle, str2));
-					}
-
-					//check and save CSeq for later to compare with OK 
-					s = gettag(data, datalen, "CSeq:", &l);
-					if(l && l < 32) {
-						memcpy(call->invitecseq, s, l);
-						call->invitecseq[l] = '\0';
-						if(verbosity > 2)
-							syslog(LOG_NOTICE, "Seen invite, CSeq: %s\n", call->invitecseq);
-					}
-				} else {
-					// SIP packet does not belong to any call and it is not INVITE 
-					continue;
-				}
-			/* check if SIP packet belongs to the first leg */
-			} else if(opt_rtp_firstleg == 0 || (opt_rtp_firstleg &&
-				((call->saddr == header_ip->saddr && call->sport == htons(header_udp->source)) || 
-				(call->saddr == header_ip->daddr && call->sport == htons(header_udp->dest)))))
-
-				{
-				// packet is already part of call
-				call->set_last_packet_time(header->ts.tv_sec);
-				// save lastSIPresponseNum but only if previouse was not 487 (CANCEL) TODO: check if this is still neccessery to check != 487
-				if(lastSIPresponse[0] != '\0' && call->lastSIPresponseNum != 487) {
-					strncpy(call->lastSIPresponse, lastSIPresponse, 128);
-					call->lastSIPresponseNum = lastSIPresponseNum;
-				}
-
-				// check if it is BYE or OK(RES2XX)
-				if(sip_method == INVITE) {
-					//check and save CSeq for later to compare with OK 
-					s = gettag(data, datalen, "CSeq:", &l);
-					if(l && l < 32) {
-						memcpy(call->invitecseq, s, l);
-						call->invitecseq[l] = '\0';
-						if(verbosity > 2)
-							syslog(LOG_NOTICE, "Seen invite, CSeq: %s\n", call->invitecseq);
-					}
-				} else if(sip_method == BYE) {
-					//check and save CSeq for later to compare with OK 
-					s = gettag(data, datalen, "CSeq:", &l);
-					if(l && l < 32) {
-						memcpy(call->byecseq, s, l);
-						call->byecseq[l] = '\0';
-						call->seenbye = true;
-						if(call->listening_worker_run) {
-							*(call->listening_worker_run) = 0;
-						}
-						if(verbosity > 2)
-							syslog(LOG_NOTICE, "Seen bye\n");
-							
-					}
-					// save who hanged up 
-					call->whohanged = (call->sipcallerip == header_ip->saddr) ? 0 : 1;
-				} else if(sip_method == CANCEL) {
-					// CANCEL continues with Status: 200 canceling; 200 OK; 487 Req. terminated; ACK. 
-					// TODO: imrpove it and dont let it be in memory for timouet but immediate. 
-				} else if(sip_method == RES2XX) {
-
-					if(!call->connect_time) {
-						call->connect_time = header->ts.tv_sec;
-					}
-
-					// if it is OK check for BYE
-					s = gettag(data, datalen, "CSeq:", &l);
-					if(l) {
-						if(verbosity > 2)
-							syslog(LOG_NOTICE, "Cseq: %s\n", data);
-						if(strncmp(s, call->byecseq, l) == 0) {
-							// terminate successfully acked call, put it into mysql CDR queue and remove it from calltable 
-							call->seenbyeandok = true;
-							if(call->flags & (FLAG_SAVESIP | FLAG_SAVEREGISTER)) {
-								save_packet(call, header, packet);
-							}
-							if (call->get_f_pcap() != NULL){
-								pcap_dump_flush(call->get_f_pcap());
-								pcap_dump_close(call->get_f_pcap());
-								call->set_f_pcap(NULL);
-							}
-							// we have to close all raw files as there can be data in buffers 
-							call->closeRawFiles();
-							calltable->lock_calls_queue();
-							calltable->calls_queue.push(call);	// push it to CDR queue at the end of queue
-							calltable->unlock_calls_queue();
-							calltable->calls_list.remove(call);
-							if(verbosity > 2)
-								syslog(LOG_NOTICE, "Call closed\n");
-							continue;
-						} else if(strncmp(s, call->invitecseq, l) == 0) {
-							call->seeninviteok = true;
-							if(verbosity > 2)
-								syslog(LOG_NOTICE, "Call answered\n");
-						}
-					}
-				} else if(sip_method == RES18X) {
-					call->progress_time = header->ts.tv_sec;
-				}
-
-				/* if call ends with some of SIP [456]XX response code, we can immediately close it and 
-				   do not wait to timeout as for very high call rate it consumes memory and CPU 
-				*/
-				if( ((call->saddr == header_ip->saddr && call->sport == htons(header_udp->source)) || (call->saddr == header_ip->daddr && call->sport == htons(header_udp->dest)))
-					&&
-				    (sip_method == RES3XX || sip_method == RES4XX || sip_method == RES5XX || sip_method == RES6XX) && lastSIPresponseNum != 401 && lastSIPresponseNum != 407 ) {
-				    		// save packet as we are ending loop here
-						if(opt_saveSIP) {
-							save_packet(call, header, packet);
-						}
-						// we have to close all raw files as there can be data in buffers 
-						call->closeRawFiles();
-						calltable->lock_calls_queue();
-						calltable->calls_queue.push(call);	// push it to CDR queue at the end of queue
-						calltable->unlock_calls_queue();
-						calltable->calls_list.remove(call);
-						if(verbosity > 2)
-							syslog(LOG_NOTICE, "Call closed [%d]\n", lastSIPresponseNum);
-						continue;
-				}
-			}
-			
-
-			// SDP examination only in case it is SIP msg belongs to first leg
-			if(opt_rtp_firstleg == 0 || (opt_rtp_firstleg &&
-				((call->saddr == header_ip->saddr && call->sport == htons(header_udp->source)) || 
-				(call->saddr == header_ip->daddr && call->sport == htons(header_udp->dest)))))
-				{
-
-				s = gettag(data,datalen,"Content-Type:",&l);
-				if(l <= 0 || l > 1023) {
-					//try compact header
-					s = gettag(data,datalen,"c:",&l);
-				}
-				char *tmp = strstr(data, "\r\n\r\n");;
-				if(l > 0 && strncasecmp(s, "application/sdp", l) == 0 && tmp != NULL){
-					// we have found SDP, add IP and port to the table
-					in_addr_t tmp_addr;
-					unsigned short tmp_port;
-					int rtpmap[MAX_RTPMAP];
-					memset(&rtpmap, 0, sizeof(int) * MAX_RTPMAP);
-					if (!get_ip_port_from_sdp(tmp + 1, &tmp_addr, &tmp_port)){
-						// prepare User-Agent
-						s = gettag(data,datalen,"User-Agent:", &l);
-						// store RTP stream
-						get_rtpmap_from_sdp(tmp + 1, datalen - (tmp + 1 - data), rtpmap);
-						call->add_ip_port(tmp_addr, tmp_port, s, l, call->sipcallerip != header_ip->saddr, rtpmap);
-						calltable->hashAdd(tmp_addr, tmp_port, call, call->sipcallerip != header_ip->saddr, 0);
-						if(opt_rtcp) {
-							calltable->hashAdd(tmp_addr, tmp_port + 1, call, call->sipcallerip != header_ip->saddr, 1); //add rtcp
-						}
-#ifdef NAT
-						call->add_ip_port(header_ip->saddr, tmp_port, s, l, call->sipcallerip != header_ip->saddr, rtpmap);
-						calltable->hashAdd(header_ip->saddr, tmp_port, call, call->sipcallerip != header_ip->saddr, 0);
-						if(opt_rtcp) {
-							calltable->hashAdd(header_ip->saddr, tmp_port, call, call->sipcallerip != header_ip->saddr, 1);
-						}
-#endif
-		
-					} else {
-						if(verbosity >= 2){
-							syslog(LOG_ERR, "Can't get ip/port from SDP:\n%s\n\n", tmp + 1);
-						}
-					}
-				}
-			}
-			if(call->flags & (FLAG_SAVESIP | FLAG_SAVEREGISTER)) {
-				save_packet(call, header, packet);
-			}
-		} else {
-			// we are not interested in this packet
-			if (verbosity >= 6){
-				char st1[16];
-				char st2[16];
-				struct in_addr in;
-
-				in.s_addr = header_ip->saddr;
-				strcpy(st1, inet_ntoa(in));
-				in.s_addr = header_ip->daddr;
-				strcpy(st2, inet_ntoa(in));
-				syslog(LOG_ERR, "Skipping udp packet %s:%d->%s:%d\n",
-							st1, htons(header_udp->source), st2, htons(header_udp->dest));
-			}
-
-		}
+		process_packet(header_ip->saddr, htons(header_udp->source), header_ip->daddr, htons(header_udp->dest), 
+			    data, datalen, handle, header, packet, istcp, 0);
 	}
 }
