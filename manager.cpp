@@ -277,6 +277,11 @@ void *manager_server(void *dummy) {
 			continue;
 		} else if(strstr(buf, "reload") != NULL) {
 			reload_config();
+			if ((size = send(client, "reload ok", 9, 0)) == -1){
+				cerr << "Error sending data to client" << endl;
+				close(client);
+				continue;
+			}
 			close(client);
 			continue;
 		} else if(strstr(buf, "quit") != NULL) {

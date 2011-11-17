@@ -273,21 +273,21 @@ int get_rtpmap_from_sdp(char *sdp_text, unsigned long len, int *rtpmap){
 Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int dest, char *data, int datalen,
 	pcap_t *handle, pcap_pkthdr *header, const u_char *packet, int istcp, int dontsave) {
 
-	Call *call;
-	int iscaller;
-	int is_rtcp = 0;
-	unsigned long last_cleanup = 0;	// Last cleaning time
-	char *s;
-	unsigned long l;
-	char callidstr[1024],str2[1024];
-	int sip_method = 0;
-	char lastSIPresponse[128];
-	int lastSIPresponseNum;
-	int pcapstatres = 0;
-	int pcapstatresCount = 0;
-	struct pcap_stat ps;
-	unsigned int lostpacket = 0;
-	unsigned int lostpacketif = 0;
+	static Call *call;
+	static int iscaller;
+	static int is_rtcp = 0;
+	static unsigned long last_cleanup = 0;	// Last cleaning time
+	static char *s;
+	static unsigned long l;
+	static char callidstr[1024],str2[1024];
+	static int sip_method = 0;
+	static char lastSIPresponse[128];
+	static int lastSIPresponseNum;
+	static int pcapstatres = 0;
+	static int pcapstatresCount = 0;
+	static struct pcap_stat ps;
+	static unsigned int lostpacket = 0;
+	static unsigned int lostpacketif = 0;
 
 	// checking and cleaning stuff every 15 seconds (if some packet arrive) 
 	if (header->ts.tv_sec - last_cleanup > 15){
