@@ -167,7 +167,8 @@ void *manager_server(void *dummy) {
 	}
 	sockName.sin_family = AF_INET;
 	sockName.sin_port = htons(opt_manager_port);
-	sockName.sin_addr.s_addr = INADDR_ANY;
+	//sockName.sin_addr.s_addr = INADDR_ANY;
+	sockName.sin_addr.s_addr = inet_addr("127.0.0.1");
 	if (bind(mainSocket, (sockaddr *)&sockName, sizeof(sockName)) == -1) {
 		cerr << "Cannot bind manager to port " << opt_manager_port << endl;
 		return 0;
