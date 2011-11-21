@@ -306,6 +306,10 @@ TELNUMfilter::add_call_flags(unsigned int *flags, char *telnum_src, char *telnum
         t_node_tel *tmp = first_node;
         t_payload *lastpayload = NULL;
         for(unsigned int i = 0; i < strlen(telnum_src); i++) {
+		if(telnum_dst[i] < 48 || telnum_dst[i] > 57) {
+			//stop on non digit
+			break;
+		}
                 if(!tmp->nodes[telnum_src[i] - 48]) {
                         break;
                 }
