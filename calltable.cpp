@@ -55,7 +55,7 @@ extern char mysql_user[256];
 extern char mysql_password[256];
 int calls = 0;
 
-static mysqlpp::Connection con(false);
+mysqlpp::Connection con(false);
 
 /* constructor */
 Call::Call(char *call_id, unsigned long call_id_len, time_t time, void *ct) {
@@ -732,7 +732,7 @@ Call::saveToMysql() {
 	//mysqlpp::Connection con(false);
 	if(!con.connected()) {
 		con.connect(mysql_database, mysql_host, mysql_user, mysql_password);
-		if(!con) {
+		if(!con.connected()) {
 			syslog(LOG_ERR,"DB connection failed: %s", con.error());
 			return 1;
 		}
