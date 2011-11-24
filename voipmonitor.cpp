@@ -271,7 +271,7 @@ int load_config(char *fname) {
 	if((value = ini.GetValue("general", "savertp", NULL))) {
 		opt_saveRTP = yesno(value);
 	}
-	if((value = ini.GetValue("general", "manager-port", NULL))) {
+	if((value = ini.GetValue("general", "managerport", NULL))) {
 		opt_manager_port = atoi(value);
 	}
 	if((value = ini.GetValue("general", "savertcp", NULL))) {
