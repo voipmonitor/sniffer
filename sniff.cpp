@@ -476,7 +476,16 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 				// SIP message is not complete, save packet 
 				if(tcp_streams_hashed[hash]) {
 					// there is already stream 
-					syslog(LOG_NOTICE,"DEBUG: this TCP stream with Call-ID[%s] should not happen! fix voipmonitor", callidstr);
+					if ((datalen > 5) && !(memmem(data, 6, "NOTIFY", 6) == 0)) {
+						/* NOTIFY can have content-length > 0 which will not end with 0x0d 0x0a
+						Content-Type: application/dialog-info+xml
+						Content-Length: 527
+
+						<?xml version="1.0"?>
+						*/
+					} else {
+						syslog(LOG_NOTICE,"DEBUG: this TCP stream with Call-ID[%s] should not happen! fix voipmonitor", callidstr);
+					}
 				} else {
 					// create stream node
 					tcp_stream2 *stream = (tcp_stream2*)malloc(sizeof(tcp_stream2));
@@ -500,7 +509,8 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 					return NULL;
 				}
 			} else if(tcp_streams_hashed[hash]) {
-				syslog(LOG_NOTICE,"TCP packet contains Call-ID[%s] and is already part of TCP stream which should not happen. fix voipmonitor", callidstr);
+				// SIP packet is complete and part of TCP stream
+				//syslog(LOG_NOTICE,"TCP packet contains Call-ID[%s] and is already part of TCP stream which should not happen. fix voipmonitor", callidstr);
 			}
 		}
 
@@ -1064,10 +1074,17 @@ void readdump_libpcap(pcap_t *handle) {
 			header_tcp = (struct tcphdr *) ((char *) header_ip + sizeof(*header_ip));
 			data = (char *) header_tcp + (header_tcp->doff * 4);
 			datalen = (int)(header->len - ((unsigned long) data - (unsigned long) packet)); 
-			if (!(sipportmatrix[htons(header_tcp->source)] || sipportmatrix[htons(header_tcp->dest)])) {
+			if (datalen == 0 || !(sipportmatrix[htons(header_tcp->source)] || sipportmatrix[htons(header_tcp->dest)])) {
 				// not interested in TCP packet other than SIP port
 				continue;
 			}
+#if 0
+			char tmp = data[datalen-1];
+			data[datalen-1] = '\0';
+			printf("tcp packet datalen[%d] [%s]!!!\n", datalen, data);
+			data[datalen-1] = tmp;
+#endif
+
 			header_udp->source = header_tcp->source;
 			header_udp->dest = header_tcp->dest;
 		} else {
@@ -1079,7 +1096,7 @@ void readdump_libpcap(pcap_t *handle) {
 		if(datalen < 0) {
 			continue;
 		}
-
+		
 		process_packet(header_ip->saddr, htons(header_udp->source), header_ip->daddr, htons(header_udp->dest), 
 			    data, datalen, handle, header, packet, istcp, 0);
 	}
