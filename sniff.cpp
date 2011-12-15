@@ -404,7 +404,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 					stream->next = NULL;
 					stream->ts = header->ts.tv_sec;
 					stream->hash = hash;
-					tcp_streams_list.push_back(stream);
+					// XXX: packet belongs to some list of stream, do not append to list of root nodes! tcp_streams_list.push_back(stream);
 
 					// append new created node at the end of list of TCP packets within this TCP connection
 					for(tmpstream = tcp_streams_hashed[hash]; tmpstream->next; tmpstream = tmpstream->next) {};
