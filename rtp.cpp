@@ -471,8 +471,8 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 				// sequence numbers are ok, we can calculate packetization
 				packetization = (getTimestamp() - last_ts) / 8;
 				packetization = (packetization + last_packetization) / 2;
-				if(packetization <= 0) {
-					// packetization failed, fall back to start
+				if(packetization <= 0 or getMarker()) {
+					// packetization failed or Marker bit is set, fall back to start
 					packetization_iterator = 0;
 				} else {
 					packetization_iterator++;
