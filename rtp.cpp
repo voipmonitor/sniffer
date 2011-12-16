@@ -474,6 +474,14 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 				if(packetization <= 0 or getMarker()) {
 					// packetization failed or Marker bit is set, fall back to start
 					packetization_iterator = 0;
+
+					/* for recording, we cannot loose any packet */
+					if(opt_saveRAW || (owner->flags & FLAG_SAVEWAV) ||
+						fifo1 || fifo2 // if recording requested 
+					){
+						packetization = channel_record->packetization = default_packetization;
+						jitterbuffer(channel_record, 1);
+					}
 				} else {
 					packetization_iterator++;
 					channel_fix1->packetization = channel_fix2->packetization = channel_adapt->packetization = channel_record->packetization = packetization;
