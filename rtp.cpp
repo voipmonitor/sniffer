@@ -512,7 +512,12 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 	prev_payload = curpayload;
 	prev_sid = sid;
 
-	last_ts = getTimestamp();
+	if(getMarker()) {
+		// if RTP packet is Marked, we have to reset last_ts to 0 so in next cycle it will count packetization from ground
+		last_ts = 0;
+	} else {
+		last_ts = getTimestamp();
+	}
 	last_seq = seq;
 
 	if(first) {
