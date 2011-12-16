@@ -467,7 +467,7 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 				jitterbuffer(channel_record, opt_saveRAW || (owner->flags & FLAG_SAVEWAV) || fifo1 || fifo2);
 			}
 		} else if(packetization_iterator == 1) {
-			if(seq == (last_seq + 1) && curpayload != 101 && prev_payload != 101 && !sid && !prev_sid) {
+			if(last_ts != 0 && seq == (last_seq + 1) && curpayload != 101 && prev_payload != 101 && !sid && !prev_sid) {
 				// sequence numbers are ok, we can calculate packetization
 				packetization = (getTimestamp() - last_ts) / 8;
 				packetization = (packetization + last_packetization) / 2;
