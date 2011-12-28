@@ -565,7 +565,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 		}
 		lastSIPresponse[0] = '\0';
 		lastSIPresponseNum = 0;
-		if(sip_method > 0 && sip_method != INVITE && sip_method != REGISTER && sip_method != CANCEL) {
+		if(sip_method > 0 && sip_method != INVITE && sip_method != REGISTER && sip_method != CANCEL && sip_method != BYE) {
 			char a = data[datalen - 1];
 			data[datalen - 1] = 0;
 			char *tmp = strstr(data, "\r");
@@ -577,6 +577,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 				strncpy(num, data + 8, 3);
 				num[3] = '\0';
 				lastSIPresponseNum = atoi(num);
+				printf("%s|\n", data); 
 				if(lastSIPresponseNum == 0) {
 					if(verbosity > 0) syslog(LOG_NOTICE, "lastSIPresponseNum = 0 [%s]\n", lastSIPresponse);
 				}
@@ -587,6 +588,9 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 			lastSIPresponseNum = 487;
 			strcpy(lastSIPresponse, "487 Request Terminated CANCEL");
 */
+		} else if(sip_method == BYE) {
+			strcpy(lastSIPresponse, "BYE");
+			lastSIPresponseNum = 0;
 		}
 
 		// find call */
