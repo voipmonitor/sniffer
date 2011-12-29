@@ -709,6 +709,13 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 					}
 					if(strncmp(s, call->byecseq, l) == 0) {
 						// terminate successfully acked call, put it into mysql CDR queue and remove it from calltable 
+/*
+	Whan voipmonitor listens for both SIP legs (with the same Call-ID it sees both BYE and should save both 200 OK after BYE so closing call after the 
+	first 200 OK will not save the second 200 OK. So rather wait for 10 seconds for some more messages instead of closing the call. 
+*/
+
+						call->set_last_packet_time(header->ts.tv_sec + RTPTIMEOUT - 10);
+/*
 						call->seenbyeandok = true;
 						if(!dontsave && call->flags & (FLAG_SAVESIP | FLAG_SAVEREGISTER)) {
 							save_packet(call, header, packet);
@@ -726,6 +733,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 						calltable->calls_list.remove(call);
 						if(verbosity > 2)
 							syslog(LOG_NOTICE, "Call closed\n");
+*/
 						return call;
 					} else if(strncmp(s, call->invitecseq, l) == 0) {
 						call->seeninviteok = true;
