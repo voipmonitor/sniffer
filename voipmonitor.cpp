@@ -77,6 +77,7 @@ char user_filter[2048] = "";
 char ifname[1024];	// Specifies the name of the network device to use for 
 			// the network lookup, for example, eth0
 int opt_promisc = 1;	// put interface to promisc mode?
+char pcapcommand[4092] = "";
 
 char opt_chdir[1024];
 
@@ -113,6 +114,14 @@ void sigterm_handler(int param)
 	terminate2();
 }
 
+void find_and_replace( string &source, const string find, string replace ) {
+ 
+	size_t j;
+	for ( ; (j = source.find( find )) != string::npos ; ) {
+		source.replace( j, find.length(), replace );
+	}
+}
+
 /* cycle calls_queue and save it to MySQL */
 void *storing_cdr( void *dummy ) {
 	Call *call;
@@ -141,6 +150,25 @@ void *storing_cdr( void *dummy ) {
 				if(verbosity > 0) printf("converting RAW file to WAV Queue[%d]\n", (int)calltable->calls_queue.size());
 				call->convertRawToWav();
 			}
+				if(verbosity > 1 || 1) printf("command: [%s]\n", "test");
+
+			/* if pcapcommand is defined, execute command */
+			if(strlen(pcapcommand)) {
+				string source(pcapcommand);
+				string find = "%pcap%";
+				string replace;
+				replace.append("\"");
+				replace.append(opt_chdir);
+				replace.append("/");
+				replace.append(call->dirname());
+				replace.append("/");
+				replace.append(call->fbasename);
+				replace.append(".pcap");
+				replace.append("\"");
+				find_and_replace(source, find, replace);
+				if(verbosity > 1 || 1) printf("command: [%s]\n", source.c_str());
+				system(source.c_str());
+			};
 
 			calltable->lock_calls_queue();
 			calltable->calls_queue.pop();
@@ -252,6 +280,9 @@ int load_config(char *fname) {
 
 	if((value = ini.GetValue("general", "interface", NULL))) {
 		strncpy(ifname, value, sizeof(ifname));
+	}
+	if((value = ini.GetValue("general", "pcapcommand", NULL))) {
+		strncpy(pcapcommand, value, sizeof(pcapcommand));
 	}
 	if((value = ini.GetValue("general", "ringbuffer", NULL))) {
 		opt_ringbuffer = atoi(value);
@@ -388,6 +419,7 @@ int main(int argc, char *argv[]) {
 	    {"ring-buffer", 1, 0, '6'},
 	    {"config-file", 1, 0, '7'},
 	    {"manager-port", 1, 0, '8'},
+	    {"pcap-command", 1, 0, 'a'},
 	    {0, 0, 0, 0}
 	};
 
@@ -411,6 +443,9 @@ int main(int argc, char *argv[]) {
 				printf ("option %s\n", long_options[option_index].name);
 				break;
 			*/
+			case 'a':
+				strncpy(pcapcommand, optarg, sizeof(pcapcommand));
+				break;
 			case '1':
 				opt_gzipGRAPH = 1;
 				break;

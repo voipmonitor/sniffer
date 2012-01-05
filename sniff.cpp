@@ -577,7 +577,6 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 				strncpy(num, data + 8, 3);
 				num[3] = '\0';
 				lastSIPresponseNum = atoi(num);
-				printf("%s|\n", data); 
 				if(lastSIPresponseNum == 0) {
 					if(verbosity > 0) syslog(LOG_NOTICE, "lastSIPresponseNum = 0 [%s]\n", lastSIPresponse);
 				}
