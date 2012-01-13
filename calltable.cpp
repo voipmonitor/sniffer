@@ -100,6 +100,7 @@ Call::Call(char *call_id, unsigned long call_id_len, time_t time, void *ct) {
 	flags = 0;
 	lastcallerrtp = NULL;
 	lastcalledrtp = NULL;
+	destroy_call_at = 0;
 }
 
 /* destructor */
@@ -1002,7 +1003,7 @@ Calltable::cleanup( time_t currtime ) {
 	for (call = calls_list.begin(); call != calls_list.end();) {
 		if(verbosity > 2) (*call)->dump();
 		// RTPTIMEOUT seconds of inactivity will save this call and remove from call table
-		if(currtime == 0 || (currtime - (*call)->get_last_packet_time() > RTPTIMEOUT)) {
+		if(currtime == 0 || (destroy_call_at != 0 and destroy_call_at <= curtime) || (currtime - (*call)->get_last_packet_time() > RTPTIMEOUT)) {
 			if ((*call)->get_f_pcap() != NULL){
 				pcap_dump_flush((*call)->get_f_pcap());
 				if ((*call)->get_f_pcap() != NULL) 

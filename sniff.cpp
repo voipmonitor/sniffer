@@ -289,13 +289,13 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 	static unsigned int lostpacket = 0;
 	static unsigned int lostpacketif = 0;
 
-	// checking and cleaning stuff every 15 seconds (if some packet arrive) 
-	if (header->ts.tv_sec - last_cleanup > 15){
+	// checking and cleaning stuff every 10 seconds (if some packet arrive) 
+	if (header->ts.tv_sec - last_cleanup > 10){
 		if(verbosity > 0) printf("Total calls [%d] calls in queue[%d]\n", (int)calltable->calls_list.size(), (int)calltable->calls_queue.size());
 		if (last_cleanup >= 0){
 			calltable->cleanup(header->ts.tv_sec);
 		}
-		/* also do every 15 seconds pcap statistics */
+		/* also do every 10 seconds pcap statistics */
 		pcapstatres = pcap_stats(handle, &ps);
 		if (pcapstatres == 0 && (lostpacket < ps.ps_drop || lostpacketif < ps.ps_ifdrop)) {
 			if(pcapstatresCount) {
@@ -321,8 +321,8 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 		// clean tcp_streams_list
 		list<tcp_stream2*>::iterator stream;
 		for (stream = tcp_streams_list.begin(); stream != tcp_streams_list.end();) {
-			if((header->ts.tv_sec - (*stream)->ts) > (15 * 60)) {
-				// remove tcp stream after 15 minutes
+			if((header->ts.tv_sec - (*stream)->ts) > (10 * 60)) {
+				// remove tcp stream after 10 minutes
 				tcp_stream2 *next, *tmpstream;
 				tmpstream = tcp_streams_hashed[(*stream)->hash];
 				tcp_streams_hashed[(*stream)->hash] = NULL;
@@ -708,17 +708,18 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 					}
 					if(strncmp(s, call->byecseq, l) == 0) {
 						// terminate successfully acked call, put it into mysql CDR queue and remove it from calltable 
-/*
-	Whan voipmonitor listens for both SIP legs (with the same Call-ID it sees both BYE and should save both 200 OK after BYE so closing call after the 
-	first 200 OK will not save the second 200 OK. So rather wait for 10 seconds for some more messages instead of closing the call. 
-*/
 
-						call->set_last_packet_time(header->ts.tv_sec + RTPTIMEOUT - 10);
-/*
 						call->seenbyeandok = true;
 						if(!dontsave && call->flags & (FLAG_SAVESIP | FLAG_SAVEREGISTER)) {
 							save_packet(call, header, packet);
 						}
+/*
+	Whan voipmonitor listens for both SIP legs (with the same Call-ID it sees both BYE and should save both 200 OK after BYE so closing call after the 
+	first 200 OK will not save the second 200 OK. So rather wait for 5 seconds for some more messages instead of closing the call. 
+*/
+						// destroy call after 5 seonds from now 
+						call->destroy_call_at = header->ts.tv_sec + 5;
+/*
 						if (call->get_f_pcap() != NULL){
 							pcap_dump_flush(call->get_f_pcap());
 							pcap_dump_close(call->get_f_pcap());
