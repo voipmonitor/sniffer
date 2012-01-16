@@ -298,12 +298,12 @@ Call::read_rtp(unsigned char* data, int datalen, struct pcap_pkthdr *header, u_i
 
 		rtp[ssrc_n]->read(data, datalen, header, saddr, seeninviteok);
 		this->rtp[ssrc_n]->ssrc = tmprtp.getSSRC();
-		ssrc_n++;
 		if(iscaller) {
 			lastcallerrtp = rtp[ssrc_n];
 		} else {
 			lastcalledrtp = rtp[ssrc_n];
 		}
+		ssrc_n++;
 	}
 }
 
