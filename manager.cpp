@@ -201,14 +201,20 @@ void *manager_server(void *dummy) {
 			}
 		} else if(strstr(buf, "listcalls") != NULL) {
 			list<Call*>::iterator call;
-			char *outbuf = (char*)malloc(1024*200*sizeof(char));
+			char *outbuf = (char*)malloc(1024*201*sizeof(char));
 			if(outbuf == NULL) {
 				syslog(LOG_NOTICE,"Cannot allocate memory\n");
 				continue;
 			}
 			/* headers */
 			sprintf(outbuf, "[[\"callreference\", \"callid\", \"callercodec\", \"calledcodec\", \"caller\", \"callername\", \"called\", \"calldate\", \"duration\", \"callerip\", \"calledip\"]");
+			int limit = 200;
 			for (call = calltable->calls_list.begin(); call != calltable->calls_list.end(); ++call) {
+				if(limit == 0) {
+					//limit to 200 calls for now
+					 break;
+				}
+				limit--;
 				/* 
 				 * caller 
 				 * callername
