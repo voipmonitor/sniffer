@@ -343,6 +343,8 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 	// TODO: remove if hash will be stable
 	//if ((call = calltable->find_by_ip_port(daddr, dest, &iscaller))){	
 	if ((call = calltable->hashfind_by_ip_port(daddr, dest, &iscaller, &is_rtcp))){	
+		// we have packet, reset all pending destroy requests
+		call->destroy_call_at = 0; 
 		// packet (RTP) by destination:port is already part of some stored call 
 		if(!dontsave && is_rtcp && (opt_saveRTP || opt_saveRTCP)) {
 			save_packet(call, header, packet);
@@ -356,6 +358,8 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 	// TODO: remove if hash will be stable
 	//} else if ((call = calltable->find_by_ip_port(saddr, source, &iscaller))){	
 	} else if ((call = calltable->hashfind_by_ip_port(saddr, source, &iscaller, &is_rtcp))){
+		// we have packet, reset all pending destroy requests
+		call->destroy_call_at = 0; 
 		// packet (RTP) by source:port is already part of some stored call 
 		if(!dontsave && is_rtcp && (opt_saveRTP || opt_saveRTCP)) {
 			save_packet(call, header, packet);
@@ -367,6 +371,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 		if(!dontsave && call->flags & FLAG_SAVERTP) {
 			save_packet(call, header, packet);
 		}
+	// packet does not belongs to established call, check if it is on SIP port
 	} else if (sipportmatrix[source] || sipportmatrix[dest]) {
 
 #if 0
@@ -382,7 +387,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 		}
 #endif
 
-		/* not that Call-ID  isn't the phone number of the caller. It uniquely represents 
+		/* note that Call-ID isn't the phone number of the caller. It uniquely represents 
 		   the whole call, or dialog, between the two user agents. All related SIP 
 		   messages use the same Call-ID. For example, when a user agent receives a 
 		   BYE message, it knows which call to hang up based on the Call-ID.
@@ -648,13 +653,16 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 				// SIP packet does not belong to any call and it is not INVITE 
 				return NULL;
 			}
-		/* check if SIP packet belongs to the first leg */
+		// packet is already part of call
+		// check if SIP packet belongs to the first leg 
 		} else if(opt_rtp_firstleg == 0 || (opt_rtp_firstleg &&
 			((call->saddr == saddr && call->sport == source) || 
 			(call->saddr == daddr && call->sport == dest))))
 
 			{
-			// packet is already part of call
+			// we have packet, reset all pending destroy requests
+			call->destroy_call_at = 0; 
+
 			call->set_last_packet_time(header->ts.tv_sec);
 			// save lastSIPresponseNum but only if previouse was not 487 (CANCEL) TODO: check if this is still neccessery to check != 487
 			if(lastSIPresponse[0] != '\0' && call->lastSIPresponseNum != 487) {
@@ -745,16 +753,17 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 				call->progress_time = header->ts.tv_sec;
 			}
 
-			/* if call ends with some of SIP [456]XX response code, we can immediately close it and 
-			   do not wait to timeout as for very high call rate it consumes memory and CPU 
-			*/
+			// if the call ends with some of SIP [456]XX response code, we can shorten timeout when the call will be closed 
 			if( ((call->saddr == saddr && call->sport == source) || (call->saddr == daddr && call->sport == dest))
 				&&
 			    (sip_method == RES3XX || sip_method == RES4XX || sip_method == RES5XX || sip_method == RES6XX) && lastSIPresponseNum != 401 && lastSIPresponseNum != 407 ) {
-					// save packet as we are ending loop here
+					// save packet 
 					if(!dontsave && opt_saveSIP) {
 						save_packet(call, header, packet);
 					}
+					call->destroy_call_at = header->ts.tv_sec + 5;
+
+/*
 					// we have to close all raw files as there can be data in buffers 
 					call->closeRawFiles();
 					calltable->lock_calls_queue();
@@ -763,10 +772,13 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 					calltable->calls_list.remove(call);
 					if(verbosity > 2)
 						syslog(LOG_NOTICE, "Call closed [%d]\n", lastSIPresponseNum);
+*/
 					return call;
 			}
 		}
 		
+		// we have packet, reset all pending destroy requests
+		call->destroy_call_at = 0; 
 
 		// SDP examination only in case it is SIP msg belongs to first leg
 		if(opt_rtp_firstleg == 0 || (opt_rtp_firstleg &&
