@@ -1,4 +1,22 @@
 ALTER TABLE cdr MODIFY whohanged ENUM('caller', 'callee') DEFAULT NULL;
+ALTER TABLE cdr ADD caller_reverse VARCHAR(255) DEFAULT NULL AFTER caller;
+ALTER TABLE cdr ADD called_reverse VARCHAR(255) DEFAULT NULL AFTER called;
+ALTER TABLE cdr ADD callername_reverse VARCHAR(255) DEFAULT NULL AFTER callername;
+ALTER TABLE cdr add KEY `callername` (`callername`);
+ALTER TABLE cdr add KEY `callername_reverse` (`callername`);
+ALTER TABLE cdr add KEY `caller_reverse` (`caller_reverse`);
+ALTER TABLE cdr add KEY `called_reverse` (`caller_reverse`);
+
+DROP TRIGGER cdr_bi;
+DELIMITER |
+CREATE TRIGGER cdr_bi BEFORE INSERT ON cdr
+FOR EACH ROW
+BEGIN
+SET NEW.caller_reverse = REVERSE(NEW.caller);
+SET NEW.called_reverse = REVERSE(NEW.called);
+SET NEW.callername_reverse = REVERSE(NEW.callername);
+END |
+DELIMITER ; |
 
 CREATE TABLE `filter_ip` (
   `id` int(32) NOT NULL auto_increment,

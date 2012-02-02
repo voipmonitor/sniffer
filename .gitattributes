@@ -13,7 +13,8 @@
 /cdrtable.sql.1.2.1-1.3 -text
 /cdrtable.sql.1.3-1.5 -text
 /cdrtable.sql.2.2-3.0 -text
-/cdrtable.sql.3.0-3.1 -text
+/cdrtable.sql.3.0-4.0 -text
+/cdrtable.sql.history -text
 /codec_alaw.cpp -text
 /codec_alaw.h -text
 /codec_ulaw.cpp -text

@@ -32,8 +32,11 @@ CREATE TABLE `cdr` (
   `progress_time` int(32) unsigned NOT NULL,
   `first_rtp_time` int(32) unsigned NOT NULL,
   `caller` varchar(255) NOT NULL,
+  `caller_reverse` varchar(255) NOT NULL,
   `callername` varchar(255) NOT NULL,
+  `callername_reverse` varchar(255) NOT NULL,
   `called` varchar(255) NOT NULL,
+  `called_reverse` varchar(255) NOT NULL,
   `sipcallerip` int(32) unsigned NOT NULL,
   `sipcalledip` int(32) unsigned NOT NULL,
   `fbasename` varchar(255) NOT NULL,
@@ -114,7 +117,11 @@ CREATE TABLE `cdr` (
   KEY `calldate` (`calldate`),
   KEY `duration` (`duration`),
   KEY `source` (`caller`),
+  KEY `source_reverse` (`caller_reverse`),
   KEY `destination` (`called`),
+  KEY `destination_reverse` (`called_reverse`),
+  KEY `callername` (`callername`),
+  KEY `callername_reverse` (`callername_reverse`),
   KEY `sipcallerip` (`sipcallerip`),
   KEY `sipcalledip` (`sipcalledip`),
   KEY `lastSIPresponse` (`lastSIPresponse`),
@@ -154,4 +161,15 @@ CREATE TABLE `register` (
   KEY `sipcallerip` (`sipcallerip`),
   KEY `sipcalledip` (`sipcalledip`)
 ) ENGINE=InnoDB;
+
+DROP TRIGGER cdr_bi;
+DELIMITER |
+CREATE TRIGGER cdr_bi BEFORE INSERT ON cdr
+FOR EACH ROW
+BEGIN
+SET NEW.caller_reverse = REVERSE(NEW.caller);
+SET NEW.called_reverse = REVERSE(NEW.called);
+SET NEW.callername_reverse = REVERSE(NEW.callername);
+END |
+DELIMITER ; |
 
