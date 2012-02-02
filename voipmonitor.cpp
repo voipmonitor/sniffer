@@ -151,12 +151,13 @@ void *storing_cdr( void *dummy ) {
 				if(verbosity > 0) printf("converting RAW file to WAV Queue[%d]\n", (int)calltable->calls_queue.size());
 				call->convertRawToWav();
 			}
-				if(verbosity > 1 || 1) printf("command: [%s]\n", "test");
 
 			/* if pcapcommand is defined, execute command */
 			if(strlen(pcapcommand)) {
 				string source(pcapcommand);
-				string find = "%pcap%";
+				string find1 = "%pcap%";
+				string find2 = "%basename%";
+				string find3 = "%dirname%";
 				string replace;
 				replace.append("\"");
 				replace.append(opt_chdir);
@@ -166,8 +167,10 @@ void *storing_cdr( void *dummy ) {
 				replace.append(call->fbasename);
 				replace.append(".pcap");
 				replace.append("\"");
-				find_and_replace(source, find, replace);
-				if(verbosity > 1 || 1) printf("command: [%s]\n", source.c_str());
+				find_and_replace(source, find1, replace);
+				find_and_replace(source, find2, call->fbasename);
+				find_and_replace(source, find3, call->dirname());
+				if(verbosity >= 2) printf("command: [%s]\n", source.c_str());
 				system(source.c_str());
 			};
 
