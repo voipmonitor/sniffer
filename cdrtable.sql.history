@@ -13,3 +13,5 @@ SET NEW.called_reverse = REVERSE(NEW.called);
 SET NEW.callername_reverse = REVERSE(NEW.callername);
 END |
 DELIMITER ; |
+
+UPDATE cdr SET caller_reverse = REVERSE(caller) , called_reverse = REVERSE(called), callername_reverse = REVERSE(callername) ;

@@ -1,5 +1,8 @@
 ALTER TABLE cdr ADD caller_reverse VARCHAR(255) DEFAULT NULL AFTER caller,  ADD called_reverse VARCHAR(255) DEFAULT NULL AFTER called, ADD callername_reverse VARCHAR(255) DEFAULT NULL AFTER callername, add KEY `callername` (`callername`), add KEY `callername_reverse` (`callername`), add KEY `caller_reverse` (`caller_reverse`), add KEY `called_reverse` (`caller_reverse`);
 
+UPDATE cdr SET caller_reverse = REVERSE(caller) , called_reverse = REVERSE(called), callername_reverse = REVERSE(callername) ;
+
+
 DROP TRIGGER cdr_bi;
 DELIMITER |
 CREATE TRIGGER cdr_bi BEFORE INSERT ON cdr
