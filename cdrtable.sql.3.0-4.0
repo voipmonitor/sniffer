@@ -1,11 +1,4 @@
-ALTER TABLE cdr MODIFY whohanged ENUM('caller', 'callee') DEFAULT NULL;
-ALTER TABLE cdr ADD caller_reverse VARCHAR(255) DEFAULT NULL AFTER caller;
-ALTER TABLE cdr ADD called_reverse VARCHAR(255) DEFAULT NULL AFTER called;
-ALTER TABLE cdr ADD callername_reverse VARCHAR(255) DEFAULT NULL AFTER callername;
-ALTER TABLE cdr add KEY `callername` (`callername`);
-ALTER TABLE cdr add KEY `callername_reverse` (`callername`);
-ALTER TABLE cdr add KEY `caller_reverse` (`caller_reverse`);
-ALTER TABLE cdr add KEY `called_reverse` (`caller_reverse`);
+ALTER TABLE cdr ADD caller_reverse VARCHAR(255) DEFAULT NULL AFTER caller,  ADD called_reverse VARCHAR(255) DEFAULT NULL AFTER called, ADD callername_reverse VARCHAR(255) DEFAULT NULL AFTER callername, add KEY `callername` (`callername`), add KEY `callername_reverse` (`callername`), add KEY `caller_reverse` (`caller_reverse`), add KEY `called_reverse` (`caller_reverse`);
 
 DROP TRIGGER cdr_bi;
 DELIMITER |
