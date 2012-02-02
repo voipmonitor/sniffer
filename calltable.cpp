@@ -138,6 +138,7 @@ Call::~Call(){
 void
 Call::closeRawFiles() {
 	for(int i = 0; i < ssrc_n; i++) {
+		// close RAW files
 		if(rtp[i]->gfileRAW) {
 			FILE *tmp;
 			rtp[i]->jitterbuffer_fixed_flush(rtp[i]->channel_record);
@@ -145,6 +146,14 @@ Call::closeRawFiles() {
 			tmp = rtp[i]->gfileRAW;
 			rtp[i]->gfileRAW = NULL;
 			fclose(tmp);
+		}
+		// close GRAPH files
+		if(opt_saveGRAPH || (flags & FLAG_SAVEGRAPH)) {
+			if(opt_gzipGRAPH && rtp[i]->gfileGZ.is_open()) {
+				rtp[i]->gfileGZ.close();
+			} else if(rtp[i]->gfile.is_open()){
+				rtp[i]->gfile.close();
+			}
 		}
 	}
 }
