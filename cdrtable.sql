@@ -162,7 +162,6 @@ CREATE TABLE `register` (
   KEY `sipcalledip` (`sipcalledip`)
 ) ENGINE=InnoDB;
 
-DROP TRIGGER cdr_bi;
 DELIMITER |
 CREATE TRIGGER cdr_bi BEFORE INSERT ON cdr
 FOR EACH ROW
