@@ -59,8 +59,11 @@ int opt_rtcp = 1;		// pair RTP+1 port to RTCP and save it.
 int opt_nocdr = 0;		// do not save cdr?
 int opt_gzipPCAP = 0;		// compress PCAP data ? 
 int verbosity = 0;		// cebug level
-int opt_rtp_firstleg = 0;		// if == 1 then save RTP stream only for first INVITE leg in case you are 
+int opt_rtp_firstleg = 0;	// if == 1 then save RTP stream only for first INVITE leg in case you are 
 				// sniffing on SIP proxy where voipmonitor see both SIP leg. 
+int opt_jitterbuffer_f1 = 1;		// turns off/on jitterbuffer simulator to compute MOS score mos_f1
+int opt_jitterbuffer_f2 = 1;		// turns off/on jitterbuffer simulator to compute MOS score mos_f2
+int opt_jitterbuffer_adapt = 1;		// turns off/on jitterbuffer simulator to compute MOS score mos_adapt
 int opt_sip_register = 0;	// if == 1 save REGISTER messages
 int opt_ringbuffer = 10;	// ring buffer in MB 
 int opt_audio_format = FORMAT_WAV;	// define format for audio writing (if -W option)
@@ -368,6 +371,42 @@ int load_config(char *fname) {
 	}
 	if((value = ini.GetValue("general", "mysqlpassword", NULL))) {
 		strncpy(mysql_password, value, sizeof(mysql_password));
+	}
+	if((value = ini.GetValue("general", "jitterbuffer_f1", NULL))) {
+		switch(value[0]) {
+		case 'Y':
+		case 'y':
+		case '1':
+			opt_jitterbuffer_f1 = 1;
+			break;
+		default: 
+			opt_jitterbuffer_f1 = 0;
+			break;
+		}
+	}
+	if((value = ini.GetValue("general", "jitterbuffer_f2", NULL))) {
+		switch(value[0]) {
+		case 'Y':
+		case 'y':
+		case '1':
+			opt_jitterbuffer_f2 = 1;
+			break;
+		default: 
+			opt_jitterbuffer_f2 = 0;
+			break;
+		}
+	}
+	if((value = ini.GetValue("general", "jitterbuffer_adapt", NULL))) {
+		switch(value[0]) {
+		case 'Y':
+		case 'y':
+		case '1':
+			opt_jitterbuffer_adapt = 1;
+			break;
+		default: 
+			opt_jitterbuffer_adapt = 0;
+			break;
+		}
 	}
 	return 0;
 }

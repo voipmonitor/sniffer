@@ -31,6 +31,9 @@ extern int opt_saveRAW;                //save RTP payload RAW data?
 extern int opt_saveWAV;                //save RTP payload RAW data?
 extern int opt_saveGRAPH;	//save GRAPH data?
 extern int opt_gzipGRAPH;	//save gzip GRAPH data?
+extern int opt_jitterbuffer_f1;            // turns off/on jitterbuffer simulator to compute MOS score mos_f1
+extern int opt_jitterbuffer_f2;            // turns off/on jitterbuffer simulator to compute MOS score mos_f2
+extern int opt_jitterbuffer_adapt;         // turns off/on jitterbuffer simulator to compute MOS score mos_adapt
 
 using namespace std;
 
@@ -487,9 +490,12 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 					channel_fix1->packetization = channel_fix2->packetization = channel_adapt->packetization = channel_record->packetization = packetization;
 					if(verbosity > 3) printf("[%u] packetization:[%d]\n", getSSRC(), packetization);
 
-					jitterbuffer(channel_fix1, 0);
-					jitterbuffer(channel_fix2, 0);
-					jitterbuffer(channel_adapt, 0);
+					if(opt_jitterbuffer_f1)
+						jitterbuffer(channel_fix1, 0);
+					if(opt_jitterbuffer_f2)
+						jitterbuffer(channel_fix2, 0);
+					if(opt_jitterbuffer_adapt)
+						jitterbuffer(channel_adapt, 0);
 					if(opt_saveRAW || (owner->flags & FLAG_SAVEWAV) ||
 						fifo1 || fifo2 // if recording requested 
 					){
@@ -507,9 +513,12 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 				}
 			}
 		} else {
-			jitterbuffer(channel_fix1, 0);
-			jitterbuffer(channel_fix2, 0);
-			jitterbuffer(channel_adapt, 0);
+			if(opt_jitterbuffer_f1)
+				jitterbuffer(channel_fix1, 0);
+			if(opt_jitterbuffer_f2)
+				jitterbuffer(channel_fix2, 0);
+			if(opt_jitterbuffer_adapt)
+				jitterbuffer(channel_adapt, 0);
 			if(opt_saveRAW || (owner->flags & FLAG_SAVEWAV) ||
 				fifo1 || fifo2 // if recording requested 
 			){
