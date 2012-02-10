@@ -975,13 +975,25 @@ Calltable::add(char *call_id, unsigned long call_id_len, time_t time, u_int32_t 
 	if(opt_sip_register) 
 		newcall->flags |= FLAG_SAVEREGISTER;
 
-	calls_list.push_front(newcall);
+	//calls_list.push_front(newcall);
+	string call_idS = string(call_id, call_id_len);
+	calls_listMAP[call_idS] = newcall;
 	return newcall;
 }
 
 /* find Call by SIP call-id and  return reference to this Call */
 Call*
 Calltable::find_by_call_id(char *call_id, unsigned long call_id_len) {
+	string call_idS = string(call_id, call_id_len);
+	callMAPIT = calls_listMAP.find(call_idS);
+	if(callMAPIT == calls_listMAP.end()) {
+		// not found
+		return NULL;
+	} else {
+		return (*callMAPIT).second;
+	}
+	
+/*
 	for (call = calls_list.begin(); call != calls_list.end(); ++call) {
 		if((*call)->call_id_len == call_id_len &&
 		  (memcmp((*call)->call_id, call_id, MIN(call_id_len, MAX_CALL_ID)) == 0)) {
@@ -989,8 +1001,10 @@ Calltable::find_by_call_id(char *call_id, unsigned long call_id_len) {
 		}
 	}
 	return NULL;
+*/
 }
 
+#if 0
 /* find Call by ip addr and port (mathing RTP proto to call) and return reference to this Call */
 Call*
 Calltable::find_by_ip_port(in_addr_t addr, unsigned short port, int *iscaller) {
@@ -1003,12 +1017,15 @@ Calltable::find_by_ip_port(in_addr_t addr, unsigned short port, int *iscaller) {
 	// IP:port is not in Call table
 	return NULL;
 }
+#endif
 
 /* iterate all calls in table which are 5 minutes inactive and save them into SQL 
  * ic currtime = 0, save it immediatly
 */
+
+#if 0
 int
-Calltable::cleanup( time_t currtime ) {
+Calltable::cleanup_old( time_t currtime ) {
 	for (call = calls_list.begin(); call != calls_list.end();) {
 		if(verbosity > 2) (*call)->dump();
 		// RTPTIMEOUT seconds of inactivity will save this call and remove from call table
@@ -1040,4 +1057,42 @@ Calltable::cleanup( time_t currtime ) {
 	}
 	return 0;
 }
+#endif
+
+int
+Calltable::cleanup( time_t currtime ) {
+	Call* call;
+	for (callMAPIT = calls_listMAP.begin(); callMAPIT != calls_listMAP.end();) {
+		call = (*callMAPIT).second;
+		if(verbosity > 2) call->dump();
+		// RTPTIMEOUT seconds of inactivity will save this call and remove from call table
+		if(currtime == 0 || (call->destroy_call_at != 0 and call->destroy_call_at <= currtime) || (currtime - call->get_last_packet_time() > RTPTIMEOUT)) {
+			if (call->get_f_pcap() != NULL){
+				pcap_dump_flush(call->get_f_pcap());
+				if (call->get_f_pcap() != NULL) 
+					pcap_dump_close(call->get_f_pcap());
+				call->set_f_pcap(NULL);
+			}
+			if(currtime == 0) {
+				/* we are saving calls because of terminating SIGTERM and we dont know 
+				 * if the call ends successfully or not. So we dont want to confuse monitoring
+				 * applications which reports unterminated calls so mark this call as sighup */
+				call->sighup = true;
+				if(verbosity > 2)
+					syslog(LOG_NOTICE, "Set call->sighup\n");
+			}
+			// we have to close all raw files as there can be data in buffers 
+			call->closeRawFiles();
+			/* move call to queue for mysql processing */
+			lock_calls_queue();
+			calls_queue.push(call);
+			unlock_calls_queue();
+			calls_listMAP.erase(callMAPIT++);
+		} else {
+			++callMAPIT;
+		}
+	}
+	return 0;
+}
+
 

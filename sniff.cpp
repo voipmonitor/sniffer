@@ -291,7 +291,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 
 	// checking and cleaning stuff every 10 seconds (if some packet arrive) 
 	if (header->ts.tv_sec - last_cleanup > 10){
-		if(verbosity > 0) printf("Total calls [%d] calls in queue[%d]\n", (int)calltable->calls_list.size(), (int)calltable->calls_queue.size());
+		if(verbosity > 0) printf("Total calls [%d] calls in queue[%d]\n", (int)calltable->calls_listMAP.size(), (int)calltable->calls_queue.size());
 		if (last_cleanup >= 0){
 			calltable->cleanup(header->ts.tv_sec);
 		}

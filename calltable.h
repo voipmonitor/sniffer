@@ -282,7 +282,8 @@ public:
 	queue<Call*> calls_deletequeue; //!< this queue is used for asynchronous storing CDR by the worker thread
 	list<Call*> calls_list; //!< 
 	list<Call*>::iterator call;
-	
+	map<string, Call*> calls_listMAP; //!< 
+	map<string, Call*>::iterator callMAPIT; //!< 
 	/**
 	 * @brief constructor
 	 *

@@ -200,7 +200,9 @@ void *manager_server(void *dummy) {
 				continue;
 			}
 		} else if(strstr(buf, "listcalls") != NULL) {
-			list<Call*>::iterator call;
+			//list<Call*>::iterator call;
+			map<string, Call*>::iterator callMAPIT;
+			Call *call;
 			char *outbuf = (char*)malloc(1024*201*sizeof(char));
 			if(outbuf == NULL) {
 				syslog(LOG_NOTICE,"Cannot allocate memory\n");
@@ -209,12 +211,13 @@ void *manager_server(void *dummy) {
 			/* headers */
 			sprintf(outbuf, "[[\"callreference\", \"callid\", \"callercodec\", \"calledcodec\", \"caller\", \"callername\", \"called\", \"calldate\", \"duration\", \"callerip\", \"calledip\"]");
 			int limit = 200;
-			for (call = calltable->calls_list.begin(); call != calltable->calls_list.end(); ++call) {
+			for (callMAPIT = calltable->calls_listMAP.begin(); callMAPIT != calltable->calls_listMAP.end(); ++callMAPIT) {
 				if(limit == 0) {
 					//limit to 200 calls for now
 					 break;
 				}
 				limit--;
+				call = (*callMAPIT).second;
 				/* 
 				 * caller 
 				 * callername
@@ -226,9 +229,9 @@ void *manager_server(void *dummy) {
 				*/
 				//XXX: escape " or replace it to '
 				sprintf(outbuf + strlen(outbuf), ",[\"%p\", \"%s\", \"%d\", \"%d\", \"%s\", \"%s\", \"%s\", \"%d\", \"%d\", \"%u\", \"%u\"]",
-					*call, (*call)->call_id, (*call)->last_callercodec, (*call)->last_callercodec, (*call)->caller, 
-					(*call)->callername, (*call)->called, (*call)->calltime(), (*call)->duration(), htonl((*call)->sipcallerip), 
-					htonl((*call)->sipcalledip));
+					call, call->call_id, call->last_callercodec, call->last_callercodec, call->caller, 
+					call->callername, call->called, call->calltime(), call->duration(), htonl(call->sipcallerip), 
+					htonl(call->sipcalledip));
 			}
 			sprintf(outbuf + strlen(outbuf), "]");
 			if ((size = send(client, outbuf, strlen(outbuf), 0)) == -1){
@@ -252,14 +255,17 @@ void *manager_server(void *dummy) {
 			sprintf(fifo1, "%s.0", fifo);
 			sprintf(fifo2, "%s.1", fifo);
 			sprintf(fifo3, "%s.out", fifo);
-			list<Call*>::iterator call;
+			//list<Call*>::iterator call;
+			map<string, Call*>::iterator callMAPIT;
+			Call *call;
 			//XXX MUTEX!
-			for (call = calltable->calls_list.begin(); call != calltable->calls_list.end(); ++call) {
-				if(*call == callreference) {
+			for (callMAPIT = calltable->calls_listMAP.begin(); callMAPIT != calltable->calls_listMAP.end(); ++callMAPIT) {
+				call = (*callMAPIT).second;
+				if(call == callreference) {
 					//cerr << "founded" << endl;
 					//TODO handle returned values
 					struct listening_worker_arg *args = (struct listening_worker_arg*)malloc(sizeof(listening_worker_arg));
-					args->call = *call;
+					args->call = call;
 					umask(0000);
 					mkfifo(fifo1, S_IWUSR | S_IRUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH);
 					mkfifo(fifo2, S_IWUSR | S_IRUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH);
@@ -267,8 +273,8 @@ void *manager_server(void *dummy) {
 					args->fifo2r = open(fifo2, O_RDONLY | O_NONBLOCK);
 					args->fifoout = open(fifo3, O_WRONLY | O_NONBLOCK);
 
-					(*call)->fifo1 = open(fifo1, O_WRONLY | O_NONBLOCK);
-					(*call)->fifo2 = open(fifo2, O_WRONLY | O_NONBLOCK);
+					call->fifo1 = open(fifo1, O_WRONLY | O_NONBLOCK);
+					call->fifo2 = open(fifo2, O_WRONLY | O_NONBLOCK);
 
 					pthread_t call_thread;
 					pthread_create(&call_thread, NULL, listening_worker, (void *)args);
