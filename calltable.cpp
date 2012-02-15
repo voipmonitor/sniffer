@@ -103,8 +103,8 @@ Call::Call(char *call_id, unsigned long call_id_len, time_t time, void *ct) {
 	destroy_call_at = 0;
 }
 
-/* destructor */
-Call::~Call(){
+void
+Call::hashRemove() {
 	int i;
 	Calltable *ct = (Calltable *)calltable;
 
@@ -115,6 +115,11 @@ Call::~Call(){
 		}
 
 	}
+}
+
+/* destructor */
+Call::~Call(){
+	hashRemove();
 
 	for(int i = 0; i < MAX_SSRC_PER_CALL; i++) {
 		// lets check whole array as there can be holes due rtp[0] <=> rtp[1] swaps in mysql rutine
@@ -1067,6 +1072,7 @@ Calltable::cleanup( time_t currtime ) {
 		if(verbosity > 2) call->dump();
 		// RTPTIMEOUT seconds of inactivity will save this call and remove from call table
 		if(currtime == 0 || (call->destroy_call_at != 0 and call->destroy_call_at <= currtime) || (currtime - call->get_last_packet_time() > RTPTIMEOUT)) {
+			call->hashRemove();
 			if (call->get_f_pcap() != NULL){
 				pcap_dump_flush(call->get_f_pcap());
 				if (call->get_f_pcap() != NULL) 

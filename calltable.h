@@ -255,6 +255,11 @@ public:
 	*/
 	int calltime() { return first_packet_time; };
 
+	/**
+	 * @brief remove call from hash table
+	 *
+	*/
+	void hashRemove();
 
 	/**
 	 * @brief print debug information for the call to stdout
