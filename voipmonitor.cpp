@@ -58,6 +58,7 @@ int opt_gzipGRAPH = 0;		// compress GRAPH data ?
 int opt_rtcp = 1;		// pair RTP+1 port to RTCP and save it. 
 int opt_nocdr = 0;		// do not save cdr?
 int opt_gzipPCAP = 0;		// compress PCAP data ? 
+int opt_mos_g729 = 0;		// calculate MOS for G729 codec
 int verbosity = 0;		// cebug level
 int opt_rtp_firstleg = 0;	// if == 1 then save RTP stream only for first INVITE leg in case you are 
 				// sniffing on SIP proxy where voipmonitor see both SIP leg. 
@@ -299,6 +300,10 @@ int load_config(char *fname) {
 	}
 	if((value = ini.GetValue("general", "sip-register", NULL))) {
 		opt_sip_register = yesno(value);
+	}
+	if((value = ini.GetValue("general", "mos_g729", NULL))) {
+		opt_mos_g729 = yesno(value);
+		printf(":::%d\n", opt_mos_g729);
 	}
 	if((value = ini.GetValue("general", "nocdr", NULL))) {
 		opt_nocdr = yesno(value);

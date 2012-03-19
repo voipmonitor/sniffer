@@ -32,6 +32,7 @@
 #include "codecs.h"
 #include "codec_alaw.h"
 #include "codec_ulaw.h"
+#include "mos_g729.h"
 #include "jitterbuffer/asterisk/time.h"
 
 #define MIN(x,y) ((x) < (y) ? (x) : (y))
@@ -48,6 +49,7 @@ extern int opt_saveWAV;                // save RTP payload RAW data?
 extern int opt_saveGRAPH;	// save GRAPH data to graph file? 
 extern int opt_gzipGRAPH;	// compress GRAPH data to graph file? 
 extern int opt_audio_format;	// define format for audio writing (if -W option)
+extern int opt_mos_g729;
 extern char mysql_host[256];
 extern char mysql_database[256];
 extern char mysql_table[256];
@@ -321,7 +323,7 @@ Call::read_rtp(unsigned char* data, int datalen, struct pcap_pkthdr *header, u_i
 	}
 }
 
-double calculate_mos(double ppl, double burstr, int version) {
+double calculate_mos_g711(double ppl, double burstr, int version) {
 	double r;
 	double bpl = 8.47627; //mos = -4.23836 + 0.29873 * r - 0.00416744 * r * r + 0.0000209855 * r * r * r;
 	double mos;
@@ -345,6 +347,20 @@ double calculate_mos(double ppl, double burstr, int version) {
 	}
 
 	return mos;
+}
+
+
+double calculate_mos(double ppl, double burstr, int codec) {
+
+	if(codec == PAYLOAD_G729) {
+		if(opt_mos_g729) {
+			return (double)mos_g729((long double)ppl, (long double)burstr);
+		} else {
+			return calculate_mos_g711(ppl, burstr, 2);
+		}
+	} else {
+		return calculate_mos_g711(ppl, burstr, 2);
+	}
 }
 
 int convertALAW2WAV(char *fname1, char *fname3) {
@@ -711,18 +727,18 @@ Call::buildQuery(mysqlpp::Query *query) {
 			burstr_calculate(rtp[indexes[i]]->channel_fix1, rtp[indexes[i]]->stats.received, &burstr, &lossr);
 			*query << " , " << c << "_lossr_f1 = " << lossr;
 			*query << " , " << c << "_burstr_f1 = " << burstr;
-			*query << " , " << c << "_mos_f1 = " << quote << calculate_mos(lossr, burstr, 1);
+			*query << " , " << c << "_mos_f1 = " << quote << calculate_mos(lossr, burstr, rtp[indexes[i]]->payload);
 
 			/* Jitterbuffer MOS statistics */
 			burstr_calculate(rtp[indexes[i]]->channel_fix2, rtp[indexes[i]]->stats.received, &burstr, &lossr);
 			*query << " , " << c << "_lossr_f2 = " << lossr;
 			*query << " , " << c << "_burstr_f2 = " << burstr;
-			*query << " , " << c << "_mos_f2 = " << quote << calculate_mos(lossr, burstr, 1);
+			*query << " , " << c << "_mos_f2 = " << quote << calculate_mos(lossr, burstr, rtp[indexes[i]]->payload);
 
 			burstr_calculate(rtp[indexes[i]]->channel_adapt, rtp[indexes[i]]->stats.received, &burstr, &lossr);
 			*query << " , " << c << "_lossr_adapt = " << lossr;
 			*query << " , " << c << "_burstr_adapt = " << burstr;
-			*query << " , " << c << "_mos_adapt = " << quote << calculate_mos(lossr, burstr, 1);
+			*query << " , " << c << "_mos_adapt = " << quote << calculate_mos(lossr, burstr, rtp[indexes[i]]->payload);
 		}
 	}
 	return 0;

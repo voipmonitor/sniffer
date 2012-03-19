@@ -87,6 +87,8 @@ jitterbuffer/jitterbuf.h -text
 jitterbuffer/utils.c -text
 /manager.cpp -text
 /manager.h -text
+/mos_g729.cpp -text
+/mos_g729.h -text
 /rtp.cpp -text
 /rtp.h -text
 simpleini/ConvertUTF.c -text
