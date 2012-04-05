@@ -475,7 +475,7 @@ int main(int argc, char *argv[]) {
 
 	umask(0000);
 
-	openlog("voipmonitor", LOG_CONS | LOG_PERROR, LOG_DAEMON);
+	openlog("voipmonitor", LOG_CONS | LOG_PERROR | LOG_PID, LOG_DAEMON);
 
 	/* command line arguments overrides configuration in voipmonitor.conf file */
 	while(1) {
