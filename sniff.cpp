@@ -343,8 +343,10 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 	// TODO: remove if hash will be stable
 	//if ((call = calltable->find_by_ip_port(daddr, dest, &iscaller))){	
 	if ((call = calltable->hashfind_by_ip_port(daddr, dest, &iscaller, &is_rtcp))){	
-		// we have packet, reset all pending destroy requests
-		call->destroy_call_at = 0; 
+		// we have packet, extend pending destroy requests
+		if(call->destroy_call_at > 0) {
+			call->destroy_call_at += 5; 
+		}
 		// packet (RTP) by destination:port is already part of some stored call 
 		if(!dontsave && is_rtcp && (opt_saveRTP || opt_saveRTCP)) {
 			save_packet(call, header, packet);
@@ -358,8 +360,10 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 	// TODO: remove if hash will be stable
 	//} else if ((call = calltable->find_by_ip_port(saddr, source, &iscaller))){	
 	} else if ((call = calltable->hashfind_by_ip_port(saddr, source, &iscaller, &is_rtcp))){
-		// we have packet, reset all pending destroy requests
-		call->destroy_call_at = 0; 
+		// we have packet, extend pending destroy requests
+		if(call->destroy_call_at > 0) {
+			call->destroy_call_at += 5; 
+		}
 		// packet (RTP) by source:port is already part of some stored call 
 		if(!dontsave && is_rtcp && (opt_saveRTP || opt_saveRTCP)) {
 			save_packet(call, header, packet);
@@ -660,8 +664,10 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 			(call->saddr == daddr && call->sport == dest))))
 
 			{
-			// we have packet, reset all pending destroy requests
-			call->destroy_call_at = 0; 
+			// we have packet, extend pending destroy requests
+			if(call->destroy_call_at > 0) {
+				call->destroy_call_at += 5; 
+			}
 
 			call->set_last_packet_time(header->ts.tv_sec);
 			// save lastSIPresponseNum but only if previouse was not 487 (CANCEL) TODO: check if this is still neccessery to check != 487
@@ -777,8 +783,10 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 			}
 		}
 		
-		// we have packet, reset all pending destroy requests
-		call->destroy_call_at = 0; 
+		// we have packet, extend pending destroy requests
+		if(call->destroy_call_at > 0) {
+			call->destroy_call_at += 5; 
+		}
 
 		// SDP examination only in case it is SIP msg belongs to first leg
 		if(opt_rtp_firstleg == 0 || (opt_rtp_firstleg &&
