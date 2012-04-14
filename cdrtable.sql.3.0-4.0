@@ -1,4 +1,4 @@
-ALTER TABLE cdr ADD caller_reverse VARCHAR(255) DEFAULT NULL AFTER caller,  ADD called_reverse VARCHAR(255) DEFAULT NULL AFTER called, ADD callername_reverse VARCHAR(255) DEFAULT NULL AFTER callername, add KEY `callername` (`callername`), add KEY `callername_reverse` (`callername`), add KEY `caller_reverse` (`caller_reverse`), add KEY `called_reverse` (`caller_reverse`);
+ALTER TABLE cdr ADD caller_reverse VARCHAR(255) DEFAULT NULL AFTER caller,  ADD called_reverse VARCHAR(255) DEFAULT NULL AFTER called, ADD callername_reverse VARCHAR(255) DEFAULT NULL AFTER callername, ADD `custom_header1` varchar(32) DEFAULT NULL AFTER sipcalledip, add KEY `callername` (`callername`), add KEY `callername_reverse` (`callername`), add KEY `caller_reverse` (`caller_reverse`), add KEY `called_reverse` (`caller_reverse`), add KEY `custom_header1` (`custom_header1`);
 
 UPDATE cdr SET caller_reverse = REVERSE(caller) , called_reverse = REVERSE(called), callername_reverse = REVERSE(callername) ;
 

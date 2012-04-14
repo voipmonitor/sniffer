@@ -59,6 +59,7 @@ public:
 	char called[256];		//!< To: xxx
 	char byecseq[32];		//!< To: xxx
 	char invitecseq[32];		//!< To: xxx
+	char custom_header1[33];	//!< Custom SIP header 
 	bool seeninvite;		//!< true if we see SIP INVITE within the Call
 	bool seeninviteok;			//!< true if we see SIP INVITE within the Call
 	bool seenbye;			//!< true if we see SIP BYE within the Call

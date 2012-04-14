@@ -39,6 +39,7 @@ CREATE TABLE `cdr` (
   `called_reverse` varchar(255) NOT NULL,
   `sipcallerip` int(32) unsigned NOT NULL,
   `sipcalledip` int(32) unsigned NOT NULL,
+  `custom_header1` varchar(32) DEFAULT NULL,
   `fbasename` varchar(255) NOT NULL,
   `whohanged` ENUM('caller','callee') DEFAULT NULL,
   `bye` tinyint(2) NOT NULL default 2,

@@ -653,6 +653,15 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 					if(verbosity > 2)
 						syslog(LOG_NOTICE, "Seen invite, CSeq: %s\n", call->invitecseq);
 				}
+
+				// check if we have X-VoipMonitor-Custom1
+				s = gettag(data, datalen, "X-VoipMonitor-Custom1", &l);
+				if(l && l < 33) {
+					memcpy(call->custom_header1, s, l);
+					call->custom_header1[l] = '\0';
+					if(verbosity > 2)
+						syslog(LOG_NOTICE, "Seen X-VoipMonitor-Custom1: %s\n", call->custom_header1);
+				}
 			} else {
 				// SIP packet does not belong to any call and it is not INVITE 
 				return NULL;

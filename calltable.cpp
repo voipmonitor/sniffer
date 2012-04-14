@@ -103,6 +103,7 @@ Call::Call(char *call_id, unsigned long call_id_len, time_t time, void *ct) {
 	lastcallerrtp = NULL;
 	lastcalledrtp = NULL;
 	destroy_call_at = 0;
+	custom_header1[0] = '\0';
 }
 
 void
@@ -658,6 +659,10 @@ Call::buildQuery(mysqlpp::Query *query) {
 		", lastSIPresponse = " << quote << lastSIPresponse << 
 		", lastSIPresponseNum = " << quote << lastSIPresponseNum << 
 		", bye = " << quote << ( seeninviteok ? (seenbye ? (seenbyeandok ? 3 : 2) : 1) : 0);
+
+	if(strlen(custom_header1)) {
+		*query << ", custom_header1 = " << quote << custom_header1;
+	}
 
 	switch(whohanged) {
 	case 0:
