@@ -18,6 +18,8 @@
 #include <pcap.h>
 #include <mysql++.h>
 
+#include <string>
+
 #include "rtp.h"
 
 #define MAX_IP_PER_CALL 30	//!< total maxumum of SDP sessions for one call-id
@@ -59,7 +61,7 @@ public:
 	char called[256];		//!< To: xxx
 	char byecseq[32];		//!< To: xxx
 	char invitecseq[32];		//!< To: xxx
-	char custom_header1[33];	//!< Custom SIP header 
+	char custom_header1[33];	//!< Custom SIP header
 	bool seeninvite;		//!< true if we see SIP INVITE within the Call
 	bool seeninviteok;			//!< true if we see SIP INVITE within the Call
 	bool seenbye;			//!< true if we see SIP BYE within the Call
@@ -228,19 +230,31 @@ public:
 	 * @brief build query 
 	 *
 	*/
-	int buildQuery(mysqlpp::Query *query);
+	int buildQuery(stringstream *query);
 
 	/**
-	 * @brief save call to mysql
+	 * @brief prepare for escape string - connect if need
 	 *
 	*/
-	int saveToMysql();
+	bool prepareForEscapeString();
 
 	/**
-	 * @brief save register msgs to mysql
+	 * @brief execute query 
 	 *
 	*/
-	int saveRegisterToMysql();
+	int doQuery(string &queryStr);
+	
+	/**
+	 * @brief save call to database
+	 *
+	*/
+	int saveToDb();
+
+	/**
+	 * @brief save register msgs to database
+	 *
+	*/
+	int saveRegisterToDb();
 
 	/**
 	 * @brief calculate duration of the call
@@ -414,5 +428,12 @@ private:
 		return key % MAXNODE;
 	}
 };
+
+string sqlDateTimeString(time_t unixTime);
+string sqlEscapeString(const char *inputStr, char borderChar = '\'');
+string sqlEscapeString(unsigned int inputInt, char borderChar = '\'');
+string reverseString(const char *str);
+bool isSqlDriver(const char *sqlDriver);
+bool isTypeDb(const char *typeDb);
 
 #endif

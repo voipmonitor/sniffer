@@ -34,6 +34,7 @@
 #include "codec_ulaw.h"
 #include "mos_g729.h"
 #include "jitterbuffer/asterisk/time.h"
+#include "odbc.h"
 
 #define MIN(x,y) ((x) < (y) ? (x) : (y))
 
@@ -50,14 +51,21 @@ extern int opt_saveGRAPH;	// save GRAPH data to graph file?
 extern int opt_gzipGRAPH;	// compress GRAPH data to graph file? 
 extern int opt_audio_format;	// define format for audio writing (if -W option)
 extern int opt_mos_g729;
+extern char sql_driver[256];
+extern char sql_cdr_table[256];
 extern char mysql_host[256];
 extern char mysql_database[256];
 extern char mysql_table[256];
 extern char mysql_user[256];
 extern char mysql_password[256];
+extern char odbc_dsn[256];
+extern char odbc_user[256];
+extern char odbc_password[256];
+extern char odbc_driver[256];
 int calls = 0;
 
 mysqlpp::Connection con(false);
+Odbc odbc;
 
 /* constructor */
 Call::Call(char *call_id, unsigned long call_id_len, time_t time, void *ct) {
@@ -633,8 +641,8 @@ Call::convertRawToWav() {
 }
 
 int
-Call::buildQuery(mysqlpp::Query *query) {
-	using namespace mysqlpp;
+Call::buildQuery(stringstream *query) {
+	////using namespace mysqlpp;
 	/* walk two first RTP and store it to MySQL. */
 
 	/* bye 
@@ -643,220 +651,383 @@ Call::buildQuery(mysqlpp::Query *query) {
 	 * 	1 - call was answered but there was no bye 
 	 * 	0 - call was not answered 
 	 */
-	char c;
-	double burstr, lossr;
-	*query << "INSERT INTO `" << mysql_table << "` SET caller = " << quote << caller << ",  callername = " << quote << callername << 
-		", sipcallerip = " << quote << htonl(sipcallerip) <<
-		", sipcalledip = " << quote << htonl(sipcalledip) <<
-		", called = " << quote << called <<
-		", duration = " << duration() << 
-		", progress_time = " << (progress_time ? progress_time - first_packet_time : -1) << 
-		", first_rtp_time = " << (first_rtp_time  - first_packet_time) << 
-		", connect_duration = " << (connect_time ? (duration() - (connect_time - first_packet_time)) : -1) << 
-		", calldate = FROM_UNIXTIME(" << calltime() << ")" <<
-		", fbasename = " << quote << fbasename << 
-		", sighup = " << quote << (sighup ? 1 : 0) << 
-		", lastSIPresponse = " << quote << lastSIPresponse << 
-		", lastSIPresponseNum = " << quote << lastSIPresponseNum << 
-		", bye = " << quote << ( seeninviteok ? (seenbye ? (seenbyeandok ? 3 : 2) : 1) : 0);
+	
+	if(isTypeDb("mssql")) {
+		stringstream fields;
+		stringstream values;
+		fields 	<< "caller, caller_reverse, callername, callername_reverse, sipcallerip, "
+				"sipcalledip, called, called_reverse, duration, progress_time, "
+				"first_rtp_time, connect_duration, calldate, fbasename, sighup, "
+				"lastSIPresponse, lastSIPresponseNum, bye";
+		values 	<< sqlEscapeString(caller)
+			<< ", " << sqlEscapeString(reverseString(caller).c_str())
+			<< ", " << sqlEscapeString(callername)
+			<< ", " << sqlEscapeString(reverseString(callername).c_str())
+			<< ", " << sqlEscapeString(htonl(sipcallerip))
+			<< ", " << sqlEscapeString(htonl(sipcalledip))
+			<< ", " << sqlEscapeString(called)
+			<< ", " << sqlEscapeString(reverseString(called).c_str())
+			<< ", " << duration()
+			<< ", " << (progress_time ? progress_time - first_packet_time : -1)
+			<< ", " << (first_rtp_time ? first_rtp_time  - first_packet_time : -1)
+			<< ", " << (connect_time ? (duration() - (connect_time - first_packet_time)) : -1);
 
-	if(strlen(custom_header1)) {
-		*query << ", custom_header1 = " << quote << custom_header1;
-	}
-
-	switch(whohanged) {
-	case 0:
-		*query << " , whohanged = 'caller'";
-		break;
-	case 1:
-		*query << " , whohanged = 'callee'";
-	}
-	if(ssrc_n > 0) {
-		/* sort all RTP streams by received packets + loss packets descend and save only those two with the biggest received packets. */
-		int indexes[MAX_SSRC_PER_CALL];
-		// init indexex
-		for(int i = 0; i < MAX_SSRC_PER_CALL; i++) {
-			indexes[i] = i;
+		if(isTypeDb("mssql")) {
+			values << ", " << sqlEscapeString(sqlDateTimeString(calltime()).c_str());
+		} else {
+			values << ", " << "FROM_UNIXTIME(" << calltime() << ")";
 		}
-		// bubble sort
-		for(int k = 0; k < ssrc_n; k++) {
-			for(int j = 0; j < ssrc_n; j++) {
-				if((rtp[indexes[k]]->stats.received + rtp[indexes[k]]->stats.lost) > ( rtp[indexes[j]]->stats.received + rtp[indexes[j]]->stats.lost)) {
-					int kTmp = indexes[k];
-					indexes[k] = indexes[j];
-					indexes[j] = kTmp;
+		values 	<< ", " << sqlEscapeString(fbasename)
+			<< ", " << sqlEscapeString(sighup ? 1 : 0)
+			<< ", " << sqlEscapeString(lastSIPresponse)
+			<< ", " << sqlEscapeString(lastSIPresponseNum)
+			<< ", " << sqlEscapeString( seeninviteok ? (seenbye ? (seenbyeandok ? 3 : 2) : 1) : 0);
+			
+		if(strlen(custom_header1)) {
+			fields << ", custom_header1";
+			values << ", " << sqlEscapeString(custom_header1);
+		}
+
+		switch(whohanged) {
+		case 0:
+			fields 	<< ", whohanged";
+			values 	<< ", 'caller'";
+			break;
+		case 1:
+			fields 	<< ", whohanged";
+			values 	<< ", 'callee'";
+		}
+		if(ssrc_n > 0) {
+			/* sort all RTP streams by received packets + loss packets descend and save only those two with the biggest received packets. */
+			int indexes[MAX_SSRC_PER_CALL];
+			// init indexex
+			for(int i = 0; i < MAX_SSRC_PER_CALL; i++) {
+				indexes[i] = i;
+			}
+			// bubble sort
+			for(int k = 0; k < ssrc_n; k++) {
+				for(int j = 0; j < ssrc_n; j++) {
+					if((rtp[indexes[k]]->stats.received + rtp[indexes[k]]->stats.lost) > ( rtp[indexes[j]]->stats.received + rtp[indexes[j]]->stats.lost)) {
+						int kTmp = indexes[k];
+						indexes[k] = indexes[j];
+						indexes[j] = kTmp;
+					}
+				}
+			}
+
+			// a_ is always caller, so check if we need to swap indexes
+			if (!rtp[indexes[0]]->iscaller) {
+				int tmp;
+				tmp = indexes[1];
+				indexes[1] = indexes[0];
+				indexes[0] = tmp;
+			}
+			fields 	<< ", a_ua, b_ua";
+			values 	<< ", " << sqlEscapeString(a_ua)
+				<< ", " << sqlEscapeString(b_ua);
+
+			// save only two streams with the biggest received packets
+			for(int i = 0; i < 2; i++) {
+				if(!rtp[indexes[i]]) continue;
+				
+				char c = i == 0 ? 'a' : 'b';
+
+				fields 	<< ", " << c << "_index"
+					<< ", " << c << "_received"
+					<< ", " << c << "_lost"
+					<< ", " << c << "_avgjitter"
+					<< ", " << c << "_maxjitter"
+					<< ", " << c << "_payload"; 
+				values 	<< ", " << sqlEscapeString(indexes[i])
+					<< ", " << (rtp[indexes[i]]->stats.received + 2) // received is always 2 packet less compared to wireshark (add it here)
+					<< ", " << rtp[indexes[i]]->stats.lost
+					<< ", " << sqlEscapeString(int(ceil(rtp[indexes[i]]->stats.avgjitter)))
+					<< ", " << sqlEscapeString(int(ceil(rtp[indexes[i]]->stats.maxjitter)))
+					<< ", " << sqlEscapeString(rtp[indexes[i]]->payload); 
+
+				/* build a_sl1 - b_sl10 fields */
+				for(int j = 1; j < 11; j++) {
+					fields 	<< ", " << c << "_sl" << j;
+					values	<< ", " << rtp[indexes[i]]->stats.slost[j];
+				}
+				/* build a_d50 - b_d300 fileds */
+				fields 	<< ", " << c << "_d50"
+					<< ", " << c << "_d70"
+					<< ", " << c << "_d90"
+					<< ", " << c << "_d120"
+					<< ", " << c << "_d150"
+					<< ", " << c << "_d200"
+					<< ", " << c << "_d300";
+				values 	<< ", " << rtp[indexes[i]]->stats.d50
+					<< ", " << rtp[indexes[i]]->stats.d70
+					<< ", " << rtp[indexes[i]]->stats.d90
+					<< ", " << rtp[indexes[i]]->stats.d120
+					<< ", " << rtp[indexes[i]]->stats.d150
+					<< ", " << rtp[indexes[i]]->stats.d200
+					<< ", " << rtp[indexes[i]]->stats.d300;
+				
+				/* store source addr */
+				fields 	<< ", " << c << "_saddr";
+				values	<< ", " << htonl(rtp[indexes[i]]->saddr);
+
+				/* calculate lossrate and burst rate */
+				double burstr, lossr;
+				burstr_calculate(rtp[indexes[i]]->channel_fix1, rtp[indexes[i]]->stats.received, &burstr, &lossr);
+				fields 	<< ", " << c << "_lossr_f1"
+					<< ", " << c << "_burstr_f1"
+					<< ", " << c << "_mos_f1";
+				values 	<< ", " << lossr
+					<< ", " << burstr
+					<< ", " << sqlEscapeString(calculate_mos(lossr, burstr, rtp[indexes[i]]->payload));
+
+				/* Jitterbuffer MOS statistics */
+				burstr_calculate(rtp[indexes[i]]->channel_fix2, rtp[indexes[i]]->stats.received, &burstr, &lossr);
+				fields 	<< ", " << c << "_lossr_f2"
+					<< ", " << c << "_burstr_f2"
+					<< ", " << c << "_mos_f2";
+				values 	<< ", " << lossr
+					<< ", " << burstr
+					<< ", " << sqlEscapeString(calculate_mos(lossr, burstr, rtp[indexes[i]]->payload));
+
+				burstr_calculate(rtp[indexes[i]]->channel_adapt, rtp[indexes[i]]->stats.received, &burstr, &lossr);
+				fields 	<< ", " << c << "_lossr_adapt"
+					<< ", " << c << "_burstr_adapt"
+					<< ", " << c << "_mos_adapt";
+				values	<< ", " << lossr
+					<< ", " << burstr
+					<< ", " << sqlEscapeString(calculate_mos(lossr, burstr, rtp[indexes[i]]->payload));
+			}
+		}
+		*query << "INSERT INTO " << sql_cdr_table << " ( " << fields.str() << " ) VALUES ( " << values.str() << " )";
+	} else {
+		*query << "INSERT INTO `" << (mysql_table[0]&&strcmp(mysql_table,sql_cdr_table) ? mysql_table : sql_cdr_table) << "` " <<
+			"SET caller = " << sqlEscapeString(caller) << 
+			", caller_reverse = " << sqlEscapeString(reverseString(caller).c_str()) <<
+			", callername = " << sqlEscapeString(callername) << 
+			", callername_reverse = " << sqlEscapeString(reverseString(callername).c_str()) <<
+			", sipcallerip = " << sqlEscapeString(htonl(sipcallerip)) <<
+			", sipcalledip = " << sqlEscapeString(htonl(sipcalledip)) <<
+			", called = " << sqlEscapeString(called) <<
+			", called_reverse = " << sqlEscapeString(reverseString(called).c_str()) <<
+			", duration = " << duration() << 
+			", progress_time = " << (progress_time ? progress_time - first_packet_time : -1) << 
+			", first_rtp_time = " << (first_rtp_time ? first_rtp_time  - first_packet_time : -1) << 
+			", connect_duration = " << (connect_time ? (duration() - (connect_time - first_packet_time)) : -1) << 
+			", calldate = FROM_UNIXTIME(" << calltime() << ")" <<
+			", fbasename = " << sqlEscapeString(fbasename) << 
+			", sighup = " << sqlEscapeString(sighup ? 1 : 0) << 
+			", lastSIPresponse = " << sqlEscapeString(lastSIPresponse) << 
+			", lastSIPresponseNum = " << sqlEscapeString(lastSIPresponseNum) << 
+			", bye = " << sqlEscapeString( seeninviteok ? (seenbye ? (seenbyeandok ? 3 : 2) : 1) : 0);
+
+		if(strlen(custom_header1)) {
+			*query << ", custom_header1 = " << sqlEscapeString(custom_header1);
+		}
+
+		switch(whohanged) {
+		case 0:
+			*query << " , whohanged = 'caller'";
+			break;
+		case 1:
+			*query << " , whohanged = 'callee'";
+		}
+		if(ssrc_n > 0) {
+			/* sort all RTP streams by received packets + loss packets descend and save only those two with the biggest received packets. */
+			int indexes[MAX_SSRC_PER_CALL];
+			// init indexex
+			for(int i = 0; i < MAX_SSRC_PER_CALL; i++) {
+				indexes[i] = i;
+			}
+			// bubble sort
+			for(int k = 0; k < ssrc_n; k++) {
+				for(int j = 0; j < ssrc_n; j++) {
+					if((rtp[indexes[k]]->stats.received + rtp[indexes[k]]->stats.lost) > ( rtp[indexes[j]]->stats.received + rtp[indexes[j]]->stats.lost)) {
+						int kTmp = indexes[k];
+						indexes[k] = indexes[j];
+						indexes[j] = kTmp;
+					}
+				}
+			}
+
+			// a_ is always caller, so check if we need to swap indexes
+			if (!rtp[indexes[0]]->iscaller) {
+				int tmp;
+				tmp = indexes[1];
+				indexes[1] = indexes[0];
+				indexes[0] = tmp;
+			}
+			*query << " , " << "a_ua = " << sqlEscapeString(a_ua);
+			*query << " , " << "b_ua = " << sqlEscapeString(b_ua);
+
+			// save only two streams with the biggest received packets
+			for(int i = 0; i < 2; i++) {
+				if(!rtp[indexes[i]]) continue;
+				
+				char c = i == 0 ? 'a' : 'b';
+
+				*query << " , " << c << "_index = " << sqlEscapeString(indexes[i]);
+				*query << " , " << c << "_received = " << (rtp[indexes[i]]->stats.received + 2); // received is always 2 packet less compared to wireshark (add it here)
+				*query << " , " << c << "_lost = " << rtp[indexes[i]]->stats.lost;
+				*query << " , " << c << "_avgjitter = " << sqlEscapeString(int(ceil(rtp[indexes[i]]->stats.avgjitter)));
+				*query << " , " << c << "_maxjitter = " << sqlEscapeString(int(ceil(rtp[indexes[i]]->stats.maxjitter))); 
+				*query << " , " << c << "_payload = " << sqlEscapeString(rtp[indexes[i]]->payload); 
+
+				/* build a_sl1 - b_sl10 fields */
+				for(int j = 1; j < 11; j++) {
+					*query << " , " << c << "_sl" << j << " = " << rtp[indexes[i]]->stats.slost[j];
+				}
+				/* build a_d50 - b_d300 fileds */
+				*query << " , " << c << "_d50 = " << rtp[indexes[i]]->stats.d50;
+				*query << " , " << c << "_d70 = " << rtp[indexes[i]]->stats.d70;
+				*query << " , " << c << "_d90 = " << rtp[indexes[i]]->stats.d90;
+				*query << " , " << c << "_d120 = " << rtp[indexes[i]]->stats.d120;
+				*query << " , " << c << "_d150 = " << rtp[indexes[i]]->stats.d150;
+				*query << " , " << c << "_d200 = " << rtp[indexes[i]]->stats.d200;
+				*query << " , " << c << "_d300 = " << rtp[indexes[i]]->stats.d300;
+				
+				/* store source addr */
+				*query << " , " << c << "_saddr = " << htonl(rtp[indexes[i]]->saddr);
+
+				/* calculate lossrate and burst rate */
+				double burstr, lossr;
+				burstr_calculate(rtp[indexes[i]]->channel_fix1, rtp[indexes[i]]->stats.received, &burstr, &lossr);
+				*query << " , " << c << "_lossr_f1 = " << lossr;
+				*query << " , " << c << "_burstr_f1 = " << burstr;
+				*query << " , " << c << "_mos_f1 = " << sqlEscapeString(calculate_mos(lossr, burstr, rtp[indexes[i]]->payload));
+
+				/* Jitterbuffer MOS statistics */
+				burstr_calculate(rtp[indexes[i]]->channel_fix2, rtp[indexes[i]]->stats.received, &burstr, &lossr);
+				*query << " , " << c << "_lossr_f2 = " << lossr;
+				*query << " , " << c << "_burstr_f2 = " << burstr;
+				*query << " , " << c << "_mos_f2 = " << sqlEscapeString(calculate_mos(lossr, burstr, rtp[indexes[i]]->payload));
+
+				burstr_calculate(rtp[indexes[i]]->channel_adapt, rtp[indexes[i]]->stats.received, &burstr, &lossr);
+				*query << " , " << c << "_lossr_adapt = " << lossr;
+				*query << " , " << c << "_burstr_adapt = " << burstr;
+				*query << " , " << c << "_mos_adapt = " << sqlEscapeString(calculate_mos(lossr, burstr, rtp[indexes[i]]->payload));
+			}
+		}
+	}
+	return 0;
+}
+
+bool 
+Call::prepareForEscapeString() {
+	if(isSqlDriver("mysql")) {
+		using namespace mysqlpp;
+		if(!con.connected()) {
+			con.connect(mysql_database, mysql_host, mysql_user, mysql_password);
+			if(!con.connected()) {
+				syslog(LOG_ERR,"DB connection failed: %s", con.error());
+				return false;
+			}
+		} 
+	}
+	return true;
+}
+
+int
+Call::doQuery(string &queryStr) {
+	bool okQueryRslt = false;
+	if(isSqlDriver("mysql")) {
+		using namespace mysqlpp;
+		for(int attempt = 0; attempt<2; ++attempt) {
+			if(attempt>0 || !con.connected()) {
+				if(attempt>0)
+					con.disconnect();
+				con.connect(mysql_database, mysql_host, mysql_user, mysql_password);
+				if(!con.connected()) {
+					syslog(LOG_ERR,"DB connection failed: %s", con.error());
+					return 1;
+				}
+			}
+			mysqlpp::Query query = con.query();
+			query << queryStr.c_str();
+			query.store();
+			if(!con.errnum()) {
+				okQueryRslt = true;
+				break;
+			} else {
+				syslog(LOG_ERR,"Error in query errnum:'%d' error:'%s'", con.errnum(), con.error());
+				if(con.errnum() != 2006) { // errnum 2006 : MySQL server has gone away
+					break;
 				}
 			}
 		}
-
-		// a_ is always caller, so check if we need to swap indexes
-		if (!rtp[indexes[0]]->iscaller) {
-			int tmp;
-			tmp = indexes[1];
-			indexes[1] = indexes[0];
-			indexes[0] = tmp;
-		}
-		*query << " , " << "a_ua = " << quote << a_ua;
-		*query << " , " << "b_ua = " << quote << b_ua;
-
-		// save only two streams with the biggest received packets
-		for(int i = 0; i < 2; i++) {
-			if(!rtp[indexes[i]]) continue;
-			
-			c = i == 0 ? 'a' : 'b';
-
-			*query << " , " << c << "_index = " << quote << indexes[i];
-			*query << " , " << c << "_received = " << (rtp[indexes[i]]->stats.received + 2); // received is always 2 packet less compared to wireshark (add it here)
-			*query << " , " << c << "_lost = " << rtp[indexes[i]]->stats.lost;
-			*query << " , " << c << "_avgjitter = " << quote << int(ceil(rtp[indexes[i]]->stats.avgjitter));
-			*query << " , " << c << "_maxjitter = " << quote << int(ceil(rtp[indexes[i]]->stats.maxjitter)); 
-			*query << " , " << c << "_payload = " << quote << rtp[indexes[i]]->payload; 
-
-			/* build a_sl1 - b_sl10 fields */
-			for(int j = 1; j < 11; j++) {
-				*query << " , " << c << "_sl" << j << " = " << rtp[indexes[i]]->stats.slost[j];
+	} else if(isSqlDriver("odbc")) {
+		for(int attempt = 0; attempt<2; ++attempt) {
+			if(attempt>0 || !odbc.connected()) {
+				if(attempt>0)
+					odbc.disconnect();
+				if(!odbc.connect(odbc_dsn, odbc_user, odbc_password)) {
+					syslog(LOG_ERR, "DB connection failed: %s", odbc.getLastErrorString());
+					return 1;
+				}
 			}
-			/* build a_d50 - b_d300 fileds */
-			*query << " , " << c << "_d50 = " << rtp[indexes[i]]->stats.d50;
-			*query << " , " << c << "_d70 = " << rtp[indexes[i]]->stats.d70;
-			*query << " , " << c << "_d90 = " << rtp[indexes[i]]->stats.d90;
-			*query << " , " << c << "_d120 = " << rtp[indexes[i]]->stats.d120;
-			*query << " , " << c << "_d150 = " << rtp[indexes[i]]->stats.d150;
-			*query << " , " << c << "_d200 = " << rtp[indexes[i]]->stats.d200;
-			*query << " , " << c << "_d300 = " << rtp[indexes[i]]->stats.d300;
-			
-			/* store source addr */
-			*query << " , " << c << "_saddr = " << htonl(rtp[indexes[i]]->saddr);
-
-			/* calculate lossrate and burst rate */
-			burstr_calculate(rtp[indexes[i]]->channel_fix1, rtp[indexes[i]]->stats.received, &burstr, &lossr);
-			*query << " , " << c << "_lossr_f1 = " << lossr;
-			*query << " , " << c << "_burstr_f1 = " << burstr;
-			*query << " , " << c << "_mos_f1 = " << quote << calculate_mos(lossr, burstr, rtp[indexes[i]]->payload);
-
-			/* Jitterbuffer MOS statistics */
-			burstr_calculate(rtp[indexes[i]]->channel_fix2, rtp[indexes[i]]->stats.received, &burstr, &lossr);
-			*query << " , " << c << "_lossr_f2 = " << lossr;
-			*query << " , " << c << "_burstr_f2 = " << burstr;
-			*query << " , " << c << "_mos_f2 = " << quote << calculate_mos(lossr, burstr, rtp[indexes[i]]->payload);
-
-			burstr_calculate(rtp[indexes[i]]->channel_adapt, rtp[indexes[i]]->stats.received, &burstr, &lossr);
-			*query << " , " << c << "_lossr_adapt = " << lossr;
-			*query << " , " << c << "_burstr_adapt = " << burstr;
-			*query << " , " << c << "_mos_adapt = " << quote << calculate_mos(lossr, burstr, rtp[indexes[i]]->payload);
+			if(odbc.query(queryStr.c_str())) {
+				okQueryRslt = true;
+				break;
+			} else {
+				syslog(LOG_ERR,"Error in query: '%s'", odbc.getLastErrorString());
+			}
 		}
 	}
-	return 0;
+	return !okQueryRslt;
 }
 
 /* TODO: implement failover -> write INSERT into file */
 int
-Call::saveToMysql() {
-	using namespace mysqlpp;
-
-
-	/* we are not interested in calls which do not have RTP */
-/*
-	if(rtp[0].saddr == 0 && rtp[1].saddr == 0) {
-		if(verbosity > 1)
-			syslog(LOG_ERR,"This call does not have RTP. SKipping SQL.\n");
-
-		//return 0;
-	}
-*/
+Call::saveToDb() {
+	if(!prepareForEscapeString())
+		return(1);
 	
-	//mysqlpp::Connection con(false);
-	if(!con.connected()) {
-		con.connect(mysql_database, mysql_host, mysql_user, mysql_password);
-		if(!con.connected()) {
-			syslog(LOG_ERR,"DB connection failed: %s", con.error());
-			return 1;
-		}
-	} 
-
-	mysqlpp::Query query = con.query();
-	buildQuery(&query);
-
-	if(verbosity > 0) cout << query << "\n";
-	query.store();
-	if(con.errnum()) {
-		syslog(LOG_ERR,"Error in query errnum:'%d' error:'%s'", con.errnum(), con.error());
-		if(con.errnum() == 2006) {
-			//error:'MySQL server has gone away'
-			syslog(LOG_ERR,"Reconnecting to database");
-			con.disconnect();
-			con.connect(mysql_database, mysql_host, mysql_user, mysql_password);
-			if(!con) {
-				syslog(LOG_ERR,"DB connection failed: %s", con.error());
-				return 1;
-			}
-			// try to store cdr again
-			mysqlpp::Query query = con.query();
-			buildQuery(&query);
-			query.store();
-			if(con.errnum()) {
-				syslog(LOG_ERR,"Error in query errnum:'%d' error:'%s'", con.errnum(), con.error());
-				return 0;
-			}
-
-		}
+	stringstream queryStream;
+	buildQuery(&queryStream);
+	string queryStr = queryStream.str();
+	if(verbosity > 0) { 
+		cout << queryStr << "\n";
 	}
-
-	return 0;
+	
+	return doQuery(queryStr);
 }
 
 /* TODO: implement failover -> write INSERT into file */
 int
-Call::saveRegisterToMysql() {
-	using namespace mysqlpp;
-
-	extern char mysql_host[256];
-	extern char mysql_database[256];
-	const char *mysql_table = "register";
-	extern char mysql_user[256];
-	extern char mysql_password[256];
-
-	if(!con.connected()) {
-		con.connect(mysql_database, mysql_host, mysql_user, mysql_password);
-		if(!con) {
-			syslog(LOG_ERR,"DB connection failed: %s", con.error());
-			return 1;
+Call::saveRegisterToDb() {
+	const char *register_table = "register";
+	
+	if(!prepareForEscapeString())
+		return(1);
+	
+	stringstream queryStream;
+	if(isTypeDb("mssql")) {
+		stringstream fields;
+		stringstream values;
+		fields	<< "sipcallerip, sipcalledip, calldate, fbasename, sighup";
+		values 	<< sqlEscapeString(htonl(sipcallerip))
+			<< ", " << sqlEscapeString(htonl(sipcalledip));
+		if(isTypeDb("mssql")) {
+			values << ", " << sqlEscapeString(sqlDateTimeString(calltime()).c_str());
+		} else {
+			values << ", " << "FROM_UNIXTIME(" << calltime() << ")";
 		}
-	} 
-	mysqlpp::Query query = con.query();
-	/* walk two first RTP and store it to MySQL. */
-
-	query << "INSERT INTO `" << mysql_table << "` SET " <<
-		"  sipcallerip = " << quote << htonl(sipcallerip) <<
-		", sipcalledip = " << quote << htonl(sipcalledip) <<
-		", calldate = FROM_UNIXTIME(" << calltime() << ")" <<
-		", fbasename = " << quote << fbasename << 
-		", sighup = " << quote << (sighup ? 1 : 0);
-
-	if(verbosity > 2) cout << query << "\n";
-	query.store();
-	if(con.errnum()) {
-		if(con.errnum() == 2006) {
-			//error:'MySQL server has gone away'
-			syslog(LOG_ERR,"Reconnecting to database");
-			con.disconnect();
-			con.connect(mysql_database, mysql_host, mysql_user, mysql_password);
-			if(!con) {
-				syslog(LOG_ERR,"DB connection failed: %s", con.error());
-				return 1;
-			}
-			// try to store cdr again
-			query.store();
-			if(con.errnum()) {
-				syslog(LOG_ERR,"Error in query errnum:'%d' error:'%s'", con.errnum(), con.error());
-				return 0;
-			}
-
-		}
-		syslog(LOG_ERR,"Error in query errnum:'%d' error:'%s'", con.errnum(), con.error());
+		values 	<< ", " << sqlEscapeString(fbasename)
+			<< ", " << sqlEscapeString(sighup ? 1 : 0);
+		queryStream << "INSERT INTO " << register_table << " ( " << fields.str() << " ) VALUES ( " << values.str() << " )";
+	} else {
+		queryStream << "INSERT INTO `" << register_table << "` SET " <<
+				"  sipcallerip = " << sqlEscapeString(htonl(sipcallerip)) <<
+				", sipcalledip = " << sqlEscapeString(htonl(sipcalledip)) <<
+				", calldate = FROM_UNIXTIME(" << calltime() << ")" <<
+				", fbasename = " << sqlEscapeString(fbasename) << 
+				", sighup = " << sqlEscapeString(sighup ? 1 : 0);
 	}
-
-	return 0;
+	string queryStr = queryStream.str();
+	if(verbosity > 2) {
+		cout << queryStr << "\n";
+	}
+	
+	return doQuery(queryStr);
 }
 
 /* for debug purpose */
@@ -1122,4 +1293,120 @@ Calltable::cleanup( time_t currtime ) {
 	return 0;
 }
 
+string sqlDateTimeString(time_t unixTime) {
+	struct tm * localTime = localtime(&unixTime);
+	char dateTimeBuffer[50];
+	strftime(dateTimeBuffer, sizeof(dateTimeBuffer), "%Y-%m-%d %H:%M:%S", localTime);
+	return string(dateTimeBuffer);
+}
 
+string sqlEscapeString(const char *inputStr, char borderChar) {
+	string rsltString;
+	bool escaped = false;
+	if(isSqlDriver("mysql")) {
+		if(con.connected()) {
+			con.query().escape_string(&rsltString, inputStr, strlen(inputStr));
+			escaped = true;
+		}
+	}
+	if(!escaped) {
+		struct {
+			char ch;
+			const char* escStr;
+		} 
+		escCharsMsSql[] = 
+					{ 
+						{ '\'', "\'\'" },
+						{ '\v', "" }, 		// vertical tab
+						{ '\b', "" }, 		// backspace
+						{ '\f', "" }, 		// form feed
+						{ '\a', "" }, 		// alert (bell)
+						{ '\e', "" }, 		// escape
+					},
+		escCharsMySql[] = 
+					{
+						{ '\'', "\\'" },
+						{ '"' , "\\\"" },
+						{ '\\', "\\\\" },
+						{ '\n', "\\n" }, 	// new line feed
+						{ '\r', "\\r" }, 	// cariage return
+						{ '\t', "\\t" }, 	// tab
+						{ '\v', "\\v" }, 	// vertical tab
+						{ '\b', "\\b" }, 	// backspace
+						{ '\f', "\\f" }, 	// form feed
+						{ '\a', "\\a" }, 	// alert (bell)
+						{ '\e', "" }, 		// escape
+					},
+		*escChars;
+		int countEscChars;
+		if(isTypeDb("mssql")) {
+			escChars = escCharsMsSql;
+			countEscChars = sizeof(escCharsMsSql)/sizeof(escCharsMsSql[0]);
+		} else {
+			escChars = escCharsMySql;
+			countEscChars = sizeof(escCharsMySql)/sizeof(escCharsMySql[0]);
+		}
+		int lengthStr = strlen(inputStr);
+		for(int posInputStr = 0; posInputStr<lengthStr; posInputStr++) {
+			bool isEscChar = false;
+			for(int i = 0; i<countEscChars; i++) {
+				if(escChars[i].ch == inputStr[posInputStr]) {
+					rsltString += escChars[i].escStr;
+					isEscChar = true;
+					break;
+				}
+			}
+			if(!isEscChar) {
+				rsltString += inputStr[posInputStr];
+			}
+		}
+	}
+	if(borderChar) {
+		rsltString = borderChar + rsltString + borderChar;
+	}
+	return rsltString;
+}
+
+string sqlEscapeString(unsigned int inputInt, char borderChar) {
+	char rsltString[20];
+	sprintf(rsltString,"%u",inputInt);
+	return string(rsltString);
+}
+
+bool cmpStringIgnoreCase(const char* str1, const char* str2) {
+	if(str1 == str2) {
+		return true;
+	}
+	if(((str1 || str2) && !(str1 && str2)) ||
+	   ((*str1 || *str2) && !(*str1 && *str2)) ||
+	   strlen(str1) != strlen(str2)) {
+		return false;
+	}
+	int length = strlen(str1);
+	for(int i=0; i<length; i++) {
+		if(tolower(str1[i]) != tolower(str2[i])) {
+			return false;
+		}
+	}
+	return true;
+}
+
+string reverseString(const char *str) {
+	string rslt;
+	if(str) {
+		int length = strlen(str);
+		for(int i=length-1; i>=0; i--) {
+			rslt += str[i];
+		}
+	}
+	return rslt;
+}
+
+bool isSqlDriver(const char *sqlDriver) {
+	return 	cmpStringIgnoreCase(sql_driver, sqlDriver);
+}
+
+bool isTypeDb(const char *typeDb) {
+	return 	cmpStringIgnoreCase(sql_driver, typeDb) ||
+		(cmpStringIgnoreCase(sql_driver, "odbc") && cmpStringIgnoreCase(odbc_driver, typeDb));
+}

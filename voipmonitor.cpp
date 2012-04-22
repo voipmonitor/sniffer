@@ -71,11 +71,21 @@ int opt_audio_format = FORMAT_WAV;	// define format for audio writing (if -W opt
 int opt_manager_port = 5029;	// manager api TCP port
 
 char configfile[1024] = "";	// config file name
+
+char sql_driver[256] = "mysql";
+char sql_cdr_table[256] = "cdr";
+
 char mysql_host[256] = "localhost";
 char mysql_database[256] = "voipmonitor";
 char mysql_table[256] = "cdr";
 char mysql_user[256] = "root";
 char mysql_password[256] = "";
+
+char odbc_dsn[256] = "voipmonitor";
+char odbc_user[256];
+char odbc_password[256];
+char odbc_driver[256];
+
 char opt_pidfile[] = "/var/run/voipmonitor.pid";
 char user_filter[2048] = "";
 char ifname[1024];	// Specifies the name of the network device to use for 
@@ -144,9 +154,9 @@ void *storing_cdr( void *dummy ) {
 			if(!opt_nocdr) {
 				if(verbosity > 0) printf("storing to MySQL. Queue[%d]\n", (int)calltable->calls_queue.size());
 				if(call->type == INVITE) {
-					call->saveToMysql();
+					call->saveToDb();
 				} else if(call->type == REGISTER){
-					call->saveRegisterToMysql();
+					call->saveRegisterToDb();
 				}
 			}
 
@@ -357,6 +367,12 @@ int load_config(char *fname) {
 	if((value = ini.GetValue("general", "promisc", NULL))) {
 		opt_promisc = yesno(value);
 	}
+	if((value = ini.GetValue("general", "sqldriver", NULL))) {
+		strncpy(sql_driver, value, sizeof(sql_driver));
+	}
+	if((value = ini.GetValue("general", "sqlcdrtable", NULL))) {
+		strncpy(sql_cdr_table, value, sizeof(sql_cdr_table));
+	}
 	if((value = ini.GetValue("general", "mysqlhost", NULL))) {
 		strncpy(mysql_host, value, sizeof(mysql_host));
 	}
@@ -376,6 +392,18 @@ int load_config(char *fname) {
 	}
 	if((value = ini.GetValue("general", "mysqlpassword", NULL))) {
 		strncpy(mysql_password, value, sizeof(mysql_password));
+	}
+	if((value = ini.GetValue("general", "odbcdsn", NULL))) {
+		strncpy(odbc_dsn, value, sizeof(odbc_dsn));
+	}
+	if((value = ini.GetValue("general", "odbcuser", NULL))) {
+		strncpy(odbc_user, value, sizeof(odbc_user));
+	}
+	if((value = ini.GetValue("general", "odbcpass", NULL))) {
+		strncpy(odbc_password, value, sizeof(odbc_password));
+	}
+	if((value = ini.GetValue("general", "odbcdriver", NULL))) {
+		strncpy(odbc_driver, value, sizeof(odbc_driver));
 	}
 	if((value = ini.GetValue("general", "jitterbuffer_f1", NULL))) {
 		switch(value[0]) {
@@ -434,6 +462,9 @@ void reload_config() {
 	telnumfilter_reload_do = 1;
 }
 
+int opt_test = 0;
+void test();
+
 int main(int argc, char *argv[]) {
 
 	/* parse arguments */
@@ -480,7 +511,7 @@ int main(int argc, char *argv[]) {
 	/* command line arguments overrides configuration in voipmonitor.conf file */
 	while(1) {
 		int c;
-		c = getopt_long(argc, argv, "f:i:r:d:v:h:b:t:u:p:P:kncUSRAWG", long_options, &option_index);
+		c = getopt_long(argc, argv, "f:i:r:d:v:h:b:t:u:p:P:kncUSRAWGX", long_options, &option_index);
 		//"i:r:d:v:h:b:u:p:fnU", NULL, NULL);
 		if (c == -1)
 			break;
@@ -590,6 +621,9 @@ int main(int argc, char *argv[]) {
 					opt_gzipGRAPH = 1;
 				}
 				break;
+			case 'X':
+				opt_test = 1;
+				break;
 		}
 	}
 	if ((fname == NULL) && (ifname[0] == '\0')){
@@ -697,6 +731,10 @@ int main(int argc, char *argv[]) {
 	
 	bpf_u_int32 mask;		// Holds the subnet mask associated with device.
 	char errbuf[PCAP_ERRBUF_SIZE];	// Returns error text and is only set when the pcap_lookupnet subroutine fails.
+	
+	if(opt_test) {
+		test();
+	}
 
 	if (fname == NULL && ifname[0] != '\0'){
 		bpf_u_int32 net;
@@ -837,4 +875,19 @@ int main(int argc, char *argv[]) {
 	delete calltable;
 	free(sipportmatrix);
 	unlink(opt_pidfile);
+}
+
+extern string sqlString(const char *inputStr, char borderChar = '\'');
+	
+void test() {
+
+	ipfilter = new IPfilter;
+	ipfilter->load();
+	ipfilter->dump();
+
+	telnumfilter = new TELNUMfilter;
+	telnumfilter->load();
+	telnumfilter->dump();
+	
+	exit(0);
 }

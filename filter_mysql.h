@@ -22,6 +22,15 @@
 
 class IPfilter {
 private:
+	struct db_row {
+		unsigned int ip;
+		int mask;
+		int rtp;
+		int sip;
+		int reg;
+		int graph;
+		int wav;
+	};
         struct t_node {
 		unsigned int ip;
 		int mask;
@@ -44,6 +53,14 @@ public:
 
 class TELNUMfilter {
 private:
+	struct db_row {
+		unsigned int prefix;
+		int rtp;
+		int sip;
+		int reg;
+		int graph;
+		int wav;
+	};
 	struct t_payload {
 		char prefix[32];
 		unsigned int ip;
@@ -61,7 +78,7 @@ public:
 
 	int count;
         void load();
-        void dump();
+        void dump(t_node_tel *node = NULL);
 	void add_payload(t_payload *payload);
 	int add_call_flags(unsigned int *flags, char *telnum_src, char *telnum_dst);
 };

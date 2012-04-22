@@ -653,7 +653,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 					if(verbosity > 2)
 						syslog(LOG_NOTICE, "Seen invite, CSeq: %s\n", call->invitecseq);
 				}
-
+				
 				// check if we have X-VoipMonitor-Custom1
 				s = gettag(data, datalen, "X-VoipMonitor-Custom1", &l);
 				if(l && l < 33) {

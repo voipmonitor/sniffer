@@ -2,7 +2,9 @@
 
 #include "filter_mysql.h"
 #include "calltable.h"
+#include "odbc.h"
 #include <math.h>
+#include <vector>
 
 bool is_number(const std::string& s) {
 	for (unsigned int i = 0; i < s.length(); i++) {
@@ -36,9 +38,86 @@ IPfilter::load() {
 	extern char mysql_database[256];
 	extern char mysql_user[256];
 	extern char mysql_password[256];
+	
+	extern char odbc_dsn[256];
+	extern char odbc_user[256];
+	extern char odbc_password[256];
+
+	vector<db_row> vectDbRow;
+	if(isSqlDriver("mysql")) {
+		mysqlpp::Connection con(false);
+		con.connect(mysql_database, mysql_host, mysql_user, mysql_password);
+		if(!con) {
+			syslog(LOG_ERR,"Database connection failed: %s", con.error());
+			//cerr << "Database connection failed: " << con.error() << endl;
+			return;
+		}
+		mysqlpp::Query query = con.query();
+		query << "SELECT * FROM filter_ip";
+		mysqlpp::StoreQueryResult res = query.store();
+		mysqlpp::Row row;
+		count = res.num_rows();
+		for (size_t i = 0; i < res.num_rows(); ++i) {
+			row = res.at(i);
+			db_row* filterRow = new(db_row);
+			memset(filterRow,0,sizeof(db_row));
+			filterRow->ip = (unsigned int)atoi(row["ip"]);
+			filterRow->mask = atoi(row["mask"]);
+			filterRow->rtp = atoi(row["rtp"]);
+			filterRow->sip = atoi(row["sip"]);
+			filterRow->reg = atoi(row["register"]);
+			filterRow->graph = atoi(row["graph"]);
+			filterRow->wav = atoi(row["wav"]);
+			vectDbRow.push_back(*filterRow);
+		}
+	} else if(isSqlDriver("odbc")) {
+		Odbc odbc;
+		if(!odbc.connect(odbc_dsn, odbc_user, odbc_password)) {
+			syslog(LOG_ERR,"Database connection failed: %s", odbc.getLastErrorString());
+			return;
+		}
+		if(!odbc.query("SELECT ip, mask, rtp, sip, register, graph, wav FROM filter_ip")) {
+			syslog(LOG_ERR,"SQL query failed: %s", odbc.getLastErrorString());
+			return;
+		}
+		db_row filterRow;
+		memset(&filterRow,0,sizeof(db_row));
+		odbc.bindCol(1, SQL_C_ULONG, &filterRow.ip);
+		odbc.bindCol(2, SQL_C_LONG, &filterRow.mask);
+		odbc.bindCol(3, SQL_C_LONG, &filterRow.rtp);
+		odbc.bindCol(4, SQL_C_LONG, &filterRow.sip);
+		odbc.bindCol(5, SQL_C_LONG, &filterRow.reg);
+		odbc.bindCol(6, SQL_C_LONG, &filterRow.graph);
+		odbc.bindCol(7, SQL_C_LONG, &filterRow.wav);
+		while(odbc.fetchRow()) {
+			vectDbRow.push_back(filterRow);
+		}
+	}
 
 	t_node *node;
+	for (size_t i = 0; i < vectDbRow.size(); ++i) {
+		node = new(t_node);
+		node->flags = 0;
+		node->next = NULL;
+		node->ip = vectDbRow[i].ip;
+		node->mask = vectDbRow[i].mask;
+		if(vectDbRow[i].rtp)	node->flags |= FLAG_RTP;
+			else		node->flags |= FLAG_NORTP;
+		if(vectDbRow[i].sip)	node->flags |= FLAG_SIP;
+			else		node->flags |= FLAG_NOSIP;
+		if(vectDbRow[i].reg)	node->flags |= FLAG_REGISTER;
+			else		node->flags |= FLAG_NOREGISTER;
+		if(vectDbRow[i].graph)	node->flags |= FLAG_GRAPH;
+			else		node->flags |= FLAG_NOGRAPH;
+		if(vectDbRow[i].wav)	node->flags |= FLAG_WAV;
+			else		node->flags |= FLAG_NOWAV;
+		// add node to the first position
+		node->next = first_node;
+		first_node = node;
+	}
 
+	/*
+	t_node *node;
 	mysqlpp::Connection con(false);
 	con.connect(mysql_database, mysql_host, mysql_user, mysql_password);
 	if(!con) {
@@ -97,6 +176,7 @@ IPfilter::load() {
 		node->next = first_node;
 		first_node = node;
 	}
+	*/
 };
 
 int
@@ -165,9 +245,9 @@ IPfilter::dump() {
 TELNUMfilter::TELNUMfilter() {
         first_node = new(t_node_tel);
         first_node->payload = NULL;
-        for(int i = 0; i < 10; i++)
+        for(int i = 0; i < 10; i++) {
                 first_node->nodes[i] = NULL;
-
+	}
 	count = 0;
 };
 
@@ -213,8 +293,9 @@ TELNUMfilter::add_payload(t_payload *payload) {
 		if(!tmp->nodes[payload->prefix[i] - 48]) {
 			t_node_tel *node = new(t_node_tel);
 			node->payload = NULL;
-			for(int j = 0; j < 10; j++)
+			for(int j = 0; j < 10; j++) {
 				node->nodes[j] = NULL;
+			}
 			tmp->nodes[payload->prefix[i] - 48] = node;
 		}
 		tmp = tmp->nodes[payload->prefix[i] - 48];      // shift
@@ -234,6 +315,77 @@ TELNUMfilter::load() {
 	extern char mysql_user[256];
 	extern char mysql_password[256];
 
+	extern char odbc_dsn[256];
+	extern char odbc_user[256];
+	extern char odbc_password[256];
+
+	vector<db_row> vectDbRow;
+	if(isSqlDriver("mysql")) {
+		mysqlpp::Connection con(false);
+		con.connect(mysql_database, mysql_host, mysql_user, mysql_password);
+		if(!con) {
+			syslog(LOG_ERR,"Database connection failed: %s", con.error());
+			//cerr << "Database connection failed: " << con.error() << endl;
+			return;
+		}
+		mysqlpp::Query query = con.query();
+		query << "SELECT * FROM filter_telnum";
+		mysqlpp::StoreQueryResult res = query.store();
+		mysqlpp::Row row;
+		count = res.num_rows();
+		for (size_t i = 0; i < res.num_rows(); ++i) {
+			row = res.at(i);
+			db_row* filterRow = new(db_row);
+			memset(filterRow,0,sizeof(db_row));
+			filterRow->prefix = (unsigned int)atoi(row["prefix"]);
+			filterRow->rtp = atoi(row["rtp"]);
+			filterRow->sip = atoi(row["sip"]);
+			filterRow->reg = atoi(row["register"]);
+			filterRow->graph = atoi(row["graph"]);
+			filterRow->wav = atoi(row["wav"]);
+			vectDbRow.push_back(*filterRow);
+		}
+	} else if(isSqlDriver("odbc")) {
+		Odbc odbc;
+		if(!odbc.connect(odbc_dsn, odbc_user, odbc_password)) {
+			syslog(LOG_ERR,"Database connection failed: %s", odbc.getLastErrorString());
+			return;
+		}
+		if(!odbc.query("SELECT prefix, rtp, sip, register, graph, wav FROM filter_telnum")) {
+			syslog(LOG_ERR,"SQL query failed: %s", odbc.getLastErrorString());
+			return;
+		}
+		db_row filterRow;
+		memset(&filterRow,0,sizeof(db_row));
+		odbc.bindCol(1, SQL_C_ULONG, &filterRow.prefix);
+		odbc.bindCol(2, SQL_C_LONG, &filterRow.rtp);
+		odbc.bindCol(3, SQL_C_LONG, &filterRow.sip);
+		odbc.bindCol(4, SQL_C_LONG, &filterRow.reg);
+		odbc.bindCol(5, SQL_C_LONG, &filterRow.graph);
+		odbc.bindCol(6, SQL_C_LONG, &filterRow.wav);
+		while(odbc.fetchRow()) {
+			vectDbRow.push_back(filterRow);
+		}
+	}
+	
+	for (size_t i = 0; i < vectDbRow.size(); ++i) {
+		t_payload *np = new(t_payload);
+		np->flags = 0;
+		sprintf(np->prefix,"%u",vectDbRow[i].prefix);
+		if(vectDbRow[i].rtp)	np->flags |= FLAG_RTP;
+			else		np->flags |= FLAG_NORTP;
+		if(vectDbRow[i].sip)	np->flags |= FLAG_SIP;
+			else		np->flags |= FLAG_NOSIP;
+		if(vectDbRow[i].reg)	np->flags |= FLAG_REGISTER;
+			else		np->flags |= FLAG_NOREGISTER;
+		if(vectDbRow[i].graph)	np->flags |= FLAG_GRAPH;
+			else		np->flags |= FLAG_NOGRAPH;
+		if(vectDbRow[i].wav)	np->flags |= FLAG_WAV;
+			else		np->flags |= FLAG_NOWAV;
+		add_payload(np);
+	}
+	
+	/*
 	mysqlpp::Connection con(false);
 	con.connect(mysql_database, mysql_host, mysql_user, mysql_password);
 	if(!con) {
@@ -292,6 +444,7 @@ TELNUMfilter::load() {
 		// add node to the first position
 		add_payload(np);
 	}
+	*/
 };
 
 int
@@ -373,7 +526,18 @@ TELNUMfilter::add_call_flags(unsigned int *flags, char *telnum_src, char *telnum
 }
 
 void
-TELNUMfilter::dump() {
+TELNUMfilter::dump(t_node_tel *node) {
+	if(!node) {
+		node = first_node;
+	}
+	if(node->payload) {
+		printf("prefix[%s] flags[%u]\n", node->payload->prefix, node->payload->flags);
+	}
+	for(int i = 0; i < 10; i++) {
+		if(node->nodes[i]) {
+			this->dump(node->nodes[i]);
+		}
+	}
 }
 
 
