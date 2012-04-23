@@ -5,7 +5,9 @@
 
 #include <queue>
 
-void *read_thread_func(void *arg);
+void *rtp_read_thread_func(void *arg);
+void *pcap_read_thread_func(void *arg);
+
 void process_packet(unsigned int saddr, int source, unsigned int daddr, int dest, char *data, int datalen,
                     pcap_t *handle, pcap_pkthdr *header, const u_char *packet);
 void readdump_libnids(pcap_t *handle);
@@ -45,3 +47,8 @@ typedef struct {
 	sem_t semaphore;
 } read_thread;
 
+typedef struct {
+	struct pcap_pkthdr header;
+	u_char *packet;
+	int offset;
+} pcap_packet;

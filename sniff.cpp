@@ -48,6 +48,9 @@ using namespace std;
 #define MAX(x,y) ((x) > (y) ? (x) : (y))
 #define MIN(x,y) ((x) < (y) ? (x) : (y))
 
+queue<pcap_packet*> readpacket_thread_queue;
+extern pthread_mutex_t readpacket_thread_queue_lock;
+
 Calltable *calltable;
 extern int calls;
 extern int opt_saveSIP;	  	// save SIP packets to pcap file?
@@ -74,6 +77,8 @@ extern TELNUMfilter *telnumfilter_reload;
 extern int telnumfilter_reload_do;
 
 extern int rtp_threaded;
+extern int pcap_threaded;
+extern sem_t readpacket_thread_semaphore;
 
 struct tcp_stream2 {
 	char *data;
@@ -283,15 +288,16 @@ void add_to_rtp_thread_queue(Call *call, unsigned char *data, int datalen, struc
 	rtpp->port = port;
 	rtpp->iscaller = iscaller;
 	memcpy(&rtpp->header, header, sizeof(struct pcap_pkthdr));
+	memcpy(rtpp->data, data, datalen);
 
 	pthread_mutex_lock(&(threads[call->thread_num].qlock));
 	threads[call->thread_num].pqueue.push(rtpp);
 	pthread_mutex_unlock(&(threads[call->thread_num].qlock));
-	int res = sem_post(&threads[call->thread_num].semaphore);
+	sem_post(&threads[call->thread_num].semaphore);
 }
 
 
-void *read_thread_func(void *arg) {
+void *rtp_read_thread_func(void *arg) {
 	rtp_packet *rtpp;
 	read_thread *params = (read_thread*)arg;
 	while(1) {
@@ -1051,6 +1057,55 @@ void readdump_libnids(pcap_t *handle) {
 }
 #endif
 
+void *pcap_read_thread_func(void *arg) {
+	pcap_packet *pp;
+	struct iphdr *header_ip;
+	struct udphdr *header_udp;
+	struct udphdr header_udp_tmp;
+	struct tcphdr *header_tcp;
+	char *data;
+	int datalen;
+	int istcp = 0;
+	while(1) {
+		sem_wait(&readpacket_thread_semaphore);
+
+		pthread_mutex_lock(&readpacket_thread_queue_lock);
+		pp = readpacket_thread_queue.front();
+		readpacket_thread_queue.pop();
+		pthread_mutex_unlock(&readpacket_thread_queue_lock);
+
+		header_ip = (struct iphdr *) ((char*)pp->packet + pp->offset);
+		header_udp = &header_udp_tmp;
+		if (header_ip->protocol == IPPROTO_UDP) {
+			// prepare packet pointers 
+			header_udp = (struct udphdr *) ((char *) header_ip + sizeof(*header_ip));
+			data = (char *) header_udp + sizeof(*header_udp);
+			datalen = (int)(pp->header.len - ((unsigned long) data - (unsigned long) pp->packet)); 
+			istcp = 0;
+		} else if (header_ip->protocol == IPPROTO_TCP) {
+			istcp = 1;
+			// prepare packet pointers 
+			header_tcp = (struct tcphdr *) ((char *) header_ip + sizeof(*header_ip));
+			data = (char *) header_tcp + (header_tcp->doff * 4);
+			datalen = (int)(pp->header.len - ((unsigned long) data - (unsigned long) pp->packet)); 
+
+			header_udp->source = header_tcp->source;
+			header_udp->dest = header_tcp->dest;
+		} else {
+			//packet is not UDP and is not TCP, we are not interested, go to the next packet
+			continue;
+		}
+
+		process_packet(header_ip->saddr, htons(header_udp->source), header_ip->daddr, htons(header_udp->dest), 
+			    data, datalen, handle, &pp->header, pp->packet, istcp, 0);
+
+		free(pp->packet);
+		free(pp);
+	}
+
+	return NULL;
+}
+
 void readdump_libpcap(pcap_t *handle) {
 	struct pcap_pkthdr *header;	// The header that pcap gives us
 	const u_char *packet = NULL;		// The actual packet 
@@ -1184,11 +1239,26 @@ void readdump_libpcap(pcap_t *handle) {
 			continue;
 		}
 
-
 		if(datalen < 0) {
 			continue;
 		}
-		
+
+		if(pcap_threaded) {
+			//add packet to queue
+			pcap_packet *pp = (pcap_packet*)malloc(sizeof(pcap_packet));
+			pp->packet = (u_char*)malloc(sizeof(u_char) * header->len);
+			pp->offset = offset;
+			memcpy(&pp->header, header, sizeof(struct pcap_pkthdr));
+			memcpy(pp->packet, packet, header->len);
+
+			pthread_mutex_lock(&readpacket_thread_queue_lock);
+			readpacket_thread_queue.push(pp);
+			pthread_mutex_unlock(&readpacket_thread_queue_lock);
+
+			sem_post(&readpacket_thread_semaphore);
+			continue;
+		}
+
 		process_packet(header_ip->saddr, htons(header_udp->source), header_ip->daddr, htons(header_udp->dest), 
 			    data, datalen, handle, header, packet, istcp, 0);
 	}

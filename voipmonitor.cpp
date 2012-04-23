@@ -97,6 +97,8 @@ char pcapcommand[4092] = "";
 int rtp_threaded = 1;
 int num_threads = 1;
 
+int pcap_threaded = 1;
+
 char opt_chdir[1024];
 
 IPfilter *ipfilter = NULL;		// IP filter based on MYSQL 
@@ -115,6 +117,10 @@ char *sipportmatrix;		// matrix of sip ports to monitor
 pcap_t *handle = NULL;		// pcap handler 
 
 read_thread *threads;
+
+pthread_t pcap_read_thread;
+pthread_mutex_t readpacket_thread_queue_lock;
+sem_t readpacket_thread_semaphore;
 
 void terminate2() {
 	terminating = 1;
@@ -794,6 +800,9 @@ int main(int argc, char *argv[]) {
 			return(2);
 		}
 	} else {
+		// if reading file, do not make it threaded
+		//rtp_threaded = 0;
+		//pcap_threaded = 0;
 		printf("Reading file: %s\n", fname);
 		mask = PCAP_NETMASK_UNKNOWN;
 		handle = pcap_open_offline(fname, errbuf);
@@ -855,11 +864,18 @@ int main(int argc, char *argv[]) {
 	pthread_create(&manager_thread, NULL, manager_server, NULL);
 
 	// start reading threads
-	threads = new read_thread();
-	for(int i = 0; i < num_threads; i++) {
-		pthread_mutex_init(&(threads[i].qlock), NULL);
-		sem_init(&(threads[i].semaphore), 0, 0);
-		pthread_create(&(threads[i].thread), NULL, read_thread_func, (void*)&threads[i]);
+	if(rtp_threaded) {
+		threads = new read_thread();
+		for(int i = 0; i < num_threads; i++) {
+			pthread_mutex_init(&(threads[i].qlock), NULL);
+			sem_init(&(threads[i].semaphore), 0, 0);
+			pthread_create(&(threads[i].thread), NULL, rtp_read_thread_func, (void*)&threads[i]);
+		}
+	}
+	if(pcap_threaded) {
+		pthread_mutex_init(&readpacket_thread_queue_lock, NULL);
+		sem_init(&readpacket_thread_semaphore, 0, 0);
+		pthread_create(&pcap_read_thread, NULL, pcap_read_thread_func, NULL);
 	}
 
 	// start reading packets
