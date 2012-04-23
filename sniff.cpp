@@ -1066,8 +1066,12 @@ void *pcap_read_thread_func(void *arg) {
 	char *data;
 	int datalen;
 	int istcp = 0;
+	int semres;
 	while(1) {
-		sem_wait(&readpacket_thread_semaphore);
+		semres = sem_wait(&readpacket_thread_semaphore);
+		if(semres != 0) {
+			printf("Error pcap_read_thread_func sem_wait returns != 0\n");
+		}
 
 		pthread_mutex_lock(&readpacket_thread_queue_lock);
 		pp = readpacket_thread_queue.front();
