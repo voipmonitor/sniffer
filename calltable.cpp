@@ -112,6 +112,7 @@ Call::Call(char *call_id, unsigned long call_id_len, time_t time, void *ct) {
 	lastcalledrtp = NULL;
 	destroy_call_at = 0;
 	custom_header1[0] = '\0';
+	thread_num = 0;
 }
 
 void

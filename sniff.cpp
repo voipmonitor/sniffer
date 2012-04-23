@@ -23,6 +23,7 @@ and insert them into Call class.
 #include <netinet/ip.h>
 #include <netinet/tcp.h>
 #include <syslog.h>
+#include <semaphore.h>
 
 #include <pcap.h>
 //#include <pcap/sll.h>
@@ -62,6 +63,7 @@ extern int opt_rtp_firstleg;
 extern int opt_sip_register;
 extern char *sipportmatrix;
 extern pcap_t *handle;
+extern read_thread *threads;
 
 extern IPfilter *ipfilter;
 extern IPfilter *ipfilter_reload;
@@ -70,6 +72,8 @@ extern int ipfilter_reload_do;
 extern TELNUMfilter *telnumfilter;
 extern TELNUMfilter *telnumfilter_reload;
 extern int telnumfilter_reload_do;
+
+extern int rtp_threaded;
 
 struct tcp_stream2 {
 	char *data;
@@ -270,6 +274,44 @@ int get_rtpmap_from_sdp(char *sdp_text, unsigned long len, int *rtpmap){
 	 return 0;
 }
 
+void add_to_rtp_thread_queue(Call *call, unsigned char *data, int datalen, struct pcap_pkthdr *header,  u_int32_t saddr, unsigned short port, int iscaller) {
+	rtp_packet *rtpp = (rtp_packet*)malloc(sizeof(rtp_packet));
+	rtpp->call = call;
+	rtpp->data = (unsigned char *)malloc(sizeof(unsigned char) * datalen);
+	rtpp->datalen = datalen;
+	rtpp->saddr = saddr;
+	rtpp->port = port;
+	rtpp->iscaller = iscaller;
+	memcpy(&rtpp->header, header, sizeof(struct pcap_pkthdr));
+
+	pthread_mutex_lock(&(threads[call->thread_num].qlock));
+	threads[call->thread_num].pqueue.push(rtpp);
+	pthread_mutex_unlock(&(threads[call->thread_num].qlock));
+	int res = sem_post(&threads[call->thread_num].semaphore);
+}
+
+
+void *read_thread_func(void *arg) {
+	rtp_packet *rtpp;
+	read_thread *params = (read_thread*)arg;
+	while(1) {
+		sem_wait(&params->semaphore);
+
+		pthread_mutex_lock(&(params->qlock));
+		rtpp = params->pqueue.front();
+		params->pqueue.pop();
+		pthread_mutex_unlock(&(params->qlock));
+		
+		rtpp->call->read_rtp(rtpp->data, rtpp->datalen, &rtpp->header, rtpp->saddr, rtpp->port, rtpp->iscaller);
+		rtpp->call->set_last_packet_time(rtpp->header.ts.tv_sec);
+
+		free(rtpp->data);
+		free(rtpp);
+	}
+
+	return NULL;
+}
+
 Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int dest, char *data, int datalen,
 	pcap_t *handle, pcap_pkthdr *header, const u_char *packet, int istcp, int dontsave) {
 
@@ -349,11 +391,16 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 		}
 		// packet (RTP) by destination:port is already part of some stored call 
 		if(!dontsave && is_rtcp && (opt_saveRTP || opt_saveRTCP)) {
+			// RTCP is only saved
 			save_packet(call, header, packet);
 			return call;
 		}
-		call->read_rtp((unsigned char*) data, datalen, header, saddr, source, iscaller);
-		call->set_last_packet_time(header->ts.tv_sec);
+		if(rtp_threaded) {
+			add_to_rtp_thread_queue(call, (unsigned char*) data, datalen, header, saddr, source, iscaller);
+		} else {
+			call->read_rtp((unsigned char*) data, datalen, header, saddr, source, iscaller);
+			call->set_last_packet_time(header->ts.tv_sec);
+		}
 		if(!dontsave && call->flags & FLAG_SAVERTP) {
 			save_packet(call, header, packet);
 		}
@@ -370,8 +417,12 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 			return call;
 		}
 		// as we are searching by source address and find some call, revert iscaller 
-		call->read_rtp((unsigned char*) data, datalen, header, saddr, source, !iscaller);
-		call->set_last_packet_time(header->ts.tv_sec);
+		if(rtp_threaded) {
+			add_to_rtp_thread_queue(call, (unsigned char*) data, datalen, header, saddr, source, !iscaller);
+		} else {
+			call->read_rtp((unsigned char*) data, datalen, header, saddr, source, !iscaller);
+			call->set_last_packet_time(header->ts.tv_sec);
+		}
 		if(!dontsave && call->flags & FLAG_SAVERTP) {
 			save_packet(call, header, packet);
 		}

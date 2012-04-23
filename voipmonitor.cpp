@@ -23,6 +23,7 @@
 #include <unistd.h>
 #include <syslog.h>
 #include <sys/resource.h>
+#include <semaphore.h>
 
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -93,6 +94,9 @@ char ifname[1024];	// Specifies the name of the network device to use for
 int opt_promisc = 1;	// put interface to promisc mode?
 char pcapcommand[4092] = "";
 
+int rtp_threaded = 1;
+int num_threads = 1;
+
 char opt_chdir[1024];
 
 IPfilter *ipfilter = NULL;		// IP filter based on MYSQL 
@@ -109,6 +113,8 @@ int terminating;		// if set to 1, worker thread will terminate
 char *sipportmatrix;		// matrix of sip ports to monitor
 
 pcap_t *handle = NULL;		// pcap handler 
+
+read_thread *threads;
 
 void terminate2() {
 	terminating = 1;
@@ -847,6 +853,15 @@ int main(int argc, char *argv[]) {
 
 	// start manager thread 	
 	pthread_create(&manager_thread, NULL, manager_server, NULL);
+
+	// start reading threads
+	threads = new read_thread();
+	for(int i = 0; i < num_threads; i++) {
+		pthread_mutex_init(&(threads[i].qlock), NULL);
+		sem_init(&(threads[i].semaphore), 0, 0);
+		pthread_create(&(threads[i].thread), NULL, read_thread_func, (void*)&threads[i]);
+	}
+
 	// start reading packets
 //	readdump_libnids(handle);
 	readdump_libpcap(handle);

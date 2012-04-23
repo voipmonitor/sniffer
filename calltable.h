@@ -104,6 +104,8 @@ public:
 	unsigned int flags;		//!< structure holding FLAGS*
 
 	int *listening_worker_run;
+
+	int thread_num;
 	
 	/**
 	 * constructor

@@ -3,6 +3,9 @@
  * the GNU General Public License Version 2.
 */
 
+#include <queue>
+
+void *read_thread_func(void *arg);
 void process_packet(unsigned int saddr, int source, unsigned int daddr, int dest, char *data, int datalen,
                     pcap_t *handle, pcap_pkthdr *header, const u_char *packet);
 void readdump_libnids(pcap_t *handle);
@@ -24,4 +27,21 @@ struct udphdr {
         uint16_t        len;
         uint16_t        check;
 };
+
+typedef struct {
+	Call *call;
+	unsigned char *data;
+	int datalen;
+	u_int32_t saddr;
+	unsigned short port;
+	int iscaller;
+	struct pcap_pkthdr header;
+} rtp_packet;
+
+typedef struct {
+	pthread_t thread;	       // ID of worker storing CDR thread 
+	queue<rtp_packet*> pqueue;
+	pthread_mutex_t qlock;
+	sem_t semaphore;
+} read_thread;
 
