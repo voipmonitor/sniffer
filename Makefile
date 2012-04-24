@@ -1,13 +1,14 @@
 objects = codec_alaw.o codec_ulaw.o format_slinear.o format_wav.o format_ogg.o calltable.o rtp.o voipmonitor.o sniff.o jitterbuffer/astmm.o jitterbuffer/utils.o jitterbuffer/fixedjitterbuf.o jitterbuffer/jitterbuf.o jitterbuffer/abstract_jb.o jitterbuffer/frame.o gzstream/gzstream.o gzstream/libgzstream.a manager.o tools.o filter_mysql.o hash.o mos_g729.o odbc.o
 args = -g3 -Wall
 #args = -O2 -Wall
-CFLAGS+=-I /usr/local/include/mysql++/ -I /usr/include/mysql++/ -I /usr/include/mysql/ -g3 -Wall -I jitterbuffer/  -L/usr/local/lib/ -Lgzstream/
-LIBS=-lpthread -lmysqlpp -lpcap -lgzstream -lz -lvorbis -lvorbisenc -logg -lodbc #-lnids
+CFLAGS+=-I /usr/local/include/mysql++/ -I /usr/include/mysql++/ -I /usr/include/mysql/ -g3 -Wall -I jitterbuffer/  -L/usr/local/lib/ -Lgzstream/ -Lliblfds.6/bin/
+LIBS=-lpthread -lmysqlpp -lpcap -lgzstream -lz -lvorbis -lvorbisenc -logg -lodbc -llfds #-lnids
 #if you want to compile it statically uncomment this line
 #LIBS=-static -lpthread -L/usr/lib/mysql -lmysqlpp -lmysqlclient -lpcap -lgzstream -lz -lvorbis -lvorbisenc -logg
 
 
 voipmonitor : $(objects) 
+	make -C liblfds.6
 	g++ $(objects) ${CFLAGS} -o $@ ${LIBS}
 
 gzstream/gzstream.o : gzstream/gzstream.C gzstream/gzstream.h
@@ -62,6 +63,7 @@ odbc.o : odbc.cpp odbc.h
 	g++ -c odbc.cpp $(args) ${CFLAGS}
 	
 clean :
+	make -C liblfds.6 clean
 	rm -f $(objects) voipmonitor gzstream/*.o libgzstream.a
 
 install: 

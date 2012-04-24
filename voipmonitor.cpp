@@ -38,6 +38,11 @@
 #include "manager.h"
 #include "filter_mysql.h"
 
+extern "C" {
+#include "liblfds.6/inc/liblfds.h"
+}
+
+
 using namespace std;
 
 /* global variables */
@@ -94,7 +99,7 @@ char ifname[1024];	// Specifies the name of the network device to use for
 int opt_promisc = 1;	// put interface to promisc mode?
 char pcapcommand[4092] = "";
 
-int rtp_threaded = 1;
+int rtp_threaded = 0;
 int num_threads = 1;
 
 int pcap_threaded = 1;
@@ -121,6 +126,8 @@ read_thread *threads;
 pthread_t pcap_read_thread;
 pthread_mutex_t readpacket_thread_queue_lock;
 sem_t readpacket_thread_semaphore;
+
+struct queue_state *qs_readpacket_thread_queue;
 
 void terminate2() {
 	terminating = 1;
@@ -873,8 +880,11 @@ int main(int argc, char *argv[]) {
 		}
 	}
 	if(pcap_threaded) {
+		/*
 		pthread_mutex_init(&readpacket_thread_queue_lock, NULL);
 		sem_init(&readpacket_thread_semaphore, 0, 0);
+		*/
+		queue_new(&qs_readpacket_thread_queue, 100000);
 		pthread_create(&pcap_read_thread, NULL, pcap_read_thread_func, NULL);
 	}
 

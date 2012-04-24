@@ -43,6 +43,10 @@ and insert them into Call class.
 #include "filter_mysql.h"
 #include "hash.h"
 
+extern "C" {
+#include "liblfds.6/inc/liblfds.h"
+}
+
 using namespace std;
 
 #define MAX(x,y) ((x) > (y) ? (x) : (y))
@@ -93,6 +97,8 @@ struct tcp_stream2 {
 
 tcp_stream2 *tcp_streams_hashed[MAX_TCPSTREAMS];
 list<tcp_stream2*> tcp_streams_list;
+
+extern struct queue_state *qs_readpacket_thread_queue;
 
 /* save packet into file */
 void save_packet(Call *call, struct pcap_pkthdr *header, const u_char *packet) {
@@ -1066,10 +1072,12 @@ void *pcap_read_thread_func(void *arg) {
 	char *data;
 	int datalen;
 	int istcp = 0;
-	int semres;
+	int res;
 	while(1) {
-		semres = sem_wait(&readpacket_thread_semaphore);
-		if(semres != 0) {
+
+/*
+		res = sem_wait(&readpacket_thread_semaphore);
+		if(res != 0) {
 			printf("Error pcap_read_thread_func sem_wait returns != 0\n");
 		}
 
@@ -1077,6 +1085,14 @@ void *pcap_read_thread_func(void *arg) {
 		pp = readpacket_thread_queue.front();
 		readpacket_thread_queue.pop();
 		pthread_mutex_unlock(&readpacket_thread_queue_lock);
+*/
+
+		if((res = queue_dequeue(qs_readpacket_thread_queue, (void **)&pp)) != 1) {
+			// queue is empty
+			usleep(1000);
+			continue;
+		};
+		printf("res [%d] deq [%p]\n", res, pp);
 
 		header_ip = (struct iphdr *) ((char*)pp->packet + pp->offset);
 		header_udp = &header_udp_tmp;
@@ -1255,11 +1271,15 @@ void readdump_libpcap(pcap_t *handle) {
 			memcpy(&pp->header, header, sizeof(struct pcap_pkthdr));
 			memcpy(pp->packet, packet, header->len);
 
+			/*
 			pthread_mutex_lock(&readpacket_thread_queue_lock);
 			readpacket_thread_queue.push(pp);
 			pthread_mutex_unlock(&readpacket_thread_queue_lock);
+			*/
+			printf("enq [%p]\n", pp);
+			queue_enqueue(qs_readpacket_thread_queue, (void*)pp); 
 
-			sem_post(&readpacket_thread_semaphore);
+			//sem_post(&readpacket_thread_semaphore);
 			continue;
 		}
 
