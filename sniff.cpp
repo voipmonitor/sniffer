@@ -123,21 +123,28 @@ char * gettag(const void *ptr, unsigned long len, const char *tag, unsigned long
 	tl = strlen(tag);
 	r = (unsigned long)memmem(ptr, len, tag, tl);
 	if(r == 0){
+		// tag did not match
 		l = 0;
 	} else {
+		//tag matches move r pointer behind the tag name
 		r += tl;
 		l = (unsigned long)memmem((void *)r, len - (r - (unsigned long)ptr), "\r\n", 2);
 		if (l > 0){
+			// remove trailing \r\n and set l to length of the tag
 			l -= r;
 		} else {
+			// trailing \r\n not found
 			l = 0;
 		}
 	}
-	rc = (char*)r;
-	if (rc) {
-		while (rc[0] == ' '){
-			rc++;
-			l--;
+	// left trim spacees
+	if(l > 0) {
+		rc = (char*)r;
+		if (rc) {
+			while (((char *)ptr + len) > rc && rc[0] == ' '){
+				rc++;
+				l--;
+			}
 		}
 	}
 	*gettaglen = l;
@@ -223,6 +230,7 @@ int get_ip_port_from_sdp(char *sdp_text, in_addr_t *addr, unsigned short *port){
 	char *s;
 	char s1[20];
 	s=gettag(sdp_text,strlen(sdp_text), "c=IN IP4 ", &l);
+	if(l == 0) return 1;
 	memset(s1, '\0', sizeof(s1));
 	memcpy(s1, s, MIN(l, 19));
 	if ((int32_t)(*addr = inet_addr(s1)) == -1){
@@ -1306,6 +1314,9 @@ void readdump_libpcap(pcap_t *handle) {
 			pp->offset = offset;
 			memcpy(&pp->header, header, sizeof(struct pcap_pkthdr));
 			memcpy(pp->packet, packet, header->len);
+			if(header->caplen > header->len) {
+				syslog(LOG_ERR, "error: header->caplen > header->len FIX!");
+			}
 
 #ifdef QUEUE_MUTEX
 			pthread_mutex_lock(&readpacket_thread_queue_lock);

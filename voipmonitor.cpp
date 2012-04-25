@@ -130,7 +130,7 @@ sem_t readpacket_thread_semaphore;
 #endif
 
 #ifdef QUEUE_NONBLOCK
-struct queue_state *qs_readpacket_thread_queue;
+struct queue_state *qs_readpacket_thread_queue = NULL;
 #endif
 
 void terminate2() {
@@ -807,7 +807,7 @@ int main(int argc, char *argv[]) {
 		}
 
 		if((status = pcap_activate(handle)) != 0) {
-			fprintf(stderr, "error pcap_activate\n");
+			fprintf(stderr, "libpcap error: [%s]\n", pcap_geterr(handle));
 			return(2);
 		}
 	} else {
@@ -884,6 +884,7 @@ int main(int argc, char *argv[]) {
 #endif
 
 #ifdef QUEUE_NONBLOCK
+			threads[i].pqueue = NULL;
 			queue_new(&(threads[i].pqueue), 10000);
 #endif
 
