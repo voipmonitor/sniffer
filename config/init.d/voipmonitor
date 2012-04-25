@@ -1,5 +1,17 @@
 #!/bin/sh
 
+### BEGIN INIT INFO
+# Provides:             voipmonitor
+# Required-Start:       $network $remote_fs $syslog $all
+# Required-Stop:        $network $remote_fs $syslog $all
+# Should-Start:
+# Should-Stop:
+# Default-Start:        2 3 4 5
+# Default-Stop:         0 1 6
+# Short-Description:    Voipmonitor
+# Description:          Monitor voice quality of SIP/RTP/RTCP
+### END INIT INFO
+
 # chkconfig: 2345 90 10
 # description: voipmonitor 
 # on centos, run chkconfig --add voipmonitor; chkconfig voipmonitor on
@@ -17,7 +29,7 @@ case "$1" in
   	if [ -f $PIDFILE ]; then
 		PID=`cat $PIDFILE`
 		NAME=`ps -o comm= $PID`
-		if [ "$NAME" == "voipmonitor" ]; then
+		if [ "$NAME" = "voipmonitor" ]; then
 			echo "Voipmonitor is already running"
 		else
 			rm $PIDFILE
@@ -33,7 +45,7 @@ case "$1" in
   	if [ -f $PIDFILE ]; then
 		PID=`cat $PIDFILE`
 		NAME=`ps -o comm= $PID`
-		if [ "$NAME" == "voipmonitor" ]; then
+		if [ "$NAME" = "voipmonitor" ]; then
 			echo "Sending kill signal to voipmonitor"
 			kill $PID
 		else
@@ -48,7 +60,7 @@ case "$1" in
   	if [ -f $PIDFILE ]; then
 		PID=`cat $PIDFILE`
 		NAME=`ps -o comm= $PID`
-		if [ "$NAME" == "voipmonitor" ]; then
+		if [ "$NAME" -eq "voipmonitor" ]; then
 			echo "Sending kill signal to voipmonitor"
 			kill -9 $PID
 		else
@@ -75,5 +87,5 @@ case "$1" in
 	;;
 esac
 
-exit 0
+exit
 
