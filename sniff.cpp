@@ -52,8 +52,10 @@ using namespace std;
 #define MAX(x,y) ((x) > (y) ? (x) : (y))
 #define MIN(x,y) ((x) < (y) ? (x) : (y))
 
+#ifdef	MUTEX_THREAD
 queue<pcap_packet*> readpacket_thread_queue;
 extern pthread_mutex_t readpacket_thread_queue_lock;
+#endif
 
 Calltable *calltable;
 extern int calls;
@@ -82,7 +84,10 @@ extern int telnumfilter_reload_do;
 
 extern int rtp_threaded;
 extern int pcap_threaded;
+
+#ifdef QUEUE_MUTEX
 extern sem_t readpacket_thread_semaphore;
+#endif
 
 struct tcp_stream2 {
 	char *data;
@@ -293,13 +298,25 @@ void add_to_rtp_thread_queue(Call *call, unsigned char *data, int datalen, struc
 	rtpp->saddr = saddr;
 	rtpp->port = port;
 	rtpp->iscaller = iscaller;
+
 	memcpy(&rtpp->header, header, sizeof(struct pcap_pkthdr));
 	memcpy(rtpp->data, data, datalen);
 
+#ifdef QUEUE_MUTEX
 	pthread_mutex_lock(&(threads[call->thread_num].qlock));
 	threads[call->thread_num].pqueue.push(rtpp);
 	pthread_mutex_unlock(&(threads[call->thread_num].qlock));
 	sem_post(&threads[call->thread_num].semaphore);
+#endif
+
+#ifdef QUEUE_NONBLOCK
+	if(queue_enqueue(threads[call->thread_num].pqueue, (void*)rtpp) == 0) {
+		// enqueue failed, try to raise queue
+		if(queue_guaranteed_enqueue(threads[call->thread_num].pqueue, (void*)rtpp) == 0) {
+			syslog(LOG_ERR, "error: add_to_rtp_thread_queue cannot allocate memory");
+		}
+	}
+#endif
 }
 
 
@@ -307,13 +324,23 @@ void *rtp_read_thread_func(void *arg) {
 	rtp_packet *rtpp;
 	read_thread *params = (read_thread*)arg;
 	while(1) {
+
+#ifdef QUEUE_MUTEX
 		sem_wait(&params->semaphore);
 
 		pthread_mutex_lock(&(params->qlock));
 		rtpp = params->pqueue.front();
 		params->pqueue.pop();
 		pthread_mutex_unlock(&(params->qlock));
+#endif
 		
+#ifdef QUEUE_NONBLOCK
+		if(queue_dequeue(params->pqueue, (void **)&rtpp) != 1) {
+			// queue is empty
+			usleep(10000);
+			continue;
+		};
+#endif 
 		rtpp->call->read_rtp(rtpp->data, rtpp->datalen, &rtpp->header, rtpp->saddr, rtpp->port, rtpp->iscaller);
 		rtpp->call->set_last_packet_time(rtpp->header.ts.tv_sec);
 
@@ -325,7 +352,7 @@ void *rtp_read_thread_func(void *arg) {
 }
 
 Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int dest, char *data, int datalen,
-	pcap_t *handle, pcap_pkthdr *header, const u_char *packet, int istcp, int dontsave) {
+	pcap_t *handle, pcap_pkthdr *header, const u_char *packet, int istcp, int dontsave, int can_thread, int *was_rtp) {
 
 	static Call *call;
 	static int iscaller;
@@ -342,6 +369,8 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 	static struct pcap_stat ps;
 	static unsigned int lostpacket = 0;
 	static unsigned int lostpacketif = 0;
+
+	*was_rtp = 0;
 
 	// checking and cleaning stuff every 10 seconds (if some packet arrive) 
 	if (header->ts.tv_sec - last_cleanup > 10){
@@ -407,8 +436,9 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 			save_packet(call, header, packet);
 			return call;
 		}
-		if(rtp_threaded) {
+		if(rtp_threaded && can_thread) {
 			add_to_rtp_thread_queue(call, (unsigned char*) data, datalen, header, saddr, source, iscaller);
+			*was_rtp = 1;
 		} else {
 			call->read_rtp((unsigned char*) data, datalen, header, saddr, source, iscaller);
 			call->set_last_packet_time(header->ts.tv_sec);
@@ -429,8 +459,9 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 			return call;
 		}
 		// as we are searching by source address and find some call, revert iscaller 
-		if(rtp_threaded) {
+		if(rtp_threaded && can_thread) {
 			add_to_rtp_thread_queue(call, (unsigned char*) data, datalen, header, saddr, source, !iscaller);
+			*was_rtp = 1;
 		} else {
 			call->read_rtp((unsigned char*) data, datalen, header, saddr, source, !iscaller);
 			call->set_last_packet_time(header->ts.tv_sec);
@@ -510,8 +541,9 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 							memcpy(newdata + len2, tmpstream->data, tmpstream->datalen);
 							len2 += tmpstream->datalen;
 						};
-						// process SIP packet
-						Call *call = process_packet(saddr, source, daddr, dest, (char*)newdata, newlen, handle, header, packet, 0, 1);
+						// process SIP packet but disable to process by thread because we are freeing newdata and need to guarantee right order
+						int tmp_was_rtp;
+						Call *call = process_packet(saddr, source, daddr, dest, (char*)newdata, newlen, handle, header, packet, 0, 1, 0, &tmp_was_rtp);
 						// remove TCP stream
 						free(newdata);
 						tcp_stream2 *next;
@@ -1007,7 +1039,8 @@ libnids_tcp_callback(struct tcp_stream *a_tcp, void **this_time_not_needed) {
 #ifdef HAS_NIDS
 void
 libnids_udp_callback(struct tuple4 *addr, u_char *data, int len, struct ip *pkt) {
-	process_packet(addr->saddr, addr->source, addr->daddr, addr->dest, (char*)data, len, handle, nids_last_pcap_header, nids_last_pcap_data, 0, 0);
+	int was_rtp;
+	process_packet(addr->saddr, addr->source, addr->daddr, addr->dest, (char*)data, len, handle, nids_last_pcap_header, nids_last_pcap_data, 0, 0, 1, &was_rtp);
 	return;
 }
 
@@ -1073,9 +1106,10 @@ void *pcap_read_thread_func(void *arg) {
 	int datalen;
 	int istcp = 0;
 	int res;
+	int was_rtp;
 	while(1) {
 
-/*
+#ifdef QUEUE_MUTEX
 		res = sem_wait(&readpacket_thread_semaphore);
 		if(res != 0) {
 			printf("Error pcap_read_thread_func sem_wait returns != 0\n");
@@ -1085,14 +1119,15 @@ void *pcap_read_thread_func(void *arg) {
 		pp = readpacket_thread_queue.front();
 		readpacket_thread_queue.pop();
 		pthread_mutex_unlock(&readpacket_thread_queue_lock);
-*/
+#endif
 
+#ifdef QUEUE_NONBLOCK
 		if((res = queue_dequeue(qs_readpacket_thread_queue, (void **)&pp)) != 1) {
 			// queue is empty
-			usleep(1000);
+			usleep(10000);
 			continue;
 		};
-		printf("res [%d] deq [%p]\n", res, pp);
+#endif
 
 		header_ip = (struct iphdr *) ((char*)pp->packet + pp->offset);
 		header_udp = &header_udp_tmp;
@@ -1117,7 +1152,7 @@ void *pcap_read_thread_func(void *arg) {
 		}
 
 		process_packet(header_ip->saddr, htons(header_udp->source), header_ip->daddr, htons(header_udp->dest), 
-			    data, datalen, handle, &pp->header, pp->packet, istcp, 0);
+			    data, datalen, handle, &pp->header, pp->packet, istcp, 0, 1, &was_rtp);
 
 		free(pp->packet);
 		free(pp);
@@ -1142,6 +1177,7 @@ void readdump_libpcap(pcap_t *handle) {
 	unsigned int offset;
 	int pcap_dlink = pcap_datalink(handle);
 	int istcp = 0;
+	int was_rtp;
 
 	init_hash();
 	memset(tcp_streams_hashed, 0, sizeof(tcp_stream2*) * MAX_TCPSTREAMS);
@@ -1271,19 +1307,26 @@ void readdump_libpcap(pcap_t *handle) {
 			memcpy(&pp->header, header, sizeof(struct pcap_pkthdr));
 			memcpy(pp->packet, packet, header->len);
 
-			/*
+#ifdef QUEUE_MUTEX
 			pthread_mutex_lock(&readpacket_thread_queue_lock);
 			readpacket_thread_queue.push(pp);
 			pthread_mutex_unlock(&readpacket_thread_queue_lock);
-			*/
-			printf("enq [%p]\n", pp);
-			queue_enqueue(qs_readpacket_thread_queue, (void*)pp); 
+#endif
+
+#ifdef QUEUE_NONBLOCK
+			if(queue_enqueue(qs_readpacket_thread_queue, (void*)pp) == 0) {
+				// enqueue failed, try to raise queue
+				if(queue_guaranteed_enqueue(qs_readpacket_thread_queue, (void*)pp) == 0) {
+					syslog(LOG_ERR, "error: readpacket_queue cannot allocate memory");
+				}
+			}
+#endif 
 
 			//sem_post(&readpacket_thread_semaphore);
 			continue;
 		}
 
 		process_packet(header_ip->saddr, htons(header_udp->source), header_ip->daddr, htons(header_udp->dest), 
-			    data, datalen, handle, header, packet, istcp, 0);
+			    data, datalen, handle, header, packet, istcp, 0, 1, &was_rtp);
 	}
 }

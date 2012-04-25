@@ -99,8 +99,8 @@ char ifname[1024];	// Specifies the name of the network device to use for
 int opt_promisc = 1;	// put interface to promisc mode?
 char pcapcommand[4092] = "";
 
-int rtp_threaded = 0;
-int num_threads = 1;
+int rtp_threaded = 1;
+int num_threads = 1; // this has to be 1 for now
 
 int pcap_threaded = 1;
 
@@ -124,10 +124,14 @@ pcap_t *handle = NULL;		// pcap handler
 read_thread *threads;
 
 pthread_t pcap_read_thread;
+#ifdef QUEUE_MUTEX
 pthread_mutex_t readpacket_thread_queue_lock;
 sem_t readpacket_thread_semaphore;
+#endif
 
+#ifdef QUEUE_NONBLOCK
 struct queue_state *qs_readpacket_thread_queue;
+#endif
 
 void terminate2() {
 	terminating = 1;
@@ -874,18 +878,28 @@ int main(int argc, char *argv[]) {
 	if(rtp_threaded) {
 		threads = new read_thread();
 		for(int i = 0; i < num_threads; i++) {
+#ifdef QUEUE_MUTEX
 			pthread_mutex_init(&(threads[i].qlock), NULL);
 			sem_init(&(threads[i].semaphore), 0, 0);
+#endif
+
+#ifdef QUEUE_NONBLOCK
+			queue_new(&(threads[i].pqueue), 10000);
+#endif
+
 			pthread_create(&(threads[i].thread), NULL, rtp_read_thread_func, (void*)&threads[i]);
 		}
 	}
 	if(pcap_threaded) {
-		/*
+#ifdef QUEUE_MUTEX
 		pthread_mutex_init(&readpacket_thread_queue_lock, NULL);
 		sem_init(&readpacket_thread_semaphore, 0, 0);
-		*/
+#endif
+
+#ifdef QUEUE_NONBLOCK
 		queue_new(&qs_readpacket_thread_queue, 100000);
 		pthread_create(&pcap_read_thread, NULL, pcap_read_thread_func, NULL);
+#endif
 	}
 
 	// start reading packets
