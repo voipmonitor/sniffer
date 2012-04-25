@@ -99,7 +99,7 @@ char ifname[1024];	// Specifies the name of the network device to use for
 int opt_promisc = 1;	// put interface to promisc mode?
 char pcapcommand[4092] = "";
 
-int rtp_threaded = 1;
+int rtp_threaded = 0;
 int num_threads = 1; // this has to be 1 for now
 
 int pcap_threaded = 1;
