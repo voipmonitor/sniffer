@@ -83,7 +83,7 @@ extern TELNUMfilter *telnumfilter_reload;
 extern int telnumfilter_reload_do;
 
 extern int rtp_threaded;
-extern int pcap_threaded;
+extern int opt_pcap_threaded;
 
 #ifdef QUEUE_MUTEX
 extern sem_t readpacket_thread_semaphore;
@@ -390,7 +390,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 		pcapstatres = pcap_stats(handle, &ps);
 		if (pcapstatres == 0 && (lostpacket < ps.ps_drop || lostpacketif < ps.ps_ifdrop)) {
 			if(pcapstatresCount) {
-				syslog(LOG_ERR, "error: libpcap or interface dropped some packets! rx:%i drop:%i ifdrop:%i increase --ring-buffer (kernel >= 2.6.31 needed)\n", ps.ps_recv, ps.ps_drop, ps.ps_ifdrop);
+				syslog(LOG_ERR, "error: libpcap or interface dropped some packets! rx:%i pcapdrop:%i ifdrop:%i increase --ring-buffer (kernel >= 2.6.31 needed and libpcap >= 1.0.0) or use --pcap-thread\n", ps.ps_recv, ps.ps_drop, ps.ps_ifdrop);
 			} else {
 				// do not show first error, it is normal on startup. 
 				pcapstatresCount++;
@@ -716,6 +716,9 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 				call->type = sip_method;
 				ipfilter->add_call_flags(&(call->flags), ntohl(saddr), ntohl(daddr));
 				strcpy(call->fbasename, callidstr);
+#ifdef DEBUG_INVITE
+				syslog(LOG_NOTICE, "New call: srcip INET_NTOA[%u] dstip INET_NTOA[%u] From[%s] To[%s]\n", call->sipcallerip, call->sipcalledip, call->caller, call->called);
+#endif
 
 				/* this logic updates call on the first INVITES */
 				if (sip_method == INVITE) {
@@ -1307,7 +1310,7 @@ void readdump_libpcap(pcap_t *handle) {
 			continue;
 		}
 
-		if(pcap_threaded) {
+		if(opt_pcap_threaded) {
 			//add packet to queue
 			pcap_packet *pp = (pcap_packet*)malloc(sizeof(pcap_packet));
 			pp->packet = (u_char*)malloc(sizeof(u_char) * header->len);

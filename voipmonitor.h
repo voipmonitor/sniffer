@@ -15,6 +15,9 @@
 #define QUEUE_NONBLOCK 
 //#define QUEUE_MUTEX 
 
+/* if you want to see all new calls in syslog enable DEBUG_INVITE */
+//#define DEBUG_INVITE
+
 void reload_config();
 
 #define VOIPMONITOR_H

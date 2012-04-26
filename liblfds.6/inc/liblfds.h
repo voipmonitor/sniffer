@@ -71,7 +71,9 @@
 
   #if (defined __unix__ && defined __x86_64__ && __GNUC__)
     // TRD : any UNIX with GCC on x64
+  #ifndef _XOPEN_SOURCE
     #define _XOPEN_SOURCE 600
+  #endif
     #include <assert.h>
     #include <stdio.h>
     #include <stdlib.h>
