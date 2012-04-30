@@ -716,9 +716,6 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 				call->type = sip_method;
 				ipfilter->add_call_flags(&(call->flags), ntohl(saddr), ntohl(daddr));
 				strcpy(call->fbasename, callidstr);
-#ifdef DEBUG_INVITE
-				syslog(LOG_NOTICE, "New call: srcip INET_NTOA[%u] dstip INET_NTOA[%u] From[%s] To[%s]\n", call->sipcallerip, call->sipcalledip, call->caller, call->called);
-#endif
 
 				/* this logic updates call on the first INVITES */
 				if (sip_method == INVITE) {
@@ -740,6 +737,9 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 					}
 					call->seeninvite = true;
 					telnumfilter->add_call_flags(&(call->flags), call->caller, call->called);
+#ifdef DEBUG_INVITE
+					syslog(LOG_NOTICE, "New call: srcip INET_NTOA[%u] dstip INET_NTOA[%u] From[%s] To[%s]\n", call->sipcallerip, call->sipcalledip, call->caller, call->called);
+#endif
 				}
 
 				// opening dump file
