@@ -949,7 +949,7 @@ Call::doQuery(string &queryStr) {
 				okQueryRslt = true;
 				break;
 			} else {
-				syslog(LOG_ERR,"Error in query errnum:'%d' error:'%s'", con.errnum(), con.error());
+				syslog(LOG_ERR,"Error in query [%s] errnum:'%d' error:'%s'", queryStr.c_str(), con.errnum(), con.error());
 				if(con.errnum() != 2006) { // errnum 2006 : MySQL server has gone away
 					break;
 				}
@@ -969,7 +969,7 @@ Call::doQuery(string &queryStr) {
 				okQueryRslt = true;
 				break;
 			} else {
-				syslog(LOG_ERR,"Error in query: '%s'", odbc.getLastErrorString());
+				syslog(LOG_ERR,"Error in query [%s]: '%s'", queryStr.c_str(), odbc.getLastErrorString());
 			}
 		}
 	}
