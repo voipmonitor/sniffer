@@ -20,3 +20,9 @@ UPDATE cdr SET caller_reverse = REVERSE(caller) , called_reverse = REVERSE(calle
 ---------
 
 ALTER TABLE cdr ADD `custom_header1` varchar(32) DEFAULT NULL AFTER sipcalledip, add KEY `custom_header1` (`custom_header1`);
+
+2.5.2012
+--------
+
+ALTER TABLE filter_ip ADD `direction` tinyint(1) DEFAULT 0;
+ALTER TABLE filter_telnum ADD `direction` tinyint(1) DEFAULT 0;

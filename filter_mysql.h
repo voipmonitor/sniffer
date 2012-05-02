@@ -25,6 +25,7 @@ private:
 	struct db_row {
 		unsigned int ip;
 		int mask;
+		int direction;
 		int rtp;
 		int sip;
 		int reg;
@@ -34,6 +35,7 @@ private:
         struct t_node {
 		unsigned int ip;
 		int mask;
+		int direction;
 		unsigned int flags;
 
                 t_node *next;
@@ -55,6 +57,7 @@ class TELNUMfilter {
 private:
 	struct db_row {
 		unsigned int prefix;
+		int direction;
 		int rtp;
 		int sip;
 		int reg;
@@ -63,6 +66,7 @@ private:
 	};
 	struct t_payload {
 		char prefix[32];
+		int direction;
 		unsigned int ip;
 		int mask;
 		unsigned int flags;

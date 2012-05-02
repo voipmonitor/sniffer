@@ -1,8 +1,3 @@
-ALTER TABLE cdr ADD caller_reverse VARCHAR(255) DEFAULT NULL AFTER caller,  ADD called_reverse VARCHAR(255) DEFAULT NULL AFTER called, ADD callername_reverse VARCHAR(255) DEFAULT NULL AFTER callername, ADD `custom_header1` varchar(32) DEFAULT NULL AFTER sipcalledip, add KEY `callername` (`callername`), add KEY `callername_reverse` (`callername`), add KEY `caller_reverse` (`caller_reverse`), add KEY `called_reverse` (`caller_reverse`), add KEY `custom_header1` (`custom_header1`);
- 
-UPDATE cdr SET caller_reverse = REVERSE(caller) , called_reverse = REVERSE(called), callername_reverse = REVERSE(callername) ;
-
-
 DROP TRIGGER cdr_bi;
 DELIMITER |
 CREATE TRIGGER cdr_bi BEFORE INSERT ON cdr
@@ -13,6 +8,12 @@ SET NEW.called_reverse = REVERSE(NEW.called);
 SET NEW.callername_reverse = REVERSE(NEW.callername);
 END |
 DELIMITER ; |
+
+
+ALTER TABLE cdr ADD caller_reverse VARCHAR(255) DEFAULT NULL AFTER caller,  ADD called_reverse VARCHAR(255) DEFAULT NULL AFTER called, ADD callername_reverse VARCHAR(255) DEFAULT NULL AFTER callername, ADD `custom_header1` varchar(32) DEFAULT NULL AFTER sipcalledip, add KEY `callername` (`callername`), add KEY `callername_reverse` (`callername`), add KEY `caller_reverse` (`caller_reverse`), add KEY `called_reverse` (`caller_reverse`), add KEY `custom_header1` (`custom_header1`);
+ 
+UPDATE cdr SET caller_reverse = REVERSE(caller) , called_reverse = REVERSE(called), callername_reverse = REVERSE(callername) ;
+
 
 CREATE TABLE `filter_ip` (
   `id` int(32) NOT NULL auto_increment,
@@ -39,4 +40,7 @@ CREATE TABLE `filter_telnum` (
   `note` TEXT,
   PRIMARY KEY  (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=latin1;
+
+ALTER TABLE filter_ip ADD `direction` tinyint(1) DEFAULT 0;
+ALTER TABLE filter_telnum ADD `direction` tinyint(1) DEFAULT 0;
 

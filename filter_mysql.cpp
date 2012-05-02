@@ -6,6 +6,9 @@
 #include <math.h>
 #include <vector>
 
+using namespace std;
+using namespace mysqlpp;
+
 bool is_number(const std::string& s) {
 	for (unsigned int i = 0; i < s.length(); i++) {
 		if (!std::isdigit(s[i]))
@@ -43,6 +46,7 @@ IPfilter::load() {
 	extern char odbc_user[256];
 	extern char odbc_password[256];
 
+
 	vector<db_row> vectDbRow;
 	if(isSqlDriver("mysql")) {
 		mysqlpp::Connection con(false);
@@ -63,6 +67,11 @@ IPfilter::load() {
 			memset(filterRow,0,sizeof(db_row));
 			filterRow->ip = (unsigned int)atoi(row["ip"]);
 			filterRow->mask = atoi(row["mask"]);
+			try {
+				filterRow->direction = atoi(row["direction"]);
+			} catch (const Exception& er) {
+				filterRow->direction = 0;
+			}
 			filterRow->rtp = atoi(row["rtp"]);
 			filterRow->sip = atoi(row["sip"]);
 			filterRow->reg = atoi(row["register"]);
@@ -97,6 +106,7 @@ IPfilter::load() {
 	t_node *node;
 	for (size_t i = 0; i < vectDbRow.size(); ++i) {
 		node = new(t_node);
+		node->direction = vectDbRow[i].direction;
 		node->flags = 0;
 		node->next = NULL;
 		node->ip = vectDbRow[i].ip;
@@ -192,7 +202,9 @@ IPfilter::add_call_flags(unsigned int *flags, unsigned int saddr, unsigned int d
 	for(node = first_node; node != NULL; node = node->next) {
 
 		mask = (pow(2, (long double)(node->mask)) - 1) * pow(2, (long double)(32 - node->mask));
-		if(((saddr & (unsigned int)mask) == (node->ip & (unsigned int)mask)) || ((daddr & (unsigned int)mask) == (node->ip & (unsigned int)mask))) {
+
+		if(((node->direction == 0 or node->direction == 2) and ((daddr & (unsigned int)mask) == (node->ip & (unsigned int)mask))) || 
+			((node->direction == 0 or node->direction == 1) and ((saddr & (unsigned int)mask) == (node->ip & (unsigned int)mask)))) {
 
 			if(node->flags & FLAG_RTP) {
 				*flags |= FLAG_SAVERTP;
@@ -338,6 +350,11 @@ TELNUMfilter::load() {
 			db_row* filterRow = new(db_row);
 			memset(filterRow,0,sizeof(db_row));
 			filterRow->prefix = (unsigned int)atoi(row["prefix"]);
+			try {
+				filterRow->direction = atoi(row["direction"]);
+			} catch (const Exception& er) {
+				filterRow->direction = 0;
+			}
 			filterRow->rtp = atoi(row["rtp"]);
 			filterRow->sip = atoi(row["sip"]);
 			filterRow->reg = atoi(row["register"]);
@@ -370,6 +387,7 @@ TELNUMfilter::load() {
 	
 	for (size_t i = 0; i < vectDbRow.size(); ++i) {
 		t_payload *np = new(t_payload);
+		np->direction = vectDbRow[i].direction;
 		np->flags = 0;
 		sprintf(np->prefix,"%u",vectDbRow[i].prefix);
 		if(vectDbRow[i].rtp)	np->flags |= FLAG_RTP;
@@ -449,6 +467,8 @@ TELNUMfilter::load() {
 
 int
 TELNUMfilter::add_call_flags(unsigned int *flags, char *telnum_src, char *telnum_dst) {
+
+	int lastdirection = 0;
 	
 	if (this->count == 0) {
 		// no filters, return 
@@ -468,11 +488,16 @@ TELNUMfilter::add_call_flags(unsigned int *flags, char *telnum_src, char *telnum
                 }
                 tmp = tmp->nodes[telnum_src[i] - 48];
                 if(tmp && tmp->payload) {
+			lastdirection = tmp->payload->direction;
                         lastpayload = tmp->payload;
                 }
         }
+	if(lastdirection == 2) {
+		//src found but we want only dst 
+		lastpayload = NULL;
+	}
 	if(!lastpayload) {
-		//src not found, try dst
+		//src not found or src found , try dst
 		for(unsigned int i = 0; i < strlen(telnum_dst); i++) {
 			if(telnum_dst[i] < 48 || telnum_dst[i] > 57) {
 				//stop on non digit
@@ -483,8 +508,13 @@ TELNUMfilter::add_call_flags(unsigned int *flags, char *telnum_src, char *telnum
 			}
 			tmp = tmp->nodes[telnum_dst[i] - 48];
 			if(tmp && tmp->payload) {
+				lastdirection = tmp->payload->direction;
 				lastpayload = tmp->payload;
 			}
+		}
+		if(lastdirection == 1) {
+			// dst found but we want only src
+			lastpayload = NULL;
 		}
 	}
 
