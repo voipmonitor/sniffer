@@ -430,55 +430,9 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 			}
 		}
 	}
-	
-	// TODO: remove if hash will be stable
-	//if ((call = calltable->find_by_ip_port(daddr, dest, &iscaller))){	
-	if ((call = calltable->hashfind_by_ip_port(daddr, dest, &iscaller, &is_rtcp))){	
-		// we have packet, extend pending destroy requests
-		if(call->destroy_call_at > 0) {
-			call->destroy_call_at += 5; 
-		}
-		// packet (RTP) by destination:port is already part of some stored call 
-		if(!dontsave && is_rtcp && (opt_saveRTP || opt_saveRTCP)) {
-			// RTCP is only saved
-			save_packet(call, header, packet);
-			return call;
-		}
-		if(rtp_threaded && can_thread) {
-			add_to_rtp_thread_queue(call, (unsigned char*) data, datalen, header, saddr, source, iscaller);
-			*was_rtp = 1;
-		} else {
-			call->read_rtp((unsigned char*) data, datalen, header, saddr, source, iscaller);
-			call->set_last_packet_time(header->ts.tv_sec);
-		}
-		if(!dontsave && call->flags & FLAG_SAVERTP) {
-			save_packet(call, header, packet);
-		}
-	// TODO: remove if hash will be stable
-	//} else if ((call = calltable->find_by_ip_port(saddr, source, &iscaller))){	
-	} else if ((call = calltable->hashfind_by_ip_port(saddr, source, &iscaller, &is_rtcp))){
-		// we have packet, extend pending destroy requests
-		if(call->destroy_call_at > 0) {
-			call->destroy_call_at += 5; 
-		}
-		// packet (RTP) by source:port is already part of some stored call 
-		if(!dontsave && is_rtcp && (opt_saveRTP || opt_saveRTCP)) {
-			save_packet(call, header, packet);
-			return call;
-		}
-		// as we are searching by source address and find some call, revert iscaller 
-		if(rtp_threaded && can_thread) {
-			add_to_rtp_thread_queue(call, (unsigned char*) data, datalen, header, saddr, source, !iscaller);
-			*was_rtp = 1;
-		} else {
-			call->read_rtp((unsigned char*) data, datalen, header, saddr, source, !iscaller);
-			call->set_last_packet_time(header->ts.tv_sec);
-		}
-		if(!dontsave && call->flags & FLAG_SAVERTP) {
-			save_packet(call, header, packet);
-		}
-	// packet does not belongs to established call, check if it is on SIP port
-	} else if (sipportmatrix[source] || sipportmatrix[dest]) {
+
+	// check if the packet is SIP ports 	
+	if(sipportmatrix[source] || sipportmatrix[dest]) {
 
 #if 0
 		/* ugly and dirty hack to detect two SIP messages in one TCP packet. */
@@ -954,6 +908,53 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 		}
 
 		return call;
+	} else if ((call = calltable->hashfind_by_ip_port(daddr, dest, &iscaller, &is_rtcp))){	
+	// TODO: remove if hash will be stable
+	//if ((call = calltable->find_by_ip_port(daddr, dest, &iscaller))){	
+		// we have packet, extend pending destroy requests
+		if(call->destroy_call_at > 0) {
+			call->destroy_call_at += 5; 
+		}
+		// packet (RTP) by destination:port is already part of some stored call 
+		if(!dontsave && is_rtcp && (opt_saveRTP || opt_saveRTCP)) {
+			// RTCP is only saved
+			save_packet(call, header, packet);
+			return call;
+		}
+		if(rtp_threaded && can_thread) {
+			add_to_rtp_thread_queue(call, (unsigned char*) data, datalen, header, saddr, source, iscaller);
+			*was_rtp = 1;
+		} else {
+			call->read_rtp((unsigned char*) data, datalen, header, saddr, source, iscaller);
+			call->set_last_packet_time(header->ts.tv_sec);
+		}
+		if(!dontsave && call->flags & FLAG_SAVERTP) {
+			save_packet(call, header, packet);
+		}
+	} else if ((call = calltable->hashfind_by_ip_port(saddr, source, &iscaller, &is_rtcp))){
+	// TODO: remove if hash will be stable
+	//} else if ((call = calltable->find_by_ip_port(saddr, source, &iscaller))){	
+		// we have packet, extend pending destroy requests
+		if(call->destroy_call_at > 0) {
+			call->destroy_call_at += 5; 
+		}
+		// packet (RTP) by source:port is already part of some stored call 
+		if(!dontsave && is_rtcp && (opt_saveRTP || opt_saveRTCP)) {
+			save_packet(call, header, packet);
+			return call;
+		}
+		// as we are searching by source address and find some call, revert iscaller 
+		if(rtp_threaded && can_thread) {
+			add_to_rtp_thread_queue(call, (unsigned char*) data, datalen, header, saddr, source, !iscaller);
+			*was_rtp = 1;
+		} else {
+			call->read_rtp((unsigned char*) data, datalen, header, saddr, source, !iscaller);
+			call->set_last_packet_time(header->ts.tv_sec);
+		}
+		if(!dontsave && call->flags & FLAG_SAVERTP) {
+			save_packet(call, header, packet);
+		}
+	// packet does not belongs to established call, check if it is on SIP port
 	} else {
 		// we are not interested in this packet
 		if (verbosity >= 6){
