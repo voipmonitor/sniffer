@@ -945,8 +945,6 @@ int main(int argc, char *argv[]) {
 	unlink(opt_pidfile);
 }
 
-extern string sqlString(const char *inputStr, char borderChar = '\'');
-	
 void test() {
 
 	ipfilter = new IPfilter;

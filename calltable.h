@@ -433,7 +433,6 @@ private:
 
 string sqlDateTimeString(time_t unixTime);
 string sqlEscapeString(const char *inputStr, char borderChar = '\'');
-string sqlEscapeString(unsigned int inputInt, char borderChar = '\'');
 string reverseString(const char *str);
 bool isSqlDriver(const char *sqlDriver);
 bool isTypeDb(const char *typeDb);

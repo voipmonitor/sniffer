@@ -664,8 +664,8 @@ Call::buildQuery(stringstream *query) {
 			<< ", " << sqlEscapeString(reverseString(caller).c_str())
 			<< ", " << sqlEscapeString(callername)
 			<< ", " << sqlEscapeString(reverseString(callername).c_str())
-			<< ", " << sqlEscapeString(htonl(sipcallerip))
-			<< ", " << sqlEscapeString(htonl(sipcalledip))
+			<< ", " << htonl(sipcallerip)
+			<< ", " << htonl(sipcalledip)
 			<< ", " << sqlEscapeString(called)
 			<< ", " << sqlEscapeString(reverseString(called).c_str())
 			<< ", " << duration()
@@ -679,10 +679,10 @@ Call::buildQuery(stringstream *query) {
 			values << ", " << "FROM_UNIXTIME(" << calltime() << ")";
 		}
 		values 	<< ", " << sqlEscapeString(fbasename)
-			<< ", " << sqlEscapeString(sighup ? 1 : 0)
+			<< ", " << (sighup ? 1 : 0)
 			<< ", " << sqlEscapeString(lastSIPresponse)
-			<< ", " << sqlEscapeString(lastSIPresponseNum)
-			<< ", " << sqlEscapeString( seeninviteok ? (seenbye ? (seenbyeandok ? 3 : 2) : 1) : 0);
+			<< ", " << lastSIPresponseNum
+			<< ", " << ( seeninviteok ? (seenbye ? (seenbyeandok ? 3 : 2) : 1) : 0);
 			
 		if(strlen(custom_header1)) {
 			fields << ", custom_header1";
@@ -739,12 +739,12 @@ Call::buildQuery(stringstream *query) {
 					<< ", " << c << "_avgjitter"
 					<< ", " << c << "_maxjitter"
 					<< ", " << c << "_payload"; 
-				values 	<< ", " << sqlEscapeString(indexes[i])
+				values 	<< ", " << indexes[i]
 					<< ", " << (rtp[indexes[i]]->stats.received + 2) // received is always 2 packet less compared to wireshark (add it here)
 					<< ", " << rtp[indexes[i]]->stats.lost
-					<< ", " << sqlEscapeString(int(ceil(rtp[indexes[i]]->stats.avgjitter)))
-					<< ", " << sqlEscapeString(int(ceil(rtp[indexes[i]]->stats.maxjitter)))
-					<< ", " << sqlEscapeString(rtp[indexes[i]]->payload); 
+					<< ", " << int(ceil(rtp[indexes[i]]->stats.avgjitter))
+					<< ", " << int(ceil(rtp[indexes[i]]->stats.maxjitter))
+					<< ", " << rtp[indexes[i]]->payload; 
 
 				/* build a_sl1 - b_sl10 fields */
 				for(int j = 1; j < 11; j++) {
@@ -779,7 +779,7 @@ Call::buildQuery(stringstream *query) {
 					<< ", " << c << "_mos_f1";
 				values 	<< ", " << lossr
 					<< ", " << burstr
-					<< ", " << sqlEscapeString(calculate_mos(lossr, burstr, rtp[indexes[i]]->payload));
+					<< ", " << calculate_mos(lossr, burstr, rtp[indexes[i]]->payload);
 
 				/* Jitterbuffer MOS statistics */
 				burstr_calculate(rtp[indexes[i]]->channel_fix2, rtp[indexes[i]]->stats.received, &burstr, &lossr);
@@ -788,7 +788,7 @@ Call::buildQuery(stringstream *query) {
 					<< ", " << c << "_mos_f2";
 				values 	<< ", " << lossr
 					<< ", " << burstr
-					<< ", " << sqlEscapeString(calculate_mos(lossr, burstr, rtp[indexes[i]]->payload));
+					<< ", " << calculate_mos(lossr, burstr, rtp[indexes[i]]->payload);
 
 				burstr_calculate(rtp[indexes[i]]->channel_adapt, rtp[indexes[i]]->stats.received, &burstr, &lossr);
 				fields 	<< ", " << c << "_lossr_adapt"
@@ -796,7 +796,7 @@ Call::buildQuery(stringstream *query) {
 					<< ", " << c << "_mos_adapt";
 				values	<< ", " << lossr
 					<< ", " << burstr
-					<< ", " << sqlEscapeString(calculate_mos(lossr, burstr, rtp[indexes[i]]->payload));
+					<< ", " << calculate_mos(lossr, burstr, rtp[indexes[i]]->payload);
 			}
 		}
 		*query << "INSERT INTO " << sql_cdr_table << " ( " << fields.str() << " ) VALUES ( " << values.str() << " )";
@@ -806,8 +806,8 @@ Call::buildQuery(stringstream *query) {
 			", caller_reverse = " << sqlEscapeString(reverseString(caller).c_str()) <<
 			", callername = " << sqlEscapeString(callername) << 
 			", callername_reverse = " << sqlEscapeString(reverseString(callername).c_str()) <<
-			", sipcallerip = " << sqlEscapeString(htonl(sipcallerip)) <<
-			", sipcalledip = " << sqlEscapeString(htonl(sipcalledip)) <<
+			", sipcallerip = " << htonl(sipcallerip) <<
+			", sipcalledip = " << htonl(sipcalledip) <<
 			", called = " << sqlEscapeString(called) <<
 			", called_reverse = " << sqlEscapeString(reverseString(called).c_str()) <<
 			", duration = " << duration() << 
@@ -816,10 +816,10 @@ Call::buildQuery(stringstream *query) {
 			", connect_duration = " << (connect_time ? (duration() - (connect_time - first_packet_time)) : -1) << 
 			", calldate = FROM_UNIXTIME(" << calltime() << ")" <<
 			", fbasename = " << sqlEscapeString(fbasename) << 
-			", sighup = " << sqlEscapeString(sighup ? 1 : 0) << 
+			", sighup = " << (sighup ? 1 : 0) << 
 			", lastSIPresponse = " << sqlEscapeString(lastSIPresponse) << 
-			", lastSIPresponseNum = " << sqlEscapeString(lastSIPresponseNum) << 
-			", bye = " << sqlEscapeString( seeninviteok ? (seenbye ? (seenbyeandok ? 3 : 2) : 1) : 0);
+			", lastSIPresponseNum = " << lastSIPresponseNum << 
+			", bye = " << ( seeninviteok ? (seenbye ? (seenbyeandok ? 3 : 2) : 1) : 0);
 
 		if(strlen(custom_header1)) {
 			*query << ", custom_header1 = " << sqlEscapeString(custom_header1);
@@ -866,12 +866,12 @@ Call::buildQuery(stringstream *query) {
 				
 				char c = i == 0 ? 'a' : 'b';
 
-				*query << " , " << c << "_index = " << sqlEscapeString(indexes[i]);
+				*query << " , " << c << "_index = " << indexes[i];
 				*query << " , " << c << "_received = " << (rtp[indexes[i]]->stats.received + 2); // received is always 2 packet less compared to wireshark (add it here)
 				*query << " , " << c << "_lost = " << rtp[indexes[i]]->stats.lost;
-				*query << " , " << c << "_avgjitter = " << sqlEscapeString(int(ceil(rtp[indexes[i]]->stats.avgjitter)));
-				*query << " , " << c << "_maxjitter = " << sqlEscapeString(int(ceil(rtp[indexes[i]]->stats.maxjitter))); 
-				*query << " , " << c << "_payload = " << sqlEscapeString(rtp[indexes[i]]->payload); 
+				*query << " , " << c << "_avgjitter = " << int(ceil(rtp[indexes[i]]->stats.avgjitter));
+				*query << " , " << c << "_maxjitter = " << int(ceil(rtp[indexes[i]]->stats.maxjitter)); 
+				*query << " , " << c << "_payload = " << rtp[indexes[i]]->payload; 
 
 				/* build a_sl1 - b_sl10 fields */
 				for(int j = 1; j < 11; j++) {
@@ -894,18 +894,18 @@ Call::buildQuery(stringstream *query) {
 				burstr_calculate(rtp[indexes[i]]->channel_fix1, rtp[indexes[i]]->stats.received, &burstr, &lossr);
 				*query << " , " << c << "_lossr_f1 = " << lossr;
 				*query << " , " << c << "_burstr_f1 = " << burstr;
-				*query << " , " << c << "_mos_f1 = " << sqlEscapeString(calculate_mos(lossr, burstr, rtp[indexes[i]]->payload));
+				*query << " , " << c << "_mos_f1 = " << calculate_mos(lossr, burstr, rtp[indexes[i]]->payload);
 
 				/* Jitterbuffer MOS statistics */
 				burstr_calculate(rtp[indexes[i]]->channel_fix2, rtp[indexes[i]]->stats.received, &burstr, &lossr);
 				*query << " , " << c << "_lossr_f2 = " << lossr;
 				*query << " , " << c << "_burstr_f2 = " << burstr;
-				*query << " , " << c << "_mos_f2 = " << sqlEscapeString(calculate_mos(lossr, burstr, rtp[indexes[i]]->payload));
+				*query << " , " << c << "_mos_f2 = " << calculate_mos(lossr, burstr, rtp[indexes[i]]->payload);
 
 				burstr_calculate(rtp[indexes[i]]->channel_adapt, rtp[indexes[i]]->stats.received, &burstr, &lossr);
 				*query << " , " << c << "_lossr_adapt = " << lossr;
 				*query << " , " << c << "_burstr_adapt = " << burstr;
-				*query << " , " << c << "_mos_adapt = " << sqlEscapeString(calculate_mos(lossr, burstr, rtp[indexes[i]]->payload));
+				*query << " , " << c << "_mos_adapt = " << calculate_mos(lossr, burstr, rtp[indexes[i]]->payload);
 			}
 		}
 	}
@@ -1005,23 +1005,23 @@ Call::saveRegisterToDb() {
 		stringstream fields;
 		stringstream values;
 		fields	<< "sipcallerip, sipcalledip, calldate, fbasename, sighup";
-		values 	<< sqlEscapeString(htonl(sipcallerip))
-			<< ", " << sqlEscapeString(htonl(sipcalledip));
+		values 	<< htonl(sipcallerip)
+			<< ", " << htonl(sipcalledip);
 		if(isTypeDb("mssql")) {
 			values << ", " << sqlEscapeString(sqlDateTimeString(calltime()).c_str());
 		} else {
 			values << ", " << "FROM_UNIXTIME(" << calltime() << ")";
 		}
 		values 	<< ", " << sqlEscapeString(fbasename)
-			<< ", " << sqlEscapeString(sighup ? 1 : 0);
+			<< ", " << (sighup ? 1 : 0);
 		queryStream << "INSERT INTO " << register_table << " ( " << fields.str() << " ) VALUES ( " << values.str() << " )";
 	} else {
 		queryStream << "INSERT INTO `" << register_table << "` SET " <<
-				"  sipcallerip = " << sqlEscapeString(htonl(sipcallerip)) <<
-				", sipcalledip = " << sqlEscapeString(htonl(sipcalledip)) <<
+				"  sipcallerip = " << htonl(sipcallerip) <<
+				", sipcalledip = " << htonl(sipcalledip) <<
 				", calldate = FROM_UNIXTIME(" << calltime() << ")" <<
 				", fbasename = " << sqlEscapeString(fbasename) << 
-				", sighup = " << sqlEscapeString(sighup ? 1 : 0);
+				", sighup = " << (sighup ? 1 : 0);
 	}
 	string queryStr = queryStream.str();
 	if(verbosity > 2) {
@@ -1366,12 +1366,6 @@ string sqlEscapeString(const char *inputStr, char borderChar) {
 		rsltString = borderChar + rsltString + borderChar;
 	}
 	return rsltString;
-}
-
-string sqlEscapeString(unsigned int inputInt, char borderChar) {
-	char rsltString[20];
-	sprintf(rsltString,"%u",inputInt);
-	return string(rsltString);
 }
 
 bool cmpStringIgnoreCase(const char* str1, const char* str2) {
