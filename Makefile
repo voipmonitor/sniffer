@@ -1,5 +1,16 @@
+##### CPU variants #####
+GCCARCH = $(shell uname -m)
+
+ifeq ($(GCCARCH),x86_64)
+  GCCARCH = core2
+endif
+
+ifeq ($(findstring arm,$(GCCARCH)),arm)
+  GCCARCH = armv6k
+endif
+
 objects = codec_alaw.o codec_ulaw.o format_slinear.o format_wav.o format_ogg.o calltable.o rtp.o voipmonitor.o sniff.o jitterbuffer/astmm.o jitterbuffer/utils.o jitterbuffer/fixedjitterbuf.o jitterbuffer/jitterbuf.o jitterbuffer/abstract_jb.o jitterbuffer/frame.o gzstream/gzstream.o gzstream/libgzstream.a manager.o tools.o filter_mysql.o hash.o mos_g729.o odbc.o
-args = -g3 -Wall
+args = -g3 -Wall  -march=$(GCCARCH)
 #args = -O2 -Wall
 CFLAGS+=-I /usr/local/include/mysql++/ -I /usr/include/mysql++/ -I /usr/include/mysql/ -g3 -Wall -I jitterbuffer/  -L/usr/local/lib/ -Lgzstream/ -Lliblfds.6/bin/
 LIBS=-lpthread -lmysqlpp -lpcap -lgzstream -lz -lvorbis -lvorbisenc -logg -lodbc -llfds #-lnids
