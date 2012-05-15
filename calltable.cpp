@@ -1092,8 +1092,14 @@ Calltable::hashAdd(in_addr_t addr, unsigned short port, Call* call, int iscaller
 	// check if there is not already call in hash 
 	for (node = (hash_node *)calls_hash[h]; node != NULL; node = node->next) {
 		if ((node->addr == addr) && (node->port == port)) {
-			// there is already same call, overwrite it, but this should probably does not occur 
+			// there is already some call which is receiving packets to the same IP:port
+			// this can happen if the old call is waiting for hangup and is still in memory
+			// just replace this IP:port to new call
+			node->addr = addr;
+			node->port = port;
 			node->call = call;
+			node->iscaller = iscaller;
+			node->is_rtcp = is_rtcp;
 			return;
 		}
 	}
