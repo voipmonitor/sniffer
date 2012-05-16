@@ -891,7 +891,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 					call->add_ip_port(saddr, tmp_port, s, l, call->sipcallerip != saddr, rtpmap);
 					calltable->hashAdd(saddr, tmp_port, call, call->sipcallerip != saddr, 0);
 					if(opt_rtcp) {
-						calltable->hashAdd(saddr, tmp_port, call, call->sipcallerip != saddr, 1);
+						calltable->hashAdd(saddr, tmp_port + 1, call, call->sipcallerip != saddr, 1);
 					}
 #endif
 	
