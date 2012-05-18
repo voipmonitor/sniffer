@@ -119,9 +119,18 @@ void save_packet(Call *call, struct pcap_pkthdr *header, const u_char *packet) {
 char * gettag(const void *ptr, unsigned long len, const char *tag, unsigned long *gettaglen){
 	unsigned long register r, l, tl;
 	char *rc;
+	char *tmp;
+	char tmp2;
+	tmp = (char*)ptr;
+
+	// put '\0' at the end of the packet so it can be used with string functions. then restore the character
+	tmp2 = tmp[len];
+	tmp[len] = '\0';
 
 	tl = strlen(tag);
-	r = (unsigned long)memmem(ptr, len, tag, tl);
+	//r = (unsigned long)memmem(ptr, len, tag, tl); memmem cannot be used because SIP headers are case insensitive
+	r = (unsigned long)strcasestr(tmp, tag);
+	tmp[len] = tmp2;
 	if(r == 0){
 		// tag did not match
 		l = 0;
