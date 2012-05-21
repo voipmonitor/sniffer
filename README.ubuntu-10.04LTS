@@ -28,7 +28,7 @@ chmod 777 /var/spool/voipmonitor
 INSTALL VoipMonitor svn trunk version
 =================================
 
-sudo apt-get install subversion libmysql++-dev libvorbis-dev libpcap-dev apache2 php5-mysql php5-gd
+sudo apt-get install subversion libmysql++-dev libvorbis-dev libpcap-dev apache2 php5-mysql php5-gd unixodbc-dev
 cd /usr/src
 svn co https://voipmonitor.svn.sourceforge.net/svnroot/voipmonitor/trunk voipmonitor-svn
 cd voipmonitor-svn

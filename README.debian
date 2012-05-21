@@ -1,9 +1,10 @@
 Debian 6.0
 ----------
-apt-get install subversion libmysql++-dev libvorbis-dev libpcap-dev apache2 php5-mysql php5-gd unixodbc-dev
+
+apt-get install build-essential subversion libmysql++-dev libvorbis-dev libpcap-dev apache2 php5-mysql php5-gd mysql-server unixodbc-dev
 
 cd /usr/src
-svn co https://voipmonitor.svn.sourceforge.net/svnroot/voipmonitor/trunk voipmonitor-svn
+svn co \ https://voipmonitor.svn.sourceforge.net/svnroot/voipmonitor/trunk  voipmonitor-svn
 cd voipmonitor-svn
 make clean
 make
@@ -12,7 +13,7 @@ mkdir /var/spool/voipmonitor
 mysqladmin create voipmonitor
 cat cdrtable.sql | mysql voipmonitor
 cp config/voipmonitor.conf /etc/
-#edit file /etc/voipmonitor.conf to your needs 
+#edit file /etc/voipmonitor.conf to your needs
 cp config/init.d/voipmonitor /etc/init.d/
 update-rc.d voipmonitor defaults
-/etc/init.d/voipmonitor start 
+/etc/init.d/voipmonitor start

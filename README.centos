@@ -6,6 +6,7 @@ What is required
 - MySQL++ library from http://tangentsoft.net/mysql++/
 - zlib ibrary 
 - Libogg, Libvorbis 
+- unixODBC-devel
 
 - Make sure mysql is installed when building CentOS
 - Under the Web Server include the mysql-devel and php-mysql packages
@@ -41,7 +42,7 @@ yum install libogg libogg-devel vorbis-tools libvorbis libvorbis-devel
 
 Build voipmonitor
 =================
-yum install subversion
+yum install subversion unixODBC-devel
 svn co https://voipmonitor.svn.sourceforge.net/svnroot/voipmonitor/trunk voipmonitor-svn
 cd voipmonitor-svn
 make
