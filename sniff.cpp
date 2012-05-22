@@ -124,13 +124,13 @@ char * gettag(const void *ptr, unsigned long len, const char *tag, unsigned long
 	tmp = (char*)ptr;
 
 	// put '\0' at the end of the packet so it can be used with string functions. then restore the character
-	tmp2 = tmp[len];
-	tmp[len] = '\0';
+	tmp2 = tmp[len - 1];
+	tmp[len - 1] = '\0';
 
 	tl = strlen(tag);
 	//r = (unsigned long)memmem(ptr, len, tag, tl); memmem cannot be used because SIP headers are case insensitive
 	r = (unsigned long)strcasestr(tmp, tag);
-	tmp[len] = tmp2;
+	tmp[len - 1] = tmp2;
 	if(r == 0){
 		// tag did not match
 		l = 0;
