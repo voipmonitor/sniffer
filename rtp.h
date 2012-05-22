@@ -309,6 +309,15 @@ public:
 	const int getExtension() { return getHeader()->extension; };
  
 	 /**
+	 * @brief get payload length
+	 *
+	 * this function gets length of payload 
+	 *
+	 * @return number of bytes of payload
+	*/
+	const unsigned int get_payload_len();
+
+	 /**
 
 	 * @brief flushes frames from jitterbuffer
 	 *

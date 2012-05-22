@@ -178,6 +178,42 @@ RTP::~RTP() {
 	}
 }
 
+const unsigned int RTP::get_payload_len() {
+	payload_data = data + sizeof(RTPFixedHeader);
+	payload_len = len - sizeof(RTPFixedHeader);
+	if(getPadding()) {
+		/*
+		* If set, this packet contains one or more additional padding
+		* bytes at the end which are not part of the payload. The last
+		* byte of the padding contains a count of how many padding bytes
+		* should be ignored. Padding may be needed by some encryption
+		* algorithms with fixed block sizes or for carrying several RTP
+		* packets in a lower-layer protocol data unit.
+		*/
+		payload_len -= ((u_int8_t *)data)[payload_len - 1];
+	}
+	if(getCC() > 0) {
+		/*
+		* The number of CSRC identifiers that follow the fixed header.
+		*/
+		payload_data += 4 * getCC();
+		payload_len -= 4 * getCC();
+	}
+	if(getExtension()) {
+		/*
+		* If set, the fixed header is followed by exactly one header extension.
+		*/
+		extension_hdr_t *rtpext;
+		if (payload_len < 4)
+			payload_len = 0;
+
+		// the extension, if present, is after the CSRC list.
+		rtpext = (extension_hdr_t *)((u_int8_t *)payload_data);
+		payload_data += sizeof(extension_hdr_t) + rtpext->length;
+		payload_len -= sizeof(extension_hdr_t) + rtpext->length;
+	}
+	return payload_len;
+}
 
 /* flush jitterbuffer */
 void RTP::jitterbuffer_fixed_flush(struct ast_channel *jchannel) {
@@ -439,6 +475,8 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 
 // voipmonitor now handles RTP streams including progress  XXX: remove this comment if it will be confirmed stable enough
 //	if(seeninviteok) {
+
+
 		if(packetization_iterator == 0 || packetization_iterator == 1) {
 			// we dont know packetization yet. Behave differently n G723 codec 
 			if(curpayload == PAYLOAD_G723) {
@@ -462,6 +500,22 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 					packetization_iterator++;
 				}
 			}
+
+#if 1
+			// new way of getting packetization from packet datalen 
+			if(curpayload == PAYLOAD_PCMU or curpayload == PAYLOAD_PCMA) {
+				channel_fix1->packetization = channel_fix2->packetization = channel_adapt->packetization = channel_record->packetization = packetization = get_payload_len() / 8;
+				packetization_iterator = 10; // this will cause that packetization is estimated as final
+
+				if(opt_jitterbuffer_f1)
+					jitterbuffer(channel_fix1, 0);
+				if(opt_jitterbuffer_f2)
+					jitterbuffer(channel_fix2, 0);
+				if(opt_jitterbuffer_adapt)
+					jitterbuffer(channel_adapt, 0);
+			} 
+#endif
+
 			/* for recording, we cannot loose any packet */
 			if(opt_saveRAW || (owner->flags & FLAG_SAVEWAV) ||
 				fifo1 || fifo2 // if recording requested 
