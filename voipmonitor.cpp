@@ -339,7 +339,6 @@ int load_config(char *fname) {
 	}
 	if((value = ini.GetValue("general", "mos_g729", NULL))) {
 		opt_mos_g729 = yesno(value);
-		printf(":::%d\n", opt_mos_g729);
 	}
 	if((value = ini.GetValue("general", "nocdr", NULL))) {
 		opt_nocdr = yesno(value);
