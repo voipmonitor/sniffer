@@ -7061,13 +7061,15 @@ fi
 shared binary: run make
 static binary: run make static
 
-test test test
- blabla" >&5
+check README.*
+
+" >&5
 $as_echo "$as_me:
 
 shared binary: run make
 static binary: run make static
 
-test test test
- blabla" >&6;}
+check README.*
+
+" >&6;}
 
