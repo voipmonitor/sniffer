@@ -47,7 +47,6 @@ gzstream/test_gzip.C -text
 gzstream/version -text
 /hash.cpp -text
 /hash.h -text
-/install-sh -text
 jitterbuffer/abstract_jb.c -text
 jitterbuffer/asterisk.h -text
 jitterbuffer/asterisk/abstract_jb.h -text
@@ -168,7 +167,6 @@ liblfds.6/test/src/test_slist.c -text
 liblfds.6/test/src/test_stack.c -text
 liblfds.6/test/test.sln -text
 liblfds.6/test/test.vcproj -text
-/ltmain.sh -text
 /manager.cpp -text
 /manager.h -text
 /mos_g729.cpp -text
