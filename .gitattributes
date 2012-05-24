@@ -1,10 +1,12 @@
 * text=auto !eol
 /ChangeLog -text
 /Makefile -text
+/Makefile.in -text
 /README -text
 /README.centos -text
 /README.debian -text
 /README.gentoo -text
+/README.mssql -text
 /README.piaf -text
 /README.ubuntu-10.04LTS -text
 /calltable.cpp -text
@@ -15,13 +17,17 @@
 /cdrtable.sql.2.2-3.0 -text
 /cdrtable.sql.3.0-4.0 -text
 /cdrtable.sql.history -text
+/cdrtable_mssql.sql -text
 /codec_alaw.cpp -text
 /codec_alaw.h -text
 /codec_ulaw.cpp -text
 /codec_ulaw.h -text
 /codecs.h -text
+/config.h.in -text
 config/init.d/voipmonitor -text
 config/voipmonitor.conf -text
+/configure -text
+/configure.in -text
 /filter_mysql.cpp -text
 /filter_mysql.h -text
 /format_ogg.cpp -text
@@ -32,6 +38,7 @@ config/voipmonitor.conf -text
 /format_wav.h -text
 gzstream/COPYING.LIB -text
 gzstream/Makefile -text
+gzstream/Makefile.in -text
 gzstream/README -text
 gzstream/gzstream.C -text
 gzstream/gzstream.h -text
@@ -40,6 +47,7 @@ gzstream/test_gzip.C -text
 gzstream/version -text
 /hash.cpp -text
 /hash.h -text
+/install-sh -text
 jitterbuffer/abstract_jb.c -text
 jitterbuffer/asterisk.h -text
 jitterbuffer/asterisk/abstract_jb.h -text
@@ -86,6 +94,7 @@ jitterbuffer/jitterbuf.c -text
 jitterbuffer/jitterbuf.h -text
 jitterbuffer/utils.c -text
 liblfds.6/Makefile -text
+liblfds.6/Makefile.in -text
 liblfds.6/building.txt -text
 liblfds.6/dirs -text
 liblfds.6/inc/liblfds.h -text
@@ -159,6 +168,7 @@ liblfds.6/test/src/test_slist.c -text
 liblfds.6/test/src/test_stack.c -text
 liblfds.6/test/test.sln -text
 liblfds.6/test/test.vcproj -text
+/ltmain.sh -text
 /manager.cpp -text
 /manager.h -text
 /mos_g729.cpp -text
@@ -170,6 +180,7 @@ liblfds.6/test/test.vcproj -text
 simpleini/ConvertUTF.c -text
 simpleini/ConvertUTF.h -text
 simpleini/Makefile -text
+simpleini/Makefile.in -text
 simpleini/SimpleIni.h -text
 simpleini/SimpleIni.sln -text
 simpleini/SimpleIni.vcproj -text

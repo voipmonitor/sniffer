@@ -1,0 +1,98 @@
+#                                               -*- Autoconf -*-
+# Process this file with autoconf to produce a configure script.
+
+AC_PREREQ([2.67])
+AC_INIT([FULL-PACKAGE-NAME], [VERSION], [BUG-REPORT-ADDRESS])
+AC_CONFIG_SRCDIR([voipmonitor.cpp])
+AC_CONFIG_HEADERS([config.h])
+
+# Checks for programs.
+AC_PROG_CXX
+AC_PROG_CC
+AC_PROG_INSTALL
+AC_PROG_MAKE_SET
+
+# Checks for libraries.
+# FIXME: Replace `main' with a function in `-lc':
+AC_CHECK_LIB([c], [main])
+# FIXME: Replace `main' with a function in `-lcrypt':
+AC_CHECK_LIB([crypt], [main])
+# FIXME: Replace `main' with a function in `-ldl':
+AC_CHECK_LIB([dl], [main])
+# FIXME: Replace `main' with a function in `-lgzstream':
+AC_CHECK_LIB([gzstream], [main])
+# FIXME: Replace `main' with a function in `-llfds':
+AC_CHECK_LIB([lfds], [main])
+# FIXME: Replace `main' with a function in `-lltdl':
+AC_CHECK_LIB([ltdl], [main])
+# FIXME: Replace `main' with a function in `-lm':
+AC_CHECK_LIB([m], [main])
+# FIXME: Replace `main' with a function in `-lmysqlclient':
+AC_CHECK_LIB([mysqlclient], [main], , AC_MSG_ERROR([Unable to find mysqlclient library. Debian: apt-get install libmysqlclient-dev. Centos/Redhat: yum install mysql-devel]))
+# FIXME: Replace `main' with a function in `-lmysqlpp':
+AC_CHECK_LIB([mysqlpp], [main], , AC_MSG_ERROR([Unable to find mysql++ library. Debian >=6: apt-get install libmysql++-dev. Other systems: wget http://tangentsoft.net/mysql++/releases/mysql++-3.1.0.tar.gz]))
+# FIXME: Replace `main' with a function in `-lodbc':
+AC_CHECK_LIB([odbc], [main], , AC_MSG_ERROR([Unable to find odbc library. Debian: apt-get install unixodbc-dev. Centos/Redhat: yum install unixODBC-devel]))
+# FIXME: Replace `main' with a function in `-logg':
+AC_CHECK_LIB([ogg], [main], , AC_MSG_ERROR([Unable to find OGG library. Debian: apt-get install libvorbis-dev. Centos/Redhat: yum install libogg-devel libvorbis-devel]))
+# FIXME: Replace `main' with a function in `-lpcap':
+AC_CHECK_LIB([pcap], [main], ,AC_MSG_ERROR([Unable to find libpcap library. Debian: apt-get install libpcap-dev. Centos/Redhat: yum install libpcap-devel]))
+# FIXME: Replace `main' with a function in `-lpthread':
+AC_CHECK_LIB([pthread], [main])
+# FIXME: Replace `main' with a function in `-lrt':
+AC_CHECK_LIB([rt], [main])
+# FIXME: Replace `main' with a function in `-lssl':
+#AC_CHECK_LIB([ssl], [main])
+# FIXME: Replace `main' with a function in `-lvorbis':
+AC_CHECK_LIB([vorbis], [main], ,AC_MSG_ERROR([Unable to find VORBIS library. Debian: apt-get install libvorbis-dev. Centos/Redhat: yum install libogg-devel libvorbis-devel]))
+# FIXME: Replace `main' with a function in `-lvorbisenc':
+AC_CHECK_LIB([vorbisenc], [main], ,AC_MSG_ERROR([Unable to find VORBISENC library. Debian: apt-get install libvorbis-dev. Centos/Redhat: yum install libogg-devel libvorbis-devel]))
+# FIXME: Replace `main' with a function in `-lz':
+AC_CHECK_LIB([z], [main])
+
+# Checks for header files.
+AC_FUNC_ALLOCA
+AC_CHECK_HEADERS([arpa/inet.h fcntl.h inttypes.h limits.h locale.h malloc.h netdb.h netinet/in.h stddef.h stdint.h stdlib.h string.h strings.h sys/param.h sys/socket.h sys/time.h syslog.h unistd.h wchar.h])
+
+# Checks for typedefs, structures, and compiler characteristics.
+AC_HEADER_STDBOOL
+AC_C_INLINE
+AC_TYPE_INT16_T
+AC_TYPE_INT32_T
+AC_TYPE_INT64_T
+AC_TYPE_MODE_T
+AC_TYPE_OFF_T
+AC_TYPE_PID_T
+AC_TYPE_SIZE_T
+AC_TYPE_UINT16_T
+AC_TYPE_UINT32_T
+AC_TYPE_UINT64_T
+AC_TYPE_UINT8_T
+
+# Checks for library functions.
+AC_FUNC_ERROR_AT_LINE
+AC_FUNC_FORK
+AC_FUNC_FSEEKO
+AC_FUNC_MALLOC
+AC_FUNC_REALLOC
+AC_FUNC_STRNLEN
+AC_FUNC_STRTOD
+AC_CHECK_FUNCS([gethostbyname gettimeofday inet_ntoa memmove memset mkdir mkfifo pow select setenv setlocale socket sqrt strcasecmp strchr strdup strerror strncasecmp strndup strstr strtol])
+
+AC_CONFIG_FILES([Makefile
+                 gzstream/Makefile
+                 liblfds.6/Makefile
+                 simpleini/Makefile])
+
+
+AC_OUTPUT
+
+AC_MSG_NOTICE([
+
+shared binary: run make 
+static binary: run make static
+
+check README.*
+
+])
+
