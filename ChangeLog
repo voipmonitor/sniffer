@@ -1,3 +1,48 @@
+version 4.0 
+===========
+
+Optimizations
+- open pcap file descriptor lekas
+- close unused graph files to save a lot of memory
+- if calls changes SSRC for every packet (broken device) do not let voipmonitor to take all RAM
+- allow to turn off jitterbuffer simulators which takes the most CPU and a lot of RAM
+- speedup processing SIP packets. Now the complexity changed from O(N) to O(Log(N)) which is huge speedup performance for a lot of concurrent calls (>500)
+- speedup writing CDR after the call ends 
+- implement threads to voipmonitor which now can handle thousands of simultanouse calls.
+- move testing of SIP packet before testing it for RTP which saves a lot of CPU for high SIP rate packets. 
+
+
+Features
+- implement ODBC. Now voipmonitor can store to any ODBC enabled database like MSSQL.
+- implement custom SIP header X-VoipMonitor-Custom1 which it's value will be saved to cdr.custom_header1
+- lOG PID for each syslog message to differentiate between several voipmonitor instances
+- Implement MOS calculation for G.729 codecs and make this configurable via voipmonitor.conf mos_g729
+- allow configure multiple SIP ports
+- support sniffing on tun interfaces (openvpn for example). (All DLT_RAW interfaces are supported now)
+- implement stereo WAV left channel is callee right channel is caller
+- save RTCP packets to pcap file
+- implement simple TCP server for managing voipmonitor and getting list of calls
+- implement IP and tel. number filters so voipmonitor can now record RTP for selected networks or tel. prefixes. It is done in new mysql tables filter_ip and filter_telnum. Reloading is posible via voipmonitor TCP manager interface (sending command reload)
+- Support VLAN tag packets when sniffing on all interfaces "-i any". VLAN worked only for -i ethX
+- implement TCP SIP transport and TCP SIP reassembly packets (SIP TCP packets divided to multiple small packets)
+- implement postprocess command for pcap file (--pcap-command). Added  %dirname% and %basename% to pcapcommand + add example how to move records from /dev/shm to another place after call is ended.
+- added mysql index for callername column
+- added reverse string ekvivalent for called,caller,callername and trigger to do automatic reverse. now for search caller like %number is better to use caller_reverse like CONCAT(REVERSE(number),'%') which will use indexed search
+
+
+Bugs
+- fix crashes caused by memory corruptions and some race conditions
+- fix many wav sync issues, double speed wav issues and one-way wav issues
+- fix typo in SQL table calee -> callee which resulted in not saving callee information to whohanged
+- fix pcap file leaks
+- fix "myqslhost" -> "mysqlhost" typo. Please update your configuration files!
+- fix ogg format
+- after 3XX,4XX,5XX some additional packets were not saved
+- fix mysql connection handling on error condition
+- fix User-Agent header which was stored to called instead of caller
+- fixed SIP last response CDR value for cases where 200 OK is missing after BYE.
+
+
 version 3.0.1
 =============
 - fix broken command line parsing introduced in 3.0 version 
