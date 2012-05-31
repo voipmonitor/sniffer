@@ -279,6 +279,12 @@ public:
 	void hashRemove();
 
 	/**
+	 * @brief stop recording packets to pcap file
+	 *
+	*/
+	void stoprecording();
+
+	/**
 	 * @brief print debug information for the call to stdout
 	 *
 	*/

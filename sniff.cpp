@@ -70,6 +70,7 @@ extern int verbosity;
 extern int terminating;
 extern int opt_rtp_firstleg;
 extern int opt_sip_register;
+extern int opt_norecord_header;
 extern char *sipportmatrix;
 extern pcap_t *handle;
 extern read_thread *threads;
@@ -705,6 +706,14 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 #endif
 				}
 
+				if(opt_norecord_header) {
+					s = gettag(data, datalen, "X-VoipMonitor-norecord", &l);
+					if(l && l < 33) {
+						// do 
+						call->stoprecording();
+					}
+				}
+
 				// opening dump file
 				if(call->flags & (FLAG_SAVESIP | FLAG_SAVEREGISTER | FLAG_SAVERTP | FLAG_SAVEWAV)) {
 					mkdir(call->dirname(), 0777);
@@ -742,6 +751,15 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 			(call->saddr == daddr && call->sport == dest))))
 
 			{
+
+			if(opt_norecord_header) {
+				s = gettag(data, datalen, "X-VoipMonitor-norecord", &l);
+				if(l && l < 33) {
+					// do 
+					call->stoprecording();
+				}
+			}
+
 			// we have packet, extend pending destroy requests
 			if(call->destroy_call_at > 0) {
 				call->destroy_call_at += 5; 
@@ -858,6 +876,14 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 						syslog(LOG_NOTICE, "Call closed [%d]\n", lastSIPresponseNum);
 */
 					return call;
+			}
+		}
+
+		if(opt_norecord_header) {
+			s = gettag(data, datalen, "X-VoipMonitor-norecord", &l);
+			if(l && l < 33) {
+				// do 
+				call->stoprecording();
 			}
 		}
 		

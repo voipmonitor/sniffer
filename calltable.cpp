@@ -333,6 +333,17 @@ Call::read_rtp(unsigned char* data, int datalen, struct pcap_pkthdr *header, u_i
 	}
 }
 
+void Call::stoprecording() {
+	char str2[2048];
+
+	this->flags = 0;
+	pcap_dump_flush(this->get_f_pcap());
+	pcap_dump_close(this->get_f_pcap());
+	this->set_f_pcap(NULL);
+	sprintf(str2, "%s/%s.pcap", this->dirname(), this->fbasename);
+	unlink(str2);	
+}
+		
 double calculate_mos_g711(double ppl, double burstr, int version) {
 	double r;
 	double bpl = 8.47627; //mos = -4.23836 + 0.29873 * r - 0.00416744 * r * r + 0.0000209855 * r * r * r;

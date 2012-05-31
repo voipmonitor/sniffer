@@ -76,6 +76,7 @@ int opt_ringbuffer = 10;	// ring buffer in MB
 int opt_audio_format = FORMAT_WAV;	// define format for audio writing (if -W option)
 int opt_manager_port = 5029;	// manager api TCP port
 int opt_pcap_threaded = 0;	// run reading packets from pcap in one thread and process packets in another thread via queue
+int opt_norecord_header = 0;	// if = 1 SIP call with X-VoipMonitor-norecord header will be not saved although global configuration says to record. 
 
 char configfile[1024] = "";	// config file name
 
@@ -349,6 +350,9 @@ int load_config(char *fname) {
 	if((value = ini.GetValue("general", "savertp", NULL))) {
 		opt_saveRTP = yesno(value);
 	}
+	if((value = ini.GetValue("general", "norecord-header", NULL))) {
+		opt_norecord_header = yesno(value);
+	}
 	if((value = ini.GetValue("general", "managerport", NULL))) {
 		opt_manager_port = atoi(value);
 	}
@@ -525,6 +529,7 @@ int main(int argc, char *argv[]) {
 	    {"manager-port", 1, 0, '8'},
 	    {"pcap-command", 1, 0, 'a'},
 	    {"pcap-thread", 0, 0, 'T'},
+	    {"norecord-header", 0, 0, 'N'},
 	    {0, 0, 0, 0}
 	};
 
@@ -537,7 +542,7 @@ int main(int argc, char *argv[]) {
 	/* command line arguments overrides configuration in voipmonitor.conf file */
 	while(1) {
 		int c;
-		c = getopt_long(argc, argv, "f:i:r:d:v:h:b:t:u:p:P:kncUSRAWGXT", long_options, &option_index);
+		c = getopt_long(argc, argv, "f:i:r:d:v:h:b:t:u:p:P:kncUSRAWGXTN", long_options, &option_index);
 		//"i:r:d:v:h:b:u:p:fnU", NULL, NULL);
 		if (c == -1)
 			break;
@@ -550,6 +555,9 @@ int main(int argc, char *argv[]) {
 			*/
 			case 'a':
 				strncpy(pcapcommand, optarg, sizeof(pcapcommand));
+				break;
+			case 'N':
+				opt_norecord_header = 1;
 				break;
 			case 'T':
 				opt_pcap_threaded = 1;
@@ -660,7 +668,7 @@ int main(int argc, char *argv[]) {
 				"Usage: voipmonitor [--config-file /etc/voipmonitor.conf] [-kncUSRAWG] [-i <interface>] [-f <pcap filter>]\n"
 				"       [-r <file>] [-d <pcap dump directory>] [-v level] [-h <mysql server>] [-b <mysql database]\n"
 				"       [-u <mysql username>] [-p <mysql password>] [-f <pcap filter>] [--rtp-firstleg]\n"
-				"       [--ring-buffer <n>] [--manager-port <n>]\n"
+				"       [--ring-buffer <n>] [--manager-port <n>] [--norecord-header]\n"
 				"\n"
 				" -S, --save-sip\n"
 				"      save SIP packets to pcap file. Default is disabled.\n"
@@ -673,6 +681,9 @@ int main(int argc, char *argv[]) {
 				"\n"
 				" --sip-register\n"
    				"      save SIP register requests to cdr.register table and to pcap file.\n"
+				"\n"
+				" --norecord-header\n"
+   				"      if any of SIP message during the call contains header X-VoipMonitor-norecord call will be not converted to wav and pcap file will be deleted.\n"
 				"\n"
 				" --rtp-firstleg\n"
 				"      this is important option if voipmonitor is sniffing on SIP proxy and see both RTP leg of CALL.\n"
