@@ -503,7 +503,16 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 		if(packetization_iterator == 0) {
 			if(last_ts != 0 && seq == (last_seq + 1) && (prev_payload != 101 && curpayload != 101) && !sid && !prev_sid) {
 				// sequence numbers are ok, we can calculate packetization
-				packetization = (getTimestamp() - last_ts) / 8;
+				if(curpayload == PAYLOAD_G729) {
+					// if G729 packet len is 20, packet len is 20ms. In other cases - will be added later (do not have 40ms packetizations samples right now)
+					if(get_payload_len() == 20) {
+						packetization = 20;
+					} else {
+						packetization = (getTimestamp() - last_ts) / 8;
+					}
+				} else {
+					packetization = (getTimestamp() - last_ts) / 8;
+				}
 				if(packetization > 0) {
 					last_packetization = packetization;
 					packetization_iterator++;
@@ -515,7 +524,7 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 			if(curpayload == PAYLOAD_PCMU or curpayload == PAYLOAD_PCMA) {
 				channel_fix1->packetization = default_packetization = channel_fix2->packetization = channel_adapt->packetization = channel_record->packetization = packetization = get_payload_len() / 8;
 
-				if(verbosity > 3) printf("[%u] packetization:[%d]\n", getSSRC(), packetization);
+				if(verbosity > 3) printf("[%x] packetization:[%d]\n", getSSRC(), packetization);
 
 
 				packetization_iterator = 10; // this will cause that packetization is estimated as final
@@ -539,8 +548,20 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 		} else if(packetization_iterator == 1) {
 			if(last_ts != 0 && seq == (last_seq + 1) && curpayload != 101 && prev_payload != 101 && !sid && !prev_sid) {
 				// sequence numbers are ok, we can calculate packetization
-				packetization = (getTimestamp() - last_ts) / 8;
+				if(curpayload == PAYLOAD_G729) {
+					// if G729 packet len is 20, packet len is 20ms. In other cases - will be added later (do not have 40ms packetizations samples right now)
+					if(get_payload_len() == 20) {
+						packetization = 20;
+					} else {
+						packetization = (getTimestamp() - last_ts) / 8;
+					}
+				} else {
+					packetization = (getTimestamp() - last_ts) / 8;
+				}
+
+				// now make packetization average
 				packetization = (packetization + last_packetization) / 2;
+
 				if(packetization <= 0 or getMarker()) {
 					// packetization failed or Marker bit is set, fall back to start
 					packetization_iterator = 0;
@@ -555,7 +576,7 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 				} else {
 					packetization_iterator++;
 					channel_fix1->packetization = channel_fix2->packetization = channel_adapt->packetization = channel_record->packetization = packetization;
-					if(verbosity > 3) printf("[%u] packetization:[%d]\n", getSSRC(), packetization);
+					if(verbosity > 3) printf("[%x] packetization:[%d]\n", getSSRC(), packetization);
 
 					if(opt_jitterbuffer_f1)
 						jitterbuffer(channel_fix1, 0);
