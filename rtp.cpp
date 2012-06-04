@@ -389,6 +389,15 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 
 	u_int16_t seq = getSeqNum();
 	int curpayload = getPayload();
+
+	// ignore CNG
+	if(curpayload == 13 or curpayload == 19) {
+		last_seq = seq;
+		if(update_seq(seq)) {
+			update_stats();
+		}
+		return;
+	}
 	
 	/* codec changed */
 	if((codec == -1 || (curpayload != prev_payload)) && (curpayload != 101 && prev_payload != 101)) {
@@ -504,7 +513,11 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 #if 1
 			// new way of getting packetization from packet datalen 
 			if(curpayload == PAYLOAD_PCMU or curpayload == PAYLOAD_PCMA) {
-				channel_fix1->packetization = channel_fix2->packetization = channel_adapt->packetization = channel_record->packetization = packetization = get_payload_len() / 8;
+				channel_fix1->packetization = default_packetization = channel_fix2->packetization = channel_adapt->packetization = channel_record->packetization = packetization = get_payload_len() / 8;
+
+				if(verbosity > 3) printf("[%u] packetization:[%d]\n", getSSRC(), packetization);
+
+
 				packetization_iterator = 10; // this will cause that packetization is estimated as final
 
 				if(opt_jitterbuffer_f1)
