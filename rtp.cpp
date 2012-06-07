@@ -220,6 +220,28 @@ void RTP::jitterbuffer_fixed_flush(struct ast_channel *jchannel) {
 	jb_fixed_flush_deliver(channel_record);
 }
 
+/* add silence to RTP stream from last packet time to current time which is in header->ts */
+void
+RTP::jt_tail(struct pcap_pkthdr *header) {
+
+	/* protect for endless loops (it cannot happen in theory but to be sure */
+	if(packetization <= 0) {
+		syslog(LOG_ERR, "packetization is 0 in jitterbuffer function.");
+		return;
+	}
+
+	/* calculate time difference between last pakcet and current packet + packetization time*/ 
+	int msdiff = ast_tvdiff_ms( header->ts, ast_tvadd(channel_record->last_ts, ast_samp2tv(packetization, 1000)) );
+
+	while( msdiff >= packetization )  {
+		ast_jb_get_and_deliver(channel_record, &channel_record->last_ts);
+		/* adding packetization time to last_ts time */ 
+		struct timeval tmp = ast_tvadd(channel_record->last_ts, ast_samp2tv(packetization, 1000));
+		memcpy(&channel_record->last_ts, &tmp, sizeof(struct timeval));
+		msdiff -= packetization;
+	}
+}
+
 #if 1
 /* simulate jitterbuffer */
 void

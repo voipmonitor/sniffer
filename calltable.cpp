@@ -301,6 +301,17 @@ Call::read_rtp(unsigned char* data, int datalen, struct pcap_pkthdr *header, u_i
 			}
 		}
 
+		// if previouse RTP streams are present it should be filled by silence to keep it in sync
+		if(iscaller) {
+			if(lastcallerrtp) {
+				lastcallerrtp->jt_tail(header);
+			}
+		} else { 
+			if(lastcalledrtp) {
+				lastcalledrtp->jt_tail(header);
+			}
+		}
+
 		rtp[ssrc_n] = new RTP;
 		rtp[ssrc_n]->call_owner = this;
 		rtp[ssrc_n]->ssrc_index = ssrc_n; 

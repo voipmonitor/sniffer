@@ -327,6 +327,14 @@ public:
 
 	 /**
 
+	 * @brief adds empty frames from last packet in jitterbuffer to time in header packet
+	 *
+	 * add silence to RTP stream from last packet time to current time which is in header->ts 
+        */
+	void jt_tail(struct pcap_pkthdr *header);
+
+	 /**
+
 	 * @brief prints debug informations
 	 *
 	 * this function prints statistics data on stdout 
