@@ -189,7 +189,7 @@ Call::add_ip_port(in_addr_t addr, unsigned short port, char *ua, unsigned long u
 	if(verbosity >= 4) {
 		struct in_addr in;
 		in.s_addr = addr;
-		printf("call:[%p] ip:[%s] port:[%d]\n", this, inet_ntoa(in), port);
+		printf("call:[%p] ip:[%s] port:[%d] iscaller:[%d]\n", this, inet_ntoa(in), port, iscaller);
 	}
 
 	if(ipport_n > 0) {
@@ -752,6 +752,15 @@ Call::buildQuery(stringstream *query) {
 			// save only two streams with the biggest received packets
 			for(int i = 0; i < 2; i++) {
 				if(!rtp[indexes[i]]) continue;
+
+				// if the stream for a_* is not caller there is probably case where one direction is missing at all and the second stream contains more SSRC streams so swap it
+				if(i == 0 && !rtp[indexes[i]]->iscaller) {
+					int tmp;
+					tmp = indexes[1];
+					indexes[1] = indexes[0];
+					indexes[0] = tmp;
+					continue;
+				}
 				
 				char c = i == 0 ? 'a' : 'b';
 
@@ -886,6 +895,15 @@ Call::buildQuery(stringstream *query) {
 			for(int i = 0; i < 2; i++) {
 				if(!rtp[indexes[i]]) continue;
 				
+				// if the stream for a_* is not caller there is probably case where one direction is missing at all and the second stream contains more SSRC streams so swap it
+				if(i == 0 && !rtp[indexes[i]]->iscaller) {
+					int tmp;
+					tmp = indexes[1];
+					indexes[1] = indexes[0];
+					indexes[0] = tmp;
+					continue;
+				}
+
 				char c = i == 0 ? 'a' : 'b';
 
 				*query << " , " << c << "_index = " << indexes[i];
