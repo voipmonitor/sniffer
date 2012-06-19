@@ -86,6 +86,8 @@ extern int telnumfilter_reload_do;
 extern int rtp_threaded;
 extern int opt_pcap_threaded;
 
+extern int opt_rtpnosip;
+
 #ifdef QUEUE_MUTEX
 extern sem_t readpacket_thread_semaphore;
 #endif
@@ -991,6 +993,57 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 		}
 	// packet does not belongs to established call, check if it is on SIP port
 	} else {
+		//if(opt_rtpnosip) {
+		if(1) {
+			// decoding RTP without SIP signaling is enabled. Check if it is port >= 1024 and if RTP version is == 2
+			char s[32];
+			RTP rtp;
+			int rtpmap[MAX_RTPMAP];
+			memset(&rtpmap, 0, sizeof(int) * MAX_RTPMAP);
+
+			rtp.read((unsigned char*)data, datalen, header, saddr, 0);
+
+			if(rtp.getVersion() != 2 && rtp.getPayload() > 18) {
+				return NULL;
+			}
+			snprintf(s, 4092, "%u-%x", (unsigned int)time(NULL), rtp.getSSRC());
+
+			printf("ssrc [%x] ver[%d] src[%u] dst[%u]\n", rtp.getSSRC(), rtp.getVersion(), source, dest);
+			exit;
+
+
+			call = calltable->add(s, strlen(s), header->ts.tv_sec, saddr, source);
+			call->set_first_packet_time(header->ts.tv_sec);
+			call->sipcallerip = saddr;
+			call->sipcalledip = daddr;
+			call->type = INVITE;
+			ipfilter->add_call_flags(&(call->flags), ntohl(saddr), ntohl(daddr));
+			strcpy(call->fbasename, s);
+			call->seeninvite = true;
+			strcpy(call->callername, "RTP");
+			strcpy(call->caller, "RTP");
+			strcpy(call->called, "RTP");
+
+#ifdef DEBUG_INVITE
+			syslog(LOG_NOTICE, "New RTP call: srcip INET_NTOA[%u] dstip INET_NTOA[%u] From[%s] To[%s]\n", call->sipcallerip, call->sipcalledip, call->caller, call->called);
+#endif
+
+			// opening dump file
+			if(call->flags & (FLAG_SAVESIP | FLAG_SAVEREGISTER | FLAG_SAVERTP | FLAG_SAVEWAV)) {
+				mkdir(call->dirname(), 0777);
+			}
+			if(call->flags & (FLAG_SAVESIP | FLAG_SAVEREGISTER | FLAG_SAVERTP)) {
+				sprintf(str2, "%s/%s.pcap", call->dirname(), s);
+				call->set_f_pcap(pcap_dump_open(handle, str2));
+			}
+
+			call->add_ip_port(daddr, dest, s, l, 1, rtpmap);
+			calltable->hashAdd(daddr, dest, call, 1, 0);
+
+			call->add_ip_port(saddr, source, s, l, 0, rtpmap);
+			calltable->hashAdd(saddr, source, call, 0, 0);
+			
+		}
 		// we are not interested in this packet
 		if (verbosity >= 6){
 			char st1[16];

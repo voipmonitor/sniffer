@@ -139,6 +139,7 @@ RTP::RTP() {
 	gfileRAW_buffer = NULL;
 	sid = false;
 	prev_sid = false;
+	call_owner = NULL;
 }
 
 /* destructor */
@@ -402,8 +403,6 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 	this->saddr =  saddr;
 
 	Call *owner = (Call*)call_owner;
-	int fifo1 = owner->fifo1;
-	int fifo2 = owner->fifo2;
 
 	if(getVersion() != 2) {
 		return;
@@ -420,6 +419,11 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 		}
 		return;
 	}
+
+	if(!owner) return;
+
+	int fifo1 = owner->fifo1;
+	int fifo2 = owner->fifo2;
 	
 	/* codec changed */
 	if((codec == -1 || (curpayload != prev_payload)) && (curpayload != 101 && prev_payload != 101)) {
@@ -443,7 +447,7 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 		if(opt_saveRAW || (owner && (owner->flags & FLAG_SAVEWAV)) ||
 			fifo1 || fifo2 // if recording requested 
 		) {
-			syslog(LOG_ERR, "converting WAV! [%u] [%d] [%d]\n", owner->flags, fifo1, fifo2);
+			if(verbosity > 0) syslog(LOG_ERR, "converting WAV! [%u] [%d] [%d]\n", owner->flags, fifo1, fifo2);
 			/* open file for raw codec */
 			unsigned long unique = getTimestamp();
 			char tmp[1024];

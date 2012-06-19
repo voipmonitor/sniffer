@@ -77,6 +77,7 @@ int opt_audio_format = FORMAT_WAV;	// define format for audio writing (if -W opt
 int opt_manager_port = 5029;	// manager api TCP port
 int opt_pcap_threaded = 0;	// run reading packets from pcap in one thread and process packets in another thread via queue
 int opt_norecord_header = 0;	// if = 1 SIP call with X-VoipMonitor-norecord header will be not saved although global configuration says to record. 
+int opt_rtpnosip = 0;		// if = 1 RTP stream will be saved into calls regardless on SIP signalizatoin (handy if you need extract RTP without SIP)
 
 char configfile[1024] = "";	// config file name
 
@@ -530,6 +531,7 @@ int main(int argc, char *argv[]) {
 	    {"pcap-command", 1, 0, 'a'},
 	    {"pcap-thread", 0, 0, 'T'},
 	    {"norecord-header", 0, 0, 'N'},
+	    {"rtp-nosig", 0, 0, 'I'},
 	    {0, 0, 0, 0}
 	};
 
@@ -542,7 +544,7 @@ int main(int argc, char *argv[]) {
 	/* command line arguments overrides configuration in voipmonitor.conf file */
 	while(1) {
 		int c;
-		c = getopt_long(argc, argv, "f:i:r:d:v:h:b:t:u:p:P:kncUSRAWGXTN", long_options, &option_index);
+		c = getopt_long(argc, argv, "f:i:r:d:v:h:b:t:u:p:P:kncUSRAWGXTNI", long_options, &option_index);
 		//"i:r:d:v:h:b:u:p:fnU", NULL, NULL);
 		if (c == -1)
 			break;
@@ -555,6 +557,9 @@ int main(int argc, char *argv[]) {
 			*/
 			case 'a':
 				strncpy(pcapcommand, optarg, sizeof(pcapcommand));
+				break;
+			case 'I':
+				opt_rtpnosip = 1;
 				break;
 			case 'N':
 				opt_norecord_header = 1;
@@ -718,6 +723,9 @@ int main(int argc, char *argv[]) {
 				"\n"
 				" -A, --save-raw\n"
 				"      save RTP payload to RAW format. Default is disabled.\n"
+				"\n"
+				" --rtp-nosig\n"
+				"      analyze calls based on RTP only - handy if you want extract call which does not have signalization (or H323 calls which voipmonitor does not know yet).\n"
 				"\n"
 				" -G, --save-graph=[gzip|plain]\n"
 				"      save GRAPH data to graph file. Default is disabled. Default format is plain. For gzip format use --save-graph=gzip\n"
