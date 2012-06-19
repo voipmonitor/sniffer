@@ -113,6 +113,8 @@ Call::Call(char *call_id, unsigned long call_id_len, time_t time, void *ct) {
 	destroy_call_at = 0;
 	custom_header1[0] = '\0';
 	thread_num = 0;
+	recordstopped = 0;
+	dtmfflag = 0;
 }
 
 void
@@ -345,14 +347,24 @@ Call::read_rtp(unsigned char* data, int datalen, struct pcap_pkthdr *header, u_i
 }
 
 void Call::stoprecording() {
-	char str2[2048];
+	if(recordstopped == 0) {
+		char str2[2048];
 
-	this->flags = 0;
-	pcap_dump_flush(this->get_f_pcap());
-	pcap_dump_close(this->get_f_pcap());
-	this->set_f_pcap(NULL);
-	sprintf(str2, "%s/%s.pcap", this->dirname(), this->fbasename);
-	unlink(str2);	
+		this->flags = 0;
+		pcap_dump_flush(this->get_f_pcap());
+		pcap_dump_close(this->get_f_pcap());
+		this->set_f_pcap(NULL);
+		sprintf(str2, "%s/%s.pcap", this->dirname(), this->fbasename);
+		unlink(str2);	
+		this->recordstopped = 1;
+		if(verbosity >= 1) {
+			syslog(LOG_ERR,"Call %s/%s.pcap was stopped due to dtmf or norecord sip header. ", this->dirname(), this->fbasename);
+		}
+	} else {
+		if(verbosity >= 1) {
+			syslog(LOG_ERR,"Call %s/%s.pcap was stopped before. Ignoring now. ", this->dirname(), this->fbasename);
+		}
+	}
 }
 		
 double calculate_mos_g711(double ppl, double burstr, int version) {

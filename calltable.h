@@ -78,6 +78,8 @@ public:
 	u_int32_t saddr;		//!< source IP address of first INVITE
 	unsigned short sport;		//!< source port of first INVITE
 	int whohanged;			//!< who hanged up. 0 -> caller, 1-> callee, -1 -> unknown
+	int recordstopped;		//!< flag holding if call was stopped to avoid double free
+	int dtmfflag;			//!< used for holding dtmf states 
 
 	time_t progress_time;		//!< time in seconds of 18X response
 	time_t first_rtp_time;		//!< time in seconds of first RTP packet

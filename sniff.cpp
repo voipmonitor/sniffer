@@ -74,6 +74,7 @@ extern int opt_norecord_header;
 extern char *sipportmatrix;
 extern pcap_t *handle;
 extern read_thread *threads;
+extern int opt_norecord_dtmf;
 
 extern IPfilter *ipfilter;
 extern IPfilter *ipfilter_reload;
@@ -888,6 +889,29 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 				call->stoprecording();
 			}
 		}
+
+		if(opt_norecord_dtmf) {
+			s = gettag(data, datalen, "Signal", &l);
+			if(l && l < 33) {
+				char *tmp = s + 1;
+				tmp[l - 1] = '\0';
+				if(call->dtmfflag == 0) {
+					if(tmp[0] == '*') {
+						// received ftmf '*', set flag so if next dtmf will be '0' stop recording
+						call->dtmfflag = 1;
+					}
+				} else {
+					if(tmp[0] == '0') {
+						// we have complete *0 sequence
+						call->stoprecording();
+						call->dtmfflag = 0;
+					} else {
+						// reset flag because we did not received '0' after '*'
+						call->dtmfflag = 0;
+					}
+				}
+			}
+		}
 		
 		// we have packet, extend pending destroy requests
 		if(call->destroy_call_at > 0) {
@@ -1009,8 +1033,6 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 			snprintf(s, 4092, "%u-%x", (unsigned int)time(NULL), rtp.getSSRC());
 
 			printf("ssrc [%x] ver[%d] src[%u] dst[%u]\n", rtp.getSSRC(), rtp.getVersion(), source, dest);
-			exit;
-
 
 			call = calltable->add(s, strlen(s), header->ts.tv_sec, saddr, source);
 			call->set_first_packet_time(header->ts.tv_sec);
