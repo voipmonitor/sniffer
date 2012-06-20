@@ -807,7 +807,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 			} else if(sip_method == RES2XX) {
 				// if the progress time was not set yet set it here so PDD (Post Dial Delay) is accurate if no ringing is present
 				if(call->progress_time == 0) {
-					progress_time = header->ts.tv_sec;
+					call->progress_time = header->ts.tv_sec;
 				}
 
 				if(!call->connect_time) {
@@ -868,7 +868,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 			    (sip_method == RES3XX || sip_method == RES4XX || sip_method == RES5XX || sip_method == RES6XX) && lastSIPresponseNum != 401 && lastSIPresponseNum != 407 ) {
 					// if the progress time was not set yet set it here so PDD (Post Dial Delay) is accurate if no ringing is present
 					if(call->progress_time == 0) {
-						progress_time = header->ts.tv_sec;
+						call->progress_time = header->ts.tv_sec;
 					}
 					// save packet 
 					if(!dontsave && opt_saveSIP) {
