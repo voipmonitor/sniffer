@@ -805,6 +805,10 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 				// CANCEL continues with Status: 200 canceling; 200 OK; 487 Req. terminated; ACK. Lets wait max 10 seconds and destroy call
 				call->destroy_call_at = header->ts.tv_sec + 10;
 			} else if(sip_method == RES2XX) {
+				// if the progress time was not set yet set it here so PDD (Post Dial Delay) is accurate if no ringing is present
+				if(call->progress_time == 0) {
+					progress_time = header->ts.tv_sec;
+				}
 
 				if(!call->connect_time) {
 					call->connect_time = header->ts.tv_sec;
@@ -862,6 +866,10 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 			if( ((call->saddr == saddr && call->sport == source) || (call->saddr == daddr && call->sport == dest))
 				&&
 			    (sip_method == RES3XX || sip_method == RES4XX || sip_method == RES5XX || sip_method == RES6XX) && lastSIPresponseNum != 401 && lastSIPresponseNum != 407 ) {
+					// if the progress time was not set yet set it here so PDD (Post Dial Delay) is accurate if no ringing is present
+					if(call->progress_time == 0) {
+						progress_time = header->ts.tv_sec;
+					}
 					// save packet 
 					if(!dontsave && opt_saveSIP) {
 						save_packet(call, header, packet);
