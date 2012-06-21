@@ -1025,8 +1025,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 		}
 	// packet does not belongs to established call, check if it is on SIP port
 	} else {
-		//if(opt_rtpnosip) {
-		if(1) {
+		if(opt_rtpnosip) {
 			// decoding RTP without SIP signaling is enabled. Check if it is port >= 1024 and if RTP version is == 2
 			char s[32];
 			RTP rtp;
