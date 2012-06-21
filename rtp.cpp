@@ -225,6 +225,11 @@ void RTP::jitterbuffer_fixed_flush(struct ast_channel *jchannel) {
 void
 RTP::jt_tail(struct pcap_pkthdr *header) {
 
+	if(!ast_jb_test(channel_record)) {
+		// there is no ongoing recording, return
+		return;
+	}
+
 	/* protect for endless loops (it cannot happen in theory but to be sure */
 	if(packetization <= 0) {
 		syslog(LOG_ERR, "packetization is 0 in jitterbuffer function.");
@@ -232,7 +237,13 @@ RTP::jt_tail(struct pcap_pkthdr *header) {
 	}
 
 	/* calculate time difference between last pakcet and current packet + packetization time*/ 
-	int msdiff = ast_tvdiff_ms( header->ts, ast_tvadd(channel_record->last_ts, ast_samp2tv(packetization, 1000)) );
+	if(channel_record->last_ts.tv_sec == 0) {
+		// previouuse tv_sec is not set, set it
+		memcpy(&channel_record->last_ts, &header->ts, sizeof(timeval));
+		return;
+	}
+	int msdiff = ast_tvdiff_ms(header->ts, channel_record->last_ts);
+	msdiff -= packetization;
 
 	while( msdiff >= packetization )  {
 		ast_jb_get_and_deliver(channel_record, &channel_record->last_ts);

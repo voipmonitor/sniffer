@@ -207,6 +207,12 @@ static void jb_choose_impl(struct ast_channel *chan)
 	}
 }
 
+int ast_jb_test(struct ast_channel *c0)
+{
+	struct ast_jb *jb0 = &c0->jb;
+	return ast_test_flag(jb0, JB_CREATED);
+}
+
 int ast_jb_do_usecheck(struct ast_channel *c0, struct timeval *ts)
 {
 	struct ast_jb *jb0 = &c0->jb;

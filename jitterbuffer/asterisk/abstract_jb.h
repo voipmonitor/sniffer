@@ -207,6 +207,8 @@ void ast_jb_empty_and_reset(struct ast_channel *c0);
 
 void jb_fixed_flush_deliver(struct ast_channel *chan);
 
+int ast_jb_test(struct ast_channel *c0);
+
 #if defined(__cplusplus) || defined(c_plusplus)
 }
 #endif
