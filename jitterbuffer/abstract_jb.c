@@ -407,6 +407,7 @@ void save_empty_frame(struct ast_channel *chan) {
 			// write previouse frame (better than zero frame), but only once
 			if(chan->lastbuflen) {
 				fwrite(chan->lastbuf, 1, chan->lastbuflen, chan->rawstream);
+				chan->lastbuflen = 0;
 			} else {
 				// write empty frame
 				for(i = 0; i < chan->last_datalen; i++) {
