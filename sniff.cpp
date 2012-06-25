@@ -859,7 +859,9 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 					}
 				}
 			} else if(sip_method == RES18X) {
-				call->progress_time = header->ts.tv_sec;
+				if(call->progress_time == 0) {
+					call->progress_time = header->ts.tv_sec;
+				}
 			}
 
 			// if the call ends with some of SIP [456]XX response code, we can shorten timeout when the call will be closed 
