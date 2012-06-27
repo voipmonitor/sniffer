@@ -201,7 +201,6 @@ void *moving_cache( void *dummy ) {
 	char src_c[1024];
 	char dst_c[1024];
 	while(1) {
-		if(verbosity > 0) syslog(LOG_ERR,"files in queue [%d]\n", calls);
 		while (1) {
 			calltable->lock_files_queue();
 			if(calltable->files_queue.size() == 0) {
@@ -226,6 +225,7 @@ void *moving_cache( void *dummy ) {
 			strncpy(dst_c, (char*)dst.c_str(), sizeof(dst_c));
 
 			if(verbosity > 2) syslog(LOG_ERR, "rename([%s] -> [%s])\n", src_c, dst_c);
+			syslog(LOG_ERR, "rename([%s] -> [%s])\n", src_c, dst_c);
 			rename_file(src_c, dst_c);
 			//TODO: error handling
 			//perror ("The following error occurred");
