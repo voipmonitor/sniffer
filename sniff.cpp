@@ -88,6 +88,7 @@ extern int rtp_threaded;
 extern int opt_pcap_threaded;
 
 extern int opt_rtpnosip;
+extern char opt_cachedir[1024];
 
 #ifdef QUEUE_MUTEX
 extern sem_t readpacket_thread_semaphore;
@@ -719,10 +720,19 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 
 				// opening dump file
 				if(call->flags & (FLAG_SAVESIP | FLAG_SAVEREGISTER | FLAG_SAVERTP | FLAG_SAVEWAV)) {
+					if(opt_cachedir[0] != '\0') {
+						sprintf(str2, "%s/%s", opt_cachedir, call->dirname());
+						mkdir(str2, 0777);
+					}
 					mkdir(call->dirname(), 0777);
 				}
 				if(call->flags & (FLAG_SAVESIP | FLAG_SAVEREGISTER | FLAG_SAVERTP)) {
-					sprintf(str2, "%s/%s.pcap", call->dirname(), callidstr);
+					if(opt_cachedir[0] != '\0') {
+						sprintf(str2, "%s/%s/%s.pcap", opt_cachedir, call->dirname(), callidstr);
+					} else {
+						sprintf(str2, "%s/%s.pcap", call->dirname(), callidstr);
+					}
+					sprintf(call->pcapfilename, "%s/%s.pcap", call->dirname(), callidstr);
 					call->set_f_pcap(pcap_dump_open(handle, str2));
 				}
 
@@ -1066,6 +1076,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 			if(call->flags & (FLAG_SAVESIP | FLAG_SAVEREGISTER | FLAG_SAVERTP)) {
 				sprintf(str2, "%s/%s.pcap", call->dirname(), s);
 				call->set_f_pcap(pcap_dump_open(handle, str2));
+				sprintf(call->pcapfilename, "%s/%s.pcap", call->dirname(), s);
 			}
 
 			call->add_ip_port(daddr, dest, s, l, 1, rtpmap);

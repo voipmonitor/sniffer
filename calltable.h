@@ -97,6 +97,8 @@ public:
 	char lastSIPresponse[128];
 	int lastSIPresponseNum;
 
+	char pcapfilename[512];
+
 	int last_callercodec;		//!< Last caller codec 
 	int last_calledcodec;		//!< Last called codec 
 
@@ -290,6 +292,9 @@ public:
 	 * @brief print debug information for the call to stdout
 	 *
 	*/
+
+	void addtocachequeue(string file);
+
 	void dump();
 
 private:
@@ -310,6 +315,7 @@ class Calltable {
 public:
 	queue<Call*> calls_queue; //!< this queue is used for asynchronous storing CDR by the worker thread
 	queue<Call*> calls_deletequeue; //!< this queue is used for asynchronous storing CDR by the worker thread
+	queue<string> files_queue; //!< this queue is used for asynchronous storing CDR by the worker thread
 	list<Call*> calls_list; //!< 
 	list<Call*>::iterator call;
 	map<string, Call*> calls_listMAP; //!< 
@@ -340,6 +346,7 @@ public:
 	*/
 	void lock_calls_queue() { pthread_mutex_lock(&qlock); };
 	void lock_calls_deletequeue() { pthread_mutex_lock(&qdellock); };
+	void lock_files_queue() { pthread_mutex_lock(&flock); };
 
 	/**
 	 * @brief unlock calls_queue structure 
@@ -347,7 +354,13 @@ public:
 	*/
 	void unlock_calls_queue() { pthread_mutex_unlock(&qlock); };
 	void unlock_calls_deletequeue() { pthread_mutex_unlock(&qdellock); };
+	void unlock_files_queue() { pthread_mutex_unlock(&flock); };
 	
+	/**
+	 * @brief lock files_queue structure 
+	 *
+	*/
+
 	/**
 	 * @brief add Call to Calltable
 	 *
@@ -413,6 +426,7 @@ public:
 private:
 	pthread_mutex_t qlock;		//!< mutex locking calls_queue
 	pthread_mutex_t qdellock;	//!< mutex locking calls_deletequeue
+	pthread_mutex_t flock;		//!< mutex locking calls_queue
 
 	struct hash_node {
 		Call *call;

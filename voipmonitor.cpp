@@ -23,6 +23,7 @@
 #include <unistd.h>
 #include <syslog.h>
 #include <sys/resource.h>
+#include <sys/sendfile.h>
 #include <semaphore.h>
 
 #include <sys/types.h>
@@ -108,6 +109,7 @@ int num_threads = 1; // this has to be 1 for now
 
 
 char opt_chdir[1024];
+char opt_cachedir[1024];
 
 IPfilter *ipfilter = NULL;		// IP filter based on MYSQL 
 IPfilter *ipfilter_reload = NULL;	// IP filter based on MYSQL for reload purpose
@@ -119,7 +121,9 @@ int telnumfilter_reload_do = 0;	// for reload in main thread
 
 pthread_t call_thread;		// ID of worker storing CDR thread 
 pthread_t manager_thread;	// ID of worker manager thread 
+pthread_t cachedir_thread;	// ID of worker cachedir thread 
 int terminating;		// if set to 1, worker thread will terminate
+int terminating2;		// if set to 1, worker thread will terminate
 char *sipportmatrix;		// matrix of sip ports to monitor
 
 pcap_t *handle = NULL;		// pcap handler 
@@ -135,6 +139,35 @@ sem_t readpacket_thread_semaphore;
 #ifdef QUEUE_NONBLOCK
 struct queue_state *qs_readpacket_thread_queue = NULL;
 #endif
+
+void rename_file(const char *src, const char *dst) {
+	int read_fd;
+	int write_fd;
+	struct stat stat_buf;
+	off_t offset = 0;
+
+	/* Open the input file. */
+	read_fd = open (src, O_RDONLY);
+	/* Stat the input file to obtain its size. */
+	fstat (read_fd, &stat_buf);
+	/*
+As you can see we are calling fdatasync right before calling posix_fadvise, this makes sure that all data associated with the file handle has been committed to disk. This is not done because there is any danger of loosing data. But it makes sure that that the posix_fadvise has an effect. Since the posix_fadvise function is advisory, the OS will simply ignore it, if it can not comply. At least with Linux, the effect of calling posix_fadvise(fd,0,0,POSIX_FADV_DONTNEED) is immediate. This means if you write a file and call posix_fadvise right after writing a chunk of data, it will probably have no effect at all since the data in question has not been committed to disk yet, and therefore can not be released from cache.
+	*/
+	fdatasync(read_fd);
+	posix_fadvise(read_fd, 0, 0, POSIX_FADV_DONTNEED);
+
+	/* Open the output file for writing, with the same permissions as the
+	source file. */
+	write_fd = open (dst, O_WRONLY | O_CREAT, stat_buf.st_mode);
+	fdatasync(write_fd);
+	posix_fadvise(write_fd, 0, 0, POSIX_FADV_DONTNEED);
+	/* Blast the bytes from one file to the other. */
+	sendfile(write_fd, read_fd, &offset, stat_buf.st_size);
+	/* Close up. */
+	close (read_fd);
+	close (write_fd);
+	unlink(src);
+}
 
 void terminate2() {
 	terminating = 1;
@@ -160,6 +193,49 @@ void find_and_replace( string &source, const string find, string replace ) {
 	for ( ; (j = source.find( find )) != string::npos ; ) {
 		source.replace( j, find.length(), replace );
 	}
+}
+
+/* cycle files_queue and move it to spool dir */
+void *moving_cache( void *dummy ) {
+	string file;
+	char src_c[1024];
+	char dst_c[1024];
+	while(1) {
+		if(verbosity > 0) syslog(LOG_ERR,"files in queue [%d]\n", calls);
+		while (1) {
+			calltable->lock_files_queue();
+			if(calltable->files_queue.size() == 0) {
+				calltable->unlock_files_queue();
+				break;
+			}
+			file = calltable->files_queue.front();
+			calltable->files_queue.pop();
+			calltable->unlock_files_queue();
+
+			string src;
+			src.append(opt_cachedir);
+			src.append("/");
+			src.append(file);
+
+			string dst;
+			dst.append(opt_chdir);
+			dst.append("/");
+			dst.append(file);
+
+			strncpy(src_c, (char*)src.c_str(), sizeof(src_c));
+			strncpy(dst_c, (char*)dst.c_str(), sizeof(dst_c));
+
+			if(verbosity > 2) syslog(LOG_ERR, "rename([%s] -> [%s])\n", src_c, dst_c);
+			rename_file(src_c, dst_c);
+			//TODO: error handling
+			//perror ("The following error occurred");
+		}
+		if(terminating2) {
+			break;
+		}
+		sleep(1);
+	}
+	return NULL;
 }
 
 /* cycle calls_queue and save it to MySQL */
@@ -394,6 +470,9 @@ int load_config(char *fname) {
 	if((value = ini.GetValue("general", "filter", NULL))) {
 		strncpy(user_filter, value, sizeof(user_filter));
 	}
+	if((value = ini.GetValue("general", "cachedir", NULL))) {
+		strncpy(opt_cachedir, value, sizeof(opt_cachedir));
+	}
 	if((value = ini.GetValue("general", "spooldir", NULL))) {
 		strncpy(opt_chdir, value, sizeof(opt_chdir));
 	}
@@ -506,6 +585,7 @@ int main(int argc, char *argv[]) {
 	char *fname = NULL;	// pcap file to read on 
 	ifname[0] = '\0';
 	strcpy(opt_chdir, "/var/spool/voipmonitor");
+	strcpy(opt_cachedir, "");
 	sipportmatrix = (char*)calloc(1, sizeof(char) * 65537);
 	// set default SIP port to 5060
 	sipportmatrix[5060] = 1;
@@ -537,10 +617,12 @@ int main(int argc, char *argv[]) {
 	    {"norecord-header", 0, 0, 'N'},
 	    {"norecord-dtmf", 0, 0, 'K'},
 	    {"rtp-nosig", 0, 0, 'I'},
+	    {"cachedir", 1, 0, 'C'},
 	    {0, 0, 0, 0}
 	};
 
 	terminating = 0;
+	terminating2 = 0;
 
 	umask(0000);
 
@@ -549,7 +631,7 @@ int main(int argc, char *argv[]) {
 	/* command line arguments overrides configuration in voipmonitor.conf file */
 	while(1) {
 		int c;
-		c = getopt_long(argc, argv, "f:i:r:d:v:h:b:t:u:p:P:kncUSRAWGXTNIK", long_options, &option_index);
+		c = getopt_long(argc, argv, "C:f:i:r:d:v:h:b:t:u:p:P:kncUSRAWGXTNIK", long_options, &option_index);
 		//"i:r:d:v:h:b:u:p:fnU", NULL, NULL);
 		if (c == -1)
 			break;
@@ -595,7 +677,6 @@ int main(int argc, char *argv[]) {
 				}
 				break;
 			case '6':
-				printf("ring buf\n");
 				opt_ringbuffer = atoi(optarg);
 				break;
 			case '7':
@@ -616,9 +697,13 @@ int main(int argc, char *argv[]) {
 				break;
 			case 'r':
 				fname = optarg;
+				//opt_cachedir[0] = '\0';
 				break;
 			case 'c':
 				opt_nocdr = 1;
+				break;
+			case 'C':
+				strncpy(opt_cachedir, optarg, sizeof(opt_cachedir));
 				break;
 			case 'd':
 				strncpy(opt_chdir, optarg, sizeof(opt_chdir));
@@ -744,6 +829,12 @@ int main(int argc, char *argv[]) {
 				" -f <filter>\n"
 				"      Pcap filter. If you will use only UDP, put here udp. Warning: If you set protocol to 'udp' pcap discards VLAN packets. Maximum size is 2040 chars\n"
 				"\n"
+				" -C, --cachedir <dir>\n"
+				"      store pcap file to <dir> and move it after call ends to spool directory. Moving all files are guaranteed to be serialized which \n"
+				"      solves slow random write I/O on magnetic or other media. Typical cache directory is /dev/shm/voipmonitor which is in RAM and grows \n"
+				"      automatically or /mnt/ssd/voipmonitor which is mounted to SSD disk or some very fast SAS/SATA disk where spool can be network storage\n"
+				"      or raid5 etc. Wav files are not implemented yet\n"
+				"\n"
 				" -d <dir>\n"
 				"      where to store pcap files - default /var/spool/voipmonitor\n"
 				"\n"
@@ -851,6 +942,7 @@ int main(int argc, char *argv[]) {
 	} else {
 		// if reading file
 		rtp_threaded = 0;
+		opt_cachedir[0] = '\0'; //disabling cache if reading from file 
 		opt_pcap_threaded = 0; //disable threading because it is useless while reading packets from file
 		printf("Reading file: %s\n", fname);
 		mask = PCAP_NETMASK_UNKNOWN;
@@ -909,6 +1001,10 @@ int main(int argc, char *argv[]) {
 	// start thread processing queued cdr 
 	pthread_create(&call_thread, NULL, storing_cdr, NULL);
 
+	if(opt_cachedir[0] != '\0') {
+		pthread_create(&cachedir_thread, NULL, moving_cache, NULL);
+	}
+
 	// start manager thread 	
 	pthread_create(&manager_thread, NULL, manager_server, NULL);
 
@@ -966,9 +1062,11 @@ int main(int argc, char *argv[]) {
 			calls--;
 	}
 
-	delete calltable;
 	free(sipportmatrix);
 	unlink(opt_pidfile);
+	terminating2 = 1;
+	pthread_join(cachedir_thread, NULL);
+	delete calltable;
 }
 
 void test() {

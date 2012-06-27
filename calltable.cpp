@@ -51,6 +51,7 @@ extern int opt_saveGRAPH;	// save GRAPH data to graph file?
 extern int opt_gzipGRAPH;	// compress GRAPH data to graph file? 
 extern int opt_audio_format;	// define format for audio writing (if -W option)
 extern int opt_mos_g729;
+extern char opt_cachedir[1024];
 extern char sql_driver[256];
 extern char sql_cdr_table[256];
 extern char mysql_host[256];
@@ -131,6 +132,15 @@ Call::hashRemove() {
 	}
 }
 
+void
+Call::addtocachequeue(string file) {
+	Calltable *ct = (Calltable *)calltable;
+
+	ct->lock_files_queue();
+	ct->files_queue.push(file);
+	ct->unlock_files_queue();
+}
+
 /* destructor */
 Call::~Call(){
 	hashRemove();
@@ -151,6 +161,9 @@ Call::~Call(){
 		pcap_dump_flush(get_f_pcap());
 		pcap_dump_close(get_f_pcap());
 		set_f_pcap(NULL);
+		if(opt_cachedir[0] != '\0') {
+			addtocachequeue(pcapfilename);
+		}
 	}
 }
 
@@ -322,12 +335,18 @@ Call::read_rtp(unsigned char* data, int datalen, struct pcap_pkthdr *header, u_i
 			rtp_prev[iscaller] = rtp_cur[iscaller];
 		}
 		rtp_cur[iscaller] = rtp[ssrc_n]; 
+		char tmp[1024];
+		if(opt_cachedir[0] != '\0') {
+			sprintf(tmp, "%s/%s/%s.%d.graph%s", opt_cachedir, dirname(), fbasename, ssrc_n, opt_gzipGRAPH ? ".gz" : "");
+		} else {
+			sprintf(tmp, "%s/%s.%d.graph%s", dirname(), fbasename, ssrc_n, opt_gzipGRAPH ? ".gz" : "");
+		}
 		sprintf(rtp[ssrc_n]->gfilename, "%s/%s.%d.graph%s", dirname(), fbasename, ssrc_n, opt_gzipGRAPH ? ".gz" : "");
 		if(flags & FLAG_SAVEGRAPH) {
 			if(opt_gzipGRAPH) {
-				rtp[ssrc_n]->gfileGZ.open(rtp[ssrc_n]->gfilename);
+				rtp[ssrc_n]->gfileGZ.open(tmp);
 			} else {
-				rtp[ssrc_n]->gfile.open(rtp[ssrc_n]->gfilename);
+				rtp[ssrc_n]->gfile.open(tmp);
 			}
 		}
 		rtp[ssrc_n]->gfileRAW = NULL;
@@ -354,7 +373,14 @@ void Call::stoprecording() {
 		pcap_dump_flush(this->get_f_pcap());
 		pcap_dump_close(this->get_f_pcap());
 		this->set_f_pcap(NULL);
-		sprintf(str2, "%s/%s.pcap", this->dirname(), this->fbasename);
+
+		if(opt_cachedir[0] != '\0') {
+			addtocachequeue(pcapfilename);
+			sprintf(str2, "%s/%s.pcap", opt_cachedir, pcapfilename);
+		} else {
+			sprintf(str2, "%s.pcap", pcapfilename);
+		}
+
 		unlink(str2);	
 		this->recordstopped = 1;
 		if(verbosity >= 1) {
@@ -1123,6 +1149,7 @@ Call::dump(){
 Calltable::Calltable() {
 	pthread_mutex_init(&qlock, NULL);
 	pthread_mutex_init(&qdellock, NULL);
+	pthread_mutex_init(&flock, NULL);
 	memset(calls_hash, 0x0, sizeof(calls_hash));
 };
 
@@ -1326,8 +1353,12 @@ Calltable::cleanup( time_t currtime ) {
 			call->hashRemove();
 			if (call->get_f_pcap() != NULL){
 				pcap_dump_flush(call->get_f_pcap());
-				if (call->get_f_pcap() != NULL) 
+				if (call->get_f_pcap() != NULL) {
 					pcap_dump_close(call->get_f_pcap());
+					if(opt_cachedir[0] != '\0') {
+						call->addtocachequeue(call->pcapfilename);
+					}
+				}
 				call->set_f_pcap(NULL);
 			}
 			if(currtime == 0) {
