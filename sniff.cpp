@@ -217,6 +217,38 @@ fail_exit:
 	return 1;
 }
 
+int get_sip_domain(char *data, int data_len, const char *tag, char *domain, int domain_len){
+	unsigned long r, r2, peername_tag_len;
+	char *peername_tag = gettag(data, data_len, tag, &peername_tag_len);
+	char *c;
+	if(!peername_tag_len) {
+		goto fail_exit;
+	}
+	if ((r = (unsigned long)memmem(peername_tag, peername_tag_len, "@", 1)) == 0){
+		goto fail_exit;
+	}
+	r += 1;
+	if ((r2 = (unsigned long)memmem(peername_tag, peername_tag_len, ">", 1)) == 0){
+		goto fail_exit;
+	}
+	if (r2 <= r || ((r2 - r) > (unsigned long)domain_len)  ){
+		goto fail_exit;
+	}
+	memcpy(domain, (void*)r, r2 - r);
+	domain[r2 - r] = '\0';
+
+	// check if there is ; in the string (for example sip:<123@domain;user=phone>
+	c = strchr(domain, ';');
+	if(c != NULL)
+		*c = '\0';
+
+	return 0;
+fail_exit:
+	strcpy(domain, "empty");
+	return 1;
+}
+
+
 int get_sip_branch(char *data, int data_len, const char *tag, char *branch, int branch_len){
 	unsigned long r, r2, branch_tag_len;
 	char *branch_tag = gettag(data, data_len, tag, &branch_tag_len);
@@ -688,21 +720,41 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 				/* this logic updates call on the first INVITES */
 				if (sip_method == INVITE) {
 					int res;
+					// callername
 					res = get_sip_peercnam(data,datalen,"From:", call->callername, sizeof(call->callername));
 					if(res) {
 						// try compact header
 						get_sip_peercnam(data,datalen,"f:", call->callername, sizeof(call->callername));
 					}
+
+					// caller number
 					res = get_sip_peername(data,datalen,"From:", call->caller, sizeof(call->caller));
 					if(res) {
 						// try compact header
 						get_sip_peername(data,datalen,"f:", call->caller, sizeof(call->caller));
 					}
+
+					// caller number
 					res = get_sip_peername(data,datalen,"To:", call->called, sizeof(call->called));
 					if(res) {
 						// try compact header
 						get_sip_peername(data,datalen,"t:", call->called, sizeof(call->called));
 					}
+
+					// caller domain 
+					res = get_sip_domain(data,datalen,"From:", call->caller_domain, sizeof(call->caller_domain));
+					if(res) {
+						// try compact header
+						get_sip_domain(data,datalen,"f:", call->caller_domain, sizeof(call->caller_domain));
+					}
+
+					// called domain 
+					res = get_sip_domain(data,datalen,"To:", call->called_domain, sizeof(call->called_domain));
+					if(res) {
+						// try compact header
+						get_sip_domain(data,datalen,"t:", call->called_domain, sizeof(call->called_domain));
+					}
+
 					call->seeninvite = true;
 					telnumfilter->add_call_flags(&(call->flags), call->caller, call->called);
 #ifdef DEBUG_INVITE

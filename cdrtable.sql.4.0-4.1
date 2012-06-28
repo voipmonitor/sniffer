@@ -1,0 +1,1 @@
+ALTER TABLE cdr ADD caller_domain VARCHAR(255) DEFAULT NULL AFTER caller,  ADD called_domain VARCHAR(255) DEFAULT NULL AFTER called, ADD KEY `caller_domain` (`caller_domain`), add KEY `called_domain` (`called_domain`);

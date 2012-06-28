@@ -84,8 +84,10 @@ Call::Call(char *call_id, unsigned long call_id_len, time_t time, void *ct) {
 	seenbye = false;
 	seenbyeandok = false;
 	caller[0] = '\0';
+	caller_domain[0] = '\0';
 	callername[0] = '\0';
 	called[0] = '\0';
+	called_domain[0] = '\0';
 	byecseq[0] = '\0';
 	invitecseq[0] = '\0';
 	sighup = false;
@@ -716,17 +718,19 @@ Call::buildQuery(stringstream *query) {
 	if(isTypeDb("mssql")) {
 		stringstream fields;
 		stringstream values;
-		fields 	<< "caller, caller_reverse, callername, callername_reverse, sipcallerip, "
-				"sipcalledip, called, called_reverse, duration, progress_time, "
+		fields 	<< "caller, caller_domain, caller_reverse, callername, callername_reverse, sipcallerip, "
+				"sipcalledip, called, called_domain, called_reverse, duration, progress_time, "
 				"first_rtp_time, connect_duration, calldate, fbasename, sighup, "
 				"lastSIPresponse, lastSIPresponseNum, bye";
 		values 	<< sqlEscapeString(caller)
+			<< ", " << sqlEscapeString(caller_domain)
 			<< ", " << sqlEscapeString(reverseString(caller).c_str())
 			<< ", " << sqlEscapeString(callername)
 			<< ", " << sqlEscapeString(reverseString(callername).c_str())
 			<< ", " << htonl(sipcallerip)
 			<< ", " << htonl(sipcalledip)
 			<< ", " << sqlEscapeString(called)
+			<< ", " << sqlEscapeString(called_domain)
 			<< ", " << sqlEscapeString(reverseString(called).c_str())
 			<< ", " << duration()
 			<< ", " << (progress_time ? progress_time - first_packet_time : -1)
@@ -872,12 +876,14 @@ Call::buildQuery(stringstream *query) {
 	} else {
 		*query << "INSERT INTO `" << (mysql_table[0]&&strcmp(mysql_table,sql_cdr_table) ? mysql_table : sql_cdr_table) << "` " <<
 			"SET caller = " << sqlEscapeString(caller) << 
+			", caller_domain = " << sqlEscapeString(caller_domain) << 
 			", caller_reverse = " << sqlEscapeString(reverseString(caller).c_str()) <<
 			", callername = " << sqlEscapeString(callername) << 
 			", callername_reverse = " << sqlEscapeString(reverseString(callername).c_str()) <<
 			", sipcallerip = " << htonl(sipcallerip) <<
 			", sipcalledip = " << htonl(sipcalledip) <<
 			", called = " << sqlEscapeString(called) <<
+			", called_domain = " << sqlEscapeString(called_domain) << 
 			", called_reverse = " << sqlEscapeString(reverseString(called).c_str()) <<
 			", duration = " << duration() << 
 			", progress_time = " << (progress_time ? progress_time - first_packet_time : -1) << 

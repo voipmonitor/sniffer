@@ -58,9 +58,11 @@ public:
 	char fbasename[MAX_FNAME];	//!< basename of file 
 	char callername[256];		//!< callerid name from SIP header
 	char caller[256];		//!< From: xxx 
+	char caller_domain[256];	//!< From: xxx 
 	char called[256];		//!< To: xxx
-	char byecseq[32];		//!< To: xxx
-	char invitecseq[32];		//!< To: xxx
+	char called_domain[256];	//!< To: xxx
+	char byecseq[32];		
+	char invitecseq[32];		
 	char custom_header1[33];	//!< Custom SIP header
 	bool seeninvite;		//!< true if we see SIP INVITE within the Call
 	bool seeninviteok;			//!< true if we see SIP INVITE within the Call
