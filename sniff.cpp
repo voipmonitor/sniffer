@@ -872,10 +872,6 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 					call->progress_time = header->ts.tv_sec;
 				}
 
-				if(!call->connect_time) {
-					call->connect_time = header->ts.tv_sec;
-				}
-
 				// if it is OK check for BYE
 				s = gettag(data, datalen, "CSeq:", &l);
 				if(l) {
@@ -916,6 +912,9 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 						return call;
 					} else if(strncmp(s, call->invitecseq, l) == 0) {
 						call->seeninviteok = true;
+						if(!call->connect_time) {
+							call->connect_time = header->ts.tv_sec;
+						}
 						if(verbosity > 2)
 							syslog(LOG_NOTICE, "Call answered\n");
 					}
