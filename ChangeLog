@@ -1,3 +1,58 @@
+version 4.1
+===========
+
+Optimizations 
+-------------
+- implement storing pcap and graph files to cache/directory and move it to spool 
+directory right after the call ends. the option is -C, --cachedir <dir> (cachedir 
+in voipmonitor.conf). Moving all files are guaranteed to be serialized which
+solves slow random write I/O on magnetic or other media. Typical cache directory is 
+/dev/shm which is in RAM and grows automatically or /mnt/ssd/voipmonitor which is 
+mounted to SSD disk or some very fast SAS/SATA disk where spool can be network storage
+or raid5 etc. wav files are not implemented yet
+
+Features
+--------
+- implement --norecord-header option: if any of SIP message during the call contains 
+header X-VoipMonitor-norecord call will be not converted to wav and pcap file will be 
+deleted.
+- implement --norecord-dtmf option which allows to turn of recording of wav/pcap file 
+once DTMF SIP INFO sequence == "*0" (in other words if you press * and 0 on your phone 
+and you send DTMF via SIP INFO, the call will be not recorded). This option can be given 
+on command line or in voipmonitor.conf.
+
+- Store domain part of uri in From and To header in caller_domain and called_domain 
+which is new cdr columns. This is not configurable and you MUST upgrade database.
+ALTER TABLE cdr ADD caller_domain VARCHAR(255) DEFAULT NULL AFTER caller,  
+ADD called_domain VARCHAR(255) DEFAULT NULL AFTER called, ADD KEY `caller_domain` 
+(`caller_domain`), add KEY `called_domain` (`called_domain`);
+(upgrade large db can take hours so schedule it off peak)
+
+- add experimental option --rtp-nosig allows analyze of RTP streams without signalization. 
+Handy if you want to extract RTP without SIP or unsupported H.323 signalization.
+
+
+Bug fixes
+---------
+
+- fix answer duration for calls where there is 200 OK to another message than the first 
+INVITE - for example PRACK.
+- fix annoying noise in recordings which are put on hold and voipmonitor generates silence.
+- fix high PDD in case there are more 18X responses during call.
+- set progress_time also if RING 18X is not received and the call is connected or 
+aborted so the PDD (Post Dial Delay) is accurate for those cases too 
+
+- If one RTP direction changes SSRC after connect (200 OK) and one of the RTP direction is 
+missing (not captured or whatever reason) cdr was saved bad - web gui showed presence of 
+both directions - one direction for the first SSRC and the second direction secon SSRC 
+so it seemed like there are both directions. Thanks POUILLY GUILLAUME for reporting and 
+providing pcap file.
+
+- Fix out of sync audio for cases where call was put on hold and the SSRC of RTP stream changed.
+- Fix some G729 recording issues (fast playback) in rare cases.
+- Fix WAV recording for PCMU/PCMA streams with CNG (comfort noise generators - payload 13 and payload 19)
+- Fix ./configure on centos
+
 version 4.0 
 ===========
 
