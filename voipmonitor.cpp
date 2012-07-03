@@ -57,6 +57,7 @@ int opt_packetbuffered = 0;	// Make .pcap files writing ‘‘packet-buffered’
 int opt_fork = 1;		// fork or run foreground 
 int opt_saveSIP = 0;		// save SIP packets to pcap file?
 int opt_saveRTP = 0;		// save RTP packets to pcap file?
+int opt_onlyRTPheader = 0;	// do not save RTP payload, only RTP header
 int opt_saveRTCP = 0;		// save RTCP packets to pcap file?
 int opt_saveRAW = 0;		// save RTP packets to pcap file?
 int opt_saveWAV = 0;		// save RTP packets to pcap file?
@@ -443,6 +444,18 @@ int load_config(char *fname) {
 		opt_nocdr = yesno(value);
 	}
 	if((value = ini.GetValue("general", "savesip", NULL))) {
+		switch(value[0]) {
+		case 'y':
+		case 'Y':
+		case '1':
+			opt_saveRTP = 1;
+			break;
+		case 'h':
+		case 'H':
+			opt_saveRTP = 1;
+			opt_onlyRTPheader = 1;
+			break;
+		}
 		opt_saveSIP = yesno(value);
 	}
 	if((value = ini.GetValue("general", "savertp", NULL))) {
@@ -616,6 +629,7 @@ int main(int argc, char *argv[]) {
 	    {"gzip-pcap", 0, 0, '2'},
 	    {"save-sip", 0, 0, 'S'},
 	    {"save-rtp", 0, 0, 'R'},
+	    {"skip-rtppayload", 0, 0, 'o'},
 	    {"save-rtcp", 0, 0, '9'},
 	    {"save-raw", 0, 0, 'A'},
 	    {"save-audio", 0, 0, 'W'},
@@ -651,7 +665,7 @@ int main(int argc, char *argv[]) {
 	/* command line arguments overrides configuration in voipmonitor.conf file */
 	while(1) {
 		int c;
-		c = getopt_long(argc, argv, "C:f:i:r:d:v:h:b:t:u:p:P:kncUSRAWGXTNIK", long_options, &option_index);
+		c = getopt_long(argc, argv, "C:f:i:r:d:v:h:b:t:u:p:P:kncUSRoAWGXTNIK", long_options, &option_index);
 		//"i:r:d:v:h:b:u:p:fnU", NULL, NULL);
 		if (c == -1)
 			break;
@@ -764,6 +778,9 @@ int main(int argc, char *argv[]) {
 			case 'R':
 				opt_saveRTP = 1;
 				break;
+			case 'o':
+				opt_onlyRTPheader = 1;
+				break;
 			case 'A':
 				opt_saveRAW = 1;
 				break;
@@ -793,6 +810,9 @@ int main(int argc, char *argv[]) {
 				"\n"
 				" -R, --save-rtp\n"
    				"      save RTP packets to pcap file. Default is disabled. Whan enabled RTCP packets will be saved too.\n"
+				"\n"
+				" -o, --skip-rtppayload\n"
+				"      skip RTP payload and save only RTP headers.\n"
 				"\n"
 				" --save-rtcp\n"
    				"      save RTCP packets to pcap file. You can enable SIP signalization + only RTCP packets and not RTP packets.\n"
