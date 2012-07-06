@@ -106,9 +106,9 @@ int wav_update_header(FILE *f)
 }
 
 int wav_mix(char *in1, char *in2, char *out) {
-	FILE *f_in1;
-	FILE *f_in2;
-	FILE *f_out;
+	FILE *f_in1 = NULL;
+	FILE *f_in2 = NULL;
+	FILE *f_out = NULL;
 
 	char *bitstream_buf1 = NULL;
 	char *bitstream_buf2 = NULL;
@@ -126,11 +126,13 @@ int wav_mix(char *in1, char *in2, char *out) {
 		syslog(LOG_ERR,"File [%s] cannot be opened for read.\n", in1);
 		return 1;
 	}
-	f_in2 = fopen(in2, "r");
-	if(!f_in2) {
-		fclose(f_in1);
-		syslog(LOG_ERR,"File [%s] cannot be opened for read.\n", in2);
-		return 1;
+	if(in2 != NULL) {
+		f_in2 = fopen(in2, "r");
+		if(!f_in2) {
+			fclose(f_in1);
+			syslog(LOG_ERR,"File [%s] cannot be opened for read.\n", in2);
+			return 1;
+		}
 	}
 	f_out = fopen(out, "w");
 	if(!f_out) {
@@ -148,9 +150,11 @@ int wav_mix(char *in1, char *in2, char *out) {
 	file_size1 = ftell(f_in1);
 	fseek(f_in1, 0, SEEK_SET);
 
-	fseek(f_in2, 0, SEEK_END);
-	file_size2 = ftell(f_in2);
-	fseek(f_in2, 0, SEEK_SET);
+	if(in2 != NULL) {
+		fseek(f_in2, 0, SEEK_END);
+		file_size2 = ftell(f_in2);
+		fseek(f_in2, 0, SEEK_SET);
+	}
 
 	bitstream_buf1 = (char *)malloc(file_size1);
 	if(!bitstream_buf1) {
@@ -160,21 +164,29 @@ int wav_mix(char *in1, char *in2, char *out) {
 		syslog(LOG_ERR,"Cannot malloc bitsream_buf1[%ld]", file_size1);
 		return 1;
 	}
-	bitstream_buf2 = (char *)malloc(file_size2);
-	if(!bitstream_buf2) {
-		fclose(f_in1);
-		fclose(f_in2);
-		fclose(f_out);
-		free(bitstream_buf1);
-		syslog(LOG_ERR,"Cannot malloc bitsream_buf2[%ld]", file_size1);
-		return 1;
+
+	if(in2 != NULL) {
+		bitstream_buf2 = (char *)malloc(file_size2);
+		if(!bitstream_buf2) {
+			fclose(f_in1);
+			fclose(f_in2);
+			fclose(f_out);
+			free(bitstream_buf1);
+			syslog(LOG_ERR,"Cannot malloc bitsream_buf2[%ld]", file_size1);
+			return 1;
+		}
 	}
 	fread(bitstream_buf1, file_size1, 1, f_in1);
-	fread(bitstream_buf2, file_size2, 1, f_in2);
 	p1 = bitstream_buf1;
 	f1 = bitstream_buf1 + file_size1;
-	p2 = bitstream_buf2;
-	f2 = bitstream_buf2 + file_size2;
+
+	if(in2 != NULL) {
+		fread(bitstream_buf2, file_size2, 1, f_in2);
+		p2 = bitstream_buf2;
+		f2 = bitstream_buf2 + file_size2;
+	} else {
+		p2 = f2 = 0;
+	}
 
 	while(p1 < f1 || p2 < f2 ) {
 		if(p1 < f1 && p2 < f2) {
@@ -194,7 +206,7 @@ int wav_mix(char *in1, char *in2, char *out) {
 			fwrite(p1, 2, 1, f_out);
 			fwrite(&zero, 2, 1, f_out);
 			p1 += 2;
-		} else {
+		} else if ( p2 < f2 ) {
 			fwrite(&zero, 2, 1, f_out);
 			fwrite(p2, 2, 1, f_out);
 			p2 += 2;
@@ -208,7 +220,9 @@ int wav_mix(char *in1, char *in2, char *out) {
 		free(bitstream_buf2);
 	fclose(f_out);
 	fclose(f_in1);
-	fclose(f_in2);
+	if(f_in2) fclose(f_in2);
 
 	return 0;
 }
+
+

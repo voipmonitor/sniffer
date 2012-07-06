@@ -572,6 +572,8 @@ Call::convertRawToWav() {
 	int ssrc_index, codec;
 	unsigned long int rawiterator;
 	FILE *wav = NULL;
+	int adir = 1;
+	int bdir = 1;
 
 	sprintf(wav0, "%s/%s.i0.wav", dirname(), fbasename);
 	sprintf(wav1, "%s/%s.i1.wav", dirname(), fbasename);
@@ -589,47 +591,65 @@ Call::convertRawToWav() {
 	sprintf(rawInfo, "%s/%s.i%d.rawInfo", dirname(), fbasename, 0);
 	pl = fopen(rawInfo, "r");
 	if(!pl) {
-		syslog(LOG_ERR, "Cannot open %s\n", rawInfo);
-		return 1;
+		adir = 0;
+//		syslog(LOG_ERR, "Cannot open %s\n", rawInfo);
+//		return 1;
+	} else {
+		fgets(line, 1024, pl);
+		fclose(pl);
+		sscanf(line, "%d:%lu:%d:%ld:%ld", &ssrc_index, &rawiterator, &codec, &tv0.tv_sec, &tv0.tv_usec);
 	}
-	fgets(line, 1024, pl);
-	fclose(pl);
-	sscanf(line, "%d:%lu:%d:%ld:%ld", &ssrc_index, &rawiterator, &codec, &tv0.tv_sec, &tv0.tv_usec);
 	/* second direction */
 	sprintf(rawInfo, "%s/%s.i%d.rawInfo", dirname(), fbasename, 1);
 	pl = fopen(rawInfo, "r");
 	if(!pl) {
-		syslog(LOG_ERR, "Cannot open %s\n", rawInfo);
-		return 1;
-	}
-	fgets(line, 1024, pl);
-	fclose(pl);
-	sscanf(line, "%d:%lu:%d:%ld:%ld", &ssrc_index, &rawiterator, &codec, &tv1.tv_sec, &tv1.tv_usec);
-	/* calculate difference in milliseconds */
-	int msdiff = ast_tvdiff_ms(tv1, tv0);
-	if(msdiff < 0) {
-		/* add msdiff [ms] silence to i1 stream */
-		wav = fopen(wav0, "w");
+		bdir = 0;
+//		syslog(LOG_ERR, "Cannot open %s\n", rawInfo);
+//		return 1;
 	} else {
-		wav = fopen(wav1, "w");
+		fgets(line, 1024, pl);
+		fclose(pl);
+		sscanf(line, "%d:%lu:%d:%ld:%ld", &ssrc_index, &rawiterator, &codec, &tv1.tv_sec, &tv1.tv_usec);
 	}
-	if(!wav) {
-		syslog(LOG_ERR, "Cannot open %s or %s\n", wav0, wav1);
+
+	if(adir == 0 && bdir == 0) {
+		syslog(LOG_ERR, "PCAP file %s/%s.pcap cannot be decoded to WAV probably missing RTP\n", dirname(), fbasename);
 		return 1;
 	}
-        char wav_buffer[32768];
-        setvbuf(wav, wav_buffer, _IOFBF, 32768);
 
-	/* write silence of msdiff duration */
-	short int zero = 0;
-	for(int i = 0; i < (abs(msdiff) / 20) * 160; i++) {
-		fwrite(&zero, 1, 2, wav);
+	if(adir && bdir) {
+		/* calculate difference in milliseconds */
+		int msdiff = ast_tvdiff_ms(tv1, tv0);
+		if(msdiff < 0) {
+			/* add msdiff [ms] silence to i1 stream */
+			wav = fopen(wav0, "w");
+		} else {
+			wav = fopen(wav1, "w");
+		}
+		if(!wav) {
+			syslog(LOG_ERR, "Cannot open %s or %s\n", wav0, wav1);
+			return 1;
+		}
+		char wav_buffer[32768];
+		setvbuf(wav, wav_buffer, _IOFBF, 32768);
+
+		/* write silence of msdiff duration */
+		short int zero = 0;
+		for(int i = 0; i < (abs(msdiff) / 20) * 160; i++) {
+			fwrite(&zero, 1, 2, wav);
+		}
+		fclose(wav);
+		/* end synchronisation */
 	}
-	fclose(wav);
-	/* end synchronisation */
 
 	/* process all files in playlist for each direction */
 	for(int i = 0; i <= 1; i++) {
+		if(i == 0 && adir == 0) {
+			continue;
+		}
+		if(i == 1 && bdir == 0) {
+			continue;
+		}
 		char *wav = i ? wav1 : wav0;
 
 		/* open playlist */
@@ -689,16 +709,32 @@ Call::convertRawToWav() {
 		unlink(rawInfo);
 	}
 
-	switch(opt_audio_format) {
-	case FORMAT_WAV:
-		wav_mix(wav0, wav1, out);
-		break;
-	case FORMAT_OGG:
-		ogg_mix(wav0, wav1, out);
-		break;
+	if(adir == 1 && bdir == 1) {
+		switch(opt_audio_format) {
+		case FORMAT_WAV:
+			wav_mix(wav0, wav1, out);
+			break;
+		case FORMAT_OGG:
+			ogg_mix(wav0, wav1, out);
+			break;
+		}
+		unlink(wav0);
+		unlink(wav1);
+	} else if(adir == 1) {
+		switch(opt_audio_format) {
+		case FORMAT_WAV:
+			wav_mix(wav0, NULL, out);
+			break;
+		}
+		unlink(wav0);
+	} else if(bdir == 1) {
+		switch(opt_audio_format) {
+		case FORMAT_WAV:
+			wav_mix(wav1, NULL, out);
+			break;
+		}
+		unlink(wav1);
 	}
-	unlink(wav0);
-	unlink(wav1);
  
 	return 0;
 }
