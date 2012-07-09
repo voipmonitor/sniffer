@@ -384,6 +384,7 @@ void save_empty_frame(struct ast_channel *chan) {
 		int i;
 		short int zero = 0;
 		int zero2 = 0;
+		short int zero3 = 32767;
 		//write frame to file
 		if(chan->codec == PAYLOAD_SPEEX || chan->codec == PAYLOAD_G723 || chan->codec == PAYLOAD_G729) {
 			if(chan->codec == PAYLOAD_G723) {
@@ -410,8 +411,9 @@ void save_empty_frame(struct ast_channel *chan) {
 				chan->lastbuflen = 0;
 			} else {
 				// write empty frame
-				for(i = 0; i < chan->last_datalen; i++) {
-					fputc(0, chan->rawstream);
+				for(i = 0; i < chan->last_datalen / 2; i++) {
+					fwrite(&zero3, 2, 1, chan->rawstream);
+					//fputc(0, chan->rawstream);
 					if(chan->fifofd > 0)
 						write(chan->fifofd, &zero2, sizeof(char));   // write packet len
 				}
