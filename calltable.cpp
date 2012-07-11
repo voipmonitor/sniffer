@@ -1215,13 +1215,20 @@ Calltable::hashAdd(in_addr_t addr, unsigned short port, Call* call, int iscaller
 		if ((node->addr == addr) && (node->port == port)) {
 			// there is already some call which is receiving packets to the same IP:port
 			// this can happen if the old call is waiting for hangup and is still in memory
-			// just replace this IP:port to new call
-			node->addr = addr;
-			node->port = port;
-			node->call = call;
-			node->iscaller = iscaller;
-			node->is_rtcp = is_rtcp;
-			return;
+			if(call != node->call) {
+				// just replace this IP:port to new call
+				node->addr = addr;
+				node->port = port;
+				node->call = call;
+				node->iscaller = iscaller;
+				node->is_rtcp = is_rtcp;
+				return;
+			// or it can happen if voipmonitor is sniffing SIP proxy which forwards SIP
+			} else {
+				// packets to another SIP proxy with the same SDP ports
+				// in this case just return 
+				return;
+			}
 		}
 	}
 
