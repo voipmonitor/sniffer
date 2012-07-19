@@ -9,6 +9,7 @@
 /README.mssql -text
 /README.piaf -text
 /README.ubuntu-10.04LTS -text
+/README.ubuntu-12.04LTS -text
 /calltable.cpp -text
 /calltable.h -text
 /cdrtable.sql -text
