@@ -665,7 +665,7 @@ int main(int argc, char *argv[]) {
 	/* command line arguments overrides configuration in voipmonitor.conf file */
 	while(1) {
 		int c;
-		c = getopt_long(argc, argv, "C:f:i:r:d:v:h:b:t:u:p:P:kncUSRoAWGXTNIK", long_options, &option_index);
+		c = getopt_long(argc, argv, "C:f:i:r:d:v:h:b:t:u:p:P:kncUSRoAWGXTNIKy", long_options, &option_index);
 		//"i:r:d:v:h:b:u:p:fnU", NULL, NULL);
 		if (c == -1)
 			break;
@@ -676,6 +676,10 @@ int main(int argc, char *argv[]) {
 				printf ("option %s\n", long_options[option_index].name);
 				break;
 			*/
+			case 'y':
+				for(int i = 5060; i < 5099; i++) {
+					sipportmatrix[i] = 1;
+				}
 			case 'a':
 				strncpy(pcapcommand, optarg, sizeof(pcapcommand));
 				break;
@@ -802,7 +806,7 @@ int main(int argc, char *argv[]) {
 		printf( "voipmonitor version %s\n"
 				"Usage: voipmonitor [--config-file /etc/voipmonitor.conf] [-kncUSRAWG] [-i <interface>] [-f <pcap filter>]\n"
 				"       [-r <file>] [-d <pcap dump directory>] [-v level] [-h <mysql server>] [-b <mysql database]\n"
-				"       [-u <mysql username>] [-p <mysql password>] [-f <pcap filter>] [--rtp-firstleg]\n"
+				"       [-u <mysql username>] [-p <mysql password>] [-f <pcap filter>] [--rtp-firstleg] [-y]\n"
 				"       [--ring-buffer <n>] [--manager-port <n>] [--norecord-header]\n"
 				"\n"
 				" -S, --save-sip\n"
@@ -906,6 +910,10 @@ int main(int argc, char *argv[]) {
 				" --manager-port <port number>\n"
 				"      to which TCP port should manager interface bind. Defaults to 5029.\n\n"
 				"You have to provide <-i interfce> or <-r pcap_file> or set interface in configuration file\n\n"
+				"\n"
+				"\n"
+				" -y\n"
+				"      listen to SIP protocol on ports 5060 - 5099\n\n"
 				"\n"
 				" -v <level number>\n"
 				"      set verbosity level (higher number is more verbose).\n\n"
