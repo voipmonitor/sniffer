@@ -680,6 +680,7 @@ int main(int argc, char *argv[]) {
 				for(int i = 5060; i < 5099; i++) {
 					sipportmatrix[i] = 1;
 				}
+				break;
 			case 'a':
 				strncpy(pcapcommand, optarg, sizeof(pcapcommand));
 				break;
