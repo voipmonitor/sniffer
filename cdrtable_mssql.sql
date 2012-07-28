@@ -60,7 +60,7 @@ CREATE TABLE cdr (
   called_reverse varchar(255) NOT NULL,
   sipcallerip bigint NOT NULL,
   sipcalledip bigint NOT NULL,
-  custom_header1 varchar(32) DEFAULT NULL,
+  custom_header1 varchar(255) DEFAULT NULL,
   fbasename varchar(255) NOT NULL,
   whohanged char(10) DEFAULT NULL,
   bye tinyint NOT NULL default 2,

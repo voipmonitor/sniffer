@@ -767,7 +767,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 				}
 
 				if(opt_norecord_header) {
-					s = gettag(data, datalen, "X-VoipMonitor-norecord", &l);
+					s = gettag(data, datalen, "X-VoipMonitor-norecord:", &l);
 					if(l && l < 33) {
 						// do 
 						call->stoprecording();
@@ -802,8 +802,8 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 				}
 				
 				// check if we have X-VoipMonitor-Custom1
-				s = gettag(data, datalen, "X-VoipMonitor-Custom1", &l);
-				if(l && l < 33) {
+				s = gettag(data, datalen, "X-VoipMonitor-Custom1:", &l);
+				if(l && l < 255) {
 					memcpy(call->custom_header1, s, l);
 					call->custom_header1[l] = '\0';
 					if(verbosity > 2)
@@ -822,7 +822,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 			{
 
 			if(opt_norecord_header) {
-				s = gettag(data, datalen, "X-VoipMonitor-norecord", &l);
+				s = gettag(data, datalen, "X-VoipMonitor-norecord:", &l);
 				if(l && l < 33) {
 					// do 
 					call->stoprecording();
@@ -958,7 +958,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 		}
 
 		if(opt_norecord_header) {
-			s = gettag(data, datalen, "X-VoipMonitor-norecord", &l);
+			s = gettag(data, datalen, "X-VoipMonitor-norecord:", &l);
 			if(l && l < 33) {
 				// do 
 				call->stoprecording();
@@ -966,7 +966,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 		}
 
 		if(opt_norecord_dtmf) {
-			s = gettag(data, datalen, "Signal", &l);
+			s = gettag(data, datalen, "Signal:", &l);
 			if(l && l < 33) {
 				char *tmp = s + 1;
 				tmp[l - 1] = '\0';
@@ -1118,7 +1118,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 	} else {
 		if(opt_rtpnosip) {
 			// decoding RTP without SIP signaling is enabled. Check if it is port >= 1024 and if RTP version is == 2
-			char s[32];
+			char s[256];
 			RTP rtp;
 			int rtpmap[MAX_RTPMAP];
 			memset(&rtpmap, 0, sizeof(int) * MAX_RTPMAP);
