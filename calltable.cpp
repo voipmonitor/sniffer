@@ -373,8 +373,10 @@ void Call::stoprecording() {
 
 		this->flags = 0;
 		pcap_dump_flush(this->get_f_pcap());
-		pcap_dump_close(this->get_f_pcap());
-		this->set_f_pcap(NULL);
+		if(this->get_f_pcap() != NULL) {
+			pcap_dump_close(this->get_f_pcap());
+			this->set_f_pcap(NULL);
+		}
 
 		if(opt_cachedir[0] != '\0') {
 			addtocachequeue(pcapfilename);
