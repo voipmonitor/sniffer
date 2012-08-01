@@ -349,7 +349,7 @@ TELNUMfilter::load() {
 			row = res.at(i);
 			db_row* filterRow = new(db_row);
 			memset(filterRow,0,sizeof(db_row));
-			filterRow->prefix = (unsigned int)atoi(row["prefix"]);
+			filterRow->prefix = (unsigned long long)atoll(row["prefix"]);
 			try {
 				filterRow->direction = atoi(row["direction"]);
 			} catch (const Exception& er) {
@@ -389,7 +389,7 @@ TELNUMfilter::load() {
 		t_payload *np = new(t_payload);
 		np->direction = vectDbRow[i].direction;
 		np->flags = 0;
-		sprintf(np->prefix,"%u",vectDbRow[i].prefix);
+		sprintf(np->prefix,"%llu",vectDbRow[i].prefix);
 		if(vectDbRow[i].rtp)	np->flags |= FLAG_RTP;
 			else		np->flags |= FLAG_NORTP;
 		if(vectDbRow[i].sip)	np->flags |= FLAG_SIP;

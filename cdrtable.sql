@@ -14,7 +14,7 @@ CREATE TABLE `filter_ip` (
 
 CREATE TABLE `filter_telnum` (
   `id` int(32) NOT NULL auto_increment,
-  `prefix` int(32) unsigned default NULL,
+  `prefix` bigint(32) unsigned default NULL,
   `fixed_len` int(32) unsigned default 0,
   `direction` tinyint(8) default 0,
   `rtp` tinyint(1) default '0',

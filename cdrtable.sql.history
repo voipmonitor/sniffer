@@ -1,3 +1,8 @@
+1.7.2012 
+--------
+
+ALTER TABLE filter_telnum CHANGE prefix prefix BIGINT(32);
+
 28.6.2012 - version 4.1
 -----------------------
 ALTER TABLE cdr ADD caller_domain VARCHAR(255) DEFAULT NULL AFTER caller,  ADD called_domain VARCHAR(255) DEFAULT NULL AFTER called, ADD KEY `caller_domain` (`caller_domain`), add KEY `called_domain` (`called_domain`);

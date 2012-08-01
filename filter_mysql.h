@@ -56,7 +56,7 @@ public:
 class TELNUMfilter {
 private:
 	struct db_row {
-		unsigned int prefix;
+		unsigned long long prefix;
 		int direction;
 		int rtp;
 		int sip;
