@@ -35,6 +35,7 @@ extern int opt_jitterbuffer_f1;            // turns off/on jitterbuffer simulato
 extern int opt_jitterbuffer_f2;            // turns off/on jitterbuffer simulator to compute MOS score mos_f2
 extern int opt_jitterbuffer_adapt;         // turns off/on jitterbuffer simulator to compute MOS score mos_adapt
 extern char opt_cachedir[1024];
+extern int opt_savewav_force;
 
 using namespace std;
 
@@ -429,11 +430,18 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 
 	Call *owner = (Call*)call_owner;
 
+
 	if(getVersion() != 2) {
 		return;
 	}
 
 	u_int16_t seq = getSeqNum();
+
+	if(seq == last_seq) {
+		// ignore duplicated RTP packets
+		return;
+	}
+
 	int curpayload = getPayload();
 
 	// ignore CNG
@@ -469,7 +477,7 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 			owner->last_calledcodec = codec;
 		}
 
-		if(opt_saveRAW || (owner && (owner->flags & FLAG_SAVEWAV)) ||
+		if(opt_saveRAW || opt_savewav_force || (owner && (owner->flags & FLAG_SAVEWAV)) ||
 			fifo1 || fifo2 // if recording requested 
 		) {
 			if(verbosity > 0) syslog(LOG_ERR, "converting WAV! [%u] [%d] [%d]\n", owner->flags, fifo1, fifo2);
@@ -492,7 +500,7 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 					prevrtp->len = len;
 					prevrtp->header = header;
 					prevrtp->saddr = saddr;
-					prevrtp->jitterbuffer(prevrtp->channel_record, opt_saveRAW || (owner->flags & FLAG_SAVEWAV) || fifo1 || fifo2);
+					prevrtp->jitterbuffer(prevrtp->channel_record, opt_saveRAW || opt_savewav_force || (owner->flags & FLAG_SAVEWAV) || fifo1 || fifo2);
 				}
 			}
 			gfileRAW = fopen(tmp, "w");
@@ -590,11 +598,11 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 #endif
 
 			/* for recording, we cannot loose any packet */
-			if(opt_saveRAW || (owner->flags & FLAG_SAVEWAV) ||
+			if(opt_saveRAW || opt_savewav_force || (owner->flags & FLAG_SAVEWAV) ||
 				fifo1 || fifo2 // if recording requested 
 			){
 				packetization = channel_record->packetization = default_packetization;
-				jitterbuffer(channel_record, opt_saveRAW || (owner->flags & FLAG_SAVEWAV) || fifo1 || fifo2);
+				jitterbuffer(channel_record, opt_saveRAW || opt_savewav_force || (owner->flags & FLAG_SAVEWAV) || fifo1 || fifo2);
 			}
 		} else if(packetization_iterator == 1) {
 			if(last_ts != 0 && seq == (last_seq + 1) && curpayload != 101 && prev_payload != 101 && !sid && !prev_sid) {
@@ -618,7 +626,7 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 					packetization_iterator = 0;
 
 					/* for recording, we cannot loose any packet */
-					if(opt_saveRAW || (owner->flags & FLAG_SAVEWAV) ||
+					if(opt_saveRAW || opt_savewav_force || (owner->flags & FLAG_SAVEWAV) ||
 						fifo1 || fifo2 // if recording requested 
 					){
 						packetization = channel_record->packetization = default_packetization;
@@ -635,7 +643,7 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 						jitterbuffer(channel_fix2, 0);
 					if(opt_jitterbuffer_adapt)
 						jitterbuffer(channel_adapt, 0);
-					if(opt_saveRAW || (owner->flags & FLAG_SAVEWAV) ||
+					if(opt_saveRAW || opt_savewav_force || (owner->flags & FLAG_SAVEWAV) ||
 						fifo1 || fifo2 // if recording requested 
 					){
 						jitterbuffer(channel_record, 1);
@@ -644,7 +652,7 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 			} else {
 				packetization_iterator = 0;
 				/* for recording, we cannot loose any packet */
-				if(opt_saveRAW || (owner->flags & FLAG_SAVEWAV) ||
+				if(opt_saveRAW || opt_savewav_force || (owner->flags & FLAG_SAVEWAV) ||
 					fifo1 || fifo2 // if recording requested 
 				){
 					packetization = channel_record->packetization = default_packetization;
@@ -658,7 +666,7 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 				jitterbuffer(channel_fix2, 0);
 			if(opt_jitterbuffer_adapt)
 				jitterbuffer(channel_adapt, 0);
-			if(opt_saveRAW || (owner->flags & FLAG_SAVEWAV) ||
+			if(opt_saveRAW || opt_savewav_force || (owner->flags & FLAG_SAVEWAV) ||
 				fifo1 || fifo2 // if recording requested 
 			){
 				jitterbuffer(channel_record, 1);

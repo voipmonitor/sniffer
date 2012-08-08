@@ -93,6 +93,8 @@ extern int opt_pcap_threaded;
 extern int opt_rtpnosip;
 extern char opt_cachedir[1024];
 
+extern int opt_savewav_force;
+
 #ifdef QUEUE_MUTEX
 extern sem_t readpacket_thread_semaphore;
 #endif
@@ -775,7 +777,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 				}
 
 				// opening dump file
-				if(call->flags & (FLAG_SAVESIP | FLAG_SAVEREGISTER | FLAG_SAVERTP | FLAG_SAVEWAV)) {
+				if(call->flags & (FLAG_SAVESIP | FLAG_SAVEREGISTER | FLAG_SAVERTP | FLAG_SAVEWAV) || opt_savewav_force) {
 					if(opt_cachedir[0] != '\0') {
 						sprintf(str2, "%s/%s", opt_cachedir, call->dirname());
 						mkdir(str2, 0777);
@@ -1149,7 +1151,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 #endif
 
 			// opening dump file
-			if(call->flags & (FLAG_SAVESIP | FLAG_SAVEREGISTER | FLAG_SAVERTP | FLAG_SAVEWAV)) {
+			if(call->flags & (FLAG_SAVESIP | FLAG_SAVEREGISTER | FLAG_SAVERTP | FLAG_SAVEWAV) || opt_savewav_force) {
 				mkdir(call->dirname(), 0777);
 			}
 			if(call->flags & (FLAG_SAVESIP | FLAG_SAVEREGISTER | FLAG_SAVERTP)) {

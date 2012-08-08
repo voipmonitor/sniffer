@@ -561,7 +561,6 @@ int convertULAW2WAV(char *fname1, char *fname3) {
 
 int
 Call::convertRawToWav() {
- 
 	int payloadtype = -1;
 	char cmd[1024];
 	char wav0[1024];

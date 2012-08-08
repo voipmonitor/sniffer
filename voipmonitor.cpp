@@ -81,6 +81,7 @@ int opt_pcap_threaded = 0;	// run reading packets from pcap in one thread and pr
 int opt_norecord_header = 0;	// if = 1 SIP call with X-VoipMonitor-norecord header will be not saved although global configuration says to record. 
 int opt_rtpnosip = 0;		// if = 1 RTP stream will be saved into calls regardless on SIP signalizatoin (handy if you need extract RTP without SIP)
 int opt_norecord_dtmf = 0;	// if = 1 SIP call with dtmf == *0 sequence (in SIP INFO) will stop recording
+int opt_savewav_force = 0;	// if = 1 WAV will be generated no matter on filter rules
 
 char configfile[1024] = "";	// config file name
 
@@ -284,7 +285,7 @@ void *storing_cdr( void *dummy ) {
 			}
 
 			call->closeRawFiles();
-			if((call->flags & FLAG_SAVEWAV) && call->type == INVITE) {
+			if( (opt_savewav_force || (call->flags & FLAG_SAVEWAV)) && call->type == INVITE) {
 				if(verbosity > 0) printf("converting RAW file to WAV Queue[%d]\n", (int)calltable->calls_queue.size());
 				call->convertRawToWav();
 			}
@@ -791,6 +792,7 @@ int main(int argc, char *argv[]) {
 				break;
 			case 'W':
 				opt_saveWAV = 1;
+				opt_savewav_force = 1;
 				break;
 			case 'G':
 				opt_saveGRAPH = 1;
