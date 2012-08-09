@@ -247,7 +247,6 @@ void *moving_cache( void *dummy ) {
 			strncpy(dst_c, (char*)dst.c_str(), sizeof(dst_c));
 
 			if(verbosity > 2) syslog(LOG_ERR, "rename([%s] -> [%s])\n", src_c, dst_c);
-			syslog(LOG_ERR, "rename([%s] -> [%s])\n", src_c, dst_c);
 			rename_file(src_c, dst_c);
 			//TODO: error handling
 			//perror ("The following error occurred");
