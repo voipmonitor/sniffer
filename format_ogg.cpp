@@ -79,16 +79,20 @@ static int ogg_header(FILE *f, struct vorbis_desc *tmp)
 
 static void write_stream(struct vorbis_desc *s, FILE *f)
 {
+	int res;
+
         while (vorbis_analysis_blockout(&s->vd, &s->vb) == 1) {
+
                 vorbis_analysis(&s->vb, NULL);
                 vorbis_bitrate_addblock(&s->vb);
 
+
                 while (vorbis_bitrate_flushpacket(&s->vd, &s->op)) {
-                        ogg_stream_packetin(&s->os, &s->op);
-                        while (!s->eos) {
-                                if (ogg_stream_pageout(&s->os, &s->og) == 0) {
-                                        break;
-                                }
+                        res = ogg_stream_packetin(&s->os, &s->op);
+			if(res == -1) 
+				printf("ogg_stream_packetin error\n");
+		
+			while(ogg_stream_pageout(&s->os, &s->og)) {
                                 if (!fwrite(s->og.header, 1, s->og.header_len, f)) {
 					syslog(LOG_ERR, "fwrite() failed: %s\n", strerror(errno));
                                 }
@@ -96,9 +100,9 @@ static void write_stream(struct vorbis_desc *s, FILE *f)
 					syslog(LOG_ERR, "fwrite() failed: %s\n", strerror(errno));
                                 }
                                 if (ogg_page_eos(&s->og)) {
-                                        s->eos = 1;
+                                        return;
                                 }
-                        }
+			}
                 }
         }
 }
@@ -155,16 +159,20 @@ int ogg_mix(char *in1, char *in2, char *out) {
 		syslog(LOG_ERR,"File [%s] cannot be opened for read.\n", in1);
 		return 1;
 	}
-	f_in2 = fopen(in2, "r");
-	if(!f_in2) {
-		fclose(f_in1);
-		syslog(LOG_ERR,"File [%s] cannot be opened for read.\n", in2);
-		return 1;
+	if(in2 != NULL) {
+		f_in2 = fopen(in2, "r");
+		if(!f_in2) {
+			fclose(f_in1);
+			syslog(LOG_ERR,"File [%s] cannot be opened for read.\n", in2);
+			return 1;
+		}
 	}
 	f_out = fopen(out, "w");
 	if(!f_out) {
-		fclose(f_in1);
-		fclose(f_in2);
+		if(f_in1 != NULL)
+			fclose(f_in1);
+		if(f_in2 != NULL)
+			fclose(f_in2);
 		syslog(LOG_ERR,"File [%s] cannot be opened for write.\n", out);
 		return 1;
 	}
@@ -178,33 +186,50 @@ int ogg_mix(char *in1, char *in2, char *out) {
 	file_size1 = ftell(f_in1);
 	fseek(f_in1, 0, SEEK_SET);
 
-	fseek(f_in2, 0, SEEK_END);
-	file_size2 = ftell(f_in2);
-	fseek(f_in2, 0, SEEK_SET);
+	if(in2 != NULL) {
+		fseek(f_in2, 0, SEEK_END);
+		file_size2 = ftell(f_in2);
+		fseek(f_in2, 0, SEEK_SET);
+	}
 
 	bitstream_buf1 = (char *)malloc(file_size1);
 	if(!bitstream_buf1) {
-		fclose(f_in1);
-		fclose(f_in2);
-		fclose(f_out);
+		if(f_in1 != NULL)
+			fclose(f_in1);
+		if(f_in2 != NULL)
+			fclose(f_in2);
+		if(f_out != NULL)
+			fclose(f_out);
 		syslog(LOG_ERR,"Cannot malloc bitsream_buf1[%ld]", file_size1);
 		return 1;
 	}
-	bitstream_buf2 = (char *)malloc(file_size2);
-	if(!bitstream_buf2) {
-		fclose(f_in1);
-		fclose(f_in2);
-		fclose(f_out);
-		free(bitstream_buf1);
-		syslog(LOG_ERR,"Cannot malloc bitsream_buf2[%ld]", file_size1);
-		return 1;
+
+	if(in2 != NULL) {
+		bitstream_buf2 = (char *)malloc(file_size2);
+		if(!bitstream_buf2) {
+			if(f_in1 != NULL)
+				fclose(f_in1);
+			if(f_in2 != NULL)
+				fclose(f_in2);
+			if(f_out != NULL)
+				fclose(f_out);
+			free(bitstream_buf1);
+			syslog(LOG_ERR,"Cannot malloc bitsream_buf2[%ld]", file_size1);
+			return 1;
+		}
 	}
+
 	fread(bitstream_buf1, file_size1, 1, f_in1);
-	fread(bitstream_buf2, file_size2, 1, f_in2);
 	p1 = bitstream_buf1;
 	f1 = bitstream_buf1 + file_size1;
-	p2 = bitstream_buf2;
-	f2 = bitstream_buf2 + file_size2;
+
+	if(in2 != NULL) {
+		fread(bitstream_buf2, file_size2, 1, f_in2);
+		p2 = bitstream_buf2;
+		f2 = bitstream_buf2 + file_size2;
+	} else {
+		p2 = f2 = 0;
+	}
 
 	while(p1 < f1 || p2 < f2 ) {
 		if(p1 < f1 && p2 < f2) {
@@ -228,10 +253,15 @@ int ogg_mix(char *in1, char *in2, char *out) {
 		free(bitstream_buf1);
 	if(bitstream_buf2)
 		free(bitstream_buf2);
+
 	ogg_close(&ogg, f_out);
-	fclose(f_out);
-	fclose(f_in1);
-	fclose(f_in2);
+
+	if(f_out != NULL)
+		fclose(f_out);
+	if(f_in1 != NULL)
+		fclose(f_in1);
+	if(f_in2 != NULL)
+		fclose(f_in2);
 
 	return 0;
 }

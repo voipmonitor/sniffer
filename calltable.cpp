@@ -726,12 +726,18 @@ Call::convertRawToWav() {
 		case FORMAT_WAV:
 			wav_mix(wav0, NULL, out);
 			break;
+		case FORMAT_OGG:
+			ogg_mix(wav0, NULL, out);
+			break;
 		}
 		unlink(wav0);
 	} else if(bdir == 1) {
 		switch(opt_audio_format) {
 		case FORMAT_WAV:
 			wav_mix(wav1, NULL, out);
+			break;
+		case FORMAT_OGG:
+			ogg_mix(wav1, NULL, out);
 			break;
 		}
 		unlink(wav1);
