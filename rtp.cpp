@@ -15,6 +15,7 @@ Each Call class contains two RTP classes.
 #include <string.h>
 #include <sys/types.h>
 #include <syslog.h>
+#include <errno.h>
 
 #include <pcap.h>
 
