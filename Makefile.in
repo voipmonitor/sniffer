@@ -20,14 +20,16 @@ shared: LIBS=-lpthread -lmysqlpp -lpcap -lgzstream -lz -lvorbis -lvorbisenc -log
 
 static: LIBS=-static -L/usr/lib/mysql -lodbc -lltdl -ldl -lrt -lz -lcrypt -lm -lssl -static-libstdc++ -static-libgcc -lpcap -L/usr/lib/mysql -lmysqlpp -lmysqlclient -lpthread -lgzstream -lz -lc -lvorbis -lvorbisenc -logg -llfds
 
-shared : $(objects) 
+shared: cleantest $(objects) 
 	make -C liblfds.6
 	g++ $(objects) ${CFLAGS} -o voipmonitor ${LIBS}
 
-static: $(objects)
+static: cleantest $(objects)
 	make -C liblfds.6
 	g++ $(objects) ${CFLAGS} -o voipmonitor ${LIBS}
 
+cleantest:
+	@cmp -s .cleancount .lastclean || $(MAKE) clean
 
 gzstream/gzstream.o : gzstream/gzstream.C gzstream/gzstream.h
 	g++ -I. -Igzstream/ -c -o gzstream/gzstream.o gzstream/gzstream.C
@@ -83,6 +85,7 @@ odbc.o : odbc.cpp odbc.h
 clean :
 	make -C liblfds.6 clean
 	rm -f $(objects) voipmonitor gzstream/*.o libgzstream.a
+	cp -f .cleancount .lastclean
 
 install: 
 	install voipmonitor /usr/local/sbin/

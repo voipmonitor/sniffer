@@ -342,10 +342,13 @@ RTP::jitterbuffer(struct ast_channel *channel, int savePayload) {
 		channel->rawstream = gfileRAW;
 
 		Call *owner = (Call*)call_owner;
-		if(iscaller)
+		if(iscaller) {
+			owner->codec_caller = codec;
 			channel->fifofd = owner->fifo1;
-		else
+		} else {
+			owner->codec_called = codec;
 			channel->fifofd = owner->fifo2;
+		}
 
 		if(payload_len > 0) {
 			channel->last_datalen = frame->datalen;

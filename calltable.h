@@ -106,12 +106,16 @@ public:
 
 	int fifo1;
 	int fifo2;
+	int codec_caller;
+	int codec_called;
 
 	unsigned int flags;		//!< structure holding FLAGS*
 
 	int *listening_worker_run;
 
 	int thread_num;
+
+	void *listening_worker_args;
 	
 	/**
 	 * constructor
