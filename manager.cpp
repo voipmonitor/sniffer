@@ -163,6 +163,9 @@ void *listening_worker(void *arguments) {
 		
         }
 
+	// reset pointer to NULL as we are leaving the stack here
+	args->call->listening_worker_run = NULL;
+
 	//clean ogg
 //        vorbis_analysis_wrote(&ogg.vd, 0);
 //        write_stream_live(&ogg, args->fifoout);
