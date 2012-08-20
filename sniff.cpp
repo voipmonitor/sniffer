@@ -792,6 +792,9 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 					}
 					sprintf(call->pcapfilename, "%s/%s.pcap", call->dirname(), callidstr);
 					call->set_f_pcap(pcap_dump_open(handle, str2));
+					if(verbosity > 3) {
+						syslog(LOG_NOTICE,"pcap_filename: [%s]\n",str2);
+					}
 				}
 
 				//check and save CSeq for later to compare with OK 
@@ -1158,6 +1161,10 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 				sprintf(str2, "%s/%s.pcap", call->dirname(), s);
 				call->set_f_pcap(pcap_dump_open(handle, str2));
 				sprintf(call->pcapfilename, "%s/%s.pcap", call->dirname(), s);
+			}
+
+			if(verbosity > 3) {
+				syslog(LOG_NOTICE,"pcap_filename: [%s]\n",str2);
 			}
 
 			call->add_ip_port(daddr, dest, s, l, 1, rtpmap);
