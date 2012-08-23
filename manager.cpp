@@ -259,7 +259,7 @@ void *manager_server(void *dummy) {
 				continue;
 			}
 			/* headers */
-			sprintf(outbuf, "[[\"callreference\", \"callid\", \"callercodec\", \"calledcodec\", \"caller\", \"callername\", \"called\", \"calldate\", \"duration\", \"callerip\", \"calledip\"]");
+			sprintf(outbuf, "[[\"callreference\", \"callid\", \"callercodec\", \"calledcodec\", \"caller\", \"callername\", \"called\", \"calldate\", \"duration\", \"callerip\", \"calledip\", \"lastpackettime\"]");
 			int limit = 200;
 			for (callMAPIT = calltable->calls_listMAP.begin(); callMAPIT != calltable->calls_listMAP.end(); ++callMAPIT) {
 				if(limit == 0) {
@@ -278,10 +278,10 @@ void *manager_server(void *dummy) {
 				 * sipcalledip htonl(sipcalledip)
 				*/
 				//XXX: escape " or replace it to '
-				sprintf(outbuf + strlen(outbuf), ",[\"%p\", \"%s\", \"%d\", \"%d\", \"%s\", \"%s\", \"%s\", \"%d\", \"%d\", \"%u\", \"%u\"]",
+				sprintf(outbuf + strlen(outbuf), ",[\"%p\", \"%s\", \"%d\", \"%d\", \"%s\", \"%s\", \"%s\", \"%d\", \"%d\", \"%u\", \"%u\", \"%u\"]",
 					call, call->call_id, call->last_callercodec, call->last_callercodec, call->caller, 
 					call->callername, call->called, call->calltime(), call->duration(), htonl(call->sipcallerip), 
-					htonl(call->sipcalledip));
+					htonl(call->sipcalledip), (unsigned int)call->get_last_packet_time());
 			}
 			sprintf(outbuf + strlen(outbuf), "]");
 			if ((size = send(client, outbuf, strlen(outbuf), 0)) == -1){
