@@ -456,6 +456,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 		while (calltable->calls_deletequeue.size() > 0) {
 			call = calltable->calls_deletequeue.front();
 			calltable->calls_deletequeue.pop();
+			call->hashRemove();
 			delete call;
 			calls--;
 		}
