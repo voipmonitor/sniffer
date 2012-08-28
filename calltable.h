@@ -56,6 +56,7 @@ public:
 	unsigned long call_id_len;	//!< length of call-id 	
 	char call_id[MAX_CALL_ID];	//!< call-id from SIP session
 	char fbasename[MAX_FNAME];	//!< basename of file 
+	char fbasename_safe[MAX_FNAME];	//!< basename of file 
 	char callername[256];		//!< callerid name from SIP header
 	char caller[256];		//!< From: xxx 
 	char caller_domain[256];	//!< From: xxx 
@@ -293,6 +294,12 @@ public:
 	 *
 	*/
 	void stoprecording();
+
+	/**
+	 * @brief substitute all nonalphanum string to "_" (except for @)
+	 *
+	*/
+	char *get_fbasename_safe();
 
 	/**
 	 * @brief print debug information for the call to stdout

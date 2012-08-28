@@ -339,11 +339,11 @@ Call::read_rtp(unsigned char* data, int datalen, struct pcap_pkthdr *header, u_i
 		rtp_cur[iscaller] = rtp[ssrc_n]; 
 		char tmp[1024];
 		if(opt_cachedir[0] != '\0') {
-			sprintf(tmp, "%s/%s/%s.%d.graph%s", opt_cachedir, dirname(), fbasename, ssrc_n, opt_gzipGRAPH ? ".gz" : "");
+			sprintf(tmp, "%s/%s/%s.%d.graph%s", opt_cachedir, dirname(), get_fbasename_safe(), ssrc_n, opt_gzipGRAPH ? ".gz" : "");
 		} else {
-			sprintf(tmp, "%s/%s.%d.graph%s", dirname(), fbasename, ssrc_n, opt_gzipGRAPH ? ".gz" : "");
+			sprintf(tmp, "%s/%s.%d.graph%s", dirname(), get_fbasename_safe(), ssrc_n, opt_gzipGRAPH ? ".gz" : "");
 		}
-		sprintf(rtp[ssrc_n]->gfilename, "%s/%s.%d.graph%s", dirname(), fbasename, ssrc_n, opt_gzipGRAPH ? ".gz" : "");
+		sprintf(rtp[ssrc_n]->gfilename, "%s/%s.%d.graph%s", dirname(), get_fbasename_safe(), ssrc_n, opt_gzipGRAPH ? ".gz" : "");
 		if(flags & FLAG_SAVEGRAPH) {
 			if(opt_gzipGRAPH) {
 				rtp[ssrc_n]->gfileGZ.open(tmp);
@@ -352,7 +352,7 @@ Call::read_rtp(unsigned char* data, int datalen, struct pcap_pkthdr *header, u_i
 			}
 		}
 		rtp[ssrc_n]->gfileRAW = NULL;
-		sprintf(rtp[ssrc_n]->basefilename, "%s/%s.i%d", dirname(), fbasename, iscaller);
+		sprintf(rtp[ssrc_n]->basefilename, "%s/%s.i%d", dirname(), get_fbasename_safe(), iscaller);
 		int i = get_index_by_ip_port(saddr, port);
 		memcpy(this->rtp[ssrc_n]->rtpmap, rtpmap[i], MAX_RTPMAP * sizeof(int));
 
@@ -388,11 +388,11 @@ void Call::stoprecording() {
 		unlink(str2);	
 		this->recordstopped = 1;
 		if(verbosity >= 1) {
-			syslog(LOG_ERR,"Call %s/%s.pcap was stopped due to dtmf or norecord sip header. ", this->dirname(), this->fbasename);
+			syslog(LOG_ERR,"Call %s/%s.pcap was stopped due to dtmf or norecord sip header. ", this->dirname(), this->get_fbasename_safe());
 		}
 	} else {
 		if(verbosity >= 1) {
-			syslog(LOG_ERR,"Call %s/%s.pcap was stopped before. Ignoring now. ", this->dirname(), this->fbasename);
+			syslog(LOG_ERR,"Call %s/%s.pcap was stopped before. Ignoring now. ", this->dirname(), this->get_fbasename_safe());
 		}
 	}
 }
@@ -576,20 +576,20 @@ Call::convertRawToWav() {
 	int adir = 1;
 	int bdir = 1;
 
-	sprintf(wav0, "%s/%s.i0.wav", dirname(), fbasename);
-	sprintf(wav1, "%s/%s.i1.wav", dirname(), fbasename);
+	sprintf(wav0, "%s/%s.i0.wav", dirname(), get_fbasename_safe());
+	sprintf(wav1, "%s/%s.i1.wav", dirname(), get_fbasename_safe());
 	switch(opt_audio_format) {
 	case FORMAT_WAV:
-		sprintf(out, "%s/%s.wav", dirname(), fbasename);
+		sprintf(out, "%s/%s.wav", dirname(), get_fbasename_safe());
 		break;
 	case FORMAT_OGG:
-		sprintf(out, "%s/%s.ogg", dirname(), fbasename);
+		sprintf(out, "%s/%s.ogg", dirname(), get_fbasename_safe());
 		break;
 	}
 
 	/* do synchronisation - calculate difference between start of both RTP direction and put silence to achieve proper synchronisation */
 	/* first direction */
-	sprintf(rawInfo, "%s/%s.i%d.rawInfo", dirname(), fbasename, 0);
+	sprintf(rawInfo, "%s/%s.i%d.rawInfo", dirname(), get_fbasename_safe(), 0);
 	pl = fopen(rawInfo, "r");
 	if(!pl) {
 		adir = 0;
@@ -601,7 +601,7 @@ Call::convertRawToWav() {
 		sscanf(line, "%d:%lu:%d:%ld:%ld", &ssrc_index, &rawiterator, &codec, &tv0.tv_sec, &tv0.tv_usec);
 	}
 	/* second direction */
-	sprintf(rawInfo, "%s/%s.i%d.rawInfo", dirname(), fbasename, 1);
+	sprintf(rawInfo, "%s/%s.i%d.rawInfo", dirname(), get_fbasename_safe(), 1);
 	pl = fopen(rawInfo, "r");
 	if(!pl) {
 		bdir = 0;
@@ -614,7 +614,7 @@ Call::convertRawToWav() {
 	}
 
 	if(adir == 0 && bdir == 0) {
-		syslog(LOG_ERR, "PCAP file %s/%s.pcap cannot be decoded to WAV probably missing RTP\n", dirname(), fbasename);
+		syslog(LOG_ERR, "PCAP file %s/%s.pcap cannot be decoded to WAV probably missing RTP\n", dirname(), get_fbasename_safe());
 		return 1;
 	}
 
@@ -654,7 +654,7 @@ Call::convertRawToWav() {
 		char *wav = i ? wav1 : wav0;
 
 		/* open playlist */
-		sprintf(rawInfo, "%s/%s.i%d.rawInfo", dirname(), fbasename, i);
+		sprintf(rawInfo, "%s/%s.i%d.rawInfo", dirname(), get_fbasename_safe(), i);
 		pl = fopen(rawInfo, "r");
 		if(!pl) {
 			syslog(LOG_ERR, "Cannot open %s\n", rawInfo);
@@ -664,7 +664,7 @@ Call::convertRawToWav() {
 			char raw[1024];
 			line[strlen(line)] = '\0'; // remove '\n' which is last character
 			sscanf(line, "%d:%lu:%d:%ld:%ld", &ssrc_index, &rawiterator, &codec, &tv0.tv_sec, &tv0.tv_usec);
-			sprintf(raw, "%s/%s.i%d.%d.%lu.%d.%ld.%ld.raw", dirname(), fbasename, i, ssrc_index, rawiterator, codec, tv0.tv_sec, tv0.tv_usec);
+			sprintf(raw, "%s/%s.i%d.%d.%lu.%d.%ld.%ld.raw", dirname(), get_fbasename_safe(), i, ssrc_index, rawiterator, codec, tv0.tv_sec, tv0.tv_usec);
 
 			switch(codec) {
 			case PAYLOAD_PCMA:
@@ -1156,6 +1156,17 @@ Call::saveRegisterToDb() {
 	}
 	
 	return doQuery(queryStr);
+}
+
+char *
+Call::get_fbasename_safe() {
+	strncpy(fbasename_safe, fbasename, MAX_FNAME * sizeof(char));
+	for (unsigned int i = 0; i < strlen(fbasename_safe) && i < MAX_FNAME; i++) {
+		if (!(fbasename[i] == '.' || fbasename[i] == '@' || isalnum(fbasename[i]))) {
+			fbasename_safe[i] = '_';
+		}
+	}
+	return fbasename_safe;
 }
 
 /* for debug purpose */

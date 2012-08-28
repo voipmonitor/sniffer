@@ -787,11 +787,11 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 				}
 				if(call->flags & (FLAG_SAVESIP | FLAG_SAVEREGISTER | FLAG_SAVERTP)) {
 					if(opt_cachedir[0] != '\0') {
-						sprintf(str2, "%s/%s/%s.pcap", opt_cachedir, call->dirname(), callidstr);
+						sprintf(str2, "%s/%s/%s.pcap", opt_cachedir, call->dirname(), call->get_fbasename_safe());
 					} else {
-						sprintf(str2, "%s/%s.pcap", call->dirname(), callidstr);
+						sprintf(str2, "%s/%s.pcap", call->dirname(), call->get_fbasename_safe());
 					}
-					sprintf(call->pcapfilename, "%s/%s.pcap", call->dirname(), callidstr);
+					sprintf(call->pcapfilename, "%s/%s.pcap", call->dirname(), call->get_fbasename_safe());
 					call->set_f_pcap(pcap_dump_open(handle, str2));
 					if(verbosity > 3) {
 						syslog(LOG_NOTICE,"pcap_filename: [%s]\n",str2);

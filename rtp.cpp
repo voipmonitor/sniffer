@@ -240,7 +240,7 @@ RTP::jt_tail(struct pcap_pkthdr *header) {
 	if(packetization <= 0) {
 		Call *owner = (Call*)call_owner;
 		if(owner) {
-			syslog(LOG_ERR, "call-id[%s]: packetization is 0 in jitterbuffer function.", owner->fbasename);
+			syslog(LOG_ERR, "call-id[%s]: packetization is 0 in jitterbuffer function.", owner->get_fbasename_safe());
 		} else {
 			syslog(LOG_ERR, "call-id[N/A]: packetization is 0 in jitterbuffer function.");
 		}
@@ -281,7 +281,7 @@ RTP::jitterbuffer(struct ast_channel *channel, int savePayload) {
 	if(packetization <= 0) {
 		Call *owner = (Call*)call_owner;
 		if(owner) {
-			syslog(LOG_ERR, "call-id[%s]: packetization is 0 in jitterbuffer function.", owner->fbasename);
+			syslog(LOG_ERR, "call-id[%s]: packetization is 0 in jitterbuffer function.", owner->get_fbasename_safe());
 		} else {
 			syslog(LOG_ERR, "call-id[N/A]: packetization is 0 in jitterbuffer function.");
 		}

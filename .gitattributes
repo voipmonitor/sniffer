@@ -1,6 +1,5 @@
 * text=auto !eol
 /.cleancount -text
-/.lastclean -text
 /ChangeLog -text
 /Makefile.in -text
 /README -text
