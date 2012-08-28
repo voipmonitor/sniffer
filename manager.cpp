@@ -266,8 +266,11 @@ void *manager_server(void *dummy) {
 					//limit to 200 calls for now
 					 break;
 				}
-				limit--;
 				call = (*callMAPIT).second;
+				if(call->type == REGISTER) {
+					continue;
+				}
+				limit--;
 				/* 
 				 * caller 
 				 * callername
