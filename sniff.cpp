@@ -765,7 +765,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 					call->seeninvite = true;
 					telnumfilter->add_call_flags(&(call->flags), call->caller, call->called);
 #ifdef DEBUG_INVITE
-					syslog(LOG_NOTICE, "New call: srcip INET_NTOA[%u] dstip INET_NTOA[%u] From[%s] To[%s]\n", call->sipcallerip, call->sipcalledip, call->caller, call->called);
+					syslog(LOG_NOTICE, "New call: srcip INET_NTOA[%u] dstip INET_NTOA[%u] From[%s] To[%s] Call-ID[%s]\n", call->sipcallerip, call->sipcalledip, call->caller, call->called, call->fbasename);
 #endif
 				}
 
@@ -793,6 +793,9 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 					}
 					sprintf(call->pcapfilename, "%s/%s.pcap", call->dirname(), call->get_fbasename_safe());
 					call->set_f_pcap(pcap_dump_open(handle, str2));
+					if(call->get_f_pcap() == NULL) {
+						syslog(LOG_NOTICE,"pcap [%s] cannot be opened: %s\n", str2, pcap_geterr(handle));
+					}
 					if(verbosity > 3) {
 						syslog(LOG_NOTICE,"pcap_filename: [%s]\n",str2);
 					}

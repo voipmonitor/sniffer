@@ -269,7 +269,8 @@ RTP::jt_tail(struct pcap_pkthdr *header) {
 /* simulate jitterbuffer */
 void
 RTP::jitterbuffer(struct ast_channel *channel, int savePayload) {
-	struct timeval tsdiff;	
+	struct timeval tsdiff;
+	static int pinformed = 0;
 	frame->ts = getTimestamp() / 8;
 	frame->len = packetization;
 	frame->marker = getMarker();
@@ -279,13 +280,19 @@ RTP::jitterbuffer(struct ast_channel *channel, int savePayload) {
 
 	/* protect for endless loops (it cannot happen in theory but to be sure */
 	if(packetization <= 0) {
-		Call *owner = (Call*)call_owner;
-		if(owner) {
-			syslog(LOG_ERR, "call-id[%s]: packetization is 0 in jitterbuffer function.", owner->get_fbasename_safe());
-		} else {
-			syslog(LOG_ERR, "call-id[N/A]: packetization is 0 in jitterbuffer function.");
+		if(pinformed != 0) {
+			Call *owner = (Call*)call_owner;
+			if(owner) {
+				syslog(LOG_ERR, "call-id[%s]: packetization is 0 in jitterbuffer function.", owner->get_fbasename_safe());
+				
+			} else {
+				syslog(LOG_ERR, "call-id[N/A]: packetization is 0 in jitterbuffer function.");
+			}
 		}
+		pinformed = 1;
 		return;
+	} else {
+		pinformed = 0;
 	}
 
 	if(savePayload) {
