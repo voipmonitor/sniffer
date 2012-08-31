@@ -142,6 +142,8 @@ sem_t readpacket_thread_semaphore;
 struct queue_state *qs_readpacket_thread_queue = NULL;
 #endif
 
+nat_aliases_t nat_aliases;	// net_aliases[local_ip] = extern_ip
+
 void rename_file(const char *src, const char *dst) {
 	int read_fd = 0;
 	int write_fd = 0;
@@ -416,6 +418,38 @@ int load_config(char *fname) {
 		sipportmatrix[5060] = 0;
 		for (; i != values.end(); ++i) {
 			sipportmatrix[atoi(i->pItem)] = 1;
+		}
+	}
+
+	// nat aliases
+	if (ini.GetAllValues("general", "natalias", values)) {
+		char local_ip[30], extern_ip[30];
+		in_addr_t nlocal_ip, nextern_ip;
+		int len, j = 0, i;
+		char *s = local_ip;
+		CSimpleIni::TNamesDepend::const_iterator it = values.begin();
+
+		for (; it != values.end(); ++it) {
+			for(i = 0; i < 30; i++) {
+				local_ip[i] = '\0';
+				extern_ip[i] = '\0';
+			}
+
+			len = strlen(it->pItem);
+			for(int i = 0; i < len; i++) {
+				if(it->pItem[i] == ' ' or it->pItem[i] == ':' or it->pItem[i] == '=' or it->pItem[i] == ' ') {
+					// moving s to b pointer (write to b ip
+					s = extern_ip;
+					j = 0;
+				} else {
+					s[j] = it->pItem[i];
+					j++;
+				}
+			}
+			if ((int32_t)(nlocal_ip = inet_addr(local_ip)) != -1 && (int32_t)(nextern_ip = inet_addr(extern_ip)) != -1 ){
+				nat_aliases[nlocal_ip] = nextern_ip;
+				if(verbosity > 3) printf("adding local_ip[%s][%u] = extern_ip[%s][%u]\n", local_ip, nlocal_ip, extern_ip, nextern_ip);
+			}
 		}
 	}
 

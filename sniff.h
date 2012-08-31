@@ -20,6 +20,8 @@ void process_packet(unsigned int saddr, int source, unsigned int daddr, int dest
 void readdump_libnids(pcap_t *handle);
 void readdump_libpcap(pcap_t *handle);
 
+typedef std::map<in_addr_t, in_addr_t> nat_aliases_t; //!< 
+
 /* this is copied from libpcap sll.h header file, which is not included in debian distribution */
 #define SLL_ADDRLEN       8               /* length of address field */
 struct sll_header {

@@ -95,6 +95,8 @@ extern char opt_cachedir[1024];
 
 extern int opt_savewav_force;
 
+extern nat_aliases_t nat_aliases;
+
 #ifdef QUEUE_MUTEX
 extern sem_t readpacket_thread_semaphore;
 #endif
@@ -114,6 +116,19 @@ tcp_stream2 *tcp_streams_hashed[MAX_TCPSTREAMS];
 list<tcp_stream2*> tcp_streams_list;
 
 extern struct queue_state *qs_readpacket_thread_queue;
+
+// return IP from nat_aliases[ip] or 0 if not found
+in_addr_t match_nat_aliases(in_addr_t ip) {
+	nat_aliases_t::iterator iter;
+        iter = nat_aliases.find(ip);
+        if(iter == nat_aliases.end()) {
+                // not found
+                return 0;
+        } else {
+                return iter->second;
+        }
+	
+}
 
 /* save packet into file */
 void save_packet(Call *call, struct pcap_pkthdr *header, const u_char *packet) {
@@ -284,6 +299,7 @@ int get_ip_port_from_sdp(char *sdp_text, in_addr_t *addr, unsigned short *port){
 	if(l == 0) return 1;
 	memset(s1, '\0', sizeof(s1));
 	memcpy(s1, s, MIN(l, 19));
+//	printf("---------- [%s]\n", s1);
 	if ((int32_t)(*addr = inet_addr(s1)) == -1){
 		*addr = 0;
 		*port = 0;
@@ -1027,11 +1043,23 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 					s = gettag(data,datalen,"User-Agent:", &l);
 					// store RTP stream
 					get_rtpmap_from_sdp(tmp + 1, datalen - (tmp + 1 - data), rtpmap);
+
 					call->add_ip_port(tmp_addr, tmp_port, s, l, call->sipcallerip != saddr, rtpmap);
 					calltable->hashAdd(tmp_addr, tmp_port, call, call->sipcallerip != saddr, 0);
 					if(opt_rtcp) {
 						calltable->hashAdd(tmp_addr, tmp_port + 1, call, call->sipcallerip != saddr, 1); //add rtcp
 					}
+					
+					// check if the IP address is listed in nat_aliases
+					in_addr_t alias = 0;
+					if((alias = match_nat_aliases(tmp_addr)) != 0) {
+						call->add_ip_port(alias, tmp_port, s, l, call->sipcallerip != saddr, rtpmap);
+						calltable->hashAdd(alias, tmp_port, call, call->sipcallerip != saddr, 0);
+						if(opt_rtcp) {
+							calltable->hashAdd(alias, tmp_port + 1, call, call->sipcallerip != saddr, 1); //add rtcp
+						}
+					}
+
 #ifdef NAT
 					call->add_ip_port(saddr, tmp_port, s, l, call->sipcallerip != saddr, rtpmap);
 					calltable->hashAdd(saddr, tmp_port, call, call->sipcallerip != saddr, 0);
@@ -1039,7 +1067,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 						calltable->hashAdd(saddr, tmp_port + 1, call, call->sipcallerip != saddr, 1);
 					}
 #endif
-	
+
 				} else {
 					if(verbosity >= 2){
 						syslog(LOG_ERR, "Can't get ip/port from SDP:\n%s\n\n", tmp + 1);
