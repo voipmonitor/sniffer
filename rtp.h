@@ -151,6 +151,7 @@ public:
 	int default_packetization;
 	int sid;
 	int prev_sid;
+	int pinformed;
 
 	struct stats_t {
 		u_int32_t	d50;	//!< delay from 0 to 50

@@ -143,6 +143,7 @@ RTP::RTP() {
 	sid = false;
 	prev_sid = false;
 	call_owner = NULL;
+	pinformed = 0;
 }
 
 /* destructor */
@@ -270,7 +271,6 @@ RTP::jt_tail(struct pcap_pkthdr *header) {
 void
 RTP::jitterbuffer(struct ast_channel *channel, int savePayload) {
 	struct timeval tsdiff;
-	static int pinformed = 0;
 	frame->ts = getTimestamp() / 8;
 	frame->len = packetization;
 	frame->marker = getMarker();
@@ -280,13 +280,13 @@ RTP::jitterbuffer(struct ast_channel *channel, int savePayload) {
 
 	/* protect for endless loops (it cannot happen in theory but to be sure */
 	if(packetization <= 0) {
-		if(pinformed != 0) {
+		if(pinformed == 0) {
 			Call *owner = (Call*)call_owner;
 			if(owner) {
-				syslog(LOG_ERR, "call-id[%s]: packetization is 0 in jitterbuffer function.", owner->get_fbasename_safe());
+				syslog(LOG_ERR, "call-id[%s] ssrc[%x]: packetization is 0 in jitterbuffer function.", owner->get_fbasename_safe(), getSSRC());
 				
 			} else {
-				syslog(LOG_ERR, "call-id[N/A]: packetization is 0 in jitterbuffer function.");
+				syslog(LOG_ERR, "call-id[N/A] ssrc[%x]: packetization is 0 in jitterbuffer function.", getSSRC());
 			}
 		}
 		pinformed = 1;
@@ -593,27 +593,32 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 #if 1
 			// new way of getting packetization from packet datalen 
 			if(curpayload == PAYLOAD_PCMU or curpayload == PAYLOAD_PCMA) {
-				channel_fix1->packetization = default_packetization = channel_fix2->packetization = channel_adapt->packetization = channel_record->packetization = packetization = get_payload_len() / 8;
 
-				if(verbosity > 3) printf("[%x] packetization:[%d]\n", getSSRC(), packetization);
+				channel_fix1->packetization = default_packetization = 
+					channel_fix2->packetization = channel_adapt->packetization = 
+					channel_record->packetization = packetization = get_payload_len() / 8;
 
+				if(packetization >= 10) {
+					if(1 || verbosity > 3) printf("packetization:[%d] ssrc[%x]\n", packetization, getSSRC());
 
-				packetization_iterator = 10; // this will cause that packetization is estimated as final
+					packetization_iterator = 10; // this will cause that packetization is estimated as final
 
-				if(opt_jitterbuffer_f1)
-					jitterbuffer(channel_fix1, 0);
-				if(opt_jitterbuffer_f2)
-					jitterbuffer(channel_fix2, 0);
-				if(opt_jitterbuffer_adapt)
-					jitterbuffer(channel_adapt, 0);
+					if(opt_jitterbuffer_f1)
+						jitterbuffer(channel_fix1, 0);
+					if(opt_jitterbuffer_f2)
+						jitterbuffer(channel_fix2, 0);
+					if(opt_jitterbuffer_adapt)
+						jitterbuffer(channel_adapt, 0);
+				} 
+
 			} 
 #endif
 
 			/* for recording, we cannot loose any packet */
-			if(opt_saveRAW || opt_savewav_force || (owner->flags & FLAG_SAVEWAV) ||
-				fifo1 || fifo2 // if recording requested 
-			){
-				packetization = channel_record->packetization = default_packetization;
+			if(opt_saveRAW || opt_savewav_force || (owner->flags & FLAG_SAVEWAV) || fifo1 || fifo2) { // if recording requested 
+				if(packetization < 10) {
+					packetization = channel_record->packetization = default_packetization;
+				}
 				jitterbuffer(channel_record, opt_saveRAW || opt_savewav_force || (owner->flags & FLAG_SAVEWAV) || fifo1 || fifo2);
 			}
 		} else if(packetization_iterator == 1) {
