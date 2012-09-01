@@ -71,6 +71,7 @@ Odbc odbc;
 
 /* constructor */
 Call::Call(char *call_id, unsigned long call_id_len, time_t time, void *ct) {
+	last_callercodec = -1;
 	ipport_n = 0;
 	ssrc_n = 0;
 	first_packet_time = time;

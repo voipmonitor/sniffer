@@ -254,14 +254,16 @@ void *manager_server(void *dummy) {
 			map<string, Call*>::iterator callMAPIT;
 			Call *call;
 			char outbuf[2048];
-			char *resbuf = (char*)malloc(32 * 1024 * sizeof(char));;
+			char *resbuf = (char*)realloc(NULL, 32 * 1024 * sizeof(char));;
 			unsigned int resbufalloc = 32 * 1024, outbuflen = 0, resbuflen = 0;
 			if(outbuf == NULL) {
 				syslog(LOG_NOTICE,"Cannot allocate memory\n");
 				continue;
 			}
 			/* headers */
-			sprintf(outbuf, "[[\"callreference\", \"callid\", \"callercodec\", \"calledcodec\", \"caller\", \"callername\", \"called\", \"calldate\", \"duration\", \"callerip\", \"calledip\", \"lastpackettime\"]");
+			outbuflen = sprintf(outbuf, "[[\"callreference\", \"callid\", \"callercodec\", \"calledcodec\", \"caller\", \"callername\", \"called\", \"calldate\", \"duration\", \"callerip\", \"calledip\", \"lastpackettime\"]");
+			memcpy(resbuf + resbuflen, outbuf, outbuflen);
+			resbuflen += outbuflen;
 			for (callMAPIT = calltable->calls_listMAP.begin(); callMAPIT != calltable->calls_listMAP.end(); ++callMAPIT) {
 				call = (*callMAPIT).second;
 				if(call->type == REGISTER) {
@@ -281,12 +283,12 @@ void *manager_server(void *dummy) {
 					call, call->call_id, call->last_callercodec, call->last_callercodec, call->caller, 
 					call->callername, call->called, call->calltime(), call->duration(), htonl(call->sipcallerip), 
 					htonl(call->sipcalledip), (unsigned int)call->get_last_packet_time());
+				memcpy(resbuf + resbuflen, outbuf, outbuflen);
 				resbuflen += outbuflen;
 				if((resbuflen) > resbufalloc) {
 					resbuf = (char*)realloc(resbuf, resbufalloc + 32 * 1024 * sizeof(char));
 					resbufalloc += 32 * 1024;
 				}
-				memcpy(resbuf + resbuflen, outbuf, outbuflen);
 			}
 			resbuf[resbuflen] = ']';
 			resbuflen++;
