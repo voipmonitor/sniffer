@@ -29,6 +29,7 @@ CREATE TABLE `filter_telnum` (
 CREATE TABLE `cdr` (
   `ID` int(32) unsigned NOT NULL auto_increment,
   `calldate` datetime NOT NULL,
+  `callend` datetime NOT NULL,
   `duration` int(32) unsigned NOT NULL,
   `connect_duration` int(32) unsigned NOT NULL,
   `progress_time` int(32) unsigned NOT NULL,
@@ -120,6 +121,7 @@ CREATE TABLE `cdr` (
   `b_burstr_adapt` float(8) unsigned NOT NULL,
   PRIMARY KEY  (`ID`),
   KEY `calldate` (`calldate`),
+  KEY `callend` (`callend`),
   KEY `duration` (`duration`),
   KEY `source` (`caller`),
   KEY `source_reverse` (`caller_reverse`),

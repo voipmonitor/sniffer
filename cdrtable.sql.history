@@ -1,3 +1,9 @@
+1.9.2012
+--------
+ALTER TABLE cdr ADD `callend` datetime DEFAULT NULL AFTER calldate, add KEY `callend` (`callend`);
+UPDATE cdr SET callend = DATE_ADD(calldate, INTERVAL duration SECOND);
+
+
 1.7.2012 
 --------
 

@@ -1,2 +1,4 @@
 ALTER TABLE filter_telnum CHANGE prefix prefix BIGINT(32);
+ALTER TABLE cdr ADD `callend` datetime DEFAULT NULL AFTER calldate, add KEY `callend` (`callend`);
+UPDATE cdr SET callend = DATE_ADD(calldate, INTERVAL duration SECOND);
 

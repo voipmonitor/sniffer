@@ -109,6 +109,8 @@ char pcapcommand[4092] = "";
 int rtp_threaded = 0; // do not enable this until it will be reworked to be thread safe
 int num_threads = 1; // this has to be 1 for now
 
+int opt_callend = 1; //if true, cdr.called is saved
+
 
 char opt_chdir[1024];
 char opt_cachedir[1024];
@@ -620,6 +622,9 @@ int load_config(char *fname) {
 			opt_jitterbuffer_adapt = 0;
 			break;
 		}
+	}
+	if((value = ini.GetValue("general", "sqlcallend", NULL))) {
+		opt_callend = yesno(value);
 	}
 	return 0;
 }

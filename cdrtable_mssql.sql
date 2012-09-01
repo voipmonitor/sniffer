@@ -46,6 +46,7 @@ IF NOT EXISTS (SELECT * FROM sys.objects WHERE name = 'cdr')
 CREATE TABLE cdr (
   ID bigint PRIMARY KEY IDENTITY,
   calldate datetime NOT NULL,
+  callend datetime NOT NULL,
   duration bigint NOT NULL,
   connect_duration bigint NOT NULL,
   progress_time bigint NOT NULL,
@@ -137,6 +138,7 @@ CREATE TABLE cdr (
   b_burstr_adapt float(8) NOT NULL default 0
 );
 CREATE INDEX calldate ON cdr (calldate);
+CREATE INDEX callend ON cdr (callend);
 CREATE INDEX duration ON cdr (duration);
 CREATE INDEX source ON cdr (caller);
 CREATE INDEX source_reverse ON cdr (caller_reverse);

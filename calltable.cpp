@@ -63,6 +63,7 @@ extern char odbc_dsn[256];
 extern char odbc_user[256];
 extern char odbc_password[256];
 extern char odbc_driver[256];
+extern int opt_callend;
 int calls = 0;
 
 mysqlpp::Connection con(false);
@@ -763,8 +764,13 @@ Call::buildQuery(stringstream *query) {
 		stringstream values;
 		fields 	<< "caller, caller_domain, caller_reverse, callername, callername_reverse, sipcallerip, "
 				"sipcalledip, called, called_domain, called_reverse, duration, progress_time, "
-				"first_rtp_time, connect_duration, calldate, fbasename, sighup, "
-				"lastSIPresponse, lastSIPresponseNum, bye";
+				"first_rtp_time, connect_duration, calldate";
+		if(opt_callend) {
+			fields << ", callend";
+		}
+
+		fields << ", fbasename, sighup, lastSIPresponse, lastSIPresponseNum, bye";
+
 		values 	<< sqlEscapeString(caller)
 			<< ", " << sqlEscapeString(caller_domain)
 			<< ", " << sqlEscapeString(reverseString(caller).c_str())
@@ -778,13 +784,13 @@ Call::buildQuery(stringstream *query) {
 			<< ", " << duration()
 			<< ", " << (progress_time ? progress_time - first_packet_time : -1)
 			<< ", " << (first_rtp_time ? first_rtp_time  - first_packet_time : -1)
-			<< ", " << (connect_time ? (duration() - (connect_time - first_packet_time)) : -1);
-
-		if(isTypeDb("mssql")) {
-			values << ", " << sqlEscapeString(sqlDateTimeString(calltime()).c_str());
-		} else {
-			values << ", " << "FROM_UNIXTIME(" << calltime() << ")";
+			<< ", " << (connect_time ? (duration() - (connect_time - first_packet_time)) : -1)
+			<< ", " << sqlEscapeString(sqlDateTimeString(calltime()).c_str());
+		
+		if(opt_callend) {
+			values << ", " << sqlEscapeString(sqlDateTimeString(calltime() + duration()).c_str());
 		}
+
 		values 	<< ", " << sqlEscapeString(fbasename)
 			<< ", " << (sighup ? 1 : 0)
 			<< ", " << sqlEscapeString(lastSIPresponse)
@@ -938,6 +944,10 @@ Call::buildQuery(stringstream *query) {
 			", lastSIPresponse = " << sqlEscapeString(lastSIPresponse) << 
 			", lastSIPresponseNum = " << lastSIPresponseNum << 
 			", bye = " << ( seeninviteok ? (seenbye ? (seenbyeandok ? 3 : 2) : 1) : 0);
+
+		if(opt_callend) {
+			*query << ", callend = FROM_UNIXTIME(" << (calltime() + duration()) << ")";
+		}
 
 		if(strlen(custom_header1)) {
 			*query << ", custom_header1 = " << sqlEscapeString(custom_header1);
