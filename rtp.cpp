@@ -599,7 +599,7 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 					channel_record->packetization = packetization = get_payload_len() / 8;
 
 				if(packetization >= 10) {
-					if(1 || verbosity > 3) printf("packetization:[%d] ssrc[%x]\n", packetization, getSSRC());
+					if(verbosity > 3) printf("packetization:[%d] ssrc[%x]\n", packetization, getSSRC());
 
 					packetization_iterator = 10; // this will cause that packetization is estimated as final
 
