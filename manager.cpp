@@ -253,24 +253,20 @@ void *manager_server(void *dummy) {
 			//list<Call*>::iterator call;
 			map<string, Call*>::iterator callMAPIT;
 			Call *call;
-			char *outbuf = (char*)malloc(1024*201*sizeof(char));
+			char outbuf[2048];
+			char *resbuf = (char*)malloc(32 * 1024 * sizeof(char));;
+			unsigned int resbufalloc = 32 * 1024, outbuflen = 0, resbuflen = 0;
 			if(outbuf == NULL) {
 				syslog(LOG_NOTICE,"Cannot allocate memory\n");
 				continue;
 			}
 			/* headers */
 			sprintf(outbuf, "[[\"callreference\", \"callid\", \"callercodec\", \"calledcodec\", \"caller\", \"callername\", \"called\", \"calldate\", \"duration\", \"callerip\", \"calledip\", \"lastpackettime\"]");
-			int limit = 200;
 			for (callMAPIT = calltable->calls_listMAP.begin(); callMAPIT != calltable->calls_listMAP.end(); ++callMAPIT) {
-				if(limit == 0) {
-					//limit to 200 calls for now
-					 break;
-				}
 				call = (*callMAPIT).second;
 				if(call->type == REGISTER) {
 					continue;
 				}
-				limit--;
 				/* 
 				 * caller 
 				 * callername
@@ -281,19 +277,25 @@ void *manager_server(void *dummy) {
 				 * sipcalledip htonl(sipcalledip)
 				*/
 				//XXX: escape " or replace it to '
-				sprintf(outbuf + strlen(outbuf), ",[\"%p\", \"%s\", \"%d\", \"%d\", \"%s\", \"%s\", \"%s\", \"%d\", \"%d\", \"%u\", \"%u\", \"%u\"]",
+				outbuflen = sprintf(outbuf, ",[\"%p\", \"%s\", \"%d\", \"%d\", \"%s\", \"%s\", \"%s\", \"%d\", \"%d\", \"%u\", \"%u\", \"%u\"]",
 					call, call->call_id, call->last_callercodec, call->last_callercodec, call->caller, 
 					call->callername, call->called, call->calltime(), call->duration(), htonl(call->sipcallerip), 
 					htonl(call->sipcalledip), (unsigned int)call->get_last_packet_time());
+				resbuflen += outbuflen;
+				if((resbuflen) > resbufalloc) {
+					resbuf = (char*)realloc(resbuf, resbufalloc + 32 * 1024 * sizeof(char));
+					resbufalloc += 32 * 1024;
+				}
+				memcpy(resbuf + resbuflen, outbuf, outbuflen);
 			}
-			sprintf(outbuf + strlen(outbuf), "]");
-			if ((size = send(client, outbuf, strlen(outbuf), 0)) == -1){
+			resbuf[resbuflen] = ']';
+			resbuflen++;
+			if ((size = send(client, resbuf, resbuflen, 0)) == -1){
 				cerr << "Error sending data to client" << endl;
-				free(outbuf);
 				close(client);
 				continue;
 			}
-			free(outbuf);
+			free(resbuf);
 			close(client);
 			continue;
 		/* listen callreference fifo */
