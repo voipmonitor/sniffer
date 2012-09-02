@@ -290,6 +290,10 @@ void *manager_server(void *dummy) {
 				memcpy(resbuf + resbuflen, outbuf, outbuflen);
 				resbuflen += outbuflen;
 			}
+			if((resbuflen + 1) > resbufalloc) {
+				resbuf = (char*)realloc(resbuf, resbufalloc + 32 * 1024 * sizeof(char));
+				resbufalloc += 32 * 1024;
+			}
 			resbuf[resbuflen] = ']';
 			resbuflen++;
 			if ((size = send(client, resbuf, resbuflen, 0)) == -1){
