@@ -283,12 +283,12 @@ void *manager_server(void *dummy) {
 					call, call->call_id, call->last_callercodec, call->last_callercodec, call->caller, 
 					call->callername, call->called, call->calltime(), call->duration(), htonl(call->sipcallerip), 
 					htonl(call->sipcalledip), (unsigned int)call->get_last_packet_time());
-				memcpy(resbuf + resbuflen, outbuf, outbuflen);
-				resbuflen += outbuflen;
-				if((resbuflen) > resbufalloc) {
+				if((resbuflen + outbuflen) > resbufalloc) {
 					resbuf = (char*)realloc(resbuf, resbufalloc + 32 * 1024 * sizeof(char));
 					resbufalloc += 32 * 1024;
 				}
+				memcpy(resbuf + resbuflen, outbuf, outbuflen);
+				resbuflen += outbuflen;
 			}
 			resbuf[resbuflen] = ']';
 			resbuflen++;
