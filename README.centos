@@ -71,7 +71,7 @@ Web Interface
 
 Enable Apache
 -------------
-yum install httpd php php-gd php-mysql
+yum install httpd php php-gd php-mysql php-process
 chkconfig httpd on
 service httpd start
 
