@@ -89,6 +89,10 @@ clean :
 	make -C liblfds.6 clean
 	rm -f $(objects) voipmonitor gzstream/*.o libgzstream.a
 	cp -f .cleancount .lastclean
+	rm -f Makefile
+	@echo 
+	@echo run ./configure
+	@echo 
 
 install: 
 	install voipmonitor /usr/local/sbin/
