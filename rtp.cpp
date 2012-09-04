@@ -80,6 +80,7 @@ RTP::RTP() {
 	s = new source;
 	memset(s, 0, sizeof(source));
 	memset(&stats, 0, sizeof(stats));
+	memset(&rtcp, 0, sizeof(rtcp));
 	nintervals = 1;
 	saddr = 0;
 	ssrc = 0;

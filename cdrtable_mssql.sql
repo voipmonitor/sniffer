@@ -135,7 +135,17 @@ CREATE TABLE cdr (
   b_lossr_adapt float(8) NOT NULL default 0,
   b_burstr_f1 float(8) NOT NULL default 0,
   b_burstr_f2 float(8) NOT NULL default 0,
-  b_burstr_adapt float(8) NOT NULL default 0
+  b_burstr_adapt float(8) NOT NULL default 0,
+  a_rtcp_loss int(8) DEFAULT NULL,
+  a_rtcp_maxfr int(8)DEFAULT NULL,
+  a_rtcp_avgfr float(8)DEFAULT NULL,
+  a_rtcp_maxjitter int(8)DEFAULT NULL,
+  a_rtcp_avgjitter float(8)DEFAULT NULL,
+  b_rtcp_loss int(8) DEFAULT NULL,
+  b_rtcp_maxfr int(8) DEFAULT NULL,
+  b_rtcp_avgfr float(8) DEFAULT NULL,
+  b_rtcp_maxjitter int(8) DEFAULT NULL,  
+  b_rtcp_avgjitter float(8) DEFAULT NULL
 );
 CREATE INDEX calldate ON cdr (calldate);
 CREATE INDEX callend ON cdr (callend);
@@ -159,18 +169,12 @@ CREATE INDEX a_avgjitter ON cdr (a_avgjitter);
 CREATE INDEX b_avgjitter ON cdr (b_avgjitter);
 CREATE INDEX a_maxjitter ON cdr (a_maxjitter);
 CREATE INDEX b_maxjitter ON cdr (b_maxjitter);
-CREATE INDEX a_lossr_f1 ON cdr (a_lossr_f1);
-CREATE INDEX a_lossr_f2 ON cdr (a_lossr_f2);
-CREATE INDEX a_lossr_adapt ON cdr (a_lossr_adapt);
-CREATE INDEX a_burstr_f1 ON cdr (a_burstr_f1);
-CREATE INDEX a_burstr_f2 ON cdr (a_burstr_f2);
-CREATE INDEX a_burstr_adapt ON cdr (a_burstr_adapt);
-CREATE INDEX b_lossr_f1 ON cdr (b_lossr_f1);
-CREATE INDEX b_lossr_f2 ON cdr (b_lossr_f2);
-CREATE INDEX b_lossr_adapt ON cdr (b_lossr_adapt);
-CREATE INDEX b_burstr_f1 ON cdr (b_burstr_f1);
-CREATE INDEX b_burstr_f2 ON cdr (b_burstr_f2);
-CREATE INDEX b_burstr_adapt ON cdr (b_burstr_adapt);
+CREATE INDEX a_mos_f1 ON cdr (a_mos_f1);
+CREATE INDEX a_mos_f2 ON cdr (a_mos_f2);
+CREATE INDEX a_mos_adapt ON cdr (a_mos_adapt);
+CREATE INDEX b_mos_f1 ON cdr (b_mos_f1);
+CREATE INDEX b_mos_f2 ON cdr (b_mos_f2);
+CREATE INDEX b_mos_adapt ON cdr (b_mos_adapt);
 
 IF NOT EXISTS (SELECT * FROM sys.objects WHERE name = 'register')
 CREATE TABLE register (

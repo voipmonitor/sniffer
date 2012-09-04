@@ -53,6 +53,7 @@
 class Call {
 public:
 	int type;			//!< type of call, INVITE or REGISTER
+	RTP *rtp[MAX_SSRC_PER_CALL];		//!< array of RTP streams
 	unsigned long call_id_len;	//!< length of call-id 	
 	char call_id[MAX_CALL_ID];	//!< call-id from SIP session
 	char fbasename[MAX_FNAME];	//!< basename of file 
@@ -118,6 +119,8 @@ public:
 
 	void *listening_worker_args;
 	
+	int ssrc_n;				//!< last index of rtp array
+
 	/**
 	 * constructor
 	 *
@@ -170,6 +173,19 @@ public:
 	 * 
 	*/
 	void read_rtp( unsigned char *data, int datalen, struct pcap_pkthdr *header,  u_int32_t saddr, unsigned short port, int iscaller);
+
+	/**
+	 * @brief read RTCP packet 
+	 *
+	 * Used for reading RTCP packet 
+	 *
+	 * @param data pointer to the packet buffer
+	 * @param datalen lenght of the buffer
+	 * @param header header structure of the packet
+	 * @param saddr source IP adress of the packet
+	 * 
+	*/
+	void read_rtcp(unsigned char*, int, pcap_pkthdr*, u_int32_t, short unsigned int, int);
 
 	/**
 	 * @brief adds RTP stream to the this Call 
@@ -315,8 +331,6 @@ private:
 	unsigned short port[MAX_IP_PER_CALL];	//!< port number from SDP (indexed together with IP)
 	bool iscaller[MAX_IP_PER_CALL];         //!< is that RTP stream from CALLER party? 
 	int ipport_n;				//!< last index of addr and port array 
-	RTP *rtp[MAX_SSRC_PER_CALL];		//!< array of RTP streams
-	int ssrc_n;				//!< last index of rtp array
 	pcap_dumper_t *f_pcap;
 	char sdirname[255];
 };

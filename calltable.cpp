@@ -35,6 +35,7 @@
 #include "mos_g729.h"
 #include "jitterbuffer/asterisk/time.h"
 #include "odbc.h"
+#include "rtcp.h"
 
 #define MIN(x,y) ((x) < (y) ? (x) : (y))
 
@@ -270,6 +271,12 @@ Call::get_index_by_ip_port(in_addr_t addr, unsigned short port){
 	}
 	// not found
 	return -1;
+}
+
+/* analyze rtcp packet */
+void
+Call::read_rtcp(unsigned char* data, int datalen, struct pcap_pkthdr *header, u_int32_t saddr, unsigned short port, int iscaller) {
+	parse_rtcp((char*)data, datalen, this);
 }
 
 /* analyze rtp packet */
@@ -920,6 +927,19 @@ Call::buildQuery(stringstream *query) {
 				values	<< ", " << lossr
 					<< ", " << burstr
 					<< ", " << calculate_mos(lossr, burstr, rtp[indexes[i]]->payload);
+
+				if(rtp[indexes[i]]->rtcp.counter) {
+					fields 	<< ", " << c << "_rtcp_loss"
+						<< ", " << c << "_rtcp_maxfr"
+						<< ", " << c << "_rtcp_avgfr"
+						<< ", " << c << "_rtcp_maxjitter"
+						<< ", " << c << "_rtcp_avgjitter";
+					values	<< ", " << rtp[indexes[i]]->rtcp.loss
+						<< ", " << rtp[indexes[i]]->rtcp.maxfr
+						<< ", " << rtp[indexes[i]]->rtcp.avgfr
+						<< ", " << rtp[indexes[i]]->rtcp.maxjitter
+						<< ", " << rtp[indexes[i]]->rtcp.avgjitter;
+				}
 			}
 		}
 		*query << "INSERT INTO " << sql_cdr_table << " ( " << fields.str() << " ) VALUES ( " << values.str() << " )";
@@ -1044,6 +1064,14 @@ Call::buildQuery(stringstream *query) {
 				*query << " , " << c << "_lossr_adapt = " << lossr;
 				*query << " , " << c << "_burstr_adapt = " << burstr;
 				*query << " , " << c << "_mos_adapt = " << calculate_mos(lossr, burstr, rtp[indexes[i]]->payload);
+
+				if(rtp[indexes[i]]->rtcp.counter) {
+					*query << " , " << c << "_rtcp_loss = " << rtp[indexes[i]]->rtcp.loss;
+					*query << " , " << c << "_rtcp_maxfr = " << rtp[indexes[i]]->rtcp.maxfr;
+					*query << " , " << c << "_rtcp_avgfr = " << rtp[indexes[i]]->rtcp.avgfr;
+					*query << " , " << c << "_rtcp_maxjitter = " << rtp[indexes[i]]->rtcp.maxjitter;
+					*query << " , " << c << "_rtcp_avgjitter = " << rtp[indexes[i]]->rtcp.avgjitter;
+				}
 			}
 		}
 	}

@@ -1,3 +1,12 @@
+4.9.2012
+--------
+ALTER TABLE cdr DROP KEY a_lossr_f1, DROP KEY a_lossr_f2, DROP KEY a_lossr_adapt, DROP KEY a_burstr_f1, DROP KEY a_burstr_f2, DROP KEY a_burstr_adapt, DROP KEY b_lossr_f1, DROP KEY b_lossr_f2, DROP KEY b_lossr_adapt, DROP KEY b_burstr_f1, DROP KEY b_burstr_f2, DROP KEY b_burstr_adapt;
+
+ALTER TABLE cdr ADD KEY `a_mos_f1` (`a_mos_f1`), ADD KEY `a_mos_f2` (`a_mos_f2`), ADD KEY `a_mos_adapt` (`a_mos_adapt`), ADD KEY `b_mos_f1` (`b_mos_f1`), ADD KEY `b_mos_f2` (`b_mos_f2`), ADD KEY `b_mos_adapt` (`b_mos_adapt`);
+
+ALTER TABLE cdr ADD a_rtcp_loss int(8) DEFAULT NULL AFTER b_burstr_adapt, ADD a_rtcp_maxfr int(8) DEFAULT NULL, ADD a_rtcp_avgfr float(8) DEFAULT NULL, ADD a_rtcp_maxjitter int(8) DEFAULT NULL, ADD a_rtcp_avgjitter float(8) DEFAULT NULL, ADD b_rtcp_loss int(8) DEFAULT NULL AFTER b_burstr_adapt, ADD b_rtcp_maxfr int(8) DEFAULT NULL, ADD b_rtcp_avgfr float(8) DEFAULT NULL, ADD b_rtcp_maxjitter int(8) DEFAULT NULL, ADD b_rtcp_avgjitter float(8) DEFAULT NULL, ADD KEY `a_rtcp_loss` (`a_rtcp_loss`), ADD KEY `a_rtcp_maxfr` (`a_rtcp_maxfr`), ADD KEY `a_rtcp_avgfr` (`a_rtcp_avgfr`), ADD KEY `a_rtcp_maxjitter` (`a_rtcp_maxjitter`), ADD KEY `a_rtcp_avgjitter` (`a_rtcp_avgjitter`), ADD KEY `b_rtcp_loss` (`b_rtcp_loss`), ADD KEY `b_rtcp_maxfr` (`b_rtcp_maxfr`), ADD KEY `b_rtcp_avgfr` (`b_rtcp_avgfr`), ADD KEY `b_rtcp_maxjitter` (`b_rtcp_maxjitter`), ADD KEY `b_rtcp_avgjitter` (`b_rtcp_avgjitter`);
+
+
 1.9.2012
 --------
 ALTER TABLE cdr ADD `callend` datetime DEFAULT NULL AFTER calldate, add KEY `callend` (`callend`);

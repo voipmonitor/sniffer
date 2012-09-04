@@ -44,6 +44,7 @@ and insert them into Call class.
 #include "filter_mysql.h"
 #include "hash.h"
 #include "rtp.h"
+#include "rtcp.h"
 
 extern "C" {
 #include "liblfds.6/inc/liblfds.h"
@@ -1092,6 +1093,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 		}
 
 		if(is_rtcp) {
+			call->read_rtcp((unsigned char*) data, datalen, header, saddr, source, iscaller);
 			if(!dontsave && (opt_saveRTP || opt_saveRTCP)) {
 				save_packet(call, header, packet);
 			}
@@ -1127,6 +1129,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 		}
 
 		if(is_rtcp) {
+			call->read_rtcp((unsigned char*) data, datalen, header, saddr, source, iscaller);
 			if(!dontsave && (opt_saveRTP || opt_saveRTCP)) {
 				save_packet(call, header, packet);
 			}

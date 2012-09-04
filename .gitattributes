@@ -178,6 +178,8 @@ liblfds.6/test/test.vcproj -text
 /mos_g729.h -text
 /odbc.cpp -text
 /odbc.h -text
+/rtcp.cpp -text
+/rtcp.h -text
 /rtp.cpp -text
 /rtp.h -text
 simpleini/ConvertUTF.c -text

@@ -153,6 +153,16 @@ public:
 	int prev_sid;
 	int pinformed;
 
+	/* RTCP data */
+	struct rtcp_t {
+		unsigned int loss;
+		unsigned int maxfr;
+		double avgfr;
+		unsigned int maxjitter;
+		double avgjitter;
+		unsigned int counter;
+	} rtcp;
+
 	struct stats_t {
 		u_int32_t	d50;	//!< delay from 0 to 50
 		u_int32_t	d70;
