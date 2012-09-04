@@ -422,7 +422,7 @@ void parse_rtcp(char *data, int datalen, Call* call)
 
 	while(1){
 		/* Get the fixed RTCP header */
-		if((pkt + sizeof(rtcp_header_t)) <= (data + datalen)){
+		if((pkt + sizeof(rtcp_header_t)) < (data + datalen)){
 			rtcp = (rtcp_header_t*)pkt;
 			pkt += sizeof(rtcp_header_t);
 		} else {
