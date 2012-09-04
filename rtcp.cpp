@@ -170,15 +170,6 @@ char *dump_rtcp_sr(char *data, unsigned int datalen, int count, Call *call)
 		printf("Sender octet count [%u]\n", senderinfo->sender_octet_cnt);
 	}
 	
-	RTP *rtp = NULL;
-
-        for(int i = 0; i < call->ssrc_n; i++) {
-                if(call->rtp[i]->ssrc == senderinfo->sender_ssrc) {
-                        // found 
-                        rtp = call->rtp[i];
-                }
-        }
-	
 	/* Loop over report blocks */
 	reports_seen = 0;
 	while(reports_seen < count) {
@@ -196,6 +187,16 @@ char *dump_rtcp_sr(char *data, unsigned int datalen, int count, Call *call)
 		reportblock->jitter = ntohl(reportblock->jitter);
 		reportblock->lsr = ntohl(reportblock->lsr);
 		reportblock->delay_since_lsr = ntohl(reportblock->delay_since_lsr);
+
+		RTP *rtp = NULL;
+
+		for(int i = 0; i < call->ssrc_n; i++) {
+			if(call->rtp[i]->ssrc == reportblock->ssrc) {
+				// found 
+				rtp = call->rtp[i];
+			}
+		}
+	
 	
 		int loss = ((int)reportblock->packets_lost[2]) << 16;
 		loss |= ((int)reportblock->packets_lost[1]) << 8;
@@ -256,15 +257,6 @@ char *dump_rtcp_rr(char *data, int datalen, int count, Call *call)
 		printf("SSRC [%u]\n", *ssrc);
 	}
 
-	RTP *rtp = NULL;
-
-        for(int i = 0; i < call->ssrc_n; i++) {
-                if(call->rtp[i]->ssrc == *ssrc) {
-                        // found 
-                        rtp = call->rtp[i];
-                }
-        }
-	
 	/* Loop over report blocks */
 	reports_seen = 0;
 	while(reports_seen < count) {
@@ -282,6 +274,16 @@ char *dump_rtcp_rr(char *data, int datalen, int count, Call *call)
 		reportblock->jitter = ntohl(reportblock->jitter);
 		reportblock->lsr = ntohl(reportblock->lsr);
 		reportblock->delay_since_lsr = ntohl(reportblock->delay_since_lsr);
+
+		RTP *rtp = NULL;
+
+		for(int i = 0; i < call->ssrc_n; i++) {
+			if(call->rtp[i]->ssrc == reportblock->ssrc) {
+				// found 
+				rtp = call->rtp[i];
+			}
+		}
+	
 
 		int loss = ((int)reportblock->packets_lost[2]) << 16;
 		loss |= ((int)reportblock->packets_lost[1]) << 8;
@@ -360,7 +362,7 @@ void dump_rtcp_sdes(char *data, unsigned int datalen, int count)
 			
 			/* Allocate memory for the string then get it */
 			string = (u_int8_t*)malloc(length + 1);
-			if((pkt + sizeof(u_int8_t)) < (data + datalen)){
+			if((pkt + length) < (data + datalen)){
 				memcpy(string, pkt, length);
 				pkt += length;
 			} else {
@@ -381,7 +383,7 @@ void dump_rtcp_sdes(char *data, unsigned int datalen, int count)
 			/* Look for a null terminator */
 //			if (look_packet_bytes((u_int8_t *) &byte, pkt, 1) == 0)
 //				break;
-			if((pkt + 1) < (data + datalen)) {
+			if((pkt) < (data + datalen)) {
 				pkt++;
 				if (*pkt == 0) {
 					break;
@@ -448,14 +450,14 @@ void parse_rtcp(char *data, int datalen, Call* call)
 			
 		switch(packet_type) {
 		case RTCP_PACKETTYPE_SR:
-			pkt = dump_rtcp_sr(pkt, datalen - sizeof(rtcp_header_t), count, call);
+			pkt = dump_rtcp_sr(pkt, data - pkt, count, call);
 			break;
 
 		case RTCP_PACKETTYPE_RR:
-			pkt = dump_rtcp_rr(pkt, datalen - sizeof(rtcp_header_t), count, call);
+			pkt = dump_rtcp_rr(pkt, data - pkt, count, call);
 			break;
 		case RTCP_PACKETTYPE_SDES:
-			dump_rtcp_sdes(pkt, datalen - sizeof(rtcp_header_t), count);
+			dump_rtcp_sdes(pkt, data - pkt, count);
 			break;
 		default:
 			return;
