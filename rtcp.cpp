@@ -206,9 +206,9 @@ char *dump_rtcp_sr(char *data, unsigned int datalen, int count, Call *call)
 			rtp->rtcp.counter++;
 			rtp->rtcp.loss = loss;
 			rtp->rtcp.maxfr = (rtp->rtcp.maxfr < reportblock->frac_lost) ? reportblock->frac_lost : rtp->rtcp.maxfr;
-			rtp->rtcp.avgfr = (double)((double)rtp->rtcp.avgfr * (double)(rtp->rtcp.counter - 1) + (double)reportblock->frac_lost) / rtp->rtcp.counter;
+			rtp->rtcp.avgfr = (rtp->rtcp.avgfr * (rtp->rtcp.counter - 1) + reportblock->frac_lost) / rtp->rtcp.counter;
 			rtp->rtcp.maxjitter = (rtp->rtcp.maxjitter < reportblock->jitter) ? reportblock->jitter : rtp->rtcp.maxjitter;
-			rtp->rtcp.avgjitter = (double)(double(rtp->rtcp.avgjitter) * double((rtp->rtcp.counter - 1)) + (double)reportblock->jitter) / rtp->rtcp.counter;
+			rtp->rtcp.avgjitter = (rtp->rtcp.avgjitter * (rtp->rtcp.counter - 1) + reportblock->jitter) / rtp->rtcp.counter;
 		} 
 
 		if(debug_rtcp) {
@@ -293,9 +293,9 @@ char *dump_rtcp_rr(char *data, int datalen, int count, Call *call)
 			rtp->rtcp.counter++;
 			rtp->rtcp.loss = loss;
 			rtp->rtcp.maxfr = (rtp->rtcp.maxfr < rtp->rtcp.maxfr) ? reportblock->frac_lost : rtp->rtcp.maxfr;
-			rtp->rtcp.avgfr = (double)((double)rtp->rtcp.avgfr * (double)(rtp->rtcp.counter - 1) + (double)reportblock->frac_lost) / (double)reportblock->frac_lost;
+			rtp->rtcp.avgfr = (rtp->rtcp.avgfr * (rtp->rtcp.counter - 1) + reportblock->frac_lost) / rtp->rtcp.counter;
 			rtp->rtcp.maxjitter = (rtp->rtcp.maxjitter < rtp->rtcp.maxjitter) ? reportblock->jitter : rtp->rtcp.maxjitter;
-			rtp->rtcp.avgjitter = (double)(double(rtp->rtcp.avgjitter) * double((rtp->rtcp.counter - 1)) + (double)reportblock->jitter) / (double)reportblock->jitter;
+			rtp->rtcp.avgjitter = (rtp->rtcp.avgjitter * (rtp->rtcp.counter - 1) + reportblock->jitter) / rtp->rtcp.counter;
 		} 
 
 		if(debug_rtcp) {
@@ -422,7 +422,7 @@ void parse_rtcp(char *data, int datalen, Call* call)
 
 	while(1){
 		/* Get the fixed RTCP header */
-		if((pkt + sizeof(rtcp_header_t)) < (data + datalen)){
+		if((pkt + sizeof(rtcp_header_t)) <= (data + datalen)){
 			rtcp = (rtcp_header_t*)pkt;
 			pkt += sizeof(rtcp_header_t);
 		} else {
@@ -450,14 +450,14 @@ void parse_rtcp(char *data, int datalen, Call* call)
 			
 		switch(packet_type) {
 		case RTCP_PACKETTYPE_SR:
-			pkt = dump_rtcp_sr(pkt, data - pkt, count, call);
+			pkt = dump_rtcp_sr(pkt, data + datalen - pkt + 1, count, call);
 			break;
 
 		case RTCP_PACKETTYPE_RR:
-			pkt = dump_rtcp_rr(pkt, data - pkt, count, call);
+			pkt = dump_rtcp_rr(pkt, data + datalen - pkt + 1, count, call);
 			break;
 		case RTCP_PACKETTYPE_SDES:
-			dump_rtcp_sdes(pkt, data - pkt, count);
+			dump_rtcp_sdes(pkt, data + datalen - pkt + 1, count);
 			break;
 		default:
 			return;
