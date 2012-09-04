@@ -9,7 +9,7 @@ ifeq ($(findstring arm,$(GCCARCH)),arm)
   GCCARCH = armv6k
 endif
 
-objects = codec_alaw.o codec_ulaw.o format_slinear.o format_wav.o format_ogg.o calltable.o rtp.o voipmonitor.o sniff.o jitterbuffer/astmm.o jitterbuffer/utils.o jitterbuffer/fixedjitterbuf.o jitterbuffer/jitterbuf.o jitterbuffer/abstract_jb.o jitterbuffer/frame.o gzstream/gzstream.o gzstream/libgzstream.a manager.o tools.o filter_mysql.o hash.o mos_g729.o odbc.o
+objects = codec_alaw.o codec_ulaw.o format_slinear.o format_wav.o format_ogg.o calltable.o rtp.o voipmonitor.o sniff.o jitterbuffer/astmm.o jitterbuffer/utils.o jitterbuffer/fixedjitterbuf.o jitterbuffer/jitterbuf.o jitterbuffer/abstract_jb.o jitterbuffer/frame.o gzstream/gzstream.o gzstream/libgzstream.a manager.o tools.o filter_mysql.o hash.o mos_g729.o odbc.o rtcp.o
 args = -g3 -Wall  -march=$(GCCARCH)
 #args = -O2 -Wall -march=$(GCCARCH)
 CFLAGS+=-I /usr/local/include/mysql++/ -I /usr/include/mysql++/ -I /usr/include/mysql/ -g3 -Wall -I jitterbuffer/  -L/usr/local/lib/ -Lgzstream/ -Lliblfds.6/bin/ -fPIC
@@ -57,6 +57,9 @@ calltable.o : calltable.cpp calltable.h
 
 rtp.o : rtp.cpp rtp.h
 	g++ -c rtp.cpp $(args) ${CFLAGS}
+
+rtcp.o : rtcp.cpp rtcp.h
+	g++ -c rtcp.cpp $(args) ${CFLAGS}
 
 voipmonitor.o : voipmonitor.cpp voipmonitor.h
 	g++ -c voipmonitor.cpp $(args) ${CFLAGS}
