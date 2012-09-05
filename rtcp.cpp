@@ -9,7 +9,7 @@
 #include "calltable.h"
 #include "rtp.h"
 
-int debug_rtcp = 0;
+int debug_rtcp = 1;
 
 //#include "rtcp.h"
 
@@ -141,33 +141,33 @@ extern struct arg_t * my_args;
 char *dump_rtcp_sr(char *data, unsigned int datalen, int count, Call *call)
 {
 	char *pkt = data;
-	rtcp_sr_senderinfo_t *senderinfo;
-	rtcp_sr_reportblock_t *reportblock;
+	rtcp_sr_senderinfo_t senderinfo;
+	rtcp_sr_reportblock_t reportblock;
 	int reports_seen;
 
 	/* Get the sender info */
 	if((pkt + sizeof(rtcp_sr_senderinfo_t)) < (data + datalen)){
-		senderinfo = (rtcp_sr_senderinfo_t *)pkt;
+		memcpy(&senderinfo, pkt, sizeof(rtcp_sr_senderinfo_t));
 		pkt += sizeof(rtcp_sr_senderinfo_t);
 	} else {
 		return pkt;
 	}
 
 	/* Conversions */
-	senderinfo->sender_ssrc = ntohl(senderinfo->sender_ssrc);
-	senderinfo->timestamp_MSW = ntohl(senderinfo->timestamp_MSW);
-	senderinfo->timestamp_LSW = ntohl(senderinfo->timestamp_LSW);
-	senderinfo->timestamp_RTP = ntohl(senderinfo->timestamp_RTP);
-	senderinfo->sender_pkt_cnt = ntohl(senderinfo->sender_pkt_cnt);
-	senderinfo->sender_octet_cnt = ntohl(senderinfo->sender_octet_cnt);
+	senderinfo.sender_ssrc = ntohl(senderinfo.sender_ssrc);
+	senderinfo.timestamp_MSW = ntohl(senderinfo.timestamp_MSW);
+	senderinfo.timestamp_LSW = ntohl(senderinfo.timestamp_LSW);
+	senderinfo.timestamp_RTP = ntohl(senderinfo.timestamp_RTP);
+	senderinfo.sender_pkt_cnt = ntohl(senderinfo.sender_pkt_cnt);
+	senderinfo.sender_octet_cnt = ntohl(senderinfo.sender_octet_cnt);
 	
 	if(debug_rtcp) {
-		printf("Sender SSRC [%x]\n", senderinfo->sender_ssrc);
-		printf("Timestamp MSW [%u]\n", senderinfo->timestamp_MSW);
-		printf("Timestamp LSW [%u]\n", senderinfo->timestamp_LSW);
-		printf("RTP timestamp [%u]\n", senderinfo->timestamp_RTP);
-		printf("Sender packet count [%u]\n", senderinfo->sender_pkt_cnt);
-		printf("Sender octet count [%u]\n", senderinfo->sender_octet_cnt);
+		printf("Sender SSRC [%x]\n", senderinfo.sender_ssrc);
+		printf("Timestamp MSW [%u]\n", senderinfo.timestamp_MSW);
+		printf("Timestamp LSW [%u]\n", senderinfo.timestamp_LSW);
+		printf("RTP timestamp [%u]\n", senderinfo.timestamp_RTP);
+		printf("Sender packet count [%u]\n", senderinfo.sender_pkt_cnt);
+		printf("Sender octet count [%u]\n", senderinfo.sender_octet_cnt);
 	}
 	
 	/* Loop over report blocks */
@@ -175,50 +175,50 @@ char *dump_rtcp_sr(char *data, unsigned int datalen, int count, Call *call)
 	while(reports_seen < count) {
 		/* Get the report block */
 		if((pkt + sizeof(rtcp_sr_reportblock_t)) < (data + datalen)){
-			reportblock = (rtcp_sr_reportblock_t *)pkt;
+			memcpy(&reportblock, pkt, sizeof(rtcp_sr_reportblock_t));
 			pkt += sizeof(rtcp_sr_reportblock_t);
 		} else {
 			break;
 		}
 			
 		/* Conversions */
-		reportblock->ssrc = ntohl(reportblock->ssrc);
-		reportblock->ext_seqno_recvd = ntohl(reportblock->ext_seqno_recvd);
-		reportblock->jitter = ntohl(reportblock->jitter);
-		reportblock->lsr = ntohl(reportblock->lsr);
-		reportblock->delay_since_lsr = ntohl(reportblock->delay_since_lsr);
+		reportblock.ssrc = ntohl(reportblock.ssrc);
+		reportblock.ext_seqno_recvd = ntohl(reportblock.ext_seqno_recvd);
+		reportblock.jitter = ntohl(reportblock.jitter);
+		reportblock.lsr = ntohl(reportblock.lsr);
+		reportblock.delay_since_lsr = ntohl(reportblock.delay_since_lsr);
 
 		RTP *rtp = NULL;
 
 		for(int i = 0; i < call->ssrc_n; i++) {
-			if(call->rtp[i]->ssrc == reportblock->ssrc) {
+			if(call->rtp[i]->ssrc == reportblock.ssrc) {
 				// found 
 				rtp = call->rtp[i];
 			}
 		}
 	
 	
-		int loss = ((int)reportblock->packets_lost[2]) << 16;
-		loss |= ((int)reportblock->packets_lost[1]) << 8;
-		loss |= (int)reportblock->packets_lost[0];
+		int loss = ((int)reportblock.packets_lost[2]) << 16;
+		loss |= ((int)reportblock.packets_lost[1]) << 8;
+		loss |= (int)reportblock.packets_lost[0];
 
 		if(rtp) {
 			rtp->rtcp.counter++;
 			rtp->rtcp.loss = loss;
-			rtp->rtcp.maxfr = (rtp->rtcp.maxfr < reportblock->frac_lost) ? reportblock->frac_lost : rtp->rtcp.maxfr;
-			rtp->rtcp.avgfr = (rtp->rtcp.avgfr * (rtp->rtcp.counter - 1) + reportblock->frac_lost) / rtp->rtcp.counter;
-			rtp->rtcp.maxjitter = (rtp->rtcp.maxjitter < reportblock->jitter) ? reportblock->jitter : rtp->rtcp.maxjitter;
-			rtp->rtcp.avgjitter = (rtp->rtcp.avgjitter * (rtp->rtcp.counter - 1) + reportblock->jitter) / rtp->rtcp.counter;
+			rtp->rtcp.maxfr = (rtp->rtcp.maxfr < reportblock.frac_lost) ? reportblock.frac_lost : rtp->rtcp.maxfr;
+			rtp->rtcp.avgfr = (rtp->rtcp.avgfr * (rtp->rtcp.counter - 1) + reportblock.frac_lost) / rtp->rtcp.counter;
+			rtp->rtcp.maxjitter = (rtp->rtcp.maxjitter < reportblock.jitter) ? reportblock.jitter : rtp->rtcp.maxjitter;
+			rtp->rtcp.avgjitter = (rtp->rtcp.avgjitter * (rtp->rtcp.counter - 1) + reportblock.jitter) / rtp->rtcp.counter;
 		} 
 
 		if(debug_rtcp) {
-			printf("sSSRC [%x]", reportblock->ssrc);
-			printf("	Fraction lost [%u]\n", reportblock->frac_lost);
+			printf("sSSRC [%x]", reportblock.ssrc);
+			printf("	Fraction lost [%u]\n", reportblock.frac_lost);
 			printf("	Packets lost [%d]\n", loss);
-			printf("	Highest seqno received [%d]\n", reportblock->ext_seqno_recvd);
-			printf("	Jitter [%u]\n", reportblock->jitter);
-			printf("	Last SR [%u]\n", reportblock->lsr);
-			printf("	Delay since last SR [%u]\n", reportblock->delay_since_lsr);
+			printf("	Highest seqno received [%d]\n", reportblock.ext_seqno_recvd);
+			printf("	Jitter [%u]\n", reportblock.jitter);
+			printf("	Last SR [%u]\n", reportblock.lsr);
+			printf("	Delay since last SR [%u]\n", reportblock.delay_since_lsr);
 		}
 
 		reports_seen++;
@@ -238,23 +238,23 @@ char *dump_rtcp_sr(char *data, unsigned int datalen, int count, Call *call)
 char *dump_rtcp_rr(char *data, int datalen, int count, Call *call)
 {
 	char *pkt = data;
-	rtcp_sr_reportblock_t *reportblock;
+	rtcp_sr_reportblock_t reportblock;
 	int	reports_seen;
-	u_int32_t *ssrc;
+	u_int32_t ssrc;
 
 	/* Get the SSRC */
 	if((pkt + sizeof(u_int32_t)) < (data + datalen)){
-		ssrc = (u_int32_t*)pkt;
+		ssrc = *pkt;
 		pkt += sizeof(u_int32_t);
 	} else {
 		return pkt;
 	}
 
 	/* Conversions */
-	*ssrc = ntohl(*ssrc);
+	ssrc = ntohl(ssrc);
 
 	if(debug_rtcp) {
-		printf("SSRC [%u]\n", *ssrc);
+		printf("SSRC [%u]\n", ssrc);
 	}
 
 	/* Loop over report blocks */
@@ -262,50 +262,50 @@ char *dump_rtcp_rr(char *data, int datalen, int count, Call *call)
 	while(reports_seen < count) {
 		/* Get the report block */
 		if((pkt + sizeof(rtcp_sr_reportblock_t)) < (data + datalen)){
-			reportblock = (rtcp_sr_reportblock_t *)pkt;
+			memcpy(&reportblock, pkt, sizeof(rtcp_sr_reportblock_t));
 			pkt += sizeof(rtcp_sr_reportblock_t);
 		} else {
 			break;
 		}
 
 		/* Conversions */
-		reportblock->ssrc = ntohl(reportblock->ssrc);
-		reportblock->ext_seqno_recvd = ntohl(reportblock->ext_seqno_recvd);
-		reportblock->jitter = ntohl(reportblock->jitter);
-		reportblock->lsr = ntohl(reportblock->lsr);
-		reportblock->delay_since_lsr = ntohl(reportblock->delay_since_lsr);
+		reportblock.ssrc = ntohl(reportblock.ssrc);
+		reportblock.ext_seqno_recvd = ntohl(reportblock.ext_seqno_recvd);
+		reportblock.jitter = ntohl(reportblock.jitter);
+		reportblock.lsr = ntohl(reportblock.lsr);
+		reportblock.delay_since_lsr = ntohl(reportblock.delay_since_lsr);
 
 		RTP *rtp = NULL;
 
 		for(int i = 0; i < call->ssrc_n; i++) {
-			if(call->rtp[i]->ssrc == reportblock->ssrc) {
+			if(call->rtp[i]->ssrc == reportblock.ssrc) {
 				// found 
 				rtp = call->rtp[i];
 			}
 		}
 	
 
-		int loss = ((int)reportblock->packets_lost[2]) << 16;
-		loss |= ((int)reportblock->packets_lost[1]) << 8;
-		loss |= (int)reportblock->packets_lost[0];
+		int loss = ((int)reportblock.packets_lost[2]) << 16;
+		loss |= ((int)reportblock.packets_lost[1]) << 8;
+		loss |= (int)reportblock.packets_lost[0];
 
 		if(rtp) {
 			rtp->rtcp.counter++;
 			rtp->rtcp.loss = loss;
-			rtp->rtcp.maxfr = (rtp->rtcp.maxfr < rtp->rtcp.maxfr) ? reportblock->frac_lost : rtp->rtcp.maxfr;
-			rtp->rtcp.avgfr = (rtp->rtcp.avgfr * (rtp->rtcp.counter - 1) + reportblock->frac_lost) / rtp->rtcp.counter;
-			rtp->rtcp.maxjitter = (rtp->rtcp.maxjitter < rtp->rtcp.maxjitter) ? reportblock->jitter : rtp->rtcp.maxjitter;
-			rtp->rtcp.avgjitter = (rtp->rtcp.avgjitter * (rtp->rtcp.counter - 1) + reportblock->jitter) / rtp->rtcp.counter;
+			rtp->rtcp.maxfr = (rtp->rtcp.maxfr < rtp->rtcp.maxfr) ? reportblock.frac_lost : rtp->rtcp.maxfr;
+			rtp->rtcp.avgfr = (rtp->rtcp.avgfr * (rtp->rtcp.counter - 1) + reportblock.frac_lost) / rtp->rtcp.counter;
+			rtp->rtcp.maxjitter = (rtp->rtcp.maxjitter < rtp->rtcp.maxjitter) ? reportblock.jitter : rtp->rtcp.maxjitter;
+			rtp->rtcp.avgjitter = (rtp->rtcp.avgjitter * (rtp->rtcp.counter - 1) + reportblock.jitter) / rtp->rtcp.counter;
 		} 
 
 		if(debug_rtcp) {
-			printf("rSSRC [%x]", reportblock->ssrc);
-			printf("	Fraction lost [%u]\n", reportblock->frac_lost);
+			printf("rSSRC [%x]", reportblock.ssrc);
+			printf("	Fraction lost [%u]\n", reportblock.frac_lost);
 			printf("	Packets lost [%d]\n", loss);
-			printf("	Highest seqno received [%u]\n", reportblock->ext_seqno_recvd);
-			printf("	Jitter [%u]\n", reportblock->jitter);
-			printf("	Last SR [%u]\n", reportblock->lsr);
-			printf("	Delay since last SR [%u]\n", reportblock->delay_since_lsr);
+			printf("	Highest seqno received [%u]\n", reportblock.ext_seqno_recvd);
+			printf("	Jitter [%u]\n", reportblock.jitter);
+			printf("	Last SR [%u]\n", reportblock.lsr);
+			printf("	Delay since last SR [%u]\n", reportblock.delay_since_lsr);
 		}
 
 		reports_seen++;
@@ -325,9 +325,9 @@ char *dump_rtcp_rr(char *data, int datalen, int count, Call *call)
 char *dump_rtcp_sdes(char *data, unsigned int datalen, int count)
 {
 	char *pkt = data;
-	u_int32_t	*ssrc;
-	u_int8_t	 type;
-	u_int8_t	 length;
+	u_int32_t	ssrc;
+	u_int8_t	type;
+	u_int8_t	length;
 	u_int8_t * string;
 	int				chunks_read;
 	int				pad_len;
@@ -336,14 +336,14 @@ char *dump_rtcp_sdes(char *data, unsigned int datalen, int count)
 	while(chunks_read < count) {
 		/* Get the ssrc, type and length */
 		if((pkt + sizeof(u_int32_t)) < (data + datalen)){
-			ssrc = (u_int32_t*)pkt;
+			ssrc = *pkt;
 			pkt += sizeof(u_int32_t);
 		} else {
 			break;
 		}
-		*ssrc = ntohl(*ssrc);
+		ssrc = ntohl(ssrc);
 		if(debug_rtcp) {
-			printf("SSRC/CSRC [%u]\n", *ssrc);
+			printf("SSRC/CSRC [%u]\n", ssrc);
 		}
 		/* Loop through items */
 		while (1) {
@@ -414,7 +414,7 @@ char *dump_rtcp_sdes(char *data, unsigned int datalen, int count)
 void parse_rtcp(char *data, int datalen, Call* call)
 {
 	char *pkt = data;
-	rtcp_header_t *rtcp;
+	rtcp_header_t rtcp;
 	u_int8_t			packet_type;
 	u_int8_t			padding;
 	u_int8_t			version;
@@ -424,21 +424,21 @@ void parse_rtcp(char *data, int datalen, Call* call)
 	while(1){
 		/* Get the fixed RTCP header */
 		if((pkt + sizeof(rtcp_header_t)) < (data + datalen)){
-			rtcp = (rtcp_header_t*)pkt;
+			memcpy(&rtcp, pkt, sizeof(rtcp_header_t));
 			pkt += sizeof(rtcp_header_t);
 		} else {
 			break;
 		}
 
 		/* Conversions */
-		packet_type = rtcp->packet_type;
-		padding = rtcp->padding;
-		version = rtcp->version;
-		count = rtcp->rc_sc;
-		rtcp->length = ntohs(rtcp->length);
+		packet_type = rtcp.packet_type;
+		padding = rtcp.padding;
+		version = rtcp.version;
+		count = rtcp.rc_sc;
+		rtcp.length = ntohs(rtcp.length);
 		
 		/* Set the number of bytes remaining */
-		bytes_remaining = 4 * rtcp->length;
+		bytes_remaining = 4 * rtcp.length;
 		
 		if(debug_rtcp) {
 			printf("\nRTCP Header\n");
@@ -446,14 +446,13 @@ void parse_rtcp(char *data, int datalen, Call* call)
 			printf("Padding %d\n", padding);
 			printf("Report/source count [%d]\n", count);
 			printf("Packet type [%d]\n", packet_type);
-			printf("Length [%d]\n", rtcp->length);
+			printf("Length [%d]\n", rtcp.length);
 		}
 			
 		switch(packet_type) {
 		case RTCP_PACKETTYPE_SR:
 			pkt = dump_rtcp_sr(pkt, data + datalen - pkt, count, call);
 			break;
-
 		case RTCP_PACKETTYPE_RR:
 			pkt = dump_rtcp_rr(pkt, data + datalen - pkt, count, call);
 			break;
