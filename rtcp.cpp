@@ -322,7 +322,7 @@ char *dump_rtcp_rr(char *data, int datalen, int count, Call *call)
 **----------------------------------------------------------------------------
 */
 
-void dump_rtcp_sdes(char *data, unsigned int datalen, int count)
+char *dump_rtcp_sdes(char *data, unsigned int datalen, int count)
 {
 	char *pkt = data;
 	u_int32_t	*ssrc;
@@ -333,7 +333,7 @@ void dump_rtcp_sdes(char *data, unsigned int datalen, int count)
 	int				pad_len;
 
 	chunks_read = 0;
-	while((pkt < (data + datalen)) && chunks_read < count) {
+	while(chunks_read < count) {
 		/* Get the ssrc, type and length */
 		if((pkt + sizeof(u_int32_t)) < (data + datalen)){
 			ssrc = (u_int32_t*)pkt;
@@ -383,7 +383,7 @@ void dump_rtcp_sdes(char *data, unsigned int datalen, int count)
 			/* Look for a null terminator */
 //			if (look_packet_bytes((u_int8_t *) &byte, pkt, 1) == 0)
 //				break;
-			if((pkt) < (data + datalen)) {
+			if((pkt + 1) < (data + datalen)) {
 				pkt++;
 				if (*pkt == 0) {
 					break;
@@ -399,6 +399,7 @@ void dump_rtcp_sdes(char *data, unsigned int datalen, int count)
 			
 		chunks_read ++;
 	}
+	return pkt;
 }
 
 /*----------------------------------------------------------------------------
@@ -450,14 +451,14 @@ void parse_rtcp(char *data, int datalen, Call* call)
 			
 		switch(packet_type) {
 		case RTCP_PACKETTYPE_SR:
-			pkt = dump_rtcp_sr(pkt, data + datalen - pkt + 1, count, call);
+			pkt = dump_rtcp_sr(pkt, data + datalen - pkt, count, call);
 			break;
 
 		case RTCP_PACKETTYPE_RR:
-			pkt = dump_rtcp_rr(pkt, data + datalen - pkt + 1, count, call);
+			pkt = dump_rtcp_rr(pkt, data + datalen - pkt, count, call);
 			break;
 		case RTCP_PACKETTYPE_SDES:
-			dump_rtcp_sdes(pkt, data + datalen - pkt + 1, count);
+			pkt = dump_rtcp_sdes(pkt, data + datalen - pkt, count);
 			break;
 		default:
 			return;
