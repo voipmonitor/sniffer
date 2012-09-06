@@ -436,6 +436,14 @@ void parse_rtcp(char *data, int datalen, Call* call)
 		version = rtcp.version;
 		count = rtcp.rc_sc;
 		rtcp.length = ntohs(rtcp.length);
+
+		if(version != 2) {
+			if(debug_rtcp) {
+				printf("[%s] Malformed RTCP packet\n", call->fbasename);
+			}
+			break;
+		}
+		
 		
 		/* Set the number of bytes remaining */
 		bytes_remaining = 4 * rtcp.length;
