@@ -28,7 +28,7 @@ armv5shared: LIBS=-lpthread -lmysqlpp -lpcap -lgzstream -lz -lvorbis -lvorbisenc
 armv5shared: CFLAGS+=-I /usr/local/include/mysql++/ -I /usr/include/mysql++/ -I /usr/include/mysql/ -g3 -Wall -I jitterbuffer/  -L/usr/local/lib/ -Lgzstream/ -fPIC
 armv5shared: args = -g3 -Wall  -march=armv5
 
-armv5static: LIBS=-static -L/usr/lib/mysql -lodbc -lltdl -ldl -lrt -lz -lcrypt -lm -lssl -static-libstdc++ -static-libgcc -lpcap -L/usr/lib/mysql -lmysqlpp -lmysqlclient -lpthread -lgzstream -lz -lc -lvorbis -lvorbisenc -logg -llfds
+armv5static: LIBS=-static -L/usr/lib/mysql -lodbc -lltdl -ldl -lrt -lz -lcrypt -lm -lssl -static-libstdc++ -static-libgcc -lpcap -L/usr/lib/mysql -lmysqlpp -lmysqlclient -lpthread -lgzstream -lz -lc -lvorbis -lvorbisenc -logg 
 armv5static: CFLAGS+=-I /usr/local/include/mysql++/ -I /usr/include/mysql++/ -I /usr/include/mysql/ -g3 -Wall -I jitterbuffer/  -L/usr/local/lib/ -Lgzstream/ -fPIC
 armv5static: args = -g3 -Wall  -march=armv5
 
