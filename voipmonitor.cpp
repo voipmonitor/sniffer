@@ -77,6 +77,7 @@ int opt_sip_register = 0;	// if == 1 save REGISTER messages
 int opt_ringbuffer = 10;	// ring buffer in MB 
 int opt_audio_format = FORMAT_WAV;	// define format for audio writing (if -W option)
 int opt_manager_port = 5029;	// manager api TCP port
+char opt_manager_ip[32] = "127.0.0.1";	// manager api listen IP address
 int opt_pcap_threaded = 0;	// run reading packets from pcap in one thread and process packets in another thread via queue
 int opt_norecord_header = 0;	// if = 1 SIP call with X-VoipMonitor-norecord header will be not saved although global configuration says to record. 
 int opt_rtpnosip = 0;		// if = 1 RTP stream will be saved into calls regardless on SIP signalizatoin (handy if you need extract RTP without SIP)
@@ -506,6 +507,9 @@ int load_config(char *fname) {
 	if((value = ini.GetValue("general", "managerport", NULL))) {
 		opt_manager_port = atoi(value);
 	}
+	if((value = ini.GetValue("general", "managerip", NULL))) {
+		strncpy(opt_manager_ip, value, sizeof(opt_manager_ip));
+	}
 	if((value = ini.GetValue("general", "savertcp", NULL))) {
 		opt_saveRTCP = yesno(value);
 	}
@@ -763,6 +767,9 @@ int main(int argc, char *argv[]) {
 				break;
 			case '8':
 				opt_manager_port = atoi(optarg);
+				if(char *pointToSeparator = strchr(optarg,'/')) {
+					strncpy(opt_manager_ip, pointToSeparator+1, sizeof(opt_manager_ip));
+				}
 				break;
 			case '9':
 				opt_saveRTCP = 1;

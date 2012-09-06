@@ -26,6 +26,7 @@
 
 extern Calltable *calltable;
 extern int opt_manager_port;
+extern char opt_manager_ip[32];
 extern int calls;
 
 using namespace std;
@@ -216,7 +217,7 @@ void *manager_server(void *dummy) {
 	sockName.sin_family = AF_INET;
 	sockName.sin_port = htons(opt_manager_port);
 	//sockName.sin_addr.s_addr = INADDR_ANY;
-	sockName.sin_addr.s_addr = inet_addr("127.0.0.1");
+	sockName.sin_addr.s_addr = inet_addr(opt_manager_ip);
 	int on = 1;
 	setsockopt(mainSocket, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on));
 	if (bind(mainSocket, (sockaddr *)&sockName, sizeof(sockName)) == -1) {
