@@ -12,7 +12,8 @@
 #define FORMAT_OGG	2
 
 /* choose what method wil be used to synchronize threads. NONBLOCK is the fastest. Do not enable both at once */
-#define QUEUE_NONBLOCK 
+// this is now defined in Makefile 
+//#define QUEUE_NONBLOCK 
 //#define QUEUE_MUTEX 
 
 /* if you want to see all new calls in syslog enable DEBUG_INVITE */
