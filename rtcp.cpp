@@ -9,7 +9,7 @@
 #include "calltable.h"
 #include "rtp.h"
 
-int debug_rtcp = 1;
+int debug_rtcp = 0;
 
 //#include "rtcp.h"
 
