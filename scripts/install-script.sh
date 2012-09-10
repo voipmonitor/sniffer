@@ -13,7 +13,10 @@ update-rc.d voipmonitor defaults &>/dev/null
 chkconfig --add voipmonitor &>/dev/null
 chkconfig voipmonitor on &>/dev/null
 
-echo "Create database voipmonitor with this command: mysqladmin create voipmonitor";
-echo "Populate database with this command: cat cdrtable.sql | mysql voipmonitor";
+echo 
+echo "----------------------------------------------------------------------------";
+echo "1) Create database voipmonitor: mysqladmin create voipmonitor";
+echo "2) Import database schema:      cat cdrtable.sql | mysql voipmonitor";
+echo "----------------------------------------------------------------------------";
 echo;
 
