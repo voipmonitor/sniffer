@@ -1,3 +1,26 @@
+version 4.2
+===========
+
+New Features
+------------
+- implement -y option support decode SIP on ports 5060 - 5099 instead only 5060 directly on command line
+- add sql.callend field and INDEX it so special SQL QUERIES filtered with callend is now possible to INDEX and speed it up.
+- Do not limit list of live calls to 200.
+- Implement RTCP parsing and storing to cdr. New sql columns in cdr for both rtp senders (a_rtcp.* and b_rtcp.*)
+- allow change manager bind IP address to other than default 127.0.0.1. /etc/voipmonitor.conf: managerip = 127.0.0.1
+
+Bug fixes
+---------
+- also decode pcap files to wav in case there is only ONE RTP direction (ringing/one-way calls etc.)
+- Fix crackling in WAV in case some packets (G711) are missing and voipmonitor puts empty frames. 
+- fix graphs not shown issue in case SIP proxy is forwarding the same INVITE with the same SDP
+- The filter_telnum prefix column is int(32) preventing filtering for any telephone numbers higher than 4294967295. Changing the column to bigint allows filters to be created from the web interface but they are  ignored by the voipmonitor sniffer. - make it bingint in db and chnage unsigned int to unsigned long long supporting numbers 0 to 18,446,744,073,709,551,615
+- If -W option is put on command line create WAV regardless on filter rules in MySQL table. This fixes generating WAV. 
+- fix OGG vorbis encoding (sometimes some recordings had 0kb size). 
+- do not show calls in manager which is register messages (which appears in web gui as empty calls with no src/dst)
+- escape all characters except @,.,: from the pcap file. It fixes cases where the call-id is named like "2r8i/dfs9fj" and similiar unsafe strings.
+- fix packetization = 0 in syslog preventing the call to be recorded (graph or wav)
+
 version 4.1
 ===========
 
