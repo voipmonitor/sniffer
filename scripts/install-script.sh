@@ -1,6 +1,6 @@
 #!/bin/bash
 
-echo "Copying usr/local/bin/voipmonitor to /usr/local/sbin/voipmonitor"
+echo "Copying usr/local/sbin/voipmonitor to /usr/local/sbin/voipmonitor"
 cp usr/local/sbin/voipmonitor /usr/local/sbin/voipmonitor
 
 echo "Copying etc/voipmonitor.conf to /etc/voipmonitor.conf. Edit this file to your needs"
