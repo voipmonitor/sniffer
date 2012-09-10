@@ -182,6 +182,7 @@ liblfds.6/test/test.vcproj -text
 /rtcp.h -text
 /rtp.cpp -text
 /rtp.h -text
+scripts/install-script.sh -text
 simpleini/ConvertUTF.c -text
 simpleini/ConvertUTF.h -text
 simpleini/Makefile -text
