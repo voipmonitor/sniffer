@@ -27,8 +27,6 @@ AC_CHECK_LIB([lfds], [main])
 AC_CHECK_LIB([ltdl], [main])
 # FIXME: Replace `main' with a function in `-lm':
 AC_CHECK_LIB([m], [main])
-# FIXME: Replace `main' with a function in `-lmysqlpp':
-AC_CHECK_LIB([mysqlpp], [main], , AC_MSG_ERROR([Unable to find mysql++ library. Debian >=6: apt-get install libmysql++-dev. Other systems: wget http://tangentsoft.net/mysql++/releases/mysql++-3.1.0.tar.gz]))
 # FIXME: Replace `main' with a function in `-lodbc':
 AC_CHECK_LIB([odbc], [main], , AC_MSG_ERROR([Unable to find odbc library. Debian: apt-get install unixodbc-dev. Centos/Redhat: yum install unixODBC-devel]))
 # FIXME: Replace `main' with a function in `-logg':

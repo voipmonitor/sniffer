@@ -3,7 +3,6 @@ What is required
 
 - C and C++ compiler (gcc,g++)
 - libpcap-dev package >= 1.0
-- MySQL++ library from http://tangentsoft.net/mysql++/
 - zlib ibrary 
 - Libogg, Libvorbis 
 - unixODBC-devel
@@ -24,17 +23,6 @@ cd libpcap*
 ./configure
 make
 make install
-
-mysql++
--------
-yum install mysql-devel
-wget http://tangentsoft.net/mysql++/releases/mysql++-3.0.9.tar.gz
-tar xzf mysql++-3.0.9.tar.gz
-cd mysql++-3.0.9
-./configure
-make install
-echo "/usr/local/lib" >> /etc/ld.so.conf
-ldconfig
 
 ogg vorbis
 ----------

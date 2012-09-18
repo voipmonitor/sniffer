@@ -16,19 +16,11 @@ INSTALL MySQL
 =============
 
 sudo apt-get install libmysqlclient15-dev
-wget http://tangentsoft.net/mysql++/releases/mysql++-3.0.9.tar.gz
-tar xzf mysql++-3.0.9.tar.gz
-cd mysql++-3.0.9
-./configure
-make install
-ldconfig
-chmod 777 /var/spool/voipmonitor
-
 
 INSTALL VoipMonitor svn trunk version
-=================================
+=====================================
 
-sudo apt-get install subversion libmysql++-dev libvorbis-dev libpcap-dev apache2 php5-mysql php5-gd unixodbc-dev  libapache2-mod-php5
+sudo apt-get install subversion libvorbis-dev libpcap-dev apache2 php5-mysql php5-gd unixodbc-dev  libapache2-mod-php5
 cd /usr/src
 svn co https://voipmonitor.svn.sourceforge.net/svnroot/voipmonitor/trunk voipmonitor-svn
 cd voipmonitor-svn
@@ -36,5 +28,6 @@ make clean
 make
 make install
 mkdir /var/spool/voipmonitor
+chown www-data /var/spool/voipmonitor
 mysqladmin create voipmonitor
 cat cdrtable.sql | mysql voipmonitor
