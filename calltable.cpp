@@ -21,9 +21,10 @@
 #include <math.h>
 
 #include <iostream>
+#include <sstream>
 #include <vector>
 
-#include <mysql++.h>
+//#include <.h>
 
 #include "voipmonitor.h"
 #include "calltable.h"
@@ -35,6 +36,7 @@
 #include "mos_g729.h"
 #include "jitterbuffer/asterisk/time.h"
 #include "odbc.h"
+#include "sql_db.h"
 #include "rtcp.h"
 
 #define MIN(x,y) ((x) < (y) ? (x) : (y))
@@ -67,8 +69,10 @@ extern char odbc_driver[256];
 extern int opt_callend;
 int calls = 0;
 
-mysqlpp::Connection con(false);
+//mysqlpp// mysqlpp::Connection con(false);
 Odbc odbc;
+
+extern SqlDb *sqlDb;
 
 /* constructor */
 Call::Call(char *call_id, unsigned long call_id_len, time_t time, void *ct) {
@@ -757,7 +761,7 @@ Call::convertRawToWav() {
 
 int
 Call::buildQuery(stringstream *query) {
-	////using namespace mysqlpp;
+	//mysqlpp// using namespace mysqlpp;
 	/* walk two first RTP and store it to MySQL. */
 
 	/* bye 
@@ -1081,6 +1085,8 @@ Call::buildQuery(stringstream *query) {
 bool 
 Call::prepareForEscapeString() {
 	if(isSqlDriver("mysql")) {
+		//mysqlpp//
+		/*
 		using namespace mysqlpp;
 		if(!con.connected()) {
 			con.connect(mysql_database, mysql_host, mysql_user, mysql_password);
@@ -1088,7 +1094,11 @@ Call::prepareForEscapeString() {
 				syslog(LOG_ERR,"DB connection failed: %s", con.error());
 				return false;
 			}
-		} 
+		}
+		*/
+		if(!sqlDb || (!sqlDb->connected() && !sqlDb->connect())) {
+			return false;
+		}
 	}
 	return true;
 }
@@ -1097,6 +1107,8 @@ int
 Call::doQuery(string &queryStr) {
 	bool okQueryRslt = false;
 	if(isSqlDriver("mysql")) {
+		//mysqlpp//
+		/*
 		using namespace mysqlpp;
 		for(int attempt = 0; attempt<2; ++attempt) {
 			if(attempt>0 || !con.connected()) {
@@ -1121,6 +1133,7 @@ Call::doQuery(string &queryStr) {
 				}
 			}
 		}
+		*/
 	} else if(isSqlDriver("odbc")) {
 		for(int attempt = 0; attempt<2; ++attempt) {
 			if(attempt>0 || !odbc.connected()) {
@@ -1148,14 +1161,206 @@ Call::saveToDb() {
 	if(!prepareForEscapeString())
 		return(1);
 	
-	stringstream queryStream;
-	buildQuery(&queryStream);
-	string queryStr = queryStream.str();
-	if(verbosity > 0) { 
-		cout << queryStr << "\n";
-	}
+	if(isTypeDb("mysql")) {
+		if(!sqlDb) {
+			return(false);
+		}
+		SqlDb_row cdr,
+			  cdr_rtp,
+			  cdr_next,
+			  cdr_phone_number_caller,
+			  cdr_phone_number_called,
+			  cdr_name,
+			  cdr_domain_caller,
+			  cdr_domain_called,
+			  cdr_sip_response,
+			  cdr_ua_a,
+			  cdr_ua_b;
+		unsigned int caller_id = 0,
+			     called_id = 0,
+			     callername_id = 0,
+			     caller_domain_id = 0,
+			     called_domain_id = 0,
+			     lastSIPresponse_id = 0,
+			     a_ua_id = 0,
+			     b_ua_id = 0;
+
+		/*
+		fields << ", fbasename, sighup, lastSIPresponse, lastSIPresponseNum, bye";
+		*/
+
+		cdr_phone_number_caller.add(sqlEscapeString(caller), "number");
+		cdr_phone_number_caller.add(sqlEscapeString(reverseString(caller).c_str()), "number_reverse");
+		cdr_phone_number_called.add(sqlEscapeString(called), "number");
+		cdr_phone_number_called.add(sqlEscapeString(reverseString(called).c_str()), "number_reverse");
+		cdr_domain_caller.add(sqlEscapeString(caller_domain), "domain");
+		cdr_domain_called.add(sqlEscapeString(called_domain), "domain");
+		cdr_name.add(sqlEscapeString(callername), "name");
+		cdr_name.add(sqlEscapeString(reverseString(callername).c_str()), "name_reverse");
+		cdr_sip_response.add(sqlEscapeString(lastSIPresponse), "lastSIPresponse");
+		
+		cdr.add(htonl(sipcallerip), "sipcallerip");
+		cdr.add(htonl(sipcalledip), "sipcalledip");
+		cdr.add(duration(), "duration");
+		cdr.add(progress_time ? progress_time - first_packet_time : -1, "progress_time");
+		cdr.add(first_rtp_time ? first_rtp_time  - first_packet_time : -1, "first_rtp_time");
+		cdr.add(connect_time ? (duration() - (connect_time - first_packet_time)) : -1, "connect_duration");
+		cdr.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
+		if(opt_callend) {
+			cdr.add(sqlEscapeString(sqlDateTimeString(calltime() + duration()).c_str()), "callend");
+		}
+		
+		cdr_next.add(sqlEscapeString(fbasename), "fbasename");
+		
+		cdr.add(sighup ? 1 : 0, "sighup");
+		cdr.add(lastSIPresponseNum, "lastSIPresponseNum");
+		cdr.add(seeninviteok ? (seenbye ? (seenbyeandok ? 3 : 2) : 1) : 0, "bye");
+		
+		if(strlen(custom_header1)) {
+			cdr_next.add(sqlEscapeString(custom_header1), "custom_header1");
+		}
+
+		if(whohanged == 0 || whohanged == 1) {
+			cdr.add(whohanged ? "'callee'" : "'caller'", "whohanged");
+		}
+		if(ssrc_n > 0) {
+			// sort all RTP streams by received packets + loss packets descend and save only those two with the biggest received packets.
+			int indexes[MAX_SSRC_PER_CALL];
+			// init indexex
+			for(int i = 0; i < MAX_SSRC_PER_CALL; i++) {
+				indexes[i] = i;
+			}
+			// bubble sort
+			for(int k = 0; k < ssrc_n; k++) {
+				for(int j = 0; j < ssrc_n; j++) {
+					if((rtp[indexes[k]]->stats.received + rtp[indexes[k]]->stats.lost) > ( rtp[indexes[j]]->stats.received + rtp[indexes[j]]->stats.lost)) {
+						int kTmp = indexes[k];
+						indexes[k] = indexes[j];
+						indexes[j] = kTmp;
+					}
+				}
+			}
+
+			// a_ is always caller, so check if we need to swap indexes
+			if (!rtp[indexes[0]]->iscaller) {
+				int tmp;
+				tmp = indexes[1];
+				indexes[1] = indexes[0];
+				indexes[0] = tmp;
+			}
+			cdr_ua_a.add(sqlEscapeString(a_ua), "ua");
+			cdr_ua_b.add(sqlEscapeString(b_ua), "ua");
+
+			// save only two streams with the biggest received packets
+			for(int i = 0; i < 2; i++) {
+				if(!rtp[indexes[i]]) continue;
+
+				// if the stream for a_* is not caller there is probably case where one direction is missing at all and the second stream contains more SSRC streams so swap it
+				if(i == 0 && !rtp[indexes[i]]->iscaller) {
+					int tmp;
+					tmp = indexes[1];
+					indexes[1] = indexes[0];
+					indexes[0] = tmp;
+					continue;
+				}
+				
+				string c = i == 0 ? "a" : "b";
+				
+				cdr.add(indexes[i], c+"_index");
+				cdr_rtp.add(rtp[indexes[i]]->stats.received + 2, c+"_received"); // received is always 2 packet less compared to wireshark (add it here)
+				cdr_rtp.add(rtp[indexes[i]]->stats.lost, c+"_lost");
+				cdr.add(int(ceil(rtp[indexes[i]]->stats.avgjitter)) * 10, c+"_avgjitter_mult10"); // !!!
+				cdr_rtp.add(int(ceil(rtp[indexes[i]]->stats.maxjitter)), c+"_maxjitter");
+				cdr.add(rtp[indexes[i]]->payload, c+"_payload"); 
+
+				// build a_sl1 - b_sl10 fields
+				for(int j = 1; j < 11; j++) {
+					char str_j[3];
+					sprintf(str_j, "%d", j);
+					cdr_rtp.add(rtp[indexes[i]]->stats.slost[j], c+"_sl"+str_j);
+				}
+				// build a_d50 - b_d300 fileds
+				cdr_rtp.add(rtp[indexes[i]]->stats.d50, c+"_d50");
+				cdr_rtp.add(rtp[indexes[i]]->stats.d70, c+"_d70");
+				cdr_rtp.add(rtp[indexes[i]]->stats.d90, c+"_d90");
+				cdr_rtp.add(rtp[indexes[i]]->stats.d120, c+"_d120");
+				cdr_rtp.add(rtp[indexes[i]]->stats.d150, c+"_d150");
+				cdr_rtp.add(rtp[indexes[i]]->stats.d200, c+"_d200");
+				cdr_rtp.add(rtp[indexes[i]]->stats.d300, c+"_d300");
+				
+				// store source addr
+				cdr.add(htonl(rtp[indexes[i]]->saddr), c+"_saddr");
+
+				// calculate lossrate and burst rate
+				double burstr, lossr;
+				burstr_calculate(rtp[indexes[i]]->channel_fix1, rtp[indexes[i]]->stats.received, &burstr, &lossr);
+				//cdr_rtp.add(lossr, c+"_lossr_f1");
+				//cdr_rtp.add(burstr, c+"_burstr_f1");
+				cdr_rtp.add((int)round(calculate_mos(lossr, burstr, rtp[indexes[i]]->payload) * 10), c+"_mos_f1_mult10");
+
+				// Jitterbuffer MOS statistics
+				burstr_calculate(rtp[indexes[i]]->channel_fix2, rtp[indexes[i]]->stats.received, &burstr, &lossr);
+				//cdr_rtp.add(lossr, c+"_lossr_f2");
+				//cdr_rtp.add(burstr, c+"_burstr_f2");
+				cdr_rtp.add((int)round(calculate_mos(lossr, burstr, rtp[indexes[i]]->payload) * 10), c+"_mos_f2_mult10");
+
+				burstr_calculate(rtp[indexes[i]]->channel_adapt, rtp[indexes[i]]->stats.received, &burstr, &lossr);
+				//cdr_rtp.add(lossr, c+"_lossr_adapt");
+				//cdr_rtp.add(burstr, c+"_burstr_adapt");
+				cdr_rtp.add((int)round(calculate_mos(lossr, burstr, rtp[indexes[i]]->payload) * 10), c+"_mos_adapt_mult10");
+
+				if(rtp[indexes[i]]->rtcp.counter) {
+					cdr.add(rtp[indexes[i]]->rtcp.loss, c+"_rtcp_loss");
+					cdr_rtp.add(rtp[indexes[i]]->rtcp.maxfr, c+"_rtcp_maxfr");
+					cdr_rtp.add((int)round(rtp[indexes[i]]->rtcp.avgfr * 10), c+"_rtcp_avgfr_mult10");
+					cdr_rtp.add(rtp[indexes[i]]->rtcp.maxjitter, c+"_rtcp_maxjitter");
+					cdr.add((int)round(rtp[indexes[i]]->rtcp.avgjitter * 10), c+"_rtcp_avgjitter_mult10");
+				}
+			}
+		}
+		
+		caller_id = sqlDb->getIdOrInsert("cdr_phone_number", "id", "number", cdr_phone_number_caller, "");
+		called_id = sqlDb->getIdOrInsert("cdr_phone_number", "id", "number", cdr_phone_number_called, "");
+		callername_id = sqlDb->getIdOrInsert("cdr_name", "id", "name", cdr_name, "");
+		caller_domain_id = sqlDb->getIdOrInsert("cdr_domain", "id", "domain", cdr_domain_caller, "");
+		called_domain_id = sqlDb->getIdOrInsert("cdr_domain", "id", "domain", cdr_domain_called, "");
+		lastSIPresponse_id = sqlDb->getIdOrInsert("cdr_sip_response", "id", "lastSIPresponse", cdr_sip_response, "");
+		if(cdr_ua_a) {
+			a_ua_id = sqlDb->getIdOrInsert("cdr_ua", "id", "ua", cdr_ua_a, "");
+		}
+		if(cdr_ua_a) {
+			b_ua_id = sqlDb->getIdOrInsert("cdr_ua", "id", "ua", cdr_ua_b, "");
+		}
+		
+		cdr.add(caller_id, "caller_id", true);
+		cdr.add(called_id, "called_id", true);
+		cdr.add(callername_id, "callername_id", true);
+		cdr.add(caller_domain_id, "caller_domain_id", true);
+		cdr.add(called_domain_id, "called_domain_id", true);
+		cdr.add(lastSIPresponse_id, "lastSIPresponse_id", true);
+		cdr.add(a_ua_id, "a_ua_id", true);
+		cdr.add(b_ua_id, "b_ua_id", true);
+		
+		unsigned int cdrID = sqlDb->insert("cdr", cdr, "");
+		if(cdrID) {
+			cdr_rtp.add(cdrID, "cdr_ID");
+			sqlDb->insert("cdr_rtp", cdr_rtp, "");
+			cdr_next.add(cdrID, "cdr_ID");
+			sqlDb->insert("cdr_next", cdr_next, "");
+		}
+		
+		return(cdrID > 0);
+		
+	} else {
+		stringstream queryStream;
+		buildQuery(&queryStream);
+		string queryStr = queryStream.str();
+		if(verbosity > 0) { 
+			cout << queryStr << "\n";
+		}
 	
-	return doQuery(queryStr);
+		return doQuery(queryStr);
+	}
 }
 
 /* TODO: implement failover -> write INSERT into file */
@@ -1166,35 +1371,48 @@ Call::saveRegisterToDb() {
 	if(!prepareForEscapeString())
 		return(1);
 	
-	stringstream queryStream;
-	if(isTypeDb("mssql")) {
-		stringstream fields;
-		stringstream values;
-		fields	<< "sipcallerip, sipcalledip, calldate, fbasename, sighup";
-		values 	<< htonl(sipcallerip)
-			<< ", " << htonl(sipcalledip);
-		if(isTypeDb("mssql")) {
-			values << ", " << sqlEscapeString(sqlDateTimeString(calltime()).c_str());
-		} else {
-			values << ", " << "FROM_UNIXTIME(" << calltime() << ")";
+	if(isTypeDb("mysql")) {
+		if(!sqlDb) {
+			return(false);
 		}
-		values 	<< ", " << sqlEscapeString(fbasename)
-			<< ", " << (sighup ? 1 : 0);
-		queryStream << "INSERT INTO " << register_table << " ( " << fields.str() << " ) VALUES ( " << values.str() << " )";
+		SqlDb_row reg;
+		reg.add(htonl(sipcallerip), "sipcallerip");
+		reg.add(htonl(sipcalledip), "sipcalledip");
+		reg.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
+		reg.add(sqlEscapeString(fbasename), "fbasename");
+		reg.add(sighup ? 1 : 0, "sighup");
+		return(sqlDb->insert(register_table, reg, "") > 0);
 	} else {
-		queryStream << "INSERT INTO `" << register_table << "` SET " <<
-				"  sipcallerip = " << htonl(sipcallerip) <<
-				", sipcalledip = " << htonl(sipcalledip) <<
-				", calldate = FROM_UNIXTIME(" << calltime() << ")" <<
-				", fbasename = " << sqlEscapeString(fbasename) << 
-				", sighup = " << (sighup ? 1 : 0);
+		stringstream queryStream;
+		if(isTypeDb("mssql")) {
+			stringstream fields;
+			stringstream values;
+			fields	<< "sipcallerip, sipcalledip, calldate, fbasename, sighup";
+			values 	<< htonl(sipcallerip)
+				<< ", " << htonl(sipcalledip);
+			if(isTypeDb("mssql")) {
+				values << ", " << sqlEscapeString(sqlDateTimeString(calltime()).c_str());
+			} else {
+				values << ", " << "FROM_UNIXTIME(" << calltime() << ")";
+			}
+			values 	<< ", " << sqlEscapeString(fbasename)
+				<< ", " << (sighup ? 1 : 0);
+			queryStream << "INSERT INTO " << register_table << " ( " << fields.str() << " ) VALUES ( " << values.str() << " )";
+		} else {
+			queryStream << "INSERT INTO `" << register_table << "` SET " <<
+					"  sipcallerip = " << htonl(sipcallerip) <<
+					", sipcalledip = " << htonl(sipcalledip) <<
+					", calldate = FROM_UNIXTIME(" << calltime() << ")" <<
+					", fbasename = " << sqlEscapeString(fbasename) << 
+					", sighup = " << (sighup ? 1 : 0);
+		}
+		string queryStr = queryStream.str();
+		if(verbosity > 2) {
+			cout << queryStr << "\n";
+		}
+		
+		return doQuery(queryStr);
 	}
-	string queryStr = queryStream.str();
-	if(verbosity > 2) {
-		cout << queryStr << "\n";
-	}
-	
-	return doQuery(queryStr);
 }
 
 char *
@@ -1500,9 +1718,15 @@ string sqlEscapeString(const char *inputStr, char borderChar) {
 	string rsltString;
 	bool escaped = false;
 	if(isSqlDriver("mysql")) {
+		//mysqlpp//
+		/*
 		if(con.connected()) {
 			con.query().escape_string(&rsltString, inputStr, strlen(inputStr));
 			escaped = true;
+		}
+		*/
+		if(sqlDb && sqlDb->connected()) {
+			rsltString = sqlDb->escape(inputStr);
 		}
 	}
 	if(!escaped) {

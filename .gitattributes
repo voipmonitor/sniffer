@@ -206,6 +206,8 @@ simpleini/testsi-UTF8.ini -text
 simpleini/testsi.cpp -text
 /sniff.cpp -text
 /sniff.h -text
+/sql_db.cpp -text
+/sql_db.h -text
 /tools.cpp -text
 /tools.h -text
 /voipmonitor.cpp -text

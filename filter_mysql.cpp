@@ -1,13 +1,17 @@
 #include <syslog.h>
+#include <string.h>
 
 #include "filter_mysql.h"
 #include "calltable.h"
 #include "odbc.h"
+#include "sql_db.h"
 #include <math.h>
 #include <vector>
 
 using namespace std;
-using namespace mysqlpp;
+//mysqlpp// using namespace mysqlpp;
+
+extern SqlDb *sqlDb;
 
 bool is_number(const std::string& s) {
 	for (unsigned int i = 0; i < s.length(); i++) {
@@ -36,19 +40,19 @@ IPfilter::~IPfilter() {
 void
 IPfilter::load() {
 
-	extern char mysql_host[256];
-	extern char mysql_host[256];
-	extern char mysql_database[256];
-	extern char mysql_user[256];
-	extern char mysql_password[256];
+	//extern char mysql_host[256];
+	//extern char mysql_database[256];
+	//extern char mysql_user[256];
+	//extern char mysql_password[256];
 	
 	extern char odbc_dsn[256];
 	extern char odbc_user[256];
 	extern char odbc_password[256];
 
-
 	vector<db_row> vectDbRow;
 	if(isSqlDriver("mysql")) {
+		//mysqlpp//
+		/*
 		mysqlpp::Connection con(false);
 		con.connect(mysql_database, mysql_host, mysql_user, mysql_password);
 		if(!con) {
@@ -63,20 +67,31 @@ IPfilter::load() {
 		count = res.num_rows();
 		for (size_t i = 0; i < res.num_rows(); ++i) {
 			row = res.at(i);
-			db_row* filterRow = new(db_row);
+		*/
+		if(!sqlDb) {
+			return;
+		}
+		SqlDb_row row;
+		sqlDb->query("SELECT * FROM filter_ip");
+		while((row = sqlDb->fetchRow())) {
+			db_row* filterRow = new db_row;
 			memset(filterRow,0,sizeof(db_row));
-			filterRow->ip = (unsigned int)atoi(row["ip"]);
-			filterRow->mask = atoi(row["mask"]);
+			filterRow->ip = (unsigned int)atoi(row["ip"].c_str());
+			filterRow->mask = atoi(row["mask"].c_str());
+			//mysqlpp//
+			/*
 			try {
-				filterRow->direction = atoi(row["direction"]);
+				filterRow->direction = atoi(row["direction"].c_str());
 			} catch (const Exception& er) {
 				filterRow->direction = 0;
 			}
-			filterRow->rtp = atoi(row["rtp"]);
-			filterRow->sip = atoi(row["sip"]);
-			filterRow->reg = atoi(row["register"]);
-			filterRow->graph = atoi(row["graph"]);
-			filterRow->wav = atoi(row["wav"]);
+			*/
+			filterRow->direction = atoi(row["direction"].c_str());
+			filterRow->rtp = atoi(row["rtp"].c_str());
+			filterRow->sip = atoi(row["sip"].c_str());
+			filterRow->reg = atoi(row["register"].c_str());
+			filterRow->graph = atoi(row["graph"].c_str());
+			filterRow->wav = atoi(row["wav"].c_str());
 			vectDbRow.push_back(*filterRow);
 		}
 	} else if(isSqlDriver("odbc")) {
@@ -126,6 +141,7 @@ IPfilter::load() {
 		first_node = node;
 	}
 
+	//mysqlpp//
 	/*
 	t_node *node;
 	mysqlpp::Connection con(false);
@@ -321,11 +337,10 @@ TELNUMfilter::add_payload(t_payload *payload) {
 void
 TELNUMfilter::load() {
 
-	extern char mysql_host[256];
-	extern char mysql_host[256];
-	extern char mysql_database[256];
-	extern char mysql_user[256];
-	extern char mysql_password[256];
+	//extern char mysql_host[256];
+	//extern char mysql_database[256];
+	//extern char mysql_user[256];
+	//extern char mysql_password[256];
 
 	extern char odbc_dsn[256];
 	extern char odbc_user[256];
@@ -333,6 +348,8 @@ TELNUMfilter::load() {
 
 	vector<db_row> vectDbRow;
 	if(isSqlDriver("mysql")) {
+		//mysqlpp//
+		/*
 		mysqlpp::Connection con(false);
 		con.connect(mysql_database, mysql_host, mysql_user, mysql_password);
 		if(!con) {
@@ -347,19 +364,30 @@ TELNUMfilter::load() {
 		count = res.num_rows();
 		for (size_t i = 0; i < res.num_rows(); ++i) {
 			row = res.at(i);
+		*/
+		if(!sqlDb) {
+			return;
+		}
+		SqlDb_row row;
+		sqlDb->query("SELECT * FROM filter_telnum");
+		while((row = sqlDb->fetchRow())) {
 			db_row* filterRow = new(db_row);
 			memset(filterRow,0,sizeof(db_row));
-			filterRow->prefix = (unsigned long long)atoll(row["prefix"]);
+			filterRow->prefix = (unsigned long long)atoll(row["prefix"].c_str());
+			//mysqlpp//
+			/*
 			try {
-				filterRow->direction = atoi(row["direction"]);
+				filterRow->direction = atoi(row["direction"].c_str());
 			} catch (const Exception& er) {
 				filterRow->direction = 0;
 			}
-			filterRow->rtp = atoi(row["rtp"]);
-			filterRow->sip = atoi(row["sip"]);
-			filterRow->reg = atoi(row["register"]);
-			filterRow->graph = atoi(row["graph"]);
-			filterRow->wav = atoi(row["wav"]);
+			*/
+			filterRow->direction = atoi(row["direction"].c_str());
+			filterRow->rtp = atoi(row["rtp"].c_str());
+			filterRow->sip = atoi(row["sip"].c_str());
+			filterRow->reg = atoi(row["register"].c_str());
+			filterRow->graph = atoi(row["graph"].c_str());
+			filterRow->wav = atoi(row["wav"].c_str());
 			vectDbRow.push_back(*filterRow);
 		}
 	} else if(isSqlDriver("odbc")) {

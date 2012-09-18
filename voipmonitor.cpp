@@ -38,6 +38,7 @@
 #include "simpleini/SimpleIni.h"
 #include "manager.h"
 #include "filter_mysql.h"
+#include "sql_db.h"
 
 extern "C" {
 #include "liblfds.6/inc/liblfds.h"
@@ -146,6 +147,9 @@ struct queue_state *qs_readpacket_thread_queue = NULL;
 #endif
 
 nat_aliases_t nat_aliases;	// net_aliases[local_ip] = extern_ip
+
+SqlDb *sqlDb;
+
 
 void rename_file(const char *src, const char *dst) {
 	int read_fd = 0;
@@ -629,6 +633,11 @@ int load_config(char *fname) {
 	}
 	if((value = ini.GetValue("general", "sqlcallend", NULL))) {
 		opt_callend = yesno(value);
+	}
+	if(isSqlDriver("mysql")) {
+		sqlDb = new SqlDb_mysql();
+		sqlDb->enableSysLog();
+		sqlDb->setConnectParameters(mysql_host, mysql_user, mysql_password, mysql_database);
 	}
 	return 0;
 }
@@ -1163,6 +1172,8 @@ int main(int argc, char *argv[]) {
 	delete calltable;
 }
 
+#include "sql_db.h"
+
 void test() {
 
 	ipfilter = new IPfilter;
@@ -1172,6 +1183,41 @@ void test() {
 	telnumfilter = new TELNUMfilter;
 	telnumfilter->load();
 	telnumfilter->dump();
+
+	/*
+	cout << endl;
 	
+	for(int ii=0;ii<5;ii++) {
+		
+	cout << " --- pass " << (ii+1) << endl;
+	
+	SqlDb_mysql mysql;
+	mysql.setConnectParameters("localhost", "root", "", "voipmonitor");
+	
+	// výmaz - příprava
+	mysql.query("delete from cdr_sip_response where id>20");
+	
+	// čtení
+	SqlDb_row row1;
+	mysql.query("select * from cdr order by id desc limit 2");
+	while((row1 = mysql.fetchRow())) {
+		cout << row1["ID"] << " : " << row1["calldate"] << endl;
+	}
+	
+	// zápis
+	SqlDb_row row2;
+	row2.add("122 wrrrrrrrr", "lastSIPresponse");
+	cout << mysql.insert("cdr_sip_response", row2) << endl;
+
+	// unique zápis
+	SqlDb_row row3;
+	row3.add("123 wrrrrrrrr", "lastSIPresponse");
+	cout << mysql.getIdOrInsert("cdr_sip_response", "id", "lastSIPresponse", row3) << endl;
+	
+	}
+	
+	*/
+	
+	cout << endl << "--------------" << endl;
 	exit(0);
 }
