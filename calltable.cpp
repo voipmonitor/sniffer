@@ -1727,6 +1727,7 @@ string sqlEscapeString(const char *inputStr, char borderChar) {
 		*/
 		if(sqlDb && sqlDb->connected()) {
 			rsltString = sqlDb->escape(inputStr);
+			escaped = true;
 		}
 	}
 	if(!escaped) {

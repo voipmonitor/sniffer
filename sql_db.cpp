@@ -286,13 +286,11 @@ int SqlDb_mysql::getIndexField(string fieldName) {
 }
 
 string SqlDb_mysql::escape(const char *inputString) {
-	cout << "ESCAPE" << inputString << endl;
 	if(inputString && inputString[0]) {
 		int length = strlen(inputString);
 		int sizeBuffer = length * 2 + 10;
 		char *buffer = new char[sizeBuffer];
 		mysql_real_escape_string(this->hMysqlConn, buffer, inputString, length);
-		cout << "ESCAPED" << buffer << endl;
 		string rslt = buffer;
 		delete [] buffer;
 		return(rslt);
