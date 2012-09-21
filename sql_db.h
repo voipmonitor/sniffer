@@ -45,6 +45,7 @@ public:
 	void add(double content,  string fieldName, bool null = false);
 	int getIndexField(string fieldName);
 	bool isEmpty();
+	bool isNull(string fieldName);
 	string implodeFields(string separator = ",", string border = "");
 	string implodeContent(string separator = ",", string border = "'");
 private:
@@ -94,12 +95,16 @@ public:
 		this->lastError = 0;
 		this->lastErrorString = "";
 	}
+	void setMaxQueryPass(unsigned int maxQueryPass) {
+		this->maxQueryPass = maxQueryPass;
+	}
 protected:
 	string conn_server;
 	string conn_user;
 	string conn_password;
 	string conn_database;
 	bool sysLog;
+	unsigned int maxQueryPass;
 private:
 	unsigned int lastError;
 	string lastErrorString;

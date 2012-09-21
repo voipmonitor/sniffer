@@ -2,6 +2,7 @@
 #include <iostream>
 #include <syslog.h>
 #include <string.h>
+#include <limits.h>
 
 #include "sql_db.h"
 
@@ -89,6 +90,14 @@ bool SqlDb_row::isEmpty() {
 	return(!row.size());
 }
 
+bool SqlDb_row::isNull(string fieldName) {
+	int indexField = this->getIndexField(fieldName);
+	if(indexField >= 0) {
+		return(row[indexField].null);
+	}
+	return(false);
+}
+
 string SqlDb_row::implodeFields(string separator, string border) {
 	string rslt;
 	for(size_t i = 0; i < this->row.size(); i++) {
@@ -115,6 +124,7 @@ string SqlDb_row::implodeContent(string separator, string border) {
 SqlDb::SqlDb() {
 	this->sysLog = false;
 	this->clearLastError();
+	this->maxQueryPass = UINT_MAX;
 }
 
 void SqlDb::setConnectParameters(string server, string user, string password, string database) {
@@ -217,7 +227,7 @@ bool SqlDb_mysql::query(string query) {
 		mysql_free_result(this->hMysqlRes);
 		this->hMysqlRes = NULL;
 	}
-	for(int pass = 0; pass < 2 && !rslt; pass++) {
+	for(unsigned int pass = 0; pass < this->maxQueryPass && !rslt; pass++) {
 		if(!this->connected()) {
 			this->connect();
 		}
@@ -225,7 +235,7 @@ bool SqlDb_mysql::query(string query) {
 			if(mysql_query(this->hMysqlConn, query.c_str())) {
 				this->checkLastError("query error in [" + query + "]", true);
 				if(this->getLastError() == 2006) { // MySQL server has gone away
-					if(pass == 0) {
+					if(pass < this->maxQueryPass - 1) {
 						this->reconnect();
 					}
 				} else {
@@ -235,6 +245,7 @@ bool SqlDb_mysql::query(string query) {
 				rslt = true;
 			}
 		}
+		sleep(1);
 	}
 	return(rslt);
 }
