@@ -89,6 +89,12 @@ char configfile[1024] = "";	// config file name
 
 char sql_driver[256] = "mysql";
 char sql_cdr_table[256] = "cdr";
+char sql_cdr_table_last30d[256] = "";
+char sql_cdr_table_last7d[256] = "";
+char sql_cdr_table_last1d[256] = "";
+char sql_cdr_next_table[256] = "cdr_next";
+char sql_cdr_ua_table[256] = "cdr_ua";
+char sql_cdr_sip_response_table[256] = "cdr_sip_response";
 
 char mysql_host[256] = "localhost";
 char mysql_database[256] = "voipmonitor";
@@ -563,6 +569,28 @@ int load_config(char *fname) {
 	if((value = ini.GetValue("general", "sqlcdrtable", NULL))) {
 		strncpy(sql_cdr_table, value, sizeof(sql_cdr_table));
 	}
+	if((value = ini.GetValue("general", "sqlcdrtable_last30d", NULL))) {
+		strncpy(sql_cdr_table_last30d, value, sizeof(sql_cdr_table_last30d));
+	}
+	if((value = ini.GetValue("general", "sqlcdrtable_last7d", NULL))) {
+		strncpy(sql_cdr_table_last7d, value, sizeof(sql_cdr_table_last1d));
+	}
+	if((value = ini.GetValue("general", "sqlcdrtable_last1d", NULL))) {
+		strncpy(sql_cdr_table_last7d, value, sizeof(sql_cdr_table_last1d));
+	}
+	if((value = ini.GetValue("general", "sqlcdrnexttable", NULL)) ||
+	   (value = ini.GetValue("general", "sqlcdr_next_table", NULL))) {
+		strncpy(sql_cdr_next_table, value, sizeof(sql_cdr_next_table));
+	}
+	if((value = ini.GetValue("general", "sqlcdruatable", NULL)) ||
+	   (value = ini.GetValue("general", "sqlcdr_ua_table", NULL))) {
+		strncpy(sql_cdr_ua_table, value, sizeof(sql_cdr_ua_table));
+	}
+	if((value = ini.GetValue("general", "sqlcdrsipresptable", NULL)) ||
+	   (value = ini.GetValue("general", "sqlcdr_sipresp_table", NULL))) {
+		strncpy(sql_cdr_sip_response_table, value, sizeof(sql_cdr_sip_response_table));
+	}
+	
 	if((value = ini.GetValue("general", "mysqlhost", NULL))) {
 		strncpy(mysql_host, value, sizeof(mysql_host));
 	}

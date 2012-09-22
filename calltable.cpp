@@ -57,6 +57,12 @@ extern int opt_mos_g729;
 extern char opt_cachedir[1024];
 extern char sql_driver[256];
 extern char sql_cdr_table[256];
+extern char sql_cdr_table_last30d[256];
+extern char sql_cdr_table_last7d[256];
+extern char sql_cdr_table_last1d[256];
+extern char sql_cdr_next_table[256];
+extern char sql_cdr_ua_table[256];
+extern char sql_cdr_sip_response_table[256];
 extern char mysql_host[256];
 extern char mysql_database[256];
 extern char mysql_table[256];
@@ -1349,12 +1355,12 @@ Call::saveToDb() {
 		caller_domain_id = sqlDb->getIdOrInsert("cdr_domain", "id", "domain", cdr_domain_caller, "");
 		called_domain_id = sqlDb->getIdOrInsert("cdr_domain", "id", "domain", cdr_domain_called, "");
 		*/
-		lastSIPresponse_id = sqlDb->getIdOrInsert("cdr_sip_response", "id", "lastSIPresponse", cdr_sip_response, "");
+		lastSIPresponse_id = sqlDb->getIdOrInsert(sql_cdr_sip_response_table, "id", "lastSIPresponse", cdr_sip_response, "");
 		if(cdr_ua_a) {
-			a_ua_id = sqlDb->getIdOrInsert("cdr_ua", "id", "ua", cdr_ua_a, "");
+			a_ua_id = sqlDb->getIdOrInsert(sql_cdr_ua_table, "id", "ua", cdr_ua_a, "");
 		}
 		if(cdr_ua_a) {
-			b_ua_id = sqlDb->getIdOrInsert("cdr_ua", "id", "ua", cdr_ua_b, "");
+			b_ua_id = sqlDb->getIdOrInsert(sql_cdr_ua_table, "id", "ua", cdr_ua_b, "");
 		}
 
 		/*
@@ -1368,10 +1374,24 @@ Call::saveToDb() {
 		cdr.add(a_ua_id, "a_ua_id", true);
 		cdr.add(b_ua_id, "b_ua_id", true);
 		
-		unsigned int cdrID = sqlDb->insert("cdr", cdr, "");
+		unsigned int cdrID = sqlDb->insert(sql_cdr_table, cdr, "");
 		if(cdrID) {
 			cdr_next.add(cdrID, "cdr_ID");
-			sqlDb->insert("cdr_next", cdr_next, "");
+			sqlDb->insert(sql_cdr_next_table, cdr_next, "");
+			if(sql_cdr_table_last30d[0] ||
+			   sql_cdr_table_last7d[0] ||
+			   sql_cdr_table_last1d[0]) {
+				cdr.add(cdrID, "ID");
+				if(sql_cdr_table_last30d[0]) {
+					sqlDb->insert(sql_cdr_table_last30d, cdr, "");
+				}
+				if(sql_cdr_table_last7d[0]) {
+					sqlDb->insert(sql_cdr_table_last7d, cdr, "");
+				}
+				if(sql_cdr_table_last1d[0]) {
+					sqlDb->insert(sql_cdr_table_last1d, cdr, "");
+				}
+			}
 		}
 		
 		return(cdrID <= 0);
