@@ -245,7 +245,6 @@ bool SqlDb_mysql::query(string query) {
 				rslt = true;
 			}
 		}
-		sleep(1);
 	}
 	return(rslt);
 }
