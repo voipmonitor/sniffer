@@ -1,0 +1,3 @@
+for upgrading from 4.2 -> 5 please create new database with new cdrtable.sql and use scripts/mysql_copy_4.2to5.0.php (edit database names in scripts)
+- altering tables involves several alter table commands which makes internal temp table several times and for large CDR tables it is too long process locking cdr table for hours
+- converting 12 milions cdr takes 24 hour on magnetic disk and older xeon and 2 hours on SSD disk on newer xeons.

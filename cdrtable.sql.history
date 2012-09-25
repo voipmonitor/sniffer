@@ -1,5 +1,12 @@
-4.9.2012
---------
+25.9.2012 version 5.0
+--------------------
+
+for upgrading from 4.2 -> 5 please create new database with new cdrtable.sql and use scripts/mysql_copy_4.2to5.0.php (edit database names in scripts)
+- altering tables involves several alter table commands which makes internal temp table several times and for large CDR tables it is too long process locking cdr table for hours 
+- converting 12 milions cdr takes 24 hour on magnetic disk and older xeon and 2 hours on SSD disk on newer xeons. 
+
+4.9.2012 version 4.2
+--------------------
 ALTER TABLE cdr DROP KEY a_lossr_f1, DROP KEY a_lossr_f2, DROP KEY a_lossr_adapt, DROP KEY a_burstr_f1, DROP KEY a_burstr_f2, DROP KEY a_burstr_adapt, DROP KEY b_lossr_f1, DROP KEY b_lossr_f2, DROP KEY b_lossr_adapt, DROP KEY b_burstr_f1, DROP KEY b_burstr_f2, DROP KEY b_burstr_adapt;
 
 ALTER TABLE cdr ADD KEY `a_mos_f1` (`a_mos_f1`), ADD KEY `a_mos_f2` (`a_mos_f2`), ADD KEY `a_mos_adapt` (`a_mos_adapt`), ADD KEY `b_mos_f1` (`b_mos_f1`), ADD KEY `b_mos_f2` (`b_mos_f2`), ADD KEY `b_mos_adapt` (`b_mos_adapt`);
