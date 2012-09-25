@@ -1105,7 +1105,7 @@ Call::prepareForEscapeString() {
 		if(sqlDb) {
 			unsigned int pass = 0;
 			while(!sqlDb->connected()) {
-				if(pass) {
+				if(pass > 0) {
 					sleep(1);
 				}
 				sqlDb->connect();
