@@ -9,7 +9,6 @@ define("PASS", "");
 define("SOURCE_DB", "voipmonitor");
 define("DEST_DB", "voipmonitor5");
 
-
 function varchar_reverse($value, $table, $newname, $reverse = true) {
 	$value = mysql_escape_string($value);
 	$query = "SELECT id, `$newname` FROM `$table` WHERE `$newname` = '$value'";
@@ -36,6 +35,10 @@ function varchar_reverse($value, $table, $newname, $reverse = true) {
 		return(mysql_insert_id());
 	}
 }
+
+$cmd = "mysqldump ".SOURCE_DB." -u".USER." $pass --ignore-table=".SOURCE_DB.".cdr | mysql ".DEST_DB." -u".USER." $pass";
+echo $cmd."\n";
+system($cmd);
 
 mysql_connect(HOST, USER, PASS);
 mysql_select_db(DEST_DB);
@@ -278,6 +281,11 @@ while($cur <= $max){
 	#if($i < 1000) break;
 }
 #mysql_query("COMMIT;");
+$pass = "";
+if(PASS == "") {
+	$pass = "-p".PASS;
+}
+
 mysql_query("SET unique_checks=1;");
 mysql_query("SET foreign_key_checks=1;");
 
