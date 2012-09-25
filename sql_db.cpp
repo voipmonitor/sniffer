@@ -236,6 +236,7 @@ bool SqlDb_mysql::query(string query) {
 				this->checkLastError("query error in [" + query + "]", true);
 				if(this->getLastError() == 2006) { // MySQL server has gone away
 					if(pass < this->maxQueryPass - 1) {
+						sleep(1);
 						this->reconnect();
 					}
 				} else {
