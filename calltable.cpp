@@ -1281,6 +1281,17 @@ Call::saveToDb() {
 			cdr_ua_b.add(sqlEscapeString(b_ua), "ua");
 
 			// save only two streams with the biggest received packets
+			int payload[2] = { -1, -1 };
+			int jitter_mult10[2] = { -1, -1 };
+			int mos_min_mult10[2] = { -1, -1 };
+			int packet_loss_perc_mult1000[2] = { -1, -1 };
+			int delay_sum[2] = { -1, -1 };
+			int delay_cnt[2] = { -1, -1 };
+			int delay_avg_mult100[2] = { -1, -1 };
+			int rtcp_avgfr_mult10[2] = { -1, -1 };
+			int rtcp_avgjitter_mult10[2] = { -1, -1 };
+			int lost[2] = { -1, -1 };
+			
 			for(int i = 0; i < 2; i++) {
 				if(!rtp[indexes[i]]) continue;
 
@@ -1297,11 +1308,17 @@ Call::saveToDb() {
 				
 				cdr.add(indexes[i], c+"_index");
 				cdr.add(rtp[indexes[i]]->stats.received + 2, c+"_received"); // received is always 2 packet less compared to wireshark (add it here)
-				cdr.add(rtp[indexes[i]]->stats.lost, c+"_lost");
-				cdr.add(int(ceil(rtp[indexes[i]]->stats.avgjitter)) * 10, c+"_avgjitter_mult10"); // !!!
+				lost[i] = rtp[indexes[i]]->stats.lost;
+				cdr.add(lost[i], c+"_lost");
+				packet_loss_perc_mult1000[i] = (int)round((double)rtp[indexes[i]]->stats.lost / 
+										(rtp[indexes[i]]->stats.received + 2 + rtp[indexes[i]]->stats.lost) * 100 * 1000);
+				cdr.add(packet_loss_perc_mult1000[i], c+"_packet_loss_perc_mult1000");
+				jitter_mult10[i] = int(ceil(rtp[indexes[i]]->stats.avgjitter)) * 10; // !!!
+				cdr.add(jitter_mult10[i], c+"_avgjitter_mult10");
 				cdr.add(int(ceil(rtp[indexes[i]]->stats.maxjitter)), c+"_maxjitter");
-				cdr.add(rtp[indexes[i]]->payload, c+"_payload"); 
-
+				payload[i] = rtp[indexes[i]]->payload;
+				cdr.add(payload[i], c+"_payload");
+				
 				// build a_sl1 - b_sl10 fields
 				for(int j = 1; j < 11; j++) {
 					char str_j[3];
@@ -1316,6 +1333,24 @@ Call::saveToDb() {
 				cdr.add(rtp[indexes[i]]->stats.d150, c+"_d150");
 				cdr.add(rtp[indexes[i]]->stats.d200, c+"_d200");
 				cdr.add(rtp[indexes[i]]->stats.d300, c+"_d300");
+				delay_sum[i] = rtp[indexes[i]]->stats.d50 * 60 + 
+					       rtp[indexes[i]]->stats.d70 * 80 + 
+					       rtp[indexes[i]]->stats.d90 * 105 + 
+					       rtp[indexes[i]]->stats.d120 * 135 +
+					       rtp[indexes[i]]->stats.d150 * 175 + 
+					       rtp[indexes[i]]->stats.d200 * 250 + 
+					       rtp[indexes[i]]->stats.d300 * 300;
+				delay_cnt[i] = rtp[indexes[i]]->stats.d50 + 
+					       rtp[indexes[i]]->stats.d70 + 
+					       rtp[indexes[i]]->stats.d90 + 
+					       rtp[indexes[i]]->stats.d120 +
+					       rtp[indexes[i]]->stats.d150 + 
+					       rtp[indexes[i]]->stats.d200 + 
+					       rtp[indexes[i]]->stats.d300;
+				delay_avg_mult100[i] = (int)round((double)delay_sum[i] / delay_cnt[i] * 100);
+				cdr.add(delay_sum[i], c+"_delay_sum");
+				cdr.add(delay_cnt[i], c+"_delay_cnt");
+				cdr.add(delay_avg_mult100[i], c+"_delay_avg_mult100");
 				
 				// store source addr
 				cdr.add(htonl(rtp[indexes[i]]->saddr), c+"_saddr");
@@ -1325,27 +1360,91 @@ Call::saveToDb() {
 				burstr_calculate(rtp[indexes[i]]->channel_fix1, rtp[indexes[i]]->stats.received, &burstr, &lossr);
 				//cdr.add(lossr, c+"_lossr_f1");
 				//cdr.add(burstr, c+"_burstr_f1");
-				cdr.add((int)round(calculate_mos(lossr, burstr, rtp[indexes[i]]->payload) * 10), c+"_mos_f1_mult10");
+				int mos_f1_mult10 = (int)round(calculate_mos(lossr, burstr, rtp[indexes[i]]->payload) * 10);
+				cdr.add(mos_f1_mult10, c+"_mos_f1_mult10");
+				if(mos_f1_mult10) {
+					mos_min_mult10[i] = mos_f1_mult10;
+				}
 
 				// Jitterbuffer MOS statistics
 				burstr_calculate(rtp[indexes[i]]->channel_fix2, rtp[indexes[i]]->stats.received, &burstr, &lossr);
 				//cdr.add(lossr, c+"_lossr_f2");
 				//cdr.add(burstr, c+"_burstr_f2");
-				cdr.add((int)round(calculate_mos(lossr, burstr, rtp[indexes[i]]->payload) * 10), c+"_mos_f2_mult10");
+				int mos_f2_mult10 = (int)round(calculate_mos(lossr, burstr, rtp[indexes[i]]->payload) * 10);
+				cdr.add(mos_f2_mult10, c+"_mos_f2_mult10");
+				if(mos_f2_mult10 && (mos_min_mult10[i] < 0 || mos_f2_mult10 < mos_min_mult10[i])) {
+					mos_min_mult10[i] = mos_f2_mult10;
+				}
 
 				burstr_calculate(rtp[indexes[i]]->channel_adapt, rtp[indexes[i]]->stats.received, &burstr, &lossr);
 				//cdr.add(lossr, c+"_lossr_adapt");
 				//cdr.add(burstr, c+"_burstr_adapt");
-				cdr.add((int)round(calculate_mos(lossr, burstr, rtp[indexes[i]]->payload) * 10), c+"_mos_adapt_mult10");
+				int mos_adapt_mult10 = (int)round(calculate_mos(lossr, burstr, rtp[indexes[i]]->payload) * 10);
+				cdr.add(mos_adapt_mult10, c+"_mos_adapt_mult10");
+				if(mos_adapt_mult10 && (mos_min_mult10[i] < 0 || mos_adapt_mult10 < mos_min_mult10[i])) {
+					mos_min_mult10[i] = mos_adapt_mult10;
+				}
+				
+				if(mos_min_mult10[i] >= 0) {
+					cdr.add(mos_min_mult10[i], c+"_mos_min_mult10");
+				}
 
 				if(rtp[indexes[i]]->rtcp.counter) {
 					cdr.add(rtp[indexes[i]]->rtcp.loss, c+"_rtcp_loss");
 					cdr.add(rtp[indexes[i]]->rtcp.maxfr, c+"_rtcp_maxfr");
-					cdr.add((int)round(rtp[indexes[i]]->rtcp.avgfr * 10), c+"_rtcp_avgfr_mult10");
+					rtcp_avgfr_mult10[i] = (int)round(rtp[indexes[i]]->rtcp.avgfr * 10);
+					cdr.add(rtcp_avgfr_mult10[i], c+"_rtcp_avgfr_mult10");
 					cdr.add(rtp[indexes[i]]->rtcp.maxjitter, c+"_rtcp_maxjitter");
-					cdr.add((int)round(rtp[indexes[i]]->rtcp.avgjitter * 10), c+"_rtcp_avgjitter_mult10");
+					rtcp_avgjitter_mult10[i] = (int)round(rtp[indexes[i]]->rtcp.avgjitter * 10);
+					cdr.add(rtcp_avgjitter_mult10[i], c+"_rtcp_avgjitter_mult10");
 				}
 			}
+
+			if(payload[0] >=0 || payload[1] >=0) {
+				cdr.add(payload[0] >=0 ? payload[0] : payload[1], 
+					"payload");
+			}
+			if(jitter_mult10[0] >=0 || jitter_mult10[1] >=0) {
+				cdr.add(max(jitter_mult10[0], jitter_mult10[1]), 
+					"jitter_mult10");
+			}
+			if(mos_min_mult10[0] >= 0 || mos_min_mult10[1] >= 0) {
+				cdr.add(mos_min_mult10[0] >= 0 && mos_min_mult10[1] >= 0 ?
+						min(mos_min_mult10[0], mos_min_mult10[1]) :
+						(mos_min_mult10[0] >= 0 ? mos_min_mult10[0] : mos_min_mult10[1]),
+					"mos_min_mult10");
+			}
+			if(packet_loss_perc_mult1000[0] >=0 || packet_loss_perc_mult1000[1] >=0) {
+				cdr.add(max(packet_loss_perc_mult1000[0], packet_loss_perc_mult1000[1]), 
+					"packet_loss_perc_mult1000");
+			}
+			if(delay_sum[0] >=0 || delay_sum[1] >=0) {
+				cdr.add(max(delay_sum[0], delay_sum[1]), 
+					"delay_sum");
+			}
+			if(delay_cnt[0] >=0 || delay_cnt[1] >=0) {
+				cdr.add(max(delay_cnt[0], delay_cnt[1]), 
+					"delay_cnt");
+			}
+			if(delay_avg_mult100[0] >=0 || delay_avg_mult100[1] >=0) {
+				cdr.add(max(delay_avg_mult100[0], delay_avg_mult100[1]), 
+					"delay_avg_mult100");
+			}
+			if(rtcp_avgfr_mult10[0] >=0 || rtcp_avgfr_mult10[1] >=0) {
+				cdr.add((rtcp_avgfr_mult10[0] >= 0 ? rtcp_avgfr_mult10[0] : 0) + 
+					(rtcp_avgfr_mult10[1] >=0 ? rtcp_avgfr_mult10[1] : 0),
+					"rtcp_avgfr_mult10");
+			}
+			if(rtcp_avgjitter_mult10[0] >=0 || rtcp_avgjitter_mult10[1] >=0) {
+				cdr.add((rtcp_avgjitter_mult10[0] >= 0 ? rtcp_avgjitter_mult10[0] : 0) + 
+					(rtcp_avgjitter_mult10[1] >=0 ? rtcp_avgjitter_mult10[1] : 0),
+					"rtcp_avgjitter_mult10");
+			}
+			if(lost[0] >=0 || lost[1] >=0) {
+				cdr.add(max(lost[0], lost[1]), 
+					"lost");
+			}
+
 		}
 		
 		/*
@@ -1374,8 +1473,8 @@ Call::saveToDb() {
 		cdr.add(a_ua_id, "a_ua_id", true);
 		cdr.add(b_ua_id, "b_ua_id", true);
 		
-		unsigned int cdrID = sqlDb->insert(sql_cdr_table, cdr, "");
-		if(cdrID) {
+		int cdrID = sqlDb->insert(sql_cdr_table, cdr, "");
+		if(cdrID>0) {
 			cdr_next.add(cdrID, "cdr_ID");
 			sqlDb->insert(sql_cdr_next_table, cdr_next, "");
 			if(sql_cdr_table_last30d[0] ||
