@@ -123,6 +123,18 @@ targz64: static
 	cp scripts/install-script.sh /tmp/voipmonitor-amd64-5.0-static/
 	tar czf /tmp/voipmonitor-amd64-5.0-static.tar.gz /tmp/voipmonitor-amd64-5.0-static
 	
+targz32: static
+	rm -rf /tmp/voipmonitor-i686-5.0-static*
+	mkdir -p /tmp/voipmonitor-i686-5.0-static/usr/local/sbin
+	cp cdrtable.sql /tmp/voipmonitor-i686-5.0-static/
+	strip voipmonitor
+	cp voipmonitor /tmp/voipmonitor-i686-5.0-static/usr/local/sbin/
+	mkdir -p /tmp/voipmonitor-i686-5.0-static/etc/init.d
+	cp config/voipmonitor.conf /tmp/voipmonitor-i686-5.0-static/etc/
+	cp config/init.d/voipmonitor /tmp/voipmonitor-i686-5.0-static/etc/init.d/
+	cp scripts/install-script.sh /tmp/voipmonitor-i686-5.0-static/
+	tar czf /tmp/voipmonitor-i686-5.0-static.tar.gz /tmp/voipmonitor-i686-5.0-static
+
 install: 
 	install voipmonitor /usr/local/sbin/
 
