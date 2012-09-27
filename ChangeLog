@@ -1,3 +1,9 @@
+version 5.0
+===========
+
+- SQL schema changed. Upgrade script is in scripts/mysql_copy_4.2to5.0.php please refer to sniffer manual how to upgrade old 4.2 
+- remove mysqlpp denendancy and use native mysql C library
+
 version 4.2
 ===========
 
