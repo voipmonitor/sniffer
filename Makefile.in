@@ -17,19 +17,19 @@ objects = codec_alaw.o codec_ulaw.o format_slinear.o format_wav.o format_ogg.o c
 #LDFLAGS := $(LDFLAGS) -static -static-libgcc
 
 shared: LIBS=-lpthread -lpcap -lgzstream -lz -lvorbis -lvorbisenc -logg -lodbc -llfds -lmysqlclient #-lnids
-shared: CFLAGS+= -DQUEUE_NONBLOCK -I /usr/local/include/mysql++/ -I /usr/include/mysql++/ -I /usr/include/mysql/ -g3 -Wall -I jitterbuffer/  -L/usr/local/lib/ -Lgzstream/ -Lliblfds.6/bin/ -fPIC
+shared: CFLAGS+= -DQUEUE_NONBLOCK -I /usr/local/include/mysql++/ -I /usr/include/mysql++/ -I /usr/include/mysql/ -g3 -Wall -I jitterbuffer/  -L/usr/local/lib/ -Lgzstream/ -Lliblfds.6/bin/ -L/usr/lib64/mysql -fPIC 
 shared: args = -g3 -Wall  -march=$(GCCARCH)
 
-static: LIBS=-static -L/usr/lib/mysql -lodbc -lltdl -ldl -lrt -lz -lcrypt -lm -lssl -static-libstdc++ -static-libgcc -lpcap -L/usr/lib/mysql -lmysqlclient -lpthread -lgzstream -lz -lc -lvorbis -lvorbisenc -logg -llfds
+static: LIBS=-static -L/usr/lib64/mysql -L/usr/lib/mysql -lodbc -lltdl -ldl -lrt -lz -lcrypt -lm -lssl -static-libstdc++ -static-libgcc -lpcap -L/usr/lib/mysql -lmysqlclient -lpthread -lgzstream -lz -lc -lvorbis -lvorbisenc -logg -llfds
 static: CFLAGS+= -I /usr/local/include/mysql++/ -I /usr/include/mysql++/ -I /usr/include/mysql/ -g3 -Wall -I jitterbuffer/  -L/usr/local/lib/ -Lgzstream/ -Lliblfds.6/bin/ -fPIC
 static: args = -g3 -Wall  -march=$(GCCARCH)
 
 armv5shared: LIBS=-lpthread -lpcap -lgzstream -lz -lvorbis -lvorbisenc -logg -lodbc 
-armv5shared: CFLAGS+=-I /usr/local/include/mysql++/ -I /usr/include/mysql++/ -I /usr/include/mysql/ -g3 -Wall -I jitterbuffer/  -L/usr/local/lib/ -Lgzstream/ -fPIC
+armv5shared: CFLAGS+=-I /usr/local/include/mysql++/ -I /usr/include/mysql++/ -I /usr/include/mysql/ -g3 -Wall -I jitterbuffer/  -L/usr/local/lib/ -Lgzstream/ -L/usr/lib64/mysql -fPIC
 armv5shared: args = -g3 -Wall  -march=armv5
 
-armv5static: LIBS=-static -L/usr/lib/mysql -lodbc -lltdl -ldl -lrt -lz -lcrypt -lm -lssl -static-libstdc++ -static-libgcc -lpcap -L/usr/lib/mysql -lmysqlclient -lpthread -lgzstream -lz -lc -lvorbis -lvorbisenc -logg 
-armv5static: CFLAGS+=-I /usr/local/include/mysql++/ -I /usr/include/mysql++/ -I /usr/include/mysql/ -g3 -Wall -I jitterbuffer/  -L/usr/local/lib/ -Lgzstream/ -fPIC
+armv5static: LIBS=-static -L/usr/lib/mysql -lodbc -lltdl -ldl -lrt -lz -lcrypt -lm -lssl -static-libstdc++ -static-libgcc -lpcap -L/usr/lib/mysql -L/usr/lib64/mysql/ -lmysqlclient -lpthread -lgzstream -lz -lc -lvorbis -lvorbisenc -logg 
+armv5static: CFLAGS+=-I /usr/local/include/mysql++/ -I /usr/include/mysql++/ -I /usr/include/mysql/ -g3 -Wall -I jitterbuffer/  -L/usr/local/lib/ -Lgzstream/ -L/usr/lib64/mysql -fPIC
 armv5static: args = -g3 -Wall  -march=armv5
 
 shared: cleantest $(objects) 
