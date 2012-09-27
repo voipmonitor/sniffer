@@ -112,16 +112,16 @@ clean :
 	cp -f .cleancount .lastclean
 
 targz64: static
-	rm -rf /tmp/voipmonitor-amd64-4.2-static*
-	mkdir -p /tmp/voipmonitor-amd64-4.2-static/usr/local/sbin
-	cp cdrtable.sql /tmp/voipmonitor-amd64-4.2-static/
+	rm -rf /tmp/voipmonitor-amd64-5.0-static*
+	mkdir -p /tmp/voipmonitor-amd64-5.0-static/usr/local/sbin
+	cp cdrtable.sql /tmp/voipmonitor-amd64-5.0-static/
 	strip voipmonitor
-	cp voipmonitor /tmp/voipmonitor-amd64-4.2-static/usr/local/sbin/
-	mkdir -p /tmp/voipmonitor-amd64-4.2-static/etc/init.d
-	cp config/voipmonitor.conf /tmp/voipmonitor-amd64-4.2-static/etc/
-	cp config/init.d/voipmonitor /tmp/voipmonitor-amd64-4.2-static/etc/init.d/
-	cp scripts/install-script.sh /tmp/voipmonitor-amd64-4.2-static/
-	tar czf /tmp/voipmonitor-amd64-4.2-static.tar.gz /tmp/voipmonitor-amd64-4.2-static
+	cp voipmonitor /tmp/voipmonitor-amd64-5.0-static/usr/local/sbin/
+	mkdir -p /tmp/voipmonitor-amd64-5.0-static/etc/init.d
+	cp config/voipmonitor.conf /tmp/voipmonitor-amd64-5.0-static/etc/
+	cp config/init.d/voipmonitor /tmp/voipmonitor-amd64-5.0-static/etc/init.d/
+	cp scripts/install-script.sh /tmp/voipmonitor-amd64-5.0-static/
+	tar czf /tmp/voipmonitor-amd64-5.0-static.tar.gz /tmp/voipmonitor-amd64-5.0-static
 	
 install: 
 	install voipmonitor /usr/local/sbin/
