@@ -1,3 +1,9 @@
+version 5.0.2
+=============
+
+- fix MySQL connection in case --config-file is not specified
+- fix payload type in case the first RTP is DTMF or FLASH RTP event (payload 101) preventing GUI to play WAV
+
 version 5.0
 ===========
 
