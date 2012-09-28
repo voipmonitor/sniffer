@@ -543,7 +543,7 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 		}
 	}
 
-	if(payload < 0) {
+	if(payload < 0 && curpayload != 101) {
 		/* save payload to statistics based on first payload. TODO: what if payload is dynamically changing? */
 		payload = curpayload;
 	}
