@@ -662,11 +662,6 @@ int load_config(char *fname) {
 	if((value = ini.GetValue("general", "sqlcallend", NULL))) {
 		opt_callend = yesno(value);
 	}
-	if(isSqlDriver("mysql")) {
-		sqlDb = new SqlDb_mysql();
-		sqlDb->enableSysLog();
-		sqlDb->setConnectParameters(mysql_host, mysql_user, mysql_password, mysql_database);
-	}
 	return 0;
 }
 
@@ -886,6 +881,11 @@ int main(int argc, char *argv[]) {
 				opt_test = 1;
 				break;
 		}
+	}
+	if(isSqlDriver("mysql")) {
+		sqlDb = new SqlDb_mysql();
+		sqlDb->enableSysLog();
+		sqlDb->setConnectParameters(mysql_host, mysql_user, mysql_password, mysql_database);
 	}
 	if ((fname == NULL) && (ifname[0] == '\0')){
 		printf( "voipmonitor version %s\n"
