@@ -1400,11 +1400,11 @@ Call::saveToDb() {
 				}
 			}
 
-			if(payload[0] >=0 || payload[1] >=0) {
-				cdr.add(payload[0] >=0 ? payload[0] : payload[1], 
+			if(payload[0] >= 0 || payload[1] >= 0) {
+				cdr.add(payload[0] >= 0 ? payload[0] : payload[1], 
 					"payload");
 			}
-			if(jitter_mult10[0] >=0 || jitter_mult10[1] >=0) {
+			if(jitter_mult10[0] >= 0 || jitter_mult10[1] >= 0) {
 				cdr.add(max(jitter_mult10[0], jitter_mult10[1]), 
 					"jitter_mult10");
 			}
@@ -1414,33 +1414,33 @@ Call::saveToDb() {
 						(mos_min_mult10[0] >= 0 ? mos_min_mult10[0] : mos_min_mult10[1]),
 					"mos_min_mult10");
 			}
-			if(packet_loss_perc_mult1000[0] >=0 || packet_loss_perc_mult1000[1] >=0) {
+			if(packet_loss_perc_mult1000[0] >= 0 || packet_loss_perc_mult1000[1] >= 0) {
 				cdr.add(max(packet_loss_perc_mult1000[0], packet_loss_perc_mult1000[1]), 
 					"packet_loss_perc_mult1000");
 			}
-			if(delay_sum[0] >=0 || delay_sum[1] >=0) {
+			if(delay_sum[0] >= 0 || delay_sum[1] >= 0) {
 				cdr.add(max(delay_sum[0], delay_sum[1]), 
 					"delay_sum");
 			}
-			if(delay_cnt[0] >=0 || delay_cnt[1] >=0) {
+			if(delay_cnt[0] >= 0 || delay_cnt[1] >= 0) {
 				cdr.add(max(delay_cnt[0], delay_cnt[1]), 
 					"delay_cnt");
 			}
-			if(delay_avg_mult100[0] >=0 || delay_avg_mult100[1] >=0) {
+			if(delay_avg_mult100[0] >= 0 || delay_avg_mult100[1] >= 0) {
 				cdr.add(max(delay_avg_mult100[0], delay_avg_mult100[1]), 
 					"delay_avg_mult100");
 			}
-			if(rtcp_avgfr_mult10[0] >=0 || rtcp_avgfr_mult10[1] >=0) {
+			if(rtcp_avgfr_mult10[0] >= 0 || rtcp_avgfr_mult10[1] >= 0) {
 				cdr.add((rtcp_avgfr_mult10[0] >= 0 ? rtcp_avgfr_mult10[0] : 0) + 
-					(rtcp_avgfr_mult10[1] >=0 ? rtcp_avgfr_mult10[1] : 0),
+					(rtcp_avgfr_mult10[1] >= 0 ? rtcp_avgfr_mult10[1] : 0),
 					"rtcp_avgfr_mult10");
 			}
-			if(rtcp_avgjitter_mult10[0] >=0 || rtcp_avgjitter_mult10[1] >=0) {
+			if(rtcp_avgjitter_mult10[0] >= 0 || rtcp_avgjitter_mult10[1] >= 0) {
 				cdr.add((rtcp_avgjitter_mult10[0] >= 0 ? rtcp_avgjitter_mult10[0] : 0) + 
-					(rtcp_avgjitter_mult10[1] >=0 ? rtcp_avgjitter_mult10[1] : 0),
+					(rtcp_avgjitter_mult10[1] >= 0 ? rtcp_avgjitter_mult10[1] : 0),
 					"rtcp_avgjitter_mult10");
 			}
-			if(lost[0] >=0 || lost[1] >=0) {
+			if(lost[0] >= 0 || lost[1] >= 0) {
 				cdr.add(max(lost[0], lost[1]), 
 					"lost");
 			}
@@ -1942,7 +1942,7 @@ bool cmpStringIgnoreCase(const char* str1, const char* str2) {
 		return false;
 	}
 	int length = strlen(str1);
-	for(int i=0; i<length; i++) {
+	for(int i = 0; i < length; i++) {
 		if(tolower(str1[i]) != tolower(str2[i])) {
 			return false;
 		}
@@ -1954,7 +1954,7 @@ string reverseString(const char *str) {
 	string rslt;
 	if(str) {
 		int length = strlen(str);
-		for(int i=length-1; i>=0; i--) {
+		for(int i = length - 1; i >= 0; i--) {
 			rslt += str[i];
 		}
 	}
