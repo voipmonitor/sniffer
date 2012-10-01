@@ -1,3 +1,14 @@
+version 5.0.3
+=============
+
+- do not load mysql filters if -c on command line. This fixes converting wav files which do not need mysql connection. from the version 5 connection is retrying undefinetly and without specifying -c voipmonitor will not continue to operate.
+
+version 5.0.2
+=============
+
+- fix MySQL connection in case --config-file is not specified
+- fix payload type in case the first RTP is DTMF or FLASH RTP event (payload 101) preventing GUI to play WAV
+
 version 5.0
 ===========
 
