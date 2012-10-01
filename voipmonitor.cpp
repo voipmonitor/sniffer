@@ -1116,11 +1116,15 @@ int main(int argc, char *argv[]) {
 	setrlimit(RLIMIT_CORE, &rlp);
 
 	ipfilter = new IPfilter;
-	ipfilter->load();
+	if(!opt_nocdr) {
+		ipfilter->load();
+	}
 //	ipfilter->dump();
 
 	telnumfilter = new TELNUMfilter;
-	telnumfilter->load();
+	if(!opt_nocdr) {
+		telnumfilter->load();
+	}
 
 	// filters are ok, we can daemonize 
 	if (opt_fork){
