@@ -17,10 +17,10 @@ objects = codec_alaw.o codec_ulaw.o format_slinear.o format_wav.o format_ogg.o c
 #LDFLAGS := $(LDFLAGS) -static -static-libgcc
 
 shared: LIBS=-lpthread -lpcap -lgzstream -lz -lvorbis -lvorbisenc -logg -lodbc -llfds -lmysqlclient #-lnids
-shared: CFLAGS+= -DQUEUE_NONBLOCK -I /usr/local/include/mysql++/ -I /usr/include/mysql++/ -I /usr/include/mysql/ -g3 -Wall -I jitterbuffer/  -L/usr/local/lib/ -Lgzstream/ -Lliblfds.6/bin/ -L/usr/lib64/mysql -fPIC 
+shared: CFLAGS+= -DQUEUE_NONBLOCK -I /usr/local/include/mysql++/ -I /usr/include/mysql++/ -I /usr/include/mysql/ -g3 -Wall -I jitterbuffer/  -L/usr/lib/mysql -L/usr/local/lib/ -Lgzstream/ -Lliblfds.6/bin/ -L/usr/lib64/mysql -fPIC 
 shared: args = -g3 -Wall  -march=$(GCCARCH)
 
-static: LIBS=-static -L/usr/lib64/mysql -L/usr/lib/mysql -lodbc -lltdl -ldl -lrt -lz -lcrypt -lm -lssl -static-libstdc++ -static-libgcc -lpcap -L/usr/lib/mysql -lmysqlclient -lpthread -lgzstream -lz -lc -lvorbis -lvorbisenc -logg -llfds
+static: LIBS=-static -L/usr/lib/mysql -L/usr/lib64/mysql -L/usr/lib/mysql -lodbc -lltdl -ldl -lrt -lz -lcrypt -lm -lssl -static-libstdc++ -static-libgcc -lpcap -L/usr/lib/mysql -lmysqlclient -lpthread -lgzstream -lz -lc -lvorbis -lvorbisenc -logg -llfds
 static: CFLAGS+= -I /usr/local/include/mysql++/ -I /usr/include/mysql++/ -I /usr/include/mysql/ -g3 -Wall -I jitterbuffer/  -L/usr/local/lib/ -Lgzstream/ -Lliblfds.6/bin/ -fPIC
 static: args = -g3 -Wall  -march=$(GCCARCH)
 
@@ -112,28 +112,28 @@ clean :
 	cp -f .cleancount .lastclean
 
 targz64: static
-	rm -rf /tmp/voipmonitor-amd64-5.0-static*
-	mkdir -p /tmp/voipmonitor-amd64-5.0-static/usr/local/sbin
-	cp cdrtable.sql /tmp/voipmonitor-amd64-5.0-static/
+	rm -rf /tmp/voipmonitor-amd64-5.0.3-static*
+	mkdir -p /tmp/voipmonitor-amd64-5.0.3-static/usr/local/sbin
+	cp cdrtable.sql /tmp/voipmonitor-amd64-5.0.3-static/
 	strip voipmonitor
-	cp voipmonitor /tmp/voipmonitor-amd64-5.0-static/usr/local/sbin/
-	mkdir -p /tmp/voipmonitor-amd64-5.0-static/etc/init.d
-	cp config/voipmonitor.conf /tmp/voipmonitor-amd64-5.0-static/etc/
-	cp config/init.d/voipmonitor /tmp/voipmonitor-amd64-5.0-static/etc/init.d/
-	cp scripts/install-script.sh /tmp/voipmonitor-amd64-5.0-static/
-	tar -C /tmp -czf /tmp/voipmonitor-amd64-5.0-static.tar.gz voipmonitor-amd64-5.0-static
+	cp voipmonitor /tmp/voipmonitor-amd64-5.0.3-static/usr/local/sbin/
+	mkdir -p /tmp/voipmonitor-amd64-5.0.3-static/etc/init.d
+	cp config/voipmonitor.conf /tmp/voipmonitor-amd64-5.0.3-static/etc/
+	cp config/init.d/voipmonitor /tmp/voipmonitor-amd64-5.0.3-static/etc/init.d/
+	cp scripts/install-script.sh /tmp/voipmonitor-amd64-5.0.3-static/
+	tar -C /tmp -czf /tmp/voipmonitor-amd64-5.0.3-static.tar.gz voipmonitor-amd64-5.0.3-static
 	
 targz32: static
-	rm -rf /tmp/voipmonitor-i686-5.0-static*
-	mkdir -p /tmp/voipmonitor-i686-5.0-static/usr/local/sbin
-	cp cdrtable.sql /tmp/voipmonitor-i686-5.0-static/
+	rm -rf /tmp/voipmonitor-i686-5.0.3-static*
+	mkdir -p /tmp/voipmonitor-i686-5.0.3-static/usr/local/sbin
+	cp cdrtable.sql /tmp/voipmonitor-i686-5.0.3-static/
 	strip voipmonitor
-	cp voipmonitor /tmp/voipmonitor-i686-5.0-static/usr/local/sbin/
-	mkdir -p /tmp/voipmonitor-i686-5.0-static/etc/init.d
-	cp config/voipmonitor.conf /tmp/voipmonitor-i686-5.0-static/etc/
-	cp config/init.d/voipmonitor /tmp/voipmonitor-i686-5.0-static/etc/init.d/
-	cp scripts/install-script.sh /tmp/voipmonitor-i686-5.0-static/
-	tar -C /tmp -czf /tmp/voipmonitor-i686-5.0-static.tar.gz voipmonitor-i686-5.0-static
+	cp voipmonitor /tmp/voipmonitor-i686-5.0.3-static/usr/local/sbin/
+	mkdir -p /tmp/voipmonitor-i686-5.0.3-static/etc/init.d
+	cp config/voipmonitor.conf /tmp/voipmonitor-i686-5.0.3-static/etc/
+	cp config/init.d/voipmonitor /tmp/voipmonitor-i686-5.0.3-static/etc/init.d/
+	cp scripts/install-script.sh /tmp/voipmonitor-i686-5.0.3-static/
+	tar -C /tmp -czf /tmp/voipmonitor-i686-5.0.3-static.tar.gz voipmonitor-i686-5.0.3-static
 
 install: 
 	install voipmonitor /usr/local/sbin/

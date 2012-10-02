@@ -158,8 +158,6 @@ Call::addtocachequeue(string file) {
 
 /* destructor */
 Call::~Call(){
-	hashRemove();
-
 	for(int i = 0; i < MAX_SSRC_PER_CALL; i++) {
 		// lets check whole array as there can be holes due rtp[0] <=> rtp[1] swaps in mysql rutine
 		if(rtp[i]) {
