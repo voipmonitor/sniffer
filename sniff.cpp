@@ -209,7 +209,7 @@ int get_sip_peercnam(char *data, int data_len, const char *tag, char *peername, 
 	peername[r2 - r] = '\0';
 	return 0;
 fail_exit:
-	strcpy(peername, "empty");
+	strcpy(peername, "");
 	return 1;
 }
 
@@ -234,7 +234,7 @@ int get_sip_peername(char *data, int data_len, const char *tag, char *peername, 
 	peername[r2 - r] = '\0';
 	return 0;
 fail_exit:
-	strcpy(peername, "empty");
+	strcpy(peername, "");
 	return 1;
 }
 
@@ -265,7 +265,7 @@ int get_sip_domain(char *data, int data_len, const char *tag, char *domain, int 
 
 	return 0;
 fail_exit:
-	strcpy(domain, "empty");
+	strcpy(domain, "");
 	return 1;
 }
 
@@ -312,6 +312,23 @@ int get_ip_port_from_sdp(char *sdp_text, in_addr_t *addr, unsigned short *port){
 		return 1;
 	}
 	return 0;
+}
+
+int get_value_stringkeyval(const char *data, unsigned int data_len, const char *key, char *value, int len) {
+	unsigned long r, tag_len;
+	char *tmp = gettag(data, data_len, key, &tag_len);
+	if(!tag_len) {
+		goto fail_exit;
+	}
+	if ((r = (unsigned long)memmem(tmp, tag_len, "\"", 1)) == 0){
+		goto fail_exit;
+	}
+	memcpy(value, (void*)tmp, r - (unsigned long)tmp);
+	value[r - (unsigned long)tmp] = '\0';
+	return 0;
+fail_exit:
+	strcpy(value, "");
+	return 1;
 }
 
 int mimeSubtypeToInt(char *mimeSubtype) {
@@ -425,6 +442,159 @@ void *rtp_read_thread_func(void *arg) {
 	}
 
 	return NULL;
+}
+
+Call *new_invite_register(int sip_method, char *data, int datalen, struct pcap_pkthdr *header, char *callidstr, u_int32_t saddr, u_int32_t daddr, int source, char *s, long unsigned int l){
+	static char str2[1024];
+	// store this call only if it starts with invite
+	Call *call = calltable->add(s, l, header->ts.tv_sec, saddr, source);
+	call->set_first_packet_time(header->ts.tv_sec);
+	call->sipcallerip = saddr;
+	call->sipcalledip = daddr;
+	call->type = sip_method;
+	ipfilter->add_call_flags(&(call->flags), ntohl(saddr), ntohl(daddr));
+	strcpy(call->fbasename, callidstr);
+
+	/* this logic updates call on the first INVITES */
+	if (sip_method == INVITE or sip_method == REGISTER) {
+		int res;
+		// callername
+		res = get_sip_peercnam(data,datalen,"From:", call->callername, sizeof(call->callername));
+		if(res) {
+			// try compact header
+			get_sip_peercnam(data,datalen,"f:", call->callername, sizeof(call->callername));
+		}
+
+		// caller number
+		res = get_sip_peername(data,datalen,"From:", call->caller, sizeof(call->caller));
+		if(res) {
+			// try compact header
+			get_sip_peername(data,datalen,"f:", call->caller, sizeof(call->caller));
+		}
+
+		// caller number
+		res = get_sip_peername(data,datalen,"To:", call->called, sizeof(call->called));
+		if(res) {
+			// try compact header
+			get_sip_peername(data,datalen,"t:", call->called, sizeof(call->called));
+		}
+
+		// caller domain 
+		res = get_sip_domain(data,datalen,"From:", call->caller_domain, sizeof(call->caller_domain));
+		if(res) {
+			// try compact header
+			get_sip_domain(data,datalen,"f:", call->caller_domain, sizeof(call->caller_domain));
+		}
+
+		// called domain 
+		res = get_sip_domain(data,datalen,"To:", call->called_domain, sizeof(call->called_domain));
+		if(res) {
+			// try compact header
+			get_sip_domain(data,datalen,"t:", call->called_domain, sizeof(call->called_domain));
+		}
+
+		if(sip_method == REGISTER) {	
+			// copy contact num <sip:num@domain>
+
+			s = gettag(data, datalen, "User-Agent:", &l);
+			if(l && ((unsigned int)l < ((unsigned int)datalen - (s - data)))) {
+				memcpy(call->a_ua, s, l);
+				call->a_ua[l] = '\0';
+			}
+
+			res = get_sip_peername(data,datalen,"Contact:", call->contact_num, sizeof(call->contact_num));
+			if(res) {
+				// try compact header
+				get_sip_peername(data,datalen,"m:", call->contact_num, sizeof(call->contact_num));
+			}
+			// copy contact domain <sip:num@domain>
+			res = get_sip_domain(data,datalen,"Contact:", call->contact_domain, sizeof(call->contact_domain));
+			if(res) {
+				// try compact header
+				get_sip_domain(data,datalen,"m:", call->contact_domain, sizeof(call->contact_domain));
+			}
+
+			// copy Authorization
+			s = gettag(data, datalen, "Authorization:", &l);
+			if(l && ((unsigned int)l < ((unsigned int)datalen - (s - data)))) {
+				get_value_stringkeyval(s, datalen - (s - data), "username=\"", call->digest_username, sizeof(call->digest_username));
+				get_value_stringkeyval(s, datalen - (s - data), "realm=\"", call->digest_realm, sizeof(call->digest_realm));
+			}
+			// get expires header
+			s = gettag(data, datalen, "Expires:", &l);
+			if(l && ((unsigned int)l < ((unsigned int)datalen - (s - data)))) {
+				char c = s[l];
+				s[l] = '\0';
+				call->register_expires = atoi(s);
+				s[l] = c;
+			}
+/*
+			syslog(LOG_NOTICE, "contact_num[%s] contact_domain[%s] from_num[%s] from_name[%s] from_domain[%s] digest_username[%s] digest_realm[%s] expires[%d]\n", 
+				call->contact_num, call->contact_domain, call->caller, call->callername, call->caller_domain, 
+				call->digest_username, call->digest_realm, call->register_expires);
+*/
+		}
+
+		if(sip_method == INVITE) {
+			call->seeninvite = true;
+			telnumfilter->add_call_flags(&(call->flags), call->caller, call->called);
+#ifdef DEBUG_INVITE
+			syslog(LOG_NOTICE, "New call: srcip INET_NTOA[%u] dstip INET_NTOA[%u] From[%s] To[%s] Call-ID[%s]\n", 
+				call->sipcallerip, call->sipcalledip, call->caller, call->called, call->fbasename);
+#endif
+		}
+	}
+
+	if(opt_norecord_header) {
+		s = gettag(data, datalen, "X-VoipMonitor-norecord:", &l);
+		if(l && l < 33) {
+			// do 
+			call->stoprecording();
+		}
+	}
+
+	// opening dump file
+	if(call->flags & (FLAG_SAVESIP | FLAG_SAVEREGISTER | FLAG_SAVERTP | FLAG_SAVEWAV) || opt_savewav_force) {
+		if(opt_cachedir[0] != '\0') {
+			sprintf(str2, "%s/%s", opt_cachedir, call->dirname());
+			mkdir(str2, 0777);
+		}
+		mkdir(call->dirname(), 0777);
+	}
+	if(call->flags & (FLAG_SAVESIP | FLAG_SAVEREGISTER | FLAG_SAVERTP)) {
+		if(opt_cachedir[0] != '\0') {
+			sprintf(str2, "%s/%s/%s.pcap", opt_cachedir, call->dirname(), call->get_fbasename_safe());
+		} else {
+			sprintf(str2, "%s/%s.pcap", call->dirname(), call->get_fbasename_safe());
+		}
+		sprintf(call->pcapfilename, "%s/%s.pcap", call->dirname(), call->get_fbasename_safe());
+		call->set_f_pcap(pcap_dump_open(handle, str2));
+		if(call->get_f_pcap() == NULL) {
+			syslog(LOG_NOTICE,"pcap [%s] cannot be opened: %s\n", str2, pcap_geterr(handle));
+		}
+		if(verbosity > 3) {
+			syslog(LOG_NOTICE,"pcap_filename: [%s]\n",str2);
+		}
+	}
+
+	//check and save CSeq for later to compare with OK 
+	s = gettag(data, datalen, "CSeq:", &l);
+	if(l && l < 32) {
+		memcpy(call->invitecseq, s, l);
+		call->invitecseq[l] = '\0';
+		if(verbosity > 2)
+			syslog(LOG_NOTICE, "Seen invite, CSeq: %s\n", call->invitecseq);
+	}
+	
+	// check if we have X-VoipMonitor-Custom1
+	s = gettag(data, datalen, "X-VoipMonitor-Custom1:", &l);
+	if(l && l < 255) {
+		memcpy(call->custom_header1, s, l);
+		call->custom_header1[l] = '\0';
+		if(verbosity > 2)
+			syslog(LOG_NOTICE, "Seen X-VoipMonitor-Custom1: %s\n", call->custom_header1);
+	}
+	return call;
 }
 
 Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int dest, char *data, int datalen,
@@ -681,6 +851,10 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 			if(verbosity > 2) 
 				 syslog(LOG_NOTICE,"SIP msg: 3XX\n");
 			sip_method = RES3XX;
+		} else if ((datalen > 10) && !(memmem(data, 11, "SIP/2.0 401", 11) == 0)) {
+			if(verbosity > 2) 
+				 syslog(LOG_NOTICE,"SIP msg: 401\n");
+			sip_method = RES401;
 		} else if ((datalen > 8) && !(memmem(data, 9, "SIP/2.0 4", 9) == 0)) {
 			if(verbosity > 2) 
 				 syslog(LOG_NOTICE,"SIP msg: 4XX\n");
@@ -732,111 +906,57 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 		if (!(call = calltable->find_by_call_id(s, l))){
 			// packet does not belongs to any call yet
 			if (sip_method == INVITE || (opt_sip_register && sip_method == REGISTER)) {
-				// store this call only if it starts with invite
-				call = calltable->add(s, l, header->ts.tv_sec, saddr, source);
-				call->set_first_packet_time(header->ts.tv_sec);
-				call->sipcallerip = saddr;
-				call->sipcalledip = daddr;
-				call->type = sip_method;
-				ipfilter->add_call_flags(&(call->flags), ntohl(saddr), ntohl(daddr));
-				strcpy(call->fbasename, callidstr);
-
-				/* this logic updates call on the first INVITES */
-				if (sip_method == INVITE) {
-					int res;
-					// callername
-					res = get_sip_peercnam(data,datalen,"From:", call->callername, sizeof(call->callername));
-					if(res) {
-						// try compact header
-						get_sip_peercnam(data,datalen,"f:", call->callername, sizeof(call->callername));
-					}
-
-					// caller number
-					res = get_sip_peername(data,datalen,"From:", call->caller, sizeof(call->caller));
-					if(res) {
-						// try compact header
-						get_sip_peername(data,datalen,"f:", call->caller, sizeof(call->caller));
-					}
-
-					// caller number
-					res = get_sip_peername(data,datalen,"To:", call->called, sizeof(call->called));
-					if(res) {
-						// try compact header
-						get_sip_peername(data,datalen,"t:", call->called, sizeof(call->called));
-					}
-
-					// caller domain 
-					res = get_sip_domain(data,datalen,"From:", call->caller_domain, sizeof(call->caller_domain));
-					if(res) {
-						// try compact header
-						get_sip_domain(data,datalen,"f:", call->caller_domain, sizeof(call->caller_domain));
-					}
-
-					// called domain 
-					res = get_sip_domain(data,datalen,"To:", call->called_domain, sizeof(call->called_domain));
-					if(res) {
-						// try compact header
-						get_sip_domain(data,datalen,"t:", call->called_domain, sizeof(call->called_domain));
-					}
-
-					call->seeninvite = true;
-					telnumfilter->add_call_flags(&(call->flags), call->caller, call->called);
-#ifdef DEBUG_INVITE
-					syslog(LOG_NOTICE, "New call: srcip INET_NTOA[%u] dstip INET_NTOA[%u] From[%s] To[%s] Call-ID[%s]\n", call->sipcallerip, call->sipcalledip, call->caller, call->called, call->fbasename);
-#endif
+				call = new_invite_register(sip_method, data, datalen, header, callidstr, saddr, daddr, source, s, l);
+			} else {
+				// SIP packet does not belong to any call and it is not INVITE 
+				return NULL;
+			}
+		// check if the SIP msg is part of earlier REGISTER
+		} else if(call->type == REGISTER) {
+			call->msgcount++;
+			if(sip_method == REGISTER) {
+				call->regcount++;
+				if(verbosity > 3) syslog(LOG_DEBUG, "REGISTER Call-ID[%s] regcount[%d]", call->call_id, call->regcount);
+				if(call->regcount > 4) {
+					// to much register attempts without OK or 401 responses
+					call->regstate = 4;
+					call->saveregister();
+					call = new_invite_register(sip_method, data, datalen, header, callidstr, saddr, daddr, source, s, l);
+					return call;
 				}
-
-				if(opt_norecord_header) {
-					s = gettag(data, datalen, "X-VoipMonitor-norecord:", &l);
-					if(l && l < 33) {
-						// do 
-						call->stoprecording();
-					}
-				}
-
-				// opening dump file
-				if(call->flags & (FLAG_SAVESIP | FLAG_SAVEREGISTER | FLAG_SAVERTP | FLAG_SAVEWAV) || opt_savewav_force) {
-					if(opt_cachedir[0] != '\0') {
-						sprintf(str2, "%s/%s", opt_cachedir, call->dirname());
-						mkdir(str2, 0777);
-					}
-					mkdir(call->dirname(), 0777);
-				}
-				if(call->flags & (FLAG_SAVESIP | FLAG_SAVEREGISTER | FLAG_SAVERTP)) {
-					if(opt_cachedir[0] != '\0') {
-						sprintf(str2, "%s/%s/%s.pcap", opt_cachedir, call->dirname(), call->get_fbasename_safe());
-					} else {
-						sprintf(str2, "%s/%s.pcap", call->dirname(), call->get_fbasename_safe());
-					}
-					sprintf(call->pcapfilename, "%s/%s.pcap", call->dirname(), call->get_fbasename_safe());
-					call->set_f_pcap(pcap_dump_open(handle, str2));
-					if(call->get_f_pcap() == NULL) {
-						syslog(LOG_NOTICE,"pcap [%s] cannot be opened: %s\n", str2, pcap_geterr(handle));
-					}
-					if(verbosity > 3) {
-						syslog(LOG_NOTICE,"pcap_filename: [%s]\n",str2);
-					}
-				}
-
-				//check and save CSeq for later to compare with OK 
 				s = gettag(data, datalen, "CSeq:", &l);
 				if(l && l < 32) {
 					memcpy(call->invitecseq, s, l);
 					call->invitecseq[l] = '\0';
-					if(verbosity > 2)
-						syslog(LOG_NOTICE, "Seen invite, CSeq: %s\n", call->invitecseq);
 				}
-				
-				// check if we have X-VoipMonitor-Custom1
-				s = gettag(data, datalen, "X-VoipMonitor-Custom1:", &l);
-				if(l && l < 255) {
-					memcpy(call->custom_header1, s, l);
-					call->custom_header1[l] = '\0';
-					if(verbosity > 2)
-						syslog(LOG_NOTICE, "Seen X-VoipMonitor-Custom1: %s\n", call->custom_header1);
+			} else if(sip_method == RES2XX) {
+				if(verbosity > 3) syslog(LOG_DEBUG, "REGISTER OK Call-ID[%s]", call->call_id);
+                                s = gettag(data, datalen, "CSeq:", &l);
+                                if(l && strncmp(s, call->invitecseq, l) == 0) {
+					// registration OK 
+					call->regstate = 1;
+					call->saveregister();
+					return NULL;
+				} else {
+					call->regstate = 3;
+					call->saveregister();
+					return NULL;
+					// OK to unknown msg close the call
 				}
-			} else {
-				// SIP packet does not belong to any call and it is not INVITE 
+			} else if(sip_method == RES401) {
+				call->reg401count++;
+				if(verbosity > 3) syslog(LOG_DEBUG, "REGISTER 401 Call-ID[%s] reg401count[%d]", call->call_id, call->reg401count);
+				if(call->reg401count > 1) {
+					// registration failed
+					call->regstate = 2;
+					call->saveregister();
+					return NULL;
+				}
+			}
+			if(call->msgcount > 20) {
+				// to many REGISTER messages within the same callid
+				call->regstate = 4;
+				call->saveregister();
 				return NULL;
 			}
 		// packet is already part of call
@@ -1082,9 +1202,9 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 		}
 
 		return call;
-	} else if ((call = calltable->hashfind_by_ip_port(daddr, dest, &iscaller, &is_rtcp))){	
+	} else if ((call = calltable->hashfind_by_ip_port(daddr, dest, &iscaller, &is_rtcp))){
 	// TODO: remove if hash will be stable
-	//if ((call = calltable->find_by_ip_port(daddr, dest, &iscaller))){	
+	//if ((call = calltable->find_by_ip_port(daddr, dest, &iscaller)))
 		// packet (RTP) by destination:port is already part of some stored call 
 
 		// we have packet, extend pending destroy requests
@@ -1120,7 +1240,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 		}
 	} else if ((call = calltable->hashfind_by_ip_port(saddr, source, &iscaller, &is_rtcp))){
 	// TODO: remove if hash will be stable
-	//} else if ((call = calltable->find_by_ip_port(saddr, source, &iscaller))){	
+	// else if ((call = calltable->find_by_ip_port(saddr, source, &iscaller)))
 		// packet (RTP[C]) by source:port is already part of some stored call 
 
 		// we have packet, extend pending destroy requests

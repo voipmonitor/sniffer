@@ -102,7 +102,7 @@ string SqlDb_row::implodeFields(string separator, string border) {
 	string rslt;
 	for(size_t i = 0; i < this->row.size(); i++) {
 		if(i) { rslt += separator; }
-		rslt += border + this->row[i].fieldName + border;
+		rslt += border + '`' + this->row[i].fieldName + '`' + border;
 	}
 	return(rslt);
 }
@@ -128,7 +128,7 @@ SqlDb::SqlDb() {
 }
 
 SqlDb::~SqlDb() {
-	cout << "destruct SqlDb" << endl;
+	//cout << "destruct SqlDb" << endl;
 }
 
 void SqlDb::setConnectParameters(string server, string user, string password, string database) {

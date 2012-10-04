@@ -299,6 +299,7 @@ void *storing_cdr( void *dummy ) {
 			}
 
 			call->closeRawFiles();
+			//if( (opt_savewav_force || (call->flags & FLAG_SAVEWAV)) && call->type == INVITE) {
 			if( (opt_savewav_force || (call->flags & FLAG_SAVEWAV)) && call->type == INVITE) {
 				if(verbosity > 0) printf("converting RAW file to WAV Queue[%d]\n", (int)calltable->calls_queue.size());
 				call->convertRawToWav();
@@ -740,7 +741,7 @@ int main(int argc, char *argv[]) {
 	/* command line arguments overrides configuration in voipmonitor.conf file */
 	while(1) {
 		int c;
-		c = getopt_long(argc, argv, "C:f:i:r:d:v:h:b:t:u:p:P:kncUSRoAWGXTNIKy", long_options, &option_index);
+		c = getopt_long(argc, argv, "C:f:i:r:d:v:h:b:t:u:p:P:kncUSRoAWGXTNIKy4", long_options, &option_index);
 		//"i:r:d:v:h:b:u:p:fnU", NULL, NULL);
 		if (c == -1)
 			break;

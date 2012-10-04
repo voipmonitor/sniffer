@@ -101,6 +101,11 @@ Call::Call(char *call_id, unsigned long call_id_len, time_t time, void *ct) {
 	callername[0] = '\0';
 	called[0] = '\0';
 	called_domain[0] = '\0';
+	contact_num[0] = '\0';
+	contact_domain[0] = '\0';
+	digest_username[0] = '\0';
+	digest_realm[0] = '\0';
+	register_expires = -1;
 	byecseq[0] = '\0';
 	invitecseq[0] = '\0';
 	sighup = false;
@@ -116,6 +121,10 @@ Call::Call(char *call_id, unsigned long call_id_len, time_t time, void *ct) {
 	rtp_prev[1] = NULL;
 	lastSIPresponse[0] = '\0';
 	lastSIPresponseNum = 0;
+	msgcount = 0;
+	regcount = 0;
+	reg401count = 0;
+	regstate = 0;
 	for(int i = 0; i < MAX_SSRC_PER_CALL; i++) {
 		rtp[i] = NULL;
 	}
@@ -158,8 +167,6 @@ Call::addtocachequeue(string file) {
 
 /* destructor */
 Call::~Call(){
-	hashRemove();
-
 	for(int i = 0; i < MAX_SSRC_PER_CALL; i++) {
 		// lets check whole array as there can be holes due rtp[0] <=> rtp[1] swaps in mysql rutine
 		if(rtp[i]) {
@@ -1516,16 +1523,108 @@ Call::saveRegisterToDb() {
 		return(1);
 	
 	if(isTypeDb("mysql")) {
+		string query;
 		if(!sqlDb) {
 			return(false);
 		}
-		SqlDb_row reg;
-		reg.add(htonl(sipcallerip), "sipcallerip");
-		reg.add(htonl(sipcalledip), "sipcalledip");
-		reg.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
-		reg.add(sqlEscapeString(fbasename), "fbasename");
-		reg.add(sighup ? 1 : 0, "sighup");
-		return(sqlDb->insert(register_table, reg, "") <= 0);
+
+		SqlDb_row cdr_ua;
+		cdr_ua.add(sqlEscapeString(a_ua), "ua");
+		printf("ua[%s]\n", a_ua);
+
+		switch(regstate) {
+		case 1:
+		case 3:
+			query = "SELECT ID, state, (UNIX_TIMESTAMP(expires_at) < UNIX_TIMESTAMP(" + sqlEscapeString(sqlDateTimeString(calltime())) + ")) AS expired FROM " + register_table + " WHERE to_num = " + sqlEscapeString(called) + " AND digestusername = " + sqlEscapeString(digest_username) + " ORDER BY ID LIMIT 1";
+//			if(verbosity > 2) cout << query << "\n";
+			if(sqlDb->query(query)) {
+				SqlDb_row rsltRow = sqlDb->fetchRow();
+				if(rsltRow) {
+					printf("debug[%d] [%d]\n", atoi(rsltRow["state"].c_str()), atoi(rsltRow["expired"].c_str()));
+					if(atoi(rsltRow["state"].c_str()) != regstate || atoi(rsltRow["expired"].c_str()) == 1) {
+						// state changes, store to register_state
+						SqlDb_row reg;
+						reg.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "created_at");
+						reg.add(htonl(sipcallerip), "sipcallerip");
+						reg.add(sqlEscapeString(caller), "from_num");
+						reg.add(sqlEscapeString(called), "to_num");
+						reg.add(sqlEscapeString(contact_num), "contact_num");
+						reg.add(sqlEscapeString(contact_domain), "contact_domain");
+						reg.add(sqlEscapeString(digest_username), "digestusername");
+						reg.add(register_expires, "expires");
+						reg.add(regstate, "state");
+						reg.add(sqlDb->getIdOrInsert(sql_cdr_ua_table, "id", "ua", cdr_ua, ""), "ua_id");
+						sqlDb->insert("register_state", reg, "");
+					}
+					// delete old record from register_table (because we have new one
+					string query = "DELETE FROM " + (string)register_table + " WHERE ID = '" + (rsltRow["ID"]).c_str() + "'";
+					sqlDb->query(query);
+				} else {
+					// we have success reg without any history, so lets save it to register_state
+					SqlDb_row reg;
+					reg.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "created_at");
+					reg.add(htonl(sipcallerip), "sipcallerip");
+					reg.add(sqlEscapeString(caller), "from_num");
+					reg.add(sqlEscapeString(called), "to_num");
+					reg.add(sqlEscapeString(contact_num), "contact_num");
+					reg.add(sqlEscapeString(contact_domain), "contact_domain");
+					reg.add(sqlEscapeString(digest_username), "digestusername");
+					reg.add(register_expires, "expires");
+					reg.add(regstate, "state");
+					reg.add(sqlDb->getIdOrInsert(sql_cdr_ua_table, "id", "ua", cdr_ua, ""), "ua_id");
+					sqlDb->insert("register_state", reg, "");
+				}
+			}
+
+			// save successfull REGISTER to register table
+			{
+			SqlDb_row reg;
+			reg.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
+			reg.add(htonl(sipcallerip), "sipcallerip");
+			reg.add(htonl(sipcalledip), "sipcalledip");
+			//reg.add(sqlEscapeString(fbasename), "fbasename");
+			reg.add(sqlEscapeString(caller), "from_num");
+			reg.add(sqlEscapeString(callername), "from_name");
+			reg.add(sqlEscapeString(caller_domain), "from_domain");
+			reg.add(sqlEscapeString(called), "to_num");
+			reg.add(sqlEscapeString(called_domain), "to_domain");
+			reg.add(sqlEscapeString(contact_num), "contact_num");
+			reg.add(sqlEscapeString(contact_domain), "contact_domain");
+			reg.add(sqlEscapeString(digest_username), "digestusername");
+			reg.add(sqlEscapeString(digest_realm), "digestrealm");
+			reg.add(sqlDb->getIdOrInsert(sql_cdr_ua_table, "id", "ua", cdr_ua, ""), "ua_id");
+			reg.add(register_expires, "expires");
+			reg.add(sqlEscapeString(sqlDateTimeString(calltime() + register_expires).c_str()), "expires_at");
+			reg.add(regstate, "state");
+			return(sqlDb->insert(register_table, reg, "") <= 0);
+			}
+			break;
+		case 2:
+			// REGISTER failed. Check if there is already in register_failed table failed register within last hour 
+			query = "SELECT counter FROM register_failed WHERE to_num = " + sqlEscapeString(called) + " AND digestusername = " + sqlEscapeString(digest_username) + " AND created_at <= ADDTIME(NOW(), '01:00:00')";
+			if(sqlDb->query(query)) {
+				SqlDb_row rsltRow = sqlDb->fetchRow();
+				if(rsltRow) {
+					// there is already failed register, update counter and do not insert
+					string query = "UPDATE register_failed SET counter = counter + 1 WHERE to_num = " + sqlEscapeString(called) + " AND digestusername = " + sqlEscapeString(digest_username) + " AND created_at <= ADDTIME(NOW(), '01:00:00')";
+					sqlDb->query(query);
+				} else {
+					// this is new failed attempt within hour, insert
+					SqlDb_row reg;
+					reg.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "created_at");
+					reg.add(htonl(sipcallerip), "sipcallerip");
+					reg.add(sqlEscapeString(caller), "from_num");
+					reg.add(sqlEscapeString(called), "to_num");
+					reg.add(sqlEscapeString(contact_num), "contact_num");
+					reg.add(sqlEscapeString(contact_domain), "contact_domain");
+					reg.add(sqlEscapeString(digest_username), "digestusername");
+					reg.add(sqlDb->getIdOrInsert(sql_cdr_ua_table, "id", "ua", cdr_ua, ""), "ua_id");
+					sqlDb->insert("register_failed", reg, "");
+				}
+			}
+			break;
+		}
+		return 1;
 	} else {
 		stringstream queryStream;
 		if(isTypeDb("mssql")) {
@@ -1851,11 +1950,43 @@ Calltable::cleanup( time_t currtime ) {
 	return 0;
 }
 
+void Call::saveregister() {
+	hashRemove();
+	if (get_f_pcap() != NULL){
+		pcap_dump_flush(get_f_pcap());
+		if (get_f_pcap() != NULL) {
+			pcap_dump_close(get_f_pcap());
+			if(opt_cachedir[0] != '\0') {
+				addtocachequeue(pcapfilename);
+			}
+		}
+		set_f_pcap(NULL);
+	}
+	// we have to close all raw files as there can be data in buffers 
+	closeRawFiles();
+	/* move call to queue for mysql processing */
+	((Calltable*)calltable)->lock_calls_queue();
+	((Calltable*)calltable)->calls_queue.push(this);
+	((Calltable*)calltable)->unlock_calls_queue();
+
+	string call_idS = string(call_id, call_id_len);
+        map<string, Call*>::iterator callMAPIT = ((Calltable*)calltable)->calls_listMAP.find(call_idS);
+	if(callMAPIT == ((Calltable*)calltable)->calls_listMAP.end()) {
+		syslog(LOG_ERR,"Fatal error REGISTER call_id[%s] not found in callMAPIT", call_id);
+	} else {
+		((Calltable*)calltable)->calls_listMAP.erase(callMAPIT);
+	}
+}
+
 string sqlDateTimeString(time_t unixTime) {
 	struct tm * localTime = localtime(&unixTime);
 	char dateTimeBuffer[50];
 	strftime(dateTimeBuffer, sizeof(dateTimeBuffer), "%Y-%m-%d %H:%M:%S", localTime);
 	return string(dateTimeBuffer);
+}
+
+string sqlEscapeString(string inputStr, char borderChar) {
+	return sqlEscapeString(inputStr.c_str(), borderChar);
 }
 
 string sqlEscapeString(const char *inputStr, char borderChar) {

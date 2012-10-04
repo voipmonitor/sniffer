@@ -205,10 +205,57 @@ CREATE TABLE `register` (
   `calldate` datetime NOT NULL,
   `sipcallerip` int(32) unsigned NOT NULL,
   `sipcalledip` int(32) unsigned NOT NULL,
-  `fbasename` varchar(255) NOT NULL,
-  `sighup` tinyint(2) NOT NULL DEFAULT '0',
+  `from_num` varchar(255) NULL DEFAULT NULL,
+  `from_name` varchar(255) NULL DEFAULT NULL,
+  `from_domain` varchar(255) NULL DEFAULT NULL,
+  `to_num` varchar(255) NULL DEFAULT NULL,
+  `to_domain` varchar(255) NULL DEFAULT NULL,
+  `contact_num` varchar(255) NULL DEFAULT NULL,
+  `contact_domain` varchar(255) NULL DEFAULT NULL,
+  `digestusername` varchar(255) NULL DEFAULT NULL,
+  `digestrealm` varchar(255) NULL DEFAULT NULL,
+  `expires`	mediumint NULL DEFAULT NULL,
+  `expires_at`  datetime NULL DEFAULT NULL,
+  `state`  tinyint unsigned NULL DEFAULT NULL,
+  `ua_id` int(10) unsigned DEFAULT NULL,
   PRIMARY KEY (`ID`),
   KEY `calldate` (`calldate`),
   KEY `sipcallerip` (`sipcallerip`),
-  KEY `sipcalledip` (`sipcalledip`)
+  KEY `sipcalledip` (`sipcalledip`),
+  KEY `from_num` (`sipcalledip`),
+  KEY `digestusername` (`sipcalledip`)
+) ENGINE=MEMORY DEFAULT CHARSET=latin1 ROW_FORMAT=COMPRESSED;
+
+CREATE TABLE `register_state` (
+  `ID` int(32) unsigned NOT NULL AUTO_INCREMENT,
+  `created_at` datetime NOT NULL,
+  `sipcallerip` int(32) unsigned NOT NULL,
+  `from_num` varchar(255) NULL DEFAULT NULL,
+  `to_num` varchar(255) NULL DEFAULT NULL,
+  `contact_num` varchar(255) NULL DEFAULT NULL,
+  `contact_domain` varchar(255) NULL DEFAULT NULL,
+  `digestusername` varchar(255) NULL DEFAULT NULL,
+  `expires` mediumint NULL DEFAULT NULL,
+  `state` tinyint unsigned NULL DEFAULT NULL,
+  `ua_id` int(10) unsigned DEFAULT NULL,
+  PRIMARY KEY (`ID`),
+  KEY `created_at` (`created_at`),
+  KEY `sipcallerip` (`sipcallerip`)
 ) ENGINE=InnoDB DEFAULT CHARSET=latin1 ROW_FORMAT=COMPRESSED;
+
+CREATE TABLE `register_failed` (
+  `ID` int(32) unsigned NOT NULL AUTO_INCREMENT,
+  `counter` int DEFAULT 0,
+  `created_at` datetime NOT NULL,
+  `sipcallerip` int(32) unsigned NOT NULL,
+  `from_num` varchar(255) NULL DEFAULT NULL,
+  `to_num` varchar(255) NULL DEFAULT NULL,
+  `contact_num` varchar(255) NULL DEFAULT NULL,
+  `contact_domain` varchar(255) NULL DEFAULT NULL,
+  `digestusername` varchar(255) NULL DEFAULT NULL,
+  `ua_id` int(10) unsigned DEFAULT NULL,
+  PRIMARY KEY (`ID`),
+  KEY `created_at` (`created_at`),
+  KEY `sipcallerip` (`sipcallerip`)
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 ROW_FORMAT=COMPRESSED;
+

@@ -26,7 +26,7 @@
 
 #define MAX_IP_PER_CALL 30	//!< total maxumum of SDP sessions for one call-id
 #define MAX_SSRC_PER_CALL 30	//!< total maxumum of SDP sessions for one call-id
-#define MAX_CALL_ID 32		//!< max len of stored call-id
+#define MAX_CALL_ID 128		//!< max len of stored call-id
 #define MAX_FNAME 256		//!< max len of stored call-id
 #define MAX_RTPMAP 30          //!< max rtpmap records
 #define RTPTIMEOUT 300
@@ -37,11 +37,12 @@
 #define CANCEL 3
 #define RES2XX 4
 #define RES3XX 5
-#define RES4XX 6
-#define RES5XX 7
-#define RES6XX 8
-#define RES18X 9
-#define REGISTER 10
+#define RES401 6
+#define RES4XX 7
+#define RES5XX 8
+#define RES6XX 9
+#define RES18X 10
+#define REGISTER 11
 
 #define FLAG_SAVERTP		(1 << 0)
 #define FLAG_SAVESIP		(1 << 1)
@@ -65,6 +66,11 @@ public:
 	char caller_domain[256];	//!< From: xxx 
 	char called[256];		//!< To: xxx
 	char called_domain[256];	//!< To: xxx
+	char contact_num[64];		//!< 
+	char contact_domain[128];	//!< 
+	char digest_username[64];	//!< 
+	char digest_realm[64];		//!< 
+	int register_expires;	
 	char byecseq[32];		
 	char invitecseq[32];		
 	char custom_header1[256];	//!< Custom SIP header
@@ -86,6 +92,10 @@ public:
 	int whohanged;			//!< who hanged up. 0 -> caller, 1-> callee, -1 -> unknown
 	int recordstopped;		//!< flag holding if call was stopped to avoid double free
 	int dtmfflag;			//!< used for holding dtmf states 
+	int msgcount;
+	int regcount;
+	int reg401count;
+	int regstate;
 
 	time_t progress_time;		//!< time in seconds of 18X response
 	time_t first_rtp_time;		//!< time in seconds of first RTP packet
@@ -320,6 +330,12 @@ public:
 	char *get_fbasename_safe();
 
 	/**
+	 * @brief save call to register tables and remove from calltable 
+	 *
+	*/
+	void saveregister();
+
+	/**
 	 * @brief print debug information for the call to stdout
 	 *
 	*/
@@ -483,6 +499,7 @@ private:
 };
 
 string sqlDateTimeString(time_t unixTime);
+string sqlEscapeString(string inputStr, char borderChar = '\'');
 string sqlEscapeString(const char *inputStr, char borderChar = '\'');
 string reverseString(const char *str);
 bool isSqlDriver(const char *sqlDriver);
