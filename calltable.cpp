@@ -1535,7 +1535,7 @@ Call::saveRegisterToDb() {
 		switch(regstate) {
 		case 1:
 		case 3:
-			query = "SELECT ID, state, (UNIX_TIMESTAMP(expires_at) < UNIX_TIMESTAMP(" + sqlEscapeString(sqlDateTimeString(calltime())) + ")) AS expired FROM " + register_table + " WHERE to_num = " + sqlEscapeString(called) + " AND digestusername = " + sqlEscapeString(digest_username) + " ORDER BY ID LIMIT 1";
+			query = "SELECT ID, state, (UNIX_TIMESTAMP(expires_at) < UNIX_TIMESTAMP(" + sqlEscapeString(sqlDateTimeString(calltime())) + ")) AS expired FROM " + register_table + " WHERE to_num = " + sqlEscapeString(called) + " AND digestusername = " + sqlEscapeString(digest_username) + " ORDER BY ID DESC LIMIT 1";
 //			if(verbosity > 2) cout << query << "\n";
 			if(sqlDb->query(query)) {
 				SqlDb_row rsltRow = sqlDb->fetchRow();
