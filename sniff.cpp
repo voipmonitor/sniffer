@@ -561,7 +561,7 @@ Call *new_invite_register(int sip_method, char *data, int datalen, struct pcap_p
 		}
 		mkdir(call->dirname(), 0777);
 	}
-	if(call->flags & (FLAG_SAVESIP | FLAG_SAVEREGISTER | FLAG_SAVERTP)) {
+	if(!call->type != REGISTER && call->flags & (FLAG_SAVESIP | FLAG_SAVEREGISTER | FLAG_SAVERTP)) {
 		if(opt_cachedir[0] != '\0') {
 			sprintf(str2, "%s/%s/%s.pcap", opt_cachedir, call->dirname(), call->get_fbasename_safe());
 		} else {
@@ -917,6 +917,14 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 			if(sip_method == REGISTER) {
 				call->regcount++;
 				if(verbosity > 3) syslog(LOG_DEBUG, "REGISTER Call-ID[%s] regcount[%d]", call->call_id, call->regcount);
+
+				// update Authorization
+				s = gettag(data, datalen, "Authorization:", &l);
+				if(l && ((unsigned int)l < ((unsigned int)datalen - (s - data)))) {
+					get_value_stringkeyval(s, datalen - (s - data), "username=\"", call->digest_username, sizeof(call->digest_username));
+					get_value_stringkeyval(s, datalen - (s - data), "realm=\"", call->digest_realm, sizeof(call->digest_realm));
+				}
+
 				if(call->regcount > 4) {
 					// to much register attempts without OK or 401 responses
 					call->regstate = 4;
