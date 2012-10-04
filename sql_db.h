@@ -56,6 +56,7 @@ private:
 class SqlDb {
 public:
 	SqlDb();
+	~SqlDb();
 	void setConnectParameters(string server, string user, string password, string database = "");
 	void enableSysLog();
 	virtual bool connect() = 0;
@@ -98,6 +99,7 @@ public:
 	void setMaxQueryPass(unsigned int maxQueryPass) {
 		this->maxQueryPass = maxQueryPass;
 	}
+	virtual void clean() = 0;
 protected:
 	string conn_server;
 	string conn_user;
@@ -105,6 +107,7 @@ protected:
 	string conn_database;
 	bool sysLog;
 	unsigned int maxQueryPass;
+	vector<string> fields;
 private:
 	unsigned int lastError;
 	string lastErrorString;
@@ -123,11 +126,11 @@ public:
 	int getIndexField(string fieldName);
 	string escape(const char *inputString);
 	bool checkLastError(string prefixError, bool sysLog = false,bool clearLastError = false);
+	void clean();
 private:
 	MYSQL *hMysql;
 	MYSQL *hMysqlConn;
 	MYSQL_RES *hMysqlRes;
-	vector<string> fields;
 };
 
 #endif

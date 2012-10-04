@@ -93,6 +93,7 @@ IPfilter::load() {
 			filterRow->graph = atoi(row["graph"].c_str());
 			filterRow->wav = atoi(row["wav"].c_str());
 			vectDbRow.push_back(*filterRow);
+			delete filterRow;
 		}
 	} else if(isSqlDriver("odbc")) {
 		Odbc odbc;
@@ -389,6 +390,7 @@ TELNUMfilter::load() {
 			filterRow->graph = atoi(row["graph"].c_str());
 			filterRow->wav = atoi(row["wav"].c_str());
 			vectDbRow.push_back(*filterRow);
+			delete filterRow;
 		}
 	} else if(isSqlDriver("odbc")) {
 		Odbc odbc;

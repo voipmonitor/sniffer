@@ -1202,6 +1202,11 @@ int main(int argc, char *argv[]) {
 		pthread_join(cachedir_thread, NULL);
 	}
 	delete calltable;
+	
+	if(sqlDb) {
+		sqlDb->clean();
+		delete sqlDb;
+	}
 }
 
 #include "sql_db.h"

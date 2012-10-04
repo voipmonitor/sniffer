@@ -127,6 +127,10 @@ SqlDb::SqlDb() {
 	this->maxQueryPass = UINT_MAX;
 }
 
+SqlDb::~SqlDb() {
+	cout << "destruct SqlDb" << endl;
+}
+
 void SqlDb::setConnectParameters(string server, string user, string password, string database) {
 	this->conn_server = server;
 	this->conn_user = user;
@@ -178,7 +182,7 @@ SqlDb_mysql::SqlDb_mysql() {
 }
 
 SqlDb_mysql::~SqlDb_mysql() {
-	this->disconnect();
+	this->clean();
 }
 
 bool SqlDb_mysql::connect() {
@@ -258,10 +262,10 @@ SqlDb_row SqlDb_mysql::fetchRow() {
 		if(!this->hMysqlRes) {
 			this->hMysqlRes = mysql_use_result(this->hMysqlConn);
 			if(this->hMysqlRes) {
-				fields.clear();
+				this->fields.clear();
 				MYSQL_FIELD *field;
 				for(int i = 0; (field = mysql_fetch_field(this->hMysqlRes)); i++) {
-					fields.push_back(field->name);
+					this->fields.push_back(field->name);
 				}
 			} else {
 				this->checkLastError("fetch row error in function mysql_use_result", true);
@@ -290,8 +294,8 @@ int SqlDb_mysql::getInsertId() {
 }
 
 int SqlDb_mysql::getIndexField(string fieldName) {
-	for(size_t i = 0; i < fields.size(); i++) {
-		if(fields[i] == fieldName) {
+	for(size_t i = 0; i < this->fields.size(); i++) {
+		if(this->fields[i] == fieldName) {
 			return(i);
 		}
 	}
@@ -323,4 +327,9 @@ bool SqlDb_mysql::checkLastError(string prefixError, bool sysLog, bool clearLast
 		}
 	}
 	return(false);
+}
+
+void SqlDb_mysql::clean() {
+	this->disconnect();
+	this->fields.clear();
 }
