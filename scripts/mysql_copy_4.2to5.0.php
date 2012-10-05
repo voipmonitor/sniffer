@@ -4,7 +4,7 @@ error_reporting(0);
 
 define("HOST", "localhost");
 define("USER", "root");
-define("PASS", "HxeIwg70K");
+define("PASS", "");
 
 define("SOURCE_DB", "voipmonitor");
 define("DEST_DB", "voipmonitor5");
