@@ -1539,7 +1539,12 @@ Call::saveRegisterToDb() {
 			if(sqlDb->query(query)) {
 				SqlDb_row rsltRow = sqlDb->fetchRow();
 				if(rsltRow) {
-					//printf("debug[%d] [%d]\n", atoi(rsltRow["state"].c_str()), atoi(rsltRow["expired"].c_str()));
+					// delete old record from register_table (because we have new one
+					string query = "DELETE FROM " + (string)register_table + " WHERE ID = '" + (rsltRow["ID"]).c_str() + "'";
+					if(!sqlDb->query(query)) {
+						syslog(LOG_WARNING, "Query [%s] failed.", query.c_str());
+					}
+
 					if(atoi(rsltRow["state"].c_str()) != regstate || atoi(rsltRow["expired"].c_str()) == 1 || register_expires == 0) {
 						// state changes or device unregistered, store to register_state
 						SqlDb_row reg;
@@ -1554,11 +1559,6 @@ Call::saveRegisterToDb() {
 						reg.add(regstate, "state");
 						reg.add(sqlDb->getIdOrInsert(sql_cdr_ua_table, "id", "ua", cdr_ua, ""), "ua_id");
 						sqlDb->insert("register_state", reg, "");
-					}
-					// delete old record from register_table (because we have new one
-					string query = "DELETE FROM " + (string)register_table + " WHERE ID = '" + (rsltRow["ID"]).c_str() + "'";
-					if(!sqlDb->query(query)) {
-						syslog(LOG_WARNING, "Query [%s] failed.", query.c_str());
 					}
 				} else {
 					// we have success reg without any history, so lets save it to register_state
@@ -1828,7 +1828,6 @@ Calltable::add(char *call_id, unsigned long call_id_len, time_t time, u_int32_t 
 	if(opt_sip_register) 
 		newcall->flags |= FLAG_SAVEREGISTER;
 
-	//calls_list.push_front(newcall);
 	string call_idS = string(call_id, call_id_len);
 	calls_listMAP[call_idS] = newcall;
 	return newcall;

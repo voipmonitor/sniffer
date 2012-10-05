@@ -341,10 +341,9 @@ int get_expires_from_contact(char *data, int datalen, int *expires){
 	char *s;
 	unsigned long l;
 
+	if(datalen < 8) return 1;
+
 	s = gettag(data, datalen, "Contact:", &l);
-	if(!l) {
-		s = gettag(data, datalen, "m:", &l);
-	}
 	if(l && ((unsigned int)l < ((unsigned int)datalen - (s - data)))) {
 		char tmp[128];
 		int res = get_value_stringkeyval2(s, l + 2, "expires=", tmp, sizeof(tmp));
@@ -978,7 +977,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 					// to much register attempts without OK or 401 responses
 					call->regstate = 4;
 					call->saveregister();
-					call = new_invite_register(sip_method, data, datalen, header, callidstr, saddr, daddr, source, s, l);
+					call = new_invite_register(sip_method, data, datalen, header, callidstr, saddr, daddr, source, call->call_id, strlen(call->call_id));
 					return call;
 				}
 				s = gettag(data, datalen, "CSeq:", &l);
