@@ -250,7 +250,9 @@ int get_sip_domain(char *data, int data_len, const char *tag, char *domain, int 
 	}
 	r += 1;
 	if ((r2 = (unsigned long)memmem(peername_tag, peername_tag_len, ">", 1)) == 0){
-		goto fail_exit;
+		if ((r2 = (unsigned long)memmem(peername_tag, peername_tag_len + 1, "\r", 1)) == 0){
+			goto fail_exit;
+		}
 	}
 	if (r2 <= r || ((r2 - r) > (unsigned long)domain_len)  ){
 		goto fail_exit;
@@ -522,10 +524,10 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 		   messages use the same Call-ID. For example, when a user agent receives a 
 		   BYE message, it knows which call to hang up based on the Call-ID.
 		*/
-		s = gettag(data,datalen,"Call-ID:", &l);
+		s = gettag(data,datalen,"\nCall-ID:", &l);
 		if(l <= 0 || l > 1023) {
 			// try also compact header
-			s = gettag(data,datalen,"i:", &l);
+			s = gettag(data,datalen,"\ni:", &l);
 			if(l <= 0 || l > 1023) {
 				// no Call-ID found in packet
 				// if packet is tcp, check if belongs to some TCP stream for reassemling 
@@ -787,7 +789,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 				}
 
 				if(opt_norecord_header) {
-					s = gettag(data, datalen, "X-VoipMonitor-norecord:", &l);
+					s = gettag(data, datalen, "\nX-VoipMonitor-norecord:", &l);
 					if(l && l < 33) {
 						// do 
 						call->stoprecording();
@@ -819,7 +821,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 				}
 
 				//check and save CSeq for later to compare with OK 
-				s = gettag(data, datalen, "CSeq:", &l);
+				s = gettag(data, datalen, "\nCSeq:", &l);
 				if(l && l < 32) {
 					memcpy(call->invitecseq, s, l);
 					call->invitecseq[l] = '\0';
@@ -828,7 +830,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 				}
 				
 				// check if we have X-VoipMonitor-Custom1
-				s = gettag(data, datalen, "X-VoipMonitor-Custom1:", &l);
+				s = gettag(data, datalen, "\nX-VoipMonitor-Custom1:", &l);
 				if(l && l < 255) {
 					memcpy(call->custom_header1, s, l);
 					call->custom_header1[l] = '\0';
@@ -848,7 +850,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 			{
 
 			if(opt_norecord_header) {
-				s = gettag(data, datalen, "X-VoipMonitor-norecord:", &l);
+				s = gettag(data, datalen, "\nX-VoipMonitor-norecord:", &l);
 				if(l && l < 33) {
 					// do 
 					call->stoprecording();
@@ -870,7 +872,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 			// check if it is BYE or OK(RES2XX)
 			if(sip_method == INVITE) {
 				//check and save CSeq for later to compare with OK 
-				s = gettag(data, datalen, "CSeq:", &l);
+				s = gettag(data, datalen, "\nCSeq:", &l);
 				if(l && l < 32) {
 					memcpy(call->invitecseq, s, l);
 					call->invitecseq[l] = '\0';
@@ -879,7 +881,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 				}
 			} else if(sip_method == BYE) {
 				//check and save CSeq for later to compare with OK 
-				s = gettag(data, datalen, "CSeq:", &l);
+				s = gettag(data, datalen, "\nCSeq:", &l);
 				if(l && l < 32) {
 					memcpy(call->byecseq, s, l);
 					call->byecseq[l] = '\0';
@@ -903,7 +905,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 				}
 
 				// if it is OK check for BYE
-				s = gettag(data, datalen, "CSeq:", &l);
+				s = gettag(data, datalen, "\nCSeq:", &l);
 				if(l) {
 					if(verbosity > 2) {
 						char a = data[datalen - 1];
@@ -984,7 +986,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 		}
 
 		if(opt_norecord_header) {
-			s = gettag(data, datalen, "X-VoipMonitor-norecord:", &l);
+			s = gettag(data, datalen, "\nX-VoipMonitor-norecord:", &l);
 			if(l && l < 33) {
 				// do 
 				call->stoprecording();
@@ -992,7 +994,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 		}
 
 		if(opt_norecord_dtmf) {
-			s = gettag(data, datalen, "Signal:", &l);
+			s = gettag(data, datalen, "\nSignal:", &l);
 			if(l && l < 33) {
 				char *tmp = s + 1;
 				tmp[l - 1] = '\0';
@@ -1025,10 +1027,10 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 			(call->saddr == daddr && call->sport == dest))))
 			{
 
-			s = gettag(data,datalen,"Content-Type:",&l);
+			s = gettag(data,datalen,"\nContent-Type:",&l);
 			if(l <= 0 || l > 1023) {
 				//try compact header
-				s = gettag(data,datalen,"c:",&l);
+				s = gettag(data,datalen,"\nc:",&l);
 			}
 			char a = data[datalen - 1];
 			data[datalen - 1] = 0;
@@ -1041,7 +1043,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 				memset(&rtpmap, 0, sizeof(int) * MAX_RTPMAP);
 				if (!get_ip_port_from_sdp(tmp + 1, &tmp_addr, &tmp_port)){
 					// prepare User-Agent
-					s = gettag(data,datalen,"User-Agent:", &l);
+					s = gettag(data,datalen,"\nUser-Agent:", &l);
 					// store RTP stream
 					get_rtpmap_from_sdp(tmp + 1, datalen - (tmp + 1 - data), rtpmap);
 
