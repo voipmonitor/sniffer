@@ -1530,7 +1530,6 @@ Call::saveRegisterToDb() {
 
 		SqlDb_row cdr_ua;
 		cdr_ua.add(sqlEscapeString(a_ua), "ua");
-		printf("ua[%s]\n", a_ua);
 
 		switch(regstate) {
 		case 1:
@@ -1540,9 +1539,9 @@ Call::saveRegisterToDb() {
 			if(sqlDb->query(query)) {
 				SqlDb_row rsltRow = sqlDb->fetchRow();
 				if(rsltRow) {
-					printf("debug[%d] [%d]\n", atoi(rsltRow["state"].c_str()), atoi(rsltRow["expired"].c_str()));
-					if(atoi(rsltRow["state"].c_str()) != regstate || atoi(rsltRow["expired"].c_str()) == 1) {
-						// state changes, store to register_state
+					//printf("debug[%d] [%d]\n", atoi(rsltRow["state"].c_str()), atoi(rsltRow["expired"].c_str()));
+					if(atoi(rsltRow["state"].c_str()) != regstate || atoi(rsltRow["expired"].c_str()) == 1 || register_expires == 0) {
+						// state changes or device unregistered, store to register_state
 						SqlDb_row reg;
 						reg.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "created_at");
 						reg.add(htonl(sipcallerip), "sipcallerip");
@@ -1558,7 +1557,9 @@ Call::saveRegisterToDb() {
 					}
 					// delete old record from register_table (because we have new one
 					string query = "DELETE FROM " + (string)register_table + " WHERE ID = '" + (rsltRow["ID"]).c_str() + "'";
-					sqlDb->query(query);
+					if(!sqlDb->query(query)) {
+						syslog(LOG_WARNING, "Query [%s] failed.", query.c_str());
+					}
 				} else {
 					// we have success reg without any history, so lets save it to register_state
 					SqlDb_row reg;
@@ -1574,9 +1575,11 @@ Call::saveRegisterToDb() {
 					reg.add(sqlDb->getIdOrInsert(sql_cdr_ua_table, "id", "ua", cdr_ua, ""), "ua_id");
 					sqlDb->insert("register_state", reg, "");
 				}
+			} else {
+				syslog(LOG_WARNING, "Query [%s] failed.", query.c_str());
 			}
 
-			// save successfull REGISTER to register table
+			// save successfull REGISTER to register table in case expires is not negative
 			{
 			SqlDb_row reg;
 			reg.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");

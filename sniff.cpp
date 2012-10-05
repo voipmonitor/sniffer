@@ -314,6 +314,52 @@ int get_ip_port_from_sdp(char *sdp_text, in_addr_t *addr, unsigned short *port){
 	return 0;
 }
 
+int get_value_stringkeyval2(const char *data, unsigned int data_len, const char *key, char *value, int len) {
+	unsigned long r, tag_len;
+	char *tmp = gettag(data, data_len, key, &tag_len);
+	//gettag removes \r\n but we need it
+	if(!tag_len) {
+		goto fail_exit;
+	} else {
+		//gettag remove trailing \r but we need it 
+		tag_len++;
+	}
+	if ((r = (unsigned long)memmem(tmp, tag_len, ";", 1)) == 0){
+		if ((r = (unsigned long)memmem(tmp, tag_len, "\r", 1)) == 0){
+			goto fail_exit;
+		}
+	}
+	memcpy(value, (void*)tmp, r - (unsigned long)tmp);
+	value[r - (unsigned long)tmp] = '\0';
+	return 0;
+fail_exit:
+	strcpy(value, "");
+	return 1;
+}
+
+int get_expires_from_contact(char *data, int datalen, int *expires){
+	char *s;
+	unsigned long l;
+
+	s = gettag(data, datalen, "Contact:", &l);
+	if(!l) {
+		s = gettag(data, datalen, "m:", &l);
+	}
+	if(l && ((unsigned int)l < ((unsigned int)datalen - (s - data)))) {
+		char tmp[128];
+		int res = get_value_stringkeyval2(s, l + 2, "expires=", tmp, sizeof(tmp));
+		if(res) {
+			// not found, try again in case there is more Contact headers
+			return get_expires_from_contact(s, s - data, expires);
+		} else {
+			*expires = atoi(tmp);
+			return 0;
+		}
+	} else {
+		return 1;
+	}
+}
+
 int get_value_stringkeyval(const char *data, unsigned int data_len, const char *key, char *value, int len) {
 	unsigned long r, tag_len;
 	char *tmp = gettag(data, data_len, key, &tag_len);
@@ -330,6 +376,7 @@ fail_exit:
 	strcpy(value, "");
 	return 1;
 }
+
 
 int mimeSubtypeToInt(char *mimeSubtype) {
        if(strcmp(mimeSubtype,"G729") == 0)
@@ -528,6 +575,8 @@ Call *new_invite_register(int sip_method, char *data, int datalen, struct pcap_p
 				call->register_expires = atoi(s);
 				s[l] = c;
 			}
+			// the expire can be also in contact header Contact: 79438652 <sip:6600006@192.168.10.202:1026>;expires=240
+			get_expires_from_contact(data, datalen, &call->register_expires);
 /*
 			syslog(LOG_NOTICE, "contact_num[%s] contact_domain[%s] from_num[%s] from_name[%s] from_domain[%s] digest_username[%s] digest_realm[%s] expires[%d]\n", 
 				call->contact_num, call->contact_domain, call->caller, call->callername, call->caller_domain, 

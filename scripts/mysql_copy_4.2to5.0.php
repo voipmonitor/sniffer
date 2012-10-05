@@ -1,10 +1,10 @@
-<?
+<?php
 
 error_reporting(0);
 
 define("HOST", "localhost");
 define("USER", "root");
-define("PASS", "");
+define("PASS", "HxeIwg70K");
 
 define("SOURCE_DB", "voipmonitor");
 define("DEST_DB", "voipmonitor5");
@@ -74,13 +74,13 @@ while($cur <= $max){
 		progress_time = '".$row['progress_time']."',
 		first_rtp_time = '".$row['first_rtp_time']."',
 		caller = '".$row['caller']."',
-		caller_domain = '".$row['caller_domain']."',
-		caller_reverse = '".$row['caller_reverse']."',
-		callername = '".$row['callername']."',
-		callername_reverse = '".$row['callername_reverse']."',
-		called = '".$row['called']."',
-		called_domain = '".$row['called_domain']."',
-		called_reverse = '".$row['called_reverse']."',
+		caller_domain = '".mysql_escape_string($row['caller_domain'])."',
+		caller_reverse = '".mysql_escape_string($row['caller_reverse'])."',
+		callername = '".mysql_escape_string($row['callername'])."',
+		callername_reverse = '".mysql_escape_string($row['callername_reverse'])."',
+		called = '".mysql_escape_string($row['called'])."',
+		called_domain = '".mysql_escape_string($row['called_domain'])."',
+		called_reverse = '".mysql_escape_string($row['called_reverse'])."',
 		sipcallerip = '".$row['sipcallerip']."',
 		sipcalledip = '".$row['sipcalledip']."',
 		whohanged = '".$row['whohanged']."',
