@@ -250,7 +250,9 @@ int get_sip_domain(char *data, int data_len, const char *tag, char *domain, int 
 	}
 	r += 1;
 	if ((r2 = (unsigned long)memmem(peername_tag, peername_tag_len, ">", 1)) == 0){
-		goto fail_exit;
+		if ((r2 = (unsigned long)memmem(peername_tag, peername_tag_len + 1, "\r", 1)) == 0){
+			goto fail_exit;
+		}
 	}
 	if (r2 <= r || ((r2 - r) > (unsigned long)domain_len)  ){
 		goto fail_exit;
@@ -343,7 +345,7 @@ int get_expires_from_contact(char *data, int datalen, int *expires){
 
 	if(datalen < 8) return 1;
 
-	s = gettag(data, datalen, "Contact:", &l);
+	s = gettag(data, datalen, "\nContact:", &l);
 	if(l && ((unsigned int)l < ((unsigned int)datalen - (s - data)))) {
 		char tmp[128];
 		int res = get_value_stringkeyval2(s, l + 2, "expires=", tmp, sizeof(tmp));
@@ -505,69 +507,69 @@ Call *new_invite_register(int sip_method, char *data, int datalen, struct pcap_p
 	if (sip_method == INVITE or sip_method == REGISTER) {
 		int res;
 		// callername
-		res = get_sip_peercnam(data,datalen,"From:", call->callername, sizeof(call->callername));
+		res = get_sip_peercnam(data,datalen,"\nFrom:", call->callername, sizeof(call->callername));
 		if(res) {
 			// try compact header
-			get_sip_peercnam(data,datalen,"f:", call->callername, sizeof(call->callername));
+			get_sip_peercnam(data,datalen,"\nf:", call->callername, sizeof(call->callername));
 		}
 
 		// caller number
-		res = get_sip_peername(data,datalen,"From:", call->caller, sizeof(call->caller));
+		res = get_sip_peername(data,datalen,"\nFrom:", call->caller, sizeof(call->caller));
 		if(res) {
 			// try compact header
-			get_sip_peername(data,datalen,"f:", call->caller, sizeof(call->caller));
+			get_sip_peername(data,datalen,"\nf:", call->caller, sizeof(call->caller));
 		}
 
 		// caller number
-		res = get_sip_peername(data,datalen,"To:", call->called, sizeof(call->called));
+		res = get_sip_peername(data,datalen,"\nTo:", call->called, sizeof(call->called));
 		if(res) {
 			// try compact header
-			get_sip_peername(data,datalen,"t:", call->called, sizeof(call->called));
+			get_sip_peername(data,datalen,"\nt:", call->called, sizeof(call->called));
 		}
 
 		// caller domain 
-		res = get_sip_domain(data,datalen,"From:", call->caller_domain, sizeof(call->caller_domain));
+		res = get_sip_domain(data,datalen,"\nFrom:", call->caller_domain, sizeof(call->caller_domain));
 		if(res) {
 			// try compact header
-			get_sip_domain(data,datalen,"f:", call->caller_domain, sizeof(call->caller_domain));
+			get_sip_domain(data,datalen,"\nf:", call->caller_domain, sizeof(call->caller_domain));
 		}
 
 		// called domain 
-		res = get_sip_domain(data,datalen,"To:", call->called_domain, sizeof(call->called_domain));
+		res = get_sip_domain(data,datalen,"\nTo:", call->called_domain, sizeof(call->called_domain));
 		if(res) {
 			// try compact header
-			get_sip_domain(data,datalen,"t:", call->called_domain, sizeof(call->called_domain));
+			get_sip_domain(data,datalen,"\nt:", call->called_domain, sizeof(call->called_domain));
 		}
 
 		if(sip_method == REGISTER) {	
 			// copy contact num <sip:num@domain>
 
-			s = gettag(data, datalen, "User-Agent:", &l);
+			s = gettag(data, datalen, "\nUser-Agent:", &l);
 			if(l && ((unsigned int)l < ((unsigned int)datalen - (s - data)))) {
 				memcpy(call->a_ua, s, l);
 				call->a_ua[l] = '\0';
 			}
 
-			res = get_sip_peername(data,datalen,"Contact:", call->contact_num, sizeof(call->contact_num));
+			res = get_sip_peername(data,datalen,"\nContact:", call->contact_num, sizeof(call->contact_num));
 			if(res) {
 				// try compact header
-				get_sip_peername(data,datalen,"m:", call->contact_num, sizeof(call->contact_num));
+				get_sip_peername(data,datalen,"\nm:", call->contact_num, sizeof(call->contact_num));
 			}
 			// copy contact domain <sip:num@domain>
-			res = get_sip_domain(data,datalen,"Contact:", call->contact_domain, sizeof(call->contact_domain));
+			res = get_sip_domain(data,datalen,"\nContact:", call->contact_domain, sizeof(call->contact_domain));
 			if(res) {
 				// try compact header
-				get_sip_domain(data,datalen,"m:", call->contact_domain, sizeof(call->contact_domain));
+				get_sip_domain(data,datalen,"\nm:", call->contact_domain, sizeof(call->contact_domain));
 			}
 
 			// copy Authorization
-			s = gettag(data, datalen, "Authorization:", &l);
+			s = gettag(data, datalen, "\nAuthorization:", &l);
 			if(l && ((unsigned int)l < ((unsigned int)datalen - (s - data)))) {
 				get_value_stringkeyval(s, datalen - (s - data), "username=\"", call->digest_username, sizeof(call->digest_username));
 				get_value_stringkeyval(s, datalen - (s - data), "realm=\"", call->digest_realm, sizeof(call->digest_realm));
 			}
 			// get expires header
-			s = gettag(data, datalen, "Expires:", &l);
+			s = gettag(data, datalen, "\nExpires:", &l);
 			if(l && ((unsigned int)l < ((unsigned int)datalen - (s - data)))) {
 				char c = s[l];
 				s[l] = '\0';
@@ -594,7 +596,7 @@ Call *new_invite_register(int sip_method, char *data, int datalen, struct pcap_p
 	}
 
 	if(opt_norecord_header) {
-		s = gettag(data, datalen, "X-VoipMonitor-norecord:", &l);
+		s = gettag(data, datalen, "\nX-VoipMonitor-norecord:", &l);
 		if(l && l < 33) {
 			// do 
 			call->stoprecording();
@@ -626,7 +628,7 @@ Call *new_invite_register(int sip_method, char *data, int datalen, struct pcap_p
 	}
 
 	//check and save CSeq for later to compare with OK 
-	s = gettag(data, datalen, "CSeq:", &l);
+	s = gettag(data, datalen, "\nCSeq:", &l);
 	if(l && l < 32) {
 		memcpy(call->invitecseq, s, l);
 		call->invitecseq[l] = '\0';
@@ -635,7 +637,7 @@ Call *new_invite_register(int sip_method, char *data, int datalen, struct pcap_p
 	}
 	
 	// check if we have X-VoipMonitor-Custom1
-	s = gettag(data, datalen, "X-VoipMonitor-Custom1:", &l);
+	s = gettag(data, datalen, "\nX-VoipMonitor-Custom1:", &l);
 	if(l && l < 255) {
 		memcpy(call->custom_header1, s, l);
 		call->custom_header1[l] = '\0';
@@ -740,10 +742,10 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 		   messages use the same Call-ID. For example, when a user agent receives a 
 		   BYE message, it knows which call to hang up based on the Call-ID.
 		*/
-		s = gettag(data,datalen,"Call-ID:", &l);
+		s = gettag(data,datalen,"\nCall-ID:", &l);
 		if(l <= 0 || l > 1023) {
 			// try also compact header
-			s = gettag(data,datalen,"i:", &l);
+			s = gettag(data,datalen,"\ni:", &l);
 			if(l <= 0 || l > 1023) {
 				// no Call-ID found in packet
 				// if packet is tcp, check if belongs to some TCP stream for reassemling 
@@ -967,7 +969,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 				if(verbosity > 3) syslog(LOG_DEBUG, "REGISTER Call-ID[%s] regcount[%d]", call->call_id, call->regcount);
 
 				// update Authorization
-				s = gettag(data, datalen, "Authorization:", &l);
+				s = gettag(data, datalen, "\nAuthorization:", &l);
 				if(l && ((unsigned int)l < ((unsigned int)datalen - (s - data)))) {
 					get_value_stringkeyval(s, datalen - (s - data), "username=\"", call->digest_username, sizeof(call->digest_username));
 					get_value_stringkeyval(s, datalen - (s - data), "realm=\"", call->digest_realm, sizeof(call->digest_realm));
@@ -980,14 +982,14 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 					call = new_invite_register(sip_method, data, datalen, header, callidstr, saddr, daddr, source, call->call_id, strlen(call->call_id));
 					return call;
 				}
-				s = gettag(data, datalen, "CSeq:", &l);
+				s = gettag(data, datalen, "\nCSeq:", &l);
 				if(l && l < 32) {
 					memcpy(call->invitecseq, s, l);
 					call->invitecseq[l] = '\0';
 				}
 			} else if(sip_method == RES2XX) {
 				if(verbosity > 3) syslog(LOG_DEBUG, "REGISTER OK Call-ID[%s]", call->call_id);
-                                s = gettag(data, datalen, "CSeq:", &l);
+                                s = gettag(data, datalen, "\nCSeq:", &l);
                                 if(l && strncmp(s, call->invitecseq, l) == 0) {
 					// registration OK 
 					call->regstate = 1;
@@ -1024,7 +1026,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 			{
 
 			if(opt_norecord_header) {
-				s = gettag(data, datalen, "X-VoipMonitor-norecord:", &l);
+				s = gettag(data, datalen, "\nX-VoipMonitor-norecord:", &l);
 				if(l && l < 33) {
 					// do 
 					call->stoprecording();
@@ -1046,7 +1048,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 			// check if it is BYE or OK(RES2XX)
 			if(sip_method == INVITE) {
 				//check and save CSeq for later to compare with OK 
-				s = gettag(data, datalen, "CSeq:", &l);
+				s = gettag(data, datalen, "\nCSeq:", &l);
 				if(l && l < 32) {
 					memcpy(call->invitecseq, s, l);
 					call->invitecseq[l] = '\0';
@@ -1055,7 +1057,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 				}
 			} else if(sip_method == BYE) {
 				//check and save CSeq for later to compare with OK 
-				s = gettag(data, datalen, "CSeq:", &l);
+				s = gettag(data, datalen, "\nCSeq:", &l);
 				if(l && l < 32) {
 					memcpy(call->byecseq, s, l);
 					call->byecseq[l] = '\0';
@@ -1079,7 +1081,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 				}
 
 				// if it is OK check for BYE
-				s = gettag(data, datalen, "CSeq:", &l);
+				s = gettag(data, datalen, "\nCSeq:", &l);
 				if(l) {
 					if(verbosity > 2) {
 						char a = data[datalen - 1];
@@ -1160,7 +1162,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 		}
 
 		if(opt_norecord_header) {
-			s = gettag(data, datalen, "X-VoipMonitor-norecord:", &l);
+			s = gettag(data, datalen, "\nX-VoipMonitor-norecord:", &l);
 			if(l && l < 33) {
 				// do 
 				call->stoprecording();
@@ -1168,7 +1170,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 		}
 
 		if(opt_norecord_dtmf) {
-			s = gettag(data, datalen, "Signal:", &l);
+			s = gettag(data, datalen, "\nSignal:", &l);
 			if(l && l < 33) {
 				char *tmp = s + 1;
 				tmp[l - 1] = '\0';
@@ -1201,10 +1203,10 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 			(call->saddr == daddr && call->sport == dest))))
 			{
 
-			s = gettag(data,datalen,"Content-Type:",&l);
+			s = gettag(data,datalen,"\nContent-Type:",&l);
 			if(l <= 0 || l > 1023) {
 				//try compact header
-				s = gettag(data,datalen,"c:",&l);
+				s = gettag(data,datalen,"\nc:",&l);
 			}
 			char a = data[datalen - 1];
 			data[datalen - 1] = 0;
@@ -1217,7 +1219,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 				memset(&rtpmap, 0, sizeof(int) * MAX_RTPMAP);
 				if (!get_ip_port_from_sdp(tmp + 1, &tmp_addr, &tmp_port)){
 					// prepare User-Agent
-					s = gettag(data,datalen,"User-Agent:", &l);
+					s = gettag(data,datalen,"\nUser-Agent:", &l);
 					// store RTP stream
 					get_rtpmap_from_sdp(tmp + 1, datalen - (tmp + 1 - data), rtpmap);
 
