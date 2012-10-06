@@ -20,6 +20,8 @@
 #define FLAG_WAV	(1 << 8)
 #define FLAG_NOWAV      (1 << 9)
 
+#define MAX_PREFIX 64
+
 class IPfilter {
 private:
 	struct db_row {
@@ -56,7 +58,7 @@ public:
 class TELNUMfilter {
 private:
 	struct db_row {
-		unsigned long long prefix;
+		char prefix[MAX_PREFIX];
 		int direction;
 		int rtp;
 		int sip;
@@ -72,7 +74,7 @@ private:
 		unsigned int flags;
 	};
         struct t_node_tel {
-                t_node_tel *nodes[10];
+                t_node_tel *nodes[256];
                 t_payload *payload;
         };
         t_node_tel *first_node;

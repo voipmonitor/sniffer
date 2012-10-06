@@ -275,7 +275,7 @@ IPfilter::dump() {
 TELNUMfilter::TELNUMfilter() {
         first_node = new(t_node_tel);
         first_node->payload = NULL;
-        for(int i = 0; i < 10; i++) {
+        for(int i = 0; i < 256; i++) {
                 first_node->nodes[i] = NULL;
 	}
 	count = 0;
@@ -303,7 +303,7 @@ TELNUMfilter::~TELNUMfilter() {
                         delete(node->payload);
                 }
 
-                for(int i = 0; i < 10; i++) {
+                for(int i = 0; i < 256; i++) {
                         if(node->nodes[i]) {
                                 // vsichni nenulovi naslednici zaradime na konec fronty
                                 fronta.push_back(node->nodes[i]);
@@ -320,15 +320,15 @@ TELNUMfilter::add_payload(t_payload *payload) {
 	t_node_tel *tmp = first_node;
 
 	for(unsigned int i = 0; i < strlen(payload->prefix); i++) {
-		if(!tmp->nodes[payload->prefix[i] - 48]) {
+		if(!tmp->nodes[(int)payload->prefix[i]]) {
 			t_node_tel *node = new(t_node_tel);
 			node->payload = NULL;
-			for(int j = 0; j < 10; j++) {
+			for(int j = 0; j < 256; j++) {
 				node->nodes[j] = NULL;
 			}
-			tmp->nodes[payload->prefix[i] - 48] = node;
+			tmp->nodes[(int)payload->prefix[i]] = node;
 		}
-		tmp = tmp->nodes[payload->prefix[i] - 48];      // shift
+		tmp = tmp->nodes[(int)payload->prefix[i]];      // shift
 
 	}
 
@@ -376,7 +376,7 @@ TELNUMfilter::load() {
 			count++;
 			db_row* filterRow = new(db_row);
 			memset(filterRow,0,sizeof(db_row));
-			filterRow->prefix = (unsigned long long)atoll(row["prefix"].c_str());
+			strncpy(filterRow->prefix, row["prefix"].c_str(), MAX_PREFIX);
 			//mysqlpp//
 			/*
 			try {
@@ -421,7 +421,7 @@ TELNUMfilter::load() {
 		t_payload *np = new(t_payload);
 		np->direction = vectDbRow[i].direction;
 		np->flags = 0;
-		sprintf(np->prefix,"%llu",vectDbRow[i].prefix);
+		strncpy(np->prefix, vectDbRow[i].prefix, MAX_PREFIX);
 		if(vectDbRow[i].rtp)	np->flags |= FLAG_RTP;
 			else		np->flags |= FLAG_NORTP;
 		if(vectDbRow[i].sip)	np->flags |= FLAG_SIP;
@@ -511,14 +511,14 @@ TELNUMfilter::add_call_flags(unsigned int *flags, char *telnum_src, char *telnum
         t_node_tel *tmp = first_node;
         t_payload *lastpayload = NULL;
         for(unsigned int i = 0; i < strlen(telnum_src); i++) {
-		if(telnum_src[i] < 48 || telnum_src[i] > 57) {
-			//stop on non digit
+		if(telnum_src[i] > 256) {
+			//check if it is in 0-256 ascii
 			break;
 		}
-                if(!tmp->nodes[telnum_src[i] - 48]) {
+                if(!tmp->nodes[(int)telnum_src[i]]) {
                         break;
                 }
-                tmp = tmp->nodes[telnum_src[i] - 48];
+                tmp = tmp->nodes[(int)telnum_src[i]];
                 if(tmp && tmp->payload) {
 			lastdirection = tmp->payload->direction;
                         lastpayload = tmp->payload;
@@ -531,14 +531,14 @@ TELNUMfilter::add_call_flags(unsigned int *flags, char *telnum_src, char *telnum
 	if(!lastpayload) {
 		//src not found or src found , try dst
 		for(unsigned int i = 0; i < strlen(telnum_dst); i++) {
-			if(telnum_dst[i] < 48 || telnum_dst[i] > 57) {
-				//stop on non digit
+			if(telnum_dst[i] > 256) {
+				//check if it is in 0-256 ascii
 				break;
 			}
-			if(!tmp->nodes[telnum_dst[i] - 48]) {
+			if(!tmp->nodes[(int)telnum_dst[i]]) {
 				break;
 			}
-			tmp = tmp->nodes[telnum_dst[i] - 48];
+			tmp = tmp->nodes[(int)telnum_dst[i]];
 			if(tmp && tmp->payload) {
 				lastdirection = tmp->payload->direction;
 				lastpayload = tmp->payload;
@@ -595,7 +595,7 @@ TELNUMfilter::dump(t_node_tel *node) {
 	if(node->payload) {
 		printf("prefix[%s] flags[%u]\n", node->payload->prefix, node->payload->flags);
 	}
-	for(int i = 0; i < 10; i++) {
+	for(int i = 0; i < 256; i++) {
 		if(node->nodes[i]) {
 			this->dump(node->nodes[i]);
 		}
