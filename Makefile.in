@@ -9,6 +9,8 @@ ifeq ($(findstring arm,$(GCCARCH)),arm)
   GCCARCH = armv6k
 endif
 
+version = $(shell grep RTPSENSOR_VERSION voipmonitor.h | cut -d" " -f 3 | tr -d "\"")
+
 objects = codec_alaw.o codec_ulaw.o format_slinear.o format_wav.o format_ogg.o calltable.o rtp.o voipmonitor.o sniff.o jitterbuffer/astmm.o jitterbuffer/utils.o jitterbuffer/fixedjitterbuf.o jitterbuffer/jitterbuf.o jitterbuffer/abstract_jb.o jitterbuffer/frame.o gzstream/gzstream.o gzstream/libgzstream.a manager.o tools.o filter_mysql.o hash.o mos_g729.o odbc.o rtcp.o sql_db.o
 
 headers = $(shell ls *.h -1 | tr "\n" " ")
@@ -115,28 +117,36 @@ clean :
 	cp -f .cleancount .lastclean
 
 targz64: static
-	rm -rf /tmp/voipmonitor-amd64-5.0-static*
-	mkdir -p /tmp/voipmonitor-amd64-5.0-static/usr/local/sbin
-	cp cdrtable.sql /tmp/voipmonitor-amd64-5.0-static/
+	rm -rf /tmp/voipmonitor-amd64-${version}-static*
+	mkdir -p /tmp/voipmonitor-amd64-${version}-static/usr/local/sbin
+	cp cdrtable.sql /tmp/voipmonitor-amd64-${version}-static/
 	strip voipmonitor
-	cp voipmonitor /tmp/voipmonitor-amd64-5.0-static/usr/local/sbin/
-	mkdir -p /tmp/voipmonitor-amd64-5.0-static/etc/init.d
-	cp config/voipmonitor.conf /tmp/voipmonitor-amd64-5.0-static/etc/
-	cp config/init.d/voipmonitor /tmp/voipmonitor-amd64-5.0-static/etc/init.d/
-	cp scripts/install-script.sh /tmp/voipmonitor-amd64-5.0-static/
-	tar -C /tmp -czf /tmp/voipmonitor-amd64-5.0-static.tar.gz voipmonitor-amd64-5.0-static
+	cp voipmonitor /tmp/voipmonitor-amd64-${version}-static/usr/local/sbin/
+	mkdir -p /tmp/voipmonitor-amd64-${version}-static/etc/init.d
+	cp config/voipmonitor.conf /tmp/voipmonitor-amd64-${version}-static/etc/
+	cp config/init.d/voipmonitor /tmp/voipmonitor-amd64-${version}-static/etc/init.d/
+	cp scripts/install-script.sh /tmp/voipmonitor-amd64-${version}-static/
+	tar -C /tmp -czf /tmp/voipmonitor-amd64-${version}-static.tar.gz voipmonitor-amd64-${version}-static
 	
 targz32: static
-	rm -rf /tmp/voipmonitor-i686-5.0-static*
-	mkdir -p /tmp/voipmonitor-i686-5.0-static/usr/local/sbin
-	cp cdrtable.sql /tmp/voipmonitor-i686-5.0-static/
+	rm -rf /tmp/voipmonitor-i686-${version}-static*
+	mkdir -p /tmp/voipmonitor-i686-${version}-static/usr/local/sbin
+	cp cdrtable.sql /tmp/voipmonitor-i686-${version}-static/
 	strip voipmonitor
-	cp voipmonitor /tmp/voipmonitor-i686-5.0-static/usr/local/sbin/
-	mkdir -p /tmp/voipmonitor-i686-5.0-static/etc/init.d
-	cp config/voipmonitor.conf /tmp/voipmonitor-i686-5.0-static/etc/
-	cp config/init.d/voipmonitor /tmp/voipmonitor-i686-5.0-static/etc/init.d/
-	cp scripts/install-script.sh /tmp/voipmonitor-i686-5.0-static/
-	tar -C /tmp -czf /tmp/voipmonitor-i686-5.0-static.tar.gz voipmonitor-i686-5.0-static
+	cp voipmonitor /tmp/voipmonitor-i686-${version}-static/usr/local/sbin/
+	mkdir -p /tmp/voipmonitor-i686-${version}-static/etc/init.d
+	cp config/voipmonitor.conf /tmp/voipmonitor-i686-${version}-static/etc/
+	cp config/init.d/voipmonitor /tmp/voipmonitor-i686-${version}-static/etc/init.d/
+	cp scripts/install-script.sh /tmp/voipmonitor-i686-${version}-static/
+	tar -C /tmp -czf /tmp/voipmonitor-i686-${version}-static.tar.gz voipmonitor-i686-${version}-static
+
+source: clean
+	rm -rf /tmp/voipmonitor-${version}-src
+	mkdir /tmp/voipmonitor-${version}-src
+	cp -a * /tmp/voipmonitor-${version}-src/
+	rm -rf `find /tmp/voipmonitor-${version}-src -type d -name .svn`
+	tar -C /tmp -czf /tmp/voipmonitor-${version}-src.tar.gz voipmonitor-${version}-src
+
 
 install: 
 	install voipmonitor /usr/local/sbin/
