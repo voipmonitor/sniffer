@@ -84,6 +84,7 @@ int opt_norecord_header = 0;	// if = 1 SIP call with X-VoipMonitor-norecord head
 int opt_rtpnosip = 0;		// if = 1 RTP stream will be saved into calls regardless on SIP signalizatoin (handy if you need extract RTP without SIP)
 int opt_norecord_dtmf = 0;	// if = 1 SIP call with dtmf == *0 sequence (in SIP INFO) will stop recording
 int opt_savewav_force = 0;	// if = 1 WAV will be generated no matter on filter rules
+int opt_sipoverlap = 1;		
 
 char configfile[1024] = "";	// config file name
 
@@ -405,7 +406,7 @@ bool FileExists(char *strFilename) {
 }
 
 int yesno(const char *arg) {
-	if(arg[0] == 'y' or arg[0] == 1) 
+	if(arg[0] == 'y' or arg[0] == '1') 
 		return 1;
 	else
 		return 0;
@@ -623,6 +624,9 @@ int load_config(char *fname) {
 	}
 	if((value = ini.GetValue("general", "odbcdriver", NULL))) {
 		strncpy(odbc_driver, value, sizeof(odbc_driver));
+	}
+	if((value = ini.GetValue("general", "sipoverlap", NULL))) {
+		opt_sipoverlap = yesno(value);
 	}
 	if((value = ini.GetValue("general", "jitterbuffer_f1", NULL))) {
 		switch(value[0]) {

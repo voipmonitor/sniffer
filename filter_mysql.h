@@ -67,7 +67,7 @@ private:
 		int wav;
 	};
 	struct t_payload {
-		char prefix[32];
+		char prefix[MAX_PREFIX];
 		int direction;
 		unsigned int ip;
 		int mask;

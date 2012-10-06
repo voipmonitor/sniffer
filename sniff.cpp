@@ -79,6 +79,7 @@ extern pcap_t *handle;
 extern read_thread *threads;
 extern int opt_norecord_dtmf;
 extern int opt_onlyRTPheader;
+extern int opt_sipoverlap;
 
 extern IPfilter *ipfilter;
 extern IPfilter *ipfilter_reload;
@@ -1047,6 +1048,15 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 
 			// check if it is BYE or OK(RES2XX)
 			if(sip_method == INVITE) {
+				//update called number for each invite due to overlap-dialling
+				if (opt_sipoverlap && saddr == call->sipcallerip) {
+					int res = get_sip_peername(data,datalen,"\nTo:", call->called, sizeof(call->called));
+					if(res) {
+						// try compact header
+						get_sip_peername(data,datalen,"\nt:", call->called, sizeof(call->called));
+					}
+				}
+
 				//check and save CSeq for later to compare with OK 
 				s = gettag(data, datalen, "\nCSeq:", &l);
 				if(l && l < 32) {
