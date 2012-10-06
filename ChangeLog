@@ -1,3 +1,8 @@
+version 5.0.5
+=============
+
+- fix IP and telnum based capture rules which were not working at all since version 5
+
 version 5.0.4
 =============
 
