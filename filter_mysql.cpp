@@ -74,6 +74,7 @@ IPfilter::load() {
 		SqlDb_row row;
 		sqlDb->query("SELECT * FROM filter_ip");
 		while((row = sqlDb->fetchRow())) {
+			count++;
 			db_row* filterRow = new db_row;
 			memset(filterRow,0,sizeof(db_row));
 			filterRow->ip = (unsigned int)atoi(row["ip"].c_str());
@@ -371,6 +372,7 @@ TELNUMfilter::load() {
 		SqlDb_row row;
 		sqlDb->query("SELECT * FROM filter_telnum");
 		while((row = sqlDb->fetchRow())) {
+			count++;
 			db_row* filterRow = new(db_row);
 			memset(filterRow,0,sizeof(db_row));
 			filterRow->prefix = (unsigned long long)atoll(row["prefix"].c_str());

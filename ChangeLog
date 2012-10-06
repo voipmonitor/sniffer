@@ -1,3 +1,16 @@
+version 5.0.5
+=============
+
+- fix IP and telnum based capture rules which were not working at all since version 5
+
+version 5.0.4
+=============
+
+- Change in voipmonitor.conf localhost to 127.0.0.1 to fix mysql connection on centos for statically build packages
+- increase call-id SIP header len from 32 to 128
+- all SIP headers has to start right after new line. Otherwise the compact headers t: is maching Contact: 
+- According RFC support To: header also if it is not in <> (<sip:....>) and thus correctly extract domain part 
+
 version 5.0.3
 =============
 
