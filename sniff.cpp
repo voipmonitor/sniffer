@@ -605,14 +605,14 @@ Call *new_invite_register(int sip_method, char *data, int datalen, struct pcap_p
 	}
 
 	// opening dump file
-	if(call->flags & (FLAG_SAVESIP | FLAG_SAVEREGISTER | FLAG_SAVERTP | FLAG_SAVEWAV) || opt_savewav_force) {
+	if(call->type != REGISTER && (call->flags & (FLAG_SAVESIP | FLAG_SAVEREGISTER | FLAG_SAVERTP | FLAG_SAVEWAV) || opt_savewav_force)) {
 		if(opt_cachedir[0] != '\0') {
 			sprintf(str2, "%s/%s", opt_cachedir, call->dirname());
 			mkdir(str2, 0777);
 		}
 		mkdir(call->dirname(), 0777);
 	}
-	if(!call->type != REGISTER && call->flags & (FLAG_SAVESIP | FLAG_SAVEREGISTER | FLAG_SAVERTP)) {
+	if(call->type != REGISTER && (call->flags & (FLAG_SAVESIP | FLAG_SAVEREGISTER | FLAG_SAVERTP))) {
 		if(opt_cachedir[0] != '\0') {
 			sprintf(str2, "%s/%s/%s.pcap", opt_cachedir, call->dirname(), call->get_fbasename_safe());
 		} else {

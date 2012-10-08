@@ -75,6 +75,8 @@ extern char odbc_driver[256];
 extern int opt_callend;
 int calls = 0;
 
+unsigned int last_register_clean = 0;
+
 //mysqlpp// mysqlpp::Connection con(false);
 Odbc odbc;
 
@@ -1531,21 +1533,55 @@ Call::saveRegisterToDb() {
 		SqlDb_row cdr_ua;
 		cdr_ua.add(sqlEscapeString(a_ua), "ua");
 
+		unsigned int now = time(NULL);
+
+		if(last_register_clean == 0) {
+			// on first run the register table has to be deleted 
+			query = "DELETE FROM register";
+			sqlDb->query(query);
+		} else if((last_register_clean + REGISTER_CLEAN_PERIOD) < now){
+			// last clean was done older than CLEAN_PERIOD seconds
+			query = "INSERT INTO register_state (created_at, sipcallerip, from_num, to_num, contact_num, contact_domain, digestusername, expires, state, ua_id) SELECT expires_at, sipcallerip, from_num, to_domain, contact_num, contact_domain, digestusername, expires, 5, ua_id FROM register WHERE expires_at <= NOW()";
+			sqlDb->query(query);
+			query = "DELETE FROM register WHERE expires_at <= NOW()";
+			sqlDb->query(query);
+		}
+		last_register_clean = now;
+
 		switch(regstate) {
 		case 1:
 		case 3:
-			query = "SELECT ID, state, (UNIX_TIMESTAMP(expires_at) < UNIX_TIMESTAMP(" + sqlEscapeString(sqlDateTimeString(calltime())) + ")) AS expired FROM " + register_table + " WHERE to_num = " + sqlEscapeString(called) + " AND digestusername = " + sqlEscapeString(digest_username) + " ORDER BY ID DESC LIMIT 1";
+			query = "SELECT ID, state, UNIX_TIMESTAMP(expires_at) AS expires_at, (UNIX_TIMESTAMP(expires_at) < UNIX_TIMESTAMP(" + sqlEscapeString(sqlDateTimeString(calltime())) + ")) AS expired FROM " + register_table + " WHERE to_num = " + sqlEscapeString(called) + " AND digestusername = " + sqlEscapeString(digest_username) + " ORDER BY ID DESC LIMIT 1";
 //			if(verbosity > 2) cout << query << "\n";
 			if(sqlDb->query(query)) {
 				SqlDb_row rsltRow = sqlDb->fetchRow();
 				if(rsltRow) {
 					// delete old record from register_table (because we have new one
+					int expired = atoi(rsltRow["expired"].c_str()) == 1;
+					int expires_at = atoi(rsltRow["expires_at"].c_str());
+
 					string query = "DELETE FROM " + (string)register_table + " WHERE ID = '" + (rsltRow["ID"]).c_str() + "'";
 					if(!sqlDb->query(query)) {
 						syslog(LOG_WARNING, "Query [%s] failed.", query.c_str());
 					}
 
-					if(atoi(rsltRow["state"].c_str()) != regstate || atoi(rsltRow["expired"].c_str()) == 1 || register_expires == 0) {
+					if(expired) {
+						// save expired state
+						SqlDb_row reg;
+						reg.add(sqlEscapeString(sqlDateTimeString(expires_at).c_str()), "created_at");
+						reg.add(htonl(sipcallerip), "sipcallerip");
+						reg.add(sqlEscapeString(caller), "from_num");
+						reg.add(sqlEscapeString(called), "to_num");
+						reg.add(sqlEscapeString(contact_num), "contact_num");
+						reg.add(sqlEscapeString(contact_domain), "contact_domain");
+						reg.add(sqlEscapeString(digest_username), "digestusername");
+						reg.add(register_expires, "expires");
+						reg.add(5, "state");
+						reg.add(sqlDb->getIdOrInsert(sql_cdr_ua_table, "id", "ua", cdr_ua, ""), "ua_id");
+						sqlDb->insert("register_state", reg, "");
+					}
+
+					if(atoi(rsltRow["state"].c_str()) != regstate || register_expires == 0) {
 						// state changes or device unregistered, store to register_state
 						SqlDb_row reg;
 						reg.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "created_at");
