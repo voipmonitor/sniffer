@@ -352,7 +352,7 @@ int get_expires_from_contact(char *data, int datalen, int *expires){
 		int res = get_value_stringkeyval2(s, l + 2, "expires=", tmp, sizeof(tmp));
 		if(res) {
 			// not found, try again in case there is more Contact headers
-			return get_expires_from_contact(s, s - data, expires);
+			return get_expires_from_contact(s, datalen - (s - data), expires);
 		} else {
 			*expires = atoi(tmp);
 			return 0;
