@@ -370,7 +370,8 @@ Call::read_rtp(unsigned char* data, int datalen, struct pcap_pkthdr *header, u_i
 		}
 		rtp[ssrc_n]->gfileRAW = NULL;
 		sprintf(rtp[ssrc_n]->basefilename, "%s/%s.i%d", dirname(), get_fbasename_safe(), iscaller);
-		if((int i = get_index_by_ip_port(saddr, port)) != -1) {
+		int i = get_index_by_ip_port(saddr, port);
+		if(i >= 0) {
 			memcpy(this->rtp[ssrc_n]->rtpmap, rtpmap[i], MAX_RTPMAP * sizeof(int));
 		}
 
