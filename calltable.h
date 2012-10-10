@@ -76,7 +76,7 @@ public:
 	char *dirname();		//!< name of the directory to store files for the Call
 	char a_ua[1024];		//!< caller user agent 
 	char b_ua[1024];		//!< callee user agent 
-	int rtpmap[MAX_IP_PER_CALL][20]; //!< rtpmap for every rtp stream
+	int rtpmap[MAX_IP_PER_CALL][MAX_RTPMAP]; //!< rtpmap for every rtp stream
 	RTP tmprtp;			//!< temporary structure used to decode information from frame
 	RTP *lastcallerrtp;		//!< last RTP stream from caller
 	RTP *lastcalledrtp;		//!< last RTP stream from called
