@@ -141,6 +141,7 @@ source: clean
 	rm -rf /tmp/voipmonitor-${version}-src
 	mkdir /tmp/voipmonitor-${version}-src
 	cp -a * /tmp/voipmonitor-${version}-src/
+	cp -a .cleancount /tmp/voipmonitor-${version}-src/
 	rm -rf `find /tmp/voipmonitor-${version}-src -type d -name .svn`
 	tar -C /tmp -czf /tmp/voipmonitor-${version}-src.tar.gz voipmonitor-${version}-src
 
