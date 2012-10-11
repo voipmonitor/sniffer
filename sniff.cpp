@@ -193,14 +193,31 @@ int get_sip_peercnam(char *data, int data_len, const char *tag, char *peername, 
 	if(!peername_tag_len) {
 		goto fail_exit;
 	}
+
+/* three types of URI
+ 1)     "A. G. Bell" <sip:agb@bell-telephone.com> ;tag=a48s
+ 2)     Anonymous <sip:c8oqz84zk7z@privacy.org>;tag=hyh8
+ 3)     sip:+12125551212@server.phone2net.com;tag=887s
+*/
 	if ((r = (unsigned long)memmem(peername_tag, peername_tag_len, "\"", 1)) == 0){
-		goto fail_exit;
-	}
-	r += 1;
-	if ((r2 = (unsigned long)memmem(peername_tag, peername_tag_len, "\" <", 3)) == 0){
-		// try without " "
-		if ((r2 = (unsigned long)memmem(peername_tag, peername_tag_len, "\"<", 2)) == 0){
+		// try without ""
+		if ((r = (unsigned long)memmem(peername_tag, peername_tag_len, "<", 1)) == 0){
 			goto fail_exit;
+		} else {
+			// found case 2)     Anonymous <sip:c8oqz84zk7z@privacy.org>;tag=hyh8
+			r = (unsigned long)peername_tag;
+		}
+	} else {
+		// found case 1) "A. G. Bell" <sip:agb@bell-telephone.com> ;tag=a48s
+		r += 1;
+	}
+	if ((r2 = (unsigned long)memmem(peername_tag, peername_tag_len, "\" <", 3)) == 0){
+		// try without space ' '
+		if ((r2 = (unsigned long)memmem(peername_tag, peername_tag_len, "\"<", 2)) == 0){
+			// try without quotes
+			if ((r2 = (unsigned long)memmem(peername_tag, peername_tag_len, " <", 2)) == 0){
+				goto fail_exit;
+			}
 		}
 	}
 	if (r2 <= r || ((r2 - r) > (unsigned long)peername_len) ){
