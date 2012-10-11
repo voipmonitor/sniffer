@@ -56,7 +56,7 @@ private:
 class SqlDb {
 public:
 	SqlDb();
-	~SqlDb();
+	virtual ~SqlDb();
 	void setConnectParameters(string server, string user, string password, string database = "");
 	void enableSysLog();
 	virtual bool connect() = 0;

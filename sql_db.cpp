@@ -182,6 +182,7 @@ SqlDb_mysql::SqlDb_mysql() {
 }
 
 SqlDb_mysql::~SqlDb_mysql() {
+	//cout << "destruct SqlDb_mysql" << endl;
 	this->clean();
 }
 
