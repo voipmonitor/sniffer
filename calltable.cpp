@@ -370,7 +370,8 @@ Call::read_rtp(unsigned char* data, int datalen, struct pcap_pkthdr *header, u_i
 		}
 		rtp[ssrc_n]->gfileRAW = NULL;
 		sprintf(rtp[ssrc_n]->basefilename, "%s/%s.i%d", dirname(), get_fbasename_safe(), iscaller);
-		if((int i = get_index_by_ip_port(saddr, port)) != -1) {
+		int i = get_index_by_ip_port(saddr, port);
+		if(i >= 0) {
 			memcpy(this->rtp[ssrc_n]->rtpmap, rtpmap[i], MAX_RTPMAP * sizeof(int));
 		}
 
@@ -1700,6 +1701,18 @@ Calltable::hashfind_by_ip_port(in_addr_t addr, unsigned short port, int *iscalle
 		}
 	}
 	return NULL;
+}
+
+void
+Calltable::hashDump() {
+	hash_node *node = NULL;
+	printf("--- hash dump ---\n");
+	for(int i = 0; i < MAXNODE; i++) {
+		for (node = (hash_node *)calls_hash[i]; node != NULL; node = node->next) {
+			printf("node->addr[%u], note->port[%d], node->call[%p]\n", node->addr, node->port, node->call);
+		}
+	}
+	printf("--- hash end dump ---\n");
 }
 
 Call*

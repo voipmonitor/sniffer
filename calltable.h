@@ -86,6 +86,7 @@ public:
 	int whohanged;			//!< who hanged up. 0 -> caller, 1-> callee, -1 -> unknown
 	int recordstopped;		//!< flag holding if call was stopped to avoid double free
 	int dtmfflag;			//!< used for holding dtmf states 
+	int ipport_n;				//!< last index of addr and port array 
 
 	time_t progress_time;		//!< time in seconds of 18X response
 	time_t first_rtp_time;		//!< time in seconds of first RTP packet
@@ -332,7 +333,6 @@ private:
 	in_addr_t addr[MAX_IP_PER_CALL];	//!< IP address from SDP (indexed together with port)
 	unsigned short port[MAX_IP_PER_CALL];	//!< port number from SDP (indexed together with IP)
 	bool iscaller[MAX_IP_PER_CALL];         //!< is that RTP stream from CALLER party? 
-	int ipport_n;				//!< last index of addr and port array 
 	pcap_dumper_t *f_pcap;
 	char sdirname[255];
 };
@@ -451,6 +451,8 @@ public:
 	 *
 	*/
 	void hashRemove(in_addr_t addr, unsigned short port);
+
+	void hashDump();
 
 private:
 	pthread_mutex_t qlock;		//!< mutex locking calls_queue
