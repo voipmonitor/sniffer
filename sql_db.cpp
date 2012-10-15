@@ -8,6 +8,7 @@
 
 
 extern int verbosity;
+extern int opt_mysql_port;
 
 
 string SqlDb_row::operator [] (const char *fieldName) {
@@ -192,7 +193,7 @@ bool SqlDb_mysql::connect() {
 		this->hMysqlConn = mysql_real_connect(
 					this->hMysql,
 					this->conn_server.c_str(), this->conn_user.c_str(), this->conn_password.c_str(), this->conn_database.c_str(),
-					0, NULL, 0);
+					opt_mysql_port, NULL, 0);
 		if(this->hMysqlConn) {
 			return(true);
 		} else {

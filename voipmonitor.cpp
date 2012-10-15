@@ -102,6 +102,7 @@ char mysql_database[256] = "voipmonitor";
 char mysql_table[256] = "cdr";
 char mysql_user[256] = "root";
 char mysql_password[256] = "";
+char opt_mysql_port = 0; // 0 menas use standard port 
 
 char odbc_dsn[256] = "voipmonitor";
 char odbc_user[256];
@@ -596,6 +597,9 @@ int load_config(char *fname) {
 	if((value = ini.GetValue("general", "mysqlhost", NULL))) {
 		strncpy(mysql_host, value, sizeof(mysql_host));
 	}
+	if((value = ini.GetValue("general", "mysqlport", NULL))) {
+		opt_mysql_port = atoi(value);
+	}
 	if((value = ini.GetValue("general", "myqslhost", NULL))) {
 		printf("You have old version of config file! there were typo in myqslhost instead of mysqlhost! Fix your config! exiting...\n");
 		syslog(LOG_ERR, "You have old version of config file! there were typo in myqslhost instead of mysqlhost! Fix your config! exiting...\n");
@@ -716,6 +720,7 @@ int main(int argc, char *argv[]) {
 	    {"no-cdr", 0, 0, 'c'},
 	    {"save-graph", 2, 0, 'G'},
 	    {"mysql-server", 1, 0, 'h'},
+	    {"mysql-port", 1, 0, 'O'},
 	    {"mysql-database", 1, 0, 'b'},
 	    {"mysql-username", 1, 0, 'u'},
 	    {"mysql-password", 1, 0, 'p'},
@@ -745,7 +750,7 @@ int main(int argc, char *argv[]) {
 	/* command line arguments overrides configuration in voipmonitor.conf file */
 	while(1) {
 		int c;
-		c = getopt_long(argc, argv, "C:f:i:r:d:v:h:b:t:u:p:P:kncUSRoAWGXTNIKy4", long_options, &option_index);
+		c = getopt_long(argc, argv, "C:f:i:r:d:v:O:h:b:t:u:p:P:kncUSRoAWGXTNIKy4", long_options, &option_index);
 		//"i:r:d:v:h:b:u:p:fnU", NULL, NULL);
 		if (c == -1)
 			break;
@@ -842,6 +847,9 @@ int main(int argc, char *argv[]) {
 			case 'h':
 				strncpy(mysql_host, optarg, sizeof(mysql_host));
 				break;
+			case 'O':
+				opt_mysql_port = atoi(optarg);
+				break;
 			case 'b':
 				strncpy(mysql_database, optarg, sizeof(mysql_database));
 				break;
@@ -895,7 +903,7 @@ int main(int argc, char *argv[]) {
 	if ((fname == NULL) && (ifname[0] == '\0')){
 		printf( "voipmonitor version %s\n"
 				"Usage: voipmonitor [--config-file /etc/voipmonitor.conf] [-kncUSRAWG] [-i <interface>] [-f <pcap filter>]\n"
-				"       [-r <file>] [-d <pcap dump directory>] [-v level] [-h <mysql server>] [-b <mysql database]\n"
+				"       [-r <file>] [-d <pcap dump directory>] [-v level] [-h <mysql server>] [-O <mysql_port>] [-b <mysql database]\n"
 				"       [-u <mysql username>] [-p <mysql password>] [-f <pcap filter>] [--rtp-firstleg] [-y]\n"
 				"       [--ring-buffer <n>] [--manager-port <n>] [--norecord-header]\n"
 				"\n"
@@ -980,6 +988,9 @@ int main(int argc, char *argv[]) {
 				"	  but you can use partialy writen file anytime, it will be consistent.\n"
 				"\n"
 				" -h <hostname>, --mysql-server=<hostname>\n"
+				"      mysql server - default localhost\n"
+				"\n"
+				" -O <port>, --mysql-port=<port>\n"
 				"      mysql server - default localhost\n"
 				"\n"
 				" -b <database>, --mysql-database\n"
