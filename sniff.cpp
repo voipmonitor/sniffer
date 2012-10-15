@@ -1733,6 +1733,9 @@ void readdump_libpcap(pcap_t *handle) {
 		}
 
 		header_ip = (struct iphdr *) ((char*)packet + offset);
+		if(header_ip->protocol == 4) {
+			header_ip = (struct iphdr *) ((char*)header_ip + sizeof(iphdr));
+		}
 
 		header_udp = &header_udp_tmp;
 		if (header_ip->protocol == IPPROTO_UDP) {
