@@ -102,7 +102,7 @@ char mysql_database[256] = "voipmonitor";
 char mysql_table[256] = "cdr";
 char mysql_user[256] = "root";
 char mysql_password[256] = "";
-char opt_mysql_port = 0; // 0 menas use standard port 
+int opt_mysql_port = 0; // 0 menas use standard port 
 
 char odbc_dsn[256] = "voipmonitor";
 char odbc_user[256];
