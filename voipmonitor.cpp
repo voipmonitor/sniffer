@@ -443,6 +443,8 @@ int load_config(char *fname) {
 		CSimpleIni::TNamesDepend::const_iterator it = values.begin();
 
 		for (; it != values.end(); ++it) {
+			s = local_ip;
+			j = 0;
 			for(i = 0; i < 30; i++) {
 				local_ip[i] = '\0';
 				extern_ip[i] = '\0';
