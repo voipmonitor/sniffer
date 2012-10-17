@@ -96,6 +96,7 @@ extern int opt_rtpnosip;
 extern char opt_cachedir[1024];
 
 extern int opt_savewav_force;
+extern int opt_saveudptl;
 
 extern nat_aliases_t nat_aliases;
 
@@ -312,11 +313,13 @@ fail_exit:
 }
 
 
-int get_ip_port_from_sdp(char *sdp_text, in_addr_t *addr, unsigned short *port){
+int get_ip_port_from_sdp(char *sdp_text, in_addr_t *addr, unsigned short *port, int *fax){
 	unsigned long l;
 	char *s;
 	char s1[20];
-	s=gettag(sdp_text,strlen(sdp_text), "c=IN IP4 ", &l);
+
+	*fax = 0;
+	s = gettag(sdp_text,strlen(sdp_text), "c=IN IP4 ", &l);
 	if(l == 0) return 1;
 	memset(s1, '\0', sizeof(s1));
 	memcpy(s1, s, MIN(l, 19));
@@ -326,10 +329,15 @@ int get_ip_port_from_sdp(char *sdp_text, in_addr_t *addr, unsigned short *port){
 		*port = 0;
 		return 1;
 	}
-	s=gettag(sdp_text, strlen(sdp_text), "m=audio ", &l);
+	s = gettag(sdp_text, strlen(sdp_text), "m=audio ", &l);
 	if (l == 0 || (*port = atoi(s)) == 0){
-		*port = 0;
-		return 1;
+		s = gettag(sdp_text, strlen(sdp_text), "m=image ", &l);
+		if (l == 0 || (*port = atoi(s)) == 0){
+			*port = 0;
+			return 1;
+		} else {
+			*fax = 1;
+		}
 	}
 	return 0;
 }
@@ -629,7 +637,7 @@ Call *new_invite_register(int sip_method, char *data, int datalen, struct pcap_p
 		}
 		mkdir(call->dirname(), 0777);
 	}
-	if(call->type != REGISTER && (call->flags & (FLAG_SAVESIP | FLAG_SAVEREGISTER | FLAG_SAVERTP))) {
+	if(call->type != REGISTER && ((call->flags & (FLAG_SAVESIP | FLAG_SAVEREGISTER | FLAG_SAVERTP)) || (call->isfax && opt_saveudptl))) {
 		if(opt_cachedir[0] != '\0') {
 			sprintf(str2, "%s/%s/%s.pcap", opt_cachedir, call->dirname(), call->get_fbasename_safe());
 		} else {
@@ -1244,7 +1252,14 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 				unsigned short tmp_port;
 				int rtpmap[MAX_RTPMAP];
 				memset(&rtpmap, 0, sizeof(int) * MAX_RTPMAP);
-				if (!get_ip_port_from_sdp(tmp + 1, &tmp_addr, &tmp_port)){
+				int fax;
+				if (!get_ip_port_from_sdp(tmp + 1, &tmp_addr, &tmp_port, &fax)){
+					if(fax) { 
+						if(verbosity >= 1){
+							syslog(LOG_ERR, "[%s] T38 detected", call->fbasename);
+						}
+						call->isfax = 1;
+					}
 					// prepare User-Agent
 					s = gettag(data,datalen,"\nUser-Agent:", &l);
 					// store RTP stream
@@ -1312,8 +1327,8 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 			call->read_rtp((unsigned char*) data, datalen, header, saddr, source, iscaller);
 			call->set_last_packet_time(header->ts.tv_sec);
 		}
-		if(!dontsave && call->flags & FLAG_SAVERTP) {
-			if(opt_onlyRTPheader) {
+		if(!dontsave && ((call->flags & FLAG_SAVERTP) || (call->isfax && opt_saveudptl))) {
+			if(opt_onlyRTPheader && !call->isfax) {
 				tmp_u32 = header->caplen;
 				header->caplen = header->caplen - (datalen - RTP_FIXED_HEADERLEN);
 				save_packet(call, header, packet);
@@ -1349,8 +1364,8 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 			call->read_rtp((unsigned char*) data, datalen, header, saddr, source, !iscaller);
 			call->set_last_packet_time(header->ts.tv_sec);
 		}
-		if(!dontsave && call->flags & FLAG_SAVERTP) {
-			if(opt_onlyRTPheader) {
+		if(!dontsave && ((call->flags & FLAG_SAVERTP) || (call->isfax && opt_saveudptl))) {
+			if(opt_onlyRTPheader && !call->isfax) {
 				tmp_u32 = header->caplen;
 				header->caplen = header->caplen - (datalen - RTP_FIXED_HEADERLEN);
 				save_packet(call, header, packet);
@@ -1394,10 +1409,10 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 #endif
 
 			// opening dump file
-			if(call->flags & (FLAG_SAVESIP | FLAG_SAVEREGISTER | FLAG_SAVERTP | FLAG_SAVEWAV) || opt_savewav_force) {
+			if((call->flags & (FLAG_SAVESIP | FLAG_SAVEREGISTER | FLAG_SAVERTP | FLAG_SAVEWAV) || opt_savewav_force ) || (call->isfax && opt_saveudptl)) {
 				mkdir(call->dirname(), 0777);
 			}
-			if(call->flags & (FLAG_SAVESIP | FLAG_SAVEREGISTER | FLAG_SAVERTP)) {
+			if((call->flags & (FLAG_SAVESIP | FLAG_SAVEREGISTER | FLAG_SAVERTP)) || (call->isfax && opt_saveudptl)) {
 				sprintf(str2, "%s/%s.pcap", call->dirname(), s);
 				call->set_f_pcap(pcap_dump_open(handle, str2));
 				sprintf(call->pcapfilename, "%s/%s.pcap", call->dirname(), s);

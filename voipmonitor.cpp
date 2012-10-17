@@ -60,6 +60,7 @@ int opt_saveSIP = 0;		// save SIP packets to pcap file?
 int opt_saveRTP = 0;		// save RTP packets to pcap file?
 int opt_onlyRTPheader = 0;	// do not save RTP payload, only RTP header
 int opt_saveRTCP = 0;		// save RTCP packets to pcap file?
+int opt_saveudptl = 0;		// if = 1 all UDPTL packets will be saved (T.38 fax)
 int opt_saveRAW = 0;		// save RTP packets to pcap file?
 int opt_saveWAV = 0;		// save RTP packets to pcap file?
 int opt_saveGRAPH = 0;		// save GRAPH data to *.graph file? 
@@ -513,6 +514,9 @@ int load_config(char *fname) {
 	if((value = ini.GetValue("general", "savertp", NULL))) {
 		opt_saveRTP = yesno(value);
 	}
+	if((value = ini.GetValue("general", "saveudptl", NULL))) {
+		opt_saveudptl = yesno(value);
+	}
 	if((value = ini.GetValue("general", "norecord-header", NULL))) {
 		opt_norecord_header = yesno(value);
 	}
@@ -716,6 +720,7 @@ int main(int argc, char *argv[]) {
 	    {"save-sip", 0, 0, 'S'},
 	    {"save-rtp", 0, 0, 'R'},
 	    {"skip-rtppayload", 0, 0, 'o'},
+	    {"save-udptl", 0, 0, 'D'},
 	    {"save-rtcp", 0, 0, '9'},
 	    {"save-raw", 0, 0, 'A'},
 	    {"save-audio", 0, 0, 'W'},
@@ -752,7 +757,7 @@ int main(int argc, char *argv[]) {
 	/* command line arguments overrides configuration in voipmonitor.conf file */
 	while(1) {
 		int c;
-		c = getopt_long(argc, argv, "C:f:i:r:d:v:O:h:b:t:u:p:P:kncUSRoAWGXTNIKy4", long_options, &option_index);
+		c = getopt_long(argc, argv, "C:f:i:r:d:v:O:h:b:t:u:p:P:DkncUSRoAWGXTNIKy4", long_options, &option_index);
 		//"i:r:d:v:h:b:u:p:fnU", NULL, NULL);
 		if (c == -1)
 			break;
@@ -876,6 +881,9 @@ int main(int argc, char *argv[]) {
 			case 'R':
 				opt_saveRTP = 1;
 				break;
+			case 'D':
+				opt_saveudptl = 1;
+				break;
 			case 'o':
 				opt_onlyRTPheader = 1;
 				break;
@@ -917,6 +925,10 @@ int main(int argc, char *argv[]) {
 				"\n"
 				" -o, --skip-rtppayload\n"
 				"      skip RTP payload and save only RTP headers.\n"
+				"\n"
+				" -D, --save-udptl\n"
+				"      save UDPTL packets (T.38). If savertp = yes the UDPTL packets are saved automatically. If savertp = no\n"
+				"      and you want to save only udptl packets enable saveudptl = yes and savertp = no\n"
 				"\n"
 				" --save-rtcp\n"
    				"      save RTCP packets to pcap file. You can enable SIP signalization + only RTCP packets and not RTP packets.\n"

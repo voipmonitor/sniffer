@@ -84,6 +84,7 @@ extern SqlDb *sqlDb;
 
 /* constructor */
 Call::Call(char *call_id, unsigned long call_id_len, time_t time, void *ct) {
+	isfax = 0;
 	last_callercodec = -1;
 	ipport_n = 0;
 	ssrc_n = 0;
@@ -1412,8 +1413,12 @@ Call::saveToDb() {
 			}
 
 			if(payload[0] >= 0 || payload[1] >= 0) {
-				cdr.add(payload[0] >= 0 ? payload[0] : payload[1], 
-					"payload");
+				if(isfax) {
+					cdr.add(1000, "payload");
+				} else {
+					cdr.add(payload[0] >= 0 ? payload[0] : payload[1], 
+						"payload");
+				}
 			}
 			if(jitter_mult10[0] >= 0 || jitter_mult10[1] >= 0) {
 				cdr.add(max(jitter_mult10[0], jitter_mult10[1]), 

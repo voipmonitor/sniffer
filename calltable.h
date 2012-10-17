@@ -104,6 +104,8 @@ public:
 	time_t first_packet_time;	
 	time_t destroy_call_at;	
 
+	int isfax;
+
 	void *rtp_cur[2];		//!< last RTP structure in direction 0 and 1 (iscaller = 1)
 	void *rtp_prev[2];		//!< previouse RTP structure in direction 0 and 1 (iscaller = 1)
 
