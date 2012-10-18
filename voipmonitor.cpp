@@ -1226,7 +1226,9 @@ int main(int argc, char *argv[]) {
 	}
 
 	free(sipportmatrix);
-	unlink(opt_pidfile);
+	if (opt_fork){
+		unlink(opt_pidfile);
+	}
 	if(opt_cachedir[0] != '\0') {
 		terminating2 = 1;
 		pthread_join(cachedir_thread, NULL);
