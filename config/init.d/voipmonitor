@@ -21,7 +21,7 @@ PATH=/sbin:/bin:/usr/sbin:/usr/bin:/usr/local/bin:/usr/local/sbin
 TERM="linux";
 # uncomment and change interface if you do not have voipmonitor.conf 
 #ARGS="-i eth0"
-PIDFILE=/var/run/voipmonitor.pid
+PIDFILE=/var/run/voipmonitorinitscript.pid
 CONFIGFILE=/etc/voipmonitor.conf
 
 case "$1" in
@@ -34,11 +34,11 @@ case "$1" in
 		else
 			rm $PIDFILE
 			echo -n "Starting voipmonitor: "
-			voipmonitor --config-file $CONFIGFILE --pid-file /var/run/voipmonitor.pid $ARGS
+			voipmonitor --config-file $CONFIGFILE --pid-file $PIDFILE $ARGS
 		fi
 	else
 		echo -n "Starting voipmonitor: "
-		voipmonitor --config-file $CONFIGFILE --pid-file /var/run/voipmonitor.pid $ARGS
+		voipmonitor --config-file $CONFIGFILE --pid-file $PIDFILE $ARGS
 	fi
 	;;
   stop)
