@@ -122,10 +122,13 @@ targz64: static
 	cp cdrtable.sql /tmp/voipmonitor-amd64-${version}-static/
 	strip voipmonitor
 	cp voipmonitor /tmp/voipmonitor-amd64-${version}-static/usr/local/sbin/
+	chmod +x /tmp/voipmonitor-amd64-${version}-static/usr/local/sbin/voipmonitor
 	mkdir -p /tmp/voipmonitor-amd64-${version}-static/etc/init.d
 	cp config/voipmonitor.conf /tmp/voipmonitor-amd64-${version}-static/etc/
 	cp config/init.d/voipmonitor /tmp/voipmonitor-amd64-${version}-static/etc/init.d/
+	chmod +x /tmp/voipmonitor-amd64-${version}-static/etc/init.d/voipmonitor 
 	cp scripts/install-script.sh /tmp/voipmonitor-amd64-${version}-static/
+	chmod +x /tmp/voipmonitor-amd64-${version}-static/install-script.sh
 	tar -C /tmp -czf /tmp/voipmonitor-amd64-${version}-static.tar.gz voipmonitor-amd64-${version}-static
 	
 targz32: static
@@ -134,10 +137,13 @@ targz32: static
 	cp cdrtable.sql /tmp/voipmonitor-i686-${version}-static/
 	strip voipmonitor
 	cp voipmonitor /tmp/voipmonitor-i686-${version}-static/usr/local/sbin/
+	chmod +x /tmp/voipmonitor-i686-${version}-static/usr/local/sbin/voipmonitor
 	mkdir -p /tmp/voipmonitor-i686-${version}-static/etc/init.d
 	cp config/voipmonitor.conf /tmp/voipmonitor-i686-${version}-static/etc/
 	cp config/init.d/voipmonitor /tmp/voipmonitor-i686-${version}-static/etc/init.d/
+	chmod +x /tmp/voipmonitor-i686-${version}-static/etc/init.d/voipmonitor 
 	cp scripts/install-script.sh /tmp/voipmonitor-i686-${version}-static/
+	chmod +x /tmp/voipmonitor-i686-${version}-static/install-script.sh
 	tar -C /tmp -czf /tmp/voipmonitor-i686-${version}-static.tar.gz voipmonitor-i686-${version}-static
 
 source: clean
