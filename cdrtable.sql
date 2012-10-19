@@ -150,7 +150,7 @@ CREATE TABLE `cdr` (
   `rtcp_avgfr_mult10` smallint(5) unsigned DEFAULT NULL,
   `rtcp_avgjitter_mult10` smallint(5) unsigned DEFAULT NULL,
   `lost` mediumint(8) unsigned DEFAULT NULL,
-  `id_sensor` int(10) unsigned DEFAULT NULL,
+  `id_sensor` smallint(10) unsigned DEFAULT NULL,
   PRIMARY KEY (`ID`),
   KEY `calldate` (`calldate`),
   KEY `callend` (`callend`),
@@ -222,8 +222,8 @@ CREATE TABLE `register` (
   KEY `calldate` (`calldate`),
   KEY `sipcallerip` (`sipcallerip`),
   KEY `sipcalledip` (`sipcalledip`),
-  KEY `from_num` (`sipcalledip`),
-  KEY `digestusername` (`sipcalledip`)
+  KEY `from_num` (`from_num`),
+  KEY `digestusername` (`digestusername`)
 ) ENGINE=MEMORY DEFAULT CHARSET=latin1 ROW_FORMAT=COMPRESSED;
 
 CREATE TABLE `register_state` (

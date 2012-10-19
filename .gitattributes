@@ -20,6 +20,7 @@
 /cdrtable.sql.4.0-4.1 -text
 /cdrtable.sql.4.1-4.2 -text
 /cdrtable.sql.4.2-5.0 -text
+/cdrtable.sql.5.0-5.1 -text
 /cdrtable.sql.history -text
 /cdrtable_mssql.sql -text
 /codec_alaw.cpp -text
