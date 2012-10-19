@@ -150,7 +150,7 @@ CREATE TABLE `cdr` (
   `rtcp_avgfr_mult10` smallint(5) unsigned DEFAULT NULL,
   `rtcp_avgjitter_mult10` smallint(5) unsigned DEFAULT NULL,
   `lost` mediumint(8) unsigned DEFAULT NULL,
-  `id_sensor` int(10) unsigned DEFAULT NULL,
+  `id_sensor` smallint(10) unsigned DEFAULT NULL,
   PRIMARY KEY (`ID`),
   KEY `calldate` (`calldate`),
   KEY `callend` (`callend`),
