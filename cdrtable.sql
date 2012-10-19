@@ -222,8 +222,8 @@ CREATE TABLE `register` (
   KEY `calldate` (`calldate`),
   KEY `sipcallerip` (`sipcallerip`),
   KEY `sipcalledip` (`sipcalledip`),
-  KEY `from_num` (`sipcalledip`),
-  KEY `digestusername` (`sipcalledip`)
+  KEY `from_num` (`from_num`),
+  KEY `digestusername` (`digestusername`)
 ) ENGINE=MEMORY DEFAULT CHARSET=latin1 ROW_FORMAT=COMPRESSED;
 
 CREATE TABLE `register_state` (
