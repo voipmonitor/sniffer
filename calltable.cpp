@@ -73,6 +73,7 @@ extern char odbc_user[256];
 extern char odbc_password[256];
 extern char odbc_driver[256];
 extern int opt_callend;
+extern int opt_id_sensor;
 int calls = 0;
 
 unsigned int last_register_clean = 0;
@@ -1218,6 +1219,10 @@ Call::saveToDb() {
 			     lastSIPresponse_id = 0,
 			     a_ua_id = 0,
 			     b_ua_id = 0;
+
+		if(opt_id_sensor > -1) {
+			cdr.add(opt_id_sensor, "id_sensor");
+		}
 
 		cdr.add(sqlEscapeString(caller), "caller");
 		cdr.add(sqlEscapeString(reverseString(caller).c_str()), "caller_reverse");

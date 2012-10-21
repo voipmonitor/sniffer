@@ -86,6 +86,7 @@ int opt_rtpnosip = 0;		// if = 1 RTP stream will be saved into calls regardless 
 int opt_norecord_dtmf = 0;	// if = 1 SIP call with dtmf == *0 sequence (in SIP INFO) will stop recording
 int opt_savewav_force = 0;	// if = 1 WAV will be generated no matter on filter rules
 int opt_sipoverlap = 1;		
+int opt_id_sensor = -1;		
 
 char configfile[1024] = "";	// config file name
 
@@ -475,6 +476,9 @@ int load_config(char *fname) {
 	if((value = ini.GetValue("general", "interface", NULL))) {
 		strncpy(ifname, value, sizeof(ifname));
 	}
+	if((value = ini.GetValue("general", "id_sensor", NULL))) {
+		opt_id_sensor = atoi(value);
+	}
 	if((value = ini.GetValue("general", "pcapcommand", NULL))) {
 		strncpy(pcapcommand, value, sizeof(pcapcommand));
 	}
@@ -744,6 +748,7 @@ int main(int argc, char *argv[]) {
 	    {"norecord-dtmf", 0, 0, 'K'},
 	    {"rtp-nosig", 0, 0, 'I'},
 	    {"cachedir", 1, 0, 'C'},
+	    {"id-sensor", 1, 0, 's'},
 	    {0, 0, 0, 0}
 	};
 
@@ -757,7 +762,7 @@ int main(int argc, char *argv[]) {
 	/* command line arguments overrides configuration in voipmonitor.conf file */
 	while(1) {
 		int c;
-		c = getopt_long(argc, argv, "C:f:i:r:d:v:O:h:b:t:u:p:P:DkncUSRoAWGXTNIKy4", long_options, &option_index);
+		c = getopt_long(argc, argv, "C:f:i:r:d:v:O:h:b:t:u:p:P:s:DkncUSRoAWGXTNIKy4", long_options, &option_index);
 		//"i:r:d:v:h:b:u:p:fnU", NULL, NULL);
 		if (c == -1)
 			break;
@@ -772,6 +777,9 @@ int main(int argc, char *argv[]) {
 				for(int i = 5060; i < 5099; i++) {
 					sipportmatrix[i] = 1;
 				}
+				break;
+			case 's':
+				opt_id_sensor = atoi(optarg);
 				break;
 			case 'a':
 				strncpy(pcapcommand, optarg, sizeof(pcapcommand));
@@ -915,10 +923,13 @@ int main(int argc, char *argv[]) {
 				"Usage: voipmonitor [--config-file /etc/voipmonitor.conf] [-kncUSRAWG] [-i <interface>] [-f <pcap filter>]\n"
 				"       [-r <file>] [-d <pcap dump directory>] [-v level] [-h <mysql server>] [-O <mysql_port>] [-b <mysql database]\n"
 				"       [-u <mysql username>] [-p <mysql password>] [-f <pcap filter>] [--rtp-firstleg] [-y]\n"
-				"       [--ring-buffer <n>] [--manager-port <n>] [--norecord-header]\n"
+				"       [--ring-buffer <n>] [--manager-port <n>] [--norecord-header] [-s, --id-sensor <num>]\n"
 				"\n"
 				" -S, --save-sip\n"
 				"      save SIP packets to pcap file. Default is disabled.\n"
+				"\n"
+				" -s, --id-sensor <num>\n"
+				"      if set the number is saved to sql cdr.id_sensor\n"
 				"\n"
 				" -R, --save-rtp\n"
    				"      save RTP packets to pcap file. Default is disabled. Whan enabled RTCP packets will be saved too.\n"
