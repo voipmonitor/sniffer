@@ -381,6 +381,32 @@ void *manager_server(void *dummy) {
 			}
 			close(client);
 			continue;
+		} else if(strstr(buf, "getfile") != NULL) {
+			char filename[2048];
+			char rbuf[4096];
+			int fd;
+			ssize_t nread;
+
+			sscanf(buf, "getfile %s", filename);
+
+			fd = open(filename, O_RDONLY);
+			if(fd < 0) {
+				char msg[] = "error: cannot open file";
+				if ((size = send(client, msg, strlen(msg), 0)) == -1){
+					cerr << "Error sending data to client" << endl;
+				}
+				close(client);
+				continue;
+			}
+			while(nread = read(fd, rbuf, sizeof rbuf), nread > 0) {
+				if ((size = send(client, rbuf, nread, 0)) == -1){
+					close(client);
+					continue;
+				}
+			}
+			close(fd);
+			close(client);
+			continue;
 		} else if(strstr(buf, "quit") != NULL) {
 			close(client);
 			continue;
