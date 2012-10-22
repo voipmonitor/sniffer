@@ -61,8 +61,22 @@ typedef struct {
 #endif
 } read_thread;
 
+#if defined(QUEUE_MUTEX) || defined(QUEUE_NONBLOCK)
 typedef struct {
 	struct pcap_pkthdr header;
 	u_char *packet;
 	int offset;
 } pcap_packet;
+#endif
+
+#define MAXPACKETLENQRING 1600
+
+#if defined(QUEUE_NONBLOCK2)
+typedef struct {
+	struct pcap_pkthdr header;
+	u_char packet[MAXPACKETLENQRING];
+	int offset;
+	char free;
+} pcap_packet;
+#endif
+

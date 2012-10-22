@@ -80,6 +80,7 @@ extern read_thread *threads;
 extern int opt_norecord_dtmf;
 extern int opt_onlyRTPheader;
 extern int opt_sipoverlap;
+extern int readend;
 
 extern IPfilter *ipfilter;
 extern IPfilter *ipfilter_reload;
@@ -99,6 +100,11 @@ extern int opt_savewav_force;
 extern int opt_saveudptl;
 
 extern nat_aliases_t nat_aliases;
+
+extern pcap_packet *qring;
+extern volatile unsigned int readit;
+extern volatile unsigned int writeit;
+extern unsigned int qringmax;
 
 #ifdef QUEUE_MUTEX
 extern sem_t readpacket_thread_semaphore;
@@ -721,7 +727,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 			calltable->calls_deletequeue.pop();
 			call->hashRemove();
 			delete call;
-			calls--;
+//			calls--;
 		}
 		calltable->unlock_calls_deletequeue();
 
@@ -1602,6 +1608,8 @@ void *pcap_read_thread_func(void *arg) {
 	int istcp = 0;
 	int res;
 	int was_rtp;
+	unsigned int packets = 0;
+
 	while(1) {
 
 #ifdef QUEUE_MUTEX
@@ -1619,13 +1627,34 @@ void *pcap_read_thread_func(void *arg) {
 #ifdef QUEUE_NONBLOCK
 		if((res = queue_dequeue(qs_readpacket_thread_queue, (void **)&pp)) != 1) {
 			// queue is empty
+			if(terminating || readend) {
+				printf("packets: [%u]\n", packets);
+				return NULL;
+			}
 			usleep(10000);
 			continue;
 		};
 #endif
 
+#ifdef QUEUE_NONBLOCK2
+		//if(readit == writeit) {
+		if(qring[readit % qringmax].free == 1) {
+			// no packet to read 
+			if(terminating || readend) {
+				printf("packets: [%u]\n", packets);
+				return NULL;
+			}
+			usleep(10000);
+			continue;
+		} else {
+			pp = &(qring[readit % qringmax]);
+		}
+#endif
+
+		packets++;
 		header_ip = (struct iphdr *) ((char*)pp->packet + pp->offset);
 		header_udp = &header_udp_tmp;
+//		printf("[%d] [%d] [%d]\n", readit, writeit, header_ip->protocol);
 		if (header_ip->protocol == IPPROTO_UDP) {
 			// prepare packet pointers 
 			header_udp = (struct udphdr *) ((char *) header_ip + sizeof(*header_ip));
@@ -1643,15 +1672,35 @@ void *pcap_read_thread_func(void *arg) {
 			header_udp->dest = header_tcp->dest;
 		} else {
 			//packet is not UDP and is not TCP, we are not interested, go to the next packet
+#ifdef QUEUE_NONBLOCK2
+			qring[readit % qringmax].free = 1;
+			if((readit + 1) == qringmax) {
+				readit = 0;
+			} else {
+				readit++;
+			}
+#endif
 			continue;
 		}
 
 		process_packet(header_ip->saddr, htons(header_udp->source), header_ip->daddr, htons(header_udp->dest), 
 			    data, datalen, handle, &pp->header, pp->packet, istcp, 0, 1, &was_rtp);
 
+#ifdef QUEUE_NONBLOCK2
+		qring[readit % qringmax].free = 1;
+		if((readit + 1) == qringmax) {
+			readit = 0;
+		} else {
+			readit++;
+		}
+#endif
+
+#if defined(QUEUE_MUTEX) || defined(QUEUE_NONBLOCK)
 		free(pp->packet);
 		free(pp);
+#endif
 	}
+	printf("packets: [%u]\n", packets);
 
 	return NULL;
 }
@@ -1799,11 +1848,35 @@ void readdump_libpcap(pcap_t *handle) {
 
 		if(opt_pcap_threaded) {
 			//add packet to queue
+#if defined(QUEUE_MUTEX) || defined(QUEUE_NONBLOCK)
 			pcap_packet *pp = (pcap_packet*)malloc(sizeof(pcap_packet));
 			pp->packet = (u_char*)malloc(sizeof(u_char) * header->len);
 			pp->offset = offset;
 			memcpy(&pp->header, header, sizeof(struct pcap_pkthdr));
 			memcpy(pp->packet, packet, header->len);
+#endif
+
+#ifdef QUEUE_NONBLOCK2
+			if(header->len > MAXPACKETLENQRING) {
+				syslog(LOG_ERR, "error: packet is to large [%d]b for QRING[%d]b", header->len, MAXPACKETLENQRING);
+				continue;
+			}
+			while(qring[writeit % qringmax].free == 0) {
+				// no room left, loop until there is room
+				usleep(100);
+			}
+//			printf("test\n");
+			memcpy(&qring[writeit % qringmax].header, header, sizeof(struct pcap_pkthdr));
+			memcpy(&qring[writeit % qringmax].packet, packet, header->len);
+			qring[writeit % qringmax].offset = offset;
+			qring[writeit % qringmax].free = 0;
+			if((writeit + 1) == qringmax) {
+				writeit = 0;
+			} else {
+				writeit++;
+			}
+#endif
+
 			if(header->caplen > header->len) {
 				syslog(LOG_ERR, "error: header->caplen > header->len FIX!");
 			}

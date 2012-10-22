@@ -87,6 +87,7 @@ int opt_norecord_dtmf = 0;	// if = 1 SIP call with dtmf == *0 sequence (in SIP I
 int opt_savewav_force = 0;	// if = 1 WAV will be generated no matter on filter rules
 int opt_sipoverlap = 1;		
 int opt_id_sensor = -1;		
+int readend = 0;
 
 char configfile[1024] = "";	// config file name
 
@@ -141,6 +142,11 @@ pthread_t cachedir_thread;	// ID of worker cachedir thread
 int terminating;		// if set to 1, worker thread will terminate
 int terminating2;		// if set to 1, worker thread will terminate
 char *sipportmatrix;		// matrix of sip ports to monitor
+
+volatile unsigned int readit = 0;
+volatile unsigned int writeit = 0;
+unsigned int qringmax = 12500;
+pcap_packet *qring;
 
 pcap_t *handle = NULL;		// pcap handler 
 
@@ -485,9 +491,6 @@ int load_config(char *fname) {
 	if((value = ini.GetValue("general", "ringbuffer", NULL))) {
 		opt_ringbuffer = atoi(value);
 	}
-	if((value = ini.GetValue("general", "pcap-thread", NULL))) {
-		opt_pcap_threaded = yesno(value);
-	}
 	if((value = ini.GetValue("general", "rtp-firstleg", NULL))) {
 		opt_rtp_firstleg = yesno(value);
 	}
@@ -526,6 +529,9 @@ int load_config(char *fname) {
 	}
 	if((value = ini.GetValue("general", "norecord-dtmf", NULL))) {
 		opt_norecord_dtmf = yesno(value);
+	}
+	if((value = ini.GetValue("general", "vmbuffer", NULL))) {
+		qringmax = atoi(value) * 1024 * 1024 / sizeof(pcap_packet);
 	}
 	if((value = ini.GetValue("general", "managerport", NULL))) {
 		opt_manager_port = atoi(value);
@@ -717,6 +723,9 @@ int main(int argc, char *argv[]) {
 	// set default SIP port to 5060
 	sipportmatrix[5060] = 1;
 
+	// if the system has more than one CPU enable threading
+	opt_pcap_threaded = sysconf( _SC_NPROCESSORS_ONLN ) > 1; 
+
 	int option_index = 0;
 	static struct option long_options[] = {
 	    {"gzip-graph", 0, 0, '1'},
@@ -740,10 +749,10 @@ int main(int argc, char *argv[]) {
 	    {"sip-register", 0, 0, '4'},
 	    {"audio-format", 1, 0, '5'},
 	    {"ring-buffer", 1, 0, '6'},
+	    {"vm-buffer", 1, 0, 'T'},
 	    {"config-file", 1, 0, '7'},
 	    {"manager-port", 1, 0, '8'},
 	    {"pcap-command", 1, 0, 'a'},
-	    {"pcap-thread", 0, 0, 'T'},
 	    {"norecord-header", 0, 0, 'N'},
 	    {"norecord-dtmf", 0, 0, 'K'},
 	    {"rtp-nosig", 0, 0, 'I'},
@@ -762,7 +771,7 @@ int main(int argc, char *argv[]) {
 	/* command line arguments overrides configuration in voipmonitor.conf file */
 	while(1) {
 		int c;
-		c = getopt_long(argc, argv, "C:f:i:r:d:v:O:h:b:t:u:p:P:s:DkncUSRoAWGXTNIKy4", long_options, &option_index);
+		c = getopt_long(argc, argv, "C:f:i:r:d:v:O:h:b:t:u:p:P:s:T:DkncUSRoAWGXNIKy4", long_options, &option_index);
 		//"i:r:d:v:h:b:u:p:fnU", NULL, NULL);
 		if (c == -1)
 			break;
@@ -778,6 +787,9 @@ int main(int argc, char *argv[]) {
 					sipportmatrix[i] = 1;
 				}
 				break;
+			case 'T':
+				qringmax = atoi(optarg) * 1024 * 1024 / sizeof(pcap_packet);
+				break;
 			case 's':
 				opt_id_sensor = atoi(optarg);
 				break;
@@ -792,9 +804,6 @@ int main(int argc, char *argv[]) {
 				break;
 			case 'N':
 				opt_norecord_header = 1;
-				break;
-			case 'T':
-				opt_pcap_threaded = 1;
 				break;
 			case '1':
 				opt_gzipGRAPH = 1;
@@ -923,7 +932,7 @@ int main(int argc, char *argv[]) {
 				"Usage: voipmonitor [--config-file /etc/voipmonitor.conf] [-kncUSRAWG] [-i <interface>] [-f <pcap filter>]\n"
 				"       [-r <file>] [-d <pcap dump directory>] [-v level] [-h <mysql server>] [-O <mysql_port>] [-b <mysql database]\n"
 				"       [-u <mysql username>] [-p <mysql password>] [-f <pcap filter>] [--rtp-firstleg] [-y]\n"
-				"       [--ring-buffer <n>] [--manager-port <n>] [--norecord-header] [-s, --id-sensor <num>]\n"
+				"       [--ring-buffer <n>] [--vm-buffer <n>] [--manager-port <n>] [--norecord-header] [-s, --id-sensor <num>]\n"
 				"\n"
 				" -S, --save-sip\n"
 				"      save SIP packets to pcap file. Default is disabled.\n"
@@ -973,6 +982,13 @@ int main(int argc, char *argv[]) {
 				"      packets in syslog upgrade to newer kernel and increase --ring-buffer to higher MB or enable --pcap-thread.\n"
 				"      Ring-buffer is between kernel and pcap library. The most top reason why voipmonitor drops packets is waiting for I/O\n"
 				"      operations or it consumes 100%% CPU.\n"
+				"\n"
+				" --vm-buffer\n"
+				"      vmbuffer is user space buffers in MB which is used in case there is more then 1 CPU and the sniffer\n"
+				"      run two threads - one for reading data from libpcap and writing to vmbuffer and second reads data from\n"
+				"      vmbuffer and process it. For very high network loads set this to very high number. Or in case the system\n"
+				"      is droping packets (which is logged to syslog) increase this value. \n"
+				"      default is 20 MB\n"
 				"\n"
 				" --pcap-thread\n"
 				"      Read packet from kernel in one thread and process packet in another thread. Packets are copied to non-blocking queue\n"
@@ -1209,11 +1225,23 @@ int main(int argc, char *argv[]) {
 		queue_new(&qs_readpacket_thread_queue, 100000);
 		pthread_create(&pcap_read_thread, NULL, pcap_read_thread_func, NULL);
 #endif
+
+#ifdef QUEUE_NONBLOCK2
+		qring = (pcap_packet*)malloc(sizeof(pcap_packet) * (qringmax + 1));
+		for(int i = 0; i < qringmax + 1; i++) {
+			qring[i].free = 1;
+		}
+		pthread_create(&pcap_read_thread, NULL, pcap_read_thread_func, NULL);
+#endif 
 	}
 
 	// start reading packets
 //	readdump_libnids(handle);
 	readdump_libpcap(handle);
+	readend = 1;
+#ifdef QUEUE_NONBLOCK2
+	pthread_join(pcap_read_thread, NULL);
+#endif
 
 	// close handler
 	pcap_close(handle);
