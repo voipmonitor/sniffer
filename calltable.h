@@ -320,6 +320,12 @@ public:
 	void hashRemove();
 
 	/**
+	 * @brief remove call from map table
+	 *
+	*/
+	void mapRemove();
+
+	/**
 	 * @brief stop recording packets to pcap file
 	 *
 	*/
@@ -355,6 +361,13 @@ private:
 	char sdirname[255];
 };
 
+typedef struct {
+	Call *call;
+	int is_rtcp;
+	int iscaller;
+} Ipportnode;
+
+
 /**
   * This class implements operations on Call list
 */
@@ -367,6 +380,11 @@ public:
 	list<Call*>::iterator call;
 	map<string, Call*> calls_listMAP; //!< 
 	map<string, Call*>::iterator callMAPIT; //!< 
+	map<unsigned int, std::map<unsigned int, Ipportnode*> > ipportmap;
+//	map<unsigned int, std::map<unsigned int, Ipportnode*> >::iterator ipportmapIT;
+	map<unsigned int, Ipportnode*>::iterator ipportmapIT;
+
+
 	/**
 	 * @brief constructor
 	 *
@@ -458,8 +476,9 @@ public:
 	*/
 	void hashAdd(in_addr_t addr, unsigned short port, Call* call, int iscaller, int isrtcp);
 
+
 	/**
-	 * @brief add call to hash table
+	 * @brief find call
 	 *
 	*/
 	Call *hashfind_by_ip_port(in_addr_t addr, unsigned short port, int *iscaller, int *isrtcp);
@@ -470,6 +489,23 @@ public:
 	*/
 	void hashRemove(in_addr_t addr, unsigned short port);
 
+	/**
+	 * @brief find call
+	 *
+	*/
+	Call *mapfind_by_ip_port(in_addr_t addr, unsigned short port, int *iscaller, int *isrtcp);
+
+	/**
+	 * @brief add call to map table
+	 *
+	*/
+	void mapAdd(in_addr_t addr, unsigned short port, Call* call, int iscaller, int isrtcp);
+
+	/**
+	 * @brief remove call from map
+	 *
+	*/
+	void mapRemove(in_addr_t addr, unsigned short port);
 private:
 	pthread_mutex_t qlock;		//!< mutex locking calls_queue
 	pthread_mutex_t qdellock;	//!< mutex locking calls_deletequeue

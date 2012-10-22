@@ -147,6 +147,20 @@ Call::Call(char *call_id, unsigned long call_id_len, time_t time, void *ct) {
 }
 
 void
+Call::mapRemove() {
+	int i;
+	Calltable *ct = (Calltable *)calltable;
+
+	for(i = 0; i < ipport_n; i++) {
+		ct->mapRemove(this->addr[i], this->port[i]);
+		if(opt_rtcp) {
+			ct->mapRemove(this->addr[i], this->port[i] + 1);
+		}
+
+	}
+}
+
+void
 Call::hashRemove() {
 	int i;
 	Calltable *ct = (Calltable *)calltable;
@@ -1770,6 +1784,40 @@ Calltable::~Calltable() {
 	pthread_mutex_destroy(&qdellock);
 };
 
+/* add node to hash. collisions are linked list of nodes*/
+void
+Calltable::mapAdd(in_addr_t addr, unsigned short port, Call* call, int iscaller, int is_rtcp) {
+
+	if (ipportmap.find(addr) != ipportmap.end()) {
+		ipportmapIT = ipportmap[addr].find(port);
+		if(ipportmapIT != ipportmap[addr].end()) {
+			// there is already some call which is receiving packets to the same IP:port
+			// this can happen if the old call is waiting for hangup and is still in memory
+			Ipportnode *node = (*ipportmapIT).second;
+			if(call != node->call) {
+				// just replace this IP:port to new call
+				node->call = call;
+				node->iscaller = iscaller;
+				node->is_rtcp = is_rtcp;
+				return;
+			// or it can happen if voipmonitor is sniffing SIP proxy which forwards SIP
+			} else {
+				// packets to another SIP proxy with the same SDP ports
+				// in this case just return 
+				return;
+			}
+		}
+	}
+	
+	// adding to hash at first position
+	Ipportnode *node = (Ipportnode *)malloc(sizeof(Ipportnode));
+	memset(node, 0x0, sizeof(Ipportnode));
+	node->call = call;
+	node->iscaller = iscaller;
+	node->is_rtcp = is_rtcp;
+	ipportmap[addr][port] = node;
+}
+
 
 /* add node to hash. collisions are linked list of nodes*/
 void
@@ -1834,6 +1882,36 @@ Calltable::hashRemove(in_addr_t addr, unsigned short port) {
 		}
 		prev = node;
 	}
+}
+
+/* remove node from hash */
+void
+Calltable::mapRemove(in_addr_t addr, unsigned short port) {
+	if (ipportmap.find(addr) != ipportmap.end()) {
+		ipportmapIT = ipportmap[addr].find(port);
+		if(ipportmapIT != ipportmap[addr].end()) {
+			Ipportnode *node = (*ipportmapIT).second;
+			free(node);
+			ipportmap[addr].erase(ipportmapIT);
+		}
+	}
+}
+
+/* find call in hash */
+Call*
+Calltable::mapfind_by_ip_port(in_addr_t addr, unsigned short port, int *iscaller, int *is_rtcp) {
+
+
+	if (ipportmap.find(addr) != ipportmap.end()) {
+		ipportmapIT = ipportmap[addr].find(port);
+		if(ipportmapIT != ipportmap[addr].end()) {
+			Ipportnode *node = (*ipportmapIT).second;
+			*iscaller = node->iscaller;
+			*is_rtcp = node->is_rtcp;
+			return node->call;
+		}
+	}
+	return NULL;
 }
 
 /* find call in hash */
@@ -1967,7 +2045,7 @@ Calltable::cleanup( time_t currtime ) {
 		if(verbosity > 2) call->dump();
 		// RTPTIMEOUT seconds of inactivity will save this call and remove from call table
 		if(currtime == 0 || (call->destroy_call_at != 0 and call->destroy_call_at <= currtime) || (currtime - call->get_last_packet_time() > RTPTIMEOUT)) {
-			call->hashRemove();
+			call->mapRemove();
 			if (call->get_f_pcap() != NULL){
 				pcap_dump_flush(call->get_f_pcap());
 				if (call->get_f_pcap() != NULL) {
@@ -2001,7 +2079,7 @@ Calltable::cleanup( time_t currtime ) {
 }
 
 void Call::saveregister() {
-	hashRemove();
+	mapRemove();
 	if (get_f_pcap() != NULL){
 		pcap_dump_flush(get_f_pcap());
 		if (get_f_pcap() != NULL) {
