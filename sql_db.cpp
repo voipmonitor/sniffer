@@ -171,7 +171,7 @@ int SqlDb::getIdOrInsert(string table, string idField, string uniqueField, SqlDb
 void SqlDb::setLastErrorString(string lastErrorString, bool sysLog) {
 	this->lastErrorString = lastErrorString;
 	if(sysLog && lastErrorString != "" && this->sysLog) {
-		syslog(LOG_ERR, lastErrorString.c_str());
+		syslog(LOG_ERR, "%s", lastErrorString.c_str());
 	}
 }
 
