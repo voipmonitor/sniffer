@@ -233,9 +233,9 @@ static void ogg_close(struct vorbis_desc *s, FILE *f)
 
 
 int ogg_mix(char *in1, char *in2, char *out) {
-	FILE *f_in1;
-	FILE *f_in2;
-	FILE *f_out;
+	FILE *f_in1 = NULL;
+	FILE *f_in2 = NULL;
+	FILE *f_out = NULL;
 
 	char *bitstream_buf1 = NULL;
 	char *bitstream_buf2 = NULL;
