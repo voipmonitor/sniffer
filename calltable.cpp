@@ -2045,7 +2045,7 @@ Calltable::cleanup( time_t currtime ) {
 		if(verbosity > 2) call->dump();
 		// RTPTIMEOUT seconds of inactivity will save this call and remove from call table
 		if(currtime == 0 || (call->destroy_call_at != 0 and call->destroy_call_at <= currtime) || (currtime - call->get_last_packet_time() > RTPTIMEOUT)) {
-			call->mapRemove();
+			call->hashRemove();
 			if (call->get_f_pcap() != NULL){
 				pcap_dump_flush(call->get_f_pcap());
 				if (call->get_f_pcap() != NULL) {
@@ -2079,7 +2079,7 @@ Calltable::cleanup( time_t currtime ) {
 }
 
 void Call::saveregister() {
-	mapRemove();
+	hashRemove();
 	if (get_f_pcap() != NULL){
 		pcap_dump_flush(get_f_pcap());
 		if (get_f_pcap() != NULL) {

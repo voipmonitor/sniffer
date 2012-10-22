@@ -719,7 +719,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 		while (calltable->calls_deletequeue.size() > 0) {
 			call = calltable->calls_deletequeue.front();
 			calltable->calls_deletequeue.pop();
-			call->mapRemove();
+			call->hashRemove();
 			delete call;
 			calls--;
 		}
@@ -1266,32 +1266,32 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 					get_rtpmap_from_sdp(tmp + 1, datalen - (tmp + 1 - data), rtpmap);
 
 					call->add_ip_port(tmp_addr, tmp_port, s, l, call->sipcallerip != saddr, rtpmap);
-					//calltable->hashAdd(tmp_addr, tmp_port, call, call->sipcallerip != saddr, 0);
-					calltable->mapAdd(tmp_addr, tmp_port, call, call->sipcallerip != saddr, 0);
+					calltable->hashAdd(tmp_addr, tmp_port, call, call->sipcallerip != saddr, 0);
+					//calltable->mapAdd(tmp_addr, tmp_port, call, call->sipcallerip != saddr, 0);
 					if(opt_rtcp) {
-						//calltable->hashAdd(tmp_addr, tmp_port + 1, call, call->sipcallerip != saddr, 1); //add rtcp
-						calltable->mapAdd(tmp_addr, tmp_port + 1, call, call->sipcallerip != saddr, 1); //add rtcp
+						calltable->hashAdd(tmp_addr, tmp_port + 1, call, call->sipcallerip != saddr, 1); //add rtcp
+						//calltable->mapAdd(tmp_addr, tmp_port + 1, call, call->sipcallerip != saddr, 1); //add rtcp
 					}
 					
 					// check if the IP address is listed in nat_aliases
 					in_addr_t alias = 0;
 					if((alias = match_nat_aliases(tmp_addr)) != 0) {
 						call->add_ip_port(alias, tmp_port, s, l, call->sipcallerip != saddr, rtpmap);
-						//calltable->hashAdd(alias, tmp_port, call, call->sipcallerip != saddr, 0);
-						calltable->mapAdd(alias, tmp_port, call, call->sipcallerip != saddr, 0);
+						calltable->hashAdd(alias, tmp_port, call, call->sipcallerip != saddr, 0);
+						//calltable->mapAdd(alias, tmp_port, call, call->sipcallerip != saddr, 0);
 						if(opt_rtcp) {
-							//calltable->hashAdd(alias, tmp_port + 1, call, call->sipcallerip != saddr, 1); //add rtcp
-							calltable->mapAdd(alias, tmp_port + 1, call, call->sipcallerip != saddr, 1); //add rtcp
+							calltable->hashAdd(alias, tmp_port + 1, call, call->sipcallerip != saddr, 1); //add rtcp
+							//calltable->mapAdd(alias, tmp_port + 1, call, call->sipcallerip != saddr, 1); //add rtcp
 						}
 					}
 
 #ifdef NAT
 					call->add_ip_port(saddr, tmp_port, s, l, call->sipcallerip != saddr, rtpmap);
-					//calltable->hashAdd(saddr, tmp_port, call, call->sipcallerip != saddr, 0);
-					calltable->mapAdd(saddr, tmp_port, call, call->sipcallerip != saddr, 0);
+					calltable->hashAdd(saddr, tmp_port, call, call->sipcallerip != saddr, 0);
+					//calltable->mapAdd(saddr, tmp_port, call, call->sipcallerip != saddr, 0);
 					if(opt_rtcp) {
-						//calltable->hashAdd(saddr, tmp_port + 1, call, call->sipcallerip != saddr, 1);
-						calltable->mapAdd(saddr, tmp_port + 1, call, call->sipcallerip != saddr, 1);
+						calltable->hashAdd(saddr, tmp_port + 1, call, call->sipcallerip != saddr, 1);
+						//calltable->mapAdd(saddr, tmp_port + 1, call, call->sipcallerip != saddr, 1);
 					}
 #endif
 
@@ -1308,8 +1308,8 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 		}
 
 		return call;
-	//} else if ((call = calltable->hashfind_by_ip_port(daddr, dest, &iscaller, &is_rtcp))){
-	} else if ((call = calltable->mapfind_by_ip_port(daddr, dest, &iscaller, &is_rtcp))){
+	} else if ((call = calltable->hashfind_by_ip_port(daddr, dest, &iscaller, &is_rtcp))){
+	//} else if ((call = calltable->mapfind_by_ip_port(daddr, dest, &iscaller, &is_rtcp))){
 	// TODO: remove if hash will be stable
 	//if ((call = calltable->find_by_ip_port(daddr, dest, &iscaller)))
 		// packet (RTP) by destination:port is already part of some stored call 
@@ -1345,8 +1345,8 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 			}
 
 		}
-	//} else if ((call = calltable->hashfind_by_ip_port(saddr, source, &iscaller, &is_rtcp))){
-	} else if ((call = calltable->mapfind_by_ip_port(saddr, source, &iscaller, &is_rtcp))){
+	} else if ((call = calltable->hashfind_by_ip_port(saddr, source, &iscaller, &is_rtcp))){
+	//} else if ((call = calltable->mapfind_by_ip_port(saddr, source, &iscaller, &is_rtcp))){
 	// TODO: remove if hash will be stable
 	// else if ((call = calltable->find_by_ip_port(saddr, source, &iscaller)))
 		// packet (RTP[C]) by source:port is already part of some stored call 
