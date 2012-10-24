@@ -112,7 +112,8 @@ char odbc_user[256];
 char odbc_password[256];
 char odbc_driver[256];
 
-char opt_pidfile[] = "/var/run/voipmonitor.pid";
+char opt_pidfile[4098] = "/var/run/voipmonitor.pid";
+
 char user_filter[2048] = "";
 char ifname[1024];	// Specifies the name of the network device to use for 
 			// the network lookup, for example, eth0
@@ -120,7 +121,10 @@ int opt_promisc = 1;	// put interface to promisc mode?
 char pcapcommand[4092] = "";
 
 int rtp_threaded = 0; // do not enable this until it will be reworked to be thread safe
-int num_threads = 1; // this has to be 1 for now
+int num_threads = 0; // this has to be 1 for now
+unsigned int rtpthreadbuffer = 20;	// default 20MB
+unsigned int gthread_num = 0;
+
 
 int opt_callend = 1; //if true, cdr.called is saved
 
@@ -491,6 +495,12 @@ int load_config(char *fname) {
 	if((value = ini.GetValue("general", "ringbuffer", NULL))) {
 		opt_ringbuffer = atoi(value);
 	}
+	if((value = ini.GetValue("general", "rtpthreads", NULL))) {
+		num_threads = atoi(value);
+	}
+	if((value = ini.GetValue("general", "rtpthread-buffer", NULL))) {
+		rtpthreadbuffer = atoi(value);
+	}
 	if((value = ini.GetValue("general", "rtp-firstleg", NULL))) {
 		opt_rtp_firstleg = yesno(value);
 	}
@@ -725,6 +735,7 @@ int main(int argc, char *argv[]) {
 
 	// if the system has more than one CPU enable threading
 	opt_pcap_threaded = sysconf( _SC_NPROCESSORS_ONLN ) > 1; 
+	num_threads = sysconf( _SC_NPROCESSORS_ONLN ) - 1;
 
 	int option_index = 0;
 	static struct option long_options[] = {
@@ -750,6 +761,8 @@ int main(int argc, char *argv[]) {
 	    {"audio-format", 1, 0, '5'},
 	    {"ring-buffer", 1, 0, '6'},
 	    {"vm-buffer", 1, 0, 'T'},
+	    {"rtp-threads", 1, 0, 'e'},
+	    {"rtpthread-buffer", 1, 0, 'E'},
 	    {"config-file", 1, 0, '7'},
 	    {"manager-port", 1, 0, '8'},
 	    {"pcap-command", 1, 0, 'a'},
@@ -771,7 +784,7 @@ int main(int argc, char *argv[]) {
 	/* command line arguments overrides configuration in voipmonitor.conf file */
 	while(1) {
 		int c;
-		c = getopt_long(argc, argv, "C:f:i:r:d:v:O:h:b:t:u:p:P:s:T:DkncUSRoAWGXNIKy4", long_options, &option_index);
+		c = getopt_long(argc, argv, "C:f:i:r:d:v:O:h:b:t:u:p:P:s:T:D:e:E:kncUSRoAWGXNIKy4", long_options, &option_index);
 		//"i:r:d:v:h:b:u:p:fnU", NULL, NULL);
 		if (c == -1)
 			break;
@@ -786,6 +799,12 @@ int main(int argc, char *argv[]) {
 				for(int i = 5060; i < 5099; i++) {
 					sipportmatrix[i] = 1;
 				}
+				break;
+			case 'e':
+				num_threads = atoi(optarg);
+				break;
+			case 'E':
+				rtpthreadbuffer = atoi(optarg);
 				break;
 			case 'T':
 				qringmax = atoi(optarg) * 1024 * 1024 / sizeof(pcap_packet);
@@ -933,6 +952,16 @@ int main(int argc, char *argv[]) {
 				"       [-r <file>] [-d <pcap dump directory>] [-v level] [-h <mysql server>] [-O <mysql_port>] [-b <mysql database]\n"
 				"       [-u <mysql username>] [-p <mysql password>] [-f <pcap filter>] [--rtp-firstleg] [-y]\n"
 				"       [--ring-buffer <n>] [--vm-buffer <n>] [--manager-port <n>] [--norecord-header] [-s, --id-sensor <num>]\n"
+				"	[--rtp-threads <n>] [--rtpthread-buffer] <n>]\n"
+				"\n"
+				" -e, --rtp-threads <n>\n"
+				"      number of threads to process RTP packets. If not specified it will be number of available CPUs.\n"
+				"      If equel to zero RTP threading will be turned off. Each thread allocates default 20MB for buffers. This\n"
+				"      buffer can be controlled with --rtpthread-buffer\n"
+				"      For < 150 concurrent calls you can turn it off"
+				"\n"
+				" -E, --rtpthread-buffer <n>\n"
+				"      size of rtp thread ring buffer in MB. Default is 20MB per thread\n"
 				"\n"
 				" -S, --save-sip\n"
 				"      save SIP packets to pcap file. Default is disabled.\n"
@@ -1073,7 +1102,7 @@ int main(int argc, char *argv[]) {
 	if(opt_test) {
 		test();
 	}
-
+	rtp_threaded = num_threads > 0;
 	if (fname == NULL && ifname[0] != '\0'){
 		bpf_u_int32 net;
 
@@ -1200,7 +1229,7 @@ int main(int argc, char *argv[]) {
 
 	// start reading threads
 	if(rtp_threaded) {
-		threads = new read_thread();
+		threads = (read_thread*)malloc(sizeof(read_thread) * num_threads);
 		for(int i = 0; i < num_threads; i++) {
 #ifdef QUEUE_MUTEX
 			pthread_mutex_init(&(threads[i].qlock), NULL);
@@ -1210,6 +1239,16 @@ int main(int argc, char *argv[]) {
 #ifdef QUEUE_NONBLOCK
 			threads[i].pqueue = NULL;
 			queue_new(&(threads[i].pqueue), 10000);
+#endif
+
+#ifdef QUEUE_NONBLOCK2
+			threads[i].vmbuffermax = rtpthreadbuffer * 1024 * 1024 / sizeof(rtp_packet);
+			threads[i].writeit = 0;
+			threads[i].readit = 0;
+			threads[i].vmbuffer = (rtp_packet*)malloc(sizeof(rtp_packet) * (threads[i].vmbuffermax + 1));
+			for(int j = 0; j < threads[i].vmbuffermax + 1; j++) {
+				threads[i].vmbuffer[j].free = 1;
+			}
 #endif
 
 			pthread_create(&(threads[i].thread), NULL, rtp_read_thread_func, (void*)&threads[i]);
@@ -1228,7 +1267,7 @@ int main(int argc, char *argv[]) {
 
 #ifdef QUEUE_NONBLOCK2
 		qring = (pcap_packet*)malloc(sizeof(pcap_packet) * (qringmax + 1));
-		for(int i = 0; i < qringmax + 1; i++) {
+		for(unsigned int i = 0; i < qringmax + 1; i++) {
 			qring[i].free = 1;
 		}
 		pthread_create(&pcap_read_thread, NULL, pcap_read_thread_func, NULL);
@@ -1239,9 +1278,17 @@ int main(int argc, char *argv[]) {
 //	readdump_libnids(handle);
 	readdump_libpcap(handle);
 	readend = 1;
+
 #ifdef QUEUE_NONBLOCK2
 	pthread_join(pcap_read_thread, NULL);
 #endif
+
+// wait for RTP threads
+	if(rtp_threaded) {
+		for(int i = 0; i < num_threads; i++) {
+			pthread_join((threads[i].thread), NULL);
+		}
+	}
 
 	// close handler
 	pcap_close(handle);

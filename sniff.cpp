@@ -463,17 +463,44 @@ int get_rtpmap_from_sdp(char *sdp_text, unsigned long len, int *rtpmap){
 	 return 0;
 }
 
-void add_to_rtp_thread_queue(Call *call, unsigned char *data, int datalen, struct pcap_pkthdr *header,  u_int32_t saddr, unsigned short port, int iscaller) {
+void add_to_rtp_thread_queue(Call *call, unsigned char *data, int datalen, struct pcap_pkthdr *header,  u_int32_t saddr, unsigned short port, int iscaller, int is_rtcp) {
+	read_thread *params = &(threads[call->thread_num]);
+
+#if defined(QUEUE_MUTEX) || defined(QUEUE_NONBLOCK)
 	rtp_packet *rtpp = (rtp_packet*)malloc(sizeof(rtp_packet));
-	rtpp->call = call;
 	rtpp->data = (unsigned char *)malloc(sizeof(unsigned char) * datalen);
+#endif
+
+#ifdef QUEUE_NONBLOCK2
+	rtp_packet *rtpp = &(params->vmbuffer[params->writeit % params->vmbuffermax]);
+
+	while(params->vmbuffer[params->writeit % params->vmbuffermax].free == 0) {
+		// no room left, loop until there is room
+		usleep(100);
+	}
+#endif
+	rtpp->call = call;
 	rtpp->datalen = datalen;
 	rtpp->saddr = saddr;
 	rtpp->port = port;
 	rtpp->iscaller = iscaller;
+	rtpp->is_rtcp = is_rtcp;
 
 	memcpy(&rtpp->header, header, sizeof(struct pcap_pkthdr));
+	if(datalen > MAXPACKETLENQRING) {
+		syslog(LOG_ERR, "error: packet is to large [%d]b for RTP QRING[%d]b", header->len, MAXPACKETLENQRING);
+		return;
+	}
 	memcpy(rtpp->data, data, datalen);
+
+#ifdef QUEUE_NONBLOCK2
+	params->vmbuffer[params->writeit % params->vmbuffermax].free = 0;
+	if((params->writeit + 1) == params->vmbuffermax) {
+		params->writeit = 0;
+	} else {
+		params->writeit++;
+	}
+#endif
 
 #ifdef QUEUE_MUTEX
 	pthread_mutex_lock(&(threads[call->thread_num].qlock));
@@ -510,15 +537,49 @@ void *rtp_read_thread_func(void *arg) {
 #ifdef QUEUE_NONBLOCK
 		if(queue_dequeue(params->pqueue, (void **)&rtpp) != 1) {
 			// queue is empty
+			if(terminating || readend) {
+				return NULL;
+			}
 			usleep(10000);
 			continue;
 		};
 #endif 
-		rtpp->call->read_rtp(rtpp->data, rtpp->datalen, &rtpp->header, rtpp->saddr, rtpp->port, rtpp->iscaller);
+
+#ifdef QUEUE_NONBLOCK2
+		if(params->vmbuffer[params->readit % params->vmbuffermax].free == 1) {
+			if(terminating || readend) {
+				return NULL;
+			}
+			// no packet to read, wait and try again
+			usleep(10000);
+			continue;
+		} else {
+			rtpp = &(params->vmbuffer[params->readit % params->vmbuffermax]);
+		}
+#endif
+
+		if(rtpp->is_rtcp) {
+			rtpp->call->read_rtcp((unsigned char*)rtpp->data, rtpp->datalen, &rtpp->header, rtpp->saddr, rtpp->port, rtpp->iscaller);
+		}  else {
+			rtpp->call->read_rtp(rtpp->data, rtpp->datalen, &rtpp->header, rtpp->saddr, rtpp->port, rtpp->iscaller);
+		}
+
+
 		rtpp->call->set_last_packet_time(rtpp->header.ts.tv_sec);
 
+#if defined(QUEUE_MUTEX) || defined(QUEUE_NONBLOCK)
 		free(rtpp->data);
 		free(rtpp);
+#endif
+
+#ifdef QUEUE_NONBLOCK2
+		params->vmbuffer[params->readit % params->vmbuffermax].free = 1;
+		if((params->readit + 1) == params->vmbuffermax) {
+			params->readit = 0;
+		} else {
+			params->readit++;
+		}
+#endif
 	}
 
 	return NULL;
@@ -727,7 +788,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 			calltable->calls_deletequeue.pop();
 			call->hashRemove();
 			delete call;
-//			calls--;
+			calls--;
 		}
 		calltable->unlock_calls_deletequeue();
 
@@ -1326,7 +1387,11 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 		}
 
 		if(is_rtcp) {
-			call->read_rtcp((unsigned char*) data, datalen, header, saddr, source, iscaller);
+			if(rtp_threaded && can_thread) {
+				add_to_rtp_thread_queue(call, (unsigned char*) data, datalen, header, saddr, source, iscaller, is_rtcp);
+			} else {
+				call->read_rtcp((unsigned char*) data, datalen, header, saddr, source, iscaller);
+			}
 			if(!dontsave && (opt_saveRTP || opt_saveRTCP)) {
 				save_packet(call, header, packet);
 			}
@@ -1334,8 +1399,9 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 		}
 
 		if(rtp_threaded && can_thread) {
-			add_to_rtp_thread_queue(call, (unsigned char*) data, datalen, header, saddr, source, iscaller);
+			add_to_rtp_thread_queue(call, (unsigned char*) data, datalen, header, saddr, source, iscaller, is_rtcp);
 			*was_rtp = 1;
+			if(is_rtcp) return call;
 		} else {
 			call->read_rtp((unsigned char*) data, datalen, header, saddr, source, iscaller);
 			call->set_last_packet_time(header->ts.tv_sec);
@@ -1363,7 +1429,11 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 		}
 
 		if(is_rtcp) {
-			call->read_rtcp((unsigned char*) data, datalen, header, saddr, source, iscaller);
+			if(rtp_threaded && can_thread) {
+				add_to_rtp_thread_queue(call, (unsigned char*) data, datalen, header, saddr, source, !iscaller, is_rtcp);
+			} else {
+				call->read_rtcp((unsigned char*) data, datalen, header, saddr, source, !iscaller);
+			}
 			if(!dontsave && (opt_saveRTP || opt_saveRTCP)) {
 				save_packet(call, header, packet);
 			}
@@ -1372,7 +1442,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 
 		// as we are searching by source address and find some call, revert iscaller 
 		if(rtp_threaded && can_thread) {
-			add_to_rtp_thread_queue(call, (unsigned char*) data, datalen, header, saddr, source, !iscaller);
+			add_to_rtp_thread_queue(call, (unsigned char*) data, datalen, header, saddr, source, !iscaller, is_rtcp);
 			*was_rtp = 1;
 		} else {
 			call->read_rtp((unsigned char*) data, datalen, header, saddr, source, !iscaller);
@@ -1637,7 +1707,6 @@ void *pcap_read_thread_func(void *arg) {
 #endif
 
 #ifdef QUEUE_NONBLOCK2
-		//if(readit == writeit) {
 		if(qring[readit % qringmax].free == 1) {
 			// no packet to read 
 			if(terminating || readend) {
@@ -1654,7 +1723,6 @@ void *pcap_read_thread_func(void *arg) {
 		packets++;
 		header_ip = (struct iphdr *) ((char*)pp->packet + pp->offset);
 		header_udp = &header_udp_tmp;
-//		printf("[%d] [%d] [%d]\n", readit, writeit, header_ip->protocol);
 		if (header_ip->protocol == IPPROTO_UDP) {
 			// prepare packet pointers 
 			header_udp = (struct udphdr *) ((char *) header_ip + sizeof(*header_ip));

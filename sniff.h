@@ -6,6 +6,8 @@
 #include <queue>
 #include "voipmonitor.h"
 
+#define MAXPACKETLENQRING 1600
+
 #ifdef QUEUE_NONBLOCK
 extern "C" {
 #include "liblfds.6/inc/liblfds.h"
@@ -41,12 +43,19 @@ struct udphdr {
 
 typedef struct {
 	Call *call;
+#if defined(QUEUE_MUTEX) || defined(QUEUE_NONBLOCK)
 	unsigned char *data;
+#endif
+#ifdef QUEUE_NONBLOCK2
+	unsigned char data[MAXPACKETLENQRING];
+#endif
 	int datalen;
 	u_int32_t saddr;
 	unsigned short port;
-	int iscaller;
+	char iscaller;
+	char is_rtcp;
 	struct pcap_pkthdr header;
+	char free;
 } rtp_packet;
 
 typedef struct {
@@ -59,6 +68,12 @@ typedef struct {
 #ifdef QUEUE_NONBLOCK
 	struct queue_state *pqueue;
 #endif
+#ifdef QUEUE_NONBLOCK2
+	rtp_packet *vmbuffer;
+	int vmbuffermax;
+	volatile int readit;
+	volatile int writeit;
+#endif
 } read_thread;
 
 #if defined(QUEUE_MUTEX) || defined(QUEUE_NONBLOCK)
@@ -69,7 +84,6 @@ typedef struct {
 } pcap_packet;
 #endif
 
-#define MAXPACKETLENQRING 1600
 
 #if defined(QUEUE_NONBLOCK2)
 typedef struct {

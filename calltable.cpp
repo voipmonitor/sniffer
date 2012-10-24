@@ -74,6 +74,8 @@ extern char odbc_password[256];
 extern char odbc_driver[256];
 extern int opt_callend;
 extern int opt_id_sensor;
+extern unsigned int gthread_num;
+extern int num_threads;
 int calls = 0;
 
 unsigned int last_register_clean = 0;
@@ -141,7 +143,8 @@ Call::Call(char *call_id, unsigned long call_id_len, time_t time, void *ct) {
 	lastcalledrtp = NULL;
 	destroy_call_at = 0;
 	custom_header1[0] = '\0';
-	thread_num = 0;
+	thread_num = num_threads > 0 ? gthread_num % num_threads : 0;
+	gthread_num++;
 	recordstopped = 0;
 	dtmfflag = 0;
 }
