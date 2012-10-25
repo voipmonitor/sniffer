@@ -1280,7 +1280,9 @@ int main(int argc, char *argv[]) {
 	readend = 1;
 
 #ifdef QUEUE_NONBLOCK2
-	pthread_join(pcap_read_thread, NULL);
+	if(opt_pcap_threaded) {
+		pthread_join(pcap_read_thread, NULL);
+	}
 #endif
 
 // wait for RTP threads
