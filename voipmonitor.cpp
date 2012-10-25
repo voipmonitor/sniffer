@@ -88,6 +88,7 @@ int opt_savewav_force = 0;	// if = 1 WAV will be generated no matter on filter r
 int opt_sipoverlap = 1;		
 int opt_id_sensor = -1;		
 int readend = 0;
+int opt_dup_check = 0;
 
 char configfile[1024] = "";	// config file name
 
@@ -507,6 +508,9 @@ int load_config(char *fname) {
 	if((value = ini.GetValue("general", "sip-register", NULL))) {
 		opt_sip_register = yesno(value);
 	}
+	if((value = ini.GetValue("general", "deduplicate", NULL))) {
+		opt_dup_check = yesno(value);
+	}
 	if((value = ini.GetValue("general", "mos_g729", NULL))) {
 		opt_mos_g729 = yesno(value);
 	}
@@ -741,6 +745,7 @@ int main(int argc, char *argv[]) {
 	static struct option long_options[] = {
 	    {"gzip-graph", 0, 0, '1'},
 	    {"gzip-pcap", 0, 0, '2'},
+	    {"deduplicate", 0, 0, 'L'},
 	    {"save-sip", 0, 0, 'S'},
 	    {"save-rtp", 0, 0, 'R'},
 	    {"skip-rtppayload", 0, 0, 'o'},
@@ -784,7 +789,7 @@ int main(int argc, char *argv[]) {
 	/* command line arguments overrides configuration in voipmonitor.conf file */
 	while(1) {
 		int c;
-		c = getopt_long(argc, argv, "C:f:i:r:d:v:O:h:b:t:u:p:P:s:T:D:e:E:kncUSRoAWGXNIKy4", long_options, &option_index);
+		c = getopt_long(argc, argv, "C:f:i:r:d:v:O:h:b:t:u:p:P:s:T:D:e:E:LkncUSRoAWGXNIKy4", long_options, &option_index);
 		//"i:r:d:v:h:b:u:p:fnU", NULL, NULL);
 		if (c == -1)
 			break;
@@ -817,6 +822,9 @@ int main(int argc, char *argv[]) {
 				break;
 			case 'I':
 				opt_rtpnosip = 1;
+				break;
+			case 'L':
+				opt_dup_check = 1;
 				break;
 			case 'K':
 				opt_norecord_dtmf = 1;
@@ -996,6 +1004,11 @@ int main(int argc, char *argv[]) {
 				"      and port. It means it will not work in case where phone sends INVITE from a.b.c.d:1024 and\n"
 				"      SIP proxy replies to a.b.c.d:5060. If you have better idea how to solve this problem better\n"
 				"      please contact support@voipmonitor.org\n"
+				"\n"
+				" -L, --deduplicate\n"
+				"      duplicate check do md5 sum for each packet and if md5 is same as previous packet it will discard it\n"
+				"      WARNING: md5 is expensive function (slows voipmonitor 3 times) so use it only if you have enough CPU or\n" 
+				"      for pcap conversion only\n"
 				"\n"
 				" -W, --save-audio\n"
 				"      save RTP packets and covert it to one WAV file. Default is disabled.\n"

@@ -82,6 +82,7 @@ extern int opt_norecord_dtmf;
 extern int opt_onlyRTPheader;
 extern int opt_sipoverlap;
 extern int readend;
+extern int opt_dup_check;
 
 extern IPfilter *ipfilter;
 extern IPfilter *ipfilter_reload;
@@ -1919,16 +1920,19 @@ void readdump_libpcap(pcap_t *handle) {
 			continue;
 		}
 
-		/* md5 sum */
-#if 0
-		MD5_Init(&ctx);
-		MD5_Update(&ctx, data, (unsigned long)datalen);
-		MD5_Final(md5, &ctx);
-		if(!memmem(md5, 32, prevmd5, 32)) {
-			//printf("md5[%s]\n", md5);
-			//printf("DUP!\n");
+#if 1
+		/* check for duplicate packets (md5 is expensive operation - enable only if you really need it */
+		if(opt_dup_check) {
+			MD5_Init(&ctx);
+			MD5_Update(&ctx, data, (unsigned long)datalen);
+			MD5_Final(md5, &ctx);
+			if(!memmem(md5, 32, prevmd5, 32)) {
+				continue;
+				//printf("md5[%s]\n", md5);
+				//printf("DUP!\n");
+			}
+			memcpy(prevmd5, md5, 32);
 		}
-		memcpy(prevmd5, md5, 32);
 #endif 
 		
 
