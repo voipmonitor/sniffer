@@ -1926,7 +1926,7 @@ void readdump_libpcap(pcap_t *handle) {
 			MD5_Init(&ctx);
 			MD5_Update(&ctx, data, (unsigned long)datalen);
 			MD5_Final(md5, &ctx);
-			if(!memmem(md5, 32, prevmd5, 32)) {
+			if(memmem(md5, 32, prevmd5, 32)) {
 				continue;
 				//printf("md5[%s]\n", md5);
 				//printf("DUP!\n");
