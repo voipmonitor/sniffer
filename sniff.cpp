@@ -45,6 +45,7 @@ and insert them into Call class.
 #include "hash.h"
 #include "rtp.h"
 #include "rtcp.h"
+#include "md5.h"
 
 extern "C" {
 #include "liblfds.6/inc/liblfds.h"
@@ -1790,6 +1791,10 @@ void readdump_libpcap(pcap_t *handle) {
 	int pcap_dlink = pcap_datalink(handle);
 	int istcp = 0;
 	int was_rtp;
+	unsigned char md5[32];
+	unsigned char prevmd5[32];
+
+	MD5_CTX ctx;
 
 	init_hash();
 	memset(tcp_streams_hashed, 0, sizeof(tcp_stream2*) * MAX_TCPSTREAMS);
@@ -1913,6 +1918,19 @@ void readdump_libpcap(pcap_t *handle) {
 		if(datalen < 0) {
 			continue;
 		}
+
+		/* md5 sum */
+#if 0
+		MD5_Init(&ctx);
+		MD5_Update(&ctx, data, (unsigned long)datalen);
+		MD5_Final(md5, &ctx);
+		if(!memmem(md5, 32, prevmd5, 32)) {
+			//printf("md5[%s]\n", md5);
+			//printf("DUP!\n");
+		}
+		memcpy(prevmd5, md5, 32);
+#endif 
+		
 
 		if(opt_pcap_threaded) {
 			//add packet to queue

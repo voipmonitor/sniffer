@@ -176,6 +176,8 @@ liblfds.6/test/test.vcproj -text
 /ltmain.sh -text
 /manager.cpp -text
 /manager.h -text
+/md5.cpp -text
+/md5.h -text
 /mos_g729.cpp -text
 /mos_g729.h -text
 /odbc.cpp -text
