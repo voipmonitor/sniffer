@@ -1327,9 +1327,6 @@ int main(int argc, char *argv[]) {
 	}
 
 	free(sipportmatrix);
-	if (opt_fork){
-		unlink(opt_pidfile);
-	}
 	if(opt_cachedir[0] != '\0') {
 		terminating2 = 1;
 		pthread_join(cachedir_thread, NULL);
@@ -1339,6 +1336,10 @@ int main(int argc, char *argv[]) {
 	if(sqlDb) {
 		sqlDb->clean();
 		delete sqlDb;
+	}
+
+	if (opt_fork){
+		unlink(opt_pidfile);
 	}
 }
 
