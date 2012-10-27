@@ -46,8 +46,14 @@ case "$1" in
 		PID=`cat $PIDFILE`
 		NAME=`ps -o comm= $PID`
 		if [ "$NAME" = "voipmonitor" ]; then
-			echo "Sending kill signal to voipmonitor"
+			echo -n "Sending kill signal to voipmonitor and waiting to terminate."
 			kill $PID
+			while [ -f $PIDFILE ]
+			do
+				sleep 1
+				echo -n .
+			done
+			echo  " terminated."
 		else
 			echo "voipmonitor is not running";
 			rm $PIDFILE
@@ -61,7 +67,7 @@ case "$1" in
 		PID=`cat $PIDFILE`
 		NAME=`ps -o comm= $PID`
 		if [ "$NAME" -eq "voipmonitor" ]; then
-			echo "Sending kill signal to voipmonitor"
+			echo "Force terminating voipmonitor (kill -9)."
 			kill -9 $PID
 		else
 			echo "voipmonitor is not running";
@@ -78,8 +84,6 @@ case "$1" in
 	#       just the same as "restart".
 	#
 	$0 stop
-	echo "waiting 2 seconds";
-	sleep 2
 	$0 start
 	;;
   *)
