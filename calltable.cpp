@@ -1587,7 +1587,7 @@ Call::saveRegisterToDb() {
 				if(rsltRow) {
 					// delete old record from register_table (because we have new one
 					int expired = atoi(rsltRow["expired"].c_str()) == 1;
-					int expires_at = atoi(rsltRow["expires_at"].c_str());
+					time_t expires_at = atoi(rsltRow["expires_at"].c_str());
 
 					string query = "DELETE FROM " + (string)register_table + " WHERE ID = '" + (rsltRow["ID"]).c_str() + "'";
 					if(!sqlDb->query(query)) {
@@ -1626,7 +1626,7 @@ Call::saveRegisterToDb() {
 						sqlDb->insert("register_state", reg, "");
 					}
 				} else {
-					// we have success reg without any history, so lets save it to register_state
+					// we have success reg without history, so lets save it to register_state
 					SqlDb_row reg;
 					reg.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "created_at");
 					reg.add(htonl(sipcallerip), "sipcallerip");
@@ -1645,26 +1645,26 @@ Call::saveRegisterToDb() {
 			}
 
 			// save successfull REGISTER to register table in case expires is not negative
-			{
-			SqlDb_row reg;
-			reg.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
-			reg.add(htonl(sipcallerip), "sipcallerip");
-			reg.add(htonl(sipcalledip), "sipcalledip");
-			//reg.add(sqlEscapeString(fbasename), "fbasename");
-			reg.add(sqlEscapeString(caller), "from_num");
-			reg.add(sqlEscapeString(callername), "from_name");
-			reg.add(sqlEscapeString(caller_domain), "from_domain");
-			reg.add(sqlEscapeString(called), "to_num");
-			reg.add(sqlEscapeString(called_domain), "to_domain");
-			reg.add(sqlEscapeString(contact_num), "contact_num");
-			reg.add(sqlEscapeString(contact_domain), "contact_domain");
-			reg.add(sqlEscapeString(digest_username), "digestusername");
-			reg.add(sqlEscapeString(digest_realm), "digestrealm");
-			reg.add(sqlDb->getIdOrInsert(sql_cdr_ua_table, "id", "ua", cdr_ua, ""), "ua_id");
-			reg.add(register_expires, "expires");
-			reg.add(sqlEscapeString(sqlDateTimeString(calltime() + register_expires).c_str()), "expires_at");
-			reg.add(regstate, "state");
-			return(sqlDb->insert(register_table, reg, "") <= 0);
+			if(register_expires > 0) {
+				SqlDb_row reg;
+				reg.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
+				reg.add(htonl(sipcallerip), "sipcallerip");
+				reg.add(htonl(sipcalledip), "sipcalledip");
+				//reg.add(sqlEscapeString(fbasename), "fbasename");
+				reg.add(sqlEscapeString(caller), "from_num");
+				reg.add(sqlEscapeString(callername), "from_name");
+				reg.add(sqlEscapeString(caller_domain), "from_domain");
+				reg.add(sqlEscapeString(called), "to_num");
+				reg.add(sqlEscapeString(called_domain), "to_domain");
+				reg.add(sqlEscapeString(contact_num), "contact_num");
+				reg.add(sqlEscapeString(contact_domain), "contact_domain");
+				reg.add(sqlEscapeString(digest_username), "digestusername");
+				reg.add(sqlEscapeString(digest_realm), "digestrealm");
+				reg.add(sqlDb->getIdOrInsert(sql_cdr_ua_table, "id", "ua", cdr_ua, ""), "ua_id");
+				reg.add(register_expires, "expires");
+				reg.add(sqlEscapeString(sqlDateTimeString(calltime() + register_expires).c_str()), "expires_at");
+				reg.add(regstate, "state");
+				return(sqlDb->insert(register_table, reg, "") <= 0);
 			}
 			break;
 		case 2:
