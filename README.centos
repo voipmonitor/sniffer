@@ -14,25 +14,23 @@ Pre-Build
 =========
 
 yum groupinstall 'Development Tools'
+yum install subversion unixODBC-devel mysql-devel libogg libogg-devel vorbis-tools libvorbis libpcap-devel
 
-libpcap-devel
--------------
-wget http://www.tcpdump.org/release/libpcap-1.1.1.tar.gz
+(for older centos < 6.3) 
+------------------------
+wget http://www.tcpdump.org/release/libpcap-1.3.0.tar.gz
 tar xzf libpcap-1.1.1.tar.gz
 cd libpcap*
 ./configure
 make
 make install
 
-ogg vorbis
-----------
-yum install libogg libogg-devel vorbis-tools libvorbis libvorbis-devel
-
 Build voipmonitor
 =================
-yum install subversion unixODBC-devel
 svn co https://voipmonitor.svn.sourceforge.net/svnroot/voipmonitor/trunk voipmonitor-svn
 cd voipmonitor-svn
+rm Makefile
+./configure
 make
 make install
 mkdir /var/spool/voipmonitor

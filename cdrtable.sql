@@ -259,3 +259,10 @@ CREATE TABLE `register_failed` (
   KEY `sipcallerip` (`sipcallerip`)
 ) ENGINE=InnoDB DEFAULT CHARSET=latin1 ROW_FORMAT=COMPRESSED;
 
+CREATE TABLE IF NOT EXISTS `sensors` (
+  `id_sensor` int(32) unsigned NOT NULL,
+  `host` varchar(255) NULL DEFAULT NULL,
+  `port` int(8) NULL DEFAULT NULL,
+  PRIMARY KEY (`id_sensor`)
+  ENGINE=InnoDB DEFAULT CHARSET=latin1;
+)

@@ -1289,6 +1289,9 @@ int main(int argc, char *argv[]) {
 
 	// start reading packets
 //	readdump_libnids(handle);
+	if(!opt_nocdr && isSqlDriver("mysql")) {
+		sqlDb->createSchema();
+	}
 	readdump_libpcap(handle);
 	readend = 1;
 

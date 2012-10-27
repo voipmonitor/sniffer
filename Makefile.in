@@ -155,6 +155,7 @@ source: clean
 	cp -a * /tmp/voipmonitor-${version}-src/
 	rm -rf `find /tmp/voipmonitor-${version}-src -type d -name .svn`
 	rm /tmp/voipmonitor-${version}-src/Makefile
+	echo 1 > /tmp/voipmonitor-${version}-src/.cleancount
 	tar -C /tmp -czf /tmp/voipmonitor-${version}-src.tar.gz voipmonitor-${version}-src
 
 

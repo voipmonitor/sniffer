@@ -100,6 +100,9 @@ public:
 		this->maxQueryPass = maxQueryPass;
 	}
 	virtual void clean() = 0;
+
+	virtual void createSchema() = 0;
+
 protected:
 	string conn_server;
 	string conn_user;
@@ -127,6 +130,7 @@ public:
 	string escape(const char *inputString);
 	bool checkLastError(string prefixError, bool sysLog = false,bool clearLastError = false);
 	void clean();
+	void createSchema();
 private:
 	MYSQL *hMysql;
 	MYSQL *hMysqlConn;

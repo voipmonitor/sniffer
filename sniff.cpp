@@ -154,7 +154,7 @@ void save_packet(Call *call, struct pcap_pkthdr *header, const u_char *packet) {
 /* get SIP tag from memory pointed to *ptr length of len */
 char * gettag(const void *ptr, unsigned long len, const char *tag, unsigned long *gettaglen){
 	unsigned long register r, l, tl;
-	char *rc;
+	char *rc = NULL;
 	char *tmp;
 	char tmp2;
 	tmp = (char*)ptr;
@@ -1873,6 +1873,7 @@ void readdump_libpcap(pcap_t *handle) {
 				break;
 			default:
 				printf("This datalink number [%d] is not supported yet. For more information write to support@voipmonitor.org\n", pcap_dlink);
+				continue;
 		}
 
 		if(protocol != 8) {
@@ -1929,7 +1930,6 @@ void readdump_libpcap(pcap_t *handle) {
 			if(memmem(md5, 32, prevmd5, 32)) {
 				continue;
 				//printf("md5[%s]\n", md5);
-				//printf("DUP!\n");
 			}
 			memcpy(prevmd5, md5, 32);
 		}

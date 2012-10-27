@@ -4,9 +4,10 @@ Debian 6.0
 apt-get install build-essential subversion libvorbis-dev libpcap-dev apache2 php5-mysql php5-gd mysql-server unixodbc-dev libapache2-mod-php5
 
 cd /usr/src
-svn co \ https://voipmonitor.svn.sourceforge.net/svnroot/voipmonitor/trunk  voipmonitor-svn
+svn co https://voipmonitor.svn.sourceforge.net/svnroot/voipmonitor/trunk  voipmonitor-svn
 cd voipmonitor-svn
-make clean
+rm Makefile
+./configure
 make
 make install
 mkdir /var/spool/voipmonitor

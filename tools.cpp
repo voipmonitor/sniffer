@@ -39,10 +39,9 @@ int msleep(long msec)
 int file_exists (char * fileName)
 {
 	struct stat buf;
-	int i = stat(fileName, &buf);
 	/* File found */
-	if (i == 0) {
-		return 1;
+	if (stat(fileName, &buf) == 0) {
+		return buf.st_size;
 	}
 	return 0;
 }

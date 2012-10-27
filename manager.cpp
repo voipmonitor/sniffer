@@ -49,7 +49,7 @@ struct listening_worker_arg {
 void *listening_worker(void *arguments) {
 	struct listening_worker_arg *args = (struct listening_worker_arg*)arguments;
 
-        int ret, ret1, ret2;
+        int ret = 0, ret1 = 0, ret2 = 0;
         unsigned char read1[1024];
         unsigned char read2[1024];
         struct timeval tv;
@@ -391,8 +391,8 @@ void *manager_server(void *dummy) {
 
 			fd = open(filename, O_RDONLY);
 			if(fd < 0) {
-				char msg[] = "error: cannot open file";
-				if ((size = send(client, msg, strlen(msg), 0)) == -1){
+				sprintf(buf, "error: cannot open file [%s]", filename);
+				if ((size = send(client, buf, strlen(buf), 0)) == -1){
 					cerr << "Error sending data to client" << endl;
 				}
 				close(client);
@@ -400,11 +400,97 @@ void *manager_server(void *dummy) {
 			}
 			while(nread = read(fd, rbuf, sizeof rbuf), nread > 0) {
 				if ((size = send(client, rbuf, nread, 0)) == -1){
+					close(fd);
 					close(client);
 					continue;
 				}
 			}
 			close(fd);
+			close(client);
+			continue;
+		} else if(strstr(buf, "fileexists") != NULL) {
+			char filename[2048];
+			unsigned int size;
+
+			sscanf(buf, "fileexists %s", filename);
+			size = file_exists(filename);
+			sprintf(buf, "%d", size);
+			send(client, buf, strlen(buf), 0);
+			close(client);
+			continue;
+		} else if(strstr(buf, "getsiptshark") != NULL) {
+			char filename[2048];
+			int fd;
+			unsigned int size;
+			char tsharkfile[2048];
+			char pcapfile[2048];
+			char cmd[4092];
+			char rbuf[4096];
+			int res;
+			ssize_t nread;
+
+			sscanf(buf, "getsiptshark %s", filename);
+
+			sprintf(tsharkfile, "%s.pcap2txt", filename);
+			sprintf(pcapfile, "%s.pcap", filename);
+
+	
+			size = file_exists(tsharkfile);
+			if(size) {
+				fd = open(tsharkfile, O_RDONLY);
+				if(fd < 0) {
+					sprintf(buf, "error: cannot open file [%s]", tsharkfile);
+					if ((res = send(client, buf, strlen(buf), 0)) == -1){
+						cerr << "Error sending data to client" << endl;
+					}
+					close(client);
+					continue;
+				}
+				while(nread = read(fd, rbuf, sizeof rbuf), nread > 0) {
+					if ((res = send(client, rbuf, nread, 0)) == -1){
+						close(fd);
+						close(client);
+						continue;
+					}
+				}
+				close(fd);
+				close(client);
+				continue;
+			}
+
+			size = file_exists(pcapfile);
+			if(!size) {
+				send(client, "0", 1, 0);
+				close(client);
+				continue;
+			}
+		
+			sprintf(cmd, "PATH=/bin:/sbin:/usr/bin:/usr/sbin:/usr/local/bin:/usr/local/sbin tshark -r \"%s.pcap\" -R sip > \"%s.pcap2txt\" 2>/dev/null", filename, filename);
+			system(cmd);
+			sprintf(cmd, "echo ==== >> \"%s.pcap2txt\"", filename);
+			system(cmd);
+			sprintf(cmd, "PATH=/bin:/sbin:/usr/bin:/usr/sbin:/usr/local/bin:/usr/local/sbin tshark -r \"%s.pcap\" -V -R sip >> \"%s.pcap2txt\" 2>/dev/null", filename, filename);
+			system(cmd);
+
+			size = file_exists(tsharkfile);
+			if(size) {
+				fd = open(tsharkfile, O_RDONLY);
+				if(fd < 0) {
+					sprintf(buf, "error: cannot open file [%s]", filename);
+					close(client);
+					continue;
+				}
+				while(nread = read(fd, rbuf, sizeof rbuf), nread > 0) {
+					if ((res = send(client, rbuf, nread, 0)) == -1){
+						close(fd);
+						close(client);
+						continue;
+					}
+				}
+				close(fd);
+				close(client);
+				continue;
+			}
 			close(client);
 			continue;
 		} else if(strstr(buf, "quit") != NULL) {
