@@ -25,6 +25,7 @@
 #include <sys/resource.h>
 #include <sys/sendfile.h>
 #include <semaphore.h>
+#include <dirent.h>
 
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -39,6 +40,7 @@
 #include "manager.h"
 #include "filter_mysql.h"
 #include "sql_db.h"
+#include "tools.h"
 
 extern "C" {
 #include "liblfds.6/inc/liblfds.h"
@@ -1288,9 +1290,57 @@ int main(int argc, char *argv[]) {
 
 	// start reading packets
 //	readdump_libnids(handle);
+#if 0
+	char filename[32];
+	while(1){
+		unsigned int tmp = 0;
+		unsigned int min = 0 - 1;
+		unsigned int max = 0;
+		unsigned int prevmax = 0;
+		DIR *dirp = opendir("/dev/shm/voipmonitor");
+		dirent *dp;
+		while ((dp = readdir(dirp)) != NULL) {
+			if (!strcmp(dp->d_name, "/dev/shm/voipmonitor")) {
+				continue;
+			}
+			if (dp->d_name[0] == '.') {
+				continue;
+			}
+			//printf("File [%s]\n", dp->d_name);
+			tmp = atoi(dp->d_name);
+			if(tmp > max) {
+				prevmax = max;
+				max = tmp;
+			}
+			if(tmp < min){
+				min = tmp;
+			}
+		}
+		closedir(dirp);
+		for(int i = min; i < max; i++) {
+			snprintf(filename, sizeof(filename), "/dev/shm/voipmonitor/%d", i);
+			if(!file_exists(filename)) continue;
+			// if reading file
+			printf("Reading file: %s\n", filename);
+			mask = PCAP_NETMASK_UNKNOWN;
+			handle = pcap_open_offline(filename, errbuf);
+			if(handle == NULL) {
+				fprintf(stderr, "Couldn't open pcap file '%s': %s\n", filename, errbuf);
+				continue;
+			}
+			readdump_libpcap(handle);
+			unlink(filename);
+			pcap_close(handle);
+		}
+		//readend = 1;
+		usleep(100000);
+	}
+#endif
+
 	if(!opt_nocdr && isSqlDriver("mysql")) {
 		sqlDb->createSchema();
 	}
+
 	readdump_libpcap(handle);
 	readend = 1;
 
