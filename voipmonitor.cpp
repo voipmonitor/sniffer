@@ -518,6 +518,9 @@ int load_config(char *fname) {
 		opt_nocdr = yesno(value);
 	}
 	if((value = ini.GetValue("general", "savesip", NULL))) {
+		opt_saveSIP = yesno(value);
+	}
+	if((value = ini.GetValue("general", "savertp", NULL))) {
 		switch(value[0]) {
 		case 'y':
 		case 'Y':
@@ -530,10 +533,6 @@ int load_config(char *fname) {
 			opt_onlyRTPheader = 1;
 			break;
 		}
-		opt_saveSIP = yesno(value);
-	}
-	if((value = ini.GetValue("general", "savertp", NULL))) {
-		opt_saveRTP = yesno(value);
 	}
 	if((value = ini.GetValue("general", "saveudptl", NULL))) {
 		opt_saveudptl = yesno(value);
