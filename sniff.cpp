@@ -747,38 +747,38 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 				if (sip_method == INVITE) {
 					int res;
 					// callername
-					res = get_sip_peercnam(data,datalen,"From:", call->callername, sizeof(call->callername));
+					res = get_sip_peercnam(data,datalen,"\nFrom:", call->callername, sizeof(call->callername));
 					if(res) {
 						// try compact header
-						get_sip_peercnam(data,datalen,"f:", call->callername, sizeof(call->callername));
+						get_sip_peercnam(data,datalen,"\nf:", call->callername, sizeof(call->callername));
 					}
 
 					// caller number
-					res = get_sip_peername(data,datalen,"From:", call->caller, sizeof(call->caller));
+					res = get_sip_peername(data,datalen,"\nFrom:", call->caller, sizeof(call->caller));
 					if(res) {
 						// try compact header
-						get_sip_peername(data,datalen,"f:", call->caller, sizeof(call->caller));
+						get_sip_peername(data,datalen,"\nf:", call->caller, sizeof(call->caller));
 					}
 
 					// caller number
-					res = get_sip_peername(data,datalen,"To:", call->called, sizeof(call->called));
+					res = get_sip_peername(data,datalen,"\nTo:", call->called, sizeof(call->called));
 					if(res) {
 						// try compact header
-						get_sip_peername(data,datalen,"t:", call->called, sizeof(call->called));
+						get_sip_peername(data,datalen,"\nt:", call->called, sizeof(call->called));
 					}
 
 					// caller domain 
-					res = get_sip_domain(data,datalen,"From:", call->caller_domain, sizeof(call->caller_domain));
+					res = get_sip_domain(data,datalen,"\nFrom:", call->caller_domain, sizeof(call->caller_domain));
 					if(res) {
 						// try compact header
-						get_sip_domain(data,datalen,"f:", call->caller_domain, sizeof(call->caller_domain));
+						get_sip_domain(data,datalen,"\nf:", call->caller_domain, sizeof(call->caller_domain));
 					}
 
 					// called domain 
-					res = get_sip_domain(data,datalen,"To:", call->called_domain, sizeof(call->called_domain));
+					res = get_sip_domain(data,datalen,"\nTo:", call->called_domain, sizeof(call->called_domain));
 					if(res) {
 						// try compact header
-						get_sip_domain(data,datalen,"t:", call->called_domain, sizeof(call->called_domain));
+						get_sip_domain(data,datalen,"\nt:", call->called_domain, sizeof(call->called_domain));
 					}
 
 					call->seeninvite = true;
@@ -871,6 +871,15 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 
 			// check if it is BYE or OK(RES2XX)
 			if(sip_method == INVITE) {
+				if (saddr == call->sipcallerip) {
+					//update called number for each invite due to overlap-dialling
+					res = get_sip_peername(data,datalen,"\nTo:", call->called, sizeof(call->called));
+					if(res) {
+						// try compact header
+						get_sip_peername(data,datalen,"\nt:", call->called, sizeof(call->called));
+					}
+				}
+			
 				//check and save CSeq for later to compare with OK 
 				s = gettag(data, datalen, "\nCSeq:", &l);
 				if(l && l < 32) {
