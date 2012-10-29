@@ -1669,12 +1669,12 @@ Call::saveRegisterToDb() {
 			break;
 		case 2:
 			// REGISTER failed. Check if there is already in register_failed table failed register within last hour 
-			query = "SELECT counter FROM register_failed WHERE to_num = " + sqlEscapeString(called) + " AND digestusername = " + sqlEscapeString(digest_username) + " AND created_at <= ADDTIME(NOW(), '01:00:00')";
+			query = "SELECT counter FROM register_failed WHERE to_num = " + sqlEscapeString(called) + " AND digestusername = " + sqlEscapeString(digest_username) + " AND created_at >= SUBTIME(NOW(), '01:00:00')";
 			if(sqlDb->query(query)) {
 				SqlDb_row rsltRow = sqlDb->fetchRow();
 				if(rsltRow) {
 					// there is already failed register, update counter and do not insert
-					string query = "UPDATE register_failed SET counter = counter + 1 WHERE to_num = " + sqlEscapeString(called) + " AND digestusername = " + sqlEscapeString(digest_username) + " AND created_at <= ADDTIME(NOW(), '01:00:00')";
+					string query = "UPDATE register_failed SET counter = counter + 1 WHERE to_num = " + sqlEscapeString(called) + " AND digestusername = " + sqlEscapeString(digest_username) + " AND created_at >= SUBTIME(NOW(), '01:00:00')";
 					sqlDb->query(query);
 				} else {
 					// this is new failed attempt within hour, insert
