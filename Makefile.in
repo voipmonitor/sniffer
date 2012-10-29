@@ -151,6 +151,7 @@ source: clean
 	mkdir /tmp/voipmonitor-${version}-src
 	cp -a * /tmp/voipmonitor-${version}-src/
 	rm -rf `find /tmp/voipmonitor-${version}-src -type d -name .svn`
+	rm /tmp/voipmonitor-${version}-src/Makefile
 	tar -C /tmp -czf /tmp/voipmonitor-${version}-src.tar.gz voipmonitor-${version}-src
 
 

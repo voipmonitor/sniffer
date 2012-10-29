@@ -9,7 +9,7 @@ version 5.1
 - Implement sniffing packets with two IP headers to support Acme SBC mirror feature
 - Implement mysql port configuration option to connect to non standard 3306 port - in voipmonitor.conf and on command line
 - fix natalias configuration issue 
-- Allows to save only UDPTL (T.38) packets instead of all RTP packets. It is for cases where only FAX is needed to save instead of RTP packets. PDF image creation from T.38 is available in upcoming WEB GUI 5.1 version.
+- Allows to save only UDPTL (T.38) FAX packets instead of all RTP packets. It is for cases where only FAX is needed to save instead of RTP packets. PDF image creation from T.38 is available in upcoming WEB GUI 5.1 version.
 - to upgrade sql run cat cdrtable.sql.5.0-5.1 | mysql voipmonitor - this time it is instant because cdr table is not touched. 
 
 version 5.0.6
