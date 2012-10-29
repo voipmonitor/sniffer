@@ -1,3 +1,16 @@
+version 5.2 29.10.2012
+======================
+
+- fixes some SIP REGISTER issues
+- fix savertp = header which never worked if enabled in voipmonitor.conf file
+- redesign threading which is now enabled by default and allows to use all available CPU cores. Memory is now fixed size and not causes crash. Communication between threads was optimized too. VoIPmonitor is now able to handle full 1Gbit traffic ~7000 simultaneous calls within one instance (tested on Xeon X5690 and Intel 1Gbit 82580 card using DNA driver). New options controlling threading - vmbuffer, rtpthreads, rtpthread-buffer
+- automatically creates mysql tables in database 
+- implement id_sensor option to diferentiate cdr between several instances saving to one database and one table
+- implement getfile and gettshark file over tcp manager to support many sniffers - one database/GUI
+- fix init.d script and pid file handling
+- implement possibility to remove duplicate packets 
+- no user action on database changes is needed 
+
 version 5.1
 ===========
 
