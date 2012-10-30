@@ -746,7 +746,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 	pcap_t *handle, pcap_pkthdr *header, const u_char *packet, int istcp, int dontsave, int can_thread, int *was_rtp) {
 
 	static Call *call;
-	static last_sip_method = -1;
+	static int last_sip_method = -1;
 	static int iscaller;
 	static int is_rtcp = 0;
 	static unsigned long last_cleanup = 0;	// Last cleaning time
