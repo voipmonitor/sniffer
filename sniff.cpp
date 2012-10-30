@@ -746,6 +746,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 	pcap_t *handle, pcap_pkthdr *header, const u_char *packet, int istcp, int dontsave, int can_thread, int *was_rtp) {
 
 	static Call *call;
+	static last_sip_method = -1;
 	static int iscaller;
 	static int is_rtcp = 0;
 	static unsigned long last_cleanup = 0;	// Last cleaning time
@@ -1020,7 +1021,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 		}
 		lastSIPresponse[0] = '\0';
 		lastSIPresponseNum = 0;
-		if(sip_method > 0 && sip_method != INVITE && sip_method != REGISTER && sip_method != CANCEL && sip_method != BYE) {
+		if(sip_method > 0 && last_sip_method != BYE && sip_method != INVITE && sip_method != REGISTER && sip_method != CANCEL && sip_method != BYE) {
 			char a = data[datalen - 1];
 			data[datalen - 1] = 0;
 			char *tmp = strstr(data, "\r");
@@ -1046,6 +1047,8 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 			strcpy(lastSIPresponse, "BYE");
 			lastSIPresponseNum = 0;
 		}
+
+		last_sip_method = sip_method;
 
 		// find call */
 		if (!(call = calltable->find_by_call_id(s, l))){
