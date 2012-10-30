@@ -91,6 +91,7 @@ int opt_sipoverlap = 1;
 int opt_id_sensor = -1;		
 int readend = 0;
 int opt_dup_check = 0;
+int rtptimeout = 300;
 
 char configfile[1024] = "";	// config file name
 
@@ -501,6 +502,9 @@ int load_config(char *fname) {
 	if((value = ini.GetValue("general", "rtpthreads", NULL))) {
 		num_threads = atoi(value);
 	}
+	if((value = ini.GetValue("general", "rtptimeout", NULL))) {
+		rtptimeout = atoi(value);
+	}
 	if((value = ini.GetValue("general", "rtpthread-buffer", NULL))) {
 		rtpthreadbuffer = atoi(value);
 	}
@@ -762,6 +766,7 @@ int main(int argc, char *argv[]) {
 	    {"mysql-username", 1, 0, 'u'},
 	    {"mysql-password", 1, 0, 'p'},
 	    {"pid-file", 1, 0, 'P'},
+	    {"rtp-timeout", 1, 0, 'm'},
 	    {"rtp-firstleg", 0, 0, '3'},
 	    {"sip-register", 0, 0, '4'},
 	    {"audio-format", 1, 0, '5'},
@@ -790,7 +795,7 @@ int main(int argc, char *argv[]) {
 	/* command line arguments overrides configuration in voipmonitor.conf file */
 	while(1) {
 		int c;
-		c = getopt_long(argc, argv, "C:f:i:r:d:v:O:h:b:t:u:p:P:s:T:D:e:E:LkncUSRoAWGXNIKy4", long_options, &option_index);
+		c = getopt_long(argc, argv, "C:f:i:r:d:v:O:h:b:t:u:p:P:s:T:D:e:E:m:LkncUSRoAWGXNIKy4", long_options, &option_index);
 		//"i:r:d:v:h:b:u:p:fnU", NULL, NULL);
 		if (c == -1)
 			break;
@@ -805,6 +810,9 @@ int main(int argc, char *argv[]) {
 				for(int i = 5060; i < 5099; i++) {
 					sipportmatrix[i] = 1;
 				}
+				break;
+			case 'm':
+				rtptimeout = atoi(optarg);
 				break;
 			case 'e':
 				num_threads = atoi(optarg);
@@ -962,6 +970,13 @@ int main(int argc, char *argv[]) {
 				"       [-u <mysql username>] [-p <mysql password>] [-f <pcap filter>] [--rtp-firstleg] [-y]\n"
 				"       [--ring-buffer <n>] [--vm-buffer <n>] [--manager-port <n>] [--norecord-header] [-s, --id-sensor <num>]\n"
 				"	[--rtp-threads <n>] [--rtpthread-buffer] <n>]\n"
+				"\n"
+				" -m, --rtp-timeout <n>\n"
+				"      rtptimeout is important value which specifies how much seconds from the last SIP packet or RTP packet is call closed\n"
+				"      and writen to database. It means that if you need to monitor ONLY SIP you have to set this to at leat 2 hours = 7200\n"
+				"      assuming your calls is not longer than 2 hours. Take in mind that seting this to very large value will cause to keep\n"
+				"      call in memory in case the call lost BYE and can consume all memory and slows down the sniffer - so do not set it to\n"
+				"      very high numbers. Default is 300 seconds. \n"
 				"\n"
 				" -e, --rtp-threads <n>\n"
 				"      number of threads to process RTP packets. If not specified it will be number of available CPUs.\n"

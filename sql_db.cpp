@@ -405,7 +405,6 @@ void SqlDb_mysql::createSchema() {
   `called_reverse` varchar(255) DEFAULT NULL,\
   `sipcallerip` int(10) unsigned DEFAULT NULL,\
   `sipcalledip` int(10) unsigned DEFAULT NULL,\
-  `custom_header1` varchar(255) DEFAULT NULL,\
   `whohanged` enum('caller','callee') DEFAULT NULL,\
   `bye` tinyint(3) unsigned DEFAULT NULL,\
   `lastSIPresponse_id` smallint(5) unsigned DEFAULT NULL,\

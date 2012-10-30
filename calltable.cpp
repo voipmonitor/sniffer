@@ -74,6 +74,7 @@ extern char odbc_password[256];
 extern char odbc_driver[256];
 extern int opt_callend;
 extern int opt_id_sensor;
+extern int rtptimeout;
 extern unsigned int gthread_num;
 extern int num_threads;
 int calls = 0;
@@ -2009,8 +2010,8 @@ int
 Calltable::cleanup_old( time_t currtime ) {
 	for (call = calls_list.begin(); call != calls_list.end();) {
 		if(verbosity > 2) (*call)->dump();
-		// RTPTIMEOUT seconds of inactivity will save this call and remove from call table
-		if(currtime == 0 || ((*call)->destroy_call_at != 0 and (*call)->destroy_call_at <= currtime) || (currtime - (*call)->get_last_packet_time() > RTPTIMEOUT)) {
+		// rtptimeout seconds of inactivity will save this call and remove from call table
+		if(currtime == 0 || ((*call)->destroy_call_at != 0 and (*call)->destroy_call_at <= currtime) || (currtime - (*call)->get_last_packet_time() > rtptimeout)) {
 			if ((*call)->get_f_pcap() != NULL){
 				pcap_dump_flush((*call)->get_f_pcap());
 				if ((*call)->get_f_pcap() != NULL) 
@@ -2046,8 +2047,8 @@ Calltable::cleanup( time_t currtime ) {
 	for (callMAPIT = calls_listMAP.begin(); callMAPIT != calls_listMAP.end();) {
 		call = (*callMAPIT).second;
 		if(verbosity > 2) call->dump();
-		// RTPTIMEOUT seconds of inactivity will save this call and remove from call table
-		if(currtime == 0 || (call->destroy_call_at != 0 and call->destroy_call_at <= currtime) || (currtime - call->get_last_packet_time() > RTPTIMEOUT)) {
+		// rtptimeout seconds of inactivity will save this call and remove from call table
+		if(currtime == 0 || (call->destroy_call_at != 0 and call->destroy_call_at <= currtime) || (currtime - call->get_last_packet_time() > rtptimeout)) {
 			call->hashRemove();
 			if (call->get_f_pcap() != NULL){
 				pcap_dump_flush(call->get_f_pcap());

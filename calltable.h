@@ -29,7 +29,6 @@
 #define MAX_CALL_ID 128		//!< max len of stored call-id
 #define MAX_FNAME 256		//!< max len of stored call-id
 #define MAX_RTPMAP 30          //!< max rtpmap records
-#define RTPTIMEOUT 300
 #define MAXNODE 150000
 
 #define INVITE 1
