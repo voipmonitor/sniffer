@@ -361,7 +361,7 @@ void jb_fixed_flush_deliver(struct ast_channel *chan)
 			f = ff.data;
 			//write frame to file
 			stmp = (short int)f->datalen;
-			if(chan->codec == PAYLOAD_SPEEX || chan->codec == PAYLOAD_G723 || chan->codec == PAYLOAD_G729) {
+			if(chan->codec == PAYLOAD_SPEEX || chan->codec == PAYLOAD_G723 || chan->codec == PAYLOAD_G729 || chan->codec == PAYLOAD_GSM) {
 				if(chan->rawstream)
 					fwrite(&stmp, 1, sizeof(short int), chan->rawstream);   // write packet len
 				if(chan->fifofd > 0)
@@ -386,7 +386,7 @@ void save_empty_frame(struct ast_channel *chan) {
 		int zero2 = 0;
 		short int zero3 = 32767;
 		//write frame to file
-		if(chan->codec == PAYLOAD_SPEEX || chan->codec == PAYLOAD_G723 || chan->codec == PAYLOAD_G729) {
+		if(chan->codec == PAYLOAD_SPEEX || chan->codec == PAYLOAD_G723 || chan->codec == PAYLOAD_G729 || chan->codec == PAYLOAD_GSM) {
 			if(chan->codec == PAYLOAD_G723) {
 				for(i = 1; (i * 30) <= chan->packetization; i++) {
 					fwrite(&zero, 1, sizeof(short int), chan->rawstream);   // write zero packet
@@ -394,6 +394,12 @@ void save_empty_frame(struct ast_channel *chan) {
 						write(chan->fifofd, &zero, sizeof(short int));   // write packet len
 				}
 			} else if(chan->codec == PAYLOAD_G729) {
+				for(i = 1; (i * 20) <= chan->packetization; i++) {
+					fwrite(&zero, 1, sizeof(short int), chan->rawstream);   // write zero packet
+					if(chan->fifofd > 0)
+						write(chan->fifofd, &zero, sizeof(short int));   // write packet len
+				}
+			} else if(chan->codec == PAYLOAD_GSM) {
 				for(i = 1; (i * 20) <= chan->packetization; i++) {
 					fwrite(&zero, 1, sizeof(short int), chan->rawstream);   // write zero packet
 					if(chan->fifofd > 0)
@@ -456,7 +462,7 @@ static void jb_get_and_deliver(struct ast_channel *chan, struct timeval *mynow)
 			if((chan->rawstream || chan->fifofd) && f->data && f->datalen > 0) {
 				//write frame to file
 				stmp = (short int)f->datalen;
-				if(chan->codec == PAYLOAD_SPEEX || chan->codec == PAYLOAD_G723 || chan->codec == PAYLOAD_G729) {
+				if(chan->codec == PAYLOAD_SPEEX || chan->codec == PAYLOAD_G723 || chan->codec == PAYLOAD_G729 || chan->codec == PAYLOAD_GSM) {
 					if(chan->rawstream)
 						fwrite(&stmp, 1, sizeof(short int), chan->rawstream);   // write packet len
 					if(chan->fifofd > 0)

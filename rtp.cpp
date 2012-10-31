@@ -613,6 +613,28 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 				} 
 
 			} 
+
+			// new way of getting packetization from packet datalen 
+			if(curpayload == PAYLOAD_GSM) {
+
+				channel_fix1->packetization = default_packetization = 
+					channel_fix2->packetization = channel_adapt->packetization = 
+					channel_record->packetization = packetization = get_payload_len() / 33 * 20;
+
+				if(packetization >= 10) {
+					if(verbosity > 3) printf("packetization:[%d] ssrc[%x]\n", packetization, getSSRC());
+
+					packetization_iterator = 10; // this will cause that packetization is estimated as final
+
+					if(opt_jitterbuffer_f1)
+						jitterbuffer(channel_fix1, 0);
+					if(opt_jitterbuffer_f2)
+						jitterbuffer(channel_fix2, 0);
+					if(opt_jitterbuffer_adapt)
+						jitterbuffer(channel_adapt, 0);
+				} 
+
+			} 
 #endif
 
 			/* for recording, we cannot loose any packet */
