@@ -263,5 +263,4 @@ CREATE TABLE IF NOT EXISTS `sensors` (
   `host` varchar(255) NULL DEFAULT NULL,
   `port` int(8) NULL DEFAULT NULL,
   PRIMARY KEY (`id_sensor`)
-  ENGINE=InnoDB DEFAULT CHARSET=latin1;
-)
+) ENGINE=InnoDB DEFAULT CHARSET=latin1;
