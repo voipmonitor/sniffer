@@ -111,6 +111,8 @@ char mysql_user[256] = "root";
 char mysql_password[256] = "";
 int opt_mysql_port = 0; // 0 menas use standard port 
 
+char opt_match_header[128] = "\n";
+
 char odbc_dsn[256] = "voipmonitor";
 char odbc_user[256];
 char odbc_password[256];
@@ -551,6 +553,9 @@ int load_config(char *fname) {
 	}
 	if((value = ini.GetValue("general", "vmbuffer", NULL))) {
 		qringmax = atoi(value) * 1024 * 1024 / sizeof(pcap_packet);
+	}
+	if((value = ini.GetValue("general", "matchheader", NULL))) {
+		snprintf(opt_match_header, sizeof(opt_match_header), "\n%s:", value);
 	}
 	if((value = ini.GetValue("general", "managerport", NULL))) {
 		opt_manager_port = atoi(value);

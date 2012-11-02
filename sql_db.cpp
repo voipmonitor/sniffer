@@ -9,6 +9,8 @@
 
 extern int verbosity;
 extern int opt_mysql_port;
+extern char opt_match_header[128];
+int sql_noerror = 0;
 
 
 string SqlDb_row::operator [] (const char *fieldName) {
@@ -242,7 +244,8 @@ bool SqlDb_mysql::query(string query) {
 		}
 		if(this->connected()) {
 			if(mysql_query(this->hMysqlConn, query.c_str())) {
-				this->checkLastError("query error in [" + query + "]", true);
+				if(!sql_noerror)
+					this->checkLastError("query error in [" + query + "]", true);
 				if(this->getLastError() == 2006) { // MySQL server has gone away
 					if(pass < this->maxQueryPass - 1) {
 						this->reconnect();
@@ -623,5 +626,14 @@ void SqlDb_mysql::createSchema() {
 ) ENGINE=InnoDB DEFAULT CHARSET=latin1;";
 
 	this->query(query);
+
+	//5.2 -> 5.3
+	if(opt_match_header[0] != '\0') {
+		query = "ALTER TABLE cdr_next ADD match_header VARCHAR(128), ADD KEY `match_header` (`match_header`);";
+		sql_noerror = 1;
+		this->query(query);
+		sql_noerror = 0;
+	}
+
 }
 

@@ -83,6 +83,7 @@ extern int opt_onlyRTPheader;
 extern int opt_sipoverlap;
 extern int readend;
 extern int opt_dup_check;
+extern char opt_match_header[128];
 
 extern IPfilter *ipfilter;
 extern IPfilter *ipfilter_reload;
@@ -739,6 +740,19 @@ Call *new_invite_register(int sip_method, char *data, int datalen, struct pcap_p
 		if(verbosity > 2)
 			syslog(LOG_NOTICE, "Seen X-VoipMonitor-Custom1: %s\n", call->custom_header1);
 	}
+
+	// check if we have opt_match_header
+	if(opt_match_header[0] != '\0') {
+		char tmp[128];
+		s = gettag(data, datalen, opt_match_header, &l);
+		if(l && l < 255) {
+			memcpy(call->match_header, s, l);
+			call->match_header[l] = '\0';
+			if(verbosity > 2)
+				syslog(LOG_NOTICE, "Seen header %s: %s\n", opt_match_header, call->match_header);
+		}
+	}
+
 	return call;
 }
 

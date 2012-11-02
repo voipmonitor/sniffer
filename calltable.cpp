@@ -144,6 +144,7 @@ Call::Call(char *call_id, unsigned long call_id_len, time_t time, void *ct) {
 	lastcalledrtp = NULL;
 	destroy_call_at = 0;
 	custom_header1[0] = '\0';
+	match_header[0] = '\0';
 	thread_num = num_threads > 0 ? gthread_num % num_threads : 0;
 	gthread_num++;
 	recordstopped = 0;
@@ -851,6 +852,11 @@ Call::buildQuery(stringstream *query) {
 			values << ", " << sqlEscapeString(custom_header1);
 		}
 
+		if(strlen(match_header)) {
+			fields << ", match_header";
+			values << ", " << sqlEscapeString(match_header);
+		}
+
 		switch(whohanged) {
 		case 0:
 			fields 	<< ", whohanged";
@@ -1013,6 +1019,10 @@ Call::buildQuery(stringstream *query) {
 
 		if(strlen(custom_header1)) {
 			*query << ", custom_header1 = " << sqlEscapeString(custom_header1);
+		}
+
+		if(strlen(match_header)) {
+			*query << ", match_header = " << sqlEscapeString(match_header);
 		}
 
 		switch(whohanged) {
@@ -1280,6 +1290,9 @@ Call::saveToDb() {
 		cdr.add(lastSIPresponseNum, "lastSIPresponseNum");
 		cdr.add(seeninviteok ? (seenbye ? (seenbyeandok ? 3 : 2) : 1) : 0, "bye");
 		
+		if(strlen(match_header)) {
+			cdr_next.add(sqlEscapeString(match_header), "match_header");
+		}
 		if(strlen(custom_header1)) {
 			cdr_next.add(sqlEscapeString(custom_header1), "custom_header1");
 		}
