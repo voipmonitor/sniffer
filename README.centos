@@ -63,8 +63,4 @@ service httpd start
 
 Install the voipmonitor Interface
 ---------------------------------
-cp -r voipmonitor-unencoded/* /var/www/html
-
-Restart HTTP service
---------------------
-service httpd restart
+go to voipmonitor.org/download and download manual and GUI
