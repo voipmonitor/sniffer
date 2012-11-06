@@ -1318,34 +1318,34 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 			call->destroy_call_at += 5; 
 		}
 
-		// SDP examination only in case it is SIP msg belongs to first leg
-		if(opt_rtp_firstleg == 0 || (opt_rtp_firstleg &&
-			((call->saddr == saddr && call->sport == source) || 
-			(call->saddr == daddr && call->sport == dest))))
-			{
-
-			s = gettag(data,datalen,"\nContent-Type:",&l);
-			if(l <= 0 || l > 1023) {
-				//try compact header
-				s = gettag(data,datalen,"\nc:",&l);
-			}
-			char a = data[datalen - 1];
-			data[datalen - 1] = 0;
-			char *tmp = strstr(data, "\r\n\r\n");;
-			if(l > 0 && strncasecmp(s, "application/sdp", l) == 0 && tmp != NULL){
-				// we have found SDP, add IP and port to the table
-				in_addr_t tmp_addr;
-				unsigned short tmp_port;
-				int rtpmap[MAX_RTPMAP];
-				memset(&rtpmap, 0, sizeof(int) * MAX_RTPMAP);
-				int fax;
-				if (!get_ip_port_from_sdp(tmp + 1, &tmp_addr, &tmp_port, &fax)){
-					if(fax) { 
-						if(verbosity >= 1){
-							syslog(LOG_ERR, "[%s] T38 detected", call->fbasename);
-						}
-						call->isfax = 1;
+		// SDP examination
+		s = gettag(data,datalen,"\nContent-Type:",&l);
+		if(l <= 0 || l > 1023) {
+			//try compact header
+			s = gettag(data,datalen,"\nc:",&l);
+		}
+		char a = data[datalen - 1];
+		data[datalen - 1] = 0;
+		char *tmp = strstr(data, "\r\n\r\n");;
+		if(l > 0 && strncasecmp(s, "application/sdp", l) == 0 && tmp != NULL){
+			// we have found SDP, add IP and port to the table
+			in_addr_t tmp_addr;
+			unsigned short tmp_port;
+			int rtpmap[MAX_RTPMAP];
+			memset(&rtpmap, 0, sizeof(int) * MAX_RTPMAP);
+			int fax;
+			if (!get_ip_port_from_sdp(tmp + 1, &tmp_addr, &tmp_port, &fax)){
+				if(fax) { 
+					if(verbosity >= 1){
+						syslog(LOG_ERR, "[%s] T38 detected", call->fbasename);
 					}
+					call->isfax = 1;
+				}
+				// if rtp-firstleg enabled add RTP only in case the SIP msg belongs to first leg
+				if(opt_rtp_firstleg == 0 || (opt_rtp_firstleg &&
+					((call->saddr == saddr && call->sport == source) || 
+					(call->saddr == daddr && call->sport == dest))))
+					{
 					// prepare User-Agent
 					s = gettag(data,datalen,"\nUser-Agent:", &l);
 					// store RTP stream
@@ -1380,15 +1380,15 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 						//calltable->mapAdd(saddr, tmp_port + 1, call, call->sipcallerip != saddr, 1);
 					}
 #endif
-
-				} else {
-					if(verbosity >= 2){
-						syslog(LOG_ERR, "Can't get ip/port from SDP:\n%s\n\n", tmp + 1);
-					}
+				}
+			} else {
+				if(verbosity >= 2){
+					syslog(LOG_ERR, "Can't get ip/port from SDP:\n%s\n\n", tmp + 1);
 				}
 			}
-			data[datalen - 1] = a;
 		}
+		data[datalen - 1] = a;
+
 		if(!dontsave && call->flags & (FLAG_SAVESIP | FLAG_SAVEREGISTER)) {
 			save_packet(call, header, packet);
 		}
