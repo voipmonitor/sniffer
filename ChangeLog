@@ -1,3 +1,8 @@
+version 5.3.1 6.11.2012
+======================
+- recognize fax calls also if rtpfirstleg is enabled
+- fix lastsipresponse for connected calls which was 0 BYE instead of 200 OK
+
 version 5.3 5.11.2012
 =====================
 
