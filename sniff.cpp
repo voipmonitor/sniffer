@@ -109,6 +109,8 @@ extern volatile unsigned int readit;
 extern volatile unsigned int writeit;
 extern unsigned int qringmax;
 
+extern int opt_pcapdump;
+
 #ifdef QUEUE_MUTEX
 extern sem_t readpacket_thread_semaphore;
 #endif
@@ -1817,6 +1819,15 @@ void readdump_libpcap(pcap_t *handle) {
 	init_hash();
 	memset(tcp_streams_hashed, 0, sizeof(tcp_stream2*) * MAX_TCPSTREAMS);
 
+	
+	pcap_dumper_t *tmppcap = NULL;
+	char pname[1024];
+
+	if(opt_pcapdump) {
+		sprintf(pname, "/tmp/voipmonitordump-%u.pcap", (unsigned int)time(NULL));
+		tmppcap = pcap_dump_open(handle, pname);
+	}
+
 	while (!terminating) {
 		res = pcap_next_ex(handle, &header, &packet);
 
@@ -1938,6 +1949,10 @@ void readdump_libpcap(pcap_t *handle) {
 			continue;
 		}
 
+		if(opt_pcapdump) {
+			pcap_dump((u_char *)tmppcap, header, packet);
+		}
+
 #if 1
 		/* check for duplicate packets (md5 is expensive operation - enable only if you really need it */
 		if(opt_dup_check) {
@@ -2009,5 +2024,9 @@ void readdump_libpcap(pcap_t *handle) {
 
 		process_packet(header_ip->saddr, htons(header_udp->source), header_ip->daddr, htons(header_udp->dest), 
 			    data, datalen, handle, header, packet, istcp, 0, 1, &was_rtp);
+	}
+
+	if(opt_pcapdump) {
+		pcap_dump_close(tmppcap);
 	}
 }
