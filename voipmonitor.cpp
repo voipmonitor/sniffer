@@ -111,7 +111,7 @@ char mysql_user[256] = "root";
 char mysql_password[256] = "";
 int opt_mysql_port = 0; // 0 menas use standard port 
 
-char opt_match_header[128] = "\n";
+char opt_match_header[128] = "\0";
 
 char odbc_dsn[256] = "voipmonitor";
 char odbc_user[256];
