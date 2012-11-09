@@ -1,6 +1,6 @@
 version 5.3.2 9.11.2012
 =======================
-fix sip last response again - all 200 OK was accidentaly treated as answer to call so canceled calls instead of 487 code had 200 OK like answered calls
+- fix sip last response again - all 200 OK was accidentaly treated as answer to call so canceled calls instead of 487 code had 200 OK like answered calls
 
 
 version 5.3.1 6.11.2012
