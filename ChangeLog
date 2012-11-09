@@ -1,3 +1,18 @@
+version 5.3.1 6.11.2012
+======================
+- recognize fax calls also if rtpfirstleg is enabled
+- fix lastsipresponse for connected calls which was 0 BYE instead of 200 OK
+
+version 5.3 5.11.2012
+=====================
+
+- implement matchheader config in voipmonitor.conf which will save provided SIP header to cdr_next.match_header which is then used in WEB GUI to find all CDR legs. Typical is matchheader = in-reply-to. It is turned of by default and if enabled the database is automatically altered once the voipmonitor run which can take minutes - hours depends on number of rows in cdr_next and I/O speed.
+- fix cdrtable.sql.* typo for sensors table
+- fix wav decode for GSM
+- add rtptimeout (voipmonitor.conf), -m, --rtp-timeout it is important value which specifies how much seconds from the last SIP packet or RTP packet is call closed and writen to database. It means that if you need to monitor ONLY SIP you have to set this to at leat 2 hours = 7200 assuming your calls is not longer than 2 hours. Take in mind that seting this to very large value will cause to keep call in memory in case the call lost BYE and can consume all memory and slows down the sniffer - so do not set it to very high numbers. Default is 300 seconds. rtptimeout = 300
+- remove custom_header1 from cdr table as it is not used (it is in cdr_next)
+- do not store last sip response to BYE but retain it for the invite.
+
 version 5.2 29.10.2012
 ======================
 

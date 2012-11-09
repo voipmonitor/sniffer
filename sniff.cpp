@@ -109,6 +109,8 @@ extern volatile unsigned int readit;
 extern volatile unsigned int writeit;
 extern unsigned int qringmax;
 
+extern int opt_pcapdump;
+
 #ifdef QUEUE_MUTEX
 extern sem_t readpacket_thread_semaphore;
 #endif
@@ -1151,8 +1153,8 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 			}
 
 			call->set_last_packet_time(header->ts.tv_sec);
-			// save lastSIPresponseNum but only if previouse was not 487 (CANCEL) TODO: check if this is still neccessery to check != 487
-			if(lastSIPresponse[0] != '\0' && call->lastSIPresponseNum != 487) {
+			// save lastSIPresponseNum but only if previouse was not 487 (CANCEL) and call was not answered 
+			if(lastSIPresponseNum != 0 && lastSIPresponse[0] != '\0' && call->lastSIPresponseNum != 487 && !call->seeninviteok) {
 				strncpy(call->lastSIPresponse, lastSIPresponse, 128);
 				call->lastSIPresponseNum = lastSIPresponseNum;
 			}
@@ -1318,34 +1320,34 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 			call->destroy_call_at += 5; 
 		}
 
-		// SDP examination only in case it is SIP msg belongs to first leg
-		if(opt_rtp_firstleg == 0 || (opt_rtp_firstleg &&
-			((call->saddr == saddr && call->sport == source) || 
-			(call->saddr == daddr && call->sport == dest))))
-			{
-
-			s = gettag(data,datalen,"\nContent-Type:",&l);
-			if(l <= 0 || l > 1023) {
-				//try compact header
-				s = gettag(data,datalen,"\nc:",&l);
-			}
-			char a = data[datalen - 1];
-			data[datalen - 1] = 0;
-			char *tmp = strstr(data, "\r\n\r\n");;
-			if(l > 0 && strncasecmp(s, "application/sdp", l) == 0 && tmp != NULL){
-				// we have found SDP, add IP and port to the table
-				in_addr_t tmp_addr;
-				unsigned short tmp_port;
-				int rtpmap[MAX_RTPMAP];
-				memset(&rtpmap, 0, sizeof(int) * MAX_RTPMAP);
-				int fax;
-				if (!get_ip_port_from_sdp(tmp + 1, &tmp_addr, &tmp_port, &fax)){
-					if(fax) { 
-						if(verbosity >= 1){
-							syslog(LOG_ERR, "[%s] T38 detected", call->fbasename);
-						}
-						call->isfax = 1;
+		// SDP examination
+		s = gettag(data,datalen,"\nContent-Type:",&l);
+		if(l <= 0 || l > 1023) {
+			//try compact header
+			s = gettag(data,datalen,"\nc:",&l);
+		}
+		char a = data[datalen - 1];
+		data[datalen - 1] = 0;
+		char *tmp = strstr(data, "\r\n\r\n");;
+		if(l > 0 && strncasecmp(s, "application/sdp", l) == 0 && tmp != NULL){
+			// we have found SDP, add IP and port to the table
+			in_addr_t tmp_addr;
+			unsigned short tmp_port;
+			int rtpmap[MAX_RTPMAP];
+			memset(&rtpmap, 0, sizeof(int) * MAX_RTPMAP);
+			int fax;
+			if (!get_ip_port_from_sdp(tmp + 1, &tmp_addr, &tmp_port, &fax)){
+				if(fax) { 
+					if(verbosity >= 1){
+						syslog(LOG_ERR, "[%s] T38 detected", call->fbasename);
 					}
+					call->isfax = 1;
+				}
+				// if rtp-firstleg enabled add RTP only in case the SIP msg belongs to first leg
+				if(opt_rtp_firstleg == 0 || (opt_rtp_firstleg &&
+					((call->saddr == saddr && call->sport == source) || 
+					(call->saddr == daddr && call->sport == dest))))
+					{
 					// prepare User-Agent
 					s = gettag(data,datalen,"\nUser-Agent:", &l);
 					// store RTP stream
@@ -1380,15 +1382,15 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 						//calltable->mapAdd(saddr, tmp_port + 1, call, call->sipcallerip != saddr, 1);
 					}
 #endif
-
-				} else {
-					if(verbosity >= 2){
-						syslog(LOG_ERR, "Can't get ip/port from SDP:\n%s\n\n", tmp + 1);
-					}
+				}
+			} else {
+				if(verbosity >= 2){
+					syslog(LOG_ERR, "Can't get ip/port from SDP:\n%s\n\n", tmp + 1);
 				}
 			}
-			data[datalen - 1] = a;
 		}
+		data[datalen - 1] = a;
+
 		if(!dontsave && call->flags & (FLAG_SAVESIP | FLAG_SAVEREGISTER)) {
 			save_packet(call, header, packet);
 		}
@@ -1817,6 +1819,15 @@ void readdump_libpcap(pcap_t *handle) {
 	init_hash();
 	memset(tcp_streams_hashed, 0, sizeof(tcp_stream2*) * MAX_TCPSTREAMS);
 
+	
+	pcap_dumper_t *tmppcap = NULL;
+	char pname[1024];
+
+	if(opt_pcapdump) {
+		sprintf(pname, "/tmp/voipmonitordump-%u.pcap", (unsigned int)time(NULL));
+		tmppcap = pcap_dump_open(handle, pname);
+	}
+
 	while (!terminating) {
 		res = pcap_next_ex(handle, &header, &packet);
 
@@ -1938,6 +1949,10 @@ void readdump_libpcap(pcap_t *handle) {
 			continue;
 		}
 
+		if(opt_pcapdump) {
+			pcap_dump((u_char *)tmppcap, header, packet);
+		}
+
 #if 1
 		/* check for duplicate packets (md5 is expensive operation - enable only if you really need it */
 		if(opt_dup_check) {
@@ -2009,5 +2024,9 @@ void readdump_libpcap(pcap_t *handle) {
 
 		process_packet(header_ip->saddr, htons(header_udp->source), header_ip->daddr, htons(header_udp->dest), 
 			    data, datalen, handle, header, packet, istcp, 0, 1, &was_rtp);
+	}
+
+	if(opt_pcapdump) {
+		pcap_dump_close(tmppcap);
 	}
 }

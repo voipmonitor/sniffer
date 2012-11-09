@@ -111,7 +111,7 @@ char mysql_user[256] = "root";
 char mysql_password[256] = "";
 int opt_mysql_port = 0; // 0 menas use standard port 
 
-char opt_match_header[128] = "\n";
+char opt_match_header[128] = "\0";
 
 char odbc_dsn[256] = "voipmonitor";
 char odbc_user[256];
@@ -131,10 +131,9 @@ int num_threads = 0; // this has to be 1 for now
 unsigned int rtpthreadbuffer = 20;	// default 20MB
 unsigned int gthread_num = 0;
 
+int opt_pcapdump = 0;
 
 int opt_callend = 1; //if true, cdr.called is saved
-
-
 char opt_chdir[1024];
 char opt_cachedir[1024];
 
@@ -672,6 +671,9 @@ int load_config(char *fname) {
 	if((value = ini.GetValue("general", "sipoverlap", NULL))) {
 		opt_sipoverlap = yesno(value);
 	}
+	if((value = ini.GetValue("general", "dumpallpackets", NULL))) {
+		opt_pcapdump = yesno(value);
+	}
 	if((value = ini.GetValue("general", "jitterbuffer_f1", NULL))) {
 		switch(value[0]) {
 		case 'Y':
@@ -756,6 +758,7 @@ int main(int argc, char *argv[]) {
 	    {"gzip-graph", 0, 0, '1'},
 	    {"gzip-pcap", 0, 0, '2'},
 	    {"deduplicate", 0, 0, 'L'},
+	    {"dump-allpackets", 0, 0, 'M'},
 	    {"save-sip", 0, 0, 'S'},
 	    {"save-rtp", 0, 0, 'R'},
 	    {"skip-rtppayload", 0, 0, 'o'},
@@ -800,7 +803,7 @@ int main(int argc, char *argv[]) {
 	/* command line arguments overrides configuration in voipmonitor.conf file */
 	while(1) {
 		int c;
-		c = getopt_long(argc, argv, "C:f:i:r:d:v:O:h:b:t:u:p:P:s:T:D:e:E:m:LkncUSRoAWGXNIKy4", long_options, &option_index);
+		c = getopt_long(argc, argv, "C:f:i:r:d:v:O:h:b:t:u:p:P:s:T:D:e:E:m:LkncUSRoAWGXNIKy4M", long_options, &option_index);
 		//"i:r:d:v:h:b:u:p:fnU", NULL, NULL);
 		if (c == -1)
 			break;
@@ -818,6 +821,9 @@ int main(int argc, char *argv[]) {
 				break;
 			case 'm':
 				rtptimeout = atoi(optarg);
+				break;
+			case 'M':
+				opt_pcapdump = 1;
 				break;
 			case 'e':
 				num_threads = atoi(optarg);
@@ -970,11 +976,11 @@ int main(int argc, char *argv[]) {
 	}
 	if ((fname == NULL) && (ifname[0] == '\0')){
 		printf( "voipmonitor version %s\n"
-				"Usage: voipmonitor [--config-file /etc/voipmonitor.conf] [-kncUSRAWG] [-i <interface>] [-f <pcap filter>]\n"
+				"Usage: voipmonitor [--config-file /etc/voipmonitor.conf] [-kncUSRAWGM] [-i <interface>] [-f <pcap filter>]\n"
 				"       [-r <file>] [-d <pcap dump directory>] [-v level] [-h <mysql server>] [-O <mysql_port>] [-b <mysql database]\n"
 				"       [-u <mysql username>] [-p <mysql password>] [-f <pcap filter>] [--rtp-firstleg] [-y]\n"
 				"       [--ring-buffer <n>] [--vm-buffer <n>] [--manager-port <n>] [--norecord-header] [-s, --id-sensor <num>]\n"
-				"	[--rtp-threads <n>] [--rtpthread-buffer] <n>]\n"
+				"	[--rtp-threads <n>] [--rtpthread-buffer] <n>] [--dump-allpackets] \n"
 				"\n"
 				" -m, --rtp-timeout <n>\n"
 				"      rtptimeout is important value which specifies how much seconds from the last SIP packet or RTP packet is call closed\n"
@@ -994,6 +1000,9 @@ int main(int argc, char *argv[]) {
 				"\n"
 				" -S, --save-sip\n"
 				"      save SIP packets to pcap file. Default is disabled.\n"
+				"\n"
+				" -M, --dump-allpackets\n"
+				"      dump all packets to /tmp/voipmonitor-[UNIX_TIMESTAMP].pcap\n"
 				"\n"
 				" -s, --id-sensor <num>\n"
 				"      if set the number is saved to sql cdr.id_sensor\n"
