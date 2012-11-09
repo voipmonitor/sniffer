@@ -1153,8 +1153,8 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 			}
 
 			call->set_last_packet_time(header->ts.tv_sec);
-			// save lastSIPresponseNum but only if previouse was not 487 (CANCEL) and 200 OK 
-			if(lastSIPresponseNum != 0 && lastSIPresponse[0] != '\0' && call->lastSIPresponseNum != 487 && call->lastSIPresponseNum != 200) {
+			// save lastSIPresponseNum but only if previouse was not 487 (CANCEL) and call was not answered 
+			if(lastSIPresponseNum != 0 && lastSIPresponse[0] != '\0' && call->lastSIPresponseNum != 487 && !call->seeninviteok) {
 				strncpy(call->lastSIPresponse, lastSIPresponse, 128);
 				call->lastSIPresponseNum = lastSIPresponseNum;
 			}
