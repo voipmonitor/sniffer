@@ -193,8 +193,10 @@ CREATE TABLE `cdr` (
 CREATE TABLE `cdr_next` (
   `cdr_ID` int(10) unsigned NOT NULL,
   `custom_header1` varchar(255) DEFAULT NULL,
+  `match_header` varchar(255) DEFAULT NULL,
   `fbasename` varchar(255) DEFAULT NULL,
   PRIMARY KEY (`cdr_ID`),
+  KEY `match_header` (`match_header`),
   KEY `fbasename` (`fbasename`),
   CONSTRAINT `cdr_next_ibfk_1` FOREIGN KEY (`cdr_ID`) REFERENCES `cdr` (`ID`) ON DELETE CASCADE ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=latin1 ROW_FORMAT=COMPRESSED;
