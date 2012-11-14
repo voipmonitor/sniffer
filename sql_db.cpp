@@ -640,12 +640,19 @@ void SqlDb_mysql::createSchema() {
 	this->query(query);
 
 	//5.2 -> 5.3
+	sql_noerror = 1;
 	if(opt_match_header[0] != '\0') {
 		query = "ALTER TABLE cdr_next ADD match_header VARCHAR(128), ADD KEY `match_header` (`match_header`);";
-		sql_noerror = 1;
 		this->query(query);
-		sql_noerror = 0;
 	}
+	//5.3 -> 5.4
+	query = "ALTER TABLE register ADD KEY `to_domain` (`to_domain`), ADD KEY `to_num` (`to_num`);";
+	this->query(query);
+	query = "ALTER TABLE register_state ADD `to_domain` varchar(255) NULL DEFAULT NULL;";
+	this->query(query);
+	query = "ALTER TABLE register_failed ADD `to_domain` varchar(255) NULL DEFAULT NULL;";
+	this->query(query);
+	sql_noerror = 0;
 
 }
 

@@ -224,7 +224,9 @@ CREATE TABLE `register` (
   KEY `sipcallerip` (`sipcallerip`),
   KEY `sipcalledip` (`sipcalledip`),
   KEY `from_num` (`from_num`),
-  KEY `digestusername` (`digestusername`)
+  KEY `digestusername` (`digestusername`),
+  KEY `to_domain` (`to_domain`), 
+  KEY `to_num` (`to_num`)
 ) ENGINE=MEMORY DEFAULT CHARSET=latin1 ROW_FORMAT=COMPRESSED;
 
 CREATE TABLE `register_state` (
@@ -233,6 +235,7 @@ CREATE TABLE `register_state` (
   `sipcallerip` int(32) unsigned NOT NULL,
   `from_num` varchar(255) NULL DEFAULT NULL,
   `to_num` varchar(255) NULL DEFAULT NULL,
+  `to_domain` varchar(255) NULL DEFAULT NULL,
   `contact_num` varchar(255) NULL DEFAULT NULL,
   `contact_domain` varchar(255) NULL DEFAULT NULL,
   `digestusername` varchar(255) NULL DEFAULT NULL,
@@ -251,6 +254,7 @@ CREATE TABLE `register_failed` (
   `sipcallerip` int(32) unsigned NOT NULL,
   `from_num` varchar(255) NULL DEFAULT NULL,
   `to_num` varchar(255) NULL DEFAULT NULL,
+  `to_domain` varchar(255) NULL DEFAULT NULL,
   `contact_num` varchar(255) NULL DEFAULT NULL,
   `contact_domain` varchar(255) NULL DEFAULT NULL,
   `digestusername` varchar(255) NULL DEFAULT NULL,
