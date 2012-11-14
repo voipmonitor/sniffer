@@ -1,6 +1,7 @@
 - implement cleaning spool dir (set interval and size)
 - implement reverse manager interface
 - add to_domain to register_state and register_failed tables and treat REGISTER unique for to_domain too instead of only by digestusername and to_num/to_domain
+- fix cdr.called/caller when @ character is in sip name ["@home company"<sip:1234@domain>]
 
 version 5.3.2 9.11.2012
 =======================

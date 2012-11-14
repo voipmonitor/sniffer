@@ -254,7 +254,7 @@ int get_sip_peername(char *data, int data_len, const char *tag, char *peername, 
 		goto fail_exit;
 	}
 	r += 4;
-	if ((r2 = (unsigned long)memmem(peername_tag, peername_tag_len, "@", 1)) == 0){
+	if ((r2 = (unsigned long)memmem((char*)r, peername_tag_len, "@", 1)) == 0){
 		goto fail_exit;
 	}
 	if (r2 <= r || ((r2 - r) > (unsigned long)peername_len)  ){
@@ -275,7 +275,11 @@ int get_sip_domain(char *data, int data_len, const char *tag, char *domain, int 
 	if(!peername_tag_len) {
 		goto fail_exit;
 	}
-	if ((r = (unsigned long)memmem(peername_tag, peername_tag_len, "@", 1)) == 0){
+	if ((r = (unsigned long)memmem(peername_tag, peername_tag_len, "sip:", 4)) == 0){
+		goto fail_exit;
+	}
+	r += 4;
+	if ((r = (unsigned long)memmem((char*)r, peername_tag_len, "@", 1)) == 0){
 		goto fail_exit;
 	}
 	r += 1;
@@ -1699,6 +1703,8 @@ void *pcap_read_thread_func(void *arg) {
 	int res;
 	int was_rtp;
 	unsigned int packets = 0;
+
+	res = 0;
 
 	while(1) {
 
