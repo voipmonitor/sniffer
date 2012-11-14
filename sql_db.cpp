@@ -123,6 +123,18 @@ string SqlDb_row::implodeContent(string separator, string border) {
 	return(rslt);
 }
 
+string SqlDb_row::keyvalList(string separator) {
+	string rslt;
+	for(size_t i = 0; i < this->row.size(); i++) {
+		if(this->row[i].null) {
+			rslt += this->row[i].fieldName + ":NULL\n";
+		} else {
+			rslt += this->row[i].fieldName + separator + this->row[i].content + "\n";
+		}
+	}
+	return(rslt);
+}
+
 
 SqlDb::SqlDb() {
 	this->sysLog = false;

@@ -48,6 +48,7 @@ public:
 	bool isNull(string fieldName);
 	string implodeFields(string separator = ",", string border = "");
 	string implodeContent(string separator = ",", string border = "'");
+	string keyvalList(string separator);
 private:
 	SqlDb *sqlDb;
 	vector<SqlDb_rowField> row;

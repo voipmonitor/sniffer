@@ -745,7 +745,6 @@ Call *new_invite_register(int sip_method, char *data, int datalen, struct pcap_p
 
 	// check if we have opt_match_header
 	if(opt_match_header[0] != '\0') {
-		char tmp[128];
 		s = gettag(data, datalen, opt_match_header, &l);
 		if(l && l < 255) {
 			memcpy(call->match_header, s, l);

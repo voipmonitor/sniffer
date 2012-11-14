@@ -286,7 +286,15 @@ public:
 	 *
 	*/
 	int doQuery(string &queryStr);
-	
+
+#ifdef ISCURL	
+	/**
+	 * @brief send cdr
+	 *
+	*/
+	int sendCDR();
+#endif
+
 	/**
 	 * @brief save call to database
 	 *

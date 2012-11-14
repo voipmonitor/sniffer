@@ -27,6 +27,10 @@
 #include <semaphore.h>
 #include <dirent.h>
 
+#ifdef ISCURL
+#include <curl/curl.h>
+#endif
+
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
@@ -92,6 +96,12 @@ int opt_id_sensor = -1;
 int readend = 0;
 int opt_dup_check = 0;
 int rtptimeout = 300;
+char opt_cdrurl[1024] = "";
+int opt_cleanspool_interval = 0; // number of seconds between cleaning spool directory. 0 = disabled
+int opt_cleanspool_sizeMB = 0; // number of MB to keep in spooldir
+
+char opt_clientmanager[1024] = "";
+int opt_clientmanagerport = 9999;
 
 char configfile[1024] = "";	// config file name
 
@@ -147,7 +157,9 @@ int telnumfilter_reload_do = 0;	// for reload in main thread
 
 pthread_t call_thread;		// ID of worker storing CDR thread 
 pthread_t manager_thread;	// ID of worker manager thread 
+pthread_t manager_client_thread;	// ID of worker manager thread 
 pthread_t cachedir_thread;	// ID of worker cachedir thread 
+pthread_t cleanspool_thread;	// ID of worker clean thread 
 int terminating;		// if set to 1, worker thread will terminate
 int terminating2;		// if set to 1, worker thread will terminate
 char *sipportmatrix;		// matrix of sip ports to monitor
@@ -175,6 +187,7 @@ nat_aliases_t nat_aliases;	// net_aliases[local_ip] = extern_ip
 
 SqlDb *sqlDb;
 
+char mac[32] = "";
 
 void rename_file(const char *src, const char *dst) {
 	int read_fd = 0;
@@ -251,6 +264,32 @@ void find_and_replace( string &source, const string find, string replace ) {
 	}
 }
 
+void *clean_spooldir( void *dummy ) {
+	char buffer[4092];
+	while(!terminating2) {
+
+		char cmd[2048];
+		sprintf(cmd, "find \"%s\" -type f -printf \"%%T@::%%p::%%s\\n\" | sort -rn | awk -v maxbytes=\"$((1024 * 1024 * %d))\" -F \"::\" 'BEGIN { curSize=0; } { curSize += $3; if (curSize > maxbytes) { print $2; } }'", opt_chdir, opt_cleanspool_sizeMB);
+
+		if(verbosity > 0) syslog(LOG_NOTICE, "cleaning spool: [%s]\n", cmd);
+		FILE* pipe = popen(cmd, "r");
+		if (!pipe) {
+			syslog(LOG_ERR, "cannot rum clean command: [%s]", cmd);
+			continue;
+		}
+		while(!feof(pipe)) {
+			if(fgets(buffer, 4092, pipe) != NULL) {
+				// remove new line 
+				buffer[strlen(buffer) - 1] = '\0';
+				unlink(buffer);
+			}
+		}
+		pclose(pipe);
+		sleep(opt_cleanspool_interval);
+	}
+	return NULL;
+}
+
 /* cycle files_queue and move it to spool dir */
 void *moving_cache( void *dummy ) {
 	string file;
@@ -307,7 +346,6 @@ void *storing_cdr( void *dummy ) {
 			call = calltable->calls_queue.front();
 			calltable->unlock_calls_queue();
 	
-
 			if(!opt_nocdr) {
 				if(verbosity > 0) printf("storing to MySQL. Queue[%d]\n", (int)calltable->calls_queue.size());
 				if(call->type == INVITE) {
@@ -316,9 +354,11 @@ void *storing_cdr( void *dummy ) {
 					call->saveRegisterToDb();
 				}
 			}
+#ifdef ISCURL
+			call->sendCDR();
+#endif
 
 			call->closeRawFiles();
-			//if( (opt_savewav_force || (call->flags & FLAG_SAVEWAV)) && call->type == INVITE) {
 			if( (opt_savewav_force || (call->flags & FLAG_SAVEWAV)) && call->type == INVITE) {
 				if(verbosity > 0) printf("converting RAW file to WAV Queue[%d]\n", (int)calltable->calls_queue.size());
 				call->convertRawToWav();
@@ -491,6 +531,12 @@ int load_config(char *fname) {
 	if((value = ini.GetValue("general", "interface", NULL))) {
 		strncpy(ifname, value, sizeof(ifname));
 	}
+	if((value = ini.GetValue("general", "cleanspool_interval", NULL))) {
+		opt_cleanspool_interval = atoi(value);
+	}
+	if((value = ini.GetValue("general", "cleanspool_size", NULL))) {
+		opt_cleanspool_sizeMB = atoi(value);
+	}
 	if((value = ini.GetValue("general", "id_sensor", NULL))) {
 		opt_id_sensor = atoi(value);
 	}
@@ -561,6 +607,12 @@ int load_config(char *fname) {
 	}
 	if((value = ini.GetValue("general", "managerip", NULL))) {
 		strncpy(opt_manager_ip, value, sizeof(opt_manager_ip));
+	}
+	if((value = ini.GetValue("general", "managerclient", NULL))) {
+		strncpy(opt_clientmanager, value, sizeof(opt_clientmanager) - 1);
+	}
+	if((value = ini.GetValue("general", "managerclientport", NULL))) {
+		opt_clientmanagerport = atoi(value);
 	}
 	if((value = ini.GetValue("general", "savertcp", NULL))) {
 		opt_saveRTCP = yesno(value);
@@ -713,6 +765,9 @@ int load_config(char *fname) {
 	if((value = ini.GetValue("general", "sqlcallend", NULL))) {
 		opt_callend = yesno(value);
 	}
+	if((value = ini.GetValue("general", "cdrurl", NULL))) {
+		strncpy(opt_cdrurl, value, sizeof(opt_cdrurl) - 1);
+	}
 	return 0;
 }
 
@@ -752,6 +807,11 @@ int main(int argc, char *argv[]) {
 	// if the system has more than one CPU enable threading
 	opt_pcap_threaded = sysconf( _SC_NPROCESSORS_ONLN ) > 1; 
 	num_threads = sysconf( _SC_NPROCESSORS_ONLN ) - 1;
+	set_mac();
+
+#ifdef ISCURL
+	curl_global_init(CURL_GLOBAL_ALL);
+#endif
 
 	int option_index = 0;
 	static struct option long_options[] = {
@@ -1202,6 +1262,7 @@ int main(int argc, char *argv[]) {
 		rtp_threaded = 0;
 		opt_cachedir[0] = '\0'; //disabling cache if reading from file 
 		opt_pcap_threaded = 0; //disable threading because it is useless while reading packets from file
+		opt_cleanspool_interval = 0; // disable cleaning spooldir when reading from file 
 		printf("Reading file: %s\n", fname);
 		mask = PCAP_NETMASK_UNKNOWN;
 		handle = pcap_open_offline(fname, errbuf);
@@ -1267,8 +1328,17 @@ int main(int argc, char *argv[]) {
 		pthread_create(&cachedir_thread, NULL, moving_cache, NULL);
 	}
 
+	if(opt_cleanspool_interval > 0 && opt_cleanspool_sizeMB > 0) {
+		if(verbosity > 0) syslog(LOG_NOTICE, "Spawning cleanspool_thread interval[%d]s size[%d]MB", opt_cleanspool_interval, opt_cleanspool_sizeMB);
+		pthread_create(&cleanspool_thread, NULL, clean_spooldir, NULL);
+	}
+
 	// start manager thread 	
 	pthread_create(&manager_thread, NULL, manager_server, NULL);
+	// start reversed manager thread
+	if(opt_clientmanager[0] != '\0') {
+		pthread_create(&manager_client_thread, NULL, manager_client, NULL);
+	}
 
 	// start reading threads
 	if(rtp_threaded) {

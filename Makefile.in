@@ -21,11 +21,14 @@ headers = $(shell ls *.h -1 | tr "\n" " ")
 
 #LDFLAGS := $(LDFLAGS) -static -static-libgcc
 
-shared: LIBS=-lpthread -lpcap -lgzstream -lz -lvorbis -lvorbisenc -logg -lodbc -llfds -lmysqlclient #-lnids
+shared: LIBS=-lpthread -lpcap -lgzstream -lz -lvorbis -lvorbisenc -logg -lodbc -llfds -lmysqlclient #-lcurl #-lnids
+#shared: CFLAGS+= -DISCURL -DQUEUE_NONBLOCK2 -I /usr/local/include/mysql++/ -I /usr/include/mysql++/ -I /usr/include/mysql/ -Wall -I jitterbuffer/  -L/usr/lib/mysql -L/usr/local/lib/ -Lgzstream/ -Lliblfds.6/bin/ -L/usr/lib64/mysql -fPIC -g3
 shared: CFLAGS+= -DQUEUE_NONBLOCK2 -I /usr/local/include/mysql++/ -I /usr/include/mysql++/ -I /usr/include/mysql/ -Wall -I jitterbuffer/  -L/usr/lib/mysql -L/usr/local/lib/ -Lgzstream/ -Lliblfds.6/bin/ -L/usr/lib64/mysql -fPIC -O2
 shared: args = -O2 -Wall  -march=$(GCCARCH) 
 
-static: LIBS=-static -L/usr/lib/mysql -L/usr/lib64/mysql -L/usr/lib/mysql -lodbc -lltdl -ldl -lrt -lz -lcrypt -lm -lssl -static-libstdc++ -static-libgcc -lpcap -L/usr/lib/mysql -lmysqlclient -lpthread -lgzstream -lz -lc -lvorbis -lvorbisenc -logg -llfds
+#static: LIBS=-static -L/usr/lib/mysql -L/usr/lib64/mysql -L/usr/lib/mysql -lodbc -lltdl -ldl -lrt -lz -lcrypt -lm -lssl -static-libstdc++ -static-libgcc -lpcap -L/usr/lib/mysql -lmysqlclient -lpthread -lgzstream -lz -lc -lvorbis -lvorbisenc -logg -llfds # -lcurl -lidn -lssl -lcrypto  -lrt 
+static: LIBS=-static -L/usr/lib/mysql -L/usr/lib64/mysql -L/usr/lib/mysql -lodbc -lltdl -ldl -lrt -lz -lcrypt -lm -lssl -static-libstdc++ -static-libgcc -lpcap -L/usr/lib/mysql -lmysqlclient -lpthread -lgzstream -lz -lc -lvorbis -lvorbisenc -logg -llfds 
+#static: CFLAGS+= -DISCURL -DQUEUE_NONBLOCK2 -I /usr/local/include/mysql++/ -I /usr/include/mysql++/ -I /usr/include/mysql/ -Wall -I jitterbuffer/  -L/usr/local/lib/ -Lgzstream/ -Lliblfds.6/bin/ -fPIC -O2
 static: CFLAGS+= -DQUEUE_NONBLOCK2 -I /usr/local/include/mysql++/ -I /usr/include/mysql++/ -I /usr/include/mysql/ -Wall -I jitterbuffer/  -L/usr/local/lib/ -Lgzstream/ -Lliblfds.6/bin/ -fPIC -O2
 static: args = -O2 -Wall  -march=$(GCCARCH)
 

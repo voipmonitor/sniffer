@@ -9,20 +9,28 @@
 */
 
 
-#include <list>
-#include <iterator>
-
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
 #include <syslog.h>
 #include <math.h>
+#include <net/if.h>
+#include <sys/ioctl.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+
+#ifdef ISCURL
+#include <curl/curl.h>
+//#include <curl/types.h>
+//#include <curl/easy.h>
+#endif
 
 #include <iostream>
 #include <sstream>
 #include <vector>
+#include <list>
+#include <iterator>
 
 //#include <.h>
 
@@ -38,6 +46,7 @@
 #include "odbc.h"
 #include "sql_db.h"
 #include "rtcp.h"
+
 
 #define MIN(x,y) ((x) < (y) ? (x) : (y))
 
@@ -77,7 +86,10 @@ extern int opt_id_sensor;
 extern int rtptimeout;
 extern unsigned int gthread_num;
 extern int num_threads;
+extern char opt_cdrurl[1024];
 int calls = 0;
+
+extern char mac[32];
 
 unsigned int last_register_clean = 0;
 
@@ -1212,6 +1224,339 @@ Call::doQuery(string &queryStr) {
 	return !okQueryRslt;
 }
 
+size_t write_data(char *ptr, size_t size, size_t nmemb, void *userdata) {
+	std::ostringstream *stream = (std::ostringstream*)userdata;
+	size_t count = size * nmemb;
+	stream->write(ptr, count);
+	return count;
+}
+
+#ifdef ISCURL
+int
+Call::sendCDR() {
+	
+	SqlDb_row cdr;
+
+	if(opt_id_sensor > -1) {
+		cdr.add(opt_id_sensor, "id_sensor");
+	}
+
+	cdr.add(caller, "caller");
+	cdr.add(reverseString(caller).c_str(), "caller_reverse");
+	cdr.add(called, "called");
+	cdr.add(reverseString(called).c_str(), "called_reverse");
+	cdr.add(caller_domain, "caller_domain");
+	cdr.add(called_domain, "called_domain");
+	cdr.add(callername, "callername");
+	cdr.add(reverseString(callername).c_str(), "callername_reverse");
+	cdr.add(lastSIPresponse, "lastSIPresponse");
+	cdr.add(htonl(sipcallerip), "sipcallerip");
+	cdr.add(htonl(sipcalledip), "sipcalledip");
+	cdr.add(duration(), "duration");
+	cdr.add(progress_time ? progress_time - first_packet_time : -1, "progress_time");
+	cdr.add(first_rtp_time ? first_rtp_time  - first_packet_time : -1, "first_rtp_time");
+	cdr.add(connect_time ? (duration() - (connect_time - first_packet_time)) : -1, "connect_duration");
+	cdr.add(sqlDateTimeString(calltime()).c_str(), "calldate");
+	if(opt_callend) {
+		cdr.add(sqlDateTimeString(calltime() + duration()).c_str(), "callend");
+	}
+	
+	cdr.add(fbasename, "fbasename");
+	
+	cdr.add(sighup ? 1 : 0, "sighup");
+	cdr.add(lastSIPresponseNum, "lastSIPresponseNum");
+	cdr.add(seeninviteok ? (seenbye ? (seenbyeandok ? 3 : 2) : 1) : 0, "bye");
+	
+	if(strlen(match_header)) {
+		cdr.add(match_header, "match_header");
+	}
+	if(strlen(custom_header1)) {
+		cdr.add(custom_header1, "custom_header1");
+	}
+
+	if(whohanged == 0 || whohanged == 1) {
+		cdr.add(whohanged ? "callee" : "caller", "whohanged");
+	}
+	if(ssrc_n > 0) {
+		// sort all RTP streams by received packets + loss packets descend and save only those two with the biggest received packets.
+		int indexes[MAX_SSRC_PER_CALL];
+		// init indexex
+		for(int i = 0; i < MAX_SSRC_PER_CALL; i++) {
+			indexes[i] = i;
+		}
+		// bubble sort
+		for(int k = 0; k < ssrc_n; k++) {
+			for(int j = 0; j < ssrc_n; j++) {
+				if((rtp[indexes[k]]->stats.received + rtp[indexes[k]]->stats.lost) > ( rtp[indexes[j]]->stats.received + rtp[indexes[j]]->stats.lost)) {
+					int kTmp = indexes[k];
+					indexes[k] = indexes[j];
+					indexes[j] = kTmp;
+				}
+			}
+		}
+
+		// a_ is always caller, so check if we need to swap indexes
+		if (!rtp[indexes[0]]->iscaller) {
+			int tmp;
+			tmp = indexes[1];
+			indexes[1] = indexes[0];
+			indexes[0] = tmp;
+		}
+		cdr.add(a_ua, "a_ua");
+		cdr.add(b_ua, "b_ua");
+
+		// save only two streams with the biggest received packets
+		int payload[2] = { -1, -1 };
+		int jitter_mult10[2] = { -1, -1 };
+		int mos_min_mult10[2] = { -1, -1 };
+		int packet_loss_perc_mult1000[2] = { -1, -1 };
+		int delay_sum[2] = { -1, -1 };
+		int delay_cnt[2] = { -1, -1 };
+		int delay_avg_mult100[2] = { -1, -1 };
+		int rtcp_avgfr_mult10[2] = { -1, -1 };
+		int rtcp_avgjitter_mult10[2] = { -1, -1 };
+		int lost[2] = { -1, -1 };
+		
+		for(int i = 0; i < 2; i++) {
+			if(!rtp[indexes[i]]) continue;
+
+			// if the stream for a_* is not caller there is probably case where one direction is missing at all and the second stream contains more SSRC streams so swap it
+			if(i == 0 && !rtp[indexes[i]]->iscaller) {
+				int tmp;
+				tmp = indexes[1];
+				indexes[1] = indexes[0];
+				indexes[0] = tmp;
+				continue;
+			}
+			
+			string c = i == 0 ? "a" : "b";
+			
+			cdr.add(indexes[i], c+"_index");
+			cdr.add(rtp[indexes[i]]->stats.received + 2, c+"_received"); // received is always 2 packet less compared to wireshark (add it here)
+			lost[i] = rtp[indexes[i]]->stats.lost;
+			cdr.add(lost[i], c+"_lost");
+			packet_loss_perc_mult1000[i] = (int)round((double)rtp[indexes[i]]->stats.lost / 
+									(rtp[indexes[i]]->stats.received + 2 + rtp[indexes[i]]->stats.lost) * 100 * 1000);
+			cdr.add(packet_loss_perc_mult1000[i], c+"_packet_loss_perc_mult1000");
+			jitter_mult10[i] = int(ceil(rtp[indexes[i]]->stats.avgjitter)) * 10; // !!!
+			cdr.add(jitter_mult10[i], c+"_avgjitter_mult10");
+			cdr.add(int(ceil(rtp[indexes[i]]->stats.maxjitter)), c+"_maxjitter");
+			payload[i] = rtp[indexes[i]]->payload;
+			cdr.add(payload[i], c+"_payload");
+			
+			// build a_sl1 - b_sl10 fields
+			for(int j = 1; j < 11; j++) {
+				char str_j[3];
+				sprintf(str_j, "%d", j);
+				cdr.add(rtp[indexes[i]]->stats.slost[j], c+"_sl"+str_j);
+			}
+			// build a_d50 - b_d300 fileds
+			cdr.add(rtp[indexes[i]]->stats.d50, c+"_d50");
+			cdr.add(rtp[indexes[i]]->stats.d70, c+"_d70");
+			cdr.add(rtp[indexes[i]]->stats.d90, c+"_d90");
+			cdr.add(rtp[indexes[i]]->stats.d120, c+"_d120");
+			cdr.add(rtp[indexes[i]]->stats.d150, c+"_d150");
+			cdr.add(rtp[indexes[i]]->stats.d200, c+"_d200");
+			cdr.add(rtp[indexes[i]]->stats.d300, c+"_d300");
+			delay_sum[i] = rtp[indexes[i]]->stats.d50 * 60 + 
+				       rtp[indexes[i]]->stats.d70 * 80 + 
+				       rtp[indexes[i]]->stats.d90 * 105 + 
+				       rtp[indexes[i]]->stats.d120 * 135 +
+				       rtp[indexes[i]]->stats.d150 * 175 + 
+				       rtp[indexes[i]]->stats.d200 * 250 + 
+				       rtp[indexes[i]]->stats.d300 * 300;
+			delay_cnt[i] = rtp[indexes[i]]->stats.d50 + 
+				       rtp[indexes[i]]->stats.d70 + 
+				       rtp[indexes[i]]->stats.d90 + 
+				       rtp[indexes[i]]->stats.d120 +
+				       rtp[indexes[i]]->stats.d150 + 
+				       rtp[indexes[i]]->stats.d200 + 
+				       rtp[indexes[i]]->stats.d300;
+			delay_avg_mult100[i] = (delay_cnt[i] != 0  ? (int)round((double)delay_sum[i] / delay_cnt[i] * 100) : 0);
+			cdr.add(delay_sum[i], c+"_delay_sum");
+			cdr.add(delay_cnt[i], c+"_delay_cnt");
+			cdr.add(delay_avg_mult100[i], c+"_delay_avg_mult100");
+			
+			// store source addr
+			cdr.add(htonl(rtp[indexes[i]]->saddr), c+"_saddr");
+
+			// calculate lossrate and burst rate
+			double burstr, lossr;
+			burstr_calculate(rtp[indexes[i]]->channel_fix1, rtp[indexes[i]]->stats.received, &burstr, &lossr);
+			//cdr.add(lossr, c+"_lossr_f1");
+			//cdr.add(burstr, c+"_burstr_f1");
+			int mos_f1_mult10 = (int)round(calculate_mos(lossr, burstr, rtp[indexes[i]]->payload) * 10);
+			cdr.add(mos_f1_mult10, c+"_mos_f1_mult10");
+			if(mos_f1_mult10) {
+				mos_min_mult10[i] = mos_f1_mult10;
+			}
+
+			// Jitterbuffer MOS statistics
+			burstr_calculate(rtp[indexes[i]]->channel_fix2, rtp[indexes[i]]->stats.received, &burstr, &lossr);
+			//cdr.add(lossr, c+"_lossr_f2");
+			//cdr.add(burstr, c+"_burstr_f2");
+			int mos_f2_mult10 = (int)round(calculate_mos(lossr, burstr, rtp[indexes[i]]->payload) * 10);
+			cdr.add(mos_f2_mult10, c+"_mos_f2_mult10");
+			if(mos_f2_mult10 && (mos_min_mult10[i] < 0 || mos_f2_mult10 < mos_min_mult10[i])) {
+				mos_min_mult10[i] = mos_f2_mult10;
+			}
+
+			burstr_calculate(rtp[indexes[i]]->channel_adapt, rtp[indexes[i]]->stats.received, &burstr, &lossr);
+			//cdr.add(lossr, c+"_lossr_adapt");
+			//cdr.add(burstr, c+"_burstr_adapt");
+			int mos_adapt_mult10 = (int)round(calculate_mos(lossr, burstr, rtp[indexes[i]]->payload) * 10);
+			cdr.add(mos_adapt_mult10, c+"_mos_adapt_mult10");
+			if(mos_adapt_mult10 && (mos_min_mult10[i] < 0 || mos_adapt_mult10 < mos_min_mult10[i])) {
+				mos_min_mult10[i] = mos_adapt_mult10;
+			}
+			
+			if(mos_min_mult10[i] >= 0) {
+				cdr.add(mos_min_mult10[i], c+"_mos_min_mult10");
+			}
+
+			if(rtp[indexes[i]]->rtcp.counter) {
+				cdr.add(rtp[indexes[i]]->rtcp.loss, c+"_rtcp_loss");
+				cdr.add(rtp[indexes[i]]->rtcp.maxfr, c+"_rtcp_maxfr");
+				rtcp_avgfr_mult10[i] = (int)round(rtp[indexes[i]]->rtcp.avgfr * 10);
+				cdr.add(rtcp_avgfr_mult10[i], c+"_rtcp_avgfr_mult10");
+				cdr.add(rtp[indexes[i]]->rtcp.maxjitter, c+"_rtcp_maxjitter");
+				rtcp_avgjitter_mult10[i] = (int)round(rtp[indexes[i]]->rtcp.avgjitter * 10);
+				cdr.add(rtcp_avgjitter_mult10[i], c+"_rtcp_avgjitter_mult10");
+			}
+		}
+
+		if(payload[0] >= 0 || payload[1] >= 0) {
+			if(isfax) {
+				cdr.add(1000, "payload");
+			} else {
+				cdr.add(payload[0] >= 0 ? payload[0] : payload[1], 
+					"payload");
+			}
+		}
+		if(jitter_mult10[0] >= 0 || jitter_mult10[1] >= 0) {
+			cdr.add(max(jitter_mult10[0], jitter_mult10[1]), 
+				"jitter_mult10");
+		}
+		if(mos_min_mult10[0] >= 0 || mos_min_mult10[1] >= 0) {
+			cdr.add(mos_min_mult10[0] >= 0 && mos_min_mult10[1] >= 0 ?
+					min(mos_min_mult10[0], mos_min_mult10[1]) :
+					(mos_min_mult10[0] >= 0 ? mos_min_mult10[0] : mos_min_mult10[1]),
+				"mos_min_mult10");
+		}
+		if(packet_loss_perc_mult1000[0] >= 0 || packet_loss_perc_mult1000[1] >= 0) {
+			cdr.add(max(packet_loss_perc_mult1000[0], packet_loss_perc_mult1000[1]), 
+				"packet_loss_perc_mult1000");
+		}
+		if(delay_sum[0] >= 0 || delay_sum[1] >= 0) {
+			cdr.add(max(delay_sum[0], delay_sum[1]), 
+				"delay_sum");
+		}
+		if(delay_cnt[0] >= 0 || delay_cnt[1] >= 0) {
+			cdr.add(max(delay_cnt[0], delay_cnt[1]), 
+				"delay_cnt");
+		}
+		if(delay_avg_mult100[0] >= 0 || delay_avg_mult100[1] >= 0) {
+			cdr.add(max(delay_avg_mult100[0], delay_avg_mult100[1]), 
+				"delay_avg_mult100");
+		}
+		if(rtcp_avgfr_mult10[0] >= 0 || rtcp_avgfr_mult10[1] >= 0) {
+			cdr.add((rtcp_avgfr_mult10[0] >= 0 ? rtcp_avgfr_mult10[0] : 0) + 
+				(rtcp_avgfr_mult10[1] >= 0 ? rtcp_avgfr_mult10[1] : 0),
+				"rtcp_avgfr_mult10");
+		}
+		if(rtcp_avgjitter_mult10[0] >= 0 || rtcp_avgjitter_mult10[1] >= 0) {
+			cdr.add((rtcp_avgjitter_mult10[0] >= 0 ? rtcp_avgjitter_mult10[0] : 0) + 
+				(rtcp_avgjitter_mult10[1] >= 0 ? rtcp_avgjitter_mult10[1] : 0),
+				"rtcp_avgjitter_mult10");
+		}
+		if(lost[0] >= 0 || lost[1] >= 0) {
+			cdr.add(max(lost[0], lost[1]), 
+				"lost");
+		}
+	}
+
+	cdr.add(mac, "MAC");
+
+	CURL *curl;
+	CURLcode res;
+
+//	string query = "INSERT INTO cdr  ( " + cdr.implodeFields() + " ) VALUES ( " + cdr.implodeContent(",", "") + " )";
+ 
+	struct curl_httppost *formpost=NULL;
+	struct curl_httppost *lastptr=NULL;
+	struct curl_slist *headerlist=NULL;
+//	static const char buf[] = "Expect:";
+
+
+startcurl:
+	headerlist = NULL;
+	formpost=NULL;
+	lastptr=NULL;
+
+	/* Fill in the filename field */ 
+	curl_formadd(&formpost,
+			 &lastptr,
+			 CURLFORM_COPYNAME, "mac",
+			 CURLFORM_COPYCONTENTS, mac,
+			 CURLFORM_END);
+
+	curl_formadd(&formpost,
+			 &lastptr,
+			 CURLFORM_COPYNAME, "data",
+			 CURLFORM_COPYCONTENTS, cdr.keyvalList(":").c_str(),
+			 CURLFORM_END);
+
+
+	curl = curl_easy_init();
+	/* initalize custom header list (stating that Expect: 100-continue is not
+		 wanted */ 
+//	headerlist = curl_slist_append(headerlist, buf);
+	if(curl) {
+
+		std::ostringstream stream;
+
+		/* what URL that receives this POST */ 
+		curl_easy_setopt(curl, CURLOPT_URL, opt_cdrurl);
+//		if ( (argc == 2) && (!strcmp(argv[1], "noexpectheader")) )
+			/* only disable 100-continue header if explicitly requested */ 
+		curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headerlist);
+		curl_easy_setopt(curl, CURLOPT_HTTPPOST, formpost);
+		curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, false);
+		curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_data);
+		curl_easy_setopt(curl, CURLOPT_WRITEDATA, &stream);
+ 
+		/* Perform the request, res will get the return code */ 
+		res = curl_easy_perform(curl);
+		/* Check for errors */ 
+			
+ 
+		/* always cleanup */ 
+		curl_easy_cleanup(curl);
+ 
+		/* then cleanup the formpost chain */ 
+		curl_formfree(formpost);
+		/* free slist */ 
+		curl_slist_free_all (headerlist);
+
+		if(res != CURLE_OK) {
+			syslog(LOG_ERR, "curl_easy_perform() failed: [%s] trying to send again.\n", curl_easy_strerror(res));
+			sleep(1);
+			goto startcurl;
+		}
+		if(strcmp(stream.str().c_str(), "TRUE") != 0) {
+			syslog(LOG_ERR, "CDR send failed: [%s] trying to send again.", stream.str().c_str());
+			sleep(1);
+			goto startcurl;
+		}
+	} else {
+		syslog(LOG_ERR, "curl_easy_init() failed\n");
+	}
+
+	return 0;
+}
+#endif
+
+
 /* TODO: implement failover -> write INSERT into file */
 int
 Call::saveToDb() {
@@ -1395,7 +1740,7 @@ Call::saveToDb() {
 					       rtp[indexes[i]]->stats.d150 + 
 					       rtp[indexes[i]]->stats.d200 + 
 					       rtp[indexes[i]]->stats.d300;
-				delay_avg_mult100[i] = (int)round((double)delay_sum[i] / delay_cnt[i] * 100);
+				delay_avg_mult100[i] = (delay_cnt[i] != 0  ? (int)round((double)delay_sum[i] / delay_cnt[i] * 100) : 0);
 				cdr.add(delay_sum[i], c+"_delay_sum");
 				cdr.add(delay_cnt[i], c+"_delay_cnt");
 				cdr.add(delay_avg_mult100[i], c+"_delay_avg_mult100");
@@ -1510,7 +1855,7 @@ Call::saveToDb() {
 		if(cdr_ua_a) {
 			a_ua_id = sqlDb->getIdOrInsert(sql_cdr_ua_table, "id", "ua", cdr_ua_a, "");
 		}
-		if(cdr_ua_a) {
+		if(cdr_ua_b) {
 			b_ua_id = sqlDb->getIdOrInsert(sql_cdr_ua_table, "id", "ua", cdr_ua_b, "");
 		}
 
