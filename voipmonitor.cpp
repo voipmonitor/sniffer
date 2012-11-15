@@ -99,6 +99,7 @@ int rtptimeout = 300;
 char opt_cdrurl[1024] = "";
 int opt_cleanspool_interval = 0; // number of seconds between cleaning spool directory. 0 = disabled
 int opt_cleanspool_sizeMB = 0; // number of MB to keep in spooldir
+int opt_domainport = 0;
 
 char opt_clientmanager[1024] = "";
 int opt_clientmanagerport = 9999;
@@ -336,6 +337,9 @@ void *moving_cache( void *dummy ) {
 void *storing_cdr( void *dummy ) {
 	Call *call;
 	while(1) {
+#ifdef ISCURL
+		string cdrtosend;
+#endif
 		if(verbosity > 0) syslog(LOG_ERR,"calls[%d]\n", calls);
 		while (1) {
 			calltable->lock_calls_queue();
@@ -355,7 +359,10 @@ void *storing_cdr( void *dummy ) {
 				}
 			}
 #ifdef ISCURL
-			call->sendCDR();
+			if(opt_cdrurl[0] != '\0') {
+				cdrtosend += call->getKeyValCDRtext();
+				cdrtosend += "##vmdelimiter###\n";
+			}
 #endif
 
 			call->closeRawFiles();
@@ -400,11 +407,15 @@ void *storing_cdr( void *dummy ) {
 			calltable->calls_deletequeue.push(call);
 			calltable->unlock_calls_deletequeue();
 		}
+#ifdef ISCURL
+		if(opt_cdrurl[0] != '\0' && cdrtosend.length() > 0) {
+			sendCDR(cdrtosend);
+		}
+#endif
 		if(terminating) {
 			break;
 		}
 	
-		//TODO: it would be nice if this can be EVENT driven instead of sleeping
 		sleep(1);
 	}
 	return NULL;
@@ -601,6 +612,9 @@ int load_config(char *fname) {
 	}
 	if((value = ini.GetValue("general", "matchheader", NULL))) {
 		snprintf(opt_match_header, sizeof(opt_match_header), "\n%s:", value);
+	}
+	if((value = ini.GetValue("general", "domainport", NULL))) {
+		opt_domainport = atoi(value);
 	}
 	if((value = ini.GetValue("general", "managerport", NULL))) {
 		opt_manager_port = atoi(value);

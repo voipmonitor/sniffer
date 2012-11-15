@@ -292,7 +292,7 @@ public:
 	 * @brief send cdr
 	 *
 	*/
-	int sendCDR();
+	string getKeyValCDRtext();
 #endif
 
 	/**
@@ -550,5 +550,8 @@ string sqlEscapeString(const char *inputStr, char borderChar = '\'');
 string reverseString(const char *str);
 bool isSqlDriver(const char *sqlDriver);
 bool isTypeDb(const char *typeDb);
+#ifdef ISCURL  
+int sendCDR(string data);
+#endif
 
 #endif

@@ -1233,7 +1233,83 @@ size_t write_data(char *ptr, size_t size, size_t nmemb, void *userdata) {
 
 #ifdef ISCURL
 int
-Call::sendCDR() {
+sendCDR(string data) {
+	CURL *curl;
+	CURLcode res;
+	struct curl_httppost *formpost = NULL;
+	struct curl_httppost *lastptr = NULL;
+	struct curl_slist *headerlist = NULL;
+
+startcurl:
+	headerlist = NULL;
+	formpost=NULL;
+	lastptr=NULL;
+
+	/* Fill in the filename field */ 
+	curl_formadd(&formpost,
+			 &lastptr,
+			 CURLFORM_COPYNAME, "mac",
+			 CURLFORM_COPYCONTENTS, mac,
+			 CURLFORM_END);
+
+	curl_formadd(&formpost,
+			 &lastptr,
+			 CURLFORM_COPYNAME, "data",
+			 CURLFORM_COPYCONTENTS, data.c_str(),
+			 CURLFORM_END);
+
+	curl = curl_easy_init();
+	/* initalize custom header list (stating that Expect: 100-continue is not
+		 wanted */ 
+//	headerlist = curl_slist_append(headerlist, buf);
+	if(curl) {
+
+		std::ostringstream stream;
+
+		/* what URL that receives this POST */ 
+		curl_easy_setopt(curl, CURLOPT_URL, opt_cdrurl);
+//		if ( (argc == 2) && (!strcmp(argv[1], "noexpectheader")) )
+			/* only disable 100-continue header if explicitly requested */ 
+		curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headerlist);
+		curl_easy_setopt(curl, CURLOPT_HTTPPOST, formpost);
+		curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, false);
+		curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_data);
+		curl_easy_setopt(curl, CURLOPT_WRITEDATA, &stream);
+ 
+		/* Perform the request, res will get the return code */ 
+		res = curl_easy_perform(curl);
+		/* Check for errors */ 
+			
+ 
+		/* always cleanup */ 
+		curl_easy_cleanup(curl);
+ 
+		/* then cleanup the formpost chain */ 
+		curl_formfree(formpost);
+		/* free slist */ 
+
+		if(verbosity > 1) syslog(LOG_NOTICE, "sending CDR data");
+		curl_slist_free_all (headerlist);
+
+		if(res != CURLE_OK) {
+			syslog(LOG_ERR, "curl_easy_perform() failed: [%s] trying to send again.\n", curl_easy_strerror(res));
+			sleep(1);
+			goto startcurl;
+		}
+		if(strcmp(stream.str().c_str(), "TRUE") != 0) {
+			syslog(LOG_ERR, "CDR send failed: [%s] trying to send again.", stream.str().c_str());
+			sleep(1);
+			goto startcurl;
+		}
+	} else {
+		syslog(LOG_ERR, "curl_easy_init() failed\n");
+	}
+
+	return 0;
+}
+
+string
+Call::getKeyValCDRtext() {
 	
 	SqlDb_row cdr;
 
@@ -1477,82 +1553,7 @@ Call::sendCDR() {
 
 	cdr.add(mac, "MAC");
 
-	CURL *curl;
-	CURLcode res;
-
-//	string query = "INSERT INTO cdr  ( " + cdr.implodeFields() + " ) VALUES ( " + cdr.implodeContent(",", "") + " )";
- 
-	struct curl_httppost *formpost=NULL;
-	struct curl_httppost *lastptr=NULL;
-	struct curl_slist *headerlist=NULL;
-//	static const char buf[] = "Expect:";
-
-
-startcurl:
-	headerlist = NULL;
-	formpost=NULL;
-	lastptr=NULL;
-
-	/* Fill in the filename field */ 
-	curl_formadd(&formpost,
-			 &lastptr,
-			 CURLFORM_COPYNAME, "mac",
-			 CURLFORM_COPYCONTENTS, mac,
-			 CURLFORM_END);
-
-	curl_formadd(&formpost,
-			 &lastptr,
-			 CURLFORM_COPYNAME, "data",
-			 CURLFORM_COPYCONTENTS, cdr.keyvalList(":").c_str(),
-			 CURLFORM_END);
-
-
-	curl = curl_easy_init();
-	/* initalize custom header list (stating that Expect: 100-continue is not
-		 wanted */ 
-//	headerlist = curl_slist_append(headerlist, buf);
-	if(curl) {
-
-		std::ostringstream stream;
-
-		/* what URL that receives this POST */ 
-		curl_easy_setopt(curl, CURLOPT_URL, opt_cdrurl);
-//		if ( (argc == 2) && (!strcmp(argv[1], "noexpectheader")) )
-			/* only disable 100-continue header if explicitly requested */ 
-		curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headerlist);
-		curl_easy_setopt(curl, CURLOPT_HTTPPOST, formpost);
-		curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, false);
-		curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_data);
-		curl_easy_setopt(curl, CURLOPT_WRITEDATA, &stream);
- 
-		/* Perform the request, res will get the return code */ 
-		res = curl_easy_perform(curl);
-		/* Check for errors */ 
-			
- 
-		/* always cleanup */ 
-		curl_easy_cleanup(curl);
- 
-		/* then cleanup the formpost chain */ 
-		curl_formfree(formpost);
-		/* free slist */ 
-		curl_slist_free_all (headerlist);
-
-		if(res != CURLE_OK) {
-			syslog(LOG_ERR, "curl_easy_perform() failed: [%s] trying to send again.\n", curl_easy_strerror(res));
-			sleep(1);
-			goto startcurl;
-		}
-		if(strcmp(stream.str().c_str(), "TRUE") != 0) {
-			syslog(LOG_ERR, "CDR send failed: [%s] trying to send again.", stream.str().c_str());
-			sleep(1);
-			goto startcurl;
-		}
-	} else {
-		syslog(LOG_ERR, "curl_easy_init() failed\n");
-	}
-
-	return 0;
+	return cdr.keyvalList(":");
 }
 #endif
 

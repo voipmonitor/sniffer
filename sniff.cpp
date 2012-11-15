@@ -84,6 +84,7 @@ extern int opt_sipoverlap;
 extern int readend;
 extern int opt_dup_check;
 extern char opt_match_header[128];
+extern int opt_domainport;
 
 extern IPfilter *ipfilter;
 extern IPfilter *ipfilter_reload;
@@ -294,10 +295,17 @@ int get_sip_domain(char *data, int data_len, const char *tag, char *domain, int 
 	memcpy(domain, (void*)r, r2 - r);
 	domain[r2 - r] = '\0';
 
+	// strip :port
+	if(!opt_domainport) {
+		c = strchr(domain, ':');
+		if(c != NULL)
+			*c = '\0';
+	}
 	// check if there is ; in the string (for example sip:<123@domain;user=phone>
 	c = strchr(domain, ';');
 	if(c != NULL)
 		*c = '\0';
+	
 
 	return 0;
 fail_exit:
