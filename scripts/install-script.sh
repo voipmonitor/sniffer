@@ -9,6 +9,9 @@ cp etc/voipmonitor.conf /etc/
 echo "Copying etc/init.d/voipmonitor starting script to /etc/init.d/voipmonitor. Start voipmonitor by /etc/init.d/voipmonitor starts"
 cp etc/init.d/voipmonitor /etc/init.d/
 
+echo "Creating /var/spool/voipmonitor"
+mkdir /var/spool/voipmonitor
+
 update-rc.d voipmonitor defaults &>/dev/null
 chkconfig --add voipmonitor &>/dev/null
 chkconfig voipmonitor on &>/dev/null
