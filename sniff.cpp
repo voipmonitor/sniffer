@@ -1172,6 +1172,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 
 			// check if it is BYE or OK(RES2XX)
 			if(sip_method == INVITE) {
+				call->destroy_call_at = 0;
 				//update called number for each invite due to overlap-dialling
 				if (opt_sipoverlap && saddr == call->sipcallerip) {
 					int res = get_sip_peername(data,datalen,"\nTo:", call->called, sizeof(call->called));
