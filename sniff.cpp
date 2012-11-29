@@ -1365,33 +1365,36 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 					// store RTP stream
 					get_rtpmap_from_sdp(tmp + 1, datalen - (tmp + 1 - data), rtpmap);
 
-					call->add_ip_port(tmp_addr, tmp_port, s, l, call->sipcallerip != saddr, rtpmap);
-					calltable->hashAdd(tmp_addr, tmp_port, call, call->sipcallerip != saddr, 0);
-					//calltable->mapAdd(tmp_addr, tmp_port, call, call->sipcallerip != saddr, 0);
-					if(opt_rtcp) {
-						calltable->hashAdd(tmp_addr, tmp_port + 1, call, call->sipcallerip != saddr, 1); //add rtcp
-						//calltable->mapAdd(tmp_addr, tmp_port + 1, call, call->sipcallerip != saddr, 1); //add rtcp
+					if(call->add_ip_port(tmp_addr, tmp_port, s, l, call->sipcallerip != saddr, rtpmap) != -1){
+						calltable->hashAdd(tmp_addr, tmp_port, call, call->sipcallerip != saddr, 0);
+						//calltable->mapAdd(tmp_addr, tmp_port, call, call->sipcallerip != saddr, 0);
+						if(opt_rtcp) {
+							calltable->hashAdd(tmp_addr, tmp_port + 1, call, call->sipcallerip != saddr, 1); //add rtcp
+							//calltable->mapAdd(tmp_addr, tmp_port + 1, call, call->sipcallerip != saddr, 1); //add rtcp
+						}
 					}
 					
 					// check if the IP address is listed in nat_aliases
 					in_addr_t alias = 0;
 					if((alias = match_nat_aliases(tmp_addr)) != 0) {
-						call->add_ip_port(alias, tmp_port, s, l, call->sipcallerip != saddr, rtpmap);
-						calltable->hashAdd(alias, tmp_port, call, call->sipcallerip != saddr, 0);
-						//calltable->mapAdd(alias, tmp_port, call, call->sipcallerip != saddr, 0);
-						if(opt_rtcp) {
-							calltable->hashAdd(alias, tmp_port + 1, call, call->sipcallerip != saddr, 1); //add rtcp
-							//calltable->mapAdd(alias, tmp_port + 1, call, call->sipcallerip != saddr, 1); //add rtcp
+						if(call->add_ip_port(alias, tmp_port, s, l, call->sipcallerip != saddr, rtpmap) != -1) {
+							calltable->hashAdd(alias, tmp_port, call, call->sipcallerip != saddr, 0);
+							//calltable->mapAdd(alias, tmp_port, call, call->sipcallerip != saddr, 0);
+							if(opt_rtcp) {
+								calltable->hashAdd(alias, tmp_port + 1, call, call->sipcallerip != saddr, 1); //add rtcp
+								//calltable->mapAdd(alias, tmp_port + 1, call, call->sipcallerip != saddr, 1); //add rtcp
+							}
 						}
 					}
 
 #ifdef NAT
-					call->add_ip_port(saddr, tmp_port, s, l, call->sipcallerip != saddr, rtpmap);
-					calltable->hashAdd(saddr, tmp_port, call, call->sipcallerip != saddr, 0);
-					//calltable->mapAdd(saddr, tmp_port, call, call->sipcallerip != saddr, 0);
-					if(opt_rtcp) {
-						calltable->hashAdd(saddr, tmp_port + 1, call, call->sipcallerip != saddr, 1);
-						//calltable->mapAdd(saddr, tmp_port + 1, call, call->sipcallerip != saddr, 1);
+					if(call->add_ip_port(saddr, tmp_port, s, l, call->sipcallerip != saddr, rtpmap) != -1){
+						calltable->hashAdd(saddr, tmp_port, call, call->sipcallerip != saddr, 0);
+						//calltable->mapAdd(saddr, tmp_port, call, call->sipcallerip != saddr, 0);
+						if(opt_rtcp) {
+							calltable->hashAdd(saddr, tmp_port + 1, call, call->sipcallerip != saddr, 1);
+							//calltable->mapAdd(saddr, tmp_port + 1, call, call->sipcallerip != saddr, 1);
+						}
 					}
 #endif
 				}
