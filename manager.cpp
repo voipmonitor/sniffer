@@ -33,6 +33,7 @@ extern char opt_clientmanager[1024];
 extern int opt_clientmanagerport;
 extern char mac[32];
 extern int verbosity;
+extern char opt_chdir[1024];
 
 using namespace std;
 
@@ -372,6 +373,101 @@ int parse_command(char *buf, int size, int client, int eof) {
 		sprintf(buf, "%d", size);
 		send(client, buf, strlen(buf), 0);
 		return 0;
+	} else if(strstr(buf, "genwav") != NULL) {
+		char filename[2048];
+		unsigned int size;
+		char wavfile[2048];
+		char pcapfile[2048];
+		char cmd[4092];
+		int secondrun = 0;
+
+		sscanf(buf, "genwav %s", filename);
+
+		sprintf(pcapfile, "%s.pcap", filename);
+		sprintf(wavfile, "%s.wav", filename);
+
+getwav2:
+		size = file_exists(wavfile);
+		if(size) {
+			sprintf(buf, "%d", size);
+			send(client, buf, strlen(buf), 0);
+			return 0;
+		}
+		if(secondrun > 0) {
+			// wav does not exist 
+			send(client, "0", 1, 0);
+			return -1;
+		}
+
+		// wav does not exists, check if exists pcap and try to create wav
+		size = file_exists(pcapfile);
+		if(!size) {
+			send(client, "0", 1, 0);
+			return -1;
+		}
+		sprintf(cmd, "PATH=/bin:/sbin:/usr/bin:/usr/sbin:/usr/local/sbin:/usr/local/bin voipmonitor --rtp-firstleg -k -WRc -r \"%s.pcap\" -y -d %s 2>/dev/null >/dev/null", filename, opt_chdir);
+		system(cmd);
+		secondrun = 1;
+		goto getwav2;
+	} else if(strstr(buf, "getwav") != NULL) {
+		char filename[2048];
+		int fd;
+		unsigned int size;
+		char wavfile[2048];
+		char pcapfile[2048];
+		char cmd[4092];
+		char rbuf[4096];
+		int res;
+		ssize_t nread;
+		int secondrun = 0;
+
+		sscanf(buf, "getwav %s", filename);
+
+		sprintf(pcapfile, "%s.pcap", filename);
+		sprintf(wavfile, "%s.wav", filename);
+
+getwav:
+		size = file_exists(wavfile);
+		if(size) {
+			fd = open(wavfile, O_RDONLY);
+			if(fd < 0) {
+				sprintf(buf, "error: cannot open file [%s]", wavfile);
+				if ((res = send(client, buf, strlen(buf), 0)) == -1){
+					cerr << "Error sending data to client" << endl;
+				}
+				return -1;
+			}
+			while(nread = read(fd, rbuf, sizeof rbuf), nread > 0) {
+				if ((res = send(client, rbuf, nread, 0)) == -1){
+					close(fd);
+					return -1;
+				}
+			}
+			if(eof) {
+				if ((res = send(client, "EOF", 3, 0)) == -1){
+					close(fd);
+					return -1;
+				}
+			}
+			close(fd);
+			return 0;
+		}
+		if(secondrun > 0) {
+			// wav does not exist 
+			send(client, "0", 1, 0);
+			return -1;
+		}
+
+		// wav does not exists, check if exists pcap and try to create wav
+		size = file_exists(pcapfile);
+		if(!size) {
+			send(client, "0", 1, 0);
+			return -1;
+		}
+		sprintf(cmd, "PATH=/bin:/sbin:/usr/bin:/usr/sbin:/usr/local/sbin:/usr/local/bin voipmonitor --rtp-firstleg -k -WRc -r \"%s.pcap\" -y 2>/dev/null >/dev/null", filename);
+		system(cmd);
+		secondrun = 1;
+		goto getwav;
 	} else if(strstr(buf, "getsiptshark") != NULL) {
 		char filename[2048];
 		int fd;
