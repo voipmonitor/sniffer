@@ -46,6 +46,7 @@ and insert them into Call class.
 #include "rtp.h"
 #include "rtcp.h"
 #include "md5.h"
+#include "tools.h"
 
 extern "C" {
 #include "liblfds.6/inc/liblfds.h"
@@ -728,12 +729,18 @@ Call *new_invite_register(int sip_method, char *data, int datalen, struct pcap_p
 			sprintf(str2, "%s/%s.pcap", call->dirname(), call->get_fbasename_safe());
 		}
 		sprintf(call->pcapfilename, "%s/%s.pcap", call->dirname(), call->get_fbasename_safe());
-		call->set_f_pcap(pcap_dump_open(handle, str2));
-		if(call->get_f_pcap() == NULL) {
-			syslog(LOG_NOTICE,"pcap [%s] cannot be opened: %s\n", str2, pcap_geterr(handle));
-		}
-		if(verbosity > 3) {
-			syslog(LOG_NOTICE,"pcap_filename: [%s]\n",str2);
+		if(!file_exists(str2)) {
+			call->set_f_pcap(pcap_dump_open(handle, str2));
+			if(call->get_f_pcap() == NULL) {
+				syslog(LOG_NOTICE,"pcap [%s] cannot be opened: %s\n", str2, pcap_geterr(handle));
+			}
+			if(verbosity > 3) {
+				syslog(LOG_NOTICE,"pcap_filename: [%s]\n", str2);
+			}
+		} else {
+			if(verbosity > 0) {
+				syslog(LOG_NOTICE,"pcap_filename: [%s] already exists, do not overwriting\n", str2);
+			}
 		}
 	}
 
@@ -1046,7 +1053,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 			}
 			sip_method = 0;
 		}
-		lastSIPresponse[0] = "NO RESPONSE";
+		strcpy(lastSIPresponse, "NO RESPONSE");
 		lastSIPresponseNum = 0;
 		if(sip_method > 0 && last_sip_method != BYE && sip_method != INVITE && sip_method != REGISTER && sip_method != CANCEL && sip_method != BYE) {
 			char a = data[datalen - 1];
@@ -1534,8 +1541,14 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 			}
 			if((call->flags & (FLAG_SAVESIP | FLAG_SAVEREGISTER | FLAG_SAVERTP)) || (call->isfax && opt_saveudptl)) {
 				sprintf(str2, "%s/%s.pcap", call->dirname(), s);
-				call->set_f_pcap(pcap_dump_open(handle, str2));
-				sprintf(call->pcapfilename, "%s/%s.pcap", call->dirname(), s);
+				if(!file_exists(str2)) {
+					call->set_f_pcap(pcap_dump_open(handle, str2));
+					sprintf(call->pcapfilename, "%s/%s.pcap", call->dirname(), s);
+				} else {
+					if(verbosity > 0) {
+						syslog(LOG_NOTICE,"pcap_filename: [%s] already exists, do not overwriting\n", str2);
+					}
+				}
 			}
 
 			if(verbosity > 3) {
