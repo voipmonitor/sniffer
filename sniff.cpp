@@ -1046,7 +1046,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 			}
 			sip_method = 0;
 		}
-		lastSIPresponse[0] = '\0';
+		lastSIPresponse[0] = "NO RESPONSE";
 		lastSIPresponseNum = 0;
 		if(sip_method > 0 && last_sip_method != BYE && sip_method != INVITE && sip_method != REGISTER && sip_method != CANCEL && sip_method != BYE) {
 			char a = data[datalen - 1];
