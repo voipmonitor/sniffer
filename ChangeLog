@@ -1,5 +1,16 @@
+version 5.4 30.11.2012
+======================
+
+- fix random memory corruption which leads to coredump when MAX_IP_PER_CALL was reached
+- implement getwav genwav manager commands to allow wav download remotly
+- name initial SIP last reposne = "NO RESPONSE" with code 0
 - implement cleaning spool dir (set interval and size)
-- implement reverse manager interface
+- add WARNING in voipmonitor.conf - pcapcommand is implemented by forking which is very expensive and is causing TLB shootouts on multicore system which can generate 500 000 interrupts / sec  causing system to drop packets. Watch the performance carefuly (with "vmstat 1" column "in"). Gziping pcap files will be implemented as native function directly in C++ to obey TLB shootdowns.
+- do not overwrite pcap file if it exists
+- search voipmonitor binary in sbin first then in bin
+- mkdir /var/spool/voipmonitor/ in install script
+- reset callend timer on each INVITE to not hangup call in case voipmonitor is not sniffing RTP 
+- change default behaviour and do not save :port in domain column. To change it to old behaviour you can set domainport=yes in voipmonitor.conf
 - add to_domain to register_state and register_failed tables and treat REGISTER unique for to_domain too instead of only by digestusername and to_num/to_domain
 - fix cdr.called/caller when @ character is in sip name ["@home company"<sip:1234@domain>]
 
