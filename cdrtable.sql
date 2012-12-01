@@ -233,6 +233,7 @@ CREATE TABLE `register_state` (
   `ID` int(32) unsigned NOT NULL AUTO_INCREMENT,
   `created_at` datetime NOT NULL,
   `sipcallerip` int(32) unsigned NOT NULL,
+  `sipcalledip` int(32) unsigned NOT NULL,
   `from_num` varchar(255) NULL DEFAULT NULL,
   `to_num` varchar(255) NULL DEFAULT NULL,
   `to_domain` varchar(255) NULL DEFAULT NULL,
@@ -245,6 +246,7 @@ CREATE TABLE `register_state` (
   PRIMARY KEY (`ID`),
   KEY `created_at` (`created_at`),
   KEY `sipcallerip` (`sipcallerip`)
+  KEY `sipcalledip` (`sipcallerip`)
 ) ENGINE=InnoDB DEFAULT CHARSET=latin1 ROW_FORMAT=COMPRESSED;
 
 CREATE TABLE `register_failed` (
@@ -252,6 +254,7 @@ CREATE TABLE `register_failed` (
   `counter` int DEFAULT 0,
   `created_at` datetime NOT NULL,
   `sipcallerip` int(32) unsigned NOT NULL,
+  `sipcalledip` int(32) unsigned NOT NULL,
   `from_num` varchar(255) NULL DEFAULT NULL,
   `to_num` varchar(255) NULL DEFAULT NULL,
   `to_domain` varchar(255) NULL DEFAULT NULL,
@@ -262,6 +265,7 @@ CREATE TABLE `register_failed` (
   PRIMARY KEY (`ID`),
   KEY `created_at` (`created_at`),
   KEY `sipcallerip` (`sipcallerip`)
+  KEY `sipcalledip` (`sipcallerip`)
 ) ENGINE=InnoDB DEFAULT CHARSET=latin1 ROW_FORMAT=COMPRESSED;
 
 CREATE TABLE IF NOT EXISTS `sensors` (

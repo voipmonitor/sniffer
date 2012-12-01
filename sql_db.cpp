@@ -652,7 +652,13 @@ void SqlDb_mysql::createSchema() {
 	this->query(query);
 	query = "ALTER TABLE register_failed ADD `to_domain` varchar(255) NULL DEFAULT NULL;";
 	this->query(query);
-	sql_noerror = 0;
 
+	//5.4 -> 5.5
+	query = "ALTER TABLE register_state ADD `sipcalledip` int(32) unsigned, ADD KEY `sipcalledip` (`sipcalledip`);";
+	this->query(query);
+	query = "ALTER TABLE register_failed ADD `sipcalledip` int(32) unsigned, ADD KEY `sipcalledip` (`sipcalledip`);";
+	this->query(query);
+
+	sql_noerror = 0;
 }
 

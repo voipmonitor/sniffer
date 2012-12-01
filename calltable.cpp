@@ -1964,6 +1964,7 @@ Call::saveRegisterToDb() {
 					SqlDb_row reg;
 					reg.add(sqlEscapeString(sqlDateTimeString(expires_at).c_str()), "created_at");
 					reg.add(htonl(sipcallerip), "sipcallerip");
+					reg.add(htonl(sipcalledip), "sipcalledip");
 					reg.add(sqlEscapeString(caller), "from_num");
 					reg.add(sqlEscapeString(called), "to_num");
 					reg.add(sqlEscapeString(called_domain), "to_domain");
@@ -1981,6 +1982,7 @@ Call::saveRegisterToDb() {
 					SqlDb_row reg;
 					reg.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "created_at");
 					reg.add(htonl(sipcallerip), "sipcallerip");
+					reg.add(htonl(sipcalledip), "sipcalledip");
 					reg.add(sqlEscapeString(caller), "from_num");
 					reg.add(sqlEscapeString(called), "to_num");
 					reg.add(sqlEscapeString(called_domain), "to_domain");
@@ -1997,6 +1999,7 @@ Call::saveRegisterToDb() {
 				SqlDb_row reg;
 				reg.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "created_at");
 				reg.add(htonl(sipcallerip), "sipcallerip");
+				reg.add(htonl(sipcalledip), "sipcalledip");
 				reg.add(sqlEscapeString(caller), "from_num");
 				reg.add(sqlEscapeString(called), "to_num");
 				reg.add(sqlEscapeString(called_domain), "to_domain");
@@ -2047,6 +2050,7 @@ Call::saveRegisterToDb() {
 					SqlDb_row reg;
 					reg.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "created_at");
 					reg.add(htonl(sipcallerip), "sipcallerip");
+					reg.add(htonl(sipcalledip), "sipcalledip");
 					reg.add(sqlEscapeString(caller), "from_num");
 					reg.add(sqlEscapeString(called), "to_num");
 					reg.add(sqlEscapeString(called_domain), "to_domain");
