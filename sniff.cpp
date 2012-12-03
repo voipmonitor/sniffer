@@ -37,6 +37,7 @@ and insert them into Call class.
 #include <nids.h>
 #endif
 
+#include "flags.h"
 #include "codecs.h"
 #include "calltable.h"
 #include "sniff.h"
@@ -1361,6 +1362,12 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 						syslog(LOG_ERR, "[%s] T38 detected", call->fbasename);
 					}
 					call->isfax = 1;
+					call->flags1 |= T38FAX;
+				} else {
+					if(call->isfax) {
+						call->flags1 |= T38FAXRESET;
+						call->isfax = 0;
+					}
 				}
 				// if rtp-firstleg enabled add RTP only in case the SIP msg belongs to first leg
 				if(opt_rtp_firstleg == 0 || (opt_rtp_firstleg &&

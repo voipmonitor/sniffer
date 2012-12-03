@@ -161,6 +161,7 @@ Call::Call(char *call_id, unsigned long call_id_len, time_t time, void *ct) {
 	gthread_num++;
 	recordstopped = 0;
 	dtmfflag = 0;
+	flags1 = 0;
 }
 
 void

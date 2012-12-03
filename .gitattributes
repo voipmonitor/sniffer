@@ -39,6 +39,7 @@ config/voipmonitor.conf -text
 /configure.in -text
 /filter_mysql.cpp -text
 /filter_mysql.h -text
+/flags.h -text
 /format_ogg.cpp -text
 /format_ogg.h -text
 /format_slinear.cpp -text
