@@ -21,6 +21,7 @@
 //#define DEBUG_INVITE
 
 void reload_config();
+void reload_capture_rules();
 
 #define VOIPMONITOR_H
 #endif
