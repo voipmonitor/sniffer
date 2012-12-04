@@ -34,6 +34,9 @@ extern int opt_clientmanagerport;
 extern char mac[32];
 extern int verbosity;
 extern char opt_chdir[1024];
+extern int terminating;
+extern int manager_socket_server;
+extern int terminating;
 
 using namespace std;
 
@@ -622,13 +625,12 @@ connect:
 void *manager_server(void *dummy) {
 	sockaddr_in sockName;
 	sockaddr_in clientInfo;
-	int mainSocket;
 	char buf[BUFSIZE];
 	int size;
 	socklen_t addrlen;
 
 	// Vytvorime soket - viz minuly dil
-	if ((mainSocket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP)) == -1) {
+	if ((manager_socket_server = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP)) == -1) {
 		cerr << "Cannot create manager tcp socket" << endl;
 		return 0;
 	}
@@ -637,19 +639,24 @@ void *manager_server(void *dummy) {
 	//sockName.sin_addr.s_addr = INADDR_ANY;
 	sockName.sin_addr.s_addr = inet_addr(opt_manager_ip);
 	int on = 1;
-	setsockopt(mainSocket, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on));
-	if (bind(mainSocket, (sockaddr *)&sockName, sizeof(sockName)) == -1) {
+	setsockopt(manager_socket_server, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on));
+	if (bind(manager_socket_server, (sockaddr *)&sockName, sizeof(sockName)) == -1) {
 		cerr << "Cannot bind manager to port " << opt_manager_port << endl;
 		return 0;
 	}
 	// create queue with 100 connections max 
-	if (listen(mainSocket, 100) == -1) {
+	if (listen(manager_socket_server, 100) == -1) {
 		cerr << "Cannot create manager queue" << endl;
 		return 0;
 	}
-	while(1) {
+	while(1 && terminating == 0) {
 		addrlen = sizeof(clientInfo);
-		int client = accept(mainSocket, (sockaddr*)&clientInfo, &addrlen);
+		int client = accept(manager_socket_server, (sockaddr*)&clientInfo, &addrlen);
+		if(terminating == 1) {
+			close(client);
+			close(manager_socket_server);
+			return 0;
+		}
 		if (client == -1) {
 			cerr << "Problem with accept client" <<endl;
 			return 0;
@@ -664,6 +671,6 @@ void *manager_server(void *dummy) {
 		parse_command(buf, size, client, 0);
 		close(client);
 	}
-	close(mainSocket);
+	close(manager_socket_server);
 	return 0;
 }

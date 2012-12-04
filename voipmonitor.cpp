@@ -16,6 +16,7 @@
 #include <endian.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <sys/socket.h>
 #include <net/ethernet.h>
 #include <netinet/in.h>
 #include <netinet/in_systm.h>
@@ -174,6 +175,9 @@ pcap_packet *qring;
 pcap_t *handle = NULL;		// pcap handler 
 
 read_thread *threads;
+
+int manager_socket_server = 0;
+
 
 pthread_t pcap_read_thread;
 #ifdef QUEUE_MUTEX
@@ -1467,13 +1471,17 @@ int main(int argc, char *argv[]) {
 	readdump_libpcap(handle);
 	readend = 1;
 
+	//wait for manager to properly terminate 
+	shutdown(manager_socket_server, SHUT_RDWR);	// break accept syscall in manager thread
+	pthread_join(manager_thread, NULL);
+
 #ifdef QUEUE_NONBLOCK2
 	if(opt_pcap_threaded) {
 		pthread_join(pcap_read_thread, NULL);
 	}
 #endif
 
-// wait for RTP threads
+	// wait for RTP threads
 	if(rtp_threaded) {
 		for(int i = 0; i < num_threads; i++) {
 			pthread_join((threads[i].thread), NULL);
