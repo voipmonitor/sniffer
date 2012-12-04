@@ -246,7 +246,7 @@ CREATE TABLE `register_state` (
   PRIMARY KEY (`ID`),
   KEY `created_at` (`created_at`),
   KEY `sipcallerip` (`sipcallerip`)
-  KEY `sipcalledip` (`sipcallerip`)
+  KEY `sipcalledip` (`sipcalledip`)
 ) ENGINE=InnoDB DEFAULT CHARSET=latin1 ROW_FORMAT=COMPRESSED;
 
 CREATE TABLE `register_failed` (
@@ -265,7 +265,7 @@ CREATE TABLE `register_failed` (
   PRIMARY KEY (`ID`),
   KEY `created_at` (`created_at`),
   KEY `sipcallerip` (`sipcallerip`)
-  KEY `sipcalledip` (`sipcallerip`)
+  KEY `sipcalledip` (`sipcalledip`)
 ) ENGINE=InnoDB DEFAULT CHARSET=latin1 ROW_FORMAT=COMPRESSED;
 
 CREATE TABLE IF NOT EXISTS `sensors` (

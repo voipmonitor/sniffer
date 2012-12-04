@@ -607,7 +607,8 @@ void SqlDb_mysql::createSchema() {
   `ua_id` int(10) unsigned DEFAULT NULL,\
   PRIMARY KEY (`ID`),\
   KEY `created_at` (`created_at`),\
-  KEY `sipcallerip` (`sipcallerip`)\
+  KEY `sipcallerip` (`sipcallerip`),\
+  KEY `sipcalledip` (`sipcalledip`)\
 ) ENGINE=InnoDB DEFAULT CHARSET=latin1 ROW_FORMAT=COMPRESSED;";
 
 	this->query(query);
@@ -625,7 +626,8 @@ void SqlDb_mysql::createSchema() {
   `ua_id` int(10) unsigned DEFAULT NULL,\
   PRIMARY KEY (`ID`),\
   KEY `created_at` (`created_at`),\
-  KEY `sipcallerip` (`sipcallerip`)\
+  KEY `sipcallerip` (`sipcallerip`),\
+  KEY `sipcalledip` (`sipcalledip`)\
 ) ENGINE=InnoDB DEFAULT CHARSET=latin1 ROW_FORMAT=COMPRESSED;";
 
 	this->query(query);
