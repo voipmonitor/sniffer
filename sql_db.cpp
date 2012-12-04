@@ -597,6 +597,7 @@ void SqlDb_mysql::createSchema() {
   `ID` int(32) unsigned NOT NULL AUTO_INCREMENT,\
   `created_at` datetime NOT NULL,\
   `sipcallerip` int(32) unsigned NOT NULL,\
+  `sipcalledip` int(32) unsigned NOT NULL,\
   `from_num` varchar(255) NULL DEFAULT NULL,\
   `to_num` varchar(255) NULL DEFAULT NULL,\
   `contact_num` varchar(255) NULL DEFAULT NULL,\
@@ -618,6 +619,7 @@ void SqlDb_mysql::createSchema() {
   `counter` int DEFAULT 0,\
   `created_at` datetime NOT NULL,\
   `sipcallerip` int(32) unsigned NOT NULL,\
+  `sipcalledip` int(32) unsigned NOT NULL,\
   `from_num` varchar(255) NULL DEFAULT NULL,\
   `to_num` varchar(255) NULL DEFAULT NULL,\
   `contact_num` varchar(255) NULL DEFAULT NULL,\
