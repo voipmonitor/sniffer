@@ -338,13 +338,13 @@ void *moving_cache( void *dummy ) {
 void *storing_cdr( void *dummy ) {
 	Call *call;
 	while(1) {
-		if(request_iptelnum_reload = 1) { reload_capture_rules(); request_iptelnum_reload = 0;};
+		if(request_iptelnum_reload == 1) { reload_capture_rules(); request_iptelnum_reload = 0;};
 #ifdef ISCURL
 		string cdrtosend;
 #endif
 		if(verbosity > 0) syslog(LOG_ERR,"calls[%d]\n", calls);
 		while (1) {
-			if(request_iptelnum_reload = 1) { reload_capture_rules(); request_iptelnum_reload = 0;};
+			if(request_iptelnum_reload == 1) { reload_capture_rules(); request_iptelnum_reload = 0;};
 			calltable->lock_calls_queue();
 			if(calltable->calls_queue.size() == 0) {
 				calltable->unlock_calls_queue();
