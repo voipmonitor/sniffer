@@ -1,3 +1,12 @@
+version 5.4.1 4.12.2012
+=======================
+
+- fix crash when reloading capture rules - move mysql functions into mysql thread to avoid race condition.
+- fix register table creation
+- do not mark T38 call if the latest SDP is not T.38 which means the T38 failed. But retain that flag for later use (will be implemented as flags in future)
+- add sipcalledip to register_state and register_filter
+
+
 version 5.4 30.11.2012
 ======================
 
