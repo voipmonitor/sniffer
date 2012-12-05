@@ -17,6 +17,7 @@
 # on centos, run chkconfig --add voipmonitor; chkconfig voipmonitor on
 # on debian, run update-rc.d voipmonitor defaults 
 
+ulimit -c unlimited
 PATH=/sbin:/bin:/usr/sbin:/usr/bin:/usr/local/sbin:/usr/local/bin
 TERM="linux";
 # uncomment and change interface if you do not have voipmonitor.conf 
