@@ -233,6 +233,7 @@ int parse_command(char *buf, int size, int client, int eof) {
 		outbuflen = sprintf(outbuf, "[[\"callreference\", \"callid\", \"callercodec\", \"calledcodec\", \"caller\", \"callername\", \"called\", \"calldate\", \"duration\", \"callerip\", \"calledip\", \"lastpackettime\"]");
 		memcpy(resbuf + resbuflen, outbuf, outbuflen);
 		resbuflen += outbuflen;
+		calltable->lock_calls_listMAP();
 		for (callMAPIT = calltable->calls_listMAP.begin(); callMAPIT != calltable->calls_listMAP.end(); ++callMAPIT) {
 			call = (*callMAPIT).second;
 			if(call->type == REGISTER) {
@@ -259,6 +260,7 @@ int parse_command(char *buf, int size, int client, int eof) {
 			memcpy(resbuf + resbuflen, outbuf, outbuflen);
 			resbuflen += outbuflen;
 		}
+		calltable->unlock_calls_listMAP();
 		if((resbuflen + 1) > resbufalloc) {
 			resbuf = (char*)realloc(resbuf, resbufalloc + 32 * 1024 * sizeof(char));
 			resbufalloc += 32 * 1024;
@@ -287,6 +289,7 @@ int parse_command(char *buf, int size, int client, int eof) {
 		map<string, Call*>::iterator callMAPIT;
 		Call *call;
 		int i;
+		calltable->lock_calls_listMAP();
 		for (callMAPIT = calltable->calls_listMAP.begin(); callMAPIT != calltable->calls_listMAP.end(); ++callMAPIT) {
 			call = (*callMAPIT).second;
 			//printf("call[%p] == [%li] [%d] [%li] [%li]\n", call, callreference, (long int)call == (long int)callreference, (long int)call, (long int)callreference);
@@ -331,6 +334,7 @@ int parse_command(char *buf, int size, int client, int eof) {
 				}
 			}
 		}
+		calltable->unlock_calls_listMAP();
 		if ((size = send(client, "call not found", 14, 0)) == -1){
 			cerr << "Error sending data to client" << endl;
 			return -1;

@@ -2150,6 +2150,11 @@ Calltable::Calltable() {
 	pthread_mutex_init(&qlock, NULL);
 	pthread_mutex_init(&qdellock, NULL);
 	pthread_mutex_init(&flock, NULL);
+
+//	pthread_mutexattr_init(&calls_listMAPlock_attr);
+//	pthread_mutexattr_settype(&mta, PTHREAD_MUTEX_NORMAL);
+	pthread_mutex_init(&calls_listMAPlock, NULL);
+
 	memset(calls_hash, 0x0, sizeof(calls_hash));
 };
 
@@ -2157,6 +2162,8 @@ Calltable::Calltable() {
 Calltable::~Calltable() {
 	pthread_mutex_destroy(&qlock);
 	pthread_mutex_destroy(&qdellock);
+	pthread_mutex_destroy(&flock);
+	pthread_mutex_destroy(&calls_listMAPlock);
 };
 
 /* add node to hash. collisions are linked list of nodes*/
@@ -2330,7 +2337,9 @@ Calltable::add(char *call_id, unsigned long call_id_len, time_t time, u_int32_t 
 		newcall->flags |= FLAG_SAVEREGISTER;
 
 	string call_idS = string(call_id, call_id_len);
+	lock_calls_listMAP();
 	calls_listMAP[call_idS] = newcall;
+	unlock_calls_listMAP();
 	return newcall;
 }
 
@@ -2415,6 +2424,7 @@ Calltable::cleanup_old( time_t currtime ) {
 int
 Calltable::cleanup( time_t currtime ) {
 	Call* call;
+	lock_calls_listMAP();
 	for (callMAPIT = calls_listMAP.begin(); callMAPIT != calls_listMAP.end();) {
 		call = (*callMAPIT).second;
 		if(verbosity > 2) call->dump();
@@ -2450,6 +2460,7 @@ Calltable::cleanup( time_t currtime ) {
 			++callMAPIT;
 		}
 	}
+	unlock_calls_listMAP();
 	return 0;
 }
 

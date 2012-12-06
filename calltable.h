@@ -421,6 +421,7 @@ public:
 	void lock_calls_queue() { pthread_mutex_lock(&qlock); };
 	void lock_calls_deletequeue() { pthread_mutex_lock(&qdellock); };
 	void lock_files_queue() { pthread_mutex_lock(&flock); };
+	void lock_calls_listMAP() { pthread_mutex_lock(&calls_listMAPlock); };
 
 	/**
 	 * @brief unlock calls_queue structure 
@@ -429,6 +430,7 @@ public:
 	void unlock_calls_queue() { pthread_mutex_unlock(&qlock); };
 	void unlock_calls_deletequeue() { pthread_mutex_unlock(&qdellock); };
 	void unlock_files_queue() { pthread_mutex_unlock(&flock); };
+	void unlock_calls_listMAP() { pthread_mutex_unlock(&calls_listMAPlock); };
 	
 	/**
 	 * @brief lock files_queue structure 
@@ -519,6 +521,8 @@ private:
 	pthread_mutex_t qlock;		//!< mutex locking calls_queue
 	pthread_mutex_t qdellock;	//!< mutex locking calls_deletequeue
 	pthread_mutex_t flock;		//!< mutex locking calls_queue
+	pthread_mutex_t calls_listMAPlock;
+//	pthread_mutexattr_t   calls_listMAPlock_attr;
 
 	struct hash_node {
 		Call *call;
