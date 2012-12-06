@@ -654,8 +654,10 @@ Call *new_invite_register(int sip_method, char *data, int datalen, struct pcap_p
 		}
 
 		if(sip_method == REGISTER) {	
-			// copy contact num <sip:num@domain>
+			// destroy all REGISTER from memory within 30 seconds 
+			call->destroy_call_at = header->ts.tv_sec + 30;
 
+			// copy contact num <sip:num@domain>
 			s = gettag(data, datalen, "\nUser-Agent:", &l);
 			if(l && ((unsigned int)l < ((unsigned int)datalen - (s - data)))) {
 				memcpy(call->a_ua, s, l);
