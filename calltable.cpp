@@ -2333,8 +2333,8 @@ Calltable::add(char *call_id, unsigned long call_id_len, time_t time, u_int32_t 
 	if(opt_saveGRAPH) 
 		newcall->flags |= FLAG_SAVEGRAPH;
 
-	if(opt_sip_register) 
-		newcall->flags |= FLAG_SAVEREGISTER;
+//	if(opt_sip_register) 
+//		newcall->flags |= FLAG_SAVEREGISTER;
 
 	string call_idS = string(call_id, call_id_len);
 	lock_calls_listMAP();

@@ -326,7 +326,7 @@ int get_sip_branch(char *data, int data_len, const char *tag, char *branch, int 
 	if ((r2 = (unsigned long)memmem(branch_tag, branch_tag_len, ";", 1)) == 0){
 		goto fail_exit;
 	}
-	if (r2 <= r){
+	if (r2 <= r || ((r2 - r) > (unsigned long)branch_len)  ){
 		goto fail_exit;
 	}
 	memcpy(branch, (void*)r, r2 - r);
@@ -382,7 +382,7 @@ int get_value_stringkeyval2(const char *data, unsigned int data_len, const char 
 			goto fail_exit;
 		}
 	}
-	memcpy(value, (void*)tmp, r - (unsigned long)tmp);
+	memcpy(value, (void*)tmp, (r - (unsigned long)tmp) > len ? len : (r - (unsigned long)tmp));
 	value[r - (unsigned long)tmp] = '\0';
 	return 0;
 fail_exit:
@@ -421,7 +421,7 @@ int get_value_stringkeyval(const char *data, unsigned int data_len, const char *
 	if ((r = (unsigned long)memmem(tmp, tag_len, "\"", 1)) == 0){
 		goto fail_exit;
 	}
-	memcpy(value, (void*)tmp, r - (unsigned long)tmp);
+	memcpy(value, (void*)tmp, MIN(r - (unsigned long)tmp, len));
 	value[r - (unsigned long)tmp] = '\0';
 	return 0;
 fail_exit:
@@ -660,7 +660,7 @@ Call *new_invite_register(int sip_method, char *data, int datalen, struct pcap_p
 			// copy contact num <sip:num@domain>
 			s = gettag(data, datalen, "\nUser-Agent:", &l);
 			if(l && ((unsigned int)l < ((unsigned int)datalen - (s - data)))) {
-				memcpy(call->a_ua, s, l);
+				memcpy(call->a_ua, s, MIN(l, sizeof(call->a_ua)));
 				call->a_ua[l] = '\0';
 			}
 
@@ -954,7 +954,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 			}
 		}
 
-		memcpy(callidstr, s, l);
+		memcpy(callidstr, s, MIN(l, 1024));
 		callidstr[l] = '\0';
 
 		// Call-ID is present
@@ -1863,7 +1863,7 @@ void readdump_libpcap(pcap_t *handle) {
 	char pname[1024];
 
 	if(opt_pcapdump) {
-		sprintf(pname, "/tmp/voipmonitordump-%u.pcap", (unsigned int)time(NULL));
+		sprintf(pname, "/var/spool/voipmonitor/voipmonitordump-%u.pcap", (unsigned int)time(NULL));
 		tmppcap = pcap_dump_open(handle, pname);
 	}
 

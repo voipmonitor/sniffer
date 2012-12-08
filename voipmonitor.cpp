@@ -1287,9 +1287,9 @@ int main(int argc, char *argv[]) {
 		}
 	} else {
 		// if reading file
-		rtp_threaded = 0;
+//		rtp_threaded = 0;
 		opt_cachedir[0] = '\0'; //disabling cache if reading from file 
-		opt_pcap_threaded = 0; //disable threading because it is useless while reading packets from file
+//		opt_pcap_threaded = 0; //disable threading because it is useless while reading packets from file
 		opt_cleanspool_interval = 0; // disable cleaning spooldir when reading from file 
 		printf("Reading file: %s\n", fname);
 		mask = PCAP_NETMASK_UNKNOWN;
@@ -1468,18 +1468,21 @@ int main(int argc, char *argv[]) {
 		sqlDb->createSchema();
 	}
 
+	printf("readdump_libpcap_start\n");
 	readdump_libpcap(handle);
+	printf("readdump_libpcap_end\n");
 	readend = 1;
-
-	//wait for manager to properly terminate 
-	shutdown(manager_socket_server, SHUT_RDWR);	// break accept syscall in manager thread
-	pthread_join(manager_thread, NULL);
 
 #ifdef QUEUE_NONBLOCK2
 	if(opt_pcap_threaded) {
 		pthread_join(pcap_read_thread, NULL);
 	}
 #endif
+
+	//wait for manager to properly terminate 
+	shutdown(manager_socket_server, SHUT_RDWR);	// break accept syscall in manager thread
+	pthread_join(manager_thread, NULL);
+
 
 	// wait for RTP threads
 	if(rtp_threaded) {
