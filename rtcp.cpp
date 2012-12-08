@@ -327,7 +327,7 @@ char *dump_rtcp_sdes(char *data, unsigned int datalen, int count)
 	char *pkt = data;
 	u_int32_t	ssrc;
 	u_int8_t	type;
-	u_int8_t	length;
+	u_int8_t	length = 0;
 	u_int8_t * string;
 	int				chunks_read;
 	int				pad_len;

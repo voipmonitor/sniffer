@@ -183,6 +183,8 @@ liblfds.6/test/test.vcproj -text
 /manager.h -text
 /md5.cpp -text
 /md5.h -text
+/mirrorip.cpp -text
+/mirrorip.h -text
 /mos_g729.cpp -text
 /mos_g729.h -text
 /odbc.cpp -text

@@ -34,7 +34,7 @@ struct sll_header {
 	u_int16_t sll_protocol;         /* protocol */
 };
 
-struct udphdr {
+struct udphdr2 {
         uint16_t        source;
         uint16_t        dest;
         uint16_t        len;

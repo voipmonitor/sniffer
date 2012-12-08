@@ -46,6 +46,7 @@
 #include "filter_mysql.h"
 #include "sql_db.h"
 #include "tools.h"
+#include "mirrorip.h"
 
 extern "C" {
 #include "liblfds.6/inc/liblfds.h"
@@ -102,6 +103,10 @@ int opt_cleanspool_interval = 0; // number of seconds between cleaning spool dir
 int opt_cleanspool_sizeMB = 0; // number of MB to keep in spooldir
 int opt_domainport = 0;
 int request_iptelnum_reload = 0;
+int opt_mirrorip = 0;
+char opt_mirrorip_src[20];
+char opt_mirrorip_dst[20];
+MirrorIP *mirrorip = NULL;
 
 char opt_clientmanager[1024] = "";
 int opt_clientmanagerport = 9999;
@@ -159,7 +164,7 @@ TELNUMfilter *telnumfilter_reload = NULL;	// IP filter based on MYSQL for reload
 int telnumfilter_reload_do = 0;	// for reload in main thread
 
 pthread_t call_thread;		// ID of worker storing CDR thread 
-pthread_t manager_thread;	// ID of worker manager thread 
+pthread_t manager_thread = 0;	// ID of worker manager thread 
 pthread_t manager_client_thread;	// ID of worker manager thread 
 pthread_t cachedir_thread;	// ID of worker cachedir thread 
 pthread_t cleanspool_thread;	// ID of worker clean thread 
@@ -789,6 +794,15 @@ int load_config(char *fname) {
 	if((value = ini.GetValue("general", "cdrurl", NULL))) {
 		strncpy(opt_cdrurl, value, sizeof(opt_cdrurl) - 1);
 	}
+	if((value = ini.GetValue("general", "mirrorip", NULL))) {
+		opt_mirrorip = yesno(value);
+	}
+	if((value = ini.GetValue("general", "mirroripsrc", NULL))) {
+		strncpy(opt_mirrorip_src, value, sizeof(opt_mirrorip_src));
+	}
+	if((value = ini.GetValue("general", "mirroripdst", NULL))) {
+		strncpy(opt_mirrorip_dst, value, sizeof(opt_mirrorip_dst));
+	}
 	return 0;
 }
 
@@ -826,6 +840,8 @@ int main(int argc, char *argv[]) {
 
 	char *fname = NULL;	// pcap file to read on 
 	ifname[0] = '\0';
+	opt_mirrorip_src[0] = '\0';
+	opt_mirrorip_dst[0] = '\0';
 	strcpy(opt_chdir, "/var/spool/voipmonitor");
 	strcpy(opt_cachedir, "");
 	sipportmatrix = (char*)calloc(1, sizeof(char) * 65537);
@@ -1288,6 +1304,7 @@ int main(int argc, char *argv[]) {
 	} else {
 		// if reading file
 //		rtp_threaded = 0;
+		opt_mirrorip = 0; // disable mirroring packets when reading pcap files from file
 		opt_cachedir[0] = '\0'; //disabling cache if reading from file 
 //		opt_pcap_threaded = 0; //disable threading because it is useless while reading packets from file
 		opt_cleanspool_interval = 0; // disable cleaning spooldir when reading from file 
@@ -1297,6 +1314,16 @@ int main(int argc, char *argv[]) {
 		if(handle == NULL) {
 			fprintf(stderr, "Couldn't open pcap file '%s': %s\n", ifname, errbuf);
 			return(2);
+		}
+	}
+
+	if(opt_mirrorip) {
+		if(opt_mirrorip_dst[0] == '\0') {
+			syslog(LOG_ERR, "Mirroring SIP packets disabled because mirroripdst was not set");
+			opt_mirrorip = 0;
+		} else {
+			syslog(LOG_NOTICE, "Starting SIP mirroring [%s]->[%s]", opt_mirrorip_src, opt_mirrorip_dst);
+			mirrorip = new MirrorIP(opt_mirrorip_src, opt_mirrorip_dst);
 		}
 	}
 
@@ -1473,16 +1500,27 @@ int main(int argc, char *argv[]) {
 	printf("readdump_libpcap_end\n");
 	readend = 1;
 
+	//wait for manager to properly terminate 
+	if(manager_thread > 0) {
+		int res;
+		res = shutdown(manager_socket_server, SHUT_RDWR);	// break accept syscall in manager thread
+		if(res == -1) {
+			// if shutdown failed it can happen when reding very short pcap file and the bind socket was not created in manager
+			usleep(10000); 
+			res = shutdown(manager_socket_server, SHUT_RDWR);	// break accept syscall in manager thread
+		}
+		struct timespec ts;
+		ts.tv_sec = 1;
+		ts.tv_nsec = 0;
+		// wait for thread max 1 sec
+		pthread_timedjoin_np(manager_thread, NULL, &ts);
+	}
+
 #ifdef QUEUE_NONBLOCK2
 	if(opt_pcap_threaded) {
 		pthread_join(pcap_read_thread, NULL);
 	}
 #endif
-
-	//wait for manager to properly terminate 
-	shutdown(manager_socket_server, SHUT_RDWR);	// break accept syscall in manager thread
-	pthread_join(manager_thread, NULL);
-
 
 	// wait for RTP threads
 	if(rtp_threaded) {
@@ -1522,6 +1560,10 @@ int main(int argc, char *argv[]) {
 	if(sqlDb) {
 		sqlDb->clean();
 		delete sqlDb;
+	}
+
+	if(mirrorip) {
+		delete mirrorip;
 	}
 
 	if (opt_fork){

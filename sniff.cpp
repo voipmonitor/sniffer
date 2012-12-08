@@ -48,6 +48,9 @@ and insert them into Call class.
 #include "rtcp.h"
 #include "md5.h"
 #include "tools.h"
+#include "mirrorip.h"
+
+extern MirrorIP *mirrorip;
 
 extern "C" {
 #include "liblfds.6/inc/liblfds.h"
@@ -55,8 +58,13 @@ extern "C" {
 
 using namespace std;
 
+#ifndef MAX
 #define MAX(x,y) ((x) > (y) ? (x) : (y))
+#endif
+
+#ifndef MIN
 #define MIN(x,y) ((x) < (y) ? (x) : (y))
+#endif
 
 #ifdef	MUTEX_THREAD
 queue<pcap_packet*> readpacket_thread_queue;
@@ -87,6 +95,7 @@ extern int readend;
 extern int opt_dup_check;
 extern char opt_match_header[128];
 extern int opt_domainport;
+extern int opt_mirrorip;
 
 extern IPfilter *ipfilter;
 extern IPfilter *ipfilter_reload;
@@ -1728,8 +1737,8 @@ void readdump_libnids(pcap_t *handle) {
 void *pcap_read_thread_func(void *arg) {
 	pcap_packet *pp;
 	struct iphdr *header_ip;
-	struct udphdr *header_udp;
-	struct udphdr header_udp_tmp;
+	struct udphdr2 *header_udp;
+	struct udphdr2 header_udp_tmp;
 	struct tcphdr *header_tcp;
 	char *data;
 	int datalen;
@@ -1782,10 +1791,14 @@ void *pcap_read_thread_func(void *arg) {
 
 		packets++;
 		header_ip = (struct iphdr *) ((char*)pp->packet + pp->offset);
+		if(header_ip->protocol == 4) {
+			// ip in ip protocol
+			header_ip = (struct iphdr *) ((char*)header_ip + sizeof(iphdr));
+		}
 		header_udp = &header_udp_tmp;
 		if (header_ip->protocol == IPPROTO_UDP) {
 			// prepare packet pointers 
-			header_udp = (struct udphdr *) ((char *) header_ip + sizeof(*header_ip));
+			header_udp = (struct udphdr2 *) ((char *) header_ip + sizeof(*header_ip));
 			data = (char *) header_udp + sizeof(*header_udp);
 			datalen = (int)(pp->header.len - ((unsigned long) data - (unsigned long) pp->packet)); 
 			istcp = 0;
@@ -1811,6 +1824,9 @@ void *pcap_read_thread_func(void *arg) {
 			continue;
 		}
 
+		if(opt_mirrorip && (sipportmatrix[htons(header_udp->source)] || sipportmatrix[htons(header_udp->dest)])) {
+			mirrorip->send((char *)header_ip, (int)(pp->header.len - ((unsigned long) header_ip - (unsigned long) pp->packet)));
+		}
 		process_packet(header_ip->saddr, htons(header_udp->source), header_ip->daddr, htons(header_udp->dest), 
 			    data, datalen, handle, &pp->header, pp->packet, istcp, 0, 1, &was_rtp);
 
@@ -1839,8 +1855,8 @@ void readdump_libpcap(pcap_t *handle) {
 	struct ether_header *header_eth;
 	struct sll_header *header_sll;
 	struct iphdr *header_ip;
-	struct udphdr *header_udp;
-	struct udphdr header_udp_tmp;
+	struct udphdr2 *header_udp;
+	struct udphdr2 header_udp_tmp;
 	struct tcphdr *header_tcp;
 	char *data;
 	int datalen;
@@ -1956,7 +1972,7 @@ void readdump_libpcap(pcap_t *handle) {
 		header_udp = &header_udp_tmp;
 		if (header_ip->protocol == IPPROTO_UDP) {
 			// prepare packet pointers 
-			header_udp = (struct udphdr *) ((char *) header_ip + sizeof(*header_ip));
+			header_udp = (struct udphdr2 *) ((char *) header_ip + sizeof(*header_ip));
 			data = (char *) header_udp + sizeof(*header_udp);
 			datalen = (int)(header->len - ((unsigned long) data - (unsigned long) packet)); 
 			istcp = 0;
@@ -2061,6 +2077,9 @@ void readdump_libpcap(pcap_t *handle) {
 			continue;
 		}
 
+		if(opt_mirrorip && (sipportmatrix[htons(header_udp->source)] || sipportmatrix[htons(header_udp->dest)])) {
+			mirrorip->send((char *)header_ip, (int)(header->len - ((unsigned long) header_ip - (unsigned long) packet)));
+		}
 		process_packet(header_ip->saddr, htons(header_udp->source), header_ip->daddr, htons(header_udp->dest), 
 			    data, datalen, handle, header, packet, istcp, 0, 1, &was_rtp);
 	}
