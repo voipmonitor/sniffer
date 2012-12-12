@@ -338,7 +338,7 @@ int get_sip_branch(char *data, int data_len, const char *tag, char *branch, int 
 	if (r2 <= r || ((r2 - r) > (unsigned long)branch_len)  ){
 		goto fail_exit;
 	}
-	memcpy(branch, (void*)r, MIIN(r2 - r, branch_len));
+	memcpy(branch, (void*)r, MIN(r2 - r, branch_len));
 	branch[MIN(r2 - r, branch_len - 1)] = '\0';
 	return 0;
 fail_exit:
