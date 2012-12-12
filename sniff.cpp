@@ -247,8 +247,8 @@ int get_sip_peercnam(char *data, int data_len, const char *tag, char *peername, 
 	if (r2 <= r || ((r2 - r) > (unsigned long)peername_len) ){
 		goto fail_exit;
 	}
-	memcpy(peername, (void*)r, r2 - r);
-	peername[r2 - r] = '\0';
+	memcpy(peername, (void*)r, MIN(r2 - r, peername_len));
+	peername[MIN(r2 - r, peername_len - 1)] = '\0';
 	return 0;
 fail_exit:
 	strcpy(peername, "");
@@ -272,8 +272,8 @@ int get_sip_peername(char *data, int data_len, const char *tag, char *peername, 
 	if (r2 <= r || ((r2 - r) > (unsigned long)peername_len)  ){
 		goto fail_exit;
 	}
-	memcpy(peername, (void*)r, r2 - r);
-	peername[r2 - r] = '\0';
+	memcpy(peername, (void*)r, MIN(r2 - r, peername_len));
+	peername[MIN(r2 - r, peername_len - 1)] = '\0';
 	return 0;
 fail_exit:
 	strcpy(peername, "");
@@ -303,8 +303,8 @@ int get_sip_domain(char *data, int data_len, const char *tag, char *domain, int 
 	if (r2 <= r || ((r2 - r) > (unsigned long)domain_len)  ){
 		goto fail_exit;
 	}
-	memcpy(domain, (void*)r, r2 - r);
-	domain[r2 - r] = '\0';
+	memcpy(domain, (void*)r, MIN(r2 - r, domain_len));
+	domain[MIN(r2 - r, domain_len - 1)] = '\0';
 
 	// strip :port
 	if(!opt_domainport) {
@@ -338,8 +338,8 @@ int get_sip_branch(char *data, int data_len, const char *tag, char *branch, int 
 	if (r2 <= r || ((r2 - r) > (unsigned long)branch_len)  ){
 		goto fail_exit;
 	}
-	memcpy(branch, (void*)r, r2 - r);
-	memset(branch + (r2 - r), 0, 1);
+	memcpy(branch, (void*)r, MIIN(r2 - r, branch_len));
+	branch[MIN(r2 - r, branch_len - 1)] = '\0';
 	return 0;
 fail_exit:
 	strcpy(branch, "");
@@ -391,8 +391,8 @@ int get_value_stringkeyval2(const char *data, unsigned int data_len, const char 
 			goto fail_exit;
 		}
 	}
-	memcpy(value, (void*)tmp, (r - (unsigned long)tmp) > len ? len : (r - (unsigned long)tmp));
-	value[r - (unsigned long)tmp] = '\0';
+	memcpy(value, (void*)tmp, MIN((r - (unsigned long)tmp), len));
+	value[MIN(r - (unsigned long)tmp, len - 1)] = '\0';
 	return 0;
 fail_exit:
 	strcpy(value, "");
@@ -431,7 +431,7 @@ int get_value_stringkeyval(const char *data, unsigned int data_len, const char *
 		goto fail_exit;
 	}
 	memcpy(value, (void*)tmp, MIN(r - (unsigned long)tmp, len));
-	value[r - (unsigned long)tmp] = '\0';
+	value[MIN(r - (unsigned long)tmp, len - 1)] = '\0';
 	return 0;
 fail_exit:
 	strcpy(value, "");
@@ -622,7 +622,7 @@ Call *new_invite_register(int sip_method, char *data, int datalen, struct pcap_p
 	call->sipcalledip = daddr;
 	call->type = sip_method;
 	ipfilter->add_call_flags(&(call->flags), ntohl(saddr), ntohl(daddr));
-	strcpy(call->fbasename, callidstr);
+	strncpy(call->fbasename, callidstr, MAX_FNAME - 1);
 
 	/* this logic updates call on the first INVITES */
 	if (sip_method == INVITE or sip_method == REGISTER) {
@@ -670,7 +670,7 @@ Call *new_invite_register(int sip_method, char *data, int datalen, struct pcap_p
 			s = gettag(data, datalen, "\nUser-Agent:", &l);
 			if(l && ((unsigned int)l < ((unsigned int)datalen - (s - data)))) {
 				memcpy(call->a_ua, s, MIN(l, sizeof(call->a_ua)));
-				call->a_ua[l] = '\0';
+				call->a_ua[MIN(l, sizeof(call->a_ua) - 1)] = '\0';
 			}
 
 			res = get_sip_peername(data,datalen,"\nContact:", call->contact_num, sizeof(call->contact_num));
@@ -777,7 +777,7 @@ Call *new_invite_register(int sip_method, char *data, int datalen, struct pcap_p
 	// check if we have opt_match_header
 	if(opt_match_header[0] != '\0') {
 		s = gettag(data, datalen, opt_match_header, &l);
-		if(l && l < 255) {
+		if(l && l < 128) {
 			memcpy(call->match_header, s, l);
 			call->match_header[l] = '\0';
 			if(verbosity > 2)
@@ -964,7 +964,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 		}
 
 		memcpy(callidstr, s, MIN(l, 1024));
-		callidstr[l] = '\0';
+		callidstr[MIN(l, 1023)] = '\0';
 
 		// Call-ID is present
 		if(istcp) {
@@ -1543,7 +1543,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 			call->sipcalledip = daddr;
 			call->type = INVITE;
 			ipfilter->add_call_flags(&(call->flags), ntohl(saddr), ntohl(daddr));
-			strcpy(call->fbasename, s);
+			strncpy(call->fbasename, s, MAX_FNAME - 1);
 			call->seeninvite = true;
 			strcpy(call->callername, "RTP");
 			strcpy(call->caller, "RTP");
