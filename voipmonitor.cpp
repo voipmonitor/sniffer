@@ -625,6 +625,10 @@ int load_config(char *fname) {
 	if((value = ini.GetValue("general", "matchheader", NULL))) {
 		snprintf(opt_match_header, sizeof(opt_match_header), "\n%s:", value);
 	}
+	//for compatibility 
+	if((value = ini.GetValue("general", "match_header", NULL))) {
+		snprintf(opt_match_header, sizeof(opt_match_header), "\n%s:", value);
+	}
 	if((value = ini.GetValue("general", "domainport", NULL))) {
 		opt_domainport = atoi(value);
 	}
