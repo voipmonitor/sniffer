@@ -96,6 +96,7 @@ extern int opt_dup_check;
 extern char opt_match_header[128];
 extern int opt_domainport;
 extern int opt_mirrorip;
+extern char opt_scanpcapdir[2048];
 
 extern IPfilter *ipfilter;
 extern IPfilter *ipfilter_reload;
@@ -211,7 +212,7 @@ char * gettag(const void *ptr, unsigned long len, const char *tag, unsigned long
 	return rc;
 }
 
-int get_sip_peercnam(char *data, int data_len, const char *tag, char *peername, int peername_len){
+int get_sip_peercnam(char *data, int data_len, const char *tag, char *peername, unsigned int peername_len){
 	unsigned long r, r2, peername_tag_len;
 	char *peername_tag = gettag(data, data_len, tag, &peername_tag_len);
 	if(!peername_tag_len) {
@@ -256,7 +257,7 @@ fail_exit:
 }
 
 
-int get_sip_peername(char *data, int data_len, const char *tag, char *peername, int peername_len){
+int get_sip_peername(char *data, int data_len, const char *tag, char *peername, unsigned int peername_len){
 	unsigned long r, r2, peername_tag_len;
 	char *peername_tag = gettag(data, data_len, tag, &peername_tag_len);
 	if(!peername_tag_len) {
@@ -280,7 +281,7 @@ fail_exit:
 	return 1;
 }
 
-int get_sip_domain(char *data, int data_len, const char *tag, char *domain, int domain_len){
+int get_sip_domain(char *data, int data_len, const char *tag, char *domain, unsigned int domain_len){
 	unsigned long r, r2, peername_tag_len;
 	char *peername_tag = gettag(data, data_len, tag, &peername_tag_len);
 	char *c;
@@ -325,7 +326,7 @@ fail_exit:
 }
 
 
-int get_sip_branch(char *data, int data_len, const char *tag, char *branch, int branch_len){
+int get_sip_branch(char *data, int data_len, const char *tag, char *branch, unsigned int branch_len){
 	unsigned long r, r2, branch_tag_len;
 	char *branch_tag = gettag(data, data_len, tag, &branch_tag_len);
 	if ((r = (unsigned long)memmem(branch_tag, branch_tag_len, "branch=", 7)) == 0){
@@ -376,7 +377,7 @@ int get_ip_port_from_sdp(char *sdp_text, in_addr_t *addr, unsigned short *port, 
 	return 0;
 }
 
-int get_value_stringkeyval2(const char *data, unsigned int data_len, const char *key, char *value, int len) {
+int get_value_stringkeyval2(const char *data, unsigned int data_len, const char *key, char *value, int unsigned len) {
 	unsigned long r, tag_len;
 	char *tmp = gettag(data, data_len, key, &tag_len);
 	//gettag removes \r\n but we need it
@@ -421,7 +422,7 @@ int get_expires_from_contact(char *data, int datalen, int *expires){
 	}
 }
 
-int get_value_stringkeyval(const char *data, unsigned int data_len, const char *key, char *value, int len) {
+int get_value_stringkeyval(const char *data, unsigned int data_len, const char *key, char *value, unsigned int len) {
 	unsigned long r, tag_len;
 	char *tmp = gettag(data, data_len, key, &tag_len);
 	if(!tag_len) {
@@ -1723,7 +1724,9 @@ void readdump_libnids(pcap_t *handle) {
 			continue;
 		} else if(res == -2) {
 			//packets are being read from a ``savefile'', and there are no more packets to read from the savefile.
-			syslog(LOG_NOTICE,"End of pcap file, exiting\n");
+			if(opt_scanpcapdir[0] == '\0') {
+				syslog(LOG_NOTICE,"End of pcap file, exiting\n");
+			}
 			break;
 		} else if(res == 0) {
 			//continue on timeout when reading live packets

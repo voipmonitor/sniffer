@@ -141,6 +141,7 @@ char opt_pidfile[4098] = "/var/run/voipmonitor.pid";
 char user_filter[2048] = "";
 char ifname[1024];	// Specifies the name of the network device to use for 
 			// the network lookup, for example, eth0
+char opt_scanpcapdir[2048] = "";	// Specifies the name of the network device to use for 
 int opt_promisc = 1;	// put interface to promisc mode?
 char pcapcommand[4092] = "";
 
@@ -196,7 +197,7 @@ struct queue_state *qs_readpacket_thread_queue = NULL;
 
 nat_aliases_t nat_aliases;	// net_aliases[local_ip] = extern_ip
 
-SqlDb *sqlDb;
+SqlDb *sqlDb = NULL;
 
 char mac[32] = "";
 
@@ -683,7 +684,9 @@ int load_config(char *fname) {
 	if((value = ini.GetValue("general", "spooldir", NULL))) {
 		strncpy(opt_chdir, value, sizeof(opt_chdir));
 	}
-
+	if((value = ini.GetValue("general", "scanpcapdir", NULL))) {
+		strncpy(opt_scanpcapdir, value, sizeof(opt_scanpcapdir));
+	}
 	if((value = ini.GetValue("general", "promisc", NULL))) {
 		opt_promisc = yesno(value);
 	}
@@ -1082,7 +1085,7 @@ int main(int argc, char *argv[]) {
 		sqlDb->enableSysLog();
 		sqlDb->setConnectParameters(mysql_host, mysql_user, mysql_password, mysql_database);
 	}
-	if ((fname == NULL) && (ifname[0] == '\0')){
+	if ((fname == NULL) && (ifname[0] == '\0') && opt_scanpcapdir[0] == '\0'){
 		printf( "voipmonitor version %s\n"
 				"Usage: voipmonitor [--config-file /etc/voipmonitor.conf] [-kncUSRAWGM] [-i <interface>] [-f <pcap filter>]\n"
 				"       [-r <file>] [-d <pcap dump directory>] [-v level] [-h <mysql server>] [-O <mysql_port>] [-b <mysql database]\n"
@@ -1254,101 +1257,105 @@ int main(int argc, char *argv[]) {
 		test();
 	}
 	rtp_threaded = num_threads > 0;
-	if (fname == NULL && ifname[0] != '\0'){
-		bpf_u_int32 net;
 
-		printf("Capturing on interface: %s\n", ifname);
-		// Find the properties for interface 
-		if (pcap_lookupnet(ifname, &net, &mask, errbuf) == -1) {
-			// if not available, use default
-			mask = PCAP_NETMASK_UNKNOWN;
-		}
-/*
-		handle = pcap_open_live(ifname, 1600, opt_promisc, 1000, errbuf);
-		if (handle == NULL) {
-			fprintf(stderr, "Couldn't open inteface '%s': %s\n", ifname, errbuf);
-			return(2);
-		}
-*/
+	// check if sniffer will be reading pcap files from dir and if not if it reads from eth interface or read only one file
+	if(opt_scanpcapdir[0] == '\0') {
+		if (fname == NULL && ifname[0] != '\0'){
+			bpf_u_int32 net;
 
-		/* to set own pcap_set_buffer_size it must be this way and not useing pcap_lookupnet */
+			printf("Capturing on interface: %s\n", ifname);
+			// Find the properties for interface 
+			if (pcap_lookupnet(ifname, &net, &mask, errbuf) == -1) {
+				// if not available, use default
+				mask = PCAP_NETMASK_UNKNOWN;
+			}
+	/*
+			handle = pcap_open_live(ifname, 1600, opt_promisc, 1000, errbuf);
+			if (handle == NULL) {
+				fprintf(stderr, "Couldn't open inteface '%s': %s\n", ifname, errbuf);
+				return(2);
+			}
+	*/
 
-		int status = 0;
-		if((handle = pcap_create(ifname, errbuf)) == NULL) {
-			fprintf(stderr, "pcap_create failed on iface '%s': %s\n", ifname, errbuf);
-			return(2);
-		}
-		if((status = pcap_set_snaplen(handle, 3200)) != 0) {
-			fprintf(stderr, "error pcap_set_snaplen\n");
-			return(2);
-		}
-		if((status = pcap_set_promisc(handle, opt_promisc)) != 0) {
-			fprintf(stderr, "error pcap_set_promisc\n");
-			return(2);
-		}
-		if((status = pcap_set_timeout(handle, 1000)) != 0) {
-			fprintf(stderr, "error pcap_set_timeout\n");
-			return(2);
-		}
+			/* to set own pcap_set_buffer_size it must be this way and not useing pcap_lookupnet */
 
-		/* this is not possible for libpcap older than 1.0.0 so now voipmonitor requires libpcap > 1.0.0
-			set ring buffer size to 5M to prevent packet drops whan CPU goes high or on very high traffic 
-			- default is 2MB for libpcap > 1.0.0
-			- for libpcap < 1.0.0 it is controled by /proc/sys/net/core/rmem_default which is very low 
-		*/
-		if((status = pcap_set_buffer_size(handle, opt_ringbuffer * 1024 * 1024)) != 0) {
-			fprintf(stderr, "error pcap_set_buffer_size\n");
-			return(2);
-		}
+			int status = 0;
+			if((handle = pcap_create(ifname, errbuf)) == NULL) {
+				fprintf(stderr, "pcap_create failed on iface '%s': %s\n", ifname, errbuf);
+				return(2);
+			}
+			if((status = pcap_set_snaplen(handle, 3200)) != 0) {
+				fprintf(stderr, "error pcap_set_snaplen\n");
+				return(2);
+			}
+			if((status = pcap_set_promisc(handle, opt_promisc)) != 0) {
+				fprintf(stderr, "error pcap_set_promisc\n");
+				return(2);
+			}
+			if((status = pcap_set_timeout(handle, 1000)) != 0) {
+				fprintf(stderr, "error pcap_set_timeout\n");
+				return(2);
+			}
 
-		if((status = pcap_activate(handle)) != 0) {
-			fprintf(stderr, "libpcap error: [%s]\n", pcap_geterr(handle));
-			return(2);
-		}
-	} else {
-		// if reading file
-		rtp_threaded = 0;
-		opt_mirrorip = 0; // disable mirroring packets when reading pcap files from file
-		opt_cachedir[0] = '\0'; //disabling cache if reading from file 
-		opt_pcap_threaded = 0; //disable threading because it is useless while reading packets from file
-		opt_cleanspool_interval = 0; // disable cleaning spooldir when reading from file 
-		printf("Reading file: %s\n", fname);
-		mask = PCAP_NETMASK_UNKNOWN;
-		handle = pcap_open_offline(fname, errbuf);
-		if(handle == NULL) {
-			fprintf(stderr, "Couldn't open pcap file '%s': %s\n", ifname, errbuf);
-			return(2);
-		}
-	}
+			/* this is not possible for libpcap older than 1.0.0 so now voipmonitor requires libpcap > 1.0.0
+				set ring buffer size to 5M to prevent packet drops whan CPU goes high or on very high traffic 
+				- default is 2MB for libpcap > 1.0.0
+				- for libpcap < 1.0.0 it is controled by /proc/sys/net/core/rmem_default which is very low 
+			*/
+			if((status = pcap_set_buffer_size(handle, opt_ringbuffer * 1024 * 1024)) != 0) {
+				fprintf(stderr, "error pcap_set_buffer_size\n");
+				return(2);
+			}
 
-	if(opt_mirrorip) {
-		if(opt_mirrorip_dst[0] == '\0') {
-			syslog(LOG_ERR, "Mirroring SIP packets disabled because mirroripdst was not set");
-			opt_mirrorip = 0;
+			if((status = pcap_activate(handle)) != 0) {
+				fprintf(stderr, "libpcap error: [%s]\n", pcap_geterr(handle));
+				return(2);
+			}
 		} else {
-			syslog(LOG_NOTICE, "Starting SIP mirroring [%s]->[%s]", opt_mirrorip_src, opt_mirrorip_dst);
-			mirrorip = new MirrorIP(opt_mirrorip_src, opt_mirrorip_dst);
+			// if reading file
+			rtp_threaded = 0;
+			opt_mirrorip = 0; // disable mirroring packets when reading pcap files from file
+			opt_cachedir[0] = '\0'; //disabling cache if reading from file 
+			opt_pcap_threaded = 0; //disable threading because it is useless while reading packets from file
+			opt_cleanspool_interval = 0; // disable cleaning spooldir when reading from file 
+			printf("Reading file: %s\n", fname);
+			mask = PCAP_NETMASK_UNKNOWN;
+			handle = pcap_open_offline(fname, errbuf);
+			if(handle == NULL) {
+				fprintf(stderr, "Couldn't open pcap file '%s': %s\n", ifname, errbuf);
+				return(2);
+			}
+		}
+
+		if(opt_mirrorip) {
+			if(opt_mirrorip_dst[0] == '\0') {
+				syslog(LOG_ERR, "Mirroring SIP packets disabled because mirroripdst was not set");
+				opt_mirrorip = 0;
+			} else {
+				syslog(LOG_NOTICE, "Starting SIP mirroring [%s]->[%s]", opt_mirrorip_src, opt_mirrorip_dst);
+				mirrorip = new MirrorIP(opt_mirrorip_src, opt_mirrorip_dst);
+			}
+		}
+
+		char filter_exp[2048] = "";		// The filter expression
+		struct bpf_program fp;		// The compiled filter 
+
+		if(*user_filter != '\0') {
+			snprintf(filter_exp, sizeof(filter_exp), "%s", user_filter);
+
+			// Compile and apply the filter
+			if (pcap_compile(handle, &fp, filter_exp, 0, mask) == -1) {
+				fprintf(stderr, "Couldn't parse filter %s: %s\n", filter_exp, pcap_geterr(handle));
+				return(2);
+			}
+			if (pcap_setfilter(handle, &fp) == -1) {
+				fprintf(stderr, "Couldn't install filter %s: %s\n", filter_exp, pcap_geterr(handle));
+				return(2);
+			}
 		}
 	}
 
 	chdir(opt_chdir);
-
-	char filter_exp[2048] = "";		// The filter expression
-	struct bpf_program fp;		// The compiled filter 
-
-	if(*user_filter != '\0') {
-		snprintf(filter_exp, sizeof(filter_exp), "%s", user_filter);
-
-		// Compile and apply the filter
-		if (pcap_compile(handle, &fp, filter_exp, 0, mask) == -1) {
-			fprintf(stderr, "Couldn't parse filter %s: %s\n", filter_exp, pcap_geterr(handle));
-			return(2);
-		}
-		if (pcap_setfilter(handle, &fp) == -1) {
-			fprintf(stderr, "Couldn't install filter %s: %s\n", filter_exp, pcap_geterr(handle));
-			return(2);
-		}
-	}
 
 	// set maximum open files 
 	struct rlimit rlp;
@@ -1446,62 +1453,90 @@ int main(int argc, char *argv[]) {
 #endif 
 	}
 
-	// start reading packets
-//	readdump_libnids(handle);
-#if 0
-	char filename[32];
-	while(1){
-		unsigned int tmp = 0;
-		unsigned int min = 0 - 1;
-		unsigned int max = 0;
-		unsigned int prevmax = 0;
-		DIR *dirp = opendir("/dev/shm/voipmonitor");
-		dirent *dp;
-		while ((dp = readdir(dirp)) != NULL) {
-			if (!strcmp(dp->d_name, "/dev/shm/voipmonitor")) {
-				continue;
-			}
-			if (dp->d_name[0] == '.') {
-				continue;
-			}
-			//printf("File [%s]\n", dp->d_name);
-			tmp = atoi(dp->d_name);
-			if(tmp > max) {
-				prevmax = max;
-				max = tmp;
-			}
-			if(tmp < min){
-				min = tmp;
-			}
-		}
-		closedir(dirp);
-		for(int i = min; i < max; i++) {
-			snprintf(filename, sizeof(filename), "/dev/shm/voipmonitor/%d", i);
-			if(!file_exists(filename)) continue;
-			// if reading file
-			printf("Reading file: %s\n", filename);
-			mask = PCAP_NETMASK_UNKNOWN;
-			handle = pcap_open_offline(filename, errbuf);
-			if(handle == NULL) {
-				fprintf(stderr, "Couldn't open pcap file '%s': %s\n", filename, errbuf);
-				continue;
-			}
-			readdump_libpcap(handle);
-			unlink(filename);
-			pcap_close(handle);
-		}
-		//readend = 1;
-		usleep(100000);
-	}
-#endif
-
 	if(!opt_nocdr && isSqlDriver("mysql")) {
 		sqlDb->createSchema();
 	}
 
-	printf("readdump_libpcap_start\n");
-	readdump_libpcap(handle);
-	printf("readdump_libpcap_end\n");
+	if(opt_scanpcapdir[0] != '\0') {
+		// scan directory opt_scanpcapdir (typically /dev/shm/voipmonitor
+		char filename[32];
+		unsigned int tmp = 0;
+		unsigned int min = 0 - 1;
+		unsigned int max = 0;
+		unsigned int prevmax = 0;
+		unsigned int i;
+		DIR *dirp = NULL;
+		dirent *dp;
+		char filter_exp[2048] = "";		// The filter expression
+		struct bpf_program fp;		// The compiled filter 
+		while(1 and terminating == 0) {
+			tmp = 0;
+			min = 0 - 1;
+			max = 0;
+			prevmax = 0;
+			dirp = opendir(opt_scanpcapdir);
+			while ((dp = readdir(dirp)) != NULL) {
+				if (!strcmp(dp->d_name, opt_scanpcapdir)) {
+					continue;
+				}
+				if (dp->d_name[0] == '.') {
+					continue;
+				}
+				//printf("File [%s]\n", dp->d_name);
+				tmp = atoi(dp->d_name);
+				if(tmp > max) {
+					prevmax = max;
+					max = tmp;
+				}
+				if(tmp < min){
+					min = tmp;
+				}
+			}
+			closedir(dirp);
+			for(i = min; i < max; i++) {
+				if(terminating) {
+					break;
+				}
+				snprintf(filename, sizeof(filename), "%s/%u", opt_scanpcapdir, i);
+				if(!file_exists(filename)) continue;
+				// if reading file
+				//printf("Reading file: %s\n", filename);
+				mask = PCAP_NETMASK_UNKNOWN;
+				handle = pcap_open_offline(filename, errbuf);
+				if(handle == NULL) {
+					syslog(LOG_ERR, "Couldn't open pcap file '%s': %s\n", filename, errbuf);
+					continue;
+				}
+				if(*user_filter != '\0') {
+					snprintf(filter_exp, sizeof(filter_exp), "%s", user_filter);
+
+					// Compile and apply the filter
+					if (pcap_compile(handle, &fp, filter_exp, 0, mask) == -1) {
+						syslog(LOG_ERR, "Couldn't parse filter %s: %s\n", filter_exp, pcap_geterr(handle));
+						return(2);
+					}
+					if (pcap_setfilter(handle, &fp) == -1) {
+						syslog(LOG_ERR, "Couldn't install filter %s: %s\n", filter_exp, pcap_geterr(handle));
+						return(2);
+					}
+				}
+				readdump_libpcap(handle);
+				unlink(filename);
+				if(*user_filter != '\0') {
+					pcap_freecode(&fp);
+				}
+				pcap_close(handle);
+			}
+			//readend = 1;
+			usleep(100000);
+		}
+	} else {
+		// start reading packets
+		//readdump_libnids(handle);
+
+		readdump_libpcap(handle);
+	}
+
 	readend = 1;
 
 	//wait for manager to properly terminate 
@@ -1534,7 +1569,9 @@ int main(int argc, char *argv[]) {
 	}
 
 	// close handler
-	pcap_close(handle);
+	if(opt_scanpcapdir[0] == '\0') {
+		pcap_close(handle);
+	}
 
 	// flush all queues
 	Call *call;
