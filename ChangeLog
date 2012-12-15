@@ -1,3 +1,18 @@
+version 5.5 14.12.2012
+======================
+
+- fix cdrtable.sql 
+- fix match_header in voipmonitor.conf - it is matchheader (support both of them) 
+- fix memory corruptions and crashes in some more places when reading unexpected SIP messages. 
+- fix crash when watching live calls via TCP manager (race condition in calls list)
+- fix receiving ip in ip packets when reading live from interface
+- fix compile on Suse (undeclared sleep)
+- properly close TCP manager socket when ending voipmonitor
+- implement mirroring SIP packets to specified IP address. IP is mirrored by ip in ip protocol. This is usefull in case the primary voipmonitor machine sees all SIP packets but only part of RTP packets and the second voipmonitor server see only RTP packets -> in this case you can mirror SIP packets to second voipmonitor server IP. voipmonitor already supports ip in ip so no configuration is needed to accept ip in ip mirrored packets. (this mirroring supports for example acme packet SBC).  mirroring can be also usefull for another general purpose - it is also parsed by wireshark/tshark etc.
+- new reading packets option by scanning directory for pcap files. This is in conjuction with running tcpdump which creates pcap file each 5 seconds for example into /dev/shm ramdisk and voipmonitor reads file by file. For more details read comments in voipmonitor.conf or sniffer manual 5.5
+- keep unreplied REGISTER messages in memory only for 30 seconds instead of rtptimeout
+
+
 version 5.4.1 4.12.2012
 =======================
 
