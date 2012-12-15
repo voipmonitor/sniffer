@@ -245,7 +245,7 @@ CREATE TABLE `register_state` (
   `ua_id` int(10) unsigned DEFAULT NULL,
   PRIMARY KEY (`ID`),
   KEY `created_at` (`created_at`),
-  KEY `sipcallerip` (`sipcallerip`)
+  KEY `sipcallerip` (`sipcallerip`),
   KEY `sipcalledip` (`sipcalledip`)
 ) ENGINE=InnoDB DEFAULT CHARSET=latin1 ROW_FORMAT=COMPRESSED;
 
@@ -264,7 +264,7 @@ CREATE TABLE `register_failed` (
   `ua_id` int(10) unsigned DEFAULT NULL,
   PRIMARY KEY (`ID`),
   KEY `created_at` (`created_at`),
-  KEY `sipcallerip` (`sipcallerip`)
+  KEY `sipcallerip` (`sipcallerip`),
   KEY `sipcalledip` (`sipcalledip`)
 ) ENGINE=InnoDB DEFAULT CHARSET=latin1 ROW_FORMAT=COMPRESSED;
 
