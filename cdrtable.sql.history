@@ -1,5 +1,9 @@
+15.12.2012 version 5.5 (upgrades are automatic)
+----------------------------------------------
+
 ALTER TABLE register_state ADD `sipcalledip` int(32) unsigned, ADD KEY `sipcalledip` (`sipcalledip`);
 ALTER TABLE register_failed ADD `sipcalledip` int(32) unsigned, ADD KEY `sipcalledip` (`sipcalledip`);
+
 
 30.11.2012 version 5.4
 ----------------------
