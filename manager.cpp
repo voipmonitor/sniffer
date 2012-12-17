@@ -605,6 +605,8 @@ connect:
 	// send login
 	snprintf(sendbuf, BUFSIZE, "login %s", mac);
 	if ((size = send(client, sendbuf, strlen(sendbuf), 0)) == -1){
+		perror("send()");
+		sleep(1);
 		goto connect;
 	}
 
@@ -614,7 +616,9 @@ connect:
 		size = recv(client, buf, BUFSIZE - 1, 0);
 		if (size == -1 or size == 0) {
 			//cerr << "Error in receiving data" << endl;
+			perror("recv()");
 			close(client);
+			sleep(1);
 			goto connect;
 		}
 		buf[size] = '\0';
