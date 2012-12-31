@@ -11,7 +11,7 @@ endif
 
 version = $(shell grep RTPSENSOR_VERSION voipmonitor.h | cut -d" " -f 3 | tr -d "\"")
 
-objects = codec_alaw.o codec_ulaw.o format_slinear.o format_wav.o format_ogg.o calltable.o rtp.o voipmonitor.o sniff.o jitterbuffer/astmm.o jitterbuffer/utils.o jitterbuffer/fixedjitterbuf.o jitterbuffer/jitterbuf.o jitterbuffer/abstract_jb.o jitterbuffer/frame.o gzstream/gzstream.o gzstream/libgzstream.a manager.o tools.o filter_mysql.o hash.o mos_g729.o odbc.o rtcp.o sql_db.o md5.o mirrorip.o
+objects = codec_alaw.o codec_ulaw.o format_slinear.o format_wav.o format_ogg.o calltable.o rtp.o voipmonitor.o sniff.o jitterbuffer/astmm.o jitterbuffer/utils.o jitterbuffer/fixedjitterbuf.o jitterbuffer/jitterbuf.o jitterbuffer/abstract_jb.o jitterbuffer/frame.o gzstream/gzstream.o gzstream/libgzstream.a manager.o tools.o filter_mysql.o hash.o mos_g729.o odbc.o rtcp.o sql_db.o md5.o mirrorip.o ipaccount.o
 
 headers = $(shell ls *.h -1 | tr "\n" " ")
 
@@ -119,6 +119,9 @@ md5.o : md5.cpp md5.h ${headers}
 
 mirrorip.o : mirrorip.cpp mirrorip.h ${headers}
 	g++ -c mirrorip.cpp $(args) ${CFLAGS}
+
+ipaccount.o : ipaccount.cpp ipaccount.h ${headers}
+	g++ -c ipaccount.cpp $(args) ${CFLAGS}
 
 clean :
 	make -C liblfds.6 clean

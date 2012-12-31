@@ -49,6 +49,7 @@ and insert them into Call class.
 #include "md5.h"
 #include "tools.h"
 #include "mirrorip.h"
+#include "ipaccount.h"
 
 extern MirrorIP *mirrorip;
 
@@ -97,6 +98,7 @@ extern char opt_match_header[128];
 extern int opt_domainport;
 extern int opt_mirrorip;
 extern char opt_scanpcapdir[2048];
+extern int opt_ipaccount;
 
 extern IPfilter *ipfilter;
 extern IPfilter *ipfilter_reload;
@@ -1791,9 +1793,13 @@ void *pcap_read_thread_func(void *arg) {
 			pp = &(qring[readit % qringmax]);
 		}
 #endif
-
 		packets++;
 		header_ip = (struct iphdr *) ((char*)pp->packet + pp->offset);
+
+		if(opt_ipaccount) {
+			ipaccount(pp->header.ts.tv_sec, (struct iphdr *) ((char*)(pp->packet) + pp->offset), pp->header.len - pp->offset);
+		}
+
 		if(header_ip->protocol == 4) {
 			// ip in ip protocol
 			header_ip = (struct iphdr *) ((char*)header_ip + sizeof(iphdr));
@@ -1987,7 +1993,9 @@ void readdump_libpcap(pcap_t *handle) {
 			datalen = (int)(header->len - ((unsigned long) data - (unsigned long) packet)); 
 			if (datalen == 0 || !(sipportmatrix[htons(header_tcp->source)] || sipportmatrix[htons(header_tcp->dest)])) {
 				// not interested in TCP packet other than SIP port
-				continue;
+				if(opt_ipaccount == 0) {
+					continue;
+				}
 			}
 #if 0
 			char tmp = data[datalen-1];
@@ -1999,8 +2007,10 @@ void readdump_libpcap(pcap_t *handle) {
 			header_udp->source = header_tcp->source;
 			header_udp->dest = header_tcp->dest;
 		} else {
-			//packet is not UDP and is not TCP, we are not interested, go to the next packet
-			continue;
+			//packet is not UDP and is not TCP, we are not interested, go to the next packet (but if ipaccount is enabled, do not skip IP
+			if(opt_ipaccount == 0) {
+				continue;
+			}
 		}
 
 		if(datalen < 0) {
@@ -2011,7 +2021,6 @@ void readdump_libpcap(pcap_t *handle) {
 			pcap_dump((u_char *)tmppcap, header, packet);
 		}
 
-#if 1
 		/* check for duplicate packets (md5 is expensive operation - enable only if you really need it */
 		if(opt_dup_check) {
 			MD5_Init(&ctx);
@@ -2023,8 +2032,6 @@ void readdump_libpcap(pcap_t *handle) {
 			}
 			memcpy(prevmd5, md5, 32);
 		}
-#endif 
-		
 
 		if(opt_pcap_threaded) {
 			//add packet to queue
@@ -2082,6 +2089,9 @@ void readdump_libpcap(pcap_t *handle) {
 
 		if(opt_mirrorip && (sipportmatrix[htons(header_udp->source)] || sipportmatrix[htons(header_udp->dest)])) {
 			mirrorip->send((char *)header_ip, (int)(header->len - ((unsigned long) header_ip - (unsigned long) packet)));
+		}
+		if(opt_ipaccount) {
+			ipaccount(header->ts.tv_sec, (struct iphdr *) ((char*)packet + offset), header->len - offset);
 		}
 		process_packet(header_ip->saddr, htons(header_udp->source), header_ip->daddr, htons(header_udp->dest), 
 			    data, datalen, handle, header, packet, istcp, 0, 1, &was_rtp);

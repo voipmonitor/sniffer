@@ -106,6 +106,8 @@ int request_iptelnum_reload = 0;
 int opt_mirrorip = 0;
 char opt_mirrorip_src[20];
 char opt_mirrorip_dst[20];
+int opt_printinsertid = 0;
+int opt_ipaccount = 0;
 MirrorIP *mirrorip = NULL;
 
 char opt_clientmanager[1024] = "";
@@ -172,6 +174,9 @@ pthread_t cleanspool_thread;	// ID of worker clean thread
 int terminating;		// if set to 1, worker thread will terminate
 int terminating2;		// if set to 1, worker thread will terminate
 char *sipportmatrix;		// matrix of sip ports to monitor
+char *ipaccountportmatrix;
+
+queue<string> mysqlquery;
 
 volatile unsigned int readit = 0;
 volatile unsigned int writeit = 0;
@@ -184,6 +189,7 @@ read_thread *threads;
 
 int manager_socket_server = 0;
 
+pthread_mutex_t mysqlquery_lock;
 
 pthread_t pcap_read_thread;
 #ifdef QUEUE_MUTEX
@@ -354,6 +360,21 @@ void *storing_cdr( void *dummy ) {
 #endif
 		if(verbosity > 0) syslog(LOG_ERR,"calls[%d]\n", calls);
 		while (1) {
+
+			// process mysql query queue
+			while(1) {
+				pthread_mutex_lock(&mysqlquery_lock);
+				if(mysqlquery.size() == 0) {
+					pthread_mutex_unlock(&mysqlquery_lock);
+					break;
+				}
+				string query = mysqlquery.front();
+				mysqlquery.pop();
+				pthread_mutex_unlock(&mysqlquery_lock);
+				sqlDb->query(query);
+			}
+			
+
 			if(request_iptelnum_reload == 1) { reload_capture_rules(); request_iptelnum_reload = 0;};
 			calltable->lock_calls_queue();
 			if(calltable->calls_queue.size() == 0) {
@@ -810,6 +831,12 @@ int load_config(char *fname) {
 	if((value = ini.GetValue("general", "mirroripdst", NULL))) {
 		strncpy(opt_mirrorip_dst, value, sizeof(opt_mirrorip_dst));
 	}
+	if((value = ini.GetValue("general", "printinsertid", NULL))) {
+		opt_printinsertid = yesno(value);
+	}
+	if((value = ini.GetValue("general", "ipaccount", NULL))) {
+		opt_ipaccount = yesno(value);
+	}
 	return 0;
 }
 
@@ -854,6 +881,8 @@ int main(int argc, char *argv[]) {
 	sipportmatrix = (char*)calloc(1, sizeof(char) * 65537);
 	// set default SIP port to 5060
 	sipportmatrix[5060] = 1;
+
+	pthread_mutex_init(&mysqlquery_lock, NULL);
 
 	// if the system has more than one CPU enable threading
 	opt_pcap_threaded = sysconf( _SC_NPROCESSORS_ONLN ) > 1; 
@@ -1377,6 +1406,12 @@ int main(int argc, char *argv[]) {
 	}
 //	ipfilter->dump();
 
+	if(opt_ipaccount) {
+		printf("test\n");
+		ipaccountportmatrix = (char*)calloc(1, sizeof(char) * 65537);
+	}
+
+
 	telnumfilter = new TELNUMfilter;
 	if(!opt_nocdr) {
 		telnumfilter->load();
@@ -1592,6 +1627,10 @@ int main(int argc, char *argv[]) {
 	}
 
 	free(sipportmatrix);
+	if(opt_ipaccount) {
+		free(ipaccountportmatrix);
+	}
+
 	if(opt_cachedir[0] != '\0') {
 		terminating2 = 1;
 		pthread_join(cachedir_thread, NULL);
@@ -1610,6 +1649,7 @@ int main(int argc, char *argv[]) {
 	if (opt_fork){
 		unlink(opt_pidfile);
 	}
+	pthread_mutex_destroy(&mysqlquery_lock);
 }
 
 #include "sql_db.h"

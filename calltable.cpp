@@ -87,6 +87,7 @@ extern int rtptimeout;
 extern unsigned int gthread_num;
 extern int num_threads;
 extern char opt_cdrurl[1024];
+extern int opt_printinsertid;
 int calls = 0;
 
 extern char mac[32];
@@ -1874,6 +1875,9 @@ Call::saveToDb() {
 		
 		int cdrID = sqlDb->insert(sql_cdr_table, cdr, "");
 		if(cdrID>0) {
+			if(opt_printinsertid) {
+				printf("CDRID:%d\n", cdrID);
+			}
 			cdr_next.add(cdrID, "cdr_ID");
 			sqlDb->insert(sql_cdr_next_table, cdr_next, "");
 			if(sql_cdr_table_last30d[0] ||
