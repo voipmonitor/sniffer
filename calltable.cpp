@@ -224,6 +224,10 @@ Call::~Call(){
 			addtocachequeue(pcapfilename);
 		}
 	}
+
+	if(this->message) {
+		free(message);
+	}
 }
 
 void
@@ -2100,6 +2104,75 @@ Call::saveRegisterToDb() {
 		
 		return doQuery(queryStr);
 	}
+}
+
+int
+Call::saveMessageToDb() {
+	if(!prepareForEscapeString())
+		return(1);
+
+
+	if(isTypeDb("mysql")) {
+		if(!sqlDb) {
+			return(false);
+		}
+		SqlDb_row cdr,
+			  cdr_sip_response,
+			  cdr_ua_a,
+			  cdr_ua_b;
+		unsigned int 
+			     lastSIPresponse_id = 0,
+			     a_ua_id = 0,
+			     b_ua_id = 0;
+
+		if(opt_id_sensor > -1) {
+			cdr.add(opt_id_sensor, "id_sensor");
+		}
+		cdr.add(sqlEscapeString(caller), "caller");
+		cdr.add(sqlEscapeString(reverseString(caller).c_str()), "caller_reverse");
+		cdr.add(sqlEscapeString(called), "called");
+		cdr.add(sqlEscapeString(reverseString(called).c_str()), "called_reverse");
+		cdr.add(sqlEscapeString(caller_domain), "caller_domain");
+		cdr.add(sqlEscapeString(called_domain), "called_domain");
+		cdr.add(sqlEscapeString(callername), "callername");
+		cdr.add(sqlEscapeString(reverseString(callername).c_str()), "callername_reverse");
+
+		cdr_sip_response.add(sqlEscapeString(lastSIPresponse), "lastSIPresponse");
+
+		cdr.add(htonl(sipcallerip), "sipcallerip");
+		cdr.add(htonl(sipcalledip), "sipcalledip");
+		cdr.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
+
+		cdr.add(sqlEscapeString(fbasename), "fbasename");
+		if(message) {
+			cdr.add(sqlEscapeString(message), "message");
+		}
+
+		cdr.add(lastSIPresponseNum, "lastSIPresponseNum");
+/*
+		if(strlen(match_header)) {
+			cdr_next.add(sqlEscapeString(match_header), "match_header");
+		}
+		if(strlen(custom_header1)) {
+			cdr_next.add(sqlEscapeString(custom_header1), "custom_header1");
+		}
+*/
+		lastSIPresponse_id = sqlDb->getIdOrInsert(sql_cdr_sip_response_table, "id", "lastSIPresponse", cdr_sip_response, "");
+		cdr_ua_a.add(sqlEscapeString(a_ua), "ua");
+		a_ua_id = sqlDb->getIdOrInsert(sql_cdr_ua_table, "id", "ua", cdr_ua_a, "");
+		cdr_ua_b.add(sqlEscapeString(b_ua), "ua");
+		b_ua_id = sqlDb->getIdOrInsert(sql_cdr_ua_table, "id", "ua", cdr_ua_b, "");
+
+		cdr.add(lastSIPresponse_id, "lastSIPresponse_id", true);
+		cdr.add(a_ua_id, "a_ua_id", true);
+		cdr.add(b_ua_id, "b_ua_id", true);
+
+		int cdrID = sqlDb->insert("message", cdr, "");
+
+		return(cdrID <= 0);
+	}
+
+	return -1;
 }
 
 char *

@@ -555,6 +555,51 @@ void SqlDb_mysql::createSchema() {
 
 	this->query(query);
 
+	query = "CREATE TABLE IF NOT EXISTS `message` (\
+  `ID` int(32) unsigned NOT NULL AUTO_INCREMENT,\
+  `calldate` datetime NOT NULL,\
+  `caller` varchar(255) DEFAULT NULL,\
+  `caller_domain` varchar(255) DEFAULT NULL,\
+  `caller_reverse` varchar(255) DEFAULT NULL,\
+  `callername` varchar(255) DEFAULT NULL,\
+  `callername_reverse` varchar(255) DEFAULT NULL,\
+  `called` varchar(255) DEFAULT NULL,\
+  `called_domain` varchar(255) DEFAULT NULL,\
+  `called_reverse` varchar(255) DEFAULT NULL,\
+  `sipcallerip` int(10) unsigned DEFAULT NULL,\
+  `sipcalledip` int(10) unsigned DEFAULT NULL,\
+  `bye` tinyint(3) unsigned DEFAULT NULL,\
+  `lastSIPresponse_id` smallint(5) unsigned DEFAULT NULL,\
+  `lastSIPresponseNum` smallint(5) unsigned DEFAULT NULL,\
+  `id_sensor` smallint(10) unsigned DEFAULT NULL,\
+  `a_ua_id` int(10) unsigned DEFAULT NULL,\
+  `b_ua_id` int(10) unsigned DEFAULT NULL,\
+  `fbasename` varchar(255) DEFAULT NULL,\
+  `message` TEXT,\
+  PRIMARY KEY (`ID`),\
+  KEY `calldate` (`calldate`),\
+  KEY `source` (`caller`),\
+  KEY `source_reverse` (`caller_reverse`),\
+  KEY `destination` (`called`),\
+  KEY `destination_reverse` (`called_reverse`),\
+  KEY `callername` (`callername`),\
+  KEY `callername_reverse` (`callername_reverse`),\
+  KEY `sipcallerip` (`sipcallerip`),\
+  KEY `sipcalledip` (`sipcalledip`),\
+  KEY `lastSIPresponseNum` (`lastSIPresponseNum`),\
+  KEY `bye` (`bye`),\
+  KEY `lastSIPresponse_id` (`lastSIPresponse_id`),\
+  KEY `id_sensor` (`id_sensor`),\
+  KEY `a_ua_id` (`a_ua_id`),\
+  KEY `b_ua_id` (`b_ua_id`),\
+  KEY `fbasename` (`fbasename`),\
+  CONSTRAINT `messages_ibfk_1` FOREIGN KEY (`lastSIPresponse_id`) REFERENCES `cdr_sip_response` (`id`) ON UPDATE CASCADE,\
+  CONSTRAINT `messages_ibfk_2` FOREIGN KEY (`a_ua_id`) REFERENCES `cdr_ua` (`id`) ON UPDATE CASCADE,\
+  CONSTRAINT `messages_ibfk_3` FOREIGN KEY (`b_ua_id`) REFERENCES `cdr_ua` (`id`) ON UPDATE CASCADE\
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 ROW_FORMAT=COMPRESSED;";
+
+	this->query(query);
+
 	query = "CREATE TABLE IF NOT EXISTS `cdr_next` (\
   `cdr_ID` int(10) unsigned NOT NULL,\
   `custom_header1` varchar(255) DEFAULT NULL,\

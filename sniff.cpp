@@ -628,7 +628,7 @@ Call *new_invite_register(int sip_method, char *data, int datalen, struct pcap_p
 	strncpy(call->fbasename, callidstr, MAX_FNAME - 1);
 
 	/* this logic updates call on the first INVITES */
-	if (sip_method == INVITE or sip_method == REGISTER) {
+	if (sip_method == INVITE or sip_method == REGISTER or sip_method == MESSAGE) {
 		int res;
 		// callername
 		res = get_sip_peercnam(data,datalen,"\nFrom:", call->callername, sizeof(call->callername));
@@ -1026,6 +1026,10 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 			if(verbosity > 2) 
 				 syslog(LOG_NOTICE,"SIP msg: REGISTER\n");
 			sip_method = REGISTER;
+		} else if ((datalen > 6) && !(memmem(data, 7, "MESSAGE", 7) == 0)) {
+			if(verbosity > 2) 
+				 syslog(LOG_NOTICE,"SIP msg: MESSAGE\n");
+			sip_method = MESSAGE;
 		} else if ((datalen > 2) && !(memmem(data, 3, "BYE", 3) == 0)) {
 			if(verbosity > 2) 
 				 syslog(LOG_NOTICE,"SIP msg: BYE\n");
@@ -1070,7 +1074,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 		}
 		strcpy(lastSIPresponse, "NO RESPONSE");
 		lastSIPresponseNum = 0;
-		if(sip_method > 0 && last_sip_method != BYE && sip_method != INVITE && sip_method != REGISTER && sip_method != CANCEL && sip_method != BYE) {
+		if(sip_method > 0 && last_sip_method != BYE && sip_method != INVITE && sip_method != REGISTER && sip_method != MESSAGE && sip_method != CANCEL && sip_method != BYE) {
 			char a = data[datalen - 1];
 			data[datalen - 1] = 0;
 			char *tmp = strstr(data, "\r");
@@ -1100,9 +1104,9 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 		last_sip_method = sip_method;
 
 		// find call */
-		if (!(call = calltable->find_by_call_id(s, l))){
+		if ( ! (call = calltable->find_by_call_id(s, l))){
 			// packet does not belongs to any call yet
-			if (sip_method == INVITE || (opt_sip_register && sip_method == REGISTER)) {
+			if (sip_method == INVITE || sip_method == MESSAGE || (opt_sip_register && sip_method == REGISTER)) {
 				call = new_invite_register(sip_method, data, datalen, header, callidstr, saddr, daddr, source, s, l);
 			} else {
 				// SIP packet does not belong to any call and it is not INVITE 
@@ -1159,7 +1163,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 				}
 			}
 			if(call->msgcount > 20) {
-				// to many REGISTER messages within the same callid
+				// too many REGISTER messages within the same callid
 				call->regstate = 4;
 				call->saveregister();
 				return NULL;
@@ -1210,7 +1214,24 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 					memcpy(call->invitecseq, s, l);
 					call->invitecseq[l] = '\0';
 					if(verbosity > 2)
-						syslog(LOG_NOTICE, "Seen invite, CSeq: %s\n", call->invitecseq);
+						syslog(LOG_NOTICE, "Seen INVITE, CSeq: %s\n", call->invitecseq);
+				}
+			} else if(sip_method == MESSAGE) {
+				call->destroy_call_at = header->ts.tv_sec + 10;
+
+				s = gettag(data, datalen, "\nUser-Agent:", &l);
+				if(l && ((unsigned int)l < ((unsigned int)datalen - (s - data)))) {
+					memcpy(call->a_ua, s, MIN(l, sizeof(call->a_ua)));
+					call->a_ua[MIN(l, sizeof(call->a_ua) - 1)] = '\0';
+				}
+
+				//check and save CSeq for later to compare with OK 
+				s = gettag(data, datalen, "\nCSeq:", &l);
+				if(l && l < 32) {
+					memcpy(call->invitecseq, s, l);
+					call->invitecseq[l] = '\0';
+					if(verbosity > 2)
+						syslog(LOG_NOTICE, "Seen MEESAGE, CSeq: %s\n", call->invitecseq);
 				}
 			} else if(sip_method == BYE) {
 				//check and save CSeq for later to compare with OK 
@@ -1431,6 +1452,21 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 					syslog(LOG_ERR, "Can't get ip/port from SDP:\n%s\n\n", tmp + 1);
 				}
 			}
+		} else if(call->message == NULL && l > 0 && strncasecmp(s, "application/im-iscomposing+xml\r\n", l) == 0 && tmp != NULL){
+			//find end of a message (\r\n)
+			tmp += 4; // skip \r\n\r\n and point to start of the message
+			char *end = strcasestr(tmp, "\n\nContent-Length:");
+			if(!end) {
+				end = strstr(tmp, "\r\n"); // strstr is safe becuse tmp ends with '\0'
+				if(!end) {
+					end = data + datalen - 1;
+				}
+			}
+			
+			call->message = (char*)malloc(sizeof(char) * (end - tmp + 1));
+			memcpy(call->message, tmp, end - tmp);
+			call->message[end - tmp] = '\0';
+			//printf("msg:[%s]\n", call->message);
 		}
 		data[datalen - 1] = a;
 

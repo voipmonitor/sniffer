@@ -390,6 +390,8 @@ void *storing_cdr( void *dummy ) {
 					call->saveToDb();
 				} else if(call->type == REGISTER){
 					call->saveRegisterToDb();
+				} else if(call->type == MESSAGE){
+					call->saveMessageToDb();
 				}
 			}
 #ifdef ISCURL

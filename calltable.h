@@ -42,6 +42,7 @@
 #define RES6XX 9
 #define RES18X 10
 #define REGISTER 11
+#define MESSAGE 12
 
 #define FLAG_SAVERTP		(1 << 0)
 #define FLAG_SAVESIP		(1 << 1)
@@ -117,6 +118,8 @@ public:
 	int lastSIPresponseNum;
 
 	char pcapfilename[512];
+
+	char *message;
 
 	int last_callercodec;		//!< Last caller codec 
 	int last_calledcodec;		//!< Last called codec 
@@ -307,6 +310,12 @@ public:
 	 *
 	*/
 	int saveRegisterToDb();
+
+	/**
+	 * @brief save sip MSSAGE to database
+	 *
+	*/
+	int saveMessageToDb();
 
 	/**
 	 * @brief calculate duration of the call
