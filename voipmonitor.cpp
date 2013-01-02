@@ -603,7 +603,7 @@ int load_config(char *fname) {
 		strncpy(pcapcommand, value, sizeof(pcapcommand));
 	}
 	if((value = ini.GetValue("general", "ringbuffer", NULL))) {
-		opt_ringbuffer = atoi(value);
+		opt_ringbuffer = MIN(atoi(value), 2000);
 	}
 	if((value = ini.GetValue("general", "rtpthreads", NULL))) {
 		num_threads = atoi(value);
@@ -656,7 +656,7 @@ int load_config(char *fname) {
 		opt_norecord_dtmf = yesno(value);
 	}
 	if((value = ini.GetValue("general", "vmbuffer", NULL))) {
-		qringmax = atoi(value) * 1024 * 1024 / sizeof(pcap_packet);
+		qringmax = (unsigned int)((unsigned int)MIN(atoi(value), 4000) * 1024 * 1024 / (unsigned int)sizeof(pcap_packet));
 	}
 	if((value = ini.GetValue("general", "matchheader", NULL))) {
 		snprintf(opt_match_header, sizeof(opt_match_header), "\n%s:", value);
@@ -986,7 +986,7 @@ int main(int argc, char *argv[]) {
 				rtpthreadbuffer = atoi(optarg);
 				break;
 			case 'T':
-				qringmax = atoi(optarg) * 1024 * 1024 / sizeof(pcap_packet);
+				qringmax = (unsigned int)((unsigned int)MIN(atoi(optarg), 4000) * 1024 * 1024 / (unsigned int)sizeof(pcap_packet));
 				break;
 			case 's':
 				opt_id_sensor = atoi(optarg);
@@ -1026,7 +1026,7 @@ int main(int argc, char *argv[]) {
 				}
 				break;
 			case '6':
-				opt_ringbuffer = atoi(optarg);
+				opt_ringbuffer = MIN(atoi(optarg), 2000);
 				break;
 			case '7':
 				strncpy(configfile, optarg, sizeof(configfile));
@@ -1397,6 +1397,7 @@ int main(int argc, char *argv[]) {
 			}
 		}
 	}
+	//opt_pcap_threaded = 0; //disable threading because it is useless while reading packets from file
 
 	chdir(opt_chdir);
 
@@ -1493,7 +1494,7 @@ int main(int argc, char *argv[]) {
 #endif
 
 #ifdef QUEUE_NONBLOCK2
-		qring = (pcap_packet*)malloc(sizeof(pcap_packet) * (qringmax + 1));
+		qring = (pcap_packet*)malloc((size_t)((unsigned int)sizeof(pcap_packet) * (qringmax + 1)));
 		for(unsigned int i = 0; i < qringmax + 1; i++) {
 			qring[i].free = 1;
 		}
