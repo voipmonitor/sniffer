@@ -164,6 +164,7 @@ Call::Call(char *call_id, unsigned long call_id_len, time_t time, void *ct) {
 	dtmfflag = 0;
 	flags1 = 0;
 	rtppcaketsinqueue = 0;
+	message = NULL;
 }
 
 void
