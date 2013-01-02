@@ -163,6 +163,7 @@ Call::Call(char *call_id, unsigned long call_id_len, time_t time, void *ct) {
 	recordstopped = 0;
 	dtmfflag = 0;
 	flags1 = 0;
+	rtppcaketsinqueue = 0;
 }
 
 void
@@ -2506,7 +2507,7 @@ Calltable::cleanup( time_t currtime ) {
 		call = (*callMAPIT).second;
 		if(verbosity > 2) call->dump();
 		// rtptimeout seconds of inactivity will save this call and remove from call table
-		if(currtime == 0 || (call->destroy_call_at != 0 and call->destroy_call_at <= currtime) || (currtime - call->get_last_packet_time() > rtptimeout)) {
+		if(call->rtppcaketsinqueue == 0 and (currtime == 0 || (call->destroy_call_at != 0 and call->destroy_call_at <= currtime) || (currtime - call->get_last_packet_time() > rtptimeout))) {
 			call->hashRemove();
 			if (call->get_f_pcap() != NULL){
 				pcap_dump_flush(call->get_f_pcap());

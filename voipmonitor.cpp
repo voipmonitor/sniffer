@@ -541,6 +541,18 @@ int load_config(char *fname) {
 		}
 	}
 
+	// ipacc ports
+	if (ini.GetAllValues("general", "ipaccountport", values)) {
+		CSimpleIni::TNamesDepend::const_iterator i = values.begin();
+		// reset default port 
+		for (; i != values.end(); ++i) {
+			if(!ipaccountportmatrix) {
+				ipaccountportmatrix = (char*)calloc(1, sizeof(char) * 65537);
+			}
+			ipaccountportmatrix[atoi(i->pItem)] = 1;
+		}
+	}
+
 	// nat aliases
 	if (ini.GetAllValues("general", "natalias", values)) {
 		char local_ip[30], extern_ip[30];
@@ -1409,7 +1421,6 @@ int main(int argc, char *argv[]) {
 //	ipfilter->dump();
 
 	if(opt_ipaccount) {
-		printf("test\n");
 		ipaccountportmatrix = (char*)calloc(1, sizeof(char) * 65537);
 	}
 

@@ -111,26 +111,26 @@ extern int opt_pcapdump;
 typedef struct {
 	unsigned int octects;
 	unsigned int lasttimestamp;
-} protos_t;
+} octects_t;
 
-map<string, protos_t*> ipacc_protos;
-map<string, protos_t*>::iterator ipacc_protosIT;
+map<string, octects_t*> ipacc_protos;
+map<string, octects_t*>::iterator ipacc_protosIT;
+
+map<string, octects_t*> ipacc_ports;
+map<string, octects_t*>::iterator ipacc_portsIT;
 
 extern queue<string> mysqlquery;
 extern pthread_mutex_t mysqlquery_lock;
 
 unsigned int last_flush = 0;
+unsigned int last_flush_ports = 0;
 
 #define IPACC_INTERVAL 5 // seconds
-
-void add_octects_ipport(time_t timestamp, unsigned int saddr, unsigned int daddr, int source, int dest, int proto, int packetlen) {
-}
-
 
 void flush_octets_ip() {
 	char *tmp;
 	char keycb[64], *keyc;
-	protos_t *proto;
+	octects_t *proto;
 	char buf[32];
 	pthread_mutex_lock(&mysqlquery_lock);
 	for (ipacc_protosIT = ipacc_protos.begin(); ipacc_protosIT != ipacc_protos.end(); ++ipacc_protosIT) {
@@ -172,13 +172,68 @@ void flush_octets_ip() {
 	pthread_mutex_unlock(&mysqlquery_lock);
 
 	//printf("flush\n");
+}	
+
+void flush_octets_ports() {
+	char *tmp;
+	char keycb[64], *keyc;
+	octects_t *proto;
+	char buf[64];
+	pthread_mutex_lock(&mysqlquery_lock);
+	for (ipacc_portsIT = ipacc_ports.begin(); ipacc_portsIT != ipacc_ports.end(); ++ipacc_portsIT) {
+		string query;
+		proto = ipacc_portsIT->second;
+		if(ipacc_portsIT->second->octects > 0) {
+			strcpy(keycb, ipacc_portsIT->first.c_str());
+			keyc = keycb;
+//			keyc = (char *)keycpy.c_str();
+			tmp = strchr(keyc, 'D');
+			*tmp = '\0';
+			query.append("INSERT INTO `ipacc_ipport` SET saddr = '");
+			query.append(keyc);
+			query.append("', `daddr` = '");
+
+			keyc = tmp + 1;
+			tmp = strchr(keyc, 'E');
+			*tmp = '\0';
+			query.append(keyc);
+			query.append("', `sport` = '");
+
+			keyc = tmp + 1;
+			tmp = strchr(keyc, 'A');
+			*tmp = '\0';
+			query.append(keyc);
+			query.append("', `dport` = '");
+
+			keyc = tmp + 1;
+			query.append(keyc);
+
+			query.append("', `octects` = '");
+			sprintf(buf, "%u", proto->octects);
+			query.append(buf);
+			query.append("', `interval` = '");
+			sprintf(buf, "%u", proto->lasttimestamp);
+			query.append(buf);
+			query.append("'");
+
+			cout << query << "\n";
+
+			//reset octects 
+			ipacc_portsIT->second->octects = 0;
+
+			mysqlquery.push(query);
+		}
+	}
+	pthread_mutex_unlock(&mysqlquery_lock);
+
+	//printf("flush\n");
 	
 }
 
 void add_octects_ip(time_t timestamp, unsigned int saddr, unsigned int daddr, int proto, int packetlen) {
 	string key;
 	char buf[32];
-	protos_t *protos;
+	octects_t *protos;
 	unsigned int cur_interval = timestamp / IPACC_INTERVAL;
 
 	sprintf(buf, "%uD%uE%d", htonl(saddr), htonl(daddr), proto);
@@ -194,14 +249,48 @@ void add_octects_ip(time_t timestamp, unsigned int saddr, unsigned int daddr, in
 	ipacc_protosIT = ipacc_protos.find(key);
 	if(ipacc_protosIT == ipacc_protos.end()) {
 		// not found;
-		protos = (protos_t*)calloc(1, sizeof(protos_t));
+		protos = (octects_t*)calloc(1, sizeof(octects_t));
 		protos->octects += packetlen;
 		protos->lasttimestamp = timestamp / IPACC_INTERVAL;
 		ipacc_protos[key] = protos;
 //		printf("key: %s\n", buf);
 	} else {
 		//found
-		protos_t *tmp = ipacc_protosIT->second;
+		octects_t *tmp = ipacc_protosIT->second;
+		tmp->octects += packetlen;
+		tmp->lasttimestamp = timestamp / IPACC_INTERVAL;
+//		printf("key[%s] %u\n", key.c_str(), tmp->octects);
+	}
+
+
+}
+
+void add_octects_ipport(time_t timestamp, unsigned int saddr, unsigned int daddr, int source, int dest, int proto, int packetlen) {
+	string key;
+	char buf[64];
+	octects_t *ports;
+	unsigned int cur_interval = timestamp / IPACC_INTERVAL;
+
+	sprintf(buf, "%uD%uE%dA%d", htonl(saddr), htonl(daddr), source, dest);
+	key = buf;
+
+	if(last_flush_ports != cur_interval) {
+		flush_octets_ports();
+		printf("%u | %u | %u | %u\n", timestamp, last_flush, cur_interval, timestamp / IPACC_INTERVAL);
+		last_flush_ports = cur_interval;
+	}
+
+	ipacc_portsIT = ipacc_ports.find(key);
+	if(ipacc_portsIT == ipacc_ports.end()) {
+		// not found;
+		ports = (octects_t*)calloc(1, sizeof(octects_t));
+		ports->octects += packetlen;
+		ports->lasttimestamp = timestamp / IPACC_INTERVAL;
+		ipacc_ports[key] = ports;
+//		printf("key: %s\n", buf);
+	} else {
+		//found
+		octects_t *tmp = ipacc_portsIT->second;
 		tmp->octects += packetlen;
 		tmp->lasttimestamp = timestamp / IPACC_INTERVAL;
 //		printf("key[%s] %u\n", key.c_str(), tmp->octects);
@@ -230,7 +319,7 @@ void ipaccount(time_t timestamp, struct iphdr *header_ip, int packetlen){
 	} else {
 	}
 
-	add_octects_ip(timestamp, header_ip->saddr, header_ip->daddr, header_ip->protocol, packetlen);
+//	add_octects_ip(timestamp, header_ip->saddr, header_ip->daddr, header_ip->protocol, packetlen);
 
 //	printf("proto[%d]\n", header_ip->protocol);
 }

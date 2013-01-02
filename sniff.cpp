@@ -495,6 +495,7 @@ int get_rtpmap_from_sdp(char *sdp_text, unsigned long len, int *rtpmap){
 }
 
 void add_to_rtp_thread_queue(Call *call, unsigned char *data, int datalen, struct pcap_pkthdr *header,  u_int32_t saddr, unsigned short port, int iscaller, int is_rtcp) {
+	call->rtppcaketsinqueue++;
 	read_thread *params = &(threads[call->thread_num]);
 
 #if defined(QUEUE_MUTEX) || defined(QUEUE_NONBLOCK)
@@ -610,6 +611,7 @@ void *rtp_read_thread_func(void *arg) {
 		} else {
 			params->readit++;
 		}
+		rtpp->call->rtppcaketsinqueue--;
 #endif
 	}
 

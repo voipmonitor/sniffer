@@ -98,6 +98,7 @@ public:
 	int reg401count;
 	int regstate;
 	unsigned long long flags1;	//!< bit flags used to store max 64 flags 
+	unsigned int rtppcaketsinqueue;
 
 	time_t progress_time;		//!< time in seconds of 18X response
 	time_t first_rtp_time;		//!< time in seconds of first RTP packet
