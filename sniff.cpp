@@ -24,6 +24,7 @@ and insert them into Call class.
 #include <netinet/tcp.h>
 #include <syslog.h>
 #include <semaphore.h>
+#include <malloc.h>
 
 #include <pcap.h>
 //#include <pcap/sll.h>
@@ -818,7 +819,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 
 	// checking and cleaning stuff every 10 seconds (if some packet arrive) 
 	if (header->ts.tv_sec - last_cleanup > 10){
-		if(verbosity > 0) printf("Total calls [%d] calls in queue[%d]\n", (int)calltable->calls_listMAP.size(), (int)calltable->calls_queue.size());
+		if(verbosity > 0) syslog(LOG_NOTICE, "Active calls [%d] calls in sql queue [%d]\n", (int)calltable->calls_listMAP.size(), (int)calltable->calls_queue.size());
 		if (last_cleanup >= 0){
 			calltable->cleanup(header->ts.tv_sec);
 		}
@@ -866,6 +867,15 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 				++stream;
 			}
 		}
+		/* You may encounter that voipmonitor process does not have a reduced memory usage although you freed the calls. 
+		This is because it allocates memory in a number of small chunks. When freeing one of those chunks, the OS may decide 
+		that giving this little memory back to the kernel will cause too much overhead and delay the operation. As all chunks 
+		are this small, they get actually freed but not returned to the kernel. On systems using glibc, there is a function call 
+		"malloc_trim" from malloc.h which does this missing operation (note that it is allowed to fail). If your OS does not provide 
+		malloc_trim, try searching for a similar function.
+		*/
+		malloc_trim(0);
+
 	}
 
 	// check if the packet is SIP ports 	
