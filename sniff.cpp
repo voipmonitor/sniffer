@@ -1466,16 +1466,30 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 					syslog(LOG_ERR, "Can't get ip/port from SDP:\n%s\n\n", tmp + 1);
 				}
 			}
-		} else if(call->message == NULL && l > 0 && tmp != NULL && (
-				strncasecmp(s, "application/im-iscomposing+xml\r\n", l) == 0 || 
-				strncasecmp(s, "text/plain; charset=UTF-8\r\n", l) == 0)){
+		} else if(call->message == NULL && l > 0 && tmp != NULL) {
+//				strncasecmp(s, "application/im-iscomposing+xml\r\n", l) == 0 || 
+//				strncasecmp(s, "text/plain; charset=UTF-8\r\n", l) == 0)){
 			//find end of a message (\r\n)
 			tmp += 4; // skip \r\n\r\n and point to start of the message
+			int contentlen = 0;
+			s = gettag(data, datalen, "\nContent-Length:", &l);
+			if(l && ((unsigned int)l < ((unsigned int)datalen - (s - data)))) {
+				char c = s[l];
+				s[l] = '\0';
+				contentlen = atoi(s);
+				s[l] = c;
+			}
 			char *end = strcasestr(tmp, "\n\nContent-Length:");
 			if(!end) {
 				end = strstr(tmp, "\r\n"); // strstr is safe becuse tmp ends with '\0'
 				if(!end) {
 					end = data + datalen - 1;
+				}
+			}
+			if(contentlen > 0) {
+				//truncate message to its size announced in content-length
+				if(end - tmp > contentlen) {
+					end = tmp + MIN(end - tmp, contentlen);
 				}
 			}
 			
