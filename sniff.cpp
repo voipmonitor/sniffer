@@ -979,7 +979,9 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 				// SIP message is not complete, save packet 
 				if(tcp_streams_hashed[hash]) {
 					// there is already stream 
-					if ((datalen > 5) && !(memmem(data, 6, "NOTIFY", 6) == 0)) {
+					if ((datalen > 5) && (
+						!(memmem(data, 6, "NOTIFY", 6) == 0) || 
+						!(memmem(data, 7, "MESSAGE", 7) == 0))) {
 						/* NOTIFY can have content-length > 0 which will not end with 0x0d 0x0a
 						Content-Type: application/dialog-info+xml
 						Content-Length: 527
@@ -1454,7 +1456,9 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 					syslog(LOG_ERR, "Can't get ip/port from SDP:\n%s\n\n", tmp + 1);
 				}
 			}
-		} else if(call->message == NULL && l > 0 && strncasecmp(s, "application/im-iscomposing+xml\r\n", l) == 0 && tmp != NULL){
+		} else if(call->message == NULL && l > 0 && tmp != NULL && (
+				strncasecmp(s, "application/im-iscomposing+xml\r\n", l) == 0 || 
+				strncasecmp(s, "text/plain; charset=UTF-8\r\n", l) == 0)){
 			//find end of a message (\r\n)
 			tmp += 4; // skip \r\n\r\n and point to start of the message
 			char *end = strcasestr(tmp, "\n\nContent-Length:");

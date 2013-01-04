@@ -1421,7 +1421,7 @@ int main(int argc, char *argv[]) {
 	}
 //	ipfilter->dump();
 
-	if(opt_ipaccount) {
+	if(opt_ipaccount and !ipaccountportmatrix) {
 		ipaccountportmatrix = (char*)calloc(1, sizeof(char) * 65537);
 	}
 

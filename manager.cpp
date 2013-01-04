@@ -37,6 +37,7 @@ extern char opt_chdir[1024];
 extern int terminating;
 extern int manager_socket_server;
 extern int terminating;
+extern int opt_nocdr;
 
 using namespace std;
 
@@ -215,6 +216,12 @@ int parse_command(char *buf, int size, int client, int eof) {
 	if(strstr(buf, "totalcalls") != NULL) {
 		snprintf(sendbuf, BUFSIZE, "%d", calls);
 		if ((size = send(client, sendbuf, strlen(sendbuf), 0)) == -1){
+			cerr << "Error sending data to client" << endl;
+			return -1;
+		}
+	} else if(strstr(buf, "disablecdr") != NULL) {
+		opt_nocdr = 0;
+		if ((size = send(client, "disabled", strlen(sendbuf), 0)) == -1){
 			cerr << "Error sending data to client" << endl;
 			return -1;
 		}
