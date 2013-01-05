@@ -225,6 +225,12 @@ int parse_command(char *buf, int size, int client, int eof) {
 			cerr << "Error sending data to client" << endl;
 			return -1;
 		}
+	} else if(strstr(buf, "enablecdr") != NULL) {
+		opt_nocdr = 1;
+		if ((size = send(client, "enabled", strlen(sendbuf), 0)) == -1){
+			cerr << "Error sending data to client" << endl;
+			return -1;
+		}
 	} else if(strstr(buf, "listcalls") != NULL) {
 		//list<Call*>::iterator call;
 		map<string, Call*>::iterator callMAPIT;
