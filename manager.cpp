@@ -220,14 +220,14 @@ int parse_command(char *buf, int size, int client, int eof) {
 			return -1;
 		}
 	} else if(strstr(buf, "disablecdr") != NULL) {
-		opt_nocdr = 0;
-		if ((size = send(client, "disabled", strlen(sendbuf), 0)) == -1){
+		opt_nocdr = 1;
+		if ((size = send(client, "disabled", 8, 0)) == -1){
 			cerr << "Error sending data to client" << endl;
 			return -1;
 		}
 	} else if(strstr(buf, "enablecdr") != NULL) {
-		opt_nocdr = 1;
-		if ((size = send(client, "enabled", strlen(sendbuf), 0)) == -1){
+		opt_nocdr = 0;
+		if ((size = send(client, "enabled", 7, 0)) == -1){
 			cerr << "Error sending data to client" << endl;
 			return -1;
 		}
