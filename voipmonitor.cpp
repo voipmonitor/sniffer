@@ -83,8 +83,9 @@ int opt_rtp_firstleg = 0;	// if == 1 then save RTP stream only for first INVITE 
 int opt_jitterbuffer_f1 = 1;		// turns off/on jitterbuffer simulator to compute MOS score mos_f1
 int opt_jitterbuffer_f2 = 1;		// turns off/on jitterbuffer simulator to compute MOS score mos_f2
 int opt_jitterbuffer_adapt = 1;		// turns off/on jitterbuffer simulator to compute MOS score mos_adapt
-int opt_sip_register = 0;	// if == 1 save REGISTER messages
+int opt_sip_register_active_nologbin = 1;
 int opt_ringbuffer = 10;	// ring buffer in MB 
+int opt_sip_register = 0;	// if == 1 save REGISTER messages
 int opt_audio_format = FORMAT_WAV;	// define format for audio writing (if -W option)
 int opt_manager_port = 5029;	// manager api TCP port
 char opt_manager_ip[32] = "127.0.0.1";	// manager api listen IP address
@@ -619,6 +620,9 @@ int load_config(char *fname) {
 	}
 	if((value = ini.GetValue("general", "sip-register", NULL))) {
 		opt_sip_register = yesno(value);
+	}
+	if((value = ini.GetValue("general", "sip-register-active-nologbin", NULL))) {
+		opt_sip_register_active_nologbin = yesno(value);
 	}
 	if((value = ini.GetValue("general", "deduplicate", NULL))) {
 		opt_dup_check = yesno(value);

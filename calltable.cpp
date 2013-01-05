@@ -88,6 +88,7 @@ extern unsigned int gthread_num;
 extern int num_threads;
 extern char opt_cdrurl[1024];
 extern int opt_printinsertid;
+extern int opt_sip_register_active_nologbin;
 int calls = 0;
 
 extern char mac[32];
@@ -1937,13 +1938,25 @@ Call::saveRegisterToDb() {
 
 		if(last_register_clean == 0) {
 			// on first run the register table has to be deleted 
+			if(opt_sip_register_active_nologbin) {
+				sqlDb->query("SET sql_log_bin = 0;");
+			}
 			query = "DELETE FROM register";
 			sqlDb->query(query);
+			if(opt_sip_register_active_nologbin) {
+				sqlDb->query("SET sql_log_bin = 1;");
+			}
 		} else if((last_register_clean + REGISTER_CLEAN_PERIOD) < now){
 			// last clean was done older than CLEAN_PERIOD seconds
 			query = "INSERT INTO register_state (created_at, sipcallerip, from_num, to_num, to_domain, contact_num, contact_domain, digestusername, expires, state, ua_id) SELECT expires_at, sipcallerip, from_num, to_num, to_domain, contact_num, contact_domain, digestusername, expires, 5, ua_id FROM register WHERE expires_at <= NOW()";
 			sqlDb->query(query);
+			if(opt_sip_register_active_nologbin) {
+				sqlDb->query("SET sql_log_bin = 0;");
+			}
 			query = "DELETE FROM register WHERE expires_at <= NOW()";
+			if(opt_sip_register_active_nologbin) {
+				sqlDb->query("SET sql_log_bin = 1;");
+			}
 			sqlDb->query(query);
 		}
 		last_register_clean = now;
@@ -1965,9 +1978,15 @@ Call::saveRegisterToDb() {
 				int expired = atoi(rsltRow["expired"].c_str()) == 1;
 				time_t expires_at = atoi(rsltRow["expires_at"].c_str());
 
+				if(opt_sip_register_active_nologbin) {
+					sqlDb->query("SET sql_log_bin = 0;");
+				}
 				string query = "DELETE FROM " + (string)register_table + " WHERE ID = '" + (rsltRow["ID"]).c_str() + "'";
 				if(!sqlDb->query(query)) {
 					syslog(LOG_WARNING, "Query [%s] failed.", query.c_str());
+				}
+				if(opt_sip_register_active_nologbin) {
+					sqlDb->query("SET sql_log_bin = 1;");
 				}
 
 				if(expired) {
@@ -2043,7 +2062,14 @@ Call::saveRegisterToDb() {
 				reg.add(register_expires, "expires");
 				reg.add(sqlEscapeString(sqlDateTimeString(calltime() + register_expires).c_str()), "expires_at");
 				reg.add(regstate, "state");
-				return(sqlDb->insert(register_table, reg, "") <= 0);
+				if(opt_sip_register_active_nologbin) {
+					sqlDb->query("SET sql_log_bin = 0;");
+				}
+				int res = sqlDb->insert(register_table, reg, "") <= 0;
+				if(opt_sip_register_active_nologbin) {
+					sqlDb->query("SET sql_log_bin = 1;");
+				}
+				return res;
 			}
 			}
 			break;
@@ -2104,7 +2130,14 @@ Call::saveRegisterToDb() {
 			cout << queryStr << "\n";
 		}
 		
-		return doQuery(queryStr);
+		if(opt_sip_register_active_nologbin) {
+			sqlDb->query("SET sql_log_bin = 0;");
+		}
+		int res = doQuery(queryStr);
+		if(opt_sip_register_active_nologbin) {
+			sqlDb->query("SET sql_log_bin = 1;");
+		}
+		return res;
 	}
 }
 
