@@ -1,3 +1,12 @@
+version 6.0 5.1.2013
+====================
+
+- Now the voipmonitor returns memory back to linux and not grow giantly in case of call peaks. This is because it allocates memory in a number of small chunks. When freeing one of those chunks, the OS may decide that giving this little memory back to the kernel will cause too much overhead and delay the operation. As all chunks are this small, they get actually freed but not returned to the kernel. On systems using glibc, there is a function call malloc_trim from malloc.h which does this missing operation (note that it is allowed to fail).
+- Implement SIP message parsing and storing to new sql.message table
+- fix vmbuffer size when set over 2000 it overlaps. now it is possible to set vmbuffer to 4000 check ringbuffer value which can be max 2000. if set to higher number do not overlap but limit to 2000
+- fix memory corruption if voipmonitor uses rtp threads (which is by default) and in case the system gets slow due to swaping I/O blocking or CPU blocking
+
+
 version 5.5 14.12.2012
 ======================
 

@@ -25,6 +25,7 @@
 /cdrtable.sql.5.2-5.3 -text
 /cdrtable.sql.5.3-5.4 -text
 /cdrtable.sql.5.4-5.5 -text
+/cdrtable.sql.5.5-6.0 -text
 /cdrtable.sql.history -text
 /cdrtable_mssql.sql -text
 /codec_alaw.cpp -text
