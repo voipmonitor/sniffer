@@ -105,7 +105,6 @@ extern volatile unsigned int writeit;
 extern unsigned int qringmax;
 
 extern char *ipaccountportmatrix;
-extern pthread_mutex_t mysqlquery_lock;
 extern int opt_pcapdump;
 
 typedef struct {

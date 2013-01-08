@@ -132,6 +132,8 @@ public:
 	bool checkLastError(string prefixError, bool sysLog = false,bool clearLastError = false);
 	void clean();
 	void createSchema();
+	int multi_on();
+	int multi_off();
 private:
 	MYSQL *hMysql;
 	MYSQL *hMysqlConn;

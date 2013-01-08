@@ -362,27 +362,15 @@ void *storing_cdr( void *dummy ) {
 		if(verbosity > 0) syslog(LOG_ERR,"calls[%d]\n", calls);
 		while (1) {
 
-			// process mysql query queue
-			while(1) {
-				pthread_mutex_lock(&mysqlquery_lock);
-				if(mysqlquery.size() == 0) {
-					pthread_mutex_unlock(&mysqlquery_lock);
-					break;
-				}
-				string query = mysqlquery.front();
-				mysqlquery.pop();
-				pthread_mutex_unlock(&mysqlquery_lock);
-				sqlDb->query(query);
-			}
-			
-
 			if(request_iptelnum_reload == 1) { reload_capture_rules(); request_iptelnum_reload = 0;};
+
 			calltable->lock_calls_queue();
 			if(calltable->calls_queue.size() == 0) {
 				calltable->unlock_calls_queue();
 				break;
 			}
 			call = calltable->calls_queue.front();
+			calltable->calls_queue.pop();
 			calltable->unlock_calls_queue();
 	
 			if(!opt_nocdr) {
@@ -430,10 +418,6 @@ void *storing_cdr( void *dummy ) {
 				system(source.c_str());
 			};
 
-			calltable->lock_calls_queue();
-			calltable->calls_queue.pop();
-			calltable->unlock_calls_queue();
-
 			/* if we delete call here directly, destructors and another cleaning functions can be
 			 * called in the middle of working with call or another structures inside main thread
 			 * so put it in deletequeue and delete it in the main thread. Another way can be locking
@@ -443,6 +427,40 @@ void *storing_cdr( void *dummy ) {
 			calltable->lock_calls_deletequeue();
 			calltable->calls_deletequeue.push(call);
 			calltable->unlock_calls_deletequeue();
+		}
+
+		// process mysql query queue - concatenate queries to N messages
+		int size = 0;
+		int msgs = 50;
+		string queryqueue = "";
+		while(1) {
+			pthread_mutex_lock(&mysqlquery_lock);
+			if(mysqlquery.size() == 0) {
+				pthread_mutex_unlock(&mysqlquery_lock);
+				if(queryqueue != "") {
+					// send the rest 
+					sqlDb->query("drop procedure if exists __insert");
+					sqlDb->query("create procedure __insert()\nbegin\n" + queryqueue + "\nend");
+					sqlDb->query("call __insert();");
+					//sqlDb->query(queryqueue);
+					queryqueue = "";
+				}
+				break;
+			}
+			string query = mysqlquery.front();
+			mysqlquery.pop();
+			pthread_mutex_unlock(&mysqlquery_lock);
+			queryqueue.append(query + "; ");
+			if(size < msgs) {
+				size++;
+			} else {
+				sqlDb->query("drop procedure if exists __insert");
+				sqlDb->query("create procedure __insert()\nbegin\n" + queryqueue + "\nend");
+				sqlDb->query("call __insert();");
+				//sqlDb->query(queryqueue);
+				queryqueue = "";
+				size = 0;
+			}
 		}
 #ifdef ISCURL
 		if(opt_cdrurl[0] != '\0' && cdrtosend.length() > 0) {

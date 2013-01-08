@@ -89,6 +89,9 @@ extern int num_threads;
 extern char opt_cdrurl[1024];
 extern int opt_printinsertid;
 extern int opt_sip_register_active_nologbin;
+extern pthread_mutex_t mysqlquery_lock;
+extern queue<string> mysqlquery;
+
 int calls = 0;
 
 extern char mac[32];
@@ -166,6 +169,7 @@ Call::Call(char *call_id, unsigned long call_id_len, time_t time, void *ct) {
 	flags1 = 0;
 	rtppcaketsinqueue = 0;
 	message = NULL;
+	unrepliedinvite = 0;
 }
 
 void
@@ -1964,6 +1968,92 @@ Call::saveRegisterToDb() {
 		switch(regstate) {
 		case 1:
 		case 3:
+
+#if 1
+			char ips[32];
+			char ipd[32];
+			sprintf(ips, "%u", htonl(sipcallerip));
+			sprintf(ipd, "%u", htonl(sipcalledip));
+			char tmpregstate[32];
+			sprintf(tmpregstate, "%d", regstate);
+			char regexpires[32];
+			sprintf(regexpires, "%d", register_expires);
+			//stored procedure is much faster and eliminates latency reducing uuuuuuuuuuuuu
+
+			query = "CALL PROCESS_SIP_REGISTER(" + sqlEscapeString(sqlDateTimeString(calltime())) + ", " +
+				sqlEscapeString(caller) + "," +
+				sqlEscapeString(callername) + "," +
+				sqlEscapeString(caller_domain) + "," +
+				sqlEscapeString(called) + "," +
+				sqlEscapeString(called_domain) + ",'" +
+				ips + "','" +
+				ipd + "'," +
+				sqlEscapeString(contact_num) + "," +
+				sqlEscapeString(contact_domain) + "," +
+				sqlEscapeString(digest_username) + "," +
+				sqlEscapeString(digest_realm) + ",'" +
+				tmpregstate + "'," +
+				sqlEscapeString(sqlDateTimeString(calltime() + register_expires).c_str()) + ",'" + //mexpires_at
+				regexpires + "', " +
+				sqlEscapeString(a_ua) + ")";
+			//sqlDb->query(query);
+			pthread_mutex_lock(&mysqlquery_lock);
+			mysqlquery.push(query);
+			pthread_mutex_unlock(&mysqlquery_lock);
+#endif
+			// stored procedure
+
+/*
+DELIMITER ~ ;
+DROP FUNCTION IF EXISTS getIdOrInsertUA ~
+CREATE FUNCTION getIdOrInsertUA(val VARCHAR(255)) RETURNS INT DETERMINISTIC
+BEGIN
+DECLARE _ID INT;
+SET _ID = (SELECT id FROM cdr_ua WHERE ua = val);
+IF ( _ID )
+THEN
+	RETURN _ID;
+ELSE 
+	INSERT INTO cdr_ua SET ua = val;
+	RETURN LAST_INSERT_ID();
+END IF;
+END~
+DELIMITER ; ~
+
+DELIMITER ~ ;
+DROP PROCEDURE IF EXISTS PROCESS_SIP_REGISTER ~
+CREATE PROCEDURE PROCESS_SIP_REGISTER(IN calltime VARCHAR(32), IN caller VARCHAR(64), IN callername VARCHAR(64), IN caller_domain VARCHAR(64), IN called VARCHAR(64), IN called_domain VARCHAR(64), IN sipcallerip INT UNSIGNED, sipcalledip INT UNSIGNED, contact_num VARCHAR(64), IN contact_domain VARCHAR(64), IN digest_username VARCHAR(255), IN digest_realm VARCHAR(255), IN regstate INT, mexpires_at VARCHAR(128), IN register_expires INT, IN cdr_ua VARCHAR(255))
+BEGIN
+DECLARE _ID INT;
+DECLARE _state INT;
+DECLARE _expires_at INT UNSIGNED;
+DECLARE _expired INT;
+SELECT ID, state, expires_at, (UNIX_TIMESTAMP(expires_at) < UNIX_TIMESTAMP(calltime)) AS expired INTO _ID, _state, _expires_at, _expired FROM register WHERE to_num = called AND to_domain = called_domain AND digestusername = digest_username ORDER BY ID DESC LIMIT 1;
+IF ( _ID )
+THEN
+	SET sql_log_bin = 0;
+	DELETE FROM register WHERE ID = _ID;
+	SET sql_log_bin = 1;
+	IF ( _expired > 0 ) THEN
+		INSERT INTO `register_state` SET `created_at` = _expires_at, `sipcallerip` = sipcallerip, `sipcalledip` = sipcalledip, `from_num` = caller, `to_num` = called, `to_domain` = called_domain, `contact_num` = contact_num, `contact_domain` = contact_domain, `digestusername` = digest_username, `expires` = register_expires, state = 5, ua_id = getIdOrInsertUA(cdr_ua);
+	END IF;
+	IF ( _state <> regstate AND register_expires = 0)
+	THEN
+		INSERT INTO `register_state` SET `created_at` = calltime, `sipcallerip` = sipcallerip, `sipcalledip` = sipcalledip, `from_num` = caller, `to_num` = called, `to_domain` = called_domain, `contact_num` = contact_num, `contact_domain` = contact_domain, `digestusername` = digest_username, `expires` = register_expires, state = regstate, ua_id = getIdOrInsertUA(cdr_ua);
+	END IF;
+ELSE
+	INSERT INTO `register_state` SET `created_at` = calltime, `sipcallerip` = sipcallerip, `sipcalledip` = sipcalledip, `from_num` = caller, `to_num` = called, `to_domain` = called_domain, `contact_num` = contact_num, `contact_domain` = contact_domain, `digestusername` = digest_username, `expires` = register_expires, state = regstate, ua_id = getIdOrInsertUA(cdr_ua);
+END IF;
+IF ( register_expires > 0 )
+THEN
+	INSERT INTO `register` SET `calldate` = calltime, `sipcallerip` = sipcallerip, `sipcalledip` = sipcalledip, `from_num` = caller, `from_name` = callername, `from_domain` = caller_domain, `to_num` = called, `to_domain` = called_domain, `contact_num` = contact_num, `contact_domain` = contact_domain, `digestusername` = digest_username, `digestrealm` = digest_realm, `expires` = register_expires, state = regstate, ua_id = getIdOrInsertUA(cdr_ua), `expires_at` = mexpires_at;
+END IF;
+END~
+DELIMITER ; ~
+*/
+
+#if 0
+
 			query = "SELECT ID, state, UNIX_TIMESTAMP(expires_at) AS expires_at, (UNIX_TIMESTAMP(expires_at) < UNIX_TIMESTAMP(" + sqlEscapeString(sqlDateTimeString(calltime())) + ")) AS expired FROM " + register_table + " WHERE to_num = " + sqlEscapeString(called) + " AND to_domain = " + sqlEscapeString(called_domain) + " AND digestusername = " + sqlEscapeString(digest_username) + " ORDER BY ID DESC LIMIT 1";
 //			if(verbosity > 2) cout << query << "\n";
 			{
@@ -2072,6 +2162,7 @@ Call::saveRegisterToDb() {
 				return res;
 			}
 			}
+#endif
 			break;
 		case 2:
 			// REGISTER failed. Check if there is already in register_failed table failed register within last hour 

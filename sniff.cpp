@@ -766,6 +766,7 @@ Call *new_invite_register(int sip_method, char *data, int datalen, struct pcap_p
 	s = gettag(data, datalen, "\nCSeq:", &l);
 	if(l && l < 32) {
 		memcpy(call->invitecseq, s, l);
+		call->unrepliedinvite++;
 		call->invitecseq[l] = '\0';
 		if(verbosity > 2)
 			syslog(LOG_NOTICE, "Seen invite, CSeq: %s\n", call->invitecseq);
@@ -1190,6 +1191,20 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 
 			{
 
+			char *cseq = NULL;
+			long unsigned int cseqlen = 0;
+			cseq = gettag(data, datalen, "\nCSeq:", &cseqlen);
+			if(cseq && cseqlen < 32) {
+				if(memmem(call->invitecseq, strlen(call->invitecseq), cseq, cseqlen)) {
+					if(sip_method == INVITE) {
+						call->unrepliedinvite++;
+					} else if(call->unrepliedinvite > 0){
+						call->unrepliedinvite--;
+					}
+					//syslog(LOG_NOTICE, "[%s] unrepliedinvite--\n", call->call_id);
+				}
+			}
+
 			if(opt_norecord_header) {
 				s = gettag(data, datalen, "\nX-VoipMonitor-norecord:", &l);
 				if(l && l < 33) {
@@ -1223,9 +1238,8 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 				}
 
 				//check and save CSeq for later to compare with OK 
-				s = gettag(data, datalen, "\nCSeq:", &l);
-				if(l && l < 32) {
-					memcpy(call->invitecseq, s, l);
+				if(cseq && cseqlen < 32) {
+					memcpy(call->invitecseq, cseq, cseqlen);
 					call->invitecseq[l] = '\0';
 					if(verbosity > 2)
 						syslog(LOG_NOTICE, "Seen INVITE, CSeq: %s\n", call->invitecseq);
@@ -1240,18 +1254,16 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 				}
 
 				//check and save CSeq for later to compare with OK 
-				s = gettag(data, datalen, "\nCSeq:", &l);
-				if(l && l < 32) {
-					memcpy(call->invitecseq, s, l);
+				if(cseq && cseqlen < 32) {
+					memcpy(call->invitecseq, cseq, cseqlen);
 					call->invitecseq[l] = '\0';
 					if(verbosity > 2)
 						syslog(LOG_NOTICE, "Seen MEESAGE, CSeq: %s\n", call->invitecseq);
 				}
 			} else if(sip_method == BYE) {
 				//check and save CSeq for later to compare with OK 
-				s = gettag(data, datalen, "\nCSeq:", &l);
-				if(l && l < 32) {
-					memcpy(call->byecseq, s, l);
+				if(cseq && cseqlen < 32) {
+					memcpy(call->byecseq, cseq, cseqlen);
 					call->byecseq[l] = '\0';
 					call->seenbye = true;
 					if(call->listening_worker_run) {
@@ -1273,15 +1285,14 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 				}
 
 				// if it is OK check for BYE
-				s = gettag(data, datalen, "\nCSeq:", &l);
-				if(l) {
+				if(cseq && cseqlen < 32) {
 					if(verbosity > 2) {
 						char a = data[datalen - 1];
 						data[datalen - 1] = 0;
 						syslog(LOG_NOTICE, "Cseq: %s\n", data);
 						data[datalen - 1] = a;
 					}
-					if(strncmp(s, call->byecseq, l) == 0) {
+					if(strncmp(cseq, call->byecseq, cseqlen) == 0) {
 						// terminate successfully acked call, put it into mysql CDR queue and remove it from calltable 
 
 						call->seenbyeandok = true;
@@ -1310,7 +1321,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 							syslog(LOG_NOTICE, "Call closed\n");
 */
 						return call;
-					} else if(strncmp(s, call->invitecseq, l) == 0) {
+					} else if(strncmp(cseq, call->invitecseq, cseqlen) == 0) {
 						call->seeninviteok = true;
 						if(!call->connect_time) {
 							call->connect_time = header->ts.tv_sec;
