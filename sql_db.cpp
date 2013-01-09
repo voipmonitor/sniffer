@@ -706,6 +706,7 @@ void SqlDb_mysql::createSchema() {
   `daddr` int(32) unsigned NOT NULL,\
   `proto` smallint(4) unsigned NOT NULL,\
   `octects` mediumint(32) unsigned NOT NULL,\
+  `numpackets` mediumint(32) unsigned NOT NULL,\
   `interval` varchar(255) NULL DEFAULT NULL,\
   KEY `saddr` (`saddr`),\
   KEY `daddr` (`daddr`),\
@@ -721,6 +722,7 @@ void SqlDb_mysql::createSchema() {
   `dport` smallint(4) unsigned NOT NULL,\
   `proto` smallint(4) unsigned NOT NULL,\
   `octects` mediumint(32) unsigned NOT NULL,\
+  `numpackets` mediumint(32) unsigned NOT NULL,\
   `interval` varchar(255) NULL DEFAULT NULL,\
   KEY `saddr` (`saddr`),\
   KEY `daddr` (`daddr`),\
