@@ -55,7 +55,7 @@ typedef struct {
 	char iscaller;
 	char is_rtcp;
 	struct pcap_pkthdr header;
-	char free;
+	volatile char free;
 } rtp_packet;
 
 typedef struct {
@@ -90,7 +90,7 @@ typedef struct {
 	struct pcap_pkthdr header;
 	u_char packet[MAXPACKETLENQRING];
 	int offset;
-	char free;
+	volatile char free;
 } pcap_packet;
 #endif
 
