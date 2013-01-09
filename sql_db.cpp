@@ -719,12 +719,14 @@ void SqlDb_mysql::createSchema() {
   `daddr` int(32) unsigned NOT NULL,\
   `sport` smallint(4) unsigned NOT NULL,\
   `dport` smallint(4) unsigned NOT NULL,\
+  `proto` smallint(4) unsigned NOT NULL,\
   `octects` mediumint(32) unsigned NOT NULL,\
   `interval` varchar(255) NULL DEFAULT NULL,\
   KEY `saddr` (`saddr`),\
   KEY `daddr` (`daddr`),\
   KEY `sport` (`sport`),\
   KEY `dport` (`dport`),\
+  KEY `proto` (`dport`),\
   KEY `interval` (`interval`)\
 ) ENGINE=InnoDB DEFAULT CHARSET=latin1 ROW_FORMAT=COMPRESSED;";
 
