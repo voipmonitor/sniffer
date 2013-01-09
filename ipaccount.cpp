@@ -281,7 +281,7 @@ void add_octects_ip(time_t timestamp, unsigned int saddr, unsigned int daddr, in
 
 }
 
-void add_octects_ipport(time_t timestamp, unsigned int saddr, unsigned int daddr, int source, int dest, int proto, int packetlen, int proto) {
+void add_octects_ipport(time_t timestamp, unsigned int saddr, unsigned int daddr, int source, int dest, int proto, int packetlen) {
 	string key;
 	char buf[64];
 	octects_t *ports;
@@ -327,13 +327,13 @@ void ipaccount(time_t timestamp, struct iphdr *header_ip, int packetlen){
 		header_udp = (struct udphdr2 *) ((char *) header_ip + sizeof(*header_ip));
 
 		if(ipaccountportmatrix[htons(header_udp->source)] || ipaccountportmatrix[htons(header_udp->dest)]) {
-			add_octects_ipport(timestamp, header_ip->saddr, header_ip->daddr, htons(header_udp->source), htons(header_udp->dest), IPPROTO_TCP, packetlen, header_ip->protocol);
+			add_octects_ipport(timestamp, header_ip->saddr, header_ip->daddr, htons(header_udp->source), htons(header_udp->dest), IPPROTO_TCP, packetlen);
 		}
 	} else if (header_ip->protocol == IPPROTO_TCP) {
 		header_tcp = (struct tcphdr *) ((char *) header_ip + sizeof(*header_ip));
 
 		if(ipaccountportmatrix[htons(header_tcp->source)] || ipaccountportmatrix[htons(header_tcp->dest)]) {
-			add_octects_ipport(timestamp, header_ip->saddr, header_ip->daddr, htons(header_tcp->source), htons(header_tcp->dest), IPPROTO_TCP, packetlen, header_ip->protocol);
+			add_octects_ipport(timestamp, header_ip->saddr, header_ip->daddr, htons(header_tcp->source), htons(header_tcp->dest), IPPROTO_TCP, packetlen);
 		}
 	} else {
 	}
