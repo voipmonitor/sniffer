@@ -1,3 +1,7 @@
+version 6.0.1 10.1.2013
+
+- fix critical bug which cuased not closing calls in memory (racecondition in threads)
+
 version 6.0 5.1.2013
 ====================
 
