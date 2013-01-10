@@ -462,6 +462,8 @@ int mimeSubtypeToInt(char *mimeSubtype) {
 	       return PAYLOAD_SPEEX;
        else if(strcmp(mimeSubtype,"SILK") == 0)
 	       return PAYLOAD_SILK;
+       else if(strcmp(mimeSubtype,"ISAC") == 0)
+	       return PAYLOAD_ISAC;
        else
 	       return 0;
 }
@@ -501,6 +503,15 @@ int get_rtpmap_from_sdp(char *sdp_text, unsigned long len, int *rtpmap){
 						break;
 					case 24000:
 						mtype = PAYLOAD_SILK24;
+						break;
+				}
+			} else if(mtype == PAYLOAD_ISAC) {
+				switch(rate) {
+					case 16000:
+						mtype = PAYLOAD_ISAC16;
+						break;
+					case 32000:
+						mtype = PAYLOAD_ISAC32;
 						break;
 				}
 			}
@@ -1458,6 +1469,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 					s = gettag(data,datalen,"\nUser-Agent:", &l);
 					// store RTP stream
 					get_rtpmap_from_sdp(tmp + 1, datalen - (tmp + 1 - data), rtpmap);
+					printf("addipport [%u], port[%u]\n", tmp_addr, tmp_port);
 					if(call->add_ip_port(tmp_addr, tmp_port, s, l, call->sipcallerip != saddr, rtpmap) != -1){
 						calltable->hashAdd(tmp_addr, tmp_port, call, call->sipcallerip != saddr, 0);
 						//calltable->mapAdd(tmp_addr, tmp_port, call, call->sipcallerip != saddr, 0);

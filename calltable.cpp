@@ -804,6 +804,18 @@ Call::convertRawToWav() {
 				samplerate = 24000;
 				system(cmd);
 				break;
+			case PAYLOAD_ISAC16:
+				snprintf(cmd, 4092, "voipmonitor-isac \"%s\" \"%s\" 16000", raw, wav);
+				samplerate = 16000;
+				if(verbosity > 1) syslog(LOG_ERR, "Converting ISAC16 to WAV.\n");
+				system(cmd);
+				break;
+			case PAYLOAD_ISAC32:
+				snprintf(cmd, 4092, "voipmonitor-isac \"%s\" \"%s\" 32000", raw, wav);
+				samplerate = 32000;
+				if(verbosity > 1) syslog(LOG_ERR, "Converting ISAC32 to WAV.\n");
+				system(cmd);
+				break;
 			default:
 				syslog(LOG_ERR, "Call [%s] cannot be converted to WAV, unknown payloadtype [%d]\n", raw, payloadtype);
 			}
