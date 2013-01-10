@@ -1469,7 +1469,6 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 					s = gettag(data,datalen,"\nUser-Agent:", &l);
 					// store RTP stream
 					get_rtpmap_from_sdp(tmp + 1, datalen - (tmp + 1 - data), rtpmap);
-					printf("addipport [%u], port[%u]\n", tmp_addr, tmp_port);
 					if(call->add_ip_port(tmp_addr, tmp_port, s, l, call->sipcallerip != saddr, rtpmap) != -1){
 						calltable->hashAdd(tmp_addr, tmp_port, call, call->sipcallerip != saddr, 0);
 						//calltable->mapAdd(tmp_addr, tmp_port, call, call->sipcallerip != saddr, 0);
