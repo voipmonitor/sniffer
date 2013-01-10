@@ -460,34 +460,54 @@ int mimeSubtypeToInt(char *mimeSubtype) {
 	       return PAYLOAD_SPEEX;
        else if(strcmp(mimeSubtype,"SPEEX") == 0)
 	       return PAYLOAD_SPEEX;
+       else if(strcmp(mimeSubtype,"SILK") == 0)
+	       return PAYLOAD_SILK;
        else
 	       return 0;
 }
 
 int get_rtpmap_from_sdp(char *sdp_text, unsigned long len, int *rtpmap){
-	 unsigned long l = 0;
-	 char *s, *z;
-	 int codec;
-	 char mimeSubtype[128];
-	 int i = 0;
+	unsigned long l = 0;
+	char *s, *z;
+	int codec;
+	char mimeSubtype[128];
+	int i = 0;
+	int rate = 0;
 
-	 s = gettag(sdp_text, len, "m=audio ", &l);
-	 if(!l) {
-		 return 0;
-	 }
-	 do {
-		 s = gettag(s, len - (s - sdp_text), "a=rtpmap:", &l);
-		 if(l && (z = strchr(s, '\r'))) {
-			 *z = '\0';
-		 } else {
-			 break;
-		 }
-		 if (sscanf(s, "%30u %[^/]/", &codec, mimeSubtype) == 2) {
-			 // store payload type and its codec into one integer with 1000 offset
-			 rtpmap[i] = mimeSubtypeToInt(mimeSubtype) + 1000*codec;
-			 //printf("PAYLOAD: rtpmap:%d codec:%d, mimeSubtype [%d] [%s]\n", rtpmap[i], codec, mimeSubtypeToInt(mimeSubtype), mimeSubtype);
-		 }
-		 // return '\r' into sdp_text
+	s = gettag(sdp_text, len, "m=audio ", &l);
+	if(!l) {
+		return 0;
+	}
+	do {
+		s = gettag(s, len - (s - sdp_text), "a=rtpmap:", &l);
+		if(l && (z = strchr(s, '\r'))) {
+			*z = '\0';
+		} else {
+			break;
+		}
+		if (sscanf(s, "%30u %[^/]/%d", &codec, mimeSubtype, &rate) == 3) {
+			// store payload type and its codec into one integer with 1000 offset
+			int mtype = mimeSubtypeToInt(mimeSubtype);
+			if(mtype == PAYLOAD_SILK) {
+				switch(rate) {
+					case 8000:
+						mtype = PAYLOAD_SILK8;
+						break;
+					case 12000:
+						mtype = PAYLOAD_SILK12;
+						break;
+					case 16000:
+						mtype = PAYLOAD_SILK16;
+						break;
+					case 24000:
+						mtype = PAYLOAD_SILK24;
+						break;
+				}
+			}
+			rtpmap[i] = mtype + 1000*codec;
+			//printf("PAYLOAD: rtpmap[%d]:%d codec:%d, mimeSubtype [%d] [%s]\n", i, rtpmap[i], codec, mtype, mimeSubtype);
+		}
+		// return '\r' into sdp_text
 		*z = '\r';
 		i++;
 	 } while(l);
@@ -1438,7 +1458,6 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 					s = gettag(data,datalen,"\nUser-Agent:", &l);
 					// store RTP stream
 					get_rtpmap_from_sdp(tmp + 1, datalen - (tmp + 1 - data), rtpmap);
-
 					if(call->add_ip_port(tmp_addr, tmp_port, s, l, call->sipcallerip != saddr, rtpmap) != -1){
 						calltable->hashAdd(tmp_addr, tmp_port, call, call->sipcallerip != saddr, 0);
 						//calltable->mapAdd(tmp_addr, tmp_port, call, call->sipcallerip != saddr, 0);
@@ -1615,7 +1634,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 			}
 			snprintf(s, 4092, "%u-%x", (unsigned int)time(NULL), rtp.getSSRC());
 
-			printf("ssrc [%x] ver[%d] src[%u] dst[%u]\n", rtp.getSSRC(), rtp.getVersion(), source, dest);
+			//printf("ssrc [%x] ver[%d] src[%u] dst[%u]\n", rtp.getSSRC(), rtp.getVersion(), source, dest);
 
 			call = calltable->add(s, strlen(s), header->ts.tv_sec, saddr, source);
 			call->set_first_packet_time(header->ts.tv_sec);
@@ -1861,7 +1880,7 @@ void *pcap_read_thread_func(void *arg) {
 		if(qring[readit % qringmax].free == 1) {
 			// no packet to read 
 			if(terminating || readend) {
-				printf("packets: [%u]\n", packets);
+				//printf("packets: [%u]\n", packets);
 				return NULL;
 			}
 			usleep(10000);
@@ -1930,7 +1949,7 @@ void *pcap_read_thread_func(void *arg) {
 		free(pp);
 #endif
 	}
-	printf("packets: [%u]\n", packets);
+	//printf("packets: [%u]\n", packets);
 
 	return NULL;
 }
@@ -2129,7 +2148,6 @@ void readdump_libpcap(pcap_t *handle) {
 				// no room left, loop until there is room
 				usleep(100);
 			}
-//			printf("test\n");
 			memcpy(&qring[writeit % qringmax].header, header, sizeof(struct pcap_pkthdr));
 			memcpy(&qring[writeit % qringmax].packet, packet, header->len);
 			qring[writeit % qringmax].offset = offset;

@@ -1,11 +1,12 @@
 #include "format_wav.h"
 #include "format_slinear.h"
 
-int wav_write_header(FILE *f)
+// sample rate 8000, 12000, 16000, 24000
+int wav_write_header(FILE *f, int samplerate)
 {
-	unsigned int hz=htoll(8000);
-	unsigned int bhz = htoll(16000*2);
-	unsigned int hs = htoll(16);
+	unsigned int hz=htoll(samplerate);
+	unsigned int bhz = htoll(samplerate*2*2); // 2 bytes per sample and 2 channels
+	unsigned int hs = htoll(16);	// 16bit
 	unsigned short fmt = htols(1);
 	unsigned short chans = htols(2);
 	unsigned short bysam = htols(2*2);
@@ -105,7 +106,7 @@ int wav_update_header(FILE *f)
 	return 0;
 }
 
-int wav_mix(char *in1, char *in2, char *out) {
+int wav_mix(char *in1, char *in2, char *out, int samplerate) {
 	FILE *f_in1 = NULL;
 	FILE *f_in2 = NULL;
 	FILE *f_out = NULL;
@@ -146,7 +147,7 @@ int wav_mix(char *in1, char *in2, char *out) {
 	char f_out_buffer[32768];
 	setvbuf(f_out, f_out_buffer, _IOFBF, 32768);
 
-	wav_write_header(f_out);
+	wav_write_header(f_out, samplerate);
 
 	fseek(f_in1, 0, SEEK_END);
 	file_size1 = ftell(f_in1);

@@ -306,7 +306,8 @@ Call::add_ip_port(in_addr_t addr, unsigned short port, char *ua, unsigned long u
 
 	this->addr[ipport_n] = addr;
 	this->port[ipport_n] = port;
-	memcpy(this->rtpmap[ipport_n], rtpmap, MAX_RTPMAP * sizeof(int));
+	//memcpy(this->rtpmap[ipport_n], rtpmap, MAX_RTPMAP * sizeof(int));
+	memcpy(this->rtpmap[iscaller], rtpmap, MAX_RTPMAP * sizeof(int));
 	this->iscaller[ipport_n] = iscaller;
 	ipport_n++;
 	return 0;
@@ -427,10 +428,11 @@ Call::read_rtp(unsigned char* data, int datalen, struct pcap_pkthdr *header, u_i
 		}
 		rtp[ssrc_n]->gfileRAW = NULL;
 		sprintf(rtp[ssrc_n]->basefilename, "%s/%s.i%d", dirname(), get_fbasename_safe(), iscaller);
-		int i = get_index_by_ip_port(saddr, port);
-		if(i >= 0) {
-			memcpy(this->rtp[ssrc_n]->rtpmap, rtpmap[i], MAX_RTPMAP * sizeof(int));
-		}
+//		int i = get_index_by_ip_port(saddr, port);
+//		if(i >= 0) {
+			//memcpy(this->rtp[ssrc_n]->rtpmap, rtpmap[i], MAX_RTPMAP * sizeof(int));
+			memcpy(this->rtp[ssrc_n]->rtpmap, rtpmap[iscaller], MAX_RTPMAP * sizeof(int));
+//		}
 
 		rtp[ssrc_n]->read(data, datalen, header, saddr, seeninviteok);
 		this->rtp[ssrc_n]->ssrc = tmprtp.getSSRC();
@@ -720,6 +722,7 @@ Call::convertRawToWav() {
 	}
 
 	/* process all files in playlist for each direction */
+	int samplerate = 8000;
 	for(int i = 0; i <= 1; i++) {
 		if(i == 0 && adir == 0) {
 			continue;
@@ -777,19 +780,43 @@ Call::convertRawToWav() {
 				if(verbosity > 1) syslog(LOG_ERR, "Converting speex to WAV.\n");
 				system(cmd);
 				break;
+			case PAYLOAD_SILK8:
+				snprintf(cmd, 4092, "voipmonitor-silk \"%s\" \"%s\" 8000", raw, wav);
+				samplerate = 8000;
+				if(verbosity > 1) syslog(LOG_ERR, "Converting SILK8 to WAV.\n");
+				system(cmd);
+				break;
+			case PAYLOAD_SILK12:
+				snprintf(cmd, 4092, "voipmonitor-silk \"%s\" \"%s\" 12000", raw, wav);
+				samplerate = 12000;
+				if(verbosity > 1) syslog(LOG_ERR, "Converting SILK12 to WAV.\n");
+				system(cmd);
+				break;
+			case PAYLOAD_SILK16:
+				snprintf(cmd, 4092, "voipmonitor-silk \"%s\" \"%s\" 16000", raw, wav);
+				samplerate = 16000;
+				if(verbosity > 1) syslog(LOG_ERR, "Converting SILK16 to WAV.\n");
+				system(cmd);
+				break;
+			case PAYLOAD_SILK24:
+				snprintf(cmd, 4092, "voipmonitor-silk \"%s\" \"%s\" 24000", raw, wav);
+				if(verbosity > 1) syslog(LOG_ERR, "Converting SILK16 to WAV.\n");
+				samplerate = 24000;
+				system(cmd);
+				break;
 			default:
 				syslog(LOG_ERR, "Call [%s] cannot be converted to WAV, unknown payloadtype [%d]\n", raw, payloadtype);
 			}
-			unlink(raw);
+//			unlink(raw);
 		}
 		fclose(pl);
-		unlink(rawInfo);
+//		unlink(rawInfo);
 	}
 
 	if(adir == 1 && bdir == 1) {
 		switch(opt_audio_format) {
 		case FORMAT_WAV:
-			wav_mix(wav0, wav1, out);
+			wav_mix(wav0, wav1, out, samplerate);
 			break;
 		case FORMAT_OGG:
 			ogg_mix(wav0, wav1, out);
@@ -800,7 +827,7 @@ Call::convertRawToWav() {
 	} else if(adir == 1) {
 		switch(opt_audio_format) {
 		case FORMAT_WAV:
-			wav_mix(wav0, NULL, out);
+			wav_mix(wav0, NULL, out, samplerate);
 			break;
 		case FORMAT_OGG:
 			ogg_mix(wav0, NULL, out);
@@ -810,7 +837,7 @@ Call::convertRawToWav() {
 	} else if(bdir == 1) {
 		switch(opt_audio_format) {
 		case FORMAT_WAV:
-			wav_mix(wav1, NULL, out);
+			wav_mix(wav1, NULL, out, samplerate);
 			break;
 		case FORMAT_OGG:
 			ogg_mix(wav1, NULL, out);
@@ -946,7 +973,7 @@ Call::buildQuery(stringstream *query) {
 					<< ", " << rtp[indexes[i]]->stats.lost
 					<< ", " << int(ceil(rtp[indexes[i]]->stats.avgjitter))
 					<< ", " << int(ceil(rtp[indexes[i]]->stats.maxjitter))
-					<< ", " << rtp[indexes[i]]->payload; 
+					<< ", " << rtp[indexes[i]]->codec; 
 
 				/* build a_sl1 - b_sl10 fields */
 				for(int j = 1; j < 11; j++) {
@@ -981,7 +1008,7 @@ Call::buildQuery(stringstream *query) {
 					<< ", " << c << "_mos_f1";
 				values 	<< ", " << lossr
 					<< ", " << burstr
-					<< ", " << calculate_mos(lossr, burstr, rtp[indexes[i]]->payload);
+					<< ", " << calculate_mos(lossr, burstr, rtp[indexes[i]]->codec);
 
 				/* Jitterbuffer MOS statistics */
 				burstr_calculate(rtp[indexes[i]]->channel_fix2, rtp[indexes[i]]->stats.received, &burstr, &lossr);
@@ -990,7 +1017,7 @@ Call::buildQuery(stringstream *query) {
 					<< ", " << c << "_mos_f2";
 				values 	<< ", " << lossr
 					<< ", " << burstr
-					<< ", " << calculate_mos(lossr, burstr, rtp[indexes[i]]->payload);
+					<< ", " << calculate_mos(lossr, burstr, rtp[indexes[i]]->codec);
 
 				burstr_calculate(rtp[indexes[i]]->channel_adapt, rtp[indexes[i]]->stats.received, &burstr, &lossr);
 				fields 	<< ", " << c << "_lossr_adapt"
@@ -998,7 +1025,7 @@ Call::buildQuery(stringstream *query) {
 					<< ", " << c << "_mos_adapt";
 				values	<< ", " << lossr
 					<< ", " << burstr
-					<< ", " << calculate_mos(lossr, burstr, rtp[indexes[i]]->payload);
+					<< ", " << calculate_mos(lossr, burstr, rtp[indexes[i]]->codec);
 
 				if(rtp[indexes[i]]->rtcp.counter) {
 					fields 	<< ", " << c << "_rtcp_loss"
@@ -1105,7 +1132,7 @@ Call::buildQuery(stringstream *query) {
 				*query << " , " << c << "_lost = " << rtp[indexes[i]]->stats.lost;
 				*query << " , " << c << "_avgjitter = " << int(ceil(rtp[indexes[i]]->stats.avgjitter));
 				*query << " , " << c << "_maxjitter = " << int(ceil(rtp[indexes[i]]->stats.maxjitter)); 
-				*query << " , " << c << "_payload = " << rtp[indexes[i]]->payload; 
+				*query << " , " << c << "_payload = " << rtp[indexes[i]]->codec; 
 
 				/* build a_sl1 - b_sl10 fields */
 				for(int j = 1; j < 11; j++) {
@@ -1128,18 +1155,18 @@ Call::buildQuery(stringstream *query) {
 				burstr_calculate(rtp[indexes[i]]->channel_fix1, rtp[indexes[i]]->stats.received, &burstr, &lossr);
 				*query << " , " << c << "_lossr_f1 = " << lossr;
 				*query << " , " << c << "_burstr_f1 = " << burstr;
-				*query << " , " << c << "_mos_f1 = " << calculate_mos(lossr, burstr, rtp[indexes[i]]->payload);
+				*query << " , " << c << "_mos_f1 = " << calculate_mos(lossr, burstr, rtp[indexes[i]]->codec);
 
 				/* Jitterbuffer MOS statistics */
 				burstr_calculate(rtp[indexes[i]]->channel_fix2, rtp[indexes[i]]->stats.received, &burstr, &lossr);
 				*query << " , " << c << "_lossr_f2 = " << lossr;
 				*query << " , " << c << "_burstr_f2 = " << burstr;
-				*query << " , " << c << "_mos_f2 = " << calculate_mos(lossr, burstr, rtp[indexes[i]]->payload);
+				*query << " , " << c << "_mos_f2 = " << calculate_mos(lossr, burstr, rtp[indexes[i]]->codec);
 
 				burstr_calculate(rtp[indexes[i]]->channel_adapt, rtp[indexes[i]]->stats.received, &burstr, &lossr);
 				*query << " , " << c << "_lossr_adapt = " << lossr;
 				*query << " , " << c << "_burstr_adapt = " << burstr;
-				*query << " , " << c << "_mos_adapt = " << calculate_mos(lossr, burstr, rtp[indexes[i]]->payload);
+				*query << " , " << c << "_mos_adapt = " << calculate_mos(lossr, burstr, rtp[indexes[i]]->codec);
 
 				if(rtp[indexes[i]]->rtcp.counter) {
 					*query << " , " << c << "_rtcp_loss = " << rtp[indexes[i]]->rtcp.loss;
@@ -1430,7 +1457,7 @@ Call::getKeyValCDRtext() {
 			jitter_mult10[i] = int(ceil(rtp[indexes[i]]->stats.avgjitter)) * 10; // !!!
 			cdr.add(jitter_mult10[i], c+"_avgjitter_mult10");
 			cdr.add(int(ceil(rtp[indexes[i]]->stats.maxjitter)), c+"_maxjitter");
-			payload[i] = rtp[indexes[i]]->payload;
+			payload[i] = rtp[indexes[i]]->codec;
 			cdr.add(payload[i], c+"_payload");
 			
 			// build a_sl1 - b_sl10 fields
@@ -1474,7 +1501,7 @@ Call::getKeyValCDRtext() {
 			burstr_calculate(rtp[indexes[i]]->channel_fix1, rtp[indexes[i]]->stats.received, &burstr, &lossr);
 			//cdr.add(lossr, c+"_lossr_f1");
 			//cdr.add(burstr, c+"_burstr_f1");
-			int mos_f1_mult10 = (int)round(calculate_mos(lossr, burstr, rtp[indexes[i]]->payload) * 10);
+			int mos_f1_mult10 = (int)round(calculate_mos(lossr, burstr, rtp[indexes[i]]->codec) * 10);
 			cdr.add(mos_f1_mult10, c+"_mos_f1_mult10");
 			if(mos_f1_mult10) {
 				mos_min_mult10[i] = mos_f1_mult10;
@@ -1484,7 +1511,7 @@ Call::getKeyValCDRtext() {
 			burstr_calculate(rtp[indexes[i]]->channel_fix2, rtp[indexes[i]]->stats.received, &burstr, &lossr);
 			//cdr.add(lossr, c+"_lossr_f2");
 			//cdr.add(burstr, c+"_burstr_f2");
-			int mos_f2_mult10 = (int)round(calculate_mos(lossr, burstr, rtp[indexes[i]]->payload) * 10);
+			int mos_f2_mult10 = (int)round(calculate_mos(lossr, burstr, rtp[indexes[i]]->codec) * 10);
 			cdr.add(mos_f2_mult10, c+"_mos_f2_mult10");
 			if(mos_f2_mult10 && (mos_min_mult10[i] < 0 || mos_f2_mult10 < mos_min_mult10[i])) {
 				mos_min_mult10[i] = mos_f2_mult10;
@@ -1493,7 +1520,7 @@ Call::getKeyValCDRtext() {
 			burstr_calculate(rtp[indexes[i]]->channel_adapt, rtp[indexes[i]]->stats.received, &burstr, &lossr);
 			//cdr.add(lossr, c+"_lossr_adapt");
 			//cdr.add(burstr, c+"_burstr_adapt");
-			int mos_adapt_mult10 = (int)round(calculate_mos(lossr, burstr, rtp[indexes[i]]->payload) * 10);
+			int mos_adapt_mult10 = (int)round(calculate_mos(lossr, burstr, rtp[indexes[i]]->codec) * 10);
 			cdr.add(mos_adapt_mult10, c+"_mos_adapt_mult10");
 			if(mos_adapt_mult10 && (mos_min_mult10[i] < 0 || mos_adapt_mult10 < mos_min_mult10[i])) {
 				mos_min_mult10[i] = mos_adapt_mult10;
@@ -1723,7 +1750,7 @@ Call::saveToDb() {
 				jitter_mult10[i] = int(ceil(rtp[indexes[i]]->stats.avgjitter)) * 10; // !!!
 				cdr.add(jitter_mult10[i], c+"_avgjitter_mult10");
 				cdr.add(int(ceil(rtp[indexes[i]]->stats.maxjitter)), c+"_maxjitter");
-				payload[i] = rtp[indexes[i]]->payload;
+				payload[i] = rtp[indexes[i]]->codec;
 				cdr.add(payload[i], c+"_payload");
 				
 				// build a_sl1 - b_sl10 fields
@@ -1767,7 +1794,7 @@ Call::saveToDb() {
 				burstr_calculate(rtp[indexes[i]]->channel_fix1, rtp[indexes[i]]->stats.received, &burstr, &lossr);
 				//cdr.add(lossr, c+"_lossr_f1");
 				//cdr.add(burstr, c+"_burstr_f1");
-				int mos_f1_mult10 = (int)round(calculate_mos(lossr, burstr, rtp[indexes[i]]->payload) * 10);
+				int mos_f1_mult10 = (int)round(calculate_mos(lossr, burstr, rtp[indexes[i]]->codec) * 10);
 				cdr.add(mos_f1_mult10, c+"_mos_f1_mult10");
 				if(mos_f1_mult10) {
 					mos_min_mult10[i] = mos_f1_mult10;
@@ -1777,7 +1804,7 @@ Call::saveToDb() {
 				burstr_calculate(rtp[indexes[i]]->channel_fix2, rtp[indexes[i]]->stats.received, &burstr, &lossr);
 				//cdr.add(lossr, c+"_lossr_f2");
 				//cdr.add(burstr, c+"_burstr_f2");
-				int mos_f2_mult10 = (int)round(calculate_mos(lossr, burstr, rtp[indexes[i]]->payload) * 10);
+				int mos_f2_mult10 = (int)round(calculate_mos(lossr, burstr, rtp[indexes[i]]->codec) * 10);
 				cdr.add(mos_f2_mult10, c+"_mos_f2_mult10");
 				if(mos_f2_mult10 && (mos_min_mult10[i] < 0 || mos_f2_mult10 < mos_min_mult10[i])) {
 					mos_min_mult10[i] = mos_f2_mult10;
@@ -1786,7 +1813,7 @@ Call::saveToDb() {
 				burstr_calculate(rtp[indexes[i]]->channel_adapt, rtp[indexes[i]]->stats.received, &burstr, &lossr);
 				//cdr.add(lossr, c+"_lossr_adapt");
 				//cdr.add(burstr, c+"_burstr_adapt");
-				int mos_adapt_mult10 = (int)round(calculate_mos(lossr, burstr, rtp[indexes[i]]->payload) * 10);
+				int mos_adapt_mult10 = (int)round(calculate_mos(lossr, burstr, rtp[indexes[i]]->codec) * 10);
 				cdr.add(mos_adapt_mult10, c+"_mos_adapt_mult10");
 				if(mos_adapt_mult10 && (mos_min_mult10[i] < 0 || mos_adapt_mult10 < mos_min_mult10[i])) {
 					mos_min_mult10[i] = mos_adapt_mult10;
