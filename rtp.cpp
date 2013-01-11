@@ -76,6 +76,7 @@ timeval_subtract (struct timeval *result, struct timeval x, struct timeval y) {
 
 /* constructor */
 RTP::RTP() {
+	samplerate = 8000;
 	first = true;
 	s = new source;
 	memset(s, 0, sizeof(source));
@@ -153,6 +154,9 @@ RTP::~RTP() {
 	if(packetization)
 		RTP::dump();
 	*/
+	if(verbosity > 9) {
+		RTP::dump();
+	}
 
 	if(gfileRAW) {
 		jitterbuffer_fixed_flush(channel_record);
@@ -416,7 +420,7 @@ RTP::jitterbuffer(struct ast_channel *channel, int savePayload) {
 	 * be ideally equel to zero. Negative values mean that packet arrives earlier and positive 
 	 * values indicates that packet was late 
 	 */
-	long double transit = (timeval_subtract(&tsdiff, header->ts, s->lastTimeRec) ? -timeval2micro(tsdiff)/1000.0 : timeval2micro(tsdiff)/1000.0) - (double)(getTimestamp() - s->lastTimeStamp)/8.0;
+	long double transit = (timeval_subtract(&tsdiff, header->ts, s->lastTimeRec) ? -timeval2micro(tsdiff)/1000.0 : timeval2micro(tsdiff)/1000.0) - (double)(getTimestamp() - s->lastTimeStamp)/(double)samplerate/1000;
 	
 	/* and now if there is bigger (lets say one second) timestamp difference (calculated from pakcet headers) 
 	 * between two last packets and transit time is equel or smaller than sequencems (with 200ms toleration), 
@@ -453,6 +457,8 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 	this->saddr =  saddr;
 
 	Call *owner = (Call*)call_owner;
+
+//	if(getSSRC() != 0x84a4eeea) return;
 
 	if(getVersion() != 2) {
 		return;
@@ -492,6 +498,23 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 			}
 		} else {
 			codec = curpayload;
+		}
+		switch(codec) {
+		case PAYLOAD_SILK12:
+			samplerate = 12000;
+			break;
+		case PAYLOAD_ISAC16:
+		case PAYLOAD_SILK16:
+			samplerate = 16000;
+			break;
+		case PAYLOAD_SILK24:
+			samplerate = 24000;
+			break;
+		case PAYLOAD_ISAC32:
+			samplerate = 32000;
+			break;
+		default: 
+			samplerate = 8000;
 		}
 
 		if(iscaller) {
@@ -786,7 +809,7 @@ RTP::update_stats() {
 	 * frame1.time - frame0.time */
 	tsdiff2 = timeval_subtract(&tsdiff, header->ts, s->lastTimeRec) ? -timeval2micro(tsdiff)/1000.0 : timeval2micro(tsdiff)/1000.0;
 
-	long double transit = tsdiff2 - (double)(getTimestamp() - s->lastTimeStamp)/8.0;
+	long double transit = tsdiff2 - (double)(getTimestamp() - s->lastTimeStamp)/((double)samplerate/1000.0);
 	
 	if(abs((int)transit) > 5000) {
 		/* timestamp skew, discard delay, it is possible that timestamp changed  */
@@ -975,7 +998,7 @@ void burstr_calculate(struct ast_channel *chan, u_int32_t received, double *burs
 void
 RTP::dump() {
 	int i;
-	printf("SSRC:%u\n", ssrc);
+	printf("SSRC:%x %u ssrc_index[%d]\n", ssrc, ssrc, ssrc_index);
 	printf("payload:%d\n", payload);
 	printf("src ip:%u\n", saddr);
 	printf("Packetization:%u\n", packetization);

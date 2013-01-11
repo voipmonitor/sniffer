@@ -679,7 +679,7 @@ void *manager_server(void *dummy) {
 			return 0;
 		}
 		if (client == -1) {
-			cerr << "Problem with accept client" <<endl;
+			//cerr << "Problem with accept client" <<endl;
 			return 0;
 		}
 		//cout << "New manager connect from: " << inet_ntoa((in_addr)clientInfo.sin_addr) << endl;

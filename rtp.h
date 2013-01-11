@@ -163,6 +163,8 @@ public:
 		unsigned int counter;
 	} rtcp;
 
+	unsigned int samplerate;
+
 	struct stats_t {
 		u_int32_t	d50;	//!< delay from 0 to 50
 		u_int32_t	d70;

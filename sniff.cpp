@@ -1491,13 +1491,27 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 							if(call->sipcallerip2 == saddr) {
 								iscalled = 1;
 							} else {
-								iscalled = 0;
+								// The IP address is different, check if the request matches one of the address from the first invite
+								if(call->sipcallerip2 == daddr) {
+									// SDP message is addressed to caller and announced IP/port in SDP will be from caller. Thus set called = 0;
+									iscalled = 0;
+								// src IP address of this SDP SIP message is different from the src/dst IP address used in the first INVITE. 
+								} else {
+									if(call->sipcallerip3 == 0) { 
+										call->sipcallerip3 = saddr;
+										call->sipcalledip3 = daddr;
+									}
+									if(call->sipcallerip3 == saddr) {
+										iscalled = 1;
+									} else {
+										iscalled = 0;
+									}
+								}
 							}
 						}
 					}
-
 					if(call->add_ip_port(tmp_addr, tmp_port, s, l, iscalled, rtpmap) != -1){
-						calltable->hashAdd(tmp_addr, tmp_port, call, call->sipcallerip != saddr, 0);
+						calltable->hashAdd(tmp_addr, tmp_port, call, iscalled, 0);
 						//calltable->mapAdd(tmp_addr, tmp_port, call, iscalled, 0);
 						if(opt_rtcp) {
 							calltable->hashAdd(tmp_addr, tmp_port + 1, call, iscalled, 1); //add rtcp
@@ -1509,7 +1523,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 					in_addr_t alias = 0;
 					if((alias = match_nat_aliases(tmp_addr)) != 0) {
 						if(call->add_ip_port(alias, tmp_port, s, l, iscalled, rtpmap) != -1) {
-							calltable->hashAdd(alias, tmp_port, call, call->sipcallerip != saddr, 0);
+							calltable->hashAdd(alias, tmp_port, call, iscalled, 0);
 							//calltable->mapAdd(alias, tmp_port, call, iscalled, 0);
 							if(opt_rtcp) {
 								calltable->hashAdd(alias, tmp_port + 1, call, iscalled, 1); //add rtcp
@@ -1521,7 +1535,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 #ifdef NAT
 					if(call->add_ip_port(saddr, tmp_port, s, l, iscalled, rtpmap) != -1){
 						calltable->hashAdd(saddr, tmp_port, call, iscalled, 0);
-						//calltable->mapAdd(saddr, tmp_port, call, call->sipcallerip != saddr, 0);
+						//calltable->mapAdd(saddr, tmp_port, call, iscalled, 0);
 						if(opt_rtcp) {
 							calltable->hashAdd(saddr, tmp_port + 1, call, iscalled, 1);
 							//calltable->mapAdd(saddr, tmp_port + 1, call, iscalled, 1);

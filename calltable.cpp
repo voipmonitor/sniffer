@@ -843,10 +843,10 @@ Call::convertRawToWav() {
 			default:
 				syslog(LOG_ERR, "Call [%s] cannot be converted to WAV, unknown payloadtype [%d]\n", raw, payloadtype);
 			}
-			unlink(raw);
+			//unlink(raw);
 		}
 		fclose(pl);
-		unlink(rawInfo);
+		//unlink(rawInfo);
 	}
 
 	if(adir == 1 && bdir == 1) {

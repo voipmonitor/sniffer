@@ -118,6 +118,8 @@ public:
 
 	u_int32_t sipcallerip2;		//!< SIP signalling destination IP address
 	u_int32_t sipcalledip2;		//!< SIP signalling destination IP address
+	u_int32_t sipcallerip3;		//!< SIP signalling destination IP address
+	u_int32_t sipcalledip3;		//!< SIP signalling destination IP address
 
 	char lastSIPresponse[128];
 	int lastSIPresponseNum;
