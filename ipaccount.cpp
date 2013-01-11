@@ -292,7 +292,7 @@ void add_octects_ipport(time_t timestamp, unsigned int saddr, unsigned int daddr
 
 	if(last_flush_ports != cur_interval) {
 		flush_octets_ports();
-		printf("%u | %u | %u | %u\n", timestamp, last_flush, cur_interval, timestamp / IPACC_INTERVAL);
+		//printf("%u | %u | %u | %u\n", timestamp, last_flush, cur_interval, timestamp / IPACC_INTERVAL);
 		last_flush_ports = cur_interval;
 	}
 

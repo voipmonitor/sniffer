@@ -170,6 +170,8 @@ Call::Call(char *call_id, unsigned long call_id_len, time_t time, void *ct) {
 	rtppcaketsinqueue = 0;
 	message = NULL;
 	unrepliedinvite = 0;
+	sipcalledip2 = 0;
+	sipcallerip2 = 0;
 }
 
 void
@@ -714,7 +716,29 @@ Call::convertRawToWav() {
 
 		/* write silence of msdiff duration */
 		short int zero = 0;
-		for(int i = 0; i < (abs(msdiff) / 20) * 160; i++) {
+		int samplerate = 8000;
+		switch(rtp[0]->codec) {
+			case PAYLOAD_SILK8:
+				samplerate = 8000;
+				break;
+			case PAYLOAD_SILK12:
+				samplerate = 12000;
+				break;
+			case PAYLOAD_SILK16:
+				samplerate = 16000;
+				break;
+			case PAYLOAD_SILK24:
+				samplerate = 24000;
+				system(cmd);
+				break;
+			case PAYLOAD_ISAC16:
+				samplerate = 16000;
+				break;
+			case PAYLOAD_ISAC32:
+				samplerate = 32000;
+				break;
+		}
+		for(int i = 0; i < (abs(msdiff) / 20) * samplerate / 50; i++) {
 			fwrite(&zero, 1, 2, wav);
 		}
 		fclose(wav);
@@ -819,10 +843,10 @@ Call::convertRawToWav() {
 			default:
 				syslog(LOG_ERR, "Call [%s] cannot be converted to WAV, unknown payloadtype [%d]\n", raw, payloadtype);
 			}
-//			unlink(raw);
+			unlink(raw);
 		}
 		fclose(pl);
-//		unlink(rawInfo);
+		unlink(rawInfo);
 	}
 
 	if(adir == 1 && bdir == 1) {

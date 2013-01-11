@@ -272,8 +272,16 @@ RTP::jt_tail(struct pcap_pkthdr *header) {
 void
 RTP::jitterbuffer(struct ast_channel *channel, int savePayload) {
 	struct timeval tsdiff;
-	frame->ts = getTimestamp() / 8;
-	frame->len = packetization;
+	switch(codec) {
+		case PAYLOAD_ISAC16:
+		case PAYLOAD_SILK16:
+			frame->ts = getTimestamp() / 16;
+			frame->len = packetization / 2;
+			break;
+		default: 
+			frame->ts = getTimestamp() / 8;
+			frame->len = packetization;
+	}
 	frame->marker = getMarker();
 	frame->seqno = getSeqNum();
 	channel->codec = codec;
@@ -373,6 +381,10 @@ RTP::jitterbuffer(struct ast_channel *channel, int savePayload) {
 	
 	if(!channel->jb_reseted) {
 		// initializing jitterbuffer 
+		if(savePayload) {
+			channel_record->jitter_max = frame->len * 3; 
+		}
+		
 		ast_jb_empty_and_reset(channel);
 		channel->jb_reseted = 1;
 		memcpy(&channel->last_ts, &header->ts, sizeof(struct timeval));
@@ -423,7 +435,7 @@ RTP::jitterbuffer(struct ast_channel *channel, int savePayload) {
 		}
 		ast_jb_get_and_deliver(channel, &channel->last_ts);
 		/* adding packetization time to last_ts time */ 
-		struct timeval tmp = ast_tvadd(channel->last_ts, ast_samp2tv(packetization, 1000));
+		struct timeval tmp = ast_tvadd(channel->last_ts, ast_samp2tv(frame->len, 1000));
 		memcpy(&channel->last_ts, &tmp, sizeof(struct timeval));
 		msdiff -= packetization;
 	}
@@ -441,7 +453,6 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 	this->saddr =  saddr;
 
 	Call *owner = (Call*)call_owner;
-
 
 	if(getVersion() != 2) {
 		return;
@@ -700,6 +711,14 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 				}
 			}
 		} else {
+			if(seq == (last_seq + 1)) {
+				// packetization can change over time
+				int curpacketization = (getTimestamp() - last_ts) / 8;
+				if(curpacketization % 10 == 0 and curpacketization >= 20 and curpacketization <= 120) {
+					channel_fix1->packetization = channel_fix2->packetization = channel_adapt->packetization = channel_record->packetization = packetization = curpacketization;
+				}
+			}
+			//printf("packetization [%d]\n", packetization);
 			if(opt_jitterbuffer_f1)
 				jitterbuffer(channel_fix1, 0);
 			if(opt_jitterbuffer_f2)

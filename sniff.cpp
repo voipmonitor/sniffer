@@ -1469,35 +1469,62 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 					s = gettag(data,datalen,"\nUser-Agent:", &l);
 					// store RTP stream
 					get_rtpmap_from_sdp(tmp + 1, datalen - (tmp + 1 - data), rtpmap);
-					if(call->add_ip_port(tmp_addr, tmp_port, s, l, call->sipcallerip != saddr, rtpmap) != -1){
+
+					// determine if the SDP message is coming from caller or called 
+					// 1) check by saddr
+					int iscalled;
+					if(call->sipcallerip == saddr) {
+						// SDP message is coming from the first IP address seen in first INVITE thus incoming stream to ip/port in this 
+						// SDP will be stream from called
+						iscalled = 1;
+					} else {
+						// The IP address is different, check if the request matches one of the address from the first invite
+						if(call->sipcallerip == daddr) {
+							// SDP message is addressed to caller and announced IP/port in SDP will be from caller. Thus set called = 0;
+							iscalled = 0;
+						// src IP address of this SDP SIP message is different from the src/dst IP address used in the first INVITE. 
+						} else {
+							if(call->sipcallerip2 == 0) { 
+								call->sipcallerip2 = saddr;
+								call->sipcalledip2 = daddr;
+							}
+							if(call->sipcallerip2 == saddr) {
+								iscalled = 1;
+							} else {
+								iscalled = 0;
+							}
+						}
+					}
+
+					if(call->add_ip_port(tmp_addr, tmp_port, s, l, iscalled, rtpmap) != -1){
 						calltable->hashAdd(tmp_addr, tmp_port, call, call->sipcallerip != saddr, 0);
-						//calltable->mapAdd(tmp_addr, tmp_port, call, call->sipcallerip != saddr, 0);
+						//calltable->mapAdd(tmp_addr, tmp_port, call, iscalled, 0);
 						if(opt_rtcp) {
-							calltable->hashAdd(tmp_addr, tmp_port + 1, call, call->sipcallerip != saddr, 1); //add rtcp
-							//calltable->mapAdd(tmp_addr, tmp_port + 1, call, call->sipcallerip != saddr, 1); //add rtcp
+							calltable->hashAdd(tmp_addr, tmp_port + 1, call, iscalled, 1); //add rtcp
+							//calltable->mapAdd(tmp_addr, tmp_port + 1, call, iscalled, 1); //add rtcp
 						}
 					}
 					
 					// check if the IP address is listed in nat_aliases
 					in_addr_t alias = 0;
 					if((alias = match_nat_aliases(tmp_addr)) != 0) {
-						if(call->add_ip_port(alias, tmp_port, s, l, call->sipcallerip != saddr, rtpmap) != -1) {
+						if(call->add_ip_port(alias, tmp_port, s, l, iscalled, rtpmap) != -1) {
 							calltable->hashAdd(alias, tmp_port, call, call->sipcallerip != saddr, 0);
-							//calltable->mapAdd(alias, tmp_port, call, call->sipcallerip != saddr, 0);
+							//calltable->mapAdd(alias, tmp_port, call, iscalled, 0);
 							if(opt_rtcp) {
-								calltable->hashAdd(alias, tmp_port + 1, call, call->sipcallerip != saddr, 1); //add rtcp
-								//calltable->mapAdd(alias, tmp_port + 1, call, call->sipcallerip != saddr, 1); //add rtcp
+								calltable->hashAdd(alias, tmp_port + 1, call, iscalled, 1); //add rtcp
+								//calltable->mapAdd(alias, tmp_port + 1, call, iscalled, 1); //add rtcp
 							}
 						}
 					}
 
 #ifdef NAT
-					if(call->add_ip_port(saddr, tmp_port, s, l, call->sipcallerip != saddr, rtpmap) != -1){
-						calltable->hashAdd(saddr, tmp_port, call, call->sipcallerip != saddr, 0);
+					if(call->add_ip_port(saddr, tmp_port, s, l, iscalled, rtpmap) != -1){
+						calltable->hashAdd(saddr, tmp_port, call, iscalled, 0);
 						//calltable->mapAdd(saddr, tmp_port, call, call->sipcallerip != saddr, 0);
 						if(opt_rtcp) {
-							calltable->hashAdd(saddr, tmp_port + 1, call, call->sipcallerip != saddr, 1);
-							//calltable->mapAdd(saddr, tmp_port + 1, call, call->sipcallerip != saddr, 1);
+							calltable->hashAdd(saddr, tmp_port + 1, call, iscalled, 1);
+							//calltable->mapAdd(saddr, tmp_port + 1, call, iscalled, 1);
 						}
 					}
 #endif
