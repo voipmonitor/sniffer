@@ -994,6 +994,9 @@ int main(int argc, char *argv[]) {
 				for(int i = 5060; i < 5099; i++) {
 					sipportmatrix[i] = 1;
 				}
+				sipportmatrix[443] = 1;
+				sipportmatrix[80] = 1;
+
 				break;
 			case 'm':
 				rtptimeout = atoi(optarg);
