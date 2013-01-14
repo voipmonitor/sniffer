@@ -21,7 +21,7 @@ ulimit -c unlimited
 PATH=/sbin:/bin:/usr/sbin:/usr/bin:/usr/local/sbin:/usr/local/bin
 TERM="linux";
 # uncomment and change interface if you do not have voipmonitor.conf 
-#ARGS="-i eth0"
+#ARGS="-v 1"
 PIDFILE=/var/run/voipmonitorinitscript.pid
 CONFIGFILE=/etc/voipmonitor.conf
 
