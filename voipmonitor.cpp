@@ -288,7 +288,7 @@ void *clean_spooldir( void *dummy ) {
 	while(!terminating2) {
 
 		char cmd[2048];
-		sprintf(cmd, "find \"%s\" -type f -printf \"%%T@::%%p::%%s\\n\" | sort -rn | awk -v maxbytes=\"$((1024 * 1024 * %d))\" -F \"::\" 'BEGIN { curSize=0; } { curSize += $3; if (curSize > maxbytes) { print $2; } }'", opt_chdir, opt_cleanspool_sizeMB);
+		sprintf(cmd, "find \"%s/\" -type f -printf \"%%T@::%%p::%%s\\n\" | sort -rn | awk -v maxbytes=\"$((1024 * 1024 * %d))\" -F \"::\" 'BEGIN { curSize=0; } { curSize += $3; if (curSize > maxbytes) { print $2; } }'", opt_chdir, opt_cleanspool_sizeMB);
 
 		if(verbosity > 0) syslog(LOG_NOTICE, "cleaning spool: [%s]\n", cmd);
 		FILE* pipe = popen(cmd, "r");
