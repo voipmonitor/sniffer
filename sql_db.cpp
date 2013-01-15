@@ -701,34 +701,18 @@ void SqlDb_mysql::createSchema() {
 
 	this->query(query);
 
-	query = "CREATE TABLE IF NOT EXISTS `ipacc_ipall` (\
+	query = "CREATE TABLE IF NOT EXISTS `ipacc` (\
   `saddr` int(32) unsigned NOT NULL,\
   `daddr` int(32) unsigned NOT NULL,\
+  `port` smallint(4) unsigned NOT NULL,\
   `proto` smallint(4) unsigned NOT NULL,\
   `octects` int(32) unsigned NOT NULL,\
   `numpackets` mediumint(32) unsigned NOT NULL,\
   `interval` varchar(255) NULL DEFAULT NULL,\
   KEY `saddr` (`saddr`),\
   KEY `daddr` (`daddr`),\
-  KEY `interval` (`interval`)\
-) ENGINE=InnoDB DEFAULT CHARSET=latin1 ROW_FORMAT=COMPRESSED;";
-
-	this->query(query);
-
-	query = "CREATE TABLE IF NOT EXISTS `ipacc_ports` (\
-  `saddr` int(32) unsigned NOT NULL,\
-  `daddr` int(32) unsigned NOT NULL,\
-  `sport` smallint(4) unsigned NOT NULL,\
-  `dport` smallint(4) unsigned NOT NULL,\
-  `proto` smallint(4) unsigned NOT NULL,\
-  `octects` int(32) unsigned NOT NULL,\
-  `numpackets` mediumint(32) unsigned NOT NULL,\
-  `interval` varchar(255) NULL DEFAULT NULL,\
-  KEY `saddr` (`saddr`),\
-  KEY `daddr` (`daddr`),\
-  KEY `sport` (`sport`),\
-  KEY `dport` (`dport`),\
-  KEY `proto` (`dport`),\
+  KEY `port` (`port`),\
+  KEY `proto` (`proto`),\
   KEY `interval` (`interval`)\
 ) ENGINE=InnoDB DEFAULT CHARSET=latin1 ROW_FORMAT=COMPRESSED;";
 

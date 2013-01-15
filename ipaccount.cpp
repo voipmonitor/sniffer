@@ -125,58 +125,8 @@ extern pthread_mutex_t mysqlquery_lock;
 unsigned int last_flush = 0;
 unsigned int last_flush_ports = 0;
 
-#define IPACC_INTERVAL 5 // seconds
+#define IPACC_INTERVAL 300 // seconds
 
-void flush_octets_ip() {
-	char *tmp;
-	char keycb[64], *keyc;
-	octects_t *proto;
-	char buf[32];
-	pthread_mutex_lock(&mysqlquery_lock);
-	for (ipacc_protosIT = ipacc_protos.begin(); ipacc_protosIT != ipacc_protos.end(); ++ipacc_protosIT) {
-		string query;
-		proto = ipacc_protosIT->second;
-		if(ipacc_protosIT->second->octects > 0) {
-			strcpy(keycb, ipacc_protosIT->first.c_str());
-			keyc = keycb;
-//			keyc = (char *)keycpy.c_str();
-			tmp = strchr(keyc, 'D');
-			*tmp = '\0';
-			query.append("INSERT INTO `ipacc_ipall` SET saddr = '");
-			query.append(keyc);
-			query.append("', `daddr` = '");
-			keyc = tmp + 1;
-			tmp = strchr(keyc, 'E');
-			*tmp = '\0';
-			query.append(keyc);
-			query.append("', `proto` = '");
-			keyc = tmp + 1;
-			query.append(keyc);
-			query.append("', `octects` = '");
-			sprintf(buf, "%u", proto->octects);
-			query.append(buf);
-			query.append("', `interval` = '");
-			sprintf(buf, "%u", proto->lasttimestamp);
-			query.append(buf);
-			query.append("', `numpackets` = '");
-			sprintf(buf, "%u", proto->numpackets);
-			query.append(buf);
-			query.append("'");
-
-			cout << query << "\n";
-
-
-			//reset octects 
-			ipacc_protosIT->second->octects = 0;
-			ipacc_protosIT->second->numpackets = 0;
-
-			mysqlquery.push(query);
-		}
-	}
-	pthread_mutex_unlock(&mysqlquery_lock);
-
-	//printf("flush\n");
-}	
 
 void flush_octets_ports() {
 	char *tmp;
@@ -193,7 +143,7 @@ void flush_octets_ports() {
 //			keyc = (char *)keycpy.c_str();
 			tmp = strchr(keyc, 'D');
 			*tmp = '\0';
-			query.append("INSERT INTO `ipacc_ports` SET saddr = '");
+			query.append("INSERT INTO `ipacc` SET saddr = '");
 			query.append(keyc);
 			query.append("', `daddr` = '");
 
@@ -201,13 +151,7 @@ void flush_octets_ports() {
 			tmp = strchr(keyc, 'E');
 			*tmp = '\0';
 			query.append(keyc);
-			query.append("', `sport` = '");
-
-			keyc = tmp + 1;
-			tmp = strchr(keyc, 'A');
-			*tmp = '\0';
-			query.append(keyc);
-			query.append("', `dport` = '");
+			query.append("', `port` = '");
 
 			keyc = tmp + 1;
 			tmp = strchr(keyc, 'P');
@@ -222,7 +166,7 @@ void flush_octets_ports() {
 			sprintf(buf, "%u", proto->octects);
 			query.append(buf);
 			query.append("', `interval` = '");
-			sprintf(buf, "%u", proto->lasttimestamp);
+			sprintf(buf, "%u", proto->lasttimestamp * IPACC_INTERVAL);
 			query.append(buf);
 			query.append("', `numpackets` = '");
 			sprintf(buf, "%u", proto->numpackets);
@@ -244,50 +188,13 @@ void flush_octets_ports() {
 	
 }
 
-void add_octects_ip(time_t timestamp, unsigned int saddr, unsigned int daddr, int proto, int packetlen) {
-	string key;
-	char buf[32];
-	octects_t *protos;
-	unsigned int cur_interval = timestamp / IPACC_INTERVAL;
-
-	sprintf(buf, "%uD%uE%d", htonl(saddr), htonl(daddr), proto);
-	key = buf;
-
-	if(last_flush != cur_interval) {
-		flush_octets_ip();
-//		printf("%u | %u | %u | %u\n", timestamp, last_flush, cur_interval, timestamp / IPACC_INTERVAL);
-		last_flush = cur_interval;
-	}
-
-
-	ipacc_protosIT = ipacc_protos.find(key);
-	if(ipacc_protosIT == ipacc_protos.end()) {
-		// not found;
-		protos = (octects_t*)calloc(1, sizeof(octects_t));
-		protos->octects += packetlen;
-		protos->numpackets++;
-		protos->lasttimestamp = timestamp / IPACC_INTERVAL;
-		ipacc_protos[key] = protos;
-//		printf("key: %s\n", buf);
-	} else {
-		//found
-		octects_t *tmp = ipacc_protosIT->second;
-		tmp->octects += packetlen;
-		tmp->numpackets++;
-		tmp->lasttimestamp = timestamp / IPACC_INTERVAL;
-//		printf("key[%s] %u\n", key.c_str(), tmp->octects);
-	}
-
-
-}
-
-void add_octects_ipport(time_t timestamp, unsigned int saddr, unsigned int daddr, int source, int dest, int proto, int packetlen) {
+void add_octects_ipport(time_t timestamp, unsigned int saddr, unsigned int daddr, int port, int proto, int packetlen) {
 	string key;
 	char buf[64];
 	octects_t *ports;
 	unsigned int cur_interval = timestamp / IPACC_INTERVAL;
 
-	sprintf(buf, "%uD%uE%dA%dP%d", htonl(saddr), htonl(daddr), source, dest, proto);
+	sprintf(buf, "%uD%uE%dP%d", htonl(saddr), htonl(daddr), port, proto);
 	key = buf;
 
 	if(last_flush_ports != cur_interval) {
@@ -326,19 +233,26 @@ void ipaccount(time_t timestamp, struct iphdr *header_ip, int packetlen){
 		// prepare packet pointers 
 		header_udp = (struct udphdr2 *) ((char *) header_ip + sizeof(*header_ip));
 
-		if(ipaccountportmatrix[htons(header_udp->source)] || ipaccountportmatrix[htons(header_udp->dest)]) {
-			add_octects_ipport(timestamp, header_ip->saddr, header_ip->daddr, htons(header_udp->source), htons(header_udp->dest), IPPROTO_TCP, packetlen);
+		if(ipaccountportmatrix[htons(header_udp->source)]) {
+			add_octects_ipport(timestamp, header_ip->saddr, header_ip->daddr, htons(header_udp->source), IPPROTO_TCP, packetlen);
+		} else if (ipaccountportmatrix[htons(header_udp->dest)]) {
+			add_octects_ipport(timestamp, header_ip->saddr, header_ip->daddr, htons(header_udp->dest), IPPROTO_TCP, packetlen);
+		} else {
+			add_octects_ipport(timestamp, header_ip->saddr, header_ip->daddr, 0, IPPROTO_TCP, packetlen);
 		}
 	} else if (header_ip->protocol == IPPROTO_TCP) {
 		header_tcp = (struct tcphdr *) ((char *) header_ip + sizeof(*header_ip));
 
-		if(ipaccountportmatrix[htons(header_tcp->source)] || ipaccountportmatrix[htons(header_tcp->dest)]) {
-			add_octects_ipport(timestamp, header_ip->saddr, header_ip->daddr, htons(header_tcp->source), htons(header_tcp->dest), IPPROTO_TCP, packetlen);
+		if(ipaccountportmatrix[htons(header_tcp->source)]) {
+			add_octects_ipport(timestamp, header_ip->saddr, header_ip->daddr, htons(header_tcp->source), IPPROTO_TCP, packetlen);
+		} else if (ipaccountportmatrix[htons(header_tcp->dest)]) {
+			add_octects_ipport(timestamp, header_ip->saddr, header_ip->daddr, htons(header_tcp->dest), IPPROTO_TCP, packetlen);
+		} else {
+			add_octects_ipport(timestamp, header_ip->saddr, header_ip->daddr, 0, IPPROTO_TCP, packetlen);
 		}
 	} else {
+		add_octects_ipport(timestamp, header_ip->saddr, header_ip->daddr, 0, header_ip->protocol, packetlen);
 	}
-
-	add_octects_ip(timestamp, header_ip->saddr, header_ip->daddr, header_ip->protocol, packetlen);
 
 //	printf("proto[%d]\n", header_ip->protocol);
 }
