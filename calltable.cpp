@@ -172,6 +172,10 @@ Call::Call(char *call_id, unsigned long call_id_len, time_t time, void *ct) {
 	unrepliedinvite = 0;
 	sipcalledip2 = 0;
 	sipcallerip2 = 0;
+	sipcalledip3 = 0;
+	sipcallerip3 = 0;
+	sipcalledip4 = 0;
+	sipcallerip4 = 0;
 }
 
 void

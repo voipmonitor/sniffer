@@ -444,25 +444,25 @@ fail_exit:
 
 
 int mimeSubtypeToInt(char *mimeSubtype) {
-       if(strcmp(mimeSubtype,"G729") == 0)
+       if(strcasecmp(mimeSubtype,"G729") == 0)
 	       return PAYLOAD_G729;
-       else if(strcmp(mimeSubtype,"GSM") == 0)
+       else if(strcasecmp(mimeSubtype,"GSM") == 0)
 	       return PAYLOAD_GSM;
-       else if(strcmp(mimeSubtype,"G723") == 0)
+       else if(strcasecmp(mimeSubtype,"G723") == 0)
 	       return PAYLOAD_G723;
-       else if(strcmp(mimeSubtype,"PCMA") == 0)
+       else if(strcasecmp(mimeSubtype,"PCMA") == 0)
 	       return PAYLOAD_PCMA;
-       else if(strcmp(mimeSubtype,"PCMU") == 0)
+       else if(strcasecmp(mimeSubtype,"PCMU") == 0)
 	       return PAYLOAD_PCMU;
-       else if(strcmp(mimeSubtype,"iLBC") == 0)
+       else if(strcasecmp(mimeSubtype,"iLBC") == 0)
 	       return PAYLOAD_ILBC;
-       else if(strcmp(mimeSubtype,"speex") == 0)
+       else if(strcasecmp(mimeSubtype,"speex") == 0)
 	       return PAYLOAD_SPEEX;
-       else if(strcmp(mimeSubtype,"SPEEX") == 0)
+       else if(strcasecmp(mimeSubtype,"SPEEX") == 0)
 	       return PAYLOAD_SPEEX;
-       else if(strcmp(mimeSubtype,"SILK") == 0)
+       else if(strcasecmp(mimeSubtype,"SILK") == 0)
 	       return PAYLOAD_SILK;
-       else if(strcmp(mimeSubtype,"ISAC") == 0)
+       else if(strcasecmp(mimeSubtype,"ISAC") == 0)
 	       return PAYLOAD_ISAC;
        else
 	       return 0;
@@ -1276,7 +1276,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 						syslog(LOG_NOTICE, "Seen INVITE, CSeq: %s\n", call->invitecseq);
 				}
 			} else if(sip_method == MESSAGE) {
-				call->destroy_call_at = header->ts.tv_sec + 10;
+				call->destroy_call_at = header->ts.tv_sec + 60;
 
 				s = gettag(data, datalen, "\nUser-Agent:", &l);
 				if(l && ((unsigned int)l < ((unsigned int)datalen - (s - data)))) {
@@ -1504,7 +1504,22 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 									if(call->sipcallerip3 == saddr) {
 										iscalled = 1;
 									} else {
-										iscalled = 0;
+										// The IP address is different, check if the request matches one of the address from the first invite
+										if(call->sipcallerip3 == daddr) {
+											// SDP message is addressed to caller and announced IP/port in SDP will be from caller. Thus set called = 0;
+											iscalled = 0;
+										// src IP address of this SDP SIP message is different from the src/dst IP address used in the first INVITE. 
+										} else {
+											if(call->sipcallerip4 == 0) { 
+												call->sipcallerip4 = saddr;
+												call->sipcalledip4 = daddr;
+											}
+											if(call->sipcallerip4 == saddr) {
+												iscalled = 1;
+											} else {
+												iscalled = 0;
+											}
+										}
 									}
 								}
 							}
