@@ -329,6 +329,15 @@ int SqlDb_mysql::getIndexField(string fieldName) {
 	return(-1);
 }
 
+string SqlDb_mysql::escapebin(const char *inputString, int length) {
+	int sizeBuffer = length * 2 + 10;
+	char *buffer = new char[sizeBuffer];
+	mysql_real_escape_string(this->hMysqlConn, buffer, inputString, length);
+	string rslt = buffer;
+	delete [] buffer;
+	return(rslt);
+}
+
 string SqlDb_mysql::escape(const char *inputString) {
 	if(inputString && inputString[0]) {
 		int length = strlen(inputString);
@@ -786,6 +795,24 @@ THEN \
         INSERT INTO `register` SET `calldate` = calltime, `sipcallerip` = sipcallerip, `sipcalledip` = sipcalledip, `from_num` = caller, `from_name` = callername, `from_domain` = caller_domain, `to_num` = called, `to_domain` = called_domain, `contact_num` = contact_num, `contact_domain` = contact_domain, `digestusername` = digest_username, `digestrealm` = digest_realm, `expires` = register_expires, state = regstate, ua_id = getIdOrInsertUA(cdr_ua), `expires_at` = mexpires_at; \
 END IF; \
 END ; ";
+
+	this->query(query);
+
+	query = "CREATE TABLE IF NOT EXISTS `livepacket` (\
+	`id` INT UNSIGNED NOT NULL AUTO_INCREMENT ,\
+	`id_sensor` INT UNSIGNED DEFAULT NULL,\
+	`sipcallerip` INT UNSIGNED NOT NULL ,\
+	`sipcalledip` INT UNSIGNED NOT NULL ,\
+	`sport` SMALLINT UNSIGNED NOT NULL ,\
+	`dport` SMALLINT UNSIGNED NOT NULL ,\
+	`istcp` TINYINT UNSIGNED NOT NULL ,\
+	`created_at` TIMESTAMP NOT NULL ,\
+	`milliseconds` INT UNSIGNED NOT NULL ,\
+	`callid` VARCHAR(255) NOT NULL ,\
+	`data` VARBINARY(10000) NOT NULL ,\
+	PRIMARY KEY ( `id` ) ,\
+	INDEX (  `created_at` ,  `milliseconds` )\
+	) ENGINE=MEMORY DEFAULT CHARSET=latin1 ROW_FORMAT=COMPRESSED;";
 
 	this->query(query);
 

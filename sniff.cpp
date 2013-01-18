@@ -26,6 +26,8 @@ and insert them into Call class.
 #include <semaphore.h>
 #include <malloc.h>
 
+#include <sstream>
+
 #include <pcap.h>
 //#include <pcap/sll.h>
 
@@ -51,12 +53,15 @@ and insert them into Call class.
 #include "tools.h"
 #include "mirrorip.h"
 #include "ipaccount.h"
+#include "sql_db.h"
 
 extern MirrorIP *mirrorip;
 
 extern "C" {
 #include "liblfds.6/inc/liblfds.h"
 }
+
+#define MAXLIVEFILTERS 10
 
 using namespace std;
 
@@ -104,28 +109,26 @@ extern int opt_ipaccount;
 extern IPfilter *ipfilter;
 extern IPfilter *ipfilter_reload;
 extern int ipfilter_reload_do;
-
 extern TELNUMfilter *telnumfilter;
 extern TELNUMfilter *telnumfilter_reload;
 extern int telnumfilter_reload_do;
-
 extern int rtp_threaded;
 extern int opt_pcap_threaded;
-
 extern int opt_rtpnosip;
 extern char opt_cachedir[1024];
-
 extern int opt_savewav_force;
 extern int opt_saveudptl;
-
 extern nat_aliases_t nat_aliases;
-
 extern pcap_packet *qring;
 extern volatile unsigned int readit;
 extern volatile unsigned int writeit;
 extern unsigned int qringmax;
-
 extern int opt_pcapdump;
+extern int opt_id_sensor;
+extern pthread_mutex_t mysqlquery_lock;
+extern queue<string> mysqlquery;
+extern SqlDb *sqlDb;
+int pcap_dlink;
 
 #ifdef QUEUE_MUTEX
 extern sem_t readpacket_thread_semaphore;
@@ -141,6 +144,23 @@ struct tcp_stream2 {
 	time_t ts;
 	tcp_stream2 *next;
 };
+
+typedef struct pcap_hdr_s {
+	u_int32_t magic_number;   /* magic number */
+	u_int16_t version_major;  /* major version number */
+	u_int16_t version_minor;  /* minor version number */
+	int32_t  thiszone;       /* GMT to local correction */
+	u_int32_t sigfigs;        /* accuracy of timestamps */
+	u_int32_t snaplen;        /* max length of captured packets, in octets */
+	u_int32_t network;        /* data link type */
+} pcap_hdr_t;
+
+typedef struct pcaprec_hdr_s {
+	u_int32_t ts_sec;         /* timestamp seconds */
+	u_int32_t ts_usec;        /* timestamp microseconds */
+	u_int32_t incl_len;       /* number of octets of packet saved in file */
+	u_int32_t orig_len;       /* actual length of packet */
+} pcaprec_hdr_t;
 
 tcp_stream2 *tcp_streams_hashed[MAX_TCPSTREAMS];
 list<tcp_stream2*> tcp_streams_list;
@@ -160,8 +180,74 @@ in_addr_t match_nat_aliases(in_addr_t ip) {
 	
 }
 
+/* 
+	stores SIP messags to sql.livepacket based on user filters
+*/
+inline void save_live_packet(Call *call, struct pcap_pkthdr *header, const u_char *packet, unsigned int saddr, int source, unsigned int daddr, int dest, int istcp) {
+	// check saddr and daddr filters
+#if 0
+	for(int i = 0; i < MAXLIVEFILTERS; i++) {
+		if(lv_saddr[i] == saddr) goto save;
+		if(lv_daddr[i] == daddr) goto save;
+		if(lv_bothaddr[i] == daddr or lv_both[i] == saddr) goto save;
+		if(lv_srcnum[i][0] != '\0' and memmem(lv_srcnum[i], strlen(lv_srcnum[i]), call->caller, strlen(call->caller))) goto save;
+		if(lv_dstnum[i][0] != '\0' and memmem(lv_dstnum[i], strlen(lv_dstnum[i]), call->called, strlen(call->called))) goto save;
+		if(lv_bothnum[i][0] != '\0' and memmem(lv_bothnum[i], strlen(lv_bothnum[i]), call->caller, strlen(call->caller)) or
+		  (lv_bothnum[i][0] != '\0' and memmem(lv_bothnum[i], strlen(lv_bothnum[i]), call->called, strlen(call->called)))
+		) goto save;
+	}
+	// nothing matches
+	return;
+save:
+#endif
+	//save packet
+	stringstream query;
+
+	// pcap file header
+	pcap_hdr_t pcaphdr; // 24bytes
+	pcaphdr.magic_number = 0xa1b2c3d4;
+	pcaphdr.version_major = 2;
+	pcaphdr.version_minor = 4;
+	pcaphdr.thiszone = 0;
+	pcaphdr.sigfigs = 0;
+	pcaphdr.snaplen = 3200;
+	pcaphdr.network = pcap_dlink;
+
+	// packet header
+	pcaprec_hdr_t pcaph;
+	pcaph.ts_sec = header->ts.tv_sec;         /* timestamp seconds */
+	pcaph.ts_usec = header->ts.tv_usec;        /* timestamp microseconds */
+	pcaph.incl_len = header->caplen;       /* number of octets of packet saved in file */
+	pcaph.orig_len = header->caplen;       /* actual length of packet */
+
+	// copy data to mpacket buffer	
+	char mpacket[10512];
+	char *ptr = mpacket;
+	memcpy(ptr, &pcaphdr, sizeof(pcaphdr));	// pcap header
+	ptr += sizeof(pcaphdr);
+	memcpy(ptr, &pcaph, sizeof(pcaph)); // packet header
+	ptr += sizeof(pcaph);
+	unsigned int len = MIN(10000, header->caplen);
+	memcpy(ptr, packet, len);
+	len += sizeof(pcaph) + sizeof(pcaphdr);
+
+	// construct query and push it to mysqlquery queue
+	int id_sensor = opt_id_sensor > 0 ? opt_id_sensor : 0;
+	query << "INSERT INTO livepacket SET sipcallerip = '" << saddr << "', sipcalledip = '" << daddr << "', id_sensor = " << id_sensor << ", sport = " << source << ", dport = " << dest << ", istcp = " << istcp << ", created_at = " << sqlEscapeString(sqlDateTimeString(header->ts.tv_sec).c_str()) << ", milliseconds = " << header->ts.tv_usec << ", callid = " << sqlEscapeString(call->call_id) << ", data = '#" << sqlDb->escapebin(mpacket, len) << "#'";
+	cout << query.str();
+	pthread_mutex_lock(&mysqlquery_lock);
+	mysqlquery.push(query.str());
+	pthread_mutex_unlock(&mysqlquery_lock);
+	return;
+}
+
 /* save packet into file */
-void save_packet(Call *call, struct pcap_pkthdr *header, const u_char *packet) {
+inline void save_packet(Call *call, struct pcap_pkthdr *header, const u_char *packet, unsigned int saddr, int source, unsigned int daddr, int dest, int istcp) {
+	// check if it should be stored to mysql 
+	if(sipportmatrix[source] || sipportmatrix[dest]) {
+		save_live_packet(call, header, packet, saddr, source, daddr, dest, istcp);
+	}
+
 	if (call->get_f_pcap() != NULL){
 		call->set_last_packet_time(header->ts.tv_sec);
 		pcap_dump((u_char *) call->get_f_pcap(), header, packet);
@@ -552,7 +638,7 @@ void add_to_rtp_thread_queue(Call *call, unsigned char *data, int datalen, struc
 
 	memcpy(&rtpp->header, header, sizeof(struct pcap_pkthdr));
 	if(datalen > MAXPACKETLENQRING) {
-		syslog(LOG_ERR, "error: packet is to large [%d]b for RTP QRING[%d]b", header->len, MAXPACKETLENQRING);
+		syslog(LOG_ERR, "error: packet is to large [%d]b for RTP QRING[%d]b", header->caplen, MAXPACKETLENQRING);
 		return;
 	}
 	memcpy(rtpp->data, data, datalen);
@@ -963,8 +1049,8 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 					memcpy((void*)(&stream->header), header, sizeof(pcap_pkthdr));
 
 					//copy packet
-					stream->packet = (u_char*)malloc(sizeof(u_char) * header->len);
-					memcpy(stream->packet, packet, header->len);
+					stream->packet = (u_char*)malloc(sizeof(u_char) * header->caplen);
+					memcpy(stream->packet, packet, header->caplen);
 
 					// check if this TCP packet was the last packet 
 					if(data[datalen - 2] == 0x0d && data[datalen - 1] == 0x0a) {
@@ -992,7 +1078,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 						while(tmpstream) {
 							if(call) {
 								// if packet belongs to (or created) call, save each packets to pcap and destroy TCP stream
-								save_packet(call, &tmpstream->header, (const u_char*)tmpstream->packet);
+								save_packet(call, &tmpstream->header, (const u_char*)tmpstream->packet, saddr, source, daddr, dest, istcp);
 							}
 							free(tmpstream->data);
 							free(tmpstream->packet);
@@ -1051,8 +1137,8 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 					memcpy((void*)(&stream->header), header, sizeof(pcap_pkthdr));
 
 					//copy packet
-					stream->packet = (u_char*)malloc(sizeof(u_char) * header->len);
-					memcpy(stream->packet, packet, header->len);
+					stream->packet = (u_char*)malloc(sizeof(u_char) * header->caplen);
+					memcpy(stream->packet, packet, header->caplen);
 					return NULL;
 				}
 			} else if(tcp_streams_hashed[hash]) {
@@ -1328,7 +1414,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 
 						call->seenbyeandok = true;
 						if(!dontsave && call->flags & (FLAG_SAVESIP | FLAG_SAVEREGISTER)) {
-							save_packet(call, header, packet);
+							save_packet(call, header, packet, saddr, source, daddr, dest, istcp);
 						}
 /*
 	Whan voipmonitor listens for both SIP legs (with the same Call-ID it sees both BYE and should save both 200 OK after BYE so closing call after the 
@@ -1377,7 +1463,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 					}
 					// save packet 
 					if(!dontsave && opt_saveSIP) {
-						save_packet(call, header, packet);
+						save_packet(call, header, packet, saddr, source, daddr, dest, istcp);
 					}
 					call->destroy_call_at = header->ts.tv_sec + 5;
 
@@ -1598,7 +1684,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 		data[datalen - 1] = a;
 
 		if(!dontsave && call->flags & (FLAG_SAVESIP | FLAG_SAVEREGISTER)) {
-			save_packet(call, header, packet);
+			save_packet(call, header, packet, saddr, source, daddr, dest, istcp);
 		}
 
 		return call;
@@ -1620,7 +1706,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 				call->read_rtcp((unsigned char*) data, datalen, header, saddr, source, iscaller);
 			}
 			if(!dontsave && (opt_saveRTP || opt_saveRTCP)) {
-				save_packet(call, header, packet);
+				save_packet(call, header, packet, saddr, source, daddr, dest, istcp);
 			}
 			return call;
 		}
@@ -1637,10 +1723,10 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 			if(opt_onlyRTPheader && !call->isfax) {
 				tmp_u32 = header->caplen;
 				header->caplen = header->caplen - (datalen - RTP_FIXED_HEADERLEN);
-				save_packet(call, header, packet);
+				save_packet(call, header, packet, saddr, source, daddr, dest, istcp);
 				header->caplen = tmp_u32;
 			} else {
-				save_packet(call, header, packet);
+				save_packet(call, header, packet, saddr, source, daddr, dest, istcp);
 			}
 
 		}
@@ -1662,7 +1748,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 				call->read_rtcp((unsigned char*) data, datalen, header, saddr, source, !iscaller);
 			}
 			if(!dontsave && (opt_saveRTP || opt_saveRTCP)) {
-				save_packet(call, header, packet);
+				save_packet(call, header, packet, saddr, source, daddr, dest, istcp);
 			}
 			return call;
 		}
@@ -1679,10 +1765,10 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 			if(opt_onlyRTPheader && !call->isfax) {
 				tmp_u32 = header->caplen;
 				header->caplen = header->caplen - (datalen - RTP_FIXED_HEADERLEN);
-				save_packet(call, header, packet);
+				save_packet(call, header, packet, saddr, source, daddr, dest, istcp);
 				header->caplen = tmp_u32;
 			} else {
-				save_packet(call, header, packet);
+				save_packet(call, header, packet, saddr, source, daddr, dest, istcp);
 			}
 		}
 	// packet does not belongs to established call, check if it is on SIP port
@@ -2035,11 +2121,12 @@ void readdump_libpcap(pcap_t *handle) {
 	int res;
 	int protocol = 0;
 	unsigned int offset;
-	int pcap_dlink = pcap_datalink(handle);
 	int istcp = 0;
 	int was_rtp;
 	unsigned char md5[32];
 	unsigned char prevmd5[32];
+
+	pcap_dlink = pcap_datalink(handle);
 
 	MD5_CTX ctx;
 
@@ -2146,14 +2233,14 @@ void readdump_libpcap(pcap_t *handle) {
 			// prepare packet pointers 
 			header_udp = (struct udphdr2 *) ((char *) header_ip + sizeof(*header_ip));
 			data = (char *) header_udp + sizeof(*header_udp);
-			datalen = (int)(header->len - ((unsigned long) data - (unsigned long) packet)); 
+			datalen = (int)(header->caplen - ((unsigned long) data - (unsigned long) packet)); 
 			istcp = 0;
 		} else if (header_ip->protocol == IPPROTO_TCP) {
 			istcp = 1;
 			// prepare packet pointers 
 			header_tcp = (struct tcphdr *) ((char *) header_ip + sizeof(*header_ip));
 			data = (char *) header_tcp + (header_tcp->doff * 4);
-			datalen = (int)(header->len - ((unsigned long) data - (unsigned long) packet)); 
+			datalen = (int)(header->caplen - ((unsigned long) data - (unsigned long) packet)); 
 			if (datalen == 0 || !(sipportmatrix[htons(header_tcp->source)] || sipportmatrix[htons(header_tcp->dest)])) {
 				// not interested in TCP packet other than SIP port
 				if(opt_ipaccount == 0) {
@@ -2200,15 +2287,15 @@ void readdump_libpcap(pcap_t *handle) {
 			//add packet to queue
 #if defined(QUEUE_MUTEX) || defined(QUEUE_NONBLOCK)
 			pcap_packet *pp = (pcap_packet*)malloc(sizeof(pcap_packet));
-			pp->packet = (u_char*)malloc(sizeof(u_char) * header->len);
+			pp->packet = (u_char*)malloc(sizeof(u_char) * header->caplen);
 			pp->offset = offset;
 			memcpy(&pp->header, header, sizeof(struct pcap_pkthdr));
-			memcpy(pp->packet, packet, header->len);
+			memcpy(pp->packet, packet, header->caplen);
 #endif
 
 #ifdef QUEUE_NONBLOCK2
-			if(header->len > MAXPACKETLENQRING) {
-				syslog(LOG_ERR, "error: packet is to large [%d]b for QRING[%d]b", header->len, MAXPACKETLENQRING);
+			if(header->caplen > MAXPACKETLENQRING) {
+				syslog(LOG_ERR, "error: packet is to large [%d]b for QRING[%d]b", header->caplen, MAXPACKETLENQRING);
 				continue;
 			}
 			while(qring[writeit % qringmax].free == 0) {
@@ -2216,7 +2303,7 @@ void readdump_libpcap(pcap_t *handle) {
 				usleep(100);
 			}
 			memcpy(&qring[writeit % qringmax].header, header, sizeof(struct pcap_pkthdr));
-			memcpy(&qring[writeit % qringmax].packet, packet, header->len);
+			memcpy(&qring[writeit % qringmax].packet, packet, header->caplen);
 			qring[writeit % qringmax].offset = offset;
 			qring[writeit % qringmax].free = 0;
 			if((writeit + 1) == qringmax) {
@@ -2226,8 +2313,8 @@ void readdump_libpcap(pcap_t *handle) {
 			}
 #endif
 
-			if(header->caplen > header->len) {
-				syslog(LOG_ERR, "error: header->caplen > header->len FIX!");
+			if(header->caplen > header->caplen) {
+				syslog(LOG_ERR, "error: header->caplen > header->caplen FIX!");
 			}
 
 #ifdef QUEUE_MUTEX
@@ -2250,10 +2337,10 @@ void readdump_libpcap(pcap_t *handle) {
 		}
 
 		if(opt_mirrorip && (sipportmatrix[htons(header_udp->source)] || sipportmatrix[htons(header_udp->dest)])) {
-			mirrorip->send((char *)header_ip, (int)(header->len - ((unsigned long) header_ip - (unsigned long) packet)));
+			mirrorip->send((char *)header_ip, (int)(header->caplen - ((unsigned long) header_ip - (unsigned long) packet)));
 		}
 		if(opt_ipaccount) {
-			ipaccount(header->ts.tv_sec, (struct iphdr *) ((char*)packet + offset), header->len - offset);
+			ipaccount(header->ts.tv_sec, (struct iphdr *) ((char*)packet + offset), header->caplen - offset);
 		}
 		process_packet(header_ip->saddr, htons(header_udp->source), header_ip->daddr, htons(header_udp->dest), 
 			    data, datalen, handle, header, packet, istcp, 0, 1, &was_rtp);

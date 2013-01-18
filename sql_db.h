@@ -73,6 +73,8 @@ public:
 		return(-1);
 	}
 	virtual string escape(const char *inputString) = 0;
+	virtual string escapebin(const char *inputString, int length) = 0;
+
 	virtual bool checkLastError(string prefixError, bool sysLog = false, bool clearLastError = false) {
 		return(false);
 	}
@@ -129,6 +131,7 @@ public:
 	int getInsertId();
 	int getIndexField(string fieldName);
 	string escape(const char *inputString);
+	string escapebin(const char *inputString, int length);
 	bool checkLastError(string prefixError, bool sysLog = false,bool clearLastError = false);
 	void clean();
 	void createSchema();
