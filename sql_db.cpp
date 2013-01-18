@@ -812,7 +812,7 @@ END ; ";
 	`description` VARCHAR(1024),\
 	`data` VARBINARY(10000) NOT NULL ,\
 	PRIMARY KEY ( `id` ) ,\
-	INDEX (  `created_at` ,  `milliseconds` )\
+	INDEX (  `created_at` ,  `microseconds` )\
 	) ENGINE=MEMORY DEFAULT CHARSET=latin1 ROW_FORMAT=COMPRESSED;";
 
 	this->query(query);
