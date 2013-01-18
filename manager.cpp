@@ -799,9 +799,11 @@ void *manager_server(void *dummy) {
 	sockName.sin_addr.s_addr = inet_addr(opt_manager_ip);
 	int on = 1;
 	setsockopt(manager_socket_server, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on));
+tryagain:
 	if (bind(manager_socket_server, (sockaddr *)&sockName, sizeof(sockName)) == -1) {
-		cerr << "Cannot bind manager to port " << opt_manager_port << endl;
-		return 0;
+		syslog(LOG_ERR, "Cannot bind to port [%d] trying again after 5 seconds intervals\n", opt_manager_port);
+		sleep(5);
+		goto tryagain;
 	}
 	// create queue with 100 connections max 
 	if (listen(manager_socket_server, 100) == -1) {
