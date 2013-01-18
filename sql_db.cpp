@@ -211,6 +211,7 @@ bool SqlDb_mysql::connect() {
 					//opt_mysql_port, NULL, CLIENT_MULTI_STATEMENTS);
 					opt_mysql_port, NULL, 0);
 		if(this->hMysqlConn) {
+			this->query("SET NAMES UTF8");
 			return(true);
 		} else {
 			this->checkLastError("connect error", true);
