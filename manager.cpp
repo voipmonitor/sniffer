@@ -15,6 +15,8 @@
 #include <vorbis/codec.h>
 #include <vorbis/vorbisenc.h>
 
+#include <sstream>
+
 #include "voipmonitor.h"
 #include "format_slinear.h"
 #include "codec_alaw.h"
@@ -38,6 +40,13 @@ extern int terminating;
 extern int manager_socket_server;
 extern int terminating;
 extern int opt_nocdr;
+
+extern unsigned int lv_saddr[MAXLIVEFILTERS];
+extern unsigned int lv_daddr[MAXLIVEFILTERS];
+extern unsigned int lv_bothaddr[MAXLIVEFILTERS];
+extern char lv_srcnum[MAXLIVEFILTERS][MAXLIVEFILTERSCHARS];
+extern char lv_dstnum[MAXLIVEFILTERS][MAXLIVEFILTERSCHARS];
+extern char lv_bothnum[MAXLIVEFILTERS][MAXLIVEFILTERSCHARS];
 
 using namespace std;
 
@@ -287,6 +296,114 @@ int parse_command(char *buf, int size, int client, int eof) {
 		free(resbuf);
 		return 0;
 	/* listen callreference fifo */
+	} else if(strstr(buf, "livefilter set") != NULL) {
+		char search[1024] = "";
+		char value[1024] = "";
+
+		sscanf(buf, "livefilter set %s %[^\n\r]", search, value);
+		if(strstr(search, "srcaddr")) {
+			int i = 0;
+			//reset filters 
+			for(i = 0; i < MAXLIVEFILTERS; i++) {
+				lv_saddr[i] = 0;
+			}
+			stringstream  data(value);
+			string val;
+			// read all argumens livefilter set saddr 123 345 244
+			i = 0;
+			while(i < MAXLIVEFILTERS and getline(data, val,' ')){
+				stringstream tmp;
+				tmp << val;
+				tmp >> lv_saddr[i];
+				//cout << lv_saddr[i] << "\n";
+				i++;
+			}
+		} else if(strstr(search, "dstaddr")) {
+			int i = 0;
+			//reset filters 
+			for(i = 0; i < MAXLIVEFILTERS; i++) {
+				lv_daddr[i] = 0;
+			}
+			stringstream  data(value);
+			string val;
+			i = 0;
+			// read all argumens livefilter set daddr 123 345 244
+			while(i < MAXLIVEFILTERS and getline(data, val,' ')){
+				stringstream tmp;
+				tmp << val;
+				tmp >> lv_daddr[i];
+				//cout << lv_daddr[i] << "\n";
+				i++;
+			}
+		} else if(strstr(search, "bothaddr")) {
+			int i = 0;
+			//reset filters 
+			for(i = 0; i < MAXLIVEFILTERS; i++) {
+				lv_bothaddr[i] = 0;
+			}
+			stringstream  data(value);
+			string val;
+			i = 0;
+			// read all argumens livefilter set bothaddr 123 345 244
+			while(i < MAXLIVEFILTERS and getline(data, val,' ')){
+				stringstream tmp;
+				tmp << val;
+				tmp >> lv_bothaddr[i];
+				//cout << lv_bothaddr[i] << "\n";
+				i++;
+			}
+		} else if(strstr(search, "srcnum")) {
+			int i = 0;
+			//reset filters 
+			for(i = 0; i < MAXLIVEFILTERS; i++) {
+				lv_srcnum[i][0] = '\0';
+			}
+			stringstream  data(value);
+			string val;
+			i = 0;
+			// read all argumens livefilter set srcaddr 123 345 244
+			while(i < MAXLIVEFILTERS and getline(data, val,' ')){
+				stringstream tmp;
+				tmp << val;
+				tmp >> lv_srcnum[i];
+				//cout << lv_srcnum[i] << "\n";
+				i++;
+			}
+		} else if(strstr(search, "dstnum")) {
+			int i = 0;
+			//reset filters 
+			for(i = 0; i < MAXLIVEFILTERS; i++) {
+				lv_dstnum[i][0] = '\0';
+			}
+			stringstream  data(value);
+			string val;
+			i = 0;
+			// read all argumens livefilter set dstaddr 123 345 244
+			while(i < MAXLIVEFILTERS and getline(data, val,' ')){
+				stringstream tmp;
+				tmp << val;
+				tmp >> lv_dstnum[i];
+				//cout << lv_dstnum[i] << "\n";
+				i++;
+			}
+		} else if(strstr(search, "bothnum")) {
+			int i = 0;
+			//reset filters 
+			for(i = 0; i < MAXLIVEFILTERS; i++) {
+				lv_bothnum[i][0] = '\0';
+			}
+			stringstream  data(value);
+			string val;
+			i = 0;
+			// read all argumens livefilter set bothaddr 123 345 244
+			while(i < MAXLIVEFILTERS and getline(data, val,' ')){
+				stringstream tmp;
+				tmp << val;
+				tmp >> lv_bothnum[i];
+				//cout << lv_bothnum[i] << "\n";
+				i++;
+			}
+		}
 	} else if(strstr(buf, "listen") != NULL) {
 		char fifo[1024];
 		char fifo1[1024];
@@ -642,12 +759,28 @@ connect:
 	return 0;
 }
 
+void *manager_read_thread(void * arg) {
+
+	char buf[BUFSIZE];
+	int size;
+	unsigned int    client;
+	client = *(unsigned int *)arg;
+
+	//cout << "New manager connect from: " << inet_ntoa((in_addr)clientInfo.sin_addr) << endl;
+	if ((size = recv(client, buf, BUFSIZE - 1, 0)) == -1) {
+		cerr << "Error in receiving data" << endl;
+		close(client);
+		return 0;
+	}
+	buf[size] = '\0';
+	parse_command(buf, size, client, 0);
+	close(client);
+	return 0;
+}
 
 void *manager_server(void *dummy) {
 	sockaddr_in sockName;
 	sockaddr_in clientInfo;
-	char buf[BUFSIZE];
-	int size;
 	socklen_t addrlen;
 
 	// Vytvorime soket - viz minuly dil
@@ -670,6 +803,10 @@ void *manager_server(void *dummy) {
 		cerr << "Cannot create manager queue" << endl;
 		return 0;
 	}
+	unsigned int ids;
+	pthread_t threads;
+	pthread_attr_t        attr;
+	pthread_attr_init(&attr);
 	while(1 && terminating == 0) {
 		addrlen = sizeof(clientInfo);
 		int client = accept(manager_socket_server, (sockaddr*)&clientInfo, &addrlen);
@@ -682,15 +819,13 @@ void *manager_server(void *dummy) {
 			//cerr << "Problem with accept client" <<endl;
 			return 0;
 		}
-		//cout << "New manager connect from: " << inet_ntoa((in_addr)clientInfo.sin_addr) << endl;
-		if ((size = recv(client, buf, BUFSIZE - 1, 0)) == -1) {
-			cerr << "Error in receiving data" << endl;
-			close(client);
-			continue;
-		}
-		buf[size] = '\0';
-		parse_command(buf, size, client, 0);
-		close(client);
+
+		ids = client;
+		pthread_create (                    /* Create a child thread        */
+			&threads,                /* Thread ID (system assigned)  */    
+			&attr,                   /* Default thread attributes    */
+			manager_read_thread,               /* Thread routine               */
+			&ids);                   /* Arguments to be passed       */
 	}
 	close(manager_socket_server);
 	return 0;

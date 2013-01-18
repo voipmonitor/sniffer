@@ -129,6 +129,12 @@ extern pthread_mutex_t mysqlquery_lock;
 extern queue<string> mysqlquery;
 extern SqlDb *sqlDb;
 int pcap_dlink;
+extern unsigned int lv_saddr[MAXLIVEFILTERS];
+extern unsigned int lv_daddr[MAXLIVEFILTERS];
+extern unsigned int lv_bothaddr[MAXLIVEFILTERS];
+extern char lv_srcnum[MAXLIVEFILTERS][MAXLIVEFILTERSCHARS];
+extern char lv_dstnum[MAXLIVEFILTERS][MAXLIVEFILTERSCHARS];
+extern char lv_bothnum[MAXLIVEFILTERS][MAXLIVEFILTERSCHARS];
 
 #ifdef QUEUE_MUTEX
 extern sem_t readpacket_thread_semaphore;
@@ -185,16 +191,21 @@ in_addr_t match_nat_aliases(in_addr_t ip) {
 */
 inline void save_live_packet(Call *call, struct pcap_pkthdr *header, const u_char *packet, unsigned int saddr, int source, unsigned int daddr, int dest, int istcp, char *data, int datalen) {
 	// check saddr and daddr filters
-#if 0
+#if 1
+
+
+	daddr = htonl(daddr);
+	saddr = htonl(saddr);
 	for(int i = 0; i < MAXLIVEFILTERS; i++) {
 		if(lv_saddr[i] == saddr) goto save;
 		if(lv_daddr[i] == daddr) goto save;
-		if(lv_bothaddr[i] == daddr or lv_both[i] == saddr) goto save;
-		if(lv_srcnum[i][0] != '\0' and memmem(lv_srcnum[i], strlen(lv_srcnum[i]), call->caller, strlen(call->caller))) goto save;
-		if(lv_dstnum[i][0] != '\0' and memmem(lv_dstnum[i], strlen(lv_dstnum[i]), call->called, strlen(call->called))) goto save;
-		if(lv_bothnum[i][0] != '\0' and memmem(lv_bothnum[i], strlen(lv_bothnum[i]), call->caller, strlen(call->caller)) or
-		  (lv_bothnum[i][0] != '\0' and memmem(lv_bothnum[i], strlen(lv_bothnum[i]), call->called, strlen(call->called)))
-		) goto save;
+		if(lv_bothaddr[i] == daddr or lv_bothaddr[i] == saddr) goto save;
+		if(lv_srcnum[i][0] != '\0' and memmem(call->caller, strlen(call->caller), lv_srcnum[i], strlen(lv_srcnum[i]))) goto save;
+		if(lv_dstnum[i][0] != '\0' and memmem(call->caller, strlen(call->caller), lv_dstnum[i], strlen(lv_dstnum[i]))) goto save;
+		if(lv_bothnum[i][0] != '\0' and (
+			memmem(call->caller, strlen(call->caller), lv_bothnum[i], strlen(lv_bothnum[i])) or
+			memmem(call->called, strlen(call->called), lv_bothnum[i], strlen(lv_bothnum[i])))
+		)  goto save;
 	}
 	// nothing matches
 	return;
