@@ -222,7 +222,12 @@ void *listening_worker(void *arguments) {
 int parse_command(char *buf, int size, int client, int eof) {
 	char sendbuf[BUFSIZE];
 
-	if(strstr(buf, "totalcalls") != NULL) {
+	if(strstr(buf, "getversion") != NULL) {
+		if ((size = send(client, RTPSENSOR_VERSION, strlen(RTPSENSOR_VERSION), 0)) == -1){
+			cerr << "Error sending data to client" << endl;
+			return -1;
+		}
+	} else if(strstr(buf, "totalcalls") != NULL) {
 		snprintf(sendbuf, BUFSIZE, "%d", calls);
 		if ((size = send(client, sendbuf, strlen(sendbuf), 0)) == -1){
 			cerr << "Error sending data to client" << endl;
