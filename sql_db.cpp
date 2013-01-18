@@ -807,7 +807,7 @@ END ; ";
 	`dport` SMALLINT UNSIGNED NOT NULL ,\
 	`istcp` TINYINT UNSIGNED NOT NULL ,\
 	`created_at` TIMESTAMP NOT NULL ,\
-	`milliseconds` INT UNSIGNED NOT NULL ,\
+	`microseconds` INT UNSIGNED NOT NULL ,\
 	`callid` VARCHAR(255) NOT NULL ,\
 	`description` VARCHAR(1024),\
 	`data` VARBINARY(10000) NOT NULL ,\

@@ -243,7 +243,7 @@ save:
 
 	// construct query and push it to mysqlquery queue
 	int id_sensor = opt_id_sensor > 0 ? opt_id_sensor : 0;
-	query << "INSERT INTO livepacket SET sipcallerip = '" << saddr << "', sipcalledip = '" << daddr << "', id_sensor = " << id_sensor << ", sport = " << source << ", dport = " << dest << ", istcp = " << istcp << ", created_at = " << sqlEscapeString(sqlDateTimeString(header->ts.tv_sec).c_str()) << ", milliseconds = " << header->ts.tv_usec << ", callid = " << sqlEscapeString(call->call_id) << ", description = " << sqlEscapeString(description) << ", data = '#" << sqlDb->escapebin(mpacket, len) << "#'";
+	query << "INSERT INTO livepacket SET sipcallerip = '" << saddr << "', sipcalledip = '" << daddr << "', id_sensor = " << id_sensor << ", sport = " << source << ", dport = " << dest << ", istcp = " << istcp << ", created_at = " << sqlEscapeString(sqlDateTimeString(header->ts.tv_sec).c_str()) << ", microseconds = " << header->ts.tv_usec << ", callid = " << sqlEscapeString(call->call_id) << ", description = " << sqlEscapeString(description) << ", data = '#" << sqlDb->escapebin(mpacket, len) << "#'";
 	cout << query.str();
 	pthread_mutex_lock(&mysqlquery_lock);
 	mysqlquery.push(query.str());
