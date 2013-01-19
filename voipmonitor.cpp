@@ -1655,7 +1655,6 @@ int main(int argc, char *argv[]) {
 	}
 
 	// flush all queues
-	clean_tcpstreams();
 	Call *call;
 	calltable->cleanup(0);
 	terminating = 1;
@@ -1697,6 +1696,7 @@ int main(int argc, char *argv[]) {
 		unlink(opt_pidfile);
 	}
 	pthread_mutex_destroy(&mysqlquery_lock);
+	clean_tcpstreams();
 }
 
 #include "sql_db.h"

@@ -283,6 +283,53 @@ inline void save_packet(Call *call, struct pcap_pkthdr *header, const u_char *pa
 	}
 }
 
+int check_sip20(char *data, unsigned long len){
+	int ok;
+	if(len < 11) {
+		return 0;
+	}
+	char a = data[9];
+	data[9] = '\0';
+	//List of SIP request methods
+	//RFC 3261
+	if(strcasestr(data, "SIP/2.0")) {
+		ok = 1;
+	} else if(strcasestr(data, "INVITE")) {
+		ok = 1;
+	} else if(strcasestr(data, "ACK")) {
+		ok = 1;
+	} else if(strcasestr(data, "BYE")) {
+		ok = 1;
+	} else if(strcasestr(data, "CANCEL")) {
+		ok = 1;
+	} else if(strcasestr(data, "OPTIONS")) {
+		ok = 1;
+	} else if(strcasestr(data, "REGISTER")) {
+		ok = 1;
+	//RFC 3262
+	} else if(strcasestr(data, "PRACK")) {
+		ok = 1;
+	} else if(strcasestr(data, "SUBSCRIBE")) {
+		ok = 1;
+	} else if(strcasestr(data, "NOTIFY")) {
+		ok = 1;
+	} else if(strcasestr(data, "PUBLISH")) {
+		ok = 1;
+	} else if(strcasestr(data, "INFO")) {
+		ok = 1;
+	} else if(strcasestr(data, "REFER")) {
+		ok = 1;
+	} else if(strcasestr(data, "MESSAGE")) {
+		ok = 1;
+	} else if(strcasestr(data, "UPDATE")) {
+		ok = 1;
+	} else {
+		ok = 0;
+	}
+	data[9] = a;
+	return ok;
+}
+
 /* get SIP tag from memory pointed to *ptr length of len */
 char * gettag(const void *ptr, unsigned long len, const char *tag, unsigned long *gettaglen){
 	unsigned long register r, l, tl;
@@ -1069,11 +1116,12 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 		   messages use the same Call-ID. For example, when a user agent receives a 
 		   BYE message, it knows which call to hang up based on the Call-ID.
 		*/
+		int issip = check_sip20(data, datalen);
 		s = gettag(data, datalen, "\nCall-ID:", &l);
-		if(l <= 0 || l > 1023) {
+		if(!issip or (l <= 0 || l > 1023)) {
 			// try also compact header
 			s = gettag(data, datalen,"\ni:", &l);
-			if(l <= 0 || l > 1023) {
+			if(!issip or (l <= 0 || l > 1023)) {
 				// no Call-ID found in packet
 				if(istcp) {
 					// packet is tcp, check if belongs to some previouse TCP stream (reassembling here)
