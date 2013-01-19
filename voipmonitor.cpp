@@ -1655,6 +1655,7 @@ int main(int argc, char *argv[]) {
 	}
 
 	// flush all queues
+	clean_tcpstreams();
 	Call *call;
 	calltable->cleanup(0);
 	terminating = 1;

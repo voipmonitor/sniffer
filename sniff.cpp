@@ -139,17 +139,21 @@ extern char lv_bothnum[MAXLIVEFILTERS][MAXLIVEFILTERSCHARS];
 #ifdef QUEUE_MUTEX
 extern sem_t readpacket_thread_semaphore;
 #endif
+unsigned int numpackets = 0;
 
-struct tcp_stream2 {
+typedef struct tcp_stream2_s {
 	char *data;
 	int datalen;
 	pcap_pkthdr header;
 	u_char *packet;
-	u_int next_seq;
 	u_int hash;
 	time_t ts;
-	tcp_stream2 *next;
-};
+	u_int32_t seq;
+	u_int32_t next_seq;
+	u_int32_t ack_seq;
+	tcp_stream2_s *next;
+	char call_id[128];
+} tcp_stream2_t;
 
 typedef struct pcap_hdr_s {
 	u_int32_t magic_number;   /* magic number */
@@ -168,8 +172,8 @@ typedef struct pcaprec_hdr_s {
 	u_int32_t orig_len;       /* actual length of packet */
 } pcaprec_hdr_t;
 
-tcp_stream2 *tcp_streams_hashed[MAX_TCPSTREAMS];
-list<tcp_stream2*> tcp_streams_list;
+tcp_stream2_t *tcp_streams_hashed[MAX_TCPSTREAMS];
+list<tcp_stream2_t*> tcp_streams_list;
 
 extern struct queue_state *qs_readpacket_thread_queue;
 
@@ -243,13 +247,15 @@ save:
 	len += sizeof(pcaph) + sizeof(pcaphdr);
 
 	//construct description
-	char description[1024];
-	void *memptr = memmem(data, datalen, "\r\n", 2);
-	if(memptr) {
-		memcpy(description, data, (char *)memptr - (char*)data);
-		description[(char*)memptr - (char*)data] = '\0';
-	} else {
-		strcpy(description, "error in description\n");
+	char description[1024] = "";
+	if(datalen) {
+		void *memptr = memmem(data, datalen, "\r\n", 2);
+		if(memptr) {
+			memcpy(description, data, (char *)memptr - (char*)data);
+			description[(char*)memptr - (char*)data] = '\0';
+		} else {
+			strcpy(description, "error in description\n");
+		}
 	}
 
 	// construct query and push it to mysqlquery queue
@@ -284,6 +290,11 @@ char * gettag(const void *ptr, unsigned long len, const char *tag, unsigned long
 	char *tmp;
 	char tmp2;
 	tmp = (char*)ptr;
+
+	if(len <= 0) {
+		*gettaglen = 0;
+		return NULL;
+	}
 
 	// put '\0' at the end of the packet so it can be used with string functions. then restore the character
 	tmp2 = tmp[len - 1];
@@ -933,23 +944,42 @@ Call *new_invite_register(int sip_method, char *data, int datalen, struct pcap_p
 	return call;
 }
 
-Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int dest, char *data, int datalen,
-	pcap_t *handle, pcap_pkthdr *header, const u_char *packet, int istcp, int dontsave, int can_thread, int *was_rtp) {
+void clean_tcpstreams() {
+	// clean tcp_streams_list
+	list<tcp_stream2_t*>::iterator stream;
+	for (stream = tcp_streams_list.begin(); stream != tcp_streams_list.end();) {
+		// remove tcp stream after 10 minutes
+		tcp_stream2_t *next, *tmpstream;
+		tmpstream = tcp_streams_hashed[(*stream)->hash];
+		tcp_streams_hashed[(*stream)->hash] = NULL;
+		while(tmpstream) {
+			free(tmpstream->data);
+			free(tmpstream->packet);
+			next = tmpstream->next;
+			free(tmpstream);
+			tmpstream = next;
+		}
+		tcp_streams_list.erase(stream++);
+	}
+}
 
-	static Call *call;
-	static int last_sip_method = -1;
-	static int iscaller;
-	static int is_rtcp = 0;
+Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int dest, char *data, int datalen,
+	pcap_t *handle, pcap_pkthdr *header, const u_char *packet, int istcp, int dontsave, int can_thread, int *was_rtp, struct iphdr *header_ip) {
+
+	Call *call;
+	int last_sip_method = -1;
+	int iscaller;
+	int is_rtcp = 0;
 	static unsigned long last_cleanup = 0;	// Last cleaning time
-	static char *s;
-	static unsigned long l;
-	static char callidstr[1024],str2[1024];
-	static int sip_method = 0;
-	static char lastSIPresponse[128];
-	static int lastSIPresponseNum;
+	char *s;
+	unsigned long l;
+	char callidstr[1024],str2[1024];
+	int sip_method = 0;
+	char lastSIPresponse[128];
+	int lastSIPresponseNum;
+	static struct pcap_stat ps;
 	static int pcapstatres = 0;
 	static int pcapstatresCount = 0;
-	static struct pcap_stat ps;
 	static unsigned int lostpacket = 0;
 	static unsigned int lostpacketif = 0;
 	unsigned int tmp_u32 = 0;
@@ -987,11 +1017,11 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 		calltable->unlock_calls_deletequeue();
 
 		// clean tcp_streams_list
-		list<tcp_stream2*>::iterator stream;
+		list<tcp_stream2_t*>::iterator stream;
 		for (stream = tcp_streams_list.begin(); stream != tcp_streams_list.end();) {
 			if((header->ts.tv_sec - (*stream)->ts) > (10 * 60)) {
 				// remove tcp stream after 10 minutes
-				tcp_stream2 *next, *tmpstream;
+				tcp_stream2_t *next, *tmpstream;
 				tmpstream = tcp_streams_hashed[(*stream)->hash];
 				tcp_streams_hashed[(*stream)->hash] = NULL;
 				while(tmpstream) {
@@ -1017,6 +1047,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 
 	}
 
+
 	// check if the packet is SIP ports 	
 	if(sipportmatrix[source] || sipportmatrix[dest]) {
 
@@ -1038,30 +1069,91 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 		   messages use the same Call-ID. For example, when a user agent receives a 
 		   BYE message, it knows which call to hang up based on the Call-ID.
 		*/
-		s = gettag(data,datalen,"\nCall-ID:", &l);
+		s = gettag(data, datalen, "\nCall-ID:", &l);
 		if(l <= 0 || l > 1023) {
 			// try also compact header
-			s = gettag(data,datalen,"\ni:", &l);
+			s = gettag(data, datalen,"\ni:", &l);
 			if(l <= 0 || l > 1023) {
 				// no Call-ID found in packet
-				// if packet is tcp, check if belongs to some TCP stream for reassemling 
-				u_int hash = mkhash(saddr, source, daddr, dest) % MAX_TCPSTREAMS;
-				if(istcp && tcp_streams_hashed[hash] != NULL) {
-					// it belongs, append to end
+				if(istcp) {
+					// packet is tcp, check if belongs to some previouse TCP stream (reassembling here)
+					struct tcphdr *header_tcp = (struct tcphdr *) ((char *) header_ip + sizeof(*header_ip));
+					tcp_stream2_t *tmpstream;
+					u_int hash = mkhash(saddr, source, daddr, dest) % MAX_TCPSTREAMS;
+					if(!header_ip or tcp_streams_hashed[hash] == NULL) {
+						// this packet do not belongs to preivious TCP session but check opposite direction and if yes 
+						// check if the tcp packet has sequence number which confirms ACK and thus marks end of tcpstream 
+						hash = mkhash(daddr, dest, saddr, source) % MAX_TCPSTREAMS;
+						if((tmpstream = tcp_streams_hashed[hash]) and tmpstream->ack_seq == htonl(header_tcp->seq)) {
+							// it is ACK which means that the tcp reassembled packets will be reassembled and processed 
+							tcp_streams_list.remove(tcp_streams_hashed[hash]);
+							int newlen = 0;
+							// get SIP packet length from all TCP segments
+							for(tmpstream = tcp_streams_hashed[hash]; tmpstream; tmpstream = tmpstream->next) {
+								newlen += tmpstream->datalen;
+							};
+							// allocate structure for whole SIP packet and concatenate all segments 
+							u_char *newdata = (u_char*)malloc(sizeof(u_char) * newlen);
+							int len2 = 0;
+							for(tmpstream = tcp_streams_hashed[hash]; tmpstream; tmpstream = tmpstream->next) {
+								memcpy(newdata + len2, tmpstream->data, tmpstream->datalen);
+								len2 += tmpstream->datalen;
+							};
+							// sip message is now reassembled and can be processed 
+							// here we turns out istcp flag so the function process_packet will not reach tcp reassemble and will process the whole message
+							int tmp_was_rtp;
+							Call *call = process_packet(saddr, source, daddr, dest, (char*)newdata, newlen, handle, header, packet, 0, 1, 0, &tmp_was_rtp, header_ip);
 
-					// create stream node
-					tcp_stream2 *stream = (tcp_stream2*)malloc(sizeof(tcp_stream2));
-					tcp_stream2 *tmpstream;
+							// message was processed so the stream can be released from queue and destroyd all its parts
+							tcp_stream2_t *next;
+							tmpstream = tcp_streams_hashed[hash];
+							while(tmpstream) {
+								if(call) {
+									// if packet belongs to (or created) call, save each packets to pcap and destroy TCP stream
+									save_packet(call, &tmpstream->header, (const u_char*)tmpstream->packet, saddr, source, daddr, dest, istcp, (char *)newdata, sizeof(u_char) * newlen);
+								}
+								free(tmpstream->data);
+								free(tmpstream->packet);
+								next = tmpstream->next;
+								free(tmpstream);
+								tmpstream = next;
+							}
+							free(newdata);
+							tcp_streams_hashed[hash] = NULL;
+							// save also current packet 
+							if(call) {
+								save_packet(call, header, packet, saddr, source, daddr, dest, istcp, (char *)data, datalen);
+							}
+							return NULL;
+						} else {
+							// TCP packet does not have CAll-ID header and belongs to no existing stream
+							return NULL;
+						}
+					}
+
+					// the packet belongs to previous stream
+					for(tmpstream = tcp_streams_hashed[hash]; tmpstream->next; tmpstream = tmpstream->next) {}; // set cursor to the latest item
+					if(tmpstream->next_seq != htonl(header_tcp->seq)) {
+						// the packet is out of order or duplicated - skip it. This means that voipmonitor is not able to reassemble reordered packets
+						return NULL;
+					}
+
+					// append packet to end of streams items 
+					tcp_stream2_t *stream = (tcp_stream2_t*)malloc(sizeof(tcp_stream2_t));
+					memcpy(stream->call_id, s, MIN(127, l));
+					stream->call_id[MIN(127, l)] = '\0';
 					stream->next = NULL;
 					stream->ts = header->ts.tv_sec;
 					stream->hash = hash;
-					// XXX: packet belongs to some list of stream, do not append to list of root nodes! tcp_streams_list.push_back(stream);
+
+					stream->seq = htonl(header_tcp->seq);
+					stream->ack_seq = htonl(header_tcp->ack_seq);
+					stream->next_seq = stream->seq + (unsigned long int)header->caplen - ((unsigned long int)header_tcp - (unsigned long int)packet + header_tcp->doff * 4);
 
 					// append new created node at the end of list of TCP packets within this TCP connection
-					for(tmpstream = tcp_streams_hashed[hash]; tmpstream->next; tmpstream = tmpstream->next) {};
 					tmpstream->next = stream;
 
-					//copy data
+					//copy data 
 					stream->data = (char*)malloc(sizeof(char) * datalen);
 					memcpy(stream->data, data, datalen);
 					stream->datalen = datalen;
@@ -1073,27 +1165,55 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 					stream->packet = (u_char*)malloc(sizeof(u_char) * header->caplen);
 					memcpy(stream->packet, packet, header->caplen);
 
-					// check if this TCP packet was the last packet 
-					if(data[datalen - 2] == 0x0d && data[datalen - 1] == 0x0a) {
-						tcp_streams_list.remove(tcp_streams_hashed[hash]);
+					return NULL;
+				} else {
+					// it is not TCP check for datalen
+					if(datalen < 0) {
+						return NULL;
+					}
+				}
+			}
+		}
+		memcpy(callidstr, s, MIN(l, 1024));
+		callidstr[MIN(l, 1023)] = '\0';
+
+		// Call-ID is present
+		if(istcp) {
+			u_int hash = mkhash(saddr, source, daddr, dest) % MAX_TCPSTREAMS;
+			// check if TCP packet contains the whole SIP message
+			if(!(data[datalen - 2] == 0x0d && data[datalen - 1] == 0x0a)) {
+				// SIP message is not complete, save packet 
+				tcp_stream2_t *tmpstream;
+				if((tmpstream = tcp_streams_hashed[hash])) {
+					tcp_stream2_t test;
+					memcpy(&test, tmpstream, sizeof(tmpstream));
+					// there is already stream and Call-ID which can happen if previous stream is not closed (lost ACK etc)
+					// check if the stream contains the same Call-ID
+					if(memmem(tmpstream->call_id, strlen(tmpstream->call_id), s, l)) {
+						// callid is same - it must be duplicate or retransmission just ignore the packet 
+						return NULL;
+					} else {
+						// callid is different - end the previous stream 
+						tcp_streams_list.remove(tmpstream);
 						int newlen = 0;
 						// get SIP packet length from all TCP packets
-						for(tmpstream = tcp_streams_hashed[hash]; tmpstream->next; tmpstream = tmpstream->next) {
+						for(tmpstream = tcp_streams_hashed[hash]; tmpstream; tmpstream = tmpstream->next) {
 							newlen += tmpstream->datalen;
 						};
-						// allocate structure for whole SIP packet
+						// allocate structure for whole SIP packet and concatenate all segments 
 						u_char *newdata = (u_char*)malloc(sizeof(u_char) * newlen);
-						int len2 = 0;
-						// concatenate all TCP packets to one SIP packet
-						for(tmpstream = tcp_streams_hashed[hash]; tmpstream->next; tmpstream = tmpstream->next) {
-							memcpy(newdata + len2, tmpstream->data, tmpstream->datalen);
-							len2 += tmpstream->datalen;
+						int datalen = 0;
+						for(tmpstream = tcp_streams_hashed[hash]; tmpstream; tmpstream = tmpstream->next) {
+							memcpy(newdata + datalen, tmpstream->data, tmpstream->datalen);
+							datalen += tmpstream->datalen;
 						};
-						// process SIP packet but disable to process by thread because we are freeing newdata and need to guarantee right order
+						// sip message is now reassembled and can be processed 
+						// here we turns out istcp flag so the function process_packet will not reach tcp reassemble and will process the whole message
 						int tmp_was_rtp;
-						Call *call = process_packet(saddr, source, daddr, dest, (char*)newdata, newlen, handle, header, packet, 0, 1, 0, &tmp_was_rtp);
-						// remove TCP stream
-						tcp_stream2 *next;
+						Call *call = process_packet(saddr, source, daddr, dest, (char*)newdata, newlen, handle, header, packet, 0, 1, 0, &tmp_was_rtp, header_ip);
+
+						// message was processed so the stream can be released from queue and destroyd all its parts
+						tcp_stream2_t *next;
 						tmpstream = tcp_streams_hashed[hash];
 						while(tmpstream) {
 							if(call) {
@@ -1106,69 +1226,44 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 							free(tmpstream);
 							tmpstream = next;
 						}
+						// save also current packet 
+						if(call) {
+							save_packet(call, header, packet, saddr, source, daddr, dest, istcp, (char *)data, datalen);
+						}
 						free(newdata);
 						tcp_streams_hashed[hash] = NULL;
 					}
-					return NULL;
-				} else {
-					// no call-id and it belongs to no stream, skip 
-					return NULL;
-				}
+				} 
+
+				// create new tcp stream 
+				tcp_stream2_t *stream = (tcp_stream2_t*)malloc(sizeof(tcp_stream2_t));
+				tcp_streams_list.push_back(stream);
+				memcpy(stream->call_id, s, MIN(127, l));
+				stream->call_id[MIN(127, l)] = '\0';
+				stream->next = NULL;
+				stream->ts = header->ts.tv_sec;
+				stream->hash = hash;
+				tcp_streams_hashed[hash] = stream;
+
+				struct tcphdr *header_tcp = (struct tcphdr *) ((char *) header_ip + sizeof(*header_ip));
+				stream->seq = htonl(header_tcp->seq);
+				stream->ack_seq = htonl(header_tcp->ack_seq);
+				stream->next_seq = stream->seq + (unsigned long int)header->caplen - ((unsigned long int)header_tcp - (unsigned long int)packet + header_tcp->doff * 4);
+
+				//copy data
+				stream->data = (char*)malloc(sizeof(char) * datalen);
+				stream->datalen = datalen;
+				memcpy(stream->data, data, datalen);
+
+				//copy header
+				memcpy((void*)(&stream->header), header, sizeof(pcap_pkthdr));
+
+				//copy packet
+				stream->packet = (u_char*)malloc(sizeof(u_char) * header->caplen);
+				memcpy(stream->packet, packet, header->caplen);
+				return NULL;
 			}
 		}
-
-		memcpy(callidstr, s, MIN(l, 1024));
-		callidstr[MIN(l, 1023)] = '\0';
-
-		// Call-ID is present
-		if(istcp) {
-			u_int hash = mkhash(saddr, source, daddr, dest) % MAX_TCPSTREAMS;
-			// check if TCP packet contains the whole SIP message
-			if(!(data[datalen - 2] == 0x0d && data[datalen - 1] == 0x0a)) {
-				// SIP message is not complete, save packet 
-				if(tcp_streams_hashed[hash]) {
-					// there is already stream 
-					if ((datalen > 5) && (
-						!(memmem(data, 6, "NOTIFY", 6) == 0) || 
-						!(memmem(data, 7, "MESSAGE", 7) == 0))) {
-						/* NOTIFY can have content-length > 0 which will not end with 0x0d 0x0a
-						Content-Type: application/dialog-info+xml
-						Content-Length: 527
-
-						<?xml version="1.0"?>
-						*/
-					} else {
-						syslog(LOG_NOTICE,"DEBUG: this TCP stream with Call-ID[%s] should not happen! fix voipmonitor", callidstr);
-					}
-				} else {
-					// create stream node
-					tcp_stream2 *stream = (tcp_stream2*)malloc(sizeof(tcp_stream2));
-					tcp_streams_list.push_back(stream);
-					stream->next = NULL;
-					stream->ts = header->ts.tv_sec;
-					stream->hash = hash;
-					tcp_streams_hashed[hash] = stream;
-
-					//copy data
-					stream->data = (char*)malloc(sizeof(char) * datalen);
-					stream->datalen = datalen;
-					memcpy(stream->data, data, datalen);
-
-					//copy header
-					memcpy((void*)(&stream->header), header, sizeof(pcap_pkthdr));
-
-					//copy packet
-					stream->packet = (u_char*)malloc(sizeof(u_char) * header->caplen);
-					memcpy(stream->packet, packet, header->caplen);
-					return NULL;
-				}
-			} else if(tcp_streams_hashed[hash]) {
-				// SIP packet is complete and part of TCP stream
-				//syslog(LOG_NOTICE,"TCP packet contains Call-ID[%s] and is already part of TCP stream which should not happen. fix voipmonitor", callidstr);
-			}
-		}
-
-
 
 		// parse SIP method 
 		if ((datalen > 5) && !(memmem(data, 6, "INVITE", 6) == 0)) {
@@ -1397,6 +1492,43 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 					call->invitecseq[l] = '\0';
 					if(verbosity > 2)
 						syslog(LOG_NOTICE, "Seen MEESAGE, CSeq: %s\n", call->invitecseq);
+				}
+
+				// UPDATE TEXT
+				char a = data[datalen - 1];
+				data[datalen - 1] = 0;
+				char *tmp = strstr(data, "\r\n\r\n");
+				if(tmp) {
+					tmp += 4; // skip \r\n\r\n and point to start of the message
+					int contentlen = 0;
+					s = gettag(data, datalen, "\nContent-Length:", &l);
+					if(l && ((unsigned int)l < ((unsigned int)datalen - (s - data)))) {
+						char c = s[l];
+						s[l] = '\0';
+						contentlen = atoi(s);
+						s[l] = c;
+					}
+					char *end = strcasestr(tmp, "\n\nContent-Length:");
+					if(!end) {
+						end = strstr(tmp, "\r\n"); // strstr is safe becuse tmp ends with '\0'
+						if(!end) {
+							end = data + datalen;
+						}
+					}
+					if(contentlen > 0) {
+						//truncate message to its size announced in content-length
+						if(end - tmp > contentlen) {
+							end = tmp + MIN(end - tmp, contentlen);
+						}
+					}
+					
+					data[datalen - 1] = a;
+					if(call->message) free(call->message);
+					call->message = (char*)malloc(sizeof(char) * (end - tmp + 1));
+					memcpy(call->message, tmp, end - tmp);
+					call->message[end - tmp] = '\0';
+				} else {
+					data[datalen - 1] = a;
 				}
 			} else if(sip_method == BYE) {
 				//check and save CSeq for later to compare with OK 
@@ -1687,7 +1819,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 			if(!end) {
 				end = strstr(tmp, "\r\n"); // strstr is safe becuse tmp ends with '\0'
 				if(!end) {
-					end = data + datalen - 1;
+					end = data + datalen;
 				}
 			}
 			if(contentlen > 0) {
@@ -1697,10 +1829,12 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 				}
 			}
 			
+			data[datalen - 1] = a;
 			call->message = (char*)malloc(sizeof(char) * (end - tmp + 1));
 			memcpy(call->message, tmp, end - tmp);
 			call->message[end - tmp] = '\0';
 			//printf("msg:[%s]\n", call->message);
+			data[datalen - 1] = '\0';
 		}
 		data[datalen - 1] = a;
 
@@ -1907,7 +2041,7 @@ libnids_tcp_callback(struct tcp_stream *a_tcp, void **this_time_not_needed) {
 		return;
 	}
 	if (a_tcp->nids_state == NIDS_DATA){
-		printf("[%d] [%d]\n", a_tcp->client.count_new, a_tcp->server.count_new);
+		//printf("[%d] [%d]\n", a_tcp->client.count_new, a_tcp->server.count_new);
 		// new data has arrived; gotta determine in what direction
 		// and if it's urgent or not
 
@@ -1925,13 +2059,13 @@ libnids_tcp_callback(struct tcp_stream *a_tcp, void **this_time_not_needed) {
 		// because we haven't increased a_tcp->client.collect_urg variable.
 		// So, we have some normal data to take care of.
 		if (a_tcp->client.count_new) {
-			printf("CLIENT !!! \n");
+			//printf("CLIENT !!! \n");
 			// new data for the client
 			hlf = &a_tcp->client; // from now on, we will deal with hlf var,
 					// which will point to client side of conn
 			strcat (buf, "(<-)"); // symbolic direction of data
 		} else {
-			printf("SERVER !!! \n");
+			//printf("SERVER !!! \n");
 			hlf = &a_tcp->server; // analogical
 			strcat (buf, "(->)");
 		}
@@ -1951,7 +2085,7 @@ libnids_tcp_callback(struct tcp_stream *a_tcp, void **this_time_not_needed) {
 void
 libnids_udp_callback(struct tuple4 *addr, u_char *data, int len, struct ip *pkt) {
 	int was_rtp;
-	process_packet(addr->saddr, addr->source, addr->daddr, addr->dest, (char*)data, len, handle, nids_last_pcap_header, nids_last_pcap_data, 0, 0, 1, &was_rtp);
+	process_packet(addr->saddr, addr->source, addr->daddr, addr->dest, (char*)data, len, handle, nids_last_pcap_header, nids_last_pcap_data, 0, 0, 1, &was_rtp, NULL);
 	return;
 }
 
@@ -2107,7 +2241,7 @@ void *pcap_read_thread_func(void *arg) {
 			mirrorip->send((char *)header_ip, (int)(pp->header.len - ((unsigned long) header_ip - (unsigned long) pp->packet)));
 		}
 		process_packet(header_ip->saddr, htons(header_udp->source), header_ip->daddr, htons(header_udp->dest), 
-			    data, datalen, handle, &pp->header, pp->packet, istcp, 0, 1, &was_rtp);
+			    data, datalen, handle, &pp->header, pp->packet, istcp, 0, 1, &was_rtp, header_ip);
 
 #ifdef QUEUE_NONBLOCK2
 		qring[readit % qringmax].free = 1;
@@ -2152,9 +2286,9 @@ void readdump_libpcap(pcap_t *handle) {
 	MD5_CTX ctx;
 
 	init_hash();
-	memset(tcp_streams_hashed, 0, sizeof(tcp_stream2*) * MAX_TCPSTREAMS);
+	memset(tcp_streams_hashed, 0, sizeof(tcp_stream2_t*) * MAX_TCPSTREAMS);
 
-	
+
 	pcap_dumper_t *tmppcap = NULL;
 	char pname[1024];
 
@@ -2203,6 +2337,9 @@ void readdump_libpcap(pcap_t *handle) {
 			telnumfilter_reload_do = 0; 
 		}
 
+		numpackets++;	
+	//	printf("[%d]\n", numpackets);
+
 		switch(pcap_dlink) {
 			case DLT_LINUX_SLL:
 				header_sll = (struct sll_header *) (char*)packet;
@@ -2235,7 +2372,7 @@ void readdump_libpcap(pcap_t *handle) {
 				protocol = 8;
 				break;
 			default:
-				printf("This datalink number [%d] is not supported yet. For more information write to support@voipmonitor.org\n", pcap_dlink);
+				syslog(LOG_ERR, "This datalink number [%d] is not supported yet. For more information write to support@voipmonitor.org\n", pcap_dlink);
 				continue;
 		}
 
@@ -2262,7 +2399,8 @@ void readdump_libpcap(pcap_t *handle) {
 			header_tcp = (struct tcphdr *) ((char *) header_ip + sizeof(*header_ip));
 			data = (char *) header_tcp + (header_tcp->doff * 4);
 			datalen = (int)(header->caplen - ((unsigned long) data - (unsigned long) packet)); 
-			if (datalen == 0 || !(sipportmatrix[htons(header_tcp->source)] || sipportmatrix[htons(header_tcp->dest)])) {
+			//if (datalen == 0 || !(sipportmatrix[htons(header_tcp->source)] || sipportmatrix[htons(header_tcp->dest)])) {
+			if (!(sipportmatrix[htons(header_tcp->source)] || sipportmatrix[htons(header_tcp->dest)])) {
 				// not interested in TCP packet other than SIP port
 				if(opt_ipaccount == 0) {
 					continue;
@@ -2283,7 +2421,7 @@ void readdump_libpcap(pcap_t *handle) {
 				continue;
 			}
 		}
-
+	
 		if(datalen < 0) {
 			continue;
 		}
@@ -2293,7 +2431,7 @@ void readdump_libpcap(pcap_t *handle) {
 		}
 
 		/* check for duplicate packets (md5 is expensive operation - enable only if you really need it */
-		if(opt_dup_check) {
+		if(datalen > 0 and opt_dup_check) {
 			MD5_Init(&ctx);
 			MD5_Update(&ctx, data, (unsigned long)datalen);
 			MD5_Final(md5, &ctx);
@@ -2364,7 +2502,7 @@ void readdump_libpcap(pcap_t *handle) {
 			ipaccount(header->ts.tv_sec, (struct iphdr *) ((char*)packet + offset), header->caplen - offset);
 		}
 		process_packet(header_ip->saddr, htons(header_udp->source), header_ip->daddr, htons(header_udp->dest), 
-			    data, datalen, handle, header, packet, istcp, 0, 1, &was_rtp);
+			    data, datalen, handle, header, packet, istcp, 0, 1, &was_rtp, header_ip);
 	}
 
 	if(opt_pcapdump) {

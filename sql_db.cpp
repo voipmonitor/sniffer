@@ -597,7 +597,7 @@ void SqlDb_mysql::createSchema() {
   `a_ua_id` int(10) unsigned DEFAULT NULL,\
   `b_ua_id` int(10) unsigned DEFAULT NULL,\
   `fbasename` varchar(255) DEFAULT NULL,\
-  `message` TEXT,\
+  `message` TEXT CHARACTER SET utf8,\
   PRIMARY KEY (`ID`),\
   KEY `calldate` (`calldate`),\
   KEY `source` (`caller`),\
