@@ -153,6 +153,7 @@ typedef struct tcp_stream2_s {
 	u_int32_t ack_seq;
 	tcp_stream2_s *next;
 	char call_id[128];
+	int lastpsh;
 } tcp_stream2_t;
 
 typedef struct pcap_hdr_s {
@@ -1123,58 +1124,66 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 			s = gettag(data, datalen,"\ni:", &l);
 			if(!issip or (l <= 0 || l > 1023)) {
 				// no Call-ID found in packet
-				if(istcp) {
+				if(istcp && header_ip) {
 					// packet is tcp, check if belongs to some previouse TCP stream (reassembling here)
 					struct tcphdr *header_tcp = (struct tcphdr *) ((char *) header_ip + sizeof(*header_ip));
 					tcp_stream2_t *tmpstream;
 					u_int hash = mkhash(saddr, source, daddr, dest) % MAX_TCPSTREAMS;
-					if(!header_ip or tcp_streams_hashed[hash] == NULL) {
+					tmpstream = tcp_streams_hashed[hash];
+					if(tcp_streams_hashed[hash] == NULL) {
 						// this packet do not belongs to preivious TCP session but check opposite direction and if yes 
 						// check if the tcp packet has sequence number which confirms ACK and thus marks end of tcpstream 
 						hash = mkhash(daddr, dest, saddr, source) % MAX_TCPSTREAMS;
-						if((tmpstream = tcp_streams_hashed[hash]) and tmpstream->ack_seq == htonl(header_tcp->seq)) {
-							// it is ACK which means that the tcp reassembled packets will be reassembled and processed 
-							tcp_streams_list.remove(tcp_streams_hashed[hash]);
-							int newlen = 0;
-							// get SIP packet length from all TCP segments
-							for(tmpstream = tcp_streams_hashed[hash]; tmpstream; tmpstream = tmpstream->next) {
-								newlen += tmpstream->datalen;
-							};
-							// allocate structure for whole SIP packet and concatenate all segments 
-							u_char *newdata = (u_char*)malloc(sizeof(u_char) * newlen);
-							int len2 = 0;
-							for(tmpstream = tcp_streams_hashed[hash]; tmpstream; tmpstream = tmpstream->next) {
-								memcpy(newdata + len2, tmpstream->data, tmpstream->datalen);
-								len2 += tmpstream->datalen;
-							};
-							// sip message is now reassembled and can be processed 
-							// here we turns out istcp flag so the function process_packet will not reach tcp reassemble and will process the whole message
-							int tmp_was_rtp;
-							Call *call = process_packet(saddr, source, daddr, dest, (char*)newdata, newlen, handle, header, packet, 0, 1, 0, &tmp_was_rtp, header_ip);
+						if((tmpstream = tcp_streams_hashed[hash])) {
+							tcp_stream2_t *laststream;
+							for(laststream = tcp_streams_hashed[hash]; laststream->next; laststream = laststream->next) {}; // set cursor to the latest item
+							if((laststream->lastpsh and laststream->ack_seq == htonl(header_tcp->seq)) 
+								or (datalen >= 2 and (data[datalen - 2] == 0x0d and data[datalen - 1] == 0x0a))) {
+								// it is ACK which means that the tcp reassembled packets will be reassembled and processed 
+								tcp_streams_list.remove(tcp_streams_hashed[hash]);
+								int newlen = 0;
+								// get SIP packet length from all TCP segments
+								for(tmpstream = tcp_streams_hashed[hash]; tmpstream; tmpstream = tmpstream->next) {
+									newlen += tmpstream->datalen;
+								};
+								// allocate structure for whole SIP packet and concatenate all segments 
+								u_char *newdata = (u_char*)malloc(sizeof(u_char) * newlen);
+								int len2 = 0;
+								for(tmpstream = tcp_streams_hashed[hash]; tmpstream; tmpstream = tmpstream->next) {
+									memcpy(newdata + len2, tmpstream->data, tmpstream->datalen);
+									len2 += tmpstream->datalen;
+								};
+								// sip message is now reassembled and can be processed 
+								// here we turns out istcp flag so the function process_packet will not reach tcp reassemble and will process the whole message
+								int tmp_was_rtp;
+								Call *call = process_packet(saddr, source, daddr, dest, (char*)newdata, newlen, handle, header, packet, 0, 1, 0, &tmp_was_rtp, header_ip);
 
-							// message was processed so the stream can be released from queue and destroyd all its parts
-							tcp_stream2_t *next;
-							tmpstream = tcp_streams_hashed[hash];
-							while(tmpstream) {
-								if(call) {
-									// if packet belongs to (or created) call, save each packets to pcap and destroy TCP stream
-									save_packet(call, &tmpstream->header, (const u_char*)tmpstream->packet, saddr, source, daddr, dest, istcp, (char *)newdata, sizeof(u_char) * newlen);
+								// message was processed so the stream can be released from queue and destroyd all its parts
+								tcp_stream2_t *next;
+								tmpstream = tcp_streams_hashed[hash];
+								while(tmpstream) {
+									if(call) {
+										// if packet belongs to (or created) call, save each packets to pcap and destroy TCP stream
+										save_packet(call, &tmpstream->header, (const u_char*)tmpstream->packet, saddr, source, daddr, dest, istcp, (char *)newdata, sizeof(u_char) * newlen);
+									}
+									free(tmpstream->data);
+									free(tmpstream->packet);
+									next = tmpstream->next;
+									free(tmpstream);
+									tmpstream = next;
 								}
-								free(tmpstream->data);
-								free(tmpstream->packet);
-								next = tmpstream->next;
-								free(tmpstream);
-								tmpstream = next;
+								free(newdata);
+								tcp_streams_hashed[hash] = NULL;
+								// save also current packet 
+								if(call) {
+									save_packet(call, header, packet, saddr, source, daddr, dest, istcp, (char *)data, datalen);
+								}
+								return NULL;
+							} else {
+								// TCP packet does not have CAll-ID header and belongs to no existing stream
+								return NULL;
 							}
-							free(newdata);
-							tcp_streams_hashed[hash] = NULL;
-							// save also current packet 
-							if(call) {
-								save_packet(call, header, packet, saddr, source, daddr, dest, istcp, (char *)data, datalen);
-							}
-							return NULL;
 						} else {
-							// TCP packet does not have CAll-ID header and belongs to no existing stream
 							return NULL;
 						}
 					}
@@ -1194,6 +1203,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 					stream->ts = header->ts.tv_sec;
 					stream->hash = hash;
 
+					stream->lastpsh = header_tcp->psh;
 					stream->seq = htonl(header_tcp->seq);
 					stream->ack_seq = htonl(header_tcp->ack_seq);
 					stream->next_seq = stream->seq + (unsigned long int)header->caplen - ((unsigned long int)header_tcp - (unsigned long int)packet + header_tcp->doff * 4);
@@ -1213,6 +1223,50 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 					stream->packet = (u_char*)malloc(sizeof(u_char) * header->caplen);
 					memcpy(stream->packet, packet, header->caplen);
 
+					// check if the latest segment is not erminated by 0x0d or 0x0a which indicates end of SIP message
+					// XXX this is repeating block of code 
+					if(datalen >= 2 and (data[datalen - 2] == 0x0d and data[datalen - 1] == 0x0a)) {
+						// it is ACK which means that the tcp reassembled packets will be reassembled and processed 
+						tcp_streams_list.remove(tcp_streams_hashed[hash]);
+						int newlen = 0;
+						// get SIP packet length from all TCP segments
+						for(tmpstream = tcp_streams_hashed[hash]; tmpstream; tmpstream = tmpstream->next) {
+							newlen += tmpstream->datalen;
+						};
+						// allocate structure for whole SIP packet and concatenate all segments 
+						u_char *newdata = (u_char*)malloc(sizeof(u_char) * newlen);
+						int len2 = 0;
+						for(tmpstream = tcp_streams_hashed[hash]; tmpstream; tmpstream = tmpstream->next) {
+							memcpy(newdata + len2, tmpstream->data, tmpstream->datalen);
+							len2 += tmpstream->datalen;
+						};
+						// sip message is now reassembled and can be processed 
+						// here we turns out istcp flag so the function process_packet will not reach tcp reassemble and will process the whole message
+						int tmp_was_rtp;
+						Call *call = process_packet(saddr, source, daddr, dest, (char*)newdata, newlen, handle, header, packet, 0, 1, 0, &tmp_was_rtp, header_ip);
+
+						// message was processed so the stream can be released from queue and destroyd all its parts
+						tcp_stream2_t *next;
+						tmpstream = tcp_streams_hashed[hash];
+						while(tmpstream) {
+							if(call) {
+								// if packet belongs to (or created) call, save each packets to pcap and destroy TCP stream
+								save_packet(call, &tmpstream->header, (const u_char*)tmpstream->packet, saddr, source, daddr, dest, istcp, (char *)newdata, sizeof(u_char) * newlen);
+							}
+							free(tmpstream->data);
+							free(tmpstream->packet);
+							next = tmpstream->next;
+							free(tmpstream);
+							tmpstream = next;
+						}
+						free(newdata);
+						tcp_streams_hashed[hash] = NULL;
+						// save also current packet 
+						if(call) {
+							save_packet(call, header, packet, saddr, source, daddr, dest, istcp, (char *)data, datalen);
+						}
+						return NULL;
+					}
 					return NULL;
 				} else {
 					// it is not TCP check for datalen
@@ -1226,7 +1280,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 		callidstr[MIN(l, 1023)] = '\0';
 
 		// Call-ID is present
-		if(istcp) {
+		if(istcp and datalen >= 2) {
 			u_int hash = mkhash(saddr, source, daddr, dest) % MAX_TCPSTREAMS;
 			// check if TCP packet contains the whole SIP message
 			if(!(data[datalen - 2] == 0x0d && data[datalen - 1] == 0x0a)) {
@@ -1294,6 +1348,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 				tcp_streams_hashed[hash] = stream;
 
 				struct tcphdr *header_tcp = (struct tcphdr *) ((char *) header_ip + sizeof(*header_ip));
+				stream->lastpsh = header_tcp->psh;
 				stream->seq = htonl(header_tcp->seq);
 				stream->ack_seq = htonl(header_tcp->ack_seq);
 				stream->next_seq = stream->seq + (unsigned long int)header->caplen - ((unsigned long int)header_tcp - (unsigned long int)packet + header_tcp->doff * 4);
