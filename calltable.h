@@ -128,6 +128,7 @@ public:
 
 	char pcapfilename[512];
 
+	char *contenttype;
 	char *message;
 
 	int last_callercodec;		//!< Last caller codec 

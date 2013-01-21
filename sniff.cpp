@@ -1779,6 +1779,12 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 			//try compact header
 			s = gettag(data,datalen,"\nc:",&l);
 		}
+		if(s and l) {
+			call->contenttype = (char*)malloc(sizeof(char) * (l + 1));
+			memcpy(call->contenttype, s, l);
+			call->contenttype[l] = '\0';
+		}
+
 		char a = data[datalen - 1];
 		data[datalen - 1] = 0;
 		char *tmp = strstr(data, "\r\n\r\n");;

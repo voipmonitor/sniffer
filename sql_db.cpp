@@ -577,8 +577,17 @@ void SqlDb_mysql::createSchema() {
 
 	this->query(query);
 
+	query = "CREATE TABLE IF NOT EXISTS `contenttype` (\
+  `id` int(16) unsigned NOT NULL AUTO_INCREMENT,\
+  `contenttype` varchar(255) DEFAULT NULL,\
+  PRIMARY KEY (`id`),\
+  KEY `contenttype` (`contenttype`)\
+) ENGINE=InnoDB DEFAULT CHARSET=utf8 ROW_FORMAT=COMPRESSED;";
+	this->query(query);
+
 	query = "CREATE TABLE IF NOT EXISTS `message` (\
   `ID` int(32) unsigned NOT NULL AUTO_INCREMENT,\
+  `id_contenttype` int(16) unsigned NOT NULL,\
   `calldate` datetime NOT NULL,\
   `caller` varchar(255) DEFAULT NULL,\
   `caller_domain` varchar(255) DEFAULT NULL,\
@@ -599,13 +608,15 @@ void SqlDb_mysql::createSchema() {
   `fbasename` varchar(255) DEFAULT NULL,\
   `message` TEXT CHARACTER SET utf8,\
   PRIMARY KEY (`ID`),\
+  KEY `id_contenttype` (`id_contenttype`),\
   KEY `calldate` (`calldate`),\
-  KEY `source` (`caller`),\
-  KEY `source_reverse` (`caller_reverse`),\
-  KEY `destination` (`called`),\
-  KEY `destination_reverse` (`called_reverse`),\
+  KEY `caller` (`caller`),\
+  KEY `caller_domain` (`caller_domain`),\
+  KEY `caller_reverse` (`caller_reverse`),\
   KEY `callername` (`callername`),\
   KEY `callername_reverse` (`callername_reverse`),\
+  KEY `called` (`called`),\
+  KEY `called_reverse` (`called_reverse`),\
   KEY `sipcallerip` (`sipcallerip`),\
   KEY `sipcalledip` (`sipcalledip`),\
   KEY `lastSIPresponseNum` (`lastSIPresponseNum`),\
@@ -617,9 +628,9 @@ void SqlDb_mysql::createSchema() {
   KEY `fbasename` (`fbasename`),\
   CONSTRAINT `messages_ibfk_1` FOREIGN KEY (`lastSIPresponse_id`) REFERENCES `cdr_sip_response` (`id`) ON UPDATE CASCADE,\
   CONSTRAINT `messages_ibfk_2` FOREIGN KEY (`a_ua_id`) REFERENCES `cdr_ua` (`id`) ON UPDATE CASCADE,\
-  CONSTRAINT `messages_ibfk_3` FOREIGN KEY (`b_ua_id`) REFERENCES `cdr_ua` (`id`) ON UPDATE CASCADE\
+  CONSTRAINT `messages_ibfk_3` FOREIGN KEY (`b_ua_id`) REFERENCES `cdr_ua` (`id`) ON UPDATE CASCADE,\
+  CONSTRAINT `messages_ibfk_4` FOREIGN KEY (`id_contenttype`) REFERENCES `contenttype` (`id`) ON UPDATE CASCADE\
 ) ENGINE=InnoDB DEFAULT CHARSET=latin1 ROW_FORMAT=COMPRESSED;";
-
 	this->query(query);
 
 	query = "CREATE TABLE IF NOT EXISTS `cdr_next` (\
@@ -728,6 +739,24 @@ void SqlDb_mysql::createSchema() {
 
 	this->query(query);
 
+	query = "CREATE TABLE IF NOT EXISTS `livepacket` (\
+	`id` INT UNSIGNED NOT NULL AUTO_INCREMENT ,\
+	`id_sensor` INT UNSIGNED DEFAULT NULL,\
+	`sipcallerip` INT UNSIGNED NOT NULL ,\
+	`sipcalledip` INT UNSIGNED NOT NULL ,\
+	`sport` SMALLINT UNSIGNED NOT NULL ,\
+	`dport` SMALLINT UNSIGNED NOT NULL ,\
+	`istcp` TINYINT UNSIGNED NOT NULL ,\
+	`created_at` TIMESTAMP NOT NULL ,\
+	`microseconds` INT UNSIGNED NOT NULL ,\
+	`callid` VARCHAR(255) NOT NULL ,\
+	`description` VARCHAR(1024),\
+	`data` VARBINARY(10000) NOT NULL ,\
+	PRIMARY KEY ( `id` ) ,\
+	INDEX (  `created_at` ,  `microseconds` )\
+	) ENGINE=MEMORY DEFAULT CHARSET=latin1 ROW_FORMAT=COMPRESSED;";
+	this->query(query);
+
 	//5.2 -> 5.3
 	sql_noerror = 1;
 	if(opt_match_header[0] != '\0') {
@@ -799,23 +828,9 @@ END ; ";
 
 	this->query(query);
 
-	query = "CREATE TABLE IF NOT EXISTS `livepacket` (\
-	`id` INT UNSIGNED NOT NULL AUTO_INCREMENT ,\
-	`id_sensor` INT UNSIGNED DEFAULT NULL,\
-	`sipcallerip` INT UNSIGNED NOT NULL ,\
-	`sipcalledip` INT UNSIGNED NOT NULL ,\
-	`sport` SMALLINT UNSIGNED NOT NULL ,\
-	`dport` SMALLINT UNSIGNED NOT NULL ,\
-	`istcp` TINYINT UNSIGNED NOT NULL ,\
-	`created_at` TIMESTAMP NOT NULL ,\
-	`microseconds` INT UNSIGNED NOT NULL ,\
-	`callid` VARCHAR(255) NOT NULL ,\
-	`description` VARCHAR(1024),\
-	`data` VARBINARY(10000) NOT NULL ,\
-	PRIMARY KEY ( `id` ) ,\
-	INDEX (  `created_at` ,  `microseconds` )\
-	) ENGINE=MEMORY DEFAULT CHARSET=latin1 ROW_FORMAT=COMPRESSED;";
 
+	//6.0 -> 6.1
+	query = "ALTER TABLE message ADD id_contenttype INT(16) AFTER ID, ADD KEY `id_contenttype` (`id_contenttype`);";
 	this->query(query);
 
 //	this->multi_on();

@@ -169,6 +169,7 @@ Call::Call(char *call_id, unsigned long call_id_len, time_t time, void *ct) {
 	flags1 = 0;
 	rtppcaketsinqueue = 0;
 	message = NULL;
+	contenttype = NULL;
 	unrepliedinvite = 0;
 	sipcalledip2 = 0;
 	sipcallerip2 = 0;
@@ -217,6 +218,7 @@ Call::addtocachequeue(string file) {
 
 /* destructor */
 Call::~Call(){
+	if(contenttype) free(contenttype);
 	for(int i = 0; i < MAX_SSRC_PER_CALL; i++) {
 		// lets check whole array as there can be holes due rtp[0] <=> rtp[1] swaps in mysql rutine
 		if(rtp[i]) {
@@ -2310,6 +2312,7 @@ Call::saveMessageToDb() {
 			return(false);
 		}
 		SqlDb_row cdr,
+			  m_contenttype,
 			  cdr_sip_response,
 			  cdr_ua_a,
 			  cdr_ua_b;
@@ -2339,6 +2342,11 @@ Call::saveMessageToDb() {
 		cdr.add(sqlEscapeString(fbasename), "fbasename");
 		if(message) {
 			cdr.add(sqlEscapeString(message), "message");
+		}
+		if(contenttype) {
+			m_contenttype.add(sqlEscapeString(contenttype), "contenttype");
+			unsigned int id_contenttype = sqlDb->getIdOrInsert("contenttype", "id", "contenttype", m_contenttype, "");
+			cdr.add(id_contenttype, "id_contenttype");
 		}
 
 		cdr.add(lastSIPresponseNum, "lastSIPresponseNum");
