@@ -109,6 +109,7 @@ char opt_mirrorip_src[20];
 char opt_mirrorip_dst[20];
 int opt_printinsertid = 0;
 int opt_ipaccount = 0;
+int opt_udpfrag = 1;
 MirrorIP *mirrorip = NULL;
 
 char opt_clientmanager[1024] = "";
@@ -1393,6 +1394,7 @@ int main(int argc, char *argv[]) {
 			opt_cachedir[0] = '\0'; //disabling cache if reading from file 
 			opt_pcap_threaded = 0; //disable threading because it is useless while reading packets from file
 			opt_cleanspool_interval = 0; // disable cleaning spooldir when reading from file 
+			opt_manager_port = 0; // disable cleaning spooldir when reading from file 
 			printf("Reading file: %s\n", fname);
 			mask = PCAP_NETMASK_UNKNOWN;
 			handle = pcap_open_offline(fname, errbuf);
@@ -1481,11 +1483,13 @@ int main(int argc, char *argv[]) {
 	}
 
 	// start manager thread 	
-	pthread_create(&manager_thread, NULL, manager_server, NULL);
-	// start reversed manager thread
-	if(opt_clientmanager[0] != '\0') {
-		pthread_create(&manager_client_thread, NULL, manager_client, NULL);
-	}
+	if(opt_manager_port > 0) {
+		pthread_create(&manager_thread, NULL, manager_server, NULL);
+		// start reversed manager thread
+		if(opt_clientmanager[0] != '\0') {
+			pthread_create(&manager_client_thread, NULL, manager_client, NULL);
+		}
+	};
 
 	// start reading threads
 	if(rtp_threaded) {
@@ -1621,7 +1625,7 @@ int main(int argc, char *argv[]) {
 	readend = 1;
 
 	//wait for manager to properly terminate 
-	if(manager_thread > 0) {
+	if(opt_manager_port && manager_thread > 0) {
 		int res;
 		res = shutdown(manager_socket_server, SHUT_RDWR);	// break accept syscall in manager thread
 		if(res == -1) {
@@ -1697,6 +1701,7 @@ int main(int argc, char *argv[]) {
 	}
 	pthread_mutex_destroy(&mysqlquery_lock);
 	clean_tcpstreams();
+	ipfrag_prune(0, 1);
 }
 
 #include "sql_db.h"

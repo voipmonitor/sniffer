@@ -135,6 +135,7 @@ extern unsigned int lv_bothaddr[MAXLIVEFILTERS];
 extern char lv_srcnum[MAXLIVEFILTERS][MAXLIVEFILTERSCHARS];
 extern char lv_dstnum[MAXLIVEFILTERS][MAXLIVEFILTERSCHARS];
 extern char lv_bothnum[MAXLIVEFILTERS][MAXLIVEFILTERSCHARS];
+extern int opt_udpfrag;
 
 #ifdef QUEUE_MUTEX
 extern sem_t readpacket_thread_semaphore;
@@ -156,6 +157,23 @@ typedef struct tcp_stream2_s {
 	int lastpsh;
 } tcp_stream2_t;
 
+typedef struct ip_frag_s {
+	char *data;
+	int datalen;
+	pcap_pkthdr header;
+	u_char *packet;
+	time_t ts;
+	char *firstheader;
+	u_int32_t firstheaderlen;
+	u_int16_t id;
+	u_int32_t offset;
+	u_int32_t len;
+	u_int32_t totallen;
+	ip_frag_s *next;
+	ip_frag_s *last;
+	char has_last;
+} ip_frag_t;
+
 typedef struct pcap_hdr_s {
 	u_int32_t magic_number;   /* magic number */
 	u_int16_t version_major;  /* major version number */
@@ -175,6 +193,12 @@ typedef struct pcaprec_hdr_s {
 
 tcp_stream2_t *tcp_streams_hashed[MAX_TCPSTREAMS];
 list<tcp_stream2_t*> tcp_streams_list;
+typedef map<unsigned int, ip_frag_t*> ip_frag_queue_t;
+typedef map<unsigned int, ip_frag_t*>::iterator ip_frag_queue_it_t;
+//map<unsigned int, ip_frag_t*> ip_frag_stream;
+map<unsigned int, map<unsigned int, ip_frag_queue_t*> > ip_frag_stream;
+map<unsigned int, map<unsigned int, ip_frag_queue_t*> >::iterator ip_frag_streamIT;
+map<unsigned int, ip_frag_queue_t*>::iterator ip_frag_streamITinner;
 
 extern struct queue_state *qs_readpacket_thread_queue;
 
@@ -1098,7 +1122,6 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 
 	// check if the packet is SIP ports 	
 	if(sipportmatrix[source] || sipportmatrix[dest]) {
-
 #if 0
 		/* ugly and dirty hack to detect two SIP messages in one TCP packet. */
 		tmp = strstr(data, "SIP/2.0 ");
@@ -1780,6 +1803,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 			s = gettag(data,datalen,"\nc:",&l);
 		}
 		if(s and l) {
+			if(call->contenttype) free(call->contenttype);
 			call->contenttype = (char*)malloc(sizeof(char) * (l + 1));
 			memcpy(call->contenttype, s, l);
 			call->contenttype[l] = '\0';
@@ -1942,7 +1966,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 			call->message = (char*)malloc(sizeof(char) * (end - tmp + 1));
 			memcpy(call->message, tmp, end - tmp);
 			call->message[end - tmp] = '\0';
-			//printf("msg:[%s]\n", call->message);
+			//printf("msg: len[%d] [%s]\n", strlen(call->message), call->message);
 			data[datalen - 1] = '\0';
 		}
 		data[datalen - 1] = a;
@@ -1961,6 +1985,12 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 		// we have packet, extend pending destroy requests
 		if(call->destroy_call_at > 0) {
 			call->destroy_call_at += 5; 
+		}
+
+		if(header->caplen > MAXPACKETLENQRING) {
+			// packets larger than MAXPACKETLENQRING was created in special heap and is destroyd immediately after leaving this functino - thus do not queue it 
+			// TODO: this can be enhanced by pasing flag that the packet should be freed
+			can_thread = 0;
 		}
 
 		if(is_rtcp) {
@@ -2003,6 +2033,12 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 		// we have packet, extend pending destroy requests
 		if(call->destroy_call_at > 0) {
 			call->destroy_call_at += 5; 
+		}
+
+		if(header->caplen > MAXPACKETLENQRING) {
+			// packets larger than MAXPACKETLENQRING was created in special heap and is destroyd immediately after leaving this functino - thus do not queue it 
+			// TODO: this can be enhanced by pasing flag that the packet should be freed
+			can_thread = 0;
 		}
 
 		if(is_rtcp) {
@@ -2307,10 +2343,17 @@ void *pcap_read_thread_func(void *arg) {
 		}
 #endif
 		packets++;
-		header_ip = (struct iphdr *) ((char*)pp->packet + pp->offset);
+
+		int destroypp = 0;
+		u_char *packet = pp->packet2 ? pp->packet2 : pp->packet;
+		if(pp->packet2) {
+			destroypp = 1;
+		}
+
+		header_ip = (struct iphdr *) ((char*)packet + pp->offset);
 
 		if(opt_ipaccount) {
-			ipaccount(pp->header.ts.tv_sec, (struct iphdr *) ((char*)(pp->packet) + pp->offset), pp->header.len - pp->offset);
+			ipaccount(pp->header.ts.tv_sec, (struct iphdr *) ((char*)(packet) + pp->offset), pp->header.caplen - pp->offset);
 		}
 
 		if(header_ip->protocol == 4) {
@@ -2322,20 +2365,24 @@ void *pcap_read_thread_func(void *arg) {
 			// prepare packet pointers 
 			header_udp = (struct udphdr2 *) ((char *) header_ip + sizeof(*header_ip));
 			data = (char *) header_udp + sizeof(*header_udp);
-			datalen = (int)(pp->header.len - ((unsigned long) data - (unsigned long) pp->packet)); 
+			datalen = (int)(pp->header.caplen - ((char*)data - (char*)packet)); 
 			istcp = 0;
 		} else if (header_ip->protocol == IPPROTO_TCP) {
 			istcp = 1;
 			// prepare packet pointers 
 			header_tcp = (struct tcphdr *) ((char *) header_ip + sizeof(*header_ip));
 			data = (char *) header_tcp + (header_tcp->doff * 4);
-			datalen = (int)(pp->header.len - ((unsigned long) data - (unsigned long) pp->packet)); 
+			datalen = (int)(pp->header.caplen - ((char*)data - (char*)packet)); 
 
 			header_udp->source = header_tcp->source;
 			header_udp->dest = header_tcp->dest;
 		} else {
 			//packet is not UDP and is not TCP, we are not interested, go to the next packet
 #ifdef QUEUE_NONBLOCK2
+			if(destroypp) {
+				free(pp->packet2);
+				pp->packet2 = NULL;
+			}
 			qring[readit % qringmax].free = 1;
 			if((readit + 1) == qringmax) {
 				readit = 0;
@@ -2347,12 +2394,16 @@ void *pcap_read_thread_func(void *arg) {
 		}
 
 		if(opt_mirrorip && (sipportmatrix[htons(header_udp->source)] || sipportmatrix[htons(header_udp->dest)])) {
-			mirrorip->send((char *)header_ip, (int)(pp->header.len - ((unsigned long) header_ip - (unsigned long) pp->packet)));
+			mirrorip->send((char *)header_ip, (int)(pp->header.caplen - ((char*)header_ip - (char*)packet)));
 		}
 		process_packet(header_ip->saddr, htons(header_udp->source), header_ip->daddr, htons(header_udp->dest), 
-			    data, datalen, handle, &pp->header, pp->packet, istcp, 0, 1, &was_rtp, header_ip);
+			    data, datalen, handle, &pp->header, packet, istcp, 0, 1, &was_rtp, header_ip);
 
 #ifdef QUEUE_NONBLOCK2
+		if(destroypp) {
+			free(pp->packet2);
+			pp->packet2 = NULL;
+		}
 		qring[readit % qringmax].free = 1;
 		if((readit + 1) == qringmax) {
 			readit = 0;
@@ -2371,9 +2422,217 @@ void *pcap_read_thread_func(void *arg) {
 	return NULL;
 }
 
+/*
+
+defragment packets from queue and allocates memory for new header and packet which is returned 
+in **header an **packet 
+
+*/
+inline int ipfrag_dequeue(ip_frag_queue_t *queue, struct pcap_pkthdr **header, u_char **packet) {
+	//walk queue
+
+	if(!queue) return 1;
+	if(!queue->size()) return 1;
+
+
+	// prepare newpacket structure and header structure
+	u_int32_t totallen = queue->begin()->second->totallen + queue->begin()->second->firstheaderlen;
+	u_char *newpacket = (u_char *)malloc(totallen);
+	*packet = newpacket;
+	struct pcap_pkthdr *newheader = (struct pcap_pkthdr*)malloc(sizeof(struct pcap_pkthdr)); // copy header
+	memcpy(newheader, *header, sizeof(struct pcap_pkthdr));
+	newheader->len = newheader->caplen = totallen;
+	*header = newheader;
+
+	int lastoffset = queue->begin()->second->offset;
+	int i = 0;
+	unsigned int len = 0;
+	for (ip_frag_queue_it_t it = queue->begin(); it != queue->end(); ++it) {
+		ip_frag_t *node = it->second;
+		if(i == 0) {
+			// for first packet copy ethernet header and ip header
+			if(node->firstheaderlen) {
+				memcpy(newpacket, node->firstheader, node->firstheaderlen);
+				len += node->firstheaderlen;
+			}
+			memcpy(newpacket + len, node->packet, node->len);
+			len += node->len;
+		} else {
+			// for rest of a packets append only data 
+			if(len > totallen) {
+				syslog(LOG_ERR, "%s.%d: Error - bug in voipmonitor len[%d] > totallen[%d]", __FILE__, __LINE__, len, totallen);
+				abort();
+			}
+			memcpy(newpacket + len, node->packet + sizeof(iphdr), node->len - sizeof(iphdr));
+			len += node->len - sizeof(iphdr);
+		}
+		lastoffset = node->offset;
+		free(node->packet);
+		if(node->firstheader) {
+			free(node->firstheader);
+		}
+		free(node);
+		i++;
+	}
+	return 1;
+}
+
+
+int ipfrag_add(ip_frag_queue_t *queue, struct pcap_pkthdr *header, const u_char *packet, unsigned int len, struct pcap_pkthdr **origheader, u_char **origpacket) {
+
+	unsigned int offset = ntohs(((iphdr*)(packet))->frag_off);
+	unsigned int offset_d = (offset & IP_OFFSET) << 3;
+	u_int8_t is_last = 0;
+
+	if (((offset & IP_MF) == 0) && ((offset & IP_OFFSET) != 0)) {
+		// this packet do not set more fragment indicator but contains offset which means that it is the last packet
+		is_last = 1;
+		if(queue->size()) {
+			// packet is not first - set has_last flag to first node for later use which indicates that the stream has the last packet
+			queue->begin()->second->has_last = 1;
+		}
+	}
+
+	if(!queue->count(offset_d)) {
+		// this offset number is not yet in the queue - add packet to queue which automatically sort it into right position
+
+		// create node
+		ip_frag_t *node = (ip_frag_t*)malloc(sizeof(ip_frag_t));
+
+		if(queue->size()) {
+			// update totallen for the first node 
+			ip_frag_t *first = queue->begin()->second;
+			first->totallen += len - sizeof(iphdr); 
+			node->totallen = first->totallen;
+			node->has_last = first->has_last;
+		} else {
+			// queue is empty
+			node->totallen = len;
+			node->has_last = is_last;
+		}
+
+		node->ts = header->ts.tv_sec;
+		node->next = NULL; //TODO: remove, we are using c++ map
+		// copy header and set length
+		memcpy(&(node->header), header, sizeof(struct pcap_pkthdr));
+		node->header.len = len;
+		node->header.caplen = len;
+		node->len = len;
+		// copy packet
+		node->packet = (u_char*)malloc(sizeof(u_char) * len);
+		memcpy(node->packet, packet, len);
+		node->offset = offset_d;
+
+		// if it is first packet, copy first header at the beginning (which is typically ethernet header)
+		if((offset & IP_OFFSET) == 0) {
+			node->firstheaderlen = (char*)packet - (char*)(*origpacket);
+			node->firstheader = (char*)malloc(node->firstheaderlen);
+			memcpy(node->firstheader, *origpacket, node->firstheaderlen);
+		} else {
+			node->firstheader = NULL;
+			node->firstheaderlen = 0;
+		}
+	
+		// add to queue (which will sort it automatically
+		(*queue)[offset_d] = node;
+	} else {
+		// node with that offset already exists - discard
+		return 0;
+	}
+
+	// now check if packets in queue are complete - if yes - defragment - if not, do nithing
+	int ok = true;
+	unsigned int lastoffset = 0;
+	if(queue->begin()->second->has_last and queue->begin()->second->offset == 0) {
+		// queue has first and last packet - check if there are all middle fragments
+		for (ip_frag_queue_it_t it = queue->begin(); it != queue->end(); ++it) {
+			ip_frag_t *node = it->second;
+			if((node->offset != lastoffset)) {
+				ok = false;
+				break;
+			}
+			lastoffset += node->len - sizeof(iphdr);
+		}
+	} else {
+		// queue does not contain a last packet and does not contain a first packet
+		ok = false;
+	}
+
+	if(ok) {
+		// all packets -> defragment 
+		ipfrag_dequeue(queue, origheader, origpacket);
+		return 1;
+	} else {
+		return 0;
+	}
+}
+
+/* 
+
+function inserts packet into fragmentation queue and if all packets within fragmented IP are 
+complete it will dequeue and construct large packet from all fragmented packets. 
+
+return: if packet is defragmented from all pieces function returns 1 and set header and packet 
+pinters to new allocated data which has to be freed later. If packet is only queued function
+returns 0 and header and packet remains same
+
+*/
+int handle_defrag(iphdr *header_ip, struct pcap_pkthdr **header, u_char **packet, int destroy) {
+	struct pcap_pkthdr *tmpheader = *header;
+	u_char *tmppacket = *packet;
+
+	int offset = ntohs(header_ip->frag_off);
+	// get queue from ip_frag_stream based on source ip address and ip->id identificator (2-dimensional map array)
+	ip_frag_queue_t *queue = ip_frag_stream[header_ip->saddr][header_ip->id];
+	if(!queue) {
+		// queue does not exists yet - create it and assign to map 
+		queue = new ip_frag_queue_t;
+		ip_frag_stream[header_ip->saddr][header_ip->id] = queue;
+	}
+	int res = ipfrag_add(queue, *header, (u_char*)header_ip, ntohs(header_ip->tot_len), header, packet);
+	if(res) {
+		// packet was created from all pieces - delete queue and remove it from map
+		ip_frag_stream[header_ip->saddr].erase(header_ip->id);
+		delete queue;
+	};
+	if(destroy) {
+		// defrag was called with destroy=1 delete original packet and header which was replaced by new defragmented packet
+		free(tmpheader);
+		free(tmppacket);
+	}
+	return res;
+}
+
+void ipfrag_prune(unsigned int tv_sec, int all) {
+	ip_frag_queue_t *queue;
+	for (ip_frag_streamIT = ip_frag_stream.begin(); ip_frag_streamIT != ip_frag_stream.end(); ip_frag_streamIT++) {
+		for (ip_frag_streamITinner = (*ip_frag_streamIT).second.begin(); ip_frag_streamITinner != (*ip_frag_streamIT).second.end(); ip_frag_streamITinner++) {
+			queue = ip_frag_streamITinner->second;
+			if(!queue->size()) {
+				delete queue;
+				continue;
+			}
+			if(all or ((tv_sec - queue->begin()->second->ts) > (30))) {
+				for (ip_frag_queue_it_t it = queue->begin(); it != queue->end(); ++it) {
+					ip_frag_t *node = it->second;
+					
+					free(node->packet);
+					if(node->firstheader) {
+						free(node->firstheader);
+					}
+					free(node);
+				}
+				delete queue;
+			}
+		}
+	}
+}
+
 void readdump_libpcap(pcap_t *handle) {
-	struct pcap_pkthdr *header;	// The header that pcap gives us
-	const u_char *packet = NULL;		// The actual packet 
+	struct pcap_pkthdr *headerpcap;	// The header that pcap gives us
+	pcap_pkthdr *header;	// The header that pcap gives us
+	const u_char *packetpcap = NULL;		// The actual packet 
+	u_char *packet = NULL;		// The actual packet 
 	struct ether_header *header_eth;
 	struct sll_header *header_sll;
 	struct iphdr *header_ip;
@@ -2389,6 +2648,8 @@ void readdump_libpcap(pcap_t *handle) {
 	int was_rtp;
 	unsigned char md5[32];
 	unsigned char prevmd5[32];
+	int destroy = 0;
+	unsigned int ipfrag_lastprune = 0;
 
 	pcap_dlink = pcap_datalink(handle);
 
@@ -2407,7 +2668,10 @@ void readdump_libpcap(pcap_t *handle) {
 	}
 
 	while (!terminating) {
-		res = pcap_next_ex(handle, &header, &packet);
+		destroy = 0;
+		res = pcap_next_ex(handle, &headerpcap, &packetpcap);
+		packet = (u_char *)packetpcap;
+		header = headerpcap;
 
 		if(!packet and res != -2) {
 			if(verbosity > 2) {
@@ -2447,7 +2711,6 @@ void readdump_libpcap(pcap_t *handle) {
 		}
 
 		numpackets++;	
-	//	printf("[%d]\n", numpackets);
 
 		switch(pcap_dlink) {
 			case DLT_LINUX_SLL:
@@ -2491,8 +2754,54 @@ void readdump_libpcap(pcap_t *handle) {
 		}
 
 		header_ip = (struct iphdr *) ((char*)packet + offset);
+
+		//if UDP defrag is enabled process only UDP packets and only SIP packets
+		if(opt_udpfrag and (header_ip->protocol == IPPROTO_UDP or header_ip->protocol == 4)) {
+			int foffset = ntohs(header_ip->frag_off);
+			if ((foffset & IP_MF) or ((foffset & IP_OFFSET) > 0)) {
+				// packet is fragmented
+				if(handle_defrag(header_ip, &header, &packet, 0)) {
+					// packets are reassembled
+					header_ip = (struct iphdr *)((char*)packet + offset);
+					//header_ip = (struct iphdr *)((char*)packet);
+					//header_ip = (struct iphdr *)packet;
+					destroy = true;
+				} else {
+					continue;
+				}
+			}
+		}
+
 		if(header_ip->protocol == 4) {
 			header_ip = (struct iphdr *) ((char*)header_ip + sizeof(iphdr));
+
+			//if UDP defrag is enabled process only UDP packets and only SIP packets
+			if(opt_udpfrag and header_ip->protocol == IPPROTO_UDP) {
+				int foffset = ntohs(header_ip->frag_off);
+				if ((foffset & IP_MF) or ((foffset & IP_OFFSET) > 0)) {
+					// packet is fragmented
+					if(handle_defrag(header_ip, &header, &packet, destroy)) {
+						// packet was returned
+						header_ip = (struct iphdr *)((char*)packet + offset);
+						header_ip->frag_off = 0;
+						//header_ip = (struct iphdr *)((char*)packet);
+						header_ip = (struct iphdr *) ((char*)header_ip + sizeof(iphdr));
+						header_ip->frag_off = 0;
+						//exit(0);
+						destroy = true;
+					} else {
+						continue;
+					}
+				}
+			}
+
+		}
+
+		// if IP defrag is enabled, run each 10 seconds cleaning 
+		if(opt_udpfrag and (ipfrag_lastprune + 10) < header->ts.tv_sec) {
+			ipfrag_prune(header->ts.tv_sec, 0);
+			ipfrag_lastprune = header->ts.tv_sec;
+			//TODO it would be good to still pass fragmented packets even it does not contain the last semant, the ipgrad_prune just wipes all unfinished frags
 		}
 
 		header_udp = &header_udp_tmp;
@@ -2512,6 +2821,10 @@ void readdump_libpcap(pcap_t *handle) {
 			if (!(sipportmatrix[htons(header_tcp->source)] || sipportmatrix[htons(header_tcp->dest)])) {
 				// not interested in TCP packet other than SIP port
 				if(opt_ipaccount == 0) {
+					if(destroy) { 
+						free(header); 
+						free(packet);
+					}
 					continue;
 				}
 			}
@@ -2527,11 +2840,13 @@ void readdump_libpcap(pcap_t *handle) {
 		} else {
 			//packet is not UDP and is not TCP, we are not interested, go to the next packet (but if ipaccount is enabled, do not skip IP
 			if(opt_ipaccount == 0) {
+				if(destroy) { free(header); free(packet);};
 				continue;
 			}
 		}
 	
 		if(datalen < 0) {
+			if(destroy) { free(header); free(packet);};
 			continue;
 		}
 
@@ -2545,6 +2860,7 @@ void readdump_libpcap(pcap_t *handle) {
 			MD5_Update(&ctx, data, (unsigned long)datalen);
 			MD5_Final(md5, &ctx);
 			if(memmem(md5, 32, prevmd5, 32)) {
+				if(destroy) { free(header); free(packet);};
 				continue;
 				//printf("md5[%s]\n", md5);
 			}
@@ -2562,16 +2878,20 @@ void readdump_libpcap(pcap_t *handle) {
 #endif
 
 #ifdef QUEUE_NONBLOCK2
-			if(header->caplen > MAXPACKETLENQRING) {
-				syslog(LOG_ERR, "error: packet is to large [%d]b for QRING[%d]b", header->caplen, MAXPACKETLENQRING);
-				continue;
-			}
 			while(qring[writeit % qringmax].free == 0) {
 				// no room left, loop until there is room
 				usleep(100);
 			}
+			if(header->caplen > MAXPACKETLENQRING) {
+				//allocate special structure 
+				//syslog(LOG_ERR, "error: packet is to large [%d]b for QRING[%d]b", header->caplen, MAXPACKETLENQRING);
+				qring[writeit % qringmax].packet2 = (u_char*)malloc(header->caplen * sizeof(u_char));
+				memcpy(qring[writeit % qringmax].packet2, packet, header->caplen);
+			} else {
+				qring[writeit % qringmax].packet2 = NULL;
+				memcpy(&qring[writeit % qringmax].packet, packet, header->caplen);
+			}
 			memcpy(&qring[writeit % qringmax].header, header, sizeof(struct pcap_pkthdr));
-			memcpy(&qring[writeit % qringmax].packet, packet, header->caplen);
 			qring[writeit % qringmax].offset = offset;
 			qring[writeit % qringmax].free = 0;
 			if((writeit + 1) == qringmax) {
@@ -2601,6 +2921,7 @@ void readdump_libpcap(pcap_t *handle) {
 #endif 
 
 			//sem_post(&readpacket_thread_semaphore);
+			if(destroy) { free(header); free(packet);};
 			continue;
 		}
 
@@ -2612,6 +2933,11 @@ void readdump_libpcap(pcap_t *handle) {
 		}
 		process_packet(header_ip->saddr, htons(header_udp->source), header_ip->daddr, htons(header_udp->dest), 
 			    data, datalen, handle, header, packet, istcp, 0, 1, &was_rtp, header_ip);
+
+		if(destroy) { 
+			free(header); 
+			free(packet);
+		}
 	}
 
 	if(opt_pcapdump) {

@@ -14,6 +14,10 @@ extern "C" {
 }
 #endif
 
+#define IP_DF           0x4000          /* Flag: "Don't Fragment"       */
+#define IP_MF           0x2000          /* Flag: "More Fragments"       */
+#define IP_OFFSET       0x1FFF          /* "Fragment Offset" part       */
+
 void *rtp_read_thread_func(void *arg);
 void *pcap_read_thread_func(void *arg);
 
@@ -25,6 +29,8 @@ void readdump_libpcap(pcap_t *handle);
 typedef std::map<in_addr_t, in_addr_t> nat_aliases_t; //!< 
 
 void clean_tcpstreams();
+void ipfrag_prune(unsigned int tv_sec, int all);
+
 
 /* this is copied from libpcap sll.h header file, which is not included in debian distribution */
 #define SLL_ADDRLEN       8               /* length of address field */
@@ -91,6 +97,7 @@ typedef struct {
 typedef struct {
 	struct pcap_pkthdr header;
 	u_char packet[MAXPACKETLENQRING];
+	u_char *packet2;
 	int offset;
 	volatile char free;
 } pcap_packet;
