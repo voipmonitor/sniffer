@@ -2581,7 +2581,6 @@ int handle_defrag(iphdr *header_ip, struct pcap_pkthdr **header, u_char **packet
 	struct pcap_pkthdr *tmpheader = *header;
 	u_char *tmppacket = *packet;
 
-	int offset = ntohs(header_ip->frag_off);
 	// get queue from ip_frag_stream based on source ip address and ip->id identificator (2-dimensional map array)
 	ip_frag_queue_t *queue = ip_frag_stream[header_ip->saddr][header_ip->id];
 	if(!queue) {
@@ -2605,10 +2604,11 @@ int handle_defrag(iphdr *header_ip, struct pcap_pkthdr **header, u_char **packet
 
 void ipfrag_prune(unsigned int tv_sec, int all) {
 	ip_frag_queue_t *queue;
-	for (ip_frag_streamIT = ip_frag_stream.begin(); ip_frag_streamIT != ip_frag_stream.end(); ip_frag_streamIT++) {
+	for (ip_frag_streamIT = ip_frag_stream.begin(); ip_frag_streamIT != ip_frag_stream.end();) {
 		for (ip_frag_streamITinner = (*ip_frag_streamIT).second.begin(); ip_frag_streamITinner != (*ip_frag_streamIT).second.end(); ip_frag_streamITinner++) {
 			queue = ip_frag_streamITinner->second;
 			if(!queue->size()) {
+				ip_frag_streamIT->second.erase(ip_frag_streamITinner++);
 				delete queue;
 				continue;
 			}
@@ -2622,8 +2622,11 @@ void ipfrag_prune(unsigned int tv_sec, int all) {
 					}
 					free(node);
 				}
+				ip_frag_streamIT->second.erase(ip_frag_streamITinner++);
 				delete queue;
+				continue;
 			}
+			ip_frag_streamITinner++;
 		}
 	}
 }
