@@ -2604,8 +2604,8 @@ int handle_defrag(iphdr *header_ip, struct pcap_pkthdr **header, u_char **packet
 
 void ipfrag_prune(unsigned int tv_sec, int all) {
 	ip_frag_queue_t *queue;
-	for (ip_frag_streamIT = ip_frag_stream.begin(); ip_frag_streamIT != ip_frag_stream.end();) {
-		for (ip_frag_streamITinner = (*ip_frag_streamIT).second.begin(); ip_frag_streamITinner != (*ip_frag_streamIT).second.end(); ip_frag_streamITinner++) {
+	for (ip_frag_streamIT = ip_frag_stream.begin(); ip_frag_streamIT != ip_frag_stream.end(); ip_frag_streamIT++) {
+		for (ip_frag_streamITinner = (*ip_frag_streamIT).second.begin(); ip_frag_streamITinner != (*ip_frag_streamIT).second.end();) {
 			queue = ip_frag_streamITinner->second;
 			if(!queue->size()) {
 				ip_frag_streamIT->second.erase(ip_frag_streamITinner++);
