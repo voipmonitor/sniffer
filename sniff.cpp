@@ -1649,10 +1649,21 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 					}
 					
 					data[datalen - 1] = a;
-					if(call->message) free(call->message);
-					call->message = (char*)malloc(sizeof(char) * (end - tmp + 1));
-					memcpy(call->message, tmp, end - tmp);
-					call->message[end - tmp] = '\0';
+					if(call->message and (end - tmp) == contentlen) {
+						// update message only in case that the new message equels to content length
+						free(call->message);
+						call->message = (char*)malloc(sizeof(char) * (end - tmp + 1));
+						memcpy(call->message, tmp, end - tmp);
+						call->message[end - tmp] = '\0';
+						//printf("msgu: contentlen[%d] datalen[%d] len[%d] [%s]\n", contentlen, datalen, strlen(call->message), call->message);
+					} else if(!call->message) {
+						// message is empty - update
+						call->message = (char*)malloc(sizeof(char) * (end - tmp + 1));
+						memcpy(call->message, tmp, end - tmp);
+						call->message[end - tmp] = '\0';
+						//printf("msgu: contentlen[%d] datalen[%d] len[%d] [%s]\n", contentlen, datalen, strlen(call->message), call->message);
+					}
+	
 				} else {
 					data[datalen - 1] = a;
 				}
@@ -1961,12 +1972,11 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 					end = tmp + MIN(end - tmp, contentlen);
 				}
 			}
-			
 			data[datalen - 1] = a;
 			call->message = (char*)malloc(sizeof(char) * (end - tmp + 1));
 			memcpy(call->message, tmp, end - tmp);
 			call->message[end - tmp] = '\0';
-			//printf("msg: len[%d] [%s]\n", strlen(call->message), call->message);
+			//printf("msg: contentlen[%d] datalen[%d] len[%d] [%s]\n", contentlen, datalen, strlen(call->message), call->message);
 			data[datalen - 1] = '\0';
 		}
 		data[datalen - 1] = a;
