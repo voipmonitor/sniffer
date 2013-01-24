@@ -777,6 +777,10 @@ void SqlDb_mysql::createSchema() {
 	query = "ALTER TABLE register_failed ADD `sipcalledip` int(32) unsigned, ADD KEY `sipcalledip` (`sipcalledip`);";
 	this->query(query);
 
+	//6.0 -> 6.1
+	query = "ALTER TABLE message ADD id_contenttype INT(16) AFTER ID, ADD KEY `id_contenttype` (`id_contenttype`);";
+	this->query(query);
+
 	sql_noerror = 0;
 
 	query = "DROP FUNCTION IF EXISTS getIdOrInsertUA ;";
@@ -826,11 +830,6 @@ THEN \
 END IF; \
 END ; ";
 
-	this->query(query);
-
-
-	//6.0 -> 6.1
-	query = "ALTER TABLE message ADD id_contenttype INT(16) AFTER ID, ADD KEY `id_contenttype` (`id_contenttype`);";
 	this->query(query);
 
 //	this->multi_on();

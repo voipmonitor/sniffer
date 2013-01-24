@@ -136,6 +136,8 @@ extern char lv_srcnum[MAXLIVEFILTERS][MAXLIVEFILTERSCHARS];
 extern char lv_dstnum[MAXLIVEFILTERS][MAXLIVEFILTERSCHARS];
 extern char lv_bothnum[MAXLIVEFILTERS][MAXLIVEFILTERSCHARS];
 extern int opt_udpfrag;
+extern int global_livesniffer;
+extern int global_livesniffer_all;
 
 #ifdef QUEUE_MUTEX
 extern sem_t readpacket_thread_semaphore;
@@ -220,11 +222,11 @@ in_addr_t match_nat_aliases(in_addr_t ip) {
 */
 inline void save_live_packet(Call *call, struct pcap_pkthdr *header, const u_char *packet, unsigned int saddr, int source, unsigned int daddr, int dest, int istcp, char *data, int datalen) {
 	// check saddr and daddr filters
-#if 1
-
-
 	daddr = htonl(daddr);
 	saddr = htonl(saddr);
+
+	if(global_livesniffer_all) goto save;
+
 	for(int i = 0; i < MAXLIVEFILTERS; i++) {
 		if(lv_saddr[i] == saddr) goto save;
 		if(lv_daddr[i] == daddr) goto save;
@@ -239,7 +241,6 @@ inline void save_live_packet(Call *call, struct pcap_pkthdr *header, const u_cha
 	// nothing matches
 	return;
 save:
-#endif
 	//save packet
 	stringstream query;
 
@@ -286,7 +287,6 @@ save:
 	// construct query and push it to mysqlquery queue
 	int id_sensor = opt_id_sensor > 0 ? opt_id_sensor : 0;
 	query << "INSERT INTO livepacket SET sipcallerip = '" << saddr << "', sipcalledip = '" << daddr << "', id_sensor = " << id_sensor << ", sport = " << source << ", dport = " << dest << ", istcp = " << istcp << ", created_at = " << sqlEscapeString(sqlDateTimeString(header->ts.tv_sec).c_str()) << ", microseconds = " << header->ts.tv_usec << ", callid = " << sqlEscapeString(call->call_id) << ", description = " << sqlEscapeString(description) << ", data = '#" << sqlDb->escapebin(mpacket, len) << "#'";
-	cout << query.str();
 	pthread_mutex_lock(&mysqlquery_lock);
 	mysqlquery.push(query.str());
 	pthread_mutex_unlock(&mysqlquery_lock);
@@ -296,7 +296,7 @@ save:
 /* save packet into file */
 inline void save_packet(Call *call, struct pcap_pkthdr *header, const u_char *packet, unsigned int saddr, int source, unsigned int daddr, int dest, int istcp, char *data, int datalen) {
 	// check if it should be stored to mysql 
-	if(sipportmatrix[source] || sipportmatrix[dest]) {
+	if(global_livesniffer and (sipportmatrix[source] || sipportmatrix[dest])) {
 		save_live_packet(call, header, packet, saddr, source, daddr, dest, istcp, data, datalen);
 	}
 

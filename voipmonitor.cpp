@@ -182,6 +182,8 @@ queue<string> mysqlquery;
 
 volatile unsigned int readit = 0;
 volatile unsigned int writeit = 0;
+int global_livesniffer = 0;
+int global_livesniffer_all = 0;
 unsigned int qringmax = 12500;
 pcap_packet *qring;
 

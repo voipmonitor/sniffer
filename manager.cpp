@@ -40,6 +40,8 @@ extern int terminating;
 extern int manager_socket_server;
 extern int terminating;
 extern int opt_nocdr;
+extern int global_livesniffer;
+extern int global_livesniffer_all;
 
 extern unsigned int lv_saddr[MAXLIVEFILTERS];
 extern unsigned int lv_daddr[MAXLIVEFILTERS];
@@ -300,10 +302,33 @@ int parse_command(char *buf, int size, int client, int eof) {
 		}
 		free(resbuf);
 		return 0;
-	/* listen callreference fifo */
+	} else if(strstr(buf, "stoplivesniffer")) {
+		global_livesniffer = 0;
+		global_livesniffer_all = 0;
+		for(int i = 0; i < MAXLIVEFILTERS; i++) {
+			lv_saddr[i] = 0;
+			lv_daddr[i] = 0;
+			lv_bothaddr[i] = 0;
+			lv_srcnum[i][0] = '\0';
+			lv_dstnum[i][0] = '\0';
+			lv_bothnum[i][0] = '\0';
+		}
+		return 0;
+	} else if(strstr(buf, "getlivesniffer") != NULL) {
+		snprintf(sendbuf, BUFSIZE, "%d", global_livesniffer);
+		if ((size = send(client, sendbuf, strlen(sendbuf), 0)) == -1){
+			cerr << "Error sending data to client" << endl;
+			return -1;
+		}
+	} else if(strstr(buf, "livefilter set all") != NULL) {
+		global_livesniffer = 1;
+		global_livesniffer_all = 1;
+		return 0;
 	} else if(strstr(buf, "livefilter set") != NULL) {
 		char search[1024] = "";
 		char value[1024] = "";
+
+		global_livesniffer_all = 0;
 
 		sscanf(buf, "livefilter set %s %[^\n\r]", search, value);
 		if(strstr(search, "srcaddr")) {
@@ -317,6 +342,7 @@ int parse_command(char *buf, int size, int client, int eof) {
 			// read all argumens livefilter set saddr 123 345 244
 			i = 0;
 			while(i < MAXLIVEFILTERS and getline(data, val,' ')){
+				global_livesniffer = 1;
 				stringstream tmp;
 				tmp << val;
 				tmp >> lv_saddr[i];
@@ -334,6 +360,7 @@ int parse_command(char *buf, int size, int client, int eof) {
 			i = 0;
 			// read all argumens livefilter set daddr 123 345 244
 			while(i < MAXLIVEFILTERS and getline(data, val,' ')){
+				global_livesniffer = 1;
 				stringstream tmp;
 				tmp << val;
 				tmp >> lv_daddr[i];
@@ -351,6 +378,7 @@ int parse_command(char *buf, int size, int client, int eof) {
 			i = 0;
 			// read all argumens livefilter set bothaddr 123 345 244
 			while(i < MAXLIVEFILTERS and getline(data, val,' ')){
+				global_livesniffer = 1;
 				stringstream tmp;
 				tmp << val;
 				tmp >> lv_bothaddr[i];
@@ -368,6 +396,7 @@ int parse_command(char *buf, int size, int client, int eof) {
 			i = 0;
 			// read all argumens livefilter set srcaddr 123 345 244
 			while(i < MAXLIVEFILTERS and getline(data, val,' ')){
+				global_livesniffer = 1;
 				stringstream tmp;
 				tmp << val;
 				tmp >> lv_srcnum[i];
@@ -385,6 +414,7 @@ int parse_command(char *buf, int size, int client, int eof) {
 			i = 0;
 			// read all argumens livefilter set dstaddr 123 345 244
 			while(i < MAXLIVEFILTERS and getline(data, val,' ')){
+				global_livesniffer = 1;
 				stringstream tmp;
 				tmp << val;
 				tmp >> lv_dstnum[i];
@@ -402,6 +432,7 @@ int parse_command(char *buf, int size, int client, int eof) {
 			i = 0;
 			// read all argumens livefilter set bothaddr 123 345 244
 			while(i < MAXLIVEFILTERS and getline(data, val,' ')){
+				global_livesniffer = 1;
 				stringstream tmp;
 				tmp << val;
 				tmp >> lv_bothnum[i];

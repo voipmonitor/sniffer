@@ -1,3 +1,23 @@
+version 6.5 Release candidate 1
+===============================
+- implement IP defragmentation for IP and IP in IP too 
+- fix TCP reassemble 
+- implements storing packets to mysql database for imitating live sniffer. packet data is constructed in pcap format
+- tcp manager is now multithreaded which means that it can server multiple clients at once and thus not blocks other clients if some client connects to manager 
+- support UTF8 for SIP MESSAGES
+- try to rebind manager interface on specified port (default 5029) if the bind fails
+- implement manager command disablecdr and enablecdr which will stop/start writing data to CDR.
+- when store REGISTER into active table which is MEMORY type and mysql has enabled binlog (for replication) - send sql_log_bin = 0 before the command and sql_log_bin = 1 after the command to safe I/O
+- optimize number of MYSQL commands for SIP REGISTER to be able to store via remote database where the network latency causes maximum number of queries. 
+- support for SILK and iSAC codecs
+- fix 16khz codecs which resulted in bad graphs
+- fix one way call in some cases (where voipmonior listens in multi sip proxy environment and see all packets)
+- fix audio in case ptime changes during call (for example iSAC changes between 30 and 60 dynamically)
+- add / at the end of path for find command so it can find and clean directory which is also mounted. in other words autodelte do not work if the directory is mounted because of missing /
+- fix codec handling for ilbc which shows as G711 due to case sensitive searching in SDP
+- implement getversion manager command
+- add content-type header to SIP MESSAGE sql table
+
 version 6.0 5.1.2013
 ====================
 
