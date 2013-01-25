@@ -119,6 +119,8 @@ int opt_clientmanagerport = 9999;
 
 char configfile[1024] = "";	// config file name
 
+string insert_funcname = "__insert";
+
 char sql_driver[256] = "mysql";
 char sql_cdr_table[256] = "cdr";
 char sql_cdr_table_last30d[256] = "";
@@ -451,9 +453,9 @@ void *storing_cdr( void *dummy ) {
 				pthread_mutex_unlock(&mysqlquery_lock);
 				if(queryqueue != "") {
 					// send the rest 
-					sqlDb->query("drop procedure if exists __insert");
-					sqlDb->query("create procedure __insert()\nbegin\n" + queryqueue + "\nend");
-					sqlDb->query("call __insert();");
+					sqlDb->query("drop procedure if exists " + insert_funcname);
+					sqlDb->query("create procedure " + insert_funcname + "()\nbegin\n" + queryqueue + "\nend");
+					sqlDb->query("call " + insert_funcname + "();");
 					//sqlDb->query(queryqueue);
 					queryqueue = "";
 				}
@@ -466,9 +468,9 @@ void *storing_cdr( void *dummy ) {
 			if(size < msgs) {
 				size++;
 			} else {
-				sqlDb->query("drop procedure if exists __insert");
-				sqlDb->query("create procedure __insert()\nbegin\n" + queryqueue + "\nend");
-				sqlDb->query("call __insert();");
+				sqlDb->query("drop procedure if exists " + insert_funcname);
+				sqlDb->query("create procedure " + insert_funcname + "()\nbegin\n" + queryqueue + "\nend");
+				sqlDb->query("call " + insert_funcname + "();");
 				//sqlDb->query(queryqueue);
 				queryqueue = "";
 				size = 0;
@@ -629,6 +631,7 @@ int load_config(char *fname) {
 	}
 	if((value = ini.GetValue("general", "id_sensor", NULL))) {
 		opt_id_sensor = atoi(value);
+		insert_funcname = "__insert_" + opt_id_sensor;
 	}
 	if((value = ini.GetValue("general", "pcapcommand", NULL))) {
 		strncpy(pcapcommand, value, sizeof(pcapcommand));
@@ -1033,6 +1036,7 @@ int main(int argc, char *argv[]) {
 				break;
 			case 's':
 				opt_id_sensor = atoi(optarg);
+				insert_funcname = "__insert_" + opt_id_sensor;
 				break;
 			case 'a':
 				strncpy(pcapcommand, optarg, sizeof(pcapcommand));
