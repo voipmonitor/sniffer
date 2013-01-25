@@ -91,6 +91,8 @@ extern int opt_printinsertid;
 extern int opt_sip_register_active_nologbin;
 extern pthread_mutex_t mysqlquery_lock;
 extern queue<string> mysqlquery;
+extern int opt_cdronlyanswered;
+extern int opt_cdronlyrtp;
 
 int calls = 0;
 
@@ -1647,7 +1649,13 @@ Call::saveToDb() {
 		cout << "process saveToDb function" << endl;
 	}
 	if(!prepareForEscapeString())
-		return(1);
+		return 1;
+
+	if((opt_cdronlyanswered and !connect_time) or 
+		(opt_cdronlyrtp and !ssrc_n)) {
+		// skip this CDR 
+		return 1;
+	}
 	
 	if(isTypeDb("mysql")) {
 		if(!sqlDb) {

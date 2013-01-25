@@ -111,6 +111,8 @@ int opt_printinsertid = 0;
 int opt_ipaccount = 0;
 int opt_udpfrag = 1;
 MirrorIP *mirrorip = NULL;
+int opt_cdronlyanswered = 0;
+int opt_cdronlyrtp = 0;
 
 char opt_clientmanager[1024] = "";
 int opt_clientmanagerport = 9999;
@@ -882,6 +884,12 @@ int load_config(char *fname) {
 	}
 	if((value = ini.GetValue("general", "ipaccount", NULL))) {
 		opt_ipaccount = yesno(value);
+	}
+	if((value = ini.GetValue("general", "cdronlyanswered", NULL))) {
+		opt_cdronlyanswered = yesno(value);
+	}
+	if((value = ini.GetValue("general", "cdronlyrtp", NULL))) {
+		opt_cdronlyrtp = yesno(value);
 	}
 	return 0;
 }
