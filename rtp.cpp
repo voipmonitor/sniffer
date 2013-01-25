@@ -282,6 +282,10 @@ RTP::jitterbuffer(struct ast_channel *channel, int savePayload) {
 			frame->ts = getTimestamp() / 16;
 			frame->len = packetization / 2;
 			break;
+		case PAYLOAD_SILK24:
+			frame->ts = getTimestamp() / 24;
+			frame->len = packetization / 3;
+			break;
 		default: 
 			frame->ts = getTimestamp() / 8;
 			frame->len = packetization;
