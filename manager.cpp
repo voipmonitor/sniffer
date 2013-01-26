@@ -14,10 +14,13 @@
 #include <resolv.h>
 #include <vorbis/codec.h>
 #include <vorbis/vorbisenc.h>
+#include <pcap.h>
 
 #include <sstream>
 
 #include "voipmonitor.h"
+#include "calltable.h"
+#include "sniff.h"
 #include "format_slinear.h"
 #include "codec_alaw.h"
 #include "codec_ulaw.h"
@@ -43,12 +46,7 @@ extern int opt_nocdr;
 extern int global_livesniffer;
 extern int global_livesniffer_all;
 
-extern unsigned int lv_saddr[MAXLIVEFILTERS];
-extern unsigned int lv_daddr[MAXLIVEFILTERS];
-extern unsigned int lv_bothaddr[MAXLIVEFILTERS];
-extern char lv_srcnum[MAXLIVEFILTERS][MAXLIVEFILTERSCHARS];
-extern char lv_dstnum[MAXLIVEFILTERS][MAXLIVEFILTERSCHARS];
-extern char lv_bothnum[MAXLIVEFILTERS][MAXLIVEFILTERSCHARS];
+extern map<unsigned int, livesnifferfilter_t*> usersniffer;
 
 using namespace std;
 
@@ -223,6 +221,7 @@ void *listening_worker(void *arguments) {
 
 int parse_command(char *buf, int size, int client, int eof) {
 	char sendbuf[BUFSIZE];
+	u_int32_t uid = 0;
 
 	if(strstr(buf, "getversion") != NULL) {
 		if ((size = send(client, RTPSENSOR_VERSION, strlen(RTPSENSOR_VERSION), 0)) == -1){
@@ -303,39 +302,73 @@ int parse_command(char *buf, int size, int client, int eof) {
 		free(resbuf);
 		return 0;
 	} else if(strstr(buf, "stoplivesniffer")) {
-		global_livesniffer = 0;
-		global_livesniffer_all = 0;
-		for(int i = 0; i < MAXLIVEFILTERS; i++) {
-			lv_saddr[i] = 0;
-			lv_daddr[i] = 0;
-			lv_bothaddr[i] = 0;
-			lv_srcnum[i][0] = '\0';
-			lv_dstnum[i][0] = '\0';
-			lv_bothnum[i][0] = '\0';
+		sscanf(buf, "stoplivesniffer %u", &uid);
+		map<unsigned int, livesnifferfilter_t*>::iterator usersnifferIT = usersniffer.find(uid);
+		if(usersnifferIT != usersniffer.end()) {
+			global_livesniffer = 0;
+		//	global_livesniffer_all = 0;
+			free(usersnifferIT->second);
+			usersniffer.erase(usersnifferIT);
+/*
+			for(int i = 0; i < MAXLIVEFILTERS; i++) {
+				usersnifferIT->lv_saddr[i] = 0;
+				usersnifferIT->lv_daddr[i] = 0;
+				usersnifferIT->lv_bothaddr[i] = 0;
+				usersnifferIT->lv_srcnum[i][0] = '\0';
+				usersnifferIT->lv_dstnum[i][0] = '\0';
+				usersnifferIT->lv_bothnum[i][0] = '\0';
+			}
+*/
 		}
 		return 0;
 	} else if(strstr(buf, "getlivesniffer") != NULL) {
-		snprintf(sendbuf, BUFSIZE, "%d", global_livesniffer);
+		sscanf(buf, "getlivesniffer %u", &uid);
+		map<unsigned int, livesnifferfilter_t*>::iterator usersnifferIT = usersniffer.find(uid);
+		if(usersnifferIT != usersniffer.end()) {
+			snprintf(sendbuf, BUFSIZE, "%d", 1);
+		} else {
+			snprintf(sendbuf, BUFSIZE, "%d", 0);
+		}
 		if ((size = send(client, sendbuf, strlen(sendbuf), 0)) == -1){
 			cerr << "Error sending data to client" << endl;
 			return -1;
 		}
-	} else if(strstr(buf, "livefilter set all") != NULL) {
-		global_livesniffer = 1;
-		global_livesniffer_all = 1;
-		return 0;
 	} else if(strstr(buf, "livefilter set") != NULL) {
 		char search[1024] = "";
 		char value[1024] = "";
 
 		global_livesniffer_all = 0;
+		sscanf(buf, "livefilter set %u %s %[^\n\r]", &uid, search, value);
 
-		sscanf(buf, "livefilter set %s %[^\n\r]", search, value);
+		if(memmem(search, sizeof(search), "all", 3)) {
+			global_livesniffer = 1;
+			map<unsigned int, livesnifferfilter_t*>::iterator usersnifferIT = usersniffer.find(uid);
+			livesnifferfilter_t* filter;
+			if(usersnifferIT != usersniffer.end()) {
+				filter = usersnifferIT->second;
+			} else {
+				filter = (livesnifferfilter_t*)calloc(1, sizeof(livesnifferfilter_t));
+				usersniffer[uid] = filter;
+			}
+			filter->all = 1;
+			return 0;
+		}
+
+		map<unsigned int, livesnifferfilter_t*>::iterator usersnifferIT = usersniffer.find(uid);
+		livesnifferfilter_t* filter;
+		if(usersnifferIT != usersniffer.end()) {
+			filter = usersnifferIT->second;
+		} else {
+			filter = (livesnifferfilter_t*)calloc(1, sizeof(livesnifferfilter_t));
+			usersniffer[uid] = filter;
+		}
+
 		if(strstr(search, "srcaddr")) {
+
 			int i = 0;
 			//reset filters 
 			for(i = 0; i < MAXLIVEFILTERS; i++) {
-				lv_saddr[i] = 0;
+				filter->lv_saddr[i] = 0;
 			}
 			stringstream  data(value);
 			string val;
@@ -343,17 +376,15 @@ int parse_command(char *buf, int size, int client, int eof) {
 			i = 0;
 			while(i < MAXLIVEFILTERS and getline(data, val,' ')){
 				global_livesniffer = 1;
-				stringstream tmp;
-				tmp << val;
-				tmp >> lv_saddr[i];
-				//cout << lv_saddr[i] << "\n";
+				//convert doted ip to unsigned int
+				filter->lv_bothaddr[i] = ntohl((unsigned int)inet_addr(val.c_str()));
 				i++;
 			}
 		} else if(strstr(search, "dstaddr")) {
 			int i = 0;
 			//reset filters 
 			for(i = 0; i < MAXLIVEFILTERS; i++) {
-				lv_daddr[i] = 0;
+				filter->lv_daddr[i] = 0;
 			}
 			stringstream  data(value);
 			string val;
@@ -361,17 +392,15 @@ int parse_command(char *buf, int size, int client, int eof) {
 			// read all argumens livefilter set daddr 123 345 244
 			while(i < MAXLIVEFILTERS and getline(data, val,' ')){
 				global_livesniffer = 1;
-				stringstream tmp;
-				tmp << val;
-				tmp >> lv_daddr[i];
-				//cout << lv_daddr[i] << "\n";
+				//convert doted ip to unsigned int
+				filter->lv_bothaddr[i] = ntohl((unsigned int)inet_addr(val.c_str()));
 				i++;
 			}
 		} else if(strstr(search, "bothaddr")) {
 			int i = 0;
 			//reset filters 
 			for(i = 0; i < MAXLIVEFILTERS; i++) {
-				lv_bothaddr[i] = 0;
+				filter->lv_bothaddr[i] = 0;
 			}
 			stringstream  data(value);
 			string val;
@@ -379,17 +408,15 @@ int parse_command(char *buf, int size, int client, int eof) {
 			// read all argumens livefilter set bothaddr 123 345 244
 			while(i < MAXLIVEFILTERS and getline(data, val,' ')){
 				global_livesniffer = 1;
-				stringstream tmp;
-				tmp << val;
-				tmp >> lv_bothaddr[i];
-				//cout << lv_bothaddr[i] << "\n";
+				//convert doted ip to unsigned int
+				filter->lv_bothaddr[i] = ntohl((unsigned int)inet_addr(val.c_str()));
 				i++;
 			}
 		} else if(strstr(search, "srcnum")) {
 			int i = 0;
 			//reset filters 
 			for(i = 0; i < MAXLIVEFILTERS; i++) {
-				lv_srcnum[i][0] = '\0';
+				filter->lv_srcnum[i][0] = '\0';
 			}
 			stringstream  data(value);
 			string val;
@@ -399,15 +426,15 @@ int parse_command(char *buf, int size, int client, int eof) {
 				global_livesniffer = 1;
 				stringstream tmp;
 				tmp << val;
-				tmp >> lv_srcnum[i];
-				//cout << lv_srcnum[i] << "\n";
+				tmp >> filter->lv_srcnum[i];
+				//cout << filter->lv_srcnum[i] << "\n";
 				i++;
 			}
 		} else if(strstr(search, "dstnum")) {
 			int i = 0;
 			//reset filters 
 			for(i = 0; i < MAXLIVEFILTERS; i++) {
-				lv_dstnum[i][0] = '\0';
+				filter->lv_dstnum[i][0] = '\0';
 			}
 			stringstream  data(value);
 			string val;
@@ -417,15 +444,15 @@ int parse_command(char *buf, int size, int client, int eof) {
 				global_livesniffer = 1;
 				stringstream tmp;
 				tmp << val;
-				tmp >> lv_dstnum[i];
-				//cout << lv_dstnum[i] << "\n";
+				tmp >> filter->lv_dstnum[i];
+				//cout << filter->lv_dstnum[i] << "\n";
 				i++;
 			}
 		} else if(strstr(search, "bothnum")) {
 			int i = 0;
 			//reset filters 
 			for(i = 0; i < MAXLIVEFILTERS; i++) {
-				lv_bothnum[i][0] = '\0';
+				filter->lv_bothnum[i][0] = '\0';
 			}
 			stringstream  data(value);
 			string val;
@@ -435,8 +462,8 @@ int parse_command(char *buf, int size, int client, int eof) {
 				global_livesniffer = 1;
 				stringstream tmp;
 				tmp << val;
-				tmp >> lv_bothnum[i];
-				//cout << lv_bothnum[i] << "\n";
+				tmp >> filter->lv_bothnum[i];
+				//cout << filter->lv_bothnum[i] << "\n";
 				i++;
 			}
 		}

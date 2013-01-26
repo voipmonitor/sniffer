@@ -191,13 +191,6 @@ int global_livesniffer_all = 0;
 unsigned int qringmax = 12500;
 pcap_packet *qring;
 
-unsigned int lv_saddr[MAXLIVEFILTERS];
-unsigned int lv_daddr[MAXLIVEFILTERS];
-unsigned int lv_bothaddr[MAXLIVEFILTERS];
-char lv_srcnum[MAXLIVEFILTERS][MAXLIVEFILTERSCHARS];
-char lv_dstnum[MAXLIVEFILTERS][MAXLIVEFILTERSCHARS];
-char lv_bothnum[MAXLIVEFILTERS][MAXLIVEFILTERSCHARS];
-
 pcap_t *handle = NULL;		// pcap handler 
 
 read_thread *threads;

@@ -4,6 +4,7 @@
 */
 
 #include <queue>
+#include <map>
 #include "voipmonitor.h"
 
 #define MAXPACKETLENQRING 1600
@@ -102,4 +103,19 @@ typedef struct {
 	volatile char free;
 } pcap_packet;
 #endif
+
+#define MAXLIVEFILTERS 10
+#define MAXLIVEFILTERSCHARS 32
+
+typedef struct livesnifferfilter_s {
+        unsigned int lv_saddr[MAXLIVEFILTERS];
+        unsigned int lv_daddr[MAXLIVEFILTERS];
+        unsigned int lv_bothaddr[MAXLIVEFILTERS];
+        char lv_srcnum[MAXLIVEFILTERS][MAXLIVEFILTERSCHARS];
+        char lv_dstnum[MAXLIVEFILTERS][MAXLIVEFILTERSCHARS];
+        char lv_bothnum[MAXLIVEFILTERS][MAXLIVEFILTERSCHARS];
+        int uid;
+        time_t created_at;
+	int all;
+} livesnifferfilter_t;
 

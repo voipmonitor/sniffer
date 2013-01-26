@@ -129,12 +129,6 @@ extern pthread_mutex_t mysqlquery_lock;
 extern queue<string> mysqlquery;
 extern SqlDb *sqlDb;
 int pcap_dlink;
-extern unsigned int lv_saddr[MAXLIVEFILTERS];
-extern unsigned int lv_daddr[MAXLIVEFILTERS];
-extern unsigned int lv_bothaddr[MAXLIVEFILTERS];
-extern char lv_srcnum[MAXLIVEFILTERS][MAXLIVEFILTERSCHARS];
-extern char lv_dstnum[MAXLIVEFILTERS][MAXLIVEFILTERSCHARS];
-extern char lv_bothnum[MAXLIVEFILTERS][MAXLIVEFILTERSCHARS];
 extern int opt_udpfrag;
 extern int global_livesniffer;
 extern int global_livesniffer_all;
@@ -204,6 +198,8 @@ map<unsigned int, ip_frag_queue_t*>::iterator ip_frag_streamITinner;
 
 extern struct queue_state *qs_readpacket_thread_queue;
 
+map<unsigned int, livesnifferfilter_t*> usersniffer;
+
 // return IP from nat_aliases[ip] or 0 if not found
 in_addr_t match_nat_aliases(in_addr_t ip) {
 	nat_aliases_t::iterator iter;
@@ -217,30 +213,7 @@ in_addr_t match_nat_aliases(in_addr_t ip) {
 	
 }
 
-/* 
-	stores SIP messags to sql.livepacket based on user filters
-*/
-inline void save_live_packet(Call *call, struct pcap_pkthdr *header, const u_char *packet, unsigned int saddr, int source, unsigned int daddr, int dest, int istcp, char *data, int datalen) {
-	// check saddr and daddr filters
-	daddr = htonl(daddr);
-	saddr = htonl(saddr);
-
-	if(global_livesniffer_all) goto save;
-
-	for(int i = 0; i < MAXLIVEFILTERS; i++) {
-		if(lv_saddr[i] == saddr) goto save;
-		if(lv_daddr[i] == daddr) goto save;
-		if(lv_bothaddr[i] == daddr or lv_bothaddr[i] == saddr) goto save;
-		if(lv_srcnum[i][0] != '\0' and memmem(call->caller, strlen(call->caller), lv_srcnum[i], strlen(lv_srcnum[i]))) goto save;
-		if(lv_dstnum[i][0] != '\0' and memmem(call->caller, strlen(call->caller), lv_dstnum[i], strlen(lv_dstnum[i]))) goto save;
-		if(lv_bothnum[i][0] != '\0' and (
-			memmem(call->caller, strlen(call->caller), lv_bothnum[i], strlen(lv_bothnum[i])) or
-			memmem(call->called, strlen(call->called), lv_bothnum[i], strlen(lv_bothnum[i])))
-		)  goto save;
-	}
-	// nothing matches
-	return;
-save:
+inline void save_packet_sql(Call *call, struct pcap_pkthdr *header, const u_char *packet, unsigned int saddr, int source, unsigned int daddr, int dest, int istcp, char *data, int datalen, int uid) {
 	//save packet
 	stringstream query;
 
@@ -286,10 +259,50 @@ save:
 
 	// construct query and push it to mysqlquery queue
 	int id_sensor = opt_id_sensor > 0 ? opt_id_sensor : 0;
-	query << "INSERT INTO livepacket SET sipcallerip = '" << saddr << "', sipcalledip = '" << daddr << "', id_sensor = " << id_sensor << ", sport = " << source << ", dport = " << dest << ", istcp = " << istcp << ", created_at = " << sqlEscapeString(sqlDateTimeString(header->ts.tv_sec).c_str()) << ", microseconds = " << header->ts.tv_usec << ", callid = " << sqlEscapeString(call->call_id) << ", description = " << sqlEscapeString(description) << ", data = '#" << sqlDb->escapebin(mpacket, len) << "#'";
+	query << "INSERT INTO livepacket_" << uid << " SET sipcallerip = '" << saddr << "', sipcalledip = '" << daddr << "', id_sensor = " << id_sensor << ", sport = " << source << ", dport = " << dest << ", istcp = " << istcp << ", created_at = " << sqlEscapeString(sqlDateTimeString(header->ts.tv_sec).c_str()) << ", microseconds = " << header->ts.tv_usec << ", callid = " << sqlEscapeString(call->call_id) << ", description = " << sqlEscapeString(description) << ", data = '#" << sqlDb->escapebin(mpacket, len) << "#'";
 	pthread_mutex_lock(&mysqlquery_lock);
 	mysqlquery.push(query.str());
 	pthread_mutex_unlock(&mysqlquery_lock);
+	return;
+}
+
+
+/* 
+	stores SIP messags to sql.livepacket based on user filters
+*/
+inline void save_live_packet(Call *call, struct pcap_pkthdr *header, const u_char *packet, unsigned int saddr, int source, unsigned int daddr, int dest, int istcp, char *data, int datalen) {
+	// check saddr and daddr filters
+	daddr = htonl(daddr);
+	saddr = htonl(saddr);
+
+	if(global_livesniffer_all) {
+		save_packet_sql(call, header, packet, saddr, source, daddr, dest, istcp, data, datalen, 0);
+		return;
+	}
+
+	map<unsigned int, livesnifferfilter_t*>::iterator usersnifferIT;
+	for(usersnifferIT = usersniffer.begin(); usersnifferIT != usersniffer.end(); usersnifferIT++) {
+		livesnifferfilter_t *filter = usersnifferIT->second;
+		if(filter->all) {
+			 goto save;
+		}
+		for(int i = 0; i < MAXLIVEFILTERS; i++) {
+			if(filter->lv_saddr[i] == saddr) goto save;
+			if(filter->lv_daddr[i] == daddr) goto save;
+			if(filter->lv_bothaddr[i] == daddr or filter->lv_bothaddr[i] == saddr) goto save;
+			if(filter->lv_srcnum[i][0] != '\0' and memmem(call->caller, strlen(call->caller), filter->lv_srcnum[i], strlen(filter->lv_srcnum[i]))) goto save;
+			if(filter->lv_dstnum[i][0] != '\0' and memmem(call->caller, strlen(call->caller), filter->lv_dstnum[i], strlen(filter->lv_dstnum[i]))) goto save;
+			if(filter->lv_bothnum[i][0] != '\0' and (
+				memmem(call->caller, strlen(call->caller), filter->lv_bothnum[i], strlen(filter->lv_bothnum[i])) or
+				memmem(call->called, strlen(call->called), filter->lv_bothnum[i], strlen(filter->lv_bothnum[i])))
+			)  goto save;
+		}
+		continue;
+save:
+		save_packet_sql(call, header, packet, saddr, source, daddr, dest, istcp, data, datalen, usersnifferIT->first);
+	}
+
+	// nothing matches
 	return;
 }
 
