@@ -2416,10 +2416,10 @@ void *pcap_read_thread_func(void *arg) {
 			continue;
 		}
 
-		if(opt_mirrorip && (sipportmatrix[htons(header_udp->source)] || sipportmatrix[htons(header_udp->dest)])) {
+		if(opt_mirrorip && (sipportmatrix[header_udp->source] || sipportmatrix[header_udp->dest])) {
 			mirrorip->send((char *)header_ip, (int)(pp->header.caplen - ((char*)header_ip - (char*)packet)));
 		}
-		process_packet(header_ip->saddr, htons(header_udp->source), header_ip->daddr, htons(header_udp->dest), 
+		process_packet(header_ip->saddr, header_udp->source, header_ip->daddr, header_udp->dest, 
 			    data, datalen, handle, &pp->header, packet, istcp, 0, 1, &was_rtp, header_ip);
 
 #ifdef QUEUE_NONBLOCK2
@@ -2843,8 +2843,7 @@ void readdump_libpcap(pcap_t *handle) {
 			header_tcp = (struct tcphdr *) ((char *) header_ip + sizeof(*header_ip));
 			data = (char *) header_tcp + (header_tcp->doff * 4);
 			datalen = (int)(header->caplen - ((unsigned long) data - (unsigned long) packet)); 
-			//if (datalen == 0 || !(sipportmatrix[htons(header_tcp->source)] || sipportmatrix[htons(header_tcp->dest)])) {
-			if (!(sipportmatrix[htons(header_tcp->source)] || sipportmatrix[htons(header_tcp->dest)])) {
+			if (!(sipportmatrix[header_tcp->source] || sipportmatrix[header_tcp->dest])) {
 				// not interested in TCP packet other than SIP port
 				if(opt_ipaccount == 0) {
 					if(destroy) { 
@@ -2951,13 +2950,13 @@ void readdump_libpcap(pcap_t *handle) {
 			continue;
 		}
 
-		if(opt_mirrorip && (sipportmatrix[htons(header_udp->source)] || sipportmatrix[htons(header_udp->dest)])) {
+		if(opt_mirrorip && (sipportmatrix[header_udp->source] || sipportmatrix[header_udp->dest])) {
 			mirrorip->send((char *)header_ip, (int)(header->caplen - ((unsigned long) header_ip - (unsigned long) packet)));
 		}
 		if(opt_ipaccount) {
 			ipaccount(header->ts.tv_sec, (struct iphdr *) ((char*)packet + offset), header->caplen - offset);
 		}
-		process_packet(header_ip->saddr, htons(header_udp->source), header_ip->daddr, htons(header_udp->dest), 
+		process_packet(header_ip->saddr, header_udp->source, header_ip->daddr, header_udp->dest, 
 			    data, datalen, handle, header, packet, istcp, 0, 1, &was_rtp, header_ip);
 
 		if(destroy) { 

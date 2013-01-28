@@ -27,6 +27,7 @@
 #include <sys/sendfile.h>
 #include <semaphore.h>
 #include <dirent.h>
+#include <arpa/inet.h>
 
 #ifdef ISCURL
 #include <curl/curl.h>
@@ -109,7 +110,7 @@ char opt_mirrorip_src[20];
 char opt_mirrorip_dst[20];
 int opt_printinsertid = 0;
 int opt_ipaccount = 0;
-int opt_udpfrag = 1;
+int opt_udpfrag = 0;
 MirrorIP *mirrorip = NULL;
 int opt_cdronlyanswered = 0;
 int opt_cdronlyrtp = 0;
@@ -561,9 +562,9 @@ int load_config(char *fname) {
 	if (ini.GetAllValues("general", "sipport", values)) {
 		CSimpleIni::TNamesDepend::const_iterator i = values.begin();
 		// reset default port 
-		sipportmatrix[5060] = 0;
+		sipportmatrix[ntohs(5060)] = 0;
 		for (; i != values.end(); ++i) {
-			sipportmatrix[atoi(i->pItem)] = 1;
+			sipportmatrix[ntohs(atoi(i->pItem))] = 1;
 		}
 	}
 
@@ -930,7 +931,7 @@ int main(int argc, char *argv[]) {
 	strcpy(opt_cachedir, "");
 	sipportmatrix = (char*)calloc(1, sizeof(char) * 65537);
 	// set default SIP port to 5060
-	sipportmatrix[5060] = 1;
+	sipportmatrix[ntohs(5060)] = 1;
 
 	pthread_mutex_init(&mysqlquery_lock, NULL);
 
@@ -1006,10 +1007,10 @@ int main(int argc, char *argv[]) {
 			*/
 			case 'y':
 				for(int i = 5060; i < 5099; i++) {
-					sipportmatrix[i] = 1;
+					sipportmatrix[ntohs(i)] = 1;
 				}
-				sipportmatrix[443] = 1;
-				sipportmatrix[80] = 1;
+				sipportmatrix[ntohs(443)] = 1;
+				sipportmatrix[ntohs(80)] = 1;
 
 				break;
 			case 'm':
@@ -1526,6 +1527,7 @@ int main(int argc, char *argv[]) {
 		}
 	}
 	if(opt_pcap_threaded) {
+		printf("creating thread\n");
 #ifdef QUEUE_MUTEX
 		pthread_mutex_init(&readpacket_thread_queue_lock, NULL);
 		sem_init(&readpacket_thread_semaphore, 0, 0);
