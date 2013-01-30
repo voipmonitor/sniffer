@@ -1315,7 +1315,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 	}
 
 	if(whohanged == 0 || whohanged == 1) {
-		cdr.add(whohanged ? "'callee'" : "'caller'", "whohanged");
+		cdr.add(whohanged ? "callee" : "caller", "whohanged");
 	}
 	if(ssrc_n > 0) {
 		// sort all RTP streams by received packets + loss packets descend and save only those two with the biggest received packets.
@@ -1555,9 +1555,13 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		
 		sqlDb->setEnableSqlStringInContent(false);
 		
-		query_str += "end if;\n";
+		query_str += "end if";
+
+		pthread_mutex_lock(&mysqlquery_lock);
+		mysqlquery.push(query_str);
+		pthread_mutex_unlock(&mysqlquery_lock);
 		
-		cout << endl << endl << query_str << endl << endl << endl;
+		//cout << endl << endl << query_str << endl << endl << endl;
 		return(0);
 	}
 
