@@ -1621,7 +1621,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 /* TODO: implement failover -> write INSERT into file */
 int
 Call::saveRegisterToDb() {
-	const char *register_table = "register";
+	//const char *register_table = "register";
 	
 	if(!prepareForEscapeString())
 		return(1);
@@ -1890,6 +1890,7 @@ DELIMITER ; ~
 		}
 		return 1;
 	}
+	return 0;
 }
 
 int
