@@ -1,4 +1,3 @@
-//mysqlpp// #include <mysql++.h>
 #include <cstdlib>
 #include <iostream>
 #include <string>

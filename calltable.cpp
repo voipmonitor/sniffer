@@ -64,7 +64,6 @@ extern int opt_gzipGRAPH;	// compress GRAPH data to graph file?
 extern int opt_audio_format;	// define format for audio writing (if -W option)
 extern int opt_mos_g729;
 extern char opt_cachedir[1024];
-extern char sql_driver[256];
 extern char sql_cdr_table[256];
 extern char sql_cdr_table_last30d[256];
 extern char sql_cdr_table_last7d[256];
@@ -72,15 +71,6 @@ extern char sql_cdr_table_last1d[256];
 extern char sql_cdr_next_table[256];
 extern char sql_cdr_ua_table[256];
 extern char sql_cdr_sip_response_table[256];
-extern char mysql_host[256];
-extern char mysql_database[256];
-extern char mysql_table[256];
-extern char mysql_user[256];
-extern char mysql_password[256];
-extern char odbc_dsn[256];
-extern char odbc_user[256];
-extern char odbc_password[256];
-extern char odbc_driver[256];
 extern int opt_callend;
 extern int opt_id_sensor;
 extern int rtptimeout;
@@ -99,9 +89,6 @@ int calls = 0;
 extern char mac[32];
 
 unsigned int last_register_clean = 0;
-
-//mysqlpp// mysqlpp::Connection con(false);
-Odbc odbc;
 
 extern SqlDb *sqlDb;
 
@@ -893,419 +880,17 @@ Call::convertRawToWav() {
 	return 0;
 }
 
-int
-Call::buildQuery(stringstream *query) {
-	//mysqlpp// using namespace mysqlpp;
-	/* walk two first RTP and store it to MySQL. */
-
-	/* bye 
-	 * 	3 - call was answered and properly terminated
-	 * 	2 - call was answered but one of leg didnt confirm bye
-	 * 	1 - call was answered but there was no bye 
-	 * 	0 - call was not answered 
-	 */
-	
-	if(isTypeDb("mssql")) {
-		stringstream fields;
-		stringstream values;
-		fields 	<< "caller, caller_domain, caller_reverse, callername, callername_reverse, sipcallerip, "
-				"sipcalledip, called, called_domain, called_reverse, duration, progress_time, "
-				"first_rtp_time, connect_duration, calldate";
-		if(opt_callend) {
-			fields << ", callend";
-		}
-
-		fields << ", fbasename, sighup, lastSIPresponse, lastSIPresponseNum, bye";
-
-		values 	<< sqlEscapeString(caller)
-			<< ", " << sqlEscapeString(caller_domain)
-			<< ", " << sqlEscapeString(reverseString(caller).c_str())
-			<< ", " << sqlEscapeString(callername)
-			<< ", " << sqlEscapeString(reverseString(callername).c_str())
-			<< ", " << htonl(sipcallerip)
-			<< ", " << htonl(sipcalledip)
-			<< ", " << sqlEscapeString(called)
-			<< ", " << sqlEscapeString(called_domain)
-			<< ", " << sqlEscapeString(reverseString(called).c_str())
-			<< ", " << duration()
-			<< ", " << (progress_time ? progress_time - first_packet_time : -1)
-			<< ", " << (first_rtp_time ? first_rtp_time  - first_packet_time : -1)
-			<< ", " << (connect_time ? (duration() - (connect_time - first_packet_time)) : -1)
-			<< ", " << sqlEscapeString(sqlDateTimeString(calltime()).c_str());
-		
-		if(opt_callend) {
-			values << ", " << sqlEscapeString(sqlDateTimeString(calltime() + duration()).c_str());
-		}
-
-		values 	<< ", " << sqlEscapeString(fbasename)
-			<< ", " << (sighup ? 1 : 0)
-			<< ", " << sqlEscapeString(lastSIPresponse)
-			<< ", " << lastSIPresponseNum
-			<< ", " << ( seeninviteok ? (seenbye ? (seenbyeandok ? 3 : 2) : 1) : 0);
-			
-		if(strlen(custom_header1)) {
-			fields << ", custom_header1";
-			values << ", " << sqlEscapeString(custom_header1);
-		}
-
-		if(strlen(match_header)) {
-			fields << ", match_header";
-			values << ", " << sqlEscapeString(match_header);
-		}
-
-		switch(whohanged) {
-		case 0:
-			fields 	<< ", whohanged";
-			values 	<< ", 'caller'";
-			break;
-		case 1:
-			fields 	<< ", whohanged";
-			values 	<< ", 'callee'";
-		}
-		if(ssrc_n > 0) {
-			/* sort all RTP streams by received packets + loss packets descend and save only those two with the biggest received packets. */
-			int indexes[MAX_SSRC_PER_CALL];
-			// init indexex
-			for(int i = 0; i < MAX_SSRC_PER_CALL; i++) {
-				indexes[i] = i;
-			}
-			// bubble sort
-			for(int k = 0; k < ssrc_n; k++) {
-				for(int j = 0; j < ssrc_n; j++) {
-					if((rtp[indexes[k]]->stats.received + rtp[indexes[k]]->stats.lost) > ( rtp[indexes[j]]->stats.received + rtp[indexes[j]]->stats.lost)) {
-						int kTmp = indexes[k];
-						indexes[k] = indexes[j];
-						indexes[j] = kTmp;
-					}
-				}
-			}
-
-			// a_ is always caller, so check if we need to swap indexes
-			if (!rtp[indexes[0]]->iscaller) {
-				int tmp;
-				tmp = indexes[1];
-				indexes[1] = indexes[0];
-				indexes[0] = tmp;
-			}
-			fields 	<< ", a_ua, b_ua";
-			values 	<< ", " << sqlEscapeString(a_ua)
-				<< ", " << sqlEscapeString(b_ua);
-
-			// save only two streams with the biggest received packets
-			for(int i = 0; i < 2; i++) {
-				if(!rtp[indexes[i]]) continue;
-
-				// if the stream for a_* is not caller there is probably case where one direction is missing at all and the second stream contains more SSRC streams so swap it
-				if(i == 0 && !rtp[indexes[i]]->iscaller) {
-					int tmp;
-					tmp = indexes[1];
-					indexes[1] = indexes[0];
-					indexes[0] = tmp;
-					continue;
-				}
-				
-				char c = i == 0 ? 'a' : 'b';
-
-				fields 	<< ", " << c << "_index"
-					<< ", " << c << "_received"
-					<< ", " << c << "_lost"
-					<< ", " << c << "_avgjitter"
-					<< ", " << c << "_maxjitter"
-					<< ", " << c << "_payload"; 
-				values 	<< ", " << indexes[i]
-					<< ", " << (rtp[indexes[i]]->stats.received + 2) // received is always 2 packet less compared to wireshark (add it here)
-					<< ", " << rtp[indexes[i]]->stats.lost
-					<< ", " << int(ceil(rtp[indexes[i]]->stats.avgjitter))
-					<< ", " << int(ceil(rtp[indexes[i]]->stats.maxjitter))
-					<< ", " << rtp[indexes[i]]->codec; 
-
-				/* build a_sl1 - b_sl10 fields */
-				for(int j = 1; j < 11; j++) {
-					fields 	<< ", " << c << "_sl" << j;
-					values	<< ", " << rtp[indexes[i]]->stats.slost[j];
-				}
-				/* build a_d50 - b_d300 fileds */
-				fields 	<< ", " << c << "_d50"
-					<< ", " << c << "_d70"
-					<< ", " << c << "_d90"
-					<< ", " << c << "_d120"
-					<< ", " << c << "_d150"
-					<< ", " << c << "_d200"
-					<< ", " << c << "_d300";
-				values 	<< ", " << rtp[indexes[i]]->stats.d50
-					<< ", " << rtp[indexes[i]]->stats.d70
-					<< ", " << rtp[indexes[i]]->stats.d90
-					<< ", " << rtp[indexes[i]]->stats.d120
-					<< ", " << rtp[indexes[i]]->stats.d150
-					<< ", " << rtp[indexes[i]]->stats.d200
-					<< ", " << rtp[indexes[i]]->stats.d300;
-				
-				/* store source addr */
-				fields 	<< ", " << c << "_saddr";
-				values	<< ", " << htonl(rtp[indexes[i]]->saddr);
-
-				/* calculate lossrate and burst rate */
-				double burstr, lossr;
-				burstr_calculate(rtp[indexes[i]]->channel_fix1, rtp[indexes[i]]->stats.received, &burstr, &lossr);
-				fields 	<< ", " << c << "_lossr_f1"
-					<< ", " << c << "_burstr_f1"
-					<< ", " << c << "_mos_f1";
-				values 	<< ", " << lossr
-					<< ", " << burstr
-					<< ", " << calculate_mos(lossr, burstr, rtp[indexes[i]]->codec);
-
-				/* Jitterbuffer MOS statistics */
-				burstr_calculate(rtp[indexes[i]]->channel_fix2, rtp[indexes[i]]->stats.received, &burstr, &lossr);
-				fields 	<< ", " << c << "_lossr_f2"
-					<< ", " << c << "_burstr_f2"
-					<< ", " << c << "_mos_f2";
-				values 	<< ", " << lossr
-					<< ", " << burstr
-					<< ", " << calculate_mos(lossr, burstr, rtp[indexes[i]]->codec);
-
-				burstr_calculate(rtp[indexes[i]]->channel_adapt, rtp[indexes[i]]->stats.received, &burstr, &lossr);
-				fields 	<< ", " << c << "_lossr_adapt"
-					<< ", " << c << "_burstr_adapt"
-					<< ", " << c << "_mos_adapt";
-				values	<< ", " << lossr
-					<< ", " << burstr
-					<< ", " << calculate_mos(lossr, burstr, rtp[indexes[i]]->codec);
-
-				if(rtp[indexes[i]]->rtcp.counter) {
-					fields 	<< ", " << c << "_rtcp_loss"
-						<< ", " << c << "_rtcp_maxfr"
-						<< ", " << c << "_rtcp_avgfr"
-						<< ", " << c << "_rtcp_maxjitter"
-						<< ", " << c << "_rtcp_avgjitter";
-					values	<< ", " << rtp[indexes[i]]->rtcp.loss
-						<< ", " << rtp[indexes[i]]->rtcp.maxfr
-						<< ", " << rtp[indexes[i]]->rtcp.avgfr
-						<< ", " << rtp[indexes[i]]->rtcp.maxjitter
-						<< ", " << rtp[indexes[i]]->rtcp.avgjitter;
-				}
-			}
-		}
-		*query << "INSERT INTO " << sql_cdr_table << " ( " << fields.str() << " ) VALUES ( " << values.str() << " )";
-	} else {
-		*query << "INSERT INTO `" << (mysql_table[0]&&strcmp(mysql_table,sql_cdr_table) ? mysql_table : sql_cdr_table) << "` " <<
-			"SET caller = " << sqlEscapeString(caller) << 
-			", caller_domain = " << sqlEscapeString(caller_domain) << 
-			", caller_reverse = " << sqlEscapeString(reverseString(caller).c_str()) <<
-			", callername = " << sqlEscapeString(callername) << 
-			", callername_reverse = " << sqlEscapeString(reverseString(callername).c_str()) <<
-			", sipcallerip = " << htonl(sipcallerip) <<
-			", sipcalledip = " << htonl(sipcalledip) <<
-			", called = " << sqlEscapeString(called) <<
-			", called_domain = " << sqlEscapeString(called_domain) << 
-			", called_reverse = " << sqlEscapeString(reverseString(called).c_str()) <<
-			", duration = " << duration() << 
-			", progress_time = " << (progress_time ? progress_time - first_packet_time : -1) << 
-			", first_rtp_time = " << (first_rtp_time ? first_rtp_time  - first_packet_time : -1) << 
-			", connect_duration = " << (connect_time ? (duration() - (connect_time - first_packet_time)) : -1) << 
-			", calldate = FROM_UNIXTIME(" << calltime() << ")" <<
-			", fbasename = " << sqlEscapeString(fbasename) << 
-			", sighup = " << (sighup ? 1 : 0) << 
-			", lastSIPresponse = " << sqlEscapeString(lastSIPresponse) << 
-			", lastSIPresponseNum = " << lastSIPresponseNum << 
-			", bye = " << ( seeninviteok ? (seenbye ? (seenbyeandok ? 3 : 2) : 1) : 0);
-
-		if(opt_callend) {
-			*query << ", callend = FROM_UNIXTIME(" << (calltime() + duration()) << ")";
-		}
-
-		if(strlen(custom_header1)) {
-			*query << ", custom_header1 = " << sqlEscapeString(custom_header1);
-		}
-
-		if(strlen(match_header)) {
-			*query << ", match_header = " << sqlEscapeString(match_header);
-		}
-
-		switch(whohanged) {
-		case 0:
-			*query << " , whohanged = 'caller'";
-			break;
-		case 1:
-			*query << " , whohanged = 'callee'";
-		}
-		if(ssrc_n > 0) {
-			/* sort all RTP streams by received packets + loss packets descend and save only those two with the biggest received packets. */
-			int indexes[MAX_SSRC_PER_CALL];
-			// init indexex
-			for(int i = 0; i < MAX_SSRC_PER_CALL; i++) {
-				indexes[i] = i;
-			}
-			// bubble sort
-			for(int k = 0; k < ssrc_n; k++) {
-				for(int j = 0; j < ssrc_n; j++) {
-					if((rtp[indexes[k]]->stats.received + rtp[indexes[k]]->stats.lost) > ( rtp[indexes[j]]->stats.received + rtp[indexes[j]]->stats.lost)) {
-						int kTmp = indexes[k];
-						indexes[k] = indexes[j];
-						indexes[j] = kTmp;
-					}
-				}
-			}
-
-			// a_ is always caller, so check if we need to swap indexes
-			if (!rtp[indexes[0]]->iscaller) {
-				int tmp;
-				tmp = indexes[1];
-				indexes[1] = indexes[0];
-				indexes[0] = tmp;
-			}
-			*query << " , " << "a_ua = " << sqlEscapeString(a_ua);
-			*query << " , " << "b_ua = " << sqlEscapeString(b_ua);
-
-			// save only two streams with the biggest received packets
-			for(int i = 0; i < 2; i++) {
-				if(!rtp[indexes[i]]) continue;
-				
-				// if the stream for a_* is not caller there is probably case where one direction is missing at all and the second stream contains more SSRC streams so swap it
-				if(i == 0 && !rtp[indexes[i]]->iscaller) {
-					int tmp;
-					tmp = indexes[1];
-					indexes[1] = indexes[0];
-					indexes[0] = tmp;
-					continue;
-				}
-
-				char c = i == 0 ? 'a' : 'b';
-
-				*query << " , " << c << "_index = " << indexes[i];
-				*query << " , " << c << "_received = " << (rtp[indexes[i]]->stats.received + 2); // received is always 2 packet less compared to wireshark (add it here)
-				*query << " , " << c << "_lost = " << rtp[indexes[i]]->stats.lost;
-				*query << " , " << c << "_avgjitter = " << int(ceil(rtp[indexes[i]]->stats.avgjitter));
-				*query << " , " << c << "_maxjitter = " << int(ceil(rtp[indexes[i]]->stats.maxjitter)); 
-				*query << " , " << c << "_payload = " << rtp[indexes[i]]->codec; 
-
-				/* build a_sl1 - b_sl10 fields */
-				for(int j = 1; j < 11; j++) {
-					*query << " , " << c << "_sl" << j << " = " << rtp[indexes[i]]->stats.slost[j];
-				}
-				/* build a_d50 - b_d300 fileds */
-				*query << " , " << c << "_d50 = " << rtp[indexes[i]]->stats.d50;
-				*query << " , " << c << "_d70 = " << rtp[indexes[i]]->stats.d70;
-				*query << " , " << c << "_d90 = " << rtp[indexes[i]]->stats.d90;
-				*query << " , " << c << "_d120 = " << rtp[indexes[i]]->stats.d120;
-				*query << " , " << c << "_d150 = " << rtp[indexes[i]]->stats.d150;
-				*query << " , " << c << "_d200 = " << rtp[indexes[i]]->stats.d200;
-				*query << " , " << c << "_d300 = " << rtp[indexes[i]]->stats.d300;
-				
-				/* store source addr */
-				*query << " , " << c << "_saddr = " << htonl(rtp[indexes[i]]->saddr);
-
-				/* calculate lossrate and burst rate */
-				double burstr, lossr;
-				burstr_calculate(rtp[indexes[i]]->channel_fix1, rtp[indexes[i]]->stats.received, &burstr, &lossr);
-				*query << " , " << c << "_lossr_f1 = " << lossr;
-				*query << " , " << c << "_burstr_f1 = " << burstr;
-				*query << " , " << c << "_mos_f1 = " << calculate_mos(lossr, burstr, rtp[indexes[i]]->codec);
-
-				/* Jitterbuffer MOS statistics */
-				burstr_calculate(rtp[indexes[i]]->channel_fix2, rtp[indexes[i]]->stats.received, &burstr, &lossr);
-				*query << " , " << c << "_lossr_f2 = " << lossr;
-				*query << " , " << c << "_burstr_f2 = " << burstr;
-				*query << " , " << c << "_mos_f2 = " << calculate_mos(lossr, burstr, rtp[indexes[i]]->codec);
-
-				burstr_calculate(rtp[indexes[i]]->channel_adapt, rtp[indexes[i]]->stats.received, &burstr, &lossr);
-				*query << " , " << c << "_lossr_adapt = " << lossr;
-				*query << " , " << c << "_burstr_adapt = " << burstr;
-				*query << " , " << c << "_mos_adapt = " << calculate_mos(lossr, burstr, rtp[indexes[i]]->codec);
-
-				if(rtp[indexes[i]]->rtcp.counter) {
-					*query << " , " << c << "_rtcp_loss = " << rtp[indexes[i]]->rtcp.loss;
-					*query << " , " << c << "_rtcp_maxfr = " << rtp[indexes[i]]->rtcp.maxfr;
-					*query << " , " << c << "_rtcp_avgfr = " << rtp[indexes[i]]->rtcp.avgfr;
-					*query << " , " << c << "_rtcp_maxjitter = " << rtp[indexes[i]]->rtcp.maxjitter;
-					*query << " , " << c << "_rtcp_avgjitter = " << rtp[indexes[i]]->rtcp.avgjitter;
-				}
-			}
-		}
-	}
-	return 0;
-}
-
 bool 
 Call::prepareForEscapeString() {
-	if(isSqlDriver("mysql")) {
-		//mysqlpp//
-		/*
-		using namespace mysqlpp;
-		if(!con.connected()) {
-			con.connect(mysql_database, mysql_host, mysql_user, mysql_password);
-			if(!con.connected()) {
-				syslog(LOG_ERR,"DB connection failed: %s", con.error());
-				return false;
-			}
+	unsigned int pass = 0;
+	while(!sqlDb->connected()) {
+		if(pass > 0) {
+			sleep(1);
 		}
-		*/
-		if(sqlDb) {
-			unsigned int pass = 0;
-			while(!sqlDb->connected()) {
-				if(pass > 0) {
-					sleep(1);
-				}
-				sqlDb->connect();
-				++pass;
-			}
-			
-		} else {
-			return false;
-		}
+		sqlDb->connect();
+		++pass;
 	}
 	return true;
-}
-
-int
-Call::doQuery(string &queryStr) {
-	bool okQueryRslt = false;
-	if(isSqlDriver("mysql")) {
-		//mysqlpp//
-		/*
-		using namespace mysqlpp;
-		for(int attempt = 0; attempt<2; ++attempt) {
-			if(attempt>0 || !con.connected()) {
-				if(attempt>0)
-					con.disconnect();
-				con.connect(mysql_database, mysql_host, mysql_user, mysql_password);
-				if(!con.connected()) {
-					syslog(LOG_ERR,"DB connection failed: %s", con.error());
-					return 1;
-				}
-			}
-			mysqlpp::Query query = con.query();
-			query << queryStr.c_str();
-			query.store();
-			if(!con.errnum()) {
-				okQueryRslt = true;
-				break;
-			} else {
-				syslog(LOG_ERR,"Error in query [%s] errnum:'%d' error:'%s'", queryStr.c_str(), con.errnum(), con.error());
-				if(con.errnum() != 2006) { // errnum 2006 : MySQL server has gone away
-					break;
-				}
-			}
-		}
-		*/
-	} else if(isSqlDriver("odbc")) {
-		for(int attempt = 0; attempt<2; ++attempt) {
-			if(attempt>0 || !odbc.connected()) {
-				if(attempt>0)
-					odbc.disconnect();
-				if(!odbc.connect(odbc_dsn, odbc_user, odbc_password)) {
-					syslog(LOG_ERR, "DB connection failed: %s", odbc.getLastErrorString());
-					return 1;
-				}
-			}
-			if(odbc.query(queryStr.c_str())) {
-				okQueryRslt = true;
-				break;
-			} else {
-				syslog(LOG_ERR,"Error in query [%s]: '%s'", queryStr.c_str(), odbc.getLastErrorString());
-			}
-		}
-	}
-	return !okQueryRslt;
 }
 
 size_t write_data(char *ptr, size_t size, size_t nmemb, void *userdata) {
@@ -1644,7 +1229,7 @@ Call::getKeyValCDRtext() {
 
 /* TODO: implement failover -> write INSERT into file */
 int
-Call::saveToDb() {
+Call::saveToDb(bool enableBatchIfPossible) {
 	if(verbosity > 0) { 
 		cout << "process saveToDb function" << endl;
 	}
@@ -1657,345 +1242,372 @@ Call::saveToDb() {
 		return 1;
 	}
 	
-	if(isTypeDb("mysql")) {
-		if(!sqlDb) {
-			return(false);
-		}
-		SqlDb_row cdr,
-			  cdr_next,
-			  /*
-			  cdr_phone_number_caller,
-			  cdr_phone_number_called,
-			  cdr_name,
-			  cdr_domain_caller,
-			  cdr_domain_called,
-			  */
-			  cdr_sip_response,
-			  cdr_ua_a,
-			  cdr_ua_b;
-		unsigned int /*
-			     caller_id = 0,
-			     called_id = 0,
-			     callername_id = 0,
-			     caller_domain_id = 0,
-			     called_domain_id = 0,
-			     */
-			     lastSIPresponse_id = 0,
-			     a_ua_id = 0,
-			     b_ua_id = 0;
+	SqlDb_row cdr,
+			cdr_next,
+			/*
+			cdr_phone_number_caller,
+			cdr_phone_number_called,
+			cdr_name,
+			cdr_domain_caller,
+			cdr_domain_called,
+			*/
+			cdr_sip_response,
+			cdr_ua_a,
+			cdr_ua_b;
+	unsigned int /*
+			caller_id = 0,
+			called_id = 0,
+			callername_id = 0,
+			caller_domain_id = 0,
+			called_domain_id = 0,
+			*/
+			lastSIPresponse_id = 0,
+			a_ua_id = 0,
+			b_ua_id = 0;
 
-		if(opt_id_sensor > -1) {
-			cdr.add(opt_id_sensor, "id_sensor");
-		}
+	if(opt_id_sensor > -1) {
+		cdr.add(opt_id_sensor, "id_sensor");
+	}
 
-		cdr.add(sqlEscapeString(caller), "caller");
-		cdr.add(sqlEscapeString(reverseString(caller).c_str()), "caller_reverse");
-		cdr.add(sqlEscapeString(called), "called");
-		cdr.add(sqlEscapeString(reverseString(called).c_str()), "called_reverse");
-		cdr.add(sqlEscapeString(caller_domain), "caller_domain");
-		cdr.add(sqlEscapeString(called_domain), "called_domain");
-		cdr.add(sqlEscapeString(callername), "callername");
-		cdr.add(sqlEscapeString(reverseString(callername).c_str()), "callername_reverse");
-		/*
-		cdr_phone_number_caller.add(sqlEscapeString(caller), "number");
-		cdr_phone_number_caller.add(sqlEscapeString(reverseString(caller).c_str()), "number_reverse");
-		cdr_phone_number_called.add(sqlEscapeString(called), "number");
-		cdr_phone_number_called.add(sqlEscapeString(reverseString(called).c_str()), "number_reverse");
-		cdr_domain_caller.add(sqlEscapeString(caller_domain), "domain");
-		cdr_domain_called.add(sqlEscapeString(called_domain), "domain");
-		cdr_name.add(sqlEscapeString(callername), "name");
-		cdr_name.add(sqlEscapeString(reverseString(callername).c_str()), "name_reverse");
-		*/
-		
-		cdr_sip_response.add(sqlEscapeString(lastSIPresponse), "lastSIPresponse");
-		
-		cdr.add(htonl(sipcallerip), "sipcallerip");
-		cdr.add(htonl(sipcalledip), "sipcalledip");
-		cdr.add(duration(), "duration");
-		cdr.add(progress_time ? progress_time - first_packet_time : -1, "progress_time");
-		cdr.add(first_rtp_time ? first_rtp_time  - first_packet_time : -1, "first_rtp_time");
-		cdr.add(connect_time ? (duration() - (connect_time - first_packet_time)) : -1, "connect_duration");
-		cdr.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
-		if(opt_callend) {
-			cdr.add(sqlEscapeString(sqlDateTimeString(calltime() + duration()).c_str()), "callend");
-		}
-		
-		cdr_next.add(sqlEscapeString(fbasename), "fbasename");
-		
-		cdr.add(sighup ? 1 : 0, "sighup");
-		cdr.add(lastSIPresponseNum, "lastSIPresponseNum");
-		cdr.add(seeninviteok ? (seenbye ? (seenbyeandok ? 3 : 2) : 1) : 0, "bye");
-		
-		if(strlen(match_header)) {
-			cdr_next.add(sqlEscapeString(match_header), "match_header");
-		}
-		if(strlen(custom_header1)) {
-			cdr_next.add(sqlEscapeString(custom_header1), "custom_header1");
-		}
+	cdr.add(sqlEscapeString(caller), "caller");
+	cdr.add(sqlEscapeString(reverseString(caller).c_str()), "caller_reverse");
+	cdr.add(sqlEscapeString(called), "called");
+	cdr.add(sqlEscapeString(reverseString(called).c_str()), "called_reverse");
+	cdr.add(sqlEscapeString(caller_domain), "caller_domain");
+	cdr.add(sqlEscapeString(called_domain), "called_domain");
+	cdr.add(sqlEscapeString(callername), "callername");
+	cdr.add(sqlEscapeString(reverseString(callername).c_str()), "callername_reverse");
+	/*
+	cdr_phone_number_caller.add(sqlEscapeString(caller), "number");
+	cdr_phone_number_caller.add(sqlEscapeString(reverseString(caller).c_str()), "number_reverse");
+	cdr_phone_number_called.add(sqlEscapeString(called), "number");
+	cdr_phone_number_called.add(sqlEscapeString(reverseString(called).c_str()), "number_reverse");
+	cdr_domain_caller.add(sqlEscapeString(caller_domain), "domain");
+	cdr_domain_called.add(sqlEscapeString(called_domain), "domain");
+	cdr_name.add(sqlEscapeString(callername), "name");
+	cdr_name.add(sqlEscapeString(reverseString(callername).c_str()), "name_reverse");
+	*/
+	
+	cdr_sip_response.add(sqlEscapeString(lastSIPresponse), "lastSIPresponse");
+	
+	cdr.add(htonl(sipcallerip), "sipcallerip");
+	cdr.add(htonl(sipcalledip), "sipcalledip");
+	cdr.add(duration(), "duration");
+	cdr.add(progress_time ? progress_time - first_packet_time : -1, "progress_time");
+	cdr.add(first_rtp_time ? first_rtp_time  - first_packet_time : -1, "first_rtp_time");
+	cdr.add(connect_time ? (duration() - (connect_time - first_packet_time)) : -1, "connect_duration");
+	cdr.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
+	if(opt_callend) {
+		cdr.add(sqlEscapeString(sqlDateTimeString(calltime() + duration()).c_str()), "callend");
+	}
+	
+	cdr_next.add(sqlEscapeString(fbasename), "fbasename");
+	
+	cdr.add(sighup ? 1 : 0, "sighup");
+	cdr.add(lastSIPresponseNum, "lastSIPresponseNum");
+	cdr.add(seeninviteok ? (seenbye ? (seenbyeandok ? 3 : 2) : 1) : 0, "bye");
+	
+	if(strlen(match_header)) {
+		cdr_next.add(sqlEscapeString(match_header), "match_header");
+	}
+	if(strlen(custom_header1)) {
+		cdr_next.add(sqlEscapeString(custom_header1), "custom_header1");
+	}
 
-		if(whohanged == 0 || whohanged == 1) {
-			cdr.add(whohanged ? "'callee'" : "'caller'", "whohanged");
+	if(whohanged == 0 || whohanged == 1) {
+		cdr.add(whohanged ? "'callee'" : "'caller'", "whohanged");
+	}
+	if(ssrc_n > 0) {
+		// sort all RTP streams by received packets + loss packets descend and save only those two with the biggest received packets.
+		int indexes[MAX_SSRC_PER_CALL];
+		// init indexex
+		for(int i = 0; i < MAX_SSRC_PER_CALL; i++) {
+			indexes[i] = i;
 		}
-		if(ssrc_n > 0) {
-			// sort all RTP streams by received packets + loss packets descend and save only those two with the biggest received packets.
-			int indexes[MAX_SSRC_PER_CALL];
-			// init indexex
-			for(int i = 0; i < MAX_SSRC_PER_CALL; i++) {
-				indexes[i] = i;
-			}
-			// bubble sort
-			for(int k = 0; k < ssrc_n; k++) {
-				for(int j = 0; j < ssrc_n; j++) {
-					if((rtp[indexes[k]]->stats.received + rtp[indexes[k]]->stats.lost) > ( rtp[indexes[j]]->stats.received + rtp[indexes[j]]->stats.lost)) {
-						int kTmp = indexes[k];
-						indexes[k] = indexes[j];
-						indexes[j] = kTmp;
-					}
+		// bubble sort
+		for(int k = 0; k < ssrc_n; k++) {
+			for(int j = 0; j < ssrc_n; j++) {
+				if((rtp[indexes[k]]->stats.received + rtp[indexes[k]]->stats.lost) > ( rtp[indexes[j]]->stats.received + rtp[indexes[j]]->stats.lost)) {
+					int kTmp = indexes[k];
+					indexes[k] = indexes[j];
+					indexes[j] = kTmp;
 				}
 			}
+		}
 
-			// a_ is always caller, so check if we need to swap indexes
-			if (!rtp[indexes[0]]->iscaller) {
+		// a_ is always caller, so check if we need to swap indexes
+		if (!rtp[indexes[0]]->iscaller) {
+			int tmp;
+			tmp = indexes[1];
+			indexes[1] = indexes[0];
+			indexes[0] = tmp;
+		}
+		cdr_ua_a.add(sqlEscapeString(a_ua), "ua");
+		cdr_ua_b.add(sqlEscapeString(b_ua), "ua");
+
+		// save only two streams with the biggest received packets
+		int payload[2] = { -1, -1 };
+		int jitter_mult10[2] = { -1, -1 };
+		int mos_min_mult10[2] = { -1, -1 };
+		int packet_loss_perc_mult1000[2] = { -1, -1 };
+		int delay_sum[2] = { -1, -1 };
+		int delay_cnt[2] = { -1, -1 };
+		int delay_avg_mult100[2] = { -1, -1 };
+		int rtcp_avgfr_mult10[2] = { -1, -1 };
+		int rtcp_avgjitter_mult10[2] = { -1, -1 };
+		int lost[2] = { -1, -1 };
+		
+		for(int i = 0; i < 2; i++) {
+			if(!rtp[indexes[i]]) continue;
+
+			// if the stream for a_* is not caller there is probably case where one direction is missing at all and the second stream contains more SSRC streams so swap it
+			if(i == 0 && !rtp[indexes[i]]->iscaller) {
 				int tmp;
 				tmp = indexes[1];
 				indexes[1] = indexes[0];
 				indexes[0] = tmp;
+				continue;
 			}
-			cdr_ua_a.add(sqlEscapeString(a_ua), "ua");
-			cdr_ua_b.add(sqlEscapeString(b_ua), "ua");
-
-			// save only two streams with the biggest received packets
-			int payload[2] = { -1, -1 };
-			int jitter_mult10[2] = { -1, -1 };
-			int mos_min_mult10[2] = { -1, -1 };
-			int packet_loss_perc_mult1000[2] = { -1, -1 };
-			int delay_sum[2] = { -1, -1 };
-			int delay_cnt[2] = { -1, -1 };
-			int delay_avg_mult100[2] = { -1, -1 };
-			int rtcp_avgfr_mult10[2] = { -1, -1 };
-			int rtcp_avgjitter_mult10[2] = { -1, -1 };
-			int lost[2] = { -1, -1 };
 			
-			for(int i = 0; i < 2; i++) {
-				if(!rtp[indexes[i]]) continue;
+			string c = i == 0 ? "a" : "b";
+			
+			cdr.add(indexes[i], c+"_index");
+			cdr.add(rtp[indexes[i]]->stats.received + 2, c+"_received"); // received is always 2 packet less compared to wireshark (add it here)
+			lost[i] = rtp[indexes[i]]->stats.lost;
+			cdr.add(lost[i], c+"_lost");
+			packet_loss_perc_mult1000[i] = (int)round((double)rtp[indexes[i]]->stats.lost / 
+									(rtp[indexes[i]]->stats.received + 2 + rtp[indexes[i]]->stats.lost) * 100 * 1000);
+			cdr.add(packet_loss_perc_mult1000[i], c+"_packet_loss_perc_mult1000");
+			jitter_mult10[i] = int(ceil(rtp[indexes[i]]->stats.avgjitter)) * 10; // !!!
+			cdr.add(jitter_mult10[i], c+"_avgjitter_mult10");
+			cdr.add(int(ceil(rtp[indexes[i]]->stats.maxjitter)), c+"_maxjitter");
+			payload[i] = rtp[indexes[i]]->codec;
+			cdr.add(payload[i], c+"_payload");
+			
+			// build a_sl1 - b_sl10 fields
+			for(int j = 1; j < 11; j++) {
+				char str_j[3];
+				sprintf(str_j, "%d", j);
+				cdr.add(rtp[indexes[i]]->stats.slost[j], c+"_sl"+str_j);
+			}
+			// build a_d50 - b_d300 fileds
+			cdr.add(rtp[indexes[i]]->stats.d50, c+"_d50");
+			cdr.add(rtp[indexes[i]]->stats.d70, c+"_d70");
+			cdr.add(rtp[indexes[i]]->stats.d90, c+"_d90");
+			cdr.add(rtp[indexes[i]]->stats.d120, c+"_d120");
+			cdr.add(rtp[indexes[i]]->stats.d150, c+"_d150");
+			cdr.add(rtp[indexes[i]]->stats.d200, c+"_d200");
+			cdr.add(rtp[indexes[i]]->stats.d300, c+"_d300");
+			delay_sum[i] = rtp[indexes[i]]->stats.d50 * 60 + 
+					rtp[indexes[i]]->stats.d70 * 80 + 
+					rtp[indexes[i]]->stats.d90 * 105 + 
+					rtp[indexes[i]]->stats.d120 * 135 +
+					rtp[indexes[i]]->stats.d150 * 175 + 
+					rtp[indexes[i]]->stats.d200 * 250 + 
+					rtp[indexes[i]]->stats.d300 * 300;
+			delay_cnt[i] = rtp[indexes[i]]->stats.d50 + 
+					rtp[indexes[i]]->stats.d70 + 
+					rtp[indexes[i]]->stats.d90 + 
+					rtp[indexes[i]]->stats.d120 +
+					rtp[indexes[i]]->stats.d150 + 
+					rtp[indexes[i]]->stats.d200 + 
+					rtp[indexes[i]]->stats.d300;
+			delay_avg_mult100[i] = (delay_cnt[i] != 0  ? (int)round((double)delay_sum[i] / delay_cnt[i] * 100) : 0);
+			cdr.add(delay_sum[i], c+"_delay_sum");
+			cdr.add(delay_cnt[i], c+"_delay_cnt");
+			cdr.add(delay_avg_mult100[i], c+"_delay_avg_mult100");
+			
+			// store source addr
+			cdr.add(htonl(rtp[indexes[i]]->saddr), c+"_saddr");
 
-				// if the stream for a_* is not caller there is probably case where one direction is missing at all and the second stream contains more SSRC streams so swap it
-				if(i == 0 && !rtp[indexes[i]]->iscaller) {
-					int tmp;
-					tmp = indexes[1];
-					indexes[1] = indexes[0];
-					indexes[0] = tmp;
-					continue;
-				}
-				
-				string c = i == 0 ? "a" : "b";
-				
-				cdr.add(indexes[i], c+"_index");
-				cdr.add(rtp[indexes[i]]->stats.received + 2, c+"_received"); // received is always 2 packet less compared to wireshark (add it here)
-				lost[i] = rtp[indexes[i]]->stats.lost;
-				cdr.add(lost[i], c+"_lost");
-				packet_loss_perc_mult1000[i] = (int)round((double)rtp[indexes[i]]->stats.lost / 
-										(rtp[indexes[i]]->stats.received + 2 + rtp[indexes[i]]->stats.lost) * 100 * 1000);
-				cdr.add(packet_loss_perc_mult1000[i], c+"_packet_loss_perc_mult1000");
-				jitter_mult10[i] = int(ceil(rtp[indexes[i]]->stats.avgjitter)) * 10; // !!!
-				cdr.add(jitter_mult10[i], c+"_avgjitter_mult10");
-				cdr.add(int(ceil(rtp[indexes[i]]->stats.maxjitter)), c+"_maxjitter");
-				payload[i] = rtp[indexes[i]]->codec;
-				cdr.add(payload[i], c+"_payload");
-				
-				// build a_sl1 - b_sl10 fields
-				for(int j = 1; j < 11; j++) {
-					char str_j[3];
-					sprintf(str_j, "%d", j);
-					cdr.add(rtp[indexes[i]]->stats.slost[j], c+"_sl"+str_j);
-				}
-				// build a_d50 - b_d300 fileds
-				cdr.add(rtp[indexes[i]]->stats.d50, c+"_d50");
-				cdr.add(rtp[indexes[i]]->stats.d70, c+"_d70");
-				cdr.add(rtp[indexes[i]]->stats.d90, c+"_d90");
-				cdr.add(rtp[indexes[i]]->stats.d120, c+"_d120");
-				cdr.add(rtp[indexes[i]]->stats.d150, c+"_d150");
-				cdr.add(rtp[indexes[i]]->stats.d200, c+"_d200");
-				cdr.add(rtp[indexes[i]]->stats.d300, c+"_d300");
-				delay_sum[i] = rtp[indexes[i]]->stats.d50 * 60 + 
-					       rtp[indexes[i]]->stats.d70 * 80 + 
-					       rtp[indexes[i]]->stats.d90 * 105 + 
-					       rtp[indexes[i]]->stats.d120 * 135 +
-					       rtp[indexes[i]]->stats.d150 * 175 + 
-					       rtp[indexes[i]]->stats.d200 * 250 + 
-					       rtp[indexes[i]]->stats.d300 * 300;
-				delay_cnt[i] = rtp[indexes[i]]->stats.d50 + 
-					       rtp[indexes[i]]->stats.d70 + 
-					       rtp[indexes[i]]->stats.d90 + 
-					       rtp[indexes[i]]->stats.d120 +
-					       rtp[indexes[i]]->stats.d150 + 
-					       rtp[indexes[i]]->stats.d200 + 
-					       rtp[indexes[i]]->stats.d300;
-				delay_avg_mult100[i] = (delay_cnt[i] != 0  ? (int)round((double)delay_sum[i] / delay_cnt[i] * 100) : 0);
-				cdr.add(delay_sum[i], c+"_delay_sum");
-				cdr.add(delay_cnt[i], c+"_delay_cnt");
-				cdr.add(delay_avg_mult100[i], c+"_delay_avg_mult100");
-				
-				// store source addr
-				cdr.add(htonl(rtp[indexes[i]]->saddr), c+"_saddr");
-
-				// calculate lossrate and burst rate
-				double burstr, lossr;
-				burstr_calculate(rtp[indexes[i]]->channel_fix1, rtp[indexes[i]]->stats.received, &burstr, &lossr);
-				//cdr.add(lossr, c+"_lossr_f1");
-				//cdr.add(burstr, c+"_burstr_f1");
-				int mos_f1_mult10 = (int)round(calculate_mos(lossr, burstr, rtp[indexes[i]]->codec) * 10);
-				cdr.add(mos_f1_mult10, c+"_mos_f1_mult10");
-				if(mos_f1_mult10) {
-					mos_min_mult10[i] = mos_f1_mult10;
-				}
-
-				// Jitterbuffer MOS statistics
-				burstr_calculate(rtp[indexes[i]]->channel_fix2, rtp[indexes[i]]->stats.received, &burstr, &lossr);
-				//cdr.add(lossr, c+"_lossr_f2");
-				//cdr.add(burstr, c+"_burstr_f2");
-				int mos_f2_mult10 = (int)round(calculate_mos(lossr, burstr, rtp[indexes[i]]->codec) * 10);
-				cdr.add(mos_f2_mult10, c+"_mos_f2_mult10");
-				if(mos_f2_mult10 && (mos_min_mult10[i] < 0 || mos_f2_mult10 < mos_min_mult10[i])) {
-					mos_min_mult10[i] = mos_f2_mult10;
-				}
-
-				burstr_calculate(rtp[indexes[i]]->channel_adapt, rtp[indexes[i]]->stats.received, &burstr, &lossr);
-				//cdr.add(lossr, c+"_lossr_adapt");
-				//cdr.add(burstr, c+"_burstr_adapt");
-				int mos_adapt_mult10 = (int)round(calculate_mos(lossr, burstr, rtp[indexes[i]]->codec) * 10);
-				cdr.add(mos_adapt_mult10, c+"_mos_adapt_mult10");
-				if(mos_adapt_mult10 && (mos_min_mult10[i] < 0 || mos_adapt_mult10 < mos_min_mult10[i])) {
-					mos_min_mult10[i] = mos_adapt_mult10;
-				}
-				
-				if(mos_min_mult10[i] >= 0) {
-					cdr.add(mos_min_mult10[i], c+"_mos_min_mult10");
-				}
-
-				if(rtp[indexes[i]]->rtcp.counter) {
-					cdr.add(rtp[indexes[i]]->rtcp.loss, c+"_rtcp_loss");
-					cdr.add(rtp[indexes[i]]->rtcp.maxfr, c+"_rtcp_maxfr");
-					rtcp_avgfr_mult10[i] = (int)round(rtp[indexes[i]]->rtcp.avgfr * 10);
-					cdr.add(rtcp_avgfr_mult10[i], c+"_rtcp_avgfr_mult10");
-					cdr.add(rtp[indexes[i]]->rtcp.maxjitter, c+"_rtcp_maxjitter");
-					rtcp_avgjitter_mult10[i] = (int)round(rtp[indexes[i]]->rtcp.avgjitter * 10);
-					cdr.add(rtcp_avgjitter_mult10[i], c+"_rtcp_avgjitter_mult10");
-				}
+			// calculate lossrate and burst rate
+			double burstr, lossr;
+			burstr_calculate(rtp[indexes[i]]->channel_fix1, rtp[indexes[i]]->stats.received, &burstr, &lossr);
+			//cdr.add(lossr, c+"_lossr_f1");
+			//cdr.add(burstr, c+"_burstr_f1");
+			int mos_f1_mult10 = (int)round(calculate_mos(lossr, burstr, rtp[indexes[i]]->codec) * 10);
+			cdr.add(mos_f1_mult10, c+"_mos_f1_mult10");
+			if(mos_f1_mult10) {
+				mos_min_mult10[i] = mos_f1_mult10;
 			}
 
-			if(payload[0] >= 0 || payload[1] >= 0) {
-				if(isfax) {
-					cdr.add(1000, "payload");
-				} else {
-					cdr.add(payload[0] >= 0 ? payload[0] : payload[1], 
-						"payload");
-				}
-			}
-			if(jitter_mult10[0] >= 0 || jitter_mult10[1] >= 0) {
-				cdr.add(max(jitter_mult10[0], jitter_mult10[1]), 
-					"jitter_mult10");
-			}
-			if(mos_min_mult10[0] >= 0 || mos_min_mult10[1] >= 0) {
-				cdr.add(mos_min_mult10[0] >= 0 && mos_min_mult10[1] >= 0 ?
-						min(mos_min_mult10[0], mos_min_mult10[1]) :
-						(mos_min_mult10[0] >= 0 ? mos_min_mult10[0] : mos_min_mult10[1]),
-					"mos_min_mult10");
-			}
-			if(packet_loss_perc_mult1000[0] >= 0 || packet_loss_perc_mult1000[1] >= 0) {
-				cdr.add(max(packet_loss_perc_mult1000[0], packet_loss_perc_mult1000[1]), 
-					"packet_loss_perc_mult1000");
-			}
-			if(delay_sum[0] >= 0 || delay_sum[1] >= 0) {
-				cdr.add(max(delay_sum[0], delay_sum[1]), 
-					"delay_sum");
-			}
-			if(delay_cnt[0] >= 0 || delay_cnt[1] >= 0) {
-				cdr.add(max(delay_cnt[0], delay_cnt[1]), 
-					"delay_cnt");
-			}
-			if(delay_avg_mult100[0] >= 0 || delay_avg_mult100[1] >= 0) {
-				cdr.add(max(delay_avg_mult100[0], delay_avg_mult100[1]), 
-					"delay_avg_mult100");
-			}
-			if(rtcp_avgfr_mult10[0] >= 0 || rtcp_avgfr_mult10[1] >= 0) {
-				cdr.add((rtcp_avgfr_mult10[0] >= 0 ? rtcp_avgfr_mult10[0] : 0) + 
-					(rtcp_avgfr_mult10[1] >= 0 ? rtcp_avgfr_mult10[1] : 0),
-					"rtcp_avgfr_mult10");
-			}
-			if(rtcp_avgjitter_mult10[0] >= 0 || rtcp_avgjitter_mult10[1] >= 0) {
-				cdr.add((rtcp_avgjitter_mult10[0] >= 0 ? rtcp_avgjitter_mult10[0] : 0) + 
-					(rtcp_avgjitter_mult10[1] >= 0 ? rtcp_avgjitter_mult10[1] : 0),
-					"rtcp_avgjitter_mult10");
-			}
-			if(lost[0] >= 0 || lost[1] >= 0) {
-				cdr.add(max(lost[0], lost[1]), 
-					"lost");
+			// Jitterbuffer MOS statistics
+			burstr_calculate(rtp[indexes[i]]->channel_fix2, rtp[indexes[i]]->stats.received, &burstr, &lossr);
+			//cdr.add(lossr, c+"_lossr_f2");
+			//cdr.add(burstr, c+"_burstr_f2");
+			int mos_f2_mult10 = (int)round(calculate_mos(lossr, burstr, rtp[indexes[i]]->codec) * 10);
+			cdr.add(mos_f2_mult10, c+"_mos_f2_mult10");
+			if(mos_f2_mult10 && (mos_min_mult10[i] < 0 || mos_f2_mult10 < mos_min_mult10[i])) {
+				mos_min_mult10[i] = mos_f2_mult10;
 			}
 
-		}
-		
-		/*
-		caller_id = sqlDb->getIdOrInsert("cdr_phone_number", "id", "number", cdr_phone_number_caller, "");
-		called_id = sqlDb->getIdOrInsert("cdr_phone_number", "id", "number", cdr_phone_number_called, "");
-		callername_id = sqlDb->getIdOrInsert("cdr_name", "id", "name", cdr_name, "");
-		caller_domain_id = sqlDb->getIdOrInsert("cdr_domain", "id", "domain", cdr_domain_caller, "");
-		called_domain_id = sqlDb->getIdOrInsert("cdr_domain", "id", "domain", cdr_domain_called, "");
-		*/
-		lastSIPresponse_id = sqlDb->getIdOrInsert(sql_cdr_sip_response_table, "id", "lastSIPresponse", cdr_sip_response, "");
-		if(cdr_ua_a) {
-			a_ua_id = sqlDb->getIdOrInsert(sql_cdr_ua_table, "id", "ua", cdr_ua_a, "");
-		}
-		if(cdr_ua_b) {
-			b_ua_id = sqlDb->getIdOrInsert(sql_cdr_ua_table, "id", "ua", cdr_ua_b, "");
+			burstr_calculate(rtp[indexes[i]]->channel_adapt, rtp[indexes[i]]->stats.received, &burstr, &lossr);
+			//cdr.add(lossr, c+"_lossr_adapt");
+			//cdr.add(burstr, c+"_burstr_adapt");
+			int mos_adapt_mult10 = (int)round(calculate_mos(lossr, burstr, rtp[indexes[i]]->codec) * 10);
+			cdr.add(mos_adapt_mult10, c+"_mos_adapt_mult10");
+			if(mos_adapt_mult10 && (mos_min_mult10[i] < 0 || mos_adapt_mult10 < mos_min_mult10[i])) {
+				mos_min_mult10[i] = mos_adapt_mult10;
+			}
+			
+			if(mos_min_mult10[i] >= 0) {
+				cdr.add(mos_min_mult10[i], c+"_mos_min_mult10");
+			}
+
+			if(rtp[indexes[i]]->rtcp.counter) {
+				cdr.add(rtp[indexes[i]]->rtcp.loss, c+"_rtcp_loss");
+				cdr.add(rtp[indexes[i]]->rtcp.maxfr, c+"_rtcp_maxfr");
+				rtcp_avgfr_mult10[i] = (int)round(rtp[indexes[i]]->rtcp.avgfr * 10);
+				cdr.add(rtcp_avgfr_mult10[i], c+"_rtcp_avgfr_mult10");
+				cdr.add(rtp[indexes[i]]->rtcp.maxjitter, c+"_rtcp_maxjitter");
+				rtcp_avgjitter_mult10[i] = (int)round(rtp[indexes[i]]->rtcp.avgjitter * 10);
+				cdr.add(rtcp_avgjitter_mult10[i], c+"_rtcp_avgjitter_mult10");
+			}
 		}
 
-		/*
-		cdr.add(caller_id, "caller_id", true);
-		cdr.add(called_id, "called_id", true);
-		cdr.add(callername_id, "callername_id", true);
-		cdr.add(caller_domain_id, "caller_domain_id", true);
-		cdr.add(called_domain_id, "called_domain_id", true);
-		*/
-		cdr.add(lastSIPresponse_id, "lastSIPresponse_id", true);
-		cdr.add(a_ua_id, "a_ua_id", true);
-		cdr.add(b_ua_id, "b_ua_id", true);
-		
-		int cdrID = sqlDb->insert(sql_cdr_table, cdr, "");
-		if(cdrID>0) {
-			if(opt_printinsertid) {
-				printf("CDRID:%d\n", cdrID);
-			}
-			cdr_next.add(cdrID, "cdr_ID");
-			sqlDb->insert(sql_cdr_next_table, cdr_next, "");
-			if(sql_cdr_table_last30d[0] ||
-			   sql_cdr_table_last7d[0] ||
-			   sql_cdr_table_last1d[0]) {
-				cdr.add(cdrID, "ID");
-				if(sql_cdr_table_last30d[0]) {
-					sqlDb->insert(sql_cdr_table_last30d, cdr, "");
-				}
-				if(sql_cdr_table_last7d[0]) {
-					sqlDb->insert(sql_cdr_table_last7d, cdr, "");
-				}
-				if(sql_cdr_table_last1d[0]) {
-					sqlDb->insert(sql_cdr_table_last1d, cdr, "");
-				}
+		if(payload[0] >= 0 || payload[1] >= 0) {
+			if(isfax) {
+				cdr.add(1000, "payload");
+			} else {
+				cdr.add(payload[0] >= 0 ? payload[0] : payload[1], 
+					"payload");
 			}
 		}
-		
-		return(cdrID <= 0);
-		
-	} else {
-		stringstream queryStream;
-		buildQuery(&queryStream);
-		string queryStr = queryStream.str();
-		if(verbosity > 0) { 
-			cout << queryStr << "\n";
+		if(jitter_mult10[0] >= 0 || jitter_mult10[1] >= 0) {
+			cdr.add(max(jitter_mult10[0], jitter_mult10[1]), 
+				"jitter_mult10");
 		}
-	
-		return doQuery(queryStr);
+		if(mos_min_mult10[0] >= 0 || mos_min_mult10[1] >= 0) {
+			cdr.add(mos_min_mult10[0] >= 0 && mos_min_mult10[1] >= 0 ?
+					min(mos_min_mult10[0], mos_min_mult10[1]) :
+					(mos_min_mult10[0] >= 0 ? mos_min_mult10[0] : mos_min_mult10[1]),
+				"mos_min_mult10");
+		}
+		if(packet_loss_perc_mult1000[0] >= 0 || packet_loss_perc_mult1000[1] >= 0) {
+			cdr.add(max(packet_loss_perc_mult1000[0], packet_loss_perc_mult1000[1]), 
+				"packet_loss_perc_mult1000");
+		}
+		if(delay_sum[0] >= 0 || delay_sum[1] >= 0) {
+			cdr.add(max(delay_sum[0], delay_sum[1]), 
+				"delay_sum");
+		}
+		if(delay_cnt[0] >= 0 || delay_cnt[1] >= 0) {
+			cdr.add(max(delay_cnt[0], delay_cnt[1]), 
+				"delay_cnt");
+		}
+		if(delay_avg_mult100[0] >= 0 || delay_avg_mult100[1] >= 0) {
+			cdr.add(max(delay_avg_mult100[0], delay_avg_mult100[1]), 
+				"delay_avg_mult100");
+		}
+		if(rtcp_avgfr_mult10[0] >= 0 || rtcp_avgfr_mult10[1] >= 0) {
+			cdr.add((rtcp_avgfr_mult10[0] >= 0 ? rtcp_avgfr_mult10[0] : 0) + 
+				(rtcp_avgfr_mult10[1] >= 0 ? rtcp_avgfr_mult10[1] : 0),
+				"rtcp_avgfr_mult10");
+		}
+		if(rtcp_avgjitter_mult10[0] >= 0 || rtcp_avgjitter_mult10[1] >= 0) {
+			cdr.add((rtcp_avgjitter_mult10[0] >= 0 ? rtcp_avgjitter_mult10[0] : 0) + 
+				(rtcp_avgjitter_mult10[1] >= 0 ? rtcp_avgjitter_mult10[1] : 0),
+				"rtcp_avgjitter_mult10");
+		}
+		if(lost[0] >= 0 || lost[1] >= 0) {
+			cdr.add(max(lost[0], lost[1]), 
+				"lost");
+		}
+
 	}
+
+	if(enableBatchIfPossible && isSqlDriver("mysql")) {
+		string query_str;
+		
+		query_str += "set @_last_insert_id = last_insert_id();\n";
+		
+		cdr.add(string("__sql__:") + "getIdOrInsertSIPRES(" + sqlEscapeStringBorder(lastSIPresponse) + ")", "lastSIPresponse_id");
+		if(a_ua) {
+			cdr.add(string("__sql__:") + "getIdOrInsertUA(" + sqlEscapeStringBorder(a_ua) + ")", "a_ua_id");
+		}
+		if(b_ua) {
+			cdr.add(string("__sql__:") + "getIdOrInsertUA(" + sqlEscapeStringBorder(b_ua) + ")", "b_ua_id");
+		}
+		query_str += sqlDb->insertQuery(sql_cdr_table, cdr) + ";\n";
+		
+		query_str += "if @_last_insert_id != last_insert_id() then\n";
+		query_str += "set @cdr_id = last_insert_id();\n";
+		
+		cdr_next.add("__sql__:@cdr_id", "cdr_ID");
+		query_str += sqlDb->insertQuery(sql_cdr_next_table, cdr_next) + ";\n";
+		
+		if(sql_cdr_table_last30d[0] ||
+		   sql_cdr_table_last7d[0] ||
+		   sql_cdr_table_last1d[0]) {
+			cdr.add("__sql__:@cdr_id", "ID");
+			if(sql_cdr_table_last30d[0]) {
+				query_str += sqlDb->insertQuery(sql_cdr_table_last30d, cdr) + ";\n";
+			}
+			if(sql_cdr_table_last7d[0]) {
+				query_str += sqlDb->insertQuery(sql_cdr_table_last7d, cdr) + ";\n";
+			}
+			if(sql_cdr_table_last1d[0]) {
+				query_str += sqlDb->insertQuery(sql_cdr_table_last1d, cdr) + ";\n";
+			}
+		}
+		
+		query_str += "end if;\n";
+		
+		cout << endl << endl << query_str << endl << endl << endl;
+		return(0);
+	}
+
+	/*
+	caller_id = sqlDb->getIdOrInsert("cdr_phone_number", "id", "number", cdr_phone_number_caller);
+	called_id = sqlDb->getIdOrInsert("cdr_phone_number", "id", "number", cdr_phone_number_called);
+	callername_id = sqlDb->getIdOrInsert("cdr_name", "id", "name", cdr_name);
+	caller_domain_id = sqlDb->getIdOrInsert("cdr_domain", "id", "domain", cdr_domain_caller);
+	called_domain_id = sqlDb->getIdOrInsert("cdr_domain", "id", "domain", cdr_domain_called);
+	*/
+	lastSIPresponse_id = sqlDb->getIdOrInsert(sql_cdr_sip_response_table, "id", "lastSIPresponse", cdr_sip_response);
+	if(cdr_ua_a) {
+		a_ua_id = sqlDb->getIdOrInsert(sql_cdr_ua_table, "id", "ua", cdr_ua_a);
+	}
+	if(cdr_ua_b) {
+		b_ua_id = sqlDb->getIdOrInsert(sql_cdr_ua_table, "id", "ua", cdr_ua_b);
+	}
+
+	/*
+	cdr.add(caller_id, "caller_id", true);
+	cdr.add(called_id, "called_id", true);
+	cdr.add(callername_id, "callername_id", true);
+	cdr.add(caller_domain_id, "caller_domain_id", true);
+	cdr.add(called_domain_id, "called_domain_id", true);
+	*/
+	
+	cdr.add(lastSIPresponse_id, "lastSIPresponse_id", true);
+	cdr.add(a_ua_id, "a_ua_id", true);
+	cdr.add(b_ua_id, "b_ua_id", true);
+	
+	int cdrID = sqlDb->insert(sql_cdr_table, cdr);
+	if(cdrID>0) {
+		if(opt_printinsertid) {
+			printf("CDRID:%d\n", cdrID);
+		}
+		cdr_next.add(cdrID, "cdr_ID");
+		sqlDb->insert(sql_cdr_next_table, cdr_next);
+		if(sql_cdr_table_last30d[0] ||
+		   sql_cdr_table_last7d[0] ||
+		   sql_cdr_table_last1d[0]) {
+			cdr.add(cdrID, "ID");
+			if(sql_cdr_table_last30d[0]) {
+				sqlDb->insert(sql_cdr_table_last30d, cdr);
+			}
+			if(sql_cdr_table_last7d[0]) {
+				sqlDb->insert(sql_cdr_table_last7d, cdr);
+			}
+			if(sql_cdr_table_last1d[0]) {
+				sqlDb->insert(sql_cdr_table_last1d, cdr);
+			}
+		}
+	}
+	
+	return(cdrID <= 0);
 }
 
 /* TODO: implement failover -> write INSERT into file */
@@ -2057,22 +1669,22 @@ Call::saveRegisterToDb() {
 			sprintf(regexpires, "%d", register_expires);
 			//stored procedure is much faster and eliminates latency reducing uuuuuuuuuuuuu
 
-			query = "CALL PROCESS_SIP_REGISTER(" + sqlEscapeString(sqlDateTimeString(calltime())) + ", " +
-				sqlEscapeString(caller) + "," +
-				sqlEscapeString(callername) + "," +
-				sqlEscapeString(caller_domain) + "," +
-				sqlEscapeString(called) + "," +
-				sqlEscapeString(called_domain) + ",'" +
+			query = "CALL PROCESS_SIP_REGISTER(" + sqlEscapeStringBorder(sqlDateTimeString(calltime())) + ", " +
+				sqlEscapeStringBorder(caller) + "," +
+				sqlEscapeStringBorder(callername) + "," +
+				sqlEscapeStringBorder(caller_domain) + "," +
+				sqlEscapeStringBorder(called) + "," +
+				sqlEscapeStringBorder(called_domain) + ",'" +
 				ips + "','" +
 				ipd + "'," +
-				sqlEscapeString(contact_num) + "," +
-				sqlEscapeString(contact_domain) + "," +
-				sqlEscapeString(digest_username) + "," +
-				sqlEscapeString(digest_realm) + ",'" +
+				sqlEscapeStringBorder(contact_num) + "," +
+				sqlEscapeStringBorder(contact_domain) + "," +
+				sqlEscapeStringBorder(digest_username) + "," +
+				sqlEscapeStringBorder(digest_realm) + ",'" +
 				tmpregstate + "'," +
-				sqlEscapeString(sqlDateTimeString(calltime() + register_expires).c_str()) + ",'" + //mexpires_at
+				sqlEscapeStringBorder(sqlDateTimeString(calltime() + register_expires).c_str()) + ",'" + //mexpires_at
 				regexpires + "', " +
-				sqlEscapeString(a_ua) + ")";
+				sqlEscapeStringBorder(a_ua) + ")";
 			//sqlDb->query(query);
 			pthread_mutex_lock(&mysqlquery_lock);
 			mysqlquery.push(query);
@@ -2131,7 +1743,7 @@ DELIMITER ; ~
 
 #if 0
 
-			query = "SELECT ID, state, UNIX_TIMESTAMP(expires_at) AS expires_at, (UNIX_TIMESTAMP(expires_at) < UNIX_TIMESTAMP(" + sqlEscapeString(sqlDateTimeString(calltime())) + ")) AS expired FROM " + register_table + " WHERE to_num = " + sqlEscapeString(called) + " AND to_domain = " + sqlEscapeString(called_domain) + " AND digestusername = " + sqlEscapeString(digest_username) + " ORDER BY ID DESC LIMIT 1";
+			query = "SELECT ID, state, UNIX_TIMESTAMP(expires_at) AS expires_at, (UNIX_TIMESTAMP(expires_at) < UNIX_TIMESTAMP(" + sqlEscapeStringBorder(sqlDateTimeString(calltime())) + ")) AS expired FROM " + register_table + " WHERE to_num = " + sqlEscapeStringBorder(called) + " AND to_domain = " + sqlEscapeStringBorder(called_domain) + " AND digestusername = " + sqlEscapeStringBorder(digest_username) + " ORDER BY ID DESC LIMIT 1";
 //			if(verbosity > 2) cout << query << "\n";
 			{
 			if(!sqlDb->query(query)) {
@@ -2243,12 +1855,12 @@ DELIMITER ; ~
 			break;
 		case 2:
 			// REGISTER failed. Check if there is already in register_failed table failed register within last hour 
-			query = "SELECT counter FROM register_failed WHERE to_num = " + sqlEscapeString(called) + " AND to_domain = " + sqlEscapeString(called_domain) + " AND digestusername = " + sqlEscapeString(digest_username) + " AND created_at >= SUBTIME(NOW(), '01:00:00')";
+			query = "SELECT counter FROM register_failed WHERE to_num = " + sqlEscapeStringBorder(called) + " AND to_domain = " + sqlEscapeStringBorder(called_domain) + " AND digestusername = " + sqlEscapeStringBorder(digest_username) + " AND created_at >= SUBTIME(NOW(), '01:00:00')";
 			if(sqlDb->query(query)) {
 				SqlDb_row rsltRow = sqlDb->fetchRow();
 				if(rsltRow) {
 					// there is already failed register, update counter and do not insert
-					string query = "UPDATE register_failed SET counter = counter + 1 WHERE to_num = " + sqlEscapeString(called) + " AND digestusername = " + sqlEscapeString(digest_username) + " AND created_at >= SUBTIME(NOW(), '01:00:00')";
+					string query = "UPDATE register_failed SET counter = counter + 1 WHERE to_num = " + sqlEscapeStringBorder(called) + " AND digestusername = " + sqlEscapeStringBorder(digest_username) + " AND created_at >= SUBTIME(NOW(), '01:00:00')";
 					sqlDb->query(query);
 				} else {
 					// this is new failed attempt within hour, insert
@@ -2262,50 +1874,13 @@ DELIMITER ; ~
 					reg.add(sqlEscapeString(contact_num), "contact_num");
 					reg.add(sqlEscapeString(contact_domain), "contact_domain");
 					reg.add(sqlEscapeString(digest_username), "digestusername");
-					reg.add(sqlDb->getIdOrInsert(sql_cdr_ua_table, "id", "ua", cdr_ua, ""), "ua_id");
-					sqlDb->insert("register_failed", reg, "");
+					reg.add(sqlDb->getIdOrInsert(sql_cdr_ua_table, "id", "ua", cdr_ua), "ua_id");
+					sqlDb->insert("register_failed", reg);
 				}
 			}
 			break;
 		}
 		return 1;
-	} else {
-		stringstream queryStream;
-		if(isTypeDb("mssql")) {
-			stringstream fields;
-			stringstream values;
-			fields	<< "sipcallerip, sipcalledip, calldate, fbasename, sighup";
-			values 	<< htonl(sipcallerip)
-				<< ", " << htonl(sipcalledip);
-			if(isTypeDb("mssql")) {
-				values << ", " << sqlEscapeString(sqlDateTimeString(calltime()).c_str());
-			} else {
-				values << ", " << "FROM_UNIXTIME(" << calltime() << ")";
-			}
-			values 	<< ", " << sqlEscapeString(fbasename)
-				<< ", " << (sighup ? 1 : 0);
-			queryStream << "INSERT INTO " << register_table << " ( " << fields.str() << " ) VALUES ( " << values.str() << " )";
-		} else {
-			queryStream << "INSERT INTO `" << register_table << "` SET " <<
-					"  sipcallerip = " << htonl(sipcallerip) <<
-					", sipcalledip = " << htonl(sipcalledip) <<
-					", calldate = FROM_UNIXTIME(" << calltime() << ")" <<
-					", fbasename = " << sqlEscapeString(fbasename) << 
-					", sighup = " << (sighup ? 1 : 0);
-		}
-		string queryStr = queryStream.str();
-		if(verbosity > 2) {
-			cout << queryStr << "\n";
-		}
-		
-		if(opt_sip_register_active_nologbin) {
-			sqlDb->query("SET sql_log_bin = 0;");
-		}
-		int res = doQuery(queryStr);
-		if(opt_sip_register_active_nologbin) {
-			sqlDb->query("SET sql_log_bin = 1;");
-		}
-		return res;
 	}
 }
 
@@ -2353,7 +1928,7 @@ Call::saveMessageToDb() {
 		}
 		if(contenttype) {
 			m_contenttype.add(sqlEscapeString(contenttype), "contenttype");
-			unsigned int id_contenttype = sqlDb->getIdOrInsert("contenttype", "id", "contenttype", m_contenttype, "");
+			unsigned int id_contenttype = sqlDb->getIdOrInsert("contenttype", "id", "contenttype", m_contenttype);
 			cdr.add(id_contenttype, "id_contenttype");
 		}
 
@@ -2366,17 +1941,17 @@ Call::saveMessageToDb() {
 			cdr_next.add(sqlEscapeString(custom_header1), "custom_header1");
 		}
 */
-		lastSIPresponse_id = sqlDb->getIdOrInsert(sql_cdr_sip_response_table, "id", "lastSIPresponse", cdr_sip_response, "");
+		lastSIPresponse_id = sqlDb->getIdOrInsert(sql_cdr_sip_response_table, "id", "lastSIPresponse", cdr_sip_response);
 		cdr_ua_a.add(sqlEscapeString(a_ua), "ua");
-		a_ua_id = sqlDb->getIdOrInsert(sql_cdr_ua_table, "id", "ua", cdr_ua_a, "");
+		a_ua_id = sqlDb->getIdOrInsert(sql_cdr_ua_table, "id", "ua", cdr_ua_a);
 		cdr_ua_b.add(sqlEscapeString(b_ua), "ua");
-		b_ua_id = sqlDb->getIdOrInsert(sql_cdr_ua_table, "id", "ua", cdr_ua_b, "");
+		b_ua_id = sqlDb->getIdOrInsert(sql_cdr_ua_table, "id", "ua", cdr_ua_b);
 
 		cdr.add(lastSIPresponse_id, "lastSIPresponse_id", true);
 		cdr.add(a_ua_id, "a_ua_id", true);
 		cdr.add(b_ua_id, "b_ua_id", true);
 
-		int cdrID = sqlDb->insert("message", cdr, "");
+		int cdrID = sqlDb->insert("message", cdr);
 
 		return(cdrID <= 0);
 	}
@@ -2776,127 +2351,4 @@ void Call::saveregister() {
 	} else {
 		((Calltable*)calltable)->calls_listMAP.erase(callMAPIT);
 	}
-}
-
-string sqlDateTimeString(time_t unixTime) {
-	struct tm * localTime = localtime(&unixTime);
-	char dateTimeBuffer[50];
-	strftime(dateTimeBuffer, sizeof(dateTimeBuffer), "%Y-%m-%d %H:%M:%S", localTime);
-	return string(dateTimeBuffer);
-}
-
-string sqlEscapeString(string inputStr, char borderChar) {
-	return sqlEscapeString(inputStr.c_str(), borderChar);
-}
-
-string sqlEscapeString(const char *inputStr, char borderChar) {
-	string rsltString;
-	bool escaped = false;
-	if(isSqlDriver("mysql")) {
-		//mysqlpp//
-		/*
-		if(con.connected()) {
-			con.query().escape_string(&rsltString, inputStr, strlen(inputStr));
-			escaped = true;
-		}
-		*/
-		if(sqlDb && sqlDb->connected()) {
-			rsltString = sqlDb->escape(inputStr);
-			escaped = true;
-		}
-	}
-	if(!escaped) {
-		struct {
-			char ch;
-			const char* escStr;
-		} 
-		escCharsMsSql[] = 
-					{ 
-						{ '\'', "\'\'" },
-						{ '\v', "" }, 		// vertical tab
-						{ '\b', "" }, 		// backspace
-						{ '\f', "" }, 		// form feed
-						{ '\a', "" }, 		// alert (bell)
-						{ '\e', "" }, 		// escape
-					},
-		escCharsMySql[] = 
-					{
-						{ '\'', "\\'" },
-						{ '"' , "\\\"" },
-						{ '\\', "\\\\" },
-						{ '\n', "\\n" }, 	// new line feed
-						{ '\r', "\\r" }, 	// cariage return
-						{ '\t', "\\t" }, 	// tab
-						{ '\v', "\\v" }, 	// vertical tab
-						{ '\b', "\\b" }, 	// backspace
-						{ '\f', "\\f" }, 	// form feed
-						{ '\a', "\\a" }, 	// alert (bell)
-						{ '\e', "" }, 		// escape
-					},
-		*escChars;
-		int countEscChars;
-		if(isTypeDb("mssql")) {
-			escChars = escCharsMsSql;
-			countEscChars = sizeof(escCharsMsSql)/sizeof(escCharsMsSql[0]);
-		} else {
-			escChars = escCharsMySql;
-			countEscChars = sizeof(escCharsMySql)/sizeof(escCharsMySql[0]);
-		}
-		int lengthStr = strlen(inputStr);
-		for(int posInputStr = 0; posInputStr<lengthStr; posInputStr++) {
-			bool isEscChar = false;
-			for(int i = 0; i<countEscChars; i++) {
-				if(escChars[i].ch == inputStr[posInputStr]) {
-					rsltString += escChars[i].escStr;
-					isEscChar = true;
-					break;
-				}
-			}
-			if(!isEscChar) {
-				rsltString += inputStr[posInputStr];
-			}
-		}
-	}
-	if(borderChar) {
-		rsltString = borderChar + rsltString + borderChar;
-	}
-	return rsltString;
-}
-
-bool cmpStringIgnoreCase(const char* str1, const char* str2) {
-	if(str1 == str2) {
-		return true;
-	}
-	if(((str1 || str2) && !(str1 && str2)) ||
-	   ((*str1 || *str2) && !(*str1 && *str2)) ||
-	   strlen(str1) != strlen(str2)) {
-		return false;
-	}
-	int length = strlen(str1);
-	for(int i = 0; i < length; i++) {
-		if(tolower(str1[i]) != tolower(str2[i])) {
-			return false;
-		}
-	}
-	return true;
-}
-
-string reverseString(const char *str) {
-	string rslt;
-	if(str) {
-		int length = strlen(str);
-		for(int i = length - 1; i >= 0; i--) {
-			rslt += str[i];
-		}
-	}
-	return rslt;
-}
-
-bool isSqlDriver(const char *sqlDriver) {
-	return 	cmpStringIgnoreCase(sql_driver, sqlDriver);
-}
-
-bool isTypeDb(const char *typeDb) {
-	return 	cmpStringIgnoreCase(sql_driver, typeDb) ||
-		(cmpStringIgnoreCase(sql_driver, "odbc") && cmpStringIgnoreCase(odbc_driver, typeDb));
 }

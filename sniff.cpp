@@ -259,7 +259,7 @@ inline void save_packet_sql(Call *call, struct pcap_pkthdr *header, const u_char
 
 	// construct query and push it to mysqlquery queue
 	int id_sensor = opt_id_sensor > 0 ? opt_id_sensor : 0;
-	query << "INSERT INTO livepacket_" << uid << " SET sipcallerip = '" << saddr << "', sipcalledip = '" << daddr << "', id_sensor = " << id_sensor << ", sport = " << source << ", dport = " << dest << ", istcp = " << istcp << ", created_at = " << sqlEscapeString(sqlDateTimeString(header->ts.tv_sec).c_str()) << ", microseconds = " << header->ts.tv_usec << ", callid = " << sqlEscapeString(call->call_id) << ", description = " << sqlEscapeString(description) << ", data = '#" << sqlDb->escapebin(mpacket, len) << "#'";
+	query << "INSERT INTO livepacket_" << uid << " SET sipcallerip = '" << saddr << "', sipcalledip = '" << daddr << "', id_sensor = " << id_sensor << ", sport = " << source << ", dport = " << dest << ", istcp = " << istcp << ", created_at = " << sqlEscapeStringBorder(sqlDateTimeString(header->ts.tv_sec).c_str()) << ", microseconds = " << header->ts.tv_usec << ", callid = " << sqlEscapeStringBorder(call->call_id) << ", description = " << sqlEscapeStringBorder(description) << ", data = '#" << sqlDb->escape(mpacket, len) << "#'";
 	pthread_mutex_lock(&mysqlquery_lock);
 	mysqlquery.push(query.str());
 	pthread_mutex_unlock(&mysqlquery_lock);

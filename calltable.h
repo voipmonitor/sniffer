@@ -18,7 +18,6 @@
 #include <time.h>
 
 #include <pcap.h>
-//mysqlpp// #include <mysql++.h>
 
 #include <string>
 
@@ -284,22 +283,10 @@ public:
 	int convertRawToWav();
  
 	/**
-	 * @brief build query 
-	 *
-	*/
-	int buildQuery(stringstream *query);
-
-	/**
 	 * @brief prepare for escape string - connect if need
 	 *
 	*/
 	bool prepareForEscapeString();
-
-	/**
-	 * @brief execute query 
-	 *
-	*/
-	int doQuery(string &queryStr);
 
 #ifdef ISCURL	
 	/**
@@ -313,7 +300,7 @@ public:
 	 * @brief save call to database
 	 *
 	*/
-	int saveToDb();
+	int saveToDb(bool enableBatchIfPossible = true);
 
 	/**
 	 * @brief save register msgs to database
@@ -568,12 +555,6 @@ private:
 	}
 };
 
-string sqlDateTimeString(time_t unixTime);
-string sqlEscapeString(string inputStr, char borderChar = '\'');
-string sqlEscapeString(const char *inputStr, char borderChar = '\'');
-string reverseString(const char *str);
-bool isSqlDriver(const char *sqlDriver);
-bool isTypeDb(const char *typeDb);
 #ifdef ISCURL  
 int sendCDR(string data);
 #endif

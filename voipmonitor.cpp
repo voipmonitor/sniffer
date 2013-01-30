@@ -1163,10 +1163,22 @@ int main(int argc, char *argv[]) {
 				break;
 		}
 	}
+	cout << "SQL DRIVER: " << sql_driver << endl;
 	if(isSqlDriver("mysql")) {
 		sqlDb = new SqlDb_mysql();
 		sqlDb->enableSysLog();
 		sqlDb->setConnectParameters(mysql_host, mysql_user, mysql_password, mysql_database);
+	} else if(isSqlDriver("odbc")) {
+		SqlDb_odbc *sqlDb_odbc = new SqlDb_odbc();
+		sqlDb_odbc->setOdbcVersion(SQL_OV_ODBC3);
+		sqlDb_odbc->setSubtypeDb(odbc_driver);
+		sqlDb = sqlDb_odbc;
+		sqlDb->setConnectParameters(odbc_dsn, odbc_user, odbc_password);
+	}
+	if(!opt_nocdr) {
+		if(sqlDb->connect()) {
+			sqlDb->createSchema();
+		}
 	}
 	if ((fname == NULL) && (ifname[0] == '\0') && opt_scanpcapdir[0] == '\0'){
 		printf( "voipmonitor version %s\n"
@@ -1338,6 +1350,10 @@ int main(int argc, char *argv[]) {
 	
 	if(opt_test) {
 		test();
+		if(sqlDb) {
+			delete sqlDb;
+		}
+		return(0);
 	}
 	rtp_threaded = num_threads > 0;
 
@@ -1545,10 +1561,6 @@ int main(int argc, char *argv[]) {
 #endif 
 	}
 
-	if(!opt_nocdr && isSqlDriver("mysql")) {
-		sqlDb->createSchema();
-	}
-
 	if(opt_scanpcapdir[0] != '\0') {
 		// scan directory opt_scanpcapdir (typically /dev/shm/voipmonitor
 		char filename[32];
@@ -1695,7 +1707,6 @@ int main(int argc, char *argv[]) {
 	delete calltable;
 	
 	if(sqlDb) {
-		sqlDb->clean();
 		delete sqlDb;
 	}
 
@@ -1714,7 +1725,7 @@ int main(int argc, char *argv[]) {
 #include "sql_db.h"
 
 void test() {
-
+	
 	ipfilter = new IPfilter;
 	ipfilter->load();
 	ipfilter->dump();
@@ -1722,41 +1733,31 @@ void test() {
 	telnumfilter = new TELNUMfilter;
 	telnumfilter->load();
 	telnumfilter->dump();
-
-	/*
-	cout << endl;
-	
-	for(int ii=0;ii<5;ii++) {
-		
-	cout << " --- pass " << (ii+1) << endl;
-	
-	SqlDb_mysql mysql;
-	mysql.setConnectParameters("localhost", "root", "", "voipmonitor");
 	
 	// výmaz - příprava
-	mysql.query("delete from cdr_sip_response where id>20");
+	sqlDb->query("delete from cdr_sip_response where id > 0");
+	cout << sqlDb->getLastErrorString() << endl;
 	
 	// čtení
 	SqlDb_row row1;
-	mysql.query("select * from cdr order by id desc limit 2");
-	while((row1 = mysql.fetchRow())) {
+	sqlDb->query("select * from cdr order by ID DESC");
+	while((row1 = sqlDb->fetchRow())) {
 		cout << row1["ID"] << " : " << row1["calldate"] << endl;
 	}
+	cout << sqlDb->getLastErrorString() << endl;
 	
 	// zápis
 	SqlDb_row row2;
 	row2.add("122 wrrrrrrrr", "lastSIPresponse");
-	cout << mysql.insert("cdr_sip_response", row2) << endl;
+	cout << sqlDb->insert("cdr_sip_response", row2) << endl;
 
 	// unique zápis
 	SqlDb_row row3;
 	row3.add("123 wrrrrrrrr", "lastSIPresponse");
-	cout << mysql.getIdOrInsert("cdr_sip_response", "id", "lastSIPresponse", row3) << endl;
+	cout << sqlDb->getIdOrInsert("cdr_sip_response", "id", "lastSIPresponse", row3) << endl;
 	
-	}
-	
-	*/
-	
+	cout << sqlDb->getLastErrorString() << endl;
 	cout << endl << "--------------" << endl;
-	exit(0);
+	
+	//exit(0);
 }

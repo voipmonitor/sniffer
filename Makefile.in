@@ -108,9 +108,6 @@ hash.o : hash.cpp hash.h ${headers}
 mos_g729.o : mos_g729.cpp mos_g729.h ${headers}
 	g++ -c mos_g729.cpp $(args) ${CFLAGS}
 
-odbc.o : odbc.cpp odbc.h ${headers}
-	g++ -c odbc.cpp $(args) ${CFLAGS}
-	
 sql_db.o : sql_db.cpp sql_db.h ${headers}
 	g++ -c sql_db.cpp $(args) ${CFLAGS}
 

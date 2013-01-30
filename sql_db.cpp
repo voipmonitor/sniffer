@@ -31,10 +31,26 @@ SqlDb_row::operator int() {
 }
 
 void SqlDb_row::add(const char *content, string fieldName) {
+	if(fieldName != "") {
+		for(size_t i = 0; i < row.size(); i++) {
+			if(row[i].fieldName == fieldName) {
+				row[i] = SqlDb_rowField(content, fieldName);
+				return;
+			}
+		}
+	}
 	this->row.push_back(SqlDb_rowField(content, fieldName));
 }
 
 void SqlDb_row::add(string content, string fieldName) {
+	if(fieldName != "") {
+		for(size_t i = 0; i < row.size(); i++) {
+			if(row[i].fieldName == fieldName) {
+				row[i] = SqlDb_rowField(content, fieldName);
+				return;
+			}
+		}
+	}
 	this->row.push_back(SqlDb_rowField(content, fieldName));
 }
 
@@ -106,7 +122,7 @@ string SqlDb_row::implodeFields(string separator, string border) {
 	string rslt;
 	for(size_t i = 0; i < this->row.size(); i++) {
 		if(i) { rslt += separator; }
-		rslt += border + '`' + this->row[i].fieldName + '`' + border;
+		rslt += border + /*'`' +*/ this->row[i].fieldName + /*'`' +*/ border;
 	}
 	return(rslt);
 }
@@ -117,6 +133,8 @@ string SqlDb_row::implodeContent(string separator, string border) {
 		if(i) { rslt += separator; }
 		if(this->row[i].null) {
 			rslt += "NULL";
+		} else if(this->row[i].content.substr(0, 8) == "__sql__:") {
+			rslt += this->row[i].content.substr(8);
 		} else {
 			rslt += border + this->row[i].content + border;
 		}
@@ -141,10 +159,10 @@ SqlDb::SqlDb() {
 	this->sysLog = false;
 	this->clearLastError();
 	this->maxQueryPass = UINT_MAX;
+	this->loginTimeout = (ulong)NULL;
 }
 
 SqlDb::~SqlDb() {
-	//cout << "destruct SqlDb" << endl;
 }
 
 void SqlDb::setConnectParameters(string server, string user, string password, string database) {
@@ -152,6 +170,10 @@ void SqlDb::setConnectParameters(string server, string user, string password, st
 	this->conn_user = user;
 	this->conn_password = password;
 	this->conn_database = database;
+}
+
+void SqlDb::setLoginTimeout(ulong loginTimeout) {
+	this->loginTimeout = loginTimeout;
 }
 
 void SqlDb::enableSysLog() {
@@ -163,24 +185,96 @@ bool SqlDb::reconnect() {
 	return(this->connect());
 }
 
-int SqlDb::insert(string table, SqlDb_row row, string contentBorder) {
-	string query = "INSERT INTO " + table + " ( " + row.implodeFields() + " ) VALUES ( " + row.implodeContent(",", "") + " )";
+string SqlDb::_escape(const char *inputString) {
+	string rsltString;
+	struct escChar {
+		char ch;
+		const char* escStr;
+	} 
+	escCharsMysql[] = 
+				{
+					{ '\'', "\\'" },
+					{ '"' , "\\\"" },
+					{ '\\', "\\\\" },
+					{ '\n', "\\n" }, 	// new line feed
+					{ '\r', "\\r" }, 	// cariage return
+					{ '\t', "\\t" }, 	// tab
+					{ '\v', "\\v" }, 	// vertical tab
+					{ '\b', "\\b" }, 	// backspace
+					{ '\f', "\\f" }, 	// form feed
+					{ '\a', "\\a" }, 	// alert (bell)
+					{ '\e', "" }, 		// escape
+				},
+	escCharsOdbc[] = 
+				{ 
+					{ '\'', "\'\'" },
+					{ '\v', "" }, 		// vertical tab
+					{ '\b', "" }, 		// backspace
+					{ '\f', "" }, 		// form feed
+					{ '\a', "" }, 		// alert (bell)
+					{ '\e', "" }, 		// escape
+				};
+	escChar *escChars;
+	int countEscChars;
+	if(this->getTypeDb() == "mysql") {
+		escChars = escCharsMysql;
+		countEscChars = sizeof(escCharsMysql)/sizeof(escChar);
+	} else if(this->getTypeDb() == "odbc") {
+		escChars = escCharsOdbc;
+		countEscChars = sizeof(escCharsOdbc)/sizeof(escChar);
+	}
+	int lengthStr = strlen(inputString);
+	for(int posInputString = 0; posInputString<lengthStr; posInputString++) {
+		bool isEscChar = false;
+		for(int i = 0; i<countEscChars; i++) {
+			if(escChars[i].ch == inputString[posInputString]) {
+				rsltString += escChars[i].escStr;
+				isEscChar = true;
+				break;
+			}
+		}
+		if(!isEscChar) {
+			rsltString += inputString[posInputString];
+		}
+	}
+	return(inputString);
+}
+
+string SqlDb::insertQuery(string table, SqlDb_row row) {
+	string query = 
+		"INSERT INTO " + table + " ( " + row.implodeFields(this->getFieldSeparator(), this->getFieldBorder()) + 
+		" ) VALUES ( " + row.implodeContent(this->getContentSeparator(), this->getContentBorder()) + " )";
+	return(query);
+}
+
+int SqlDb::insert(string table, SqlDb_row row) {
+	string query = this->insertQuery(table, row);
 	if(this->query(query)) {
 		return(this->getInsertId());
 	}
 	return(-1);
 }
 
-int SqlDb::getIdOrInsert(string table, string idField, string uniqueField, SqlDb_row row, string contentBorder) {
-	string query = "SELECT * FROM " + table + " WHERE " + uniqueField + " = " + 
-		       contentBorder + row[uniqueField] + contentBorder;
+int SqlDb::getIdOrInsert(string table, string idField, string uniqueField, SqlDb_row row) {
+	string query = 
+		"SELECT * FROM " + table + " WHERE " + uniqueField + " = " + 
+		this->getContentBorder() + row[uniqueField] + this->getContentBorder();
 	if(this->query(query)) {
 		SqlDb_row rsltRow = this->fetchRow();
 		if(rsltRow) {
 			return(atoi(rsltRow[idField].c_str()));
 		}
 	}
-	return(this->insert(table, row, contentBorder));
+	return(this->insert(table, row));
+}
+
+int SqlDb::getIndexField(string fieldName) {
+	for(size_t i = 0; i < this->fields.size(); i++) {
+		if(this->fields[i] == fieldName) {
+			return(i);
+		}
+	}
+	return(-1);
 }
 
 void SqlDb::setLastErrorString(string lastErrorString, bool sysLog) {
@@ -188,6 +282,10 @@ void SqlDb::setLastErrorString(string lastErrorString, bool sysLog) {
 	if(sysLog && lastErrorString != "" && this->sysLog) {
 		syslog(LOG_ERR, "%s", lastErrorString.c_str());
 	}
+}
+
+void SqlDb::cleanFields() {
+	this->fields.clear();
 }
 
 
@@ -198,7 +296,6 @@ SqlDb_mysql::SqlDb_mysql() {
 }
 
 SqlDb_mysql::~SqlDb_mysql() {
-	//cout << "destruct SqlDb_mysql" << endl;
 	this->clean();
 }
 
@@ -258,7 +355,8 @@ bool SqlDb_mysql::query(string query) {
 		mysql_free_result(this->hMysqlRes);
 		this->hMysqlRes = NULL;
 	}
-	for(unsigned int pass = 0; pass < this->maxQueryPass && !rslt; pass++) {
+	this->cleanFields();
+	for(unsigned int pass = 0; pass < this->maxQueryPass; pass++) {
 		if(pass > 0) {
 			sleep(1);
 		}
@@ -278,6 +376,7 @@ bool SqlDb_mysql::query(string query) {
 				}
 			} else {
 				rslt = true;
+				break;
 			}
 		}
 	}
@@ -290,7 +389,6 @@ SqlDb_row SqlDb_mysql::fetchRow() {
 		if(!this->hMysqlRes) {
 			this->hMysqlRes = mysql_use_result(this->hMysqlConn);
 			if(this->hMysqlRes) {
-				this->fields.clear();
 				MYSQL_FIELD *field;
 				for(int i = 0; (field = mysql_fetch_field(this->hMysqlRes)); i++) {
 					this->fields.push_back(field->name);
@@ -321,36 +419,22 @@ int SqlDb_mysql::getInsertId() {
 	return(-1);
 }
 
-int SqlDb_mysql::getIndexField(string fieldName) {
-	for(size_t i = 0; i < this->fields.size(); i++) {
-		if(this->fields[i] == fieldName) {
-			return(i);
-		}
+string SqlDb_mysql::escape(const char *inputString, int length) {
+	if(!(inputString && (inputString[0] || length))) {
+		return(inputString ? inputString : "");
 	}
-	return(-1);
-}
-
-string SqlDb_mysql::escapebin(const char *inputString, int length) {
-	int sizeBuffer = length * 2 + 10;
-	char *buffer = new char[sizeBuffer];
-	mysql_real_escape_string(this->hMysqlConn, buffer, inputString, length);
-	string rslt = buffer;
-	delete [] buffer;
-	return(rslt);
-}
-
-string SqlDb_mysql::escape(const char *inputString) {
-	if(inputString && inputString[0]) {
-		int length = strlen(inputString);
+	if(this->connected()) {
+		if(!length) {
+			length = strlen(inputString);
+		}
 		int sizeBuffer = length * 2 + 10;
 		char *buffer = new char[sizeBuffer];
 		mysql_real_escape_string(this->hMysqlConn, buffer, inputString, length);
 		string rslt = buffer;
 		delete [] buffer;
 		return(rslt);
-	} else {
-		return("");
 	}
+	return(this->_escape(inputString));
 }
 
 bool SqlDb_mysql::checkLastError(string prefixError, bool sysLog, bool clearLastError) {
@@ -368,8 +452,374 @@ bool SqlDb_mysql::checkLastError(string prefixError, bool sysLog, bool clearLast
 
 void SqlDb_mysql::clean() {
 	this->disconnect();
-	this->fields.clear();
+	this->cleanFields();
 }
+
+
+SqlDb_odbc_bindBufferItem::SqlDb_odbc_bindBufferItem(SQLUSMALLINT colNumber, string fieldName, SQLSMALLINT dataType, SQLULEN columnSize, SQLHSTMT hStatement) {
+	this->colNumber = colNumber;
+	this->fieldName = fieldName;
+	this->dataType = dataType;
+	this->columnSize = columnSize;
+	this->buffer = new char[this->columnSize + 100]; // 100 - reserve for convert binary to text
+	memset(this->buffer, 0, this->columnSize + 100);
+	if(hStatement) {
+		this->bindCol(hStatement);
+	}
+}
+
+SqlDb_odbc_bindBufferItem::~SqlDb_odbc_bindBufferItem() {
+	if(this->buffer) {
+		delete [] this->buffer;
+	}
+}
+
+void SqlDb_odbc_bindBufferItem::bindCol(SQLHSTMT hStatement) {
+	SQLBindCol(hStatement, this->colNumber, SQL_CHAR, this->buffer, this->columnSize, &this->ind);
+}
+
+string SqlDb_odbc_bindBufferItem::getContent() {
+	return(string(this->buffer));
+}
+
+char* SqlDb_odbc_bindBufferItem::getBuffer() {
+	return(this->buffer);
+}
+
+
+void SqlDb_odbc_bindBuffer::addItem(SQLUSMALLINT colNumber, string fieldName, SQLSMALLINT dataType, SQLULEN columnSize, SQLHSTMT hStatement) {
+	this->push_back(new SqlDb_odbc_bindBufferItem(colNumber, fieldName, dataType, columnSize, hStatement));
+}
+
+void SqlDb_odbc_bindBuffer::bindCols(SQLHSTMT hStatement) {
+	SQLCHAR columnName[255];
+	SQLSMALLINT nameLength;
+	SQLSMALLINT dataType;
+	SQLULEN columnSize;
+	SQLSMALLINT decimalDigits;
+	SQLSMALLINT nullable;
+	unsigned int columnIndex = 0;
+	while(!SQLDescribeCol(
+			hStatement, columnIndex + 1, columnName, sizeof(columnName)/sizeof(SQLCHAR),
+			&nameLength, &dataType, &columnSize, &decimalDigits, &nullable)) {
+		this->addItem(columnIndex + 1, (const char*)columnName, dataType, columnSize, hStatement);
+		++columnIndex;
+	}
+}
+
+string SqlDb_odbc_bindBuffer::getColContent(string fieldName) {
+	int index = this->getIndexField(fieldName);
+	if(index >= 0) {
+		this->getColContent(index);
+	}
+	return("");
+}
+
+string SqlDb_odbc_bindBuffer::getColContent(unsigned int fieldIndex) {
+	return(fieldIndex < this->size() ?
+		(*this)[fieldIndex]->getContent() :
+		"");
+}
+
+char* SqlDb_odbc_bindBuffer::getColBuffer(unsigned int fieldIndex) {
+	return(fieldIndex < this->size() ?
+		(*this)[fieldIndex]->getBuffer() :
+		NULL);
+}
+
+int SqlDb_odbc_bindBuffer::getIndexField(string fieldName) {
+	for(size_t i = 0; i < this->size(); i++) {
+		if((*this)[i]->fieldName == fieldName) {
+			return(i);
+		}
+	}
+	return(-1);
+}
+
+
+SqlDb_odbc::SqlDb_odbc() {
+	this->odbcVersion = (ulong)NULL;
+	this->subtypeDb = "";
+	this->hEnvironment = NULL;
+	this->hConnection = NULL;
+	this->hStatement = NULL;
+}
+
+SqlDb_odbc::~SqlDb_odbc() {
+	this->clean();
+}
+
+void SqlDb_odbc::setOdbcVersion(ulong odbcVersion) {
+	this->odbcVersion = odbcVersion;
+}
+
+void SqlDb_odbc::setSubtypeDb(string subtypeDb) {
+	this->subtypeDb = subtypeDb;
+}
+
+bool SqlDb_odbc::connect() {
+	SQLRETURN rslt;
+	this->clearLastError();
+	if(!this->hEnvironment) {
+		rslt = SQLAllocHandle(SQL_HANDLE_ENV, SQL_NULL_HANDLE, &this->hEnvironment);
+		if(!this->okRslt(rslt)) {
+			this->setLastError(rslt, "odbc: error in allocate environment handle", true);
+			this->disconnect();
+			return(false);
+		}
+		if(this->odbcVersion) {
+			rslt = SQLSetEnvAttr(this->hEnvironment, SQL_ATTR_ODBC_VERSION, (SQLPOINTER*)this->odbcVersion, 0); 
+			if(!this->okRslt(rslt)) {
+				this->setLastError(rslt, "odbc: error in set environment attributes");
+				this->disconnect();
+				return(false);
+			}
+		}
+	}
+	if(!this->hConnection) {
+		rslt = SQLAllocHandle(SQL_HANDLE_DBC, this->hEnvironment, &this->hConnection); 
+		if(!this->okRslt(rslt)) {
+			this->setLastError(rslt, "odbc: error in allocate connection handle");
+			this->disconnect();
+			return(false);
+		}
+		if(this->loginTimeout) {
+			SQLSetConnectAttr(this->hConnection, SQL_LOGIN_TIMEOUT, (SQLPOINTER *)this->loginTimeout, 0);
+		}
+		rslt = SQLConnect(this->hConnection, 
+				  (SQLCHAR*)this->conn_server.c_str(), SQL_NTS,
+				  (SQLCHAR*)this->conn_user.c_str(), SQL_NTS,
+				  (SQLCHAR*)this->conn_password.c_str(), SQL_NTS);
+		if(!this->okRslt(rslt)) {
+			this->checkLastError("odbc: connect error", true);
+			this->disconnect();
+			return(false);
+		}
+	}
+	return(true);
+}
+
+void SqlDb_odbc::disconnect() {
+	if(this->hStatement) {
+		SQLFreeHandle(SQL_HANDLE_STMT, this->hStatement);
+		this->hStatement = NULL;
+	}
+	if(this->hConnection) {
+		SQLDisconnect(this->hConnection);
+		SQLFreeHandle(SQL_HANDLE_DBC, this->hConnection);
+		this->hConnection = NULL;
+	}
+	if(this->hEnvironment) {
+		SQLFreeHandle(SQL_HANDLE_ENV, this->hEnvironment);
+		this->hEnvironment = NULL;
+	}
+}
+
+bool SqlDb_odbc::connected() {
+	return(this->hConnection != NULL);
+}
+
+bool SqlDb_odbc::query(string query) {
+	if(verbosity > 0) { 
+		cout << query << endl;
+	}
+	SQLRETURN rslt;
+	if(this->hStatement) {
+		SQLFreeHandle(SQL_HANDLE_STMT, this->hStatement);
+		this->hStatement = NULL;
+	}
+	this->cleanFields();
+	for(unsigned int pass = 0; pass < this->maxQueryPass; pass++) {
+		if(pass > 0) {
+			sleep(1);
+		}
+		if(!this->connected()) {
+			this->connect();
+		}
+		rslt = SQLAllocHandle(SQL_HANDLE_STMT, hConnection, &hStatement);
+		if(!this->okRslt(rslt)) {
+			this->checkLastError("alloc statement", true);
+			this->reconnect();
+			continue;
+		}
+		rslt = SQLExecDirect(this->hStatement, (SQLCHAR*)query.c_str(), SQL_NTS);   
+		if(!this->okRslt(rslt) && rslt != SQL_NO_DATA) {
+			this->checkLastError("query error", true);
+			if(rslt > 0) {
+				if(pass < this->maxQueryPass - 1) {
+					this->reconnect();
+				}
+			} else {
+				break;
+			}
+		} else {
+			break;
+		}
+	}
+	return(this->okRslt(rslt) || rslt == SQL_NO_DATA);
+}
+
+SqlDb_row SqlDb_odbc::fetchRow() {
+	SqlDb_row row(this);
+	if(this->hConnection && this->hStatement) {
+		if(!this->bindBuffer.size()) {
+			this->bindBuffer.bindCols(this->hStatement);
+		}
+		SQLRETURN rslt = SQLFetch(hStatement);
+		if(this->okRslt(rslt) || rslt == SQL_NO_DATA) {
+			if(rslt != SQL_NO_DATA) {
+				for(unsigned int i = 0; i < this->bindBuffer.size(); i++) {
+					row.add(this->bindBuffer.getColBuffer(i));
+				}
+			}
+		} else {
+			this->checkLastError("fetch error", true);
+		}
+	}
+	return(row);
+}
+
+int SqlDb_odbc::getInsertId() {
+	SqlDb_row row;
+	if(this->query("select @@identity as last_insert_id") &&
+	   (row = this->fetchRow()) != 0) {
+		return(atol(row["last_insert_id"].c_str()));
+	}
+	return(-1);
+}
+
+int SqlDb_odbc::getIndexField(string fieldName) {
+	for(size_t i = 0; i < this->bindBuffer.size(); i++) {
+		if(this->bindBuffer[i]->fieldName == fieldName) {
+			return(i);
+		}
+	}
+	return(-1);
+}
+
+string SqlDb_odbc::escape(const char *inputString, int length) {
+	if(!(inputString && (inputString[0] || length))) {
+		return(inputString ? inputString : "");
+	}
+	return(this->_escape(inputString));
+}
+
+bool SqlDb_odbc::checkLastError(string prefixError, bool sysLog, bool clearLastError) {
+	if(this->hConnection) {
+		SQLCHAR sqlState[10];
+		SQLINTEGER nativeError;
+		SQLCHAR messageText[1000];
+		SQLSMALLINT messageTextLength;
+		SQLRETURN rslt = SQLGetDiagRec(
+					this->hStatement ? SQL_HANDLE_STMT : SQL_HANDLE_DBC,
+					this->hStatement ? this->hStatement : this->hConnection,
+					1, sqlState, &nativeError, messageText, sizeof(messageText), &messageTextLength);
+		if(this->okRslt(rslt)) {
+			if(nativeError) {
+				this->setLastError(nativeError, (prefixError + ":  " + string((char*)messageText)).c_str(), sysLog);
+				return(true);
+			} else {
+				this->clearLastError();
+			}
+		}
+	}
+	return(false);
+}
+
+void SqlDb_odbc::cleanFields() {
+	for(unsigned int i = 0; i < this->bindBuffer.size(); i++) {
+		delete this->bindBuffer[i];
+	}
+	this->bindBuffer.clear();
+}
+
+void SqlDb_odbc::clean() {
+	this->disconnect();
+	this->cleanFields();
+}
+
+
+string sqlDateTimeString(time_t unixTime) {
+	struct tm * localTime = localtime(&unixTime);
+	char dateTimeBuffer[50];
+	strftime(dateTimeBuffer, sizeof(dateTimeBuffer), "%Y-%m-%d %H:%M:%S", localTime);
+	return string(dateTimeBuffer);
+}
+
+string sqlEscapeString(string inputStr) {
+	return _sqlEscapeString(inputStr.c_str(), 0);
+}
+
+string sqlEscapeString(const char *inputStr) {
+	return _sqlEscapeString(inputStr, 0);
+}
+
+string sqlEscapeStringBorder(string inputStr, char borderChar) {
+	return _sqlEscapeString(inputStr.c_str(), borderChar);
+}
+
+string sqlEscapeStringBorder(const char *inputStr, char borderChar) {
+	return _sqlEscapeString(inputStr, borderChar);
+}
+
+extern SqlDb *sqlDb;
+extern char sql_driver[256];
+extern char odbc_driver[256];
+
+string _sqlEscapeString(const char *inputStr, char borderChar) {
+	if(!sqlDb) {
+		return(inputStr);
+	}
+	string rsltString = sqlDb->escape(inputStr);
+	if(borderChar) {
+		rsltString = borderChar + rsltString + borderChar;
+	}
+	return rsltString;
+}
+
+bool isSqlDriver(const char *sqlDriver) {
+	return sqlDb ?
+		cmpStringIgnoreCase(sqlDb->getTypeDb().c_str(), sqlDriver) :
+		cmpStringIgnoreCase(sql_driver, sqlDriver);
+}
+
+bool isTypeDb(const char *typeDb) {
+	return sqlDb ?
+		cmpStringIgnoreCase(sqlDb->getTypeDb().c_str(), typeDb) ||
+		(cmpStringIgnoreCase(sqlDb->getTypeDb().c_str(), "odbc") && cmpStringIgnoreCase(sqlDb->getSubtypeDb().c_str(), typeDb)) :
+		cmpStringIgnoreCase(sql_driver, typeDb) ||
+		(cmpStringIgnoreCase(sql_driver, "odbc") && cmpStringIgnoreCase(odbc_driver, typeDb));
+}
+
+bool cmpStringIgnoreCase(const char* str1, const char* str2) {
+	if(str1 == str2) {
+		return true;
+	}
+	if(((str1 || str2) && !(str1 && str2)) ||
+	   ((*str1 || *str2) && !(*str1 && *str2)) ||
+	   strlen(str1) != strlen(str2)) {
+		return false;
+	}
+	int length = strlen(str1);
+	for(int i = 0; i < length; i++) {
+		if(tolower(str1[i]) != tolower(str2[i])) {
+			return false;
+		}
+	}
+	return true;
+}
+
+string reverseString(const char *str) {
+	string rslt;
+	if(str) {
+		int length = strlen(str);
+		for(int i = length - 1; i >= 0; i--) {
+			rslt += str[i];
+		}
+	}
+	return rslt;
+}
+
 
 void SqlDb_mysql::createSchema() {
 
@@ -798,6 +1248,22 @@ ELSE  \
 END IF; \
 END ; ";
 	this->query(query);
+	
+	query = "DROP FUNCTION IF EXISTS getIdOrInsertSIPRES;";
+	this->query(query);
+	query = "CREATE FUNCTION getIdOrInsertSIPRES(val VARCHAR(255)) RETURNS INT DETERMINISTIC \
+BEGIN \
+DECLARE _ID INT; \
+SET _ID = (SELECT id FROM cdr_sip_response WHERE lastSIPresponse = val); \
+IF ( _ID ) \
+THEN \
+        RETURN _ID; \
+ELSE  \
+        INSERT INTO cdr_sip_response SET lastSIPresponse = val; \
+        RETURN LAST_INSERT_ID(); \
+END IF; \
+END ; ";
+	this->query(query);
 
 	query = "DROP PROCEDURE IF EXISTS PROCESS_SIP_REGISTER ;";
 	this->query(query);
@@ -835,3 +1301,18 @@ END ; ";
 //	this->multi_on();
 }
 
+
+void SqlDb_odbc::createSchema() {
+	string query;
+	
+	query = "IF NOT EXISTS (SELECT * FROM sys.objects WHERE name = 'cdr_sip_response') BEGIN\
+  CREATE TABLE cdr_sip_response (\
+  id smallint PRIMARY KEY IDENTITY,\
+  lastSIPresponse varchar(255) DEFAULT NULL);\
+  CREATE UNIQUE INDEX lastSIPresponse ON cdr_sip_response (lastSIPresponse);\
+  END";
+
+	this->query(query);
+
+	
+}
