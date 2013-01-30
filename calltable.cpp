@@ -1519,27 +1519,29 @@ Call::saveToDb(bool enableBatchIfPossible) {
 	if(enableBatchIfPossible && isSqlDriver("mysql")) {
 		string query_str;
 		
+		sqlDb->setEnableSqlStringInContent(true);
+		
 		query_str += "set @_last_insert_id = last_insert_id();\n";
 		
-		cdr.add(string("__sql__:") + "getIdOrInsertSIPRES(" + sqlEscapeStringBorder(lastSIPresponse) + ")", "lastSIPresponse_id");
+		cdr.add(string("_\\_'SQL'_\\_:") + "getIdOrInsertSIPRES(" + sqlEscapeStringBorder(lastSIPresponse) + ")", "lastSIPresponse_id");
 		if(a_ua) {
-			cdr.add(string("__sql__:") + "getIdOrInsertUA(" + sqlEscapeStringBorder(a_ua) + ")", "a_ua_id");
+			cdr.add(string("_\\_'SQL'_\\_:") + "getIdOrInsertUA(" + sqlEscapeStringBorder(a_ua) + ")", "a_ua_id");
 		}
 		if(b_ua) {
-			cdr.add(string("__sql__:") + "getIdOrInsertUA(" + sqlEscapeStringBorder(b_ua) + ")", "b_ua_id");
+			cdr.add(string("_\\_'SQL'_\\_:") + "getIdOrInsertUA(" + sqlEscapeStringBorder(b_ua) + ")", "b_ua_id");
 		}
 		query_str += sqlDb->insertQuery(sql_cdr_table, cdr) + ";\n";
 		
 		query_str += "if @_last_insert_id != last_insert_id() then\n";
 		query_str += "set @cdr_id = last_insert_id();\n";
 		
-		cdr_next.add("__sql__:@cdr_id", "cdr_ID");
+		cdr_next.add("_\\_'SQL'_\\_:@cdr_id", "cdr_ID");
 		query_str += sqlDb->insertQuery(sql_cdr_next_table, cdr_next) + ";\n";
 		
 		if(sql_cdr_table_last30d[0] ||
 		   sql_cdr_table_last7d[0] ||
 		   sql_cdr_table_last1d[0]) {
-			cdr.add("__sql__:@cdr_id", "ID");
+			cdr.add("_\\_'SQL'_\\_:@cdr_id", "ID");
 			if(sql_cdr_table_last30d[0]) {
 				query_str += sqlDb->insertQuery(sql_cdr_table_last30d, cdr) + ";\n";
 			}
@@ -1550,6 +1552,8 @@ Call::saveToDb(bool enableBatchIfPossible) {
 				query_str += sqlDb->insertQuery(sql_cdr_table_last1d, cdr) + ";\n";
 			}
 		}
+		
+		sqlDb->setEnableSqlStringInContent(false);
 		
 		query_str += "end if;\n";
 		

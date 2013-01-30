@@ -127,14 +127,14 @@ string SqlDb_row::implodeFields(string separator, string border) {
 	return(rslt);
 }
 
-string SqlDb_row::implodeContent(string separator, string border) {
+string SqlDb_row::implodeContent(string separator, string border, bool enableSqlString) {
 	string rslt;
 	for(size_t i = 0; i < this->row.size(); i++) {
 		if(i) { rslt += separator; }
 		if(this->row[i].null) {
 			rslt += "NULL";
-		} else if(this->row[i].content.substr(0, 8) == "__sql__:") {
-			rslt += this->row[i].content.substr(8);
+		} else if(enableSqlString && this->row[i].content.substr(0, 12) == "_\\_'SQL'_\\_:") {
+			rslt += this->row[i].content.substr(12);
 		} else {
 			rslt += border + this->row[i].content + border;
 		}
@@ -160,6 +160,7 @@ SqlDb::SqlDb() {
 	this->clearLastError();
 	this->maxQueryPass = UINT_MAX;
 	this->loginTimeout = (ulong)NULL;
+	this->enableSqlStringInContent = false;
 }
 
 SqlDb::~SqlDb() {
@@ -243,7 +244,7 @@ string SqlDb::_escape(const char *inputString) {
 string SqlDb::insertQuery(string table, SqlDb_row row) {
 	string query = 
 		"INSERT INTO " + table + " ( " + row.implodeFields(this->getFieldSeparator(), this->getFieldBorder()) + 
-		" ) VALUES ( " + row.implodeContent(this->getContentSeparator(), this->getContentBorder()) + " )";
+		" ) VALUES ( " + row.implodeContent(this->getContentSeparator(), this->getContentBorder(), this->enableSqlStringInContent) + " )";
 	return(query);
 }
 
@@ -284,6 +285,10 @@ void SqlDb::setLastErrorString(string lastErrorString, bool sysLog) {
 	}
 }
 
+void SqlDb::setEnableSqlStringInContent(bool enableSqlStringInContent) {
+	this->enableSqlStringInContent = enableSqlStringInContent;
+}
+	
 void SqlDb::cleanFields() {
 	this->fields.clear();
 }

@@ -50,7 +50,7 @@ public:
 	bool isEmpty();
 	bool isNull(string fieldName);
 	string implodeFields(string separator = ",", string border = "");
-	string implodeContent(string separator = ",", string border = "'");
+	string implodeContent(string separator = ",", string border = "'", bool enableSqlString = false);
 	string keyvalList(string separator);
 private:
 	SqlDb *sqlDb;
@@ -127,6 +127,7 @@ public:
 	virtual int multi_off() {
 		return(1);
 	}
+	void setEnableSqlStringInContent(bool enableSqlStringInContent);
 protected:
 	string conn_server;
 	string conn_user;
@@ -136,6 +137,7 @@ protected:
 	bool sysLog;
 	unsigned int maxQueryPass;
 	vector<string> fields;
+	bool enableSqlStringInContent;
 private:
 	unsigned int lastError;
 	string lastErrorString;
