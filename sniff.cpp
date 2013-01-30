@@ -103,9 +103,10 @@ extern int opt_dup_check;
 extern char opt_match_header[128];
 extern int opt_domainport;
 extern int opt_mirrorip;
+extern int opt_mirrorall;
+extern int opt_mirroronly;
 extern char opt_scanpcapdir[2048];
 extern int opt_ipaccount;
-
 extern IPfilter *ipfilter;
 extern IPfilter *ipfilter_reload;
 extern int ipfilter_reload_do;
@@ -2951,14 +2952,16 @@ void readdump_libpcap(pcap_t *handle) {
 			continue;
 		}
 
-		if(opt_mirrorip && (sipportmatrix[htons(header_udp->source)] || sipportmatrix[htons(header_udp->dest)])) {
+		if(opt_mirrorall || (opt_mirrorip && (sipportmatrix[htons(header_udp->source)] || sipportmatrix[htons(header_udp->dest)]))) {
 			mirrorip->send((char *)header_ip, (int)(header->caplen - ((unsigned long) header_ip - (unsigned long) packet)));
 		}
 		if(opt_ipaccount) {
 			ipaccount(header->ts.tv_sec, (struct iphdr *) ((char*)packet + offset), header->caplen - offset);
 		}
-		process_packet(header_ip->saddr, htons(header_udp->source), header_ip->daddr, htons(header_udp->dest), 
-			    data, datalen, handle, header, packet, istcp, 0, 1, &was_rtp, header_ip);
+		if(!opt_mirroronly) {
+			process_packet(header_ip->saddr, htons(header_udp->source), header_ip->daddr, htons(header_udp->dest), 
+				    data, datalen, handle, header, packet, istcp, 0, 1, &was_rtp, header_ip);
+		}
 
 		if(destroy) { 
 			free(header); 

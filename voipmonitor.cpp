@@ -105,6 +105,8 @@ int opt_cleanspool_sizeMB = 0; // number of MB to keep in spooldir
 int opt_domainport = 0;
 int request_iptelnum_reload = 0;
 int opt_mirrorip = 0;
+int opt_mirrorall = 0;
+int opt_mirroronly = 0;
 char opt_mirrorip_src[20];
 char opt_mirrorip_dst[20];
 int opt_printinsertid = 0;
@@ -868,6 +870,12 @@ int load_config(char *fname) {
 	}
 	if((value = ini.GetValue("general", "mirrorip", NULL))) {
 		opt_mirrorip = yesno(value);
+	}
+	if((value = ini.GetValue("general", "mirrorall", NULL))) {
+		opt_mirrorall = yesno(value);
+	}
+	if((value = ini.GetValue("general", "mirroronly", NULL))) {
+		opt_mirroronly = yesno(value);
 	}
 	if((value = ini.GetValue("general", "mirroripsrc", NULL))) {
 		strncpy(opt_mirrorip_src, value, sizeof(opt_mirrorip_src));
