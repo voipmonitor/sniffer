@@ -69,6 +69,7 @@ public:
 	virtual bool connected() = 0;
 	bool reconnect();
 	virtual bool query(string query) = 0;
+	virtual void prepareQuery(string *query);
 	virtual SqlDb_row fetchRow() = 0;
 	virtual string insertQuery(string table, SqlDb_row row);
 	virtual int insert(string table, SqlDb_row row);

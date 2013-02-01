@@ -280,3 +280,33 @@ BEGIN
 		CAST(@ipnumber%256 as VARCHAR(3)) as VARCHAR(15));
 END
 GO
+
+IF EXISTS (SELECT name FROM sys.objects WHERE name = 'unix_timestamp' AND type = 'FN')
+	DROP FUNCTION dbo.unix_timestamp
+GO
+CREATE FUNCTION dbo.unix_timestamp(@ctimestamp DATETIME)
+RETURNS INTEGER AS 
+BEGIN
+	RETURN DATEDIFF(SECOND, '1970-01-01', @ctimestamp)
+END
+GO
+
+IF EXISTS (SELECT name FROM sys.objects WHERE name = 'now' AND type = 'FN')
+	DROP FUNCTION dbo.now
+GO
+CREATE FUNCTION now()
+RETURNS DATETIME AS 
+BEGIN
+	RETURN GETDATE()
+END
+GO
+
+IF EXISTS (SELECT name FROM sys.objects WHERE name = 'subtime' AND type = 'FN')
+	DROP FUNCTION dbo.subtime
+GO
+CREATE FUNCTION dbo.subtime(@time1 DATETIME, @time2 DATETIME)
+RETURNS DATETIME AS
+BEGIN
+	RETURN DATEADD(SECOND, -DATEDIFF(second, 0, @time2), @time1)
+END
+GO

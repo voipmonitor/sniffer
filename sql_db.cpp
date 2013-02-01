@@ -186,6 +186,32 @@ bool SqlDb::reconnect() {
 	return(this->connect());
 }
 
+void SqlDb::prepareQuery(string *query) {
+	size_t findPos;
+	if(this->getSubtypeDb() == "mssql") {
+		const char *substFce[][2] = { 
+				{ "UNIX_TIMESTAMP", "dbo.unix_timestamp" },
+				{ "NOW", "dbo.now" },
+				{ "SUBTIME", "dbo.subtime" }
+		};
+		for(unsigned int i = 0; i < sizeof(substFce)/sizeof(substFce[0]); i++) {
+			while((findPos  = query->find(substFce[i][0])) != string::npos) {
+				query->replace(findPos, strlen(substFce[i][0]), substFce[i][1]);
+			}
+		}
+	}
+	while((findPos  = query->find("_LC_[")) != string::npos) {
+		size_t findPosEnd = query->find("]", findPos);
+		if(findPosEnd != string::npos) {
+			string lc = query->substr(findPos + 5, findPosEnd - findPos - 5);
+			if(this->getSubtypeDb() == "mssql") {
+				lc = "case when " + lc + " then 1 else 0 end";
+			}
+			query->replace(findPos, findPosEnd - findPos + 1, lc);
+		}
+	}
+}
+
 string SqlDb::_escape(const char *inputString) {
 	string rsltString;
 	struct escChar {
@@ -215,8 +241,8 @@ string SqlDb::_escape(const char *inputString) {
 					{ '\a', "" }, 		// alert (bell)
 					{ '\e', "" }, 		// escape
 				};
-	escChar *escChars = NULL;
-	int countEscChars = 0;
+	escChar *escChars;
+	int countEscChars;
 	if(this->getTypeDb() == "mysql") {
 		escChars = escCharsMysql;
 		countEscChars = sizeof(escCharsMysql)/sizeof(escChar);
@@ -352,6 +378,7 @@ bool SqlDb_mysql::connected() {
 }
 
 bool SqlDb_mysql::query(string query) {
+	this->prepareQuery(&query);
 	if(verbosity > 0) { 
 		cout << query << endl;
 	}
@@ -370,8 +397,9 @@ bool SqlDb_mysql::query(string query) {
 		}
 		if(this->connected()) {
 			if(mysql_query(this->hMysqlConn, query.c_str())) {
-				if(!sql_noerror)
+				if(!sql_noerror) {
 					this->checkLastError("query error in [" + query + "]", true);
+				}
 				if(this->getLastError() == 2006) { // MySQL server has gone away
 					if(pass < this->maxQueryPass - 1) {
 						this->reconnect();
@@ -625,10 +653,11 @@ bool SqlDb_odbc::connected() {
 }
 
 bool SqlDb_odbc::query(string query) {
+	this->prepareQuery(&query);
 	if(verbosity > 0) { 
 		cout << query << endl;
 	}
-	SQLRETURN rslt = 0;
+	SQLRETURN rslt;
 	if(this->hStatement) {
 		SQLFreeHandle(SQL_HANDLE_STMT, this->hStatement);
 		this->hStatement = NULL;
@@ -643,13 +672,15 @@ bool SqlDb_odbc::query(string query) {
 		}
 		rslt = SQLAllocHandle(SQL_HANDLE_STMT, hConnection, &hStatement);
 		if(!this->okRslt(rslt)) {
-			this->checkLastError("alloc statement", true);
+			this->checkLastError("odbc: error in allocate statement handle", true);
 			this->reconnect();
 			continue;
 		}
 		rslt = SQLExecDirect(this->hStatement, (SQLCHAR*)query.c_str(), SQL_NTS);   
 		if(!this->okRslt(rslt) && rslt != SQL_NO_DATA) {
-			this->checkLastError("query error", true);
+			if(!sql_noerror) {
+				this->checkLastError("odbc query error", true);
+			}
 			if(rslt > 0) {
 				if(pass < this->maxQueryPass - 1) {
 					this->reconnect();
@@ -678,7 +709,7 @@ SqlDb_row SqlDb_odbc::fetchRow() {
 				}
 			}
 		} else {
-			this->checkLastError("fetch error", true);
+			this->checkLastError("odbc fetch error", true);
 		}
 	}
 	return(row);
@@ -830,494 +861,938 @@ void SqlDb_mysql::createSchema() {
 
 	this->multi_off();
 
-	string query = "CREATE TABLE IF NOT EXISTS `filter_ip` (\
-  `id` int(32) NOT NULL AUTO_INCREMENT,\
-  `ip` int(32) unsigned DEFAULT NULL,\
-  `mask` int(8) DEFAULT NULL,\
-  `direction` tinyint(8) DEFAULT '0',\
-  `rtp` tinyint(1) DEFAULT '0',\
-  `sip` tinyint(1) DEFAULT '0',\
-  `register` tinyint(1) DEFAULT '0',\
-  `graph` tinyint(1) DEFAULT '0',\
-  `wav` tinyint(1) DEFAULT '0',\
-  `note` text,\
-  PRIMARY KEY (`id`)\
-) ENGINE=InnoDB DEFAULT CHARSET=latin1;";
-	
-	this->query(query);
+	this->query(
+	"CREATE TABLE IF NOT EXISTS `filter_ip` (\
+			`id` int NOT NULL AUTO_INCREMENT,\
+			`ip` int unsigned DEFAULT NULL,\
+			`mask` int DEFAULT NULL,\
+			`direction` tinyint DEFAULT '0',\
+			`rtp` tinyint DEFAULT '0',\
+			`sip` tinyint DEFAULT '0',\
+			`register` tinyint DEFAULT '0',\
+			`graph` tinyint DEFAULT '0',\
+			`wav` tinyint DEFAULT '0',\
+			`note` text,\
+		PRIMARY KEY (`id`)\
+	) ENGINE=InnoDB DEFAULT CHARSET=latin1;");
 
-	query = "CREATE TABLE IF NOT EXISTS `filter_telnum` (\
-  `id` int(32) NOT NULL AUTO_INCREMENT,\
-  `prefix` bigint(32) unsigned DEFAULT NULL,\
-  `fixed_len` int(32) unsigned DEFAULT '0',\
-  `direction` tinyint(8) DEFAULT '0',\
-  `rtp` tinyint(1) DEFAULT '0',\
-  `sip` tinyint(1) DEFAULT '0',\
-  `register` tinyint(1) DEFAULT '0',\
-  `graph` tinyint(1) DEFAULT '0',\
-  `wav` tinyint(1) DEFAULT '0',\
-  `note` text,\
-  PRIMARY KEY (`id`)\
-) ENGINE=InnoDB DEFAULT CHARSET=latin1;";
+	this->query(
+	"CREATE TABLE IF NOT EXISTS `filter_telnum` (\
+			`id` int NOT NULL AUTO_INCREMENT,\
+			`prefix` bigint unsigned DEFAULT NULL,\
+			`fixed_len` int unsigned DEFAULT '0',\
+			`direction` tinyint DEFAULT '0',\
+			`rtp` tinyint DEFAULT '0',\
+			`sip` tinyint DEFAULT '0',\
+			`register` tinyint DEFAULT '0',\
+			`graph` tinyint DEFAULT '0',\
+			`wav` tinyint DEFAULT '0',\
+			`note` text,\
+		PRIMARY KEY (`id`)\
+	) ENGINE=InnoDB DEFAULT CHARSET=latin1;");
 
-	this->query(query);
+	this->query(
+	"CREATE TABLE IF NOT EXISTS `cdr_sip_response` (\
+			`id` smallint unsigned NOT NULL AUTO_INCREMENT,\
+			`lastSIPresponse` varchar(255) DEFAULT NULL,\
+		PRIMARY KEY (`id`),\
+		UNIQUE KEY `lastSIPresponse` (`lastSIPresponse`)\
+	) ENGINE=InnoDB DEFAULT CHARSET=latin1;");
 
-	query = "CREATE TABLE IF NOT EXISTS `cdr_sip_response` (\
-  `id` smallint(5) unsigned NOT NULL AUTO_INCREMENT,\
-  `lastSIPresponse` varchar(255) DEFAULT NULL,\
-  PRIMARY KEY (`id`),\
-  UNIQUE KEY `lastSIPresponse` (`lastSIPresponse`)\
-) ENGINE=InnoDB DEFAULT CHARSET=latin1;";
+	this->query(
+	"CREATE TABLE IF NOT EXISTS `cdr_ua` (\
+			`id` int unsigned NOT NULL AUTO_INCREMENT,\
+			`ua` varchar(512) DEFAULT NULL,\
+		PRIMARY KEY (`id`),\
+		UNIQUE KEY `ua` (`ua`)\
+	) ENGINE=InnoDB DEFAULT CHARSET=latin1 ROW_FORMAT=COMPRESSED;");
 
-	this->query(query);
+	this->query(
+	"CREATE TABLE IF NOT EXISTS `cdr` (\
+			`ID` int unsigned NOT NULL AUTO_INCREMENT,\
+			`calldate` datetime NOT NULL,\
+			`callend` datetime NOT NULL,\
+			`duration` mediumint unsigned DEFAULT NULL,\
+			`connect_duration` mediumint unsigned DEFAULT NULL,\
+			`progress_time` mediumint unsigned DEFAULT NULL,\
+			`first_rtp_time` mediumint unsigned DEFAULT NULL,\
+			`caller` varchar(255) DEFAULT NULL,\
+			`caller_domain` varchar(255) DEFAULT NULL,\
+			`caller_reverse` varchar(255) DEFAULT NULL,\
+			`callername` varchar(255) DEFAULT NULL,\
+			`callername_reverse` varchar(255) DEFAULT NULL,\
+			`called` varchar(255) DEFAULT NULL,\
+			`called_domain` varchar(255) DEFAULT NULL,\
+			`called_reverse` varchar(255) DEFAULT NULL,\
+			`sipcallerip` int unsigned DEFAULT NULL,\
+			`sipcalledip` int unsigned DEFAULT NULL,\
+			`whohanged` enum('caller','callee') DEFAULT NULL,\
+			`bye` tinyint unsigned DEFAULT NULL,\
+			`lastSIPresponse_id` smallint unsigned DEFAULT NULL,\
+			`lastSIPresponseNum` smallint unsigned DEFAULT NULL,\
+			`sighup` tinyint DEFAULT NULL,\
+			`a_index` tinyint DEFAULT NULL,\
+			`b_index` tinyint DEFAULT NULL,\
+			`a_payload` int DEFAULT NULL,\
+			`b_payload` int DEFAULT NULL,\
+			`a_saddr` int unsigned DEFAULT NULL,\
+			`b_saddr` int unsigned DEFAULT NULL,\
+			`a_received` mediumint unsigned DEFAULT NULL,\
+			`b_received` mediumint unsigned DEFAULT NULL,\
+			`a_lost` mediumint unsigned DEFAULT NULL,\
+			`b_lost` mediumint unsigned DEFAULT NULL,\
+			`a_ua_id` int unsigned DEFAULT NULL,\
+			`b_ua_id` int unsigned DEFAULT NULL,\
+			`a_avgjitter_mult10` mediumint unsigned DEFAULT NULL,\
+			`b_avgjitter_mult10` mediumint unsigned DEFAULT NULL,\
+			`a_maxjitter` smallint unsigned DEFAULT NULL,\
+			`b_maxjitter` smallint unsigned DEFAULT NULL,\
+			`a_sl1` mediumint unsigned DEFAULT NULL,\
+			`a_sl2` mediumint unsigned DEFAULT NULL,\
+			`a_sl3` mediumint unsigned DEFAULT NULL,\
+			`a_sl4` mediumint unsigned DEFAULT NULL,\
+			`a_sl5` mediumint unsigned DEFAULT NULL,\
+			`a_sl6` mediumint unsigned DEFAULT NULL,\
+			`a_sl7` mediumint unsigned DEFAULT NULL,\
+			`a_sl8` mediumint unsigned DEFAULT NULL,\
+			`a_sl9` mediumint unsigned DEFAULT NULL,\
+			`a_sl10` mediumint unsigned DEFAULT NULL,\
+			`a_d50` mediumint unsigned DEFAULT NULL,\
+			`a_d70` mediumint unsigned DEFAULT NULL,\
+			`a_d90` mediumint unsigned DEFAULT NULL,\
+			`a_d120` mediumint unsigned DEFAULT NULL,\
+			`a_d150` mediumint unsigned DEFAULT NULL,\
+			`a_d200` mediumint unsigned DEFAULT NULL,\
+			`a_d300` mediumint unsigned DEFAULT NULL,\
+			`b_sl1` mediumint unsigned DEFAULT NULL,\
+			`b_sl2` mediumint unsigned DEFAULT NULL,\
+			`b_sl3` mediumint unsigned DEFAULT NULL,\
+			`b_sl4` mediumint unsigned DEFAULT NULL,\
+			`b_sl5` mediumint unsigned DEFAULT NULL,\
+			`b_sl6` mediumint unsigned DEFAULT NULL,\
+			`b_sl7` mediumint unsigned DEFAULT NULL,\
+			`b_sl8` mediumint unsigned DEFAULT NULL,\
+			`b_sl9` mediumint unsigned DEFAULT NULL,\
+			`b_sl10` mediumint unsigned DEFAULT NULL,\
+			`b_d50` mediumint unsigned DEFAULT NULL,\
+			`b_d70` mediumint unsigned DEFAULT NULL,\
+			`b_d90` mediumint unsigned DEFAULT NULL,\
+			`b_d120` mediumint unsigned DEFAULT NULL,\
+			`b_d150` mediumint unsigned DEFAULT NULL,\
+			`b_d200` mediumint unsigned DEFAULT NULL,\
+			`b_d300` mediumint unsigned DEFAULT NULL,\
+			`a_mos_f1_mult10` tinyint unsigned DEFAULT NULL,\
+			`a_mos_f2_mult10` tinyint unsigned DEFAULT NULL,\
+			`a_mos_adapt_mult10` tinyint unsigned DEFAULT NULL,\
+			`b_mos_f1_mult10` tinyint unsigned DEFAULT NULL,\
+			`b_mos_f2_mult10` tinyint unsigned DEFAULT NULL,\
+			`b_mos_adapt_mult10` tinyint unsigned DEFAULT NULL,\
+			`a_rtcp_loss` smallint unsigned DEFAULT NULL,\
+			`a_rtcp_maxfr` smallint unsigned DEFAULT NULL,\
+			`a_rtcp_avgfr_mult10` smallint unsigned DEFAULT NULL,\
+			`a_rtcp_maxjitter` smallint unsigned DEFAULT NULL,\
+			`a_rtcp_avgjitter_mult10` smallint unsigned DEFAULT NULL,\
+			`b_rtcp_loss` smallint unsigned DEFAULT NULL,\
+			`b_rtcp_maxfr` smallint unsigned DEFAULT NULL,\
+			`b_rtcp_avgfr_mult10` smallint unsigned DEFAULT NULL,\
+			`b_rtcp_maxjitter` smallint unsigned DEFAULT NULL,\
+			`b_rtcp_avgjitter_mult10` smallint unsigned DEFAULT NULL,\
+			`payload` int DEFAULT NULL,\
+			`jitter_mult10` mediumint unsigned DEFAULT NULL,\
+			`mos_min_mult10` tinyint unsigned DEFAULT NULL,\
+			`a_mos_min_mult10` tinyint unsigned DEFAULT NULL,\
+			`b_mos_min_mult10` tinyint unsigned DEFAULT NULL,\
+			`packet_loss_perc_mult1000` mediumint unsigned DEFAULT NULL,\
+			`a_packet_loss_perc_mult1000` mediumint unsigned DEFAULT NULL,\
+			`b_packet_loss_perc_mult1000` mediumint unsigned DEFAULT NULL,\
+			`delay_sum` mediumint unsigned DEFAULT NULL,\
+			`a_delay_sum` mediumint unsigned DEFAULT NULL,\
+			`b_delay_sum` mediumint unsigned DEFAULT NULL,\
+			`delay_avg_mult100` mediumint unsigned DEFAULT NULL,\
+			`a_delay_avg_mult100` mediumint unsigned DEFAULT NULL,\
+			`b_delay_avg_mult100` mediumint unsigned DEFAULT NULL,\
+			`delay_cnt` mediumint unsigned DEFAULT NULL,\
+			`a_delay_cnt` mediumint unsigned DEFAULT NULL,\
+			`b_delay_cnt` mediumint unsigned DEFAULT NULL,\
+			`rtcp_avgfr_mult10` smallint unsigned DEFAULT NULL,\
+			`rtcp_avgjitter_mult10` smallint unsigned DEFAULT NULL,\
+			`lost` mediumint unsigned DEFAULT NULL,\
+			`id_sensor` smallint unsigned DEFAULT NULL,\
+		PRIMARY KEY (`ID`),\
+		KEY `calldate` (`calldate`),\
+		KEY `callend` (`callend`),\
+		KEY `duration` (`duration`),\
+		KEY `source` (`caller`),\
+		KEY `source_reverse` (`caller_reverse`),\
+		KEY `destination` (`called`),\
+		KEY `destination_reverse` (`called_reverse`),\
+		KEY `callername` (`callername`),\
+		KEY `callername_reverse` (`callername_reverse`),\
+		KEY `sipcallerip` (`sipcallerip`),\
+		KEY `sipcalledip` (`sipcalledip`),\
+		KEY `lastSIPresponseNum` (`lastSIPresponseNum`),\
+		KEY `bye` (`bye`),\
+		KEY `a_saddr` (`a_saddr`),\
+		KEY `b_saddr` (`b_saddr`),\
+		KEY `a_lost` (`a_lost`),\
+		KEY `b_lost` (`b_lost`),\
+		KEY `a_maxjitter` (`a_maxjitter`),\
+		KEY `b_maxjitter` (`b_maxjitter`),\
+		KEY `a_rtcp_loss` (`a_rtcp_loss`),\
+		KEY `a_rtcp_maxfr` (`a_rtcp_maxfr`),\
+		KEY `a_rtcp_maxjitter` (`a_rtcp_maxjitter`),\
+		KEY `b_rtcp_loss` (`b_rtcp_loss`),\
+		KEY `b_rtcp_maxfr` (`b_rtcp_maxfr`),\
+		KEY `b_rtcp_maxjitter` (`b_rtcp_maxjitter`),\
+		KEY `a_ua_id` (`a_ua_id`),\
+		KEY `b_ua_id` (`b_ua_id`),\
+		KEY `a_avgjitter_mult10` (`a_avgjitter_mult10`),\
+		KEY `b_avgjitter_mult10` (`b_avgjitter_mult10`),\
+		KEY `a_rtcp_avgjitter_mult10` (`a_rtcp_avgjitter_mult10`),\
+		KEY `b_rtcp_avgjitter_mult10` (`b_rtcp_avgjitter_mult10`),\
+		KEY `lastSIPresponse_id` (`lastSIPresponse_id`),\
+		KEY `payload` (`payload`),\
+		KEY `id_sensor` (`id_sensor`),\
+		CONSTRAINT `cdr_ibfk_1` FOREIGN KEY (`lastSIPresponse_id`) REFERENCES `cdr_sip_response` (`id`) ON UPDATE CASCADE,\
+		CONSTRAINT `cdr_ibfk_2` FOREIGN KEY (`a_ua_id`) REFERENCES `cdr_ua` (`id`) ON UPDATE CASCADE,\
+		CONSTRAINT `cdr_ibfk_3` FOREIGN KEY (`b_ua_id`) REFERENCES `cdr_ua` (`id`) ON UPDATE CASCADE\
+	) ENGINE=InnoDB DEFAULT CHARSET=latin1 ROW_FORMAT=COMPRESSED;");
 
-	query = "CREATE TABLE IF NOT EXISTS `cdr_ua` (\
-  `id` int(10) unsigned NOT NULL AUTO_INCREMENT,\
-  `ua` varchar(512) DEFAULT NULL,\
-  PRIMARY KEY (`id`),\
-  UNIQUE KEY `ua` (`ua`)\
-) ENGINE=InnoDB DEFAULT CHARSET=latin1 ROW_FORMAT=COMPRESSED;";
+	this->query(
+	"CREATE TABLE IF NOT EXISTS `cdr_next` (\
+			`cdr_ID` int unsigned NOT NULL,\
+			`custom_header1` varchar(255) DEFAULT NULL,\
+			`fbasename` varchar(255) DEFAULT NULL,\
+		PRIMARY KEY (`cdr_ID`),\
+		KEY `fbasename` (`fbasename`),\
+		CONSTRAINT `cdr_next_ibfk_1` FOREIGN KEY (`cdr_ID`) REFERENCES `cdr` (`ID`) ON DELETE CASCADE ON UPDATE CASCADE\
+	) ENGINE=InnoDB DEFAULT CHARSET=latin1 ROW_FORMAT=COMPRESSED;");
 
-	this->query(query);
+	this->query(
+	"CREATE TABLE IF NOT EXISTS `contenttype` (\
+			`id` int unsigned NOT NULL AUTO_INCREMENT,\
+			`contenttype` varchar(255) DEFAULT NULL,\
+		PRIMARY KEY (`id`),\
+		KEY `contenttype` (`contenttype`)\
+	) ENGINE=InnoDB DEFAULT CHARSET=utf8 ROW_FORMAT=COMPRESSED;");
 
-	query = "CREATE TABLE IF NOT EXISTS `cdr` (\
-  `ID` int(32) unsigned NOT NULL AUTO_INCREMENT,\
-  `calldate` datetime NOT NULL,\
-  `callend` datetime NOT NULL,\
-  `duration` mediumint(8) unsigned DEFAULT NULL,\
-  `connect_duration` mediumint(8) unsigned DEFAULT NULL,\
-  `progress_time` mediumint(8) unsigned DEFAULT NULL,\
-  `first_rtp_time` mediumint(8) unsigned DEFAULT NULL,\
-  `caller` varchar(255) DEFAULT NULL,\
-  `caller_domain` varchar(255) DEFAULT NULL,\
-  `caller_reverse` varchar(255) DEFAULT NULL,\
-  `callername` varchar(255) DEFAULT NULL,\
-  `callername_reverse` varchar(255) DEFAULT NULL,\
-  `called` varchar(255) DEFAULT NULL,\
-  `called_domain` varchar(255) DEFAULT NULL,\
-  `called_reverse` varchar(255) DEFAULT NULL,\
-  `sipcallerip` int(10) unsigned DEFAULT NULL,\
-  `sipcalledip` int(10) unsigned DEFAULT NULL,\
-  `whohanged` enum('caller','callee') DEFAULT NULL,\
-  `bye` tinyint(3) unsigned DEFAULT NULL,\
-  `lastSIPresponse_id` smallint(5) unsigned DEFAULT NULL,\
-  `lastSIPresponseNum` smallint(5) unsigned DEFAULT NULL,\
-  `sighup` tinyint(4) DEFAULT NULL,\
-  `a_index` tinyint(4) DEFAULT NULL,\
-  `b_index` tinyint(4) DEFAULT NULL,\
-  `a_payload` int(11) DEFAULT NULL,\
-  `b_payload` int(11) DEFAULT NULL,\
-  `a_saddr` int(10) unsigned DEFAULT NULL,\
-  `b_saddr` int(10) unsigned DEFAULT NULL,\
-  `a_received` mediumint(8) unsigned DEFAULT NULL,\
-  `b_received` mediumint(8) unsigned DEFAULT NULL,\
-  `a_lost` mediumint(8) unsigned DEFAULT NULL,\
-  `b_lost` mediumint(8) unsigned DEFAULT NULL,\
-  `a_ua_id` int(10) unsigned DEFAULT NULL,\
-  `b_ua_id` int(10) unsigned DEFAULT NULL,\
-  `a_avgjitter_mult10` mediumint(8) unsigned DEFAULT NULL,\
-  `b_avgjitter_mult10` mediumint(8) unsigned DEFAULT NULL,\
-  `a_maxjitter` smallint(5) unsigned DEFAULT NULL,\
-  `b_maxjitter` smallint(5) unsigned DEFAULT NULL,\
-  `a_sl1` mediumint(8) unsigned DEFAULT NULL,\
-  `a_sl2` mediumint(8) unsigned DEFAULT NULL,\
-  `a_sl3` mediumint(8) unsigned DEFAULT NULL,\
-  `a_sl4` mediumint(8) unsigned DEFAULT NULL,\
-  `a_sl5` mediumint(8) unsigned DEFAULT NULL,\
-  `a_sl6` mediumint(8) unsigned DEFAULT NULL,\
-  `a_sl7` mediumint(8) unsigned DEFAULT NULL,\
-  `a_sl8` mediumint(8) unsigned DEFAULT NULL,\
-  `a_sl9` mediumint(8) unsigned DEFAULT NULL,\
-  `a_sl10` mediumint(8) unsigned DEFAULT NULL,\
-  `a_d50` mediumint(8) unsigned DEFAULT NULL,\
-  `a_d70` mediumint(8) unsigned DEFAULT NULL,\
-  `a_d90` mediumint(8) unsigned DEFAULT NULL,\
-  `a_d120` mediumint(8) unsigned DEFAULT NULL,\
-  `a_d150` mediumint(8) unsigned DEFAULT NULL,\
-  `a_d200` mediumint(8) unsigned DEFAULT NULL,\
-  `a_d300` mediumint(8) unsigned DEFAULT NULL,\
-  `b_sl1` mediumint(8) unsigned DEFAULT NULL,\
-  `b_sl2` mediumint(8) unsigned DEFAULT NULL,\
-  `b_sl3` mediumint(8) unsigned DEFAULT NULL,\
-  `b_sl4` mediumint(8) unsigned DEFAULT NULL,\
-  `b_sl5` mediumint(8) unsigned DEFAULT NULL,\
-  `b_sl6` mediumint(8) unsigned DEFAULT NULL,\
-  `b_sl7` mediumint(8) unsigned DEFAULT NULL,\
-  `b_sl8` mediumint(8) unsigned DEFAULT NULL,\
-  `b_sl9` mediumint(8) unsigned DEFAULT NULL,\
-  `b_sl10` mediumint(8) unsigned DEFAULT NULL,\
-  `b_d50` mediumint(8) unsigned DEFAULT NULL,\
-  `b_d70` mediumint(8) unsigned DEFAULT NULL,\
-  `b_d90` mediumint(8) unsigned DEFAULT NULL,\
-  `b_d120` mediumint(8) unsigned DEFAULT NULL,\
-  `b_d150` mediumint(8) unsigned DEFAULT NULL,\
-  `b_d200` mediumint(8) unsigned DEFAULT NULL,\
-  `b_d300` mediumint(8) unsigned DEFAULT NULL,\
-  `a_mos_f1_mult10` tinyint(3) unsigned DEFAULT NULL,\
-  `a_mos_f2_mult10` tinyint(3) unsigned DEFAULT NULL,\
-  `a_mos_adapt_mult10` tinyint(3) unsigned DEFAULT NULL,\
-  `b_mos_f1_mult10` tinyint(3) unsigned DEFAULT NULL,\
-  `b_mos_f2_mult10` tinyint(3) unsigned DEFAULT NULL,\
-  `b_mos_adapt_mult10` tinyint(3) unsigned DEFAULT NULL,\
-  `a_rtcp_loss` smallint(5) unsigned DEFAULT NULL,\
-  `a_rtcp_maxfr` smallint(5) unsigned DEFAULT NULL,\
-  `a_rtcp_avgfr_mult10` smallint(5) unsigned DEFAULT NULL,\
-  `a_rtcp_maxjitter` smallint(5) unsigned DEFAULT NULL,\
-  `a_rtcp_avgjitter_mult10` smallint(5) unsigned DEFAULT NULL,\
-  `b_rtcp_loss` smallint(5) unsigned DEFAULT NULL,\
-  `b_rtcp_maxfr` smallint(5) unsigned DEFAULT NULL,\
-  `b_rtcp_avgfr_mult10` smallint(5) unsigned DEFAULT NULL,\
-  `b_rtcp_maxjitter` smallint(5) unsigned DEFAULT NULL,\
-  `b_rtcp_avgjitter_mult10` smallint(5) unsigned DEFAULT NULL,\
-  `payload` int(11) DEFAULT NULL,\
-  `jitter_mult10` mediumint(8) unsigned DEFAULT NULL,\
-  `mos_min_mult10` tinyint(3) unsigned DEFAULT NULL,\
-  `a_mos_min_mult10` tinyint(3) unsigned DEFAULT NULL,\
-  `b_mos_min_mult10` tinyint(3) unsigned DEFAULT NULL,\
-  `packet_loss_perc_mult1000` mediumint(8) unsigned DEFAULT NULL,\
-  `a_packet_loss_perc_mult1000` mediumint(8) unsigned DEFAULT NULL,\
-  `b_packet_loss_perc_mult1000` mediumint(8) unsigned DEFAULT NULL,\
-  `delay_sum` mediumint(8) unsigned DEFAULT NULL,\
-  `a_delay_sum` mediumint(8) unsigned DEFAULT NULL,\
-  `b_delay_sum` mediumint(8) unsigned DEFAULT NULL,\
-  `delay_avg_mult100` mediumint(8) unsigned DEFAULT NULL,\
-  `a_delay_avg_mult100` mediumint(8) unsigned DEFAULT NULL,\
-  `b_delay_avg_mult100` mediumint(8) unsigned DEFAULT NULL,\
-  `delay_cnt` mediumint(8) unsigned DEFAULT NULL,\
-  `a_delay_cnt` mediumint(8) unsigned DEFAULT NULL,\
-  `b_delay_cnt` mediumint(8) unsigned DEFAULT NULL,\
-  `rtcp_avgfr_mult10` smallint(5) unsigned DEFAULT NULL,\
-  `rtcp_avgjitter_mult10` smallint(5) unsigned DEFAULT NULL,\
-  `lost` mediumint(8) unsigned DEFAULT NULL,\
-  `id_sensor` smallint(10) unsigned DEFAULT NULL,\
-  PRIMARY KEY (`ID`),\
-  KEY `calldate` (`calldate`),\
-  KEY `callend` (`callend`),\
-  KEY `duration` (`duration`),\
-  KEY `source` (`caller`),\
-  KEY `source_reverse` (`caller_reverse`),\
-  KEY `destination` (`called`),\
-  KEY `destination_reverse` (`called_reverse`),\
-  KEY `callername` (`callername`),\
-  KEY `callername_reverse` (`callername_reverse`),\
-  KEY `sipcallerip` (`sipcallerip`),\
-  KEY `sipcalledip` (`sipcalledip`),\
-  KEY `lastSIPresponseNum` (`lastSIPresponseNum`),\
-  KEY `bye` (`bye`),\
-  KEY `a_saddr` (`a_saddr`),\
-  KEY `b_saddr` (`b_saddr`),\
-  KEY `a_lost` (`a_lost`),\
-  KEY `b_lost` (`b_lost`),\
-  KEY `a_maxjitter` (`a_maxjitter`),\
-  KEY `b_maxjitter` (`b_maxjitter`),\
-  KEY `a_rtcp_loss` (`a_rtcp_loss`),\
-  KEY `a_rtcp_maxfr` (`a_rtcp_maxfr`),\
-  KEY `a_rtcp_maxjitter` (`a_rtcp_maxjitter`),\
-  KEY `b_rtcp_loss` (`b_rtcp_loss`),\
-  KEY `b_rtcp_maxfr` (`b_rtcp_maxfr`),\
-  KEY `b_rtcp_maxjitter` (`b_rtcp_maxjitter`),\
-  KEY `a_ua_id` (`a_ua_id`),\
-  KEY `b_ua_id` (`b_ua_id`),\
-  KEY `a_avgjitter_mult10` (`a_avgjitter_mult10`),\
-  KEY `b_avgjitter_mult10` (`b_avgjitter_mult10`),\
-  KEY `a_rtcp_avgjitter_mult10` (`a_rtcp_avgjitter_mult10`),\
-  KEY `b_rtcp_avgjitter_mult10` (`b_rtcp_avgjitter_mult10`),\
-  KEY `lastSIPresponse_id` (`lastSIPresponse_id`),\
-  KEY `payload` (`payload`),\
-  KEY `id_sensor` (`id_sensor`),\
-  CONSTRAINT `cdr_ibfk_1` FOREIGN KEY (`lastSIPresponse_id`) REFERENCES `cdr_sip_response` (`id`) ON UPDATE CASCADE,\
-  CONSTRAINT `cdr_ibfk_2` FOREIGN KEY (`a_ua_id`) REFERENCES `cdr_ua` (`id`) ON UPDATE CASCADE,\
-  CONSTRAINT `cdr_ibfk_3` FOREIGN KEY (`b_ua_id`) REFERENCES `cdr_ua` (`id`) ON UPDATE CASCADE\
-) ENGINE=InnoDB DEFAULT CHARSET=latin1 ROW_FORMAT=COMPRESSED;";
+	this->query(
+	"CREATE TABLE IF NOT EXISTS `message` (\
+			`ID` int unsigned NOT NULL AUTO_INCREMENT,\
+			`id_contenttype` int unsigned NOT NULL,\
+			`calldate` datetime NOT NULL,\
+			`caller` varchar(255) DEFAULT NULL,\
+			`caller_domain` varchar(255) DEFAULT NULL,\
+			`caller_reverse` varchar(255) DEFAULT NULL,\
+			`callername` varchar(255) DEFAULT NULL,\
+			`callername_reverse` varchar(255) DEFAULT NULL,\
+			`called` varchar(255) DEFAULT NULL,\
+			`called_domain` varchar(255) DEFAULT NULL,\
+			`called_reverse` varchar(255) DEFAULT NULL,\
+			`sipcallerip` int unsigned DEFAULT NULL,\
+			`sipcalledip` int unsigned DEFAULT NULL,\
+			`bye` tinyint unsigned DEFAULT NULL,\
+			`lastSIPresponse_id` smallint unsigned DEFAULT NULL,\
+			`lastSIPresponseNum` smallint unsigned DEFAULT NULL,\
+			`id_sensor` smallint unsigned DEFAULT NULL,\
+			`a_ua_id` int unsigned DEFAULT NULL,\
+			`b_ua_id` int unsigned DEFAULT NULL,\
+			`fbasename` varchar(255) DEFAULT NULL,\
+			`message` TEXT CHARACTER SET utf8,\
+		PRIMARY KEY (`ID`),\
+		KEY `id_contenttype` (`id_contenttype`),\
+		KEY `calldate` (`calldate`),\
+		KEY `caller` (`caller`),\
+		KEY `caller_domain` (`caller_domain`),\
+		KEY `caller_reverse` (`caller_reverse`),\
+		KEY `callername` (`callername`),\
+		KEY `callername_reverse` (`callername_reverse`),\
+		KEY `called` (`called`),\
+		KEY `called_reverse` (`called_reverse`),\
+		KEY `sipcallerip` (`sipcallerip`),\
+		KEY `sipcalledip` (`sipcalledip`),\
+		KEY `lastSIPresponseNum` (`lastSIPresponseNum`),\
+		KEY `bye` (`bye`),\
+		KEY `lastSIPresponse_id` (`lastSIPresponse_id`),\
+		KEY `id_sensor` (`id_sensor`),\
+		KEY `a_ua_id` (`a_ua_id`),\
+		KEY `b_ua_id` (`b_ua_id`),\
+		KEY `fbasename` (`fbasename`),\
+		CONSTRAINT `messages_ibfk_1` FOREIGN KEY (`lastSIPresponse_id`) REFERENCES `cdr_sip_response` (`id`) ON UPDATE CASCADE,\
+		CONSTRAINT `messages_ibfk_2` FOREIGN KEY (`a_ua_id`) REFERENCES `cdr_ua` (`id`) ON UPDATE CASCADE,\
+		CONSTRAINT `messages_ibfk_3` FOREIGN KEY (`b_ua_id`) REFERENCES `cdr_ua` (`id`) ON UPDATE CASCADE,\
+		CONSTRAINT `messages_ibfk_4` FOREIGN KEY (`id_contenttype`) REFERENCES `contenttype` (`id`) ON UPDATE CASCADE\
+	) ENGINE=InnoDB DEFAULT CHARSET=latin1 ROW_FORMAT=COMPRESSED;");
 
-	this->query(query);
 
-	query = "CREATE TABLE IF NOT EXISTS `contenttype` (\
-  `id` int(16) unsigned NOT NULL AUTO_INCREMENT,\
-  `contenttype` varchar(255) DEFAULT NULL,\
-  PRIMARY KEY (`id`),\
-  KEY `contenttype` (`contenttype`)\
-) ENGINE=InnoDB DEFAULT CHARSET=utf8 ROW_FORMAT=COMPRESSED;";
-	this->query(query);
+	this->query(
+	"CREATE TABLE IF NOT EXISTS `register` (\
+			`ID` int unsigned NOT NULL AUTO_INCREMENT,\
+			`calldate` datetime NOT NULL,\
+			`sipcallerip` int unsigned NOT NULL,\
+			`sipcalledip` int unsigned NOT NULL,\
+			`from_num` varchar(255) NULL DEFAULT NULL,\
+			`from_name` varchar(255) NULL DEFAULT NULL,\
+			`from_domain` varchar(255) NULL DEFAULT NULL,\
+			`to_num` varchar(255) NULL DEFAULT NULL,\
+			`to_domain` varchar(255) NULL DEFAULT NULL,\
+			`contact_num` varchar(255) NULL DEFAULT NULL,\
+			`contact_domain` varchar(255) NULL DEFAULT NULL,\
+			`digestusername` varchar(255) NULL DEFAULT NULL,\
+			`digestrealm` varchar(255) NULL DEFAULT NULL,\
+			`expires`     mediumint NULL DEFAULT NULL,\
+			`expires_at`  datetime NULL DEFAULT NULL,\
+			`state`  tinyint unsigned NULL DEFAULT NULL,\
+			`ua_id` int unsigned DEFAULT NULL,\
+		PRIMARY KEY (`ID`),\
+		KEY `calldate` (`calldate`),\
+		KEY `sipcallerip` (`sipcallerip`),\
+		KEY `sipcalledip` (`sipcalledip`),\
+		KEY `from_num` (`from_num`),\
+		KEY `digestusername` (`digestusername`)\
+	) ENGINE=MEMORY DEFAULT CHARSET=latin1 ROW_FORMAT=COMPRESSED;");
 
-	query = "CREATE TABLE IF NOT EXISTS `message` (\
-  `ID` int(32) unsigned NOT NULL AUTO_INCREMENT,\
-  `id_contenttype` int(16) unsigned NOT NULL,\
-  `calldate` datetime NOT NULL,\
-  `caller` varchar(255) DEFAULT NULL,\
-  `caller_domain` varchar(255) DEFAULT NULL,\
-  `caller_reverse` varchar(255) DEFAULT NULL,\
-  `callername` varchar(255) DEFAULT NULL,\
-  `callername_reverse` varchar(255) DEFAULT NULL,\
-  `called` varchar(255) DEFAULT NULL,\
-  `called_domain` varchar(255) DEFAULT NULL,\
-  `called_reverse` varchar(255) DEFAULT NULL,\
-  `sipcallerip` int(10) unsigned DEFAULT NULL,\
-  `sipcalledip` int(10) unsigned DEFAULT NULL,\
-  `bye` tinyint(3) unsigned DEFAULT NULL,\
-  `lastSIPresponse_id` smallint(5) unsigned DEFAULT NULL,\
-  `lastSIPresponseNum` smallint(5) unsigned DEFAULT NULL,\
-  `id_sensor` smallint(10) unsigned DEFAULT NULL,\
-  `a_ua_id` int(10) unsigned DEFAULT NULL,\
-  `b_ua_id` int(10) unsigned DEFAULT NULL,\
-  `fbasename` varchar(255) DEFAULT NULL,\
-  `message` TEXT CHARACTER SET utf8,\
-  PRIMARY KEY (`ID`),\
-  KEY `id_contenttype` (`id_contenttype`),\
-  KEY `calldate` (`calldate`),\
-  KEY `caller` (`caller`),\
-  KEY `caller_domain` (`caller_domain`),\
-  KEY `caller_reverse` (`caller_reverse`),\
-  KEY `callername` (`callername`),\
-  KEY `callername_reverse` (`callername_reverse`),\
-  KEY `called` (`called`),\
-  KEY `called_reverse` (`called_reverse`),\
-  KEY `sipcallerip` (`sipcallerip`),\
-  KEY `sipcalledip` (`sipcalledip`),\
-  KEY `lastSIPresponseNum` (`lastSIPresponseNum`),\
-  KEY `bye` (`bye`),\
-  KEY `lastSIPresponse_id` (`lastSIPresponse_id`),\
-  KEY `id_sensor` (`id_sensor`),\
-  KEY `a_ua_id` (`a_ua_id`),\
-  KEY `b_ua_id` (`b_ua_id`),\
-  KEY `fbasename` (`fbasename`),\
-  CONSTRAINT `messages_ibfk_1` FOREIGN KEY (`lastSIPresponse_id`) REFERENCES `cdr_sip_response` (`id`) ON UPDATE CASCADE,\
-  CONSTRAINT `messages_ibfk_2` FOREIGN KEY (`a_ua_id`) REFERENCES `cdr_ua` (`id`) ON UPDATE CASCADE,\
-  CONSTRAINT `messages_ibfk_3` FOREIGN KEY (`b_ua_id`) REFERENCES `cdr_ua` (`id`) ON UPDATE CASCADE,\
-  CONSTRAINT `messages_ibfk_4` FOREIGN KEY (`id_contenttype`) REFERENCES `contenttype` (`id`) ON UPDATE CASCADE\
-) ENGINE=InnoDB DEFAULT CHARSET=latin1 ROW_FORMAT=COMPRESSED;";
-	this->query(query);
+	this->query(
+	"CREATE TABLE IF NOT EXISTS `register_state` (\
+			`ID` int unsigned NOT NULL AUTO_INCREMENT,\
+			`created_at` datetime NOT NULL,\
+			`sipcallerip` int unsigned NOT NULL,\
+			`sipcalledip` int unsigned NOT NULL,\
+			`from_num` varchar(255) NULL DEFAULT NULL,\
+			`to_num` varchar(255) NULL DEFAULT NULL,\
+			`contact_num` varchar(255) NULL DEFAULT NULL,\
+			`contact_domain` varchar(255) NULL DEFAULT NULL,\
+			`digestusername` varchar(255) NULL DEFAULT NULL,\
+			`expires` mediumint NULL DEFAULT NULL,\
+			`state` tinyint unsigned NULL DEFAULT NULL,\
+			`ua_id` int unsigned DEFAULT NULL,\
+		PRIMARY KEY (`ID`),\
+		KEY `created_at` (`created_at`),\
+		KEY `sipcallerip` (`sipcallerip`),\
+		KEY `sipcalledip` (`sipcalledip`)\
+	) ENGINE=InnoDB DEFAULT CHARSET=latin1 ROW_FORMAT=COMPRESSED;");
 
-	query = "CREATE TABLE IF NOT EXISTS `cdr_next` (\
-  `cdr_ID` int(10) unsigned NOT NULL,\
-  `custom_header1` varchar(255) DEFAULT NULL,\
-  `fbasename` varchar(255) DEFAULT NULL,\
-  PRIMARY KEY (`cdr_ID`),\
-  KEY `fbasename` (`fbasename`),\
-  CONSTRAINT `cdr_next_ibfk_1` FOREIGN KEY (`cdr_ID`) REFERENCES `cdr` (`ID`) ON DELETE CASCADE ON UPDATE CASCADE\
-) ENGINE=InnoDB DEFAULT CHARSET=latin1 ROW_FORMAT=COMPRESSED;";
+	this->query(
+	"CREATE TABLE IF NOT EXISTS `register_failed` (\
+			`ID` int unsigned NOT NULL AUTO_INCREMENT,\
+			`counter` int DEFAULT 0,\
+			`created_at` datetime NOT NULL,\
+			`sipcallerip` int unsigned NOT NULL,\
+			`sipcalledip` int unsigned NOT NULL,\
+			`from_num` varchar(255) NULL DEFAULT NULL,\
+			`to_num` varchar(255) NULL DEFAULT NULL,\
+			`contact_num` varchar(255) NULL DEFAULT NULL,\
+			`contact_domain` varchar(255) NULL DEFAULT NULL,\
+			`digestusername` varchar(255) NULL DEFAULT NULL,\
+			`ua_id` int unsigned DEFAULT NULL,\
+		PRIMARY KEY (`ID`),\
+		KEY `created_at` (`created_at`),\
+		KEY `sipcallerip` (`sipcallerip`),\
+		KEY `sipcalledip` (`sipcalledip`)\
+	) ENGINE=InnoDB DEFAULT CHARSET=latin1 ROW_FORMAT=COMPRESSED;");
 
-	this->query(query);
+	this->query("CREATE TABLE IF NOT EXISTS `sensors` (\
+			`id_sensor` int unsigned NOT NULL,\
+			`host` varchar(255) NULL DEFAULT NULL,\
+			`port` int NULL DEFAULT NULL,\
+		PRIMARY KEY (`id_sensor`)\
+	) ENGINE=InnoDB DEFAULT CHARSET=latin1;");
 
-	query = "CREATE TABLE IF NOT EXISTS `register` (\
-  `ID` int(32) unsigned NOT NULL AUTO_INCREMENT,\
-  `calldate` datetime NOT NULL,\
-  `sipcallerip` int(32) unsigned NOT NULL,\
-  `sipcalledip` int(32) unsigned NOT NULL,\
-  `from_num` varchar(255) NULL DEFAULT NULL,\
-  `from_name` varchar(255) NULL DEFAULT NULL,\
-  `from_domain` varchar(255) NULL DEFAULT NULL,\
-  `to_num` varchar(255) NULL DEFAULT NULL,\
-  `to_domain` varchar(255) NULL DEFAULT NULL,\
-  `contact_num` varchar(255) NULL DEFAULT NULL,\
-  `contact_domain` varchar(255) NULL DEFAULT NULL,\
-  `digestusername` varchar(255) NULL DEFAULT NULL,\
-  `digestrealm` varchar(255) NULL DEFAULT NULL,\
-  `expires`     mediumint NULL DEFAULT NULL,\
-  `expires_at`  datetime NULL DEFAULT NULL,\
-  `state`  tinyint unsigned NULL DEFAULT NULL,\
-  `ua_id` int(10) unsigned DEFAULT NULL,\
-  PRIMARY KEY (`ID`),\
-  KEY `calldate` (`calldate`),\
-  KEY `sipcallerip` (`sipcallerip`),\
-  KEY `sipcalledip` (`sipcalledip`),\
-  KEY `from_num` (`from_num`),\
-  KEY `digestusername` (`digestusername`)\
-) ENGINE=MEMORY DEFAULT CHARSET=latin1 ROW_FORMAT=COMPRESSED;";
+	this->query(
+	"CREATE TABLE IF NOT EXISTS `ipacc` (\
+			`saddr` int unsigned NOT NULL,\
+			`daddr` int unsigned NOT NULL,\
+			`port` smallint unsigned NOT NULL,\
+			`proto` smallint unsigned NOT NULL,\
+			`octects` int unsigned NOT NULL,\
+			`numpackets` mediumint unsigned NOT NULL,\
+			`interval` varchar(255) NULL DEFAULT NULL,\
+		KEY `saddr` (`saddr`),\
+		KEY `daddr` (`daddr`),\
+		KEY `port` (`port`),\
+		KEY `proto` (`proto`),\
+		KEY `interval` (`interval`)\
+	) ENGINE=InnoDB DEFAULT CHARSET=latin1 ROW_FORMAT=COMPRESSED;");
 
-	this->query(query);
+	this->query(
+	"CREATE TABLE IF NOT EXISTS `livepacket` (\
+			`id` INT UNSIGNED NOT NULL AUTO_INCREMENT ,\
+			`id_sensor` INT UNSIGNED DEFAULT NULL,\
+			`sipcallerip` INT UNSIGNED NOT NULL ,\
+			`sipcalledip` INT UNSIGNED NOT NULL ,\
+			`sport` SMALLINT UNSIGNED NOT NULL ,\
+			`dport` SMALLINT UNSIGNED NOT NULL ,\
+			`istcp` TINYINT UNSIGNED NOT NULL ,\
+			`created_at` TIMESTAMP NOT NULL ,\
+			`microseconds` INT UNSIGNED NOT NULL ,\
+			`callid` VARCHAR(255) NOT NULL ,\
+			`description` VARCHAR(1024),\
+			`data` VARBINARY(10000) NOT NULL ,\
+		PRIMARY KEY ( `id` ) ,\
+		INDEX (`created_at` , `microseconds`)\
+	) ENGINE=MEMORY DEFAULT CHARSET=latin1 ROW_FORMAT=COMPRESSED;");
 
-	query = "CREATE TABLE IF NOT EXISTS `register_state` (\
-  `ID` int(32) unsigned NOT NULL AUTO_INCREMENT,\
-  `created_at` datetime NOT NULL,\
-  `sipcallerip` int(32) unsigned NOT NULL,\
-  `sipcalledip` int(32) unsigned NOT NULL,\
-  `from_num` varchar(255) NULL DEFAULT NULL,\
-  `to_num` varchar(255) NULL DEFAULT NULL,\
-  `contact_num` varchar(255) NULL DEFAULT NULL,\
-  `contact_domain` varchar(255) NULL DEFAULT NULL,\
-  `digestusername` varchar(255) NULL DEFAULT NULL,\
-  `expires` mediumint NULL DEFAULT NULL,\
-  `state` tinyint unsigned NULL DEFAULT NULL,\
-  `ua_id` int(10) unsigned DEFAULT NULL,\
-  PRIMARY KEY (`ID`),\
-  KEY `created_at` (`created_at`),\
-  KEY `sipcallerip` (`sipcallerip`),\
-  KEY `sipcalledip` (`sipcalledip`)\
-) ENGINE=InnoDB DEFAULT CHARSET=latin1 ROW_FORMAT=COMPRESSED;";
-
-	this->query(query);
-
-	query = "CREATE TABLE IF NOT EXISTS `register_failed` (\
-  `ID` int(32) unsigned NOT NULL AUTO_INCREMENT,\
-  `counter` int DEFAULT 0,\
-  `created_at` datetime NOT NULL,\
-  `sipcallerip` int(32) unsigned NOT NULL,\
-  `sipcalledip` int(32) unsigned NOT NULL,\
-  `from_num` varchar(255) NULL DEFAULT NULL,\
-  `to_num` varchar(255) NULL DEFAULT NULL,\
-  `contact_num` varchar(255) NULL DEFAULT NULL,\
-  `contact_domain` varchar(255) NULL DEFAULT NULL,\
-  `digestusername` varchar(255) NULL DEFAULT NULL,\
-  `ua_id` int(10) unsigned DEFAULT NULL,\
-  PRIMARY KEY (`ID`),\
-  KEY `created_at` (`created_at`),\
-  KEY `sipcallerip` (`sipcallerip`),\
-  KEY `sipcalledip` (`sipcalledip`)\
-) ENGINE=InnoDB DEFAULT CHARSET=latin1 ROW_FORMAT=COMPRESSED;";
-
-	this->query(query);
-
-	query = "CREATE TABLE IF NOT EXISTS `sensors` (\
-  `id_sensor` int(32) unsigned NOT NULL,\
-  `host` varchar(255) NULL DEFAULT NULL,\
-  `port` int(8) NULL DEFAULT NULL,\
-  PRIMARY KEY (`id_sensor`)\
-) ENGINE=InnoDB DEFAULT CHARSET=latin1;";
-
-	this->query(query);
-
-	query = "CREATE TABLE IF NOT EXISTS `ipacc` (\
-  `saddr` int(32) unsigned NOT NULL,\
-  `daddr` int(32) unsigned NOT NULL,\
-  `port` smallint(4) unsigned NOT NULL,\
-  `proto` smallint(4) unsigned NOT NULL,\
-  `octects` int(32) unsigned NOT NULL,\
-  `numpackets` mediumint(32) unsigned NOT NULL,\
-  `interval` varchar(255) NULL DEFAULT NULL,\
-  KEY `saddr` (`saddr`),\
-  KEY `daddr` (`daddr`),\
-  KEY `port` (`port`),\
-  KEY `proto` (`proto`),\
-  KEY `interval` (`interval`)\
-) ENGINE=InnoDB DEFAULT CHARSET=latin1 ROW_FORMAT=COMPRESSED;";
-
-	this->query(query);
-
-	query = "CREATE TABLE IF NOT EXISTS `livepacket` (\
-	`id` INT UNSIGNED NOT NULL AUTO_INCREMENT ,\
-	`id_sensor` INT UNSIGNED DEFAULT NULL,\
-	`sipcallerip` INT UNSIGNED NOT NULL ,\
-	`sipcalledip` INT UNSIGNED NOT NULL ,\
-	`sport` SMALLINT UNSIGNED NOT NULL ,\
-	`dport` SMALLINT UNSIGNED NOT NULL ,\
-	`istcp` TINYINT UNSIGNED NOT NULL ,\
-	`created_at` TIMESTAMP NOT NULL ,\
-	`microseconds` INT UNSIGNED NOT NULL ,\
-	`callid` VARCHAR(255) NOT NULL ,\
-	`description` VARCHAR(1024),\
-	`data` VARBINARY(10000) NOT NULL ,\
-	PRIMARY KEY ( `id` ) ,\
-	INDEX (  `created_at` ,  `microseconds` )\
-	) ENGINE=MEMORY DEFAULT CHARSET=latin1 ROW_FORMAT=COMPRESSED;";
-	this->query(query);
+	sql_noerror = 1;
 
 	//5.2 -> 5.3
-	sql_noerror = 1;
 	if(opt_match_header[0] != '\0') {
-		query = "ALTER TABLE cdr_next ADD match_header VARCHAR(128), ADD KEY `match_header` (`match_header`);";
-		this->query(query);
+		this->query("ALTER TABLE cdr_next\
+				ADD match_header VARCHAR(128),\
+				ADD KEY `match_header` (`match_header`);");
 	}
 	//5.3 -> 5.4
-	query = "ALTER TABLE register ADD KEY `to_domain` (`to_domain`), ADD KEY `to_num` (`to_num`);";
-	this->query(query);
-	query = "ALTER TABLE register_state ADD `to_domain` varchar(255) NULL DEFAULT NULL;";
-	this->query(query);
-	query = "ALTER TABLE register_failed ADD `to_domain` varchar(255) NULL DEFAULT NULL;";
-	this->query(query);
-
+	this->query("ALTER TABLE register\
+			ADD KEY `to_domain` (`to_domain`),\
+			ADD KEY `to_num` (`to_num`);");
+	this->query("ALTER TABLE register_state\
+			ADD `to_domain` varchar(255) NULL DEFAULT NULL;");
+	this->query("ALTER TABLE register_failed\
+			ADD `to_domain` varchar(255) NULL DEFAULT NULL;");
 	//5.4 -> 5.5
-	query = "ALTER TABLE register_state ADD `sipcalledip` int(32) unsigned, ADD KEY `sipcalledip` (`sipcalledip`);";
-	this->query(query);
-	query = "ALTER TABLE register_failed ADD `sipcalledip` int(32) unsigned, ADD KEY `sipcalledip` (`sipcalledip`);";
-	this->query(query);
-
+	this->query("ALTER TABLE register_state\
+			ADD `sipcalledip` int unsigned,\
+			ADD KEY `sipcalledip` (`sipcalledip`);");
+	this->query("ALTER TABLE register_failed\
+			ADD `sipcalledip` int unsigned,\
+			ADD KEY `sipcalledip` (`sipcalledip`);");
 	//6.0 -> 6.1
-	query = "ALTER TABLE message ADD id_contenttype INT(16) AFTER ID, ADD KEY `id_contenttype` (`id_contenttype`);";
-	this->query(query);
+	this->query("ALTER TABLE message\
+			ADD id_contenttype INT AFTER ID,\
+			ADD KEY `id_contenttype` (`id_contenttype`);");
 
 	sql_noerror = 0;
 
-	query = "DROP FUNCTION IF EXISTS getIdOrInsertUA ;";
-	this->query(query);
-	query = "CREATE FUNCTION getIdOrInsertUA(val VARCHAR(255)) RETURNS INT DETERMINISTIC \
-BEGIN \
-DECLARE _ID INT; \
-SET _ID = (SELECT id FROM cdr_ua WHERE ua = val); \
-IF ( _ID ) \
-THEN \
-        RETURN _ID; \
-ELSE  \
-        INSERT INTO cdr_ua SET ua = val; \
-        RETURN LAST_INSERT_ID(); \
-END IF; \
-END ; ";
-	this->query(query);
+	this->query("DROP FUNCTION IF EXISTS getIdOrInsertUA;");
+	this->query("CREATE FUNCTION getIdOrInsertUA(val VARCHAR(255)) RETURNS INT DETERMINISTIC \
+			BEGIN \
+				DECLARE _ID INT; \
+				SET _ID = (SELECT id FROM cdr_ua WHERE ua = val); \
+				IF ( _ID ) THEN \
+					RETURN _ID; \
+				ELSE  \
+					INSERT INTO cdr_ua SET ua = val; \
+					RETURN LAST_INSERT_ID(); \
+				END IF; \
+			END;");
 	
-	query = "DROP FUNCTION IF EXISTS getIdOrInsertSIPRES;";
-	this->query(query);
-	query = "CREATE FUNCTION getIdOrInsertSIPRES(val VARCHAR(255)) RETURNS INT DETERMINISTIC \
-BEGIN \
-DECLARE _ID INT; \
-SET _ID = (SELECT id FROM cdr_sip_response WHERE lastSIPresponse = val); \
-IF ( _ID ) \
-THEN \
-        RETURN _ID; \
-ELSE  \
-        INSERT INTO cdr_sip_response SET lastSIPresponse = val; \
-        RETURN LAST_INSERT_ID(); \
-END IF; \
-END ; ";
-	this->query(query);
+	this->query("DROP FUNCTION IF EXISTS getIdOrInsertSIPRES;");
+	this->query("CREATE FUNCTION getIdOrInsertSIPRES(val VARCHAR(255)) RETURNS INT DETERMINISTIC \
+			BEGIN \
+				DECLARE _ID INT; \
+				SET _ID = (SELECT id FROM cdr_sip_response WHERE lastSIPresponse = val); \
+				IF ( _ID ) THEN \
+					RETURN _ID; \
+				ELSE  \
+					INSERT INTO cdr_sip_response SET lastSIPresponse = val; \
+					RETURN LAST_INSERT_ID(); \
+				END IF; \
+			END;");
 
-	query = "DROP PROCEDURE IF EXISTS PROCESS_SIP_REGISTER ;";
-	this->query(query);
+	this->query("DROP PROCEDURE IF EXISTS PROCESS_SIP_REGISTER;");
+	this->query("CREATE PROCEDURE PROCESS_SIP_REGISTER(IN calltime VARCHAR(32), IN caller VARCHAR(64), IN callername VARCHAR(64), IN caller_domain VARCHAR(64), IN called VARCHAR(64), IN called_domain VARCHAR(64), IN sipcallerip INT UNSIGNED, sipcalledip INT UNSIGNED, contact_num VARCHAR(64), IN contact_domain VARCHAR(64), IN digest_username VARCHAR(255), IN digest_realm VARCHAR(255), IN regstate INT, mexpires_at VARCHAR(128), IN register_expires INT, IN cdr_ua VARCHAR(255)) \
+			BEGIN \
+				DECLARE _ID INT; \
+				DECLARE _state INT; \
+				DECLARE _expires_at INT UNSIGNED; \
+				DECLARE _expired INT; \
+				SELECT ID, state, expires_at, (UNIX_TIMESTAMP(expires_at) < UNIX_TIMESTAMP(calltime)) AS expired INTO _ID, _state, _expires_at, _expired FROM register WHERE to_num = called AND to_domain = called_domain AND digestusername = digest_username ORDER BY ID DESC LIMIT 1; \
+				IF ( _ID ) THEN \
+					SET sql_log_bin = 0; \
+					DELETE FROM register WHERE ID = _ID; \
+					SET sql_log_bin = 1; \
+					IF ( _expired > 0 ) THEN \
+						INSERT INTO `register_state` SET `created_at` = _expires_at, `sipcallerip` = sipcallerip, `sipcalledip` = sipcalledip, `from_num` = caller, `to_num` = called, `to_domain` = called_domain, `contact_num` = contact_num, `contact_domain` = contact_domain, `digestusername` = digest_username, `expires` = register_expires, state = 5, ua_id = getIdOrInsertUA(cdr_ua); \
+					END IF; \
+					IF ( _state <> regstate AND register_expires = 0) THEN \
+						INSERT INTO `register_state` SET `created_at` = calltime, `sipcallerip` = sipcallerip, `sipcalledip` = sipcalledip, `from_num` = caller, `to_num` = called, `to_domain` = called_domain, `contact_num` = contact_num, `contact_domain` = contact_domain, `digestusername` = digest_username, `expires` = register_expires, state = regstate, ua_id = getIdOrInsertUA(cdr_ua); \
+					END IF; \
+				ELSE \
+					INSERT INTO `register_state` SET `created_at` = calltime, `sipcallerip` = sipcallerip, `sipcalledip` = sipcalledip, `from_num` = caller, `to_num` = called, `to_domain` = called_domain, `contact_num` = contact_num, `contact_domain` = contact_domain, `digestusername` = digest_username, `expires` = register_expires, state = regstate, ua_id = getIdOrInsertUA(cdr_ua);\
+				END IF; \
+				IF ( register_expires > 0 ) THEN \
+					INSERT INTO `register` SET `calldate` = calltime, `sipcallerip` = sipcallerip, `sipcalledip` = sipcalledip, `from_num` = caller, `from_name` = callername, `from_domain` = caller_domain, `to_num` = called, `to_domain` = called_domain, `contact_num` = contact_num, `contact_domain` = contact_domain, `digestusername` = digest_username, `digestrealm` = digest_realm, `expires` = register_expires, state = regstate, ua_id = getIdOrInsertUA(cdr_ua), `expires_at` = mexpires_at; \
+				END IF; \
+			END;");
 
-	query = "CREATE PROCEDURE PROCESS_SIP_REGISTER(IN calltime VARCHAR(32), IN caller VARCHAR(64), IN callername VARCHAR(64), IN caller_domain VARCHAR(64), IN called VARCHAR(64), IN called_domain VARCHAR(64), IN sipcallerip INT UNSIGNED, sipcalledip INT UNSIGNED, contact_num VARCHAR(64), IN contact_domain VARCHAR(64), IN digest_username VARCHAR(255), IN digest_realm VARCHAR(255), IN regstate INT, mexpires_at VARCHAR(128), IN register_expires INT, IN cdr_ua VARCHAR(255)) \
-BEGIN \
-DECLARE _ID INT; \
-DECLARE _state INT; \
-DECLARE _expires_at INT UNSIGNED; \
-DECLARE _expired INT; \
-SELECT ID, state, expires_at, (UNIX_TIMESTAMP(expires_at) < UNIX_TIMESTAMP(calltime)) AS expired INTO _ID, _state, _expires_at, _expired FROM register WHERE to_num = called AND to_domain = called_domain AND digestusername = digest_username ORDER BY ID DESC LIMIT 1; \
-IF ( _ID ) \
-THEN \
-        SET sql_log_bin = 0; \
-        DELETE FROM register WHERE ID = _ID; \
-        SET sql_log_bin = 1; \
-        IF ( _expired > 0 ) THEN \
-                INSERT INTO `register_state` SET `created_at` = _expires_at, `sipcallerip` = sipcallerip, `sipcalledip` = sipcalledip, `from_num` = caller, `to_num` = called, `to_domain` = called_domain, `contact_num` = contact_num, `contact_domain` = contact_domain, `digestusername` = digest_username, `expires` = register_expires, state = 5, ua_id = getIdOrInsertUA(cdr_ua); \
-        END IF; \
-        IF ( _state <> regstate AND register_expires = 0) \
-        THEN \
-                INSERT INTO `register_state` SET `created_at` = calltime, `sipcallerip` = sipcallerip, `sipcalledip` = sipcalledip, `from_num` = caller, `to_num` = called, `to_domain` = called_domain, `contact_num` = contact_num, `contact_domain` = contact_domain, `digestusername` = digest_username, `expires` = register_expires, state = regstate, ua_id = getIdOrInsertUA(cdr_ua); \
-        END IF; \
-ELSE \
-        INSERT INTO `register_state` SET `created_at` = calltime, `sipcallerip` = sipcallerip, `sipcalledip` = sipcalledip, `from_num` = caller, `to_num` = called, `to_domain` = called_domain, `contact_num` = contact_num, `contact_domain` = contact_domain, `digestusername` = digest_username, `expires` = register_expires, state = regstate, ua_id = getIdOrInsertUA(cdr_ua);\
-END IF; \
-IF ( register_expires > 0 ) \
-THEN \
-        INSERT INTO `register` SET `calldate` = calltime, `sipcallerip` = sipcallerip, `sipcalledip` = sipcalledip, `from_num` = caller, `from_name` = callername, `from_domain` = caller_domain, `to_num` = called, `to_domain` = called_domain, `contact_num` = contact_num, `contact_domain` = contact_domain, `digestusername` = digest_username, `digestrealm` = digest_realm, `expires` = register_expires, state = regstate, ua_id = getIdOrInsertUA(cdr_ua), `expires_at` = mexpires_at; \
-END IF; \
-END ; ";
-
-	this->query(query);
-
-//	this->multi_on();
+	//this->multi_on();
 }
 
 
 void SqlDb_odbc::createSchema() {
-	string query;
 	
-	query = "IF NOT EXISTS (SELECT * FROM sys.objects WHERE name = 'cdr_sip_response') BEGIN\
-  CREATE TABLE cdr_sip_response (\
-  id smallint PRIMARY KEY IDENTITY,\
-  lastSIPresponse varchar(255) DEFAULT NULL);\
-  CREATE UNIQUE INDEX lastSIPresponse ON cdr_sip_response (lastSIPresponse);\
-  END";
+	this->query(
+	"IF NOT EXISTS (SELECT * FROM sys.objects WHERE name = 'filter_ip') BEGIN\
+		CREATE TABLE filter_ip (\
+			id int PRIMARY KEY IDENTITY,\
+			ip bigint NULL,\
+			mask int NULL,\
+			direction tinyint DEFAULT '0',\
+			rtp tinyint DEFAULT '0',\
+			sip tinyint DEFAULT '0',\
+			register tinyint DEFAULT '0',\
+			graph tinyint DEFAULT '0',\
+			wav tinyint DEFAULT '0',\
+			note text);\
+	END");
 
-	this->query(query);
+	this->query(
+	"IF NOT EXISTS (SELECT * FROM sys.objects WHERE name = 'filter_telnum') BEGIN\
+		CREATE TABLE filter_telnum (\
+			id int PRIMARY KEY IDENTITY,\
+			prefix bigint NULL,\
+			fixed_len int DEFAULT '0',\
+			direction tinyint DEFAULT '0',\
+			rtp tinyint DEFAULT '0',\
+			sip tinyint DEFAULT '0',\
+			register tinyint DEFAULT '0',\
+			graph tinyint DEFAULT '0',\
+			wav tinyint DEFAULT '0',\
+			note text);\
+	END");
 
+	this->query(
+	"IF NOT EXISTS (SELECT * FROM sys.objects WHERE name = 'cdr_sip_response') BEGIN\
+		CREATE TABLE cdr_sip_response (\
+			id smallint PRIMARY KEY IDENTITY,\
+			lastSIPresponse varchar(255) NULL);\
+		CREATE UNIQUE INDEX lastSIPresponse ON cdr_sip_response (lastSIPresponse);\
+	END");
+
+	this->query(
+	"IF NOT EXISTS (SELECT * FROM sys.objects WHERE name = 'cdr_ua') BEGIN\
+		CREATE TABLE cdr_ua (\
+			id int PRIMARY KEY IDENTITY,\
+			ua varchar(512) NULL);\
+		CREATE UNIQUE INDEX ua ON cdr_ua (ua);\
+	END");
+
+	this->query(
+	"IF NOT EXISTS (SELECT * FROM sys.objects WHERE name = 'cdr') BEGIN\
+		CREATE TABLE cdr (\
+			ID int PRIMARY KEY IDENTITY,\
+			calldate datetime NOT NULL,\
+			callend datetime NOT NULL,\
+			duration int NULL,\
+			connect_duration int NULL,\
+			progress_time int NULL,\
+			first_rtp_time int NULL,\
+			caller varchar(255) NULL,\
+			caller_domain varchar(255) NULL,\
+			caller_reverse varchar(255) NULL,\
+			callername varchar(255) NULL,\
+			callername_reverse varchar(255) NULL,\
+			called varchar(255) NULL,\
+			called_domain varchar(255) NULL,\
+			called_reverse varchar(255) NULL,\
+			sipcallerip bigint NULL,\
+			sipcalledip bigint NULL,\
+			whohanged char(10) NULL,\
+			bye tinyint NULL,\
+			lastSIPresponse_id smallint NULL\
+				FOREIGN KEY REFERENCES cdr_sip_response (id),\
+			lastSIPresponseNum smallint NULL,\
+			sighup tinyint NULL,\
+			a_index tinyint NULL,\
+			b_index tinyint NULL,\
+			a_payload int NULL,\
+			b_payload int NULL,\
+			a_saddr bigint NULL,\
+			b_saddr bigint NULL,\
+			a_received int NULL,\
+			b_received int NULL,\
+			a_lost int NULL,\
+			b_lost int NULL,\
+			a_ua_id int NULL\
+				FOREIGN KEY REFERENCES cdr_ua (id),\
+			b_ua_id int NULL\
+				FOREIGN KEY REFERENCES cdr_ua (id),\
+			a_avgjitter_mult10 int NULL,\
+			b_avgjitter_mult10 int NULL,\
+			a_maxjitter smallint NULL,\
+			b_maxjitter smallint NULL,\
+			a_sl1 int NULL,\
+			a_sl2 int NULL,\
+			a_sl3 int NULL,\
+			a_sl4 int NULL,\
+			a_sl5 int NULL,\
+			a_sl6 int NULL,\
+			a_sl7 int NULL,\
+			a_sl8 int NULL,\
+			a_sl9 int NULL,\
+			a_sl10 int NULL,\
+			a_d50 int NULL,\
+			a_d70 int NULL,\
+			a_d90 int NULL,\
+			a_d120 int NULL,\
+			a_d150 int NULL,\
+			a_d200 int NULL,\
+			a_d300 int NULL,\
+			b_sl1 int NULL,\
+			b_sl2 int NULL,\
+			b_sl3 int NULL,\
+			b_sl4 int NULL,\
+			b_sl5 int NULL,\
+			b_sl6 int NULL,\
+			b_sl7 int NULL,\
+			b_sl8 int NULL,\
+			b_sl9 int NULL,\
+			b_sl10 int NULL,\
+			b_d50 int NULL,\
+			b_d70 int NULL,\
+			b_d90 int NULL,\
+			b_d120 int NULL,\
+			b_d150 int NULL,\
+			b_d200 int NULL,\
+			b_d300 int NULL,\
+			a_mos_f1_mult10 tinyint NULL,\
+			a_mos_f2_mult10 tinyint NULL,\
+			a_mos_adapt_mult10 tinyint NULL,\
+			b_mos_f1_mult10 tinyint NULL,\
+			b_mos_f2_mult10 tinyint NULL,\
+			b_mos_adapt_mult10 tinyint NULL,\
+			a_rtcp_loss smallint NULL,\
+			a_rtcp_maxfr smallint NULL,\
+			a_rtcp_avgfr_mult10 smallint NULL,\
+			a_rtcp_maxjitter smallint NULL,\
+			a_rtcp_avgjitter_mult10 smallint NULL,\
+			b_rtcp_loss smallint NULL,\
+			b_rtcp_maxfr smallint NULL,\
+			b_rtcp_avgfr_mult10 smallint NULL,\
+			b_rtcp_maxjitter smallint NULL,\
+			b_rtcp_avgjitter_mult10 smallint NULL,\
+			payload int NULL,\
+			jitter_mult10 int NULL,\
+			mos_min_mult10 tinyint NULL,\
+			a_mos_min_mult10 tinyint NULL,\
+			b_mos_min_mult10 tinyint NULL,\
+			packet_loss_perc_mult1000 int NULL,\
+			a_packet_loss_perc_mult1000 int NULL,\
+			b_packet_loss_perc_mult1000 int NULL,\
+			delay_sum int NULL,\
+			a_delay_sum int NULL,\
+			b_delay_sum int NULL,\
+			delay_avg_mult100 int NULL,\
+			a_delay_avg_mult100 int NULL,\
+			b_delay_avg_mult100 int NULL,\
+			delay_cnt int NULL,\
+			a_delay_cnt int NULL,\
+			b_delay_cnt int NULL,\
+			rtcp_avgfr_mult10 smallint NULL,\
+			rtcp_avgjitter_mult10 smallint NULL,\
+			lost int NULL,\
+			id_sensor smallint NULL,);\
+		CREATE INDEX calldate ON cdr (calldate);\
+		CREATE INDEX callend ON cdr (callend);\
+		CREATE INDEX duration ON cdr (duration);\
+		CREATE INDEX source ON cdr (caller);\
+		CREATE INDEX source_reverse ON cdr (caller_reverse);\
+		CREATE INDEX destination ON cdr (called);\
+		CREATE INDEX destination_reverse ON cdr (called_reverse);\
+		CREATE INDEX callername ON cdr (callername);\
+		CREATE INDEX callername_reverse ON cdr (callername_reverse);\
+		CREATE INDEX sipcallerip ON cdr (sipcallerip);\
+		CREATE INDEX sipcalledip ON cdr (sipcalledip);\
+		CREATE INDEX lastSIPresponseNum ON cdr (lastSIPresponseNum);\
+		CREATE INDEX bye ON cdr (bye);\
+		CREATE INDEX a_saddr ON cdr (a_saddr);\
+		CREATE INDEX b_saddr ON cdr (b_saddr);\
+		CREATE INDEX a_lost ON cdr (a_lost);\
+		CREATE INDEX b_lost ON cdr (b_lost);\
+		CREATE INDEX a_maxjitter ON cdr (a_maxjitter);\
+		CREATE INDEX b_maxjitter ON cdr (b_maxjitter);\
+		CREATE INDEX a_rtcp_loss ON cdr (a_rtcp_loss);\
+		CREATE INDEX a_rtcp_maxfr ON cdr (a_rtcp_maxfr);\
+		CREATE INDEX a_rtcp_maxjitter ON cdr (a_rtcp_maxjitter);\
+		CREATE INDEX b_rtcp_loss ON cdr (b_rtcp_loss);\
+		CREATE INDEX b_rtcp_maxfr ON cdr (b_rtcp_maxfr);\
+		CREATE INDEX b_rtcp_maxjitter ON cdr (b_rtcp_maxjitter);\
+		CREATE INDEX a_ua_id ON cdr (a_ua_id);\
+		CREATE INDEX b_ua_id ON cdr (b_ua_id);\
+		CREATE INDEX a_avgjitter_mult10 ON cdr (a_avgjitter_mult10);\
+		CREATE INDEX b_avgjitter_mult10 ON cdr (b_avgjitter_mult10);\
+		CREATE INDEX a_rtcp_avgjitter_mult10 ON cdr (a_rtcp_avgjitter_mult10);\
+		CREATE INDEX b_rtcp_avgjitter_mult10 ON cdr (b_rtcp_avgjitter_mult10);\
+		CREATE INDEX lastSIPresponse_id ON cdr (lastSIPresponse_id);\
+		CREATE INDEX payload ON cdr (payload);\
+		CREATE INDEX id_sensor ON cdr (id_sensor);\
+	END");
 	
+	this->query(
+	"IF NOT EXISTS (SELECT * FROM sys.objects WHERE name = 'cdr_next') BEGIN\
+		CREATE TABLE cdr_next (\
+			cdr_ID int PRIMARY KEY NOT NULL\
+				FOREIGN KEY REFERENCES cdr (ID),\
+			custom_header1 varchar(255) NULL,\
+			fbasename varchar(255) NULL);\
+		CREATE INDEX fbasename ON cdr_next (fbasename);\
+	END");
+
+	this->query(
+	"IF NOT EXISTS (SELECT * FROM sys.objects WHERE name = 'contenttype') BEGIN\
+		CREATE TABLE contenttype (\
+			id int PRIMARY KEY IDENTITY,\
+			contenttype varchar(255) NULL);\
+		CREATE INDEX contenttype ON contenttype (contenttype);\
+	END");
+
+	this->query(
+	"IF NOT EXISTS (SELECT * FROM sys.objects WHERE name = 'message') BEGIN\
+		CREATE TABLE message (\
+			ID int PRIMARY KEY IDENTITY,\
+			id_contenttype int NOT NULL\
+				FOREIGN KEY REFERENCES contenttype (id),\
+			calldate datetime NOT NULL,\
+			caller varchar(255) NULL,\
+			caller_domain varchar(255) NULL,\
+			caller_reverse varchar(255) NULL,\
+			callername varchar(255) NULL,\
+			callername_reverse varchar(255) NULL,\
+			called varchar(255) NULL,\
+			called_domain varchar(255) NULL,\
+			called_reverse varchar(255) NULL,\
+			sipcallerip bigint NULL,\
+			sipcalledip bigint NULL,\
+			bye tinyint NULL,\
+			lastSIPresponse_id smallint NULL\
+				FOREIGN KEY REFERENCES cdr_sip_response (id),\
+			lastSIPresponseNum smallint NULL,\
+			id_sensor smallint NULL,\
+			a_ua_id int NULL\
+				FOREIGN KEY REFERENCES cdr_ua (id),\
+			b_ua_id int NULL\
+				FOREIGN KEY REFERENCES cdr_ua (id),\
+			fbasename varchar(255) NULL,\
+			message TEXT);\
+		CREATE INDEX calldate ON message (calldate);\
+		CREATE INDEX caller ON message (caller);\
+		CREATE INDEX caller_domain ON message (caller_domain);\
+		CREATE INDEX caller_reverse ON message (caller_reverse);\
+		CREATE INDEX callername ON message (callername);\
+		CREATE INDEX callername_reverse ON message (callername_reverse);\
+		CREATE INDEX called ON message (called);\
+		CREATE INDEX called_reverse ON message (called_reverse);\
+		CREATE INDEX sipcallerip ON message (sipcallerip);\
+		CREATE INDEX sipcalledip ON message (sipcalledip);\
+		CREATE INDEX lastSIPresponseNum ON message (lastSIPresponseNum);\
+		CREATE INDEX bye ON message (bye);\
+		CREATE INDEX lastSIPresponse_id ON message (lastSIPresponse_id);\
+		CREATE INDEX id_sensor ON message (id_sensor);\
+		CREATE INDEX a_ua_id ON message (a_ua_id);\
+		CREATE INDEX b_ua_id ON message (b_ua_id);\
+		CREATE INDEX fbasename ON message (fbasename);\
+	END");
+	
+	this->query(
+	"IF NOT EXISTS (SELECT * FROM sys.objects WHERE name = 'register') BEGIN\
+		CREATE TABLE register (\
+			ID int PRIMARY KEY IDENTITY,\
+			calldate datetime NOT NULL,\
+			sipcallerip bigint NOT NULL,\
+			sipcalledip bigint NOT NULL,\
+			from_num varchar(255) NULL,\
+			from_name varchar(255) NULL,\
+			from_domain varchar(255) NULL,\
+			to_num varchar(255) NULL,\
+			to_domain varchar(255) NULL,\
+			contact_num varchar(255) NULL,\
+			contact_domain varchar(255) NULL,\
+			digestusername varchar(255) NULL,\
+			digestrealm varchar(255) NULL,\
+			expires int NULL,\
+			expires_at datetime NULL,\
+			state tinyint NULL,\
+			ua_id int NULL);\
+		CREATE INDEX calldate ON register (calldate);\
+		CREATE INDEX sipcallerip ON register (sipcallerip);\
+		CREATE INDEX sipcalledip ON register (sipcalledip);\
+		CREATE INDEX from_num ON register (from_num);\
+		CREATE INDEX digestusername ON register (digestusername)\
+	END");
+
+	this->query(
+	"IF NOT EXISTS (SELECT * FROM sys.objects WHERE name = 'register_state') BEGIN\
+		CREATE TABLE register_state (\
+			ID int PRIMARY KEY IDENTITY,\
+			created_at datetime NOT NULL,\
+			sipcallerip bigint NOT NULL,\
+			sipcalledip bigint NOT NULL,\
+			from_num varchar(255) NULL,\
+			to_num varchar(255) NULL,\
+			contact_num varchar(255) NULL,\
+			contact_domain varchar(255) NULL,\
+			digestusername varchar(255) NULL,\
+			expires int NULL,\
+			state tinyint NULL,\
+			ua_id int NULL);\
+		CREATE INDEX created_at ON register_state (created_at);\
+		CREATE INDEX sipcallerip ON register_state (sipcallerip);\
+		CREATE INDEX sipcalledip ON register_state (sipcalledip);\
+	END");
+	
+	this->query(
+	"IF NOT EXISTS (SELECT * FROM sys.objects WHERE name = 'register_failed') BEGIN\
+		CREATE TABLE register_failed (\
+			ID int PRIMARY KEY IDENTITY,\
+			counter int DEFAULT 0,\
+			created_at datetime NOT NULL,\
+			sipcallerip bigint NOT NULL,\
+			sipcalledip bigint NOT NULL,\
+			from_num varchar(255) NULL,\
+			to_num varchar(255) NULL,\
+			contact_num varchar(255) NULL,\
+			contact_domain varchar(255) NULL,\
+			digestusername varchar(255) NULL,\
+			ua_id int NULL);\
+		CREATE INDEX created_at ON register_failed (created_at);\
+		CREATE INDEX sipcallerip ON register_failed (sipcallerip);\
+		CREATE INDEX sipcalledip ON register_failed (sipcalledip);\
+	END");
+	
+	this->query(
+	"IF NOT EXISTS (SELECT * FROM sys.objects WHERE name = 'sensors') BEGIN\
+		CREATE TABLE sensors (\
+		id_sensor int PRIMARY KEY IDENTITY,\
+		host varchar(255) NULL,\
+		port int NULL,);\
+	END");
+
+	this->query(
+	"IF NOT EXISTS (SELECT * FROM sys.objects WHERE name = 'ipacc') BEGIN\
+		CREATE TABLE ipacc (\
+			saddr bigint NOT NULL,\
+			daddr bigint NOT NULL,\
+			port smallint NOT NULL,\
+			proto smallint NOT NULL,\
+			octects int NOT NULL,\
+			numpackets int NOT NULL,\
+			interval varchar(255) NULL,\
+		);\
+		CREATE INDEX saddr ON ipacc (saddr);\
+		CREATE INDEX daddr ON ipacc (daddr);\
+		CREATE INDEX port ON ipacc (port);\
+		CREATE INDEX proto ON ipacc (proto);\
+		CREATE INDEX interval ON ipacc (interval)\
+	END");
+	
+	this->query(
+	"IF NOT EXISTS (SELECT * FROM sys.objects WHERE name = 'livepacket') BEGIN\
+		CREATE TABLE livepacket (\
+			id int PRIMARY KEY IDENTITY,\
+			id_sensor INT NULL,\
+			sipcallerip BIGINT NOT NULL ,\
+			sipcalledip BIGINT NOT NULL ,\
+			sport SMALLINT NOT NULL ,\
+			dport SMALLINT NOT NULL ,\
+			istcp TINYINT NOT NULL ,\
+			created_at TIMESTAMP NOT NULL ,\
+			microseconds INT NOT NULL ,\
+			callid VARCHAR(255) NOT NULL ,\
+			description VARCHAR(1024),\
+			data VARBINARY(8000) NOT NULL);\
+		CREATE INDEX created_at__microseconds ON livepacket (created_at, microseconds)\
+	END");
+	
+	sql_noerror = 1;
+
+	//5.2 -> 5.3
+	if(opt_match_header[0] != '\0') {
+		this->query("ALTER TABLE cdr_next\
+				ADD match_header VARCHAR(128)");
+		this->query("CREATE INDEX match_header ON cdr_next (match_header)");
+	}
+	//5.3 -> 5.4
+	this->query("CREATE INDEX to_domain ON register (to_domain)");
+	this->query("CREATE INDEX to_num ON register (to_num)");
+	this->query("ALTER TABLE register_state\
+			ADD to_domain varchar(255) NULL;");
+	this->query("ALTER TABLE register_failed\
+			ADD to_domain varchar(255) NULL;");
+	//5.4 -> 5.5
+	this->query("ALTER TABLE register_state\
+			ADD sipcalledip bigint");
+	this->query("CREATE INDEX sipcalledip ON register_state (sipcalledip)");
+	this->query("ALTER TABLE register_failed\
+			ADD sipcalledip bigint");
+	this->query("CREATE INDEX sipcalledip ON register_failed (sipcalledip)");
+	//6.0 -> 6.1
+	this->query("ALTER TABLE message\
+			ADD id_contenttype INT");
+	this->query("CREATE INDEX id_contenttype ON message (id_contenttype)");
+
+	sql_noerror = 0;
+	
+	this->query("IF EXISTS (SELECT name FROM sys.objects WHERE name = 'concat' AND type = 'FN') DROP FUNCTION dbo.concat");
+	this->query("CREATE FUNCTION dbo.concat(@str1 VARCHAR(MAX),@str2 VARCHAR(MAX))\
+			RETURNS VARCHAR(MAX) AS\
+			BEGIN\
+				RETURN @str1 + @str2\
+			END");
+	this->query("IF EXISTS (SELECT name FROM sys.objects WHERE name = 'trim' AND type = 'FN') DROP FUNCTION dbo.trim");
+	this->query("CREATE FUNCTION dbo.trim(@str VARCHAR(MAX))\
+			RETURNS VARCHAR(MAX) AS\
+			BEGIN\
+				RETURN LTRIM(RTRIM(@str))\
+			END");
+	this->query("IF EXISTS (SELECT name FROM sys.objects WHERE name = 'div' AND type = 'FN') DROP FUNCTION dbo.div");
+	this->query("CREATE FUNCTION dbo.div(@oper1 FLOAT,@oper2 FLOAT)\
+			RETURNS FLOAT AS\
+			BEGIN\
+				RETURN CASE WHEN (@oper2 is NULL or @oper2=0) THEN NULL ELSE @oper1/@oper2 END;\
+			END");
+	this->query("IF EXISTS (SELECT name FROM sys.objects WHERE name = 'iif' AND type = 'FN') DROP FUNCTION dbo.iif");
+	this->query("CREATE FUNCTION dbo.iif(@rsltCond VARCHAR(MAX),@rslt1 VARCHAR(MAX),@rslt2 VARCHAR(MAX))\
+			RETURNS FLOAT AS\
+			BEGIN\
+				RETURN CAST((CASE WHEN (@rsltCond is not NULL and @rsltCond<>0) THEN @rslt1 ELSE @rslt2 END) as FLOAT);\
+			END");
+	this->query("IF EXISTS (SELECT name FROM sys.objects WHERE name = 'greatest' AND type = 'FN') DROP FUNCTION dbo.greatest");
+	this->query("CREATE FUNCTION dbo.greatest(@par1 FLOAT,@par2 FLOAT)\
+			RETURNS FLOAT AS\
+			BEGIN\
+				RETURN CASE WHEN @par1>@par2 THEN @par1 ELSE coalesce(@par2, @par1) END;\
+			END");
+	this->query("IF EXISTS (SELECT name FROM sys.objects WHERE name = 'least' AND type = 'FN') DROP FUNCTION dbo.least");
+	this->query("CREATE FUNCTION dbo.least(@par1 FLOAT,@par2 FLOAT)\
+			RETURNS FLOAT AS\
+			BEGIN\
+				RETURN CASE WHEN @par1<@par2 THEN @par1 ELSE coalesce(@par2, @par1) END;\
+			END");
+	this->query("IF EXISTS (SELECT name FROM sys.objects WHERE name = 'inet_aton' AND type = 'FN') DROP FUNCTION dbo.inet_aton;");
+	this->query("CREATE FUNCTION dbo.inet_aton (@ipstr VARCHAR(15))\
+			RETURNS BIGINT AS\
+			BEGIN\
+				RETURN CAST(\
+					CAST((256*256*256) as BIGINT) * PARSENAME(@ipstr, 4) + \
+					256*256 * PARSENAME(@ipstr, 3) +\
+					256 * PARSENAME(@ipstr, 2) +\
+					1 * PARSENAME(@ipstr, 1) AS BIGINT);\
+			END");
+	this->query("IF EXISTS (SELECT name FROM sys.objects WHERE name = 'inet_ntoa' AND type = 'FN') DROP FUNCTION dbo.inet_ntoa");
+	this->query("CREATE FUNCTION dbo.inet_ntoa(@ipnumber BIGINT)\
+			RETURNS VARCHAR(15) AS\
+			BEGIN\
+				RETURN CAST(\
+					CAST(@ipnumber/(256*256*256) as VARCHAR(3)) + '.' +\
+					CAST(@ipnumber%(256*256*256)/(256*256) as VARCHAR(3)) + '.' +\
+					CAST(@ipnumber%(256*256)/(256) as VARCHAR(3)) + '.' +\
+					CAST(@ipnumber%256 as VARCHAR(3)) as VARCHAR(15));\
+			END");
+	this->query("IF EXISTS (SELECT name FROM sys.objects WHERE name = 'unix_timestamp' AND type = 'FN') DROP FUNCTION dbo.unix_timestamp");
+	this->query("CREATE FUNCTION dbo.unix_timestamp(@ctimestamp DATETIME)\
+			RETURNS INTEGER AS\
+			BEGIN\
+				RETURN DATEDIFF(SECOND, '1970-01-01', @ctimestamp)\
+			END");
+	this->query("IF EXISTS (SELECT name FROM sys.objects WHERE name = 'now' AND type = 'FN') DROP FUNCTION dbo.now");
+	this->query("CREATE FUNCTION now()\
+			RETURNS DATETIME AS\
+			BEGIN\
+				RETURN GETDATE()\
+			END");
+	this->query("IF EXISTS (SELECT name FROM sys.objects WHERE name = 'subtime' AND type = 'FN') DROP FUNCTION dbo.subtime");
+	this->query("CREATE FUNCTION dbo.subtime(@time1 DATETIME, @time2 DATETIME)\
+			RETURNS DATETIME AS\
+			BEGIN\
+				RETURN DATEADD(SECOND, -DATEDIFF(second, 0, @time2), @time1)\
+			END");
 }

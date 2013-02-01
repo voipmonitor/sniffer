@@ -1181,7 +1181,6 @@ int main(int argc, char *argv[]) {
 	cout << "SQL DRIVER: " << sql_driver << endl;
 	if(isSqlDriver("mysql")) {
 		sqlDb = new SqlDb_mysql();
-		sqlDb->enableSysLog();
 		sqlDb->setConnectParameters(mysql_host, mysql_user, mysql_password, mysql_database);
 	} else if(isSqlDriver("odbc")) {
 		SqlDb_odbc *sqlDb_odbc = new SqlDb_odbc();
@@ -1190,6 +1189,7 @@ int main(int argc, char *argv[]) {
 		sqlDb = sqlDb_odbc;
 		sqlDb->setConnectParameters(odbc_dsn, odbc_user, odbc_password);
 	}
+	sqlDb->enableSysLog();
 	if(!opt_nocdr) {
 		if(sqlDb->connect()) {
 			sqlDb->createSchema();
@@ -1749,6 +1749,13 @@ void test() {
 	telnumfilter->load();
 	telnumfilter->dump();
 	
+	/*
+	sqlDb->query("select _LC_[UNIX_TIMESTAMP('1970-01-01') = 0] as eee;");
+	SqlDb_row row = sqlDb->fetchRow();
+	cout << row["eee"] << endl;
+	*/
+	
+	/*
 	// výmaz - příprava
 	sqlDb->query("delete from cdr_sip_response where id > 0");
 	cout << sqlDb->getLastErrorString() << endl;
@@ -1773,6 +1780,7 @@ void test() {
 	
 	cout << sqlDb->getLastErrorString() << endl;
 	cout << endl << "--------------" << endl;
+	*/
 	
 	//exit(0);
 }

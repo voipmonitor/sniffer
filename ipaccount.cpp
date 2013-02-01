@@ -39,6 +39,7 @@ and insert them into Call class.
 #include "md5.h"
 #include "tools.h"
 #include "mirrorip.h"
+#include "sql_db.h"
 
 extern "C" {
 #include "liblfds.6/inc/liblfds.h"
@@ -125,6 +126,8 @@ extern pthread_mutex_t mysqlquery_lock;
 unsigned int last_flush = 0;
 unsigned int last_flush_ports = 0;
 
+extern SqlDb *sqlDb;
+
 #define IPACC_INTERVAL 300 // seconds
 
 
@@ -139,47 +142,43 @@ void flush_octets_ports() {
 		proto = ipacc_portsIT->second;
 		if(ipacc_portsIT->second->octects > 0) {
 			strcpy(keycb, ipacc_portsIT->first.c_str());
+			SqlDb_row row;
 			keyc = keycb;
-//			keyc = (char *)keycpy.c_str();
+			
 			tmp = strchr(keyc, 'D');
 			*tmp = '\0';
-			query.append("INSERT INTO `ipacc` SET saddr = '");
-			query.append(keyc);
-			query.append("', `daddr` = '");
+			row.add(keyc, "saddr");
 
 			keyc = tmp + 1;
 			tmp = strchr(keyc, 'E');
 			*tmp = '\0';
-			query.append(keyc);
-			query.append("', `port` = '");
+			row.add(keyc, "daddr");
 
 			keyc = tmp + 1;
 			tmp = strchr(keyc, 'P');
 			*tmp = '\0';
-			query.append(keyc);
-			query.append("', `proto` = '");
+			row.add(keyc, "port");
 
 			keyc = tmp + 1;
-			query.append(keyc);
+			row.add(keyc, "proto");
 
-			query.append("', `octects` = '");
 			sprintf(buf, "%u", proto->octects);
-			query.append(buf);
-			query.append("', `interval` = '");
+			row.add(buf, "octects");
+			
 			sprintf(buf, "%u", proto->lasttimestamp * IPACC_INTERVAL);
-			query.append(buf);
-			query.append("', `numpackets` = '");
+			row.add(buf, "interval");
+			
 			sprintf(buf, "%u", proto->numpackets);
-			query.append(buf);
-			query.append("'");
-
-			cout << query << "\n";
-
+			row.add(buf, "numpackets");
+			
+			if(isTypeDb("mysql")) {
+				mysqlquery.push(sqlDb->insertQuery("ipacc", row));
+			} else {
+				sqlDb->insert("ipacc", row);
+			}
 			//reset octects 
 			ipacc_portsIT->second->octects = 0;
 			ipacc_portsIT->second->numpackets = 0;
-
-			mysqlquery.push(query);
 		}
 	}
 	pthread_mutex_unlock(&mysqlquery_lock);

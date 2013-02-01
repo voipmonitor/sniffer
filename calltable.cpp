@@ -1600,14 +1600,10 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		
 		sqlDb->setEnableSqlStringInContent(false);
 		
-		query_str += "end if";
-
-		pthread_mutex_lock(&mysqlquery_lock);
-		mysqlquery.push(query_str);
-		pthread_mutex_unlock(&mysqlquery_lock);
+		query_str += "end if;\n";
 		
-		//cout << endl << endl << query_str << endl << endl << endl;
-		return(0);
+		cout << endl << endl << query_str << endl << endl << endl;
+		//return(0);
 	}
 
 	/*
@@ -1666,52 +1662,47 @@ Call::saveToDb(bool enableBatchIfPossible) {
 /* TODO: implement failover -> write INSERT into file */
 int
 Call::saveRegisterToDb() {
-	//const char *register_table = "register";
+	const char *register_table = "register";
 	
 	if(!prepareForEscapeString())
 		return(1);
 	
-	if(isTypeDb("mysql")) {
-		string query;
-		if(!sqlDb) {
-			return(false);
+	string query;
+
+	SqlDb_row cdr_ua;
+	cdr_ua.add(sqlEscapeString(a_ua), "ua");
+
+	unsigned int now = time(NULL);
+
+	if(last_register_clean == 0) {
+		// on first run the register table has to be deleted 
+		if(opt_sip_register_active_nologbin && isTypeDb("mysql")) {
+			sqlDb->query("SET sql_log_bin = 0;");
 		}
-
-		SqlDb_row cdr_ua;
-		cdr_ua.add(sqlEscapeString(a_ua), "ua");
-
-		unsigned int now = time(NULL);
-
-		if(last_register_clean == 0) {
-			// on first run the register table has to be deleted 
-			if(opt_sip_register_active_nologbin) {
-				sqlDb->query("SET sql_log_bin = 0;");
-			}
-			query = "DELETE FROM register";
-			sqlDb->query(query);
-			if(opt_sip_register_active_nologbin) {
-				sqlDb->query("SET sql_log_bin = 1;");
-			}
-		} else if((last_register_clean + REGISTER_CLEAN_PERIOD) < now){
-			// last clean was done older than CLEAN_PERIOD seconds
-			query = "INSERT INTO register_state (created_at, sipcallerip, from_num, to_num, to_domain, contact_num, contact_domain, digestusername, expires, state, ua_id) SELECT expires_at, sipcallerip, from_num, to_num, to_domain, contact_num, contact_domain, digestusername, expires, 5, ua_id FROM register WHERE expires_at <= NOW()";
-			sqlDb->query(query);
-			if(opt_sip_register_active_nologbin) {
-				sqlDb->query("SET sql_log_bin = 0;");
-			}
-			query = "DELETE FROM register WHERE expires_at <= NOW()";
-			if(opt_sip_register_active_nologbin) {
-				sqlDb->query("SET sql_log_bin = 1;");
-			}
-			sqlDb->query(query);
+		query = "DELETE FROM register";
+		sqlDb->query(query);
+		if(opt_sip_register_active_nologbin && isTypeDb("mysql")) {
+			sqlDb->query("SET sql_log_bin = 1;");
 		}
-		last_register_clean = now;
+	} else if((last_register_clean + REGISTER_CLEAN_PERIOD) < now){
+		// last clean was done older than CLEAN_PERIOD seconds
+		query = "INSERT INTO register_state (created_at, sipcallerip, from_num, to_num, to_domain, contact_num, contact_domain, digestusername, expires, state, ua_id) SELECT expires_at, sipcallerip, from_num, to_num, to_domain, contact_num, contact_domain, digestusername, expires, 5, ua_id FROM register WHERE expires_at <= NOW()";
+		sqlDb->query(query);
+		if(opt_sip_register_active_nologbin && isTypeDb("mysql")) {
+			sqlDb->query("SET sql_log_bin = 0;");
+		}
+		query = "DELETE FROM register WHERE expires_at <= NOW()";
+		if(opt_sip_register_active_nologbin && isTypeDb("mysql")) {
+			sqlDb->query("SET sql_log_bin = 1;");
+		}
+		sqlDb->query(query);
+	}
+	last_register_clean = now;
 
-		switch(regstate) {
-		case 1:
-		case 3:
-
-#if 1
+	switch(regstate) {
+	case 1:
+	case 3:
+		if(isTypeDb("mysql")) {
 			char ips[32];
 			char ipd[32];
 			sprintf(ips, "%u", htonl(sipcallerip));
@@ -1738,11 +1729,9 @@ Call::saveRegisterToDb() {
 				sqlEscapeStringBorder(sqlDateTimeString(calltime() + register_expires).c_str()) + ",'" + //mexpires_at
 				regexpires + "', " +
 				sqlEscapeStringBorder(a_ua) + ")";
-			//sqlDb->query(query);
 			pthread_mutex_lock(&mysqlquery_lock);
 			mysqlquery.push(query);
 			pthread_mutex_unlock(&mysqlquery_lock);
-#endif
 			// stored procedure
 
 /*
@@ -1794,9 +1783,15 @@ END~
 DELIMITER ; ~
 */
 
-#if 0
-
-			query = "SELECT ID, state, UNIX_TIMESTAMP(expires_at) AS expires_at, (UNIX_TIMESTAMP(expires_at) < UNIX_TIMESTAMP(" + sqlEscapeStringBorder(sqlDateTimeString(calltime())) + ")) AS expired FROM " + register_table + " WHERE to_num = " + sqlEscapeStringBorder(called) + " AND to_domain = " + sqlEscapeStringBorder(called_domain) + " AND digestusername = " + sqlEscapeStringBorder(digest_username) + " ORDER BY ID DESC LIMIT 1";
+		} else {
+			query = string(
+				"SELECT ID, state, ") +
+				       "UNIX_TIMESTAMP(expires_at) AS expires_at, " +
+				       "_LC_[(UNIX_TIMESTAMP(expires_at) < UNIX_TIMESTAMP(" + sqlEscapeStringBorder(sqlDateTimeString(calltime())) + "))] AS expired " +
+				"FROM " + register_table + " " +
+				"WHERE to_num = " + sqlEscapeStringBorder(called) + " AND to_domain = " + sqlEscapeStringBorder(called_domain) + 
+					" AND digestusername = " + sqlEscapeStringBorder(digest_username) + " " +
+				"ORDER BY ID DESC"; // LIMIT 1 
 //			if(verbosity > 2) cout << query << "\n";
 			{
 			if(!sqlDb->query(query)) {
@@ -1810,14 +1805,14 @@ DELIMITER ; ~
 				int expired = atoi(rsltRow["expired"].c_str()) == 1;
 				time_t expires_at = atoi(rsltRow["expires_at"].c_str());
 
-				if(opt_sip_register_active_nologbin) {
+				if(opt_sip_register_active_nologbin && isTypeDb("mysql")) {
 					sqlDb->query("SET sql_log_bin = 0;");
 				}
 				string query = "DELETE FROM " + (string)register_table + " WHERE ID = '" + (rsltRow["ID"]).c_str() + "'";
 				if(!sqlDb->query(query)) {
 					syslog(LOG_WARNING, "Query [%s] failed.", query.c_str());
 				}
-				if(opt_sip_register_active_nologbin) {
+				if(opt_sip_register_active_nologbin && isTypeDb("mysql")) {
 					sqlDb->query("SET sql_log_bin = 1;");
 				}
 
@@ -1835,8 +1830,8 @@ DELIMITER ; ~
 					reg.add(sqlEscapeString(digest_username), "digestusername");
 					reg.add(register_expires, "expires");
 					reg.add(5, "state");
-					reg.add(sqlDb->getIdOrInsert(sql_cdr_ua_table, "id", "ua", cdr_ua, ""), "ua_id");
-					sqlDb->insert("register_state", reg, "");
+					reg.add(sqlDb->getIdOrInsert(sql_cdr_ua_table, "id", "ua", cdr_ua), "ua_id");
+					sqlDb->insert("register_state", reg);
 				}
 
 				if(atoi(rsltRow["state"].c_str()) != regstate || register_expires == 0) {
@@ -1853,8 +1848,8 @@ DELIMITER ; ~
 					reg.add(sqlEscapeString(digest_username), "digestusername");
 					reg.add(register_expires, "expires");
 					reg.add(regstate, "state");
-					reg.add(sqlDb->getIdOrInsert(sql_cdr_ua_table, "id", "ua", cdr_ua, ""), "ua_id");
-					sqlDb->insert("register_state", reg, "");
+					reg.add(sqlDb->getIdOrInsert(sql_cdr_ua_table, "id", "ua", cdr_ua), "ua_id");
+					sqlDb->insert("register_state", reg);
 				}
 			} else {
 				// REGISTER message is new, store it to register_state
@@ -1870,8 +1865,8 @@ DELIMITER ; ~
 				reg.add(sqlEscapeString(digest_username), "digestusername");
 				reg.add(register_expires, "expires");
 				reg.add(regstate, "state");
-				reg.add(sqlDb->getIdOrInsert(sql_cdr_ua_table, "id", "ua", cdr_ua, ""), "ua_id");
-				sqlDb->insert("register_state", reg, "");
+				reg.add(sqlDb->getIdOrInsert(sql_cdr_ua_table, "id", "ua", cdr_ua), "ua_id");
+				sqlDb->insert("register_state", reg);
 			}
 
 			// save successfull REGISTER to register table in case expires is not negative
@@ -1890,52 +1885,57 @@ DELIMITER ; ~
 				reg.add(sqlEscapeString(contact_domain), "contact_domain");
 				reg.add(sqlEscapeString(digest_username), "digestusername");
 				reg.add(sqlEscapeString(digest_realm), "digestrealm");
-				reg.add(sqlDb->getIdOrInsert(sql_cdr_ua_table, "id", "ua", cdr_ua, ""), "ua_id");
+				reg.add(sqlDb->getIdOrInsert(sql_cdr_ua_table, "id", "ua", cdr_ua), "ua_id");
 				reg.add(register_expires, "expires");
 				reg.add(sqlEscapeString(sqlDateTimeString(calltime() + register_expires).c_str()), "expires_at");
 				reg.add(regstate, "state");
-				if(opt_sip_register_active_nologbin) {
+				if(opt_sip_register_active_nologbin && isTypeDb("mysql")) {
 					sqlDb->query("SET sql_log_bin = 0;");
 				}
-				int res = sqlDb->insert(register_table, reg, "") <= 0;
-				if(opt_sip_register_active_nologbin) {
+				int res = sqlDb->insert(register_table, reg) <= 0;
+				if(opt_sip_register_active_nologbin && isTypeDb("mysql")) {
 					sqlDb->query("SET sql_log_bin = 1;");
 				}
 				return res;
 			}
 			}
-#endif
-			break;
-		case 2:
-			// REGISTER failed. Check if there is already in register_failed table failed register within last hour 
-			query = "SELECT counter FROM register_failed WHERE to_num = " + sqlEscapeStringBorder(called) + " AND to_domain = " + sqlEscapeStringBorder(called_domain) + " AND digestusername = " + sqlEscapeStringBorder(digest_username) + " AND created_at >= SUBTIME(NOW(), '01:00:00')";
-			if(sqlDb->query(query)) {
-				SqlDb_row rsltRow = sqlDb->fetchRow();
-				if(rsltRow) {
-					// there is already failed register, update counter and do not insert
-					string query = "UPDATE register_failed SET counter = counter + 1 WHERE to_num = " + sqlEscapeStringBorder(called) + " AND digestusername = " + sqlEscapeStringBorder(digest_username) + " AND created_at >= SUBTIME(NOW(), '01:00:00')";
-					sqlDb->query(query);
-				} else {
-					// this is new failed attempt within hour, insert
-					SqlDb_row reg;
-					reg.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "created_at");
-					reg.add(htonl(sipcallerip), "sipcallerip");
-					reg.add(htonl(sipcalledip), "sipcalledip");
-					reg.add(sqlEscapeString(caller), "from_num");
-					reg.add(sqlEscapeString(called), "to_num");
-					reg.add(sqlEscapeString(called_domain), "to_domain");
-					reg.add(sqlEscapeString(contact_num), "contact_num");
-					reg.add(sqlEscapeString(contact_domain), "contact_domain");
-					reg.add(sqlEscapeString(digest_username), "digestusername");
-					reg.add(sqlDb->getIdOrInsert(sql_cdr_ua_table, "id", "ua", cdr_ua), "ua_id");
-					sqlDb->insert("register_failed", reg);
-				}
-			}
-			break;
 		}
-		return 1;
+		break;
+	case 2:
+		// REGISTER failed. Check if there is already in register_failed table failed register within last hour 
+		query = string(
+			"SELECT counter FROM register_failed ") +
+			"WHERE to_num = " + sqlEscapeStringBorder(called) + " AND to_domain = " + sqlEscapeStringBorder(called_domain) + 
+				" AND digestusername = " + sqlEscapeStringBorder(digest_username) + " AND created_at >= SUBTIME(NOW(), '01:00:00')";
+		if(sqlDb->query(query)) {
+			SqlDb_row rsltRow = sqlDb->fetchRow();
+			if(rsltRow) {
+				// there is already failed register, update counter and do not insert
+				string query = string(
+					"UPDATE register_failed SET counter = counter + 1 ") +
+					"WHERE to_num = " + sqlEscapeStringBorder(called) + " AND digestusername = " + sqlEscapeStringBorder(digest_username) + 
+						" AND created_at >= SUBTIME(NOW(), '01:00:00')";
+				sqlDb->query(query);
+			} else {
+				// this is new failed attempt within hour, insert
+				SqlDb_row reg;
+				reg.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "created_at");
+				reg.add(htonl(sipcallerip), "sipcallerip");
+				reg.add(htonl(sipcalledip), "sipcalledip");
+				reg.add(sqlEscapeString(caller), "from_num");
+				reg.add(sqlEscapeString(called), "to_num");
+				reg.add(sqlEscapeString(called_domain), "to_domain");
+				reg.add(sqlEscapeString(contact_num), "contact_num");
+				reg.add(sqlEscapeString(contact_domain), "contact_domain");
+				reg.add(sqlEscapeString(digest_username), "digestusername");
+				reg.add(sqlDb->getIdOrInsert(sql_cdr_ua_table, "id", "ua", cdr_ua), "ua_id");
+				sqlDb->insert("register_failed", reg);
+			}
+		}
+		break;
 	}
-	return 0;
+	
+	return 1;
 }
 
 int
@@ -1943,74 +1943,66 @@ Call::saveMessageToDb() {
 	if(!prepareForEscapeString())
 		return(1);
 
+	SqlDb_row cdr,
+			m_contenttype,
+			cdr_sip_response,
+			cdr_ua_a,
+			cdr_ua_b;
+	unsigned int 
+			lastSIPresponse_id = 0,
+			a_ua_id = 0,
+			b_ua_id = 0;
 
-	if(isTypeDb("mysql")) {
-		if(!sqlDb) {
-			return(false);
-		}
-		SqlDb_row cdr,
-			  m_contenttype,
-			  cdr_sip_response,
-			  cdr_ua_a,
-			  cdr_ua_b;
-		unsigned int 
-			     lastSIPresponse_id = 0,
-			     a_ua_id = 0,
-			     b_ua_id = 0;
+	if(opt_id_sensor > -1) {
+		cdr.add(opt_id_sensor, "id_sensor");
+	}
+	cdr.add(sqlEscapeString(caller), "caller");
+	cdr.add(sqlEscapeString(reverseString(caller).c_str()), "caller_reverse");
+	cdr.add(sqlEscapeString(called), "called");
+	cdr.add(sqlEscapeString(reverseString(called).c_str()), "called_reverse");
+	cdr.add(sqlEscapeString(caller_domain), "caller_domain");
+	cdr.add(sqlEscapeString(called_domain), "called_domain");
+	cdr.add(sqlEscapeString(callername), "callername");
+	cdr.add(sqlEscapeString(reverseString(callername).c_str()), "callername_reverse");
 
-		if(opt_id_sensor > -1) {
-			cdr.add(opt_id_sensor, "id_sensor");
-		}
-		cdr.add(sqlEscapeString(caller), "caller");
-		cdr.add(sqlEscapeString(reverseString(caller).c_str()), "caller_reverse");
-		cdr.add(sqlEscapeString(called), "called");
-		cdr.add(sqlEscapeString(reverseString(called).c_str()), "called_reverse");
-		cdr.add(sqlEscapeString(caller_domain), "caller_domain");
-		cdr.add(sqlEscapeString(called_domain), "called_domain");
-		cdr.add(sqlEscapeString(callername), "callername");
-		cdr.add(sqlEscapeString(reverseString(callername).c_str()), "callername_reverse");
+	cdr_sip_response.add(sqlEscapeString(lastSIPresponse), "lastSIPresponse");
 
-		cdr_sip_response.add(sqlEscapeString(lastSIPresponse), "lastSIPresponse");
+	cdr.add(htonl(sipcallerip), "sipcallerip");
+	cdr.add(htonl(sipcalledip), "sipcalledip");
+	cdr.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
 
-		cdr.add(htonl(sipcallerip), "sipcallerip");
-		cdr.add(htonl(sipcalledip), "sipcalledip");
-		cdr.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
-
-		cdr.add(sqlEscapeString(fbasename), "fbasename");
-		if(message) {
-			cdr.add(sqlEscapeString(message), "message");
-		}
-		if(contenttype) {
-			m_contenttype.add(sqlEscapeString(contenttype), "contenttype");
-			unsigned int id_contenttype = sqlDb->getIdOrInsert("contenttype", "id", "contenttype", m_contenttype);
-			cdr.add(id_contenttype, "id_contenttype");
-		}
-
-		cdr.add(lastSIPresponseNum, "lastSIPresponseNum");
-/*
-		if(strlen(match_header)) {
-			cdr_next.add(sqlEscapeString(match_header), "match_header");
-		}
-		if(strlen(custom_header1)) {
-			cdr_next.add(sqlEscapeString(custom_header1), "custom_header1");
-		}
-*/
-		lastSIPresponse_id = sqlDb->getIdOrInsert(sql_cdr_sip_response_table, "id", "lastSIPresponse", cdr_sip_response);
-		cdr_ua_a.add(sqlEscapeString(a_ua), "ua");
-		a_ua_id = sqlDb->getIdOrInsert(sql_cdr_ua_table, "id", "ua", cdr_ua_a);
-		cdr_ua_b.add(sqlEscapeString(b_ua), "ua");
-		b_ua_id = sqlDb->getIdOrInsert(sql_cdr_ua_table, "id", "ua", cdr_ua_b);
-
-		cdr.add(lastSIPresponse_id, "lastSIPresponse_id", true);
-		cdr.add(a_ua_id, "a_ua_id", true);
-		cdr.add(b_ua_id, "b_ua_id", true);
-
-		int cdrID = sqlDb->insert("message", cdr);
-
-		return(cdrID <= 0);
+	cdr.add(sqlEscapeString(fbasename), "fbasename");
+	if(message) {
+		cdr.add(sqlEscapeString(message), "message");
+	}
+	if(contenttype) {
+		m_contenttype.add(sqlEscapeString(contenttype), "contenttype");
+		unsigned int id_contenttype = sqlDb->getIdOrInsert("contenttype", "id", "contenttype", m_contenttype);
+		cdr.add(id_contenttype, "id_contenttype");
 	}
 
-	return -1;
+	cdr.add(lastSIPresponseNum, "lastSIPresponseNum");
+/*
+	if(strlen(match_header)) {
+		cdr_next.add(sqlEscapeString(match_header), "match_header");
+	}
+	if(strlen(custom_header1)) {
+		cdr_next.add(sqlEscapeString(custom_header1), "custom_header1");
+	}
+*/
+	lastSIPresponse_id = sqlDb->getIdOrInsert(sql_cdr_sip_response_table, "id", "lastSIPresponse", cdr_sip_response);
+	cdr_ua_a.add(sqlEscapeString(a_ua), "ua");
+	a_ua_id = sqlDb->getIdOrInsert(sql_cdr_ua_table, "id", "ua", cdr_ua_a);
+	cdr_ua_b.add(sqlEscapeString(b_ua), "ua");
+	b_ua_id = sqlDb->getIdOrInsert(sql_cdr_ua_table, "id", "ua", cdr_ua_b);
+
+	cdr.add(lastSIPresponse_id, "lastSIPresponse_id", true);
+	cdr.add(a_ua_id, "a_ua_id", true);
+	cdr.add(b_ua_id, "b_ua_id", true);
+
+	int cdrID = sqlDb->insert("message", cdr);
+
+	return(cdrID <= 0);
 }
 
 char *
