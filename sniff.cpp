@@ -133,6 +133,8 @@ int pcap_dlink;
 extern int opt_udpfrag;
 extern int global_livesniffer;
 extern int global_livesniffer_all;
+extern int opt_pcap_split;
+extern int opt_newdir;
 
 #ifdef QUEUE_MUTEX
 extern sem_t readpacket_thread_semaphore;
@@ -307,18 +309,44 @@ save:
 	return;
 }
 
-/* save packet into file */
-inline void save_packet(Call *call, struct pcap_pkthdr *header, const u_char *packet, unsigned int saddr, int source, unsigned int daddr, int dest, int istcp, char *data, int datalen) {
+/*
+   save packet into file 
+   type - 1 is SIP, 2 is RTP, 3 is RTCP
+
+*/
+inline void save_packet(Call *call, struct pcap_pkthdr *header, const u_char *packet, unsigned int saddr, int source, unsigned int daddr, int dest, int istcp, char *data, int datalen, int type) {
 	// check if it should be stored to mysql 
 	if(global_livesniffer and (sipportmatrix[source] || sipportmatrix[dest])) {
 		save_live_packet(call, header, packet, saddr, source, daddr, dest, istcp, data, datalen);
 	}
 
-	if (call->get_f_pcap() != NULL){
-		call->set_last_packet_time(header->ts.tv_sec);
-		pcap_dump((u_char *) call->get_f_pcap(), header, packet);
-		if (opt_packetbuffered) 
-			pcap_dump_flush(call->get_f_pcap());
+	if(opt_newdir and opt_pcap_split) {
+		switch(type) {
+		case TYPE_SIP:
+			if(call->get_fsip_pcap() != NULL){
+				call->set_last_packet_time(header->ts.tv_sec);
+				pcap_dump((u_char *) call->get_fsip_pcap(), header, packet);
+				if (opt_packetbuffered) 
+					pcap_dump_flush(call->get_fsip_pcap());
+			}
+			break;
+		case TYPE_RTP:
+		case TYPE_RTCP:
+			if(call->get_frtp_pcap() != NULL){
+				call->set_last_packet_time(header->ts.tv_sec);
+				pcap_dump((u_char *) call->get_frtp_pcap(), header, packet);
+				if (opt_packetbuffered) 
+					pcap_dump_flush(call->get_frtp_pcap());
+			}
+			break;
+		}
+	} else {
+		if (call->get_f_pcap() != NULL){
+			call->set_last_packet_time(header->ts.tv_sec);
+			pcap_dump((u_char *) call->get_f_pcap(), header, packet);
+			if (opt_packetbuffered) 
+				pcap_dump_flush(call->get_f_pcap());
+		}
 	}
 }
 
@@ -969,30 +997,115 @@ Call *new_invite_register(int sip_method, char *data, int datalen, struct pcap_p
 
 	// opening dump file
 	if(call->type != REGISTER && (call->flags & (FLAG_SAVESIP | FLAG_SAVEREGISTER | FLAG_SAVERTP | FLAG_SAVEWAV) || opt_savewav_force)) {
-		if(opt_cachedir[0] != '\0') {
-			sprintf(str2, "%s/%s", opt_cachedir, call->dirname());
-			mkdir(str2, 0777);
+		static string lastdir;
+		if(lastdir != call->dirname()) {
+			string tmp, dir;
+			if(opt_cachedir[0] != '\0') {
+	//			sprintf(str2, "%s/%s", opt_cachedir, call->dirname().c_str());
+				string dir;
+				dir = opt_cachedir;
+				dir += "/" + call->dirname();
+				if(opt_newdir) {
+					tmp = dir + "/ALL";
+					mkdir_r(tmp, 0777);
+					tmp = dir + "/SIP";
+					mkdir_r(tmp, 0777);
+					tmp = dir + "/RTP";
+					mkdir_r(tmp, 0777);
+					tmp = dir + "/GRAPH";
+					mkdir_r(tmp, 0777);
+					tmp = dir + "/AUDIO";
+					mkdir_r(tmp, 0777);
+				} else {
+					mkdir_r(dir, 0777);
+				}
+			}
+			dir = call->dirname();
+			if(opt_newdir) {
+				tmp = dir + "/ALL";
+				mkdir_r(tmp, 0777);
+				tmp = dir + "/SIP";
+				mkdir_r(tmp, 0777);
+				tmp = dir + "/RTP";
+				mkdir_r(tmp, 0777);
+				tmp = dir + "/GRAPH";
+				mkdir_r(tmp, 0777);
+				tmp = dir + "/AUDIO";
+				mkdir_r(tmp, 0777);
+				mkdir_r(call->dirname(), 0777);
+			} else {
+				mkdir_r(dir, 0777);
+			}
+			
+			lastdir = call->dirname();
 		}
-		mkdir(call->dirname(), 0777);
 	}
 	if(call->type != REGISTER && ((call->flags & (FLAG_SAVESIP | FLAG_SAVEREGISTER | FLAG_SAVERTP)) || (call->isfax && opt_saveudptl))) {
-		if(opt_cachedir[0] != '\0') {
-			sprintf(str2, "%s/%s/%s.pcap", opt_cachedir, call->dirname(), call->get_fbasename_safe());
-		} else {
-			sprintf(str2, "%s/%s.pcap", call->dirname(), call->get_fbasename_safe());
-		}
-		sprintf(call->pcapfilename, "%s/%s.pcap", call->dirname(), call->get_fbasename_safe());
-		if(!file_exists(str2)) {
-			call->set_f_pcap(pcap_dump_open(handle, str2));
-			if(call->get_f_pcap() == NULL) {
-				syslog(LOG_NOTICE,"pcap [%s] cannot be opened: %s\n", str2, pcap_geterr(handle));
+		// open one pcap for all packets or open SIP and RTP separatly
+		call->set_f_pcap(NULL);
+		call->set_fsip_pcap(NULL);
+		call->set_frtp_pcap(NULL);
+		if(opt_newdir and opt_pcap_split) {
+			//SIP
+			if(opt_cachedir[0] != '\0') {
+				sprintf(str2, "%s/%s/%s/%s.pcap", opt_cachedir, call->dirname().c_str(), opt_newdir ? "SIP" : "", call->get_fbasename_safe());
+			} else {
+				sprintf(str2, "%s/%s/%s.pcap", call->dirname().c_str(), opt_newdir ? "SIP" : "", call->get_fbasename_safe());
 			}
-			if(verbosity > 3) {
-				syslog(LOG_NOTICE,"pcap_filename: [%s]\n", str2);
+			call->sip_pcapfilename = call->dirname() + (opt_newdir ? "/SIP" : "") + "/" + call->get_fbasename_safe() + ".pcap";
+			if(!file_exists(str2)) {
+				call->set_fsip_pcap(pcap_dump_open(handle, str2));
+				if(call->get_fsip_pcap() == NULL) {
+					syslog(LOG_NOTICE,"pcap [%s] cannot be opened: %s\n", str2, pcap_geterr(handle));
+				}
+				if(verbosity > 3) {
+					syslog(LOG_NOTICE,"pcap_filename: [%s]\n", str2);
+				}
+			} else {
+				if(verbosity > 0) {
+					syslog(LOG_NOTICE,"pcap_filename: [%s] already exists, do not overwriting\n", str2);
+				}
+			}
+			//RTP
+			if(opt_cachedir[0] != '\0') {
+				sprintf(str2, "%s/%s/%s/%s.pcap", opt_cachedir, call->dirname().c_str(), opt_newdir ? "RTP" : "", call->get_fbasename_safe());
+			} else {
+				sprintf(str2, "%s/%s/%s.pcap", call->dirname().c_str(), opt_newdir ? "RTP" : "", call->get_fbasename_safe());
+			}
+			call->rtp_pcapfilename = call->dirname() + (opt_newdir ? "/RTP" : "") + "/" + call->get_fbasename_safe() + ".pcap";
+			if(!file_exists(str2)) {
+				call->set_frtp_pcap(pcap_dump_open(handle, str2));
+				if(call->get_frtp_pcap() == NULL) {
+					syslog(LOG_NOTICE,"pcap [%s] cannot be opened: %s\n", str2, pcap_geterr(handle));
+				}
+				if(verbosity > 3) {
+					syslog(LOG_NOTICE,"pcap_filename: [%s]\n", str2);
+				}
+			} else {
+				if(verbosity > 0) {
+					syslog(LOG_NOTICE,"pcap_filename: [%s] already exists, do not overwriting\n", str2);
+				}
 			}
 		} else {
-			if(verbosity > 0) {
-				syslog(LOG_NOTICE,"pcap_filename: [%s] already exists, do not overwriting\n", str2);
+			if(opt_cachedir[0] != '\0') {
+				sprintf(str2, "%s/%s/%s/%s.pcap", opt_cachedir, call->dirname().c_str(), opt_newdir ? "ALL" : "", call->get_fbasename_safe());
+			} else {
+				sprintf(str2, "%s/%s/%s.pcap", call->dirname().c_str(), opt_newdir ? "ALL" : "", call->get_fbasename_safe());
+			}
+			call->pcapfilename = call->dirname() + "/" + call->get_fbasename_safe() + ".pcap";
+			if(!file_exists(str2)) {
+				call->set_f_pcap(pcap_dump_open(handle, str2));
+				if(call->get_f_pcap() == NULL) {
+					syslog(LOG_NOTICE,"pcap [%s] cannot be opened: %s\n", str2, pcap_geterr(handle));
+				}
+				if(verbosity > 3) {
+					syslog(LOG_NOTICE,"pcap_filename: [%s]\n", str2);
+				}
+			} else {
+				call->set_f_pcap(NULL);
+				if(verbosity > 0) {
+					syslog(LOG_NOTICE,"pcap_filename: [%s] already exists, do not overwriting\n", str2);
+				}
 			}
 		}
 	}
@@ -1201,7 +1314,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 								while(tmpstream) {
 									if(call) {
 										// if packet belongs to (or created) call, save each packets to pcap and destroy TCP stream
-										save_packet(call, &tmpstream->header, (const u_char*)tmpstream->packet, saddr, source, daddr, dest, istcp, (char *)newdata, sizeof(u_char) * newlen);
+										save_packet(call, &tmpstream->header, (const u_char*)tmpstream->packet, saddr, source, daddr, dest, istcp, (char *)newdata, sizeof(u_char) * newlen, TYPE_SIP);
 									}
 									free(tmpstream->data);
 									free(tmpstream->packet);
@@ -1213,7 +1326,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 								tcp_streams_hashed[hash] = NULL;
 								// save also current packet 
 								if(call) {
-									save_packet(call, header, packet, saddr, source, daddr, dest, istcp, (char *)data, datalen);
+									save_packet(call, header, packet, saddr, source, daddr, dest, istcp, (char *)data, datalen, TYPE_SIP);
 								}
 								return NULL;
 							} else {
@@ -1288,7 +1401,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 						while(tmpstream) {
 							if(call) {
 								// if packet belongs to (or created) call, save each packets to pcap and destroy TCP stream
-								save_packet(call, &tmpstream->header, (const u_char*)tmpstream->packet, saddr, source, daddr, dest, istcp, (char *)newdata, sizeof(u_char) * newlen);
+								save_packet(call, &tmpstream->header, (const u_char*)tmpstream->packet, saddr, source, daddr, dest, istcp, (char *)newdata, sizeof(u_char) * newlen, TYPE_SIP);
 							}
 							free(tmpstream->data);
 							free(tmpstream->packet);
@@ -1300,7 +1413,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 						tcp_streams_hashed[hash] = NULL;
 						// save also current packet 
 						if(call) {
-							save_packet(call, header, packet, saddr, source, daddr, dest, istcp, (char *)data, datalen);
+							save_packet(call, header, packet, saddr, source, daddr, dest, istcp, (char *)data, datalen, TYPE_SIP);
 						}
 						return NULL;
 					}
@@ -1357,7 +1470,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 						while(tmpstream) {
 							if(call) {
 								// if packet belongs to (or created) call, save each packets to pcap and destroy TCP stream
-								save_packet(call, &tmpstream->header, (const u_char*)tmpstream->packet, saddr, source, daddr, dest, istcp, (char *)newdata, sizeof(u_char) * newlen);
+								save_packet(call, &tmpstream->header, (const u_char*)tmpstream->packet, saddr, source, daddr, dest, istcp, (char *)newdata, sizeof(u_char) * newlen, TYPE_SIP);
 							}
 							free(tmpstream->data);
 							free(tmpstream->packet);
@@ -1367,7 +1480,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 						}
 						// save also current packet 
 						if(call) {
-							save_packet(call, header, packet, saddr, source, daddr, dest, istcp, (char *)data, datalen);
+							save_packet(call, header, packet, saddr, source, daddr, dest, istcp, (char *)data, datalen, TYPE_SIP);
 						}
 						free(newdata);
 						tcp_streams_hashed[hash] = NULL;
@@ -1718,7 +1831,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 
 						call->seenbyeandok = true;
 						if(!dontsave && call->flags & (FLAG_SAVESIP | FLAG_SAVEREGISTER)) {
-							save_packet(call, header, packet, saddr, source, daddr, dest, istcp, data, datalen);
+							save_packet(call, header, packet, saddr, source, daddr, dest, istcp, data, datalen, TYPE_SIP);
 						}
 /*
 	Whan voipmonitor listens for both SIP legs (with the same Call-ID it sees both BYE and should save both 200 OK after BYE so closing call after the 
@@ -1726,21 +1839,6 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 */
 						// destroy call after 5 seonds from now 
 						call->destroy_call_at = header->ts.tv_sec + 5;
-/*
-						if (call->get_f_pcap() != NULL){
-							pcap_dump_flush(call->get_f_pcap());
-							pcap_dump_close(call->get_f_pcap());
-							call->set_f_pcap(NULL);
-						}
-						// we have to close all raw files as there can be data in buffers 
-						call->closeRawFiles();
-						calltable->lock_calls_queue();
-						calltable->calls_queue.push(call);	// push it to CDR queue at the end of queue
-						calltable->unlock_calls_queue();
-						calltable->calls_list.remove(call);
-						if(verbosity > 2)
-							syslog(LOG_NOTICE, "Call closed\n");
-*/
 						return call;
 					} else if(strncmp(cseq, call->invitecseq, cseqlen) == 0) {
 						call->seeninviteok = true;
@@ -1767,20 +1865,10 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 					}
 					// save packet 
 					if(!dontsave && opt_saveSIP) {
-						save_packet(call, header, packet, saddr, source, daddr, dest, istcp, data, datalen);
+						save_packet(call, header, packet, saddr, source, daddr, dest, istcp, data, datalen, TYPE_SIP);
 					}
 					call->destroy_call_at = header->ts.tv_sec + 5;
 
-/*
-					// we have to close all raw files as there can be data in buffers 
-					call->closeRawFiles();
-					calltable->lock_calls_queue();
-					calltable->calls_queue.push(call);	// push it to CDR queue at the end of queue
-					calltable->unlock_calls_queue();
-					calltable->calls_list.remove(call);
-					if(verbosity > 2)
-						syslog(LOG_NOTICE, "Call closed [%d]\n", lastSIPresponseNum);
-*/
 					return call;
 			}
 		}
@@ -1996,7 +2084,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 		data[datalen - 1] = a;
 
 		if(!dontsave && call->flags & (FLAG_SAVESIP | FLAG_SAVEREGISTER)) {
-			save_packet(call, header, packet, saddr, source, daddr, dest, istcp, data, datalen);
+			save_packet(call, header, packet, saddr, source, daddr, dest, istcp, data, datalen, TYPE_SIP);
 		}
 
 		return call;
@@ -2024,7 +2112,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 				call->read_rtcp((unsigned char*) data, datalen, header, saddr, source, iscaller);
 			}
 			if(!dontsave && (opt_saveRTP || opt_saveRTCP)) {
-				save_packet(call, header, packet, saddr, source, daddr, dest, istcp, data, datalen);
+				save_packet(call, header, packet, saddr, source, daddr, dest, istcp, data, datalen, TYPE_RTP);
 			}
 			return call;
 		}
@@ -2041,10 +2129,10 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 			if(opt_onlyRTPheader && !call->isfax) {
 				tmp_u32 = header->caplen;
 				header->caplen = header->caplen - (datalen - RTP_FIXED_HEADERLEN);
-				save_packet(call, header, packet, saddr, source, daddr, dest, istcp, data, datalen);
+				save_packet(call, header, packet, saddr, source, daddr, dest, istcp, data, datalen, TYPE_RTP);
 				header->caplen = tmp_u32;
 			} else {
-				save_packet(call, header, packet, saddr, source, daddr, dest, istcp, data, datalen);
+				save_packet(call, header, packet, saddr, source, daddr, dest, istcp, data, datalen, TYPE_RTP);
 			}
 
 		}
@@ -2072,7 +2160,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 				call->read_rtcp((unsigned char*) data, datalen, header, saddr, source, !iscaller);
 			}
 			if(!dontsave && (opt_saveRTP || opt_saveRTCP)) {
-				save_packet(call, header, packet, saddr, source, daddr, dest, istcp, data, datalen);
+				save_packet(call, header, packet, saddr, source, daddr, dest, istcp, data, datalen, TYPE_RTP);
 			}
 			return call;
 		}
@@ -2089,10 +2177,10 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 			if(opt_onlyRTPheader && !call->isfax) {
 				tmp_u32 = header->caplen;
 				header->caplen = header->caplen - (datalen - RTP_FIXED_HEADERLEN);
-				save_packet(call, header, packet, saddr, source, daddr, dest, istcp, data, datalen);
+				save_packet(call, header, packet, saddr, source, daddr, dest, istcp, data, datalen, TYPE_RTP);
 				header->caplen = tmp_u32;
 			} else {
-				save_packet(call, header, packet, saddr, source, daddr, dest, istcp, data, datalen);
+				save_packet(call, header, packet, saddr, source, daddr, dest, istcp, data, datalen, TYPE_RTP);
 			}
 		}
 	// packet does not belongs to established call, check if it is on SIP port
@@ -2131,13 +2219,13 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 
 			// opening dump file
 			if((call->flags & (FLAG_SAVESIP | FLAG_SAVEREGISTER | FLAG_SAVERTP | FLAG_SAVEWAV) || opt_savewav_force ) || (call->isfax && opt_saveudptl)) {
-				mkdir(call->dirname(), 0777);
+				mkdir_r(call->dirname().c_str(), 0777);
 			}
 			if((call->flags & (FLAG_SAVESIP | FLAG_SAVEREGISTER | FLAG_SAVERTP)) || (call->isfax && opt_saveudptl)) {
-				sprintf(str2, "%s/%s.pcap", call->dirname(), s);
+				sprintf(str2, "%s/%s.pcap", call->dirname().c_str(), s);
 				if(!file_exists(str2)) {
 					call->set_f_pcap(pcap_dump_open(handle, str2));
-					sprintf(call->pcapfilename, "%s/%s.pcap", call->dirname(), s);
+					call->pcapfilename = call->dirname() + "/" + call->get_fbasename_safe() + ".pcap";
 				} else {
 					if(verbosity > 0) {
 						syslog(LOG_NOTICE,"pcap_filename: [%s] already exists, do not overwriting\n", str2);

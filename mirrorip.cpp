@@ -76,7 +76,7 @@ MirrorIP::send(char *data, int datalen) {
 	int res;
 	if((res = sendto(sockraw, mirror_packet, datalen + sizeof(struct iphdr), 0, (struct sockaddr *)&dest_addr, sizeof(struct sockaddr))) == -1)
 	{
-		printf("msglen[%d]\n", datalen + sizeof(struct iphdr));
+		printf("msglen[%u]\n", datalen + sizeof(struct iphdr));
 		perror("sendto");
 	}
 	return res;

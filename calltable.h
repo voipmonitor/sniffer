@@ -79,7 +79,7 @@ public:
 	bool seenbye;			//!< true if we see SIP BYE within the Call
 	bool seenbyeandok;		//!< true if we see SIP OK TO BYE OR TO CANEL within the Call
 	bool sighup;			//!< true if call is saving during sighup
-	char *dirname();		//!< name of the directory to store files for the Call
+	string dirname();		//!< name of the directory to store files for the Call
 	char a_ua[1024];		//!< caller user agent 
 	char b_ua[1024];		//!< callee user agent 
 	int rtpmap[MAX_IP_PER_CALL][MAX_RTPMAP]; //!< rtpmap for every rtp stream
@@ -125,7 +125,9 @@ public:
 	char lastSIPresponse[128];
 	int lastSIPresponseNum;
 
-	char pcapfilename[512];
+	string sip_pcapfilename;
+	string rtp_pcapfilename;
+	string pcapfilename;
 
 	char *contenttype;
 	char *message;
@@ -231,6 +233,8 @@ public:
 	 *
 	 * @return file descriptor of the writing pcap file
 	*/
+	pcap_dumper_t *get_fsip_pcap() { return fsip_pcap; };
+	pcap_dumper_t *get_frtp_pcap() { return frtp_pcap; };
 	pcap_dumper_t *get_f_pcap() { return f_pcap; };
 	
 	/**
@@ -238,6 +242,8 @@ public:
 	 *
 	 * @param file descriptor
 	*/
+	void set_fsip_pcap(pcap_dumper_t *f_pcap) { this->fsip_pcap = f_pcap; };
+	void set_frtp_pcap(pcap_dumper_t *f_pcap) { this->frtp_pcap = f_pcap; };
 	void set_f_pcap(pcap_dumper_t *f_pcap) { this->f_pcap = f_pcap; };
 
 	/**
@@ -373,7 +379,8 @@ private:
 	bool iscaller[MAX_IP_PER_CALL];         //!< is that RTP stream from CALLER party? 
 	int ipport_n;				//!< last index of addr and port array 
 	pcap_dumper_t *f_pcap;
-	char sdirname[255];
+	pcap_dumper_t *fsip_pcap;
+	pcap_dumper_t *frtp_pcap;
 };
 
 typedef struct {

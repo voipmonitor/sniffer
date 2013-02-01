@@ -83,6 +83,7 @@ extern pthread_mutex_t mysqlquery_lock;
 extern queue<string> mysqlquery;
 extern int opt_cdronlyanswered;
 extern int opt_cdronlyrtp;
+extern int opt_newdir;
 
 int calls = 0;
 
@@ -104,6 +105,8 @@ Call::Call(char *call_id, unsigned long call_id_len, time_t time, void *ct) {
 	this->call_id[MIN(call_id_len, MAX_CALL_ID)] = '\0';
 	this->call_id_len = call_id_len;
 	f_pcap = NULL;
+	fsip_pcap = NULL;
+	frtp_pcap = NULL;
 	whohanged = -1;
 	seeninvite = false;
 	seeninviteok = false;
@@ -220,12 +223,28 @@ Call::~Call(){
 		*listening_worker_run = 0;
 	}
 
+	if (get_fsip_pcap() != NULL){
+		pcap_dump_flush(get_fsip_pcap());
+		pcap_dump_close(get_fsip_pcap());
+		set_fsip_pcap(NULL);
+		if(opt_cachedir[0] != '\0') {
+			addtocachequeue(sip_pcapfilename.c_str());
+		}
+	}
+	if (get_frtp_pcap() != NULL){
+		pcap_dump_flush(get_frtp_pcap());
+		pcap_dump_close(get_frtp_pcap());
+		set_frtp_pcap(NULL);
+		if(opt_cachedir[0] != '\0') {
+			addtocachequeue(rtp_pcapfilename.c_str());
+		}
+	}
 	if (get_f_pcap() != NULL){
 		pcap_dump_flush(get_f_pcap());
 		pcap_dump_close(get_f_pcap());
 		set_f_pcap(NULL);
 		if(opt_cachedir[0] != '\0') {
-			addtocachequeue(pcapfilename);
+			addtocachequeue(pcapfilename.c_str());
 		}
 	}
 
@@ -258,11 +277,17 @@ Call::closeRawFiles() {
 }
 
 /* returns name of the directory in format YYYY-MM-DD */
-char *
+string
 Call::dirname() {
+	char sdirname[255];
 	struct tm *t = localtime((const time_t*)(&first_packet_time));
-	sprintf(sdirname, "%04d-%02d-%02d",  t->tm_year + 1900, t->tm_mon + 1, t->tm_mday);
-	return sdirname;
+	if(opt_newdir) {
+		sprintf(sdirname, "%04d-%02d-%02d/%02d/%02d",  t->tm_year + 1900, t->tm_mon + 1, t->tm_mday, t->tm_hour, t->tm_min);
+	} else {
+		sprintf(sdirname, "%04d-%02d-%02d",  t->tm_year + 1900, t->tm_mon + 1, t->tm_mday);
+	}
+	string s(sdirname);
+	return s;
 }
 
 /* add ip adress and port to this call */
@@ -411,11 +436,11 @@ Call::read_rtp(unsigned char* data, int datalen, struct pcap_pkthdr *header, u_i
 		rtp_cur[iscaller] = rtp[ssrc_n]; 
 		char tmp[1024];
 		if(opt_cachedir[0] != '\0') {
-			sprintf(tmp, "%s/%s/%s.%d.graph%s", opt_cachedir, dirname(), get_fbasename_safe(), ssrc_n, opt_gzipGRAPH ? ".gz" : "");
+			sprintf(tmp, "%s/%s/%s/%s.%d.graph%s", opt_cachedir, dirname().c_str(), opt_newdir ? "GRAPH" : "", get_fbasename_safe(), ssrc_n, opt_gzipGRAPH ? ".gz" : "");
 		} else {
-			sprintf(tmp, "%s/%s.%d.graph%s", dirname(), get_fbasename_safe(), ssrc_n, opt_gzipGRAPH ? ".gz" : "");
+			sprintf(tmp, "%s/%s/%s.%d.graph%s", dirname().c_str(), opt_newdir ? "GRAPH" : "", get_fbasename_safe(), ssrc_n, opt_gzipGRAPH ? ".gz" : "");
 		}
-		sprintf(rtp[ssrc_n]->gfilename, "%s/%s.%d.graph%s", dirname(), get_fbasename_safe(), ssrc_n, opt_gzipGRAPH ? ".gz" : "");
+		sprintf(rtp[ssrc_n]->gfilename, "%s/%s/%s.%d.graph%s", dirname().c_str(), opt_newdir ? "GRAPH" : "", get_fbasename_safe(), ssrc_n, opt_gzipGRAPH ? ".gz" : "");
 		if(flags & FLAG_SAVEGRAPH) {
 			if(opt_gzipGRAPH) {
 				rtp[ssrc_n]->gfileGZ.open(tmp);
@@ -424,7 +449,7 @@ Call::read_rtp(unsigned char* data, int datalen, struct pcap_pkthdr *header, u_i
 			}
 		}
 		rtp[ssrc_n]->gfileRAW = NULL;
-		sprintf(rtp[ssrc_n]->basefilename, "%s/%s.i%d", dirname(), get_fbasename_safe(), iscaller);
+		sprintf(rtp[ssrc_n]->basefilename, "%s/%s/%s.i%d", dirname().c_str(), opt_newdir ? "AUDIO" : "", get_fbasename_safe(), iscaller);
 //		int i = get_index_by_ip_port(saddr, port);
 //		if(i >= 0) {
 			//memcpy(this->rtp[ssrc_n]->rtpmap, rtpmap[i], MAX_RTPMAP * sizeof(int));
@@ -447,27 +472,47 @@ void Call::stoprecording() {
 		char str2[2048];
 
 		this->flags = 0;
-		pcap_dump_flush(this->get_f_pcap());
+		if(this->get_fsip_pcap() != NULL) {
+			pcap_dump_flush(this->get_fsip_pcap());
+			pcap_dump_close(this->get_fsip_pcap());
+			this->set_fsip_pcap(NULL);
+			if(opt_cachedir[0] != '\0') {
+				sprintf(str2, "%s/%s.pcap", opt_cachedir, sip_pcapfilename.c_str());
+			} else {
+				sprintf(str2, "%s.pcap", sip_pcapfilename.c_str());
+			}
+			unlink(str2);	
+		}
+		if(this->get_frtp_pcap() != NULL) {
+			pcap_dump_flush(this->get_frtp_pcap());
+			pcap_dump_close(this->get_frtp_pcap());
+			this->set_frtp_pcap(NULL);
+			if(opt_cachedir[0] != '\0') {
+				sprintf(str2, "%s/%s.pcap", opt_cachedir, rtp_pcapfilename.c_str());
+			} else {
+				sprintf(str2, "%s.pcap", rtp_pcapfilename.c_str());
+			}
+			unlink(str2);	
+		}
 		if(this->get_f_pcap() != NULL) {
+			pcap_dump_flush(this->get_f_pcap());
 			pcap_dump_close(this->get_f_pcap());
 			this->set_f_pcap(NULL);
+			if(opt_cachedir[0] != '\0') {
+				sprintf(str2, "%s/%s.pcap", opt_cachedir, pcapfilename.c_str());
+			} else {
+				sprintf(str2, "%s.pcap", pcapfilename.c_str());
+			}
+			unlink(str2);	
 		}
 
-		if(opt_cachedir[0] != '\0') {
-			addtocachequeue(pcapfilename);
-			sprintf(str2, "%s/%s.pcap", opt_cachedir, pcapfilename);
-		} else {
-			sprintf(str2, "%s.pcap", pcapfilename);
-		}
-
-		unlink(str2);	
 		this->recordstopped = 1;
 		if(verbosity >= 1) {
-			syslog(LOG_ERR,"Call %s/%s.pcap was stopped due to dtmf or norecord sip header. ", this->dirname(), this->get_fbasename_safe());
+			syslog(LOG_ERR,"Call %s/%s.pcap was stopped due to dtmf or norecord sip header. ", this->dirname().c_str(), this->get_fbasename_safe());
 		}
 	} else {
 		if(verbosity >= 1) {
-			syslog(LOG_ERR,"Call %s/%s.pcap was stopped before. Ignoring now. ", this->dirname(), this->get_fbasename_safe());
+			syslog(LOG_ERR,"Call %s/%s.pcap was stopped before. Ignoring now. ", this->dirname().c_str(), this->get_fbasename_safe());
 		}
 	}
 }
@@ -651,20 +696,20 @@ Call::convertRawToWav() {
 	int adir = 1;
 	int bdir = 1;
 
-	sprintf(wav0, "%s/%s.i0.wav", dirname(), get_fbasename_safe());
-	sprintf(wav1, "%s/%s.i1.wav", dirname(), get_fbasename_safe());
+	sprintf(wav0, "%s/%s/%s.i0.wav", dirname().c_str(), opt_newdir ? "AUDIO" : "", get_fbasename_safe());
+	sprintf(wav1, "%s/%s/%s.i1.wav", dirname().c_str(), opt_newdir ? "AUDIO" : "", get_fbasename_safe());
 	switch(opt_audio_format) {
 	case FORMAT_WAV:
-		sprintf(out, "%s/%s.wav", dirname(), get_fbasename_safe());
+		sprintf(out, "%s/%s/%s.wav", dirname().c_str(), opt_newdir ? "AUDIO" : "", get_fbasename_safe());
 		break;
 	case FORMAT_OGG:
-		sprintf(out, "%s/%s.ogg", dirname(), get_fbasename_safe());
+		sprintf(out, "%s/%s/%s.ogg", dirname().c_str(), opt_newdir ? "AUDIO" : "", get_fbasename_safe());
 		break;
 	}
 
 	/* do synchronisation - calculate difference between start of both RTP direction and put silence to achieve proper synchronisation */
 	/* first direction */
-	sprintf(rawInfo, "%s/%s.i%d.rawInfo", dirname(), get_fbasename_safe(), 0);
+	sprintf(rawInfo, "%s/%s/%s.i%d.rawInfo", dirname().c_str(), opt_newdir ? "AUDIO" : "", get_fbasename_safe(), 0);
 	pl = fopen(rawInfo, "r");
 	if(!pl) {
 		adir = 0;
@@ -676,7 +721,7 @@ Call::convertRawToWav() {
 		sscanf(line, "%d:%lu:%d:%ld:%ld", &ssrc_index, &rawiterator, &codec, &tv0.tv_sec, &tv0.tv_usec);
 	}
 	/* second direction */
-	sprintf(rawInfo, "%s/%s.i%d.rawInfo", dirname(), get_fbasename_safe(), 1);
+	sprintf(rawInfo, "%s/%s/%s.i%d.rawInfo", dirname().c_str(), opt_newdir ? "AUDIO" : "", get_fbasename_safe(), 1);
 	pl = fopen(rawInfo, "r");
 	if(!pl) {
 		bdir = 0;
@@ -689,7 +734,7 @@ Call::convertRawToWav() {
 	}
 
 	if(adir == 0 && bdir == 0) {
-		syslog(LOG_ERR, "PCAP file %s/%s.pcap cannot be decoded to WAV probably missing RTP\n", dirname(), get_fbasename_safe());
+		syslog(LOG_ERR, "PCAP file %s/%s/%s.pcap cannot be decoded to WAV probably missing RTP\n", dirname().c_str(), opt_newdir ? "AUDIO" : "", get_fbasename_safe());
 		return 1;
 	}
 
@@ -752,7 +797,7 @@ Call::convertRawToWav() {
 		char *wav = i ? wav1 : wav0;
 
 		/* open playlist */
-		sprintf(rawInfo, "%s/%s.i%d.rawInfo", dirname(), get_fbasename_safe(), i);
+		sprintf(rawInfo, "%s/%s/%s.i%d.rawInfo", dirname().c_str(), opt_newdir ? "AUDIO" : "", get_fbasename_safe(), i);
 		pl = fopen(rawInfo, "r");
 		if(!pl) {
 			syslog(LOG_ERR, "Cannot open %s\n", rawInfo);
@@ -762,7 +807,7 @@ Call::convertRawToWav() {
 			char raw[1024];
 			line[strlen(line)] = '\0'; // remove '\n' which is last character
 			sscanf(line, "%d:%lu:%d:%ld:%ld", &ssrc_index, &rawiterator, &codec, &tv0.tv_sec, &tv0.tv_usec);
-			sprintf(raw, "%s/%s.i%d.%d.%lu.%d.%ld.%ld.raw", dirname(), get_fbasename_safe(), i, ssrc_index, rawiterator, codec, tv0.tv_sec, tv0.tv_usec);
+			sprintf(raw, "%s/%s/%s.i%d.%d.%lu.%d.%ld.%ld.raw", dirname().c_str(), opt_newdir ? "AUDIO" : "", get_fbasename_safe(), i, ssrc_index, rawiterator, codec, tv0.tv_sec, tv0.tv_usec);
 
 			switch(codec) {
 			case PAYLOAD_PCMA:
@@ -838,10 +883,10 @@ Call::convertRawToWav() {
 			default:
 				syslog(LOG_ERR, "Call [%s] cannot be converted to WAV, unknown payloadtype [%d]\n", raw, payloadtype);
 			}
-			//unlink(raw);
+			unlink(raw);
 		}
 		fclose(pl);
-		//unlink(rawInfo);
+		unlink(rawInfo);
 	}
 
 	if(adir == 1 && bdir == 1) {
@@ -2301,12 +2346,32 @@ Calltable::cleanup( time_t currtime ) {
 		// rtptimeout seconds of inactivity will save this call and remove from call table
 		if(call->rtppcaketsinqueue == 0 and (currtime == 0 || (call->destroy_call_at != 0 and call->destroy_call_at <= currtime) || (currtime - call->get_last_packet_time() > rtptimeout))) {
 			call->hashRemove();
+			if (call->get_fsip_pcap() != NULL){
+				pcap_dump_flush(call->get_fsip_pcap());
+				if (call->get_fsip_pcap() != NULL) {
+					pcap_dump_close(call->get_fsip_pcap());
+					if(opt_cachedir[0] != '\0') {
+						call->addtocachequeue(call->sip_pcapfilename.c_str());
+					}
+				}
+				call->set_fsip_pcap(NULL);
+			}
+			if (call->get_frtp_pcap() != NULL){
+				pcap_dump_flush(call->get_frtp_pcap());
+				if (call->get_frtp_pcap() != NULL) {
+					pcap_dump_close(call->get_frtp_pcap());
+					if(opt_cachedir[0] != '\0') {
+						call->addtocachequeue(call->rtp_pcapfilename.c_str());
+					}
+				}
+				call->set_frtp_pcap(NULL);
+			}
 			if (call->get_f_pcap() != NULL){
 				pcap_dump_flush(call->get_f_pcap());
 				if (call->get_f_pcap() != NULL) {
 					pcap_dump_close(call->get_f_pcap());
 					if(opt_cachedir[0] != '\0') {
-						call->addtocachequeue(call->pcapfilename);
+						call->addtocachequeue(call->pcapfilename.c_str());
 					}
 				}
 				call->set_f_pcap(NULL);
@@ -2336,6 +2401,16 @@ Calltable::cleanup( time_t currtime ) {
 
 void Call::saveregister() {
 	hashRemove();
+	if (get_fsip_pcap() != NULL){
+		pcap_dump_flush(get_fsip_pcap());
+		if (get_fsip_pcap() != NULL) {
+			pcap_dump_close(get_fsip_pcap());
+			if(opt_cachedir[0] != '\0') {
+				addtocachequeue(pcapfilename.c_str());
+			}
+		}
+		set_fsip_pcap(NULL);
+	}
 	if (get_f_pcap() != NULL){
 		pcap_dump_flush(get_f_pcap());
 		if (get_f_pcap() != NULL) {

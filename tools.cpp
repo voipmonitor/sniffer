@@ -88,3 +88,42 @@ set_mac() {
 		0xff & buffer.ifr_hwaddr.sa_data[5]);
 }
 
+/*
+int mkdir_r(const char* file_path, mode_t mode) {
+	if(!file_path) return 0;
+
+	char buf[1024];
+	strncpy(buf, file_path, 1023);
+	char *p = buf;
+	for (p = buf; p; p = strchr(p + 1, '/')) {
+		*p = '\0';
+		mkdir(file_path, mode);
+		*p = '/';
+	}
+	return 0;
+}
+*/
+
+int
+mkdir_r(std::string s, mode_t mode)
+{
+	size_t pre = 0, pos;
+	std::string dir;
+	int mdret = 0;
+
+	if(s[s.size() - 1 ] != '/'){
+		// force trailing / so we can handle everything in loop
+		s += '/';
+	}
+
+	while((pos = s.find_first_of('/', pre)) != std::string::npos) {
+		dir = s.substr(0, pos++);
+		pre = pos;
+		if(dir.size() == 0) continue; // if leading / first time is 0 length
+		if((mdret = mkdir(dir.c_str(), mode)) && errno != EEXIST){
+			return mdret;
+		}
+	}
+	return mdret;
+}
+

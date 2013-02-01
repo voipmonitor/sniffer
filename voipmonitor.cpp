@@ -115,7 +115,8 @@ int opt_udpfrag = 1;
 MirrorIP *mirrorip = NULL;
 int opt_cdronlyanswered = 0;
 int opt_cdronlyrtp = 0;
-
+int opt_pcap_split = 1;
+int opt_newdir = 1;
 char opt_clientmanager[1024] = "";
 int opt_clientmanagerport = 9999;
 
@@ -750,6 +751,12 @@ int load_config(char *fname) {
 	}
 	if((value = ini.GetValue("general", "spooldir", NULL))) {
 		strncpy(opt_chdir, value, sizeof(opt_chdir));
+	}
+	if((value = ini.GetValue("general", "spooldiroldschema", NULL))) {
+		opt_newdir = !yesno(value);
+	}
+	if((value = ini.GetValue("general", "pcapsplit", NULL))) {
+		opt_pcap_split = yesno(value);
 	}
 	if((value = ini.GetValue("general", "scanpcapdir", NULL))) {
 		strncpy(opt_scanpcapdir, value, sizeof(opt_scanpcapdir));
@@ -1422,7 +1429,7 @@ int main(int argc, char *argv[]) {
 			// if reading file
 			rtp_threaded = 0;
 			opt_mirrorip = 0; // disable mirroring packets when reading pcap files from file
-			opt_cachedir[0] = '\0'; //disabling cache if reading from file 
+//			opt_cachedir[0] = '\0'; //disabling cache if reading from file 
 			opt_pcap_threaded = 0; //disable threading because it is useless while reading packets from file
 			opt_cleanspool_interval = 0; // disable cleaning spooldir when reading from file 
 			opt_manager_port = 0; // disable cleaning spooldir when reading from file 
