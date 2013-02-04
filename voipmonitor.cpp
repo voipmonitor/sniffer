@@ -1627,31 +1627,36 @@ int main(int argc, char *argv[]) {
 					syslog(LOG_ERR, "Couldn't open pcap file '%s': %s\n", filename, errbuf);
 					continue;
 				} else {
-					if(!handle) handle = scanhandle; // keep the first handle as global handle and do not change it because it is not threadsafe to close/open it while the other parts are using it
+					if(!handle) {
+						// keep the first handle as global handle and do not change it because it is not threadsafe to close/open it while the other parts are using it
+						handle = (pcap_t *)malloc(sizeof(pcap_t));	
+						memcpy(handle, scanhandle, sizeof(pcap_t));
+					}
 				}
 				if(*user_filter != '\0') {
 					snprintf(filter_exp, sizeof(filter_exp), "%s", user_filter);
 
 					// Compile and apply the filter
-					if (pcap_compile(handle, &fp, filter_exp, 0, mask) == -1) {
-						syslog(LOG_ERR, "Couldn't parse filter %s: %s\n", filter_exp, pcap_geterr(handle));
+					if (pcap_compile(scanhandle, &fp, filter_exp, 0, mask) == -1) {
+						syslog(LOG_ERR, "Couldn't parse filter %s: %s\n", filter_exp, pcap_geterr(scanhandle));
 						return(2);
 					}
-					if (pcap_setfilter(handle, &fp) == -1) {
-						syslog(LOG_ERR, "Couldn't install filter %s: %s\n", filter_exp, pcap_geterr(handle));
+					if (pcap_setfilter(scanhandle, &fp) == -1) {
+						syslog(LOG_ERR, "Couldn't install filter %s: %s\n", filter_exp, pcap_geterr(scanhandle));
 						return(2);
 					}
 				}
-				readdump_libpcap(handle);
+				readdump_libpcap(scanhandle);
 				unlink(filename);
 				if(*user_filter != '\0') {
 					pcap_freecode(&fp);
 				}
-				pcap_close(handle);
+				pcap_close(scanhandle);
 			}
 			//readend = 1;
 			usleep(100000);
 		}
+		if(handle) free handle;
 	} else {
 		// start reading packets
 		//readdump_libnids(handle);
