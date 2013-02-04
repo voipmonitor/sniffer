@@ -1092,7 +1092,7 @@ Call *new_invite_register(int sip_method, char *data, int datalen, struct pcap_p
 			} else {
 				sprintf(str2, "%s/%s/%s.pcap", call->dirname().c_str(), opt_newdir ? "ALL" : "", call->get_fbasename_safe());
 			}
-			call->pcapfilename = call->dirname() + "/" + call->get_fbasename_safe() + ".pcap";
+			call->pcapfilename = call->dirname() + (opt_newdir ? "/ALL/" : "/") + call->get_fbasename_safe() + ".pcap";
 			if(!file_exists(str2)) {
 				call->set_f_pcap(pcap_dump_open(handle, str2));
 				if(call->get_f_pcap() == NULL) {
