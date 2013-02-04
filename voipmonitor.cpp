@@ -1626,12 +1626,6 @@ int main(int argc, char *argv[]) {
 				if(scanhandle == NULL) {
 					syslog(LOG_ERR, "Couldn't open pcap file '%s': %s\n", filename, errbuf);
 					continue;
-				} else {
-					if(!handle) {
-						// keep the first handle as global handle and do not change it because it is not threadsafe to close/open it while the other parts are using it
-						handle = (pcap_t *)malloc(sizeof(pcap_t));	
-						memcpy(handle, scanhandle, sizeof(pcap_t));
-					}
 				}
 				if(*user_filter != '\0') {
 					snprintf(filter_exp, sizeof(filter_exp), "%s", user_filter);
@@ -1651,12 +1645,17 @@ int main(int argc, char *argv[]) {
 				if(*user_filter != '\0') {
 					pcap_freecode(&fp);
 				}
-				pcap_close(scanhandle);
+				if(!handle) {
+					// keep the first handle as global handle and do not change it because it is not threadsafe to close/open it while the other parts are using it
+					handle = scanhandle;
+				} else {
+					pcap_close(scanhandle);
+				}
 			}
 			//readend = 1;
 			usleep(100000);
 		}
-		if(handle) free handle;
+		if(handle) pcap_close(handle);
 	} else {
 		// start reading packets
 		//readdump_libnids(handle);
