@@ -1588,6 +1588,7 @@ int main(int argc, char *argv[]) {
 		dirent *dp;
 		char filter_exp[2048] = "";		// The filter expression
 		struct bpf_program fp;		// The compiled filter 
+		pcap_t *scanhandle = NULL;		// pcap handler 
 		while(1 and terminating == 0) {
 			tmp = 0;
 			min = 0 - 1;
@@ -1621,10 +1622,12 @@ int main(int argc, char *argv[]) {
 				// if reading file
 				//printf("Reading file: %s\n", filename);
 				mask = PCAP_NETMASK_UNKNOWN;
-				handle = pcap_open_offline(filename, errbuf);
-				if(handle == NULL) {
+				scanhandle = pcap_open_offline(filename, errbuf);
+				if(scanhandle == NULL) {
 					syslog(LOG_ERR, "Couldn't open pcap file '%s': %s\n", filename, errbuf);
 					continue;
+				} else {
+					if(!handle) handle = scanhandle; // keep the first handle as global handle and do not change it because it is not threadsafe to close/open it while the other parts are using it
 				}
 				if(*user_filter != '\0') {
 					snprintf(filter_exp, sizeof(filter_exp), "%s", user_filter);
