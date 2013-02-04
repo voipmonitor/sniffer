@@ -1613,6 +1613,7 @@ int main(int argc, char *argv[]) {
 				}
 			}
 			closedir(dirp);
+			int close = 1;
 			for(i = min; i < max; i++) {
 				if(terminating) {
 					break;
@@ -1623,6 +1624,13 @@ int main(int argc, char *argv[]) {
 				//printf("Reading file: %s\n", filename);
 				mask = PCAP_NETMASK_UNKNOWN;
 				scanhandle = pcap_open_offline(filename, errbuf);
+				if(!handle) {
+					// keep the first handle as global handle and do not change it because it is not threadsafe to close/open it while the other parts are using it
+					handle = scanhandle;
+					close = 0;
+				} else {
+					close = 1;
+				}
 				if(scanhandle == NULL) {
 					syslog(LOG_ERR, "Couldn't open pcap file '%s': %s\n", filename, errbuf);
 					continue;
@@ -1645,10 +1653,7 @@ int main(int argc, char *argv[]) {
 				if(*user_filter != '\0') {
 					pcap_freecode(&fp);
 				}
-				if(!handle) {
-					// keep the first handle as global handle and do not change it because it is not threadsafe to close/open it while the other parts are using it
-					handle = scanhandle;
-				} else {
+				if(close) {
 					pcap_close(scanhandle);
 				}
 			}
