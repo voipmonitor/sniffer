@@ -1,3 +1,17 @@
+version 6.5 Release candidate 2
+===============================
+- new option (cdronlyanswered = yes) write CDR to database only if call was answered 
+- new option (cdronlyrtp = yes) write CDR to database only if call has RTP 
+- fix WAV for SILK 24khz
+- created procedure __insert has to have unique name in case of multiple sensors (thanks Dmitry Sytchev)
+- reimplement live sniffer rules to allow multi user live sniffers
+- reimplement ODBC database support for MSSQL 
+- insert CDR in batch - increases CDR per second throughpat in case sensor is storing remotly
+- new spooldir schema stores all files to year-mon-day/hour/minute/[ALL|SIP|RTP|AUDIO] directories if you need to have the old schema year-mon-day/* enable spooldiroldschema = yes.
+- voipmonitor now by default splits SIP and RTP packets to individual files (in case spooldiroldschema = no) which are located in SIP and RTP directories. This feature allows instance cleaning RTP streams dif
+ferently then SIP packets. To join two pcap files SIP+RTP use mergecap command line utility which is included in wireshark package.
+- fix crashes when using pcapscandir 
+
 version 6.5 Release candidate 1
 ===============================
 - implement IP defragmentation for IP and IP in IP too 
