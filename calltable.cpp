@@ -1347,7 +1347,9 @@ Call::saveToDb(bool enableBatchIfPossible) {
 	}
 	
 	cdr_next.add(sqlEscapeString(fbasename), "fbasename");
-	
+	if(!geoposition.empty()) {
+		cdr_next.add(sqlEscapeString(geoposition), "GeoPosition");
+	}
 	cdr.add(sighup ? 1 : 0, "sighup");
 	cdr.add(lastSIPresponseNum, "lastSIPresponseNum");
 	cdr.add(seeninviteok ? (seenbye ? (seenbyeandok ? 3 : 2) : 1) : 0, "bye");
@@ -1600,10 +1602,13 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		
 		sqlDb->setEnableSqlStringInContent(false);
 		
-		query_str += "end if;\n";
+		query_str += "end if";
 		
-		cout << endl << endl << query_str << endl << endl << endl;
-		//return(0);
+		pthread_mutex_lock(&mysqlquery_lock);
+		mysqlquery.push(query_str);
+		pthread_mutex_unlock(&mysqlquery_lock);
+		//cout << endl << endl << query_str << endl << endl << endl;
+		return(0);
 	}
 
 	/*
@@ -1948,11 +1953,6 @@ Call::saveMessageToDb() {
 			cdr_sip_response,
 			cdr_ua_a,
 			cdr_ua_b;
-	unsigned int 
-			lastSIPresponse_id = 0,
-			a_ua_id = 0,
-			b_ua_id = 0;
-
 	if(opt_id_sensor > -1) {
 		cdr.add(opt_id_sensor, "id_sensor");
 	}
@@ -1970,7 +1970,9 @@ Call::saveMessageToDb() {
 	cdr.add(htonl(sipcallerip), "sipcallerip");
 	cdr.add(htonl(sipcalledip), "sipcalledip");
 	cdr.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
-
+	if(!geoposition.empty()) {
+		cdr.add(sqlEscapeString(geoposition), "GeoPosition");
+	}
 	cdr.add(sqlEscapeString(fbasename), "fbasename");
 	if(message) {
 		cdr.add(sqlEscapeString(message), "message");
@@ -1990,6 +1992,38 @@ Call::saveMessageToDb() {
 		cdr_next.add(sqlEscapeString(custom_header1), "custom_header1");
 	}
 */
+
+
+#if 1
+	string query_str;
+	
+	sqlDb->setEnableSqlStringInContent(true);
+	
+	query_str += "set @_last_insert_id = last_insert_id();\n";
+	
+	cdr.add(string("_\\_'SQL'_\\_:") + "getIdOrInsertSIPRES(" + sqlEscapeStringBorder(lastSIPresponse) + ")", "lastSIPresponse_id");
+	if(a_ua) {
+		cdr.add(string("_\\_'SQL'_\\_:") + "getIdOrInsertUA(" + sqlEscapeStringBorder(a_ua) + ")", "a_ua_id");
+	}
+	if(b_ua) {
+		cdr.add(string("_\\_'SQL'_\\_:") + "getIdOrInsertUA(" + sqlEscapeStringBorder(b_ua) + ")", "b_ua_id");
+	}
+	query_str += sqlDb->insertQuery("message", cdr);
+	
+	pthread_mutex_lock(&mysqlquery_lock);
+	mysqlquery.push(query_str);
+	pthread_mutex_unlock(&mysqlquery_lock);
+	//cout << endl << endl << query_str << endl << endl << endl;
+	return(0);
+#endif
+
+#if 0
+
+	unsigned int 
+			lastSIPresponse_id = 0,
+			a_ua_id = 0,
+			b_ua_id = 0;
+
 	lastSIPresponse_id = sqlDb->getIdOrInsert(sql_cdr_sip_response_table, "id", "lastSIPresponse", cdr_sip_response);
 	cdr_ua_a.add(sqlEscapeString(a_ua), "ua");
 	a_ua_id = sqlDb->getIdOrInsert(sql_cdr_ua_table, "id", "ua", cdr_ua_a);
@@ -2003,6 +2037,7 @@ Call::saveMessageToDb() {
 	int cdrID = sqlDb->insert("message", cdr);
 
 	return(cdrID <= 0);
+#endif
 }
 
 char *

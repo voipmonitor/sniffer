@@ -1315,6 +1315,12 @@ void SqlDb_mysql::createSchema() {
 			END;");
 
 	//this->multi_on();
+
+	//6.5RC2 ->
+	sql_noerror = 1;
+	this->query("ALTER TABLE message ADD GeoPosition varchar(255)");
+	this->query("ALTER TABLE cdr_next ADD GeoPosition varchar(255)");
+	sql_noerror = 0;
 }
 
 
@@ -1795,4 +1801,9 @@ void SqlDb_odbc::createSchema() {
 			BEGIN\
 				RETURN DATEADD(SECOND, -DATEDIFF(second, 0, @time2), @time1)\
 			END");
+
+	this->query("ALTER TABLE message\
+			ADD GeoPosition varchar(255) NULL;");
+	this->query("ALTER TABLE cdr\
+			ADD GeoPosition varchar(255) NULL;");
 }

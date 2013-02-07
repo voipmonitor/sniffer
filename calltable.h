@@ -150,6 +150,8 @@ public:
 	
 	int ssrc_n;				//!< last index of rtp array
 
+	string geoposition;
+
 	/**
 	 * constructor
 	 *

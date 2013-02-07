@@ -895,6 +895,17 @@ Call *new_invite_register(int sip_method, char *data, int datalen, struct pcap_p
 
 	/* this logic updates call on the first INVITES */
 	if (sip_method == INVITE or sip_method == REGISTER or sip_method == MESSAGE) {
+		//geolocation 
+		s = gettag(data, datalen, "\nGeoPosition:", &l);
+		if(l && l < 255) {
+			char buf[255];
+			memcpy(buf, s, l);
+			buf[l] = '\0';
+			if(verbosity > 2)
+				syslog(LOG_NOTICE, "Seen GeoPosition header: [%s]\n", buf);
+			call->geoposition = buf;
+		}
+
 		int res;
 		// callername
 		res = get_sip_peercnam(data,datalen,"\nFrom:", call->callername, sizeof(call->callername));

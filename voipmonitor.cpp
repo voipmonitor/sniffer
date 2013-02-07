@@ -386,7 +386,7 @@ void *storing_cdr( void *dummy ) {
 			if(!opt_nocdr) {
 				if(verbosity > 0) printf("storing to MySQL. Queue[%d]\n", (int)calltable->calls_queue.size());
 				if(call->type == INVITE) {
-					call->saveToDb();
+					call->saveToDb(1);
 				} else if(call->type == REGISTER){
 					call->saveRegisterToDb();
 				} else if(call->type == MESSAGE){
