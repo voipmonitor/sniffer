@@ -1743,7 +1743,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 				//check and save CSeq for later to compare with OK 
 				if(cseq && cseqlen < 32) {
 					memcpy(call->invitecseq, cseq, cseqlen);
-					call->invitecseq[l] = '\0';
+					call->invitecseq[cseqlen] = '\0';
 					if(verbosity > 2)
 						syslog(LOG_NOTICE, "Seen INVITE, CSeq: %s\n", call->invitecseq);
 				}
@@ -1759,7 +1759,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 				//check and save CSeq for later to compare with OK 
 				if(cseq && cseqlen < 32) {
 					memcpy(call->invitecseq, cseq, cseqlen);
-					call->invitecseq[l] = '\0';
+					call->invitecseq[cseqlen] = '\0';
 					if(verbosity > 2)
 						syslog(LOG_NOTICE, "Seen MEESAGE, CSeq: %s\n", call->invitecseq);
 				}
@@ -1815,7 +1815,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 				//check and save CSeq for later to compare with OK 
 				if(cseq && cseqlen < 32) {
 					memcpy(call->byecseq, cseq, cseqlen);
-					call->byecseq[l] = '\0';
+					call->byecseq[cseqlen] = '\0';
 					call->seenbye = true;
 					if(call->listening_worker_run) {
 						*(call->listening_worker_run) = 0;
