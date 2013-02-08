@@ -79,7 +79,7 @@ extern pthread_mutex_t readpacket_thread_queue_lock;
 #endif
 
 Calltable *calltable;
-extern int calls;
+extern volatile int calls;
 extern int opt_saveSIP;	  	// save SIP packets to pcap file?
 extern int opt_saveRTP;	 	// save RTP packets to pcap file?
 extern int opt_saveRTCP;	// save RTCP packets to pcap file?
@@ -135,6 +135,7 @@ extern int global_livesniffer;
 extern int global_livesniffer_all;
 extern int opt_pcap_split;
 extern int opt_newdir;
+extern int opt_callslimit;
 
 #ifdef QUEUE_MUTEX
 extern sem_t readpacket_thread_semaphore;
@@ -883,6 +884,11 @@ void *rtp_read_thread_func(void *arg) {
 }
 
 Call *new_invite_register(int sip_method, char *data, int datalen, struct pcap_pkthdr *header, char *callidstr, u_int32_t saddr, u_int32_t daddr, int source, char *s, long unsigned int l){
+	if(opt_callslimit != 0 and opt_callslimit > calls) {
+		if(verbosity > 0)
+			syslog(LOG_NOTICE, "callslimit[%d] > calls[%d] ignoring call\n", opt_callslimit, calls);
+	}
+
 	static char str2[1024];
 	// store this call only if it starts with invite
 	Call *call = calltable->add(s, l, header->ts.tv_sec, saddr, source);

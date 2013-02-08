@@ -85,7 +85,7 @@ extern int opt_cdronlyanswered;
 extern int opt_cdronlyrtp;
 extern int opt_newdir;
 
-int calls = 0;
+volatile int calls = 0;
 
 extern char mac[32];
 

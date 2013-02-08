@@ -58,7 +58,7 @@ using namespace std;
 /* global variables */
 
 extern Calltable *calltable;
-extern int calls;
+extern volatile int calls;
 int opt_packetbuffered = 0;	// Make .pcap files writing ‘‘packet-buffered’’ 
 				// more slow method, but you can use partitialy 
 				// writen file anytime, it will be consistent.
@@ -119,6 +119,7 @@ int opt_pcap_split = 1;
 int opt_newdir = 1;
 char opt_clientmanager[1024] = "";
 int opt_clientmanagerport = 9999;
+int opt_callslimit = 0;
 
 char configfile[1024] = "";	// config file name
 
@@ -901,6 +902,9 @@ int load_config(char *fname) {
 	}
 	if((value = ini.GetValue("general", "cdronlyrtp", NULL))) {
 		opt_cdronlyrtp = yesno(value);
+	}
+	if((value = ini.GetValue("general", "callslimit", NULL))) {
+		opt_callslimit = atoi(value);
 	}
 	return 0;
 }
