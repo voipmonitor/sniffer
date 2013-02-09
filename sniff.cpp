@@ -1436,10 +1436,8 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 					}
 					return NULL;
 				} else {
-					// it is not TCP check for datalen
-					if(datalen < 0) {
-						return NULL;
-					}
+					// it is not TCP and callid not found
+					return NULL;
 				}
 			}
 		}
