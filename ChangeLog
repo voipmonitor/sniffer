@@ -1,3 +1,7 @@
+version 6.5 Release candidate 3 (9.2.2013)
+========================================
+- fix critical issue with memory corruption introduced since 6.5 version
+
 version 6.5 Release candidate 2
 ===============================
 - new option (cdronlyanswered = yes) write CDR to database only if call was answered 
