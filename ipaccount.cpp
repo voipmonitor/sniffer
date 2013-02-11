@@ -27,6 +27,7 @@ and insert them into Call class.
 
 #include <pcap.h>
 
+#include "ipaccount.h"
 #include "flags.h"
 #include "codecs.h"
 #include "calltable.h"
@@ -120,6 +121,8 @@ map<string, octects_t*>::iterator ipacc_protosIT;
 
 map<string, octects_t*> ipacc_ports;
 map<string, octects_t*>::iterator ipacc_portsIT;
+
+map<unsigned int, octects_live_t*> ipacc_live;
 
 extern queue<string> mysqlquery;
 extern pthread_mutex_t mysqlquery_lock;
@@ -225,6 +228,35 @@ void add_octects_ipport(time_t timestamp, unsigned int saddr, unsigned int daddr
 		tmp->voippacket = voippacket;
 //		printf("key[%s] %u\n", key.c_str(), tmp->octects);
 	}
+
+	map<unsigned int, octects_live_t*>::iterator it;
+	octects_live_t *data;
+	for(it = ipacc_live.begin(); it != ipacc_live.end(); it++) {
+		data = it->second;
+		if(saddr == data->ipfilter) {
+			data->src_octects += packetlen;
+			data->src_numpackets++;
+			if(voippacket) {
+				data->voipsrc_octects += packetlen;
+				data->voipsrc_numpackets++;
+			}
+		} else if(daddr == data->ipfilter) {
+			data->dst_octects += packetlen;
+			data->dst_numpackets++;
+			if(voippacket) {
+				data->voipdst_octects += packetlen;
+				data->voipdst_numpackets++;
+			}
+		}
+		if(data->all) {
+			data->all_octects += packetlen;
+			data->all_numpackets++;
+		}
+		if(data->destroy) {
+			free(it->second);
+			ipacc_live.erase(it);
+		}
+	}
 }
 
 void ipaccount(time_t timestamp, struct iphdr *header_ip, int packetlen, int voippacket){
@@ -256,5 +288,4 @@ void ipaccount(time_t timestamp, struct iphdr *header_ip, int packetlen, int voi
 		add_octects_ipport(timestamp, header_ip->saddr, header_ip->daddr, 0, header_ip->protocol, packetlen, voippacket);
 	}
 
-//	printf("proto[%d]\n", header_ip->protocol);
 }

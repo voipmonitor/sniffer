@@ -18,6 +18,7 @@
 
 #include <sstream>
 
+#include "ipaccount.h"
 #include "voipmonitor.h"
 #include "calltable.h"
 #include "sniff.h"
@@ -45,6 +46,7 @@ extern int terminating;
 extern int opt_nocdr;
 extern int global_livesniffer;
 extern int global_livesniffer_all;
+extern map<unsigned int, octects_live_t*> ipacc_live;
 
 extern map<unsigned int, livesnifferfilter_t*> usersniffer;
 
@@ -301,26 +303,88 @@ int parse_command(char *buf, int size, int client, int eof) {
 		}
 		free(resbuf);
 		return 0;
-	} else if(strstr(buf, "stoplivesniffer")) {
-		sscanf(buf, "stoplivesniffer %u", &uid);
-		map<unsigned int, livesnifferfilter_t*>::iterator usersnifferIT = usersniffer.find(uid);
-		if(usersnifferIT != usersniffer.end()) {
-			global_livesniffer = 0;
-		//	global_livesniffer_all = 0;
-			free(usersnifferIT->second);
-			usersniffer.erase(usersnifferIT);
-/*
-			for(int i = 0; i < MAXLIVEFILTERS; i++) {
-				usersnifferIT->lv_saddr[i] = 0;
-				usersnifferIT->lv_daddr[i] = 0;
-				usersnifferIT->lv_bothaddr[i] = 0;
-				usersnifferIT->lv_srcnum[i][0] = '\0';
-				usersnifferIT->lv_dstnum[i][0] = '\0';
-				usersnifferIT->lv_bothnum[i][0] = '\0';
-			}
-*/
+	} else if(strstr(buf, "stopipaccount")) {
+		sscanf(buf, "stopipaccount %u", &uid);
+		map<unsigned int, octects_live_t*>::iterator it = ipacc_live.find(uid);
+		if(it != ipacc_live.end()) {
+			it->second->destroy = true;
 		}
 		return 0;
+	} else if(strstr(buf, "fetchipaccount")) {
+		sscanf(buf, "fetchipaccount %u", &uid);
+		map<unsigned int, octects_live_t*>::iterator it = ipacc_live.find(uid);
+		if(it != ipacc_live.end()) {
+			octects_live_t *data = it->second;
+			char sendbuf[1024];
+
+			snprintf(sendbuf, 1024, "%u;%u;%llu;%u;%llu;%u;%llu;%u;%llu;%u;%llu;%u", 
+				(unsigned int)time(NULL), data->ipfilter,
+				data->dst_octects, data->dst_numpackets, 
+				data->src_octects, data->src_numpackets, 
+				data->voipdst_octects, data->voipdst_numpackets, 
+				data->voipsrc_octects, data->voipsrc_numpackets, 
+				data->all_octects, data->all_numpackets);
+
+			if ((size = send(client, sendbuf, strlen(sendbuf), 0)) == -1){
+				cerr << "Error sending data to client" << endl;
+				return -1;
+			}
+		}
+		return 0;
+	} else if(strstr(buf, "getipaccount") != NULL) {
+		sscanf(buf, "getipaccount %u", &uid);
+		map<unsigned int, octects_live_t*>::iterator it = ipacc_live.find(uid);
+		if(it != ipacc_live.end()) {
+			snprintf(sendbuf, BUFSIZE, "%d", 1);
+		} else {
+			snprintf(sendbuf, BUFSIZE, "%d", 0);
+		}
+		if ((size = send(client, sendbuf, strlen(sendbuf), 0)) == -1){
+			cerr << "Error sending data to client" << endl;
+			return -1;
+		}
+	} else if(strstr(buf, "ipaccountfilter set") != NULL) {
+		char search[1024] = "";
+		char value[1024] = "";
+
+		sscanf(buf, "ipaccountfilter set %u %s %[^\n\r]", &uid, search, value);
+
+		if(memmem(search, sizeof(search), "ALL", 3)) {
+			map<unsigned int, octects_live_t*>::iterator it = ipacc_live.find(uid);
+			octects_live_t* filter;
+			if(it != ipacc_live.end()) {
+				filter = it->second;
+			} else {
+				filter = (octects_live_t*)calloc(1, sizeof(octects_live_t));
+				ipacc_live[uid] = filter;
+			}
+			filter->all = 1;
+			return 0;
+		}
+
+		map<unsigned int, octects_live_t*>::iterator ipacc_liveIT = ipacc_live.find(uid);
+		octects_live_t* filter;
+		if(ipacc_liveIT != ipacc_live.end()) {
+			filter = ipacc_liveIT->second;
+		} else {
+			filter = (octects_live_t*)calloc(1, sizeof(octects_live_t));
+			ipacc_live[uid] = filter;
+		}
+
+		if(strstr(search, "ipaddr")) {
+			filter->ipfilter = ntohl((unsigned int)inet_addr(value));
+		}
+///////////////////////////////////////////////////////////////
+        } else if(strstr(buf, "stoplivesniffer")) {
+                sscanf(buf, "stoplivesniffer %u", &uid);
+                map<unsigned int, livesnifferfilter_t*>::iterator usersnifferIT = usersniffer.find(uid);
+                if(usersnifferIT != usersniffer.end()) {
+                        global_livesniffer = 0;
+                //      global_livesniffer_all = 0;
+                        free(usersnifferIT->second);
+                        usersniffer.erase(usersnifferIT);
+                }
+                return 0;
 	} else if(strstr(buf, "getlivesniffer") != NULL) {
 		sscanf(buf, "getlivesniffer %u", &uid);
 		map<unsigned int, livesnifferfilter_t*>::iterator usersnifferIT = usersniffer.find(uid);
@@ -372,7 +436,7 @@ int parse_command(char *buf, int size, int client, int eof) {
 			}
 			stringstream  data(value);
 			string val;
-			// read all argumens livefilter set saddr 123 345 244
+			// read all argumens lkivefilter set saddr 123 345 244
 			i = 0;
 			while(i < MAXLIVEFILTERS and getline(data, val,' ')){
 				global_livesniffer = 1;

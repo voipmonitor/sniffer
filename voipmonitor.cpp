@@ -999,6 +999,7 @@ int main(int argc, char *argv[]) {
 	    {"rtp-nosig", 0, 0, 'I'},
 	    {"cachedir", 1, 0, 'C'},
 	    {"id-sensor", 1, 0, 's'},
+	    {"ipaccount", 0, 0, 'x'},
 	    {0, 0, 0, 0}
 	};
 
@@ -1012,7 +1013,7 @@ int main(int argc, char *argv[]) {
 	/* command line arguments overrides configuration in voipmonitor.conf file */
 	while(1) {
 		int c;
-		c = getopt_long(argc, argv, "C:f:i:r:d:v:O:h:b:t:u:p:P:s:T:D:e:E:m:LkncUSRoAWGXNIKy4M", long_options, &option_index);
+		c = getopt_long(argc, argv, "C:f:i:r:d:v:O:h:b:t:u:p:P:s:T:D:e:E:m:LkncUSRoAWGXNIKy4Mx", long_options, &option_index);
 		//"i:r:d:v:h:b:u:p:fnU", NULL, NULL);
 		if (c == -1)
 			break;
@@ -1023,6 +1024,9 @@ int main(int argc, char *argv[]) {
 				printf ("option %s\n", long_options[option_index].name);
 				break;
 			*/
+			case 'x':
+				opt_ipaccount = 1;
+				break;
 			case 'y':
 				for(int i = 5060; i < 5099; i++) {
 					sipportmatrix[i] = 1;
