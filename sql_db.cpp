@@ -1207,6 +1207,7 @@ void SqlDb_mysql::createSchema() {
 			`octects` int unsigned NOT NULL,\
 			`numpackets` mediumint unsigned NOT NULL,\
 			`interval` varchar(255) NULL DEFAULT NULL,\
+			`voip` tinyint unsigned DEFAULT 0,\
 		KEY `saddr` (`saddr`),\
 		KEY `daddr` (`daddr`),\
 		KEY `port` (`port`),\
@@ -1320,6 +1321,8 @@ void SqlDb_mysql::createSchema() {
 	sql_noerror = 1;
 	this->query("ALTER TABLE message ADD GeoPosition varchar(255)");
 	this->query("ALTER TABLE cdr_next ADD GeoPosition varchar(255)");
+
+	this->query("ALTER TABLE ipacc ADD voip tinyint unsigned default 0");
 	sql_noerror = 0;
 }
 
@@ -1672,6 +1675,7 @@ void SqlDb_odbc::createSchema() {
 			octects int NOT NULL,\
 			numpackets int NOT NULL,\
 			interval varchar(255) NULL,\
+			voip int NOT NULL\
 		);\
 		CREATE INDEX saddr ON ipacc (saddr);\
 		CREATE INDEX daddr ON ipacc (daddr);\

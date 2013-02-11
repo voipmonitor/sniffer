@@ -112,6 +112,7 @@ typedef struct {
 	unsigned int octects;
 	unsigned int numpackets;
 	unsigned int lasttimestamp;
+	int voippacket;
 } octects_t;
 
 map<string, octects_t*> ipacc_protos;
@@ -171,6 +172,9 @@ void flush_octets_ports() {
 			sprintf(buf, "%u", proto->numpackets);
 			row.add(buf, "numpackets");
 			
+			sprintf(buf, "%i", proto->voippacket);
+			row.add(buf, "voip");
+
 			if(isTypeDb("mysql")) {
 				mysqlquery.push(sqlDb->insertQuery("ipacc", row));
 			} else {
@@ -187,7 +191,7 @@ void flush_octets_ports() {
 	
 }
 
-void add_octects_ipport(time_t timestamp, unsigned int saddr, unsigned int daddr, int port, int proto, int packetlen) {
+void add_octects_ipport(time_t timestamp, unsigned int saddr, unsigned int daddr, int port, int proto, int packetlen, int voippacket) {
 	string key;
 	char buf[64];
 	octects_t *ports;
@@ -209,6 +213,7 @@ void add_octects_ipport(time_t timestamp, unsigned int saddr, unsigned int daddr
 		ports->octects += packetlen;
 		ports->numpackets++;
 		ports->lasttimestamp = timestamp / IPACC_INTERVAL;
+		ports->voippacket = voippacket;
 		ipacc_ports[key] = ports;
 //		printf("key: %s\n", buf);
 	} else {
@@ -217,40 +222,38 @@ void add_octects_ipport(time_t timestamp, unsigned int saddr, unsigned int daddr
 		tmp->octects += packetlen;
 		tmp->numpackets++;
 		tmp->lasttimestamp = timestamp / IPACC_INTERVAL;
+		tmp->voippacket = voippacket;
 //		printf("key[%s] %u\n", key.c_str(), tmp->octects);
 	}
-
-
 }
 
-void ipaccount(time_t timestamp, struct iphdr *header_ip, int packetlen){
+void ipaccount(time_t timestamp, struct iphdr *header_ip, int packetlen, int voippacket){
 	struct udphdr2 *header_udp;
 	struct tcphdr *header_tcp;
-
 
 	if (header_ip->protocol == IPPROTO_UDP) {
 		// prepare packet pointers 
 		header_udp = (struct udphdr2 *) ((char *) header_ip + sizeof(*header_ip));
 
 		if(ipaccountportmatrix[htons(header_udp->source)]) {
-			add_octects_ipport(timestamp, header_ip->saddr, header_ip->daddr, htons(header_udp->source), IPPROTO_TCP, packetlen);
+			add_octects_ipport(timestamp, header_ip->saddr, header_ip->daddr, htons(header_udp->source), IPPROTO_TCP, packetlen, voippacket);
 		} else if (ipaccountportmatrix[htons(header_udp->dest)]) {
-			add_octects_ipport(timestamp, header_ip->saddr, header_ip->daddr, htons(header_udp->dest), IPPROTO_TCP, packetlen);
+			add_octects_ipport(timestamp, header_ip->saddr, header_ip->daddr, htons(header_udp->dest), IPPROTO_TCP, packetlen, voippacket);
 		} else {
-			add_octects_ipport(timestamp, header_ip->saddr, header_ip->daddr, 0, IPPROTO_TCP, packetlen);
+			add_octects_ipport(timestamp, header_ip->saddr, header_ip->daddr, 0, IPPROTO_TCP, packetlen, voippacket);
 		}
 	} else if (header_ip->protocol == IPPROTO_TCP) {
 		header_tcp = (struct tcphdr *) ((char *) header_ip + sizeof(*header_ip));
 
 		if(ipaccountportmatrix[htons(header_tcp->source)]) {
-			add_octects_ipport(timestamp, header_ip->saddr, header_ip->daddr, htons(header_tcp->source), IPPROTO_TCP, packetlen);
+			add_octects_ipport(timestamp, header_ip->saddr, header_ip->daddr, htons(header_tcp->source), IPPROTO_TCP, packetlen, voippacket);
 		} else if (ipaccountportmatrix[htons(header_tcp->dest)]) {
-			add_octects_ipport(timestamp, header_ip->saddr, header_ip->daddr, htons(header_tcp->dest), IPPROTO_TCP, packetlen);
+			add_octects_ipport(timestamp, header_ip->saddr, header_ip->daddr, htons(header_tcp->dest), IPPROTO_TCP, packetlen, voippacket);
 		} else {
-			add_octects_ipport(timestamp, header_ip->saddr, header_ip->daddr, 0, IPPROTO_TCP, packetlen);
+			add_octects_ipport(timestamp, header_ip->saddr, header_ip->daddr, 0, IPPROTO_TCP, packetlen, voippacket);
 		}
 	} else {
-		add_octects_ipport(timestamp, header_ip->saddr, header_ip->daddr, 0, header_ip->protocol, packetlen);
+		add_octects_ipport(timestamp, header_ip->saddr, header_ip->daddr, 0, header_ip->protocol, packetlen, voippacket);
 	}
 
 //	printf("proto[%d]\n", header_ip->protocol);

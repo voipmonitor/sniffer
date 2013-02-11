@@ -6,6 +6,6 @@
 #ifndef IPACCOUNT_H
 #define IPACCOUNT_H
 
-void ipaccount(time_t, struct iphdr *, int);
+void ipaccount(time_t, struct iphdr *, int, int);
 
 #endif
