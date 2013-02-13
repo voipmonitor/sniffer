@@ -107,6 +107,30 @@ The RTP header has the following format:
 #define MAX_MISORDER 100
 #define MAX_DROPOUT 3000
 
+struct RTPFixedHeader {
+#if     __BYTE_ORDER == __BIG_ENDIAN
+	// For big endian boxes
+	unsigned char version:2;	// Version, currently 2
+	unsigned char padding:1;	// Padding bit
+	unsigned char extension:1;      // Extension bit
+	unsigned char cc:4;	     // CSRC count
+	unsigned char marker:1;	 // Marker bit
+	unsigned char payload:7;	// Payload type
+#else
+	// For little endian boxes
+	unsigned char cc:4;	     // CSRC count
+	unsigned char extension:1;      // Extension bit
+	unsigned char padding:1;	// Padding bit
+	unsigned char version:2;	// Version, currently 2
+	unsigned char payload:7;	// Payload type
+	unsigned char marker:1;	 // Marker bit
+#endif
+	u_int16_t sequence;     // sequence number
+	u_int32_t timestamp;    // timestamp
+	u_int32_t sources[1];   // contributing sources
+};
+
+
 /**
  * This class implements operations on RTP strem
  */
@@ -121,7 +145,7 @@ public:
 	u_int32_t saddr;	//!< last source IP adress 
 	ogzstream gfileGZ;	//!< file for storing packet statistics with GZIP compression
 	ofstream gfile;		//!< file for storing packet statistics
-	FILE *gfileRAW;         //!< file for storing RTP payload in RAW format
+	FILE *gfileRAW;	 //!< file for storing RTP payload in RAW format
 	char *gfileRAW_buffer;
 	char gfilename[1024];	//!< file name of this file 
 	char basefilename[1024];
@@ -183,29 +207,29 @@ public:
 		long double 	maxjitter;
 	} stats;
 
-        /**
+	/**
 	* constructor which allocates and zeroing stats structure
 	*
-        */
+	*/
 	RTP();
 
-        /**
+	/**
 	* destructor
 	*
-        */
+	*/
 	~RTP();
 
-        /**
+	/**
 	 * @brief simulate jitter buffer
 	 *
 	 * Put packet to jitterbuffer associated to channel structure
 	 *
 	 * @param channel pointer to the channel structure which holds statistics and jitterbuffer data
 	 *
-        */
+	*/
 	void jitterbuffer(struct ast_channel *channel, int savePayload);
 
-        /**
+	/**
 	 * @brief read RTP packet
 	 *
 	 * Used for reading RTP packet
@@ -215,11 +239,11 @@ public:
 	 * @param header header structure of the packet
 	 * @param saddr source IP adress of the packet
 	 *
-        */
+	*/
 	void read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t saddr, int seeninviteok);
 
 
-        /**
+	/**
 	 * @brief fill RTP packet into structures
 	 *
 	 * Used for temporary operations on RTP packet
@@ -229,7 +253,7 @@ public:
 	 * @param header header structure of the packet
 	 * @param saddr source IP adress of the packet
 	 *
-        */
+	*/
 	void fill(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t saddr);
 
 	/**
@@ -241,51 +265,51 @@ public:
 	*/
 	const unsigned char getVersion() { return getHeader()->version; };
 	
-        /**
+	/**
 	 * @brief get sequence sumber
 	 *
 	 * this function gets sequence number from header of RTP packet
 	 *
 	 * @return sequence number
-        */
+	*/
 	const u_int16_t getSeqNum() { return htons(getHeader()->sequence); };
 
-        /**
+	/**
 	 * @brief get timestamp 
 	 *
 	 * this function gets timestamp from header of RTP packet
 	 *
 	 * @return number of seocnds since UNIX epoch
-        */
+	*/
 	const u_int32_t getTimestamp() { return htonl(getHeader()->timestamp); };
 	
-        /**
+	/**
 	 * @brief get SSRC
 	 *
 	 * this function gets SSRC from header of RTP packet
 	 *
 	 * @return SSRC
-        */
+	*/
 	const u_int32_t getSSRC() { return htonl(getHeader()->sources[0]); };
 
-        /**
+	/**
 	 * @brief get Payload 
 	 *
 	 * this function gets Payload from header of RTP packet
 	 *
 	 * @return SSRC
-        */
+	*/
 	const int getPayload() { return getHeader()->payload; };
-        /**
+	/**
 	 * @brief get SSRC
 	 *
 	 * this function gets number of received packets
 	 *
 	 * @return received packets
-        */
+	*/
 	const u_int32_t getReceived() { return s->received; };
 
-        /**
+	/**
 	 * @brief get SSRC
 	 *
 	 * this function gets number of received packets
@@ -335,7 +359,7 @@ public:
 	 * @brief flushes frames from jitterbuffer
 	 *
 	 * this function flushes all frames from jitterbuffer fixed implementation and writes it to raw files
-        */
+	*/
 	void jitterbuffer_fixed_flush(struct ast_channel *channel);
 
 	 /**
@@ -343,7 +367,7 @@ public:
 	 * @brief adds empty frames from last packet in jitterbuffer to time in header packet
 	 *
 	 * add silence to RTP stream from last packet time to current time which is in header->ts 
-        */
+	*/
 	void jt_tail(struct pcap_pkthdr *header);
 
 	 /**
@@ -352,16 +376,16 @@ public:
 	 *
 	 * this function prints statistics data on stdout 
 	 *
-        */
+	*/
 	void dump();
 
-        /**
+	/**
 	 * @brief get total lost packets
 	 *
 	 * this function gets total lost packets within live of RTP stream
 	 *
 	 * @return count of lost pakcets
-        */
+	*/
 	u_int32_t getLost() { return s->probation ? 0 : ((s->cycles + s->max_seq) - s->base_seq + 1) - s->received; };
 
 private: 

@@ -38,6 +38,7 @@
 
 #include <pcap.h>
 
+#include "rtp.h"
 #include "calltable.h"
 #include "voipmonitor.h"
 #include "sniff.h"
