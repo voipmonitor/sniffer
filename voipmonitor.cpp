@@ -140,6 +140,7 @@ char mysql_table[256] = "cdr";
 char mysql_user[256] = "root";
 char mysql_password[256] = "";
 int opt_mysql_port = 0; // 0 menas use standard port 
+int opt_skiprtpdata = 0;
 
 char opt_match_header[128] = "\0";
 

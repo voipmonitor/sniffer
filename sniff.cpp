@@ -136,6 +136,7 @@ extern int global_livesniffer_all;
 extern int opt_pcap_split;
 extern int opt_newdir;
 extern int opt_callslimit;
+extern int opt_skiprtpdata;
 
 #ifdef QUEUE_MUTEX
 extern sem_t readpacket_thread_semaphore;
@@ -788,7 +789,11 @@ void add_to_rtp_thread_queue(Call *call, unsigned char *data, int datalen, struc
 		syslog(LOG_ERR, "error: packet is to large [%d]b for RTP QRING[%d]b", header->caplen, MAXPACKETLENQRING);
 		return;
 	}
-	memcpy(rtpp->data, data, datalen);
+	if(opt_skiprtpdata) {
+		memcpy(rtpp->data, data, MIN(datalen, sizeof(RTPFixedHeader)));
+	} else {
+		memcpy(rtpp->data, data, datalen);
+	}
 
 #ifdef QUEUE_NONBLOCK2
 	params->vmbuffer[params->writeit % params->vmbuffermax].free = 0;
