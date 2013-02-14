@@ -233,7 +233,17 @@ void add_octects_ipport(time_t timestamp, unsigned int saddr, unsigned int daddr
 	octects_live_t *data;
 	for(it = ipacc_live.begin(); it != ipacc_live.end(); it++) {
 		data = it->second;
-		if(saddr == data->ipfilter) {
+		
+		if(time(NULL) - data->fetch_timestamp > 300) {
+			ipacc_live.erase(it);
+		} else if(data->all) {
+			data->all_octects += packetlen;
+			data->all_numpackets++;
+			if(voippacket) {
+				data->voipall_octects += packetlen;
+				data->voipall_numpackets++;
+			}
+		} else if(saddr == data->ipfilter) {
 			data->src_octects += packetlen;
 			data->src_numpackets++;
 			if(voippacket) {
@@ -248,14 +258,13 @@ void add_octects_ipport(time_t timestamp, unsigned int saddr, unsigned int daddr
 				data->voipdst_numpackets++;
 			}
 		}
-		if(data->all) {
-			data->all_octects += packetlen;
-			data->all_numpackets++;
-		}
+		//cout << saddr << "  " << daddr << "  " << port << "  " << proto << "   " << packetlen << endl;
+		/*
 		if(data->destroy) {
 			free(it->second);
 			ipacc_live.erase(it);
 		}
+		*/
 	}
 }
 

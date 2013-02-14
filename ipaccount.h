@@ -19,11 +19,11 @@ typedef struct {
 	unsigned long long int voipsrc_octects;
 	unsigned int voipsrc_numpackets;
 	unsigned long long int all_octects;
+	unsigned long long int voipall_octects;
 	unsigned int all_numpackets;
+	unsigned int voipall_numpackets;
 	unsigned int ipfilter;
-	unsigned int lasttimestamp;
-	unsigned int destroy;
-	int voippacket;
+	unsigned int fetch_timestamp;
 } octects_live_t;
 
 
