@@ -234,7 +234,11 @@ void add_octects_ipport(time_t timestamp, unsigned int saddr, unsigned int daddr
 	for(it = ipacc_live.begin(); it != ipacc_live.end(); it++) {
 		data = it->second;
 		
-		if(time(NULL) - data->fetch_timestamp > 300) {
+		if(time(NULL) - data->fetch_timestamp > 120) {
+			if(verbosity > 0) {
+				cout << "FORCE STOP LIVE IPACC id: " << it->first << endl; 
+			}
+			free(it->second);
 			ipacc_live.erase(it);
 		} else if(data->all) {
 			data->all_octects += packetlen;
@@ -259,12 +263,6 @@ void add_octects_ipport(time_t timestamp, unsigned int saddr, unsigned int daddr
 			}
 		}
 		//cout << saddr << "  " << daddr << "  " << port << "  " << proto << "   " << packetlen << endl;
-		/*
-		if(data->destroy) {
-			free(it->second);
-			ipacc_live.erase(it);
-		}
-		*/
 	}
 }
 

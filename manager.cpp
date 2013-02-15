@@ -329,7 +329,9 @@ int parse_command(char *buf, int size, int client, int eof) {
 				filter->all = 1;
 				filter->fetch_timestamp = time(NULL);
 				ipacc_live[id] = filter;
-				
+				if(verbosity > 0) {
+					cout << "START LIVE IPACC " << "id: " << id << " ipfilter: " << "ALL" << endl;
+				}
 			}
 			return 0;
 		} else {
@@ -340,7 +342,9 @@ int parse_command(char *buf, int size, int client, int eof) {
 			filter->ipfilter = ((filter->ipfilter>>24)%256) + (((filter->ipfilter>>16)%256)<<8) + (((filter->ipfilter>>8)%256)<<16) + ((filter->ipfilter%256)<<24);
 			filter->fetch_timestamp = time(NULL);
 			ipacc_live[id] = filter;
-			cout << "START LIVE IPACC " << "id: " << id << " ipfilter: " << ipfilter << " / " << filter->ipfilter << endl;
+			if(verbosity > 0) {
+				cout << "START LIVE IPACC " << "id: " << id << " ipfilter: " << ipfilter << " / " << filter->ipfilter << endl;
+			}
 		}
 		return(0);
 	} else if(strstr(buf, "stopipaccount")) {
@@ -348,8 +352,11 @@ int parse_command(char *buf, int size, int client, int eof) {
 		sscanf(buf, "stopipaccount %u", &id);
 		map<unsigned int, octects_live_t*>::iterator it = ipacc_live.find(id);
 		if(it != ipacc_live.end()) {
+			free(it->second);
 			ipacc_live.erase(it);
-			cout << "STOP LIVE IPACC " << "id:" << id << endl;
+			if(verbosity > 0) {
+				cout << "STOP LIVE IPACC " << "id:" << id << endl;
+			}
 		}
 		return 0;
 	} else if(strstr(buf, "fetchipaccount")) {
