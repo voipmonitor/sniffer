@@ -1,3 +1,7 @@
+version 6.5 Release candidate 4 (18.2.2013)
+===========================================
+- supports G722 audio decoding (it still needs G722 codec) 
+
 version 6.5 Release candidate 3 (9.2.2013)
 ========================================
 - fix critical issue with memory corruption introduced since 6.5 version
