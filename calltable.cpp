@@ -681,7 +681,6 @@ int convertULAW2WAV(char *fname1, char *fname3) {
 
 int
 Call::convertRawToWav() {
-	int payloadtype = -1;
 	char cmd[4092];
 	char wav0[1024];
 	char wav1[1024];
@@ -819,6 +818,12 @@ Call::convertRawToWav() {
 				convertULAW2WAV(raw, wav);
 				break;
 		/* following decoders are not included in free version. Please contact support@voipmonitor.org */
+			case PAYLOAD_G722:
+				snprintf(cmd, 4092, "voipmonitor-g722 \"%s\" \"%s\" 64000", raw, wav);
+				samplerate = 16000;
+				if(verbosity > 1) syslog(LOG_ERR, "Converting GSM to WAV.\n");
+				system(cmd);
+				break;
 			case PAYLOAD_GSM:
 				snprintf(cmd, 4092, "voipmonitor-gsm \"%s\" \"%s\"", raw, wav);
 				if(verbosity > 1) syslog(LOG_ERR, "Converting GSM to WAV.\n");
@@ -881,7 +886,7 @@ Call::convertRawToWav() {
 				system(cmd);
 				break;
 			default:
-				syslog(LOG_ERR, "Call [%s] cannot be converted to WAV, unknown payloadtype [%d]\n", raw, payloadtype);
+				syslog(LOG_ERR, "Call [%s] cannot be converted to WAV, unknown payloadtype [%d]\n", raw, codec);
 			}
 			unlink(raw);
 		}

@@ -54,6 +54,7 @@ and insert them into Call class.
 #include "mirrorip.h"
 #include "ipaccount.h"
 #include "sql_db.h"
+#include "rtp.h"
 
 extern MirrorIP *mirrorip;
 
@@ -136,6 +137,7 @@ extern int global_livesniffer_all;
 extern int opt_pcap_split;
 extern int opt_newdir;
 extern int opt_callslimit;
+extern int opt_skiprtpdata;
 
 #ifdef QUEUE_MUTEX
 extern sem_t readpacket_thread_semaphore;
@@ -788,7 +790,11 @@ void add_to_rtp_thread_queue(Call *call, unsigned char *data, int datalen, struc
 		syslog(LOG_ERR, "error: packet is to large [%d]b for RTP QRING[%d]b", header->caplen, MAXPACKETLENQRING);
 		return;
 	}
-	memcpy(rtpp->data, data, datalen);
+	if(opt_skiprtpdata) {
+		memcpy(rtpp->data, data, MIN(datalen, sizeof(RTPFixedHeader)));
+	} else {
+		memcpy(rtpp->data, data, datalen);
+	}
 
 #ifdef QUEUE_NONBLOCK2
 	params->vmbuffer[params->writeit % params->vmbuffermax].free = 0;
@@ -1919,6 +1925,30 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 				}
 			}
 		}
+#if 0
+		if(opt_norecord_dtmf) {
+			s = gettag(data, datalen, "\nSignal:", &l);
+			if(l && l < 33) {
+				char *tmp = s + 1;
+				tmp[l - 1] = '\0';
+				if(call->dtmfflag == 0) {
+					if(tmp[0] == '*') {
+						// received ftmf '*', set flag so if next dtmf will be '0' stop recording
+						call->dtmfflag2 = 1;
+					}
+				} else {
+					if(tmp[0] == '1') {
+						// we have complete *0 sequence
+						call->stoprecording();
+						call->dtmfflag2 = 0;
+					} else {
+						// reset flag because we did not received '0' after '*'
+						call->dtmfflag2 = 0;
+					}
+				}
+			}
+		}
+#endif
 		
 		// we have packet, extend pending destroy requests
 		if(call->destroy_call_at > 0) {
