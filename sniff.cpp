@@ -138,6 +138,7 @@ extern int opt_pcap_split;
 extern int opt_newdir;
 extern int opt_callslimit;
 extern int opt_skiprtpdata;
+extern char opt_silencedmtfseq[16];
 
 #ifdef QUEUE_MUTEX
 extern sem_t readpacket_thread_semaphore;
@@ -791,7 +792,7 @@ void add_to_rtp_thread_queue(Call *call, unsigned char *data, int datalen, struc
 		return;
 	}
 	if(opt_skiprtpdata) {
-		memcpy(rtpp->data, data, MIN(datalen, sizeof(RTPFixedHeader)));
+		memcpy(rtpp->data, data, MIN((unsigned int)datalen, sizeof(RTPFixedHeader)));
 	} else {
 		memcpy(rtpp->data, data, datalen);
 	}
@@ -1557,6 +1558,10 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 			if(verbosity > 2) 
 				 syslog(LOG_NOTICE,"SIP msg: BYE\n");
 			sip_method = BYE;
+		} else if ((datalen > 5) && !(memmem(data, 4, "INFO", 4) == 0)) {
+			if(verbosity > 2) 
+				 syslog(LOG_NOTICE,"SIP msg: INFO\n");
+			sip_method = INFO;
 		} else if ((datalen > 5) && !(memmem(data, 6, "CANCEL", 6) == 0)) {
 			if(verbosity > 2) 
 				 syslog(LOG_NOTICE,"SIP msg: CANCEL\n");
@@ -1609,9 +1614,11 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 				strncpy(num, data + 8, 3);
 				num[3] = '\0';
 				lastSIPresponseNum = atoi(num);
+/*
 				if(lastSIPresponseNum == 0) {
 					if(verbosity > 0) syslog(LOG_NOTICE, "lastSIPresponseNum = 0 [%s]\n", lastSIPresponse);
 				}
+*/
 			} 
 			data[datalen - 1] = a;
 /* XXX: remove it once tested
@@ -1843,10 +1850,10 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 				// if it is OK check for BYE
 				if(cseq && cseqlen < 32) {
 					if(verbosity > 2) {
-						char a = data[datalen - 1];
-						data[datalen - 1] = 0;
-						syslog(LOG_NOTICE, "Cseq: %s\n", data);
-						data[datalen - 1] = a;
+						char a = cseq[cseqlen];
+						cseq[cseqlen] = '\0';
+						syslog(LOG_NOTICE, "Cseq: %s\n", cseq);
+						cseq[cseqlen] = a;
 					}
 					if(strncmp(cseq, call->byecseq, cseqlen) == 0) {
 						// terminate successfully acked call, put it into mysql CDR queue and remove it from calltable 
@@ -1925,30 +1932,43 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 				}
 			}
 		}
-#if 0
-		if(opt_norecord_dtmf) {
-			s = gettag(data, datalen, "\nSignal:", &l);
+		if(sip_method == INFO and opt_silencedmtfseq[0] != '\0') {
+			s = gettag(data, datalen, "Signal=", &l);
+			
 			if(l && l < 33) {
-				char *tmp = s + 1;
-				tmp[l - 1] = '\0';
-				if(call->dtmfflag == 0) {
-					if(tmp[0] == '*') {
+				char *tmp = s;
+				tmp[l] = '\0';
+				if(verbosity >= 2)
+					syslog(LOG_NOTICE, "[%s] DTMF SIP INFO [%c]", call->fbasename, tmp[0]);
+				if(call->dtmfflag2 == 0) {
+					if(tmp[0] == opt_silencedmtfseq[call->dtmfflag2]) {
 						// received ftmf '*', set flag so if next dtmf will be '0' stop recording
-						call->dtmfflag2 = 1;
+						call->dtmfflag2++;
 					}
 				} else {
-					if(tmp[0] == '1') {
+					if(tmp[0] == opt_silencedmtfseq[call->dtmfflag2]) {
 						// we have complete *0 sequence
-						call->stoprecording();
-						call->dtmfflag2 = 0;
+						if(call->dtmfflag2 + 1 == strlen(opt_silencedmtfseq)) {
+							if(call->silencerecording == 0) {
+								if(verbosity >= 1)
+									syslog(LOG_NOTICE, "[%s] pause DTMF sequence detected - pausing recording ", call->fbasename);
+								call->silencerecording = 1;
+							} else {
+								if(verbosity >= 1)
+									syslog(LOG_NOTICE, "[%s] pause DTMF sequence detected - unpausing recording ", call->fbasename);
+								call->silencerecording = 0;
+							}
+							call->dtmfflag2 = 0;
+						} else {
+							call->dtmfflag2++;
+						}
 					} else {
-						// reset flag because we did not received '0' after '*'
+						// reset flag 
 						call->dtmfflag2 = 0;
 					}
 				}
 			}
 		}
-#endif
 		
 		// we have packet, extend pending destroy requests
 		if(call->destroy_call_at > 0) {
@@ -2174,7 +2194,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 			call->set_last_packet_time(header->ts.tv_sec);
 		}
 		if(!dontsave && ((call->flags & FLAG_SAVERTP) || (call->isfax && opt_saveudptl))) {
-			if(opt_onlyRTPheader && !call->isfax) {
+			if((call->silencerecording || opt_onlyRTPheader) && !call->isfax) {
 				tmp_u32 = header->caplen;
 				header->caplen = header->caplen - (datalen - RTP_FIXED_HEADERLEN);
 				save_packet(call, header, packet, saddr, source, daddr, dest, istcp, data, datalen, TYPE_RTP);
@@ -2224,7 +2244,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 			call->set_last_packet_time(header->ts.tv_sec);
 		}
 		if(!dontsave && ((call->flags & FLAG_SAVERTP) || (call->isfax && opt_saveudptl))) {
-			if(opt_onlyRTPheader && !call->isfax) {
+			if((call->silencerecording || opt_onlyRTPheader) && !call->isfax) {
 				tmp_u32 = header->caplen;
 				header->caplen = header->caplen - (datalen - RTP_FIXED_HEADERLEN);
 				save_packet(call, header, packet, saddr, source, daddr, dest, istcp, data, datalen, TYPE_RTP);

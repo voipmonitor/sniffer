@@ -164,6 +164,7 @@ struct ast_frame {
 	int seqno;
 	/*! marker bit? */
 	int marker;
+	int skip;
 };
 
 /*!

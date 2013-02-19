@@ -42,6 +42,7 @@
 #define RES18X 10
 #define REGISTER 11
 #define MESSAGE 12
+#define INFO 13
 
 #define FLAG_SAVERTP		(1 << 0)
 #define FLAG_SAVESIP		(1 << 1)
@@ -92,6 +93,8 @@ public:
 	int whohanged;			//!< who hanged up. 0 -> caller, 1-> callee, -1 -> unknown
 	int recordstopped;		//!< flag holding if call was stopped to avoid double free
 	int dtmfflag;			//!< used for holding dtmf states 
+	unsigned int dtmfflag2;			//!< used for holding dtmf states 
+	int silencerecording;
 	int msgcount;
 	int regcount;
 	int reg401count;

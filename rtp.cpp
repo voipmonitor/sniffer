@@ -275,6 +275,13 @@ RTP::jt_tail(struct pcap_pkthdr *header) {
 /* simulate jitterbuffer */
 void
 RTP::jitterbuffer(struct ast_channel *channel, int savePayload) {
+	Call *owner = (Call*)call_owner;
+	if(owner and savePayload and owner->silencerecording) {
+		// skip recording 
+		frame->skip = 1;
+	} else {
+		frame->skip = 0;
+	}
 	struct timeval tsdiff;
 	switch(codec) {
 		case PAYLOAD_ISAC16:
@@ -298,7 +305,6 @@ RTP::jitterbuffer(struct ast_channel *channel, int savePayload) {
 	/* protect for endless loops (it cannot happen in theory but to be sure */
 	if(packetization <= 0) {
 		if(pinformed == 0) {
-			Call *owner = (Call*)call_owner;
 			if(owner) {
 				syslog(LOG_ERR, "call-id[%s] ssrc[%x]: packetization is 0 in jitterbuffer function.", owner->get_fbasename_safe(), getSSRC());
 				
