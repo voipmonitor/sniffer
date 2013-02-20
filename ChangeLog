@@ -1,3 +1,7 @@
+version 6.5 Release candidate 6 (20.2.2013)
+===========================================
+- fix segfault introduced in RC5
+
 version 6.5 Release candidate 5 (20.2.2013)
 ===========================================
 - fix max and average jitter calculations which was broken since voipmonitor creation. Now jitter is the same as you can see in wireshark.
