@@ -1,3 +1,8 @@
+version 6.5 Release candidate 5 (20.2.2013)
+===========================================
+- fix max and average jitter calculations which was broken since voipmonitor creation. Now jitter is the same as you can see in wireshark.
+- implements new cdr_rtp SQL table which holds all RTP streams which is used in WEB GUI sip history diagram 
+
 version 6.5 Release candidate 4 (18.2.2013)
 ===========================================
 - supports G722 audio decoding (it still needs G722 codec) 
