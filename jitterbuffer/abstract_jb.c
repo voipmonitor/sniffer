@@ -463,7 +463,7 @@ static void jb_get_and_deliver(struct ast_channel *chan, struct timeval *mynow)
 		
 		res = jbimpl->get(jbobj, &f, now, interpolation_len);
 	
-		if(f->skip) {
+		if(f && f->skip) {
 			save_empty_frame(chan);
 			break;
 		}	
