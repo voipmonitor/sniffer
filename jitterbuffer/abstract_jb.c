@@ -463,12 +463,12 @@ static void jb_get_and_deliver(struct ast_channel *chan, struct timeval *mynow)
 		
 		res = jbimpl->get(jbobj, &f, now, interpolation_len);
 	
-		if(f && f->skip) {
-			save_empty_frame(chan);
-			break;
-		}	
 		switch(res) {
 		case JB_IMPL_OK:
+			if(f->skip) {
+				save_empty_frame(chan);
+				break;
+			}	
 			/* deliver the frame */
 			//ast_write(chan, f);
 			if((chan->rawstream || chan->fifofd) && f->data && f->datalen > 0) {
