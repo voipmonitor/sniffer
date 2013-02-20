@@ -78,12 +78,15 @@ timeval_subtract (struct timeval *result, struct timeval x, struct timeval y) {
 RTP::RTP() {
 	samplerate = 8000;
 	first = true;
+	first_packet_time = 0;
+	first_packet_usec = 0;
 	s = new source;
 	memset(s, 0, sizeof(source));
 	memset(&stats, 0, sizeof(stats));
 	memset(&rtcp, 0, sizeof(rtcp));
 	nintervals = 1;
 	saddr = 0;
+	daddr = 0;
 	ssrc = 0;
 	gfilename[0] = '\0';
 	gfileRAW = NULL;
@@ -154,6 +157,8 @@ RTP::~RTP() {
 	if(packetization)
 		RTP::dump();
 	*/
+	Call *owner = (Call*)call_owner;
+
 	if(verbosity > 9) {
 		RTP::dump();
 	}
@@ -174,7 +179,6 @@ RTP::~RTP() {
 	free(channel_record);
 	free(frame);
 
-	Call *owner = (Call*)call_owner;
 	if(opt_saveGRAPH || (owner && (owner->flags & FLAG_SAVEGRAPH))) {
 		if(opt_gzipGRAPH && gfileGZ.is_open()) {
 			gfileGZ.close();
@@ -460,11 +464,16 @@ RTP::jitterbuffer(struct ast_channel *channel, int savePayload) {
 
 /* read rtp packet */
 void
-RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t saddr, int seeninviteok) {
+RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t saddr, u_int32_t daddr, int seeninviteok) {
 	this->data = data; 
 	this->len = len;
 	this->header = header;
 	this->saddr =  saddr;
+	this->daddr =  daddr;
+	if(this->first_packet_time == 0 and this->first_packet_usec == 0) {
+		this->first_packet_time = header->ts.tv_sec;
+		this->first_packet_usec = header->ts.tv_usec;
+	}
 
 	Call *owner = (Call*)call_owner;
 
@@ -556,6 +565,7 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 					prevrtp->len = len;
 					prevrtp->header = header;
 					prevrtp->saddr = saddr;
+					prevrtp->daddr = daddr;
 					prevrtp->jitterbuffer(prevrtp->channel_record, opt_saveRAW || opt_savewav_force || (owner->flags & FLAG_SAVEWAV) || fifo1 || fifo2);
 				}
 			}
@@ -793,11 +803,12 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 
 /* fill internal structures by the input RTP packet */
 void
-RTP::fill(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t saddr) {
+RTP::fill(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t saddr, u_int32_t daddr) {
 	this->data = data; 
 	this->len = len;
 	this->header = header;
 	this->saddr = saddr;
+	this->daddr = daddr;
 }
 
 /* update statistics data */
@@ -834,7 +845,8 @@ RTP::update_stats() {
 	/* Jitterbuffer calculation
 	 * J(1) = J(0) + (|D(0,1)| - J(0))/16 */
 	if(transit < 0) transit = -transit;
-	long double jitter = s->prevjitter + (transit - s->prevjitter)/16. ;
+	double jitter = s->prevjitter + (double)(transit - s->prevjitter)/16. ;
+	s->prevjitter = jitter;
 
 	s->avgdelay = ((s->avgdelay * (long double)(s->received) - 1) + transit ) / (double)s->received;
 	stats.avgjitter = ((stats.avgjitter * ( stats.received - 1 )  + jitter )) / (double)s->received;
@@ -1011,6 +1023,7 @@ RTP::dump() {
 	printf("SSRC:%x %u ssrc_index[%d]\n", ssrc, ssrc, ssrc_index);
 	printf("payload:%d\n", payload);
 	printf("src ip:%u\n", saddr);
+	printf("dst ip:%u\n", daddr);
 	printf("Packetization:%u\n", packetization);
 	printf("s->received: %d\n", s->received);
 	printf("total loss:%u\n", stats.lost);

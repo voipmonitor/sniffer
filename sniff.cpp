@@ -762,7 +762,7 @@ int get_rtpmap_from_sdp(char *sdp_text, unsigned long len, int *rtpmap){
 	 return 0;
 }
 
-void add_to_rtp_thread_queue(Call *call, unsigned char *data, int datalen, struct pcap_pkthdr *header,  u_int32_t saddr, unsigned short port, int iscaller, int is_rtcp) {
+void add_to_rtp_thread_queue(Call *call, unsigned char *data, int datalen, struct pcap_pkthdr *header,  u_int32_t saddr, u_int32_t daddr, unsigned short port, int iscaller, int is_rtcp) {
 	__sync_add_and_fetch(&call->rtppcaketsinqueue, 1);
 	read_thread *params = &(threads[call->thread_num]);
 
@@ -782,6 +782,7 @@ void add_to_rtp_thread_queue(Call *call, unsigned char *data, int datalen, struc
 	rtpp->call = call;
 	rtpp->datalen = datalen;
 	rtpp->saddr = saddr;
+	rtpp->daddr = daddr;
 	rtpp->port = port;
 	rtpp->iscaller = iscaller;
 	rtpp->is_rtcp = is_rtcp;
@@ -865,7 +866,7 @@ void *rtp_read_thread_func(void *arg) {
 		if(rtpp->is_rtcp) {
 			rtpp->call->read_rtcp((unsigned char*)rtpp->data, rtpp->datalen, &rtpp->header, rtpp->saddr, rtpp->port, rtpp->iscaller);
 		}  else {
-			rtpp->call->read_rtp(rtpp->data, rtpp->datalen, &rtpp->header, rtpp->saddr, rtpp->port, rtpp->iscaller);
+			rtpp->call->read_rtp(rtpp->data, rtpp->datalen, &rtpp->header, rtpp->saddr, rtpp->daddr, rtpp->port, rtpp->iscaller);
 		}
 
 
@@ -899,7 +900,7 @@ Call *new_invite_register(int sip_method, char *data, int datalen, struct pcap_p
 	static char str2[1024];
 	// store this call only if it starts with invite
 	Call *call = calltable->add(s, l, header->ts.tv_sec, saddr, source);
-	call->set_first_packet_time(header->ts.tv_sec);
+	call->set_first_packet_time(header->ts.tv_sec, header->ts.tv_usec);
 	call->sipcallerip = saddr;
 	call->sipcalledip = daddr;
 	call->type = sip_method;
@@ -2175,7 +2176,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 
 		if(is_rtcp) {
 			if(rtp_threaded && can_thread) {
-				add_to_rtp_thread_queue(call, (unsigned char*) data, datalen, header, saddr, source, iscaller, is_rtcp);
+				add_to_rtp_thread_queue(call, (unsigned char*) data, datalen, header, saddr, daddr, source, iscaller, is_rtcp);
 			} else {
 				call->read_rtcp((unsigned char*) data, datalen, header, saddr, source, iscaller);
 			}
@@ -2186,11 +2187,11 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 		}
 
 		if(rtp_threaded && can_thread) {
-			add_to_rtp_thread_queue(call, (unsigned char*) data, datalen, header, saddr, source, iscaller, is_rtcp);
+			add_to_rtp_thread_queue(call, (unsigned char*) data, datalen, header, saddr, daddr, source, iscaller, is_rtcp);
 			*was_rtp = 1;
 			if(is_rtcp) return call;
 		} else {
-			call->read_rtp((unsigned char*) data, datalen, header, saddr, source, iscaller);
+			call->read_rtp((unsigned char*) data, datalen, header, saddr, daddr, source, iscaller);
 			call->set_last_packet_time(header->ts.tv_sec);
 		}
 		if(!dontsave && ((call->flags & FLAG_SAVERTP) || (call->isfax && opt_saveudptl))) {
@@ -2225,7 +2226,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 
 		if(is_rtcp) {
 			if(rtp_threaded && can_thread) {
-				add_to_rtp_thread_queue(call, (unsigned char*) data, datalen, header, saddr, source, !iscaller, is_rtcp);
+				add_to_rtp_thread_queue(call, (unsigned char*) data, datalen, header, saddr, daddr, source, !iscaller, is_rtcp);
 			} else {
 				call->read_rtcp((unsigned char*) data, datalen, header, saddr, source, !iscaller);
 			}
@@ -2237,10 +2238,10 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 
 		// as we are searching by source address and find some call, revert iscaller 
 		if(rtp_threaded && can_thread) {
-			add_to_rtp_thread_queue(call, (unsigned char*) data, datalen, header, saddr, source, !iscaller, is_rtcp);
+			add_to_rtp_thread_queue(call, (unsigned char*) data, datalen, header, saddr, daddr, source, !iscaller, is_rtcp);
 			*was_rtp = 1;
 		} else {
-			call->read_rtp((unsigned char*) data, datalen, header, saddr, source, !iscaller);
+			call->read_rtp((unsigned char*) data, datalen, header, saddr, daddr, source, !iscaller);
 			call->set_last_packet_time(header->ts.tv_sec);
 		}
 		if(!dontsave && ((call->flags & FLAG_SAVERTP) || (call->isfax && opt_saveudptl))) {
@@ -2262,7 +2263,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 			int rtpmap[MAX_RTPMAP];
 			memset(&rtpmap, 0, sizeof(int) * MAX_RTPMAP);
 
-			rtp.read((unsigned char*)data, datalen, header, saddr, 0);
+			rtp.read((unsigned char*)data, datalen, header, saddr, daddr, 0);
 
 			if(rtp.getVersion() != 2 && rtp.getPayload() > 18) {
 				return NULL;
@@ -2272,7 +2273,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 			//printf("ssrc [%x] ver[%d] src[%u] dst[%u]\n", rtp.getSSRC(), rtp.getVersion(), source, dest);
 
 			call = calltable->add(s, strlen(s), header->ts.tv_sec, saddr, source);
-			call->set_first_packet_time(header->ts.tv_sec);
+			call->set_first_packet_time(header->ts.tv_sec, header->ts.tv_usec);
 			call->sipcallerip = saddr;
 			call->sipcalledip = daddr;
 			call->type = INVITE;

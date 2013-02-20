@@ -60,6 +60,7 @@ typedef struct {
 #endif
 	int datalen;
 	u_int32_t saddr;
+	u_int32_t daddr;
 	unsigned short port;
 	char iscaller;
 	char is_rtcp;

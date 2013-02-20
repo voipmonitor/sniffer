@@ -100,6 +100,7 @@ Call::Call(char *call_id, unsigned long call_id_len, time_t time, void *ct) {
 	ipport_n = 0;
 	ssrc_n = 0;
 	first_packet_time = time;
+	first_packet_usec = 0;
 	last_packet_time = time;
 	memcpy(this->call_id, call_id, MIN(call_id_len, MAX_CALL_ID));
 	this->call_id[MIN(call_id_len, MAX_CALL_ID)] = '\0';
@@ -371,14 +372,14 @@ Call::read_rtcp(unsigned char* data, int datalen, struct pcap_pkthdr *header, u_
 
 /* analyze rtp packet */
 void
-Call::read_rtp(unsigned char* data, int datalen, struct pcap_pkthdr *header, u_int32_t saddr, unsigned short port, int iscaller) {
+Call::read_rtp(unsigned char* data, int datalen, struct pcap_pkthdr *header, u_int32_t saddr, u_int32_t daddr, unsigned short port, int iscaller) {
 
 	if(first_rtp_time == 0) {
 		first_rtp_time = header->ts.tv_sec;
 	}
 	
 	//RTP tmprtp; moved to Call structure to avoid creating and destroying class which is not neccessary
-	tmprtp.fill(data, datalen, header, saddr);
+	tmprtp.fill(data, datalen, header, saddr, daddr);
 	if(tmprtp.getSSRC() == 0 || tmprtp.getVersion() != 2) {
 		// invalid ssrc
 		return;
@@ -386,7 +387,7 @@ Call::read_rtp(unsigned char* data, int datalen, struct pcap_pkthdr *header, u_i
 	for(int i = 0; i < ssrc_n; i++) {
 		if(rtp[i]->ssrc == tmprtp.getSSRC()) {
 			// found 
-			rtp[i]->read(data, datalen, header, saddr, seeninviteok);
+			rtp[i]->read(data, datalen, header, saddr, daddr, seeninviteok);
 			return;
 		}
 	}
@@ -458,7 +459,7 @@ Call::read_rtp(unsigned char* data, int datalen, struct pcap_pkthdr *header, u_i
 			memcpy(this->rtp[ssrc_n]->rtpmap, rtpmap[iscaller], MAX_RTPMAP * sizeof(int));
 //		}
 
-		rtp[ssrc_n]->read(data, datalen, header, saddr, seeninviteok);
+		rtp[ssrc_n]->read(data, datalen, header, saddr, daddr, seeninviteok);
 		this->rtp[ssrc_n]->ssrc = tmprtp.getSSRC();
 		if(iscaller) {
 			lastcallerrtp = rtp[ssrc_n];
@@ -1606,6 +1607,33 @@ Call::saveToDb(bool enableBatchIfPossible) {
 				query_str += sqlDb->insertQuery(sql_cdr_table_last1d, cdr) + ";\n";
 			}
 		}
+
+		for(int i = 0; i < MAX_SSRC_PER_CALL; i++) {
+			// lets check whole array as there can be holes due rtp[0] <=> rtp[1] swaps in mysql rutine
+			if(rtp[i] and rtp[i]->s->received) {
+				double fpart = this->first_packet_usec;
+				while(fpart > 1) fpart /= 10;
+				double stime = this->first_packet_time + fpart;
+
+				fpart = rtp[i]->first_packet_usec;
+				while(fpart > 1) fpart /= 10;
+				double rtime = rtp[i]->first_packet_time + fpart;
+
+				double diff = rtime - stime;
+
+				SqlDb_row rtps;
+				rtps.add("_\\_'SQL'_\\_:@cdr_id", "cdr_ID");
+				rtps.add(rtp[i]->payload, "payload");
+				rtps.add(htonl(rtp[i]->saddr), "saddr");
+				rtps.add(htonl(rtp[i]->daddr), "daddr");
+				rtps.add(rtp[i]->ssrc, "ssrc");
+				rtps.add(rtp[i]->s->received, "received");
+				rtps.add(rtp[i]->stats.lost, "loss");
+				rtps.add((unsigned int)(rtp[i]->stats.maxjitter * 10), "maxjitter_mult10");
+				rtps.add(diff, "firsttime");
+				query_str += sqlDb->insertQuery("cdr_rtp", rtps) + ";\n";
+			}
+		}
 		
 		sqlDb->setEnableSqlStringInContent(false);
 		
@@ -1646,10 +1674,39 @@ Call::saveToDb(bool enableBatchIfPossible) {
 	cdr.add(b_ua_id, "b_ua_id", true);
 	
 	int cdrID = sqlDb->insert(sql_cdr_table, cdr);
-	if(cdrID>0) {
+
+	if(cdrID > 0) {
+		for(int i = 0; i < MAX_SSRC_PER_CALL; i++) {
+			// lets check whole array as there can be holes due rtp[0] <=> rtp[1] swaps in mysql rutine
+			if(rtp[i] and rtp[i]->s->received) {
+				double fpart = this->first_packet_usec;
+				while(fpart > 1) fpart /= 10;
+				double stime = this->first_packet_time + fpart;
+
+				fpart = rtp[i]->first_packet_usec;
+				while(fpart > 1) fpart /= 10;
+				double rtime = rtp[i]->first_packet_time + fpart;
+
+				double diff = rtime - stime;
+
+				SqlDb_row rtps;
+				rtps.add(cdrID, "cdr_ID");
+				rtps.add(rtp[i]->payload, "payload");
+				rtps.add(htonl(rtp[i]->saddr), "saddr");
+				rtps.add(htonl(rtp[i]->daddr), "daddr");
+				rtps.add(rtp[i]->ssrc, "ssrc");
+				rtps.add(rtp[i]->s->received, "received");
+				rtps.add(rtp[i]->stats.lost, "loss");
+				rtps.add((unsigned int)(rtp[i]->stats.maxjitter * 10), "maxjitter_mult10");
+				rtps.add(diff, "firsttime");
+				sqlDb->insert("cdr_rtp", rtps);
+			}
+		}
+
 		if(opt_printinsertid) {
 			printf("CDRID:%d\n", cdrID);
 		}
+
 		cdr_next.add(cdrID, "cdr_ID");
 		sqlDb->insert(sql_cdr_next_table, cdr_next);
 		if(sql_cdr_table_last30d[0] ||

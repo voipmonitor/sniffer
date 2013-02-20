@@ -143,6 +143,7 @@ class RTP {
 public: 
 	u_int32_t ssrc;		//!< ssrc of this RTP class
 	u_int32_t saddr;	//!< last source IP adress 
+	u_int32_t daddr;	//!< last source IP adress 
 	ogzstream gfileGZ;	//!< file for storing packet statistics with GZIP compression
 	ofstream gfile;		//!< file for storing packet statistics
 	FILE *gfileRAW;	 //!< file for storing RTP payload in RAW format
@@ -176,6 +177,8 @@ public:
 	int sid;
 	int prev_sid;
 	int pinformed;
+	unsigned int first_packet_time;
+	unsigned int first_packet_usec;
 
 	/* RTCP data */
 	struct rtcp_t {
@@ -206,6 +209,27 @@ public:
 		long double 	avgjitter;
 		long double 	maxjitter;
 	} stats;
+
+	typedef struct {
+		u_int16_t max_seq;		//!< highest seq. number seen 
+		u_int32_t cycles;		//!< shifted count of seq. number cycles
+		u_int32_t base_seq;		//!< base seq number
+		u_int32_t bad_seq;		//!< last 'bad' seq number + 1
+		u_int32_t probation;		//!< sequ. packets till source is valid
+		u_int32_t received;		//!< packets received
+		u_int32_t expected_prior;	//!< packet expected at last interval
+		u_int32_t received_prior;	//!< packet received at last interval
+		u_int32_t transit;		//!< relative trans time for prev pkt
+		u_int32_t jitter;		//!< estimated jitter
+		u_int32_t lost;			//!< lost packets
+		struct timeval lastTimeRec;	//!< last received time from pcap packet header
+		u_int32_t lastTimeStamp;	//!< last received timestamp from RTP header
+		int delay;
+		long double fdelay;
+		double prevjitter;
+		double avgdelay;
+	} source;
+	source *s;
 
 	/**
 	* constructor which allocates and zeroing stats structure
@@ -240,7 +264,7 @@ public:
 	 * @param saddr source IP adress of the packet
 	 *
 	*/
-	void read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t saddr, int seeninviteok);
+	void read(unsigned char* data, int len, struct pcap_pkthdr *header, u_int32_t saddr, u_int32_t daddr, int seeninviteok);
 
 
 	/**
@@ -254,7 +278,7 @@ public:
 	 * @param saddr source IP adress of the packet
 	 *
 	*/
-	void fill(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t saddr);
+	void fill(unsigned char* data, int len, struct pcap_pkthdr *header, u_int32_t saddr, u_int32_t daddr);
 
 	/**
 	 * @brief get version
@@ -392,29 +416,9 @@ private:
 	/*
 	* Per-source state information
 	*/
-	typedef struct {
-		u_int16_t max_seq;		//!< highest seq. number seen 
-		u_int32_t cycles;		//!< shifted count of seq. number cycles
-		u_int32_t base_seq;		//!< base seq number
-		u_int32_t bad_seq;		//!< last 'bad' seq number + 1
-		u_int32_t probation;		//!< sequ. packets till source is valid
-		u_int32_t received;		//!< packets received
-		u_int32_t expected_prior;	//!< packet expected at last interval
-		u_int32_t received_prior;	//!< packet received at last interval
-		u_int32_t transit;		//!< relative trans time for prev pkt
-		u_int32_t jitter;		//!< estimated jitter
-		u_int32_t lost;			//!< lost packets
-		struct timeval lastTimeRec;	//!< last received time from pcap packet header
-		u_int32_t lastTimeStamp;	//!< last received timestamp from RTP header
-		int delay;
-		long double fdelay;
-		long double prevjitter;
-		double avgdelay;
-	} source;
 
 	struct pcap_pkthdr *header;
 	struct timeval ts;
-	source *s;
 	bool first;
 	int nintervals;
 
