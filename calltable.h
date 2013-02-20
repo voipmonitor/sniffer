@@ -42,6 +42,7 @@
 #define RES18X 10
 #define REGISTER 11
 #define MESSAGE 12
+#define INFO 13
 
 #define FLAG_SAVERTP		(1 << 0)
 #define FLAG_SAVESIP		(1 << 1)
@@ -92,6 +93,8 @@ public:
 	int whohanged;			//!< who hanged up. 0 -> caller, 1-> callee, -1 -> unknown
 	int recordstopped;		//!< flag holding if call was stopped to avoid double free
 	int dtmfflag;			//!< used for holding dtmf states 
+	unsigned int dtmfflag2;			//!< used for holding dtmf states 
+	int silencerecording;
 	int msgcount;
 	int regcount;
 	int reg401count;
@@ -106,6 +109,7 @@ public:
 	time_t last_packet_time;	
 	time_t first_packet_time;	
 	time_t destroy_call_at;	
+	unsigned int first_packet_usec;
 
 	int isfax;
 
@@ -203,7 +207,7 @@ public:
 	 * @param saddr source IP adress of the packet
 	 * 
 	*/
-	void read_rtp( unsigned char *data, int datalen, struct pcap_pkthdr *header,  u_int32_t saddr, unsigned short port, int iscaller);
+	void read_rtp( unsigned char *data, int datalen, struct pcap_pkthdr *header, u_int32_t saddr, u_int32_t daddr, unsigned short port, int iscaller);
 
 	/**
 	 * @brief read RTCP packet 
@@ -282,7 +286,7 @@ public:
 	 * @param timestamp in seconds from UNIX epoch
 	 *
 	*/
-	void set_first_packet_time(time_t mtime) { first_packet_time = mtime; };
+	void set_first_packet_time(time_t mtime, unsigned int usec) { first_packet_time = mtime; first_packet_usec = usec;};
 
 	/**
 	 * @brief convert raw files to one WAV

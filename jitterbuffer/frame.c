@@ -386,6 +386,7 @@ struct ast_frame *ast_frdup(const struct ast_frame *f)
 	out->datalen = f->datalen;
 	out->samples = f->samples;
 	out->delivery = f->delivery;
+	out->skip = f->skip;
 	/* Set us as having malloc'd header only, so it will eventually
 	   get freed. */
 	out->mallocd = AST_MALLOCD_HDR;

@@ -1069,6 +1069,23 @@ void SqlDb_mysql::createSchema() {
 	) ENGINE=InnoDB DEFAULT CHARSET=latin1 ROW_FORMAT=COMPRESSED;");
 
 	this->query(
+	"CREATE TABLE IF NOT EXISTS `cdr_rtp` (\
+			`ID` int unsigned NOT NULL AUTO_INCREMENT,\
+			`cdr_ID` int unsigned NOT NULL,\
+			`saddr` int unsigned DEFAULT NULL,\
+			`daddr` int unsigned DEFAULT NULL,\
+			`ssrc` int unsigned DEFAULT NULL,\
+			`received` mediumint unsigned DEFAULT NULL,\
+			`loss` mediumint unsigned DEFAULT NULL,\
+			`firsttime` float DEFAULT NULL,\
+			`payload` smallint unsigned DEFAULT NULL,\
+			`maxjitter_mult10` smallint unsigned DEFAULT NULL,\
+		PRIMARY KEY (`ID`),\
+		KEY (`cdr_ID`),\
+		CONSTRAINT `cdr_rtp_ibfk_1` FOREIGN KEY (`cdr_ID`) REFERENCES `cdr` (`ID`) ON DELETE CASCADE ON UPDATE CASCADE\
+	) ENGINE=InnoDB DEFAULT CHARSET=latin1 ROW_FORMAT=COMPRESSED;");
+
+	this->query(
 	"CREATE TABLE IF NOT EXISTS `contenttype` (\
 			`id` int unsigned NOT NULL AUTO_INCREMENT,\
 			`contenttype` varchar(255) DEFAULT NULL,\
@@ -1534,6 +1551,22 @@ void SqlDb_odbc::createSchema() {
 			custom_header1 varchar(255) NULL,\
 			fbasename varchar(255) NULL);\
 		CREATE INDEX fbasename ON cdr_next (fbasename);\
+	END");
+
+	this->query(
+	"IF NOT EXISTS (SELECT * FROM sys.objects WHERE name = 'cdr_rtp') BEGIN\
+		CREATE TABLE cdr_rtp (\
+			ID int PRIMARY KEY IDENTITY,\
+			cdr_ID int \
+				FOREIGN KEY REFERENCES cdr (ID),\
+			`saddr` bigint NULL,\
+			`daddr` bigint NULL,\
+			`ssrc` bigint NULL,\
+			`received` int NULL,\
+			`loss` int NULL,\
+			`firsttime` float NULL,\
+			`payload` smallint NULL,\
+			`maxjitter_mult10` smallint DEFAULT NULL;\
 	END");
 
 	this->query(

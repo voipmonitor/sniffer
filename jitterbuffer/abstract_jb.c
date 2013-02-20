@@ -462,7 +462,11 @@ static void jb_get_and_deliver(struct ast_channel *chan, struct timeval *mynow)
 		interpolation_len = chan->packetization;
 		
 		res = jbimpl->get(jbobj, &f, now, interpolation_len);
-		
+	
+		if(f->skip) {
+			save_empty_frame(chan);
+			break;
+		}	
 		switch(res) {
 		case JB_IMPL_OK:
 			/* deliver the frame */

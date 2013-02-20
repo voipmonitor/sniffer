@@ -38,6 +38,7 @@
 
 #include <pcap.h>
 
+#include "rtp.h"
 #include "calltable.h"
 #include "voipmonitor.h"
 #include "sniff.h"
@@ -120,6 +121,7 @@ int opt_newdir = 1;
 char opt_clientmanager[1024] = "";
 int opt_clientmanagerport = 9999;
 int opt_callslimit = 0;
+char opt_silencedmtfseq[16] = "";
 
 char configfile[1024] = "";	// config file name
 
@@ -140,6 +142,7 @@ char mysql_table[256] = "cdr";
 char mysql_user[256] = "root";
 char mysql_password[256] = "";
 int opt_mysql_port = 0; // 0 menas use standard port 
+int opt_skiprtpdata = 0;
 
 char opt_match_header[128] = "\0";
 
@@ -905,6 +908,9 @@ int load_config(char *fname) {
 	}
 	if((value = ini.GetValue("general", "callslimit", NULL))) {
 		opt_callslimit = atoi(value);
+	}
+	if((value = ini.GetValue("general", "pauserecordingdtmf", NULL))) {
+		strncpy(opt_silencedmtfseq, value, 15);
 	}
 	return 0;
 }

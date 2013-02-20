@@ -54,6 +54,7 @@ and insert them into Call class.
 #include "mirrorip.h"
 #include "ipaccount.h"
 #include "sql_db.h"
+#include "rtp.h"
 
 extern MirrorIP *mirrorip;
 
@@ -136,6 +137,8 @@ extern int global_livesniffer_all;
 extern int opt_pcap_split;
 extern int opt_newdir;
 extern int opt_callslimit;
+extern int opt_skiprtpdata;
+extern char opt_silencedmtfseq[16];
 
 #ifdef QUEUE_MUTEX
 extern sem_t readpacket_thread_semaphore;
@@ -759,7 +762,7 @@ int get_rtpmap_from_sdp(char *sdp_text, unsigned long len, int *rtpmap){
 	 return 0;
 }
 
-void add_to_rtp_thread_queue(Call *call, unsigned char *data, int datalen, struct pcap_pkthdr *header,  u_int32_t saddr, unsigned short port, int iscaller, int is_rtcp) {
+void add_to_rtp_thread_queue(Call *call, unsigned char *data, int datalen, struct pcap_pkthdr *header,  u_int32_t saddr, u_int32_t daddr, unsigned short port, int iscaller, int is_rtcp) {
 	__sync_add_and_fetch(&call->rtppcaketsinqueue, 1);
 	read_thread *params = &(threads[call->thread_num]);
 
@@ -779,6 +782,7 @@ void add_to_rtp_thread_queue(Call *call, unsigned char *data, int datalen, struc
 	rtpp->call = call;
 	rtpp->datalen = datalen;
 	rtpp->saddr = saddr;
+	rtpp->daddr = daddr;
 	rtpp->port = port;
 	rtpp->iscaller = iscaller;
 	rtpp->is_rtcp = is_rtcp;
@@ -788,7 +792,11 @@ void add_to_rtp_thread_queue(Call *call, unsigned char *data, int datalen, struc
 		syslog(LOG_ERR, "error: packet is to large [%d]b for RTP QRING[%d]b", header->caplen, MAXPACKETLENQRING);
 		return;
 	}
-	memcpy(rtpp->data, data, datalen);
+	if(opt_skiprtpdata) {
+		memcpy(rtpp->data, data, MIN((unsigned int)datalen, sizeof(RTPFixedHeader)));
+	} else {
+		memcpy(rtpp->data, data, datalen);
+	}
 
 #ifdef QUEUE_NONBLOCK2
 	params->vmbuffer[params->writeit % params->vmbuffermax].free = 0;
@@ -858,7 +866,7 @@ void *rtp_read_thread_func(void *arg) {
 		if(rtpp->is_rtcp) {
 			rtpp->call->read_rtcp((unsigned char*)rtpp->data, rtpp->datalen, &rtpp->header, rtpp->saddr, rtpp->port, rtpp->iscaller);
 		}  else {
-			rtpp->call->read_rtp(rtpp->data, rtpp->datalen, &rtpp->header, rtpp->saddr, rtpp->port, rtpp->iscaller);
+			rtpp->call->read_rtp(rtpp->data, rtpp->datalen, &rtpp->header, rtpp->saddr, rtpp->daddr, rtpp->port, rtpp->iscaller);
 		}
 
 
@@ -892,7 +900,7 @@ Call *new_invite_register(int sip_method, char *data, int datalen, struct pcap_p
 	static char str2[1024];
 	// store this call only if it starts with invite
 	Call *call = calltable->add(s, l, header->ts.tv_sec, saddr, source);
-	call->set_first_packet_time(header->ts.tv_sec);
+	call->set_first_packet_time(header->ts.tv_sec, header->ts.tv_usec);
 	call->sipcallerip = saddr;
 	call->sipcalledip = daddr;
 	call->type = sip_method;
@@ -1551,6 +1559,10 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 			if(verbosity > 2) 
 				 syslog(LOG_NOTICE,"SIP msg: BYE\n");
 			sip_method = BYE;
+		} else if ((datalen > 5) && !(memmem(data, 4, "INFO", 4) == 0)) {
+			if(verbosity > 2) 
+				 syslog(LOG_NOTICE,"SIP msg: INFO\n");
+			sip_method = INFO;
 		} else if ((datalen > 5) && !(memmem(data, 6, "CANCEL", 6) == 0)) {
 			if(verbosity > 2) 
 				 syslog(LOG_NOTICE,"SIP msg: CANCEL\n");
@@ -1603,9 +1615,11 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 				strncpy(num, data + 8, 3);
 				num[3] = '\0';
 				lastSIPresponseNum = atoi(num);
+/*
 				if(lastSIPresponseNum == 0) {
 					if(verbosity > 0) syslog(LOG_NOTICE, "lastSIPresponseNum = 0 [%s]\n", lastSIPresponse);
 				}
+*/
 			} 
 			data[datalen - 1] = a;
 /* XXX: remove it once tested
@@ -1837,10 +1851,10 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 				// if it is OK check for BYE
 				if(cseq && cseqlen < 32) {
 					if(verbosity > 2) {
-						char a = data[datalen - 1];
-						data[datalen - 1] = 0;
-						syslog(LOG_NOTICE, "Cseq: %s\n", data);
-						data[datalen - 1] = a;
+						char a = cseq[cseqlen];
+						cseq[cseqlen] = '\0';
+						syslog(LOG_NOTICE, "Cseq: %s\n", cseq);
+						cseq[cseqlen] = a;
 					}
 					if(strncmp(cseq, call->byecseq, cseqlen) == 0) {
 						// terminate successfully acked call, put it into mysql CDR queue and remove it from calltable 
@@ -1915,6 +1929,43 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 					} else {
 						// reset flag because we did not received '0' after '*'
 						call->dtmfflag = 0;
+					}
+				}
+			}
+		}
+		if(sip_method == INFO and opt_silencedmtfseq[0] != '\0') {
+			s = gettag(data, datalen, "Signal=", &l);
+			
+			if(l && l < 33) {
+				char *tmp = s;
+				tmp[l] = '\0';
+				if(verbosity >= 2)
+					syslog(LOG_NOTICE, "[%s] DTMF SIP INFO [%c]", call->fbasename, tmp[0]);
+				if(call->dtmfflag2 == 0) {
+					if(tmp[0] == opt_silencedmtfseq[call->dtmfflag2]) {
+						// received ftmf '*', set flag so if next dtmf will be '0' stop recording
+						call->dtmfflag2++;
+					}
+				} else {
+					if(tmp[0] == opt_silencedmtfseq[call->dtmfflag2]) {
+						// we have complete *0 sequence
+						if(call->dtmfflag2 + 1 == strlen(opt_silencedmtfseq)) {
+							if(call->silencerecording == 0) {
+								if(verbosity >= 1)
+									syslog(LOG_NOTICE, "[%s] pause DTMF sequence detected - pausing recording ", call->fbasename);
+								call->silencerecording = 1;
+							} else {
+								if(verbosity >= 1)
+									syslog(LOG_NOTICE, "[%s] pause DTMF sequence detected - unpausing recording ", call->fbasename);
+								call->silencerecording = 0;
+							}
+							call->dtmfflag2 = 0;
+						} else {
+							call->dtmfflag2++;
+						}
+					} else {
+						// reset flag 
+						call->dtmfflag2 = 0;
 					}
 				}
 			}
@@ -2125,7 +2176,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 
 		if(is_rtcp) {
 			if(rtp_threaded && can_thread) {
-				add_to_rtp_thread_queue(call, (unsigned char*) data, datalen, header, saddr, source, iscaller, is_rtcp);
+				add_to_rtp_thread_queue(call, (unsigned char*) data, datalen, header, saddr, daddr, source, iscaller, is_rtcp);
 			} else {
 				call->read_rtcp((unsigned char*) data, datalen, header, saddr, source, iscaller);
 			}
@@ -2136,15 +2187,15 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 		}
 
 		if(rtp_threaded && can_thread) {
-			add_to_rtp_thread_queue(call, (unsigned char*) data, datalen, header, saddr, source, iscaller, is_rtcp);
+			add_to_rtp_thread_queue(call, (unsigned char*) data, datalen, header, saddr, daddr, source, iscaller, is_rtcp);
 			*was_rtp = 1;
 			if(is_rtcp) return call;
 		} else {
-			call->read_rtp((unsigned char*) data, datalen, header, saddr, source, iscaller);
+			call->read_rtp((unsigned char*) data, datalen, header, saddr, daddr, source, iscaller);
 			call->set_last_packet_time(header->ts.tv_sec);
 		}
 		if(!dontsave && ((call->flags & FLAG_SAVERTP) || (call->isfax && opt_saveudptl))) {
-			if(opt_onlyRTPheader && !call->isfax) {
+			if((call->silencerecording || opt_onlyRTPheader) && !call->isfax) {
 				tmp_u32 = header->caplen;
 				header->caplen = header->caplen - (datalen - RTP_FIXED_HEADERLEN);
 				save_packet(call, header, packet, saddr, source, daddr, dest, istcp, data, datalen, TYPE_RTP);
@@ -2175,7 +2226,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 
 		if(is_rtcp) {
 			if(rtp_threaded && can_thread) {
-				add_to_rtp_thread_queue(call, (unsigned char*) data, datalen, header, saddr, source, !iscaller, is_rtcp);
+				add_to_rtp_thread_queue(call, (unsigned char*) data, datalen, header, saddr, daddr, source, !iscaller, is_rtcp);
 			} else {
 				call->read_rtcp((unsigned char*) data, datalen, header, saddr, source, !iscaller);
 			}
@@ -2187,14 +2238,14 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 
 		// as we are searching by source address and find some call, revert iscaller 
 		if(rtp_threaded && can_thread) {
-			add_to_rtp_thread_queue(call, (unsigned char*) data, datalen, header, saddr, source, !iscaller, is_rtcp);
+			add_to_rtp_thread_queue(call, (unsigned char*) data, datalen, header, saddr, daddr, source, !iscaller, is_rtcp);
 			*was_rtp = 1;
 		} else {
-			call->read_rtp((unsigned char*) data, datalen, header, saddr, source, !iscaller);
+			call->read_rtp((unsigned char*) data, datalen, header, saddr, daddr, source, !iscaller);
 			call->set_last_packet_time(header->ts.tv_sec);
 		}
 		if(!dontsave && ((call->flags & FLAG_SAVERTP) || (call->isfax && opt_saveudptl))) {
-			if(opt_onlyRTPheader && !call->isfax) {
+			if((call->silencerecording || opt_onlyRTPheader) && !call->isfax) {
 				tmp_u32 = header->caplen;
 				header->caplen = header->caplen - (datalen - RTP_FIXED_HEADERLEN);
 				save_packet(call, header, packet, saddr, source, daddr, dest, istcp, data, datalen, TYPE_RTP);
@@ -2212,7 +2263,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 			int rtpmap[MAX_RTPMAP];
 			memset(&rtpmap, 0, sizeof(int) * MAX_RTPMAP);
 
-			rtp.read((unsigned char*)data, datalen, header, saddr, 0);
+			rtp.read((unsigned char*)data, datalen, header, saddr, daddr, 0);
 
 			if(rtp.getVersion() != 2 && rtp.getPayload() > 18) {
 				return NULL;
@@ -2222,7 +2273,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 			//printf("ssrc [%x] ver[%d] src[%u] dst[%u]\n", rtp.getSSRC(), rtp.getVersion(), source, dest);
 
 			call = calltable->add(s, strlen(s), header->ts.tv_sec, saddr, source);
-			call->set_first_packet_time(header->ts.tv_sec);
+			call->set_first_packet_time(header->ts.tv_sec, header->ts.tv_usec);
 			call->sipcallerip = saddr;
 			call->sipcalledip = daddr;
 			call->type = INVITE;

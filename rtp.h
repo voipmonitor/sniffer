@@ -107,6 +107,30 @@ The RTP header has the following format:
 #define MAX_MISORDER 100
 #define MAX_DROPOUT 3000
 
+struct RTPFixedHeader {
+#if     __BYTE_ORDER == __BIG_ENDIAN
+	// For big endian boxes
+	unsigned char version:2;	// Version, currently 2
+	unsigned char padding:1;	// Padding bit
+	unsigned char extension:1;      // Extension bit
+	unsigned char cc:4;	     // CSRC count
+	unsigned char marker:1;	 // Marker bit
+	unsigned char payload:7;	// Payload type
+#else
+	// For little endian boxes
+	unsigned char cc:4;	     // CSRC count
+	unsigned char extension:1;      // Extension bit
+	unsigned char padding:1;	// Padding bit
+	unsigned char version:2;	// Version, currently 2
+	unsigned char payload:7;	// Payload type
+	unsigned char marker:1;	 // Marker bit
+#endif
+	u_int16_t sequence;     // sequence number
+	u_int32_t timestamp;    // timestamp
+	u_int32_t sources[1];   // contributing sources
+};
+
+
 /**
  * This class implements operations on RTP strem
  */
@@ -119,9 +143,10 @@ class RTP {
 public: 
 	u_int32_t ssrc;		//!< ssrc of this RTP class
 	u_int32_t saddr;	//!< last source IP adress 
+	u_int32_t daddr;	//!< last source IP adress 
 	ogzstream gfileGZ;	//!< file for storing packet statistics with GZIP compression
 	ofstream gfile;		//!< file for storing packet statistics
-	FILE *gfileRAW;         //!< file for storing RTP payload in RAW format
+	FILE *gfileRAW;	 //!< file for storing RTP payload in RAW format
 	char *gfileRAW_buffer;
 	char gfilename[1024];	//!< file name of this file 
 	char basefilename[1024];
@@ -152,6 +177,8 @@ public:
 	int sid;
 	int prev_sid;
 	int pinformed;
+	unsigned int first_packet_time;
+	unsigned int first_packet_usec;
 
 	/* RTCP data */
 	struct rtcp_t {
@@ -183,29 +210,50 @@ public:
 		long double 	maxjitter;
 	} stats;
 
-        /**
+	typedef struct {
+		u_int16_t max_seq;		//!< highest seq. number seen 
+		u_int32_t cycles;		//!< shifted count of seq. number cycles
+		u_int32_t base_seq;		//!< base seq number
+		u_int32_t bad_seq;		//!< last 'bad' seq number + 1
+		u_int32_t probation;		//!< sequ. packets till source is valid
+		u_int32_t received;		//!< packets received
+		u_int32_t expected_prior;	//!< packet expected at last interval
+		u_int32_t received_prior;	//!< packet received at last interval
+		u_int32_t transit;		//!< relative trans time for prev pkt
+		u_int32_t jitter;		//!< estimated jitter
+		u_int32_t lost;			//!< lost packets
+		struct timeval lastTimeRec;	//!< last received time from pcap packet header
+		u_int32_t lastTimeStamp;	//!< last received timestamp from RTP header
+		int delay;
+		long double fdelay;
+		double prevjitter;
+		double avgdelay;
+	} source;
+	source *s;
+
+	/**
 	* constructor which allocates and zeroing stats structure
 	*
-        */
+	*/
 	RTP();
 
-        /**
+	/**
 	* destructor
 	*
-        */
+	*/
 	~RTP();
 
-        /**
+	/**
 	 * @brief simulate jitter buffer
 	 *
 	 * Put packet to jitterbuffer associated to channel structure
 	 *
 	 * @param channel pointer to the channel structure which holds statistics and jitterbuffer data
 	 *
-        */
+	*/
 	void jitterbuffer(struct ast_channel *channel, int savePayload);
 
-        /**
+	/**
 	 * @brief read RTP packet
 	 *
 	 * Used for reading RTP packet
@@ -215,11 +263,11 @@ public:
 	 * @param header header structure of the packet
 	 * @param saddr source IP adress of the packet
 	 *
-        */
-	void read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t saddr, int seeninviteok);
+	*/
+	void read(unsigned char* data, int len, struct pcap_pkthdr *header, u_int32_t saddr, u_int32_t daddr, int seeninviteok);
 
 
-        /**
+	/**
 	 * @brief fill RTP packet into structures
 	 *
 	 * Used for temporary operations on RTP packet
@@ -229,8 +277,8 @@ public:
 	 * @param header header structure of the packet
 	 * @param saddr source IP adress of the packet
 	 *
-        */
-	void fill(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t saddr);
+	*/
+	void fill(unsigned char* data, int len, struct pcap_pkthdr *header, u_int32_t saddr, u_int32_t daddr);
 
 	/**
 	 * @brief get version
@@ -241,51 +289,51 @@ public:
 	*/
 	const unsigned char getVersion() { return getHeader()->version; };
 	
-        /**
+	/**
 	 * @brief get sequence sumber
 	 *
 	 * this function gets sequence number from header of RTP packet
 	 *
 	 * @return sequence number
-        */
+	*/
 	const u_int16_t getSeqNum() { return htons(getHeader()->sequence); };
 
-        /**
+	/**
 	 * @brief get timestamp 
 	 *
 	 * this function gets timestamp from header of RTP packet
 	 *
 	 * @return number of seocnds since UNIX epoch
-        */
+	*/
 	const u_int32_t getTimestamp() { return htonl(getHeader()->timestamp); };
 	
-        /**
+	/**
 	 * @brief get SSRC
 	 *
 	 * this function gets SSRC from header of RTP packet
 	 *
 	 * @return SSRC
-        */
+	*/
 	const u_int32_t getSSRC() { return htonl(getHeader()->sources[0]); };
 
-        /**
+	/**
 	 * @brief get Payload 
 	 *
 	 * this function gets Payload from header of RTP packet
 	 *
 	 * @return SSRC
-        */
+	*/
 	const int getPayload() { return getHeader()->payload; };
-        /**
+	/**
 	 * @brief get SSRC
 	 *
 	 * this function gets number of received packets
 	 *
 	 * @return received packets
-        */
+	*/
 	const u_int32_t getReceived() { return s->received; };
 
-        /**
+	/**
 	 * @brief get SSRC
 	 *
 	 * this function gets number of received packets
@@ -335,7 +383,7 @@ public:
 	 * @brief flushes frames from jitterbuffer
 	 *
 	 * this function flushes all frames from jitterbuffer fixed implementation and writes it to raw files
-        */
+	*/
 	void jitterbuffer_fixed_flush(struct ast_channel *channel);
 
 	 /**
@@ -343,7 +391,7 @@ public:
 	 * @brief adds empty frames from last packet in jitterbuffer to time in header packet
 	 *
 	 * add silence to RTP stream from last packet time to current time which is in header->ts 
-        */
+	*/
 	void jt_tail(struct pcap_pkthdr *header);
 
 	 /**
@@ -352,45 +400,25 @@ public:
 	 *
 	 * this function prints statistics data on stdout 
 	 *
-        */
+	*/
 	void dump();
 
-        /**
+	/**
 	 * @brief get total lost packets
 	 *
 	 * this function gets total lost packets within live of RTP stream
 	 *
 	 * @return count of lost pakcets
-        */
+	*/
 	u_int32_t getLost() { return s->probation ? 0 : ((s->cycles + s->max_seq) - s->base_seq + 1) - s->received; };
 
 private: 
 	/*
 	* Per-source state information
 	*/
-	typedef struct {
-		u_int16_t max_seq;		//!< highest seq. number seen 
-		u_int32_t cycles;		//!< shifted count of seq. number cycles
-		u_int32_t base_seq;		//!< base seq number
-		u_int32_t bad_seq;		//!< last 'bad' seq number + 1
-		u_int32_t probation;		//!< sequ. packets till source is valid
-		u_int32_t received;		//!< packets received
-		u_int32_t expected_prior;	//!< packet expected at last interval
-		u_int32_t received_prior;	//!< packet received at last interval
-		u_int32_t transit;		//!< relative trans time for prev pkt
-		u_int32_t jitter;		//!< estimated jitter
-		u_int32_t lost;			//!< lost packets
-		struct timeval lastTimeRec;	//!< last received time from pcap packet header
-		u_int32_t lastTimeStamp;	//!< last received timestamp from RTP header
-		int delay;
-		long double fdelay;
-		long double prevjitter;
-		double avgdelay;
-	} source;
 
 	struct pcap_pkthdr *header;
 	struct timeval ts;
-	source *s;
 	bool first;
 	int nintervals;
 

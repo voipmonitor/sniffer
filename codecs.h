@@ -2,6 +2,7 @@
 #define PAYLOAD_GSM 3
 #define PAYLOAD_G723 4
 #define PAYLOAD_PCMA 8
+#define PAYLOAD_G722 9
 #define PAYLOAD_G729 18
 #define PAYLOAD_ILBC 97
 #define PAYLOAD_SPEEX 98
