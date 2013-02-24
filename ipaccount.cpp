@@ -109,6 +109,13 @@ extern unsigned int qringmax;
 extern char *ipaccountportmatrix;
 extern int opt_pcapdump;
 
+extern char get_customer_by_ip_sql_driver[256];
+extern char get_customer_by_ip_odbc_dsn[256];
+extern char get_customer_by_ip_odbc_user[256];
+extern char get_customer_by_ip_odbc_password[256];
+extern char get_customer_by_ip_odbc_driver[256];
+extern char get_customer_by_ip_query[1024];
+
 typedef struct {
 	unsigned int octects;
 	unsigned int numpackets;
@@ -132,7 +139,7 @@ unsigned int last_flush_ports = 0;
 
 extern SqlDb *sqlDb;
 
-#define IPACC_INTERVAL 300 // seconds
+extern int opt_ipacc_interval;
 
 
 void flush_octets_ports() {
@@ -145,18 +152,29 @@ void flush_octets_ports() {
 		string query;
 		proto = ipacc_portsIT->second;
 		if(ipacc_portsIT->second->octects > 0) {
-			strcpy(keycb, ipacc_portsIT->first.c_str());
 			SqlDb_row row;
+			
+			strcpy(keycb, ipacc_portsIT->first.c_str());
 			keyc = keycb;
 			
-			tmp = strchr(keyc, 'D');
+			tmp = strchr(keyc, '/');
 			*tmp = '\0';
 			row.add(keyc, "saddr");
+			
+			keyc = tmp + 1;
+			tmp = strchr(keyc, 'D');
+			*tmp = '\0';
+			row.add(keyc, "src_id_customer");
 
+			keyc = tmp + 1;
+			tmp = strchr(keyc, '/');
+			*tmp = '\0';
+			row.add(keyc, "daddr");
+			
 			keyc = tmp + 1;
 			tmp = strchr(keyc, 'E');
 			*tmp = '\0';
-			row.add(keyc, "daddr");
+			row.add(keyc, "dst_id_customer");
 
 			keyc = tmp + 1;
 			tmp = strchr(keyc, 'P');
@@ -166,17 +184,10 @@ void flush_octets_ports() {
 			keyc = tmp + 1;
 			row.add(keyc, "proto");
 
-			sprintf(buf, "%u", proto->octects);
-			row.add(buf, "octects");
-			
-			sprintf(buf, "%u", proto->lasttimestamp * IPACC_INTERVAL);
-			row.add(buf, "interval");
-			
-			sprintf(buf, "%u", proto->numpackets);
-			row.add(buf, "numpackets");
-			
-			sprintf(buf, "%i", proto->voippacket);
-			row.add(buf, "voip");
+			row.add(proto->octects, "octects");
+			row.add(proto->lasttimestamp * opt_ipacc_interval, "interval");
+			row.add(proto->numpackets, "numpackets");
+			row.add(proto->voippacket, "voip");
 
 			if(isTypeDb("mysql")) {
 				mysqlquery.push(sqlDb->insertQuery("ipacc", row));
@@ -196,16 +207,19 @@ void flush_octets_ports() {
 
 void add_octects_ipport(time_t timestamp, unsigned int saddr, unsigned int daddr, int port, int proto, int packetlen, int voippacket) {
 	string key;
-	char buf[64];
+	char buf[100];
 	octects_t *ports;
-	unsigned int cur_interval = timestamp / IPACC_INTERVAL;
-
-	sprintf(buf, "%uD%uE%dP%d", htonl(saddr), htonl(daddr), port, proto);
+	unsigned int cur_interval = timestamp / opt_ipacc_interval;
+	
+	unsigned int src_id_customer = get_customer_by_ip(saddr, true);
+	unsigned int dst_id_customer = get_customer_by_ip(daddr, true);
+	
+	sprintf(buf, "%u/%uD%u/%uE%dP%d", htonl(saddr), src_id_customer, htonl(daddr), dst_id_customer, port, proto);
 	key = buf;
 
 	if(last_flush_ports != cur_interval) {
 		flush_octets_ports();
-		//printf("%u | %u | %u | %u\n", timestamp, last_flush, cur_interval, timestamp / IPACC_INTERVAL);
+		//printf("%u | %u | %u | %u\n", timestamp, last_flush, cur_interval, timestamp / opt_ipacc_interval);
 		last_flush_ports = cur_interval;
 	}
 
@@ -215,7 +229,7 @@ void add_octects_ipport(time_t timestamp, unsigned int saddr, unsigned int daddr
 		ports = (octects_t*)calloc(1, sizeof(octects_t));
 		ports->octects += packetlen;
 		ports->numpackets++;
-		ports->lasttimestamp = timestamp / IPACC_INTERVAL;
+		ports->lasttimestamp = timestamp / opt_ipacc_interval;
 		ports->voippacket = voippacket;
 		ipacc_ports[key] = ports;
 //		printf("key: %s\n", buf);
@@ -224,7 +238,7 @@ void add_octects_ipport(time_t timestamp, unsigned int saddr, unsigned int daddr
 		octects_t *tmp = ipacc_portsIT->second;
 		tmp->octects += packetlen;
 		tmp->numpackets++;
-		tmp->lasttimestamp = timestamp / IPACC_INTERVAL;
+		tmp->lasttimestamp = timestamp / opt_ipacc_interval;
 		tmp->voippacket = voippacket;
 //		printf("key[%s] %u\n", key.c_str(), tmp->octects);
 	}
@@ -295,4 +309,62 @@ void ipaccount(time_t timestamp, struct iphdr *header_ip, int packetlen, int voi
 		add_octects_ipport(timestamp, header_ip->saddr, header_ip->daddr, 0, header_ip->protocol, packetlen, voippacket);
 	}
 
+}
+
+int get_customer_by_ip(unsigned int ip, bool use_cache, bool deleteSqlDb) {
+	static SqlDb *sqlDb = NULL;
+	static map<int, cust_cache_item> cust_cache;
+	if(deleteSqlDb && sqlDb) {
+		delete sqlDb;
+		sqlDb = NULL;
+		return(-1);
+	}
+	if(!get_customer_by_ip_sql_driver[0] ||
+	   !get_customer_by_ip_odbc_dsn[0] ||
+	   !get_customer_by_ip_odbc_user[0] ||
+	   !get_customer_by_ip_odbc_password[0] ||
+	   !get_customer_by_ip_odbc_driver[0] ||
+	   !get_customer_by_ip_query[0]) {
+		return(0);
+	}
+	if(use_cache) {
+		cust_cache_item cache_rec = cust_cache[ip];
+		if((cache_rec.cust_id || cache_rec.add_timestamp) &&
+		   time(NULL) - cache_rec.add_timestamp < 3600) {
+			return(cache_rec.cust_id);
+		}
+	}
+	if(!sqlDb) {
+		SqlDb_odbc *sqlDb_odbc = new SqlDb_odbc();
+		sqlDb_odbc->setOdbcVersion(SQL_OV_ODBC3);
+		sqlDb_odbc->setSubtypeDb(get_customer_by_ip_odbc_driver);
+		sqlDb = sqlDb_odbc;
+		sqlDb->setConnectParameters(get_customer_by_ip_odbc_dsn, get_customer_by_ip_odbc_user, get_customer_by_ip_odbc_password);
+		sqlDb->connect();
+	}
+	char ip_str[18];
+	in_addr ips;
+	ips.s_addr = ip;
+	strcpy(ip_str, inet_ntoa(ips));
+	string query_str = get_customer_by_ip_query;
+	size_t query_pos_ip = query_str.find("_IP_");
+	unsigned int cust_id = 0;
+	if(query_pos_ip != std::string::npos) {
+		query_str.replace(query_pos_ip, 4, ip_str);
+		sqlDb->query(query_str);
+		SqlDb_row row = sqlDb->fetchRow();
+		if(row) {
+			const char *cust_id_str = row["ID"].c_str();
+			if(cust_id_str && cust_id_str[0]) {
+				cust_id = atol(cust_id_str);
+			}
+		}
+	}
+	if(use_cache) {
+		cust_cache_item cache_rec;
+		cache_rec.cust_id = cust_id;
+		cache_rec.add_timestamp = time(NULL);
+		cust_cache[ip] = cache_rec;
+	}
+	return(cust_id);
 }

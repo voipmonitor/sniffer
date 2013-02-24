@@ -1218,7 +1218,9 @@ void SqlDb_mysql::createSchema() {
 	this->query(
 	"CREATE TABLE IF NOT EXISTS `ipacc` (\
 			`saddr` int unsigned NOT NULL,\
+			`src_id_customer` int unsigned,\
 			`daddr` int unsigned NOT NULL,\
+			`dst_id_customer` int unsigned,\
 			`port` smallint unsigned NOT NULL,\
 			`proto` smallint unsigned NOT NULL,\
 			`octects` int unsigned NOT NULL,\

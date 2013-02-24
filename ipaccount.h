@@ -7,6 +7,7 @@
 #define IPACCOUNT_H
 
 void ipaccount(time_t, struct iphdr *, int, int);
+int get_customer_by_ip(unsigned int ip, bool use_cache = true, bool deleteSqlDb = false);
 
 typedef struct {
 	int all;
@@ -26,5 +27,9 @@ typedef struct {
 	unsigned int fetch_timestamp;
 } octects_live_t;
 
+typedef struct {
+	unsigned int cust_id;
+	unsigned int add_timestamp;
+} cust_cache_item;
 
 #endif

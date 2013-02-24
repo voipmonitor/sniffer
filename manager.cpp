@@ -338,8 +338,7 @@ int parse_command(char *buf, int size, int client, int eof) {
 			map<unsigned int, octects_live_t*>::iterator ipacc_liveIT = ipacc_live.find(id);
 			octects_live_t* filter;
 			filter = (octects_live_t*)calloc(1, sizeof(octects_live_t));
-			filter->ipfilter = ntohl((unsigned int)inet_addr(ipfilter));
-			filter->ipfilter = ((filter->ipfilter>>24)%256) + (((filter->ipfilter>>16)%256)<<8) + (((filter->ipfilter>>8)%256)<<16) + ((filter->ipfilter%256)<<24);
+			filter->ipfilter = (unsigned int)inet_addr(ipfilter);
 			filter->fetch_timestamp = time(NULL);
 			ipacc_live[id] = filter;
 			if(verbosity > 0) {

@@ -112,6 +112,7 @@ char opt_mirrorip_src[20];
 char opt_mirrorip_dst[20];
 int opt_printinsertid = 0;
 int opt_ipaccount = 0;
+int opt_ipacc_interval = 300;
 int opt_udpfrag = 1;
 MirrorIP *mirrorip = NULL;
 int opt_cdronlyanswered = 0;
@@ -150,6 +151,13 @@ char odbc_dsn[256] = "voipmonitor";
 char odbc_user[256];
 char odbc_password[256];
 char odbc_driver[256];
+
+char get_customer_by_ip_sql_driver[256] = "odbc";
+char get_customer_by_ip_odbc_dsn[256];
+char get_customer_by_ip_odbc_user[256];
+char get_customer_by_ip_odbc_password[256];
+char get_customer_by_ip_odbc_driver[256];
+char get_customer_by_ip_query[1024];
 
 char opt_pidfile[4098] = "/var/run/voipmonitor.pid";
 
@@ -831,6 +839,24 @@ int load_config(char *fname) {
 	if((value = ini.GetValue("general", "odbcdriver", NULL))) {
 		strncpy(odbc_driver, value, sizeof(odbc_driver));
 	}
+	if((value = ini.GetValue("general", "get_customer_by_ip_odbc_driver", NULL))) {
+		strncpy(get_customer_by_ip_sql_driver, value, sizeof(get_customer_by_ip_sql_driver));
+	}
+	if((value = ini.GetValue("general", "get_customer_by_ip_odbc_dsn", NULL))) {
+		strncpy(get_customer_by_ip_odbc_dsn, value, sizeof(get_customer_by_ip_odbc_dsn));
+	}
+	if((value = ini.GetValue("general", "get_customer_by_ip_odbc_user", NULL))) {
+		strncpy(get_customer_by_ip_odbc_user, value, sizeof(get_customer_by_ip_odbc_user));
+	}
+	if((value = ini.GetValue("general", "get_customer_by_ip_odbc_password", NULL))) {
+		strncpy(get_customer_by_ip_odbc_password, value, sizeof(get_customer_by_ip_odbc_password));
+	}
+	if((value = ini.GetValue("general", "get_customer_by_ip_odbc_driver", NULL))) {
+		strncpy(get_customer_by_ip_odbc_driver, value, sizeof(get_customer_by_ip_odbc_driver));
+	}
+	if((value = ini.GetValue("general", "get_customer_by_ip_query", NULL))) {
+		strncpy(get_customer_by_ip_query, value, sizeof(get_customer_by_ip_query));
+	}
 	if((value = ini.GetValue("general", "sipoverlap", NULL))) {
 		opt_sipoverlap = yesno(value);
 	}
@@ -899,6 +925,9 @@ int load_config(char *fname) {
 	}
 	if((value = ini.GetValue("general", "ipaccount", NULL))) {
 		opt_ipaccount = yesno(value);
+	}
+	if((value = ini.GetValue("general", "ipaccount_interval", NULL))) {
+		opt_ipacc_interval = atoi(value);
 	}
 	if((value = ini.GetValue("general", "cdronlyanswered", NULL))) {
 		opt_cdronlyanswered = yesno(value);
@@ -1764,8 +1793,22 @@ int main(int argc, char *argv[]) {
 }
 
 #include "sql_db.h"
+#include "ipaccount.h"
 
 void test() {
+	
+	cout << endl << endl;
+	for(int i = 0; i < 20; i++) {
+		cout << "iter:" << (i+1) << endl;
+		unsigned int cust_id = get_customer_by_ip(inet_addr("1.2.3.4"), true);
+		cout << cust_id << endl;
+		cust_id = get_customer_by_ip(inet_addr("2.3.4.5"), true);
+		cout << cust_id << endl;
+		sleep(1);
+	}
+	get_customer_by_ip(NULL, false, true);
+	
+	return;
 	
 	ipfilter = new IPfilter;
 	ipfilter->load();
