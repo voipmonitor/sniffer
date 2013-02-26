@@ -379,7 +379,7 @@ bool SqlDb_mysql::connected() {
 
 bool SqlDb_mysql::query(string query) {
 	this->prepareQuery(&query);
-	if(verbosity > 0) { 
+	if(verbosity > 1) { 
 		cout << query << endl;
 	}
 	bool rslt = false;
@@ -654,7 +654,7 @@ bool SqlDb_odbc::connected() {
 
 bool SqlDb_odbc::query(string query) {
 	this->prepareQuery(&query);
-	if(verbosity > 0) { 
+	if(verbosity > 1) { 
 		cout << query << endl;
 	}
 	SQLRETURN rslt;
@@ -1233,7 +1233,7 @@ void SqlDb_mysql::createSchema() {
 		KEY `dst_id_customer` (`dst_id_customer`),\
 		KEY `port` (`port`),\
 		KEY `proto` (`proto`),\
-		KEY `interval` (`interval`)\
+		KEY `interval_time` (`interval_time`)\
 	) ENGINE=InnoDB DEFAULT CHARSET=latin1 ROW_FORMAT=COMPRESSED;");
 
 	this->query(
@@ -1722,7 +1722,7 @@ void SqlDb_odbc::createSchema() {
 		CREATE INDEX dst_id_customer ON ipacc (dst_id_customer);\
 		CREATE INDEX port ON ipacc (port);\
 		CREATE INDEX proto ON ipacc (proto);\
-		CREATE INDEX interval ON ipacc (interval)\
+		CREATE INDEX interval_time ON ipacc (interval_time)\
 	END");
 	
 	this->query(

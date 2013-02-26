@@ -157,24 +157,16 @@ void flush_octets_ports() {
 			strcpy(keycb, ipacc_portsIT->first.c_str());
 			keyc = keycb;
 			
-			tmp = strchr(keyc, '/');
-			*tmp = '\0';
-			row.add(keyc, "saddr");
-			
-			keyc = tmp + 1;
 			tmp = strchr(keyc, 'D');
 			*tmp = '\0';
-			row.add(keyc, "src_id_customer");
+			row.add(keyc, "saddr");
+			row.add(get_customer_by_ip(htonl(atol(keyc)), true), "src_id_customer");
 
-			keyc = tmp + 1;
-			tmp = strchr(keyc, '/');
-			*tmp = '\0';
-			row.add(keyc, "daddr");
-			
 			keyc = tmp + 1;
 			tmp = strchr(keyc, 'E');
 			*tmp = '\0';
-			row.add(keyc, "dst_id_customer");
+			row.add(keyc, "daddr");
+			row.add(get_customer_by_ip(htonl(atol(keyc)), true), "dst_id_customer");
 
 			keyc = tmp + 1;
 			tmp = strchr(keyc, 'P');
@@ -211,10 +203,7 @@ void add_octects_ipport(time_t timestamp, unsigned int saddr, unsigned int daddr
 	octects_t *ports;
 	unsigned int cur_interval = timestamp / opt_ipacc_interval;
 	
-	unsigned int src_id_customer = get_customer_by_ip(saddr, true);
-	unsigned int dst_id_customer = get_customer_by_ip(daddr, true);
-	
-	sprintf(buf, "%u/%uD%u/%uE%dP%d", htonl(saddr), src_id_customer, htonl(daddr), dst_id_customer, port, proto);
+	sprintf(buf, "%uD%uE%dP%d", htonl(saddr), htonl(daddr), port, proto);
 	key = buf;
 
 	if(last_flush_ports != cur_interval) {
@@ -336,12 +325,12 @@ int get_customer_by_ip(unsigned int ip, bool use_cache, bool deleteSqlDb) {
 			cust_cache_item cache_rec = cust_cache[ip];
 			if((cache_rec.cust_id || cache_rec.add_timestamp) &&
 			   (time(NULL) - cache_rec.add_timestamp) < 3600) {
-				if(verbosity > 0) {
+				if(verbosity > 1) {
 					char ip_str[18];
 					in_addr ips;
 					ips.s_addr = ip;
 					strcpy(ip_str, inet_ntoa(ips));
-					cout << ip_str << " find in cache; cache length is " << cust_cache.size() << "; count is " << cust_cache_counter << endl;
+					cout << ip_str << " " << (cache_rec.cust_id ? "FIND" : "find") << " in cache; cache length is " << cust_cache.size() << "; count is " << cust_cache_counter << endl;
 				}
 				return(cache_rec.cust_id);
 			}
