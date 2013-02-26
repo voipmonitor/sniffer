@@ -2644,6 +2644,8 @@ inline int ipfrag_dequeue(ip_frag_queue_t *queue, struct pcap_pkthdr **header, u
 			if(node->firstheaderlen) {
 				memcpy(newpacket, node->firstheader, node->firstheaderlen);
 				len += node->firstheaderlen;
+				// reset fragment flag to 0
+				((iphdr *)(node->packet))->frag_off = 0;
 			}
 			memcpy(newpacket + len, node->packet, node->len);
 			len += node->len;
