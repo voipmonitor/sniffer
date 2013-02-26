@@ -185,7 +185,7 @@ void flush_octets_ports() {
 			row.add(keyc, "proto");
 
 			row.add(proto->octects, "octects");
-			row.add(proto->lasttimestamp * opt_ipacc_interval, "interval");
+			row.add(sqlDateTimeString(proto->lasttimestamp * opt_ipacc_interval).c_str(), "interval_time");
 			row.add(proto->numpackets, "numpackets");
 			row.add(proto->voippacket, "voip");
 
@@ -248,7 +248,7 @@ void add_octects_ipport(time_t timestamp, unsigned int saddr, unsigned int daddr
 	for(it = ipacc_live.begin(); it != ipacc_live.end(); it++) {
 		data = it->second;
 		
-		if(time(NULL) - data->fetch_timestamp > 120) {
+		if((time(NULL) - data->fetch_timestamp) > 120) {
 			if(verbosity > 0) {
 				cout << "FORCE STOP LIVE IPACC id: " << it->first << endl; 
 			}
@@ -314,6 +314,7 @@ void ipaccount(time_t timestamp, struct iphdr *header_ip, int packetlen, int voi
 int get_customer_by_ip(unsigned int ip, bool use_cache, bool deleteSqlDb) {
 	static SqlDb *sqlDb = NULL;
 	static map<int, cust_cache_item> cust_cache;
+	static unsigned int cust_cache_counter = 0;
 	if(deleteSqlDb && sqlDb) {
 		delete sqlDb;
 		sqlDb = NULL;
@@ -328,10 +329,22 @@ int get_customer_by_ip(unsigned int ip, bool use_cache, bool deleteSqlDb) {
 		return(0);
 	}
 	if(use_cache) {
-		cust_cache_item cache_rec = cust_cache[ip];
-		if((cache_rec.cust_id || cache_rec.add_timestamp) &&
-		   time(NULL) - cache_rec.add_timestamp < 3600) {
-			return(cache_rec.cust_id);
+		++cust_cache_counter;
+		if(!(cust_cache_counter%100000)) {
+			cust_cache.clear();
+		} else {
+			cust_cache_item cache_rec = cust_cache[ip];
+			if((cache_rec.cust_id || cache_rec.add_timestamp) &&
+			   (time(NULL) - cache_rec.add_timestamp) < 3600) {
+				if(verbosity > 0) {
+					char ip_str[18];
+					in_addr ips;
+					ips.s_addr = ip;
+					strcpy(ip_str, inet_ntoa(ips));
+					cout << ip_str << " find in cache; cache length is " << cust_cache.size() << "; count is " << cust_cache_counter << endl;
+				}
+				return(cache_rec.cust_id);
+			}
 		}
 	}
 	if(!sqlDb) {

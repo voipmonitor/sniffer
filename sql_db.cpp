@@ -1218,17 +1218,19 @@ void SqlDb_mysql::createSchema() {
 	this->query(
 	"CREATE TABLE IF NOT EXISTS `ipacc` (\
 			`saddr` int unsigned NOT NULL,\
-			`src_id_customer` int unsigned,\
+			`src_id_customer` int unsigned NOT NULL DEFAULT 0,\
 			`daddr` int unsigned NOT NULL,\
-			`dst_id_customer` int unsigned,\
+			`dst_id_customer` int unsigned NOT NULL DEFAULT 0,\
 			`port` smallint unsigned NOT NULL,\
 			`proto` smallint unsigned NOT NULL,\
 			`octects` int unsigned NOT NULL,\
 			`numpackets` mediumint unsigned NOT NULL,\
-			`interval` varchar(255) NULL DEFAULT NULL,\
-			`voip` tinyint unsigned DEFAULT 0,\
+			`interval_time` datetime NOT NULL,\
+			`voip` tinyint unsigned NOT NULL DEFAULT 0,\
 		KEY `saddr` (`saddr`),\
+		KEY `src_id_customer` (`src_id_customer`),\
 		KEY `daddr` (`daddr`),\
+		KEY `dst_id_customer` (`dst_id_customer`),\
 		KEY `port` (`port`),\
 		KEY `proto` (`proto`),\
 		KEY `interval` (`interval`)\
@@ -1704,16 +1706,20 @@ void SqlDb_odbc::createSchema() {
 	"IF NOT EXISTS (SELECT * FROM sys.objects WHERE name = 'ipacc') BEGIN\
 		CREATE TABLE ipacc (\
 			saddr bigint NOT NULL,\
+			src_id_customer int NOT NULL,\
 			daddr bigint NOT NULL,\
+			dst_id_customer int NOT NULL,\
 			port smallint NOT NULL,\
 			proto smallint NOT NULL,\
 			octects int NOT NULL,\
 			numpackets int NOT NULL,\
-			interval varchar(255) NULL,\
+			interval_time datetime NOT NULL,\
 			voip int NOT NULL\
 		);\
 		CREATE INDEX saddr ON ipacc (saddr);\
+		CREATE INDEX src_id_customer ON ipacc (src_id_customer);\
 		CREATE INDEX daddr ON ipacc (daddr);\
+		CREATE INDEX dst_id_customer ON ipacc (dst_id_customer);\
 		CREATE INDEX port ON ipacc (port);\
 		CREATE INDEX proto ON ipacc (proto);\
 		CREATE INDEX interval ON ipacc (interval)\
