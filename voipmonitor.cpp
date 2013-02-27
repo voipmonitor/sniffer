@@ -158,6 +158,7 @@ char get_customer_by_ip_odbc_user[256];
 char get_customer_by_ip_odbc_password[256];
 char get_customer_by_ip_odbc_driver[256];
 char get_customer_by_ip_query[1024];
+char get_customers_ip_query[1024];
 
 char opt_pidfile[4098] = "/var/run/voipmonitor.pid";
 
@@ -454,10 +455,13 @@ void *storing_cdr( void *dummy ) {
 		// process mysql query queue - concatenate queries to N messages
 		int size = 0;
 		int msgs = 50;
+		int _start = time(NULL);
+                int _counterIpacc = 0;
 		string queryqueue = "";
+		int mysqlQuerySize = mysqlquery.size();
 		while(1) {
 			pthread_mutex_lock(&mysqlquery_lock);
-			if(mysqlquery.size() == 0) {
+			if(mysqlQuerySize == 0) {
 				pthread_mutex_unlock(&mysqlquery_lock);
 				if(queryqueue != "") {
 					// send the rest 
@@ -471,8 +475,14 @@ void *storing_cdr( void *dummy ) {
 			}
 			string query = mysqlquery.front();
 			mysqlquery.pop();
+			--mysqlQuerySize;
 			pthread_mutex_unlock(&mysqlquery_lock);
 			queryqueue.append(query + "; ");
+			if(verbosity > 0) {
+				if(query.find("ipacc") != string::npos) {
+					++_counterIpacc;
+				}
+			}
 			if(size < msgs) {
 				size++;
 			} else {
@@ -484,6 +494,15 @@ void *storing_cdr( void *dummy ) {
 				size = 0;
 			}
 		}
+		if(verbosity > 0 && _counterIpacc > 0) {
+			int diffTime = time(NULL) - _start;
+			cout << "SAVE IPACC: " << _counterIpacc << " rec";
+			if(diffTime > 0) {
+				cout << "  " << diffTime << " s  " << (_counterIpacc/diffTime) << " rec/s";
+			}
+			cout << endl;
+		}
+                
 #ifdef ISCURL
 		if(opt_cdrurl[0] != '\0' && cdrtosend.length() > 0) {
 			sendCDR(cdrtosend);
@@ -856,6 +875,9 @@ int load_config(char *fname) {
 	}
 	if((value = ini.GetValue("general", "get_customer_by_ip_query", NULL))) {
 		strncpy(get_customer_by_ip_query, value, sizeof(get_customer_by_ip_query));
+	}
+	if((value = ini.GetValue("general", "get_customers_ip_query", NULL))) {
+		strncpy(get_customers_ip_query, value, sizeof(get_customers_ip_query));
 	}
 	if((value = ini.GetValue("general", "sipoverlap", NULL))) {
 		opt_sipoverlap = yesno(value);
@@ -1797,16 +1819,31 @@ int main(int argc, char *argv[]) {
 
 void test() {
 	
+	CustIpCache *custIpCache = new CustIpCache;
+	custIpCache->setConnectParams(
+		get_customer_by_ip_sql_driver, 
+		get_customer_by_ip_odbc_dsn, 
+		get_customer_by_ip_odbc_user, 
+		get_customer_by_ip_odbc_password, 
+		get_customer_by_ip_odbc_driver);
+	custIpCache->setQueryes(
+		get_customer_by_ip_query, 
+		get_customers_ip_query);
+	
+	unsigned int cust_id = custIpCache->getCustByIp(inet_addr("192.168.1.241"));
+	cout << cust_id << endl;
+	
+	return;
+	
 	cout << endl << endl;
 	for(int i = 0; i < 20; i++) {
 		cout << "iter:" << (i+1) << endl;
-		unsigned int cust_id = get_customer_by_ip(inet_addr("1.2.3.4"), true);
+		unsigned int cust_id = custIpCache->getCustByIp(inet_addr("1.2.3.4"));
 		cout << cust_id << endl;
-		cust_id = get_customer_by_ip(inet_addr("2.3.4.5"), true);
+		cust_id = custIpCache->getCustByIp(inet_addr("2.3.4.5"));
 		cout << cust_id << endl;
 		sleep(1);
 	}
-	get_customer_by_ip(NULL, false, true);
 	
 	return;
 	

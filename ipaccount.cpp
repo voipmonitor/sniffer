@@ -24,6 +24,7 @@ and insert them into Call class.
 #include <netinet/tcp.h>
 #include <syslog.h>
 #include <semaphore.h>
+#include <algorithm>
 
 #include <pcap.h>
 
@@ -115,6 +116,7 @@ extern char get_customer_by_ip_odbc_user[256];
 extern char get_customer_by_ip_odbc_password[256];
 extern char get_customer_by_ip_odbc_driver[256];
 extern char get_customer_by_ip_query[1024];
+extern char get_customers_ip_query[1024];
 
 typedef struct {
 	unsigned int octects;
@@ -141,8 +143,26 @@ extern SqlDb *sqlDb;
 
 extern int opt_ipacc_interval;
 
+static CustIpCache *custIpCache = NULL;
+
 
 void flush_octets_ports() {
+	if(custIpCache) {
+		custIpCache->flush();
+	} else {
+		if(get_customer_by_ip_sql_driver[0]) {
+			custIpCache = new CustIpCache;
+			custIpCache->setConnectParams(
+				get_customer_by_ip_sql_driver, 
+				get_customer_by_ip_odbc_dsn, 
+				get_customer_by_ip_odbc_user, 
+				get_customer_by_ip_odbc_password, 
+				get_customer_by_ip_odbc_driver);
+			custIpCache->setQueryes(
+				get_customer_by_ip_query, 
+				get_customers_ip_query);
+		}
+	}
 	char *tmp;
 	char keycb[64], *keyc;
 	octects_t *proto;
@@ -160,13 +180,17 @@ void flush_octets_ports() {
 			tmp = strchr(keyc, 'D');
 			*tmp = '\0';
 			row.add(keyc, "saddr");
-			row.add(get_customer_by_ip(htonl(atol(keyc)), true), "src_id_customer");
+			if(custIpCache) {
+				row.add(custIpCache->getCustByIp(htonl(atol(keyc))), "src_id_customer");
+			}
 
 			keyc = tmp + 1;
 			tmp = strchr(keyc, 'E');
 			*tmp = '\0';
 			row.add(keyc, "daddr");
-			row.add(get_customer_by_ip(htonl(atol(keyc)), true), "dst_id_customer");
+			if(custIpCache) {
+				row.add(custIpCache->getCustByIp(htonl(atol(keyc))), "dst_id_customer");
+			}
 
 			keyc = tmp + 1;
 			tmp = strchr(keyc, 'P');
@@ -300,60 +324,88 @@ void ipaccount(time_t timestamp, struct iphdr *header_ip, int packetlen, int voi
 
 }
 
-int get_customer_by_ip(unsigned int ip, bool use_cache, bool deleteSqlDb) {
-	static SqlDb *sqlDb = NULL;
-	static map<int, cust_cache_item> cust_cache;
-	static unsigned int cust_cache_counter = 0;
-	if(deleteSqlDb && sqlDb) {
-		delete sqlDb;
-		sqlDb = NULL;
-		return(-1);
+CustIpCache::CustIpCache() {
+	this->sqlDb = NULL;
+	this->flushCounter = 0;
+}
+
+CustIpCache::~CustIpCache() {
+	if(this->sqlDb) {
+		delete this->sqlDb;
 	}
-	if(!get_customer_by_ip_sql_driver[0] ||
-	   !get_customer_by_ip_odbc_dsn[0] ||
-	   !get_customer_by_ip_odbc_user[0] ||
-	   !get_customer_by_ip_odbc_password[0] ||
-	   !get_customer_by_ip_odbc_driver[0] ||
-	   !get_customer_by_ip_query[0]) {
-		return(0);
+}
+
+void CustIpCache::setConnectParams(const char *sqlDriver, const char *odbcDsn, const char *odbcUser, const char *odbcPassword, const char *odbcDriver) {
+	if(sqlDriver) 		this->sqlDriver = sqlDriver;
+	if(odbcDsn) 		this->odbcDsn = odbcDsn;
+	if(odbcUser) 		this->odbcUser = odbcUser;
+	if(odbcPassword)	this->odbcPassword = odbcPassword;
+	if(odbcDriver) 		this->odbcDriver = odbcDriver;
+}
+
+void CustIpCache::setQueryes(const char *getIp, const char *fetchAllIp) {
+	if(getIp)		this->query_getIp = getIp;
+	if(fetchAllIp)		this->query_fetchAllIp = fetchAllIp;
+}
+
+int CustIpCache::connect() {
+	if(!this->okParams()) {
+		return(false);
 	}
-	if(use_cache) {
-		++cust_cache_counter;
-		if(!(cust_cache_counter%100000)) {
-			cust_cache.clear();
-		} else {
-			cust_cache_item cache_rec = cust_cache[ip];
-			if((cache_rec.cust_id || cache_rec.add_timestamp) &&
-			   (time(NULL) - cache_rec.add_timestamp) < 3600) {
-				if(verbosity > 1) {
-					char ip_str[18];
-					in_addr ips;
-					ips.s_addr = ip;
-					strcpy(ip_str, inet_ntoa(ips));
-					cout << ip_str << " " << (cache_rec.cust_id ? "FIND" : "find") << " in cache; cache length is " << cust_cache.size() << "; count is " << cust_cache_counter << endl;
-				}
-				return(cache_rec.cust_id);
-			}
-		}
-	}
-	if(!sqlDb) {
+	if(!this->sqlDb) {
 		SqlDb_odbc *sqlDb_odbc = new SqlDb_odbc();
 		sqlDb_odbc->setOdbcVersion(SQL_OV_ODBC3);
-		sqlDb_odbc->setSubtypeDb(get_customer_by_ip_odbc_driver);
-		sqlDb = sqlDb_odbc;
-		sqlDb->setConnectParameters(get_customer_by_ip_odbc_dsn, get_customer_by_ip_odbc_user, get_customer_by_ip_odbc_password);
-		sqlDb->connect();
+		sqlDb_odbc->setSubtypeDb(this->odbcDriver);
+		this->sqlDb = sqlDb_odbc;
+		this->sqlDb->setConnectParameters(this->odbcDsn, this->odbcUser, this->odbcPassword);
 	}
-	char ip_str[18];
-	in_addr ips;
-	ips.s_addr = ip;
-	strcpy(ip_str, inet_ntoa(ips));
-	string query_str = get_customer_by_ip_query;
+	return(this->sqlDb->connect());
+}
+
+bool CustIpCache::okParams() {
+	return(this->sqlDriver.length() &&
+	       this->odbcDsn.length() &&
+	       this->odbcUser.length() &&
+	       this->odbcDriver.length() &&
+	       (this->query_getIp.length() ||
+	        this->query_fetchAllIp.length()));
+}
+
+int CustIpCache::getCustByIp(unsigned int ip) {
+	if(!this->okParams()) {
+		return(0);
+	}
+	if(!this->sqlDb) {
+		this->connect();
+	}
+	if(this->query_fetchAllIp.length()) {
+		if(!this->custCacheVect.size()) {
+			this->fetchAllIpQueryFromDb();
+		}
+		return(this->getCustByIpFromCacheVect(ip));
+	} else {
+		int cust_id = 0;
+		cust_id = this->getCustByIpFromCacheMap(ip);
+		if(cust_id < 0) {
+			cust_id = this->getCustByIpFromDb(ip, true);
+		}
+	}
+}
+
+int CustIpCache::getCustByIpFromDb(unsigned int ip, bool saveToCache) {
+	if(!this->query_getIp.length()) {
+		return(-1);
+	}
+	string query_str = this->query_getIp;
 	size_t query_pos_ip = query_str.find("_IP_");
-	unsigned int cust_id = 0;
 	if(query_pos_ip != std::string::npos) {
+		int cust_id = 0;
+		char ip_str[18];
+		in_addr ips;
+		ips.s_addr = ip;
+		strcpy(ip_str, inet_ntoa(ips));
 		query_str.replace(query_pos_ip, 4, ip_str);
-		sqlDb->query(query_str);
+		this->sqlDb->query(query_str);
 		SqlDb_row row = sqlDb->fetchRow();
 		if(row) {
 			const char *cust_id_str = row["ID"].c_str();
@@ -361,12 +413,61 @@ int get_customer_by_ip(unsigned int ip, bool use_cache, bool deleteSqlDb) {
 				cust_id = atol(cust_id_str);
 			}
 		}
+		if(saveToCache) {
+			cust_cache_item cache_rec;
+			cache_rec.cust_id = cust_id;
+			cache_rec.add_timestamp = time(NULL);
+			this->custCacheMap[ip] = cache_rec;
+		}
+		return(cust_id);
+	} else {
+		return(-1);
 	}
-	if(use_cache) {
-		cust_cache_item cache_rec;
-		cache_rec.cust_id = cust_id;
-		cache_rec.add_timestamp = time(NULL);
-		cust_cache[ip] = cache_rec;
+}
+
+int CustIpCache::fetchAllIpQueryFromDb() {
+	if(!this->query_fetchAllIp.length()) {
+		return(-1);
 	}
-	return(cust_id);
+	this->custCacheVect.clear();
+	this->sqlDb->query(this->query_fetchAllIp);
+	SqlDb_row row;
+	while(row = sqlDb->fetchRow()) {
+		cust_cache_rec rec;
+		in_addr ips;
+		inet_aton(row["IP"].c_str(), &ips);
+		rec.ip = ips.s_addr;
+		rec.cust_id = atol(row["ID"].c_str());
+		this->custCacheVect.push_back(rec);
+	}
+	if(this->custCacheVect.size()) {
+		std::sort(this->custCacheVect.begin(), this->custCacheVect.end());
+	}
+	return(this->custCacheVect.size());
+}
+
+int CustIpCache::getCustByIpFromCacheMap(unsigned int ip) {
+	cust_cache_item cache_rec = this->custCacheMap[ip];
+	if((cache_rec.cust_id || cache_rec.add_timestamp) &&
+	   (time(NULL) - cache_rec.add_timestamp) < 3600) {
+		return(cache_rec.cust_id);
+	}
+	return(-1);
+}
+
+int CustIpCache::getCustByIpFromCacheVect(unsigned int ip) {
+  	vector<cust_cache_rec>::iterator findRecIt;
+  	findRecIt = std::lower_bound(this->custCacheVect.begin(), this->custCacheVect.end(), ip);
+  	if((*findRecIt).ip == ip) {
+  		return((*findRecIt).cust_id);
+  	}
+	return(0);
+}
+
+void CustIpCache::flush() {
+	if(!(this->flushCounter%10)) {
+		this->custCacheMap.clear();
+		this->custCacheVect.clear();
+	}
+	++this->flushCounter;
 }
