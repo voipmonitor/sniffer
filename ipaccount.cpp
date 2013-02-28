@@ -430,6 +430,7 @@ int CustIpCache::fetchAllIpQueryFromDb() {
 	if(!this->query_fetchAllIp.length()) {
 		return(-1);
 	}
+	int _start_time = time(NULL);
 	this->custCacheVect.clear();
 	this->sqlDb->query(this->query_fetchAllIp);
 	SqlDb_row row;
@@ -443,6 +444,10 @@ int CustIpCache::fetchAllIpQueryFromDb() {
 	}
 	if(this->custCacheVect.size()) {
 		std::sort(this->custCacheVect.begin(), this->custCacheVect.end());
+	}
+	if(verbosity > 0) {
+		int _diff_time = time(NULL) - _start_time;
+		cout << "IPACC load customers " << _diff_time << " s" << endl;
 	}
 	return(this->custCacheVect.size());
 }
