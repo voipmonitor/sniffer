@@ -117,6 +117,7 @@ extern char get_customer_by_ip_odbc_password[256];
 extern char get_customer_by_ip_odbc_driver[256];
 extern char get_customer_by_ip_query[1024];
 extern char get_customers_ip_query[1024];
+extern int get_customer_by_ip_flush_period;
 
 typedef struct {
 	unsigned int octects;
@@ -465,7 +466,8 @@ int CustIpCache::getCustByIpFromCacheVect(unsigned int ip) {
 }
 
 void CustIpCache::flush() {
-	if(!(this->flushCounter%10)) {
+	if(get_customer_by_ip_flush_period > 0&&
+	   !(this->flushCounter%get_customer_by_ip_flush_period)) {
 		this->custCacheMap.clear();
 		this->custCacheVect.clear();
 	}

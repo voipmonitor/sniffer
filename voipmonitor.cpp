@@ -159,6 +159,7 @@ char get_customer_by_ip_odbc_password[256];
 char get_customer_by_ip_odbc_driver[256];
 char get_customer_by_ip_query[1024];
 char get_customers_ip_query[1024];
+int get_customer_by_ip_flush_period = 4;
 
 char opt_pidfile[4098] = "/var/run/voipmonitor.pid";
 
@@ -878,6 +879,9 @@ int load_config(char *fname) {
 	}
 	if((value = ini.GetValue("general", "get_customers_ip_query", NULL))) {
 		strncpy(get_customers_ip_query, value, sizeof(get_customers_ip_query));
+	}
+	if((value = ini.GetValue("general", "get_customer_by_ip_flush_period", NULL))) {
+		get_customer_by_ip_flush_period = atoi(value);
 	}
 	if((value = ini.GetValue("general", "sipoverlap", NULL))) {
 		opt_sipoverlap = yesno(value);
