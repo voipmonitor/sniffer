@@ -241,8 +241,6 @@ void ipacc_add_octets(time_t timestamp, unsigned int saddr, unsigned int daddr, 
 //		printf("key[%s] %u\n", key.c_str(), tmp->octects);
 	}
 
-	return;
-	
 	map<unsigned int, octects_live_t*>::iterator it;
 	octects_live_t *data;
 	for(it = ipacc_live.begin(); it != ipacc_live.end(); it++) {
