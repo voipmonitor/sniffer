@@ -49,6 +49,9 @@ extern int verbosity;
 extern char *ipaccountportmatrix;
 
 extern int opt_ipacc_interval;
+extern bool opt_ipacc_sniffer_agregate;
+extern bool opt_ipacc_agregate_only_customers_on_main_side;
+extern bool opt_ipacc_agregate_only_customers_on_any_side;
 extern char get_customer_by_ip_sql_driver[256];
 extern char get_customer_by_ip_odbc_dsn[256];
 extern char get_customer_by_ip_odbc_user[256];
@@ -129,14 +132,16 @@ void ipacc_save(unsigned int interval_time_limit = 0) {
 			keyc = tmp + 1;
 			proto = atoi(keyc);
 
-			if(!custIpCache || src_id_customer || dst_id_customer) {
+			if(!custIpCache || 
+			   !opt_ipacc_agregate_only_customers_on_any_side ||
+  			   src_id_customer || dst_id_customer) {
 				if(isTypeDb("mysql")) {
 					sprintf(insertQueryBuff,
 						"insert into ipacc ("
 							"interval_time, saddr, src_id_customer, daddr, dst_id_customer, proto, port, "
-							"octects, numpackets, voip"
+							"octects, numpackets, voip, do_agr_trigger"
 						") values ("
-							"'%s', %u, %u, %u, %u, %u, %u, %u, %u, %u)",
+							"'%s', %u, %u, %u, %u, %u, %u, %u, %u, %u, %u)",
 						sqlDateTimeString(ipacc_data->interval_time).c_str(),
 						saddr,
 						src_id_customer,
@@ -146,7 +151,8 @@ void ipacc_save(unsigned int interval_time_limit = 0) {
 						port,
 						ipacc_data->octects,
 						ipacc_data->numpackets,
-						ipacc_data->voippacket);
+						ipacc_data->voippacket,
+						opt_ipacc_sniffer_agregate ? 0 : 1);
 					mysqlquery.push(insertQueryBuff);
 					//sqlDb->query(insertQueryBuff);////
 				} else {
@@ -165,19 +171,22 @@ void ipacc_save(unsigned int interval_time_limit = 0) {
 					row.add(ipacc_data->octects, "octects");
 					row.add(ipacc_data->numpackets, "numpackets");
 					row.add(ipacc_data->voippacket, "voip");
+					row.add(opt_ipacc_sniffer_agregate ? 0 : 1, "do_agr_trigger");
 					sqlDb->insert("ipacc", row);
 				}
 				
-				agregIter = agreg.find(ipacc_data->interval_time);
-				if(agregIter == agreg.end()) {
-					agreg[ipacc_data->interval_time] = new IpaccAgreg;
+				if(opt_ipacc_sniffer_agregate) {
 					agregIter = agreg.find(ipacc_data->interval_time);
+					if(agregIter == agreg.end()) {
+						agreg[ipacc_data->interval_time] = new IpaccAgreg;
+						agregIter = agreg.find(ipacc_data->interval_time);
+					}
+					agregIter->second->add(
+						saddr, daddr, 
+						src_id_customer, dst_id_customer, 
+						proto, port,
+						ipacc_data->octects, ipacc_data->numpackets, ipacc_data->voippacket);
 				}
-				agregIter->second->add(
-					saddr, daddr, 
-					src_id_customer, dst_id_customer, 
-					proto, port,
-					ipacc_data->octects, ipacc_data->numpackets, ipacc_data->voippacket);
 			}
 			
 			//reset octects 
@@ -185,9 +194,11 @@ void ipacc_save(unsigned int interval_time_limit = 0) {
 			iter->second->numpackets = 0;
 		}
 	}
-	for(agregIter = agreg.begin(); agregIter != agreg.end(); ++agregIter) {
-		agregIter->second->save(agregIter->first);
-		delete agregIter->second;
+	if(opt_ipacc_sniffer_agregate) {
+		for(agregIter = agreg.begin(); agregIter != agreg.end(); ++agregIter) {
+			agregIter->second->save(agregIter->first);
+			delete agregIter->second;
+		}
 	}
 	pthread_mutex_unlock(&mysqlquery_lock);
 
@@ -316,44 +327,54 @@ void IpaccAgreg::add(unsigned int src, unsigned int dst,
 		     unsigned int proto, unsigned int port,
 		     unsigned int traffic, unsigned int packets, bool voip) {
 	AgregIP srcA(src, proto, port), dstA(dst, proto, port);
-	map<AgregIP, AgregData*>::iterator iter1 = this->map1.find(srcA);
-	if(iter1 == this->map1.end()) {
-		AgregData *agregData = new AgregData;
-		agregData->id_customer = src_id_customer;
-		agregData->addOut(traffic, packets, voip);
-		this->map1[srcA] = agregData;
-	} else {
-		iter1->second->addOut(traffic, packets, voip);
+	map<AgregIP, AgregData*>::iterator iter1;
+	if(src_id_customer || !opt_ipacc_agregate_only_customers_on_main_side) {
+		iter1 = this->map1.find(srcA);
+		if(iter1 == this->map1.end()) {
+			AgregData *agregData = new AgregData;
+			agregData->id_customer = src_id_customer;
+			agregData->addOut(traffic, packets, voip);
+			this->map1[srcA] = agregData;
+		} else {
+			iter1->second->addOut(traffic, packets, voip);
+		}
 	}
-	iter1 = this->map1.find(dstA);
-	if(iter1 == this->map1.end()) {
-		AgregData *agregData = new AgregData;
-		agregData->id_customer = dst_id_customer;
-		agregData->addIn(traffic, packets, voip);
-		this->map1[dstA] = agregData;
-	} else {
-		iter1->second->addIn(traffic, packets, voip);
+	if(dst_id_customer || !opt_ipacc_agregate_only_customers_on_main_side) {
+		iter1 = this->map1.find(dstA);
+		if(iter1 == this->map1.end()) {
+			AgregData *agregData = new AgregData;
+			agregData->id_customer = dst_id_customer;
+			agregData->addIn(traffic, packets, voip);
+			this->map1[dstA] = agregData;
+		} else {
+			iter1->second->addIn(traffic, packets, voip);
+		}
 	}
 	AgregIP2 srcDstA(src, dst, proto, port), dstSrcA(dst, src, proto, port);
-	map<AgregIP2, AgregData*>::iterator iter2 = this->map2.find(srcDstA);
-	if(iter2 == this->map2.end()) {
-		AgregData *agregData = new AgregData;
-		agregData->id_customer = src_id_customer;
-		agregData->id_customer2 = dst_id_customer;
-		agregData->addOut(traffic, packets, voip);
-		this->map2[srcDstA] = agregData;
-	} else {
-		iter2->second->addOut(traffic, packets, voip);
+	map<AgregIP2, AgregData*>::iterator iter2;
+	if(src_id_customer || !opt_ipacc_agregate_only_customers_on_main_side) {
+		iter2 = this->map2.find(srcDstA);
+		if(iter2 == this->map2.end()) {
+			AgregData *agregData = new AgregData;
+			agregData->id_customer = src_id_customer;
+			agregData->id_customer2 = dst_id_customer;
+			agregData->addOut(traffic, packets, voip);
+			this->map2[srcDstA] = agregData;
+		} else {
+			iter2->second->addOut(traffic, packets, voip);
+		}
 	}
-	iter2 = this->map2.find(dstSrcA);
-	if(iter2 == this->map2.end()) {
-		AgregData *agregData = new AgregData;
-		agregData->id_customer = dst_id_customer;
-		agregData->id_customer2 = src_id_customer;
-		agregData->addIn(traffic, packets, voip);
-		this->map2[dstSrcA] = agregData;
-	} else {
-		iter2->second->addIn(traffic, packets, voip);
+	if(dst_id_customer || !opt_ipacc_agregate_only_customers_on_main_side) {
+		iter2 = this->map2.find(dstSrcA);
+		if(iter2 == this->map2.end()) {
+			AgregData *agregData = new AgregData;
+			agregData->id_customer = dst_id_customer;
+			agregData->id_customer2 = src_id_customer;
+			agregData->addIn(traffic, packets, voip);
+			this->map2[dstSrcA] = agregData;
+		} else {
+			iter2->second->addIn(traffic, packets, voip);
+		}
 	}
 }
 

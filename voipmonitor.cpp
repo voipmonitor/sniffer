@@ -114,6 +114,9 @@ char opt_mirrorip_dst[20];
 int opt_printinsertid = 0;
 int opt_ipaccount = 0;
 int opt_ipacc_interval = 300;
+bool opt_ipacc_sniffer_agregate = true;
+bool opt_ipacc_agregate_only_customers_on_main_side = true;
+bool opt_ipacc_agregate_only_customers_on_any_side = true;
 int opt_udpfrag = 1;
 MirrorIP *mirrorip = NULL;
 int opt_cdronlyanswered = 0;
@@ -463,7 +466,8 @@ void *storing_cdr( void *dummy ) {
 		int mysqlQuerySize = mysqlquery.size();
 		while(1) {
 			pthread_mutex_lock(&mysqlquery_lock);
-			if(mysqlQuerySize == 0) {
+			//if(mysqlQuerySize == 0) {
+			if(mysqlquery.size() == 0) {
 				pthread_mutex_unlock(&mysqlquery_lock);
 				if(queryqueue != "") {
 					// send the rest 
@@ -481,7 +485,7 @@ void *storing_cdr( void *dummy ) {
 			pthread_mutex_unlock(&mysqlquery_lock);
 			queryqueue.append(query + "; ");
 			if(verbosity > 0) {
-				if(query.find("ipacc") != string::npos) {
+				if(query.find("ipacc ") != string::npos) {
 					++_counterIpacc;
 				}
 			}
@@ -955,6 +959,15 @@ int load_config(char *fname) {
 	}
 	if((value = ini.GetValue("general", "ipaccount_interval", NULL))) {
 		opt_ipacc_interval = atoi(value);
+	}
+	if((value = ini.GetValue("general", "ipaccount_sniffer_agregate", NULL))) {
+		opt_ipacc_sniffer_agregate = yesno(value);
+	}
+	if((value = ini.GetValue("general", "ipaccount_agregate_only_customers_on_main_side", NULL))) {
+		opt_ipacc_agregate_only_customers_on_main_side = yesno(value);
+	}
+	if((value = ini.GetValue("general", "ipaccount_agregate_only_customers_on_any_side", NULL))) {
+		opt_ipacc_agregate_only_customers_on_any_side = yesno(value);
 	}
 	if((value = ini.GetValue("general", "cdronlyanswered", NULL))) {
 		opt_cdronlyanswered = yesno(value);
