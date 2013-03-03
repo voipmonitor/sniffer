@@ -782,6 +782,13 @@ string sqlDateTimeString(time_t unixTime) {
 	return string(dateTimeBuffer);
 }
 
+string sqlDateString(time_t unixTime) {
+	struct tm * localTime = localtime(&unixTime);
+	char dateBuffer[50];
+	strftime(dateBuffer, sizeof(dateBuffer), "%Y-%m-%d", localTime);
+	return string(dateBuffer);
+}
+
 string sqlEscapeString(string inputStr) {
 	return _sqlEscapeString(inputStr.c_str(), 0);
 }

@@ -14,6 +14,19 @@
 
 void ipaccount(time_t, struct iphdr *, int, int);
 
+struct octects_t {
+	octects_t() {
+		octects = 0;
+		numpackets = 0;
+		interval_time = 0;
+		voippacket = 0;
+	}
+	unsigned int octects;
+	unsigned int numpackets;
+	unsigned int interval_time;
+	int voippacket;
+};
+
 struct octects_live_t {
 	int all;
 	unsigned long long int dst_octects;
@@ -48,13 +61,94 @@ struct cust_cache_rec {
 	}
 };
 
+class IpaccAgreg {
+public:
+	struct AgregData {
+		AgregData() {
+			id_customer = 0;
+			id_customer2 = 0;
+			traffic_in = 0;
+			traffic_out = 0;
+			packets_in = 0;
+			packets_out = 0;
+			traffic_voip_in = 0;
+			traffic_voip_out = 0;
+			packets_voip_in = 0;
+			packets_voip_out = 0;
+		}
+		void addIn(unsigned int traffic, unsigned int packets, bool voip) {
+			traffic_in += traffic;
+			packets_in += packets;
+			if(voip) {
+				traffic_voip_in += traffic;
+				packets_voip_in += packets;
+			}
+		}
+		void addOut(unsigned int traffic, unsigned int packets, bool voip) {
+			traffic_out += traffic;
+			packets_out += packets;
+			if(voip) {
+				traffic_voip_out += traffic;
+				packets_voip_out += packets;
+			}
+		}
+		unsigned int id_customer;
+		unsigned int id_customer2;
+		unsigned long traffic_in;
+		unsigned long traffic_out;
+		unsigned long packets_in;
+		unsigned long packets_out;
+		unsigned long traffic_voip_in;
+		unsigned long traffic_voip_out;
+		unsigned long packets_voip_in;
+		unsigned long packets_voip_out;
+	};
+	struct AgregIP {
+		AgregIP(unsigned int ip, unsigned int proto, unsigned int port) {
+			this->ip = ip;
+			this->proto = proto;
+			this->port = port;
+		}
+		unsigned int ip;
+		unsigned int proto;
+		unsigned int port;
+		bool operator < (const AgregIP& other) const { 
+			return((this->ip < other.ip) ? 1 : (this->ip > other.ip) ? 0 :
+			       (this->proto < other.proto) ? 1 : (this->proto > other.proto) ? 0 :
+			       (this->port < other.port));
+		}
+	};
+	struct AgregIP2 {
+		AgregIP2(unsigned int ip1, unsigned int ip2, unsigned int proto, unsigned int port) {
+			this->ip1 = ip1;
+			this->ip2 = ip2;
+			this->proto = proto;
+			this->port = port;
+		}
+		unsigned int ip1;
+		unsigned int ip2;
+		unsigned int proto;
+		unsigned int port;
+		bool operator < (const AgregIP2& other) const { 
+			return((this->ip1 < other.ip1) ? 1 : (this->ip1 > other.ip1) ? 0 :
+			       (this->ip2 < other.ip2) ? 1 : (this->ip2 > other.ip2) ? 0 :
+			       (this->proto < other.proto) ? 1 : (this->proto > other.proto) ? 0 :
+			       (this->port < other.port));
+		}
+	};
+	~IpaccAgreg();
+	void add(unsigned int src, unsigned int dst,
+		 unsigned int src_id_customer, unsigned int dst_id_customer,
+		 unsigned int proto, unsigned int port,
+		 unsigned int traffic, unsigned int packets, bool voip);
+	void save(unsigned int time_interval);
+private:
+	map<AgregIP, AgregData*> map1;
+	map<AgregIP2, AgregData*> map2;
+};
+
 class CustIpCache {
 public:
-	enum ModeCache {
-		_mode_auto,
-		_mode_map,
-		_mode_vect
-	};
 	CustIpCache();
 	~CustIpCache();
 	void setConnectParams(const char *sqlDriver, const char *odbcDsn, const char *odbcUser, const char *odbcPassword, const char *odbcDriver);
@@ -80,5 +174,7 @@ private:
 	string query_fetchAllIp;
 	unsigned int flushCounter;
 };
+
+void freeMemIpacc();
 
 #endif

@@ -26,8 +26,6 @@ and insert them into Call class.
 #include <semaphore.h>
 #include <algorithm>
 
-#include <pcap.h>
-
 #include "ipaccount.h"
 #include "flags.h"
 #include "codecs.h"
@@ -43,73 +41,14 @@ and insert them into Call class.
 #include "mirrorip.h"
 #include "sql_db.h"
 
-extern "C" {
-#include "liblfds.6/inc/liblfds.h"
-}
 
 using namespace std;
 
-#ifndef MAX
-#define MAX(x,y) ((x) > (y) ? (x) : (y))
-#endif
-
-#ifndef MIN
-#define MIN(x,y) ((x) < (y) ? (x) : (y))
-#endif
-
-extern int calls;
-extern int opt_saveSIP;	  	// save SIP packets to pcap file?
-extern int opt_saveRTP;	 	// save RTP packets to pcap file?
-extern int opt_saveRTCP;	// save RTCP packets to pcap file?
-extern int opt_saveRAW;	 	
-extern int opt_saveWAV;	 	
-extern int opt_packetbuffered;	  // Make .pcap files writing ‘‘packet-buffered’’
-extern int opt_rtcp;		  // Make .pcap files writing ‘‘packet-buffered’’
 extern int verbosity;
-extern int terminating;
-extern int opt_rtp_firstleg;
-extern int opt_sip_register;
-extern int opt_norecord_header;
-extern char *ipaccountmatrix;
-extern pcap_t *handle;
-extern read_thread *threads;
-extern int opt_norecord_dtmf;
-extern int opt_onlyRTPheader;
-extern int opt_sipoverlap;
-extern int readend;
-extern int opt_dup_check;
-extern char opt_match_header[128];
-extern int opt_domainport;
-extern int opt_mirrorip;
-extern char opt_scanpcapdir[2048];
-
-extern IPfilter *ipfilter;
-extern IPfilter *ipfilter_reload;
-extern int ipfilter_reload_do;
-
-extern TELNUMfilter *telnumfilter;
-extern TELNUMfilter *telnumfilter_reload;
-extern int telnumfilter_reload_do;
-
-extern int rtp_threaded;
-extern int opt_pcap_threaded;
-
-extern int opt_rtpnosip;
-extern char opt_cachedir[1024];
-
-extern int opt_savewav_force;
-extern int opt_saveudptl;
-
-extern nat_aliases_t nat_aliases;
-
-extern pcap_packet *qring;
-extern volatile unsigned int readit;
-extern volatile unsigned int writeit;
-extern unsigned int qringmax;
 
 extern char *ipaccountportmatrix;
-extern int opt_pcapdump;
 
+extern int opt_ipacc_interval;
 extern char get_customer_by_ip_sql_driver[256];
 extern char get_customer_by_ip_odbc_dsn[256];
 extern char get_customer_by_ip_odbc_user[256];
@@ -119,35 +58,19 @@ extern char get_customer_by_ip_query[1024];
 extern char get_customers_ip_query[1024];
 extern int get_customer_by_ip_flush_period;
 
-typedef struct {
-	unsigned int octects;
-	unsigned int numpackets;
-	unsigned int lasttimestamp;
-	int voippacket;
-} octects_t;
-
-map<string, octects_t*> ipacc_protos;
-map<string, octects_t*>::iterator ipacc_protosIT;
-
-map<string, octects_t*> ipacc_ports;
-map<string, octects_t*>::iterator ipacc_portsIT;
-
-map<unsigned int, octects_live_t*> ipacc_live;
-
 extern queue<string> mysqlquery;
 extern pthread_mutex_t mysqlquery_lock;
 
-unsigned int last_flush = 0;
-unsigned int last_flush_ports = 0;
-
 extern SqlDb *sqlDb;
 
-extern int opt_ipacc_interval;
+map<unsigned int, octects_live_t*> ipacc_live;
 
+static map<string, octects_t*> ipacc_buffer;
+static unsigned int last_flush_interval_time = 0;
 static CustIpCache *custIpCache = NULL;
 
 
-void flush_octets_ports() {
+void ipacc_save(unsigned int interval_time_limit = 0) {
 	if(custIpCache) {
 		custIpCache->flush();
 	} else {
@@ -164,57 +87,107 @@ void flush_octets_ports() {
 				get_customers_ip_query);
 		}
 	}
-	char *tmp;
-	char keycb[64], *keyc;
-	octects_t *proto;
-	char buf[64];
+	
+	octects_t *ipacc_data;
+	char keycb[64], 
+	     *keyc, *tmp;
+	unsigned int saddr,
+		     src_id_customer,
+		     daddr,
+		     dst_id_customer,
+		     port,
+		     proto;
+	map<unsigned int,IpaccAgreg*> agreg;
+	map<unsigned int, IpaccAgreg*>::iterator agregIter;
+	char insertQueryBuff[1000];
 	pthread_mutex_lock(&mysqlquery_lock);
-	for (ipacc_portsIT = ipacc_ports.begin(); ipacc_portsIT != ipacc_ports.end(); ++ipacc_portsIT) {
-		string query;
-		proto = ipacc_portsIT->second;
-		if(ipacc_portsIT->second->octects > 0) {
-			SqlDb_row row;
+	map<string, octects_t*>::iterator iter;
+	for (iter = ipacc_buffer.begin(); iter != ipacc_buffer.end(); ++iter) {
+		ipacc_data = iter->second;
+		if(iter->second->octects > 0 && 
+		   (!interval_time_limit ||  iter->second->interval_time <= interval_time_limit)) {
 			
-			strcpy(keycb, ipacc_portsIT->first.c_str());
+			strcpy(keycb, iter->first.c_str());
 			keyc = keycb;
 			
 			tmp = strchr(keyc, 'D');
 			*tmp = '\0';
-			row.add(keyc, "saddr");
-			if(custIpCache) {
-				row.add(custIpCache->getCustByIp(htonl(atol(keyc))), "src_id_customer");
-			}
+			saddr = atol(keyc);
+			src_id_customer = custIpCache ? custIpCache->getCustByIp(htonl(saddr)) : 0;
 
 			keyc = tmp + 1;
 			tmp = strchr(keyc, 'E');
 			*tmp = '\0';
-			row.add(keyc, "daddr");
-			if(custIpCache) {
-				row.add(custIpCache->getCustByIp(htonl(atol(keyc))), "dst_id_customer");
-			}
+			daddr = atol(keyc);
+			dst_id_customer = custIpCache ? custIpCache->getCustByIp(htonl(daddr)) : 0;
 
 			keyc = tmp + 1;
 			tmp = strchr(keyc, 'P');
 			*tmp = '\0';
-			row.add(keyc, "port");
+			port = atoi(keyc);
 
 			keyc = tmp + 1;
-			row.add(keyc, "proto");
+			proto = atoi(keyc);
 
-			row.add(proto->octects, "octects");
-			row.add(sqlDateTimeString(proto->lasttimestamp * opt_ipacc_interval).c_str(), "interval_time");
-			row.add(proto->numpackets, "numpackets");
-			row.add(proto->voippacket, "voip");
-
-			if(isTypeDb("mysql")) {
-				mysqlquery.push(sqlDb->insertQuery("ipacc", row));
-			} else {
-				sqlDb->insert("ipacc", row);
+			if(!custIpCache || src_id_customer || dst_id_customer) {
+				if(isTypeDb("mysql")) {
+					sprintf(insertQueryBuff,
+						"insert into ipacc ("
+							"interval_time, saddr, src_id_customer, daddr, dst_id_customer, proto, port, "
+							"octects, numpackets, voip"
+						") values ("
+							"'%s', %u, %u, %u, %u, %u, %u, %u, %u, %u)",
+						sqlDateTimeString(ipacc_data->interval_time).c_str(),
+						saddr,
+						src_id_customer,
+						daddr,
+						dst_id_customer,
+						proto,
+						port,
+						ipacc_data->octects,
+						ipacc_data->numpackets,
+						ipacc_data->voippacket);
+					mysqlquery.push(insertQueryBuff);
+					//sqlDb->query(insertQueryBuff);////
+				} else {
+					SqlDb_row row;
+					row.add(sqlDateTimeString(ipacc_data->interval_time).c_str(), "interval_time");
+					row.add(saddr, "saddr");
+					if(src_id_customer) {
+						row.add(src_id_customer, "src_id_customer");
+					}
+					row.add(daddr, "daddr");
+					if(dst_id_customer) {
+						row.add(dst_id_customer, "dst_id_customer");
+					}
+					row.add(proto, "proto");
+					row.add(port, "port");
+					row.add(ipacc_data->octects, "octects");
+					row.add(ipacc_data->numpackets, "numpackets");
+					row.add(ipacc_data->voippacket, "voip");
+					sqlDb->insert("ipacc", row);
+				}
+				
+				agregIter = agreg.find(ipacc_data->interval_time);
+				if(agregIter == agreg.end()) {
+					agreg[ipacc_data->interval_time] = new IpaccAgreg;
+					agregIter = agreg.find(ipacc_data->interval_time);
+				}
+				agregIter->second->add(
+					saddr, daddr, 
+					src_id_customer, dst_id_customer, 
+					proto, port,
+					ipacc_data->octects, ipacc_data->numpackets, ipacc_data->voippacket);
 			}
+			
 			//reset octects 
-			ipacc_portsIT->second->octects = 0;
-			ipacc_portsIT->second->numpackets = 0;
+			iter->second->octects = 0;
+			iter->second->numpackets = 0;
 		}
+	}
+	for(agregIter = agreg.begin(); agregIter != agreg.end(); ++agregIter) {
+		agregIter->second->save(agregIter->first);
+		delete agregIter->second;
 	}
 	pthread_mutex_unlock(&mysqlquery_lock);
 
@@ -222,41 +195,43 @@ void flush_octets_ports() {
 	
 }
 
-void add_octects_ipport(time_t timestamp, unsigned int saddr, unsigned int daddr, int port, int proto, int packetlen, int voippacket) {
+void ipacc_add_octets(time_t timestamp, unsigned int saddr, unsigned int daddr, int port, int proto, int packetlen, int voippacket) {
 	string key;
 	char buf[100];
 	octects_t *ports;
-	unsigned int cur_interval = timestamp / opt_ipacc_interval;
+	unsigned int cur_interval_time = timestamp / opt_ipacc_interval * opt_ipacc_interval;
 	
 	sprintf(buf, "%uD%uE%dP%d", htonl(saddr), htonl(daddr), port, proto);
 	key = buf;
 
-	if(last_flush_ports != cur_interval) {
-		flush_octets_ports();
-		//printf("%u | %u | %u | %u\n", timestamp, last_flush, cur_interval, timestamp / opt_ipacc_interval);
-		last_flush_ports = cur_interval;
+	if(last_flush_interval_time != cur_interval_time) {
+		ipacc_save(last_flush_interval_time);
+		last_flush_interval_time = cur_interval_time;
 	}
-
-	ipacc_portsIT = ipacc_ports.find(key);
-	if(ipacc_portsIT == ipacc_ports.end()) {
+	
+	map<string, octects_t*>::iterator iter;
+	iter = ipacc_buffer.find(key);
+	if(iter == ipacc_buffer.end()) {
 		// not found;
-		ports = (octects_t*)calloc(1, sizeof(octects_t));
+		ports = new octects_t;
 		ports->octects += packetlen;
 		ports->numpackets++;
-		ports->lasttimestamp = timestamp / opt_ipacc_interval;
+		ports->interval_time = cur_interval_time;
 		ports->voippacket = voippacket;
-		ipacc_ports[key] = ports;
+		ipacc_buffer[key] = ports;
 //		printf("key: %s\n", buf);
 	} else {
 		//found
-		octects_t *tmp = ipacc_portsIT->second;
+		octects_t *tmp = iter->second;
 		tmp->octects += packetlen;
 		tmp->numpackets++;
-		tmp->lasttimestamp = timestamp / opt_ipacc_interval;
+		tmp->interval_time = cur_interval_time;
 		tmp->voippacket = voippacket;
 //		printf("key[%s] %u\n", key.c_str(), tmp->octects);
 	}
 
+	return;
+	
 	map<unsigned int, octects_live_t*>::iterator it;
 	octects_live_t *data;
 	for(it = ipacc_live.begin(); it != ipacc_live.end(); it++) {
@@ -303,26 +278,260 @@ void ipaccount(time_t timestamp, struct iphdr *header_ip, int packetlen, int voi
 		header_udp = (struct udphdr2 *) ((char *) header_ip + sizeof(*header_ip));
 
 		if(ipaccountportmatrix[htons(header_udp->source)]) {
-			add_octects_ipport(timestamp, header_ip->saddr, header_ip->daddr, htons(header_udp->source), IPPROTO_TCP, packetlen, voippacket);
+			ipacc_add_octets(timestamp, header_ip->saddr, header_ip->daddr, htons(header_udp->source), IPPROTO_TCP, packetlen, voippacket);
 		} else if (ipaccountportmatrix[htons(header_udp->dest)]) {
-			add_octects_ipport(timestamp, header_ip->saddr, header_ip->daddr, htons(header_udp->dest), IPPROTO_TCP, packetlen, voippacket);
+			ipacc_add_octets(timestamp, header_ip->saddr, header_ip->daddr, htons(header_udp->dest), IPPROTO_TCP, packetlen, voippacket);
 		} else {
-			add_octects_ipport(timestamp, header_ip->saddr, header_ip->daddr, 0, IPPROTO_TCP, packetlen, voippacket);
+			ipacc_add_octets(timestamp, header_ip->saddr, header_ip->daddr, 0, IPPROTO_TCP, packetlen, voippacket);
 		}
 	} else if (header_ip->protocol == IPPROTO_TCP) {
 		header_tcp = (struct tcphdr *) ((char *) header_ip + sizeof(*header_ip));
 
 		if(ipaccountportmatrix[htons(header_tcp->source)]) {
-			add_octects_ipport(timestamp, header_ip->saddr, header_ip->daddr, htons(header_tcp->source), IPPROTO_TCP, packetlen, voippacket);
+			ipacc_add_octets(timestamp, header_ip->saddr, header_ip->daddr, htons(header_tcp->source), IPPROTO_TCP, packetlen, voippacket);
 		} else if (ipaccountportmatrix[htons(header_tcp->dest)]) {
-			add_octects_ipport(timestamp, header_ip->saddr, header_ip->daddr, htons(header_tcp->dest), IPPROTO_TCP, packetlen, voippacket);
+			ipacc_add_octets(timestamp, header_ip->saddr, header_ip->daddr, htons(header_tcp->dest), IPPROTO_TCP, packetlen, voippacket);
 		} else {
-			add_octects_ipport(timestamp, header_ip->saddr, header_ip->daddr, 0, IPPROTO_TCP, packetlen, voippacket);
+			ipacc_add_octets(timestamp, header_ip->saddr, header_ip->daddr, 0, IPPROTO_TCP, packetlen, voippacket);
 		}
 	} else {
-		add_octects_ipport(timestamp, header_ip->saddr, header_ip->daddr, 0, header_ip->protocol, packetlen, voippacket);
+		ipacc_add_octets(timestamp, header_ip->saddr, header_ip->daddr, 0, header_ip->protocol, packetlen, voippacket);
 	}
 
+}
+
+IpaccAgreg::~IpaccAgreg() {
+	map<AgregIP, AgregData*>::iterator iter1;
+	for(iter1 = this->map1.begin(); iter1 != this->map1.end(); ++iter1) {
+		delete iter1->second;
+	}
+	map<AgregIP2, AgregData*>::iterator iter2;
+	for(iter2 = this->map2.begin(); iter2 != this->map2.end(); ++iter2) {
+		delete iter2->second;
+	}
+}
+
+void IpaccAgreg::add(unsigned int src, unsigned int dst,
+		     unsigned int src_id_customer, unsigned int dst_id_customer,
+		     unsigned int proto, unsigned int port,
+		     unsigned int traffic, unsigned int packets, bool voip) {
+	AgregIP srcA(src, proto, port), dstA(dst, proto, port);
+	map<AgregIP, AgregData*>::iterator iter1 = this->map1.find(srcA);
+	if(iter1 == this->map1.end()) {
+		AgregData *agregData = new AgregData;
+		agregData->id_customer = src_id_customer;
+		agregData->addOut(traffic, packets, voip);
+		this->map1[srcA] = agregData;
+	} else {
+		iter1->second->addOut(traffic, packets, voip);
+	}
+	iter1 = this->map1.find(dstA);
+	if(iter1 == this->map1.end()) {
+		AgregData *agregData = new AgregData;
+		agregData->id_customer = dst_id_customer;
+		agregData->addIn(traffic, packets, voip);
+		this->map1[dstA] = agregData;
+	} else {
+		iter1->second->addIn(traffic, packets, voip);
+	}
+	AgregIP2 srcDstA(src, dst, proto, port), dstSrcA(dst, src, proto, port);
+	map<AgregIP2, AgregData*>::iterator iter2 = this->map2.find(srcDstA);
+	if(iter2 == this->map2.end()) {
+		AgregData *agregData = new AgregData;
+		agregData->id_customer = src_id_customer;
+		agregData->id_customer2 = dst_id_customer;
+		agregData->addOut(traffic, packets, voip);
+		this->map2[srcDstA] = agregData;
+	} else {
+		iter2->second->addOut(traffic, packets, voip);
+	}
+	iter2 = this->map2.find(dstSrcA);
+	if(iter2 == this->map2.end()) {
+		AgregData *agregData = new AgregData;
+		agregData->id_customer = dst_id_customer;
+		agregData->id_customer2 = src_id_customer;
+		agregData->addIn(traffic, packets, voip);
+		this->map2[dstSrcA] = agregData;
+	} else {
+		iter2->second->addIn(traffic, packets, voip);
+	}
+}
+
+void IpaccAgreg::save(unsigned int time_interval) {
+	char insertQueryBuff[10000];
+	const char *agreg_table;
+	const char *agreg_time_field;
+	char agreg_time[100];
+	
+	map<AgregIP, AgregData*>::iterator iter1;
+	for(int i = 0; i < 2; i++) {
+		agreg_table = i == 0 ? "ipacc_agr_hour" : "ipacc_agr_day";
+		agreg_time_field = i == 0 ? "time_hour" : "date_day";
+		strcpy(agreg_time,
+		       i == 0 ?
+				sqlDateTimeString(time_interval / 3600 * 3600).c_str() :
+				sqlDateString(time_interval).c_str());
+	for(iter1 = this->map1.begin(); iter1 != this->map1.end(); iter1++) {
+		sprintf(insertQueryBuff,
+			"update %s set "
+				"traffic_in = traffic_in + %lu, "
+				"traffic_out = traffic_out + %lu, "
+				"traffic_sum = traffic_sum + %lu, "
+				"packets_in = packets_in + %lu, "
+				"packets_out = packets_out + %lu, "
+				"packets_sum = packets_sum + %lu, "
+				"traffic_voip_in = traffic_voip_in + %lu, "
+				"traffic_voip_out = traffic_voip_out + %lu, "
+				"traffic_voip_sum = traffic_voip_sum + %lu, "
+				"packets_voip_in = packets_voip_in + %lu, "
+				"packets_voip_out = packets_voip_out + %lu, "
+				"packets_voip_sum = packets_voip_sum + %lu "
+			"where %s = '%s' and "
+				"addr = %u and customer_id = %u and "
+				"proto = %u and port = %u; "
+			"if(row_count() <= 0) then "
+				"insert into %s ("
+						"%s, addr, customer_id, proto, port, "
+						"traffic_in, traffic_out, traffic_sum, "
+						"packets_in, packets_out, packets_sum, "
+						"traffic_voip_in, traffic_voip_out, traffic_voip_sum, "
+						"packets_voip_in, packets_voip_out, packets_voip_sum"
+					") values ("
+						"'%s', %u, %u, %u, %u, "
+						"%lu, %lu, %lu, "
+						"%lu, %lu, %lu, "
+						"%lu, %lu, %lu, "
+						"%lu, %lu, %lu);"
+			"end if",
+			agreg_table,
+			iter1->second->traffic_in,
+			iter1->second->traffic_out,
+			iter1->second->traffic_in + iter1->second->traffic_out,
+			iter1->second->packets_in,
+			iter1->second->packets_out,
+			iter1->second->packets_in + iter1->second->packets_out,
+			iter1->second->traffic_voip_in,
+			iter1->second->traffic_voip_out,
+			iter1->second->traffic_voip_in + iter1->second->traffic_voip_out,
+			iter1->second->packets_voip_in,
+			iter1->second->packets_voip_out,
+			iter1->second->packets_voip_in + iter1->second->packets_voip_out,
+			agreg_time_field,
+			agreg_time,
+			iter1->first.ip,
+			iter1->second->id_customer,
+			iter1->first.proto,
+			iter1->first.port,
+			agreg_table,
+			agreg_time_field,
+			agreg_time,
+			iter1->first.ip,
+			iter1->second->id_customer,
+			iter1->first.proto,
+			iter1->first.port,
+			iter1->second->traffic_in,
+			iter1->second->traffic_out,
+			iter1->second->traffic_in + iter1->second->traffic_out,
+			iter1->second->packets_in,
+			iter1->second->packets_out,
+			iter1->second->packets_in + iter1->second->packets_out,
+			iter1->second->traffic_voip_in,
+			iter1->second->traffic_voip_out,
+			iter1->second->traffic_voip_in + iter1->second->traffic_voip_out,
+			iter1->second->packets_voip_in,
+			iter1->second->packets_voip_out,
+			iter1->second->packets_voip_in + iter1->second->packets_voip_out);
+		mysqlquery.push(insertQueryBuff);
+		//sqlDb->query("drop procedure if exists __eee;");////
+		//sqlDb->query(string("create procedure __eee() begin ") + insertQueryBuff + "; end;");////
+		//sqlDb->query("call __eee();");////
+	}}
+	
+	map<AgregIP2, AgregData*>::iterator iter2;
+	for(int i = 0; i < 1; i++) {
+		agreg_table = i == 0 ? "ipacc_agr2_hour" : "ipacc_agr2_day";
+		agreg_time_field = i == 0 ? "time_hour" : "date_day";
+		strcpy(agreg_time,
+		       i == 0 ?
+				sqlDateTimeString(time_interval / 3600 * 3600).c_str() :
+				sqlDateString(time_interval).c_str());
+	for(iter2 = this->map2.begin(); iter2 != this->map2.end(); iter2++) {
+		sprintf(insertQueryBuff,
+			"update %s set "
+				"traffic_in = traffic_in + %lu, "
+				"traffic_out = traffic_out + %lu, "
+				"traffic_sum = traffic_sum + %lu, "
+				"packets_in = packets_in + %lu, "
+				"packets_out = packets_out + %lu, "
+				"packets_sum = packets_sum + %lu, "
+				"traffic_voip_in = traffic_voip_in + %lu, "
+				"traffic_voip_out = traffic_voip_out + %lu, "
+				"traffic_voip_sum = traffic_voip_sum + %lu, "
+				"packets_voip_in = packets_voip_in + %lu, "
+				"packets_voip_out = packets_voip_out + %lu, "
+				"packets_voip_sum = packets_voip_sum + %lu "
+			"where %s = '%s' and "
+				"addr = %u and addr2 = %u  and customer_id = %u and "
+				"proto = %u and port = %u; "
+			"if(row_count() <= 0) then "
+				"insert into %s ("
+						"%s, addr, addr2, customer_id, proto, port, "
+						"traffic_in, traffic_out, traffic_sum, "
+						"packets_in, packets_out, packets_sum, "
+						"traffic_voip_in, traffic_voip_out, traffic_voip_sum, "
+						"packets_voip_in, packets_voip_out, packets_voip_sum"
+					") values ("
+						"'%s', %u, %u, %u, %u, %u, "
+						"%lu, %lu, %lu, "
+						"%lu, %lu, %lu, "
+						"%lu, %lu, %lu, "
+						"%lu, %lu, %lu);"
+			"end if",
+			agreg_table,
+			iter2->second->traffic_in,
+			iter2->second->traffic_out,
+			iter2->second->traffic_in + iter2->second->traffic_out,
+			iter2->second->packets_in,
+			iter2->second->packets_out,
+			iter2->second->packets_in + iter2->second->packets_out,
+			iter2->second->traffic_voip_in,
+			iter2->second->traffic_voip_out,
+			iter2->second->traffic_voip_in + iter2->second->traffic_voip_out,
+			iter2->second->packets_voip_in,
+			iter2->second->packets_voip_out,
+			iter2->second->packets_voip_in + iter2->second->packets_voip_out,
+			agreg_time_field,
+			agreg_time,
+			iter2->first.ip1,
+			iter2->first.ip2,
+			iter2->second->id_customer,
+			iter2->first.proto,
+			iter2->first.port,
+			agreg_table,
+			agreg_time_field,
+			agreg_time,
+			iter2->first.ip1,
+			iter2->first.ip2,
+			iter2->second->id_customer,
+			iter2->first.proto,
+			iter2->first.port,
+			iter2->second->traffic_in,
+			iter2->second->traffic_out,
+			iter2->second->traffic_in + iter2->second->traffic_out,
+			iter2->second->packets_in,
+			iter2->second->packets_out,
+			iter2->second->packets_in + iter2->second->packets_out,
+			iter2->second->traffic_voip_in,
+			iter2->second->traffic_voip_out,
+			iter2->second->traffic_voip_in + iter2->second->traffic_voip_out,
+			iter2->second->packets_voip_in,
+			iter2->second->packets_voip_out,
+			iter2->second->packets_voip_in + iter2->second->packets_voip_out);
+		mysqlquery.push(insertQueryBuff);
+		//sqlDb->query("drop procedure if exists __eee;");////
+		//sqlDb->query(string("create procedure __eee() begin ") + insertQueryBuff + "; end;");////
+		//sqlDb->query("call __eee();");////
+	}}
 }
 
 CustIpCache::CustIpCache() {
@@ -390,6 +599,7 @@ int CustIpCache::getCustByIp(unsigned int ip) {
 		if(cust_id < 0) {
 			cust_id = this->getCustByIpFromDb(ip, true);
 		}
+		return(cust_id);
 	}
 }
 
@@ -477,4 +687,14 @@ void CustIpCache::flush() {
 		this->custCacheVect.clear();
 	}
 	++this->flushCounter;
+}
+
+void freeMemIpacc() {
+	if(custIpCache) {
+		delete custIpCache;
+	}
+	map<string, octects_t*>::iterator iter;
+	for(iter = ipacc_buffer.begin(); iter != ipacc_buffer.end(); ++iter) {
+		delete iter->second;
+	}
 }

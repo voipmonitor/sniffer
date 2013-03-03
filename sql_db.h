@@ -242,6 +242,7 @@ private:
 };
 
 string sqlDateTimeString(time_t unixTime);
+string sqlDateString(time_t unixTime);
 string sqlEscapeString(string inputStr);
 string sqlEscapeString(const char *inputStr);
 string sqlEscapeStringBorder(string inputStr, char borderChar = '\'');

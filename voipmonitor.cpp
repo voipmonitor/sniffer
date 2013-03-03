@@ -48,6 +48,7 @@
 #include "sql_db.h"
 #include "tools.h"
 #include "mirrorip.h"
+#include "ipaccount.h"
 
 extern "C" {
 #include "liblfds.6/inc/liblfds.h"
@@ -497,7 +498,7 @@ void *storing_cdr( void *dummy ) {
 		}
 		if(verbosity > 0 && _counterIpacc > 0) {
 			int diffTime = time(NULL) - _start;
-			cout << "SAVE IPACC: " << _counterIpacc << " rec";
+			cout << "SAVE IPACC (" << sqlDateTimeString(time(NULL)) << "): " << _counterIpacc << " rec";
 			if(diffTime > 0) {
 				cout << "  " << diffTime << " s  " << (_counterIpacc/diffTime) << " rec/s";
 			}
@@ -1816,13 +1817,29 @@ int main(int argc, char *argv[]) {
 	pthread_mutex_destroy(&mysqlquery_lock);
 	clean_tcpstreams();
 	ipfrag_prune(0, 1);
+	freeMemIpacc();
 }
 
-#include "sql_db.h"
-#include "ipaccount.h"
 
 void test() {
 	
+	extern void ipacc_add_octets(time_t timestamp, unsigned int saddr, unsigned int daddr, int port, int proto, int packetlen, int voippacket);
+	extern void ipacc_save(unsigned int interval_time_limit = 0);
+
+	/*
+	for(int i = 0; i < 100000; i++) {
+		ipacc_add_octets(1, rand()%5000, rand()%5000, rand()%4, rand()%3, rand(), rand()%100);
+	}
+	*/
+	
+	ipacc_add_octets(1, 1, 2, 3, 4, 5, 6);
+	ipacc_add_octets(1, 1, 2, 3, 4, 5, 6);
+	
+	ipacc_save();
+	
+	freeMemIpacc();
+	
+	/*
 	CustIpCache *custIpCache = new CustIpCache;
 	custIpCache->setConnectParams(
 		get_customer_by_ip_sql_driver, 
@@ -1858,6 +1875,7 @@ void test() {
 	telnumfilter = new TELNUMfilter;
 	telnumfilter->load();
 	telnumfilter->dump();
+	*/
 	
 	/*
 	sqlDb->query("select _LC_[UNIX_TIMESTAMP('1970-01-01') = 0] as eee;");
