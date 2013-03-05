@@ -340,6 +340,7 @@ bool SqlDb_mysql::connect() {
 					opt_mysql_port, NULL, 0);
 		if(this->hMysqlConn) {
 			this->query("SET NAMES UTF8");
+			this->query("SET sql_mode = ''");
 			return(true);
 		} else {
 			this->checkLastError("connect error", true);
@@ -1323,7 +1324,7 @@ void SqlDb_mysql::createSchema() {
 			BEGIN \
 				DECLARE _ID INT; \
 				DECLARE _state INT; \
-				DECLARE _expires_at INT UNSIGNED; \
+				DECLARE _expires_at DATETIME; \
 				DECLARE _expired INT; \
 				SELECT ID, state, expires_at, (UNIX_TIMESTAMP(expires_at) < UNIX_TIMESTAMP(calltime)) AS expired INTO _ID, _state, _expires_at, _expired FROM register WHERE to_num = called AND to_domain = called_domain AND digestusername = digest_username ORDER BY ID DESC LIMIT 1; \
 				IF ( _ID ) THEN \

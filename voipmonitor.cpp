@@ -1075,6 +1075,7 @@ int main(int argc, char *argv[]) {
 	    {"cachedir", 1, 0, 'C'},
 	    {"id-sensor", 1, 0, 's'},
 	    {"ipaccount", 0, 0, 'x'},
+	    {"pcapscan-dir", 1, 0, '0'},
 	    {0, 0, 0, 0}
 	};
 
@@ -1128,6 +1129,9 @@ int main(int argc, char *argv[]) {
 			case 's':
 				opt_id_sensor = atoi(optarg);
 				insert_funcname = "__insert_" + opt_id_sensor;
+				break;
+			case '0':
+				strncpy(opt_scanpcapdir, optarg, sizeof(opt_scanpcapdir));
 				break;
 			case 'a':
 				strncpy(pcapcommand, optarg, sizeof(pcapcommand));
