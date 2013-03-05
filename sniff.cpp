@@ -646,6 +646,10 @@ int get_expires_from_contact(char *data, int datalen, int *expires){
 	if(datalen < 8) return 1;
 
 	s = gettag(data, datalen, "\nContact:", &l);
+	if(!l) {
+		//try compact header
+		s = gettag(data, datalen, "\nm:", &l);
+	}
 	if(l && ((unsigned int)l < ((unsigned int)datalen - (s - data)))) {
 		char tmp[128];
 		int res = get_value_stringkeyval2(s, l + 2, "expires=", tmp, sizeof(tmp));
@@ -1669,20 +1673,31 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 					memcpy(call->invitecseq, s, l);
 					call->invitecseq[l] = '\0';
 				}
+
+
 			} else if(sip_method == RES2XX) {
+				// update expires header from all REGISTER dialog messages (from 200 OK which can override the expire) 
+				s = gettag(data, datalen, "\nExpires:", &l);
+				if(l && ((unsigned int)l < ((unsigned int)datalen - (s - data)))) {
+					char c = s[l];
+					s[l] = '\0';
+					call->register_expires = atoi(s);
+					s[l] = c;
+				}
+				// the expire can be also in contact header Contact: 79438652 <sip:6600006@192.168.10.202:1026>;expires=240
+				get_expires_from_contact(data, datalen, &call->register_expires);
+
 				if(verbosity > 3) syslog(LOG_DEBUG, "REGISTER OK Call-ID[%s]", call->call_id);
                                 s = gettag(data, datalen, "\nCSeq:", &l);
                                 if(l && strncmp(s, call->invitecseq, l) == 0) {
 					// registration OK 
 					call->regstate = 1;
-					call->saveregister();
-					return NULL;
 				} else {
-					call->regstate = 3;
-					call->saveregister();
-					return NULL;
 					// OK to unknown msg close the call
+					call->regstate = 3;
 				}
+				call->saveregister();
+				return NULL;
 			} else if(sip_method == RES401) {
 				call->reg401count++;
 				if(verbosity > 3) syslog(LOG_DEBUG, "REGISTER 401 Call-ID[%s] reg401count[%d]", call->call_id, call->reg401count);

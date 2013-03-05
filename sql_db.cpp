@@ -1331,7 +1331,7 @@ void SqlDb_mysql::createSchema() {
 					SET sql_log_bin = 0; \
 					DELETE FROM register WHERE ID = _ID; \
 					SET sql_log_bin = 1; \
-					IF ( _expired > 0 ) THEN \
+					IF ( _expired > 5 ) THEN \
 						INSERT INTO `register_state` SET `created_at` = _expires_at, `sipcallerip` = sipcallerip, `sipcalledip` = sipcalledip, `from_num` = caller, `to_num` = called, `to_domain` = called_domain, `contact_num` = contact_num, `contact_domain` = contact_domain, `digestusername` = digest_username, `expires` = register_expires, state = 5, ua_id = getIdOrInsertUA(cdr_ua); \
 					END IF; \
 					IF ( _state <> regstate AND register_expires = 0) THEN \
