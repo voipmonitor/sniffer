@@ -1089,7 +1089,7 @@ Call *new_invite_register(int sip_method, char *data, int datalen, struct pcap_p
 			}
 			unsigned long long num = header->ts.tv_sec;
 			unsigned long long num2 = header->ts.tv_usec;
-			while(num2 > 1) {
+			while(num2 > 0) {
 				num2 /= 10;
 				num *= 10;
 			}
