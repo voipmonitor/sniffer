@@ -867,6 +867,7 @@ string reverseString(const char *str) {
 
 void SqlDb_mysql::createSchema() {
 
+	printf("creating and upgrading MySQL schema...");
 	this->multi_off();
 
 	this->query(
@@ -1153,6 +1154,8 @@ void SqlDb_mysql::createSchema() {
 	this->query(
 	"CREATE TABLE IF NOT EXISTS `register` (\
 			`ID` int unsigned NOT NULL AUTO_INCREMENT,\
+			`id_sensor` int unsigned NOT NULL,\
+			`fname` BIGINT NULL default NULL,\
 			`calldate` datetime NOT NULL,\
 			`sipcallerip` int unsigned NOT NULL,\
 			`sipcalledip` int unsigned NOT NULL,\
@@ -1180,6 +1183,8 @@ void SqlDb_mysql::createSchema() {
 	this->query(
 	"CREATE TABLE IF NOT EXISTS `register_state` (\
 			`ID` int unsigned NOT NULL AUTO_INCREMENT,\
+			`id_sensor` int unsigned NOT NULL,\
+			`fname` BIGINT NULL default NULL,\
 			`created_at` datetime NOT NULL,\
 			`sipcallerip` int unsigned NOT NULL,\
 			`sipcalledip` int unsigned NOT NULL,\
@@ -1200,6 +1205,8 @@ void SqlDb_mysql::createSchema() {
 	this->query(
 	"CREATE TABLE IF NOT EXISTS `register_failed` (\
 			`ID` int unsigned NOT NULL AUTO_INCREMENT,\
+			`id_sensor` int unsigned NOT NULL,\
+			`fname` BIGINT NULL default NULL,\
 			`counter` int DEFAULT 0,\
 			`created_at` datetime NOT NULL,\
 			`sipcallerip` int unsigned NOT NULL,\
@@ -1248,7 +1255,7 @@ void SqlDb_mysql::createSchema() {
 	this->query(
 	"CREATE TABLE IF NOT EXISTS `livepacket` (\
 			`id` INT UNSIGNED NOT NULL AUTO_INCREMENT ,\
-			`id_sensor` INT UNSIGNED DEFAULT NULL,\
+			`id_sensor` INT DEFAULT NULL,\
 			`sipcallerip` INT UNSIGNED NOT NULL ,\
 			`sipcalledip` INT UNSIGNED NOT NULL ,\
 			`sport` SMALLINT UNSIGNED NOT NULL ,\
@@ -1320,7 +1327,7 @@ void SqlDb_mysql::createSchema() {
 			END;");
 
 	this->query("DROP PROCEDURE IF EXISTS PROCESS_SIP_REGISTER;");
-	this->query("CREATE PROCEDURE PROCESS_SIP_REGISTER(IN calltime VARCHAR(32), IN caller VARCHAR(64), IN callername VARCHAR(64), IN caller_domain VARCHAR(64), IN called VARCHAR(64), IN called_domain VARCHAR(64), IN sipcallerip INT UNSIGNED, sipcalledip INT UNSIGNED, contact_num VARCHAR(64), IN contact_domain VARCHAR(64), IN digest_username VARCHAR(255), IN digest_realm VARCHAR(255), IN regstate INT, mexpires_at VARCHAR(128), IN register_expires INT, IN cdr_ua VARCHAR(255)) \
+	this->query("CREATE PROCEDURE PROCESS_SIP_REGISTER(IN calltime VARCHAR(32), IN caller VARCHAR(64), IN callername VARCHAR(64), IN caller_domain VARCHAR(64), IN called VARCHAR(64), IN called_domain VARCHAR(64), IN sipcallerip INT UNSIGNED, sipcalledip INT UNSIGNED, contact_num VARCHAR(64), IN contact_domain VARCHAR(64), IN digest_username VARCHAR(255), IN digest_realm VARCHAR(255), IN regstate INT, mexpires_at VARCHAR(128), IN register_expires INT, IN cdr_ua VARCHAR(255), IN fname BIGINT, IN id_sensor INT) \
 			BEGIN \
 				DECLARE _ID INT; \
 				DECLARE _state INT; \
@@ -1332,16 +1339,16 @@ void SqlDb_mysql::createSchema() {
 					DELETE FROM register WHERE ID = _ID; \
 					SET sql_log_bin = 1; \
 					IF ( _expired > 5 ) THEN \
-						INSERT INTO `register_state` SET `created_at` = _expires_at, `sipcallerip` = sipcallerip, `sipcalledip` = sipcalledip, `from_num` = caller, `to_num` = called, `to_domain` = called_domain, `contact_num` = contact_num, `contact_domain` = contact_domain, `digestusername` = digest_username, `expires` = register_expires, state = 5, ua_id = getIdOrInsertUA(cdr_ua); \
+						INSERT INTO `register_state` SET `id_sensor` = id_sensor, `fname` = fname, `created_at` = _expires_at, `sipcallerip` = sipcallerip, `sipcalledip` = sipcalledip, `from_num` = caller, `to_num` = called, `to_domain` = called_domain, `contact_num` = contact_num, `contact_domain` = contact_domain, `digestusername` = digest_username, `expires` = register_expires, state = 5, ua_id = getIdOrInsertUA(cdr_ua); \
 					END IF; \
 					IF ( _state <> regstate AND register_expires = 0) THEN \
-						INSERT INTO `register_state` SET `created_at` = calltime, `sipcallerip` = sipcallerip, `sipcalledip` = sipcalledip, `from_num` = caller, `to_num` = called, `to_domain` = called_domain, `contact_num` = contact_num, `contact_domain` = contact_domain, `digestusername` = digest_username, `expires` = register_expires, state = regstate, ua_id = getIdOrInsertUA(cdr_ua); \
+						INSERT INTO `register_state` SET `id_sensor` = id_sensor, `fname` = fname, `created_at` = calltime, `sipcallerip` = sipcallerip, `sipcalledip` = sipcalledip, `from_num` = caller, `to_num` = called, `to_domain` = called_domain, `contact_num` = contact_num, `contact_domain` = contact_domain, `digestusername` = digest_username, `expires` = register_expires, state = regstate, ua_id = getIdOrInsertUA(cdr_ua); \
 					END IF; \
 				ELSE \
-					INSERT INTO `register_state` SET `created_at` = calltime, `sipcallerip` = sipcallerip, `sipcalledip` = sipcalledip, `from_num` = caller, `to_num` = called, `to_domain` = called_domain, `contact_num` = contact_num, `contact_domain` = contact_domain, `digestusername` = digest_username, `expires` = register_expires, state = regstate, ua_id = getIdOrInsertUA(cdr_ua);\
+					INSERT INTO `register_state` SET `id_sensor` = id_sensor, `fname` = fname, `created_at` = calltime, `sipcallerip` = sipcallerip, `sipcalledip` = sipcalledip, `from_num` = caller, `to_num` = called, `to_domain` = called_domain, `contact_num` = contact_num, `contact_domain` = contact_domain, `digestusername` = digest_username, `expires` = register_expires, state = regstate, ua_id = getIdOrInsertUA(cdr_ua);\
 				END IF; \
 				IF ( register_expires > 0 ) THEN \
-					INSERT INTO `register` SET `calldate` = calltime, `sipcallerip` = sipcallerip, `sipcalledip` = sipcalledip, `from_num` = caller, `from_name` = callername, `from_domain` = caller_domain, `to_num` = called, `to_domain` = called_domain, `contact_num` = contact_num, `contact_domain` = contact_domain, `digestusername` = digest_username, `digestrealm` = digest_realm, `expires` = register_expires, state = regstate, ua_id = getIdOrInsertUA(cdr_ua), `expires_at` = mexpires_at; \
+					INSERT INTO `register` SET `id_sensor` = id_sensor, `fname` = fname, `calldate` = calltime, `sipcallerip` = sipcallerip, `sipcalledip` = sipcalledip, `from_num` = caller, `from_name` = callername, `from_domain` = caller_domain, `to_num` = called, `to_domain` = called_domain, `contact_num` = contact_num, `contact_domain` = contact_domain, `digestusername` = digest_username, `digestrealm` = digest_realm, `expires` = register_expires, state = regstate, ua_id = getIdOrInsertUA(cdr_ua), `expires_at` = mexpires_at; \
 				END IF; \
 			END;");
 
@@ -1351,7 +1358,20 @@ void SqlDb_mysql::createSchema() {
 	sql_noerror = 1;
 	this->query("ALTER TABLE message ADD GeoPosition varchar(255)");
 	this->query("ALTER TABLE cdr_next ADD GeoPosition varchar(255)");
+	this->query("ALTER TABLE register\
+			ADD `fname` BIGINT NULL DEFAULT NULL;");
+	this->query("ALTER TABLE register_failed\
+			ADD `fname` BIGINT NULL DEFAULT NULL;");
+	this->query("ALTER TABLE register_state\
+			ADD `fname` BIGINT NULL DEFAULT NULL;");
+	this->query("ALTER TABLE register\
+			ADD `id_sensor` INT NULL DEFAULT NULL;");
+	this->query("ALTER TABLE register_failed\
+			ADD `id_sensor` INT NULL DEFAULT NULL;");
+	this->query("ALTER TABLE register_state\
+			ADD `id_sensor` INT NULL DEFAULT NULL;");
 	sql_noerror = 0;
+	printf("done\n");
 }
 
 
@@ -1639,6 +1659,8 @@ void SqlDb_odbc::createSchema() {
 	"IF NOT EXISTS (SELECT * FROM sys.objects WHERE name = 'register') BEGIN\
 		CREATE TABLE register (\
 			ID int PRIMARY KEY IDENTITY,\
+			id_sensor int NULL,\
+			fname bigint NULL,\
 			calldate datetime NOT NULL,\
 			sipcallerip bigint NOT NULL,\
 			sipcalledip bigint NOT NULL,\
@@ -1666,6 +1688,8 @@ void SqlDb_odbc::createSchema() {
 	"IF NOT EXISTS (SELECT * FROM sys.objects WHERE name = 'register_state') BEGIN\
 		CREATE TABLE register_state (\
 			ID int PRIMARY KEY IDENTITY,\
+			id_sensor int NULL,\
+			fname bigint NULL,\
 			created_at datetime NOT NULL,\
 			sipcallerip bigint NOT NULL,\
 			sipcalledip bigint NOT NULL,\
@@ -1686,6 +1710,8 @@ void SqlDb_odbc::createSchema() {
 	"IF NOT EXISTS (SELECT * FROM sys.objects WHERE name = 'register_failed') BEGIN\
 		CREATE TABLE register_failed (\
 			ID int PRIMARY KEY IDENTITY,\
+			id_sensor int NULL,\
+			fname bigint NULL,\
 			counter int DEFAULT 0,\
 			created_at datetime NOT NULL,\
 			sipcallerip bigint NOT NULL,\

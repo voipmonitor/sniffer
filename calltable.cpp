@@ -172,6 +172,7 @@ Call::Call(char *call_id, unsigned long call_id_len, time_t time, void *ct) {
 	sipcallerip3 = 0;
 	sipcalledip4 = 0;
 	sipcallerip4 = 0;
+	fname2 = 0;
 }
 
 void
@@ -1768,6 +1769,9 @@ Call::saveRegisterToDb() {
 	}
 	last_register_clean = now;
 
+	char fname[32];
+	sprintf(fname, "%llu", fname2);
+
 	switch(regstate) {
 	case 1:
 	case 3:
@@ -1780,6 +1784,8 @@ Call::saveRegisterToDb() {
 			sprintf(tmpregstate, "%d", regstate);
 			char regexpires[32];
 			sprintf(regexpires, "%d", register_expires);
+			char idsensor[12];
+			sprintf(idsensor, "%d", opt_id_sensor);
 			//stored procedure is much faster and eliminates latency reducing uuuuuuuuuuuuu
 
 			query = "CALL PROCESS_SIP_REGISTER(" + sqlEscapeStringBorder(sqlDateTimeString(calltime())) + ", " +
@@ -1797,7 +1803,10 @@ Call::saveRegisterToDb() {
 				tmpregstate + "'," +
 				sqlEscapeStringBorder(sqlDateTimeString(calltime() + register_expires).c_str()) + ",'" + //mexpires_at
 				regexpires + "', " +
-				sqlEscapeStringBorder(a_ua) + ")";
+				sqlEscapeStringBorder(a_ua) + ", " +
+				fname + ", " +
+				idsensor +
+				")";
 			pthread_mutex_lock(&mysqlquery_lock);
 			mysqlquery.push(query);
 			pthread_mutex_unlock(&mysqlquery_lock);
@@ -1899,6 +1908,8 @@ DELIMITER ; ~
 					reg.add(sqlEscapeString(digest_username), "digestusername");
 					reg.add(register_expires, "expires");
 					reg.add(5, "state");
+					reg.add(fname, "fname");
+					reg.add(opt_id_sensor, "id_sensor");
 					reg.add(sqlDb->getIdOrInsert(sql_cdr_ua_table, "id", "ua", cdr_ua), "ua_id");
 					sqlDb->insert("register_state", reg);
 				}
@@ -1918,6 +1929,8 @@ DELIMITER ; ~
 					reg.add(register_expires, "expires");
 					reg.add(regstate, "state");
 					reg.add(sqlDb->getIdOrInsert(sql_cdr_ua_table, "id", "ua", cdr_ua), "ua_id");
+					reg.add(fname, "fname");
+					reg.add(opt_id_sensor, "id_sensor");
 					sqlDb->insert("register_state", reg);
 				}
 			} else {
@@ -1935,6 +1948,8 @@ DELIMITER ; ~
 				reg.add(register_expires, "expires");
 				reg.add(regstate, "state");
 				reg.add(sqlDb->getIdOrInsert(sql_cdr_ua_table, "id", "ua", cdr_ua), "ua_id");
+				reg.add(fname, "fname");
+				reg.add(opt_id_sensor, "id_sensor");
 				sqlDb->insert("register_state", reg);
 			}
 
@@ -1957,6 +1972,8 @@ DELIMITER ; ~
 				reg.add(sqlDb->getIdOrInsert(sql_cdr_ua_table, "id", "ua", cdr_ua), "ua_id");
 				reg.add(register_expires, "expires");
 				reg.add(sqlEscapeString(sqlDateTimeString(calltime() + register_expires).c_str()), "expires_at");
+				reg.add(fname, "fname");
+				reg.add(opt_id_sensor, "id_sensor");
 				reg.add(regstate, "state");
 				if(opt_sip_register_active_nologbin && isTypeDb("mysql")) {
 					sqlDb->query("SET sql_log_bin = 0;");
@@ -1978,10 +1995,12 @@ DELIMITER ; ~
 				" AND digestusername = " + sqlEscapeStringBorder(digest_username) + " AND created_at >= SUBTIME(NOW(), '01:00:00')";
 		if(sqlDb->query(query)) {
 			SqlDb_row rsltRow = sqlDb->fetchRow();
+			char fname[32];
+			sprintf(fname, "%llu", fname2);
 			if(rsltRow) {
 				// there is already failed register, update counter and do not insert
 				string query = string(
-					"UPDATE register_failed SET counter = counter + 1 ") +
+					"UPDATE register_failed SET fname = " + sqlEscapeStringBorder(fname) + ", counter = counter + 1 ") +
 					"WHERE to_num = " + sqlEscapeStringBorder(called) + " AND digestusername = " + sqlEscapeStringBorder(digest_username) + 
 						" AND created_at >= SUBTIME(NOW(), '01:00:00')";
 				sqlDb->query(query);
@@ -1998,6 +2017,10 @@ DELIMITER ; ~
 				reg.add(sqlEscapeString(contact_domain), "contact_domain");
 				reg.add(sqlEscapeString(digest_username), "digestusername");
 				reg.add(sqlDb->getIdOrInsert(sql_cdr_ua_table, "id", "ua", cdr_ua), "ua_id");
+				reg.add(fname, "fname");
+				if(opt_id_sensor > -1) {
+					reg.add(opt_id_sensor, "id_sensor");
+				}
 				sqlDb->insert("register_failed", reg);
 			}
 		}

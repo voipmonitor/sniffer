@@ -1025,7 +1025,8 @@ Call *new_invite_register(int sip_method, char *data, int datalen, struct pcap_p
 	}
 
 	// opening dump file
-	if(call->type != REGISTER && (call->flags & (FLAG_SAVESIP | FLAG_SAVEREGISTER | FLAG_SAVERTP | FLAG_SAVEWAV) || opt_savewav_force)) {
+	if((call->type == REGISTER && (call->flags & FLAG_SAVEREGISTER)) || 
+		(call->type != REGISTER && (call->flags & (FLAG_SAVESIP | FLAG_SAVERTP | FLAG_SAVEWAV) || opt_savewav_force))) {
 		static string lastdir;
 		if(lastdir != call->dirname()) {
 			string tmp, dir;
@@ -1036,6 +1037,8 @@ Call *new_invite_register(int sip_method, char *data, int datalen, struct pcap_p
 				dir += "/" + call->dirname();
 				if(opt_newdir) {
 					tmp = dir + "/ALL";
+					mkdir_r(tmp, 0777);
+					tmp = dir + "/REG";
 					mkdir_r(tmp, 0777);
 					tmp = dir + "/SIP";
 					mkdir_r(tmp, 0777);
@@ -1055,6 +1058,8 @@ Call *new_invite_register(int sip_method, char *data, int datalen, struct pcap_p
 				mkdir_r(tmp, 0777);
 				tmp = dir + "/SIP";
 				mkdir_r(tmp, 0777);
+				tmp = dir + "/REG";
+				mkdir_r(tmp, 0777);
 				tmp = dir + "/RTP";
 				mkdir_r(tmp, 0777);
 				tmp = dir + "/GRAPH";
@@ -1069,7 +1074,43 @@ Call *new_invite_register(int sip_method, char *data, int datalen, struct pcap_p
 			lastdir = call->dirname();
 		}
 	}
-	if(call->type != REGISTER && ((call->flags & (FLAG_SAVESIP | FLAG_SAVEREGISTER | FLAG_SAVERTP)) || (call->isfax && opt_saveudptl))) {
+
+	if(call->type == REGISTER && (call->flags & FLAG_SAVEREGISTER)) {
+		call->set_f_pcap(NULL);
+		call->set_fsip_pcap(NULL);
+		call->set_frtp_pcap(NULL);
+		char filenamestr[32];
+		sprintf(filenamestr, "%u%u", (unsigned int)header->ts.tv_sec, (unsigned int)header->ts.tv_usec);
+		if(opt_newdir and opt_pcap_split) {
+			if(opt_cachedir[0] != '\0') {
+				sprintf(str2, "%s/%s/%s/%u%u.pcap", opt_cachedir, call->dirname().c_str(), opt_newdir ? "REG" : "", (unsigned int)header->ts.tv_sec, (unsigned int)header->ts.tv_usec);
+			} else {
+				sprintf(str2, "%s/%s/%u%u.pcap", call->dirname().c_str(), opt_newdir ? "REG" : "", (unsigned int)header->ts.tv_sec, (unsigned int)header->ts.tv_usec);
+			}
+			unsigned long long num = header->ts.tv_sec;
+			unsigned long long num2 = header->ts.tv_usec;
+			while(num2 > 1) {
+				num2 /= 10;
+				num *= 10;
+			}
+			call->fname2 = num + header->ts.tv_usec;
+			call->sip_pcapfilename = call->dirname() + (opt_newdir ? "/REG" : "") + "/" + filenamestr + ".pcap";
+			if(!file_exists(str2)) {
+				call->set_fsip_pcap(pcap_dump_open(handle, str2));
+				if(call->get_fsip_pcap() == NULL) {
+					syslog(LOG_NOTICE,"pcap [%s] cannot be opened: %s\n", str2, pcap_geterr(handle));
+				}
+				if(verbosity > 3) {
+					syslog(LOG_NOTICE,"pcap_filename: [%s]\n", str2);
+				}
+			} else {
+				if(verbosity > 0) {
+					syslog(LOG_NOTICE,"pcap_filename: [%s] already exists, do not overwriting\n", str2);
+				}
+			}
+		}
+	} else if((call->type != REGISTER && (call->flags & (FLAG_SAVESIP | FLAG_SAVERTP))) || 
+		(call->isfax && opt_saveudptl)) {
 		// open one pcap for all packets or open SIP and RTP separatly
 		call->set_f_pcap(NULL);
 		call->set_fsip_pcap(NULL);
@@ -1664,8 +1705,11 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 				if(call->regcount > 4) {
 					// to much register attempts without OK or 401 responses
 					call->regstate = 4;
-					call->saveregister();
 					call = new_invite_register(sip_method, data, datalen, header, callidstr, saddr, daddr, source, call->call_id, strlen(call->call_id));
+					if(!dontsave && call->flags & (FLAG_SAVEREGISTER)) {
+						save_packet(call, header, packet, saddr, source, daddr, dest, istcp, data, datalen, TYPE_SIP);
+					}
+					call->saveregister();
 					return call;
 				}
 				s = gettag(data, datalen, "\nCSeq:", &l);
@@ -1696,6 +1740,9 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 					// OK to unknown msg close the call
 					call->regstate = 3;
 				}
+				if(!dontsave && call->flags & (FLAG_SAVEREGISTER)) {
+					save_packet(call, header, packet, saddr, source, daddr, dest, istcp, data, datalen, TYPE_SIP);
+				}
 				call->saveregister();
 				return NULL;
 			} else if(sip_method == RES401) {
@@ -1704,6 +1751,9 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 				if(call->reg401count > 1) {
 					// registration failed
 					call->regstate = 2;
+					if(!dontsave && call->flags & (FLAG_SAVEREGISTER)) {
+						save_packet(call, header, packet, saddr, source, daddr, dest, istcp, data, datalen, TYPE_SIP);
+					}
 					call->saveregister();
 					return NULL;
 				}
@@ -1711,6 +1761,9 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 			if(call->msgcount > 20) {
 				// too many REGISTER messages within the same callid
 				call->regstate = 4;
+				if(!dontsave && call->flags & (FLAG_SAVEREGISTER)) {
+					save_packet(call, header, packet, saddr, source, daddr, dest, istcp, data, datalen, TYPE_SIP);
+				}
 				call->saveregister();
 				return NULL;
 			}
