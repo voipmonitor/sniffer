@@ -1706,9 +1706,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 					// to much register attempts without OK or 401 responses
 					call->regstate = 4;
 					call = new_invite_register(sip_method, data, datalen, header, callidstr, saddr, daddr, source, call->call_id, strlen(call->call_id));
-					if(!dontsave && call->flags & (FLAG_SAVEREGISTER)) {
-						save_packet(call, header, packet, saddr, source, daddr, dest, istcp, data, datalen, TYPE_SIP);
-					}
+					save_packet(call, header, packet, saddr, source, daddr, dest, istcp, data, datalen, TYPE_SIP);
 					call->saveregister();
 					return call;
 				}
@@ -1740,9 +1738,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 					// OK to unknown msg close the call
 					call->regstate = 3;
 				}
-				if(!dontsave && call->flags & (FLAG_SAVEREGISTER)) {
-					save_packet(call, header, packet, saddr, source, daddr, dest, istcp, data, datalen, TYPE_SIP);
-				}
+				save_packet(call, header, packet, saddr, source, daddr, dest, istcp, data, datalen, TYPE_SIP);
 				call->saveregister();
 				return NULL;
 			} else if(sip_method == RES401) {
@@ -1751,9 +1747,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 				if(call->reg401count > 1) {
 					// registration failed
 					call->regstate = 2;
-					if(!dontsave && call->flags & (FLAG_SAVEREGISTER)) {
-						save_packet(call, header, packet, saddr, source, daddr, dest, istcp, data, datalen, TYPE_SIP);
-					}
+					save_packet(call, header, packet, saddr, source, daddr, dest, istcp, data, datalen, TYPE_SIP);
 					call->saveregister();
 					return NULL;
 				}
@@ -1761,9 +1755,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 			if(call->msgcount > 20) {
 				// too many REGISTER messages within the same callid
 				call->regstate = 4;
-				if(!dontsave && call->flags & (FLAG_SAVEREGISTER)) {
-					save_packet(call, header, packet, saddr, source, daddr, dest, istcp, data, datalen, TYPE_SIP);
-				}
+				save_packet(call, header, packet, saddr, source, daddr, dest, istcp, data, datalen, TYPE_SIP);
 				call->saveregister();
 				return NULL;
 			}
@@ -1928,9 +1920,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 						// terminate successfully acked call, put it into mysql CDR queue and remove it from calltable 
 
 						call->seenbyeandok = true;
-						if(!dontsave && call->flags & (FLAG_SAVESIP | FLAG_SAVEREGISTER)) {
-							save_packet(call, header, packet, saddr, source, daddr, dest, istcp, data, datalen, TYPE_SIP);
-						}
+						save_packet(call, header, packet, saddr, source, daddr, dest, istcp, data, datalen, TYPE_SIP);
 /*
 	Whan voipmonitor listens for both SIP legs (with the same Call-ID it sees both BYE and should save both 200 OK after BYE so closing call after the 
 	first 200 OK will not save the second 200 OK. So rather wait for 5 seconds for some more messages instead of closing the call. 
@@ -1962,9 +1952,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 						call->progress_time = header->ts.tv_sec;
 					}
 					// save packet 
-					if(!dontsave && opt_saveSIP) {
-						save_packet(call, header, packet, saddr, source, daddr, dest, istcp, data, datalen, TYPE_SIP);
-					}
+					save_packet(call, header, packet, saddr, source, daddr, dest, istcp, data, datalen, TYPE_SIP);
 					call->destroy_call_at = header->ts.tv_sec + 5;
 
 					return call;
@@ -2069,7 +2057,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 			int fax;
 			if (!get_ip_port_from_sdp(tmp + 1, &tmp_addr, &tmp_port, &fax)){
 				if(fax) { 
-					if(verbosity >= 1){
+					if(verbosity >= 2){
 						syslog(LOG_ERR, "[%s] T38 detected", call->fbasename);
 					}
 					call->isfax = 1;
@@ -2180,7 +2168,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 				}
 			} else {
 				if(verbosity >= 2){
-					syslog(LOG_ERR, "Can't get ip/port from SDP:\n%s\n\n", tmp + 1);
+					syslog(LOG_ERR, "callid[%s] Can't get ip/port from SDP:\n%s\n\n", callidstr, tmp + 1);
 				}
 			}
 		} else if(call->message == NULL && l > 0 && tmp != NULL) {
@@ -2218,10 +2206,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 		}
 		data[datalen - 1] = a;
 
-		if(!dontsave && call->flags & (FLAG_SAVESIP | FLAG_SAVEREGISTER)) {
-			save_packet(call, header, packet, saddr, source, daddr, dest, istcp, data, datalen, TYPE_SIP);
-		}
-
+		save_packet(call, header, packet, saddr, source, daddr, dest, istcp, data, datalen, TYPE_SIP);
 		return call;
 	} else if ((call = calltable->hashfind_by_ip_port(daddr, dest, &iscaller, &is_rtcp))){
 	//} else if ((call = calltable->mapfind_by_ip_port(daddr, dest, &iscaller, &is_rtcp))){
@@ -2248,9 +2233,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 			} else {
 				call->read_rtcp((unsigned char*) data, datalen, header, saddr, source, iscaller);
 			}
-			if(!dontsave && (opt_saveRTP || opt_saveRTCP)) {
-				save_packet(call, header, packet, saddr, source, daddr, dest, istcp, data, datalen, TYPE_RTP);
-			}
+			save_packet(call, header, packet, saddr, source, daddr, dest, istcp, data, datalen, TYPE_RTP);
 			return call;
 		}
 
