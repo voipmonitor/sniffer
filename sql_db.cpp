@@ -1333,7 +1333,7 @@ void SqlDb_mysql::createSchema() {
 				DECLARE _state INT; \
 				DECLARE _expires_at DATETIME; \
 				DECLARE _expired INT; \
-				SELECT ID, state, expires_at, (UNIX_TIMESTAMP(expires_at) < UNIX_TIMESTAMP(calltime)) AS expired INTO _ID, _state, _expires_at, _expired FROM register WHERE to_num = called AND to_domain = called_domain AND digestusername = digest_username ORDER BY ID DESC LIMIT 1; \
+				SELECT ID, state, expires_at, (UNIX_TIMESTAMP(expires_at) < UNIX_TIMESTAMP(calltime)) AS expired INTO _ID, _state, _expires_at, _expired FROM register WHERE to_num = called AND to_domain = called_domain ORDER BY ID DESC LIMIT 1; \
 				IF ( _ID ) THEN \
 					SET sql_log_bin = 0; \
 					DELETE FROM register WHERE ID = _ID; \
@@ -1341,7 +1341,7 @@ void SqlDb_mysql::createSchema() {
 					IF ( _expired > 5 ) THEN \
 						INSERT INTO `register_state` SET `id_sensor` = id_sensor, `fname` = fname, `created_at` = _expires_at, `sipcallerip` = sipcallerip, `sipcalledip` = sipcalledip, `from_num` = caller, `to_num` = called, `to_domain` = called_domain, `contact_num` = contact_num, `contact_domain` = contact_domain, `digestusername` = digest_username, `expires` = register_expires, state = 5, ua_id = getIdOrInsertUA(cdr_ua); \
 					END IF; \
-					IF ( _state <> regstate AND register_expires = 0) THEN \
+					IF ( _state <> regstate OR register_expires = 0) THEN \
 						INSERT INTO `register_state` SET `id_sensor` = id_sensor, `fname` = fname, `created_at` = calltime, `sipcallerip` = sipcallerip, `sipcalledip` = sipcalledip, `from_num` = caller, `to_num` = called, `to_domain` = called_domain, `contact_num` = contact_num, `contact_domain` = contact_domain, `digestusername` = digest_username, `expires` = register_expires, state = regstate, ua_id = getIdOrInsertUA(cdr_ua); \
 					END IF; \
 				ELSE \

@@ -1817,7 +1817,7 @@ Call::saveRegisterToDb() {
 				       "_LC_[(UNIX_TIMESTAMP(expires_at) < UNIX_TIMESTAMP(" + sqlEscapeStringBorder(sqlDateTimeString(calltime())) + "))] AS expired " +
 				"FROM " + register_table + " " +
 				"WHERE to_num = " + sqlEscapeStringBorder(called) + " AND to_domain = " + sqlEscapeStringBorder(called_domain) + 
-					" AND digestusername = " + sqlEscapeStringBorder(digest_username) + " " +
+					//" AND digestusername = " + sqlEscapeStringBorder(digest_username) + " " +
 				"ORDER BY ID DESC"; // LIMIT 1 
 //			if(verbosity > 2) cout << query << "\n";
 			{
