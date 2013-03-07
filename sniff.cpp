@@ -1257,6 +1257,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 
 	// checking and cleaning stuff every 10 seconds (if some packet arrive) 
 	if (header->ts.tv_sec - last_cleanup > 10){
+		//if(verbosity > 0) syslog(LOG_NOTICE, "Active calls [%d] calls in sql queue [%d] calls in delete queue [%d]\n", (int)calltable->calls_listMAP.size(), (int)calltable->calls_queue.size(), (int)calltable->calls_deletequeue.size());
 		if(verbosity > 0) syslog(LOG_NOTICE, "Active calls [%d] calls in sql queue [%d]\n", (int)calltable->calls_listMAP.size(), (int)calltable->calls_queue.size());
 		if (last_cleanup >= 0){
 			calltable->cleanup(header->ts.tv_sec);
@@ -1705,9 +1706,9 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 				if(call->regcount > 4) {
 					// to much register attempts without OK or 401 responses
 					call->regstate = 4;
+					call->saveregister();
 					call = new_invite_register(sip_method, data, datalen, header, callidstr, saddr, daddr, source, call->call_id, strlen(call->call_id));
 					save_packet(call, header, packet, saddr, source, daddr, dest, istcp, data, datalen, TYPE_SIP);
-					call->saveregister();
 					return call;
 				}
 				s = gettag(data, datalen, "\nCSeq:", &l);
