@@ -664,7 +664,7 @@ int load_config(char *fname) {
 	}
 	if((value = ini.GetValue("general", "id_sensor", NULL))) {
 		opt_id_sensor = atoi(value);
-		insert_funcname = "__insert_" + opt_id_sensor;
+		insert_funcname = "__insert_" + value;
 	}
 	if((value = ini.GetValue("general", "pcapcommand", NULL))) {
 		strncpy(pcapcommand, value, sizeof(pcapcommand));
