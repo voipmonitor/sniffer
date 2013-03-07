@@ -58,9 +58,11 @@ and insert them into Call class.
 
 extern MirrorIP *mirrorip;
 
+#if defined(QUEUE_MUTEX) || defined(QUEUE_NONBLOCK) 
 extern "C" {
 #include "liblfds.6/inc/liblfds.h"
 }
+#endif
 
 #define MAXLIVEFILTERS 10
 

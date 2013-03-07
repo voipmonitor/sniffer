@@ -50,9 +50,11 @@
 #include "mirrorip.h"
 #include "ipaccount.h"
 
+#if defined(QUEUE_MUTEX) || defined(QUEUE_NONBLOCK)
 extern "C" {
 #include "liblfds.6/inc/liblfds.h"
 }
+#endif
 
 
 using namespace std;
@@ -211,7 +213,9 @@ volatile unsigned int writeit = 0;
 int global_livesniffer = 0;
 int global_livesniffer_all = 0;
 unsigned int qringmax = 12500;
+#if defined(QUEUE_MUTEX) || defined(QUEUE_NONBLOCK) || defined(QUEUE_NONBLOCK2)
 pcap_packet *qring;
+#endif
 
 pcap_t *handle = NULL;		// pcap handler 
 
@@ -668,7 +672,8 @@ int load_config(char *fname) {
 	}
 	if((value = ini.GetValue("general", "id_sensor", NULL))) {
 		opt_id_sensor = atoi(value);
-		insert_funcname = "__insert_" + value;
+		insert_funcname = "__insert_";
+		insert_funcname.append(value);
 	}
 	if((value = ini.GetValue("general", "pcapcommand", NULL))) {
 		strncpy(pcapcommand, value, sizeof(pcapcommand));
