@@ -4,6 +4,8 @@
 #include <stdlib.h>
 #include <string>
 #include <vector>
+#include <queue>
+#include <map>
 #include <mysql/mysql.h>
 #include <sql.h>
 #include <sqlext.h>
@@ -239,6 +241,45 @@ private:
 	SQLHANDLE hConnection;
 	SQLHANDLE hStatement;
 	SqlDb_odbc_bindBuffer bindBuffer;
+};
+
+class MySqlStore_process {
+public:
+	MySqlStore_process(int id, const char *host, const char *user, const char *password, const char *database);
+	~MySqlStore_process();
+	void query(const char *query_str);
+	void store();
+	void lock();
+	void unlock();
+	int getId() {
+		return(this->id);
+	}
+	bool operator < (const MySqlStore_process& other) const { 
+		return(this->id < other.id); 
+	}
+private:
+	int id;
+	pthread_t thread;
+	pthread_mutex_t lock_mutex;
+	SqlDb *sqlDb;
+	queue<string> query_buff;
+	bool terminated;
+};
+
+class MySqlStore {
+public:
+	MySqlStore(const char *host, const char *user, const char *password, const char *database);
+	~MySqlStore();
+	void query(const char *query_str, int id);
+	void lock(int id);
+	void unlock(int id);
+	MySqlStore_process *find(int id);
+private:
+	map<int, MySqlStore_process*> processes;
+	string host;
+	string user;
+	string password;
+	string database;
 };
 
 string sqlDateTimeString(time_t unixTime);

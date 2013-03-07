@@ -52,6 +52,7 @@ extern int opt_ipacc_interval;
 extern bool opt_ipacc_sniffer_agregate;
 extern bool opt_ipacc_agregate_only_customers_on_main_side;
 extern bool opt_ipacc_agregate_only_customers_on_any_side;
+extern bool opt_ipacc_multithread_save;
 extern char get_customer_by_ip_sql_driver[256];
 extern char get_customer_by_ip_odbc_dsn[256];
 extern char get_customer_by_ip_odbc_user[256];
@@ -61,19 +62,23 @@ extern char get_customer_by_ip_query[1024];
 extern char get_customers_ip_query[1024];
 extern int get_customer_by_ip_flush_period;
 
+extern SqlDb *sqlDb;
+extern MySqlStore *sqlStore;
+
 extern queue<string> mysqlquery;
 extern pthread_mutex_t mysqlquery_lock;
 
-extern SqlDb *sqlDb;
+typedef map<unsigned int, octects_live_t*> t_ipacc_live;
+t_ipacc_live ipacc_live;
 
-map<unsigned int, octects_live_t*> ipacc_live;
+typedef map<string, octects_t*> t_ipacc_buffer; 
+static t_ipacc_buffer ipacc_buffer[2];
 
-static map<string, octects_t*> ipacc_buffer;
 static unsigned int last_flush_interval_time = 0;
 static CustIpCache *custIpCache = NULL;
 
 
-void ipacc_save(unsigned int interval_time_limit = 0) {
+void ipacc_save(int indexIpaccBuffer, unsigned int interval_time_limit = 0) {
 	if(custIpCache) {
 		custIpCache->flush();
 	} else {
@@ -103,12 +108,19 @@ void ipacc_save(unsigned int interval_time_limit = 0) {
 	map<unsigned int,IpaccAgreg*> agreg;
 	map<unsigned int, IpaccAgreg*>::iterator agregIter;
 	char insertQueryBuff[1000];
-	pthread_mutex_lock(&mysqlquery_lock);
-	map<string, octects_t*>::iterator iter;
-	for (iter = ipacc_buffer.begin(); iter != ipacc_buffer.end(); ++iter) {
+	if(opt_ipacc_multithread_save) {
+		sqlStore->lock(STORE_PROC_ID_IPACC);
+	} else {
+		pthread_mutex_lock(&mysqlquery_lock);
+	}
+	bool enableClear = true;
+	t_ipacc_buffer::iterator iter;
+	for (iter = ipacc_buffer[indexIpaccBuffer].begin(); iter != ipacc_buffer[indexIpaccBuffer].end();) {
 		ipacc_data = iter->second;
-		if(iter->second->octects > 0 && 
-		   (!interval_time_limit ||  iter->second->interval_time <= interval_time_limit)) {
+		if(ipacc_data->octects == 0) {
+			delete ipacc_data;
+			ipacc_buffer[indexIpaccBuffer].erase(iter++);
+		} else if(!interval_time_limit ||  ipacc_data->interval_time <= interval_time_limit) {
 			
 			strcpy(keycb, iter->first.c_str());
 			keyc = keycb;
@@ -153,7 +165,11 @@ void ipacc_save(unsigned int interval_time_limit = 0) {
 						ipacc_data->numpackets,
 						ipacc_data->voippacket,
 						opt_ipacc_sniffer_agregate ? 0 : 1);
-					mysqlquery.push(insertQueryBuff);
+					if(opt_ipacc_multithread_save) {
+						sqlStore->query(insertQueryBuff, STORE_PROC_ID_IPACC);
+					} else {
+						mysqlquery.push(insertQueryBuff);
+					}
 					//sqlDb->query(insertQueryBuff);////
 				} else {
 					SqlDb_row row;
@@ -188,11 +204,14 @@ void ipacc_save(unsigned int interval_time_limit = 0) {
 						ipacc_data->octects, ipacc_data->numpackets, ipacc_data->voippacket);
 				}
 			}
-			
-			//reset octects 
-			iter->second->octects = 0;
-			iter->second->numpackets = 0;
+			delete ipacc_data;
+			ipacc_buffer[indexIpaccBuffer].erase(iter++);
+		} else {
+			iter++;
 		}
+	}
+	if(opt_ipacc_multithread_save) {
+		sqlStore->unlock(STORE_PROC_ID_IPACC);
 	}
 	if(opt_ipacc_sniffer_agregate) {
 		for(agregIter = agreg.begin(); agregIter != agreg.end(); ++agregIter) {
@@ -200,8 +219,10 @@ void ipacc_save(unsigned int interval_time_limit = 0) {
 			delete agregIter->second;
 		}
 	}
-	pthread_mutex_unlock(&mysqlquery_lock);
-
+	if(!opt_ipacc_multithread_save) {
+		pthread_mutex_unlock(&mysqlquery_lock);
+	}
+	
 	//printf("flush\n");
 	
 }
@@ -209,27 +230,28 @@ void ipacc_save(unsigned int interval_time_limit = 0) {
 void ipacc_add_octets(time_t timestamp, unsigned int saddr, unsigned int daddr, int port, int proto, int packetlen, int voippacket) {
 	string key;
 	char buf[100];
-	octects_t *ports;
+	octects_t *octects_data;
 	unsigned int cur_interval_time = timestamp / opt_ipacc_interval * opt_ipacc_interval;
+	int indexIpaccBuffer = (cur_interval_time / opt_ipacc_interval) % 2;
 	
 	sprintf(buf, "%uD%uE%dP%d", htonl(saddr), htonl(daddr), port, proto);
 	key = buf;
 
 	if(last_flush_interval_time != cur_interval_time) {
-		ipacc_save(last_flush_interval_time);
+		ipacc_save((last_flush_interval_time / opt_ipacc_interval) % 2, last_flush_interval_time);
 		last_flush_interval_time = cur_interval_time;
 	}
 	
-	map<string, octects_t*>::iterator iter;
-	iter = ipacc_buffer.find(key);
-	if(iter == ipacc_buffer.end()) {
+	t_ipacc_buffer::iterator iter;
+	iter = ipacc_buffer[indexIpaccBuffer].find(key);
+	if(iter == ipacc_buffer[indexIpaccBuffer].end()) {
 		// not found;
-		ports = new octects_t;
-		ports->octects += packetlen;
-		ports->numpackets++;
-		ports->interval_time = cur_interval_time;
-		ports->voippacket = voippacket;
-		ipacc_buffer[key] = ports;
+		octects_data = new octects_t;
+		octects_data->octects += packetlen;
+		octects_data->numpackets++;
+		octects_data->interval_time = cur_interval_time;
+		octects_data->voippacket = voippacket;
+		ipacc_buffer[indexIpaccBuffer][key] = octects_data;
 //		printf("key: %s\n", buf);
 	} else {
 		//found
@@ -241,9 +263,9 @@ void ipacc_add_octets(time_t timestamp, unsigned int saddr, unsigned int daddr, 
 //		printf("key[%s] %u\n", key.c_str(), tmp->octects);
 	}
 
-	map<unsigned int, octects_live_t*>::iterator it;
+	t_ipacc_live::iterator it;
 	octects_live_t *data;
-	for(it = ipacc_live.begin(); it != ipacc_live.end(); it++) {
+	for(it = ipacc_live.begin(); it != ipacc_live.end();) {
 		data = it->second;
 		
 		if((time(NULL) - data->fetch_timestamp) > 120) {
@@ -251,7 +273,7 @@ void ipacc_add_octets(time_t timestamp, unsigned int saddr, unsigned int daddr, 
 				cout << "FORCE STOP LIVE IPACC id: " << it->first << endl; 
 			}
 			free(it->second);
-			ipacc_live.erase(it);
+			ipacc_live.erase(it++);
 		} else if(data->all) {
 			data->all_octects += packetlen;
 			data->all_numpackets++;
@@ -259,14 +281,14 @@ void ipacc_add_octets(time_t timestamp, unsigned int saddr, unsigned int daddr, 
 				data->voipall_octects += packetlen;
 				data->voipall_numpackets++;
 			}
-		} else if(saddr == data->ipfilter) {
+		} else if(data->isIpInFilter(saddr)) {
 			data->src_octects += packetlen;
 			data->src_numpackets++;
 			if(voippacket) {
 				data->voipsrc_octects += packetlen;
 				data->voipsrc_numpackets++;
 			}
-		} else if(daddr == data->ipfilter) {
+		} else if(data->isIpInFilter(daddr)) {
 			data->dst_octects += packetlen;
 			data->dst_numpackets++;
 			if(voippacket) {
@@ -274,6 +296,7 @@ void ipacc_add_octets(time_t timestamp, unsigned int saddr, unsigned int daddr, 
 				data->voipdst_numpackets++;
 			}
 		}
+		it++;
 		//cout << saddr << "  " << daddr << "  " << port << "  " << proto << "   " << packetlen << endl;
 	}
 }
@@ -390,6 +413,9 @@ void IpaccAgreg::save(unsigned int time_interval) {
 		       i == 0 ?
 				sqlDateTimeString(time_interval / 3600 * 3600).c_str() :
 				sqlDateString(time_interval).c_str());
+	if(opt_ipacc_multithread_save) {
+		sqlStore->lock(i == 0 ? STORE_PROC_ID_IPACC_AGR_HOUR : STORE_PROC_ID_IPACC_AGR_DAY);
+	}
 	for(iter1 = this->map1.begin(); iter1 != this->map1.end(); iter1++) {
 		sprintf(insertQueryBuff,
 			"update %s set "
@@ -460,11 +486,19 @@ void IpaccAgreg::save(unsigned int time_interval) {
 			iter1->second->packets_voip_in,
 			iter1->second->packets_voip_out,
 			iter1->second->packets_voip_in + iter1->second->packets_voip_out);
-		mysqlquery.push(insertQueryBuff);
+		if(opt_ipacc_multithread_save) {
+			sqlStore->query(insertQueryBuff, i == 0 ? STORE_PROC_ID_IPACC_AGR_HOUR : STORE_PROC_ID_IPACC_AGR_DAY);
+		} else {
+			mysqlquery.push(insertQueryBuff);
+		}
 		//sqlDb->query("drop procedure if exists __eee;");////
 		//sqlDb->query(string("create procedure __eee() begin ") + insertQueryBuff + "; end;");////
 		//sqlDb->query("call __eee();");////
-	}}
+	}
+	if(opt_ipacc_multithread_save) {
+		sqlStore->unlock(i == 0 ? STORE_PROC_ID_IPACC_AGR_HOUR : STORE_PROC_ID_IPACC_AGR_DAY);
+	}
+	}
 	
 	map<AgregIP2, AgregData*>::iterator iter2;
 	for(int i = 0; i < 1; i++) {
@@ -474,6 +508,18 @@ void IpaccAgreg::save(unsigned int time_interval) {
 		       i == 0 ?
 				sqlDateTimeString(time_interval / 3600 * 3600).c_str() :
 				sqlDateString(time_interval).c_str());
+	if(opt_ipacc_multithread_save) {
+		if(i == 0) {
+			sqlStore->lock(STORE_PROC_ID_IPACC_AGR2_HOUR_1);
+			sqlStore->lock(STORE_PROC_ID_IPACC_AGR2_HOUR_2);
+			sqlStore->lock(STORE_PROC_ID_IPACC_AGR2_HOUR_3);
+		} else {
+			sqlStore->lock(STORE_PROC_ID_IPACC_AGR2_DAY_1);
+			sqlStore->lock(STORE_PROC_ID_IPACC_AGR2_DAY_2);
+			sqlStore->lock(STORE_PROC_ID_IPACC_AGR2_DAY_3);
+		}
+	}
+	int _counter = 0;
 	for(iter2 = this->map2.begin(); iter2 != this->map2.end(); iter2++) {
 		sprintf(insertQueryBuff,
 			"update %s set "
@@ -546,11 +592,30 @@ void IpaccAgreg::save(unsigned int time_interval) {
 			iter2->second->packets_voip_in,
 			iter2->second->packets_voip_out,
 			iter2->second->packets_voip_in + iter2->second->packets_voip_out);
-		mysqlquery.push(insertQueryBuff);
+		if(opt_ipacc_multithread_save) {
+			sqlStore->query(insertQueryBuff,
+					(i == 0 ? STORE_PROC_ID_IPACC_AGR2_HOUR_1 : STORE_PROC_ID_IPACC_AGR2_DAY_1) +
+					(_counter % 3));
+		} else {
+			mysqlquery.push(insertQueryBuff);
+		}
 		//sqlDb->query("drop procedure if exists __eee;");////
 		//sqlDb->query(string("create procedure __eee() begin ") + insertQueryBuff + "; end;");////
 		//sqlDb->query("call __eee();");////
-	}}
+		++_counter;
+	}
+	if(opt_ipacc_multithread_save) {
+		if(i == 0) {
+			sqlStore->unlock(STORE_PROC_ID_IPACC_AGR2_HOUR_1);
+			sqlStore->unlock(STORE_PROC_ID_IPACC_AGR2_HOUR_2);
+			sqlStore->unlock(STORE_PROC_ID_IPACC_AGR2_HOUR_3);
+		} else {
+			sqlStore->unlock(STORE_PROC_ID_IPACC_AGR2_DAY_1);
+			sqlStore->unlock(STORE_PROC_ID_IPACC_AGR2_DAY_2);
+			sqlStore->unlock(STORE_PROC_ID_IPACC_AGR2_DAY_3);
+		}
+	}
+	}
 }
 
 CustIpCache::CustIpCache() {
@@ -693,7 +758,7 @@ int CustIpCache::getCustByIpFromCacheMap(unsigned int ip) {
 int CustIpCache::getCustByIpFromCacheVect(unsigned int ip) {
   	vector<cust_cache_rec>::iterator findRecIt;
   	findRecIt = std::lower_bound(this->custCacheVect.begin(), this->custCacheVect.end(), ip);
-  	if((*findRecIt).ip == ip) {
+  	if(findRecIt != this->custCacheVect.end() && (*findRecIt).ip == ip) {
   		return((*findRecIt).cust_id);
   	}
 	return(0);
@@ -708,12 +773,36 @@ void CustIpCache::flush() {
 	++this->flushCounter;
 }
 
+void octects_live_t::setFilter(const char *ipfilter) {
+	string temp_ipfilter = ipfilter;
+	char *ip = (char*)temp_ipfilter.c_str();
+	while(ip && *ip) {
+		char *separator = strchr(ip, ',');
+		if(separator) {
+			*separator = '\0';
+		}
+		this->ipfilter.push_back(inet_addr(ip));
+		if(separator) {
+			ip = separator + 1;
+		} else {
+			ip = NULL;
+		}
+	}
+	std::sort(this->ipfilter.begin(), this->ipfilter.end());
+}
+
+unsigned int lengthIpaccBuffer() {
+	return(ipacc_buffer[0].size() + ipacc_buffer[1].size());
+}
+
 void freeMemIpacc() {
 	if(custIpCache) {
 		delete custIpCache;
 	}
-	map<string, octects_t*>::iterator iter;
-	for(iter = ipacc_buffer.begin(); iter != ipacc_buffer.end(); ++iter) {
-		delete iter->second;
+	t_ipacc_buffer::iterator iter;
+	for(int i = 0; i < 2; i++) {
+		for(iter = ipacc_buffer[i].begin(); iter != ipacc_buffer[i].end(); ++iter) {
+			delete iter->second;
+		}
 	}
 }

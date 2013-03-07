@@ -20,11 +20,13 @@ struct octects_t {
 		numpackets = 0;
 		interval_time = 0;
 		voippacket = 0;
+		erase = false;
 	}
 	unsigned int octects;
 	unsigned int numpackets;
 	unsigned int interval_time;
 	int voippacket;
+	bool erase;
 };
 
 struct octects_live_t {
@@ -41,16 +43,30 @@ struct octects_live_t {
 	unsigned long long int voipall_octects;
 	unsigned int all_numpackets;
 	unsigned int voipall_numpackets;
-	unsigned int ipfilter;
+	vector<unsigned int> ipfilter;
 	unsigned int fetch_timestamp;
+	bool isIpInFilter(unsigned int ip) {
+		vector<unsigned int>::iterator findIp;
+		findIp = std::lower_bound(ipfilter.begin(), ipfilter.end(), ip);
+		return(findIp != ipfilter.end() && (*findIp) == ip);
+  	}
+	void setFilter(const char *ipfilter);
 };
 
 struct cust_cache_item {
+	cust_cache_item() {
+		cust_id = 0;
+		add_timestamp = 0;
+	}
 	unsigned int cust_id;
 	unsigned int add_timestamp;
 };
 
 struct cust_cache_rec {
+	cust_cache_rec() {
+		ip = 0;
+		cust_id = 0;
+	}
 	unsigned int ip;
 	unsigned int cust_id;
 	bool operator < (const cust_cache_rec& other) const { 
@@ -175,6 +191,7 @@ private:
 	unsigned int flushCounter;
 };
 
+unsigned int lengthIpaccBuffer();
 void freeMemIpacc();
 
 #endif

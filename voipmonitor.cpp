@@ -117,6 +117,7 @@ int opt_ipacc_interval = 300;
 bool opt_ipacc_sniffer_agregate = true;
 bool opt_ipacc_agregate_only_customers_on_main_side = true;
 bool opt_ipacc_agregate_only_customers_on_any_side = true;
+bool opt_ipacc_multithread_save = true;
 int opt_udpfrag = 1;
 MirrorIP *mirrorip = NULL;
 int opt_cdronlyanswered = 0;
@@ -233,6 +234,7 @@ struct queue_state *qs_readpacket_thread_queue = NULL;
 nat_aliases_t nat_aliases;	// net_aliases[local_ip] = extern_ip
 
 SqlDb *sqlDb = NULL;
+MySqlStore *sqlStore = NULL;
 
 char mac[32] = "";
 
@@ -387,7 +389,9 @@ void *storing_cdr( void *dummy ) {
 #ifdef ISCURL
 		string cdrtosend;
 #endif
-		if(verbosity > 0) syslog(LOG_ERR,"calls[%d]\n", calls);
+		if(verbosity > 0) { 
+			syslog(LOG_ERR, "calls[%d] ipacc_buffer[%u]\n", calls, lengthIpaccBuffer());
+		}
 		while (1) {
 
 			if(request_iptelnum_reload == 1) { reload_capture_rules(); request_iptelnum_reload = 0;};
@@ -969,6 +973,9 @@ int load_config(char *fname) {
 	if((value = ini.GetValue("general", "ipaccount_agregate_only_customers_on_any_side", NULL))) {
 		opt_ipacc_agregate_only_customers_on_any_side = yesno(value);
 	}
+	if((value = ini.GetValue("general", "ipaccount_multithread_save", NULL))) {
+		opt_ipacc_multithread_save = yesno(value);
+	}
 	if((value = ini.GetValue("general", "cdronlyanswered", NULL))) {
 		opt_cdronlyanswered = yesno(value);
 	}
@@ -1269,6 +1276,7 @@ int main(int argc, char *argv[]) {
 	if(isSqlDriver("mysql")) {
 		sqlDb = new SqlDb_mysql();
 		sqlDb->setConnectParameters(mysql_host, mysql_user, mysql_password, mysql_database);
+		sqlStore = new MySqlStore(mysql_host, mysql_user, mysql_password, mysql_database);
 	} else if(isSqlDriver("odbc")) {
 		SqlDb_odbc *sqlDb_odbc = new SqlDb_odbc();
 		sqlDb_odbc->setOdbcVersion(SQL_OV_ODBC3);
@@ -1455,6 +1463,9 @@ int main(int argc, char *argv[]) {
 		if(sqlDb) {
 			delete sqlDb;
 		}
+		if(sqlStore) {
+			delete sqlStore;
+		}
 		return(0);
 	}
 	rtp_threaded = num_threads > 0;
@@ -1598,6 +1609,10 @@ int main(int argc, char *argv[]) {
 	// start thread processing queued cdr 
 	pthread_create(&call_thread, NULL, storing_cdr, NULL);
 
+	if(opt_cachedir[0] != '\0') {
+		pthread_create(&cachedir_thread, NULL, moving_cache, NULL);
+	}
+	
 	if(opt_cachedir[0] != '\0') {
 		pthread_create(&cachedir_thread, NULL, moving_cache, NULL);
 	}
@@ -1823,6 +1838,9 @@ int main(int argc, char *argv[]) {
 	if(sqlDb) {
 		delete sqlDb;
 	}
+	if(sqlStore) {
+		delete sqlStore;
+	}
 
 	if(mirrorip) {
 		delete mirrorip;
@@ -1840,14 +1858,33 @@ int main(int argc, char *argv[]) {
 
 void test() {
 	
+	for(int i = 1; i <= 10; i++) {
+	sqlStore->lock(i);
+	sqlStore->query("insert into _test set test = 1", i);
+	sqlStore->query("insert into _test set test = 2", i);
+	sqlStore->query("insert into _test set test = 3", i);
+	sqlStore->query("insert into _test set test = 4", i);
+	sqlStore->unlock(i);
+	}
+	terminating = true;
+	//sleep(2);
+	
+	/*
+	octects_live_t a;
+	a.setFilter(string("192.168.1.2,192.168.1.1").c_str());
+	cout << (a.isIpInFilter(inet_addr("192.168.1.1")) ? "find" : "----") << endl;
+	cout << (a.isIpInFilter(inet_addr("192.168.1.3")) ? "find" : "----") << endl;
+	cout << (a.isIpInFilter(inet_addr("192.168.1.2")) ? "find" : "----") << endl;
+	cout << (a.isIpInFilter(inet_addr("192.168.1.3")) ? "find" : "----") << endl;
+	*/
+	
+	/*
 	extern void ipacc_add_octets(time_t timestamp, unsigned int saddr, unsigned int daddr, int port, int proto, int packetlen, int voippacket);
 	extern void ipacc_save(unsigned int interval_time_limit = 0);
 
-	/*
-	for(int i = 0; i < 100000; i++) {
-		ipacc_add_octets(1, rand()%5000, rand()%5000, rand()%4, rand()%3, rand(), rand()%100);
-	}
-	*/
+	//for(int i = 0; i < 100000; i++) {
+	//	ipacc_add_octets(1, rand()%5000, rand()%5000, rand()%4, rand()%3, rand(), rand()%100);
+	//}
 	
 	ipacc_add_octets(1, 1, 2, 3, 4, 5, 6);
 	ipacc_add_octets(1, 1, 2, 3, 4, 5, 6);
@@ -1855,6 +1892,7 @@ void test() {
 	ipacc_save();
 	
 	freeMemIpacc();
+	*/
 	
 	/*
 	CustIpCache *custIpCache = new CustIpCache;

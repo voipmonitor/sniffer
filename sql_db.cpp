@@ -367,11 +367,15 @@ void SqlDb_mysql::disconnect() {
 	if(this->hMysqlConn) {
 		mysql_close(this->hMysqlConn);
 		this->hMysqlConn = NULL;
+	}
+	/* disable dealloc hMysql - is it shared variable ?
 		this->hMysql = NULL;
-	} else if(this->hMysql) {
+	} 
+	else if(this->hMysql) {
 		mysql_close(this->hMysql);
 		this->hMysql = NULL;
 	}
+	*/
 }
 
 bool SqlDb_mysql::connected() {
@@ -775,6 +779,131 @@ void SqlDb_odbc::clean() {
 	this->cleanFields();
 }
 
+void *MySqlStore_process_storing(void *storeProcess_addr) {
+	MySqlStore_process *storeProcess = (MySqlStore_process*)storeProcess_addr;
+	storeProcess->store();
+	return(NULL);
+}
+	
+MySqlStore_process::MySqlStore_process(int id, const char *host, const char *user, const char *password, const char *database) {
+	this->id = id;
+	this->terminated = false;
+	this->sqlDb = new SqlDb_mysql();
+	this->sqlDb->setConnectParameters(host, user, password, database);
+	this->sqlDb->connect();
+	pthread_mutex_init(&this->lock_mutex, NULL);
+	pthread_create(&this->thread, NULL, MySqlStore_process_storing, this);
+}
+
+MySqlStore_process::~MySqlStore_process() {
+	while(!this->terminated) {
+		usleep(100000);
+	}
+	pthread_detach(this->thread);
+	if(this->sqlDb) {
+		delete this->sqlDb;
+	}
+}
+
+void MySqlStore_process::query(const char *query_str) {
+	this->query_buff.push(query_str);
+}
+
+extern int terminating;
+
+void MySqlStore_process::store() {
+	char insert_funcname[20];
+	sprintf(insert_funcname, "__insert_%i", this->id);
+	while(1) {
+		int size = 0;
+		int msgs = 50;
+		string queryqueue = "";
+		while(1) {
+			this->lock();
+			if(this->query_buff.size() == 0) {
+				this->unlock();
+				if(queryqueue != "") {
+					this->sqlDb->query(string("drop procedure if exists ") + insert_funcname);
+					this->sqlDb->query(string("create procedure ") + insert_funcname + "()\nbegin\n" + queryqueue + "\nend");
+					this->sqlDb->query(string("call ") + insert_funcname + "();");
+					queryqueue = "";
+					if(verbosity > 0) {
+						cout << "STORE id:" << this->id << endl;
+					}
+				}
+				break;
+			}
+			string query = this->query_buff.front();
+			this->query_buff.pop();
+			this->unlock();
+			queryqueue.append(query + "; ");
+			if(size < msgs) {
+				size++;
+			} else {
+				this->sqlDb->query(string("drop procedure if exists ") + insert_funcname);
+				this->sqlDb->query(string("create procedure ") + insert_funcname + "()\nbegin\n" + queryqueue + "\nend");
+				this->sqlDb->query(string("call ") + insert_funcname + "();");
+				queryqueue = "";
+				size = 0;
+				if(verbosity > 0) {
+					cout << "STORE " << this->id << endl;
+				}
+			}
+		}
+		if(terminating) {
+			break;
+		}
+		sleep(1);
+	}
+	this->terminated = true;
+}
+
+void MySqlStore_process::lock() {
+	pthread_mutex_lock(&this->lock_mutex);
+}
+
+void MySqlStore_process::unlock() {
+	pthread_mutex_unlock(&this->lock_mutex);
+}
+
+MySqlStore::MySqlStore(const char *host, const char *user, const char *password, const char *database) {
+	this->host = host;
+	this->user = user;
+	this->password = password;
+	this->database = database;
+}
+
+MySqlStore::~MySqlStore() {
+	map<int, MySqlStore_process*>::iterator iter;
+	for(iter = this->processes.begin(); iter != this->processes.end(); ++iter) {
+		delete iter->second;
+	}
+}
+
+void MySqlStore::query(const char *query_str, int id) {
+	MySqlStore_process* process = this->find(id);
+	process->query(query_str);
+}
+
+void MySqlStore::lock(int id) {
+	MySqlStore_process* process = this->find(id);
+	process->lock();
+}
+
+void MySqlStore::unlock(int id) {
+	MySqlStore_process* process = this->find(id);
+	process->unlock();
+}
+
+MySqlStore_process *MySqlStore::find(int id) {
+	MySqlStore_process* process = this->processes[id];
+	if(process) {
+		return(process);
+	}
+	process = new MySqlStore_process(id, this->host.c_str(), this->user.c_str(), this->password.c_str(), this->database.c_str());
+	this->processes[id] = process;
+	return(process);
+}
 
 string sqlDateTimeString(time_t unixTime) {
 	struct tm * localTime = localtime(&unixTime);

@@ -16,6 +16,17 @@
 #define TYPE_RTP 2
 #define TYPE_RTCP 3
 
+#define STORE_PROC_ID_IPACC 91
+#define STORE_PROC_ID_IPACC_AGR_HOUR 92
+#define STORE_PROC_ID_IPACC_AGR_DAY 93
+#define STORE_PROC_ID_IPACC_AGR2_HOUR_1 94
+#define STORE_PROC_ID_IPACC_AGR2_HOUR_2 95
+#define STORE_PROC_ID_IPACC_AGR2_HOUR_3 96
+#define STORE_PROC_ID_IPACC_AGR2_DAY_1 97
+#define STORE_PROC_ID_IPACC_AGR2_DAY_2 98
+#define STORE_PROC_ID_IPACC_AGR2_DAY_3 99
+
+
 /* choose what method wil be used to synchronize threads. NONBLOCK is the fastest. Do not enable both at once */
 // this is now defined in Makefile 
 //#define QUEUE_NONBLOCK 

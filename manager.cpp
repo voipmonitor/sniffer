@@ -221,7 +221,7 @@ void *listening_worker(void *arguments) {
 	return 0;
 }
 
-int parse_command(char *buf, int size, int client, int eof) {
+int parse_command(char *buf, int size, int client, int eof, const char *buf_long) {
 	char sendbuf[BUFSIZE];
 	u_int32_t uid = 0;
 
@@ -316,10 +316,17 @@ int parse_command(char *buf, int size, int client, int eof) {
 			return -1;
 		}
 	} else if(strstr(buf, "ipaccountfilter set") != NULL) {
-		u_int32_t id = 0;
-		char ipfilter[1024] = "";
-		sscanf(buf, "ipaccountfilter set %u %s", &id, ipfilter);
-		if(strstr(ipfilter, "ALL")) {
+		
+		string ipfilter;
+		if(buf_long) {
+			buf = (char*)buf_long;
+		}
+		u_int32_t id = atol(buf + strlen("ipaccountfilter set "));
+		char *pointToSeparatorBefereIpfilter = strchr(buf + strlen("ipaccountfilter set "), ' ');
+		if(pointToSeparatorBefereIpfilter) {
+			ipfilter = pointToSeparatorBefereIpfilter + 1;
+		}
+		if(!ipfilter.length() || ipfilter.find("ALL") != string::npos) {
 			map<unsigned int, octects_live_t*>::iterator it = ipacc_live.find(id);
 			octects_live_t* filter;
 			if(it != ipacc_live.end()) {
@@ -338,11 +345,11 @@ int parse_command(char *buf, int size, int client, int eof) {
 			map<unsigned int, octects_live_t*>::iterator ipacc_liveIT = ipacc_live.find(id);
 			octects_live_t* filter;
 			filter = (octects_live_t*)calloc(1, sizeof(octects_live_t));
-			filter->ipfilter = (unsigned int)inet_addr(ipfilter);
+			filter->setFilter(ipfilter.c_str());
 			filter->fetch_timestamp = time(NULL);
 			ipacc_live[id] = filter;
 			if(verbosity > 0) {
-				cout << "START LIVE IPACC " << "id: " << id << " ipfilter: " << ipfilter << " / " << filter->ipfilter << endl;
+				cout << "START LIVE IPACC " << "id: " << id << " ipfilter: " << ipfilter << endl;
 			}
 		}
 		return(0);
@@ -877,6 +884,8 @@ connect:
 
 	while(1) {
 
+		string buf_long;
+		
 		//cout << "New manager connect from: " << inet_ntoa((in_addr)clientInfo.sin_addr) << endl;
 		size = recv(client, buf, BUFSIZE - 1, 0);
 		if (size == -1 or size == 0) {
@@ -885,10 +894,18 @@ connect:
 			close(client);
 			sleep(1);
 			goto connect;
+		} else {
+			buf[size] = '\0';
+			buf_long = buf;
+			char buf_next[BUFSIZE];
+			while((size = recv(client, buf_next, BUFSIZE - 1, 0)) > 0) {
+				buf_next[size] = '\0';
+				buf_long += buf_next;
+			}
 		}
 		buf[size] = '\0';
 		if(verbosity > 0) syslog(LOG_NOTICE, "recv[%s]\n", buf);
-		res = parse_command(buf, size, client, 1);
+		res = parse_command(buf, size, client, 1, buf_long.c_str());
 	}
 
 	return 0;
@@ -897,6 +914,7 @@ connect:
 void *manager_read_thread(void * arg) {
 
 	char buf[BUFSIZE];
+	string buf_long;
 	int size;
 	unsigned int    client;
 	client = *(unsigned int *)arg;
@@ -906,9 +924,30 @@ void *manager_read_thread(void * arg) {
 		cerr << "Error in receiving data" << endl;
 		close(client);
 		return 0;
+	} else {
+		buf[size] = '\0';
+		buf_long = buf;
+		////cout << "DATA: " << buf << endl;
+		if(size == BUFSIZE - 1 && !strstr(buf, "\r\n\r\n")) {
+			char buf_next[BUFSIZE];
+			////cout << "NEXT_RECV start" << endl;
+			while((size = recv(client, buf_next, BUFSIZE - 1, 0)) > 0) {
+				buf_next[size] = '\0';
+				buf_long += buf_next;
+				////cout << "NEXT DATA: " << buf_next << endl;
+				////cout << "NEXT_RECV read" << endl;
+				if(buf_long.find("\r\n\r\n") != string::npos) {
+					break;
+				}
+			}
+			////cout << "NEXT_RECV stop" << endl;
+		}
+		unsigned int posEnd;
+		if((posEnd = buf_long.find("\r\n\r\n")) != string::npos) {
+			buf_long.resize(posEnd);
+		}
 	}
-	buf[size] = '\0';
-	parse_command(buf, size, client, 0);
+	parse_command(buf, size, client, 0, buf_long.c_str());
 	close(client);
 	return 0;
 }
