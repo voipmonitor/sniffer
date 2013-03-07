@@ -325,7 +325,7 @@ Call::add_ip_port(in_addr_t addr, unsigned short port, char *ua, unsigned long u
 	}
 
 	if(ua_len && ua_len < 1024) {
-		char *tmp = iscaller ? this->b_ua : this->a_ua;
+		char *tmp = iscaller ? this->a_ua : this->b_ua;
 		memcpy(tmp, ua, MIN(ua_len, 1024));
 		tmp[MIN(ua_len, 1023)] = '\0';
 	}
