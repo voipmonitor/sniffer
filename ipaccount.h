@@ -177,6 +177,9 @@ public:
 	int getCustByIpFromCacheMap(unsigned int ip);
 	int getCustByIpFromCacheVect(unsigned int ip);
 	void flush();
+	void setMaxQueryPass(unsigned int maxQueryPass) {
+		this->sqlDb->setMaxQueryPass(maxQueryPass);
+	}
 private:
 	SqlDb *sqlDb;
 	map<unsigned int, cust_cache_item> custCacheMap;
@@ -189,9 +192,11 @@ private:
 	string query_getIp;
 	string query_fetchAllIp;
 	unsigned int flushCounter;
+	bool doFlushVect;
 };
 
 unsigned int lengthIpaccBuffer();
+void initIpacc();
 void freeMemIpacc();
 
 #endif

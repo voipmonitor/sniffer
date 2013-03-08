@@ -1295,6 +1295,9 @@ int main(int argc, char *argv[]) {
 			sqlDb->createSchema();
 		}
 	}
+	if(opt_ipaccount) {
+		initIpacc();
+	}
 	if ((fname == NULL) && (ifname[0] == '\0') && opt_scanpcapdir[0] == '\0'){
 		printf( "voipmonitor version %s\n"
 				"Usage: voipmonitor [--config-file /etc/voipmonitor.conf] [-kncUSRAWGM] [-i <interface>] [-f <pcap filter>]\n"
