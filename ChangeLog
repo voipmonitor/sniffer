@@ -1,3 +1,22 @@
+version 6.5 Stable 8.3.2013
+===========================
+- WARNING - it will auto upgrade your tables which can take hours when you first run the sniffer. 
+- fix audio sync in case there are more then 1 mark bit set in RTP. Some devices sends MARK bit since the beginning of RTP stream until opposite side sends RTP
+- fix compiles on 32bit and older gcc
+- fix bad c++ usage of string + concatenation resulting in random function name used to create sql procedure which breaks saving CDR to MYSQL 
+- UserAgent string in database was reverted - caller was called and vice versa (probably since beginning..)
+- finish SIP REGISTER in live capture 
+- fix SIP REGISTER logic in register_state 
+- store id_sensor to register* tables
+- store SIP REGISTER to pcap based on capture rules defined in mysql table (WEB GUI) 
+- make tolerance 5 second for SIP REGISTER so it will not fill table with expired registrations when it register again after 1 second timeout
+- also look for compact contact header in case of searching expires in contact header
+- update expire value also from 200 OK replies to REGISTER which tells the opposite side when it should perform next register
+- fix mysql 5.6 not inserting queries if any of column value is out of range and the mysql server set strict mode which 5.6 is set by default
+- implement --pcapscan-dir command line option
+- when defragmenting UDP packets, resets frag flag which 
+
+
 version 6.5 Release candidate 7 (20.2.2013)
 ===========================================
 - proper fix segfault introduced in RC5
