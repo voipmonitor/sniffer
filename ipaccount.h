@@ -78,6 +78,19 @@ struct cust_cache_rec {
 	}
 };
 
+struct next_cache_rec {
+	next_cache_rec() {
+		ip = 0;
+		mask = 0;
+	}
+	unsigned int ip;
+	unsigned int mask;
+	bool operator < (const next_cache_rec& other) const {
+		return((this->ip < other.ip) ? 1 : (this->ip > other.ip) ? 0 :
+		       (this->mask < other.mask));
+	}
+};
+
 class IpaccAgreg {
 public:
 	struct AgregData {
@@ -156,6 +169,7 @@ public:
 	~IpaccAgreg();
 	void add(unsigned int src, unsigned int dst,
 		 unsigned int src_id_customer, unsigned int dst_id_customer,
+		 bool src_ip_next, bool dst_ip_next,
 		 unsigned int proto, unsigned int port,
 		 unsigned int traffic, unsigned int packets, bool voip);
 	void save(unsigned int time_interval);
@@ -194,6 +208,21 @@ private:
 	string query_fetchAllIp;
 	unsigned int flushCounter;
 	bool doFlushVect;
+};
+
+class NextIpCache {
+public:
+	NextIpCache();
+	~NextIpCache();
+	int connect();
+	bool isIn(unsigned int ip);
+	void fetch();
+	void flush();
+private:
+	SqlDb *sqlDb;
+	vector<next_cache_rec> nextCache;
+	unsigned int flushCounter;
+	bool doFlush;
 };
 
 unsigned int lengthIpaccBuffer();

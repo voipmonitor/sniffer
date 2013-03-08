@@ -827,7 +827,7 @@ void MySqlStore_process::store() {
 					this->sqlDb->query(string("create procedure ") + insert_funcname + "()\nbegin\n" + queryqueue + "\nend");
 					this->sqlDb->query(string("call ") + insert_funcname + "();");
 					queryqueue = "";
-					if(verbosity > 0) {
+					if(verbosity > 1) {
 						cout << "STORE id: " << this->id << endl;
 					}
 				}
@@ -845,7 +845,7 @@ void MySqlStore_process::store() {
 				this->sqlDb->query(string("call ") + insert_funcname + "();");
 				queryqueue = "";
 				size = 0;
-				if(verbosity > 0) {
+				if(verbosity > 1) {
 					cout << "STORE id: " << this->id << endl;
 				}
 			}

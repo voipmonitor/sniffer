@@ -62,6 +62,11 @@ extern char get_customer_by_ip_query[1024];
 extern char get_customers_ip_query[1024];
 extern int get_customer_by_ip_flush_period;
 
+extern char mysql_host[256];
+extern char mysql_database[256];
+extern char mysql_user[256];
+extern char mysql_password[256];
+
 extern SqlDb *sqlDb;
 extern MySqlStore *sqlStore;
 
@@ -77,11 +82,15 @@ static volatile int sync_save_ipacc_buffer[2];
 
 static unsigned int last_flush_interval_time = 0;
 static CustIpCache *custIpCache = NULL;
+static NextIpCache *nextIpCache = NULL;
 
 
 void ipacc_save(int indexIpaccBuffer, unsigned int interval_time_limit = 0) {
 	if(custIpCache) {
 		custIpCache->flush();
+	}
+	if(nextIpCache) {
+		nextIpCache->flush();
 	}
 	
 	octects_t *ipacc_data;
@@ -93,6 +102,8 @@ void ipacc_save(int indexIpaccBuffer, unsigned int interval_time_limit = 0) {
 		     dst_id_customer,
 		     port,
 		     proto;
+	bool src_ip_next,
+	     dst_ip_next;
 	map<unsigned int,IpaccAgreg*> agreg;
 	map<unsigned int, IpaccAgreg*>::iterator agregIter;
 	char insertQueryBuff[1000];
@@ -104,6 +115,7 @@ void ipacc_save(int indexIpaccBuffer, unsigned int interval_time_limit = 0) {
 	bool enableClear = true;
 	t_ipacc_buffer::iterator iter;
 	for (iter = ipacc_buffer[indexIpaccBuffer].begin(); iter != ipacc_buffer[indexIpaccBuffer].end(); iter++) {
+			
 		ipacc_data = iter->second;
 		if(ipacc_data->octects == 0) {
 			ipacc_data->erase = true;
@@ -116,12 +128,14 @@ void ipacc_save(int indexIpaccBuffer, unsigned int interval_time_limit = 0) {
 			*tmp = '\0';
 			saddr = atol(keyc);
 			src_id_customer = custIpCache ? custIpCache->getCustByIp(htonl(saddr)) : 0;
+			src_ip_next = nextIpCache ? nextIpCache->isIn(saddr) : false;
 
 			keyc = tmp + 1;
 			tmp = strchr(keyc, 'E');
 			*tmp = '\0';
 			daddr = atol(keyc);
 			dst_id_customer = custIpCache ? custIpCache->getCustByIp(htonl(daddr)) : 0;
+			dst_ip_next = nextIpCache ? nextIpCache->isIn(daddr) : false;
 
 			keyc = tmp + 1;
 			tmp = strchr(keyc, 'P');
@@ -133,7 +147,8 @@ void ipacc_save(int indexIpaccBuffer, unsigned int interval_time_limit = 0) {
 
 			if(!custIpCache || 
 			   !opt_ipacc_agregate_only_customers_on_any_side ||
-  			   src_id_customer || dst_id_customer) {
+  			   src_id_customer || dst_id_customer ||
+			   src_ip_next || dst_ip_next) {
 				if(isTypeDb("mysql")) {
 					sprintf(insertQueryBuff,
 						"insert into ipacc ("
@@ -187,6 +202,7 @@ void ipacc_save(int indexIpaccBuffer, unsigned int interval_time_limit = 0) {
 					agregIter->second->add(
 						saddr, daddr, 
 						src_id_customer, dst_id_customer, 
+						src_ip_next, dst_ip_next,
 						proto, port,
 						ipacc_data->octects, ipacc_data->numpackets, ipacc_data->voippacket);
 				}
@@ -225,7 +241,6 @@ void ipacc_save(int indexIpaccBuffer, unsigned int interval_time_limit = 0) {
 	__sync_sub_and_fetch(&sync_save_ipacc_buffer[indexIpaccBuffer], 1);
 	
 	//printf("flush\n");
-	
 }
 
 void ipacc_add_octets(time_t timestamp, unsigned int saddr, unsigned int daddr, int port, int proto, int packetlen, int voippacket) {
@@ -350,11 +365,12 @@ IpaccAgreg::~IpaccAgreg() {
 
 void IpaccAgreg::add(unsigned int src, unsigned int dst,
 		     unsigned int src_id_customer, unsigned int dst_id_customer,
+		     bool src_ip_next, bool dst_ip_next,
 		     unsigned int proto, unsigned int port,
 		     unsigned int traffic, unsigned int packets, bool voip) {
 	AgregIP srcA(src, proto, port), dstA(dst, proto, port);
 	map<AgregIP, AgregData*>::iterator iter1;
-	if(src_id_customer || !opt_ipacc_agregate_only_customers_on_main_side) {
+	if(src_id_customer || src_ip_next || !opt_ipacc_agregate_only_customers_on_main_side) {
 		iter1 = this->map1.find(srcA);
 		if(iter1 == this->map1.end()) {
 			AgregData *agregData = new AgregData;
@@ -365,7 +381,7 @@ void IpaccAgreg::add(unsigned int src, unsigned int dst,
 			iter1->second->addOut(traffic, packets, voip);
 		}
 	}
-	if(dst_id_customer || !opt_ipacc_agregate_only_customers_on_main_side) {
+	if(dst_id_customer || dst_ip_next || !opt_ipacc_agregate_only_customers_on_main_side) {
 		iter1 = this->map1.find(dstA);
 		if(iter1 == this->map1.end()) {
 			AgregData *agregData = new AgregData;
@@ -378,7 +394,7 @@ void IpaccAgreg::add(unsigned int src, unsigned int dst,
 	}
 	AgregIP2 srcDstA(src, dst, proto, port), dstSrcA(dst, src, proto, port);
 	map<AgregIP2, AgregData*>::iterator iter2;
-	if(src_id_customer || !opt_ipacc_agregate_only_customers_on_main_side) {
+	if(src_id_customer || src_ip_next || !opt_ipacc_agregate_only_customers_on_main_side) {
 		iter2 = this->map2.find(srcDstA);
 		if(iter2 == this->map2.end()) {
 			AgregData *agregData = new AgregData;
@@ -390,7 +406,7 @@ void IpaccAgreg::add(unsigned int src, unsigned int dst,
 			iter2->second->addOut(traffic, packets, voip);
 		}
 	}
-	if(dst_id_customer || !opt_ipacc_agregate_only_customers_on_main_side) {
+	if(dst_id_customer || dst_ip_next || !opt_ipacc_agregate_only_customers_on_main_side) {
 		iter2 = this->map2.find(dstSrcA);
 		if(iter2 == this->map2.end()) {
 			AgregData *agregData = new AgregData;
@@ -650,7 +666,7 @@ void CustIpCache::setQueryes(const char *getIp, const char *fetchAllIp) {
 
 int CustIpCache::connect() {
 	if(!this->okParams()) {
-		return(false);
+		return(0);
 	}
 	if(!this->sqlDb) {
 		SqlDb_odbc *sqlDb_odbc = new SqlDb_odbc();
@@ -679,9 +695,12 @@ int CustIpCache::getCustByIp(unsigned int ip) {
 		this->connect();
 	}
 	if(this->query_fetchAllIp.length()) {
-		if(!this->custCacheVect.size() || this->doFlushVect) {
+		if(this->doFlushVect) {
 			this->fetchAllIpQueryFromDb();
 			this->doFlushVect = false;
+		}
+		if(!this->custCacheVect.size()) {
+			return(0);
 		}
 		return(this->getCustByIpFromCacheVect(ip));
 	} else if(this->query_getIp.length()) {
@@ -736,7 +755,7 @@ int CustIpCache::fetchAllIpQueryFromDb() {
 	if(this->sqlDb->query(this->query_fetchAllIp)) {
 		this->custCacheVect.clear();
 		SqlDb_row row;
-		while(row = sqlDb->fetchRow()) {
+		while(row = this->sqlDb->fetchRow()) {
 			cust_cache_rec rec;
 			in_addr ips;
 			inet_aton(row["IP"].c_str(), &ips);
@@ -782,6 +801,87 @@ void CustIpCache::flush() {
 	++this->flushCounter;
 }
 
+NextIpCache::NextIpCache() {
+	this->flushCounter = 0;
+	this->doFlush = false;
+}
+
+NextIpCache::~NextIpCache() {
+	if(this->sqlDb) {
+		delete this->sqlDb;
+	}
+}
+
+int NextIpCache::connect() {
+	if(isSqlDriver("mysql")) {
+		this->sqlDb = new SqlDb_mysql();
+		sqlDb->setConnectParameters(mysql_host, mysql_user, mysql_password, mysql_database);
+		return(this->sqlDb->connect());
+	}
+	return(0);
+}
+
+bool NextIpCache::isIn(unsigned int ip) {
+	if(this->doFlush) {
+		this->fetch();
+		this->doFlush = false;
+	}
+	if(!this->nextCache.size()) {
+		return(false);
+	}
+	next_cache_rec rec;
+	vector<next_cache_rec>::iterator findRecIt;
+	for(unsigned int mask = 32; mask >= 16; --mask) {
+		rec.ip = ip;
+		rec.mask = mask;
+		if(!rec.mask) {
+			rec.mask = 32;
+		}
+		if(rec.mask < 32) {
+			rec.ip = rec.ip >> (32 - rec.mask) << (32 - rec.mask);
+		}
+		findRecIt = std::lower_bound(this->nextCache.begin(), this->nextCache.end(), rec);
+		if(findRecIt != this->nextCache.end() && (*findRecIt).ip == rec.ip) {
+			//cout << endl << (*findRecIt).ip << "/" << mask << endl;
+			return(true);
+		}
+	}
+	return(false);
+}
+
+void NextIpCache::fetch() {
+	if(this->sqlDb->query("select ip, mask from ipacc_capt_ip where enable")) {
+		this->nextCache.clear();
+		SqlDb_row row;
+		while(row = this->sqlDb->fetchRow()) {
+			next_cache_rec rec;
+			rec.ip = atol(row["ip"].c_str());
+			rec.mask = atol(row["mask"].c_str());
+			if(!rec.mask) {
+				rec.mask = 32;
+			}
+			if(rec.mask < 32) {
+				rec.ip = rec.ip >> (32 - rec.mask) << (32 - rec.mask);
+			}
+			this->nextCache.push_back(rec);
+		}
+		if(this->nextCache.size()) {
+			std::sort(this->nextCache.begin(), this->nextCache.end());
+		}
+		if(verbosity > 0) {
+			cout << "IPACC load next IP" << endl;
+		}
+	}
+}
+
+void NextIpCache::flush() {
+	if(get_customer_by_ip_flush_period > 0 && this->flushCounter > 0 &&
+	   !(this->flushCounter % get_customer_by_ip_flush_period)) {
+		this->doFlush = true;
+	}
+	++this->flushCounter;
+}
+
 void octects_live_t::setFilter(const char *ipfilter) {
 	string temp_ipfilter = ipfilter;
 	char *ip = (char*)temp_ipfilter.c_str();
@@ -822,11 +922,19 @@ void initIpacc() {
 			custIpCache->setMaxQueryPass(2);
 		}
 	}
+	if(isSqlDriver("mysql")) {
+		nextIpCache = new NextIpCache();
+		nextIpCache->connect();
+		nextIpCache->fetch();
+	}
 }
 
 void freeMemIpacc() {
 	if(custIpCache) {
 		delete custIpCache;
+	}
+	if(nextIpCache) {
+		delete nextIpCache;
 	}
 	t_ipacc_buffer::iterator iter;
 	for(int i = 0; i < 2; i++) {
