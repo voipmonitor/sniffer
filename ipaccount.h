@@ -9,6 +9,7 @@
 #include <map>
 #include <vector>
 #include <string>
+#include <algorithm>
 
 #include "sql_db.h"
 
