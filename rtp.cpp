@@ -754,7 +754,7 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 				}
 			}
 		} else {
-			if(seq == (last_seq + 1)) {
+			if(last_ts != 0 and seq == (last_seq + 1)) {
 				// packetization can change over time
 				int curpacketization = (getTimestamp() - last_ts) / 8;
 				if(curpacketization % 10 == 0 and curpacketization >= 20 and curpacketization <= 120) {
