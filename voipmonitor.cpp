@@ -1620,10 +1620,6 @@ int main(int argc, char *argv[]) {
 	if(opt_cachedir[0] != '\0') {
 		pthread_create(&cachedir_thread, NULL, moving_cache, NULL);
 	}
-	
-	if(opt_cachedir[0] != '\0') {
-		pthread_create(&cachedir_thread, NULL, moving_cache, NULL);
-	}
 
 	if(opt_cleanspool_interval > 0 && opt_cleanspool_sizeMB > 0) {
 		if(verbosity > 0) syslog(LOG_NOTICE, "Spawning cleanspool_thread interval[%d]s size[%d]MB", opt_cleanspool_interval, opt_cleanspool_sizeMB);
