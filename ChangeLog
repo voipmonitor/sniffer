@@ -1,5 +1,62 @@
+Complete changelog between 6.0.1 -> 6.5
+=======================================
+
+WARNING - it will auto upgrade your tables which can take hours when you first run the sniffer. 
+
+New features
+------------
+- supports G722 audio decoding (it still needs G722 codec)
+- Implement pausing RTP/WAV recording if DTMF sequence detected. New option pauserecordingdtmf
+- implements on-demand live sniffing (to sql table)
+- implement IP defragmentation for IP and IP in IP too
+- support for SILK and iSAC codecs
+- new option (cdronlyanswered = yes) write CDR to database only if call was answered
+- new option (cdronlyrtp = yes) write CDR to database only if call has RTP
+- reimplement ODBC database support for MSSQL
+- support UTF8 for SIP MESSAGES
+- try to rebind manager interface on specified port (default 5029) if the bind fails
+- implement manager command disablecdr and enablecdr which will stop/start writing data to CDR.
+- implement getversion manager command
+- add content-type header to SIP MESSAGE sql table
+- implements new cdr_rtp SQL table which holds all RTP streams which is used in WEB GUI sip history diagram
+- live capture for SIP REGISTER 
+- store SIP REGISTER to pcap based on capture rules defined in mysql table (WEB GUI)
+- store id_sensor to register* tables
+- implement --pcapscan-dir command line option
+
+Optimizations
+-------------
+- optimize number of MYSQL commands for SIP REGISTER to be able to store via remote database where the network latency causes maximum number of queries.
+- insert CDR in batch - increases CDR per second throughpat in case sensor is storing remotly
+- new spooldir schema stores all files to year-mon-day/hour/minute/[ALL|SIP|RTP|AUDIO] directories if you need to have the old schema year-mon-day/* enable spooldiroldschema = yes.
+- when store REGISTER into active table which is MEMORY type and mysql has enabled binlog (for replication) - send sql_log_bin = 0 before the command and sql_log_bin = 1 after the command to safe I/O
+- tcp manager is now multithreaded which means that it can server multiple clients at once and thus not blocks other clients if some client connects to manager
+- voipmonitor now by default splits SIP and RTP packets to individual files (in case spooldiroldschema = no) which are located in SIP and RTP directories. This feature allows instance cleaning RTP streams dif ferently then SIP packets. To join two pcap files SIP+RTP use mergecap command line utility which is included in wireshark package.
+- 5 second tolerance for SIP REGISTER so it will not fill table with expired registrations when it register again after 1 second timeout
+
+Bug fixes
+---------
+- update expire value from 200 OK replies to REGISTER 
+- UserAgent string in database was reverted - caller was called and vice versa (probably since beginning..)
+- fix audio sync in case there are more then 1 mark bit set in RTP. Some devices sends MARK bit since the beginning of RTP stream until opposite side sends RTP
+- fix max and average jitter calculations which was broken since voipmonitor creation. Now jitter is the same as you can see in wireshark.
+- fix audio in case ptime changes during call (for example iSAC changes between 30 and 60 dynamically)
+- fix codec handling for ilbc which shows as G711 due to case sensitive searching in SDP
+- fix one way call in some cases (where voipmonior listens in multi sip proxy environment and see all packets)
+- fix 16khz codecs which resulted in bad graphs
+- fix TCP reassemble
+- fix crashes when using pcapscandir
+- fix WAV for SILK 24khz
+- created procedure __insert has to have unique name in case of multiple sensors (thanks Dmitry Sytchev)
+- add / at the end of path for find command so it can find and clean directory which is also mounted. in other words autodelte do not work if the directory is mounted because of missing /
+- fix mysql 5.6 not inserting queries if any of column value is out of range and the mysql server set strict mode which 5.6 is set by default
+- when defragmenting UDP packets resets frag flag 
+
+
 version 6.5 Stable 8.3.2013
 ===========================
+changes from 6.5 RC7
+
 - WARNING - it will auto upgrade your tables which can take hours when you first run the sniffer. 
 - fix audio sync in case there are more then 1 mark bit set in RTP. Some devices sends MARK bit since the beginning of RTP stream until opposite side sends RTP
 - fix compiles on 32bit and older gcc
