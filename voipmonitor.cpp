@@ -130,6 +130,7 @@ char opt_clientmanager[1024] = "";
 int opt_clientmanagerport = 9999;
 int opt_callslimit = 0;
 char opt_silencedmtfseq[16] = "";
+char opt_keycheck[1024] = "";
 
 char configfile[1024] = "";	// config file name
 
@@ -993,6 +994,9 @@ int load_config(char *fname) {
 	if((value = ini.GetValue("general", "pauserecordingdtmf", NULL))) {
 		strncpy(opt_silencedmtfseq, value, 15);
 	}
+	if((value = ini.GetValue("general", "keycheck", NULL))) {
+		strncpy(opt_keycheck, value, 1024);
+	}
 	return 0;
 }
 
@@ -1088,6 +1092,7 @@ int main(int argc, char *argv[]) {
 	    {"id-sensor", 1, 0, 's'},
 	    {"ipaccount", 0, 0, 'x'},
 	    {"pcapscan-dir", 1, 0, '0'},
+	    {"keycheck", 1, 0, 'Z'},
 	    {0, 0, 0, 0}
 	};
 
@@ -1141,6 +1146,9 @@ int main(int argc, char *argv[]) {
 			case 's':
 				opt_id_sensor = atoi(optarg);
 				insert_funcname = "__insert_" + opt_id_sensor;
+				break;
+			case 'Z':
+				strncpy(opt_keycheck, optarg, sizeof(opt_keycheck));
 				break;
 			case '0':
 				strncpy(opt_scanpcapdir, optarg, sizeof(opt_scanpcapdir));

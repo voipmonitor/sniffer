@@ -84,6 +84,7 @@ extern queue<string> mysqlquery;
 extern int opt_cdronlyanswered;
 extern int opt_cdronlyrtp;
 extern int opt_newdir;
+extern char opt_keycheck[1024];
 
 volatile int calls = 0;
 
@@ -823,68 +824,117 @@ Call::convertRawToWav() {
 				break;
 		/* following decoders are not included in free version. Please contact support@voipmonitor.org */
 			case PAYLOAD_G722:
-				snprintf(cmd, 4092, "voipmonitor-g722 \"%s\" \"%s\" 64000", raw, wav);
+				if(opt_keycheck[0] != '\0') {
+					snprintf(cmd, 4092, "vmcodecs %s g722 \"%s\" \"%s\" 64000", opt_keycheck, raw, wav);
+				} else {
+					snprintf(cmd, 4092, "voipmonitor-g722 \"%s\" \"%s\" 64000", raw, wav);
+				}
 				samplerate = 16000;
-				if(verbosity > 1) syslog(LOG_ERR, "Converting GSM to WAV.\n");
+				if(verbosity > 1) syslog(LOG_ERR, "Converting G.722 to WAV.\n");
+				if(verbosity > 2) syslog(LOG_ERR, "Converting G.722 to WAV. %s\n", cmd);
 				system(cmd);
 				break;
 			case PAYLOAD_GSM:
-				snprintf(cmd, 4092, "voipmonitor-gsm \"%s\" \"%s\"", raw, wav);
+				if(opt_keycheck[0] != '\0') {
+					snprintf(cmd, 4092, "vmcodecs %s gsm \"%s\" \"%s\"", opt_keycheck, raw, wav);
+				} else {
+					snprintf(cmd, 4092, "voipmonitor-gsm \"%s\" \"%s\"", raw, wav);
+				}
 				if(verbosity > 1) syslog(LOG_ERR, "Converting GSM to WAV.\n");
 				system(cmd);
 				break;
 			case PAYLOAD_G729:
-				snprintf(cmd, 4092, "voipmonitor-g729 \"%s\" \"%s\"", raw, wav);
+				if(opt_keycheck[0] != '\0') {
+					snprintf(cmd, 4092, "vmcodecs %s g729 \"%s\" \"%s\"", opt_keycheck, raw, wav);
+				} else {
+					snprintf(cmd, 4092, "voipmonitor-g729 \"%s\" \"%s\"", raw, wav);
+				}
 				if(verbosity > 1) syslog(LOG_ERR, "Converting G.729 to WAV.\n");
 				system(cmd);
 				break;
 			case PAYLOAD_G723:
-				snprintf(cmd, 4092, "voipmonitor-g723 \"%s\" \"%s\"", raw, wav);
+				if(opt_keycheck[0] != '\0') {
+					snprintf(cmd, 4092, "vmcodecs %s g723 \"%s\" \"%s\"", opt_keycheck, raw, wav);
+				} else {
+					snprintf(cmd, 4092, "voipmonitor-g723 \"%s\" \"%s\"", raw, wav);
+				}
 				if(verbosity > 1) syslog(LOG_ERR, "Converting G.723 to WAV.\n");
 				system(cmd);
 				break;
 			case PAYLOAD_ILBC:
-				snprintf(cmd, 4092, "voipmonitor-ilbc \"%s\" \"%s\"", raw, wav);
+				if(opt_keycheck[0] != '\0') {
+					snprintf(cmd, 4092, "vmcodecs %s ilbc \"%s\" \"%s\"", opt_keycheck, raw, wav);
+				} else {
+					snprintf(cmd, 4092, "voipmonitor-ilbc \"%s\" \"%s\"", raw, wav);
+				}
 				if(verbosity > 1) syslog(LOG_ERR, "Converting iLBC to WAV.\n");
 				system(cmd);
 				break;
 			case PAYLOAD_SPEEX:
-				snprintf(cmd, 4092, "voipmonitor-speex \"%s\" \"%s\"", raw, wav);
+				if(opt_keycheck[0] != '\0') {
+					snprintf(cmd, 4092, "vmcodecs %s speex \"%s\" \"%s\"", opt_keycheck, raw, wav);
+				} else {
+					snprintf(cmd, 4092, "voipmonitor-speex \"%s\" \"%s\"", raw, wav);
+				}
 				if(verbosity > 1) syslog(LOG_ERR, "Converting speex to WAV.\n");
 				system(cmd);
 				break;
 			case PAYLOAD_SILK8:
-				snprintf(cmd, 4092, "voipmonitor-silk \"%s\" \"%s\" 8000", raw, wav);
+				if(opt_keycheck[0] != '\0') {
+					snprintf(cmd, 4092, "vmcodecs %s silk \"%s\" \"%s\" 8000", opt_keycheck, raw, wav);
+				} else {
+					snprintf(cmd, 4092, "voipmonitor-silk \"%s\" \"%s\" 8000", raw, wav);
+				}
 				samplerate = 8000;
 				if(verbosity > 1) syslog(LOG_ERR, "Converting SILK8 to WAV.\n");
 				system(cmd);
 				break;
 			case PAYLOAD_SILK12:
-				snprintf(cmd, 4092, "voipmonitor-silk \"%s\" \"%s\" 12000", raw, wav);
+				if(opt_keycheck[0] != '\0') {
+					snprintf(cmd, 4092, "vmcodecs %s silk \"%s\" \"%s\" 12000", opt_keycheck, raw, wav);
+				} else {
+					snprintf(cmd, 4092, "voipmonitor-silk \"%s\" \"%s\" 12000", raw, wav);
+				}
 				samplerate = 12000;
 				if(verbosity > 1) syslog(LOG_ERR, "Converting SILK12 to WAV.\n");
 				system(cmd);
 				break;
 			case PAYLOAD_SILK16:
-				snprintf(cmd, 4092, "voipmonitor-silk \"%s\" \"%s\" 16000", raw, wav);
+				if(opt_keycheck[0] != '\0') {
+					snprintf(cmd, 4092, "vmcodecs %s silk \"%s\" \"%s\" 16000", opt_keycheck, raw, wav);
+				} else {
+					snprintf(cmd, 4092, "voipmonitor-silk \"%s\" \"%s\" 16000", raw, wav);
+				}
 				samplerate = 16000;
 				if(verbosity > 1) syslog(LOG_ERR, "Converting SILK16 to WAV.\n");
 				system(cmd);
 				break;
 			case PAYLOAD_SILK24:
-				snprintf(cmd, 4092, "voipmonitor-silk \"%s\" \"%s\" 24000", raw, wav);
+				if(opt_keycheck[0] != '\0') {
+					snprintf(cmd, 4092, "vmcodecs %s silk \"%s\" \"%s\" 24000", opt_keycheck, raw, wav);
+				} else {
+					snprintf(cmd, 4092, "voipmonitor-silk \"%s\" \"%s\" 24000", raw, wav);
+				}
 				if(verbosity > 1) syslog(LOG_ERR, "Converting SILK16 to WAV.\n");
 				samplerate = 24000;
 				system(cmd);
 				break;
 			case PAYLOAD_ISAC16:
-				snprintf(cmd, 4092, "voipmonitor-isac \"%s\" \"%s\" 16000", raw, wav);
+				if(opt_keycheck[0] != '\0') {
+					snprintf(cmd, 4092, "vmcodecs %s isac \"%s\" \"%s\" 16000", opt_keycheck, raw, wav);
+				} else {
+					snprintf(cmd, 4092, "voipmonitor-isac \"%s\" \"%s\" 16000", raw, wav);
+				}
 				samplerate = 16000;
 				if(verbosity > 1) syslog(LOG_ERR, "Converting ISAC16 to WAV.\n");
 				system(cmd);
 				break;
 			case PAYLOAD_ISAC32:
-				snprintf(cmd, 4092, "voipmonitor-isac \"%s\" \"%s\" 32000", raw, wav);
+				if(opt_keycheck[0] != '\0') {
+					snprintf(cmd, 4092, "vmcodecs %s isac \"%s\" \"%s\" 32000", opt_keycheck, raw, wav);
+				} else {
+					snprintf(cmd, 4092, "voipmonitor-isac \"%s\" \"%s\" 32000", raw, wav);
+				}
 				samplerate = 32000;
 				if(verbosity > 1) syslog(LOG_ERR, "Converting ISAC32 to WAV.\n");
 				system(cmd);
