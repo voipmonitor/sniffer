@@ -941,10 +941,10 @@ void *manager_read_thread(void * arg) {
 				}
 			}
 			////cout << "NEXT_RECV stop" << endl;
-		}
-		size_t posEnd;
-		if((posEnd = buf_long.find("\r\n\r\n")) != string::npos) {
-			buf_long.resize(posEnd);
+			size_t posEnd;
+			if((posEnd = buf_long.find("\r\n\r\n")) != string::npos) {
+				buf_long.resize(posEnd);
+			}
 		}
 	}
 	parse_command(buf, size, client, 0, buf_long.c_str());

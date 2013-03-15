@@ -294,6 +294,7 @@ void ipacc_add_octets(time_t timestamp, unsigned int saddr, unsigned int daddr, 
 			}
 			free(it->second);
 			ipacc_live.erase(it++);
+			continue;
 		} else if(data->all) {
 			data->all_octects += packetlen;
 			data->all_numpackets++;
