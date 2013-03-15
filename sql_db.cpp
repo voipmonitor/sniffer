@@ -996,7 +996,7 @@ string reverseString(const char *str) {
 
 void SqlDb_mysql::createSchema() {
 
-	printf("creating and upgrading MySQL schema...");
+	syslog(LOG_DEBUG, "creating and upgrading MySQL schema...");
 	this->multi_off();
 
 	this->query(
@@ -1500,7 +1500,7 @@ void SqlDb_mysql::createSchema() {
 	this->query("ALTER TABLE register_state\
 			ADD `id_sensor` INT NULL DEFAULT NULL;");
 	sql_noerror = 0;
-	printf("done\n");
+	syslog(LOG_DEBUG, "done");
 }
 
 
