@@ -1,3 +1,8 @@
+Changelog 6.5 -> 6.5.1
+======================
+
+- fix reversed RTP in mysql - caller RTP was called RTP (broken since 6.5RC1)
+
 Complete changelog between 6.0.1 -> 6.5
 =======================================
 
