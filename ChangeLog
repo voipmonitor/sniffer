@@ -1,7 +1,8 @@
-Changelog 6.5 -> 6.5.1
+Changelog 6.5 -> 6.5.2
 ======================
 
 - fix reversed RTP in mysql - caller RTP was called RTP (broken since 6.5RC1)
+- fix 6.5 version 4GB memory leak for any manager command causing live calls to swap machine or crash depending on available memory
 
 Complete changelog between 6.0.1 -> 6.5
 =======================================
