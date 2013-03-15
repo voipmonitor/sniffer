@@ -942,7 +942,7 @@ void *manager_read_thread(void * arg) {
 			}
 			////cout << "NEXT_RECV stop" << endl;
 		}
-		unsigned int posEnd;
+		size_t posEnd;
 		if((posEnd = buf_long.find("\r\n\r\n")) != string::npos) {
 			buf_long.resize(posEnd);
 		}
