@@ -3177,15 +3177,12 @@ void readdump_libpcap(pcap_t *handle) {
 		if(opt_mirrorall || (opt_mirrorip && (sipportmatrix[htons(header_udp->source)] || sipportmatrix[htons(header_udp->dest)]))) {
 			mirrorip->send((char *)header_ip, (int)(header->caplen - ((unsigned long) header_ip - (unsigned long) packet)));
 		}
-		if(opt_ipaccount) {
-			ipaccount(header->ts.tv_sec, (struct iphdr *) ((char*)packet + offset), header->caplen - offset, 0);
-		}
-		int voippacket;
+		int voippacket = 0;
 		if(!opt_mirroronly) {
 			process_packet(header_ip->saddr, htons(header_udp->source), header_ip->daddr, htons(header_udp->dest), 
 				    data, datalen, handle, header, packet, istcp, 0, 1, &was_rtp, header_ip, &voippacket);
 		}
-		if(voippacket && opt_ipaccount) {
+		if(opt_ipaccount) {
 			ipaccount(header->ts.tv_sec, (struct iphdr *) ((char*)packet + offset), header->caplen - offset, voippacket);
 		}
 
