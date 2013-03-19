@@ -2,8 +2,8 @@
 
 ### BEGIN INIT INFO
 # Provides:             voipmonitor
-# Required-Start:       $network $remote_fs $syslog $all
-# Required-Stop:        $network $remote_fs $syslog $all
+# Required-Start:       $network $remote_fs $syslog $mysql $all
+# Required-Stop:        $network $remote_fs $syslog $mysql $all
 # Should-Start:
 # Should-Stop:
 # Default-Start:        2 3 4 5
