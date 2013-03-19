@@ -2590,10 +2590,6 @@ void *pcap_read_thread_func(void *arg) {
 
 		header_ip = (struct iphdr *) ((char*)packet + pp->offset);
 
-		if(opt_ipaccount) {
-			ipaccount(pp->header.ts.tv_sec, (struct iphdr *) ((char*)(packet) + pp->offset), pp->header.caplen - pp->offset, 0);
-		}
-
 		if(header_ip->protocol == 4) {
 			// ip in ip protocol
 			header_ip = (struct iphdr *) ((char*)header_ip + sizeof(iphdr));
@@ -2639,7 +2635,7 @@ void *pcap_read_thread_func(void *arg) {
 			    data, datalen, handle, &pp->header, packet, istcp, 0, 1, &was_rtp, header_ip, &voippacket);
 
 		// if packet was VoIP add it to ipaccount
-		if(voippacket && opt_ipaccount) {
+		if(opt_ipaccount) {
 			ipaccount(pp->header.ts.tv_sec, (struct iphdr *) ((char*)(packet) + pp->offset), pp->header.caplen - pp->offset, voippacket);
 		}
 
