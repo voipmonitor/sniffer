@@ -11,6 +11,8 @@
 extern int verbosity;
 extern int opt_mysql_port;
 extern char opt_match_header[128];
+extern int terminating;
+
 int sql_noerror = 0;
 
 
@@ -417,6 +419,9 @@ bool SqlDb_mysql::query(string query) {
 				break;
 			}
 		}
+		if(terminating) {
+			break;
+		}
 	}
 	return(rslt);
 }
@@ -696,6 +701,9 @@ bool SqlDb_odbc::query(string query) {
 		} else {
 			break;
 		}
+		if(terminating) {
+			break;
+		}
 	}
 	return(this->okRslt(rslt) || rslt == SQL_NO_DATA);
 }
@@ -808,8 +816,6 @@ MySqlStore_process::~MySqlStore_process() {
 void MySqlStore_process::query(const char *query_str) {
 	this->query_buff.push(query_str);
 }
-
-extern int terminating;
 
 void MySqlStore_process::store() {
 	char insert_funcname[20];
