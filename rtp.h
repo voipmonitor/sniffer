@@ -18,6 +18,8 @@
 
 using namespace std;
 
+int get_ticks_bycodec(int);
+
 void burstr_calculate(struct ast_channel *chan, u_int32_t received, double *burstr, double *lossr);
 
 /*

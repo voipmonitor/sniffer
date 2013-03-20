@@ -1565,8 +1565,8 @@ Call::saveToDb(bool enableBatchIfPossible) {
 				cdr.add(rtp[indexes[i]]->rtcp.maxfr, c+"_rtcp_maxfr");
 				rtcp_avgfr_mult10[i] = (int)round(rtp[indexes[i]]->rtcp.avgfr * 10);
 				cdr.add(rtcp_avgfr_mult10[i], c+"_rtcp_avgfr_mult10");
-				cdr.add(rtp[indexes[i]]->rtcp.maxjitter, c+"_rtcp_maxjitter");
-				rtcp_avgjitter_mult10[i] = (int)round(rtp[indexes[i]]->rtcp.avgjitter * 10);
+				cdr.add(rtp[indexes[i]]->rtcp.maxjitter / get_ticks_bycodec(rtp[indexes[i]]->codec), c+"_rtcp_maxjitter");
+				rtcp_avgjitter_mult10[i] = (int)round(rtp[indexes[i]]->rtcp.avgjitter / get_ticks_bycodec(rtp[indexes[i]]->codec) * 10);
 				cdr.add(rtcp_avgjitter_mult10[i], c+"_rtcp_avgjitter_mult10");
 			}
 		}

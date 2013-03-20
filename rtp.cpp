@@ -72,7 +72,54 @@ timeval_subtract (struct timeval *result, struct timeval x, struct timeval y) {
 	return x.tv_sec < y.tv_sec;
 }
 
-
+int get_ticks_bycodec(int codec) {
+	switch(codec) {
+	case PAYLOAD_PCMU: 
+		return 8;
+		break;
+	case PAYLOAD_GSM:
+		return 8;
+		break;
+	case PAYLOAD_G723:
+		return 8;
+		break;
+	case PAYLOAD_PCMA:
+		return 8;
+		break;
+	case PAYLOAD_G722:
+		return 8;
+		break;
+	case PAYLOAD_G729:
+		return 8;
+		break;
+	case PAYLOAD_ILBC:
+		return 8;
+		break;
+	case PAYLOAD_SPEEX:
+		return 8;
+		break;
+	case PAYLOAD_SILK8:
+		return 8;
+		break;
+	case PAYLOAD_SILK12:
+		return 12;
+		break;
+	case PAYLOAD_SILK16:
+		return 16;
+		break;
+	case PAYLOAD_SILK24:
+		return 24;
+		break;
+	case PAYLOAD_ISAC16:
+		return 16;
+		break;
+	case PAYLOAD_ISAC32:
+		return 32;
+		break;
+	default:
+		return 8;
+	}
+}
 
 /* constructor */
 RTP::RTP() {
