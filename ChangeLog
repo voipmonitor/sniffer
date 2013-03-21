@@ -1,3 +1,9 @@
+Changelog 6.5.2 -> 6.5.3
+========================
+- do not end manager thread if there is problem with client reading data. Ending manager thread causes PHP to lock whole session. 
+- divide rtcp jitter by timestamp unit (8/12/16/24/32) so it will be in milliseconds to match RTP jitter
+- don not endless try mysql connect when kill signal sends to voipmonitor. this caused stuck in reboot process of whole machine or impossible break voipmonitor ctrl-c
+
 Changelog 6.5 -> 6.5.2
 ======================
 
