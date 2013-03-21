@@ -993,7 +993,8 @@ tryagain:
 		}
 		if (client == -1) {
 			//cerr << "Problem with accept client" <<endl;
-			return 0;
+			close(client);
+			continue;
 		}
 
 		ids = client;
