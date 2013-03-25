@@ -1999,7 +1999,7 @@ Call::saveRegisterToDb() {
 			if(rsltRow) {
 				// there is already failed register, update counter and do not insert
 				string query = string(
-					"UPDATE register_failed SET fname = " + sqlEscapeStringBorder(fname) + ", counter = counter + 1 ") +
+					"UPDATE register_failed SET created_at = NOW(), fname = " + sqlEscapeStringBorder(fname) + ", counter = counter + 1 ") +
 					"WHERE to_num = " + sqlEscapeStringBorder(called) + " AND digestusername = " + sqlEscapeStringBorder(digest_username) + 
 						" AND created_at >= SUBTIME(NOW(), '01:00:00')";
 				sqlDb->query(query);
