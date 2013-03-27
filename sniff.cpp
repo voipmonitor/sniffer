@@ -2264,7 +2264,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 			call->set_last_packet_time(header->ts.tv_sec);
 		}
 		if(!dontsave && ((call->flags & FLAG_SAVERTP) || (call->isfax && opt_saveudptl))) {
-			if((call->silencerecording || opt_onlyRTPheader) && !call->isfax) {
+			if((call->silencerecording || (opt_onlyRTPheader && !(call->flags & FLAG_SAVERTP))) && !call->isfax) {
 				tmp_u32 = header->caplen;
 				header->caplen = header->caplen - (datalen - RTP_FIXED_HEADERLEN);
 				save_packet(call, header, packet, saddr, source, daddr, dest, istcp, data, datalen, TYPE_RTP);
@@ -2314,7 +2314,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 			call->set_last_packet_time(header->ts.tv_sec);
 		}
 		if(!dontsave && ((call->flags & FLAG_SAVERTP) || (call->isfax && opt_saveudptl))) {
-			if((call->silencerecording || opt_onlyRTPheader) && !call->isfax) {
+			if((call->silencerecording || (opt_onlyRTPheader && !(call->flags & FLAG_SAVERTP))) && !call->isfax) {
 				tmp_u32 = header->caplen;
 				header->caplen = header->caplen - (datalen - RTP_FIXED_HEADERLEN);
 				save_packet(call, header, packet, saddr, source, daddr, dest, istcp, data, datalen, TYPE_RTP);
