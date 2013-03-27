@@ -1,3 +1,7 @@
+Changelog 6.5.3 -> 6.5.4
+========================
+- fix TCP manager interface which was limited to some maximum number of connections since start. As a result no new connection can be created and thus the WEB GUI locked. 
+
 Changelog 6.5.2 -> 6.5.3
 ========================
 - do not end manager thread if there is problem with client reading data. Ending manager thread causes PHP to lock whole session. 
