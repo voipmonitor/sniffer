@@ -983,6 +983,8 @@ tryagain:
 	pthread_t threads;
 	pthread_attr_t        attr;
 	pthread_attr_init(&attr);
+	/* set the thread detach state */
+	pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
 	while(1 && terminating == 0) {
 		addrlen = sizeof(clientInfo);
 		int client = accept(manager_socket_server, (sockaddr*)&clientInfo, &addrlen);
