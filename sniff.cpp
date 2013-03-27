@@ -55,6 +55,7 @@ and insert them into Call class.
 #include "ipaccount.h"
 #include "sql_db.h"
 #include "rtp.h"
+#include "skinny.h"
 
 extern MirrorIP *mirrorip;
 
@@ -141,6 +142,7 @@ extern int opt_newdir;
 extern int opt_callslimit;
 extern int opt_skiprtpdata;
 extern char opt_silencedmtfseq[16];
+extern int opt_skinny;
 
 #ifdef QUEUE_MUTEX
 extern sem_t readpacket_thread_semaphore;
@@ -328,6 +330,7 @@ inline void save_packet(Call *call, struct pcap_pkthdr *header, const u_char *pa
 
 	if(opt_newdir and opt_pcap_split) {
 		switch(type) {
+		case TYPE_SKINNY:
 		case TYPE_SIP:
 			if(call->get_fsip_pcap() != NULL){
 				call->set_last_packet_time(header->ts.tv_sec);
@@ -1319,9 +1322,15 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 
 	}
 
+	// check if the packet is SKINNY
+	if(opt_skinny && (source == 2000 || dest == 2000)) {
+		handle_skinny(header, packet, saddr, source, daddr, dest, data, datalen);
+		return NULL;
+	}
 
-	// check if the packet is SIP ports 	
+	// check if the packet is SIP ports or SKINNY ports
 	if(sipportmatrix[source] || sipportmatrix[dest]) {
+
 		*voippacket = 1;
 #if 0
 		/* ugly and dirty hack to detect two SIP messages in one TCP packet. */
@@ -1631,6 +1640,10 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 			if(verbosity > 2) 
 				 syslog(LOG_NOTICE,"SIP msg: 401\n");
 			sip_method = RES401;
+		} else if ((datalen > 10) && !(memmem(data, 11, "SIP/2.0 403", 11) == 0)) {
+			if(verbosity > 2) 
+				 syslog(LOG_NOTICE,"SIP msg: 403\n");
+			sip_method = RES403;
 		} else if ((datalen > 8) && !(memmem(data, 9, "SIP/2.0 4", 9) == 0)) {
 			if(verbosity > 2) 
 				 syslog(LOG_NOTICE,"SIP msg: 4XX\n");
@@ -1744,7 +1757,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 				save_packet(call, header, packet, saddr, source, daddr, dest, istcp, data, datalen, TYPE_SIP);
 				call->saveregister();
 				return NULL;
-			} else if(sip_method == RES401) {
+			} else if(sip_method == RES401 or sip_method == RES403) {
 				call->reg401count++;
 				if(verbosity > 3) syslog(LOG_DEBUG, "REGISTER 401 Call-ID[%s] reg401count[%d]", call->call_id, call->reg401count);
 				if(call->reg401count > 1) {
@@ -2136,6 +2149,8 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 							}
 						}
 					}
+
+					printf("ADDR: %u port %u\n", tmp_addr, tmp_port);
 					if(call->add_ip_port(tmp_addr, tmp_port, s, l, !iscalled, rtpmap) != -1){
 						calltable->hashAdd(tmp_addr, tmp_port, call, !iscalled, 0);
 						//calltable->mapAdd(tmp_addr, tmp_port, call, !iscalled, 0);
@@ -3063,7 +3078,8 @@ void readdump_libpcap(pcap_t *handle) {
 			data = (char *) header_tcp + (header_tcp->doff * 4);
 			datalen = (int)(header->caplen - ((unsigned long) data - (unsigned long) packet)); 
 			//if (datalen == 0 || !(sipportmatrix[htons(header_tcp->source)] || sipportmatrix[htons(header_tcp->dest)])) {
-			if (!(sipportmatrix[htons(header_tcp->source)] || sipportmatrix[htons(header_tcp->dest)])) {
+			if (!(sipportmatrix[htons(header_tcp->source)] || sipportmatrix[htons(header_tcp->dest)])
+				and !(opt_skinny && (htons(header_tcp->source) == 2000 || htons(header_tcp->dest) == 2000))) {
 				// not interested in TCP packet other than SIP port
 				if(opt_ipaccount == 0) {
 					if(destroy) { 

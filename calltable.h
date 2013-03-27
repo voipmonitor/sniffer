@@ -36,13 +36,15 @@
 #define RES2XX 4
 #define RES3XX 5
 #define RES401 6
-#define RES4XX 7
-#define RES5XX 8
-#define RES6XX 9
-#define RES18X 10
-#define REGISTER 11
-#define MESSAGE 12
-#define INFO 13
+#define RES403 7
+#define RES4XX 8
+#define RES5XX 9
+#define RES6XX 10
+#define RES18X 11
+#define REGISTER 12
+#define MESSAGE 13
+#define INFO 14
+#define SKINNY_NEW 100
 
 #define FLAG_SAVERTP		(1 << 0)
 #define FLAG_SAVESIP		(1 << 1)
@@ -144,6 +146,8 @@ public:
 	int fifo2;
 	int codec_caller;
 	int codec_called;
+
+	unsigned int skinny_partyid;
 
 	unsigned int flags;		//!< structure holding FLAGS*
 
@@ -409,6 +413,8 @@ public:
 	list<Call*>::iterator call;
 	map<string, Call*> calls_listMAP; //!< 
 	map<string, Call*>::iterator callMAPIT; //!< 
+	map<unsigned int, Call*> skinny_partyID; //!< 
+	map<unsigned int, Call*>::iterator skinny_partyIDIT; //!< 
 	map<unsigned int, std::map<unsigned int, Ipportnode*> > ipportmap;
 //	map<unsigned int, std::map<unsigned int, Ipportnode*> >::iterator ipportmapIT;
 	map<unsigned int, Ipportnode*>::iterator ipportmapIT;
@@ -477,6 +483,7 @@ public:
 	 * @return reference of the Call if found, otherwise return NULL
 	*/
 	Call *find_by_call_id(char *call_id, unsigned long call_id_len);
+	Call *find_by_skinny_partyid(unsigned int partyid);
 
 	/**
 	 * @brief find Call by IP adress and port number

@@ -219,6 +219,8 @@ simpleini/testsi-EUCJP.ini -text
 simpleini/testsi-SJIS.ini -text
 simpleini/testsi-UTF8.ini -text
 simpleini/testsi.cpp -text
+/skinny.cpp -text
+/skinny.h -text
 /sniff.cpp -text
 /sniff.h -text
 /sql_db.cpp -text

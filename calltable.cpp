@@ -174,6 +174,7 @@ Call::Call(char *call_id, unsigned long call_id_len, time_t time, void *ct) {
 	sipcalledip4 = 0;
 	sipcallerip4 = 0;
 	fname2 = 0;
+	skinny_partyid = 0;
 }
 
 void
@@ -215,6 +216,11 @@ Call::addtocachequeue(string file) {
 
 /* destructor */
 Call::~Call(){
+
+	if(skinny_partyid) {
+		((Calltable *)calltable)->skinny_partyID.erase(skinny_partyid);
+	}
+
 	if(contenttype) free(contenttype);
 	for(int i = 0; i < MAX_SSRC_PER_CALL; i++) {
 		// lets check whole array as there can be holes due rtp[0] <=> rtp[1] swaps in mysql rutine
@@ -812,7 +818,6 @@ Call::convertRawToWav() {
 			line[strlen(line)] = '\0'; // remove '\n' which is last character
 			sscanf(line, "%d:%lu:%d:%ld:%ld", &ssrc_index, &rawiterator, &codec, &tv0.tv_sec, &tv0.tv_usec);
 			sprintf(raw, "%s/%s/%s.i%d.%d.%lu.%d.%ld.%ld.raw", dirname().c_str(), opt_newdir ? "AUDIO" : "", get_fbasename_safe(), i, ssrc_index, rawiterator, codec, tv0.tv_sec, tv0.tv_usec);
-
 			switch(codec) {
 			case PAYLOAD_PCMA:
 				if(verbosity > 1) syslog(LOG_ERR, "Converting PCMA to WAV.\n");
@@ -2394,20 +2399,17 @@ Calltable::find_by_call_id(char *call_id, unsigned long call_id_len) {
 */
 }
 
-#if 0
-/* find Call by ip addr and port (mathing RTP proto to call) and return reference to this Call */
 Call*
-Calltable::find_by_ip_port(in_addr_t addr, unsigned short port, int *iscaller) {
-	// Calls iterator (whole table) 
-	for (call = calls_list.begin(); call != calls_list.end(); ++call) {
-		if((*call)->find_by_ip_port(addr, port, iscaller))
-			// we have found it
-			return *call;
+Calltable::find_by_skinny_partyid(unsigned int partyid) {
+	skinny_partyIDIT = skinny_partyID.find(partyid);
+	if(skinny_partyIDIT == skinny_partyID.end()) {
+		// not found
+		return NULL;
+	} else {
+		return (*skinny_partyIDIT).second;
 	}
-	// IP:port is not in Call table
-	return NULL;
 }
-#endif
+
 
 /* iterate all calls in table which are 5 minutes inactive and save them into SQL 
  * ic currtime = 0, save it immediatly

@@ -26,6 +26,8 @@ void process_packet(unsigned int saddr, int source, unsigned int daddr, int dest
                     pcap_t *handle, pcap_pkthdr *header, const u_char *packet, int can_thread, int *was_rtp);
 void readdump_libnids(pcap_t *handle);
 void readdump_libpcap(pcap_t *handle);
+inline void save_packet(Call *call, struct pcap_pkthdr *header, const u_char *packet, unsigned int saddr, int source, unsigned int daddr, int dest, int istcp, char *data, int datalen, int type);
+
 
 typedef std::map<in_addr_t, in_addr_t> nat_aliases_t; //!< 
 

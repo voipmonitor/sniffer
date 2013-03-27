@@ -131,6 +131,7 @@ int opt_clientmanagerport = 9999;
 int opt_callslimit = 0;
 char opt_silencedmtfseq[16] = "";
 char opt_keycheck[1024] = "";
+int opt_skinny = 0;
 
 char configfile[1024] = "";	// config file name
 
@@ -153,7 +154,7 @@ char mysql_password[256] = "";
 int opt_mysql_port = 0; // 0 menas use standard port 
 int opt_skiprtpdata = 0;
 
-char opt_match_header[128] = "\0";
+char opt_match_header[128] = "";
 
 char odbc_dsn[256] = "voipmonitor";
 char odbc_user[256];
@@ -412,7 +413,7 @@ void *storing_cdr( void *dummy ) {
 	
 			if(!opt_nocdr) {
 				if(verbosity > 0) printf("storing to MySQL. Queue[%d]\n", (int)calltable->calls_queue.size());
-				if(call->type == INVITE) {
+				if(call->type == INVITE or call->type == SKINNY_NEW) {
 					call->saveToDb(1);
 				} else if(call->type == REGISTER){
 					call->saveRegisterToDb();
@@ -428,7 +429,7 @@ void *storing_cdr( void *dummy ) {
 #endif
 
 			call->closeRawFiles();
-			if( (opt_savewav_force || (call->flags & FLAG_SAVEWAV)) && call->type == INVITE) {
+			if( (opt_savewav_force || (call->flags & FLAG_SAVEWAV)) && (call->type == INVITE || call->type == SKINNY_NEW)) {
 				if(verbosity > 0) printf("converting RAW file to WAV Queue[%d]\n", (int)calltable->calls_queue.size());
 				call->convertRawToWav();
 			}
@@ -708,6 +709,9 @@ int load_config(char *fname) {
 	}
 	if((value = ini.GetValue("general", "nocdr", NULL))) {
 		opt_nocdr = yesno(value);
+	}
+	if((value = ini.GetValue("general", "skinny", NULL))) {
+		opt_skinny = yesno(value);
 	}
 	if((value = ini.GetValue("general", "savesip", NULL))) {
 		opt_saveSIP = yesno(value);
@@ -1032,7 +1036,7 @@ int main(int argc, char *argv[]) {
 
 	/* parse arguments */
 
-	char *fname = NULL;	// pcap file to read on 
+	char fname[1024] = "";	// pcap file to read on 
 	ifname[0] = '\0';
 	opt_mirrorip_src[0] = '\0';
 	opt_mirrorip_dst[0] = '\0';
@@ -1073,6 +1077,7 @@ int main(int argc, char *argv[]) {
 	    {"mysql-database", 1, 0, 'b'},
 	    {"mysql-username", 1, 0, 'u'},
 	    {"mysql-password", 1, 0, 'p'},
+	    {"mysql-table", 1, 0, 't'},
 	    {"pid-file", 1, 0, 'P'},
 	    {"rtp-timeout", 1, 0, 'm'},
 	    {"rtp-firstleg", 0, 0, '3'},
@@ -1093,6 +1098,18 @@ int main(int argc, char *argv[]) {
 	    {"ipaccount", 0, 0, 'x'},
 	    {"pcapscan-dir", 1, 0, '0'},
 	    {"keycheck", 1, 0, 'Z'},
+	    {"keycheck", 1, 0, 'Z'},
+	    {"pcapfilter", 1, 0, 'f'},
+	    {"interface", 1, 0, 'i'},
+	    {"read", 1, 0, 'r'},
+	    {"spooldir", 1, 0, 'd'},
+	    {"verbose", 1, 0, 'v'},
+	    {"nodaemon", 0, 0, 'k'},
+	    {"promisc", 0, 0, 'n'},
+	    {"pcapbuffered", 0, 0, 'U'},
+	    {"test", 0, 0, 'X'},
+	    {"allsipports", 0, 0, 'y'},
+	    {"skinny", 0, 0, 200},
 	    {0, 0, 0, 0}
 	};
 
@@ -1117,6 +1134,9 @@ int main(int argc, char *argv[]) {
 				printf ("option %s\n", long_options[option_index].name);
 				break;
 			*/
+			case 200:
+				opt_skinny = 1;
+				break;
 			case 'x':
 				opt_ipaccount = 1;
 				break;
@@ -1210,7 +1230,7 @@ int main(int argc, char *argv[]) {
 				verbosity = atoi(optarg);
 				break;
 			case 'r':
-				fname = optarg;
+				strcpy(fname, optarg);
 				//opt_cachedir[0] = '\0';
 				break;
 			case 'c':
@@ -1306,13 +1326,13 @@ int main(int argc, char *argv[]) {
 	if(opt_ipaccount) {
 		initIpacc();
 	}
-	if ((fname == NULL) && (ifname[0] == '\0') && opt_scanpcapdir[0] == '\0'){
+	if ((fname[0] == '\0') && (ifname[0] == '\0') && opt_scanpcapdir[0] == '\0'){
 		printf( "voipmonitor version %s\n"
 				"Usage: voipmonitor [--config-file /etc/voipmonitor.conf] [-kncUSRAWGM] [-i <interface>] [-f <pcap filter>]\n"
 				"       [-r <file>] [-d <pcap dump directory>] [-v level] [-h <mysql server>] [-O <mysql_port>] [-b <mysql database]\n"
 				"       [-u <mysql username>] [-p <mysql password>] [-f <pcap filter>] [--rtp-firstleg] [-y]\n"
 				"       [--ring-buffer <n>] [--vm-buffer <n>] [--manager-port <n>] [--norecord-header] [-s, --id-sensor <num>]\n"
-				"	[--rtp-threads <n>] [--rtpthread-buffer] <n>] [--dump-allpackets] \n"
+				"	[--rtp-threads <n>] [--rtpthread-buffer] <n>] [--dump-allpackets] [--skinny]\n"
 				"\n"
 				" -m, --rtp-timeout <n>\n"
 				"      rtptimeout is important value which specifies how much seconds from the last SIP packet or RTP packet is call closed\n"
@@ -1329,6 +1349,9 @@ int main(int argc, char *argv[]) {
 				"\n"
 				" -E, --rtpthread-buffer <n>\n"
 				"      size of rtp thread ring buffer in MB. Default is 20MB per thread\n"
+				"\n"
+				" --skinny\n"
+				"      analyze SKINNY VoIP protocol on TCP port 2000\n"
 				"\n"
 				" -S, --save-sip\n"
 				"      save SIP packets to pcap file. Default is disabled.\n"
@@ -1488,7 +1511,7 @@ int main(int argc, char *argv[]) {
 
 	// check if sniffer will be reading pcap files from dir and if not if it reads from eth interface or read only one file
 	if(opt_scanpcapdir[0] == '\0') {
-		if (fname == NULL && ifname[0] != '\0'){
+		if (fname[0] == '\0' && ifname[0] != '\0'){
 			bpf_u_int32 net;
 
 			printf("Capturing on interface: %s\n", ifname);
@@ -1551,7 +1574,7 @@ int main(int argc, char *argv[]) {
 			mask = PCAP_NETMASK_UNKNOWN;
 			handle = pcap_open_offline(fname, errbuf);
 			if(handle == NULL) {
-				fprintf(stderr, "Couldn't open pcap file '%s': %s\n", ifname, errbuf);
+				fprintf(stderr, "Couldn't open pcap file '%s': %s\n", fname, errbuf);
 				return(2);
 			}
 		}
