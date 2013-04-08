@@ -295,6 +295,10 @@ void ipacc_add_octets(time_t timestamp, unsigned int saddr, unsigned int daddr, 
 	octects_live_t *data;
 	for(it = ipacc_live.begin(); it != ipacc_live.end();) {
 		data = it->second;
+		if(!data) {
+			it++;
+			continue;
+		}
 		
 		if((time(NULL) - data->fetch_timestamp) > 120) {
 			if(verbosity > 0) {
