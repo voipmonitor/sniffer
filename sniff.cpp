@@ -1271,7 +1271,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 		pcapstatres = pcap_stats(handle, &ps);
 		if (pcapstatres == 0 && (lostpacket < ps.ps_drop || lostpacketif < ps.ps_ifdrop)) {
 			if(pcapstatresCount) {
-				syslog(LOG_ERR, "error: libpcap or interface dropped some packets! rx:%i pcapdrop:%i ifdrop:%i increase --ring-buffer (kernel >= 2.6.31 needed and libpcap >= 1.0.0) or use --pcap-thread\n", ps.ps_recv, ps.ps_drop, ps.ps_ifdrop);
+				syslog(LOG_ERR, "error: libpcap or interface dropped some packets! rx:%u pcapdrop:%u ifdrop:%u increase --ring-buffer (kernel >= 2.6.31 needed and libpcap >= 1.0.0) or use --pcap-thread\n", ps.ps_recv, ps.ps_drop, ps.ps_ifdrop);
 			} else {
 				// do not show first error, it is normal on startup. 
 				pcapstatresCount++;
