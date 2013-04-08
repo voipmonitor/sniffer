@@ -183,7 +183,9 @@ public:
 	CustIpCache();
 	~CustIpCache();
 	void setConnectParams(const char *sqlDriver, const char *odbcDsn, const char *odbcUser, const char *odbcPassword, const char *odbcDriver);
+	void setConnectParamsRadius(const char *radiusSqlDriver, const char *radiusHost, const char *radiusDb,const char *radiusUser, const char *radiusPassword);
 	void setQueryes(const char *getIp, const char *fetchAllIp);
+	void setQueryesRadius(const char *fetchAllRadiusNames, const char *fetchAllRadiusIp, const char *fetchAllRadiusIpWhere);
 	int connect();
 	bool okParams();
 	int getCustByIp(unsigned int ip);
@@ -197,6 +199,7 @@ public:
 	}
 private:
 	SqlDb *sqlDb;
+	SqlDb *sqlDbRadius;
 	map<unsigned int, cust_cache_item> custCacheMap;
 	vector<cust_cache_rec> custCacheVect;
 	string sqlDriver;
@@ -204,8 +207,16 @@ private:
 	string odbcUser;
 	string odbcPassword;
 	string odbcDriver;
+	string radiusSqlDriver;
+	string radiusHost;
+	string radiusDb;
+	string radiusUser;
+	string radiusPassword;
 	string query_getIp;
 	string query_fetchAllIp;
+	string query_fetchAllRadiusNames;
+	string query_fetchAllRadiusIp;
+	string query_fetchAllRadiusIpWhere;
 	unsigned int flushCounter;
 	bool doFlushVect;
 };

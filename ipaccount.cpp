@@ -60,6 +60,14 @@ extern char get_customer_by_ip_odbc_password[256];
 extern char get_customer_by_ip_odbc_driver[256];
 extern char get_customer_by_ip_query[1024];
 extern char get_customers_ip_query[1024];
+extern char get_customers_radius_name_query[1024];
+extern char get_radius_ip_driver[256];
+extern char get_radius_ip_host[256];
+extern char get_radius_ip_db[256];
+extern char get_radius_ip_user[256];
+extern char get_radius_ip_password[256];
+extern char get_radius_ip_query[1024];
+extern char get_radius_ip_query_where[1024];
 extern int get_customer_by_ip_flush_period;
 
 extern char mysql_host[256];
@@ -81,7 +89,7 @@ static t_ipacc_buffer ipacc_buffer[2];
 static volatile int sync_save_ipacc_buffer[2];
 
 static unsigned int last_flush_interval_time = 0;
-static CustIpCache *custIpCache = NULL;
+CustIpCache *custIpCache = NULL;
 static NextIpCache *nextIpCache = NULL;
 
 
@@ -642,6 +650,7 @@ void IpaccAgreg::save(unsigned int time_interval) {
 
 CustIpCache::CustIpCache() {
 	this->sqlDb = NULL;
+	this->sqlDbRadius = NULL;
 	this->flushCounter = 0;
 	this->doFlushVect = false;
 }
@@ -649,6 +658,9 @@ CustIpCache::CustIpCache() {
 CustIpCache::~CustIpCache() {
 	if(this->sqlDb) {
 		delete this->sqlDb;
+	}
+	if(this->sqlDbRadius) {
+		delete this->sqlDbRadius;
 	}
 }
 
@@ -660,9 +672,23 @@ void CustIpCache::setConnectParams(const char *sqlDriver, const char *odbcDsn, c
 	if(odbcDriver) 		this->odbcDriver = odbcDriver;
 }
 
+void CustIpCache::setConnectParamsRadius(const char *radiusSqlDriver, const char *radiusHost, const char *radiusDb,const char *radiusUser, const char *radiusPassword) {
+	if(radiusSqlDriver)	this->radiusSqlDriver = radiusSqlDriver;
+	if(radiusHost)		this->radiusHost = radiusHost;
+	if(radiusDb)		this->radiusDb = radiusDb;
+	if(radiusUser)		this->radiusUser = radiusUser;
+	if(radiusPassword)	this->radiusPassword = radiusPassword;
+}
+
 void CustIpCache::setQueryes(const char *getIp, const char *fetchAllIp) {
 	if(getIp)		this->query_getIp = getIp;
 	if(fetchAllIp)		this->query_fetchAllIp = fetchAllIp;
+}
+
+void CustIpCache::setQueryesRadius(const char *fetchAllRadiusNames, const char *fetchAllRadiusIp, const char *fetchAllRadiusIpWhere) {
+	if(fetchAllRadiusNames)		this->query_fetchAllRadiusNames = fetchAllRadiusNames;
+	if(fetchAllRadiusIp)		this->query_fetchAllRadiusIp = fetchAllRadiusIp;
+	if(fetchAllRadiusIpWhere)	this->query_fetchAllRadiusIpWhere = fetchAllRadiusIpWhere;
 }
 
 int CustIpCache::connect() {
@@ -676,7 +702,13 @@ int CustIpCache::connect() {
 		this->sqlDb = sqlDb_odbc;
 		this->sqlDb->setConnectParameters(this->odbcDsn, this->odbcUser, this->odbcPassword);
 	}
-	return(this->sqlDb->connect());
+	if(!this->sqlDbRadius && this->radiusHost.length()) {
+		SqlDb_mysql *sqlDb_mysql = new SqlDb_mysql();
+		this->sqlDb = sqlDb_mysql;
+		this->sqlDb->setConnectParameters(this->radiusHost, this->radiusDb, this->radiusUser, this->radiusPassword);
+	}
+	return(this->sqlDb->connect() && 
+	       (this->sqlDbRadius ? this->sqlDbRadius->connect() : true));
 }
 
 bool CustIpCache::okParams() {
@@ -763,6 +795,32 @@ int CustIpCache::fetchAllIpQueryFromDb() {
 			rec.ip = ips.s_addr;
 			rec.cust_id = atol(row["ID"].c_str());
 			this->custCacheVect.push_back(rec);
+		}
+		if(this->sqlDbRadius && this->sqlDb->query(this->query_fetchAllRadiusNames)) {
+			map<string, unsigned int> radiusUsers;
+			string condRadiusUsers;
+			SqlDb_row row;
+			while(row = this->sqlDb->fetchRow()) {
+				radiusUsers[row["radius_username"]] = atol(row["ID"].c_str());
+				if(condRadiusUsers.length()) {
+					condRadiusUsers += ",";
+				}
+				condRadiusUsers += string("'") + row["radius_username"] + "'";
+			}
+			if(radiusUsers.size() &&
+			   this->sqlDbRadius->query(
+					this->query_fetchAllRadiusIp + " " +
+					this->query_fetchAllRadiusIpWhere + "(" + condRadiusUsers + ")")) {
+				SqlDb_row row;
+				while(row = this->sqlDbRadius->fetchRow()) {
+					cust_cache_rec rec;
+					in_addr ips;
+					inet_aton(row["IP"].c_str(), &ips);
+					rec.ip = ips.s_addr;
+					rec.cust_id = radiusUsers[row["radius_username"]];
+					this->custCacheVect.push_back(rec);
+				}
+			}
 		}
 		if(this->custCacheVect.size()) {
 			std::sort(this->custCacheVect.begin(), this->custCacheVect.end());
@@ -914,9 +972,19 @@ void initIpacc() {
 			get_customer_by_ip_odbc_user, 
 			get_customer_by_ip_odbc_password, 
 			get_customer_by_ip_odbc_driver);
+		custIpCache->setConnectParamsRadius(
+			get_radius_ip_driver,
+			get_radius_ip_host,
+			get_radius_ip_db,
+			get_radius_ip_user,
+			get_radius_ip_password);
 		custIpCache->setQueryes(
 			get_customer_by_ip_query, 
 			get_customers_ip_query);
+		custIpCache->setQueryesRadius(
+			get_customers_radius_name_query, 
+			get_radius_ip_query,
+			get_radius_ip_query_where);
 		custIpCache->connect();
 		if(get_customers_ip_query[0]) {
 			custIpCache->fetchAllIpQueryFromDb();

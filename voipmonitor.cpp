@@ -168,7 +168,15 @@ char get_customer_by_ip_odbc_password[256];
 char get_customer_by_ip_odbc_driver[256];
 char get_customer_by_ip_query[1024];
 char get_customers_ip_query[1024];
-int get_customer_by_ip_flush_period = 4;
+char get_customers_radius_name_query[1024];
+char get_radius_ip_driver[256];
+char get_radius_ip_host[256];
+char get_radius_ip_db[256];
+char get_radius_ip_user[256];
+char get_radius_ip_password[256];
+char get_radius_ip_query[1024];
+char get_radius_ip_query_where[1024];
+int get_customer_by_ip_flush_period = 2;
 
 char opt_pidfile[4098] = "/var/run/voipmonitor.pid";
 
@@ -898,6 +906,30 @@ int load_config(char *fname) {
 	}
 	if((value = ini.GetValue("general", "get_customers_ip_query", NULL))) {
 		strncpy(get_customers_ip_query, value, sizeof(get_customers_ip_query));
+	}
+	if((value = ini.GetValue("general", "get_customers_radius_name_query", NULL))) {
+		strncpy(get_customers_radius_name_query, value, sizeof(get_customers_radius_name_query));
+	}
+	if((value = ini.GetValue("general", "get_radius_ip_driver", NULL))) {
+		strncpy(get_radius_ip_driver, value, sizeof(get_radius_ip_driver));
+	}
+	if((value = ini.GetValue("general", "get_radius_ip_host", NULL))) {
+		strncpy(get_radius_ip_host, value, sizeof(get_radius_ip_host));
+	}
+	if((value = ini.GetValue("general", "get_radius_ip_db", NULL))) {
+		strncpy(get_radius_ip_db, value, sizeof(get_radius_ip_db));
+	}
+	if((value = ini.GetValue("general", "get_radius_ip_user", NULL))) {
+		strncpy(get_radius_ip_user, value, sizeof(get_radius_ip_user));
+	}
+	if((value = ini.GetValue("general", "get_radius_ip_password", NULL))) {
+		strncpy(get_radius_ip_password, value, sizeof(get_radius_ip_password));
+	}
+	if((value = ini.GetValue("general", "get_radius_ip_query", NULL))) {
+		strncpy(get_radius_ip_query, value, sizeof(get_radius_ip_query));
+	}
+	if((value = ini.GetValue("general", "get_radius_ip_query_where", NULL))) {
+		strncpy(get_radius_ip_query_where, value, sizeof(get_radius_ip_query_where));
 	}
 	if((value = ini.GetValue("general", "get_customer_by_ip_flush_period", NULL))) {
 		get_customer_by_ip_flush_period = atoi(value);
@@ -1893,6 +1925,10 @@ int main(int argc, char *argv[]) {
 
 void test() {
 	
+	extern CustIpCache *custIpCache;
+	custIpCache->fetchAllIpQueryFromDb();
+	
+	/*
 	for(int i = 1; i <= 10; i++) {
 	sqlStore->lock(i);
 	sqlStore->query("insert into _test set test = 1", i);
@@ -1903,6 +1939,7 @@ void test() {
 	}
 	terminating = true;
 	//sleep(2);
+	*/
 	
 	/*
 	octects_live_t a;
