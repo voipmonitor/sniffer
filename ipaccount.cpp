@@ -708,8 +708,8 @@ int CustIpCache::connect() {
 	}
 	if(!this->sqlDbRadius && this->radiusHost.length()) {
 		SqlDb_mysql *sqlDb_mysql = new SqlDb_mysql();
-		this->sqlDb = sqlDb_mysql;
-		this->sqlDb->setConnectParameters(this->radiusHost, this->radiusDb, this->radiusUser, this->radiusPassword);
+		this->sqlDbRadius = sqlDb_mysql;
+		this->sqlDbRadius->setConnectParameters(this->radiusHost, this->radiusUser, this->radiusPassword, this->radiusDb);
 	}
 	return(this->sqlDb->connect() && 
 	       (this->sqlDbRadius ? this->sqlDbRadius->connect() : true));
