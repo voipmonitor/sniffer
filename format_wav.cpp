@@ -119,7 +119,7 @@ int wav_mix(char *in1, char *in2, char *out, int samplerate) {
 	char *f2;
 	short int zero = 0;
 	long file_size1;
-	long file_size2;
+	long file_size2 = 0;
 
 	/* combine two wavs */
 	f_in1 = fopen(in1, "r");

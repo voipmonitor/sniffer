@@ -1339,6 +1339,10 @@ Call *new_skinny_channel(int state, char *data, int datalen, struct pcap_pkthdr 
 void *handle_skinny(pcap_pkthdr *header, const u_char *packet, unsigned int saddr, int source, unsigned int daddr, int dest, char *data, int datalen)
 {
 
+	if(data == 0 or datalen == 0) {
+		return NULL;
+	}
+
 	int res = 0;
 	struct skinny_req req;
 	memcpy(&req, data, datalen);

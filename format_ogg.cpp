@@ -244,7 +244,7 @@ int ogg_mix(char *in1, char *in2, char *out) {
 	char *p2;
 	char *f2;
 	long file_size1;
-	long file_size2;
+	long file_size2 = 0;
 
 	/* combine two wavs */
 	f_in1 = fopen(in1, "r");

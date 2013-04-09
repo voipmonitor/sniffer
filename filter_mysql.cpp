@@ -261,10 +261,6 @@ TELNUMfilter::add_call_flags(unsigned int *flags, char *telnum_src, char *telnum
         t_node_tel *tmp = first_node;
         t_payload *lastpayload = NULL;
         for(unsigned int i = 0; i < strlen(telnum_src); i++) {
-		if(telnum_src[i] > 256) {
-			//check if it is in 0-256 ascii
-			break;
-		}
                 if(!tmp->nodes[(int)telnum_src[i]]) {
                         break;
                 }
@@ -281,10 +277,6 @@ TELNUMfilter::add_call_flags(unsigned int *flags, char *telnum_src, char *telnum
 	if(!lastpayload) {
 		//src not found or src found , try dst
 		for(unsigned int i = 0; i < strlen(telnum_dst); i++) {
-			if(telnum_dst[i] > 256) {
-				//check if it is in 0-256 ascii
-				break;
-			}
 			if(!tmp->nodes[(int)telnum_dst[i]]) {
 				break;
 			}

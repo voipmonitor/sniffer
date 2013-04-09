@@ -243,8 +243,8 @@ string SqlDb::_escape(const char *inputString) {
 					{ '\a', "" }, 		// alert (bell)
 					{ '\e', "" }, 		// escape
 				};
-	escChar *escChars;
-	int countEscChars;
+	escChar *escChars = NULL;
+	int countEscChars = 0;
 	if(this->getTypeDb() == "mysql") {
 		escChars = escCharsMysql;
 		countEscChars = sizeof(escCharsMysql)/sizeof(escChar);
@@ -667,7 +667,7 @@ bool SqlDb_odbc::query(string query) {
 	if(verbosity > 1) { 
 		cout << query << endl;
 	}
-	SQLRETURN rslt;
+	SQLRETURN rslt = SQL_NULL_DATA;
 	if(this->hStatement) {
 		SQLFreeHandle(SQL_HANDLE_STMT, this->hStatement);
 		this->hStatement = NULL;
