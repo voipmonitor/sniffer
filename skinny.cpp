@@ -1345,7 +1345,7 @@ void *handle_skinny(pcap_pkthdr *header, const u_char *packet, unsigned int sadd
 
 	int res = 0;
 	struct skinny_req req;
-	memcpy(&req, data, datalen);
+	memcpy(&req, data, MIN(sizeof(skinny_req), datalen));
 	size_t len = MIN(letohl(*data) - 4, datalen - skinny_header_size);
 	Call *call;
 
