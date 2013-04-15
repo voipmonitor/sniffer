@@ -175,6 +175,7 @@ Call::Call(char *call_id, unsigned long call_id_len, time_t time, void *ct) {
 	sipcallerip4 = 0;
 	fname2 = 0;
 	skinny_partyid = 0;
+	relationcall = NULL;
 }
 
 void
@@ -216,6 +217,12 @@ Call::addtocachequeue(string file) {
 
 /* destructor */
 Call::~Call(){
+
+	if(relationcall) {
+		// break relation 
+		relationcall->relationcall = NULL;
+		relationcall = NULL;
+	}
 
 	if(skinny_partyid) {
 		((Calltable *)calltable)->skinny_partyID.erase(skinny_partyid);
@@ -2236,7 +2243,7 @@ Calltable::mapAdd(in_addr_t addr, unsigned short port, Call* call, int iscaller,
 
 /* add node to hash. collisions are linked list of nodes*/
 void
-Calltable::hashAdd(in_addr_t addr, unsigned short port, Call* call, int iscaller, int is_rtcp) {
+Calltable::hashAdd(in_addr_t addr, unsigned short port, Call* call, int iscaller, int is_rtcp, int allowrelation) {
 	u_int32_t h;
 	hash_node *node = NULL;
 
@@ -2247,6 +2254,11 @@ Calltable::hashAdd(in_addr_t addr, unsigned short port, Call* call, int iscaller
 		if ((node->addr == addr) && (node->port == port)) {
 			// there is already some call which is receiving packets to the same IP:port
 			// this can happen if the old call is waiting for hangup and is still in memory
+			// replace the node but also store the last call to new call and vice versa 
+			if(allowrelation) {
+				node->call->relationcall = call;
+				call->relationcall = node->call;
+			}
 			if(call != node->call) {
 				// just replace this IP:port to new call
 				node->addr = addr;
@@ -2460,6 +2472,11 @@ Calltable::cleanup( time_t currtime ) {
 		if(verbosity > 2) call->dump();
 		// rtptimeout seconds of inactivity will save this call and remove from call table
 		if(call->rtppcaketsinqueue == 0 and (currtime == 0 || (call->destroy_call_at != 0 and call->destroy_call_at <= currtime) || (currtime - call->get_last_packet_time() > rtptimeout))) {
+			if(call->relationcall) {
+				// break relation 
+				call->relationcall->relationcall = NULL;
+				call->relationcall = NULL;
+			}
 			call->hashRemove();
 			if (call->get_fsip_pcap() != NULL){
 				pcap_dump_flush(call->get_fsip_pcap());

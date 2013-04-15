@@ -1257,6 +1257,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 	static unsigned int lostpacket = 0;
 	static unsigned int lostpacketif = 0;
 	unsigned int tmp_u32 = 0;
+	int repeat = 0;
 
 	*was_rtp = 0;
 
@@ -2231,7 +2232,8 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 	// TODO: remove if hash will be stable
 	//if ((call = calltable->find_by_ip_port(daddr, dest, &iscaller)))
 		// packet (RTP) by destination:port is already part of some stored call 
-
+		repeat = 0;
+repeatrtpA:
 		*voippacket = 1;
 
 		// we have packet, extend pending destroy requests
@@ -2274,12 +2276,20 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 			}
 
 		}
+
+		if(call->relationcall and repeat == 0) {	
+			repeat = 1;
+			call = call->relationcall;
+			goto repeatrtpA;
+		}
 	} else if ((call = calltable->hashfind_by_ip_port(saddr, source, &iscaller, &is_rtcp))){
 	//} else if ((call = calltable->mapfind_by_ip_port(saddr, source, &iscaller, &is_rtcp))){
 	// TODO: remove if hash will be stable
 	// else if ((call = calltable->find_by_ip_port(saddr, source, &iscaller)))
 		// packet (RTP[C]) by source:port is already part of some stored call 
 
+		repeat = 0;
+repeatrtpB:
 		*voippacket = 1;
 
 		// we have packet, extend pending destroy requests
@@ -2322,6 +2332,12 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 			} else {
 				save_packet(call, header, packet, saddr, source, daddr, dest, istcp, data, datalen, TYPE_RTP);
 			}
+		}
+
+		if(call->relationcall and repeat == 0) {	
+			repeat = 1;
+			call = call->relationcall;
+			goto repeatrtpB;
 		}
 	// packet does not belongs to established call, check if it is on SIP port
 	} else {

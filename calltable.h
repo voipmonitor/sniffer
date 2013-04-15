@@ -105,6 +105,7 @@ public:
 	unsigned long long flags1;	//!< bit flags used to store max 64 flags 
 	volatile unsigned int rtppcaketsinqueue;
 	unsigned int unrepliedinvite;
+	Call *relationcall;
 
 	time_t progress_time;		//!< time in seconds of 18X response
 	time_t first_rtp_time;		//!< time in seconds of first RTP packet
@@ -512,7 +513,7 @@ public:
 	 * @brief add call to hash table
 	 *
 	*/
-	void hashAdd(in_addr_t addr, unsigned short port, Call* call, int iscaller, int isrtcp);
+	void hashAdd(in_addr_t addr, unsigned short port, Call* call, int iscaller, int isrtcp, int allowrelation = 0);
 
 
 	/**
