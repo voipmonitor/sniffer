@@ -47,12 +47,12 @@ IPfilter::load() {
 		memset(filterRow,0,sizeof(db_row));
 		filterRow->ip = (unsigned int)atoi(row["ip"].c_str());
 		filterRow->mask = atoi(row["mask"].c_str());
-		filterRow->direction = atoi(row["direction"].c_str());
-		filterRow->rtp = atoi(row["rtp"].c_str());
-		filterRow->sip = atoi(row["sip"].c_str());
-		filterRow->reg = atoi(row["register"].c_str());
-		filterRow->graph = atoi(row["graph"].c_str());
-		filterRow->wav = atoi(row["wav"].c_str());
+		filterRow->direction = row.isNull("direction") || atoi(row["direction"].c_str());
+		filterRow->rtp = row.isNull("rtp") || atoi(row["rtp"].c_str());
+		filterRow->sip = row.isNull("sip") || atoi(row["sip"].c_str());
+		filterRow->reg = row.isNull("register") || atoi(row["register"].c_str());
+		filterRow->graph = row.isNull("graph") || atoi(row["graph"].c_str());
+		filterRow->wav = row.isNull("wav") || atoi(row["wav"].c_str());
 		vectDbRow.push_back(*filterRow);
 		delete filterRow;
 	}
@@ -219,12 +219,12 @@ TELNUMfilter::load() {
 		db_row* filterRow = new(db_row);
 		memset(filterRow,0,sizeof(db_row));
 		strncpy(filterRow->prefix, row["prefix"].c_str(), MAX_PREFIX);
-		filterRow->direction = atoi(row["direction"].c_str());
-		filterRow->rtp = atoi(row["rtp"].c_str());
-		filterRow->sip = atoi(row["sip"].c_str());
-		filterRow->reg = atoi(row["register"].c_str());
-		filterRow->graph = atoi(row["graph"].c_str());
-		filterRow->wav = atoi(row["wav"].c_str());
+		filterRow->direction = row.isNull("direction") || atoi(row["direction"].c_str());
+		filterRow->rtp = row.isNull("rtp") || atoi(row["rtp"].c_str());
+		filterRow->sip = row.isNull("sip") || atoi(row["sip"].c_str());
+		filterRow->reg = row.isNull("register") || atoi(row["register"].c_str());
+		filterRow->graph = row.isNull("graph") || atoi(row["graph"].c_str());
+		filterRow->wav = row.isNull("wav") || atoi(row["wav"].c_str());
 		vectDbRow.push_back(*filterRow);
 		delete filterRow;
 	}
