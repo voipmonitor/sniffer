@@ -142,6 +142,7 @@ enum skinny_codecs {
 #define DEFAULT_AUTH_TIMEOUT 30
 #define DEFAULT_AUTH_LIMIT 50
 
+/*
 static struct {
 	unsigned int tos;
 	unsigned int tos_audio;
@@ -150,10 +151,7 @@ static struct {
 	unsigned int cos_audio;
 	unsigned int cos_video;
 } qos = { 0, 0, 0, 0, 0, 0 };
-
-static int keep_alive = 120;
-static char date_format[6] = "D-M-Y";
-static char version_id[16] = "P002F202";
+*/
 
 #if __BYTE_ORDER == __LITTLE_ENDIAN
 #define letohl(x) (x)
@@ -650,6 +648,7 @@ struct soft_key_template_definition {
 #define SOFTKEY_DND 0x13
 #define SOFTKEY_IDIVERT 0x14
 
+/*
 static struct soft_key_template_definition soft_key_template_default[] = {
 	{ "\200\001", SOFTKEY_REDIAL },
 	{ "\200\002", SOFTKEY_NEWCALL },
@@ -672,6 +671,7 @@ static struct soft_key_template_definition soft_key_template_default[] = {
 	{ "\200\077", SOFTKEY_DND },
 	{ "\200\120", SOFTKEY_IDIVERT },
 };
+*/
 
 /* Localized message "codes" (in octal)
    Below is en_US (taken from a 7970)
@@ -1051,16 +1051,6 @@ static int skinny_header_size = 12;
  * Asterisk specific globals *
  *****************************/
 
-static int skinnyreload = 0;
-
-/* a hostname, portnumber, socket and such is usefull for VoIP protocols */
-static struct sockaddr_in bindaddr;
-static char ourhost[256];
-static int ourport;
-static struct in_addr __ourip;
-static int skinnysock = -1;
-static int callnums = 1;
-
 #define SKINNY_DEVICE_UNKNOWN -1
 #define SKINNY_DEVICE_NONE 0
 #define SKINNY_DEVICE_30SPPLUS 1
@@ -1171,13 +1161,13 @@ static const char * const skinny_cxmodes[] = {
 #endif
 
 /* Wait up to 16 seconds for first digit */
-static int firstdigittimeout = 16000;
+//static int firstdigittimeout = 16000;
 
 /* How long to wait for following digits */
-static int gendigittimeout = 8000;
+//static int gendigittimeout = 8000;
 
 /* How long to wait for an extra digit, if there is an ambiguous match */
-static int matchdigittimeout = 3000;
+//static int matchdigittimeout = 3000;
 
 #define SUBSTATE_UNSET 0
 #define SUBSTATE_OFFHOOK 1
@@ -1339,14 +1329,13 @@ Call *new_skinny_channel(int state, char *data, int datalen, struct pcap_pkthdr 
 void *handle_skinny(pcap_pkthdr *header, const u_char *packet, unsigned int saddr, int source, unsigned int daddr, int dest, char *data, int datalen)
 {
 
-	if(data == 0 or datalen == 0) {
+	if(data == 0 or datalen == 0 or datalen <= skinny_header_size) {
 		return NULL;
 	}
 
-	int res = 0;
 	struct skinny_req req;
-	memcpy(&req, data, MIN(sizeof(skinny_req), datalen));
-	size_t len = MIN(letohl(*data) - 4, datalen - skinny_header_size);
+	memcpy(&req, data, MIN(sizeof(skinny_req), (unsigned int)datalen));
+//	size_t len = MIN(letohl(*data) - 4, datalen - skinny_header_size);
 	Call *call;
 
 //	struct skinny_speeddial *sd;
@@ -1567,8 +1556,8 @@ void *handle_skinny(pcap_pkthdr *header, const u_char *packet, unsigned int sadd
 		if((call = calltable->find_by_call_id(callid, strlen(callid)))){
 			int rtpmap[MAX_RTPMAP];
 			memset(&rtpmap, 0, sizeof(int) * MAX_RTPMAP);
-			if(call->add_ip_port(ipaddr, port, NULL, 0, call->sipcallerip == ipaddr, rtpmap) != -1){
-				calltable->hashAdd(ipaddr, port, call, call->sipcallerip != ipaddr, 0);
+			if(call->add_ip_port(ipaddr, port, NULL, 0, call->sipcallerip == saddr, rtpmap) != -1){
+				calltable->hashAdd(ipaddr, port, call, call->sipcallerip == saddr, 0);
 			}
 			save_packet(call, header, packet, saddr, source, daddr, dest, 1, data, datalen, TYPE_SKINNY);
 		}
@@ -1760,8 +1749,8 @@ void *handle_skinny(pcap_pkthdr *header, const u_char *packet, unsigned int sadd
 		if((call = calltable->find_by_skinny_partyid(pid))){
 			int rtpmap[MAX_RTPMAP];
 			memset(&rtpmap, 0, sizeof(int) * MAX_RTPMAP);
-			if(call->add_ip_port(ipaddr, port, NULL, 0, call->sipcallerip == ipaddr, rtpmap) != -1){
-				calltable->hashAdd(ipaddr, port, call, call->sipcallerip != ipaddr, 0);
+			if(call->add_ip_port(ipaddr, port, NULL, 0, call->sipcallerip == saddr, rtpmap) != -1){
+				calltable->hashAdd(ipaddr, port, call, call->sipcallerip == saddr, 0);
 			}
 			save_packet(call, header, packet, saddr, source, daddr, dest, 1, data, datalen, TYPE_SKINNY);
 		}
@@ -1797,6 +1786,7 @@ void *handle_skinny(pcap_pkthdr *header, const u_char *packet, unsigned int sadd
 		SKINNY_DEBUG(DEBUG_PACKET, 3, "Received UNKNOWN_MESSAGE(%x) from %s\n", letohl(req.e), "d->name");
 		break;
 	}
+	return NULL;
 //	return res;
 }
 

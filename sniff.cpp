@@ -2150,7 +2150,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 						}
 					}
 
-					printf("ADDR: %u port %u\n", tmp_addr, tmp_port);
+					//syslog(LOG_ERR, "ADDR: %u port %u iscalled[%d]\n", tmp_addr, tmp_port, iscalled);
 					if(call->add_ip_port(tmp_addr, tmp_port, s, l, !iscalled, rtpmap) != -1){
 						calltable->hashAdd(tmp_addr, tmp_port, call, !iscalled, 0);
 						//calltable->mapAdd(tmp_addr, tmp_port, call, !iscalled, 0);
