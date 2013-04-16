@@ -493,11 +493,14 @@ static void jb_get_and_deliver(struct ast_channel *chan, struct timeval *mynow)
 			if(debug) fprintf(stdout, "\tJB_GET {now=%ld}: %s frame with ts=%ld and len=%ld and seq=%d\n", now, jb_get_actions[res], f->ts, f->len, f->seqno);
 			/* if frame is marked do not put previous interpolated frames to statistics 
 			 * also if there is no seqno gaps between frames and time differs 
+			 * and also if there was dtmf last time
 			 * */
 			if( !(((f->seqno - chan->last_seqno) == 1) && (abs(f->ts - chan->last_ms) > (chan->packetization)))
-				&& !f->marker && chan->last_loss_burst > 0 && chan->last_loss_burst < 1024) {
+				&& !f->marker && chan->last_loss_burst > 0 && chan->last_loss_burst < 1024
+				&& f->lastframetype == AST_FRAME_VOICE // if the lastframetype was no frame voice(for example dtmf), do not count packet loss 
+				) {
 				
-				if(debug) fprintf(stdout, "\tSAVING chan->loss[%d]\n", chan->last_loss_burst);
+				if(debug) fprintf(stdout, "\tSAVING chan->loss[%d] packetization[%d]\n", chan->last_loss_burst, chan->packetization);
 				chan->loss[chan->last_loss_burst]++;
 			}
 			chan->last_loss_burst = 0;

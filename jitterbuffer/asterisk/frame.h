@@ -134,6 +134,7 @@ enum {
 struct ast_frame {
 	/*! Kind of frame */
 	enum ast_frame_type frametype;				
+	enum ast_frame_type lastframetype;				
 	/*! Subclass, frame dependent */
 	int subclass;				
 	/*! Length of data */

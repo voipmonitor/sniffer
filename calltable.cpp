@@ -562,15 +562,23 @@ double calculate_mos_g711(double ppl, double burstr, int version) {
 }
 
 
-double calculate_mos(double ppl, double burstr, int codec) {
-
+double calculate_mos(double ppl, double burstr, int codec, unsigned int received) {
 	if(codec == PAYLOAD_G729) {
 		if(opt_mos_g729) {
+			if(received < 100) {
+				return 3.92;
+			}
 			return (double)mos_g729((long double)ppl, (long double)burstr);
 		} else {
+			if(received < 100) {
+				return 4.5;
+			}
 			return calculate_mos_g711(ppl, burstr, 2);
 		}
 	} else {
+		if(received < 100) {
+			return 4.5;
+		}
 		return calculate_mos_g711(ppl, burstr, 2);
 	}
 }
@@ -1246,7 +1254,7 @@ Call::getKeyValCDRtext() {
 			burstr_calculate(rtp[indexes[i]]->channel_fix1, rtp[indexes[i]]->stats.received, &burstr, &lossr);
 			//cdr.add(lossr, c+"_lossr_f1");
 			//cdr.add(burstr, c+"_burstr_f1");
-			int mos_f1_mult10 = (int)round(calculate_mos(lossr, burstr, rtp[indexes[i]]->codec) * 10);
+			int mos_f1_mult10 = (int)round(calculate_mos(lossr, burstr, rtp[indexes[i]]->codec, rtp[indexes[i]]->stats.received) * 10);
 			cdr.add(mos_f1_mult10, c+"_mos_f1_mult10");
 			if(mos_f1_mult10) {
 				mos_min_mult10[i] = mos_f1_mult10;
@@ -1256,7 +1264,7 @@ Call::getKeyValCDRtext() {
 			burstr_calculate(rtp[indexes[i]]->channel_fix2, rtp[indexes[i]]->stats.received, &burstr, &lossr);
 			//cdr.add(lossr, c+"_lossr_f2");
 			//cdr.add(burstr, c+"_burstr_f2");
-			int mos_f2_mult10 = (int)round(calculate_mos(lossr, burstr, rtp[indexes[i]]->codec) * 10);
+			int mos_f2_mult10 = (int)round(calculate_mos(lossr, burstr, rtp[indexes[i]]->codec, rtp[indexes[i]]->stats.received) * 10);
 			cdr.add(mos_f2_mult10, c+"_mos_f2_mult10");
 			if(mos_f2_mult10 && (mos_min_mult10[i] < 0 || mos_f2_mult10 < mos_min_mult10[i])) {
 				mos_min_mult10[i] = mos_f2_mult10;
@@ -1265,7 +1273,7 @@ Call::getKeyValCDRtext() {
 			burstr_calculate(rtp[indexes[i]]->channel_adapt, rtp[indexes[i]]->stats.received, &burstr, &lossr);
 			//cdr.add(lossr, c+"_lossr_adapt");
 			//cdr.add(burstr, c+"_burstr_adapt");
-			int mos_adapt_mult10 = (int)round(calculate_mos(lossr, burstr, rtp[indexes[i]]->codec) * 10);
+			int mos_adapt_mult10 = (int)round(calculate_mos(lossr, burstr, rtp[indexes[i]]->codec, rtp[indexes[i]]->stats.received) * 10);
 			cdr.add(mos_adapt_mult10, c+"_mos_adapt_mult10");
 			if(mos_adapt_mult10 && (mos_min_mult10[i] < 0 || mos_adapt_mult10 < mos_min_mult10[i])) {
 				mos_min_mult10[i] = mos_adapt_mult10;
@@ -1543,7 +1551,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			burstr_calculate(rtp[indexes[i]]->channel_fix1, rtp[indexes[i]]->stats.received, &burstr, &lossr);
 			//cdr.add(lossr, c+"_lossr_f1");
 			//cdr.add(burstr, c+"_burstr_f1");
-			int mos_f1_mult10 = (int)round(calculate_mos(lossr, burstr, rtp[indexes[i]]->codec) * 10);
+			int mos_f1_mult10 = (int)round(calculate_mos(lossr, burstr, rtp[indexes[i]]->codec, rtp[indexes[i]]->stats.received) * 10);
 			cdr.add(mos_f1_mult10, c+"_mos_f1_mult10");
 			if(mos_f1_mult10) {
 				mos_min_mult10[i] = mos_f1_mult10;
@@ -1553,7 +1561,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			burstr_calculate(rtp[indexes[i]]->channel_fix2, rtp[indexes[i]]->stats.received, &burstr, &lossr);
 			//cdr.add(lossr, c+"_lossr_f2");
 			//cdr.add(burstr, c+"_burstr_f2");
-			int mos_f2_mult10 = (int)round(calculate_mos(lossr, burstr, rtp[indexes[i]]->codec) * 10);
+			int mos_f2_mult10 = (int)round(calculate_mos(lossr, burstr, rtp[indexes[i]]->codec, rtp[indexes[i]]->stats.received) * 10);
 			cdr.add(mos_f2_mult10, c+"_mos_f2_mult10");
 			if(mos_f2_mult10 && (mos_min_mult10[i] < 0 || mos_f2_mult10 < mos_min_mult10[i])) {
 				mos_min_mult10[i] = mos_f2_mult10;
@@ -1562,7 +1570,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			burstr_calculate(rtp[indexes[i]]->channel_adapt, rtp[indexes[i]]->stats.received, &burstr, &lossr);
 			//cdr.add(lossr, c+"_lossr_adapt");
 			//cdr.add(burstr, c+"_burstr_adapt");
-			int mos_adapt_mult10 = (int)round(calculate_mos(lossr, burstr, rtp[indexes[i]]->codec) * 10);
+			int mos_adapt_mult10 = (int)round(calculate_mos(lossr, burstr, rtp[indexes[i]]->codec, rtp[indexes[i]]->stats.received) * 10);
 			cdr.add(mos_adapt_mult10, c+"_mos_adapt_mult10");
 			if(mos_adapt_mult10 && (mos_min_mult10[i] < 0 || mos_adapt_mult10 < mos_min_mult10[i])) {
 				mos_min_mult10[i] = mos_adapt_mult10;
