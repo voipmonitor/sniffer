@@ -215,6 +215,18 @@ Call::addtocachequeue(string file) {
 	ct->unlock_files_queue();
 }
 
+void
+Call::removeRTP() {
+	closeRawFiles();
+	for(int i = 0; i < MAX_SSRC_PER_CALL; i++) {
+	// lets check whole array as there can be holes due rtp[0] <=> rtp[1] swaps in mysql rutine
+		if(rtp[i]) {
+			delete rtp[i];
+		}
+        }
+	ssrc_n = 0;
+}
+
 /* destructor */
 Call::~Call(){
 

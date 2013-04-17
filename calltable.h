@@ -159,6 +159,7 @@ public:
 	void *listening_worker_args;
 	
 	int ssrc_n;				//!< last index of rtp array
+	int ipport_n;				//!< last index of addr and port array 
 
 	string geoposition;
 
@@ -353,6 +354,12 @@ public:
 	void hashRemove();
 
 	/**
+	 * @brief remove all RTP 
+	 *
+	*/
+	void removeRTP();
+
+	/**
 	 * @brief remove call from map table
 	 *
 	*/
@@ -389,7 +396,6 @@ private:
 	in_addr_t addr[MAX_IP_PER_CALL];	//!< IP address from SDP (indexed together with port)
 	unsigned short port[MAX_IP_PER_CALL];	//!< port number from SDP (indexed together with IP)
 	bool iscaller[MAX_IP_PER_CALL];         //!< is that RTP stream from CALLER party? 
-	int ipport_n;				//!< last index of addr and port array 
 	pcap_dumper_t *f_pcap;
 	pcap_dumper_t *fsip_pcap;
 	pcap_dumper_t *frtp_pcap;

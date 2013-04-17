@@ -1972,6 +1972,12 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 					save_packet(call, header, packet, saddr, source, daddr, dest, istcp, data, datalen, TYPE_SIP);
 					call->destroy_call_at = header->ts.tv_sec + 5;
 
+					if(sip_method == RES3XX) {
+						// remove all RTP  
+						call->hashRemove();
+						call->removeRTP();
+						call->ipport_n = 0;
+					}
 					return call;
 			}
 		}
