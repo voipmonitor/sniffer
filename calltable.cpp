@@ -2275,7 +2275,8 @@ Calltable::hashAdd(in_addr_t addr, unsigned short port, Call* call, int iscaller
 			// there is already some call which is receiving packets to the same IP:port
 			// this can happen if the old call is waiting for hangup and is still in memory
 			// replace the node but also store the last call to new call and vice versa 
-			if(allowrelation) {
+			if(allowrelation && call != node->call) {
+				syslog(LOG_NOTICE, "allowrelation %p %p\n", call, node->call);
 				node->call->relationcall = call;
 				call->relationcall = node->call;
 			}
