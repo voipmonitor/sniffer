@@ -1995,58 +1995,18 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 			if(l && l < 33) {
 				char *tmp = s + 1;
 				tmp[l - 1] = '\0';
-				if(call->dtmfflag == 0) {
-					if(tmp[0] == '*') {
-						// received ftmf '*', set flag so if next dtmf will be '0' stop recording
-						call->dtmfflag = 1;
-					}
-				} else {
-					if(tmp[0] == '0') {
-						// we have complete *0 sequence
-						call->stoprecording();
-						call->dtmfflag = 0;
-					} else {
-						// reset flag because we did not received '0' after '*'
-						call->dtmfflag = 0;
-					}
-				}
+				call->handle_dtmf(*tmp);
 			}
 		}
 		if(sip_method == INFO and opt_silencedmtfseq[0] != '\0') {
 			s = gettag(data, datalen, "Signal=", &l);
-			
 			if(l && l < 33) {
 				char *tmp = s;
 				tmp[l] = '\0';
 				if(verbosity >= 2)
 					syslog(LOG_NOTICE, "[%s] DTMF SIP INFO [%c]", call->fbasename, tmp[0]);
-				if(call->dtmfflag2 == 0) {
-					if(tmp[0] == opt_silencedmtfseq[call->dtmfflag2]) {
-						// received ftmf '*', set flag so if next dtmf will be '0' stop recording
-						call->dtmfflag2++;
-					}
-				} else {
-					if(tmp[0] == opt_silencedmtfseq[call->dtmfflag2]) {
-						// we have complete *0 sequence
-						if(call->dtmfflag2 + 1 == strlen(opt_silencedmtfseq)) {
-							if(call->silencerecording == 0) {
-								if(verbosity >= 1)
-									syslog(LOG_NOTICE, "[%s] pause DTMF sequence detected - pausing recording ", call->fbasename);
-								call->silencerecording = 1;
-							} else {
-								if(verbosity >= 1)
-									syslog(LOG_NOTICE, "[%s] pause DTMF sequence detected - unpausing recording ", call->fbasename);
-								call->silencerecording = 0;
-							}
-							call->dtmfflag2 = 0;
-						} else {
-							call->dtmfflag2++;
-						}
-					} else {
-						// reset flag 
-						call->dtmfflag2 = 0;
-					}
-				}
+				call->handle_dtmf(*tmp);
+
 			}
 		}
 		

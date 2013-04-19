@@ -85,6 +85,8 @@ extern int opt_cdronlyanswered;
 extern int opt_cdronlyrtp;
 extern int opt_newdir;
 extern char opt_keycheck[1024];
+extern int opt_norecord_dtmf;
+extern char opt_silencedmtfseq[16];
 
 volatile int calls = 0;
 
@@ -2589,3 +2591,54 @@ void Call::saveregister() {
 		((Calltable*)calltable)->calls_listMAP.erase(callMAPIT);
 	}
 }
+
+void
+Call::handle_dtmf(char dtmf) {
+	if(opt_norecord_dtmf) {
+		if(dtmfflag == 0) { 
+			if(dtmf == '*') {
+				// received ftmf '*', set flag so if next dtmf will be '0' stop recording
+				dtmfflag = 1;
+			}
+		} else {
+			if(dtmf == '0') {
+				// we have complete *0 sequence
+				stoprecording();
+				dtmfflag = 0;
+			} else {
+				// reset flag because we did not received '0' after '*'
+				dtmfflag = 0;
+			}       
+		}       
+	}
+	if(opt_silencedmtfseq[0] != '\0') {
+		if(dtmfflag2 == 0) {
+			if(dtmf == opt_silencedmtfseq[dtmfflag2]) {
+				// received ftmf '*', set flag so if next dtmf will be '0' stop recording
+				dtmfflag2++;
+			}       
+		} else {
+			if(dtmf == opt_silencedmtfseq[dtmfflag2]) {
+				// we have complete *0 sequence
+				if(dtmfflag2 + 1 == strlen(opt_silencedmtfseq)) {
+					if(silencerecording == 0) {
+						if(verbosity >= 1)
+							syslog(LOG_NOTICE, "[%s] pause DTMF sequence detected - pausing recording ", fbasename);
+						silencerecording = 1;
+					} else {
+						if(verbosity >= 1)
+							syslog(LOG_NOTICE, "[%s] pause DTMF sequence detected - unpausing recording ", fbasename);
+						silencerecording = 0;
+					}       
+					dtmfflag2 = 0;
+				} else {
+					dtmfflag2++;
+				}       
+			} else {
+				// reset flag 
+				dtmfflag2 = 0;
+			}       
+		}       
+	}
+}
+

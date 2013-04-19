@@ -387,8 +387,9 @@ public:
 	 * @brief print debug information for the call to stdout
 	 *
 	*/
-
 	void addtocachequeue(string file);
+
+	void handle_dtmf(char dtmf);
 
 	void dump();
 

@@ -37,6 +37,7 @@ extern int opt_jitterbuffer_f2;            // turns off/on jitterbuffer simulato
 extern int opt_jitterbuffer_adapt;         // turns off/on jitterbuffer simulator to compute MOS score mos_adapt
 extern char opt_cachedir[1024];
 extern int opt_savewav_force;
+int dtmfdebug = 0;
 
 using namespace std;
 
@@ -196,6 +197,8 @@ RTP::RTP() {
 	prev_sid = false;
 	call_owner = NULL;
 	pinformed = 0;
+	last_end_timestamp = 0;
+	lastdtmf = 0;
 }
 
 /* destructor */
@@ -509,6 +512,59 @@ RTP::jitterbuffer(struct ast_channel *channel, int savePayload) {
 }
 #endif
 
+void 
+RTP::process_dtmf_rfc2833() {
+
+	unsigned int seqno = getSeqNum();
+	unsigned int event, event_end, samples;
+	char resp = 0;
+	unsigned int timestamp = getTimestamp();
+
+	unsigned char *pdata = data + sizeof(RTPFixedHeader);
+
+	/* Figure out event, event end, and samples */
+	event = ntohl(*((unsigned int *)(pdata)));
+	event >>= 24;
+	event_end = ntohl(*((unsigned int *)(pdata)));
+	event_end <<= 8;
+	event_end >>= 24;
+	samples = ntohl(*((unsigned int *)(pdata)));
+	samples &= 0xFFFF;
+
+	if(dtmfdebug) syslog(LOG_ERR, "Got  RTP RFC2833 from %u (seq %-6.6u, ts %-6.6u, len %-6.6u, mark %d, event %08x, end %d, duration %-5.5d) \n",
+		    getMarker(), seqno, timestamp, len, (getMarker()?1:0), event, ((event_end & 0x80)?1:0), samples);
+
+	/* Figure out what digit was pressed */
+	if (event < 10) {
+		resp = '0' + event;
+	} else if (event < 11) {
+		resp = '*';
+	} else if (event < 12) {
+		resp = '#';
+	} else if (event < 16) {
+		resp = 'A' + (event - 12);
+	} else if (event < 17) {	/* Event 16: Hook flash */
+		resp = 'X';
+	} else {
+		/* Not a supported event */
+		//syslog(LOG_ERR, "Ignoring RTP 2833 Event: %08x. Not a DTMF Digit.\n", event);
+		return;
+	}
+
+	if ((last_end_timestamp != timestamp) || (lastdtmf && lastdtmf != resp)) {
+		lastdtmf = resp;
+		if(dtmfdebug) syslog(LOG_ERR, "dtmfevent %c\n", resp);
+		last_end_timestamp = timestamp;
+		Call *owner = (Call*)call_owner;
+		if(owner) {
+			 syslog(LOG_ERR, "dtmfevent %c\n", resp);
+			 owner->handle_dtmf(resp);
+		}
+	}
+
+        return;
+}
+
 /* read rtp packet */
 void
 RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t saddr, u_int32_t daddr, int seeninviteok) {
@@ -552,6 +608,10 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 
 	int fifo1 = owner->fifo1;
 	int fifo2 = owner->fifo2;
+
+	if(curpayload == 101) {
+		process_dtmf_rfc2833();
+	}
 	
 	/* codec changed */
 	if((codec == -1 || (curpayload != prev_payload)) && (curpayload != 101 && prev_payload != 101)) {
@@ -592,7 +652,7 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 		if(opt_saveRAW || opt_savewav_force || (owner && (owner->flags & FLAG_SAVEWAV)) ||
 			fifo1 || fifo2 // if recording requested 
 		) {
-			if(verbosity > 0) syslog(LOG_ERR, "converting WAV! [%u] [%d] [%d]\n", owner->flags, fifo1, fifo2);
+//			if(verbosity > 0) syslog(LOG_ERR, "converting WAV! [%u] [%d] [%d]\n", owner->flags, fifo1, fifo2);
 			/* open file for raw codec */
 			unsigned long unique = getTimestamp();
 			char tmp[1024];
