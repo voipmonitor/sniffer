@@ -683,9 +683,9 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 			}
 		}
 	} else if(strstr(buf, "listen2") != NULL) {
-		long int callreference;
+		long long callreference;
 
-		sscanf(buf, "listen2 %li", &callreference);
+		sscanf(buf, "listen2 %lld", &callreference);
 	
 		map<string, Call*>::iterator callMAPIT;
 		Call *call;
@@ -695,7 +695,7 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 			call = (*callMAPIT).second;
 			//printf("call[%p] == [%li] [%d] [%li] [%li]\n", call, callreference, (long int)call == (long int)callreference, (long int)call, (long int)callreference);
 			
-			if((long int)call == (long int)callreference) {
+			if((long long)call == (long long)callreference) {
 				//printf("test codec_caller[%d] codec_called[%d]\n", call->codec_caller, call->codec_called);
 				if(call->listening_worker_run) {
 					// the thread is already running. Just add new fifo writer
@@ -726,9 +726,9 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 		}
 		return 0;
 	} else if(strstr(buf, "readaudio") != NULL) {
-		long int callreference;
+		long long callreference;
 
-		sscanf(buf, "readaudio %li", &callreference);
+		sscanf(buf, "readaudio %lld", &callreference);
 	
 		map<string, Call*>::iterator callMAPIT;
 		Call *call;
