@@ -21,7 +21,9 @@
 
 #include <string>
 
+#include "jitterbuffer/asterisk/circbuf.h"
 #include "rtp.h"
+#include "tools.h"
 
 #define MAX_IP_PER_CALL 30	//!< total maxumum of SDP sessions for one call-id
 #define MAX_SSRC_PER_CALL 30	//!< total maxumum of SDP sessions for one call-id
@@ -114,6 +116,8 @@ public:
 	time_t first_packet_time;	
 	time_t destroy_call_at;	
 	unsigned int first_packet_usec;
+	std::queue <short int> spybuffer;
+	std::queue <char> spybufferchar;
 
 	int isfax;
 
@@ -147,6 +151,10 @@ public:
 	int fifo2;
 	int codec_caller;
 	int codec_called;
+
+	pthread_mutex_t buflock;		//!< mutex locking calls_queue
+	pvt_circbuf *audiobuffer1;
+	pvt_circbuf *audiobuffer2;
 
 	unsigned int skinny_partyid;
 

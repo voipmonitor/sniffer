@@ -150,6 +150,8 @@ Call::Call(char *call_id, unsigned long call_id_len, time_t time, void *ct) {
 	}
 	fifo1 = 0;
 	fifo2 = 0;
+	audiobuffer1 = NULL;
+	audiobuffer2 = NULL;
 	listening_worker_run = NULL;
 	tmprtp.call_owner = this;
 	flags = 0;
@@ -178,6 +180,7 @@ Call::Call(char *call_id, unsigned long call_id_len, time_t time, void *ct) {
 	fname2 = 0;
 	skinny_partyid = 0;
 	relationcall = NULL;
+	pthread_mutex_init(&buflock, NULL);
 }
 
 void
@@ -280,9 +283,13 @@ Call::~Call(){
 		}
 	}
 
+	if(audiobuffer1) delete audiobuffer1;
+	if(audiobuffer2) delete audiobuffer2;
+
 	if(this->message) {
 		free(message);
 	}
+	pthread_mutex_destroy(&buflock);
 }
 
 void

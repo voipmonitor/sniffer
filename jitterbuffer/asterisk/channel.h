@@ -111,6 +111,7 @@ extern "C" {
 #include "asterisk/lock.h"
 #include "asterisk/cdr.h"
 #include "asterisk/utils.h"
+#include "asterisk/circbuf.h"
 #include "asterisk/linkedlists.h"
 #include "asterisk/stringfields.h"
 #include "asterisk/compiler.h"
@@ -339,10 +340,12 @@ enum ast_channel_state {
  * \note XXX It is important to remember to increment .cleancount each time
  *       this structure is changed. XXX
  */
+
 struct ast_channel {
 
 	FILE *rawstream;
 	int fifofd;
+	pvt_circbuf *audiobuf;
 	unsigned int last_seqno;
 	unsigned int last_ms;
 	int jb_reseted;

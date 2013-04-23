@@ -1,6 +1,8 @@
 #include <vorbis/codec.h>
 #include <vorbis/vorbisenc.h>
 
+#include <queue>
+
 #define MAX_FIFOOUT 128
 
 struct vorbis_desc {    /* format specific parameters */
@@ -20,9 +22,12 @@ struct vorbis_desc {    /* format specific parameters */
         int eos;
 };
 
-
 int ogg_mix(char *, char *, char *);
 int ogg_header(FILE *, struct vorbis_desc *);
 int ogg_header_live(int, vorbis_desc*);
 void write_stream_live(struct vorbis_desc *, int *);
 int ogg_write_live(struct vorbis_desc *, int *, short *);
+void write_stream_live2(struct vorbis_desc *s, std::queue <char> spybuffer);
+int ogg_write_live2(struct vorbis_desc *s, std::queue <char> *spybuffer, short *data);
+int ogg_header_live2(std::queue <char> *spybuffer, struct vorbis_desc *tmp);
+
