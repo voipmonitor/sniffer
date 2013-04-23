@@ -699,6 +699,12 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 				//printf("test codec_caller[%d] codec_called[%d]\n", call->codec_caller, call->codec_called);
 				if(call->listening_worker_run) {
 					// the thread is already running. Just add new fifo writer
+					if ((size = send(client, "call already listening", 22, 0)) == -1){
+						cerr << "Error sending data to client" << endl;
+						return -1;
+					}
+					calltable->unlock_calls_listMAP();
+					return 0;
 				} else {
 					struct listening_worker_arg *args = (struct listening_worker_arg*)malloc(sizeof(listening_worker_arg));
 					for(i = 0; i < MAX_FIFOOUT; i++) {
@@ -715,6 +721,10 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 					pthread_t call_thread;
 					pthread_create(&call_thread, NULL, listening_worker, (void *)args);
 					calltable->unlock_calls_listMAP();
+					if ((size = send(client, "success", 7, 0)) == -1){
+						cerr << "Error sending data to client" << endl;
+						return -1;
+					}
 					return 0;
 				}
 			}

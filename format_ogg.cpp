@@ -71,7 +71,8 @@ int ogg_header_live(int f, struct vorbis_desc *tmp)
 
         vorbis_info_init(&tmp->vi);
 
-        if (vorbis_encode_init_vbr(&tmp->vi, 1, 8000, 0.4)) {
+        //if (vorbis_encode_init_vbr(&tmp->vi, 1, 8000, 0.4)) {
+        if (vorbis_encode_init_vbr(&tmp->vi, 1, 8000, 1.0)) {
 //        if (vorbis_encode_init(&tmp->vi, 1, 8000, 64000, 32000, -1)) {
                 syslog(LOG_ERR, "Unable to initialize Vorbis encoder!\n");
                 return -1;
@@ -121,7 +122,8 @@ int ogg_header_live2(std::queue <char> *spybuffer, struct vorbis_desc *tmp)
 
         vorbis_info_init(&tmp->vi);
 
-        if (vorbis_encode_init_vbr(&tmp->vi, 1, 8000, 0.4)) {
+        //if (vorbis_encode_init_vbr(&tmp->vi, 1, 8000, 0.4)) {
+        if (vorbis_encode_init_vbr(&tmp->vi, 1, 48000, 1.1)) {
 //        if (vorbis_encode_init(&tmp->vi, 1, 8000, 64000, 32000, -1)) {
                 syslog(LOG_ERR, "Unable to initialize Vorbis encoder!\n");
                 return -1;
@@ -148,6 +150,15 @@ int ogg_header_live2(std::queue <char> *spybuffer, struct vorbis_desc *tmp)
         while (!tmp->eos) {
                 if (ogg_stream_flush(&tmp->os, &tmp->og) == 0)
                         break;
+
+/*
+		FILE *fd = fopen("/tmp/test.ogg", "a");
+		fwrite(tmp->og.header, 1, tmp->og.header_len, fd);
+		fwrite(tmp->og.body, 1, tmp->og.body_len, fd);
+		fclose(fd);
+*/
+
+
 		for(int i = 0; i < tmp->og.header_len; i++) {
 			spybuffer->push(tmp->og.header[i]);
 		}
@@ -308,9 +319,22 @@ int ogg_write_live2(struct vorbis_desc *s, std::queue <char> *spybuffer, short *
         float **buffer;
 
         buffer = vorbis_analysis_buffer(&s->vd, 1);
-
 	buffer[0][0] = (double)*data / 32768.0;
-
+        vorbis_analysis_wrote(&s->vd, 1);
+        buffer = vorbis_analysis_buffer(&s->vd, 1);
+	buffer[0][0] = (double)*data / 32768.0;
+        vorbis_analysis_wrote(&s->vd, 1);
+        buffer = vorbis_analysis_buffer(&s->vd, 1);
+	buffer[0][0] = (double)*data / 32768.0;
+        vorbis_analysis_wrote(&s->vd, 1);
+        buffer = vorbis_analysis_buffer(&s->vd, 1);
+	buffer[0][0] = (double)*data / 32768.0;
+        vorbis_analysis_wrote(&s->vd, 1);
+        buffer = vorbis_analysis_buffer(&s->vd, 1);
+	buffer[0][0] = (double)*data / 32768.0;
+        vorbis_analysis_wrote(&s->vd, 1);
+        buffer = vorbis_analysis_buffer(&s->vd, 1);
+	buffer[0][0] = (double)*data / 32768.0;
         vorbis_analysis_wrote(&s->vd, 1);
 
         write_stream_live2(s, spybuffer);
