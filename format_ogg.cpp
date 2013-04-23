@@ -123,8 +123,9 @@ int ogg_header_live2(std::queue <char> *spybuffer, struct vorbis_desc *tmp)
         vorbis_info_init(&tmp->vi);
 
         //if (vorbis_encode_init_vbr(&tmp->vi, 1, 8000, 0.4)) {
-        if (vorbis_encode_init_vbr(&tmp->vi, 1, 48000, 1.1)) {
+//        if (vorbis_encode_init_vbr(&tmp->vi, 1, 48000, 1.1)) {
 //        if (vorbis_encode_init(&tmp->vi, 1, 8000, 64000, 32000, -1)) {
+        if (vorbis_encode_init(&tmp->vi, 1, 48000, 96000, 128000, 160000)) {
                 syslog(LOG_ERR, "Unable to initialize Vorbis encoder!\n");
                 return -1;
         }
@@ -151,12 +152,12 @@ int ogg_header_live2(std::queue <char> *spybuffer, struct vorbis_desc *tmp)
                 if (ogg_stream_flush(&tmp->os, &tmp->og) == 0)
                         break;
 
-/*
+#if 0
 		FILE *fd = fopen("/tmp/test.ogg", "a");
 		fwrite(tmp->og.header, 1, tmp->og.header_len, fd);
 		fwrite(tmp->og.body, 1, tmp->og.body_len, fd);
 		fclose(fd);
-*/
+#endif
 
 
 		for(int i = 0; i < tmp->og.header_len; i++) {
@@ -293,16 +294,18 @@ void write_stream_live2(struct vorbis_desc *s, std::queue <char> *spybuffer)
 				// write to all fifos 
 //				for(i = 0; i < MAX_FIFOOUT; i++) {
 //					if(fifoout[i] != 0) {
-//						FILE *fd = fopen("/tmp/test.ogg", "a");
-//						fwrite(s->og.header, 1, s->og.header_len, fd);
-//						fwrite(s->og.body, 1, s->og.body_len, fd);
+#if 0
+						FILE *fd = fopen("/tmp/test.ogg", "a");
+						fwrite(s->og.header, 1, s->og.header_len, fd);
+						fwrite(s->og.body, 1, s->og.body_len, fd);
+						fclose(fd);
+#endif
 						for(i = 0; i < s->og.header_len; i++){
 							spybuffer->push(s->og.header[i]);
 						}
 						for(i = 0; i < s->og.body_len; i++){
 							spybuffer->push(s->og.body[i]);
 						}
-//						fclose(fd);
 //					}
 //				}
 				//printf("-%d\n", spybuffer->size());
