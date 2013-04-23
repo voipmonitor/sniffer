@@ -102,16 +102,37 @@ void *listening_worker(void *arguments) {
 	ogg_header_live2(&args->call->spybufferchar, &ogg);
 	pthread_mutex_unlock(&args->call->buflock);
 
+	timespec tS;
+	timespec tS2;
+
+	tS.tv_sec = 0;
+	tS.tv_nsec = 0;
+	tS2.tv_sec = 0;
+	tS2.tv_nsec = 0;
+
+	long int udiff;
+
         while(1 && listening_worker_run) {
+
+		if(tS.tv_nsec > tS2.tv_nsec) {
+			udiff = (1000 * 1000 * 1000 - (tS.tv_nsec - tS2.tv_nsec)) / 1000;
+		} else {
+			udiff = (tS2.tv_nsec - tS.tv_nsec) / 1000;
+		}
+
 		tvwait.tv_sec = 0;
-		tvwait.tv_usec = 1000*20; //20 ms
+		tvwait.tv_usec = 1000*20 - udiff; //20 ms
+		long int usec = tvwait.tv_usec;
 		ret = select(NULL, NULL, NULL, NULL, &tvwait);
+
+		clock_gettime(CLOCK_REALTIME, &tS);
+
 		//usleep(tvwait.tv_usec);
 		pthread_mutex_lock(&args->call->buflock);
 		diff = getUpdDifTime(&tv) / 1000;
 		len1 = circbuf_read(args->call->audiobuffer1, (char*)read1, 160);
 		len2 = circbuf_read(args->call->audiobuffer2, (char*)read2, 160);
-//		printf("codec_caller[%d] codec_called[%d] len1[%d] len2[%d] outbc[%d] outbchar[%d]\n", args->call->codec_caller, args->call->codec_called, len1, len2, (int)args->call->spybuffer.size(), (int)args->call->spybufferchar.size());
+//		printf("codec_caller[%d] codec_called[%d] len1[%d] len2[%d] outbc[%d] outbchar[%d] wait[%u]\n", args->call->codec_caller, args->call->codec_called, len1, len2, (int)args->call->spybuffer.size(), (int)args->call->spybufferchar.size(), usec);
 		if(len1 == 160 and len2 == 160) {
 			for(int i = 0; i < len1; i++) {
 				switch(args->call->codec_caller) {
@@ -176,6 +197,7 @@ void *listening_worker(void *arguments) {
 			}
 		}
 		pthread_mutex_unlock(&args->call->buflock);
+		clock_gettime(CLOCK_REALTIME, &tS2);
         }
 
 	// reset pointer to NULL as we are leaving the stack here
