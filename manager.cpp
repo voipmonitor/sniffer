@@ -154,7 +154,7 @@ void *listening_worker(void *arguments) {
 				}
 				slinear_saturated_add((short int*)&r1, (short int*)&r2);
 				//fwrite(&r1, 1, 2, out);
-				args->call->spybuffer.push(r1);
+				args->call->spybufferchar.push(r1);
 //				ogg_write_live2(&ogg, &args->call->spybufferchar, (short int*)&r1);
 			}
 		} else if(len2 == 160) {
@@ -168,7 +168,7 @@ void *listening_worker(void *arguments) {
 					break;
 				}
 				//fwrite(&r2, 1, 2, out);
-				args->call->spybuffer.push(r2);
+				args->call->spybufferchar.push(r2);
 //				ogg_write_live2(&ogg, &args->call->spybufferchar, (short int*)&r2);
 			}
 		} else if(len1 == 160) {
@@ -182,7 +182,7 @@ void *listening_worker(void *arguments) {
 					break;
 				}
 				//fwrite(&r1, 1, 2, out);
-				args->call->spybuffer.push(r1);
+				args->call->spybufferchar.push(r1);
 //				ogg_write_live2(&ogg, &args->call->spybufferchar, (short int*)&r1);
 			}
 		} else {
@@ -192,7 +192,7 @@ void *listening_worker(void *arguments) {
 			//unsigned char sa = 255;
 			for(int i = 0; i < 160; i++) {
 				//fwrite(&s, 1, 2, out);
-				args->call->spybuffer.push(s);
+				args->call->spybufferchar.push(s);
 //				ogg_write_live2(&ogg, &args->call->spybufferchar, (short int*)&s);
 			}
 		}
