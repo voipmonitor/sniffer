@@ -91,7 +91,7 @@ void *listening_worker(void *arguments) {
 //	FILE *out = fopen("/tmp/test.raw", "w");
 //	FILE *outa = fopen("/tmp/test.alaw", "w");
 
-	vorbis_desc ogg;
+//	vorbis_desc ogg;
 //	ogg_header(out, &ogg);
 //	fclose(out);
 //	pthread_mutex_lock(&args->call->buflock);
@@ -210,11 +210,13 @@ void *listening_worker(void *arguments) {
 	pthread_mutex_unlock(&args->call->listening_worker_run_lock);
 
 	//clean ogg
+/*
         ogg_stream_clear(&ogg.os);
         vorbis_block_clear(&ogg.vb);
         vorbis_dsp_clear(&ogg.vd);
         vorbis_comment_clear(&ogg.vc);
         vorbis_info_clear(&ogg.vi);
+*/
 
 	free(args);
 	return 0;
