@@ -112,6 +112,8 @@ void *listening_worker(void *arguments) {
 
 	long int udiff;
 
+	static test = 0;
+
         while(1 && listening_worker_run) {
 
 		if(tS.tv_nsec > tS2.tv_nsec) {
@@ -153,9 +155,17 @@ void *listening_worker(void *arguments) {
 					break;
 				}
 				slinear_saturated_add((short int*)&r1, (short int*)&r2);
+				if(test == 0) 
+					printf("%d,", r1);
 				//fwrite(&r1, 1, 2, out);
-//				args->call->spybuffer.push(r1);
-				ogg_write_live2(&ogg, &args->call->spybufferchar, (short int*)&r1);
+				args->call->spybuffer.push(r1);
+				args->call->spybuffer.push(r1);
+				args->call->spybuffer.push(r1);
+//				ogg_write_live2(&ogg, &args->call->spybufferchar, (short int*)&r1);
+			}
+			if(test == 0) {
+				printf("end\n", r1);
+				test = 1;
 			}
 		} else if(len2 == 160) {
 			for(int i = 0; i < len2; i++) {
@@ -169,7 +179,9 @@ void *listening_worker(void *arguments) {
 				}
 				//fwrite(&r2, 1, 2, out);
 				args->call->spybuffer.push(r2);
-				ogg_write_live2(&ogg, &args->call->spybufferchar, (short int*)&r2);
+				args->call->spybuffer.push(r2);
+				args->call->spybuffer.push(r2);
+//				ogg_write_live2(&ogg, &args->call->spybufferchar, (short int*)&r2);
 			}
 		} else if(len1 == 160) {
 			for(int i = 0; i < len1; i++) {
@@ -182,8 +194,10 @@ void *listening_worker(void *arguments) {
 					break;
 				}
 				//fwrite(&r1, 1, 2, out);
-//				args->call->spybuffer.push(r1);
-				ogg_write_live2(&ogg, &args->call->spybufferchar, (short int*)&r1);
+				args->call->spybuffer.push(r1);
+				args->call->spybuffer.push(r1);
+				args->call->spybuffer.push(r1);
+//				ogg_write_live2(&ogg, &args->call->spybufferchar, (short int*)&r1);
 			}
 		} else {
                         //printf("diff [%d] timeout\n", diff);
@@ -192,8 +206,10 @@ void *listening_worker(void *arguments) {
 			//unsigned char sa = 255;
 			for(int i = 0; i < 160; i++) {
 				//fwrite(&s, 1, 2, out);
-//				args->call->spybuffer.push(s);
-				ogg_write_live2(&ogg, &args->call->spybufferchar, (short int*)&s);
+				args->call->spybuffer.push(s);
+				args->call->spybuffer.push(s);
+				args->call->spybuffer.push(s);
+//				ogg_write_live2(&ogg, &args->call->spybufferchar, (short int*)&s);
 			}
 		}
 		pthread_mutex_unlock(&args->call->buflock);
