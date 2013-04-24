@@ -1,3 +1,15 @@
+Changelog 7.0.RC1
+=================
+
+- redesign realtime audio listening (g711 ulaw/alaw only at the moment) 
+- fix low MOS score for calls which contains RTP DTMF (and fix audio sync too) 
+- never count MOS for calls where packets are < 100 which also causes low MOS for no reason. 
+- treat REGISTER 403 response as failed too (not only 401)
+- if sniffer stores RTP packets but only headers (savertp = header) and there is rule set in capture rules to record full RTP - it was not recording full RTP packets
+- "libpcap or interface dropped some packets" counters are unsigned - fix showing negative numbers in syslog
+- reformat help text to 80 chars and sort it alphabetically 
+- add convertchar option to voipmonitor.conf
+
 Changelog 6.5.3 -> 6.5.4
 ========================
 - fix TCP manager interface which was limited to some maximum number of connections since start. As a result no new connection can be created and thus the WEB GUI locked. 
