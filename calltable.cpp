@@ -149,8 +149,6 @@ Call::Call(char *call_id, unsigned long call_id_len, time_t time, void *ct) {
 	for(int i = 0; i < MAX_SSRC_PER_CALL; i++) {
 		rtp[i] = NULL;
 	}
-	fifo1 = 0;
-	fifo2 = 0;
 	audiobuffer1 = NULL;
 	audiobuffer2 = NULL;
 	listening_worker_run = NULL;
@@ -182,6 +180,7 @@ Call::Call(char *call_id, unsigned long call_id_len, time_t time, void *ct) {
 	skinny_partyid = 0;
 	relationcall = NULL;
 	pthread_mutex_init(&buflock, NULL);
+	pthread_mutex_init(&listening_worker_run_lock, NULL);
 }
 
 void
@@ -236,6 +235,7 @@ Call::removeRTP() {
 /* destructor */
 Call::~Call(){
 
+	pthread_mutex_lock(&listening_worker_run_lock);
 	if(relationcall) {
 		// break relation 
 		relationcall->relationcall = NULL;
@@ -291,6 +291,8 @@ Call::~Call(){
 		free(message);
 	}
 	pthread_mutex_destroy(&buflock);
+	pthread_mutex_unlock(&listening_worker_run_lock);
+	pthread_mutex_destroy(&listening_worker_run_lock);
 }
 
 void

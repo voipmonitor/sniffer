@@ -357,20 +357,16 @@ void jb_fixed_flush_deliver(struct ast_channel *chan)
 	}
 
 	while ( fixed_jb_flush((struct fixed_jb*)jb->jbobj, &ff)) {
-		if(chan->rawstream || chan->fifofd) { 
+		if(chan->rawstream || chan->audiobuf) { 
 			f = ff.data;
 			//write frame to file
 			stmp = (short int)f->datalen;
 			if(chan->codec == PAYLOAD_ISAC16 || chan->codec == PAYLOAD_ISAC32 || chan->codec == PAYLOAD_SILK || chan->codec == PAYLOAD_SILK8 || chan->codec == PAYLOAD_SILK12 || chan->codec == PAYLOAD_SILK16 || chan->codec == PAYLOAD_SILK24 || chan->codec == PAYLOAD_SPEEX || chan->codec == PAYLOAD_G723 || chan->codec == PAYLOAD_G729 || chan->codec == PAYLOAD_GSM) {
 				if(chan->rawstream)
 					fwrite(&stmp, 1, sizeof(short int), chan->rawstream);   // write packet len
-				if(chan->fifofd > 0)
-					write(chan->fifofd, &stmp, sizeof(short int));   // write packet len
 			}
 			if(chan->rawstream)
 				fwrite(f->data, 1, f->datalen, chan->rawstream);
-			if(chan->fifofd > 0)
-				write(chan->fifofd, f->data, f->datalen);
 			if(chan->audiobuf)
 				circbuf_write(chan->audiobuf,f->data, f->datalen);
 			//save last frame
@@ -392,40 +388,30 @@ void save_empty_frame(struct ast_channel *chan) {
 			if(chan->codec == PAYLOAD_G723) {
 				for(i = 1; (i * 30) <= chan->packetization; i++) {
 					fwrite(&zero, 1, sizeof(short int), chan->rawstream);   // write zero packet
-					if(chan->fifofd > 0)
-						write(chan->fifofd, &zero, sizeof(short int));   // write packet len
 					if(chan->audiobuf)
 						circbuf_write(chan->audiobuf,(const char*)(&zero), sizeof(short int));
 				}
 			} else if(chan->codec == PAYLOAD_ISAC16) {
 				for(i = 1; (i * 30) <= chan->packetization / 2; i++) {
 					fwrite(&zero, 1, sizeof(short int), chan->rawstream);   // write zero packet
-					if(chan->fifofd > 0)
-						write(chan->fifofd, &zero, sizeof(short int));   // write packet len
 					if(chan->audiobuf)
 						circbuf_write(chan->audiobuf,(const char*)(&zero), sizeof(short int));
 				}
 			} else if(chan->codec == PAYLOAD_ISAC32) {
 				for(i = 1; (i * 30) <= chan->packetization / 4; i++) {
 					fwrite(&zero, 1, sizeof(short int), chan->rawstream);   // write zero packet
-					if(chan->fifofd > 0)
-						write(chan->fifofd, &zero, sizeof(short int));   // write packet len
 					if(chan->audiobuf)
 						circbuf_write(chan->audiobuf,(const char*)(&zero), sizeof(short int));
 				}
 			} else if(chan->codec == PAYLOAD_SILK16) {
 				for(i = 1; (i * 20) <= chan->packetization / 2; i++) {
 					fwrite(&zero, 1, sizeof(short int), chan->rawstream);   // write zero packet
-					if(chan->fifofd > 0)
-						write(chan->fifofd, &zero, sizeof(short int));   // write packet len
 					if(chan->audiobuf)
 						circbuf_write(chan->audiobuf,(const char*)(&zero), sizeof(short int));
 				}
 			} else {
 				for(i = 1; (i * 20) <= chan->packetization ; i++) {
 					fwrite(&zero, 1, sizeof(short int), chan->rawstream);   // write zero packet
-					if(chan->fifofd > 0)
-						write(chan->fifofd, &zero, sizeof(short int));   // write packet len
 					if(chan->audiobuf)
 						circbuf_write(chan->audiobuf,(const char*)(&zero), sizeof(short int));
 				}
@@ -434,8 +420,6 @@ void save_empty_frame(struct ast_channel *chan) {
 			// write previouse frame (better than zero frame), but only once
 			if(chan->lastbuflen) {
 				fwrite(chan->lastbuf, 1, chan->lastbuflen, chan->rawstream);
-				if(chan->fifofd > 0)
-					write(chan->fifofd, chan->lastbuf, chan->lastbuflen);   // write packet len
 				if(chan->audiobuf)
 					circbuf_write(chan->audiobuf,chan->lastbuf, chan->lastbuflen);
 				chan->lastbuflen = 0;
@@ -444,8 +428,6 @@ void save_empty_frame(struct ast_channel *chan) {
 				for(i = 0; i < chan->last_datalen / 2; i++) {
 					fwrite(&zero3, 2, 1, chan->rawstream);
 					//fputc(0, chan->rawstream);
-					if(chan->fifofd > 0)
-						write(chan->fifofd, &zero2, sizeof(char));   // write packet len
 					if(chan->audiobuf)
 						circbuf_write(chan->audiobuf,(const char*)(&zero2), sizeof(char));
 				}
@@ -489,21 +471,15 @@ static void jb_get_and_deliver(struct ast_channel *chan, struct timeval *mynow)
 			}	
 			/* deliver the frame */
 			//ast_write(chan, f);
-			if((chan->rawstream || chan->fifofd || chan->audiobuf) && f->data && f->datalen > 0) {
+			if((chan->rawstream || chan->audiobuf) && f->data && f->datalen > 0) {
 				//write frame to file
 				stmp = (short int)f->datalen;
 				if(chan->codec == PAYLOAD_ISAC16 || chan->codec == PAYLOAD_ISAC32 || chan->codec == PAYLOAD_SILK || chan->codec == PAYLOAD_SILK8 || chan->codec == PAYLOAD_SILK12 || chan->codec == PAYLOAD_SILK16 || chan->codec == PAYLOAD_SILK24 || chan->codec == PAYLOAD_SPEEX || chan->codec == PAYLOAD_G723 || chan->codec == PAYLOAD_G729 || chan->codec == PAYLOAD_GSM) {
 					if(chan->rawstream)
 						fwrite(&stmp, 1, sizeof(short int), chan->rawstream);   // write packet len
-					if(chan->fifofd > 0)
-						write(chan->fifofd, &stmp, sizeof(short int));   // write packet len
 				}
 				if(chan->rawstream)
 					fwrite(f->data, 1, f->datalen, chan->rawstream);
-				if(chan->fifofd > 0) {
-					res2 = write(chan->fifofd, f->data, f->datalen);
-					//fprintf(stdout, "WRITING! fd[%d] size[%d]\n", chan->fifofd, res2);
-				}
 				if(chan->audiobuf) {
 					circbuf_write(chan->audiobuf, f->data, f->datalen);
 				}

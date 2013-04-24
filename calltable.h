@@ -147,8 +147,6 @@ public:
 	int last_callercodec;		//!< Last caller codec 
 	int last_calledcodec;		//!< Last called codec 
 
-	int fifo1;
-	int fifo2;
 	int codec_caller;
 	int codec_called;
 
@@ -161,6 +159,7 @@ public:
 	unsigned int flags;		//!< structure holding FLAGS*
 
 	int *listening_worker_run;
+	pthread_mutex_t listening_worker_run_lock;
 
 	int thread_num;
 

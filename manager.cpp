@@ -54,17 +54,13 @@ using namespace std;
 
 struct listening_worker_arg {
 	Call *call;
-	int fifo1r,fifo2r;
-	int fifoout[MAX_FIFOOUT];
 };
 
 /* 
  * this function runs as thread. It reads RTP audio data from call
- * and write it to output fifo. once output fifo is closed or is not 
- * opened, function will terminate. 
+ * and write it to output buffer 
  *
- * input parameter is structure where call and fifo file descriptors
- * are provided
+ * input parameter is structure where call 
  *
 */
 void *listening_worker(void *arguments) {
@@ -81,7 +77,6 @@ void *listening_worker(void *arguments) {
 	ulaw_init();
 
         struct timeval tvwait;
-	//printf("fd[%d]\n", args->call->fifo1);
 
 	short int r1;
 	short int r2;
@@ -90,6 +85,7 @@ void *listening_worker(void *arguments) {
 	// if call is hanged hup it will set listening_worker_run in its destructor to 0
 	int listening_worker_run = 1;
 	args->call->listening_worker_run = &listening_worker_run;
+	pthread_mutex_lock(&args->call->listening_worker_run_lock);
 
 
 //	FILE *out = fopen("/tmp/test.raw", "w");
@@ -98,9 +94,9 @@ void *listening_worker(void *arguments) {
 	vorbis_desc ogg;
 //	ogg_header(out, &ogg);
 //	fclose(out);
-	pthread_mutex_lock(&args->call->buflock);
-//	ogg_header_live2(&args->call->spybufferchar, &ogg);
-	pthread_mutex_unlock(&args->call->buflock);
+//	pthread_mutex_lock(&args->call->buflock);
+//	ogg_header_live(&args->call->spybufferchar, &ogg);
+//	pthread_mutex_unlock(&args->call->buflock);
 
 	timespec tS;
 	timespec tS2;
@@ -112,7 +108,7 @@ void *listening_worker(void *arguments) {
 
 	long int udiff;
 
-        while(1 && listening_worker_run) {
+        while(listening_worker_run) {
 
 		if(tS.tv_nsec > tS2.tv_nsec) {
 			udiff = (1000 * 1000 * 1000 - (tS.tv_nsec - tS2.tv_nsec)) / 1000;
@@ -122,7 +118,7 @@ void *listening_worker(void *arguments) {
 
 		tvwait.tv_sec = 0;
 		tvwait.tv_usec = 1000*20 - udiff; //20 ms
-		long int usec = tvwait.tv_usec;
+//		long int usec = tvwait.tv_usec;
 		ret = select(NULL, NULL, NULL, NULL, &tvwait);
 
 		clock_gettime(CLOCK_REALTIME, &tS);
@@ -158,7 +154,7 @@ void *listening_worker(void *arguments) {
 				//fwrite(&r1, 1, 2, out);
 				args->call->spybufferchar.push(s16char[0]);
 				args->call->spybufferchar.push(s16char[1]);
-//				ogg_write_live2(&ogg, &args->call->spybufferchar, (short int*)&r1);
+//				ogg_write_live(&ogg, &args->call->spybufferchar, (short int*)&r1);
 			}
 		} else if(len2 == 160) {
 			for(int i = 0; i < len2; i++) {
@@ -174,7 +170,7 @@ void *listening_worker(void *arguments) {
 				s16char = (char *)&r2;
 				args->call->spybufferchar.push(s16char[0]);
 				args->call->spybufferchar.push(s16char[1]);
-//				ogg_write_live2(&ogg, &args->call->spybufferchar, (short int*)&r2);
+//				ogg_write_live(&ogg, &args->call->spybufferchar, (short int*)&r2);
 			}
 		} else if(len1 == 160) {
 			for(int i = 0; i < len1; i++) {
@@ -190,7 +186,7 @@ void *listening_worker(void *arguments) {
 				s16char = (char *)&r1;
 				args->call->spybufferchar.push(s16char[0]);
 				args->call->spybufferchar.push(s16char[1]);
-//				ogg_write_live2(&ogg, &args->call->spybufferchar, (short int*)&r1);
+//				ogg_write_live(&ogg, &args->call->spybufferchar, (short int*)&r1);
 			}
 		} else {
                         //printf("diff [%d] timeout\n", diff);
@@ -202,7 +198,7 @@ void *listening_worker(void *arguments) {
 				s16char = (char *)&s;
 				args->call->spybufferchar.push(s16char[0]);
 				args->call->spybufferchar.push(s16char[1]);
-//				ogg_write_live2(&ogg, &args->call->spybufferchar, (short int*)&s);
+//				ogg_write_live(&ogg, &args->call->spybufferchar, (short int*)&s);
 			}
 		}
 		pthread_mutex_unlock(&args->call->buflock);
@@ -211,10 +207,9 @@ void *listening_worker(void *arguments) {
 
 	// reset pointer to NULL as we are leaving the stack here
 	args->call->listening_worker_run = NULL;
+	pthread_mutex_unlock(&args->call->listening_worker_run_lock);
 
 	//clean ogg
-//        vorbis_analysis_wrote(&ogg.vd, 0);
-//        write_stream_live(&ogg, args->fifoout);
         ogg_stream_clear(&ogg.os);
         vorbis_block_clear(&ogg.vb);
         vorbis_dsp_clear(&ogg.vd);
@@ -222,169 +217,6 @@ void *listening_worker(void *arguments) {
         vorbis_info_clear(&ogg.vi);
 
 	free(args);
-	return 0;
-}
-
-/* 
- * this function runs as thread. It reads RTP audio data from call
- * and write it to output fifo. once output fifo is closed or is not 
- * opened, function will terminate. 
- *
- * input parameter is structure where call and fifo file descriptors
- * are provided
- *
-*/
-void *listening_worker_old(void *arguments) {
-	struct listening_worker_arg *args = (struct listening_worker_arg*)arguments;
-
-        int ret = 0, ret1 = 0, ret2 = 0;
-        unsigned char read1[1024];
-        unsigned char read2[1024];
-        struct timeval tv;
-        int diff;
-
-	int cfifo1 = args->call->fifo1;
-	int cfifo2 = args->call->fifo2;
-
-	getUpdDifTime(&tv);
-	alaw_init();
-	ulaw_init();
-
-        struct timeval tvwait;
-        fd_set rfds;
-	//printf("fd[%d]\n", args->call->fifo1);
-
-	short int r1;
-	short int r2;
-
-	// if call is hanged hup it will set listening_worker_run in its destructor to 0
-	int listening_worker_run = 1;
-	int timeoutms = 2000;
-	args->call->listening_worker_run = &listening_worker_run;
-
-
-//	FILE *out = fopen("/tmp/test.raw", "w");
-//	FILE *outa = fopen("/tmp/test.alaw", "w");
-
-	vorbis_desc ogg;
-//	ogg_header(out, &ogg);
-//	fclose(out);
-	ogg_header_live(0, &ogg);
-
-        while(1 && listening_worker_run) {
-		tvwait.tv_sec = 0;
-		tvwait.tv_usec = 1000*20; //20 ms
-		FD_ZERO(&rfds);
-		FD_SET(args->fifo2r, &rfds);
-		ret = select(args->fifo2r + 1,&rfds, NULL, NULL, &tvwait);
-                if (ret > 0) {
-                        //reading
-                        ret1 = read(args->fifo1r, read1, 160);
-                        ret2 = read(args->fifo2r, read2, 160);
-                        usleep(tvwait.tv_usec);
-			diff = getUpdDifTime(&tv) / 1000;
-//			printf("codec_caller[%d] codec_called[%d]\n", args->call->codec_caller, args->call->codec_called);
-			for(int i = 0; i < ret1; i++) {
-				switch(args->call->codec_caller) {
-				case 0:
-					r1 = ULAW(read1[i]);
-					break;
-				case 8:
-					r1 = ALAW(read1[i]);
-					break;
-				}
-					
-				switch(args->call->codec_caller) {
-				case 0:
-					r2 = ULAW(read2[i]);
-					break;
-				case 8:
-					r2 = ALAW(read2[i]);
-					break;
-				}
-					
-				// mix r1+r2  => r1
-	                        slinear_saturated_add((short int*)&r1, (short int*)&r2);
-				// write slinear data
-//				ret2 = write(args->fifoout, &r1, 2); // .sln data 
-				// write to file
-				//fwrite(&r1, 1, 2, out);
-				// write ogg data
-				ogg_write_live(&ogg, args->fifoout, (short int*)&r1);
-			}
-			if(ret2 == -1) {
-				timeoutms -= 20;
-				if(timeoutms <= 0) {
-					//printf("closing pipe\n");
-					// writing pipe were closed, stop
-					break;
-				}
-			} else {
-				timeoutms = 2000;
-			}
-//                      printf("diff [%d] [%d] reading [%d] ret2[%d:%d]\n", diff, (unsigned int)tvwait.tv_usec, ret, ret2, args->fifoout[0]);
-                } else if (ret == 0) {
-                        //timeout
-                        //printf("diff [%d] timeout\n", diff);
-			// write 20ms silence 
-			int16_t s = 0;
-			//unsigned char sa = 255;
-			for(int i = 0; i < 160; i++) {
-				//ret2 = write(args->fifoout, &s, 2);
-				ogg_write_live(&ogg, args->fifoout, (short int*)&s);
-				//fwrite(&s, 1, 2, out);
-			}
-			if(ret2 == -1) {
-				timeoutms -= 20;
-				// writing pipe were closed or not opened yet, stop after some time
-				if(timeoutms <= 0) {
-					//printf("writing pipe were closed, stop\n");
-					break;
-				}
-			} else {
-				timeoutms = 2000;
-			}
-                } else {
-                        //error
-                        //printf("diff [%d] error\n", diff);
-			break;
-                }
-		
-        }
-
-	// reset pointer to NULL as we are leaving the stack here
-	args->call->listening_worker_run = NULL;
-
-	//clean ogg
-//        vorbis_analysis_wrote(&ogg.vd, 0);
-//        write_stream_live(&ogg, args->fifoout);
-        ogg_stream_clear(&ogg.os);
-        vorbis_block_clear(&ogg.vb);
-        vorbis_dsp_clear(&ogg.vd);
-        vorbis_comment_clear(&ogg.vc);
-        vorbis_info_clear(&ogg.vi);
-
-	if(args->fifo1r)
-		close(args->fifo1r);
-	if(args->fifo2r)
-		close(args->fifo2r);
-
-	for(int i = 0; i < MAX_FIFOOUT; i++) {
-		if(args->fifoout[i]) {
-			close(args->fifoout[i]);
-		}
-	}
-
-	if(cfifo1)
-		close(cfifo1);
-	if(cfifo2)
-		close(cfifo2);
-	
-	args->call->fifo1 = 0;
-	args->call->fifo2 = 0;
-
-	free(args);
-
 	return 0;
 }
 
@@ -713,23 +545,21 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 				i++;
 			}
 		}
-	} else if(strstr(buf, "listen2") != NULL) {
+	} else if(strstr(buf, "listen") != NULL) {
 		long long callreference;
 
-		sscanf(buf, "listen2 %llu", &callreference);
+		sscanf(buf, "listen %llu", &callreference);
 	
 		map<string, Call*>::iterator callMAPIT;
 		Call *call;
-		int i;
 		calltable->lock_calls_listMAP();
 		for (callMAPIT = calltable->calls_listMAP.begin(); callMAPIT != calltable->calls_listMAP.end(); ++callMAPIT) {
 			call = (*callMAPIT).second;
 			//printf("call[%p] == [%li] [%d] [%li] [%li]\n", call, callreference, (long int)call == (long int)callreference, (long int)call, (long int)callreference);
 			
 			if((long long)call == (long long)callreference) {
-				//printf("test codec_caller[%d] codec_called[%d]\n", call->codec_caller, call->codec_called);
 				if(call->listening_worker_run) {
-					// the thread is already running. Just add new fifo writer
+					// the thread is already running. 
 					if ((size = send(client, "call already listening", 22, 0)) == -1){
 						cerr << "Error sending data to client" << endl;
 						return -1;
@@ -738,11 +568,6 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 					return 0;
 				} else {
 					struct listening_worker_arg *args = (struct listening_worker_arg*)malloc(sizeof(listening_worker_arg));
-					for(i = 0; i < MAX_FIFOOUT; i++) {
-						args->fifoout[i] = 0;
-					}
-					//printf("args->fifoout [%s] [%d]\n", fifo3, args->fifoout[i]);
-
 					args->call = call;
 					call->audiobuffer1 = new pvt_circbuf;
 					call->audiobuffer2 = new pvt_circbuf;
@@ -777,8 +602,6 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 		calltable->lock_calls_listMAP();
 		for (callMAPIT = calltable->calls_listMAP.begin(); callMAPIT != calltable->calls_listMAP.end(); ++callMAPIT) {
 			call = (*callMAPIT).second;
-			//printf("call[%p] == [%li] [%d] [%li] [%li]\n", call, callreference, (long int)call == (long int)callreference, (long int)call, (long int)callreference);
-			
 			if((long int)call == (long int)callreference) {
 				pthread_mutex_lock(&call->buflock);
 				size_t bsize = call->spybufferchar.size();
@@ -798,72 +621,6 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 			}
 		}
 		calltable->unlock_calls_listMAP();
-		return 0;
-	} else if(strstr(buf, "listen") != NULL) {
-		char fifo[1024];
-		char fifo1[1024];
-		char fifo2[1024];
-		char fifo3[1024];
-		long int callreference;
-
-		sscanf(buf, "listen %li %s", &callreference, fifo);
-		sprintf(fifo1, "VM%li.0", callreference);
-		sprintf(fifo2, "VM%li.1", callreference);
-		sprintf(fifo3, "%s.out", fifo);
-		//list<Call*>::iterator call;
-		map<string, Call*>::iterator callMAPIT;
-		Call *call;
-		int i;
-		calltable->lock_calls_listMAP();
-		for (callMAPIT = calltable->calls_listMAP.begin(); callMAPIT != calltable->calls_listMAP.end(); ++callMAPIT) {
-			call = (*callMAPIT).second;
-			//printf("call[%p] == [%li] [%d] [%li] [%li]\n", call, callreference, (long int)call == (long int)callreference, (long int)call, (long int)callreference);
-			
-			if((long int)call == (long int)callreference) {
-				//printf("test codec_caller[%d] codec_called[%d]\n", call->codec_caller, call->codec_called);
-				if(call->listening_worker_run) {
-					// the thread is already running. Just add new fifo writer
-					struct listening_worker_arg *args = (struct listening_worker_arg *)call->listening_worker_args;
-					// find first free position
-					for(i = 0; i < MAX_FIFOOUT && args->fifoout[i] != 0; i++){};
-					args->fifoout[i] = open(fifo3, O_WRONLY | O_NONBLOCK);
-					//printf("args->fifoout [%s] [%d]\n", fifo3, args->fifoout[i]);
-				} else {
-					struct listening_worker_arg *args = (struct listening_worker_arg*)malloc(sizeof(listening_worker_arg));
-					for(i = 0; i < MAX_FIFOOUT; i++) {
-						args->fifoout[i] = 0;
-					}
-					//printf("args->fifoout [%s] [%d]\n", fifo3, args->fifoout[i]);
-
-					args->call = call;
-					call->listening_worker_args = args;
-					umask(0000);
-					mkfifo(fifo1, S_IWUSR | S_IRUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH);
-					mkfifo(fifo2, S_IWUSR | S_IRUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH);
-					args->fifo1r = open(fifo1, O_RDONLY | O_NONBLOCK);
-					args->fifo2r = open(fifo2, O_RDONLY | O_NONBLOCK);
-
-					args->fifoout[0] = open(fifo3, O_WRONLY | O_NONBLOCK);
-
-					if(args->fifoout[0] == -1) {
-						syslog(LOG_ERR, "write() failed: %s\n", strerror(errno));
-					}
-					//printf("args->fifoout [%s] [%d]\n", fifo3, args->fifoout[0]);
-
-					call->fifo1 = open(fifo1, O_WRONLY | O_NONBLOCK);
-					call->fifo2 = open(fifo2, O_WRONLY | O_NONBLOCK);
-
-					pthread_t call_thread;
-					pthread_create(&call_thread, NULL, listening_worker, (void *)args);
-					continue;
-				}
-			}
-		}
-		calltable->unlock_calls_listMAP();
-		if ((size = send(client, "call not found", 14, 0)) == -1){
-			cerr << "Error sending data to client" << endl;
-			return -1;
-		}
 		return 0;
 	} else if(strstr(buf, "reload") != NULL) {
 		reload_config();
