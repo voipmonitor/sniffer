@@ -131,6 +131,7 @@ int opt_clientmanagerport = 9999;
 int opt_callslimit = 0;
 char opt_silencedmtfseq[16] = "";
 char opt_keycheck[1024] = "";
+char opt_convert_char[64] = "";
 int opt_skinny = 0;
 
 char configfile[1024] = "";	// config file name
@@ -1032,6 +1033,9 @@ int load_config(char *fname) {
 	}
 	if((value = ini.GetValue("general", "keycheck", NULL))) {
 		strncpy(opt_keycheck, value, 1024);
+	}
+	if((value = ini.GetValue("general", "convertchar", NULL))) {
+		strncpy(opt_convert_char, value, sizeof(opt_convert_char));
 	}
 	return 0;
 }
