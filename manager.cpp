@@ -99,7 +99,7 @@ void *listening_worker(void *arguments) {
 //	ogg_header(out, &ogg);
 //	fclose(out);
 	pthread_mutex_lock(&args->call->buflock);
-	ogg_header_live2(&args->call->spybufferchar, &ogg);
+//	ogg_header_live2(&args->call->spybufferchar, &ogg);
 	pthread_mutex_unlock(&args->call->buflock);
 
 	timespec tS;
