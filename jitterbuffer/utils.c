@@ -39,6 +39,7 @@
 #include <arpa/inet.h>
 
 #define AST_API_MODULE		/* ensure that inlinable API functions will be built in lock.h if required */
+#include "asterisk/circbuf.h"
 #include "asterisk/lock.h"
 #include "asterisk/io.h"
 #include "asterisk/logger.h"
@@ -1186,4 +1187,77 @@ int _ast_asprintf(char **ret, const char *file, int lineno, const char *func, co
 
 	return res;
 }
+
+void circbuf_init(pvt_circbuf *pvt, size_t capacity) {
+        pvt->beg_index_ = 0;
+        pvt->end_index_ = 0;
+        pvt->size_ = 0;
+        pvt->capacity_ = capacity;
+        pvt->data_ = (char*)malloc(capacity * sizeof(char));
+}
+
+void circbuf_destroy(pvt_circbuf *pvt){
+        free(pvt->data_);
+}
+
+// Return number of bytes read.
+size_t circbuf_read(pvt_circbuf *pvt, char *data, size_t bytes) {
+        if (bytes == 0) return 0;
+
+        size_t capacity = pvt->capacity_;
+        size_t bytes_to_read = MIN(bytes, pvt->size_);
+
+        // Read in a single step
+        if (bytes_to_read <= capacity - pvt->beg_index_)
+        {
+                memcpy(data, pvt->data_ + pvt->beg_index_, bytes_to_read);
+                pvt->beg_index_ += bytes_to_read;
+                if (pvt->beg_index_ == capacity) pvt->beg_index_ = 0;
+        }
+        // Read in two steps
+        else
+        {
+                size_t size_1 = capacity - pvt->beg_index_;
+                memcpy(data, pvt->data_ + pvt->beg_index_, size_1);
+                size_t size_2 = bytes_to_read - size_1;
+                memcpy(data + size_1, pvt->data_, size_2);
+                pvt->beg_index_ = size_2;
+        }
+
+        pvt->size_ -= bytes_to_read;
+        return bytes_to_read;
+}
+
+// Return number of bytes written.
+size_t circbuf_write(pvt_circbuf *pvt, const char *data, size_t bytes) {
+
+	if (bytes == 0) return 0;
+
+	size_t capacity = pvt->capacity_;
+	size_t bytes_to_write = MIN(bytes, capacity - pvt->size_);
+
+	// Write in a single step
+	if (bytes_to_write <= capacity - pvt->end_index_)
+	{
+		memcpy(pvt->data_ + pvt->end_index_, data, bytes_to_write);
+		pvt->end_index_ += bytes_to_write;
+		if (pvt->end_index_ == capacity) pvt->end_index_ = 0;
+	}
+	// Write in two steps
+	else
+	{
+		size_t size_1 = capacity - pvt->end_index_;
+		memcpy(pvt->data_ + pvt->end_index_, data, size_1);
+		size_t size_2 = bytes_to_write - size_1;
+		memcpy(pvt->data_, data + size_1, size_2);
+		pvt->end_index_ = size_2;
+	}
+
+	pvt->size_ += bytes_to_write;
+	return bytes_to_write;
+}
+
+size_t circbuf_size(pvt_circbuf *pvt) { return pvt->size_; }
+size_t circbuf_capacity(pvt_circbuf *pvt) { return pvt->capacity_; }
+
 #endif

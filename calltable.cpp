@@ -85,6 +85,9 @@ extern int opt_cdronlyanswered;
 extern int opt_cdronlyrtp;
 extern int opt_newdir;
 extern char opt_keycheck[1024];
+extern char opt_convert_char[256];
+extern int opt_norecord_dtmf;
+extern char opt_silencedmtfseq[16];
 
 volatile int calls = 0;
 
@@ -146,8 +149,8 @@ Call::Call(char *call_id, unsigned long call_id_len, time_t time, void *ct) {
 	for(int i = 0; i < MAX_SSRC_PER_CALL; i++) {
 		rtp[i] = NULL;
 	}
-	fifo1 = 0;
-	fifo2 = 0;
+	audiobuffer1 = NULL;
+	audiobuffer2 = NULL;
 	listening_worker_run = NULL;
 	tmprtp.call_owner = this;
 	flags = 0;
@@ -176,6 +179,8 @@ Call::Call(char *call_id, unsigned long call_id_len, time_t time, void *ct) {
 	fname2 = 0;
 	skinny_partyid = 0;
 	relationcall = NULL;
+	pthread_mutex_init(&buflock, NULL);
+	pthread_mutex_init(&listening_worker_run_lock, NULL);
 }
 
 void
@@ -252,6 +257,7 @@ Call::~Call(){
 	if(listening_worker_run) {
 		*listening_worker_run = 0;
 	}
+	pthread_mutex_lock(&listening_worker_run_lock);
 
 	if (get_fsip_pcap() != NULL){
 		pcap_dump_flush(get_fsip_pcap());
@@ -278,9 +284,15 @@ Call::~Call(){
 		}
 	}
 
+	if(audiobuffer1) delete audiobuffer1;
+	if(audiobuffer2) delete audiobuffer2;
+
 	if(this->message) {
 		free(message);
 	}
+	pthread_mutex_destroy(&buflock);
+	pthread_mutex_unlock(&listening_worker_run_lock);
+	pthread_mutex_destroy(&listening_worker_run_lock);
 }
 
 void
@@ -2161,8 +2173,11 @@ Call::saveMessageToDb() {
 char *
 Call::get_fbasename_safe() {
 	strncpy(fbasename_safe, fbasename, MAX_FNAME * sizeof(char));
-	for (unsigned int i = 0; i < strlen(fbasename_safe) && i < MAX_FNAME; i++) {
-		if (!(fbasename[i] == ':' || fbasename[i] == '-' || fbasename[i] == '.' || fbasename[i] == '@' || isalnum(fbasename[i]))) {
+	for(unsigned int i = 0; i < strlen(fbasename_safe) && i < MAX_FNAME; i++) {
+		if(strchr(opt_convert_char, fbasename[i]) || 
+		   !(fbasename[i] == ':' || fbasename[i] == '-' || fbasename[i] == '.' || fbasename[i] == '@' || 
+		   isalnum(fbasename[i])) ) {
+
 			fbasename_safe[i] = '_';
 		}
 	}
@@ -2589,3 +2604,54 @@ void Call::saveregister() {
 		((Calltable*)calltable)->calls_listMAP.erase(callMAPIT);
 	}
 }
+
+void
+Call::handle_dtmf(char dtmf) {
+	if(opt_norecord_dtmf) {
+		if(dtmfflag == 0) { 
+			if(dtmf == '*') {
+				// received ftmf '*', set flag so if next dtmf will be '0' stop recording
+				dtmfflag = 1;
+			}
+		} else {
+			if(dtmf == '0') {
+				// we have complete *0 sequence
+				stoprecording();
+				dtmfflag = 0;
+			} else {
+				// reset flag because we did not received '0' after '*'
+				dtmfflag = 0;
+			}       
+		}       
+	}
+	if(opt_silencedmtfseq[0] != '\0') {
+		if(dtmfflag2 == 0) {
+			if(dtmf == opt_silencedmtfseq[dtmfflag2]) {
+				// received ftmf '*', set flag so if next dtmf will be '0' stop recording
+				dtmfflag2++;
+			}       
+		} else {
+			if(dtmf == opt_silencedmtfseq[dtmfflag2]) {
+				// we have complete *0 sequence
+				if(dtmfflag2 + 1 == strlen(opt_silencedmtfseq)) {
+					if(silencerecording == 0) {
+						if(verbosity >= 1)
+							syslog(LOG_NOTICE, "[%s] pause DTMF sequence detected - pausing recording ", fbasename);
+						silencerecording = 1;
+					} else {
+						if(verbosity >= 1)
+							syslog(LOG_NOTICE, "[%s] pause DTMF sequence detected - unpausing recording ", fbasename);
+						silencerecording = 0;
+					}       
+					dtmfflag2 = 0;
+				} else {
+					dtmfflag2++;
+				}       
+			} else {
+				// reset flag 
+				dtmfflag2 = 0;
+			}       
+		}       
+	}
+}
+

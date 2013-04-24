@@ -181,6 +181,8 @@ public:
 	int pinformed;
 	unsigned int first_packet_time;
 	unsigned int first_packet_usec;
+	unsigned int last_end_timestamp;
+	char lastdtmf;
 
 	/* RTCP data */
 	struct rtcp_t {
@@ -254,6 +256,16 @@ public:
 	 *
 	*/
 	void jitterbuffer(struct ast_channel *channel, int savePayload);
+
+	/**
+	 * @brief decode rfc2833 DTMF 
+	 *
+	 * handles DTMF for RTP payload type 101 rfc2833
+	 *
+	 * @param none
+	 *
+	*/
+	void process_dtmf_rfc2833();
 
 	/**
 	 * @brief read RTP packet

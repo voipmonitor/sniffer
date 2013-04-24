@@ -63,7 +63,7 @@ int ogg_header(FILE *f, struct vorbis_desc *tmp)
         return 0;
 }
 
-int ogg_header_live(int f, struct vorbis_desc *tmp)
+int ogg_header_live(std::queue <char> *spybuffer, struct vorbis_desc *tmp)
 {
         ogg_packet header;
         ogg_packet header_comm;
@@ -71,8 +71,11 @@ int ogg_header_live(int f, struct vorbis_desc *tmp)
 
         vorbis_info_init(&tmp->vi);
 
-        if (vorbis_encode_init_vbr(&tmp->vi, 1, 8000, 0.4)) {
+        //if (vorbis_encode_init_vbr(&tmp->vi, 1, 8000, 0.4)) {
+//        if (vorbis_encode_init_vbr(&tmp->vi, 1, 48000, 1.1)) {
 //        if (vorbis_encode_init(&tmp->vi, 1, 8000, 64000, 32000, -1)) {
+        //if (vorbis_encode_init(&tmp->vi, 1, 48000, 96000, 128000, 160000)) {
+        if (vorbis_encode_init(&tmp->vi, 1, 8000, 96000, 128000, 160000)) {
                 syslog(LOG_ERR, "Unable to initialize Vorbis encoder!\n");
                 return -1;
         }
@@ -98,14 +101,21 @@ int ogg_header_live(int f, struct vorbis_desc *tmp)
         while (!tmp->eos) {
                 if (ogg_stream_flush(&tmp->os, &tmp->og) == 0)
                         break;
-/*	do not write headers beause the PHP app is streaming it from the template file
-                if (write(f, tmp->og.header, tmp->og.header_len) == -1) {
-                        syslog(LOG_ERR, "write() failed: %s\n", strerror(errno));
-                }
-                if (write(f, tmp->og.body, tmp->og.body_len) == -1) {
-                        syslog(LOG_ERR, "write() failed: %s\n", strerror(errno));
-                }
-*/
+
+#if 0
+		FILE *fd = fopen("/tmp/test.ogg", "a");
+		fwrite(tmp->og.header, 1, tmp->og.header_len, fd);
+		fwrite(tmp->og.body, 1, tmp->og.body_len, fd);
+		fclose(fd);
+#endif
+
+
+		for(int i = 0; i < tmp->og.header_len; i++) {
+			spybuffer->push(tmp->og.header[i]);
+		}
+		for(int i = 0; i < tmp->og.body_len; i++) {
+			spybuffer->push(tmp->og.body[i]);
+		}
                 if (ogg_page_eos(&tmp->og))
                         tmp->eos = 1;
         }
@@ -159,7 +169,8 @@ static int ogg_write(struct vorbis_desc *s, FILE *f, short *data)
         return 0;
 }
 
-void write_stream_live(struct vorbis_desc *s, int *fifoout)
+
+void write_stream_live(struct vorbis_desc *s, std::queue <char> *spybuffer)
 {
 	int res;
 	int i;
@@ -175,22 +186,11 @@ void write_stream_live(struct vorbis_desc *s, int *fifoout)
 				printf("ogg_stream_packetin error\n");
 		
 			while(ogg_stream_pageout(&s->os, &s->og)) {
-				// write to all fifos 
-				for(i = 0; i < MAX_FIFOOUT; i++) {
-					if(fifoout[i] != 0) {
-						int res;
-						if ((res = write(fifoout[i], s->og.header, s->og.header_len)) == -1) {
-							syslog(LOG_ERR, "write() failed: %s\n", strerror(errno));
-							fifoout[i] = 0;
-							continue;
-						}
-						printf("write [%d] [%d]\n", fifoout[i], res);
-						if ((res = write(fifoout[i], s->og.body, s->og.body_len)) == -1) {
-							syslog(LOG_ERR, "write() failed: %s\n", strerror(errno));
-							fifoout[i] = 0;
-							continue;
-						}
-					}
+				for(i = 0; i < s->og.header_len; i++){
+					spybuffer->push(s->og.header[i]);
+				}
+				for(i = 0; i < s->og.body_len; i++){
+					spybuffer->push(s->og.body[i]);
 				}
                                 if (ogg_page_eos(&s->og)) {
                                         return;
@@ -200,20 +200,19 @@ void write_stream_live(struct vorbis_desc *s, int *fifoout)
         }
 }
 
-int ogg_write_live(struct vorbis_desc *s, int *fifoout, short *data)
+int ogg_write_live(struct vorbis_desc *s, std::queue <char> *spybuffer, short *data)
 {
         float **buffer;
 
         buffer = vorbis_analysis_buffer(&s->vd, 1);
-
 	buffer[0][0] = (double)*data / 32768.0;
-
         vorbis_analysis_wrote(&s->vd, 1);
 
-        write_stream_live(s, fifoout);
+        write_stream_live(s, spybuffer);
 
         return 0;
 }
+
 
 static void ogg_close(struct vorbis_desc *s, FILE *f)
 {

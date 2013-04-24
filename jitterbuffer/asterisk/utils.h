@@ -23,6 +23,10 @@
 #ifndef _ASTERISK_UTILS_H
 #define _ASTERISK_UTILS_H
 
+#if defined(__cplusplus) || defined(c_plusplus)
+extern "C" {
+#endif
+
 #include "asterisk/compat.h"
 
 #include <stdlib.h>
@@ -561,6 +565,10 @@ static void force_inline _ast_assert(int condition, const char *condition_str,
 }
 #else
 #define ast_assert(a)
+#endif
+
+#if defined(__cplusplus) || defined(c_plusplus)
+}
 #endif
 
 #endif /* _ASTERISK_UTILS_H */

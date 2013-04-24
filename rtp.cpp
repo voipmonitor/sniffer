@@ -19,6 +19,7 @@ Each Call class contains two RTP classes.
 
 #include <pcap.h>
 
+#include "tools.h"
 #include "rtp.h"
 #include "calltable.h"
 #include "codecs.h"
@@ -37,6 +38,7 @@ extern int opt_jitterbuffer_f2;            // turns off/on jitterbuffer simulato
 extern int opt_jitterbuffer_adapt;         // turns off/on jitterbuffer simulator to compute MOS score mos_adapt
 extern char opt_cachedir[1024];
 extern int opt_savewav_force;
+int dtmfdebug = 0;
 
 using namespace std;
 
@@ -145,7 +147,7 @@ RTP::RTP() {
 	channel_fix1->last_datalen = 0;
 	channel_fix1->lastbuflen = 0;
 	channel_fix1->resync = 1;
-	channel_fix1->fifofd = 0;
+	channel_fix1->audiobuf = NULL;
 
 	channel_fix2 = (ast_channel*)calloc(1, sizeof(*channel_fix2));
 	channel_fix2->jitter_impl = 0; // fixed
@@ -154,7 +156,7 @@ RTP::RTP() {
 	channel_fix2->last_datalen = 0;
 	channel_fix2->lastbuflen = 0;
 	channel_fix2->resync = 1;
-	channel_fix2->fifofd = 0;
+	channel_fix2->audiobuf = NULL;
 
 	channel_adapt = (ast_channel*)calloc(1, sizeof(*channel_adapt));
 	channel_adapt->jitter_impl = 1; // adaptive
@@ -163,7 +165,7 @@ RTP::RTP() {
 	channel_adapt->last_datalen = 0;
 	channel_adapt->lastbuflen = 0;
 	channel_adapt->resync = 1;
-	channel_adapt->fifofd = 0;
+	channel_adapt->audiobuf = NULL;
 
 	channel_record = (ast_channel*)calloc(1, sizeof(*channel_record));
 	channel_record->jitter_impl = 0; // fixed
@@ -172,8 +174,7 @@ RTP::RTP() {
 	channel_record->last_datalen = 0;
 	channel_record->lastbuflen = 0;
 	channel_record->resync = 0;
-	channel_record->fifofd = 0;
-
+	channel_record->audiobuf = NULL;
 
 	//channel->name = "SIP/fixed";
 	frame = (ast_frame*)calloc(1, sizeof(*frame));
@@ -196,6 +197,8 @@ RTP::RTP() {
 	prev_sid = false;
 	call_owner = NULL;
 	pinformed = 0;
+	last_end_timestamp = 0;
+	lastdtmf = 0;
 }
 
 /* destructor */
@@ -425,10 +428,14 @@ RTP::jitterbuffer(struct ast_channel *channel, int savePayload) {
 		Call *owner = (Call*)call_owner;
 		if(iscaller) {
 			owner->codec_caller = codec;
-			channel->fifofd = owner->fifo1;
+			if(owner->audiobuffer1) {
+				channel->audiobuf = owner->audiobuffer1;
+			}
 		} else {
 			owner->codec_called = codec;
-			channel->fifofd = owner->fifo2;
+			if(owner->audiobuffer2) {
+				channel->audiobuf = owner->audiobuffer2;
+			}
 		}
 
 		if(payload_len > 0) {
@@ -509,6 +516,59 @@ RTP::jitterbuffer(struct ast_channel *channel, int savePayload) {
 }
 #endif
 
+void 
+RTP::process_dtmf_rfc2833() {
+
+	unsigned int seqno = getSeqNum();
+	unsigned int event, event_end, samples;
+	char resp = 0;
+	unsigned int timestamp = getTimestamp();
+
+	unsigned char *pdata = data + sizeof(RTPFixedHeader);
+
+	/* Figure out event, event end, and samples */
+	event = ntohl(*((unsigned int *)(pdata)));
+	event >>= 24;
+	event_end = ntohl(*((unsigned int *)(pdata)));
+	event_end <<= 8;
+	event_end >>= 24;
+	samples = ntohl(*((unsigned int *)(pdata)));
+	samples &= 0xFFFF;
+
+	if(dtmfdebug) syslog(LOG_ERR, "Got  RTP RFC2833 from %u (seq %-6.6u, ts %-6.6u, len %-6.6u, mark %d, event %08x, end %d, duration %-5.5d) \n",
+		    getMarker(), seqno, timestamp, len, (getMarker()?1:0), event, ((event_end & 0x80)?1:0), samples);
+
+	/* Figure out what digit was pressed */
+	if (event < 10) {
+		resp = '0' + event;
+	} else if (event < 11) {
+		resp = '*';
+	} else if (event < 12) {
+		resp = '#';
+	} else if (event < 16) {
+		resp = 'A' + (event - 12);
+	} else if (event < 17) {	/* Event 16: Hook flash */
+		resp = 'X';
+	} else {
+		/* Not a supported event */
+		//syslog(LOG_ERR, "Ignoring RTP 2833 Event: %08x. Not a DTMF Digit.\n", event);
+		return;
+	}
+
+	if ((last_end_timestamp != timestamp) || (lastdtmf && lastdtmf != resp)) {
+		lastdtmf = resp;
+		if(dtmfdebug) syslog(LOG_ERR, "dtmfevent %c\n", resp);
+		last_end_timestamp = timestamp;
+		Call *owner = (Call*)call_owner;
+		if(owner) {
+			 syslog(LOG_ERR, "dtmfevent %c\n", resp);
+			 owner->handle_dtmf(resp);
+		}
+	}
+
+        return;
+}
+
 /* read rtp packet */
 void
 RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t saddr, u_int32_t daddr, int seeninviteok) {
@@ -550,8 +610,9 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 
 	if(!owner) return;
 
-	int fifo1 = owner->fifo1;
-	int fifo2 = owner->fifo2;
+	if(curpayload == 101) {
+		process_dtmf_rfc2833();
+	}
 	
 	/* codec changed */
 	if((codec == -1 || (curpayload != prev_payload)) && (curpayload != 101 && prev_payload != 101)) {
@@ -590,9 +651,9 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 		}
 
 		if(opt_saveRAW || opt_savewav_force || (owner && (owner->flags & FLAG_SAVEWAV)) ||
-			fifo1 || fifo2 // if recording requested 
+			(owner && (owner->audiobuffer1 || owner->audiobuffer2))// if recording requested 
 		) {
-			if(verbosity > 0) syslog(LOG_ERR, "converting WAV! [%u] [%d] [%d]\n", owner->flags, fifo1, fifo2);
+//			if(verbosity > 0) syslog(LOG_ERR, "converting WAV! [%u]\n", owner->flags);
 			/* open file for raw codec */
 			unsigned long unique = getTimestamp();
 			char tmp[1024];
@@ -613,7 +674,7 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 					prevrtp->header = header;
 					prevrtp->saddr = saddr;
 					prevrtp->daddr = daddr;
-					prevrtp->jitterbuffer(prevrtp->channel_record, opt_saveRAW || opt_savewav_force || (owner->flags & FLAG_SAVEWAV) || fifo1 || fifo2);
+					prevrtp->jitterbuffer(prevrtp->channel_record, opt_saveRAW || opt_savewav_force || (owner->flags & FLAG_SAVEWAV) || (owner && (owner->audiobuffer1 || owner->audiobuffer2)));
 				}
 			}
 			gfileRAW = fopen(tmp, "w");
@@ -740,11 +801,11 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 #endif
 
 			/* for recording, we cannot loose any packet */
-			if(opt_saveRAW || opt_savewav_force || (owner->flags & FLAG_SAVEWAV) || fifo1 || fifo2) { // if recording requested 
+			if(opt_saveRAW || opt_savewav_force || (owner->flags & FLAG_SAVEWAV) || (owner && (owner->audiobuffer1 || owner->audiobuffer2))) { // if recording requested 
 				if(packetization < 10) {
 					packetization = channel_record->packetization = default_packetization;
 				}
-				jitterbuffer(channel_record, opt_saveRAW || opt_savewav_force || (owner->flags & FLAG_SAVEWAV) || fifo1 || fifo2);
+				jitterbuffer(channel_record, opt_saveRAW || opt_savewav_force || (owner->flags & FLAG_SAVEWAV) || (owner && (owner->audiobuffer1 || owner->audiobuffer2)));
 			}
 		} else if(packetization_iterator == 1) {
 			if(last_ts != 0 && seq == (last_seq + 1) && curpayload != 101 && prev_payload != 101 && !sid && !prev_sid) {
@@ -769,7 +830,7 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 
 					/* for recording, we cannot loose any packet */
 					if(opt_saveRAW || opt_savewav_force || (owner->flags & FLAG_SAVEWAV) ||
-						fifo1 || fifo2 // if recording requested 
+						(owner && (owner->audiobuffer1 || owner->audiobuffer2))// if recording requested 
 					){
 						packetization = channel_record->packetization = default_packetization;
 						jitterbuffer(channel_record, 1);
@@ -786,7 +847,7 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 					if(opt_jitterbuffer_adapt)
 						jitterbuffer(channel_adapt, 0);
 					if(opt_saveRAW || opt_savewav_force || (owner->flags & FLAG_SAVEWAV) ||
-						fifo1 || fifo2 // if recording requested 
+						(owner && (owner->audiobuffer1 || owner->audiobuffer2))// if recording requested 
 					){
 						jitterbuffer(channel_record, 1);
 					}
@@ -795,7 +856,7 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 				packetization_iterator = 0;
 				/* for recording, we cannot loose any packet */
 				if(opt_saveRAW || opt_savewav_force || (owner->flags & FLAG_SAVEWAV) ||
-					fifo1 || fifo2 // if recording requested 
+					(owner && (owner->audiobuffer1 || owner->audiobuffer2))// if recording requested 
 				){
 					packetization = channel_record->packetization = default_packetization;
 					jitterbuffer(channel_record, 1);
@@ -817,7 +878,7 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 			if(opt_jitterbuffer_adapt)
 				jitterbuffer(channel_adapt, 0);
 			if(opt_saveRAW || opt_savewav_force || (owner->flags & FLAG_SAVEWAV) ||
-				fifo1 || fifo2 // if recording requested 
+				(owner && (owner->audiobuffer1 || owner->audiobuffer2))// if recording requested 
 			){
 				jitterbuffer(channel_record, 1);
 			}

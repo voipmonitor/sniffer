@@ -70,6 +70,7 @@ jitterbuffer/asterisk/buildopts.h -text
 jitterbuffer/asterisk/cdr.h -text
 jitterbuffer/asterisk/channel.h -text
 jitterbuffer/asterisk/chanvars.h -text
+jitterbuffer/asterisk/circbuf.h -text
 jitterbuffer/asterisk/cli.h -text
 jitterbuffer/asterisk/compat.h -text
 jitterbuffer/asterisk/compiler.h -text
