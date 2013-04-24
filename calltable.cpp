@@ -235,7 +235,6 @@ Call::removeRTP() {
 /* destructor */
 Call::~Call(){
 
-	pthread_mutex_lock(&listening_worker_run_lock);
 	if(relationcall) {
 		// break relation 
 		relationcall->relationcall = NULL;
@@ -258,6 +257,7 @@ Call::~Call(){
 	if(listening_worker_run) {
 		*listening_worker_run = 0;
 	}
+	pthread_mutex_lock(&listening_worker_run_lock);
 
 	if (get_fsip_pcap() != NULL){
 		pcap_dump_flush(get_fsip_pcap());
