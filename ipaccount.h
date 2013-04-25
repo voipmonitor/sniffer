@@ -195,8 +195,12 @@ public:
 	int getCustByIpFromCacheVect(unsigned int ip);
 	void flush();
 	void setMaxQueryPass(unsigned int maxQueryPass) {
-		this->sqlDb->setMaxQueryPass(maxQueryPass);
-		this->sqlDbRadius->setMaxQueryPass(maxQueryPass);
+		if(this->sqlDb) {
+			this->sqlDb->setMaxQueryPass(maxQueryPass);
+		}
+		if(this->sqlDbRadius) {
+			this->sqlDbRadius->setMaxQueryPass(maxQueryPass);
+		}
 	}
 private:
 	SqlDb *sqlDb;
