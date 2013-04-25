@@ -196,6 +196,7 @@ public:
 	void flush();
 	void setMaxQueryPass(unsigned int maxQueryPass) {
 		this->sqlDb->setMaxQueryPass(maxQueryPass);
+		this->sqlDbRadius->setMaxQueryPass(maxQueryPass);
 	}
 private:
 	SqlDb *sqlDb;

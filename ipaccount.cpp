@@ -705,11 +705,13 @@ int CustIpCache::connect() {
 		sqlDb_odbc->setSubtypeDb(this->odbcDriver);
 		this->sqlDb = sqlDb_odbc;
 		this->sqlDb->setConnectParameters(this->odbcDsn, this->odbcUser, this->odbcPassword);
+		this->sqlDb->enableSysLog();
 	}
 	if(!this->sqlDbRadius && this->radiusHost.length()) {
 		SqlDb_mysql *sqlDb_mysql = new SqlDb_mysql();
 		this->sqlDbRadius = sqlDb_mysql;
 		this->sqlDbRadius->setConnectParameters(this->radiusHost, this->radiusUser, this->radiusPassword, this->radiusDb);
+		this->sqlDbRadius->enableSysLog();
 	}
 	return(this->sqlDb->connect() && 
 	       (this->sqlDbRadius ? this->sqlDbRadius->connect() : true));
@@ -879,6 +881,7 @@ int NextIpCache::connect() {
 	if(isSqlDriver("mysql")) {
 		this->sqlDb = new SqlDb_mysql();
 		sqlDb->setConnectParameters(mysql_host, mysql_user, mysql_password, mysql_database);
+		this->sqlDb->enableSysLog();
 		return(this->sqlDb->connect());
 	}
 	return(0);
