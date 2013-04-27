@@ -440,35 +440,27 @@ void IpaccAgreg::save(unsigned int time_interval) {
 	char agreg_time[100];
 	
 	map<AgregIP, AgregData*>::iterator iter1;
-	for(int i = 0; i < 2; i++) {
-		agreg_table = i == 0 ? "ipacc_agr_hour" : "ipacc_agr_day";
-		agreg_time_field = i == 0 ? "time_hour" : "date_day";
+	for(int i = 0; i < 3; i++) {
+		agreg_table = 
+			i == 0 ? "ipacc_agr_interval" :
+			(i == 1 ? "ipacc_agr_hour" : "ipacc_agr_day");
+		agreg_time_field = 
+			i == 0 ? "interval_time" :
+			(i == 1 ? "time_hour" : "date_day");
 		strcpy(agreg_time,
-		       i == 0 ?
+			i == 0 ?
+				sqlDateTimeString(time_interval).c_str() :
+			(i == 1 ?
 				sqlDateTimeString(time_interval / 3600 * 3600).c_str() :
-				sqlDateString(time_interval).c_str());
+				sqlDateString(time_interval).c_str()));
 	if(opt_ipacc_multithread_save) {
-		sqlStore->lock(i == 0 ? STORE_PROC_ID_IPACC_AGR_HOUR : STORE_PROC_ID_IPACC_AGR_DAY);
+		sqlStore->lock(
+			i == 0 ? STORE_PROC_ID_IPACC_AGR_INTERVAL :
+			(i == 1 ? STORE_PROC_ID_IPACC_AGR_HOUR : STORE_PROC_ID_IPACC_AGR_DAY));
 	}
 	for(iter1 = this->map1.begin(); iter1 != this->map1.end(); iter1++) {
-		sprintf(insertQueryBuff,
-			"update %s set "
-				"traffic_in = traffic_in + %lu, "
-				"traffic_out = traffic_out + %lu, "
-				"traffic_sum = traffic_sum + %lu, "
-				"packets_in = packets_in + %lu, "
-				"packets_out = packets_out + %lu, "
-				"packets_sum = packets_sum + %lu, "
-				"traffic_voip_in = traffic_voip_in + %lu, "
-				"traffic_voip_out = traffic_voip_out + %lu, "
-				"traffic_voip_sum = traffic_voip_sum + %lu, "
-				"packets_voip_in = packets_voip_in + %lu, "
-				"packets_voip_out = packets_voip_out + %lu, "
-				"packets_voip_sum = packets_voip_sum + %lu "
-			"where %s = '%s' and "
-				"addr = %u and customer_id = %u and "
-				"proto = %u and port = %u; "
-			"if(row_count() <= 0) then "
+		if(i == 0) {
+			sprintf(insertQueryBuff,
 				"insert into %s ("
 						"%s, addr, customer_id, proto, port, "
 						"traffic_in, traffic_out, traffic_sum, "
@@ -480,57 +472,109 @@ void IpaccAgreg::save(unsigned int time_interval) {
 						"%lu, %lu, %lu, "
 						"%lu, %lu, %lu, "
 						"%lu, %lu, %lu, "
-						"%lu, %lu, %lu);"
-			"end if",
-			agreg_table,
-			iter1->second->traffic_in,
-			iter1->second->traffic_out,
-			iter1->second->traffic_in + iter1->second->traffic_out,
-			iter1->second->packets_in,
-			iter1->second->packets_out,
-			iter1->second->packets_in + iter1->second->packets_out,
-			iter1->second->traffic_voip_in,
-			iter1->second->traffic_voip_out,
-			iter1->second->traffic_voip_in + iter1->second->traffic_voip_out,
-			iter1->second->packets_voip_in,
-			iter1->second->packets_voip_out,
-			iter1->second->packets_voip_in + iter1->second->packets_voip_out,
-			agreg_time_field,
-			agreg_time,
-			iter1->first.ip,
-			iter1->second->id_customer,
-			iter1->first.proto,
-			iter1->first.port,
-			agreg_table,
-			agreg_time_field,
-			agreg_time,
-			iter1->first.ip,
-			iter1->second->id_customer,
-			iter1->first.proto,
-			iter1->first.port,
-			iter1->second->traffic_in,
-			iter1->second->traffic_out,
-			iter1->second->traffic_in + iter1->second->traffic_out,
-			iter1->second->packets_in,
-			iter1->second->packets_out,
-			iter1->second->packets_in + iter1->second->packets_out,
-			iter1->second->traffic_voip_in,
-			iter1->second->traffic_voip_out,
-			iter1->second->traffic_voip_in + iter1->second->traffic_voip_out,
-			iter1->second->packets_voip_in,
-			iter1->second->packets_voip_out,
-			iter1->second->packets_voip_in + iter1->second->packets_voip_out);
+						"%lu, %lu, %lu);",
+				agreg_table,
+				agreg_time_field,
+				agreg_time,
+				iter1->first.ip,
+				iter1->second->id_customer,
+				iter1->first.proto,
+				iter1->first.port,
+				iter1->second->traffic_in,
+				iter1->second->traffic_out,
+				iter1->second->traffic_in + iter1->second->traffic_out,
+				iter1->second->packets_in,
+				iter1->second->packets_out,
+				iter1->second->packets_in + iter1->second->packets_out,
+				iter1->second->traffic_voip_in,
+				iter1->second->traffic_voip_out,
+				iter1->second->traffic_voip_in + iter1->second->traffic_voip_out,
+				iter1->second->packets_voip_in,
+				iter1->second->packets_voip_out,
+				iter1->second->packets_voip_in + iter1->second->packets_voip_out);
+		} else {
+			sprintf(insertQueryBuff,
+				"update %s set "
+					"traffic_in = traffic_in + %lu, "
+					"traffic_out = traffic_out + %lu, "
+					"traffic_sum = traffic_sum + %lu, "
+					"packets_in = packets_in + %lu, "
+					"packets_out = packets_out + %lu, "
+					"packets_sum = packets_sum + %lu, "
+					"traffic_voip_in = traffic_voip_in + %lu, "
+					"traffic_voip_out = traffic_voip_out + %lu, "
+					"traffic_voip_sum = traffic_voip_sum + %lu, "
+					"packets_voip_in = packets_voip_in + %lu, "
+					"packets_voip_out = packets_voip_out + %lu, "
+					"packets_voip_sum = packets_voip_sum + %lu "
+				"where %s = '%s' and "
+					"addr = %u and customer_id = %u and "
+					"proto = %u and port = %u; "
+				"if(row_count() <= 0) then "
+					"insert into %s ("
+							"%s, addr, customer_id, proto, port, "
+							"traffic_in, traffic_out, traffic_sum, "
+							"packets_in, packets_out, packets_sum, "
+							"traffic_voip_in, traffic_voip_out, traffic_voip_sum, "
+							"packets_voip_in, packets_voip_out, packets_voip_sum"
+						") values ("
+							"'%s', %u, %u, %u, %u, "
+							"%lu, %lu, %lu, "
+							"%lu, %lu, %lu, "
+							"%lu, %lu, %lu, "
+							"%lu, %lu, %lu);"
+				"end if",
+				agreg_table,
+				iter1->second->traffic_in,
+				iter1->second->traffic_out,
+				iter1->second->traffic_in + iter1->second->traffic_out,
+				iter1->second->packets_in,
+				iter1->second->packets_out,
+				iter1->second->packets_in + iter1->second->packets_out,
+				iter1->second->traffic_voip_in,
+				iter1->second->traffic_voip_out,
+				iter1->second->traffic_voip_in + iter1->second->traffic_voip_out,
+				iter1->second->packets_voip_in,
+				iter1->second->packets_voip_out,
+				iter1->second->packets_voip_in + iter1->second->packets_voip_out,
+				agreg_time_field,
+				agreg_time,
+				iter1->first.ip,
+				iter1->second->id_customer,
+				iter1->first.proto,
+				iter1->first.port,
+				agreg_table,
+				agreg_time_field,
+				agreg_time,
+				iter1->first.ip,
+				iter1->second->id_customer,
+				iter1->first.proto,
+				iter1->first.port,
+				iter1->second->traffic_in,
+				iter1->second->traffic_out,
+				iter1->second->traffic_in + iter1->second->traffic_out,
+				iter1->second->packets_in,
+				iter1->second->packets_out,
+				iter1->second->packets_in + iter1->second->packets_out,
+				iter1->second->traffic_voip_in,
+				iter1->second->traffic_voip_out,
+				iter1->second->traffic_voip_in + iter1->second->traffic_voip_out,
+				iter1->second->packets_voip_in,
+				iter1->second->packets_voip_out,
+				iter1->second->packets_voip_in + iter1->second->packets_voip_out);
+		}
 		if(opt_ipacc_multithread_save) {
-			sqlStore->query(insertQueryBuff, i == 0 ? STORE_PROC_ID_IPACC_AGR_HOUR : STORE_PROC_ID_IPACC_AGR_DAY);
+			sqlStore->query(insertQueryBuff,
+					i == 0 ? STORE_PROC_ID_IPACC_AGR_INTERVAL :
+					(i == 1 ? STORE_PROC_ID_IPACC_AGR_HOUR : STORE_PROC_ID_IPACC_AGR_DAY));
 		} else {
 			mysqlquery.push(insertQueryBuff);
 		}
-		//sqlDb->query("drop procedure if exists __eee;");////
-		//sqlDb->query(string("create procedure __eee() begin ") + insertQueryBuff + "; end;");////
-		//sqlDb->query("call __eee();");////
 	}
 	if(opt_ipacc_multithread_save) {
-		sqlStore->unlock(i == 0 ? STORE_PROC_ID_IPACC_AGR_HOUR : STORE_PROC_ID_IPACC_AGR_DAY);
+		sqlStore->unlock(
+			i == 0 ? STORE_PROC_ID_IPACC_AGR_INTERVAL :
+			(i == 1 ? STORE_PROC_ID_IPACC_AGR_HOUR : STORE_PROC_ID_IPACC_AGR_DAY));
 	}
 	}
 	
@@ -633,9 +677,6 @@ void IpaccAgreg::save(unsigned int time_interval) {
 		} else {
 			mysqlquery.push(insertQueryBuff);
 		}
-		//sqlDb->query("drop procedure if exists __eee;");////
-		//sqlDb->query(string("create procedure __eee() begin ") + insertQueryBuff + "; end;");////
-		//sqlDb->query("call __eee();");////
 		++_counter;
 	}
 	if(opt_ipacc_multithread_save) {

@@ -1970,8 +1970,10 @@ int main(int argc, char *argv[]) {
 
 void test() {
 	
+	/*
 	extern CustIpCache *custIpCache;
 	custIpCache->fetchAllIpQueryFromDb();
+	*/
 	
 	/*
 	for(int i = 1; i <= 10; i++) {
@@ -2039,7 +2041,9 @@ void test() {
 	}
 	
 	return;
+	*/
 	
+	/*
 	ipfilter = new IPfilter;
 	ipfilter->load();
 	ipfilter->dump();
