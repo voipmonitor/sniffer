@@ -799,6 +799,7 @@ MySqlStore_process::MySqlStore_process(int id, const char *host, const char *use
 	this->sqlDb = new SqlDb_mysql();
 	this->sqlDb->setConnectParameters(host, user, password, database);
 	this->sqlDb->connect();
+	this->sqlDb->enableSysLog();
 	pthread_mutex_init(&this->lock_mutex, NULL);
 	pthread_create(&this->thread, NULL, MySqlStore_process_storing, this);
 }

@@ -459,7 +459,7 @@ void IpaccAgreg::save(unsigned int time_interval) {
 			(i == 1 ? STORE_PROC_ID_IPACC_AGR_HOUR : STORE_PROC_ID_IPACC_AGR_DAY));
 	}
 	for(iter1 = this->map1.begin(); iter1 != this->map1.end(); iter1++) {
-		if(i == 0) {
+		/*if(i == 0) {
 			sprintf(insertQueryBuff,
 				"insert into %s ("
 						"%s, addr, customer_id, proto, port, "
@@ -492,7 +492,7 @@ void IpaccAgreg::save(unsigned int time_interval) {
 				iter1->second->packets_voip_in,
 				iter1->second->packets_voip_out,
 				iter1->second->packets_voip_in + iter1->second->packets_voip_out);
-		} else {
+		} else {*/
 			sprintf(insertQueryBuff,
 				"update %s set "
 					"traffic_in = traffic_in + %lu, "
@@ -562,7 +562,7 @@ void IpaccAgreg::save(unsigned int time_interval) {
 				iter1->second->packets_voip_in,
 				iter1->second->packets_voip_out,
 				iter1->second->packets_voip_in + iter1->second->packets_voip_out);
-		}
+		//}
 		if(opt_ipacc_multithread_save) {
 			sqlStore->query(insertQueryBuff,
 					i == 0 ? STORE_PROC_ID_IPACC_AGR_INTERVAL :
