@@ -12,6 +12,7 @@ extern int verbosity;
 extern int opt_mysql_port;
 extern char opt_match_header[128];
 extern int terminating;
+extern int opt_id_sensor;
 
 int sql_noerror = 0;
 
@@ -821,6 +822,9 @@ void MySqlStore_process::query(const char *query_str) {
 void MySqlStore_process::store() {
 	char insert_funcname[20];
 	sprintf(insert_funcname, "__insert_%i", this->id);
+	if(opt_id_sensor > -1) {
+		sprintf(insert_funcname + strlen(insert_funcname), "S%i", opt_id_sensor);
+	}
 	while(1) {
 		int size = 0;
 		int msgs = 50;
