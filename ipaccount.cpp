@@ -472,7 +472,7 @@ void IpaccAgreg::save(unsigned int time_interval) {
 						"%lu, %lu, %lu, "
 						"%lu, %lu, %lu, "
 						"%lu, %lu, %lu, "
-						"%lu, %lu, %lu);",
+						"%lu, %lu, %lu)",
 				agreg_table,
 				agreg_time_field,
 				agreg_time,
