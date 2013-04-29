@@ -179,6 +179,7 @@ char get_customer_by_pn_odbc_user[256];
 char get_customer_by_pn_odbc_password[256];
 char get_customer_by_pn_odbc_driver[256];
 char get_customers_pn_query[1024];
+vector<string> opt_national_prefix;
 
 char get_radius_ip_driver[256];
 char get_radius_ip_host[256];
@@ -941,6 +942,17 @@ int load_config(char *fname) {
 	}
 	if((value = ini.GetValue("general", "get_customers_pn_query", NULL))) {
 		strncpy(get_customers_pn_query, value, sizeof(get_customers_pn_query));
+	}
+	if((value = ini.GetValue("general", "national_prefix", NULL))) {
+		char *pos = (char*)value;
+		while(pos && *pos) {
+			char *posSep = strchr(pos, ';');
+			if(posSep) {
+				*posSep = 0;
+			}
+			opt_national_prefix.push_back(pos);
+			pos = posSep ? posSep + 1 : NULL;
+		}
 	}
 	if((value = ini.GetValue("general", "get_radius_ip_driver", NULL))) {
 		strncpy(get_radius_ip_driver, value, sizeof(get_radius_ip_driver));
@@ -2004,7 +2016,7 @@ void test() {
 	initIpacc();
 	extern CustPhoneNumberCache *custPnCache;
 	cust_reseller cr;
-	cr = custPnCache->getCustomerByPhoneNumber("2307212");
+	cr = custPnCache->getCustomerByPhoneNumber("0352307212");
 	cout << cr.cust_id << " - " << cr.reseller_id << endl;
 	
 	/*

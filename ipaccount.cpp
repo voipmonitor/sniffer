@@ -75,6 +75,7 @@ extern char get_radius_ip_password[256];
 extern char get_radius_ip_query[1024];
 extern char get_radius_ip_query_where[1024];
 extern int get_customer_by_ip_flush_period;
+extern vector<string> opt_national_prefix;
 
 extern char mysql_host[256];
 extern char mysql_database[256];
@@ -1033,24 +1034,24 @@ cust_reseller CustPhoneNumberCache::getCustomerByPhoneNumber(char* number) {
 		if(!this->custCache.size()) {
 			return(rslt);
 		}
-		vector<cust_pn_cache_rec>::iterator findRecIt;
-		findRecIt = std::lower_bound(this->custCache.begin(), this->custCache.end(), number);
-		if(findRecIt != this->custCache.end() && (*findRecIt).cust_id) {
-			if(findRecIt != this->custCache.begin() && (*findRecIt).numberFrom > number) {
-				--findRecIt;
+		for(uint i = 0; i < opt_national_prefix.size() + 1; i++) {
+			string findNumber = number;
+			if(i > 0 && opt_national_prefix[i - 1] == findNumber.substr(0, opt_national_prefix[i - 1].length())) {
+				findNumber = findNumber.substr(opt_national_prefix[i - 1].length());
 			}
-			if((*findRecIt).cust_id && (*findRecIt).numberFrom <= number && (*findRecIt).numberTo >= string(number).substr(0, (*findRecIt).numberTo.length())) {
-				cout << (*findRecIt).numberFrom << " - " << (*findRecIt).numberTo << endl;
-				rslt.cust_id = (*findRecIt).cust_id;
-				rslt.reseller_id = (*findRecIt).reseller_id;
-				/*
-				string initNumberFrom = (*findRecIt).numberFrom;
-				while(findRecIt != this->custCache.end()) {
-					++findRecIt;
-					break;
-					
+			vector<cust_pn_cache_rec>::iterator findRecIt;
+			findRecIt = std::lower_bound(this->custCache.begin(), this->custCache.end(), findNumber);
+			if(findRecIt != this->custCache.end() && (*findRecIt).cust_id) {
+				if(findRecIt != this->custCache.begin() && (*findRecIt).numberFrom > findNumber) {
+					--findRecIt;
 				}
-				*/
+				if((*findRecIt).cust_id && (*findRecIt).numberFrom <= findNumber && 
+				   (*findRecIt).numberTo >= findNumber.substr(0, (*findRecIt).numberTo.length())) {
+					cout << (*findRecIt).numberFrom << " - " << (*findRecIt).numberTo << endl;
+					rslt.cust_id = (*findRecIt).cust_id;
+					rslt.reseller_id = (*findRecIt).reseller_id;
+					break;
+				}
 			}
 		}
 	}
