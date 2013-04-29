@@ -78,6 +78,22 @@ struct cust_cache_rec {
 	}
 };
 
+struct cust_pn_cache_rec {
+	cust_pn_cache_rec() {
+		cust_id = 0;
+	}
+	string numberFrom;
+	string numberTo;
+	unsigned int cust_id;
+	string reseller_id;
+	bool operator < (const cust_pn_cache_rec& other) const { 
+		return(this->numberFrom < other.numberFrom); 
+	}
+	bool operator < (const string& _numberFrom) const { 
+		return(this->numberFrom < _numberFrom); 
+	}
+};
+
 struct next_cache_rec {
 	next_cache_rec() {
 		ip = 0;
@@ -89,6 +105,14 @@ struct next_cache_rec {
 		return((this->ip < other.ip) ? 1 : (this->ip > other.ip) ? 0 :
 		       (this->mask < other.mask));
 	}
+};
+
+struct cust_reseller {
+	cust_reseller() {
+		cust_id = 0;
+	}
+	unsigned int cust_id;
+	string reseller_id;
 };
 
 class IpaccAgreg {
@@ -237,6 +261,35 @@ public:
 private:
 	SqlDb *sqlDb;
 	vector<next_cache_rec> nextCache;
+	unsigned int flushCounter;
+	bool doFlush;
+};
+
+class CustPhoneNumberCache {
+public:
+	CustPhoneNumberCache();
+	~CustPhoneNumberCache();
+	void setConnectParams(const char *sqlDriver, const char *odbcDsn, const char *odbcUser, const char *odbcPassword, const char *odbcDriver);
+	void setQueryes(const char *fetchPhoneNumbers);
+	int connect();
+	bool okParams();
+	cust_reseller getCustomerByPhoneNumber(char *number);
+	int fetchPhoneNumbersFromDb();
+	void flush();
+	void setMaxQueryPass(unsigned int maxQueryPass) {
+		if(this->sqlDb) {
+			this->sqlDb->setMaxQueryPass(maxQueryPass);
+		}
+	}
+private:
+	SqlDb *sqlDb;
+	vector<cust_pn_cache_rec> custCache;
+	string sqlDriver;
+	string odbcDsn;
+	string odbcUser;
+	string odbcPassword;
+	string odbcDriver;
+	string query_fetchPhoneNumbers;
 	unsigned int flushCounter;
 	bool doFlush;
 };

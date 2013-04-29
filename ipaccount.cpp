@@ -61,6 +61,12 @@ extern char get_customer_by_ip_odbc_driver[256];
 extern char get_customer_by_ip_query[1024];
 extern char get_customers_ip_query[1024];
 extern char get_customers_radius_name_query[1024];
+extern char get_customer_by_pn_sql_driver[256];
+extern char get_customer_by_pn_odbc_dsn[256];
+extern char get_customer_by_pn_odbc_user[256];
+extern char get_customer_by_pn_odbc_password[256];
+extern char get_customer_by_pn_odbc_driver[256];
+extern char get_customers_pn_query[1024];
 extern char get_radius_ip_driver[256];
 extern char get_radius_ip_host[256];
 extern char get_radius_ip_db[256];
@@ -91,6 +97,7 @@ static volatile int sync_save_ipacc_buffer[2];
 static unsigned int last_flush_interval_time = 0;
 CustIpCache *custIpCache = NULL;
 static NextIpCache *nextIpCache = NULL;
+CustPhoneNumberCache *custPnCache = NULL;
 
 
 void ipacc_save(int indexIpaccBuffer, unsigned int interval_time_limit = 0) {
@@ -99,6 +106,9 @@ void ipacc_save(int indexIpaccBuffer, unsigned int interval_time_limit = 0) {
 	}
 	if(nextIpCache) {
 		nextIpCache->flush();
+	}
+	if(custIpCache) {
+		custIpCache->flush();
 	}
 	
 	octects_t *ipacc_data;
@@ -116,10 +126,13 @@ void ipacc_save(int indexIpaccBuffer, unsigned int interval_time_limit = 0) {
 	map<unsigned int, IpaccAgreg*>::iterator agregIter;
 	char insertQueryBuff[1000];
 	if(opt_ipacc_multithread_save) {
-		sqlStore->lock(STORE_PROC_ID_IPACC);
+		sqlStore->lock(STORE_PROC_ID_IPACC_1);
+		sqlStore->lock(STORE_PROC_ID_IPACC_2);
+		sqlStore->lock(STORE_PROC_ID_IPACC_3);
 	} else {
 		pthread_mutex_lock(&mysqlquery_lock);
 	}
+	int _counter  = 0;
 	bool enableClear = true;
 	t_ipacc_buffer::iterator iter;
 	for (iter = ipacc_buffer[indexIpaccBuffer].begin(); iter != ipacc_buffer[indexIpaccBuffer].end(); iter++) {
@@ -176,7 +189,7 @@ void ipacc_save(int indexIpaccBuffer, unsigned int interval_time_limit = 0) {
 						ipacc_data->voippacket,
 						opt_ipacc_sniffer_agregate ? 0 : 1);
 					if(opt_ipacc_multithread_save) {
-						sqlStore->query(insertQueryBuff, STORE_PROC_ID_IPACC);
+						sqlStore->query(insertQueryBuff, STORE_PROC_ID_IPACC_1 + (_counter % 3));
 					} else {
 						mysqlquery.push(insertQueryBuff);
 					}
@@ -200,6 +213,7 @@ void ipacc_save(int indexIpaccBuffer, unsigned int interval_time_limit = 0) {
 					row.add(opt_ipacc_sniffer_agregate ? 0 : 1, "do_agr_trigger");
 					sqlDb->insert("ipacc", row);
 				}
+				++_counter;
 				
 				if(opt_ipacc_sniffer_agregate) {
 					agregIter = agreg.find(ipacc_data->interval_time);
@@ -234,7 +248,9 @@ void ipacc_save(int indexIpaccBuffer, unsigned int interval_time_limit = 0) {
 		ipacc_buffer[indexIpaccBuffer].clear();
 	}
 	if(opt_ipacc_multithread_save) {
-		sqlStore->unlock(STORE_PROC_ID_IPACC);
+		sqlStore->unlock(STORE_PROC_ID_IPACC_1);
+		sqlStore->unlock(STORE_PROC_ID_IPACC_2);
+		sqlStore->unlock(STORE_PROC_ID_IPACC_3);
 	}
 	if(opt_ipacc_sniffer_agregate) {
 		for(agregIter = agreg.begin(); agregIter != agreg.end(); ++agregIter) {
@@ -459,8 +475,24 @@ void IpaccAgreg::save(unsigned int time_interval) {
 			(i == 1 ? STORE_PROC_ID_IPACC_AGR_HOUR : STORE_PROC_ID_IPACC_AGR_DAY));
 	}
 	for(iter1 = this->map1.begin(); iter1 != this->map1.end(); iter1++) {
-		/*if(i == 0) {
-			sprintf(insertQueryBuff,
+		sprintf(insertQueryBuff,
+			"update %s set "
+				"traffic_in = traffic_in + %lu, "
+				"traffic_out = traffic_out + %lu, "
+				"traffic_sum = traffic_sum + %lu, "
+				"packets_in = packets_in + %lu, "
+				"packets_out = packets_out + %lu, "
+				"packets_sum = packets_sum + %lu, "
+				"traffic_voip_in = traffic_voip_in + %lu, "
+				"traffic_voip_out = traffic_voip_out + %lu, "
+				"traffic_voip_sum = traffic_voip_sum + %lu, "
+				"packets_voip_in = packets_voip_in + %lu, "
+				"packets_voip_out = packets_voip_out + %lu, "
+				"packets_voip_sum = packets_voip_sum + %lu "
+			"where %s = '%s' and "
+				"addr = %u and customer_id = %u and "
+				"proto = %u and port = %u; "
+			"if(row_count() <= 0) then "
 				"insert into %s ("
 						"%s, addr, customer_id, proto, port, "
 						"traffic_in, traffic_out, traffic_sum, "
@@ -472,97 +504,46 @@ void IpaccAgreg::save(unsigned int time_interval) {
 						"%lu, %lu, %lu, "
 						"%lu, %lu, %lu, "
 						"%lu, %lu, %lu, "
-						"%lu, %lu, %lu)",
-				agreg_table,
-				agreg_time_field,
-				agreg_time,
-				iter1->first.ip,
-				iter1->second->id_customer,
-				iter1->first.proto,
-				iter1->first.port,
-				iter1->second->traffic_in,
-				iter1->second->traffic_out,
-				iter1->second->traffic_in + iter1->second->traffic_out,
-				iter1->second->packets_in,
-				iter1->second->packets_out,
-				iter1->second->packets_in + iter1->second->packets_out,
-				iter1->second->traffic_voip_in,
-				iter1->second->traffic_voip_out,
-				iter1->second->traffic_voip_in + iter1->second->traffic_voip_out,
-				iter1->second->packets_voip_in,
-				iter1->second->packets_voip_out,
-				iter1->second->packets_voip_in + iter1->second->packets_voip_out);
-		} else {*/
-			sprintf(insertQueryBuff,
-				"update %s set "
-					"traffic_in = traffic_in + %lu, "
-					"traffic_out = traffic_out + %lu, "
-					"traffic_sum = traffic_sum + %lu, "
-					"packets_in = packets_in + %lu, "
-					"packets_out = packets_out + %lu, "
-					"packets_sum = packets_sum + %lu, "
-					"traffic_voip_in = traffic_voip_in + %lu, "
-					"traffic_voip_out = traffic_voip_out + %lu, "
-					"traffic_voip_sum = traffic_voip_sum + %lu, "
-					"packets_voip_in = packets_voip_in + %lu, "
-					"packets_voip_out = packets_voip_out + %lu, "
-					"packets_voip_sum = packets_voip_sum + %lu "
-				"where %s = '%s' and "
-					"addr = %u and customer_id = %u and "
-					"proto = %u and port = %u; "
-				"if(row_count() <= 0) then "
-					"insert into %s ("
-							"%s, addr, customer_id, proto, port, "
-							"traffic_in, traffic_out, traffic_sum, "
-							"packets_in, packets_out, packets_sum, "
-							"traffic_voip_in, traffic_voip_out, traffic_voip_sum, "
-							"packets_voip_in, packets_voip_out, packets_voip_sum"
-						") values ("
-							"'%s', %u, %u, %u, %u, "
-							"%lu, %lu, %lu, "
-							"%lu, %lu, %lu, "
-							"%lu, %lu, %lu, "
-							"%lu, %lu, %lu);"
-				"end if",
-				agreg_table,
-				iter1->second->traffic_in,
-				iter1->second->traffic_out,
-				iter1->second->traffic_in + iter1->second->traffic_out,
-				iter1->second->packets_in,
-				iter1->second->packets_out,
-				iter1->second->packets_in + iter1->second->packets_out,
-				iter1->second->traffic_voip_in,
-				iter1->second->traffic_voip_out,
-				iter1->second->traffic_voip_in + iter1->second->traffic_voip_out,
-				iter1->second->packets_voip_in,
-				iter1->second->packets_voip_out,
-				iter1->second->packets_voip_in + iter1->second->packets_voip_out,
-				agreg_time_field,
-				agreg_time,
-				iter1->first.ip,
-				iter1->second->id_customer,
-				iter1->first.proto,
-				iter1->first.port,
-				agreg_table,
-				agreg_time_field,
-				agreg_time,
-				iter1->first.ip,
-				iter1->second->id_customer,
-				iter1->first.proto,
-				iter1->first.port,
-				iter1->second->traffic_in,
-				iter1->second->traffic_out,
-				iter1->second->traffic_in + iter1->second->traffic_out,
-				iter1->second->packets_in,
-				iter1->second->packets_out,
-				iter1->second->packets_in + iter1->second->packets_out,
-				iter1->second->traffic_voip_in,
-				iter1->second->traffic_voip_out,
-				iter1->second->traffic_voip_in + iter1->second->traffic_voip_out,
-				iter1->second->packets_voip_in,
-				iter1->second->packets_voip_out,
-				iter1->second->packets_voip_in + iter1->second->packets_voip_out);
-		//}
+						"%lu, %lu, %lu);"
+			"end if",
+			agreg_table,
+			iter1->second->traffic_in,
+			iter1->second->traffic_out,
+			iter1->second->traffic_in + iter1->second->traffic_out,
+			iter1->second->packets_in,
+			iter1->second->packets_out,
+			iter1->second->packets_in + iter1->second->packets_out,
+			iter1->second->traffic_voip_in,
+			iter1->second->traffic_voip_out,
+			iter1->second->traffic_voip_in + iter1->second->traffic_voip_out,
+			iter1->second->packets_voip_in,
+			iter1->second->packets_voip_out,
+			iter1->second->packets_voip_in + iter1->second->packets_voip_out,
+			agreg_time_field,
+			agreg_time,
+			iter1->first.ip,
+			iter1->second->id_customer,
+			iter1->first.proto,
+			iter1->first.port,
+			agreg_table,
+			agreg_time_field,
+			agreg_time,
+			iter1->first.ip,
+			iter1->second->id_customer,
+			iter1->first.proto,
+			iter1->first.port,
+			iter1->second->traffic_in,
+			iter1->second->traffic_out,
+			iter1->second->traffic_in + iter1->second->traffic_out,
+			iter1->second->packets_in,
+			iter1->second->packets_out,
+			iter1->second->packets_in + iter1->second->packets_out,
+			iter1->second->traffic_voip_in,
+			iter1->second->traffic_voip_out,
+			iter1->second->traffic_voip_in + iter1->second->traffic_voip_out,
+			iter1->second->packets_voip_in,
+			iter1->second->packets_voip_out,
+			iter1->second->packets_voip_in + iter1->second->packets_voip_out);
 		if(opt_ipacc_multithread_save) {
 			sqlStore->query(insertQueryBuff,
 					i == 0 ? STORE_PROC_ID_IPACC_AGR_INTERVAL :
@@ -989,6 +970,128 @@ void NextIpCache::flush() {
 	++this->flushCounter;
 }
 
+CustPhoneNumberCache::CustPhoneNumberCache() {
+	this->sqlDb = NULL;
+	this->flushCounter = 0;
+	this->doFlush = false;
+}
+
+CustPhoneNumberCache::~CustPhoneNumberCache() {
+	if(this->sqlDb) {
+		delete this->sqlDb;
+	}
+}
+
+void CustPhoneNumberCache::setConnectParams(const char* sqlDriver, const char* odbcDsn, const char* odbcUser, const char* odbcPassword, const char* odbcDriver) {
+	if(sqlDriver) 		this->sqlDriver = sqlDriver;
+	if(odbcDsn) 		this->odbcDsn = odbcDsn;
+	if(odbcUser) 		this->odbcUser = odbcUser;
+	if(odbcPassword)	this->odbcPassword = odbcPassword;
+	if(odbcDriver) 		this->odbcDriver = odbcDriver;
+}
+
+void CustPhoneNumberCache::setQueryes(const char* fetchPhoneNumbers) {
+	this->query_fetchPhoneNumbers = fetchPhoneNumbers;
+}
+
+int CustPhoneNumberCache::connect() {
+	if(!this->okParams()) {
+		return(0);
+	}
+	if(!this->sqlDb) {
+		SqlDb_odbc *sqlDb_odbc = new SqlDb_odbc();
+		sqlDb_odbc->setOdbcVersion(SQL_OV_ODBC3);
+		sqlDb_odbc->setSubtypeDb(this->odbcDriver);
+		this->sqlDb = sqlDb_odbc;
+		this->sqlDb->setConnectParameters(this->odbcDsn, this->odbcUser, this->odbcPassword);
+		this->sqlDb->enableSysLog();
+	}
+	return(this->sqlDb->connect());
+}
+
+bool CustPhoneNumberCache::okParams() {
+	return(this->sqlDriver.length() &&
+	       this->odbcDsn.length() &&
+	       this->odbcUser.length() &&
+	       this->odbcDriver.length() &&
+	       this->query_fetchPhoneNumbers.length());
+}
+
+cust_reseller CustPhoneNumberCache::getCustomerByPhoneNumber(char* number) {
+	cust_reseller rslt;
+	if(!this->okParams()) {
+		return(rslt);
+	}
+	if(!this->sqlDb) {
+		this->connect();
+	}
+	if(this->query_fetchPhoneNumbers.length()) {
+		if(this->doFlush) {
+			this->fetchPhoneNumbersFromDb();
+			this->doFlush = false;
+		}
+		if(!this->custCache.size()) {
+			return(rslt);
+		}
+		vector<cust_pn_cache_rec>::iterator findRecIt;
+		findRecIt = std::lower_bound(this->custCache.begin(), this->custCache.end(), number);
+		if(findRecIt != this->custCache.end() && (*findRecIt).cust_id) {
+			if(findRecIt != this->custCache.begin() && (*findRecIt).numberFrom > number) {
+				--findRecIt;
+			}
+			if((*findRecIt).cust_id && (*findRecIt).numberFrom <= number && (*findRecIt).numberTo >= string(number).substr(0, (*findRecIt).numberTo.length())) {
+				cout << (*findRecIt).numberFrom << " - " << (*findRecIt).numberTo << endl;
+				rslt.cust_id = (*findRecIt).cust_id;
+				rslt.reseller_id = (*findRecIt).reseller_id;
+				/*
+				string initNumberFrom = (*findRecIt).numberFrom;
+				while(findRecIt != this->custCache.end()) {
+					++findRecIt;
+					break;
+					
+				}
+				*/
+			}
+		}
+	}
+	return(rslt);
+}
+
+int CustPhoneNumberCache::fetchPhoneNumbersFromDb() {
+	if(!this->query_fetchPhoneNumbers.length()) {
+		return(-1);
+	}
+	int _start_time = time(NULL);
+	if(this->sqlDb->query(this->query_fetchPhoneNumbers)) {
+		this->custCache.clear();
+		SqlDb_row row;
+		while(row = this->sqlDb->fetchRow()) {
+			cust_pn_cache_rec rec;
+			rec.numberFrom = row["numberFrom"];
+			rec.numberTo = row["numberTo"];
+			rec.cust_id = atol(row["cust_id"].c_str());
+			rec.reseller_id = row["reseller_id"];
+			this->custCache.push_back(rec);
+		}
+		if(this->custCache.size()) {
+			std::sort(this->custCache.begin(), this->custCache.end());
+		}
+		if(verbosity > 0) {
+			int _diff_time = time(NULL) - _start_time;
+			cout << "CDR load customers phone numbers " << _diff_time << " s" << endl;
+		}
+	}
+	return(this->custCache.size());
+}
+
+void CustPhoneNumberCache::flush() {
+	if(get_customer_by_ip_flush_period > 0 && this->flushCounter > 0 &&
+	   !(this->flushCounter % get_customer_by_ip_flush_period)) {
+		this->doFlush = true;
+	}
+	++this->flushCounter;
+}
+
 void octects_live_t::setFilter(const char *ipfilter) {
 	string temp_ipfilter = ipfilter;
 	char *ip = (char*)temp_ipfilter.c_str();
@@ -1044,6 +1147,21 @@ void initIpacc() {
 		nextIpCache->connect();
 		nextIpCache->fetch();
 	}
+	if(get_customer_by_pn_sql_driver[0]) {
+		custPnCache = new CustPhoneNumberCache();
+		custPnCache->setConnectParams(
+			get_customer_by_pn_sql_driver, 
+			get_customer_by_pn_odbc_dsn, 
+			get_customer_by_pn_odbc_user, 
+			get_customer_by_pn_odbc_password, 
+			get_customer_by_pn_odbc_driver);
+		custPnCache->setQueryes(get_customers_pn_query);
+		custPnCache->connect();
+		if(get_customers_pn_query[0]) {
+			custPnCache->fetchPhoneNumbersFromDb();
+			custPnCache->setMaxQueryPass(2);
+		}
+	}
 }
 
 void freeMemIpacc() {
@@ -1052,6 +1170,9 @@ void freeMemIpacc() {
 	}
 	if(nextIpCache) {
 		delete nextIpCache;
+	}
+	if(custPnCache) {
+		delete custPnCache;
 	}
 	t_ipacc_buffer::iterator iter;
 	for(int i = 0; i < 2; i++) {

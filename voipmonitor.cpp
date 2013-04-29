@@ -170,6 +170,14 @@ char get_customer_by_ip_odbc_driver[256];
 char get_customer_by_ip_query[1024];
 char get_customers_ip_query[1024];
 char get_customers_radius_name_query[1024];
+
+char get_customer_by_pn_sql_driver[256] = "odbc";
+char get_customer_by_pn_odbc_dsn[256];
+char get_customer_by_pn_odbc_user[256];
+char get_customer_by_pn_odbc_password[256];
+char get_customer_by_pn_odbc_driver[256];
+char get_customers_pn_query[1024];
+
 char get_radius_ip_driver[256];
 char get_radius_ip_host[256];
 char get_radius_ip_db[256];
@@ -887,7 +895,7 @@ int load_config(char *fname) {
 	if((value = ini.GetValue("general", "odbcdriver", NULL))) {
 		strncpy(odbc_driver, value, sizeof(odbc_driver));
 	}
-	if((value = ini.GetValue("general", "get_customer_by_ip_odbc_driver", NULL))) {
+	if((value = ini.GetValue("general", "get_customer_by_ip_sql_driver", NULL))) {
 		strncpy(get_customer_by_ip_sql_driver, value, sizeof(get_customer_by_ip_sql_driver));
 	}
 	if((value = ini.GetValue("general", "get_customer_by_ip_odbc_dsn", NULL))) {
@@ -910,6 +918,24 @@ int load_config(char *fname) {
 	}
 	if((value = ini.GetValue("general", "get_customers_radius_name_query", NULL))) {
 		strncpy(get_customers_radius_name_query, value, sizeof(get_customers_radius_name_query));
+	}
+	if((value = ini.GetValue("general", "get_customer_by_pn_sql_driver", NULL))) {
+		strncpy(get_customer_by_pn_sql_driver, value, sizeof(get_customer_by_pn_sql_driver));
+	}
+	if((value = ini.GetValue("general", "get_customer_by_pn_odbc_dsn", NULL))) {
+		strncpy(get_customer_by_pn_odbc_dsn, value, sizeof(get_customer_by_pn_odbc_dsn));
+	}
+	if((value = ini.GetValue("general", "get_customer_by_pn_odbc_user", NULL))) {
+		strncpy(get_customer_by_pn_odbc_user, value, sizeof(get_customer_by_pn_odbc_user));
+	}
+	if((value = ini.GetValue("general", "get_customer_by_pn_odbc_password", NULL))) {
+		strncpy(get_customer_by_pn_odbc_password, value, sizeof(get_customer_by_pn_odbc_password));
+	}
+	if((value = ini.GetValue("general", "get_customer_by_pn_odbc_driver", NULL))) {
+		strncpy(get_customer_by_pn_odbc_driver, value, sizeof(get_customer_by_pn_odbc_driver));
+	}
+	if((value = ini.GetValue("general", "get_customers_pn_query", NULL))) {
+		strncpy(get_customers_pn_query, value, sizeof(get_customers_pn_query));
 	}
 	if((value = ini.GetValue("general", "get_radius_ip_driver", NULL))) {
 		strncpy(get_radius_ip_driver, value, sizeof(get_radius_ip_driver));
@@ -1969,6 +1995,12 @@ int main(int argc, char *argv[]) {
 
 
 void test() {
+	
+	initIpacc();
+	extern CustPhoneNumberCache *custPnCache;
+	cust_reseller cr;
+	cr = custPnCache->getCustomerByPhoneNumber("2307212");
+	cout << cr.cust_id << " - " << cr.reseller_id << endl;
 	
 	/*
 	extern CustIpCache *custIpCache;
