@@ -1183,9 +1183,9 @@ void SqlDb_mysql::createSchema() {
 			`id_sensor` smallint unsigned DEFAULT NULL,") + 
 			(get_customers_pn_query[0] ?
 				"`caller_customer_id` int DEFAULT NULL,\
-				`caller_reseler_id` char(10) DEFAULT NULL,\
+				`caller_reseller_id` char(10) DEFAULT NULL,\
 				`called_customer_id` int DEFAULT NULL,\
-				`called_reseler_id` char(10) DEFAULT NULL," :
+				`called_reseller_id` char(10) DEFAULT NULL," :
 				"") +
 		(opt_cdr_partition ? 
 			"PRIMARY KEY (`ID`, `calldate`)," :
@@ -1226,9 +1226,9 @@ void SqlDb_mysql::createSchema() {
 		KEY `id_sensor` (`id_sensor`)" + 
 		(get_customers_pn_query[0] ?
 				",KEY `caller_customer_id` (`caller_customer_id`),\
-				KEY `caller_reseler_id` (`caller_reseler_id`),\
+				KEY `caller_reseller_id` (`caller_reseller_id`),\
 				KEY `called_customer_id` (`called_customer_id`),\
-				KEY `called_reseler_id` (`called_reseler_id`)" :
+				KEY `called_reseller_id` (`called_reseller_id`)" :
 				"") +
 		(opt_cdr_partition ?
 			"" :

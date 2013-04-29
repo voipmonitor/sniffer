@@ -1047,7 +1047,6 @@ cust_reseller CustPhoneNumberCache::getCustomerByPhoneNumber(char* number) {
 				}
 				if((*findRecIt).cust_id && (*findRecIt).numberFrom <= findNumber && 
 				   (*findRecIt).numberTo >= findNumber.substr(0, (*findRecIt).numberTo.length())) {
-					cout << (*findRecIt).numberFrom << " - " << (*findRecIt).numberTo << endl;
 					rslt.cust_id = (*findRecIt).cust_id;
 					rslt.reseller_id = (*findRecIt).reseller_id;
 					break;
