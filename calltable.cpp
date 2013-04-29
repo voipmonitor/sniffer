@@ -46,6 +46,7 @@
 #include "odbc.h"
 #include "sql_db.h"
 #include "rtcp.h"
+#include "ipaccount.h"
 
 
 #define MIN(x,y) ((x) < (y) ? (x) : (y))
@@ -88,6 +89,8 @@ extern char opt_keycheck[1024];
 extern char opt_convert_char[256];
 extern int opt_norecord_dtmf;
 extern char opt_silencedmtfseq[16];
+extern bool opt_cdr_partition;
+extern char get_customers_pn_query[1024];
 
 volatile int calls = 0;
 
@@ -96,6 +99,8 @@ extern char mac[32];
 unsigned int last_register_clean = 0;
 
 extern SqlDb *sqlDb;
+
+extern CustPhoneNumberCache *custPnCache;
 
 /* constructor */
 Call::Call(char *call_id, unsigned long call_id_len, time_t time, void *ct) {
@@ -1463,10 +1468,28 @@ Call::saveToDb(bool enableBatchIfPossible) {
 	if(strlen(custom_header1)) {
 		cdr_next.add(sqlEscapeString(custom_header1), "custom_header1");
 	}
+	if(opt_cdr_partition) {
+		cdr_next.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
+	}
 
 	if(whohanged == 0 || whohanged == 1) {
 		cdr.add(whohanged ? "callee" : "caller", "whohanged");
 	}
+	
+	if(get_customers_pn_query[0] && custPnCache) {
+		cust_reseller cr;
+		cr = custPnCache->getCustomerByPhoneNumber(caller);
+		if(cr.cust_id) {
+			cdr.add(cr.cust_id, "caller_customer_id");
+			cdr.add(cr.reseller_id, "caller_reseller_id");
+		}
+		cr = custPnCache->getCustomerByPhoneNumber(called);
+		if(cr.cust_id) {
+			cdr.add(cr.cust_id, "called_customer_id");
+			cdr.add(cr.reseller_id, "called_reseller_id");
+		}
+	}
+	
 	if(ssrc_n > 0) {
 		// sort all RTP streams by received packets + loss packets descend and save only those two with the biggest received packets.
 		int indexes[MAX_SSRC_PER_CALL];
@@ -1726,6 +1749,9 @@ Call::saveToDb(bool enableBatchIfPossible) {
 				rtps.add(rtp[i]->stats.lost, "loss");
 				rtps.add((unsigned int)(rtp[i]->stats.maxjitter * 10), "maxjitter_mult10");
 				rtps.add(diff, "firsttime");
+				if(opt_cdr_partition) {
+					rtps.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
+				}
 				query_str += sqlDb->insertQuery("cdr_rtp", rtps) + ";\n";
 			}
 		}
@@ -1794,6 +1820,9 @@ Call::saveToDb(bool enableBatchIfPossible) {
 				rtps.add(rtp[i]->stats.lost, "loss");
 				rtps.add((unsigned int)(rtp[i]->stats.maxjitter * 10), "maxjitter_mult10");
 				rtps.add(diff, "firsttime");
+				if(opt_cdr_partition) {
+					rtps.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
+				}
 				sqlDb->insert("cdr_rtp", rtps);
 			}
 		}

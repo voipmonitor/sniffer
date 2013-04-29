@@ -13,6 +13,9 @@ extern int opt_mysql_port;
 extern char opt_match_header[128];
 extern int terminating;
 extern int opt_id_sensor;
+extern bool opt_cdr_partition;
+extern char get_customers_pn_query[1024];
+extern char mysql_database[256];
 
 int sql_noerror = 0;
 
@@ -1056,7 +1059,18 @@ void SqlDb_mysql::createSchema() {
 		UNIQUE KEY `ua` (`ua`)\
 	) ENGINE=InnoDB DEFAULT CHARSET=latin1 ROW_FORMAT=COMPRESSED;");
 
-	this->query(
+	char partDayName[20] = "";
+	char limitDay[20] = "";
+	if(opt_cdr_partition) {
+		time_t act_time = time(NULL);
+		struct tm *actTime = localtime(&act_time);
+		strftime(partDayName, sizeof(partDayName), "p%y%m%d", actTime);
+		time_t next_day_time = act_time + 24 * 60 * 60;
+		struct tm *nextDayTime = localtime(&next_day_time);
+		strftime(limitDay, sizeof(partDayName), "%Y-%m-%d", nextDayTime);
+	}
+	
+	this->query(string(
 	"CREATE TABLE IF NOT EXISTS `cdr` (\
 			`ID` int unsigned NOT NULL AUTO_INCREMENT,\
 			`calldate` datetime NOT NULL,\
@@ -1166,9 +1180,17 @@ void SqlDb_mysql::createSchema() {
 			`rtcp_avgfr_mult10` smallint unsigned DEFAULT NULL,\
 			`rtcp_avgjitter_mult10` smallint unsigned DEFAULT NULL,\
 			`lost` mediumint unsigned DEFAULT NULL,\
-			`id_sensor` smallint unsigned DEFAULT NULL,\
-		PRIMARY KEY (`ID`),\
-		KEY `calldate` (`calldate`),\
+			`id_sensor` smallint unsigned DEFAULT NULL,") + 
+			(get_customers_pn_query[0] ?
+				"`caller_customer_id` int DEFAULT NULL,\
+				`caller_reseler_id` char(10) DEFAULT NULL,\
+				`called_customer_id` int DEFAULT NULL,\
+				`called_reseler_id` char(10) DEFAULT NULL," :
+				"") +
+		(opt_cdr_partition ? 
+			"PRIMARY KEY (`ID`, `calldate`)," :
+			"PRIMARY KEY (`ID`),") + 
+		"KEY `calldate` (`calldate`),\
 		KEY `callend` (`callend`),\
 		KEY `duration` (`duration`),\
 		KEY `source` (`caller`),\
@@ -1201,38 +1223,72 @@ void SqlDb_mysql::createSchema() {
 		KEY `b_rtcp_avgjitter_mult10` (`b_rtcp_avgjitter_mult10`),\
 		KEY `lastSIPresponse_id` (`lastSIPresponse_id`),\
 		KEY `payload` (`payload`),\
-		KEY `id_sensor` (`id_sensor`),\
-		CONSTRAINT `cdr_ibfk_1` FOREIGN KEY (`lastSIPresponse_id`) REFERENCES `cdr_sip_response` (`id`) ON UPDATE CASCADE,\
-		CONSTRAINT `cdr_ibfk_2` FOREIGN KEY (`a_ua_id`) REFERENCES `cdr_ua` (`id`) ON UPDATE CASCADE,\
-		CONSTRAINT `cdr_ibfk_3` FOREIGN KEY (`b_ua_id`) REFERENCES `cdr_ua` (`id`) ON UPDATE CASCADE\
-	) ENGINE=InnoDB DEFAULT CHARSET=latin1 ROW_FORMAT=COMPRESSED;");
+		KEY `id_sensor` (`id_sensor`)" + 
+		(get_customers_pn_query[0] ?
+				",KEY `caller_customer_id` (`caller_customer_id`),\
+				KEY `caller_reseler_id` (`caller_reseler_id`),\
+				KEY `called_customer_id` (`called_customer_id`),\
+				KEY `called_reseler_id` (`called_reseler_id`)" :
+				"") +
+		(opt_cdr_partition ?
+			"" :
+			",CONSTRAINT `cdr_ibfk_1` FOREIGN KEY (`lastSIPresponse_id`) REFERENCES `cdr_sip_response` (`id`) ON UPDATE CASCADE,\
+			CONSTRAINT `cdr_ibfk_2` FOREIGN KEY (`a_ua_id`) REFERENCES `cdr_ua` (`id`) ON UPDATE CASCADE,\
+			CONSTRAINT `cdr_ibfk_3` FOREIGN KEY (`b_ua_id`) REFERENCES `cdr_ua` (`id`) ON UPDATE CASCADE") +
+	") ENGINE=InnoDB DEFAULT CHARSET=latin1 ROW_FORMAT=COMPRESSED" + 
+	(opt_cdr_partition ?
+		string(" PARTITION BY RANGE COLUMNS(calldate)(\
+			PARTITION ") + partDayName + " VALUES LESS THAN ('" + limitDay + "') engine innodb)" :
+		""));
 
-	this->query(
+	this->query(string(
 	"CREATE TABLE IF NOT EXISTS `cdr_next` (\
-			`cdr_ID` int unsigned NOT NULL,\
-			`custom_header1` varchar(255) DEFAULT NULL,\
-			`fbasename` varchar(255) DEFAULT NULL,\
-		PRIMARY KEY (`cdr_ID`),\
-		KEY `fbasename` (`fbasename`),\
-		CONSTRAINT `cdr_next_ibfk_1` FOREIGN KEY (`cdr_ID`) REFERENCES `cdr` (`ID`) ON DELETE CASCADE ON UPDATE CASCADE\
-	) ENGINE=InnoDB DEFAULT CHARSET=latin1 ROW_FORMAT=COMPRESSED;");
+			`cdr_ID` int unsigned NOT NULL,") +
+			(opt_cdr_partition ?
+				"`calldate` datetime NOT NULL," :
+				"") + 
+			"`custom_header1` varchar(255) DEFAULT NULL,\
+			`fbasename` varchar(255) DEFAULT NULL," +
+		(opt_cdr_partition ? 
+			"PRIMARY KEY (`cdr_ID`, `calldate`)," :
+			"PRIMARY KEY (`cdr_ID`),") +
+		"KEY `fbasename` (`fbasename`)" + 
+		(opt_cdr_partition ?
+			"" :
+			",CONSTRAINT `cdr_next_ibfk_1` FOREIGN KEY (`cdr_ID`) REFERENCES `cdr` (`ID`) ON DELETE CASCADE ON UPDATE CASCADE") +
+	") ENGINE=InnoDB DEFAULT CHARSET=latin1 ROW_FORMAT=COMPRESSED" + 
+	(opt_cdr_partition ?
+		string(" PARTITION BY RANGE COLUMNS(calldate)(\
+			PARTITION ") + partDayName + " VALUES LESS THAN ('" + limitDay + "') engine innodb)" :
+		""));
 
-	this->query(
+	this->query(string(
 	"CREATE TABLE IF NOT EXISTS `cdr_rtp` (\
 			`ID` int unsigned NOT NULL AUTO_INCREMENT,\
-			`cdr_ID` int unsigned NOT NULL,\
-			`saddr` int unsigned DEFAULT NULL,\
+			`cdr_ID` int unsigned NOT NULL,") +
+			(opt_cdr_partition ?
+				"`calldate` datetime NOT NULL," :
+				"") + 
+			"`saddr` int unsigned DEFAULT NULL,\
 			`daddr` int unsigned DEFAULT NULL,\
 			`ssrc` int unsigned DEFAULT NULL,\
 			`received` mediumint unsigned DEFAULT NULL,\
 			`loss` mediumint unsigned DEFAULT NULL,\
 			`firsttime` float DEFAULT NULL,\
 			`payload` smallint unsigned DEFAULT NULL,\
-			`maxjitter_mult10` smallint unsigned DEFAULT NULL,\
-		PRIMARY KEY (`ID`),\
-		KEY (`cdr_ID`),\
-		CONSTRAINT `cdr_rtp_ibfk_1` FOREIGN KEY (`cdr_ID`) REFERENCES `cdr` (`ID`) ON DELETE CASCADE ON UPDATE CASCADE\
-	) ENGINE=InnoDB DEFAULT CHARSET=latin1 ROW_FORMAT=COMPRESSED;");
+			`maxjitter_mult10` smallint unsigned DEFAULT NULL," +
+		(opt_cdr_partition ? 
+			"PRIMARY KEY (`ID`, `calldate`)," :
+			"PRIMARY KEY (`ID`),") +
+		"KEY (`cdr_ID`)" + 
+		(opt_cdr_partition ?
+			"" :
+			",CONSTRAINT `cdr_rtp_ibfk_1` FOREIGN KEY (`cdr_ID`) REFERENCES `cdr` (`ID`) ON DELETE CASCADE ON UPDATE CASCADE") +
+	") ENGINE=InnoDB DEFAULT CHARSET=latin1 ROW_FORMAT=COMPRESSED" + 
+	(opt_cdr_partition ?
+		string(" PARTITION BY RANGE COLUMNS(calldate)(\
+			PARTITION ") + partDayName + " VALUES LESS THAN ('" + limitDay + "') engine innodb)" :
+		""));
 
 	this->query(
 	"CREATE TABLE IF NOT EXISTS `contenttype` (\
@@ -1409,8 +1465,70 @@ void SqlDb_mysql::createSchema() {
 		PRIMARY KEY ( `id` ) ,\
 		INDEX (`created_at` , `microseconds`)\
 	) ENGINE=MEMORY DEFAULT CHARSET=latin1 ROW_FORMAT=COMPRESSED;");
-
+	
 	sql_noerror = 1;
+	
+	if(opt_cdr_partition) {
+		this->query(
+		"create procedure create_partition(database_name char(100), table_name char(100), type_part char(10), next_days int)\
+		 begin\
+		    declare part_date date;\
+		    declare part_limit date;\
+		    declare part_name char(100);\
+		    declare test_exists_part_query varchar(1000);\
+		    declare create_part_query varchar(1000);\
+		    set part_date =  date_add(date(now()), interval next_days day);\
+		    if(type_part = 'month') then\
+		       set part_date = date_add(part_date, interval -(day(part_date)-1) day);\
+		       set part_limit = date_add(part_date, interval 1 month);\
+		       set part_name = concat('p', date_format(part_date, '%y%m'));\
+		    else\
+		       set part_limit = date_add(part_date, interval 1 day);\
+		       set part_name = concat('p', date_format(part_date, '%y%m%d'));\
+		    end if;\
+		    set test_exists_part_query = concat(\
+		       'set @_exists_part = exists (select * from information_schema.partitions where table_schema=\'',\
+		       database_name,\
+		       '\' and table_name = \'',\
+		       table_name,\
+		       '\' and partition_name = \'',\
+		       part_name,\
+		       '\')');\
+		    set @_test_exists_part_query = test_exists_part_query;\
+		    prepare stmt FROM @_test_exists_part_query;\
+		    execute stmt;\
+		    deallocate prepare stmt;\
+		    if(not @_exists_part) then\
+		       set create_part_query = concat(\
+			  'alter table ',\
+			  if(database_name is not null, concat('`', database_name, '`.'), ''),\
+			  '`',\
+			  table_name,\
+			  '` add partition (partition ',\
+			  part_name,\
+			  ' VALUES LESS THAN (\'',\
+			  part_limit,\
+			  '\'))');\
+		       set @_create_part_query = create_part_query;\
+		       prepare stmt FROM @_create_part_query;\
+		       execute stmt;\
+		       deallocate prepare stmt;\
+		    end if;\
+		 end");
+		this->query(
+		"create procedure create_partitions_cdr(database_name char(100), next_days int)\
+		 begin\
+		    call create_partition(database_name, 'cdr', 'day', next_days);\
+		    call create_partition(database_name, 'cdr_next', 'day', next_days);\
+		    call create_partition(database_name, 'cdr_rtp', 'day', next_days);\
+		 end");
+		this->query(string(
+		"create event if not exists cdr_add_partition\
+		 on schedule every 1 hour do\
+		 begin\
+		    call ") + mysql_database + ".create_partitions_cdr('" + mysql_database + "', 1);\
+		 end");
+	}
 
 	//5.2 -> 5.3
 	if(opt_match_header[0] != '\0') {
