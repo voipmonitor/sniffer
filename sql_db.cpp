@@ -1290,6 +1290,28 @@ void SqlDb_mysql::createSchema() {
 			PARTITION ") + partDayName + " VALUES LESS THAN ('" + limitDay + "') engine innodb)" :
 		""));
 
+	this->query(string(
+	"CREATE TABLE IF NOT EXISTS `cdr_dtmf` (\
+			`ID` int unsigned NOT NULL AUTO_INCREMENT,\
+			`cdr_ID` int unsigned NOT NULL,") +
+			(opt_cdr_partition ?
+				"`calldate` datetime NOT NULL," :
+				"") + 
+			"`firsttime` float DEFAULT NULL,\
+			`dtmf` char DEFAULT NULL," +
+		(opt_cdr_partition ? 
+			"PRIMARY KEY (`ID`, `calldate`)," :
+			"PRIMARY KEY (`ID`)") +
+		"KEY (`cdr_ID`)" + 
+		(opt_cdr_partition ?
+			"" :
+			",CONSTRAINT `cdr_dtmf_ibfk_1` FOREIGN KEY (`cdr_ID`) REFERENCES `cdr` (`ID`) ON DELETE CASCADE ON UPDATE CASCADE") +
+	") ENGINE=InnoDB DEFAULT CHARSET=latin1" + 
+	(opt_cdr_partition ?
+		string(" PARTITION BY RANGE COLUMNS(calldate)(\
+			PARTITION ") + partDayName + " VALUES LESS THAN ('" + limitDay + "') engine innodb)" :
+		""));
+
 	this->query(
 	"CREATE TABLE IF NOT EXISTS `contenttype` (\
 			`id` int unsigned NOT NULL AUTO_INCREMENT,\
@@ -1521,6 +1543,7 @@ void SqlDb_mysql::createSchema() {
 		    call create_partition(database_name, 'cdr', 'day', next_days);\
 		    call create_partition(database_name, 'cdr_next', 'day', next_days);\
 		    call create_partition(database_name, 'cdr_rtp', 'day', next_days);\
+		    call create_partition(database_name, 'cdr_dtmf', 'day', next_days);\
 		 end");
 		this->query(string(
 		"create event if not exists cdr_add_partition\
@@ -1856,6 +1879,16 @@ void SqlDb_odbc::createSchema() {
 			`firsttime` float NULL,\
 			`payload` smallint NULL,\
 			`maxjitter_mult10` smallint DEFAULT NULL;\
+	END");
+
+	this->query(
+	"IF NOT EXISTS (SELECT * FROM sys.objects WHERE name = 'cdr_dtmf') BEGIN\
+		CREATE TABLE cdr_dtmf (\
+			ID int PRIMARY KEY IDENTITY,\
+			cdr_ID int \
+				FOREIGN KEY REFERENCES cdr (ID),\
+			`firsttime` float NULL,\
+			`dtmf` char NULL;\
 	END");
 
 	this->query(

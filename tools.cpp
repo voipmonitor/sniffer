@@ -198,3 +198,9 @@ size_t CircularBuffer::read(char *data, size_t bytes)
 	size_ -= bytes_to_read;
 	return bytes_to_read;
 }
+
+double ts2double(unsigned int sec, unsigned int usec) {
+	double fpart = usec;
+	while(fpart > 1) fpart /= 10;
+	return sec + fpart;
+}

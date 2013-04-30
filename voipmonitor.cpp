@@ -77,6 +77,8 @@ int opt_saveRAW = 0;		// save RTP packets to pcap file?
 int opt_saveWAV = 0;		// save RTP packets to pcap file?
 int opt_saveGRAPH = 0;		// save GRAPH data to *.graph file? 
 int opt_gzipGRAPH = 0;		// compress GRAPH data ? 
+int opt_saverfc2833 = 0;
+int opt_dbdtmf = 0;
 int opt_rtcp = 1;		// pair RTP+1 port to RTCP and save it. 
 int opt_nocdr = 0;		// do not save cdr?
 int opt_gzipPCAP = 0;		// compress PCAP data ? 
@@ -134,7 +136,7 @@ char opt_keycheck[1024] = "";
 char opt_convert_char[64] = "";
 int opt_skinny = 0;
 
-bool opt_cdr_partition;
+bool opt_cdr_partition = true;
 
 char configfile[1024] = "";	// config file name
 
@@ -752,6 +754,12 @@ int load_config(char *fname) {
 			opt_onlyRTPheader = 1;
 			break;
 		}
+	}
+	if((value = ini.GetValue("general", "saverfc2833", NULL))) {
+		opt_saverfc2833 = yesno(value);
+	}
+	if((value = ini.GetValue("general", "dtmf2db", NULL))) {
+		opt_dbdtmf = yesno(value);
 	}
 	if((value = ini.GetValue("general", "saveudptl", NULL))) {
 		opt_saveudptl = yesno(value);

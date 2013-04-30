@@ -54,6 +54,12 @@
 #define FLAG_SAVEWAV		(1 << 3)
 #define FLAG_SAVEGRAPH		(1 << 4)
 
+typedef struct {
+	double ts;
+	char dtmf;
+} dtmfq;
+
+
 /**
   * This class implements operations on call
 */
@@ -118,6 +124,7 @@ public:
 	unsigned int first_packet_usec;
 	std::queue <short int> spybuffer;
 	std::queue <char> spybufferchar;
+	std::queue <dtmfq> dtmf_history;
 
 	int isfax;
 
@@ -221,7 +228,7 @@ public:
 	 * @param saddr source IP adress of the packet
 	 * 
 	*/
-	void read_rtp( unsigned char *data, int datalen, struct pcap_pkthdr *header, u_int32_t saddr, u_int32_t daddr, unsigned short port, int iscaller);
+	void read_rtp( unsigned char *data, int datalen, struct pcap_pkthdr *header, u_int32_t saddr, u_int32_t daddr, unsigned short port, int iscaller, int *record);
 
 	/**
 	 * @brief read RTCP packet 
@@ -396,7 +403,7 @@ public:
 	*/
 	void addtocachequeue(string file);
 
-	void handle_dtmf(char dtmf);
+	void handle_dtmf(char dtmf, double ts);
 
 	void dump();
 

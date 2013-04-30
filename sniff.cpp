@@ -143,6 +143,7 @@ extern int opt_callslimit;
 extern int opt_skiprtpdata;
 extern char opt_silencedmtfseq[16];
 extern int opt_skinny;
+extern int opt_saverfc2833;
 
 #ifdef QUEUE_MUTEX
 extern sem_t readpacket_thread_semaphore;
@@ -875,7 +876,8 @@ void *rtp_read_thread_func(void *arg) {
 		if(rtpp->is_rtcp) {
 			rtpp->call->read_rtcp((unsigned char*)rtpp->data, rtpp->datalen, &rtpp->header, rtpp->saddr, rtpp->port, rtpp->iscaller);
 		}  else {
-			rtpp->call->read_rtp(rtpp->data, rtpp->datalen, &rtpp->header, rtpp->saddr, rtpp->daddr, rtpp->port, rtpp->iscaller);
+			int monitor;
+			rtpp->call->read_rtp(rtpp->data, rtpp->datalen, &rtpp->header, rtpp->saddr, rtpp->daddr, rtpp->port, rtpp->iscaller, &monitor);
 		}
 
 
@@ -1258,6 +1260,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 	static unsigned int lostpacketif = 0;
 	unsigned int tmp_u32 = 0;
 	int repeat = 0;
+	int record = 0;
 
 	*was_rtp = 0;
 
@@ -1990,22 +1993,22 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 			}
 		}
 
-		if(opt_norecord_dtmf) {
+		if(sip_method == INFO) {
 			s = gettag(data, datalen, "\nSignal:", &l);
 			if(l && l < 33) {
 				char *tmp = s + 1;
 				tmp[l - 1] = '\0';
-				call->handle_dtmf(*tmp);
+				if(verbosity >= 2)
+					syslog(LOG_NOTICE, "[%s] DTMF SIP INFO [%c]", call->fbasename, tmp[0]);
+				call->handle_dtmf(*tmp, ts2double(header->ts.tv_sec, header->ts.tv_usec));
 			}
-		}
-		if(sip_method == INFO and opt_silencedmtfseq[0] != '\0') {
 			s = gettag(data, datalen, "Signal=", &l);
 			if(l && l < 33) {
 				char *tmp = s;
 				tmp[l] = '\0';
 				if(verbosity >= 2)
 					syslog(LOG_NOTICE, "[%s] DTMF SIP INFO [%c]", call->fbasename, tmp[0]);
-				call->handle_dtmf(*tmp);
+				call->handle_dtmf(*tmp, ts2double(header->ts.tv_sec, header->ts.tv_usec));
 
 			}
 		}
@@ -2224,20 +2227,27 @@ repeatrtpA:
 		}
 
 		if(rtp_threaded && can_thread) {
+			if(!((call->flags & FLAG_SAVERTP) || (call->isfax && opt_saveudptl)) && (!dontsave && opt_saverfc2833)) {
+				// if RTP is NOT saving but we still wants to save DTMF (rfc2833) and becuase RTP is going to be 
+				// queued and processed later in async queue we must decode if the RTP packet is DTMF here 
+				call->tmprtp.fill((unsigned char*)data, datalen, header, saddr, daddr); //TODO: datalen can be shortned to only RTP header len
+				record = call->tmprtp.getPayload() == 101 ? 1 : 0;
+			}
 			add_to_rtp_thread_queue(call, (unsigned char*) data, datalen, header, saddr, daddr, source, iscaller, is_rtcp);
 			*was_rtp = 1;
 			if(is_rtcp) return call;
 		} else {
-			call->read_rtp((unsigned char*) data, datalen, header, saddr, daddr, source, iscaller);
+			call->read_rtp((unsigned char*) data, datalen, header, saddr, daddr, source, iscaller, &record);
 			call->set_last_packet_time(header->ts.tv_sec);
 		}
-		if(!dontsave && ((call->flags & FLAG_SAVERTP) || (call->isfax && opt_saveudptl))) {
+		if(!dontsave && ((call->flags & FLAG_SAVERTP) || (call->isfax && opt_saveudptl) || record)) {
 			if((call->silencerecording || (opt_onlyRTPheader && !(call->flags & FLAG_SAVERTP))) && !call->isfax) {
 				tmp_u32 = header->caplen;
 				header->caplen = header->caplen - (datalen - RTP_FIXED_HEADERLEN);
 				save_packet(call, header, packet, saddr, source, daddr, dest, istcp, data, datalen, TYPE_RTP);
 				header->caplen = tmp_u32;
 			} else {
+				printf("test opt_saverfc2833 %d\n", record);
 				save_packet(call, header, packet, saddr, source, daddr, dest, istcp, data, datalen, TYPE_RTP);
 			}
 
@@ -2284,18 +2294,25 @@ repeatrtpB:
 		// as we are searching by source address and find some call, revert iscaller 
 		if(rtp_threaded && can_thread) {
 			add_to_rtp_thread_queue(call, (unsigned char*) data, datalen, header, saddr, daddr, source, !iscaller, is_rtcp);
+			if(!((call->flags & FLAG_SAVERTP) || (call->isfax && opt_saveudptl)) && (!dontsave && opt_saverfc2833)) {
+				// if RTP is NOT saving but we still wants to save DTMF (rfc2833) and becuase RTP is going to be 
+				// queued and processed later in async queue we must decode if the RTP packet is DTMF here 
+				call->tmprtp.fill((unsigned char*)data, datalen, header, saddr, daddr); //TODO: datalen can be shortned to only RTP header len
+				record = call->tmprtp.getPayload() == 101 ? 1 : 0;
+			}
 			*was_rtp = 1;
 		} else {
-			call->read_rtp((unsigned char*) data, datalen, header, saddr, daddr, source, !iscaller);
+			call->read_rtp((unsigned char*) data, datalen, header, saddr, daddr, source, !iscaller, &record);
 			call->set_last_packet_time(header->ts.tv_sec);
 		}
-		if(!dontsave && ((call->flags & FLAG_SAVERTP) || (call->isfax && opt_saveudptl))) {
+		if(!dontsave && ((call->flags & FLAG_SAVERTP) || (call->isfax && opt_saveudptl) || record)) {
 			if((call->silencerecording || (opt_onlyRTPheader && !(call->flags & FLAG_SAVERTP))) && !call->isfax) {
 				tmp_u32 = header->caplen;
 				header->caplen = header->caplen - (datalen - RTP_FIXED_HEADERLEN);
 				save_packet(call, header, packet, saddr, source, daddr, dest, istcp, data, datalen, TYPE_RTP);
 				header->caplen = tmp_u32;
 			} else {
+				printf("test opt_saverfc2833 %d\n", record);
 				save_packet(call, header, packet, saddr, source, daddr, dest, istcp, data, datalen, TYPE_RTP);
 			}
 		}

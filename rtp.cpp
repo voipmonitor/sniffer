@@ -561,7 +561,7 @@ RTP::process_dtmf_rfc2833() {
 		last_end_timestamp = timestamp;
 		Call *owner = (Call*)call_owner;
 		if(owner) {
-			 owner->handle_dtmf(resp);
+			owner->handle_dtmf(resp, ts2double(header->ts.tv_sec, header->ts.tv_usec));
 		}
 	}
 

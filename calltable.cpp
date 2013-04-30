@@ -91,6 +91,8 @@ extern int opt_norecord_dtmf;
 extern char opt_silencedmtfseq[16];
 extern bool opt_cdr_partition;
 extern char get_customers_pn_query[1024];
+extern int opt_saverfc2833;
+extern int opt_dbdtmf;
 
 volatile int calls = 0;
 
@@ -239,7 +241,6 @@ Call::removeRTP() {
 
 /* destructor */
 Call::~Call(){
-
 	if(relationcall) {
 		// break relation 
 		relationcall->relationcall = NULL;
@@ -416,7 +417,9 @@ Call::read_rtcp(unsigned char* data, int datalen, struct pcap_pkthdr *header, u_
 
 /* analyze rtp packet */
 void
-Call::read_rtp(unsigned char* data, int datalen, struct pcap_pkthdr *header, u_int32_t saddr, u_int32_t daddr, unsigned short port, int iscaller) {
+Call::read_rtp(unsigned char* data, int datalen, struct pcap_pkthdr *header, u_int32_t saddr, u_int32_t daddr, unsigned short port, int iscaller, int *record) {
+
+	*record = 0;
 
 	if(first_rtp_time == 0) {
 		first_rtp_time = header->ts.tv_sec;
@@ -428,6 +431,12 @@ Call::read_rtp(unsigned char* data, int datalen, struct pcap_pkthdr *header, u_i
 		// invalid ssrc
 		return;
 	}
+
+	// chekc if packet is DTMF and saverfc2833 is enabled 
+	if(opt_saverfc2833 and tmprtp.getPayload() == 101) {
+		*record = 1;
+	}
+
 	for(int i = 0; i < ssrc_n; i++) {
 		if(rtp[i]->ssrc == tmprtp.getSSRC()) {
 			// found 
@@ -1755,6 +1764,25 @@ Call::saveToDb(bool enableBatchIfPossible) {
 				query_str += sqlDb->insertQuery("cdr_rtp", rtps) + ";\n";
 			}
 		}
+
+		if(opt_dbdtmf) {
+			while(dtmf_history.size()) {
+				dtmfq q;
+				q = dtmf_history.front();
+				dtmf_history.pop();
+
+				SqlDb_row dtmf;
+				string tmp;
+				tmp = q.dtmf;
+				dtmf.add("_\\_'SQL'_\\_:@cdr_id", "cdr_ID");
+				dtmf.add(tmp, "dtmf");
+				dtmf.add(q.ts, "firsttime");
+				if(opt_cdr_partition) {
+					dtmf.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
+				}
+				query_str += sqlDb->insertQuery("cdr_dtmf", dtmf) + ";\n";
+			}
+		}
 		
 		sqlDb->setEnableSqlStringInContent(false);
 		
@@ -1824,6 +1852,25 @@ Call::saveToDb(bool enableBatchIfPossible) {
 					rtps.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
 				}
 				sqlDb->insert("cdr_rtp", rtps);
+			}
+		}
+
+		if(opt_dbdtmf) {
+			while(dtmf_history.size()) {
+				dtmfq q;
+				q = dtmf_history.front();
+				dtmf_history.pop();
+
+				SqlDb_row dtmf;
+				string tmp;
+				tmp = q.dtmf;
+				dtmf.add(cdrID, "cdr_ID");
+				dtmf.add(tmp, "dtmf");
+				dtmf.add(q.ts, "firsttime");
+				if(opt_cdr_partition) {
+					dtmf.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
+				}
+				sqlDb->insert("cdr_rtp", dtmf);
 			}
 		}
 
@@ -2635,7 +2682,17 @@ void Call::saveregister() {
 }
 
 void
-Call::handle_dtmf(char dtmf) {
+Call::handle_dtmf(char dtmf, double dtmf_time) {
+
+	if(opt_dbdtmf) {
+		dtmfq q;
+		q.dtmf = dtmf;
+		q.ts = dtmf_time - ts2double(first_packet_time, first_packet_usec);
+
+		//printf("push [%c] [%f] [%f] [%f]\n", q.dtmf, q.ts, dtmf_time, ts2double(first_packet_time, first_packet_usec));
+		dtmf_history.push(q);
+	}
+
 	if(opt_norecord_dtmf) {
 		if(dtmfflag == 0) { 
 			if(dtmf == '*') {
