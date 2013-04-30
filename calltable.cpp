@@ -1775,6 +1775,8 @@ Call::saveToDb(bool enableBatchIfPossible) {
 				string tmp;
 				tmp = q.dtmf;
 				dtmf.add("_\\_'SQL'_\\_:@cdr_id", "cdr_ID");
+				dtmf.add(q.saddr, "saddr");
+				dtmf.add(q.daddr, "daddr");
 				dtmf.add(tmp, "dtmf");
 				dtmf.add(q.ts, "firsttime");
 				if(opt_cdr_partition) {
@@ -1865,12 +1867,14 @@ Call::saveToDb(bool enableBatchIfPossible) {
 				string tmp;
 				tmp = q.dtmf;
 				dtmf.add(cdrID, "cdr_ID");
+				dtmf.add(q.saddr, "saddr");
+				dtmf.add(q.daddr, "daddr");
 				dtmf.add(tmp, "dtmf");
 				dtmf.add(q.ts, "firsttime");
 				if(opt_cdr_partition) {
 					dtmf.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
 				}
-				sqlDb->insert("cdr_rtp", dtmf);
+				sqlDb->insert("cdr_dtmf", dtmf);
 			}
 		}
 
@@ -2682,12 +2686,14 @@ void Call::saveregister() {
 }
 
 void
-Call::handle_dtmf(char dtmf, double dtmf_time) {
+Call::handle_dtmf(char dtmf, double dtmf_time, unsigned int saddr, unsigned int daddr) {
 
 	if(opt_dbdtmf) {
 		dtmfq q;
 		q.dtmf = dtmf;
 		q.ts = dtmf_time - ts2double(first_packet_time, first_packet_usec);
+		q.saddr = ntohl(saddr);
+		q.daddr = ntohl(daddr);
 
 		//printf("push [%c] [%f] [%f] [%f]\n", q.dtmf, q.ts, dtmf_time, ts2double(first_packet_time, first_packet_usec));
 		dtmf_history.push(q);

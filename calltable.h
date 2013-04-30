@@ -57,6 +57,8 @@
 typedef struct {
 	double ts;
 	char dtmf;
+	unsigned int saddr;
+	unsigned int daddr;
 } dtmfq;
 
 
@@ -403,7 +405,7 @@ public:
 	*/
 	void addtocachequeue(string file);
 
-	void handle_dtmf(char dtmf, double ts);
+	void handle_dtmf(char dtmf, double dtmf_time, unsigned int saddr, unsigned int daddr);
 
 	void dump();
 

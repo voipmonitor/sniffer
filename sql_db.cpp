@@ -1297,7 +1297,9 @@ void SqlDb_mysql::createSchema() {
 			(opt_cdr_partition ?
 				"`calldate` datetime NOT NULL," :
 				"") + 
-			"`firsttime` float DEFAULT NULL,\
+			"`daddr` int unsigned DEFAULT NULL,\
+			`saddr` int unsigned DEFAULT NULL,\
+			`firsttime` float DEFAULT NULL,\
 			`dtmf` char DEFAULT NULL," +
 		(opt_cdr_partition ? 
 			"PRIMARY KEY (`ID`, `calldate`)," :
@@ -1888,7 +1890,9 @@ void SqlDb_odbc::createSchema() {
 			cdr_ID int \
 				FOREIGN KEY REFERENCES cdr (ID),\
 			`firsttime` float NULL,\
-			`dtmf` char NULL;\
+			`dtmf` char NULL\
+			`daddr` bigint DEFAULT NULL,\
+			`saddr` bigint DEFAULT NULL;\
 	END");
 
 	this->query(
