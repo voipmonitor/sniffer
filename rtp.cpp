@@ -561,7 +561,6 @@ RTP::process_dtmf_rfc2833() {
 		last_end_timestamp = timestamp;
 		Call *owner = (Call*)call_owner;
 		if(owner) {
-			 syslog(LOG_ERR, "dtmfevent %c\n", resp);
 			 owner->handle_dtmf(resp);
 		}
 	}
