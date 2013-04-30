@@ -270,7 +270,7 @@ Call::~Call(){
 		pcap_dump_close(get_fsip_pcap());
 		set_fsip_pcap(NULL);
 		if(opt_cachedir[0] != '\0') {
-			addtocachequeue(sip_pcapfilename.c_str());
+			addtocachequeue(sip_pcapfilename);
 		}
 	}
 	if (get_frtp_pcap() != NULL){
@@ -278,7 +278,7 @@ Call::~Call(){
 		pcap_dump_close(get_frtp_pcap());
 		set_frtp_pcap(NULL);
 		if(opt_cachedir[0] != '\0') {
-			addtocachequeue(rtp_pcapfilename.c_str());
+			addtocachequeue(rtp_pcapfilename);
 		}
 	}
 	if (get_f_pcap() != NULL){
@@ -286,7 +286,7 @@ Call::~Call(){
 		pcap_dump_close(get_f_pcap());
 		set_f_pcap(NULL);
 		if(opt_cachedir[0] != '\0') {
-			addtocachequeue(pcapfilename.c_str());
+			addtocachequeue(pcapfilename);
 		}
 	}
 
@@ -2599,7 +2599,7 @@ Calltable::cleanup( time_t currtime ) {
 				if (call->get_fsip_pcap() != NULL) {
 					pcap_dump_close(call->get_fsip_pcap());
 					if(opt_cachedir[0] != '\0') {
-						call->addtocachequeue(call->sip_pcapfilename.c_str());
+						call->addtocachequeue(call->sip_pcapfilename);
 					}
 				}
 				call->set_fsip_pcap(NULL);
@@ -2609,7 +2609,7 @@ Calltable::cleanup( time_t currtime ) {
 				if (call->get_frtp_pcap() != NULL) {
 					pcap_dump_close(call->get_frtp_pcap());
 					if(opt_cachedir[0] != '\0') {
-						call->addtocachequeue(call->rtp_pcapfilename.c_str());
+						call->addtocachequeue(call->rtp_pcapfilename);
 					}
 				}
 				call->set_frtp_pcap(NULL);
@@ -2619,7 +2619,7 @@ Calltable::cleanup( time_t currtime ) {
 				if (call->get_f_pcap() != NULL) {
 					pcap_dump_close(call->get_f_pcap());
 					if(opt_cachedir[0] != '\0') {
-						call->addtocachequeue(call->pcapfilename.c_str());
+						call->addtocachequeue(call->pcapfilename);
 					}
 				}
 				call->set_f_pcap(NULL);
@@ -2654,7 +2654,7 @@ void Call::saveregister() {
 		if (get_fsip_pcap() != NULL) {
 			pcap_dump_close(get_fsip_pcap());
 			if(opt_cachedir[0] != '\0') {
-				addtocachequeue(pcapfilename.c_str());
+				addtocachequeue(pcapfilename);
 			}
 		}
 		set_fsip_pcap(NULL);

@@ -1101,7 +1101,7 @@ Call *new_invite_register(int sip_method, char *data, int datalen, struct pcap_p
 				num *= 10;
 			}
 			call->fname2 = num + header->ts.tv_usec;
-			call->sip_pcapfilename = call->dirname() + (opt_newdir ? "/REG" : "") + "/" + filenamestr + ".pcap";
+			call->pcapfilename = call->sip_pcapfilename = call->dirname() + (opt_newdir ? "/REG" : "") + "/" + filenamestr + ".pcap";
 			if(!file_exists(str2)) {
 				call->set_fsip_pcap(pcap_dump_open(handle, str2));
 				if(call->get_fsip_pcap() == NULL) {
@@ -1129,7 +1129,7 @@ Call *new_invite_register(int sip_method, char *data, int datalen, struct pcap_p
 			} else {
 				sprintf(str2, "%s/%s/%s.pcap", call->dirname().c_str(), opt_newdir ? "SIP" : "", call->get_fbasename_safe());
 			}
-			call->sip_pcapfilename = call->dirname() + (opt_newdir ? "/SIP" : "") + "/" + call->get_fbasename_safe() + ".pcap";
+			call->pcapfilename = call->sip_pcapfilename = call->dirname() + (opt_newdir ? "/SIP" : "") + "/" + call->get_fbasename_safe() + ".pcap";
 			if(!file_exists(str2)) {
 				call->set_fsip_pcap(pcap_dump_open(handle, str2));
 				if(call->get_fsip_pcap() == NULL) {
@@ -2247,7 +2247,6 @@ repeatrtpA:
 				save_packet(call, header, packet, saddr, source, daddr, dest, istcp, data, datalen, TYPE_RTP);
 				header->caplen = tmp_u32;
 			} else {
-				printf("test opt_saverfc2833 %d\n", record);
 				save_packet(call, header, packet, saddr, source, daddr, dest, istcp, data, datalen, TYPE_RTP);
 			}
 
@@ -2312,7 +2311,6 @@ repeatrtpB:
 				save_packet(call, header, packet, saddr, source, daddr, dest, istcp, data, datalen, TYPE_RTP);
 				header->caplen = tmp_u32;
 			} else {
-				printf("test opt_saverfc2833 %d\n", record);
 				save_packet(call, header, packet, saddr, source, daddr, dest, istcp, data, datalen, TYPE_RTP);
 			}
 		}
