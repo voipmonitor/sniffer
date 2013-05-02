@@ -136,7 +136,7 @@ char opt_keycheck[1024] = "";
 char opt_convert_char[64] = "";
 int opt_skinny = 0;
 
-bool opt_cdr_partition = true;
+bool opt_cdr_partition = 0;
 
 char configfile[1024] = "";	// config file name
 
