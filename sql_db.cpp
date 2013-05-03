@@ -1303,7 +1303,7 @@ void SqlDb_mysql::createSchema() {
 			`dtmf` char DEFAULT NULL," +
 		(opt_cdr_partition ? 
 			"PRIMARY KEY (`ID`, `calldate`)," :
-			"PRIMARY KEY (`ID`)") +
+			"PRIMARY KEY (`ID`),") +
 		"KEY (`cdr_ID`)" + 
 		(opt_cdr_partition ?
 			"" :

@@ -446,8 +446,8 @@ Call::read_rtp(unsigned char* data, int datalen, struct pcap_pkthdr *header, u_i
 	}
 	// adding new RTP source
 	if(ssrc_n < MAX_SSRC_PER_CALL) {
-		// close previouse graph files to save RAM 
-		if(flags & FLAG_SAVEGRAPH) {
+		// close previouse graph files to save RAM (but only if > 10 
+		if(flags & FLAG_SAVEGRAPH && ssrc_n > 6) {
 			if(opt_gzipGRAPH) {
 				if(iscaller) {
 					if(lastcallerrtp && lastcallerrtp->gfileGZ.is_open()) {
@@ -1517,13 +1517,17 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			}
 		}
 
-		// a_ is always caller, so check if we need to swap indexes
-		if (!rtp[indexes[0]]->iscaller) {
-			int tmp;
-			tmp = indexes[1];
-			indexes[1] = indexes[0];
-			indexes[0] = tmp;
+		// find first caller and first called
+		RTP *rtpab[2] = {NULL, NULL};
+		for(int k = 0; k < ssrc_n; k++) {
+			if(rtp[indexes[k]]->iscaller && !rtpab[0]) {
+				rtpab[0] = rtp[indexes[k]];
+			}
+			if(!rtp[indexes[k]]->iscaller && !rtpab[1]) {
+				rtpab[1] = rtp[indexes[k]];
+			}
 		}
+
 		cdr_ua_a.add(sqlEscapeString(a_ua), "ua");
 		cdr_ua_b.add(sqlEscapeString(b_ua), "ua");
 
@@ -1540,93 +1544,84 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		int lost[2] = { -1, -1 };
 		
 		for(int i = 0; i < 2; i++) {
-			if(!rtp[indexes[i]]) continue;
+			if(!rtpab[i]) continue;
 
-			// if the stream for a_* is not caller there is probably case where one direction is missing at all and the second stream contains more SSRC streams so swap it
-			if(i == 0 && !rtp[indexes[i]]->iscaller) {
-				int tmp;
-				tmp = indexes[1];
-				indexes[1] = indexes[0];
-				indexes[0] = tmp;
-				continue;
-			}
-			
 			string c = i == 0 ? "a" : "b";
 			
-			cdr.add(indexes[i], c+"_index");
-			cdr.add(rtp[indexes[i]]->stats.received + 2, c+"_received"); // received is always 2 packet less compared to wireshark (add it here)
-			lost[i] = rtp[indexes[i]]->stats.lost;
+			cdr.add(rtpab[i]->ssrc_index, c+"_index");
+			cdr.add(rtpab[i]->stats.received + 2, c+"_received"); // received is always 2 packet less compared to wireshark (add it here)
+			lost[i] = rtpab[i]->stats.lost;
 			cdr.add(lost[i], c+"_lost");
-			packet_loss_perc_mult1000[i] = (int)round((double)rtp[indexes[i]]->stats.lost / 
-									(rtp[indexes[i]]->stats.received + 2 + rtp[indexes[i]]->stats.lost) * 100 * 1000);
+			packet_loss_perc_mult1000[i] = (int)round((double)rtpab[i]->stats.lost / 
+									(rtpab[i]->stats.received + 2 + rtpab[i]->stats.lost) * 100 * 1000);
 			cdr.add(packet_loss_perc_mult1000[i], c+"_packet_loss_perc_mult1000");
-			jitter_mult10[i] = int(ceil(rtp[indexes[i]]->stats.avgjitter)) * 10; // !!!
+			jitter_mult10[i] = int(ceil(rtpab[i]->stats.avgjitter)) * 10; // !!!
 			cdr.add(jitter_mult10[i], c+"_avgjitter_mult10");
-			cdr.add(int(ceil(rtp[indexes[i]]->stats.maxjitter)), c+"_maxjitter");
-			payload[i] = rtp[indexes[i]]->codec;
+			cdr.add(int(ceil(rtpab[i]->stats.maxjitter)), c+"_maxjitter");
+			payload[i] = rtpab[i]->codec;
 			cdr.add(payload[i], c+"_payload");
 			
 			// build a_sl1 - b_sl10 fields
 			for(int j = 1; j < 11; j++) {
 				char str_j[3];
 				sprintf(str_j, "%d", j);
-				cdr.add(rtp[indexes[i]]->stats.slost[j], c+"_sl"+str_j);
+				cdr.add(rtpab[i]->stats.slost[j], c+"_sl"+str_j);
 			}
 			// build a_d50 - b_d300 fileds
-			cdr.add(rtp[indexes[i]]->stats.d50, c+"_d50");
-			cdr.add(rtp[indexes[i]]->stats.d70, c+"_d70");
-			cdr.add(rtp[indexes[i]]->stats.d90, c+"_d90");
-			cdr.add(rtp[indexes[i]]->stats.d120, c+"_d120");
-			cdr.add(rtp[indexes[i]]->stats.d150, c+"_d150");
-			cdr.add(rtp[indexes[i]]->stats.d200, c+"_d200");
-			cdr.add(rtp[indexes[i]]->stats.d300, c+"_d300");
-			delay_sum[i] = rtp[indexes[i]]->stats.d50 * 60 + 
-					rtp[indexes[i]]->stats.d70 * 80 + 
-					rtp[indexes[i]]->stats.d90 * 105 + 
-					rtp[indexes[i]]->stats.d120 * 135 +
-					rtp[indexes[i]]->stats.d150 * 175 + 
-					rtp[indexes[i]]->stats.d200 * 250 + 
-					rtp[indexes[i]]->stats.d300 * 300;
-			delay_cnt[i] = rtp[indexes[i]]->stats.d50 + 
-					rtp[indexes[i]]->stats.d70 + 
-					rtp[indexes[i]]->stats.d90 + 
-					rtp[indexes[i]]->stats.d120 +
-					rtp[indexes[i]]->stats.d150 + 
-					rtp[indexes[i]]->stats.d200 + 
-					rtp[indexes[i]]->stats.d300;
+			cdr.add(rtpab[i]->stats.d50, c+"_d50");
+			cdr.add(rtpab[i]->stats.d70, c+"_d70");
+			cdr.add(rtpab[i]->stats.d90, c+"_d90");
+			cdr.add(rtpab[i]->stats.d120, c+"_d120");
+			cdr.add(rtpab[i]->stats.d150, c+"_d150");
+			cdr.add(rtpab[i]->stats.d200, c+"_d200");
+			cdr.add(rtpab[i]->stats.d300, c+"_d300");
+			delay_sum[i] = rtpab[i]->stats.d50 * 60 + 
+					rtpab[i]->stats.d70 * 80 + 
+					rtpab[i]->stats.d90 * 105 + 
+					rtpab[i]->stats.d120 * 135 +
+					rtpab[i]->stats.d150 * 175 + 
+					rtpab[i]->stats.d200 * 250 + 
+					rtpab[i]->stats.d300 * 300;
+			delay_cnt[i] = rtpab[i]->stats.d50 + 
+					rtpab[i]->stats.d70 + 
+					rtpab[i]->stats.d90 + 
+					rtpab[i]->stats.d120 +
+					rtpab[i]->stats.d150 + 
+					rtpab[i]->stats.d200 + 
+					rtpab[i]->stats.d300;
 			delay_avg_mult100[i] = (delay_cnt[i] != 0  ? (int)round((double)delay_sum[i] / delay_cnt[i] * 100) : 0);
 			cdr.add(delay_sum[i], c+"_delay_sum");
 			cdr.add(delay_cnt[i], c+"_delay_cnt");
 			cdr.add(delay_avg_mult100[i], c+"_delay_avg_mult100");
 			
 			// store source addr
-			cdr.add(htonl(rtp[indexes[i]]->saddr), c+"_saddr");
+			cdr.add(htonl(rtpab[i]->saddr), c+"_saddr");
 
 			// calculate lossrate and burst rate
 			double burstr, lossr;
-			burstr_calculate(rtp[indexes[i]]->channel_fix1, rtp[indexes[i]]->stats.received, &burstr, &lossr);
+			burstr_calculate(rtpab[i]->channel_fix1, rtpab[i]->stats.received, &burstr, &lossr);
 			//cdr.add(lossr, c+"_lossr_f1");
 			//cdr.add(burstr, c+"_burstr_f1");
-			int mos_f1_mult10 = (int)round(calculate_mos(lossr, burstr, rtp[indexes[i]]->codec, rtp[indexes[i]]->stats.received) * 10);
+			int mos_f1_mult10 = (int)round(calculate_mos(lossr, burstr, rtpab[i]->codec, rtpab[i]->stats.received) * 10);
 			cdr.add(mos_f1_mult10, c+"_mos_f1_mult10");
 			if(mos_f1_mult10) {
 				mos_min_mult10[i] = mos_f1_mult10;
 			}
 
 			// Jitterbuffer MOS statistics
-			burstr_calculate(rtp[indexes[i]]->channel_fix2, rtp[indexes[i]]->stats.received, &burstr, &lossr);
+			burstr_calculate(rtpab[i]->channel_fix2, rtpab[i]->stats.received, &burstr, &lossr);
 			//cdr.add(lossr, c+"_lossr_f2");
 			//cdr.add(burstr, c+"_burstr_f2");
-			int mos_f2_mult10 = (int)round(calculate_mos(lossr, burstr, rtp[indexes[i]]->codec, rtp[indexes[i]]->stats.received) * 10);
+			int mos_f2_mult10 = (int)round(calculate_mos(lossr, burstr, rtpab[i]->codec, rtpab[i]->stats.received) * 10);
 			cdr.add(mos_f2_mult10, c+"_mos_f2_mult10");
 			if(mos_f2_mult10 && (mos_min_mult10[i] < 0 || mos_f2_mult10 < mos_min_mult10[i])) {
 				mos_min_mult10[i] = mos_f2_mult10;
 			}
 
-			burstr_calculate(rtp[indexes[i]]->channel_adapt, rtp[indexes[i]]->stats.received, &burstr, &lossr);
+			burstr_calculate(rtpab[i]->channel_adapt, rtpab[i]->stats.received, &burstr, &lossr);
 			//cdr.add(lossr, c+"_lossr_adapt");
 			//cdr.add(burstr, c+"_burstr_adapt");
-			int mos_adapt_mult10 = (int)round(calculate_mos(lossr, burstr, rtp[indexes[i]]->codec, rtp[indexes[i]]->stats.received) * 10);
+			int mos_adapt_mult10 = (int)round(calculate_mos(lossr, burstr, rtpab[i]->codec, rtpab[i]->stats.received) * 10);
 			cdr.add(mos_adapt_mult10, c+"_mos_adapt_mult10");
 			if(mos_adapt_mult10 && (mos_min_mult10[i] < 0 || mos_adapt_mult10 < mos_min_mult10[i])) {
 				mos_min_mult10[i] = mos_adapt_mult10;
@@ -1636,13 +1631,13 @@ Call::saveToDb(bool enableBatchIfPossible) {
 				cdr.add(mos_min_mult10[i], c+"_mos_min_mult10");
 			}
 
-			if(rtp[indexes[i]]->rtcp.counter) {
-				cdr.add(rtp[indexes[i]]->rtcp.loss, c+"_rtcp_loss");
-				cdr.add(rtp[indexes[i]]->rtcp.maxfr, c+"_rtcp_maxfr");
-				rtcp_avgfr_mult10[i] = (int)round(rtp[indexes[i]]->rtcp.avgfr * 10);
+			if(rtpab[i]->rtcp.counter) {
+				cdr.add(rtpab[i]->rtcp.loss, c+"_rtcp_loss");
+				cdr.add(rtpab[i]->rtcp.maxfr, c+"_rtcp_maxfr");
+				rtcp_avgfr_mult10[i] = (int)round(rtpab[i]->rtcp.avgfr * 10);
 				cdr.add(rtcp_avgfr_mult10[i], c+"_rtcp_avgfr_mult10");
-				cdr.add(rtp[indexes[i]]->rtcp.maxjitter / get_ticks_bycodec(rtp[indexes[i]]->codec), c+"_rtcp_maxjitter");
-				rtcp_avgjitter_mult10[i] = (int)round(rtp[indexes[i]]->rtcp.avgjitter / get_ticks_bycodec(rtp[indexes[i]]->codec) * 10);
+				cdr.add(rtpab[i]->rtcp.maxjitter / get_ticks_bycodec(rtpab[i]->codec), c+"_rtcp_maxjitter");
+				rtcp_avgjitter_mult10[i] = (int)round(rtpab[i]->rtcp.avgjitter / get_ticks_bycodec(rtpab[i]->codec) * 10);
 				cdr.add(rtcp_avgjitter_mult10[i], c+"_rtcp_avgjitter_mult10");
 			}
 		}
