@@ -1612,6 +1612,7 @@ int main(int argc, char *argv[]) {
 	if(!opt_nocdr) {
 		if(sqlDb->connect()) {
 			sqlDb->createSchema();
+			sqlDb->checkSchema();
 		}
 	}
 

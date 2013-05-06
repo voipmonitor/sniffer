@@ -122,6 +122,7 @@ public:
 	virtual void cleanFields();
 	virtual void clean() = 0;
 	virtual void createSchema() = 0;
+	virtual void checkSchema() = 0;
 	virtual string getTypeDb() = 0;
 	virtual string getSubtypeDb() = 0;
 	virtual int multi_on() {
@@ -144,6 +145,9 @@ protected:
 private:
 	unsigned int lastError;
 	string lastErrorString;
+public:
+	bool existsColumnCalldateInCdrNext;
+	bool existsColumnCalldateInCdrRtp;
 };
 
 class SqlDb_mysql : public SqlDb {
@@ -163,6 +167,7 @@ public:
 	bool checkLastError(string prefixError, bool sysLog = false,bool clearLastError = false);
 	void clean();
 	void createSchema();
+	void checkSchema();
 	string getTypeDb() {
 		return("mysql");
 	}
@@ -224,6 +229,7 @@ public:
 	void cleanFields();
 	void clean();
 	void createSchema();
+	void checkSchema();
 	string getTypeDb() {
 		return("odbc");
 	}

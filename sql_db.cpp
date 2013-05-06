@@ -167,6 +167,8 @@ SqlDb::SqlDb() {
 	this->maxQueryPass = UINT_MAX;
 	this->loginTimeout = (ulong)NULL;
 	this->enableSqlStringInContent = false;
+	this->existsColumnCalldateInCdrNext = false;
+	this->existsColumnCalldateInCdrRtp = false;
 }
 
 SqlDb::~SqlDb() {
@@ -1553,6 +1555,10 @@ void SqlDb_mysql::createSchema() {
 		 begin\
 		    call ") + mysql_database + ".create_partitions_cdr('" + mysql_database + "', 1);\
 		 end");
+		this->query(string(
+		"call ") + mysql_database + ".create_partitions_cdr('" + mysql_database + "', 0);");
+		this->query(string(
+		"call ") + mysql_database + ".create_partitions_cdr('" + mysql_database + "', 1);");
 	}
 
 	//5.2 -> 5.3
@@ -1655,6 +1661,13 @@ void SqlDb_mysql::createSchema() {
 			ADD `id_sensor` INT NULL DEFAULT NULL;");
 	sql_noerror = 0;
 	syslog(LOG_DEBUG, "done");
+}
+
+void SqlDb_mysql::checkSchema() {
+	this->query("show columns from cdr_next where Field='calldate'");
+	this->existsColumnCalldateInCdrNext = this->fetchRow();
+	this->query("show columns from cdr_rtp where Field='calldate'");
+	this->existsColumnCalldateInCdrRtp = this->fetchRow();
 }
 
 
@@ -2179,4 +2192,8 @@ void SqlDb_odbc::createSchema() {
 			ADD GeoPosition varchar(255) NULL;");
 	this->query("ALTER TABLE cdr\
 			ADD GeoPosition varchar(255) NULL;");
+}
+
+void SqlDb_odbc::checkSchema() {
+
 }
