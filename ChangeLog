@@ -1,5 +1,14 @@
-Changelog 7.0.RC1
-=================
+7.0.RC2
+=======
+
+- implement storing DTMF to new cdr_dtmf table for RFC2833 and SIP INFO
+- fix saving REGISTER pcap files in case cachedir is used
+- fix missing RTP stream in CDR and short graph files (caler or called) in case sniffer see multiple RTP streams (more than 2) within call
+- fix / workaround for missing calldate column in table cdr_next and cdr_rtp
+- mysql partitioning is now default on 
+
+7.0.RC1
+========
 
 - redesign realtime audio listening (g711 ulaw/alaw only at the moment) 
 - fix low MOS score for calls which contains RTP DTMF (and fix audio sync too) 
@@ -10,18 +19,18 @@ Changelog 7.0.RC1
 - reformat help text to 80 chars and sort it alphabetically 
 - add convertchar option to voipmonitor.conf
 
-Changelog 6.5.3 -> 6.5.4
-========================
+6.5.3 -> 6.5.4
+==============
 - fix TCP manager interface which was limited to some maximum number of connections since start. As a result no new connection can be created and thus the WEB GUI locked. 
 
-Changelog 6.5.2 -> 6.5.3
-========================
+6.5.2 -> 6.5.3
+==============
 - do not end manager thread if there is problem with client reading data. Ending manager thread causes PHP to lock whole session. 
 - divide rtcp jitter by timestamp unit (8/12/16/24/32) so it will be in milliseconds to match RTP jitter
 - don not endless try mysql connect when kill signal sends to voipmonitor. this caused stuck in reboot process of whole machine or impossible break voipmonitor ctrl-c
 
-Changelog 6.5 -> 6.5.2
-======================
+6.5 -> 6.5.2
+============
 
 - fix reversed RTP in mysql - caller RTP was called RTP (broken since 6.5RC1)
 - fix 6.5 version 4GB memory leak for any manager command causing live calls to swap machine or crash depending on available memory
