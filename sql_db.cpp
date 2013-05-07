@@ -1496,6 +1496,8 @@ void SqlDb_mysql::createSchema() {
 	
 	if(opt_cdr_partition) {
 		this->query(
+		"drop procedure if exists create_partition");
+		this->query(
 		"create procedure create_partition(database_name char(100), table_name char(100), type_part char(10), next_days int)\
 		 begin\
 		    declare part_date date;\
@@ -1513,13 +1515,13 @@ void SqlDb_mysql::createSchema() {
 		       set part_name = concat('p', date_format(part_date, '%y%m%d'));\
 		    end if;\
 		    set test_exists_part_query = concat(\
-		       'set @_exists_part = exists (select * from information_schema.partitions where table_schema=\'',\
+		       'set @_exists_part = exists (select * from information_schema.partitions where table_schema=\\'',\
 		       database_name,\
-		       '\' and table_name = \'',\
+		       '\\' and table_name = \\'',\
 		       table_name,\
-		       '\' and partition_name = \'',\
+		       '\\' and partition_name = \\'',\
 		       part_name,\
-		       '\')');\
+		       '\\')');\
 		    set @_test_exists_part_query = test_exists_part_query;\
 		    prepare stmt FROM @_test_exists_part_query;\
 		    execute stmt;\
@@ -1532,15 +1534,17 @@ void SqlDb_mysql::createSchema() {
 			  table_name,\
 			  '` add partition (partition ',\
 			  part_name,\
-			  ' VALUES LESS THAN (\'',\
+			  ' VALUES LESS THAN (\\'',\
 			  part_limit,\
-			  '\'))');\
+			  '\\'))');\
 		       set @_create_part_query = create_part_query;\
 		       prepare stmt FROM @_create_part_query;\
 		       execute stmt;\
 		       deallocate prepare stmt;\
 		    end if;\
 		 end");
+		this->query(
+		"drop procedure if exists create_partitions_cdr");
 		this->query(
 		"create procedure create_partitions_cdr(database_name char(100), next_days int)\
 		 begin\
@@ -1549,6 +1553,8 @@ void SqlDb_mysql::createSchema() {
 		    call create_partition(database_name, 'cdr_rtp', 'day', next_days);\
 		    call create_partition(database_name, 'cdr_dtmf', 'day', next_days);\
 		 end");
+		this->query(
+		"drop event if exists cdr_add_partition");
 		this->query(string(
 		"create event if not exists cdr_add_partition\
 		 on schedule every 1 hour do\
