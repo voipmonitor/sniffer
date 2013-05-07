@@ -1,3 +1,8 @@
+7.0.RC3
+=======
+
+- critical fix partitioning procedure which did not created partitions for next days
+
 7.0.RC2
 =======
 
