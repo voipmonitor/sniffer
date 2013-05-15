@@ -1392,9 +1392,6 @@ Call::getKeyValCDRtext() {
 /* TODO: implement failover -> write INSERT into file */
 int
 Call::saveToDb(bool enableBatchIfPossible) {
-	if(verbosity > 0) { 
-		cout << "process saveToDb function" << endl;
-	}
 	if(!prepareForEscapeString())
 		return 1;
 
