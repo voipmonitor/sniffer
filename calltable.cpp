@@ -230,13 +230,14 @@ Call::addtocachequeue(string file) {
 void
 Call::removeRTP() {
 	closeRawFiles();
+	ssrc_n = 0;
 	for(int i = 0; i < MAX_SSRC_PER_CALL; i++) {
 	// lets check whole array as there can be holes due rtp[0] <=> rtp[1] swaps in mysql rutine
 		if(rtp[i]) {
 			delete rtp[i];
+			rtp[i] = NULL;
 		}
         }
-	ssrc_n = 0;
 }
 
 /* destructor */
