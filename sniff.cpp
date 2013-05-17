@@ -1240,9 +1240,9 @@ void clean_tcpstreams() {
 }
 
 Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int dest, char *data, int datalen,
-	pcap_t *handle, pcap_pkthdr *header, const u_char *packet, int istcp, int dontsave, int can_thread, int *was_rtp, struct iphdr *header_ip, int *voippacket) {
+	pcap_t *handle, pcap_pkthdr *header, const u_char *packet, int istcp, int dontsave, int can_thread, int *was_rtp, struct iphdr *header_ip, int *voippacket, int disabledsave) {
 
-	Call *call;
+	Call *call = NULL;
 	int last_sip_method = -1;
 	int iscaller;
 	int is_rtcp = 0;
@@ -1393,7 +1393,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 								// sip message is now reassembled and can be processed 
 								// here we turns out istcp flag so the function process_packet will not reach tcp reassemble and will process the whole message
 								int tmp_was_rtp;
-								Call *call = process_packet(saddr, source, daddr, dest, (char*)newdata, newlen, handle, header, packet, 0, 1, 0, &tmp_was_rtp, header_ip, voippacket);
+								Call *call = process_packet(saddr, source, daddr, dest, (char*)newdata, newlen, handle, header, packet, 0, 1, 0, &tmp_was_rtp, header_ip, voippacket, 1);
 
 								// message was processed so the stream can be released from queue and destroyd all its parts
 								tcp_stream2_t *next;
@@ -1480,7 +1480,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 						// sip message is now reassembled and can be processed 
 						// here we turns out istcp flag so the function process_packet will not reach tcp reassemble and will process the whole message
 						int tmp_was_rtp;
-						Call *call = process_packet(saddr, source, daddr, dest, (char*)newdata, newlen, handle, header, packet, 0, 1, 0, &tmp_was_rtp, header_ip, voippacket);
+						Call *call = process_packet(saddr, source, daddr, dest, (char*)newdata, newlen, handle, header, packet, 0, 1, 0, &tmp_was_rtp, header_ip, voippacket, 1);
 
 						// message was processed so the stream can be released from queue and destroyd all its parts
 						tcp_stream2_t *next;
@@ -1513,6 +1513,9 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 		}
 		memcpy(callidstr, s, MIN(l, 1024));
 		callidstr[MIN(l, 1023)] = '\0';
+
+		static int counter = 0;
+		counter++;
 
 		// Call-ID is present
 		if(istcp and datalen >= 2) {
@@ -1547,7 +1550,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 						// sip message is now reassembled and can be processed 
 						// here we turns out istcp flag so the function process_packet will not reach tcp reassemble and will process the whole message
 						int tmp_was_rtp;
-						Call *call = process_packet(saddr, source, daddr, dest, (char*)newdata, newlen, handle, header, packet, 0, 1, 0, &tmp_was_rtp, header_ip, voippacket);
+						Call *call = process_packet(saddr, source, daddr, dest, (char*)newdata, newlen, handle, header, packet, 0, 1, 0, &tmp_was_rtp, header_ip, voippacket, 1);
 
 						// message was processed so the stream can be released from queue and destroyd all its parts
 						tcp_stream2_t *next;
@@ -1563,10 +1566,10 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 							free(tmpstream);
 							tmpstream = next;
 						}
-						// save also current packet 
-						if(call) {
-							save_packet(call, header, packet, saddr, source, daddr, dest, istcp, (char *)data, datalen, TYPE_SIP);
-						}
+						// save also current packet 17.5.2013 - this is nonsense - it creates duplicates do not save here
+						//if(call) {
+							//save_packet(call, header, packet, saddr, source, daddr, dest, istcp, (char *)data, datalen, TYPE_SIP);
+						//}
 						free(newdata);
 						tcp_streams_hashed[hash] = NULL;
 					}
@@ -2194,7 +2197,9 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 		}
 		data[datalen - 1] = a;
 
-		save_packet(call, header, packet, saddr, source, daddr, dest, istcp, data, datalen, TYPE_SIP);
+		if(!disabledsave) {
+			save_packet(call, header, packet, saddr, source, daddr, dest, istcp, data, datalen, TYPE_SIP);
+		}
 		return call;
 	} else if ((call = calltable->hashfind_by_ip_port(daddr, dest, &iscaller, &is_rtcp))){
 	//} else if ((call = calltable->mapfind_by_ip_port(daddr, dest, &iscaller, &is_rtcp))){
@@ -2480,7 +2485,7 @@ void
 libnids_udp_callback(struct tuple4 *addr, u_char *data, int len, struct ip *pkt) {
 	int was_rtp;
 	int voippacket;
-	process_packet(addr->saddr, addr->source, addr->daddr, addr->dest, (char*)data, len, handle, nids_last_pcap_header, nids_last_pcap_data, 0, 0, 1, &was_rtp, NULL, &voippacket);
+	process_packet(addr->saddr, addr->source, addr->daddr, addr->dest, (char*)data, len, handle, nids_last_pcap_header, nids_last_pcap_data, 0, 0, 1, &was_rtp, NULL, &voippacket, 0);
 	return;
 }
 
@@ -2571,7 +2576,7 @@ void *pcap_read_thread_func(void *arg) {
 		if((res = queue_dequeue(qs_readpacket_thread_queue, (void **)&pp)) != 1) {
 			// queue is empty
 			if(terminating || readend) {
-				printf("packets: [%u]\n", packets);
+				//printf("packets: [%u]\n", packets);
 				return NULL;
 			}
 			usleep(10000);
@@ -2644,7 +2649,7 @@ void *pcap_read_thread_func(void *arg) {
 		}
 		int voippacket = 0;
 		process_packet(header_ip->saddr, htons(header_udp->source), header_ip->daddr, htons(header_udp->dest), 
-			    data, datalen, handle, &pp->header, packet, istcp, 0, 1, &was_rtp, header_ip, &voippacket);
+			    data, datalen, handle, &pp->header, packet, istcp, 0, 1, &was_rtp, header_ip, &voippacket, 0);
 
 		// if packet was VoIP add it to ipaccount
 		if(opt_ipaccount) {
@@ -3189,7 +3194,7 @@ void readdump_libpcap(pcap_t *handle) {
 		int voippacket = 0;
 		if(!opt_mirroronly) {
 			process_packet(header_ip->saddr, htons(header_udp->source), header_ip->daddr, htons(header_udp->dest), 
-				    data, datalen, handle, header, packet, istcp, 0, 1, &was_rtp, header_ip, &voippacket);
+				    data, datalen, handle, header, packet, istcp, 0, 1, &was_rtp, header_ip, &voippacket, 0);
 		}
 		if(opt_ipaccount) {
 			ipaccount(header->ts.tv_sec, (struct iphdr *) ((char*)packet + offset), header->caplen - offset, voippacket);
