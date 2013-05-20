@@ -495,8 +495,7 @@ void IpaccAgreg::save(unsigned int time_interval) {
 				"where %s = '%s' and "
 					"addr = %u and customer_id = %u and "
 					"proto = %u and port = %u; "
-				"if(row_count() <= 0) then "
-					"set @_last_insert_id = last_insert_id(); "
+				"if(row_count() <= 0 and @i = 0) then "
 					"insert ignore into %s ("
 							"%s, addr, customer_id, proto, port, "
 							"traffic_in, traffic_out, traffic_sum, "
@@ -509,7 +508,7 @@ void IpaccAgreg::save(unsigned int time_interval) {
 							"%lu, %lu, %lu, "
 							"%lu, %lu, %lu, "
 							"%lu, %lu, %lu);"
-					"if @_last_insert_id <> last_insert_id() then "
+					"if(row_count() > 0) then "
 						"set @i = 2; "
 					"end if; "
 				"else "
@@ -610,8 +609,7 @@ void IpaccAgreg::save(unsigned int time_interval) {
 				"where %s = '%s' and "
 					"addr = %u and addr2 = %u  and customer_id = %u and "
 					"proto = %u and port = %u; "
-				"if(row_count() <= 0) then "
-					"set @_last_insert_id = last_insert_id(); "
+				"if(row_count() <= 0 and @i = 0) then "
 					"insert ignore into %s ("
 							"%s, addr, addr2, customer_id, proto, port, "
 							"traffic_in, traffic_out, traffic_sum, "
@@ -624,7 +622,7 @@ void IpaccAgreg::save(unsigned int time_interval) {
 							"%lu, %lu, %lu, "
 							"%lu, %lu, %lu, "
 							"%lu, %lu, %lu);"
-					"if @_last_insert_id <> last_insert_id() then "
+					"if(row_count() > 0) then "
 						"set @i = 2; "
 					"end if; "
 				"else "
@@ -921,7 +919,7 @@ string CustIpCache::printVect() {
 		in_addr ips;
 		ips.s_addr = this->custCacheVect[i].ip;
 		char rsltRec[100];
-		sprintf(rsltRec, "%s -> %ui\n", inet_ntoa(ips), this->custCacheVect[i].cust_id);
+		sprintf(rsltRec, "%s -> %u\n", inet_ntoa(ips), this->custCacheVect[i].cust_id);
 		rslt += rsltRec;
 	}
 	return(rslt);
