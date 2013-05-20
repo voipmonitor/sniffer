@@ -1246,6 +1246,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 	int last_sip_method = -1;
 	int iscaller;
 	int is_rtcp = 0;
+	int is_fax = 0;
 	static unsigned long last_cleanup = 0;	// Last cleaning time
 	char *s;
 	unsigned long l;
@@ -2122,13 +2123,12 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 							}
 						}
 					}
-
 					//syslog(LOG_ERR, "ADDR: %u port %u iscalled[%d]\n", tmp_addr, tmp_port, iscalled);
 					if(call->add_ip_port(tmp_addr, tmp_port, s, l, !iscalled, rtpmap) != -1){
-						calltable->hashAdd(tmp_addr, tmp_port, call, !iscalled, 0);
+						calltable->hashAdd(tmp_addr, tmp_port, call, !iscalled, 0, fax);
 						//calltable->mapAdd(tmp_addr, tmp_port, call, !iscalled, 0);
 						if(opt_rtcp) {
-							calltable->hashAdd(tmp_addr, tmp_port + 1, call, !iscalled, 1); //add rtcp
+							calltable->hashAdd(tmp_addr, tmp_port + 1, call, !iscalled, 1, fax); //add rtcp
 							//calltable->mapAdd(tmp_addr, tmp_port + 1, call, !iscalled, 1); //add rtcp
 						}
 					}
@@ -2137,10 +2137,10 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 					in_addr_t alias = 0;
 					if((alias = match_nat_aliases(tmp_addr)) != 0) {
 						if(call->add_ip_port(alias, tmp_port, s, l, !iscalled, rtpmap) != -1) {
-							calltable->hashAdd(alias, tmp_port, call, !iscalled, 0);
+							calltable->hashAdd(alias, tmp_port, call, !iscalled, 0, fax);
 							//calltable->mapAdd(alias, tmp_port, call, !iscalled, 0);
 							if(opt_rtcp) {
-								calltable->hashAdd(alias, tmp_port + 1, call, !iscalled, 1); //add rtcp
+								calltable->hashAdd(alias, tmp_port + 1, call, !iscalled, 1, fax); //add rtcp
 								//calltable->mapAdd(alias, tmp_port + 1, call, !iscalled, 1); //add rtcp
 							}
 						}
@@ -2148,10 +2148,10 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 
 #ifdef NAT
 					if(call->add_ip_port(saddr, tmp_port, s, l, !iscalled, rtpmap) != -1){
-						calltable->hashAdd(saddr, tmp_port, call, !iscalled, 0);
+						calltable->hashAdd(saddr, tmp_port, call, !iscalled, 0, fax);
 						//calltable->mapAdd(saddr, tmp_port, call, !iscalled, 0);
 						if(opt_rtcp) {
-							calltable->hashAdd(saddr, tmp_port + 1, call, !iscalled, 1);
+							calltable->hashAdd(saddr, tmp_port + 1, call, !iscalled, 1, fax);
 							//calltable->mapAdd(saddr, tmp_port + 1, call, !iscalled, 1);
 						}
 					}
@@ -2201,7 +2201,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 			save_packet(call, header, packet, saddr, source, daddr, dest, istcp, data, datalen, TYPE_SIP);
 		}
 		return call;
-	} else if ((call = calltable->hashfind_by_ip_port(daddr, dest, &iscaller, &is_rtcp))){
+	} else if ((call = calltable->hashfind_by_ip_port(daddr, dest, &iscaller, &is_rtcp, &is_fax))){
 	//} else if ((call = calltable->mapfind_by_ip_port(daddr, dest, &iscaller, &is_rtcp))){
 	// TODO: remove if hash will be stable
 	//if ((call = calltable->find_by_ip_port(daddr, dest, &iscaller)))
@@ -2219,6 +2219,10 @@ repeatrtpA:
 			// packets larger than MAXPACKETLENQRING was created in special heap and is destroyd immediately after leaving this functino - thus do not queue it 
 			// TODO: this can be enhanced by pasing flag that the packet should be freed
 			can_thread = 0;
+		}
+
+		if(is_fax) {
+			call->seenudptl = 1;
 		}
 
 		if(is_rtcp) {
@@ -2262,7 +2266,7 @@ repeatrtpA:
 			call = call->relationcall;
 			goto repeatrtpA;
 		}
-	} else if ((call = calltable->hashfind_by_ip_port(saddr, source, &iscaller, &is_rtcp))){
+	} else if ((call = calltable->hashfind_by_ip_port(saddr, source, &iscaller, &is_rtcp, &is_fax))){
 	//} else if ((call = calltable->mapfind_by_ip_port(saddr, source, &iscaller, &is_rtcp))){
 	// TODO: remove if hash will be stable
 	// else if ((call = calltable->find_by_ip_port(saddr, source, &iscaller)))
@@ -2281,6 +2285,10 @@ repeatrtpB:
 			// packets larger than MAXPACKETLENQRING was created in special heap and is destroyd immediately after leaving this functino - thus do not queue it 
 			// TODO: this can be enhanced by pasing flag that the packet should be freed
 			can_thread = 0;
+		}
+
+		if(is_fax) {
+			call->seenudptl = 1;
 		}
 
 		if(is_rtcp) {
@@ -2380,12 +2388,12 @@ repeatrtpB:
 			}
 
 			call->add_ip_port(daddr, dest, s, l, 1, rtpmap);
-			//calltable->hashAdd(daddr, dest, call, 1, 0);
-			calltable->mapAdd(daddr, dest, call, 1, 0);
+			calltable->hashAdd(daddr, dest, call, 1, 0, 0);
+			//calltable->mapAdd(daddr, dest, call, 1, 0, 0);
 
 			call->add_ip_port(saddr, source, s, l, 0, rtpmap);
-			//calltable->hashAdd(saddr, source, call, 0, 0);
-			calltable->mapAdd(saddr, source, call, 0, 0);
+			calltable->hashAdd(saddr, source, call, 0, 0, 0);
+			//calltable->mapAdd(saddr, source, call, 0, 0, 0);
 			
 		}
 		// we are not interested in this packet

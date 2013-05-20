@@ -129,6 +129,7 @@ public:
 	std::queue <dtmfq> dtmf_history;
 
 	int isfax;
+	char seenudptl;
 
 	void *rtp_cur[2];		//!< last RTP structure in direction 0 and 1 (iscaller = 1)
 	void *rtp_prev[2];		//!< previouse RTP structure in direction 0 and 1 (iscaller = 1)
@@ -421,6 +422,7 @@ private:
 typedef struct {
 	Call *call;
 	int is_rtcp;
+	int is_fax;
 	int iscaller;
 } Ipportnode;
 
@@ -536,14 +538,14 @@ public:
 	 * @brief add call to hash table
 	 *
 	*/
-	void hashAdd(in_addr_t addr, unsigned short port, Call* call, int iscaller, int isrtcp, int allowrelation = 0);
+	void hashAdd(in_addr_t addr, unsigned short port, Call* call, int iscaller, int isrtcp, int is_fax, int allowrelation = 0);
 
 
 	/**
 	 * @brief find call
 	 *
 	*/
-	Call *hashfind_by_ip_port(in_addr_t addr, unsigned short port, int *iscaller, int *isrtcp);
+	Call *hashfind_by_ip_port(in_addr_t addr, unsigned short port, int *iscaller, int *isrtcp, int *is_fax);
 
 	/**
 	 * @brief remove call from hash
@@ -555,13 +557,13 @@ public:
 	 * @brief find call
 	 *
 	*/
-	Call *mapfind_by_ip_port(in_addr_t addr, unsigned short port, int *iscaller, int *isrtcp);
+	Call *mapfind_by_ip_port(in_addr_t addr, unsigned short port, int *iscaller, int *isrtcp, int *isfax);
 
 	/**
 	 * @brief add call to map table
 	 *
 	*/
-	void mapAdd(in_addr_t addr, unsigned short port, Call* call, int iscaller, int isrtcp);
+	void mapAdd(in_addr_t addr, unsigned short port, Call* call, int iscaller, int isrtcp, int is_fax);
 
 	/**
 	 * @brief remove call from map
@@ -582,6 +584,7 @@ private:
 		u_int32_t addr;
 		u_int16_t port;
 		u_int16_t is_rtcp;
+		u_int16_t is_fax;
 	};
 
 	void *calls_hash[MAXNODE];

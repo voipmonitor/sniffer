@@ -107,6 +107,7 @@ extern CustPhoneNumberCache *custPnCache;
 /* constructor */
 Call::Call(char *call_id, unsigned long call_id_len, time_t time, void *ct) {
 	isfax = 0;
+	seenudptl = 0;
 	last_callercodec = -1;
 	ipport_n = 0;
 	ssrc_n = 0;
@@ -1333,14 +1334,13 @@ Call::getKeyValCDRtext() {
 			}
 		}
 
-		if(payload[0] >= 0 || payload[1] >= 0) {
-			if(isfax) {
-				cdr.add(1000, "payload");
-			} else {
-				cdr.add(payload[0] >= 0 ? payload[0] : payload[1], 
-					"payload");
-			}
+		if(seenudptl) {
+		//if(isfax) {
+			cdr.add(1000, "payload");
+		} else if(payload[0] >= 0 || payload[1] >= 0) {
+			cdr.add(payload[0] >= 0 ? payload[0] : payload[1], "payload");
 		}
+
 		if(jitter_mult10[0] >= 0 || jitter_mult10[1] >= 0) {
 			cdr.add(max(jitter_mult10[0], jitter_mult10[1]), 
 				"jitter_mult10");
@@ -1640,14 +1640,13 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			}
 		}
 
-		if(payload[0] >= 0 || payload[1] >= 0) {
-			if(isfax) {
-				cdr.add(1000, "payload");
-			} else {
-				cdr.add(payload[0] >= 0 ? payload[0] : payload[1], 
-					"payload");
-			}
+		if(seenudptl) {
+		//if(isfax) {
+			cdr.add(1000, "payload");
+		} else if(payload[0] >= 0 || payload[1] >= 0) {
+			cdr.add(payload[0] >= 0 ? payload[0] : payload[1], "payload");
 		}
+
 		if(jitter_mult10[0] >= 0 || jitter_mult10[1] >= 0) {
 			cdr.add(max(jitter_mult10[0], jitter_mult10[1]), 
 				"jitter_mult10");
@@ -2316,7 +2315,7 @@ Calltable::~Calltable() {
 
 /* add node to hash. collisions are linked list of nodes*/
 void
-Calltable::mapAdd(in_addr_t addr, unsigned short port, Call* call, int iscaller, int is_rtcp) {
+Calltable::mapAdd(in_addr_t addr, unsigned short port, Call* call, int iscaller, int is_rtcp, int is_fax) {
 
 	if (ipportmap.find(addr) != ipportmap.end()) {
 		ipportmapIT = ipportmap[addr].find(port);
@@ -2329,6 +2328,7 @@ Calltable::mapAdd(in_addr_t addr, unsigned short port, Call* call, int iscaller,
 				node->call = call;
 				node->iscaller = iscaller;
 				node->is_rtcp = is_rtcp;
+				node->is_fax = is_fax;
 				return;
 			// or it can happen if voipmonitor is sniffing SIP proxy which forwards SIP
 			} else {
@@ -2345,13 +2345,14 @@ Calltable::mapAdd(in_addr_t addr, unsigned short port, Call* call, int iscaller,
 	node->call = call;
 	node->iscaller = iscaller;
 	node->is_rtcp = is_rtcp;
+	node->is_fax = is_fax;
 	ipportmap[addr][port] = node;
 }
 
 
 /* add node to hash. collisions are linked list of nodes*/
 void
-Calltable::hashAdd(in_addr_t addr, unsigned short port, Call* call, int iscaller, int is_rtcp, int allowrelation) {
+Calltable::hashAdd(in_addr_t addr, unsigned short port, Call* call, int iscaller, int is_rtcp, int is_fax, int allowrelation) {
 	u_int32_t h;
 	hash_node *node = NULL;
 
@@ -2375,6 +2376,7 @@ Calltable::hashAdd(in_addr_t addr, unsigned short port, Call* call, int iscaller
 				node->call = call;
 				node->iscaller = iscaller;
 				node->is_rtcp = is_rtcp;
+				node->is_fax = is_fax;
 				return;
 			// or it can happen if voipmonitor is sniffing SIP proxy which forwards SIP
 			} else {
@@ -2393,6 +2395,7 @@ Calltable::hashAdd(in_addr_t addr, unsigned short port, Call* call, int iscaller
 	node->call = call;
 	node->iscaller = iscaller;
 	node->is_rtcp = is_rtcp;
+	node->is_fax = is_fax;
 	node->next = (hash_node *)calls_hash[h];
 	calls_hash[h] = node;
 }
@@ -2435,7 +2438,7 @@ Calltable::mapRemove(in_addr_t addr, unsigned short port) {
 
 /* find call in hash */
 Call*
-Calltable::mapfind_by_ip_port(in_addr_t addr, unsigned short port, int *iscaller, int *is_rtcp) {
+Calltable::mapfind_by_ip_port(in_addr_t addr, unsigned short port, int *iscaller, int *is_rtcp, int *is_fax) {
 
 
 	if (ipportmap.find(addr) != ipportmap.end()) {
@@ -2444,6 +2447,7 @@ Calltable::mapfind_by_ip_port(in_addr_t addr, unsigned short port, int *iscaller
 			Ipportnode *node = (*ipportmapIT).second;
 			*iscaller = node->iscaller;
 			*is_rtcp = node->is_rtcp;
+			*is_fax = node->is_fax;
 			return node->call;
 		}
 	}
@@ -2452,7 +2456,7 @@ Calltable::mapfind_by_ip_port(in_addr_t addr, unsigned short port, int *iscaller
 
 /* find call in hash */
 Call*
-Calltable::hashfind_by_ip_port(in_addr_t addr, unsigned short port, int *iscaller, int *is_rtcp) {
+Calltable::hashfind_by_ip_port(in_addr_t addr, unsigned short port, int *iscaller, int *is_rtcp, int *is_fax) {
 	hash_node *node = NULL;
 	u_int32_t h;
 
@@ -2461,6 +2465,7 @@ Calltable::hashfind_by_ip_port(in_addr_t addr, unsigned short port, int *iscalle
 		if ((node->addr == addr) && (node->port == port)) {
 			*iscaller = node->iscaller;
 			*is_rtcp = node->is_rtcp;
+			*is_fax = node->is_fax;
 			return node->call;
 		}
 	}
