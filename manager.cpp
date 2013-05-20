@@ -846,7 +846,7 @@ getwav:
 		sscanf(buf, "custipcache_get_cust_id %s", ip);
 		extern CustIpCache *custIpCache;
 		unsigned int cust_id = custIpCache->getCustByIp(inet_addr(ip));
-		snprintf(sendbuf, BUFSIZE, "cust_id: %ui", cust_id);
+		snprintf(sendbuf, BUFSIZE, "cust_id: %u\n", cust_id);
 		if((size = send(client, sendbuf, strlen(sendbuf), 0)) == -1) {
 			cerr << "Error sending data to client" << endl;
 			return -1;
@@ -856,7 +856,7 @@ getwav:
 		extern CustIpCache *custIpCache;
 		custIpCache->clear();
 		int rslt = custIpCache->fetchAllIpQueryFromDb();
-		snprintf(sendbuf, BUFSIZE, "rslt: %i", rslt);
+		snprintf(sendbuf, BUFSIZE, "rslt: %i\n", rslt);
 		if((size = send(client, sendbuf, strlen(sendbuf), 0)) == -1) {
 			cerr << "Error sending data to client" << endl;
 			return -1;
