@@ -218,6 +218,8 @@ public:
 	int getCustByIpFromCacheMap(unsigned int ip);
 	int getCustByIpFromCacheVect(unsigned int ip);
 	void flush();
+	void clear();
+	string printVect();
 	void setMaxQueryPass(unsigned int maxQueryPass) {
 		if(this->sqlDb) {
 			this->sqlDb->setMaxQueryPass(maxQueryPass);

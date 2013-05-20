@@ -841,6 +841,35 @@ getwav:
 		return 0;
 	} else if(strstr(buf, "quit") != NULL) {
 		return 0;
+	} else if(strstr(buf, "custipcache_get_cust_id") != NULL) {
+		char ip[20];
+		sscanf(buf, "custipcache_get_cust_id %s", ip);
+		extern CustIpCache *custIpCache;
+		unsigned int cust_id = custIpCache->getCustByIp(inet_addr(ip));
+		snprintf(sendbuf, BUFSIZE, "cust_id: %ui", cust_id);
+		if((size = send(client, sendbuf, strlen(sendbuf), 0)) == -1) {
+			cerr << "Error sending data to client" << endl;
+			return -1;
+		}
+		return 0;
+	} else if(strstr(buf, "custipcache_refresh") != NULL) {
+		extern CustIpCache *custIpCache;
+		custIpCache->clear();
+		int rslt = custIpCache->fetchAllIpQueryFromDb();
+		snprintf(sendbuf, BUFSIZE, "rslt: %i", rslt);
+		if((size = send(client, sendbuf, strlen(sendbuf), 0)) == -1) {
+			cerr << "Error sending data to client" << endl;
+			return -1;
+		}
+		return 0;
+	} else if(strstr(buf, "custipcache_vect_print") != NULL) {
+		extern CustIpCache *custIpCache;
+		string rslt = custIpCache->printVect();
+		if((size = send(client, rslt.c_str(), rslt.length(), 0)) == -1) {
+			cerr << "Error sending data to client" << endl;
+			return -1;
+		}
+		return 0;
 	} else {
 		if ((size = send(client, "command not found\n", 18, 0)) == -1){
 			cerr << "Error sending data to client" << endl;

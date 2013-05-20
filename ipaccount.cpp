@@ -477,36 +477,46 @@ void IpaccAgreg::save(unsigned int time_interval) {
 	}
 	for(iter1 = this->map1.begin(); iter1 != this->map1.end(); iter1++) {
 		sprintf(insertQueryBuff,
-			"update %s set "
-				"traffic_in = traffic_in + %lu, "
-				"traffic_out = traffic_out + %lu, "
-				"traffic_sum = traffic_sum + %lu, "
-				"packets_in = packets_in + %lu, "
-				"packets_out = packets_out + %lu, "
-				"packets_sum = packets_sum + %lu, "
-				"traffic_voip_in = traffic_voip_in + %lu, "
-				"traffic_voip_out = traffic_voip_out + %lu, "
-				"traffic_voip_sum = traffic_voip_sum + %lu, "
-				"packets_voip_in = packets_voip_in + %lu, "
-				"packets_voip_out = packets_voip_out + %lu, "
-				"packets_voip_sum = packets_voip_sum + %lu "
-			"where %s = '%s' and "
-				"addr = %u and customer_id = %u and "
-				"proto = %u and port = %u; "
-			"if(row_count() <= 0) then "
-				"insert into %s ("
-						"%s, addr, customer_id, proto, port, "
-						"traffic_in, traffic_out, traffic_sum, "
-						"packets_in, packets_out, packets_sum, "
-						"traffic_voip_in, traffic_voip_out, traffic_voip_sum, "
-						"packets_voip_in, packets_voip_out, packets_voip_sum"
-					") values ("
-						"'%s', %u, %u, %u, %u, "
-						"%lu, %lu, %lu, "
-						"%lu, %lu, %lu, "
-						"%lu, %lu, %lu, "
-						"%lu, %lu, %lu);"
-			"end if",
+			"set @i = 0; "
+			"while @i < 2 do "
+				"update %s set "
+					"traffic_in = traffic_in + %lu, "
+					"traffic_out = traffic_out + %lu, "
+					"traffic_sum = traffic_sum + %lu, "
+					"packets_in = packets_in + %lu, "
+					"packets_out = packets_out + %lu, "
+					"packets_sum = packets_sum + %lu, "
+					"traffic_voip_in = traffic_voip_in + %lu, "
+					"traffic_voip_out = traffic_voip_out + %lu, "
+					"traffic_voip_sum = traffic_voip_sum + %lu, "
+					"packets_voip_in = packets_voip_in + %lu, "
+					"packets_voip_out = packets_voip_out + %lu, "
+					"packets_voip_sum = packets_voip_sum + %lu "
+				"where %s = '%s' and "
+					"addr = %u and customer_id = %u and "
+					"proto = %u and port = %u; "
+				"if(row_count() <= 0) then "
+					"set @_last_insert_id = last_insert_id(); "
+					"insert ignore into %s ("
+							"%s, addr, customer_id, proto, port, "
+							"traffic_in, traffic_out, traffic_sum, "
+							"packets_in, packets_out, packets_sum, "
+							"traffic_voip_in, traffic_voip_out, traffic_voip_sum, "
+							"packets_voip_in, packets_voip_out, packets_voip_sum"
+						") values ("
+							"'%s', %u, %u, %u, %u, "
+							"%lu, %lu, %lu, "
+							"%lu, %lu, %lu, "
+							"%lu, %lu, %lu, "
+							"%lu, %lu, %lu);"
+					"if @_last_insert_id <> last_insert_id() then "
+						"set @i = 2; "
+					"end if; "
+				"else "
+					"set @i = 2; "
+				"end if; "
+				"set @i = @i + 1; "
+			"end while",
 			agreg_table,
 			iter1->second->traffic_in,
 			iter1->second->traffic_out,
@@ -582,36 +592,46 @@ void IpaccAgreg::save(unsigned int time_interval) {
 	int _counter = 0;
 	for(iter2 = this->map2.begin(); iter2 != this->map2.end(); iter2++) {
 		sprintf(insertQueryBuff,
-			"update %s set "
-				"traffic_in = traffic_in + %lu, "
-				"traffic_out = traffic_out + %lu, "
-				"traffic_sum = traffic_sum + %lu, "
-				"packets_in = packets_in + %lu, "
-				"packets_out = packets_out + %lu, "
-				"packets_sum = packets_sum + %lu, "
-				"traffic_voip_in = traffic_voip_in + %lu, "
-				"traffic_voip_out = traffic_voip_out + %lu, "
-				"traffic_voip_sum = traffic_voip_sum + %lu, "
-				"packets_voip_in = packets_voip_in + %lu, "
-				"packets_voip_out = packets_voip_out + %lu, "
-				"packets_voip_sum = packets_voip_sum + %lu "
-			"where %s = '%s' and "
-				"addr = %u and addr2 = %u  and customer_id = %u and "
-				"proto = %u and port = %u; "
-			"if(row_count() <= 0) then "
-				"insert into %s ("
-						"%s, addr, addr2, customer_id, proto, port, "
-						"traffic_in, traffic_out, traffic_sum, "
-						"packets_in, packets_out, packets_sum, "
-						"traffic_voip_in, traffic_voip_out, traffic_voip_sum, "
-						"packets_voip_in, packets_voip_out, packets_voip_sum"
-					") values ("
-						"'%s', %u, %u, %u, %u, %u, "
-						"%lu, %lu, %lu, "
-						"%lu, %lu, %lu, "
-						"%lu, %lu, %lu, "
-						"%lu, %lu, %lu);"
-			"end if",
+			"set @i = 0; "
+			"while @i < 2 do "
+				"update %s set "
+					"traffic_in = traffic_in + %lu, "
+					"traffic_out = traffic_out + %lu, "
+					"traffic_sum = traffic_sum + %lu, "
+					"packets_in = packets_in + %lu, "
+					"packets_out = packets_out + %lu, "
+					"packets_sum = packets_sum + %lu, "
+					"traffic_voip_in = traffic_voip_in + %lu, "
+					"traffic_voip_out = traffic_voip_out + %lu, "
+					"traffic_voip_sum = traffic_voip_sum + %lu, "
+					"packets_voip_in = packets_voip_in + %lu, "
+					"packets_voip_out = packets_voip_out + %lu, "
+					"packets_voip_sum = packets_voip_sum + %lu "
+				"where %s = '%s' and "
+					"addr = %u and addr2 = %u  and customer_id = %u and "
+					"proto = %u and port = %u; "
+				"if(row_count() <= 0) then "
+					"set @_last_insert_id = last_insert_id(); "
+					"insert ignore into %s ("
+							"%s, addr, addr2, customer_id, proto, port, "
+							"traffic_in, traffic_out, traffic_sum, "
+							"packets_in, packets_out, packets_sum, "
+							"traffic_voip_in, traffic_voip_out, traffic_voip_sum, "
+							"packets_voip_in, packets_voip_out, packets_voip_sum"
+						") values ("
+							"'%s', %u, %u, %u, %u, %u, "
+							"%lu, %lu, %lu, "
+							"%lu, %lu, %lu, "
+							"%lu, %lu, %lu, "
+							"%lu, %lu, %lu);"
+					"if @_last_insert_id <> last_insert_id() then "
+						"set @i = 2; "
+					"end if; "
+				"else "
+					"set @i = 2; "
+				"end if; "
+				"set @i = @i + 1; "
+			"end while",
 			agreg_table,
 			iter2->second->traffic_in,
 			iter2->second->traffic_out,
@@ -882,11 +902,29 @@ int CustIpCache::getCustByIpFromCacheVect(unsigned int ip) {
 
 void CustIpCache::flush() {
 	if(get_customer_by_ip_flush_period > 0 && this->flushCounter > 0 &&
-	   !(this->flushCounter % get_customer_by_ip_flush_period)) {
+	   (get_customer_by_ip_flush_period == 1 ||
+	    !(this->flushCounter % get_customer_by_ip_flush_period))) {
 		this->custCacheMap.clear();
 		this->doFlushVect = true;
 	}
 	++this->flushCounter;
+}
+
+void CustIpCache::clear() {
+	this->custCacheVect.clear();
+	this->custCacheMap.clear();
+}
+
+string CustIpCache::printVect() {
+	string rslt;
+	for(size_t i = 0; i < this->custCacheVect.size(); i++) {
+		in_addr ips;
+		ips.s_addr = this->custCacheVect[i].ip;
+		char rsltRec[100];
+		sprintf(rsltRec, "%s -> %ui\n", inet_ntoa(ips), this->custCacheVect[i].cust_id);
+		rslt += rsltRec;
+	}
+	return(rslt);
 }
 
 NextIpCache::NextIpCache() {
@@ -965,7 +1003,8 @@ void NextIpCache::fetch() {
 
 void NextIpCache::flush() {
 	if(get_customer_by_ip_flush_period > 0 && this->flushCounter > 0 &&
-	   !(this->flushCounter % get_customer_by_ip_flush_period)) {
+	   (get_customer_by_ip_flush_period == 1 ||
+	    !(this->flushCounter % get_customer_by_ip_flush_period))) {
 		this->doFlush = true;
 	}
 	++this->flushCounter;
@@ -1086,7 +1125,8 @@ int CustPhoneNumberCache::fetchPhoneNumbersFromDb() {
 
 void CustPhoneNumberCache::flush() {
 	if(get_customer_by_ip_flush_period > 0 && this->flushCounter > 0 &&
-	   !(this->flushCounter % get_customer_by_ip_flush_period)) {
+	   (get_customer_by_ip_flush_period == 1 ||
+	    !(this->flushCounter % get_customer_by_ip_flush_period))) {
 		this->doFlush = true;
 	}
 	++this->flushCounter;

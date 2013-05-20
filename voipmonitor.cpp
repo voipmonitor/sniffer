@@ -190,7 +190,7 @@ char get_radius_ip_user[256];
 char get_radius_ip_password[256];
 char get_radius_ip_query[1024];
 char get_radius_ip_query_where[1024];
-int get_customer_by_ip_flush_period = 2;
+int get_customer_by_ip_flush_period = 1;
 
 char opt_pidfile[4098] = "/var/run/voipmonitor.pid";
 
