@@ -27,6 +27,8 @@
 #include <openssl/md5.h>
 #elif !defined(_MD5_H)
 #define _MD5_H
+
+#define MD5_DIGEST_LENGTH 16
  
 /* Any 32-bit or wider unsigned integer data type will do */
 typedef unsigned int MD5_u32plus;

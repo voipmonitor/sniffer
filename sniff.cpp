@@ -2916,10 +2916,17 @@ void readdump_libpcap(pcap_t *handle) {
 	unsigned int offset;
 	int istcp = 0;
 	int was_rtp;
-	unsigned char md5[32];
-	unsigned char prevmd5[32];
+	unsigned char md5[MD5_DIGEST_LENGTH];
+	unsigned char *prevmd5s;
 	int destroy = 0;
 	unsigned int ipfrag_lastprune = 0;
+
+	// Space to remember up to 65536 previous packet hashes.
+	// We use 2 bytes of the md5 hash as the hash (index) by which we access this table.
+	// there is no "overflow", so duplicates just overwrite the previous
+	// therefore we won't actually remember the last 64k packets - it will be less and a little bit non-determinate
+	// but the idea is to answer the question: "did we recently see a packet with this exact md5 hash" without needing a linear search
+	prevmd5s = (unsigned char *)calloc(65536, MD5_DIGEST_LENGTH); // 1MB - not much in the scheme of things.
 
 	pcap_dlink = pcap_datalink(handle);
 
@@ -3130,12 +3137,12 @@ void readdump_libpcap(pcap_t *handle) {
 			MD5_Init(&ctx);
 			MD5_Update(&ctx, data, (unsigned long)datalen);
 			MD5_Final(md5, &ctx);
-			if(memmem(md5, 32, prevmd5, 32)) {
-				if(destroy) { free(header); free(packet);};
+			if(memcmp(md5, prevmd5s+( (*(uint16_t *)md5) * MD5_DIGEST_LENGTH), MD5_DIGEST_LENGTH) == 0) {
+				if(destroy) { free(header); free(packet); };
+				//printf("dropping duplicate md5[%s]\n", md5);
 				continue;
-				//printf("md5[%s]\n", md5);
 			}
-			memcpy(prevmd5, md5, 32);
+			memcpy(prevmd5s+( (*(uint16_t *)md5) * MD5_DIGEST_LENGTH), md5, MD5_DIGEST_LENGTH);
 		}
 
 		if(opt_pcap_threaded) {
@@ -3216,5 +3223,9 @@ void readdump_libpcap(pcap_t *handle) {
 
 	if(opt_pcapdump) {
 		pcap_dump_close(tmppcap);
+	}
+
+	if (prevmd5s) {
+		free(prevmd5s);
 	}
 }
