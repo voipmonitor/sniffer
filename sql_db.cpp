@@ -32,6 +32,10 @@ string SqlDb_row::operator [] (string fieldName) {
 	return((*this)[fieldName.c_str()]);
 }
 
+string SqlDb_row::operator [] (int indexField) {
+	return(row[indexField].content);
+}
+
 SqlDb_row::operator int() {
 	return(!this->isEmpty());
 }
@@ -349,6 +353,11 @@ bool SqlDb_mysql::connect() {
 		if(this->hMysqlConn) {
 			this->query("SET NAMES UTF8");
 			this->query("SET sql_mode = ''");
+			this->query("SHOW VARIABLES LIKE \"version\"");
+			SqlDb_row row;
+			if((row = this->fetchRow())) {
+				this->dbVersion = row[1];
+			}
 			return(true);
 		} else {
 			this->checkLastError("connect error", true);
@@ -365,6 +374,21 @@ int SqlDb_mysql::multi_on() {
 
 int SqlDb_mysql::multi_off() {
 	return mysql_set_server_option(this->hMysql, MYSQL_OPTION_MULTI_STATEMENTS_OFF);
+}
+
+int SqlDb_mysql::getDbMajorVersion() {
+	return(atoi(this->dbVersion.c_str()));
+}
+
+int SqlDb_mysql::getDbMinorVersion(int minorLevel) {
+	const char *pointToVersion = this->dbVersion.c_str();
+	for(int i = 0; i < minorLevel + 1 && pointToVersion; i++) {
+		const char *pointToSeparator = strchr(pointToVersion, '.');
+		if(pointToSeparator) {
+			pointToVersion = pointToSeparator + 1;
+		}
+	}
+	return(pointToVersion ? atoi(pointToVersion) : 0);
 }
 
 void SqlDb_mysql::disconnect() {
@@ -1063,6 +1087,7 @@ void SqlDb_mysql::createSchema() {
 
 	char partDayName[20] = "";
 	char limitDay[20] = "";
+	bool opt_cdr_partition_oldver = false;
 	if(opt_cdr_partition) {
 		time_t act_time = time(NULL);
 		struct tm *actTime = localtime(&act_time);
@@ -1070,6 +1095,9 @@ void SqlDb_mysql::createSchema() {
 		time_t next_day_time = act_time + 24 * 60 * 60;
 		struct tm *nextDayTime = localtime(&next_day_time);
 		strftime(limitDay, sizeof(partDayName), "%Y-%m-%d", nextDayTime);
+		if(sqlDb->getDbMajorVersion() * 100 + sqlDb->getDbMinorVersion() <= 501) {
+			opt_cdr_partition_oldver = true;
+		}
 	}
 	
 	this->query(string(
@@ -1239,8 +1267,11 @@ void SqlDb_mysql::createSchema() {
 			CONSTRAINT `cdr_ibfk_3` FOREIGN KEY (`b_ua_id`) REFERENCES `cdr_ua` (`id`) ON UPDATE CASCADE") +
 	") ENGINE=InnoDB DEFAULT CHARSET=latin1 ROW_FORMAT=COMPRESSED" + 
 	(opt_cdr_partition ?
-		string(" PARTITION BY RANGE COLUMNS(calldate)(\
-			PARTITION ") + partDayName + " VALUES LESS THAN ('" + limitDay + "') engine innodb)" :
+		(opt_cdr_partition_oldver ? 
+			string(" PARTITION BY RANGE (to_days(calldate))(\
+				 PARTITION ") + partDayName + " VALUES LESS THAN (to_days('" + limitDay + "')) engine innodb)" :
+			string(" PARTITION BY RANGE COLUMNS(calldate)(\
+				 PARTITION ") + partDayName + " VALUES LESS THAN ('" + limitDay + "') engine innodb)") :
 		""));
 
 	this->query(string(
@@ -1260,8 +1291,11 @@ void SqlDb_mysql::createSchema() {
 			",CONSTRAINT `cdr_next_ibfk_1` FOREIGN KEY (`cdr_ID`) REFERENCES `cdr` (`ID`) ON DELETE CASCADE ON UPDATE CASCADE") +
 	") ENGINE=InnoDB DEFAULT CHARSET=latin1 ROW_FORMAT=COMPRESSED" + 
 	(opt_cdr_partition ?
-		string(" PARTITION BY RANGE COLUMNS(calldate)(\
-			PARTITION ") + partDayName + " VALUES LESS THAN ('" + limitDay + "') engine innodb)" :
+		(opt_cdr_partition_oldver ? 
+			string(" PARTITION BY RANGE (to_days(calldate))(\
+				 PARTITION ") + partDayName + " VALUES LESS THAN (to_days('" + limitDay + "')) engine innodb)" :
+			string(" PARTITION BY RANGE COLUMNS(calldate)(\
+				 PARTITION ") + partDayName + " VALUES LESS THAN ('" + limitDay + "') engine innodb)") :
 		""));
 
 	this->query(string(
@@ -1288,8 +1322,11 @@ void SqlDb_mysql::createSchema() {
 			",CONSTRAINT `cdr_rtp_ibfk_1` FOREIGN KEY (`cdr_ID`) REFERENCES `cdr` (`ID`) ON DELETE CASCADE ON UPDATE CASCADE") +
 	") ENGINE=InnoDB DEFAULT CHARSET=latin1 ROW_FORMAT=COMPRESSED" + 
 	(opt_cdr_partition ?
-		string(" PARTITION BY RANGE COLUMNS(calldate)(\
-			PARTITION ") + partDayName + " VALUES LESS THAN ('" + limitDay + "') engine innodb)" :
+		(opt_cdr_partition_oldver ? 
+			string(" PARTITION BY RANGE (to_days(calldate))(\
+				 PARTITION ") + partDayName + " VALUES LESS THAN (to_days('" + limitDay + "')) engine innodb)" :
+			string(" PARTITION BY RANGE COLUMNS(calldate)(\
+				 PARTITION ") + partDayName + " VALUES LESS THAN ('" + limitDay + "') engine innodb)") :
 		""));
 
 	this->query(string(
@@ -1312,8 +1349,11 @@ void SqlDb_mysql::createSchema() {
 			",CONSTRAINT `cdr_dtmf_ibfk_1` FOREIGN KEY (`cdr_ID`) REFERENCES `cdr` (`ID`) ON DELETE CASCADE ON UPDATE CASCADE") +
 	") ENGINE=InnoDB DEFAULT CHARSET=latin1" + 
 	(opt_cdr_partition ?
-		string(" PARTITION BY RANGE COLUMNS(calldate)(\
-			PARTITION ") + partDayName + " VALUES LESS THAN ('" + limitDay + "') engine innodb)" :
+		(opt_cdr_partition_oldver ? 
+			string(" PARTITION BY RANGE (to_days(calldate))(\
+				 PARTITION ") + partDayName + " VALUES LESS THAN (to_days('" + limitDay + "')) engine innodb)" :
+			string(" PARTITION BY RANGE COLUMNS(calldate)(\
+				 PARTITION ") + partDayName + " VALUES LESS THAN ('" + limitDay + "') engine innodb)") :
 		""));
 
 	this->query(
@@ -1497,11 +1537,12 @@ void SqlDb_mysql::createSchema() {
 	if(opt_cdr_partition) {
 		this->query(
 		"drop procedure if exists create_partition");
-		this->query(
+		this->query(string(
 		"create procedure create_partition(database_name char(100), table_name char(100), type_part char(10), next_days int)\
 		 begin\
 		    declare part_date date;\
 		    declare part_limit date;\
+		    declare part_limit_int int;\
 		    declare part_name char(100);\
 		    declare test_exists_part_query varchar(1000);\
 		    declare create_part_query varchar(1000);\
@@ -1514,6 +1555,7 @@ void SqlDb_mysql::createSchema() {
 		       set part_limit = date_add(part_date, interval 1 day);\
 		       set part_name = concat('p', date_format(part_date, '%y%m%d'));\
 		    end if;\
+		    set part_limit_int = to_days(part_limit);\
 		    set test_exists_part_query = concat(\
 		       'set @_exists_part = exists (select * from information_schema.partitions where table_schema=\\'',\
 		       database_name,\
@@ -1533,10 +1575,15 @@ void SqlDb_mysql::createSchema() {
 			  '`',\
 			  table_name,\
 			  '` add partition (partition ',\
-			  part_name,\
-			  ' VALUES LESS THAN (\\'',\
-			  part_limit,\
-			  '\\'))');\
+			  part_name,") + 
+			  (opt_cdr_partition_oldver ? 
+				"' VALUES LESS THAN (',\
+				 part_limit_int,\
+				 '))'" :
+				"' VALUES LESS THAN (\\'',\
+				 part_limit,\
+				 '\\'))'") + 
+			  ");\
 		       set @_create_part_query = create_part_query;\
 		       prepare stmt FROM @_create_part_query;\
 		       execute stmt;\

@@ -2021,11 +2021,17 @@ int main(int argc, char *argv[]) {
 
 void test() {
 	
+	cout << "db major version: " << sqlDb->getDbMajorVersion() << endl
+	     << "db minor version: " << sqlDb->getDbMinorVersion() << endl
+	     << "db minor version: " << sqlDb->getDbMinorVersion(1) << endl;
+	
+	/*
 	initIpacc();
 	extern CustPhoneNumberCache *custPnCache;
 	cust_reseller cr;
 	cr = custPnCache->getCustomerByPhoneNumber("0352307212");
 	cout << cr.cust_id << " - " << cr.reseller_id << endl;
+	*/
 	
 	/*
 	extern CustIpCache *custIpCache;

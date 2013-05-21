@@ -41,6 +41,7 @@ public:
 	}
 	string operator [] (const char *fieldName);
 	string operator [] (string fieldName);
+	string operator [] (int indexField);
 	operator int();
 	void add(const char *content, string fieldName = "");
 	void add(string content, string fieldName = "");
@@ -131,6 +132,12 @@ public:
 	virtual int multi_off() {
 		return(1);
 	}
+	virtual int getDbMajorVersion() {
+		return(0);
+	}
+	virtual int getDbMinorVersion(int minorLevel  = 0) {
+		return(0);
+	}
 	void setEnableSqlStringInContent(bool enableSqlStringInContent);
 protected:
 	string conn_server;
@@ -176,10 +183,13 @@ public:
 	}
 	int multi_on();
 	int multi_off();
+	int getDbMajorVersion();
+	int getDbMinorVersion(int minorLevel  = 0);
 private:
 	MYSQL *hMysql;
 	MYSQL *hMysqlConn;
 	MYSQL_RES *hMysqlRes;
+	string dbVersion;
 };
 
 class SqlDb_odbc_bindBufferItem {
