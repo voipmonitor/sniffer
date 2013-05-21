@@ -1,3 +1,12 @@
+7.0.RC5
+=======
+
+- fix TCP SIP reassemble logic which were mixing packets between pcap files in certain cases. 
+- do not list calls in manager api which is hanged up or canceled or failed. There was always 5-30 second delay. 
+- detect duplicate packets (if enabled) even if they aren't the "next packet". Patch provided by Steve Davies <steve@connection-telecom.com>
+- fix MySQL errors and support table partitions for MySQL version 5.1
+
+
 7.0.RC4
 =======
 
