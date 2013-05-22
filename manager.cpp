@@ -551,16 +551,23 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 	} else if(strstr(buf, "listen") != NULL) {
 		long long callreference;
 
+		intptr_t tmp1,tmp2;
+
 		sscanf(buf, "listen %llu", &callreference);
+
+		tmp1 = callreference;
 	
 		map<string, Call*>::iterator callMAPIT;
 		Call *call;
 		calltable->lock_calls_listMAP();
 		for (callMAPIT = calltable->calls_listMAP.begin(); callMAPIT != calltable->calls_listMAP.end(); ++callMAPIT) {
 			call = (*callMAPIT).second;
+			tmp2 = (intptr_t)call;
+
 			//printf("call[%p] == [%li] [%d] [%li] [%li]\n", call, callreference, (long int)call == (long int)callreference, (long int)call, (long int)callreference);
-			
-			if((long long)call == (long long)callreference) {
+				
+			//if((long long)call == (long long)callreference) {
+			if(tmp1 == tmp2) {
 				if(call->listening_worker_run) {
 					// the thread is already running. 
 					if ((size = send(client, "call already listening", 22, 0)) == -1){
