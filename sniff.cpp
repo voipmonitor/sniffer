@@ -2848,17 +2848,23 @@ int handle_defrag(iphdr *header_ip, struct pcap_pkthdr **header, u_char **packet
 	struct pcap_pkthdr *tmpheader = *header;
 	u_char *tmppacket = *packet;
 
+
+	//copy header ip to tmp beacuse it can happen that during exectuion of this function the header_ip can be 
+	//overwriten in kernel ringbuffer if the ringbuffer is small and thus header_ip->saddr can have different value 
+	iphdr header_ip2;
+	memcpy(&header_ip2, header_ip, sizeof(iphdr));
+
 	// get queue from ip_frag_stream based on source ip address and ip->id identificator (2-dimensional map array)
-	ip_frag_queue_t *queue = ip_frag_stream[header_ip->saddr][header_ip->id];
+	ip_frag_queue_t *queue = ip_frag_stream[header_ip2.saddr][header_ip2.id];
 	if(!queue) {
 		// queue does not exists yet - create it and assign to map 
 		queue = new ip_frag_queue_t;
-		ip_frag_stream[header_ip->saddr][header_ip->id] = queue;
+		ip_frag_stream[header_ip2.saddr][header_ip2.id] = queue;
 	}
-	int res = ipfrag_add(queue, *header, (u_char*)header_ip, ntohs(header_ip->tot_len), header, packet);
+	int res = ipfrag_add(queue, *header, (u_char*)header_ip, ntohs(header_ip2.tot_len), header, packet);
 	if(res) {
 		// packet was created from all pieces - delete queue and remove it from map
-		ip_frag_stream[header_ip->saddr].erase(header_ip->id);
+		ip_frag_stream[header_ip2.saddr].erase(header_ip2.id);
 		delete queue;
 	};
 	if(destroy) {
