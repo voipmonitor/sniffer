@@ -1,3 +1,11 @@
+7.0.RC6
+=======
+
+- fix "call not found" for listen manager command on 32 bit platforms. 
+- print backtrace to syslog in case voipmonitor crashes
+- fix race condition which can lead to crash if ringbuffer is short and ip traffic is large and there are IP fragmented packets and ringbuffer runs faster then voipmonitor can handle
+
+
 7.0.RC5
 =======
 
