@@ -1,3 +1,11 @@
+7.0.RC7
+=======
+- enable storing custom sip headers to database column cdr_next.custom_header_headername. You can specify more headers # delimited by ";". WARNING - when you enable this feature voipmonitor will autoupgrade cdr_next table which can take # hours depending on how large the table is. In GUI there is new section Settings#Custom_headers.
+WARNING - when you enable this feature voipmonitor will autoupgrade cdr_next table which can take hours depending on how large the table is
+INFO: in GUI there is new section in Settings - http://www.voipmonitor.org/doc/Settings#Custom_headers
+custom_headers = X-asterisk-Info ; X-myheader
+
+
 7.0.RC6
 =======
 
