@@ -1475,6 +1475,9 @@ Call::saveToDb(bool enableBatchIfPossible) {
 	if(strlen(custom_header1)) {
 		cdr_next.add(sqlEscapeString(custom_header1), "custom_header1");
 	}
+	for(size_t iCustHeaders = 0; iCustHeaders < custom_headers.size(); iCustHeaders++) {
+		cdr_next.add(sqlEscapeString(custom_headers[iCustHeaders][1]), custom_headers[iCustHeaders][0]);
+	}
 	if(opt_cdr_partition && sqlDb->existsColumnCalldateInCdrNext) {
 		cdr_next.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
 	}

@@ -5,6 +5,8 @@
 #include <limits.h>
 #include <unistd.h>
 
+#include "tools.h"
+
 #include "sql_db.h"
 
 
@@ -14,6 +16,7 @@ extern char opt_match_header[128];
 extern int terminating;
 extern int opt_id_sensor;
 extern bool opt_cdr_partition;
+extern vector<dstring> opt_custom_headers;
 extern char get_customers_pn_query[1024];
 extern char mysql_database[256];
 
@@ -1297,6 +1300,13 @@ void SqlDb_mysql::createSchema() {
 			string(" PARTITION BY RANGE COLUMNS(calldate)(\
 				 PARTITION ") + partDayName + " VALUES LESS THAN ('" + limitDay + "') engine innodb)") :
 		""));
+	sql_noerror = 1;
+	for(size_t iCustHeaders = 0; iCustHeaders < opt_custom_headers.size(); iCustHeaders++) {
+		this->query(string(
+		"ALTER TABLE `cdr_next`\
+			ADD COLUMN `") + opt_custom_headers[iCustHeaders][1] + "` VARCHAR(255);");
+	}
+	sql_noerror = 0;
 
 	this->query(string(
 	"CREATE TABLE IF NOT EXISTS `cdr_rtp` (\

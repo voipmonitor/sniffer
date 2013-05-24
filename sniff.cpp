@@ -144,6 +144,7 @@ extern int opt_skiprtpdata;
 extern char opt_silencedmtfseq[16];
 extern int opt_skinny;
 extern int opt_saverfc2833;
+extern vector<dstring> opt_custom_headers;
 
 #ifdef QUEUE_MUTEX
 extern sem_t readpacket_thread_semaphore;
@@ -1214,6 +1215,24 @@ Call *new_invite_register(int sip_method, char *data, int datalen, struct pcap_p
 			call->match_header[l] = '\0';
 			if(verbosity > 2)
 				syslog(LOG_NOTICE, "Seen header %s: %s\n", opt_match_header, call->match_header);
+		}
+	}
+	
+	// check if we have custom headers
+	size_t iCustHeaders;
+	for(iCustHeaders = 0; iCustHeaders < opt_custom_headers.size(); iCustHeaders++) {
+		string findHeader = opt_custom_headers[iCustHeaders][0];
+		if(findHeader[findHeader.length() - 1] != ':') {
+			findHeader.append(":");
+		}
+		s = gettag(data, datalen, findHeader.c_str(), &l);
+		if(l && l < 128) {
+			char headerContent[128];
+			memcpy(headerContent, s, l);
+			headerContent[l] = '\0';
+			call->custom_headers.push_back(dstring(opt_custom_headers[iCustHeaders][1],headerContent));
+			if(verbosity > 2)
+				syslog(LOG_NOTICE, "Seen header %s: %s\n", opt_custom_headers[iCustHeaders][0].c_str(), headerContent);
 		}
 	}
 

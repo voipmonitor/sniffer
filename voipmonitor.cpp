@@ -203,6 +203,7 @@ char opt_convert_char[64] = "";
 int opt_skinny = 0;
 
 bool opt_cdr_partition = 1;
+vector<dstring> opt_custom_headers;
 
 char configfile[1024] = "";	// config file name
 
@@ -802,6 +803,22 @@ int load_config(char *fname) {
 	}
 	if((value = ini.GetValue("general", "cdr_partition", NULL))) {
 		opt_cdr_partition = yesno(value);
+	}
+	if((value = ini.GetValue("general", "custom_headers", NULL))) {
+		char *pos = (char*)value;
+		while(pos && *pos) {
+			char *posSep = strchr(pos, ';');
+			if(posSep) {
+				*posSep = 0;
+			}
+			string custom_header = pos;
+			custom_header.erase(custom_header.begin(), std::find_if(custom_header.begin(), custom_header.end(), std::not1(std::ptr_fun<int, int>(std::isspace))));
+			custom_header.erase(std::find_if(custom_header.rbegin(), custom_header.rend(), std::not1(std::ptr_fun<int, int>(std::isspace))).base(), custom_header.end());
+			string custom_header_field = "custom_header__" + custom_header;
+			std::replace(custom_header_field.begin(), custom_header_field.end(), ' ', '_');
+			opt_custom_headers.push_back(dstring(custom_header, custom_header_field));
+			pos = posSep ? posSep + 1 : NULL;
+		}
 	}
 	if((value = ini.GetValue("general", "savesip", NULL))) {
 		opt_saveSIP = yesno(value);

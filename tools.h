@@ -2,6 +2,7 @@
 #define TOOLS_H
 
 #include <string>
+#include <sys/types.h>
 
 int getUpdDifTime(struct timeval *before);
 int getDifTime(struct timeval *before);
@@ -27,6 +28,20 @@ public:
 private:
 	 size_t beg_index_, end_index_, size_, capacity_;
 	 char *data_;
+};
+
+struct dstring
+{
+	dstring() {
+	}
+	dstring(std::string str1, std::string str2) {
+		str[0] = str1;
+		str[1] = str2;
+	}
+	std::string operator [] (int indexStr) {
+		return(str[indexStr]);
+	}
+	std::string str[2];
 };
 
 #endif

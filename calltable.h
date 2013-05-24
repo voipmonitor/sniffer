@@ -179,6 +179,8 @@ public:
 	int ipport_n;				//!< last index of addr and port array 
 
 	string geoposition;
+	
+	vector<dstring> custom_headers;
 
 	/**
 	 * constructor
