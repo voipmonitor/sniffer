@@ -3153,10 +3153,6 @@ void readdump_libpcap(pcap_t *handle) {
 			continue;
 		}
 
-		if(opt_pcapdump) {
-			pcap_dump((u_char *)tmppcap, header, packet);
-		}
-
 		/* check for duplicate packets (md5 is expensive operation - enable only if you really need it */
 		if(datalen > 0 and opt_dup_check) {
 			MD5_Init(&ctx);
@@ -3169,6 +3165,11 @@ void readdump_libpcap(pcap_t *handle) {
 			}
 			memcpy(prevmd5s+( (*(uint16_t *)md5) * MD5_DIGEST_LENGTH), md5, MD5_DIGEST_LENGTH);
 		}
+
+		if(opt_pcapdump) {
+			pcap_dump((u_char *)tmppcap, header, packet);
+		}
+
 
 		if(opt_pcap_threaded) {
 			//add packet to queue
