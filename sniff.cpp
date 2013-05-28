@@ -1198,44 +1198,6 @@ Call *new_invite_register(int sip_method, char *data, int datalen, struct pcap_p
 			syslog(LOG_NOTICE, "Seen invite, CSeq: %s\n", call->invitecseq);
 	}
 	
-	// check if we have X-VoipMonitor-Custom1
-	s = gettag(data, datalen, "\nX-VoipMonitor-Custom1:", &l);
-	if(l && l < 255) {
-		memcpy(call->custom_header1, s, l);
-		call->custom_header1[l] = '\0';
-		if(verbosity > 2)
-			syslog(LOG_NOTICE, "Seen X-VoipMonitor-Custom1: %s\n", call->custom_header1);
-	}
-
-	// check if we have opt_match_header
-	if(opt_match_header[0] != '\0') {
-		s = gettag(data, datalen, opt_match_header, &l);
-		if(l && l < 128) {
-			memcpy(call->match_header, s, l);
-			call->match_header[l] = '\0';
-			if(verbosity > 2)
-				syslog(LOG_NOTICE, "Seen header %s: %s\n", opt_match_header, call->match_header);
-		}
-	}
-	
-	// check if we have custom headers
-	size_t iCustHeaders;
-	for(iCustHeaders = 0; iCustHeaders < opt_custom_headers.size(); iCustHeaders++) {
-		string findHeader = opt_custom_headers[iCustHeaders][0];
-		if(findHeader[findHeader.length() - 1] != ':') {
-			findHeader.append(":");
-		}
-		s = gettag(data, datalen, findHeader.c_str(), &l);
-		if(l && l < 128) {
-			char headerContent[128];
-			memcpy(headerContent, s, l);
-			headerContent[l] = '\0';
-			call->custom_headers.push_back(dstring(opt_custom_headers[iCustHeaders][1],headerContent));
-			if(verbosity > 2)
-				syslog(LOG_NOTICE, "Seen header %s: %s\n", opt_custom_headers[iCustHeaders][0].c_str(), headerContent);
-		}
-	}
-
 	return call;
 }
 
@@ -2033,6 +1995,44 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 					syslog(LOG_NOTICE, "[%s] DTMF SIP INFO [%c]", call->fbasename, tmp[0]);
 				call->handle_dtmf(*tmp, ts2double(header->ts.tv_sec, header->ts.tv_usec), saddr, daddr);
 
+			}
+		}
+		
+		// check if we have X-VoipMonitor-Custom1
+		s = gettag(data, datalen, "\nX-VoipMonitor-Custom1:", &l);
+		if(l && l < 255) {
+			memcpy(call->custom_header1, s, l);
+			call->custom_header1[l] = '\0';
+			if(verbosity > 2)
+				syslog(LOG_NOTICE, "Seen X-VoipMonitor-Custom1: %s\n", call->custom_header1);
+		}
+
+		// check if we have opt_match_header
+		if(opt_match_header[0] != '\0') {
+			s = gettag(data, datalen, opt_match_header, &l);
+			if(l && l < 128) {
+				memcpy(call->match_header, s, l);
+				call->match_header[l] = '\0';
+				if(verbosity > 2)
+					syslog(LOG_NOTICE, "Seen header %s: %s\n", opt_match_header, call->match_header);
+			}
+		}
+	
+		// check if we have custom headers
+		size_t iCustHeaders;
+		for(iCustHeaders = 0; iCustHeaders < opt_custom_headers.size(); iCustHeaders++) {
+			string findHeader = opt_custom_headers[iCustHeaders][0];
+			if(findHeader[findHeader.length() - 1] != ':') {
+				findHeader.append(":");
+			}
+			s = gettag(data, datalen, findHeader.c_str(), &l);
+			if(l && l < 128) {
+				char headerContent[128];
+				memcpy(headerContent, s, l);
+				headerContent[l] = '\0';
+				call->custom_headers.push_back(dstring(opt_custom_headers[iCustHeaders][1],headerContent));
+				if(verbosity > 2)
+					syslog(LOG_NOTICE, "Seen header %s: %s\n", opt_custom_headers[iCustHeaders][0].c_str(), headerContent);
 			}
 		}
 		
