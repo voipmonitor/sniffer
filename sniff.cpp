@@ -2945,6 +2945,7 @@ void readdump_libpcap(pcap_t *handle) {
 	unsigned char *prevmd5s;
 	int destroy = 0;
 	unsigned int ipfrag_lastprune = 0;
+	int traillen;
 
 	// Space to remember up to 65536 previous packet hashes.
 	// We use 2 bytes of the md5 hash as the hash (index) by which we access this table.
@@ -3112,6 +3113,7 @@ void readdump_libpcap(pcap_t *handle) {
 			header_udp = (struct udphdr2 *) ((char *) header_ip + sizeof(*header_ip));
 			data = (char *) header_udp + sizeof(*header_udp);
 			datalen = (int)(header->caplen - ((unsigned long) data - (unsigned long) packet)); 
+			traillen = (int)(header->caplen - ((unsigned long) header_ip - (unsigned long) packet)) - ntohs(header_ip->tot_len);
 			istcp = 0;
 		} else if (header_ip->protocol == IPPROTO_TCP) {
 			istcp = 1;
@@ -3154,9 +3156,9 @@ void readdump_libpcap(pcap_t *handle) {
 		}
 
 		/* check for duplicate packets (md5 is expensive operation - enable only if you really need it */
-		if(datalen > 0 and opt_dup_check) {
+		if(datalen > 0 and opt_dup_check and (traillen < datalen)) {
 			MD5_Init(&ctx);
-			MD5_Update(&ctx, data, (unsigned long)datalen);
+			MD5_Update(&ctx, data, MAX(0, (unsigned long)datalen - traillen));
 			MD5_Final(md5, &ctx);
 			if(memcmp(md5, prevmd5s+( (*(uint16_t *)md5) * MD5_DIGEST_LENGTH), MD5_DIGEST_LENGTH) == 0) {
 				if(destroy) { free(header); free(packet); };
