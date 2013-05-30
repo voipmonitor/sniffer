@@ -82,6 +82,8 @@ queue<pcap_packet*> readpacket_thread_queue;
 extern pthread_mutex_t readpacket_thread_queue_lock;
 #endif
 
+unsigned int duplicate_counter = 0;
+
 Calltable *calltable;
 extern volatile int calls;
 extern int opt_saveSIP;	  	// save SIP packets to pcap file?
@@ -1249,7 +1251,15 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 	// checking and cleaning stuff every 10 seconds (if some packet arrive) 
 	if (header->ts.tv_sec - last_cleanup > 10){
 		//if(verbosity > 0) syslog(LOG_NOTICE, "Active calls [%d] calls in sql queue [%d] calls in delete queue [%d]\n", (int)calltable->calls_listMAP.size(), (int)calltable->calls_queue.size(), (int)calltable->calls_deletequeue.size());
-		if(verbosity > 0) syslog(LOG_NOTICE, "Active calls [%d] calls in sql queue [%d]\n", (int)calltable->calls_listMAP.size(), (int)calltable->calls_queue.size());
+		if(verbosity > 0) {
+			if(opt_dup_check) {
+				syslog(LOG_NOTICE, "Active calls [%d] calls in sql queue [%d] skipped dupe pkts [%u]\n", 
+					(int)calltable->calls_listMAP.size(), (int)calltable->calls_queue.size(), duplicate_counter);
+			} else {
+				syslog(LOG_NOTICE, "Active calls [%d] calls in sql queue [%d]\n", 
+					(int)calltable->calls_listMAP.size(), (int)calltable->calls_queue.size());
+			}
+		}
 		if (last_cleanup >= 0){
 			calltable->cleanup(header->ts.tv_sec);
 		}
@@ -2942,7 +2952,7 @@ void readdump_libpcap(pcap_t *handle) {
 	int istcp = 0;
 	int was_rtp;
 	unsigned char md5[MD5_DIGEST_LENGTH];
-	unsigned char *prevmd5s;
+	unsigned char *prevmd5s = NULL;
 	int destroy = 0;
 	unsigned int ipfrag_lastprune = 0;
 	int traillen;
@@ -2952,7 +2962,8 @@ void readdump_libpcap(pcap_t *handle) {
 	// there is no "overflow", so duplicates just overwrite the previous
 	// therefore we won't actually remember the last 64k packets - it will be less and a little bit non-determinate
 	// but the idea is to answer the question: "did we recently see a packet with this exact md5 hash" without needing a linear search
-	prevmd5s = (unsigned char *)calloc(65536, MD5_DIGEST_LENGTH); // 1MB - not much in the scheme of things.
+	if (opt_dup_check)
+		prevmd5s = (unsigned char *)calloc(65536, MD5_DIGEST_LENGTH); // 1M
 
 	pcap_dlink = pcap_datalink(handle);
 
@@ -3156,16 +3167,17 @@ void readdump_libpcap(pcap_t *handle) {
 		}
 
 		/* check for duplicate packets (md5 is expensive operation - enable only if you really need it */
-		if(datalen > 0 and opt_dup_check and (traillen < datalen)) {
+		if(datalen > 0 and opt_dup_check and prevmd5s != NULL and (traillen < datalen)) {
 			MD5_Init(&ctx);
 			MD5_Update(&ctx, data, MAX(0, (unsigned long)datalen - traillen));
 			MD5_Final(md5, &ctx);
-			if(memcmp(md5, prevmd5s+( (*(uint16_t *)md5) * MD5_DIGEST_LENGTH), MD5_DIGEST_LENGTH) == 0) {
+			if(memcmp(md5, prevmd5s+( ( (*(uint16_t *)md5) ) * MD5_DIGEST_LENGTH), MD5_DIGEST_LENGTH) == 0) {
 				if(destroy) { free(header); free(packet); };
 				//printf("dropping duplicate md5[%s]\n", md5);
+				duplicate_counter++;
 				continue;
 			}
-			memcpy(prevmd5s+( (*(uint16_t *)md5) * MD5_DIGEST_LENGTH), md5, MD5_DIGEST_LENGTH);
+			memcpy(prevmd5s+( ( (*(uint16_t *)md5) ) * MD5_DIGEST_LENGTH), md5, MD5_DIGEST_LENGTH);
 		}
 
 		if(opt_pcapdump) {
