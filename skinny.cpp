@@ -1326,8 +1326,30 @@ Call *new_skinny_channel(int state, char *data, int datalen, struct pcap_pkthdr 
 	return call;
 }
 
-void *handle_skinny(pcap_pkthdr *header, const u_char *packet, unsigned int saddr, int source, unsigned int daddr, int dest, char *data, int datalen)
-{
+void *handle_skinny2(pcap_pkthdr *header, const u_char *packet, unsigned int saddr, int source, unsigned int daddr, int dest, char *data, int datalen);
+
+
+void *handle_skinny(pcap_pkthdr *header, const u_char *packet, unsigned int saddr, int source, unsigned int daddr, int dest, char *data, int datalen) {	
+	
+	int remain = datalen;
+	while(1) {	
+		//cycle through all PDUs in one message
+		handle_skinny2(header, packet, saddr, source, daddr, dest, data, datalen);
+		int plen = (unsigned int)letohl(*data); // first 4 bytes is length of skinny data
+		remain -= plen; 
+		if(remain > 8 and remain < 4092 and (datalen - plen > 8)) {
+			packet += plen + 8; // skinny header is 4byte length + 4byte header version. The rest is data with length plen
+			data += plen + 8;
+			datalen -= plen + 8;
+			continue;
+		} else {
+			break;
+		}
+	}
+	return NULL;
+}
+
+void *handle_skinny2(pcap_pkthdr *header, const u_char *packet, unsigned int saddr, int source, unsigned int daddr, int dest, char *data, int datalen) {
 
 	if(data == 0 or datalen == 0 or datalen <= skinny_header_size) {
 		return NULL;
