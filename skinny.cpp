@@ -1579,7 +1579,7 @@ void *handle_skinny2(pcap_pkthdr *header, const u_char *packet, unsigned int sad
 			int rtpmap[MAX_RTPMAP];
 			memset(&rtpmap, 0, sizeof(int) * MAX_RTPMAP);
 			if(call->add_ip_port(ipaddr, port, NULL, 0, call->sipcallerip == saddr, rtpmap) != -1){
-				calltable->hashAdd(ipaddr, port, call, call->sipcallerip == saddr, 0, 1);
+				calltable->hashAdd(ipaddr, port, call, call->sipcallerip == saddr, 0, 0, 1);
 			}
 			save_packet(call, header, packet, saddr, source, daddr, dest, 1, data, datalen, TYPE_SKINNY);
 		}
@@ -1772,7 +1772,7 @@ void *handle_skinny2(pcap_pkthdr *header, const u_char *packet, unsigned int sad
 			int rtpmap[MAX_RTPMAP];
 			memset(&rtpmap, 0, sizeof(int) * MAX_RTPMAP);
 			if(call->add_ip_port(ipaddr, port, NULL, 0, call->sipcallerip == saddr, rtpmap) != -1){
-				calltable->hashAdd(ipaddr, port, call, call->sipcallerip == saddr, 0, 1);
+				calltable->hashAdd(ipaddr, port, call, call->sipcallerip == saddr, 0, 0, 1);
 			}
 			save_packet(call, header, packet, saddr, source, daddr, dest, 1, data, datalen, TYPE_SKINNY);
 		}
