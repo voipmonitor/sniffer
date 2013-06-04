@@ -11,9 +11,10 @@
 #include <string>
 #include <algorithm>
 
+#include "sniff.h"
 #include "sql_db.h"
 
-void ipaccount(time_t, struct iphdr *, int, int);
+void ipaccount(time_t, struct iphdr2 *, int, int);
 
 struct octects_t {
 	octects_t() {

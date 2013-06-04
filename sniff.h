@@ -3,9 +3,13 @@
  * the GNU General Public License Version 2.
 */
 
+#ifndef SNIFF_H
+#define SNIFF_H
+
 #include <queue>
 #include <map>
 #include "voipmonitor.h"
+#include "calltable.h"
 
 #define MAXPACKETLENQRING 1600
 
@@ -19,11 +23,37 @@ extern "C" {
 #define IP_MF           0x2000          /* Flag: "More Fragments"       */
 #define IP_OFFSET       0x1FFF          /* "Fragment Offset" part       */
 
+struct iphdr2 {
+#if __BYTE_ORDER == __LITTLE_ENDIAN
+	unsigned int ihl:4;
+	unsigned int version:4;
+#elif __BYTE_ORDER == __BIG_ENDIAN
+	unsigned int version:4;
+	unsigned int ihl:4;
+#else
+# error "Please fix <bits/endian.h>"
+#endif 
+	u_int8_t tos;
+	u_int16_t tot_len;
+	u_int16_t id;
+	u_int16_t frag_off;
+	u_int8_t ttl;
+	u_int8_t protocol;
+	u_int16_t check;
+	u_int32_t saddr;
+	u_int32_t daddr;
+	/*The options start here. */
+#ifdef PACKED
+} __attribute__((packed));
+#else
+};
+#endif
+
 void *rtp_read_thread_func(void *arg);
 void *pcap_read_thread_func(void *arg);
 
-void process_packet(unsigned int saddr, int source, unsigned int daddr, int dest, char *data, int datalen,
-                    pcap_t *handle, pcap_pkthdr *header, const u_char *packet, int can_thread, int *was_rtp);
+//void process_packet(unsigned int saddr, int source, unsigned int daddr, int dest, char *data, int datalen,
+//                    pcap_t *handle, pcap_pkthdr *header, const u_char *packet, int can_thread, int *was_rtp);
 void readdump_libnids(pcap_t *handle);
 void readdump_libpcap(pcap_t *handle);
 inline void save_packet(Call *call, struct pcap_pkthdr *header, const u_char *packet, unsigned int saddr, int source, unsigned int daddr, int dest, int istcp, char *data, int datalen, int type);
@@ -122,3 +152,4 @@ typedef struct livesnifferfilter_s {
 	int all;
 } livesnifferfilter_t;
 
+#endif

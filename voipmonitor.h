@@ -4,6 +4,7 @@
 */
 
 #ifndef VOIPMONITOR_H
+#define VOIPMONITOR_H
 
 #define RTPSENSOR_VERSION "7.0RC8.SVN"
 #define NAT
@@ -42,6 +43,5 @@
 void reload_config();
 void reload_capture_rules();
 
-#define VOIPMONITOR_H
 #endif
 

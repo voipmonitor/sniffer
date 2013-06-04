@@ -1223,7 +1223,7 @@ void clean_tcpstreams() {
 }
 
 Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int dest, char *data, int datalen,
-	pcap_t *handle, pcap_pkthdr *header, const u_char *packet, int istcp, int dontsave, int can_thread, int *was_rtp, struct iphdr *header_ip, int *voippacket, int disabledsave) {
+	pcap_t *handle, pcap_pkthdr *header, const u_char *packet, int istcp, int dontsave, int can_thread, int *was_rtp, struct iphdr2 *header_ip, int *voippacket, int disabledsave) {
 
 	Call *call = NULL;
 	int last_sip_method = -1;
@@ -2582,7 +2582,7 @@ void readdump_libnids(pcap_t *handle) {
 
 void *pcap_read_thread_func(void *arg) {
 	pcap_packet *pp;
-	struct iphdr *header_ip;
+	struct iphdr2 *header_ip;
 	struct udphdr2 *header_udp;
 	struct udphdr2 header_udp_tmp;
 	struct tcphdr *header_tcp;
@@ -2642,11 +2642,11 @@ void *pcap_read_thread_func(void *arg) {
 			destroypp = 1;
 		}
 
-		header_ip = (struct iphdr *) ((char*)packet + pp->offset);
+		header_ip = (struct iphdr2 *) ((char*)packet + pp->offset);
 
 		if(header_ip->protocol == 4) {
 			// ip in ip protocol
-			header_ip = (struct iphdr *) ((char*)header_ip + sizeof(iphdr));
+			header_ip = (struct iphdr2 *) ((char*)header_ip + sizeof(iphdr2));
 		}
 		header_udp = &header_udp_tmp;
 		if (header_ip->protocol == IPPROTO_UDP) {
@@ -2690,7 +2690,7 @@ void *pcap_read_thread_func(void *arg) {
 
 		// if packet was VoIP add it to ipaccount
 		if(opt_ipaccount) {
-			ipaccount(pp->header.ts.tv_sec, (struct iphdr *) ((char*)(packet) + pp->offset), pp->header.caplen - pp->offset, voippacket);
+			ipaccount(pp->header.ts.tv_sec, (struct iphdr2 *) ((char*)(packet) + pp->offset), pp->header.caplen - pp->offset, voippacket);
 		}
 
 #ifdef QUEUE_NONBLOCK2
@@ -2749,7 +2749,7 @@ inline int ipfrag_dequeue(ip_frag_queue_t *queue, struct pcap_pkthdr **header, u
 				memcpy(newpacket, node->firstheader, node->firstheaderlen);
 				len += node->firstheaderlen;
 				// reset fragment flag to 0
-				((iphdr *)(node->packet))->frag_off = 0;
+				((iphdr2 *)(node->packet))->frag_off = 0;
 			}
 			memcpy(newpacket + len, node->packet, node->len);
 			len += node->len;
@@ -2759,8 +2759,8 @@ inline int ipfrag_dequeue(ip_frag_queue_t *queue, struct pcap_pkthdr **header, u
 				syslog(LOG_ERR, "%s.%d: Error - bug in voipmonitor len[%d] > totallen[%d]", __FILE__, __LINE__, len, totallen);
 				abort();
 			}
-			memcpy(newpacket + len, node->packet + sizeof(iphdr), node->len - sizeof(iphdr));
-			len += node->len - sizeof(iphdr);
+			memcpy(newpacket + len, node->packet + sizeof(iphdr2), node->len - sizeof(iphdr2));
+			len += node->len - sizeof(iphdr2);
 		}
 		lastoffset = node->offset;
 		free(node->packet);
@@ -2798,7 +2798,7 @@ int ipfrag_add(ip_frag_queue_t *queue, struct pcap_pkthdr *header, const u_char 
 		if(queue->size()) {
 			// update totallen for the first node 
 			ip_frag_t *first = queue->begin()->second;
-			first->totallen += len - sizeof(iphdr); 
+			first->totallen += len - sizeof(iphdr2); 
 			node->totallen = first->totallen;
 			node->has_last = first->has_last;
 		} else {
@@ -2847,7 +2847,7 @@ int ipfrag_add(ip_frag_queue_t *queue, struct pcap_pkthdr *header, const u_char 
 				ok = false;
 				break;
 			}
-			lastoffset += node->len - sizeof(iphdr);
+			lastoffset += node->len - sizeof(iphdr2);
 		}
 	} else {
 		// queue does not contain a last packet and does not contain a first packet
@@ -2873,15 +2873,15 @@ pinters to new allocated data which has to be freed later. If packet is only que
 returns 0 and header and packet remains same
 
 */
-int handle_defrag(iphdr *header_ip, struct pcap_pkthdr **header, u_char **packet, int destroy) {
+int handle_defrag(iphdr2 *header_ip, struct pcap_pkthdr **header, u_char **packet, int destroy) {
 	struct pcap_pkthdr *tmpheader = *header;
 	u_char *tmppacket = *packet;
 
 
 	//copy header ip to tmp beacuse it can happen that during exectuion of this function the header_ip can be 
 	//overwriten in kernel ringbuffer if the ringbuffer is small and thus header_ip->saddr can have different value 
-	iphdr header_ip2;
-	memcpy(&header_ip2, header_ip, sizeof(iphdr));
+	iphdr2 header_ip2;
+	memcpy(&header_ip2, header_ip, sizeof(iphdr2));
 
 	// get queue from ip_frag_stream based on source ip address and ip->id identificator (2-dimensional map array)
 	ip_frag_queue_t *queue = ip_frag_stream[header_ip2.saddr][header_ip2.id];
@@ -2940,7 +2940,7 @@ void readdump_libpcap(pcap_t *handle) {
 	u_char *packet = NULL;		// The actual packet 
 	struct ether_header *header_eth;
 	struct sll_header *header_sll;
-	struct iphdr *header_ip;
+	struct iphdr2 *header_ip;
 	struct udphdr2 *header_udp;
 	struct udphdr2 header_udp_tmp;
 	struct tcphdr *header_tcp;
@@ -3067,7 +3067,7 @@ void readdump_libpcap(pcap_t *handle) {
 			continue;
 		}
 
-		header_ip = (struct iphdr *) ((char*)packet + offset);
+		header_ip = (struct iphdr2 *) ((char*)packet + offset);
 
 		//if UDP defrag is enabled process only UDP packets and only SIP packets
 		if(opt_udpfrag and (header_ip->protocol == IPPROTO_UDP or header_ip->protocol == 4)) {
@@ -3076,9 +3076,7 @@ void readdump_libpcap(pcap_t *handle) {
 				// packet is fragmented
 				if(handle_defrag(header_ip, &header, &packet, 0)) {
 					// packets are reassembled
-					header_ip = (struct iphdr *)((char*)packet + offset);
-					//header_ip = (struct iphdr *)((char*)packet);
-					//header_ip = (struct iphdr *)packet;
+					header_ip = (struct iphdr2 *)((char*)packet + offset);
 					destroy = true;
 				} else {
 					continue;
@@ -3087,7 +3085,7 @@ void readdump_libpcap(pcap_t *handle) {
 		}
 
 		if(header_ip->protocol == 4) {
-			header_ip = (struct iphdr *) ((char*)header_ip + sizeof(iphdr));
+			header_ip = (struct iphdr2 *) ((char*)header_ip + sizeof(iphdr2));
 
 			//if UDP defrag is enabled process only UDP packets and only SIP packets
 			if(opt_udpfrag and header_ip->protocol == IPPROTO_UDP) {
@@ -3096,10 +3094,9 @@ void readdump_libpcap(pcap_t *handle) {
 					// packet is fragmented
 					if(handle_defrag(header_ip, &header, &packet, destroy)) {
 						// packet was returned
-						header_ip = (struct iphdr *)((char*)packet + offset);
+						header_ip = (struct iphdr2 *)((char*)packet + offset);
 						header_ip->frag_off = 0;
-						//header_ip = (struct iphdr *)((char*)packet);
-						header_ip = (struct iphdr *) ((char*)header_ip + sizeof(iphdr));
+						header_ip = (struct iphdr2 *) ((char*)header_ip + sizeof(iphdr2));
 						header_ip->frag_off = 0;
 						//exit(0);
 						destroy = true;
@@ -3252,7 +3249,7 @@ void readdump_libpcap(pcap_t *handle) {
 				    data, datalen, handle, header, packet, istcp, 0, 1, &was_rtp, header_ip, &voippacket, 0);
 		}
 		if(opt_ipaccount) {
-			ipaccount(header->ts.tv_sec, (struct iphdr *) ((char*)packet + offset), header->caplen - offset, voippacket);
+			ipaccount(header->ts.tv_sec, (struct iphdr2 *) ((char*)packet + offset), header->caplen - offset, voippacket);
 		}
 
 		if(destroy) { 

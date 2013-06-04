@@ -351,7 +351,7 @@ void ipacc_add_octets(time_t timestamp, unsigned int saddr, unsigned int daddr, 
 	}
 }
 
-void ipaccount(time_t timestamp, struct iphdr *header_ip, int packetlen, int voippacket){
+void ipaccount(time_t timestamp, struct iphdr2 *header_ip, int packetlen, int voippacket){
 	struct udphdr2 *header_udp;
 	struct tcphdr *header_tcp;
 
