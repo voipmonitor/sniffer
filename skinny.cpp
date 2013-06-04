@@ -1407,6 +1407,7 @@ void *handle_skinny2(pcap_pkthdr *header, const u_char *packet, unsigned int sad
 			break;
 		case SKINNY_ONHOOK:
 			call->destroy_call_at = header->ts.tv_sec + 5;
+			call->hashRemove();
 			break;
 		case SKINNY_RINGOUT:
 			strcpy(call->lastSIPresponse, "RING OUT");
