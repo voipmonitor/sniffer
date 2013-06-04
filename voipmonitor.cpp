@@ -912,9 +912,11 @@ int load_config(char *fname) {
 	}
 	if((value = ini.GetValue("general", "cachedir", NULL))) {
 		strncpy(opt_cachedir, value, sizeof(opt_cachedir));
+		mkdir_r(opt_cachedir, 0777);
 	}
 	if((value = ini.GetValue("general", "spooldir", NULL))) {
 		strncpy(opt_chdir, value, sizeof(opt_chdir));
+		mkdir_r(opt_chdir, 0777);
 	}
 	if((value = ini.GetValue("general", "spooldiroldschema", NULL))) {
 		opt_newdir = !yesno(value);
@@ -1528,6 +1530,7 @@ int main(int argc, char *argv[]) {
 				break;
 			case 'd':
 				strncpy(opt_chdir, optarg, sizeof(opt_chdir));
+				mkdir_r(opt_chdir, 0777);
 				break;
 			case 'k':
 				opt_fork = 0;
