@@ -46,6 +46,9 @@
 #define REGISTER 12
 #define MESSAGE 13
 #define INFO 14
+#define SUBSCRIBE 15
+#define OPTIONS 16
+#define SKINNY_NEW 100
 #define SKINNY_NEW 100
 
 #define FLAG_SAVERTP		(1 << 0)

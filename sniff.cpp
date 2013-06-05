@@ -1655,6 +1655,14 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 			if(verbosity > 2) 
 				 syslog(LOG_NOTICE,"SIP msg: 6XX\n");
 			sip_method = RES6XX;
+		} else if ((datalen > 6) && !(memmem(data, 7, "OPTIONS", 9) == 0)) {
+			if(verbosity > 2) 
+				 syslog(LOG_NOTICE,"SIP msg: OPTIONS\n");
+			sip_method = OPTIONS;
+		} else if ((datalen > 8) && !(memmem(data, 9, "SUBSCRIBE", 9) == 0)) {
+			if(verbosity > 2) 
+				 syslog(LOG_NOTICE,"SIP msg: SUBSCRIBE\n");
+			sip_method = SUBSCRIBE;
 		} else {
 			if(verbosity > 2) {
 				syslog(LOG_NOTICE,"SIP msg: 1XX or Unknown msg \n");
@@ -1701,6 +1709,14 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 				call = new_invite_register(sip_method, data, datalen, header, callidstr, saddr, daddr, source, s, l);
 			} else {
 				// SIP packet does not belong to any call and it is not INVITE 
+				// check if we have enabled live sniffer for SUBSCRIBE or OPTIONS 
+				/* if yes check for cseq OPTIONS or SUBSCRIBE 
+					s = gettag(data, datalen, "\nCSeq:", &l);
+					if(l && l < 32) {
+						s contains cseq with len of l, check if there is OPTIONS or SUBSCRIBE and if yes run: 
+						save_live_packet(call, header, packet, saddr, source, daddr, dest, istcp, data, datalen);
+					}
+				*/
 				return NULL;
 			}
 		// check if the SIP msg is part of earlier REGISTER
