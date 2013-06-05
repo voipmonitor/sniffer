@@ -285,7 +285,7 @@ inline void save_packet_sql(Call *call, struct pcap_pkthdr *header, const u_char
 /* 
 	stores SIP messags to sql.livepacket based on user filters
 */
-inline void save_live_packet(Call *call, struct pcap_pkthdr *header, const u_char *packet, unsigned int saddr, int source, unsigned int daddr, int dest, int istcp, char *data, int datalen) {
+inline void save_live_packet(Call *call, struct pcap_pkthdr *header, const u_char *packet, unsigned int saddr, int source, unsigned int daddr, int dest, int istcp, char *data, int datalen, char type) {
 	// check saddr and daddr filters
 	daddr = htonl(daddr);
 	saddr = htonl(saddr);
@@ -328,8 +328,8 @@ save:
 */
 inline void save_packet(Call *call, struct pcap_pkthdr *header, const u_char *packet, unsigned int saddr, int source, unsigned int daddr, int dest, int istcp, char *data, int datalen, int type) {
 	// check if it should be stored to mysql 
-	if(global_livesniffer and (sipportmatrix[source] || sipportmatrix[dest])) {
-		save_live_packet(call, header, packet, saddr, source, daddr, dest, istcp, data, datalen);
+	if(type == TYPE_SIP and global_livesniffer and (sipportmatrix[source] || sipportmatrix[dest])) {
+		save_live_packet(call, header, packet, saddr, source, daddr, dest, istcp, data, datalen, call->type);
 	}
 
 	if(opt_newdir and opt_pcap_split) {
@@ -1659,10 +1659,14 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 			if(verbosity > 2) 
 				 syslog(LOG_NOTICE,"SIP msg: OPTIONS\n");
 			sip_method = OPTIONS;
+			Call tmpcall;
+			save_live_packet(&tmpcall, header, packet, saddr, source, daddr, dest, istcp, data, datalen, OPTIONS);
 		} else if ((datalen > 8) && !(memmem(data, 9, "SUBSCRIBE", 9) == 0)) {
 			if(verbosity > 2) 
 				 syslog(LOG_NOTICE,"SIP msg: SUBSCRIBE\n");
 			sip_method = SUBSCRIBE;
+			Call tmpcall;
+			save_live_packet(&tmpcall, header, packet, saddr, source, daddr, dest, istcp, data, datalen, SUBSCRIBE);
 		} else {
 			if(verbosity > 2) {
 				syslog(LOG_NOTICE,"SIP msg: 1XX or Unknown msg \n");
@@ -1709,14 +1713,17 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 				call = new_invite_register(sip_method, data, datalen, header, callidstr, saddr, daddr, source, s, l);
 			} else {
 				// SIP packet does not belong to any call and it is not INVITE 
-				// check if we have enabled live sniffer for SUBSCRIBE or OPTIONS 
-				/* if yes check for cseq OPTIONS or SUBSCRIBE 
-					s = gettag(data, datalen, "\nCSeq:", &l);
-					if(l && l < 32) {
-						s contains cseq with len of l, check if there is OPTIONS or SUBSCRIBE and if yes run: 
-						save_live_packet(call, header, packet, saddr, source, daddr, dest, istcp, data, datalen);
+				// TODO: check if we have enabled live sniffer for SUBSCRIBE or OPTIONS 
+				// if yes check for cseq OPTIONS or SUBSCRIBE 
+				s = gettag(data, datalen, "\nCSeq:", &l);
+				Call tmpcall;
+				if(l && l < 32) {
+					if(memmem(s, l, "SUBSCRIBE", 9)) {
+						save_live_packet(&tmpcall, header, packet, saddr, source, daddr, dest, istcp, data, datalen, SUBSCRIBE);
+					} else if(memmem(s, l, "OPTIONS", 7)) {
+						save_live_packet(&tmpcall, header, packet, saddr, source, daddr, dest, istcp, data, datalen, OPTIONS);
 					}
-				*/
+				}
 				return NULL;
 			}
 		// check if the SIP msg is part of earlier REGISTER
