@@ -141,15 +141,37 @@ typedef struct {
 #define MAXLIVEFILTERSCHARS 32
 
 typedef struct livesnifferfilter_s {
+	struct state_s {
+		bool all_saddr;
+		bool all_daddr;
+		bool all_bothaddr;
+		bool all_addr;
+		bool all_srcnum;
+		bool all_dstnum;
+		bool all_bothnum;
+		bool all_num;
+		bool all_siptypes;
+		bool all_all;
+	};
         unsigned int lv_saddr[MAXLIVEFILTERS];
         unsigned int lv_daddr[MAXLIVEFILTERS];
-        unsigned int lv_bothaddr[MAXLIVEFILTERS];
+	unsigned int lv_bothaddr[MAXLIVEFILTERS];
         char lv_srcnum[MAXLIVEFILTERS][MAXLIVEFILTERSCHARS];
         char lv_dstnum[MAXLIVEFILTERS][MAXLIVEFILTERSCHARS];
-        char lv_bothnum[MAXLIVEFILTERS][MAXLIVEFILTERSCHARS];
+	char lv_bothnum[MAXLIVEFILTERS][MAXLIVEFILTERSCHARS];
+	unsigned char lv_siptypes[MAXLIVEFILTERS];
         int uid;
         time_t created_at;
-	int all;
+	state_s state;
+	void updateState();
 } livesnifferfilter_t;
+
+struct livesnifferfilter_use_siptypes_s {
+	bool u_invite;
+	bool u_register;
+	bool u_options;
+	bool u_subscribe;
+	bool u_message;
+};
 
 #endif

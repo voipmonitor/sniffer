@@ -56,6 +56,10 @@ struct listening_worker_arg {
 	Call *call;
 };
 
+static void updateLivesnifferfilters();
+
+livesnifferfilter_use_siptypes_s livesnifferfilterUseSipTypes;
+
 /* 
  * this function runs as thread. It reads RTP audio data from call
  * and write it to output buffer 
@@ -396,10 +400,13 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
                 sscanf(buf, "stoplivesniffer %u", &uid);
                 map<unsigned int, livesnifferfilter_t*>::iterator usersnifferIT = usersniffer.find(uid);
                 if(usersnifferIT != usersniffer.end()) {
-                        global_livesniffer = 0;
-                //      global_livesniffer_all = 0;
                         free(usersnifferIT->second);
                         usersniffer.erase(usersnifferIT);
+			if(!usersniffer.size()) {
+				global_livesniffer = 0;
+				//global_livesniffer_all = 0;
+			}
+			updateLivesnifferfilters();
                 }
                 return 0;
 	} else if(strstr(buf, "getlivesniffer") != NULL) {
@@ -431,7 +438,7 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 				filter = (livesnifferfilter_t*)calloc(1, sizeof(livesnifferfilter_t));
 				usersniffer[uid] = filter;
 			}
-			filter->all = 1;
+			updateLivesnifferfilters();
 			return 0;
 		}
 
@@ -445,7 +452,6 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 		}
 
 		if(strstr(search, "srcaddr")) {
-
 			int i = 0;
 			//reset filters 
 			for(i = 0; i < MAXLIVEFILTERS; i++) {
@@ -461,6 +467,7 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 				filter->lv_bothaddr[i] = ntohl((unsigned int)inet_addr(val.c_str()));
 				i++;
 			}
+			updateLivesnifferfilters();
 		} else if(strstr(search, "dstaddr")) {
 			int i = 0;
 			//reset filters 
@@ -477,6 +484,7 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 				filter->lv_bothaddr[i] = ntohl((unsigned int)inet_addr(val.c_str()));
 				i++;
 			}
+			updateLivesnifferfilters();
 		} else if(strstr(search, "bothaddr")) {
 			int i = 0;
 			//reset filters 
@@ -493,6 +501,7 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 				filter->lv_bothaddr[i] = ntohl((unsigned int)inet_addr(val.c_str()));
 				i++;
 			}
+			updateLivesnifferfilters();
 		} else if(strstr(search, "srcnum")) {
 			int i = 0;
 			//reset filters 
@@ -511,6 +520,7 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 				//cout << filter->lv_srcnum[i] << "\n";
 				i++;
 			}
+			updateLivesnifferfilters();
 		} else if(strstr(search, "dstnum")) {
 			int i = 0;
 			//reset filters 
@@ -529,6 +539,7 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 				//cout << filter->lv_dstnum[i] << "\n";
 				i++;
 			}
+			updateLivesnifferfilters();
 		} else if(strstr(search, "bothnum")) {
 			int i = 0;
 			//reset filters 
@@ -547,6 +558,18 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 				//cout << filter->lv_bothnum[i] << "\n";
 				i++;
 			}
+			updateLivesnifferfilters();
+		} else if(strstr(search, "siptypes")) {
+			//cout << "siptypes: " << value << "\n";
+			for(size_t i = 0; i < strlen(value) && i < MAXLIVEFILTERS; i++) {
+				filter->lv_siptypes[i] = value[i] == 'I' ? INVITE :
+							 value[i] == 'R' ? REGISTER :
+							 value[i] == 'O' ? OPTIONS :
+							 value[i] == 'S' ? SUBSCRIBE :
+							 value[i] == 'M' ? MESSAGE :
+									   0;
+			}
+			updateLivesnifferfilters();
 		}
 	} else if(strstr(buf, "listen") != NULL) {
 		long long callreference;
@@ -1057,4 +1080,94 @@ tryagain:
 	}
 	close(manager_socket_server);
 	return 0;
+}
+
+void livesnifferfilter_s::updateState() {
+	state_s new_state; 
+	new_state.all_saddr = true;
+	new_state.all_daddr = true;
+	new_state.all_bothaddr = true;
+	new_state.all_srcnum = true;
+	new_state.all_dstnum = true;
+	new_state.all_bothnum = true;
+	new_state.all_siptypes = true;
+	for(int i = 0; i < MAXLIVEFILTERS; i++) {
+		if(this->lv_saddr[i]) {
+			new_state.all_saddr = false;
+		}
+		if(this->lv_daddr[i]) {
+			new_state.all_daddr = false;
+		}
+		if(this->lv_bothaddr[i]) {
+			new_state.all_bothaddr = false;
+		}
+		if(this->lv_srcnum[i][0]) {
+			new_state.all_srcnum = false;
+		}
+		if(this->lv_dstnum[i][0]) {
+			new_state.all_dstnum = false;
+		}
+		if(this->lv_bothnum[i][0]) {
+			new_state.all_bothnum = false;
+		}
+		if(this->lv_siptypes[i]) {
+			new_state.all_siptypes = false;
+		}
+	}
+	new_state.all_addr = new_state.all_saddr && new_state.all_daddr && new_state.all_bothaddr;
+	new_state.all_num = new_state.all_srcnum && new_state.all_dstnum && new_state.all_bothnum;
+	new_state.all_all = new_state.all_addr && new_state.all_num && new_state.all_siptypes;
+	this->state = new_state;
+}
+
+void updateLivesnifferfilters() {
+	livesnifferfilter_use_siptypes_s new_livesnifferfilterUseSipTypes;
+	memset(&new_livesnifferfilterUseSipTypes, 0, sizeof(new_livesnifferfilterUseSipTypes));
+	if(usersniffer.size()) {
+		global_livesniffer = 1;
+		map<unsigned int, livesnifferfilter_t*>::iterator usersnifferIT;
+		for(usersnifferIT = usersniffer.begin(); usersnifferIT != usersniffer.end(); ++usersnifferIT) {
+			usersnifferIT->second->updateState();
+			if(usersnifferIT->second->state.all_siptypes) {
+				new_livesnifferfilterUseSipTypes.u_invite = true;
+				new_livesnifferfilterUseSipTypes.u_register = true;
+				new_livesnifferfilterUseSipTypes.u_options = true;
+				new_livesnifferfilterUseSipTypes.u_subscribe = true;
+				new_livesnifferfilterUseSipTypes.u_message = true;
+			} else {
+				for(int i = 0; i < MAXLIVEFILTERS; i++) {
+					if(usersnifferIT->second->lv_siptypes[i]) {
+						switch(usersnifferIT->second->lv_siptypes[i]) {
+						case INVITE:
+							new_livesnifferfilterUseSipTypes.u_invite = true;
+							break;
+						case REGISTER:
+							new_livesnifferfilterUseSipTypes.u_register = true;
+							break;
+						case OPTIONS:
+							new_livesnifferfilterUseSipTypes.u_options = true;
+							break;
+						case SUBSCRIBE:
+							new_livesnifferfilterUseSipTypes.u_subscribe = true;
+							break;
+						case MESSAGE:
+							new_livesnifferfilterUseSipTypes.u_message = true;
+							break;
+						}
+					}
+				}
+			}
+		}
+	} else {
+		global_livesniffer = 0;
+	}
+	livesnifferfilterUseSipTypes = new_livesnifferfilterUseSipTypes;
+	/*
+	cout << "livesnifferfilterUseSipTypes" << endl;
+	if(livesnifferfilterUseSipTypes.u_invite) cout << "INVITE" << endl;
+	if(livesnifferfilterUseSipTypes.u_register) cout << "REGISTER" << endl;
+	if(livesnifferfilterUseSipTypes.u_options) cout << "OPTIONS" << endl;
+	if(livesnifferfilterUseSipTypes.u_subscribe) cout << "SUBSCRIBE" << endl;
+	if(livesnifferfilterUseSipTypes.u_message) cout << "MESSAGE" << endl;
+	*/
 }

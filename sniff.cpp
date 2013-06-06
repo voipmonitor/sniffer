@@ -147,6 +147,7 @@ extern char opt_silencedmtfseq[16];
 extern int opt_skinny;
 extern int opt_saverfc2833;
 extern vector<dstring> opt_custom_headers;
+extern livesnifferfilter_use_siptypes_s livesnifferfilterUseSipTypes;
 
 #ifdef QUEUE_MUTEX
 extern sem_t readpacket_thread_semaphore;
@@ -274,7 +275,18 @@ inline void save_packet_sql(Call *call, struct pcap_pkthdr *header, const u_char
 
 	// construct query and push it to mysqlquery queue
 	int id_sensor = opt_id_sensor > 0 ? opt_id_sensor : 0;
-	query << "INSERT INTO livepacket_" << uid << " SET sipcallerip = '" << saddr << "', sipcalledip = '" << daddr << "', id_sensor = " << id_sensor << ", sport = " << source << ", dport = " << dest << ", istcp = " << istcp << ", created_at = " << sqlEscapeStringBorder(sqlDateTimeString(header->ts.tv_sec).c_str()) << ", microseconds = " << header->ts.tv_usec << ", callid = " << sqlEscapeStringBorder(call->call_id) << ", description = " << sqlEscapeStringBorder(description) << ", data = '#" << sqlDb->escape(mpacket, len) << "#'";
+	query << "INSERT INTO livepacket_" << uid << 
+		" SET sipcallerip = '" << saddr << 
+		"', sipcalledip = '" << daddr << 
+		"', id_sensor = " << id_sensor << 
+		", sport = " << source << 
+		", dport = " << dest << 
+		", istcp = " << istcp << 
+		", created_at = " << sqlEscapeStringBorder(sqlDateTimeString(header->ts.tv_sec).c_str()) << 
+		", microseconds = " << header->ts.tv_usec << 
+		", callid = " << (call ? sqlEscapeStringBorder(call->call_id) : "NULL") << 
+		", description = " << sqlEscapeStringBorder(description) << 
+		", data = '#" << sqlDb->escape(mpacket, len) << "#'";
 	pthread_mutex_lock(&mysqlquery_lock);
 	mysqlquery.push(query.str());
 	pthread_mutex_unlock(&mysqlquery_lock);
@@ -285,7 +297,11 @@ inline void save_packet_sql(Call *call, struct pcap_pkthdr *header, const u_char
 /* 
 	stores SIP messags to sql.livepacket based on user filters
 */
-inline void save_live_packet(Call *call, struct pcap_pkthdr *header, const u_char *packet, unsigned int saddr, int source, unsigned int daddr, int dest, int istcp, char *data, int datalen, char type) {
+inline void save_live_packet(Call *call, struct pcap_pkthdr *header, const u_char *packet, unsigned int saddr, int source, unsigned int daddr, int dest, int istcp, char *data, int datalen, unsigned char sip_type) {
+	if(!global_livesniffer && !global_livesniffer_all) {
+		return;
+	}
+	
 	// check saddr and daddr filters
 	daddr = htonl(daddr);
 	saddr = htonl(saddr);
@@ -295,6 +311,7 @@ inline void save_live_packet(Call *call, struct pcap_pkthdr *header, const u_cha
 		return;
 	}
 
+	/*
 	map<unsigned int, livesnifferfilter_t*>::iterator usersnifferIT;
 	for(usersnifferIT = usersniffer.begin(); usersnifferIT != usersniffer.end(); usersnifferIT++) {
 		livesnifferfilter_t *filter = usersnifferIT->second;
@@ -305,9 +322,9 @@ inline void save_live_packet(Call *call, struct pcap_pkthdr *header, const u_cha
 			if(filter->lv_saddr[i] == saddr) goto save;
 			if(filter->lv_daddr[i] == daddr) goto save;
 			if(filter->lv_bothaddr[i] == daddr or filter->lv_bothaddr[i] == saddr) goto save;
-			if(filter->lv_srcnum[i][0] != '\0' and memmem(call->caller, strlen(call->caller), filter->lv_srcnum[i], strlen(filter->lv_srcnum[i]))) goto save;
-			if(filter->lv_dstnum[i][0] != '\0' and memmem(call->caller, strlen(call->caller), filter->lv_dstnum[i], strlen(filter->lv_dstnum[i]))) goto save;
-			if(filter->lv_bothnum[i][0] != '\0' and (
+			if(call and filter->lv_srcnum[i][0] != '\0' and memmem(call->caller, strlen(call->caller), filter->lv_srcnum[i], strlen(filter->lv_srcnum[i]))) goto save;
+			if(call and filter->lv_dstnum[i][0] != '\0' and memmem(call->caller, strlen(call->caller), filter->lv_dstnum[i], strlen(filter->lv_dstnum[i]))) goto save;
+			if(call and filter->lv_bothnum[i][0] != '\0' and (
 				memmem(call->caller, strlen(call->caller), filter->lv_bothnum[i], strlen(filter->lv_bothnum[i])) or
 				memmem(call->called, strlen(call->called), filter->lv_bothnum[i], strlen(filter->lv_bothnum[i])))
 			)  goto save;
@@ -319,6 +336,43 @@ save:
 
 	// nothing matches
 	return;
+	*/
+	
+	map<unsigned int, livesnifferfilter_t*>::iterator usersnifferIT;
+	for(usersnifferIT = usersniffer.begin(); usersnifferIT != usersniffer.end(); usersnifferIT++) {
+		livesnifferfilter_t *filter = usersnifferIT->second;
+		bool save = filter->state.all_all;
+		for(int i = 0; i < MAXLIVEFILTERS && !save; i++) {
+			bool okAddr = 
+				filter->state.all_addr ||
+				((filter->state.all_saddr || (filter->lv_saddr[i] && 
+					saddr == filter->lv_saddr[i])) &&
+				 (filter->state.all_daddr || (filter->lv_daddr[i] && 
+					daddr == filter->lv_daddr[i])) &&
+				 (filter->state.all_bothaddr || (filter->lv_bothaddr[i] && 
+					(saddr == filter->lv_bothaddr[i] || 
+					 daddr == filter->lv_bothaddr[i]))));
+			bool okNum = 
+				!call ||
+				filter->state.all_num ||
+				((filter->state.all_srcnum || (filter->lv_srcnum[i][0] && 
+					memmem(call->caller, strlen(call->caller), filter->lv_srcnum[i], strlen(filter->lv_srcnum[i])))) &&
+				 (filter->state.all_dstnum || (filter->lv_dstnum[i][0] && 
+					memmem(call->caller, strlen(call->caller), filter->lv_dstnum[i], strlen(filter->lv_dstnum[i])))) &&
+				 (filter->state.all_bothnum || (filter->lv_bothnum[i][0] && 
+					(memmem(call->caller, strlen(call->caller), filter->lv_bothnum[i], strlen(filter->lv_bothnum[i])) ||
+					 memmem(call->called, strlen(call->called), filter->lv_bothnum[i], strlen(filter->lv_bothnum[i]))))));
+			bool okSipType =
+				filter->state.all_siptypes ||
+				filter->lv_siptypes[i] == sip_type;
+			if(okAddr && okNum && okSipType) {
+				save = true;
+			}
+		}
+		if(save) {
+			save_packet_sql(call, header, packet, saddr, source, daddr, dest, istcp, data, datalen, usersnifferIT->first);
+		}
+	}
 }
 
 /*
@@ -1659,14 +1713,16 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 			if(verbosity > 2) 
 				 syslog(LOG_NOTICE,"SIP msg: OPTIONS\n");
 			sip_method = OPTIONS;
-			Call tmpcall;
-			save_live_packet(&tmpcall, header, packet, saddr, source, daddr, dest, istcp, data, datalen, OPTIONS);
+			if(livesnifferfilterUseSipTypes.u_options) {
+				save_live_packet(NULL, header, packet, saddr, source, daddr, dest, istcp, data, datalen, OPTIONS);
+			}
 		} else if ((datalen > 8) && !(memmem(data, 9, "SUBSCRIBE", 9) == 0)) {
 			if(verbosity > 2) 
 				 syslog(LOG_NOTICE,"SIP msg: SUBSCRIBE\n");
 			sip_method = SUBSCRIBE;
-			Call tmpcall;
-			save_live_packet(&tmpcall, header, packet, saddr, source, daddr, dest, istcp, data, datalen, SUBSCRIBE);
+			if(livesnifferfilterUseSipTypes.u_subscribe) {
+				save_live_packet(NULL, header, packet, saddr, source, daddr, dest, istcp, data, datalen, SUBSCRIBE);
+			}
 		} else {
 			if(verbosity > 2) {
 				syslog(LOG_NOTICE,"SIP msg: 1XX or Unknown msg \n");
@@ -1716,12 +1772,11 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 				// TODO: check if we have enabled live sniffer for SUBSCRIBE or OPTIONS 
 				// if yes check for cseq OPTIONS or SUBSCRIBE 
 				s = gettag(data, datalen, "\nCSeq:", &l);
-				Call tmpcall;
 				if(l && l < 32) {
-					if(memmem(s, l, "SUBSCRIBE", 9)) {
-						save_live_packet(&tmpcall, header, packet, saddr, source, daddr, dest, istcp, data, datalen, SUBSCRIBE);
-					} else if(memmem(s, l, "OPTIONS", 7)) {
-						save_live_packet(&tmpcall, header, packet, saddr, source, daddr, dest, istcp, data, datalen, OPTIONS);
+					if(livesnifferfilterUseSipTypes.u_subscribe && memmem(s, l, "SUBSCRIBE", 9)) {
+						save_live_packet(NULL, header, packet, saddr, source, daddr, dest, istcp, data, datalen, SUBSCRIBE);
+					} else if(livesnifferfilterUseSipTypes.u_options && memmem(s, l, "OPTIONS", 7)) {
+						save_live_packet(NULL, header, packet, saddr, source, daddr, dest, istcp, data, datalen, OPTIONS);
 					}
 				}
 				return NULL;
