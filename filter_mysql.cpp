@@ -45,7 +45,7 @@ IPfilter::load() {
 		count++;
 		db_row* filterRow = new db_row;
 		memset(filterRow,0,sizeof(db_row));
-		filterRow->ip = (unsigned int)atoi(row["ip"].c_str());
+		filterRow->ip = (unsigned int)strtoul(row["ip"].c_str(), NULL, 0);
 		filterRow->mask = atoi(row["mask"].c_str());
 		filterRow->direction = row.isNull("direction") || atoi(row["direction"].c_str());
 		filterRow->rtp = row.isNull("rtp") || atoi(row["rtp"].c_str());
