@@ -152,6 +152,9 @@ extern livesnifferfilter_use_siptypes_s livesnifferfilterUseSipTypes;
 #ifdef QUEUE_MUTEX
 extern sem_t readpacket_thread_semaphore;
 #endif
+
+static char * gettag(const void *ptr, unsigned long len, const char *tag, unsigned long *gettaglen);
+
 unsigned int numpackets = 0;
 
 typedef struct tcp_stream2_s {
@@ -261,8 +264,9 @@ inline void save_packet_sql(Call *call, struct pcap_pkthdr *header, const u_char
 	memcpy(ptr, packet, len);
 	len += sizeof(pcaph) + sizeof(pcaphdr);
 
-	//construct description
+	//construct description and call-id
 	char description[1024] = "";
+	char callidstr[1024] = "";
 	if(datalen) {
 		void *memptr = memmem(data, datalen, "\r\n", 2);
 		if(memptr) {
@@ -270,6 +274,14 @@ inline void save_packet_sql(Call *call, struct pcap_pkthdr *header, const u_char
 			description[(char*)memptr - (char*)data] = '\0';
 		} else {
 			strcpy(description, "error in description\n");
+		}
+		if(!call) {
+			unsigned long l;
+			char *s = gettag(data, datalen, "\nCall-ID:", &l);
+			if(l > 0 && l < 1024) {
+				memcpy(callidstr, s, MIN(l, 1024));
+				callidstr[MIN(l, 1023)] = '\0';
+			}
 		}
 	}
 
@@ -284,7 +296,7 @@ inline void save_packet_sql(Call *call, struct pcap_pkthdr *header, const u_char
 		", istcp = " << istcp << 
 		", created_at = " << sqlEscapeStringBorder(sqlDateTimeString(header->ts.tv_sec).c_str()) << 
 		", microseconds = " << header->ts.tv_usec << 
-		", callid = " << (call ? sqlEscapeStringBorder(call->call_id) : "NULL") << 
+		", callid = " << sqlEscapeStringBorder(call ? call->call_id : callidstr) << 
 		", description = " << sqlEscapeStringBorder(description) << 
 		", data = '#" << sqlDb->escape(mpacket, len) << "#'";
 	pthread_mutex_lock(&mysqlquery_lock);
