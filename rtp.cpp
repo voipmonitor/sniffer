@@ -142,7 +142,7 @@ RTP::RTP() {
 
 	channel_fix1 = (ast_channel*)calloc(1, sizeof(*channel_fix1));
 	channel_fix1->jitter_impl = 0; // fixed
-	channel_fix1->jitter_max = 50; 
+	channel_fix1->jitter_max = 60; 
 	channel_fix1->jitter_resync_threshold = 50;
 	channel_fix1->last_datalen = 0;
 	channel_fix1->lastbuflen = 0;
