@@ -128,8 +128,10 @@ void ipacc_save(int indexIpaccBuffer, unsigned int interval_time_limit = 0) {
 	char insertQueryBuff[1000];
 	if(opt_ipacc_multithread_save) {
 		sqlStore->lock(STORE_PROC_ID_IPACC_1);
-		sqlStore->lock(STORE_PROC_ID_IPACC_2);
-		sqlStore->lock(STORE_PROC_ID_IPACC_3);
+		if(opt_ipacc_sniffer_agregate) {
+			sqlStore->lock(STORE_PROC_ID_IPACC_2);
+			sqlStore->lock(STORE_PROC_ID_IPACC_3);
+		}
 	} else {
 		pthread_mutex_lock(&mysqlquery_lock);
 	}
@@ -190,7 +192,7 @@ void ipacc_save(int indexIpaccBuffer, unsigned int interval_time_limit = 0) {
 						ipacc_data->voippacket,
 						opt_ipacc_sniffer_agregate ? 0 : 1);
 					if(opt_ipacc_multithread_save) {
-						sqlStore->query(insertQueryBuff, STORE_PROC_ID_IPACC_1 + (_counter % 3));
+						sqlStore->query(insertQueryBuff, STORE_PROC_ID_IPACC_1 + (opt_ipacc_sniffer_agregate ? _counter % 3 : 0));
 					} else {
 						mysqlquery.push(insertQueryBuff);
 					}
@@ -250,8 +252,10 @@ void ipacc_save(int indexIpaccBuffer, unsigned int interval_time_limit = 0) {
 	}
 	if(opt_ipacc_multithread_save) {
 		sqlStore->unlock(STORE_PROC_ID_IPACC_1);
-		sqlStore->unlock(STORE_PROC_ID_IPACC_2);
-		sqlStore->unlock(STORE_PROC_ID_IPACC_3);
+		if(opt_ipacc_sniffer_agregate) {
+			sqlStore->unlock(STORE_PROC_ID_IPACC_2);
+			sqlStore->unlock(STORE_PROC_ID_IPACC_3);
+		}
 	}
 	if(opt_ipacc_sniffer_agregate) {
 		for(agregIter = agreg.begin(); agregIter != agreg.end(); ++agregIter) {

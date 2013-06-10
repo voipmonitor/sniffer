@@ -2756,6 +2756,10 @@ void *pcap_read_thread_func(void *arg) {
 			header_udp->dest = header_tcp->dest;
 		} else {
 			//packet is not UDP and is not TCP, we are not interested, go to the next packet
+			// - interested only for ipaccount
+			if(opt_ipaccount) {
+				ipaccount(pp->header.ts.tv_sec, (struct iphdr2 *) ((char*)(packet) + pp->offset), pp->header.len - pp->offset, false);
+			}
 #ifdef QUEUE_NONBLOCK2
 			if(destroypp) {
 				free(pp->packet2);
@@ -2780,7 +2784,7 @@ void *pcap_read_thread_func(void *arg) {
 
 		// if packet was VoIP add it to ipaccount
 		if(opt_ipaccount) {
-			ipaccount(pp->header.ts.tv_sec, (struct iphdr2 *) ((char*)(packet) + pp->offset), pp->header.caplen - pp->offset, voippacket);
+			ipaccount(pp->header.ts.tv_sec, (struct iphdr2 *) ((char*)(packet) + pp->offset), pp->header.len - pp->offset, 0);
 		}
 
 #ifdef QUEUE_NONBLOCK2
@@ -3076,7 +3080,7 @@ void readdump_libpcap(pcap_t *handle) {
 		res = pcap_next_ex(handle, &headerpcap, &packetpcap);
 		packet = (u_char *)packetpcap;
 		header = headerpcap;
-
+		
 		if(!packet and res != -2) {
 			if(verbosity > 2) {
 				syslog(LOG_NOTICE,"NULL PACKET, pcap response is %d",res);
@@ -3339,8 +3343,9 @@ void readdump_libpcap(pcap_t *handle) {
 				    data, datalen, handle, header, packet, istcp, 0, 1, &was_rtp, header_ip, &voippacket, 0);
 		}
 		if(opt_ipaccount) {
-			ipaccount(header->ts.tv_sec, (struct iphdr2 *) ((char*)packet + offset), header->caplen - offset, voippacket);
+			ipaccount(header->ts.tv_sec, (struct iphdr2 *) ((char*)packet + offset), header->len - offset, voippacket);
 		}
+
 
 		if(destroy) { 
 			free(header); 

@@ -184,7 +184,7 @@ char opt_mirrorip_dst[20];
 int opt_printinsertid = 0;
 int opt_ipaccount = 0;
 int opt_ipacc_interval = 300;
-bool opt_ipacc_sniffer_agregate = true;
+bool opt_ipacc_sniffer_agregate = false;
 bool opt_ipacc_agregate_only_customers_on_main_side = true;
 bool opt_ipacc_agregate_only_customers_on_any_side = true;
 bool opt_ipacc_multithread_save = true;
