@@ -1,58 +1,38 @@
-7.0.RC7
-=======
-- enable storing custom sip headers to database column cdr_next.custom_header_headername. You can specify more headers # delimited by ";". WARNING - when you enable this feature voipmonitor will autoupgrade cdr_next table which can take # hours depending on how large the table is. In GUI there is new section Settings#Custom_headers.
-WARNING - when you enable this feature voipmonitor will autoupgrade cdr_next table which can take hours depending on how large the table is
-INFO: in GUI there is new section in Settings - http://www.voipmonitor.org/doc/Settings#Custom_headers
-custom_headers = X-asterisk-Info ; X-myheader
+6.5.4 -> 7.0 10.6.2013
+======================
 
+New features
+------------
 
-7.0.RC6
-=======
-
-- fix "call not found" for listen manager command on 32 bit platforms. 
-- print backtrace to syslog in case voipmonitor crashes
-- fix race condition which can lead to crash if ringbuffer is short and ip traffic is large and there are IP fragmented packets and ringbuffer runs faster then voipmonitor can handle
-
-
-7.0.RC5
-=======
-
-- fix TCP SIP reassemble logic which were mixing packets between pcap files in certain cases. 
-- do not list calls in manager api which is hanged up or canceled or failed. There was always 5-30 second delay. 
-- detect duplicate packets (if enabled) even if they aren't the "next packet". Patch provided by Steve Davies <steve@connection-telecom.com>
-- fix MySQL errors and support table partitions for MySQL version 5.1
-
-
-7.0.RC4
-=======
-
-- fix double free corruption bug (since 7.0) causes random memory crashes
-
-7.0.RC3
-=======
-
-- critical fix partitioning procedure which did not created partitions for next days
-
-7.0.RC2
-=======
-
-- implement storing DTMF to new cdr_dtmf table for RFC2833 and SIP INFO
-- fix saving REGISTER pcap files in case cachedir is used
-- fix missing RTP stream in CDR and short graph files (caler or called) in case sniffer see multiple RTP streams (more than 2) within call
-- fix / workaround for missing calldate column in table cdr_next and cdr_rtp
-- mysql partitioning is now default on 
-
-7.0.RC1
-========
-
+- implement Cisco SKINNY (SCCP) VoIP protocol (still beta) 
+- use MySQL partition feature by default. 
+- implement filter by SIP type into live sniffer
 - redesign realtime audio listening (g711 ulaw/alaw only at the moment) 
+- enable storing custom sip headers to database column cdr_next.custom_header_headername. You can specify more headers # delimited by ";". WARNING - when you enable this feature voipmonitor will autoupgrade cdr_next table which can take # hours depending on how large the table is. In GUI there is new section Settings#Custom_headers. WARNING - when you enable this feature voipmonitor will autoupgrade cdr_next table which can take hours depending on how large the table is INFO: in GUI there is new section in Settings - http://www.voipmonitor.org/doc/Settings#Custom_headers
+- print backtrace to syslog in case voipmonitor crashes
+- detect duplicate packets (if enabled) even if they aren't the "next packet". Patch provided by Steve Davies <steve@connection-telecom.com>
+- implement storing DTMF to new cdr_dtmf table for RFC2833 and SIP INFO
+- add convertchar option to voipmonitor.conf
+
+Bug fixes
+---------
+- fix race condition which can lead to crash if ringbuffer is short and ip traffic is large and there are IP fragmented packets and ringbuffer runs faster then voipmonitor can handle
+- fix TCP SIP reassemble logic which were mixing packets between pcap files in certain cases. 
+- jitterbuffer f1 was to much sensitive reporting loss although delays was < 10ms
 - fix low MOS score for calls which contains RTP DTMF (and fix audio sync too) 
 - never count MOS for calls where packets are < 100 which also causes low MOS for no reason. 
+- fix ip capture rules on 32 bit platform - all higher numbered IPs overlapped due to atoi limitations on 32bit
+- fix "call not found" for listen manager command on 32 bit platforms. 
+- create spool and cachedir directory upon start which fixes segfault in case cachedir does not exists
+- if packet contains trailing header (VSS monitoring ethernet trailer for example) deduplication did not worked if one packet has it and the other not.
+- do not save deduplicated packets in pcap file if this feature is enabled
+- do not list calls in manager api which is hanged up or canceled or failed. There was always 5-30 second delay. 
+- fix saving REGISTER pcap files in case cachedir is used
+- fix missing RTP stream in CDR and short graph files (caler or called) in case sniffer see multiple RTP streams (more than 2) within call
 - treat REGISTER 403 response as failed too (not only 401)
 - if sniffer stores RTP packets but only headers (savertp = header) and there is rule set in capture rules to record full RTP - it was not recording full RTP packets
 - "libpcap or interface dropped some packets" counters are unsigned - fix showing negative numbers in syslog
 - reformat help text to 80 chars and sort it alphabetically 
-- add convertchar option to voipmonitor.conf
 
 6.5.3 -> 6.5.4
 ==============
