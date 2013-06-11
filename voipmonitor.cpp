@@ -418,7 +418,7 @@ void *clean_spooldir( void *dummy ) {
 		if(verbosity > 0) syslog(LOG_NOTICE, "cleaning spool: [%s]\n", cmd);
 		FILE* pipe = popen(cmd, "r");
 		if (!pipe) {
-			syslog(LOG_ERR, "cannot rum clean command: [%s]", cmd);
+			syslog(LOG_ERR, "cannot rum clean command: [%s] error:[%s]", cmd, strerror(errno));
 			continue;
 		}
 		while(!feof(pipe)) {
