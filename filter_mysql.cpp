@@ -47,7 +47,7 @@ IPfilter::load() {
 		memset(filterRow,0,sizeof(db_row));
 		filterRow->ip = (unsigned int)strtoul(row["ip"].c_str(), NULL, 0);
 		filterRow->mask = atoi(row["mask"].c_str());
-		filterRow->direction = row.isNull("direction") || atoi(row["direction"].c_str());
+		filterRow->direction = row.isNull("direction") ? 0 : atoi(row["direction"].c_str());
 		filterRow->rtp = row.isNull("rtp") || atoi(row["rtp"].c_str());
 		filterRow->sip = row.isNull("sip") || atoi(row["sip"].c_str());
 		filterRow->reg = row.isNull("register") || atoi(row["register"].c_str());
@@ -219,7 +219,7 @@ TELNUMfilter::load() {
 		db_row* filterRow = new(db_row);
 		memset(filterRow,0,sizeof(db_row));
 		strncpy(filterRow->prefix, row["prefix"].c_str(), MAX_PREFIX);
-		filterRow->direction = row.isNull("direction") || atoi(row["direction"].c_str());
+		filterRow->direction = row.isNull("direction") ? 0 : atoi(row["direction"].c_str());
 		filterRow->rtp = row.isNull("rtp") || atoi(row["rtp"].c_str());
 		filterRow->sip = row.isNull("sip") || atoi(row["sip"].c_str());
 		filterRow->reg = row.isNull("register") || atoi(row["register"].c_str());

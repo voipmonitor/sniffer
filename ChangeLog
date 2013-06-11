@@ -1,3 +1,9 @@
+7.0.1
+=====
+
+- fix capture rules direction logic. It was always only by destinatino instead of "both". Broken since version 7
+
+
 6.5.4 -> 7.0 10.6.2013
 ======================
 
