@@ -153,7 +153,7 @@ extern livesnifferfilter_use_siptypes_s livesnifferfilterUseSipTypes;
 extern sem_t readpacket_thread_semaphore;
 #endif
 
-static char * gettag(const void *ptr, unsigned long len, const char *tag, unsigned long *gettaglen);
+static char * gettag(const void *ptr, unsigned long len, const char *tag, unsigned long *gettaglen, unsigned long *limitLen = NULL);
 
 unsigned int numpackets = 0;
 
@@ -477,13 +477,14 @@ int check_sip20(char *data, unsigned long len){
 }
 
 /* get SIP tag from memory pointed to *ptr length of len */
-char * gettag(const void *ptr, unsigned long len, const char *tag, unsigned long *gettaglen){
+char * gettag(const void *ptr, unsigned long len, const char *tag, unsigned long *gettaglen, unsigned long *limitLen){
 	unsigned long register r, l, tl;
 	char *rc = NULL;
 	char *tmp;
 	char tmp2;
 	tmp = (char*)ptr;
 	bool positionOK = true;
+	unsigned long _limitLen = 0;
 
 	if(len <= 0) {
 		*gettaglen = 0;
@@ -502,18 +503,28 @@ char * gettag(const void *ptr, unsigned long len, const char *tag, unsigned long
 		l = 0;
 	} else {
 		//check if position ok
-		const char *contentLengthString = "Content-Length: ";
-		char *contentLengthPos = strcasestr(tmp, contentLengthString);
-		if(contentLengthPos) {
-			int contentLength = atoi(contentLengthPos + strlen(contentLengthString));
-			if(contentLength >= 0) {
-				const char *endHeaderSepString = "\r\n\r\n";
-				char *endHeaderSepPos = (char*)memmem(tmp, len, endHeaderSepString, strlen(endHeaderSepString));
-				if(endHeaderSepPos &&
-				   (unsigned long)(endHeaderSepPos + contentLength) < r) {
-					positionOK = false;
+		if(limitLen && *limitLen > 0) {
+			_limitLen = *limitLen;
+		} else {
+			const char *contentLengthString = "Content-Length: ";
+			char *contentLengthPos = strcasestr(tmp, contentLengthString);
+			if(contentLengthPos) {
+				int contentLength = atoi(contentLengthPos + strlen(contentLengthString));
+				if(contentLength >= 0) {
+					const char *endHeaderSepString = "\r\n\r\n";
+					char *endHeaderSepPos = (char*)memmem(tmp, len, endHeaderSepString, strlen(endHeaderSepString));
+					if(endHeaderSepPos) {
+						_limitLen = (endHeaderSepPos - tmp) + strlen(endHeaderSepString) + contentLength;
+						if(limitLen) {
+							*limitLen = _limitLen;
+						}
+					}
 				}
 			}
+		}
+		if(_limitLen &&
+		   (unsigned long)(_limitLen + tmp) < r) {
+			positionOK = false;
 		}
 		if(positionOK || verbosity > 0) {
 			//tag matches move r pointer behind the tag name
@@ -693,9 +704,11 @@ int get_ip_port_from_sdp(char *sdp_text, in_addr_t *addr, unsigned short *port, 
 	unsigned long l;
 	char *s;
 	char s1[20];
+	size_t sdp_text_len = strlen(sdp_text);
+	unsigned long gettagLimitLen = 0;
 
 	*fax = 0;
-	s = gettag(sdp_text,strlen(sdp_text), "c=IN IP4 ", &l);
+	s = gettag(sdp_text,sdp_text_len, "c=IN IP4 ", &l, &gettagLimitLen);
 	if(l == 0) return 1;
 	memset(s1, '\0', sizeof(s1));
 	memcpy(s1, s, MIN(l, 19));
@@ -705,9 +718,9 @@ int get_ip_port_from_sdp(char *sdp_text, in_addr_t *addr, unsigned short *port, 
 		*port = 0;
 		return 1;
 	}
-	s = gettag(sdp_text, strlen(sdp_text), "m=audio ", &l);
+	s = gettag(sdp_text, sdp_text_len, "m=audio ", &l, &gettagLimitLen);
 	if (l == 0 || (*port = atoi(s)) == 0){
-		s = gettag(sdp_text, strlen(sdp_text), "m=image ", &l);
+		s = gettag(sdp_text, sdp_text_len, "m=image ", &l, &gettagLimitLen);
 		if (l == 0 || (*port = atoi(s)) == 0){
 			*port = 0;
 			return 1;
@@ -744,13 +757,14 @@ fail_exit:
 int get_expires_from_contact(char *data, int datalen, int *expires){
 	char *s;
 	unsigned long l;
+	unsigned long gettagLimitLen = 0;
 
 	if(datalen < 8) return 1;
 
-	s = gettag(data, datalen, "\nContact:", &l);
+	s = gettag(data, datalen, "\nContact:", &l, &gettagLimitLen);
 	if(!l) {
 		//try compact header
-		s = gettag(data, datalen, "\nm:", &l);
+		s = gettag(data, datalen, "\nm:", &l, &gettagLimitLen);
 	}
 	if(l && ((unsigned int)l < ((unsigned int)datalen - (s - data)))) {
 		char tmp[128];
@@ -817,13 +831,14 @@ int get_rtpmap_from_sdp(char *sdp_text, unsigned long len, int *rtpmap){
 	char mimeSubtype[128];
 	int i = 0;
 	int rate = 0;
+	unsigned long gettagLimitLen = 0;
 
-	s = gettag(sdp_text, len, "m=audio ", &l);
+	s = gettag(sdp_text, len, "m=audio ", &l, &gettagLimitLen);
 	if(!l) {
 		return 0;
 	}
 	do {
-		s = gettag(s, len - (s - sdp_text), "a=rtpmap:", &l);
+		s = gettag(s, len - (s - sdp_text), "a=rtpmap:", &l, &gettagLimitLen);
 		if(l && (z = strchr(s, '\r'))) {
 			*z = '\0';
 		} else {
@@ -999,6 +1014,8 @@ void *rtp_read_thread_func(void *arg) {
 }
 
 Call *new_invite_register(int sip_method, char *data, int datalen, struct pcap_pkthdr *header, char *callidstr, u_int32_t saddr, u_int32_t daddr, int source, char *s, long unsigned int l){
+	unsigned long gettagLimitLen = 0;
+	
 	if(opt_callslimit != 0 and opt_callslimit > calls) {
 		if(verbosity > 0)
 			syslog(LOG_NOTICE, "callslimit[%d] > calls[%d] ignoring call\n", opt_callslimit, calls);
@@ -1017,7 +1034,7 @@ Call *new_invite_register(int sip_method, char *data, int datalen, struct pcap_p
 	/* this logic updates call on the first INVITES */
 	if (sip_method == INVITE or sip_method == REGISTER or sip_method == MESSAGE) {
 		//geolocation 
-		s = gettag(data, datalen, "\nGeoPosition:", &l);
+		s = gettag(data, datalen, "\nGeoPosition:", &l, &gettagLimitLen);
 		if(l && l < 255) {
 			char buf[255];
 			memcpy(buf, s, l);
@@ -1068,7 +1085,7 @@ Call *new_invite_register(int sip_method, char *data, int datalen, struct pcap_p
 			call->destroy_call_at = header->ts.tv_sec + 30;
 
 			// copy contact num <sip:num@domain>
-			s = gettag(data, datalen, "\nUser-Agent:", &l);
+			s = gettag(data, datalen, "\nUser-Agent:", &l, &gettagLimitLen);
 			if(l && ((unsigned int)l < ((unsigned int)datalen - (s - data)))) {
 				memcpy(call->a_ua, s, MIN(l, sizeof(call->a_ua)));
 				call->a_ua[MIN(l, sizeof(call->a_ua) - 1)] = '\0';
@@ -1087,13 +1104,13 @@ Call *new_invite_register(int sip_method, char *data, int datalen, struct pcap_p
 			}
 
 			// copy Authorization
-			s = gettag(data, datalen, "\nAuthorization:", &l);
+			s = gettag(data, datalen, "\nAuthorization:", &l, &gettagLimitLen);
 			if(l && ((unsigned int)l < ((unsigned int)datalen - (s - data)))) {
 				get_value_stringkeyval(s, datalen - (s - data), "username=\"", call->digest_username, sizeof(call->digest_username));
 				get_value_stringkeyval(s, datalen - (s - data), "realm=\"", call->digest_realm, sizeof(call->digest_realm));
 			}
 			// get expires header
-			s = gettag(data, datalen, "\nExpires:", &l);
+			s = gettag(data, datalen, "\nExpires:", &l, &gettagLimitLen);
 			if(l && ((unsigned int)l < ((unsigned int)datalen - (s - data)))) {
 				char c = s[l];
 				s[l] = '\0';
@@ -1120,7 +1137,7 @@ Call *new_invite_register(int sip_method, char *data, int datalen, struct pcap_p
 	}
 
 	if(opt_norecord_header) {
-		s = gettag(data, datalen, "\nX-VoipMonitor-norecord:", &l);
+		s = gettag(data, datalen, "\nX-VoipMonitor-norecord:", &l, &gettagLimitLen);
 		if(l && l < 33) {
 			// do 
 			call->stoprecording();
@@ -1284,7 +1301,7 @@ Call *new_invite_register(int sip_method, char *data, int datalen, struct pcap_p
 	}
 
 	//check and save CSeq for later to compare with OK 
-	s = gettag(data, datalen, "\nCSeq:", &l);
+	s = gettag(data, datalen, "\nCSeq:", &l, &gettagLimitLen);
 	if(l && l < 32) {
 		memcpy(call->invitecseq, s, l);
 		call->unrepliedinvite++;
@@ -1338,6 +1355,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 	unsigned int tmp_u32 = 0;
 	int repeat = 0;
 	int record = 0;
+	unsigned long gettagLimitLen = 0;
 
 	*was_rtp = 0;
 
@@ -1440,10 +1458,10 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 		   BYE message, it knows which call to hang up based on the Call-ID.
 		*/
 		int issip = check_sip20(data, datalen);
-		s = gettag(data, datalen, "\nCall-ID:", &l);
+		s = gettag(data, datalen, "\nCall-ID:", &l, &gettagLimitLen);
 		if(!issip or (l <= 0 || l > 1023)) {
 			// try also compact header
-			s = gettag(data, datalen,"\ni:", &l);
+			s = gettag(data, datalen,"\ni:", &l, &gettagLimitLen);
 			if(!issip or (l <= 0 || l > 1023)) {
 				// no Call-ID found in packet
 				if(istcp && header_ip) {
@@ -1810,7 +1828,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 				// SIP packet does not belong to any call and it is not INVITE 
 				// TODO: check if we have enabled live sniffer for SUBSCRIBE or OPTIONS 
 				// if yes check for cseq OPTIONS or SUBSCRIBE 
-				s = gettag(data, datalen, "\nCSeq:", &l);
+				s = gettag(data, datalen, "\nCSeq:", &l, &gettagLimitLen);
 				if(l && l < 32) {
 					if(livesnifferfilterUseSipTypes.u_subscribe && memmem(s, l, "SUBSCRIBE", 9)) {
 						save_live_packet(NULL, header, packet, saddr, source, daddr, dest, istcp, data, datalen, SUBSCRIBE);
@@ -1828,7 +1846,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 				if(verbosity > 3) syslog(LOG_DEBUG, "REGISTER Call-ID[%s] regcount[%d]", call->call_id, call->regcount);
 
 				// update Authorization
-				s = gettag(data, datalen, "\nAuthorization:", &l);
+				s = gettag(data, datalen, "\nAuthorization:", &l, &gettagLimitLen);
 				if(l && ((unsigned int)l < ((unsigned int)datalen - (s - data)))) {
 					get_value_stringkeyval(s, datalen - (s - data), "username=\"", call->digest_username, sizeof(call->digest_username));
 					get_value_stringkeyval(s, datalen - (s - data), "realm=\"", call->digest_realm, sizeof(call->digest_realm));
@@ -1842,7 +1860,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 					save_packet(call, header, packet, saddr, source, daddr, dest, istcp, data, datalen, TYPE_SIP);
 					return call;
 				}
-				s = gettag(data, datalen, "\nCSeq:", &l);
+				s = gettag(data, datalen, "\nCSeq:", &l, &gettagLimitLen);
 				if(l && l < 32) {
 					memcpy(call->invitecseq, s, l);
 					call->invitecseq[l] = '\0';
@@ -1851,7 +1869,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 
 			} else if(sip_method == RES2XX) {
 				// update expires header from all REGISTER dialog messages (from 200 OK which can override the expire) 
-				s = gettag(data, datalen, "\nExpires:", &l);
+				s = gettag(data, datalen, "\nExpires:", &l, &gettagLimitLen);
 				if(l && ((unsigned int)l < ((unsigned int)datalen - (s - data)))) {
 					char c = s[l];
 					s[l] = '\0';
@@ -1862,7 +1880,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 				get_expires_from_contact(data, datalen, &call->register_expires);
 
 				if(verbosity > 3) syslog(LOG_DEBUG, "REGISTER OK Call-ID[%s]", call->call_id);
-                                s = gettag(data, datalen, "\nCSeq:", &l);
+                                s = gettag(data, datalen, "\nCSeq:", &l, &gettagLimitLen);
                                 if(l && strncmp(s, call->invitecseq, l) == 0) {
 					// registration OK 
 					call->regstate = 1;
@@ -1901,7 +1919,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 
 			char *cseq = NULL;
 			long unsigned int cseqlen = 0;
-			cseq = gettag(data, datalen, "\nCSeq:", &cseqlen);
+			cseq = gettag(data, datalen, "\nCSeq:", &cseqlen, &gettagLimitLen);
 			if(cseq && cseqlen < 32) {
 				if(memmem(call->invitecseq, strlen(call->invitecseq), cseq, cseqlen)) {
 					if(sip_method == INVITE) {
@@ -1914,7 +1932,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 			}
 
 			if(opt_norecord_header) {
-				s = gettag(data, datalen, "\nX-VoipMonitor-norecord:", &l);
+				s = gettag(data, datalen, "\nX-VoipMonitor-norecord:", &l, &gettagLimitLen);
 				if(l && l < 33) {
 					// do 
 					call->stoprecording();
@@ -1955,7 +1973,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 			} else if(sip_method == MESSAGE) {
 				call->destroy_call_at = header->ts.tv_sec + 60;
 
-				s = gettag(data, datalen, "\nUser-Agent:", &l);
+				s = gettag(data, datalen, "\nUser-Agent:", &l, &gettagLimitLen);
 				if(l && ((unsigned int)l < ((unsigned int)datalen - (s - data)))) {
 					memcpy(call->a_ua, s, MIN(l, sizeof(call->a_ua)));
 					call->a_ua[MIN(l, sizeof(call->a_ua) - 1)] = '\0';
@@ -1976,7 +1994,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 				if(tmp) {
 					tmp += 4; // skip \r\n\r\n and point to start of the message
 					int contentlen = 0;
-					s = gettag(data, datalen, "\nContent-Length:", &l);
+					s = gettag(data, datalen, "\nContent-Length:", &l, &gettagLimitLen);
 					if(l && ((unsigned int)l < ((unsigned int)datalen - (s - data)))) {
 						char c = s[l];
 						s[l] = '\0';
@@ -2098,7 +2116,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 		}
 
 		if(opt_norecord_header) {
-			s = gettag(data, datalen, "\nX-VoipMonitor-norecord:", &l);
+			s = gettag(data, datalen, "\nX-VoipMonitor-norecord:", &l, &gettagLimitLen);
 			if(l && l < 33) {
 				// do 
 				call->stoprecording();
@@ -2106,7 +2124,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 		}
 
 		if(sip_method == INFO) {
-			s = gettag(data, datalen, "\nSignal:", &l);
+			s = gettag(data, datalen, "\nSignal:", &l, &gettagLimitLen);
 			if(l && l < 33) {
 				char *tmp = s + 1;
 				tmp[l - 1] = '\0';
@@ -2114,7 +2132,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 					syslog(LOG_NOTICE, "[%s] DTMF SIP INFO [%c]", call->fbasename, tmp[0]);
 				call->handle_dtmf(*tmp, ts2double(header->ts.tv_sec, header->ts.tv_usec), saddr, daddr);
 			}
-			s = gettag(data, datalen, "Signal=", &l);
+			s = gettag(data, datalen, "Signal=", &l, &gettagLimitLen);
 			if(l && l < 33) {
 				char *tmp = s;
 				tmp[l] = '\0';
@@ -2126,7 +2144,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 		}
 		
 		// check if we have X-VoipMonitor-Custom1
-		s = gettag(data, datalen, "\nX-VoipMonitor-Custom1:", &l);
+		s = gettag(data, datalen, "\nX-VoipMonitor-Custom1:", &l, &gettagLimitLen);
 		if(l && l < 255) {
 			memcpy(call->custom_header1, s, l);
 			call->custom_header1[l] = '\0';
@@ -2136,7 +2154,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 
 		// check if we have opt_match_header
 		if(opt_match_header[0] != '\0') {
-			s = gettag(data, datalen, opt_match_header, &l);
+			s = gettag(data, datalen, opt_match_header, &l, &gettagLimitLen);
 			if(l && l < 128) {
 				memcpy(call->match_header, s, l);
 				call->match_header[l] = '\0';
@@ -2152,7 +2170,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 			if(findHeader[findHeader.length() - 1] != ':') {
 				findHeader.append(":");
 			}
-			s = gettag(data, datalen, findHeader.c_str(), &l);
+			s = gettag(data, datalen, findHeader.c_str(), &l, &gettagLimitLen);
 			if(l && l < 128) {
 				char headerContent[128];
 				memcpy(headerContent, s, l);
@@ -2169,10 +2187,10 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 		}
 
 		// SDP examination
-		s = gettag(data,datalen,"\nContent-Type:",&l);
+		s = gettag(data,datalen,"\nContent-Type:",&l,&gettagLimitLen);
 		if(l <= 0 || l > 1023) {
 			//try compact header
-			s = gettag(data,datalen,"\nc:",&l);
+			s = gettag(data,datalen,"\nc:",&l,&gettagLimitLen);
 		}
 		if(s and l) {
 			if(call->contenttype) free(call->contenttype);
@@ -2210,7 +2228,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 					(call->saddr == daddr && call->sport == dest))))
 					{
 					// prepare User-Agent
-					s = gettag(data,datalen,"\nUser-Agent:", &l);
+					s = gettag(data,datalen,"\nUser-Agent:", &l, &gettagLimitLen);
 					// store RTP stream
 					get_rtpmap_from_sdp(tmp + 1, datalen - (tmp + 1 - data), rtpmap);
 
@@ -2314,7 +2332,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 			//find end of a message (\r\n)
 			tmp += 4; // skip \r\n\r\n and point to start of the message
 			int contentlen = 0;
-			s = gettag(data, datalen, "\nContent-Length:", &l);
+			s = gettag(data, datalen, "\nContent-Length:", &l, &gettagLimitLen);
 			if(l && ((unsigned int)l < ((unsigned int)datalen - (s - data)))) {
 				char c = s[l];
 				s[l] = '\0';

@@ -2174,6 +2174,12 @@ void SqlDb_odbc::createSchema() {
 			ADD id_contenttype INT");
 	this->query("CREATE INDEX id_contenttype ON message (id_contenttype)");
 
+	//6.5RC2 ->
+	this->query("ALTER TABLE message\
+			ADD GeoPosition varchar(255) NULL;");
+	this->query("ALTER TABLE cdr\
+			ADD GeoPosition varchar(255) NULL;");
+	
 	sql_noerror = 0;
 	
 	this->query("IF EXISTS (SELECT name FROM sys.objects WHERE name = 'concat' AND type = 'FN') DROP FUNCTION dbo.concat");
@@ -2250,11 +2256,6 @@ void SqlDb_odbc::createSchema() {
 			BEGIN\
 				RETURN DATEADD(SECOND, -DATEDIFF(second, 0, @time2), @time1)\
 			END");
-
-	this->query("ALTER TABLE message\
-			ADD GeoPosition varchar(255) NULL;");
-	this->query("ALTER TABLE cdr\
-			ADD GeoPosition varchar(255) NULL;");
 }
 
 void SqlDb_odbc::checkSchema() {
