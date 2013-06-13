@@ -483,6 +483,7 @@ char * gettag(const void *ptr, unsigned long len, const char *tag, unsigned long
 	char *tmp;
 	char tmp2;
 	tmp = (char*)ptr;
+	bool positionOK = true;
 
 	if(len <= 0) {
 		*gettaglen = 0;
@@ -496,22 +497,40 @@ char * gettag(const void *ptr, unsigned long len, const char *tag, unsigned long
 	tl = strlen(tag);
 	//r = (unsigned long)memmem(ptr, len, tag, tl); memmem cannot be used because SIP headers are case insensitive
 	r = (unsigned long)strcasestr(tmp, tag);
-	tmp[len - 1] = tmp2;
 	if(r == 0){
 		// tag did not match
 		l = 0;
 	} else {
-		//tag matches move r pointer behind the tag name
-		r += tl;
-		l = (unsigned long)memmem((void *)r, len - (r - (unsigned long)ptr), "\r\n", 2);
-		if (l > 0){
-			// remove trailing \r\n and set l to length of the tag
-			l -= r;
+		//check if position ok
+		const char *contentLengthString = "Content-Length: ";
+		char *contentLengthPos = strcasestr(tmp, contentLengthString);
+		if(contentLengthPos) {
+			int contentLength = atoi(contentLengthPos + strlen(contentLengthString));
+			if(contentLength >= 0) {
+				const char *endHeaderSepString = "\r\n\r\n";
+				char *endHeaderSepPos = (char*)memmem(tmp, len, endHeaderSepString, strlen(endHeaderSepString));
+				if(endHeaderSepPos &&
+				   (unsigned long)(endHeaderSepPos + contentLength) < r) {
+					positionOK = false;
+				}
+			}
+		}
+		if(positionOK || verbosity > 0) {
+			//tag matches move r pointer behind the tag name
+			r += tl;
+			l = (unsigned long)memmem((void *)r, len - (r - (unsigned long)ptr), "\r\n", 2);
+			if (l > 0){
+				// remove trailing \r\n and set l to length of the tag
+				l -= r;
+			} else {
+				// trailing \r\n not found
+				l = 0;
+			}
 		} else {
-			// trailing \r\n not found
 			l = 0;
 		}
 	}
+	tmp[len - 1] = tmp2;
 	// left trim spacees
 	if(l > 0) {
 		rc = (char*)r;
@@ -522,7 +541,15 @@ char * gettag(const void *ptr, unsigned long len, const char *tag, unsigned long
 			}
 		}
 	}
-	*gettaglen = l;
+	if(!positionOK && verbosity > 0 && l > 0) {
+		char tagc[101];
+		strncpy(tagc, rc, min(l, 100ul));
+		tagc[min(l, 100ul)] = 0;
+		syslog(LOG_NOTICE, "bad tag position - tag: %s, content: %s\n", tag, tagc);
+		*gettaglen = 0;
+	} else {
+		*gettaglen = l;
+	}
 	return rc;
 }
 
