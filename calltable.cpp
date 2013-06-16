@@ -1698,8 +1698,6 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		
 		sqlDb->setEnableSqlStringInContent(true);
 		
-		query_str += "set @_last_insert_id = last_insert_id();\n";
-		
 		cdr.add(string("_\\_'SQL'_\\_:") + "getIdOrInsertSIPRES(" + sqlEscapeStringBorder(lastSIPresponse) + ")", "lastSIPresponse_id");
 		if(a_ua) {
 			cdr.add(string("_\\_'SQL'_\\_:") + "getIdOrInsertUA(" + sqlEscapeStringBorder(a_ua) + ")", "a_ua_id");
@@ -1709,7 +1707,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		}
 		query_str += sqlDb->insertQuery(sql_cdr_table, cdr) + ";\n";
 		
-		query_str += "if @_last_insert_id != last_insert_id() then\n";
+		query_str += "if row_count() > 0 then\n";
 		query_str += "set @cdr_id = last_insert_id();\n";
 		
 		cdr_next.add("_\\_'SQL'_\\_:@cdr_id", "cdr_ID");
@@ -2203,8 +2201,6 @@ Call::saveMessageToDb() {
 	string query_str;
 	
 	sqlDb->setEnableSqlStringInContent(true);
-	
-	query_str += "set @_last_insert_id = last_insert_id();\n";
 	
 	cdr.add(string("_\\_'SQL'_\\_:") + "getIdOrInsertSIPRES(" + sqlEscapeStringBorder(lastSIPresponse) + ")", "lastSIPresponse_id");
 	if(a_ua) {
