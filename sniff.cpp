@@ -552,7 +552,7 @@ char * gettag(const void *ptr, unsigned long len, const char *tag, unsigned long
 			}
 		}
 	}
-	if(!positionOK && verbosity > 0 && l > 0) {
+	if(!positionOK && verbosity > 2 && l > 0) {
 		char tagc[101];
 		strncpy(tagc, rc, min(l, 100ul));
 		tagc[min(l, 100ul)] = 0;
