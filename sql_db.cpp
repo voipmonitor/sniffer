@@ -14,6 +14,7 @@ extern int verbosity;
 extern int opt_mysql_port;
 extern char opt_match_header[128];
 extern int terminating;
+extern int opt_ipaccount;
 extern int opt_id_sensor;
 extern bool opt_cdr_partition;
 extern vector<dstring> opt_custom_headers;
@@ -419,8 +420,8 @@ bool SqlDb_mysql::connected() {
 
 bool SqlDb_mysql::query(string query) {
 	this->prepareQuery(&query);
-	if(verbosity > 1) { 
-		cout << query << endl;
+	if(verbosity > 1) {
+		syslog(LOG_INFO, query.c_str());
 	}
 	bool rslt = false;
 	if(this->hMysqlRes) {
@@ -698,7 +699,7 @@ bool SqlDb_odbc::connected() {
 bool SqlDb_odbc::query(string query) {
 	this->prepareQuery(&query);
 	if(verbosity > 1) { 
-		cout << query << endl;
+		syslog(LOG_INFO, query.c_str());
 	}
 	SQLRETURN rslt = SQL_NULL_DATA;
 	if(this->hStatement) {
@@ -871,7 +872,7 @@ void MySqlStore_process::store() {
 					this->sqlDb->query(string("call ") + insert_funcname + "();");
 					queryqueue = "";
 					if(verbosity > 1) {
-						cout << "STORE id: " << this->id << endl;
+						syslog(LOG_INFO, "STORE id: %i", this->id);
 					}
 				}
 				break;
@@ -889,7 +890,7 @@ void MySqlStore_process::store() {
 				queryqueue = "";
 				size = 0;
 				if(verbosity > 1) {
-					cout << "STORE id: " << this->id << endl;
+					syslog(LOG_INFO, "STORE id: %i", this->id);
 				}
 			}
 		}
@@ -1502,6 +1503,7 @@ void SqlDb_mysql::createSchema() {
 		PRIMARY KEY (`id_sensor`)\
 	) ENGINE=InnoDB DEFAULT CHARSET=latin1;");
 
+	if(opt_ipaccount) {
 	this->query(
 	"CREATE TABLE IF NOT EXISTS `ipacc` (\
 			`saddr` int unsigned NOT NULL,\
@@ -1523,6 +1525,7 @@ void SqlDb_mysql::createSchema() {
 		KEY `proto` (`proto`),\
 		KEY `interval_time` (`interval_time`)\
 	) ENGINE=InnoDB DEFAULT CHARSET=latin1 ROW_FORMAT=COMPRESSED;");
+	}
 
 	this->query(
 	"CREATE TABLE IF NOT EXISTS `livepacket` (\
@@ -2106,6 +2109,7 @@ void SqlDb_odbc::createSchema() {
 		port int NULL,);\
 	END");
 
+	if(opt_ipaccount) {
 	this->query(
 	"IF NOT EXISTS (SELECT * FROM sys.objects WHERE name = 'ipacc') BEGIN\
 		CREATE TABLE ipacc (\
@@ -2128,6 +2132,7 @@ void SqlDb_odbc::createSchema() {
 		CREATE INDEX proto ON ipacc (proto);\
 		CREATE INDEX interval_time ON ipacc (interval_time)\
 	END");
+	}
 	
 	this->query(
 	"IF NOT EXISTS (SELECT * FROM sys.objects WHERE name = 'livepacket') BEGIN\
