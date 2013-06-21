@@ -1453,8 +1453,9 @@ int main(int argc, char *argv[]) {
 				qringmax = (unsigned int)((unsigned int)MIN(atoi(optarg), 4000) * 1024 * 1024 / (unsigned int)sizeof(pcap_packet));
 				break;
 			case 's':
-				opt_id_sensor = atoi(optarg);
-				insert_funcname = "__insert_" + opt_id_sensor;
+				opt_id_sensor = atoi(value);
+				insert_funcname = "__insert_";
+				insert_funcname.append(value);
 				break;
 			case 'Z':
 				strncpy(opt_keycheck, optarg, sizeof(opt_keycheck));
