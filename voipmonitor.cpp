@@ -288,6 +288,7 @@ TELNUMfilter *telnumfilter_reload = NULL;	// IP filter based on MYSQL for reload
 int telnumfilter_reload_do = 0;	// for reload in main thread
 
 pthread_t call_thread;		// ID of worker storing CDR thread 
+pthread_t readdump_libpcap_thread;
 pthread_t manager_thread = 0;	// ID of worker manager thread 
 pthread_t manager_client_thread;	// ID of worker manager thread 
 pthread_t cachedir_thread;	// ID of worker cachedir thread 
@@ -485,7 +486,8 @@ void *storing_cdr( void *dummy ) {
 		string cdrtosend;
 #endif
 		if(verbosity > 0) { 
-			syslog(LOG_ERR, "calls[%d] ipacc_buffer[%u]\n", calls, lengthIpaccBuffer());
+			syslog(LOG_ERR, "calls[%d] ipacc_buffer[%u] qring[%d (w%d,r%d)]\n", 
+			       calls, lengthIpaccBuffer(), writeit >= readit ? writeit - readit : writeit + qringmax - readit, writeit, readit);
 		}
 		while (1) {
 
@@ -1302,6 +1304,7 @@ void bt_sighandler(int sig, struct sigcontext ctx)
 #endif
 
 int opt_test = 0;
+void *readdump_libpcap_thread_fce(void *handle);
 void test();
 
 int main(int argc, char *argv[]) {
@@ -1453,9 +1456,9 @@ int main(int argc, char *argv[]) {
 				qringmax = (unsigned int)((unsigned int)MIN(atoi(optarg), 4000) * 1024 * 1024 / (unsigned int)sizeof(pcap_packet));
 				break;
 			case 's':
-				opt_id_sensor = atoi(value);
+				opt_id_sensor = atoi(optarg);
 				insert_funcname = "__insert_";
-				insert_funcname.append(value);
+				insert_funcname.append(optarg);
 				break;
 			case 'Z':
 				strncpy(opt_keycheck, optarg, sizeof(opt_keycheck));
@@ -2136,7 +2139,12 @@ int main(int argc, char *argv[]) {
 		// start reading packets
 		//readdump_libnids(handle);
 
-		readdump_libpcap(handle);
+		if(opt_pcap_threaded) {
+			pthread_create(&readdump_libpcap_thread, NULL, readdump_libpcap_thread_fce, handle);
+			pthread_join(readdump_libpcap_thread, NULL);
+		} else {
+			readdump_libpcap(handle);
+		}
 	}
 
 	readend = 1;
@@ -2222,6 +2230,11 @@ int main(int argc, char *argv[]) {
 	clean_tcpstreams();
 	ipfrag_prune(0, 1);
 	freeMemIpacc();
+}
+
+void *readdump_libpcap_thread_fce(void *handle) {
+	readdump_libpcap((pcap_t*)handle);
+	return(NULL);
 }
 
 
