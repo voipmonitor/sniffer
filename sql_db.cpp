@@ -1277,6 +1277,21 @@ void SqlDb_mysql::createSchema() {
 			string(" PARTITION BY RANGE COLUMNS(calldate)(\
 				 PARTITION ") + partDayName + " VALUES LESS THAN ('" + limitDay + "') engine innodb)") :
 		""));
+	
+	if(opt_cdr_partition) {
+		this->query(string(
+			    "select exists (select * from information_schema.partitions\
+					    where table_schema = '") + mysql_database + "' and\
+						  table_name like 'cdr%' and\
+						  partition_name is not null) as exist_part_cdr");
+		SqlDb_row row;
+		if((row = this->fetchRow())) {
+			if(atoi(row[0].c_str()) == 0) {
+				syslog(LOG_INFO, "disable opt_cdr_partition (table cdr... exists without partitions)");
+				opt_cdr_partition = 0;
+			}
+		}
+	}
 
 	this->query(string(
 	"CREATE TABLE IF NOT EXISTS `cdr_next` (\
@@ -1574,9 +1589,9 @@ void SqlDb_mysql::createSchema() {
 		       database_name,\
 		       '\\' and table_name = \\'',\
 		       table_name,\
-		       '\\' and partition_name = \\'',\
+		       '\\' and (partition_name is null or partition_name = \\'',\
 		       part_name,\
-		       '\\')');\
+		       '\\'))');\
 		    set @_test_exists_part_query = test_exists_part_query;\
 		    prepare stmt FROM @_test_exists_part_query;\
 		    execute stmt;\
