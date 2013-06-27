@@ -2829,7 +2829,7 @@ void *pcap_read_thread_func(void *arg) {
 
 		// if packet was VoIP add it to ipaccount
 		if(opt_ipaccount) {
-			ipaccount(pp->header.ts.tv_sec, (struct iphdr2 *) ((char*)(packet) + pp->offset), pp->header.len - pp->offset, 0);
+			ipaccount(pp->header.ts.tv_sec, (struct iphdr2 *) ((char*)(packet) + pp->offset), pp->header.len - pp->offset, voippacket);
 		}
 
 #ifdef QUEUE_NONBLOCK2
