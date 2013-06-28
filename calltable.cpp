@@ -2633,7 +2633,7 @@ Calltable::cleanup( time_t currtime ) {
 			call->closeRawFiles();
 			/* move call to queue for mysql processing */
 			lock_calls_queue();
-			calls_queue.push_front(call);
+			calls_queue.push_back(call);
 			unlock_calls_queue();
 			calls_listMAP.erase(callMAPIT++);
 		} else {
@@ -2670,7 +2670,7 @@ void Call::saveregister() {
 	closeRawFiles();
 	/* move call to queue for mysql processing */
 	((Calltable*)calltable)->lock_calls_queue();
-	((Calltable*)calltable)->calls_queue.push_front(this);
+	((Calltable*)calltable)->calls_queue.push_back(this);
 	((Calltable*)calltable)->unlock_calls_queue();
 
 	string call_idS = string(call_id, call_id_len);
