@@ -57,6 +57,7 @@ struct listening_worker_arg {
 };
 
 static void updateLivesnifferfilters();
+static bool cmpCallBy_destroy_call_at(Call* a, Call* b);
 
 livesnifferfilter_use_siptypes_s livesnifferfilterUseSipTypes;
 
@@ -308,6 +309,74 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 			return -1;
 		}
 		free(resbuf);
+		return 0;
+	} else if(strstr(buf, "d_lc_for_destroy") != NULL) {
+		ostringstream outStr;
+		if(calltable->calls_queue.size()) {
+			vector<Call*> vectCall;
+			calltable->lock_calls_queue();
+			for(size_t i = 0; i < calltable->calls_queue.size(); ++i) {
+				vectCall.push_back(calltable->calls_queue[i]);
+			}
+			std::sort(vectCall.begin(), vectCall.end(), cmpCallBy_destroy_call_at);
+			for(size_t i = 0; i < vectCall.size(); i++) {
+				Call *call = vectCall[i];
+				if(call->type == REGISTER || !call->destroy_call_at) {
+					continue;
+				}
+				outStr.width(12);
+				outStr << call->caller << " -> ";
+				outStr.width(12);
+				outStr << call->called << "  "
+				<< sqlDateTimeString(call->calltime()) << "  ";
+				outStr.width(6);
+				outStr << call->duration() << "s  "
+				<< sqlDateTimeString(call->destroy_call_at) << "  "
+				<< call->fbasename;
+				outStr << endl;
+			}
+			calltable->unlock_calls_queue();
+		}
+		outStr << "-----------" << endl;
+		if ((size = send(client, outStr.str().c_str(), outStr.str().length(), 0)) == -1){
+			cerr << "Error sending data to client" << endl;
+			return -1;
+		}
+		return 0;
+	} else if(strstr(buf, "d_lc_bye") != NULL) {
+		ostringstream outStr;
+		map<string, Call*>::iterator callMAPIT;
+		calltable->lock_calls_listMAP();
+		vector<Call*> vectCall;
+		for (callMAPIT = calltable->calls_listMAP.begin(); callMAPIT != calltable->calls_listMAP.end(); ++callMAPIT) {
+			Call *call = (*callMAPIT).second;
+			if(call->seenbye) {
+				vectCall.push_back(call);
+			}
+		}
+		std::sort(vectCall.begin(), vectCall.end(), cmpCallBy_destroy_call_at);
+		for(size_t i = 0; i < vectCall.size(); i++) {
+			Call *call = vectCall[i];
+			if(call->type == REGISTER || !call->destroy_call_at) {
+				continue;
+			}
+			outStr.width(12);
+			outStr << call->caller << " -> ";
+			outStr.width(12);
+			outStr << call->called << "  "
+			<< sqlDateTimeString(call->calltime()) << "  ";
+			outStr.width(6);
+			outStr << call->duration() << "s  "
+			<< (call->destroy_call_at ? sqlDateTimeString(call->destroy_call_at) : "    -  -     :  :  ")  << "  "
+			<< call->fbasename;
+			outStr << endl;
+		}
+		calltable->unlock_calls_listMAP();
+		outStr << "-----------" << endl;
+		if ((size = send(client, outStr.str().c_str(), outStr.str().length(), 0)) == -1){
+			cerr << "Error sending data to client" << endl;
+			return -1;
+		}
 		return 0;
 	} else if(strstr(buf, "getipaccount") != NULL) {
 		sscanf(buf, "getipaccount %u", &uid);
@@ -1170,4 +1239,8 @@ void updateLivesnifferfilters() {
 	if(livesnifferfilterUseSipTypes.u_subscribe) cout << "SUBSCRIBE" << endl;
 	if(livesnifferfilterUseSipTypes.u_message) cout << "MESSAGE" << endl;
 	*/
+}
+
+bool cmpCallBy_destroy_call_at(Call* a, Call* b) {
+	return(a->destroy_call_at < b->destroy_call_at);   
 }

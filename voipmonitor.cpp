@@ -499,7 +499,7 @@ void *storing_cdr( void *dummy ) {
 				break;
 			}
 			call = calltable->calls_queue.front();
-			calltable->calls_queue.pop();
+			calltable->calls_queue.pop_front();
 			calltable->unlock_calls_queue();
 	
 			if(!opt_nocdr) {
@@ -2190,7 +2190,7 @@ int main(int argc, char *argv[]) {
 	pthread_join(call_thread, NULL);
 	while(calltable->calls_queue.size() != 0) {
 			call = calltable->calls_queue.front();
-			calltable->calls_queue.pop();
+			calltable->calls_queue.pop_front();
 			delete call;
 			calls--;
 	}
