@@ -313,27 +313,30 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 	} else if(strstr(buf, "d_lc_for_destroy") != NULL) {
 		ostringstream outStr;
 		if(calltable->calls_queue.size()) {
+			Call *call;
 			vector<Call*> vectCall;
 			calltable->lock_calls_queue();
 			for(size_t i = 0; i < calltable->calls_queue.size(); ++i) {
-				vectCall.push_back(calltable->calls_queue[i]);
-			}
-			std::sort(vectCall.begin(), vectCall.end(), cmpCallBy_destroy_call_at);
-			for(size_t i = 0; i < vectCall.size(); i++) {
-				Call *call = vectCall[i];
-				if(call->type == REGISTER || !call->destroy_call_at) {
-					continue;
+				call = calltable->calls_queue[i];
+				if(call->type != REGISTER && call->destroy_call_at) {
+					vectCall.push_back(call);
 				}
-				outStr.width(12);
-				outStr << call->caller << " -> ";
-				outStr.width(12);
-				outStr << call->called << "  "
-				<< sqlDateTimeString(call->calltime()) << "  ";
-				outStr.width(6);
-				outStr << call->duration() << "s  "
-				<< sqlDateTimeString(call->destroy_call_at) << "  "
-				<< call->fbasename;
-				outStr << endl;
+			}
+			if(vectCall.size()) { 
+				std::sort(vectCall.begin(), vectCall.end(), cmpCallBy_destroy_call_at);
+				for(size_t i = 0; i < vectCall.size(); i++) {
+					call = vectCall[i];
+					outStr.width(15);
+					outStr << call->caller << " -> ";
+					outStr.width(15);
+					outStr << call->called << "  "
+					<< sqlDateTimeString(call->calltime()) << "  ";
+					outStr.width(6);
+					outStr << call->duration() << "s  "
+					<< sqlDateTimeString(call->destroy_call_at) << "  "
+					<< call->fbasename;
+					outStr << endl;
+				}
 			}
 			calltable->unlock_calls_queue();
 		}
@@ -346,30 +349,30 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 	} else if(strstr(buf, "d_lc_bye") != NULL) {
 		ostringstream outStr;
 		map<string, Call*>::iterator callMAPIT;
-		calltable->lock_calls_listMAP();
+		Call *call;
 		vector<Call*> vectCall;
+		calltable->lock_calls_listMAP();
 		for (callMAPIT = calltable->calls_listMAP.begin(); callMAPIT != calltable->calls_listMAP.end(); ++callMAPIT) {
-			Call *call = (*callMAPIT).second;
-			if(call->seenbye) {
+			call = (*callMAPIT).second;
+			if(call->type != REGISTER && call->seenbye) {
 				vectCall.push_back(call);
 			}
 		}
-		std::sort(vectCall.begin(), vectCall.end(), cmpCallBy_destroy_call_at);
-		for(size_t i = 0; i < vectCall.size(); i++) {
-			Call *call = vectCall[i];
-			if(call->type == REGISTER || !call->destroy_call_at) {
-				continue;
+		if(vectCall.size()) { 
+			std::sort(vectCall.begin(), vectCall.end(), cmpCallBy_destroy_call_at);
+			for(size_t i = 0; i < vectCall.size(); i++) {
+				call = vectCall[i];
+				outStr.width(15);
+				outStr << call->caller << " -> ";
+				outStr.width(15);
+				outStr << call->called << "  "
+				<< sqlDateTimeString(call->calltime()) << "  ";
+				outStr.width(6);
+				outStr << call->duration() << "s  "
+				<< (call->destroy_call_at ? sqlDateTimeString(call->destroy_call_at) : "    -  -     :  :  ")  << "  "
+				<< call->fbasename;
+				outStr << endl;
 			}
-			outStr.width(12);
-			outStr << call->caller << " -> ";
-			outStr.width(12);
-			outStr << call->called << "  "
-			<< sqlDateTimeString(call->calltime()) << "  ";
-			outStr.width(6);
-			outStr << call->duration() << "s  "
-			<< (call->destroy_call_at ? sqlDateTimeString(call->destroy_call_at) : "    -  -     :  :  ")  << "  "
-			<< call->fbasename;
-			outStr << endl;
 		}
 		calltable->unlock_calls_listMAP();
 		outStr << "-----------" << endl;
