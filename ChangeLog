@@ -1,3 +1,19 @@
+7.1
+===
+
+- do not parse SIP packets after content-lenght. Some implementations sends bigger packet with garbage at the end of packet which should not be parsed causing overwriting headers 
+- fix error in mysql insert for very rare cases
+- output mysql queries into syslog instead of cout (if verbosity > 1)
+- fix -s parameter which did not worked at all
+- run readdump_libpcap in separate thread to be able to read real % for libpcap reading thread
+- add qring status into syslog state
+- when upgrading from older sniffer do not create new tables partitioned when the cdr table is not partitioned which will cause stop working writing CDR with RTP or DTMF next day
+- fix T38 for case when the same RTP port is reused in reintive which was treated as no t38 in this case
+- implement inotify events for pcapscandir which means that now the name of the pcap file in this directory can be any name which means more pcap files can be put there from various sources - events are filte
+red only when the file is closed for write which means you can transfer files directly to the directory
+- store CDR sooner when the BYE messages is not properly closed (missing ACK etc) 
+
+
 7.0.1
 =====
 
