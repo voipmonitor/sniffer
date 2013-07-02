@@ -2364,7 +2364,7 @@ Calltable::hashAdd(in_addr_t addr, unsigned short port, Call* call, int iscaller
 			// this can happen if the old call is waiting for hangup and is still in memory
 			// replace the node but also store the last call to new call and vice versa 
 			if(allowrelation && call != node->call) {
-				syslog(LOG_NOTICE, "allowrelation %p %p\n", call, node->call);
+				//syslog(LOG_NOTICE, "allowrelation %p %p\n", call, node->call);
 				node->call->relationcall = call;
 				call->relationcall = node->call;
 			}
@@ -2381,6 +2381,7 @@ Calltable::hashAdd(in_addr_t addr, unsigned short port, Call* call, int iscaller
 			} else {
 				// packets to another SIP proxy with the same SDP ports
 				// in this case just return 
+				node->is_fax = is_fax;
 				return;
 			}
 		}

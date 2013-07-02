@@ -2295,6 +2295,8 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 							calltable->hashAdd(tmp_addr, tmp_port + 1, call, !iscalled, 1, fax); //add rtcp
 							//calltable->mapAdd(tmp_addr, tmp_port + 1, call, !iscalled, 1); //add rtcp
 						}
+					} else if(fax){
+						calltable->hashAdd(tmp_addr, tmp_port, call, !iscalled, 0, fax);
 					}
 					
 					// check if the IP address is listed in nat_aliases
@@ -2308,6 +2310,8 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 								//calltable->mapAdd(alias, tmp_port + 1, call, !iscalled, 1); //add rtcp
 							}
 						}
+					} else if(fax){
+						calltable->hashAdd(alias, tmp_port, call, !iscalled, 0, fax);
 					}
 
 #ifdef NAT
@@ -2318,6 +2322,8 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 							calltable->hashAdd(saddr, tmp_port + 1, call, !iscalled, 1, fax);
 							//calltable->mapAdd(saddr, tmp_port + 1, call, !iscalled, 1);
 						}
+					} else if(fax){
+						calltable->hashAdd(saddr, tmp_port, call, !iscalled, 0, fax);
 					}
 #endif
 				}

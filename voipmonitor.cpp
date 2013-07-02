@@ -5,6 +5,8 @@
 
 #include <queue>
 #include <climits>
+// stevek - it could be smarter if sys/inotyfy.h available then use it otherwise use linux/inotify.h. I will do it later
+#include <sys/inotify.h>
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -129,6 +131,7 @@ using namespace std;
 
 extern Calltable *calltable;
 extern volatile int calls;
+unsigned int opt_openfile_max = 65535;
 int opt_packetbuffered = 0;	// Make .pcap files writing ‘‘packet-buffered’’ 
 				// more slow method, but you can use partitialy 
 				// writen file anytime, it will be consistent.
@@ -1174,6 +1177,9 @@ int load_config(char *fname) {
 	if((value = ini.GetValue("general", "convertchar", NULL))) {
 		strncpy(opt_convert_char, value, sizeof(opt_convert_char));
 	}
+	if((value = ini.GetValue("general", "openfile_max", NULL))) {
+                opt_openfile_max = atoi(value);
+        }
 	return 0;
 }
 
@@ -1949,13 +1955,13 @@ int main(int argc, char *argv[]) {
 
 	// set maximum open files 
 	struct rlimit rlp;
-	rlp.rlim_cur = 65535;
-	rlp.rlim_max = 65535;
-	setrlimit(RLIMIT_NOFILE, &rlp);
-	getrlimit(RLIMIT_NOFILE, &rlp);
-	if(rlp.rlim_cur != 65535) {
-		printf("Warning, max open files is: %d consider raise this to 65535 with ulimit -n 65535\n", (int)rlp.rlim_cur);
-	}
+        rlp.rlim_cur = opt_openfile_max;
+        rlp.rlim_max = opt_openfile_max;
+        setrlimit(RLIMIT_NOFILE, &rlp);
+        getrlimit(RLIMIT_NOFILE, &rlp);
+        if(rlp.rlim_cur < 65535) {
+                printf("Warning, max open files is: %d consider raise this to 65535 with ulimit -n 65535 and set it in config file\n", (int)rlp.rlim_cur);
+        }
 	// set core file dump to unlimited size
 	rlp.rlim_cur = UINT_MAX;
 	rlp.rlim_max = UINT_MAX;
@@ -2053,87 +2059,68 @@ int main(int argc, char *argv[]) {
 	if(opt_scanpcapdir[0] != '\0') {
 		// scan directory opt_scanpcapdir (typically /dev/shm/voipmonitor
 		char filename[1024];
-		unsigned int tmp = 0;
-		unsigned int min = 0 - 1;
-		unsigned int max = 0;
-		unsigned int prevmax = 0;
-		unsigned int i;
-		DIR *dirp = NULL;
-		dirent *dp;
 		char filter_exp[2048] = "";		// The filter expression
 		struct bpf_program fp;		// The compiled filter 
-		pcap_t *scanhandle = NULL;		// pcap handler 
+		pcap_t *scanhandle = NULL;		// pcap handler
+		struct inotify_event *event;
+		char buff[1024];
+		int i=0, fd, wd, len=0;
+		fd = inotify_init();
+		/*checking for error*/
+		if(fd < 0) perror( "inotify_init" );
+		wd = inotify_add_watch(fd, opt_scanpcapdir, IN_CLOSE_WRITE);
 		while(1 and terminating == 0) {
-			tmp = 0;
-			min = 0 - 1;
-			max = 0;
-			prevmax = 0;
-			dirp = opendir(opt_scanpcapdir);
-			while ((dp = readdir(dirp)) != NULL) {
-				if (!strcmp(dp->d_name, opt_scanpcapdir)) {
-					continue;
-				}
-				if (dp->d_name[0] == '.') {
-					continue;
-				}
-				//printf("File [%s]\n", dp->d_name);
-				tmp = atoi(dp->d_name);
-				if(tmp > max) {
-					prevmax = max;
-					max = tmp;
-				}
-				if(tmp < min){
-					min = tmp;
-				}
-			}
-			closedir(dirp);
-			int close = 1;
-			for(i = min; i < max; i++) {
-				if(terminating) {
-					break;
-				}
-				snprintf(filename, sizeof(filename), "%s/%u", opt_scanpcapdir, i);
-				if(!file_exists(filename)) continue;
-				// if reading file
-				//printf("Reading file: %s\n", filename);
-				mask = PCAP_NETMASK_UNKNOWN;
-				scanhandle = pcap_open_offline(filename, errbuf);
-				if(!handle) {
-					// keep the first handle as global handle and do not change it because it is not threadsafe to close/open it while the other parts are using it
-					handle = scanhandle;
-					close = 0;
-				} else {
-					close = 1;
-				}
-				if(scanhandle == NULL) {
-					syslog(LOG_ERR, "Couldn't open pcap file '%s': %s\n", filename, errbuf);
-					continue;
-				}
-				if(*user_filter != '\0') {
-					snprintf(filter_exp, sizeof(filter_exp), "%s", user_filter);
+			i = 0;
+			len = read(fd, buff, 1024);
+			while(i < len) {
+				event = (struct inotify_event *) &buff[i];
+				if (event->mask & IN_CLOSE_WRITE) { // this will prevent opening files which is still open for writes
+				    snprintf(filename, sizeof(filename), "%s/%s", opt_scanpcapdir, event->name);
+				    int close = 1;
+				    //printf("File [%s]\n", filename);
+				    if(!file_exists(filename)) continue;
+				    // if reading file
+				    //printf("Reading file: %s\n", filename);
+				    mask = PCAP_NETMASK_UNKNOWN;
+				    scanhandle = pcap_open_offline(filename, errbuf);
+				    if(!handle) {
+					    // keep the first handle as global handle and do not change it because it is not threadsafe to close/open it while the other parts are using it
+					    handle = scanhandle;
+					    close = 0;
+				    } else {
+					    close = 1;
+				    }
+				    if(scanhandle == NULL) {
+					    syslog(LOG_ERR, "Couldn't open pcap file '%s': %s\n", filename, errbuf);
+					    continue;
+				    }
+				    if(*user_filter != '\0') {
+					    snprintf(filter_exp, sizeof(filter_exp), "%s", user_filter);
 
-					// Compile and apply the filter
-					if (pcap_compile(scanhandle, &fp, filter_exp, 0, mask) == -1) {
-						syslog(LOG_ERR, "Couldn't parse filter %s: %s\n", filter_exp, pcap_geterr(scanhandle));
-						return(2);
-					}
-					if (pcap_setfilter(scanhandle, &fp) == -1) {
-						syslog(LOG_ERR, "Couldn't install filter %s: %s\n", filter_exp, pcap_geterr(scanhandle));
-						return(2);
-					}
+					    // Compile and apply the filter
+					    if (pcap_compile(scanhandle, &fp, filter_exp, 0, mask) == -1) {
+						    syslog(LOG_ERR, "Couldn't parse filter %s: %s\n", filter_exp, pcap_geterr(scanhandle));
+						    return(2);
+					    }
+					    if (pcap_setfilter(scanhandle, &fp) == -1) {
+						    syslog(LOG_ERR, "Couldn't install filter %s: %s\n", filter_exp, pcap_geterr(scanhandle));
+						    return(2);
+					    }
+				    }
+				    readdump_libpcap(scanhandle);
+				    unlink(filename);
+				    if(*user_filter != '\0') {
+					    pcap_freecode(&fp);
+				    }
+				    if(close) {
+					    pcap_close(scanhandle);
+				    }
 				}
-				readdump_libpcap(scanhandle);
-				unlink(filename);
-				if(*user_filter != '\0') {
-					pcap_freecode(&fp);
-				}
-				if(close) {
-					pcap_close(scanhandle);
-				}
+				i += sizeof(struct inotify_event) + event->len;
 			}
 			//readend = 1;
-			usleep(100000);
 		}
+		inotify_rm_watch(fd, wd);
 		if(handle) pcap_close(handle);
 	} else {
 		// start reading packets
