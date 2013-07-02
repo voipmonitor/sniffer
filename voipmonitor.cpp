@@ -204,6 +204,7 @@ char opt_silencedmtfseq[16] = "";
 char opt_keycheck[1024] = "";
 char opt_convert_char[64] = "";
 int opt_skinny = 0;
+int opt_read_from_file = 0;
 
 bool opt_cdr_partition = 1;
 vector<dstring> opt_custom_headers;
@@ -1530,6 +1531,7 @@ int main(int argc, char *argv[]) {
 				break;
 			case 'r':
 				strcpy(fname, optarg);
+				opt_read_from_file = 1;
 				//opt_cachedir[0] = '\0';
 				break;
 			case 'c':

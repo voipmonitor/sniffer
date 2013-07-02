@@ -1157,7 +1157,7 @@ unsigned int lengthIpaccBuffer() {
 }
 
 void initIpacc() {
-	if(get_customer_by_ip_sql_driver[0]) {
+	if(get_customer_by_ip_sql_driver[0] && get_customer_by_ip_odbc_dsn[0]) {
 		custIpCache = new CustIpCache();
 		custIpCache->setConnectParams(
 			get_customer_by_ip_sql_driver, 
@@ -1189,7 +1189,7 @@ void initIpacc() {
 		nextIpCache->connect();
 		nextIpCache->fetch();
 	}
-	if(get_customer_by_pn_sql_driver[0]) {
+	if(get_customer_by_pn_sql_driver[0] && get_customer_by_pn_odbc_dsn[0]) {
 		custPnCache = new CustPhoneNumberCache();
 		custPnCache->setConnectParams(
 			get_customer_by_pn_sql_driver, 

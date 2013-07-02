@@ -145,6 +145,7 @@ extern int opt_callslimit;
 extern int opt_skiprtpdata;
 extern char opt_silencedmtfseq[16];
 extern int opt_skinny;
+extern int opt_read_from_file;
 extern int opt_saverfc2833;
 extern vector<dstring> opt_custom_headers;
 extern livesnifferfilter_use_siptypes_s livesnifferfilterUseSipTypes;
@@ -154,6 +155,8 @@ extern sem_t readpacket_thread_semaphore;
 #endif
 
 static char * gettag(const void *ptr, unsigned long len, const char *tag, unsigned long *gettaglen, unsigned long *limitLen = NULL);
+static void logPacketSipMethodCall(int sip_method, int lastSIPresponseNum, pcap_pkthdr *header, Call *call, const char *descr = NULL);
+#define logPacketSipMethodCall_enable (opt_read_from_file && verbosity > 2)
 
 unsigned int numpackets = 0;
 
@@ -1346,7 +1349,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 	char callidstr[1024],str2[1024];
 	int sip_method = 0;
 	char lastSIPresponse[128];
-	int lastSIPresponseNum;
+	int lastSIPresponseNum = 0;
 	static struct pcap_stat ps;
 	static int pcapstatres = 0;
 	static int pcapstatresCount = 0;
@@ -1432,6 +1435,10 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 	// check if the packet is SKINNY
 	if(opt_skinny && (source == 2000 || dest == 2000)) {
 		handle_skinny(header, packet, saddr, source, daddr, dest, data, datalen);
+		if(logPacketSipMethodCall_enable) {
+			logPacketSipMethodCall(sip_method, lastSIPresponseNum, header, call, 
+				"packet is SKINNY");
+		}
 		return NULL;
 	}
 
@@ -1518,12 +1525,24 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 								if(call) {
 									save_packet(call, header, packet, saddr, source, daddr, dest, istcp, (char *)data, datalen, TYPE_SIP);
 								}
+								if(logPacketSipMethodCall_enable) {
+									logPacketSipMethodCall(sip_method, lastSIPresponseNum, header, call, 
+										"no Call-ID found in packet - packet do not belongs to preivious TCP session - the tcp packet has sequence number which confirms ACK");
+								}
 								return NULL;
 							} else {
 								// TCP packet does not have CAll-ID header and belongs to no existing stream
+								if(logPacketSipMethodCall_enable) {
+									logPacketSipMethodCall(sip_method, lastSIPresponseNum, header, call, 
+										"TCP packet does not have CAll-ID header and belongs to no existing stream");
+								}
 								return NULL;
 							}
 						} else {
+							if(logPacketSipMethodCall_enable) {
+								logPacketSipMethodCall(sip_method, lastSIPresponseNum, header, call, 
+									"no Call-ID found in packet - packet do not belongs to preivious TCP session - the tcp packet does not have sequence number which confirms ACK");
+							}
 							return NULL;
 						}
 					}
@@ -1532,6 +1551,10 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 					for(tmpstream = tcp_streams_hashed[hash]; tmpstream->next; tmpstream = tmpstream->next) {}; // set cursor to the latest item
 					if(tmpstream->next_seq != htonl(header_tcp->seq)) {
 						// the packet is out of order or duplicated - skip it. This means that voipmonitor is not able to reassemble reordered packets
+						if(logPacketSipMethodCall_enable) {
+							logPacketSipMethodCall(sip_method, lastSIPresponseNum, header, call, 
+								"no Call-ID found in packet - the packet is out of order or duplicated - skip it");
+						}
 						return NULL;
 					}
 
@@ -1605,11 +1628,23 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 						if(call) {
 							save_packet(call, header, packet, saddr, source, daddr, dest, istcp, (char *)data, datalen, TYPE_SIP);
 						}
+						if(logPacketSipMethodCall_enable) {
+							logPacketSipMethodCall(sip_method, lastSIPresponseNum, header, call, 
+								"no Call-ID found in packet - latest segment is not erminated by 0x0d or 0x0a");
+						}
 						return NULL;
+					}
+					if(logPacketSipMethodCall_enable) {
+						logPacketSipMethodCall(sip_method, lastSIPresponseNum, header, call, 
+							"no Call-ID found in packet");
 					}
 					return NULL;
 				} else {
 					// it is not TCP and callid not found
+					if(logPacketSipMethodCall_enable) {
+						logPacketSipMethodCall(sip_method, lastSIPresponseNum, header, call, 
+							"it is not TCP and callid not found");
+					}
 					return NULL;
 				}
 			}
@@ -1634,6 +1669,10 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 					// check if the stream contains the same Call-ID
 					if(memmem(tmpstream->call_id, strlen(tmpstream->call_id), s, l)) {
 						// callid is same - it must be duplicate or retransmission just ignore the packet 
+						if(logPacketSipMethodCall_enable) {
+							logPacketSipMethodCall(sip_method, lastSIPresponseNum, header, call, 
+								"callid is same - it must be duplicate or retransmission just ignore the packet ");
+						}
 						return NULL;
 					} else {
 						// callid is different - end the previous stream 
@@ -1705,6 +1744,10 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 				//copy packet
 				stream->packet = (u_char*)malloc(sizeof(u_char) * header->caplen);
 				memcpy(stream->packet, packet, header->caplen);
+				if(logPacketSipMethodCall_enable) {
+					logPacketSipMethodCall(sip_method, lastSIPresponseNum, header, call, 
+						"SIP message is not complete");
+				}
 				return NULL;
 			}
 		}
@@ -1836,6 +1879,10 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 						save_live_packet(NULL, header, packet, saddr, source, daddr, dest, istcp, data, datalen, OPTIONS);
 					}
 				}
+				if(logPacketSipMethodCall_enable) {
+					logPacketSipMethodCall(sip_method, lastSIPresponseNum, header, call, 
+						"SIP packet does not belong to any call and it is not INVITE");
+				}
 				return NULL;
 			}
 		// check if the SIP msg is part of earlier REGISTER
@@ -1858,6 +1905,10 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 					call->saveregister();
 					call = new_invite_register(sip_method, data, datalen, header, callidstr, saddr, daddr, source, call->call_id, strlen(call->call_id));
 					save_packet(call, header, packet, saddr, source, daddr, dest, istcp, data, datalen, TYPE_SIP);
+					if(logPacketSipMethodCall_enable) {
+						logPacketSipMethodCall(sip_method, lastSIPresponseNum, header, call, 
+							"to much register attempts without OK or 401 responses");
+					}
 					return call;
 				}
 				s = gettag(data, datalen, "\nCSeq:", &l, &gettagLimitLen);
@@ -1890,6 +1941,10 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 				}
 				save_packet(call, header, packet, saddr, source, daddr, dest, istcp, data, datalen, TYPE_SIP);
 				call->saveregister();
+				if(logPacketSipMethodCall_enable) {
+					logPacketSipMethodCall(sip_method, lastSIPresponseNum, header, call, 
+						"update expires header from all REGISTER dialog messages (from 200 OK which can override the expire)");
+				}
 				return NULL;
 			} else if(sip_method == RES401 or sip_method == RES403) {
 				call->reg401count++;
@@ -1899,6 +1954,10 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 					call->regstate = 2;
 					save_packet(call, header, packet, saddr, source, daddr, dest, istcp, data, datalen, TYPE_SIP);
 					call->saveregister();
+					if(logPacketSipMethodCall_enable) {
+						logPacketSipMethodCall(sip_method, lastSIPresponseNum, header, call, 
+							"REGISTER 401 count > 1");
+					}
 					return NULL;
 				}
 			}
@@ -1907,6 +1966,10 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 				call->regstate = 4;
 				save_packet(call, header, packet, saddr, source, daddr, dest, istcp, data, datalen, TYPE_SIP);
 				call->saveregister();
+				if(logPacketSipMethodCall_enable) {
+					logPacketSipMethodCall(sip_method, lastSIPresponseNum, header, call, 
+						"too many REGISTER messages within the same callid");
+				}
 				return NULL;
 			}
 		// packet is already part of call
@@ -2035,6 +2098,9 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 					data[datalen - 1] = a;
 				}
 			} else if(sip_method == BYE) {
+				
+				call->destroy_call_at = header->ts.tv_sec + 60;
+				
 				//check and save CSeq for later to compare with OK 
 				if(cseq && cseqlen < 32) {
 					memcpy(call->byecseq, cseq, cseqlen);
@@ -2077,6 +2143,9 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 */
 						// destroy call after 5 seonds from now 
 						call->destroy_call_at = header->ts.tv_sec + 5;
+						if(logPacketSipMethodCall_enable) {
+							logPacketSipMethodCall(sip_method, lastSIPresponseNum, header, call);
+						}
 						return call;
 					} else if(strncmp(cseq, call->invitecseq, cseqlen) == 0) {
 						call->seeninviteok = true;
@@ -2110,6 +2179,9 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 						call->hashRemove();
 						call->removeRTP();
 						call->ipport_n = 0;
+					}
+					if(logPacketSipMethodCall_enable) {
+						logPacketSipMethodCall(sip_method, lastSIPresponseNum, header, call);
 					}
 					return call;
 			}
@@ -2370,6 +2442,9 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 		if(!disabledsave) {
 			save_packet(call, header, packet, saddr, source, daddr, dest, istcp, data, datalen, TYPE_SIP);
 		}
+		if(logPacketSipMethodCall_enable) {
+			logPacketSipMethodCall(sip_method, lastSIPresponseNum, header, call);
+		}
 		return call;
 	} else if ((call = calltable->hashfind_by_ip_port(daddr, dest, &iscaller, &is_rtcp, &is_fax))){
 	//} else if ((call = calltable->mapfind_by_ip_port(daddr, dest, &iscaller, &is_rtcp))){
@@ -2402,6 +2477,9 @@ repeatrtpA:
 				call->read_rtcp((unsigned char*) data, datalen, header, saddr, source, iscaller);
 			}
 			save_packet(call, header, packet, saddr, source, daddr, dest, istcp, data, datalen, TYPE_RTP);
+			if(logPacketSipMethodCall_enable) {
+				logPacketSipMethodCall(sip_method, lastSIPresponseNum, header, call);
+			}
 			return call;
 		}
 
@@ -2414,7 +2492,12 @@ repeatrtpA:
 			}
 			add_to_rtp_thread_queue(call, (unsigned char*) data, datalen, header, saddr, daddr, source, iscaller, is_rtcp);
 			*was_rtp = 1;
-			if(is_rtcp) return call;
+			if(is_rtcp) {
+				if(logPacketSipMethodCall_enable) {
+					logPacketSipMethodCall(sip_method, lastSIPresponseNum, header, call);
+				}
+				return call;
+			}
 		} else {
 			call->read_rtp((unsigned char*) data, datalen, header, saddr, daddr, source, iscaller, &record);
 			call->set_last_packet_time(header->ts.tv_sec);
@@ -2470,6 +2553,9 @@ repeatrtpB:
 			if(!dontsave && (opt_saveRTP || opt_saveRTCP)) {
 				save_packet(call, header, packet, saddr, source, daddr, dest, istcp, data, datalen, TYPE_RTP);
 			}
+			if(logPacketSipMethodCall_enable) {
+				logPacketSipMethodCall(sip_method, lastSIPresponseNum, header, call);
+			}
 			return call;
 		}
 
@@ -2515,6 +2601,10 @@ repeatrtpB:
 			rtp.read((unsigned char*)data, datalen, header, saddr, daddr, 0);
 
 			if(rtp.getVersion() != 2 && rtp.getPayload() > 18) {
+				if(logPacketSipMethodCall_enable) {
+					logPacketSipMethodCall(sip_method, lastSIPresponseNum, header, call,
+						"decoding RTP without SIP signaling is enabled (rtp.getVersion() != 2 && rtp.getPayload() > 18)");
+				}
 				return NULL;
 			}
 			snprintf(s, 4092, "%u-%x", (unsigned int)time(NULL), rtp.getSSRC());
@@ -2578,9 +2668,17 @@ repeatrtpB:
 			strcpy(st2, inet_ntoa(in));
 			syslog(LOG_ERR, "Skipping udp packet %s:%d->%s:%d\n", st1, source, st2, dest);
 		}
+		if(logPacketSipMethodCall_enable) {
+			logPacketSipMethodCall(sip_method, lastSIPresponseNum, header, call,
+				"we are not interested in this packet");
+		}
 		return NULL;
 	}
 
+	if(logPacketSipMethodCall_enable) {
+		logPacketSipMethodCall(sip_method, lastSIPresponseNum, header, call,
+			"---");
+		}
 	return NULL;
 }
 
@@ -3411,4 +3509,70 @@ void readdump_libpcap(pcap_t *handle) {
 	if (prevmd5s) {
 		free(prevmd5s);
 	}
+}
+
+void logPacketSipMethodCall(int sip_method, int lastSIPresponseNum, pcap_pkthdr *header, Call *call, const char *descr) {
+	const char *sipMethodStr[] = {
+		"INVITE",	// 1
+		"BYE",		// 2
+		"CANCEL",	// 3
+		"RES2XX",	// 4
+		"RES3XX",	// 5
+		"RES401",	// 6
+		"RES403",	// 7
+		"RES4XX",	// 8
+		"RES5XX",	// 9
+		"RES6XX",	// 10
+		"RES18X",	// 11
+		"REGISTER",	// 12
+		"MESSAGE",	// 13
+		"INFO",		// 14
+		"SUBSCRIBE",	// 15
+		"OPTIONS"	// 16
+	};
+
+	cout << "--- ";
+	// ts
+	cout.width(10);
+	cout << sqlDateTimeString(header->ts.tv_sec) << " "
+	     << header->ts.tv_sec << ".";
+	cout.width(6);
+	cout << header->ts.tv_usec << "  ";
+	// sip metod
+	cout.width(10);
+	if(sip_method > 0 && (unsigned)sip_method <= sizeof(sipMethodStr)/sizeof(sipMethodStr[0]))
+		cout << sipMethodStr[sip_method - 1];
+	else
+		cout << sip_method;
+	cout << "  ";
+	// calldate
+	cout.width(19);
+	cout << (call ? sqlDateTimeString(call->calltime()) : "") << "  ";
+	// duration
+	cout.width(5);
+	if(call)
+		cout << call->duration() << "s";
+	else
+		cout << "" << " ";
+	cout << "  ";
+	// caller
+	cout.width(15);
+	cout << (call ? call->caller : "") << "  ";
+	// called
+	cout.width(15);
+	cout << (call ? call->called : "") << "  ";
+	// lastSIPresponseNum
+	cout.width(3);
+	cout << lastSIPresponseNum << "  ";
+	// fbasename
+	cout.width(40);
+	cout << (call ? call->fbasename : "") << "  ";
+	// seenbye
+	cout << (call && call->seenbye ? "seenbye  " : "         ") << "  ";
+	// destroy_call_at
+	cout.width(19);
+	cout << (call && call->destroy_call_at ? sqlDateTimeString(call->destroy_call_at): "") << "  ";
+	// descr
+	if(descr) cout << descr;
+	cout << endl;
 }
