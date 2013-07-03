@@ -2004,7 +2004,11 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 
 			// we have packet, extend pending destroy requests
 			if(call->destroy_call_at > 0) {
-				call->destroy_call_at += 5; 
+				if(call->seenbye) {
+					call->destroy_call_at = header->ts.tv_sec + 60;
+				} else {
+					call->destroy_call_at = header->ts.tv_sec + 5; 
+				}
 			}
 
 			call->set_last_packet_time(header->ts.tv_sec);
@@ -2016,7 +2020,9 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 
 			// check if it is BYE or OK(RES2XX)
 			if(sip_method == INVITE) {
-				call->destroy_call_at = 0;
+				if(!call->seenbye) {
+					call->destroy_call_at = 0;
+				}
 				//update called number for each invite due to overlap-dialling
 				if (opt_sipoverlap && saddr == call->sipcallerip) {
 					int res = get_sip_peername(data,datalen,"\nTo:", call->called, sizeof(call->called));
@@ -2255,7 +2261,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 		
 		// we have packet, extend pending destroy requests
 		if(call->destroy_call_at > 0) {
-			call->destroy_call_at += 5; 
+			call->destroy_call_at = header->ts.tv_sec + 5; 
 		}
 
 		// SDP examination
@@ -2457,7 +2463,7 @@ repeatrtpA:
 
 		// we have packet, extend pending destroy requests
 		if(call->destroy_call_at > 0) {
-			call->destroy_call_at += 5; 
+			call->destroy_call_at = header->ts.tv_sec + 5; 
 		}
 
 		if(header->caplen > MAXPACKETLENQRING) {
@@ -2531,7 +2537,7 @@ repeatrtpB:
 
 		// we have packet, extend pending destroy requests
 		if(call->destroy_call_at > 0) {
-			call->destroy_call_at += 5; 
+			call->destroy_call_at = header->ts.tv_sec + 5; 
 		}
 
 		if(header->caplen > MAXPACKETLENQRING) {
