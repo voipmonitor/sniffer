@@ -1532,6 +1532,7 @@ int main(int argc, char *argv[]) {
 			case 'r':
 				strcpy(fname, optarg);
 				opt_read_from_file = 1;
+				opt_scanpcapdir[0] = '\0';
 				//opt_cachedir[0] = '\0';
 				break;
 			case 'c':
@@ -2080,7 +2081,10 @@ int main(int argc, char *argv[]) {
 				    snprintf(filename, sizeof(filename), "%s/%s", opt_scanpcapdir, event->name);
 				    int close = 1;
 				    //printf("File [%s]\n", filename);
-				    if(!file_exists(filename)) continue;
+				    if(!file_exists(filename)) { 
+				        i += sizeof(struct inotify_event) + event->len;
+					continue;
+				    }
 				    // if reading file
 				    //printf("Reading file: %s\n", filename);
 				    mask = PCAP_NETMASK_UNKNOWN;
@@ -2094,6 +2098,7 @@ int main(int argc, char *argv[]) {
 				    }
 				    if(scanhandle == NULL) {
 					    syslog(LOG_ERR, "Couldn't open pcap file '%s': %s\n", filename, errbuf);
+					    i += sizeof(struct inotify_event) + event->len;
 					    continue;
 				    }
 				    if(*user_filter != '\0') {
@@ -2102,10 +2107,12 @@ int main(int argc, char *argv[]) {
 					    // Compile and apply the filter
 					    if (pcap_compile(scanhandle, &fp, filter_exp, 0, mask) == -1) {
 						    syslog(LOG_ERR, "Couldn't parse filter %s: %s\n", filter_exp, pcap_geterr(scanhandle));
+						    inotify_rm_watch(fd, wd);
 						    return(2);
 					    }
 					    if (pcap_setfilter(scanhandle, &fp) == -1) {
 						    syslog(LOG_ERR, "Couldn't install filter %s: %s\n", filter_exp, pcap_geterr(scanhandle));
+						    inotify_rm_watch(fd, wd);
 						    return(2);
 					    }
 				    }
@@ -2134,6 +2141,7 @@ int main(int argc, char *argv[]) {
 		} else {
 			readdump_libpcap(handle);
 		}
+		unlink(fname);
 	}
 
 	readend = 1;
