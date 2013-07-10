@@ -838,7 +838,6 @@ int load_config(char *fname) {
 			break;
 		case 'h':
 		case 'H':
-			opt_saveRTP = 1;
 			opt_onlyRTPheader = 1;
 			break;
 		}

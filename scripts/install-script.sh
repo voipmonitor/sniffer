@@ -1,12 +1,12 @@
 #!/bin/bash
 
-echo "Copying usr/local/sbin/voipmonitor to /usr/local/sbin/voipmonitor"
+echo "Installing voipmonitor binary to /usr/local/sbin/voipmonitor"
 cp usr/local/sbin/voipmonitor /usr/local/sbin/voipmonitor
 
-echo "Copying etc/voipmonitor.conf to /etc/voipmonitor.conf. Edit this file to your needs"
+echo "Installing etc/voipmonitor.conf to /etc/voipmonitor.conf. Edit this file to your needs"
 cp etc/voipmonitor.conf /etc/
 
-echo "Copying etc/init.d/voipmonitor starting script to /etc/init.d/voipmonitor. Start voipmonitor by /etc/init.d/voipmonitor starts"
+echo "Installing etc/init.d/voipmonitor starting script to /etc/init.d/voipmonitor. Start voipmonitor by /etc/init.d/voipmonitor start"
 cp etc/init.d/voipmonitor /etc/init.d/
 
 echo "Creating /var/spool/voipmonitor"
@@ -16,7 +16,9 @@ update-rc.d voipmonitor defaults &>/dev/null
 chkconfig --add voipmonitor &>/dev/null
 chkconfig voipmonitor on &>/dev/null
 
+echo;
 echo "Create database voipmonitor with this command: mysqladmin create voipmonitor";
-echo "Populate database with this command: cat cdrtable.sql | mysql voipmonitor";
+echo "Edit /etc/voipmonitor.conf";
+echo "Run voipmonitor /etc/init.d/voipmonitor start";
 echo;
 

@@ -56,6 +56,7 @@ using namespace std;
 extern int verbosity;
 extern int opt_sip_register;
 extern int opt_saveRTP;
+extern int opt_onlyRTPheader;
 extern int opt_saveSIP;
 extern int opt_rtcp;
 extern int opt_saveRAW;                // save RTP payload RAW data?
@@ -2485,6 +2486,10 @@ Calltable::add(char *call_id, unsigned long call_id_len, time_t time, u_int32_t 
 
 	if(opt_saveRTP) 
 		newcall->flags |= FLAG_SAVERTP;
+
+	if(opt_onlyRTPheader)  {
+		newcall->flags |= FLAG_SAVERTPHEADER;
+	}
 
 	if(opt_saveWAV) 
 		newcall->flags |= FLAG_SAVEWAV;
