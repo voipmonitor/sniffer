@@ -102,6 +102,7 @@ IPfilter::add_call_flags(unsigned int *flags, unsigned int saddr, unsigned int d
 			}
 			if(node->flags & FLAG_NORTP) {
 				*flags &= ~FLAG_SAVERTP;
+				*flags &= ~FLAG_SAVERTPHEADER;
 			}
 			if(node->flags & FLAG_SIP) {
 				*flags |= FLAG_SAVESIP;
@@ -298,6 +299,7 @@ TELNUMfilter::add_call_flags(unsigned int *flags, char *telnum_src, char *telnum
 		}
 		if(lastpayload->flags & FLAG_NORTP) {
 			*flags &= ~FLAG_SAVERTP;
+			*flags &= ~FLAG_SAVERTPHEADER;
 		}
 		if(lastpayload->flags & FLAG_SIP) {
 			*flags |= FLAG_SAVESIP;
