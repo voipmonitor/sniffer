@@ -356,6 +356,7 @@ bool SqlDb_mysql::connect() {
 					opt_mysql_port, NULL, 0);
 		if(this->hMysqlConn) {
 			this->query("SET NAMES UTF8");
+			this->query("SET GLOBAL event_scheduler = 1");
 			this->query("SET sql_mode = ''");
 			this->query("SHOW VARIABLES LIKE \"version\"");
 			SqlDb_row row;
