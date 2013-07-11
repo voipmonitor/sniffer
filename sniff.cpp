@@ -2508,7 +2508,7 @@ repeatrtpA:
 			call->read_rtp((unsigned char*) data, datalen, header, saddr, daddr, source, iscaller, &record);
 			call->set_last_packet_time(header->ts.tv_sec);
 		}
-		if(!dontsave && ((call->flags & FLAG_SAVERTP) || (call->isfax && opt_saveudptl) || record)) {
+		if(!dontsave && ((call->flags & FLAG_SAVERTPHEADER) || (call->flags & FLAG_SAVERTP) || (call->isfax && opt_saveudptl) || record)) {
 			if((call->silencerecording || (opt_onlyRTPheader && !(call->flags & FLAG_SAVERTP))) && !call->isfax) {
 				tmp_u32 = header->caplen;
 				header->caplen = header->caplen - (datalen - RTP_FIXED_HEADERLEN);

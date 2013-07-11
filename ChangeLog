@@ -1,3 +1,13 @@
+7.1.3
+=====
+
+Enable mysql scheduler on mysql connect "SET GLOBAL event_scheduler = 1" which is needed to create partitions for cdr table. 
+
+7.1.2
+=====
+
+- fix savertp = header which should store only RTP headers and not full payload. Fix override in capture rules in filter_ip sql table (and capture rules in GUI) if RTP is turned off it will not store RTP even with savertp = header. If RTP is enabled it will store full RTP packets including audio even savertp = header. 
+
 7.1.1
 =====
 
