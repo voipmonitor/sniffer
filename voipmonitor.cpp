@@ -501,7 +501,19 @@ void *moving_cache( void *dummy ) {
 /* cycle calls_queue and save it to MySQL */
 void *storing_cdr( void *dummy ) {
 	Call *call;
+	time_t createPartitionAt = 0;
 	while(1) {
+		if(opt_cdr_partition) {
+			time_t actTime = time(NULL);
+			if(actTime - createPartitionAt > 3600) {
+				sqlDb->query(
+					string("call ") + mysql_database + ".create_partitions_cdr('" + mysql_database + "', 0);");
+				sqlDb->query(
+					string("call ") + mysql_database + ".create_partitions_cdr('" + mysql_database + "', 1);");
+				createPartitionAt = actTime;
+			}
+		}
+		
 		if(request_iptelnum_reload == 1) { reload_capture_rules(); request_iptelnum_reload = 0;};
 #ifdef ISCURL
 		string cdrtosend;
