@@ -193,6 +193,8 @@ liblfds.6/test/test.vcproj -text
 /mos_g729.h -text
 /odbc.cpp -text
 /odbc.h -text
+/pcap_queue.cpp -text
+/pcap_queue.h -text
 /rtcp.cpp -text
 /rtcp.h -text
 /rtp.cpp -text

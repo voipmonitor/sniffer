@@ -31,6 +31,7 @@
 #include <dirent.h>
 #include <signal.h>
 #include <execinfo.h>
+#include <sstream>
 
 #ifdef ISCURL
 #include <curl/curl.h>
@@ -53,6 +54,7 @@
 #include "tools.h"
 #include "mirrorip.h"
 #include "ipaccount.h"
+#include "pcap_queue.h"
 
 #if defined(QUEUE_MUTEX) || defined(QUEUE_NONBLOCK)
 extern "C" {
@@ -205,6 +207,21 @@ char opt_keycheck[1024] = "";
 char opt_convert_char[64] = "";
 int opt_skinny = 0;
 int opt_read_from_file = 0;
+
+extern int opt_pcap_queue;
+extern u_int opt_pcap_queue_block_max_time_ms;
+extern size_t opt_pcap_queue_block_max_size;
+extern u_int opt_pcap_queue_file_store_max_time_ms;
+extern size_t opt_pcap_queue_file_store_max_size;
+extern size_t opt_pcap_queue_store_queue_max_memory_size;
+extern size_t opt_pcap_queue_store_queue_max_disk_size;
+extern size_t opt_pcap_queue_bypass_max_size;
+extern bool opt_pcap_queue_compress;
+extern string opt_pcap_queue_disk_folder;
+extern string opt_pcap_queue_send_to_ip;
+extern int opt_pcap_queue_send_to_port;
+extern string opt_pcap_queue_receive_from_ip;
+extern int opt_pcap_queue_receive_from_port;
 
 bool opt_cdr_partition = 1;
 vector<dstring> opt_custom_headers;
@@ -489,9 +506,19 @@ void *storing_cdr( void *dummy ) {
 #ifdef ISCURL
 		string cdrtosend;
 #endif
-		if(verbosity > 0) { 
-			syslog(LOG_ERR, "calls[%d] ipacc_buffer[%u] qring[%d (w%d,r%d)]\n", 
-			       calls, lengthIpaccBuffer(), writeit >= readit ? writeit - readit : writeit + qringmax - readit, writeit, readit);
+		if(verbosity > 0 && !opt_pcap_queue) { 
+			ostringstream outStr;
+			outStr << "calls[" << calls << "]";
+			if(opt_ipaccount) {
+				outStr << " ipacc_buffer[" << lengthIpaccBuffer() << "]";
+			}
+			#ifndef QUEUE_NONBLOCK2
+			if(!opt_pcap_queue) {
+				outStr << " qring[" << writeit >= readit ? writeit - readit : writeit + qringmax - readit
+				       << " (w" << writeit << ",r" << readit << ")]";
+			}
+			#endif
+			syslog(LOG_NOTICE, outStr.str().c_str());
 		}
 		while (1) {
 
@@ -1180,6 +1207,70 @@ int load_config(char *fname) {
 	if((value = ini.GetValue("general", "openfile_max", NULL))) {
                 opt_openfile_max = atoi(value);
         }
+
+	if((value = ini.GetValue("general", "packetbuffer_enable", NULL))) {
+		opt_pcap_queue = yesno(value);
+	}
+	if((value = ini.GetValue("general", "packetbuffer_block_maxsize", NULL))) {
+		opt_pcap_queue_block_max_size = atol(value) * 1024;
+	}
+	if((value = ini.GetValue("general", "packetbuffer_block_maxtime", NULL))) {
+		opt_pcap_queue_block_max_time_ms = atoi(value);
+	}
+	if((value = ini.GetValue("general", "packetbuffer_total_maxheap", NULL))) {
+		opt_pcap_queue_store_queue_max_memory_size = atol(value) * 1024 *1024;
+	}
+	if((value = ini.GetValue("general", "packetbuffer_thread_maxheap", NULL))) {
+		opt_pcap_queue_bypass_max_size = atol(value) * 1024 *1024;
+	}
+	if((value = ini.GetValue("general", "packetbuffer_file_totalmaxsize", NULL))) {
+		opt_pcap_queue_store_queue_max_disk_size = atol(value) * 1024 *1024;
+	}
+	if((value = ini.GetValue("general", "packetbuffer_file_path", NULL))) {
+		opt_pcap_queue_disk_folder = value;
+	}
+	if((value = ini.GetValue("general", "packetbuffer_file_maxfilesize", NULL))) {
+		opt_pcap_queue_file_store_max_size = atol(value) * 1024 *1024;
+	}
+	if((value = ini.GetValue("general", "packetbuffer_file_maxtime", NULL))) {
+		opt_pcap_queue_file_store_max_time_ms = atoi(value);
+	}
+	if((value = ini.GetValue("general", "packetbuffer_compress", NULL))) {
+		opt_pcap_queue_compress = yesno(value);
+	}
+	if((value = ini.GetValue("general", "mirror_destination_ip", NULL))) {
+		opt_pcap_queue_send_to_ip = value;
+	}
+	if((value = ini.GetValue("general", "mirror_destination_port", NULL))) {
+		opt_pcap_queue_send_to_port = atoi(value);
+	}
+	if((value = ini.GetValue("general", "mirror_source_ip", NULL))) {
+		opt_pcap_queue_receive_from_ip = value;
+	}
+	if((value = ini.GetValue("general", "mirror_source_port", NULL))) {
+		opt_pcap_queue_receive_from_port = atoi(value);
+	}
+
+	/*
+	
+	packetbuffer default configuration
+	
+	packetbuffer_enable		= no
+	packetbuffer_block_maxsize	= 500	#kB
+	packetbuffer_block_maxtime	= 500	#ms
+	packetbuffer_total_maxheap	= 500	#MB
+	packetbuffer_thread_maxheap	= 500	#MB
+	packetbuffer_file_totalmaxsize	= 20000	#MB
+	packetbuffer_file_path		= /var/spool/voipmonitor/packetbuffer
+	packetbuffer_file_maxfilesize	= 1000	#MB
+	packetbuffer_file_maxtime	= 5000	#ms
+	packetbuffer_compress		= yes
+	#mirror_destination_ip		=
+	#mirror_destination_port	=
+	#mirror_source_ip		=
+	#mirror_source_port		=
+	*/
+
 	return 0;
 }
 
@@ -1422,7 +1513,7 @@ int main(int argc, char *argv[]) {
 	/* command line arguments overrides configuration in voipmonitor.conf file */
 	while(1) {
 		int c;
-		c = getopt_long(argc, argv, "C:f:i:r:d:v:O:h:b:t:u:p:P:s:T:D:e:E:m:LkncUSRoAWGXNIKy4Mx", long_options, &option_index);
+		c = getopt_long(argc, argv, "C:f:i:r:d:v:O:h:b:t:u:p:P:s:T:D:e:E:m:X:LkncUSRoAWGNIKy4Mx", long_options, &option_index);
 		//"i:r:d:v:h:b:u:p:fnU", NULL, NULL);
 		if (c == -1)
 			break;
@@ -1603,7 +1694,10 @@ int main(int argc, char *argv[]) {
 				}
 				break;
 			case 'X':
-				opt_test = 1;
+				opt_test = atoi(optarg);
+				if(!opt_test) {
+					opt_test = 1;
+				}
 				break;
 		}
 	}
@@ -2012,7 +2106,10 @@ int main(int argc, char *argv[]) {
 	};
 
 	// start reading threads
-	if(rtp_threaded) {
+	if(rtp_threaded &&
+	   !(opt_pcap_threaded && opt_pcap_queue && 
+	     !opt_pcap_queue_receive_from_ip.length() &&
+	     opt_pcap_queue_send_to_ip.length())) {
 		threads = (read_thread*)malloc(sizeof(read_thread) * num_threads);
 		for(int i = 0; i < num_threads; i++) {
 #ifdef QUEUE_MUTEX
@@ -2050,11 +2147,15 @@ int main(int argc, char *argv[]) {
 #endif
 
 #ifdef QUEUE_NONBLOCK2
-		qring = (pcap_packet*)malloc((size_t)((unsigned int)sizeof(pcap_packet) * (qringmax + 1)));
-		for(unsigned int i = 0; i < qringmax + 1; i++) {
-			qring[i].free = 1;
+		if(!opt_pcap_queue) {
+			qring = (pcap_packet*)malloc((size_t)((unsigned int)sizeof(pcap_packet) * (qringmax + 1)));
+			for(unsigned int i = 0; i < qringmax + 1; i++) {
+				qring[i].free = 1;
+			}
+			pthread_create(&pcap_read_thread, NULL, pcap_read_thread_func, NULL);
 		}
-		pthread_create(&pcap_read_thread, NULL, pcap_read_thread_func, NULL);
+#else
+		opt_pcap_queue = 0;
 #endif 
 	}
 
@@ -2135,8 +2236,60 @@ int main(int argc, char *argv[]) {
 		//readdump_libnids(handle);
 
 		if(opt_pcap_threaded) {
-			pthread_create(&readdump_libpcap_thread, NULL, readdump_libpcap_thread_fce, handle);
-			pthread_join(readdump_libpcap_thread, NULL);
+			if(opt_pcap_queue) {
+				
+				if(opt_pcap_queue_receive_from_ip.length()) {
+					
+					PcapQueue_readFromFifo *pcapQueueR = new PcapQueue_readFromFifo("receive", opt_pcap_queue_disk_folder.c_str());
+					pcapQueueR->setEnableAutoTerminate(false);
+					pcapQueueR->setPacketServer(opt_pcap_queue_receive_from_ip.c_str(), opt_pcap_queue_receive_from_port, PcapQueue_readFromFifo::directionRead);
+					
+					pcapQueueR->start();
+					
+					while(!terminating) {
+						pcapQueueR->pcapStat();
+						sleep(1);
+					}
+					
+					pcapQueueR->terminate();
+					sleep(1);
+					
+					delete pcapQueueR;
+					
+				} else {
+				
+					PcapQueue_readFromInterface *pcapQueueI = new PcapQueue_readFromInterface("interface");
+					pcapQueueI->setInterfaceName(ifname);
+					pcapQueueI->setEnableAutoTerminate(false);
+					
+					PcapQueue_readFromFifo *pcapQueueQ = new PcapQueue_readFromFifo("queue", opt_pcap_queue_disk_folder.c_str());
+					pcapQueueQ->setInstancePcapHandle(pcapQueueI);
+					pcapQueueQ->setEnableAutoTerminate(false);
+					if(opt_pcap_queue_send_to_ip.length()) {
+						pcapQueueQ->setPacketServer(opt_pcap_queue_send_to_ip.c_str(), opt_pcap_queue_send_to_port, PcapQueue_readFromFifo::directionWrite);
+					}
+					
+					pcapQueueI->start();
+					pcapQueueQ->start();
+					
+					while(!terminating) {
+						pcapQueueQ->pcapStat();
+						sleep(1);
+					}
+					
+					pcapQueueI->terminate();
+					sleep(1);
+					pcapQueueQ->terminate();
+					sleep(1);
+					
+					delete pcapQueueI;
+					delete pcapQueueQ;
+				}
+				
+			} else {
+				pthread_create(&readdump_libpcap_thread, NULL, readdump_libpcap_thread_fce, handle);
+				pthread_join(readdump_libpcap_thread, NULL);
+			}
 		} else {
 			readdump_libpcap(handle);
 		}
@@ -2162,13 +2315,16 @@ int main(int argc, char *argv[]) {
 	}
 
 #ifdef QUEUE_NONBLOCK2
-	if(opt_pcap_threaded) {
+	if(opt_pcap_threaded && !opt_pcap_queue) {
 		pthread_join(pcap_read_thread, NULL);
 	}
 #endif
 
 	// wait for RTP threads
-	if(rtp_threaded) {
+	if(rtp_threaded &&
+	   !(opt_pcap_threaded && opt_pcap_queue && 
+	     !opt_pcap_queue_receive_from_ip.length() &&
+	     opt_pcap_queue_send_to_ip.length())) {
 		for(int i = 0; i < num_threads; i++) {
 			pthread_join((threads[i].thread), NULL);
 		}
@@ -2236,9 +2392,118 @@ void *readdump_libpcap_thread_fce(void *handle) {
 
 void test() {
 	
+	/*
+	int pipeFh[2];
+	pipe(pipeFh);
+	cout << pipeFh[0] << " / " << pipeFh[1] << endl;
+	
+	cout << "write" << endl;
+	cout << "writed " << write(pipeFh[1], "1234" , 4) << endl;
+	
+	cout << "read" << endl;
+	char buff[10];
+	memset(buff, 0, 10);
+	cout << "readed " << read(pipeFh[0], buff , 4) << endl;
+	cout << buff;
+	
+	return;
+	*/
+	
+	/*
+	char filePathName[100];
+	sprintf(filePathName, "/__test/store_%010u", 1);
+	cout << filePathName << endl;
+	remove(filePathName);
+	int fileHandleWrite = open(filePathName, O_WRONLY | O_CREAT, 0666);
+	cout << "write handle: " << fileHandleWrite << endl;
+	//write(fileHandleWrite, "1234", 4);
+	//close(fileHandleWrite);
+	
+	int fileHandleRead = open(filePathName, O_RDONLY);
+	cout << "read handle: " << fileHandleRead << endl;
+	cout << errno << endl;
+	return;
+	*/
+	
+	//int pipeFh[2];
+	//pipe(pipeFh);
+	
+	int port = 9001;
+	
+	PcapQueue_readFromInterface *pcapQueue0;
+	PcapQueue_readFromFifo *pcapQueue1;
+	PcapQueue_readFromFifo *pcapQueue2;
+	
+	if(opt_test == 1 || opt_test == 3) {
+		pcapQueue0 = new PcapQueue_readFromInterface("thread0");
+		pcapQueue0->setInterfaceName(ifname);
+		//pcapQueue0->setFifoFileForWrite("/tmp/vm_fifo0");
+		//pcapQueue0->setFifoWriteHandle(pipeFh[1]);
+		pcapQueue0->setEnableAutoTerminate(false);
+		
+		pcapQueue1 = new PcapQueue_readFromFifo("thread1", "/__test");
+		//pcapQueue1->setFifoFileForRead("/tmp/vm_fifo0");
+		pcapQueue1->setInstancePcapHandle(pcapQueue0);
+		//pcapQueue1->setFifoReadHandle(pipeFh[0]);
+		pcapQueue1->setEnableAutoTerminate(false);
+		pcapQueue1->setPacketServer("127.0.0.1", port, PcapQueue_readFromFifo::directionWrite);
+		
+		pcapQueue0->start();
+		pcapQueue1->start();
+	}
+	if(opt_test == 2 || opt_test == 3) {
+		pcapQueue2 = new PcapQueue_readFromFifo("server", "/__test/2");
+		pcapQueue2->setEnableAutoTerminate(false);
+		pcapQueue2->setPacketServer("127.0.0.1", port, PcapQueue_readFromFifo::directionRead);
+		
+		pcapQueue2->start();
+	}
+	
+	while(!terminating) {
+		if(opt_test == 1 || opt_test == 3) {
+			pcapQueue1->pcapStat();
+		}
+		if(opt_test == 2 || opt_test == 3) {
+			pcapQueue2->pcapStat();
+		}
+		sleep(1);
+	}
+	
+	if(opt_test == 1 || opt_test == 3) {
+		pcapQueue0->terminate();
+		sleep(1);
+		pcapQueue1->terminate();
+		sleep(1);
+		
+		delete pcapQueue0;
+		delete pcapQueue1;
+	}
+	if(opt_test == 2 || opt_test == 3) {
+		pcapQueue2->terminate();
+		sleep(1);
+		
+		delete pcapQueue2;
+	}
+	return;
+	
+	/*
+	sqlDb->disconnect();
+	sqlDb->connect();
+	
+	sqlDb->query("select * from cdr order by ID DESC limit 2");
+	SqlDb_row row1;
+	while((row1 = sqlDb->fetchRow())) {
+		cout << row1["ID"] << " : " << row1["calldate"] << endl;
+	}
+	
+	return;
+	*/
+
+	/*
 	cout << "db major version: " << sqlDb->getDbMajorVersion() << endl
 	     << "db minor version: " << sqlDb->getDbMinorVersion() << endl
 	     << "db minor version: " << sqlDb->getDbMinorVersion(1) << endl;
+	*/
 	
 	/*
 	initIpacc();
