@@ -14,6 +14,7 @@
 
 #include <snappy-c.h>
 
+#include "pcap_queue_block.h"
 #include "pcap_queue.h"
 #include "hash.h"
 #include "mirrorip.h"
@@ -50,15 +51,15 @@
 #define MAX_TCPSTREAMS 1024
 #define FILE_BUFFER_SIZE 1000000
 
-//#define TEST_PCAP_FILE "/home/jumbox/Plocha/021840f444c9ff845bbf5d3a186767b7@192.168.9.180.pcap"
-//#define TEST_PCAP_FILE "/home/jumbox/Plocha/test2.pcap"
+#define TEST_PCAP_FILE "/__RAID/Public/test2.pcap"
 
 
 using namespace std;
 
 extern int handle_defrag(iphdr2 *header_ip, struct pcap_pkthdr **header, u_char **packet, int destroy);
 extern Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int dest, char *data, int datalen,
-			    pcap_t *handle, pcap_pkthdr *header, const u_char *packet, int istcp, int dontsave, int can_thread, int *was_rtp, struct iphdr2 *header_ip, int *voippacket, int disabledsave);
+			    pcap_t *handle, pcap_pkthdr *header, const u_char *packet, int istcp, int dontsave, int can_thread, int *was_rtp, struct iphdr2 *header_ip, int *voippacket, int disabledsave,
+			    pcap_block_store *block_store, int block_store_index);
 
 extern int verbosity;
 extern int terminating;
@@ -159,15 +160,6 @@ bool pcap_block_store::add(pcap_pkthdr *header, u_char *packet, int offset) {
 
 bool pcap_block_store::add(pcap_pkthdr_plus *header, u_char *packet) {
 	return(this->add((pcap_pkthdr*)header, packet, header->offset));
-}
-
-pcap_block_store::pcap_pkthdr_pcap pcap_block_store::operator [] (size_t indexItem) {
-	pcap_pkthdr_pcap headerPcap;
-	if(indexItem < this->count) {
-		headerPcap.header = (pcap_pkthdr_plus*)(this->block + this->offsets[indexItem]);
-		headerPcap.packet = (u_char*)(this->block + this->offsets[indexItem] + sizeof(pcap_pkthdr_plus));
-	}
-	return(headerPcap);
 }
 
 void pcap_block_store::destroy() {
@@ -1177,7 +1169,7 @@ bool PcapQueue_readFromInterface::openFifoForWrite() {
 bool PcapQueue_readFromInterface::startCapture() {
 	char errbuf[PCAP_ERRBUF_SIZE];
 	#ifdef TEST_PCAP_FILE
-		this->pcapHandle = pcap_open_offline("/home/jumbox/Plocha/021840f444c9ff845bbf5d3a186767b7@192.168.9.180.pcap", errbuf);
+		this->pcapHandle = pcap_open_offline(TEST_PCAP_FILE, errbuf);
 		this->pcapLinklayerHeaderType = DLT_EN10MB;
 	#else
 	if(VERBOSE) {
@@ -1466,6 +1458,7 @@ PcapQueue_readFromFifo::PcapQueue_readFromFifo(const char *nameQueue, const char
 	 this->socketHostEnt = NULL;
 	 this->socketHandle = 0;
 	 this->socketClient = 0;
+	 this->cleanupBlockStoreTrash_counter = 0;
 	 this->setEnableWriteThread();
 }
 
@@ -1476,6 +1469,7 @@ PcapQueue_readFromFifo::~PcapQueue_readFromFifo() {
 	if(this->socketHandle) {
 		this->socketClose();
 	}
+	this->cleanupBlockStoreTrash();
 }
 
 void PcapQueue_readFromFifo::setPacketServer(const char *packetServer, int packetServerPort, ePacketServerDirection direction) {
@@ -1553,19 +1547,6 @@ void *PcapQueue_readFromFifo::threadFunction(void *) {
 								sumPacketsSizeCompress[0] += blockStore->size_compress;
 								++sumBlocksCounterIn[0];
 								blockStore = new pcap_block_store;
-								/*
-								blockStore.uncompress();
-								for(size_t i = 0; i < blockStore.count; i++) {
-									++sumPacketsCounterOut[0];
-									cout << "test packet " << blockStore[i].packet << endl;
-									if(sumPacketsCounterOut[0] != (u_long)atol((char*)blockStore[i].packet)) {
-										cout << endl << endl << "ERROR: BAD PACKET ORDER" << endl << endl;
-										sleep(1);
-										//exit(1);
-										sumPacketsCounterOut[0] = (u_long)atol((char*)blockStore[i].packet);
-									}
-								}
-								*/
 							} else {
 								offsetBuffer = bufferLen;
 							}
@@ -1679,11 +1660,14 @@ void *PcapQueue_readFromFifo::writeThreadFunction(void *) {
 							sumPacketsCounterOut[0] = (u_long)atol((char*)(*blockStore)[i].packet);
 						}
 					} else {
-						this->processPacket((*blockStore)[i].header, (*blockStore)[i].packet);
+						this->processPacket((*blockStore)[i].header, (*blockStore)[i].packet, blockStore, i);
 					}
 				}
 			}
-			delete blockStore;
+			this->blockStoreTrash.push_back(blockStore);
+			if(!(++this->cleanupBlockStoreTrash_counter % 10)) {
+				this->cleanupBlockStoreTrash();
+			}
 		} else {
 			usleep(1000);
 		}
@@ -1872,7 +1856,8 @@ bool PcapQueue_readFromFifo::socketRead(u_char *data, size_t *dataLen) {
 	return(true);
 }
 
-void PcapQueue_readFromFifo::processPacket(pcap_pkthdr_plus *header, u_char *packet) {
+void PcapQueue_readFromFifo::processPacket(pcap_pkthdr_plus *header, u_char *packet,
+					   pcap_block_store *block_store, int block_store_index) {
 	iphdr2 *header_ip;
 	tcphdr *header_tcp;
 	udphdr2 *header_udp;
@@ -1936,13 +1921,24 @@ void PcapQueue_readFromFifo::processPacket(pcap_pkthdr_plus *header, u_char *pac
 	}
 	int voippacket = 0;
 	process_packet(header_ip->saddr, htons(header_udp->source), header_ip->daddr, htons(header_udp->dest), 
-		       data, datalen, this->getPcapHandle(), header, packet, istcp, 0, 1, &was_rtp, header_ip, &voippacket, 0);
+		       data, datalen, this->getPcapHandle(), header, packet, istcp, 0, 1, &was_rtp, header_ip, &voippacket, 0,
+		       block_store, block_store_index);
 
 	// if packet was VoIP add it to ipaccount
 	if(opt_ipaccount) {
 		ipaccount(header->ts.tv_sec, (iphdr2*) ((char*)(packet) + header->offset), header->len - header->offset, voippacket);
 	}
 	
+}
+
+void PcapQueue_readFromFifo::cleanupBlockStoreTrash() {
+	for(size_t i = 0; i < this->blockStoreTrash.size(); i++) {
+		if(this->blockStoreTrash[i]->enableDestroy()) {
+			delete this->blockStoreTrash[i];
+			this->blockStoreTrash.erase(this->blockStoreTrash.begin() + i);
+			--i;
+		}
+	}
 }
 
 

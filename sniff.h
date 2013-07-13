@@ -10,6 +10,7 @@
 #include <map>
 #include "voipmonitor.h"
 #include "calltable.h"
+#include "pcap_queue_block.h"
 
 #define MAXPACKETLENQRING 1600
 
@@ -101,6 +102,33 @@ typedef struct {
 } rtp_packet;
 
 typedef struct {
+	Call *call;
+	u_int32_t saddr;
+	u_int32_t daddr;
+	unsigned short port;
+	char iscaller;
+	char is_rtcp;
+	u_char *data;
+	int datalen;
+	pcap_block_store::pcap_pkthdr_pcap pkthdr_pcap; 
+	pcap_block_store *block_store;
+	int block_store_index;
+	volatile char free;
+} rtp_packet_pcap_queue;
+
+struct read_thread {
+	read_thread() {
+		#ifdef QUEUE_NONBLOCK
+			this->pqueue = NULL;
+		#endif
+		#ifdef QUEUE_NONBLOCK2
+			this->vmbuffer = NULL;
+			this->vmbuffer_pcap_queue = NULL;
+			this->vmbuffermax = 0;
+			this->readit = 0;
+			this->writeit = 0;
+		#endif
+	}
 	pthread_t thread;	       // ID of worker storing CDR thread 
 #ifdef QUEUE_MUTEX
 	queue<rtp_packet*> pqueue;
@@ -112,11 +140,12 @@ typedef struct {
 #endif
 #ifdef QUEUE_NONBLOCK2
 	rtp_packet *vmbuffer;
+	rtp_packet_pcap_queue *vmbuffer_pcap_queue;
 	int vmbuffermax;
 	volatile int readit;
 	volatile int writeit;
 #endif
-} read_thread;
+};
 
 #if defined(QUEUE_MUTEX) || defined(QUEUE_NONBLOCK)
 typedef struct {

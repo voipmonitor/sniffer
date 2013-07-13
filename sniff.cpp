@@ -86,6 +86,7 @@ unsigned int duplicate_counter = 0;
 
 Calltable *calltable;
 extern volatile int calls;
+extern int opt_pcap_queue;
 extern int opt_saveSIP;	  	// save SIP packets to pcap file?
 extern int opt_saveRTP;	 	// save RTP packets to pcap file?
 extern int opt_saveRTCP;	// save RTCP packets to pcap file?
@@ -886,7 +887,8 @@ int get_rtpmap_from_sdp(char *sdp_text, unsigned long len, int *rtpmap){
 	 return 0;
 }
 
-void add_to_rtp_thread_queue(Call *call, unsigned char *data, int datalen, struct pcap_pkthdr *header,  u_int32_t saddr, u_int32_t daddr, unsigned short port, int iscaller, int is_rtcp) {
+void add_to_rtp_thread_queue(Call *call, unsigned char *data, int datalen, struct pcap_pkthdr *header,  u_int32_t saddr, u_int32_t daddr, unsigned short port, int iscaller, int is_rtcp,
+			     pcap_block_store *block_store, int block_store_index) {
 	__sync_add_and_fetch(&call->rtppcaketsinqueue, 1);
 	read_thread *params = &(threads[call->thread_num]);
 
@@ -896,34 +898,63 @@ void add_to_rtp_thread_queue(Call *call, unsigned char *data, int datalen, struc
 #endif
 
 #ifdef QUEUE_NONBLOCK2
-	rtp_packet *rtpp = &(params->vmbuffer[params->writeit % params->vmbuffermax]);
-
-	while(params->vmbuffer[params->writeit % params->vmbuffermax].free == 0) {
-		// no room left, loop until there is room
-		usleep(100);
+	rtp_packet *rtpp;
+	rtp_packet_pcap_queue *rtpp_pq;
+	if(opt_pcap_queue) {
+		rtpp_pq = &(params->vmbuffer_pcap_queue[params->writeit % params->vmbuffermax]);
+		while(params->vmbuffer_pcap_queue[params->writeit % params->vmbuffermax].free == 0) {
+			// no room left, loop until there is room
+			usleep(100);
+		}
+	} else {
+		rtpp = &(params->vmbuffer[params->writeit % params->vmbuffermax]);
+		while(params->vmbuffer[params->writeit % params->vmbuffermax].free == 0) {
+			// no room left, loop until there is room
+			usleep(100);
+		}
 	}
 #endif
-	rtpp->call = call;
-	rtpp->datalen = datalen;
-	rtpp->saddr = saddr;
-	rtpp->daddr = daddr;
-	rtpp->port = port;
-	rtpp->iscaller = iscaller;
-	rtpp->is_rtcp = is_rtcp;
-
-	memcpy(&rtpp->header, header, sizeof(struct pcap_pkthdr));
-	if(datalen > MAXPACKETLENQRING) {
-		syslog(LOG_ERR, "error: packet is to large [%d]b for RTP QRING[%d]b", header->caplen, MAXPACKETLENQRING);
-		return;
-	}
-	if(opt_skiprtpdata) {
-		memcpy(rtpp->data, data, MIN((unsigned int)datalen, sizeof(RTPFixedHeader)));
+	
+	if(opt_pcap_queue) {
+		rtpp_pq->call = call;
+		rtpp_pq->saddr = saddr;
+		rtpp_pq->daddr = daddr;
+		rtpp_pq->port = port;
+		rtpp_pq->iscaller = iscaller;
+		rtpp_pq->is_rtcp = is_rtcp;
+		rtpp_pq->data = data;
+		rtpp_pq->datalen = datalen;
+		rtpp_pq->pkthdr_pcap = (*block_store)[block_store_index];
+		rtpp_pq->block_store = block_store;
+		rtpp_pq->block_store_index =block_store_index;
+		rtpp_pq->block_store->lock_packet(rtpp_pq->block_store_index);
 	} else {
-		memcpy(rtpp->data, data, datalen);
+		rtpp->call = call;
+		rtpp->datalen = datalen;
+		rtpp->saddr = saddr;
+		rtpp->daddr = daddr;
+		rtpp->port = port;
+		rtpp->iscaller = iscaller;
+		rtpp->is_rtcp = is_rtcp;
+
+		memcpy(&rtpp->header, header, sizeof(struct pcap_pkthdr));
+		if(datalen > MAXPACKETLENQRING) {
+			syslog(LOG_ERR, "error: packet is to large [%d]b for RTP QRING[%d]b", header->caplen, MAXPACKETLENQRING);
+			return;
+		}
+		if(opt_skiprtpdata) {
+			memcpy(rtpp->data, data, MIN((unsigned int)datalen, sizeof(RTPFixedHeader)));
+		} else {
+			memcpy(rtpp->data, data, datalen);
+		}
 	}
 
 #ifdef QUEUE_NONBLOCK2
-	params->vmbuffer[params->writeit % params->vmbuffermax].free = 0;
+	if(opt_pcap_queue) {
+		params->vmbuffer_pcap_queue[params->writeit % params->vmbuffermax].free = 0;
+	} else {
+		params->vmbuffer[params->writeit % params->vmbuffermax].free = 0;
+	}
 	if((params->writeit + 1) == params->vmbuffermax) {
 		params->writeit = 0;
 	} else {
@@ -951,6 +982,7 @@ void add_to_rtp_thread_queue(Call *call, unsigned char *data, int datalen, struc
 
 void *rtp_read_thread_func(void *arg) {
 	rtp_packet *rtpp;
+	rtp_packet_pcap_queue *rtpp_pq;
 	read_thread *params = (read_thread*)arg;
 	while(1) {
 
@@ -975,7 +1007,9 @@ void *rtp_read_thread_func(void *arg) {
 #endif 
 
 #ifdef QUEUE_NONBLOCK2
-		if(params->vmbuffer[params->readit % params->vmbuffermax].free == 1) {
+		if(opt_pcap_queue ?
+			params->vmbuffer_pcap_queue[params->readit % params->vmbuffermax].free == 1 :
+			params->vmbuffer[params->readit % params->vmbuffermax].free == 1) {
 			if(terminating || readend) {
 				return NULL;
 			}
@@ -983,19 +1017,32 @@ void *rtp_read_thread_func(void *arg) {
 			usleep(10000);
 			continue;
 		} else {
-			rtpp = &(params->vmbuffer[params->readit % params->vmbuffermax]);
+			if(opt_pcap_queue) {
+				rtpp_pq = &(params->vmbuffer_pcap_queue[params->readit % params->vmbuffermax]);
+			} else {
+				rtpp = &(params->vmbuffer[params->readit % params->vmbuffermax]);
+			}
 		}
 #endif
 
-		if(rtpp->is_rtcp) {
-			rtpp->call->read_rtcp((unsigned char*)rtpp->data, rtpp->datalen, &rtpp->header, rtpp->saddr, rtpp->port, rtpp->iscaller);
-		}  else {
-			int monitor;
-			rtpp->call->read_rtp(rtpp->data, rtpp->datalen, &rtpp->header, rtpp->saddr, rtpp->daddr, rtpp->port, rtpp->iscaller, &monitor);
+		if(opt_pcap_queue) {
+			if(rtpp_pq->is_rtcp) {
+				rtpp_pq->call->read_rtcp(rtpp_pq->data, rtpp_pq->datalen, rtpp_pq->pkthdr_pcap.header, rtpp_pq->saddr, rtpp_pq->port, rtpp_pq->iscaller);
+			}  else {
+				int monitor;
+				rtpp_pq->call->read_rtp(rtpp_pq->data, rtpp_pq->datalen, rtpp_pq->pkthdr_pcap.header, rtpp_pq->saddr, rtpp_pq->daddr, rtpp_pq->port, rtpp_pq->iscaller, &monitor);
+			}
+			rtpp_pq->call->set_last_packet_time(rtpp_pq->pkthdr_pcap.header->ts.tv_sec);
+			rtpp_pq->block_store->unlock_packet(rtpp_pq->block_store_index);
+		} else {
+			if(rtpp->is_rtcp) {
+				rtpp->call->read_rtcp((unsigned char*)rtpp->data, rtpp->datalen, &rtpp->header, rtpp->saddr, rtpp->port, rtpp->iscaller);
+			}  else {
+				int monitor;
+				rtpp->call->read_rtp(rtpp->data, rtpp->datalen, &rtpp->header, rtpp->saddr, rtpp->daddr, rtpp->port, rtpp->iscaller, &monitor);
+			}
+			rtpp->call->set_last_packet_time(rtpp->header.ts.tv_sec);
 		}
-
-
-		rtpp->call->set_last_packet_time(rtpp->header.ts.tv_sec);
 
 #if defined(QUEUE_MUTEX) || defined(QUEUE_NONBLOCK)
 		free(rtpp->data);
@@ -1003,13 +1050,21 @@ void *rtp_read_thread_func(void *arg) {
 #endif
 
 #ifdef QUEUE_NONBLOCK2
-		params->vmbuffer[params->readit % params->vmbuffermax].free = 1;
+		if(opt_pcap_queue) {
+			params->vmbuffer_pcap_queue[params->readit % params->vmbuffermax].free = 1;
+		} else {
+			params->vmbuffer[params->readit % params->vmbuffermax].free = 1;
+		}
 		if((params->readit + 1) == params->vmbuffermax) {
 			params->readit = 0;
 		} else {
 			params->readit++;
 		}
-		__sync_sub_and_fetch(&rtpp->call->rtppcaketsinqueue, 1);
+		if(opt_pcap_queue) {
+			__sync_sub_and_fetch(&rtpp_pq->call->rtppcaketsinqueue, 1);
+		} else {
+			__sync_sub_and_fetch(&rtpp->call->rtppcaketsinqueue, 1);
+		}
 #endif
 	}
 
@@ -1336,7 +1391,8 @@ void clean_tcpstreams() {
 }
 
 Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int dest, char *data, int datalen,
-	pcap_t *handle, pcap_pkthdr *header, const u_char *packet, int istcp, int dontsave, int can_thread, int *was_rtp, struct iphdr2 *header_ip, int *voippacket, int disabledsave) {
+	pcap_t *handle, pcap_pkthdr *header, const u_char *packet, int istcp, int dontsave, int can_thread, int *was_rtp, struct iphdr2 *header_ip, int *voippacket, int disabledsave,
+	pcap_block_store *block_store, int block_store_index) {
 
 	Call *call = NULL;
 	int last_sip_method = -1;
@@ -1505,7 +1561,8 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 								// sip message is now reassembled and can be processed 
 								// here we turns out istcp flag so the function process_packet will not reach tcp reassemble and will process the whole message
 								int tmp_was_rtp;
-								Call *call = process_packet(saddr, source, daddr, dest, (char*)newdata, newlen, handle, header, packet, 0, 1, 0, &tmp_was_rtp, header_ip, voippacket, 1);
+								Call *call = process_packet(saddr, source, daddr, dest, (char*)newdata, newlen, handle, header, packet, 0, 1, 0, &tmp_was_rtp, header_ip, voippacket, 1,
+											    block_store, block_store_index);
 
 								// message was processed so the stream can be released from queue and destroyd all its parts
 								tcp_stream2_t *next;
@@ -1608,7 +1665,8 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 						// sip message is now reassembled and can be processed 
 						// here we turns out istcp flag so the function process_packet will not reach tcp reassemble and will process the whole message
 						int tmp_was_rtp;
-						Call *call = process_packet(saddr, source, daddr, dest, (char*)newdata, newlen, handle, header, packet, 0, 1, 0, &tmp_was_rtp, header_ip, voippacket, 1);
+						Call *call = process_packet(saddr, source, daddr, dest, (char*)newdata, newlen, handle, header, packet, 0, 1, 0, &tmp_was_rtp, header_ip, voippacket, 1,
+									    block_store, block_store_index);
 
 						// message was processed so the stream can be released from queue and destroyd all its parts
 						tcp_stream2_t *next;
@@ -1694,7 +1752,8 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 						// sip message is now reassembled and can be processed 
 						// here we turns out istcp flag so the function process_packet will not reach tcp reassemble and will process the whole message
 						int tmp_was_rtp;
-						Call *call = process_packet(saddr, source, daddr, dest, (char*)newdata, newlen, handle, header, packet, 0, 1, 0, &tmp_was_rtp, header_ip, voippacket, 1);
+						Call *call = process_packet(saddr, source, daddr, dest, (char*)newdata, newlen, handle, header, packet, 0, 1, 0, &tmp_was_rtp, header_ip, voippacket, 1,
+									    block_store, block_store_index);
 
 						// message was processed so the stream can be released from queue and destroyd all its parts
 						tcp_stream2_t *next;
@@ -2480,7 +2539,8 @@ repeatrtpA:
 
 		if(is_rtcp) {
 			if(rtp_threaded && can_thread) {
-				add_to_rtp_thread_queue(call, (unsigned char*) data, datalen, header, saddr, daddr, source, iscaller, is_rtcp);
+				add_to_rtp_thread_queue(call, (unsigned char*) data, datalen, header, saddr, daddr, source, iscaller, is_rtcp,
+							block_store, block_store_index);
 			} else {
 				call->read_rtcp((unsigned char*) data, datalen, header, saddr, source, iscaller);
 			}
@@ -2498,7 +2558,8 @@ repeatrtpA:
 				call->tmprtp.fill((unsigned char*)data, datalen, header, saddr, daddr); //TODO: datalen can be shortned to only RTP header len
 				record = call->tmprtp.getPayload() == 101 ? 1 : 0;
 			}
-			add_to_rtp_thread_queue(call, (unsigned char*) data, datalen, header, saddr, daddr, source, iscaller, is_rtcp);
+			add_to_rtp_thread_queue(call, (unsigned char*) data, datalen, header, saddr, daddr, source, iscaller, is_rtcp,
+						block_store, block_store_index);
 			*was_rtp = 1;
 			if(is_rtcp) {
 				if(logPacketSipMethodCall_enable) {
@@ -2554,7 +2615,8 @@ repeatrtpB:
 
 		if(is_rtcp) {
 			if(rtp_threaded && can_thread) {
-				add_to_rtp_thread_queue(call, (unsigned char*) data, datalen, header, saddr, daddr, source, !iscaller, is_rtcp);
+				add_to_rtp_thread_queue(call, (unsigned char*) data, datalen, header, saddr, daddr, source, !iscaller, is_rtcp,
+							block_store, block_store_index);
 			} else {
 				call->read_rtcp((unsigned char*) data, datalen, header, saddr, source, !iscaller);
 			}
@@ -2569,7 +2631,8 @@ repeatrtpB:
 
 		// as we are searching by source address and find some call, revert iscaller 
 		if(rtp_threaded && can_thread) {
-			add_to_rtp_thread_queue(call, (unsigned char*) data, datalen, header, saddr, daddr, source, !iscaller, is_rtcp);
+			add_to_rtp_thread_queue(call, (unsigned char*) data, datalen, header, saddr, daddr, source, !iscaller, is_rtcp,
+						block_store, block_store_index);
 			if(!((call->flags & FLAG_SAVERTP) || (call->isfax && opt_saveudptl)) && (!dontsave && opt_saverfc2833)) {
 				// if RTP is NOT saving but we still wants to save DTMF (rfc2833) and becuase RTP is going to be 
 				// queued and processed later in async queue we must decode if the RTP packet is DTMF here 
@@ -2937,7 +3000,8 @@ void *pcap_read_thread_func(void *arg) {
 		}
 		int voippacket = 0;
 		process_packet(header_ip->saddr, htons(header_udp->source), header_ip->daddr, htons(header_udp->dest), 
-			    data, datalen, handle, &pp->header, packet, istcp, 0, 1, &was_rtp, header_ip, &voippacket, 0);
+			    data, datalen, handle, &pp->header, packet, istcp, 0, 1, &was_rtp, header_ip, &voippacket, 0,
+			    NULL, 0);
 
 		// if packet was VoIP add it to ipaccount
 		if(opt_ipaccount) {
@@ -3497,7 +3561,8 @@ void readdump_libpcap(pcap_t *handle) {
 		int voippacket = 0;
 		if(!opt_mirroronly) {
 			process_packet(header_ip->saddr, htons(header_udp->source), header_ip->daddr, htons(header_udp->dest), 
-				    data, datalen, handle, header, packet, istcp, 0, 1, &was_rtp, header_ip, &voippacket, 0);
+				    data, datalen, handle, header, packet, istcp, 0, 1, &was_rtp, header_ip, &voippacket, 0,
+				    NULL, 0);
 		}
 		if(opt_ipaccount) {
 			ipaccount(header->ts.tv_sec, (struct iphdr2 *) ((char*)packet + offset), header->len - offset, voippacket);

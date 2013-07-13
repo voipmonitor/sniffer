@@ -7,117 +7,15 @@
 #include <pthread.h>
 #include <pcap.h>
 #include <deque>
-#include <map>
 #include <queue>
 #include <string>
-#include <vector>
 #include <netinet/ip.h>
 #include <netinet/tcp.h>
 
+#include "pcap_queue_block.h"
 #include "md5.h"
 #include "sniff.h"
 
-
-#define PCAP_BLOCK_STORE_HEADER_STRING		"pcap_block_store"
-#define PCAP_BLOCK_STORE_HEADER_STRING_LEN	16
-
-
-u_long getTimeMS();
-unsigned long long getTimeNS();
-
-
-struct pcap_pkthdr_plus : public pcap_pkthdr {
-	pcap_pkthdr_plus() {
-		memset(this, 0, sizeof(pcap_pkthdr_plus));
-	}
-	pcap_pkthdr_plus(pcap_pkthdr header, int offset = -1) {
-		memset(this, 0, sizeof(pcap_pkthdr_plus));
-		this->ts = header.ts;
-		this->caplen = header.caplen;
-		this->len = header.len;
-		this->offset = offset;
-	}
-	int offset;
-};
-
-struct pcap_block_store {
-	struct pcap_pkthdr_pcap {
-		pcap_pkthdr_pcap() {
-			this->header = NULL;
-			this->packet = NULL;
-			this->offset = 0;
-		}
-		pcap_pkthdr_plus *header;
-		u_char *packet;
-		int offset;
-	};
-	struct pcap_block_store_header {
-		pcap_block_store_header() {
-			strncpy(this->title, PCAP_BLOCK_STORE_HEADER_STRING, PCAP_BLOCK_STORE_HEADER_STRING_LEN);
-			this->size = 0;
-			this->size_compress = 0;
-			this->count = 0;
-		}
-		char title[PCAP_BLOCK_STORE_HEADER_STRING_LEN];
-		size_t size;
-		size_t size_compress;
-		size_t count;
-	};
-	pcap_block_store() {
-		this->offsets = NULL;
-		this->block = NULL;
-		this->destroy();
-		this->restoreBuffer = NULL;
-		this->destroyRestoreBuffer();
-		this->idFileStore = 0;
-		this->filePosition = 0;
-		this->timestampMS = getTimeMS();
-	}
-	~pcap_block_store() {
-		this->destroy();
-		this->destroyRestoreBuffer();
-	}
-	inline bool add(pcap_pkthdr *header, u_char *packet, int offset = -1);
-	inline bool add(pcap_pkthdr_plus *header, u_char *packet);
-	inline pcap_pkthdr_pcap operator [] (size_t indexItem);
-	void destroy();
-	void destroyRestoreBuffer();
-	bool isEmptyRestoreBuffer();
-	void freeBlock();
-	size_t getSizeSaveBuffer() {
-		return(sizeof(pcap_block_store_header) + this->count * sizeof(size_t) + this->getUseSize());
-	}
-	int getSizeSaveBufferFromRestoreBuffer() {
-		if(this->restoreBufferSize >= sizeof(pcap_block_store_header)) {
-			pcap_block_store_header *header = (pcap_block_store_header*)this->restoreBuffer;
-			return(sizeof(pcap_block_store_header) + header->count * sizeof(size_t) + 
-			       (header->size_compress ? header->size_compress : header->size));
-		}
-		return(-1);
-	}
-	size_t getUseSize() {
-		return(this->size_compress ? this->size_compress : this->size);
-	}
-	u_char *getSaveBuffer();
-	void restoreFromSaveBuffer(u_char *saveBuffer);
-	int addRestoreChunk(u_char *buffer, size_t size, size_t *offset = NULL, bool autoRestore = true);
-	bool compress();
-	bool uncompress();
-	//
-	size_t *offsets;
-	u_char *block;
-	size_t size;
-	size_t size_compress;
-	size_t count;
-	size_t offsets_size;
-	bool full;
-	u_char *restoreBuffer;
-	size_t restoreBufferSize;
-	size_t restoreBufferAllocSize;
-	u_int idFileStore;
-	u_long filePosition;
-	u_long timestampMS;
-};
 
 class pcap_block_store_queue {
 public:
@@ -420,7 +318,9 @@ protected:
 	bool socketWrite(u_char *data, size_t dataLen);
 	bool socketRead(u_char *data, size_t *dataLen);
 private:
-	void processPacket(pcap_pkthdr_plus *header, u_char *packet);
+	void processPacket(pcap_pkthdr_plus *header, u_char *packet,
+			   pcap_block_store *block_store, int block_store_index);
+	void cleanupBlockStoreTrash();
 protected:
 	std::string packetServer;
 	int packetServerPort;
@@ -432,6 +332,8 @@ protected:
 	sockaddr_in socketClientInfo;
 private:
 	pcap_store_queue pcapStoreQueue;
+	vector<pcap_block_store*> blockStoreTrash;
+	u_int cleanupBlockStoreTrash_counter;
 };
 
 

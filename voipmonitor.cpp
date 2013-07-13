@@ -1636,6 +1636,7 @@ int main(int argc, char *argv[]) {
 				opt_read_from_file = 1;
 				opt_scanpcapdir[0] = '\0';
 				//opt_cachedir[0] = '\0';
+				opt_pcap_queue = 0;
 				break;
 			case 'c':
 				opt_nocdr = 1;
@@ -1949,6 +1950,8 @@ int main(int argc, char *argv[]) {
 	char errbuf[PCAP_ERRBUF_SIZE];	// Returns error text and is only set when the pcap_lookupnet subroutine fails.
 	
 	if(opt_test) {
+		ipfilter = new IPfilter;
+		telnumfilter = new TELNUMfilter;
 		test();
 		if(sqlDb) {
 			delete sqlDb;
@@ -2122,7 +2125,7 @@ int main(int argc, char *argv[]) {
 	   !(opt_pcap_threaded && opt_pcap_queue && 
 	     !opt_pcap_queue_receive_from_ip.length() &&
 	     opt_pcap_queue_send_to_ip.length())) {
-		threads = (read_thread*)malloc(sizeof(read_thread) * num_threads);
+		threads = new read_thread[num_threads];
 		for(int i = 0; i < num_threads; i++) {
 #ifdef QUEUE_MUTEX
 			pthread_mutex_init(&(threads[i].qlock), NULL);
@@ -2138,9 +2141,16 @@ int main(int argc, char *argv[]) {
 			threads[i].vmbuffermax = rtpthreadbuffer * 1024 * 1024 / sizeof(rtp_packet);
 			threads[i].writeit = 0;
 			threads[i].readit = 0;
-			threads[i].vmbuffer = (rtp_packet*)malloc(sizeof(rtp_packet) * (threads[i].vmbuffermax + 1));
-			for(int j = 0; j < threads[i].vmbuffermax + 1; j++) {
-				threads[i].vmbuffer[j].free = 1;
+			if(opt_pcap_queue) {
+				threads[i].vmbuffer_pcap_queue = (rtp_packet_pcap_queue*)malloc(sizeof(rtp_packet_pcap_queue) * (threads[i].vmbuffermax + 1));
+				for(int j = 0; j < threads[i].vmbuffermax + 1; j++) {
+					threads[i].vmbuffer_pcap_queue[j].free = 1;
+				}
+			} else {
+				threads[i].vmbuffer = (rtp_packet*)malloc(sizeof(rtp_packet) * (threads[i].vmbuffermax + 1));
+				for(int j = 0; j < threads[i].vmbuffermax + 1; j++) {
+					threads[i].vmbuffer[j].free = 1;
+				}
 			}
 #endif
 
@@ -2248,7 +2258,7 @@ int main(int argc, char *argv[]) {
 		//readdump_libnids(handle);
 
 		if(opt_pcap_threaded) {
-			if(opt_pcap_queue) {
+			if(opt_pcap_queue && fname[0] == '\0') {
 				
 				if(opt_pcap_queue_receive_from_ip.length()) {
 					
@@ -2339,14 +2349,22 @@ int main(int argc, char *argv[]) {
 	     opt_pcap_queue_send_to_ip.length())) {
 		for(int i = 0; i < num_threads; i++) {
 			pthread_join((threads[i].thread), NULL);
+#ifdef QUEUE_NONBLOCK2
+			if(opt_pcap_queue) {
+				free(threads[i].vmbuffer_pcap_queue);
+			} else {
+				free(threads[i].vmbuffer);
+			}
+#endif
 		}
+		delete [] threads;
 	}
 
 	// close handler
 	if(opt_scanpcapdir[0] == '\0') {
 		pcap_close(handle);
 	}
-
+	
 	// flush all queues
 	Call *call;
 	calltable->cleanup(0);
@@ -2458,7 +2476,7 @@ void test() {
 		pcapQueue1->setInstancePcapHandle(pcapQueue0);
 		//pcapQueue1->setFifoReadHandle(pipeFh[0]);
 		pcapQueue1->setEnableAutoTerminate(false);
-		pcapQueue1->setPacketServer("127.0.0.1", port, PcapQueue_readFromFifo::directionWrite);
+		//pcapQueue1->setPacketServer("127.0.0.1", port, PcapQueue_readFromFifo::directionWrite);
 		
 		pcapQueue0->start();
 		pcapQueue1->start();
