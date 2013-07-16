@@ -2029,6 +2029,11 @@ int main(int argc, char *argv[]) {
 					fprintf(stderr, "pcap_create failed on iface '%s': %s\n", ifname, errbuf);
 					return(2);
 				}
+				int status = 0;
+				if((status = pcap_activate(handle)) != 0) {
+					fprintf(stderr, "libpcap error: [%s]\n", pcap_geterr(handle));
+					return(2);
+				}
 			}
 		} else {
 			// if reading file
@@ -2046,31 +2051,33 @@ int main(int argc, char *argv[]) {
 				return(2);
 			}
 		}
-
-		if(opt_mirrorip) {
-			if(opt_mirrorip_dst[0] == '\0') {
-				syslog(LOG_ERR, "Mirroring SIP packets disabled because mirroripdst was not set");
-				opt_mirrorip = 0;
-			} else {
-				syslog(LOG_NOTICE, "Starting SIP mirroring [%s]->[%s]", opt_mirrorip_src, opt_mirrorip_dst);
-				mirrorip = new MirrorIP(opt_mirrorip_src, opt_mirrorip_dst);
+		
+		if(!opt_pcap_queue) {
+			if(opt_mirrorip) {
+				if(opt_mirrorip_dst[0] == '\0') {
+					syslog(LOG_ERR, "Mirroring SIP packets disabled because mirroripdst was not set");
+					opt_mirrorip = 0;
+				} else {
+					syslog(LOG_NOTICE, "Starting SIP mirroring [%s]->[%s]", opt_mirrorip_src, opt_mirrorip_dst);
+					mirrorip = new MirrorIP(opt_mirrorip_src, opt_mirrorip_dst);
+				}
 			}
-		}
 
-		char filter_exp[2048] = "";		// The filter expression
-		struct bpf_program fp;		// The compiled filter 
+			char filter_exp[2048] = "";		// The filter expression
+			struct bpf_program fp;		// The compiled filter 
 
-		if(*user_filter != '\0') {
-			snprintf(filter_exp, sizeof(filter_exp), "%s", user_filter);
+			if(*user_filter != '\0') {
+				snprintf(filter_exp, sizeof(filter_exp), "%s", user_filter);
 
-			// Compile and apply the filter
-			if (pcap_compile(handle, &fp, filter_exp, 0, mask) == -1) {
-				fprintf(stderr, "Couldn't parse filter %s: %s\n", filter_exp, pcap_geterr(handle));
-				return(2);
-			}
-			if (pcap_setfilter(handle, &fp) == -1) {
-				fprintf(stderr, "Couldn't install filter %s: %s\n", filter_exp, pcap_geterr(handle));
-				return(2);
+				// Compile and apply the filter
+				if (pcap_compile(handle, &fp, filter_exp, 0, mask) == -1) {
+					fprintf(stderr, "Couldn't parse filter %s: %s\n", filter_exp, pcap_geterr(handle));
+					return(2);
+				}
+				if (pcap_setfilter(handle, &fp) == -1) {
+					fprintf(stderr, "Couldn't install filter %s: %s\n", filter_exp, pcap_geterr(handle));
+					return(2);
+				}
 			}
 		}
 	}
@@ -2368,8 +2375,7 @@ int main(int argc, char *argv[]) {
 	}
 
 	// close handler
-	if(opt_scanpcapdir[0] == '\0' &&
-	   (!opt_pcap_queue || (opt_pcap_threaded && opt_pcap_queue_receive_from_ip.length()))) {
+	if(opt_scanpcapdir[0] == '\0' && !opt_pcap_queue) {
 		pcap_close(handle);
 	}
 	

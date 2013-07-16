@@ -547,12 +547,12 @@ pcap_store_queue::~pcap_store_queue() {
 	}
 }
 
-bool pcap_store_queue::push(pcap_block_store *blockStore) {
+bool pcap_store_queue::push(pcap_block_store *blockStore, size_t addUsedSize) {
 	bool saveToFileStore = false;
 	bool locked_fileStore = false;
 	if(opt_pcap_queue_store_queue_max_disk_size &&
 	   this->fileStoreFolder.length()) {
-		if(this->sizeOfBlocksInMemory >= opt_pcap_queue_store_queue_max_memory_size) {
+		if(this->sizeOfBlocksInMemory + addUsedSize >= opt_pcap_queue_store_queue_max_memory_size) {
 			saveToFileStore = true;
 		} else if(!__config_ENABLE_TOGETHER_READ_WRITE_FILE) {
 			this->lock_fileStore();
@@ -1460,6 +1460,7 @@ PcapQueue_readFromFifo::PcapQueue_readFromFifo(const char *nameQueue, const char
 	 this->socketHostEnt = NULL;
 	 this->socketHandle = 0;
 	 this->socketClient = 0;
+	 this->blockStoreTrash_size = 0;
 	 this->cleanupBlockStoreTrash_counter = 0;
 	 this->setEnableWriteThread();
 }
@@ -1543,7 +1544,7 @@ void *PcapQueue_readFromFifo::threadFunction(void *) {
 						while(offsetBuffer < bufferLen) {
 							if(blockStore->addRestoreChunk(buffer, bufferLen, &offsetBuffer)) {
 								endBlock = true;
-								this->pcapStoreQueue.push(blockStore);
+								this->pcapStoreQueue.push(blockStore, this->blockStoreTrash_size);
 								sumPacketsCounterIn[0] += blockStore->count;
 								sumPacketsSize[0] += blockStore->size;
 								sumPacketsSizeCompress[0] += blockStore->size_compress;
@@ -1585,7 +1586,7 @@ void *PcapQueue_readFromFifo::threadFunction(void *) {
 			if(opt_pcap_queue_compress) {
 				blockStore->compress();
 			}
-			this->pcapStoreQueue.push(blockStore);
+			this->pcapStoreQueue.push(blockStore, this->blockStoreTrash_size);
 		}
 	} else {
 		pcap_pkthdr_plus header;
@@ -1612,7 +1613,7 @@ void *PcapQueue_readFromFifo::threadFunction(void *) {
 				if(opt_pcap_queue_compress) {
 					blockStore->compress();
 				}
-				if(this->pcapStoreQueue.push(blockStore)) {
+				if(this->pcapStoreQueue.push(blockStore, this->blockStoreTrash_size)) {
 					++sumBlocksCounterIn[0];
 					blockStore = new pcap_block_store;
 					blockStore->add(&header, packet);
@@ -1667,6 +1668,7 @@ void *PcapQueue_readFromFifo::writeThreadFunction(void *) {
 				}
 			}
 			this->blockStoreTrash.push_back(blockStore);
+			this->blockStoreTrash_size += blockStore->getUseSize();
 			if(!(++this->cleanupBlockStoreTrash_counter % 10)) {
 				this->cleanupBlockStoreTrash();
 			}
@@ -1719,7 +1721,7 @@ string PcapQueue_readFromFifo::pcapStatString_memory_buffer(int statPeriod) {
 	ostringstream outStr;
 	if(__config_BYPASS_FIFO) {
 		outStr << fixed;
-		size_t useSize = this->pcapStoreQueue.sizeOfBlocksInMemory;
+		size_t useSize = this->pcapStoreQueue.sizeOfBlocksInMemory + this->blockStoreTrash_size;
 		outStr << "PACKETBUFFER_TOTAL_HEAP:  "
 		       << setw(6) << (useSize / 1024 / 1024) << "MB" << setw(6) << ""
 		       << " " << setw(5) << setprecision(1) << (100. * useSize / opt_pcap_queue_store_queue_max_memory_size) << "%"
@@ -1936,6 +1938,7 @@ void PcapQueue_readFromFifo::processPacket(pcap_pkthdr_plus *header, u_char *pac
 void PcapQueue_readFromFifo::cleanupBlockStoreTrash() {
 	for(size_t i = 0; i < this->blockStoreTrash.size(); i++) {
 		if(this->blockStoreTrash[i]->enableDestroy()) {
+			this->blockStoreTrash_size -= this->blockStoreTrash[i]->getUseSize();
 			delete this->blockStoreTrash[i];
 			this->blockStoreTrash.erase(this->blockStoreTrash.begin() + i);
 			--i;

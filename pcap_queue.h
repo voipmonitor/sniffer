@@ -127,7 +127,7 @@ class pcap_store_queue {
 public:
 	pcap_store_queue(const char *fileStoreFolder);
 	~pcap_store_queue();
-	bool push(pcap_block_store *blockStore);
+	bool push(pcap_block_store *blockStore, size_t addUsedSize = 0);
 	bool pop(pcap_block_store **blockStore);
 	size_t getQueueSize() {
 		return(this->queue.size());
@@ -340,6 +340,7 @@ protected:
 private:
 	pcap_store_queue pcapStoreQueue;
 	vector<pcap_block_store*> blockStoreTrash;
+	size_t blockStoreTrash_size;
 	u_int cleanupBlockStoreTrash_counter;
 };
 

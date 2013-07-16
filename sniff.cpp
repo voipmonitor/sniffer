@@ -1434,9 +1434,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 			calltable->cleanup(header->ts.tv_sec);
 		}
 		/* also do every 10 seconds pcap statistics */
-		if(handle) {
-			pcapstatres = pcap_stats(handle, &ps);
-		}
+		pcapstatres = pcap_stats(handle, &ps);
 		if (pcapstatres == 0 && (lostpacket < ps.ps_drop || lostpacketif < ps.ps_ifdrop)) {
 			if(pcapstatresCount) {
 				syslog(LOG_ERR, "error: libpcap or interface dropped some packets! rx:%u pcapdrop:%u ifdrop:%u increase --ring-buffer (kernel >= 2.6.31 needed and libpcap >= 1.0.0) or use --pcap-thread\n", ps.ps_recv, ps.ps_drop, ps.ps_ifdrop);
