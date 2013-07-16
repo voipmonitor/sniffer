@@ -899,14 +899,7 @@ void add_to_rtp_thread_queue(Call *call, unsigned char *data, int datalen, struc
 
 #ifdef QUEUE_NONBLOCK2
 	rtp_packet *rtpp;
-	rtp_packet_pcap_queue *rtpp_pq;
-	if(opt_pcap_queue) {
-		rtpp_pq = &(params->vmbuffer_pcap_queue[params->writeit % params->vmbuffermax]);
-		while(params->vmbuffer_pcap_queue[params->writeit % params->vmbuffermax].free == 0) {
-			// no room left, loop until there is room
-			usleep(100);
-		}
-	} else {
+	if(!opt_pcap_queue) {
 		rtpp = &(params->vmbuffer[params->writeit % params->vmbuffermax]);
 		while(params->vmbuffer[params->writeit % params->vmbuffermax].free == 0) {
 			// no room left, loop until there is room
@@ -916,6 +909,9 @@ void add_to_rtp_thread_queue(Call *call, unsigned char *data, int datalen, struc
 #endif
 	
 	if(opt_pcap_queue) {
+		block_store->lock_packet(block_store_index);
+		params->rtpp_queue.lock();
+		rtp_packet_pcap_queue *rtpp_pq = params->rtpp_queue.push_get_pointer();
 		rtpp_pq->call = call;
 		rtpp_pq->saddr = saddr;
 		rtpp_pq->daddr = daddr;
@@ -927,7 +923,7 @@ void add_to_rtp_thread_queue(Call *call, unsigned char *data, int datalen, struc
 		rtpp_pq->pkthdr_pcap = (*block_store)[block_store_index];
 		rtpp_pq->block_store = block_store;
 		rtpp_pq->block_store_index =block_store_index;
-		rtpp_pq->block_store->lock_packet(rtpp_pq->block_store_index);
+		params->rtpp_queue.unlock();
 	} else {
 		rtpp->call = call;
 		rtpp->datalen = datalen;
@@ -950,15 +946,13 @@ void add_to_rtp_thread_queue(Call *call, unsigned char *data, int datalen, struc
 	}
 
 #ifdef QUEUE_NONBLOCK2
-	if(opt_pcap_queue) {
-		params->vmbuffer_pcap_queue[params->writeit % params->vmbuffermax].free = 0;
-	} else {
+	if(!opt_pcap_queue) {
 		params->vmbuffer[params->writeit % params->vmbuffermax].free = 0;
-	}
-	if((params->writeit + 1) == params->vmbuffermax) {
-		params->writeit = 0;
-	} else {
-		params->writeit++;
+		if((params->writeit + 1) == params->vmbuffermax) {
+			params->writeit = 0;
+		} else {
+			params->writeit++;
+		}
 	}
 #endif
 
@@ -982,7 +976,7 @@ void add_to_rtp_thread_queue(Call *call, unsigned char *data, int datalen, struc
 
 void *rtp_read_thread_func(void *arg) {
 	rtp_packet *rtpp;
-	rtp_packet_pcap_queue *rtpp_pq;
+	rtp_packet_pcap_queue rtpp_pq;
 	read_thread *params = (read_thread*)arg;
 	while(1) {
 
@@ -1007,18 +1001,24 @@ void *rtp_read_thread_func(void *arg) {
 #endif 
 
 #ifdef QUEUE_NONBLOCK2
-		if(opt_pcap_queue ?
-			params->vmbuffer_pcap_queue[params->readit % params->vmbuffermax].free == 1 :
-			params->vmbuffer[params->readit % params->vmbuffermax].free == 1) {
-			if(terminating || readend) {
-				return NULL;
+		if(opt_pcap_queue) {
+			if(!params->rtpp_queue.pop(&rtpp_pq, true)) {
+				if(terminating || readend) {
+					return NULL;
+				}
+				// no packet to read, wait and try again
+				usleep(10000);
+				continue;
 			}
-			// no packet to read, wait and try again
-			usleep(10000);
-			continue;
 		} else {
-			if(opt_pcap_queue) {
-				rtpp_pq = &(params->vmbuffer_pcap_queue[params->readit % params->vmbuffermax]);
+		
+			if(params->vmbuffer[params->readit % params->vmbuffermax].free == 1) {
+				if(terminating || readend) {
+					return NULL;
+				}
+				// no packet to read, wait and try again
+				usleep(10000);
+				continue;
 			} else {
 				rtpp = &(params->vmbuffer[params->readit % params->vmbuffermax]);
 			}
@@ -1026,14 +1026,14 @@ void *rtp_read_thread_func(void *arg) {
 #endif
 
 		if(opt_pcap_queue) {
-			if(rtpp_pq->is_rtcp) {
-				rtpp_pq->call->read_rtcp(rtpp_pq->data, rtpp_pq->datalen, rtpp_pq->pkthdr_pcap.header, rtpp_pq->saddr, rtpp_pq->port, rtpp_pq->iscaller);
+			if(rtpp_pq.is_rtcp) {
+				rtpp_pq.call->read_rtcp(rtpp_pq.data, rtpp_pq.datalen, rtpp_pq.pkthdr_pcap.header, rtpp_pq.saddr, rtpp_pq.port, rtpp_pq.iscaller);
 			}  else {
 				int monitor;
-				rtpp_pq->call->read_rtp(rtpp_pq->data, rtpp_pq->datalen, rtpp_pq->pkthdr_pcap.header, rtpp_pq->saddr, rtpp_pq->daddr, rtpp_pq->port, rtpp_pq->iscaller, &monitor);
+				rtpp_pq.call->read_rtp(rtpp_pq.data, rtpp_pq.datalen, rtpp_pq.pkthdr_pcap.header, rtpp_pq.saddr, rtpp_pq.daddr, rtpp_pq.port, rtpp_pq.iscaller, &monitor);
 			}
-			rtpp_pq->call->set_last_packet_time(rtpp_pq->pkthdr_pcap.header->ts.tv_sec);
-			rtpp_pq->block_store->unlock_packet(rtpp_pq->block_store_index);
+			rtpp_pq.call->set_last_packet_time(rtpp_pq.pkthdr_pcap.header->ts.tv_sec);
+			rtpp_pq.block_store->unlock_packet(rtpp_pq.block_store_index);
 		} else {
 			if(rtpp->is_rtcp) {
 				rtpp->call->read_rtcp((unsigned char*)rtpp->data, rtpp->datalen, &rtpp->header, rtpp->saddr, rtpp->port, rtpp->iscaller);
@@ -1050,24 +1050,24 @@ void *rtp_read_thread_func(void *arg) {
 #endif
 
 #ifdef QUEUE_NONBLOCK2
-		if(opt_pcap_queue) {
-			params->vmbuffer_pcap_queue[params->readit % params->vmbuffermax].free = 1;
-		} else {
+		if(!opt_pcap_queue) {
 			params->vmbuffer[params->readit % params->vmbuffermax].free = 1;
+			if((params->readit + 1) == params->vmbuffermax) {
+				params->readit = 0;
+			} else {
+				params->readit++;
+			}
 		}
-		if((params->readit + 1) == params->vmbuffermax) {
-			params->readit = 0;
-		} else {
-			params->readit++;
-		}
+#endif
+
 		if(opt_pcap_queue) {
-			__sync_sub_and_fetch(&rtpp_pq->call->rtppcaketsinqueue, 1);
+			__sync_sub_and_fetch(&rtpp_pq.call->rtppcaketsinqueue, 1);
 		} else {
 			__sync_sub_and_fetch(&rtpp->call->rtppcaketsinqueue, 1);
 		}
-#endif
-	}
 
+	}
+	
 	return NULL;
 }
 

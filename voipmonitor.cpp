@@ -1288,6 +1288,13 @@ int load_config(char *fname) {
 
 void reload_config() {
 	load_config(configfile);
+	#ifdef QUEUE_NONBLOCK2
+		if(opt_scanpcapdir[0] != '\0') {
+			opt_pcap_queue = 0;
+		}
+	#else
+		opt_pcap_queue = 0;
+	#endif
 
 	request_iptelnum_reload = 1;
 }
@@ -1966,55 +1973,62 @@ int main(int argc, char *argv[]) {
 	// check if sniffer will be reading pcap files from dir and if not if it reads from eth interface or read only one file
 	if(opt_scanpcapdir[0] == '\0') {
 		if (fname[0] == '\0' && ifname[0] != '\0'){
-			bpf_u_int32 net;
+			if(!opt_pcap_queue) {
+				bpf_u_int32 net;
 
-			printf("Capturing on interface: %s\n", ifname);
-			// Find the properties for interface 
-			if (pcap_lookupnet(ifname, &net, &mask, errbuf) == -1) {
-				// if not available, use default
-				mask = PCAP_NETMASK_UNKNOWN;
-			}
-	/*
-			handle = pcap_open_live(ifname, 1600, opt_promisc, 1000, errbuf);
-			if (handle == NULL) {
-				fprintf(stderr, "Couldn't open inteface '%s': %s\n", ifname, errbuf);
-				return(2);
-			}
-	*/
+				printf("Capturing on interface: %s\n", ifname);
+				// Find the properties for interface 
+				if (pcap_lookupnet(ifname, &net, &mask, errbuf) == -1) {
+					// if not available, use default
+					mask = PCAP_NETMASK_UNKNOWN;
+				}
+				/*
+				handle = pcap_open_live(ifname, 1600, opt_promisc, 1000, errbuf);
+				if (handle == NULL) {
+					fprintf(stderr, "Couldn't open inteface '%s': %s\n", ifname, errbuf);
+					return(2);
+				}
+				*/
 
-			/* to set own pcap_set_buffer_size it must be this way and not useing pcap_lookupnet */
+				/* to set own pcap_set_buffer_size it must be this way and not useing pcap_lookupnet */
 
-			int status = 0;
-			if((handle = pcap_create(ifname, errbuf)) == NULL) {
-				fprintf(stderr, "pcap_create failed on iface '%s': %s\n", ifname, errbuf);
-				return(2);
-			}
-			if((status = pcap_set_snaplen(handle, 3200)) != 0) {
-				fprintf(stderr, "error pcap_set_snaplen\n");
-				return(2);
-			}
-			if((status = pcap_set_promisc(handle, opt_promisc)) != 0) {
-				fprintf(stderr, "error pcap_set_promisc\n");
-				return(2);
-			}
-			if((status = pcap_set_timeout(handle, 1000)) != 0) {
-				fprintf(stderr, "error pcap_set_timeout\n");
-				return(2);
-			}
+				int status = 0;
+				if((handle = pcap_create(ifname, errbuf)) == NULL) {
+					fprintf(stderr, "pcap_create failed on iface '%s': %s\n", ifname, errbuf);
+					return(2);
+				}
+				if((status = pcap_set_snaplen(handle, 3200)) != 0) {
+					fprintf(stderr, "error pcap_set_snaplen\n");
+					return(2);
+				}
+				if((status = pcap_set_promisc(handle, opt_promisc)) != 0) {
+					fprintf(stderr, "error pcap_set_promisc\n");
+					return(2);
+				}
+				if((status = pcap_set_timeout(handle, 1000)) != 0) {
+					fprintf(stderr, "error pcap_set_timeout\n");
+					return(2);
+				}
 
-			/* this is not possible for libpcap older than 1.0.0 so now voipmonitor requires libpcap > 1.0.0
-				set ring buffer size to 5M to prevent packet drops whan CPU goes high or on very high traffic 
-				- default is 2MB for libpcap > 1.0.0
-				- for libpcap < 1.0.0 it is controled by /proc/sys/net/core/rmem_default which is very low 
-			*/
-			if((status = pcap_set_buffer_size(handle, opt_ringbuffer * 1024 * 1024)) != 0) {
-				fprintf(stderr, "error pcap_set_buffer_size\n");
-				return(2);
-			}
+				/* this is not possible for libpcap older than 1.0.0 so now voipmonitor requires libpcap > 1.0.0
+					set ring buffer size to 5M to prevent packet drops whan CPU goes high or on very high traffic 
+					- default is 2MB for libpcap > 1.0.0
+					- for libpcap < 1.0.0 it is controled by /proc/sys/net/core/rmem_default which is very low 
+				*/
+				if((status = pcap_set_buffer_size(handle, opt_ringbuffer * 1024 * 1024)) != 0) {
+					fprintf(stderr, "error pcap_set_buffer_size\n");
+					return(2);
+				}
 
-			if((status = pcap_activate(handle)) != 0) {
-				fprintf(stderr, "libpcap error: [%s]\n", pcap_geterr(handle));
-				return(2);
+				if((status = pcap_activate(handle)) != 0) {
+					fprintf(stderr, "libpcap error: [%s]\n", pcap_geterr(handle));
+					return(2);
+				}
+			} else if(opt_pcap_threaded && opt_pcap_queue_receive_from_ip.length()) {
+				if((handle = pcap_create(ifname, errbuf)) == NULL) {
+					fprintf(stderr, "pcap_create failed on iface '%s': %s\n", ifname, errbuf);
+					return(2);
+				}
 			}
 		} else {
 			// if reading file
@@ -2141,12 +2155,7 @@ int main(int argc, char *argv[]) {
 			threads[i].vmbuffermax = rtpthreadbuffer * 1024 * 1024 / sizeof(rtp_packet);
 			threads[i].writeit = 0;
 			threads[i].readit = 0;
-			if(opt_pcap_queue) {
-				threads[i].vmbuffer_pcap_queue = (rtp_packet_pcap_queue*)malloc(sizeof(rtp_packet_pcap_queue) * (threads[i].vmbuffermax + 1));
-				for(int j = 0; j < threads[i].vmbuffermax + 1; j++) {
-					threads[i].vmbuffer_pcap_queue[j].free = 1;
-				}
-			} else {
+			if(!opt_pcap_queue) {
 				threads[i].vmbuffer = (rtp_packet*)malloc(sizeof(rtp_packet) * (threads[i].vmbuffermax + 1));
 				for(int j = 0; j < threads[i].vmbuffermax + 1; j++) {
 					threads[i].vmbuffer[j].free = 1;
@@ -2176,8 +2185,6 @@ int main(int argc, char *argv[]) {
 			}
 			pthread_create(&pcap_read_thread, NULL, pcap_read_thread_func, NULL);
 		}
-#else
-		opt_pcap_queue = 0;
 #endif 
 	}
 
@@ -2258,7 +2265,7 @@ int main(int argc, char *argv[]) {
 		//readdump_libnids(handle);
 
 		if(opt_pcap_threaded) {
-			if(opt_pcap_queue && fname[0] == '\0') {
+			if(opt_pcap_queue) {
 				
 				if(opt_pcap_queue_receive_from_ip.length()) {
 					
@@ -2278,6 +2285,8 @@ int main(int argc, char *argv[]) {
 					
 					delete pcapQueueR;
 					
+					pcap_close(handle);
+					
 				} else {
 				
 					PcapQueue_readFromInterface *pcapQueueI = new PcapQueue_readFromInterface("interface");
@@ -2291,8 +2300,8 @@ int main(int argc, char *argv[]) {
 						pcapQueueQ->setPacketServer(opt_pcap_queue_send_to_ip.c_str(), opt_pcap_queue_send_to_port, PcapQueue_readFromFifo::directionWrite);
 					}
 					
-					pcapQueueI->start();
 					pcapQueueQ->start();
+					pcapQueueI->start();
 					
 					while(!terminating) {
 						pcapQueueQ->pcapStat();
@@ -2350,9 +2359,7 @@ int main(int argc, char *argv[]) {
 		for(int i = 0; i < num_threads; i++) {
 			pthread_join((threads[i].thread), NULL);
 #ifdef QUEUE_NONBLOCK2
-			if(opt_pcap_queue) {
-				free(threads[i].vmbuffer_pcap_queue);
-			} else {
+			if(!opt_pcap_queue) {
 				free(threads[i].vmbuffer);
 			}
 #endif
@@ -2420,8 +2427,27 @@ void *readdump_libpcap_thread_fce(void *handle) {
 }
 
 
+#include "rqueue.h"
+
 void test() {
 	
+	if(opt_test >= 11 && opt_test <= 13) {
+		rqueue<int> test;
+		switch(opt_test) {
+		case 11:
+			test.push(1);
+			test._test();
+			break;
+		case 12:
+			test._testPerf(true);
+			break;
+		case 13:
+			test._testPerf(false);
+			break;
+		}
+		return;
+	}
+
 	/*
 	int pipeFh[2];
 	pipe(pipeFh);

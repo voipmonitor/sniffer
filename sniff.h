@@ -8,6 +8,7 @@
 
 #include <queue>
 #include <map>
+#include "rqueue.h"
 #include "voipmonitor.h"
 #include "calltable.h"
 #include "pcap_queue_block.h"
@@ -113,17 +114,23 @@ typedef struct {
 	pcap_block_store::pcap_pkthdr_pcap pkthdr_pcap; 
 	pcap_block_store *block_store;
 	int block_store_index;
-	volatile char free;
 } rtp_packet_pcap_queue;
 
+#ifdef QUEUE_NONBLOCK2
+extern int opt_pcap_queue;
+#endif
+
 struct read_thread {
-	read_thread() {
+	read_thread() 
+		#ifdef QUEUE_NONBLOCK2
+		: rtpp_queue(opt_pcap_queue ? 1000 : 0, 1000)
+		#endif
+		{
 		#ifdef QUEUE_NONBLOCK
 			this->pqueue = NULL;
 		#endif
 		#ifdef QUEUE_NONBLOCK2
 			this->vmbuffer = NULL;
-			this->vmbuffer_pcap_queue = NULL;
 			this->vmbuffermax = 0;
 			this->readit = 0;
 			this->writeit = 0;
@@ -140,10 +147,10 @@ struct read_thread {
 #endif
 #ifdef QUEUE_NONBLOCK2
 	rtp_packet *vmbuffer;
-	rtp_packet_pcap_queue *vmbuffer_pcap_queue;
 	int vmbuffermax;
 	volatile int readit;
 	volatile int writeit;
+	rqueue<rtp_packet_pcap_queue> rtpp_queue;
 #endif
 };
 

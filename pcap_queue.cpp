@@ -51,7 +51,7 @@
 #define MAX_TCPSTREAMS 1024
 #define FILE_BUFFER_SIZE 1000000
 
-#define TEST_PCAP_FILE "/__RAID/Public/test2.pcap"
+//#define TEST_PCAP_FILE "/__RAID/Public/test2.pcap"
 
 
 using namespace std;
@@ -72,6 +72,7 @@ extern int opt_mirrorip;
 extern char opt_mirrorip_src[20];
 extern char opt_mirrorip_dst[20];
 
+extern pcap_t *handle;
 extern char *sipportmatrix;
 extern unsigned int duplicate_counter;
 extern struct tcp_stream2_t *tcp_streams_hashed[MAX_TCPSTREAMS];
@@ -1182,6 +1183,7 @@ bool PcapQueue_readFromInterface::startCapture() {
 		syslog(LOG_ERR, "pcap queue %s: pcap_create failed on iface %s: %s", this->nameQueue.c_str(), this->interfaceName.c_str(), errbuf); 
 		return(false);
 	}
+	handle = this->pcapHandle;
 	int status;
 	if((status = pcap_set_snaplen(this->pcapHandle, this->pcap_snaplen)) != 0) {
 		syslog(LOG_ERR, "pcap queue %s: pcap_snaplen failed", this->nameQueue.c_str()); 

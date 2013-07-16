@@ -200,7 +200,10 @@ protected:
 	virtual void *writeThreadFunction(void *) { return(NULL); }
 	virtual bool openFifoForRead();
 	virtual bool openFifoForWrite();
-	virtual pcap_t* _getPcapHandle() { return(NULL); }
+	virtual pcap_t* _getPcapHandle() { 
+		extern pcap_t *handle;
+		return(handle); 
+	}
 	virtual string pcapStatString_packets(int statPeriod);
 	virtual string pcapStatString_bypass_buffer(int statPeriod) { return(""); }
 	virtual string pcapStatString_memory_buffer(int statPeriod) { return(""); }
@@ -307,6 +310,10 @@ protected:
 	void *writeThreadFunction(void *);
 	bool openFifoForRead();
 	bool openFifoForWrite();
+	pcap_t* _getPcapHandle() {
+		extern pcap_t *handle;
+		return(this->fifoReadPcapHandle ? this->fifoReadPcapHandle : handle);
+	}
 	string pcapStatString_memory_buffer(int statPeriod);
 	string pcapStatString_disk_buffer(int statPeriod);
 	bool socketWritePcapBlock(pcap_block_store *blockStore);
