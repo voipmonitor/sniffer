@@ -2368,7 +2368,8 @@ int main(int argc, char *argv[]) {
 	}
 
 	// close handler
-	if(opt_scanpcapdir[0] == '\0') {
+	if(opt_scanpcapdir[0] == '\0' &&
+	   (!opt_pcap_queue || (opt_pcap_threaded && opt_pcap_queue_receive_from_ip.length()))) {
 		pcap_close(handle);
 	}
 	
