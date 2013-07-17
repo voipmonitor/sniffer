@@ -364,7 +364,7 @@ bool SqlDb_mysql::connect() {
 				this->dbVersion = row[1];
 			}
 			while(this->fetchRow());
-			syslog(LOG_INFO, "reconnect - db version %i.%i", this->getDbMajorVersion(), this->getDbMinorVersion());
+			syslog(LOG_INFO, "connect - db version %i.%i", this->getDbMajorVersion(), this->getDbMinorVersion());
 			return(true);
 		} else {
 			this->checkLastError("connect error", true);
