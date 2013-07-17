@@ -306,13 +306,16 @@ public:
 		return(this->pcapStoreQueue.getQueueSize());
 	}
 protected:
+	bool initThread();
 	void *threadFunction(void *);
 	void *writeThreadFunction(void *);
 	bool openFifoForRead();
 	bool openFifoForWrite();
+	bool openPcapDeadHandle();
 	pcap_t* _getPcapHandle() {
 		extern pcap_t *handle;
-		return(this->fifoReadPcapHandle ? this->fifoReadPcapHandle : handle);
+		return(this->pcapDeadHandle ? this->pcapDeadHandle :
+		       (this->fifoReadPcapHandle ? this->fifoReadPcapHandle : handle));
 	}
 	string pcapStatString_memory_buffer(int statPeriod);
 	string pcapStatString_disk_buffer(int statPeriod);
@@ -333,6 +336,7 @@ protected:
 	int packetServerPort;
 	ePacketServerDirection packetServerDirection;
 	pcap_t *fifoReadPcapHandle;
+	pcap_t *pcapDeadHandle;
 	hostent* socketHostEnt;
 	int socketHandle;
 	int socketClient;

@@ -2024,16 +2024,6 @@ int main(int argc, char *argv[]) {
 					fprintf(stderr, "libpcap error: [%s]\n", pcap_geterr(handle));
 					return(2);
 				}
-			} else if(opt_pcap_threaded && opt_pcap_queue_receive_from_ip.length()) {
-				if((handle = pcap_create(ifname, errbuf)) == NULL) {
-					fprintf(stderr, "pcap_create failed on iface '%s': %s\n", ifname, errbuf);
-					return(2);
-				}
-				int status = 0;
-				if((status = pcap_activate(handle)) != 0) {
-					fprintf(stderr, "libpcap error: [%s]\n", pcap_geterr(handle));
-					return(2);
-				}
 			}
 		} else {
 			// if reading file
@@ -2291,8 +2281,6 @@ int main(int argc, char *argv[]) {
 					sleep(1);
 					
 					delete pcapQueueR;
-					
-					pcap_close(handle);
 					
 				} else {
 				

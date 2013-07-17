@@ -1039,11 +1039,12 @@ bool PcapQueue_readFromInterface::initThread() {
 
 void* PcapQueue_readFromInterface::threadFunction(void* ) {
 	cout << this->nameQueue << " - start thread" << endl;
-	if(!this->initThread()) {
+	if(this->initThread()) {
+		this->threadInitOk = true;
+	} else {
 		this->threadTerminated = true;
 		return(NULL);
 	}
-	this->threadInitOk = true;
 	this->initStat();
 	pcap_pkthdr *header;
 	u_char *packet;
@@ -1454,9 +1455,10 @@ int PcapQueue_readFromInterface::pcapProcess(pcap_pkthdr** header, u_char** pack
 PcapQueue_readFromFifo::PcapQueue_readFromFifo(const char *nameQueue, const char *fileStoreFolder) 
  : PcapQueue(readFromFifo, nameQueue),
    pcapStoreQueue(fileStoreFolder) {
-	 this->fifoReadPcapHandle = NULL;
 	 this->packetServerPort = 0;
 	 this->packetServerDirection = directionNA;
+	 this->fifoReadPcapHandle = NULL;
+	 this->pcapDeadHandle = NULL;
 	 this->socketHostEnt = NULL;
 	 this->socketHandle = 0;
 	 this->socketClient = 0;
@@ -1468,6 +1470,9 @@ PcapQueue_readFromFifo::PcapQueue_readFromFifo(const char *nameQueue, const char
 PcapQueue_readFromFifo::~PcapQueue_readFromFifo() {
 	if(this->fifoReadPcapHandle) {
 		pcap_close(this->fifoReadPcapHandle);
+	}
+	if(this->pcapDeadHandle) {
+		pcap_close(this->pcapDeadHandle);
 	}
 	if(this->socketHandle) {
 		this->socketClose();
@@ -1481,13 +1486,23 @@ void PcapQueue_readFromFifo::setPacketServer(const char *packetServer, int packe
 	this->packetServerDirection = direction;
 }
 
+bool PcapQueue_readFromFifo::initThread() {
+	if(this->packetServerDirection == directionRead &&
+	   !this->openPcapDeadHandle()) {
+		return(false);
+	}
+	return(PcapQueue::initThread());
+}
+
+
 void *PcapQueue_readFromFifo::threadFunction(void *) {
 	cout << this->nameQueue << " - start thread" << endl;
-	if(!this->initThread()) {
+	if(this->initThread()) {
+		this->threadInitOk = true;
+	} else {
 		this->threadTerminated = true;
 		return(NULL);
 	}
-	this->threadInitOk = true;
 	if(this->packetServerDirection == directionRead) {
 		pcap_block_store *blockStore = new pcap_block_store;
 		size_t bufferSize = 1000;
@@ -1628,11 +1643,12 @@ void *PcapQueue_readFromFifo::threadFunction(void *) {
 
 void *PcapQueue_readFromFifo::writeThreadFunction(void *) {
 	cout << this->nameQueue << " - start write thread" << endl;
-	if(!this->initWriteThread()) {
+	if(this->initWriteThread()) {
+		this->writeThreadInitOk = true;
+	} else {
 		this->writeThreadTerminated = true;
 		return(NULL);
 	}
-	this->writeThreadInitOk = true;
 	pcap_block_store *blockStore;
 	while(!TERMINATING) {
 		if(DEBUG_SLEEP && access((this->pcapStoreQueue.fileStoreFolder + "/__/sleep").c_str(), F_OK ) != -1) {
@@ -1714,6 +1730,15 @@ bool PcapQueue_readFromFifo::openFifoForWrite() {
 		return(this->socketGetHost() &&
 		       this->socketConnect());
 	}
+	return(true);
+}
+
+bool PcapQueue_readFromFifo::openPcapDeadHandle() {
+	if((this->pcapDeadHandle = pcap_open_dead(DLT_RAW, 65535)) == NULL) {
+		syslog(LOG_ERR, "pcap queue %s: pcap_create failed", this->nameQueue.c_str()); 
+		return(false);
+	}
+	handle = this->pcapDeadHandle;
 	return(true);
 }
 
