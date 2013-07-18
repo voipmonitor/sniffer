@@ -195,6 +195,7 @@ liblfds.6/test/test.vcproj -text
 /odbc.h -text
 /pcap_queue.cpp -text
 /pcap_queue.h -text
+/pcap_queue_block.h -text
 /rqueue.h -text
 /rtcp.cpp -text
 /rtcp.h -text
