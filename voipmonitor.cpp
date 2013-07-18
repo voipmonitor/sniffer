@@ -2303,8 +2303,11 @@ int main(int argc, char *argv[]) {
 					
 					pcapQueueR->start();
 					
+					uint_fast64_t _counter;
 					while(!terminating) {
-						pcapQueueR->pcapStat();
+						if(_counter && !(_counter++ % 10)) {
+							pcapQueueR->pcapStat(10);
+						}
 						sleep(1);
 					}
 					
@@ -2329,8 +2332,11 @@ int main(int argc, char *argv[]) {
 					pcapQueueQ->start();
 					pcapQueueI->start();
 					
+					uint_fast64_t _counter;
 					while(!terminating) {
-						pcapQueueQ->pcapStat();
+						if(_counter && !(_counter++ % 10)) {
+							pcapQueueQ->pcapStat(10);
+						}
 						sleep(1);
 					}
 					

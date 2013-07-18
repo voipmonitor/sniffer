@@ -11,6 +11,7 @@
 #include <sys/param.h>
 #include <iostream>
 #include <sstream>
+#include <sys/syscall.h>
 
 #include <snappy-c.h>
 
@@ -42,7 +43,7 @@
 
 
 #define VERBOSE 		(verbosity > 0)
-#define DEBUG_VERBOSE 		(VERBOSE && true)
+#define DEBUG_VERBOSE 		(VERBOSE && false)
 #define DEBUG_SYNC 		(DEBUG_VERBOSE && false)
 #define DEBUG_SLEEP		(DEBUG_VERBOSE && true)
 #define DEBUG_ALL_PACKETS	(DEBUG_VERBOSE && false)
@@ -715,6 +716,10 @@ PcapQueue::PcapQueue(eTypeQueue typeQueue, const char *nameQueue) {
 	this->threadTerminated = false;
 	this->writeThreadTerminated = false;
 	this->threadDoTerminate = false;
+	this->threadId = 0;
+	this->writeThreadId = 0;
+	memset(this->threadPstatData, 0, sizeof(this->threadPstatData));
+	memset(this->writeThreadPstatData, 0, sizeof(this->writeThreadPstatData));
 	this->packetBuffer = NULL;
 	this->instancePcapHandle = NULL;
 }
@@ -786,33 +791,74 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 	if(!VERBOSE && !DEBUG_VERBOSE) {
 		return;
 	}
-	string statString = "\n";
-	if(statCalls && calls) {
+	if(DEBUG_VERBOSE) {
+		string statString = "\n";
+		if(statCalls && calls) {
+			ostringstream outStr;
+			outStr << "CALLS: " << calls;
+			if(opt_ipaccount) {
+				outStr << "  IPACC_BUFFER " << lengthIpaccBuffer();
+			}
+			outStr << endl;
+			statString += outStr.str();
+		}
+		statString += 
+			this->pcapStatString_packets(statPeriod) +
+			(this->instancePcapHandle ? 
+				this->instancePcapHandle->pcapStatString_bypass_buffer(statPeriod) :
+				this->pcapStatString_bypass_buffer(statPeriod)) +
+			this->pcapStatString_memory_buffer(statPeriod) +
+			this->pcapStatString_disk_buffer(statPeriod) +
+			(this->instancePcapHandle ? 
+				this->instancePcapHandle->pcapStatString_interface(statPeriod) :
+				this->pcapStatString_interface(statPeriod)) +
+			"\n";
+		if(statString.length()) {
+			//if(DEBUG_VERBOSE) {
+				cout << statString;
+			/*} else {
+				syslog(LOG_NOTICE, "packetbuffer stat:\n%s", statString.c_str());
+			}*/
+		}
+	} else {
 		ostringstream outStr;
-		outStr << "CALLS: " << calls;
-		if(opt_ipaccount) {
-			outStr << "  IPACC_BUFFER " << lengthIpaccBuffer();
+		double memoryBufferPerc = this->pcapStat_get_memory_buffer_perc();
+		outStr << fixed
+		       << "calls[" << calls << "] "
+		       << "heap[" << setprecision(1) << memoryBufferPerc << "%] ";
+		if(this->instancePcapHandle) {
+			unsigned long bypassBufferSizeExeeded = this->instancePcapHandle->pcapStat_get_bypass_buffer_size_exeeded();
+			outStr << "heapoverruns[" << bypassBufferSizeExeeded << "] ";
+		}
+		double diskBufferMb = this->pcapStat_get_disk_buffer_mb();
+		if(diskBufferMb >= 0) {
+			double diskBufferPerc = this->pcapStat_get_disk_buffer_perc();
+			outStr << "fileq[" << setprecision(1) << diskBufferMb << "MB "
+			       << setprecision(1) << diskBufferPerc << "%] ";
+		}
+		double compress = this->pcapStat_get_compress();
+		if(compress >= 0) {
+			outStr << "comp[" << setprecision(1) << compress << "%] ";
+		}
+		if(this->instancePcapHandle) {
+			double t0cpu = this->instancePcapHandle->getCpuUsagePerc(false, true);
+			if(t0cpu >= 0) {
+				outStr << "t0CPU[" << setprecision(1) << t0cpu << "%] ";
+			}
+		}
+		double t1cpu = this->getCpuUsagePerc(false, true);
+		if(t1cpu >= 0) {
+			outStr << "t1CPU[" << setprecision(1) << t1cpu << "%] ";
+		}
+		double t2cpu = this->getCpuUsagePerc(true, true);
+		if(t2cpu >= 0) {
+			outStr << "t2CPU[" << setprecision(1) << t2cpu << "%] ";
 		}
 		outStr << endl;
-		statString += outStr.str();
-	}
-	statString += 
-		this->pcapStatString_packets(statPeriod) +
-		(this->instancePcapHandle ? 
-			this->instancePcapHandle->pcapStatString_bypass_buffer(statPeriod) :
-			this->pcapStatString_bypass_buffer(statPeriod)) +
-		this->pcapStatString_memory_buffer(statPeriod) +
-		this->pcapStatString_disk_buffer(statPeriod) +
-		(this->instancePcapHandle ? 
-			this->instancePcapHandle->pcapStatString_interface(statPeriod) :
-			this->pcapStatString_interface(statPeriod)) +
-		"\n";
-	if(statString.length()) {
-		if(DEBUG_VERBOSE) {
-			cout << statString;
-		} else {
-			syslog(LOG_NOTICE, "packetbuffer stat:\n%s", statString.c_str());
-		}
+		outStr << (this->instancePcapHandle ? 
+				this->instancePcapHandle->pcapStatString_interface(statPeriod) :
+				this->pcapStatString_interface(statPeriod));
+		syslog(LOG_NOTICE, "packetbuffer stat: %s", outStr.str().c_str());
 	}
 	sumPacketsCounterIn[1] = sumPacketsCounterIn[0];
 	sumPacketsCounterOut[1] = sumPacketsCounterOut[0];
@@ -998,6 +1044,57 @@ string PcapQueue::pcapStatString_packets(int statPeriod) {
 	return(outStr.str());
 }
 
+double PcapQueue::pcapStat_get_compress() {
+	if(sumPacketsSizeCompress[0] && sumPacketsSize[0]) {
+		return(100.0 * sumPacketsSizeCompress[0] / sumPacketsSize[0]);
+	} else {
+		return(-1);
+	}
+}
+
+void PcapQueue::preparePstatData(bool writeThread) {
+	uint pid = writeThread ? this->writeThreadId : this->threadId;
+	if(pid) {
+		if(writeThread) {
+			if(this->writeThreadPstatData[0].cpu_total_time) {
+				this->writeThreadPstatData[1] = this->writeThreadPstatData[0];
+			}
+		} else {
+			if(this->threadPstatData[0].cpu_total_time) {
+				this->threadPstatData[1] = this->threadPstatData[0];
+			}
+		}
+		pstat_get_data(pid, writeThread ? this->writeThreadPstatData : this->threadPstatData);
+	}
+}
+
+double PcapQueue::getCpuUsagePerc(bool writeThread, bool preparePstatData) {
+	if(preparePstatData) {
+		this->preparePstatData(writeThread);
+	}
+	uint pid = writeThread ? this->writeThreadId : this->threadId;
+	if(pid) {
+		double ucpu_usage, scpu_usage;
+		if(writeThread) {
+			if(this->writeThreadPstatData[0].cpu_total_time && this->writeThreadPstatData[1].cpu_total_time) {
+				pstat_calc_cpu_usage_pct(
+					&this->writeThreadPstatData[0], &this->writeThreadPstatData[1],
+					&ucpu_usage, &scpu_usage);
+				return(ucpu_usage + scpu_usage);
+			}
+		} else {
+			if(this->threadPstatData[0].cpu_total_time && this->threadPstatData[1].cpu_total_time) {
+				pstat_calc_cpu_usage_pct(
+					&this->threadPstatData[0], &this->threadPstatData[1],
+					&ucpu_usage, &scpu_usage);
+				return(ucpu_usage + scpu_usage);
+			}
+		}
+	}
+	return(-1);
+}
+
+
 inline void *_PcapQueue_threadFunction(void* arg) {
 	return(((PcapQueue*)arg)->threadFunction(arg));
 }
@@ -1052,7 +1149,16 @@ bool PcapQueue_readFromInterface::initThread() {
 }
 
 void* PcapQueue_readFromInterface::threadFunction(void* ) {
-	cout << this->nameQueue << " - start thread" << endl;
+	if(VERBOSE || DEBUG_VERBOSE) {
+		ostringstream outStr;
+		this->threadId = syscall(SYS_gettid);
+		outStr << "start thread t0 (" << this->nameQueue << ") - pid: " << this->threadId << endl;
+		if(DEBUG_VERBOSE) {
+			cout << outStr.str();
+		} else {
+			syslog(LOG_NOTICE, outStr.str().c_str());
+		}
+	}
 	if(this->initThread()) {
 		this->threadInitOk = true;
 	} else {
@@ -1271,6 +1377,10 @@ string PcapQueue_readFromInterface::pcapStatString_bypass_buffer(int statPeriod)
 		       << "   peak: " << (maxBypassBufferSize / 1024 / 1024) << "MB" << " (" << maxBypassBufferItems << ")" << " / size exceeded occurrence " << countBypassBufferSizeExceeded << endl;
 	}
 	return(outStr.str());
+}
+
+unsigned long PcapQueue_readFromInterface::pcapStat_get_bypass_buffer_size_exeeded() {
+	return(countBypassBufferSizeExceeded);
 }
 
 string PcapQueue_readFromInterface::pcapStatString_interface(int statPeriod) {
@@ -1510,7 +1620,16 @@ bool PcapQueue_readFromFifo::initThread() {
 
 
 void *PcapQueue_readFromFifo::threadFunction(void *) {
-	cout << this->nameQueue << " - start thread" << endl;
+	if(VERBOSE || DEBUG_VERBOSE) {
+		ostringstream outStr;
+		this->threadId = syscall(SYS_gettid);
+		outStr << "start thread t1 (" << this->nameQueue << ") - pid: " << this->threadId << endl;
+		if(DEBUG_VERBOSE) {
+			cout << outStr.str();
+		} else {
+			syslog(LOG_NOTICE, outStr.str().c_str());
+		}
+	}
 	if(this->initThread()) {
 		this->threadInitOk = true;
 	} else {
@@ -1656,7 +1775,16 @@ void *PcapQueue_readFromFifo::threadFunction(void *) {
 }
 
 void *PcapQueue_readFromFifo::writeThreadFunction(void *) {
-	cout << this->nameQueue << " - start write thread" << endl;
+	if(VERBOSE || DEBUG_VERBOSE) {
+		ostringstream outStr;
+		this->writeThreadId = syscall(SYS_gettid);
+		outStr << "start thread t2 (" << this->nameQueue << " / write" << ") - pid: " << this->writeThreadId << endl;
+		if(DEBUG_VERBOSE) {
+			cout << outStr.str();
+		} else {
+			syslog(LOG_NOTICE, outStr.str().c_str());
+		}
+	}
 	if(this->initWriteThread()) {
 		this->writeThreadInitOk = true;
 	} else {
@@ -1761,12 +1889,17 @@ string PcapQueue_readFromFifo::pcapStatString_memory_buffer(int statPeriod) {
 	if(__config_BYPASS_FIFO) {
 		outStr << fixed;
 		uint64_t useSize = this->pcapStoreQueue.sizeOfBlocksInMemory + this->blockStoreTrash_size;
-		outStr << "PACKETBUFFER_TOTAL_HEAP:  "
+		outStr << "PACKETBUFFER_TOTAL_HEAP:   "
 		       << setw(6) << (useSize / 1024 / 1024) << "MB" << setw(6) << ""
 		       << " " << setw(5) << setprecision(1) << (100. * useSize / opt_pcap_queue_store_queue_max_memory_size) << "%"
 		       << " of " << setw(6) << (opt_pcap_queue_store_queue_max_memory_size / 1024 / 1024) << "MB" << endl;
 	}
 	return(outStr.str());
+}
+
+double PcapQueue_readFromFifo::pcapStat_get_memory_buffer_perc() {
+	uint64_t useSize = this->pcapStoreQueue.sizeOfBlocksInMemory + this->blockStoreTrash_size;
+	return(100. * useSize / opt_pcap_queue_store_queue_max_memory_size);
 }
 
 string PcapQueue_readFromFifo::pcapStatString_disk_buffer(int statPeriod) {
@@ -1775,12 +1908,32 @@ string PcapQueue_readFromFifo::pcapStatString_disk_buffer(int statPeriod) {
 	   this->pcapStoreQueue.fileStoreFolder.length()) {
 		outStr << fixed;
 		uint64_t useSize = this->pcapStoreQueue.getFileStoreUseSize();
-		outStr << "PACKETBUFFER_FILES:       "
+		outStr << "PACKETBUFFER_FILES:        "
 		       << setw(6) << (useSize / 1024 / 1024) << "MB" << setw(6) << ""
 		       << " " << setw(5) << setprecision(1) << (100. * useSize / opt_pcap_queue_store_queue_max_disk_size) << "%"
 		       << " of " << setw(6) << (opt_pcap_queue_store_queue_max_disk_size / 1024 / 1024) << "MB" << endl;
 	}
 	return(outStr.str());
+}
+
+double PcapQueue_readFromFifo::pcapStat_get_disk_buffer_perc() {
+	if(opt_pcap_queue_store_queue_max_disk_size &&
+	   this->pcapStoreQueue.fileStoreFolder.length()) {
+		double useSize = this->pcapStoreQueue.getFileStoreUseSize();
+		return(100 * useSize / opt_pcap_queue_store_queue_max_disk_size);
+	} else {
+		return(-1);
+	}
+}
+
+double PcapQueue_readFromFifo::pcapStat_get_disk_buffer_mb() {
+	if(opt_pcap_queue_store_queue_max_disk_size &&
+	   this->pcapStoreQueue.fileStoreFolder.length()) {
+		double useSize = this->pcapStoreQueue.getFileStoreUseSize();
+		return(useSize / 1024 / 1024);
+	} else {
+		return(-1);
+	}
 }
 
 bool PcapQueue_readFromFifo::socketWritePcapBlock(pcap_block_store *blockStore) {

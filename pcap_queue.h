@@ -15,7 +15,9 @@
 #include "pcap_queue_block.h"
 #include "md5.h"
 #include "sniff.h"
+#include "pstat.h"
 
+extern timeval t;
 
 class pcap_block_store_queue {
 public:
@@ -192,6 +194,7 @@ public:
 	inline pcap_t* getPcapHandle();
 	void pcapStat(int statPeriod = 1, bool statCalls = true);
 	void initStat();
+	void getThreadCpuUsage(bool writeThread = false);
 protected:
 	bool createThread();
 	inline int pcap_next_ex(pcap_t* pcapHandle, pcap_pkthdr** header, u_char** packet);
@@ -209,11 +212,18 @@ protected:
 		return(handle); 
 	}
 	virtual string pcapStatString_packets(int statPeriod);
+	virtual double pcapStat_get_compress();
 	virtual string pcapStatString_bypass_buffer(int statPeriod) { return(""); }
+	virtual unsigned long pcapStat_get_bypass_buffer_size_exeeded() { return(0); }
 	virtual string pcapStatString_memory_buffer(int statPeriod) { return(""); }
+	virtual double pcapStat_get_memory_buffer_perc() { return(0); }
 	virtual string pcapStatString_disk_buffer(int statPeriod) { return(""); }
+	virtual double pcapStat_get_disk_buffer_perc() { return(-1); }
+	virtual double pcapStat_get_disk_buffer_mb() { return(-1); }
 	virtual string pcapStatString_interface(int statPeriod) { return(""); }
 	virtual void initStat_interface() {};
+	void preparePstatData(bool writeThread = false);
+	double getCpuUsagePerc(bool writeThread = false, bool preparePstatData = false);
 protected:
 	eTypeQueue typeQueue;
 	std::string nameQueue;
@@ -230,6 +240,10 @@ protected:
 	bool threadTerminated;
 	bool writeThreadTerminated;
 	bool threadDoTerminate;
+	uint threadId;
+	uint writeThreadId;
+	pstat_data threadPstatData[2];
+	pstat_data writeThreadPstatData[2];
 private:
 	u_char* packetBuffer;
 	PcapQueue *instancePcapHandle;
@@ -272,6 +286,7 @@ protected:
 		return(this->pcapHandle);
 	}
 	string pcapStatString_bypass_buffer(int statPeriod);
+	unsigned long pcapStat_get_bypass_buffer_size_exeeded();
 	string pcapStatString_interface(int statPeriod);
 	void initStat_interface();
 private:
@@ -322,7 +337,10 @@ protected:
 		       (this->fifoReadPcapHandle ? this->fifoReadPcapHandle : handle));
 	}
 	string pcapStatString_memory_buffer(int statPeriod);
+	double pcapStat_get_memory_buffer_perc();
 	string pcapStatString_disk_buffer(int statPeriod);
+	double pcapStat_get_disk_buffer_perc();
+	double pcapStat_get_disk_buffer_mb();
 	bool socketWritePcapBlock(pcap_block_store *blockStore);
 	bool socketGetHost();
 	bool socketConnect();
