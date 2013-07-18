@@ -4072,6 +4072,47 @@ else
 fi
 
 # FIXME: Replace `main' with a function in `-lz':
+{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for main in -lsnappy" >&5
+$as_echo_n "checking for main in -lsnappy... " >&6; }
+if test "${ac_cv_lib_snappy_main+set}" = set; then :
+  $as_echo_n "(cached) " >&6
+else
+  ac_check_lib_save_LIBS=$LIBS
+LIBS="-lsnappy  $LIBS"
+cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+
+
+int
+main ()
+{
+return main ();
+  ;
+  return 0;
+}
+_ACEOF
+if ac_fn_c_try_link "$LINENO"; then :
+  ac_cv_lib_snappy_main=yes
+else
+  ac_cv_lib_snappy_main=no
+fi
+rm -f core conftest.err conftest.$ac_objext \
+    conftest$ac_exeext conftest.$ac_ext
+LIBS=$ac_check_lib_save_LIBS
+fi
+{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $ac_cv_lib_snappy_main" >&5
+$as_echo "$ac_cv_lib_snappy_main" >&6; }
+if test "x$ac_cv_lib_snappy_main" = x""yes; then :
+  cat >>confdefs.h <<_ACEOF
+#define HAVE_LIBSNAPPY 1
+_ACEOF
+
+  LIBS="-lsnappy $LIBS"
+
+else
+  as_fn_error $? "Unable to find snappy library. Compile from source: https://snappy.googlecode.com/files/snappy-1.1.0.tar.gz" "$LINENO" 5
+fi
+
 { $as_echo "$as_me:${as_lineno-$LINENO}: checking for main in -lz" >&5
 $as_echo_n "checking for main in -lz... " >&6; }
 if test "${ac_cv_lib_z_main+set}" = set; then :

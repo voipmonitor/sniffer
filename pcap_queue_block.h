@@ -6,7 +6,6 @@
 #include <memory.h>
 #include <pcap.h>
 #include <string>
-#include <lzo/lzoconf.h>
 
 #define PCAP_BLOCK_STORE_HEADER_STRING		"pcap_block_store"
 #define PCAP_BLOCK_STORE_HEADER_STRING_LEN	16
