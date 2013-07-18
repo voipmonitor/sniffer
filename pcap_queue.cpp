@@ -93,7 +93,7 @@ static bool __config_BYPASS_FIFO			= true;
 static bool __config_USE_PCAP_FOR_FIFO			= false;
 static bool __config_ENABLE_TOGETHER_READ_WRITE_FILE	= false;
 
-int opt_pcap_queue					= 0;
+int opt_pcap_queue					= 1;
 u_int opt_pcap_queue_block_max_time_ms 			= 500;
 size_t opt_pcap_queue_block_max_size   			= OPT_PCAP_BLOCK_STORE_MAX_ITEMS * AVG_PACKET_SIZE;
 u_int opt_pcap_queue_file_store_max_time_ms		= 5000;
@@ -288,13 +288,13 @@ bool pcap_block_store::compress() {
 			sumPacketsSizeCompress[0] += this->size_compress;
 			return(true);
 		case SNAPPY_INVALID_INPUT:
-			syslog(LOG_ERR, "pcap queue: snappy_compress: invalid input");
+			syslog(LOG_ERR, "packetbuffer: snappy_compress: invalid input");
 			break;
 		case SNAPPY_BUFFER_TOO_SMALL:
-			syslog(LOG_ERR, "pcap queue: snappy_compress: buffer is too small");
+			syslog(LOG_ERR, "packetbuffer: snappy_compress: buffer is too small");
 			break;
 		default:
-			syslog(LOG_ERR, "pcap queue: snappy_compress: unknown error");
+			syslog(LOG_ERR, "packetbuffer: snappy_compress: unknown error");
 			break;
 	}
 	free(snappyBuff);
@@ -315,13 +315,13 @@ bool pcap_block_store::uncompress() {
 			this->size_compress = 0;
 			return(true);
 		case SNAPPY_INVALID_INPUT:
-			syslog(LOG_ERR, "pcap queue: snappy_compress: invalid input");
+			syslog(LOG_ERR, "packetbuffer: snappy_compress: invalid input");
 			break;
 		case SNAPPY_BUFFER_TOO_SMALL:
-			syslog(LOG_ERR, "pcap queue: snappy_compress: buffer is too small");
+			syslog(LOG_ERR, "packetbuffer: snappy_compress: buffer is too small");
 			break;
 		default:
-			syslog(LOG_ERR, "pcap queue: snappy_compress: unknown error");
+			syslog(LOG_ERR, "packetbuffer: snappy_compress: unknown error");
 			break;
 	}
 	free(snappyBuff);
@@ -376,12 +376,12 @@ bool pcap_file_store::push(pcap_block_store *blockStore) {
 	unsigned long long timeAfterWrite = getTimeNS();
 	double diffTimeS = (timeAfterWrite - timeBeforeWrite) / 1e9;
 	if(diffTimeS > 0.1) {
-		syslog(LOG_NOTICE, "pcap queue: slow write %luB - %.3lfs", sizeSaveBuffer, diffTimeS);
+		syslog(LOG_NOTICE, "packetbuffer: slow write %luB - %.3lfs", sizeSaveBuffer, diffTimeS);
 	}
 	if(rsltWrite == sizeSaveBuffer) {
 		this->fileSize += rsltWrite;
 	} else {
-		syslog(LOG_ERR, "pcap queue: write to %s failed", this->getFilePathName().c_str());
+		syslog(LOG_ERR, "packetbuffer: write to %s failed", this->getFilePathName().c_str());
 	}
 	this->unlock_sync_flush_file();
 	free(saveBuffer);
@@ -398,7 +398,7 @@ bool pcap_file_store::push(pcap_block_store *blockStore) {
 
 bool pcap_file_store::pop(pcap_block_store *blockStore) {
 	if(!blockStore->idFileStore) {
-		syslog(LOG_ERR, "pcap queue: invalid id file store");
+		syslog(LOG_ERR, "packetbuffer: invalid file store id");
 		return(false);
 	}
 	if(!this->fileHandlePop && !this->open(typeHandlePop)) {
@@ -444,19 +444,19 @@ bool pcap_file_store::open(eTypeHandle typeHandle) {
 		if(this->fileHandlePush) {
 			if(VERBOSE || DEBUG_VERBOSE) {
 				ostringstream outStr;
-				outStr << "create file pcap store: " << filePathName
+				outStr << "create packet buffer store: " << filePathName
 				       << " write handle: " << this->fileHandlePush
 				       << endl;
 				if(DEBUG_VERBOSE) {
 					cout << outStr.str();
 				} else {
-					syslog(LOG_ERR, "pcap queue: %s", outStr.str().c_str());
+					syslog(LOG_ERR, "packetbuffer: %s", outStr.str().c_str());
 				}
 			}
 			this->fileBufferPush = (u_char*)malloc(FILE_BUFFER_SIZE);
 			setbuffer(this->fileHandlePush, (char*)this->fileBufferPush, FILE_BUFFER_SIZE);
 		} else {
-			syslog(LOG_ERR, "pcap queue: open %s for write failed", filePathName.c_str());
+			syslog(LOG_ERR, "packetbuffer: open %s for write failed", filePathName.c_str());
 			rslt = false;
 		}
 	}
@@ -471,13 +471,13 @@ bool pcap_file_store::open(eTypeHandle typeHandle) {
 				if(DEBUG_VERBOSE) {
 					cout << outStr.str();
 				} else {
-					syslog(LOG_ERR, "pcap queue: %s", outStr.str().c_str());
+					syslog(LOG_ERR, "packetbuffer: %s", outStr.str().c_str());
 				}
 			}
 			this->fileBufferPop = (u_char*)malloc(FILE_BUFFER_SIZE);
 			setbuffer(this->fileHandlePop, (char*)this->fileBufferPop, FILE_BUFFER_SIZE);
 		} else {
-			syslog(LOG_ERR, "pcap queue: open %s for read failed", filePathName.c_str());
+			syslog(LOG_ERR, "packetbuffer: open %s for read failed", filePathName.c_str());
 			rslt = false;
 		}
 	}
@@ -572,7 +572,7 @@ bool pcap_store_queue::push(pcap_block_store *blockStore, size_t addUsedSize) {
 			this->lock_fileStore();
 		}
 		if(this->getFileStoreUseSize(false) > opt_pcap_queue_store_queue_max_disk_size) {
-			syslog(LOG_ERR, "pcap queue: SPECIFIED DISK SPACE IS EXHAUSTED");
+			syslog(LOG_ERR, "packetbuffer: DISK IS FULL");
 			delete blockStore;
 			this->unlock_fileStore();
 			return(false);
@@ -598,7 +598,7 @@ bool pcap_store_queue::push(pcap_block_store *blockStore, size_t addUsedSize) {
 			this->unlock_fileStore();
 		}
 		if(this->sizeOfBlocksInMemory >= opt_pcap_queue_store_queue_max_memory_size) {
-			syslog(LOG_ERR, "pcap queue: SPECIFIED MEMORY SPACE IS EXHAUSTED");
+			syslog(LOG_ERR, "packetbuffer: MEMORY IS FULL");
 			delete blockStore;
 			return(false);
 		} else {
@@ -797,7 +797,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 		if(DEBUG_VERBOSE) {
 			cout << statString;
 		} else {
-			syslog(LOG_NOTICE, "pcap queue stat:\n%s", statString.c_str());
+			syslog(LOG_NOTICE, "packetbuffer stat:\n%s", statString.c_str());
 		}
 	}
 	sumPacketsCounterIn[1] = sumPacketsCounterIn[0];
@@ -834,17 +834,17 @@ int PcapQueue::pcap_next_ex(pcap_t *pcapHandle, pcap_pkthdr** header, u_char** p
 	int res = ::pcap_next_ex(pcapHandle, header, (const u_char**)packet);
 	if(!packet && res != -2) {
 		if(VERBOSE) {
-			syslog(LOG_NOTICE,"pcap queue %s: NULL PACKET, pcap response is %d", this->nameQueue.c_str(), res);
+			syslog(LOG_NOTICE,"packetbuffer %s: NULL PACKET, pcap response is %d", this->nameQueue.c_str(), res);
 			}
 		return(0);
 	} else if(res == -1) {
 		if(VERBOSE) {
-			syslog (LOG_NOTICE,"pcap queue %s: error reading packets", this->nameQueue.c_str());
+			syslog (LOG_NOTICE,"packetbuffer %s: error reading packets", this->nameQueue.c_str());
 		}
 		return(0);
 	} else if(res == -2) {
 		if(VERBOSE) {
-			syslog(LOG_NOTICE,"pcap queue %s: end of pcap file, exiting", this->nameQueue.c_str());
+			syslog(LOG_NOTICE,"packetbuffer %s: end of pcap file, exiting", this->nameQueue.c_str());
 		}
 		return(-1);
 	} else if(res == 0) {
@@ -919,7 +919,7 @@ bool PcapQueue::openFifoForRead() {
 		}
 		return(true);
 	} else {
-		syslog(LOG_ERR, "pcap queue %s: openFifoForRead failed", this->nameQueue.c_str());
+		syslog(LOG_ERR, "packetbuffer %s: openFifoForRead failed", this->nameQueue.c_str());
 		return(false);
 	}
 }
@@ -939,7 +939,7 @@ bool PcapQueue::openFifoForWrite() {
 		}
 		return(true);
 	} else {
-		syslog(LOG_ERR, "pcap queue %s: openFifoForWrite failed", this->nameQueue.c_str());
+		syslog(LOG_ERR, "packetbuffer %s: openFifoForWrite failed", this->nameQueue.c_str());
 		return(false);
 	}
 }
@@ -1087,7 +1087,7 @@ void* PcapQueue_readFromInterface::threadFunction(void* ) {
 				bool _syslog = true;
 				while((blockStoreBypassQueueSize = blockStoreBypassQueue.getUseSize()) > opt_pcap_queue_bypass_max_size) {
 					if(_syslog) {
-						syslog(LOG_ERR, "pcap queue %s: BYPASS BUFFER IS EXHAUSTED", this->nameQueue.c_str());
+						syslog(LOG_ERR, "packetbuffer %s: THREAD0 BUFFER IS FULL", this->nameQueue.c_str());
 						cout << "bypass buffer size " << blockStoreBypassQueue.getUseItems() << " (" << blockStoreBypassQueue.getUseSize() << ")" << endl;
 						_syslog = false;
 						++countBypassBufferSizeExceeded;
@@ -1155,7 +1155,7 @@ bool PcapQueue_readFromInterface::openFifoForWrite() {
 			mkfifo(this->fifoFileForWrite.c_str(), 0666);
 		}
 		if((this->fifoWritePcapDumper = pcap_dump_open(this->pcapHandle, this->fifoFileForWrite.c_str())) == NULL) {
-			syslog(LOG_ERR, "pcap queue %s: pcap_dump_open error: %s", this->nameQueue.c_str(), pcap_geterr(this->pcapHandle));
+			syslog(LOG_ERR, "packetbuffer %s: pcap_dump_open error: %s", this->nameQueue.c_str(), pcap_geterr(this->pcapHandle));
 			return(false);
 		} else {
 			if(DEBUG_VERBOSE) {
@@ -1175,43 +1175,43 @@ bool PcapQueue_readFromInterface::startCapture() {
 		this->pcapLinklayerHeaderType = DLT_EN10MB;
 	#else
 	if(VERBOSE) {
-		syslog(LOG_NOTICE, "pcap queue %s: capturing on interface %s", this->nameQueue.c_str(), this->interfaceName.c_str()); 
+		syslog(LOG_NOTICE, "packetbuffer %s: capturing on interface %s", this->nameQueue.c_str(), this->interfaceName.c_str()); 
 	}
 	if(pcap_lookupnet(this->interfaceName.c_str(), &this->interfaceNet, &this->interfaceMask, errbuf) == -1) {
 		this->interfaceMask = PCAP_NETMASK_UNKNOWN;
 	}
 	if((this->pcapHandle = pcap_create(this->interfaceName.c_str(), errbuf)) == NULL) {
-		syslog(LOG_ERR, "pcap queue %s: pcap_create failed on iface %s: %s", this->nameQueue.c_str(), this->interfaceName.c_str(), errbuf); 
+		syslog(LOG_ERR, "packetbuffer %s: pcap_create failed on iface %s: %s", this->nameQueue.c_str(), this->interfaceName.c_str(), errbuf); 
 		return(false);
 	}
 	handle = this->pcapHandle;
 	int status;
 	if((status = pcap_set_snaplen(this->pcapHandle, this->pcap_snaplen)) != 0) {
-		syslog(LOG_ERR, "pcap queue %s: pcap_snaplen failed", this->nameQueue.c_str()); 
+		syslog(LOG_ERR, "packetbuffer %s: pcap_snaplen failed", this->nameQueue.c_str()); 
 		return(false);
 	}
 	if((status = pcap_set_promisc(this->pcapHandle, this->pcap_promisc)) != 0) {
-		syslog(LOG_ERR, "pcap queue %s: pcap_set_promisc failed", this->nameQueue.c_str()); 
+		syslog(LOG_ERR, "packetbuffer %s: pcap_set_promisc failed", this->nameQueue.c_str()); 
 		return(false);
 	}
 	if((status = pcap_set_timeout(this->pcapHandle, this->pcap_timeout)) != 0) {
-		syslog(LOG_ERR, "pcap queue %s: pcap_set_timeout failed", this->nameQueue.c_str()); 
+		syslog(LOG_ERR, "packetbuffer %s: pcap_set_timeout failed", this->nameQueue.c_str()); 
 		return(false);
 	}
 	if((status = pcap_set_buffer_size(this->pcapHandle, this->pcap_buffer_size)) != 0) {
-		syslog(LOG_ERR, "pcap queue %s: pcap_set_buffer_size failed", this->nameQueue.c_str()); 
+		syslog(LOG_ERR, "packetbuffer %s: pcap_set_buffer_size failed", this->nameQueue.c_str()); 
 		return(false);
 	}
 	if((status = pcap_activate(this->pcapHandle)) != 0) {
-		syslog(LOG_ERR, "pcap queue %s: libpcap error: %s", this->nameQueue.c_str(), pcap_geterr(this->pcapHandle)); 
+		syslog(LOG_ERR, "packetbuffer %s: libpcap error: %s", this->nameQueue.c_str(), pcap_geterr(this->pcapHandle)); 
 		return(false);
 	}
 	if(opt_mirrorip) {
 		if(opt_mirrorip_dst[0] == '\0') {
-			syslog(LOG_ERR, "pcap queue %s: mirroring SIP packets disabled because mirroripdst was not set", this->nameQueue.c_str());
+			syslog(LOG_ERR, "packetbuffer %s: mirroring packets was disabled because mirroripdst is not set", this->nameQueue.c_str());
 			opt_mirrorip = 0;
 		} else {
-			syslog(LOG_NOTICE, "pcap queue %s: starting SIP mirroring [%s]->[%s]", this->nameQueue.c_str(), opt_mirrorip_src, opt_mirrorip_dst);
+			syslog(LOG_NOTICE, "packetbuffer %s: starting mirroring [%s]->[%s]", this->nameQueue.c_str(), opt_mirrorip_src, opt_mirrorip_dst);
 			mirrorip = new MirrorIP(opt_mirrorip_src, opt_mirrorip_dst);
 		}
 	}
@@ -1222,17 +1222,17 @@ bool PcapQueue_readFromInterface::startCapture() {
 
 		// Compile and apply the filter
 		if (pcap_compile(this->pcapHandle, &fp, filter_exp, 0, this->interfaceMask) == -1) {
-			fprintf(stderr, "pcap queue %s: couldn't parse filter %s: %s", this->nameQueue.c_str(), filter_exp, pcap_geterr(this->pcapHandle));
+			fprintf(stderr, "packetbuffer %s: can not parse filter %s: %s", this->nameQueue.c_str(), filter_exp, pcap_geterr(this->pcapHandle));
 			return(2);
 		}
 		if (pcap_setfilter(this->pcapHandle, &fp) == -1) {
-			fprintf(stderr, "pcap queue %s: couldn't install filter %s: %s", this->nameQueue.c_str(), filter_exp, pcap_geterr(this->pcapHandle));
+			fprintf(stderr, "packetbuffer %s: can not install filter %s: %s", this->nameQueue.c_str(), filter_exp, pcap_geterr(this->pcapHandle));
 			return(2);
 		}
 	}
 	this->pcapLinklayerHeaderType = pcap_datalink(this->pcapHandle);
 	if(!this->pcapLinklayerHeaderType) {
-		syslog(LOG_ERR, "pcap queue %s: pcap_datalink failed", this->nameQueue.c_str()); 
+		syslog(LOG_ERR, "packetbuffer %s: pcap_datalink failed", this->nameQueue.c_str()); 
 		return(false);
 	}
 	if(opt_pcapdump) {
@@ -1250,7 +1250,7 @@ string PcapQueue_readFromInterface::pcapStatString_bypass_buffer(int statPeriod)
 		outStr << fixed;
 		size_t useSize = blockStoreBypassQueue.getUseSize();
 		size_t useItems = blockStoreBypassQueue.getUseItems();
-		outStr << "PACKETBUFFER_THREAD_HEAP: "
+		outStr << "PACKETBUFFER_THREAD0_HEAP: "
 		       << setw(6) << (useSize / 1024 / 1024) << "MB (" << setw(3) << useItems << ")"
 		       << " " << setw(5) << setprecision(1) << (100. * useSize / opt_pcap_queue_bypass_max_size) << "%"
 		       << " of " << setw(6) << (opt_pcap_queue_bypass_max_size / 1024 / 1024) << "MB"
@@ -1271,7 +1271,7 @@ string PcapQueue_readFromInterface::pcapStatString_interface(int statPeriod) {
 				       << " rx:" << ps.ps_recv
 				       << " pcapdrop:" << ps.ps_drop - this->_last_ps_drop
 				       << " ifdrop:"<< ps.ps_ifdrop - this->_last_ps_drop << endl
-				       << "     increase --ring-buffer (kernel >= 2.6.31 needed and libpcap >= 1.0.0) or use --pcap-thread" << endl;
+				       << "     increase --ring-buffer (kernel >= 2.6.31 and libpcap >= 1.0.0)" << endl;
 				this->_last_ps_drop = ps.ps_drop;
 				this->_last_ps_ifdrop = ps.ps_ifdrop;
 				++countPacketDrop;
@@ -1331,7 +1331,7 @@ int PcapQueue_readFromInterface::pcapProcess(pcap_pkthdr** header, u_char** pack
 			ppd.protocol = 8;
 			break;
 		default:
-			syslog(LOG_ERR, "pcap queue %s: datalink number [%d] is not supported", this->nameQueue.c_str(), this->pcapLinklayerHeaderType);
+			syslog(LOG_ERR, "packetbuffer %s: datalink number [%d] is not supported", this->nameQueue.c_str(), this->pcapLinklayerHeaderType);
 			return(0);
 	}
 	if(ppd.protocol != 8) {
@@ -1710,7 +1710,7 @@ bool PcapQueue_readFromFifo::openFifoForRead() {
 				mkfifo(this->fifoFileForRead.c_str(), 0666);
 			}
 			if((this->fifoReadPcapHandle = pcap_open_offline(this->fifoFileForRead.c_str(), errbuf)) == NULL) {
-				syslog(LOG_ERR, "pcap queue %s: pcap_open_offline error: %s", this->nameQueue.c_str(), errbuf);
+				syslog(LOG_ERR, "packetbuffer %s: pcap_open_offline error: %s", this->nameQueue.c_str(), errbuf);
 				return(false);
 			} else {
 				if(DEBUG_VERBOSE) {
@@ -1735,7 +1735,7 @@ bool PcapQueue_readFromFifo::openFifoForWrite() {
 
 bool PcapQueue_readFromFifo::openPcapDeadHandle() {
 	if((this->pcapDeadHandle = pcap_open_dead(DLT_RAW, 65535)) == NULL) {
-		syslog(LOG_ERR, "pcap queue %s: pcap_create failed", this->nameQueue.c_str()); 
+		syslog(LOG_ERR, "packetbuffer %s: pcap_create failed", this->nameQueue.c_str()); 
 		return(false);
 	}
 	handle = this->pcapDeadHandle;
@@ -1785,7 +1785,7 @@ bool PcapQueue_readFromFifo::socketGetHost() {
 	while(!this->socketHostEnt) {
 		this->socketHostEnt = gethostbyname(this->packetServer.c_str());
 		if(!this->socketHostEnt) {
-			syslog(LOG_ERR, "pcap queue %s: cannot resolv: %s: host [%s] - trying again", this->nameQueue.c_str(), hstrerror(h_errno), this->packetServer.c_str());  
+			syslog(LOG_ERR, "packetbuffer %s: cannot resolv: %s: host [%s] - trying again", this->nameQueue.c_str(), hstrerror(h_errno), this->packetServer.c_str());  
 			sleep(1);
 		}
 	}
@@ -1800,7 +1800,7 @@ bool PcapQueue_readFromFifo::socketConnect() {
 		this->socketGetHost();
 	}
 	if((this->socketHandle = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP)) == -1) {
-		syslog(LOG_NOTICE, "pcap queue %s: cannot create socket", this->nameQueue.c_str());
+		syslog(LOG_NOTICE, "packetbuffer %s: cannot create socket", this->nameQueue.c_str());
 		return(false);
 	}
 	sockaddr_in addr;
@@ -1808,7 +1808,7 @@ bool PcapQueue_readFromFifo::socketConnect() {
 	addr.sin_port = htons(this->packetServerPort);
 	addr.sin_addr.s_addr = *(long*)this->socketHostEnt->h_addr_list[0];
 	while(connect(this->socketHandle, (struct sockaddr *)&addr, sizeof(addr)) == -1) {
-		syslog(LOG_NOTICE, "pcap queue %s: failed to connect to server [%s] error:[%s] - trying again", this->nameQueue.c_str(), inet_ntoa(*(struct in_addr *)this->socketHostEnt->h_addr_list[0]), strerror(errno));
+		syslog(LOG_NOTICE, "packetbuffer %s: failed to connect to server [%s] error:[%s] - trying again", this->nameQueue.c_str(), inet_ntoa(*(struct in_addr *)this->socketHostEnt->h_addr_list[0]), strerror(errno));
 		sleep(1);
 	}
 	if(DEBUG_VERBOSE) {
@@ -1819,7 +1819,7 @@ bool PcapQueue_readFromFifo::socketConnect() {
 
 bool PcapQueue_readFromFifo::socketListen() {
 	if((this->socketHandle = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP)) == -1) {
-		syslog(LOG_NOTICE, "pcap queue %s: cannot create socket", this->nameQueue.c_str());
+		syslog(LOG_NOTICE, "packetbuffer %s: cannot create socket", this->nameQueue.c_str());
 		return(false);
 	}
 	sockaddr_in addr;
@@ -1832,12 +1832,12 @@ bool PcapQueue_readFromFifo::socketListen() {
 	do {
 		
 		while(bind(this->socketHandle, (sockaddr*)&addr, sizeof(addr)) == -1) {
-			syslog(LOG_ERR, "pcap queue %s: cannot bind to port [%d] - trying again after 5 seconds intervals", this->nameQueue.c_str(), this->packetServerPort);
+			syslog(LOG_ERR, "packetbuffer %s: cannot bind to port [%d] - trying again after 5 seconds intervals", this->nameQueue.c_str(), this->packetServerPort);
 			sleep(5);
 		}
 		rsltListen = listen(this->socketHandle, 5);
 		if(rsltListen == -1) {
-			syslog(LOG_ERR, "pcap queue %s: listen failed - trying again bind after 5 seconds intervals", this->nameQueue.c_str());
+			syslog(LOG_ERR, "packetbuffer %s: listen failed - retrying in 5 seconds intervals", this->nameQueue.c_str());
 			sleep(5);
 		}
 	} while(rsltListen == -1);
