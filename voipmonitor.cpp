@@ -213,9 +213,9 @@ extern u_int opt_pcap_queue_block_max_time_ms;
 extern size_t opt_pcap_queue_block_max_size;
 extern u_int opt_pcap_queue_file_store_max_time_ms;
 extern size_t opt_pcap_queue_file_store_max_size;
-extern size_t opt_pcap_queue_store_queue_max_memory_size;
-extern size_t opt_pcap_queue_store_queue_max_disk_size;
-extern size_t opt_pcap_queue_bypass_max_size;
+extern uint64_t opt_pcap_queue_store_queue_max_memory_size;
+extern uint64_t opt_pcap_queue_store_queue_max_disk_size;
+extern uint64_t opt_pcap_queue_bypass_max_size;
 extern bool opt_pcap_queue_compress;
 extern string opt_pcap_queue_disk_folder;
 extern string opt_pcap_queue_send_to_ip;
@@ -224,7 +224,8 @@ extern string opt_pcap_queue_receive_from_ip;
 extern int opt_pcap_queue_receive_from_port;
 
 bool opt_cdr_partition = 1;
-vector<dstring> opt_custom_headers;
+vector<dstring> opt_custom_headers_cdr;
+vector<dstring> opt_custom_headers_message;
 
 char configfile[1024] = "";	// config file name
 
@@ -849,20 +850,29 @@ int load_config(char *fname) {
 	if((value = ini.GetValue("general", "cdr_partition", NULL))) {
 		opt_cdr_partition = yesno(value);
 	}
-	if((value = ini.GetValue("general", "custom_headers", NULL))) {
-		char *pos = (char*)value;
-		while(pos && *pos) {
-			char *posSep = strchr(pos, ';');
-			if(posSep) {
-				*posSep = 0;
+	for(int i = 0; i < 2; i++) {
+		if(i == 0 ?
+			(value = ini.GetValue("general", "custom_headers_cdr", NULL)) ||
+			(value = ini.GetValue("general", "custom_headers", NULL)) :
+			(value = ini.GetValue("general", "custom_headers_message", NULL)) != NULL) {
+			char *pos = (char*)value;
+			while(pos && *pos) {
+				char *posSep = strchr(pos, ';');
+				if(posSep) {
+					*posSep = 0;
+				}
+				string custom_header = pos;
+				custom_header.erase(custom_header.begin(), std::find_if(custom_header.begin(), custom_header.end(), std::not1(std::ptr_fun<int, int>(std::isspace))));
+				custom_header.erase(std::find_if(custom_header.rbegin(), custom_header.rend(), std::not1(std::ptr_fun<int, int>(std::isspace))).base(), custom_header.end());
+				string custom_header_field = "custom_header__" + custom_header;
+				std::replace(custom_header_field.begin(), custom_header_field.end(), ' ', '_');
+				if(i == 0) {
+					opt_custom_headers_cdr.push_back(dstring(custom_header, custom_header_field));
+				} else {
+					opt_custom_headers_message.push_back(dstring(custom_header, custom_header_field));
+				}
+				pos = posSep ? posSep + 1 : NULL;
 			}
-			string custom_header = pos;
-			custom_header.erase(custom_header.begin(), std::find_if(custom_header.begin(), custom_header.end(), std::not1(std::ptr_fun<int, int>(std::isspace))));
-			custom_header.erase(std::find_if(custom_header.rbegin(), custom_header.rend(), std::not1(std::ptr_fun<int, int>(std::isspace))).base(), custom_header.end());
-			string custom_header_field = "custom_header__" + custom_header;
-			std::replace(custom_header_field.begin(), custom_header_field.end(), ' ', '_');
-			opt_custom_headers.push_back(dstring(custom_header, custom_header_field));
-			pos = posSep ? posSep + 1 : NULL;
 		}
 	}
 	if((value = ini.GetValue("general", "savesip", NULL))) {
@@ -1223,30 +1233,39 @@ int load_config(char *fname) {
 	if((value = ini.GetValue("general", "packetbuffer_enable", NULL))) {
 		opt_pcap_queue = yesno(value);
 	}
+	/*
+	DEFAULT VALUES
 	if((value = ini.GetValue("general", "packetbuffer_block_maxsize", NULL))) {
 		opt_pcap_queue_block_max_size = atol(value) * 1024;
 	}
 	if((value = ini.GetValue("general", "packetbuffer_block_maxtime", NULL))) {
 		opt_pcap_queue_block_max_time_ms = atoi(value);
 	}
+	*/
 	if((value = ini.GetValue("general", "packetbuffer_total_maxheap", NULL))) {
 		opt_pcap_queue_store_queue_max_memory_size = atol(value) * 1024 *1024;
 	}
+	/*
+	INDIRECT VALUE
 	if((value = ini.GetValue("general", "packetbuffer_thread_maxheap", NULL))) {
 		opt_pcap_queue_bypass_max_size = atol(value) * 1024 *1024;
 	}
+	*/
 	if((value = ini.GetValue("general", "packetbuffer_file_totalmaxsize", NULL))) {
 		opt_pcap_queue_store_queue_max_disk_size = atol(value) * 1024 *1024;
 	}
 	if((value = ini.GetValue("general", "packetbuffer_file_path", NULL))) {
 		opt_pcap_queue_disk_folder = value;
 	}
+	/*
+	DEFAULT VALUES
 	if((value = ini.GetValue("general", "packetbuffer_file_maxfilesize", NULL))) {
 		opt_pcap_queue_file_store_max_size = atol(value) * 1024 *1024;
 	}
 	if((value = ini.GetValue("general", "packetbuffer_file_maxtime", NULL))) {
 		opt_pcap_queue_file_store_max_time_ms = atoi(value);
 	}
+	*/
 	if((value = ini.GetValue("general", "packetbuffer_compress", NULL))) {
 		opt_pcap_queue_compress = yesno(value);
 	}
@@ -1256,10 +1275,10 @@ int load_config(char *fname) {
 	if((value = ini.GetValue("general", "mirror_destination_port", NULL))) {
 		opt_pcap_queue_send_to_port = atoi(value);
 	}
-	if((value = ini.GetValue("general", "mirror_source_ip", NULL))) {
+	if((value = ini.GetValue("general", "mirror_bind_ip", NULL))) {
 		opt_pcap_queue_receive_from_ip = value;
 	}
-	if((value = ini.GetValue("general", "mirror_source_port", NULL))) {
+	if((value = ini.GetValue("general", "mirror_bind_port", NULL))) {
 		opt_pcap_queue_receive_from_port = atoi(value);
 	}
 
@@ -1283,11 +1302,6 @@ int load_config(char *fname) {
 	#mirror_source_port		=
 	*/
 
-	return 0;
-}
-
-void reload_config() {
-	load_config(configfile);
 	#ifdef QUEUE_NONBLOCK2
 		if(opt_scanpcapdir[0] != '\0') {
 			opt_pcap_queue = 0;
@@ -1296,6 +1310,23 @@ void reload_config() {
 		opt_pcap_queue = 0;
 	#endif
 
+	if(opt_pcap_queue) {
+		if(!opt_pcap_queue_disk_folder.length() || !opt_pcap_queue_store_queue_max_disk_size) {
+			opt_pcap_queue_bypass_max_size = 20 * 1024 * 1024;
+		} else {
+			opt_pcap_queue_bypass_max_size = opt_pcap_queue_store_queue_max_memory_size / 4;
+			if(opt_pcap_queue_bypass_max_size > 500 * 1024 * 1024) {
+				opt_pcap_queue_bypass_max_size = 500 * 1024 * 1024;
+			}
+			opt_pcap_queue_store_queue_max_memory_size -= opt_pcap_queue_bypass_max_size;
+		}
+	}
+
+	return 0;
+}
+
+void reload_config() {
+	load_config(configfile);
 	request_iptelnum_reload = 1;
 }
 
@@ -2319,7 +2350,6 @@ int main(int argc, char *argv[]) {
 		} else {
 			readdump_libpcap(handle);
 		}
-		unlink(fname);
 	}
 
 	readend = 1;

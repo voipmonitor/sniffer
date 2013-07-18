@@ -17,7 +17,8 @@ extern int terminating;
 extern int opt_ipaccount;
 extern int opt_id_sensor;
 extern bool opt_cdr_partition;
-extern vector<dstring> opt_custom_headers;
+extern vector<dstring> opt_custom_headers_cdr;
+extern vector<dstring> opt_custom_headers_message;
 extern char get_customers_pn_query[1024];
 extern char mysql_database[256];
 
@@ -1320,10 +1321,10 @@ void SqlDb_mysql::createSchema() {
 				 PARTITION ") + partDayName + " VALUES LESS THAN ('" + limitDay + "') engine innodb)") :
 		""));
 	sql_noerror = 1;
-	for(size_t iCustHeaders = 0; iCustHeaders < opt_custom_headers.size(); iCustHeaders++) {
+	for(size_t iCustHeaders = 0; iCustHeaders < opt_custom_headers_cdr.size(); iCustHeaders++) {
 		this->query(string(
 		"ALTER TABLE `cdr_next`\
-			ADD COLUMN `") + opt_custom_headers[iCustHeaders][1] + "` VARCHAR(255);");
+			ADD COLUMN `") + opt_custom_headers_cdr[iCustHeaders][1] + "` VARCHAR(255);");
 	}
 	sql_noerror = 0;
 
@@ -1440,6 +1441,13 @@ void SqlDb_mysql::createSchema() {
 		CONSTRAINT `messages_ibfk_3` FOREIGN KEY (`b_ua_id`) REFERENCES `cdr_ua` (`id`) ON UPDATE CASCADE,\
 		CONSTRAINT `messages_ibfk_4` FOREIGN KEY (`id_contenttype`) REFERENCES `contenttype` (`id`) ON UPDATE CASCADE\
 	) ENGINE=InnoDB DEFAULT CHARSET=latin1 ROW_FORMAT=COMPRESSED;");
+	sql_noerror = 1;
+	for(size_t iCustHeaders = 0; iCustHeaders < opt_custom_headers_message.size(); iCustHeaders++) {
+		this->query(string(
+		"ALTER TABLE `message`\
+			ADD COLUMN `") + opt_custom_headers_message[iCustHeaders][1] + "` VARCHAR(255);");
+	}
+	sql_noerror = 0;
 
 
 	this->query(

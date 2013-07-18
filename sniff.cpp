@@ -148,7 +148,8 @@ extern char opt_silencedmtfseq[16];
 extern int opt_skinny;
 extern int opt_read_from_file;
 extern int opt_saverfc2833;
-extern vector<dstring> opt_custom_headers;
+extern vector<dstring> opt_custom_headers_cdr;
+extern vector<dstring> opt_custom_headers_message;
 extern livesnifferfilter_use_siptypes_s livesnifferfilterUseSipTypes;
 
 #ifdef QUEUE_MUTEX
@@ -2301,9 +2302,10 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 		}
 	
 		// check if we have custom headers
+		vector<dstring> *_customHeaders = call->type == MESSAGE ? &opt_custom_headers_message : &opt_custom_headers_cdr;
 		size_t iCustHeaders;
-		for(iCustHeaders = 0; iCustHeaders < opt_custom_headers.size(); iCustHeaders++) {
-			string findHeader = opt_custom_headers[iCustHeaders][0];
+		for(iCustHeaders = 0; iCustHeaders < _customHeaders->size(); iCustHeaders++) {
+			string findHeader = (*_customHeaders)[iCustHeaders][0];
 			if(findHeader[findHeader.length() - 1] != ':') {
 				findHeader.append(":");
 			}
@@ -2312,9 +2314,9 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 				char headerContent[128];
 				memcpy(headerContent, s, l);
 				headerContent[l] = '\0';
-				call->custom_headers.push_back(dstring(opt_custom_headers[iCustHeaders][1],headerContent));
+				call->custom_headers.push_back(dstring((*_customHeaders)[iCustHeaders][1],headerContent));
 				if(verbosity > 2)
-					syslog(LOG_NOTICE, "Seen header %s: %s\n", opt_custom_headers[iCustHeaders][0].c_str(), headerContent);
+					syslog(LOG_NOTICE, "Seen header %s: %s\n", (*_customHeaders)[iCustHeaders][0].c_str(), headerContent);
 			}
 		}
 		

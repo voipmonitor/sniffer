@@ -24,6 +24,7 @@ public:
 	void push(pcap_block_store* blockStore) {
 		this->lock_queue();
 		this->queue.push_back(blockStore);
+		this->add_sizeOfBlocks(blockStore->getUseSize());
 		this->unlock_queue();
 	}
 	pcap_block_store* pop() {
@@ -33,24 +34,15 @@ public:
 			blockStore = this->queue.front();
 			this->queue.pop_front();
 		}
+		this->sub_sizeOfBlocks(blockStore->getUseSize());
 		this->unlock_queue();
 		return(blockStore);
 	}
 	size_t getUseItems() {
-		this->lock_queue();
-		size_t size = this->queue.size();
-		this->unlock_queue();
-		return(size);
+		return(this->countOfBlocks);
 	}	
-	size_t getUseSize() {
-		this->lock_queue();
-		size_t size = 0;
-		size_t _size_n =  this->queue.size();
-		for(size_t i = 0; i < _size_n; i++) {
-			size += this->queue[i]->getUseSize();
-		}
-		this->unlock_queue();
-		return(size);
+	uint64_t getUseSize() {
+		return(this->sizeOfBlocks);
 	}
 private:
 	void lock_queue() {
@@ -59,8 +51,18 @@ private:
 	void unlock_queue() {
 		__sync_lock_release(&this->_sync_queue);
 	}
+	void add_sizeOfBlocks(size_t size) {
+		__sync_fetch_and_add(&this->sizeOfBlocks, size);
+		__sync_fetch_and_add(&this->countOfBlocks, 1);
+	}
+	void sub_sizeOfBlocks(size_t size) {
+		__sync_fetch_and_sub(&this->sizeOfBlocks, size);
+		__sync_fetch_and_sub(&this->countOfBlocks, 1);
+	}
 private:
 	std::deque<pcap_block_store*> queue;
+	volatile size_t countOfBlocks;
+	volatile uint64_t sizeOfBlocks;
 	volatile int _sync_queue;
 };
 
@@ -135,7 +137,7 @@ public:
 private:
 	pcap_file_store *findFileStoreById(u_int id);
 	void cleanupFileStore();
-	size_t getFileStoreUseSize(bool lock = true);
+	uint64_t getFileStoreUseSize(bool lock = true);
 	void lock_queue() {
 		while(__sync_lock_test_and_set(&this->_sync_queue, 1));
 	}
@@ -159,7 +161,7 @@ private:
 	std::deque<pcap_block_store*> queue;
 	std::deque<pcap_file_store*> fileStore;
 	u_int lastFileStoreId;
-	volatile size_t sizeOfBlocksInMemory;
+	volatile uint64_t sizeOfBlocksInMemory;
 	volatile int _sync_queue;
 	volatile int _sync_fileStore;
 	int cleanupFileStoreCounter;
