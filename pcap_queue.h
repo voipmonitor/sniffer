@@ -34,7 +34,9 @@ public:
 			blockStore = this->queue.front();
 			this->queue.pop_front();
 		}
-		this->sub_sizeOfBlocks(blockStore->getUseSize());
+		if(blockStore) {
+			this->sub_sizeOfBlocks(blockStore->getUseSize());
+		}
 		this->unlock_queue();
 		return(blockStore);
 	}
