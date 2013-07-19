@@ -1615,7 +1615,7 @@ PcapQueue_readFromFifo::~PcapQueue_readFromFifo() {
 	if(this->socketHandle) {
 		this->socketClose();
 	}
-	this->cleanupBlockStoreTrash();
+	this->cleanupBlockStoreTrash(true);
 }
 
 void PcapQueue_readFromFifo::setPacketServer(const char *packetServer, int packetServerPort, ePacketServerDirection direction) {
@@ -2141,9 +2141,9 @@ void PcapQueue_readFromFifo::processPacket(pcap_pkthdr_plus *header, u_char *pac
 	
 }
 
-void PcapQueue_readFromFifo::cleanupBlockStoreTrash() {
+void PcapQueue_readFromFifo::cleanupBlockStoreTrash(bool all) {
 	for(size_t i = 0; i < this->blockStoreTrash.size(); i++) {
-		if(this->blockStoreTrash[i]->enableDestroy()) {
+		if(all || this->blockStoreTrash[i]->enableDestroy()) {
 			this->blockStoreTrash_size -= this->blockStoreTrash[i]->getUseSize();
 			delete this->blockStoreTrash[i];
 			this->blockStoreTrash.erase(this->blockStoreTrash.begin() + i);

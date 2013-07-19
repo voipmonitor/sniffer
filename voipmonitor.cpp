@@ -2434,6 +2434,9 @@ int main(int argc, char *argv[]) {
 	}
 	delete calltable;
 	
+	delete ipfilter;
+	delete telnumfilter;
+	
 	if(sqlDb) {
 		delete sqlDb;
 	}

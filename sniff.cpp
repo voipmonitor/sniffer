@@ -890,6 +890,10 @@ int get_rtpmap_from_sdp(char *sdp_text, unsigned long len, int *rtpmap){
 
 void add_to_rtp_thread_queue(Call *call, unsigned char *data, int datalen, struct pcap_pkthdr *header,  u_int32_t saddr, u_int32_t daddr, unsigned short port, int iscaller, int is_rtcp,
 			     pcap_block_store *block_store, int block_store_index) {
+	if(terminating) {
+		return;
+	}
+	
 	__sync_add_and_fetch(&call->rtppcaketsinqueue, 1);
 	read_thread *params = &(threads[call->thread_num]);
 

@@ -353,7 +353,7 @@ protected:
 private:
 	void processPacket(pcap_pkthdr_plus *header, u_char *packet,
 			   pcap_block_store *block_store, int block_store_index);
-	void cleanupBlockStoreTrash();
+	void cleanupBlockStoreTrash(bool all = false);
 protected:
 	std::string packetServer;
 	int packetServerPort;
