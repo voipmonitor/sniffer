@@ -213,6 +213,7 @@ protected:
 	}
 	virtual string pcapStatString_packets(int statPeriod);
 	virtual double pcapStat_get_compress();
+	virtual double pcapStat_get_speed_mb_s(int statPeriod);
 	virtual string pcapStatString_bypass_buffer(int statPeriod) { return(""); }
 	virtual unsigned long pcapStat_get_bypass_buffer_size_exeeded() { return(0); }
 	virtual string pcapStatString_memory_buffer(int statPeriod) { return(""); }

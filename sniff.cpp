@@ -1422,7 +1422,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 	// checking and cleaning stuff every 10 seconds (if some packet arrive) 
 	if (header->ts.tv_sec - last_cleanup > 10){
 		//if(verbosity > 0) syslog(LOG_NOTICE, "Active calls [%d] calls in sql queue [%d] calls in delete queue [%d]\n", (int)calltable->calls_listMAP.size(), (int)calltable->calls_queue.size(), (int)calltable->calls_deletequeue.size());
-		if(verbosity > 0) {
+		if(verbosity > 0 && !opt_pcap_queue) {
 			if(opt_dup_check) {
 				syslog(LOG_NOTICE, "Active calls [%d] calls in sql queue [%d] skipped dupe pkts [%u]\n", 
 					(int)calltable->calls_listMAP.size(), (int)calltable->calls_queue.size(), duplicate_counter);
@@ -1435,16 +1435,18 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 			calltable->cleanup(header->ts.tv_sec);
 		}
 		/* also do every 10 seconds pcap statistics */
-		pcapstatres = pcap_stats(handle, &ps);
-		if (pcapstatres == 0 && (lostpacket < ps.ps_drop || lostpacketif < ps.ps_ifdrop)) {
-			if(pcapstatresCount) {
-				syslog(LOG_ERR, "warning: libpcap or interface dropped packets! rx:%u pcapdrop:%u ifdrop:%u increase --ring-buffer (kernel >= 2.6.31 and libpcap >= 1.0.0)\n", ps.ps_recv, ps.ps_drop, ps.ps_ifdrop);
-			} else {
-				// do not show first error, it is normal on startup. 
-				pcapstatresCount++;
+		if(!opt_pcap_queue) {
+			pcapstatres = pcap_stats(handle, &ps);
+			if (pcapstatres == 0 && (lostpacket < ps.ps_drop || lostpacketif < ps.ps_ifdrop)) {
+				if(pcapstatresCount) {
+					syslog(LOG_ERR, "warning: libpcap or interface dropped packets! rx:%u pcapdrop:%u ifdrop:%u increase --ring-buffer (kernel >= 2.6.31 and libpcap >= 1.0.0)\n", ps.ps_recv, ps.ps_drop, ps.ps_ifdrop);
+				} else {
+					// do not show first error, it is normal on startup. 
+					pcapstatresCount++;
+				}
+				lostpacket = ps.ps_drop;
+				lostpacketif = ps.ps_ifdrop;
 			}
-			lostpacket = ps.ps_drop;
-			lostpacketif = ps.ps_ifdrop;
 		}
 		last_cleanup = header->ts.tv_sec;
 		/* delete all calls */

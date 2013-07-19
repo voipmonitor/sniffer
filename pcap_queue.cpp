@@ -87,6 +87,7 @@ extern TELNUMfilter *telnumfilter;
 extern TELNUMfilter *telnumfilter_reload;
 extern int telnumfilter_reload_do;
 extern char user_filter[2048];
+extern Calltable *calltable;
 extern volatile int calls;
 
 void *_PcapQueue_threadFunction(void* arg);
@@ -825,6 +826,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 		double memoryBufferPerc = this->pcapStat_get_memory_buffer_perc();
 		outStr << fixed
 		       << "calls[" << calls << "] "
+		       << "cdrqueue[" << calltable->calls_queue.size() << "] "
 		       << "heap[" << setprecision(1) << memoryBufferPerc << "%] ";
 		if(this->instancePcapHandle) {
 			unsigned long bypassBufferSizeExeeded = this->instancePcapHandle->pcapStat_get_bypass_buffer_size_exeeded();
@@ -839,6 +841,10 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 		double compress = this->pcapStat_get_compress();
 		if(compress >= 0) {
 			outStr << "comp[" << setprecision(1) << compress << "%] ";
+		}
+		double speed = this->pcapStat_get_speed_mb_s(statPeriod);
+		if(speed >= 0) {
+			outStr << "traffic[" << setprecision(1) << speed << "Mb/s] ";
 		}
 		if(this->instancePcapHandle) {
 			double t0cpu = this->instancePcapHandle->getCpuUsagePerc(false, true);
@@ -1047,6 +1053,14 @@ string PcapQueue::pcapStatString_packets(int statPeriod) {
 double PcapQueue::pcapStat_get_compress() {
 	if(sumPacketsSizeCompress[0] && sumPacketsSize[0]) {
 		return(100.0 * sumPacketsSizeCompress[0] / sumPacketsSize[0]);
+	} else {
+		return(-1);
+	}
+}
+
+double PcapQueue::pcapStat_get_speed_mb_s(int statPeriod) {
+	if(sumPacketsSize[0]-sumPacketsSize[1]) {
+		return((sumPacketsSize[0]-sumPacketsSize[1])/statPeriod/(1024*1024)*8);
 	} else {
 		return(-1);
 	}
