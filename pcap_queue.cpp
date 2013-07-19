@@ -1043,7 +1043,7 @@ string PcapQueue::pcapStatString_packets(int statPeriod) {
 				       << setw(12) << (sumPacketsSizeCompress[0]-sumPacketsSizeCompress[1])/statPeriod << " / " 
 				       << setw(12) << (sumPacketsSize[0]-sumPacketsSize[1])/statPeriod;
 			}
-			outStr << "   " << (sumPacketsSize[0]-sumPacketsSize[1])/statPeriod/(1024*1024)*8 << "Mb/s";
+			outStr << "   " << ((double)(sumPacketsSize[0]-sumPacketsSize[1]))/statPeriod/(1024*1024)*8 << "Mb/s";
 		}
 		outStr << endl;
 	}
@@ -1060,7 +1060,7 @@ double PcapQueue::pcapStat_get_compress() {
 
 double PcapQueue::pcapStat_get_speed_mb_s(int statPeriod) {
 	if(sumPacketsSize[0]-sumPacketsSize[1]) {
-		return((sumPacketsSize[0]-sumPacketsSize[1])/statPeriod/(1024*1024)*8);
+		return(((double)(sumPacketsSize[0]-sumPacketsSize[1]))/statPeriod/(1024*1024)*8);
 	} else {
 		return(-1);
 	}
