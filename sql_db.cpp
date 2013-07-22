@@ -4,6 +4,8 @@
 #include <string.h>
 #include <limits.h>
 #include <unistd.h>
+#include <mysql/mysqld_error.h>
+#include <mysql/errmsg.h>
 
 #include "tools.h"
 
@@ -445,12 +447,20 @@ bool SqlDb_mysql::query(string query) {
 				if(!sql_noerror) {
 					this->checkLastError("query error in [" + query + "]", true);
 				}
-				if(this->getLastError() == 2006) { // MySQL server has gone away
+				if(this->getLastError() == CR_SERVER_GONE_ERROR) {
 					if(pass < this->maxQueryPass - 1) {
 						this->reconnect();
 					}
-				} else {
+				} else if(sql_noerror ||
+					  this->getLastError() == ER_PARSE_ERROR) {
 					break;
+				} else {
+					if(pass < this->maxQueryPass - 5) {
+						pass = this->maxQueryPass - 5;
+					}
+					if(pass < this->maxQueryPass - 1) {
+						this->reconnect();
+					}
 				}
 			} else {
 				rslt = true;
