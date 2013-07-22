@@ -10,6 +10,7 @@
 - new debug information (if at least -v 1) informing about heap size and overruns and three main threads CPU utilization
 - Remove dependency on mysql scheduler and create table partitions within sniffer service thread
 - implement skip flag in capture rules which allows to ignore whole call based on IP and Telnum filters
+- add custom_headers for SIP message
 
 7.1.3
 =====
