@@ -2473,6 +2473,19 @@ void *readdump_libpcap_thread_fce(void *handle) {
 
 void test() {
 	
+	sqlDb->disconnect();
+	sqlDb->connect();
+	
+	for(int pass = 0; pass < 3000; pass++) {
+		cout << "pass " << (pass + 1) << endl;
+		sqlDb->query("select * ffrom cdr order by ID DESC");
+		SqlDb_row row;
+		row = sqlDb->fetchRow();
+		cout << row["ID"] << " : " << row["calldate"] << endl;
+		sleep(1);
+	}
+	
+	/*
 	if(opt_test >= 11 && opt_test <= 13) {
 		rqueue<int> test;
 		switch(opt_test) {
@@ -2489,6 +2502,7 @@ void test() {
 		}
 		return;
 	}
+	*/
 
 	/*
 	int pipeFh[2];
@@ -2522,10 +2536,8 @@ void test() {
 	cout << errno << endl;
 	return;
 	*/
-	
-	//int pipeFh[2];
-	//pipe(pipeFh);
-	
+
+	/*
 	int port = 9001;
 	
 	PcapQueue_readFromInterface *pcapQueue0;
@@ -2583,6 +2595,7 @@ void test() {
 		delete pcapQueue2;
 	}
 	return;
+	*/
 	
 	/*
 	sqlDb->disconnect();
