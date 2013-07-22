@@ -794,9 +794,9 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 	}
 	if(DEBUG_VERBOSE) {
 		string statString = "\n";
-		if(statCalls && calls) {
+		if(statCalls) {
 			ostringstream outStr;
-			outStr << "CALLS: " << calls;
+			outStr << "CALLS: " << calltable->calls_listMAP.size() << ", " << calls;
 			if(opt_ipaccount) {
 				outStr << "  IPACC_BUFFER " << lengthIpaccBuffer();
 			}
@@ -825,7 +825,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 		ostringstream outStr;
 		double memoryBufferPerc = this->pcapStat_get_memory_buffer_perc();
 		outStr << fixed
-		       << "calls[" << calls << "] "
+		       << "calls[" << calltable->calls_listMAP.size() << "][" << calls << "] "
 		       << "cdrqueue[" << calltable->calls_queue.size() << "] "
 		       << "heap[" << setprecision(1) << memoryBufferPerc << "%] ";
 		if(this->instancePcapHandle) {
