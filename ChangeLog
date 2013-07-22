@@ -1,3 +1,8 @@
+8.0 RC2
+=======
+
+- log error and reconnect to mysql in case of "query error in [drop procedure if exists __insert_10]:  Commands out of sync; you can't run this command now"
+
 8.0 RC1
 =======
 
