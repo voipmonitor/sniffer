@@ -1,7 +1,20 @@
+8.0 RC1
+=======
+
+- redesign internal packet buffering - packets are read from kernel ringbuffer into dynamically allocated buffer 
+* two memory copy is removed saving ~10% cpu 
+* static sized vmbuffer is replaced by dynamically allocated heap buffer which is allocating up to set size. Size of this buffer is not limited (vmbuffer was limited to 4GB) 
+* buffer can be compressed in memory (~50% ratio) 
+* if memory buffer runs out of space disk buffer will be used (if enabled) and compressed (if enabled)
+* buffer can be sent over TCP to another voipmonitor instance and compressed (if enabled) which is now new recommended option for software mirroring. In case the transmittion is interrupted packets are buffering into memory or disk (compressed if enabled). 
+- new debug information (if at least -v 1) informing about heap size and overruns and three main threads CPU utilization
+- Remove dependency on mysql scheduler and create table partitions within sniffer service thread
+- implement skip flag in capture rules which allows to ignore whole call based on IP and Telnum filters
+
 7.1.3
 =====
 
-Enable mysql scheduler on mysql connect "SET GLOBAL event_scheduler = 1" which is needed to create partitions for cdr table. 
+- Enable mysql scheduler on mysql connect "SET GLOBAL event_scheduler = 1" which is needed to create partitions for cdr table. 
 
 7.1.2
 =====
