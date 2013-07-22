@@ -525,9 +525,9 @@ void *storing_cdr( void *dummy ) {
 			if(opt_ipaccount) {
 				outStr << " ipacc_buffer[" << lengthIpaccBuffer() << "]";
 			}
-			#ifndef QUEUE_NONBLOCK2
+			#ifdef QUEUE_NONBLOCK2
 			if(!opt_pcap_queue) {
-				outStr << " qring[" << writeit >= readit ? writeit - readit : writeit + qringmax - readit
+				outStr << " qring[" << (writeit >= readit ? writeit - readit : writeit + qringmax - readit)
 				       << " (w" << writeit << ",r" << readit << ")]";
 			}
 			#endif
