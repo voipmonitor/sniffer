@@ -504,7 +504,7 @@ void *storing_cdr( void *dummy ) {
 	Call *call;
 	time_t createPartitionAt = 0;
 	while(1) {
-		if(opt_cdr_partition) {
+		if(!opt_nocdr and opt_cdr_partition) {
 			time_t actTime = time(NULL);
 			if(actTime - createPartitionAt > 3600) {
 				sqlDb->query(
@@ -2434,8 +2434,14 @@ int main(int argc, char *argv[]) {
 	}
 	delete calltable;
 	
-	delete ipfilter;
-	delete telnumfilter;
+	if(ipfilter) {
+		delete ipfilter;
+		ipfilter = NULL;
+	}
+	if(telnumfilter) {
+		delete telnumfilter;
+		telnumfilter = NULL;
+	}
 	
 	if(sqlDb) {
 		delete sqlDb;

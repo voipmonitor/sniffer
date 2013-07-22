@@ -18,6 +18,7 @@
 #define FLAG_NOGRAPH    (1 << 7)
 #define FLAG_WAV	(1 << 8)
 #define FLAG_NOWAV      (1 << 9)
+#define FLAG_SKIP       (1 << 10)
 
 #define MAX_PREFIX 64
 
@@ -32,6 +33,7 @@ private:
 		int reg;
 		int graph;
 		int wav;
+		int skip;
 	};
         struct t_node {
 		unsigned int ip;
@@ -64,6 +66,7 @@ private:
 		int reg;
 		int graph;
 		int wav;
+		int skip;
 	};
 	struct t_payload {
 		char prefix[MAX_PREFIX];

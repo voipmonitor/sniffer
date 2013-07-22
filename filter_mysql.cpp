@@ -30,9 +30,11 @@ IPfilter::IPfilter() {
 
 // destructor
 IPfilter::~IPfilter() {
-	t_node *node;
-	for(node = first_node; node != NULL; node = node->next) {
-		delete(node);
+	t_node *node = first_node;
+	while(node != NULL) {
+		t_node *node_next = node->next;
+		delete node;
+		node = node_next;
 	}
 };
 
@@ -53,6 +55,7 @@ IPfilter::load() {
 		filterRow->reg = row.isNull("register") || atoi(row["register"].c_str());
 		filterRow->graph = row.isNull("graph") || atoi(row["graph"].c_str());
 		filterRow->wav = row.isNull("wav") || atoi(row["wav"].c_str());
+		filterRow->skip = row.isNull("skip") ? 0 : atoi(row["skip"].c_str());
 		vectDbRow.push_back(*filterRow);
 		delete filterRow;
 	}
@@ -74,6 +77,7 @@ IPfilter::load() {
 			else		node->flags |= FLAG_NOGRAPH;
 		if(vectDbRow[i].wav)	node->flags |= FLAG_WAV;
 			else		node->flags |= FLAG_NOWAV;
+		if(vectDbRow[i].skip)	node->flags |= FLAG_SKIP;
 		// add node to the first position
 		node->next = first_node;
 		first_node = node;
@@ -127,6 +131,9 @@ IPfilter::add_call_flags(unsigned int *flags, unsigned int saddr, unsigned int d
 			}
 			if(node->flags & FLAG_NOGRAPH) {
 				*flags &= ~FLAG_SAVEGRAPH;
+			}
+			if(node->flags & FLAG_SKIP) {
+				*flags |= FLAG_SKIP;
 			}
 			return 1;
 		}
@@ -226,6 +233,7 @@ TELNUMfilter::load() {
 		filterRow->reg = row.isNull("register") || atoi(row["register"].c_str());
 		filterRow->graph = row.isNull("graph") || atoi(row["graph"].c_str());
 		filterRow->wav = row.isNull("wav") || atoi(row["wav"].c_str());
+		filterRow->skip = row.isNull("skip") ? 0 : atoi(row["skip"].c_str());
 		vectDbRow.push_back(*filterRow);
 		delete filterRow;
 	}
@@ -244,6 +252,7 @@ TELNUMfilter::load() {
 			else		np->flags |= FLAG_NOGRAPH;
 		if(vectDbRow[i].wav)	np->flags |= FLAG_WAV;
 			else		np->flags |= FLAG_NOWAV;
+		if(vectDbRow[i].skip)	np->flags |= FLAG_SKIP;
 		add_payload(np);
 	}
 };

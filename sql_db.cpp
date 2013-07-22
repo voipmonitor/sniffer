@@ -1058,6 +1058,7 @@ void SqlDb_mysql::createSchema() {
 			`register` tinyint DEFAULT '0',\
 			`graph` tinyint DEFAULT '0',\
 			`wav` tinyint DEFAULT '0',\
+			`skip` tinyint DEFAULT '0',\
 			`note` text,\
 		PRIMARY KEY (`id`)\
 	) ENGINE=InnoDB DEFAULT CHARSET=latin1;");
@@ -1073,6 +1074,7 @@ void SqlDb_mysql::createSchema() {
 			`register` tinyint DEFAULT '0',\
 			`graph` tinyint DEFAULT '0',\
 			`wav` tinyint DEFAULT '0',\
+			`skip` tinyint DEFAULT '0',\
 			`note` text,\
 		PRIMARY KEY (`id`)\
 	) ENGINE=InnoDB DEFAULT CHARSET=latin1;");
@@ -1751,6 +1753,12 @@ void SqlDb_mysql::createSchema() {
 			ADD `id_sensor` INT NULL DEFAULT NULL;");
 	this->query("ALTER TABLE register_state\
 			ADD `id_sensor` INT NULL DEFAULT NULL;");
+
+	this->query("ALTER TABLE filter_ip\
+			ADD `skip` tinyint NULL;");
+	this->query("ALTER TABLE filter_telnum\
+			ADD `skip` tinyint NULL;");
+
 	sql_noerror = 0;
 	syslog(LOG_DEBUG, "done");
 }
@@ -1777,6 +1785,7 @@ void SqlDb_odbc::createSchema() {
 			register tinyint DEFAULT '0',\
 			graph tinyint DEFAULT '0',\
 			wav tinyint DEFAULT '0',\
+			skip tinyint DEFAULT '0',\
 			note text);\
 	END");
 
@@ -1792,6 +1801,7 @@ void SqlDb_odbc::createSchema() {
 			register tinyint DEFAULT '0',\
 			graph tinyint DEFAULT '0',\
 			wav tinyint DEFAULT '0',\
+			skip tinyint DEFAULT '0',\
 			note text);\
 	END");
 
@@ -2210,6 +2220,11 @@ void SqlDb_odbc::createSchema() {
 			ADD GeoPosition varchar(255) NULL;");
 	this->query("ALTER TABLE cdr\
 			ADD GeoPosition varchar(255) NULL;");
+
+	this->query("ALTER TABLE filter_ip\
+			ADD `skip` tinyint NULL;");
+	this->query("ALTER TABLE filter_telnum\
+			ADD `skip` tinyint NULL;");
 	
 	sql_noerror = 0;
 	

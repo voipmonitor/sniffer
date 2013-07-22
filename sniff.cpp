@@ -1078,10 +1078,19 @@ void *rtp_read_thread_func(void *arg) {
 
 Call *new_invite_register(int sip_method, char *data, int datalen, struct pcap_pkthdr *header, char *callidstr, u_int32_t saddr, u_int32_t daddr, int source, char *s, long unsigned int l){
 	unsigned long gettagLimitLen = 0;
+	unsigned int flags = 0;
 	
 	if(opt_callslimit != 0 and opt_callslimit > calls) {
 		if(verbosity > 0)
 			syslog(LOG_NOTICE, "callslimit[%d] > calls[%d] ignoring call\n", opt_callslimit, calls);
+		return NULL;
+	}
+
+	ipfilter->add_call_flags(&flags, ntohl(saddr), ntohl(daddr));
+	if(flags & FLAG_SKIP) {
+		if(verbosity > 1)
+			syslog(LOG_NOTICE, "call skipped due to ip or tel capture rules\n");
+		return NULL;
 	}
 
 	static char str2[1024];
@@ -1091,7 +1100,7 @@ Call *new_invite_register(int sip_method, char *data, int datalen, struct pcap_p
 	call->sipcallerip = saddr;
 	call->sipcalledip = daddr;
 	call->type = sip_method;
-	ipfilter->add_call_flags(&(call->flags), ntohl(saddr), ntohl(daddr));
+	call->flags = flags;
 	strncpy(call->fbasename, callidstr, MAX_FNAME - 1);
 
 	/* this logic updates call on the first INVITES */
@@ -1933,6 +1942,9 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 			// packet does not belongs to any call yet
 			if (sip_method == INVITE || sip_method == MESSAGE || (opt_sip_register && sip_method == REGISTER)) {
 				call = new_invite_register(sip_method, data, datalen, header, callidstr, saddr, daddr, source, s, l);
+				if(call == NULL) {
+					return NULL;
+				}
 			} else {
 				// SIP packet does not belong to any call and it is not INVITE 
 				// TODO: check if we have enabled live sniffer for SUBSCRIBE or OPTIONS 
@@ -1970,6 +1982,9 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 					call->regstate = 4;
 					call->saveregister();
 					call = new_invite_register(sip_method, data, datalen, header, callidstr, saddr, daddr, source, call->call_id, strlen(call->call_id));
+					if(call == NULL) {
+						return NULL;
+					}
 					save_packet(call, header, packet, saddr, source, daddr, dest, istcp, data, datalen, TYPE_SIP);
 					if(logPacketSipMethodCall_enable) {
 						logPacketSipMethodCall(sip_method, lastSIPresponseNum, header, call, 
