@@ -864,7 +864,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 		outStr << (this->instancePcapHandle ? 
 				this->instancePcapHandle->pcapStatString_interface(statPeriod) :
 				this->pcapStatString_interface(statPeriod));
-		syslog(LOG_NOTICE, "packetbuffer stat: %s", outStr.str().c_str());
+		syslog(LOG_NOTICE, "%s", outStr.str().c_str());
 	}
 	sumPacketsCounterIn[1] = sumPacketsCounterIn[0];
 	sumPacketsCounterOut[1] = sumPacketsCounterOut[0];
