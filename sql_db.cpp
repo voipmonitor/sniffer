@@ -25,6 +25,7 @@ extern char get_customers_pn_query[1024];
 extern char mysql_database[256];
 
 int sql_noerror = 0;
+int sql_disable_next_attempt_if_error = 0;
 
 
 string SqlDb_row::operator [] (const char *fieldName) {
@@ -358,6 +359,8 @@ bool SqlDb_mysql::connect() {
 					//opt_mysql_port, NULL, CLIENT_MULTI_STATEMENTS);
 					opt_mysql_port, NULL, 0);
 		if(this->hMysqlConn) {
+			syslog(LOG_INFO, "connect - db version %i.%i", this->getDbMajorVersion(), this->getDbMinorVersion());
+			sql_disable_next_attempt_if_error = 1;
 			this->query("SET NAMES UTF8");
 			this->query("SET sql_mode = ''");
 			this->query("SHOW VARIABLES LIKE \"version\"");
@@ -366,7 +369,7 @@ bool SqlDb_mysql::connect() {
 				this->dbVersion = row[1];
 			}
 			while(this->fetchRow());
-			syslog(LOG_INFO, "connect - db version %i.%i", this->getDbMajorVersion(), this->getDbMinorVersion());
+			sql_disable_next_attempt_if_error = 0;
 			return(true);
 		} else {
 			this->checkLastError("connect error", true);
@@ -450,7 +453,7 @@ bool SqlDb_mysql::query(string query) {
 					if(pass < this->maxQueryPass - 1) {
 						this->reconnect();
 					}
-				} else if(sql_noerror ||
+				} else if(sql_noerror || sql_disable_next_attempt_if_error ||
 					  this->getLastError() == ER_PARSE_ERROR) {
 					break;
 				} else {
