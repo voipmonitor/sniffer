@@ -1079,7 +1079,7 @@ void *rtp_read_thread_func(void *arg) {
 Call *new_invite_register(int sip_method, char *data, int datalen, struct pcap_pkthdr *header, char *callidstr, u_int32_t saddr, u_int32_t daddr, int source, char *s, long unsigned int l){
 	unsigned long gettagLimitLen = 0;
 	unsigned int flags = 0;
-	
+
 	if(opt_callslimit != 0 and opt_callslimit > calls) {
 		if(verbosity > 0)
 			syslog(LOG_NOTICE, "callslimit[%d] > calls[%d] ignoring call\n", opt_callslimit, calls);
@@ -1092,6 +1092,22 @@ Call *new_invite_register(int sip_method, char *data, int datalen, struct pcap_p
 			syslog(LOG_NOTICE, "call skipped due to ip or tel capture rules\n");
 		return NULL;
 	}
+
+	//flags
+	if(opt_saveSIP)
+		flags |= FLAG_SAVESIP;
+
+	if(opt_saveRTP)
+		flags |= FLAG_SAVERTP;
+
+	if(opt_onlyRTPheader)
+		flags |= FLAG_SAVERTPHEADER;
+
+	if(opt_saveWAV)
+		flags |= FLAG_SAVEWAV;
+
+	if(opt_saveGRAPH)
+		flags |= FLAG_SAVEGRAPH;
 
 	static char str2[1024];
 	// store this call only if it starts with invite
