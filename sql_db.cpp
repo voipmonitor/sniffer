@@ -362,6 +362,7 @@ bool SqlDb_mysql::connect() {
 			syslog(LOG_INFO, "connect - db version %i.%i", this->getDbMajorVersion(), this->getDbMinorVersion());
 			sql_disable_next_attempt_if_error = 1;
 			this->query("SET NAMES UTF8");
+			this->query("SET GLOBAL event_scheduler = 1");
 			this->query("SET sql_mode = ''");
 			this->query("SHOW VARIABLES LIKE \"version\"");
 			SqlDb_row row;
