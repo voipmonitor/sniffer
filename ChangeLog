@@ -1,3 +1,11 @@
+8.0 RC4
+=======
+
+- fix deduplication not enabled in version 8 
+- remove data from RTP packets beyond IP datalen which causes garbage in RTP packet for codec decoders (broken in all sniffer versions)
+- fix mysql handling in error condition broken since 8.0RC1
+
+
 8.0 RC3
 =======
 
