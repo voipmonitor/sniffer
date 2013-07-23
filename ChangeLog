@@ -1,3 +1,8 @@
+8.0 RC5
+=======
+
+- fix crash on 1 CPU systems (only problem for 8 versions) 
+
 8.0 RC4
 =======
 
