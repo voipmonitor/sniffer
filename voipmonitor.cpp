@@ -1490,6 +1490,7 @@ int main(int argc, char *argv[]) {
 
 	// if the system has more than one CPU enable threading
 	opt_pcap_threaded = sysconf( _SC_NPROCESSORS_ONLN ) > 1; 
+	opt_pcap_threaded = 1; // TODO: this must be enabled for now. 
 	num_threads = sysconf( _SC_NPROCESSORS_ONLN ) - 1;
 	set_mac();
 
