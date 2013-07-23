@@ -257,6 +257,15 @@ private:
 	struct pcapProcessData {
 		pcapProcessData() {
 			memset(this, 0, sizeof(pcapProcessData));
+			extern int opt_dup_check;
+			if(opt_dup_check) {
+				this->prevmd5s = (unsigned char *)calloc(65536, MD5_DIGEST_LENGTH); // 1M
+			}
+		}
+		~pcapProcessData() {
+			if(this->prevmd5s) {
+				free(this->prevmd5s);
+			}
 		}
 		sll_header *header_sll;
 		ether_header *header_eth;
