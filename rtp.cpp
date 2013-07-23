@@ -23,6 +23,7 @@ Each Call class contains two RTP classes.
 #include "rtp.h"
 #include "calltable.h"
 #include "codecs.h"
+#include "sniff.h"
 #include "jitterbuffer/asterisk/channel.h"
 #include "jitterbuffer/asterisk/frame.h"
 #include "jitterbuffer/asterisk/abstract_jb.h"
@@ -373,9 +374,12 @@ RTP::jitterbuffer(struct ast_channel *channel, int savePayload) {
 	}
 
 	if(savePayload) {
+		struct iphdr2 *header_ip = (struct iphdr2 *)(data - sizeof(struct iphdr2) - sizeof(udphdr2));
+		int mylen = MIN(len, ntohs(header_ip->tot_len) - header_ip->ihl * 4 - sizeof(udphdr2));
+
 		/* get RTP payload header and datalen */
 		payload_data = data + sizeof(RTPFixedHeader);
-		payload_len = len - sizeof(RTPFixedHeader);
+		payload_len = mylen - sizeof(RTPFixedHeader);
 		if(getPadding()) {
 			/*
 			* If set, this packet contains one or more additional padding
