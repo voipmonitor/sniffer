@@ -92,6 +92,7 @@ extern int opt_saveRTP;	 	// save RTP packets to pcap file?
 extern int opt_saveRTCP;	// save RTCP packets to pcap file?
 extern int opt_saveRAW;	 	
 extern int opt_saveWAV;	 	
+extern int opt_saveGRAPH;	 	
 extern int opt_packetbuffered;	  // Make .pcap files writing ‘‘packet-buffered’’
 extern int opt_rtcp;		  // Make .pcap files writing ‘‘packet-buffered’’
 extern int verbosity;
