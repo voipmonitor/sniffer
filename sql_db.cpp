@@ -355,15 +355,21 @@ bool SqlDb_mysql::connect() {
 	if(this->hMysql) {
 		this->hMysqlConn = mysql_real_connect(
 					this->hMysql,
-					this->conn_server.c_str(), this->conn_user.c_str(), this->conn_password.c_str(), this->conn_database.c_str(),
+					//this->conn_server.c_str(), this->conn_user.c_str(), this->conn_password.c_str(), this->conn_database.c_str(),
+					this->conn_server.c_str(), this->conn_user.c_str(), this->conn_password.c_str(), NULL,
 					//opt_mysql_port, NULL, CLIENT_MULTI_STATEMENTS);
 					opt_mysql_port, NULL, 0);
 		if(this->hMysqlConn) {
-			syslog(LOG_INFO, "connect - db version %i.%i", this->getDbMajorVersion(), this->getDbMinorVersion());
 			sql_disable_next_attempt_if_error = 1;
+			syslog(LOG_INFO, "connect - db version %i.%i", this->getDbMajorVersion(), this->getDbMinorVersion());
 			this->query("SET NAMES UTF8");
 			this->query("SET GLOBAL event_scheduler = 1");
 			this->query("SET sql_mode = ''");
+			char tmp[1024];
+			sprintf(tmp, "CREATE DATABASE IF NOT EXISTS %s", mysql_database);
+			this->query(tmp);
+			sprintf(tmp, "USE %s", mysql_database);
+			this->query(tmp);
 			this->query("SHOW VARIABLES LIKE \"version\"");
 			SqlDb_row row;
 			if((row = this->fetchRow())) {
