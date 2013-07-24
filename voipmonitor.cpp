@@ -222,6 +222,8 @@ extern string opt_pcap_queue_send_to_ip;
 extern int opt_pcap_queue_send_to_port;
 extern string opt_pcap_queue_receive_from_ip;
 extern int opt_pcap_queue_receive_from_port;
+extern int sql_noerror;
+int opt_cleandatabase = 0;
 
 bool opt_cdr_partition = 1;
 vector<dstring> opt_custom_headers_cdr;
@@ -511,6 +513,32 @@ void *storing_cdr( void *dummy ) {
 					string("call ") + mysql_database + ".create_partitions_cdr('" + mysql_database + "', 0);");
 				sqlDb->query(
 					string("call ") + mysql_database + ".create_partitions_cdr('" + mysql_database + "', 1);");
+			
+				if(opt_cleandatabase > 0) {
+					time_t act_time = time(NULL);
+					time_t next_day_time = act_time - opt_cleandatabase * 24 * 60 * 60;
+					struct tm *nextDayTime = localtime(&next_day_time);
+					char limitDay[20] = "";
+					strftime(limitDay, sizeof(limitDay), "p%y%m%d", nextDayTime);
+
+					sql_noerror = 1;
+
+					string query = "ALTER TABLE cdr DROP PARTITION ";
+					query.append(limitDay);
+					sqlDb->query(query);
+					query = "ALTER TABLE cdr_next DROP PARTITION ";
+					query.append(limitDay);
+					sqlDb->query(query);
+					query = "ALTER TABLE cdr_rtp DROP PARTITION ";
+					query.append(limitDay);
+					sqlDb->query(query);
+					query = "ALTER TABLE cdr_dtmf DROP PARTITION ";
+					query.append(limitDay);
+					sqlDb->query(query);
+
+					sql_noerror = 0;
+				}
+
 				createPartitionAt = actTime;
 			}
 		}
@@ -799,6 +827,9 @@ int load_config(char *fname) {
 
 	if((value = ini.GetValue("general", "interface", NULL))) {
 		strncpy(ifname, value, sizeof(ifname));
+	}
+	if((value = ini.GetValue("general", "cleandatabase", NULL))) {
+		opt_cleandatabase = atoi(value);
 	}
 	if((value = ini.GetValue("general", "cleanspool_interval", NULL))) {
 		opt_cleanspool_interval = atoi(value);
