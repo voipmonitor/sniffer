@@ -601,6 +601,7 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 	}
 
 	int curpayload = getPayload();
+//	printf("p[%d]\n", curpayload);
 
 	// ignore CNG
 	if(curpayload == 13 or curpayload == 19) {
@@ -624,6 +625,7 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 			for(int i = 0; i < MAX_RTPMAP; i++) {
 				if(rtpmap[i] != 0 && curpayload == rtpmap[i] / 1000) {
 					codec = rtpmap[i] - curpayload * 1000;
+					printf("codec[%d] [%d]\n", codec, curpayload);
 				}
 			}
 		} else {

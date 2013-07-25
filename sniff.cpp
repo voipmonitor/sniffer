@@ -826,6 +826,8 @@ int mimeSubtypeToInt(char *mimeSubtype) {
 	       return PAYLOAD_SILK;
        else if(strcasecmp(mimeSubtype,"ISAC") == 0)
 	       return PAYLOAD_ISAC;
+       else if(strcasecmp(mimeSubtype,"CLEARMODE") == 0)
+	       return PAYLOAD_CLEARMODE;
        else
 	       return 0;
 }
