@@ -361,7 +361,6 @@ bool SqlDb_mysql::connect() {
 					opt_mysql_port, NULL, 0);
 		if(this->hMysqlConn) {
 			sql_disable_next_attempt_if_error = 1;
-			syslog(LOG_INFO, "connect - db version %i.%i", this->getDbMajorVersion(), this->getDbMinorVersion());
 			this->query("SET NAMES UTF8");
 			this->query("SET GLOBAL event_scheduler = 1");
 			this->query("SET sql_mode = ''");
@@ -376,6 +375,7 @@ bool SqlDb_mysql::connect() {
 				this->dbVersion = row[1];
 			}
 			while(this->fetchRow());
+			syslog(LOG_INFO, "connect - db version %i.%i", this->getDbMajorVersion(), this->getDbMinorVersion());
 			sql_disable_next_attempt_if_error = 0;
 			return(true);
 		} else {
@@ -602,7 +602,7 @@ void SqlDb_odbc_bindBuffer::bindCols(SQLHSTMT hStatement) {
 	while(!SQLDescribeCol(
 			hStatement, columnIndex + 1, columnName, sizeof(columnName)/sizeof(SQLCHAR),
 			&nameLength, &dataType, &columnSize, &decimalDigits, &nullable)) {
-		this->addItem(columnIndex + 1, (const char*)columnName, dataType, columnSize, hStatement);
+		this->addItem(columnIndex + 1, (const char*)columnName, dataType, columnSize + 1, hStatement);
 		++columnIndex;
 	}
 }
@@ -748,7 +748,7 @@ bool SqlDb_odbc::query(string query) {
 			if(!sql_noerror) {
 				this->checkLastError("odbc query error", true);
 			}
-			if(rslt > 0) {
+			if(rslt == SQL_ERROR || rslt == SQL_INVALID_HANDLE) {
 				if(pass < this->maxQueryPass - 1) {
 					this->reconnect();
 				}
@@ -1064,6 +1064,7 @@ string reverseString(const char *str) {
 void SqlDb_mysql::createSchema() {
 
 	syslog(LOG_DEBUG, "creating and upgrading MySQL schema...");
+	sql_disable_next_attempt_if_error = 1;
 	this->multi_off();
 
 	this->query(
@@ -1779,14 +1780,17 @@ void SqlDb_mysql::createSchema() {
 			ADD `skip` tinyint NULL;");
 
 	sql_noerror = 0;
+	sql_disable_next_attempt_if_error = 0;
 	syslog(LOG_DEBUG, "done");
 }
 
 void SqlDb_mysql::checkSchema() {
+	sql_disable_next_attempt_if_error = 1;
 	this->query("show columns from cdr_next where Field='calldate'");
 	this->existsColumnCalldateInCdrNext = this->fetchRow();
 	this->query("show columns from cdr_rtp where Field='calldate'");
 	this->existsColumnCalldateInCdrRtp = this->fetchRow();
+	sql_disable_next_attempt_if_error = 1;
 }
 
 

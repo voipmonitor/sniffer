@@ -2505,17 +2505,19 @@ void *readdump_libpcap_thread_fce(void *handle) {
 
 void test() {
 	
+	/*
 	sqlDb->disconnect();
 	sqlDb->connect();
 	
 	for(int pass = 0; pass < 3000; pass++) {
 		cout << "pass " << (pass + 1) << endl;
-		sqlDb->query("select * ffrom cdr order by ID DESC");
+		sqlDb->query("select * from cdr order by ID DESC");
 		SqlDb_row row;
 		row = sqlDb->fetchRow();
 		cout << row["ID"] << " : " << row["calldate"] << endl;
 		sleep(1);
 	}
+	*/
 	
 	/*
 	if(opt_test >= 11 && opt_test <= 13) {
