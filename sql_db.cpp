@@ -23,6 +23,7 @@ extern vector<dstring> opt_custom_headers_cdr;
 extern vector<dstring> opt_custom_headers_message;
 extern char get_customers_pn_query[1024];
 extern char mysql_database[256];
+extern int opt_dscp;
 
 int sql_noerror = 0;
 int sql_disable_next_attempt_if_error = 0;
@@ -1154,6 +1155,7 @@ void SqlDb_mysql::createSchema() {
 			`lastSIPresponse_id` smallint unsigned DEFAULT NULL,\
 			`lastSIPresponseNum` smallint unsigned DEFAULT NULL,\
 			`sighup` tinyint DEFAULT NULL,\
+			`dscp` int unsigned DEFAULT NULL,\
 			`a_index` tinyint DEFAULT NULL,\
 			`b_index` tinyint DEFAULT NULL,\
 			`a_payload` int DEFAULT NULL,\
@@ -1779,6 +1781,11 @@ void SqlDb_mysql::createSchema() {
 	this->query("ALTER TABLE filter_telnum\
 			ADD `skip` tinyint NULL;");
 
+	//8.0
+	if(opt_dscp) {
+		this->query("ALTER TABLE cdr ADD dscp int unsigned DEFAULT NULL");
+	}
+
 	sql_noerror = 0;
 	sql_disable_next_attempt_if_error = 0;
 	syslog(LOG_DEBUG, "done");
@@ -1869,6 +1876,7 @@ void SqlDb_odbc::createSchema() {
 			lastSIPresponse_id smallint NULL\
 				FOREIGN KEY REFERENCES cdr_sip_response (id),\
 			lastSIPresponseNum smallint NULL,\
+			dscp bigint NULL,\
 			sighup tinyint NULL,\
 			a_index tinyint NULL,\
 			b_index tinyint NULL,\
@@ -2245,9 +2253,13 @@ void SqlDb_odbc::createSchema() {
 			ADD GeoPosition varchar(255) NULL;");
 
 	this->query("ALTER TABLE filter_ip\
-			ADD `skip` tinyint NULL;");
+			ADD skip tinyint NULL;");
 	this->query("ALTER TABLE filter_telnum\
-			ADD `skip` tinyint NULL;");
+			ADD skip tinyint NULL;");
+
+	if(opt_dscp) {
+		this->query("ALTER TABLE filter_telnum ADD dscp bigint NULL;");
+	}
 	
 	sql_noerror = 0;
 	

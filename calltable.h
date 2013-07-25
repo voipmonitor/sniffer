@@ -132,6 +132,11 @@ public:
 	std::queue <char> spybufferchar;
 	std::queue <dtmfq> dtmf_history;
 
+	uint8_t	caller_sipdscp;
+	uint8_t	called_sipdscp;
+	uint8_t	caller_rtpdscp;
+	uint8_t	called_rtpdscp;
+
 	int isfax;
 	char seenudptl;
 

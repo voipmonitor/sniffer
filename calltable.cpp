@@ -94,6 +94,7 @@ extern bool opt_cdr_partition;
 extern char get_customers_pn_query[1024];
 extern int opt_saverfc2833;
 extern int opt_dbdtmf;
+extern int opt_dscp;
 
 volatile int calls = 0;
 
@@ -190,6 +191,10 @@ Call::Call(char *call_id, unsigned long call_id_len, time_t time, void *ct) {
 	relationcall = NULL;
 	pthread_mutex_init(&buflock, NULL);
 	pthread_mutex_init(&listening_worker_run_lock, NULL);
+	caller_sipdscp = 0;
+	called_sipdscp = 0;
+	caller_rtpdscp = 0;
+	called_rtpdscp = 0;
 }
 
 void
@@ -438,6 +443,15 @@ Call::read_rtp(unsigned char* data, int datalen, struct pcap_pkthdr *header, u_i
 	// chekc if packet is DTMF and saverfc2833 is enabled 
 	if(opt_saverfc2833 and tmprtp.getPayload() == 101) {
 		*record = 1;
+	}
+
+	if(opt_dscp) {
+		struct iphdr2 *header_ip = (struct iphdr2 *)(data - sizeof(struct iphdr2) - sizeof(udphdr2));
+		if(iscaller) {
+			this->caller_sipdscp = header_ip->tos >> 2;
+		} else {
+			this->called_sipdscp = header_ip->tos >> 2;
+		}
 	}
 
 	for(int i = 0; i < ssrc_n; i++) {
@@ -1176,6 +1190,15 @@ Call::getKeyValCDRtext() {
 	cdr.add(sighup ? 1 : 0, "sighup");
 	cdr.add(lastSIPresponseNum, "lastSIPresponseNum");
 	cdr.add(seeninviteok ? (seenbye ? (seenbyeandok ? 3 : 2) : 1) : 0, "bye");
+
+	if(opt_dscp) {
+		unsigned int a,b,c,d;
+		a = caller_sipdscp;
+		b = called_sipdscp;
+		c = caller_rtpdscp;
+		d = caller_rtpdscp;
+		cdr.add((a << 24) + (b << 16) + (c << 8) + d, "dscp");
+	}
 	
 	if(strlen(match_header)) {
 		cdr.add(match_header, "match_header");
@@ -1450,6 +1473,15 @@ Call::saveToDb(bool enableBatchIfPossible) {
 	*/
 	
 	cdr_sip_response.add(sqlEscapeString(lastSIPresponse), "lastSIPresponse");
+
+	if(opt_dscp) {
+		unsigned int a,b,c,d;
+		a = caller_sipdscp;
+		b = called_sipdscp;
+		c = caller_rtpdscp;
+		d = caller_rtpdscp;
+		cdr.add((a << 24) + (b << 16) + (c << 8) + d, "dscp");
+	}
 	
 	cdr.add(htonl(sipcallerip), "sipcallerip");
 	cdr.add(htonl(sipcalledip), "sipcalledip");
