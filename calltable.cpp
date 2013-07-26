@@ -96,6 +96,7 @@ extern int opt_saverfc2833;
 extern int opt_dbdtmf;
 extern int opt_dscp;
 extern int opt_cdrproxy;
+extern struct pcap_stat pcapstat;
 
 volatile int calls = 0;
 
@@ -196,6 +197,8 @@ Call::Call(char *call_id, unsigned long call_id_len, time_t time, void *ct) {
 	called_sipdscp = 0;
 	caller_rtpdscp = 0;
 	called_rtpdscp = 0;
+	ps_ifdrop = pcapstat.ps_ifdrop;
+	ps_drop = pcapstat.ps_drop;
 }
 
 void
@@ -1190,7 +1193,8 @@ Call::getKeyValCDRtext() {
 	
 	cdr.add(sighup ? 1 : 0, "sighup");
 	cdr.add(lastSIPresponseNum, "lastSIPresponseNum");
-	cdr.add(seeninviteok ? (seenbye ? (seenbyeandok ? 3 : 2) : 1) : 0, "bye");
+	cdr.add((pcapstat.ps_ifdrop != ps_ifdrop or pcapstat.ps_drop != ps_drop) ? 100 : 
+		(seeninviteok ? (seenbye ? (seenbyeandok ? 3 : 2) : 1) : 0), "bye");
 
 	if(opt_dscp) {
 		unsigned int a,b,c,d;
@@ -1502,7 +1506,8 @@ Call::saveToDb(bool enableBatchIfPossible) {
 	}
 	cdr.add(sighup ? 1 : 0, "sighup");
 	cdr.add(lastSIPresponseNum, "lastSIPresponseNum");
-	cdr.add(seeninviteok ? (seenbye ? (seenbyeandok ? 3 : 2) : 1) : 0, "bye");
+	cdr.add((pcapstat.ps_ifdrop != ps_ifdrop or pcapstat.ps_drop != ps_drop) ? 100 : 
+		(seeninviteok ? (seenbye ? (seenbyeandok ? 3 : 2) : 1) : 0), "bye");
 	
 	if(strlen(match_header)) {
 		cdr_next.add(sqlEscapeString(match_header), "match_header");

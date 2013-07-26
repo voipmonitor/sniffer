@@ -210,6 +210,8 @@ int opt_read_from_file = 0;
 int opt_dscp = 0;
 int opt_cdrproxy = 1;
 
+struct pcap_stat pcapstat;
+
 extern int opt_pcap_queue;
 extern u_int opt_pcap_queue_block_max_time_ms;
 extern size_t opt_pcap_queue_block_max_size;
@@ -1496,6 +1498,9 @@ void test();
 int main(int argc, char *argv[]) {
 
 #ifdef BACKTRACE
+
+	pcapstat.ps_drop = 0;
+	pcapstat.ps_ifdrop = 0;
 
         /* Install our signal handler */
         struct sigaction sa;

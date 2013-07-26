@@ -83,6 +83,8 @@ extern pthread_mutex_t readpacket_thread_queue_lock;
 #endif
 
 unsigned int duplicate_counter = 0;
+extern struct pcap_stat pcapstat;
+int pcapstatresCount = 0;
 
 Calltable *calltable;
 extern volatile int calls;
@@ -1440,9 +1442,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 	int sip_method = 0;
 	char lastSIPresponse[128];
 	int lastSIPresponseNum = 0;
-	static struct pcap_stat ps;
 	static int pcapstatres = 0;
-	static int pcapstatresCount = 0;
 	static unsigned int lostpacket = 0;
 	static unsigned int lostpacketif = 0;
 	unsigned int tmp_u32 = 0;
@@ -1469,16 +1469,16 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 		}
 		/* also do every 10 seconds pcap statistics */
 		if(!opt_pcap_queue) {
-			pcapstatres = pcap_stats(handle, &ps);
-			if (pcapstatres == 0 && (lostpacket < ps.ps_drop || lostpacketif < ps.ps_ifdrop)) {
+			pcapstatres = pcap_stats(handle, &pcapstat);
+			if (pcapstatres == 0 && (lostpacket < pcapstat.ps_drop || lostpacketif < pcapstat.ps_ifdrop)) {
 				if(pcapstatresCount) {
-					syslog(LOG_ERR, "warning: libpcap or interface dropped packets! rx:%u pcapdrop:%u ifdrop:%u increase --ring-buffer (kernel >= 2.6.31 and libpcap >= 1.0.0)\n", ps.ps_recv, ps.ps_drop, ps.ps_ifdrop);
+					syslog(LOG_ERR, "warning: libpcap or interface dropped packets! rx:%u pcapdrop:%u ifdrop:%u increase --ring-buffer (kernel >= 2.6.31 and libpcap >= 1.0.0)\n", pcapstat.ps_recv, pcapstat.ps_drop, pcapstat.ps_ifdrop);
 				} else {
 					// do not show first error, it is normal on startup. 
 					pcapstatresCount++;
 				}
-				lostpacket = ps.ps_drop;
-				lostpacketif = ps.ps_ifdrop;
+				lostpacket = pcapstat.ps_drop;
+				lostpacketif = pcapstat.ps_ifdrop;
 			}
 		}
 		last_cleanup = header->ts.tv_sec;

@@ -120,6 +120,8 @@ public:
 	volatile unsigned int rtppcaketsinqueue;
 	unsigned int unrepliedinvite;
 	Call *relationcall;
+	unsigned int ps_drop;
+	unsigned int ps_ifdrop;
 
 	time_t progress_time;		//!< time in seconds of 18X response
 	time_t first_rtp_time;		//!< time in seconds of first RTP packet
