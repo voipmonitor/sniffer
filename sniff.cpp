@@ -115,6 +115,7 @@ extern int opt_mirrorall;
 extern int opt_mirroronly;
 extern char opt_scanpcapdir[2048];
 extern int opt_ipaccount;
+extern int opt_cdrproxy;
 extern IPfilter *ipfilter;
 extern IPfilter *ipfilter_reload;
 extern int ipfilter_reload_do;

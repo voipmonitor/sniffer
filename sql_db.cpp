@@ -1344,6 +1344,30 @@ void SqlDb_mysql::createSchema() {
 			string(" PARTITION BY RANGE COLUMNS(calldate)(\
 				 PARTITION ") + partDayName + " VALUES LESS THAN ('" + limitDay + "') engine innodb)") :
 		""));
+
+	this->query(string(
+	"CREATE TABLE IF NOT EXISTS `cdr_proxy` (\
+			`cdr_ID` int unsigned NOT NULL,") +
+			"`calldate` datetime NOT NULL,\
+			`src` int unsigned DEFAULT NULL,\
+			`dst` varchar(255) DEFAULT NULL," +
+		(opt_cdr_partition ? 
+			"PRIMARY KEY (`cdr_ID`, `calldate`)," :
+			"PRIMARY KEY (`cdr_ID`),") +
+		"KEY `src` (`src`)," + 
+		"KEY `dst` (`dst`)" + 
+		(opt_cdr_partition ?
+			"" :
+			",CONSTRAINT `cdr_proxy_ibfk_1` FOREIGN KEY (`cdr_ID`) REFERENCES `cdr` (`ID`) ON DELETE CASCADE ON UPDATE CASCADE") +
+	") ENGINE=InnoDB DEFAULT CHARSET=latin1 ROW_FORMAT=COMPRESSED" + 
+	(opt_cdr_partition ?
+		(opt_cdr_partition_oldver ? 
+			string(" PARTITION BY RANGE (to_days(calldate))(\
+				 PARTITION ") + partDayName + " VALUES LESS THAN (to_days('" + limitDay + "')) engine innodb)" :
+			string(" PARTITION BY RANGE COLUMNS(calldate)(\
+				 PARTITION ") + partDayName + " VALUES LESS THAN ('" + limitDay + "') engine innodb)") :
+	""));
+
 	sql_noerror = 1;
 	for(size_t iCustHeaders = 0; iCustHeaders < opt_custom_headers_cdr.size(); iCustHeaders++) {
 		this->query(string(
@@ -1662,6 +1686,7 @@ void SqlDb_mysql::createSchema() {
 		    call create_partition(database_name, 'cdr_next', 'day', next_days);\
 		    call create_partition(database_name, 'cdr_rtp', 'day', next_days);\
 		    call create_partition(database_name, 'cdr_dtmf', 'day', next_days);\
+		    call create_partition(database_name, 'cdr_proxy', 'day', next_days);\
 		 end");
 		this->query(
 		"drop event if exists cdr_add_partition");
@@ -2012,6 +2037,18 @@ void SqlDb_odbc::createSchema() {
 			fbasename varchar(255) NULL);\
 		CREATE INDEX fbasename ON cdr_next (fbasename);\
 	END");
+
+	this->query(
+	"IF NOT EXISTS (SELECT * FROM sys.objects WHERE name = 'cdr_proxy') BEGIN\
+		CREATE TABLE cdr_proxy (\
+			cdr_ID int PRIMARY KEY NOT NULL\
+				FOREIGN KEY REFERENCES cdr (ID),\
+			src bigint NULL,\
+			dst bigint NULL;\
+		CREATE INDEX src ON cdr_proxy (src);\
+		CREATE INDEX dst ON cdr_proxy (dst);\
+	END");
+
 
 	this->query(
 	"IF NOT EXISTS (SELECT * FROM sys.objects WHERE name = 'cdr_rtp') BEGIN\

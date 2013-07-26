@@ -208,6 +208,7 @@ char opt_convert_char[64] = "";
 int opt_skinny = 0;
 int opt_read_from_file = 0;
 int opt_dscp = 0;
+int opt_cdrproxy = 1;
 
 extern int opt_pcap_queue;
 extern u_int opt_pcap_queue_block_max_time_ms;
@@ -872,6 +873,9 @@ int load_config(char *fname) {
 	}
 	if((value = ini.GetValue("general", "dscp", NULL))) {
 		opt_dscp = yesno(value);
+	}
+	if((value = ini.GetValue("general", "opt_cdrproxy", NULL))) {
+		opt_cdrproxy = yesno(value);
 	}
 	if((value = ini.GetValue("general", "mos_g729", NULL))) {
 		opt_mos_g729 = yesno(value);

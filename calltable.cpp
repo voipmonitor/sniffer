@@ -95,6 +95,7 @@ extern char get_customers_pn_query[1024];
 extern int opt_saverfc2833;
 extern int opt_dbdtmf;
 extern int opt_dscp;
+extern int opt_cdrproxy;
 
 volatile int calls = 0;
 
@@ -1437,7 +1438,8 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			*/
 			cdr_sip_response,
 			cdr_ua_a,
-			cdr_ua_b;
+			cdr_ua_b,	
+			cdr_proxy;
 	unsigned int /*
 			caller_id = 0,
 			called_id = 0,
@@ -1761,6 +1763,39 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			}
 		}
 
+		if(opt_cdrproxy) {
+			if(sipcalledip2 != 0) {
+				SqlDb_row cdrproxy;
+				cdrproxy.add("_\\_'SQL'_\\_:@cdr_id", "cdr_ID");
+				cdrproxy.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
+				cdrproxy.add(sipcallerip, "src");
+				cdrproxy.add(sipcalledip, "dst");
+				query_str += sqlDb->insertQuery("cdr_proxy", cdrproxy) + ";\n";
+				sipcalledip = sipcalledip2;
+				
+			}
+			if(sipcalledip3 != 0) {
+				SqlDb_row cdrproxy;
+				cdrproxy.add("_\\_'SQL'_\\_:@cdr_id", "cdr_ID");
+				cdrproxy.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
+				cdrproxy.add(sipcallerip2, "src");
+				cdrproxy.add(sipcalledip2, "dst");
+				query_str += sqlDb->insertQuery("cdr_proxy", cdrproxy) + ";\n";
+				sipcalledip = sipcalledip3;
+				
+			}
+			if(sipcalledip4 != 0) {
+				SqlDb_row cdrproxy;
+				cdrproxy.add("_\\_'SQL'_\\_:@cdr_id", "cdr_ID");
+				cdrproxy.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
+				cdrproxy.add(sipcallerip3, "src");
+				cdrproxy.add(sipcalledip3, "dst");
+				query_str += sqlDb->insertQuery("cdr_proxy", cdrproxy) + ";\n";
+				sipcalledip = sipcalledip4;
+			}
+		}
+
+
 		for(int i = 0; i < MAX_SSRC_PER_CALL; i++) {
 			// lets check whole array as there can be holes due rtp[0] <=> rtp[1] swaps in mysql rutine
 			if(rtp[i] and rtp[i]->s->received) {
@@ -1852,7 +1887,37 @@ Call::saveToDb(bool enableBatchIfPossible) {
 	
 	int cdrID = sqlDb->insert(sql_cdr_table, cdr);
 
+
 	if(cdrID > 0) {
+		if(opt_cdrproxy) {
+			if(sipcalledip2 != 0) {
+				SqlDb_row cdrproxy;
+				cdrproxy.add(cdrID, "cdr_ID");
+				cdrproxy.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
+				cdrproxy.add(sipcallerip2, "src");
+				cdrproxy.add(sipcalledip2, "dst");
+				sqlDb->insert("cdr_proxy", cdrproxy);
+				
+			}
+			if(sipcalledip3 != 0) {
+				SqlDb_row cdrproxy;
+				cdrproxy.add(cdrID, "cdr_ID");
+				cdrproxy.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
+				cdrproxy.add(sipcallerip3, "src");
+				cdrproxy.add(sipcalledip3, "dst");
+				sqlDb->insert("cdr_proxy", cdrproxy);
+				
+			}
+			if(sipcalledip4 != 0) {
+				SqlDb_row cdrproxy;
+				cdrproxy.add(cdrID, "cdr_ID");
+				cdrproxy.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
+				cdrproxy.add(sipcallerip4, "src");
+				cdrproxy.add(sipcalledip4, "dst");
+				sqlDb->insert("cdr_proxy", cdrproxy);
+			}
+		}
+
 		for(int i = 0; i < MAX_SSRC_PER_CALL; i++) {
 			// lets check whole array as there can be holes due rtp[0] <=> rtp[1] swaps in mysql rutine
 			if(rtp[i] and rtp[i]->s->received) {
