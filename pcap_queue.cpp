@@ -1177,6 +1177,7 @@ void* PcapQueue_readFromInterface::threadFunction(void* ) {
 		this->threadInitOk = true;
 	} else {
 		this->threadTerminated = true;
+		terminating = 1;
 		return(NULL);
 	}
 	this->initStat();
@@ -1660,6 +1661,7 @@ void *PcapQueue_readFromFifo::threadFunction(void *) {
 		this->threadInitOk = true;
 	} else {
 		this->threadTerminated = true;
+		terminating = 1;
 		return(NULL);
 	}
 	if(this->packetServerDirection == directionRead) {
@@ -1815,6 +1817,7 @@ void *PcapQueue_readFromFifo::writeThreadFunction(void *) {
 		this->writeThreadInitOk = true;
 	} else {
 		this->writeThreadTerminated = true;
+		terminating = 1;
 		return(NULL);
 	}
 	pcap_block_store *blockStore;
