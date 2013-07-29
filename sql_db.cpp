@@ -24,6 +24,7 @@ extern vector<dstring> opt_custom_headers_message;
 extern char get_customers_pn_query[1024];
 extern char mysql_database[256];
 extern int opt_dscp;
+extern int opt_enable_lua_tables;
 
 int sql_noerror = 0;
 int sql_disable_next_attempt_if_error = 0;
@@ -1619,8 +1620,145 @@ void SqlDb_mysql::createSchema() {
 		INDEX (`created_at` , `microseconds`)\
 	) ENGINE=MEMORY DEFAULT CHARSET=latin1 ROW_FORMAT=COMPRESSED;");
 	
+	if(opt_enable_lua_tables) {
+		
+		this->query(string(
+		"CREATE TABLE IF NOT EXISTS `http_jj` (\
+			`id` INT UNSIGNED NOT NULL AUTO_INCREMENT,\
+			`master_id` INT UNSIGNED,\
+			`timestamp` DATETIME NOT NULL,\
+			`usec` INT UNSIGNED NOT NULL,\
+			`srcip` INT UNSIGNED NOT NULL,\
+			`dstip` INT UNSIGNED NOT NULL,\
+			`url` TEXT NOT NULL,\
+			`type` ENUM('http_ok') DEFAULT NULL,\
+			`http` TEXT CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,\
+			`body` TEXT CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,\
+			`callid` VARCHAR( 255 ) NOT NULL,\
+			`sessid` VARCHAR( 255 ) NOT NULL,\
+			`external_transaction_id` varchar( 255 ) NOT NULL,\
+			`id_sensor` smallint DEFAULT NULL,") +
+		(opt_cdr_partition ? 
+			"PRIMARY KEY (`id`, `timestamp`)," :
+			"PRIMARY KEY (`id`),") + 
+		"KEY `timestamp` (`timestamp`),\
+		KEY `callid` (`callid`),\
+		KEY `sessid` (`sessid`),\
+		KEY `external_transaction_id` (`external_transaction_id`)" +
+		(opt_cdr_partition ? 
+			"" :
+			",CONSTRAINT fk__http_jj__master_id\
+				FOREIGN KEY (`master_id`) REFERENCES `http_jj` (`id`)\
+				ON DELETE CASCADE ON UPDATE CASCADE") +
+		") ENGINE = InnoDB" +
+		(opt_cdr_partition ?
+			(opt_cdr_partition_oldver ? 
+				string(" PARTITION BY RANGE (to_days(timestamp))(\
+					PARTITION ") + partDayName + " VALUES LESS THAN (to_days('" + limitDay + "')) engine innodb)" :
+				string(" PARTITION BY RANGE COLUMNS(timestamp)(\
+					PARTITION ") + partDayName + " VALUES LESS THAN ('" + limitDay + "') engine innodb)") :
+			""));
+		
+		this->query(string(
+		"CREATE TABLE IF NOT EXISTS `enum_jj` (\
+			`id` INT UNSIGNED NOT NULL AUTO_INCREMENT,\
+			`dnsid` INT UNSIGNED NOT NULL,\
+			`timestamp` DATETIME NOT NULL,\
+			`usec` INT UNSIGNED NOT NULL,\
+			`srcip` INT UNSIGNED NOT NULL,\
+			`dstip` INT UNSIGNED NOT NULL,\
+			`isresponse` TINYINT NOT NULL,\
+			`recordtype` SMALLINT NOT NULL,\
+			`queryname` VARCHAR(255) NOT NULL,\
+			`responsename` VARCHAR(255) NOT NULL,\
+			`data` BLOB NOT NULL,\
+			`id_sensor` smallint DEFAULT NULL,") +
+		(opt_cdr_partition ? 
+			"PRIMARY KEY (`id`, `timestamp`)," :
+			"PRIMARY KEY (`id`),") + 
+		"KEY `timestamp` (`timestamp`),\
+		KEY `dnsid` (`dnsid`),\
+		KEY `queryname` (`queryname`),\
+		KEY `responsename` (`responsename`)\
+		) ENGINE = InnoDB" +
+		(opt_cdr_partition ?
+			(opt_cdr_partition_oldver ? 
+				string(" PARTITION BY RANGE (to_days(timestamp))(\
+					PARTITION ") + partDayName + " VALUES LESS THAN (to_days('" + limitDay + "')) engine innodb)" :
+				string(" PARTITION BY RANGE COLUMNS(timestamp)(\
+					PARTITION ") + partDayName + " VALUES LESS THAN ('" + limitDay + "') engine innodb)") :
+			""));
+		
+	}
+	
 	sql_noerror = 1;
 	
+	//BEGIN ALTER TABLES
+	//5.2 -> 5.3
+	if(opt_match_header[0] != '\0') {
+		this->query("ALTER TABLE cdr_next\
+				ADD match_header VARCHAR(128),\
+				ADD KEY `match_header` (`match_header`);");
+	}
+	//5.3 -> 5.4
+	this->query("ALTER TABLE register\
+			ADD KEY `to_domain` (`to_domain`),\
+			ADD KEY `to_num` (`to_num`);");
+	this->query("ALTER TABLE register_state\
+			ADD `to_domain` varchar(255) NULL DEFAULT NULL;");
+	this->query("ALTER TABLE register_failed\
+			ADD `to_domain` varchar(255) NULL DEFAULT NULL;");
+	//5.4 -> 5.5
+	this->query("ALTER TABLE register_state\
+			ADD `sipcalledip` int unsigned,\
+			ADD KEY `sipcalledip` (`sipcalledip`);");
+	this->query("ALTER TABLE register_failed\
+			ADD `sipcalledip` int unsigned,\
+			ADD KEY `sipcalledip` (`sipcalledip`);");
+	//6.0 -> 6.1
+	this->query("ALTER TABLE message\
+			ADD id_contenttype INT AFTER ID,\
+			ADD KEY `id_contenttype` (`id_contenttype`);");
+	
+	//6.5RC2 ->
+	this->query("ALTER TABLE message ADD GeoPosition varchar(255)");
+	this->query("ALTER TABLE cdr_next ADD GeoPosition varchar(255)");
+	this->query("ALTER TABLE register\
+			ADD `fname` BIGINT NULL DEFAULT NULL;");
+	this->query("ALTER TABLE register_failed\
+			ADD `fname` BIGINT NULL DEFAULT NULL;");
+	this->query("ALTER TABLE register_state\
+			ADD `fname` BIGINT NULL DEFAULT NULL;");
+	this->query("ALTER TABLE register\
+			ADD `id_sensor` INT NULL DEFAULT NULL;");
+	this->query("ALTER TABLE register_failed\
+			ADD `id_sensor` INT NULL DEFAULT NULL;");
+	this->query("ALTER TABLE register_state\
+			ADD `id_sensor` INT NULL DEFAULT NULL;");
+
+	this->query("ALTER TABLE filter_ip\
+			ADD `skip` tinyint NULL;");
+	this->query("ALTER TABLE filter_telnum\
+			ADD `skip` tinyint NULL;");
+	//8.0
+	if(opt_dscp) {
+		this->query("ALTER TABLE cdr ADD dscp int unsigned DEFAULT NULL");
+	}
+	
+	if(opt_enable_lua_tables) {
+		this->query("ALTER TABLE http_jj\
+				ADD external_transaction_id varchar( 255 ) NOT NULL,\
+				ADD KEY `external_transaction_id` (`external_transaction_id`);");
+		this->query("ALTER TABLE http_jj ADD type ENUM('http_ok') DEFAULT NULL AFTER url;");
+		this->query("ALTER TABLE http_jj ADD http TEXT CHARACTER SET utf8 COLLATE utf8_bin NOT NULL AFTER type;");
+		this->query("ALTER TABLE http_jj ADD id_sensor SMALLINT DEFAULT NULL;");
+		this->query("ALTER TABLE enum_jj ADD id_sensor SMALLINT DEFAULT NULL;");
+	}
+
+	sql_noerror = 0;
+	//END ALTER TABLES
+	
+	//BEGIN SQL SCRIPTS
 	if(opt_cdr_partition) {
 		this->query(
 		"drop procedure if exists create_partition");
@@ -1687,7 +1825,13 @@ void SqlDb_mysql::createSchema() {
 		    call create_partition(database_name, 'cdr_rtp', 'day', next_days);\
 		    call create_partition(database_name, 'cdr_dtmf', 'day', next_days);\
 		    call create_partition(database_name, 'cdr_proxy', 'day', next_days);\
+		    call create_partition(database_name, 'http_jj', 'day', next_days);\
+		    call create_partition(database_name, 'enum_jj', 'day', next_days);\
 		 end");
+		this->query(string(
+		"call ") + mysql_database + ".create_partitions_cdr('" + mysql_database + "', 0);");
+		this->query(string(
+		"call ") + mysql_database + ".create_partitions_cdr('" + mysql_database + "', 1);");
 		this->query(
 		"drop event if exists cdr_add_partition");
 		this->query(string(
@@ -1696,39 +1840,7 @@ void SqlDb_mysql::createSchema() {
 		 begin\
 		    call ") + mysql_database + ".create_partitions_cdr('" + mysql_database + "', 1);\
 		 end");
-		this->query(string(
-		"call ") + mysql_database + ".create_partitions_cdr('" + mysql_database + "', 0);");
-		this->query(string(
-		"call ") + mysql_database + ".create_partitions_cdr('" + mysql_database + "', 1);");
 	}
-
-	//5.2 -> 5.3
-	if(opt_match_header[0] != '\0') {
-		this->query("ALTER TABLE cdr_next\
-				ADD match_header VARCHAR(128),\
-				ADD KEY `match_header` (`match_header`);");
-	}
-	//5.3 -> 5.4
-	this->query("ALTER TABLE register\
-			ADD KEY `to_domain` (`to_domain`),\
-			ADD KEY `to_num` (`to_num`);");
-	this->query("ALTER TABLE register_state\
-			ADD `to_domain` varchar(255) NULL DEFAULT NULL;");
-	this->query("ALTER TABLE register_failed\
-			ADD `to_domain` varchar(255) NULL DEFAULT NULL;");
-	//5.4 -> 5.5
-	this->query("ALTER TABLE register_state\
-			ADD `sipcalledip` int unsigned,\
-			ADD KEY `sipcalledip` (`sipcalledip`);");
-	this->query("ALTER TABLE register_failed\
-			ADD `sipcalledip` int unsigned,\
-			ADD KEY `sipcalledip` (`sipcalledip`);");
-	//6.0 -> 6.1
-	this->query("ALTER TABLE message\
-			ADD id_contenttype INT AFTER ID,\
-			ADD KEY `id_contenttype` (`id_contenttype`);");
-
-	sql_noerror = 0;
 
 	this->query("DROP FUNCTION IF EXISTS getIdOrInsertUA;");
 	this->query("CREATE FUNCTION getIdOrInsertUA(val VARCHAR(255)) RETURNS INT DETERMINISTIC \
@@ -1781,37 +1893,10 @@ void SqlDb_mysql::createSchema() {
 					INSERT INTO `register` SET `id_sensor` = id_sensor, `fname` = fname, `calldate` = calltime, `sipcallerip` = sipcallerip, `sipcalledip` = sipcalledip, `from_num` = caller, `from_name` = callername, `from_domain` = caller_domain, `to_num` = called, `to_domain` = called_domain, `contact_num` = contact_num, `contact_domain` = contact_domain, `digestusername` = digest_username, `digestrealm` = digest_realm, `expires` = register_expires, state = regstate, ua_id = getIdOrInsertUA(cdr_ua), `expires_at` = mexpires_at; \
 				END IF; \
 			END;");
+	//END SQL SCRIPTS
 
 	//this->multi_on();
 
-	//6.5RC2 ->
-	sql_noerror = 1;
-	this->query("ALTER TABLE message ADD GeoPosition varchar(255)");
-	this->query("ALTER TABLE cdr_next ADD GeoPosition varchar(255)");
-	this->query("ALTER TABLE register\
-			ADD `fname` BIGINT NULL DEFAULT NULL;");
-	this->query("ALTER TABLE register_failed\
-			ADD `fname` BIGINT NULL DEFAULT NULL;");
-	this->query("ALTER TABLE register_state\
-			ADD `fname` BIGINT NULL DEFAULT NULL;");
-	this->query("ALTER TABLE register\
-			ADD `id_sensor` INT NULL DEFAULT NULL;");
-	this->query("ALTER TABLE register_failed\
-			ADD `id_sensor` INT NULL DEFAULT NULL;");
-	this->query("ALTER TABLE register_state\
-			ADD `id_sensor` INT NULL DEFAULT NULL;");
-
-	this->query("ALTER TABLE filter_ip\
-			ADD `skip` tinyint NULL;");
-	this->query("ALTER TABLE filter_telnum\
-			ADD `skip` tinyint NULL;");
-
-	//8.0
-	if(opt_dscp) {
-		this->query("ALTER TABLE cdr ADD dscp int unsigned DEFAULT NULL");
-	}
-
-	sql_noerror = 0;
 	sql_disable_next_attempt_if_error = 0;
 	syslog(LOG_DEBUG, "done");
 }

@@ -209,6 +209,7 @@ int opt_skinny = 0;
 int opt_read_from_file = 0;
 int opt_dscp = 0;
 int opt_cdrproxy = 1;
+int opt_enable_lua_tables = 0;
 
 struct pcap_stat pcapstat;
 
@@ -1270,6 +1271,9 @@ int load_config(char *fname) {
 	if((value = ini.GetValue("general", "openfile_max", NULL))) {
                 opt_openfile_max = atoi(value);
         }
+	if((value = ini.GetValue("general", "enable_lua_tables", NULL))) {
+		opt_enable_lua_tables = yesno(value);
+	}
 
 	if((value = ini.GetValue("general", "packetbuffer_enable", NULL))) {
 		opt_pcap_queue = yesno(value);
