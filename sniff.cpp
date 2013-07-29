@@ -2351,13 +2351,13 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 				findHeader.append(":");
 			}
 			s = gettag(data, datalen, findHeader.c_str(), &l, &gettagLimitLen);
-			if(l && l < 128) {
-				char headerContent[128];
-				memcpy(headerContent, s, l);
-				headerContent[l] = '\0';
-				call->custom_headers.push_back(dstring((*_customHeaders)[iCustHeaders][1],headerContent));
+			if(l) {
+				char customHeaderContent[256];
+				memcpy(customHeaderContent, s, min(l, 255lu));
+				customHeaderContent[min(l, 255lu)] = '\0';
+				call->custom_headers.push_back(dstring((*_customHeaders)[iCustHeaders][1],customHeaderContent));
 				if(verbosity > 2)
-					syslog(LOG_NOTICE, "Seen header %s: %s\n", (*_customHeaders)[iCustHeaders][0].c_str(), headerContent);
+					syslog(LOG_NOTICE, "Seen header %s: %s\n", (*_customHeaders)[iCustHeaders][0].c_str(), customHeaderContent);
 			}
 		}
 		
