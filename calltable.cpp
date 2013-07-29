@@ -1430,7 +1430,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		// skip this CDR 
 		return 1;
 	}
-	
+
 	SqlDb_row cdr,
 			cdr_next,
 			/*
@@ -1454,6 +1454,41 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			lastSIPresponse_id = 0,
 			a_ua_id = 0,
 			b_ua_id = 0;
+
+	string query_str_cdrproxy;
+	if(opt_cdrproxy) {
+		sqlDb->setEnableSqlStringInContent(true);
+		if(sipcalledip2 != 0) {
+			SqlDb_row cdrproxy;
+			cdrproxy.add("_\\_'SQL'_\\_:@cdr_id", "cdr_ID");
+			cdrproxy.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
+			cdrproxy.add(htonl(sipcallerip), "src");
+			cdrproxy.add(htonl(sipcalledip), "dst");
+			query_str_cdrproxy += sqlDb->insertQuery("cdr_proxy", cdrproxy) + ";\n";
+			sipcalledip = sipcalledip2;
+			
+		}
+		if(sipcalledip3 != 0) {
+			SqlDb_row cdrproxy;
+			cdrproxy.add("_\\_'SQL'_\\_:@cdr_id", "cdr_ID");
+			cdrproxy.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
+			cdrproxy.add(htonl(sipcallerip2), "src");
+			cdrproxy.add(htonl(sipcalledip2), "dst");
+			query_str_cdrproxy += sqlDb->insertQuery("cdr_proxy", cdrproxy) + ";\n";
+			sipcalledip = sipcalledip3;
+			
+		}
+		if(sipcalledip4 != 0) {
+			SqlDb_row cdrproxy;
+			cdrproxy.add("_\\_'SQL'_\\_:@cdr_id", "cdr_ID");
+			cdrproxy.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
+			cdrproxy.add(htonl(sipcallerip3), "src");
+			cdrproxy.add(htonl(sipcalledip3), "dst");
+			query_str_cdrproxy += sqlDb->insertQuery("cdr_proxy", cdrproxy) + ";\n";
+			sipcalledip = sipcalledip4;
+		}
+		sqlDb->setEnableSqlStringInContent(false);
+	}
 
 	if(opt_id_sensor > -1) {
 		cdr.add(opt_id_sensor, "id_sensor");
@@ -1768,38 +1803,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			}
 		}
 
-		if(opt_cdrproxy) {
-			if(sipcalledip2 != 0) {
-				SqlDb_row cdrproxy;
-				cdrproxy.add("_\\_'SQL'_\\_:@cdr_id", "cdr_ID");
-				cdrproxy.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
-				cdrproxy.add(sipcallerip, "src");
-				cdrproxy.add(sipcalledip, "dst");
-				query_str += sqlDb->insertQuery("cdr_proxy", cdrproxy) + ";\n";
-				sipcalledip = sipcalledip2;
-				
-			}
-			if(sipcalledip3 != 0) {
-				SqlDb_row cdrproxy;
-				cdrproxy.add("_\\_'SQL'_\\_:@cdr_id", "cdr_ID");
-				cdrproxy.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
-				cdrproxy.add(sipcallerip2, "src");
-				cdrproxy.add(sipcalledip2, "dst");
-				query_str += sqlDb->insertQuery("cdr_proxy", cdrproxy) + ";\n";
-				sipcalledip = sipcalledip3;
-				
-			}
-			if(sipcalledip4 != 0) {
-				SqlDb_row cdrproxy;
-				cdrproxy.add("_\\_'SQL'_\\_:@cdr_id", "cdr_ID");
-				cdrproxy.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
-				cdrproxy.add(sipcallerip3, "src");
-				cdrproxy.add(sipcalledip3, "dst");
-				query_str += sqlDb->insertQuery("cdr_proxy", cdrproxy) + ";\n";
-				sipcalledip = sipcalledip4;
-			}
-		}
-
+		query_str += query_str_cdrproxy;
 
 		for(int i = 0; i < MAX_SSRC_PER_CALL; i++) {
 			// lets check whole array as there can be holes due rtp[0] <=> rtp[1] swaps in mysql rutine

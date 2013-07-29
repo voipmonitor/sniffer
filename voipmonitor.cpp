@@ -55,6 +55,7 @@
 #include "mirrorip.h"
 #include "ipaccount.h"
 #include "pcap_queue.h"
+#include "generator.h"
 
 #if defined(QUEUE_MUTEX) || defined(QUEUE_NONBLOCK)
 extern "C" {
@@ -210,6 +211,9 @@ int opt_read_from_file = 0;
 int opt_dscp = 0;
 int opt_cdrproxy = 1;
 int opt_enable_lua_tables = 0;
+int opt_generator = 0;
+int opt_generator_channels = 1;
+int opt_skipdefault = 0;
 
 struct pcap_stat pcapstat;
 
@@ -885,6 +889,9 @@ int load_config(char *fname) {
 	}
 	if((value = ini.GetValue("general", "nocdr", NULL))) {
 		opt_nocdr = yesno(value);
+	}
+	if((value = ini.GetValue("general", "skipdefault", NULL))) {
+		opt_skipdefault = yesno(value);
 	}
 	if((value = ini.GetValue("general", "skinny", NULL))) {
 		opt_skinny = yesno(value);
@@ -2004,6 +2011,17 @@ int main(int argc, char *argv[]) {
                         */
 
 		return 1;
+	}
+
+	if(opt_generator) {
+		opt_generator_channels = 2;
+		pthread_t *genthreads = (pthread_t*)malloc(opt_generator_channels * sizeof(pthread_t));		// ID of worker storing CDR thread 
+		for(int i = 0; i < opt_generator_channels; i++) {
+			pthread_create(&genthreads[i], NULL, gensiprtp, NULL);
+		}
+		syslog(LOG_ERR, "Traffic generated");
+		sleep(10000);
+		return 0;
 	}
 
 	cout << "SQL DRIVER: " << sql_driver << endl;

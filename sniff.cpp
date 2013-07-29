@@ -155,6 +155,7 @@ extern int opt_saverfc2833;
 extern vector<dstring> opt_custom_headers_cdr;
 extern vector<dstring> opt_custom_headers_message;
 extern livesnifferfilter_use_siptypes_s livesnifferfilterUseSipTypes;
+extern int opt_skipdefault;
 
 #ifdef QUEUE_MUTEX
 extern sem_t readpacket_thread_semaphore;
@@ -1114,6 +1115,9 @@ Call *new_invite_register(int sip_method, char *data, int datalen, struct pcap_p
 
 	if(opt_saveGRAPH)
 		flags |= FLAG_SAVEGRAPH;
+
+	if(opt_skipdefault)
+		flags |= FLAG_SKIP;
 
 	static char str2[1024];
 	// store this call only if it starts with invite
