@@ -54,7 +54,7 @@
 #define MAX_TCPSTREAMS 1024
 #define FILE_BUFFER_SIZE 1000000
 
-//#define TEST_PCAP_FILE "/__RAID/Public/test2.pcap"
+//#define TEST_PCAP_FILE "/mnt/www_JX/voipmonitor/pcaps/3.pcap"
 
 
 using namespace std;
@@ -1190,6 +1190,14 @@ void* PcapQueue_readFromInterface::threadFunction(void* ) {
 		while(!TERMINATING) {
 			res = this->pcap_next_ex(this->pcapHandle, &header, &packet);
 			if(res == -1) {
+				#ifdef TEST_PCAP_FILE
+					blockStoreBypassQueue.push(blockStore);
+					++sumBlocksCounterIn[0];
+					blockStore = NULL;
+					sleep(1);
+					calltable->cleanup(0);
+					terminating = 1;
+				#endif
 				break;
 			} else if(res == 0) {
 				continue;
@@ -1244,7 +1252,9 @@ void* PcapQueue_readFromInterface::threadFunction(void* ) {
 				free(packet);
 			}
 		}
-		delete blockStore;
+		if(blockStore) {
+			delete blockStore;
+		}
 	} else {
 		while(!TERMINATING) {
 			res = this->pcap_next_ex(this->pcapHandle, &header, &packet);
@@ -1306,7 +1316,8 @@ bool PcapQueue_readFromInterface::startCapture() {
 	char errbuf[PCAP_ERRBUF_SIZE];
 	#ifdef TEST_PCAP_FILE
 		this->pcapHandle = pcap_open_offline(TEST_PCAP_FILE, errbuf);
-		this->pcapLinklayerHeaderType = DLT_EN10MB;
+		this->pcapLinklayerHeaderType = pcap_datalink(this->pcapHandle);;
+		handle = this->pcapHandle;
 	#else
 	if(VERBOSE) {
 		syslog(LOG_NOTICE, "packetbuffer %s: capturing on interface %s", this->nameQueue.c_str(), this->interfaceName.c_str()); 
