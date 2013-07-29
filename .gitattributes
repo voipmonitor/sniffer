@@ -47,6 +47,8 @@ config/voipmonitor.conf -text
 /format_slinear.h -text
 /format_wav.cpp -text
 /format_wav.h -text
+/generator.cpp -text
+/generator.h -text
 gzstream/COPYING.LIB -text
 gzstream/Makefile -text
 gzstream/Makefile.in -text
