@@ -124,7 +124,7 @@ void *listening_worker(void *arguments) {
 		tvwait.tv_sec = 0;
 		tvwait.tv_usec = 1000*20 - udiff; //20 ms
 //		long int usec = tvwait.tv_usec;
-		ret = select(NULL, NULL, NULL, NULL, &tvwait);
+		ret = select(0, NULL, NULL, NULL, &tvwait);
 
 		clock_gettime(CLOCK_REALTIME, &tS);
 		char *s16char;

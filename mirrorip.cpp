@@ -58,7 +58,7 @@ MirrorIP::send(char *data, int datalen) {
 	struct iphdr *iphdr;
 
 	iphdr = (struct iphdr *)mirror_packet;
-	memset(iphdr, 0, sizeof(iphdr));
+	memset(iphdr, 0, sizeof(*iphdr));
 	iphdr->version = 4;
 	iphdr->tos = 0;
 	iphdr->id = htons(100);

@@ -1758,7 +1758,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 				tcp_stream2_t *tmpstream;
 				if((tmpstream = tcp_streams_hashed[hash])) {
 					tcp_stream2_t test;
-					memcpy(&test, tmpstream, sizeof(tmpstream));
+					memcpy(&test, tmpstream, sizeof(*tmpstream));
 					// there is already stream and Call-ID which can happen if previous stream is not closed (lost ACK etc)
 					// check if the stream contains the same Call-ID
 					if(memmem(tmpstream->call_id, strlen(tmpstream->call_id), s, l)) {

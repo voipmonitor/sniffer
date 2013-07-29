@@ -1570,15 +1570,15 @@ int PcapQueue_readFromInterface::pcapProcess(pcap_pkthdr** header, u_char** pack
 	if(ppd.datalen > 0 && opt_dup_check && ppd.prevmd5s != NULL && (ppd.traillen < ppd.datalen)) {
 		MD5_Init(&ppd.ctx);
 		MD5_Update(&ppd.ctx, ppd.data, MAX(0, (unsigned long)ppd.datalen - ppd.traillen));
-		MD5_Final(ppd.md5, &ppd.ctx);
+		MD5_Final((unsigned char*)ppd.md5, &ppd.ctx);
 		//#pragma GCC diagnostic push
 		//#pragma GCC diagnostic ignored "-Wstrict-aliasing"
-		if(memcmp(ppd.md5, ppd.prevmd5s + ( ( (*(uint16_t *)ppd.md5) ) * MD5_DIGEST_LENGTH), MD5_DIGEST_LENGTH) == 0) {
+		if(memcmp(ppd.md5, ppd.prevmd5s + (*ppd.md5 * MD5_DIGEST_LENGTH), MD5_DIGEST_LENGTH) == 0) {
 			//printf("dropping duplicate md5[%s]\n", md5);
 			duplicate_counter++;
 			return(0);
 		}
-		memcpy(ppd.prevmd5s+( ( (*(uint16_t *)ppd.md5) ) * MD5_DIGEST_LENGTH), ppd.md5, MD5_DIGEST_LENGTH);
+		memcpy(ppd.prevmd5s+(*ppd.md5 * MD5_DIGEST_LENGTH), ppd.md5, MD5_DIGEST_LENGTH);
 		//#pragma GCC diagnostic pop
 	}
 		

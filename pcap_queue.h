@@ -279,7 +279,7 @@ private:
 		int datalen;
 		int traillen;
 		int istcp;
-		unsigned char md5[MD5_DIGEST_LENGTH];
+		uint16_t md5[MD5_DIGEST_LENGTH / (sizeof(uint16_t) / sizeof(unsigned char))];
 		unsigned char *prevmd5s;
 		MD5_CTX ctx;
 	};
