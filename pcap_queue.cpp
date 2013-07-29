@@ -1196,6 +1196,7 @@ void* PcapQueue_readFromInterface::threadFunction(void* ) {
 					blockStore = NULL;
 					sleep(1);
 					calltable->cleanup(0);
+					this->pcapStat();
 					terminating = 1;
 				#endif
 				break;
