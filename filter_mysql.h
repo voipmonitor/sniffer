@@ -19,6 +19,7 @@
 #define FLAG_WAV	(1 << 8)
 #define FLAG_NOWAV      (1 << 9)
 #define FLAG_SKIP       (1 << 10)
+#define FLAG_NOSKIP     (1 << 11)
 
 #define MAX_PREFIX 64
 

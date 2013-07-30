@@ -50,12 +50,12 @@ IPfilter::load() {
 		filterRow->ip = (unsigned int)strtoul(row["ip"].c_str(), NULL, 0);
 		filterRow->mask = atoi(row["mask"].c_str());
 		filterRow->direction = row.isNull("direction") ? 0 : atoi(row["direction"].c_str());
-		filterRow->rtp = row.isNull("rtp") || atoi(row["rtp"].c_str());
-		filterRow->sip = row.isNull("sip") || atoi(row["sip"].c_str());
-		filterRow->reg = row.isNull("register") || atoi(row["register"].c_str());
-		filterRow->graph = row.isNull("graph") || atoi(row["graph"].c_str());
-		filterRow->wav = row.isNull("wav") || atoi(row["wav"].c_str());
-		filterRow->skip = row.isNull("skip") ? 0 : atoi(row["skip"].c_str());
+		filterRow->rtp = row.isNull("rtp") ? -1 : atoi(row["rtp"].c_str());
+		filterRow->sip = row.isNull("sip") ? -1 : atoi(row["sip"].c_str());
+		filterRow->reg = row.isNull("register") ? -1 : atoi(row["register"].c_str());
+		filterRow->graph = row.isNull("graph") ? -1 : atoi(row["graph"].c_str());
+		filterRow->wav = row.isNull("wav") ? -1 : atoi(row["wav"].c_str());
+		filterRow->skip = row.isNull("skip") ? -1 : atoi(row["skip"].c_str());
 		vectDbRow.push_back(*filterRow);
 		delete filterRow;
 	}
@@ -67,17 +67,20 @@ IPfilter::load() {
 		node->next = NULL;
 		node->ip = vectDbRow[i].ip;
 		node->mask = vectDbRow[i].mask;
-		if(vectDbRow[i].rtp)	node->flags |= FLAG_RTP;
-			else		node->flags |= FLAG_NORTP;
-		if(vectDbRow[i].sip)	node->flags |= FLAG_SIP;
-			else		node->flags |= FLAG_NOSIP;
-		if(vectDbRow[i].reg)	node->flags |= FLAG_REGISTER;
-			else		node->flags |= FLAG_NOREGISTER;
-		if(vectDbRow[i].graph)	node->flags |= FLAG_GRAPH;
-			else		node->flags |= FLAG_NOGRAPH;
-		if(vectDbRow[i].wav)	node->flags |= FLAG_WAV;
-			else		node->flags |= FLAG_NOWAV;
-		if(vectDbRow[i].skip)	node->flags |= FLAG_SKIP;
+
+		if(vectDbRow[i].rtp == 1)	node->flags |= FLAG_RTP;
+		else if(vectDbRow[i].rtp == 0)	node->flags |= FLAG_NORTP;
+		if(vectDbRow[i].sip == 1)	node->flags |= FLAG_SIP;
+		else if(vectDbRow[i].sip == 0)	node->flags |= FLAG_NOSIP;
+		if(vectDbRow[i].reg == 1)	node->flags |= FLAG_REGISTER;
+		else if(vectDbRow[i].reg == 0)	node->flags |= FLAG_NOREGISTER;
+		if(vectDbRow[i].graph == 1)	node->flags |= FLAG_GRAPH;
+		else if(vectDbRow[i].graph == 0)node->flags |= FLAG_NOGRAPH;
+		if(vectDbRow[i].wav == 1)	node->flags |= FLAG_WAV;
+		else if(vectDbRow[i].wav == 0)	node->flags |= FLAG_NOWAV;
+		if(vectDbRow[i].skip == 1)	node->flags |= FLAG_SKIP;
+		else if(vectDbRow[i].skip == 0)	node->flags |= FLAG_NOSKIP;
+
 		// add node to the first position
 		node->next = first_node;
 		first_node = node;
@@ -133,7 +136,10 @@ IPfilter::add_call_flags(unsigned int *flags, unsigned int saddr, unsigned int d
 				*flags &= ~FLAG_SAVEGRAPH;
 			}
 			if(node->flags & FLAG_SKIP) {
-				*flags |= FLAG_SKIP;
+				*flags |= FLAG_SKIPCDR;
+			}
+			if(node->flags & FLAG_NOSKIP) {
+				*flags &= ~FLAG_SKIPCDR;
 			}
 			return 1;
 		}
@@ -228,12 +234,12 @@ TELNUMfilter::load() {
 		memset(filterRow,0,sizeof(db_row));
 		strncpy(filterRow->prefix, row["prefix"].c_str(), MAX_PREFIX);
 		filterRow->direction = row.isNull("direction") ? 0 : atoi(row["direction"].c_str());
-		filterRow->rtp = row.isNull("rtp") || atoi(row["rtp"].c_str());
-		filterRow->sip = row.isNull("sip") || atoi(row["sip"].c_str());
-		filterRow->reg = row.isNull("register") || atoi(row["register"].c_str());
-		filterRow->graph = row.isNull("graph") || atoi(row["graph"].c_str());
-		filterRow->wav = row.isNull("wav") || atoi(row["wav"].c_str());
-		filterRow->skip = row.isNull("skip") ? 0 : atoi(row["skip"].c_str());
+		filterRow->rtp = row.isNull("rtp") ? -1 : atoi(row["rtp"].c_str());
+		filterRow->sip = row.isNull("sip") ? -1 : atoi(row["sip"].c_str());
+		filterRow->reg = row.isNull("register") ? -1 : atoi(row["register"].c_str());
+		filterRow->graph = row.isNull("graph") ? -1 : atoi(row["graph"].c_str());
+		filterRow->wav = row.isNull("wav") ? -1 : atoi(row["wav"].c_str());
+		filterRow->skip = row.isNull("skip") ? -1 : atoi(row["skip"].c_str());
 		vectDbRow.push_back(*filterRow);
 		delete filterRow;
 	}
@@ -242,17 +248,20 @@ TELNUMfilter::load() {
 		np->direction = vectDbRow[i].direction;
 		np->flags = 0;
 		strncpy(np->prefix, vectDbRow[i].prefix, MAX_PREFIX);
-		if(vectDbRow[i].rtp)	np->flags |= FLAG_RTP;
-			else		np->flags |= FLAG_NORTP;
-		if(vectDbRow[i].sip)	np->flags |= FLAG_SIP;
-			else		np->flags |= FLAG_NOSIP;
-		if(vectDbRow[i].reg)	np->flags |= FLAG_REGISTER;
-			else		np->flags |= FLAG_NOREGISTER;
-		if(vectDbRow[i].graph)	np->flags |= FLAG_GRAPH;
-			else		np->flags |= FLAG_NOGRAPH;
-		if(vectDbRow[i].wav)	np->flags |= FLAG_WAV;
-			else		np->flags |= FLAG_NOWAV;
-		if(vectDbRow[i].skip)	np->flags |= FLAG_SKIP;
+
+		if(vectDbRow[i].rtp == 1)	np->flags |= FLAG_RTP;
+		else if(vectDbRow[i].rtp == 0)	np->flags |= FLAG_NORTP;
+		if(vectDbRow[i].sip == 1)	np->flags |= FLAG_SIP;
+		else if(vectDbRow[i].sip == 0)	np->flags |= FLAG_NOSIP;
+		if(vectDbRow[i].reg == 1)	np->flags |= FLAG_REGISTER;
+		else if(vectDbRow[i].reg == 0)	np->flags |= FLAG_NOREGISTER;
+		if(vectDbRow[i].graph == 1)	np->flags |= FLAG_GRAPH;
+		else if(vectDbRow[i].graph == 0)np->flags |= FLAG_NOGRAPH;
+		if(vectDbRow[i].wav == 1)	np->flags |= FLAG_WAV;
+		else if(vectDbRow[i].wav == 0)	np->flags |= FLAG_NOWAV;
+		if(vectDbRow[i].skip == 1)	np->flags |= FLAG_SKIP;
+		else if(vectDbRow[i].skip == 0)	np->flags |= FLAG_NOSKIP;
+
 		add_payload(np);
 	}
 };
@@ -333,6 +342,12 @@ TELNUMfilter::add_call_flags(unsigned int *flags, char *telnum_src, char *telnum
 		}
 		if(lastpayload->flags & FLAG_NOGRAPH) {
 			*flags &= ~FLAG_SAVEGRAPH;
+		}
+		if(lastpayload->flags & FLAG_SKIP) {
+			*flags |= FLAG_SKIPCDR;
+		}
+		if(lastpayload->flags & FLAG_NOSKIP) {
+			*flags &= ~FLAG_SKIPCDR;
 		}
 		return 1;
         }

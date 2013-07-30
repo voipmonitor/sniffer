@@ -1094,7 +1094,7 @@ Call *new_invite_register(int sip_method, char *data, int datalen, struct pcap_p
 	}
 
 	ipfilter->add_call_flags(&flags, ntohl(saddr), ntohl(daddr));
-	if(flags & FLAG_SKIP) {
+	if(flags & FLAG_SKIPCDR) {
 		if(verbosity > 1)
 			syslog(LOG_NOTICE, "call skipped due to ip or tel capture rules\n");
 		return NULL;
@@ -1117,7 +1117,7 @@ Call *new_invite_register(int sip_method, char *data, int datalen, struct pcap_p
 		flags |= FLAG_SAVEGRAPH;
 
 	if(opt_skipdefault)
-		flags |= FLAG_SKIP;
+		flags |= FLAG_SKIPCDR;
 
 	static char str2[1024];
 	// store this call only if it starts with invite

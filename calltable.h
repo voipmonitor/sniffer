@@ -57,6 +57,7 @@
 #define FLAG_SAVEWAV		(1 << 3)
 #define FLAG_SAVEGRAPH		(1 << 4)
 #define FLAG_SAVERTPHEADER	(1 << 5)
+#define FLAG_SKIPCDR		(1 << 6)
 
 typedef struct {
 	double ts;
