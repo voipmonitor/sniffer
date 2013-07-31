@@ -178,7 +178,7 @@ typedef struct tcp_stream2_s {
 	u_int32_t next_seq;
 	u_int32_t ack_seq;
 	tcp_stream2_s *next;
-	char call_id[128];
+	string call_id;
 	int lastpsh;
 } tcp_stream2_t;
 
@@ -1658,8 +1658,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 
 					// append packet to end of streams items 
 					tcp_stream2_t *stream = (tcp_stream2_t*)malloc(sizeof(tcp_stream2_t));
-					memcpy(stream->call_id, s, MIN(127, l));
-					stream->call_id[MIN(127, l)] = '\0';
+					stream->call_id = string(s, l);
 					stream->next = NULL;
 					stream->ts = header->ts.tv_sec;
 					stream->hash = hash;
@@ -1766,7 +1765,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 					memcpy(&test, tmpstream, sizeof(tcp_stream2_t));
 					// there is already stream and Call-ID which can happen if previous stream is not closed (lost ACK etc)
 					// check if the stream contains the same Call-ID
-					if(memmem(tmpstream->call_id, strlen(tmpstream->call_id), s, MIN(l, 127))) {
+					if(memmem(tmpstream->call_id.c_str(), tmpstream->call_id.length(), s, l)) {
 						// callid is same - it must be duplicate or retransmission just ignore the packet 
 						if(logPacketSipMethodCall_enable) {
 							logPacketSipMethodCall(sip_method, lastSIPresponseNum, header, call, 
@@ -1820,7 +1819,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 				// create new tcp stream 
 				tcp_stream2_t *stream = (tcp_stream2_t*)malloc(sizeof(tcp_stream2_t));
 				tcp_streams_list.push_back(stream);
-				memcpy(stream->call_id, s, MIN(127, l));
+				stream->call_id = string(s, l);
 				stream->call_id[MIN(127, l)] = '\0';
 				stream->next = NULL;
 				stream->ts = header->ts.tv_sec;
@@ -1993,7 +1992,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 			call->msgcount++;
 			if(sip_method == REGISTER) {
 				call->regcount++;
-				if(verbosity > 3) syslog(LOG_DEBUG, "REGISTER Call-ID[%s] regcount[%d]", call->call_id, call->regcount);
+				if(verbosity > 3) syslog(LOG_DEBUG, "REGISTER Call-ID[%s] regcount[%d]", call->call_id.c_str(), call->regcount);
 
 				// update Authorization
 				s = gettag(data, datalen, "\nAuthorization:", &l, &gettagLimitLen);
@@ -2006,7 +2005,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 					// to much register attempts without OK or 401 responses
 					call->regstate = 4;
 					call->saveregister();
-					call = new_invite_register(sip_method, data, datalen, header, callidstr, saddr, daddr, source, call->call_id, strlen(call->call_id));
+					call = new_invite_register(sip_method, data, datalen, header, callidstr, saddr, daddr, source, (char*)call->call_id.c_str(), call->call_id.length());
 					if(call == NULL) {
 						return NULL;
 					}
@@ -2036,7 +2035,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 				// the expire can be also in contact header Contact: 79438652 <sip:6600006@192.168.10.202:1026>;expires=240
 				get_expires_from_contact(data, datalen, &call->register_expires);
 
-				if(verbosity > 3) syslog(LOG_DEBUG, "REGISTER OK Call-ID[%s]", call->call_id);
+				if(verbosity > 3) syslog(LOG_DEBUG, "REGISTER OK Call-ID[%s]", call->call_id.c_str());
                                 s = gettag(data, datalen, "\nCSeq:", &l, &gettagLimitLen);
                                 if(l && strncmp(s, call->invitecseq, l) == 0) {
 					// registration OK 
@@ -2054,7 +2053,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 				return NULL;
 			} else if(sip_method == RES401 or sip_method == RES403) {
 				call->reg401count++;
-				if(verbosity > 3) syslog(LOG_DEBUG, "REGISTER 401 Call-ID[%s] reg401count[%d]", call->call_id, call->reg401count);
+				if(verbosity > 3) syslog(LOG_DEBUG, "REGISTER 401 Call-ID[%s] reg401count[%d]", call->call_id.c_str(), call->reg401count);
 				if(call->reg401count > 1) {
 					// registration failed
 					call->regstate = 2;

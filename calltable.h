@@ -27,7 +27,6 @@
 
 #define MAX_IP_PER_CALL 30	//!< total maxumum of SDP sessions for one call-id
 #define MAX_SSRC_PER_CALL 30	//!< total maxumum of SDP sessions for one call-id
-#define MAX_CALL_ID 128		//!< max len of stored call-id
 #define MAX_FNAME 256		//!< max len of stored call-id
 #define MAX_RTPMAP 30          //!< max rtpmap records
 #define MAXNODE 150000
@@ -75,7 +74,7 @@ public:
 	int type;			//!< type of call, INVITE or REGISTER
 	RTP *rtp[MAX_SSRC_PER_CALL];		//!< array of RTP streams
 	unsigned long call_id_len;	//!< length of call-id 	
-	char call_id[MAX_CALL_ID];	//!< call-id from SIP session
+	string call_id;	//!< call-id from SIP session
 	char fbasename[MAX_FNAME];	//!< basename of file 
 	char fbasename_safe[MAX_FNAME];	//!< basename of file 
 	unsigned long long fname2;	//!< basename of file 

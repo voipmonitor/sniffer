@@ -46,9 +46,9 @@ struct pcap_block_store {
 			this->count = 0;
 		}
 		char title[PCAP_BLOCK_STORE_HEADER_STRING_LEN];
-		size_t size;
-		size_t size_compress;
-		size_t count;
+		uint32_t size;
+		uint32_t size_compress;
+		uint32_t count;
 	};
 	pcap_block_store() {
 		this->offsets = NULL;
@@ -88,12 +88,12 @@ struct pcap_block_store {
 	bool isEmptyRestoreBuffer();
 	void freeBlock();
 	size_t getSizeSaveBuffer() {
-		return(sizeof(pcap_block_store_header) + this->count * sizeof(size_t) + this->getUseSize());
+		return(sizeof(pcap_block_store_header) + this->count * sizeof(uint32_t) + this->getUseSize());
 	}
 	int getSizeSaveBufferFromRestoreBuffer() {
 		if(this->restoreBufferSize >= sizeof(pcap_block_store_header)) {
 			pcap_block_store_header *header = (pcap_block_store_header*)this->restoreBuffer;
-			return(sizeof(pcap_block_store_header) + header->count * sizeof(size_t) + 
+			return(sizeof(pcap_block_store_header) + header->count * sizeof(uint32_t) + 
 			       (header->size_compress ? header->size_compress : header->size));
 		}
 		return(-1);
@@ -150,7 +150,7 @@ struct pcap_block_store {
 	}
 	*/
 	//
-	size_t *offsets;
+	uint32_t *offsets;
 	u_char *block;
 	size_t size;
 	size_t size_compress;

@@ -121,6 +121,7 @@ string opt_pcap_queue_send_to_ip;
 int opt_pcap_queue_send_to_port;
 string opt_pcap_queue_receive_from_ip;
 int opt_pcap_queue_receive_from_port;
+int opt_pcap_queue_receive_dlt = DLT_EN10MB;
 
 size_t _opt_pcap_queue_block_offset_inc_size		= opt_pcap_queue_block_max_size / AVG_PACKET_SIZE / 4;
 size_t _opt_pcap_queue_block_restore_buffer_inc_size	= opt_pcap_queue_block_max_size / 4;
@@ -153,14 +154,14 @@ bool pcap_block_store::add(pcap_pkthdr *header, u_char *packet, int offset) {
 	}
 	if(!this->offsets_size) {
 		this->offsets_size = _opt_pcap_queue_block_offset_inc_size;
-		this->offsets = (size_t*)malloc(this->offsets_size * sizeof(size_t));
+		this->offsets = (uint32_t*)malloc(this->offsets_size * sizeof(uint32_t));
 	}
 	if(this->count == this->offsets_size) {
-		size_t *offsets_old = this->offsets;
+		uint32_t *offsets_old = this->offsets;
 		size_t offsets_size_old = this->offsets_size;
 		this->offsets_size += _opt_pcap_queue_block_offset_inc_size;
-		this->offsets = (size_t*)malloc(this->offsets_size * sizeof(size_t));
-		memcpy(this->offsets, offsets_old, sizeof(size_t) * offsets_size_old);
+		this->offsets = (uint32_t*)malloc(this->offsets_size * sizeof(uint32_t));
+		memcpy(this->offsets, offsets_old, sizeof(uint32_t) * offsets_size_old);
 		free(offsets_old);
 	}
 	this->offsets[this->count] = this->size;
@@ -225,8 +226,8 @@ u_char* pcap_block_store::getSaveBuffer() {
 	       sizeof(header));
 	memcpy(saveBuffer + sizeof(header), 
 	       this->offsets, 
-	       sizeof(size_t) * this->count);
-	memcpy(saveBuffer + sizeof(pcap_block_store_header) + this->count * sizeof(size_t),
+	       sizeof(uint32_t) * this->count);
+	memcpy(saveBuffer + sizeof(pcap_block_store_header) + this->count * sizeof(uint32_t),
 	       this->block,
 	       this->getUseSize());
 	return(saveBuffer);
@@ -244,14 +245,14 @@ void pcap_block_store::restoreFromSaveBuffer(u_char *saveBuffer) {
 		free(this->block);
 	}
 	this->offsets_size = this->count;
-	this->offsets = (size_t*)malloc(this->offsets_size * sizeof(size_t));
+	this->offsets = (uint32_t*)malloc(this->offsets_size * sizeof(uint32_t));
 	memcpy(this->offsets,
 	       saveBuffer + sizeof(pcap_block_store_header), 
-	       sizeof(size_t) * this->count);
+	       sizeof(uint32_t) * this->count);
 	size_t sizeBlock = this->getUseSize();
 	this->block = (u_char*)malloc(sizeBlock);
 	memcpy(this->block,
-	       saveBuffer + sizeof(pcap_block_store_header) + this->count * sizeof(size_t),
+	       saveBuffer + sizeof(pcap_block_store_header) + this->count * sizeof(uint32_t),
 	       sizeBlock);
 	this->full = true;
 }
@@ -1382,6 +1383,7 @@ bool PcapQueue_readFromInterface::startCapture() {
 		syslog(LOG_ERR, "packetbuffer %s: pcap_datalink failed", this->nameQueue.c_str()); 
 		return(false);
 	}
+	syslog(LOG_NOTICE, "DLT %i", this->pcapLinklayerHeaderType);
 	if(opt_pcapdump) {
 		char pname[1024];
 		sprintf(pname, "/var/spool/voipmonitor/voipmonitordump-%u.pcap", (unsigned int)time(NULL));
@@ -1905,10 +1907,22 @@ bool PcapQueue_readFromFifo::openFifoForWrite() {
 }
 
 bool PcapQueue_readFromFifo::openPcapDeadHandle() {
-	if((this->pcapDeadHandle = pcap_open_dead(DLT_RAW, 65535)) == NULL) {
+	if((this->pcapDeadHandle = pcap_open_dead(opt_pcap_queue_receive_dlt, 65535)) == NULL) {
 		syslog(LOG_ERR, "packetbuffer %s: pcap_create failed", this->nameQueue.c_str()); 
 		return(false);
 	}
+	/*
+	char errbuf[PCAP_ERRBUF_SIZE];
+	if((this->pcapDeadHandle = pcap_create("lo", errbuf)) == NULL) {
+		syslog(LOG_ERR, "packetbuffer %s: pcap_create failed on iface %s: %s", this->nameQueue.c_str(), "lo", errbuf); 
+		return(false);
+	}
+	int status;
+	if((status = pcap_activate(this->pcapDeadHandle)) != 0) {
+		syslog(LOG_ERR, "packetbuffer %s: libpcap error: %s", this->nameQueue.c_str(), pcap_geterr(this->pcapDeadHandle)); 
+		return(false);
+	}
+	*/
 	handle = this->pcapDeadHandle;
 	return(true);
 }

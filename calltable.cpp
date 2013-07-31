@@ -118,9 +118,8 @@ Call::Call(char *call_id, unsigned long call_id_len, time_t time, void *ct) {
 	first_packet_time = time;
 	first_packet_usec = 0;
 	last_packet_time = time;
-	memcpy(this->call_id, call_id, MIN(call_id_len, MAX_CALL_ID));
-	this->call_id[MIN(call_id_len, MAX_CALL_ID - 1)] = '\0';
-	this->call_id_len = MIN(call_id_len, MAX_CALL_ID - 1);
+	this->call_id = string(call_id, call_id_len);
+	this->call_id_len = call_id_len;
 	f_pcap = NULL;
 	fsip_pcap = NULL;
 	frtp_pcap = NULL;
@@ -376,7 +375,7 @@ Call::add_ip_port(in_addr_t addr, unsigned short port, char *ua, unsigned long u
 		in.s_addr = addr;
 		strcpy(tmp, inet_ntoa(in));
 
-		syslog(LOG_ERR,"callid [%s]: no more space for next media stream [%s:%d], raise MAX_IP_PER_CALL", call_id, tmp, port);
+		syslog(LOG_ERR,"callid [%s]: no more space for next media stream [%s:%d], raise MAX_IP_PER_CALL", call_id.c_str(), tmp, port);
 		return -1;
 	}
 
@@ -2369,12 +2368,9 @@ Call::get_fbasename_safe() {
 void
 Call::dump(){
 	//print call_id
-	char buf[MAX_CALL_ID];
 	printf("cidl:%lu\n", call_id_len);
-	memcpy(buf, call_id, MIN(call_id_len,MAX_CALL_ID - 1)); 
-	buf[MIN(call_id_len,MAX_CALL_ID - 1)] = '\0';
 	printf("-call dump %p---------------------------------\n", this);
-	printf("callid:%s\n", buf);
+	printf("callid:%s\n", call_id.c_str());
 	printf("last packet time:%d\n", (int)get_last_packet_time());
 	printf("last SIP response [%d] [%s]\n", lastSIPresponseNum, lastSIPresponse);
 	
@@ -2609,7 +2605,7 @@ Calltable::add(char *call_id, unsigned long call_id_len, time_t time, u_int32_t 
 //	if(opt_sip_register) 
 //		newcall->flags |= FLAG_SAVEREGISTER;
 
-	string call_idS = string(call_id, MIN(call_id_len, MAX_CALL_ID - 1));
+	string call_idS = string(call_id, call_id_len);
 	lock_calls_listMAP();
 	calls_listMAP[call_idS] = newcall;
 	unlock_calls_listMAP();
@@ -2619,7 +2615,7 @@ Calltable::add(char *call_id, unsigned long call_id_len, time_t time, u_int32_t 
 /* find Call by SIP call-id and  return reference to this Call */
 Call*
 Calltable::find_by_call_id(char *call_id, unsigned long call_id_len) {
-	string call_idS = string(call_id, MIN(call_id_len, MAX_CALL_ID - 1));
+	string call_idS = string(call_id, call_id_len);
 	callMAPIT = calls_listMAP.find(call_idS);
 	if(callMAPIT == calls_listMAP.end()) {
 		// not found
@@ -2792,10 +2788,9 @@ void Call::saveregister() {
 	((Calltable*)calltable)->calls_queue.push_back(this);
 	((Calltable*)calltable)->unlock_calls_queue();
 
-	string call_idS = string(call_id, call_id_len);
-        map<string, Call*>::iterator callMAPIT = ((Calltable*)calltable)->calls_listMAP.find(call_idS);
+        map<string, Call*>::iterator callMAPIT = ((Calltable*)calltable)->calls_listMAP.find(call_id);
 	if(callMAPIT == ((Calltable*)calltable)->calls_listMAP.end()) {
-		syslog(LOG_ERR,"Fatal error REGISTER call_id[%s] not found in callMAPIT", call_id);
+		syslog(LOG_ERR,"Fatal error REGISTER call_id[%s] not found in callMAPIT", call_id.c_str());
 	} else {
 		((Calltable*)calltable)->calls_listMAP.erase(callMAPIT);
 	}

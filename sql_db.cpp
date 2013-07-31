@@ -1348,13 +1348,15 @@ void SqlDb_mysql::createSchema() {
 
 	this->query(string(
 	"CREATE TABLE IF NOT EXISTS `cdr_proxy` (\
-			`cdr_ID` int unsigned NOT NULL,") +
-			"`calldate` datetime NOT NULL,\
+			`ID` int unsigned NOT NULL AUTO_INCREMENT,\
+			`cdr_ID` int unsigned NOT NULL,\
+			`calldate` datetime NOT NULL,\
 			`src` int unsigned DEFAULT NULL,\
-			`dst` varchar(255) DEFAULT NULL," +
+			`dst` varchar(255) DEFAULT NULL,") +
 		(opt_cdr_partition ? 
-			"PRIMARY KEY (`cdr_ID`, `calldate`)," :
-			"PRIMARY KEY (`cdr_ID`),") +
+			"PRIMARY KEY (`ID`, `calldate`)," :
+			"PRIMARY KEY (`ID`),") +
+		"KEY `cdr_ID` (`cdr_ID`)," + 
 		"KEY `src` (`src`)," + 
 		"KEY `dst` (`dst`)" + 
 		(opt_cdr_partition ?
@@ -1769,50 +1771,63 @@ void SqlDb_mysql::createSchema() {
 		    declare part_limit date;\
 		    declare part_limit_int int;\
 		    declare part_name char(100);\
+		    declare test_exists_any_part_query varchar(1000);\
 		    declare test_exists_part_query varchar(1000);\
 		    declare create_part_query varchar(1000);\
-		    set part_date =  date_add(date(now()), interval next_days day);\
-		    if(type_part = 'month') then\
-		       set part_date = date_add(part_date, interval -(day(part_date)-1) day);\
-		       set part_limit = date_add(part_date, interval 1 month);\
-		       set part_name = concat('p', date_format(part_date, '%y%m'));\
-		    else\
-		       set part_limit = date_add(part_date, interval 1 day);\
-		       set part_name = concat('p', date_format(part_date, '%y%m%d'));\
-		    end if;\
-		    set part_limit_int = to_days(part_limit);\
-		    set test_exists_part_query = concat(\
-		       'set @_exists_part = exists (select * from information_schema.partitions where table_schema=\\'',\
+		    set test_exists_any_part_query = concat(\
+		       'set @_exists_any_part = exists (select * from information_schema.partitions where table_schema=\\'',\
 		       database_name,\
 		       '\\' and table_name = \\'',\
 		       table_name,\
-		       '\\' and (partition_name is null or partition_name = \\'',\
-		       part_name,\
-		       '\\'))');\
-		    set @_test_exists_part_query = test_exists_part_query;\
-		    prepare stmt FROM @_test_exists_part_query;\
+		       '\\' and partition_name is not null)');\
+		    set @_test_exists_any_part_query = test_exists_any_part_query;\
+		    prepare stmt FROM @_test_exists_any_part_query;\
 		    execute stmt;\
 		    deallocate prepare stmt;\
-		    if(not @_exists_part) then\
-		       set create_part_query = concat(\
-			  'alter table ',\
-			  if(database_name is not null, concat('`', database_name, '`.'), ''),\
-			  '`',\
+		    if(@_exists_any_part) then\
+		       set part_date =  date_add(date(now()), interval next_days day);\
+		       if(type_part = 'month') then\
+			  set part_date = date_add(part_date, interval -(day(part_date)-1) day);\
+			  set part_limit = date_add(part_date, interval 1 month);\
+			  set part_name = concat('p', date_format(part_date, '%y%m'));\
+		       else\
+			  set part_limit = date_add(part_date, interval 1 day);\
+			  set part_name = concat('p', date_format(part_date, '%y%m%d'));\
+		       end if;\
+		       set part_limit_int = to_days(part_limit);\
+		       set test_exists_part_query = concat(\
+			  'set @_exists_part = exists (select * from information_schema.partitions where table_schema=\\'',\
+			  database_name,\
+			  '\\' and table_name = \\'',\
 			  table_name,\
-			  '` add partition (partition ',\
-			  part_name,") + 
-			  (opt_cdr_partition_oldver ? 
-				"' VALUES LESS THAN (',\
-				 part_limit_int,\
-				 '))'" :
-				"' VALUES LESS THAN (\\'',\
-				 part_limit,\
-				 '\\'))'") + 
-			  ");\
-		       set @_create_part_query = create_part_query;\
-		       prepare stmt FROM @_create_part_query;\
+			  '\\' and partition_name = \\'',\
+			  part_name,\
+			  '\\')');\
+		       set @_test_exists_part_query = test_exists_part_query;\
+		       prepare stmt FROM @_test_exists_part_query;\
 		       execute stmt;\
 		       deallocate prepare stmt;\
+		       if(not @_exists_part) then\
+			  set create_part_query = concat(\
+			     'alter table ',\
+			     if(database_name is not null, concat('`', database_name, '`.'), ''),\
+			     '`',\
+			     table_name,\
+			     '` add partition (partition ',\
+			     part_name,") + 
+			     (opt_cdr_partition_oldver ? 
+				   "' VALUES LESS THAN (',\
+				    part_limit_int,\
+				    '))'" :
+				   "' VALUES LESS THAN (\\'',\
+				    part_limit,\
+				    '\\'))'") + 
+			     ");\
+			  set @_create_part_query = create_part_query;\
+			  prepare stmt FROM @_create_part_query;\
+			  execute stmt;\
+			  deallocate prepare stmt;\
+		       end if;\
 		    end if;\
 		 end");
 		this->query(
@@ -2126,7 +2141,8 @@ void SqlDb_odbc::createSchema() {
 	this->query(
 	"IF NOT EXISTS (SELECT * FROM sys.objects WHERE name = 'cdr_proxy') BEGIN\
 		CREATE TABLE cdr_proxy (\
-			cdr_ID int PRIMARY KEY NOT NULL\
+			ID int PRIMARY KEY IDENTITY,\
+			cdr_ID int NOT NULL\
 				FOREIGN KEY REFERENCES cdr (ID),\
 			src bigint NULL,\
 			dst bigint NULL;\

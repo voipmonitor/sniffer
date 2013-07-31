@@ -287,7 +287,7 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 			*/
 			//XXX: escape " or replace it to '
 			outbuflen = sprintf(outbuf, ",[\"%p\", \"%s\", \"%d\", \"%d\", \"%s\", \"%s\", \"%s\", \"%d\", \"%d\", \"%u\", \"%u\", \"%u\"]",
-				call, call->call_id, call->last_callercodec, call->last_callercodec, call->caller, 
+				call, call->call_id.c_str(), call->last_callercodec, call->last_callercodec, call->caller, 
 				call->callername, call->called, call->calltime(), call->duration(), htonl(call->sipcallerip), 
 				htonl(call->sipcalledip), (unsigned int)call->get_last_packet_time());
 			if((resbuflen + outbuflen) > resbufalloc) {
