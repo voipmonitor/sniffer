@@ -119,8 +119,8 @@ Call::Call(char *call_id, unsigned long call_id_len, time_t time, void *ct) {
 	first_packet_usec = 0;
 	last_packet_time = time;
 	memcpy(this->call_id, call_id, MIN(call_id_len, MAX_CALL_ID));
-	this->call_id[MIN(call_id_len, MAX_CALL_ID)] = '\0';
-	this->call_id_len = call_id_len;
+	this->call_id[MIN(call_id_len, MAX_CALL_ID - 1)] = '\0';
+	this->call_id_len = MIN(call_id_len, MAX_CALL_ID - 1);
 	f_pcap = NULL;
 	fsip_pcap = NULL;
 	frtp_pcap = NULL;
@@ -2371,8 +2371,8 @@ Call::dump(){
 	//print call_id
 	char buf[MAX_CALL_ID];
 	printf("cidl:%lu\n", call_id_len);
-	memcpy(buf, call_id, MIN(call_id_len,MAX_CALL_ID)); 
-	buf[MIN(call_id_len,MAX_CALL_ID)] = '\0';
+	memcpy(buf, call_id, MIN(call_id_len,MAX_CALL_ID - 1)); 
+	buf[MIN(call_id_len,MAX_CALL_ID - 1)] = '\0';
 	printf("-call dump %p---------------------------------\n", this);
 	printf("callid:%s\n", buf);
 	printf("last packet time:%d\n", (int)get_last_packet_time());
@@ -2609,7 +2609,7 @@ Calltable::add(char *call_id, unsigned long call_id_len, time_t time, u_int32_t 
 //	if(opt_sip_register) 
 //		newcall->flags |= FLAG_SAVEREGISTER;
 
-	string call_idS = string(call_id, call_id_len);
+	string call_idS = string(call_id, MIN(call_id_len, MAX_CALL_ID - 1));
 	lock_calls_listMAP();
 	calls_listMAP[call_idS] = newcall;
 	unlock_calls_listMAP();
@@ -2619,7 +2619,7 @@ Calltable::add(char *call_id, unsigned long call_id_len, time_t time, u_int32_t 
 /* find Call by SIP call-id and  return reference to this Call */
 Call*
 Calltable::find_by_call_id(char *call_id, unsigned long call_id_len) {
-	string call_idS = string(call_id, call_id_len);
+	string call_idS = string(call_id, MIN(call_id_len, MAX_CALL_ID - 1));
 	callMAPIT = calls_listMAP.find(call_idS);
 	if(callMAPIT == calls_listMAP.end()) {
 		// not found

@@ -1128,6 +1128,7 @@ Call *new_invite_register(int sip_method, char *data, int datalen, struct pcap_p
 	call->type = sip_method;
 	call->flags = flags;
 	strncpy(call->fbasename, callidstr, MAX_FNAME - 1);
+	call->fbasename[MIN(strlen(callidstr), MAX_FNAME - 1)] = '\0';
 
 	/* this logic updates call on the first INVITES */
 	if (sip_method == INVITE or sip_method == REGISTER or sip_method == MESSAGE) {
@@ -1765,7 +1766,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 					memcpy(&test, tmpstream, sizeof(tcp_stream2_t));
 					// there is already stream and Call-ID which can happen if previous stream is not closed (lost ACK etc)
 					// check if the stream contains the same Call-ID
-					if(memmem(tmpstream->call_id, strlen(tmpstream->call_id), s, l)) {
+					if(memmem(tmpstream->call_id, strlen(tmpstream->call_id), s, MIN(l, 127))) {
 						// callid is same - it must be duplicate or retransmission just ignore the packet 
 						if(logPacketSipMethodCall_enable) {
 							logPacketSipMethodCall(sip_method, lastSIPresponseNum, header, call, 
