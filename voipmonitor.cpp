@@ -2222,7 +2222,12 @@ int main(int argc, char *argv[]) {
 	}
 	
 	// start thread processing queued cdr 
-	pthread_create(&call_thread, NULL, storing_cdr, NULL);
+	if(!opt_nocdr &&
+	   !(opt_pcap_threaded && opt_pcap_queue && 
+	     !opt_pcap_queue_receive_from_ip.length() &&
+	     opt_pcap_queue_send_to_ip.length())) {
+		pthread_create(&call_thread, NULL, storing_cdr, NULL);
+	}
 
 	if(opt_cachedir[0] != '\0') {
 		pthread_create(&cachedir_thread, NULL, moving_cache, NULL);
@@ -2489,7 +2494,12 @@ int main(int argc, char *argv[]) {
 	Call *call;
 	calltable->cleanup(0);
 	terminating = 1;
-	pthread_join(call_thread, NULL);
+	if(!opt_nocdr &&
+	   !(opt_pcap_threaded && opt_pcap_queue && 
+	     !opt_pcap_queue_receive_from_ip.length() &&
+	     opt_pcap_queue_send_to_ip.length())) {
+		pthread_join(call_thread, NULL);
+	}
 	while(calltable->calls_queue.size() != 0) {
 			call = calltable->calls_queue.front();
 			calltable->calls_queue.pop_front();

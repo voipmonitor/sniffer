@@ -1424,7 +1424,7 @@ void clean_tcpstreams() {
 			free(tmpstream->data);
 			free(tmpstream->packet);
 			next = tmpstream->next;
-			free(tmpstream);
+			delete tmpstream;
 			tmpstream = next;
 		}
 		tcp_streams_list.erase(stream++);
@@ -1510,7 +1510,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 					free(tmpstream->data);
 					free(tmpstream->packet);
 					next = tmpstream->next;
-					free(tmpstream);
+					delete tmpstream;
 					tmpstream = next;
 				}
 				tcp_streams_list.erase(stream++);
@@ -1614,7 +1614,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 									free(tmpstream->data);
 									free(tmpstream->packet);
 									next = tmpstream->next;
-									free(tmpstream);
+									delete tmpstream;
 									tmpstream = next;
 								}
 								free(newdata);
@@ -1657,7 +1657,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 					}
 
 					// append packet to end of streams items 
-					tcp_stream2_t *stream = (tcp_stream2_t*)malloc(sizeof(tcp_stream2_t));
+					tcp_stream2_t *stream = new tcp_stream2_t;
 					stream->call_id = string(s, l);
 					stream->next = NULL;
 					stream->ts = header->ts.tv_sec;
@@ -1717,7 +1717,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 							free(tmpstream->data);
 							free(tmpstream->packet);
 							next = tmpstream->next;
-							free(tmpstream);
+							delete tmpstream;
 							tmpstream = next;
 						}
 						free(newdata);
@@ -1762,7 +1762,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 				tcp_stream2_t *tmpstream;
 				if((tmpstream = tcp_streams_hashed[hash])) {
 					tcp_stream2_t test;
-					memcpy(&test, tmpstream, sizeof(tcp_stream2_t));
+					test = *tmpstream;
 					// there is already stream and Call-ID which can happen if previous stream is not closed (lost ACK etc)
 					// check if the stream contains the same Call-ID
 					if(memmem(tmpstream->call_id.c_str(), tmpstream->call_id.length(), s, l)) {
@@ -1804,7 +1804,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 							free(tmpstream->data);
 							free(tmpstream->packet);
 							next = tmpstream->next;
-							free(tmpstream);
+							delete tmpstream;
 							tmpstream = next;
 						}
 						// save also current packet 17.5.2013 - this is nonsense - it creates duplicates do not save here
@@ -1817,10 +1817,9 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 				} 
 
 				// create new tcp stream 
-				tcp_stream2_t *stream = (tcp_stream2_t*)malloc(sizeof(tcp_stream2_t));
+				tcp_stream2_t *stream = new tcp_stream2_t;
 				tcp_streams_list.push_back(stream);
 				stream->call_id = string(s, l);
-				stream->call_id[MIN(127, l)] = '\0';
 				stream->next = NULL;
 				stream->ts = header->ts.tv_sec;
 				stream->hash = hash;
