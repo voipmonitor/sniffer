@@ -2221,9 +2221,8 @@ int main(int argc, char *argv[]) {
 		daemonize();
 	}
 	
-	// start thread processing queued cdr 
-	if(!opt_nocdr &&
-	   !(opt_pcap_threaded && opt_pcap_queue && 
+	// start thread processing queued cdr - supressed if run as sender
+	if(!(opt_pcap_threaded && opt_pcap_queue && 
 	     !opt_pcap_queue_receive_from_ip.length() &&
 	     opt_pcap_queue_send_to_ip.length())) {
 		pthread_create(&call_thread, NULL, storing_cdr, NULL);
@@ -2494,8 +2493,7 @@ int main(int argc, char *argv[]) {
 	Call *call;
 	calltable->cleanup(0);
 	terminating = 1;
-	if(!opt_nocdr &&
-	   !(opt_pcap_threaded && opt_pcap_queue && 
+	if(!(opt_pcap_threaded && opt_pcap_queue && 
 	     !opt_pcap_queue_receive_from_ip.length() &&
 	     opt_pcap_queue_send_to_ip.length())) {
 		pthread_join(call_thread, NULL);

@@ -1530,7 +1530,7 @@ void SqlDb_mysql::createSchema() {
 		KEY `digestusername` (`digestusername`)\
 	) ENGINE=MEMORY DEFAULT CHARSET=latin1 ROW_FORMAT=COMPRESSED;");
 
-	this->query(
+	this->query(string(
 	"CREATE TABLE IF NOT EXISTS `register_state` (\
 			`ID` int unsigned NOT NULL AUTO_INCREMENT,\
 			`id_sensor` int unsigned NOT NULL,\
@@ -1545,14 +1545,23 @@ void SqlDb_mysql::createSchema() {
 			`digestusername` varchar(255) NULL DEFAULT NULL,\
 			`expires` mediumint NULL DEFAULT NULL,\
 			`state` tinyint unsigned NULL DEFAULT NULL,\
-			`ua_id` int unsigned DEFAULT NULL,\
-		PRIMARY KEY (`ID`),\
-		KEY `created_at` (`created_at`),\
+			`ua_id` int unsigned DEFAULT NULL,") +
+		(opt_cdr_partition ? 
+			"PRIMARY KEY (`ID`, `created_at`)," :
+			"PRIMARY KEY (`ID`),") +
+		"KEY `created_at` (`created_at`),\
 		KEY `sipcallerip` (`sipcallerip`),\
 		KEY `sipcalledip` (`sipcalledip`)\
-	) ENGINE=InnoDB DEFAULT CHARSET=latin1 ROW_FORMAT=COMPRESSED;");
+	) ENGINE=InnoDB DEFAULT CHARSET=latin1 ROW_FORMAT=COMPRESSED" + 
+	(opt_cdr_partition ?
+		(opt_cdr_partition_oldver ? 
+			string(" PARTITION BY RANGE (to_days(created_at))(\
+				 PARTITION ") + partDayName + " VALUES LESS THAN (to_days('" + limitDay + "')) engine innodb)" :
+			string(" PARTITION BY RANGE COLUMNS(created_at)(\
+				 PARTITION ") + partDayName + " VALUES LESS THAN ('" + limitDay + "') engine innodb)") :
+	""));
 
-	this->query(
+	this->query(string(
 	"CREATE TABLE IF NOT EXISTS `register_failed` (\
 			`ID` int unsigned NOT NULL AUTO_INCREMENT,\
 			`id_sensor` int unsigned NOT NULL,\
@@ -1566,12 +1575,21 @@ void SqlDb_mysql::createSchema() {
 			`contact_num` varchar(255) NULL DEFAULT NULL,\
 			`contact_domain` varchar(255) NULL DEFAULT NULL,\
 			`digestusername` varchar(255) NULL DEFAULT NULL,\
-			`ua_id` int unsigned DEFAULT NULL,\
-		PRIMARY KEY (`ID`),\
-		KEY `created_at` (`created_at`),\
+			`ua_id` int unsigned DEFAULT NULL,") +
+		(opt_cdr_partition ? 
+			"PRIMARY KEY (`ID`, `created_at`)," :
+			"PRIMARY KEY (`ID`),") +
+		"KEY `created_at` (`created_at`),\
 		KEY `sipcallerip` (`sipcallerip`),\
 		KEY `sipcalledip` (`sipcalledip`)\
-	) ENGINE=InnoDB DEFAULT CHARSET=latin1 ROW_FORMAT=COMPRESSED;");
+	) ENGINE=InnoDB DEFAULT CHARSET=latin1 ROW_FORMAT=COMPRESSED" + 
+	(opt_cdr_partition ?
+		(opt_cdr_partition_oldver ? 
+			string(" PARTITION BY RANGE (to_days(created_at))(\
+				 PARTITION ") + partDayName + " VALUES LESS THAN (to_days('" + limitDay + "')) engine innodb)" :
+			string(" PARTITION BY RANGE COLUMNS(created_at)(\
+				 PARTITION ") + partDayName + " VALUES LESS THAN ('" + limitDay + "') engine innodb)") :
+	""));
 
 	this->query("CREATE TABLE IF NOT EXISTS `sensors` (\
 			`id_sensor` int unsigned NOT NULL,\
@@ -1842,6 +1860,8 @@ void SqlDb_mysql::createSchema() {
 		    call create_partition(database_name, 'cdr_proxy', 'day', next_days);\
 		    call create_partition(database_name, 'http_jj', 'day', next_days);\
 		    call create_partition(database_name, 'enum_jj', 'day', next_days);\
+		    call create_partition(database_name, 'register_state', 'day', next_days);\
+		    call create_partition(database_name, 'register_failed', 'day', next_days);\
 		 end");
 		this->query(string(
 		"call ") + mysql_database + ".create_partitions_cdr('" + mysql_database + "', 0);");
