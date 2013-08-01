@@ -1,3 +1,19 @@
+8.0 RC7
+=======
+
+- fix critical bug (all sniffer versions) with call_id boundary check which can cause crash.
+- implement new option cdrproxy = yes (enabled by default) : in case SIP session travels accross several proxies (and Call-ID header does NOT change) and you would like to track all sip proxies and make them searchable in GUI / database. If disabled in cdr.sipcalledip will be destination IP from the first INVITE. If enabled in cdr.sipcalledip will be destination IP from the last INVITE and all IP from middle INVITE will be inserted in cdr_proxy table. In the GUI is new proxy column.
+- if libpcap reports packet loss, save number 100 to cdr.bye which will indicate that snifer was loosing packets
+- implement skipdefault option in voipmonitor.conf if = yes it will ignore all calls unless skip flag is true in capture rules (sql.filter_*)
+- add partitions for register_state and register_failed
+- fx custom headers - remove limit 128 chars and crop to max size 255 chars
+- fix gcc warnings
+- fix memcpy sizeof on various places
+- fix capture rules - if there is NULL in column ignore the flag completely. This fixes issue when the rule is created and user wants to override only one flag and leave others untouched (NULL)
+- modify mysql procedure for create partition - suppress create partition if table does not exists or contains no partitions 
+- suppress check / create mysql database schema if voipmonitor is configured as mirror sender
+
+
 8.0 RC6
 =======
 
