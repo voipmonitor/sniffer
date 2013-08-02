@@ -11,6 +11,7 @@ int file_exists (char * fileName);
 void set_mac();
 int mkdir_r(std::string, mode_t);
 double ts2double(unsigned int sec, unsigned int usec);
+long GetFileSize(std::string filename);
 
 class CircularBuffer
 {

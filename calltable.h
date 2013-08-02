@@ -98,6 +98,7 @@ public:
 	bool seenbyeandok;		//!< true if we see SIP OK TO BYE OR TO CANEL within the Call
 	bool sighup;			//!< true if call is saving during sighup
 	string dirname();		//!< name of the directory to store files for the Call
+	string dirnamesqlfiles();
 	char a_ua[1024];		//!< caller user agent 
 	char b_ua[1024];		//!< callee user agent 
 	int rtpmap[MAX_IP_PER_CALL][MAX_RTPMAP]; //!< rtpmap for every rtp stream
@@ -418,6 +419,9 @@ public:
 	 *
 	*/
 	void addtocachequeue(string file);
+
+	void addtofilesqueue(string file, string column);
+
 
 	void handle_dtmf(char dtmf, double dtmf_time, unsigned int saddr, unsigned int daddr);
 

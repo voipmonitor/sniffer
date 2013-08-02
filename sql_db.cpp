@@ -1322,6 +1322,17 @@ void SqlDb_mysql::createSchema() {
 		}
 	}
 
+	this->query(
+	"CREATE TABLE IF NOT EXISTS `files` (\
+			`datehour` int NOT NULL,\
+			`id_sensor` int unsigned DEFAULT NULL,\
+			`sipsize` bigint unsigned DEFAULT 0,\
+			`rtpsize` bigint unsigned DEFAULT 0,\
+			`graphsize` bigint unsigned DEFAULT 0,\
+			`audiosize` bigint unsigned DEFAULT 0,\
+		PRIMARY KEY (`datehour`, `id_sensor`)\
+	) ENGINE=InnoDB DEFAULT CHARSET=latin1;");
+
 	this->query(string(
 	"CREATE TABLE IF NOT EXISTS `cdr_next` (\
 			`cdr_ID` int unsigned NOT NULL,") +
@@ -2146,6 +2157,17 @@ void SqlDb_odbc::createSchema() {
 		CREATE INDEX lastSIPresponse_id ON cdr (lastSIPresponse_id);\
 		CREATE INDEX payload ON cdr (payload);\
 		CREATE INDEX id_sensor ON cdr (id_sensor);\
+	END");
+
+	this->query(
+	"IF NOT EXISTS (SELECT * FROM sys.objects WHERE name = 'files') BEGIN\
+		CREATE TABLE files (\
+			`datehour` int PRIMARY KEY IDENTITY,\
+			`id_sensor` int NULL,\
+			`sipsize` bigint 0,\
+			`rtpsize` bigint 0,\
+			`graphsize` bigint 0,\
+			`audiosize` bigint 0);\
 	END");
 	
 	this->query(

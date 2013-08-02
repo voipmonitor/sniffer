@@ -65,6 +65,7 @@ extern int opt_saveGRAPH;	// save GRAPH data to graph file?
 extern int opt_gzipGRAPH;	// compress GRAPH data to graph file? 
 extern int opt_audio_format;	// define format for audio writing (if -W option)
 extern int opt_mos_g729;
+extern int opt_nocdr;
 extern char opt_cachedir[1024];
 extern char sql_cdr_table[256];
 extern char sql_cdr_table_last30d[256];
@@ -97,6 +98,7 @@ extern int opt_dbdtmf;
 extern int opt_dscp;
 extern int opt_cdrproxy;
 extern struct pcap_stat pcapstat;
+extern int opt_filesclean;
 
 volatile int calls = 0;
 
@@ -229,6 +231,32 @@ Call::hashRemove() {
 }
 
 void
+Call::addtofilesqueue(string file, string column) {
+
+	if(!opt_filesclean or opt_nocdr or file == "") return;
+
+	long size = GetFileSize(file);
+
+	if(size == -1) {
+		//error or file does not exists
+		cout << file;
+		perror("addtofilesqueue ERROR ");
+		return;
+	}
+
+	ostringstream query;
+
+	int id_sensor = opt_id_sensor == -1 ? 0 : opt_id_sensor;
+	
+	query << "INSERT INTO files SET files.datehour = " << dirnamesqlfiles() << ", id_sensor = " << id_sensor << ", "
+		<< column << " = " << size << " ON DUPLICATE KEY UPDATE " << column << " = " << column << " + " << size;
+
+	pthread_mutex_lock(&mysqlquery_lock);
+	mysqlquery.push(query.str());
+	pthread_mutex_unlock(&mysqlquery_lock);
+}
+
+void
 Call::addtocachequeue(string file) {
 	Calltable *ct = (Calltable *)calltable;
 
@@ -283,6 +311,7 @@ Call::~Call(){
 		if(opt_cachedir[0] != '\0') {
 			addtocachequeue(sip_pcapfilename);
 		}
+		addtofilesqueue(sip_pcapfilename, "sipsize");
 	}
 	if (get_frtp_pcap() != NULL){
 		pcap_dump_flush(get_frtp_pcap());
@@ -291,6 +320,7 @@ Call::~Call(){
 		if(opt_cachedir[0] != '\0') {
 			addtocachequeue(rtp_pcapfilename);
 		}
+		addtofilesqueue(rtp_pcapfilename, "rtpsize");
 	}
 	if (get_f_pcap() != NULL){
 		pcap_dump_flush(get_f_pcap());
@@ -299,6 +329,7 @@ Call::~Call(){
 		if(opt_cachedir[0] != '\0') {
 			addtocachequeue(pcapfilename);
 		}
+		addtofilesqueue(pcapfilename, "sipsize");
 	}
 
 	if(audiobuffer1) delete audiobuffer1;
@@ -348,6 +379,17 @@ Call::dirname() {
 	string s(sdirname);
 	return s;
 }
+
+/* returns name of the directory in format YYYY-MM-DD */
+string
+Call::dirnamesqlfiles() {
+	char sdirname[255];
+	struct tm *t = localtime((const time_t*)(&first_packet_time));
+	sprintf(sdirname, "%04d%02d%02d%02d",  t->tm_year + 1900, t->tm_mon + 1, t->tm_mday, t->tm_hour);
+	string s(sdirname);
+	return s;
+}
+
 
 /* add ip adress and port to this call */
 int
@@ -2713,6 +2755,7 @@ Calltable::cleanup( time_t currtime ) {
 					if(opt_cachedir[0] != '\0') {
 						call->addtocachequeue(call->sip_pcapfilename);
 					}
+					call->addtofilesqueue(call->sip_pcapfilename, "sipsize");
 				}
 				call->set_fsip_pcap(NULL);
 			}
@@ -2723,6 +2766,7 @@ Calltable::cleanup( time_t currtime ) {
 					if(opt_cachedir[0] != '\0') {
 						call->addtocachequeue(call->rtp_pcapfilename);
 					}
+					call->addtofilesqueue(call->rtp_pcapfilename, "rtpsize");
 				}
 				call->set_frtp_pcap(NULL);
 			}
@@ -2733,6 +2777,7 @@ Calltable::cleanup( time_t currtime ) {
 					if(opt_cachedir[0] != '\0') {
 						call->addtocachequeue(call->pcapfilename);
 					}
+					call->addtofilesqueue(call->pcapfilename, "sipsize");
 				}
 				call->set_f_pcap(NULL);
 			}
@@ -2768,6 +2813,7 @@ void Call::saveregister() {
 			if(opt_cachedir[0] != '\0') {
 				addtocachequeue(pcapfilename);
 			}
+			addtofilesqueue(pcapfilename, "sipsize");
 		}
 		set_fsip_pcap(NULL);
 	}
@@ -2778,6 +2824,7 @@ void Call::saveregister() {
 			if(opt_cachedir[0] != '\0') {
 				addtocachequeue(pcapfilename);
 			}
+			addtofilesqueue(pcapfilename, "sipsize");
 		}
 		set_f_pcap(NULL);
 	}

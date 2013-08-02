@@ -214,6 +214,7 @@ int opt_enable_lua_tables = 0;
 int opt_generator = 0;
 int opt_generator_channels = 1;
 int opt_skipdefault = 0;
+int opt_filesclean = 1;
 
 struct pcap_stat pcapstat;
 
@@ -2509,6 +2510,16 @@ int main(int argc, char *argv[]) {
 			calltable->calls_deletequeue.pop();
 			delete call;
 			calls--;
+	}
+
+	if(!opt_nocdr) {
+		pthread_mutex_lock(&mysqlquery_lock);
+		while(mysqlquery.size() > 0) {
+			string query = mysqlquery.front();
+			mysqlquery.pop();
+			sqlDb->query(query);
+		}
+		pthread_mutex_unlock(&mysqlquery_lock);
 	}
 
 	free(sipportmatrix);

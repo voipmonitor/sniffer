@@ -204,3 +204,10 @@ double ts2double(unsigned int sec, unsigned int usec) {
 	while(fpart > 1) fpart /= 10;
 	return sec + fpart;
 }
+
+long GetFileSize(std::string filename)
+{
+	struct stat stat_buf;
+	int rc = stat(filename.c_str(), &stat_buf);
+	return rc == 0 ? stat_buf.st_size : -1;
+}

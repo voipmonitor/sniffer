@@ -236,8 +236,11 @@ RTP::~RTP() {
 		} else if(gfile.is_open()){
 			gfile.close();
 		}
-		if(gfilename[0] != '\0' && opt_cachedir[0] != '\0') {
-			owner->addtocachequeue(gfilename);
+		if(gfilename[0] != '\0') {
+			if(opt_cachedir[0] != '\0') {
+				owner->addtocachequeue(gfilename);
+			}
+			owner->addtofilesqueue(string(gfilename), "graphsize");
 		}
 	}
 
