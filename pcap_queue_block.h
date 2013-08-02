@@ -15,18 +15,43 @@ u_long getTimeMS();
 unsigned long long getTimeNS();
 
 
-struct pcap_pkthdr_plus : public pcap_pkthdr {
+struct pcap_pkthdr_fix_size {
+	uint64_t ts_tv_sec;
+	uint64_t ts_tv_usec;
+	uint64_t caplen;
+	uint64_t len;
+};
+
+struct pcap_pkthdr_plus {
 	pcap_pkthdr_plus() {
 		memset(this, 0, sizeof(pcap_pkthdr_plus));
 	}
 	pcap_pkthdr_plus(pcap_pkthdr header, int offset = -1) {
 		memset(this, 0, sizeof(pcap_pkthdr_plus));
-		this->ts = header.ts;
-		this->caplen = header.caplen;
-		this->len = header.len;
+		this->header_fix_size.ts_tv_sec = header.ts.tv_sec;
+		this->header_fix_size.ts_tv_usec = header.ts.tv_usec;
+		this->header_fix_size.caplen = header.caplen;
+		this->header_fix_size.len = header.len;
 		this->offset = offset;
 	}
-	int offset;
+	pcap_pkthdr *convertToStdHeader() {
+		if(!this->std) {
+			pcap_pkthdr header;
+			header.ts.tv_sec = this->header_fix_size.ts_tv_sec;
+			header.ts.tv_usec = this->header_fix_size.ts_tv_usec;
+			header.caplen = this->header_fix_size.caplen;
+			header.len = this->header_fix_size.len;
+			this->header_std = header;
+			this->std = 1;
+		}
+		return(&this->header_std);
+	}
+	union {
+		pcap_pkthdr_fix_size header_fix_size;
+		pcap_pkthdr header_std;
+	};
+	int32_t offset;
+	int8_t std;
 };
 
 struct pcap_block_store {

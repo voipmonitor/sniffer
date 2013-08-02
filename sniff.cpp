@@ -1039,12 +1039,12 @@ void *rtp_read_thread_func(void *arg) {
 
 		if(opt_pcap_queue) {
 			if(rtpp_pq.is_rtcp) {
-				rtpp_pq.call->read_rtcp(rtpp_pq.data, rtpp_pq.datalen, rtpp_pq.pkthdr_pcap.header, rtpp_pq.saddr, rtpp_pq.port, rtpp_pq.iscaller);
+				rtpp_pq.call->read_rtcp(rtpp_pq.data, rtpp_pq.datalen, &rtpp_pq.pkthdr_pcap.header->header_std, rtpp_pq.saddr, rtpp_pq.port, rtpp_pq.iscaller);
 			}  else {
 				int monitor;
-				rtpp_pq.call->read_rtp(rtpp_pq.data, rtpp_pq.datalen, rtpp_pq.pkthdr_pcap.header, rtpp_pq.saddr, rtpp_pq.daddr, rtpp_pq.port, rtpp_pq.iscaller, &monitor);
+				rtpp_pq.call->read_rtp(rtpp_pq.data, rtpp_pq.datalen, &rtpp_pq.pkthdr_pcap.header->header_std, rtpp_pq.saddr, rtpp_pq.daddr, rtpp_pq.port, rtpp_pq.iscaller, &monitor);
 			}
-			rtpp_pq.call->set_last_packet_time(rtpp_pq.pkthdr_pcap.header->ts.tv_sec);
+			rtpp_pq.call->set_last_packet_time(rtpp_pq.pkthdr_pcap.header->header_std.ts.tv_sec);
 			rtpp_pq.block_store->unlock_packet(rtpp_pq.block_store_index);
 		} else {
 			if(rtpp->is_rtcp) {

@@ -931,7 +931,7 @@ int PcapQueue::readPcapFromFifo(pcap_pkthdr_plus *header, u_char **packet, bool 
 		}
 		readHeader += rsltRead;
 	}
-	if(header->caplen <=0) {
+	if(header->header_fix_size.caplen <=0) {
 		return(0);
 	}
 	if(usePacketBuffer) {
@@ -940,11 +940,11 @@ int PcapQueue::readPcapFromFifo(pcap_pkthdr_plus *header, u_char **packet, bool 
 		}
 		*packet = this->packetBuffer;
 	} else {
-		*packet = (u_char*)malloc(header->caplen);
+		*packet = (u_char*)malloc(header->header_fix_size.caplen);
 	}
 	size_t readPacket = 0;
-	while(readPacket < header->caplen) {
-		rsltRead = read(this->fifoReadHandle, *packet + readPacket, header->caplen - readPacket);
+	while(readPacket < header->header_fix_size.caplen) {
+		rsltRead = read(this->fifoReadHandle, *packet + readPacket, header->header_fix_size.caplen - readPacket);
 		if(rsltRead < 0) {
 			if(!usePacketBuffer) {
 				free(*packet);
@@ -958,7 +958,7 @@ int PcapQueue::readPcapFromFifo(pcap_pkthdr_plus *header, u_char **packet, bool 
 
 bool PcapQueue::writePcapToFifo(pcap_pkthdr_plus *header, u_char *packet) {
 	write(this->fifoWriteHandle, header, sizeof(pcap_pkthdr_plus));
-	write(this->fifoWriteHandle, packet, header->caplen);
+	write(this->fifoWriteHandle, packet, header->header_fix_size.caplen);
 	return(true);
 }
 
@@ -2095,7 +2095,7 @@ bool PcapQueue_readFromFifo::socketRead(u_char *data, size_t *dataLen) {
 	return(true);
 }
 
-void PcapQueue_readFromFifo::processPacket(pcap_pkthdr_plus *header, u_char *packet,
+void PcapQueue_readFromFifo::processPacket(pcap_pkthdr_plus *header_plus, u_char *packet,
 					   pcap_block_store *block_store, int block_store_index) {
 	iphdr2 *header_ip;
 	tcphdr *header_tcp;
@@ -2105,6 +2105,8 @@ void PcapQueue_readFromFifo::processPacket(pcap_pkthdr_plus *header, u_char *pac
 	int datalen;
 	int istcp = 0;
 	int was_rtp;
+	
+	pcap_pkthdr *header = header_plus->convertToStdHeader();
 	
 	if(ipfilter_reload_do) {
 		delete ipfilter;
@@ -2120,11 +2122,11 @@ void PcapQueue_readFromFifo::processPacket(pcap_pkthdr_plus *header, u_char *pac
 		telnumfilter_reload_do = 0; 
 	}
 	
-	if(header->offset < 0) {
+	if(header_plus->offset < 0) {
 		//// doplnit zjištění offsetu
 	}
 	
-	header_ip = (iphdr2*)(packet + header->offset);
+	header_ip = (iphdr2*)(packet + header_plus->offset);
 
 	if(header_ip->protocol == 4) {
 		// ip in ip protocol
@@ -2150,7 +2152,7 @@ void PcapQueue_readFromFifo::processPacket(pcap_pkthdr_plus *header, u_char *pac
 		//packet is not UDP and is not TCP, we are not interested, go to the next packet
 		// - interested only for ipaccount
 		if(opt_ipaccount) {
-			ipaccount(header->ts.tv_sec, (iphdr2*) ((char*)(packet) + header->offset), header->len - header->offset, false);
+			ipaccount(header->ts.tv_sec, (iphdr2*) ((char*)(packet) + header_plus->offset), header->len - header_plus->offset, false);
 		}
 		return;
 	}
@@ -2165,7 +2167,7 @@ void PcapQueue_readFromFifo::processPacket(pcap_pkthdr_plus *header, u_char *pac
 
 	// if packet was VoIP add it to ipaccount
 	if(opt_ipaccount) {
-		ipaccount(header->ts.tv_sec, (iphdr2*) ((char*)(packet) + header->offset), header->len - header->offset, voippacket);
+		ipaccount(header->ts.tv_sec, (iphdr2*) ((char*)(packet) + header_plus->offset), header->len - header_plus->offset, voippacket);
 	}
 	
 }
