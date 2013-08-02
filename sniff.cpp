@@ -3319,7 +3319,7 @@ void readdump_libpcap(pcap_t *handle) {
 	unsigned char *prevmd5s = NULL;
 	int destroy = 0;
 	unsigned int ipfrag_lastprune = 0;
-	int traillen;
+	int traillen = 0;
 
 	// Space to remember up to 65536 previous packet hashes.
 	// We use 2 bytes of the md5 hash as the hash (index) by which we access this table.
