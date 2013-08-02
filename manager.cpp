@@ -266,7 +266,7 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 			return -1;
 		}
 		/* headers */
-		outbuflen = sprintf(outbuf, "[[\"callreference\", \"callid\", \"callercodec\", \"calledcodec\", \"caller\", \"callername\", \"called\", \"calldate\", \"duration\", \"callerip\", \"calledip\", \"lastpackettime\"]");
+		outbuflen = sprintf(outbuf, "[[\"callreference\", \"callid\", \"callercodec\", \"calledcodec\", \"caller\", \"callername\", \"called\", \"calldate\", \"duration\", \"callerip\", \"calledip\", \"lastpackettime\", \"lastsipresponse\"]");
 		memcpy(resbuf + resbuflen, outbuf, outbuflen);
 		resbuflen += outbuflen;
 		calltable->lock_calls_listMAP();
@@ -286,10 +286,10 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 			 * sipcalledip htonl(sipcalledip)
 			*/
 			//XXX: escape " or replace it to '
-			outbuflen = sprintf(outbuf, ",[\"%p\", \"%s\", \"%d\", \"%d\", \"%s\", \"%s\", \"%s\", \"%d\", \"%d\", \"%u\", \"%u\", \"%u\"]",
+			outbuflen = sprintf(outbuf, ",[\"%p\", \"%s\", \"%d\", \"%d\", \"%s\", \"%s\", \"%s\", \"%d\", \"%d\", \"%u\", \"%u\", \"%u\", \"%d\"]",
 				call, call->call_id.c_str(), call->last_callercodec, call->last_callercodec, call->caller, 
 				call->callername, call->called, call->calltime(), call->duration(), htonl(call->sipcallerip), 
-				htonl(call->sipcalledip), (unsigned int)call->get_last_packet_time());
+				htonl(call->sipcalledip), (unsigned int)call->get_last_packet_time(), call->lastSIPresponseNum);
 			if((resbuflen + outbuflen) > resbufalloc) {
 				resbuf = (char*)realloc(resbuf, resbufalloc + 32 * 1024 * sizeof(char));
 				resbufalloc += 32 * 1024;
