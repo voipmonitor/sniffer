@@ -266,7 +266,7 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 			return -1;
 		}
 		/* headers */
-		outbuflen = sprintf(outbuf, "[[\"callreference\", \"callid\", \"callercodec\", \"calledcodec\", \"caller\", \"callername\", \"called\", \"calldate\", \"duration\", \"callerip\", \"calledip\", \"lastpackettime\", \"lastsipresponse\"]");
+		outbuflen = sprintf(outbuf, "[[\"callreference\", \"callid\", \"callercodec\", \"calledcodec\", \"caller\", \"callername\", \"called\", \"calldate\", \"duration\", \"callerip\", \"calledip\", \"lastpackettime\", \"lastSIPresponseNum\"]");
 		memcpy(resbuf + resbuflen, outbuf, outbuflen);
 		resbuflen += outbuflen;
 		calltable->lock_calls_listMAP();
