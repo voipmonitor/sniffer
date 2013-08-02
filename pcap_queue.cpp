@@ -1833,11 +1833,9 @@ void *PcapQueue_readFromFifo::writeThreadFunction(void *) {
 			if(this->packetServerDirection == directionWrite) {
 				this->socketWritePcapBlock(blockStore);
 			} else {
-				if(opt_pcap_queue_compress) {
-					if(!blockStore->uncompress()) {
-						delete blockStore;
-						continue;
-					}
+				if(blockStore->size_compress && !blockStore->uncompress()) {
+					delete blockStore;
+					continue;
 				}
 				for(size_t i = 0; i < blockStore->count; i++) {
 					++sumPacketsCounterOut[0];
