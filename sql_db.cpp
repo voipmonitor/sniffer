@@ -1456,7 +1456,7 @@ void SqlDb_mysql::createSchema() {
 		KEY `contenttype` (`contenttype`)\
 	) ENGINE=InnoDB DEFAULT CHARSET=utf8 ROW_FORMAT=COMPRESSED;");
 
-	this->query(
+	this->query(string(
 	"CREATE TABLE IF NOT EXISTS `message` (\
 			`ID` int unsigned NOT NULL AUTO_INCREMENT,\
 			`id_contenttype` int unsigned NOT NULL,\
@@ -1478,9 +1478,11 @@ void SqlDb_mysql::createSchema() {
 			`a_ua_id` int unsigned DEFAULT NULL,\
 			`b_ua_id` int unsigned DEFAULT NULL,\
 			`fbasename` varchar(255) DEFAULT NULL,\
-			`message` TEXT CHARACTER SET utf8,\
-		PRIMARY KEY (`ID`),\
-		KEY `id_contenttype` (`id_contenttype`),\
+			`message` TEXT CHARACTER SET utf8,")+
+		(opt_cdr_partition ? 
+			"PRIMARY KEY (`ID`, `calldate`)," :
+			"PRIMARY KEY (`ID`),") + 
+		"KEY `id_contenttype` (`id_contenttype`),\
 		KEY `calldate` (`calldate`),\
 		KEY `caller` (`caller`),\
 		KEY `caller_domain` (`caller_domain`),\
@@ -1497,12 +1499,21 @@ void SqlDb_mysql::createSchema() {
 		KEY `id_sensor` (`id_sensor`),\
 		KEY `a_ua_id` (`a_ua_id`),\
 		KEY `b_ua_id` (`b_ua_id`),\
-		KEY `fbasename` (`fbasename`),\
-		CONSTRAINT `messages_ibfk_1` FOREIGN KEY (`lastSIPresponse_id`) REFERENCES `cdr_sip_response` (`id`) ON UPDATE CASCADE,\
-		CONSTRAINT `messages_ibfk_2` FOREIGN KEY (`a_ua_id`) REFERENCES `cdr_ua` (`id`) ON UPDATE CASCADE,\
-		CONSTRAINT `messages_ibfk_3` FOREIGN KEY (`b_ua_id`) REFERENCES `cdr_ua` (`id`) ON UPDATE CASCADE,\
-		CONSTRAINT `messages_ibfk_4` FOREIGN KEY (`id_contenttype`) REFERENCES `contenttype` (`id`) ON UPDATE CASCADE\
-	) ENGINE=InnoDB DEFAULT CHARSET=latin1 ROW_FORMAT=COMPRESSED;");
+		KEY `fbasename` (`fbasename`)" +
+		(opt_cdr_partition ?
+			"" :
+			",CONSTRAINT `messages_ibfk_1` FOREIGN KEY (`lastSIPresponse_id`) REFERENCES `cdr_sip_response` (`id`) ON UPDATE CASCADE,\
+			CONSTRAINT `messages_ibfk_2` FOREIGN KEY (`a_ua_id`) REFERENCES `cdr_ua` (`id`) ON UPDATE CASCADE,\
+			CONSTRAINT `messages_ibfk_3` FOREIGN KEY (`b_ua_id`) REFERENCES `cdr_ua` (`id`) ON UPDATE CASCADE,\
+			CONSTRAINT `messages_ibfk_4` FOREIGN KEY (`id_contenttype`) REFERENCES `contenttype` (`id`) ON UPDATE CASCADE") +
+	") ENGINE=InnoDB DEFAULT CHARSET=latin1 ROW_FORMAT=COMPRESSED" + 
+	(opt_cdr_partition ?
+		(opt_cdr_partition_oldver ? 
+			string(" PARTITION BY RANGE (to_days(calldate))(\
+				 PARTITION ") + partDayName + " VALUES LESS THAN (to_days('" + limitDay + "')) engine innodb)" :
+			string(" PARTITION BY RANGE COLUMNS(calldate)(\
+				 PARTITION ") + partDayName + " VALUES LESS THAN ('" + limitDay + "') engine innodb)") :
+		""));
 	sql_noerror = 1;
 	for(size_t iCustHeaders = 0; iCustHeaders < opt_custom_headers_message.size(); iCustHeaders++) {
 		this->query(string(
@@ -1871,6 +1882,7 @@ void SqlDb_mysql::createSchema() {
 		    call create_partition(database_name, 'cdr_proxy', 'day', next_days);\
 		    call create_partition(database_name, 'http_jj', 'day', next_days);\
 		    call create_partition(database_name, 'enum_jj', 'day', next_days);\
+		    call create_partition(database_name, 'message', 'day', next_days);\
 		    call create_partition(database_name, 'register_state', 'day', next_days);\
 		    call create_partition(database_name, 'register_failed', 'day', next_days);\
 		 end");
