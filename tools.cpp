@@ -232,3 +232,9 @@ long GetFileSize(std::string filename)
 	int rc = stat(filename.c_str(), &stat_buf);
 	return rc == 0 ? stat_buf.st_size : -1;
 }
+
+void ntoa(char *res, unsigned int addr) {
+	struct in_addr in;                                
+	in.s_addr = addr;
+	strcpy(res, inet_ntoa(in));
+}
