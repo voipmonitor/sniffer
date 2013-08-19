@@ -239,7 +239,6 @@ Call::addtofilesqueue(string file, string column) {
 
 	if(size == -1) {
 		//error or file does not exists
-		cout << file;
 		perror("addtofilesqueue ERROR ");
 		return;
 	}
@@ -253,6 +252,17 @@ Call::addtofilesqueue(string file, string column) {
 
 	pthread_mutex_lock(&mysqlquery_lock);
 	mysqlquery.push(query.str());
+
+
+	ostringstream fname;
+	fname << "filesindex/" << column << "/" << dirnamesqlfiles();
+	ofstream myfile(fname.str().c_str(), ios::app | ios::out);
+	if(!myfile.is_open()) {
+		syslog(LOG_ERR,"error write to [%s]", fname.str().c_str());
+	}
+	myfile << file << "\n";
+	myfile.close();
+		
 	pthread_mutex_unlock(&mysqlquery_lock);
 }
 
@@ -1100,6 +1110,9 @@ Call::convertRawToWav() {
 		}
 		unlink(wav1);
 	}
+	string tmp;
+	tmp.append(out);
+	addtofilesqueue(tmp, "audiosize");
  
 	return 0;
 }
@@ -2755,7 +2768,7 @@ Calltable::cleanup( time_t currtime ) {
 					if(opt_cachedir[0] != '\0') {
 						call->addtocachequeue(call->sip_pcapfilename);
 					}
-					call->addtofilesqueue(call->sip_pcapfilename, "sipsize");
+					call->addtofilesqueue(call->sip_pcapfilename, call->type == REGISTER ? "regsize" : "sipsize");
 				}
 				call->set_fsip_pcap(NULL);
 			}
