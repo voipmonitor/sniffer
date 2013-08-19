@@ -1380,7 +1380,11 @@ void *clean_spooldir_run(void *dummy) {
 		opt_maxpoolsize = opt_cleanspool_sizeMB;
 		// if old cleanspool interval is defined convert the config to new config 
 		if(FileExists(configfile)) {
+
 			syslog(LOG_NOTICE, "converting [%s] cleanspool_interval and cleanspool_size to maxpoolsize\n", configfile);
+
+			convert_filesindex();
+
 			string tmpf = "/tmp/VM_pRjSYLAyx.conf";
 			FILE *fdr = fopen(configfile, "r");
 			FILE *fdw = fopen(tmpf.c_str(), "w");
@@ -1409,7 +1413,6 @@ void *clean_spooldir_run(void *dummy) {
 			rename_file(tmpf.c_str(), configfile);
 			unlink(tmpf.c_str());
 
-			convert_filesindex();
 		}
 	}
 
