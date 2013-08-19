@@ -188,11 +188,12 @@ SqlDb::SqlDb() {
 SqlDb::~SqlDb() {
 }
 
-void SqlDb::setConnectParameters(string server, string user, string password, string database) {
+void SqlDb::setConnectParameters(string server, string user, string password, string database, bool showversion) {
 	this->conn_server = server;
 	this->conn_user = user;
 	this->conn_password = password;
 	this->conn_database = database;
+	this->conn_showversion = showversion;
 }
 
 void SqlDb::setLoginTimeout(ulong loginTimeout) {
@@ -377,7 +378,9 @@ bool SqlDb_mysql::connect() {
 				this->dbVersion = row[1];
 			}
 			while(this->fetchRow());
-			syslog(LOG_INFO, "connect - db version %i.%i", this->getDbMajorVersion(), this->getDbMinorVersion());
+			if(this->conn_showversion) {
+				syslog(LOG_INFO, "connect - db version %i.%i", this->getDbMajorVersion(), this->getDbMinorVersion());
+			}
 			sql_disable_next_attempt_if_error = 0;
 			return(true);
 		} else {
@@ -1330,6 +1333,7 @@ void SqlDb_mysql::createSchema() {
 			`rtpsize` bigint unsigned DEFAULT 0,\
 			`graphsize` bigint unsigned DEFAULT 0,\
 			`audiosize` bigint unsigned DEFAULT 0,\
+			`regsize` bigint unsigned DEFAULT 0,\
 		PRIMARY KEY (`datehour`, `id_sensor`)\
 	) ENGINE=InnoDB DEFAULT CHARSET=latin1;");
 
@@ -2179,6 +2183,7 @@ void SqlDb_odbc::createSchema() {
 			`sipsize` bigint 0,\
 			`rtpsize` bigint 0,\
 			`graphsize` bigint 0,\
+			`regsize` bigint 0,\
 			`audiosize` bigint 0);\
 	END");
 	

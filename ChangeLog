@@ -1,3 +1,13 @@
+8.0 RC9
+=======
+
+- add last sip response into listcall 
+- fix mirroring when sender sends compress and receiver is not set to accept compress (crashes)
+- reimplement cleaning spool directory. find command was replaced by indexing and now it is possible to set total size or maximum days for all files and sip / rtp / graph / audio separately
+- add partitions to message table
+- fix cdrproxy which did not worked for more than 1 proxy
+
+
 8.0 RC8
 =======
 

@@ -194,6 +194,8 @@ public:
 	
 	vector<dstring> custom_headers;
 
+	queue<unsigned int> proxies;
+
 	/**
 	 * constructor
 	 *
@@ -452,6 +454,7 @@ public:
 	deque<Call*> calls_queue; //!< this queue is used for asynchronous storing CDR by the worker thread
 	queue<Call*> calls_deletequeue; //!< this queue is used for asynchronous storing CDR by the worker thread
 	queue<string> files_queue; //!< this queue is used for asynchronous storing CDR by the worker thread
+	queue<string> files_sqlqueue; //!< this queue is used for asynchronous storing CDR by the worker thread
 	list<Call*> calls_list; //!< 
 	list<Call*>::iterator call;
 	map<string, Call*> calls_listMAP; //!< 

@@ -64,7 +64,7 @@ class SqlDb {
 public:
 	SqlDb();
 	virtual ~SqlDb();
-	void setConnectParameters(string server, string user, string password, string database = "");
+	void setConnectParameters(string server, string user, string password, string database = "", bool showversion = true);
 	void setLoginTimeout(ulong loginTimeout);
 	void enableSysLog();
 	virtual bool connect() = 0;
@@ -144,6 +144,7 @@ protected:
 	string conn_user;
 	string conn_password;
 	string conn_database;
+	bool conn_showversion;
 	ulong loginTimeout;
 	bool sysLog;
 	unsigned int maxQueryPass;
