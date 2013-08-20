@@ -130,7 +130,7 @@ signal_def signal_data[] =
 
 using namespace std;
 
-int debugclean = 0;
+int debugclean = 1;
 
 
 /* global variables */
@@ -559,6 +559,8 @@ void clean_maxpoolsize() {
 	if(opt_maxpoolsize == 0) {
 		return;
 	}
+	
+	if(debugclean) cout << "clean_maxpoolsize\n";
 
 	// check total size
 	SqlDb *sqlDb = new SqlDb_mysql();
@@ -577,10 +579,13 @@ void clean_maxpoolsize() {
 	uint64_t total = sipsize + rtpsize + graphsize + audiosize + regsize;
 
 	total /= 1024 * 1024;
+	if(debugclean) cout << q.str() << "\n";
+	if(debugclean) cout << "total[" << total << "] opt_maxpoolsize[" << opt_maxpoolsize << "]\n";
 	while(total > opt_maxpoolsize) {
 		// walk all rows ordered by datehour and delete everything 
 		stringstream q;
 		q << "SELECT datehour FROM files WHERE id_sensor = " << (opt_id_sensor > 0 ? opt_id_sensor : 0) << " ORDER BY datehour LIMIT 1";
+		if(debugclean) cout << q.str() << "\n";
 		sqlDb->query(q.str());
 		SqlDb_row row = sqlDb->fetchRow();
 		if(!row) {
@@ -619,11 +624,13 @@ void clean_maxpoolsize() {
 		q.str( std::string() );
 		q.clear();
 		q << "DELETE FROM files WHERE datehour = " << row["datehour"] << " AND id_sensor = " << (opt_id_sensor > 0 ? opt_id_sensor : 0);
+		if(debugclean) cout << q.str() << "\n";
 		sqlDb->query(q.str());
 
 		q.str( std::string() );
 		q.clear();
 		q << "SELECT SUM(sipsize) AS sipsize, SUM(rtpsize) AS rtpsize, SUM(graphsize) AS graphsize, SUM(regsize) AS regsize FROM files WHERE id_sensor = " << (opt_id_sensor > 0 ? opt_id_sensor : 0);
+		if(debugclean) cout << q.str() << "\n";
 		sqlDb->query(q.str());
 		SqlDb_row row2 = sqlDb->fetchRow();
 		if(!row2) {

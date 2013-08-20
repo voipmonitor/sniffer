@@ -162,6 +162,7 @@ Call::Call(char *call_id, unsigned long call_id_len, time_t time, void *ct) {
 	for(int i = 0; i < MAX_SSRC_PER_CALL; i++) {
 		rtp[i] = NULL;
 	}
+	rtplock = 0;
 	audiobuffer1 = NULL;
 	audiobuffer2 = NULL;
 	listening_worker_run = NULL;
@@ -277,6 +278,11 @@ Call::addtocachequeue(string file) {
 
 void
 Call::removeRTP() {
+	while(rtplock) {
+		//wait until the lock is released
+		usleep(100);
+	}
+	rtplock = 1;
 	closeRawFiles();
 	ssrc_n = 0;
 	for(int i = 0; i < MAX_SSRC_PER_CALL; i++) {
@@ -286,6 +292,7 @@ Call::removeRTP() {
 			rtp[i] = NULL;
 		}
         }
+	rtplock = 0;
 }
 
 /* destructor */
@@ -553,7 +560,11 @@ Call::read_rtp(unsigned char* data, int datalen, struct pcap_pkthdr *header, u_i
 				lastcalledrtp->jt_tail(header);
 			}
 		}
-
+		while(rtplock) {
+			//wait until the lock is released
+			usleep(100);
+		}
+		rtplock = 1;
 		rtp[ssrc_n] = new RTP;
 		rtp[ssrc_n]->call_owner = this;
 		rtp[ssrc_n]->ssrc_index = ssrc_n; 
@@ -591,6 +602,7 @@ Call::read_rtp(unsigned char* data, int datalen, struct pcap_pkthdr *header, u_i
 		} else {
 			lastcalledrtp = rtp[ssrc_n];
 		}
+		rtplock = 0;
 		ssrc_n++;
 	}
 }

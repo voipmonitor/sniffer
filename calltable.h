@@ -73,6 +73,7 @@ class Call {
 public:
 	int type;			//!< type of call, INVITE or REGISTER
 	RTP *rtp[MAX_SSRC_PER_CALL];		//!< array of RTP streams
+	volatile int rtplock;
 	unsigned long call_id_len;	//!< length of call-id 	
 	string call_id;	//!< call-id from SIP session
 	char fbasename[MAX_FNAME];	//!< basename of file 
