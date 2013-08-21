@@ -1,79 +1,45 @@
-8.0 RC9
-=======
+8.0  21.8.2013
+==============
 
-- add last sip response into listcall 
-- fix mirroring when sender sends compress and receiver is not set to accept compress (crashes)
+Optimizations 
+-------------
+
+- redesign internal packet buffering - packets are read from kernel ringbuffer into dynamically allocated buffer:
+* two memory copy is removed saving ~10% cpu 
+* static sized vmbuffer is replaced by dynamically allocated heap buffer which is allocating up to set size. Size of this buffer is now not limited (vmbuffer was limited to 4GB). Default limit in configuration is 2GB 
+* buffer can be compressed in memory (~50% ratio) default enabled 
+* if memory buffer runs out of space disk buffer will be used (if enabled) and compressed (if enabled)
+* buffer can be sent over TCP to another voipmonitor instance and compressed (if enabled) which is now new recommended option for software mirroring. In case the transmission is interrupted packets are will buffer into memory or disk (compressed if enabled). 
+* new debug information (if at least -v 1) informing about heap size and overruns and three main threads CPU utilization
+
 - reimplement cleaning spool directory. find command was replaced by indexing and now it is possible to set total size or maximum days for all files and sip / rtp / graph / audio separately
-- add partitions to message table
-- fix cdrproxy which did not worked for more than 1 proxy
-
-8.0 RC8
-=======
-
-- fix mirroring data from 32bit sender and receiveing them on 64bit 
-
-
-8.0 RC7
-=======
-
-- fix critical bug (all sniffer versions) with call_id boundary check which can cause crash.
-- implement new option cdrproxy = yes (enabled by default) : in case SIP session travels accross several proxies (and Call-ID header does NOT change) and you would like to track all sip proxies and make them searchable in GUI / database. If disabled in cdr.sipcalledip will be destination IP from the first INVITE. If enabled in cdr.sipcalledip will be destination IP from the last INVITE and all IP from middle INVITE will be inserted in cdr_proxy table. In the GUI is new proxy column.
 - if libpcap reports packet loss, save number 100 to cdr.bye which will indicate that snifer was loosing packets
-- implement skipdefault option in voipmonitor.conf if = yes it will ignore all calls unless skip flag is true in capture rules (sql.filter_*)
-- add partitions for register_state and register_failed
-- fx custom headers - remove limit 128 chars and crop to max size 255 chars
-- fix gcc warnings
-- fix memcpy sizeof on various places
-- fix capture rules - if there is NULL in column ignore the flag completely. This fixes issue when the rule is created and user wants to override only one flag and leave others untouched (NULL)
-- modify mysql procedure for create partition - suppress create partition if table does not exists or contains no partitions 
-- suppress check / create mysql database schema if voipmonitor is configured as mirror sender
-
-
-8.0 RC6
-=======
-
+- add partitions for register_state and register_failed and message tables
+- Remove dependency on mysql scheduler and create table partitions within sniffer service thread
 - create database if it does not exists
+
+New features 
+------------
+
+- implement skip flag in capture rules which allows to ignore whole call based on IP and Telnum filters
+- add last sip response into listcall 
+- implement new option cdrproxy = yes (enabled by default) : in case SIP session travels accross several proxies (and Call-ID header does NOT change) and you would like to track all sip proxies and make them searchable in GUI / database. If disabled in cdr.sipcalledip will be destination IP from the first INVITE. If enabled in cdr.sipcalledip will be destination IP from the last INVITE and all IP from middle INVITE will be inserted in cdr_proxy table. In the GUI is new proxy column.
+- implement skipdefault option in voipmonitor.conf if = yes it will ignore all calls unless skip flag is true in capture rules (sql.filter_*)
 - implement database partition auto cleaning (voipmonitor.conf)
-- fix mysql version report (broken in RC5)
 - implement dscp configuration option which will add dscp to cdr table. The dscp column holds dscp ip flag for sip and rtp caller/called. GUI will follow soon. 
 - add support for CLEARMODE codec 
-
-8.0 RC5
-=======
-
-- fix crash on 1 CPU systems (only problem for 8 versions) 
-
-8.0 RC4
-=======
-
-- fix deduplication not enabled in version 8 
-- remove data from RTP packets beyond IP datalen which causes garbage in RTP packet for codec decoders (broken in all sniffer versions)
-- fix mysql handling in error condition broken since 8.0RC1
-
-
-8.0 RC3
-=======
-
-- fix pcap creation broken since 8.0RC1
-
-8.0 RC2
-=======
-
-- log error and reconnect to mysql in case of "query error in [drop procedure if exists __insert_10]:  Commands out of sync; you can't run this command now"
-
-8.0 RC1
-=======
-
-- redesign internal packet buffering - packets are read from kernel ringbuffer into dynamically allocated buffer 
-* two memory copy is removed saving ~10% cpu 
-* static sized vmbuffer is replaced by dynamically allocated heap buffer which is allocating up to set size. Size of this buffer is not limited (vmbuffer was limited to 4GB) 
-* buffer can be compressed in memory (~50% ratio) 
-* if memory buffer runs out of space disk buffer will be used (if enabled) and compressed (if enabled)
-* buffer can be sent over TCP to another voipmonitor instance and compressed (if enabled) which is now new recommended option for software mirroring. In case the transmittion is interrupted packets are buffering into memory or disk (compressed if enabled). 
-- new debug information (if at least -v 1) informing about heap size and overruns and three main threads CPU utilization
-- Remove dependency on mysql scheduler and create table partitions within sniffer service thread
-- implement skip flag in capture rules which allows to ignore whole call based on IP and Telnum filters
 - add custom_headers for SIP message
+
+Bug fixes
+---------
+- fix audio play (garbled sound) remove data from RTP packets beyond IP datalen which causes garbage in RTP packet for codec decoders (broken in all sniffer versions). This is in case the ethernet frame has checksum at the end of packet. 
+- modify mysql procedure for create partition - suppress create partition if table does not exists or contains no partitions 
+- fix critical bug (all sniffer versions) with call_id boundary check which can cause crash.
+- fix custom headers - remove limit 128 chars and crop to max size 255 chars
+- fix capture rules - if there is NULL in column ignore the flag completely. This fixes issue when the rule is created and user wants to override only one flag and leave others untouched (NULL)
+- log error and reconnect to mysql in case of "query error in [drop procedure if exists __insert_10]:  Commands out of sync; you can't run this command now"
+- fix memcpy sizeof on various places
+
 
 7.1.3
 =====
