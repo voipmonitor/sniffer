@@ -15,6 +15,8 @@ void
 	udph.source = 5060;
 	udph.check = 0;
 
+	char buf[4092];
+
 	gen->send((char*)&udph, 8);
 }
 

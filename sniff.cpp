@@ -2297,6 +2297,16 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 			}
 		}
 
+		if(opt_cdrproxy && sip_method == INVITE) {
+			if(call->sipcalledip != daddr) {
+				if(daddr != 0) {
+					// daddr is already set, store previous daddr as sipproxy
+					call->proxies.push(call->sipcalledip);
+				}
+				call->sipcalledip = daddr;
+			}
+		}
+
 		if(opt_norecord_header) {
 			s = gettag(data, datalen, "\nX-VoipMonitor-norecord:", &l, &gettagLimitLen);
 			if(l && l < 33) {

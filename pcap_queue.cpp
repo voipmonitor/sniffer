@@ -89,6 +89,7 @@ extern int telnumfilter_reload_do;
 extern char user_filter[2048];
 extern Calltable *calltable;
 extern volatile int calls;
+extern int pcap_dlink;
 
 void *_PcapQueue_threadFunction(void* arg);
 void *_PcapQueue_writeThreadFunction(void* arg);
@@ -1383,6 +1384,7 @@ bool PcapQueue_readFromInterface::startCapture() {
 		syslog(LOG_ERR, "packetbuffer %s: pcap_datalink failed", this->nameQueue.c_str()); 
 		return(false);
 	}
+	pcap_dlink = this->pcapLinklayerHeaderType;
 	syslog(LOG_NOTICE, "DLT %i", this->pcapLinklayerHeaderType);
 	if(opt_pcapdump) {
 		char pname[1024];

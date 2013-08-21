@@ -162,6 +162,7 @@ Call::Call(char *call_id, unsigned long call_id_len, time_t time, void *ct) {
 	for(int i = 0; i < MAX_SSRC_PER_CALL; i++) {
 		rtp[i] = NULL;
 	}
+	rtplock = 0;
 	audiobuffer1 = NULL;
 	audiobuffer2 = NULL;
 	listening_worker_run = NULL;
@@ -239,7 +240,6 @@ Call::addtofilesqueue(string file, string column) {
 
 	if(size == -1) {
 		//error or file does not exists
-		cout << file;
 		perror("addtofilesqueue ERROR ");
 		return;
 	}
@@ -253,6 +253,17 @@ Call::addtofilesqueue(string file, string column) {
 
 	pthread_mutex_lock(&mysqlquery_lock);
 	mysqlquery.push(query.str());
+
+
+	ostringstream fname;
+	fname << "filesindex/" << column << "/" << dirnamesqlfiles();
+	ofstream myfile(fname.str().c_str(), ios::app | ios::out);
+	if(!myfile.is_open()) {
+		syslog(LOG_ERR,"error write to [%s]", fname.str().c_str());
+	}
+	myfile << file << "\n";
+	myfile.close();
+		
 	pthread_mutex_unlock(&mysqlquery_lock);
 }
 
@@ -267,6 +278,11 @@ Call::addtocachequeue(string file) {
 
 void
 Call::removeRTP() {
+	while(rtplock) {
+		//wait until the lock is released
+		usleep(100);
+	}
+	rtplock = 1;
 	closeRawFiles();
 	ssrc_n = 0;
 	for(int i = 0; i < MAX_SSRC_PER_CALL; i++) {
@@ -276,6 +292,7 @@ Call::removeRTP() {
 			rtp[i] = NULL;
 		}
         }
+	rtplock = 0;
 }
 
 /* destructor */
@@ -543,7 +560,11 @@ Call::read_rtp(unsigned char* data, int datalen, struct pcap_pkthdr *header, u_i
 				lastcalledrtp->jt_tail(header);
 			}
 		}
-
+		while(rtplock) {
+			//wait until the lock is released
+			usleep(100);
+		}
+		rtplock = 1;
 		rtp[ssrc_n] = new RTP;
 		rtp[ssrc_n]->call_owner = this;
 		rtp[ssrc_n]->ssrc_index = ssrc_n; 
@@ -581,6 +602,7 @@ Call::read_rtp(unsigned char* data, int datalen, struct pcap_pkthdr *header, u_i
 		} else {
 			lastcalledrtp = rtp[ssrc_n];
 		}
+		rtplock = 0;
 		ssrc_n++;
 	}
 }
@@ -1100,6 +1122,9 @@ Call::convertRawToWav() {
 		}
 		unlink(wav1);
 	}
+	string tmp;
+	tmp.append(out);
+	addtofilesqueue(tmp, "audiosize");
  
 	return 0;
 }
@@ -1497,37 +1522,15 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			b_ua_id = 0;
 
 	string query_str_cdrproxy;
-	if(opt_cdrproxy) {
+
+	while (opt_cdrproxy && !proxies.empty()){
 		sqlDb->setEnableSqlStringInContent(true);
-		if(sipcalledip2 != 0) {
-			SqlDb_row cdrproxy;
-			cdrproxy.add("_\\_'SQL'_\\_:@cdr_id", "cdr_ID");
-			cdrproxy.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
-			cdrproxy.add(htonl(sipcallerip), "src");
-			cdrproxy.add(htonl(sipcalledip), "dst");
-			query_str_cdrproxy += sqlDb->insertQuery("cdr_proxy", cdrproxy) + ";\n";
-			sipcalledip = sipcalledip2;
-			
-		}
-		if(sipcalledip3 != 0) {
-			SqlDb_row cdrproxy;
-			cdrproxy.add("_\\_'SQL'_\\_:@cdr_id", "cdr_ID");
-			cdrproxy.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
-			cdrproxy.add(htonl(sipcallerip2), "src");
-			cdrproxy.add(htonl(sipcalledip2), "dst");
-			query_str_cdrproxy += sqlDb->insertQuery("cdr_proxy", cdrproxy) + ";\n";
-			sipcalledip = sipcalledip3;
-			
-		}
-		if(sipcalledip4 != 0) {
-			SqlDb_row cdrproxy;
-			cdrproxy.add("_\\_'SQL'_\\_:@cdr_id", "cdr_ID");
-			cdrproxy.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
-			cdrproxy.add(htonl(sipcallerip3), "src");
-			cdrproxy.add(htonl(sipcalledip3), "dst");
-			query_str_cdrproxy += sqlDb->insertQuery("cdr_proxy", cdrproxy) + ";\n";
-			sipcalledip = sipcalledip4;
-		}
+		SqlDb_row cdrproxy;
+		cdrproxy.add("_\\_'SQL'_\\_:@cdr_id", "cdr_ID");
+		cdrproxy.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
+		cdrproxy.add(htonl(proxies.front()), "dst");
+		query_str_cdrproxy += sqlDb->insertQuery("cdr_proxy", cdrproxy) + ";\n";
+		proxies.pop();
 		sqlDb->setEnableSqlStringInContent(false);
 	}
 
@@ -1939,33 +1942,13 @@ Call::saveToDb(bool enableBatchIfPossible) {
 
 
 	if(cdrID > 0) {
-		if(opt_cdrproxy) {
-			if(sipcalledip2 != 0) {
-				SqlDb_row cdrproxy;
-				cdrproxy.add(cdrID, "cdr_ID");
-				cdrproxy.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
-				cdrproxy.add(sipcallerip2, "src");
-				cdrproxy.add(sipcalledip2, "dst");
-				sqlDb->insert("cdr_proxy", cdrproxy);
-				
-			}
-			if(sipcalledip3 != 0) {
-				SqlDb_row cdrproxy;
-				cdrproxy.add(cdrID, "cdr_ID");
-				cdrproxy.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
-				cdrproxy.add(sipcallerip3, "src");
-				cdrproxy.add(sipcalledip3, "dst");
-				sqlDb->insert("cdr_proxy", cdrproxy);
-				
-			}
-			if(sipcalledip4 != 0) {
-				SqlDb_row cdrproxy;
-				cdrproxy.add(cdrID, "cdr_ID");
-				cdrproxy.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
-				cdrproxy.add(sipcallerip4, "src");
-				cdrproxy.add(sipcalledip4, "dst");
-				sqlDb->insert("cdr_proxy", cdrproxy);
-			}
+		while (opt_cdrproxy && !proxies.empty()){
+			SqlDb_row cdrproxy;
+			cdrproxy.add(cdrID, "cdr_ID");
+			cdrproxy.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
+			cdrproxy.add(htonl(proxies.front()), "dst");
+			sqlDb->insert("cdr_proxy", cdrproxy);
+			proxies.pop();
 		}
 
 		for(int i = 0; i < MAX_SSRC_PER_CALL; i++) {
@@ -2755,7 +2738,7 @@ Calltable::cleanup( time_t currtime ) {
 					if(opt_cachedir[0] != '\0') {
 						call->addtocachequeue(call->sip_pcapfilename);
 					}
-					call->addtofilesqueue(call->sip_pcapfilename, "sipsize");
+					call->addtofilesqueue(call->sip_pcapfilename, call->type == REGISTER ? "regsize" : "sipsize");
 				}
 				call->set_fsip_pcap(NULL);
 			}

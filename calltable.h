@@ -73,6 +73,7 @@ class Call {
 public:
 	int type;			//!< type of call, INVITE or REGISTER
 	RTP *rtp[MAX_SSRC_PER_CALL];		//!< array of RTP streams
+	volatile int rtplock;
 	unsigned long call_id_len;	//!< length of call-id 	
 	string call_id;	//!< call-id from SIP session
 	char fbasename[MAX_FNAME];	//!< basename of file 
@@ -193,6 +194,8 @@ public:
 	string geoposition;
 	
 	vector<dstring> custom_headers;
+
+	queue<unsigned int> proxies;
 
 	/**
 	 * constructor
@@ -452,6 +455,7 @@ public:
 	deque<Call*> calls_queue; //!< this queue is used for asynchronous storing CDR by the worker thread
 	queue<Call*> calls_deletequeue; //!< this queue is used for asynchronous storing CDR by the worker thread
 	queue<string> files_queue; //!< this queue is used for asynchronous storing CDR by the worker thread
+	queue<string> files_sqlqueue; //!< this queue is used for asynchronous storing CDR by the worker thread
 	list<Call*> calls_list; //!< 
 	list<Call*>::iterator call;
 	map<string, Call*> calls_listMAP; //!< 
