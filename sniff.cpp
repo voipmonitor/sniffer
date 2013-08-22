@@ -1086,6 +1086,7 @@ void *rtp_read_thread_func(void *arg) {
 Call *new_invite_register(int sip_method, char *data, int datalen, struct pcap_pkthdr *header, char *callidstr, u_int32_t saddr, u_int32_t daddr, int source, char *s, long unsigned int l){
 	unsigned long gettagLimitLen = 0;
 	unsigned int flags = 0;
+	int res;
 
 	if(opt_callslimit != 0 and opt_callslimit > calls) {
 		if(verbosity > 0)
@@ -1093,11 +1094,19 @@ Call *new_invite_register(int sip_method, char *data, int datalen, struct pcap_p
 		return NULL;
 	}
 
-	ipfilter->add_call_flags(&flags, ntohl(saddr), ntohl(daddr));
-	if(flags & FLAG_SKIPCDR) {
-		if(verbosity > 1)
-			syslog(LOG_NOTICE, "call skipped due to ip or tel capture rules\n");
-		return NULL;
+	//caller and called number has to be checked before flags due to skip filter 
+	char tcaller[1024] = "", tcalled[1024] = "";
+	// caller number
+	res = get_sip_peername(data,datalen,"\nFrom:", tcaller, sizeof(tcaller));
+	if(res) {
+		// try compact header
+		get_sip_peername(data,datalen,"\nf:", tcaller, sizeof(tcaller));
+	}
+	// called number
+	res = get_sip_peername(data,datalen,"\nTo:", tcalled, sizeof(tcalled));
+	if(res) {
+		// try compact header
+		get_sip_peername(data,datalen,"\nt:", tcalled, sizeof(tcalled));
 	}
 
 	//flags
@@ -1118,6 +1127,16 @@ Call *new_invite_register(int sip_method, char *data, int datalen, struct pcap_p
 
 	if(opt_skipdefault)
 		flags |= FLAG_SKIPCDR;
+
+	ipfilter->add_call_flags(&flags, ntohl(saddr), ntohl(daddr));
+	telnumfilter->add_call_flags(&flags, tcaller, tcalled);
+
+	if(flags & FLAG_SKIPCDR) {
+		if(verbosity > 1)
+			syslog(LOG_NOTICE, "call skipped due to ip or tel capture rules\n");
+		return NULL;
+	}
+
 
 	static char str2[1024];
 	// store this call only if it starts with invite
@@ -1143,7 +1162,6 @@ Call *new_invite_register(int sip_method, char *data, int datalen, struct pcap_p
 			call->geoposition = buf;
 		}
 
-		int res;
 		// callername
 		res = get_sip_peercnam(data,datalen,"\nFrom:", call->callername, sizeof(call->callername));
 		if(res) {
@@ -1152,18 +1170,10 @@ Call *new_invite_register(int sip_method, char *data, int datalen, struct pcap_p
 		}
 
 		// caller number
-		res = get_sip_peername(data,datalen,"\nFrom:", call->caller, sizeof(call->caller));
-		if(res) {
-			// try compact header
-			get_sip_peername(data,datalen,"\nf:", call->caller, sizeof(call->caller));
-		}
+		strncpy(call->caller, tcaller, sizeof(call->caller));
 
-		// caller number
-		res = get_sip_peername(data,datalen,"\nTo:", call->called, sizeof(call->called));
-		if(res) {
-			// try compact header
-			get_sip_peername(data,datalen,"\nt:", call->called, sizeof(call->called));
-		}
+		// called number
+		strncpy(call->called, tcalled, sizeof(call->called));
 
 		// caller domain 
 		res = get_sip_domain(data,datalen,"\nFrom:", call->caller_domain, sizeof(call->caller_domain));
@@ -1227,7 +1237,6 @@ Call *new_invite_register(int sip_method, char *data, int datalen, struct pcap_p
 
 		if(sip_method == INVITE) {
 			call->seeninvite = true;
-			telnumfilter->add_call_flags(&(call->flags), call->caller, call->called);
 #ifdef DEBUG_INVITE
 			syslog(LOG_NOTICE, "New call: srcip INET_NTOA[%u] dstip INET_NTOA[%u] From[%s] To[%s] Call-ID[%s]\n", 
 				call->sipcallerip, call->sipcalledip, call->caller, call->called, call->fbasename);

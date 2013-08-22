@@ -130,7 +130,7 @@ signal_def signal_data[] =
 
 using namespace std;
 
-int debugclean = 1;
+int debugclean = 0;
 
 
 /* global variables */

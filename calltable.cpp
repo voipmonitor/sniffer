@@ -236,6 +236,11 @@ Call::addtofilesqueue(string file, string column) {
 
 	if(!opt_filesclean or opt_nocdr or file == "") return;
 
+	if(opt_cachedir[0] != '\0') {
+		string tmp = opt_cachedir;
+		file = tmp + "/" + file;
+	}
+
 	long size = GetFileSize(file);
 
 	if(size == -1) {
