@@ -148,6 +148,7 @@ class RTP {
        } extension_hdr_t;
 public: 
 	u_int32_t ssrc;		//!< ssrc of this RTP class
+	u_int32_t ssrc2;	//!< ssrc of this RTP class
 	u_int32_t saddr;	//!< last source IP adress 
 	u_int32_t daddr;	//!< last source IP adress 
 	ogzstream gfileGZ;	//!< file for storing packet statistics with GZIP compression
@@ -170,6 +171,7 @@ public:
 	int packetization_iterator;	
 	int payload;
 	int prev_payload;
+	int payload2;
 	int codec;
 	int rtpmap[MAX_RTPMAP];
 	unsigned char* data;    //!< pointer to UDP payload

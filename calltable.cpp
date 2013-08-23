@@ -502,13 +502,16 @@ Call::read_rtp(unsigned char* data, int datalen, struct pcap_pkthdr *header, u_i
 	
 	//RTP tmprtp; moved to Call structure to avoid creating and destroying class which is not neccessary
 	tmprtp.fill(data, datalen, header, saddr, daddr);
-	if(tmprtp.getSSRC() == 0 || tmprtp.getVersion() != 2) {
+	int curpayload = tmprtp.getPayload();
+	unsigned int curSSRC = tmprtp.getSSRC();
+
+	if(curSSRC == 0 || tmprtp.getVersion() != 2) {
 		// invalid ssrc
 		return;
 	}
 
 	// chekc if packet is DTMF and saverfc2833 is enabled 
-	if(opt_saverfc2833 and tmprtp.getPayload() == 101) {
+	if(opt_saverfc2833 and curpayload == 101) {
 		*record = 1;
 	}
 
@@ -522,10 +525,16 @@ Call::read_rtp(unsigned char* data, int datalen, struct pcap_pkthdr *header, u_i
 	}
 
 	for(int i = 0; i < ssrc_n; i++) {
-		if(rtp[i]->ssrc == tmprtp.getSSRC()) {
+		if(rtp[i]->ssrc2 == curSSRC) {
 			// found 
-			rtp[i]->read(data, datalen, header, saddr, daddr, seeninviteok);
-			return;
+			// check if codec did not changed 
+			if(rtp[i]->payload2 == curpayload) {
+				rtp[i]->read(data, datalen, header, saddr, daddr, seeninviteok);
+				return;
+			} else {
+				//codec changed, reset ssrc so the stream will not match and new one is used
+				rtp[i]->ssrc2 = 0;
+			}
 		}
 	}
 	// adding new RTP source
@@ -601,7 +610,8 @@ Call::read_rtp(unsigned char* data, int datalen, struct pcap_pkthdr *header, u_i
 //		}
 
 		rtp[ssrc_n]->read(data, datalen, header, saddr, daddr, seeninviteok);
-		this->rtp[ssrc_n]->ssrc = tmprtp.getSSRC();
+		this->rtp[ssrc_n]->ssrc = this->rtp[ssrc_n]->ssrc2 = curSSRC;
+		this->rtp[ssrc_n]->payload2 = curpayload;
 		if(iscaller) {
 			lastcallerrtp = rtp[ssrc_n];
 		} else {
@@ -1873,7 +1883,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 				rtps.add(htonl(rtp[i]->saddr), "saddr");
 				rtps.add(htonl(rtp[i]->daddr), "daddr");
 				rtps.add(rtp[i]->ssrc, "ssrc");
-				rtps.add(rtp[i]->s->received, "received");
+				rtps.add(rtp[i]->s->received + 2, "received");
 				rtps.add(rtp[i]->stats.lost, "loss");
 				rtps.add((unsigned int)(rtp[i]->stats.maxjitter * 10), "maxjitter_mult10");
 				rtps.add(diff, "firsttime");
@@ -1975,7 +1985,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 				rtps.add(htonl(rtp[i]->saddr), "saddr");
 				rtps.add(htonl(rtp[i]->daddr), "daddr");
 				rtps.add(rtp[i]->ssrc, "ssrc");
-				rtps.add(rtp[i]->s->received, "received");
+				rtps.add(rtp[i]->s->received + 2, "received");
 				rtps.add(rtp[i]->stats.lost, "loss");
 				rtps.add((unsigned int)(rtp[i]->stats.maxjitter * 10), "maxjitter_mult10");
 				rtps.add(diff, "firsttime");

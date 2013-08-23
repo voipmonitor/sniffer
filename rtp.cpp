@@ -138,6 +138,7 @@ RTP::RTP() {
 	saddr = 0;
 	daddr = 0;
 	ssrc = 0;
+	ssrc2 = 0;
 	gfilename[0] = '\0';
 	gfileRAW = NULL;
 
@@ -189,6 +190,7 @@ RTP::RTP() {
 	packetization_iterator = 0;
 	payload = -1;
 	prev_payload = -1;
+	payload2 = -1;
 	codec = -1;
 	for(int i = 0; i < MAX_RTPMAP; i++) {
 		rtpmap[i] = 0;
