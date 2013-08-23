@@ -1,3 +1,14 @@
+8.0.1 23.8.2013
+===============
+
+- fix cdr proxy column which contains duplicates in case of sip reinvites
+- disable default "filter = udp or (..." in voipmonitor.conf template file which does not work if interface = any 
+- In case the RTP stream within the same SSRC changes codec, split the stream so in sip history it will show the change.
+- fix RTP stream in sip history which shows number of received packets - 2
+- fix skipdefault and implement skip in capture rules by tel number (forgot to implement)
+- fix new spool cleaning in case cachedir is enabled
+- fix new spool cleaning which did not count graph file sizes (disk space was higher then set because of this) 
+
 8.0  21.8.2013
 ==============
 
