@@ -2310,7 +2310,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 			if(call->sipcalledip != daddr) {
 				if(daddr != 0) {
 					// daddr is already set, store previous daddr as sipproxy
-					call->proxies.push(call->sipcalledip);
+					call->proxies.push_back(call->sipcalledip);
 				}
 				call->sipcalledip = daddr;
 			}

@@ -30,6 +30,7 @@
 #include <sstream>
 #include <vector>
 #include <list>
+#include <set>
 #include <iterator>
 
 //#include <.h>
@@ -1538,15 +1539,33 @@ Call::saveToDb(bool enableBatchIfPossible) {
 
 	string query_str_cdrproxy;
 
-	while (opt_cdrproxy && !proxies.empty()){
-		sqlDb->setEnableSqlStringInContent(true);
-		SqlDb_row cdrproxy;
-		cdrproxy.add("_\\_'SQL'_\\_:@cdr_id", "cdr_ID");
-		cdrproxy.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
-		cdrproxy.add(htonl(proxies.front()), "dst");
-		query_str_cdrproxy += sqlDb->insertQuery("cdr_proxy", cdrproxy) + ";\n";
-		proxies.pop();
-		sqlDb->setEnableSqlStringInContent(false);
+	if(opt_cdrproxy) {
+
+		// remove duplicates
+		list<unsigned int>::iterator iter = proxies.begin();
+		set<unsigned int> elements;
+		while (iter != proxies.end()) {
+			if (elements.find(*iter) != elements.end()) {
+				iter = proxies.erase(iter);
+			} else {
+				elements.insert(*iter);
+				++iter;
+			}
+		}
+
+		iter = proxies.begin();
+		while (iter != proxies.end()) {
+			if(*iter == sipcalledip) { ++iter; continue; };
+			sqlDb->setEnableSqlStringInContent(true);
+			SqlDb_row cdrproxy;
+			cdrproxy.add("_\\_'SQL'_\\_:@cdr_id", "cdr_ID");
+			cdrproxy.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
+			cdrproxy.add(htonl(*iter), "dst");
+			query_str_cdrproxy += sqlDb->insertQuery("cdr_proxy", cdrproxy) + ";\n";
+			sqlDb->setEnableSqlStringInContent(false);
+
+			++iter;
+		}
 	}
 
 	if(opt_id_sensor > -1) {
@@ -1957,13 +1976,30 @@ Call::saveToDb(bool enableBatchIfPossible) {
 
 
 	if(cdrID > 0) {
-		while (opt_cdrproxy && !proxies.empty()){
-			SqlDb_row cdrproxy;
-			cdrproxy.add(cdrID, "cdr_ID");
-			cdrproxy.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
-			cdrproxy.add(htonl(proxies.front()), "dst");
-			sqlDb->insert("cdr_proxy", cdrproxy);
-			proxies.pop();
+
+		if(opt_cdrproxy) {
+			// remove duplicates
+			list<unsigned int>::iterator iter = proxies.begin();
+			set<unsigned int> elements;
+			while (iter != proxies.end()) {
+				if (elements.find(*iter) != elements.end()) {
+					iter = proxies.erase(iter);
+				} else {
+					elements.insert(*iter);
+					++iter;
+				}
+			}
+
+			iter = proxies.begin();
+			while (iter != proxies.end()) {
+				if(*iter == sipcalledip) { ++iter; continue; };
+				SqlDb_row cdrproxy;
+				cdrproxy.add(cdrID, "cdr_ID");
+				cdrproxy.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
+				cdrproxy.add(htonl(*iter), "dst");
+				sqlDb->insert("cdr_proxy", cdrproxy);
+				++iter;
+			}
 		}
 
 		for(int i = 0; i < MAX_SSRC_PER_CALL; i++) {

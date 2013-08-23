@@ -195,7 +195,7 @@ public:
 	
 	vector<dstring> custom_headers;
 
-	queue<unsigned int> proxies;
+	list<unsigned int> proxies;
 
 	/**
 	 * constructor

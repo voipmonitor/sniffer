@@ -567,7 +567,7 @@ void clean_maxpoolsize() {
 	sqlDb->setConnectParameters(mysql_host, mysql_user, mysql_password, mysql_database, 0);
 	sqlDb->connect();
 	stringstream q;
-	q << "SELECT SUM(sipsize) AS sipsize, SUM(rtpsize) AS rtpsize, SUM(graphsize), SUM(audiosize) AS audiosize, SUM(regsize) AS regsize FROM files WHERE id_sensor = " 
+	q << "SELECT SUM(sipsize) AS sipsize, SUM(rtpsize) AS rtpsize, SUM(graphsize) as graphsize, SUM(audiosize) AS audiosize, SUM(regsize) AS regsize FROM files WHERE id_sensor = " 
 		<< (opt_id_sensor > 0 ? opt_id_sensor : 0);
 	sqlDb->query(q.str());
 	SqlDb_row row0 = sqlDb->fetchRow();
@@ -580,7 +580,7 @@ void clean_maxpoolsize() {
 
 	total /= 1024 * 1024;
 	if(debugclean) cout << q.str() << "\n";
-	if(debugclean) cout << "total[" << total << "] opt_maxpoolsize[" << opt_maxpoolsize << "]\n";
+	if(debugclean) cout << "total[" << total << "] = " << sipsize << " + " << rtpsize << " + " << graphsize << " + " << audiosize << " + " << regsize << " opt_maxpoolsize[" << opt_maxpoolsize << "]\n";
 	while(total > opt_maxpoolsize) {
 		// walk all rows ordered by datehour and delete everything 
 		stringstream q;
