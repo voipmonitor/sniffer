@@ -1311,15 +1311,11 @@ void SqlDb_mysql::createSchema() {
 		""));
 	
 	if(opt_cdr_partition) {
-		this->query(string(
-			    "select exists (select * from information_schema.partitions\
-					    where table_schema = '") + mysql_database + "' and\
-						  table_name like 'cdr%' and\
-						  partition_name is not null) as exist_part_cdr");
+		this->query(string("EXPLAIN PARTITIONS SELECT * from cdr order by calldate desc limit 1"));
 		SqlDb_row row;
 		if((row = this->fetchRow())) {
-			if(atoi(row[0].c_str()) == 0) {
-				syslog(LOG_INFO, "disable opt_cdr_partition (table cdr... exists without partitions)");
+			if(row["partitions"] == "") {
+				syslog(LOG_INFO, "disable opt_cdr_partition (table cdr does not have partitions)");
 				opt_cdr_partition = 0;
 			}
 		}
