@@ -218,6 +218,7 @@ int opt_generator = 0;
 int opt_generator_channels = 1;
 int opt_skipdefault = 0;
 int opt_filesclean = 1;
+int opt_allow_zerossrc = 0;
 
 unsigned int opt_maxpoolsize = 0;
 unsigned int opt_maxpooldays = 0;
@@ -1882,6 +1883,9 @@ int load_config(char *fname) {
 	}
 	if((value = ini.GetValue("general", "rtp-firstleg", NULL))) {
 		opt_rtp_firstleg = yesno(value);
+	}
+	if((value = ini.GetValue("general", "allow-zerossrc", NULL))) {
+		opt_allow_zerossrc = yesno(value);
 	}
 	if((value = ini.GetValue("general", "sip-register", NULL))) {
 		opt_sip_register = yesno(value);

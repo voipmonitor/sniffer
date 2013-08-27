@@ -100,6 +100,7 @@ extern int opt_dscp;
 extern int opt_cdrproxy;
 extern struct pcap_stat pcapstat;
 extern int opt_filesclean;
+extern int opt_allow_zerossrc;
 
 volatile int calls = 0;
 
@@ -506,7 +507,7 @@ Call::read_rtp(unsigned char* data, int datalen, struct pcap_pkthdr *header, u_i
 	int curpayload = tmprtp.getPayload();
 	unsigned int curSSRC = tmprtp.getSSRC();
 
-	if(curSSRC == 0 || tmprtp.getVersion() != 2) {
+	if((!opt_allow_zerossrc and curSSRC == 0) || tmprtp.getVersion() != 2) {
 		// invalid ssrc
 		return;
 	}
