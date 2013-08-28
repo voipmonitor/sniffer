@@ -415,7 +415,7 @@ As you can see we are calling fdatasync right before calling posix_fadvise, this
 	/* Open the output file for writing, with the same permissions as the source file. */
 	write_fd = open (dst, O_WRONLY | O_CREAT, stat_buf.st_mode);
 	if(write_fd == -1) {
-		syslog(LOG_ERR, "Cannot open file for writing [%s] leaving the source file undeleted\n", src);
+		syslog(LOG_ERR, "Cannot open file for writing [%s] leaving the source file [%s] undeleted\n", dst, src);
 		close(read_fd);
 		return;
 	}
@@ -1376,6 +1376,7 @@ void convert_filesindex() {
 			}
 		
 			rmdir(de->d_name);
+			syslog(LOG_NOTICE, "reindexing done\n", de->d_name);
 		}
 	}
 	closedir( dp );
