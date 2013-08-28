@@ -240,7 +240,7 @@ RTP::~RTP() {
 		}
 		if(gfilename[0] != '\0') {
 			if(opt_cachedir[0] != '\0') {
-				owner->addtocachequeue(gfilename);
+				owner->addtocachequeue(string(gfilename));
 			}
 			owner->addtofilesqueue(string(gfilename), "graphsize");
 		}
