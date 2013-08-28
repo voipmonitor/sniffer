@@ -4,6 +4,7 @@ What is required
 - C and C++ compiler (gcc,g++)
 - libpcap-dev package >= 1.0
 - zlib ibrary 
+- snappy library
 - Libogg, Libvorbis 
 - unixODBC-devel
 
@@ -14,7 +15,16 @@ Pre-Build
 =========
 
 yum groupinstall 'Development Tools'
-yum install subversion unixODBC-devel mysql-devel libogg libogg-devel vorbis-tools libvorbis libpcap-devel
+yum install subversion unixODBC-devel mysql-devel libogg libogg-devel vorbis-tools libvorbis libvorbis-devel libpcap-devel zlib-devel
+
+Snappy library
+==============
+wget https://snappy.googlecode.com/files/snappy-1.1.0.tar.gz
+tar xzf snappy-1.1.0.tar.gz
+cd snappy-1.1.0
+./configure
+make
+make install
 
 (for older centos < 6.3) 
 ------------------------
@@ -27,7 +37,7 @@ make install
 
 Build voipmonitor
 =================
-svn co https://voipmonitor.svn.sourceforge.net/svnroot/voipmonitor/trunk voipmonitor-svn
+svn co http://svn.code.sf.net/p/voipmonitor/code/trunk voipmonitor-svn
 cd voipmonitor-svn
 rm Makefile
 ./configure
@@ -44,8 +54,6 @@ Start mysql
 yum install mysql-server
 chkconfig mysqld on
 service mysqld start
-mysqladmin create voipmonitor
-cat cdrtable.sql | mysql voipmonitor
 cp config/voipmonitor.conf /etc/
 #edit file /etc/voipmonitor.conf to your needs
 cp config/init.d/voipmonitor /etc/init.d/
