@@ -1376,7 +1376,7 @@ void convert_filesindex() {
 			}
 		
 			rmdir(de->d_name);
-			syslog(LOG_NOTICE, "reindexing done\n", de->d_name);
+			syslog(LOG_NOTICE, "reindexing done\n");
 		}
 	}
 	closedir( dp );

@@ -361,7 +361,8 @@ bool SqlDb_mysql::connect() {
 					//this->conn_server.c_str(), this->conn_user.c_str(), this->conn_password.c_str(), this->conn_database.c_str(),
 					this->conn_server.c_str(), this->conn_user.c_str(), this->conn_password.c_str(), NULL,
 					//opt_mysql_port, NULL, CLIENT_MULTI_STATEMENTS);
-					opt_mysql_port, NULL, 0);
+					//opt_mysql_port, NULL, 0);
+					opt_mysql_port, NULL, CLIENT_MULTI_RESULTS);
 		if(this->hMysqlConn) {
 			sql_disable_next_attempt_if_error = 1;
 			this->query("SET NAMES UTF8");
