@@ -294,6 +294,8 @@ TELNUMfilter::add_call_flags(unsigned int *flags, char *telnum_src, char *telnum
 		lastpayload = NULL;
 	}
 	if(!lastpayload) {
+		tmp = first_node;
+		lastpayload = NULL;
 		//src not found or src found , try dst
 		for(unsigned int i = 0; i < strlen(telnum_dst); i++) {
 			if(!tmp->nodes[(int)telnum_dst[i]]) {
