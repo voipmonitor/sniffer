@@ -3,6 +3,7 @@
 
 #include "tcpreassembly.h"
 #include "sql_db.h"
+#include "tools.h"
 
 using namespace std;
 
