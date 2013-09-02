@@ -115,6 +115,7 @@ extern int opt_onlyRTPheader;
 extern int opt_sipoverlap;
 extern int readend;
 extern int opt_dup_check;
+extern int opt_dup_check_ipheader;
 extern char opt_match_header[128];
 extern int opt_domainport;
 extern int opt_mirrorip;
@@ -3594,7 +3595,18 @@ void readdump_libpcap(pcap_t *handle) {
 		if(datalen > 0 && opt_dup_check && prevmd5s != NULL && (traillen < datalen) && 
 		   !(opt_enable_tcpreassembly && (httpportmatrix[htons(header_tcp->source)] || httpportmatrix[htons(header_tcp->dest)]))) {
 			MD5_Init(&ctx);
-			MD5_Update(&ctx, data, MAX(0, (unsigned long)datalen - traillen));
+			if(opt_dup_check_ipheader) {
+				// check duplicates based on full ip header and data 
+				if(istcp) {
+					MD5_Update(&ctx, header_ip, MAX(0, (unsigned long)datalen - traillen + sizeof(header_ip) + sizeof(header_udp)));
+				} else {
+					MD5_Update(&ctx, header_ip, MAX(0, (unsigned long)datalen - traillen + sizeof(header_ip) + sizeof(header_tcp)));
+				}
+			} else {
+				// check duplicates based only on data (without ip header and without UDP/TCP header). Duplicate packets 
+				// will be matched regardless on IP 
+				MD5_Update(&ctx, data, MAX(0, (unsigned long)datalen - traillen));
+			}
 			MD5_Final(md5, &ctx);
 			if(memcmp(md5, prevmd5s+( ( (*(uint16_t *)md5) ) * MD5_DIGEST_LENGTH), MD5_DIGEST_LENGTH) == 0) {
 				if(destroy) { free(header); free(packet); };

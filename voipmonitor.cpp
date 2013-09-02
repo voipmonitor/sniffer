@@ -181,6 +181,7 @@ int opt_sipoverlap = 1;
 int opt_id_sensor = -1;		
 int readend = 0;
 int opt_dup_check = 0;
+int opt_dup_check_ipheader = 1;
 int rtptimeout = 300;
 char opt_cdrurl[1024] = "";
 int opt_cleanspool_interval = 0; // number of seconds between cleaning spool directory. 0 = disabled
@@ -1917,6 +1918,9 @@ int load_config(char *fname) {
 	}
 	if((value = ini.GetValue("general", "deduplicate", NULL))) {
 		opt_dup_check = yesno(value);
+	}
+	if((value = ini.GetValue("general", "deduplicate_ipheader", NULL))) {
+		opt_dup_check_ipheader = yesno(value);
 	}
 	if((value = ini.GetValue("general", "dscp", NULL))) {
 		opt_dscp = yesno(value);
