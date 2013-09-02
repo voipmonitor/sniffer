@@ -60,6 +60,8 @@ gzstream/test_gzip.C -text
 gzstream/version -text
 /hash.cpp -text
 /hash.h -text
+/http.cpp -text
+/http.h -text
 /install-sh -text
 /ipaccount.cpp -text
 /ipaccount.h -text
@@ -234,6 +236,8 @@ simpleini/testsi.cpp -text
 /sniff.h -text
 /sql_db.cpp -text
 /sql_db.h -text
+/tcpreassembly.cpp -text
+/tcpreassembly.h -text
 /tools.cpp -text
 /tools.h -text
 /voipmonitor.cpp -text

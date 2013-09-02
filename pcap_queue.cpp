@@ -21,6 +21,7 @@
 #include "mirrorip.h"
 #include "ipaccount.h"
 #include "filter_mysql.h"
+#include "tcpreassembly.h"
 
 
 #define TEST_DEBUG_PARAMS 0
@@ -54,8 +55,6 @@
 #define MAX_TCPSTREAMS 1024
 #define FILE_BUFFER_SIZE 1000000
 
-//#define TEST_PCAP_FILE "/mnt/www_JX/voipmonitor/pcaps/3.pcap"
-
 
 using namespace std;
 
@@ -74,9 +73,11 @@ extern int opt_dup_check;
 extern int opt_mirrorip;
 extern char opt_mirrorip_src[20];
 extern char opt_mirrorip_dst[20];
+extern int opt_enable_tcpreassembly;
 
 extern pcap_t *handle;
 extern char *sipportmatrix;
+extern char *httpportmatrix;
 extern unsigned int duplicate_counter;
 extern struct tcp_stream2_t *tcp_streams_hashed[MAX_TCPSTREAMS];
 extern MirrorIP *mirrorip;
@@ -89,6 +90,8 @@ extern int telnumfilter_reload_do;
 extern char user_filter[2048];
 extern Calltable *calltable;
 extern volatile int calls;
+extern TcpReassembly *tcpReassembly;
+extern char opt_pb_read_from_file[256];
 extern int pcap_dlink;
 
 void *_PcapQueue_threadFunction(void* arg);
@@ -1132,7 +1135,7 @@ PcapQueue_readFromInterface::PcapQueue_readFromInterface(const char *nameQueue)
 	// CONFIG
 	extern int opt_promisc;
 	extern int opt_ringbuffer;
-	this->pcap_snaplen = 3200;
+	this->pcap_snaplen = opt_enable_tcpreassembly ? 5000 : 3200;
 	this->pcap_promisc = opt_promisc;
 	this->pcap_timeout = 1000;
 	this->pcap_buffer_size = opt_ringbuffer * 1024 * 1024;
@@ -1193,7 +1196,7 @@ void* PcapQueue_readFromInterface::threadFunction(void* ) {
 		while(!TERMINATING) {
 			res = this->pcap_next_ex(this->pcapHandle, &header, &packet);
 			if(res == -1) {
-				#ifdef TEST_PCAP_FILE
+				if(opt_pb_read_from_file[0]) {
 					blockStoreBypassQueue.push(blockStore);
 					++sumBlocksCounterIn[0];
 					blockStore = NULL;
@@ -1201,7 +1204,7 @@ void* PcapQueue_readFromInterface::threadFunction(void* ) {
 					calltable->cleanup(0);
 					this->pcapStat();
 					terminating = 1;
-				#endif
+				}
 				break;
 			} else if(res == 0) {
 				continue;
@@ -1318,11 +1321,12 @@ bool PcapQueue_readFromInterface::openFifoForWrite() {
 
 bool PcapQueue_readFromInterface::startCapture() {
 	char errbuf[PCAP_ERRBUF_SIZE];
-	#ifdef TEST_PCAP_FILE
-		this->pcapHandle = pcap_open_offline(TEST_PCAP_FILE, errbuf);
-		this->pcapLinklayerHeaderType = pcap_datalink(this->pcapHandle);;
+	if(opt_pb_read_from_file[0]) {
+		this->pcapHandle = pcap_open_offline(opt_pb_read_from_file, errbuf);
+		this->pcapLinklayerHeaderType = pcap_datalink(this->pcapHandle);
 		handle = this->pcapHandle;
-	#else
+		return(true);
+	}
 	if(VERBOSE) {
 		syslog(LOG_NOTICE, "packetbuffer %s: capturing on interface %s", this->nameQueue.c_str(), this->interfaceName.c_str()); 
 	}
@@ -1391,7 +1395,6 @@ bool PcapQueue_readFromInterface::startCapture() {
 		sprintf(pname, "/var/spool/voipmonitor/voipmonitordump-%u.pcap", (unsigned int)time(NULL));
 		this->pcapDumpHandle = pcap_dump_open(this->pcapHandle, pname);
 	}
-	#endif
 	return(true);
 }
 
@@ -1453,7 +1456,6 @@ void PcapQueue_readFromInterface::initStat_interface() {
 
 int PcapQueue_readFromInterface::pcapProcess(pcap_pkthdr** header, u_char** packet, bool *destroy) {
 	*destroy = false;
-	
 	switch(this->pcapLinklayerHeaderType) {
 		case DLT_LINUX_SLL:
 			ppd.header_sll = (sll_header*)*packet;
@@ -1562,8 +1564,9 @@ int PcapQueue_readFromInterface::pcapProcess(pcap_pkthdr** header, u_char** pack
 		ppd.data = (char*) ppd.header_tcp + (ppd.header_tcp->doff * 4);
 		ppd.datalen = (int)((*header)->caplen - ((unsigned long) ppd.data - (unsigned long) *packet)); 
 		//if (datalen == 0 || !(sipportmatrix[htons(header_tcp->source)] || sipportmatrix[htons(header_tcp->dest)])) {
-		if (!(sipportmatrix[htons(ppd.header_tcp->source)] || sipportmatrix[htons(ppd.header_tcp->dest)])
-			and !(opt_skinny && (htons(ppd.header_tcp->source) == 2000 || htons(ppd.header_tcp->dest) == 2000))) {
+		if (!(sipportmatrix[htons(ppd.header_tcp->source)] || sipportmatrix[htons(ppd.header_tcp->dest)]) &&
+		    !(opt_enable_tcpreassembly && (httpportmatrix[htons(ppd.header_tcp->source)] || httpportmatrix[htons(ppd.header_tcp->dest)])) &&
+		    !(opt_skinny && (htons(ppd.header_tcp->source) == 2000 || htons(ppd.header_tcp->dest) == 2000))) {
 			// not interested in TCP packet other than SIP port
 			if(opt_ipaccount == 0 && !DEBUG_ALL_PACKETS) {
 				return(0);
@@ -1584,7 +1587,8 @@ int PcapQueue_readFromInterface::pcapProcess(pcap_pkthdr** header, u_char** pack
 	}
 
 	/* check for duplicate packets (md5 is expensive operation - enable only if you really need it */
-	if(ppd.datalen > 0 && opt_dup_check && ppd.prevmd5s != NULL && (ppd.traillen < ppd.datalen)) {
+	if(ppd.datalen > 0 && opt_dup_check && ppd.prevmd5s != NULL && (ppd.traillen < ppd.datalen) &&
+	   !(opt_enable_tcpreassembly && (httpportmatrix[htons(ppd.header_tcp->source)] || httpportmatrix[htons(ppd.header_tcp->dest)]))) {
 		MD5_Init(&ppd.ctx);
 		MD5_Update(&ppd.ctx, ppd.data, MAX(0, (unsigned long)ppd.datalen - ppd.traillen));
 		MD5_Final((unsigned char*)ppd.md5, &ppd.ctx);
@@ -2105,6 +2109,7 @@ void PcapQueue_readFromFifo::processPacket(pcap_pkthdr_plus *header_plus, u_char
 	int datalen;
 	int istcp = 0;
 	int was_rtp;
+	bool useTcpReassembly = false;
 	
 	pcap_pkthdr *header = header_plus->convertToStdHeader();
 	
@@ -2140,14 +2145,19 @@ void PcapQueue_readFromFifo::processPacket(pcap_pkthdr_plus *header_plus, u_char
 		datalen = (int)(header->caplen - ((u_char*)data - packet));
 		istcp = 0;
 	} else if (header_ip->protocol == IPPROTO_TCP) {
-		istcp = 1;
-		// prepare packet pointers 
 		header_tcp = (tcphdr*) ((char *) header_ip + sizeof(*header_ip));
-		data = (char *) header_tcp + (header_tcp->doff * 4);
-		datalen = (int)(header->caplen - ((u_char*)data - packet)); 
-
-		header_udp->source = header_tcp->source;
-		header_udp->dest = header_tcp->dest;
+		if(opt_enable_tcpreassembly && (httpportmatrix[htons(header_tcp->source)] || httpportmatrix[htons(header_tcp->dest)])) {
+			tcpReassembly->push(header, header_ip, packet,
+					    block_store, block_store_index);
+			useTcpReassembly = true;
+		} else {
+			istcp = 1;
+			// prepare packet pointers 
+			data = (char *) header_tcp + (header_tcp->doff * 4);
+			datalen = (int)(header->caplen - ((u_char*)data - packet)); 
+			header_udp->source = header_tcp->source;
+			header_udp->dest = header_tcp->dest;
+		}
 	} else {
 		//packet is not UDP and is not TCP, we are not interested, go to the next packet
 		// - interested only for ipaccount
@@ -2161,9 +2171,11 @@ void PcapQueue_readFromFifo::processPacket(pcap_pkthdr_plus *header_plus, u_char
 		mirrorip->send((char *)header_ip, (int)(header->caplen - ((u_char*)header_ip - packet)));
 	}
 	int voippacket = 0;
-	process_packet(header_ip->saddr, htons(header_udp->source), header_ip->daddr, htons(header_udp->dest), 
-		       data, datalen, this->getPcapHandle(), header, packet, istcp, 0, 1, &was_rtp, header_ip, &voippacket, 0,
-		       block_store, block_store_index);
+	if(!useTcpReassembly || opt_enable_tcpreassembly != 2) {
+		process_packet(header_ip->saddr, htons(header_udp->source), header_ip->daddr, htons(header_udp->dest), 
+			data, datalen, this->getPcapHandle(), header, packet, istcp, 0, 1, &was_rtp, header_ip, &voippacket, 0,
+			block_store, block_store_index);
+	}
 
 	// if packet was VoIP add it to ipaccount
 	if(opt_ipaccount) {
@@ -2173,6 +2185,10 @@ void PcapQueue_readFromFifo::processPacket(pcap_pkthdr_plus *header_plus, u_char
 }
 
 void PcapQueue_readFromFifo::cleanupBlockStoreTrash(bool all) {
+	if(all && opt_enable_tcpreassembly && opt_pb_read_from_file[0]) {
+		this->cleanupBlockStoreTrash();
+		cout << "COUNT REST BLOCKS: " << this->blockStoreTrash.size() << endl;
+	}
 	for(size_t i = 0; i < this->blockStoreTrash.size(); i++) {
 		if(all || this->blockStoreTrash[i]->enableDestroy()) {
 			this->blockStoreTrash_size -= this->blockStoreTrash[i]->getUseSize();

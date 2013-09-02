@@ -2,6 +2,7 @@
 #define PCAP_QUEUE_BLOCK_H
 
 
+#include <stdint.h>
 #include <stdlib.h>
 #include <memory.h>
 #include <pcap.h>
@@ -10,6 +11,8 @@
 #define PCAP_BLOCK_STORE_HEADER_STRING		"pcap_block_store"
 #define PCAP_BLOCK_STORE_HEADER_STRING_LEN	16
 
+
+extern int opt_enable_tcpreassembly;
 
 u_long getTimeMS();
 unsigned long long getTimeNS();
@@ -84,19 +87,15 @@ struct pcap_block_store {
 		this->idFileStore = 0;
 		this->filePosition = 0;
 		this->timestampMS = getTimeMS();
-		/*
 		this->packet_lock = NULL;
-		*/
 		this->_sync_packet_lock = 0;
 	}
 	~pcap_block_store() {
 		this->destroy();
 		this->destroyRestoreBuffer();
-		/*
 		if(this->packet_lock) {
 			free(this->packet_lock);
 		}
-		*/
 	}
 	inline bool add(pcap_pkthdr *header, u_char *packet, int offset = -1);
 	inline bool add(pcap_pkthdr_plus *header, u_char *packet);
@@ -132,48 +131,52 @@ struct pcap_block_store {
 	bool compress();
 	bool uncompress();
 	void lock_packet(int index) {
-		__sync_add_and_fetch(&this->_sync_packet_lock, 1);
-		/*
-		this->lock_sync_packet_lock();
-		if(!this->packet_lock) {
-			this->packet_lock = (bool*)calloc(this->count, sizeof(bool));
+		if(opt_enable_tcpreassembly) {
+			this->lock_sync_packet_lock();
+			if(!this->packet_lock) {
+				this->packet_lock = (bool*)calloc(this->count, sizeof(bool));
+			}
+			this->packet_lock[index] = true;
+			this->unlock_sync_packet_lock();
+		} else {
+			__sync_add_and_fetch(&this->_sync_packet_lock, 1);
 		}
-		this->packet_lock[index] = true;
-		this->unlock_sync_packet_lock();
-		*/
+		
 	}
 	void unlock_packet(int index) {
-		__sync_sub_and_fetch(&this->_sync_packet_lock, 1);
-		/*
-		this->lock_sync_packet_lock();
-		if(this->packet_lock) {
-			this->packet_lock[index] = false;
+		if(opt_enable_tcpreassembly) {
+			this->lock_sync_packet_lock();
+			if(this->packet_lock) {
+				this->packet_lock[index] = false;
+			}
+			this->unlock_sync_packet_lock();
+		} else {
+			__sync_sub_and_fetch(&this->_sync_packet_lock, 1);
 		}
-		this->unlock_sync_packet_lock();
-		*/
 	}
 	bool enableDestroy() {
-		return(this->_sync_packet_lock == 0);
-		/*
-		bool enableDestroy = true;
-		this->lock_sync_packet_lock();
-		bool checkLock = true;
-		if(this->packet_lock &&
-		   memmem(this->packet_lock, this->count * sizeof(bool), &checkLock, sizeof(bool))) {
-			enableDestroy = false;
+	        if(opt_enable_tcpreassembly) {
+			bool enableDestroy = true;
+			this->lock_sync_packet_lock();
+			bool checkLock = true;
+			if(this->packet_lock &&
+			   memmem(this->packet_lock, this->count * sizeof(bool), &checkLock, sizeof(bool))) {
+				enableDestroy = false;
+			}
+			this->unlock_sync_packet_lock();
+			return(enableDestroy);
+		} else {
+			return(this->_sync_packet_lock == 0);
 		}
-		this->unlock_sync_packet_lock();
-		return(enableDestroy);
-		*/
 	}
-	/*
+	
 	void lock_sync_packet_lock() {
 		while(__sync_lock_test_and_set(&this->_sync_packet_lock, 1));
 	}
 	void unlock_sync_packet_lock() {
 		__sync_lock_release(&this->_sync_packet_lock);
 	}
-	*/
+	
 	//
 	uint32_t *offsets;
 	u_char *block;
@@ -188,7 +191,7 @@ struct pcap_block_store {
 	u_int idFileStore;
 	u_long filePosition;
 	u_long timestampMS;
-	//bool *packet_lock;
+	bool *packet_lock;
 	volatile int _sync_packet_lock;
 };
 

@@ -56,6 +56,7 @@ and insert them into Call class.
 #include "sql_db.h"
 #include "rtp.h"
 #include "skinny.h"
+#include "tcpreassembly.h"
 
 extern MirrorIP *mirrorip;
 
@@ -102,8 +103,12 @@ extern int terminating;
 extern int opt_rtp_firstleg;
 extern int opt_sip_register;
 extern int opt_norecord_header;
+extern int opt_enable_tcpreassembly;
+extern int opt_convert_dlt_sll_to_en10;
 extern char *sipportmatrix;
+extern char *httpportmatrix;
 extern pcap_t *handle;
+extern pcap_t *handle_dead_EN10MB;
 extern read_thread *threads;
 extern int opt_norecord_dtmf;
 extern int opt_onlyRTPheader;
@@ -156,6 +161,8 @@ extern vector<dstring> opt_custom_headers_cdr;
 extern vector<dstring> opt_custom_headers_message;
 extern livesnifferfilter_use_siptypes_s livesnifferfilterUseSipTypes;
 extern int opt_skipdefault;
+extern TcpReassembly *tcpReassembly;
+extern char ifname[1024];
 
 #ifdef QUEUE_MUTEX
 extern sem_t readpacket_thread_semaphore;
@@ -228,6 +235,9 @@ map<unsigned int, ip_frag_queue_t*>::iterator ip_frag_streamITinner;
 extern struct queue_state *qs_readpacket_thread_queue;
 
 map<unsigned int, livesnifferfilter_t*> usersniffer;
+
+#define ENABLE_CONVERT_DLT_SLL_TO_EN10	(pcap_dlink ==DLT_LINUX_SLL && opt_convert_dlt_sll_to_en10 && handle_dead_EN10MB)
+#define HANDLE_FOR_PCAP_SAVE 		(ENABLE_CONVERT_DLT_SLL_TO_EN10 ? handle_dead_EN10MB : handle)
 
 // return IP from nat_aliases[ip] or 0 if not found
 in_addr_t match_nat_aliases(in_addr_t ip) {
@@ -403,6 +413,22 @@ save:
 
 */
 inline void save_packet(Call *call, struct pcap_pkthdr *header, const u_char *packet, unsigned int saddr, int source, unsigned int daddr, int dest, int istcp, char *data, int datalen, int type) {
+	bool allocPacket = false;
+	if(ENABLE_CONVERT_DLT_SLL_TO_EN10) {
+		const u_char *packet_orig = packet;
+		pcap_pkthdr *header_orig = header;
+		packet = (const u_char*) new u_char[header_orig->caplen];
+		memcpy((u_char*)packet, (u_char*)packet_orig, 14);
+		memset((u_char*)packet, 0, 6);
+		((ether_header*)packet)->ether_type = ((sll_header*)packet_orig)->sll_protocol;
+		memcpy((u_char*)packet + 14, (u_char*)packet_orig + 16, header_orig->caplen - 16);
+		header = new pcap_pkthdr;
+		memcpy(header, header_orig, sizeof(pcap_pkthdr));
+		header->caplen -= 2;
+		header->len -= 2;
+		allocPacket = true;
+	}
+ 
 	// check if it should be stored to mysql 
 	if(type == TYPE_SIP and global_livesniffer and (sipportmatrix[source] || sipportmatrix[dest])) {
 		save_live_packet(call, header, packet, saddr, source, daddr, dest, istcp, data, datalen, call->type);
@@ -436,6 +462,11 @@ inline void save_packet(Call *call, struct pcap_pkthdr *header, const u_char *pa
 			if (opt_packetbuffered) 
 				pcap_dump_flush(call->get_f_pcap());
 		}
+	}
+	
+	if(allocPacket) {
+		delete [] packet;
+		delete header;
 	}
 }
 
@@ -1324,9 +1355,9 @@ Call *new_invite_register(int sip_method, char *data, int datalen, struct pcap_p
 			call->fname2 = num + header->ts.tv_usec;
 			call->pcapfilename = call->sip_pcapfilename = call->dirname() + (opt_newdir ? "/REG" : "") + "/" + filenamestr + ".pcap";
 			if(!file_exists(str2)) {
-				call->set_fsip_pcap(pcap_dump_open(handle, str2));
+				call->set_fsip_pcap(pcap_dump_open(HANDLE_FOR_PCAP_SAVE, str2));
 				if(call->get_fsip_pcap() == NULL) {
-					syslog(LOG_NOTICE,"pcap [%s] cannot be opened: %s\n", str2, pcap_geterr(handle));
+					syslog(LOG_NOTICE,"pcap [%s] cannot be opened: %s\n", str2, pcap_geterr(HANDLE_FOR_PCAP_SAVE));
 				}
 				if(verbosity > 3) {
 					syslog(LOG_NOTICE,"pcap_filename: [%s]\n", str2);
@@ -1352,9 +1383,9 @@ Call *new_invite_register(int sip_method, char *data, int datalen, struct pcap_p
 			}
 			call->pcapfilename = call->sip_pcapfilename = call->dirname() + (opt_newdir ? "/SIP" : "") + "/" + call->get_fbasename_safe() + ".pcap";
 			if(!file_exists(str2)) {
-				call->set_fsip_pcap(pcap_dump_open(handle, str2));
+				call->set_fsip_pcap(pcap_dump_open(HANDLE_FOR_PCAP_SAVE, str2));
 				if(call->get_fsip_pcap() == NULL) {
-					syslog(LOG_NOTICE,"pcap [%s] cannot be opened: %s\n", str2, pcap_geterr(handle));
+					syslog(LOG_NOTICE,"pcap [%s] cannot be opened: %s\n", str2, pcap_geterr(HANDLE_FOR_PCAP_SAVE));
 				}
 				if(verbosity > 3) {
 					syslog(LOG_NOTICE,"pcap_filename: [%s]\n", str2);
@@ -1372,9 +1403,9 @@ Call *new_invite_register(int sip_method, char *data, int datalen, struct pcap_p
 			}
 			call->rtp_pcapfilename = call->dirname() + (opt_newdir ? "/RTP" : "") + "/" + call->get_fbasename_safe() + ".pcap";
 			if(!file_exists(str2)) {
-				call->set_frtp_pcap(pcap_dump_open(handle, str2));
+				call->set_frtp_pcap(pcap_dump_open(HANDLE_FOR_PCAP_SAVE, str2));
 				if(call->get_frtp_pcap() == NULL) {
-					syslog(LOG_NOTICE,"pcap [%s] cannot be opened: %s\n", str2, pcap_geterr(handle));
+					syslog(LOG_NOTICE,"pcap [%s] cannot be opened: %s\n", str2, pcap_geterr(HANDLE_FOR_PCAP_SAVE));
 				}
 				if(verbosity > 3) {
 					syslog(LOG_NOTICE,"pcap_filename: [%s]\n", str2);
@@ -1392,9 +1423,9 @@ Call *new_invite_register(int sip_method, char *data, int datalen, struct pcap_p
 			}
 			call->pcapfilename = call->dirname() + (opt_newdir ? "/ALL/" : "/") + call->get_fbasename_safe() + ".pcap";
 			if(!file_exists(str2)) {
-				call->set_f_pcap(pcap_dump_open(handle, str2));
+				call->set_f_pcap(pcap_dump_open(HANDLE_FOR_PCAP_SAVE, str2));
 				if(call->get_f_pcap() == NULL) {
-					syslog(LOG_NOTICE,"pcap [%s] cannot be opened: %s\n", str2, pcap_geterr(handle));
+					syslog(LOG_NOTICE,"pcap [%s] cannot be opened: %s\n", str2, pcap_geterr(HANDLE_FOR_PCAP_SAVE));
 				}
 				if(verbosity > 3) {
 					syslog(LOG_NOTICE,"pcap_filename: [%s]\n", str2);
@@ -1547,7 +1578,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 		}
 		return NULL;
 	}
-
+	
 	// check if the packet is SIP ports or SKINNY ports
 	if(sipportmatrix[source] || sipportmatrix[dest]) {
 
@@ -2773,7 +2804,7 @@ repeatrtpB:
 			if((call->flags & (FLAG_SAVESIP | FLAG_SAVEREGISTER | FLAG_SAVERTP)) || (call->isfax && opt_saveudptl)) {
 				sprintf(str2, "%s/%s.pcap", call->dirname().c_str(), s);
 				if(!file_exists(str2)) {
-					call->set_f_pcap(pcap_dump_open(handle, str2));
+					call->set_f_pcap(pcap_dump_open(HANDLE_FOR_PCAP_SAVE, str2));
 					call->pcapfilename = call->dirname() + "/" + call->get_fbasename_safe() + ".pcap";
 				} else {
 					if(verbosity > 0) {
@@ -2970,6 +3001,7 @@ void *pcap_read_thread_func(void *arg) {
 	int res;
 	int was_rtp;
 	unsigned int packets = 0;
+	bool useTcpReassembly;
 
 	res = 0;
 
@@ -3027,6 +3059,7 @@ void *pcap_read_thread_func(void *arg) {
 			header_ip = (struct iphdr2 *) ((char*)header_ip + sizeof(iphdr2));
 		}
 		header_udp = &header_udp_tmp;
+		useTcpReassembly = false;
 		if (header_ip->protocol == IPPROTO_UDP) {
 			// prepare packet pointers 
 			header_udp = (struct udphdr2 *) ((char *) header_ip + sizeof(*header_ip));
@@ -3034,14 +3067,22 @@ void *pcap_read_thread_func(void *arg) {
 			datalen = (int)(pp->header.caplen - ((char*)data - (char*)packet)); 
 			istcp = 0;
 		} else if (header_ip->protocol == IPPROTO_TCP) {
-			istcp = 1;
-			// prepare packet pointers 
 			header_tcp = (struct tcphdr *) ((char *) header_ip + sizeof(*header_ip));
-			data = (char *) header_tcp + (header_tcp->doff * 4);
-			datalen = (int)(pp->header.caplen - ((char*)data - (char*)packet)); 
-
-			header_udp->source = header_tcp->source;
-			header_udp->dest = header_tcp->dest;
+			// dokončit nezbytné paměťové operace pro udržení obsahu paketu !!!!
+			// zatím reassemblování v módu bez pb zakázáno
+			/*
+			if(opt_enable_tcpreassembly && (httpportmatrix[htons(header_tcp->source)] || httpportmatrix[htons(header_tcp->dest)])) {
+				tcpReassembly->push(&pp->header, header_ip, packet);
+				
+				useTcpReassembly = true;
+			} else */{
+				istcp = 1;
+				// prepare packet pointers 
+				data = (char *) header_tcp + (header_tcp->doff * 4);
+				datalen = (int)(pp->header.caplen - ((char*)data - (char*)packet)); 
+				header_udp->source = header_tcp->source;
+				header_udp->dest = header_tcp->dest;
+			}
 		} else {
 			//packet is not UDP and is not TCP, we are not interested, go to the next packet
 			// - interested only for ipaccount
@@ -3067,9 +3108,11 @@ void *pcap_read_thread_func(void *arg) {
 			mirrorip->send((char *)header_ip, (int)(pp->header.caplen - ((char*)header_ip - (char*)packet)));
 		}
 		int voippacket = 0;
-		process_packet(header_ip->saddr, htons(header_udp->source), header_ip->daddr, htons(header_udp->dest), 
-			    data, datalen, handle, &pp->header, packet, istcp, 0, 1, &was_rtp, header_ip, &voippacket, 0,
-			    NULL, 0);
+		if(!useTcpReassembly || opt_enable_tcpreassembly != 2) {
+			process_packet(header_ip->saddr, htons(header_udp->source), header_ip->daddr, htons(header_udp->dest), 
+				data, datalen, handle, &pp->header, packet, istcp, 0, 1, &was_rtp, header_ip, &voippacket, 0,
+				NULL, 0);
+		}
 
 		// if packet was VoIP add it to ipaccount
 		if(opt_ipaccount) {
@@ -3513,8 +3556,9 @@ void readdump_libpcap(pcap_t *handle) {
 			data = (char *) header_tcp + (header_tcp->doff * 4);
 			datalen = (int)(header->caplen - ((unsigned long) data - (unsigned long) packet)); 
 			//if (datalen == 0 || !(sipportmatrix[htons(header_tcp->source)] || sipportmatrix[htons(header_tcp->dest)])) {
-			if (!(sipportmatrix[htons(header_tcp->source)] || sipportmatrix[htons(header_tcp->dest)])
-				and !(opt_skinny && (htons(header_tcp->source) == 2000 || htons(header_tcp->dest) == 2000))) {
+			if (!(sipportmatrix[htons(header_tcp->source)] || sipportmatrix[htons(header_tcp->dest)]) &&
+			    !(opt_enable_tcpreassembly && (httpportmatrix[htons(header_tcp->source)] || httpportmatrix[htons(header_tcp->dest)])) &&
+			    !(opt_skinny && (htons(header_tcp->source) == 2000 || htons(header_tcp->dest) == 2000))) {
 				// not interested in TCP packet other than SIP port
 				if(opt_ipaccount == 0) {
 					if(destroy) { 
@@ -3547,7 +3591,8 @@ void readdump_libpcap(pcap_t *handle) {
 		}
 
 		/* check for duplicate packets (md5 is expensive operation - enable only if you really need it */
-		if(datalen > 0 and opt_dup_check and prevmd5s != NULL and (traillen < datalen)) {
+		if(datalen > 0 && opt_dup_check && prevmd5s != NULL && (traillen < datalen) && 
+		   !(opt_enable_tcpreassembly && (httpportmatrix[htons(header_tcp->source)] || httpportmatrix[htons(header_tcp->dest)]))) {
 			MD5_Init(&ctx);
 			MD5_Update(&ctx, data, MAX(0, (unsigned long)datalen - traillen));
 			MD5_Final(md5, &ctx);

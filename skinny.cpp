@@ -47,8 +47,10 @@ extern int terminating;
 extern int opt_rtp_firstleg;
 extern int opt_sip_register;
 extern int opt_norecord_header;
+extern int opt_convert_dlt_sll_to_en10;
 extern char *sipportmatrix;
 extern pcap_t *handle;
+extern pcap_t *handle_dead_EN10MB;
 extern read_thread *threads;
 extern int opt_norecord_dtmf;
 extern int opt_onlyRTPheader;
@@ -1192,6 +1194,10 @@ struct skinny_container {
 	void *data;
 };
 
+#define ENABLE_CONVERT_DLT_SLL_TO_EN10	(pcap_dlink ==DLT_LINUX_SLL && opt_convert_dlt_sll_to_en10 && handle_dead_EN10MB)
+#define HANDLE_FOR_PCAP_SAVE 		(ENABLE_CONVERT_DLT_SLL_TO_EN10 ? handle_dead_EN10MB : handle)
+
+
 Call *new_skinny_channel(int state, char *data, int datalen, struct pcap_pkthdr *header, char *callidstr, u_int32_t saddr, u_int32_t daddr, int source, char *s, long unsigned int l){
 	if(opt_callslimit != 0 and opt_callslimit > calls) {
 		if(verbosity > 0)
@@ -1269,9 +1275,9 @@ Call *new_skinny_channel(int state, char *data, int datalen, struct pcap_pkthdr 
 				}
 				call->sip_pcapfilename = call->dirname() + (opt_newdir ? "/SKINNY" : "") + "/" + call->get_fbasename_safe() + ".pcap";
 				if(!file_exists(str2)) {
-					call->set_fsip_pcap(pcap_dump_open(handle, str2));
+					call->set_fsip_pcap(pcap_dump_open(HANDLE_FOR_PCAP_SAVE, str2));
 					if(call->get_fsip_pcap() == NULL) {
-						syslog(LOG_NOTICE,"pcap [%s] cannot be opened: %s\n", str2, pcap_geterr(handle));
+						syslog(LOG_NOTICE,"pcap [%s] cannot be opened: %s\n", str2, pcap_geterr(HANDLE_FOR_PCAP_SAVE));
 					}
 					if(verbosity > 3) {
 						syslog(LOG_NOTICE,"pcap_filename: [%s]\n", str2);
@@ -1291,9 +1297,9 @@ Call *new_skinny_channel(int state, char *data, int datalen, struct pcap_pkthdr 
 				}
 				call->rtp_pcapfilename = call->dirname() + (opt_newdir ? "/RTP" : "") + "/" + call->get_fbasename_safe() + ".pcap";
 				if(!file_exists(str2)) {
-					call->set_frtp_pcap(pcap_dump_open(handle, str2));
+					call->set_frtp_pcap(pcap_dump_open(HANDLE_FOR_PCAP_SAVE, str2));
 					if(call->get_frtp_pcap() == NULL) {
-						syslog(LOG_NOTICE,"pcap [%s] cannot be opened: %s\n", str2, pcap_geterr(handle));
+						syslog(LOG_NOTICE,"pcap [%s] cannot be opened: %s\n", str2, pcap_geterr(HANDLE_FOR_PCAP_SAVE));
 					}
 					if(verbosity > 3) {
 						syslog(LOG_NOTICE,"pcap_filename: [%s]\n", str2);
@@ -1313,9 +1319,9 @@ Call *new_skinny_channel(int state, char *data, int datalen, struct pcap_pkthdr 
 				}
 				call->pcapfilename = call->dirname() + (opt_newdir ? "/ALL/" : "/") + call->get_fbasename_safe() + ".pcap";
 				if(!file_exists(str2)) {
-					call->set_f_pcap(pcap_dump_open(handle, str2));
+					call->set_f_pcap(pcap_dump_open(HANDLE_FOR_PCAP_SAVE, str2));
 					if(call->get_f_pcap() == NULL) {
-						syslog(LOG_NOTICE,"pcap [%s] cannot be opened: %s\n", str2, pcap_geterr(handle));
+						syslog(LOG_NOTICE,"pcap [%s] cannot be opened: %s\n", str2, pcap_geterr(HANDLE_FOR_PCAP_SAVE));
 					}
 					if(verbosity > 3) {
 						syslog(LOG_NOTICE,"pcap_filename: [%s]\n", str2);

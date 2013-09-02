@@ -47,4 +47,18 @@ struct dstring
 	std::string str[2];
 };
 
+struct d_u_int32_t
+{
+	d_u_int32_t() {
+	}
+	d_u_int32_t(u_int32_t val1, u_int32_t val2) {
+		val[0] = val1;
+		val[1] = val2;
+	}
+	u_int32_t operator [] (int indexVal) {
+		return(val[indexVal]);
+	}
+	u_int32_t val[2];
+};
+
 #endif

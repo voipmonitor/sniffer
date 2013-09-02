@@ -290,10 +290,10 @@ string SqlDb::_escape(const char *inputString) {
 	return(inputString);
 }
 
-string SqlDb::insertQuery(string table, SqlDb_row row) {
+string SqlDb::insertQuery(string table, SqlDb_row row, bool enableSqlStringInContent) {
 	string query = 
 		"INSERT INTO " + table + " ( " + row.implodeFields(this->getFieldSeparator(), this->getFieldBorder()) + 
-		" ) VALUES ( " + row.implodeContent(this->getContentSeparator(), this->getContentBorder(), this->enableSqlStringInContent) + " )";
+		" ) VALUES ( " + row.implodeContent(this->getContentSeparator(), this->getContentBorder(), enableSqlStringInContent || this->enableSqlStringInContent) + " )";
 	return(query);
 }
 
@@ -859,6 +859,7 @@ void *MySqlStore_process_storing(void *storeProcess_addr) {
 MySqlStore_process::MySqlStore_process(int id, const char *host, const char *user, const char *password, const char *database) {
 	this->id = id;
 	this->terminated = false;
+	this->ignoreTerminating = false;
 	this->sqlDb = new SqlDb_mysql();
 	this->sqlDb->setConnectParameters(host, user, password, database);
 	this->sqlDb->connect();
@@ -923,7 +924,7 @@ void MySqlStore_process::store() {
 				}
 			}
 		}
-		if(terminating) {
+		if(terminating && !this->ignoreTerminating) {
 			break;
 		}
 		sleep(1);
@@ -937,6 +938,10 @@ void MySqlStore_process::lock() {
 
 void MySqlStore_process::unlock() {
 	pthread_mutex_unlock(&this->lock_mutex);
+}
+
+void MySqlStore_process::setIgnoreTerminating(bool ignoreTerminating) {
+	this->ignoreTerminating = ignoreTerminating;
 }
 
 MySqlStore::MySqlStore(const char *host, const char *user, const char *password, const char *database) {
@@ -966,6 +971,11 @@ void MySqlStore::lock(int id) {
 void MySqlStore::unlock(int id) {
 	MySqlStore_process* process = this->find(id);
 	process->unlock();
+}
+
+void MySqlStore::setIgnoreTerminating(int id, bool ignoreTerminating) {
+	MySqlStore_process* process = this->find(id);
+	process->setIgnoreTerminating(ignoreTerminating);
 }
 
 MySqlStore_process *MySqlStore::find(int id) {

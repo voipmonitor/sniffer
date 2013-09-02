@@ -74,7 +74,7 @@ public:
 	virtual bool query(string query) = 0;
 	virtual void prepareQuery(string *query);
 	virtual SqlDb_row fetchRow() = 0;
-	virtual string insertQuery(string table, SqlDb_row row);
+	virtual string insertQuery(string table, SqlDb_row row, bool enableSqlStringInContent = false);
 	virtual int insert(string table, SqlDb_row row);
 	virtual int getIdOrInsert(string table, string idField, string uniqueField, SqlDb_row row);
 	virtual int getInsertId() = 0;
@@ -268,6 +268,7 @@ public:
 	void store();
 	void lock();
 	void unlock();
+	void setIgnoreTerminating(bool ignoreTerminating);
 	int getId() {
 		return(this->id);
 	}
@@ -281,6 +282,7 @@ private:
 	SqlDb *sqlDb;
 	queue<string> query_buff;
 	bool terminated;
+	bool ignoreTerminating;
 };
 
 class MySqlStore {
@@ -290,6 +292,7 @@ public:
 	void query(const char *query_str, int id);
 	void lock(int id);
 	void unlock(int id);
+	void setIgnoreTerminating(int id, bool ignoreTerminating);
 	MySqlStore_process *find(int id);
 private:
 	map<int, MySqlStore_process*> processes;

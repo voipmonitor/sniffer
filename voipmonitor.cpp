@@ -56,6 +56,8 @@
 #include "ipaccount.h"
 #include "pcap_queue.h"
 #include "generator.h"
+#include "tcpreassembly.h"
+#include "http.h"
 
 #if defined(QUEUE_MUTEX) || defined(QUEUE_NONBLOCK)
 extern "C" {
@@ -211,6 +213,7 @@ char opt_keycheck[1024] = "";
 char opt_convert_char[64] = "";
 int opt_skinny = 0;
 int opt_read_from_file = 0;
+char opt_pb_read_from_file[256] = "";
 int opt_dscp = 0;
 int opt_cdrproxy = 1;
 int opt_enable_lua_tables = 0;
@@ -218,7 +221,9 @@ int opt_generator = 0;
 int opt_generator_channels = 1;
 int opt_skipdefault = 0;
 int opt_filesclean = 1;
+int opt_enable_tcpreassembly = 0;
 int opt_allow_zerossrc = 0;
+int opt_convert_dlt_sll_to_en10 = 0;
 
 unsigned int opt_maxpoolsize = 0;
 unsigned int opt_maxpooldays = 0;
@@ -346,6 +351,7 @@ pthread_t cleanspool_thread;	// ID of worker clean thread
 int terminating;		// if set to 1, worker thread will terminate
 int terminating2;		// if set to 1, worker thread will terminate
 char *sipportmatrix;		// matrix of sip ports to monitor
+char *httpportmatrix;		// matrix of http ports to monitor
 char *ipaccountportmatrix;
 
 queue<string> mysqlquery;
@@ -360,6 +366,7 @@ pcap_packet *qring;
 #endif
 
 pcap_t *handle = NULL;		// pcap handler 
+pcap_t *handle_dead_EN10MB = NULL;
 
 read_thread *threads;
 
@@ -383,6 +390,10 @@ SqlDb *sqlDb = NULL;
 MySqlStore *sqlStore = NULL;
 
 char mac[32] = "";
+
+TcpReassembly *tcpReassembly;
+HttpData *httpData;
+
 
 void mysqlquerypush(string q) {
         pthread_mutex_lock(&mysqlquery_lock);
@@ -560,7 +571,7 @@ void clean_maxpoolsize() {
 	if(opt_maxpoolsize == 0) {
 		return;
 	}
-	
+
 	if(debugclean) cout << "clean_maxpoolsize\n";
 
 	// check total size
@@ -1774,6 +1785,16 @@ int load_config(char *fname) {
 		}
 	}
 
+	// http ports
+	if (ini.GetAllValues("general", "httpport", values)) {
+		CSimpleIni::TNamesDepend::const_iterator i = values.begin();
+		// reset default port 
+		httpportmatrix[5060] = 0;
+		for (; i != values.end(); ++i) {
+			httpportmatrix[atoi(i->pItem)] = 1;
+		}
+	}
+
 	// ipacc ports
 	if (ini.GetAllValues("general", "ipaccountport", values)) {
 		CSimpleIni::TNamesDepend::const_iterator i = values.begin();
@@ -2355,6 +2376,14 @@ int load_config(char *fname) {
 	if((value = ini.GetValue("general", "mirror_bind_dlt", NULL))) {
 		opt_pcap_queue_receive_dlt = atoi(value);
 	}
+	
+	if((value = ini.GetValue("general", "tcpreassembly", NULL))) {
+		opt_enable_tcpreassembly = strcmp(value, "only") ? yesno(value) : 2;
+	}
+	
+	if((value = ini.GetValue("general", "convert_dlt_sll_to_en10", NULL))) {
+		opt_convert_dlt_sll_to_en10 = yesno(value);
+	}
 
 	/*
 	
@@ -2562,6 +2591,7 @@ int main(int argc, char *argv[]) {
 	sipportmatrix = (char*)calloc(1, sizeof(char) * 65537);
 	// set default SIP port to 5060
 	sipportmatrix[5060] = 1;
+	httpportmatrix = (char*)calloc(1, sizeof(char) * 65537);
 
 	pthread_mutex_init(&mysqlquery_lock, NULL);
 
@@ -2758,11 +2788,15 @@ int main(int argc, char *argv[]) {
 				verbosity = atoi(optarg);
 				break;
 			case 'r':
-				strcpy(fname, optarg);
-				opt_read_from_file = 1;
-				opt_scanpcapdir[0] = '\0';
-				//opt_cachedir[0] = '\0';
-				opt_pcap_queue = 0;
+				if(!strncmp(optarg, "pb:", 3)) {
+					strcpy(opt_pb_read_from_file, optarg + 3);
+				} else {
+					strcpy(fname, optarg);
+					opt_read_from_file = 1;
+					opt_scanpcapdir[0] = '\0';
+					//opt_cachedir[0] = '\0';
+					opt_pcap_queue = 0;
+				}
 				break;
 			case 'c':
 				opt_nocdr = 1;
@@ -3083,6 +3117,22 @@ int main(int argc, char *argv[]) {
 	signal(SIGTERM,sigterm_handler);
 	
 	calltable = new Calltable;
+	
+	if(opt_enable_tcpreassembly) {
+		bool setHttpPorts = false;
+		for(int i = 0; i < 65537; i++) {
+			if(httpportmatrix[i]) {
+				setHttpPorts = true;
+			}
+		}
+		if(setHttpPorts) {
+			tcpReassembly = new TcpReassembly;
+			tcpReassembly->setEnableHttpForceInit();
+			tcpReassembly->setEnableCrazySequence();
+			httpData = new HttpData;
+			tcpReassembly->setDataCallback(httpData);
+		}
+	}
 
 	// preparing pcap reading and pcap filters 
 	
@@ -3157,6 +3207,9 @@ int main(int argc, char *argv[]) {
 					fprintf(stderr, "libpcap error: [%s]\n", pcap_geterr(handle));
 					return(2);
 				}
+			}
+			if(opt_convert_dlt_sll_to_en10) {
+				handle_dead_EN10MB = pcap_open_dead(DLT_EN10MB, 65535);
 			}
 		} else {
 			// if reading file
@@ -3265,7 +3318,7 @@ int main(int argc, char *argv[]) {
 	if (opt_fork){
 		daemonize();
 	}
-
+	
 	pthread_create(&cleanspool_thread, NULL, clean_spooldir, NULL);
 	
 	// start thread processing queued cdr - supressed if run as sender
@@ -3444,6 +3497,10 @@ int main(int argc, char *argv[]) {
 					delete pcapQueueR;
 					
 				} else {
+				 
+					if(opt_pb_read_from_file[0] && opt_enable_tcpreassembly) {
+						sqlStore->setIgnoreTerminating(STORE_PROC_ID_HTTP, true);
+					}
 				
 					PcapQueue_readFromInterface *pcapQueueI = new PcapQueue_readFromInterface("interface");
 					pcapQueueI->setInterfaceName(ifname);
@@ -3463,18 +3520,36 @@ int main(int argc, char *argv[]) {
 					while(!terminating) {
 						if(_counter && !(_counter % 10)) {
 							pcapQueueQ->pcapStat(10);
+							if(tcpReassembly) {
+								tcpReassembly->setDoPrintContent();
+							}
 						}
 						sleep(1);
 						++_counter;
 					}
 					
 					pcapQueueI->terminate();
-					sleep(1);
+					sleep(opt_pb_read_from_file[0] && opt_enable_tcpreassembly ? 30 : 1);
 					pcapQueueQ->terminate();
 					sleep(1);
 					
+					if(tcpReassembly) {
+						delete tcpReassembly;
+						tcpReassembly = NULL;
+					}
+					if(httpData) {
+						delete httpData;
+						httpData = NULL;
+					}
+					
 					delete pcapQueueI;
 					delete pcapQueueQ;
+					
+					if(opt_pb_read_from_file[0] && opt_enable_tcpreassembly) {
+						sqlStore->setIgnoreTerminating(STORE_PROC_ID_HTTP, false);
+						sleep(2);
+					}
+					
 				}
 				
 			} else {
@@ -3527,8 +3602,13 @@ int main(int argc, char *argv[]) {
 	}
 
 	// close handler
-	if(opt_scanpcapdir[0] == '\0' && !opt_pcap_queue) {
-		pcap_close(handle);
+	if(opt_scanpcapdir[0] == '\0') {
+		if(!opt_pcap_queue) {
+			pcap_close(handle);
+		}
+		if(handle_dead_EN10MB) {
+			pcap_close(handle_dead_EN10MB);
+		}
 	}
 	
 	// flush all queues
@@ -3552,6 +3632,13 @@ int main(int argc, char *argv[]) {
 			delete call;
 			calls--;
 	}
+	
+	if(tcpReassembly) {
+		delete tcpReassembly;
+	}
+	if(httpData) {
+		delete httpData;
+	}
 
 	if(!opt_nocdr) {
 		pthread_mutex_lock(&mysqlquery_lock);
@@ -3564,6 +3651,7 @@ int main(int argc, char *argv[]) {
 	}
 
 	free(sipportmatrix);
+	free(httpportmatrix);
 	if(opt_ipaccount) {
 		free(ipaccountportmatrix);
 	}
