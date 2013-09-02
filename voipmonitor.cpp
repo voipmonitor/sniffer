@@ -2381,7 +2381,7 @@ int load_config(char *fname) {
 		opt_enable_tcpreassembly = strcmp(value, "only") ? yesno(value) : 2;
 	}
 	
-	if((value = ini.GetValue("general", "convert_dlt_sll_to_en10", NULL))) {
+	if((value = ini.GetValue("general", "convert_dlt_sll2en10", NULL))) {
 		opt_convert_dlt_sll_to_en10 = yesno(value);
 	}
 

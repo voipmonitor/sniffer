@@ -1101,7 +1101,9 @@ Call::convertRawToWav() {
 			default:
 				syslog(LOG_ERR, "Call [%s] cannot be converted to WAV, unknown payloadtype [%d]\n", raw, codec);
 			}
-			unlink(raw);
+#if UNLINK_RAW
+			 unlink(raw);
+#endif
 		}
 		fclose(pl);
 		unlink(rawInfo);
