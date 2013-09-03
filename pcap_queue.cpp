@@ -64,6 +64,7 @@ extern Call *process_packet(unsigned int saddr, int source, unsigned int daddr, 
 			    pcap_block_store *block_store, int block_store_index);
 
 extern int verbosity;
+extern int verbosityE;
 extern int terminating;
 extern int opt_udpfrag;
 extern int opt_skinny;
@@ -294,6 +295,9 @@ int pcap_block_store::addRestoreChunk(u_char *buffer, size_t size, size_t *offse
 }
 
 bool pcap_block_store::compress() {
+	if(this->size_compress) {
+		return(true);
+	}
 	size_t snappyBuffSize = snappy_max_compressed_length(this->size);
 	u_char *snappyBuff = (u_char*)malloc(snappyBuffSize);
 	snappy_status snappyRslt = snappy_compress((char*)this->block, this->size, (char*)snappyBuff, &snappyBuffSize);
@@ -548,6 +552,8 @@ pcap_store_queue::pcap_store_queue(const char *fileStoreFolder) {
 	this->_sync_queue = 0;
 	this->_sync_fileStore = 0;
 	this->cleanupFileStoreCounter = 0;
+	this->lastTimeLogErrDiskIsFull = 0;
+	this->lastTimeLogErrMemoryIsFull = 0;
 	if(!access(fileStoreFolder, F_OK )) {
 		mkdir(fileStoreFolder, 0700);
 	}
@@ -568,7 +574,7 @@ pcap_store_queue::~pcap_store_queue() {
 	}
 }
 
-bool pcap_store_queue::push(pcap_block_store *blockStore, size_t addUsedSize) {
+bool pcap_store_queue::push(pcap_block_store *blockStore, size_t addUsedSize, bool deleteBlockStoreIfFail) {
 	bool saveToFileStore = false;
 	bool locked_fileStore = false;
 	if(opt_pcap_queue_store_queue_max_disk_size &&
@@ -593,8 +599,14 @@ bool pcap_store_queue::push(pcap_block_store *blockStore, size_t addUsedSize) {
 			this->lock_fileStore();
 		}
 		if(this->getFileStoreUseSize(false) > opt_pcap_queue_store_queue_max_disk_size) {
-			syslog(LOG_ERR, "packetbuffer: DISK IS FULL");
-			delete blockStore;
+			if(!this->lastTimeLogErrDiskIsFull ||
+			   getTimeMS() > this->lastTimeLogErrDiskIsFull + 1000) {
+				syslog(LOG_ERR, "packetbuffer: DISK IS FULL");
+				this->lastTimeLogErrDiskIsFull = getTimeMS();
+			}
+			if(deleteBlockStoreIfFail) {
+				delete blockStore;
+			}
 			this->unlock_fileStore();
 			return(false);
 		}
@@ -611,16 +623,24 @@ bool pcap_store_queue::push(pcap_block_store *blockStore, size_t addUsedSize) {
 		}
 		this->unlock_fileStore();
 		if(!fileStore->push(blockStore)) {
-			delete blockStore;
+			if(deleteBlockStoreIfFail) {
+				delete blockStore;
+			}
 			return(false);
 		}
 	} else {
 		if(locked_fileStore) {
 			this->unlock_fileStore();
 		}
-		if(this->sizeOfBlocksInMemory >= opt_pcap_queue_store_queue_max_memory_size) {
-			syslog(LOG_ERR, "packetbuffer: MEMORY IS FULL");
-			delete blockStore;
+		if(this->sizeOfBlocksInMemory + addUsedSize >= opt_pcap_queue_store_queue_max_memory_size) {
+			if(!this->lastTimeLogErrMemoryIsFull ||
+			   getTimeMS() > this->lastTimeLogErrMemoryIsFull + 1000) {
+				syslog(LOG_ERR, "packetbuffer: MEMORY IS FULL");
+				this->lastTimeLogErrMemoryIsFull = getTimeMS();
+			}
+			if(deleteBlockStoreIfFail) {
+				delete blockStore;
+			}
 			return(false);
 		} else {
 			this->add_sizeOfBlocksInMemory(blockStore->getUseSize());
@@ -797,7 +817,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 	if(!VERBOSE && !DEBUG_VERBOSE) {
 		return;
 	}
-	if(DEBUG_VERBOSE) {
+	if(DEBUG_VERBOSE || verbosityE > 0) {
 		string statString = "\n";
 		if(statCalls) {
 			ostringstream outStr;
@@ -820,19 +840,21 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 				this->pcapStatString_interface(statPeriod)) +
 			"\n";
 		if(statString.length()) {
-			//if(DEBUG_VERBOSE) {
+			if(DEBUG_VERBOSE) {
 				cout << statString;
-			/*} else {
+			} else {
 				syslog(LOG_NOTICE, "packetbuffer stat:\n%s", statString.c_str());
-			}*/
+			}
 		}
 	} else {
 		ostringstream outStr;
 		double memoryBufferPerc = this->pcapStat_get_memory_buffer_perc();
+		double memoryBufferPerc_trash = this->pcapStat_get_memory_buffer_perc_trash();
 		outStr << fixed
 		       << "calls[" << calltable->calls_listMAP.size() << "][" << calls << "] "
 		       << "cdrqueue[" << calltable->calls_queue.size() << "] "
-		       << "heap[" << setprecision(1) << memoryBufferPerc << "%] ";
+		       << "heap[" << setprecision(1) << memoryBufferPerc << "% / "
+				  << setprecision(1) << memoryBufferPerc_trash << "% processing] ";
 		if(this->instancePcapHandle) {
 			unsigned long bypassBufferSizeExeeded = this->instancePcapHandle->pcapStat_get_bypass_buffer_size_exeeded();
 			outStr << "heapoverruns[" << bypassBufferSizeExeeded << "] ";
@@ -1761,7 +1783,7 @@ void *PcapQueue_readFromFifo::threadFunction(void *) {
 	} else if(__config_BYPASS_FIFO) {
 		pcap_block_store *blockStore;
 		while(!TERMINATING) {
-			blockStore = blockStoreBypassQueue.pop();
+			blockStore = blockStoreBypassQueue.pop(false);
 			if(!blockStore) {
 				usleep(1000);
 				continue;
@@ -1770,7 +1792,9 @@ void *PcapQueue_readFromFifo::threadFunction(void *) {
 			if(opt_pcap_queue_compress) {
 				blockStore->compress();
 			}
-			this->pcapStoreQueue.push(blockStore, this->blockStoreTrash_size);
+			if(this->pcapStoreQueue.push(blockStore, this->blockStoreTrash_size, false)) {
+				blockStoreBypassQueue.pop();
+			}
 		}
 	} else {
 		pcap_pkthdr_plus header;
@@ -1940,12 +1964,19 @@ string PcapQueue_readFromFifo::pcapStatString_memory_buffer(int statPeriod) {
 		       << setw(6) << (useSize / 1024 / 1024) << "MB" << setw(6) << ""
 		       << " " << setw(5) << setprecision(1) << (100. * useSize / opt_pcap_queue_store_queue_max_memory_size) << "%"
 		       << " of " << setw(6) << (opt_pcap_queue_store_queue_max_memory_size / 1024 / 1024) << "MB" << endl;
+		outStr << "PACKETBUFFER_TRASH_HEAP:   "
+		       << setw(6) << (this->blockStoreTrash_size / 1024 / 1024) << "MB" << endl;
 	}
 	return(outStr.str());
 }
 
 double PcapQueue_readFromFifo::pcapStat_get_memory_buffer_perc() {
 	uint64_t useSize = this->pcapStoreQueue.sizeOfBlocksInMemory + this->blockStoreTrash_size;
+	return(100. * useSize / opt_pcap_queue_store_queue_max_memory_size);
+}
+
+double PcapQueue_readFromFifo::pcapStat_get_memory_buffer_perc_trash() {
+	uint64_t useSize = this->blockStoreTrash_size;
 	return(100. * useSize / opt_pcap_queue_store_queue_max_memory_size);
 }
 

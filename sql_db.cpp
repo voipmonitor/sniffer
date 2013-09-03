@@ -1697,10 +1697,10 @@ void SqlDb_mysql::createSchema() {
 		"KEY `timestamp` (`timestamp`),\
 		KEY `callid` (`callid`),\
 		KEY `sessid` (`sessid`),\
-		KEY `external_transaction_id` (`external_transaction_id`)" +
+		KEY `external_transaction_id` (`external_transaction_id`)," +
 		(opt_cdr_partition ? 
-			"" :
-			",CONSTRAINT fk__http_jj__master_id\
+			"KEY `master_id` (`master_id`)" :
+			"CONSTRAINT fk__http_jj__master_id\
 				FOREIGN KEY (`master_id`) REFERENCES `http_jj` (`id`)\
 				ON DELETE CASCADE ON UPDATE CASCADE") +
 		") ENGINE = InnoDB" +

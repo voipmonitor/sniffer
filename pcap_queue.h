@@ -29,14 +29,16 @@ public:
 		this->add_sizeOfBlocks(blockStore->getUseSize());
 		this->unlock_queue();
 	}
-	pcap_block_store* pop() {
+	pcap_block_store* pop(bool removeFromFront = true) {
 		pcap_block_store* blockStore = NULL;
 		this->lock_queue();
 		if(this->queue.size()) {
 			blockStore = this->queue.front();
-			this->queue.pop_front();
+			if(removeFromFront) {
+				this->queue.pop_front();
+			}
 		}
-		if(blockStore) {
+		if(blockStore && removeFromFront) {
 			this->sub_sizeOfBlocks(blockStore->getUseSize());
 		}
 		this->unlock_queue();
@@ -133,7 +135,7 @@ class pcap_store_queue {
 public:
 	pcap_store_queue(const char *fileStoreFolder);
 	~pcap_store_queue();
-	bool push(pcap_block_store *blockStore, size_t addUsedSize = 0);
+	bool push(pcap_block_store *blockStore, size_t addUsedSize = 0, bool deleteBlockStoreIfFail = true);
 	bool pop(pcap_block_store **blockStore);
 	size_t getQueueSize() {
 		return(this->queue.size());
@@ -169,6 +171,8 @@ private:
 	volatile int _sync_queue;
 	volatile int _sync_fileStore;
 	int cleanupFileStoreCounter;
+	u_long lastTimeLogErrDiskIsFull;
+	u_long lastTimeLogErrMemoryIsFull;
 friend class PcapQueue_readFromFifo;
 };
 
@@ -218,6 +222,7 @@ protected:
 	virtual unsigned long pcapStat_get_bypass_buffer_size_exeeded() { return(0); }
 	virtual string pcapStatString_memory_buffer(int statPeriod) { return(""); }
 	virtual double pcapStat_get_memory_buffer_perc() { return(0); }
+	virtual double pcapStat_get_memory_buffer_perc_trash() { return(0); }
 	virtual string pcapStatString_disk_buffer(int statPeriod) { return(""); }
 	virtual double pcapStat_get_disk_buffer_perc() { return(-1); }
 	virtual double pcapStat_get_disk_buffer_mb() { return(-1); }
@@ -348,6 +353,7 @@ protected:
 	}
 	string pcapStatString_memory_buffer(int statPeriod);
 	double pcapStat_get_memory_buffer_perc();
+	double pcapStat_get_memory_buffer_perc_trash();
 	string pcapStatString_disk_buffer(int statPeriod);
 	double pcapStat_get_disk_buffer_perc();
 	double pcapStat_get_disk_buffer_mb();

@@ -160,7 +160,8 @@ int opt_rtcp = 1;		// pair RTP+1 port to RTCP and save it.
 int opt_nocdr = 0;		// do not save cdr?
 int opt_gzipPCAP = 0;		// compress PCAP data ? 
 int opt_mos_g729 = 0;		// calculate MOS for G729 codec
-int verbosity = 0;		// cebug level
+int verbosity = 0;		// debug level
+int verbosityE = 0;		// debug extended level
 int opt_rtp_firstleg = 0;	// if == 1 then save RTP stream only for first INVITE leg in case you are 
 				// sniffing on SIP proxy where voipmonitor see both SIP leg. 
 int opt_jitterbuffer_f1 = 1;		// turns off/on jitterbuffer simulator to compute MOS score mos_f1
@@ -2790,6 +2791,9 @@ int main(int argc, char *argv[]) {
 				break;
 			case 'v':
 				verbosity = atoi(optarg);
+				if(char *pointToSeparator = strchr(optarg, '/')) {
+					verbosityE = atoi(pointToSeparator + 1);
+				}
 				break;
 			case 'r':
 				if(!strncmp(optarg, "pb:", 3)) {
@@ -3488,8 +3492,8 @@ int main(int argc, char *argv[]) {
 					
 					uint64_t _counter = 0;
 					while(!terminating) {
-						if(_counter && !(_counter % 10)) {
-							pcapQueueR->pcapStat(10);
+						if(_counter && (verbosityE > 0 || !(_counter % 10))) {
+							pcapQueueR->pcapStat(verbosityE > 0 ? 1 : 10);
 						}
 						sleep(1);
 						++_counter;
@@ -3522,8 +3526,8 @@ int main(int argc, char *argv[]) {
 					
 					uint64_t _counter = 0;
 					while(!terminating) {
-						if(_counter && !(_counter % 10)) {
-							pcapQueueQ->pcapStat(10);
+						if(_counter && (verbosityE > 0 || !(_counter % 10))) {
+							pcapQueueQ->pcapStat(verbosityE > 0 ? 1 : 10);
 							if(tcpReassembly) {
 								tcpReassembly->setDoPrintContent();
 							}
