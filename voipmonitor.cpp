@@ -226,6 +226,7 @@ int opt_filesclean = 1;
 int opt_enable_tcpreassembly = 0;
 int opt_allow_zerossrc = 0;
 int opt_convert_dlt_sll_to_en10 = 0;
+int opt_mysqlcompress = 1;
 
 unsigned int opt_maxpoolsize = 0;
 unsigned int opt_maxpooldays = 0;
@@ -345,6 +346,8 @@ TELNUMfilter *telnumfilter_reload = NULL;	// IP filter based on MYSQL for reload
 int telnumfilter_reload_do = 0;	// for reload in main thread
 
 pthread_t call_thread;		// ID of worker storing CDR thread 
+pthread_t cdr_thread;		
+pthread_t sql_thread;		
 pthread_t readdump_libpcap_thread;
 pthread_t manager_thread = 0;	// ID of worker manager thread 
 pthread_t manager_client_thread;	// ID of worker manager thread 
@@ -1530,6 +1533,72 @@ void *moving_cache( void *dummy ) {
 	return NULL;
 }
 
+void *storing_sql( void *dummy ) {
+	while(1) {
+		// process mysql query queue - concatenate queries to N messages
+		int size = 0;
+		int msgs = 50;
+                int _counterIpacc = 0;
+		string queryqueue = "";
+		int mysqlQuerySize = mysqlquery.size();
+
+		while(1) {
+			pthread_mutex_lock(&mysqlquery_lock);
+			if(mysqlquery.size() == 0) {
+				pthread_mutex_unlock(&mysqlquery_lock);
+				if(queryqueue != "") {
+					// send the rest 
+					sqlDb->query("drop procedure if exists " + insert_funcname);
+					sqlDb->query("create procedure " + insert_funcname + "()\nbegin\n" + queryqueue + "\nend");
+					sqlDb->query("call " + insert_funcname + "();");
+					//sqlDb->query(queryqueue);
+					queryqueue = "";
+				}
+				break;
+			}
+			string query = mysqlquery.front();
+			mysqlquery.pop();
+			--mysqlQuerySize;
+			pthread_mutex_unlock(&mysqlquery_lock);
+			queryqueue.append(query + "; ");
+			if(verbosity > 0) {
+				if(query.find("ipacc ") != string::npos) {
+					++_counterIpacc;
+				}
+			}
+			if(size < msgs) {
+				size++;
+			} else {
+				sqlDb->query("drop procedure if exists " + insert_funcname);
+				sqlDb->query("create procedure " + insert_funcname + "()\nbegin\n" + queryqueue + "\nend");
+				sqlDb->query("call " + insert_funcname + "();");
+				//sqlDb->query(queryqueue);
+				queryqueue = "";
+				size = 0;
+			}
+
+		}
+
+		if(verbosity > 0 && _counterIpacc > 0) {
+			int _start = time(NULL);
+			int diffTime = time(NULL) - _start;
+			cout << "SAVE IPACC (" << sqlDateTimeString(time(NULL)) << "): " << _counterIpacc << " rec";
+			if(diffTime > 0) {
+				cout << "  " << diffTime << " s  " << (_counterIpacc/diffTime) << " rec/s";
+			}
+			cout << endl;
+		}
+                
+
+		if(terminating) {
+			break;
+		}
+	
+		sleep(1);
+	}
+	return NULL;
+}
+
 /* cycle calls_queue and save it to MySQL */
 void *storing_cdr( void *dummy ) {
 	Call *call;
@@ -1562,6 +1631,9 @@ void *storing_cdr( void *dummy ) {
 					query.append(limitDay);
 					sqlDb->query(query);
 					query = "ALTER TABLE cdr_dtmf DROP PARTITION ";
+					query.append(limitDay);
+					sqlDb->query(query);
+					query = "ALTER TABLE cdr_proxy DROP PARTITION ";
 					query.append(limitDay);
 					sqlDb->query(query);
 
@@ -1658,58 +1730,6 @@ void *storing_cdr( void *dummy ) {
 			calltable->unlock_calls_deletequeue();
 		}
 
-		// process mysql query queue - concatenate queries to N messages
-		int size = 0;
-		int msgs = 50;
-		int _start = time(NULL);
-                int _counterIpacc = 0;
-		string queryqueue = "";
-		int mysqlQuerySize = mysqlquery.size();
-		while(1) {
-			pthread_mutex_lock(&mysqlquery_lock);
-			//if(mysqlQuerySize == 0) {
-			if(mysqlquery.size() == 0) {
-				pthread_mutex_unlock(&mysqlquery_lock);
-				if(queryqueue != "") {
-					// send the rest 
-					sqlDb->query("drop procedure if exists " + insert_funcname);
-					sqlDb->query("create procedure " + insert_funcname + "()\nbegin\n" + queryqueue + "\nend");
-					sqlDb->query("call " + insert_funcname + "();");
-					//sqlDb->query(queryqueue);
-					queryqueue = "";
-				}
-				break;
-			}
-			string query = mysqlquery.front();
-			mysqlquery.pop();
-			--mysqlQuerySize;
-			pthread_mutex_unlock(&mysqlquery_lock);
-			queryqueue.append(query + "; ");
-			if(verbosity > 0) {
-				if(query.find("ipacc ") != string::npos) {
-					++_counterIpacc;
-				}
-			}
-			if(size < msgs) {
-				size++;
-			} else {
-				sqlDb->query("drop procedure if exists " + insert_funcname);
-				sqlDb->query("create procedure " + insert_funcname + "()\nbegin\n" + queryqueue + "\nend");
-				sqlDb->query("call " + insert_funcname + "();");
-				//sqlDb->query(queryqueue);
-				queryqueue = "";
-				size = 0;
-			}
-		}
-		if(verbosity > 0 && _counterIpacc > 0) {
-			int diffTime = time(NULL) - _start;
-			cout << "SAVE IPACC (" << sqlDateTimeString(time(NULL)) << "): " << _counterIpacc << " rec";
-			if(diffTime > 0) {
-				cout << "  " << diffTime << " s  " << (_counterIpacc/diffTime) << " rec/s";
-			}
-			cout << endl;
-		}
-                
 #ifdef ISCURL
 		if(opt_cdrurl[0] != '\0' && cdrtosend.length() > 0) {
 			sendCDR(cdrtosend);
@@ -2105,7 +2125,9 @@ int load_config(char *fname) {
 	   (value = ini.GetValue("general", "sqlcdr_sipresp_table", NULL))) {
 		strncpy(sql_cdr_sip_response_table, value, sizeof(sql_cdr_sip_response_table));
 	}
-	
+	if((value = ini.GetValue("general", "mysqlcompress", NULL))) {
+		opt_mysqlcompress = atoi(value);
+	}
 	if((value = ini.GetValue("general", "mysqlhost", NULL))) {
 		strncpy(mysql_host, value, sizeof(mysql_host));
 	}
@@ -3329,11 +3351,12 @@ int main(int argc, char *argv[]) {
 	
 	pthread_create(&cleanspool_thread, NULL, clean_spooldir, NULL);
 	
-	// start thread processing queued cdr - supressed if run as sender
+	// start thread processing queued cdr and sql queue - supressed if run as sender
 	if(!(opt_pcap_threaded && opt_pcap_queue && 
 	     !opt_pcap_queue_receive_from_ip.length() &&
 	     opt_pcap_queue_send_to_ip.length())) {
 		pthread_create(&call_thread, NULL, storing_cdr, NULL);
+		pthread_create(&cdr_thread, NULL, storing_sql, NULL);
 	}
 
 	if(opt_cachedir[0] != '\0') {
@@ -3627,6 +3650,7 @@ int main(int argc, char *argv[]) {
 	     !opt_pcap_queue_receive_from_ip.length() &&
 	     opt_pcap_queue_send_to_ip.length())) {
 		pthread_join(call_thread, NULL);
+		pthread_join(cdr_thread, NULL);
 	}
 	while(calltable->calls_queue.size() != 0) {
 			call = calltable->calls_queue.front();
