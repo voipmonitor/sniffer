@@ -851,9 +851,9 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 		double memoryBufferPerc_trash = this->pcapStat_get_memory_buffer_perc_trash();
 		outStr << fixed
 		       << "calls[" << calltable->calls_listMAP.size() << "][" << calls << "] "
-		       << "SQLqueue[" << mysqlquery.size() << "] "
+		       << "SQLqueue[" << mysqlquery.size() << "]"
 		       << "heap[" << setprecision(1) << memoryBufferPerc << "% / "
-				  << setprecision(1) << memoryBufferPerc_trash << "% ] ";
+				  << setprecision(1) << memoryBufferPerc_trash << "%] ";
 		if(this->instancePcapHandle) {
 			unsigned long bypassBufferSizeExeeded = this->instancePcapHandle->pcapStat_get_bypass_buffer_size_exeeded();
 			outStr << "hoverruns[" << bypassBufferSizeExeeded << "] ";
@@ -2177,8 +2177,8 @@ void PcapQueue_readFromFifo::processPacket(pcap_pkthdr_plus *header_plus, u_char
 	tcphdr *header_tcp;
 	udphdr2 *header_udp;
 	udphdr2 header_udp_tmp;
-	char *data;
-	int datalen;
+	char *data = NULL;
+	int datalen = 0;
 	int istcp = 0;
 	int was_rtp;
 	bool useTcpReassembly = false;

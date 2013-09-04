@@ -25,6 +25,7 @@ extern char get_customers_pn_query[1024];
 extern char mysql_database[256];
 extern int opt_dscp;
 extern int opt_enable_lua_tables;
+extern int opt_mysqlcompress;
 
 int sql_noerror = 0;
 int sql_disable_next_attempt_if_error = 0;
@@ -1079,6 +1080,12 @@ string reverseString(const char *str) {
 
 void SqlDb_mysql::createSchema() {
 
+	string compress = "";
+
+	if(opt_mysqlcompress) {
+		compress = "ROW_FORMAT=COMPRESSED";
+	}
+
 	syslog(LOG_DEBUG, "creating and upgrading MySQL schema...");
 	sql_disable_next_attempt_if_error = 1;
 	this->multi_off();
@@ -1129,7 +1136,7 @@ void SqlDb_mysql::createSchema() {
 			`ua` varchar(512) DEFAULT NULL,\
 		PRIMARY KEY (`id`),\
 		UNIQUE KEY `ua` (`ua`)\
-	) ENGINE=InnoDB DEFAULT CHARSET=latin1 ROW_FORMAT=COMPRESSED;");
+	) ENGINE=InnoDB DEFAULT CHARSET=latin1 " + compress + ";");
 
 	char partDayName[20] = "";
 	char limitDay[20] = "";
@@ -1312,7 +1319,7 @@ void SqlDb_mysql::createSchema() {
 			",CONSTRAINT `cdr_ibfk_1` FOREIGN KEY (`lastSIPresponse_id`) REFERENCES `cdr_sip_response` (`id`) ON UPDATE CASCADE,\
 			CONSTRAINT `cdr_ibfk_2` FOREIGN KEY (`a_ua_id`) REFERENCES `cdr_ua` (`id`) ON UPDATE CASCADE,\
 			CONSTRAINT `cdr_ibfk_3` FOREIGN KEY (`b_ua_id`) REFERENCES `cdr_ua` (`id`) ON UPDATE CASCADE") +
-	") ENGINE=InnoDB DEFAULT CHARSET=latin1 ROW_FORMAT=COMPRESSED" + 
+	") ENGINE=InnoDB DEFAULT CHARSET=latin1 " + compress +  
 	(opt_cdr_partition ?
 		(opt_cdr_partition_oldver ? 
 			string(" PARTITION BY RANGE (to_days(calldate))(\
@@ -1359,7 +1366,7 @@ void SqlDb_mysql::createSchema() {
 		(opt_cdr_partition ?
 			"" :
 			",CONSTRAINT `cdr_next_ibfk_1` FOREIGN KEY (`cdr_ID`) REFERENCES `cdr` (`ID`) ON DELETE CASCADE ON UPDATE CASCADE") +
-	") ENGINE=InnoDB DEFAULT CHARSET=latin1 ROW_FORMAT=COMPRESSED" + 
+	") ENGINE=InnoDB DEFAULT CHARSET=latin1 " + compress +  
 	(opt_cdr_partition ?
 		(opt_cdr_partition_oldver ? 
 			string(" PARTITION BY RANGE (to_days(calldate))(\
@@ -1384,7 +1391,7 @@ void SqlDb_mysql::createSchema() {
 		(opt_cdr_partition ?
 			"" :
 			",CONSTRAINT `cdr_proxy_ibfk_1` FOREIGN KEY (`cdr_ID`) REFERENCES `cdr` (`ID`) ON DELETE CASCADE ON UPDATE CASCADE") +
-	") ENGINE=InnoDB DEFAULT CHARSET=latin1 ROW_FORMAT=COMPRESSED" + 
+	") ENGINE=InnoDB DEFAULT CHARSET=latin1 " + compress  + 
 	(opt_cdr_partition ?
 		(opt_cdr_partition_oldver ? 
 			string(" PARTITION BY RANGE (to_days(calldate))(\
@@ -1423,7 +1430,7 @@ void SqlDb_mysql::createSchema() {
 		(opt_cdr_partition ?
 			"" :
 			",CONSTRAINT `cdr_rtp_ibfk_1` FOREIGN KEY (`cdr_ID`) REFERENCES `cdr` (`ID`) ON DELETE CASCADE ON UPDATE CASCADE") +
-	") ENGINE=InnoDB DEFAULT CHARSET=latin1 ROW_FORMAT=COMPRESSED" + 
+	") ENGINE=InnoDB DEFAULT CHARSET=latin1 " + compress +  
 	(opt_cdr_partition ?
 		(opt_cdr_partition_oldver ? 
 			string(" PARTITION BY RANGE (to_days(calldate))(\
@@ -1465,7 +1472,7 @@ void SqlDb_mysql::createSchema() {
 			`contenttype` varchar(255) DEFAULT NULL,\
 		PRIMARY KEY (`id`),\
 		KEY `contenttype` (`contenttype`)\
-	) ENGINE=InnoDB DEFAULT CHARSET=utf8 ROW_FORMAT=COMPRESSED;");
+	) ENGINE=InnoDB DEFAULT CHARSET=utf8 " + compress + ";");
 
 	this->query(string(
 	"CREATE TABLE IF NOT EXISTS `message` (\
@@ -1517,7 +1524,7 @@ void SqlDb_mysql::createSchema() {
 			CONSTRAINT `messages_ibfk_2` FOREIGN KEY (`a_ua_id`) REFERENCES `cdr_ua` (`id`) ON UPDATE CASCADE,\
 			CONSTRAINT `messages_ibfk_3` FOREIGN KEY (`b_ua_id`) REFERENCES `cdr_ua` (`id`) ON UPDATE CASCADE,\
 			CONSTRAINT `messages_ibfk_4` FOREIGN KEY (`id_contenttype`) REFERENCES `contenttype` (`id`) ON UPDATE CASCADE") +
-	") ENGINE=InnoDB DEFAULT CHARSET=latin1 ROW_FORMAT=COMPRESSED" + 
+	") ENGINE=InnoDB DEFAULT CHARSET=latin1 " + compress + 
 	(opt_cdr_partition ?
 		(opt_cdr_partition_oldver ? 
 			string(" PARTITION BY RANGE (to_days(calldate))(\
@@ -1561,7 +1568,7 @@ void SqlDb_mysql::createSchema() {
 		KEY `sipcalledip` (`sipcalledip`),\
 		KEY `from_num` (`from_num`),\
 		KEY `digestusername` (`digestusername`)\
-	) ENGINE=MEMORY DEFAULT CHARSET=latin1 ROW_FORMAT=COMPRESSED;");
+	) ENGINE=MEMORY DEFAULT CHARSET=latin1 " + compress + ";");
 
 	this->query(string(
 	"CREATE TABLE IF NOT EXISTS `register_state` (\
@@ -1585,7 +1592,7 @@ void SqlDb_mysql::createSchema() {
 		"KEY `created_at` (`created_at`),\
 		KEY `sipcallerip` (`sipcallerip`),\
 		KEY `sipcalledip` (`sipcalledip`)\
-	) ENGINE=InnoDB DEFAULT CHARSET=latin1 ROW_FORMAT=COMPRESSED" + 
+	) ENGINE=InnoDB DEFAULT CHARSET=latin1 " + compress +  
 	(opt_cdr_partition ?
 		(opt_cdr_partition_oldver ? 
 			string(" PARTITION BY RANGE (to_days(created_at))(\
@@ -1615,7 +1622,7 @@ void SqlDb_mysql::createSchema() {
 		"KEY `created_at` (`created_at`),\
 		KEY `sipcallerip` (`sipcallerip`),\
 		KEY `sipcalledip` (`sipcalledip`)\
-	) ENGINE=InnoDB DEFAULT CHARSET=latin1 ROW_FORMAT=COMPRESSED" + 
+	) ENGINE=InnoDB DEFAULT CHARSET=latin1 " + compress +  
 	(opt_cdr_partition ?
 		(opt_cdr_partition_oldver ? 
 			string(" PARTITION BY RANGE (to_days(created_at))(\
@@ -1652,7 +1659,7 @@ void SqlDb_mysql::createSchema() {
 		KEY `port` (`port`),\
 		KEY `proto` (`proto`),\
 		KEY `interval_time` (`interval_time`)\
-	) ENGINE=InnoDB DEFAULT CHARSET=latin1 ROW_FORMAT=COMPRESSED;");
+	) ENGINE=InnoDB DEFAULT CHARSET=latin1 " + compress + ";");
 	}
 
 	this->query(
@@ -1671,7 +1678,7 @@ void SqlDb_mysql::createSchema() {
 			`data` VARBINARY(10000) NOT NULL ,\
 		PRIMARY KEY ( `id` ) ,\
 		INDEX (`created_at` , `microseconds`)\
-	) ENGINE=MEMORY DEFAULT CHARSET=latin1 ROW_FORMAT=COMPRESSED;");
+	) ENGINE=MEMORY DEFAULT CHARSET=latin1 " + compress + ";");
 	
 	if(opt_enable_lua_tables) {
 		

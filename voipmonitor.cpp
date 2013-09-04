@@ -226,6 +226,7 @@ int opt_filesclean = 1;
 int opt_enable_tcpreassembly = 0;
 int opt_allow_zerossrc = 0;
 int opt_convert_dlt_sll_to_en10 = 0;
+int opt_mysqlcompress = 1;
 
 unsigned int opt_maxpoolsize = 0;
 unsigned int opt_maxpooldays = 0;
@@ -345,6 +346,7 @@ TELNUMfilter *telnumfilter_reload = NULL;	// IP filter based on MYSQL for reload
 int telnumfilter_reload_do = 0;	// for reload in main thread
 
 pthread_t call_thread;		// ID of worker storing CDR thread 
+pthread_t cdr_thread;		
 pthread_t sql_thread;		
 pthread_t readdump_libpcap_thread;
 pthread_t manager_thread = 0;	// ID of worker manager thread 
@@ -1574,7 +1576,19 @@ void *storing_sql( void *dummy ) {
 				queryqueue = "";
 				size = 0;
 			}
+
 		}
+
+		if(verbosity > 0 && _counterIpacc > 0) {
+			int _start = time(NULL);
+			int diffTime = time(NULL) - _start;
+			cout << "SAVE IPACC (" << sqlDateTimeString(time(NULL)) << "): " << _counterIpacc << " rec";
+			if(diffTime > 0) {
+				cout << "  " << diffTime << " s  " << (_counterIpacc/diffTime) << " rec/s";
+			}
+			cout << endl;
+		}
+                
 
 		if(terminating) {
 			break;
@@ -1582,6 +1596,7 @@ void *storing_sql( void *dummy ) {
 	
 		sleep(1);
 	}
+	return NULL;
 }
 
 /* cycle calls_queue and save it to MySQL */
@@ -1715,16 +1730,6 @@ void *storing_cdr( void *dummy ) {
 			calltable->unlock_calls_deletequeue();
 		}
 
-		if(verbosity > 0 && _counterIpacc > 0) {
-			int _start = time(NULL);
-			int diffTime = time(NULL) - _start;
-			cout << "SAVE IPACC (" << sqlDateTimeString(time(NULL)) << "): " << _counterIpacc << " rec";
-			if(diffTime > 0) {
-				cout << "  " << diffTime << " s  " << (_counterIpacc/diffTime) << " rec/s";
-			}
-			cout << endl;
-		}
-                
 #ifdef ISCURL
 		if(opt_cdrurl[0] != '\0' && cdrtosend.length() > 0) {
 			sendCDR(cdrtosend);
@@ -2120,7 +2125,9 @@ int load_config(char *fname) {
 	   (value = ini.GetValue("general", "sqlcdr_sipresp_table", NULL))) {
 		strncpy(sql_cdr_sip_response_table, value, sizeof(sql_cdr_sip_response_table));
 	}
-	
+	if((value = ini.GetValue("general", "mysqlcompress", NULL))) {
+		opt_mysqlcompress = atoi(value);
+	}
 	if((value = ini.GetValue("general", "mysqlhost", NULL))) {
 		strncpy(mysql_host, value, sizeof(mysql_host));
 	}
