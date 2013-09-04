@@ -92,6 +92,7 @@ extern volatile int calls;
 extern TcpReassembly *tcpReassembly;
 extern char opt_pb_read_from_file[256];
 extern int pcap_dlink;
+extern queue<string> mysqlquery;
 
 void *_PcapQueue_threadFunction(void* arg);
 void *_PcapQueue_writeThreadFunction(void* arg);
@@ -850,12 +851,12 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 		double memoryBufferPerc_trash = this->pcapStat_get_memory_buffer_perc_trash();
 		outStr << fixed
 		       << "calls[" << calltable->calls_listMAP.size() << "][" << calls << "] "
-		       << "cdrqueue[" << calltable->calls_queue.size() << "] "
+		       << "SQLqueue[" << mysqlquery.size() << "] "
 		       << "heap[" << setprecision(1) << memoryBufferPerc << "% / "
-				  << setprecision(1) << memoryBufferPerc_trash << "% processing] ";
+				  << setprecision(1) << memoryBufferPerc_trash << "% ] ";
 		if(this->instancePcapHandle) {
 			unsigned long bypassBufferSizeExeeded = this->instancePcapHandle->pcapStat_get_bypass_buffer_size_exeeded();
-			outStr << "heapoverruns[" << bypassBufferSizeExeeded << "] ";
+			outStr << "hoverruns[" << bypassBufferSizeExeeded << "] ";
 		}
 		double diskBufferMb = this->pcapStat_get_disk_buffer_mb();
 		if(diskBufferMb >= 0) {
@@ -869,7 +870,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 		}
 		double speed = this->pcapStat_get_speed_mb_s(statPeriod);
 		if(speed >= 0) {
-			outStr << "traffic[" << setprecision(1) << speed << "Mb/s] ";
+			outStr << "[" << setprecision(1) << speed << "Mb/s] ";
 		}
 	}
 	ostringstream outStrStat;
