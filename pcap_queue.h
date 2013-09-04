@@ -230,6 +230,8 @@ protected:
 	virtual void initStat_interface() {};
 	void preparePstatData(bool writeThread = false);
 	double getCpuUsagePerc(bool writeThread = false, bool preparePstatData = false);
+	long unsigned int getVsizeUsage(bool writeThread = false, bool preparePstatData = false);
+	long unsigned int getRssUsage(bool writeThread = false, bool preparePstatData = false);
 protected:
 	eTypeQueue typeQueue;
 	std::string nameQueue;

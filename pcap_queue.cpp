@@ -815,6 +815,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 	if(!VERBOSE && !DEBUG_VERBOSE) {
 		return;
 	}
+	ostringstream outStr;
 	if(DEBUG_VERBOSE || verbosityE > 0) {
 		string statString = "\n";
 		if(statCalls) {
@@ -845,7 +846,6 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 			}
 		}
 	} else {
-		ostringstream outStr;
 		double memoryBufferPerc = this->pcapStat_get_memory_buffer_perc();
 		double memoryBufferPerc_trash = this->pcapStat_get_memory_buffer_perc_trash();
 		outStr << fixed
@@ -871,20 +871,39 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 		if(speed >= 0) {
 			outStr << "traffic[" << setprecision(1) << speed << "Mb/s] ";
 		}
-		if(this->instancePcapHandle) {
-			double t0cpu = this->instancePcapHandle->getCpuUsagePerc(false, true);
-			if(t0cpu >= 0) {
-				outStr << "t0CPU[" << setprecision(1) << t0cpu << "%] ";
-			}
+	}
+	ostringstream outStrStat;
+	outStrStat << fixed;
+	if(this->instancePcapHandle) {
+		double t0cpu = this->instancePcapHandle->getCpuUsagePerc(false, true);
+		if(t0cpu >= 0) {
+			outStrStat << "t0CPU[" << setprecision(1) << t0cpu << "%] ";
 		}
-		double t1cpu = this->getCpuUsagePerc(false, true);
-		if(t1cpu >= 0) {
-			outStr << "t1CPU[" << setprecision(1) << t1cpu << "%] ";
+	}
+	double t1cpu = this->getCpuUsagePerc(false, true);
+	if(t1cpu >= 0) {
+		outStrStat << "t1CPU[" << setprecision(1) << t1cpu << "%] ";
+	}
+	double t2cpu = this->getCpuUsagePerc(true, true);
+	if(t2cpu >= 0) {
+		outStrStat << "t2CPU[" << setprecision(1) << t2cpu << "%] ";
+	}
+	long unsigned int rss = this->getRssUsage();
+	if(rss > 0) {
+		outStrStat << "res[" << setprecision(1) << (double)rss/1024/1024 << "MB] ";
+	}
+	long unsigned int vsize = this->getVsizeUsage();
+	if(vsize > 0) {
+		outStrStat << "virt[" << setprecision(1) << (double)vsize/1024/1024 << "MB] ";
+	}
+	if(DEBUG_VERBOSE || verbosityE > 0) {
+		if(DEBUG_VERBOSE) {
+			cout << outStrStat.str() << endl;
+		} else {
+			syslog(LOG_NOTICE, "packetbuffer cpu / mem stat:\n%s", outStrStat.str().c_str());
 		}
-		double t2cpu = this->getCpuUsagePerc(true, true);
-		if(t2cpu >= 0) {
-			outStr << "t2CPU[" << setprecision(1) << t2cpu << "%] ";
-		}
+	} else {
+		outStr << outStrStat.str();
 		outStr << endl;
 		outStr << (this->instancePcapHandle ? 
 				this->instancePcapHandle->pcapStatString_interface(statPeriod) :
@@ -1131,6 +1150,28 @@ double PcapQueue::getCpuUsagePerc(bool writeThread, bool preparePstatData) {
 		}
 	}
 	return(-1);
+}
+
+long unsigned int PcapQueue::getVsizeUsage(bool writeThread, bool preparePstatData) {
+	if(preparePstatData) {
+		this->preparePstatData(writeThread);
+	}
+	uint pid = writeThread ? this->writeThreadId : this->threadId;
+	if(pid) {
+		return(this->threadPstatData[0].vsize);
+	}
+	return(0);
+}
+
+long unsigned int PcapQueue::getRssUsage(bool writeThread, bool preparePstatData) {
+	if(preparePstatData) {
+		this->preparePstatData(writeThread);
+	}
+	uint pid = writeThread ? this->writeThreadId : this->threadId;
+	if(pid) {
+		return(this->threadPstatData[0].rss);
+	}
+	return(0);
 }
 
 
