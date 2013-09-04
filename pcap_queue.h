@@ -29,7 +29,7 @@ public:
 		this->add_sizeOfBlocks(blockStore->getUseSize());
 		this->unlock_queue();
 	}
-	pcap_block_store* pop(bool removeFromFront = true) {
+	pcap_block_store* pop(bool removeFromFront = true, size_t blockSize = 0) {
 		pcap_block_store* blockStore = NULL;
 		this->lock_queue();
 		if(this->queue.size()) {
@@ -39,7 +39,7 @@ public:
 			}
 		}
 		if(blockStore && removeFromFront) {
-			this->sub_sizeOfBlocks(blockStore->getUseSize());
+			this->sub_sizeOfBlocks(blockSize ? blockSize : blockStore->getUseSize());
 		}
 		this->unlock_queue();
 		return(blockStore);

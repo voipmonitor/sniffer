@@ -25,22 +25,20 @@
 
 
 #define TEST_DEBUG_PARAMS 0
-#ifdef TEST_DEBUG_PARAMS
-	#if TEST_DEBUG_PARAMS == 1
-		#define OPT_PCAP_BLOCK_STORE_MAX_ITEMS			2000
-		#define OPT_PCAP_FILE_STORE_MAX_BLOCKS			1000
-		#define OPT_PCAP_STORE_QUEUE_MAX_BLOCKS_IN_MEMORY	500
-		#define OPT_PCAP_STORE_QUEUE_MAX_BLOCKS_IN_DISK		40000
-		#define OPT_PCAP_QUEUE_BYPASS_MAX_ITEMS			500
-	#else
-		#define OPT_PCAP_BLOCK_STORE_MAX_ITEMS			2000		// 500 kB
-		#define OPT_PCAP_FILE_STORE_MAX_BLOCKS			1000		// 500 MB
-		#define OPT_PCAP_STORE_QUEUE_MAX_BLOCKS_IN_MEMORY	500		// 250 MB
-		#define OPT_PCAP_STORE_QUEUE_MAX_BLOCKS_IN_DISK		40000		// 20 GB
-		#define OPT_PCAP_QUEUE_BYPASS_MAX_ITEMS			500		// 500 MB
-	#endif
-	#define AVG_PACKET_SIZE						250
+#if TEST_DEBUG_PARAMS == 1
+	#define OPT_PCAP_BLOCK_STORE_MAX_ITEMS			2000
+	#define OPT_PCAP_FILE_STORE_MAX_BLOCKS			1000
+	#define OPT_PCAP_STORE_QUEUE_MAX_BLOCKS_IN_MEMORY	500
+	#define OPT_PCAP_STORE_QUEUE_MAX_BLOCKS_IN_DISK		40000
+	#define OPT_PCAP_QUEUE_BYPASS_MAX_ITEMS			500
+#else
+	#define OPT_PCAP_BLOCK_STORE_MAX_ITEMS			2000		// 500 kB
+	#define OPT_PCAP_FILE_STORE_MAX_BLOCKS			1000		// 500 MB
+	#define OPT_PCAP_STORE_QUEUE_MAX_BLOCKS_IN_MEMORY	500		// 250 MB
+	#define OPT_PCAP_STORE_QUEUE_MAX_BLOCKS_IN_DISK		40000		// 20 GB
+	#define OPT_PCAP_QUEUE_BYPASS_MAX_ITEMS			500		// 500 MB
 #endif
+#define AVG_PACKET_SIZE						250
 
 
 #define VERBOSE 		(verbosity > 0)
@@ -103,7 +101,7 @@ static bool __config_USE_PCAP_FOR_FIFO			= false;
 static bool __config_ENABLE_TOGETHER_READ_WRITE_FILE	= false;
 
 int opt_pcap_queue					= 1;
-#ifdef TEST_DEBUG_PARAMS
+#if TEST_DEBUG_PARAMS > 0
 	u_int opt_pcap_queue_block_max_time_ms 			= 500;
 	size_t opt_pcap_queue_block_max_size   			= OPT_PCAP_BLOCK_STORE_MAX_ITEMS * AVG_PACKET_SIZE;
 	u_int opt_pcap_queue_file_store_max_time_ms		= 5000;
@@ -1788,12 +1786,13 @@ void *PcapQueue_readFromFifo::threadFunction(void *) {
 				usleep(1000);
 				continue;
 			}
-			sumPacketsSize[0] += blockStore->size;
+			size_t blockSize = blockStore->size;
+			sumPacketsSize[0] += blockSize;
 			if(opt_pcap_queue_compress) {
 				blockStore->compress();
 			}
 			if(this->pcapStoreQueue.push(blockStore, this->blockStoreTrash_size, false)) {
-				blockStoreBypassQueue.pop();
+				blockStoreBypassQueue.pop(true, blockSize);
 			}
 		}
 	} else {
