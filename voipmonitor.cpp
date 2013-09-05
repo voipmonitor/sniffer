@@ -1223,6 +1223,7 @@ void convert_filesindex() {
 		return;
 	}
 
+	mysqlquerypush("DELETE FROM files");
 
 	while (true) {
 		errno = 0;
