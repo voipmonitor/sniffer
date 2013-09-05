@@ -1,3 +1,15 @@
+8.1.2 5.9.2013
+==============
+
+- implement reindexfiles manager command which is needed to recover cleaning when database deleted or index files were deleted 
+
+8.1.1 5.9.2013
+==============
+
+- fix 8.1 mysql crashing 
+- fix deadlock when heap is full 
+
+
 8.1 4.9.2013
 ============
 

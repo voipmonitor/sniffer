@@ -6,7 +6,7 @@
 #ifndef VOIPMONITOR_H
 #define VOIPMONITOR_H
 
-#define RTPSENSOR_VERSION "8.1.SVN"
+#define RTPSENSOR_VERSION "8.1.2"
 #define NAT
 
 #define FORMAT_WAV	1
@@ -43,6 +43,7 @@
 
 void reload_config();
 void reload_capture_rules();
+void convert_filesindex();
 
 #endif
 

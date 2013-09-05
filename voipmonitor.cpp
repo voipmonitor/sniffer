@@ -1223,6 +1223,7 @@ void convert_filesindex() {
 		return;
 	}
 
+	mysqlquerypush("DELETE FROM files");
 
 	while (true) {
 		errno = 0;
@@ -1534,6 +1535,10 @@ void *moving_cache( void *dummy ) {
 }
 
 void *storing_sql( void *dummy ) {
+        SqlDb *sqlDb = new SqlDb_mysql();
+        sqlDb->setConnectParameters(mysql_host, mysql_user, mysql_password, mysql_database, 0);
+        sqlDb->connect();
+
 	while(1) {
 		// process mysql query queue - concatenate queries to N messages
 		int size = 0;
@@ -1596,6 +1601,7 @@ void *storing_sql( void *dummy ) {
 	
 		sleep(1);
 	}
+	if(sqlDb) delete sqlDb;
 	return NULL;
 }
 
