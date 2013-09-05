@@ -851,7 +851,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 		double memoryBufferPerc_trash = this->pcapStat_get_memory_buffer_perc_trash();
 		outStr << fixed
 		       << "calls[" << calltable->calls_listMAP.size() << "][" << calls << "] "
-		       << "SQLqueue[" << mysqlquery.size() << "]"
+		       << "SQLqueue[" << mysqlquery.size() << "] "
 		       << "heap[" << setprecision(1) << memoryBufferPerc << "% / "
 				  << setprecision(1) << memoryBufferPerc_trash << "%] ";
 		if(this->instancePcapHandle) {
@@ -1835,6 +1835,8 @@ void *PcapQueue_readFromFifo::threadFunction(void *) {
 			}
 			if(this->pcapStoreQueue.push(blockStore, this->blockStoreTrash_size, false)) {
 				blockStoreBypassQueue.pop(true, blockSize);
+			} else {
+				usleep(1000);
 			}
 		}
 	} else {
@@ -1927,11 +1929,11 @@ void *PcapQueue_readFromFifo::writeThreadFunction(void *) {
 			}
 			this->blockStoreTrash.push_back(blockStore);
 			this->blockStoreTrash_size += blockStore->getUseSize();
-			if(!(++this->cleanupBlockStoreTrash_counter % 10)) {
-				this->cleanupBlockStoreTrash();
-			}
 		} else {
 			usleep(1000);
+		}
+		if(!(++this->cleanupBlockStoreTrash_counter % 10)) {
+			this->cleanupBlockStoreTrash();
 		}
 	}
 	this->writeThreadTerminated = true;
