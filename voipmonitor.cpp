@@ -2592,6 +2592,11 @@ void test();
 
 int main(int argc, char *argv[]) {
 
+	if(mysql_library_init(0, NULL, NULL)) {
+		fprintf(stderr, "could not initialize MySQL library\n");
+		exit(1);
+	}
+
 #ifdef BACKTRACE
 
 	pcapstat.ps_drop = 0;
@@ -3727,6 +3732,8 @@ int main(int argc, char *argv[]) {
 	clean_tcpstreams();
 	ipfrag_prune(0, 1);
 	freeMemIpacc();
+	mysql_library_end();
+
 }
 
 void *readdump_libpcap_thread_fce(void *handle) {
