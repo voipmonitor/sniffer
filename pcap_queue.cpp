@@ -1496,8 +1496,7 @@ string PcapQueue_readFromInterface::pcapStatString_interface(int statPeriod) {
 				this->_last_ps_ifdrop = ps.ps_ifdrop;
 				++countPacketDrop;
 			} else if(countPacketDrop) {
-				outStr << "dropped packets: "
-				       << countPacketDrop << " occurrences";
+				outStr << "pdropsCount[" << countPacketDrop << "]";
 			}
 		}
 	}
