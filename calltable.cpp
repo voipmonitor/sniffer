@@ -101,6 +101,7 @@ extern int opt_cdrproxy;
 extern struct pcap_stat pcapstat;
 extern int opt_filesclean;
 extern int opt_allow_zerossrc;
+extern int opt_cdr_ua_enable;
 
 volatile int calls = 0;
 
@@ -1855,11 +1856,13 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		sqlDb->setEnableSqlStringInContent(true);
 		
 		cdr.add(string("_\\_'SQL'_\\_:") + "getIdOrInsertSIPRES(" + sqlEscapeStringBorder(lastSIPresponse) + ")", "lastSIPresponse_id");
-		if(a_ua) {
-			cdr.add(string("_\\_'SQL'_\\_:") + "getIdOrInsertUA(" + sqlEscapeStringBorder(a_ua) + ")", "a_ua_id");
-		}
-		if(b_ua) {
-			cdr.add(string("_\\_'SQL'_\\_:") + "getIdOrInsertUA(" + sqlEscapeStringBorder(b_ua) + ")", "b_ua_id");
+		if(opt_cdr_ua_enable) {
+			if(a_ua) {
+				cdr.add(string("_\\_'SQL'_\\_:") + "getIdOrInsertUA(" + sqlEscapeStringBorder(a_ua) + ")", "a_ua_id");
+			}
+			if(b_ua) {
+				cdr.add(string("_\\_'SQL'_\\_:") + "getIdOrInsertUA(" + sqlEscapeStringBorder(b_ua) + ")", "b_ua_id");
+			}
 		}
 		query_str += sqlDb->insertQuery(sql_cdr_table, cdr) + ";\n";
 		

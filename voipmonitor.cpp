@@ -227,6 +227,7 @@ int opt_enable_tcpreassembly = 0;
 int opt_allow_zerossrc = 0;
 int opt_convert_dlt_sll_to_en10 = 0;
 int opt_mysqlcompress = 1;
+int opt_cdr_ua_enable = 1;
 
 unsigned int opt_maxpoolsize = 0;
 unsigned int opt_maxpooldays = 0;
@@ -1969,6 +1970,8 @@ int load_config(char *fname) {
 	}
 	if((value = ini.GetValue("general", "cdr_partition", NULL))) {
 		opt_cdr_partition = yesno(value);
+	if((value = ini.GetValue("general", "cdr_ua_enable", NULL))) {
+		opt_cdr_ua_enable = yesno(value);
 	}
 	for(int i = 0; i < 2; i++) {
 		if(i == 0 ?
