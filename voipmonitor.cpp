@@ -3688,11 +3688,44 @@ int main(int argc, char *argv[]) {
 	}
 
 	if(!opt_nocdr) {
+		int size = 0;
+		int msgs = 50;
+                int _counterIpacc = 0;
+		string queryqueue = "";
 		pthread_mutex_lock(&mysqlquery_lock);
-		while(mysqlquery.size() > 0) {
+		int mysqlQuerySize = mysqlquery.size();
+		while(1) {
+			if(mysqlquery.size() == 0) {
+				if(queryqueue != "") {
+					// send the rest 
+					sqlDb->query("drop procedure if exists " + insert_funcname);
+					sqlDb->query("create procedure " + insert_funcname + "()\nbegin\n" + queryqueue + "\nend");
+					sqlDb->query("call " + insert_funcname + "();");
+					//sqlDb->query(queryqueue);
+					queryqueue = "";
+				}
+				break;
+			}
 			string query = mysqlquery.front();
 			mysqlquery.pop();
-			sqlDb->query(query);
+			--mysqlQuerySize;
+			queryqueue.append(query + "; ");
+			if(verbosity > 0) {
+				if(query.find("ipacc ") != string::npos) {
+					++_counterIpacc;
+				}
+			}
+			if(size < msgs) {
+				size++;
+			} else {
+				sqlDb->query("drop procedure if exists " + insert_funcname);
+				sqlDb->query("create procedure " + insert_funcname + "()\nbegin\n" + queryqueue + "\nend");
+				sqlDb->query("call " + insert_funcname + "();");
+				//sqlDb->query(queryqueue);
+				queryqueue = "";
+				size = 0;
+			}
+			usleep(100);
 		}
 		pthread_mutex_unlock(&mysqlquery_lock);
 	}
