@@ -942,6 +942,23 @@ Call::convertRawToWav() {
 			case PAYLOAD_ISAC32:
 				samplerate = 32000;
 				break;
+			case PAYLOAD_OPUS8:
+				samplerate = 8000;
+				break;
+			case PAYLOAD_OPUS12:
+				samplerate = 12000;
+				break;
+			case PAYLOAD_OPUS16:
+				samplerate = 16000;
+				break;
+			case PAYLOAD_OPUS24:
+				samplerate = 24000;
+				system(cmd);
+				break;
+			case PAYLOAD_OPUS48:
+				samplerate = 48000;
+				system(cmd);
+				break;
 		}
 		for(int i = 0; i < (abs(msdiff) / 20) * samplerate / 50; i++) {
 			fwrite(&zero, 1, 2, wav);
@@ -1097,6 +1114,58 @@ Call::convertRawToWav() {
 				}
 				samplerate = 32000;
 				if(verbosity > 1) syslog(LOG_ERR, "Converting ISAC32 to WAV.\n");
+				system(cmd);
+				break;
+			case PAYLOAD_OPUS8:
+				if(opt_keycheck[0] != '\0') {
+					snprintf(cmd, 4092, "vmcodecs %s opus \"%s\" \"%s\" 8000", opt_keycheck, raw, wav);
+				} else {
+					snprintf(cmd, 4092, "voipmonitor-opus \"%s\" \"%s\" 8000", raw, wav);
+				}
+				samplerate = 8000;
+				if(verbosity > 1) syslog(LOG_ERR, "Converting OPUS8 to WAV.\n");
+				system(cmd);
+				break;
+			case PAYLOAD_OPUS12:
+				if(opt_keycheck[0] != '\0') {
+					snprintf(cmd, 4092, "vmcodecs %s opus \"%s\" \"%s\" 12000", opt_keycheck, raw, wav);
+				} else {
+					snprintf(cmd, 4092, "voipmonitor-opus \"%s\" \"%s\" 12000", raw, wav);
+				}
+				samplerate = 12000;
+				if(verbosity > 1) syslog(LOG_ERR, "Converting OPUS12 to WAV.\n");
+				system(cmd);
+				break;
+			case PAYLOAD_OPUS16:
+				if(opt_keycheck[0] != '\0') {
+					snprintf(cmd, 4092, "vmcodecs %s opus \"%s\" \"%s\" 16000", opt_keycheck, raw, wav);
+				} else {
+					snprintf(cmd, 4092, "voipmonitor-opus \"%s\" \"%s\" 16000", raw, wav);
+				}
+				samplerate = 16000;
+				if(verbosity > 1) syslog(LOG_ERR, "Converting OPUS16 to WAV.\n");
+				system(cmd);
+				break;
+			case PAYLOAD_OPUS24:
+				if(opt_keycheck[0] != '\0') {
+					snprintf(cmd, 4092, "vmcodecs %s opus \"%s\" \"%s\" 24000", opt_keycheck, raw, wav);
+				} else {
+					snprintf(cmd, 4092, "voipmonitor-opus \"%s\" \"%s\" 24000", raw, wav);
+				}
+				samplerate = 24000;
+				if(verbosity > 1) syslog(LOG_ERR, "Converting OPUS24 to WAV.\n");
+				system(cmd);
+				break;
+			case PAYLOAD_OPUS48:
+				if(opt_keycheck[0] != '\0') {
+					snprintf(cmd, 4092, "vmcodecs %s opus \"%s\" \"%s\" 48000", opt_keycheck, raw, wav);
+				} else {
+					snprintf(cmd, 4092, "vmcodecs %s a opus \"%s\" \"%s\" 48000", opt_keycheck, raw, wav);
+					cout << cmd << "\n";
+					//snprintf(cmd, 4092, "voipmonitor-opus \"%s\" \"%s\" 48000", raw, wav);
+				}
+				samplerate = 48000;
+				if(verbosity > 1) syslog(LOG_ERR, "Converting OPUS48 to WAV.\n");
 				system(cmd);
 				break;
 			default:
@@ -2698,11 +2767,14 @@ Calltable::add(char *call_id, unsigned long call_id_len, time_t time, u_int32_t 
 Call*
 Calltable::find_by_call_id(char *call_id, unsigned long call_id_len) {
 	string call_idS = string(call_id, call_id_len);
+	lock_calls_listMAP();
 	callMAPIT = calls_listMAP.find(call_idS);
 	if(callMAPIT == calls_listMAP.end()) {
+		unlock_calls_listMAP();
 		// not found
 		return NULL;
 	} else {
+		unlock_calls_listMAP();
 		return (*callMAPIT).second;
 	}
 	
@@ -2875,12 +2947,14 @@ void Call::saveregister() {
 	((Calltable*)calltable)->calls_queue.push_back(this);
 	((Calltable*)calltable)->unlock_calls_queue();
 
+	((Calltable*)calltable)->lock_calls_listMAP();
         map<string, Call*>::iterator callMAPIT = ((Calltable*)calltable)->calls_listMAP.find(call_id);
 	if(callMAPIT == ((Calltable*)calltable)->calls_listMAP.end()) {
 		syslog(LOG_ERR,"Fatal error REGISTER call_id[%s] not found in callMAPIT", call_id.c_str());
 	} else {
 		((Calltable*)calltable)->calls_listMAP.erase(callMAPIT);
 	}
+	((Calltable*)calltable)->unlock_calls_listMAP();
 }
 
 void

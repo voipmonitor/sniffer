@@ -864,6 +864,8 @@ int mimeSubtypeToInt(char *mimeSubtype) {
 	       return PAYLOAD_ISAC;
        else if(strcasecmp(mimeSubtype,"CLEARMODE") == 0)
 	       return PAYLOAD_CLEARMODE;
+       else if(strcasecmp(mimeSubtype,"OPUS") == 0)
+	       return PAYLOAD_OPUS;
        else
 	       return 0;
 }
@@ -915,9 +917,29 @@ int get_rtpmap_from_sdp(char *sdp_text, unsigned long len, int *rtpmap){
 						mtype = PAYLOAD_ISAC32;
 						break;
 				}
+			} else if(mtype == PAYLOAD_OPUS) {
+				switch(rate) {
+					case 8000:
+						mtype = PAYLOAD_OPUS8;
+						break;
+					case 12000:
+						mtype = PAYLOAD_OPUS12;
+						break;
+					case 16000:
+						mtype = PAYLOAD_OPUS16;
+						break;
+					case 24000:
+						mtype = PAYLOAD_OPUS24;
+						break;
+					case 48000:
+						mtype = PAYLOAD_OPUS48;
+						break;
+				}
 			}
 			rtpmap[i] = mtype + 1000*codec;
 			//printf("PAYLOAD: rtpmap[%d]:%d codec:%d, mimeSubtype [%d] [%s]\n", i, rtpmap[i], codec, mtype, mimeSubtype);
+		} else {
+			printf("fail !\n");
 		}
 		// return '\r' into sdp_text
 		*z = '\r';

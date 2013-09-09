@@ -3736,7 +3736,7 @@ int main(int argc, char *argv[]) {
 	clean_tcpstreams();
 	ipfrag_prune(0, 1);
 	freeMemIpacc();
-	mysql_library_end();
+//	mysql_library_end();
 
 }
 
