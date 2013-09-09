@@ -1,3 +1,12 @@
+8.2 9.9.2013
+============
+
+- add support for OPUS codec 
+- new option cdr_ua_enable (default yes) this option allows to skip storing cdr.a_ua and cdr.b_ua - this is workaround for those who has extreme cdr rate and number of user agents in database cdr_ua table is over 1000 and CPU is not powerfull enough to store cdr in real time. In future this option will be removed once we optimize this rutine. default = yes
+- call mysql_library_init() which would potential mysql crash on init (since 8.1)
+- lock listMAP structure which fixes random crash when analyzing sip resigters and looking at active calls at the same time (all versions) 
+- fix mysql queries in queue if importing pcap file
+
 8.1.2 5.9.2013
 ==============
 
