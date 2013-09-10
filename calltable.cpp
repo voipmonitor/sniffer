@@ -252,6 +252,11 @@ Call::addtofilesqueue(string file, string column) {
 		return;
 	}
 
+	if(size == 0) {
+		// if the file has 0 size we still need to add it to cleaning procedure
+		size = 1;
+	}
+
 	ostringstream query;
 
 	int id_sensor = opt_id_sensor == -1 ? 0 : opt_id_sensor;

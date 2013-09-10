@@ -1272,7 +1272,9 @@ void convert_filesindex() {
 							if (string(de2->d_name) == ".." or string(de2->d_name) == ".") continue;
 							stringstream fn;
 							fn << de->d_name << "/" << hour << "/" << min << "/SIP/" << de2->d_name;
-							sipsize += GetFileSize(fn.str());
+							long size = GetFileSize(fn.str());
+							if(size == 0) size = 1;
+							sipsize += size;
 							sipfile << fn.str() << "\n";
 						}
 						closedir(dp);
@@ -1291,7 +1293,9 @@ void convert_filesindex() {
 							if (string(de2->d_name) == ".." or string(de2->d_name) == ".") continue;
 							stringstream fn;
 							fn << de->d_name << "/" << hour << "/" << min << "/RTP/" << de2->d_name;
-							rtpsize += GetFileSize(fn.str());
+							long size = GetFileSize(fn.str());
+							if(size == 0) size = 1;
+							rtpsize += size;
 							rtpfile << fn.str() << "\n";
 						}
 						closedir(dp);
@@ -1311,7 +1315,9 @@ void convert_filesindex() {
 							if (string(de2->d_name) == ".." or string(de2->d_name) == ".") continue;
 							stringstream fn;
 							fn << de->d_name << "/" << hour << "/" << min << "/GRAPH/" << de2->d_name;
-							graphsize += GetFileSize(fn.str());
+							long size = GetFileSize(fn.str());
+							if(size == 0) size = 1;
+							graphsize += size;
 							graphfile << fn.str() << "\n";
 						}
 						closedir(dp);
@@ -1329,7 +1335,9 @@ void convert_filesindex() {
 							if (string(de2->d_name) == ".." or string(de2->d_name) == ".") continue;
 							stringstream fn;
 							fn << de->d_name << "/" << hour << "/" << min << "/AUDIO/" << de2->d_name;
-							audiosize += GetFileSize(fn.str());
+							long size = GetFileSize(fn.str());
+							if(size == 0) size = 1;
+							audiosize += size;
 							audiofile << fn.str() << "\n";
 						}
 						closedir(dp);
@@ -1394,9 +1402,9 @@ void convert_filesindex() {
 			}
 		
 			rmdir(de->d_name);
-			syslog(LOG_NOTICE, "reindexing done\n");
 		}
 	}
+	syslog(LOG_NOTICE, "reindexing done\n");
 	closedir( dp );
 	return;
 }
