@@ -617,7 +617,7 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 
 	Call *owner = (Call*)call_owner;
 
-//	if(getSSRC() != 0x84a4eeea) return;
+//	if(getSSRC() != 0xefdaaaf) return;
 
 	if(getVersion() != 2) {
 		return;
@@ -903,7 +903,7 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 				}
 			}
 		} else {
-			if(last_ts != 0 and seq == (last_seq + 1) and curpayload != 101) {
+			if(last_ts != 0 and seq == (last_seq + 1) and curpayload != 101 and !getMarker()) {
 				// packetization can change over time
 				int curpacketization = (getTimestamp() - last_ts) / 8;
 				if(curpacketization % 10 == 0 and curpacketization >= 20 and curpacketization <= 120) {
