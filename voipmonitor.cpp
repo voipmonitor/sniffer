@@ -413,6 +413,7 @@ void rename_file(const char *src, const char *dst) {
 	int write_fd = 0;
 	struct stat stat_buf;
 	off_t offset = 0;
+	int renamedebug = 1;
 
 	/* Open the input file. */
 	read_fd = open (src, O_RDONLY);
@@ -441,13 +442,22 @@ As you can see we are calling fdatasync right before calling posix_fadvise, this
 	/* Blast the bytes from one file to the other. */
 	int res = sendfile(write_fd, read_fd, &offset, stat_buf.st_size);
 	if(res == -1) {
+		if(renamedebug) {
+			syslog(LOG_ERR, "sendfile failed src[%s]", src);
+			
+		}
 		// fall back to portable way if sendfile fails 
 		char buf[8192];	// if this is 8kb it will stay in L1 cache on most CPUs. Dont know if higher buffer is better for sequential write	
 		ssize_t result;
+		int res;
 		while (1) {
 			result = read(read_fd, &buf[0], sizeof(buf));
 			if (!result) break;
-			write(write_fd, &buf[0], result);
+			res = write(write_fd, &buf[0], result);
+			if(res == -1) {
+				syslog(LOG_ERR, "write failed src[%s] error[%s]", src, sys_errlist[errno]);
+				break;
+			}
 		}
 	}
 	
