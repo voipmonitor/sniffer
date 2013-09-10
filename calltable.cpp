@@ -2173,28 +2173,32 @@ Call::saveRegisterToDb() {
 
 	unsigned int now = time(NULL);
 
+	string qp;
+
 	if(last_register_clean == 0) {
 		// on first run the register table has to be deleted 
 		if(opt_sip_register_active_nologbin && isTypeDb("mysql")) {
-			sqlDb->query("SET sql_log_bin = 0;");
+			qp += "SET sql_log_bin = 0; ";
+			qp += "DELETE FROM register; ";
+			qp += "SET sql_log_bin = 1";
+		} else {
+			qp += "DELETE FROM register";
 		}
-		query = "DELETE FROM register";
-		sqlDb->query(query);
-		if(opt_sip_register_active_nologbin && isTypeDb("mysql")) {
-			sqlDb->query("SET sql_log_bin = 1;");
-		}
+		mysqlquerypush(qp);
 	} else if((last_register_clean + REGISTER_CLEAN_PERIOD) < now){
 		// last clean was done older than CLEAN_PERIOD seconds
-		query = "INSERT INTO register_state (created_at, sipcallerip, from_num, to_num, to_domain, contact_num, contact_domain, digestusername, expires, state, ua_id) SELECT expires_at, sipcallerip, from_num, to_num, to_domain, contact_num, contact_domain, digestusername, expires, 5, ua_id FROM register WHERE expires_at <= NOW()";
-		sqlDb->query(query);
+		query = "INSERT INTO register_state (created_at, sipcallerip, from_num, to_num, to_domain, contact_num, contact_domain, digestusername, expires, state, ua_id) SELECT expires_at, sipcallerip, from_num, to_num, to_domain, contact_num, contact_domain, digestusername, expires, 5, ua_id FROM register WHERE expires_at <= NOW();";
+		qp = query;
+//		sqlDb->query(query);
 		if(opt_sip_register_active_nologbin && isTypeDb("mysql")) {
-			sqlDb->query("SET sql_log_bin = 0;");
+			//sqlDb->query("SET sql_log_bin = 0;");
+			qp += "SET sql_log_bin = 0; ";
+			qp += "DELETE FROM register WHERE expires_at <= NOW(); ";
+			qp += "SET sql_log_bin = 1 ";
+		} else {
+			qp += "DELETE FROM register WHERE expires_at <= NOW()";
 		}
-		query = "DELETE FROM register WHERE expires_at <= NOW()";
-		if(opt_sip_register_active_nologbin && isTypeDb("mysql")) {
-			sqlDb->query("SET sql_log_bin = 1;");
-		}
-		sqlDb->query(query);
+		mysqlquerypush(qp);
 	}
 	last_register_clean = now;
 
@@ -2236,9 +2240,7 @@ Call::saveRegisterToDb() {
 				fname + ", " +
 				idsensor +
 				")";
-			pthread_mutex_lock(&mysqlquery_lock);
-			mysqlquery.push(query);
-			pthread_mutex_unlock(&mysqlquery_lock);
+			mysqlquerypush(query);
 		} else {
 			query = string(
 				"SELECT ID, state, ") +
@@ -2261,15 +2263,9 @@ Call::saveRegisterToDb() {
 				int expired = atoi(rsltRow["expired"].c_str()) == 1;
 				time_t expires_at = atoi(rsltRow["expires_at"].c_str());
 
-				if(opt_sip_register_active_nologbin && isTypeDb("mysql")) {
-					sqlDb->query("SET sql_log_bin = 0;");
-				}
 				string query = "DELETE FROM " + (string)register_table + " WHERE ID = '" + (rsltRow["ID"]).c_str() + "'";
 				if(!sqlDb->query(query)) {
 					syslog(LOG_WARNING, "Query [%s] failed.", query.c_str());
-				}
-				if(opt_sip_register_active_nologbin && isTypeDb("mysql")) {
-					sqlDb->query("SET sql_log_bin = 1;");
 				}
 
 				if(expired) {
@@ -2353,13 +2349,7 @@ Call::saveRegisterToDb() {
 				reg.add(fname, "fname");
 				reg.add(opt_id_sensor, "id_sensor");
 				reg.add(regstate, "state");
-				if(opt_sip_register_active_nologbin && isTypeDb("mysql")) {
-					sqlDb->query("SET sql_log_bin = 0;");
-				}
 				int res = sqlDb->insert(register_table, reg) <= 0;
-				if(opt_sip_register_active_nologbin && isTypeDb("mysql")) {
-					sqlDb->query("SET sql_log_bin = 1;");
-				}
 				return res;
 			}
 			}
@@ -2367,6 +2357,43 @@ Call::saveRegisterToDb() {
 		break;
 	case 2:
 		// REGISTER failed. Check if there is already in register_failed table failed register within last hour 
+
+		string q1 = string(
+			"SELECT counter FROM register_failed ") +
+			"WHERE to_num = " + sqlEscapeStringBorder(called) + " AND to_domain = " + sqlEscapeStringBorder(called_domain) + 
+				" AND digestusername = " + sqlEscapeStringBorder(digest_username) + " AND created_at >= SUBTIME(NOW(), '01:00:00') LIMIT 1";
+
+		char fname[32];
+		sprintf(fname, "%llu", fname2);
+		string q2 = string(
+			"UPDATE register_failed SET created_at = NOW(), fname = " + sqlEscapeStringBorder(fname) + ", counter = counter + 1 ") +
+			"WHERE to_num = " + sqlEscapeStringBorder(called) + " AND digestusername = " + sqlEscapeStringBorder(digest_username) + 
+				" AND created_at >= SUBTIME(NOW(), '01:00:00')";
+
+		SqlDb_row reg;
+		reg.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "created_at");
+		reg.add(htonl(sipcallerip), "sipcallerip");
+		reg.add(htonl(sipcalledip), "sipcalledip");
+		reg.add(sqlEscapeString(caller), "from_num");
+		reg.add(sqlEscapeString(called), "to_num");
+		reg.add(sqlEscapeString(called_domain), "to_domain");
+		reg.add(sqlEscapeString(contact_num), "contact_num");
+		reg.add(sqlEscapeString(contact_domain), "contact_domain");
+		reg.add(sqlEscapeString(digest_username), "digestusername");
+		reg.add(sqlDb->getIdOrInsert(sql_cdr_ua_table, "id", "ua", cdr_ua), "ua_id");
+		reg.add(fname, "fname");
+		if(opt_id_sensor > -1) {
+			reg.add(opt_id_sensor, "id_sensor");
+		}
+		string q3 = sqlDb->insertQuery("register_failed", reg);
+
+		string query = "SET @mcounter = (" + q1 + ");";
+		query += "IF @mcounter IS NOT NULL THEN " + q2 + "; ELSE " + q3 + "; END IF";
+
+		mysqlquerypush(query);
+
+//XXX remove later whole if 0 block
+#if 0
 		query = string(
 			"SELECT counter FROM register_failed ") +
 			"WHERE to_num = " + sqlEscapeStringBorder(called) + " AND to_domain = " + sqlEscapeStringBorder(called_domain) + 
@@ -2380,8 +2407,9 @@ Call::saveRegisterToDb() {
 				string query = string(
 					"UPDATE register_failed SET created_at = NOW(), fname = " + sqlEscapeStringBorder(fname) + ", counter = counter + 1 ") +
 					"WHERE to_num = " + sqlEscapeStringBorder(called) + " AND digestusername = " + sqlEscapeStringBorder(digest_username) + 
-						" AND created_at >= SUBTIME(NOW(), '01:00:00')";
-				sqlDb->query(query);
+						" AND created_at >= SUBTIME(NOW(), '01:00:00');";
+				//sqlDb->query(query);
+				mysqlquerypush(query);
 			} else {
 				// this is new failed attempt within hour, insert
 				SqlDb_row reg;
@@ -2399,9 +2427,13 @@ Call::saveRegisterToDb() {
 				if(opt_id_sensor > -1) {
 					reg.add(opt_id_sensor, "id_sensor");
 				}
-				sqlDb->insert("register_failed", reg);
+				query = sqlDb->insertQuery("register_failed", reg) + ";\n";
+				mysqlquerypush(query);
+				//sqlDb->insert("register_failed", reg);
 			}
 		}
+#endif
+
 		break;
 	}
 	

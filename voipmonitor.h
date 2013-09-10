@@ -3,6 +3,8 @@
  * the GNU General Public License Version 2.
 */
 
+#include <string>
+
 #ifndef VOIPMONITOR_H
 #define VOIPMONITOR_H
 
@@ -41,9 +43,12 @@
 /* if you want to see all new calls in syslog enable DEBUG_INVITE */
 //#define DEBUG_INVITE
 
+using namespace std;
+
 void reload_config();
 void reload_capture_rules();
 void convert_filesindex();
+void mysqlquerypush(string);
 
 #endif
 
