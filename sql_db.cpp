@@ -1815,7 +1815,14 @@ void SqlDb_mysql::createSchema() {
 		this->query("ALTER TABLE enum_jj ADD id_sensor SMALLINT DEFAULT NULL;");
 	}
 
+	//8.2
+	this->query("ALTER TABLE filter_ip\
+			ADD `script` tinyint NULL;");
+	this->query("ALTER TABLE filter_telnum\
+			ADD `script` tinyint NULL;");
+
 	sql_noerror = 0;
+
 	//END ALTER TABLES
 	
 	//BEGIN SQL SCRIPTS

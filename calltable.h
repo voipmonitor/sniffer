@@ -57,6 +57,7 @@
 #define FLAG_SAVEGRAPH		(1 << 4)
 #define FLAG_SAVERTPHEADER	(1 << 5)
 #define FLAG_SKIPCDR		(1 << 6)
+#define FLAG_RUNSCRIPT		(1 << 7)
 
 typedef struct {
 	double ts;

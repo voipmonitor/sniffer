@@ -56,6 +56,7 @@ IPfilter::load() {
 		filterRow->graph = row.isNull("graph") ? -1 : atoi(row["graph"].c_str());
 		filterRow->wav = row.isNull("wav") ? -1 : atoi(row["wav"].c_str());
 		filterRow->skip = row.isNull("skip") ? -1 : atoi(row["skip"].c_str());
+		filterRow->script = row.isNull("script") ? -1 : atoi(row["script"].c_str());
 		vectDbRow.push_back(*filterRow);
 		delete filterRow;
 	}
@@ -80,6 +81,8 @@ IPfilter::load() {
 		else if(vectDbRow[i].wav == 0)	node->flags |= FLAG_NOWAV;
 		if(vectDbRow[i].skip == 1)	node->flags |= FLAG_SKIP;
 		else if(vectDbRow[i].skip == 0)	node->flags |= FLAG_NOSKIP;
+		if(vectDbRow[i].script == 1)	node->flags |= FLAG_SCRIPT;
+		else if(vectDbRow[i].script == 0)	node->flags |= FLAG_NOSCRIPT;
 
 		// add node to the first position
 		node->next = first_node;
@@ -104,6 +107,9 @@ IPfilter::add_call_flags(unsigned int *flags, unsigned int saddr, unsigned int d
 		if(((node->direction == 0 or node->direction == 2) and ((daddr & (unsigned int)mask) == (node->ip & (unsigned int)mask))) || 
 			((node->direction == 0 or node->direction == 1) and ((saddr & (unsigned int)mask) == (node->ip & (unsigned int)mask)))) {
 
+			if(node->flags & FLAG_SCRIPT) {
+				*flags |= FLAG_RUNSCRIPT;
+			}
 			if(node->flags & FLAG_RTP) {
 				*flags |= FLAG_SAVERTP;
 			}
@@ -140,6 +146,12 @@ IPfilter::add_call_flags(unsigned int *flags, unsigned int saddr, unsigned int d
 			}
 			if(node->flags & FLAG_NOSKIP) {
 				*flags &= ~FLAG_SKIPCDR;
+			}
+			if(node->flags & FLAG_SCRIPT) {
+				*flags |= FLAG_RUNSCRIPT;
+			}
+			if(node->flags & FLAG_NOSCRIPT) {
+				*flags &= ~FLAG_RUNSCRIPT;
 			}
 			return 1;
 		}
@@ -240,6 +252,7 @@ TELNUMfilter::load() {
 		filterRow->graph = row.isNull("graph") ? -1 : atoi(row["graph"].c_str());
 		filterRow->wav = row.isNull("wav") ? -1 : atoi(row["wav"].c_str());
 		filterRow->skip = row.isNull("skip") ? -1 : atoi(row["skip"].c_str());
+		filterRow->script = row.isNull("script") ? -1 : atoi(row["script"].c_str());
 		vectDbRow.push_back(*filterRow);
 		delete filterRow;
 	}
@@ -261,6 +274,8 @@ TELNUMfilter::load() {
 		else if(vectDbRow[i].wav == 0)	np->flags |= FLAG_NOWAV;
 		if(vectDbRow[i].skip == 1)	np->flags |= FLAG_SKIP;
 		else if(vectDbRow[i].skip == 0)	np->flags |= FLAG_NOSKIP;
+		if(vectDbRow[i].script == 1)	np->flags |= FLAG_SCRIPT;
+		else if(vectDbRow[i].script == 0)	np->flags |= FLAG_NOSCRIPT;
 
 		add_payload(np);
 	}
@@ -350,6 +365,12 @@ TELNUMfilter::add_call_flags(unsigned int *flags, char *telnum_src, char *telnum
 		}
 		if(lastpayload->flags & FLAG_NOSKIP) {
 			*flags &= ~FLAG_SKIPCDR;
+		}
+		if(lastpayload->flags & FLAG_SCRIPT) {
+			*flags |= FLAG_RUNSCRIPT;
+		}
+		if(lastpayload->flags & FLAG_NOSCRIPT) {
+			*flags &= ~FLAG_RUNSCRIPT;
 		}
 		return 1;
         }

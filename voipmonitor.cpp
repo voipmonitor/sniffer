@@ -327,6 +327,7 @@ char ifname[1024];	// Specifies the name of the network device to use for
 char opt_scanpcapdir[2048] = "";	// Specifies the name of the network device to use for 
 int opt_promisc = 1;	// put interface to promisc mode?
 char pcapcommand[4092] = "";
+char filtercommand[4092] = "";
 
 int rtp_threaded = 0; // do not enable this until it will be reworked to be thread safe
 int num_threads = 0; // this has to be 1 for now
@@ -1747,6 +1748,22 @@ void *storing_cdr( void *dummy ) {
 				system(source.c_str());
 			};
 
+			if(call->flags & FLAG_RUNSCRIPT) {
+				string source(filtercommand);
+				string tmp = call->fbasename;
+				find_and_replace(source, string("%callid%"), escapeshellR(tmp));
+				tmp = call->dirname();
+				find_and_replace(source, string("%dirname%"), escapeshellR(tmp));
+				tmp = sqlDateTimeString(call->calltime());
+				find_and_replace(source, string("%calldate%"), escapeshellR(tmp));
+				tmp = call->caller;
+				find_and_replace(source, string("%caller%"), escapeshellR(tmp));
+				tmp = call->called;
+				find_and_replace(source, string("%called%"), escapeshellR(tmp));
+				if(verbosity >= 2) printf("command: [%s]\n", source.c_str());
+				system(source.c_str());
+			}
+
 			/* if we delete call here directly, destructors and another cleaning functions can be
 			 * called in the middle of working with call or another structures inside main thread
 			 * so put it in deletequeue and delete it in the main thread. Another way can be locking
@@ -1940,6 +1957,9 @@ int load_config(char *fname) {
 	}
 	if((value = ini.GetValue("general", "pcapcommand", NULL))) {
 		strncpy(pcapcommand, value, sizeof(pcapcommand));
+	}
+	if((value = ini.GetValue("general", "filtercommand", NULL))) {
+		strncpy(filtercommand, value, sizeof(filtercommand));
 	}
 	if((value = ini.GetValue("general", "ringbuffer", NULL))) {
 		opt_ringbuffer = MIN(atoi(value), 2000);

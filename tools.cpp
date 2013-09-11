@@ -238,3 +238,12 @@ void ntoa(char *res, unsigned int addr) {
 	in.s_addr = addr;
 	strcpy(res, inet_ntoa(in));
 }
+
+string escapeshellR(string &buf) {
+        for(unsigned int i = 0; i < buf.length(); i++) {
+                if(!(buf[i] == '/' || buf[i] == '#' || buf[i] == '+' || buf[i] == ' ' || buf[i] == ':' || buf[i] == '-' || buf[i] == '.' || buf[i] == '@' || isalnum(buf[i])) ) {   
+                        buf[i] = '_';
+                }
+        }
+	return buf;
+}       
