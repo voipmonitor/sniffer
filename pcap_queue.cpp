@@ -93,6 +93,10 @@ extern TcpReassembly *tcpReassembly;
 extern char opt_pb_read_from_file[256];
 extern int pcap_dlink;
 extern queue<string> mysqlquery;
+extern char opt_cachedir[1024];
+extern unsigned long long cachedirtransfered;
+unsigned long long lastcachedirtransfered = 0;
+
 
 void *_PcapQueue_threadFunction(void* arg);
 void *_PcapQueue_writeThreadFunction(void* arg);
@@ -871,6 +875,10 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 		double speed = this->pcapStat_get_speed_mb_s(statPeriod);
 		if(speed >= 0) {
 			outStr << "[" << setprecision(1) << speed << "Mb/s] ";
+		}
+		if(opt_cachedir[0] != '\0') {
+			outStr << "cdq[" << calltable->files_queue.size() << "][" << ((float)(cachedirtransfered - lastcachedirtransfered) / 1024.0 / 1024.0 / (float)statPeriod) << " MB/s] ";
+			lastcachedirtransfered = cachedirtransfered;
 		}
 	}
 	ostringstream outStrStat;

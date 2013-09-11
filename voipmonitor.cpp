@@ -228,6 +228,7 @@ int opt_allow_zerossrc = 0;
 int opt_convert_dlt_sll_to_en10 = 0;
 int opt_mysqlcompress = 1;
 int opt_cdr_ua_enable = 1;
+unsigned long long cachedirtransfered = 0;
 
 unsigned int opt_maxpoolsize = 0;
 unsigned int opt_maxpooldays = 0;
@@ -441,6 +442,7 @@ As you can see we are calling fdatasync right before calling posix_fadvise, this
 	posix_fadvise(write_fd, 0, 0, POSIX_FADV_DONTNEED);
 	/* Blast the bytes from one file to the other. */
 	int res = sendfile(write_fd, read_fd, &offset, stat_buf.st_size);
+	cachedirtransfered += stat_buf.st_size;
 	if(res == -1) {
 		if(renamedebug) {
 			syslog(LOG_ERR, "sendfile failed src[%s]", src);
@@ -458,6 +460,7 @@ As you can see we are calling fdatasync right before calling posix_fadvise, this
 				syslog(LOG_ERR, "write failed src[%s] error[%s]", src, sys_errlist[errno]);
 				break;
 			}
+			cachedirtransfered += res;
 		}
 	}
 	
