@@ -2253,6 +2253,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 								free(call->message);
 							}
 							call->message = (char*)malloc(sizeof(char) * (end - tmp + 1));
+							data[datalen - 1] = a;
 							memcpy(call->message, tmp, end - tmp);
 							call->message[end - tmp] = '\0';
 						}
@@ -2613,6 +2614,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 					end = tmp + MIN(end - tmp, contentlen);
 				}
 				call->message = (char*)malloc(sizeof(char) * (end - tmp + 1));
+				data[datalen - 1] = a;
 				memcpy(call->message, tmp, end - tmp);
 				call->message[end - tmp] = '\0';
 			} else {
