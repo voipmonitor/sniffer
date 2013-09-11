@@ -2235,36 +2235,32 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 						contentlen = atoi(s);
 						s[l] = c;
 					}
-					char *end = strcasestr(tmp, "\n\nContent-Length:");
-					if(!end) {
-						end = strstr(tmp, "\r\n"); // strstr is safe becuse tmp ends with '\0'
-						if(!end) {
-							end = data + datalen;
-						}
-					}
 					if(contentlen > 0) {
-						//truncate message to its size announced in content-length
-						if(end - tmp > contentlen) {
-							end = tmp + MIN(end - tmp, contentlen);
+						char *end = strcasestr(tmp, "\n\nContent-Length:");
+						if(!end) {
+							end = strstr(tmp, "\r\n"); // strstr is safe becuse tmp ends with '\0'
+							if(!end) {
+								end = data + datalen;
+							}
 						}
-					}
-					
-					data[datalen - 1] = a;
-					if(call->message and (end - tmp) == contentlen) {
-						// update message only in case that the new message equels to content length
-						free(call->message);
-						call->message = (char*)malloc(sizeof(char) * (end - tmp + 1));
-						memcpy(call->message, tmp, end - tmp);
-						call->message[end - tmp] = '\0';
-						//printf("msgu: contentlen[%d] datalen[%d] len[%d] [%s]\n", contentlen, datalen, strlen(call->message), call->message);
+						if(!call->message || (end - tmp) == contentlen) {
+							//update message only in case that the new message equels to content length
+							//truncate message to its size announced in content-length (only for !call->message)
+							if(end - tmp > contentlen) {
+								end = tmp + MIN(end - tmp, contentlen);
+							}
+							if(call->message) {
+								free(call->message);
+							}
+							call->message = (char*)malloc(sizeof(char) * (end - tmp + 1));
+							memcpy(call->message, tmp, end - tmp);
+							call->message[end - tmp] = '\0';
+						}
 					} else if(!call->message) {
-						// message is empty - update
-						call->message = (char*)malloc(sizeof(char) * (end - tmp + 1));
-						memcpy(call->message, tmp, end - tmp);
-						call->message[end - tmp] = '\0';
-						//printf("msgu: contentlen[%d] datalen[%d] len[%d] [%s]\n", contentlen, datalen, strlen(call->message), call->message);
+						call->message = (char*)malloc(sizeof(char) * 1);
+						call->message[0] = '\0';
 					}
-	
+					data[datalen - 1] = a;
 				} else {
 					data[datalen - 1] = a;
 				}
@@ -2604,25 +2600,26 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 				contentlen = atoi(s);
 				s[l] = c;
 			}
-			char *end = strcasestr(tmp, "\n\nContent-Length:");
-			if(!end) {
-				end = strstr(tmp, "\r\n"); // strstr is safe becuse tmp ends with '\0'
-				if(!end) {
-					end = data + datalen;
-				}
-			}
 			if(contentlen > 0) {
+				char *end = strcasestr(tmp, "\n\nContent-Length:");
+				if(!end) {
+					end = strstr(tmp, "\r\n"); // strstr is safe becuse tmp ends with '\0'
+					if(!end) {
+						end = data + datalen;
+					}
+				}
 				//truncate message to its size announced in content-length
 				if(end - tmp > contentlen) {
 					end = tmp + MIN(end - tmp, contentlen);
 				}
+				call->message = (char*)malloc(sizeof(char) * (end - tmp + 1));
+				memcpy(call->message, tmp, end - tmp);
+				call->message[end - tmp] = '\0';
+			} else {
+				call->message = (char*)malloc(sizeof(char) * 1);
+				call->message[0] = '\0';
 			}
-			data[datalen - 1] = a;
-			call->message = (char*)malloc(sizeof(char) * (end - tmp + 1));
-			memcpy(call->message, tmp, end - tmp);
-			call->message[end - tmp] = '\0';
 			//printf("msg: contentlen[%d] datalen[%d] len[%d] [%s]\n", contentlen, datalen, strlen(call->message), call->message);
-			data[datalen - 1] = '\0';
 		}
 		data[datalen - 1] = a;
 
@@ -3613,7 +3610,7 @@ void readdump_libpcap(pcap_t *handle) {
 
 		/* check for duplicate packets (md5 is expensive operation - enable only if you really need it */
 		if(datalen > 0 && opt_dup_check && prevmd5s != NULL && (traillen < datalen) && 
-		   !(opt_enable_tcpreassembly && (httpportmatrix[htons(header_tcp->source)] || httpportmatrix[htons(header_tcp->dest)]))) {
+		   !(istcp && opt_enable_tcpreassembly && (httpportmatrix[htons(header_tcp->source)] || httpportmatrix[htons(header_tcp->dest)]))) {
 			MD5_Init(&ctx);
 			if(opt_dup_check_ipheader) {
 				// check duplicates based on full ip header and data 
