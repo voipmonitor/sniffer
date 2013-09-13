@@ -134,7 +134,6 @@ clean :
 targz64: static
 	rm -rf /tmp/voipmonitor-amd64-${version}-static*
 	mkdir -p /tmp/voipmonitor-amd64-${version}-static/usr/local/sbin
-	cp cdrtable.sql /tmp/voipmonitor-amd64-${version}-static/
 	strip voipmonitor
 	cp voipmonitor /tmp/voipmonitor-amd64-${version}-static/usr/local/sbin/
 	chmod +x /tmp/voipmonitor-amd64-${version}-static/usr/local/sbin/voipmonitor
@@ -149,7 +148,6 @@ targz64: static
 targz32: static
 	rm -rf /tmp/voipmonitor-i686-${version}-static*
 	mkdir -p /tmp/voipmonitor-i686-${version}-static/usr/local/sbin
-	cp cdrtable.sql /tmp/voipmonitor-i686-${version}-static/
 	strip voipmonitor
 	cp voipmonitor /tmp/voipmonitor-i686-${version}-static/usr/local/sbin/
 	chmod +x /tmp/voipmonitor-i686-${version}-static/usr/local/sbin/voipmonitor

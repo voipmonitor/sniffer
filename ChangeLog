@@ -1,3 +1,15 @@
+8.3 11.9.2013
+=============
+
+- lock mysql.connect function which causes crash in statically linked binary
+- implement filter_ip|telnum.script flag - this will run shell script for call matching the filter rule (new filtercommand option).
+- add cachedir queue and throughput statistic to syslog. Example - cdq[10][1.1 MB/s] 10 files in queue waiting to be moved, 1.1MB/s is average transfer rate.
+- Do not store body in SIP MESSAGE type after conte-lenght 
+- push REGISTER mysql queries into queue and release call structure immediately to not block memory. This fixes problem when sip register is enabled and mysql slows down for a while. 
+- index also zero lenght pcap and graph files so its deleted by cleaning procedure. 
+- fix audio sync issue in case silence detection is enabled and two consecutive mark bits are seen 
+
+
 8.2 9.9.2013
 ============
 

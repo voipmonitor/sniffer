@@ -26,6 +26,7 @@ extern char mysql_database[256];
 extern int opt_dscp;
 extern int opt_enable_lua_tables;
 extern int opt_mysqlcompress;
+extern pthread_mutex_t mysqlconnect_lock;      
 
 int sql_noerror = 0;
 int sql_disable_next_attempt_if_error = 0;
@@ -355,6 +356,7 @@ SqlDb_mysql::~SqlDb_mysql() {
 }
 
 bool SqlDb_mysql::connect() {
+	pthread_mutex_lock(&mysqlconnect_lock);
 	this->hMysql = mysql_init(NULL);
 	if(this->hMysql) {
 		this->hMysqlConn = mysql_real_connect(
@@ -384,6 +386,7 @@ bool SqlDb_mysql::connect() {
 				syslog(LOG_INFO, "connect - db version %i.%i", this->getDbMajorVersion(), this->getDbMinorVersion());
 			}
 			sql_disable_next_attempt_if_error = 0;
+			pthread_mutex_unlock(&mysqlconnect_lock);
 			return(true);
 		} else {
 			this->checkLastError("connect error", true);
@@ -391,6 +394,7 @@ bool SqlDb_mysql::connect() {
 	} else {
 		this->setLastErrorString("mysql_init failed - insufficient memory ?", true);
 	}
+	pthread_mutex_unlock(&mysqlconnect_lock);
 	return(false);
 }
 
