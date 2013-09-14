@@ -211,6 +211,10 @@ bool SqlDb::reconnect() {
 	return(this->connect());
 }
 
+SqlDB::~SqlDb() {
+	this->disconnect();
+}
+
 void SqlDb::prepareQuery(string *query) {
 	size_t findPos;
 	if(this->getSubtypeDb() == "mssql") {
