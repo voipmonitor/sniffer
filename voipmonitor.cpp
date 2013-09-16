@@ -224,6 +224,9 @@ int opt_generator_channels = 1;
 int opt_skipdefault = 0;
 int opt_filesclean = 1;
 int opt_enable_tcpreassembly = 0;
+int opt_tcpreassembly_pb_lock = 0;
+int opt_tcpreassembly_thread = 1;
+char opt_tcpreassembly_log[1024];
 int opt_allow_zerossrc = 0;
 int opt_convert_dlt_sll_to_en10 = 0;
 int opt_mysqlcompress = 1;
@@ -1634,7 +1637,7 @@ void *storing_cdr( void *dummy ) {
 	Call *call;
 	time_t createPartitionAt = 0;
 	while(1) {
-		if(!opt_nocdr and opt_cdr_partition) {
+		if(!opt_nocdr and opt_cdr_partition and isSqlDriver("mysql")) {
 			time_t actTime = time(NULL);
 			if(actTime - createPartitionAt > 3600) {
 				sqlDb->query(
@@ -2458,6 +2461,9 @@ int load_config(char *fname) {
 	
 	if((value = ini.GetValue("general", "tcpreassembly", NULL))) {
 		opt_enable_tcpreassembly = strcmp(value, "only") ? yesno(value) : 2;
+	}
+	if((value = ini.GetValue("general", "tcpreassembly_log", NULL))) {
+		strncpy(opt_tcpreassembly_log, value, sizeof(opt_tcpreassembly_log));
 	}
 	
 	if((value = ini.GetValue("general", "convert_dlt_sll2en10", NULL))) {
@@ -3409,14 +3415,18 @@ int main(int argc, char *argv[]) {
 		daemonize();
 	}
 	
-	pthread_create(&cleanspool_thread, NULL, clean_spooldir, NULL);
+	if(isSqlDriver("mysql")) {
+		pthread_create(&cleanspool_thread, NULL, clean_spooldir, NULL);
+	}
 	
 	// start thread processing queued cdr and sql queue - supressed if run as sender
 	if(!(opt_pcap_threaded && opt_pcap_queue && 
 	     !opt_pcap_queue_receive_from_ip.length() &&
 	     opt_pcap_queue_send_to_ip.length())) {
 		pthread_create(&call_thread, NULL, storing_cdr, NULL);
-		pthread_create(&cdr_thread, NULL, storing_sql, NULL);
+		if(isSqlDriver("mysql")) {
+			pthread_create(&cdr_thread, NULL, storing_sql, NULL);
+		}
 	}
 
 	if(opt_cachedir[0] != '\0') {
@@ -3591,6 +3601,9 @@ int main(int argc, char *argv[]) {
 				 
 					if(opt_pb_read_from_file[0] && opt_enable_tcpreassembly) {
 						sqlStore->setIgnoreTerminating(STORE_PROC_ID_HTTP, true);
+						if(opt_tcpreassembly_thread) {
+							tcpReassembly->setIgnoreTerminating(true);
+						}
 					}
 				
 					PcapQueue_readFromInterface *pcapQueueI = new PcapQueue_readFromInterface("interface");
@@ -3620,7 +3633,11 @@ int main(int argc, char *argv[]) {
 					}
 					
 					pcapQueueI->terminate();
-					sleep(opt_pb_read_from_file[0] && opt_enable_tcpreassembly ? 30 : 1);
+					sleep(opt_pb_read_from_file[0] && opt_enable_tcpreassembly ? 60 : 1);
+					if(opt_pb_read_from_file[0] && opt_enable_tcpreassembly && opt_tcpreassembly_thread) {
+						tcpReassembly->setIgnoreTerminating(false);
+						sleep(5);
+					}
 					pcapQueueQ->terminate();
 					sleep(1);
 					
@@ -3637,6 +3654,7 @@ int main(int argc, char *argv[]) {
 					delete pcapQueueQ;
 					
 					if(opt_pb_read_from_file[0] && opt_enable_tcpreassembly) {
+						sleep(2);
 						sqlStore->setIgnoreTerminating(STORE_PROC_ID_HTTP, false);
 						sleep(2);
 					}
@@ -3710,7 +3728,9 @@ int main(int argc, char *argv[]) {
 	     !opt_pcap_queue_receive_from_ip.length() &&
 	     opt_pcap_queue_send_to_ip.length())) {
 		pthread_join(call_thread, NULL);
-		pthread_join(cdr_thread, NULL);
+		if(isSqlDriver("mysql")) {
+			pthread_join(cdr_thread, NULL);
+		}
 	}
 	while(calltable->calls_queue.size() != 0) {
 			call = calltable->calls_queue.front();

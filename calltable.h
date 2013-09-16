@@ -366,7 +366,7 @@ public:
 	 * @brief save sip MSSAGE to database
 	 *
 	*/
-	int saveMessageToDb();
+	int saveMessageToDb(bool enableBatchIfPossible = true);
 
 	/**
 	 * @brief calculate duration of the call

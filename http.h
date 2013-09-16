@@ -9,7 +9,8 @@ class HttpData : public TcpReassemblyProcessData {
 public:
 	void processData(u_int32_t ip_src, u_int32_t ip_dst,
 			 u_int16_t port_src, u_int16_t port_dst,
-			 TcpReassemblyData *data);
+			 TcpReassemblyData *data,
+			 bool debugSave);
 	string getUri(string &request);
 	string getUriValue(string &uri, const char *valueName);
 	string getUriPathValue(string &uri, const char *valueName);

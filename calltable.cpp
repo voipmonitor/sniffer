@@ -237,7 +237,7 @@ Call::hashRemove() {
 void
 Call::addtofilesqueue(string file, string column) {
 
-	if(!opt_filesclean or opt_nocdr or file == "") return;
+	if(!opt_filesclean or opt_nocdr or file == "" or !isSqlDriver("mysql")) return;
 
 	if(opt_cachedir[0] != '\0') {
 		string tmp = opt_cachedir;
@@ -2441,7 +2441,7 @@ Call::saveRegisterToDb() {
 }
 
 int
-Call::saveMessageToDb() {
+Call::saveMessageToDb(bool enableBatchIfPossible) {
 	if(!prepareForEscapeString())
 		return(1);
 
@@ -2494,29 +2494,27 @@ Call::saveMessageToDb() {
 	}
 
 
-#if 1
-	string query_str;
-	
-	sqlDb->setEnableSqlStringInContent(true);
-	
-	cdr.add(string("_\\_'SQL'_\\_:") + "getIdOrInsertSIPRES(" + sqlEscapeStringBorder(lastSIPresponse) + ")", "lastSIPresponse_id");
-	if(a_ua) {
-		cdr.add(string("_\\_'SQL'_\\_:") + "getIdOrInsertUA(" + sqlEscapeStringBorder(a_ua) + ")", "a_ua_id");
+	if(enableBatchIfPossible && isSqlDriver("mysql")) {
+		string query_str;
+		
+		sqlDb->setEnableSqlStringInContent(true);
+		
+		cdr.add(string("_\\_'SQL'_\\_:") + "getIdOrInsertSIPRES(" + sqlEscapeStringBorder(lastSIPresponse) + ")", "lastSIPresponse_id");
+		if(a_ua) {
+			cdr.add(string("_\\_'SQL'_\\_:") + "getIdOrInsertUA(" + sqlEscapeStringBorder(a_ua) + ")", "a_ua_id");
+		}
+		if(b_ua) {
+			cdr.add(string("_\\_'SQL'_\\_:") + "getIdOrInsertUA(" + sqlEscapeStringBorder(b_ua) + ")", "b_ua_id");
+		}
+		query_str += sqlDb->insertQuery("message", cdr);
+		
+		pthread_mutex_lock(&mysqlquery_lock);
+		mysqlquery.push(query_str);
+		pthread_mutex_unlock(&mysqlquery_lock);
+		//cout << endl << endl << query_str << endl << endl << endl;
+		return(0);
 	}
-	if(b_ua) {
-		cdr.add(string("_\\_'SQL'_\\_:") + "getIdOrInsertUA(" + sqlEscapeStringBorder(b_ua) + ")", "b_ua_id");
-	}
-	query_str += sqlDb->insertQuery("message", cdr);
 	
-	pthread_mutex_lock(&mysqlquery_lock);
-	mysqlquery.push(query_str);
-	pthread_mutex_unlock(&mysqlquery_lock);
-	//cout << endl << endl << query_str << endl << endl << endl;
-	return(0);
-#endif
-
-#if 0
-
 	unsigned int 
 			lastSIPresponse_id = 0,
 			a_ua_id = 0,
@@ -2535,7 +2533,7 @@ Call::saveMessageToDb() {
 	int cdrID = sqlDb->insert("message", cdr);
 
 	return(cdrID <= 0);
-#endif
+
 }
 
 char *

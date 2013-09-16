@@ -13,7 +13,8 @@ extern MySqlStore *sqlStore;
 
 void HttpData::processData(u_int32_t ip_src, u_int32_t ip_dst,
 			   u_int16_t port_src, u_int16_t port_dst,
-			   TcpReassemblyData *data) {
+			   TcpReassemblyData *data,
+			   bool debugSave) {
 	string request;
 	string response;
 	string expectContinue;
@@ -58,10 +59,10 @@ void HttpData::processData(u_int32_t ip_src, u_int32_t ip_dst,
 	if(!data->expectContinue.size() &&
 	   strcasestr(request.c_str(), "Expect: 100-continue") &&
 	   data->request.size() > i_request) {
-		request += (char*)data->request[i_request].data;
+		request += (char*)data->request[i_request].getData();
 	} else {
 		request_data = &data->request[i_request];
-		request = (char*)request_data->data;
+		request = (char*)request_data->getData();
 	}
 	
 	uri = this->getUri(request);
@@ -79,13 +80,13 @@ void HttpData::processData(u_int32_t ip_src, u_int32_t ip_dst,
 	response_data = NULL;
 	if(data->response.size()) {
 		response_data = &data->response[0];
-		response = (char*)response_data->data;
+		response = (char*)response_data->getData();
 	}
 	if(data->expectContinue.size()) {
-		expectContinue = (char*)data->expectContinue[0].data;
+		expectContinue = (char*)data->expectContinue[0].getData();
 		if(data->expectContinueResponse.size()) {
 			response_data = &data->expectContinueResponse[0];
-			response = (char*)response_data->data;
+			response = (char*)response_data->getData();
 		}
 	}
 	
@@ -148,14 +149,18 @@ void HttpData::processData(u_int32_t ip_src, u_int32_t ip_dst,
 	if(externalTransactionId.length() || sessionid.length() || callid.length()) {
 		string queryInsert;
 		static int saveCounter;
-		cout << "SAVE " << (++saveCounter) << " time: " << sqlDateTimeString(request_data->time.tv_sec) 
-		     << (response.length() ? " with response" : "")
-		     << endl;
+		if(debugSave) {
+			cout << "SAVE " << (++saveCounter) << " time: " << sqlDateTimeString(request_data->getTime().tv_sec) 
+			     << (response.length() ? " with response" : "")
+			     << endl;
+		}
 		SqlDb_row rowRequest;
-		rowRequest.add(sqlDateTimeString(request_data->time.tv_sec), "timestamp");
-		rowRequest.add(request_data->time.tv_usec, "usec");
-		rowRequest.add(htonl(ip_src), "srcip"); 
-		rowRequest.add(htonl(ip_dst), "dstip"); 
+		rowRequest.add(sqlDateTimeString(request_data->getTime().tv_sec), "timestamp");
+		rowRequest.add(request_data->getTime().tv_usec, "usec");
+		rowRequest.add(htonl(ip_src), "srcip");
+		rowRequest.add(htonl(ip_dst), "dstip");
+		rowRequest.add(port_src, "srcport"); 
+		rowRequest.add(port_dst, "dstport"); 
 		rowRequest.add(sqlEscapeString(uri), "url");
 		rowRequest.add((const char*)NULL, "type"); 
 		rowRequest.add(sqlEscapeString(http), "http");
@@ -188,10 +193,12 @@ void HttpData::processData(u_int32_t ip_src, u_int32_t ip_dst,
 			}
 			SqlDb_row rowRequest;
 			rowRequest.add("_\\_'SQL'_\\_:@http_jj_id", "master_id");
-			rowRequest.add(sqlDateTimeString(response_data->time.tv_sec), "timestamp");
-			rowRequest.add(response_data->time.tv_usec, "usec");
+			rowRequest.add(sqlDateTimeString(response_data->getTime().tv_sec), "timestamp");
+			rowRequest.add(response_data->getTime().tv_usec, "usec");
 			rowRequest.add(htonl(ip_dst), "srcip"); 
 			rowRequest.add(htonl(ip_src), "dstip"); 
+			rowRequest.add(port_dst, "srcport"); 
+			rowRequest.add(port_src, "dstport"); 
 			rowRequest.add("", "url");
 			rowRequest.add("http_ok", "type"); 
 			rowRequest.add(sqlEscapeString(responseHttp), "http");

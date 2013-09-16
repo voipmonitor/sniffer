@@ -73,6 +73,7 @@ extern int opt_mirrorip;
 extern char opt_mirrorip_src[20];
 extern char opt_mirrorip_dst[20];
 extern int opt_enable_tcpreassembly;
+extern int opt_tcpreassembly_pb_lock;
 
 extern pcap_t *handle;
 extern char *sipportmatrix;
@@ -1205,7 +1206,7 @@ PcapQueue_readFromInterface::PcapQueue_readFromInterface(const char *nameQueue)
 	// CONFIG
 	extern int opt_promisc;
 	extern int opt_ringbuffer;
-	this->pcap_snaplen = opt_enable_tcpreassembly ? 5000 : 3200;
+	this->pcap_snaplen = opt_enable_tcpreassembly ? 6000 : 3200;
 	this->pcap_promisc = opt_promisc;
 	this->pcap_timeout = 1000;
 	this->pcap_buffer_size = opt_ringbuffer * 1024 * 1024;
@@ -1657,7 +1658,7 @@ int PcapQueue_readFromInterface::pcapProcess(pcap_pkthdr** header, u_char** pack
 
 	/* check for duplicate packets (md5 is expensive operation - enable only if you really need it */
 	if(ppd.datalen > 0 && opt_dup_check && ppd.prevmd5s != NULL && (ppd.traillen < ppd.datalen) &&
-	   !(opt_enable_tcpreassembly && (httpportmatrix[htons(ppd.header_tcp->source)] || httpportmatrix[htons(ppd.header_tcp->dest)]))) {
+	   !(ppd.istcp && opt_enable_tcpreassembly && (httpportmatrix[htons(ppd.header_tcp->source)] || httpportmatrix[htons(ppd.header_tcp->dest)]))) {
 		MD5_Init(&ppd.ctx);
 		MD5_Update(&ppd.ctx, ppd.data, MAX(0, (unsigned long)ppd.datalen - ppd.traillen));
 		MD5_Final((unsigned char*)ppd.md5, &ppd.ctx);
@@ -1836,11 +1837,11 @@ void *PcapQueue_readFromFifo::threadFunction(void *) {
 				continue;
 			}
 			size_t blockSize = blockStore->size;
-			sumPacketsSize[0] += blockSize;
 			if(opt_pcap_queue_compress) {
 				blockStore->compress();
 			}
 			if(this->pcapStoreQueue.push(blockStore, this->blockStoreTrash_size, false)) {
+				sumPacketsSize[0] += blockSize;
 				blockStoreBypassQueue.pop(true, blockSize);
 			} else {
 				usleep(1000);
@@ -2252,7 +2253,7 @@ void PcapQueue_readFromFifo::processPacket(pcap_pkthdr_plus *header_plus, u_char
 		mirrorip->send((char *)header_ip, (int)(header->caplen - ((u_char*)header_ip - packet)));
 	}
 	int voippacket = 0;
-	if(!useTcpReassembly || opt_enable_tcpreassembly != 2) {
+	if(!useTcpReassembly && opt_enable_tcpreassembly != 2) {
 		process_packet(header_ip->saddr, htons(header_udp->source), header_ip->daddr, htons(header_udp->dest), 
 			data, datalen, this->getPcapHandle(), header, packet, istcp, 0, 1, &was_rtp, header_ip, &voippacket, 0,
 			block_store, block_store_index);

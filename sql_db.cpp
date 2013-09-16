@@ -759,12 +759,20 @@ bool SqlDb_odbc::query(string query) {
 			if(!sql_noerror) {
 				this->checkLastError("odbc query error", true);
 			}
-			if(rslt == SQL_ERROR || rslt == SQL_INVALID_HANDLE) {
+			if(sql_noerror || sql_disable_next_attempt_if_error) {
+				break;
+			}
+			else if(rslt == SQL_ERROR || rslt == SQL_INVALID_HANDLE) {
 				if(pass < this->maxQueryPass - 1) {
 					this->reconnect();
 				}
 			} else {
-				break;
+				if(pass < this->maxQueryPass - 5) {
+					pass = this->maxQueryPass - 5;
+				}
+				if(pass < this->maxQueryPass - 1) {
+					this->reconnect();
+				}
 			}
 		} else {
 			break;
@@ -2203,13 +2211,13 @@ void SqlDb_odbc::createSchema() {
 	this->query(
 	"IF NOT EXISTS (SELECT * FROM sys.objects WHERE name = 'files') BEGIN\
 		CREATE TABLE files (\
-			`datehour` int PRIMARY KEY IDENTITY,\
-			`id_sensor` int NULL,\
-			`sipsize` bigint 0,\
-			`rtpsize` bigint 0,\
-			`graphsize` bigint 0,\
-			`regsize` bigint 0,\
-			`audiosize` bigint 0);\
+			datehour int PRIMARY KEY IDENTITY,\
+			id_sensor int NULL,\
+			sipsize bigint DEFAULT '0',\
+			rtpsize bigint DEFAULT '0',\
+			graphsize bigint DEFAULT '0',\
+			regsize bigint DEFAULT '0',\
+			audiosize bigint DEFAULT '0');\
 	END");
 	
 	this->query(
@@ -2229,7 +2237,7 @@ void SqlDb_odbc::createSchema() {
 			cdr_ID int NOT NULL\
 				FOREIGN KEY REFERENCES cdr (ID),\
 			src bigint NULL,\
-			dst bigint NULL;\
+			dst bigint NULL);\
 		CREATE INDEX src ON cdr_proxy (src);\
 		CREATE INDEX dst ON cdr_proxy (dst);\
 	END");
@@ -2241,14 +2249,14 @@ void SqlDb_odbc::createSchema() {
 			ID int PRIMARY KEY IDENTITY,\
 			cdr_ID int \
 				FOREIGN KEY REFERENCES cdr (ID),\
-			`saddr` bigint NULL,\
-			`daddr` bigint NULL,\
-			`ssrc` bigint NULL,\
-			`received` int NULL,\
-			`loss` int NULL,\
-			`firsttime` float NULL,\
-			`payload` smallint NULL,\
-			`maxjitter_mult10` smallint DEFAULT NULL;\
+			saddr bigint NULL,\
+			daddr bigint NULL,\
+			ssrc bigint NULL,\
+			received int NULL,\
+			loss int NULL,\
+			firsttime float NULL,\
+			payload smallint NULL,\
+			maxjitter_mult10 smallint DEFAULT NULL);\
 	END");
 
 	this->query(
@@ -2257,10 +2265,10 @@ void SqlDb_odbc::createSchema() {
 			ID int PRIMARY KEY IDENTITY,\
 			cdr_ID int \
 				FOREIGN KEY REFERENCES cdr (ID),\
-			`firsttime` float NULL,\
-			`dtmf` char NULL\
-			`daddr` bigint DEFAULT NULL,\
-			`saddr` bigint DEFAULT NULL;\
+			firsttime float NULL,\
+			dtmf char NULL,\
+			daddr bigint DEFAULT NULL,\
+			saddr bigint DEFAULT NULL);\
 	END");
 
 	this->query(
@@ -2473,11 +2481,34 @@ void SqlDb_odbc::createSchema() {
 			ADD GeoPosition varchar(255) NULL;");
 	this->query("ALTER TABLE cdr\
 			ADD GeoPosition varchar(255) NULL;");
+	this->query("ALTER TABLE register\
+			ADD fname BIGINT NULL;");
+	this->query("ALTER TABLE register_failed\
+			ADD fname BIGINT NULL;");
+	this->query("ALTER TABLE register_state\
+			ADD fname BIGINT NULL;");
+	this->query("ALTER TABLE register\
+			ADD id_sensor INT NULL;");
+	this->query("ALTER TABLE register_failed\
+			ADD id_sensor INT NULL;");
+	this->query("ALTER TABLE register_state\
+			ADD id_sensor INT NULL;");
 
 	this->query("ALTER TABLE filter_ip\
 			ADD skip tinyint NULL;");
 	this->query("ALTER TABLE filter_telnum\
 			ADD skip tinyint NULL;");
+	
+	//8.0
+	if(opt_dscp) {
+		this->query("ALTER TABLE cdr ADD dscp int NULL");
+	}
+	
+	//8.2
+	this->query("ALTER TABLE filter_ip\
+			ADD script tinyint NULL;");
+	this->query("ALTER TABLE filter_telnum\
+			ADD script tinyint NULL;");
 
 	if(opt_dscp) {
 		this->query("ALTER TABLE filter_telnum ADD dscp bigint NULL;");

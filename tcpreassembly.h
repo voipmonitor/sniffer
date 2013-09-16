@@ -6,6 +6,11 @@
 #include "sniff.h"
 #include "pcap_queue_block.h"
 
+
+extern int opt_tcpreassembly_pb_lock;
+extern int opt_tcpreassembly_thread;
+
+
 class TcpReassemblyDataItem {
 public: 
 	TcpReassemblyDataItem() {
@@ -15,22 +20,95 @@ public:
 		this->time.tv_usec = 0;
 	}
 	TcpReassemblyDataItem(u_char *data, u_int32_t datalen, timeval time) {
-		this->data = data;
-		this->datalen = datalen;
+		if(data && datalen) {
+			this->data = new u_char[datalen + 1];
+			memcpy(this->data, data, datalen);
+			this->data[datalen] = 0;
+			this->datalen = datalen;
+		} else {
+			this->data = NULL;
+			this->datalen = 0;
+		}
 		this->time = time;
 	}
-	void setFrom(TcpReassemblyDataItem &dataItem) {
-		this->data = dataItem.data;
-		this->datalen = dataItem.datalen;
+	TcpReassemblyDataItem(const TcpReassemblyDataItem &dataItem) {
+		if(dataItem.data && dataItem.datalen) {
+			this->data = new u_char[dataItem.datalen + 1];
+			memcpy(this->data, dataItem.data, dataItem.datalen);
+			this->data[dataItem.datalen] = 0;
+			this->datalen = dataItem.datalen;
+		} else {
+			this->data = NULL;
+			this->datalen = 0;
+		}
 		this->time = dataItem.time;
 	}
-	void destroy() {
+	~TcpReassemblyDataItem() {
 		if(this->data) {
 			delete [] this->data;
-			this->data = NULL;
 		}
 	}
-public:
+	TcpReassemblyDataItem& operator = (const TcpReassemblyDataItem &dataItem) {
+		if(this->data) {
+			delete [] this->data;
+		}
+		if(dataItem.data && dataItem.datalen) {
+			this->data = new u_char[dataItem.datalen + 1];
+			memcpy(this->data, dataItem.data, dataItem.datalen);
+			this->data[dataItem.datalen] = 0;
+			this->datalen = dataItem.datalen;
+		} else {
+			this->data = NULL;
+			this->datalen = 0;
+		}
+		this->time = dataItem.time;
+		return(*this);
+	}
+	void setData(u_char *data, u_int32_t datalen, bool newAlloc = true) {
+		if(this->data) {
+			delete [] this->data;
+		}
+		if(data && datalen) {
+			if(newAlloc) {
+				this->data = new u_char[datalen + 1];
+				memcpy(this->data, data, datalen);
+				this->data[datalen] = 0;
+			} else {
+				this->data = data;
+			}
+			this->datalen = datalen;
+		} else {
+			this->data = NULL;
+			this->datalen = 0;
+		}
+	}
+	void setTime(timeval time) {
+		this->time = time;
+	}
+	void setDataTime(u_char *data, u_int32_t datalen, timeval time, bool newAlloc = true) {
+		this->setData(data, datalen, newAlloc);
+		this->setTime(time);
+	}
+	void clearData() {
+		if(this->data) {
+			delete [] this->data;
+		}
+		this->data = NULL;
+		this->datalen = 0;
+	}
+	u_char *getData() {
+		return(this->data);
+	}
+	u_int32_t getDatalen() {
+		return(this->datalen);
+	}
+	timeval getTime() {
+		return(this->time);
+	}
+	bool isFill() {
+		return(this->data != NULL);
+	}
+private:
 	u_char *data;
 	u_int32_t datalen;
 	timeval time;
@@ -41,7 +119,6 @@ public:
 	TcpReassemblyData() {
 		this->forceAppendExpectContinue = false;
 	}
-	~TcpReassemblyData();
 	void addRequest(u_char *data, u_int32_t datalen, timeval time) {
 		request.push_back(TcpReassemblyDataItem(data, datalen, time));
 	}
@@ -67,7 +144,8 @@ class TcpReassemblyProcessData {
 public:
 	virtual void processData(u_int32_t ip_src, u_int32_t ip_dst,
 				 u_int16_t port_src, u_int16_t port_dst,
-				 TcpReassemblyData *data) = 0;
+				 TcpReassemblyData *data,
+				 bool debugSave) = 0;
 };
 
 struct TcpReassemblyLink_id {
@@ -106,12 +184,65 @@ public:
 		FAIL
 	};
 	TcpReassemblyStream_packet() {
+		time.tv_sec = 0;
+		time.tv_usec = 0;
+		memset(&header_tcp, 0, sizeof(header_tcp));
+		next_seq = 0;
+		data = NULL;
+		datalen = 0;
+		datacaplen = 0;
+		block_store = NULL;
+		block_store_index = 0;
 		state = NA;
 		//locked_packet = false;
 	}
+	TcpReassemblyStream_packet(const TcpReassemblyStream_packet &packet) {
+		this->copyFrom(packet);
+		if(!opt_tcpreassembly_pb_lock && packet.data) {
+			this->data = new u_char[packet.datacaplen];
+			memcpy(this->data, packet.data, packet.datacaplen);
+		}
+	}
+	~TcpReassemblyStream_packet() {
+		if(!opt_tcpreassembly_pb_lock && this->data) {
+			delete [] this->data;
+		}
+	}
+	TcpReassemblyStream_packet& operator = (const TcpReassemblyStream_packet &packet) {
+		if(!opt_tcpreassembly_pb_lock && this->data) {
+			delete [] this->data;
+		}
+		this->copyFrom(packet);
+		if(!opt_tcpreassembly_pb_lock && packet.data) {
+			this->data = new u_char[packet.datacaplen];
+			memcpy(this->data, packet.data, packet.datacaplen);
+		}
+		return(*this);
+	}
+	void setData(timeval time, tcphdr header_tcp,
+		     u_char *data, u_int32_t datalen, u_int32_t datacaplen,
+		     pcap_block_store *block_store, int block_store_index) {
+		this->time = time;
+		this->header_tcp = header_tcp;
+		this->next_seq = header_tcp.seq + datalen;
+		if(opt_tcpreassembly_pb_lock) {
+			this->data = data;
+		} else {
+			if(datacaplen) {
+				this->data = new u_char[datacaplen];
+				memcpy(this->data, data, datacaplen);
+			} else {
+				this->data = NULL;
+			}
+		}
+		this->datalen = datalen;
+		this->datacaplen = datacaplen;
+		this->block_store = block_store;
+		this->block_store_index = block_store_index;
+	}
 private:
 	void lock_packet() {
-		if(this->block_store/* && !locked_packet*/) {
+		if(opt_tcpreassembly_pb_lock && this->block_store/* && !locked_packet*/) {
 			//static int countLock;
 			//cout << "COUNT LOCK: " << (++countLock) << endl;
 			this->block_store->lock_packet(this->block_store_index);
@@ -119,12 +250,23 @@ private:
 		}
 	}
 	void unlock_packet() {
-		if(this->block_store/* && locked_packet*/) {
+		if(opt_tcpreassembly_pb_lock && this->block_store/* && locked_packet*/) {
 			//static int countUnlock;
 			//cout << "COUNT UNLOCK: " << (++countUnlock) << endl;
 			this->block_store->unlock_packet(this->block_store_index);
 			//locked_packet = false;
 		}
+	}
+	void copyFrom(const TcpReassemblyStream_packet &packet) {
+		this->time = packet.time;
+		this->header_tcp = packet.header_tcp;
+		this->next_seq = packet.next_seq;
+		this->data = packet.data;
+		this->datalen = packet.datalen;
+		this->datacaplen = packet.datacaplen;
+		this->block_store = packet.block_store;
+		this->block_store_index = packet.block_store_index;
+		this->state = packet.state;
 	}
 	void cleanState() {
 		this->state = NA;
@@ -148,9 +290,11 @@ friend class TcpReassemblyLink;
 class TcpReassemblyStream_packet_var {
 public:
 	~TcpReassemblyStream_packet_var() {
-		map<uint32_t, TcpReassemblyStream_packet>::iterator iter;
-		for(iter = this->queue.begin(); iter != this->queue.end(); iter++) {
-			iter->second.unlock_packet();
+		if(opt_tcpreassembly_pb_lock) {
+			map<uint32_t, TcpReassemblyStream_packet>::iterator iter;
+			for(iter = this->queue.begin(); iter != this->queue.end(); iter++) {
+				iter->second.unlock_packet();
+			}
 		}
 	}
 	void push(TcpReassemblyStream_packet packet);
@@ -167,9 +311,11 @@ public:
 	}
 private:
 	void unlockPackets() {
-		map<uint32_t, TcpReassemblyStream_packet>::iterator iter;
-		for(iter = this->queue.begin(); iter != this->queue.end(); iter++) {
-			iter->second.unlock_packet();
+		if(opt_tcpreassembly_pb_lock) {
+			map<uint32_t, TcpReassemblyStream_packet>::iterator iter;
+			for(iter = this->queue.begin(); iter != this->queue.end(); iter++) {
+				iter->second.unlock_packet();
+			}
 		}
 	}
 	void cleanState() {
@@ -217,8 +363,8 @@ public:
 		completed = false;
 		completed_finally = false;
 		exists_data = false;
-		complete_data = NULL;
 		http_type = HTTP_TYPE_NA;
+		http_header_length = 0;
 		http_content_length = 0;
 		http_ok = false;
 		http_expect_continue = false;
@@ -231,17 +377,13 @@ public:
 		last_packet_at_from_header = 0;
 		this->link = link;
 	}
-	~TcpReassemblyStream() {
-		this->cleanCompleteData(true);
-	}
 	void push(TcpReassemblyStream_packet packet);
-	int ok(bool crazySequence = false, bool enableSimpleCmpMaxNextSeq = false, u_int32_t maxNextSeq = 0, 
+	int ok(bool crazySequence = false, bool enableSimpleCmpMaxNextSeq = false, u_int32_t maxNextSeq = 0,
 	       bool enableCheckCompleteContent = false, TcpReassemblyStream *prevHttpStream = NULL, bool enableDebug = false);
 	bool ok2_ec(u_int32_t nextAck, bool enableDebug = false);
 	u_char *complete(u_int32_t *datalen, timeval *time, bool check = false, bool unlockPackets = true);
 	bool saveCompleteData(bool unlockPackets = true, bool check = false, TcpReassemblyStream *prevHttpStream = NULL);
-	void cleanCompleteData(bool destroy = false);
-	TcpReassemblyDataItem getCompleteData(bool clean = false);
+	void clearCompleteData();
 	void unlockPackets();
 	void printContent(int level  = 0);
 	bool checkOkPost(TcpReassemblyStream *nextStream = NULL);
@@ -269,10 +411,12 @@ private:
 	bool completed;
 	bool completed_finally;
 	bool exists_data;
-	TcpReassemblyDataItem *complete_data;
+	TcpReassemblyDataItem complete_data;
 	eHttpType http_type;
+	u_int32_t http_header_length;
 	u_int32_t http_content_length;
 	bool http_ok;
+	bool http_ok_data_complete;
 	bool http_expect_continue;
 	bool http_ok_expect_continue_post;
 	bool http_ok_expect_continue_data;
@@ -335,21 +479,24 @@ public:
 		this->fin_to_dest = false;
 		this->fin_to_source = false;
 		this->_sync_queue = 0;
-		this->created_at = getTimeMS();
-		this->last_packet_at = 0;
+		//this->created_at = getTimeMS();
+		//this->last_packet_at = 0;
 		this->created_at_from_header = 0;
 		this->last_packet_at_from_header = 0;
+		this->last_packet_process_cleanup_at = 0;
 		this->last_ack = 0;
 		this->exists_data = false;
 		this->link_is_ok = 0;
 		this->completed_offset = 0;
 		this->direction_confirm = 0;
+		this->cleanup_state = 0;
 	}
 	~TcpReassemblyLink();
 	bool push(TcpReassemblyStream::eDirection direction,
 		  timeval time, tcphdr header_tcp, 
 		  u_char *data, u_int32_t datalen, u_int32_t datacaplen,
-		  pcap_block_store *block_store, int block_store_index) {
+		  pcap_block_store *block_store, int block_store_index,
+		  bool lockQueue = true) {
 		if(datalen) {
 			this->exists_data = true;
 		}
@@ -357,24 +504,30 @@ public:
 			return(this->push_crazy(
 				direction, time, header_tcp, 
 				data, datalen, datacaplen,
-				block_store, block_store_index));
+				block_store, block_store_index,
+				lockQueue));
 		} else {
+			/*
 			return(this->push_normal(
 				direction, time, header_tcp, 
 				data, datalen, datacaplen,
 				block_store, block_store_index));
+			*/
+			return(false);
 		}
 	}
 	bool push_normal(
 		  TcpReassemblyStream::eDirection direction,
 		  timeval time, tcphdr header_tcp, 
 		  u_char *data, u_int32_t datalen, u_int32_t datacaplen,
-		  pcap_block_store *block_store, int block_store_index);
+		  pcap_block_store *block_store, int block_store_index,
+		  bool lockQueue);
 	bool push_crazy(
 		  TcpReassemblyStream::eDirection direction,
 		  timeval time, tcphdr header_tcp, 
 		  u_char *data, u_int32_t datalen, u_int32_t datacaplen,
-		  pcap_block_store *block_store, int block_store_index);
+		  pcap_block_store *block_store, int block_store_index,
+		  bool lockQueue);
 	int okQueue(bool final = false, bool enableDebug = false) {
 		if(this->state == STATE_CRAZY) {
 			return(this->okQueue_crazy(final, enableDebug));
@@ -387,9 +540,9 @@ public:
 	}
 	int okQueue_normal(bool final = false, bool enableDebug = false);
 	int okQueue_crazy(bool final = false, bool enableDebug = false);
-	void complete(bool final = false, bool eraseCompletedStreams = false) {
+	void complete(bool final = false, bool eraseCompletedStreams = false, bool lockQueue = true) {
 		if(this->state == STATE_CRAZY) {
-			this->complete_crazy(final, eraseCompletedStreams);
+			this->complete_crazy(final, eraseCompletedStreams, lockQueue);
 		} else {
 			/*
 			this->complete_normal();
@@ -397,7 +550,7 @@ public:
 		}
 	}
 	void complete_normal();
-	void complete_crazy(bool final = false, bool eraseCompletedStreams = false);
+	void complete_crazy(bool final = false, bool eraseCompletedStreams = false, bool lockQueue = true);
 	streamIterator createIterator();
 	TcpReassemblyStream *findStreamBySeq(u_int32_t seq) {
 		for(size_t i = 0; i < this->queue.size(); i++) {
@@ -469,7 +622,7 @@ public:
 		}
 		return(false);
 	}
-	void cleanup(u_int64_t act_time_from_header);
+	void cleanup(u_int64_t act_time);
 	void printContent(int level  = 0);
 private:
 	void lock_queue() {
@@ -482,7 +635,7 @@ private:
 		        TcpReassemblyStream_packet packet);
 	void setLastSeq(TcpReassemblyStream::eDirection direction, 
 			u_int32_t lastSeq);
-	void switchDirection();
+	void switchDirection(bool lockQueue = true);
 private:
 	TcpReassembly *reassembly;
 	u_int32_t ip_src;
@@ -500,31 +653,25 @@ private:
 	map<uint32_t, TcpReassemblyStream*> queue_nul_by_ack;
 	deque<TcpReassemblyStream*> queue;
 	volatile int _sync_queue;
-	u_int64_t created_at;
-	u_int64_t last_packet_at;
+	//u_int64_t created_at;
+	//u_int64_t last_packet_at;
 	u_int64_t created_at_from_header;
 	u_int64_t last_packet_at_from_header;
+	u_int64_t last_packet_process_cleanup_at;
 	u_int32_t last_ack;
 	bool exists_data;
 	int link_is_ok;
 	size_t completed_offset;
 	int direction_confirm;
 	vector<TcpReassemblyStream*> ok_streams;
+	int cleanup_state;
 friend class TcpReassembly;
 friend class TcpReassemblyStream;
 };
 
 class TcpReassembly {
 public:
-	TcpReassembly() {
-		this->_sync_links = 0;
-		this->enableHttpForceInit = false;
-		this->enableCrazySequence = false;
-		this->dataCallback = NULL;
-		this->act_time_from_header = 0;
-		this->last_time = 0;
-		this->doPrintContent = false;
-	}
+	TcpReassembly();
 	~TcpReassembly();
 	void push(pcap_pkthdr *header, iphdr2 *header_ip, u_char *packet,
 		  pcap_block_store *block_store = NULL, int block_store_index = 0);
@@ -545,7 +692,14 @@ public:
 	void setDoPrintContent() {
 		this->doPrintContent = true;
 	}
+	void setIgnoreTerminating(bool ignoreTerminating);
+	void addLog(const char *logString);
+	bool isActiveLog() {
+		return(this->log != NULL);
+	}
 private:
+	void createThread();
+	void *threadFunction(void *);
 	void lock_links() {
 		while(__sync_lock_test_and_set(&this->_sync_links, 1));
 	}
@@ -561,7 +715,13 @@ private:
 	u_int64_t act_time_from_header;
 	u_int64_t last_time;
 	bool doPrintContent;
+	pthread_t threadHandle;
+	uint threadId;
+	bool terminated;
+	bool ignoreTerminating;
+	FILE *log;
 friend class TcpReassemblyLink;
+friend void *_TcpReassembly_threadFunction(void* arg);
 };
 
 #endif
