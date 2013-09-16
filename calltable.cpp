@@ -2160,7 +2160,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 
 /* TODO: implement failover -> write INSERT into file */
 int
-Call::saveRegisterToDb() {
+Call::saveRegisterToDb(bool enableBatchIfPossible) {
 	const char *register_table = "register";
 	
 	if(!prepareForEscapeString())
@@ -2177,28 +2177,47 @@ Call::saveRegisterToDb() {
 
 	if(last_register_clean == 0) {
 		// on first run the register table has to be deleted 
-		if(opt_sip_register_active_nologbin && isTypeDb("mysql")) {
-			qp += "SET sql_log_bin = 0; ";
+		if(enableBatchIfPossible && isTypeDb("mysql")) {
+			if(opt_sip_register_active_nologbin) {
+				qp += "SET sql_log_bin = 0; ";
+			}
 			qp += "DELETE FROM register; ";
-			qp += "SET sql_log_bin = 1";
+			if(opt_sip_register_active_nologbin) {
+				qp += "SET sql_log_bin = 1";
+			}
+			mysqlquerypush(qp);
 		} else {
-			qp += "DELETE FROM register";
+			if(opt_sip_register_active_nologbin && isTypeDb("mysql")) {
+				sqlDb->query("SET sql_log_bin = 0");
+			}
+			sqlDb->query("DELETE FROM register");
+			if(opt_sip_register_active_nologbin && isTypeDb("mysql")) {
+				sqlDb->query("SET sql_log_bin = 1");
+			}
 		}
-		mysqlquerypush(qp);
 	} else if((last_register_clean + REGISTER_CLEAN_PERIOD) < now){
 		// last clean was done older than CLEAN_PERIOD seconds
-		query = "INSERT INTO register_state (created_at, sipcallerip, from_num, to_num, to_domain, contact_num, contact_domain, digestusername, expires, state, ua_id) SELECT expires_at, sipcallerip, from_num, to_num, to_domain, contact_num, contact_domain, digestusername, expires, 5, ua_id FROM register WHERE expires_at <= NOW();";
-		qp = query;
-//		sqlDb->query(query);
-		if(opt_sip_register_active_nologbin && isTypeDb("mysql")) {
-			//sqlDb->query("SET sql_log_bin = 0;");
-			qp += "SET sql_log_bin = 0; ";
+		query = "INSERT INTO register_state (created_at, sipcallerip, from_num, to_num, to_domain, contact_num, contact_domain, digestusername, expires, state, ua_id) SELECT expires_at, sipcallerip, from_num, to_num, to_domain, contact_num, contact_domain, digestusername, expires, 5, ua_id FROM register WHERE expires_at <= NOW()";
+		if(enableBatchIfPossible && isTypeDb("mysql")) {
+			qp = query + "; ";
+			if(opt_sip_register_active_nologbin) {
+				qp += "SET sql_log_bin = 0; ";
+			}
 			qp += "DELETE FROM register WHERE expires_at <= NOW(); ";
-			qp += "SET sql_log_bin = 1 ";
+			if(opt_sip_register_active_nologbin) {
+				qp += "SET sql_log_bin = 1 ";
+			}
+			mysqlquerypush(qp);
 		} else {
-			qp += "DELETE FROM register WHERE expires_at <= NOW()";
+			sqlDb->query(query);
+			if(opt_sip_register_active_nologbin && isTypeDb("mysql")) {
+				sqlDb->query("SET sql_log_bin = 0");
+			}
+			sqlDb->query("DELETE FROM register WHERE expires_at <= NOW()");
+			if(opt_sip_register_active_nologbin && isTypeDb("mysql")) {
+				sqlDb->query("SET sql_log_bin = 1");
+			}
 		}
-		mysqlquerypush(qp);
 	}
 	last_register_clean = now;
 
@@ -2208,7 +2227,7 @@ Call::saveRegisterToDb() {
 	switch(regstate) {
 	case 1:
 	case 3:
-		if(isTypeDb("mysql")) {
+		if(enableBatchIfPossible && isTypeDb("mysql")) {
 			char ips[32];
 			char ipd[32];
 			sprintf(ips, "%u", htonl(sipcallerip));
@@ -2358,82 +2377,77 @@ Call::saveRegisterToDb() {
 	case 2:
 		// REGISTER failed. Check if there is already in register_failed table failed register within last hour 
 
-		string q1 = string(
-			"SELECT counter FROM register_failed ") +
-			"WHERE to_num = " + sqlEscapeStringBorder(called) + " AND to_domain = " + sqlEscapeStringBorder(called_domain) + 
-				" AND digestusername = " + sqlEscapeStringBorder(digest_username) + " AND created_at >= SUBTIME(NOW(), '01:00:00') LIMIT 1";
+		if(enableBatchIfPossible && isTypeDb("mysql")) {
+			string q1 = string(
+				"SELECT counter FROM register_failed ") +
+				"WHERE to_num = " + sqlEscapeStringBorder(called) + " AND to_domain = " + sqlEscapeStringBorder(called_domain) + 
+					" AND digestusername = " + sqlEscapeStringBorder(digest_username) + " AND created_at >= SUBTIME(NOW(), '01:00:00') LIMIT 1";
 
-		char fname[32];
-		sprintf(fname, "%llu", fname2);
-		string q2 = string(
-			"UPDATE register_failed SET created_at = NOW(), fname = " + sqlEscapeStringBorder(fname) + ", counter = counter + 1 ") +
-			"WHERE to_num = " + sqlEscapeStringBorder(called) + " AND digestusername = " + sqlEscapeStringBorder(digest_username) + 
-				" AND created_at >= SUBTIME(NOW(), '01:00:00')";
-
-		SqlDb_row reg;
-		reg.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "created_at");
-		reg.add(htonl(sipcallerip), "sipcallerip");
-		reg.add(htonl(sipcalledip), "sipcalledip");
-		reg.add(sqlEscapeString(caller), "from_num");
-		reg.add(sqlEscapeString(called), "to_num");
-		reg.add(sqlEscapeString(called_domain), "to_domain");
-		reg.add(sqlEscapeString(contact_num), "contact_num");
-		reg.add(sqlEscapeString(contact_domain), "contact_domain");
-		reg.add(sqlEscapeString(digest_username), "digestusername");
-		reg.add(sqlDb->getIdOrInsert(sql_cdr_ua_table, "id", "ua", cdr_ua), "ua_id");
-		reg.add(fname, "fname");
-		if(opt_id_sensor > -1) {
-			reg.add(opt_id_sensor, "id_sensor");
-		}
-		string q3 = sqlDb->insertQuery("register_failed", reg);
-
-		string query = "SET @mcounter = (" + q1 + ");";
-		query += "IF @mcounter IS NOT NULL THEN " + q2 + "; ELSE " + q3 + "; END IF";
-
-		mysqlquerypush(query);
-
-//XXX remove later whole if 0 block
-#if 0
-		query = string(
-			"SELECT counter FROM register_failed ") +
-			"WHERE to_num = " + sqlEscapeStringBorder(called) + " AND to_domain = " + sqlEscapeStringBorder(called_domain) + 
-				" AND digestusername = " + sqlEscapeStringBorder(digest_username) + " AND created_at >= SUBTIME(NOW(), '01:00:00')";
-		if(sqlDb->query(query)) {
-			SqlDb_row rsltRow = sqlDb->fetchRow();
 			char fname[32];
 			sprintf(fname, "%llu", fname2);
-			if(rsltRow) {
-				// there is already failed register, update counter and do not insert
-				string query = string(
-					"UPDATE register_failed SET created_at = NOW(), fname = " + sqlEscapeStringBorder(fname) + ", counter = counter + 1 ") +
-					"WHERE to_num = " + sqlEscapeStringBorder(called) + " AND digestusername = " + sqlEscapeStringBorder(digest_username) + 
-						" AND created_at >= SUBTIME(NOW(), '01:00:00');";
-				//sqlDb->query(query);
-				mysqlquerypush(query);
-			} else {
-				// this is new failed attempt within hour, insert
-				SqlDb_row reg;
-				reg.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "created_at");
-				reg.add(htonl(sipcallerip), "sipcallerip");
-				reg.add(htonl(sipcalledip), "sipcalledip");
-				reg.add(sqlEscapeString(caller), "from_num");
-				reg.add(sqlEscapeString(called), "to_num");
-				reg.add(sqlEscapeString(called_domain), "to_domain");
-				reg.add(sqlEscapeString(contact_num), "contact_num");
-				reg.add(sqlEscapeString(contact_domain), "contact_domain");
-				reg.add(sqlEscapeString(digest_username), "digestusername");
-				reg.add(sqlDb->getIdOrInsert(sql_cdr_ua_table, "id", "ua", cdr_ua), "ua_id");
-				reg.add(fname, "fname");
-				if(opt_id_sensor > -1) {
-					reg.add(opt_id_sensor, "id_sensor");
+			string q2 = string(
+				"UPDATE register_failed SET created_at = NOW(), fname = " + sqlEscapeStringBorder(fname) + ", counter = counter + 1 ") +
+				"WHERE to_num = " + sqlEscapeStringBorder(called) + " AND digestusername = " + sqlEscapeStringBorder(digest_username) + 
+					" AND created_at >= SUBTIME(NOW(), '01:00:00')";
+
+			SqlDb_row reg;
+			reg.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "created_at");
+			reg.add(htonl(sipcallerip), "sipcallerip");
+			reg.add(htonl(sipcalledip), "sipcalledip");
+			reg.add(sqlEscapeString(caller), "from_num");
+			reg.add(sqlEscapeString(called), "to_num");
+			reg.add(sqlEscapeString(called_domain), "to_domain");
+			reg.add(sqlEscapeString(contact_num), "contact_num");
+			reg.add(sqlEscapeString(contact_domain), "contact_domain");
+			reg.add(sqlEscapeString(digest_username), "digestusername");
+			reg.add(sqlDb->getIdOrInsert(sql_cdr_ua_table, "id", "ua", cdr_ua), "ua_id");
+			reg.add(fname, "fname");
+			if(opt_id_sensor > -1) {
+				reg.add(opt_id_sensor, "id_sensor");
+			}
+			string q3 = sqlDb->insertQuery("register_failed", reg);
+
+			string query = "SET @mcounter = (" + q1 + ");";
+			query += "IF @mcounter IS NOT NULL THEN " + q2 + "; ELSE " + q3 + "; END IF";
+
+			mysqlquerypush(query);
+		} else {
+			query = string(
+				"SELECT counter FROM register_failed ") +
+				"WHERE to_num = " + sqlEscapeStringBorder(called) + " AND to_domain = " + sqlEscapeStringBorder(called_domain) + 
+					" AND digestusername = " + sqlEscapeStringBorder(digest_username) + " AND created_at >= SUBTIME(NOW(), '01:00:00')";
+			if(sqlDb->query(query)) {
+				SqlDb_row rsltRow = sqlDb->fetchRow();
+				char fname[32];
+				sprintf(fname, "%llu", fname2);
+				if(rsltRow) {
+					// there is already failed register, update counter and do not insert
+					string query = string(
+						"UPDATE register_failed SET created_at = NOW(), fname = " + sqlEscapeStringBorder(fname) + ", counter = counter + 1 ") +
+						"WHERE to_num = " + sqlEscapeStringBorder(called) + " AND digestusername = " + sqlEscapeStringBorder(digest_username) + 
+							" AND created_at >= SUBTIME(NOW(), '01:00:00');";
+					sqlDb->query(query);
+				} else {
+					// this is new failed attempt within hour, insert
+					SqlDb_row reg;
+					reg.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "created_at");
+					reg.add(htonl(sipcallerip), "sipcallerip");
+					reg.add(htonl(sipcalledip), "sipcalledip");
+					reg.add(sqlEscapeString(caller), "from_num");
+					reg.add(sqlEscapeString(called), "to_num");
+					reg.add(sqlEscapeString(called_domain), "to_domain");
+					reg.add(sqlEscapeString(contact_num), "contact_num");
+					reg.add(sqlEscapeString(contact_domain), "contact_domain");
+					reg.add(sqlEscapeString(digest_username), "digestusername");
+					reg.add(sqlDb->getIdOrInsert(sql_cdr_ua_table, "id", "ua", cdr_ua), "ua_id");
+					reg.add(fname, "fname");
+					if(opt_id_sensor > -1) {
+						reg.add(opt_id_sensor, "id_sensor");
+					}
+					sqlDb->insert("register_failed", reg);
 				}
-				query = sqlDb->insertQuery("register_failed", reg) + ";\n";
-				mysqlquerypush(query);
-				//sqlDb->insert("register_failed", reg);
 			}
 		}
-#endif
-
 		break;
 	}
 	

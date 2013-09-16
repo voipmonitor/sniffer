@@ -748,34 +748,39 @@ bool SqlDb_odbc::query(string query) {
 		if(!this->connected()) {
 			this->connect();
 		}
-		rslt = SQLAllocHandle(SQL_HANDLE_STMT, hConnection, &hStatement);
-		if(!this->okRslt(rslt)) {
-			this->checkLastError("odbc: error in allocate statement handle", true);
-			this->reconnect();
-			continue;
-		}
-		rslt = SQLExecDirect(this->hStatement, (SQLCHAR*)query.c_str(), SQL_NTS);   
-		if(!this->okRslt(rslt) && rslt != SQL_NO_DATA) {
-			if(!sql_noerror) {
-				this->checkLastError("odbc query error", true);
+		if(this->connected()) {
+			rslt = SQLAllocHandle(SQL_HANDLE_STMT, hConnection, &hStatement);
+			if(!this->okRslt(rslt)) {
+				this->checkLastError("odbc: error in allocate statement handle", true);
+				if(terminating) {
+					break;
+				}
+				this->reconnect();
+				continue;
 			}
-			if(sql_noerror || sql_disable_next_attempt_if_error) {
-				break;
-			}
-			else if(rslt == SQL_ERROR || rslt == SQL_INVALID_HANDLE) {
-				if(pass < this->maxQueryPass - 1) {
-					this->reconnect();
+			rslt = SQLExecDirect(this->hStatement, (SQLCHAR*)query.c_str(), SQL_NTS);   
+			if(!this->okRslt(rslt) && rslt != SQL_NO_DATA) {
+				if(!sql_noerror) {
+					this->checkLastError("odbc query error", true);
+				}
+				if(sql_noerror || sql_disable_next_attempt_if_error) {
+					break;
+				}
+				else if(rslt == SQL_ERROR || rslt == SQL_INVALID_HANDLE) {
+					if(pass < this->maxQueryPass - 1) {
+						this->reconnect();
+					}
+				} else {
+					if(pass < this->maxQueryPass - 5) {
+						pass = this->maxQueryPass - 5;
+					}
+					if(pass < this->maxQueryPass - 1) {
+						this->reconnect();
+					}
 				}
 			} else {
-				if(pass < this->maxQueryPass - 5) {
-					pass = this->maxQueryPass - 5;
-				}
-				if(pass < this->maxQueryPass - 1) {
-					this->reconnect();
-				}
+				break;
 			}
-		} else {
-			break;
 		}
 		if(terminating) {
 			break;

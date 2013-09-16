@@ -360,7 +360,7 @@ public:
 	 * @brief save register msgs to database
 	 *
 	*/
-	int saveRegisterToDb();
+	int saveRegisterToDb(bool enableBatchIfPossible = true);
 
 	/**
 	 * @brief save sip MSSAGE to database
