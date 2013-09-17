@@ -330,6 +330,9 @@ inline void save_packet_sql(Call *call, struct pcap_pkthdr *header, const u_char
 /* 
 	stores SIP messags to sql.livepacket based on user filters
 */
+
+int get_sip_peername(char *data, int data_len, const char *tag, char *peername, unsigned int peername_len);
+
 inline void save_live_packet(Call *call, struct pcap_pkthdr *header, const u_char *packet, unsigned int saddr, int source, unsigned int daddr, int dest, int istcp, char *data, int datalen, unsigned char sip_type) {
 	if(!global_livesniffer && !global_livesniffer_all) {
 		return;
@@ -372,6 +375,49 @@ save:
 	*/
 	
 	map<unsigned int, livesnifferfilter_t*>::iterator usersnifferIT;
+	
+	char caller[1024] = "", called[1024] = "";
+	if(call) {
+		strncpy(caller, call->caller, sizeof(caller));
+		caller[sizeof(caller) - 1] = 0;
+		strncpy(called, call->called, sizeof(called));
+		called[sizeof(called) - 1] = 0;
+	} else {
+		bool needcaller = false;
+		bool needcalled = false;
+		for(usersnifferIT = usersniffer.begin(); usersnifferIT != usersniffer.end(); usersnifferIT++) {
+			if(!usersnifferIT->second->state.all_all && !usersnifferIT->second->state.all_num) {
+				for(int i = 0; i < MAXLIVEFILTERS; i++) {
+					if(!usersnifferIT->second->state.all_srcnum && usersnifferIT->second->lv_srcnum[i][0]) {
+						needcaller = true;
+					}
+					if(!usersnifferIT->second->state.all_dstnum && usersnifferIT->second->lv_dstnum[i][0]) {
+						needcalled = true;
+					}
+					if(!usersnifferIT->second->state.all_bothnum && usersnifferIT->second->lv_bothnum[i][0]) {
+						needcaller = true;
+						needcalled = true;
+					}
+				}
+			}
+		}
+		int res;
+		if(needcaller) {
+			res = get_sip_peername(data,datalen,"\nFrom:", caller, sizeof(caller));
+			if(res) {
+				// try compact header
+				get_sip_peername(data,datalen,"\nf:", caller, sizeof(caller));
+			}
+		}
+		if(needcalled) {
+			res = get_sip_peername(data,datalen,"\nTo:", called, sizeof(called));
+			if(res) {
+				// try compact header
+				get_sip_peername(data,datalen,"\nt:", called, sizeof(called));
+			}
+		}
+	}
+	
 	for(usersnifferIT = usersniffer.begin(); usersnifferIT != usersniffer.end(); usersnifferIT++) {
 		livesnifferfilter_t *filter = usersnifferIT->second;
 		bool save = filter->state.all_all;
@@ -386,15 +432,14 @@ save:
 					(saddr == filter->lv_bothaddr[i] || 
 					 daddr == filter->lv_bothaddr[i]))));
 			bool okNum = 
-				!call ||
 				filter->state.all_num ||
 				((filter->state.all_srcnum || (filter->lv_srcnum[i][0] && 
-					memmem(call->caller, strlen(call->caller), filter->lv_srcnum[i], strlen(filter->lv_srcnum[i])))) &&
+					memmem(caller, strlen(caller), filter->lv_srcnum[i], strlen(filter->lv_srcnum[i])))) &&
 				 (filter->state.all_dstnum || (filter->lv_dstnum[i][0] && 
-					memmem(call->caller, strlen(call->caller), filter->lv_dstnum[i], strlen(filter->lv_dstnum[i])))) &&
+					memmem(called, strlen(called), filter->lv_dstnum[i], strlen(filter->lv_dstnum[i])))) &&
 				 (filter->state.all_bothnum || (filter->lv_bothnum[i][0] && 
-					(memmem(call->caller, strlen(call->caller), filter->lv_bothnum[i], strlen(filter->lv_bothnum[i])) ||
-					 memmem(call->called, strlen(call->called), filter->lv_bothnum[i], strlen(filter->lv_bothnum[i]))))));
+					(memmem(caller, strlen(caller), filter->lv_bothnum[i], strlen(filter->lv_bothnum[i])) ||
+					 memmem(called, strlen(called), filter->lv_bothnum[i], strlen(filter->lv_bothnum[i]))))));
 			bool okSipType =
 				filter->state.all_siptypes ||
 				filter->lv_siptypes[i] == sip_type;
