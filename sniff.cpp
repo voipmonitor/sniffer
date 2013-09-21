@@ -1185,7 +1185,7 @@ Call *new_invite_register(int sip_method, char *data, int datalen, struct pcap_p
 	unsigned int flags = 0;
 	int res;
 
-	if(opt_callslimit != 0 and opt_callslimit > calls) {
+	if(opt_callslimit != 0 and opt_callslimit < calls) {
 		if(verbosity > 0)
 			syslog(LOG_NOTICE, "callslimit[%d] > calls[%d] ignoring call\n", opt_callslimit, calls);
 		return NULL;
