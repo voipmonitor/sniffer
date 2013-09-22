@@ -251,7 +251,7 @@ Call::addtofilesqueue(string file, string column) {
 		//error or file does not exists
 		char buf[4092];
 		strerror_r(errno, buf, 4092);
-		syslog(LOG_ERR, "addtofilesqueue ERROR file[%s] - error[%s]", file.c_str(), buf);
+		syslog(LOG_ERR, "addtofilesqueue ERROR file[%s] - error[%d][%s]", file.c_str(), errno, buf);
 		return;
 	}
 
