@@ -19,6 +19,7 @@
 #include <sys/ioctl.h>
 #include <sys/types.h>
 #include <sys/socket.h>
+#include <errno.h>
 
 #ifdef ISCURL
 #include <curl/curl.h>
@@ -248,7 +249,9 @@ Call::addtofilesqueue(string file, string column) {
 
 	if(size == -1) {
 		//error or file does not exists
-		perror("addtofilesqueue ERROR ");
+		char buf[4092];
+		strerror_r(errno, buf, 4092);
+		syslog(LOG_ERR, "addtofilesqueue ERROR file[%s] - error[%s]", file.c_str(), buf);
 		return;
 	}
 
@@ -341,8 +344,8 @@ Call::~Call(){
 		if(opt_cachedir[0] != '\0') {
 			addtocachequeue(sip_pcapfilename);
 		}
-		addtofilesqueue(sip_pcapfilename, "sipsize");
 	}
+	addtofilesqueue(sip_pcapfilename, type == REGISTER ? "regsize" : "sipsize");
 	if (get_frtp_pcap() != NULL){
 		pcap_dump_flush(get_frtp_pcap());
 		pcap_dump_close(get_frtp_pcap());
@@ -350,8 +353,8 @@ Call::~Call(){
 		if(opt_cachedir[0] != '\0') {
 			addtocachequeue(rtp_pcapfilename);
 		}
-		addtofilesqueue(rtp_pcapfilename, "rtpsize");
 	}
+	addtofilesqueue(rtp_pcapfilename, "rtpsize");
 	if (get_f_pcap() != NULL){
 		pcap_dump_flush(get_f_pcap());
 		pcap_dump_close(get_f_pcap());
@@ -359,8 +362,8 @@ Call::~Call(){
 		if(opt_cachedir[0] != '\0') {
 			addtocachequeue(pcapfilename);
 		}
-		addtofilesqueue(pcapfilename, "sipsize");
 	}
+	addtofilesqueue(pcapfilename, type == REGISTER ? "regsize" : "sipsize");
 
 	if(audiobuffer1) delete audiobuffer1;
 	if(audiobuffer2) delete audiobuffer2;
@@ -2911,34 +2914,25 @@ Calltable::cleanup( time_t currtime ) {
 			call->hashRemove();
 			if (call->get_fsip_pcap() != NULL){
 				pcap_dump_flush(call->get_fsip_pcap());
-				if (call->get_fsip_pcap() != NULL) {
-					pcap_dump_close(call->get_fsip_pcap());
-					if(opt_cachedir[0] != '\0') {
-						call->addtocachequeue(call->sip_pcapfilename);
-					}
-					call->addtofilesqueue(call->sip_pcapfilename, call->type == REGISTER ? "regsize" : "sipsize");
+				pcap_dump_close(call->get_fsip_pcap());
+				if(opt_cachedir[0] != '\0') {
+					call->addtocachequeue(call->sip_pcapfilename);
 				}
 				call->set_fsip_pcap(NULL);
 			}
 			if (call->get_frtp_pcap() != NULL){
 				pcap_dump_flush(call->get_frtp_pcap());
-				if (call->get_frtp_pcap() != NULL) {
-					pcap_dump_close(call->get_frtp_pcap());
-					if(opt_cachedir[0] != '\0') {
-						call->addtocachequeue(call->rtp_pcapfilename);
-					}
-					call->addtofilesqueue(call->rtp_pcapfilename, "rtpsize");
+				pcap_dump_close(call->get_frtp_pcap());
+				if(opt_cachedir[0] != '\0') {
+					call->addtocachequeue(call->rtp_pcapfilename);
 				}
 				call->set_frtp_pcap(NULL);
 			}
 			if (call->get_f_pcap() != NULL){
 				pcap_dump_flush(call->get_f_pcap());
-				if (call->get_f_pcap() != NULL) {
-					pcap_dump_close(call->get_f_pcap());
-					if(opt_cachedir[0] != '\0') {
-						call->addtocachequeue(call->pcapfilename);
-					}
-					call->addtofilesqueue(call->pcapfilename, "sipsize");
+				pcap_dump_close(call->get_f_pcap());
+				if(opt_cachedir[0] != '\0') {
+					call->addtocachequeue(call->pcapfilename);
 				}
 				call->set_f_pcap(NULL);
 			}
@@ -2969,23 +2963,17 @@ void Call::saveregister() {
 	hashRemove();
 	if (get_fsip_pcap() != NULL){
 		pcap_dump_flush(get_fsip_pcap());
-		if (get_fsip_pcap() != NULL) {
-			pcap_dump_close(get_fsip_pcap());
-			if(opt_cachedir[0] != '\0') {
-				addtocachequeue(pcapfilename);
-			}
-			addtofilesqueue(pcapfilename, "sipsize");
+		pcap_dump_close(get_fsip_pcap());
+		if(opt_cachedir[0] != '\0') {
+			addtocachequeue(pcapfilename);
 		}
 		set_fsip_pcap(NULL);
 	}
 	if (get_f_pcap() != NULL){
 		pcap_dump_flush(get_f_pcap());
-		if (get_f_pcap() != NULL) {
-			pcap_dump_close(get_f_pcap());
-			if(opt_cachedir[0] != '\0') {
-				addtocachequeue(pcapfilename);
-			}
-			addtofilesqueue(pcapfilename, "sipsize");
+		pcap_dump_close(get_f_pcap());
+		if(opt_cachedir[0] != '\0') {
+			addtocachequeue(pcapfilename);
 		}
 		set_f_pcap(NULL);
 	}

@@ -462,7 +462,9 @@ As you can see we are calling fdatasync right before calling posix_fadvise, this
 			if (!result) break;
 			res = write(write_fd, &buf[0], result);
 			if(res == -1) {
-				syslog(LOG_ERR, "write failed src[%s] error[%s]", src, sys_errlist[errno]);
+				char buf[4092];
+				strerror_r(errno, buf, 4092);
+				syslog(LOG_ERR, "write failed src[%s] error[%s]", src, buf);
 				break;
 			}
 			cachedirtransfered += res;

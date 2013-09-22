@@ -247,17 +247,20 @@ RTP::~RTP() {
 	free(channel_record);
 	free(frame);
 
-	if(opt_saveGRAPH || (owner && (owner->flags & FLAG_SAVEGRAPH))) {
-		if(opt_gzipGRAPH && gfileGZ.is_open()) {
-			gfileGZ.close();
-		} else if(gfile.is_open()){
-			gfile.close();
-		}
-		if(gfilename[0] != '\0') {
+	if(opt_gzipGRAPH && gfileGZ.is_open()) {
+		gfileGZ.close();
+	} else if(gfile.is_open()){
+		gfile.close();
+	}
+
+	if(gfilename[0] != '\0') {
+		if(owner) { 
 			if(opt_cachedir[0] != '\0') {
 				owner->addtocachequeue(string(gfilename));
 			}
 			owner->addtofilesqueue(string(gfilename), "graphsize");
+		} else {
+			syslog(LOG_ERR, "error - gfilename[%s] does not have owner", gfilename);
 		}
 	}
 
