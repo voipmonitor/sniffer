@@ -1,3 +1,14 @@
+8.4 RC1 23.9.2013
+=================
+
+- fix ODBC driver (tested for mssql) which was not maintained for a longer time
+- fix traffic speed in verbose output 
+- parse caller and called number in function save_live_packet if call is NULL which allows to filter OPTION and SUBSCRIBE in GUI live sniffer
+- fix callslimit which did not worked at all
+- reorganize addtofilesqueue which should solve some graph files left by cleaning process
+- fix audio decoding for comfort noise and dtmf - do not create new RTP instance if payload is one of 13,19,101
+
+
 8.3 11.9.2013
 =============
 
