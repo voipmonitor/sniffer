@@ -538,8 +538,8 @@ Call::read_rtp(unsigned char* data, int datalen, struct pcap_pkthdr *header, u_i
 	for(int i = 0; i < ssrc_n; i++) {
 		if(rtp[i]->ssrc2 == curSSRC) {
 			// found 
-			// check if codec did not changed 
-			if(rtp[i]->payload2 == curpayload) {
+			// check if codec did not changed but ignore payload 13 and 19 which is CNG and 101 which is DTMF
+			if(curpayload == 13 or curpayload == 19 or curpayload == 101 or rtp[i]->payload2 == curpayload) {
 				rtp[i]->read(data, datalen, header, saddr, daddr, seeninviteok);
 				return;
 			} else {
@@ -1180,7 +1180,7 @@ Call::convertRawToWav() {
 				syslog(LOG_ERR, "Call [%s] cannot be converted to WAV, unknown payloadtype [%d]\n", raw, codec);
 			}
 #if UNLINK_RAW
-			 unlink(raw);
+			unlink(raw);
 #endif
 		}
 		fclose(pl);

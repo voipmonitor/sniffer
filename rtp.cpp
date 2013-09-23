@@ -620,7 +620,7 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 
 	Call *owner = (Call*)call_owner;
 
-//	if(getSSRC() != 0xefdaaaf) return;
+//	if(getSSRC() != 0x6cc93102) return;
 
 	if(getVersion() != 2) {
 		return;
