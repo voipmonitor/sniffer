@@ -1,3 +1,8 @@
+8.4 RC2 25.9.2013
+=================
+
+- fix errors in syslog when moving files from cachedir / spooldir and fix potential clean procedure leaks
+
 8.4 RC1 23.9.2013
 =================
 
