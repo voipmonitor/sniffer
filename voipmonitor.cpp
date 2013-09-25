@@ -421,6 +421,11 @@ void rename_file(const char *src, const char *dst) {
 	off_t offset = 0;
 	int renamedebug = 1;
 
+	//check if the file exists
+	if(!file_exists((char*)src)) {
+		return;
+	}
+
 	/* Open the input file. */
 	read_fd = open (src, O_RDONLY);
 	if(read_fd == -1) {
@@ -439,7 +444,9 @@ As you can see we are calling fdatasync right before calling posix_fadvise, this
 	/* Open the output file for writing, with the same permissions as the source file. */
 	write_fd = open (dst, O_WRONLY | O_CREAT, stat_buf.st_mode);
 	if(write_fd == -1) {
-		syslog(LOG_ERR, "Cannot open file for writing [%s] leaving the source file [%s] undeleted\n", dst, src);
+		char buf[4092];
+		strerror_r(errno, buf, 4092);
+		syslog(LOG_ERR, "Cannot open file for writing [%s] (error:[%s]) leaving the source file [%s] undeleted\n", dst, buf, src);
 		close(read_fd);
 		return;
 	}

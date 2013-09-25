@@ -959,10 +959,14 @@ getwav:
 		terminating = 1;
 	} else if(strstr(buf, "coutstr") != NULL) {
 		char *pointToSpaceSeparator = strchr(buf, ' ');
-		cout << (pointToSpaceSeparator + 1) << flush;
+		if(pointToSpaceSeparator) {
+			cout << (pointToSpaceSeparator + 1) << flush;
+		}
 	} else if(strstr(buf, "syslogstr") != NULL) {
 		char *pointToSpaceSeparator = strchr(buf, ' ');
-		syslog(LOG_NOTICE, pointToSpaceSeparator + 1);
+		if(pointToSpaceSeparator) {
+			syslog(LOG_NOTICE, pointToSpaceSeparator + 1);
+		}
 	} else if(strstr(buf, "custipcache_get_cust_id") != NULL) {
 		char ip[20];
 		sscanf(buf, "custipcache_get_cust_id %s", ip);

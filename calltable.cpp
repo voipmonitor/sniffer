@@ -238,7 +238,7 @@ Call::hashRemove() {
 void
 Call::addtofilesqueue(string file, string column) {
 
-	if(!opt_filesclean or opt_nocdr or file == "" or !isSqlDriver("mysql")) return;
+	if(!opt_filesclean or opt_nocdr or file == "" or !isSqlDriver("mysql") or !file_exists((char*)file.c_str())) return;
 
 	if(opt_cachedir[0] != '\0') {
 		string tmp = opt_cachedir;
@@ -250,6 +250,7 @@ Call::addtofilesqueue(string file, string column) {
 	if(size == -1) {
 		//error or file does not exists
 		char buf[4092];
+		buf[0] = '\0';
 		strerror_r(errno, buf, 4092);
 		syslog(LOG_ERR, "addtofilesqueue ERROR file[%s] - error[%d][%s]", file.c_str(), errno, buf);
 		return;
@@ -337,6 +338,7 @@ Call::~Call(){
 	}
 	pthread_mutex_lock(&listening_worker_run_lock);
 
+	addtofilesqueue(sip_pcapfilename, type == REGISTER ? "regsize" : "sipsize");
 	if (get_fsip_pcap() != NULL){
 		pcap_dump_flush(get_fsip_pcap());
 		pcap_dump_close(get_fsip_pcap());
@@ -345,7 +347,7 @@ Call::~Call(){
 			addtocachequeue(sip_pcapfilename);
 		}
 	}
-	addtofilesqueue(sip_pcapfilename, type == REGISTER ? "regsize" : "sipsize");
+	addtofilesqueue(rtp_pcapfilename, "rtpsize");
 	if (get_frtp_pcap() != NULL){
 		pcap_dump_flush(get_frtp_pcap());
 		pcap_dump_close(get_frtp_pcap());
@@ -354,7 +356,7 @@ Call::~Call(){
 			addtocachequeue(rtp_pcapfilename);
 		}
 	}
-	addtofilesqueue(rtp_pcapfilename, "rtpsize");
+	addtofilesqueue(pcapfilename, type == REGISTER ? "regsize" : "sipsize");
 	if (get_f_pcap() != NULL){
 		pcap_dump_flush(get_f_pcap());
 		pcap_dump_close(get_f_pcap());
@@ -363,7 +365,6 @@ Call::~Call(){
 			addtocachequeue(pcapfilename);
 		}
 	}
-	addtofilesqueue(pcapfilename, type == REGISTER ? "regsize" : "sipsize");
 
 	if(audiobuffer1) delete audiobuffer1;
 	if(audiobuffer2) delete audiobuffer2;
@@ -2912,6 +2913,7 @@ Calltable::cleanup( time_t currtime ) {
 				call->relationcall = NULL;
 			}
 			call->hashRemove();
+/* remove it in destructor 
 			if (call->get_fsip_pcap() != NULL){
 				pcap_dump_flush(call->get_fsip_pcap());
 				pcap_dump_close(call->get_fsip_pcap());
@@ -2936,6 +2938,7 @@ Calltable::cleanup( time_t currtime ) {
 				}
 				call->set_f_pcap(NULL);
 			}
+*/
 			if(currtime == 0) {
 				/* we are saving calls because of terminating SIGTERM and we dont know 
 				 * if the call ends successfully or not. So we dont want to confuse monitoring
