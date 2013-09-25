@@ -1707,6 +1707,8 @@ void SqlDb_mysql::createSchema() {
 			`usec` INT UNSIGNED NOT NULL,\
 			`srcip` INT UNSIGNED NOT NULL,\
 			`dstip` INT UNSIGNED NOT NULL,\
+			`srcport` SMALLINT UNSIGNED DEFAULT NULL,\
+			`dstport` SMALLINT UNSIGNED DEFAULT NULL,\
 			`url` TEXT NOT NULL,\
 			`type` ENUM('http_ok') DEFAULT NULL,\
 			`http` TEXT CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,\
