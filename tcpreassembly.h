@@ -622,6 +622,16 @@ public:
 		}
 		return(false);
 	}
+	bool existsFinallyUncompletedDataStream() {
+		map<uint32_t, TcpReassemblyStream*>::iterator iter;
+		for(iter = this->queue_by_ack.begin(); iter != this->queue_by_ack.end(); iter++) {
+			if(iter->second->exists_data &&
+			   !iter->second->completed_finally) {
+				return(true);
+			}
+		}
+		return(false);
+	}
 	void cleanup(u_int64_t act_time);
 	void printContent(int level  = 0);
 private:

@@ -948,10 +948,7 @@ void TcpReassemblyLink::printContent(int level) {
 void TcpReassemblyLink::cleanup(u_int64_t act_time) {
 	map<uint32_t, TcpReassemblyStream*>::iterator iter;
 	for(iter = this->queue_by_ack.begin(); iter != this->queue_by_ack.end(); ) {
-		if((iter->second->last_packet_at_from_header &&
-				act_time > iter->second->last_packet_at_from_header + 60 * 1000 &&
-		   iter->second->queue.size() > 500) ||
-		   iter->second->queue.size() > 1000) {
+		if(iter->second->queue.size() > 1000) {
 			if(this->reassembly->isActiveLog()) {
 				in_addr ip;
 				ip.s_addr = this->ip_src;
@@ -1275,7 +1272,6 @@ void TcpReassemblyLink::complete_crazy(bool final, bool eraseCompletedStreams, b
 		} while(skip_offset > old_skip_offset);
 		size_t countRequest = 0;
 		size_t countRslt = 0;
-		bool ok = true;
 		bool postExpectContinueInFirstRequest = false;
 		bool forceExpectContinue = false;
 		while(skip_offset + countRequest < size_ok_streams && 
@@ -1312,18 +1308,21 @@ void TcpReassemblyLink::complete_crazy(bool final, bool eraseCompletedStreams, b
 				}
 			}
 		}
-		if(!countRequest || !ok) {
+		if(!countRequest) {
 			break;
 		}
 		while(skip_offset + countRequest + countRslt < size_ok_streams && 
 		      this->ok_streams[skip_offset + countRequest + countRslt]->direction == TcpReassemblyStream::DIRECTION_TO_SOURCE) {
 			++countRslt;
 		}
-		if(!(final || forceExpectContinue || countRslt) || !ok) {
-			break;
-		}
 		if(postExpectContinueInFirstRequest && !forceExpectContinue) {
-			if(final || skip_offset + countRequest + countRslt + 1 <= size_ok_streams) {
+			if(final || skip_offset + countRequest + countRslt + 2 <= size_ok_streams) {
+				// OK
+			} else {
+				break;
+			}
+		} else {
+			if(final || countRslt) {
 				// OK
 			} else {
 				break;
@@ -1530,7 +1529,7 @@ TcpReassembly::TcpReassembly() {
 }
 
 TcpReassembly::~TcpReassembly() {
-	if(!opt_tcpreassembly_thread) {
+	if(!opt_tcpreassembly_thread || opt_pb_read_from_file[0]) {
 		this->cleanup(true);
 	}
 	if(this->log) {
@@ -1744,7 +1743,6 @@ void TcpReassembly::cleanup(bool all) {
 		cout << "cleanup all" << endl;
 	}
 	map<TcpReassemblyLink_id, TcpReassemblyLink*>::iterator iter;
-	//u_int64_t act_time = getTimeMS();
 	this->lock_links();
 	if(all && opt_pb_read_from_file[0]) {
 		cout << "COUNT REST LINKS: " << this->links.size() << endl;
@@ -1794,11 +1792,19 @@ void TcpReassembly::cleanup(bool all) {
 			break;
 		}
 		link->cleanup(act_time);
-		if((all || 
+		bool final = act_time > link->last_packet_at_from_header + 2 * 60 * 1000;
+		if((all || final ||
 		    (link->last_packet_at_from_header &&
-		     act_time > link->last_packet_at_from_header + 5 * 1000)) &&
-		   (link->link_is_ok < 2 || opt_tcpreassembly_thread) &&
-		   link->last_packet_at_from_header > link->last_packet_process_cleanup_at) {
+		     act_time > link->last_packet_at_from_header + 30 * 1000 &&
+		     link->last_packet_at_from_header > link->last_packet_process_cleanup_at)) &&
+		   (link->link_is_ok < 2 || opt_tcpreassembly_thread)) {
+		 
+			/*
+			if(link->port_src == 53442 || link->port_dst == 53442) {
+				cout << " -- ***** -- ";
+			}
+			*/
+		 
 			link->last_packet_process_cleanup_at = link->last_packet_at_from_header;
 			bool _cout = false;
 			if(!link->exists_data) {
@@ -1809,7 +1815,7 @@ void TcpReassembly::cleanup(bool all) {
 			} else {
 				int countDataStream = link->okQueue(true, debug_check_ok);
 				if(countDataStream > 0) {
-					link->complete(true, true, false);
+					link->complete(all || final, true, false);
 					link->link_is_ok = 2;
 				}
 				if(debug_rslt) {
@@ -1843,10 +1849,8 @@ void TcpReassembly::cleanup(bool all) {
 				cout << endl;
 			}
 		}
-		if(all ||
-		   !link->existsUncompletedDataStream() ||
-		   (link->last_packet_at_from_header &&
-		    act_time > link->last_packet_at_from_header + 20 * 1000)) {
+		if(all || final ||
+		   !link->existsFinallyUncompletedDataStream()) {
 			link->unlock_queue();
 			this->lock_links();
 			delete link;
