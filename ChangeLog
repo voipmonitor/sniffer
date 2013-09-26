@@ -2,6 +2,7 @@
 =================
 
 - fix errors in syslog when moving files from cachedir / spooldir and fix potential clean procedure leaks
+- If cdr proxy is enabled (which is by default) fix called IP in cdr and false proxy record in proxy column in case called make reintive
 
 
 8.4 RC1 23.9.2013
