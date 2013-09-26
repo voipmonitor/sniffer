@@ -3223,22 +3223,6 @@ int main(int argc, char *argv[]) {
 	
 	calltable = new Calltable;
 	
-	if(opt_enable_tcpreassembly) {
-		bool setHttpPorts = false;
-		for(int i = 0; i < 65537; i++) {
-			if(httpportmatrix[i]) {
-				setHttpPorts = true;
-			}
-		}
-		if(setHttpPorts) {
-			tcpReassembly = new TcpReassembly;
-			tcpReassembly->setEnableHttpForceInit();
-			tcpReassembly->setEnableCrazySequence();
-			httpData = new HttpData;
-			tcpReassembly->setDataCallback(httpData);
-		}
-	}
-
 	// preparing pcap reading and pcap filters 
 	
 	bpf_u_int32 mask;		// Holds the subnet mask associated with device.
@@ -3505,6 +3489,22 @@ int main(int argc, char *argv[]) {
 #endif 
 	}
 
+	if(opt_enable_tcpreassembly) {
+		bool setHttpPorts = false;
+		for(int i = 0; i < 65537; i++) {
+			if(httpportmatrix[i]) {
+				setHttpPorts = true;
+			}
+		}
+		if(setHttpPorts) {
+			tcpReassembly = new TcpReassembly;
+			tcpReassembly->setEnableHttpForceInit();
+			tcpReassembly->setEnableCrazySequence();
+			httpData = new HttpData;
+			tcpReassembly->setDataCallback(httpData);
+		}
+	}
+
 	if(opt_scanpcapdir[0] != '\0') {
 		// scan directory opt_scanpcapdir (typically /dev/shm/voipmonitor
 		char filename[1024];
@@ -3645,7 +3645,7 @@ int main(int argc, char *argv[]) {
 					sleep(opt_pb_read_from_file[0] && opt_enable_tcpreassembly ? 60 : 1);
 					if(opt_pb_read_from_file[0] && opt_enable_tcpreassembly && opt_tcpreassembly_thread) {
 						tcpReassembly->setIgnoreTerminating(false);
-						sleep(5);
+						sleep(2);
 					}
 					pcapQueueQ->terminate();
 					sleep(1);

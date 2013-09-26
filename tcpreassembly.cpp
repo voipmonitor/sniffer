@@ -1548,8 +1548,8 @@ void TcpReassembly::createThread() {
 
 void* TcpReassembly::threadFunction(void* ) {
 	while(!terminating || this->ignoreTerminating) {
-		for(int i = 0; i < 5 && (!terminating || this->ignoreTerminating); i++) {
-			sleep(5);
+		for(int i = 0; i < 10 && (!terminating || this->ignoreTerminating); i++) {
+			sleep(1);
 		}
 		if(!terminating || this->ignoreTerminating) {
 			this->cleanup();
