@@ -46,7 +46,9 @@ shared: cleantest $(objects)
 	g++ $(objects) ${CFLAGS} -o voipmonitor ${LIBS}
 
 static: cleantest $(objects)
-#	make -C liblfds.6
+	g++ $(objects) ${CFLAGS} -o voipmonitor ${LIBS}
+
+staticlibc: cleantest $(objects)
 	g++ $(objects) ${CFLAGS} -o voipmonitor ${LIBS}
 
 armv5shared: cleantest $(objects)
