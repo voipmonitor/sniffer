@@ -1537,6 +1537,150 @@ void clean_tcpstreams() {
 	}
 }
 
+void process_sdp(Call *call, unsigned int saddr, int source, unsigned int daddr, int dest, char *data, int datalen, struct iphdr2 *header_ip, char *callidstr){
+	char *tmp = strstr(data, "\r\n\r\n");
+	if(!tmp) return;
+
+	// we have found SDP, add IP and port to the table
+	char *s;
+	unsigned long int l;
+	unsigned long gettagLimitLen = 0;
+
+	in_addr_t tmp_addr;
+	unsigned short tmp_port;
+	int rtpmap[MAX_RTPMAP];
+	memset(&rtpmap, 0, sizeof(int) * MAX_RTPMAP);
+	int fax;
+	if (!get_ip_port_from_sdp(tmp + 1, &tmp_addr, &tmp_port, &fax)){
+		if(fax) { 
+			if(verbosity >= 2){
+				syslog(LOG_ERR, "[%s] T38 detected", call->fbasename);
+			}
+			call->isfax = 1;
+			call->flags1 |= T38FAX;
+		} else {
+			if(call->isfax) {
+				call->flags1 |= T38FAXRESET;
+				call->isfax = 0;
+			}
+		}
+		// if rtp-firstleg enabled add RTP only in case the SIP msg belongs to first leg
+		if(opt_rtp_firstleg == 0 || (opt_rtp_firstleg &&
+			((call->saddr == saddr && call->sport == source) || 
+			(call->saddr == daddr && call->sport == dest))))
+			{
+			// prepare User-Agent
+			s = gettag(data, datalen, "\nUser-Agent:", &l, &gettagLimitLen);
+			// store RTP stream
+			get_rtpmap_from_sdp(tmp + 1, datalen - (tmp + 1 - data), rtpmap);
+
+			// determine if the SDP message is coming from caller or called 
+			// 1) check by saddr
+			int iscalled;
+			if(call->sipcallerip == saddr) {
+				// SDP message is coming from the first IP address seen in first INVITE thus incoming stream to ip/port in this 
+				// SDP will be stream from called
+				iscalled = 1;
+			} else {
+				// The IP address is different, check if the request matches one of the address from the first invite
+				if(call->sipcallerip == daddr) {
+					// SDP message is addressed to caller and announced IP/port in SDP will be from caller. Thus set called = 0;
+					iscalled = 0;
+				// src IP address of this SDP SIP message is different from the src/dst IP address used in the first INVITE. 
+				} else {
+					if(call->sipcallerip2 == 0) { 
+						call->sipcallerip2 = saddr;
+						call->sipcalledip2 = daddr;
+					}
+					if(call->sipcallerip2 == saddr) {
+						iscalled = 1;
+					} else {
+						// The IP address is different, check if the request matches one of the address from the first invite
+						if(call->sipcallerip2 == daddr) {
+							// SDP message is addressed to caller and announced IP/port in SDP will be from caller. Thus set called = 0;
+							iscalled = 0;
+						// src IP address of this SDP SIP message is different from the src/dst IP address used in the first INVITE. 
+						} else {
+							if(call->sipcallerip3 == 0) { 
+								call->sipcallerip3 = saddr;
+								call->sipcalledip3 = daddr;
+							}
+							if(call->sipcallerip3 == saddr) {
+								iscalled = 1;
+							} else {
+								// The IP address is different, check if the request matches one of the address from the first invite
+								if(call->sipcallerip3 == daddr) {
+									// SDP message is addressed to caller and announced IP/port in SDP will be from caller. Thus set called = 0;
+									iscalled = 0;
+								// src IP address of this SDP SIP message is different from the src/dst IP address used in the first INVITE. 
+								} else {
+									if(call->sipcallerip4 == 0) { 
+										call->sipcallerip4 = saddr;
+										call->sipcalledip4 = daddr;
+									}
+									if(call->sipcallerip4 == saddr) {
+										iscalled = 1;
+									} else {
+										iscalled = 0;
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+			if(iscalled) {
+				call->called_sipdscp = header_ip->tos >> 2;
+			} else {
+				call->caller_sipdscp = header_ip->tos >> 2;
+			}
+			//syslog(LOG_ERR, "ADDR: %u port %u iscalled[%d]\n", tmp_addr, tmp_port, iscalled);
+			if(call->add_ip_port(tmp_addr, tmp_port, s, l, !iscalled, rtpmap) != -1){
+				calltable->hashAdd(tmp_addr, tmp_port, call, !iscalled, 0, fax);
+				//calltable->mapAdd(tmp_addr, tmp_port, call, !iscalled, 0);
+				if(opt_rtcp) {
+					calltable->hashAdd(tmp_addr, tmp_port + 1, call, !iscalled, 1, fax); //add rtcp
+					//calltable->mapAdd(tmp_addr, tmp_port + 1, call, !iscalled, 1); //add rtcp
+				}
+			} else if(fax){
+				calltable->hashAdd(tmp_addr, tmp_port, call, !iscalled, 0, fax);
+			}
+			
+			// check if the IP address is listed in nat_aliases
+			in_addr_t alias = 0;
+			if((alias = match_nat_aliases(tmp_addr)) != 0) {
+				if(call->add_ip_port(alias, tmp_port, s, l, !iscalled, rtpmap) != -1) {
+					calltable->hashAdd(alias, tmp_port, call, !iscalled, 0, fax);
+					//calltable->mapAdd(alias, tmp_port, call, !iscalled, 0);
+					if(opt_rtcp) {
+						calltable->hashAdd(alias, tmp_port + 1, call, !iscalled, 1, fax); //add rtcp
+						//calltable->mapAdd(alias, tmp_port + 1, call, !iscalled, 1); //add rtcp
+					}
+				}
+			} else if(fax){
+				calltable->hashAdd(alias, tmp_port, call, !iscalled, 0, fax);
+			}
+
+#ifdef NAT
+			if(call->add_ip_port(saddr, tmp_port, s, l, !iscalled, rtpmap) != -1){
+				calltable->hashAdd(saddr, tmp_port, call, !iscalled, 0, fax);
+				//calltable->mapAdd(saddr, tmp_port, call, !iscalled, 0);
+				if(opt_rtcp) {
+					calltable->hashAdd(saddr, tmp_port + 1, call, !iscalled, 1, fax);
+					//calltable->mapAdd(saddr, tmp_port + 1, call, !iscalled, 1);
+				}
+			} else if(fax){
+				calltable->hashAdd(saddr, tmp_port, call, !iscalled, 0, fax);
+			}
+#endif
+		}
+	} else {
+		if(verbosity >= 2){
+			syslog(LOG_ERR, "callid[%s] Can't get ip/port from SDP:\n%s\n\n", callidstr, tmp + 1);
+		}
+	}
+}
+
 Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int dest, char *data, int datalen,
 	pcap_t *handle, pcap_pkthdr *header, const u_char *packet, int istcp, int dontsave, int can_thread, int *was_rtp, struct iphdr2 *header_ip, int *voippacket, int disabledsave,
 	pcap_block_store *block_store, int block_store_index) {
@@ -2488,155 +2632,26 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 			//try compact header
 			s = gettag(data,datalen,"\nc:",&l,&gettagLimitLen);
 		}
-		if(s and l) {
-			if(call->contenttype) free(call->contenttype);
-			call->contenttype = (char*)malloc(sizeof(char) * (l + 1));
-			memcpy(call->contenttype, s, l);
-			call->contenttype[l] = '\0';
-		}
 
 		char a = data[datalen - 1];
 		data[datalen - 1] = 0;
-		char *tmp = strstr(data, "\r\n\r\n");;
-		if(l > 0 && strncasecmp(s, "application/sdp", l) == 0 && tmp != NULL){
-			// we have found SDP, add IP and port to the table
-			in_addr_t tmp_addr;
-			unsigned short tmp_port;
-			int rtpmap[MAX_RTPMAP];
-			memset(&rtpmap, 0, sizeof(int) * MAX_RTPMAP);
-			int fax;
-			if (!get_ip_port_from_sdp(tmp + 1, &tmp_addr, &tmp_port, &fax)){
-				if(fax) { 
-					if(verbosity >= 2){
-						syslog(LOG_ERR, "[%s] T38 detected", call->fbasename);
-					}
-					call->isfax = 1;
-					call->flags1 |= T38FAX;
-				} else {
-					if(call->isfax) {
-						call->flags1 |= T38FAXRESET;
-						call->isfax = 0;
-					}
-				}
-				// if rtp-firstleg enabled add RTP only in case the SIP msg belongs to first leg
-				if(opt_rtp_firstleg == 0 || (opt_rtp_firstleg &&
-					((call->saddr == saddr && call->sport == source) || 
-					(call->saddr == daddr && call->sport == dest))))
-					{
-					// prepare User-Agent
-					s = gettag(data,datalen,"\nUser-Agent:", &l, &gettagLimitLen);
-					// store RTP stream
-					get_rtpmap_from_sdp(tmp + 1, datalen - (tmp + 1 - data), rtpmap);
+		char t;
 
-					// determine if the SDP message is coming from caller or called 
-					// 1) check by saddr
-					int iscalled;
-					if(call->sipcallerip == saddr) {
-						// SDP message is coming from the first IP address seen in first INVITE thus incoming stream to ip/port in this 
-						// SDP will be stream from called
-						iscalled = 1;
-					} else {
-						// The IP address is different, check if the request matches one of the address from the first invite
-						if(call->sipcallerip == daddr) {
-							// SDP message is addressed to caller and announced IP/port in SDP will be from caller. Thus set called = 0;
-							iscalled = 0;
-						// src IP address of this SDP SIP message is different from the src/dst IP address used in the first INVITE. 
-						} else {
-							if(call->sipcallerip2 == 0) { 
-								call->sipcallerip2 = saddr;
-								call->sipcalledip2 = daddr;
-							}
-							if(call->sipcallerip2 == saddr) {
-								iscalled = 1;
-							} else {
-								// The IP address is different, check if the request matches one of the address from the first invite
-								if(call->sipcallerip2 == daddr) {
-									// SDP message is addressed to caller and announced IP/port in SDP will be from caller. Thus set called = 0;
-									iscalled = 0;
-								// src IP address of this SDP SIP message is different from the src/dst IP address used in the first INVITE. 
-								} else {
-									if(call->sipcallerip3 == 0) { 
-										call->sipcallerip3 = saddr;
-										call->sipcalledip3 = daddr;
-									}
-									if(call->sipcallerip3 == saddr) {
-										iscalled = 1;
-									} else {
-										// The IP address is different, check if the request matches one of the address from the first invite
-										if(call->sipcallerip3 == daddr) {
-											// SDP message is addressed to caller and announced IP/port in SDP will be from caller. Thus set called = 0;
-											iscalled = 0;
-										// src IP address of this SDP SIP message is different from the src/dst IP address used in the first INVITE. 
-										} else {
-											if(call->sipcallerip4 == 0) { 
-												call->sipcallerip4 = saddr;
-												call->sipcalledip4 = daddr;
-											}
-											if(call->sipcallerip4 == saddr) {
-												iscalled = 1;
-											} else {
-												iscalled = 0;
-											}
-										}
-									}
-								}
-							}
-						}
-					}
-					if(iscalled) {
-						call->called_sipdscp = header_ip->tos >> 2;
-					} else {
-						call->caller_sipdscp = header_ip->tos >> 2;
-					}
-					//syslog(LOG_ERR, "ADDR: %u port %u iscalled[%d]\n", tmp_addr, tmp_port, iscalled);
-					if(call->add_ip_port(tmp_addr, tmp_port, s, l, !iscalled, rtpmap) != -1){
-						calltable->hashAdd(tmp_addr, tmp_port, call, !iscalled, 0, fax);
-						//calltable->mapAdd(tmp_addr, tmp_port, call, !iscalled, 0);
-						if(opt_rtcp) {
-							calltable->hashAdd(tmp_addr, tmp_port + 1, call, !iscalled, 1, fax); //add rtcp
-							//calltable->mapAdd(tmp_addr, tmp_port + 1, call, !iscalled, 1); //add rtcp
-						}
-					} else if(fax){
-						calltable->hashAdd(tmp_addr, tmp_port, call, !iscalled, 0, fax);
-					}
-					
-					// check if the IP address is listed in nat_aliases
-					in_addr_t alias = 0;
-					if((alias = match_nat_aliases(tmp_addr)) != 0) {
-						if(call->add_ip_port(alias, tmp_port, s, l, !iscalled, rtpmap) != -1) {
-							calltable->hashAdd(alias, tmp_port, call, !iscalled, 0, fax);
-							//calltable->mapAdd(alias, tmp_port, call, !iscalled, 0);
-							if(opt_rtcp) {
-								calltable->hashAdd(alias, tmp_port + 1, call, !iscalled, 1, fax); //add rtcp
-								//calltable->mapAdd(alias, tmp_port + 1, call, !iscalled, 1); //add rtcp
-							}
-						}
-					} else if(fax){
-						calltable->hashAdd(alias, tmp_port, call, !iscalled, 0, fax);
-					}
+		if(!(s and l > 0)) {
+			goto notfound;
+		}
 
-#ifdef NAT
-					if(call->add_ip_port(saddr, tmp_port, s, l, !iscalled, rtpmap) != -1){
-						calltable->hashAdd(saddr, tmp_port, call, !iscalled, 0, fax);
-						//calltable->mapAdd(saddr, tmp_port, call, !iscalled, 0);
-						if(opt_rtcp) {
-							calltable->hashAdd(saddr, tmp_port + 1, call, !iscalled, 1, fax);
-							//calltable->mapAdd(saddr, tmp_port + 1, call, !iscalled, 1);
-						}
-					} else if(fax){
-						calltable->hashAdd(saddr, tmp_port, call, !iscalled, 0, fax);
-					}
-#endif
-				}
-			} else {
-				if(verbosity >= 2){
-					syslog(LOG_ERR, "callid[%s] Can't get ip/port from SDP:\n%s\n\n", callidstr, tmp + 1);
-				}
-			}
-		} else if(call->message == NULL && l > 0 && tmp != NULL) {
-//				strncasecmp(s, "application/im-iscomposing+xml\r\n", l) == 0 || 
-//				strncasecmp(s, "text/plain; charset=UTF-8\r\n", l) == 0)){
+		t = s[l];
+		s[l] = '\0';
+		// Content-Type found 
+		if(call->type == MESSAGE && call->message == NULL) {
+			s[l] = t;
 			//find end of a message (\r\n)
+			char *tmp = strstr(s, "\r\n\r\n");;
+			if(!tmp) {
+				goto notfound;
+			}
+
 			tmp += 4; // skip \r\n\r\n and point to start of the message
 			int contentlen = 0;
 			s = gettag(data, datalen, "\nContent-Length:", &l, &gettagLimitLen);
@@ -2667,7 +2682,43 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 				call->message[0] = '\0';
 			}
 			//printf("msg: contentlen[%d] datalen[%d] len[%d] [%s]\n", contentlen, datalen, strlen(call->message), call->message);
+
+			
+
+			if(call->contenttype) free(call->contenttype);
+			call->contenttype = (char*)malloc(sizeof(char) * (l + 1));
+			memcpy(call->contenttype, s, l);
+			call->contenttype[l] = '\0';
+		} else if(strcasestr(s, "application/sdp")) {
+			s[l] = t;
+			process_sdp(call, saddr, source, daddr, dest, s, (unsigned int)datalen - (s - data), header_ip, callidstr);
+		} else if(strcasestr(s, "multipart/mixed")) {
+			s[l] = t;
+			while(1) {
+				//continue searching  for another content-type
+				s = gettag(s, (unsigned int)datalen - (s - data), "\nContent-Type:", &l, &gettagLimitLen);
+				if(l <= 0 || l > 1023) {
+					//try compact header
+					s = gettag(s, (unsigned int)datalen - (s - data), "\nc:", &l, &gettagLimitLen);
+				}
+				if(s and l > 0) {
+					//Content-Type found try if it is SDP 
+					if(l > 0 && strcasestr(s, "application/sdp")){
+						process_sdp(call, saddr, source, daddr, dest, s, (unsigned int)datalen - (s - data), header_ip, callidstr);
+						break;	// stop searching
+					} else {
+						// it is not SDP continue searching for another content-type 
+						continue;
+					}
+				} else {
+					break;
+				}
+			}
+		} else {
+			s[l] = t;
 		}
+
+notfound:
 		data[datalen - 1] = a;
 
 		if(!disabledsave) {
