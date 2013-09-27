@@ -1,3 +1,8 @@
+8.4 RC3 27.9.2013
+=================
+
+- repack statically 64bit binary with the latest libc version to solve crashes on centos and other systems
+
 8.4 RC2 25.9.2013
 =================
 
