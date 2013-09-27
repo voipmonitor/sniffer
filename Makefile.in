@@ -22,12 +22,16 @@ headers = $(shell ls *.h -1 | tr "\n" " ")
 #LDFLAGS := $(LDFLAGS) -static -static-libgcc
 
 shared: LIBS=-lpthread -lpcap -lgzstream -lz -lvorbis -lvorbisenc -logg -lodbc -lmysqlclient -lrt -lsnappy # -llfds #-lcurl #-lnids
-shared: CFLAGS+= -DQUEUE_NONBLOCK2 -I /usr/include/mysql/ -Wall -I jitterbuffer/  -L/usr/lib/mysql -L/usr/local/lib/ -Lgzstream/ -Lliblfds.6/bin/ -L/usr/lib64/mysql -fPIC -g3
+shared: CFLAGS+= -DQUEUE_NONBLOCK2 -I /usr/include/mysql/ -Wall -I jitterbuffer/ -L/opt/libc/lib  -L/usr/lib/mysql -L/usr/local/lib/ -Lgzstream/ -Lliblfds.6/bin/ -L/usr/lib64/mysql -fPIC -g3
 shared: args = -g3 -Wall  -march=$(GCCARCH) 
 
-static: LIBS=-static -L/usr/lib/mysql -L/usr/lib64/mysql -L/usr/lib/mysql -lodbc -lltdl -ldl -lrt -lz -lcrypt -lm -lssl -static-libstdc++ -static-libgcc -lpcap -L/usr/lib/mysql -lpthread -lmysqlclient -lpthread -lgzstream -lz -lc -lvorbis -lvorbisenc -logg -lrt -lsnappy # -llfds 
-static: CFLAGS+= -DQUEUE_NONBLOCK2 -I /usr/include/mysql/ -Wall -I jitterbuffer/  -L/usr/local/lib/ -Lgzstream/ -Lliblfds.6/bin/ -fPIC -O2
+static: LIBS=-static -L/opt/libc/lib/ -L/usr/lib/mysql -L/usr/lib64/mysql -L/usr/lib/mysql -lc_nonshared -lodbc -lltdl -ldl -lrt -lz -lcrypt -lm -lssl -static-libstdc++ -static-libgcc -lpcap -L/usr/lib/mysql -lpthread -lmysqlclient -lpthread -lgzstream -lz -lc -lvorbis -lvorbisenc -logg -lrt -lsnappy # -llfds 
+static: CFLAGS+= -DQUEUE_NONBLOCK2 -I/opt/libc/include -L/opt/libc/lib/ -I /usr/include/mysql/ -Wall -I jitterbuffer/  -L/usr/local/lib/ -Lgzstream/ -Lliblfds.6/bin/ -fPIC -O2
 static: args = -O2 -Wall  -march=$(GCCARCH)
+
+staticlibc: LIBS=-static -L/opt/libc/lib/ -L/usr/lib/mysql -L/usr/lib64/mysql -L/usr/lib/mysql -lc_nonshared -lodbc -lltdl -ldl -lrt -lz -lcrypt -lm -lssl -static-libstdc++ -static-libgcc -lpcap -L/usr/lib/mysql -lpthread -lmysqlclient -lpthread -lgzstream -lz -lc -lvorbis -lvorbisenc -logg -lrt -lsnappy # -llfds 
+staticlibc: CFLAGS+= -DQUEUE_NONBLOCK2 -I/opt/libc/include -L/opt/libc/lib/ -I /usr/include/mysql/ -Wall -I jitterbuffer/  -L/usr/local/lib/ -Lgzstream/ -Lliblfds.6/bin/ -fPIC -O2
+staticlibc: args = -O2 -Wall  -march=$(GCCARCH)
 
 armv5shared: LIBS=-lpthread -lpcap -lgzstream -lz -lvorbis -lvorbisenc -logg -lodbc -lmysqlclient -lrt -lsnappy
 armv5shared: CFLAGS+= -DQUEUE_NONBLOCK2 -DPACKED -I /usr/include/mysql/ -g3 -Wall -I jitterbuffer/  -L/usr/local/lib/ -Lgzstream/ -L/usr/lib64/mysql -fPIC
@@ -123,12 +127,6 @@ ipaccount.o : ipaccount.cpp ipaccount.h ${headers}
 skinny.o : skinny.cpp skinny.h ${headers}
 	g++ -c skinny.cpp $(args) ${CFLAGS}
 
-http.o : http.cpp http.h ${headers}
-	g++ -c http.cpp $(args) ${CFLAGS}
-
-tcpreassembly.o : tcpreassembly.cpp tcpreassembly.h ${headers}
-	g++ -c tcpreassembly.cpp $(args) ${CFLAGS}
-
 pstat.o : pstat.cpp pstat.h
 	g++ -c pstat.cpp $(args) ${CFLAGS}
 
@@ -137,7 +135,7 @@ clean :
 	rm -f $(objects) voipmonitor gzstream/*.o libgzstream.a
 	cp -f .cleancount .lastclean
 
-targz64: static
+targz64: staticlibc
 	rm -rf /tmp/voipmonitor-amd64-${version}-static*
 	mkdir -p /tmp/voipmonitor-amd64-${version}-static/usr/local/sbin
 	strip voipmonitor
