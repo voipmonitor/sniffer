@@ -69,6 +69,7 @@ extern int opt_skinny;
 extern int opt_ipaccount;
 extern int opt_pcapdump;
 extern int opt_dup_check;
+extern int opt_dup_check_ipheader;
 extern int opt_mirrorip;
 extern char opt_mirrorip_src[20];
 extern char opt_mirrorip_dst[20];
@@ -1266,6 +1267,9 @@ void* PcapQueue_readFromInterface::threadFunction(void* ) {
 		pcap_block_store *blockStore = new pcap_block_store;
 		while(!TERMINATING) {
 			res = this->pcap_next_ex(this->pcapHandle, &header, &packet);
+			if(opt_pb_read_from_file[0]/* && !(sumBlocksCounterIn[0] % 5)*/) {
+				usleep(1);
+			}
 			if(res == -1) {
 				if(opt_pb_read_from_file[0]) {
 					blockStoreBypassQueue.push(blockStore);
@@ -1660,7 +1664,18 @@ int PcapQueue_readFromInterface::pcapProcess(pcap_pkthdr** header, u_char** pack
 	if(ppd.datalen > 0 && opt_dup_check && ppd.prevmd5s != NULL && (ppd.traillen < ppd.datalen) &&
 	   !(ppd.istcp && opt_enable_tcpreassembly && (httpportmatrix[htons(ppd.header_tcp->source)] || httpportmatrix[htons(ppd.header_tcp->dest)]))) {
 		MD5_Init(&ppd.ctx);
-		MD5_Update(&ppd.ctx, ppd.data, MAX(0, (unsigned long)ppd.datalen - ppd.traillen));
+		if(opt_dup_check_ipheader) {
+			// check duplicates based on full ip header and data 
+			if(ppd.istcp) {
+				MD5_Update(&ppd.ctx, ppd.header_ip, MAX(0, (unsigned long)ppd.datalen - ppd.traillen + sizeof(ppd.header_ip) + sizeof(ppd.header_udp)));
+			} else {
+				MD5_Update(&ppd.ctx, ppd.header_ip, MAX(0, (unsigned long)ppd.datalen - ppd.traillen + sizeof(ppd.header_ip) + sizeof(ppd.header_tcp)));
+			}
+		} else {
+			// check duplicates based only on data (without ip header and without UDP/TCP header). Duplicate packets 
+			// will be matched regardless on IP 
+			MD5_Update(&ppd.ctx, ppd.data, MAX(0, (unsigned long)ppd.datalen - ppd.traillen));
+		}
 		MD5_Final((unsigned char*)ppd.md5, &ppd.ctx);
 		//#pragma GCC diagnostic push
 		//#pragma GCC diagnostic ignored "-Wstrict-aliasing"
