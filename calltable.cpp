@@ -194,6 +194,7 @@ Call::Call(char *call_id, unsigned long call_id_len, time_t time, void *ct) {
 	sipcallerip3 = 0;
 	sipcalledip4 = 0;
 	sipcallerip4 = 0;
+	lastsipcallerip = 0;
 	fname2 = 0;
 	skinny_partyid = 0;
 	relationcall = NULL;
