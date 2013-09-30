@@ -339,29 +339,29 @@ Call::~Call(){
 	}
 	pthread_mutex_lock(&listening_worker_run_lock);
 
-	addtofilesqueue(sip_pcapfilename, type == REGISTER ? "regsize" : "sipsize");
 	if (get_fsip_pcap() != NULL){
 		pcap_dump_flush(get_fsip_pcap());
 		pcap_dump_close(get_fsip_pcap());
 		set_fsip_pcap(NULL);
+		addtofilesqueue(sip_pcapfilename, type == REGISTER ? "regsize" : "sipsize");
 		if(opt_cachedir[0] != '\0') {
 			addtocachequeue(sip_pcapfilename);
 		}
 	}
-	addtofilesqueue(rtp_pcapfilename, "rtpsize");
 	if (get_frtp_pcap() != NULL){
 		pcap_dump_flush(get_frtp_pcap());
 		pcap_dump_close(get_frtp_pcap());
 		set_frtp_pcap(NULL);
+		addtofilesqueue(rtp_pcapfilename, "rtpsize");
 		if(opt_cachedir[0] != '\0') {
 			addtocachequeue(rtp_pcapfilename);
 		}
 	}
-	addtofilesqueue(pcapfilename, type == REGISTER ? "regsize" : "sipsize");
 	if (get_f_pcap() != NULL){
 		pcap_dump_flush(get_f_pcap());
 		pcap_dump_close(get_f_pcap());
 		set_f_pcap(NULL);
+		addtofilesqueue(pcapfilename, type == REGISTER ? "regsize" : "sipsize");
 		if(opt_cachedir[0] != '\0') {
 			addtocachequeue(pcapfilename);
 		}
@@ -2968,6 +2968,7 @@ void Call::saveregister() {
 	if (get_fsip_pcap() != NULL){
 		pcap_dump_flush(get_fsip_pcap());
 		pcap_dump_close(get_fsip_pcap());
+		addtofilesqueue(sip_pcapfilename, "regsize");
 		if(opt_cachedir[0] != '\0') {
 			addtocachequeue(pcapfilename);
 		}
@@ -2976,6 +2977,7 @@ void Call::saveregister() {
 	if (get_f_pcap() != NULL){
 		pcap_dump_flush(get_f_pcap());
 		pcap_dump_close(get_f_pcap());
+		addtofilesqueue(sip_pcapfilename, "regsize");
 		if(opt_cachedir[0] != '\0') {
 			addtocachequeue(pcapfilename);
 		}
