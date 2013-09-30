@@ -2471,7 +2471,11 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 						
 				}
 				// save who hanged up 
-				call->whohanged = (call->sipcallerip == saddr) ? 0 : 1;
+				if(call->sipcallerip == saddr) {
+					call->whohanged = 0;
+				} else if(call->sipcalledip == saddr) {
+					call->whohanged = 1;
+				}
 			} else if(sip_method == CANCEL) {
 				// CANCEL continues with Status: 200 canceling; 200 OK; 487 Req. terminated; ACK. Lets wait max 10 seconds and destroy call
 				call->destroy_call_at = header->ts.tv_sec + 10;
