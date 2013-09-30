@@ -255,10 +255,10 @@ RTP::~RTP() {
 
 	if(gfilename[0] != '\0') {
 		if(owner) { 
+			owner->addtofilesqueue(string(gfilename), "graphsize");
 			if(opt_cachedir[0] != '\0') {
 				owner->addtocachequeue(string(gfilename));
 			}
-			owner->addtofilesqueue(string(gfilename), "graphsize");
 		} else {
 			syslog(LOG_ERR, "error - gfilename[%s] does not have owner", gfilename);
 		}
