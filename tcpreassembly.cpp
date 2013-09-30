@@ -948,7 +948,7 @@ void TcpReassemblyLink::printContent(int level) {
 void TcpReassemblyLink::cleanup(u_int64_t act_time) {
 	map<uint32_t, TcpReassemblyStream*>::iterator iter;
 	for(iter = this->queue_by_ack.begin(); iter != this->queue_by_ack.end(); ) {
-		if(iter->second->queue.size() > 1000) {
+		if(iter->second->queue.size() > 500) {
 			if(this->reassembly->isActiveLog()) {
 				in_addr ip;
 				ip.s_addr = this->ip_src;
@@ -1765,7 +1765,7 @@ void TcpReassembly::cleanup(bool all) {
 				break;
 			}
 		}
-		if(link && link->queue_by_ack.size() > 1000) {
+		if(link && link->queue_by_ack.size() > 500) {
 			if(this->isActiveLog()) {
 				in_addr ip;
 				ip.s_addr = link->ip_src;

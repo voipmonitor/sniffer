@@ -1,4 +1,5 @@
 #include <iostream>
+#include <sstream>
 
 #include "http.h"
 #include "sql_db.h"
@@ -10,6 +11,10 @@ extern int opt_id_sensor;
 extern SqlDb *sqlDb;
 extern MySqlStore *sqlStore;
 
+
+HttpData::~HttpData() {
+	this->cache.clear();
+}
 
 void HttpData::processData(u_int32_t ip_src, u_int32_t ip_dst,
 			   u_int16_t port_src, u_int16_t port_dst,
@@ -154,25 +159,30 @@ void HttpData::processData(u_int32_t ip_src, u_int32_t ip_dst,
 			     << (response.length() ? " with response" : "")
 			     << endl;
 		}
-		SqlDb_row rowRequest;
-		rowRequest.add(sqlDateTimeString(request_data->getTime().tv_sec), "timestamp");
-		rowRequest.add(request_data->getTime().tv_usec, "usec");
-		rowRequest.add(htonl(ip_src), "srcip");
-		rowRequest.add(htonl(ip_dst), "dstip");
-		rowRequest.add(port_src, "srcport"); 
-		rowRequest.add(port_dst, "dstport"); 
-		rowRequest.add(sqlEscapeString(uri), "url");
-		rowRequest.add((const char*)NULL, "type"); 
-		rowRequest.add(sqlEscapeString(http), "http");
-		rowRequest.add(sqlEscapeString(body).c_str(), "body");
-		rowRequest.add(sqlEscapeString(callid).c_str(), "callid");
-		rowRequest.add(sqlEscapeString(sessionid).c_str(), "sessid");
-		rowRequest.add(sqlEscapeString(externalTransactionId).c_str(), "external_transaction_id");
-		rowRequest.add(opt_id_sensor > 0 ? opt_id_sensor : 0, "id_sensor", opt_id_sensor <= 0);
-		queryInsert = sqlDb->insertQuery("http_jj", rowRequest);
+		HttpDataCache requestDataFromCache = this->cache.get(ip_src, ip_dst, port_src, port_dst,
+								     &http, &body);
+		if(!requestDataFromCache.timestamp) {
+			SqlDb_row rowRequest;
+			rowRequest.add(sqlDateTimeString(request_data->getTime().tv_sec), "timestamp");
+			rowRequest.add(request_data->getTime().tv_usec, "usec");
+			rowRequest.add(htonl(ip_src), "srcip");
+			rowRequest.add(htonl(ip_dst), "dstip");
+			rowRequest.add(port_src, "srcport"); 
+			rowRequest.add(port_dst, "dstport"); 
+			rowRequest.add(sqlEscapeString(uri), "url");
+			rowRequest.add((const char*)NULL, "type"); 
+			rowRequest.add(sqlEscapeString(http), "http");
+			rowRequest.add(sqlEscapeString(body).c_str(), "body");
+			rowRequest.add(sqlEscapeString(callid).c_str(), "callid");
+			rowRequest.add(sqlEscapeString(sessionid).c_str(), "sessid");
+			rowRequest.add(sqlEscapeString(externalTransactionId).c_str(), "external_transaction_id");
+			rowRequest.add(opt_id_sensor > 0 ? opt_id_sensor : 0, "id_sensor", opt_id_sensor <= 0);
+			queryInsert = sqlDb->insertQuery("http_jj", rowRequest);
+			this->cache.add(ip_src, ip_dst, port_src, port_dst,
+					&http, &body, NULL, NULL,
+					1, request_data->getTime().tv_sec);
+		}
 		if(response.length()) {
-			queryInsert += ";\n";
-			queryInsert += "set @http_jj_id = last_insert_id();\n";
 			size_t responseContentLength = atol(this->getTag(response, "Content-Length").c_str());
 			string responseHttp;
 			string responseBody;
@@ -191,27 +201,57 @@ void HttpData::processData(u_int32_t ip_src, u_int32_t ip_dst,
 			if(!responseHttp.length()) {
 				responseHttp = response;
 			}
-			SqlDb_row rowRequest;
-			rowRequest.add("_\\_'SQL'_\\_:@http_jj_id", "master_id");
-			rowRequest.add(sqlDateTimeString(response_data->getTime().tv_sec), "timestamp");
-			rowRequest.add(response_data->getTime().tv_usec, "usec");
-			rowRequest.add(htonl(ip_dst), "srcip"); 
-			rowRequest.add(htonl(ip_src), "dstip"); 
-			rowRequest.add(port_dst, "srcport"); 
-			rowRequest.add(port_src, "dstport"); 
-			rowRequest.add("", "url");
-			rowRequest.add("http_ok", "type"); 
-			rowRequest.add(sqlEscapeString(responseHttp), "http");
-			rowRequest.add(sqlEscapeString(responseBody).c_str(), "body");
-			rowRequest.add("", "callid");
-			rowRequest.add("", "sessid");
-			rowRequest.add("", "external_transaction_id");
-			rowRequest.add(opt_id_sensor > 0 ? opt_id_sensor : 0, "id_sensor", opt_id_sensor <= 0);
-			queryInsert += sqlDb->insertQuery("http_jj", rowRequest, true);
+			HttpDataCache responseDataFromCache = this->cache.get(ip_src, ip_dst, port_src, port_dst,
+									      &http, &body, &responseHttp, &responseBody);
+			if(!responseDataFromCache.timestamp) {
+				if(requestDataFromCache.timestamp) {
+					ostringstream queryFindMasterId;
+					queryFindMasterId << "set @http_jj_id = (select id from http_jj where"
+							  << " srcip = " << htonl(ip_src)
+							  << " and dstip = " << htonl(ip_dst)
+							  << " and srcport = " << port_src
+							  << " and dstport = " << port_dst
+							  << " and http = '" << sqlEscapeString(http) << "'"
+							  << " and body = '" << sqlEscapeString(body) << "'"
+							  << " and timestamp = '" << sqlDateTimeString(requestDataFromCache.timestamp) << "'" 
+							  << " limit 1);" << endl
+							  << "if @http_jj_id then" << endl;
+					queryInsert += queryFindMasterId.str();
+				} else {
+					queryInsert += ";\n";
+					queryInsert += "set @http_jj_id = last_insert_id();\n";
+				}
+				SqlDb_row rowRequest;
+				rowRequest.add("_\\_'SQL'_\\_:@http_jj_id", "master_id");
+				rowRequest.add(sqlDateTimeString(response_data->getTime().tv_sec), "timestamp");
+				rowRequest.add(response_data->getTime().tv_usec, "usec");
+				rowRequest.add(htonl(ip_dst), "srcip"); 
+				rowRequest.add(htonl(ip_src), "dstip"); 
+				rowRequest.add(port_dst, "srcport"); 
+				rowRequest.add(port_src, "dstport"); 
+				rowRequest.add("", "url");
+				rowRequest.add("http_ok", "type"); 
+				rowRequest.add(sqlEscapeString(responseHttp), "http");
+				rowRequest.add(sqlEscapeString(responseBody).c_str(), "body");
+				rowRequest.add("", "callid");
+				rowRequest.add("", "sessid");
+				rowRequest.add("", "external_transaction_id");
+				rowRequest.add(opt_id_sensor > 0 ? opt_id_sensor : 0, "id_sensor", opt_id_sensor <= 0);
+				queryInsert += sqlDb->insertQuery("http_jj", rowRequest, true);
+				if(requestDataFromCache.timestamp) {
+					queryInsert += ";\n";
+					queryInsert += "end if";
+				}
+				this->cache.add(ip_src, ip_dst, port_src, port_dst,
+						&http, &body, &responseHttp, &responseBody,
+						1, response_data->getTime().tv_sec);
+			}
 		}
-		sqlStore->lock(STORE_PROC_ID_HTTP);
-		sqlStore->query(queryInsert.c_str(), STORE_PROC_ID_HTTP);
-		sqlStore->unlock(STORE_PROC_ID_HTTP);
+		if(queryInsert.length()) {
+			sqlStore->lock(STORE_PROC_ID_HTTP);
+			sqlStore->query(queryInsert.c_str(), STORE_PROC_ID_HTTP);
+			sqlStore->unlock(STORE_PROC_ID_HTTP);
+		}
 	}
 	delete data;
 }
@@ -335,4 +375,52 @@ string HttpData::getJsonValue(string &data, const char *valueName) {
 		}
 	}
 	return("");
+}
+
+
+HttpCache::HttpCache() {
+	this->cleanupCounter = 0;
+	this->lastAddTimestamp = 0;
+}
+
+HttpDataCache HttpCache::get(u_int32_t ip_src, u_int32_t ip_dst,
+			     u_int16_t port_src, u_int16_t port_dst,
+			     string *http, string *body,
+			     string *http_master, string *body_master) {
+	HttpDataCache_id idc(ip_src, ip_dst, port_src, port_dst, http, body, http_master, body_master);
+	map<HttpDataCache_id, HttpDataCache>::iterator iter = this->cache.find(idc);
+	if(iter == this->cache.end()) {
+		return(HttpDataCache());
+	} else {
+		return(iter->second);
+	}
+}
+
+void HttpCache::add(u_int32_t ip_src, u_int32_t ip_dst,
+		    u_int16_t port_src, u_int16_t port_dst,
+		    string *http, string *body,
+		    string *http_master, string *body_master,
+		    u_int32_t id, u_int64_t timestamp) {
+	HttpDataCache_id idc(ip_src, ip_dst, port_src, port_dst, http, body, http_master, body_master);
+	this->cache[idc] = HttpDataCache(id, timestamp);
+	this->lastAddTimestamp = timestamp;
+	this->cleanup();
+}
+
+void HttpCache::cleanup() {
+	++this->cleanupCounter;
+	if(!(this->cleanupCounter % 100)) {
+		map<HttpDataCache_id, HttpDataCache>::iterator iter;
+		for(iter = this->cache.begin(); iter != this->cache.end(); ) {
+			if(iter->second.timestamp < this->lastAddTimestamp - 120) {
+				this->cache.erase(iter++);
+			} else {
+				++iter;
+			}
+		}
+	}
+}
+
+void HttpCache::clear() {
+	this->cache.clear();
 }
