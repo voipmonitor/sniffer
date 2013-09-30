@@ -2555,6 +2555,9 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 					call->proxies.push_back(call->sipcalledip);
 				}
 				call->sipcalledip = daddr;
+			} else if(call->lastsipcallerip == saddr) {
+				// update sipcalledip to this new one
+				call->sipcalledip = daddr;
 			}
 			call->lastsipcallerip = saddr;
 		}
