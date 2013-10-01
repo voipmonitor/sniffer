@@ -39,10 +39,10 @@ struct HttpDataCache_id {
 		return((this->ip_src < other.ip_src) ? 1 : (this->ip_src > other.ip_src) ? 0 :
 		       (this->ip_dst < other.ip_dst) ? 1 : (this->ip_dst > other.ip_dst) ? 0 :
 		       (this->port_src < other.port_src) ? 1 : (this->port_src > other.port_src) ? 0 :
-		       (this->port_dst < other.port_dst) ? 1 : (this->port_dst < other.port_dst) ? 0 :
-		       (this->http < other.http) ? 1 : (this->http < other.http) ? 0 :
-		       (this->body < other.body) ? 1 : (this->body < other.body) ? 0 :
-		       (this->http_master < other.http_master) ? 1 : (this->http_master < other.http_master) ? 0 :
+		       (this->port_dst < other.port_dst) ? 1 : (this->port_dst > other.port_dst) ? 0 :
+		       (this->http < other.http) ? 1 : (this->http > other.http) ? 0 :
+		       (this->body < other.body) ? 1 : (this->body > other.body) ? 0 :
+		       (this->http_master < other.http_master) ? 1 : (this->http_master > other.http_master) ? 0 :
 		       (this->body_master < other.body_master));
 	}
 };
