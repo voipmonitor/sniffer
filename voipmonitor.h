@@ -34,6 +34,8 @@
 #define STORE_PROC_ID_IPACC_AGR2_DAY_2 98
 #define STORE_PROC_ID_IPACC_AGR2_DAY_3 99
 
+#define GRAPH_DELIMITER 4294967295
+
 
 /* choose what method wil be used to synchronize threads. NONBLOCK is the fastest. Do not enable both at once */
 // this is now defined in Makefile 

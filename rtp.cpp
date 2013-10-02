@@ -41,6 +41,8 @@ extern char opt_cachedir[1024];
 extern int opt_savewav_force;
 int dtmfdebug = 0;
 
+extern unsigned int graph_delimiter;
+
 using namespace std;
 
 /* Convert timeval structure into microsecond representation */
@@ -460,6 +462,10 @@ RTP::jitterbuffer(struct ast_channel *channel, int savePayload) {
 			}
 		}
 
+		if(codec == PAYLOAD_G729 and (payload_len == 2 or payload_len == 12)) {
+			return;
+		}
+
 		channel->rawstream = gfileRAW;
 
 		Call *owner = (Call*)call_owner;
@@ -483,7 +489,6 @@ RTP::jitterbuffer(struct ast_channel *channel, int savePayload) {
 		frame->data = NULL;
 		channel->rawstream = NULL;
 	}
-
 
 	// create jitter buffer structures 
 	ast_jb_do_usecheck(channel, &header->ts);
@@ -620,7 +625,7 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 
 	Call *owner = (Call*)call_owner;
 
-//	if(getSSRC() != 0x6cc93102) return;
+//	if(getSSRC() != 0x25EF1A54) return;
 
 	if(getVersion() != 2) {
 		return;
@@ -1019,12 +1024,14 @@ RTP::update_stats() {
 				if(opt_gzipGRAPH) {
 					// compressed
 					if(gfileGZ.is_open()) {
-						gfile << endl;
+						//gfile << endl;
+						gfileGZ.write("\n", 1);
 					}
 				} else {
 					// uncompressed
 					if(gfile.is_open()) {
-						gfile << endl;
+						//gfile << endl;
+						gfile.write("\n", 1);
 					}
 				}
 				nintervals -= 20;
@@ -1036,21 +1043,28 @@ RTP::update_stats() {
 				// compressed
 				if(nintervals > 20) {
 					/* after 20 packets, send new line */
-					gfileGZ << endl;
+//					gfileGZ << endl;
+					gfileGZ.write((char*)&graph_delimiter, 4);
 					nintervals -= 20;
 				}
-				//gfile << s->fdelay << ":" << transit << ";";
-				gfileGZ << s->fdelay << ":" << jitter << ";";
+//				gfileGZ << s->fdelay << ":" << jitter << ";";
+				float tmp = s->fdelay;
+				if(tmp == graph_delimiter) tmp = graph_delimiter - 1;
+				gfileGZ.write((char*)&tmp, 4);
 				nintervals++;
 			} else if(gfile.is_open()) {
 				// uncompressed
 				if(nintervals > 20) {
 					/* after 20 packets, send new line */
-					gfile << endl;
+					//gfile << endl;
+					gfile.write((char*)&graph_delimiter, 4);
 					nintervals -= 20;
 				}
 				//gfile << s->fdelay << ":" << transit << ";";
-				gfile << s->fdelay << ":" << jitter << ";";
+//				gfile << s->fdelay << ":" << jitter << ";";
+				float tmp = s->fdelay;
+				if(tmp == graph_delimiter) tmp = graph_delimiter - 1;
+				gfile.write((char*)&tmp, 4);
 				nintervals++;
 			}
 		}
