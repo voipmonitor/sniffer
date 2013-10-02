@@ -1,3 +1,10 @@
+8.4 RC5 2.10.2013
+=================
+
+- do not send SID frames to G729 decoder which fixes garbled sound for G729 RTP streams. 
+- implement binary format for graph file which makes *.graph files 5 time smaller which greatly reduces disk space and I/O operations. This needs the latest GUI 
+
+
 8.4 RC4 30.9.2013
 =================
 
