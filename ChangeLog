@@ -1,3 +1,20 @@
+8.4 RC5 2.10.2013
+=================
+
+- do not send SID frames to G729 decoder which fixes garbled sound for G729 RTP streams. 
+- implement binary format for graph file which makes *.graph files 5 time smaller which greatly reduces disk space and I/O operations. This needs the latest GUI 
+
+
+8.4 RC4 30.9.2013
+=================
+
+- Implement multipart/mixed SIP messages which voipmonitor ignored if there was SDP (for example SIP messages with SDP and ISUP)
+- following issue was fixed only when reading pcap files but not in realtime sniffing - prior verison 8.0.1 deduplicate (which is default off) was comparing only data without ip header and udp header so duplicate packets was matched also in case when IP addresses differs. This was good for some cases but it leads to completely ignore RTP streams in other cases. Now default option is to check duplicates based on not only data but ip headers too. To change this set deduplicate_ipheader = no. default = yes.deduplicate_ipheader = yes
+- Do not add SIP destination IP to proxy table if INVITE fails and proxy tries another destination
+- fix hangup indication (cdr.whohangedup) in case call travers through proxies (called was marked as hanged up always)
+- if cdr proxy feature is enabled (which is by default) and invite goes to fail-over write the last IP of the last SIP and not the first (failed) one.
+- try to fix more files cleaning issues 
+
 8.4 RC3 27.9.2013
 =================
 

@@ -103,6 +103,7 @@ extern struct pcap_stat pcapstat;
 extern int opt_filesclean;
 extern int opt_allow_zerossrc;
 extern int opt_cdr_ua_enable;
+extern unsigned int graph_delimiter;
 
 volatile int calls = 0;
 
@@ -610,8 +611,14 @@ Call::read_rtp(unsigned char* data, int datalen, struct pcap_pkthdr *header, u_i
 		if(flags & FLAG_SAVEGRAPH) {
 			if(opt_gzipGRAPH) {
 				rtp[ssrc_n]->gfileGZ.open(tmp);
+				if(rtp[ssrc_n]->gfileGZ.is_open()) {
+					rtp[ssrc_n]->gfileGZ.write((char*)&graph_delimiter, 4); //every graph starts with graph_delimiter 
+				}
 			} else {
 				rtp[ssrc_n]->gfile.open(tmp);
+				if(rtp[ssrc_n]->gfile.is_open()) {
+					rtp[ssrc_n]->gfile.write((char*)&graph_delimiter, 4); //every graph starts with graph_delimiter 
+				}
 			}
 		}
 		rtp[ssrc_n]->gfileRAW = NULL;

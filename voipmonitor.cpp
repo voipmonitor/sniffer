@@ -263,6 +263,7 @@ extern int opt_pcap_queue_receive_from_port;
 extern int opt_pcap_queue_receive_dlt;
 extern int sql_noerror;
 int opt_cleandatabase = 0;
+unsigned int graph_delimiter = GRAPH_DELIMITER;
 
 bool opt_cdr_partition = 1;
 vector<dstring> opt_custom_headers_cdr;

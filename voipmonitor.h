@@ -8,7 +8,7 @@
 #ifndef VOIPMONITOR_H
 #define VOIPMONITOR_H
 
-#define RTPSENSOR_VERSION "8.4RC4.SVN"
+#define RTPSENSOR_VERSION "8.4RC5"
 #define NAT
 
 #define FORMAT_WAV	1
@@ -33,6 +33,8 @@
 #define STORE_PROC_ID_IPACC_AGR2_DAY_1 97
 #define STORE_PROC_ID_IPACC_AGR2_DAY_2 98
 #define STORE_PROC_ID_IPACC_AGR2_DAY_3 99
+
+#define GRAPH_DELIMITER 4294967295
 
 
 /* choose what method wil be used to synchronize threads. NONBLOCK is the fastest. Do not enable both at once */
