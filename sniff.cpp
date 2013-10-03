@@ -498,6 +498,32 @@ inline void save_packet(Call *call, struct pcap_pkthdr *header, const u_char *pa
 				pcap_dump((u_char *) call->get_frtp_pcap(), header, packet);
 				if (opt_packetbuffered) 
 					pcap_dump_flush(call->get_frtp_pcap());
+			} else {
+				static char str2[1024];
+				if(opt_cachedir[0] != '\0') {
+					snprintf(str2, 1023, "%s/%s/%s/%s.pcap", opt_cachedir, call->dirname().c_str(), opt_newdir ? "RTP" : "", call->get_fbasename_safe());
+				} else {
+					snprintf(str2, 1023, "%s/%s/%s.pcap", call->dirname().c_str(), opt_newdir ? "RTP" : "", call->get_fbasename_safe());
+				}
+				if(!file_exists(str2)) {
+					call->set_frtp_pcap(pcap_dump_open(HANDLE_FOR_PCAP_SAVE, str2));
+					if(call->get_frtp_pcap() == NULL) {
+						syslog(LOG_NOTICE,"pcap [%s] cannot be opened: %s\n", str2, pcap_geterr(HANDLE_FOR_PCAP_SAVE));
+					} else {
+						if(verbosity > 3) syslog(LOG_NOTICE,"pcap_filename: [%s]\n", str2);
+						call->set_last_packet_time(header->ts.tv_sec);
+						pcap_dump((u_char *) call->get_frtp_pcap(), header, packet);
+						if (opt_packetbuffered) 
+							pcap_dump_flush(call->get_frtp_pcap());
+
+					}
+				} else {
+					/* do not spam save_packet runs for every packet
+					if(verbosity > 0) {
+						syslog(LOG_NOTICE,"pcap_filename: [%s] already exists, do not overwriting\n", str2);
+					}
+					*/
+				}
 			}
 			break;
 		}
@@ -1468,6 +1494,7 @@ Call *new_invite_register(int sip_method, char *data, int datalen, struct pcap_p
 				sprintf(str2, "%s/%s/%s.pcap", call->dirname().c_str(), opt_newdir ? "RTP" : "", call->get_fbasename_safe());
 			}
 			call->rtp_pcapfilename = call->dirname() + (opt_newdir ? "/RTP" : "") + "/" + call->get_fbasename_safe() + ".pcap";
+/* this is moved to save_packet
 			if(!file_exists(str2)) {
 				call->set_frtp_pcap(pcap_dump_open(HANDLE_FOR_PCAP_SAVE, str2));
 				if(call->get_frtp_pcap() == NULL) {
@@ -1481,6 +1508,7 @@ Call *new_invite_register(int sip_method, char *data, int datalen, struct pcap_p
 					syslog(LOG_NOTICE,"pcap_filename: [%s] already exists, do not overwriting\n", str2);
 				}
 			}
+*/
 		} else {
 			if(opt_cachedir[0] != '\0') {
 				sprintf(str2, "%s/%s/%s/%s.pcap", opt_cachedir, call->dirname().c_str(), opt_newdir ? "ALL" : "", call->get_fbasename_safe());
