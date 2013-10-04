@@ -68,7 +68,7 @@ private:
 private:
 	std::deque<pcap_block_store*> queue;
 	volatile size_t countOfBlocks;
-	volatile uint64_t sizeOfBlocks;
+	volatile size_t sizeOfBlocks;
 	volatile int _sync_queue;
 };
 
