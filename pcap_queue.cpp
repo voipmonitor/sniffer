@@ -1666,11 +1666,7 @@ int PcapQueue_readFromInterface::pcapProcess(pcap_pkthdr** header, u_char** pack
 		MD5_Init(&ppd.ctx);
 		if(opt_dup_check_ipheader) {
 			// check duplicates based on full ip header and data 
-			if(ppd.istcp) {
-				MD5_Update(&ppd.ctx, ppd.header_ip, MAX(0, (unsigned long)ppd.datalen - ppd.traillen + sizeof(ppd.header_ip) + sizeof(ppd.header_udp)));
-			} else {
-				MD5_Update(&ppd.ctx, ppd.header_ip, MAX(0, (unsigned long)ppd.datalen - ppd.traillen + sizeof(ppd.header_ip) + sizeof(ppd.header_tcp)));
-			}
+			MD5_Update(&ppd.ctx, ppd.header_ip, MIN(ppd.datalen - ((char*)ppd.header_ip - ppd.data), ntohs(ppd.header_ip->tot_len)));
 		} else {
 			// check duplicates based only on data (without ip header and without UDP/TCP header). Duplicate packets 
 			// will be matched regardless on IP 
