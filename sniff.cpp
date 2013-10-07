@@ -1577,7 +1577,7 @@ void process_sdp(Call *call, unsigned int saddr, int source, unsigned int daddr,
 	in_addr_t tmp_addr;
 	unsigned short tmp_port;
 	int rtpmap[MAX_RTPMAP];
-	memset(&rtpmap, 0, sizeof(int) * MAX_RTPMAP);
+	memset(rtpmap, 0, sizeof(int) * MAX_RTPMAP);
 	int fax;
 	if (!get_ip_port_from_sdp(tmp + 1, &tmp_addr, &tmp_port, &fax)){
 		if(fax) { 
@@ -2918,7 +2918,7 @@ repeatrtpB:
 			char s[256];
 			RTP rtp;
 			int rtpmap[MAX_RTPMAP];
-			memset(&rtpmap, 0, sizeof(int) * MAX_RTPMAP);
+			memset(rtpmap, 0, sizeof(int) * MAX_RTPMAP);
 
 			rtp.read((unsigned char*)data, datalen, header, saddr, daddr, 0);
 
