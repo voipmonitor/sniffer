@@ -2,6 +2,8 @@
 #include <iostream>
 #include <algorithm>
 #include <sstream>
+#include <syslog.h>
+#include <sys/syscall.h>
 
 #include "tcpreassembly.h"
 #include "sql_db.h"
@@ -15,6 +17,9 @@ using namespace std;
 extern char opt_tcpreassembly_log[1024];
 extern char opt_pb_read_from_file[256];
 extern int terminating;
+extern int verbosity;
+extern vector<u_int32_t> httpip;
+extern vector<d_u_int32_t> httpnet;
 
 bool globalDebug = false;
 bool debug_packet = globalDebug && true;
@@ -120,7 +125,15 @@ int TcpReassemblyStream::ok(bool crazySequence, bool enableSimpleCmpMaxNextSeq, 
 						this->detect_ok_max_next_seq = next_seq;
 						return(1);
 					} else {
+						u_int32_t datalen = this->complete_data.getDatalen();
 						this->clearCompleteData();
+						if(this->http_content_length > 100000 ||
+						   !this->http_content_length && datalen > 100000) {
+							if(enableDebug) {
+								cout << " --- ERR - reassembly failed - maximum size of the data exceeded";
+							}
+							return(0);
+						}
 					}
 				}
 				this->queue[this->ok_packets.back()[0]].queue[this->ok_packets.back()[1]].state = TcpReassemblyStream_packet::CHECK;
@@ -1542,11 +1555,38 @@ inline void *_TcpReassembly_threadFunction(void* arg) {
 	return(((TcpReassembly*)arg)->threadFunction(arg));
 }
 
+void TcpReassembly::preparePstatData() {
+	if(this->threadPstatData[0].cpu_total_time) {
+		this->threadPstatData[1] = this->threadPstatData[0];
+	}
+	pstat_get_data(this->threadId, this->threadPstatData);
+}
+
+double TcpReassembly::getCpuUsagePerc(bool preparePstatData) {
+	if(preparePstatData) {
+		this->preparePstatData();
+	}
+	double ucpu_usage, scpu_usage;
+	if(this->threadPstatData[0].cpu_total_time && this->threadPstatData[1].cpu_total_time) {
+		pstat_calc_cpu_usage_pct(
+			&this->threadPstatData[0], &this->threadPstatData[1],
+			&ucpu_usage, &scpu_usage);
+		return(ucpu_usage + scpu_usage);
+	}
+	return(-1);
+}
+
 void TcpReassembly::createThread() {
 	pthread_create(&this->threadHandle, NULL, _TcpReassembly_threadFunction, this);
 }
 
 void* TcpReassembly::threadFunction(void* ) {
+	if(verbosity) {
+		ostringstream outStr;
+		this->threadId = syscall(SYS_gettid);
+		outStr << "start thread thttp - pid: " << this->threadId << endl;
+		syslog(LOG_NOTICE, outStr.str().c_str());
+	}
 	while(!terminating || this->ignoreTerminating) {
 		for(int i = 0; i < 10 && (!terminating || this->ignoreTerminating); i++) {
 			sleep(1);
@@ -1573,7 +1613,8 @@ void TcpReassembly::addLog(const char *logString) {
 
 void TcpReassembly::push(pcap_pkthdr *header, iphdr2 *header_ip, u_char *packet,
 			 pcap_block_store *block_store, int block_store_index) {
-	if(debug_limit_counter && debug_counter > debug_limit_counter) {
+	if((debug_limit_counter && debug_counter > debug_limit_counter) ||
+	   (!this->check_ip(htonl(header_ip->saddr)) && !this->check_ip(htonl(header_ip->daddr)))) {
 		return;
 	}
 
@@ -1885,4 +1926,25 @@ void TcpReassembly::printContent() {
 		     << endl;
 		iter->second->printContent(1);
 	}
+}
+
+inline bool TcpReassembly::check_ip(u_int32_t ipl) {
+	if(!httpip.size() && !httpnet.size()) {
+		return(true);
+	}
+	if(httpip.size()) {
+		vector<u_int32_t>::iterator findHttpIp;
+		findHttpIp = std::lower_bound(httpip.begin(), httpip.end(), ipl);
+		if(findHttpIp != httpip.end() && ((*findHttpIp) & ipl) == (*findHttpIp)) {
+			return(true);
+		}
+	}
+	if(httpnet.size()) {
+		for(size_t i = 0; i < httpnet.size(); i++) {
+			if(httpnet[i][0] == ipl >> (32 - httpnet[i][1]) << (32 - httpnet[i][1])) {
+				return(true);
+			}
+		}
+	}
+	return(false);
 }

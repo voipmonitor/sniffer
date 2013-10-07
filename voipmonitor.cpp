@@ -365,6 +365,8 @@ int terminating2;		// if set to 1, worker thread will terminate
 char *sipportmatrix;		// matrix of sip ports to monitor
 char *httpportmatrix;		// matrix of http ports to monitor
 char *ipaccountportmatrix;
+vector<u_int32_t> httpip;
+vector<d_u_int32_t> httpnet;
 
 queue<string> mysqlquery;
 
@@ -1870,9 +1872,39 @@ int load_config(char *fname) {
 	if (ini.GetAllValues("general", "httpport", values)) {
 		CSimpleIni::TNamesDepend::const_iterator i = values.begin();
 		// reset default port 
-		httpportmatrix[5060] = 0;
 		for (; i != values.end(); ++i) {
 			httpportmatrix[atoi(i->pItem)] = 1;
+		}
+	}
+	
+	// http ip
+	if (ini.GetAllValues("general", "httpip", values)) {
+		CSimpleIni::TNamesDepend::const_iterator i = values.begin();
+		// reset default port 
+		for (; i != values.end(); ++i) {
+			u_int32_t ip;
+			int lengthMask = 32;
+			char *pointToSeparatorLengthMask = strchr((char*)i->pItem, '/');
+			if(pointToSeparatorLengthMask) {
+				*pointToSeparatorLengthMask = 0;
+				ip = htonl(inet_addr(i->pItem));
+				lengthMask = atoi(pointToSeparatorLengthMask + 1);
+			} else {
+				ip = htonl(inet_addr(i->pItem));
+			}
+			if(lengthMask < 32) {
+				ip = ip >> (32 - lengthMask) << (32 - lengthMask);
+			}
+			if(ip) {
+				if(lengthMask < 32) {
+					httpnet.push_back(d_u_int32_t(ip, lengthMask));
+				} else {
+					httpip.push_back(ip);
+				}
+			}
+		}
+		if(httpip.size() > 1) {
+			std::sort(httpip.begin(), httpip.end());
 		}
 	}
 
@@ -3858,7 +3890,7 @@ void *readdump_libpcap_thread_fce(void *handle) {
 #include "rqueue.h"
 
 void test() {
-	
+ 
 	/*
 	sqlDb->disconnect();
 	sqlDb->connect();

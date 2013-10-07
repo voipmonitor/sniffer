@@ -899,6 +899,12 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 	if(t2cpu >= 0) {
 		outStrStat << "t2CPU[" << setprecision(1) << t2cpu << "%] ";
 	}
+	if(tcpReassembly) {
+		double thttp_cpu = this->getCpuUsagePerc();
+		if(thttp_cpu >= 0) {
+			outStrStat << "thttpCPU[" << setprecision(1) << thttp_cpu << "%] ";
+		}
+	}
 	long unsigned int rss = this->getRssUsage();
 	if(rss > 0) {
 		outStrStat << "res[" << setprecision(1) << (double)rss/1024/1024 << "MB] ";

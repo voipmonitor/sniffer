@@ -5,6 +5,7 @@
 
 #include "sniff.h"
 #include "pcap_queue_block.h"
+#include "pstat.h"
 
 
 extern int opt_tcpreassembly_pb_lock;
@@ -707,6 +708,8 @@ public:
 	bool isActiveLog() {
 		return(this->log != NULL);
 	}
+	void preparePstatData();
+	double getCpuUsagePerc(bool preparePstatData = false);
 private:
 	void createThread();
 	void *threadFunction(void *);
@@ -716,6 +719,7 @@ private:
 	void unlock_links() {
 		__sync_lock_release(&this->_sync_links);
 	}
+	bool check_ip(u_int32_t ip);
 private:
 	map<TcpReassemblyLink_id, TcpReassemblyLink*> links;
 	volatile int _sync_links;
@@ -730,6 +734,7 @@ private:
 	bool terminated;
 	bool ignoreTerminating;
 	FILE *log;
+	pstat_data threadPstatData[2];
 friend class TcpReassemblyLink;
 friend void *_TcpReassembly_threadFunction(void* arg);
 };
