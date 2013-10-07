@@ -2672,19 +2672,21 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 		char a = data[datalen - 1];
 		data[datalen - 1] = 0;
 		char t;
+		char *sl;
 
 		if(!(s and l > 0)) {
 			goto notfound;
 		}
 
-		t = s[l];
-		s[l] = '\0';
+		sl = &s[l];
+		t = *sl;
+		*sl = '\0';
 		// Content-Type found 
 		if(call->type == MESSAGE && call->message == NULL) {
-			s[l] = t;
 			//find end of a message (\r\n)
 			char *tmp = strstr(s, "\r\n\r\n");;
 			if(!tmp) {
+				*sl = t;
 				goto notfound;
 			}
 
@@ -2719,17 +2721,15 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 			}
 			//printf("msg: contentlen[%d] datalen[%d] len[%d] [%s]\n", contentlen, datalen, strlen(call->message), call->message);
 
-			
-
 			if(call->contenttype) free(call->contenttype);
 			call->contenttype = (char*)malloc(sizeof(char) * (l + 1));
 			memcpy(call->contenttype, s, l);
 			call->contenttype[l] = '\0';
+			*sl = t;
 		} else if(strcasestr(s, "application/sdp")) {
-			s[l] = t;
 			process_sdp(call, saddr, source, daddr, dest, s, (unsigned int)datalen - (s - data), header_ip, callidstr);
+			*sl = t;
 		} else if(strcasestr(s, "multipart/mixed")) {
-			s[l] = t;
 			while(1) {
 				//continue searching  for another content-type
 				s = gettag(s, (unsigned int)datalen - (s - data), "\nContent-Type:", &l, &gettagLimitLen);
@@ -2750,8 +2750,9 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 					break;
 				}
 			}
+			*sl = t;
 		} else {
-			s[l] = t;
+			*sl = t;
 		}
 
 notfound:
