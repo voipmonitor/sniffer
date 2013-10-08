@@ -2683,10 +2683,10 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 		*sl = '\0';
 		// Content-Type found 
 		if(call->type == MESSAGE && call->message == NULL) {
+			*sl = t;
 			//find end of a message (\r\n)
 			char *tmp = strstr(s, "\r\n\r\n");;
 			if(!tmp) {
-				*sl = t;
 				goto notfound;
 			}
 
@@ -2725,11 +2725,11 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 			call->contenttype = (char*)malloc(sizeof(char) * (l + 1));
 			memcpy(call->contenttype, s, l);
 			call->contenttype[l] = '\0';
-			*sl = t;
 		} else if(strcasestr(s, "application/sdp")) {
-			process_sdp(call, saddr, source, daddr, dest, s, (unsigned int)datalen - (s - data), header_ip, callidstr);
 			*sl = t;
+			process_sdp(call, saddr, source, daddr, dest, s, (unsigned int)datalen - (s - data), header_ip, callidstr);
 		} else if(strcasestr(s, "multipart/mixed")) {
+			*sl = t;
 			while(1) {
 				//continue searching  for another content-type
 				s = gettag(s, (unsigned int)datalen - (s - data), "\nContent-Type:", &l, &gettagLimitLen);
@@ -2750,7 +2750,6 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 					break;
 				}
 			}
-			*sl = t;
 		} else {
 			*sl = t;
 		}
