@@ -1,3 +1,8 @@
+8.4 RC7 8.10.2013
+=================
+
+- fix broken logic in RC6 which ignored all RTP
+
 8.4 RC6 8.10.2013
 =================
 
