@@ -2733,18 +2733,20 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 			*sl = t;
 			while(1) {
 				//continue searching  for another content-type
-				s = gettag(s, (unsigned int)datalen - (s - data), "\nContent-Type:", &l, &gettagLimitLen);
+				char *s2;
+				s2 = gettag(s, (unsigned int)datalen - (s - data), "\nContent-Type:", &l, NULL);
 				if(l <= 0 || l > 1023) {
 					//try compact header
-					s = gettag(s, (unsigned int)datalen - (s - data), "\nc:", &l, &gettagLimitLen);
+					s2 = gettag(s, (unsigned int)datalen - (s - data), "\nc:", &l, NULL);
 				}
-				if(s and l > 0) {
+				if(s2 and l > 0) {
 					//Content-Type found try if it is SDP 
-					if(l > 0 && strcasestr(s, "application/sdp")){
-						process_sdp(call, saddr, source, daddr, dest, s, (unsigned int)datalen - (s - data), header_ip, callidstr);
+					if(l > 0 && strcasestr(s2, "application/sdp")){
+						process_sdp(call, saddr, source, daddr, dest, s2, (unsigned int)datalen - (s - data), header_ip, callidstr);
 						break;	// stop searching
 					} else {
 						// it is not SDP continue searching for another content-type 
+						s = s2;
 						continue;
 					}
 				} else {
