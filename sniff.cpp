@@ -2583,11 +2583,12 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 					call->proxies.push_back(call->sipcalledip);
 				}
 				call->sipcalledip = daddr;
+				call->lastsipcallerip = saddr;
 			} else if(call->lastsipcallerip == saddr) {
 				// update sipcalledip to this new one
 				call->sipcalledip = daddr;
+				call->lastsipcallerip = saddr;
 			}
-			call->lastsipcallerip = saddr;
 		}
 
 		if(opt_norecord_header) {
@@ -2683,10 +2684,10 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 		*sl = '\0';
 		// Content-Type found 
 		if(call->type == MESSAGE && call->message == NULL) {
+			*sl = t;
 			//find end of a message (\r\n)
 			char *tmp = strstr(s, "\r\n\r\n");;
 			if(!tmp) {
-				*sl = t;
 				goto notfound;
 			}
 
@@ -2725,32 +2726,33 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 			call->contenttype = (char*)malloc(sizeof(char) * (l + 1));
 			memcpy(call->contenttype, s, l);
 			call->contenttype[l] = '\0';
-			*sl = t;
 		} else if(strcasestr(s, "application/sdp")) {
-			process_sdp(call, saddr, source, daddr, dest, s, (unsigned int)datalen - (s - data), header_ip, callidstr);
 			*sl = t;
+			process_sdp(call, saddr, source, daddr, dest, s, (unsigned int)datalen - (s - data), header_ip, callidstr);
 		} else if(strcasestr(s, "multipart/mixed")) {
+			*sl = t;
 			while(1) {
 				//continue searching  for another content-type
-				s = gettag(s, (unsigned int)datalen - (s - data), "\nContent-Type:", &l, &gettagLimitLen);
+				char *s2;
+				s2 = gettag(s, (unsigned int)datalen - (s - data), "\nContent-Type:", &l, NULL);
 				if(l <= 0 || l > 1023) {
 					//try compact header
-					s = gettag(s, (unsigned int)datalen - (s - data), "\nc:", &l, &gettagLimitLen);
+					s2 = gettag(s, (unsigned int)datalen - (s - data), "\nc:", &l, NULL);
 				}
-				if(s and l > 0) {
+				if(s2 and l > 0) {
 					//Content-Type found try if it is SDP 
-					if(l > 0 && strcasestr(s, "application/sdp")){
-						process_sdp(call, saddr, source, daddr, dest, s, (unsigned int)datalen - (s - data), header_ip, callidstr);
+					if(l > 0 && strcasestr(s2, "application/sdp")){
+						process_sdp(call, saddr, source, daddr, dest, s2, (unsigned int)datalen - (s - data), header_ip, callidstr);
 						break;	// stop searching
 					} else {
 						// it is not SDP continue searching for another content-type 
+						s = s2;
 						continue;
 					}
 				} else {
 					break;
 				}
 			}
-			*sl = t;
 		} else {
 			*sl = t;
 		}

@@ -1,8 +1,16 @@
+8.4 RC8 8.10.2013
+=================
+
+- fix implementation of multipart/mixed SIP messages in 8.4RC4 which caused memory corruption and crashes. 
+
+8.4 RC7 8.10.2013
+=================
+
+- fix broken logic in RC6 which ignored all RTP
+
 8.4 RC6 8.10.2013
 =================
 
-- fix critical bug causing stack corruption (cannot lead to buffer overflow) - all versions
-- fix critical bug introduced in 8.4RC3,4,5 causing crashes and high t2 CPU 
 - do not create RTP pcap file for every sip call but only if there is actually RTP which saves a lot of I/O 
 - fix crash on some 32 bit platforms
 - fix recent deduplication fix which was wrong and it leads to remove packets which were not duplicated because it took less data than actual data (12 bytes less). This fixes T38 decoding in GUI for example.
