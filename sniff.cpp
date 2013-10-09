@@ -2583,11 +2583,12 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 					call->proxies.push_back(call->sipcalledip);
 				}
 				call->sipcalledip = daddr;
+				call->lastsipcallerip = saddr;
 			} else if(call->lastsipcallerip == saddr) {
 				// update sipcalledip to this new one
 				call->sipcalledip = daddr;
+				call->lastsipcallerip = saddr;
 			}
-			call->lastsipcallerip = saddr;
 		}
 
 		if(opt_norecord_header) {
