@@ -247,7 +247,7 @@ Call::addtofilesqueue(string file, string column) {
 		file = tmp + "/" + file;
 	}
 
-	long size = GetFileSize(file);
+	unsigned long long size = GetFileSize(file);
 
 	if(size == -1) {
 		//error or file does not exists

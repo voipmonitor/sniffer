@@ -226,7 +226,7 @@ double ts2double(unsigned int sec, unsigned int usec) {
 	return sec + fpart;
 }
 
-long GetFileSize(std::string filename)
+unsigned long long GetFileSize(std::string filename)
 {
 	struct stat stat_buf;
 	int rc = stat(filename.c_str(), &stat_buf);

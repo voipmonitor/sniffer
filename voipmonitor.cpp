@@ -1280,10 +1280,10 @@ void convert_filesindex() {
 				fname = string("filesindex/audiosize/") + ymdh;
 				ofstream audiofile(fname.c_str(), ios::app | ios::out);
 
-				long sipsize = 0;
-				long rtpsize = 0;
-				long graphsize = 0;
-				long audiosize = 0;
+				unsigned long long sipsize = 0;
+				unsigned long long rtpsize = 0;
+				unsigned long long graphsize = 0;
+				unsigned long long audiosize = 0;
 
 				for(int m = 0; m < 60; m++) {
 
@@ -1302,7 +1302,7 @@ void convert_filesindex() {
 							if (string(de2->d_name) == ".." or string(de2->d_name) == ".") continue;
 							stringstream fn;
 							fn << de->d_name << "/" << hour << "/" << min << "/SIP/" << de2->d_name;
-							long size = GetFileSize(fn.str());
+							unsigned long long size = GetFileSize(fn.str());
 							if(size == 0) size = 1;
 							sipsize += size;
 							sipfile << fn.str() << "\n";
@@ -1323,7 +1323,7 @@ void convert_filesindex() {
 							if (string(de2->d_name) == ".." or string(de2->d_name) == ".") continue;
 							stringstream fn;
 							fn << de->d_name << "/" << hour << "/" << min << "/RTP/" << de2->d_name;
-							long size = GetFileSize(fn.str());
+							unsigned long long size = GetFileSize(fn.str());
 							if(size == 0) size = 1;
 							rtpsize += size;
 							rtpfile << fn.str() << "\n";
@@ -1345,7 +1345,7 @@ void convert_filesindex() {
 							if (string(de2->d_name) == ".." or string(de2->d_name) == ".") continue;
 							stringstream fn;
 							fn << de->d_name << "/" << hour << "/" << min << "/GRAPH/" << de2->d_name;
-							long size = GetFileSize(fn.str());
+							unsigned long long size = GetFileSize(fn.str());
 							if(size == 0) size = 1;
 							graphsize += size;
 							graphfile << fn.str() << "\n";
@@ -1365,7 +1365,7 @@ void convert_filesindex() {
 							if (string(de2->d_name) == ".." or string(de2->d_name) == ".") continue;
 							stringstream fn;
 							fn << de->d_name << "/" << hour << "/" << min << "/AUDIO/" << de2->d_name;
-							long size = GetFileSize(fn.str());
+							unsigned long long size = GetFileSize(fn.str());
 							if(size == 0) size = 1;
 							audiosize += size;
 							audiofile << fn.str() << "\n";
@@ -1526,7 +1526,7 @@ void *clean_spooldir(void *dummy) {
 
 		pthread_t tpid;	// ID of worker clean thread 
 		pthread_create(&tpid, NULL, clean_spooldir_run, NULL);
-		sleep(3600);
+		sleep(300);
 	}
 	return NULL;
 }
