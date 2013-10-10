@@ -900,7 +900,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 		outStrStat << "t2CPU[" << setprecision(1) << t2cpu << "%] ";
 	}
 	if(tcpReassembly) {
-		double thttp_cpu = this->getCpuUsagePerc();
+		double thttp_cpu = tcpReassembly->getCpuUsagePerc();
 		if(thttp_cpu >= 0) {
 			outStrStat << "thttpCPU[" << setprecision(1) << thttp_cpu << "%] ";
 		}
