@@ -310,7 +310,9 @@ Call::removeRTP() {
 			delete rtp[i];
 			rtp[i] = NULL;
 		}
-        }
+	}
+	lastcallerrtp = NULL;
+	lastcalledrtp = NULL;
 	rtplock = 0;
 }
 
