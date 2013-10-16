@@ -129,6 +129,12 @@ ipaccount.o : ipaccount.cpp ipaccount.h ${headers}
 skinny.o : skinny.cpp skinny.h ${headers}
 	g++ -c skinny.cpp $(args) ${CFLAGS}
 
+http.o : http.cpp http.h ${headers}
+	g++ -c http.cpp $(args) ${CFLAGS}
+
+tcpreassembly.o : tcpreassembly.cpp tcpreassembly.h ${headers}
+	g++ -c tcpreassembly.cpp $(args) ${CFLAGS}
+
 pstat.o : pstat.cpp pstat.h
 	g++ -c pstat.cpp $(args) ${CFLAGS}
 
