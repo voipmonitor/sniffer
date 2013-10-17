@@ -14,12 +14,13 @@ using namespace std;
 
 #define ENABLE_UNLOCK_PACKET_IN_OK false
 
+#define USE_PACKET_DATALEN false
+#define PACKET_DATALEN(datalen, datacaplen) (USE_PACKET_DATALEN ? datalen : datacaplen)
+
 extern char opt_tcpreassembly_log[1024];
 extern char opt_pb_read_from_file[256];
 extern int terminating;
 extern int verbosity;
-extern vector<u_int32_t> httpip;
-extern vector<d_u_int32_t> httpnet;
 
 bool globalDebug = false;
 bool debug_packet = globalDebug && true;
@@ -61,7 +62,7 @@ void TcpReassemblyStream::push(TcpReassemblyStream_packet packet) {
 		cout << " -- XXX DEBUG SEQ XXX" << endl;
 	}
 	this->queue[packet.header_tcp.seq].push(packet);
-	if(packet.datalen) {
+	if(PACKET_DATALEN(packet.datalen, packet.datacaplen)) {
 		exists_data = true;
 	}
 	this->last_packet_at_from_header = packet.time.tv_sec * 1000 + packet.time.tv_usec / 1000;
@@ -128,7 +129,7 @@ int TcpReassemblyStream::ok(bool crazySequence, bool enableSimpleCmpMaxNextSeq, 
 						u_int32_t datalen = this->complete_data.getDatalen();
 						this->clearCompleteData();
 						if(this->http_content_length > 100000 ||
-						   !this->http_content_length && datalen > 100000) {
+						   (!this->http_content_length && datalen > 100000)) {
 							if(enableDebug) {
 								cout << " --- ERR - reassembly failed - maximum size of the data exceeded";
 							}
@@ -245,7 +246,7 @@ u_char *TcpReassemblyStream::complete(u_int32_t *datalen, timeval *time, bool ch
 	u_int32_t lastNextSeq = 0;
 	for(size_t i = 0; i < this->ok_packets.size(); i++) {
 		TcpReassemblyStream_packet packet = this->queue[this->ok_packets[i][0]].queue[this->ok_packets[i][1]];
-		if(packet.datalen) {
+		if(PACKET_DATALEN(packet.datalen, packet.datacaplen)) {
 			if(lastNextSeq > this->ok_packets[i][0]) {
 				*datalen -= lastNextSeq - this->ok_packets[i][0];
 			}
@@ -253,21 +254,21 @@ u_char *TcpReassemblyStream::complete(u_int32_t *datalen, timeval *time, bool ch
 				*time = packet.time;
 			}
 			if(!data) {
-				databuff_len = max(packet.datalen + 1, 10000u);
+				databuff_len = max(PACKET_DATALEN(packet.datalen, packet.datacaplen) + 1, 10000u);
 				data = new u_char[databuff_len];
 				
-			} else if(databuff_len < *datalen + packet.datalen) {
-				databuff_len = max(*datalen, databuff_len) + max(packet.datalen + 1, 10000u);
+			} else if(databuff_len < *datalen + PACKET_DATALEN(packet.datalen, packet.datacaplen)) {
+				databuff_len = max(*datalen, databuff_len) + max(PACKET_DATALEN(packet.datalen, packet.datacaplen) + 1, 10000u);
 				u_char* newdata = new u_char[databuff_len];
 				memcpy(newdata, data, *datalen);
 				delete [] data;
 				data = newdata;
 			}
-			memcpy(data + *datalen, packet.data, min(packet.datalen, packet.datacaplen));
-			if(packet.datacaplen < packet.datalen) {
-				memset(data + *datalen + packet.datacaplen, ' ', packet.datalen - packet.datacaplen);
+			memcpy(data + *datalen, packet.data, min(PACKET_DATALEN(packet.datalen, packet.datacaplen), packet.datacaplen));
+			if(packet.datacaplen < PACKET_DATALEN(packet.datalen, packet.datacaplen)) {
+				memset(data + *datalen + packet.datacaplen, ' ', PACKET_DATALEN(packet.datalen, packet.datacaplen) - packet.datacaplen);
 			}
-			*datalen += packet.datalen;
+			*datalen += PACKET_DATALEN(packet.datalen, packet.datacaplen);
 			lastNextSeq = this->ok_packets[i][1];
 		}
 	}
@@ -1036,12 +1037,14 @@ int TcpReassemblyLink::okQueue_crazy(bool final, bool enableDebug) {
 		}
 		TcpReassemblyStream *lastHttpStream = NULL;
 		while(true) {
+			/* disable - probably obsolete / caused infinite loop
 			if(pass == 1 &&
 			   iter.state == STATE_SYN_FORCE_OK) {
 				if(!iter.nextAckInDirection()) {
 					break;
 				}
 			}
+			*/
 			
 			/*
 			if(iter.stream->ack == 3500116174) {
@@ -1192,6 +1195,10 @@ int TcpReassemblyLink::okQueue_crazy(bool final, bool enableDebug) {
 						this->ok_streams[this->ok_streams.size() - 1]->http_expect_continue = true;
 					}
 				}
+			}
+			// prevent by infinite loop
+			if(std::find(processedAck.begin(), processedAck.end(), iter.stream->ack) != processedAck.end()) {
+				break;
 			}
 		}
 	}
@@ -1654,7 +1661,10 @@ void TcpReassembly::push(pcap_pkthdr *header, iphdr2 *header_ip, u_char *packet,
 	TcpReassemblyLink_id id(header_ip->saddr, header_ip->daddr, header_tcp.source, header_tcp.dest);
 	TcpReassemblyLink_id idr(header_ip->daddr, header_ip->saddr, header_tcp.dest, header_tcp.source);
 	bool findLink = false;
-	while(true) {
+	int passFindLink;
+	int maxPassFindLink = 5;
+	// maxPassFindLink - prevent by infinite loop
+	for(passFindLink = 0; passFindLink < maxPassFindLink; passFindLink++) {
 		this->lock_links();
 		iter = this->links.find(id);
 		if(iter != this->links.end()) {
@@ -1677,6 +1687,10 @@ void TcpReassembly::push(pcap_pkthdr *header, iphdr2 *header_ip, u_char *packet,
 			}
 		}
 		this->unlock_links();
+	}
+	if(passFindLink == maxPassFindLink) {
+		syslog(LOG_NOTICE, "tcpreassembly: exceeded the maximum number of attempts to obtain a TCP connection");
+		return;
 	}
 	if(findLink) {
 		link = iter->second;
@@ -1926,25 +1940,4 @@ void TcpReassembly::printContent() {
 		     << endl;
 		iter->second->printContent(1);
 	}
-}
-
-inline bool TcpReassembly::check_ip(u_int32_t ipl) {
-	if(!httpip.size() && !httpnet.size()) {
-		return(true);
-	}
-	if(httpip.size()) {
-		vector<u_int32_t>::iterator findHttpIp;
-		findHttpIp = std::lower_bound(httpip.begin(), httpip.end(), ipl);
-		if(findHttpIp != httpip.end() && ((*findHttpIp) & ipl) == (*findHttpIp)) {
-			return(true);
-		}
-	}
-	if(httpnet.size()) {
-		for(size_t i = 0; i < httpnet.size(); i++) {
-			if(httpnet[i][0] == ipl >> (32 - httpnet[i][1]) << (32 - httpnet[i][1])) {
-				return(true);
-			}
-		}
-	}
-	return(false);
 }

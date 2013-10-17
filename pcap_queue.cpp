@@ -900,7 +900,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 		outStrStat << "t2CPU[" << setprecision(1) << t2cpu << "%] ";
 	}
 	if(tcpReassembly) {
-		double thttp_cpu = tcpReassembly->getCpuUsagePerc();
+		double thttp_cpu = tcpReassembly->getCpuUsagePerc(true);
 		if(thttp_cpu >= 0) {
 			outStrStat << "thttpCPU[" << setprecision(1) << thttp_cpu << "%] ";
 		}
@@ -1645,7 +1645,8 @@ int PcapQueue_readFromInterface::pcapProcess(pcap_pkthdr** header, u_char** pack
 		ppd.datalen = (int)((*header)->caplen - ((unsigned long) ppd.data - (unsigned long) *packet)); 
 		//if (datalen == 0 || !(sipportmatrix[htons(header_tcp->source)] || sipportmatrix[htons(header_tcp->dest)])) {
 		if (!(sipportmatrix[htons(ppd.header_tcp->source)] || sipportmatrix[htons(ppd.header_tcp->dest)]) &&
-		    !(opt_enable_tcpreassembly && (httpportmatrix[htons(ppd.header_tcp->source)] || httpportmatrix[htons(ppd.header_tcp->dest)])) &&
+		    !(opt_enable_tcpreassembly && (httpportmatrix[htons(ppd.header_tcp->source)] || httpportmatrix[htons(ppd.header_tcp->dest)]) &&
+		      (tcpReassembly->check_ip(htonl(ppd.header_ip->saddr)) || tcpReassembly->check_ip(htonl(ppd.header_ip->daddr)))) &&
 		    !(opt_skinny && (htons(ppd.header_tcp->source) == 2000 || htons(ppd.header_tcp->dest) == 2000))) {
 			// not interested in TCP packet other than SIP port
 			if(opt_ipaccount == 0 && !DEBUG_ALL_PACKETS) {

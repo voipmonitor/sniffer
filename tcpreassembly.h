@@ -710,6 +710,28 @@ public:
 	}
 	void preparePstatData();
 	double getCpuUsagePerc(bool preparePstatData = false);
+	bool check_ip(u_int32_t ipl) {
+		extern vector<u_int32_t> httpip;
+		extern vector<d_u_int32_t> httpnet;
+		if(!httpip.size() && !httpnet.size()) {
+			return(true);
+		}
+		if(httpip.size()) {
+			vector<u_int32_t>::iterator findHttpIp;
+			findHttpIp = std::lower_bound(httpip.begin(), httpip.end(), ipl);
+			if(findHttpIp != httpip.end() && ((*findHttpIp) & ipl) == (*findHttpIp)) {
+				return(true);
+			}
+		}
+		if(httpnet.size()) {
+			for(size_t i = 0; i < httpnet.size(); i++) {
+				if(httpnet[i][0] == ipl >> (32 - httpnet[i][1]) << (32 - httpnet[i][1])) {
+					return(true);
+				}
+			}
+		}
+		return(false);
+	}
 private:
 	void createThread();
 	void *threadFunction(void *);
@@ -719,7 +741,6 @@ private:
 	void unlock_links() {
 		__sync_lock_release(&this->_sync_links);
 	}
-	bool check_ip(u_int32_t ip);
 private:
 	map<TcpReassemblyLink_id, TcpReassemblyLink*> links;
 	volatile int _sync_links;
