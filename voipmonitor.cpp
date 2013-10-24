@@ -58,6 +58,7 @@
 #include "generator.h"
 #include "tcpreassembly.h"
 #include "http.h"
+#include "ip_frag.h"
 
 #if defined(QUEUE_MUTEX) || defined(QUEUE_NONBLOCK)
 extern "C" {
@@ -261,6 +262,9 @@ extern int opt_pcap_queue_send_to_port;
 extern string opt_pcap_queue_receive_from_ip;
 extern int opt_pcap_queue_receive_from_port;
 extern int opt_pcap_queue_receive_dlt;
+extern int opt_pcap_queue_iface_separate_threads;
+extern int opt_pcap_queue_iface_dedup_separate_threads;
+extern int opt_pcap_queue_iface_dedup_separate_threads_extend;
 extern int sql_noerror;
 int opt_cleandatabase = 0;
 unsigned int graph_delimiter = GRAPH_DELIMITER;
@@ -2510,6 +2514,23 @@ int load_config(char *fname) {
 	
 	if((value = ini.GetValue("general", "convert_dlt_sll2en10", NULL))) {
 		opt_convert_dlt_sll_to_en10 = yesno(value);
+	}
+	
+	if((value = ini.GetValue("general", "threading_mod", NULL))) {
+		switch(atoi(value)) {
+		case 2:
+			opt_pcap_queue_iface_separate_threads = 1;
+			break;
+		case 3:
+			opt_pcap_queue_iface_separate_threads = 1;
+			opt_pcap_queue_iface_dedup_separate_threads = 1;
+			break;
+		case 4:
+			opt_pcap_queue_iface_separate_threads = 1;
+			opt_pcap_queue_iface_dedup_separate_threads = 1;
+			opt_pcap_queue_iface_dedup_separate_threads_extend = 1;
+			break;
+		}
 	}
 
 	/*

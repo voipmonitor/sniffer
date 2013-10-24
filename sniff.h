@@ -64,7 +64,6 @@ inline void save_packet(Call *call, struct pcap_pkthdr *header, const u_char *pa
 typedef std::map<in_addr_t, in_addr_t> nat_aliases_t; //!< 
 
 void clean_tcpstreams();
-void ipfrag_prune(unsigned int tv_sec, int all);
 
 
 /* this is copied from libpcap sll.h header file, which is not included in debian distribution */

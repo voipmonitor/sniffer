@@ -77,11 +77,11 @@ void HttpData::processData(u_int32_t ip_src, u_int32_t ip_dst,
 		return;*/
 	}
 	contentLength = atol(this->getTag(request, "Content-Length").c_str());
-	if(!contentLength) {
-		continue;
+	//if(!contentLength) {
+	//	continue;
 		/*delete data;
 		return;*/
-	}
+	//}
 	response_data = NULL;
 	if(data->response.size()) {
 		response_data = &data->response[0];
@@ -112,7 +112,7 @@ void HttpData::processData(u_int32_t ip_src, u_int32_t ip_dst,
 			}
 		}
 	}
-	if(!body.length() ||
+	if(//!body.length() ||
 	   contentLength != body.length()) {
 		if(body.length() == contentLength - 1 &&
 		   body[0] == '{' && body[body.length() - 1] != '}') {

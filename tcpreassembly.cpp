@@ -14,7 +14,7 @@ using namespace std;
 
 #define ENABLE_UNLOCK_PACKET_IN_OK false
 
-#define USE_PACKET_DATALEN false
+#define USE_PACKET_DATALEN true
 #define PACKET_DATALEN(datalen, datacaplen) (USE_PACKET_DATALEN ? datalen : datacaplen)
 
 extern char opt_tcpreassembly_log[1024];
@@ -1047,7 +1047,7 @@ int TcpReassemblyLink::okQueue_crazy(bool final, bool enableDebug) {
 			*/
 			
 			/*
-			if(iter.stream->ack == 3500116174) {
+			if(iter.stream->ack == 1406578986) {
 				cout << " -- ***** -- ";
 			}
 			*/
@@ -1089,7 +1089,7 @@ int TcpReassemblyLink::okQueue_crazy(bool final, bool enableDebug) {
 			}
 			
 			/*
-			if(iter.stream->ack == 3805588303) {
+			if(iter.stream->ack == 1406578986) {
 				cout << " -- ***** -- ";
 			}
 			*/
@@ -1182,7 +1182,7 @@ int TcpReassemblyLink::okQueue_crazy(bool final, bool enableDebug) {
 				   this->ok_streams[this->ok_streams.size() - 1]->http_expect_continue &&
 				   this->ok_streams[this->ok_streams.size() - 1]->complete_data.getData() &&
 				   this->ok_streams[this->ok_streams.size() - 1]->complete_data.getDatalen() <
-						this->ok_streams[this->ok_streams.size() - 1]->http_content_length + this->ok_streams[this->ok_streams.size() - 1]->http_header_length) {
+						this->ok_streams[this->ok_streams.size() - 1]->http_content_length + this->ok_streams[this->ok_streams.size() - 1]->http_header_length + 4) {
 					TcpReassemblyDataItem dataItem = this->ok_streams[this->ok_streams.size() - 1]->complete_data;
 					this->ok_streams[this->ok_streams.size() - 1]->complete_data.clearData();
 					this->ok_streams[this->ok_streams.size() - 1]->is_ok = false;
@@ -1535,6 +1535,7 @@ TcpReassembly::TcpReassembly() {
 	this->threadId = 0;
 	this->terminated = false;
 	this->ignoreTerminating = false;
+	memset(this->threadPstatData, 0, sizeof(this->threadPstatData));
 	if(opt_tcpreassembly_thread) {
 		this->createThread();
 	}
@@ -1745,7 +1746,7 @@ void TcpReassembly::push(pcap_pkthdr *header, iphdr2 *header_ip, u_char *packet,
 			__data[datalen] = 0;
 			_data = __data;
 			delete [] __data;
-			_data = _data.substr(0, 1000);
+			_data = _data.substr(0, 5000);
 			for(size_t i = 0; i < _data.length(); i++) {
 				if(_data[i] == 13 || _data[i] == 10) {
 					_data[i] = '\\';

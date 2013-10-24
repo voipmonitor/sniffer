@@ -57,6 +57,7 @@ and insert them into Call class.
 #include "rtp.h"
 #include "skinny.h"
 #include "tcpreassembly.h"
+#include "ip_frag.h"
 
 extern MirrorIP *mirrorip;
 
@@ -190,23 +191,6 @@ typedef struct tcp_stream2_s {
 	int lastpsh;
 } tcp_stream2_t;
 
-typedef struct ip_frag_s {
-	char *data;
-	int datalen;
-	pcap_pkthdr header;
-	u_char *packet;
-	time_t ts;
-	char *firstheader;
-	u_int32_t firstheaderlen;
-	u_int16_t id;
-	u_int32_t offset;
-	u_int32_t len;
-	u_int32_t totallen;
-	ip_frag_s *next;
-	ip_frag_s *last;
-	char has_last;
-} ip_frag_t;
-
 typedef struct pcap_hdr_s {
 	u_int32_t magic_number;   /* magic number */
 	u_int16_t version_major;  /* major version number */
@@ -226,12 +210,7 @@ typedef struct pcaprec_hdr_s {
 
 tcp_stream2_t *tcp_streams_hashed[MAX_TCPSTREAMS];
 list<tcp_stream2_t*> tcp_streams_list;
-typedef map<unsigned int, ip_frag_t*> ip_frag_queue_t;
-typedef map<unsigned int, ip_frag_t*>::iterator ip_frag_queue_it_t;
-//map<unsigned int, ip_frag_t*> ip_frag_stream;
-map<unsigned int, map<unsigned int, ip_frag_queue_t*> > ip_frag_stream;
-map<unsigned int, map<unsigned int, ip_frag_queue_t*> >::iterator ip_frag_streamIT;
-map<unsigned int, ip_frag_queue_t*>::iterator ip_frag_streamITinner;
+ipfrag_data_s ipfrag_data;
 
 extern struct queue_state *qs_readpacket_thread_queue;
 
@@ -1736,7 +1715,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 	*was_rtp = 0;
 
 	// checking and cleaning stuff every 10 seconds (if some packet arrive) 
-	if (header->ts.tv_sec - last_cleanup > 10){
+if (header->ts.tv_sec - last_cleanup > 10){
 		//if(verbosity > 0) syslog(LOG_NOTICE, "Active calls [%d] calls in sql queue [%d] calls in delete queue [%d]\n", (int)calltable->calls_listMAP.size(), (int)calltable->calls_queue.size(), (int)calltable->calls_deletequeue.size());
 		if(verbosity > 0 && !opt_pcap_queue) {
 			if(opt_dup_check) {
@@ -3323,7 +3302,7 @@ inline int ipfrag_dequeue(ip_frag_queue_t *queue, struct pcap_pkthdr **header, u
 	int i = 0;
 	unsigned int len = 0;
 	for (ip_frag_queue_it_t it = queue->begin(); it != queue->end(); ++it) {
-		ip_frag_t *node = it->second;
+		ip_frag_s *node = it->second;
 		if(i == 0) {
 			// for first packet copy ethernet header and ip header
 			if(node->firstheaderlen) {
@@ -3374,11 +3353,11 @@ int ipfrag_add(ip_frag_queue_t *queue, struct pcap_pkthdr *header, const u_char 
 		// this offset number is not yet in the queue - add packet to queue which automatically sort it into right position
 
 		// create node
-		ip_frag_t *node = (ip_frag_t*)malloc(sizeof(ip_frag_t));
+		ip_frag_s *node = (ip_frag_s*)malloc(sizeof(ip_frag_s));
 
 		if(queue->size()) {
 			// update totallen for the first node 
-			ip_frag_t *first = queue->begin()->second;
+			ip_frag_s *first = queue->begin()->second;
 			first->totallen += len - sizeof(iphdr2); 
 			node->totallen = first->totallen;
 			node->has_last = first->has_last;
@@ -3423,7 +3402,7 @@ int ipfrag_add(ip_frag_queue_t *queue, struct pcap_pkthdr *header, const u_char 
 	if(queue->begin()->second->has_last and queue->begin()->second->offset == 0) {
 		// queue has first and last packet - check if there are all middle fragments
 		for (ip_frag_queue_it_t it = queue->begin(); it != queue->end(); ++it) {
-			ip_frag_t *node = it->second;
+			ip_frag_s *node = it->second;
 			if((node->offset != lastoffset)) {
 				ok = false;
 				break;
@@ -3454,7 +3433,11 @@ pinters to new allocated data which has to be freed later. If packet is only que
 returns 0 and header and packet remains same
 
 */
-int handle_defrag(iphdr2 *header_ip, struct pcap_pkthdr **header, u_char **packet, int destroy) {
+int handle_defrag(iphdr2 *header_ip, struct pcap_pkthdr **header, u_char **packet, int destroy, ipfrag_data_s *ipfrag_data) {
+	if(!ipfrag_data) {
+		ipfrag_data = &::ipfrag_data;
+	}
+ 
 	struct pcap_pkthdr *tmpheader = *header;
 	u_char *tmppacket = *packet;
 
@@ -3465,16 +3448,16 @@ int handle_defrag(iphdr2 *header_ip, struct pcap_pkthdr **header, u_char **packe
 	memcpy(&header_ip2, header_ip, sizeof(iphdr2));
 
 	// get queue from ip_frag_stream based on source ip address and ip->id identificator (2-dimensional map array)
-	ip_frag_queue_t *queue = ip_frag_stream[header_ip2.saddr][header_ip2.id];
+	ip_frag_queue_t *queue = ipfrag_data->ip_frag_stream[header_ip2.saddr][header_ip2.id];
 	if(!queue) {
 		// queue does not exists yet - create it and assign to map 
 		queue = new ip_frag_queue_t;
-		ip_frag_stream[header_ip2.saddr][header_ip2.id] = queue;
+		ipfrag_data->ip_frag_stream[header_ip2.saddr][header_ip2.id] = queue;
 	}
 	int res = ipfrag_add(queue, *header, (u_char*)header_ip, ntohs(header_ip2.tot_len), header, packet);
 	if(res) {
 		// packet was created from all pieces - delete queue and remove it from map
-		ip_frag_stream[header_ip2.saddr].erase(header_ip2.id);
+		ipfrag_data->ip_frag_stream[header_ip2.saddr].erase(header_ip2.id);
 		delete queue;
 	};
 	if(destroy) {
@@ -3485,19 +3468,23 @@ int handle_defrag(iphdr2 *header_ip, struct pcap_pkthdr **header, u_char **packe
 	return res;
 }
 
-void ipfrag_prune(unsigned int tv_sec, int all) {
+void ipfrag_prune(unsigned int tv_sec, int all, ipfrag_data_s *ipfrag_data) {
+	if(!ipfrag_data) {
+		ipfrag_data = &::ipfrag_data;
+	}
+ 
 	ip_frag_queue_t *queue;
-	for (ip_frag_streamIT = ip_frag_stream.begin(); ip_frag_streamIT != ip_frag_stream.end(); ip_frag_streamIT++) {
-		for (ip_frag_streamITinner = (*ip_frag_streamIT).second.begin(); ip_frag_streamITinner != (*ip_frag_streamIT).second.end();) {
-			queue = ip_frag_streamITinner->second;
+	for (ipfrag_data->ip_frag_streamIT = ipfrag_data->ip_frag_stream.begin(); ipfrag_data->ip_frag_streamIT != ipfrag_data->ip_frag_stream.end(); ipfrag_data->ip_frag_streamIT++) {
+		for (ipfrag_data->ip_frag_streamITinner = (*ipfrag_data->ip_frag_streamIT).second.begin(); ipfrag_data->ip_frag_streamITinner != (*ipfrag_data->ip_frag_streamIT).second.end();) {
+			queue = ipfrag_data->ip_frag_streamITinner->second;
 			if(!queue->size()) {
-				ip_frag_streamIT->second.erase(ip_frag_streamITinner++);
+				ipfrag_data->ip_frag_streamIT->second.erase(ipfrag_data->ip_frag_streamITinner++);
 				delete queue;
 				continue;
 			}
 			if(all or ((tv_sec - queue->begin()->second->ts) > (30))) {
 				for (ip_frag_queue_it_t it = queue->begin(); it != queue->end(); ++it) {
-					ip_frag_t *node = it->second;
+					ip_frag_s *node = it->second;
 					
 					free(node->packet);
 					if(node->firstheader) {
@@ -3505,11 +3492,11 @@ void ipfrag_prune(unsigned int tv_sec, int all) {
 					}
 					free(node);
 				}
-				ip_frag_streamIT->second.erase(ip_frag_streamITinner++);
+				ipfrag_data->ip_frag_streamIT->second.erase(ipfrag_data->ip_frag_streamITinner++);
 				delete queue;
 				continue;
 			}
-			ip_frag_streamITinner++;
+			ipfrag_data->ip_frag_streamITinner++;
 		}
 	}
 }

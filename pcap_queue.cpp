@@ -56,7 +56,6 @@
 
 using namespace std;
 
-extern int handle_defrag(iphdr2 *header_ip, struct pcap_pkthdr **header, u_char **packet, int destroy);
 extern Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int dest, char *data, int datalen,
 			    pcap_t *handle, pcap_pkthdr *header, const u_char *packet, int istcp, int dontsave, int can_thread, int *was_rtp, struct iphdr2 *header_ip, int *voippacket, int disabledsave,
 			    pcap_block_store *block_store, int block_store_index);
@@ -102,6 +101,7 @@ unsigned long long lastcachedirtransfered = 0;
 
 void *_PcapQueue_threadFunction(void* arg);
 void *_PcapQueue_writeThreadFunction(void* arg);
+void *_PcapQueue_readFromInterfaceThread_threadFunction(void* arg);
 
 static bool __config_BYPASS_FIFO			= true;
 static bool __config_USE_PCAP_FOR_FIFO			= false;
@@ -131,7 +131,11 @@ string opt_pcap_queue_send_to_ip;
 int opt_pcap_queue_send_to_port;
 string opt_pcap_queue_receive_from_ip;
 int opt_pcap_queue_receive_from_port;
-int opt_pcap_queue_receive_dlt = DLT_EN10MB;
+int opt_pcap_queue_receive_dlt 				= DLT_EN10MB;
+int opt_pcap_queue_iface_separate_threads 		= 0;
+int opt_pcap_queue_iface_dedup_separate_threads 	= 0;
+int opt_pcap_queue_iface_dedup_separate_threads_extend	= 0;
+int opt_pcap_queue_iface_qring_size 			= 5000;
 
 size_t _opt_pcap_queue_block_offset_inc_size		= opt_pcap_queue_block_max_size / AVG_PACKET_SIZE / 4;
 size_t _opt_pcap_queue_block_restore_buffer_inc_size	= opt_pcap_queue_block_max_size / 4;
@@ -147,7 +151,6 @@ static unsigned long long sumPacketsSizeCompress[2];
 static unsigned long maxBypassBufferItems;
 static unsigned long maxBypassBufferSize;
 static unsigned long countBypassBufferSizeExceeded;
-static unsigned long countPacketDrop;
 
 
 bool pcap_block_store::add(pcap_pkthdr *header, u_char *packet, int offset) {
@@ -753,6 +756,7 @@ PcapQueue::PcapQueue(eTypeQueue typeQueue, const char *nameQueue) {
 	memset(this->writeThreadPstatData, 0, sizeof(this->writeThreadPstatData));
 	this->packetBuffer = NULL;
 	this->instancePcapHandle = NULL;
+	this->initAllReadThreadsOk = false;
 }
 
 PcapQueue::~PcapQueue() {
@@ -822,6 +826,10 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 	if(!VERBOSE && !DEBUG_VERBOSE) {
 		return;
 	}
+	if(this->instancePcapHandle &&
+	   !this->instancePcapHandle->initAllReadThreadsOk) {
+		return;
+	}
 	ostringstream outStr;
 	if(DEBUG_VERBOSE || verbosityE > 0) {
 		string statString = "\n";
@@ -886,6 +894,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 	ostringstream outStrStat;
 	outStrStat << fixed;
 	if(this->instancePcapHandle) {
+		outStrStat << this->instancePcapHandle->pcapStatString_cpuUsageReadThreads();
 		double t0cpu = this->instancePcapHandle->getCpuUsagePerc(false, true);
 		if(t0cpu >= 0) {
 			outStrStat << "t0CPU[" << setprecision(1) << t0cpu << "%] ";
@@ -957,7 +966,7 @@ bool PcapQueue::createThread() {
 	return(true);
 }
 
-int PcapQueue::pcap_next_ex(pcap_t *pcapHandle, pcap_pkthdr** header, u_char** packet) {
+int PcapQueue::pcap_next_ex_queue(pcap_t *pcapHandle, pcap_pkthdr** header, u_char** packet) {
 	int res = ::pcap_next_ex(pcapHandle, header, (const u_char**)packet);
 	if(!packet && res != -2) {
 		if(VERBOSE) {
@@ -1201,15 +1210,15 @@ inline void *_PcapQueue_writeThreadFunction(void* arg) {
 }
 
 
-PcapQueue_readFromInterface::PcapQueue_readFromInterface(const char *nameQueue)
- : PcapQueue(readFromInterface, nameQueue) {
+PcapQueue_readFromInterface_base::PcapQueue_readFromInterface_base(const char *interfaceName) {
+	if(interfaceName) {
+		this->interfaceName = interfaceName;
+	}
 	this->interfaceNet = 0;
 	this->interfaceMask = 0;
 	this->pcapHandle = NULL;
 	this->pcapDumpHandle = NULL;
 	this->pcapLinklayerHeaderType = 0;
-	this->fifoWritePcapDumper = NULL;
-	this->ipfrag_lastprune = 0;
 	// CONFIG
 	extern int opt_promisc;
 	extern int opt_ringbuffer;
@@ -1220,12 +1229,14 @@ PcapQueue_readFromInterface::PcapQueue_readFromInterface(const char *nameQueue)
 	//
 	this->_last_ps_drop = 0;
 	this->_last_ps_ifdrop = 0;
+	this->countPacketDrop = 0;
 }
 
-PcapQueue_readFromInterface::~PcapQueue_readFromInterface() {
-	if(this->fifoWritePcapDumper) {
-		pcap_dump_close(this->fifoWritePcapDumper);
-	}
+void PcapQueue_readFromInterface_base::setInterfaceName(const char *interfaceName) {
+	this->interfaceName = interfaceName;
+}
+
+PcapQueue_readFromInterface_base::~PcapQueue_readFromInterface_base() {
 	if(this->pcapHandle) {
 		pcap_close(this->pcapHandle);
 	}
@@ -1234,307 +1245,107 @@ PcapQueue_readFromInterface::~PcapQueue_readFromInterface() {
 	}
 }
 
-void PcapQueue_readFromInterface::setInterfaceName(const char* interfaceName) {
-	this->interfaceName = interfaceName;
-}
-
-bool PcapQueue_readFromInterface::initThread() {
-	init_hash();
-	memset(tcp_streams_hashed, 0, sizeof(tcp_stream2_t*) * MAX_TCPSTREAMS);
-	return(this->startCapture() &&
-	       this->openFifoForWrite());
-}
-
-void* PcapQueue_readFromInterface::threadFunction(void* ) {
-	if(VERBOSE || DEBUG_VERBOSE) {
-		ostringstream outStr;
-		this->threadId = syscall(SYS_gettid);
-		outStr << "start thread t0 (" << this->nameQueue << ") - pid: " << this->threadId << endl;
-		if(DEBUG_VERBOSE) {
-			cout << outStr.str();
-		} else {
-			syslog(LOG_NOTICE, outStr.str().c_str());
-		}
-	}
-	if(this->initThread()) {
-		this->threadInitOk = true;
-	} else {
-		this->threadTerminated = true;
-		terminating = 1;
-		return(NULL);
-	}
-	this->initStat();
-	pcap_pkthdr *header;
-	u_char *packet;
-	int res;
-	bool destroy = false;
-	size_t blockStoreBypassQueueSize;
-	if(__config_BYPASS_FIFO) {
-		pcap_block_store *blockStore = new pcap_block_store;
-		while(!TERMINATING) {
-			res = this->pcap_next_ex(this->pcapHandle, &header, &packet);
-			if(opt_pb_read_from_file[0]/* && !(sumBlocksCounterIn[0] % 5)*/) {
-				usleep(1);
-			}
-			if(res == -1) {
-				if(opt_pb_read_from_file[0]) {
-					blockStoreBypassQueue.push(blockStore);
-					++sumBlocksCounterIn[0];
-					blockStore = NULL;
-					sleep(1);
-					calltable->cleanup(0);
-					this->pcapStat();
-					terminating = 1;
-				}
-				break;
-			} else if(res == 0) {
-				continue;
-			}
-			if(!TEST_PACKETS) {
-				res = this->pcapProcess(&header, &packet, &destroy);
-				if(res == -1) {
-					break;
-				} else if(res == 0) {
-					if(destroy) {
-						free(header);
-						free(packet);
-					}
-					continue;
-				}
-			}
-			++sumPacketsCounterIn[0];
-			if(TEST_PACKETS) {
-				static char buff[101];
-				sprintf(buff, "%0100lu", sumPacketsCounterIn[0]);
-				packet = (u_char*)buff;
-				header->len = 101;
-				header->caplen = 101;
-			}
-			if(!blockStore->full) {
-				blockStore->add(header, packet, this->ppd.offset);
-			}
-			if(blockStore->full) {
-				bool _syslog = true;
-				while((blockStoreBypassQueueSize = blockStoreBypassQueue.getUseSize()) > opt_pcap_queue_bypass_max_size) {
-					if(_syslog) {
-						syslog(LOG_ERR, "packetbuffer %s: THREAD0 BUFFER IS FULL", this->nameQueue.c_str());
-						cout << "bypass buffer size " << blockStoreBypassQueue.getUseItems() << " (" << blockStoreBypassQueue.getUseSize() << ")" << endl;
-						_syslog = false;
-						++countBypassBufferSizeExceeded;
-					}
-					usleep(100);
-					maxBypassBufferSize = 0;
-					maxBypassBufferItems = 0;
-				}
-				if(blockStoreBypassQueueSize > maxBypassBufferSize) {
-					maxBypassBufferSize = blockStoreBypassQueueSize;
-					maxBypassBufferItems = blockStoreBypassQueue.getUseItems();
-				}
-				blockStoreBypassQueue.push(blockStore);
-				++sumBlocksCounterIn[0];
-				blockStore = new pcap_block_store;
-				blockStore->add(header, packet, this->ppd.offset);
-			}
-			if(!TEST_PACKETS && destroy) {
-				free(header);
-				free(packet);
-			}
-		}
-		if(blockStore) {
-			delete blockStore;
-		}
-	} else {
-		while(!TERMINATING) {
-			res = this->pcap_next_ex(this->pcapHandle, &header, &packet);
-			if(res == -1) {
-				break;
-			} else if(res == 0) {
-				continue;
-			}
-			res = this->pcapProcess(&header, &packet, &destroy);
-			if(res == -1) {
-				break;
-			} else if(res == 0) {
-				if(destroy) {
-					free(header);
-					free(packet);
-				}
-				continue;
-			}
-			if(__config_USE_PCAP_FOR_FIFO) {
-				pcap_dump((u_char*)this->fifoWritePcapDumper, header, packet);
-			} else {
-				pcap_pkthdr_plus header_plus(*header, this->ppd.offset);
-				this->writePcapToFifo(&header_plus, packet);
-			}
-			if(destroy) {
-				free(header);
-				free(packet);
-			}
-		}
-	}
-	this->threadTerminated = true;
-	return(NULL);
-}
-
-bool PcapQueue_readFromInterface::openFifoForWrite() {
-	if(__config_BYPASS_FIFO) {
-		return(true);
-	}
-	if(__config_USE_PCAP_FOR_FIFO) {
-		struct stat st;
-		if(stat(this->fifoFileForWrite.c_str(), &st) != 0) {
-			mkfifo(this->fifoFileForWrite.c_str(), 0666);
-		}
-		if((this->fifoWritePcapDumper = pcap_dump_open(this->pcapHandle, this->fifoFileForWrite.c_str())) == NULL) {
-			syslog(LOG_ERR, "packetbuffer %s: pcap_dump_open error: %s", this->nameQueue.c_str(), pcap_geterr(this->pcapHandle));
-			return(false);
-		} else {
-			if(DEBUG_VERBOSE) {
-				cout << this->nameQueue << " - pcap_dump_open: OK" << endl;
-			}
-			return(true);
-		}
-	} else {
-		return(PcapQueue::openFifoForWrite());
-	}
-}
-
-bool PcapQueue_readFromInterface::startCapture() {
+bool PcapQueue_readFromInterface_base::startCapture() {
 	char errbuf[PCAP_ERRBUF_SIZE];
-	if(opt_pb_read_from_file[0]) {
-		this->pcapHandle = pcap_open_offline(opt_pb_read_from_file, errbuf);
-		this->pcapLinklayerHeaderType = pcap_datalink(this->pcapHandle);
-		handle = this->pcapHandle;
-		return(true);
-	}
 	if(VERBOSE) {
-		syslog(LOG_NOTICE, "packetbuffer %s: capturing on interface %s", this->nameQueue.c_str(), this->interfaceName.c_str()); 
+		syslog(LOG_NOTICE, "packetbuffer - %s: capturing", this->getInterfaceName().c_str());
 	}
 	if(pcap_lookupnet(this->interfaceName.c_str(), &this->interfaceNet, &this->interfaceMask, errbuf) == -1) {
 		this->interfaceMask = PCAP_NETMASK_UNKNOWN;
 	}
 	if((this->pcapHandle = pcap_create(this->interfaceName.c_str(), errbuf)) == NULL) {
-		syslog(LOG_ERR, "packetbuffer %s: pcap_create failed on iface %s: %s", this->nameQueue.c_str(), this->interfaceName.c_str(), errbuf); 
+		syslog(LOG_ERR, "packetbuffer - %s: pcap_create failed: %s", this->getInterfaceName().c_str(), errbuf); 
 		return(false);
 	}
 	handle = this->pcapHandle;
 	int status;
 	if((status = pcap_set_snaplen(this->pcapHandle, this->pcap_snaplen)) != 0) {
-		syslog(LOG_ERR, "packetbuffer %s: pcap_snaplen failed", this->nameQueue.c_str()); 
+		syslog(LOG_ERR, "packetbuffer - %s: pcap_snaplen failed", this->getInterfaceName().c_str()); 
 		return(false);
 	}
 	if((status = pcap_set_promisc(this->pcapHandle, this->pcap_promisc)) != 0) {
-		syslog(LOG_ERR, "packetbuffer %s: pcap_set_promisc failed", this->nameQueue.c_str()); 
+		syslog(LOG_ERR, "packetbuffer - %s: pcap_set_promisc failed", this->getInterfaceName().c_str()); 
 		return(false);
 	}
 	if((status = pcap_set_timeout(this->pcapHandle, this->pcap_timeout)) != 0) {
-		syslog(LOG_ERR, "packetbuffer %s: pcap_set_timeout failed", this->nameQueue.c_str()); 
+		syslog(LOG_ERR, "packetbuffer - %s: pcap_set_timeout failed", this->getInterfaceName().c_str()); 
 		return(false);
 	}
 	if((status = pcap_set_buffer_size(this->pcapHandle, this->pcap_buffer_size)) != 0) {
-		syslog(LOG_ERR, "packetbuffer %s: pcap_set_buffer_size failed", this->nameQueue.c_str()); 
+		syslog(LOG_ERR, "packetbuffer - %s: pcap_set_buffer_size failed", this->getInterfaceName().c_str()); 
 		return(false);
 	}
 	if((status = pcap_activate(this->pcapHandle)) != 0) {
-		syslog(LOG_ERR, "packetbuffer %s: libpcap error: %s", this->nameQueue.c_str(), pcap_geterr(this->pcapHandle)); 
+		syslog(LOG_ERR, "packetbuffer - %s: libpcap error: %s", this->getInterfaceName().c_str(), pcap_geterr(this->pcapHandle)); 
 		return(false);
 	}
 	if(opt_mirrorip) {
 		if(opt_mirrorip_dst[0] == '\0') {
-			syslog(LOG_ERR, "packetbuffer %s: mirroring packets was disabled because mirroripdst is not set", this->nameQueue.c_str());
+			syslog(LOG_ERR, "packetbuffer - %s: mirroring packets was disabled because mirroripdst is not set", this->getInterfaceName().c_str());
 			opt_mirrorip = 0;
 		} else {
-			syslog(LOG_NOTICE, "packetbuffer %s: starting mirroring [%s]->[%s]", this->nameQueue.c_str(), opt_mirrorip_src, opt_mirrorip_dst);
+			syslog(LOG_NOTICE, "packetbuffer - %s: starting mirroring [%s]->[%s]", opt_mirrorip_src, opt_mirrorip_dst, this->getInterfaceName().c_str());
 			mirrorip = new MirrorIP(opt_mirrorip_src, opt_mirrorip_dst);
 		}
 	}
+	static volatile int _sync_filter = 0;
 	char filter_exp[2048] = "";	// The filter expression
 	struct bpf_program fp;		// The compiled filter 
 	if(*user_filter != '\0') {
+		while(__sync_lock_test_and_set(&_sync_filter, 1));
 		snprintf(filter_exp, sizeof(filter_exp), "%s", user_filter);
-
 		// Compile and apply the filter
 		if (pcap_compile(this->pcapHandle, &fp, filter_exp, 0, this->interfaceMask) == -1) {
-			fprintf(stderr, "packetbuffer %s: can not parse filter %s: %s", this->nameQueue.c_str(), filter_exp, pcap_geterr(this->pcapHandle));
+			fprintf(stderr, "packetbuffer - %s: can not parse filter %s: %s", this->getInterfaceName().c_str(), filter_exp, pcap_geterr(this->pcapHandle));
 			return(2);
 		}
 		if (pcap_setfilter(this->pcapHandle, &fp) == -1) {
-			fprintf(stderr, "packetbuffer %s: can not install filter %s: %s", this->nameQueue.c_str(), filter_exp, pcap_geterr(this->pcapHandle));
+			fprintf(stderr, "packetbuffer - %s: can not install filter %s: %s", this->getInterfaceName().c_str(), filter_exp, pcap_geterr(this->pcapHandle));
 			return(2);
 		}
+		__sync_lock_release(&_sync_filter);
 	}
 	this->pcapLinklayerHeaderType = pcap_datalink(this->pcapHandle);
 	if(!this->pcapLinklayerHeaderType) {
-		syslog(LOG_ERR, "packetbuffer %s: pcap_datalink failed", this->nameQueue.c_str()); 
+		syslog(LOG_ERR, "packetbuffer - %s: pcap_datalink failed", this->getInterfaceName().c_str()); 
 		return(false);
 	}
 	pcap_dlink = this->pcapLinklayerHeaderType;
-	syslog(LOG_NOTICE, "DLT %i", this->pcapLinklayerHeaderType);
+	syslog(LOG_NOTICE, "DLT - %s: %i", this->getInterfaceName().c_str(), this->pcapLinklayerHeaderType);
 	if(opt_pcapdump) {
 		char pname[1024];
-		sprintf(pname, "/var/spool/voipmonitor/voipmonitordump-%u.pcap", (unsigned int)time(NULL));
+		sprintf(pname, "/var/spool/voipmonitor/voipmonitordump-%s-%u.pcap", this->interfaceName.c_str(), (unsigned int)time(NULL));
 		this->pcapDumpHandle = pcap_dump_open(this->pcapHandle, pname);
 	}
 	return(true);
 }
 
-string PcapQueue_readFromInterface::pcapStatString_bypass_buffer(int statPeriod) {
-	ostringstream outStr;
-	if(__config_BYPASS_FIFO) {
-		outStr << fixed;
-		uint64_t useSize = blockStoreBypassQueue.getUseSize();
-		uint64_t useItems = blockStoreBypassQueue.getUseItems();
-		outStr << "PACKETBUFFER_THREAD0_HEAP: "
-		       << setw(6) << (useSize / 1024 / 1024) << "MB (" << setw(3) << useItems << ")"
-		       << " " << setw(5) << setprecision(1) << (100. * useSize / opt_pcap_queue_bypass_max_size) << "%"
-		       << " of " << setw(6) << (opt_pcap_queue_bypass_max_size / 1024 / 1024) << "MB"
-		       << "   peak: " << (maxBypassBufferSize / 1024 / 1024) << "MB" << " (" << maxBypassBufferItems << ")" << " / size exceeded occurrence " << countBypassBufferSizeExceeded << endl;
-	}
-	return(outStr.str());
-}
-
-unsigned long PcapQueue_readFromInterface::pcapStat_get_bypass_buffer_size_exeeded() {
-	return(countBypassBufferSizeExceeded);
-}
-
-string PcapQueue_readFromInterface::pcapStatString_interface(int statPeriod) {
-	ostringstream outStr;
-	if(this->pcapHandle) {
-		pcap_stat ps;
-		int pcapstatres = pcap_stats(this->pcapHandle, &ps);
-		if(pcapstatres == 0) {
-			if(ps.ps_drop > this->_last_ps_drop || ps.ps_ifdrop > this->_last_ps_ifdrop) {
-				outStr << "DROPPED PACKETS: "
-				       << "libpcap or interface dropped some packets!"
-				       << " rx:" << ps.ps_recv
-				       << " pcapdrop:" << ps.ps_drop - this->_last_ps_drop
-				       << " ifdrop:"<< ps.ps_ifdrop - this->_last_ps_drop << endl
-				       << "     increase --ring-buffer (kernel >= 2.6.31 and libpcap >= 1.0.0)" << endl;
-				this->_last_ps_drop = ps.ps_drop;
-				this->_last_ps_ifdrop = ps.ps_ifdrop;
-				++countPacketDrop;
-			} else if(countPacketDrop) {
-				outStr << "pdropsCount[" << countPacketDrop << "]";
+inline int PcapQueue_readFromInterface_base::pcap_next_ex_iface(pcap_t *pcapHandle, pcap_pkthdr** header, u_char** packet) {
+	extern int verbosity;
+	int res = ::pcap_next_ex(pcapHandle, header, (const u_char**)packet);
+	if(!packet && res != -2) {
+		if(VERBOSE) {
+			syslog(LOG_NOTICE,"packetbuffer - %s: NULL PACKET, pcap response is %d", this->getInterfaceName().c_str(), res);
 			}
+		return(0);
+	} else if(res == -1) {
+		if(VERBOSE) {
+			syslog (LOG_NOTICE,"packetbuffer - %s: error reading packets", this->getInterfaceName().c_str());
 		}
+		return(0);
+	} else if(res == -2) {
+		if(VERBOSE) {
+			syslog(LOG_NOTICE,"packetbuffer - %s: end of pcap file, exiting", this->getInterfaceName().c_str());
+		}
+		return(-1);
+	} else if(res == 0) {
+		return(0);
 	}
-	return(outStr.str());
+	return(1);
 }
 
-void PcapQueue_readFromInterface::initStat_interface() {
-	if(this->pcapHandle) {
-		pcap_stat ps;
-		int pcapstatres = pcap_stats(this->pcapHandle, &ps);
-		if (pcapstatres == 0 && (ps.ps_drop || ps.ps_ifdrop)) {
-			this->_last_ps_drop = ps.ps_drop;
-			this->_last_ps_ifdrop = ps.ps_ifdrop;
-		}
-		countPacketDrop = 0;
-	}
-}
-
-int PcapQueue_readFromInterface::pcapProcess(pcap_pkthdr** header, u_char** packet, bool *destroy) {
+inline int PcapQueue_readFromInterface_base::pcapProcess(pcap_pkthdr** header, u_char** packet, bool *destroy,
+							 bool enableDefrag, bool enableCalcMD5, bool enableDedup, bool enableDump) {
 	*destroy = false;
 	switch(this->pcapLinklayerHeaderType) {
 		case DLT_LINUX_SLL:
@@ -1568,7 +1379,7 @@ int PcapQueue_readFromInterface::pcapProcess(pcap_pkthdr** header, u_char** pack
 			ppd.protocol = 8;
 			break;
 		default:
-			syslog(LOG_ERR, "packetbuffer %s: datalink number [%d] is not supported", this->nameQueue.c_str(), this->pcapLinklayerHeaderType);
+			syslog(LOG_ERR, "packetbuffer - %s: datalink number [%d] is not supported", this->getInterfaceName().c_str(), this->pcapLinklayerHeaderType);
 			return(0);
 	}
 	if(ppd.protocol != 8) {
@@ -1577,56 +1388,59 @@ int PcapQueue_readFromInterface::pcapProcess(pcap_pkthdr** header, u_char** pack
 	}
 	
 	ppd.header_ip = (iphdr2*)(*packet + ppd.offset);
-
-	//if UDP defrag is enabled process only UDP packets and only SIP packets
-	if(opt_udpfrag && (ppd.header_ip->protocol == IPPROTO_UDP || ppd.header_ip->protocol == 4)) {
-		int foffset = ntohs(ppd.header_ip->frag_off);
-		if ((foffset & IP_MF) || ((foffset & IP_OFFSET) > 0)) {
-			// packet is fragmented
-			if(handle_defrag(ppd.header_ip, header, packet, 0)) {
-				// packets are reassembled
-				ppd.header_ip = (iphdr2*)(*packet + ppd.offset);
-				*destroy = true;
-			} else {
-				return(0);
-			}
-		}
-	}
-
-	if(ppd.header_ip->protocol == 4) {
-		ppd.header_ip = (iphdr2*)((char*)ppd.header_ip + sizeof(iphdr2));
-
+	
+	if(enableDefrag) {
+	 
 		//if UDP defrag is enabled process only UDP packets and only SIP packets
-		if(opt_udpfrag && ppd.header_ip->protocol == IPPROTO_UDP) {
+		if(opt_udpfrag && (ppd.header_ip->protocol == IPPROTO_UDP || ppd.header_ip->protocol == 4)) {
 			int foffset = ntohs(ppd.header_ip->frag_off);
 			if ((foffset & IP_MF) || ((foffset & IP_OFFSET) > 0)) {
 				// packet is fragmented
-				pcap_pkthdr* header_old = *header;
-				u_char* packet_old = *packet;
-				if(handle_defrag(ppd.header_ip, header, packet, 0)) {
-					// packet was returned
+				if(handle_defrag(ppd.header_ip, header, packet, 0, &ppd.ipfrag_data)) {
+					// packets are reassembled
 					ppd.header_ip = (iphdr2*)(*packet + ppd.offset);
-					ppd.header_ip->frag_off = 0;
-					ppd.header_ip = (iphdr2*)((char*)ppd.header_ip + sizeof(iphdr2));
-					ppd.header_ip->frag_off = 0;
-					//exit(0);
-					if(*destroy) {
-						free(header_old);
-						free(packet_old);
-					}
 					*destroy = true;
 				} else {
 					return(0);
 				}
 			}
 		}
-	}
-	
-	// if IP defrag is enabled, run each 10 seconds cleaning 
-	if(opt_udpfrag && (ipfrag_lastprune + 10) < (*header)->ts.tv_sec) {
-		ipfrag_prune((*header)->ts.tv_sec, 0);
-		ipfrag_lastprune = (*header)->ts.tv_sec;
-		//TODO it would be good to still pass fragmented packets even it does not contain the last semant, the ipgrad_prune just wipes all unfinished frags
+
+		if(ppd.header_ip->protocol == 4) {
+			ppd.header_ip = (iphdr2*)((char*)ppd.header_ip + sizeof(iphdr2));
+
+			//if UDP defrag is enabled process only UDP packets and only SIP packets
+			if(opt_udpfrag && ppd.header_ip->protocol == IPPROTO_UDP) {
+				int foffset = ntohs(ppd.header_ip->frag_off);
+				if ((foffset & IP_MF) || ((foffset & IP_OFFSET) > 0)) {
+					// packet is fragmented
+					pcap_pkthdr* header_old = *header;
+					u_char* packet_old = *packet;
+					if(handle_defrag(ppd.header_ip, header, packet, 0, &ppd.ipfrag_data)) {
+						// packet was returned
+						ppd.header_ip = (iphdr2*)(*packet + ppd.offset);
+						ppd.header_ip->frag_off = 0;
+						ppd.header_ip = (iphdr2*)((char*)ppd.header_ip + sizeof(iphdr2));
+						ppd.header_ip->frag_off = 0;
+						//exit(0);
+						if(*destroy) {
+							free(header_old);
+							free(packet_old);
+						}
+						*destroy = true;
+					} else {
+						return(0);
+					}
+				}
+			}
+		}
+		
+		// if IP defrag is enabled, run each 10 seconds cleaning 
+		if(opt_udpfrag && (ppd.ipfrag_lastprune + 10) < (*header)->ts.tv_sec) {
+			ipfrag_prune((*header)->ts.tv_sec, 0, &ppd.ipfrag_data);
+			ppd.ipfrag_lastprune = (*header)->ts.tv_sec;
+			//TODO it would be good to still pass fragmented packets even it does not contain the last semant, the ipgrad_prune just wipes all unfinished frags
+		}
 	}
 
 	ppd.header_udp = &ppd.header_udp_tmp;
@@ -1643,7 +1457,6 @@ int PcapQueue_readFromInterface::pcapProcess(pcap_pkthdr** header, u_char** pack
 		ppd.header_tcp = (tcphdr*) ((char*) ppd.header_ip + sizeof(*ppd.header_ip));
 		ppd.data = (char*) ppd.header_tcp + (ppd.header_tcp->doff * 4);
 		ppd.datalen = (int)((*header)->caplen - ((unsigned long) ppd.data - (unsigned long) *packet)); 
-		//if (datalen == 0 || !(sipportmatrix[htons(header_tcp->source)] || sipportmatrix[htons(header_tcp->dest)])) {
 		if (!(sipportmatrix[htons(ppd.header_tcp->source)] || sipportmatrix[htons(ppd.header_tcp->dest)]) &&
 		    !(opt_enable_tcpreassembly && (httpportmatrix[htons(ppd.header_tcp->source)] || httpportmatrix[htons(ppd.header_tcp->dest)]) &&
 		      (tcpReassembly->check_ip(htonl(ppd.header_ip->saddr)) || tcpReassembly->check_ip(htonl(ppd.header_ip->daddr)))) &&
@@ -1667,35 +1480,869 @@ int PcapQueue_readFromInterface::pcapProcess(pcap_pkthdr** header, u_char** pack
 		return(0);
 	}
 
-	/* check for duplicate packets (md5 is expensive operation - enable only if you really need it */
-	if(ppd.datalen > 0 && opt_dup_check && ppd.prevmd5s != NULL && (ppd.traillen < ppd.datalen) &&
-	   !(ppd.istcp && opt_enable_tcpreassembly && (httpportmatrix[htons(ppd.header_tcp->source)] || httpportmatrix[htons(ppd.header_tcp->dest)]))) {
-		MD5_Init(&ppd.ctx);
-		if(opt_dup_check_ipheader) {
-			// check duplicates based on full ip header and data 
-			MD5_Update(&ppd.ctx, ppd.header_ip, MIN(ppd.datalen - ((char*)ppd.header_ip - ppd.data), ntohs(ppd.header_ip->tot_len)));
-		} else {
-			// check duplicates based only on data (without ip header and without UDP/TCP header). Duplicate packets 
-			// will be matched regardless on IP 
-			MD5_Update(&ppd.ctx, ppd.data, MAX(0, (unsigned long)ppd.datalen - ppd.traillen));
+	if(enableCalcMD5 || enableDedup) {
+		/* check for duplicate packets (md5 is expensive operation - enable only if you really need it */
+		if(ppd.datalen > 0 && opt_dup_check && ppd.prevmd5s != NULL && (ppd.traillen < ppd.datalen) &&
+		   !(ppd.istcp && opt_enable_tcpreassembly && (httpportmatrix[htons(ppd.header_tcp->source)] || httpportmatrix[htons(ppd.header_tcp->dest)]))) {
+			if(enableCalcMD5) {
+				MD5_Init(&ppd.ctx);
+				if(opt_dup_check_ipheader) {
+					// check duplicates based on full ip header and data 
+					MD5_Update(&ppd.ctx, ppd.header_ip, MIN(ppd.datalen - ((char*)ppd.header_ip - ppd.data), ntohs(ppd.header_ip->tot_len)));
+				} else {
+					// check duplicates based only on data (without ip header and without UDP/TCP header). Duplicate packets 
+					// will be matched regardless on IP 
+					MD5_Update(&ppd.ctx, ppd.data, MAX(0, (unsigned long)ppd.datalen - ppd.traillen));
+				}
+				MD5_Final((unsigned char*)ppd.md5, &ppd.ctx);
+			}
+			if(enableDedup && ppd.md5[0]) {
+				if(memcmp(ppd.md5, ppd.prevmd5s + (*ppd.md5 * MD5_DIGEST_LENGTH), MD5_DIGEST_LENGTH) == 0) {
+					//printf("dropping duplicate md5[%s]\n", md5);
+					duplicate_counter++;
+					return(0);
+				}
+				memcpy(ppd.prevmd5s+(*ppd.md5 * MD5_DIGEST_LENGTH), ppd.md5, MD5_DIGEST_LENGTH);
+			}
 		}
-		MD5_Final((unsigned char*)ppd.md5, &ppd.ctx);
-		//#pragma GCC diagnostic push
-		//#pragma GCC diagnostic ignored "-Wstrict-aliasing"
-		if(memcmp(ppd.md5, ppd.prevmd5s + (*ppd.md5 * MD5_DIGEST_LENGTH), MD5_DIGEST_LENGTH) == 0) {
-			//printf("dropping duplicate md5[%s]\n", md5);
-			duplicate_counter++;
-			return(0);
+	}
+	
+	if(enableDump) {
+		if(this->pcapDumpHandle) {
+			pcap_dump((u_char*)this->pcapDumpHandle, *header, *packet);
 		}
-		memcpy(ppd.prevmd5s+(*ppd.md5 * MD5_DIGEST_LENGTH), ppd.md5, MD5_DIGEST_LENGTH);
-		//#pragma GCC diagnostic pop
 	}
-		
-	if(this->pcapDumpHandle) {
-		pcap_dump((u_char*)this->pcapDumpHandle, *header, *packet);
-	}
-
+	
 	return(1);
+}
+
+string PcapQueue_readFromInterface_base::pcapStatString_interface(int statPeriod) {
+	ostringstream outStr;
+	if(this->pcapHandle) {
+		pcap_stat ps;
+		int pcapstatres = pcap_stats(this->pcapHandle, &ps);
+		if(pcapstatres == 0) {
+			if(ps.ps_drop > this->_last_ps_drop/* || ps.ps_ifdrop > this->_last_ps_ifdrop*/) {
+				outStr << "DROPPED PACKETS - " << this->getInterfaceName() << ": "
+				       << "libpcap or interface dropped some packets!"
+				       << " rx:" << ps.ps_recv
+				       << " pcapdrop:" << ps.ps_drop - this->_last_ps_drop
+				       << " ifdrop:"<< ps.ps_ifdrop - this->_last_ps_drop << endl
+				       << "     increase --ring-buffer (kernel >= 2.6.31 and libpcap >= 1.0.0)" << endl;
+				this->_last_ps_drop = ps.ps_drop;
+				this->_last_ps_ifdrop = ps.ps_ifdrop;
+				++this->countPacketDrop;
+			}
+			if(this->countPacketDrop) {
+				outStr << "pdropsCount - " << this->getInterfaceName() << " [" << this->countPacketDrop << "]" << endl;
+			}
+		}
+	}
+	return(outStr.str());
+}
+
+void PcapQueue_readFromInterface_base::initStat_interface() {
+	if(this->pcapHandle) {
+		pcap_stat ps;
+		int pcapstatres = pcap_stats(this->pcapHandle, &ps);
+		if (pcapstatres == 0 && (ps.ps_drop || ps.ps_ifdrop)) {
+			this->_last_ps_drop = ps.ps_drop;
+			this->_last_ps_ifdrop = ps.ps_ifdrop;
+		}
+		this->countPacketDrop = 0;
+	}
+}
+
+string PcapQueue_readFromInterface_base::getInterfaceName() {
+	return("interface " + this->interfaceName);
+}
+
+
+PcapQueue_readFromInterfaceThread::PcapQueue_readFromInterfaceThread(const char *interfaceName, eTypeInterfaceThread typeThread,
+								     PcapQueue_readFromInterfaceThread *readThread,
+								     PcapQueue_readFromInterfaceThread *prevThread,
+								     PcapQueue_readFromInterfaceThread *prevThread2)
+ : PcapQueue_readFromInterface_base(interfaceName) {
+	this->threadHandle = 0;
+	this->threadId = 0;
+	this->threadInitOk = 0;
+	this->qringmax = opt_pcap_queue_iface_qring_size;
+	for(int i = 0; i < 2; i++) {
+		if(i == 0 || typeThread == defrag) {
+			this->qring[i] = new hpi[this->qringmax];
+			memset(this->qring[i], 0, sizeof(hpi) * this->qringmax);
+			if(typeThread == read ||
+			   !opt_pcap_queue_iface_dedup_separate_threads_extend) {
+				for(uint j = 0; j < this->qringmax; j++) {
+					this->qring[i][j].header = new pcap_pkthdr;
+					this->qring[i][j].packet = new u_char[this->pcap_snaplen];
+				}
+			}
+		} else {
+			this->qring[i] = NULL;
+		}
+		this->readit[i] = 0;
+		this->writeit[i] = 0;
+	}
+	memset(this->threadPstatData, 0, sizeof(this->threadPstatData));
+	this->threadTerminated = false;
+	this->_sync_qring = 0;
+	this->readThread = readThread;
+	this->defragThread = NULL;
+	this->md1Thread = NULL;
+	this->md2Thread = NULL;
+	this->dedupThread = NULL;
+	this->typeThread = typeThread;
+	this->prevThreads[0] = prevThread;
+	this->prevThreads[1] = prevThread2;
+	this->indexDefragQring = 0;
+	pthread_create(&this->threadHandle, NULL, _PcapQueue_readFromInterfaceThread_threadFunction, this);
+}
+
+PcapQueue_readFromInterfaceThread::~PcapQueue_readFromInterfaceThread() {
+	if(this->defragThread) {
+		while(!this->defragThread->isTerminated()) {
+			usleep(100000);
+		}
+		delete this->defragThread;
+	}
+	if(this->md1Thread) {
+		while(!this->md1Thread->isTerminated()) {
+			usleep(100000);
+		}
+		delete this->md1Thread;
+	}
+	if(this->md2Thread) {
+		while(!this->md2Thread->isTerminated()) {
+			usleep(100000);
+		}
+		delete this->md2Thread;
+	}
+	if(this->dedupThread) {
+		while(!this->dedupThread->isTerminated()) {
+			usleep(100000);
+		}
+		delete this->dedupThread;
+	}
+	for(int i = 0; i < 2; i++) {
+		if(this->qring[i]) {
+			if(this->typeThread == read || 
+			   !opt_pcap_queue_iface_dedup_separate_threads_extend) {
+				for(uint j = 0; j < this->qringmax; j++) {
+					delete this->qring[i][j].header;
+					delete [] this->qring[i][j].packet;
+				}
+			}
+			delete [] this->qring[i];
+		}
+	}
+}
+
+inline void PcapQueue_readFromInterfaceThread::push(pcap_pkthdr* header,u_char* packet, u_int offset, uint16_t *md5, int index) {
+	//while(__sync_lock_test_and_set(&this->_sync_qring, 1));
+	while(this->qring[index][this->writeit[index] % this->qringmax].used == 1) {
+		//__sync_lock_release(&this->_sync_qring);
+		usleep(100);
+		//while(__sync_lock_test_and_set(&this->_sync_qring, 1));
+	}
+	if(this->typeThread == read || 
+	   !opt_pcap_queue_iface_dedup_separate_threads_extend) {
+		if(header->caplen > this->pcap_snaplen) {
+			header->caplen = this->pcap_snaplen;
+		}
+		memcpy(this->qring[index][this->writeit[index] % this->qringmax].header, header, sizeof(pcap_pkthdr));
+		memcpy(this->qring[index][this->writeit[index] % this->qringmax].packet, packet, header->caplen);
+	} else {
+		this->qring[index][this->writeit[index] % this->qringmax].header = header;
+		this->qring[index][this->writeit[index] % this->qringmax].packet = packet;
+	}
+	this->qring[index][this->writeit[index] % this->qringmax].offset = offset;
+	if(md5) {
+		memcpy(this->qring[index][this->writeit[index] % this->qringmax].md5, md5, MD5_DIGEST_LENGTH);
+	} else {
+		this->qring[index][this->writeit[index] % this->qringmax].md5[0] = 0;
+	}
+	this->qring[index][this->writeit[index] % this->qringmax].used = 1;
+	if((this->writeit[index] + 1) == this->qringmax) {
+		this->writeit[index] = 0;
+	} else {
+		this->writeit[index]++;
+	}
+	//__sync_lock_release(&this->_sync_qring);
+}
+
+inline PcapQueue_readFromInterfaceThread::hpi PcapQueue_readFromInterfaceThread::pop(int index, bool moveReadit) {
+	//while(__sync_lock_test_and_set(&this->_sync_qring, 1));
+	hpi rslt_hpi;
+	if(this->qring[index][this->readit[index] % this->qringmax].used == 0) {
+		rslt_hpi.header = NULL;
+		rslt_hpi.packet = NULL;
+		rslt_hpi.offset = 0;
+		rslt_hpi.md5[0] = 0;
+		rslt_hpi.used = 0;
+	} else {
+		rslt_hpi.header = this->qring[index][this->readit[index] % this->qringmax].header;
+		rslt_hpi.packet = this->qring[index][this->readit[index] % this->qringmax].packet;
+		rslt_hpi.offset = this->qring[index][this->readit[index] % this->qringmax].offset;
+		memcpy(rslt_hpi.md5, this->qring[index][this->readit[index] % this->qringmax].md5, MD5_DIGEST_LENGTH);
+		rslt_hpi.used = 0;
+		if(moveReadit) {
+			this->qring[index][this->readit[index] % this->qringmax].used = 0;
+			if((this->readit[index] + 1) == this->qringmax) {
+				this->readit[index] = 0;
+			} else {
+				this->readit[index]++;
+			}
+		}
+	}
+	//__sync_lock_release(&this->_sync_qring);
+	return(rslt_hpi);
+}
+
+inline void PcapQueue_readFromInterfaceThread::moveReadit(int index) {
+	this->qring[index][this->readit[index] % this->qringmax].used = 0;
+	if((this->readit[index] + 1) == this->qringmax) {
+		this->readit[index] = 0;
+	} else {
+		this->readit[index]++;
+	}
+}
+
+void *PcapQueue_readFromInterfaceThread::threadFunction(void *) {
+	if(verbosity > 0) {
+		ostringstream outStr;
+		this->threadId = syscall(SYS_gettid);
+		outStr << "start thread t0i_" 
+		       << (this->typeThread == read ? "read" : 
+			   this->typeThread == defrag ? "defrag" :
+			   this->typeThread == md1 ? "md1" :
+			   this->typeThread == md2 ? "md2" :
+			   this->typeThread == dedup ? "dedup" : "---") 
+		       << " (" << this->getInterfaceName() << ") - pid: " << this->threadId << endl;
+		syslog(LOG_NOTICE, outStr.str().c_str());
+	}
+	if(this->typeThread == read) {
+		if(opt_pcap_queue_iface_dedup_separate_threads) {
+			if(opt_pcap_queue_iface_dedup_separate_threads_extend) {
+				this->defragThread = new PcapQueue_readFromInterfaceThread(this->interfaceName.c_str(), defrag, this, this);
+				this->md1Thread = new PcapQueue_readFromInterfaceThread(this->interfaceName.c_str(), md1, this, this->defragThread);
+				this->md2Thread = new PcapQueue_readFromInterfaceThread(this->interfaceName.c_str(), md2, this, this->defragThread);
+				this->dedupThread = new PcapQueue_readFromInterfaceThread(this->interfaceName.c_str(), dedup, this, this->md1Thread, this->md2Thread);
+			} else {
+				this->dedupThread = new PcapQueue_readFromInterfaceThread(this->interfaceName.c_str(), dedup, this, this);
+			}
+		}
+		if(!this->startCapture()) {
+			this->threadTerminated = true;
+			terminating = true;
+			return(NULL);
+		}
+		this->threadInitOk = 1;
+		while(this->threadInitOk != 2) {
+			if(terminating) {
+				return(NULL);
+			}
+			usleep(1000);
+		}
+		this->initStat_interface();
+		if(this->dedupThread) {
+			this->dedupThread->pcapLinklayerHeaderType = this->pcapLinklayerHeaderType;
+		}
+		if(this->defragThread) {
+			this->defragThread->pcapLinklayerHeaderType = this->pcapLinklayerHeaderType;
+		}
+		if(this->md1Thread) {
+			this->md1Thread->pcapLinklayerHeaderType = this->pcapLinklayerHeaderType;
+		}
+		if(this->md2Thread) {
+			this->md2Thread->pcapLinklayerHeaderType = this->pcapLinklayerHeaderType;
+		}
+	} else {
+		while(this->readThread->threadInitOk != 2) {
+			if(terminating) {
+				return(NULL);
+			}
+			usleep(1000);
+		}
+	}
+	pcap_pkthdr *header, *_header;
+	u_char *packet, *_packet;
+	int res;
+	while(!terminating) {
+		bool destroy = false;
+		switch(this->typeThread) {
+		case read: {
+			res = this->pcap_next_ex_iface(this->pcapHandle, &header, &packet);
+			if(res == -1) {
+				break;
+			} else if(res == 0) {
+				continue;
+			}
+			if(!this->dedupThread) {
+				res = this->pcapProcess(&header, &packet, &destroy);
+				if(res == -1) {
+					break;
+				} else if(res == 0) {
+					if(destroy) {
+						free(header);
+						free(packet);
+					}
+					continue;
+				}
+				this->push(header, packet, this->ppd.offset, NULL);
+			} else {
+				this->push(header, packet, 0, NULL);
+			}
+			}
+			break;
+		case defrag: {
+			hpi hpii = this->prevThreads[0]->pop(0, false);
+			if(!hpii.packet) {
+				usleep(100);
+				continue;
+			} else {
+				_header = (pcap_pkthdr*)malloc(sizeof(pcap_pkthdr));
+				_packet = (u_char*)malloc(hpii.header->caplen);
+				memcpy(_header, hpii.header, sizeof(pcap_pkthdr));
+				memcpy(_packet, hpii.packet, hpii.header->caplen);
+				header = _header;
+				packet = _packet;
+				this->prevThreads[0]->moveReadit();
+			}
+			res = this->pcapProcess(&header, &packet, &destroy,
+						true, false, false, false);
+			if(res == -1) {
+				break;
+			} else if(res == 0) {
+				if(destroy) {
+					if(header != _header) free(header);
+					if(packet != _packet) free(packet);
+				}
+				free(_header);
+				free(_packet);
+				continue;
+			}
+			this->push(header, packet, 0, NULL, this->indexDefragQring);
+			this->indexDefragQring = this->indexDefragQring ? 0 : 1;
+			}
+			break;
+		case md1:
+		case md2: {
+			hpi hpii = this->prevThreads[0]->pop(this->typeThread == md1 ? 0 : 1);
+			if(!hpii.packet) {
+				usleep(100);
+				continue;
+			} else {
+				header = _header = hpii.header;
+				packet = _packet = hpii.packet;
+			}
+			res = this->pcapProcess(&header, &packet, &destroy,
+						false, true, false, false);
+			if(res == -1) {
+				break;
+			} else if(res == 0) {
+				if(destroy) {
+					if(header != _header) free(header);
+					if(packet != _packet) free(packet);
+				}
+				free(_header);
+				free(_packet);
+				continue;
+			}
+			this->push(header, packet, 0, this->ppd.md5);
+			}
+			break;
+		case dedup: {
+			if(opt_pcap_queue_iface_dedup_separate_threads_extend) {
+				int minThreadTimeIndex = -1;
+				u_int64_t minThreadTime = 0;
+				u_int64_t threadTime = 0;
+				for(int i = 0; i < 2; i++) {
+					threadTime = this->prevThreads[i]->getTime_usec();
+					if(threadTime) {
+						if(minThreadTime == 0 || minThreadTime > threadTime) {
+							minThreadTimeIndex = i;
+							minThreadTime = threadTime;
+						}
+					}
+				}
+				if(minThreadTimeIndex < 0) {
+					usleep(100);
+					continue;
+				} else {
+					hpi hpii = this->prevThreads[minThreadTimeIndex]->pop();
+					if(!hpii.packet) {
+						usleep(100);
+						continue;
+					} else {
+						header = _header = hpii.header;
+						packet = _packet = hpii.packet;
+					}
+					if(hpii.md5[0]) {
+						memcpy(this->ppd.md5, hpii.md5, MD5_DIGEST_LENGTH);
+					} else {
+						this->ppd.md5[0] = 0;
+					}
+					res = this->pcapProcess(&header, &packet, &destroy,
+								false, false, true, true);
+					if(res == -1) {
+						break;
+					} else if(res == 0) {
+						if(destroy) {
+							if(header != _header) free(header);
+							if(packet != _packet) free(packet);
+						}
+						free(_header);
+						free(_packet);
+						continue;
+					}
+					this->push(header, packet, this->ppd.offset, NULL);
+				}
+			} else {
+				hpi hpii = this->prevThreads[0]->pop(0, false);
+				if(!hpii.packet) {
+					usleep(100);
+					continue;
+				} else {
+					header = hpii.header;
+					packet = hpii.packet;
+				}
+				res = this->pcapProcess(&header, &packet, &destroy);
+				if(res == -1) {
+					this->prevThreads[0]->moveReadit();
+					break;
+				} else if(res == 0) {
+					if(destroy) {
+						free(header);
+						free(packet);
+					}
+					this->prevThreads[0]->moveReadit();
+					continue;
+				}
+				this->push(header, packet, this->ppd.offset, NULL);
+				this->prevThreads[0]->moveReadit();
+			}
+			}
+			break;
+		}
+		if(destroy) {
+			if(opt_pcap_queue_iface_dedup_separate_threads_extend) {
+				free(_header);
+				free(_packet);
+			} else {
+				free(header);
+				free(packet);
+			}
+		}
+	}
+	this->threadTerminated = true;
+	return(NULL);
+}
+
+void PcapQueue_readFromInterfaceThread::preparePstatData() {
+	if(this->threadId) {
+		if(this->threadPstatData[0].cpu_total_time) {
+			this->threadPstatData[1] = this->threadPstatData[0];
+		}
+		pstat_get_data(this->threadId, this->threadPstatData);
+	}
+}
+
+double PcapQueue_readFromInterfaceThread::getCpuUsagePerc(bool preparePstatData) {
+	if(preparePstatData) {
+		this->preparePstatData();
+	}
+	if(this->threadId) {
+		double ucpu_usage, scpu_usage;
+		if(this->threadPstatData[0].cpu_total_time && this->threadPstatData[1].cpu_total_time) {
+			pstat_calc_cpu_usage_pct(
+				&this->threadPstatData[0], &this->threadPstatData[1],
+				&ucpu_usage, &scpu_usage);
+			return(ucpu_usage + scpu_usage);
+		}
+	}
+	return(-1);
+}
+
+
+inline void *_PcapQueue_readFromInterfaceThread_threadFunction(void* arg) {
+	return(((PcapQueue_readFromInterfaceThread*)arg)->threadFunction(arg));
+}
+
+
+PcapQueue_readFromInterface::PcapQueue_readFromInterface(const char *nameQueue)
+ : PcapQueue(readFromInterface, nameQueue) {
+	this->fifoWritePcapDumper = NULL;
+	memset(this->readThreads, 0, sizeof(this->readThreads));
+	this->readThreadsCount = 0;
+}
+
+PcapQueue_readFromInterface::~PcapQueue_readFromInterface() {
+	if(this->fifoWritePcapDumper) {
+		pcap_dump_close(this->fifoWritePcapDumper);
+	}
+}
+
+void PcapQueue_readFromInterface::setInterfaceName(const char* interfaceName) {
+	this->interfaceName = interfaceName;
+}
+
+bool PcapQueue_readFromInterface::init() {
+	if(opt_pb_read_from_file[0] || !opt_pcap_queue_iface_separate_threads) {
+		return(true);
+	}
+	char *pointToInterface = (char*)this->interfaceName.c_str();
+	while(pointToInterface && *pointToInterface &&
+	      this->readThreadsCount < READ_THREADS_MAX - 1) {
+		char *pointToSeparator = strchr(pointToInterface, ',');
+		if(pointToSeparator) {
+			*pointToSeparator = 0;
+		}
+		this->readThreads[this->readThreadsCount] = new PcapQueue_readFromInterfaceThread(pointToInterface);
+		++this->readThreadsCount;
+		if(pointToSeparator) {
+			*pointToSeparator = ',';
+			pointToInterface = pointToSeparator + 1;
+		} else {
+			pointToInterface = NULL;
+		}
+	}
+	return(this->readThreadsCount > 0);
+}
+
+bool PcapQueue_readFromInterface::initThread() {
+	init_hash();
+	memset(tcp_streams_hashed, 0, sizeof(tcp_stream2_t*) * MAX_TCPSTREAMS);
+	return(this->startCapture() &&
+	       this->openFifoForWrite());
+}
+
+void* PcapQueue_readFromInterface::threadFunction(void* ) {
+	if(VERBOSE || DEBUG_VERBOSE) {
+		ostringstream outStr;
+		this->threadId = syscall(SYS_gettid);
+		outStr << "start thread t0 (" << this->nameQueue << ") - pid: " << this->threadId << endl;
+		if(DEBUG_VERBOSE) {
+			cout << outStr.str();
+		} else {
+			syslog(LOG_NOTICE, outStr.str().c_str());
+		}
+	}
+	if(this->initThread()) {
+		this->threadInitOk = true;
+	} else {
+		this->threadTerminated = true;
+		terminating = 1;
+		return(NULL);
+	}
+	this->initStat();
+	pcap_pkthdr *header;
+	u_char *packet;
+	int res;
+	u_int offset;
+	bool destroy = false;
+	size_t blockStoreBypassQueueSize;
+
+	if(this->readThreadsCount) {
+		while(true) {
+			if(terminating) {
+				return(NULL);
+			}
+			bool allInit_1 = true;
+			for(int i = 0; i < this->readThreadsCount; i++) {
+				if(this->readThreads[i]->threadInitOk == 0) {
+					allInit_1 = false;
+					break;
+				}
+			}
+			if(allInit_1) {
+				break;
+			}
+			usleep(50000);
+		}
+		for(int i = 0; i < this->readThreadsCount; i++) {
+			this->readThreads[i]->threadInitOk = 2;
+		}
+	}
+	this->initAllReadThreadsOk = true;
+	
+	if(__config_BYPASS_FIFO) {
+		pcap_block_store *blockStore = new pcap_block_store;
+		while(!TERMINATING) {
+			int minThreadTimeIndex = -1;
+			if(this->readThreadsCount) {
+				if(this->readThreadsCount == 1) {
+					 minThreadTimeIndex = 0;
+				} else {
+					u_int64_t minThreadTime = 0;
+					u_int64_t threadTime = 0;
+					for(int i = 0; i < this->readThreadsCount; i++) {
+						threadTime = this->readThreads[i]->getTIME_usec();
+						if(threadTime) {
+							if(minThreadTime == 0 || minThreadTime > threadTime) {
+								minThreadTimeIndex = i;
+								minThreadTime = threadTime;
+							}
+						}
+					}
+				}
+				if(minThreadTimeIndex < 0) {
+					usleep(100);
+					continue;
+				} else {
+					PcapQueue_readFromInterfaceThread::hpi hpi = this->readThreads[minThreadTimeIndex]->POP(opt_pcap_queue_iface_dedup_separate_threads_extend);
+					if(!hpi.packet) {
+						usleep(100);
+						continue;
+					} else {
+						header = hpi.header;
+						packet = hpi.packet;
+						offset = hpi.offset;
+						destroy = opt_pcap_queue_iface_dedup_separate_threads_extend;
+					}
+					
+				}
+			} else {
+				res = this->pcap_next_ex_iface(this->pcapHandle, &header, &packet);
+				if(opt_pb_read_from_file[0]) {
+					usleep(1);
+				}
+				if(res == -1) {
+					if(opt_pb_read_from_file[0]) {
+						blockStoreBypassQueue.push(blockStore);
+						++sumBlocksCounterIn[0];
+						blockStore = NULL;
+						sleep(1);
+						calltable->cleanup(0);
+						this->pcapStat();
+						terminating = 1;
+					}
+					break;
+				} else if(res == 0) {
+					continue;
+				}
+			}
+			if(!TEST_PACKETS && !this->readThreadsCount) {
+				res = this->pcapProcess(&header, &packet, &destroy);
+				if(res == -1) {
+					break;
+				} else if(res == 0) {
+					if(destroy) {
+						free(header);
+						free(packet);
+					}
+					continue;
+				}
+				offset = this->ppd.offset;
+			}
+			++sumPacketsCounterIn[0];
+			if(TEST_PACKETS) {
+				static char buff[101];
+				sprintf(buff, "%0100lu", sumPacketsCounterIn[0]);
+				packet = (u_char*)buff;
+				header->len = 101;
+				header->caplen = 101;
+			}
+			if(!blockStore->full) {
+				blockStore->add(header, packet, offset);
+			}
+			if(blockStore->full) {
+				bool _syslog = true;
+				while((blockStoreBypassQueueSize = blockStoreBypassQueue.getUseSize()) > opt_pcap_queue_bypass_max_size) {
+					if(_syslog) {
+						syslog(LOG_ERR, "packetbuffer %s: THREAD0 BUFFER IS FULL", this->nameQueue.c_str());
+						cout << "bypass buffer size " << blockStoreBypassQueue.getUseItems() << " (" << blockStoreBypassQueue.getUseSize() << ")" << endl;
+						_syslog = false;
+						++countBypassBufferSizeExceeded;
+					}
+					usleep(100);
+					maxBypassBufferSize = 0;
+					maxBypassBufferItems = 0;
+				}
+				if(blockStoreBypassQueueSize > maxBypassBufferSize) {
+					maxBypassBufferSize = blockStoreBypassQueueSize;
+					maxBypassBufferItems = blockStoreBypassQueue.getUseItems();
+				}
+				blockStoreBypassQueue.push(blockStore);
+				++sumBlocksCounterIn[0];
+				blockStore = new pcap_block_store;
+				blockStore->add(header, packet, offset);
+			}
+			if(!TEST_PACKETS && destroy) {
+				free(header);
+				free(packet);
+			}
+			if(this->readThreadsCount &&
+			   !opt_pcap_queue_iface_dedup_separate_threads_extend) {
+				this->readThreads[minThreadTimeIndex]->moveREADIT();
+			}
+		}
+		if(blockStore) {
+			delete blockStore;
+		}
+	} else {
+		while(!TERMINATING) {
+			res = this->pcap_next_ex_iface(this->pcapHandle, &header, &packet);
+			if(res == -1) {
+				break;
+			} else if(res == 0) {
+				continue;
+			}
+			res = this->pcapProcess(&header, &packet, &destroy);
+			if(res == -1) {
+				break;
+			} else if(res == 0) {
+				if(destroy) {
+					free(header);
+					free(packet);
+				}
+				continue;
+			}
+			if(__config_USE_PCAP_FOR_FIFO) {
+				pcap_dump((u_char*)this->fifoWritePcapDumper, header, packet);
+			} else {
+				pcap_pkthdr_plus header_plus(*header, this->ppd.offset);
+				this->writePcapToFifo(&header_plus, packet);
+			}
+			if(destroy) {
+				free(header);
+				free(packet);
+			}
+		}
+	}
+	while(this->readThreadsCount) {
+		while(!this->readThreads[this->readThreadsCount - 1]->isTerminated()) {
+			usleep(100000);
+		}
+		delete this->readThreads[this->readThreadsCount - 1];
+		--this->readThreadsCount;
+	}
+	this->threadTerminated = true;
+	return(NULL);
+}
+
+bool PcapQueue_readFromInterface::openFifoForWrite() {
+	if(__config_BYPASS_FIFO) {
+		return(true);
+	}
+	if(__config_USE_PCAP_FOR_FIFO) {
+		struct stat st;
+		if(stat(this->fifoFileForWrite.c_str(), &st) != 0) {
+			mkfifo(this->fifoFileForWrite.c_str(), 0666);
+		}
+		if((this->fifoWritePcapDumper = pcap_dump_open(this->pcapHandle, this->fifoFileForWrite.c_str())) == NULL) {
+			syslog(LOG_ERR, "packetbuffer %s: pcap_dump_open error: %s", this->nameQueue.c_str(), pcap_geterr(this->pcapHandle));
+			return(false);
+		} else {
+			if(DEBUG_VERBOSE) {
+				cout << this->nameQueue << " - pcap_dump_open: OK" << endl;
+			}
+			return(true);
+		}
+	} else {
+		return(PcapQueue::openFifoForWrite());
+	}
+}
+
+bool PcapQueue_readFromInterface::startCapture() {
+	if(this->readThreadsCount) {
+		return(true);
+	}
+	char errbuf[PCAP_ERRBUF_SIZE];
+	if(opt_pb_read_from_file[0]) {
+		this->pcapHandle = pcap_open_offline(opt_pb_read_from_file, errbuf);
+		this->pcapLinklayerHeaderType = pcap_datalink(this->pcapHandle);
+		handle = this->pcapHandle;
+		pcap_dlink = this->pcapLinklayerHeaderType;
+		return(true);
+	}
+	return(this->PcapQueue_readFromInterface_base::startCapture());
+}
+
+string PcapQueue_readFromInterface::pcapStatString_bypass_buffer(int statPeriod) {
+	ostringstream outStr;
+	if(__config_BYPASS_FIFO) {
+		outStr << fixed;
+		uint64_t useSize = blockStoreBypassQueue.getUseSize();
+		uint64_t useItems = blockStoreBypassQueue.getUseItems();
+		outStr << "PACKETBUFFER_THREAD0_HEAP: "
+		       << setw(6) << (useSize / 1024 / 1024) << "MB (" << setw(3) << useItems << ")"
+		       << " " << setw(5) << setprecision(1) << (100. * useSize / opt_pcap_queue_bypass_max_size) << "%"
+		       << " of " << setw(6) << (opt_pcap_queue_bypass_max_size / 1024 / 1024) << "MB"
+		       << "   peak: " << (maxBypassBufferSize / 1024 / 1024) << "MB" << " (" << maxBypassBufferItems << ")" << " / size exceeded occurrence " << countBypassBufferSizeExceeded << endl;
+	}
+	return(outStr.str());
+}
+
+unsigned long PcapQueue_readFromInterface::pcapStat_get_bypass_buffer_size_exeeded() {
+	return(countBypassBufferSizeExceeded);
+}
+
+string PcapQueue_readFromInterface::pcapStatString_interface(int statPeriod) {
+	ostringstream outStr;
+	if(this->readThreadsCount) {
+		for(int i = 0; i < this->readThreadsCount; i++) {
+			outStr << this->readThreads[i]->pcapStatString_interface(statPeriod);
+		}
+	} else if(this->pcapHandle) {
+		return(this->PcapQueue_readFromInterface_base::pcapStatString_interface(statPeriod));
+	}
+	return(outStr.str());
+}
+
+void PcapQueue_readFromInterface::initStat_interface() {
+	if(this->readThreadsCount) {
+		for(int i = 0; i < this->readThreadsCount; i++) {
+			this->readThreads[i]->initStat_interface();
+		}
+	} else if(this->pcapHandle) {
+		this->PcapQueue_readFromInterface_base::initStat_interface();
+	}
+}
+
+string PcapQueue_readFromInterface::pcapStatString_cpuUsageReadThreads() {
+	ostringstream outStrStat;
+	outStrStat << fixed;
+	for(int i = 0; i < this->readThreadsCount; i++) {
+		double ti_cpu = this->readThreads[i]->getCpuUsagePerc(true);
+		if(ti_cpu >= 0) {
+			outStrStat << "t0i_" << this->readThreads[i]->interfaceName << "_CPU[" << setprecision(1) << ti_cpu;
+			if(this->readThreads[i]->defragThread) {
+				double tid_cpu = this->readThreads[i]->defragThread->getCpuUsagePerc(true);
+				if(tid_cpu >= 0) {
+					outStrStat << "%/" << setprecision(1) << tid_cpu;
+				}
+			}
+			if(this->readThreads[i]->md1Thread) {
+				double tid_cpu = this->readThreads[i]->md1Thread->getCpuUsagePerc(true);
+				if(tid_cpu >= 0) {
+					outStrStat << "%/" << setprecision(1) << tid_cpu;
+				}
+			}
+			if(this->readThreads[i]->md2Thread) {
+				double tid_cpu = this->readThreads[i]->md2Thread->getCpuUsagePerc(true);
+				if(tid_cpu >= 0) {
+					outStrStat << "%/" << setprecision(1) << tid_cpu;
+				}
+			}
+			if(this->readThreads[i]->dedupThread) {
+				double tid_cpu = this->readThreads[i]->dedupThread->getCpuUsagePerc(true);
+				if(tid_cpu >= 0) {
+					outStrStat << "%/" << setprecision(1) << tid_cpu;
+				}
+			}
+			outStrStat << "%] ";
+		}
+	}
+	return(outStrStat.str());
+}
+
+string PcapQueue_readFromInterface::getInterfaceName() {
+	if(opt_pb_read_from_file[0]) {
+		return(string("file ") + opt_pb_read_from_file);
+	} else {
+		return(this->PcapQueue_readFromInterface_base::getInterfaceName());
+	}
 }
 
 
@@ -1873,7 +2520,7 @@ void *PcapQueue_readFromFifo::threadFunction(void *) {
 		while(!TERMINATING) {
 			if(__config_USE_PCAP_FOR_FIFO) {
 				pcap_pkthdr *_header;
-				res = this->pcap_next_ex(this->fifoReadPcapHandle, &_header, &packet);
+				res = this->pcap_next_ex_queue(this->fifoReadPcapHandle, &_header, &packet);
 				header = pcap_pkthdr_plus(*_header, -1);
 			} else {
 				res = this->readPcapFromFifo(&header, &packet, true);

@@ -11,11 +11,15 @@
 #include <string>
 #include <netinet/ip.h>
 #include <netinet/tcp.h>
+#include <sys/syscall.h>
 
 #include "pcap_queue_block.h"
 #include "md5.h"
 #include "sniff.h"
 #include "pstat.h"
+#include "ip_frag.h"
+
+#define READ_THREADS_MAX 20
 
 extern timeval t;
 
@@ -201,7 +205,7 @@ public:
 	void getThreadCpuUsage(bool writeThread = false);
 protected:
 	bool createThread();
-	inline int pcap_next_ex(pcap_t* pcapHandle, pcap_pkthdr** header, u_char** packet);
+	inline int pcap_next_ex_queue(pcap_t* pcapHandle, pcap_pkthdr** header, u_char** packet);
 	inline int readPcapFromFifo(pcap_pkthdr_plus *header, u_char **packet, bool usePacketBuffer = false);
 	bool writePcapToFifo(pcap_pkthdr_plus *header, u_char *packet);
 	virtual bool init() { return(true); };
@@ -227,6 +231,7 @@ protected:
 	virtual double pcapStat_get_disk_buffer_perc() { return(-1); }
 	virtual double pcapStat_get_disk_buffer_mb() { return(-1); }
 	virtual string pcapStatString_interface(int statPeriod) { return(""); }
+	virtual string pcapStatString_cpuUsageReadThreads() { return(""); };
 	virtual void initStat_interface() {};
 	void preparePstatData(bool writeThread = false);
 	double getCpuUsagePerc(bool writeThread = false, bool preparePstatData = false);
@@ -252,6 +257,7 @@ protected:
 	uint writeThreadId;
 	pstat_data threadPstatData[2];
 	pstat_data writeThreadPstatData[2];
+	bool initAllReadThreadsOk;
 private:
 	u_char* packetBuffer;
 	PcapQueue *instancePcapHandle;
@@ -259,42 +265,152 @@ friend void *_PcapQueue_threadFunction(void* arg);
 friend void *_PcapQueue_writeThreadFunction(void* arg);
 };
 
-class PcapQueue_readFromInterface : public PcapQueue {
+struct pcapProcessData {
+	pcapProcessData() {
+		memset(this, 0, sizeof(pcapProcessData) - sizeof(ipfrag_data_s));
+		extern int opt_dup_check;
+		if(opt_dup_check) {
+			this->prevmd5s = (unsigned char *)calloc(65536, MD5_DIGEST_LENGTH); // 1M
+		}
+	}
+	~pcapProcessData() {
+		if(this->prevmd5s) {
+			free(this->prevmd5s);
+		}
+		ipfrag_prune(0, 1, &ipfrag_data);
+	}
+	sll_header *header_sll;
+	ether_header *header_eth;
+	iphdr2 *header_ip;
+	tcphdr *header_tcp;
+	udphdr2 *header_udp;
+	udphdr2 header_udp_tmp;
+	int protocol;
+	u_int offset;
+	char *data;
+	int datalen;
+	int traillen;
+	int istcp;
+	uint16_t md5[MD5_DIGEST_LENGTH / (sizeof(uint16_t) / sizeof(unsigned char))];
+	unsigned char *prevmd5s;
+	MD5_CTX ctx;
+	u_int ipfrag_lastprune;
+	ipfrag_data_s ipfrag_data;
+};
+
+class PcapQueue_readFromInterface_base {
+public:
+	PcapQueue_readFromInterface_base(const char *interfaceName = NULL);
+	virtual ~PcapQueue_readFromInterface_base();
+	void setInterfaceName(const char *interfaceName);
+protected:
+	virtual bool startCapture();
+	inline int pcap_next_ex_iface(pcap_t *pcapHandle, pcap_pkthdr** header, u_char** packet);
+	inline int pcapProcess(pcap_pkthdr** header, u_char** packet, bool *destroy, 
+			       bool enableDefrag = true, bool enableCalcMD5 = true, bool enableDedup = true, bool enableDump = true);
+	virtual string pcapStatString_interface(int statPeriod);
+	virtual void initStat_interface();
+	virtual string getInterfaceName();
+protected:
+	string interfaceName;
+	bpf_u_int32 interfaceNet;
+	bpf_u_int32 interfaceMask;
+	pcap_t *pcapHandle;
+	pcap_dumper_t *pcapDumpHandle;
+	int pcapLinklayerHeaderType;
+	size_t pcap_snaplen;
+	pcapProcessData ppd;
 private:
-	struct pcapProcessData {
-		pcapProcessData() {
-			memset(this, 0, sizeof(pcapProcessData));
-			extern int opt_dup_check;
-			if(opt_dup_check) {
-				this->prevmd5s = (unsigned char *)calloc(65536, MD5_DIGEST_LENGTH); // 1M
-			}
-		}
-		~pcapProcessData() {
-			if(this->prevmd5s) {
-				free(this->prevmd5s);
-			}
-		}
-		sll_header *header_sll;
-		ether_header *header_eth;
-		iphdr2 *header_ip;
-		tcphdr *header_tcp;
-		udphdr2 *header_udp;
-		udphdr2 header_udp_tmp;
-		int protocol;
-		u_int offset;
-		char *data;
-		int datalen;
-		int traillen;
-		int istcp;
-		uint16_t md5[MD5_DIGEST_LENGTH / (sizeof(uint16_t) / sizeof(unsigned char))];
-		unsigned char *prevmd5s;
-		MD5_CTX ctx;
+	int pcap_promisc;
+	int pcap_timeout;
+	int pcap_buffer_size;
+	u_int _last_ps_drop;
+	u_int _last_ps_ifdrop;
+	u_long countPacketDrop;
+};
+
+class PcapQueue_readFromInterfaceThread : protected PcapQueue_readFromInterface_base {
+public:
+	enum eTypeInterfaceThread {
+		read,
+		defrag,
+		md1,
+		md2,
+		dedup
 	};
+	struct hpi {
+		pcap_pkthdr* header;
+		u_char* packet;
+		u_int offset;
+		uint16_t md5[MD5_DIGEST_LENGTH / (sizeof(uint16_t) / sizeof(unsigned char))];
+		volatile char used;
+	};
+	PcapQueue_readFromInterfaceThread(const char *interfaceName, eTypeInterfaceThread typeThread = read,
+					  PcapQueue_readFromInterfaceThread *readThread = NULL,
+					  PcapQueue_readFromInterfaceThread *prevThread = NULL,
+					  PcapQueue_readFromInterfaceThread *prevThread2 = NULL);
+	~PcapQueue_readFromInterfaceThread();
+protected:
+	inline void push(pcap_pkthdr* header,u_char* packet, u_int offset, uint16_t *md5, int index = 0);
+	inline hpi pop(int index = 0, bool moveReadit = true);
+        inline void moveReadit(int index = 0);
+	inline hpi POP(bool moveReadit = true) {
+		return(this->dedupThread ? this->dedupThread->pop(0, moveReadit) : this->pop(0, moveReadit));
+	}
+	inline void moveREADIT() {
+		if(this->dedupThread) {
+			this->dedupThread->moveReadit();
+		} else {
+			this->moveReadit();
+		}
+	}
+	u_int64_t getTime_usec(int index = 0) {
+		if(this->qring[index][this->readit[index] % this->qringmax].used == 0) {
+			return(0);
+		}
+		return(this->qring[index][this->readit[index] % this->qringmax].header->ts.tv_sec * 1000000 + 
+		       this->qring[index][this->readit[index] % this->qringmax].header->ts.tv_usec);
+	}
+	u_int64_t getTIME_usec() {
+		return(this->dedupThread ? this->dedupThread->getTime_usec() : this->getTime_usec());
+	}
+	bool isTerminated() {
+		return(this->threadTerminated);
+	}
+private:
+	void *threadFunction(void *);
+	void preparePstatData();
+	double getCpuUsagePerc(bool preparePstatData = false);
+private:
+	pthread_t threadHandle;
+	uint threadId;
+	int threadInitOk;
+	hpi *qring[2];
+	unsigned int qringmax;
+	volatile unsigned int readit[2];
+	volatile unsigned int writeit[2];
+	bool threadTerminated;
+	pstat_data threadPstatData[2];
+	volatile int _sync_qring;
+	eTypeInterfaceThread typeThread;
+	PcapQueue_readFromInterfaceThread *readThread;
+	PcapQueue_readFromInterfaceThread *defragThread;
+	PcapQueue_readFromInterfaceThread *md1Thread;
+	PcapQueue_readFromInterfaceThread *md2Thread;
+	PcapQueue_readFromInterfaceThread *dedupThread;
+	PcapQueue_readFromInterfaceThread *prevThreads[2];
+	int indexDefragQring;
+friend void *_PcapQueue_readFromInterfaceThread_threadFunction(void* arg);
+friend class PcapQueue_readFromInterface;
+};
+
+class PcapQueue_readFromInterface : public PcapQueue, protected PcapQueue_readFromInterface_base {
 public:
 	PcapQueue_readFromInterface(const char *nameQueue);
 	virtual ~PcapQueue_readFromInterface();
 	void setInterfaceName(const char *interfaceName);
 protected:
+	bool init();
 	bool initThread();
 	void *threadFunction(void *);
 	bool openFifoForWrite();
@@ -306,25 +422,12 @@ protected:
 	unsigned long pcapStat_get_bypass_buffer_size_exeeded();
 	string pcapStatString_interface(int statPeriod);
 	void initStat_interface();
-private:
-	inline int pcapProcess(pcap_pkthdr** header, u_char** packet, bool *destroy);
+	string pcapStatString_cpuUsageReadThreads();
+	string getInterfaceName();
 protected:
-	std::string interfaceName;
-	bpf_u_int32 interfaceNet;
-	bpf_u_int32 interfaceMask;
-	pcap_t *pcapHandle;
-	pcap_dumper_t *pcapDumpHandle;
-	int pcapLinklayerHeaderType;
 	pcap_dumper_t *fifoWritePcapDumper;
-	u_int ipfrag_lastprune;
-	int pcap_snaplen;
-	int pcap_promisc;
-	int pcap_timeout;
-	int pcap_buffer_size;
-	u_int _last_ps_drop;
-	u_int _last_ps_ifdrop;
-private:
-	pcapProcessData ppd;
+	PcapQueue_readFromInterfaceThread *readThreads[READ_THREADS_MAX];
+	int readThreadsCount;
 };
 
 class PcapQueue_readFromFifo : public PcapQueue {
