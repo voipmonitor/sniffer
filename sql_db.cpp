@@ -1368,7 +1368,7 @@ void SqlDb_mysql::createSchema() {
 			}
 		}
 		if(okExplainPartition && !existPartition) {
-			syslog(LOG_INFO, "disable opt_cdr_partition (tables cdr% does not have partitions)");
+			syslog(LOG_INFO, "disable opt_cdr_partition (tables cdr... does not have partitions)");
 			opt_cdr_partition = 0;
 		}
 	}
@@ -1862,7 +1862,7 @@ void SqlDb_mysql::createSchema() {
 	//END ALTER TABLES
 	
 	//BEGIN SQL SCRIPTS
-	if(opt_cdr_partition) {
+	if(opt_cdr_partition || opt_ipaccount) {
 		this->query(
 		"drop procedure if exists create_partition");
 		this->query(string(
@@ -1931,6 +1931,8 @@ void SqlDb_mysql::createSchema() {
 		       end if;\
 		    end if;\
 		 end");
+	}
+	if(opt_cdr_partition) {
 		this->query(
 		"drop procedure if exists create_partitions_cdr");
 		this->query(
@@ -1958,6 +1960,31 @@ void SqlDb_mysql::createSchema() {
 		 on schedule every 1 hour do\
 		 begin\
 		    call ") + mysql_database + ".create_partitions_cdr('" + mysql_database + "', 1);\
+		 end");
+	}
+	if(opt_ipaccount) {
+		this->query(
+		"drop procedure if exists create_partitions_ipacc");
+		this->query(
+		"create procedure create_partitions_ipacc(database_name char(100), next_days int)\
+		 begin\
+		    call create_partition(database_name, 'ipacc', 'day', next_days);\
+		    call create_partition(database_name, 'ipacc_agr_interval', 'day', next_days);\
+		    call create_partition(database_name, 'ipacc_agr_hour', 'day', next_days);\
+		    call create_partition(database_name, 'ipacc_agr2_hour', 'day', next_days);\
+		    call create_partition(database_name, 'ipacc_agr_day', 'month', next_days);\
+		 end");
+		this->query(string(
+		"call ") + mysql_database + ".create_partitions_ipacc('" + mysql_database + "', 0);");
+		this->query(string(
+		"call ") + mysql_database + ".create_partitions_ipacc('" + mysql_database + "', 1);");
+		this->query(
+		"drop event if exists ipacc_add_partition");
+		this->query(string(
+		"create event if not exists ipacc_add_partition\
+		 on schedule every 1 hour do\
+		 begin\
+		    call ") + mysql_database + ".create_partitions_ipacc('" + mysql_database + "', 1);\
 		 end");
 	}
 

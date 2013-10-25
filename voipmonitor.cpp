@@ -1652,6 +1652,7 @@ void *storing_sql( void *dummy ) {
 void *storing_cdr( void *dummy ) {
 	Call *call;
 	time_t createPartitionAt = 0;
+	time_t createPartitionIpaccAt = 0;
 	while(1) {
 		if(!opt_nocdr and opt_cdr_partition and isSqlDriver("mysql")) {
 			time_t actTime = time(NULL);
@@ -1690,6 +1691,17 @@ void *storing_cdr( void *dummy ) {
 				}
 
 				createPartitionAt = actTime;
+			}
+		}
+		
+		if(opt_ipaccount and isSqlDriver("mysql")) {
+			time_t actTime = time(NULL);
+			if(actTime - createPartitionIpaccAt > 3600) {
+				sqlDb->query(
+					string("call ") + mysql_database + ".create_partitions_ipacc('" + mysql_database + "', 0);");
+				sqlDb->query(
+					string("call ") + mysql_database + ".create_partitions_ipacc('" + mysql_database + "', 1);");
+				createPartitionIpaccAt = actTime;
 			}
 		}
 		
