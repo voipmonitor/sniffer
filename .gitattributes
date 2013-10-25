@@ -47,6 +47,7 @@ gzstream/version -text
 /http.cpp -text
 /http.h -text
 /install-sh -text
+/ip_frag.h -text
 /ipaccount.cpp -text
 /ipaccount.h -text
 jitterbuffer/abstract_jb.c -text
