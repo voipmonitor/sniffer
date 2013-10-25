@@ -1096,6 +1096,14 @@ string reverseString(const char *str) {
 
 
 void SqlDb_mysql::createSchema() {
+  
+	const char *cdrMainTables[] = {
+		 "cdr",
+		 "cdr_next",
+		 "cdr_proxy",
+		 "cdr_rtp",
+		 "cdr_dtmf"
+	};
 
 	string compress = "";
 
@@ -1346,13 +1354,22 @@ void SqlDb_mysql::createSchema() {
 		""));
 	
 	if(opt_cdr_partition) {
-		this->query(string("EXPLAIN PARTITIONS SELECT * from cdr order by calldate desc limit 1"));
-		SqlDb_row row;
-		if((row = this->fetchRow())) {
-			if(row["partitions"] == "") {
-				syslog(LOG_INFO, "disable opt_cdr_partition (table cdr does not have partitions)");
-				opt_cdr_partition = 0;
+		bool okExplainPartition = false;
+		bool existPartition = false;
+		for(uint i = 0; i < sizeof(cdrMainTables)/sizeof(cdrMainTables[0]); i++) {
+			this->query(string("EXPLAIN PARTITIONS SELECT * from ") + cdrMainTables[i] + " limit 1");
+			SqlDb_row row;
+			if((row = this->fetchRow())) {
+				okExplainPartition = true;
+				if(row["partitions"] != "") {
+					existPartition = true;
+					break;
+				}
 			}
+		}
+		if(okExplainPartition && !existPartition) {
+			syslog(LOG_INFO, "disable opt_cdr_partition (tables cdr% does not have partitions)");
+			opt_cdr_partition = 0;
 		}
 	}
 
