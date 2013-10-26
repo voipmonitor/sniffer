@@ -12,6 +12,8 @@
 /README.ubuntu-12.04LTS -text
 /calltable.cpp -text
 /calltable.h -text
+/cleanspool.cpp -text
+/cleanspool.h -text
 /codec_alaw.cpp -text
 /codec_alaw.h -text
 /codec_ulaw.cpp -text

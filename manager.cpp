@@ -28,6 +28,7 @@
 #include "tools.h"
 #include "calltable.h"
 #include "format_ogg.h"
+#include "cleanspool.h"
 
 #define BUFSIZE 1024
 

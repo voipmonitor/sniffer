@@ -280,7 +280,7 @@ Call::addtofilesqueue(string file, string column) {
 	if(!myfile.is_open()) {
 		syslog(LOG_ERR,"error write to [%s]", fname.str().c_str());
 	}
-	myfile << file << "\n";
+	myfile << file << ":" << size << "\n";
 	myfile.close();
 		
 	pthread_mutex_unlock(&mysqlquery_lock);
