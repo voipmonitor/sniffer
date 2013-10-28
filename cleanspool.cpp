@@ -63,8 +63,20 @@ void unlinkfileslist(string fname) {
 			if ((pos = strchr(buf, '\n')) != NULL) {
 				*pos = '\0';
 			}
-			if ((pos = strchr(buf, ':')) != NULL) {
-				*pos = '\0';
+			char *posSizeSeparator;
+			if ((posSizeSeparator = strrchr(buf, ':')) != NULL) {
+				bool isSize = true;
+				pos = posSizeSeparator + 1;
+				while(*pos) {
+					if(*pos < '0' || *pos > '9') {
+						isSize = false;
+						break;
+					}
+					++pos;
+				}
+				if(isSize) {
+					*posSizeSeparator = '\0';
+				}
 			}
 			unlink(buf);
 		}
@@ -1039,8 +1051,21 @@ void check_spooldir_filesindex(const char *path, const char *dirfilter) {
 									*pos = '\0';
 								}
 								char *posSizeSeparator;
-								if ((posSizeSeparator = strchr(buf, ':')) != NULL) {
-									*posSizeSeparator = '\0';
+								if ((posSizeSeparator = strrchr(buf, ':')) != NULL) {
+									bool isSize = true;
+									pos = posSizeSeparator + 1;
+									while(*pos) {
+										if(*pos < '0' || *pos > '9') {
+											isSize = false;
+											break;
+										}
+										++pos;
+									}
+									if(isSize) {
+										*posSizeSeparator = '\0';
+									} else {
+										posSizeSeparator = NULL;
+									}
 								}
 								filesInIndex.push_back(buf);
 								long long unsigned size = posSizeSeparator ? atoll(posSizeSeparator + 1) : 0;
