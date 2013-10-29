@@ -1765,8 +1765,8 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void *) {
 			usleep(1000);
 		}
 	}
-	pcap_pkthdr *header, *_header;
-	u_char *packet, *_packet;
+	pcap_pkthdr *header = NULL, *_header = NULL;
+	u_char *packet = NULL, *_packet = NULL;
 	int res;
 	while(!terminating) {
 		bool destroy = false;
@@ -2039,7 +2039,7 @@ void* PcapQueue_readFromInterface::threadFunction(void* ) {
 	pcap_pkthdr *header;
 	u_char *packet;
 	int res;
-	u_int offset;
+	u_int offset = 0;
 	bool destroy = false;
 	size_t blockStoreBypassQueueSize;
 
