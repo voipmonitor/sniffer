@@ -855,12 +855,12 @@ void convert_filesindex() {
 							de2 = readdir( dp );
 							if (de2 == NULL) break;
 							if (string(de2->d_name) == ".." or string(de2->d_name) == ".") continue;
+							stringstream fn;
+							fn << de->d_name << "/" << hour << "/" << min << "/SIP/" << de2->d_name;
 							unsigned long long size = GetFileSize(fn.str());
 							if(size == 0) size = 1;
-							stringstream fn;
-							fn << de->d_name << "/" << hour << "/" << min << "/SIP/" << de2->d_name << ":" << size;
 							sipsize += size;
-							sipfile << fn.str() << "\n";
+							sipfile << fn.str() << ":" << size << "\n";
 						}
 						closedir(dp);
 					}
@@ -876,12 +876,12 @@ void convert_filesindex() {
 							de2 = readdir( dp );
 							if (de2 == NULL) break;
 							if (string(de2->d_name) == ".." or string(de2->d_name) == ".") continue;
+							stringstream fn;
+							fn << de->d_name << "/" << hour << "/" << min << "/RTP/" << de2->d_name;
 							unsigned long long size = GetFileSize(fn.str());
 							if(size == 0) size = 1;
-							stringstream fn;
-							fn << de->d_name << "/" << hour << "/" << min << "/RTP/" << de2->d_name << ":" << size;
 							rtpsize += size;
-							rtpfile << fn.str() << "\n";
+							rtpfile << fn.str() << ":" << size << "\n";
 						}
 						closedir(dp);
 					}
@@ -898,12 +898,12 @@ void convert_filesindex() {
 							//if (de2 == NULL or string(de2->d_name) == ".." or string(de2->d_name) == ".") break;
 							if (de2 == NULL) break;
 							if (string(de2->d_name) == ".." or string(de2->d_name) == ".") continue;
+							stringstream fn;
+							fn << de->d_name << "/" << hour << "/" << min << "/GRAPH/" << de2->d_name;
 							unsigned long long size = GetFileSize(fn.str());
 							if(size == 0) size = 1;
-							stringstream fn;
-							fn << de->d_name << "/" << hour << "/" << min << "/GRAPH/" << de2->d_name << ":" << size;
 							graphsize += size;
-							graphfile << fn.str() << "\n";
+							graphfile << fn.str() << ":" << size << "\n";
 						}
 						closedir(dp);
 					}
@@ -918,12 +918,12 @@ void convert_filesindex() {
 							de2 = readdir( dp );
 							if (de2 == NULL) break;
 							if (string(de2->d_name) == ".." or string(de2->d_name) == ".") continue;
+							stringstream fn;
+							fn << de->d_name << "/" << hour << "/" << min << "/AUDIO/" << de2->d_name;
 							unsigned long long size = GetFileSize(fn.str());
 							if(size == 0) size = 1;
-							stringstream fn;
-							fn << de->d_name << "/" << hour << "/" << min << "/AUDIO/" << de2->d_name << ":" << size;
 							audiosize += size;
-							audiofile << fn.str() << "\n";
+							audiofile << fn.str() << ":" << size << "\n";
 						}
 						closedir(dp);
 					}

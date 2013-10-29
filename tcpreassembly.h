@@ -2,6 +2,7 @@
 #define TCP_REASSEMBLY_H
 
 #include <netinet/tcp.h>
+#include <algorithm>
 
 #include "sniff.h"
 #include "pcap_queue_block.h"
