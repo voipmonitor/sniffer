@@ -1558,6 +1558,9 @@ int load_config(char *fname) {
 			break;
 		}
 	}
+	if(!opt_pcap_queue_iface_separate_threads && strchr(ifname, ',')) {
+		opt_pcap_queue_iface_separate_threads = 1;
+	}
 
 	/*
 	
