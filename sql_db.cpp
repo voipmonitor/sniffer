@@ -19,6 +19,7 @@ extern int terminating;
 extern int opt_ipaccount;
 extern int opt_id_sensor;
 extern bool opt_cdr_partition;
+extern bool opt_disable_partition_operations;
 extern vector<dstring> opt_custom_headers_cdr;
 extern vector<dstring> opt_custom_headers_message;
 extern char get_customers_pn_query[1024];
@@ -1862,7 +1863,7 @@ void SqlDb_mysql::createSchema() {
 	//END ALTER TABLES
 	
 	//BEGIN SQL SCRIPTS
-	if(opt_cdr_partition || opt_ipaccount) {
+	if((opt_cdr_partition || opt_ipaccount) && !opt_disable_partition_operations) {
 		this->query(
 		"drop procedure if exists create_partition");
 		this->query(string(
@@ -1932,7 +1933,7 @@ void SqlDb_mysql::createSchema() {
 		    end if;\
 		 end");
 	}
-	if(opt_cdr_partition) {
+	if(opt_cdr_partition && !opt_disable_partition_operations) {
 		this->query(
 		"drop procedure if exists create_partitions_cdr");
 		this->query(
@@ -1962,7 +1963,7 @@ void SqlDb_mysql::createSchema() {
 		    call ") + mysql_database + ".create_partitions_cdr('" + mysql_database + "', 1);\
 		 end");
 	}
-	if(opt_ipaccount) {
+	if(opt_ipaccount && !opt_disable_partition_operations) {
 		this->query(
 		"drop procedure if exists create_partitions_ipacc");
 		this->query(

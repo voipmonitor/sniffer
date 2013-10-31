@@ -857,7 +857,21 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 			if(DEBUG_VERBOSE) {
 				cout << statString;
 			} else {
-				syslog(LOG_NOTICE, "packetbuffer stat:\n%s", statString.c_str());
+				syslog(LOG_NOTICE, "packetbuffer stat:");
+				char *pointToBeginLine = (char*)statString.c_str();
+				while(pointToBeginLine && *pointToBeginLine) {
+					char *pointToLineBreak = strchr(pointToBeginLine, '\n');
+					if(pointToLineBreak) {
+						*pointToLineBreak = '\0';
+					}
+					syslog(LOG_NOTICE, pointToBeginLine);
+					if(pointToLineBreak) {
+						*pointToLineBreak = '\n';
+						pointToBeginLine = pointToLineBreak + 1;
+					} else {
+						pointToBeginLine = NULL;
+					}
+				}
 			}
 		}
 	} else {
@@ -926,7 +940,8 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 		if(DEBUG_VERBOSE) {
 			cout << outStrStat.str() << endl;
 		} else {
-			syslog(LOG_NOTICE, "packetbuffer cpu / mem stat:\n%s", outStrStat.str().c_str());
+			syslog(LOG_NOTICE, "packetbuffer cpu / mem stat:");
+			syslog(LOG_NOTICE, outStrStat.str().c_str());
 		}
 	} else {
 		outStr << outStrStat.str();
@@ -934,7 +949,20 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 		outStr << (this->instancePcapHandle ? 
 				this->instancePcapHandle->pcapStatString_interface(statPeriod) :
 				this->pcapStatString_interface(statPeriod));
-		syslog(LOG_NOTICE, "%s", outStr.str().c_str());
+		char *pointToBeginLine = (char*)outStr.str().c_str();
+		while(pointToBeginLine && *pointToBeginLine) {
+			char *pointToLineBreak = strchr(pointToBeginLine, '\n');
+			if(pointToLineBreak) {
+				*pointToLineBreak = '\0';
+			}
+			syslog(LOG_NOTICE, pointToBeginLine);
+			if(pointToLineBreak) {
+				*pointToLineBreak = '\n';
+				pointToBeginLine = pointToLineBreak + 1;
+			} else {
+				pointToBeginLine = NULL;
+			}
+		}
 	}
 	sumPacketsCounterIn[1] = sumPacketsCounterIn[0];
 	sumPacketsCounterOut[1] = sumPacketsCounterOut[0];

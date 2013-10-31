@@ -100,6 +100,7 @@ extern int opt_saveGRAPH;
 extern int opt_packetbuffered;	  // Make .pcap files writing ‘‘packet-buffered’’
 extern int opt_rtcp;		  // Make .pcap files writing ‘‘packet-buffered’’
 extern int verbosity;
+extern int verbosityE;
 extern int terminating;
 extern int opt_rtp_firstleg;
 extern int opt_sip_register;
@@ -172,7 +173,7 @@ extern sem_t readpacket_thread_semaphore;
 
 static char * gettag(const void *ptr, unsigned long len, const char *tag, unsigned long *gettaglen, unsigned long *limitLen = NULL);
 static void logPacketSipMethodCall(int sip_method, int lastSIPresponseNum, pcap_pkthdr *header, Call *call, const char *descr = NULL);
-#define logPacketSipMethodCall_enable (opt_read_from_file && verbosity > 2)
+#define logPacketSipMethodCall_enable ((opt_read_from_file && verbosity > 2) || verbosityE > 1)
 
 unsigned int numpackets = 0;
 
@@ -3847,6 +3848,10 @@ void readdump_libpcap(pcap_t *handle) {
 }
 
 void logPacketSipMethodCall(int sip_method, int lastSIPresponseNum, pcap_pkthdr *header, Call *call, const char *descr) {
+	if(!opt_read_from_file && descr && strstr(descr, "we are not interested")) {
+		return;
+	}
+	
 	const char *sipMethodStr[] = {
 		"INVITE",	// 1
 		"BYE",		// 2
@@ -3865,49 +3870,56 @@ void logPacketSipMethodCall(int sip_method, int lastSIPresponseNum, pcap_pkthdr 
 		"SUBSCRIBE",	// 15
 		"OPTIONS"	// 16
 	};
+	
+	ostringstream outStr;
 
-	cout << "--- ";
+	outStr << "--- ";
 	// ts
-	cout.width(10);
-	cout << sqlDateTimeString(header->ts.tv_sec) << " "
-	     << header->ts.tv_sec << ".";
-	cout.width(6);
-	cout << header->ts.tv_usec << "  ";
+	outStr.width(10);
+	outStr << sqlDateTimeString(header->ts.tv_sec) << " "
+	       << header->ts.tv_sec << ".";
+	outStr.width(6);
+	outStr << header->ts.tv_usec << "  ";
 	// sip metod
-	cout.width(10);
+	outStr.width(10);
 	if(sip_method > 0 && (unsigned)sip_method <= sizeof(sipMethodStr)/sizeof(sipMethodStr[0]))
-		cout << sipMethodStr[sip_method - 1];
+		outStr << sipMethodStr[sip_method - 1];
 	else
-		cout << sip_method;
-	cout << "  ";
+		outStr << sip_method;
+	outStr << "  ";
 	// calldate
-	cout.width(19);
-	cout << (call ? sqlDateTimeString(call->calltime()) : "") << "  ";
+	outStr.width(19);
+	outStr << (call ? sqlDateTimeString(call->calltime()) : "") << "  ";
 	// duration
-	cout.width(5);
+	outStr.width(5);
 	if(call)
-		cout << call->duration() << "s";
+		outStr << call->duration() << "s";
 	else
-		cout << "" << " ";
-	cout << "  ";
+		outStr << "" << " ";
+	outStr << "  ";
 	// caller
-	cout.width(15);
-	cout << (call ? call->caller : "") << "  ";
+	outStr.width(15);
+	outStr << (call ? call->caller : "") << "  ";
 	// called
-	cout.width(15);
-	cout << (call ? call->called : "") << "  ";
+	outStr.width(15);
+	outStr << (call ? call->called : "") << "  ";
 	// lastSIPresponseNum
-	cout.width(3);
-	cout << lastSIPresponseNum << "  ";
+	outStr.width(3);
+	outStr << lastSIPresponseNum << "  ";
 	// fbasename
-	cout.width(40);
-	cout << (call ? call->fbasename : "") << "  ";
+	outStr.width(40);
+	outStr << (call ? call->fbasename : "") << "  ";
 	// seenbye
-	cout << (call && call->seenbye ? "seenbye  " : "         ") << "  ";
+	outStr << (call && call->seenbye ? "seenbye  " : "         ") << "  ";
 	// destroy_call_at
-	cout.width(19);
-	cout << (call && call->destroy_call_at ? sqlDateTimeString(call->destroy_call_at): "") << "  ";
+	outStr.width(19);
+	outStr << (call && call->destroy_call_at ? sqlDateTimeString(call->destroy_call_at): "") << "  ";
 	// descr
-	if(descr) cout << descr;
-	cout << endl;
+	if(descr) outStr << descr;
+	
+	if(opt_read_from_file) {
+		cout << outStr << endl;
+	} else {
+		syslog(LOG_NOTICE, outStr.str().c_str());
+	}
 }

@@ -270,6 +270,7 @@ int opt_cleandatabase = 0;
 unsigned int graph_delimiter = GRAPH_DELIMITER;
 
 bool opt_cdr_partition = 1;
+bool opt_disable_partition_operations = 0;
 vector<dstring> opt_custom_headers_cdr;
 vector<dstring> opt_custom_headers_message;
 
@@ -668,13 +669,15 @@ void *storing_cdr( void *dummy ) {
 	time_t createPartitionAt = 0;
 	time_t createPartitionIpaccAt = 0;
 	while(1) {
-		if(!opt_nocdr and opt_cdr_partition and isSqlDriver("mysql")) {
+		if(!opt_nocdr and opt_cdr_partition and !opt_disable_partition_operations and isSqlDriver("mysql")) {
 			time_t actTime = time(NULL);
-			if(actTime - createPartitionAt > 3600) {
+			if(actTime - createPartitionAt > 12 * 3600) {
+				syslog(LOG_NOTICE, "create cdr partitions - begin");
 				sqlDb->query(
 					string("call ") + mysql_database + ".create_partitions_cdr('" + mysql_database + "', 0);");
 				sqlDb->query(
 					string("call ") + mysql_database + ".create_partitions_cdr('" + mysql_database + "', 1);");
+				syslog(LOG_NOTICE, "create cdr partitions - end");
 			
 				if(opt_cleandatabase > 0) {
 					time_t act_time = time(NULL);
@@ -708,13 +711,15 @@ void *storing_cdr( void *dummy ) {
 			}
 		}
 		
-		if(opt_ipaccount and isSqlDriver("mysql")) {
+		if(opt_ipaccount and !opt_disable_partition_operations and isSqlDriver("mysql")) {
 			time_t actTime = time(NULL);
-			if(actTime - createPartitionIpaccAt > 3600) {
+			if(actTime - createPartitionIpaccAt > 12 * 3600) {
+				syslog(LOG_NOTICE, "create ipacc partitions - begin");
 				sqlDb->query(
 					string("call ") + mysql_database + ".create_partitions_ipacc('" + mysql_database + "', 0);");
 				sqlDb->query(
 					string("call ") + mysql_database + ".create_partitions_ipacc('" + mysql_database + "', 1);");
+				syslog(LOG_NOTICE, "create ipacc partitions - end");
 				createPartitionIpaccAt = actTime;
 			}
 		}
@@ -1087,6 +1092,9 @@ int load_config(char *fname) {
 	}
 	if((value = ini.GetValue("general", "cdr_partition", NULL))) {
 		opt_cdr_partition = yesno(value);
+	}
+	if((value = ini.GetValue("general", "disable_partition_operations", NULL))) {
+		opt_disable_partition_operations = yesno(value);
 	}
 	if((value = ini.GetValue("general", "cdr_ua_enable", NULL))) {
 		opt_cdr_ua_enable = yesno(value);

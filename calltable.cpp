@@ -56,6 +56,7 @@
 using namespace std;
 
 extern int verbosity;
+extern int verbosityE;
 extern int opt_sip_register;
 extern int opt_saveRTP;
 extern int opt_onlyRTPheader;
@@ -207,6 +208,9 @@ Call::Call(char *call_id, unsigned long call_id_len, time_t time, void *ct) {
 	called_rtpdscp = 0;
 	ps_ifdrop = pcapstat.ps_ifdrop;
 	ps_drop = pcapstat.ps_drop;
+	if(verbosity && verbosityE > 1) {
+		syslog(LOG_NOTICE, "CREATE CALL %s", this->call_id.c_str());
+	}
 }
 
 void
@@ -2906,14 +2910,25 @@ Calltable::cleanup_old( time_t currtime ) {
 
 int
 Calltable::cleanup( time_t currtime ) {
+	if(verbosity && verbosityE > 1) {
+		syslog(LOG_NOTICE, "call Calltable::cleanup");
+	}
 	Call* call;
 	lock_calls_listMAP();
 	for (callMAPIT = calls_listMAP.begin(); callMAPIT != calls_listMAP.end();) {
 		call = (*callMAPIT).second;
-		if(verbosity > 2) call->dump();
+		if(verbosity > 2) {
+			call->dump();
+		}
+		if(verbosity && verbosityE > 1) {
+			syslog(LOG_NOTICE, "Calltable::cleanup - try callid %s", call->call_id.c_str());
+		}
 		// rtptimeout seconds of inactivity will save this call and remove from call table
 		if(currtime == 0 || 
 		   (call->rtppcaketsinqueue == 0 and ((call->destroy_call_at != 0 and call->destroy_call_at <= currtime) || (currtime - call->get_last_packet_time() > rtptimeout)))) {
+			if(verbosity && verbosityE > 1) {
+				syslog(LOG_NOTICE, "Calltable::cleanup - callid %s", call->call_id.c_str());
+			}
 			if(currtime == 0 && call->rtppcaketsinqueue) {
 				syslog(LOG_WARNING, "force destroy call (rtppcaketsinqueue > 0)");
 			}
