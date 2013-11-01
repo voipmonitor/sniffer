@@ -677,9 +677,9 @@ void *storing_cdr( void *dummy ) {
 			if(actTime - createPartitionAt > 12 * 3600) {
 				syslog(LOG_NOTICE, "create cdr partitions - begin");
 				sqlDb->query(
-					string("call ") + mysql_database + ".create_partitions_cdr('" + mysql_database + "', 0);");
+					string("call `") + mysql_database + "`.create_partitions_cdr('" + mysql_database + "', 0);");
 				sqlDb->query(
-					string("call ") + mysql_database + ".create_partitions_cdr('" + mysql_database + "', 1);");
+					string("call `") + mysql_database + "`.create_partitions_cdr('" + mysql_database + "', 1);");
 				syslog(LOG_NOTICE, "create cdr partitions - end");
 			
 				if(opt_cleandatabase > 0) {
@@ -719,9 +719,9 @@ void *storing_cdr( void *dummy ) {
 			if(actTime - createPartitionIpaccAt > 12 * 3600) {
 				syslog(LOG_NOTICE, "create ipacc partitions - begin");
 				sqlDb->query(
-					string("call ") + mysql_database + ".create_partitions_ipacc('" + mysql_database + "', 0);");
+					string("call `") + mysql_database + "`.create_partitions_ipacc('" + mysql_database + "', 0);");
 				sqlDb->query(
-					string("call ") + mysql_database + ".create_partitions_ipacc('" + mysql_database + "', 1);");
+					string("call `") + mysql_database + "`.create_partitions_ipacc('" + mysql_database + "', 1);");
 				syslog(LOG_NOTICE, "create ipacc partitions - end");
 				createPartitionIpaccAt = actTime;
 			}

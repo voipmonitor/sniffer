@@ -1,3 +1,15 @@
+8.4 RC9 1.11.2013
+=================
+
+- fix reindexfiles which has problem if directory has more then 2GB
+- clarify that the id_sensor is number between 1 - 65535 (16bit number)
+- fix potential crash in RTP processing
+- implement reading from list of interfaces which is better alternative to interface = any. Now it is possible to sniff on eth0 and eth2 within one sniffer - interface = eth0,eth2. Reading is done in separate threads which takes benefit over interface = any
+- fix detect partitions in cdr% tables when upgrading from older versions
+- do not create partitions every hour but every 12 hours 
+- add option  disable_partition_operations which will not create partitions (in multisniffer environment all other sensors should have disabled partition creation which is redundant) 
+- escape database name in sql queries ('-' caused problems) 
+
 8.4 RC8 8.10.2013
 =================
 
