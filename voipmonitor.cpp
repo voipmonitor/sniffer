@@ -268,6 +268,7 @@ extern int opt_pcap_queue_iface_dedup_separate_threads_extend;
 extern int sql_noerror;
 int opt_cleandatabase = 0;
 unsigned int graph_delimiter = GRAPH_DELIMITER;
+unsigned int graph_version = GRAPH_VERSION;
 
 bool opt_cdr_partition = 1;
 bool opt_disable_partition_operations = 0;
@@ -520,6 +521,7 @@ void find_and_replace( string &source, const string find, string replace ) {
 
 void *clean_spooldir(void *dummy) {
 
+	if(debugclean) syslog(LOG_ERR, "run clean_spooldir()");
 	while(!terminating2) {
 
 /* old code
@@ -543,6 +545,7 @@ void *clean_spooldir(void *dummy) {
 		sleep(opt_cleanspool_interval);
 */
 
+		if(debugclean) syslog(LOG_ERR, "pthread_create(clean_spooldir_run)");
 		pthread_t tpid;	// ID of worker clean thread 
 		pthread_create(&tpid, NULL, clean_spooldir_run, NULL);
 		sleep(300);
@@ -2502,6 +2505,7 @@ int main(int argc, char *argv[]) {
 	}
 	
 	if(isSqlDriver("mysql")) {
+		if(debugclean) syslog(LOG_ERR, "pthread_create(clean_spooldir)");
 		pthread_create(&cleanspool_thread, NULL, clean_spooldir, NULL);
 	}
 	
