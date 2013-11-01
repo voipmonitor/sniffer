@@ -105,6 +105,7 @@ extern int opt_filesclean;
 extern int opt_allow_zerossrc;
 extern int opt_cdr_ua_enable;
 extern unsigned int graph_delimiter;
+extern unsigned int graph_version;
 
 volatile int calls = 0;
 
@@ -459,7 +460,7 @@ Call::add_ip_port(in_addr_t addr, unsigned short port, char *ua, unsigned long u
 		in.s_addr = addr;
 		strcpy(tmp, inet_ntoa(in));
 
-		syslog(LOG_ERR,"callid [%s]: no more space for next media stream [%s:%d], raise MAX_IP_PER_CALL", call_id.c_str(), tmp, port);
+		syslog(LOG_ERR,"callid [%s]: to much INVITEs in this call [%s:%d], raise MAX_IP_PER_CALL and recompile sniffer", call_id.c_str(), tmp, port);
 		return -1;
 	}
 
@@ -618,12 +619,12 @@ Call::read_rtp(unsigned char* data, int datalen, struct pcap_pkthdr *header, u_i
 			if(opt_gzipGRAPH) {
 				rtp[ssrc_n]->gfileGZ.open(tmp);
 				if(rtp[ssrc_n]->gfileGZ.is_open()) {
-					rtp[ssrc_n]->gfileGZ.write((char*)&graph_delimiter, 4); //every graph starts with graph_delimiter 
+					rtp[ssrc_n]->gfileGZ.write((char*)&graph_version, 4); //every graph starts with graph_version
 				}
 			} else {
 				rtp[ssrc_n]->gfile.open(tmp);
 				if(rtp[ssrc_n]->gfile.is_open()) {
-					rtp[ssrc_n]->gfile.write((char*)&graph_delimiter, 4); //every graph starts with graph_delimiter 
+					rtp[ssrc_n]->gfile.write((char*)&graph_version, 4); //every graph starts with graph_version 
 				}
 			}
 		}

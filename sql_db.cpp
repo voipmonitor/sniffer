@@ -373,9 +373,9 @@ bool SqlDb_mysql::connect() {
 			this->query("SET GLOBAL innodb_stats_on_metadata=0"); // this will speedup "Slow query on information_schema.tables"
 			this->query("SET sql_mode = ''");
 			char tmp[1024];
-			sprintf(tmp, "CREATE DATABASE IF NOT EXISTS %s", mysql_database);
+			sprintf(tmp, "CREATE DATABASE IF NOT EXISTS `%s`", mysql_database);
 			this->query(tmp);
-			sprintf(tmp, "USE %s", mysql_database);
+			sprintf(tmp, "USE `%s`", mysql_database);
 			this->query(tmp);
 			this->query("SHOW VARIABLES LIKE \"version\"");
 			SqlDb_row row;
@@ -1951,16 +1951,16 @@ void SqlDb_mysql::createSchema() {
 		    call create_partition(database_name, 'register_failed', 'day', next_days);\
 		 end");
 		this->query(string(
-		"call ") + mysql_database + ".create_partitions_cdr('" + mysql_database + "', 0);");
+		"call `") + mysql_database + "`.create_partitions_cdr('" + mysql_database + "', 0);");
 		this->query(string(
-		"call ") + mysql_database + ".create_partitions_cdr('" + mysql_database + "', 1);");
+		"call `") + mysql_database + "`.create_partitions_cdr('" + mysql_database + "', 1);");
 		this->query(
 		"drop event if exists cdr_add_partition");
 		this->query(string(
 		"create event if not exists cdr_add_partition\
 		 on schedule every 1 hour do\
 		 begin\
-		    call ") + mysql_database + ".create_partitions_cdr('" + mysql_database + "', 1);\
+		    call `") + mysql_database + "`.create_partitions_cdr('" + mysql_database + "', 1);\
 		 end");
 	}
 	if(opt_ipaccount && !opt_disable_partition_operations) {
@@ -1976,16 +1976,16 @@ void SqlDb_mysql::createSchema() {
 		    call create_partition(database_name, 'ipacc_agr_day', 'month', next_days);\
 		 end");
 		this->query(string(
-		"call ") + mysql_database + ".create_partitions_ipacc('" + mysql_database + "', 0);");
+		"call `") + mysql_database + "`.create_partitions_ipacc('" + mysql_database + "', 0);");
 		this->query(string(
-		"call ") + mysql_database + ".create_partitions_ipacc('" + mysql_database + "', 1);");
+		"call `") + mysql_database + "`.create_partitions_ipacc('" + mysql_database + "', 1);");
 		this->query(
 		"drop event if exists ipacc_add_partition");
 		this->query(string(
 		"create event if not exists ipacc_add_partition\
 		 on schedule every 1 hour do\
 		 begin\
-		    call ") + mysql_database + ".create_partitions_ipacc('" + mysql_database + "', 1);\
+		    call `") + mysql_database + "`.create_partitions_ipacc('" + mysql_database + "', 1);\
 		 end");
 	}
 

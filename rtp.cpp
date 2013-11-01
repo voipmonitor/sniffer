@@ -1025,13 +1025,15 @@ RTP::update_stats() {
 					// compressed
 					if(gfileGZ.is_open()) {
 						//gfile << endl;
-						gfileGZ.write("\n", 1);
+						//gfileGZ.write("\n", 1);
+						gfileGZ.write((char*)&graph_delimiter, 4);
 					}
 				} else {
 					// uncompressed
 					if(gfile.is_open()) {
 						//gfile << endl;
-						gfile.write("\n", 1);
+						//gfile.write("\n", 1);
+						gfile.write((char*)&graph_delimiter, 4);
 					}
 				}
 				nintervals -= 20;
