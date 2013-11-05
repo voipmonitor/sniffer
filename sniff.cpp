@@ -3189,10 +3189,16 @@ void *pcap_read_thread_func(void *arg) {
 
 		header_ip = (struct iphdr2 *) ((char*)packet + pp->offset);
 
-		if(header_ip->protocol == 4) {
+		if(header_ip->protocol == IPPROTO_IPIP) {
 			// ip in ip protocol
 			header_ip = (struct iphdr2 *) ((char*)header_ip + sizeof(iphdr2));
+		} else if(header_ip->protocol == IPPROTO_GRE) {
+			// gre protocol 
+			struct gre_hdr *grehdr = (struct gre_hdr *)((char*)header_ip + sizeof(iphdr2));
+			printf("[%d] [%d] [%x]\n", grehdr->version, grehdr->protocol, grehdr->protocol);
+			exit(0);
 		}
+
 		header_udp = &header_udp_tmp;
 		useTcpReassembly = false;
 		if (header_ip->protocol == IPPROTO_UDP) {
@@ -3653,7 +3659,8 @@ void readdump_libpcap(pcap_t *handle) {
 			}
 		}
 
-		if(header_ip->protocol == 4) {
+headerip:
+		if(header_ip->protocol == IPPROTO_IPIP) {
 			header_ip = (struct iphdr2 *) ((char*)header_ip + sizeof(iphdr2));
 
 			//if UDP defrag is enabled process only UDP packets and only SIP packets
@@ -3674,7 +3681,39 @@ void readdump_libpcap(pcap_t *handle) {
 					}
 				}
 			}
+		} else if(header_ip->protocol == IPPROTO_GRE) {
+			// gre protocol 
+			char gre[8];
+			uint16_t a, b;
+			// if anyone know how to make network to hostbyte nicely, redesign this
+			a = ntohs(*(uint16_t*)((char*)header_ip + sizeof(iphdr2)));
+			b = ntohs(*(uint16_t*)((char*)header_ip + sizeof(iphdr2) + 2));
+			memcpy(gre, &a, 2);
+			memcpy(gre + 2, &b, 2);
 
+			struct gre_hdr *grehdr = (struct gre_hdr *)gre;
+			if(grehdr->version == 0 and grehdr->protocol == 0x6558) {
+				header_eth = (struct ether_header *)((char*)header_ip + sizeof(iphdr2) + 8);
+				if(header_eth->ether_type == 129) {
+					// VLAN tag
+					offset = 4;
+					//XXX: this is very ugly hack, please do it right! (it will work for "08 00" which is IPV4 but not for others! (find vlan_header or something)
+					protocol = *((char*)header_eth + 2);
+				} else {
+					offset = 0;
+					protocol = header_eth->ether_type;
+				}
+				offset += sizeof(struct ether_header);
+				header_ip = (struct iphdr2 *) ((char*)header_eth + offset);
+				goto headerip;
+			} else {
+				if(destroy) { free(header); free(packet);};
+				if(opt_ipaccount == 0) {
+					continue;
+				} else {
+					goto skip;
+				}
+			}
 		}
 
 		// if IP defrag is enabled, run each 10 seconds cleaning 
@@ -3727,6 +3766,8 @@ void readdump_libpcap(pcap_t *handle) {
 				continue;
 			}
 		}
+
+skip:
 	
 		if(datalen < 0) {
 			if(destroy) { free(header); free(packet);};

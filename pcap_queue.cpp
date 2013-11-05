@@ -22,6 +22,7 @@
 #include "ipaccount.h"
 #include "filter_mysql.h"
 #include "tcpreassembly.h"
+#include "sniff.h"
 
 
 #define TEST_DEBUG_PARAMS 0
@@ -1417,6 +1418,41 @@ inline int PcapQueue_readFromInterface_base::pcapProcess(pcap_pkthdr** header, u
 	}
 	
 	ppd.header_ip = (iphdr2*)(*packet + ppd.offset);
+
+	if(ppd.header_ip->protocol == IPPROTO_GRE) {
+		struct ether_header *header_eth;
+		unsigned int offset;
+		int protocol = 0;
+		// gre protocol 
+		char gre[8];
+		uint16_t a, b;
+		// if anyone know how to make network to hostbyte nicely, redesign this
+		a = ntohs(*(uint16_t*)((char*)ppd.header_ip + sizeof(iphdr2)));
+		b = ntohs(*(uint16_t*)((char*)ppd.header_ip + sizeof(iphdr2) + 2));
+		memcpy(gre, &a, 2);
+		memcpy(gre + 2, &b, 2);
+		       
+		struct gre_hdr *grehdr = (struct gre_hdr *)gre;
+		if(grehdr->version == 0 and grehdr->protocol == 0x6558) {
+			header_eth = (struct ether_header *)((char*)ppd.header_ip + sizeof(iphdr2) + 8);
+			if(header_eth->ether_type == 129) {
+				// VLAN tag
+				offset = 4;
+				//XXX: this is very ugly hack, please do it right! (it will work for "08 00" which is IPV4 but not for others! (find vlan_header or something)
+				protocol = *((char*)header_eth + 2);
+			} else {
+				offset = 0;
+				protocol = header_eth->ether_type;
+			}      
+			offset += sizeof(struct ether_header);
+			ppd.header_ip = (struct iphdr2 *) ((char*)header_eth + offset);
+		} else {	       
+			if(opt_ipaccount == 0) {
+				return(0);
+			}		      
+		}			      
+	}			      
+                                               
 	
 	if(enableDefrag) {
 	 
@@ -2909,10 +2945,42 @@ void PcapQueue_readFromFifo::processPacket(pcap_pkthdr_plus *header_plus, u_char
 	
 	header_ip = (iphdr2*)(packet + header_plus->offset);
 
-	if(header_ip->protocol == 4) {
+	if(header_ip->protocol == IPPROTO_IPIP) {
 		// ip in ip protocol
 		header_ip = (iphdr2*)((char*)header_ip + sizeof(iphdr2));
+	} else if(header_ip->protocol == IPPROTO_GRE) {
+		struct ether_header *header_eth;
+		int protocol = 0;      
+		unsigned int offset;   
+		// gre protocol 
+		char gre[8];
+		uint16_t a, b;
+		// if anyone know how to make network to hostbyte nicely, redesign this
+		a = ntohs(*(uint16_t*)((char*)header_ip + sizeof(iphdr2)));
+		b = ntohs(*(uint16_t*)((char*)header_ip + sizeof(iphdr2) + 2));
+		memcpy(gre, &a, 2);			memcpy(gre + 2, &b, 2);
+		struct gre_hdr *grehdr = (struct gre_hdr *)gre;			if(grehdr->version == 0 and grehdr->protocol == 0x6558) {				header_eth = (struct ether_header *)((char*)header_ip + sizeof(iphdr2) + 8);
+			if(header_eth->ether_type == 129) {
+				// VLAN tag
+				offset = 4;
+				//XXX: this is very ugly hack, please do it right! (it will work for "08 00" which is IPV4 but not for others! (find vlan_header or something)
+				protocol = *((char*)header_eth + 2);
+			} else {
+				offset = 0;
+				protocol = header_eth->ether_type;
+			}
+			offset += sizeof(struct ether_header);
+			header_ip = (struct iphdr2 *) ((char*)header_eth + offset);
+			if(header_ip->protocol == IPPROTO_IPIP) {
+				header_ip = (iphdr2*)((char*)header_ip + sizeof(iphdr2));
+			}
+		} else {
+			if(opt_ipaccount == 0) {
+				ipaccount(header->ts.tv_sec, (iphdr2*) ((char*)(packet) + header_plus->offset), header->len - header_plus->offset, false);
+			}
+		}
 	}
+
 	header_udp = &header_udp_tmp;
 	if (header_ip->protocol == IPPROTO_UDP) {
 		// prepare packet pointers 

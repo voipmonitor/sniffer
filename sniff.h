@@ -12,6 +12,7 @@
 #include "voipmonitor.h"
 #include "calltable.h"
 #include "pcap_queue_block.h"
+#include "asm/byteorder.h"
 
 #define MAXPACKETLENQRING 1600
 
@@ -208,5 +209,33 @@ struct livesnifferfilter_use_siptypes_s {
 	bool u_subscribe;
 	bool u_message;
 };
+
+struct gre_hdr {
+#if defined(__LITTLE_ENDIAN_BITFIELD)
+        __u16   rec:3,
+                srr:1,
+                seq:1,
+                key:1,
+                routing:1,
+                csum:1,
+                version:3,
+                reserved:4,
+                ack:1;
+#elif defined(__BIG_ENDIAN_BITFIELD)
+        __u16   csum:1,
+                routing:1,
+                key:1,
+                seq:1,
+                srr:1,
+                rec:3,
+                ack:1,
+                reserved:4,
+                version:3;
+#else
+#error "Adjust your <asm/byteorder.h> defines"
+#endif
+        __be16  protocol;
+};
+ 
 
 #endif
