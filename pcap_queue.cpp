@@ -949,7 +949,8 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 		outStr << (this->instancePcapHandle ? 
 				this->instancePcapHandle->pcapStatString_interface(statPeriod) :
 				this->pcapStatString_interface(statPeriod));
-		char *pointToBeginLine = (char*)outStr.str().c_str();
+		string outStr_str = outStr.str();
+		char *pointToBeginLine = (char*)outStr_str.c_str();
 		while(pointToBeginLine && *pointToBeginLine) {
 			char *pointToLineBreak = strchr(pointToBeginLine, '\n');
 			if(pointToLineBreak) {
