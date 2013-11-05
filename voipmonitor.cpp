@@ -2504,7 +2504,10 @@ int main(int argc, char *argv[]) {
 		daemonize();
 	}
 	
-	if(isSqlDriver("mysql")) {
+	if(isSqlDriver("mysql") &&
+	   !(opt_pcap_queue && 
+	     !opt_pcap_queue_receive_from_ip.length() &&
+	     opt_pcap_queue_send_to_ip.length())) {
 		if(debugclean) syslog(LOG_ERR, "pthread_create(clean_spooldir)");
 		pthread_create(&cleanspool_thread, NULL, clean_spooldir, NULL);
 	}
