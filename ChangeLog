@@ -1,3 +1,10 @@
+8.4 RC10 6.11.2013
+==================
+- fix MySQL race condition causing crashes and undefinite cleaning of parition each second when mysql cleaning enabled. 
+- fix ebug in syslog
+- fix memory leak caused by cleaning which should not run when in mirror sender mode
+- implement GRE tunnel de-encapsulation
+
 8.4 RC9 1.11.2013
 =================
 
