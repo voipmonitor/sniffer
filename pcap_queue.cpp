@@ -608,10 +608,10 @@ bool pcap_store_queue::push(pcap_block_store *blockStore, size_t addUsedSize, bo
 			this->lock_fileStore();
 		}
 		if(this->getFileStoreUseSize(false) > opt_pcap_queue_store_queue_max_disk_size) {
-			if(!this->lastTimeLogErrDiskIsFull ||
-			   getTimeMS() > this->lastTimeLogErrDiskIsFull + 1000) {
+			u_long actTime = getTimeMS();
+			if(actTime - 1000 > this->lastTimeLogErrDiskIsFull) {
 				syslog(LOG_ERR, "packetbuffer: DISK IS FULL");
-				this->lastTimeLogErrDiskIsFull = getTimeMS();
+				this->lastTimeLogErrDiskIsFull = actTime;
 			}
 			if(deleteBlockStoreIfFail) {
 				delete blockStore;
@@ -642,10 +642,10 @@ bool pcap_store_queue::push(pcap_block_store *blockStore, size_t addUsedSize, bo
 			this->unlock_fileStore();
 		}
 		if(this->sizeOfBlocksInMemory + addUsedSize >= opt_pcap_queue_store_queue_max_memory_size) {
-			if(!this->lastTimeLogErrMemoryIsFull ||
-			   getTimeMS() > this->lastTimeLogErrMemoryIsFull + 1000) {
+			u_long actTime = getTimeMS();
+			if(actTime - 1000 > this->lastTimeLogErrMemoryIsFull) {
 				syslog(LOG_ERR, "packetbuffer: MEMORY IS FULL");
-				this->lastTimeLogErrMemoryIsFull = getTimeMS();
+				this->lastTimeLogErrMemoryIsFull = actTime;
 			}
 			if(deleteBlockStoreIfFail) {
 				delete blockStore;
@@ -2040,6 +2040,7 @@ PcapQueue_readFromInterface::PcapQueue_readFromInterface(const char *nameQueue)
 	this->fifoWritePcapDumper = NULL;
 	memset(this->readThreads, 0, sizeof(this->readThreads));
 	this->readThreadsCount = 0;
+	this->lastTimeLogErrThread0BufferIsFull = 0;
 }
 
 PcapQueue_readFromInterface::~PcapQueue_readFromInterface() {
@@ -2215,7 +2216,11 @@ void* PcapQueue_readFromInterface::threadFunction(void* ) {
 				bool _syslog = true;
 				while((blockStoreBypassQueueSize = blockStoreBypassQueue.getUseSize()) > opt_pcap_queue_bypass_max_size) {
 					if(_syslog) {
-						syslog(LOG_ERR, "packetbuffer %s: THREAD0 BUFFER IS FULL", this->nameQueue.c_str());
+						u_long actTime = getTimeMS();
+						if(actTime - 1000 > this->lastTimeLogErrThread0BufferIsFull) {
+							syslog(LOG_ERR, "packetbuffer %s: THREAD0 BUFFER IS FULL", this->nameQueue.c_str());
+							this->lastTimeLogErrThread0BufferIsFull = actTime;
+						}
 						cout << "bypass buffer size " << blockStoreBypassQueue.getUseItems() << " (" << blockStoreBypassQueue.getUseSize() << ")" << endl;
 						_syslog = false;
 						++countBypassBufferSizeExceeded;

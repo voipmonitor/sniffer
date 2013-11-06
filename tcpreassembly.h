@@ -757,6 +757,7 @@ private:
 	bool ignoreTerminating;
 	FILE *log;
 	pstat_data threadPstatData[2];
+	u_long lastTimeLogErrExceededMaximumAttempts;
 friend class TcpReassemblyLink;
 friend void *_TcpReassembly_threadFunction(void* arg);
 };

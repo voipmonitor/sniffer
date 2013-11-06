@@ -1536,6 +1536,7 @@ TcpReassembly::TcpReassembly() {
 	this->terminated = false;
 	this->ignoreTerminating = false;
 	memset(this->threadPstatData, 0, sizeof(this->threadPstatData));
+	this->lastTimeLogErrExceededMaximumAttempts = 0;
 	if(opt_tcpreassembly_thread) {
 		this->createThread();
 	}
@@ -1690,7 +1691,11 @@ void TcpReassembly::push(pcap_pkthdr *header, iphdr2 *header_ip, u_char *packet,
 		this->unlock_links();
 	}
 	if(passFindLink == maxPassFindLink) {
-		syslog(LOG_NOTICE, "tcpreassembly: exceeded the maximum number of attempts to obtain a TCP connection");
+		u_long actTime = getTimeMS();
+		if(actTime - 1000 > this->lastTimeLogErrExceededMaximumAttempts) {
+			syslog(LOG_NOTICE, "tcpreassembly: exceeded the maximum number of attempts to obtain a TCP connection");
+			this->lastTimeLogErrExceededMaximumAttempts = actTime;
+		}
 		return;
 	}
 	if(findLink) {

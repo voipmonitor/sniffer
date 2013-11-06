@@ -428,6 +428,7 @@ protected:
 	pcap_dumper_t *fifoWritePcapDumper;
 	PcapQueue_readFromInterfaceThread *readThreads[READ_THREADS_MAX];
 	int readThreadsCount;
+	u_long lastTimeLogErrThread0BufferIsFull;
 };
 
 class PcapQueue_readFromFifo : public PcapQueue {
