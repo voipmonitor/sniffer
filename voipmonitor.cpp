@@ -675,6 +675,10 @@ void *storing_cdr( void *dummy ) {
 		if(!opt_nocdr and opt_cdr_partition and !opt_disable_partition_operations and isSqlDriver("mysql")) {
 			time_t actTime = time(NULL);
 			if(actTime - createPartitionAt > 12 * 3600) {
+				SqlDb *sqlDb = new SqlDb_mysql();
+				sqlDb->setConnectParameters(mysql_host, mysql_user, mysql_password, mysql_database, 0);
+				sqlDb->connect();
+				
 				syslog(LOG_NOTICE, "create cdr partitions - begin");
 				sqlDb->query(
 					string("call `") + mysql_database + "`.create_partitions_cdr('" + mysql_database + "', 0);");
@@ -689,8 +693,7 @@ void *storing_cdr( void *dummy ) {
 					char limitDay[20] = "";
 					strftime(limitDay, sizeof(limitDay), "p%y%m%d", nextDayTime);
 
-					sql_noerror = 1;
-
+					sqlDb->setDisableNextAttemptIfError();
 					string query = "ALTER TABLE cdr DROP PARTITION ";
 					query.append(limitDay);
 					sqlDb->query(query);
@@ -706,17 +709,21 @@ void *storing_cdr( void *dummy ) {
 					query = "ALTER TABLE cdr_proxy DROP PARTITION ";
 					query.append(limitDay);
 					sqlDb->query(query);
-
-					sql_noerror = 0;
 				}
 
 				createPartitionAt = actTime;
+				
+				delete sqlDb;
 			}
 		}
 		
 		if(opt_ipaccount and !opt_disable_partition_operations and isSqlDriver("mysql")) {
 			time_t actTime = time(NULL);
 			if(actTime - createPartitionIpaccAt > 12 * 3600) {
+				SqlDb *sqlDb = new SqlDb_mysql();
+				sqlDb->setConnectParameters(mysql_host, mysql_user, mysql_password, mysql_database, 0);
+				sqlDb->connect();
+				
 				syslog(LOG_NOTICE, "create ipacc partitions - begin");
 				sqlDb->query(
 					string("call `") + mysql_database + "`.create_partitions_ipacc('" + mysql_database + "', 0);");
@@ -724,6 +731,8 @@ void *storing_cdr( void *dummy ) {
 					string("call `") + mysql_database + "`.create_partitions_ipacc('" + mysql_database + "', 1);");
 				syslog(LOG_NOTICE, "create ipacc partitions - end");
 				createPartitionIpaccAt = actTime;
+				
+				delete sqlDb;
 			}
 		}
 		

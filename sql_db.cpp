@@ -184,6 +184,7 @@ SqlDb::SqlDb() {
 	this->maxQueryPass = UINT_MAX;
 	this->loginTimeout = (ulong)NULL;
 	this->enableSqlStringInContent = false;
+	this->disableNextAttemptIfError = false;
 	this->existsColumnCalldateInCdrNext = false;
 	this->existsColumnCalldateInCdrRtp = false;
 }
@@ -340,7 +341,15 @@ void SqlDb::setLastErrorString(string lastErrorString, bool sysLog) {
 void SqlDb::setEnableSqlStringInContent(bool enableSqlStringInContent) {
 	this->enableSqlStringInContent = enableSqlStringInContent;
 }
-	
+
+void SqlDb::setDisableNextAttemptIfError() {
+	this->disableNextAttemptIfError = true;
+}
+
+void SqlDb::setEnableNextAttemptIfError() {
+	this->disableNextAttemptIfError = false;
+}
+
 void SqlDb::cleanFields() {
 	this->fields.clear();
 }
@@ -472,7 +481,7 @@ bool SqlDb_mysql::query(string query) {
 					if(pass < this->maxQueryPass - 1) {
 						this->reconnect();
 					}
-				} else if(sql_noerror || sql_disable_next_attempt_if_error ||
+				} else if(sql_noerror || sql_disable_next_attempt_if_error || this->disableNextAttemptIfError ||
 					  this->getLastError() == ER_PARSE_ERROR) {
 					break;
 				} else {
@@ -764,7 +773,7 @@ bool SqlDb_odbc::query(string query) {
 				if(!sql_noerror) {
 					this->checkLastError("odbc query error", true);
 				}
-				if(sql_noerror || sql_disable_next_attempt_if_error) {
+				if(sql_noerror || sql_disable_next_attempt_if_error || this->disableNextAttemptIfError) {
 					break;
 				}
 				else if(rslt == SQL_ERROR || rslt == SQL_INVALID_HANDLE) {

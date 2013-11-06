@@ -139,6 +139,8 @@ public:
 		return(0);
 	}
 	void setEnableSqlStringInContent(bool enableSqlStringInContent);
+	void setDisableNextAttemptIfError();
+	void setEnableNextAttemptIfError();
 protected:
 	string conn_server;
 	string conn_user;
@@ -150,6 +152,7 @@ protected:
 	unsigned int maxQueryPass;
 	vector<string> fields;
 	bool enableSqlStringInContent;
+	bool disableNextAttemptIfError;
 private:
 	unsigned int lastError;
 	string lastErrorString;
