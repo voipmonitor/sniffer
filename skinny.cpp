@@ -1262,9 +1262,11 @@ Call *new_skinny_channel(int state, char *data, int datalen, struct pcap_pkthdr 
 
 		char str2[1024];
                 // open one pcap for all packets or open SKINNY and RTP separatly
+		/****
                 call->set_f_pcap(NULL);
                 call->set_fsip_pcap(NULL);
                 call->set_frtp_pcap(NULL);
+                ****/
                 if(opt_newdir and opt_pcap_split) {
                         //SKINNY
 			if(call->flags & (FLAG_SAVESIP)) {
@@ -1274,17 +1276,9 @@ Call *new_skinny_channel(int state, char *data, int datalen, struct pcap_pkthdr 
 					sprintf(str2, "%s/%s/%s.pcap", call->dirname().c_str(), opt_newdir ? "SKINNY" : "", call->get_fbasename_safe());
 				}
 				call->sip_pcapfilename = call->dirname() + (opt_newdir ? "/SKINNY" : "") + "/" + call->get_fbasename_safe() + ".pcap";
-				if(!file_exists(str2)) {
-					call->set_fsip_pcap(pcap_dump_open(HANDLE_FOR_PCAP_SAVE, str2));
-					if(call->get_fsip_pcap() == NULL) {
-						syslog(LOG_NOTICE,"pcap [%s] cannot be opened: %s\n", str2, pcap_geterr(HANDLE_FOR_PCAP_SAVE));
-					}
+				if(call->getPcapSip()->open(str2)) {
 					if(verbosity > 3) {
 						syslog(LOG_NOTICE,"pcap_filename: [%s]\n", str2);
-					}
-				} else {
-					if(verbosity > 0) {
-						syslog(LOG_NOTICE,"pcap_filename: [%s] already exists, do not overwriting\n", str2);
 					}
 				}
 			}
@@ -1296,17 +1290,9 @@ Call *new_skinny_channel(int state, char *data, int datalen, struct pcap_pkthdr 
 					sprintf(str2, "%s/%s/%s.pcap", call->dirname().c_str(), opt_newdir ? "RTP" : "", call->get_fbasename_safe());
 				}
 				call->rtp_pcapfilename = call->dirname() + (opt_newdir ? "/RTP" : "") + "/" + call->get_fbasename_safe() + ".pcap";
-				if(!file_exists(str2)) {
-					call->set_frtp_pcap(pcap_dump_open(HANDLE_FOR_PCAP_SAVE, str2));
-					if(call->get_frtp_pcap() == NULL) {
-						syslog(LOG_NOTICE,"pcap [%s] cannot be opened: %s\n", str2, pcap_geterr(HANDLE_FOR_PCAP_SAVE));
-					}
+				if(call->getPcapRtp()->open(str2)) {
 					if(verbosity > 3) {
 						syslog(LOG_NOTICE,"pcap_filename: [%s]\n", str2);
-					}
-				} else {
-					if(verbosity > 0) {
-						syslog(LOG_NOTICE,"pcap_filename: [%s] already exists, do not overwriting\n", str2);
 					}
 				}
 			}
@@ -1318,18 +1304,9 @@ Call *new_skinny_channel(int state, char *data, int datalen, struct pcap_pkthdr 
 					sprintf(str2, "%s/%s/%s.pcap", call->dirname().c_str(), opt_newdir ? "ALL" : "", call->get_fbasename_safe());
 				}
 				call->pcapfilename = call->dirname() + (opt_newdir ? "/ALL/" : "/") + call->get_fbasename_safe() + ".pcap";
-				if(!file_exists(str2)) {
-					call->set_f_pcap(pcap_dump_open(HANDLE_FOR_PCAP_SAVE, str2));
-					if(call->get_f_pcap() == NULL) {
-						syslog(LOG_NOTICE,"pcap [%s] cannot be opened: %s\n", str2, pcap_geterr(HANDLE_FOR_PCAP_SAVE));
-					}
+				if(call->getPcap()->open(str2)) {
 					if(verbosity > 3) {
 						syslog(LOG_NOTICE,"pcap_filename: [%s]\n", str2);
-					}
-				} else {
-					call->set_f_pcap(NULL);
-					if(verbosity > 0) {
-						syslog(LOG_NOTICE,"pcap_filename: [%s] already exists, do not overwriting\n", str2);
 					}
 				}
 			}

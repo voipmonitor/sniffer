@@ -233,6 +233,7 @@ int opt_convert_dlt_sll_to_en10 = 0;
 int opt_mysqlcompress = 1;
 int opt_cdr_ua_enable = 1;
 unsigned long long cachedirtransfered = 0;
+unsigned int opt_maxpcapsize_mb = 0;
 
 unsigned int opt_maxpoolsize = 0;
 unsigned int opt_maxpooldays = 0;
@@ -1582,6 +1583,9 @@ int load_config(char *fname) {
 		opt_pcap_queue_iface_separate_threads = 1;
 	}
 
+	if((value = ini.GetValue("general", "maxpcapsize", NULL))) {
+		opt_maxpcapsize_mb = atoi(value);
+	}
 	/*
 	
 	packetbuffer default configuration

@@ -857,7 +857,7 @@ void convert_filesindex() {
 							if (string(de2->d_name) == ".." or string(de2->d_name) == ".") continue;
 							stringstream fn;
 							fn << de->d_name << "/" << hour << "/" << min << "/SIP/" << de2->d_name;
-							unsigned long long size = GetFileSize(fn.str());
+							unsigned long long size = GetFileSizeDU(fn.str());
 							if(size == 0) size = 1;
 							sipsize += size;
 							sipfile << fn.str() << ":" << size << "\n";
@@ -878,7 +878,7 @@ void convert_filesindex() {
 							if (string(de2->d_name) == ".." or string(de2->d_name) == ".") continue;
 							stringstream fn;
 							fn << de->d_name << "/" << hour << "/" << min << "/RTP/" << de2->d_name;
-							unsigned long long size = GetFileSize(fn.str());
+							unsigned long long size = GetFileSizeDU(fn.str());
 							if(size == 0) size = 1;
 							rtpsize += size;
 							rtpfile << fn.str() << ":" << size << "\n";
@@ -900,7 +900,7 @@ void convert_filesindex() {
 							if (string(de2->d_name) == ".." or string(de2->d_name) == ".") continue;
 							stringstream fn;
 							fn << de->d_name << "/" << hour << "/" << min << "/GRAPH/" << de2->d_name;
-							unsigned long long size = GetFileSize(fn.str());
+							unsigned long long size = GetFileSizeDU(fn.str());
 							if(size == 0) size = 1;
 							graphsize += size;
 							graphfile << fn.str() << ":" << size << "\n";
@@ -920,7 +920,7 @@ void convert_filesindex() {
 							if (string(de2->d_name) == ".." or string(de2->d_name) == ".") continue;
 							stringstream fn;
 							fn << de->d_name << "/" << hour << "/" << min << "/AUDIO/" << de2->d_name;
-							unsigned long long size = GetFileSize(fn.str());
+							unsigned long long size = GetFileSizeDU(fn.str());
 							if(size == 0) size = 1;
 							audiosize += size;
 							audiofile << fn.str() << ":" << size << "\n";
@@ -1069,7 +1069,7 @@ void check_spooldir_filesindex(const char *path, const char *dirfilter) {
 								}
 								filesInIndex.push_back(buf);
 								long long unsigned size = posSizeSeparator ? atoll(posSizeSeparator + 1) : 0;
-								long long unsigned fileSize = GetFileSize((basedir + "/" + buf).c_str());
+								long long unsigned fileSize = GetFileSizeDU((basedir + "/" + buf).c_str());
 								if(fileSize == 0) {
 									fileSize = 1;
 								}

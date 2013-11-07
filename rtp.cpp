@@ -142,7 +142,8 @@ int get_ticks_bycodec(int codec) {
 }
 
 /* constructor */
-RTP::RTP() {
+RTP::RTP() 
+ : graph(this) {
 	samplerate = 8000;
 	first = true;
 	first_packet_time = 0;
@@ -248,23 +249,6 @@ RTP::~RTP() {
 	free(channel_adapt);
 	free(channel_record);
 	free(frame);
-
-	if(opt_gzipGRAPH && gfileGZ.is_open()) {
-		gfileGZ.close();
-	} else if(gfile.is_open()){
-		gfile.close();
-	}
-
-	if(gfilename[0] != '\0') {
-		if(owner) { 
-			owner->addtofilesqueue(string(gfilename), "graphsize");
-			if(opt_cachedir[0] != '\0') {
-				owner->addtocachequeue(string(gfilename));
-			}
-		} else {
-			syslog(LOG_ERR, "error - gfilename[%s] does not have owner", gfilename);
-		}
-	}
 
 	if(gfileRAW_buffer) {
 		free(gfileRAW_buffer);
@@ -1021,52 +1005,27 @@ RTP::update_stats() {
 		if(owner && (owner->flags & FLAG_SAVEGRAPH)) {
 			nintervals += lost - stats.last_lost;
 			while(nintervals > 20) {
-				if(opt_gzipGRAPH) {
-					// compressed
-					if(gfileGZ.is_open()) {
-						//gfile << endl;
-						//gfileGZ.write("\n", 1);
-						gfileGZ.write((char*)&graph_delimiter, 4);
-					}
-				} else {
-					// uncompressed
-					if(gfile.is_open()) {
-						//gfile << endl;
-						//gfile.write("\n", 1);
-						gfile.write((char*)&graph_delimiter, 4);
-					}
+				if(this->graph.isOpen()) {
+					//gfile << endl;
+					//gfile.write("\n", 1);
+					this->graph.write((char*)&graph_delimiter, 4);
 				}
 				nintervals -= 20;
 			}
 		}
 	} else {
 		if(owner && (owner->flags & FLAG_SAVEGRAPH)) {
-			if(opt_gzipGRAPH && gfileGZ.is_open()) {
-				// compressed
+			if(this->graph.isOpen()) {
 				if(nintervals > 20) {
 					/* after 20 packets, send new line */
-//					gfileGZ << endl;
-					gfileGZ.write((char*)&graph_delimiter, 4);
+					//gfileGZ << endl;
+					this->graph.write((char*)&graph_delimiter, 4);
 					nintervals -= 20;
 				}
-//				gfileGZ << s->fdelay << ":" << jitter << ";";
+				//gfileGZ << s->fdelay << ":" << jitter << ";";
 				float tmp = s->fdelay;
 				if(tmp == graph_delimiter) tmp = graph_delimiter - 1;
-				gfileGZ.write((char*)&tmp, 4);
-				nintervals++;
-			} else if(gfile.is_open()) {
-				// uncompressed
-				if(nintervals > 20) {
-					/* after 20 packets, send new line */
-					//gfile << endl;
-					gfile.write((char*)&graph_delimiter, 4);
-					nintervals -= 20;
-				}
-				//gfile << s->fdelay << ":" << transit << ";";
-//				gfile << s->fdelay << ":" << jitter << ";";
-				float tmp = s->fdelay;
-				if(tmp == graph_delimiter) tmp = graph_delimiter - 1;
-				gfile.write((char*)&tmp, 4);
+				this->graph.write((char*)&tmp, 4);
 				nintervals++;
 			}
 		}

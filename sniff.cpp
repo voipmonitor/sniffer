@@ -464,20 +464,16 @@ inline void save_packet(Call *call, struct pcap_pkthdr *header, const u_char *pa
 		switch(type) {
 		case TYPE_SKINNY:
 		case TYPE_SIP:
-			if(call->get_fsip_pcap() != NULL){
+			if(call->getPcapSip()->isOpen()){
 				call->set_last_packet_time(header->ts.tv_sec);
-				pcap_dump((u_char *) call->get_fsip_pcap(), header, packet);
-				if (opt_packetbuffered) 
-					pcap_dump_flush(call->get_fsip_pcap());
+				call->getPcapSip()->dump(header, packet);
 			}
 			break;
 		case TYPE_RTP:
 		case TYPE_RTCP:
-			if(call->get_frtp_pcap() != NULL){
+			if(call->getPcapRtp()->isOpen()){
 				call->set_last_packet_time(header->ts.tv_sec);
-				pcap_dump((u_char *) call->get_frtp_pcap(), header, packet);
-				if (opt_packetbuffered) 
-					pcap_dump_flush(call->get_frtp_pcap());
+				call->getPcapRtp()->dump(header, packet);
 			} else {
 				static char str2[1024];
 				if(opt_cachedir[0] != '\0') {
@@ -485,34 +481,18 @@ inline void save_packet(Call *call, struct pcap_pkthdr *header, const u_char *pa
 				} else {
 					snprintf(str2, 1023, "%s/%s/%s.pcap", call->dirname().c_str(), opt_newdir ? "RTP" : "", call->get_fbasename_safe());
 				}
-				if(!file_exists(str2)) {
-					call->set_frtp_pcap(pcap_dump_open(HANDLE_FOR_PCAP_SAVE, str2));
-					if(call->get_frtp_pcap() == NULL) {
-						syslog(LOG_NOTICE,"pcap [%s] cannot be opened: %s\n", str2, pcap_geterr(HANDLE_FOR_PCAP_SAVE));
-					} else {
-						if(verbosity > 3) syslog(LOG_NOTICE,"pcap_filename: [%s]\n", str2);
-						call->set_last_packet_time(header->ts.tv_sec);
-						pcap_dump((u_char *) call->get_frtp_pcap(), header, packet);
-						if (opt_packetbuffered) 
-							pcap_dump_flush(call->get_frtp_pcap());
-
-					}
-				} else {
-					/* do not spam save_packet runs for every packet
-					if(verbosity > 0) {
-						syslog(LOG_NOTICE,"pcap_filename: [%s] already exists, do not overwriting\n", str2);
-					}
-					*/
+				if(call->getPcapRtp()->open(str2)) {
+					if(verbosity > 3) syslog(LOG_NOTICE,"pcap_filename: [%s]\n", str2);
+					call->set_last_packet_time(header->ts.tv_sec);
+					call->getPcapRtp()->dump(header, packet);
 				}
 			}
 			break;
 		}
 	} else {
-		if (call->get_f_pcap() != NULL){
+		if (call->getPcap()->isOpen()){
 			call->set_last_packet_time(header->ts.tv_sec);
-			pcap_dump((u_char *) call->get_f_pcap(), header, packet);
-			if (opt_packetbuffered) 
-				pcap_dump_flush(call->get_f_pcap());
+			call->getPcap()->dump(header, packet);
 		}
 	}
 	
@@ -1407,9 +1387,11 @@ Call *new_invite_register(int sip_method, char *data, int datalen, struct pcap_p
 	}
 
 	if(call->type == REGISTER && (call->flags & FLAG_SAVEREGISTER)) {
+		/****
 		call->set_f_pcap(NULL);
 		call->set_fsip_pcap(NULL);
 		call->set_frtp_pcap(NULL);
+		****/
 		char filenamestr[32];
 		sprintf(filenamestr, "%u%u", (unsigned int)header->ts.tv_sec, (unsigned int)header->ts.tv_usec);
 		if(opt_newdir and opt_pcap_split) {
@@ -1426,26 +1408,20 @@ Call *new_invite_register(int sip_method, char *data, int datalen, struct pcap_p
 			}
 			call->fname2 = num + header->ts.tv_usec;
 			call->pcapfilename = call->sip_pcapfilename = call->dirname() + (opt_newdir ? "/REG" : "") + "/" + filenamestr + ".pcap";
-			if(!file_exists(str2)) {
-				call->set_fsip_pcap(pcap_dump_open(HANDLE_FOR_PCAP_SAVE, str2));
-				if(call->get_fsip_pcap() == NULL) {
-					syslog(LOG_NOTICE,"pcap [%s] cannot be opened: %s\n", str2, pcap_geterr(HANDLE_FOR_PCAP_SAVE));
-				}
+			if(call->getPcapSip()->open(str2)) {
 				if(verbosity > 3) {
 					syslog(LOG_NOTICE,"pcap_filename: [%s]\n", str2);
-				}
-			} else {
-				if(verbosity > 0) {
-					syslog(LOG_NOTICE,"pcap_filename: [%s] already exists, do not overwriting\n", str2);
 				}
 			}
 		}
 	} else if((call->type != REGISTER && (call->flags & (FLAG_SAVESIP | FLAG_SAVERTP))) || 
 		(call->isfax && opt_saveudptl)) {
 		// open one pcap for all packets or open SIP and RTP separatly
+		/****
 		call->set_f_pcap(NULL);
 		call->set_fsip_pcap(NULL);
 		call->set_frtp_pcap(NULL);
+		****/
 		if(opt_newdir and opt_pcap_split) {
 			//SIP
 			if(opt_cachedir[0] != '\0') {
@@ -1454,17 +1430,9 @@ Call *new_invite_register(int sip_method, char *data, int datalen, struct pcap_p
 				sprintf(str2, "%s/%s/%s.pcap", call->dirname().c_str(), opt_newdir ? "SIP" : "", call->get_fbasename_safe());
 			}
 			call->pcapfilename = call->sip_pcapfilename = call->dirname() + (opt_newdir ? "/SIP" : "") + "/" + call->get_fbasename_safe() + ".pcap";
-			if(!file_exists(str2)) {
-				call->set_fsip_pcap(pcap_dump_open(HANDLE_FOR_PCAP_SAVE, str2));
-				if(call->get_fsip_pcap() == NULL) {
-					syslog(LOG_NOTICE,"pcap [%s] cannot be opened: %s\n", str2, pcap_geterr(HANDLE_FOR_PCAP_SAVE));
-				}
+			if(call->getPcapSip()->open(str2)) {
 				if(verbosity > 3) {
 					syslog(LOG_NOTICE,"pcap_filename: [%s]\n", str2);
-				}
-			} else {
-				if(verbosity > 0) {
-					syslog(LOG_NOTICE,"pcap_filename: [%s] already exists, do not overwriting\n", str2);
 				}
 			}
 			//RTP
@@ -1496,18 +1464,9 @@ Call *new_invite_register(int sip_method, char *data, int datalen, struct pcap_p
 				sprintf(str2, "%s/%s/%s.pcap", call->dirname().c_str(), opt_newdir ? "ALL" : "", call->get_fbasename_safe());
 			}
 			call->pcapfilename = call->dirname() + (opt_newdir ? "/ALL/" : "/") + call->get_fbasename_safe() + ".pcap";
-			if(!file_exists(str2)) {
-				call->set_f_pcap(pcap_dump_open(HANDLE_FOR_PCAP_SAVE, str2));
-				if(call->get_f_pcap() == NULL) {
-					syslog(LOG_NOTICE,"pcap [%s] cannot be opened: %s\n", str2, pcap_geterr(HANDLE_FOR_PCAP_SAVE));
-				}
+			if(call->getPcap()->open(str2)) {
 				if(verbosity > 3) {
 					syslog(LOG_NOTICE,"pcap_filename: [%s]\n", str2);
-				}
-			} else {
-				call->set_f_pcap(NULL);
-				if(verbosity > 0) {
-					syslog(LOG_NOTICE,"pcap_filename: [%s] already exists, do not overwriting\n", str2);
 				}
 			}
 		}
@@ -2938,13 +2897,8 @@ repeatrtpB:
 			}
 			if((call->flags & (FLAG_SAVESIP | FLAG_SAVEREGISTER | FLAG_SAVERTP)) || (call->isfax && opt_saveudptl)) {
 				sprintf(str2, "%s/%s.pcap", call->dirname().c_str(), s);
-				if(!file_exists(str2)) {
-					call->set_f_pcap(pcap_dump_open(HANDLE_FOR_PCAP_SAVE, str2));
+				if(call->getPcap()->open(str2)) {
 					call->pcapfilename = call->dirname() + "/" + call->get_fbasename_safe() + ".pcap";
-				} else {
-					if(verbosity > 0) {
-						syslog(LOG_NOTICE,"pcap_filename: [%s] already exists, do not overwriting\n", str2);
-					}
 				}
 			}
 

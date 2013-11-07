@@ -278,23 +278,14 @@ public:
 	int add_ip_port(in_addr_t addr, unsigned short port, char *ua, unsigned long ua_len, bool iscaller, int *rtpmap);
 
 	/**
-	 * @brief get file descriptor of the writing pcap file  
+	 * @brief get pointer to PcapDumper of the writing pcap file  
 	 *
-	 * @return file descriptor of the writing pcap file
+	 * @return pointer to PcapDumper
 	*/
-	pcap_dumper_t *get_fsip_pcap() { return fsip_pcap; };
-	pcap_dumper_t *get_frtp_pcap() { return frtp_pcap; };
-	pcap_dumper_t *get_f_pcap() { return f_pcap; };
+	PcapDumper *getPcap() { return(&this->pcap); }
+	PcapDumper *getPcapSip() { return(&this->pcapSip); }
+	PcapDumper *getPcapRtp() { return(&this->pcapRtp); }
 	
-	/**
-	 * @brief set file descriptor of the writing pcap file  
-	 *
-	 * @param file descriptor
-	*/
-	void set_fsip_pcap(pcap_dumper_t *f_pcap) { this->fsip_pcap = f_pcap; };
-	void set_frtp_pcap(pcap_dumper_t *f_pcap) { this->frtp_pcap = f_pcap; };
-	void set_f_pcap(pcap_dumper_t *f_pcap) { this->f_pcap = f_pcap; };
-
 	/**
 	 * @brief get time of the last seen packet which belongs to this call
 	 *
@@ -425,7 +416,7 @@ public:
 	*/
 	void addtocachequeue(string file);
 
-	void addtofilesqueue(string file, string column);
+	void addtofilesqueue(string file, string column, u_int64_t writeBytes);
 
 
 	void handle_dtmf(char dtmf, double dtmf_time, unsigned int saddr, unsigned int daddr);
@@ -436,9 +427,9 @@ private:
 	in_addr_t addr[MAX_IP_PER_CALL];	//!< IP address from SDP (indexed together with port)
 	unsigned short port[MAX_IP_PER_CALL];	//!< port number from SDP (indexed together with IP)
 	bool iscaller[MAX_IP_PER_CALL];         //!< is that RTP stream from CALLER party? 
-	pcap_dumper_t *f_pcap;
-	pcap_dumper_t *fsip_pcap;
-	pcap_dumper_t *frtp_pcap;
+	PcapDumper pcap;
+	PcapDumper pcapSip;
+	PcapDumper pcapRtp;
 };
 
 typedef struct {

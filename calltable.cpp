@@ -118,7 +118,10 @@ extern SqlDb *sqlDb;
 extern CustPhoneNumberCache *custPnCache;
 
 /* constructor */
-Call::Call(char *call_id, unsigned long call_id_len, time_t time, void *ct) {
+Call::Call(char *call_id, unsigned long call_id_len, time_t time, void *ct) :
+ pcap(PcapDumper::na, this),
+ pcapSip(PcapDumper::sip, this),
+ pcapRtp(PcapDumper::rtp, this) {
 	isfax = 0;
 	seenudptl = 0;
 	last_callercodec = -1;
@@ -129,9 +132,6 @@ Call::Call(char *call_id, unsigned long call_id_len, time_t time, void *ct) {
 	last_packet_time = time;
 	this->call_id = string(call_id, call_id_len);
 	this->call_id_len = call_id_len;
-	f_pcap = NULL;
-	fsip_pcap = NULL;
-	frtp_pcap = NULL;
 	whohanged = -1;
 	seeninvite = false;
 	seeninviteok = false;
@@ -243,7 +243,7 @@ Call::hashRemove() {
 }
 
 void
-Call::addtofilesqueue(string file, string column) {
+Call::addtofilesqueue(string file, string column, u_int64_t writeBytes) {
 
 	if(!opt_filesclean or opt_nocdr or file == "" or !isSqlDriver("mysql") or !file_exists((char*)file.c_str())) return;
 
@@ -252,7 +252,13 @@ Call::addtofilesqueue(string file, string column) {
 		file = tmp + "/" + file;
 	}
 
-	unsigned long long size = GetFileSize(file);
+	unsigned long long size = GetFileSizeDU(file);
+	if(writeBytes) {
+		writeBytes = GetDU(writeBytes);
+		if(writeBytes > size) {
+			size = writeBytes;
+		}
+	}
 
 	if(size == -1) {
 		//error or file does not exists
@@ -347,6 +353,7 @@ Call::~Call(){
 	}
 	pthread_mutex_lock(&listening_worker_run_lock);
 
+	/****
 	if (get_fsip_pcap() != NULL){
 		pcap_dump_flush(get_fsip_pcap());
 		pcap_dump_close(get_fsip_pcap());
@@ -374,6 +381,7 @@ Call::~Call(){
 			addtocachequeue(pcapfilename);
 		}
 	}
+	****/
 
 	if(audiobuffer1) delete audiobuffer1;
 	if(audiobuffer2) delete audiobuffer2;
@@ -400,10 +408,8 @@ Call::closeRawFiles() {
 		}
 		// close GRAPH files
 		if(opt_saveGRAPH || (flags & FLAG_SAVEGRAPH)) {
-			if(opt_gzipGRAPH && rtp[i]->gfileGZ.is_open()) {
-				rtp[i]->gfileGZ.close();
-			} else if(rtp[i]->gfile.is_open()){
-				rtp[i]->gfile.close();
+			if(opt_gzipGRAPH && rtp[i]->graph.isOpen()) {
+				rtp[i]->graph.close();
 			}
 		}
 	}
@@ -562,25 +568,13 @@ Call::read_rtp(unsigned char* data, int datalen, struct pcap_pkthdr *header, u_i
 	if(ssrc_n < MAX_SSRC_PER_CALL) {
 		// close previouse graph files to save RAM (but only if > 10 
 		if(flags & FLAG_SAVEGRAPH && ssrc_n > 6) {
-			if(opt_gzipGRAPH) {
-				if(iscaller) {
-					if(lastcallerrtp && lastcallerrtp->gfileGZ.is_open()) {
-						lastcallerrtp->gfileGZ.close();
-					}
-				} else {
-					if(lastcalledrtp && lastcalledrtp->gfileGZ.is_open()) {
-						lastcalledrtp->gfileGZ.close();
-					}
+			if(iscaller) {
+				if(lastcallerrtp && lastcallerrtp->graph.isOpen()) {
+					lastcallerrtp->graph.close();
 				}
 			} else {
-				if(iscaller) {
-					if(lastcallerrtp && lastcallerrtp->gfile.is_open()) {
-						lastcallerrtp->gfile.close();
-					}
-				} else {
-					if(lastcalledrtp && lastcalledrtp->gfile.is_open()) {
-						lastcalledrtp->gfile.close();
-					}
+				if(lastcalledrtp && lastcalledrtp->graph.isOpen()) {
+					lastcalledrtp->graph.close();
 				}
 			}
 		}
@@ -616,16 +610,8 @@ Call::read_rtp(unsigned char* data, int datalen, struct pcap_pkthdr *header, u_i
 		}
 		sprintf(rtp[ssrc_n]->gfilename, "%s/%s/%s.%d.graph%s", dirname().c_str(), opt_newdir ? "GRAPH" : "", get_fbasename_safe(), ssrc_n, opt_gzipGRAPH ? ".gz" : "");
 		if(flags & FLAG_SAVEGRAPH) {
-			if(opt_gzipGRAPH) {
-				rtp[ssrc_n]->gfileGZ.open(tmp);
-				if(rtp[ssrc_n]->gfileGZ.is_open()) {
-					rtp[ssrc_n]->gfileGZ.write((char*)&graph_version, 4); //every graph starts with graph_version
-				}
-			} else {
-				rtp[ssrc_n]->gfile.open(tmp);
-				if(rtp[ssrc_n]->gfile.is_open()) {
-					rtp[ssrc_n]->gfile.write((char*)&graph_version, 4); //every graph starts with graph_version 
-				}
+			if(rtp[ssrc_n]->graph.open(tmp)) {
+				rtp[ssrc_n]->graph.write((char*)&graph_version, 4); //every graph starts with graph_version 
 			}
 		}
 		rtp[ssrc_n]->gfileRAW = NULL;
@@ -654,6 +640,10 @@ void Call::stoprecording() {
 		char str2[2048];
 
 		this->flags = 0;
+		this->pcap.remove();
+		this->pcapSip.remove();
+		this->pcapRtp.remove();
+		/****
 		if(this->get_fsip_pcap() != NULL) {
 			pcap_dump_flush(this->get_fsip_pcap());
 			pcap_dump_close(this->get_fsip_pcap());
@@ -687,6 +677,7 @@ void Call::stoprecording() {
 			}
 			unlink(str2);	
 		}
+		****/
 
 		this->recordstopped = 1;
 		if(verbosity >= 1) {
@@ -1237,7 +1228,7 @@ Call::convertRawToWav() {
 	}
 	string tmp;
 	tmp.append(out);
-	addtofilesqueue(tmp, "audiosize");
+	addtofilesqueue(tmp, "audiosize", 0);
  
 	return 0;
 }
@@ -2990,6 +2981,9 @@ Calltable::cleanup( time_t currtime ) {
 
 void Call::saveregister() {
 	hashRemove();
+	this->pcap.close();
+	this->pcapSip.close();
+	/****
 	if (get_fsip_pcap() != NULL){
 		pcap_dump_flush(get_fsip_pcap());
 		pcap_dump_close(get_fsip_pcap());
@@ -3008,6 +3002,7 @@ void Call::saveregister() {
 		}
 		set_f_pcap(NULL);
 	}
+	****/
 	// we have to close all raw files as there can be data in buffers 
 	closeRawFiles();
 	/* move call to queue for mysql processing */

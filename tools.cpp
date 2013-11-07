@@ -23,10 +23,12 @@
 #include <algorithm> // for std::min
 #include <iostream>
 
-
+#include "calltable.h"
+#include "rtp.h"
 #include "tools.h"
 
 extern char mac[32];
+extern int verbosity;
 
 int getUpdDifTime(struct timeval *before)
 {
@@ -233,6 +235,32 @@ unsigned long long GetFileSize(std::string filename)
 	return rc == 0 ? stat_buf.st_size : -1;
 }
 
+unsigned long long GetFileSizeDU(std::string filename)
+{
+	return(GetDU(GetFileSize(filename)));
+}
+
+unsigned long long GetDU(unsigned long long fileSize) {
+	static int block_size = -1;
+	if(block_size == -1) {
+		extern char opt_chdir[1024];
+		struct stat fi;
+		if(!stat(opt_chdir, &fi)) {
+			block_size = fi.st_blksize;
+		} else {
+			block_size = 0;
+		}
+	}
+	if(fileSize >= 0 && block_size) {
+		if(fileSize == 0) {
+			fileSize = block_size;
+		} else {
+			fileSize = (fileSize / block_size * block_size) + (fileSize % block_size ? block_size : 0);
+		}
+	}
+	return(fileSize);
+}
+
 void ntoa(char *res, unsigned int addr) {
 	struct in_addr in;                                
 	in.s_addr = addr;
@@ -247,3 +275,160 @@ string escapeshellR(string &buf) {
         }
 	return buf;
 }       
+
+
+PcapDumper::PcapDumper(eTypePcapDump type, class Call *call, bool updateFilesQueueAtClose) {
+	this->type = type;
+	this->call = call;
+	this->updateFilesQueueAtClose = updateFilesQueueAtClose;
+	this->capsize = 0;
+	this->size = 0;
+	this->handle = NULL;
+}
+
+PcapDumper::~PcapDumper() {
+	if(this->handle) {
+		this->close(this->updateFilesQueueAtClose);
+	}
+}
+
+bool PcapDumper::open(const char *fileName) {
+	if(this->handle) {
+		this->close(this->updateFilesQueueAtClose);
+		syslog(LOG_NOTICE, "pcapdumper: reopen %s -> %s", this->fileName.c_str(), fileName);
+	}
+	if(file_exists((char*)fileName)) {
+		if(verbosity > 2) {
+			syslog(LOG_NOTICE,"pcapdumper: [%s] already exists, do not overwriting", fileName);
+		}
+	}
+	extern int pcap_dlink;
+	extern pcap_t *handle;
+	extern pcap_t *handle_dead_EN10MB;
+	extern int opt_convert_dlt_sll_to_en10;
+	pcap_t *_handle = pcap_dlink ==DLT_LINUX_SLL && opt_convert_dlt_sll_to_en10 && handle_dead_EN10MB ? 
+			   handle_dead_EN10MB : 
+			   handle;
+	this->capsize = 0;
+	this->size = 0;
+	this->handle = pcap_dump_open(_handle, fileName);
+	if(!this->handle) {
+		syslog(LOG_NOTICE, "pcapdumper: error open dump handle to file %s: %s", fileName, pcap_geterr(handle));
+	}
+	this->fileName = fileName;
+	return(this->handle != NULL);
+}
+
+#define PCAP_DUMPER_PACKET_HEADER_SIZE 16
+#define PCAP_DUMPER_HEADER_SIZE 24
+
+void PcapDumper::dump(pcap_pkthdr* header, const u_char *packet) {
+	extern unsigned int opt_maxpcapsize_mb;
+	if(this->handle && 
+	   (!opt_maxpcapsize_mb || this->capsize < opt_maxpcapsize_mb * 1024 * 1024)) {
+		pcap_dump((u_char*)this->handle, header, packet);
+		extern int opt_packetbuffered;
+		if(opt_packetbuffered) {
+			pcap_dump_flush(this->handle);
+		}
+		this->capsize += header->caplen + PCAP_DUMPER_PACKET_HEADER_SIZE;
+		this->size += header->len + PCAP_DUMPER_PACKET_HEADER_SIZE;
+	}
+}
+
+void PcapDumper::close(bool updateFilesQueue) {
+	if(this->handle) {
+		pcap_dump_flush(this->handle);
+		pcap_dump_close(this->handle);
+		if(updateFilesQueue && this->call) {
+			this->call->addtofilesqueue(this->fileName.c_str(), 
+						    type == rtp ? "rtpsize" : 
+						    call->type == REGISTER ? "regsize" : "sipsize",
+						    this->capsize + PCAP_DUMPER_HEADER_SIZE);
+			extern char opt_cachedir[1024];
+			if(opt_cachedir[0] != '\0') {
+				this->call->addtocachequeue(this->fileName.c_str());
+			}
+		}
+		this->handle = NULL;
+	}
+}
+
+void PcapDumper::remove(bool updateFilesQueue) {
+	if(this->handle) {
+		this->close(false);
+		unlink(this->fileName.c_str());
+	}
+}
+
+
+extern int opt_gzipGRAPH;
+
+RtpGraphSaver::RtpGraphSaver(RTP *rtp, bool updateFilesQueueAtClose) {
+	this->rtp = rtp;
+	this->updateFilesQueueAtClose = updateFilesQueueAtClose;
+	this->size = 0;
+}
+
+RtpGraphSaver::~RtpGraphSaver() {
+	if(this->isOpen()) {
+		this->close(this->updateFilesQueueAtClose);
+	}
+}
+
+bool RtpGraphSaver::open(const char *fileName) {
+	if(this->isOpen()) {
+		this->close(this->updateFilesQueueAtClose);
+		syslog(LOG_NOTICE, "graphsaver: reopen %s -> %s", this->fileName.c_str(), fileName);
+	}
+	if(file_exists((char*)fileName)) {
+		if(verbosity > 2) {
+			syslog(LOG_NOTICE,"graphsaver: [%s] already exists, do not overwriting", fileName);
+		}
+	}
+	if(opt_gzipGRAPH) {
+		this->streamgz.open(fileName);
+	} else {
+		this->stream.open(fileName);
+	}
+	if(!this->isOpen()) {
+		syslog(LOG_NOTICE, "graphsaver: error open file %s", fileName);
+	}
+	this->size = 0;
+	this->fileName = fileName;
+	return(this->isOpen());
+
+}
+
+void RtpGraphSaver::write(char *buffer, int length) {
+	if(this->isOpen()) {
+		if(opt_gzipGRAPH) {
+			this->streamgz.write(buffer, length);
+			//// !!!! size
+		} else {
+			this->stream.write(buffer, length);
+			this->size += length;
+		}
+	}
+}
+
+void RtpGraphSaver::close(bool updateFilesQueue) {
+	if(this->isOpen()) {
+		if(opt_gzipGRAPH) {
+			this->streamgz.close();
+		} else {
+			this->stream.close();
+		}
+		if(updateFilesQueue) {
+			if(this->rtp->call_owner) { 
+				((Call*)this->rtp->call_owner)->addtofilesqueue(this->fileName.c_str(), "graphsize", this->size);
+				extern char opt_cachedir[1024];
+				if(opt_cachedir[0] != '\0') {
+					((Call*)this->rtp->call_owner)->addtocachequeue(this->fileName.c_str());
+				}
+			} else {
+				syslog(LOG_ERR, "graphsaver: gfilename[%s] does not have owner", this->fileName.c_str());
+			}
+		}
+	}
+}
