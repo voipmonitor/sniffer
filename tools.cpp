@@ -257,6 +257,7 @@ unsigned long long GetDU(unsigned long long fileSize) {
 		} else {
 			fileSize = (fileSize / block_size * block_size) + (fileSize % block_size ? block_size : 0);
 		}
+		fileSize += 100; // inode / directory item size
 	}
 	return(fileSize);
 }
