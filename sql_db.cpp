@@ -179,7 +179,6 @@ string SqlDb_row::keyvalList(string separator) {
 
 
 SqlDb::SqlDb() {
-	this->sysLog = false;
 	this->clearLastError();
 	this->maxQueryPass = UINT_MAX;
 	this->loginTimeout = (ulong)NULL;
@@ -202,10 +201,6 @@ void SqlDb::setConnectParameters(string server, string user, string password, st
 
 void SqlDb::setLoginTimeout(ulong loginTimeout) {
 	this->loginTimeout = loginTimeout;
-}
-
-void SqlDb::enableSysLog() {
-	this->sysLog = true;
 }
 
 bool SqlDb::reconnect() {
@@ -333,7 +328,7 @@ int SqlDb::getIndexField(string fieldName) {
 
 void SqlDb::setLastErrorString(string lastErrorString, bool sysLog) {
 	this->lastErrorString = lastErrorString;
-	if(sysLog && lastErrorString != "" && this->sysLog) {
+	if(sysLog && lastErrorString != "") {
 		syslog(LOG_ERR, "%s", lastErrorString.c_str());
 	}
 }
@@ -891,7 +886,6 @@ MySqlStore_process::MySqlStore_process(int id, const char *host, const char *use
 	this->sqlDb = new SqlDb_mysql();
 	this->sqlDb->setConnectParameters(host, user, password, database);
 	this->sqlDb->connect();
-	this->sqlDb->enableSysLog();
 	pthread_mutex_init(&this->lock_mutex, NULL);
 	pthread_create(&this->thread, NULL, MySqlStore_process_storing, this);
 }

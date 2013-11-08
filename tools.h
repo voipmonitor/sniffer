@@ -15,6 +15,7 @@ int msleep(long msec);
 int file_exists (char * fileName);
 void set_mac();
 int mkdir_r(std::string, mode_t);
+int rmdir_r(const char *dir);
 double ts2double(unsigned int sec, unsigned int usec);
 unsigned long long GetFileSize(std::string filename);
 unsigned long long GetFileSizeDU(std::string filename);
@@ -22,6 +23,7 @@ unsigned long long GetDU(unsigned long long fileSize);
 bool FileExists(char *strFilename);
 void ntoa(char *res, unsigned int addr);
 string escapeshellR(string &);
+unsigned int getNumberOfDayToNow(const char *date);
 
 
 class CircularBuffer

@@ -66,7 +66,6 @@ public:
 	virtual ~SqlDb();
 	void setConnectParameters(string server, string user, string password, string database = "", bool showversion = true);
 	void setLoginTimeout(ulong loginTimeout);
-	void enableSysLog();
 	virtual bool connect() = 0;
 	virtual void disconnect() = 0;
 	virtual bool connected() = 0;
@@ -148,7 +147,6 @@ protected:
 	string conn_database;
 	bool conn_showversion;
 	ulong loginTimeout;
-	bool sysLog;
 	unsigned int maxQueryPass;
 	vector<string> fields;
 	bool enableSqlStringInContent;

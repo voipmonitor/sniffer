@@ -245,6 +245,7 @@ unsigned int opt_maxpoolgraphsize = 0;
 unsigned int opt_maxpoolgraphdays = 0;
 unsigned int opt_maxpoolaudiosize = 0;
 unsigned int opt_maxpoolaudiodays = 0;
+int opt_maxpool_clean_obsolete = 0;
 
 struct pcap_stat pcapstat;
 
@@ -1043,6 +1044,9 @@ int load_config(char *fname) {
 	}
 	if((value = ini.GetValue("general", "maxpoolaudiodays", NULL))) {
 		opt_maxpoolaudiodays = atoi(value);
+	}
+	if((value = ini.GetValue("general", "maxpool_clean_obsolete", NULL))) {
+		opt_maxpool_clean_obsolete = yesno(value);
 	}
 	if((value = ini.GetValue("general", "id_sensor", NULL))) {
 		opt_id_sensor = atoi(value);
@@ -2316,7 +2320,6 @@ int main(int argc, char *argv[]) {
 		sqlDb = sqlDb_odbc;
 		sqlDb->setConnectParameters(odbc_dsn, odbc_user, odbc_password);
 	}
-	sqlDb->enableSysLog();
 	if(!opt_nocdr &&
 	   !(opt_pcap_threaded && opt_pcap_queue && 
 	     !opt_pcap_queue_receive_from_ip.length() &&

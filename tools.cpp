@@ -3,6 +3,7 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
+#include <dirent.h>
 #include <poll.h>
 #include <unistd.h>
 #include <string>
@@ -150,6 +151,24 @@ mkdir_r(std::string s, mode_t mode)
 	return mdret;
 }
 
+int rmdir_r(const char *dir) {
+	if(!file_exists((char*)dir)) {
+		return(0);
+	}
+	DIR* dp = opendir(dir);
+	if (!dp) {
+		return(1);
+	}
+	dirent* de;
+	while (true) {
+		de = readdir(dp);
+		if (de == NULL) break;
+		if (string(de->d_name) == ".." or string(de->d_name) == ".") continue;
+		unlink((string(dir) + "/" + de->d_name).c_str());
+	}
+	closedir(dp);
+	return(rmdir(dir));
+}
 
 /* circular buffer implementation */
 CircularBuffer::CircularBuffer(size_t capacity)
@@ -276,6 +295,23 @@ string escapeshellR(string &buf) {
         }
 	return buf;
 }       
+
+unsigned int getNumberOfDayToNow(const char *date) {
+	int year, month, day;
+	sscanf(date, "%d-%d-%d", &year, &month, &day);
+	time_t now;
+	time(&now);
+	struct tm dateTime;
+	dateTime = *localtime(&now);
+	dateTime.tm_year = year - 1900;
+	dateTime.tm_mon = month - 1;  
+	dateTime.tm_mday = day;
+	dateTime.tm_wday = 0;
+	dateTime.tm_hour = 0; 
+	dateTime.tm_min = 0; 
+	dateTime.tm_sec = 0;
+	return(difftime(now, mktime(&dateTime)) / (24 * 60 * 60));
+}
 
 
 PcapDumper::PcapDumper(eTypePcapDump type, class Call *call, bool updateFilesQueueAtClose) {

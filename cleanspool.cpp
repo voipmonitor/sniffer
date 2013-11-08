@@ -39,6 +39,7 @@ extern unsigned int opt_maxpoolgraphsize;
 extern unsigned int opt_maxpoolgraphdays;
 extern unsigned int opt_maxpoolaudiosize;
 extern unsigned int opt_maxpoolaudiodays;
+extern int opt_maxpool_clean_obsolete;
 extern int opt_cleanspool_interval;
 extern int opt_cleanspool_sizeMB;
 
@@ -799,6 +800,115 @@ void clean_maxpoolaudiodays() {
 	return;
 }
 
+void clean_obsolete_dirs(const char *path) {
+	const char *typeFilesIndex[] = {
+		"sip",
+		"rtp",
+		"graph",
+		"audio"
+	};
+	unsigned int onlyMaxDays[] = {
+		opt_maxpoolsize == 0 && opt_maxpoolsipsize == 0 ? (opt_maxpoolsipdays ? opt_maxpoolsipdays : opt_maxpooldays) : 0,
+		opt_maxpoolsize == 0 && opt_maxpoolrtpsize == 0 ? (opt_maxpoolrtpdays ? opt_maxpoolrtpdays : opt_maxpooldays) : 0,
+		opt_maxpoolsize == 0 && opt_maxpoolgraphsize == 0 ? (opt_maxpoolgraphdays ? opt_maxpoolgraphdays : opt_maxpooldays) : 0,
+		opt_maxpoolsize == 0 && opt_maxpoolaudiosize == 0 ? (opt_maxpoolaudiodays ? opt_maxpoolaudiodays : opt_maxpooldays) : 0
+	};
+	const char *typeFilesFolder[] = {
+		"SIP",
+		"RTP",
+		"GRAPH",
+		"AUDIO",
+		"ALL",
+		"REG"
+	};
+	
+	if(!path) {
+		path = opt_chdir;
+	}
+	DIR* dp = opendir(path);
+	if (!dp) {
+		return;
+	}
+	
+	SqlDb *sqlDb = new SqlDb_mysql();
+	sqlDb->setConnectParameters(mysql_host, mysql_user, mysql_password, mysql_database, 0);
+	sqlDb->connect();
+	
+	dirent* de;
+	string basedir = path;
+	while (true) {
+		de = readdir(dp);
+		if (de == NULL) break;
+		if (string(de->d_name) == ".." or string(de->d_name) == ".") continue;
+		
+		if(de->d_name[0] == '2') {
+			int numberOfDayToNow = getNumberOfDayToNow(de->d_name);
+			if(numberOfDayToNow > 0) {
+				string daydir = basedir + "/" + de->d_name;
+				bool removeHourDir = false;
+				for(int h = 0; h < 24; h++) {
+					char hour[8];
+					sprintf(hour, "%02d", h);
+					string hourdir = daydir + "/" + hour;
+					if(file_exists((char*)hourdir.c_str())) {
+						char id_sensor_str[10];
+						sprintf(id_sensor_str, "%i", opt_id_sensor > 0 ? opt_id_sensor : 0);
+						sqlDb->query((string("SELECT * FROM files where id_sensor = ") + id_sensor_str +
+							     " and datehour = '" + de->d_name + "-" + hour + "'").c_str());
+						SqlDb_row row = sqlDb->fetchRow();
+						bool removeMinDir = false;
+						for(int m = 0; m < 60; m++) {
+							char min[8];
+							sprintf(min, "%02d", m);
+							string mindir = hourdir + "/" + min;
+							if(file_exists((char*)mindir.c_str())) {
+								bool removeMinTypeDir = false;
+								bool keepMainMinTypeFolder = false;
+								for(uint i = 0; i < sizeof(typeFilesIndex) / sizeof(typeFilesIndex[0]); i++) {
+									string mintypedir = mindir + "/" + typeFilesFolder[i];
+									if(file_exists((char*)mintypedir.c_str())) {
+										if(row ?
+										    !atoi(row[string(typeFilesIndex[i]) + "size"].c_str()) :
+										    !onlyMaxDays[i] || numberOfDayToNow > onlyMaxDays[i]) {
+											rmdir_r(mintypedir.c_str());
+											removeMinTypeDir = true;
+										} else {
+											keepMainMinTypeFolder = true;
+										}
+									}
+								}
+								if(!keepMainMinTypeFolder) {
+									for(uint i = sizeof(typeFilesIndex) / sizeof(typeFilesIndex[0]); i < sizeof(typeFilesFolder) / sizeof(typeFilesFolder[0]); i++) {
+										string mintypedir = mindir + "/" + typeFilesFolder[i];
+										if(file_exists((char*)mintypedir.c_str())) {
+											rmdir_r(mintypedir.c_str());
+											removeMinTypeDir = true;
+										}
+									}
+								}
+								if(removeMinTypeDir) {
+									rmdir(mindir.c_str());
+									removeMinDir = true;
+								}
+							}
+						}
+						if(removeMinDir) {
+							rmdir(hourdir.c_str());
+							removeHourDir = true;
+						}
+					}
+				}
+				if(removeHourDir) {
+					rmdir(daydir.c_str());
+				}
+			}
+		}
+	}
+	
+	delete sqlDb;
+	closedir(dp);
+}
+
 void convert_filesindex() {
 	string path = "./";
 	dirent* de;
@@ -1248,6 +1358,10 @@ void *clean_spooldir_run(void *dummy) {
 
 	clean_maxpoolaudiosize();
 	clean_maxpoolaudiodays();
+	
+	if(opt_maxpool_clean_obsolete) {
+		clean_obsolete_dirs();
+	}
 
 	return NULL;
 }

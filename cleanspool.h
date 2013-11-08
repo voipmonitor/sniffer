@@ -4,5 +4,6 @@
 void *clean_spooldir_run(void *dummy);
 void check_spooldir_filesindex(const char *path = NULL, const char *dirfilter = NULL);
 void convert_filesindex();
+void clean_obsolete_dirs(const char *path = NULL);
 
 #endif
