@@ -1860,6 +1860,9 @@ void SqlDb_mysql::createSchema() {
 			ADD `script` tinyint NULL;");
 	this->query("ALTER TABLE filter_telnum\
 			ADD `script` tinyint NULL;");
+	
+	this->query("ALTER TABLE files\
+			ADD `regsize` bigint unsigned DEFAULT 0;");
 
 	sql_noerror = 0;
 
