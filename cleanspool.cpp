@@ -1031,6 +1031,7 @@ void check_spooldir_filesindex(const char *path, const char *dirfilter) {
 			//cycle through 24 hours
 			syslog(LOG_NOTICE, "check files in [%s]", de->d_name);
 			for(int h = 0; h < 24; h++) {
+				unsigned long long sumSizeMissingFilesInIndex[2] = {0, 0};
 				char hour[8];
 				sprintf(hour, "%02d", h);
 				syslog(LOG_NOTICE, " - hour [%s]", hour);
@@ -1110,11 +1111,17 @@ void check_spooldir_filesindex(const char *path, const char *dirfilter) {
 					}
 					for(uint j = 0; j < filesInFolder.size(); j++) {
 						if(!std::binary_search(filesInIndex.begin(), filesInIndex.end(), filesInFolder[j])) {
+							unsigned long long size = GetFileSize((string(opt_chdir) + "/" + filesInFolder[j]).c_str());
+							unsigned long long sizeDU = GetFileSizeDU((string(opt_chdir) + "/" + filesInFolder[j]).c_str());
+							sumSizeMissingFilesInIndex[0] += size;
+							sumSizeMissingFilesInIndex[1] += sizeDU;
 							syslog(LOG_NOTICE,
 							       i < sizeof(typeFilesIndex) / sizeof(typeFilesIndex[0]) ?
-								"ERROR - missing file in index [%s]" :
-								"ERROR - unknown file [%s]", 
-							       filesInFolder[j].c_str());
+								"ERROR - missing file in index [%s] - %llu / %llu" :
+								"ERROR - unknown file [%s] - %llu / %llu", 
+							       filesInFolder[j].c_str(),
+							       size,
+							       sizeDU);
 						}
 					}
 				}
@@ -1174,6 +1181,10 @@ void check_spooldir_filesindex(const char *path, const char *dirfilter) {
 					} else {
 						syslog(LOG_NOTICE, " # MISSING record in files");
 					}
+				}
+				
+				if(sumSizeMissingFilesInIndex[0] || sumSizeMissingFilesInIndex[1]) {
+					syslog(LOG_NOTICE, "sum size of missing file in index: %llu / %llu", sumSizeMissingFilesInIndex[0], sumSizeMissingFilesInIndex[1]);
 				}
 			}
 		}

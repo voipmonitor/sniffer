@@ -408,7 +408,7 @@ Call::closeRawFiles() {
 		}
 		// close GRAPH files
 		if(opt_saveGRAPH || (flags & FLAG_SAVEGRAPH)) {
-			if(opt_gzipGRAPH && rtp[i]->graph.isOpen()) {
+			if(rtp[i]->graph.isOpen()) {
 				rtp[i]->graph.close();
 			}
 		}
