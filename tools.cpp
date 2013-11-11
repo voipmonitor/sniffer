@@ -321,6 +321,8 @@ PcapDumper::PcapDumper(eTypePcapDump type, class Call *call, bool updateFilesQue
 	this->capsize = 0;
 	this->size = 0;
 	this->handle = NULL;
+	this->openError = false;
+	this->openAttempts = 0;
 }
 
 PcapDumper::~PcapDumper() {
@@ -330,6 +332,9 @@ PcapDumper::~PcapDumper() {
 }
 
 bool PcapDumper::open(const char *fileName) {
+	if(this->type == rtp && this->openAttempts >= 10) {
+		return(false);
+	}
 	if(this->handle) {
 		this->close(this->updateFilesQueueAtClose);
 		syslog(LOG_NOTICE, "pcapdumper: reopen %s -> %s", this->fileName.c_str(), fileName);
@@ -349,8 +354,12 @@ bool PcapDumper::open(const char *fileName) {
 	this->capsize = 0;
 	this->size = 0;
 	this->handle = pcap_dump_open(_handle, fileName);
+	++this->openAttempts;
 	if(!this->handle) {
-		syslog(LOG_NOTICE, "pcapdumper: error open dump handle to file %s: %s", fileName, pcap_geterr(handle));
+		if(this->type != rtp || !this->openError) {
+			syslog(LOG_NOTICE, "pcapdumper: error open dump handle to file %s: %s", fileName, pcap_geterr(handle));
+		}
+		this->openError = true;
 	}
 	this->fileName = fileName;
 	return(this->handle != NULL);

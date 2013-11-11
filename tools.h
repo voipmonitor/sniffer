@@ -108,6 +108,8 @@ private:
 	u_int64_t capsize;
 	u_int64_t size;
 	pcap_dumper_t *handle;
+	bool openError;
+	int openAttempts;
 };
 
 class RtpGraphSaver {
