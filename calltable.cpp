@@ -245,14 +245,24 @@ Call::hashRemove() {
 void
 Call::addtofilesqueue(string file, string column, u_int64_t writeBytes) {
 
-	if(!opt_filesclean or opt_nocdr or file == "" or !isSqlDriver("mysql") or !file_exists((char*)file.c_str())) return;
+	if(!opt_filesclean or opt_nocdr or file == "" or !isSqlDriver("mysql")) return;
 
+	bool fileExists = file_exists((char*)file.c_str());
+	bool fileCacheExists = false;
+	string fileCache;
 	if(opt_cachedir[0] != '\0') {
-		string tmp = opt_cachedir;
-		file = tmp + "/" + file;
+		fileCache = string(opt_cachedir) + "/" + file;
+		fileCacheExists = file_exists((char*)fileCache.c_str());
 	}
+	if(!fileExists && !fileCacheExists) return;
 
-	unsigned long long size = GetFileSizeDU(file);
+	unsigned long long size = 0;
+	if(fileExists) {
+		size = GetFileSizeDU(file);
+	}
+	if(!size && fileCacheExists) {
+		size = GetFileSizeDU(fileCache);
+	}
 	if(writeBytes) {
 		writeBytes = GetDU(writeBytes);
 		if(writeBytes > size) {

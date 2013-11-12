@@ -20,7 +20,6 @@
 using namespace std;
 
 
-void rename_file(const char *src, const char *dst);
 void mysqlquerypush(string q);
 
 
@@ -1390,8 +1389,7 @@ void *clean_spooldir_run(void *dummy) {
 			
 			fclose(fdr);
 			fclose(fdw);
-			rename_file(tmpf.c_str(), configfile);
-			unlink(tmpf.c_str());
+			move_file(tmpf.c_str(), configfile);
 
 		}
 	}

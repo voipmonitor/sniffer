@@ -16,6 +16,10 @@ int file_exists (char * fileName);
 void set_mac();
 int mkdir_r(std::string, mode_t);
 int rmdir_r(const char *dir, bool enableSubdir = false, bool withoutRemoveRoot = false);
+unsigned long long cp_r(const char *src, const char *dst, bool move = false);
+inline unsigned long long mv_r(const char *src, const char *dst) { return(cp_r(src, dst, true)); }  
+unsigned long long copy_file(const char *src, const char *dst, bool move = false);
+inline unsigned long long move_file(const char *src, const char *dst) { return(copy_file(src, dst, true)); }
 double ts2double(unsigned int sec, unsigned int usec);
 unsigned long long GetFileSize(std::string filename);
 unsigned long long GetFileSizeDU(std::string filename);

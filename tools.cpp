@@ -20,6 +20,7 @@
 #include <net/if.h>
 #include <syslog.h>
 #include <sys/ioctl.h> 
+#include <sys/sendfile.h>
 
 #include <algorithm> // for std::min
 #include <iostream>
@@ -175,10 +176,113 @@ int rmdir_r(const char *dir, bool enableSubdir, bool withoutRemoveRoot) {
 	}
 	closedir(dp);
 	if(withoutRemoveRoot) {
-		return(true);
+		return(0);
 	} else {
 		return(rmdir(dir));
 	}
+}
+
+unsigned long long cp_r(const char *src, const char *dst, bool move) {
+	if(!file_exists((char*)src)) {
+		return(0);
+	}
+	DIR* dp = opendir(src);
+	if (!dp) {
+		return(0);
+	}
+	unsigned long long bytestransfered = 0;
+	dirent* de;
+	while (true) {
+		de = readdir(dp);
+		if (de == NULL) break;
+		if (string(de->d_name) == ".." or string(de->d_name) == ".") continue;
+		if(de->d_type == DT_DIR) {
+			string srcWithSubdir = string(src) + "/" + de->d_name;
+			string dstWithSubdir = string(dst) + "/" + de->d_name;
+			mkdir(dstWithSubdir.c_str(), 0777);
+			bytestransfered += cp_r(srcWithSubdir.c_str(), dstWithSubdir.c_str(), move);
+			if(move) {
+				rmdir(srcWithSubdir.c_str());
+			}
+		} else {
+			copy_file((string(src) + "/" + de->d_name).c_str(), (string(dst) + "/" + de->d_name).c_str(), move);
+		}
+	}
+	closedir(dp);
+	return(bytestransfered);
+}
+
+unsigned long long copy_file(const char *src, const char *dst, bool move) {
+	int read_fd = 0;
+	int write_fd = 0;
+	struct stat stat_buf;
+	off_t offset = 0;
+	int renamedebug = 1;
+
+	//check if the file exists
+	if(!FileExists((char*)src)) {
+		return(0);
+	}
+
+	/* Open the input file. */
+	read_fd = open (src, O_RDONLY);
+	if(read_fd == -1) {
+		syslog(LOG_ERR, "Cannot open file for reading [%s]\n", src);
+		return(0);
+	}
+		
+	/* Stat the input file to obtain its size. */
+	fstat (read_fd, &stat_buf);
+	/*
+As you can see we are calling fdatasync right before calling posix_fadvise, this makes sure that all data associated with the file handle has been committed to disk. This is not done because there is any danger of loosing data. But it makes sure that that the posix_fadvise has an effect. Since the posix_fadvise function is advisory, the OS will simply ignore it, if it can not comply. At least with Linux, the effect of calling posix_fadvise(fd,0,0,POSIX_FADV_DONTNEED) is immediate. This means if you write a file and call posix_fadvise right after writing a chunk of data, it will probably have no effect at all since the data in question has not been committed to disk yet, and therefore can not be released from cache.
+	*/
+	fdatasync(read_fd);
+	posix_fadvise(read_fd, 0, 0, POSIX_FADV_DONTNEED);
+
+	/* Open the output file for writing, with the same permissions as the source file. */
+	write_fd = open (dst, O_WRONLY | O_CREAT, stat_buf.st_mode);
+	if(write_fd == -1) {
+		char buf[4092];
+		strerror_r(errno, buf, 4092);
+		syslog(LOG_ERR, "Cannot open file for writing [%s] (error:[%s]) leaving the source file [%s] undeleted\n", dst, buf, src);
+		close(read_fd);
+		return(0);
+	}
+	fdatasync(write_fd);
+	posix_fadvise(write_fd, 0, 0, POSIX_FADV_DONTNEED);
+	/* Blast the bytes from one file to the other. */
+	int res = sendfile(write_fd, read_fd, &offset, stat_buf.st_size);
+	unsigned long long bytestransfered = stat_buf.st_size;
+	if(res == -1) {
+		if(renamedebug) {
+			syslog(LOG_ERR, "sendfile failed src[%s]", src);
+			
+		}
+		// fall back to portable way if sendfile fails 
+		char buf[8192];	// if this is 8kb it will stay in L1 cache on most CPUs. Dont know if higher buffer is better for sequential write	
+		ssize_t result;
+		int res;
+		while (1) {
+			result = read(read_fd, &buf[0], sizeof(buf));
+			if (!result) break;
+			res = write(write_fd, &buf[0], result);
+			if(res == -1) {
+				char buf[4092];
+				strerror_r(errno, buf, 4092);
+				syslog(LOG_ERR, "write failed src[%s] error[%s]", src, buf);
+				break;
+			}
+			bytestransfered += res;
+		}
+	}
+	
+	/* clean */
+	close (read_fd);
+	close (write_fd);
+	if(move) {
+		unlink(src);
+	}
+	return(bytestransfered);
 }
 
 /* circular buffer implementation */

@@ -26,11 +26,11 @@
 #include <unistd.h>
 #include <syslog.h>
 #include <sys/resource.h>
-#include <sys/sendfile.h>
 #include <semaphore.h>
 #include <signal.h>
 #include <execinfo.h>
 #include <sstream>
+#include <dirent.h>
 
 #ifdef ISCURL
 #include <curl/curl.h>
@@ -424,77 +424,6 @@ void mysqlquerypush(string q) {
         pthread_mutex_unlock(&mysqlquery_lock);
 }
 
-
-void rename_file(const char *src, const char *dst) {
-	int read_fd = 0;
-	int write_fd = 0;
-	struct stat stat_buf;
-	off_t offset = 0;
-	int renamedebug = 1;
-
-	//check if the file exists
-	if(!file_exists((char*)src)) {
-		return;
-	}
-
-	/* Open the input file. */
-	read_fd = open (src, O_RDONLY);
-	if(read_fd == -1) {
-		syslog(LOG_ERR, "Cannot open file for reading [%s]\n", src);
-		return;
-	}
-		
-	/* Stat the input file to obtain its size. */
-	fstat (read_fd, &stat_buf);
-	/*
-As you can see we are calling fdatasync right before calling posix_fadvise, this makes sure that all data associated with the file handle has been committed to disk. This is not done because there is any danger of loosing data. But it makes sure that that the posix_fadvise has an effect. Since the posix_fadvise function is advisory, the OS will simply ignore it, if it can not comply. At least with Linux, the effect of calling posix_fadvise(fd,0,0,POSIX_FADV_DONTNEED) is immediate. This means if you write a file and call posix_fadvise right after writing a chunk of data, it will probably have no effect at all since the data in question has not been committed to disk yet, and therefore can not be released from cache.
-	*/
-	fdatasync(read_fd);
-	posix_fadvise(read_fd, 0, 0, POSIX_FADV_DONTNEED);
-
-	/* Open the output file for writing, with the same permissions as the source file. */
-	write_fd = open (dst, O_WRONLY | O_CREAT, stat_buf.st_mode);
-	if(write_fd == -1) {
-		char buf[4092];
-		strerror_r(errno, buf, 4092);
-		syslog(LOG_ERR, "Cannot open file for writing [%s] (error:[%s]) leaving the source file [%s] undeleted\n", dst, buf, src);
-		close(read_fd);
-		return;
-	}
-	fdatasync(write_fd);
-	posix_fadvise(write_fd, 0, 0, POSIX_FADV_DONTNEED);
-	/* Blast the bytes from one file to the other. */
-	int res = sendfile(write_fd, read_fd, &offset, stat_buf.st_size);
-	cachedirtransfered += stat_buf.st_size;
-	if(res == -1) {
-		if(renamedebug) {
-			syslog(LOG_ERR, "sendfile failed src[%s]", src);
-			
-		}
-		// fall back to portable way if sendfile fails 
-		char buf[8192];	// if this is 8kb it will stay in L1 cache on most CPUs. Dont know if higher buffer is better for sequential write	
-		ssize_t result;
-		int res;
-		while (1) {
-			result = read(read_fd, &buf[0], sizeof(buf));
-			if (!result) break;
-			res = write(write_fd, &buf[0], result);
-			if(res == -1) {
-				char buf[4092];
-				strerror_r(errno, buf, 4092);
-				syslog(LOG_ERR, "write failed src[%s] error[%s]", src, buf);
-				break;
-			}
-			cachedirtransfered += res;
-		}
-	}
-	
-	/* clean */
-	close (read_fd);
-	close (write_fd);
-	unlink(src);
-}
-
 void terminate2() {
 	terminating = 1;
 }
@@ -564,7 +493,10 @@ void *moving_cache( void *dummy ) {
 	string file;
 	char src_c[1024];
 	char dst_c[1024];
+	unsigned long long counter[2] = { 0, 0 };
 	while(1) {
+		u_int32_t mindatehour = 0;
+		int year, month, mday, hour;
 		while (1) {
 			calltable->lock_files_queue();
 			if(calltable->files_queue.size() == 0) {
@@ -574,6 +506,12 @@ void *moving_cache( void *dummy ) {
 			file = calltable->files_queue.front();
 			calltable->files_queue.pop();
 			calltable->unlock_files_queue();
+			
+			sscanf(file.c_str(), "%d-%d-%d/%d", &year, &month, &mday, &hour);
+			u_int32_t datehour = year * 1000000 + month * 10000 + mday * 100 + hour;
+			if(!mindatehour || datehour < mindatehour) {
+				 mindatehour = datehour;
+			}
 
 			string src;
 			src.append(opt_cachedir);
@@ -589,12 +527,59 @@ void *moving_cache( void *dummy ) {
 			strncpy(dst_c, (char*)dst.c_str(), sizeof(dst_c));
 
 			if(verbosity > 2) syslog(LOG_ERR, "rename([%s] -> [%s])\n", src_c, dst_c);
-			rename_file(src_c, dst_c);
+			cachedirtransfered += move_file(src_c, dst_c);
 			//TODO: error handling
 			//perror ("The following error occurred");
 		}
 		if(terminating2) {
 			break;
+		} else {
+			++counter[0];
+			if(mindatehour && counter[0] > counter[1] + 300) {
+				DIR* dp = opendir(opt_cachedir);
+				struct tm mindatehour_t;
+				memset(&mindatehour_t, 0, sizeof(mindatehour_t));
+				mindatehour_t.tm_year = mindatehour / 1000000 - 1900;
+				mindatehour_t.tm_mon = mindatehour / 10000 % 100 - 1;  
+				mindatehour_t.tm_mday = mindatehour / 100 % 100;
+				mindatehour_t.tm_hour = mindatehour % 100; 
+				if(dp) {
+					dirent* de;
+					while(true) {
+						de = readdir(dp);
+						if(de == NULL) break;
+						if(string(de->d_name) == ".." or string(de->d_name) == ".") continue;
+						if(de->d_type == DT_DIR && de->d_name[0] == '2') {
+							int year, month, mday;
+							sscanf(de->d_name, "%d-%d-%d", &year, &month, &mday);
+							bool moveHourDir = false;
+							for(int hour = 0; hour < 24; hour ++) {
+								struct tm dirdatehour_t;
+								memset(&dirdatehour_t, 0, sizeof(dirdatehour_t));
+								dirdatehour_t.tm_year = year - 1900;
+								dirdatehour_t.tm_mon = month - 1;  
+								dirdatehour_t.tm_mday = mday;
+								dirdatehour_t.tm_hour = hour; 
+								if(difftime(mktime(&mindatehour_t), mktime(&dirdatehour_t)) > 8 * 60 * 60) {
+									char hour_str[10];
+									sprintf(hour_str, "%02i", hour);
+									if(file_exists((char*)(string(opt_cachedir) + "/" + de->d_name + "/" + hour_str).c_str())) {
+										mkdir_r((string(opt_chdir) + "/" + de->d_name + "/" + hour_str).c_str(), 0777);
+										mv_r((string(opt_cachedir) + "/" + de->d_name + "/" + hour_str).c_str(), (string(opt_chdir) + "/" + de->d_name + "/" + hour_str).c_str());
+										rmdir((string(opt_cachedir) + "/" + de->d_name + "/" + hour_str).c_str());
+										moveHourDir = true;
+									}
+								}
+							}
+							if(moveHourDir) {
+								rmdir((string(opt_cachedir) + "/" + de->d_name).c_str());
+							}
+						}
+					}
+					closedir(dp);
+				}
+				counter[1] = counter[0];
+			}
 		}
 		sleep(1);
 	}
@@ -2543,6 +2528,7 @@ int main(int argc, char *argv[]) {
 	}
 
 	if(opt_cachedir[0] != '\0') {
+		mv_r(opt_cachedir, opt_chdir);
 		pthread_create(&cachedir_thread, NULL, moving_cache, NULL);
 	}
 
