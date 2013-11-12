@@ -602,15 +602,19 @@ Call::read_rtp(unsigned char* data, int datalen, struct pcap_pkthdr *header, u_i
 			rtp_prev[iscaller] = rtp_cur[iscaller];
 		}
 		rtp_cur[iscaller] = rtp[ssrc_n]; 
-		char tmp[1024];
+		char graphFilePath_spool_relative[1024];
+		char graphFilePath[1024];
+		snprintf(graphFilePath_spool_relative, 1023, "%s/%s/%s.%d.graph%s", dirname().c_str(), opt_newdir ? "GRAPH" : "", get_fbasename_safe(), ssrc_n, opt_gzipGRAPH ? ".gz" : "");
+		graphFilePath_spool_relative[1023] = 0;
 		if(opt_cachedir[0] != '\0') {
-			sprintf(tmp, "%s/%s/%s/%s.%d.graph%s", opt_cachedir, dirname().c_str(), opt_newdir ? "GRAPH" : "", get_fbasename_safe(), ssrc_n, opt_gzipGRAPH ? ".gz" : "");
+			snprintf(graphFilePath, 1023, "%s/%s", opt_cachedir, graphFilePath_spool_relative);
+			graphFilePath[1023] = 0;
 		} else {
-			sprintf(tmp, "%s/%s/%s.%d.graph%s", dirname().c_str(), opt_newdir ? "GRAPH" : "", get_fbasename_safe(), ssrc_n, opt_gzipGRAPH ? ".gz" : "");
+			strcpy(graphFilePath, graphFilePath_spool_relative);
 		}
-		sprintf(rtp[ssrc_n]->gfilename, "%s/%s/%s.%d.graph%s", dirname().c_str(), opt_newdir ? "GRAPH" : "", get_fbasename_safe(), ssrc_n, opt_gzipGRAPH ? ".gz" : "");
+		strcpy(rtp[ssrc_n]->gfilename, graphFilePath);
 		if(flags & FLAG_SAVEGRAPH) {
-			if(rtp[ssrc_n]->graph.open(tmp)) {
+			if(rtp[ssrc_n]->graph.open(graphFilePath, graphFilePath_spool_relative)) {
 				rtp[ssrc_n]->graph.write((char*)&graph_version, 4); //every graph starts with graph_version 
 			}
 		}

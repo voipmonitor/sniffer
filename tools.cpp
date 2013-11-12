@@ -342,7 +342,7 @@ PcapDumper::~PcapDumper() {
 	}
 }
 
-bool PcapDumper::open(const char *fileName) {
+bool PcapDumper::open(const char *fileName, const char *fileNameSpoolRelative) {
 	if(this->type == rtp && this->openAttempts >= 10) {
 		return(false);
 	}
@@ -373,6 +373,7 @@ bool PcapDumper::open(const char *fileName) {
 		this->openError = true;
 	}
 	this->fileName = fileName;
+	this->fileNameSpoolRelative = fileNameSpoolRelative;
 	return(this->handle != NULL);
 }
 
@@ -398,13 +399,13 @@ void PcapDumper::close(bool updateFilesQueue) {
 		pcap_dump_flush(this->handle);
 		pcap_dump_close(this->handle);
 		if(updateFilesQueue && this->call) {
-			this->call->addtofilesqueue(this->fileName.c_str(), 
+			this->call->addtofilesqueue(this->fileNameSpoolRelative.c_str(), 
 						    type == rtp ? "rtpsize" : 
 						    call->type == REGISTER ? "regsize" : "sipsize",
 						    this->capsize + PCAP_DUMPER_HEADER_SIZE);
 			extern char opt_cachedir[1024];
 			if(opt_cachedir[0] != '\0') {
-				this->call->addtocachequeue(this->fileName.c_str());
+				this->call->addtocachequeue(this->fileNameSpoolRelative.c_str());
 			}
 		}
 		this->handle = NULL;
@@ -433,7 +434,7 @@ RtpGraphSaver::~RtpGraphSaver() {
 	}
 }
 
-bool RtpGraphSaver::open(const char *fileName) {
+bool RtpGraphSaver::open(const char *fileName, const char *fileNameSpoolRelative) {
 	if(this->isOpen()) {
 		this->close(this->updateFilesQueueAtClose);
 		syslog(LOG_NOTICE, "graphsaver: reopen %s -> %s", this->fileName.c_str(), fileName);
@@ -453,6 +454,7 @@ bool RtpGraphSaver::open(const char *fileName) {
 	}
 	this->size = 0;
 	this->fileName = fileName;
+	this->fileNameSpoolRelative = fileNameSpoolRelative;
 	return(this->isOpen());
 
 }
@@ -478,13 +480,13 @@ void RtpGraphSaver::close(bool updateFilesQueue) {
 		}
 		if(updateFilesQueue) {
 			if(this->rtp->call_owner) { 
-				((Call*)this->rtp->call_owner)->addtofilesqueue(this->fileName.c_str(), "graphsize", this->size);
+				((Call*)this->rtp->call_owner)->addtofilesqueue(this->fileNameSpoolRelative.c_str(), "graphsize", this->size);
 				extern char opt_cachedir[1024];
 				if(opt_cachedir[0] != '\0') {
-					((Call*)this->rtp->call_owner)->addtocachequeue(this->fileName.c_str());
+					((Call*)this->rtp->call_owner)->addtocachequeue(this->fileNameSpoolRelative.c_str());
 				}
 			} else {
-				syslog(LOG_ERR, "graphsaver: gfilename[%s] does not have owner", this->fileName.c_str());
+				syslog(LOG_ERR, "graphsaver: gfilename[%s] does not have owner", this->fileNameSpoolRelative.c_str());
 			}
 		}
 	}

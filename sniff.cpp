@@ -475,13 +475,16 @@ inline void save_packet(Call *call, struct pcap_pkthdr *header, const u_char *pa
 				call->set_last_packet_time(header->ts.tv_sec);
 				call->getPcapRtp()->dump(header, packet);
 			} else {
+				char pcapFilePath_spool_relative[1024];
+				snprintf(pcapFilePath_spool_relative , 1023, "%s/%s/%s.pcap", call->dirname().c_str(), opt_newdir ? "RTP" : "", call->get_fbasename_safe());
+				pcapFilePath_spool_relative[1023] = 0;
 				static char str2[1024];
 				if(opt_cachedir[0] != '\0') {
-					snprintf(str2, 1023, "%s/%s/%s/%s.pcap", opt_cachedir, call->dirname().c_str(), opt_newdir ? "RTP" : "", call->get_fbasename_safe());
+					snprintf(str2, 1023, "%s/%s", opt_cachedir, pcapFilePath_spool_relative);
 				} else {
-					snprintf(str2, 1023, "%s/%s/%s.pcap", call->dirname().c_str(), opt_newdir ? "RTP" : "", call->get_fbasename_safe());
+					strcpy(str2, pcapFilePath_spool_relative);
 				}
-				if(call->getPcapRtp()->open(str2)) {
+				if(call->getPcapRtp()->open(str2, pcapFilePath_spool_relative)) {
 					if(verbosity > 3) syslog(LOG_NOTICE,"pcap_filename: [%s]\n", str2);
 					call->set_last_packet_time(header->ts.tv_sec);
 					call->getPcapRtp()->dump(header, packet);
@@ -1395,10 +1398,14 @@ Call *new_invite_register(int sip_method, char *data, int datalen, struct pcap_p
 		char filenamestr[32];
 		sprintf(filenamestr, "%u%u", (unsigned int)header->ts.tv_sec, (unsigned int)header->ts.tv_usec);
 		if(opt_newdir and opt_pcap_split) {
+			char pcapFilePath_spool_relative[1024];
+			snprintf(pcapFilePath_spool_relative , 1023, "%s/%s/%s.pcap", call->dirname().c_str(), opt_newdir ? "REG" : "", filenamestr);
+			pcapFilePath_spool_relative[1023] = 0;
 			if(opt_cachedir[0] != '\0') {
-				sprintf(str2, "%s/%s/%s/%u%u.pcap", opt_cachedir, call->dirname().c_str(), opt_newdir ? "REG" : "", (unsigned int)header->ts.tv_sec, (unsigned int)header->ts.tv_usec);
+				snprintf(str2, 1023, "%s/%s", opt_cachedir, pcapFilePath_spool_relative);
+				str2[1023] = 0;
 			} else {
-				sprintf(str2, "%s/%s/%u%u.pcap", call->dirname().c_str(), opt_newdir ? "REG" : "", (unsigned int)header->ts.tv_sec, (unsigned int)header->ts.tv_usec);
+				strcpy(str2, pcapFilePath_spool_relative);
 			}
 			unsigned long long num = header->ts.tv_sec;
 			unsigned long long num2 = header->ts.tv_usec;
@@ -1407,8 +1414,8 @@ Call *new_invite_register(int sip_method, char *data, int datalen, struct pcap_p
 				num *= 10;
 			}
 			call->fname2 = num + header->ts.tv_usec;
-			call->pcapfilename = call->sip_pcapfilename = call->dirname() + (opt_newdir ? "/REG" : "") + "/" + filenamestr + ".pcap";
-			if(call->getPcapSip()->open(str2)) {
+			call->pcapfilename = call->sip_pcapfilename = pcapFilePath_spool_relative;
+			if(call->getPcapSip()->open(str2, pcapFilePath_spool_relative)) {
 				if(verbosity > 3) {
 					syslog(LOG_NOTICE,"pcap_filename: [%s]\n", str2);
 				}
@@ -1424,24 +1431,32 @@ Call *new_invite_register(int sip_method, char *data, int datalen, struct pcap_p
 		****/
 		if(opt_newdir and opt_pcap_split) {
 			//SIP
+			char pcapFilePath_spool_relative[1024];
+			snprintf(pcapFilePath_spool_relative , 1023, "%s/%s/%s.pcap", call->dirname().c_str(), opt_newdir ? "SIP" : "", call->get_fbasename_safe());
+			pcapFilePath_spool_relative[1023] = 0;
 			if(opt_cachedir[0] != '\0') {
-				sprintf(str2, "%s/%s/%s/%s.pcap", opt_cachedir, call->dirname().c_str(), opt_newdir ? "SIP" : "", call->get_fbasename_safe());
+				snprintf(str2, 1023, "%s/%s", opt_cachedir, pcapFilePath_spool_relative);
+				str2[1023] = 0;
 			} else {
-				sprintf(str2, "%s/%s/%s.pcap", call->dirname().c_str(), opt_newdir ? "SIP" : "", call->get_fbasename_safe());
+				strcpy(str2, pcapFilePath_spool_relative);
 			}
-			call->pcapfilename = call->sip_pcapfilename = call->dirname() + (opt_newdir ? "/SIP" : "") + "/" + call->get_fbasename_safe() + ".pcap";
-			if(call->getPcapSip()->open(str2)) {
+			call->pcapfilename = call->sip_pcapfilename = pcapFilePath_spool_relative;
+			if(call->getPcapSip()->open(str2, pcapFilePath_spool_relative)) {
 				if(verbosity > 3) {
 					syslog(LOG_NOTICE,"pcap_filename: [%s]\n", str2);
 				}
 			}
 			//RTP
+			char pcapRtpFilePath_spool_relative[1024];
+			snprintf(pcapRtpFilePath_spool_relative , 1023, "%s/%s/%s.pcap", call->dirname().c_str(), opt_newdir ? "RTP" : "", call->get_fbasename_safe());
+			pcapRtpFilePath_spool_relative[1023] = 0;
 			if(opt_cachedir[0] != '\0') {
-				sprintf(str2, "%s/%s/%s/%s.pcap", opt_cachedir, call->dirname().c_str(), opt_newdir ? "RTP" : "", call->get_fbasename_safe());
+				snprintf(str2, 1023, "%s/%s", opt_cachedir, pcapRtpFilePath_spool_relative);
+				str2[1023] = 0;
 			} else {
-				sprintf(str2, "%s/%s/%s.pcap", call->dirname().c_str(), opt_newdir ? "RTP" : "", call->get_fbasename_safe());
+				strcpy(str2, pcapRtpFilePath_spool_relative);
 			}
-			call->rtp_pcapfilename = call->dirname() + (opt_newdir ? "/RTP" : "") + "/" + call->get_fbasename_safe() + ".pcap";
+			call->rtp_pcapfilename = pcapRtpFilePath_spool_relative;
 /* this is moved to save_packet
 			if(!file_exists(str2)) {
 				call->set_frtp_pcap(pcap_dump_open(HANDLE_FOR_PCAP_SAVE, str2));
@@ -1458,13 +1473,17 @@ Call *new_invite_register(int sip_method, char *data, int datalen, struct pcap_p
 			}
 */
 		} else {
+			char pcapFilePath_spool_relative[1024];
+			snprintf(pcapFilePath_spool_relative , 1023, "%s/%s/%s.pcap", call->dirname().c_str(), opt_newdir ? "ALL" : "", call->get_fbasename_safe());
+			pcapFilePath_spool_relative[1023] = 0;
 			if(opt_cachedir[0] != '\0') {
-				sprintf(str2, "%s/%s/%s/%s.pcap", opt_cachedir, call->dirname().c_str(), opt_newdir ? "ALL" : "", call->get_fbasename_safe());
+				snprintf(str2, 1023, "%s/%s", opt_cachedir, pcapFilePath_spool_relative);
+				str2[1023] = 0;
 			} else {
-				sprintf(str2, "%s/%s/%s.pcap", call->dirname().c_str(), opt_newdir ? "ALL" : "", call->get_fbasename_safe());
+				strcpy(str2, pcapFilePath_spool_relative);
 			}
-			call->pcapfilename = call->dirname() + (opt_newdir ? "/ALL/" : "/") + call->get_fbasename_safe() + ".pcap";
-			if(call->getPcap()->open(str2)) {
+			call->pcapfilename = pcapFilePath_spool_relative;
+			if(call->getPcap()->open(str2, pcapFilePath_spool_relative)) {
 				if(verbosity > 3) {
 					syslog(LOG_NOTICE,"pcap_filename: [%s]\n", str2);
 				}
@@ -2896,9 +2915,18 @@ repeatrtpB:
 				mkdir_r(call->dirname().c_str(), 0777);
 			}
 			if((call->flags & (FLAG_SAVESIP | FLAG_SAVEREGISTER | FLAG_SAVERTP)) || (call->isfax && opt_saveudptl)) {
-				sprintf(str2, "%s/%s.pcap", call->dirname().c_str(), s);
-				if(call->getPcap()->open(str2)) {
-					call->pcapfilename = call->dirname() + "/" + call->get_fbasename_safe() + ".pcap";
+				char pcapFilePath_spool_relative[1024];
+				snprintf(pcapFilePath_spool_relative , 1023, "%s/%s.pcap", call->dirname().c_str(), call->get_fbasename_safe());
+				pcapFilePath_spool_relative[1023] = 0;
+				static char str2[1024];
+				if(opt_cachedir[0] != '\0') {
+					snprintf(str2, 1023, "%s/%s", opt_cachedir, pcapFilePath_spool_relative);
+					str2[1023] = 0;
+				} else {
+					strcpy(str2, pcapFilePath_spool_relative);
+				}
+				if(call->getPcap()->open(str2, pcapFilePath_spool_relative)) {
+					call->pcapfilename = pcapFilePath_spool_relative;
 				}
 			}
 

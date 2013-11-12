@@ -93,7 +93,7 @@ public:
 	};
 	PcapDumper(eTypePcapDump type, class Call *call, bool updateFilesQueueAtClose = true);
 	~PcapDumper();
-	bool open(const char *fileName);
+	bool open(const char *fileName, const char *fileNameSpoolRelative);
 	void dump(pcap_pkthdr* header, const u_char *packet);
 	void close(bool updateFilesQueue = true);
 	void remove(bool updateFilesQueue = true);
@@ -102,6 +102,7 @@ public:
 	}
 private:
 	string fileName;
+	string fileNameSpoolRelative;
 	eTypePcapDump type;
 	class Call *call;
 	bool updateFilesQueueAtClose;
@@ -116,7 +117,7 @@ class RtpGraphSaver {
 public:
 	RtpGraphSaver(class RTP *rtp,bool updateFilesQueueAtClose = true);
 	~RtpGraphSaver();
-	bool open(const char *fileName);
+	bool open(const char *fileName, const char *fileNameSpoolRelative);
 	void write(char *buffer, int length);
 	void close(bool updateFilesQueue = true);
 	bool isOpen() {
@@ -125,6 +126,7 @@ public:
 	}
 private:
 	string fileName;
+	string fileNameSpoolRelative;
 	class RTP *rtp;
 	bool updateFilesQueueAtClose;
 	u_int64_t size;

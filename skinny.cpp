@@ -1270,13 +1270,17 @@ Call *new_skinny_channel(int state, char *data, int datalen, struct pcap_pkthdr 
                 if(opt_newdir and opt_pcap_split) {
                         //SKINNY
 			if(call->flags & (FLAG_SAVESIP)) {
+				char pcapFilePath_spool_relative[1024];
+				snprintf(pcapFilePath_spool_relative, 1023, "%s/%s/%s.pcap", call->dirname().c_str(), opt_newdir ? "SKINNY" : "", call->get_fbasename_safe());
+				pcapFilePath_spool_relative[1023] = 0;
 				if(opt_cachedir[0] != '\0') {
-					sprintf(str2, "%s/%s/%s/%s.pcap", opt_cachedir, call->dirname().c_str(), opt_newdir ? "SKINNY" : "", call->get_fbasename_safe());
+					snprintf(str2, 1023, "%s/%s", opt_cachedir, pcapFilePath_spool_relative);
+					str2[1023] = 0;
 				} else {
-					sprintf(str2, "%s/%s/%s.pcap", call->dirname().c_str(), opt_newdir ? "SKINNY" : "", call->get_fbasename_safe());
+					strcpy(str2, pcapFilePath_spool_relative);
 				}
-				call->sip_pcapfilename = call->dirname() + (opt_newdir ? "/SKINNY" : "") + "/" + call->get_fbasename_safe() + ".pcap";
-				if(call->getPcapSip()->open(str2)) {
+				call->sip_pcapfilename = pcapFilePath_spool_relative;
+				if(call->getPcapSip()->open(str2, pcapFilePath_spool_relative)) {
 					if(verbosity > 3) {
 						syslog(LOG_NOTICE,"pcap_filename: [%s]\n", str2);
 					}
@@ -1284,13 +1288,17 @@ Call *new_skinny_channel(int state, char *data, int datalen, struct pcap_pkthdr 
 			}
                         //RTP
 			if(call->flags & (FLAG_SAVERTP)) {
+				char pcapFilePath_spool_relative[1024];
+				snprintf(pcapFilePath_spool_relative, 1023, "%s/%s/%s.pcap", call->dirname().c_str(), opt_newdir ? "RTP" : "", call->get_fbasename_safe());
+				pcapFilePath_spool_relative[1023] = 0;
 				if(opt_cachedir[0] != '\0') {
-					sprintf(str2, "%s/%s/%s/%s.pcap", opt_cachedir, call->dirname().c_str(), opt_newdir ? "RTP" : "", call->get_fbasename_safe());
+					snprintf(str2, 1023, "%s/%s", opt_cachedir, pcapFilePath_spool_relative);
+					str2[1023] = 0;
 				} else {
-					sprintf(str2, "%s/%s/%s.pcap", call->dirname().c_str(), opt_newdir ? "RTP" : "", call->get_fbasename_safe());
+					strcpy(str2, pcapFilePath_spool_relative);
 				}
-				call->rtp_pcapfilename = call->dirname() + (opt_newdir ? "/RTP" : "") + "/" + call->get_fbasename_safe() + ".pcap";
-				if(call->getPcapRtp()->open(str2)) {
+				call->rtp_pcapfilename = pcapFilePath_spool_relative;
+				if(call->getPcapRtp()->open(str2, pcapFilePath_spool_relative)) {
 					if(verbosity > 3) {
 						syslog(LOG_NOTICE,"pcap_filename: [%s]\n", str2);
 					}
@@ -1298,13 +1306,17 @@ Call *new_skinny_channel(int state, char *data, int datalen, struct pcap_pkthdr 
 			}
                 } else {
 			if(call->flags & (FLAG_SAVESIP | FLAG_SAVERTP)) {
+				char pcapFilePath_spool_relative[1024];
+				snprintf(pcapFilePath_spool_relative, 1023, "%s/%s/%s.pcap", call->dirname().c_str(), opt_newdir ? "ALL" : "", call->get_fbasename_safe());
+				pcapFilePath_spool_relative[1023] = 0;
 				if(opt_cachedir[0] != '\0') {
-					sprintf(str2, "%s/%s/%s/%s.pcap", opt_cachedir, call->dirname().c_str(), opt_newdir ? "ALL" : "", call->get_fbasename_safe());
+					snprintf(str2, 1023, "%s/%s", opt_cachedir, pcapFilePath_spool_relative);
+					str2[1023] = 0;
 				} else {
-					sprintf(str2, "%s/%s/%s.pcap", call->dirname().c_str(), opt_newdir ? "ALL" : "", call->get_fbasename_safe());
+					strcpy(str2, pcapFilePath_spool_relative);
 				}
-				call->pcapfilename = call->dirname() + (opt_newdir ? "/ALL/" : "/") + call->get_fbasename_safe() + ".pcap";
-				if(call->getPcap()->open(str2)) {
+				call->pcapfilename = pcapFilePath_spool_relative;
+				if(call->getPcap()->open(str2, pcapFilePath_spool_relative)) {
 					if(verbosity > 3) {
 						syslog(LOG_NOTICE,"pcap_filename: [%s]\n", str2);
 					}
