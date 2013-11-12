@@ -547,9 +547,13 @@ void *clean_spooldir(void *dummy) {
 		sleep(opt_cleanspool_interval);
 */
 
+		/* obsolete
 		if(debugclean) syslog(LOG_ERR, "pthread_create(clean_spooldir_run)");
 		pthread_t tpid;	// ID of worker clean thread 
 		pthread_create(&tpid, NULL, clean_spooldir_run, NULL);
+		*/
+		if(debugclean) syslog(LOG_ERR, "run clean_spooldir_run");
+		clean_spooldir_run(NULL);
 		sleep(300);
 	}
 	return NULL;

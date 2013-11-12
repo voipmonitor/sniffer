@@ -15,7 +15,7 @@ int msleep(long msec);
 int file_exists (char * fileName);
 void set_mac();
 int mkdir_r(std::string, mode_t);
-int rmdir_r(const char *dir);
+int rmdir_r(const char *dir, bool enableSubdir = false, bool withoutRemoveRoot = false);
 double ts2double(unsigned int sec, unsigned int usec);
 unsigned long long GetFileSize(std::string filename);
 unsigned long long GetFileSizeDU(std::string filename);

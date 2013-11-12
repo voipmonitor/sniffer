@@ -944,6 +944,12 @@ void convert_filesindex() {
 	}
 
 	mysqlquerypush("DELETE FROM files");
+	rmdir_r("filesindex", true, true);
+	mkdir_r("filesindex/sipsize", 0777);
+	mkdir_r("filesindex/rtpsize", 0777);
+	mkdir_r("filesindex/graphsize", 0777);
+	mkdir_r("filesindex/audiosize", 0777);
+	mkdir_r("filesindex/regsize", 0777);
 
 	while (true) {
 		errno = 0;
@@ -1126,6 +1132,28 @@ void convert_filesindex() {
 	syslog(LOG_NOTICE, "reindexing done\n");
 	closedir( dp );
 	return;
+}
+
+bool check_exists_act_records_in_files() {
+	bool ok = false;
+	time_t actTime;
+	time(&actTime);
+	SqlDb *sqlDb = new SqlDb_mysql();
+	sqlDb->setConnectParameters(mysql_host, mysql_user, mysql_password, mysql_database, 0);
+	sqlDb->connect();
+	for(int i = 0; i < 12; i++) {
+		time_t checkTime = actTime - i * 60 * 60;
+		struct tm *checkTimeInfo = localtime(&checkTime);
+		char datehour[20];
+		strftime(datehour, 20, "%Y%m%d%H", checkTimeInfo);
+		sqlDb->query(string("select * from files where datehour ='") + datehour + "'");
+		if(sqlDb->fetchRow()) {
+			ok = true;
+			break;
+		}
+	}
+	delete sqlDb;
+	return(ok);
 }
 
 void check_spooldir_filesindex(const char *path, const char *dirfilter) {
@@ -1366,6 +1394,10 @@ void *clean_spooldir_run(void *dummy) {
 			unlink(tmpf.c_str());
 
 		}
+	}
+	
+	if(!check_exists_act_records_in_files()) {
+		convert_filesindex();
 	}
 
 	clean_maxpoolsize();

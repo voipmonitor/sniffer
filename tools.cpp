@@ -151,7 +151,7 @@ mkdir_r(std::string s, mode_t mode)
 	return mdret;
 }
 
-int rmdir_r(const char *dir) {
+int rmdir_r(const char *dir, bool enableSubdir, bool withoutRemoveRoot) {
 	if(!file_exists((char*)dir)) {
 		return(0);
 	}
@@ -164,10 +164,21 @@ int rmdir_r(const char *dir) {
 		de = readdir(dp);
 		if (de == NULL) break;
 		if (string(de->d_name) == ".." or string(de->d_name) == ".") continue;
-		unlink((string(dir) + "/" + de->d_name).c_str());
+		if(de->d_type == DT_DIR) {
+			if(enableSubdir) {
+				string dirWithSubdir = string(dir) + "/" + de->d_name;
+				rmdir_r(dirWithSubdir.c_str(), enableSubdir);
+			}
+		} else {
+			unlink((string(dir) + "/" + de->d_name).c_str());
+		}
 	}
 	closedir(dp);
-	return(rmdir(dir));
+	if(withoutRemoveRoot) {
+		return(true);
+	} else {
+		return(rmdir(dir));
+	}
 }
 
 /* circular buffer implementation */
