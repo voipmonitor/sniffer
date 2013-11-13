@@ -1,3 +1,12 @@
+8.4 RC11 13.11.2013
+===================
+- do not flood syslog when RTP files cannot be created
+- fix cleaning spool directory - delete files which are not indexed and run reindex in case of inconsistency
+- add pcap size limit - configuration option maxpcapsize (in MB)
+- implement autocleaning in cachedir and automatically move files when sniffer was interrupted and restarted
+- fix convert_dlt_sll2en10 parameter
+
+
 8.4 RC10 6.11.2013
 ==================
 - fix MySQL race condition causing crashes and undefinite cleaning of parition each second when mysql cleaning enabled. 
