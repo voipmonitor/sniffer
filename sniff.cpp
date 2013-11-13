@@ -245,7 +245,7 @@ inline void save_packet_sql(Call *call, struct pcap_pkthdr *header, const u_char
 	pcaphdr.thiszone = 0;
 	pcaphdr.sigfigs = 0;
 	pcaphdr.snaplen = 3200;
-	pcaphdr.network = pcap_dlink;
+	pcaphdr.network = ENABLE_CONVERT_DLT_SLL_TO_EN10 ? DLT_EN10MB : pcap_dlink;
 
 	// packet header
 	pcaprec_hdr_t pcaph;
