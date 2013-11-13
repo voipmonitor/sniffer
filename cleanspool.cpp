@@ -864,7 +864,7 @@ void clean_obsolete_dirs(const char *path) {
 		if (de == NULL) break;
 		if (string(de->d_name) == ".." or string(de->d_name) == ".") continue;
 		
-		if(de->d_name[0] == '2') {
+		if(de->d_name[0] == '2' && strlen(de->d_name) == 10) {
 			int numberOfDayToNow = getNumberOfDayToNow(de->d_name);
 			if(numberOfDayToNow > 0) {
 				string daydir = basedir + "/" + de->d_name;
@@ -956,7 +956,7 @@ void convert_filesindex() {
 		if (de == NULL) break;
 		if (string(de->d_name) == ".." or string(de->d_name) == ".") continue;
 
-		if(de->d_name[0] == '2') {
+		if(de->d_name[0] == '2' && strlen(de->d_name) == 10) {
 			syslog(LOG_NOTICE, "reindexing files in [%s]\n", de->d_name);
 			//cycle through 24 hours
 			for(int h = 0; h < 24; h++) {
@@ -1187,7 +1187,7 @@ void check_spooldir_filesindex(const char *path, const char *dirfilter) {
 		if (de == NULL) break;
 		if (string(de->d_name) == ".." or string(de->d_name) == ".") continue;
 		
-		if(de->d_name[0] == '2' &&
+		if(de->d_name[0] == '2' && strlen(de->d_name) == 10 &&
 		   (!dirfilter || strstr(de->d_name, dirfilter))) {
 			//cycle through 24 hours
 			syslog(LOG_NOTICE, "check files in [%s]", de->d_name);
