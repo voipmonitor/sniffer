@@ -957,7 +957,7 @@ extern char odbc_password[256];
 extern char odbc_driver[256];
 
 SqlDb *createSqlObject() {
-	SqlDb *sqlDb;
+	SqlDb *sqlDb = NULL;
 	if(isSqlDriver("mysql")) {
 		sqlDb = new SqlDb_mysql();
 		sqlDb->setConnectParameters(mysql_host, mysql_user, mysql_password, mysql_database);
