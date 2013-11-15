@@ -8,8 +8,9 @@
 using namespace std;
 
 extern int opt_id_sensor;
-extern SqlDb *sqlDb;
 extern MySqlStore *sqlStore;
+
+SqlDb *sqlDbSaveHttp = NULL;
 
 
 HttpData::~HttpData() {
@@ -20,6 +21,11 @@ void HttpData::processData(u_int32_t ip_src, u_int32_t ip_dst,
 			   u_int16_t port_src, u_int16_t port_dst,
 			   TcpReassemblyData *data,
 			   bool debugSave) {
+
+	if(!sqlDbSaveHttp) {
+		sqlDbSaveHttp = createSqlObject();
+	}
+
 	string request;
 	string response;
 	string expectContinue;
@@ -177,7 +183,7 @@ void HttpData::processData(u_int32_t ip_src, u_int32_t ip_dst,
 			rowRequest.add(sqlEscapeString(sessionid).c_str(), "sessid");
 			rowRequest.add(sqlEscapeString(externalTransactionId).c_str(), "external_transaction_id");
 			rowRequest.add(opt_id_sensor > 0 ? opt_id_sensor : 0, "id_sensor", opt_id_sensor <= 0);
-			queryInsert = sqlDb->insertQuery("http_jj", rowRequest);
+			queryInsert = sqlDbSaveHttp->insertQuery("http_jj", rowRequest);
 			this->cache.add(ip_src, ip_dst, port_src, port_dst,
 					&http, &body, NULL, NULL,
 					1, request_data->getTime().tv_sec);
@@ -237,7 +243,7 @@ void HttpData::processData(u_int32_t ip_src, u_int32_t ip_dst,
 				rowRequest.add("", "sessid");
 				rowRequest.add("", "external_transaction_id");
 				rowRequest.add(opt_id_sensor > 0 ? opt_id_sensor : 0, "id_sensor", opt_id_sensor <= 0);
-				queryInsert += sqlDb->insertQuery("http_jj", rowRequest, true);
+				queryInsert += sqlDbSaveHttp->insertQuery("http_jj", rowRequest, true);
 				if(requestDataFromCache.timestamp) {
 					queryInsert += ";\n";
 					queryInsert += "end if";

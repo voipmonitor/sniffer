@@ -184,8 +184,6 @@ SqlDb::SqlDb() {
 	this->loginTimeout = (ulong)NULL;
 	this->enableSqlStringInContent = false;
 	this->disableNextAttemptIfError = false;
-	this->existsColumnCalldateInCdrNext = false;
-	this->existsColumnCalldateInCdrRtp = false;
 }
 
 SqlDb::~SqlDb() {
@@ -232,61 +230,6 @@ void SqlDb::prepareQuery(string *query) {
 			query->replace(findPos, findPosEnd - findPos + 1, lc);
 		}
 	}
-}
-
-string SqlDb::_escape(const char *inputString) {
-	string rsltString;
-	struct escChar {
-		char ch;
-		const char* escStr;
-	} 
-	escCharsMysql[] = 
-				{
-					{ '\'', "\\'" },
-					{ '"' , "\\\"" },
-					{ '\\', "\\\\" },
-					{ '\n', "\\n" }, 	// new line feed
-					{ '\r', "\\r" }, 	// cariage return
-					{ '\t', "\\t" }, 	// tab
-					{ '\v', "\\v" }, 	// vertical tab
-					{ '\b', "\\b" }, 	// backspace
-					{ '\f', "\\f" }, 	// form feed
-					{ '\a', "\\a" }, 	// alert (bell)
-					{ '\e', "" }, 		// escape
-				},
-	escCharsOdbc[] = 
-				{ 
-					{ '\'', "\'\'" },
-					{ '\v', "" }, 		// vertical tab
-					{ '\b', "" }, 		// backspace
-					{ '\f', "" }, 		// form feed
-					{ '\a', "" }, 		// alert (bell)
-					{ '\e', "" }, 		// escape
-				};
-	escChar *escChars = NULL;
-	int countEscChars = 0;
-	if(this->getTypeDb() == "mysql") {
-		escChars = escCharsMysql;
-		countEscChars = sizeof(escCharsMysql)/sizeof(escChar);
-	} else if(this->getTypeDb() == "odbc") {
-		escChars = escCharsOdbc;
-		countEscChars = sizeof(escCharsOdbc)/sizeof(escChar);
-	}
-	int lengthStr = strlen(inputString);
-	for(int posInputString = 0; posInputString<lengthStr; posInputString++) {
-		bool isEscChar = false;
-		for(int i = 0; i<countEscChars; i++) {
-			if(escChars[i].ch == inputString[posInputString]) {
-				rsltString += escChars[i].escStr;
-				isEscChar = true;
-				break;
-			}
-		}
-		if(!isEscChar) {
-			rsltString += inputString[posInputString];
-		}
-	}
-	return(inputString);
 }
 
 string SqlDb::insertQuery(string table, SqlDb_row row, bool enableSqlStringInContent) {
@@ -360,7 +303,7 @@ SqlDb_mysql::~SqlDb_mysql() {
 	this->clean();
 }
 
-bool SqlDb_mysql::connect() {
+bool SqlDb_mysql::connect(bool createDb, bool mainInit) {
 	pthread_mutex_lock(&mysqlconnect_lock);
 	this->hMysql = mysql_init(NULL);
 	if(this->hMysql) {
@@ -377,18 +320,22 @@ bool SqlDb_mysql::connect() {
 			this->query("SET GLOBAL innodb_stats_on_metadata=0"); // this will speedup "Slow query on information_schema.tables"
 			this->query("SET sql_mode = ''");
 			char tmp[1024];
-			sprintf(tmp, "CREATE DATABASE IF NOT EXISTS `%s`", mysql_database);
-			this->query(tmp);
+			if(createDb) {
+				sprintf(tmp, "CREATE DATABASE IF NOT EXISTS `%s`", mysql_database);
+				this->query(tmp);
+			}
 			sprintf(tmp, "USE `%s`", mysql_database);
 			this->query(tmp);
-			this->query("SHOW VARIABLES LIKE \"version\"");
-			SqlDb_row row;
-			if((row = this->fetchRow())) {
-				this->dbVersion = row[1];
-			}
-			while(this->fetchRow());
-			if(this->conn_showversion) {
-				syslog(LOG_INFO, "connect - db version %i.%i", this->getDbMajorVersion(), this->getDbMinorVersion());
+			if(mainInit) {
+				this->query("SHOW VARIABLES LIKE \"version\"");
+				SqlDb_row row;
+				if((row = this->fetchRow())) {
+					this->dbVersion = row[1];
+				}
+				while(this->fetchRow());
+				if(this->conn_showversion) {
+					syslog(LOG_INFO, "connect - db version %i.%i", this->getDbMajorVersion(), this->getDbMinorVersion());
+				}
 			}
 			sql_disable_next_attempt_if_error = 0;
 			pthread_mutex_unlock(&mysqlconnect_lock);
@@ -428,6 +375,7 @@ int SqlDb_mysql::getDbMinorVersion(int minorLevel) {
 
 void SqlDb_mysql::disconnect() {
 	if(this->hMysqlRes) {
+		while(mysql_fetch_row(this->hMysqlRes));
 		mysql_free_result(this->hMysqlRes);
 		this->hMysqlRes = NULL;
 	}
@@ -456,6 +404,7 @@ bool SqlDb_mysql::query(string query) {
 	}
 	bool rslt = false;
 	if(this->hMysqlRes) {
+		while(mysql_fetch_row(this->hMysqlRes));
 		mysql_free_result(this->hMysqlRes);
 		this->hMysqlRes = NULL;
 	}
@@ -536,21 +485,7 @@ int SqlDb_mysql::getInsertId() {
 }
 
 string SqlDb_mysql::escape(const char *inputString, int length) {
-	if(!(inputString && (inputString[0] || length))) {
-		return(inputString ? inputString : "");
-	}
-	if(this->connected()) {
-		if(!length) {
-			length = strlen(inputString);
-		}
-		int sizeBuffer = length * 2 + 10;
-		char *buffer = new char[sizeBuffer];
-		mysql_real_escape_string(this->hMysqlConn, buffer, inputString, length);
-		string rslt = buffer;
-		delete [] buffer;
-		return(rslt);
-	}
-	return(this->_escape(inputString));
+	return sqlEscapeString(inputString, length, this->getTypeDb().c_str(), this);
 }
 
 bool SqlDb_mysql::checkLastError(string prefixError, bool sysLog, bool clearLastError) {
@@ -673,7 +608,7 @@ void SqlDb_odbc::setSubtypeDb(string subtypeDb) {
 	this->subtypeDb = subtypeDb;
 }
 
-bool SqlDb_odbc::connect() {
+bool SqlDb_odbc::connect(bool createDb, bool mainInit) {
 	SQLRETURN rslt;
 	this->clearLastError();
 	if(!this->hEnvironment) {
@@ -833,10 +768,7 @@ int SqlDb_odbc::getIndexField(string fieldName) {
 }
 
 string SqlDb_odbc::escape(const char *inputString, int length) {
-	if(!(inputString && (inputString[0] || length))) {
-		return(inputString ? inputString : "");
-	}
-	return(this->_escape(inputString));
+	return sqlEscapeString(inputString, length, this->getTypeDb().c_str());
 }
 
 bool SqlDb_odbc::checkLastError(string prefixError, bool sysLog, bool clearLastError) {
@@ -1010,6 +942,35 @@ MySqlStore_process *MySqlStore::find(int id) {
 	return(process);
 }
 
+extern char sql_driver[256];
+
+extern char mysql_host[256];
+extern char mysql_database[256];
+extern char mysql_user[256];
+extern char mysql_password[256];
+extern int opt_mysql_port;
+extern int opt_skiprtpdata;
+
+extern char odbc_dsn[256];
+extern char odbc_user[256];
+extern char odbc_password[256];
+extern char odbc_driver[256];
+
+SqlDb *createSqlObject() {
+	SqlDb *sqlDb;
+	if(isSqlDriver("mysql")) {
+		sqlDb = new SqlDb_mysql();
+		sqlDb->setConnectParameters(mysql_host, mysql_user, mysql_password, mysql_database);
+	} else if(isSqlDriver("odbc")) {
+		SqlDb_odbc *sqlDb_odbc = new SqlDb_odbc();
+		sqlDb_odbc->setOdbcVersion(SQL_OV_ODBC3);
+		sqlDb_odbc->setSubtypeDb(odbc_driver);
+		sqlDb = sqlDb_odbc;
+		sqlDb->setConnectParameters(odbc_dsn, odbc_user, odbc_password);
+	}
+	return(sqlDb);
+}
+
 string sqlDateTimeString(time_t unixTime) {
 	struct tm * localTime = localtime(&unixTime);
 	char dateTimeBuffer[50];
@@ -1024,49 +985,118 @@ string sqlDateString(time_t unixTime) {
 	return string(dateBuffer);
 }
 
-string sqlEscapeString(string inputStr) {
-	return _sqlEscapeString(inputStr.c_str(), 0);
+string sqlEscapeString(string inputStr, const char *typeDb, SqlDb_mysql *sqlDbMysql) {
+	return sqlEscapeString(inputStr.c_str(), 0, typeDb, sqlDbMysql);
 }
 
-string sqlEscapeString(const char *inputStr) {
-	return _sqlEscapeString(inputStr, 0);
-}
+SqlDb_mysql *sqlDbEscape = NULL; 
 
-string sqlEscapeStringBorder(string inputStr, char borderChar) {
-	return _sqlEscapeString(inputStr.c_str(), borderChar);
-}
-
-string sqlEscapeStringBorder(const char *inputStr, char borderChar) {
-	return _sqlEscapeString(inputStr, borderChar);
-}
-
-extern SqlDb *sqlDb;
-extern char sql_driver[256];
-extern char odbc_driver[256];
-
-string _sqlEscapeString(const char *inputStr, char borderChar) {
-	if(!sqlDb) {
-		return(inputStr);
+string sqlEscapeString(const char *inputStr, int length, const char *typeDb, SqlDb_mysql *sqlDbMysql) {
+	if(!length) {
+		length = strlen(inputStr);
 	}
-	string rsltString = sqlDb->escape(inputStr);
+	if(isTypeDb("mysql", sqlDbMysql ? sqlDbMysql->getTypeDb().c_str() : typeDb)) {
+		bool okEscape = false;
+		int sizeBuffer = length * 2 + 10;
+		char *buffer = new char[sizeBuffer];
+		if(sqlDbMysql && sqlDbMysql->getH_Mysql()) {
+			if(mysql_real_escape_string(sqlDbMysql->getH_Mysql(), buffer, inputStr, length) >= 0) {
+				okEscape = true;
+			}
+		} else {
+			if(!sqlDbEscape) {
+				sqlDbEscape = (SqlDb_mysql*)createSqlObject();
+				sqlDbEscape->connect();
+			}
+			if(sqlDbEscape->connected() &&
+			   mysql_real_escape_string(sqlDbEscape->getH_Mysql(), buffer, inputStr, length) >= 0) {
+				okEscape = true;
+			}
+		}
+		string rslt = buffer;
+		delete [] buffer;
+		if(okEscape) {
+			return(rslt);
+		}
+	}
+	return _sqlEscapeString(inputStr, sqlDbMysql ? sqlDbMysql->getTypeDb().c_str() : typeDb);
+}
+
+string _sqlEscapeString(const char *inputString, const char *typeDb) {
+	string rsltString;
+	struct escChar {
+		char ch;
+		const char* escStr;
+	} 
+	escCharsMysql[] = 
+				{
+					{ '\'', "\\'" },
+					{ '"' , "\\\"" },
+					{ '\\', "\\\\" },
+					{ '\n', "\\n" }, 	// new line feed
+					{ '\r', "\\r" }, 	// cariage return
+					{ '\t', "\\t" }, 	// tab
+					{ '\v', "\\v" }, 	// vertical tab
+					{ '\b', "\\b" }, 	// backspace
+					{ '\f', "\\f" }, 	// form feed
+					{ '\a', "\\a" }, 	// alert (bell)
+					{ '\e', "" }, 		// escape
+				},
+	escCharsOdbc[] = 
+				{ 
+					{ '\'', "\'\'" },
+					{ '\v', "" }, 		// vertical tab
+					{ '\b', "" }, 		// backspace
+					{ '\f', "" }, 		// form feed
+					{ '\a', "" }, 		// alert (bell)
+					{ '\e', "" }, 		// escape
+				};
+	escChar *escChars = NULL;
+	int countEscChars = 0;
+	if(isTypeDb("mysql", typeDb)) {
+		escChars = escCharsMysql;
+		countEscChars = sizeof(escCharsMysql)/sizeof(escChar);
+	} else if(isTypeDb("odbc", typeDb)) {
+		escChars = escCharsOdbc;
+		countEscChars = sizeof(escCharsOdbc)/sizeof(escChar);
+	}
+	int lengthStr = strlen(inputString);
+	for(int posInputString = 0; posInputString<lengthStr; posInputString++) {
+		bool isEscChar = false;
+		for(int i = 0; i<countEscChars; i++) {
+			if(escChars[i].ch == inputString[posInputString]) {
+				rsltString += escChars[i].escStr;
+				isEscChar = true;
+				break;
+			}
+		}
+		if(!isEscChar) {
+			rsltString += inputString[posInputString];
+		}
+	}
+	return(inputString);
+}
+
+string sqlEscapeStringBorder(string inputStr, char borderChar, const char *typeDb, SqlDb_mysql *sqlDbMysql) {
+	return sqlEscapeStringBorder(inputStr.c_str(), borderChar, typeDb, sqlDbMysql);
+}
+
+string sqlEscapeStringBorder(const char *inputStr, char borderChar, const char *typeDb, SqlDb_mysql *sqlDbMysql) {
+	string rsltString = sqlEscapeString(inputStr, borderChar, typeDb, sqlDbMysql);
 	if(borderChar) {
 		rsltString = borderChar + rsltString + borderChar;
 	}
 	return rsltString;
 }
 
-bool isSqlDriver(const char *sqlDriver) {
-	return sqlDb ?
-		cmpStringIgnoreCase(sqlDb->getTypeDb().c_str(), sqlDriver) :
-		cmpStringIgnoreCase(sql_driver, sqlDriver);
+bool isSqlDriver(const char *sqlDriver, const char *checkSqlDriver) {
+	return cmpStringIgnoreCase(checkSqlDriver ? checkSqlDriver : sql_driver, sqlDriver);
 }
 
-bool isTypeDb(const char *typeDb) {
-	return sqlDb ?
-		cmpStringIgnoreCase(sqlDb->getTypeDb().c_str(), typeDb) ||
-		(cmpStringIgnoreCase(sqlDb->getTypeDb().c_str(), "odbc") && cmpStringIgnoreCase(sqlDb->getSubtypeDb().c_str(), typeDb)) :
-		cmpStringIgnoreCase(sql_driver, typeDb) ||
-		(cmpStringIgnoreCase(sql_driver, "odbc") && cmpStringIgnoreCase(odbc_driver, typeDb));
+bool isTypeDb(const char *typeDb, const char *checkSqlDriver, const char *checkOdbcDriver) {
+	return cmpStringIgnoreCase(checkSqlDriver ? checkSqlDriver : sql_driver, typeDb) ||
+	       (cmpStringIgnoreCase(checkSqlDriver ? checkSqlDriver : sql_driver, "odbc") && 
+	        cmpStringIgnoreCase(checkOdbcDriver ? checkOdbcDriver : odbc_driver, typeDb));
 }
 
 bool cmpStringIgnoreCase(const char* str1, const char* str2) {
@@ -1177,7 +1207,7 @@ void SqlDb_mysql::createSchema() {
 		time_t next_day_time = act_time + 24 * 60 * 60;
 		struct tm *nextDayTime = localtime(&next_day_time);
 		strftime(limitDay, sizeof(partDayName), "%Y-%m-%d", nextDayTime);
-		if(sqlDb->getDbMajorVersion() * 100 + sqlDb->getDbMinorVersion() <= 501) {
+		if(this->getDbMajorVersion() * 100 + this->getDbMinorVersion() <= 501) {
 			opt_cdr_partition_oldver = true;
 		}
 	}
@@ -2055,11 +2085,13 @@ void SqlDb_mysql::createSchema() {
 }
 
 void SqlDb_mysql::checkSchema() {
+	extern bool existsColumnCalldateInCdrNext;
+	extern bool existsColumnCalldateInCdrRtp;
 	sql_disable_next_attempt_if_error = 1;
 	this->query("show columns from cdr_next where Field='calldate'");
-	this->existsColumnCalldateInCdrNext = this->fetchRow();
+	existsColumnCalldateInCdrNext = this->fetchRow();
 	this->query("show columns from cdr_rtp where Field='calldate'");
-	this->existsColumnCalldateInCdrRtp = this->fetchRow();
+	existsColumnCalldateInCdrRtp = this->fetchRow();
 	sql_disable_next_attempt_if_error = 1;
 }
 

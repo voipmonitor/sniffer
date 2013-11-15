@@ -42,13 +42,6 @@ extern int opt_maxpool_clean_obsolete;
 extern int opt_cleanspool_interval;
 extern int opt_cleanspool_sizeMB;
 
-extern SqlDb *sqlDb;
-extern char mysql_host[256];
-extern char mysql_database[256];
-extern char mysql_table[256];
-extern char mysql_user[256];
-extern char mysql_password[256];
-
 extern queue<string> mysqlquery;
 extern pthread_mutex_t mysqlquery_lock;
 
@@ -190,9 +183,7 @@ void clean_maxpoolsize() {
 	if(debugclean) cout << "clean_maxpoolsize\n";
 
 	// check total size
-	SqlDb *sqlDb = new SqlDb_mysql();
-	sqlDb->setConnectParameters(mysql_host, mysql_user, mysql_password, mysql_database, 0);
-	sqlDb->connect();
+	SqlDb *sqlDb = createSqlObject();
 	stringstream q;
 	q << "SELECT SUM(sipsize) AS sipsize, SUM(rtpsize) AS rtpsize, SUM(graphsize) as graphsize, SUM(audiosize) AS audiosize, SUM(regsize) AS regsize FROM files WHERE id_sensor = " 
 		<< (opt_id_sensor > 0 ? opt_id_sensor : 0);
@@ -283,9 +274,7 @@ void clean_maxpoolsipsize() {
 	}
 
 	// check total size
-	SqlDb *sqlDb = new SqlDb_mysql();
-	sqlDb->setConnectParameters(mysql_host, mysql_user, mysql_password, mysql_database, 0);
-	sqlDb->connect();
+	SqlDb *sqlDb = createSqlObject();
 	stringstream q;
 	q << "SELECT SUM(sipsize) AS sipsize, SUM(regsize) AS regsize FROM files WHERE id_sensor = " << (opt_id_sensor > 0 ? opt_id_sensor : 0);
 	sqlDb->query(q.str());
@@ -365,9 +354,7 @@ void clean_maxpoolrtpsize() {
 	}
 
 	// check total size
-	SqlDb *sqlDb = new SqlDb_mysql();
-	sqlDb->setConnectParameters(mysql_host, mysql_user, mysql_password, mysql_database, 0);
-	sqlDb->connect();
+	SqlDb *sqlDb = createSqlObject();
 	stringstream q;
 	q << "SELECT SUM(rtpsize) AS rtpsize FROM files WHERE id_sensor = " << (opt_id_sensor > 0 ? opt_id_sensor : 0);
 	sqlDb->query(q.str());
@@ -440,9 +427,7 @@ void clean_maxpoolgraphsize() {
 	}
 
 	// check total size
-	SqlDb *sqlDb = new SqlDb_mysql();
-	sqlDb->setConnectParameters(mysql_host, mysql_user, mysql_password, mysql_database, 0);
-	sqlDb->connect();
+	SqlDb *sqlDb = createSqlObject();
 	stringstream q;
 	q << "SELECT SUM(graphsize) AS graphsize FROM files WHERE id_sensor = " << (opt_id_sensor > 0 ? opt_id_sensor : 0);
 	sqlDb->query(q.str());
@@ -515,9 +500,7 @@ void clean_maxpoolaudiosize() {
 	}
 
 	// check total size
-	SqlDb *sqlDb = new SqlDb_mysql();
-	sqlDb->setConnectParameters(mysql_host, mysql_user, mysql_password, mysql_database, 0);
-	sqlDb->connect();
+	SqlDb *sqlDb = createSqlObject();
 	stringstream q;
 	q << "SELECT SUM(audiosize) AS audiosize FROM files WHERE id_sensor = " << (opt_id_sensor > 0 ? opt_id_sensor : 0);
 	sqlDb->query(q.str());
@@ -591,9 +574,7 @@ void clean_maxpooldays() {
 	}
 
 	// check total size
-	SqlDb *sqlDb = new SqlDb_mysql();
-	sqlDb->setConnectParameters(mysql_host, mysql_user, mysql_password, mysql_database, 0);
-	sqlDb->connect();
+	SqlDb *sqlDb = createSqlObject();
 
 	stringstream q;
 	q << "SELECT * FROM files WHERE id_sensor = " << (opt_id_sensor > 0 ? opt_id_sensor : 0) <<  " AND (datehour < DATE_FORMAT(DATE_SUB(NOW(), INTERVAL " << opt_maxpooldays << " DAY), '%Y%m%d%k')" << ") ORDER BY datehour";
@@ -645,9 +626,7 @@ void clean_maxpoolsipdays() {
 		return;
 	}
 
-	SqlDb *sqlDb = new SqlDb_mysql();
-	sqlDb->setConnectParameters(mysql_host, mysql_user, mysql_password, mysql_database, 0);
-	sqlDb->connect();
+	SqlDb *sqlDb = createSqlObject();
 
 	stringstream q;
 	q << "SELECT * FROM files WHERE id_sensor = " << (opt_id_sensor > 0 ? opt_id_sensor : 0) <<  " AND (sipsize > 0 or regsize > 0) AND (datehour < DATE_FORMAT(DATE_SUB(NOW(), INTERVAL " << opt_maxpoolsipdays << " DAY), '%Y%m%d%k')" << ") ORDER BY datehour";
@@ -693,9 +672,7 @@ void clean_maxpoolrtpdays() {
 		return;
 	}
 
-	SqlDb *sqlDb = new SqlDb_mysql();
-	sqlDb->setConnectParameters(mysql_host, mysql_user, mysql_password, mysql_database, 0);
-	sqlDb->connect();
+	SqlDb *sqlDb = createSqlObject();
 
 	stringstream q;
 	q << "SELECT * FROM files WHERE id_sensor = " << (opt_id_sensor > 0 ? opt_id_sensor : 0) <<  " AND (rtpsize > 0) AND (datehour < DATE_FORMAT(DATE_SUB(NOW(), INTERVAL " << opt_maxpoolrtpdays << " DAY), '%Y%m%d%k')" << ") ORDER BY datehour";
@@ -737,9 +714,7 @@ void clean_maxpoolgraphdays() {
 		return;
 	}
 
-	SqlDb *sqlDb = new SqlDb_mysql();
-	sqlDb->setConnectParameters(mysql_host, mysql_user, mysql_password, mysql_database, 0);
-	sqlDb->connect();
+	SqlDb *sqlDb = createSqlObject();
 
 	stringstream q;
 	q << "SELECT * FROM files WHERE id_sensor = " << (opt_id_sensor > 0 ? opt_id_sensor : 0) <<  " AND (graphsize > 0) AND (datehour < DATE_FORMAT(DATE_SUB(NOW(), INTERVAL " << opt_maxpoolgraphdays << " DAY), '%Y%m%d%k')" << ") ORDER BY datehour";
@@ -785,9 +760,7 @@ void clean_maxpoolaudiodays() {
 		return;
 	}
 
-	SqlDb *sqlDb = new SqlDb_mysql();
-	sqlDb->setConnectParameters(mysql_host, mysql_user, mysql_password, mysql_database, 0);
-	sqlDb->connect();
+	SqlDb *sqlDb = createSqlObject();
 
 	stringstream q;
 	q << "SELECT * FROM files WHERE id_sensor = " << (opt_id_sensor > 0 ? opt_id_sensor : 0) <<  " AND (audiosize > 0) AND (datehour < DATE_FORMAT(DATE_SUB(NOW(), INTERVAL " << opt_maxpoolaudiodays << " DAY), '%Y%m%d%k')" << ") ORDER BY datehour";
@@ -853,9 +826,7 @@ void clean_obsolete_dirs(const char *path) {
 		return;
 	}
 	
-	SqlDb *sqlDb = new SqlDb_mysql();
-	sqlDb->setConnectParameters(mysql_host, mysql_user, mysql_password, mysql_database, 0);
-	sqlDb->connect();
+	SqlDb *sqlDb = createSqlObject();
 	
 	dirent* de;
 	string basedir = path;
@@ -1137,9 +1108,7 @@ bool check_exists_act_records_in_files() {
 	bool ok = false;
 	time_t actTime;
 	time(&actTime);
-	SqlDb *sqlDb = new SqlDb_mysql();
-	sqlDb->setConnectParameters(mysql_host, mysql_user, mysql_password, mysql_database, 0);
-	sqlDb->connect();
+	SqlDb *sqlDb = createSqlObject();
 	for(int i = 0; i < 12; i++) {
 		time_t checkTime = actTime - i * 60 * 60;
 		struct tm *checkTimeInfo = localtime(&checkTime);
@@ -1181,6 +1150,7 @@ void check_spooldir_filesindex(const char *path, const char *dirfilter) {
 	}
 	dirent* de;
 	string basedir = path;
+	SqlDb *sqlDb = createSqlObject();
 	while (true) {
 		errno = 0;
 		de = readdir(dp);
@@ -1350,6 +1320,7 @@ void check_spooldir_filesindex(const char *path, const char *dirfilter) {
 			}
 		}
 	}
+	delete sqlDb;
 	closedir(dp);
 }
 

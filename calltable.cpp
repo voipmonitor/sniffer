@@ -113,9 +113,12 @@ extern char mac[32];
 
 unsigned int last_register_clean = 0;
 
-extern SqlDb *sqlDb;
-
 extern CustPhoneNumberCache *custPnCache;
+
+SqlDb *sqlDbSaveCall = NULL;
+bool existsColumnCalldateInCdrNext = false;
+bool existsColumnCalldateInCdrRtp = false;
+
 
 /* constructor */
 Call::Call(char *call_id, unsigned long call_id_len, time_t time, void *ct) :
@@ -1247,19 +1250,6 @@ Call::convertRawToWav() {
 	return 0;
 }
 
-bool 
-Call::prepareForEscapeString() {
-	unsigned int pass = 0;
-	while(!sqlDb->connected()) {
-		if(pass > 0) {
-			sleep(1);
-		}
-		sqlDb->connect();
-		++pass;
-	}
-	return true;
-}
-
 size_t write_data(char *ptr, size_t size, size_t nmemb, void *userdata) {
 	std::ostringstream *stream = (std::ostringstream*)userdata;
 	size_t count = size * nmemb;
@@ -1606,8 +1596,10 @@ Call::getKeyValCDRtext() {
 /* TODO: implement failover -> write INSERT into file */
 int
 Call::saveToDb(bool enableBatchIfPossible) {
-	if(!prepareForEscapeString())
-		return 1;
+
+	if(!sqlDbSaveCall) {
+		sqlDbSaveCall = createSqlObject();
+	}
 
 	if((opt_cdronlyanswered and !connect_time) or 
 		(opt_cdronlyrtp and !ssrc_n)) {
@@ -1658,13 +1650,13 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		iter = proxies.begin();
 		while (iter != proxies.end()) {
 			if(*iter == sipcalledip) { ++iter; continue; };
-			sqlDb->setEnableSqlStringInContent(true);
+			sqlDbSaveCall->setEnableSqlStringInContent(true);
 			SqlDb_row cdrproxy;
 			cdrproxy.add("_\\_'SQL'_\\_:@cdr_id", "cdr_ID");
 			cdrproxy.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
 			cdrproxy.add(htonl(*iter), "dst");
-			query_str_cdrproxy += sqlDb->insertQuery("cdr_proxy", cdrproxy) + ";\n";
-			sqlDb->setEnableSqlStringInContent(false);
+			query_str_cdrproxy += sqlDbSaveCall->insertQuery("cdr_proxy", cdrproxy) + ";\n";
+			sqlDbSaveCall->setEnableSqlStringInContent(false);
 
 			++iter;
 		}
@@ -1733,7 +1725,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 	for(size_t iCustHeaders = 0; iCustHeaders < custom_headers.size(); iCustHeaders++) {
 		cdr_next.add(sqlEscapeString(custom_headers[iCustHeaders][1]), custom_headers[iCustHeaders][0]);
 	}
-	if(opt_cdr_partition && sqlDb->existsColumnCalldateInCdrNext) {
+	if(opt_cdr_partition && existsColumnCalldateInCdrNext) {
 		cdr_next.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
 	}
 
@@ -1951,7 +1943,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 	if(enableBatchIfPossible && isSqlDriver("mysql")) {
 		string query_str;
 		
-		sqlDb->setEnableSqlStringInContent(true);
+		sqlDbSaveCall->setEnableSqlStringInContent(true);
 		
 		cdr.add(string("_\\_'SQL'_\\_:") + "getIdOrInsertSIPRES(" + sqlEscapeStringBorder(lastSIPresponse) + ")", "lastSIPresponse_id");
 		if(opt_cdr_ua_enable) {
@@ -1962,26 +1954,26 @@ Call::saveToDb(bool enableBatchIfPossible) {
 				cdr.add(string("_\\_'SQL'_\\_:") + "getIdOrInsertUA(" + sqlEscapeStringBorder(b_ua) + ")", "b_ua_id");
 			}
 		}
-		query_str += sqlDb->insertQuery(sql_cdr_table, cdr) + ";\n";
+		query_str += sqlDbSaveCall->insertQuery(sql_cdr_table, cdr) + ";\n";
 		
 		query_str += "if row_count() > 0 then\n";
 		query_str += "set @cdr_id = last_insert_id();\n";
 		
 		cdr_next.add("_\\_'SQL'_\\_:@cdr_id", "cdr_ID");
-		query_str += sqlDb->insertQuery(sql_cdr_next_table, cdr_next) + ";\n";
+		query_str += sqlDbSaveCall->insertQuery(sql_cdr_next_table, cdr_next) + ";\n";
 		
 		if(sql_cdr_table_last30d[0] ||
 		   sql_cdr_table_last7d[0] ||
 		   sql_cdr_table_last1d[0]) {
 			cdr.add("_\\_'SQL'_\\_:@cdr_id", "ID");
 			if(sql_cdr_table_last30d[0]) {
-				query_str += sqlDb->insertQuery(sql_cdr_table_last30d, cdr) + ";\n";
+				query_str += sqlDbSaveCall->insertQuery(sql_cdr_table_last30d, cdr) + ";\n";
 			}
 			if(sql_cdr_table_last7d[0]) {
-				query_str += sqlDb->insertQuery(sql_cdr_table_last7d, cdr) + ";\n";
+				query_str += sqlDbSaveCall->insertQuery(sql_cdr_table_last7d, cdr) + ";\n";
 			}
 			if(sql_cdr_table_last1d[0]) {
-				query_str += sqlDb->insertQuery(sql_cdr_table_last1d, cdr) + ";\n";
+				query_str += sqlDbSaveCall->insertQuery(sql_cdr_table_last1d, cdr) + ";\n";
 			}
 		}
 
@@ -2010,10 +2002,10 @@ Call::saveToDb(bool enableBatchIfPossible) {
 				rtps.add(rtp[i]->stats.lost, "loss");
 				rtps.add((unsigned int)(rtp[i]->stats.maxjitter * 10), "maxjitter_mult10");
 				rtps.add(diff, "firsttime");
-				if(opt_cdr_partition && sqlDb->existsColumnCalldateInCdrRtp) {
+				if(opt_cdr_partition && existsColumnCalldateInCdrRtp) {
 					rtps.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
 				}
-				query_str += sqlDb->insertQuery("cdr_rtp", rtps) + ";\n";
+				query_str += sqlDbSaveCall->insertQuery("cdr_rtp", rtps) + ";\n";
 			}
 		}
 
@@ -2034,11 +2026,11 @@ Call::saveToDb(bool enableBatchIfPossible) {
 				if(opt_cdr_partition) {
 					dtmf.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
 				}
-				query_str += sqlDb->insertQuery("cdr_dtmf", dtmf) + ";\n";
+				query_str += sqlDbSaveCall->insertQuery("cdr_dtmf", dtmf) + ";\n";
 			}
 		}
 		
-		sqlDb->setEnableSqlStringInContent(false);
+		sqlDbSaveCall->setEnableSqlStringInContent(false);
 		
 		query_str += "end if";
 		
@@ -2056,12 +2048,12 @@ Call::saveToDb(bool enableBatchIfPossible) {
 	caller_domain_id = sqlDb->getIdOrInsert("cdr_domain", "id", "domain", cdr_domain_caller);
 	called_domain_id = sqlDb->getIdOrInsert("cdr_domain", "id", "domain", cdr_domain_called);
 	*/
-	lastSIPresponse_id = sqlDb->getIdOrInsert(sql_cdr_sip_response_table, "id", "lastSIPresponse", cdr_sip_response);
+	lastSIPresponse_id = sqlDbSaveCall->getIdOrInsert(sql_cdr_sip_response_table, "id", "lastSIPresponse", cdr_sip_response);
 	if(cdr_ua_a) {
-		a_ua_id = sqlDb->getIdOrInsert(sql_cdr_ua_table, "id", "ua", cdr_ua_a);
+		a_ua_id = sqlDbSaveCall->getIdOrInsert(sql_cdr_ua_table, "id", "ua", cdr_ua_a);
 	}
 	if(cdr_ua_b) {
-		b_ua_id = sqlDb->getIdOrInsert(sql_cdr_ua_table, "id", "ua", cdr_ua_b);
+		b_ua_id = sqlDbSaveCall->getIdOrInsert(sql_cdr_ua_table, "id", "ua", cdr_ua_b);
 	}
 
 	/*
@@ -2076,7 +2068,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 	cdr.add(a_ua_id, "a_ua_id", true);
 	cdr.add(b_ua_id, "b_ua_id", true);
 	
-	int cdrID = sqlDb->insert(sql_cdr_table, cdr);
+	int cdrID = sqlDbSaveCall->insert(sql_cdr_table, cdr);
 
 
 	if(cdrID > 0) {
@@ -2101,7 +2093,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 				cdrproxy.add(cdrID, "cdr_ID");
 				cdrproxy.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
 				cdrproxy.add(htonl(*iter), "dst");
-				sqlDb->insert("cdr_proxy", cdrproxy);
+				sqlDbSaveCall->insert("cdr_proxy", cdrproxy);
 				++iter;
 			}
 		}
@@ -2129,10 +2121,10 @@ Call::saveToDb(bool enableBatchIfPossible) {
 				rtps.add(rtp[i]->stats.lost, "loss");
 				rtps.add((unsigned int)(rtp[i]->stats.maxjitter * 10), "maxjitter_mult10");
 				rtps.add(diff, "firsttime");
-				if(opt_cdr_partition && sqlDb->existsColumnCalldateInCdrRtp) {
+				if(opt_cdr_partition && existsColumnCalldateInCdrRtp) {
 					rtps.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
 				}
-				sqlDb->insert("cdr_rtp", rtps);
+				sqlDbSaveCall->insert("cdr_rtp", rtps);
 			}
 		}
 
@@ -2153,7 +2145,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 				if(opt_cdr_partition) {
 					dtmf.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
 				}
-				sqlDb->insert("cdr_dtmf", dtmf);
+				sqlDbSaveCall->insert("cdr_dtmf", dtmf);
 			}
 		}
 
@@ -2162,19 +2154,19 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		}
 
 		cdr_next.add(cdrID, "cdr_ID");
-		sqlDb->insert(sql_cdr_next_table, cdr_next);
+		sqlDbSaveCall->insert(sql_cdr_next_table, cdr_next);
 		if(sql_cdr_table_last30d[0] ||
 		   sql_cdr_table_last7d[0] ||
 		   sql_cdr_table_last1d[0]) {
 			cdr.add(cdrID, "ID");
 			if(sql_cdr_table_last30d[0]) {
-				sqlDb->insert(sql_cdr_table_last30d, cdr);
+				sqlDbSaveCall->insert(sql_cdr_table_last30d, cdr);
 			}
 			if(sql_cdr_table_last7d[0]) {
-				sqlDb->insert(sql_cdr_table_last7d, cdr);
+				sqlDbSaveCall->insert(sql_cdr_table_last7d, cdr);
 			}
 			if(sql_cdr_table_last1d[0]) {
-				sqlDb->insert(sql_cdr_table_last1d, cdr);
+				sqlDbSaveCall->insert(sql_cdr_table_last1d, cdr);
 			}
 		}
 	}
@@ -2185,10 +2177,12 @@ Call::saveToDb(bool enableBatchIfPossible) {
 /* TODO: implement failover -> write INSERT into file */
 int
 Call::saveRegisterToDb(bool enableBatchIfPossible) {
+
+	if(!sqlDbSaveCall) {
+		sqlDbSaveCall = createSqlObject();
+	}
+
 	const char *register_table = "register";
-	
-	if(!prepareForEscapeString())
-		return(1);
 	
 	string query;
 
@@ -2212,11 +2206,11 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 			mysqlquerypush(qp);
 		} else {
 			if(opt_sip_register_active_nologbin && isTypeDb("mysql")) {
-				sqlDb->query("SET sql_log_bin = 0");
+				sqlDbSaveCall->query("SET sql_log_bin = 0");
 			}
-			sqlDb->query("DELETE FROM register");
+			sqlDbSaveCall->query("DELETE FROM register");
 			if(opt_sip_register_active_nologbin && isTypeDb("mysql")) {
-				sqlDb->query("SET sql_log_bin = 1");
+				sqlDbSaveCall->query("SET sql_log_bin = 1");
 			}
 		}
 	} else if((last_register_clean + REGISTER_CLEAN_PERIOD) < now){
@@ -2233,13 +2227,13 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 			}
 			mysqlquerypush(qp);
 		} else {
-			sqlDb->query(query);
+			sqlDbSaveCall->query(query);
 			if(opt_sip_register_active_nologbin && isTypeDb("mysql")) {
-				sqlDb->query("SET sql_log_bin = 0");
+				sqlDbSaveCall->query("SET sql_log_bin = 0");
 			}
-			sqlDb->query("DELETE FROM register WHERE expires_at <= NOW()");
+			sqlDbSaveCall->query("DELETE FROM register WHERE expires_at <= NOW()");
 			if(opt_sip_register_active_nologbin && isTypeDb("mysql")) {
-				sqlDb->query("SET sql_log_bin = 1");
+				sqlDbSaveCall->query("SET sql_log_bin = 1");
 			}
 		}
 	}
@@ -2295,19 +2289,19 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 				"ORDER BY ID DESC"; // LIMIT 1 
 //			if(verbosity > 2) cout << query << "\n";
 			{
-			if(!sqlDb->query(query)) {
+			if(!sqlDbSaveCall->query(query)) {
 				syslog(LOG_ERR, "Error: Query [%s] failed.", query.c_str());
 				break;
 			}
 
-			SqlDb_row rsltRow = sqlDb->fetchRow();
+			SqlDb_row rsltRow = sqlDbSaveCall->fetchRow();
 			if(rsltRow) {
 				// REGISTER message is already in register table, delete old REGISTER and save the new one 
 				int expired = atoi(rsltRow["expired"].c_str()) == 1;
 				time_t expires_at = atoi(rsltRow["expires_at"].c_str());
 
 				string query = "DELETE FROM " + (string)register_table + " WHERE ID = '" + (rsltRow["ID"]).c_str() + "'";
-				if(!sqlDb->query(query)) {
+				if(!sqlDbSaveCall->query(query)) {
 					syslog(LOG_WARNING, "Query [%s] failed.", query.c_str());
 				}
 
@@ -2327,8 +2321,8 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 					reg.add(5, "state");
 					reg.add(fname, "fname");
 					reg.add(opt_id_sensor, "id_sensor");
-					reg.add(sqlDb->getIdOrInsert(sql_cdr_ua_table, "id", "ua", cdr_ua), "ua_id");
-					sqlDb->insert("register_state", reg);
+					reg.add(sqlDbSaveCall->getIdOrInsert(sql_cdr_ua_table, "id", "ua", cdr_ua), "ua_id");
+					sqlDbSaveCall->insert("register_state", reg);
 				}
 
 				if(atoi(rsltRow["state"].c_str()) != regstate || register_expires == 0) {
@@ -2345,10 +2339,10 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 					reg.add(sqlEscapeString(digest_username), "digestusername");
 					reg.add(register_expires, "expires");
 					reg.add(regstate, "state");
-					reg.add(sqlDb->getIdOrInsert(sql_cdr_ua_table, "id", "ua", cdr_ua), "ua_id");
+					reg.add(sqlDbSaveCall->getIdOrInsert(sql_cdr_ua_table, "id", "ua", cdr_ua), "ua_id");
 					reg.add(fname, "fname");
 					reg.add(opt_id_sensor, "id_sensor");
-					sqlDb->insert("register_state", reg);
+					sqlDbSaveCall->insert("register_state", reg);
 				}
 			} else {
 				// REGISTER message is new, store it to register_state
@@ -2364,10 +2358,10 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 				reg.add(sqlEscapeString(digest_username), "digestusername");
 				reg.add(register_expires, "expires");
 				reg.add(regstate, "state");
-				reg.add(sqlDb->getIdOrInsert(sql_cdr_ua_table, "id", "ua", cdr_ua), "ua_id");
+				reg.add(sqlDbSaveCall->getIdOrInsert(sql_cdr_ua_table, "id", "ua", cdr_ua), "ua_id");
 				reg.add(fname, "fname");
 				reg.add(opt_id_sensor, "id_sensor");
-				sqlDb->insert("register_state", reg);
+				sqlDbSaveCall->insert("register_state", reg);
 			}
 
 			// save successfull REGISTER to register table in case expires is not negative
@@ -2386,13 +2380,13 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 				reg.add(sqlEscapeString(contact_domain), "contact_domain");
 				reg.add(sqlEscapeString(digest_username), "digestusername");
 				reg.add(sqlEscapeString(digest_realm), "digestrealm");
-				reg.add(sqlDb->getIdOrInsert(sql_cdr_ua_table, "id", "ua", cdr_ua), "ua_id");
+				reg.add(sqlDbSaveCall->getIdOrInsert(sql_cdr_ua_table, "id", "ua", cdr_ua), "ua_id");
 				reg.add(register_expires, "expires");
 				reg.add(sqlEscapeString(sqlDateTimeString(calltime() + register_expires).c_str()), "expires_at");
 				reg.add(fname, "fname");
 				reg.add(opt_id_sensor, "id_sensor");
 				reg.add(regstate, "state");
-				int res = sqlDb->insert(register_table, reg) <= 0;
+				int res = sqlDbSaveCall->insert(register_table, reg) <= 0;
 				return res;
 			}
 			}
@@ -2424,12 +2418,12 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 			reg.add(sqlEscapeString(contact_num), "contact_num");
 			reg.add(sqlEscapeString(contact_domain), "contact_domain");
 			reg.add(sqlEscapeString(digest_username), "digestusername");
-			reg.add(sqlDb->getIdOrInsert(sql_cdr_ua_table, "id", "ua", cdr_ua), "ua_id");
+			reg.add(sqlDbSaveCall->getIdOrInsert(sql_cdr_ua_table, "id", "ua", cdr_ua), "ua_id");
 			reg.add(fname, "fname");
 			if(opt_id_sensor > -1) {
 				reg.add(opt_id_sensor, "id_sensor");
 			}
-			string q3 = sqlDb->insertQuery("register_failed", reg);
+			string q3 = sqlDbSaveCall->insertQuery("register_failed", reg);
 
 			string query = "SET @mcounter = (" + q1 + ");";
 			query += "IF @mcounter IS NOT NULL THEN " + q2 + "; ELSE " + q3 + "; END IF";
@@ -2440,8 +2434,8 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 				"SELECT counter FROM register_failed ") +
 				"WHERE to_num = " + sqlEscapeStringBorder(called) + " AND to_domain = " + sqlEscapeStringBorder(called_domain) + 
 					" AND digestusername = " + sqlEscapeStringBorder(digest_username) + " AND created_at >= SUBTIME(NOW(), '01:00:00')";
-			if(sqlDb->query(query)) {
-				SqlDb_row rsltRow = sqlDb->fetchRow();
+			if(sqlDbSaveCall->query(query)) {
+				SqlDb_row rsltRow = sqlDbSaveCall->fetchRow();
 				char fname[32];
 				sprintf(fname, "%llu", fname2);
 				if(rsltRow) {
@@ -2450,7 +2444,7 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 						"UPDATE register_failed SET created_at = NOW(), fname = " + sqlEscapeStringBorder(fname) + ", counter = counter + 1 ") +
 						"WHERE to_num = " + sqlEscapeStringBorder(called) + " AND digestusername = " + sqlEscapeStringBorder(digest_username) + 
 							" AND created_at >= SUBTIME(NOW(), '01:00:00');";
-					sqlDb->query(query);
+					sqlDbSaveCall->query(query);
 				} else {
 					// this is new failed attempt within hour, insert
 					SqlDb_row reg;
@@ -2463,12 +2457,12 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 					reg.add(sqlEscapeString(contact_num), "contact_num");
 					reg.add(sqlEscapeString(contact_domain), "contact_domain");
 					reg.add(sqlEscapeString(digest_username), "digestusername");
-					reg.add(sqlDb->getIdOrInsert(sql_cdr_ua_table, "id", "ua", cdr_ua), "ua_id");
+					reg.add(sqlDbSaveCall->getIdOrInsert(sql_cdr_ua_table, "id", "ua", cdr_ua), "ua_id");
 					reg.add(fname, "fname");
 					if(opt_id_sensor > -1) {
 						reg.add(opt_id_sensor, "id_sensor");
 					}
-					sqlDb->insert("register_failed", reg);
+					sqlDbSaveCall->insert("register_failed", reg);
 				}
 			}
 		}
@@ -2480,8 +2474,10 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 
 int
 Call::saveMessageToDb(bool enableBatchIfPossible) {
-	if(!prepareForEscapeString())
-		return(1);
+
+	if(!sqlDbSaveCall) {
+		sqlDbSaveCall = createSqlObject();
+	}
 
 	SqlDb_row cdr,
 			m_contenttype,
@@ -2514,7 +2510,7 @@ Call::saveMessageToDb(bool enableBatchIfPossible) {
 	}
 	if(contenttype) {
 		m_contenttype.add(sqlEscapeString(contenttype), "contenttype");
-		unsigned int id_contenttype = sqlDb->getIdOrInsert("contenttype", "id", "contenttype", m_contenttype);
+		unsigned int id_contenttype = sqlDbSaveCall->getIdOrInsert("contenttype", "id", "contenttype", m_contenttype);
 		cdr.add(id_contenttype, "id_contenttype");
 	}
 
@@ -2535,7 +2531,7 @@ Call::saveMessageToDb(bool enableBatchIfPossible) {
 	if(enableBatchIfPossible && isSqlDriver("mysql")) {
 		string query_str;
 		
-		sqlDb->setEnableSqlStringInContent(true);
+		sqlDbSaveCall->setEnableSqlStringInContent(true);
 		
 		cdr.add(string("_\\_'SQL'_\\_:") + "getIdOrInsertSIPRES(" + sqlEscapeStringBorder(lastSIPresponse) + ")", "lastSIPresponse_id");
 		if(a_ua) {
@@ -2544,7 +2540,7 @@ Call::saveMessageToDb(bool enableBatchIfPossible) {
 		if(b_ua) {
 			cdr.add(string("_\\_'SQL'_\\_:") + "getIdOrInsertUA(" + sqlEscapeStringBorder(b_ua) + ")", "b_ua_id");
 		}
-		query_str += sqlDb->insertQuery("message", cdr);
+		query_str += sqlDbSaveCall->insertQuery("message", cdr);
 		
 		pthread_mutex_lock(&mysqlquery_lock);
 		mysqlquery.push(query_str);
@@ -2558,17 +2554,17 @@ Call::saveMessageToDb(bool enableBatchIfPossible) {
 			a_ua_id = 0,
 			b_ua_id = 0;
 
-	lastSIPresponse_id = sqlDb->getIdOrInsert(sql_cdr_sip_response_table, "id", "lastSIPresponse", cdr_sip_response);
+	lastSIPresponse_id = sqlDbSaveCall->getIdOrInsert(sql_cdr_sip_response_table, "id", "lastSIPresponse", cdr_sip_response);
 	cdr_ua_a.add(sqlEscapeString(a_ua), "ua");
-	a_ua_id = sqlDb->getIdOrInsert(sql_cdr_ua_table, "id", "ua", cdr_ua_a);
+	a_ua_id = sqlDbSaveCall->getIdOrInsert(sql_cdr_ua_table, "id", "ua", cdr_ua_a);
 	cdr_ua_b.add(sqlEscapeString(b_ua), "ua");
-	b_ua_id = sqlDb->getIdOrInsert(sql_cdr_ua_table, "id", "ua", cdr_ua_b);
+	b_ua_id = sqlDbSaveCall->getIdOrInsert(sql_cdr_ua_table, "id", "ua", cdr_ua_b);
 
 	cdr.add(lastSIPresponse_id, "lastSIPresponse_id", true);
 	cdr.add(a_ua_id, "a_ua_id", true);
 	cdr.add(b_ua_id, "b_ua_id", true);
 
-	int cdrID = sqlDb->insert("message", cdr);
+	int cdrID = sqlDbSaveCall->insert("message", cdr);
 
 	return(cdrID <= 0);
 

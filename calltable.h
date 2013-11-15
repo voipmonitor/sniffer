@@ -328,12 +328,6 @@ public:
 	*/
 	int convertRawToWav();
  
-	/**
-	 * @brief prepare for escape string - connect if need
-	 *
-	*/
-	bool prepareForEscapeString();
-
 #ifdef ISCURL	
 	/**
 	 * @brief send cdr

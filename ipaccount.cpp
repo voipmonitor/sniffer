@@ -82,7 +82,6 @@ extern char mysql_database[256];
 extern char mysql_user[256];
 extern char mysql_password[256];
 
-extern SqlDb *sqlDb;
 extern MySqlStore *sqlStore;
 
 extern queue<string> mysqlquery;
@@ -100,8 +99,15 @@ CustIpCache *custIpCache = NULL;
 static NextIpCache *nextIpCache = NULL;
 CustPhoneNumberCache *custPnCache = NULL;
 
+SqlDb *sqlDbSaveIpacc = NULL;
+
 
 void ipacc_save(int indexIpaccBuffer, unsigned int interval_time_limit = 0) {
+
+	if(!sqlDbSaveIpacc) {
+		sqlDbSaveIpacc = createSqlObject();
+	}
+
 	if(custIpCache) {
 		custIpCache->flush();
 	}
@@ -214,7 +220,7 @@ void ipacc_save(int indexIpaccBuffer, unsigned int interval_time_limit = 0) {
 					row.add(ipacc_data->numpackets, "numpackets");
 					row.add(ipacc_data->voippacket, "voip");
 					row.add(opt_ipacc_sniffer_agregate ? 0 : 1, "do_agr_trigger");
-					sqlDb->insert("ipacc", row);
+					sqlDbSaveIpacc->insert("ipacc", row);
 				}
 				++_counter;
 				

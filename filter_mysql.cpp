@@ -10,8 +10,6 @@
 
 using namespace std;
 
-extern SqlDb *sqlDb;
-
 bool is_number(const std::string& s) {
 	for (unsigned int i = 0; i < s.length(); i++) {
 		if (!std::isdigit(s[i]))
@@ -41,6 +39,7 @@ IPfilter::~IPfilter() {
 void
 IPfilter::load() {
 	vector<db_row> vectDbRow;
+	SqlDb *sqlDb = createSqlObject();
 	SqlDb_row row;
 	sqlDb->query("SELECT * FROM filter_ip");
 	while((row = sqlDb->fetchRow())) {
@@ -60,6 +59,7 @@ IPfilter::load() {
 		vectDbRow.push_back(*filterRow);
 		delete filterRow;
 	}
+	delete sqlDb;
 	t_node *node;
 	for (size_t i = 0; i < vectDbRow.size(); ++i) {
 		node = new(t_node);
@@ -238,6 +238,7 @@ TELNUMfilter::add_payload(t_payload *payload) {
 void
 TELNUMfilter::load() {
 	vector<db_row> vectDbRow;
+	SqlDb *sqlDb = createSqlObject();
 	SqlDb_row row;
 	sqlDb->query("SELECT * FROM filter_telnum");
 	while((row = sqlDb->fetchRow())) {
@@ -256,6 +257,7 @@ TELNUMfilter::load() {
 		vectDbRow.push_back(*filterRow);
 		delete filterRow;
 	}
+	delete sqlDb;
 	for (size_t i = 0; i < vectDbRow.size(); ++i) {
 		t_payload *np = new(t_payload);
 		np->direction = vectDbRow[i].direction;

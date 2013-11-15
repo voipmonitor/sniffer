@@ -66,7 +66,7 @@ public:
 	virtual ~SqlDb();
 	void setConnectParameters(string server, string user, string password, string database = "", bool showversion = true);
 	void setLoginTimeout(ulong loginTimeout);
-	virtual bool connect() = 0;
+	virtual bool connect(bool craeteDb = false, bool mainInit = false) = 0;
 	virtual void disconnect() = 0;
 	virtual bool connected() = 0;
 	bool reconnect();
@@ -79,7 +79,6 @@ public:
 	virtual int getInsertId() = 0;
 	virtual int getIndexField(string fieldName);
 	virtual string escape(const char *inputString, int length = 0) = 0;
-	string _escape(const char *inputString);
 	virtual string getFieldBorder() {
 		return("");
 	} 
@@ -154,16 +153,13 @@ protected:
 private:
 	unsigned int lastError;
 	string lastErrorString;
-public:
-	bool existsColumnCalldateInCdrNext;
-	bool existsColumnCalldateInCdrRtp;
 };
 
 class SqlDb_mysql : public SqlDb {
 public:
 	SqlDb_mysql();
 	~SqlDb_mysql();
-	bool connect();
+	bool connect(bool craeteDb = false, bool mainInit = false);
 	void disconnect();
 	bool connected();
 	bool query(string query);
@@ -187,6 +183,9 @@ public:
 	int multi_off();
 	int getDbMajorVersion();
 	int getDbMinorVersion(int minorLevel  = 0);
+	MYSQL *getH_Mysql() {
+		return(this->hMysql);
+	}
 private:
 	MYSQL *hMysql;
 	MYSQL *hMysqlConn;
@@ -229,7 +228,7 @@ public:
 	~SqlDb_odbc();
 	void setOdbcVersion(ulong odbcVersion);
 	void setSubtypeDb(string subtypeDb);
-	bool connect();
+	bool connect(bool craeteDb = false, bool mainInit = false);
 	void disconnect();
 	bool connected();
 	bool query(string query);
@@ -303,15 +302,16 @@ private:
 	string database;
 };
 
+SqlDb *createSqlObject();
 string sqlDateTimeString(time_t unixTime);
 string sqlDateString(time_t unixTime);
-string sqlEscapeString(string inputStr);
-string sqlEscapeString(const char *inputStr);
-string sqlEscapeStringBorder(string inputStr, char borderChar = '\'');
-string sqlEscapeStringBorder(const char *inputStr, char borderChar = '\'');
-string _sqlEscapeString(const char *inputStr, char borderChar);
-bool isSqlDriver(const char *sqlDriver);
-bool isTypeDb(const char *typeDb);
+string sqlEscapeString(string inputStr, const char *typeDb = NULL, SqlDb_mysql *sqlDbMysql = NULL);
+string sqlEscapeString(const char *inputStr, int length = 0, const char *typeDb = NULL, SqlDb_mysql *sqlDbMysql = NULL);
+string _sqlEscapeString(const char *inputString, const char *typeDb);
+string sqlEscapeStringBorder(string inputStr, char borderChar = '\'', const char *typeDb = NULL, SqlDb_mysql *sqlDbMysql = NULL);
+string sqlEscapeStringBorder(const char *inputStr, char borderChar = '\'', const char *typeDb = NULL, SqlDb_mysql *sqlDbMysql = NULL);
+bool isSqlDriver(const char *sqlDriver, const char *checkSqlDriver = NULL);
+bool isTypeDb(const char *typeDb, const char *checkSqlDriver = NULL, const char *checkOdbcDriver = NULL);
 bool cmpStringIgnoreCase(const char* str1, const char* str2);
 string reverseString(const char *str);
 

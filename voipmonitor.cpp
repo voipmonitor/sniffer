@@ -409,7 +409,6 @@ struct queue_state *qs_readpacket_thread_queue = NULL;
 
 nat_aliases_t nat_aliases;	// net_aliases[local_ip] = extern_ip
 
-SqlDb *sqlDb = NULL;
 MySqlStore *sqlStore = NULL;
 
 char mac[32] = "";
@@ -587,9 +586,7 @@ void *moving_cache( void *dummy ) {
 }
 
 void *storing_sql( void *dummy ) {
-        SqlDb *sqlDb = new SqlDb_mysql();
-        sqlDb->setConnectParameters(mysql_host, mysql_user, mysql_password, mysql_database, 0);
-        sqlDb->connect();
+        SqlDb *sqlDb = createSqlObject();
 
 	while(1) {
 		// process mysql query queue - concatenate queries to N messages
@@ -666,9 +663,7 @@ void *storing_cdr( void *dummy ) {
 		if(!opt_nocdr and opt_cdr_partition and !opt_disable_partition_operations and isSqlDriver("mysql")) {
 			time_t actTime = time(NULL);
 			if(actTime - createPartitionAt > 12 * 3600) {
-				SqlDb *sqlDb = new SqlDb_mysql();
-				sqlDb->setConnectParameters(mysql_host, mysql_user, mysql_password, mysql_database, 0);
-				sqlDb->connect();
+				SqlDb *sqlDb = createSqlObject();
 				
 				syslog(LOG_NOTICE, "create cdr partitions - begin");
 				sqlDb->query(
@@ -711,9 +706,7 @@ void *storing_cdr( void *dummy ) {
 		if(opt_ipaccount and !opt_disable_partition_operations and isSqlDriver("mysql")) {
 			time_t actTime = time(NULL);
 			if(actTime - createPartitionIpaccAt > 12 * 3600) {
-				SqlDb *sqlDb = new SqlDb_mysql();
-				sqlDb->setConnectParameters(mysql_host, mysql_user, mysql_password, mysql_database, 0);
-				sqlDb->connect();
+				SqlDb *sqlDb = createSqlObject();
 				
 				syslog(LOG_NOTICE, "create ipacc partitions - begin");
 				sqlDb->query(
@@ -2298,25 +2291,16 @@ int main(int argc, char *argv[]) {
 	}
 
 	cout << "SQL DRIVER: " << sql_driver << endl;
-	if(isSqlDriver("mysql")) {
-		sqlDb = new SqlDb_mysql();
-		sqlDb->setConnectParameters(mysql_host, mysql_user, mysql_password, mysql_database);
-		sqlStore = new MySqlStore(mysql_host, mysql_user, mysql_password, mysql_database);
-	} else if(isSqlDriver("odbc")) {
-		SqlDb_odbc *sqlDb_odbc = new SqlDb_odbc();
-		sqlDb_odbc->setOdbcVersion(SQL_OV_ODBC3);
-		sqlDb_odbc->setSubtypeDb(odbc_driver);
-		sqlDb = sqlDb_odbc;
-		sqlDb->setConnectParameters(odbc_dsn, odbc_user, odbc_password);
-	}
 	if(!opt_nocdr &&
 	   !(opt_pcap_threaded && opt_pcap_queue && 
 	     !opt_pcap_queue_receive_from_ip.length() &&
 	     opt_pcap_queue_send_to_ip.length())) {
-		if(sqlDb->connect()) {
+		SqlDb *sqlDb = createSqlObject();
+		if(sqlDb->connect(true, true)) {
 			sqlDb->createSchema();
 			sqlDb->checkSchema();
 		}
+		delete sqlDb;
 	}
 
 	signal(SIGINT,sigint_handler);
@@ -2333,9 +2317,6 @@ int main(int argc, char *argv[]) {
 		ipfilter = new IPfilter;
 		telnumfilter = new TELNUMfilter;
 		test();
-		if(sqlDb) {
-			delete sqlDb;
-		}
 		if(sqlStore) {
 			delete sqlStore;
 		}
@@ -2874,6 +2855,7 @@ int main(int argc, char *argv[]) {
 		string queryqueue = "";
 		pthread_mutex_lock(&mysqlquery_lock);
 		int mysqlQuerySize = mysqlquery.size();
+		SqlDb *sqlDb = createSqlObject();
 		while(1) {
 			if(mysqlquery.size() == 0) {
 				if(queryqueue != "") {
@@ -2907,6 +2889,7 @@ int main(int argc, char *argv[]) {
 			}
 			usleep(100);
 		}
+		delete sqlDb;
 		pthread_mutex_unlock(&mysqlquery_lock);
 	}
 
@@ -2931,9 +2914,23 @@ int main(int argc, char *argv[]) {
 		telnumfilter = NULL;
 	}
 	
-	if(sqlDb) {
-		delete sqlDb;
+	extern SqlDb *sqlDbSaveCall;
+	if(sqlDbSaveCall) {
+		delete sqlDbSaveCall;
 	}
+	extern SqlDb *sqlDbSaveIpacc;
+	if(sqlDbSaveIpacc) {
+		delete sqlDbSaveIpacc;
+	}
+	extern SqlDb *sqlDbSaveHttp;
+	if(sqlDbSaveHttp) {
+		delete sqlDbSaveHttp;
+	}
+	extern SqlDb_mysql *sqlDbEscape;
+	if(sqlDbEscape) {
+		delete sqlDbEscape;
+	}
+	
 	if(sqlStore) {
 		delete sqlStore;
 	}

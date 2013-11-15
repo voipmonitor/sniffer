@@ -147,7 +147,6 @@ extern int opt_pcapdump;
 extern int opt_id_sensor;
 extern pthread_mutex_t mysqlquery_lock;
 extern queue<string> mysqlquery;
-extern SqlDb *sqlDb;
 int pcap_dlink;
 extern int opt_udpfrag;
 extern int global_livesniffer;
@@ -299,7 +298,7 @@ inline void save_packet_sql(Call *call, struct pcap_pkthdr *header, const u_char
 		", microseconds = " << header->ts.tv_usec << 
 		", callid = " << sqlEscapeStringBorder(call ? call->call_id : callidstr) << 
 		", description = " << sqlEscapeStringBorder(description) << 
-		", data = '#" << sqlDb->escape(mpacket, len) << "#'";
+		", data = '#" << sqlEscapeString(mpacket, len) << "#'";
 	pthread_mutex_lock(&mysqlquery_lock);
 	mysqlquery.push(query.str());
 	pthread_mutex_unlock(&mysqlquery_lock);
