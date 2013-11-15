@@ -22,8 +22,8 @@ headers = $(shell ls *.h -1 | tr "\n" " ")
 #LDFLAGS := $(LDFLAGS) -static -static-libgcc
 
 shared: LIBS=-lpthread -lpcap -lgzstream -lz -lvorbis -lvorbisenc -logg -lodbc -lmysqlclient -lrt -lsnappy # -llfds #-lcurl #-lnids
-shared: CFLAGS+= -DQUEUE_NONBLOCK2 -I /usr/include/mysql/ -Wall -I jitterbuffer/ -L/usr/lib/mysql -L/usr/local/lib/ -Lgzstream/ -Lliblfds.6/bin/ -L/usr/lib64/mysql -fPIC -g3
-shared: args = -g3 -Wall  -march=$(GCCARCH) 
+shared: CFLAGS+= -DQUEUE_NONBLOCK2 -I /usr/include/mysql/ -Wall -I jitterbuffer/ -L/usr/lib/mysql -L/usr/local/lib/ -Lgzstream/ -Lliblfds.6/bin/ -L/usr/lib64/mysql -fPIC -g3 -O2 
+shared: args = -g3 -Wall  -march=$(GCCARCH) -O2 
 
 static: LIBS=-static -L/usr/lib/mysql -L/usr/lib64/mysql -L/usr/lib/mysql -lodbc -lltdl -ldl -lrt -lz -lcrypt -lm -lssl -static-libstdc++ -static-libgcc -lpcap -L/usr/lib/mysql -lpthread -lmysqlclient -lpthread -lgzstream -lz -lc -lvorbis -lvorbisenc -logg -lrt -lsnappy # -llfds 
 static: CFLAGS+= -DQUEUE_NONBLOCK2 -I /usr/include/mysql/ -Wall -I jitterbuffer/  -L/usr/local/lib/ -Lgzstream/ -Lliblfds.6/bin/ -fPIC -O2
@@ -112,13 +112,13 @@ mos_g729.o : mos_g729.cpp mos_g729.h ${headers}
 	g++ -c mos_g729.cpp $(args) ${CFLAGS}
 
 pcap_queue.o : pcap_queue.cpp pcap_queue.h ${headers}
-	g++ -c pcap_queue.cpp $(args) -O2 ${CFLAGS}
+	g++ -c pcap_queue.cpp $(args) ${CFLAGS}
 
 sql_db.o : sql_db.cpp sql_db.h ${headers}
 	g++ -c sql_db.cpp $(args) ${CFLAGS}
 
 md5.o : md5.cpp md5.h ${headers}
-	g++ -c md5.cpp $(args) -O2 ${CFLAGS}
+	g++ -c md5.cpp $(args) ${CFLAGS}
 
 mirrorip.o : mirrorip.cpp mirrorip.h ${headers}
 	g++ -c mirrorip.cpp $(args) ${CFLAGS}
