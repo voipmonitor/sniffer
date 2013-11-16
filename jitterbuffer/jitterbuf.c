@@ -138,23 +138,32 @@ static int history_put(jitterbuf *jb, long ts, long now, long ms)
 
 	/* check for drastic change in delay */
 	if (jb->info.conf.resync_threshold != -1) {
-		if (abs(delay - jb->info.last_delay) > threshold) {
-			jb->info.cnt_delay_discont++;
-			if (jb->info.cnt_delay_discont > 3) {
-				/* resync the jitterbuffer */
-				jb->info.cnt_delay_discont = 0;
-				jb->hist_ptr = 0;
-				jb->hist_maxbuf_valid = 0;
-
-				jb_warn("Resyncing the jb. last_delay %ld, this delay %ld, threshold %ld, new offset %ld\n", jb->info.last_delay, delay, threshold, ts - now);
-				jb->info.resync_offset = ts - now;
-				jb->info.last_delay = delay = 0; /* after resync, frame is right on time */
-			} else {
-				return -1;
-			}
-		} else {
-			jb->info.last_delay = delay;
+		if(jb->info.frames_in == 0) {
 			jb->info.cnt_delay_discont = 0;
+			jb->hist_ptr = 0;
+			jb->hist_maxbuf_valid = 0;
+			jb->info.resync_offset = ts - now;
+			jb->info.last_delay = delay = 0; /* after resync, frame is right on time */
+			jb->info.cnt_delay_discont = 0;
+		} else {
+			if (abs(delay - jb->info.last_delay) > threshold) {
+				jb->info.cnt_delay_discont++;
+				if (jb->info.cnt_delay_discont > 3) {
+					/* resync the jitterbuffer */
+					jb->info.cnt_delay_discont = 0;
+					jb->hist_ptr = 0;
+					jb->hist_maxbuf_valid = 0;
+
+					jb_warn("Resyncing the jb. last_delay %ld, this delay %ld, threshold %ld, new offset %ld\n", jb->info.last_delay, delay, threshold, ts - now);
+					jb->info.resync_offset = ts - now;
+					jb->info.last_delay = delay = 0; /* after resync, frame is right on time */
+				} else {
+					return -1;
+				}
+			} else {
+				jb->info.last_delay = delay;
+				jb->info.cnt_delay_discont = 0;
+			}
 		}
 	}
 
@@ -537,7 +546,7 @@ enum jb_return_code jb_put(jitterbuf *jb, void *data, const enum jb_frame_type t
 		 * IAX integrations, I'm sending retransmitted control frames with their awkward timestamps through */
 		if (history_put(jb,ts,now,ms)) {
 			jb->info.frames_dropped++;
-			jb_dbg2("history_put > 0\n");
+			jb_dbg2("history_put > 0 | %u %u %u\n", ts, now, ms);
 			return JB_DROP;
 		}
 	}
@@ -577,6 +586,8 @@ static enum jb_return_code _jb_get(jitterbuf *jb, jb_frame *frameout, long now, 
 	}
 
 	diff = jb->info.target - jb->info.current;
+
+	//jb_dbg("target [%d] current[%u] jitt[%u] min[%d] EX[%u]\n", jb->info.target, jb->info.current, jb->info.jitter, jb->info.min, JB_TARGET_EXTRA);
 
 	/* jb_warn("diff = %d lms=%d last = %d now = %d\n", diff,  */
 	/*	jb->info.last_voice_ms, jb->info.last_adjustment, now); */
@@ -639,8 +650,8 @@ static enum jb_return_code _jb_get(jitterbuf *jb, jb_frame *frameout, long now, 
 				jb->info.frames_late++;
 				jb->info.frames_lost--;
 				jb_dbg("l");
-				/*jb_warn("\nlate: wanted=%ld, this=%ld, next=%ld\n", jb->info.next_voice_ts - jb->info.current, frame->ts, queue_next(jb));
-				jb_warninfo(jb); */
+				jb_dbg("\nlate: wanted=%ld, this=%ld, next=%ld\n", jb->info.next_voice_ts - jb->info.current, frame->ts, queue_next(jb));
+//				jb_warninfo(jb); 
 				return JB_DROP;
 			}
 		}
@@ -755,8 +766,8 @@ static enum jb_return_code _jb_get(jitterbuf *jb, jb_frame *frameout, long now, 
 			jb->info.frames_late++;
 			jb->info.frames_lost--;
 			jb_dbg("l");
-			/*jb_warn("\nlate: wanted=%ld, this=%ld, next=%ld\n", jb->info.next_voice_ts - jb->info.current, frame->ts, queue_next(jb));
-			jb_warninfo(jb); */
+			jb_warn("\nlate: wanted=%ld, this=%ld, next=%ld\n", jb->info.next_voice_ts - jb->info.current, frame->ts, queue_next(jb));
+			//jb_warninfo(jb);
 			return JB_DROP;
 		} else {
 			/* voice frame */

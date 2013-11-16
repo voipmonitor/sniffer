@@ -215,6 +215,7 @@ Call::Call(char *call_id, unsigned long call_id_len, time_t time, void *ct) :
 	if(verbosity && verbosityE > 1) {
 		syslog(LOG_NOTICE, "CREATE CALL %s", this->call_id.c_str());
 	}
+	forcemark[0] = forcemark[1] = 0;
 }
 
 void
@@ -468,6 +469,8 @@ Call::add_ip_port(in_addr_t addr, unsigned short port, char *ua, unsigned long u
 			if(this->addr[i] == addr && this->port[i] == port){
 				// reinit rtpmap
 				memcpy(this->rtpmap[i], rtpmap, MAX_RTPMAP * sizeof(int)); //XXX: is it neccessary?
+				// force mark bit for reinvite 
+				forcemark[!iscaller] = true;
 				return 1;
 			}
 		}
@@ -654,7 +657,6 @@ Call::read_rtp(unsigned char* data, int datalen, struct pcap_pkthdr *header, u_i
 
 void Call::stoprecording() {
 	if(recordstopped == 0) {
-		char str2[2048];
 
 		this->flags = 0;
 		this->pcap.remove();

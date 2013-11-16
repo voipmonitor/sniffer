@@ -220,6 +220,7 @@ RTP::RTP()
 	pinformed = 0;
 	last_end_timestamp = 0;
 	lastdtmf = 0;
+	forcemark = 0;
 }
 
 /* destructor */
@@ -228,7 +229,7 @@ RTP::~RTP() {
 	if(packetization)
 		RTP::dump();
 	*/
-	Call *owner = (Call*)call_owner;
+	//Call *owner = (Call*)call_owner;
 
 	if(verbosity > 9) {
 		RTP::dump();
@@ -609,7 +610,7 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 
 	Call *owner = (Call*)call_owner;
 
-//	if(getSSRC() != 0x25EF1A54) return;
+	//if(getSSRC() != 0x2a0f7b89) return;
 
 	if(getVersion() != 2) {
 		return;
@@ -625,6 +626,34 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 	int curpayload = getPayload();
 //	printf("p[%d]\n", curpayload);
 
+	/* in case there was packet loss we must predict lastTimeStamp to not add nonexistant delays */
+	forcemark = 0;
+	if(last_seq != 0 and ((last_seq + 1) != seq)) {
+		if(s->lastTimeStamp == getTimestamp() - samplerate / 1000 * packetization) {
+			// there was packet loss but the timestamp is like there was no packet loss 
+
+			if(opt_jitterbuffer_adapt) {
+				ast_jb_empty_and_reset(channel_adapt);
+				ast_jb_destroy(channel_adapt);
+			}
+			if(opt_jitterbuffer_f1) {
+				ast_jb_empty_and_reset(channel_fix1);
+				ast_jb_destroy(channel_fix1);
+			}
+			if(opt_jitterbuffer_f2) {
+				ast_jb_empty_and_reset(channel_fix2);
+				ast_jb_destroy(channel_fix2);
+			}
+
+			forcemark = 1;
+		} 
+	
+		// this fixes jumps in .graph in case of pcaket loss 	
+		s->lastTimeStamp = getTimestamp() - samplerate / 1000 * packetization;
+		struct timeval tmp = ast_tvadd(header->ts, ast_samp2tv(packetization, 1000));
+		memcpy(&s->lastTimeRec, &tmp, sizeof(struct timeval));
+	}
+
 	// ignore CNG
 	if(curpayload == 13 or curpayload == 19) {
 		last_seq = seq;
@@ -635,6 +664,36 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 	}
 
 	if(!owner) return;
+
+	if(owner->forcemark[iscaller]) {
+		// on reinvite (which indicates forcemark[iscaller] completely reset rtp jitterbuffer simulator and 
+		// there are cases where on reinvite rtp stream stops and there is gap in rtp sequence and timestamp but 
+		// since it was reinvite the stream just continues as expected
+		if(opt_jitterbuffer_adapt) {
+			ast_jb_empty_and_reset(channel_adapt);
+			ast_jb_destroy(channel_adapt);
+		}
+		if(opt_jitterbuffer_f1) {
+			ast_jb_empty_and_reset(channel_fix1);
+			ast_jb_destroy(channel_fix1);
+		}
+		if(opt_jitterbuffer_f2) {
+			ast_jb_empty_and_reset(channel_fix2);
+			ast_jb_destroy(channel_fix2);
+		}
+
+		owner->forcemark[iscaller] = 0;
+		forcemark  = 1;
+
+		// this fixes jumps in .graph in case of pcaket loss 	
+		s->lastTimeStamp = getTimestamp() - samplerate / 1000 * packetization;
+		struct timeval tmp = ast_tvadd(header->ts, ast_samp2tv(packetization, 1000));
+		memcpy(&s->lastTimeRec, &tmp, sizeof(struct timeval));
+
+		// reset last sequence 
+		s->base_seq = seq;
+		s->max_seq = seq;
+	}
 
 	if(curpayload == 101) {
 		process_dtmf_rfc2833();
@@ -925,7 +984,6 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 	} else {
 		last_ts = getTimestamp();
 	}
-	last_seq = seq;
 
 	if(first) {
 		first = false;
@@ -940,6 +998,7 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 		}
 	}
 	lastframetype = frame->frametype;
+	last_seq = seq;
 }
 
 /* fill internal structures by the input RTP packet */
@@ -1126,6 +1185,13 @@ void burstr_calculate(struct ast_channel *chan, u_int32_t received, double *burs
 		bursts += chan->loss[i];
 		if(verbosity > 4 and chan->loss[i] > 0) printf("loss[%d]: %d\t", i, chan->loss[i]);
 	}
+
+	if(lost < 5) {
+		// ignore such small packet loss 
+		*lossr = *burstr = 0;
+		return;
+	}
+
 	if(verbosity > 4) printf("\n");
 	if(received > 0 && bursts > 0) {
 		*burstr = (double)((double)lost / (double)bursts) / (double)(1.0 / ( 1.0 - (double)lost / (double)received ));

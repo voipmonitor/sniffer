@@ -188,6 +188,7 @@ public:
 	unsigned int first_packet_usec;
 	unsigned int last_end_timestamp;
 	char lastdtmf;
+	int forcemark;
 
 	/* RTCP data */
 	struct rtcp_t {
@@ -359,7 +360,7 @@ public:
 	 *
 	 * @return received packets
 	*/
-	const int getMarker() { return getHeader()->marker; };
+	const int getMarker() { return forcemark ? 1 : getHeader()->marker; };
 
 	/**
 	 * @brief get padding

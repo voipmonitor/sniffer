@@ -315,6 +315,7 @@ int ast_jb_put(struct ast_channel *chan, struct ast_frame *f, struct timeval *my
 		ast_set_flag(jb, JB_CREATED);
 		return 0;
 	} else {
+		//fprintf(stdout, "mynow [%u][%u], tb [%u][%u] tvdiff[%u] seq[%u]\n", mynow->tv_sec, mynow->tv_usec, jb->timebase.tv_sec, jb->timebase.tv_usec, ast_tvdiff_ms(*mynow, jb->timebase), frr->seqno);
 		now = get_now(jb, NULL, mynow);
 		if (jbimpl->put(jbobj, frr, now) != JB_IMPL_OK) {
 			if(debug) fprintf(stdout, "JB_PUT {now=%ld}: Dropped frame with ts=%ld and len=%ld and seq=%d\n", now, frr->ts, frr->len, frr->seqno);
@@ -660,6 +661,7 @@ void ast_jb_destroy(struct ast_channel *chan)
 
 			if(debug) fprintf(stdout, "%s jitterbuffer destroyed on channel %s\n", jbimpl->name, chan->name);
 	}
+	ast_clear_flag(jb, JB_TIMEBASE_INITIALIZED);
 }
 
 
