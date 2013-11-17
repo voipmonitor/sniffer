@@ -2302,6 +2302,9 @@ int main(int argc, char *argv[]) {
 		}
 		delete sqlDb;
 	}
+	if(isSqlDriver("mysql")) {
+		sqlStore = new MySqlStore(mysql_host, mysql_user, mysql_password, mysql_database);
+	}
 
 	signal(SIGINT,sigint_handler);
 	signal(SIGTERM,sigterm_handler);
@@ -2493,7 +2496,8 @@ int main(int argc, char *argv[]) {
 	if(isSqlDriver("mysql") &&
 	   !(opt_pcap_queue && 
 	     !opt_pcap_queue_receive_from_ip.length() &&
-	     opt_pcap_queue_send_to_ip.length())) {
+	     opt_pcap_queue_send_to_ip.length()) &&
+	   isSetCleanspoolParameters()) {
 		if(debugclean) syslog(LOG_ERR, "pthread_create(clean_spooldir)");
 		pthread_create(&cleanspool_thread, NULL, clean_spooldir, NULL);
 	}

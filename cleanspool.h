@@ -6,5 +6,6 @@ void check_spooldir_filesindex(const char *path = NULL, const char *dirfilter = 
 void convert_filesindex();
 bool check_exists_act_records_in_files();
 void clean_obsolete_dirs(const char *path = NULL);
+bool isSetCleanspoolParameters();
 
 #endif

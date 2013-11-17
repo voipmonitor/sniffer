@@ -1390,3 +1390,18 @@ void *clean_spooldir_run(void *dummy) {
 
 	return NULL;
 }
+
+bool isSetCleanspoolParameters() {
+	return(opt_maxpoolsize ||
+	       opt_maxpooldays ||
+	       opt_maxpoolsipsize ||
+	       opt_maxpoolsipdays ||
+	       opt_maxpoolrtpsize ||
+	       opt_maxpoolrtpdays ||
+	       opt_maxpoolgraphsize ||
+	       opt_maxpoolgraphdays ||
+	       opt_maxpoolaudiosize ||
+	       opt_maxpoolaudiodays ||
+	       opt_cleanspool_interval ||
+	       opt_cleanspool_sizeMB);
+}

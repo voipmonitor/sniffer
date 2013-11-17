@@ -23,7 +23,6 @@ extern bool opt_disable_partition_operations;
 extern vector<dstring> opt_custom_headers_cdr;
 extern vector<dstring> opt_custom_headers_message;
 extern char get_customers_pn_query[1024];
-extern char mysql_database[256];
 extern int opt_dscp;
 extern int opt_enable_lua_tables;
 extern int opt_mysqlcompress;
@@ -321,10 +320,10 @@ bool SqlDb_mysql::connect(bool createDb, bool mainInit) {
 			this->query("SET sql_mode = ''");
 			char tmp[1024];
 			if(createDb) {
-				sprintf(tmp, "CREATE DATABASE IF NOT EXISTS `%s`", mysql_database);
+				sprintf(tmp, "CREATE DATABASE IF NOT EXISTS `%s`", this->conn_database.c_str());
 				this->query(tmp);
 			}
-			sprintf(tmp, "USE `%s`", mysql_database);
+			sprintf(tmp, "USE `%s`", this->conn_database.c_str());
 			this->query(tmp);
 			if(mainInit) {
 				this->query("SHOW VARIABLES LIKE \"version\"");
@@ -1082,7 +1081,7 @@ string sqlEscapeStringBorder(string inputStr, char borderChar, const char *typeD
 }
 
 string sqlEscapeStringBorder(const char *inputStr, char borderChar, const char *typeDb, SqlDb_mysql *sqlDbMysql) {
-	string rsltString = sqlEscapeString(inputStr, borderChar, typeDb, sqlDbMysql);
+	string rsltString = sqlEscapeString(inputStr, 0, typeDb, sqlDbMysql);
 	if(borderChar) {
 		rsltString = borderChar + rsltString + borderChar;
 	}

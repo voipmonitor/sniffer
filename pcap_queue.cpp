@@ -879,8 +879,11 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 		double memoryBufferPerc = this->pcapStat_get_memory_buffer_perc();
 		double memoryBufferPerc_trash = this->pcapStat_get_memory_buffer_perc_trash();
 		outStr << fixed
-		       << "calls[" << calltable->calls_listMAP.size() << "][" << calls << "] "
-		       << "SQLqueue[" << mysqlquery.size() << "] "
+		       << "calls[" << calltable->calls_listMAP.size() << "][" << calls << "] ";
+		if(opt_ipaccount) {
+			outStr << "ipacc_buffer[" << lengthIpaccBuffer() << "] ";
+		}
+		outStr << "SQLqueue[" << mysqlquery.size() << "] "
 		       << "heap[" << setprecision(1) << memoryBufferPerc << "% / "
 				  << setprecision(1) << memoryBufferPerc_trash << "%] ";
 		if(this->instancePcapHandle) {

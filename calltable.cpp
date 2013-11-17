@@ -49,6 +49,7 @@
 #include "sql_db.h"
 #include "rtcp.h"
 #include "ipaccount.h"
+#include "cleanspool.h"
 
 
 #define MIN(x,y) ((x) < (y) ? (x) : (y))
@@ -249,7 +250,8 @@ Call::hashRemove() {
 void
 Call::addtofilesqueue(string file, string column, u_int64_t writeBytes) {
 
-	if(!opt_filesclean or opt_nocdr or file == "" or !isSqlDriver("mysql")) return;
+	if(!opt_filesclean or opt_nocdr or file == "" or !isSqlDriver("mysql") or
+	   !isSetCleanspoolParameters()) return;
 
 	bool fileExists = file_exists((char*)file.c_str());
 	bool fileCacheExists = false;
