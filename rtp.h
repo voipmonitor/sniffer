@@ -233,7 +233,9 @@ public:
 		u_int32_t jitter;		//!< estimated jitter
 		u_int32_t lost;			//!< lost packets
 		struct timeval lastTimeRec;	//!< last received time from pcap packet header
+		struct timeval lastTimeRecJ;	//!< last received time from pcap packet header for jitterbuffer
 		u_int32_t lastTimeStamp;	//!< last received timestamp from RTP header
+		u_int32_t lastTimeStampJ;	//!< last received timestamp from RTP header for jitterbuffer
 		int delay;
 		long double fdelay;
 		double prevjitter;

@@ -515,7 +515,7 @@ RTP::jitterbuffer(struct ast_channel *channel, int savePayload) {
 	 * be ideally equel to zero. Negative values mean that packet arrives earlier and positive 
 	 * values indicates that packet was late 
 	 */
-	long double transit = (timeval_subtract(&tsdiff, header->ts, s->lastTimeRec) ? -timeval2micro(tsdiff)/1000.0 : timeval2micro(tsdiff)/1000.0) - (double)(getTimestamp() - s->lastTimeStamp)/(double)samplerate/1000;
+	long double transit = (timeval_subtract(&tsdiff, header->ts, s->lastTimeRecJ) ? -timeval2micro(tsdiff)/1000.0 : timeval2micro(tsdiff)/1000.0) - (double)(getTimestamp() - s->lastTimeStampJ)/(double)samplerate/1000;
 	
 	/* and now if there is bigger (lets say one second) timestamp difference (calculated from pakcet headers) 
 	 * between two last packets and transit time is equel or smaller than sequencems (with 200ms toleration), 
@@ -649,6 +649,12 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 		} 
 	
 		// this fixes jumps in .graph in case of pcaket loss 	
+		s->lastTimeStamp = getTimestamp() - samplerate / 1000 * packetization;
+		struct timeval tmp = ast_tvadd(header->ts, ast_samp2tv(packetization, 1000));
+		memcpy(&s->lastTimeRec, &tmp, sizeof(struct timeval));
+	}
+
+	if(getMarker()) {
 		s->lastTimeStamp = getTimestamp() - samplerate / 1000 * packetization;
 		struct timeval tmp = ast_tvadd(header->ts, ast_samp2tv(packetization, 1000));
 		memcpy(&s->lastTimeRec, &tmp, sizeof(struct timeval));
@@ -991,7 +997,9 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 		s->max_seq = seq - 1;
 		s->probation = MIN_SEQUENTIAL;
 		s->lastTimeRec = header->ts;
+		s->lastTimeRecJ = header->ts;
 		s->lastTimeStamp = getTimestamp();
+		s->lastTimeStampJ = getTimestamp();
 	} else {
 		if(update_seq(seq)) {
 			update_stats();
@@ -1052,7 +1060,9 @@ RTP::update_stats() {
 	stats.avgjitter = ((stats.avgjitter * ( stats.received - 1 )  + jitter )) / (double)s->received;
 	if(stats.maxjitter < jitter) stats.maxjitter = jitter;
 	s->lastTimeRec = header->ts;
+	s->lastTimeRecJ = header->ts;
 	s->lastTimeStamp = getTimestamp();
+	s->lastTimeStampJ = getTimestamp();
 	
 	if((lost > stats.last_lost) > 0) {
 		stats.lost += lost - stats.last_lost;
