@@ -1,3 +1,16 @@
+8.4RC12 18.11.2013
+==================
+
+- fix reloading capture rules which dissapeared due to mysql race condition 
+- fix mysql issues causing random corruption when doing reload
+- fix long term issue (all versions) where the .graph file in CDR detail (in the GUI) suddenly jumps if sequence numbers changes either due to packet loss or due to VAD. Now graphs should not move up/down sud
+denly
+- fix low MOS score for adaptive jitterbuffer in case a SIP session reinvites and RTP packets does not correctly increases sequence numbers or timestamps
+- fix low MOS score for adaptive jitterbuffer even for 5 packet loss caused by normal shrink/grow internal jitterbuffer simulator.A
+- fix inappropriate packet loss report if a SIP session reinvites and RTP stream with the same SSRC has hole which is normal (although the wireshark still report packet loss as well as any RFC RTP compliant RTP analyzer)
+- take min MOS score from fixed2 jitterbuffer simulator by default which eliminates low mos score due to f1 and adapt sensitivness
+- disable cleanspool functions if not set parameters
+
 8.4 RC11 13.11.2013
 ===================
 - do not flood syslog when RTP files cannot be created
