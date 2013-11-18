@@ -234,6 +234,7 @@ int opt_mysqlcompress = 1;
 int opt_cdr_ua_enable = 1;
 unsigned long long cachedirtransfered = 0;
 unsigned int opt_maxpcapsize_mb = 0;
+int opt_mosmin_f2 = 1;
 
 unsigned int opt_maxpoolsize = 0;
 unsigned int opt_maxpooldays = 0;

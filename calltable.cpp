@@ -107,6 +107,7 @@ extern int opt_allow_zerossrc;
 extern int opt_cdr_ua_enable;
 extern unsigned int graph_delimiter;
 extern unsigned int graph_version;
+extern int opt_mosmin_f2;
 
 volatile int calls = 0;
 
@@ -1499,8 +1500,6 @@ Call::getKeyValCDRtext() {
 			// calculate lossrate and burst rate
 			double burstr, lossr;
 			burstr_calculate(rtp[indexes[i]]->channel_fix1, rtp[indexes[i]]->stats.received, &burstr, &lossr);
-			//cdr.add(lossr, c+"_lossr_f1");
-			//cdr.add(burstr, c+"_burstr_f1");
 			int mos_f1_mult10 = (int)round(calculate_mos(lossr, burstr, rtp[indexes[i]]->codec, rtp[indexes[i]]->stats.received) * 10);
 			cdr.add(mos_f1_mult10, c+"_mos_f1_mult10");
 			if(mos_f1_mult10) {
@@ -1509,8 +1508,6 @@ Call::getKeyValCDRtext() {
 
 			// Jitterbuffer MOS statistics
 			burstr_calculate(rtp[indexes[i]]->channel_fix2, rtp[indexes[i]]->stats.received, &burstr, &lossr);
-			//cdr.add(lossr, c+"_lossr_f2");
-			//cdr.add(burstr, c+"_burstr_f2");
 			int mos_f2_mult10 = (int)round(calculate_mos(lossr, burstr, rtp[indexes[i]]->codec, rtp[indexes[i]]->stats.received) * 10);
 			cdr.add(mos_f2_mult10, c+"_mos_f2_mult10");
 			if(mos_f2_mult10 && (mos_min_mult10[i] < 0 || mos_f2_mult10 < mos_min_mult10[i])) {
@@ -1518,14 +1515,16 @@ Call::getKeyValCDRtext() {
 			}
 
 			burstr_calculate(rtp[indexes[i]]->channel_adapt, rtp[indexes[i]]->stats.received, &burstr, &lossr);
-			//cdr.add(lossr, c+"_lossr_adapt");
-			//cdr.add(burstr, c+"_burstr_adapt");
 			int mos_adapt_mult10 = (int)round(calculate_mos(lossr, burstr, rtp[indexes[i]]->codec, rtp[indexes[i]]->stats.received) * 10);
 			cdr.add(mos_adapt_mult10, c+"_mos_adapt_mult10");
 			if(mos_adapt_mult10 && (mos_min_mult10[i] < 0 || mos_adapt_mult10 < mos_min_mult10[i])) {
 				mos_min_mult10[i] = mos_adapt_mult10;
 			}
 			
+			if(mos_f2_mult10 && opt_mosmin_f2) {
+				mos_min_mult10[i] = mos_f2_mult10;
+			}
+
 			if(mos_min_mult10[i] >= 0) {
 				cdr.add(mos_min_mult10[i], c+"_mos_min_mult10");
 			}
@@ -1877,6 +1876,10 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			cdr.add(mos_adapt_mult10, c+"_mos_adapt_mult10");
 			if(mos_adapt_mult10 && (mos_min_mult10[i] < 0 || mos_adapt_mult10 < mos_min_mult10[i])) {
 				mos_min_mult10[i] = mos_adapt_mult10;
+			}
+
+			if(mos_f2_mult10 && opt_mosmin_f2) {
+				mos_min_mult10[i] = mos_f2_mult10;
 			}
 			
 			if(mos_min_mult10[i] >= 0) {
