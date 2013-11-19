@@ -1072,7 +1072,7 @@ void add_to_rtp_thread_queue(Call *call, unsigned char *data, int datalen, struc
 
 
 void *rtp_read_thread_func(void *arg) {
-	rtp_packet *rtpp;
+	rtp_packet *rtpp = NULL;
 	rtp_packet_pcap_queue rtpp_pq;
 	read_thread *params = (read_thread*)arg;
 	while(1) {
@@ -3285,6 +3285,8 @@ inline int ipfrag_dequeue(ip_frag_queue_t *queue, struct pcap_pkthdr **header, u
 	memcpy(newheader, *header, sizeof(struct pcap_pkthdr));
 	newheader->len = newheader->caplen = totallen;
 	*header = newheader;
+	unsigned int additionallen = 0;
+	iphdr2 *iphdr = NULL;
 
 	int lastoffset = queue->begin()->second->offset;
 	int i = 0;
@@ -3298,6 +3300,7 @@ inline int ipfrag_dequeue(ip_frag_queue_t *queue, struct pcap_pkthdr **header, u
 				len += node->firstheaderlen;
 				// reset fragment flag to 0
 				((iphdr2 *)(node->packet))->frag_off = 0;
+				iphdr = (iphdr2*)(newpacket + len);
 			}
 			memcpy(newpacket + len, node->packet, node->len);
 			len += node->len;
@@ -3309,6 +3312,7 @@ inline int ipfrag_dequeue(ip_frag_queue_t *queue, struct pcap_pkthdr **header, u
 			}
 			memcpy(newpacket + len, node->packet + sizeof(iphdr2), node->len - sizeof(iphdr2));
 			len += node->len - sizeof(iphdr2);
+			additionallen += node->len - sizeof(iphdr2);
 		}
 		lastoffset = node->offset;
 		free(node->packet);
@@ -3318,6 +3322,13 @@ inline int ipfrag_dequeue(ip_frag_queue_t *queue, struct pcap_pkthdr **header, u
 		free(node);
 		i++;
 	}
+	if(iphdr) {
+		//increase IP header length 
+		iphdr->tot_len = htons((ntohs(iphdr->tot_len)) + additionallen);
+		// reset checksum
+		iphdr->check = 0;
+	}
+	
 	return 1;
 }
 
@@ -3497,9 +3508,9 @@ void readdump_libpcap(pcap_t *handle) {
 	struct ether_header *header_eth;
 	struct sll_header *header_sll;
 	struct iphdr2 *header_ip;
-	struct udphdr2 *header_udp;
+	struct udphdr2 *header_udp = NULL;
 	struct udphdr2 header_udp_tmp;
-	struct tcphdr *header_tcp;
+	struct tcphdr *header_tcp = NULL;
 	char *data = NULL;
 	int datalen = 0;
 	int res;
