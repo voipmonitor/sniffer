@@ -1,3 +1,8 @@
+8.4RC13 21.11.2013
+==================
+- fix IP header len when defragmenting packet which prevents to see all data in SIP history and in wireshark. 
+- fix parsing of useragent - broken since 8.4 RC4
+
 8.4RC12 18.11.2013
 ==================
 
