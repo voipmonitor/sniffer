@@ -1522,14 +1522,9 @@ void clean_tcpstreams() {
 	}
 }
 
-void process_sdp(Call *call, unsigned int saddr, int source, unsigned int daddr, int dest, char *data, int datalen, struct iphdr2 *header_ip, char *callidstr){
+void process_sdp(Call *call, unsigned int saddr, int source, unsigned int daddr, int dest, char *data, int datalen, struct iphdr2 *header_ip, char *callidstr, char *ua, unsigned int ua_len){
 	char *tmp = strstr(data, "\r\n\r\n");
 	if(!tmp) return;
-
-	// we have found SDP, add IP and port to the table
-	char *s;
-	unsigned long int l;
-	unsigned long gettagLimitLen = 0;
 
 	in_addr_t tmp_addr;
 	unsigned short tmp_port;
@@ -1554,8 +1549,7 @@ void process_sdp(Call *call, unsigned int saddr, int source, unsigned int daddr,
 			((call->saddr == saddr && call->sport == source) || 
 			(call->saddr == daddr && call->sport == dest))))
 			{
-			// prepare User-Agent
-			s = gettag(data, datalen, "\nUser-Agent:", &l, &gettagLimitLen);
+
 			// store RTP stream
 			get_rtpmap_from_sdp(tmp + 1, datalen - (tmp + 1 - data), rtpmap);
 
@@ -1620,7 +1614,7 @@ void process_sdp(Call *call, unsigned int saddr, int source, unsigned int daddr,
 				call->caller_sipdscp = header_ip->tos >> 2;
 			}
 			//syslog(LOG_ERR, "ADDR: %u port %u iscalled[%d]\n", tmp_addr, tmp_port, iscalled);
-			if(call->add_ip_port(tmp_addr, tmp_port, s, l, !iscalled, rtpmap) != -1){
+			if(call->add_ip_port(tmp_addr, tmp_port, ua, ua_len, !iscalled, rtpmap) != -1){
 				calltable->hashAdd(tmp_addr, tmp_port, call, !iscalled, 0, fax);
 				//calltable->mapAdd(tmp_addr, tmp_port, call, !iscalled, 0);
 				if(opt_rtcp) {
@@ -1634,7 +1628,7 @@ void process_sdp(Call *call, unsigned int saddr, int source, unsigned int daddr,
 			// check if the IP address is listed in nat_aliases
 			in_addr_t alias = 0;
 			if((alias = match_nat_aliases(tmp_addr)) != 0) {
-				if(call->add_ip_port(alias, tmp_port, s, l, !iscalled, rtpmap) != -1) {
+				if(call->add_ip_port(alias, tmp_port, ua, ua_len, !iscalled, rtpmap) != -1) {
 					calltable->hashAdd(alias, tmp_port, call, !iscalled, 0, fax);
 					//calltable->mapAdd(alias, tmp_port, call, !iscalled, 0);
 					if(opt_rtcp) {
@@ -1647,7 +1641,7 @@ void process_sdp(Call *call, unsigned int saddr, int source, unsigned int daddr,
 			}
 
 #ifdef NAT
-			if(call->add_ip_port(saddr, tmp_port, s, l, !iscalled, rtpmap) != -1){
+			if(call->add_ip_port(saddr, tmp_port, ua, ua_len, !iscalled, rtpmap) != -1){
 				calltable->hashAdd(saddr, tmp_port, call, !iscalled, 0, fax);
 				//calltable->mapAdd(saddr, tmp_port, call, !iscalled, 0);
 				if(opt_rtcp) {
@@ -2685,9 +2679,16 @@ if (header->ts.tv_sec - last_cleanup > 10){
 			call->contenttype[l] = '\0';
 		} else if(strcasestr(s, "application/sdp")) {
 			*sl = t;
-			process_sdp(call, saddr, source, daddr, dest, s, (unsigned int)datalen - (s - data), header_ip, callidstr);
+			// prepare User-Agent
+			char *ua = NULL;
+			unsigned long gettagLimitLen = 0, ua_len = 0;
+			ua = gettag(data, datalen, "\nUser-Agent:", &ua_len, &gettagLimitLen);
+			process_sdp(call, saddr, source, daddr, dest, s, (unsigned int)datalen - (s - data), header_ip, callidstr, ua, ua_len);
 		} else if(strcasestr(s, "multipart/mixed")) {
 			*sl = t;
+			char *ua = NULL;
+			unsigned long gettagLimitLen = 0, ua_len = 0;
+			ua = gettag(data, datalen, "\nUser-Agent:", &ua_len, &gettagLimitLen);
 			while(1) {
 				//continue searching  for another content-type
 				char *s2;
@@ -2699,7 +2700,7 @@ if (header->ts.tv_sec - last_cleanup > 10){
 				if(s2 and l > 0) {
 					//Content-Type found try if it is SDP 
 					if(l > 0 && strcasestr(s2, "application/sdp")){
-						process_sdp(call, saddr, source, daddr, dest, s2, (unsigned int)datalen - (s - data), header_ip, callidstr);
+						process_sdp(call, saddr, source, daddr, dest, s2, (unsigned int)datalen - (s - data), header_ip, callidstr, ua, ua_len);
 						break;	// stop searching
 					} else {
 						// it is not SDP continue searching for another content-type 

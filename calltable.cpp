@@ -488,7 +488,6 @@ Call::add_ip_port(in_addr_t addr, unsigned short port, char *ua, unsigned long u
 		syslog(LOG_ERR,"callid [%s]: to much INVITEs in this call [%s:%d], raise MAX_IP_PER_CALL and recompile sniffer", call_id.c_str(), tmp, port);
 		return -1;
 	}
-
 	if(ua_len && ua_len < 1024) {
 		char *tmp = iscaller ? this->b_ua : this->a_ua;
 		memcpy(tmp, ua, MIN(ua_len, 1024));
