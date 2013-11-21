@@ -1486,11 +1486,18 @@ inline int PcapQueue_readFromInterface_base::pcapProcess(pcap_pkthdr** header, u
 					u_char* packet_old = *packet;
 					if(handle_defrag(ppd.header_ip, header, packet, 0, &ppd.ipfrag_data)) {
 						// packet was returned
-						ppd.header_ip = (iphdr2*)(*packet + ppd.offset);
+						iphdr2 *header_ip_1 = (iphdr2*)(*packet + ppd.offset);
+
+						// turn off frag flag in the first IP header
+						header_ip_1->frag_off = 0;
+
+						// turn off frag flag in the second IP header
+						ppd.header_ip = (iphdr2*)((char*)header_ip_1 + sizeof(iphdr2));
 						ppd.header_ip->frag_off = 0;
-						ppd.header_ip = (iphdr2*)((char*)ppd.header_ip + sizeof(iphdr2));
-						ppd.header_ip->frag_off = 0;
-						//exit(0);
+
+						// update lenght of the first ip header to the len of the second IP header since it can be changed due to reassemble
+						header_ip_1->tot_len = htons((ntohs(ppd.header_ip->tot_len)) + sizeof(iphdr2));
+
 						if(*destroy) {
 							free(header_old);
 							free(packet_old);

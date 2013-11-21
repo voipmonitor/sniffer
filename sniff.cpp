@@ -3635,7 +3635,6 @@ void readdump_libpcap(pcap_t *handle) {
 		}
 
 		header_ip = (struct iphdr2 *) ((char*)packet + offset);
-
 		//if UDP defrag is enabled process only UDP packets and only SIP packets
 		if(opt_udpfrag and (header_ip->protocol == IPPROTO_UDP or header_ip->protocol == 4)) {
 			int foffset = ntohs(header_ip->frag_off);
@@ -3661,12 +3660,17 @@ headerip:
 				if ((foffset & IP_MF) or ((foffset & IP_OFFSET) > 0)) {
 					// packet is fragmented
 					if(handle_defrag(header_ip, &header, &packet, destroy)) {
-						// packet was returned
-						header_ip = (struct iphdr2 *)((char*)packet + offset);
+						// packet was returned, turn off frag flag for both packets
+						iphdr2 *header_ip_1 = (struct iphdr2 *)((char*)packet + offset);
+						header_ip_1->frag_off = 0;
+
+						// turn off frag for the second IP header 
+						header_ip = (struct iphdr2 *) ((char*)header_ip_1 + sizeof(iphdr2));
 						header_ip->frag_off = 0;
-						header_ip = (struct iphdr2 *) ((char*)header_ip + sizeof(iphdr2));
-						header_ip->frag_off = 0;
-						//exit(0);
+
+						// update lenght of the first ip header to the len of the second IP header since it can be changed due to reassemble
+						header_ip_1->tot_len = htons((ntohs(header_ip->tot_len)) + sizeof(iphdr2)); 
+
 						destroy = true;
 					} else {
 						continue;
