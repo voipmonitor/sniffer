@@ -13,7 +13,7 @@
 //#include "jitterbuffer/asterisk/channel.h"
 #include "jitterbuffer/asterisk/abstract_jb.h"
 
-#define MAX_RTPMAP 30
+#define MAX_RTPMAP 40
 
 
 using namespace std;
