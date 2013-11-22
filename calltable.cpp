@@ -478,6 +478,10 @@ Call::add_ip_port(in_addr_t addr, unsigned short port, char *ua, unsigned long u
 			}
 		}
 	}
+
+	if(ipport_n == MAX_IP_PER_CALL){
+		syslog(LOG_ERR,"callid [%s]: to much INVITEs in this call [%s:%d], raise MAX_IP_PER_CALL and recompile sniffer", call_id.c_str(), tmp, port);
+	}
 	// add ip and port
 	if(ipport_n >= MAX_IP_PER_CALL){
 		char tmp[18];
@@ -485,7 +489,6 @@ Call::add_ip_port(in_addr_t addr, unsigned short port, char *ua, unsigned long u
 		in.s_addr = addr;
 		strcpy(tmp, inet_ntoa(in));
 
-		syslog(LOG_ERR,"callid [%s]: to much INVITEs in this call [%s:%d], raise MAX_IP_PER_CALL and recompile sniffer", call_id.c_str(), tmp, port);
 		return -1;
 	}
 	if(ua_len && ua_len < 1024) {
