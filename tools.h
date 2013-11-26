@@ -24,10 +24,12 @@ double ts2double(unsigned int sec, unsigned int usec);
 unsigned long long GetFileSize(std::string filename);
 unsigned long long GetFileSizeDU(std::string filename);
 unsigned long long GetDU(unsigned long long fileSize);
+string GetFileMD5(std::string filename);
 bool FileExists(char *strFilename);
 void ntoa(char *res, unsigned int addr);
 string escapeshellR(string &);
 unsigned int getNumberOfDayToNow(const char *date);
+string getActDateTimeF();
 
 
 class CircularBuffer
@@ -136,6 +138,31 @@ private:
 	u_int64_t size;
 	ofstream stream;
 	ogzstream streamgz;
+};
+
+class RestartUpgrade {
+public:
+	RestartUpgrade(bool upgrade = false, const char *version = NULL, const char *url = NULL, const char *md5_32 = NULL, const char *md5_64 = NULL);
+	bool runUpgrade();
+	bool createRestartScript();
+	bool checkReadyRestart();
+	bool runRestart(int socket1, int socket2);
+	bool isOk();
+	string getErrorString();
+	string getRsltString();
+private:
+	bool getUpgradeTempFileName();
+	bool getRestartTempScriptFileName();
+private:
+	bool upgrade;
+	string version;
+	string url;
+	string md5_32;
+	string md5_64;
+	string upgradeTempFileName;
+	string restartTempScriptFileName;
+	string errorString;
+	bool _64bit;
 };
 
 #endif

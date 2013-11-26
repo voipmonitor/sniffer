@@ -28,6 +28,7 @@
 #include "calltable.h"
 #include "rtp.h"
 #include "tools.h"
+#include "md5.h"
 
 extern char mac[32];
 extern int verbosity;
@@ -396,6 +397,28 @@ unsigned long long GetDU(unsigned long long fileSize) {
 	return(fileSize);
 }
 
+string GetFileMD5(std::string filename) {
+	string md5;
+	unsigned long long fileSize = GetFileSize(filename);
+	if(!fileSize) {
+		return(md5);
+	}
+	FILE *fileHandle = fopen(filename.c_str(), "rb");
+	if(!fileHandle) {
+		return(md5);
+	}
+	MD5_CTX ctx;
+	MD5_Init(&ctx);
+	char *fileBuffer = new char[fileSize];
+	fread(fileBuffer, 1, fileSize, fileHandle);
+	fclose(fileHandle);
+	MD5_Update(&ctx, fileBuffer, fileSize);
+	delete [] fileBuffer;
+	unsigned char _md5[MD5_DIGEST_LENGTH];
+	MD5_Final(_md5, &ctx);
+	return(MD5_String(_md5));
+}
+
 void ntoa(char *res, unsigned int addr) {
 	struct in_addr in;                                
 	in.s_addr = addr;
@@ -426,6 +449,14 @@ unsigned int getNumberOfDayToNow(const char *date) {
 	dateTime.tm_min = 0; 
 	dateTime.tm_sec = 0;
 	return(difftime(now, mktime(&dateTime)) / (24 * 60 * 60));
+}
+
+string getActDateTimeF() {
+	time_t actTime = time(NULL);
+	struct tm *actTimeInfo = localtime(&actTime);
+	char dateTimeF[20];
+	strftime(dateTimeF, 20, "%Y-%m-%d %T", actTimeInfo);
+	return(dateTimeF);
 }
 
 
@@ -594,4 +625,193 @@ void RtpGraphSaver::close(bool updateFilesQueue) {
 			}
 		}
 	}
+}
+
+RestartUpgrade::RestartUpgrade(bool upgrade, const char *version, const char *url, const char *md5_32, const char *md5_64) {
+	this->upgrade = upgrade;
+	if(version) {
+		this->version = version;
+	}
+	if(url) {
+		this->url = url;
+	}
+	if(md5_32) {
+		this->md5_32 = md5_32;
+	}
+	if(md5_64) {
+		this->md5_64 = md5_64;
+	}
+	#ifdef __x86_64__
+		this->_64bit = true;
+	#else
+		this->_64bit = false;
+	#endif
+}
+
+bool RestartUpgrade::runUpgrade() {
+	if(!this->upgradeTempFileName.length() && !this->getUpgradeTempFileName()) {
+		this->errorString = "failed create temp name for new binary";
+		return(false);
+	}
+	if(mkdir(this->upgradeTempFileName.c_str(), 0700)) {
+		this->errorString = "failed create folder " + this->upgradeTempFileName;
+		return(false);
+	}
+	unlink(this->upgradeTempFileName.c_str());
+	char outputStdoutErr[L_tmpnam+1];
+	if(!tmpnam(outputStdoutErr)) {
+		this->errorString = "failed create temp name for output wget and gunzip";
+		return(false);
+	}
+	string binaryFilepathName = this->upgradeTempFileName + "/voipmonitor";
+	string binaryGzFilepathName = this->upgradeTempFileName + "/voipmonitor.gz";
+	string wgetCommand = "wget " + url + "/voipmonitor.gz." + (this->_64bit ? "64" : "32") + 
+			     " -O " + binaryGzFilepathName +
+			     " >" + outputStdoutErr + " 2>&1";
+	if(system(wgetCommand.c_str()) != 0) {
+		this->errorString = "failed run wget";
+		FILE *fileHandle = fopen(outputStdoutErr, "r");
+		if(fileHandle) {
+			size_t sizeOfOutputWgetBuffer = 10000;
+			char *outputStdoutErrBuffer = new char[sizeOfOutputWgetBuffer];
+			size_t readSize = fread(outputStdoutErrBuffer, 1, sizeOfOutputWgetBuffer, fileHandle);
+			if(readSize > 0) {
+				outputStdoutErrBuffer[min(readSize, sizeOfOutputWgetBuffer) - 1] = 0;
+				this->errorString += ": " + string(outputStdoutErrBuffer);
+			}
+			fclose(fileHandle);
+		}
+		unlink(outputStdoutErr);
+		rmdir_r(this->upgradeTempFileName.c_str());
+		return(false);
+	}
+	if(!FileExists((char*)binaryGzFilepathName.c_str())) {
+		this->errorString = "failed download - missing destination file";
+		rmdir_r(this->upgradeTempFileName.c_str());
+		return(false);
+	}
+	if(!GetFileSize(binaryGzFilepathName.c_str())) {
+		this->errorString = "failed download - zero size of destination file";
+		rmdir_r(this->upgradeTempFileName.c_str());
+		return(false);
+	}
+	string unzipCommand = "gunzip " + binaryGzFilepathName +
+			     " >" + outputStdoutErr + " 2>&1";
+	if(system(unzipCommand.c_str()) != 0) {
+		this->errorString = "failed run gunzip";
+		FILE *fileHandle = fopen(outputStdoutErr, "r");
+		if(fileHandle) {
+			size_t sizeOfOutputWgetBuffer = 10000;
+			char *outputStdoutErrBuffer = new char[sizeOfOutputWgetBuffer];
+			size_t readSize = fread(outputStdoutErrBuffer, 1, sizeOfOutputWgetBuffer, fileHandle);
+			if(readSize > 0) {
+				outputStdoutErrBuffer[min(readSize, sizeOfOutputWgetBuffer) - 1] = 0;
+				this->errorString += ": " + string(outputStdoutErrBuffer);
+			}
+			fclose(fileHandle);
+		}
+		unlink(outputStdoutErr);
+		rmdir_r(this->upgradeTempFileName.c_str());
+		return(false);
+	}
+	string md5 = GetFileMD5(binaryFilepathName);
+	if((this->_64bit ? md5_64 : md5_32) != md5) {
+		this->errorString = "failed download - bad md5: " + md5 + " <> " + (this->_64bit ? md5_64 : md5_32);
+		rmdir_r(this->upgradeTempFileName.c_str());
+		return(false);
+	}
+	unlink("/usr/local/sbin/voipmonitor");
+	if(!copy_file(binaryFilepathName.c_str(), "/usr/local/sbin/voipmonitor", true)) {
+		this->errorString = "failed copy new binary to /usr/local/sbin";
+		rmdir_r(this->upgradeTempFileName.c_str());
+		return(false);
+	}
+	if(chmod("/usr/local/sbin/voipmonitor", 0755)) {
+		this->errorString = "failed chmod 0755 voipmonitor";
+		rmdir_r(this->upgradeTempFileName.c_str());
+		return(false);
+	}
+	rmdir_r(this->upgradeTempFileName.c_str());
+	return(true);
+}
+
+bool RestartUpgrade::createRestartScript() {
+	if(!this->restartTempScriptFileName.length() && !this->getRestartTempScriptFileName()) {
+		this->errorString = "failed create temp name for restart script";
+		return(false);
+	}
+	FILE *fileHandle = fopen(this->restartTempScriptFileName.c_str(), "wt");
+	if(fileHandle) {
+		fputs("#!/bin/bash\n", fileHandle);
+		fputs("/etc/init.d/voipmonitor start\n", fileHandle);
+		fprintf(fileHandle, "rm %s\n", this->restartTempScriptFileName.c_str());
+		fclose(fileHandle);
+		if(chmod(this->restartTempScriptFileName.c_str(), 0755)) {
+			this->errorString = "failed chmod 0755 for restart script";
+		}
+		return(true);
+	} else {
+		this->errorString = "failed create restart script";
+	}
+	return(false);
+}
+
+bool RestartUpgrade::checkReadyRestart() {
+	if(!FileExists((char*)this->restartTempScriptFileName.c_str())) {
+		this->errorString = "failed check restart script - script missing";
+		return(false);
+	}
+	if(!this->restartTempScriptFileName.length()) {
+		this->errorString = "failed check restart script - zero size of restart script";
+		unlink(this->restartTempScriptFileName.c_str());
+		return(false);
+	}
+	return(true);
+}
+
+bool RestartUpgrade::runRestart(int socket1, int socket2) {
+	if(!this->checkReadyRestart()) {
+		return(false);
+	}
+	close(socket1);
+	close(socket2);
+	int rsltExec = execl(this->restartTempScriptFileName.c_str(), "Command-line", 0, NULL);
+	if(rsltExec) {
+		this->errorString = "failed execution restart script";
+		return(false);
+	} else {
+		return(true);
+	}
+}
+
+bool RestartUpgrade::isOk() {
+	return(!this->errorString.length());
+}
+
+string RestartUpgrade::getErrorString() {
+	return(this->errorString);
+}
+
+string RestartUpgrade::getRsltString() {
+	return(this->isOk() ?
+		(this->upgrade ? "upgraded" : "restarted") :
+		this->errorString);
+}
+
+bool RestartUpgrade::getUpgradeTempFileName() {
+	char upgradeTempFileName[L_tmpnam+1];
+	if(tmpnam(upgradeTempFileName)) {
+		this->upgradeTempFileName = upgradeTempFileName;
+		return(true);
+	}
+	return(false);
+}
+
+bool RestartUpgrade::getRestartTempScriptFileName() {
+	char restartTempScriptFileName[L_tmpnam+1];
+	if(tmpnam(restartTempScriptFileName)) {
+		this->restartTempScriptFileName = restartTempScriptFileName;
+		return(true);
+	}
+	return(false);
 }

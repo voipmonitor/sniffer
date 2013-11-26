@@ -99,6 +99,9 @@ extern char opt_cachedir[1024];
 extern unsigned long long cachedirtransfered;
 unsigned long long lastcachedirtransfered = 0;
 
+string pbStatString;
+u_long pbCountPacketDrop;
+
 
 void *_PcapQueue_threadFunction(void* arg);
 void *_PcapQueue_writeThreadFunction(void* arg);
@@ -940,6 +943,10 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 	if(vsize > 0) {
 		outStrStat << "virt[" << setprecision(1) << (double)vsize/1024/1024 << "MB] ";
 	}
+	pbStatString = outStr.str() + outStrStat.str();
+	pbCountPacketDrop = this->instancePcapHandle ?
+				this->instancePcapHandle->getCountPacketDrop() :
+				this->getCountPacketDrop();
 	if(DEBUG_VERBOSE || verbosityE > 0) {
 		if(DEBUG_VERBOSE) {
 			cout << outStrStat.str() << endl;
@@ -1614,6 +1621,10 @@ string PcapQueue_readFromInterface_base::pcapStatString_interface(int statPeriod
 		}
 	}
 	return(outStr.str());
+}
+
+ulong PcapQueue_readFromInterface_base::getCountPacketDrop() {
+	return(this->countPacketDrop);
 }
 
 void PcapQueue_readFromInterface_base::initStat_interface() {
@@ -2368,6 +2379,17 @@ string PcapQueue_readFromInterface::pcapStatString_interface(int statPeriod) {
 		return(this->PcapQueue_readFromInterface_base::pcapStatString_interface(statPeriod));
 	}
 	return(outStr.str());
+}
+
+ulong PcapQueue_readFromInterface::getCountPacketDrop() {
+	if(this->readThreadsCount) {
+		ulong countPacketDrop = 0;
+		for(int i = 0; i < this->readThreadsCount; i++) {
+			countPacketDrop += this->readThreads[i]->getCountPacketDrop();
+		}
+	} else if(this->pcapHandle) {
+		return(this->PcapQueue_readFromInterface_base::getCountPacketDrop());
+	}
 }
 
 void PcapQueue_readFromInterface::initStat_interface() {

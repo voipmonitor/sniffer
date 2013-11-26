@@ -417,6 +417,9 @@ char mac[32] = "";
 TcpReassembly *tcpReassembly;
 HttpData *httpData;
 
+string storingCdrLastWriteAt;
+string storingSqlLastWriteAt;
+
 
 void mysqlquerypush(string q) {
         pthread_mutex_lock(&mysqlquery_lock);
@@ -606,6 +609,7 @@ void *storing_sql( void *dummy ) {
 					sqlDb->query("drop procedure if exists " + insert_funcname);
 					sqlDb->query("create procedure " + insert_funcname + "()\nbegin\n" + queryqueue + "\nend");
 					sqlDb->query("call " + insert_funcname + "();");
+					storingSqlLastWriteAt = getActDateTimeF();
 					//sqlDb->query(queryqueue);
 					queryqueue = "";
 				}
@@ -627,6 +631,7 @@ void *storing_sql( void *dummy ) {
 				sqlDb->query("drop procedure if exists " + insert_funcname);
 				sqlDb->query("create procedure " + insert_funcname + "()\nbegin\n" + queryqueue + "\nend");
 				sqlDb->query("call " + insert_funcname + "();");
+				storingSqlLastWriteAt = getActDateTimeF();
 				//sqlDb->query(queryqueue);
 				queryqueue = "";
 				size = 0;
@@ -821,6 +826,7 @@ void *storing_cdr( void *dummy ) {
 			calltable->lock_calls_deletequeue();
 			calltable->calls_deletequeue.push(call);
 			calltable->unlock_calls_deletequeue();
+			storingCdrLastWriteAt = getActDateTimeF();
 		}
 
 #ifdef ISCURL

@@ -291,5 +291,18 @@ void MD5_Final(unsigned char *result, MD5_CTX *ctx)
  
 	memset(ctx, 0, sizeof(*ctx));
 }
- 
-#endif
+
+#endif // HAVE_OPENSSL
+
+#include <stdio.h>
+
+std::string MD5_String(unsigned char *md5)
+{
+	std::string rslt;
+	for(int i = 0; i < MD5_DIGEST_LENGTH; i++) {
+		char buff[10];
+		sprintf(buff, "%02x", md5[i]);
+		rslt += buff;
+	}
+	return(rslt);
+}

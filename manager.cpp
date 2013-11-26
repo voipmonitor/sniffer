@@ -997,6 +997,97 @@ getwav:
 			return -1;
 		}
 		return 0;
+	} else if(strstr(buf, "restart") != NULL ||
+		  strstr(buf, "upgrade") != NULL) {
+		bool upgrade = false;
+		string version;
+		string url;
+		string md5_32;
+		string md5_64;
+		string rsltForSend;
+		if(strstr(buf, "upgrade") != NULL) {
+			upgrade = true;
+			string command = buf;
+			size_t pos = command.find("to: [");
+			if(pos != string::npos) {
+				size_t posEnd = command.find("]", pos);
+				if(posEnd != string::npos) {
+					version = command.substr(pos + 5, posEnd - pos - 5);
+				}
+			}
+			if(pos != string::npos) {
+				pos = command.find("url: [", pos);
+				if(pos != string::npos) {
+					size_t posEnd = command.find("]", pos);
+					if(posEnd != string::npos) {
+						url = command.substr(pos + 6, posEnd - pos - 6);
+					}
+				}
+			}
+			if(pos != string::npos) {
+				pos = command.find("md5: [", pos);
+				if(pos != string::npos) {
+					size_t posEnd = command.find("]", pos);
+					if(posEnd != string::npos) {
+						md5_32 = command.substr(pos + 6, posEnd - pos - 6);
+					}
+					pos = command.find(" / [", pos);
+					if(pos != string::npos) {
+						size_t posEnd = command.find("]", pos);
+						if(posEnd != string::npos) {
+							md5_64 = command.substr(pos + 4, posEnd - pos - 4);
+						}
+					}
+				}
+			}
+			if(!version.length()) {
+				rsltForSend = "missing version in command line";
+			} else if(!url.length()) {
+				rsltForSend = "missing url in command line";
+			} else if(!md5_32.length() || !md5_64.length()) {
+				rsltForSend = "missing md5 in command line";
+			}
+		}
+		bool ok = false;
+		RestartUpgrade restart(upgrade, version.c_str(), url.c_str(), md5_32.c_str(), md5_64.c_str());
+		if(!rsltForSend.length()) {
+			if(restart.createRestartScript()) {
+				if((!upgrade || restart.runUpgrade()) &&
+				   restart.checkReadyRestart() &&
+				   restart.isOk()) {
+					ok = true;
+				}
+			}
+			rsltForSend = restart.getRsltString();
+		}
+		if ((size = send(client, rsltForSend.c_str(), rsltForSend.length(), 0)) == -1){
+			cerr << "Error sending data to client" << endl;
+			return -1;
+		}
+		if(ok) {
+			restart.runRestart(client, manager_socket_server);
+		}
+		return 0;
+	} else if(strstr(buf, "sniffer_stat") != NULL) {
+		extern string storingCdrLastWriteAt;
+		extern string storingSqlLastWriteAt;
+		extern string pbStatString;
+		extern u_long pbCountPacketDrop;
+		ostringstream outStrStat;
+		outStrStat << "{"
+			   << "\"version\": \"" << RTPSENSOR_VERSION << "\","
+			   << "\"storingCdrLastWriteAt\": \"" << storingCdrLastWriteAt << "\","
+			   << "\"storingSqlLastWriteAt\": \"" << storingSqlLastWriteAt << "\","
+			   << "\"pbStatString\": \"" << pbStatString << "\","
+			   << "\"pbCountPacketDrop\": \"" << pbCountPacketDrop << "\""
+			   << "}";
+		outStrStat << endl;
+		string outStrStatStr = outStrStat.str();
+		if ((size = send(client, outStrStatStr.c_str(), outStrStatStr.length(), 0)) == -1){
+			cerr << "Error sending data to client" << endl;
+			return -1;
+		}
+		return 0;
 	} else {
 		if ((size = send(client, "command not found\n", 18, 0)) == -1){
 			cerr << "Error sending data to client" << endl;

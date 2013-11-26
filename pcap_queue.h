@@ -231,6 +231,7 @@ protected:
 	virtual double pcapStat_get_disk_buffer_perc() { return(-1); }
 	virtual double pcapStat_get_disk_buffer_mb() { return(-1); }
 	virtual string pcapStatString_interface(int statPeriod) { return(""); }
+	virtual ulong getCountPacketDrop() { return(0); }
 	virtual string pcapStatString_cpuUsageReadThreads() { return(""); };
 	virtual void initStat_interface() {};
 	void preparePstatData(bool writeThread = false);
@@ -309,6 +310,7 @@ protected:
 	inline int pcapProcess(pcap_pkthdr** header, u_char** packet, bool *destroy, 
 			       bool enableDefrag = true, bool enableCalcMD5 = true, bool enableDedup = true, bool enableDump = true);
 	virtual string pcapStatString_interface(int statPeriod);
+	virtual ulong getCountPacketDrop();
 	virtual void initStat_interface();
 	virtual string getInterfaceName();
 protected:
@@ -421,6 +423,7 @@ protected:
 	string pcapStatString_bypass_buffer(int statPeriod);
 	unsigned long pcapStat_get_bypass_buffer_size_exeeded();
 	string pcapStatString_interface(int statPeriod);
+	virtual ulong getCountPacketDrop();
 	void initStat_interface();
 	string pcapStatString_cpuUsageReadThreads();
 	string getInterfaceName();
