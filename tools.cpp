@@ -649,6 +649,19 @@ RestartUpgrade::RestartUpgrade(bool upgrade, const char *version, const char *ur
 }
 
 bool RestartUpgrade::runUpgrade() {
+	bool okUrl;
+	if(url.find("http://voipmonitor.org") == 0 ||
+	   url.find("http://www.voipmonitor.org") == 0) {
+		url = "https" + url.substr(4);
+		okUrl = true;
+	} else if(url.find("https://voipmonitor.org") == 0 ||
+		  url.find("https://www.voipmonitor.org") == 0) {
+		okUrl = true;
+	}
+	if(!okUrl) {
+		this->errorString = "url " + url + " not allowed";
+		return(false);
+	}
 	if(!this->upgradeTempFileName.length() && !this->getUpgradeTempFileName()) {
 		this->errorString = "failed create temp name for new binary";
 		return(false);
@@ -667,6 +680,7 @@ bool RestartUpgrade::runUpgrade() {
 	string binaryGzFilepathName = this->upgradeTempFileName + "/voipmonitor.gz";
 	string wgetCommand = "wget " + url + "/voipmonitor.gz." + (this->_64bit ? "64" : "32") + 
 			     " -O " + binaryGzFilepathName +
+			     " --no-check-certificate" +
 			     " >" + outputStdoutErr + " 2>&1";
 	if(system(wgetCommand.c_str()) != 0) {
 		this->errorString = "failed run wget";
