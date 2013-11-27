@@ -2941,6 +2941,10 @@ int main(int argc, char *argv[]) {
 	if(sqlDbEscape) {
 		delete sqlDbEscape;
 	}
+	extern SqlDb_mysql *sqlDbCleanspool;
+	if(sqlDbCleanspool) {
+		delete sqlDbCleanspool;
+	}
 	
 	if(sqlStore) {
 		delete sqlStore;
