@@ -1,3 +1,11 @@
+8.4RC14 27.11.2013
+==================
+- do not flood log with "to much INVITEs in this call" show the message only once
+increase MAX_IP_PER_CALL from 30 to 40
+- add upgrade, restart and sniffer stats via manager
+- use global db handler sqlDbCleanspool for all cleanspool operations
+
+
 8.4RC13 21.11.2013
 ==================
 - fix IP header len when defragmenting packet which prevents to see all data in SIP history and in wireshark. 
