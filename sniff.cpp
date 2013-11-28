@@ -604,13 +604,21 @@ char * gettag(const void *ptr, unsigned long len, const char *tag, unsigned long
 		if(positionOK || verbosity > 0) {
 			//tag matches move r pointer behind the tag name
 			r += tl;
-			l = (unsigned long)memmem((void *)r, len - (r - (unsigned long)ptr), "\r\n", 2);
+			tmp[len - 1] = tmp2;
+			l = (unsigned long)memmem((void *)r, len - (r - (unsigned long)ptr), "\r", 1);
 			if (l > 0){
 				// remove trailing \r\n and set l to length of the tag
 				l -= r;
 			} else {
-				// trailing \r\n not found
-				l = 0;
+				// trailing \r not found try to find \n
+				l = (unsigned long)memmem((void *)r, len - (r - (unsigned long)ptr), "\n", 1);
+				if (l > 0){
+					// remove trailing \r\n and set l to length of the tag
+					l -= r;
+				} else {
+					// trailing \r not found try to find \n
+					l = 0;
+				}
 			}
 		} else {
 			l = 0;
