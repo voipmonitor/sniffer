@@ -9,8 +9,7 @@
 
 8.4RC14 27.11.2013
 ==================
-- do not flood log with "to much INVITEs in this call" show the message only once
-increase MAX_IP_PER_CALL from 30 to 40
+- do not flood log with "to much INVITEs in this call" show the message only once increase MAX_IP_PER_CALL from 30 to 40
 - add upgrade, restart and sniffer stats via manager
 - use global db handler sqlDbCleanspool for all cleanspool operations
 
@@ -25,8 +24,7 @@ increase MAX_IP_PER_CALL from 30 to 40
 
 - fix reloading capture rules which dissapeared due to mysql race condition 
 - fix mysql issues causing random corruption when doing reload
-- fix long term issue (all versions) where the .graph file in CDR detail (in the GUI) suddenly jumps if sequence numbers changes either due to packet loss or due to VAD. Now graphs should not move up/down sud
-denly
+- fix long term issue (all versions) where the .graph file in CDR detail (in the GUI) suddenly jumps if sequence numbers changes either due to packet loss or due to VAD. Now graphs should not move up/down suddenly
 - fix low MOS score for adaptive jitterbuffer in case a SIP session reinvites and RTP packets does not correctly increases sequence numbers or timestamps
 - fix low MOS score for adaptive jitterbuffer even for 5 packet loss caused by normal shrink/grow internal jitterbuffer simulator.A
 - fix inappropriate packet loss report if a SIP session reinvites and RTP stream with the same SSRC has hole which is normal (although the wireshark still report packet loss as well as any RFC RTP compliant RTP analyzer)
@@ -256,8 +254,7 @@ Bug fixes
 - add qring status into syslog state
 - when upgrading from older sniffer do not create new tables partitioned when the cdr table is not partitioned which will cause stop working writing CDR with RTP or DTMF next day
 - fix T38 for case when the same RTP port is reused in reintive which was treated as no t38 in this case
-- implement inotify events for pcapscandir which means that now the name of the pcap file in this directory can be any name which means more pcap files can be put there from various sources - events are filte
-red only when the file is closed for write which means you can transfer files directly to the directory
+- implement inotify events for pcapscandir which means that now the name of the pcap file in this directory can be any name which means more pcap files can be put there from various sources - events are filtered only when the file is closed for write which means you can transfer files directly to the directory
 - store CDR sooner when the BYE messages is not properly closed (missing ACK etc) 
 
 

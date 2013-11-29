@@ -290,8 +290,6 @@ public:
 	/**
 	 * @brief get time of the last seen packet which belongs to this call
 	 *
-	 * @param f_pcap file descriptor 
-	 *
 	 * @return time of the last packet in seconds from UNIX epoch
 	*/
 	time_t get_last_packet_time() { return last_packet_time; };

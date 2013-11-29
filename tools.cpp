@@ -494,7 +494,7 @@ bool PcapDumper::open(const char *fileName, const char *fileNameSpoolRelative) {
 	}
 	if(file_exists((char*)fileName)) {
 		if(verbosity > 2) {
-			syslog(LOG_NOTICE,"pcapdumper: [%s] already exists, do not overwriting", fileName);
+			syslog(LOG_NOTICE,"pcapdumper: [%s] already exists, not overwriting", fileName);
 		}
 	}
 	extern int pcap_dlink;
@@ -583,7 +583,7 @@ bool RtpGraphSaver::open(const char *fileName, const char *fileNameSpoolRelative
 	}
 	if(file_exists((char*)fileName)) {
 		if(verbosity > 2) {
-			syslog(LOG_NOTICE,"graphsaver: [%s] already exists, do not overwriting", fileName);
+			syslog(LOG_NOTICE,"graphsaver: [%s] already exists, not overwriting", fileName);
 		}
 	}
 	if(opt_gzipGRAPH) {

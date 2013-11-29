@@ -2614,7 +2614,7 @@ Call::dump(){
 		printf("From:%s\n", caller);
 		printf("To:%s\n", called);
 	}
-	printf("First packet: %d, Last pakcet: %d\n", (int)get_first_packet_time(), (int)get_last_packet_time());
+	printf("First packet: %d, Last packet: %d\n", (int)get_first_packet_time(), (int)get_last_packet_time());
 	printf("ssrc_n:%d\n", ssrc_n);
 	printf("Call statistics:\n");
 	if(ssrc_n > 0) {

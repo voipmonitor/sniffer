@@ -318,7 +318,7 @@ RTP::jt_tail(struct pcap_pkthdr *header) {
 		return;
 	}
 
-	/* calculate time difference between last pakcet and current packet + packetization time*/ 
+	/* calculate time difference between last packet and current packet + packetization time*/ 
 	if(channel_record->last_ts.tv_sec == 0) {
 		// previouuse tv_sec is not set, set it
 		memcpy(&channel_record->last_ts, &header->ts, sizeof(timeval));
@@ -491,7 +491,7 @@ RTP::jitterbuffer(struct ast_channel *channel, int savePayload) {
 		return;
 	}
 
-	/* calculate time difference between last pakcet and current packet + packetization time*/ 
+	/* calculate time difference between last packet and current packet + packetization time*/ 
 	int msdiff = ast_tvdiff_ms( header->ts, ast_tvadd(channel->last_ts, ast_samp2tv(packetization, 1000)) );
 	//printf("ms:%d\n", msdiff);
 	if(msdiff > packetization * 1000) {
@@ -517,7 +517,7 @@ RTP::jitterbuffer(struct ast_channel *channel, int savePayload) {
 	 */
 	long double transit = (timeval_subtract(&tsdiff, header->ts, s->lastTimeRecJ) ? -timeval2micro(tsdiff)/1000.0 : timeval2micro(tsdiff)/1000.0) - (double)(getTimestamp() - s->lastTimeStampJ)/(double)samplerate/1000;
 	
-	/* and now if there is bigger (lets say one second) timestamp difference (calculated from pakcet headers) 
+	/* and now if there is bigger (lets say one second) timestamp difference (calculated from packet headers) 
 	 * between two last packets and transit time is equel or smaller than sequencems (with 200ms toleration), 
 	 * it was silence and manually mark the frame which indicates to not count interpolated frame and resynchronize jitterbuffer
 	 */
@@ -526,7 +526,7 @@ RTP::jitterbuffer(struct ast_channel *channel, int savePayload) {
 		frame->marker = 1;
 	}
 	
-	// fetch pakcet from jitterbuffer every 20 ms regardless on packet loss or delay
+	// fetch packet from jitterbuffer every 20 ms regardless on packet loss or delay
 	while( msdiff >= packetization )  {
 		if(frame->marker or lastframetype == AST_FRAME_DTMF) {
 			/* if last frame was marked or DTMF, ignore interpolated frames */
