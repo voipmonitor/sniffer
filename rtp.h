@@ -163,6 +163,7 @@ public:
 	struct ast_channel *channel_record;
 	struct ast_frame *frame;
 	int lastframetype;		//!< last packet sequence number
+	u_int16_t seq;		//!< current sequence number
 	int last_seq;		//!< last packet sequence number
 	int packetization;	//!< packetization in millisenocds
 	int last_packetization;	//!< last packetization in millisenocds
@@ -222,7 +223,7 @@ public:
 
 	typedef struct {
 		u_int16_t max_seq;		//!< highest seq. number seen 
-		u_int32_t cycles;		//!< shifted count of seq. number cycles
+		int64_t cycles;			//!< shifted count of seq. number cycles
 		u_int32_t base_seq;		//!< base seq number
 		u_int32_t bad_seq;		//!< last 'bad' seq number + 1
 		u_int32_t probation;		//!< sequ. packets till source is valid

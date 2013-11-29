@@ -610,13 +610,13 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 
 	Call *owner = (Call*)call_owner;
 
-	//if(getSSRC() != 0x2a0f7b89) return;
+	//if(getSSRC() != 0x11724060) return;
 
 	if(getVersion() != 2) {
 		return;
 	}
 
-	u_int16_t seq = getSeqNum();
+	seq = getSeqNum();
 
 	if(seq == last_seq) {
 		// ignore duplicated RTP packets
@@ -697,6 +697,7 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 		memcpy(&s->lastTimeRec, &tmp, sizeof(struct timeval));
 
 		// reset last sequence 
+		s->cycles = s->cycles - s->base_seq + s->max_seq;
 		s->base_seq = seq;
 		s->max_seq = seq;
 	}
@@ -1027,6 +1028,9 @@ RTP::update_stats() {
 	int adelay = 0;
 	struct timeval tsdiff;	
 	double tsdiff2;
+
+
+//	printf("seq[%d] lseq[%d] lost[%d], ((s->cycles[%d] + s->max_seq[%d] - (s->base_seq[%d] + 1)) - s->received[%d]);\n", seq, last_seq, lost, s->cycles, s->max_seq, s->base_seq, s->received);
 
 	Call *owner = (Call*)call_owner;
 
