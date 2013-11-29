@@ -420,6 +420,8 @@ HttpData *httpData;
 string storingCdrLastWriteAt;
 string storingSqlLastWriteAt;
 
+time_t startTime;
+
 
 void mysqlquerypush(string q) {
         pthread_mutex_lock(&mysqlquery_lock);
@@ -1753,6 +1755,8 @@ void *readdump_libpcap_thread_fce(void *handle);
 void test();
 
 int main(int argc, char *argv[]) {
+ 
+	time(&startTime);
 
 /*
 	if(mysql_library_init(0, NULL, NULL)) {

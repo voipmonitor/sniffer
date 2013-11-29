@@ -459,6 +459,13 @@ string getActDateTimeF() {
 	return(dateTimeF);
 }
 
+unsigned long getUptime() {
+	extern time_t startTime;
+	time_t actTime;
+	time(&actTime);
+	return(actTime - startTime);
+}
+
 
 PcapDumper::PcapDumper(eTypePcapDump type, class Call *call, bool updateFilesQueueAtClose) {
 	this->type = type;

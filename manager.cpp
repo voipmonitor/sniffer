@@ -1079,7 +1079,8 @@ getwav:
 			   << "\"storingCdrLastWriteAt\": \"" << storingCdrLastWriteAt << "\","
 			   << "\"storingSqlLastWriteAt\": \"" << storingSqlLastWriteAt << "\","
 			   << "\"pbStatString\": \"" << pbStatString << "\","
-			   << "\"pbCountPacketDrop\": \"" << pbCountPacketDrop << "\""
+			   << "\"pbCountPacketDrop\": \"" << pbCountPacketDrop << "\","
+			   << "\"uptime\": \"" << getUptime() << "\""
 			   << "}";
 		outStrStat << endl;
 		string outStrStatStr = outStrStat.str();

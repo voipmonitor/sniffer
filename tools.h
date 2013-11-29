@@ -30,6 +30,7 @@ void ntoa(char *res, unsigned int addr);
 string escapeshellR(string &);
 unsigned int getNumberOfDayToNow(const char *date);
 string getActDateTimeF();
+unsigned long getUptime();
 
 
 class CircularBuffer
