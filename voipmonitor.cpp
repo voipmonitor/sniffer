@@ -269,7 +269,9 @@ extern int opt_pcap_queue_iface_separate_threads;
 extern int opt_pcap_queue_iface_dedup_separate_threads;
 extern int opt_pcap_queue_iface_dedup_separate_threads_extend;
 extern int sql_noerror;
-int opt_cleandatabase = 0;
+int opt_cleandatabase_cdr = 0;
+int opt_cleandatabase_register_state = 0;
+int opt_cleandatabase_register_failed = 0;
 unsigned int graph_delimiter = GRAPH_DELIMITER;
 unsigned int graph_version = GRAPH_VERSION;
 
@@ -666,48 +668,100 @@ void *storing_sql( void *dummy ) {
 void *storing_cdr( void *dummy ) {
 	Call *call;
 	time_t createPartitionAt = 0;
+	time_t dropPartitionAt = 0;
 	time_t createPartitionIpaccAt = 0;
+	unsigned long counterDropPartitions = 0;
 	while(1) {
 		if(!opt_nocdr and opt_cdr_partition and !opt_disable_partition_operations and isSqlDriver("mysql")) {
 			time_t actTime = time(NULL);
 			if(actTime - createPartitionAt > 12 * 3600) {
-				SqlDb *sqlDb = createSqlObject();
-				
 				syslog(LOG_NOTICE, "create cdr partitions - begin");
+				SqlDb *sqlDb = createSqlObject();
 				sqlDb->query(
 					string("call `") + mysql_database + "`.create_partitions_cdr('" + mysql_database + "', 0);");
 				sqlDb->query(
 					string("call `") + mysql_database + "`.create_partitions_cdr('" + mysql_database + "', 1);");
-				syslog(LOG_NOTICE, "create cdr partitions - end");
-			
-				if(opt_cleandatabase > 0) {
-					time_t act_time = time(NULL);
-					time_t next_day_time = act_time - opt_cleandatabase * 24 * 60 * 60;
-					struct tm *nextDayTime = localtime(&next_day_time);
-					char limitDay[20] = "";
-					strftime(limitDay, sizeof(limitDay), "p%y%m%d", nextDayTime);
-
-					sqlDb->setDisableNextAttemptIfError();
-					string query = "ALTER TABLE cdr DROP PARTITION ";
-					query.append(limitDay);
-					sqlDb->query(query);
-					query = "ALTER TABLE cdr_next DROP PARTITION ";
-					query.append(limitDay);
-					sqlDb->query(query);
-					query = "ALTER TABLE cdr_rtp DROP PARTITION ";
-					query.append(limitDay);
-					sqlDb->query(query);
-					query = "ALTER TABLE cdr_dtmf DROP PARTITION ";
-					query.append(limitDay);
-					sqlDb->query(query);
-					query = "ALTER TABLE cdr_proxy DROP PARTITION ";
-					query.append(limitDay);
-					sqlDb->query(query);
-				}
-
-				createPartitionAt = actTime;
-				
 				delete sqlDb;
+				syslog(LOG_NOTICE, "create cdr partitions - end");
+				createPartitionAt = actTime;
+			}
+			if(actTime - dropPartitionAt > 12 * 3600) {
+				if(opt_cleandatabase_cdr > 0 ||
+				   opt_cleandatabase_register_state > 0 ||
+				   opt_cleandatabase_register_failed > 0) {
+					syslog(LOG_NOTICE, "drop old partitions - begin");
+					SqlDb *sqlDb = createSqlObject();
+					sqlDb->setDisableNextAttemptIfError();
+					time_t act_time = time(NULL);
+					time_t next_day_time = act_time - opt_cleandatabase_cdr * 24 * 60 * 60;
+					struct tm *nextDayTime = localtime(&next_day_time);
+					char limitPartName[20] = "";
+					strftime(limitPartName, sizeof(limitPartName), "p%y%m%d", nextDayTime);
+					if(opt_cleandatabase_cdr > 0) {
+						vector<string> partitions;
+						if(counterDropPartitions == 0) {
+							sqlDb->query(string("select partition_name from information_schema.partitions where table_schema='") + 
+								     mysql_database+ "' and table_name='cdr' and partition_name<='" + limitPartName+ "' order by partition_name");
+							SqlDb_row row;
+							while((row = sqlDb->fetchRow())) {
+								partitions.push_back(row["partition_name"]);
+							}
+						} else {
+							partitions.push_back(limitPartName);
+						}
+						for(size_t i = 0; i < partitions.size(); i++) {
+							syslog(LOG_NOTICE, "DROP CDR PARTITION %s", partitions[i].c_str());
+							sqlDb->query("ALTER TABLE cdr DROP PARTITION " + partitions[i]);
+							sqlDb->query("ALTER TABLE cdr_next DROP PARTITION " + partitions[i]);
+							sqlDb->query("ALTER TABLE cdr_rtp DROP PARTITION " + partitions[i]);
+							sqlDb->query("ALTER TABLE cdr_dtmf DROP PARTITION " + partitions[i]);
+							sqlDb->query("ALTER TABLE cdr_proxy DROP PARTITION " + partitions[i]);
+							sqlDb->query("ALTER TABLE message DROP PARTITION " + partitions[i]);
+							if(opt_enable_lua_tables) {
+								sqlDb->query("ALTER TABLE enum_jj DROP PARTITION " + partitions[i]);
+								sqlDb->query("ALTER TABLE http_jj DROP PARTITION " + partitions[i]);
+							}
+						}
+					}
+					if(opt_cleandatabase_register_state > 0) {
+						vector<string> partitions;
+						if(counterDropPartitions == 0) {
+							sqlDb->query(string("select partition_name from information_schema.partitions where table_schema='") + 
+								     mysql_database+ "' and table_name='register_state' and partition_name<='" + limitPartName+ "' order by partition_name");
+							SqlDb_row row;
+							while((row = sqlDb->fetchRow())) {
+								partitions.push_back(row["partition_name"]);
+							}
+						} else {
+							partitions.push_back(limitPartName);
+						}
+						for(size_t i = 0; i < partitions.size(); i++) {
+							syslog(LOG_NOTICE, "DROP REGISTER_STATE PARTITION %s", partitions[i].c_str());
+							sqlDb->query("ALTER TABLE register_state DROP PARTITION " + partitions[i]);
+						}
+					}
+					if(opt_cleandatabase_register_failed > 0) {
+						vector<string> partitions;
+						if(counterDropPartitions == 0) {
+							sqlDb->query(string("select partition_name from information_schema.partitions where table_schema='") + 
+								     mysql_database+ "' and table_name='register_failed' and partition_name<='" + limitPartName+ "' order by partition_name");
+							SqlDb_row row;
+							while((row = sqlDb->fetchRow())) {
+								partitions.push_back(row["partition_name"]);
+							}
+						} else {
+							partitions.push_back(limitPartName);
+						}
+						for(size_t i = 0; i < partitions.size(); i++) {
+							syslog(LOG_NOTICE, "DROP REGISTER_FAILED PARTITION %s", partitions[i].c_str());
+							sqlDb->query("ALTER TABLE register_failed DROP PARTITION " + partitions[i]);
+						}
+					}
+					++counterDropPartitions;
+					delete sqlDb;
+					syslog(LOG_NOTICE, "drop old partitions - end");
+				}
+				dropPartitionAt = actTime;
 			}
 		}
 		
@@ -998,7 +1052,18 @@ int load_config(char *fname) {
 		strncpy(ifname, value, sizeof(ifname));
 	}
 	if((value = ini.GetValue("general", "cleandatabase", NULL))) {
-		opt_cleandatabase = atoi(value);
+		opt_cleandatabase_cdr = atoi(value);
+		opt_cleandatabase_register_state = opt_cleandatabase_cdr;
+		opt_cleandatabase_register_failed = opt_cleandatabase_cdr;
+	}
+	if((value = ini.GetValue("general", "cleandatabase_cdr", NULL))) {
+		opt_cleandatabase_cdr = atoi(value);
+	}
+	if((value = ini.GetValue("general", "cleandatabase_register_state", NULL))) {
+		opt_cleandatabase_register_state = atoi(value);
+	}
+	if((value = ini.GetValue("general", "cleandatabase_register_failed", NULL))) {
+		opt_cleandatabase_register_failed = atoi(value);
 	}
 	if((value = ini.GetValue("general", "cleanspool_interval", NULL))) {
 		opt_cleanspool_interval = atoi(value);
