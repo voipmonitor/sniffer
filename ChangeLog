@@ -1,3 +1,12 @@
+8.4RC15 29.11.2013
+==================
+- fix excessive loss report for some cases in case of reinvite (regression since 8.4RC12)
+- fix SDP: sometimes SDP could not be parsed if the IP was the last line in SDP in the packet thus ignorind the whole RTP
+- fix parsing tags which can be terminated also by only new line instead of CRLF
+- add uptime to sniffer statistics
+- enhance drop old partitions
+- add option create_old_partitions for create old partitions
+
 8.4RC14 27.11.2013
 ==================
 - do not flood log with "to much INVITEs in this call" show the message only once
