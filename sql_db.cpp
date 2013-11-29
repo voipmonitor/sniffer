@@ -19,6 +19,7 @@ extern int terminating;
 extern int opt_ipaccount;
 extern int opt_id_sensor;
 extern bool opt_cdr_partition;
+extern int opt_create_old_partitions;
 extern bool opt_disable_partition_operations;
 extern vector<dstring> opt_custom_headers_cdr;
 extern vector<dstring> opt_custom_headers_message;
@@ -1201,6 +1202,9 @@ void SqlDb_mysql::createSchema() {
 	bool opt_cdr_partition_oldver = false;
 	if(opt_cdr_partition) {
 		time_t act_time = time(NULL);
+		if(opt_create_old_partitions > 0) {
+			act_time -= opt_create_old_partitions * 24 * 60 * 60;
+		}
 		struct tm *actTime = localtime(&act_time);
 		strftime(partDayName, sizeof(partDayName), "p%y%m%d", actTime);
 		time_t next_day_time = act_time + 24 * 60 * 60;
@@ -1985,6 +1989,14 @@ void SqlDb_mysql::createSchema() {
 		    call create_partition(database_name, 'register_state', 'day', next_days);\
 		    call create_partition(database_name, 'register_failed', 'day', next_days);\
 		 end");
+		if(opt_create_old_partitions > 0) {
+			for(int i = opt_create_old_partitions - 1; i > 0; i--) {
+				char i_str[10];
+				sprintf(i_str, "%i", i);
+				this->query(string(
+				"call `") + mysql_database + "`.create_partitions_cdr('" + mysql_database + "', -" + i_str + ");");
+			}
+		}
 		this->query(string(
 		"call `") + mysql_database + "`.create_partitions_cdr('" + mysql_database + "', 0);");
 		this->query(string(
