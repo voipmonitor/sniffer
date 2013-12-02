@@ -157,6 +157,11 @@ private:
 
 class SqlDb_mysql : public SqlDb {
 public:
+	enum eRoutineType {
+		procedure,
+		function
+	};
+public:
 	SqlDb_mysql();
 	~SqlDb_mysql();
 	bool connect(bool craeteDb = false, bool mainInit = false);
@@ -183,6 +188,13 @@ public:
 	int multi_off();
 	int getDbMajorVersion();
 	int getDbMinorVersion(int minorLevel  = 0);
+	bool createRoutine(string routine, string routineName, string routineParamsAndReturn, eRoutineType routineType);
+	bool createFunction(string routine, string routineName, string routineParamsAndReturn) {
+		return(this->createRoutine(routine, routineName, routineParamsAndReturn, function));
+	}
+	bool createProcedure(string routine, string routineName, string routineParamsAndReturn) {
+		return(this->createRoutine(routine, routineName, routineParamsAndReturn, procedure));
+	}
 	MYSQL *getH_Mysql() {
 		return(this->hMysql);
 	}

@@ -373,6 +373,45 @@ int SqlDb_mysql::getDbMinorVersion(int minorLevel) {
 	return(pointToVersion ? atoi(pointToVersion) : 0);
 }
 
+bool SqlDb_mysql::createRoutine(string routine, string routineName, string routineParamsAndReturn, eRoutineType routineType) {
+	bool missing = false;
+	bool diff = false;
+	this->query(string("select routine_definition from information_schema.routines where routine_schema='") + this->conn_database + 
+		    "' and routine_name='" + routineName + 
+		    "' and routine_type='" + (routineType == procedure ? "PROCEDURE" : "FUNCTION") + "'");
+	SqlDb_row row = this->fetchRow();
+	if(!row) {
+		missing = true;
+	} else if(row["routine_definition"] != routine) {
+		size_t i = 0, j = 0;
+		while(i < routine.length() &&
+		      j < row["routine_definition"].length()) {
+			if(routine[i] == '\\' && i < routine.length() - 1) {
+				++i;
+			}
+			if(routine[i] != row["routine_definition"][j]) {
+				diff = true;
+				break;
+			}
+			++i;
+			++j;
+		}
+		if(!diff && 
+		   (i < routine.length() || j < row["routine_definition"].length())) {
+			diff = true;
+		}
+	}
+	if(missing || diff) {
+		syslog(LOG_NOTICE, "create %s %s", (routineType == procedure ? "procedure" : "function"), routineName.c_str());
+		this->query(string("drop ") + (routineType == procedure ? "PROCEDURE" : "FUNCTION") +
+			    " if exists " + routineName);
+		return(this->query(string("create ") + (routineType == procedure ? "PROCEDURE" : "FUNCTION") + " " +
+				   routineName + routineParamsAndReturn + " " + routine));
+	} else {
+		return(true);
+	}
+}
+
 void SqlDb_mysql::disconnect() {
 	if(this->hMysqlRes) {
 		while(mysql_fetch_row(this->hMysqlRes));
@@ -1903,11 +1942,8 @@ void SqlDb_mysql::createSchema() {
 	
 	//BEGIN SQL SCRIPTS
 	if((opt_cdr_partition || opt_ipaccount) && !opt_disable_partition_operations) {
-		this->query(
-		"drop procedure if exists create_partition");
-		this->query(string(
-		"create procedure create_partition(database_name char(100), table_name char(100), type_part char(10), next_days int)\
-		 begin\
+		this->createProcedure(string(
+		"begin\
 		    declare part_date date;\
 		    declare part_limit date;\
 		    declare part_limit_int int;\
@@ -1970,14 +2006,12 @@ void SqlDb_mysql::createSchema() {
 			  deallocate prepare stmt;\
 		       end if;\
 		    end if;\
-		 end");
+		 end",
+		"create_partition", "(database_name char(100), table_name char(100), type_part char(10), next_days int)");
 	}
 	if(opt_cdr_partition && !opt_disable_partition_operations) {
-		this->query(
-		"drop procedure if exists create_partitions_cdr");
-		this->query(
-		"create procedure create_partitions_cdr(database_name char(100), next_days int)\
-		 begin\
+		this->createProcedure(
+		"begin\
 		    call create_partition(database_name, 'cdr', 'day', next_days);\
 		    call create_partition(database_name, 'cdr_next', 'day', next_days);\
 		    call create_partition(database_name, 'cdr_rtp', 'day', next_days);\
@@ -1988,7 +2022,8 @@ void SqlDb_mysql::createSchema() {
 		    call create_partition(database_name, 'message', 'day', next_days);\
 		    call create_partition(database_name, 'register_state', 'day', next_days);\
 		    call create_partition(database_name, 'register_failed', 'day', next_days);\
-		 end");
+		 end",
+		"create_partitions_cdr", "(database_name char(100), next_days int)");
 		if(opt_create_old_partitions > 0) {
 			for(int i = opt_create_old_partitions - 1; i > 0; i--) {
 				char i_str[10];
@@ -2011,17 +2046,15 @@ void SqlDb_mysql::createSchema() {
 		 end");
 	}
 	if(opt_ipaccount && !opt_disable_partition_operations) {
-		this->query(
-		"drop procedure if exists create_partitions_ipacc");
-		this->query(
-		"create procedure create_partitions_ipacc(database_name char(100), next_days int)\
-		 begin\
+		this->createProcedure(
+		"begin\
 		    call create_partition(database_name, 'ipacc', 'day', next_days);\
 		    call create_partition(database_name, 'ipacc_agr_interval', 'day', next_days);\
 		    call create_partition(database_name, 'ipacc_agr_hour', 'day', next_days);\
 		    call create_partition(database_name, 'ipacc_agr2_hour', 'day', next_days);\
 		    call create_partition(database_name, 'ipacc_agr_day', 'month', next_days);\
-		 end");
+		 end",
+		"create_partitions_ipacc", "(database_name char(100), next_days int)");
 		this->query(string(
 		"call `") + mysql_database + "`.create_partitions_ipacc('" + mysql_database + "', 0);");
 		this->query(string(
@@ -2036,9 +2069,8 @@ void SqlDb_mysql::createSchema() {
 		 end");
 	}
 
-	this->query("DROP FUNCTION IF EXISTS getIdOrInsertUA;");
-	this->query("CREATE FUNCTION getIdOrInsertUA(val VARCHAR(255)) RETURNS INT DETERMINISTIC \
-			BEGIN \
+	this->createFunction(
+			"BEGIN \
 				DECLARE _ID INT; \
 				SET _ID = (SELECT id FROM cdr_ua WHERE ua = val); \
 				IF ( _ID ) THEN \
@@ -2047,11 +2079,11 @@ void SqlDb_mysql::createSchema() {
 					INSERT INTO cdr_ua SET ua = val; \
 					RETURN LAST_INSERT_ID(); \
 				END IF; \
-			END;");
-	
-	this->query("DROP FUNCTION IF EXISTS getIdOrInsertSIPRES;");
-	this->query("CREATE FUNCTION getIdOrInsertSIPRES(val VARCHAR(255)) RETURNS INT DETERMINISTIC \
-			BEGIN \
+			END",
+			"getIdOrInsertUA", "(val VARCHAR(255)) RETURNS INT DETERMINISTIC");
+
+	this->createFunction(
+			"BEGIN \
 				DECLARE _ID INT; \
 				SET _ID = (SELECT id FROM cdr_sip_response WHERE lastSIPresponse = val); \
 				IF ( _ID ) THEN \
@@ -2060,11 +2092,11 @@ void SqlDb_mysql::createSchema() {
 					INSERT INTO cdr_sip_response SET lastSIPresponse = val; \
 					RETURN LAST_INSERT_ID(); \
 				END IF; \
-			END;");
+			END",
+			"getIdOrInsertSIPRES", "(val VARCHAR(255)) RETURNS INT DETERMINISTIC");
 
-	this->query("DROP PROCEDURE IF EXISTS PROCESS_SIP_REGISTER;");
-	this->query("CREATE PROCEDURE PROCESS_SIP_REGISTER(IN calltime VARCHAR(32), IN caller VARCHAR(64), IN callername VARCHAR(64), IN caller_domain VARCHAR(64), IN called VARCHAR(64), IN called_domain VARCHAR(64), IN sipcallerip INT UNSIGNED, sipcalledip INT UNSIGNED, contact_num VARCHAR(64), IN contact_domain VARCHAR(64), IN digest_username VARCHAR(255), IN digest_realm VARCHAR(255), IN regstate INT, mexpires_at VARCHAR(128), IN register_expires INT, IN cdr_ua VARCHAR(255), IN fname BIGINT, IN id_sensor INT) \
-			BEGIN \
+	this->createProcedure(
+			"BEGIN \
 				DECLARE _ID INT; \
 				DECLARE _state INT; \
 				DECLARE _expires_at DATETIME; \
@@ -2086,7 +2118,9 @@ void SqlDb_mysql::createSchema() {
 				IF ( register_expires > 0 ) THEN \
 					INSERT INTO `register` SET `id_sensor` = id_sensor, `fname` = fname, `calldate` = calltime, `sipcallerip` = sipcallerip, `sipcalledip` = sipcalledip, `from_num` = caller, `from_name` = callername, `from_domain` = caller_domain, `to_num` = called, `to_domain` = called_domain, `contact_num` = contact_num, `contact_domain` = contact_domain, `digestusername` = digest_username, `digestrealm` = digest_realm, `expires` = register_expires, state = regstate, ua_id = getIdOrInsertUA(cdr_ua), `expires_at` = mexpires_at; \
 				END IF; \
-			END;");
+			END",
+			"PROCESS_SIP_REGISTER", "(IN calltime VARCHAR(32), IN caller VARCHAR(64), IN callername VARCHAR(64), IN caller_domain VARCHAR(64), IN called VARCHAR(64), IN called_domain VARCHAR(64), IN sipcallerip INT UNSIGNED, sipcalledip INT UNSIGNED, contact_num VARCHAR(64), IN contact_domain VARCHAR(64), IN digest_username VARCHAR(255), IN digest_realm VARCHAR(255), IN regstate INT, mexpires_at VARCHAR(128), IN register_expires INT, IN cdr_ua VARCHAR(255), IN fname BIGINT, IN id_sensor INT)");
+
 	//END SQL SCRIPTS
 
 	//this->multi_on();
