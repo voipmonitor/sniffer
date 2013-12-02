@@ -1668,6 +1668,8 @@ void process_sdp(Call *call, unsigned int saddr, int source, unsigned int daddr,
 	}
 }
 
+static void process_packet__parse_custom_headers(Call *call, char *data, int datalen);
+
 Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int dest, char *data, int datalen,
 	pcap_t *handle, pcap_pkthdr *header, const u_char *packet, int istcp, int dontsave, int can_thread, int *was_rtp, struct iphdr2 *header_ip, int *voippacket, int disabledsave,
 	pcap_block_store *block_store, int block_store_index) {
@@ -2531,6 +2533,7 @@ if (header->ts.tv_sec - last_cleanup > 10){
 					if(logPacketSipMethodCall_enable) {
 						logPacketSipMethodCall(sip_method, lastSIPresponseNum, header, call);
 					}
+					process_packet__parse_custom_headers(call, data, datalen);
 					return call;
 			}
 		}
@@ -2599,23 +2602,7 @@ if (header->ts.tv_sec - last_cleanup > 10){
 		}
 	
 		// check if we have custom headers
-		vector<dstring> *_customHeaders = call->type == MESSAGE ? &opt_custom_headers_message : &opt_custom_headers_cdr;
-		size_t iCustHeaders;
-		for(iCustHeaders = 0; iCustHeaders < _customHeaders->size(); iCustHeaders++) {
-			string findHeader = (*_customHeaders)[iCustHeaders][0];
-			if(findHeader[findHeader.length() - 1] != ':') {
-				findHeader.append(":");
-			}
-			s = gettag(data, datalen, findHeader.c_str(), &l, &gettagLimitLen);
-			if(l) {
-				char customHeaderContent[256];
-				memcpy(customHeaderContent, s, min(l, 255lu));
-				customHeaderContent[min(l, 255lu)] = '\0';
-				call->custom_headers.push_back(dstring((*_customHeaders)[iCustHeaders][1],customHeaderContent));
-				if(verbosity > 2)
-					syslog(LOG_NOTICE, "Seen header %s: %s\n", (*_customHeaders)[iCustHeaders][0].c_str(), customHeaderContent);
-			}
-		}
+		process_packet__parse_custom_headers(call, data, datalen);
 		
 		// we have packet, extend pending destroy requests
 		if(call->destroy_call_at > 0) {
@@ -2975,6 +2962,28 @@ repeatrtpB:
 			"---");
 		}
 	return NULL;
+}
+
+void process_packet__parse_custom_headers(Call *call, char *data, int datalen) {
+	vector<dstring> *_customHeaders = call->type == MESSAGE ? &opt_custom_headers_message : &opt_custom_headers_cdr;
+	size_t iCustHeaders;
+	unsigned long gettagLimitLen = 0;
+	for(iCustHeaders = 0; iCustHeaders < _customHeaders->size(); iCustHeaders++) {
+		string findHeader = (*_customHeaders)[iCustHeaders][0];
+		if(findHeader[findHeader.length() - 1] != ':') {
+			findHeader.append(":");
+		}
+		unsigned long l;
+		char *s = gettag(data, datalen, findHeader.c_str(), &l, &gettagLimitLen);
+		if(l) {
+			char customHeaderContent[256];
+			memcpy(customHeaderContent, s, min(l, 255lu));
+			customHeaderContent[min(l, 255lu)] = '\0';
+			call->custom_headers.push_back(dstring((*_customHeaders)[iCustHeaders][1],customHeaderContent));
+			if(verbosity > 2)
+				syslog(LOG_NOTICE, "Seen header %s: %s\n", (*_customHeaders)[iCustHeaders][0].c_str(), customHeaderContent);
+		}
+	}
 }
 
 #ifdef HAS_NIDS
