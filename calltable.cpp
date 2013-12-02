@@ -167,6 +167,7 @@ Call::Call(char *call_id, unsigned long call_id_len, time_t time, void *ct) :
 	rtp_prev[1] = NULL;
 	lastSIPresponse[0] = '\0';
 	lastSIPresponseNum = 0;
+	new_invite_after_lsr487 = false;
 	msgcount = 0;
 	regcount = 0;
 	reg401count = 0;

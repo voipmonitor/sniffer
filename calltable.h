@@ -162,6 +162,7 @@ public:
 
 	char lastSIPresponse[128];
 	int lastSIPresponseNum;
+	bool new_invite_after_lsr487;
 
 	string sip_pcapfilename;
 	string rtp_pcapfilename;

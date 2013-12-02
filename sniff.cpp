@@ -2350,13 +2350,15 @@ if (header->ts.tv_sec - last_cleanup > 10){
 				if(call->seenbye) {
 					call->destroy_call_at = header->ts.tv_sec + 60;
 				} else {
-					call->destroy_call_at = header->ts.tv_sec + 5; 
+					call->destroy_call_at = header->ts.tv_sec + (lastSIPresponseNum == 487 || call->lastSIPresponseNum == 487 ? 15 : 5);
 				}
 			}
 
 			call->set_last_packet_time(header->ts.tv_sec);
 			// save lastSIPresponseNum but only if previouse was not 487 (CANCEL) and call was not answered 
-			if(lastSIPresponseNum != 0 && lastSIPresponse[0] != '\0' && call->lastSIPresponseNum != 487 && !call->seeninviteok) {
+			if(lastSIPresponseNum != 0 && lastSIPresponse[0] != '\0' && 
+			   (call->lastSIPresponseNum != 487 || call->new_invite_after_lsr487 && lastSIPresponseNum == 200) &&
+			   !call->seeninviteok) {
 				strncpy(call->lastSIPresponse, lastSIPresponse, 128);
 				call->lastSIPresponseNum = lastSIPresponseNum;
 			}
@@ -2365,6 +2367,9 @@ if (header->ts.tv_sec - last_cleanup > 10){
 			if(sip_method == INVITE) {
 				if(!call->seenbye) {
 					call->destroy_call_at = 0;
+				}
+				if(call->lastSIPresponseNum == 487) {
+					call->new_invite_after_lsr487 = true;
 				}
 				//update called number for each invite due to overlap-dialling
 				if (opt_sipoverlap && saddr == call->sipcallerip) {
@@ -2605,7 +2610,7 @@ if (header->ts.tv_sec - last_cleanup > 10){
 		process_packet__parse_custom_headers(call, data, datalen);
 		
 		// we have packet, extend pending destroy requests
-		if(call->destroy_call_at > 0) {
+		if(call->destroy_call_at > 0 && header->ts.tv_sec + 5 > call->destroy_call_at) {
 			call->destroy_call_at = header->ts.tv_sec + 5; 
 		}
 
