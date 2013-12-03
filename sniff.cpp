@@ -19,6 +19,7 @@ and insert them into Call class.
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <net/ethernet.h>
+#include "voipmonitor.h"
 
 #ifdef FREEBSD
 #include <machine/endian.h>
