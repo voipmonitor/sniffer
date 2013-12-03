@@ -6,12 +6,11 @@
 #include <queue>
 #include <climits>
 // stevek - it could be smarter if sys/inotyfy.h available then use it otherwise use linux/inotify.h. I will do it later
+#include "voipmonitor.h"
+
 #ifndef FREEBSD
 #include <sys/inotify.h>
 #endif
-
-
-#include "voipmonitor.h"
 
 #include <stdio.h>
 #include <stdlib.h>
