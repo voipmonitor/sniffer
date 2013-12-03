@@ -2949,32 +2949,9 @@ Calltable::cleanup( time_t currtime ) {
 				call->relationcall = NULL;
 			}
 			call->hashRemove();
-/* remove it in destructor 
-			if (call->get_fsip_pcap() != NULL){
-				pcap_dump_flush(call->get_fsip_pcap());
-				pcap_dump_close(call->get_fsip_pcap());
-				if(opt_cachedir[0] != '\0') {
-					call->addtocachequeue(call->sip_pcapfilename);
-				}
-				call->set_fsip_pcap(NULL);
-			}
-			if (call->get_frtp_pcap() != NULL){
-				pcap_dump_flush(call->get_frtp_pcap());
-				pcap_dump_close(call->get_frtp_pcap());
-				if(opt_cachedir[0] != '\0') {
-					call->addtocachequeue(call->rtp_pcapfilename);
-				}
-				call->set_frtp_pcap(NULL);
-			}
-			if (call->get_f_pcap() != NULL){
-				pcap_dump_flush(call->get_f_pcap());
-				pcap_dump_close(call->get_f_pcap());
-				if(opt_cachedir[0] != '\0') {
-					call->addtocachequeue(call->pcapfilename);
-				}
-				call->set_f_pcap(NULL);
-			}
-*/
+			// Close RTP dump file ASAP to save file handles
+			call->getPcapRtp()->close();
+
 			if(currtime == 0) {
 				/* we are saving calls because of terminating SIGTERM and we dont know 
 				 * if the call ends successfully or not. So we dont want to confuse monitoring

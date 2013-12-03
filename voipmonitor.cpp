@@ -874,6 +874,10 @@ void *storing_cdr( void *dummy ) {
 				system(source.c_str());
 			}
 
+			// Close SIP and SIP+RTP dump files ASAP to save file handles
+			call->getPcap()->close();
+			call->getPcapSip()->close();
+
 			/* if we delete call here directly, destructors and another cleaning functions can be
 			 * called in the middle of working with call or another structures inside main thread
 			 * so put it in deletequeue and delete it in the main thread. Another way can be locking
