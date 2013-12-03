@@ -1177,7 +1177,7 @@ double PcapQueue::pcapStat_get_speed_mb_s(int statPeriod) {
 }
 
 void PcapQueue::preparePstatData(bool writeThread) {
-	uint pid = writeThread ? this->writeThreadId : this->threadId;
+	int pid = writeThread ? this->writeThreadId : this->threadId;
 	if(pid) {
 		if(writeThread) {
 			if(this->writeThreadPstatData[0].cpu_total_time) {
@@ -1196,7 +1196,7 @@ double PcapQueue::getCpuUsagePerc(bool writeThread, bool preparePstatData) {
 	if(preparePstatData) {
 		this->preparePstatData(writeThread);
 	}
-	uint pid = writeThread ? this->writeThreadId : this->threadId;
+	int pid = writeThread ? this->writeThreadId : this->threadId;
 	if(pid) {
 		double ucpu_usage, scpu_usage;
 		if(writeThread) {
@@ -1222,7 +1222,7 @@ long unsigned int PcapQueue::getVsizeUsage(bool writeThread, bool preparePstatDa
 	if(preparePstatData) {
 		this->preparePstatData(writeThread);
 	}
-	uint pid = writeThread ? this->writeThreadId : this->threadId;
+	int pid = writeThread ? this->writeThreadId : this->threadId;
 	if(pid) {
 		return(this->threadPstatData[0].vsize);
 	}
@@ -1233,7 +1233,7 @@ long unsigned int PcapQueue::getRssUsage(bool writeThread, bool preparePstatData
 	if(preparePstatData) {
 		this->preparePstatData(writeThread);
 	}
-	uint pid = writeThread ? this->writeThreadId : this->threadId;
+	int pid = writeThread ? this->writeThreadId : this->threadId;
 	if(pid) {
 		return(this->threadPstatData[0].rss);
 	}
@@ -1536,7 +1536,7 @@ inline int PcapQueue_readFromInterface_base::pcapProcess(pcap_pkthdr** header, u
 	} else if (ppd.header_ip->protocol == IPPROTO_TCP) {
 		ppd.istcp = 1;
 		// prepare packet pointers 
-		ppd.header_tcp = (tcphdr*) ((char*) ppd.header_ip + sizeof(*ppd.header_ip));
+		ppd.header_tcp = (tcphdr2*) ((char*) ppd.header_ip + sizeof(*ppd.header_ip));
 		ppd.data = (char*) ppd.header_tcp + (ppd.header_tcp->doff * 4);
 		ppd.datalen = (int)((*header)->caplen - ((unsigned long) ppd.data - (unsigned long) *packet)); 
 		if (!(sipportmatrix[htons(ppd.header_tcp->source)] || sipportmatrix[htons(ppd.header_tcp->dest)]) &&
@@ -1797,7 +1797,7 @@ inline void PcapQueue_readFromInterfaceThread::moveReadit(int index) {
 void *PcapQueue_readFromInterfaceThread::threadFunction(void *) {
 	if(verbosity > 0) {
 		ostringstream outStr;
-		this->threadId = syscall(SYS_gettid);
+		this->threadId = get_unix_tid();
 		outStr << "start thread t0i_" 
 		       << (this->typeThread == read ? "read" : 
 			   this->typeThread == defrag ? "defrag" :
@@ -2107,7 +2107,7 @@ bool PcapQueue_readFromInterface::initThread() {
 void* PcapQueue_readFromInterface::threadFunction(void* ) {
 	if(VERBOSE || DEBUG_VERBOSE) {
 		ostringstream outStr;
-		this->threadId = syscall(SYS_gettid);
+		this->threadId = get_unix_tid();
 		outStr << "start thread t0 (" << this->nameQueue << ") - pid: " << this->threadId << endl;
 		if(DEBUG_VERBOSE) {
 			cout << outStr.str();
@@ -2494,7 +2494,7 @@ bool PcapQueue_readFromFifo::initThread() {
 void *PcapQueue_readFromFifo::threadFunction(void *) {
 	if(VERBOSE || DEBUG_VERBOSE) {
 		ostringstream outStr;
-		this->threadId = syscall(SYS_gettid);
+		this->threadId = get_unix_tid();
 		outStr << "start thread t1 (" << this->nameQueue << ") - pid: " << this->threadId << endl;
 		if(DEBUG_VERBOSE) {
 			cout << outStr.str();
@@ -2655,7 +2655,7 @@ void *PcapQueue_readFromFifo::threadFunction(void *) {
 void *PcapQueue_readFromFifo::writeThreadFunction(void *) {
 	if(VERBOSE || DEBUG_VERBOSE) {
 		ostringstream outStr;
-		this->writeThreadId = syscall(SYS_gettid);
+		this->writeThreadId = get_unix_tid();
 		outStr << "start thread t2 (" << this->nameQueue << " / write" << ") - pid: " << this->writeThreadId << endl;
 		if(DEBUG_VERBOSE) {
 			cout << outStr.str();
@@ -2951,7 +2951,7 @@ bool PcapQueue_readFromFifo::socketRead(u_char *data, size_t *dataLen) {
 void PcapQueue_readFromFifo::processPacket(pcap_pkthdr_plus *header_plus, u_char *packet,
 					   pcap_block_store *block_store, int block_store_index) {
 	iphdr2 *header_ip;
-	tcphdr *header_tcp;
+	tcphdr2 *header_tcp;
 	udphdr2 *header_udp;
 	udphdr2 header_udp_tmp;
 	char *data = NULL;
@@ -3026,7 +3026,7 @@ void PcapQueue_readFromFifo::processPacket(pcap_pkthdr_plus *header_plus, u_char
 		datalen = (int)(header->caplen - ((u_char*)data - packet));
 		istcp = 0;
 	} else if (header_ip->protocol == IPPROTO_TCP) {
-		header_tcp = (tcphdr*) ((char *) header_ip + sizeof(*header_ip));
+		header_tcp = (tcphdr2*) ((char *) header_ip + sizeof(*header_ip));
 		if(opt_enable_tcpreassembly && (httpportmatrix[htons(header_tcp->source)] || httpportmatrix[htons(header_tcp->dest)])) {
 			tcpReassembly->push(header, header_ip, packet,
 					    block_store, block_store_index);

@@ -16,10 +16,10 @@ and insert them into Call class.
 #include <getopt.h>
 #include <time.h>
 #include <signal.h>
-#include <endian.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <net/ethernet.h>
+#include <netinet/in.h>
 #include <netinet/ip.h>
 #include <netinet/tcp.h>
 #include <syslog.h>
@@ -363,7 +363,7 @@ void ipacc_add_octets(time_t timestamp, unsigned int saddr, unsigned int daddr, 
 
 void ipaccount(time_t timestamp, struct iphdr2 *header_ip, int packetlen, int voippacket){
 	struct udphdr2 *header_udp;
-	struct tcphdr *header_tcp;
+	struct tcphdr2 *header_tcp;
 
 	if (header_ip->protocol == IPPROTO_UDP) {
 		// prepare packet pointers 
@@ -377,7 +377,7 @@ void ipaccount(time_t timestamp, struct iphdr2 *header_ip, int packetlen, int vo
 			ipacc_add_octets(timestamp, header_ip->saddr, header_ip->daddr, 0, IPPROTO_TCP, packetlen, voippacket);
 		}
 	} else if (header_ip->protocol == IPPROTO_TCP) {
-		header_tcp = (struct tcphdr *) ((char *) header_ip + sizeof(*header_ip));
+		header_tcp = (struct tcphdr2 *) ((char *) header_ip + sizeof(*header_ip));
 
 		if(ipaccountportmatrix[htons(header_tcp->source)]) {
 			ipacc_add_octets(timestamp, header_ip->saddr, header_ip->daddr, htons(header_tcp->source), IPPROTO_TCP, packetlen, voippacket);

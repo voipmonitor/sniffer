@@ -16,15 +16,26 @@ and insert them into Call class.
 #include <getopt.h>
 #include <time.h>
 #include <signal.h>
-#include <endian.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <net/ethernet.h>
+
+#ifdef FREEBSD
+#include <machine/endian.h>
+#else
+#include <malloc.h>
+#include <endian.h>
+#endif
+
+#include <sys/times.h>
+#include <sys/param.h>
+#include <sys/signal.h>
+#include <netinet/in.h>
 #include <netinet/ip.h>
+
 #include <netinet/tcp.h>
 #include <syslog.h>
 #include <semaphore.h>
-#include <malloc.h>
 
 #include <sstream>
 
@@ -1764,7 +1775,9 @@ if (header->ts.tv_sec - last_cleanup > 10){
 		"malloc_trim" from malloc.h which does this missing operation (note that it is allowed to fail). If your OS does not provide 
 		malloc_trim, try searching for a similar function.
 		*/
+#ifndef FREEBSD
 		malloc_trim(0);
+#endif
 
 	}
 
@@ -1809,7 +1822,7 @@ if (header->ts.tv_sec - last_cleanup > 10){
 				// no Call-ID found in packet
 				if(istcp && header_ip) {
 					// packet is tcp, check if belongs to some previouse TCP stream (reassembling here)
-					struct tcphdr *header_tcp = (struct tcphdr *) ((char *) header_ip + sizeof(*header_ip));
+					struct tcphdr2 *header_tcp = (struct tcphdr2 *) ((char *) header_ip + sizeof(*header_ip));
 					tcp_stream2_t *tmpstream;
 					u_int hash = mkhash(saddr, source, daddr, dest) % MAX_TCPSTREAMS;
 					tmpstream = tcp_streams_hashed[hash];
@@ -2064,7 +2077,7 @@ if (header->ts.tv_sec - last_cleanup > 10){
 				stream->hash = hash;
 				tcp_streams_hashed[hash] = stream;
 
-				struct tcphdr *header_tcp = (struct tcphdr *) ((char *) header_ip + sizeof(*header_ip));
+				struct tcphdr2 *header_tcp = (struct tcphdr2 *) ((char *) header_ip + sizeof(*header_ip));
 				stream->lastpsh = header_tcp->psh;
 				stream->seq = htonl(header_tcp->seq);
 				stream->ack_seq = htonl(header_tcp->ack_seq);
@@ -3133,7 +3146,7 @@ void *pcap_read_thread_func(void *arg) {
 	struct iphdr2 *header_ip;
 	struct udphdr2 *header_udp;
 	struct udphdr2 header_udp_tmp;
-	struct tcphdr *header_tcp;
+	struct tcphdr2 *header_tcp;
 	char *data;
 	int datalen;
 	int istcp = 0;
@@ -3212,7 +3225,7 @@ void *pcap_read_thread_func(void *arg) {
 			datalen = (int)(pp->header.caplen - ((char*)data - (char*)packet)); 
 			istcp = 0;
 		} else if (header_ip->protocol == IPPROTO_TCP) {
-			header_tcp = (struct tcphdr *) ((char *) header_ip + sizeof(*header_ip));
+			header_tcp = (struct tcphdr2 *) ((char *) header_ip + sizeof(*header_ip));
 			// dokončit nezbytné paměťové operace pro udržení obsahu paketu !!!!
 			// zatím reassemblování v módu bez pb zakázáno
 			/*
@@ -3358,7 +3371,7 @@ inline int ipfrag_dequeue(ip_frag_queue_t *queue, struct pcap_pkthdr **header, u
 
 int ipfrag_add(ip_frag_queue_t *queue, struct pcap_pkthdr *header, const u_char *packet, unsigned int len, struct pcap_pkthdr **origheader, u_char **origpacket) {
 
-	unsigned int offset = ntohs(((iphdr*)(packet))->frag_off);
+	unsigned int offset = ntohs(((iphdr2*)(packet))->frag_off);
 	unsigned int offset_d = (offset & IP_OFFSET) << 3;
 	u_int8_t is_last = 0;
 
@@ -3533,7 +3546,7 @@ void readdump_libpcap(pcap_t *handle) {
 	struct iphdr2 *header_ip;
 	struct udphdr2 *header_udp = NULL;
 	struct udphdr2 header_udp_tmp;
-	struct tcphdr *header_tcp = NULL;
+	struct tcphdr2 *header_tcp = NULL;
 	char *data = NULL;
 	int datalen = 0;
 	int res;
@@ -3753,7 +3766,7 @@ headerip:
 		} else if (header_ip->protocol == IPPROTO_TCP) {
 			istcp = 1;
 			// prepare packet pointers 
-			header_tcp = (struct tcphdr *) ((char *) header_ip + sizeof(*header_ip));
+			header_tcp = (struct tcphdr2 *) ((char *) header_ip + sizeof(*header_ip));
 			data = (char *) header_tcp + (header_tcp->doff * 4);
 			datalen = (int)(header->caplen - ((unsigned long) data - (unsigned long) packet)); 
 			//if (datalen == 0 || !(sipportmatrix[htons(header_tcp->source)] || sipportmatrix[htons(header_tcp->dest)])) {

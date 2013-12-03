@@ -1,6 +1,7 @@
 #ifndef GENERATOR_H
 #define GENERATOR_H
 
+#include "voipmonitor.h"
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
@@ -12,7 +13,11 @@
 #include <fcntl.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
+
+#ifndef FREEBSD
 #include <netinet/ether.h>
+#endif
+
 #include <sys/times.h>
 #include <sys/param.h>
 #include <sys/signal.h>
@@ -21,6 +26,8 @@
 #include <errno.h>
 #include <netinet/udp.h>
 #include <netinet/ip_icmp.h>
+
+#ifndef FREEBSD
 #include <features.h>    /* for the glibc version number */
 #if __GLIBC__ >= 2 && __GLIBC_MINOR >= 1
 #include <netpacket/packet.h>
@@ -29,6 +36,7 @@
 #include <asm/types.h>
 #include <linux/if_packet.h>
 #include <linux/if_ether.h>   /* The L2 protocols */
+#endif
 #endif
 
 using namespace std;

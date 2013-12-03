@@ -1,5 +1,6 @@
 #include <syslog.h>
 #include <string.h>
+#include "voipmonitor.h"
 
 #include "filter_mysql.h"
 #include "calltable.h"

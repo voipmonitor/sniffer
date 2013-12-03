@@ -546,7 +546,7 @@ enum jb_return_code jb_put(jitterbuf *jb, void *data, const enum jb_frame_type t
 		 * IAX integrations, I'm sending retransmitted control frames with their awkward timestamps through */
 		if (history_put(jb,ts,now,ms)) {
 			jb->info.frames_dropped++;
-			jb_dbg2("history_put > 0 | %u %u %u\n", ts, now, ms);
+			jb_dbg2("history_put > 0 | %lu %lu %lu\n", ts, now, ms);
 			return JB_DROP;
 		}
 	}

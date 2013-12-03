@@ -1152,16 +1152,6 @@ int ast_dynamic_str_thread_build_va(struct ast_dynamic_str **buf, size_t max_len
 	return res;
 }
 
-void ast_enable_packet_fragmentation(int sock)
-{
-#if defined(HAVE_IP_MTU_DISCOVER)
-	int val = IP_PMTUDISC_DONT;
-	
-	if (setsockopt(sock, IPPROTO_IP, IP_MTU_DISCOVER, &val, sizeof(val)))
-		printf("Unable to disable PMTU discovery. Large UDP packets may fail to be delivered when sent from this socket.\n");
-#endif /* HAVE_IP_MTU_DISCOVER */
-}
-
 int ast_utils_init(void)
 {
 	base64_init();

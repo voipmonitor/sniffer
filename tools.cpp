@@ -20,7 +20,16 @@
 #include <net/if.h>
 #include <syslog.h>
 #include <sys/ioctl.h> 
+#include <sys/syscall.h>
+
+#include "voipmonitor.h"
+
+#ifdef FREEBSD
+#include <sys/uio.h>
+#include <sys/thr.h>
+#else
 #include <sys/sendfile.h>
+#endif
 
 #include <algorithm> // for std::min
 #include <iostream>
@@ -92,6 +101,7 @@ bool FileExists(char *strFilename) {
 
 void
 set_mac() {   
+#ifndef FREEBSD
 	int s, res;
 	struct ifreq buffer;
 
@@ -112,6 +122,7 @@ set_mac() {
 		0xff & buffer.ifr_hwaddr.sa_data[3],
 		0xff & buffer.ifr_hwaddr.sa_data[4],
 		0xff & buffer.ifr_hwaddr.sa_data[5]);
+#endif
 }
 
 /*
@@ -237,7 +248,9 @@ unsigned long long copy_file(const char *src, const char *dst, bool move) {
 	/*
 As you can see we are calling fdatasync right before calling posix_fadvise, this makes sure that all data associated with the file handle has been committed to disk. This is not done because there is any danger of loosing data. But it makes sure that that the posix_fadvise has an effect. Since the posix_fadvise function is advisory, the OS will simply ignore it, if it can not comply. At least with Linux, the effect of calling posix_fadvise(fd,0,0,POSIX_FADV_DONTNEED) is immediate. This means if you write a file and call posix_fadvise right after writing a chunk of data, it will probably have no effect at all since the data in question has not been committed to disk yet, and therefore can not be released from cache.
 	*/
+#ifndef FREEBSD
 	fdatasync(read_fd);
+#endif
 	posix_fadvise(read_fd, 0, 0, POSIX_FADV_DONTNEED);
 
 	/* Open the output file for writing, with the same permissions as the source file. */
@@ -249,11 +262,18 @@ As you can see we are calling fdatasync right before calling posix_fadvise, this
 		close(read_fd);
 		return(0);
 	}
+#ifndef FREEBSD
 	fdatasync(write_fd);
+#endif
 	posix_fadvise(write_fd, 0, 0, POSIX_FADV_DONTNEED);
 	/* Blast the bytes from one file to the other. */
+#ifndef FREEBSD
 	int res = sendfile(write_fd, read_fd, &offset, stat_buf.st_size);
 	unsigned long long bytestransfered = stat_buf.st_size;
+#else
+	int res = -1;
+	unsigned long long bytestransfered = 0;
+#endif
 	if(res == -1) {
 		if(renamedebug) {
 			syslog(LOG_ERR, "sendfile failed src[%s]", src);
@@ -835,4 +855,27 @@ bool RestartUpgrade::getRestartTempScriptFileName() {
 		return(true);
 	}
 	return(false);
+}
+
+int get_unix_tid(void) {
+	 int ret = -1;
+#ifdef HAVE_PTHREAD_GETTHREADID_NP
+	ret = pthread_getthreadid_np();
+#elif defined(linux)
+	ret = syscall(SYS_gettid);
+#elif defined(__sun)
+	ret = pthread_self();
+#elif defined(__APPLE__)
+	ret = mach_thread_self();
+	mach_port_deallocate(mach_task_self(), ret);
+#elif defined(__NetBSD__)
+	ret = _lwp_self();
+#elif defined(__FreeBSD__)
+	long lwpid;
+	thr_self( &lwpid );
+	ret = lwpid;
+#elif defined(__DragonFly__)
+	ret = lwp_gettid();
+#endif
+	return ret;
 }

@@ -9,3 +9,4 @@ void clean_obsolete_dirs(const char *path = NULL);
 bool isSetCleanspoolParameters();
 
 #endif
+

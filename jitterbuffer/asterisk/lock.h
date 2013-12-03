@@ -873,9 +873,6 @@ static inline int __ast_rwlock_init(const char *filename, int lineno, const char
 #endif /* AST_MUTEX_INIT_W_CONSTRUCTORS */
 	pthread_rwlockattr_init(&attr);
 
-#ifdef HAVE_PTHREAD_RWLOCK_PREFER_WRITER_NP
-	pthread_rwlockattr_setkind_np(&attr, PTHREAD_RWLOCK_PREFER_WRITER_NP);
-#endif
 
 	res = pthread_rwlock_init(prwlock, &attr);
 	pthread_rwlockattr_destroy(&attr);
@@ -1170,9 +1167,6 @@ static inline int ast_rwlock_init(ast_rwlock_t *prwlock)
 
 	pthread_rwlockattr_init(&attr);
 
-#ifdef HAVE_PTHREAD_RWLOCK_PREFER_WRITER_NP
-	pthread_rwlockattr_setkind_np(&attr, PTHREAD_RWLOCK_PREFER_WRITER_NP);
-#endif
 
 	res = pthread_rwlock_init(prwlock, &attr);
 	pthread_rwlockattr_destroy(&attr);

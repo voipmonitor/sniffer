@@ -254,8 +254,8 @@ protected:
 	bool threadTerminated;
 	bool writeThreadTerminated;
 	bool threadDoTerminate;
-	uint threadId;
-	uint writeThreadId;
+	int threadId;
+	int writeThreadId;
 	pstat_data threadPstatData[2];
 	pstat_data writeThreadPstatData[2];
 	bool initAllReadThreadsOk;
@@ -283,7 +283,7 @@ struct pcapProcessData {
 	sll_header *header_sll;
 	ether_header *header_eth;
 	iphdr2 *header_ip;
-	tcphdr *header_tcp;
+	tcphdr2 *header_tcp;
 	udphdr2 *header_udp;
 	udphdr2 header_udp_tmp;
 	int protocol;
@@ -385,7 +385,7 @@ private:
 	double getCpuUsagePerc(bool preparePstatData = false);
 private:
 	pthread_t threadHandle;
-	uint threadId;
+	int threadId;
 	int threadInitOk;
 	hpi *qring[2];
 	unsigned int qringmax;

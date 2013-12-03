@@ -1,6 +1,9 @@
 #ifndef TCP_REASSEMBLY_H
 #define TCP_REASSEMBLY_H
 
+#include <arpa/inet.h>
+#include <netinet/in.h>
+#include <netinet/ip.h>
 #include <netinet/tcp.h>
 #include <algorithm>
 
@@ -221,7 +224,7 @@ public:
 		}
 		return(*this);
 	}
-	void setData(timeval time, tcphdr header_tcp,
+	void setData(timeval time, tcphdr2 header_tcp,
 		     u_char *data, u_int32_t datalen, u_int32_t datacaplen,
 		     pcap_block_store *block_store, int block_store_index) {
 		this->time = time;
@@ -275,7 +278,7 @@ private:
 	}
 private:
 	timeval time;
-	tcphdr header_tcp;
+	tcphdr2 header_tcp;
 	u_int32_t next_seq;
 	u_char *data;
 	u_int32_t datalen;
@@ -495,7 +498,7 @@ public:
 	}
 	~TcpReassemblyLink();
 	bool push(TcpReassemblyStream::eDirection direction,
-		  timeval time, tcphdr header_tcp, 
+		  timeval time, tcphdr2 header_tcp, 
 		  u_char *data, u_int32_t datalen, u_int32_t datacaplen,
 		  pcap_block_store *block_store, int block_store_index,
 		  bool lockQueue = true) {
@@ -520,13 +523,13 @@ public:
 	}
 	bool push_normal(
 		  TcpReassemblyStream::eDirection direction,
-		  timeval time, tcphdr header_tcp, 
+		  timeval time, tcphdr2 header_tcp, 
 		  u_char *data, u_int32_t datalen, u_int32_t datacaplen,
 		  pcap_block_store *block_store, int block_store_index,
 		  bool lockQueue);
 	bool push_crazy(
 		  TcpReassemblyStream::eDirection direction,
-		  timeval time, tcphdr header_tcp, 
+		  timeval time, tcphdr2 header_tcp, 
 		  u_char *data, u_int32_t datalen, u_int32_t datacaplen,
 		  pcap_block_store *block_store, int block_store_index,
 		  bool lockQueue);
@@ -752,7 +755,7 @@ private:
 	u_int64_t last_time;
 	bool doPrintContent;
 	pthread_t threadHandle;
-	uint threadId;
+	int threadId;
 	bool terminated;
 	bool ignoreTerminating;
 	FILE *log;

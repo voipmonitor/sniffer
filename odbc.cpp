@@ -1,6 +1,8 @@
 #include <string.h>
 #include <stdio.h>
 #include <iostream>
+#include <sql.h>
+#include "voipmonitor.h"
 
 #include "odbc.h"
 

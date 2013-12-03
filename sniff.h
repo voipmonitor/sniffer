@@ -8,11 +8,17 @@
 
 #include <queue>
 #include <map>
+
 #include "rqueue.h"
 #include "voipmonitor.h"
 #include "calltable.h"
 #include "pcap_queue_block.h"
+
+#ifdef FREEBSD
+#include <machine/endian.h>
+#else
 #include "asm/byteorder.h"
+#endif
 
 #define MAXPACKETLENQRING 1600
 
@@ -212,7 +218,11 @@ struct livesnifferfilter_use_siptypes_s {
 
 struct gre_hdr {
 #if defined(__LITTLE_ENDIAN_BITFIELD)
+#ifdef FREEBSD
+        u_int16_t rec:3,
+#else
         __u16   rec:3,
+#endif
                 srr:1,
                 seq:1,
                 key:1,
@@ -222,7 +232,11 @@ struct gre_hdr {
                 reserved:4,
                 ack:1;
 #elif defined(__BIG_ENDIAN_BITFIELD)
-        __u16   csum:1,
+#ifdef FREEBSD
+        u_int16_t   csum:1,
+#else
+	__u16   csum:1,
+#endif
                 routing:1,
                 key:1,
                 seq:1,
@@ -234,7 +248,11 @@ struct gre_hdr {
 #else
 #error "Adjust your <asm/byteorder.h> defines"
 #endif
-        __be16  protocol;
+#ifdef FREEBSD
+        u_int16_t  protocol;
+#else
+	__be16	protocol;
+#endif
 };
  
 

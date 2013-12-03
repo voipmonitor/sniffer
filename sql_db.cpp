@@ -6,6 +6,7 @@
 #include <unistd.h>
 #include <mysql/mysqld_error.h>
 #include <mysql/errmsg.h>
+#include "voipmonitor.h"
 
 #include "tools.h"
 

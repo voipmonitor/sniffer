@@ -13,7 +13,7 @@ struct pstat_data {
 };
 
 
-bool pstat_get_data(const uint pid, pstat_data* result);
+bool pstat_get_data(const int pid, pstat_data* result);
 void pstat_calc_cpu_usage_pct(const pstat_data* cur_usage,
 			      const pstat_data* last_usage,
 			      double* ucpu_usage, double* scpu_usage);
@@ -24,3 +24,4 @@ void pstat_calc_cpu_usage(const pstat_data* cur_usage,
 
 
 #endif
+

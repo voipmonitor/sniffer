@@ -6,7 +6,7 @@
 
 #include "pstat.h"
 
-bool pstat_get_data(const uint pid, pstat_data* result) {
+bool pstat_get_data(const int pid, pstat_data* result) {
 	char stat_filepath[100]; 
 	//sprintf(stat_filepath, "/proc/%u/stat", pid);
 	

@@ -6,7 +6,12 @@
 #include <queue>
 #include <climits>
 // stevek - it could be smarter if sys/inotyfy.h available then use it otherwise use linux/inotify.h. I will do it later
+#ifndef FREEBSD
 #include <sys/inotify.h>
+#endif
+
+
+#include "voipmonitor.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -15,13 +20,23 @@
 #include <getopt.h>
 #include <time.h>
 #include <signal.h>
+
+#ifdef FREEBSD
+#include <sys/endian.h>
+#else
 #include <endian.h>
+#endif
+
+#include <arpa/inet.h>
+#include <netinet/in.h>
+#include <netinet/in_systm.h>
+#include <netinet/ip.h>
+#include <netinet/tcp.h>
+
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <net/ethernet.h>
-#include <netinet/in.h>
-#include <netinet/in_systm.h>
 #include <pthread.h>
 #include <unistd.h>
 #include <syslog.h>
@@ -44,7 +59,6 @@
 
 #include "rtp.h"
 #include "calltable.h"
-#include "voipmonitor.h"
 #include "sniff.h"
 #include "simpleini/SimpleIni.h"
 #include "manager.h"
@@ -66,7 +80,9 @@ extern "C" {
 }
 #endif
 
+#ifndef FREEBSD
 #define BACKTRACE 1
+#endif
 
 #ifdef BACKTRACE
 /* Since kernel version 2.2 the undocumented parameter to the signal handler has been declared
@@ -2680,6 +2696,7 @@ int main(int argc, char *argv[]) {
 		}
 	}
 
+#ifndef FREEBSD
 	if(opt_scanpcapdir[0] != '\0') {
 		// scan directory opt_scanpcapdir (typically /dev/shm/voipmonitor
 		char filename[1024];
@@ -2753,6 +2770,9 @@ int main(int argc, char *argv[]) {
 		inotify_rm_watch(fd, wd);
 		if(handle) pcap_close(handle);
 	} else {
+#else 
+	{
+#endif
 		// start reading packets
 		//readdump_libnids(handle);
 
@@ -2869,7 +2889,10 @@ int main(int argc, char *argv[]) {
 		ts.tv_sec = 1;
 		ts.tv_nsec = 0;
 		// wait for thread max 1 sec
+#ifndef FREEBSD	
+		//TODO: solve it for freebsd
 		pthread_timedjoin_np(manager_thread, NULL, &ts);
+#endif
 	}
 
 #ifdef QUEUE_NONBLOCK2

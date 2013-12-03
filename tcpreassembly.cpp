@@ -629,7 +629,7 @@ TcpReassemblyLink::~TcpReassemblyLink() {
 /*
 bool TcpReassemblyLink::push_normal(
 			TcpReassemblyStream::eDirection direction,
-			timeval time, tcphdr header_tcp, 
+			timeval time, tcphdr2 header_tcp, 
 			u_char *data, u_int32_t datalen, u_int32_t datacaplen,
 			pcap_block_store *block_store, int block_store_index) {
 	bool rslt = false;
@@ -758,7 +758,7 @@ bool TcpReassemblyLink::push_normal(
 
 bool TcpReassemblyLink::push_crazy(
 			TcpReassemblyStream::eDirection direction,
-			timeval time, tcphdr header_tcp, 
+			timeval time, tcphdr2 header_tcp, 
 			u_char *data, u_int32_t datalen, u_int32_t datacaplen,
 			pcap_block_store *block_store, int block_store_index,
 			bool lockQueue) {
@@ -1592,7 +1592,7 @@ void TcpReassembly::createThread() {
 void* TcpReassembly::threadFunction(void* ) {
 	if(verbosity) {
 		ostringstream outStr;
-		this->threadId = syscall(SYS_gettid);
+		this->threadId = get_unix_tid();
 		outStr << "start thread thttp - pid: " << this->threadId << endl;
 		syslog(LOG_NOTICE, outStr.str().c_str());
 	}
@@ -1627,13 +1627,13 @@ void TcpReassembly::push(pcap_pkthdr *header, iphdr2 *header_ip, u_char *packet,
 		return;
 	}
 
-	tcphdr *header_tcp_pointer;
-	tcphdr header_tcp;
+	tcphdr2 *header_tcp_pointer;
+	tcphdr2 header_tcp;
 	u_char *data;
 	u_int32_t datalen;
 	u_int32_t datacaplen;
 	
-	header_tcp_pointer = (tcphdr*)((u_char*)header_ip + sizeof(*header_ip));
+	header_tcp_pointer = (tcphdr2*)((u_char*)header_ip + sizeof(*header_ip));
 	data = (u_char*)header_tcp_pointer + (header_tcp_pointer->doff << 2);
 	datalen = htons(header_ip->tot_len) - sizeof(*header_ip) - (header_tcp_pointer->doff << 2);
 	datacaplen = header->caplen - ((u_char*)data - packet);

@@ -74,9 +74,9 @@ Generator::Generator(const char *src, const char *dst) {
 int
 Generator::send(char *data, int datalen) {
 
-	struct iphdr *iphdr;
+	struct iphdr2 *iphdr;
 
-	iphdr = (struct iphdr *)generator_packet;
+	iphdr = (struct iphdr2 *)generator_packet;
 	memset(iphdr, 0, sizeof(iphdr));
 	iphdr->version = 4;
 	iphdr->tos = 0;
@@ -85,17 +85,17 @@ Generator::send(char *data, int datalen) {
 	iphdr->ttl = 120;
 	iphdr->protocol = 17;
 	iphdr->check = 0;
-	iphdr->tot_len = htons(sizeof(struct iphdr) + datalen);
+	iphdr->tot_len = htons(sizeof(struct iphdr2) + datalen);
 	iphdr->ihl = 5;
 	iphdr->check = 0;
 	iphdr->saddr = src_addr.sin_addr.s_addr;
 	iphdr->daddr = dest_addr.sin_addr.s_addr;
-	memcpy(generator_packet + sizeof(struct iphdr), data, datalen);
+	memcpy(generator_packet + sizeof(struct iphdr2), data, datalen);
 
 	int res;
-	if((res = sendto(sockraw, generator_packet, datalen + sizeof(struct iphdr), 0, (struct sockaddr *)&dest_addr, sizeof(struct sockaddr))) == -1)
+	if((res = sendto(sockraw, generator_packet, datalen + sizeof(struct iphdr2), 0, (struct sockaddr *)&dest_addr, sizeof(struct sockaddr))) == -1)
 	{
-		printf("msglen[%lu]\n", datalen + sizeof(struct iphdr));
+		printf("msglen[%lu]\n", datalen + sizeof(struct iphdr2));
 		perror("sendto");
 	}
 	return res;
