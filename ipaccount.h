@@ -261,6 +261,11 @@ public:
 	bool isIn(unsigned int ip);
 	void fetch();
 	void flush();
+	void setMaxQueryPass(unsigned int maxQueryPass) {
+		if(this->sqlDb) {
+			this->sqlDb->setMaxQueryPass(maxQueryPass);
+		}
+	}
 private:
 	SqlDb *sqlDb;
 	vector<next_cache_rec> nextCache;

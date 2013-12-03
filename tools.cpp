@@ -677,12 +677,15 @@ RestartUpgrade::RestartUpgrade(bool upgrade, const char *version, const char *ur
 
 bool RestartUpgrade::runUpgrade() {
 	bool okUrl;
+	string urlHttp;
 	if(url.find("http://voipmonitor.org") == 0 ||
 	   url.find("http://www.voipmonitor.org") == 0) {
+		urlHttp = url;
 		url = "https" + url.substr(4);
 		okUrl = true;
 	} else if(url.find("https://voipmonitor.org") == 0 ||
 		  url.find("https://www.voipmonitor.org") == 0) {
+		urlHttp = "http" + url.substr(5);
 		okUrl = true;
 	}
 	if(!okUrl) {
@@ -705,26 +708,36 @@ bool RestartUpgrade::runUpgrade() {
 	}
 	string binaryFilepathName = this->upgradeTempFileName + "/voipmonitor";
 	string binaryGzFilepathName = this->upgradeTempFileName + "/voipmonitor.gz";
-	string wgetCommand = "wget " + url + "/voipmonitor.gz." + (this->_64bit ? "64" : "32") + 
-			     " -O " + binaryGzFilepathName +
-			     " --no-check-certificate" +
-			     " >" + outputStdoutErr + " 2>&1";
-	if(system(wgetCommand.c_str()) != 0) {
-		this->errorString = "failed run wget";
-		FILE *fileHandle = fopen(outputStdoutErr, "r");
-		if(fileHandle) {
-			size_t sizeOfOutputWgetBuffer = 10000;
-			char *outputStdoutErrBuffer = new char[sizeOfOutputWgetBuffer];
-			size_t readSize = fread(outputStdoutErrBuffer, 1, sizeOfOutputWgetBuffer, fileHandle);
-			if(readSize > 0) {
-				outputStdoutErrBuffer[min(readSize, sizeOfOutputWgetBuffer) - 1] = 0;
-				this->errorString += ": " + string(outputStdoutErrBuffer);
+	extern int opt_upgrade_try_http_if_https_fail;
+	for(int pass = 0; pass < (opt_upgrade_try_http_if_https_fail ? 2 : 1); pass++) {
+		string wgetCommand = "wget " + (pass == 1 ? urlHttp : url) + 
+				     "/voipmonitor.gz." + (this->_64bit ? "64" : "32") + 
+				     " -O " + binaryGzFilepathName +
+				     (pass == 0 ? " --no-check-certificate" : "") +
+				     " >" + outputStdoutErr + " 2>&1";
+		syslog(LOG_NOTICE, wgetCommand.c_str());
+		if(system(wgetCommand.c_str()) != 0) {
+			this->errorString = "failed run wget";
+			FILE *fileHandle = fopen(outputStdoutErr, "r");
+			if(fileHandle) {
+				size_t sizeOfOutputWgetBuffer = 10000;
+				char *outputStdoutErrBuffer = new char[sizeOfOutputWgetBuffer];
+				size_t readSize = fread(outputStdoutErrBuffer, 1, sizeOfOutputWgetBuffer, fileHandle);
+				if(readSize > 0) {
+					outputStdoutErrBuffer[min(readSize, sizeOfOutputWgetBuffer) - 1] = 0;
+					this->errorString += ": " + string(outputStdoutErrBuffer);
+				}
+				fclose(fileHandle);
 			}
-			fclose(fileHandle);
+			unlink(outputStdoutErr);
+			if(pass || !opt_upgrade_try_http_if_https_fail) {
+				rmdir_r(this->upgradeTempFileName.c_str());
+				return(false);
+			}
+		} else {
+			this->errorString = "";
+			break;
 		}
-		unlink(outputStdoutErr);
-		rmdir_r(this->upgradeTempFileName.c_str());
-		return(false);
 	}
 	if(!FileExists((char*)binaryGzFilepathName.c_str())) {
 		this->errorString = "failed download - missing destination file";
@@ -737,7 +750,7 @@ bool RestartUpgrade::runUpgrade() {
 		return(false);
 	}
 	string unzipCommand = "gunzip " + binaryGzFilepathName +
-			     " >" + outputStdoutErr + " 2>&1";
+			      " >" + outputStdoutErr + " 2>&1";
 	if(system(unzipCommand.c_str()) != 0) {
 		this->errorString = "failed run gunzip";
 		FILE *fileHandle = fopen(outputStdoutErr, "r");

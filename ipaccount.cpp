@@ -1190,6 +1190,7 @@ void initIpacc() {
 		nextIpCache = new NextIpCache();
 		nextIpCache->connect();
 		nextIpCache->fetch();
+		nextIpCache->setMaxQueryPass(2);
 	}
 	if(get_customer_by_pn_sql_driver[0] && get_customer_by_pn_odbc_dsn[0]) {
 		custPnCache = new CustPhoneNumberCache();

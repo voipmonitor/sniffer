@@ -372,6 +372,8 @@ int opt_callend = 1; //if true, cdr.called is saved
 char opt_chdir[1024];
 char opt_cachedir[1024];
 
+int opt_upgrade_try_http_if_https_fail = 0;
+
 IPfilter *ipfilter = NULL;		// IP filter based on MYSQL 
 IPfilter *ipfilter_reload = NULL;	// IP filter based on MYSQL for reload purpose
 int ipfilter_reload_do = 0;	// for reload in main thread
@@ -1670,6 +1672,11 @@ int load_config(char *fname) {
 	if((value = ini.GetValue("general", "maxpcapsize", NULL))) {
 		opt_maxpcapsize_mb = atoi(value);
 	}
+	
+	if((value = ini.GetValue("general", "upgrade_try_http_if_https_fail", NULL))) {
+		opt_upgrade_try_http_if_https_fail = yesno(value);
+	}
+	
 	/*
 	
 	packetbuffer default configuration
@@ -3077,6 +3084,17 @@ void *readdump_libpcap_thread_fce(void *handle) {
 void test() {
  
 	switch(opt_test) {
+	case 98:
+		{
+		RestartUpgrade restart(true, 
+				       "8.4RC15",
+				       "http://www.voipmonitor.org/senzor/download/8.4RC15",
+				       "cf9c2b266204be6cef845003e713e6df",
+				       "58e8ae1668b596cec20fd38aa7a83e23");
+		restart.runUpgrade();
+		cout << restart.getRsltString();
+		}
+		return;
 	case 99:
 		char *pointToSepOptTest = strchr(opt_test_str, '/');
 		check_spooldir_filesindex(NULL, pointToSepOptTest ? pointToSepOptTest + 1 : NULL);
