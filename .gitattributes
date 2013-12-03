@@ -5,6 +5,7 @@
 /README -text
 /README.centos -text
 /README.debian -text
+/README.freebsd -text
 /README.gentoo -text
 /README.mssql -text
 /README.piaf -text

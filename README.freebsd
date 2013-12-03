@@ -1,0 +1,5 @@
+tested on freebsd 8.3: 
+
+pkg_add -r -v libexecinfo libpcap unixODBC mysql55-client libvorbis libogg vorbis-tools gmake
+cp Makefile.in Makefile 
+gmake

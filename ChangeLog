@@ -1,3 +1,12 @@
+8.4RC16 3.12.2013
+=================
+
+- support compile on FreeBSD (tested on 8.3) 
+- fix parsing custom headers for sip methods RES3XX, RES4XX, RES5XX, RES6XX
+- do not report mysql error when recreating mysql stored functions. do not drop / create those functions if they are not different 
+- fix rare issue with new invite after last sip response 487
+- Close SIP and SIP+RTP dump files ASAP to save some number of opened files and memory (Rob Gagnom)
+
 8.4RC15 29.11.2013
 ==================
 - fix excessive loss report for some cases in case of reinvite (regression since 8.4RC12)
