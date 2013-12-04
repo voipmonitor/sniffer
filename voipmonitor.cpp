@@ -356,7 +356,9 @@ char user_filter[2048] = "";
 char ifname[1024];	// Specifies the name of the network device to use for 
 			// the network lookup, for example, eth0
 char opt_scanpcapdir[2048] = "";	// Specifies the name of the network device to use for 
+#ifndef FREEBSD
 uint32_t opt_scanpcapmethod = IN_CLOSE_WRITE; // Specifies how to watch for new files in opt_scanpcapdir
+#endif
 int opt_promisc = 1;	// put interface to promisc mode?
 char pcapcommand[4092] = "";
 char filtercommand[4092] = "";
@@ -1329,9 +1331,11 @@ int load_config(char *fname) {
 	if((value = ini.GetValue("general", "scanpcapdir", NULL))) {
 		strncpy(opt_scanpcapdir, value, sizeof(opt_scanpcapdir));
 	}
+#ifndef FREEBSD
 	if((value = ini.GetValue("general", "scanpcapmethod", NULL))) {
 		opt_scanpcapmethod = (value[0] == 'r') ? IN_MOVED_TO : IN_CLOSE_WRITE;
 	}
+#endif
 	if((value = ini.GetValue("general", "promisc", NULL))) {
 		opt_promisc = yesno(value);
 	}
@@ -2038,9 +2042,11 @@ int main(int argc, char *argv[]) {
 			case '0':
 				strncpy(opt_scanpcapdir, optarg, sizeof(opt_scanpcapdir));
 				break;
+#ifndef FREEBSD
 			case 900: // pcapscan-method
 				opt_scanpcapmethod = (optarg[0] == 'r') ? IN_MOVED_TO : IN_CLOSE_WRITE;
 				break;
+#endif
 			case 'a':
 				strncpy(pcapcommand, optarg, sizeof(pcapcommand));
 				break;
