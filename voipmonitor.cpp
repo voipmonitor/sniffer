@@ -356,6 +356,7 @@ char user_filter[2048] = "";
 char ifname[1024];	// Specifies the name of the network device to use for 
 			// the network lookup, for example, eth0
 char opt_scanpcapdir[2048] = "";	// Specifies the name of the network device to use for 
+uint32_t opt_scanpcapmethod = IN_CLOSE_WRITE; // Specifies how to watch for new files in opt_scanpcapdir
 int opt_promisc = 1;	// put interface to promisc mode?
 char pcapcommand[4092] = "";
 char filtercommand[4092] = "";
@@ -1328,6 +1329,9 @@ int load_config(char *fname) {
 	if((value = ini.GetValue("general", "scanpcapdir", NULL))) {
 		strncpy(opt_scanpcapdir, value, sizeof(opt_scanpcapdir));
 	}
+	if((value = ini.GetValue("general", "scanpcapmethod", NULL))) {
+		opt_scanpcapmethod = (value[0] == 'r') ? IN_MOVED_TO : IN_CLOSE_WRITE;
+	}
 	if((value = ini.GetValue("general", "promisc", NULL))) {
 		opt_promisc = yesno(value);
 	}
@@ -1947,6 +1951,7 @@ int main(int argc, char *argv[]) {
 	    {"id-sensor", 1, 0, 's'},
 	    {"ipaccount", 0, 0, 'x'},
 	    {"pcapscan-dir", 1, 0, '0'},
+	    {"pcapscan-method", 1, 0, 900},
 	    {"keycheck", 1, 0, 'Z'},
 	    {"keycheck", 1, 0, 'Z'},
 	    {"pcapfilter", 1, 0, 'f'},
@@ -2032,6 +2037,9 @@ int main(int argc, char *argv[]) {
 				break;
 			case '0':
 				strncpy(opt_scanpcapdir, optarg, sizeof(opt_scanpcapdir));
+				break;
+			case 900: // pcapscan-method
+				opt_scanpcapmethod = (optarg[0] == 'r') ? IN_MOVED_TO : IN_CLOSE_WRITE;
 				break;
 			case 'a':
 				strncpy(pcapcommand, optarg, sizeof(pcapcommand));
@@ -2715,13 +2723,13 @@ int main(int argc, char *argv[]) {
 		fd = inotify_init();
 		/*checking for error*/
 		if(fd < 0) perror( "inotify_init" );
-		wd = inotify_add_watch(fd, opt_scanpcapdir, IN_CLOSE_WRITE);
+		wd = inotify_add_watch(fd, opt_scanpcapdir, opt_scanpcapmethod);
 		while(1 and terminating == 0) {
 			i = 0;
 			len = read(fd, buff, 1024);
 			while(i < len) {
 				event = (struct inotify_event *) &buff[i];
-				if (event->mask & IN_CLOSE_WRITE) { // this will prevent opening files which is still open for writes
+				if (event->mask & opt_scanpcapmethod) { // this will prevent opening files which is still open for writes
 				    snprintf(filename, sizeof(filename), "%s/%s", opt_scanpcapdir, event->name);
 				    int close = 1;
 				    //printf("File [%s]\n", filename);
