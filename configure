@@ -3659,46 +3659,6 @@ _ACEOF
 
 fi
 
-# FIXME: Replace `main' with a function in `-llfds':
-{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for main in -llfds" >&5
-$as_echo_n "checking for main in -llfds... " >&6; }
-if test "${ac_cv_lib_lfds_main+set}" = set; then :
-  $as_echo_n "(cached) " >&6
-else
-  ac_check_lib_save_LIBS=$LIBS
-LIBS="-llfds  $LIBS"
-cat confdefs.h - <<_ACEOF >conftest.$ac_ext
-/* end confdefs.h.  */
-
-
-int
-main ()
-{
-return main ();
-  ;
-  return 0;
-}
-_ACEOF
-if ac_fn_c_try_link "$LINENO"; then :
-  ac_cv_lib_lfds_main=yes
-else
-  ac_cv_lib_lfds_main=no
-fi
-rm -f core conftest.err conftest.$ac_objext \
-    conftest$ac_exeext conftest.$ac_ext
-LIBS=$ac_check_lib_save_LIBS
-fi
-{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $ac_cv_lib_lfds_main" >&5
-$as_echo "$ac_cv_lib_lfds_main" >&6; }
-if test "x$ac_cv_lib_lfds_main" = x""yes; then :
-  cat >>confdefs.h <<_ACEOF
-#define HAVE_LIBLFDS 1
-_ACEOF
-
-  LIBS="-llfds $LIBS"
-
-fi
-
 # FIXME: Replace `main' with a function in `-lltdl':
 { $as_echo "$as_me:${as_lineno-$LINENO}: checking for main in -lltdl" >&5
 $as_echo_n "checking for main in -lltdl... " >&6; }
@@ -5730,7 +5690,7 @@ fi
 done
 
 
-ac_config_files="$ac_config_files Makefile gzstream/Makefile liblfds.6/Makefile simpleini/Makefile"
+ac_config_files="$ac_config_files Makefile gzstream/Makefile simpleini/Makefile"
 
 
 
@@ -6427,7 +6387,6 @@ do
     "config.h") CONFIG_HEADERS="$CONFIG_HEADERS config.h" ;;
     "Makefile") CONFIG_FILES="$CONFIG_FILES Makefile" ;;
     "gzstream/Makefile") CONFIG_FILES="$CONFIG_FILES gzstream/Makefile" ;;
-    "liblfds.6/Makefile") CONFIG_FILES="$CONFIG_FILES liblfds.6/Makefile" ;;
     "simpleini/Makefile") CONFIG_FILES="$CONFIG_FILES simpleini/Makefile" ;;
 
   *) as_fn_error $? "invalid argument: \`$ac_config_target'" "$LINENO" 5 ;;

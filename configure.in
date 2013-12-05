@@ -21,8 +21,6 @@ AC_CHECK_LIB([crypt], [main])
 AC_CHECK_LIB([dl], [main])
 # FIXME: Replace `main' with a function in `-lgzstream':
 AC_CHECK_LIB([gzstream], [main])
-# FIXME: Replace `main' with a function in `-llfds':
-AC_CHECK_LIB([lfds], [main])
 # FIXME: Replace `main' with a function in `-lltdl':
 AC_CHECK_LIB([ltdl], [main])
 # FIXME: Replace `main' with a function in `-lm':
@@ -78,7 +76,6 @@ AC_CHECK_FUNCS([gethostbyname gettimeofday inet_ntoa memmove memset mkdir mkfifo
 
 AC_CONFIG_FILES([Makefile
                  gzstream/Makefile
-                 liblfds.6/Makefile
                  simpleini/Makefile])
 
 
