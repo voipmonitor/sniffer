@@ -2372,7 +2372,8 @@ if (header->ts.tv_sec - last_cleanup > 10){
 			// save lastSIPresponseNum but only if previouse was not 487 (CANCEL) and call was not answered 
 			if(lastSIPresponseNum != 0 && lastSIPresponse[0] != '\0' && 
 			   (call->lastSIPresponseNum != 487 || call->new_invite_after_lsr487 && lastSIPresponseNum == 200) &&
-			   !call->seeninviteok) {
+			   !call->seeninviteok &&
+			   !(call->cancelcseq[0] && cseq && cseqlen < 32 && strncmp(cseq, call->cancelcseq, cseqlen) == 0)) {
 				strncpy(call->lastSIPresponse, lastSIPresponse, 128);
 				call->lastSIPresponseNum = lastSIPresponseNum;
 			}
@@ -2487,6 +2488,12 @@ if (header->ts.tv_sec - last_cleanup > 10){
 			} else if(sip_method == CANCEL) {
 				// CANCEL continues with Status: 200 canceling; 200 OK; 487 Req. terminated; ACK. Lets wait max 10 seconds and destroy call
 				call->destroy_call_at = header->ts.tv_sec + 10;
+				
+				//check and save CSeq for later to compare with OK 
+				if(cseq && cseqlen < 32) {
+					memcpy(call->cancelcseq, cseq, cseqlen);
+					call->cancelcseq[cseqlen] = '\0';
+				}
 			} else if(sip_method == RES2XX) {
 				// if the progress time was not set yet set it here so PDD (Post Dial Delay) is accurate if no ringing is present
 				if(call->progress_time == 0) {
@@ -2523,6 +2530,8 @@ if (header->ts.tv_sec - last_cleanup > 10){
 						}
 						if(verbosity > 2)
 							syslog(LOG_NOTICE, "Call answered\n");
+					} else if(strncmp(cseq, call->cancelcseq, cseqlen) == 0) {
+						return NULL;
 					}
 				}
 			} else if(sip_method == RES18X) {
@@ -3992,7 +4001,7 @@ void logPacketSipMethodCall(int sip_method, int lastSIPresponseNum, pcap_pkthdr 
 	if(descr) outStr << descr;
 	
 	if(opt_read_from_file) {
-		cout << outStr << endl;
+		cout << outStr.str() << endl;
 	} else {
 		syslog(LOG_NOTICE, outStr.str().c_str());
 	}

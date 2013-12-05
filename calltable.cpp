@@ -154,6 +154,7 @@ Call::Call(char *call_id, unsigned long call_id_len, time_t time, void *ct) :
 	register_expires = -1;
 	byecseq[0] = '\0';
 	invitecseq[0] = '\0';
+	cancelcseq[0] = '\0';
 	sighup = false;
 	calltable = ct;
 	progress_time = 0;
