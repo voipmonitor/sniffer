@@ -205,16 +205,18 @@ public:
 	void getThreadCpuUsage(bool writeThread = false);
 protected:
 	bool createThread();
+	virtual bool createMainThread();
+	virtual bool createWriteThread();
 	inline int pcap_next_ex_queue(pcap_t* pcapHandle, pcap_pkthdr** header, u_char** packet);
 	inline int readPcapFromFifo(pcap_pkthdr_plus *header, u_char **packet, bool usePacketBuffer = false);
 	bool writePcapToFifo(pcap_pkthdr_plus *header, u_char *packet);
 	virtual bool init() { return(true); };
-	virtual bool initThread();
-	virtual bool initWriteThread();
-	virtual void *threadFunction(void *) = 0;
-	virtual void *writeThreadFunction(void *) { return(NULL); }
-	virtual bool openFifoForRead();
-	virtual bool openFifoForWrite();
+	virtual bool initThread(void *arg, unsigned int arg2);
+	virtual bool initWriteThread(void *arg, unsigned int arg2);
+	virtual void *threadFunction(void *arg, unsigned int arg2) = 0;
+	virtual void *writeThreadFunction(void *arg, unsigned int arg2) { return(NULL); }
+	virtual bool openFifoForRead(void *arg, unsigned int arg2);
+	virtual bool openFifoForWrite(void *arg, unsigned int arg2);
 	virtual pcap_t* _getPcapHandle() { 
 		extern pcap_t *handle;
 		return(handle); 
@@ -236,6 +238,7 @@ protected:
 	virtual void initStat_interface() {};
 	void preparePstatData(bool writeThread = false);
 	double getCpuUsagePerc(bool writeThread = false, bool preparePstatData = false);
+	virtual string getCpuUsage(bool writeThread = false, bool preparePstatData = false) { return(""); }
 	long unsigned int getVsizeUsage(bool writeThread = false, bool preparePstatData = false);
 	long unsigned int getRssUsage(bool writeThread = false, bool preparePstatData = false);
 protected:
@@ -262,8 +265,8 @@ protected:
 private:
 	u_char* packetBuffer;
 	PcapQueue *instancePcapHandle;
-friend void *_PcapQueue_threadFunction(void* arg);
-friend void *_PcapQueue_writeThreadFunction(void* arg);
+friend void *_PcapQueue_threadFunction(void *arg);
+friend void *_PcapQueue_writeThreadFunction(void *arg);
 };
 
 struct pcapProcessData {
@@ -380,7 +383,7 @@ protected:
 		return(this->threadTerminated);
 	}
 private:
-	void *threadFunction(void *);
+	void *threadFunction(void *arg, unsigned int arg2);
 	void preparePstatData();
 	double getCpuUsagePerc(bool preparePstatData = false);
 private:
@@ -402,7 +405,7 @@ private:
 	PcapQueue_readFromInterfaceThread *dedupThread;
 	PcapQueue_readFromInterfaceThread *prevThreads[2];
 	int indexDefragQring;
-friend void *_PcapQueue_readFromInterfaceThread_threadFunction(void* arg);
+friend void *_PcapQueue_readFromInterfaceThread_threadFunction(void *arg);
 friend class PcapQueue_readFromInterface;
 };
 
@@ -413,9 +416,9 @@ public:
 	void setInterfaceName(const char *interfaceName);
 protected:
 	bool init();
-	bool initThread();
-	void *threadFunction(void *);
-	bool openFifoForWrite();
+	bool initThread(void *arg, unsigned int arg2);
+	void *threadFunction(void *arg, unsigned int arg2);
+	bool openFifoForWrite(void *arg, unsigned int arg2);
 	bool startCapture();
 	pcap_t* _getPcapHandle() { 
 		return(this->pcapHandle);
@@ -441,19 +444,45 @@ public:
 		directionRead,
 		directionWrite
 	};
+	struct sPacketServerConnection {
+		sPacketServerConnection(int socketClient, sockaddr_in &socketClientInfo, PcapQueue_readFromFifo *parent, unsigned int id) {
+			this->socketClient = socketClient;
+			this->socketClientInfo = socketClientInfo;
+			this->parent = parent;
+			this->id = id;
+			this->active = false;
+			this->threadHandle = 0;
+			this->threadId = 0;
+			memset(this->threadPstatData, 0, sizeof(this->threadPstatData));
+		}
+		~sPacketServerConnection() {
+			if(this->socketClient) {
+				close(this->socketClient);
+			}
+		}
+		int socketClient;
+		sockaddr_in socketClientInfo;
+		string socketClientIP;
+		PcapQueue_readFromFifo *parent;
+		unsigned int id;
+		bool active;
+		pthread_t threadHandle;
+		int threadId;
+		pstat_data threadPstatData[2];
+	};
 public:
 	PcapQueue_readFromFifo(const char *nameQueue, const char *fileStoreFolder);
 	virtual ~PcapQueue_readFromFifo();
-	void setPacketServer(const char *packetServer, int packetServerPort, ePacketServerDirection direction);
+	void setPacketServer(ip_port ipPort, ePacketServerDirection direction);
 	size_t getQueueSize() {
 		return(this->pcapStoreQueue.getQueueSize());
 	}
 protected:
-	bool initThread();
-	void *threadFunction(void *);
-	void *writeThreadFunction(void *);
-	bool openFifoForRead();
-	bool openFifoForWrite();
+	bool initThread(void *arg, unsigned int arg2);
+	void *threadFunction(void *arg, unsigned int arg2);
+	void *writeThreadFunction(void *arg, unsigned int arg2);
+	bool openFifoForRead(void *arg, unsigned int arg2);
+	bool openFifoForWrite(void *arg, unsigned int arg2);
 	bool openPcapDeadHandle();
 	pcap_t* _getPcapHandle() {
 		extern pcap_t *handle;
@@ -466,33 +495,42 @@ protected:
 	string pcapStatString_disk_buffer(int statPeriod);
 	double pcapStat_get_disk_buffer_perc();
 	double pcapStat_get_disk_buffer_mb();
+	string getCpuUsage(bool writeThread = false, bool preparePstatData = false);
 	bool socketWritePcapBlock(pcap_block_store *blockStore);
 	bool socketGetHost();
 	bool socketConnect();
 	bool socketListen();
-	bool socketAwaitConnection();
+	bool socketAwaitConnection(int *socketClient, sockaddr_in *socketClientInfo);
 	bool socketClose();
 	bool socketWrite(u_char *data, size_t dataLen);
-	bool socketRead(u_char *data, size_t *dataLen);
+	bool socketRead(u_char *data, size_t *dataLen, int idConnection);
 private:
+	void createConnection(int socketClient, sockaddr_in *socketClientInfo);
+	void cleanupConnections(bool all = false);
 	void processPacket(pcap_pkthdr_plus *header, u_char *packet,
 			   pcap_block_store *block_store, int block_store_index);
 	void cleanupBlockStoreTrash(bool all = false);
+	void lock_packetServerConnections() {
+		while(__sync_lock_test_and_set(&this->_sync_packetServerConnections, 1));
+	}
+	void unlock_packetServerConnections() {
+		__sync_lock_release(&this->_sync_packetServerConnections);
+	}
 protected:
-	std::string packetServer;
-	int packetServerPort;
+	ip_port packetServerIpPort;
 	ePacketServerDirection packetServerDirection;
 	pcap_t *fifoReadPcapHandle;
 	pcap_t *pcapDeadHandle;
-	hostent* socketHostEnt;
-	int socketHandle;
-	int socketClient;
-	sockaddr_in socketClientInfo;
 private:
 	pcap_store_queue pcapStoreQueue;
 	vector<pcap_block_store*> blockStoreTrash;
 	size_t blockStoreTrash_size;
 	u_int cleanupBlockStoreTrash_counter;
+	hostent* socketHostEnt;
+	int socketHandle;
+	map<unsigned int, sPacketServerConnection*> packetServerConnections;
+	volatile int _sync_packetServerConnections;
+friend void *_PcapQueue_readFromFifo_connectionThreadFunction(void *arg);
 };
 
 

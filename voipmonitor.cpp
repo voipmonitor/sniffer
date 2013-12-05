@@ -275,10 +275,8 @@ extern uint64_t opt_pcap_queue_store_queue_max_disk_size;
 extern uint64_t opt_pcap_queue_bypass_max_size;
 extern bool opt_pcap_queue_compress;
 extern string opt_pcap_queue_disk_folder;
-extern string opt_pcap_queue_send_to_ip;
-extern int opt_pcap_queue_send_to_port;
-extern string opt_pcap_queue_receive_from_ip;
-extern int opt_pcap_queue_receive_from_port;
+extern ip_port opt_pcap_queue_send_to_ip_port;
+extern ip_port opt_pcap_queue_receive_from_ip_port;
 extern int opt_pcap_queue_receive_dlt;
 extern int opt_pcap_queue_iface_separate_threads;
 extern int opt_pcap_queue_iface_dedup_separate_threads;
@@ -975,6 +973,7 @@ int load_config(char *fname) {
 	ini.SetMultiKey(true);
 	ini.LoadFile(fname);
 	const char *value;
+	const char *value2;
 	CSimpleIniA::TNamesDepend values;
 
 	// sip ports
@@ -999,7 +998,6 @@ int load_config(char *fname) {
 	// http ip
 	if (ini.GetAllValues("general", "httpip", values)) {
 		CSimpleIni::TNamesDepend::const_iterator i = values.begin();
-		// reset default port 
 		for (; i != values.end(); ++i) {
 			u_int32_t ip;
 			int lengthMask = 32;
@@ -1629,17 +1627,37 @@ int load_config(char *fname) {
 	if((value = ini.GetValue("general", "packetbuffer_compress", NULL))) {
 		opt_pcap_queue_compress = yesno(value);
 	}
-	if((value = ini.GetValue("general", "mirror_destination_ip", NULL))) {
-		opt_pcap_queue_send_to_ip = value;
+	if((value = ini.GetValue("general", "mirror_destination_ip", NULL)) &&
+	   (value2 = ini.GetValue("general", "mirror_destination_port", NULL))) {
+		opt_pcap_queue_send_to_ip_port.set_ip(value);
+		opt_pcap_queue_send_to_ip_port.set_port(atoi(value2));
 	}
-	if((value = ini.GetValue("general", "mirror_destination_port", NULL))) {
-		opt_pcap_queue_send_to_port = atoi(value);
+	if((value = ini.GetValue("general", "mirror_destination", NULL))) {
+		char *pointToPortSeparator = (char*)strchr(value, ':');
+		if(pointToPortSeparator) {
+			*pointToPortSeparator = 0;
+			int port = atoi(pointToPortSeparator + 1);
+			if(*value && port) {
+				opt_pcap_queue_send_to_ip_port.set_ip(value);
+				opt_pcap_queue_send_to_ip_port.set_port(port);
+			}
+		}
 	}
-	if((value = ini.GetValue("general", "mirror_bind_ip", NULL))) {
-		opt_pcap_queue_receive_from_ip = value;
+	if((value = ini.GetValue("general", "mirror_bind_ip", NULL)) &&
+	   (value2 = ini.GetValue("general", "mirror_bind_port", NULL))) {
+		opt_pcap_queue_receive_from_ip_port.set_ip(value);
+		opt_pcap_queue_receive_from_ip_port.set_port(atoi(value2));
 	}
-	if((value = ini.GetValue("general", "mirror_bind_port", NULL))) {
-		opt_pcap_queue_receive_from_port = atoi(value);
+	if((value = ini.GetValue("general", "mirror_bind", NULL))) {
+		char *pointToPortSeparator = (char*)strchr(value, ':');
+		if(pointToPortSeparator) {
+			*pointToPortSeparator = 0;
+			int port = atoi(pointToPortSeparator + 1);
+			if(*value && port) {
+				opt_pcap_queue_receive_from_ip_port.set_ip(value);
+				opt_pcap_queue_receive_from_ip_port.set_port(port);
+			}
+		}
 	}
 	if((value = ini.GetValue("general", "mirror_bind_dlt", NULL))) {
 		opt_pcap_queue_receive_dlt = atoi(value);
@@ -2413,8 +2431,8 @@ int main(int argc, char *argv[]) {
 	cout << "SQL DRIVER: " << sql_driver << endl;
 	if(!opt_nocdr &&
 	   !(opt_pcap_threaded && opt_pcap_queue && 
-	     !opt_pcap_queue_receive_from_ip.length() &&
-	     opt_pcap_queue_send_to_ip.length())) {
+	     !opt_pcap_queue_receive_from_ip_port &&
+	     opt_pcap_queue_send_to_ip_port)) {
 		SqlDb *sqlDb = createSqlObject();
 		if(sqlDb->connect(true, true)) {
 			sqlDb->createSchema();
@@ -2589,8 +2607,8 @@ int main(int argc, char *argv[]) {
 	ipfilter = new IPfilter;
 	if(!opt_nocdr &&
 	   !(opt_pcap_threaded && opt_pcap_queue && 
-	     !opt_pcap_queue_receive_from_ip.length() &&
-	     opt_pcap_queue_send_to_ip.length())) {
+	     !opt_pcap_queue_receive_from_ip_port &&
+	     opt_pcap_queue_send_to_ip_port)) {
 		ipfilter->load();
 	}
 //	ipfilter->dump();
@@ -2603,8 +2621,8 @@ int main(int argc, char *argv[]) {
 	telnumfilter = new TELNUMfilter;
 	if(!opt_nocdr &&
 	   !(opt_pcap_threaded && opt_pcap_queue && 
-	     !opt_pcap_queue_receive_from_ip.length() &&
-	     opt_pcap_queue_send_to_ip.length())) {
+	     !opt_pcap_queue_receive_from_ip_port &&
+	     opt_pcap_queue_send_to_ip_port)) {
 		telnumfilter->load();
 	}
 
@@ -2615,8 +2633,8 @@ int main(int argc, char *argv[]) {
 	
 	if(isSqlDriver("mysql") &&
 	   !(opt_pcap_queue && 
-	     !opt_pcap_queue_receive_from_ip.length() &&
-	     opt_pcap_queue_send_to_ip.length()) &&
+	     !opt_pcap_queue_receive_from_ip_port &&
+	     opt_pcap_queue_send_to_ip_port) &&
 	   isSetCleanspoolParameters()) {
 		if(debugclean) syslog(LOG_ERR, "pthread_create(clean_spooldir)");
 		pthread_create(&cleanspool_thread, NULL, clean_spooldir, NULL);
@@ -2624,8 +2642,8 @@ int main(int argc, char *argv[]) {
 	
 	// start thread processing queued cdr and sql queue - supressed if run as sender
 	if(!(opt_pcap_threaded && opt_pcap_queue && 
-	     !opt_pcap_queue_receive_from_ip.length() &&
-	     opt_pcap_queue_send_to_ip.length())) {
+	     !opt_pcap_queue_receive_from_ip_port &&
+	     opt_pcap_queue_send_to_ip_port)) {
 		pthread_create(&call_thread, NULL, storing_cdr, NULL);
 		if(isSqlDriver("mysql")) {
 			pthread_create(&cdr_thread, NULL, storing_sql, NULL);
@@ -2649,8 +2667,8 @@ int main(int argc, char *argv[]) {
 	// start reading threads
 	if(rtp_threaded &&
 	   !(opt_pcap_threaded && opt_pcap_queue && 
-	     !opt_pcap_queue_receive_from_ip.length() &&
-	     opt_pcap_queue_send_to_ip.length())) {
+	     !opt_pcap_queue_receive_from_ip_port &&
+	     opt_pcap_queue_send_to_ip_port)) {
 		threads = new read_thread[num_threads];
 		for(int i = 0; i < num_threads; i++) {
 #ifdef QUEUE_MUTEX
@@ -2799,11 +2817,11 @@ int main(int argc, char *argv[]) {
 		if(opt_pcap_threaded) {
 			if(opt_pcap_queue) {
 				
-				if(opt_pcap_queue_receive_from_ip.length()) {
+				if(opt_pcap_queue_receive_from_ip_port) {
 					
 					PcapQueue_readFromFifo *pcapQueueR = new PcapQueue_readFromFifo("receive", opt_pcap_queue_disk_folder.c_str());
 					pcapQueueR->setEnableAutoTerminate(false);
-					pcapQueueR->setPacketServer(opt_pcap_queue_receive_from_ip.c_str(), opt_pcap_queue_receive_from_port, PcapQueue_readFromFifo::directionRead);
+					pcapQueueR->setPacketServer(opt_pcap_queue_receive_from_ip_port, PcapQueue_readFromFifo::directionRead);
 					
 					pcapQueueR->start();
 					
@@ -2837,8 +2855,8 @@ int main(int argc, char *argv[]) {
 					PcapQueue_readFromFifo *pcapQueueQ = new PcapQueue_readFromFifo("queue", opt_pcap_queue_disk_folder.c_str());
 					pcapQueueQ->setInstancePcapHandle(pcapQueueI);
 					pcapQueueQ->setEnableAutoTerminate(false);
-					if(opt_pcap_queue_send_to_ip.length()) {
-						pcapQueueQ->setPacketServer(opt_pcap_queue_send_to_ip.c_str(), opt_pcap_queue_send_to_port, PcapQueue_readFromFifo::directionWrite);
+					if(opt_pcap_queue_send_to_ip_port) {
+						pcapQueueQ->setPacketServer(opt_pcap_queue_send_to_ip_port, PcapQueue_readFromFifo::directionWrite);
 					}
 					
 					pcapQueueQ->start();
@@ -2924,8 +2942,8 @@ int main(int argc, char *argv[]) {
 	// wait for RTP threads
 	if(rtp_threaded &&
 	   !(opt_pcap_threaded && opt_pcap_queue && 
-	     !opt_pcap_queue_receive_from_ip.length() &&
-	     opt_pcap_queue_send_to_ip.length())) {
+	     !opt_pcap_queue_receive_from_ip_port &&
+	     opt_pcap_queue_send_to_ip_port)) {
 		for(int i = 0; i < num_threads; i++) {
 			pthread_join((threads[i].thread), NULL);
 #ifdef QUEUE_NONBLOCK2
@@ -2952,8 +2970,8 @@ int main(int argc, char *argv[]) {
 	calltable->cleanup(0);
 	terminating = 1;
 	if(!(opt_pcap_threaded && opt_pcap_queue && 
-	     !opt_pcap_queue_receive_from_ip.length() &&
-	     opt_pcap_queue_send_to_ip.length())) {
+	     !opt_pcap_queue_receive_from_ip_port &&
+	     opt_pcap_queue_send_to_ip_port)) {
 		pthread_join(call_thread, NULL);
 		if(isSqlDriver("mysql")) {
 			pthread_join(cdr_thread, NULL);

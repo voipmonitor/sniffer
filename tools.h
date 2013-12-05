@@ -68,9 +68,7 @@ struct dstring
 
 struct d_u_int32_t
 {
-	d_u_int32_t() {
-	}
-	d_u_int32_t(u_int32_t val1, u_int32_t val2) {
+	d_u_int32_t(u_int32_t val1 = 0, u_int32_t val2 = 0) {
 		val[0] = val1;
 		val[1] = val2;
 	}
@@ -78,6 +76,34 @@ struct d_u_int32_t
 		return(val[indexVal]);
 	}
 	u_int32_t val[2];
+};
+
+struct ip_port
+{
+	ip_port() {
+		port = 0;
+	}
+	ip_port(string ip, int port) {
+		this->ip = ip;
+		this->port = port;
+	}
+	void set_ip(string ip) {
+		this->ip = ip;
+	}
+	void set_port(int port) {
+		this->port = port;
+	}
+	string get_ip() {
+		return(ip);
+	}
+	int get_port() {
+		return(port);
+	}
+	operator int() {
+		return(ip.length() && port);
+	}
+	std::string ip;
+	int port;
 };
 
 inline u_long getTimeMS() {

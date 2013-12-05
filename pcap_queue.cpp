@@ -103,9 +103,10 @@ string pbStatString;
 u_long pbCountPacketDrop;
 
 
-void *_PcapQueue_threadFunction(void* arg);
-void *_PcapQueue_writeThreadFunction(void* arg);
-void *_PcapQueue_readFromInterfaceThread_threadFunction(void* arg);
+void *_PcapQueue_threadFunction(void *arg);
+void *_PcapQueue_writeThreadFunction(void *arg);
+void *_PcapQueue_readFromInterfaceThread_threadFunction(void *arg);
+void *_PcapQueue_readFromFifo_connectionThreadFunction(void *arg);
 
 static bool __config_BYPASS_FIFO			= true;
 static bool __config_USE_PCAP_FOR_FIFO			= false;
@@ -131,9 +132,8 @@ int opt_pcap_queue					= 1;
 #endif
 bool opt_pcap_queue_compress				= true;
 string opt_pcap_queue_disk_folder;
-string opt_pcap_queue_send_to_ip;
-int opt_pcap_queue_send_to_port;
-string opt_pcap_queue_receive_from_ip;
+ip_port opt_pcap_queue_send_to_ip_port;
+ip_port opt_pcap_queue_receive_from_ip_port;
 int opt_pcap_queue_receive_from_port;
 int opt_pcap_queue_receive_dlt 				= DLT_EN10MB;
 int opt_pcap_queue_iface_separate_threads 		= 0;
@@ -921,9 +921,14 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 			outStrStat << "t0CPU[" << setprecision(1) << t0cpu << "%] ";
 		}
 	}
-	double t1cpu = this->getCpuUsagePerc(false, true);
-	if(t1cpu >= 0) {
-		outStrStat << "t1CPU[" << setprecision(1) << t1cpu << "%] ";
+	string t1cpu = this->getCpuUsage(false, true);
+	if(t1cpu.length()) {
+		outStrStat << t1cpu << " ";
+	} else {
+		double t1cpu = this->getCpuUsagePerc(false, true);
+		if(t1cpu >= 0) {
+			outStrStat << "t1CPU[" << setprecision(1) << t1cpu << "%] ";
+		}
 	}
 	double t2cpu = this->getCpuUsagePerc(true, true);
 	if(t2cpu >= 0) {
@@ -999,10 +1004,20 @@ pcap_t* PcapQueue::getPcapHandle() {
 }
 
 bool PcapQueue::createThread() {
-	pthread_create(&this->threadHandle, NULL, _PcapQueue_threadFunction, this);
+	this->createMainThread();
 	if(this->enableWriteThread) {
-		pthread_create(&this->writeThreadHandle, NULL, _PcapQueue_writeThreadFunction, this);
+		this->createWriteThread();
 	}
+	return(true);
+}
+
+bool PcapQueue::createMainThread() {
+	pthread_create(&this->threadHandle, NULL, _PcapQueue_threadFunction, this);
+	return(true);
+}
+
+bool PcapQueue::createWriteThread() {
+	pthread_create(&this->writeThreadHandle, NULL, _PcapQueue_writeThreadFunction, this);
 	return(true);
 }
 
@@ -1071,16 +1086,16 @@ bool PcapQueue::writePcapToFifo(pcap_pkthdr_plus *header, u_char *packet) {
 	return(true);
 }
 
-bool PcapQueue::initThread() {
-	return(this->openFifoForRead() &&
-	       (this->enableWriteThread || this->openFifoForWrite()));
+bool PcapQueue::initThread(void *arg, unsigned int arg2) {
+	return(this->openFifoForRead(arg, arg2) &&
+	       (this->enableWriteThread || this->openFifoForWrite(arg, arg2)));
 }
 
-bool PcapQueue::initWriteThread() {
-	return(this->openFifoForWrite());
+bool PcapQueue::initWriteThread(void *arg, unsigned int arg2) {
+	return(this->openFifoForWrite(arg, arg2));
 }
 
-bool PcapQueue::openFifoForRead() {
+bool PcapQueue::openFifoForRead(void *arg, unsigned int arg2) {
 	if(this->fifoReadHandle != -1) {
 		return(true);
 	}
@@ -1100,7 +1115,7 @@ bool PcapQueue::openFifoForRead() {
 	}
 }
 
-bool PcapQueue::openFifoForWrite() {
+bool PcapQueue::openFifoForWrite(void *arg, unsigned int arg2) {
 	if(this->fifoWriteHandle != -1) {
 		return(true);
 	}
@@ -1241,12 +1256,12 @@ long unsigned int PcapQueue::getRssUsage(bool writeThread, bool preparePstatData
 }
 
 
-inline void *_PcapQueue_threadFunction(void* arg) {
-	return(((PcapQueue*)arg)->threadFunction(arg));
+inline void *_PcapQueue_threadFunction(void *arg) {
+	return(((PcapQueue*)arg)->threadFunction(arg, 0));
 }
 
-inline void *_PcapQueue_writeThreadFunction(void* arg) {
-	return(((PcapQueue*)arg)->writeThreadFunction(arg));
+inline void *_PcapQueue_writeThreadFunction(void *arg) {
+	return(((PcapQueue*)arg)->writeThreadFunction(arg, 0));
 }
 
 
@@ -1794,7 +1809,7 @@ inline void PcapQueue_readFromInterfaceThread::moveReadit(int index) {
 	}
 }
 
-void *PcapQueue_readFromInterfaceThread::threadFunction(void *) {
+void *PcapQueue_readFromInterfaceThread::threadFunction(void *arg, unsigned int arg2) {
 	if(verbosity > 0) {
 		ostringstream outStr;
 		this->threadId = get_unix_tid();
@@ -2051,8 +2066,8 @@ double PcapQueue_readFromInterfaceThread::getCpuUsagePerc(bool preparePstatData)
 }
 
 
-inline void *_PcapQueue_readFromInterfaceThread_threadFunction(void* arg) {
-	return(((PcapQueue_readFromInterfaceThread*)arg)->threadFunction(arg));
+inline void *_PcapQueue_readFromInterfaceThread_threadFunction(void *arg) {
+	return(((PcapQueue_readFromInterfaceThread*)arg)->threadFunction(arg, 0));
 }
 
 
@@ -2097,14 +2112,14 @@ bool PcapQueue_readFromInterface::init() {
 	return(this->readThreadsCount > 0);
 }
 
-bool PcapQueue_readFromInterface::initThread() {
+bool PcapQueue_readFromInterface::initThread(void *arg, unsigned int arg2) {
 	init_hash();
 	memset(tcp_streams_hashed, 0, sizeof(tcp_stream2_t*) * MAX_TCPSTREAMS);
 	return(this->startCapture() &&
-	       this->openFifoForWrite());
+	       this->openFifoForWrite(arg, arg2));
 }
 
-void* PcapQueue_readFromInterface::threadFunction(void* ) {
+void* PcapQueue_readFromInterface::threadFunction(void *arg, unsigned int arg2) {
 	if(VERBOSE || DEBUG_VERBOSE) {
 		ostringstream outStr;
 		this->threadId = get_unix_tid();
@@ -2115,7 +2130,7 @@ void* PcapQueue_readFromInterface::threadFunction(void* ) {
 			syslog(LOG_NOTICE, outStr.str().c_str());
 		}
 	}
-	if(this->initThread()) {
+	if(this->initThread(arg, arg2)) {
 		this->threadInitOk = true;
 	} else {
 		this->threadTerminated = true;
@@ -2312,7 +2327,7 @@ void* PcapQueue_readFromInterface::threadFunction(void* ) {
 	return(NULL);
 }
 
-bool PcapQueue_readFromInterface::openFifoForWrite() {
+bool PcapQueue_readFromInterface::openFifoForWrite(void *arg, unsigned int arg2) {
 	if(__config_BYPASS_FIFO) {
 		return(true);
 	}
@@ -2331,7 +2346,7 @@ bool PcapQueue_readFromInterface::openFifoForWrite() {
 			return(true);
 		}
 	} else {
-		return(PcapQueue::openFifoForWrite());
+		return(PcapQueue::openFifoForWrite(arg, arg2));
 	}
 }
 
@@ -2387,9 +2402,11 @@ ulong PcapQueue_readFromInterface::getCountPacketDrop() {
 		for(int i = 0; i < this->readThreadsCount; i++) {
 			countPacketDrop += this->readThreads[i]->getCountPacketDrop();
 		}
+		return(countPacketDrop);
 	} else if(this->pcapHandle) {
 		return(this->PcapQueue_readFromInterface_base::getCountPacketDrop());
 	}
+	return(0);
 }
 
 void PcapQueue_readFromInterface::initStat_interface() {
@@ -2451,19 +2468,21 @@ string PcapQueue_readFromInterface::getInterfaceName() {
 PcapQueue_readFromFifo::PcapQueue_readFromFifo(const char *nameQueue, const char *fileStoreFolder) 
  : PcapQueue(readFromFifo, nameQueue),
    pcapStoreQueue(fileStoreFolder) {
-	 this->packetServerPort = 0;
-	 this->packetServerDirection = directionNA;
-	 this->fifoReadPcapHandle = NULL;
-	 this->pcapDeadHandle = NULL;
-	 this->socketHostEnt = NULL;
-	 this->socketHandle = 0;
-	 this->socketClient = 0;
-	 this->blockStoreTrash_size = 0;
-	 this->cleanupBlockStoreTrash_counter = 0;
-	 this->setEnableWriteThread();
+	this->packetServerDirection = directionNA;
+	this->fifoReadPcapHandle = NULL;
+	this->pcapDeadHandle = NULL;
+	this->blockStoreTrash_size = 0;
+	this->cleanupBlockStoreTrash_counter = 0;
+	this->socketHostEnt = NULL;
+	this->socketHandle = 0;
+	this->_sync_packetServerConnections = 0;
+	this->setEnableWriteThread();
 }
 
 PcapQueue_readFromFifo::~PcapQueue_readFromFifo() {
+	if(this->packetServerDirection == directionRead) {
+		this->cleanupConnections(true);
+	}
 	if(this->fifoReadPcapHandle) {
 		pcap_close(this->fifoReadPcapHandle);
 	}
@@ -2476,33 +2495,41 @@ PcapQueue_readFromFifo::~PcapQueue_readFromFifo() {
 	this->cleanupBlockStoreTrash(true);
 }
 
-void PcapQueue_readFromFifo::setPacketServer(const char *packetServer, int packetServerPort, ePacketServerDirection direction) {
-	this->packetServer = packetServer;
-	this->packetServerPort = packetServerPort;
+void PcapQueue_readFromFifo::setPacketServer(ip_port ipPort, ePacketServerDirection direction) {
+	this->packetServerIpPort = ipPort;
 	this->packetServerDirection = direction;
 }
 
-bool PcapQueue_readFromFifo::initThread() {
+bool PcapQueue_readFromFifo::initThread(void *arg, unsigned int arg2) {
 	if(this->packetServerDirection == directionRead &&
 	   !this->openPcapDeadHandle()) {
 		return(false);
 	}
-	return(PcapQueue::initThread());
+	return(PcapQueue::initThread(arg, arg2));
 }
 
-
-void *PcapQueue_readFromFifo::threadFunction(void *) {
+void *PcapQueue_readFromFifo::threadFunction(void *arg, unsigned int arg2) {
 	if(VERBOSE || DEBUG_VERBOSE) {
 		ostringstream outStr;
-		this->threadId = get_unix_tid();
-		outStr << "start thread t1 (" << this->nameQueue << ") - pid: " << this->threadId << endl;
+		int pid = get_unix_tid();
+		if(this->packetServerDirection == directionRead && arg2) {
+			this->packetServerConnections[arg2]->threadId = pid;
+			this->packetServerConnections[arg2]->active = true;
+		} else {
+			this->threadId = get_unix_tid();
+		}
+		outStr << "start thread t1 (" << this->nameQueue;
+		if(this->packetServerDirection == directionRead && arg2) {
+			outStr << " " << this->packetServerConnections[arg2]->socketClientIP << ":" << this->packetServerConnections[arg2]->socketClientInfo.sin_port;
+		}
+		outStr << ") - pid: " << pid << endl;
 		if(DEBUG_VERBOSE) {
 			cout << outStr.str();
 		} else {
 			syslog(LOG_NOTICE, outStr.str().c_str());
 		}
 	}
-	if(this->initThread()) {
+	if(this->initThread(arg, arg2)) {
 		this->threadInitOk = true;
 	} else {
 		this->threadTerminated = true;
@@ -2521,74 +2548,88 @@ void *PcapQueue_readFromFifo::threadFunction(void *) {
 		bool endBlock = false;
 		bool syncBeginBlock = true;
 		int _countTestSync = 0;
-		while(!TERMINATING) {
-			this->socketAwaitConnection();
-			bufferLen = 0;
-			offsetBufferSyncRead = 0;
-			while(true && !TERMINATING) {
-				readLen = bufferSize;
-				if(!this->socketRead(buffer + offsetBufferSyncRead, &readLen) || readLen == 0) {
-					break;
+		bool forceStop = false;
+		while(!TERMINATING && !forceStop) {
+			if(!arg2) {
+				int socketClient;
+				sockaddr_in socketClientInfo;
+				if(this->socketAwaitConnection(&socketClient, &socketClientInfo)) {
+					syslog(LOG_NOTICE, "accept new connection from %s:%i", inet_ntoa(socketClientInfo.sin_addr), socketClientInfo.sin_port);
+					if(!TERMINATING && !forceStop) {
+						this->createConnection(socketClient, &socketClientInfo);
+					}
 				}
-				if(readLen) {
-					bufferLen += readLen;
-					if(syncBeginBlock) {
-						u_char *pointToBeginBlock = (u_char*)memmem(buffer, bufferLen, PCAP_BLOCK_STORE_HEADER_STRING, PCAP_BLOCK_STORE_HEADER_STRING_LEN);
-						if(pointToBeginBlock) {
-							if(pointToBeginBlock > buffer) {
-								u_char *buffer2 = new u_char[bufferSize * 2];
-								memcpy(buffer2, pointToBeginBlock, bufferLen - (pointToBeginBlock - buffer));
-								bufferLen -= (pointToBeginBlock - buffer);
-								delete [] buffer;
-								buffer = buffer2;
-							}
-							syncBeginBlock = false;
-							beginBlock = true;
-							blockStore->destroyRestoreBuffer();
-							if(DEBUG_VERBOSE) {
-								cout << "SYNCED" << endl;
-							}
-						} else {
-							if(offsetBufferSyncRead) {
-								memcpy(buffer, buffer + offsetBufferSyncRead, readLen);
-							}
-							offsetBufferSyncRead = readLen;
-							bufferLen = readLen;
-							continue;
-						}
+			} else {
+				bufferLen = 0;
+				offsetBufferSyncRead = 0;
+				while(!TERMINATING && !forceStop) {
+					readLen = bufferSize;
+					if(!this->socketRead(buffer + offsetBufferSyncRead, &readLen, arg2) || readLen == 0) {
+						syslog(LOG_NOTICE, "close connection from %s:%i", this->packetServerConnections[arg2]->socketClientIP.c_str(), this->packetServerConnections[arg2]->socketClientInfo.sin_port);
+						this->packetServerConnections[arg2]->active = false;
+						forceStop = true;
+						break;
 					}
-					if(DEBUG_SYNC && !(++_countTestSync % 1000)) {
-						cout << "SYNC!" << endl;
-						syncBeginBlock = true;
-					} else {
-						offsetBuffer = 0;
-						while(offsetBuffer < bufferLen) {
-							if(blockStore->addRestoreChunk(buffer, bufferLen, &offsetBuffer)) {
-								endBlock = true;
-								this->pcapStoreQueue.push(blockStore, this->blockStoreTrash_size);
-								sumPacketsCounterIn[0] += blockStore->count;
-								sumPacketsSize[0] += blockStore->size;
-								sumPacketsSizeCompress[0] += blockStore->size_compress;
-								++sumBlocksCounterIn[0];
-								blockStore = new pcap_block_store;
+					if(readLen) {
+						bufferLen += readLen;
+						if(syncBeginBlock) {
+							u_char *pointToBeginBlock = (u_char*)memmem(buffer, bufferLen, PCAP_BLOCK_STORE_HEADER_STRING, PCAP_BLOCK_STORE_HEADER_STRING_LEN);
+							if(pointToBeginBlock) {
+								if(pointToBeginBlock > buffer) {
+									u_char *buffer2 = new u_char[bufferSize * 2];
+									memcpy(buffer2, pointToBeginBlock, bufferLen - (pointToBeginBlock - buffer));
+									bufferLen -= (pointToBeginBlock - buffer);
+									delete [] buffer;
+									buffer = buffer2;
+								}
+								syncBeginBlock = false;
+								beginBlock = true;
+								blockStore->destroyRestoreBuffer();
+								if(DEBUG_VERBOSE) {
+									cout << "SYNCED" << endl;
+								}
 							} else {
-								offsetBuffer = bufferLen;
+								if(offsetBufferSyncRead) {
+									memcpy(buffer, buffer + offsetBufferSyncRead, readLen);
+								}
+								offsetBufferSyncRead = readLen;
+								bufferLen = readLen;
+								continue;
 							}
 						}
-					}
-					if(!beginBlock && !endBlock && !syncBeginBlock) {
-						u_char *pointToBeginBlock = (u_char*)memmem(buffer, bufferLen, PCAP_BLOCK_STORE_HEADER_STRING, PCAP_BLOCK_STORE_HEADER_STRING_LEN);
-						if(pointToBeginBlock && pointToBeginBlock != buffer) {
+						if(DEBUG_SYNC && !(++_countTestSync % 1000)) {
+							cout << "SYNC!" << endl;
 							syncBeginBlock = true;
-							if(DEBUG_VERBOSE) {
-								cout << "SYNC!!!" << endl;
+						} else {
+							offsetBuffer = 0;
+							while(offsetBuffer < bufferLen) {
+								if(blockStore->addRestoreChunk(buffer, bufferLen, &offsetBuffer)) {
+									endBlock = true;
+									this->pcapStoreQueue.push(blockStore, this->blockStoreTrash_size);
+									sumPacketsCounterIn[0] += blockStore->count;
+									sumPacketsSize[0] += blockStore->size;
+									sumPacketsSizeCompress[0] += blockStore->size_compress;
+									++sumBlocksCounterIn[0];
+									blockStore = new pcap_block_store;
+								} else {
+									offsetBuffer = bufferLen;
+								}
 							}
 						}
+						if(!beginBlock && !endBlock && !syncBeginBlock) {
+							u_char *pointToBeginBlock = (u_char*)memmem(buffer, bufferLen, PCAP_BLOCK_STORE_HEADER_STRING, PCAP_BLOCK_STORE_HEADER_STRING_LEN);
+							if(pointToBeginBlock && pointToBeginBlock != buffer) {
+								syncBeginBlock = true;
+								if(DEBUG_VERBOSE) {
+									cout << "SYNC!!!" << endl;
+								}
+							}
+						}
+						bufferLen = 0;
+						offsetBufferSyncRead = 0;
+						beginBlock = false;
+						endBlock = false;
 					}
-					bufferLen = 0;
-					offsetBufferSyncRead = 0;
-					beginBlock = false;
-					endBlock = false;
 				}
 			}
 		}
@@ -2652,7 +2693,7 @@ void *PcapQueue_readFromFifo::threadFunction(void *) {
 	return(NULL);
 }
 
-void *PcapQueue_readFromFifo::writeThreadFunction(void *) {
+void *PcapQueue_readFromFifo::writeThreadFunction(void *arg, unsigned int arg2) {
 	if(VERBOSE || DEBUG_VERBOSE) {
 		ostringstream outStr;
 		this->writeThreadId = get_unix_tid();
@@ -2663,7 +2704,7 @@ void *PcapQueue_readFromFifo::writeThreadFunction(void *) {
 			syslog(LOG_NOTICE, outStr.str().c_str());
 		}
 	}
-	if(this->initWriteThread()) {
+	if(this->initWriteThread(arg, arg2)) {
 		this->writeThreadInitOk = true;
 	} else {
 		this->writeThreadTerminated = true;
@@ -2715,9 +2756,13 @@ void *PcapQueue_readFromFifo::writeThreadFunction(void *) {
 	return(NULL);
 }
 
-bool PcapQueue_readFromFifo::openFifoForRead() {
+bool PcapQueue_readFromFifo::openFifoForRead(void *arg, unsigned int arg2) {
 	if(this->packetServerDirection == directionRead) {
-		return(this->socketListen());
+		if(!arg2) {
+			return(this->socketListen());
+		} else {
+			return(true);
+		}
 	} else {
 		if(__config_BYPASS_FIFO) {
 			return(true);
@@ -2738,13 +2783,13 @@ bool PcapQueue_readFromFifo::openFifoForRead() {
 				return(true);
 			}
 		} else {
-			return(PcapQueue::openFifoForRead());
+			return(PcapQueue::openFifoForRead(arg, arg2));
 		}
 	}
 	return(false);
 }
 
-bool PcapQueue_readFromFifo::openFifoForWrite() {
+bool PcapQueue_readFromFifo::openFifoForWrite(void *arg, unsigned int arg2) {
 	if(this->packetServerDirection == directionWrite) {
 		return(this->socketGetHost() &&
 		       this->socketConnect());
@@ -2832,6 +2877,47 @@ double PcapQueue_readFromFifo::pcapStat_get_disk_buffer_mb() {
 	}
 }
 
+string PcapQueue_readFromFifo::getCpuUsage(bool writeThread, bool preparePstatData) {
+	if(!writeThread && this->packetServerDirection == directionRead) {
+		bool empty = true;
+		ostringstream outStr;
+		this->lock_packetServerConnections();
+		map<unsigned int, sPacketServerConnection*>::iterator iter;
+		for(iter = this->packetServerConnections.begin(); iter != this->packetServerConnections.end(); ++iter) {
+			if(iter->second->active) {
+				sPacketServerConnection *connection = iter->second;
+				if(preparePstatData) {
+					if(connection->threadPstatData[0].cpu_total_time) {
+						connection->threadPstatData[1] = connection->threadPstatData[0];
+					}
+					pstat_get_data(connection->threadId, connection->threadPstatData);
+				}
+				if(connection->threadPstatData[0].cpu_total_time &&
+				   connection->threadPstatData[1].cpu_total_time) {
+					double ucpu_usage, scpu_usage;
+					pstat_calc_cpu_usage_pct(
+						&connection->threadPstatData[0], &connection->threadPstatData[1],
+						&ucpu_usage, &scpu_usage);
+					double cpu_usage = ucpu_usage + scpu_usage;
+					if(empty) {
+						outStr << "t1CPU[";
+						empty = false;
+					} else {
+						outStr << "/";
+					}
+					outStr << fixed << setprecision(1) << cpu_usage << "%";
+				}
+			}
+		}
+		this->unlock_packetServerConnections();
+		if(!empty) {
+			outStr << "]";
+		}
+		return(outStr.str());
+	}
+	return("");
+}
+
 bool PcapQueue_readFromFifo::socketWritePcapBlock(pcap_block_store *blockStore) {
 	if(!this->socketHandle) {
 		return(false);
@@ -2846,14 +2932,14 @@ bool PcapQueue_readFromFifo::socketWritePcapBlock(pcap_block_store *blockStore) 
 bool PcapQueue_readFromFifo::socketGetHost() {
 	this->socketHostEnt = NULL;
 	while(!this->socketHostEnt) {
-		this->socketHostEnt = gethostbyname(this->packetServer.c_str());
+		this->socketHostEnt = gethostbyname(this->packetServerIpPort.get_ip().c_str());
 		if(!this->socketHostEnt) {
-			syslog(LOG_ERR, "packetbuffer %s: cannot resolv: %s: host [%s] - trying again", this->nameQueue.c_str(), hstrerror(h_errno), this->packetServer.c_str());  
+			syslog(LOG_ERR, "packetbuffer %s: cannot resolv: %s: host [%s] - trying again", this->nameQueue.c_str(), hstrerror(h_errno), this->packetServerIpPort.get_ip().c_str());  
 			sleep(1);
 		}
 	}
 	if(DEBUG_VERBOSE) {
-		cout << "socketGetHost [" << this->packetServer << "] : OK" << endl;
+		cout << "socketGetHost [" << this->packetServerIpPort.get_ip() << "] : OK" << endl;
 	}
 	return(true);
 }
@@ -2868,14 +2954,14 @@ bool PcapQueue_readFromFifo::socketConnect() {
 	}
 	sockaddr_in addr;
 	addr.sin_family = AF_INET;
-	addr.sin_port = htons(this->packetServerPort);
+	addr.sin_port = htons(this->packetServerIpPort.get_port());
 	addr.sin_addr.s_addr = *(long*)this->socketHostEnt->h_addr_list[0];
 	while(connect(this->socketHandle, (struct sockaddr *)&addr, sizeof(addr)) == -1) {
 		syslog(LOG_NOTICE, "packetbuffer %s: failed to connect to server [%s] error:[%s] - trying again", this->nameQueue.c_str(), inet_ntoa(*(struct in_addr *)this->socketHostEnt->h_addr_list[0]), strerror(errno));
 		sleep(1);
 	}
 	if(DEBUG_VERBOSE) {
-		cout << this->nameQueue << " - socketGetHost: " << this->packetServer << " : OK" << endl;
+		cout << this->nameQueue << " - socketConnect: " << this->packetServerIpPort.get_ip() << " : OK" << endl;
 	}
 	return(true);
 }
@@ -2887,15 +2973,14 @@ bool PcapQueue_readFromFifo::socketListen() {
 	}
 	sockaddr_in addr;
 	addr.sin_family = AF_INET;
-	addr.sin_port = htons(this->packetServerPort);
-	addr.sin_addr.s_addr = inet_addr(this->packetServer.c_str());
+	addr.sin_port = htons(this->packetServerIpPort.get_port());
+	addr.sin_addr.s_addr = inet_addr(this->packetServerIpPort.get_ip().c_str());
 	int on = 1;
 	setsockopt(this->socketHandle, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on));
 	int rsltListen;
 	do {
-		
 		while(bind(this->socketHandle, (sockaddr*)&addr, sizeof(addr)) == -1) {
-			syslog(LOG_ERR, "packetbuffer %s: cannot bind to port [%d] - trying again after 5 seconds intervals", this->nameQueue.c_str(), this->packetServerPort);
+			syslog(LOG_ERR, "packetbuffer %s: cannot bind to port [%d] - trying again after 5 seconds intervals", this->nameQueue.c_str(), this->packetServerIpPort.get_port());
 			sleep(5);
 		}
 		rsltListen = listen(this->socketHandle, 5);
@@ -2907,14 +2992,14 @@ bool PcapQueue_readFromFifo::socketListen() {
 	return(true);
 }
 
-bool PcapQueue_readFromFifo::socketAwaitConnection() {
-	socklen_t addrlen = sizeof(this->socketClientInfo);
-	this->socketClient = -1;
-	while(this->socketClient < 0 && !TERMINATING) {
-		this->socketClient = accept(this->socketHandle, (sockaddr*)&this->socketClientInfo, &addrlen);
+bool PcapQueue_readFromFifo::socketAwaitConnection(int *socketClient, sockaddr_in *socketClientInfo) {
+	*socketClient = -1;
+	socklen_t addrlen = sizeof(sockaddr_in);
+	while(*socketClient < 0 && !TERMINATING) {
+		*socketClient = accept(this->socketHandle, (sockaddr*)socketClientInfo, &addrlen);
 		usleep(100000);
 	}
-	return(this->socketClient >= 0);
+	return(*socketClient >= 0);
 }
 
 bool PcapQueue_readFromFifo::socketClose() {
@@ -2938,14 +3023,53 @@ bool PcapQueue_readFromFifo::socketWrite(u_char *data, size_t dataLen) {
 	return(true);
 }
 
-bool PcapQueue_readFromFifo::socketRead(u_char *data, size_t *dataLen) {
-	ssize_t recvLen = recv(this->socketClient, data, *dataLen, 0);
+bool PcapQueue_readFromFifo::socketRead(u_char *data, size_t *dataLen, int idConnection) {
+	ssize_t recvLen = recv(this->packetServerConnections[idConnection]->socketClient, data, *dataLen, 0);
 	if(recvLen == -1) {
 		*dataLen = 0;
 		return(false);
 	}
 	*dataLen = recvLen;
 	return(true);
+}
+
+void PcapQueue_readFromFifo::createConnection(int socketClient, sockaddr_in *socketClientInfo) {
+	this->cleanupConnections();
+	this->lock_packetServerConnections();
+	unsigned int id = 1;
+	map<unsigned int, sPacketServerConnection*>::iterator iter;
+	for(iter = this->packetServerConnections.begin(); iter != this->packetServerConnections.end(); ++iter) {
+		if(iter->first >= id) {
+			id = iter->first + 1; 
+		}
+	}
+	sPacketServerConnection *connection = new sPacketServerConnection(socketClient, *socketClientInfo, this, id);
+	connection->socketClientIP = inet_ntoa(socketClientInfo->sin_addr);
+	connection->active = true;
+	this->packetServerConnections[id] = connection;
+	this->unlock_packetServerConnections();
+	pthread_create(&connection->threadHandle, NULL, _PcapQueue_readFromFifo_connectionThreadFunction, connection);
+}
+
+void PcapQueue_readFromFifo::cleanupConnections(bool all) {
+	this->lock_packetServerConnections();
+	map<unsigned int, sPacketServerConnection*>::iterator iter;
+	for(iter = this->packetServerConnections.begin(); iter != this->packetServerConnections.end();) {
+		if(all && iter->second->active) {
+			if(iter->second->socketClient) {
+				close(iter->second->socketClient);
+				iter->second->socketClient = 0;
+			}
+			iter->second->active = false;
+		}
+		if(!iter->second->active) {
+			delete iter->second; 
+			this->packetServerConnections.erase(iter++);
+		} else {
+			++iter;
+		}
+	}
+	this->unlock_packetServerConnections();
 }
 
 void PcapQueue_readFromFifo::processPacket(pcap_pkthdr_plus *header_plus, u_char *packet,
@@ -3078,4 +3202,10 @@ void PcapQueue_readFromFifo::cleanupBlockStoreTrash(bool all) {
 			--i;
 		}
 	}
+}
+
+void *_PcapQueue_readFromFifo_connectionThreadFunction(void *arg) {
+	PcapQueue_readFromFifo::sPacketServerConnection *connection = (PcapQueue_readFromFifo::sPacketServerConnection*)arg;
+	return(connection->parent->threadFunction(connection->parent, connection->id));
+	
 }
