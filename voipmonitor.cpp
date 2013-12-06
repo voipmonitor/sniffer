@@ -398,6 +398,8 @@ char *ipaccountportmatrix;
 vector<u_int32_t> httpip;
 vector<d_u_int32_t> httpnet;
 
+uint8_t opt_sdp_reverse_ipport = 0;
+
 queue<string> mysqlquery;
 
 volatile unsigned int readit = 0;
@@ -1697,9 +1699,11 @@ int load_config(char *fname) {
 	if((value = ini.GetValue("general", "maxpcapsize", NULL))) {
 		opt_maxpcapsize_mb = atoi(value);
 	}
-	
 	if((value = ini.GetValue("general", "upgrade_try_http_if_https_fail", NULL))) {
 		opt_upgrade_try_http_if_https_fail = yesno(value);
+	}
+	if((value = ini.GetValue("general", "sdp_reverse_ipport", NULL))) {
+		opt_sdp_reverse_ipport = yesno(value);
 	}
 	
 	/*

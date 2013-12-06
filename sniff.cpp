@@ -177,6 +177,7 @@ extern livesnifferfilter_use_siptypes_s livesnifferfilterUseSipTypes;
 extern int opt_skipdefault;
 extern TcpReassembly *tcpReassembly;
 extern char ifname[1024];
+extern uint8_t opt_sdp_reverse_ipport;
 
 #ifdef QUEUE_MUTEX
 extern sem_t readpacket_thread_semaphore;
@@ -1660,18 +1661,19 @@ void process_sdp(Call *call, unsigned int saddr, int source, unsigned int daddr,
 				calltable->hashAdd(alias, tmp_port, call, !iscalled, 0, fax);
 			}
 
-#ifdef NAT
-			if(call->add_ip_port(saddr, tmp_port, ua, ua_len, !iscalled, rtpmap) != -1){
-				calltable->hashAdd(saddr, tmp_port, call, !iscalled, 0, fax);
-				//calltable->mapAdd(saddr, tmp_port, call, !iscalled, 0);
-				if(opt_rtcp) {
-					calltable->hashAdd(saddr, tmp_port + 1, call, !iscalled, 1, fax);
-					//calltable->mapAdd(saddr, tmp_port + 1, call, !iscalled, 1);
+			if(opt_sdp_reverse_ipport) {
+				// add source SIP IP and destination port from SDP
+				if(call->add_ip_port(saddr, tmp_port, ua, ua_len, !iscalled, rtpmap) != -1){
+					calltable->hashAdd(saddr, tmp_port, call, !iscalled, 0, fax);
+					//calltable->mapAdd(saddr, tmp_port, call, !iscalled, 0);
+					if(opt_rtcp) {
+						calltable->hashAdd(saddr, tmp_port + 1, call, !iscalled, 1, fax);
+						//calltable->mapAdd(saddr, tmp_port + 1, call, !iscalled, 1);
+					}
+				} else if(fax){
+					calltable->hashAdd(saddr, tmp_port, call, !iscalled, 0, fax);
 				}
-			} else if(fax){
-				calltable->hashAdd(saddr, tmp_port, call, !iscalled, 0, fax);
 			}
-#endif
 		}
 	} else {
 		if(verbosity >= 2){
@@ -2371,7 +2373,7 @@ if (header->ts.tv_sec - last_cleanup > 10){
 			call->set_last_packet_time(header->ts.tv_sec);
 			// save lastSIPresponseNum but only if previouse was not 487 (CANCEL) and call was not answered 
 			if(lastSIPresponseNum != 0 && lastSIPresponse[0] != '\0' && 
-			   (call->lastSIPresponseNum != 487 || call->new_invite_after_lsr487 && lastSIPresponseNum == 200) &&
+			   (call->lastSIPresponseNum != 487 || (call->new_invite_after_lsr487 && lastSIPresponseNum == 200)) &&
 			   !call->seeninviteok &&
 			   !(call->cancelcseq[0] && cseq && cseqlen < 32 && strncmp(cseq, call->cancelcseq, cseqlen) == 0)) {
 				strncpy(call->lastSIPresponse, lastSIPresponse, 128);
