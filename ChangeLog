@@ -1,6 +1,11 @@
 8.4RC17 5.12.2013
 =================
-- 
+
+- packetbuffer mirroring - add support for multiple sender connections to one central receiver. Now the receiver will accept unlimite number of connections at the same time. 
+- fix incorrect 200 OK last response code when CANCEL is confirmed by 200 OK without request terminated. 
+- if voip SIP device (with source IP 1.1.1.1) sends in SDP that it wants RTP for example to 10.0.0.1 and port 10000 the call also sniff RTP from 1.1.1.1:10000 or to 1.1.1.1:10000 which does more problems than it solves. Now this behaviour is changed and if you need this option back you can enable it sdp_reverse_ipport=yes. This change fixes RTP packets assigned to wrong call and other weired problems. 
+- When scanpcapdir is being used, voipmonitor will by default read any new file that is created in that directory as soon as the file is closed.  This is the normal setting if your packet capture software is tcpdump.  If you are using a different packet capture software, you may need to change this setting to "rename" if that software writes to a temporary file, closes it, and then renames it to something else after the file is closed.  Default setting is "newfile" (Rob Gagnon)
+
 
 8.4RC16 3.12.2013
 =================
