@@ -28,6 +28,7 @@ string GetFileMD5(std::string filename);
 bool FileExists(char *strFilename);
 void ntoa(char *res, unsigned int addr);
 string escapeshellR(string &);
+time_t stringToTime(const char *timeStr);
 unsigned int getNumberOfDayToNow(const char *date);
 string getActDateTimeF();
 int get_unix_tid(void);
@@ -62,6 +63,10 @@ struct dstring
 	}
 	std::string operator [] (int indexStr) {
 		return(str[indexStr]);
+	}
+	bool operator == (const dstring& other) const { 
+		return(this->str[0] == other.str[0] &&
+		       this->str[1] == other.str[1]); 
 	}
 	std::string str[2];
 };

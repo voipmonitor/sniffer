@@ -1104,13 +1104,17 @@ void convert_filesindex() {
 
 bool check_exists_act_records_in_files() {
 	bool ok = false;
-	time_t actTime;
-	time(&actTime);
 	if(!sqlDbCleanspool) {
 		sqlDbCleanspool = createSqlObject();
 	}
+	sqlDbCleanspool->query("select max(calldate) as max_calldate from cdr");
+	SqlDb_row row = sqlDbCleanspool->fetchRow();
+	if(!row || !row["max_calldate"].length()) {
+		return(true);
+	}
+	time_t maxCdrTime = stringToTime(row["max_calldate"].c_str());
 	for(int i = 0; i < 12; i++) {
-		time_t checkTime = actTime - i * 60 * 60;
+		time_t checkTime = maxCdrTime - i * 60 * 60;
 		struct tm *checkTimeInfo = localtime(&checkTime);
 		char datehour[20];
 		strftime(datehour, 20, "%Y%m%d%H", checkTimeInfo);

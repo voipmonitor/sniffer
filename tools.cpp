@@ -452,7 +452,25 @@ string escapeshellR(string &buf) {
                 }
         }
 	return buf;
-}       
+}
+
+time_t stringToTime(const char *timeStr) {
+	int year, month, day, hour, min, sec;
+	hour = min = sec = 0;
+	sscanf(timeStr, "%d-%d-%d %d:%d:%d", &year, &month, &day, &hour, &min, &sec);
+	time_t now;
+	time(&now);
+	struct tm dateTime;
+	dateTime = *localtime(&now);
+	dateTime.tm_year = year - 1900;
+	dateTime.tm_mon = month - 1;  
+	dateTime.tm_mday = day;
+	dateTime.tm_wday = 0;
+	dateTime.tm_hour = hour; 
+	dateTime.tm_min = min; 
+	dateTime.tm_sec = sec;
+	return(mktime(&dateTime));
+}
 
 unsigned int getNumberOfDayToNow(const char *date) {
 	int year, month, day;
