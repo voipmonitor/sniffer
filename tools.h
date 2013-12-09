@@ -3,7 +3,7 @@
 
 #include <string>
 #include <sys/types.h>
-#include <pcap/pcap.h>
+#include <pcap.h>
 
 #include "gzstream/gzstream.h"
 

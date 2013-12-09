@@ -5,6 +5,10 @@ ifeq ($(GCCARCH),amd64)
   GCCARCH = core2
 endif
 
+ifeq ($(GCCARCH),i386)
+  GCCARCH = core2
+endif
+
 ifeq ($(GCCARCH),x86_64)
   GCCARCH = core2
 endif
