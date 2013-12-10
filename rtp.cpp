@@ -671,6 +671,21 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 
 	if(!owner) return;
 
+	if(iscaller) {
+		if(owner->lastcallerrtp and owner->lastcallerrtp != this) {
+			// reset last sequence 
+			s->cycles = s->cycles - s->base_seq + s->max_seq;
+			s->base_seq = seq;
+			s->max_seq = seq;
+		}
+	} else {
+		if(owner->lastcalledrtp and owner->lastcalledrtp != this) {
+			s->cycles = s->cycles - s->base_seq + s->max_seq;
+			s->base_seq = seq;
+			s->max_seq = seq;
+		}
+	}
+
 	if(owner->forcemark[iscaller]) {
 		// on reinvite (which indicates forcemark[iscaller] completely reset rtp jitterbuffer simulator and 
 		// there are cases where on reinvite rtp stream stops and there is gap in rtp sequence and timestamp but 

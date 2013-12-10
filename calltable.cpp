@@ -567,9 +567,9 @@ Call::read_rtp(unsigned char* data, int datalen, struct pcap_pkthdr *header, u_i
 	if(opt_dscp) {
 		struct iphdr2 *header_ip = (struct iphdr2 *)(data - sizeof(struct iphdr2) - sizeof(udphdr2));
 		if(iscaller) {
-			this->caller_sipdscp = header_ip->tos >> 2;
+			this->caller_rtpdscp = header_ip->tos >> 2;
 		} else {
-			this->called_sipdscp = header_ip->tos >> 2;
+			this->called_rtpdscp = header_ip->tos >> 2;
 		}
 	}
 
@@ -579,6 +579,11 @@ Call::read_rtp(unsigned char* data, int datalen, struct pcap_pkthdr *header, u_i
 			// check if codec did not changed but ignore payload 13 and 19 which is CNG and 101 which is DTMF
 			if(curpayload == 13 or curpayload == 19 or curpayload == 101 or rtp[i]->payload2 == curpayload) {
 				rtp[i]->read(data, datalen, header, saddr, daddr, seeninviteok);
+				if(iscaller) {
+					lastcallerrtp = rtp[i];
+				} else {
+					lastcalledrtp = rtp[i];
+				}
 				return;
 			} else {
 				//codec changed, reset ssrc so the stream will not match and new one is used
@@ -1383,7 +1388,7 @@ Call::getKeyValCDRtext() {
 		a = caller_sipdscp;
 		b = called_sipdscp;
 		c = caller_rtpdscp;
-		d = caller_rtpdscp;
+		d = called_rtpdscp;
 		cdr.add((a << 24) + (b << 16) + (c << 8) + d, "dscp");
 	}
 	
@@ -1698,7 +1703,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		a = caller_sipdscp;
 		b = called_sipdscp;
 		c = caller_rtpdscp;
-		d = caller_rtpdscp;
+		d = called_rtpdscp;
 		cdr.add((a << 24) + (b << 16) + (c << 8) + d, "dscp");
 	}
 	
