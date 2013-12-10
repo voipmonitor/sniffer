@@ -3010,7 +3010,18 @@ void process_packet__parse_custom_headers(Call *call, char *data, int datalen) {
 			char customHeaderContent[256];
 			memcpy(customHeaderContent, s, min(l, 255lu));
 			customHeaderContent[min(l, 255lu)] = '\0';
-			call->custom_headers.push_back(dstring((*_customHeaders)[iCustHeaders][1],customHeaderContent));
+			dstring customHeaderNameValue((*_customHeaders)[iCustHeaders][1],customHeaderContent);
+			bool exists = false;
+			for(size_t i = 0; i < call->custom_headers.size(); i++) {
+				if(call->custom_headers[i] == customHeaderNameValue) {
+					exists = true;
+					break;
+				}
+			}
+			if(!exists) {
+				call->custom_headers.push_back(customHeaderNameValue);
+				//cout << "---" << call->call_id << " / " << (*_customHeaders)[iCustHeaders][1] << " / " << "[" << customHeaderContent << "]" << endl;
+			}
 			if(verbosity > 2)
 				syslog(LOG_NOTICE, "Seen header %s: %s\n", (*_customHeaders)[iCustHeaders][0].c_str(), customHeaderContent);
 		}

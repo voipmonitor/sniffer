@@ -250,6 +250,13 @@ int opt_cdr_ua_enable = 1;
 unsigned long long cachedirtransfered = 0;
 unsigned int opt_maxpcapsize_mb = 0;
 int opt_mosmin_f2 = 1;
+char opt_database_backup_from_date[20];
+char opt_database_backup_from_mysql_host[256] = "";
+char opt_database_backup_from_mysql_database[256] = "";
+char opt_database_backup_from_mysql_user[256] = "";
+char opt_database_backup_from_mysql_password[256] = "";
+int opt_database_backup_pause = 300;
+int opt_database_backup_use_federated = 0;
 
 unsigned int opt_maxpoolsize = 0;
 unsigned int opt_maxpooldays = 0;
@@ -390,6 +397,7 @@ pthread_t manager_thread = 0;	// ID of worker manager thread
 pthread_t manager_client_thread;	// ID of worker manager thread 
 pthread_t cachedir_thread;	// ID of worker cachedir thread 
 pthread_t cleanspool_thread;	// ID of worker clean thread 
+pthread_t database_backup_thread;	// ID of worker backup thread 
 int terminating;		// if set to 1, worker thread will terminate
 int terminating2;		// if set to 1, worker thread will terminate
 char *sipportmatrix;		// matrix of sip ports to monitor
@@ -511,8 +519,72 @@ void *clean_spooldir(void *dummy) {
 		*/
 		if(debugclean) syslog(LOG_ERR, "run clean_spooldir_run");
 		clean_spooldir_run(NULL);
-		sleep(300);
+		for(int i = 0; i < 300 && !terminating2; i++) {
+			sleep(1);
+		}
 	}
+	return NULL;
+}
+
+void *database_backup(void *dummy) {
+	if(!isSqlDriver("mysql")) {
+		syslog(LOG_ERR, "database_backup is only for mysql driver!");
+		return(NULL);
+	}
+	if(!opt_cdr_partition) {
+		syslog(LOG_ERR, "database_backup need enable partitions!");
+		return(NULL);
+	}
+	time_t createPartitionAt = 0;
+	time_t dropPartitionAt = 0;
+	SqlDb *sqlDb = createSqlObject();
+	if(!sqlDb->connect()) {
+		delete sqlDb;
+		return NULL;
+	}
+	SqlDb_mysql *sqlDb_mysql = dynamic_cast<SqlDb_mysql*>(sqlDb);
+	sqlStore = new MySqlStore(mysql_host, mysql_user, mysql_password, mysql_database);
+	while(!terminating) {
+		syslog(LOG_NOTICE, "-- START BACKUP PROCESS");
+		time_t actTime = time(NULL);
+		if(actTime - createPartitionAt > 12 * 3600) {
+			createMysqlPartitionsCdr();
+			createPartitionAt = actTime;
+		}
+		if(actTime - dropPartitionAt > 12 * 3600) {
+			dropMysqlPartitionsCdr();
+			dropPartitionAt = actTime;
+		}
+		if(opt_database_backup_use_federated) {
+			sqlDb_mysql->dropFederatedTables();
+			sqlDb->createSchema(opt_database_backup_from_mysql_host, 
+					    opt_database_backup_from_mysql_database,
+					    opt_database_backup_from_mysql_user,
+					    opt_database_backup_from_mysql_password);
+			if(sqlDb_mysql->checkFederatedTables()) {
+				sqlDb_mysql->copyFromFederatedTables();
+			}
+		} else {
+			SqlDb *sqlDbSrc = new SqlDb_mysql();
+			sqlDbSrc->setConnectParameters(opt_database_backup_from_mysql_host, 
+						       opt_database_backup_from_mysql_user,
+						       opt_database_backup_from_mysql_password,
+						       opt_database_backup_from_mysql_database);
+			if(sqlDbSrc->connect()) {
+				SqlDb_mysql *sqlDbSrc_mysql = dynamic_cast<SqlDb_mysql*>(sqlDbSrc);
+				if(sqlDbSrc_mysql->checkSourceTables()) {
+					sqlDb_mysql->copyFromSourceTables(sqlDbSrc_mysql);
+				}
+			}
+			delete sqlDbSrc;
+		}
+		syslog(LOG_NOTICE, "-- END BACKUP PROCESS");
+		for(int i = 0; i < opt_database_backup_pause && !terminating; i++) {
+			sleep(1);
+		}
+	}
+	delete sqlDb;
+	delete sqlStore;
 	return NULL;
 }
 
@@ -691,97 +763,15 @@ void *storing_cdr( void *dummy ) {
 	time_t createPartitionAt = 0;
 	time_t dropPartitionAt = 0;
 	time_t createPartitionIpaccAt = 0;
-	unsigned long counterDropPartitions = 0;
 	while(1) {
 		if(!opt_nocdr and opt_cdr_partition and !opt_disable_partition_operations and isSqlDriver("mysql")) {
 			time_t actTime = time(NULL);
 			if(actTime - createPartitionAt > 12 * 3600) {
-				syslog(LOG_NOTICE, "create cdr partitions - begin");
-				SqlDb *sqlDb = createSqlObject();
-				sqlDb->query(
-					string("call `") + mysql_database + "`.create_partitions_cdr('" + mysql_database + "', 0);");
-				sqlDb->query(
-					string("call `") + mysql_database + "`.create_partitions_cdr('" + mysql_database + "', 1);");
-				delete sqlDb;
-				syslog(LOG_NOTICE, "create cdr partitions - end");
+				createMysqlPartitionsCdr();
 				createPartitionAt = actTime;
 			}
 			if(actTime - dropPartitionAt > 12 * 3600) {
-				if(opt_cleandatabase_cdr > 0 ||
-				   opt_cleandatabase_register_state > 0 ||
-				   opt_cleandatabase_register_failed > 0) {
-					syslog(LOG_NOTICE, "drop old partitions - begin");
-					SqlDb *sqlDb = createSqlObject();
-					sqlDb->setDisableNextAttemptIfError();
-					time_t act_time = time(NULL);
-					time_t next_day_time = act_time - opt_cleandatabase_cdr * 24 * 60 * 60;
-					struct tm *nextDayTime = localtime(&next_day_time);
-					char limitPartName[20] = "";
-					strftime(limitPartName, sizeof(limitPartName), "p%y%m%d", nextDayTime);
-					if(opt_cleandatabase_cdr > 0) {
-						vector<string> partitions;
-						if(counterDropPartitions == 0) {
-							sqlDb->query(string("select partition_name from information_schema.partitions where table_schema='") + 
-								     mysql_database+ "' and table_name='cdr' and partition_name<='" + limitPartName+ "' order by partition_name");
-							SqlDb_row row;
-							while((row = sqlDb->fetchRow())) {
-								partitions.push_back(row["partition_name"]);
-							}
-						} else {
-							partitions.push_back(limitPartName);
-						}
-						for(size_t i = 0; i < partitions.size(); i++) {
-							syslog(LOG_NOTICE, "DROP CDR PARTITION %s", partitions[i].c_str());
-							sqlDb->query("ALTER TABLE cdr DROP PARTITION " + partitions[i]);
-							sqlDb->query("ALTER TABLE cdr_next DROP PARTITION " + partitions[i]);
-							sqlDb->query("ALTER TABLE cdr_rtp DROP PARTITION " + partitions[i]);
-							sqlDb->query("ALTER TABLE cdr_dtmf DROP PARTITION " + partitions[i]);
-							sqlDb->query("ALTER TABLE cdr_proxy DROP PARTITION " + partitions[i]);
-							sqlDb->query("ALTER TABLE message DROP PARTITION " + partitions[i]);
-							if(opt_enable_lua_tables) {
-								sqlDb->query("ALTER TABLE enum_jj DROP PARTITION " + partitions[i]);
-								sqlDb->query("ALTER TABLE http_jj DROP PARTITION " + partitions[i]);
-							}
-						}
-					}
-					if(opt_cleandatabase_register_state > 0) {
-						vector<string> partitions;
-						if(counterDropPartitions == 0) {
-							sqlDb->query(string("select partition_name from information_schema.partitions where table_schema='") + 
-								     mysql_database+ "' and table_name='register_state' and partition_name<='" + limitPartName+ "' order by partition_name");
-							SqlDb_row row;
-							while((row = sqlDb->fetchRow())) {
-								partitions.push_back(row["partition_name"]);
-							}
-						} else {
-							partitions.push_back(limitPartName);
-						}
-						for(size_t i = 0; i < partitions.size(); i++) {
-							syslog(LOG_NOTICE, "DROP REGISTER_STATE PARTITION %s", partitions[i].c_str());
-							sqlDb->query("ALTER TABLE register_state DROP PARTITION " + partitions[i]);
-						}
-					}
-					if(opt_cleandatabase_register_failed > 0) {
-						vector<string> partitions;
-						if(counterDropPartitions == 0) {
-							sqlDb->query(string("select partition_name from information_schema.partitions where table_schema='") + 
-								     mysql_database+ "' and table_name='register_failed' and partition_name<='" + limitPartName+ "' order by partition_name");
-							SqlDb_row row;
-							while((row = sqlDb->fetchRow())) {
-								partitions.push_back(row["partition_name"]);
-							}
-						} else {
-							partitions.push_back(limitPartName);
-						}
-						for(size_t i = 0; i < partitions.size(); i++) {
-							syslog(LOG_NOTICE, "DROP REGISTER_FAILED PARTITION %s", partitions[i].c_str());
-							sqlDb->query("ALTER TABLE register_failed DROP PARTITION " + partitions[i]);
-						}
-					}
-					++counterDropPartitions;
-					delete sqlDb;
-					syslog(LOG_NOTICE, "drop old partitions - end");
-				}
+				dropMysqlPartitionsCdr();
 				dropPartitionAt = actTime;
 			}
 		}
@@ -789,17 +779,8 @@ void *storing_cdr( void *dummy ) {
 		if(opt_ipaccount and !opt_disable_partition_operations and isSqlDriver("mysql")) {
 			time_t actTime = time(NULL);
 			if(actTime - createPartitionIpaccAt > 12 * 3600) {
-				SqlDb *sqlDb = createSqlObject();
-				
-				syslog(LOG_NOTICE, "create ipacc partitions - begin");
-				sqlDb->query(
-					string("call `") + mysql_database + "`.create_partitions_ipacc('" + mysql_database + "', 0);");
-				sqlDb->query(
-					string("call `") + mysql_database + "`.create_partitions_ipacc('" + mysql_database + "', 1);");
-				syslog(LOG_NOTICE, "create ipacc partitions - end");
+				createMysqlPartitionsIpacc();
 				createPartitionIpaccAt = actTime;
-				
-				delete sqlDb;
 			}
 		}
 		
@@ -1193,6 +1174,11 @@ int load_config(char *fname) {
 	}
 	if((value = ini.GetValue("general", "create_old_partitions", NULL))) {
 		opt_create_old_partitions = atoi(value);
+	} else if((value = ini.GetValue("general", "create_old_partitions_from", NULL))) {
+		opt_create_old_partitions = getNumberOfDayToNow(value);
+	} else if((value = ini.GetValue("general", "database_backup_from_date", NULL))) {
+		opt_create_old_partitions = getNumberOfDayToNow(value);
+		strncpy(opt_database_backup_from_date, value, sizeof(opt_database_backup_from_date));
 	}
 	if((value = ini.GetValue("general", "disable_partition_operations", NULL))) {
 		opt_disable_partition_operations = yesno(value);
@@ -1403,6 +1389,21 @@ int load_config(char *fname) {
 	}
 	if((value = ini.GetValue("general", "odbcdriver", NULL))) {
 		strncpy(odbc_driver, value, sizeof(odbc_driver));
+	}
+	if((value = ini.GetValue("general", "database_backup_from_mysqlhost", NULL))) {
+		strncpy(opt_database_backup_from_mysql_host, value, sizeof(opt_database_backup_from_mysql_host));
+	}
+	if((value = ini.GetValue("general", "database_backup_from_mysqldb", NULL))) {
+		strncpy(opt_database_backup_from_mysql_database, value, sizeof(opt_database_backup_from_mysql_database));
+	}
+	if((value = ini.GetValue("general", "database_backup_from_mysqlusername", NULL))) {
+		strncpy(opt_database_backup_from_mysql_user, value, sizeof(opt_database_backup_from_mysql_user));
+	}
+	if((value = ini.GetValue("general", "database_backup_from_mysqlpassword", NULL))) {
+		strncpy(opt_database_backup_from_mysql_password, value, sizeof(opt_database_backup_from_mysql_password));
+	}
+	if((value = ini.GetValue("general", "database_backup_pause", NULL))) {
+		opt_database_backup_pause = atoi(value);
 	}
 	if((value = ini.GetValue("general", "get_customer_by_ip_sql_driver", NULL))) {
 		strncpy(get_customer_by_ip_sql_driver, value, sizeof(get_customer_by_ip_sql_driver));
@@ -2451,6 +2452,19 @@ int main(int argc, char *argv[]) {
 	signal(SIGINT,sigint_handler);
 	signal(SIGTERM,sigterm_handler);
 	
+	if(!opt_test &&
+	   opt_database_backup_from_date[0] != '\0' &&
+	   opt_database_backup_from_mysql_host[0] != '\0' &&
+	   opt_database_backup_from_mysql_database[0] != '\0' &&
+	   opt_database_backup_from_mysql_user[0] != '\0') {
+		if (opt_fork){
+			daemonize();
+		}
+		pthread_create(&database_backup_thread, NULL, database_backup, NULL);
+		pthread_join(database_backup_thread, NULL);
+		return(0);
+	}
+	
 	calltable = new Calltable;
 	
 	// preparing pcap reading and pcap filters 
@@ -3119,6 +3133,43 @@ void *readdump_libpcap_thread_fce(void *handle) {
 void test() {
  
 	switch(opt_test) {
+	case 10:
+		{
+		SqlDb *sqlDb = createSqlObject();
+		if(!sqlDb->connect()) {
+			delete sqlDb;
+		}
+		SqlDb_mysql *sqlDb_mysql = dynamic_cast<SqlDb_mysql*>(sqlDb);
+		SqlDb *sqlDbSrc = new SqlDb_mysql();
+		sqlDbSrc->setConnectParameters(opt_database_backup_from_mysql_host, 
+					       opt_database_backup_from_mysql_user,
+					       opt_database_backup_from_mysql_password,
+					       opt_database_backup_from_mysql_database);
+		if(sqlDbSrc->connect()) {
+			SqlDb_mysql *sqlDbSrc_mysql = dynamic_cast<SqlDb_mysql*>(sqlDbSrc);
+			sqlDb_mysql->copyFromSourceGuiTables(sqlDbSrc_mysql);
+		}
+		delete sqlDbSrc;
+		delete sqlDb;
+		}
+		return;
+	case 97:
+		{
+		SqlDb *sqlDb = createSqlObject();
+		SqlDb_mysql *sqlDb_mysql = dynamic_cast<SqlDb_mysql*>(sqlDb);
+		
+		sqlDb_mysql->dropFederatedTables();
+		sqlDb->createSchema("127.0.0.1", "voipmonitor", "root");
+		
+		
+		if(sqlDb_mysql->checkFederatedTables()) {
+			sqlDb_mysql->copyFromFederatedTables();
+		}
+		
+		//sqlDb_mysql->dropFederatedTables();
+		
+		}
+		return;
 	case 98:
 		{
 		RestartUpgrade restart(true, 

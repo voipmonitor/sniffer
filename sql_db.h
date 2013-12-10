@@ -53,7 +53,7 @@ public:
 	bool isEmpty();
 	bool isNull(string fieldName);
 	string implodeFields(string separator = ",", string border = "");
-	string implodeContent(string separator = ",", string border = "'", bool enableSqlString = false);
+	string implodeContent(string separator = ",", string border = "'", bool enableSqlString = false, bool escapeAll = false);
 	string keyvalList(string separator);
 private:
 	SqlDb *sqlDb;
@@ -72,9 +72,11 @@ public:
 	bool reconnect();
 	virtual bool query(string query) = 0;
 	virtual void prepareQuery(string *query);
-	virtual SqlDb_row fetchRow() = 0;
-	virtual string insertQuery(string table, SqlDb_row row, bool enableSqlStringInContent = false);
+	virtual SqlDb_row fetchRow(bool assoc = false) = 0;
+	virtual string insertQuery(string table, SqlDb_row row, bool enableSqlStringInContent = false, bool escapeAll = false, bool insertIgnore = false);
+	virtual string insertQuery(string table, vector<SqlDb_row> *rows, bool enableSqlStringInContent = false, bool escapeAll = false, bool insertIgnore = false);
 	virtual int insert(string table, SqlDb_row row);
+	virtual int insert(string table, vector<SqlDb_row> *rows);
 	virtual int getIdOrInsert(string table, string idField, string uniqueField, SqlDb_row row);
 	virtual int getInsertId() = 0;
 	virtual int getIndexField(string fieldName);
@@ -120,7 +122,7 @@ public:
 	}
 	virtual void cleanFields();
 	virtual void clean() = 0;
-	virtual void createSchema() = 0;
+	virtual void createSchema(const char *host = NULL, const char *database = NULL, const char *user = NULL, const char *password = NULL) = 0;
 	virtual void checkSchema() = 0;
 	virtual string getTypeDb() = 0;
 	virtual string getSubtypeDb() = 0;
@@ -168,7 +170,7 @@ public:
 	void disconnect();
 	bool connected();
 	bool query(string query);
-	SqlDb_row fetchRow();
+	SqlDb_row fetchRow(bool assoc = false);
 	int getInsertId();
 	string escape(const char *inputString, int length = 0);
 	string getFieldBorder() {
@@ -176,8 +178,21 @@ public:
 	}
 	bool checkLastError(string prefixError, bool sysLog = false,bool clearLastError = false);
 	void clean();
-	void createSchema();
+	void createSchema(const char *host = NULL, const char *database = NULL, const char *user = NULL, const char *password = NULL);
 	void checkSchema();
+	bool checkSourceTables();
+	void copyFromSourceTables(SqlDb_mysql *sqlDbSrc);
+	void copyFromSourceTable(SqlDb_mysql *sqlDbSrc, const char *tableName, const char *id = NULL, unsigned long maxDiffId = 0, 
+				 unsigned long minIdInSrc = 1, unsigned long useMaxIdInSrc = 0);
+	void copyFromSourceGuiTables(SqlDb_mysql *sqlDbSrc);
+	void copyFromSourceGuiTable(SqlDb_mysql *sqlDbSrc, const char *tableName);
+	vector<string> getSourceTables();
+	bool checkFederatedTables();
+	void copyFromFederatedTables();
+	void copyFromFederatedTable(const char *tableName, const char *id = NULL, unsigned long maxDiffId = 0, 
+				    unsigned long minIdInFederated = 1, unsigned long useMaxIdInFederated = 0);
+	void dropFederatedTables();
+	vector<string> getFederatedTables();
 	string getTypeDb() {
 		return("mysql");
 	}
@@ -244,14 +259,14 @@ public:
 	void disconnect();
 	bool connected();
 	bool query(string query);
-	SqlDb_row fetchRow();
+	SqlDb_row fetchRow(bool assoc = false);
 	int getInsertId();
 	int getIndexField(string fieldName);
 	string escape(const char *inputString, int length = 0);
 	bool checkLastError(string prefixError, bool sysLog = false,bool clearLastError = false);
 	void cleanFields();
 	void clean();
-	void createSchema();
+	void createSchema(const char *host = NULL, const char *database = NULL, const char *user = NULL, const char *password = NULL);
 	void checkSchema();
 	string getTypeDb() {
 		return("odbc");
@@ -284,6 +299,9 @@ public:
 	int getId() {
 		return(this->id);
 	}
+	size_t getSize() {
+		return(this->query_buff.size());
+	}
 	bool operator < (const MySqlStore_process& other) const { 
 		return(this->id < other.id); 
 	}
@@ -306,6 +324,7 @@ public:
 	void unlock(int id);
 	void setIgnoreTerminating(int id, bool ignoreTerminating);
 	MySqlStore_process *find(int id);
+	size_t getSize();
 private:
 	map<int, MySqlStore_process*> processes;
 	string host;
@@ -326,5 +345,9 @@ bool isSqlDriver(const char *sqlDriver, const char *checkSqlDriver = NULL);
 bool isTypeDb(const char *typeDb, const char *checkSqlDriver = NULL, const char *checkOdbcDriver = NULL);
 bool cmpStringIgnoreCase(const char* str1, const char* str2);
 string reverseString(const char *str);
+
+void createMysqlPartitionsCdr();
+void createMysqlPartitionsIpacc();
+void dropMysqlPartitionsCdr();
 
 #endif
