@@ -229,7 +229,7 @@ unsigned long long copy_file(const char *src, const char *dst, bool move) {
 	int write_fd = 0;
 	struct stat stat_buf;
 	off_t offset = 0;
-	int renamedebug = 1;
+	int renamedebug = 0;
 
 	//check if the file exists
 	if(!FileExists((char*)src)) {
