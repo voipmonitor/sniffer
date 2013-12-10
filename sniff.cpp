@@ -157,6 +157,7 @@ extern volatile unsigned int writeit;
 extern unsigned int qringmax;
 extern int opt_pcapdump;
 extern int opt_id_sensor;
+extern int opt_destination_number_mode;
 extern pthread_mutex_t mysqlquery_lock;
 extern queue<string> mysqlquery;
 int pcap_dlink;
@@ -1214,6 +1215,13 @@ Call *new_invite_register(int sip_method, char *data, int datalen, struct pcap_p
 		// try compact header
 		get_sip_peername(data,datalen,"\nt:", tcalled, sizeof(tcalled));
 	}
+	if(sip_method == INVITE && opt_destination_number_mode == 2) {
+		char tcalled_invite[1024] = "";
+		get_sip_peername(data,datalen,"INVITE ", tcalled_invite, sizeof(tcalled_invite));
+		if(tcalled_invite[0] != '\0') {
+			strcpy(tcalled, tcalled_invite);
+		}
+	}
 
 	//flags
 	if(opt_saveSIP)
@@ -1293,6 +1301,13 @@ Call *new_invite_register(int sip_method, char *data, int datalen, struct pcap_p
 		if(res) {
 			// try compact header
 			get_sip_domain(data,datalen,"\nt:", call->called_domain, sizeof(call->called_domain));
+		}
+		if(sip_method == INVITE && opt_destination_number_mode == 2) {
+			char tcalled_domain_invite[256] = "";
+			get_sip_domain(data,datalen,"INVITE ", tcalled_domain_invite, sizeof(tcalled_domain_invite));
+			if(tcalled_domain_invite[0] != '\0') {
+				strcpy(call->called_domain, tcalled_domain_invite);
+			}
 		}
 
 		if(sip_method == REGISTER) {	

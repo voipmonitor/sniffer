@@ -201,6 +201,7 @@ int opt_dup_check = 0;
 int opt_dup_check_ipheader = 1;
 int rtptimeout = 300;
 char opt_cdrurl[1024] = "";
+int opt_destination_number_mode = 1;
 int opt_cleanspool_interval = 0; // number of seconds between cleaning spool directory. 0 = disabled
 int opt_cleanspool_sizeMB = 0; // number of MB to keep in spooldir
 int opt_domainport = 0;
@@ -1529,6 +1530,9 @@ int load_config(char *fname) {
 	}
 	if((value = ini.GetValue("general", "cdrurl", NULL))) {
 		strncpy(opt_cdrurl, value, sizeof(opt_cdrurl) - 1);
+	}
+	if((value = ini.GetValue("general", "destination_number_mode", NULL))) {
+		opt_destination_number_mode = atoi(value);
 	}
 	if((value = ini.GetValue("general", "mirrorip", NULL))) {
 		opt_mirrorip = yesno(value);
