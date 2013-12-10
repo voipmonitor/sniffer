@@ -2545,7 +2545,8 @@ if (header->ts.tv_sec - last_cleanup > 10){
 			// if the call ends with some of SIP [456]XX response code, we can shorten timeout when the call will be closed 
 			if( ((call->saddr == saddr && call->sport == source) || (call->saddr == daddr && call->sport == dest))
 				&&
-			    (sip_method == RES3XX || sip_method == RES4XX || sip_method == RES5XX || sip_method == RES6XX) && lastSIPresponseNum != 401 && lastSIPresponseNum != 407 ) {
+			    (sip_method == RES3XX || sip_method == RES4XX || sip_method == RES5XX || sip_method == RES6XX) && lastSIPresponseNum != 401 && lastSIPresponseNum != 407
+				&& lastSIPresponseNum != 501 ) {
 					// if the progress time was not set yet set it here so PDD (Post Dial Delay) is accurate if no ringing is present
 					if(call->progress_time == 0) {
 						call->progress_time = header->ts.tv_sec;
