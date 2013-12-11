@@ -179,6 +179,7 @@ extern int opt_skipdefault;
 extern TcpReassembly *tcpReassembly;
 extern char ifname[1024];
 extern uint8_t opt_sdp_reverse_ipport;
+extern int opt_fork;
 
 #ifdef QUEUE_MUTEX
 extern sem_t readpacket_thread_semaphore;
@@ -3168,7 +3169,7 @@ void readdump_libnids(pcap_t *handle) {
 		} else if(res == -2) {
 			//packets are being read from a ``savefile'', and there are no more packets to read from the savefile.
 			if(opt_scanpcapdir[0] == '\0') {
-				syslog(LOG_NOTICE,"End of pcap file, exiting\n");
+				if(opt_fork) printf("End of pcap file, exiting\n");
 			}
 			break;
 		} else if(res == 0) {
@@ -3644,7 +3645,7 @@ void readdump_libpcap(pcap_t *handle) {
 			continue;
 		} else if(res == -2) {
 			//packets are being read from a ``savefile'', and there are no more packets to read from the savefile.
-			syslog(LOG_NOTICE,"End of pcap file, exiting\n");
+			if(opt_fork) printf("End of pcap file, exiting\n");
 			break;
 		} else if(res == 0) {
 			//continue on timeout when reading live packets
