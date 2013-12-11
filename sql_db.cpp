@@ -349,7 +349,9 @@ bool SqlDb_mysql::connect(bool createDb, bool mainInit) {
 		if(this->hMysqlConn) {
 			sql_disable_next_attempt_if_error = 1;
 			this->query("SET NAMES UTF8");
+			sql_noerror = 1;
 			this->query("SET GLOBAL innodb_stats_on_metadata=0"); // this will speedup "Slow query on information_schema.tables"
+			sql_noerror = 0;
 			this->query("SET sql_mode = ''");
 			char tmp[1024];
 			if(createDb) {
