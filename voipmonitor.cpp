@@ -545,6 +545,9 @@ void *database_backup(void *dummy) {
 	}
 	SqlDb_mysql *sqlDb_mysql = dynamic_cast<SqlDb_mysql*>(sqlDb);
 	sqlStore = new MySqlStore(mysql_host, mysql_user, mysql_password, mysql_database);
+	for(int i = 1; i <= 10; i++) {
+		sqlStore->setIgnoreTerminating(i, true);
+	}
 	while(!terminating) {
 		syslog(LOG_NOTICE, "-- START BACKUP PROCESS");
 		time_t actTime = time(NULL);
@@ -583,6 +586,13 @@ void *database_backup(void *dummy) {
 		for(int i = 0; i < opt_database_backup_pause && !terminating; i++) {
 			sleep(1);
 		}
+	}
+	while(sqlStore->getSize()) {
+		syslog(LOG_NOTICE, "flush sqlStore");
+		sleep(1);
+	}
+	for(int i = 1; i <= 10; i++) {
+		sqlStore->setIgnoreTerminating(i, false);
 	}
 	delete sqlDb;
 	delete sqlStore;

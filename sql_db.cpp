@@ -121,7 +121,7 @@ void SqlDb_row::add(double content,  string fieldName, bool null) {
 
 int SqlDb_row::getIndexField(string fieldName) {
 	for(size_t i = 0; i < row.size(); i++) {
-		if(row[i].fieldName == fieldName) {
+		if(!strcasecmp(row[i].fieldName.c_str(), fieldName.c_str())) {
 			return(i);
 		}
 	}
@@ -2315,9 +2315,6 @@ void SqlDb_mysql::copyFromSourceTable(SqlDb_mysql *sqlDbSrc, const char *tableNa
 		}
 	}
 	if(maxIdInSrc > maxIdInDst) {
-		if(!useMaxIdInSrc && maxDiffId) {
-			useMaxIdInSrc = min(max(minIdInSrc - 1, maxIdInDst) + maxDiffId, maxIdInSrc);
-		}
 		stringstream queryStr;
 		queryStr << "select " << tableName << ".*";
 		if(joinCdrCalldate) {
@@ -2333,6 +2330,9 @@ void SqlDb_mysql::copyFromSourceTable(SqlDb_mysql *sqlDbSrc, const char *tableNa
 			queryStr << " and " << id << " <= " << useMaxIdInSrc;
 		}
 		queryStr << " order by " << id;
+		if(maxDiffId) {
+			queryStr << " limit " << maxDiffId;
+		}
 		syslog(LOG_NOTICE, ("select query: " + queryStr.str()).c_str());
 		if(sqlDbSrc->query(queryStr.str())) {
 			extern MySqlStore *sqlStore;
@@ -2340,6 +2340,9 @@ void SqlDb_mysql::copyFromSourceTable(SqlDb_mysql *sqlDbSrc, const char *tableNa
 			vector<SqlDb_row> rows;
 			unsigned int counterInsert = 0;
 			while(!terminating && (row = sqlDbSrc->fetchRow(true))) {
+				if(maxDiffId) {
+					useMaxIdInSrc = atoll(row[id].c_str());
+				}
 				rows.push_back(row);
 				if(rows.size() >= 100) {
 					string insertQuery = this->insertQuery(tableName, &rows, false, true, true);
