@@ -1195,6 +1195,7 @@ Call *new_invite_register(int sip_method, char *data, int datalen, struct pcap_p
 	unsigned long gettagLimitLen = 0;
 	unsigned int flags = 0;
 	int res;
+	bool anonymous_useRemotePartyID = false;
 
 	if(opt_callslimit != 0 and opt_callslimit < calls) {
 		if(verbosity > 0)
@@ -1210,6 +1211,14 @@ Call *new_invite_register(int sip_method, char *data, int datalen, struct pcap_p
 		// try compact header
 		get_sip_peername(data,datalen,"\nf:", tcaller, sizeof(tcaller));
 	}
+	if(!strcasecmp(tcaller, "anonymous")) {
+		char tcaller_remote_party[1024] = "";
+		if(!get_sip_peername(data,datalen,"\nRemote-Party-ID:", tcaller_remote_party, sizeof(tcaller_remote_party)) &&
+		   tcaller_remote_party[0] != '\0') {
+			strcpy(tcaller, tcaller_remote_party);
+			anonymous_useRemotePartyID = true;
+		}
+	}
 	// called number
 	res = get_sip_peername(data,datalen,"\nTo:", tcalled, sizeof(tcalled));
 	if(res) {
@@ -1218,8 +1227,8 @@ Call *new_invite_register(int sip_method, char *data, int datalen, struct pcap_p
 	}
 	if(sip_method == INVITE && opt_destination_number_mode == 2) {
 		char tcalled_invite[1024] = "";
-		get_sip_peername(data,datalen,"INVITE ", tcalled_invite, sizeof(tcalled_invite));
-		if(tcalled_invite[0] != '\0') {
+		if(!get_sip_peername(data,datalen,"INVITE ", tcalled_invite, sizeof(tcalled_invite)) &&
+		   tcalled_invite[0] != '\0') {
 			strcpy(tcalled, tcalled_invite);
 		}
 	}
@@ -1278,10 +1287,14 @@ Call *new_invite_register(int sip_method, char *data, int datalen, struct pcap_p
 		}
 
 		// callername
-		res = get_sip_peercnam(data,datalen,"\nFrom:", call->callername, sizeof(call->callername));
-		if(res) {
-			// try compact header
-			get_sip_peercnam(data,datalen,"\nf:", call->callername, sizeof(call->callername));
+		if(anonymous_useRemotePartyID) {
+			strcpy(call->callername, "anonymous");
+		} else {
+			res = get_sip_peercnam(data,datalen,"\nFrom:", call->callername, sizeof(call->callername));
+			if(res) {
+				// try compact header
+				get_sip_peercnam(data,datalen,"\nf:", call->callername, sizeof(call->callername));
+			}
 		}
 
 		// caller number
@@ -1291,10 +1304,14 @@ Call *new_invite_register(int sip_method, char *data, int datalen, struct pcap_p
 		strncpy(call->called, tcalled, sizeof(call->called));
 
 		// caller domain 
-		res = get_sip_domain(data,datalen,"\nFrom:", call->caller_domain, sizeof(call->caller_domain));
-		if(res) {
-			// try compact header
-			get_sip_domain(data,datalen,"\nf:", call->caller_domain, sizeof(call->caller_domain));
+		if(anonymous_useRemotePartyID) {
+			get_sip_domain(data,datalen,"\nRemote-Party-ID:", call->caller_domain, sizeof(call->caller_domain));
+		} else {
+			res = get_sip_domain(data,datalen,"\nFrom:", call->caller_domain, sizeof(call->caller_domain));
+			if(res) {
+				// try compact header
+				get_sip_domain(data,datalen,"\nf:", call->caller_domain, sizeof(call->caller_domain));
+			}
 		}
 
 		// called domain 

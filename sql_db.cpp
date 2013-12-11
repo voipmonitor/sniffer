@@ -2397,26 +2397,27 @@ void SqlDb_mysql::copyFromSourceGuiTables(SqlDb_mysql *sqlDbSrc) {
 			continue;
 		}
 		cout << tableName << endl;
-		this->query(string("drop table if exists ") + tableName);
-		string cmdCopyTable = 
-			string("mysqldump --opt") +
-			" -h" + sqlDbSrc->conn_server +
-			" -u" + sqlDbSrc->conn_user +
-			(sqlDbSrc->conn_password.length() ? " -p" + sqlDbSrc->conn_password : "") +
-			" " + sqlDbSrc->conn_database + 
-			" " + tableName +
-			" | mysql" +
-			
-			" -h" + this->conn_server +
-			" -u" + this->conn_user +
-			(this->conn_password.length() ? " -p" + this->conn_password : "") +
-			" -D" + sqlDbSrc->conn_database;
-		cout << cmdCopyTable << endl;
-		system(cmdCopyTable.c_str());
+		this->copyFromSourceGuiTable(sqlDbSrc, tableName.c_str());
 	}
 }
 
 void SqlDb_mysql::copyFromSourceGuiTable(SqlDb_mysql *sqlDbSrc, const char *tableName) {
+	this->query(string("drop table if exists ") + tableName);
+	string cmdCopyTable = 
+		string("mysqldump --opt") +
+		" -h" + sqlDbSrc->conn_server +
+		" -u" + sqlDbSrc->conn_user +
+		(sqlDbSrc->conn_password.length() ? " -p" + sqlDbSrc->conn_password : "") +
+		" " + sqlDbSrc->conn_database + 
+		" " + tableName +
+		" | mysql" +
+		
+		" -h" + this->conn_server +
+		" -u" + this->conn_user +
+		(this->conn_password.length() ? " -p" + this->conn_password : "") +
+		" -D" + sqlDbSrc->conn_database;
+	cout << cmdCopyTable << endl;
+	system(cmdCopyTable.c_str());
 }
 
 vector<string> SqlDb_mysql::getSourceTables() {
