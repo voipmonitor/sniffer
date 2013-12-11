@@ -2331,6 +2331,10 @@ void SqlDb_mysql::copyFromSourceTable(SqlDb_mysql *sqlDbSrc, const char *tableNa
 		if(useMaxIdInSrc) {
 			queryStr << " and " << id << " <= " << useMaxIdInSrc;
 		}
+		if(string(tableName) == "register_state" ||
+		   string(tableName) == "register_failed") {
+			queryStr << " and created_at < '" << sqlDateTimeString(time(NULL) - 3600) << "'";
+		}
 		queryStr << " order by " << id;
 		if(maxDiffId) {
 			queryStr << " limit " << maxDiffId;
