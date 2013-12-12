@@ -1751,14 +1751,27 @@ int load_config(char *fname) {
 
 	if(opt_pcap_queue) {
 		if(!opt_pcap_queue_disk_folder.length() || !opt_pcap_queue_store_queue_max_disk_size) {
-			opt_pcap_queue_bypass_max_size = 20 * 1024 * 1024;
+			// disable disc save
+			if(opt_pcap_queue_compress) {
+				// enable compress - maximum thread0 buffer = 100MB, minimum = 50MB
+				opt_pcap_queue_bypass_max_size = opt_pcap_queue_store_queue_max_memory_size / 8;
+				if(opt_pcap_queue_bypass_max_size > 100 * 1024 * 1024) {
+					opt_pcap_queue_bypass_max_size = 100 * 1024 * 1024;
+				} else if(opt_pcap_queue_bypass_max_size < 50 * 1024 * 1024) {
+					opt_pcap_queue_bypass_max_size = 50 * 1024 * 1024;
+				}
+			} else {
+				// disable compress - thread0 buffer = 50MB
+				opt_pcap_queue_bypass_max_size = 50 * 1024 * 1024;
+			}
 		} else {
+			// disable disc save - maximum thread0 buffer = 500MB
 			opt_pcap_queue_bypass_max_size = opt_pcap_queue_store_queue_max_memory_size / 4;
 			if(opt_pcap_queue_bypass_max_size > 500 * 1024 * 1024) {
 				opt_pcap_queue_bypass_max_size = 500 * 1024 * 1024;
 			}
-			opt_pcap_queue_store_queue_max_memory_size -= opt_pcap_queue_bypass_max_size;
 		}
+		opt_pcap_queue_store_queue_max_memory_size -= opt_pcap_queue_bypass_max_size;
 	}
 
 	return 0;
