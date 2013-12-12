@@ -1,3 +1,17 @@
+8.4RC18 12.12.2013
+==================
+- for caller number use tag remote-party-id (if exists) and caller contain anonymous so the CDR still contains number of the caller 
+- do not reindex files repeteadly if the last cdr is old. 
+- fix freebsd compilation on 32bit
+- do not terminate call prematurely when SIP 501 "Not Implemented" is received
+- implement destination_number_mode which will take number from INVITE URI or To: SIP header. If destination_number_mode = 1 it will always save number from To: header. If destination_number_mode = 2 it will take number from INVITE URI. default: destination_number_mode = 1
+- if SSRC changes during call and there is another SSRC change to previous one and the RTP packet has the same seq and timestamp does not reflect the gap - do not report huge packet loss
+- disable sendfile flood if not present in old kernel
+- suppress warning in query SET GLOBAL innodb_stats_on_metadata=0
+- do not print "End of pcap file, exiting" to syslog
+- optimize thread0 packetbuffer size
+
+
 8.4RC17 5.12.2013
 =================
 
