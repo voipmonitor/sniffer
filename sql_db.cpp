@@ -2402,7 +2402,9 @@ void SqlDb_mysql::copyFromSourceGuiTables(SqlDb_mysql *sqlDbSrc) {
 }
 
 void SqlDb_mysql::copyFromSourceGuiTable(SqlDb_mysql *sqlDbSrc, const char *tableName) {
+	this->query("set FOREIGN_KEY_CHECKS=0");
 	this->query(string("drop table if exists ") + tableName);
+	this->query("set FOREIGN_KEY_CHECKS=1");
 	string cmdCopyTable = 
 		string("mysqldump --opt") +
 		" -h" + sqlDbSrc->conn_server +
