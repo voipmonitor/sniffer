@@ -911,7 +911,9 @@ void convert_filesindex() {
 		return;
 	}
 
-	mysqlquerypush("DELETE FROM files");
+	char id_sensor_str[10];
+	sprintf(id_sensor_str, "%i", opt_id_sensor > 0 ? opt_id_sensor : 0);
+	mysqlquerypush(string("DELETE FROM files WHERE id_sensor=") + id_sensor_str);
 	rmdir_r("filesindex", true, true);
 	mkdir_r("filesindex/sipsize", 0777);
 	mkdir_r("filesindex/rtpsize", 0777);
