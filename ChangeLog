@@ -1,3 +1,10 @@
+8.4RC19 13.12.2013
+==================
+- fix wget issue - move parameter --no-check-certificate to first after command wget
+- set FOREIGN_KEY_CHECKS=0 before drop table 
+- fix potential issue with small size of packetbuffer
+- use id_sensor when doing reindexfiles which was deleteing records for other sniffers 
+
 8.4RC18 12.12.2013
 ==================
 - for caller number use tag remote-party-id (if exists) and caller contain anonymous so the CDR still contains number of the caller 
