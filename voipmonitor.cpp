@@ -1771,7 +1771,11 @@ int load_config(char *fname) {
 				opt_pcap_queue_bypass_max_size = 500 * 1024 * 1024;
 			}
 		}
-		opt_pcap_queue_store_queue_max_memory_size -= opt_pcap_queue_bypass_max_size;
+		if(opt_pcap_queue_store_queue_max_memory_size < opt_pcap_queue_bypass_max_size * 2) {
+			opt_pcap_queue_store_queue_max_memory_size = opt_pcap_queue_bypass_max_size * 2;
+		} else {
+			opt_pcap_queue_store_queue_max_memory_size -= opt_pcap_queue_bypass_max_size;
+		}
 	}
 
 	return 0;

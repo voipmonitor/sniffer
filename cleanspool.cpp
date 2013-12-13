@@ -1107,7 +1107,10 @@ bool check_exists_act_records_in_files() {
 	if(!sqlDbCleanspool) {
 		sqlDbCleanspool = createSqlObject();
 	}
-	sqlDbCleanspool->query("select max(calldate) as max_calldate from cdr");
+	char id_sensor_str[10];
+	sprintf(id_sensor_str, "%i", opt_id_sensor > 0 ? opt_id_sensor : 0);
+	sqlDbCleanspool->query(string("select max(calldate) as max_calldate from cdr ") +
+			       "where id_sensor " + (opt_id_sensor > 0 ? string("=") + id_sensor_str : "is null"));
 	SqlDb_row row = sqlDbCleanspool->fetchRow();
 	if(!row || !row["max_calldate"].length()) {
 		return(true);
@@ -1118,7 +1121,8 @@ bool check_exists_act_records_in_files() {
 		struct tm *checkTimeInfo = localtime(&checkTime);
 		char datehour[20];
 		strftime(datehour, 20, "%Y%m%d%H", checkTimeInfo);
-		sqlDbCleanspool->query(string("select * from files where datehour ='") + datehour + "'");
+		sqlDbCleanspool->query(string("select * from files where datehour ='") + datehour + "'" +
+				       " and id_sensor = " + id_sensor_str);
 		if(sqlDbCleanspool->fetchRow()) {
 			ok = true;
 			break;
