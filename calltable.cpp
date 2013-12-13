@@ -2193,6 +2193,10 @@ Call::saveToDb(bool enableBatchIfPossible) {
 int
 Call::saveRegisterToDb(bool enableBatchIfPossible) {
 
+	if(this->regcount == 1 or this->lastSIPresponseNum == 401 or this->lastSIPresponseNum == 403) {
+		this->regstate = 2;
+	}
+
 	if(!sqlDbSaveCall) {
 		sqlDbSaveCall = createSqlObject();
 	}

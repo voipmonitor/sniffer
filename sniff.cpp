@@ -2276,6 +2276,7 @@ if (header->ts.tv_sec - last_cleanup > 10){
 			}
 		// check if the SIP msg is part of earlier REGISTER
 		} else if(call->type == REGISTER) {
+			call->lastSIPresponseNum = lastSIPresponseNum;
 			call->msgcount++;
 			if(sip_method == REGISTER) {
 				call->regcount++;
