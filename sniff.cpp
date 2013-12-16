@@ -1330,6 +1330,7 @@ Call *new_invite_register(int sip_method, char *data, int datalen, struct pcap_p
 
 		if(sip_method == REGISTER) {	
 			// destroy all REGISTER from memory within 30 seconds 
+			call->regcount++;
 			call->destroy_call_at = header->ts.tv_sec + 30;
 
 			// copy contact num <sip:num@domain>
