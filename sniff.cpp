@@ -1664,9 +1664,11 @@ void process_sdp(Call *call, unsigned int saddr, int source, unsigned int daddr,
 				}
 			}
 			if(iscalled) {
-				call->called_sipdscp = header_ip->tos >> 2;
-			} else {
 				call->caller_sipdscp = header_ip->tos >> 2;
+				////cout << "caller_sipdscp " << (int)(header_ip->tos>>2) << endl;
+			} else {
+				call->called_sipdscp = header_ip->tos >> 2;
+				////cout << "called_sipdscp " << (int)(header_ip->tos>>2) << endl;
 			}
 			//syslog(LOG_ERR, "ADDR: %u port %u iscalled[%d]\n", tmp_addr, tmp_port, iscalled);
 			if(call->add_ip_port(tmp_addr, tmp_port, ua, ua_len, !iscalled, rtpmap) != -1){

@@ -568,8 +568,10 @@ Call::read_rtp(unsigned char* data, int datalen, struct pcap_pkthdr *header, u_i
 		struct iphdr2 *header_ip = (struct iphdr2 *)(data - sizeof(struct iphdr2) - sizeof(udphdr2));
 		if(iscaller) {
 			this->caller_rtpdscp = header_ip->tos >> 2;
+			////cout << "caller_rtpdscp " << (int)(header_ip->tos>>2) << endl;
 		} else {
 			this->called_rtpdscp = header_ip->tos >> 2;
+			////cout << "called_rtpdscp " << (int)(header_ip->tos>>2) << endl;
 		}
 	}
 
