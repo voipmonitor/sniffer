@@ -1,3 +1,8 @@
+8.4RC20 16.12.2013
+==================
+- save to register_failed all REGISTER with only one REGISER meesage and also all REGISTER with one 401 or 403 reply (which were not stored to register failed)
+- fix sip dscp which was reversed 
+
 8.4RC19 13.12.2013
 ==================
 - fix wget issue - move parameter --no-check-certificate to first after command wget
