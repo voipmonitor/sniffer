@@ -426,6 +426,32 @@ struct stop_media_transmission_message {
 	uint32_t space[3];
 };
 
+#define CM5CALL_INFO_MESSAGE 0x014A
+struct cm5call_info_message {
+	uint32_t instance;
+	uint32_t reference;
+	uint32_t type;
+	char unknown[20];
+	char callingParty[5];
+	char calledParty[5];
+	char originalCalledParty[5];
+	char lastRedirectingParty[5];
+	char callingPartyVoiceMailbox[5];
+	char calledPartyVoiceMailbox[5];
+	char originalCalledPartyVoiceMailbox[5];
+	char lastRedirectingVoiceMailbox[5];
+	char callingPartyName[1];
+	char calledPartyName[14];
+	char originalCalledPartyName[14];
+	char lastRedirectingPartyName[14];
+
+/*
+	uint32_t originalCalledPartyRedirectReason;
+	uint32_t lastRedirectingReason;
+	uint32_t space[3];
+*/
+};
+
 #define CALL_INFO_MESSAGE 0x008F
 struct call_info_message {
 	char callingPartyName[40];
@@ -447,6 +473,7 @@ struct call_info_message {
 	char lastRedirectingVoiceMailbox[24];
 	uint32_t space[3];
 };
+
 
 #define FORWARD_STAT_MESSAGE 0x0090
 struct forward_stat_message {
@@ -1022,6 +1049,7 @@ union skinny_data {
 	struct set_speaker_message setspeaker;
 	struct set_microphone_message setmicrophone;
 	struct call_info_message callinfo;
+	struct cm5call_info_message cm5callinfo;
 	struct start_media_transmission_message_ip4 startmedia_ip4;
 	struct start_media_transmission_message_ip6 startmedia_ip6;
 	struct stop_media_transmission_message stopmedia;
@@ -1486,26 +1514,6 @@ void *handle_skinny2(pcap_pkthdr *header, const u_char *packet, unsigned int sad
 		break;
 	case CALL_INFO_MESSAGE:
 		{
-/*
-		char callingPartyName[40] = ;
-		char callingParty[24];
-		char calledPartyName[40];
-		char calledParty[24];
-		uint32_t instance;
-		uint32_t reference;
-		uint32_t type;
-		char originalCalledPartyName[40];
-		char originalCalledParty[24];
-		char lastRedirectingPartyName[40];
-		char lastRedirectingParty[24];
-		uint32_t originalCalledPartyRedirectReason;
-		uint32_t lastRedirectingReason;
-		char callingPartyVoiceMailbox[24];
-		char calledPartyVoiceMailbox[24];
-		char originalCalledPartyVoiceMailbox[24];
-		char lastRedirectingVoiceMailbox[24];
-		uint32_t space[3];
-*/
 		int ref = letohl(req.data.callinfo.reference);
 		char callid[16];
 		SKINNY_DEBUG(DEBUG_PACKET, 3, "Received CALL_INFO_MESSAGE ref %d\n", ref);
@@ -1514,6 +1522,21 @@ void *handle_skinny2(pcap_pkthdr *header, const u_char *packet, unsigned int sad
 			memcpy(call->callername, req.data.callinfo.callingPartyName, sizeof(req.data.callinfo.callingPartyName));
 			memcpy(call->caller, req.data.callinfo.callingParty, sizeof(req.data.callinfo.callingParty));
 			memcpy(call->called, req.data.callinfo.calledParty, sizeof(req.data.callinfo.calledParty));
+
+			save_packet(call, header, packet, saddr, source, daddr, dest, 1, data, datalen, TYPE_SKINNY);
+		}
+		}
+		break;
+	case CM5CALL_INFO_MESSAGE:
+		{
+		int ref = letohl(req.data.cm5callinfo.reference);
+		char callid[16];
+		SKINNY_DEBUG(DEBUG_PACKET, 3, "Received CM5CALL_INFO_MESSAGE ref %d\n", ref);
+		sprintf(callid, "%d", ref);
+		if ((call = calltable->find_by_call_id(callid, strlen(callid)))){
+			memcpy(call->callername, req.data.cm5callinfo.callingPartyName, sizeof(req.data.cm5callinfo.callingPartyName));
+			memcpy(call->caller, req.data.cm5callinfo.callingParty, sizeof(req.data.cm5callinfo.callingParty));
+			memcpy(call->called, req.data.cm5callinfo.calledParty, sizeof(req.data.cm5callinfo.calledParty));
 
 			save_packet(call, header, packet, saddr, source, daddr, dest, 1, data, datalen, TYPE_SKINNY);
 		}
