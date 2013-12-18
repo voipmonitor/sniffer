@@ -1272,6 +1272,7 @@ Call *new_invite_register(int sip_method, char *data, int datalen, struct pcap_p
 	call->flags = flags;
 	strncpy(call->fbasename, callidstr, MAX_FNAME - 1);
 	call->fbasename[MIN(strlen(callidstr), MAX_FNAME - 1)] = '\0';
+	call->msgcount++;
 
 	/* this logic updates call on the first INVITES */
 	if (sip_method == INVITE or sip_method == REGISTER or sip_method == MESSAGE) {
