@@ -20,7 +20,7 @@ bool pstat_get_data(const int pid, pstat_data* result) {
 	FILE *fstat = fopen("/proc/stat", "r");
 	if(fstat == NULL) {
 		perror("FOPEN ERROR ");
-		fclose(fstat);
+		fclose(fpstat);
 		return(false);
 	}
 	memset(result, 0, sizeof(pstat_data));
