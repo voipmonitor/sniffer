@@ -406,6 +406,17 @@ struct start_media_transmission_message_ip4 {
 	uint32_t space[19];
 };
 
+struct CM7_start_media_transmission_message_ip4 {
+	uint32_t conferenceId;
+	uint32_t passThruPartyId;
+	uint32_t ipVersion;
+	uint32_t remoteIp;
+	char garbage[12];
+	uint32_t remotePort;
+	uint32_t packetSize;
+	uint32_t payloadType;
+};
+
 struct start_media_transmission_message_ip6 {
 	uint32_t conferenceId;
 	uint32_t passThruPartyId;
@@ -432,6 +443,7 @@ struct cm5call_info_message {
 	uint32_t reference;
 	uint32_t type;
 	char unknown[20];
+#if 0
 	char callingParty[5];
 	char calledParty[5];
 	char originalCalledParty[5];
@@ -444,6 +456,7 @@ struct cm5call_info_message {
 	char calledPartyName[14];
 	char originalCalledPartyName[14];
 	char lastRedirectingPartyName[14];
+#endif 
 
 /*
 	uint32_t originalCalledPartyRedirectReason;
@@ -1051,6 +1064,7 @@ union skinny_data {
 	struct call_info_message callinfo;
 	struct cm5call_info_message cm5callinfo;
 	struct start_media_transmission_message_ip4 startmedia_ip4;
+	struct CM7_start_media_transmission_message_ip4 CM7_startmedia_ip4;
 	struct start_media_transmission_message_ip6 startmedia_ip6;
 	struct stop_media_transmission_message stopmedia;
 	struct open_receive_channel_message openreceivechannel;
@@ -1534,9 +1548,50 @@ void *handle_skinny2(pcap_pkthdr *header, const u_char *packet, unsigned int sad
 		SKINNY_DEBUG(DEBUG_PACKET, 3, "Received CM5CALL_INFO_MESSAGE ref %d\n", ref);
 		sprintf(callid, "%d", ref);
 		if ((call = calltable->find_by_call_id(callid, strlen(callid)))){
-			memcpy(call->callername, req.data.cm5callinfo.callingPartyName, sizeof(req.data.cm5callinfo.callingPartyName));
-			memcpy(call->caller, req.data.cm5callinfo.callingParty, sizeof(req.data.cm5callinfo.callingParty));
-			memcpy(call->called, req.data.cm5callinfo.calledParty, sizeof(req.data.cm5callinfo.calledParty));
+
+
+			// check if the last character is terminated by \0
+			if(data[MIN(datalen - 1, req.len + 7)] != '\0') break;
+
+			// skinny message has variable lenght strings - parse one by one 
+			/*
+				char callingParty];
+				char calledParty];
+				char originalCalledParty;
+				char lastRedirectingParty;
+				char callingPartyVoiceMailbox;
+				char calledPartyVoiceMailbox;
+				char originalCalledPartyVoiceMailbox;
+				char lastRedirectingVoiceMailbox;
+				char callingPartyName;
+				char calledPartyName;
+				char originalCalledPartyName;
+				char lastRedirectingPartyName;
+			*/
+			char *cur = data + 44;
+			char *end = NULL;
+			int i = 0;
+			char *strings[20];
+			while(i < 20 and (end = strchr(cur, '\0'))) {	
+				strings[i] = cur;
+				cur = end + 1;
+				i++;
+			}
+
+	/*
+			printf("callingParty[%s] [%d]\n", strings[0], req.len);
+			printf("calledParty[%s] [%d]\n", strings[1], req.len);
+			printf("callingPartyName[%s] [%d]\n", strings[8], req.len);
+			printf("calledPartyName[%s] [%d]\n", strings[9], req.len);
+	*/
+
+
+			if(i > 0) 
+				memcpy(call->called, strings[0], strlen(strings[0]) + 1);
+			if(i > 1) 
+				memcpy(call->caller, strings[1], strlen(strings[1]) + 1);
+			if(i > 8) 
+				memcpy(call->callername, strings[8], strlen(strings[8]) + 1);
 
 			save_packet(call, header, packet, saddr, source, daddr, dest, 1, data, datalen, TYPE_SKINNY);
 		}
@@ -1584,22 +1639,37 @@ void *handle_skinny2(pcap_pkthdr *header, const u_char *packet, unsigned int sad
 		break;
 	case START_MEDIA_TRANSMISSION_MESSAGE:
 		{
-/*
-		uint32_t conferenceId;
-		uint32_t passThruPartyId;
-		uint32_t remoteIp;
-		uint32_t remotePort;
-		uint32_t packetSize;
-		uint32_t payloadType;
-		struct media_qualifier qualifier;
-		uint32_t space[19];
-*/
-		unsigned int ref = letohl(req.data.startmedia_ip4.conferenceId);
-		unsigned int ipaddr = letohl(req.data.startmedia_ip4.remoteIp);
-		unsigned int port = letohl(req.data.startmedia_ip4.remotePort);
+		unsigned int ref, ipaddr, port;
+		if(req.res == 0) {
+
+			/* BASIC HEADER
+			uint32_t conferenceId;
+			uint32_t passThruPartyId;
+			uint32_t remoteIp;
+			uint32_t remotePort;
+			uint32_t packetSize;
+			uint32_t payloadType;
+			struct media_qualifier qualifier;
+			uint32_t space[19];
+			*/
+
+			ref = letohl(req.data.startmedia_ip4.conferenceId);
+			ipaddr = letohl(req.data.startmedia_ip4.remoteIp);
+			port = letohl(req.data.startmedia_ip4.remotePort);
+		} else if(req.res == 20) {
+			ref = letohl(req.data.CM7_startmedia_ip4.conferenceId);
+			ipaddr = letohl(req.data.CM7_startmedia_ip4.remoteIp);
+			port = letohl(req.data.CM7_startmedia_ip4.remotePort);
+		} else {
+			if(verbosity > 0)
+				syslog(LOG_NOTICE, "Unsupported header version START_MEDIA_TRANSMISSION_MESSAGE:[%x]\n", req.res);
+			break;
+		}
+
+
 		char callid[16];
 		sprintf(callid, "%d", ref);
-		SKINNY_DEBUG(DEBUG_PACKET, 3, "Received START_MEDIA_TRANSMISSION_MESSAGE partyId [%u] ipAddr[%u] port[%u]", ref, ipaddr, port);
+		SKINNY_DEBUG(DEBUG_PACKET, 3, "Received START_MEDIA_TRANSMISSION_MESSAGE partyId [%u] ipAddr[%x] port[%u]", ref, ipaddr, port);
 		if((call = calltable->find_by_call_id(callid, strlen(callid)))){
 			int rtpmap[MAX_RTPMAP];
 			memset(&rtpmap, 0, sizeof(int) * MAX_RTPMAP);

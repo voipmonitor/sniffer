@@ -1,3 +1,9 @@
+8.4RC21 19.12.2013
+==================
+- SCCP: add CM5CALL_INFO_MESSAGE 0x014A type so caller/called numbers are set 
+- fix sip register in caase REGISTER-OK (no 401 or 404) - broken since 8.4RC20
+
+
 8.4RC20 16.12.2013
 ==================
 - save to register_failed all REGISTER with only one REGISER meesage and also all REGISTER with one 401 or 403 reply (which were not stored to register failed)
