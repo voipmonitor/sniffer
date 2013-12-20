@@ -2,6 +2,11 @@
 ==================
 - SCCP: add CM5CALL_INFO_MESSAGE 0x014A type so caller/called numbers are set 
 - fix sip register in caase REGISTER-OK (no 401 or 404) - broken since 8.4RC20
+- fix crash in case the sniffer run outs of file descriptor
+- fix DSCP RTP in CDR in case pcap is read by pcapscandir
+- optimize SIP MESSAGE sql storing which accidentally access database for each SIP MESSAGE which leds in queueing sip message types 
+- modify install script which will ask if the user wants to overwrite configuration file
+- add support for CM7 header version (missing RTP)
 
 
 8.4RC20 16.12.2013
