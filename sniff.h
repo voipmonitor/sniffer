@@ -105,6 +105,7 @@ typedef struct {
 	char iscaller;
 	char is_rtcp;
 	struct pcap_pkthdr header;
+	struct iphdr2 header_ip;
 	volatile char free;
 } rtp_packet;
 

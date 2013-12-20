@@ -541,7 +541,7 @@ Call::read_rtcp(unsigned char* data, int datalen, struct pcap_pkthdr *header, u_
 
 /* analyze rtp packet */
 void
-Call::read_rtp(unsigned char* data, int datalen, struct pcap_pkthdr *header, u_int32_t saddr, u_int32_t daddr, unsigned short port, int iscaller, int *record) {
+Call::read_rtp(unsigned char* data, int datalen, struct pcap_pkthdr *header, struct iphdr2 *header_ip, u_int32_t saddr, u_int32_t daddr, unsigned short port, int iscaller, int *record) {
 
 	*record = 0;
 
@@ -565,7 +565,9 @@ Call::read_rtp(unsigned char* data, int datalen, struct pcap_pkthdr *header, u_i
 	}
 
 	if(opt_dscp) {
-		struct iphdr2 *header_ip = (struct iphdr2 *)(data - sizeof(struct iphdr2) - sizeof(udphdr2));
+		if(!header_ip) {
+			header_ip = (struct iphdr2 *)(data - sizeof(struct iphdr2) - sizeof(udphdr2));
+		}
 		if(iscaller) {
 			this->caller_rtpdscp = header_ip->tos >> 2;
 			////cout << "caller_rtpdscp " << (int)(header_ip->tos>>2) << endl;

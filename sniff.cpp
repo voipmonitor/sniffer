@@ -1054,6 +1054,7 @@ void add_to_rtp_thread_queue(Call *call, unsigned char *data, int datalen, struc
 		rtpp->is_rtcp = is_rtcp;
 
 		memcpy(&rtpp->header, header, sizeof(struct pcap_pkthdr));
+		memcpy(&rtpp->header_ip, (struct iphdr2*)(data - sizeof(struct iphdr2) - sizeof(udphdr2)), sizeof(struct iphdr2));
 		if(datalen > MAXPACKETLENQRING) {
 			syslog(LOG_ERR, "error: packet is to large [%d]b for RTP QRING[%d]b", header->caplen, MAXPACKETLENQRING);
 			return;
@@ -1150,7 +1151,7 @@ void *rtp_read_thread_func(void *arg) {
 				rtpp_pq.call->read_rtcp(rtpp_pq.data, rtpp_pq.datalen, &rtpp_pq.pkthdr_pcap.header->header_std, rtpp_pq.saddr, rtpp_pq.port, rtpp_pq.iscaller);
 			}  else {
 				int monitor;
-				rtpp_pq.call->read_rtp(rtpp_pq.data, rtpp_pq.datalen, &rtpp_pq.pkthdr_pcap.header->header_std, rtpp_pq.saddr, rtpp_pq.daddr, rtpp_pq.port, rtpp_pq.iscaller, &monitor);
+				rtpp_pq.call->read_rtp(rtpp_pq.data, rtpp_pq.datalen, &rtpp_pq.pkthdr_pcap.header->header_std, NULL, rtpp_pq.saddr, rtpp_pq.daddr, rtpp_pq.port, rtpp_pq.iscaller, &monitor);
 			}
 			rtpp_pq.call->set_last_packet_time(rtpp_pq.pkthdr_pcap.header->header_std.ts.tv_sec);
 			rtpp_pq.block_store->unlock_packet(rtpp_pq.block_store_index);
@@ -1159,7 +1160,7 @@ void *rtp_read_thread_func(void *arg) {
 				rtpp->call->read_rtcp((unsigned char*)rtpp->data, rtpp->datalen, &rtpp->header, rtpp->saddr, rtpp->port, rtpp->iscaller);
 			}  else {
 				int monitor;
-				rtpp->call->read_rtp(rtpp->data, rtpp->datalen, &rtpp->header, rtpp->saddr, rtpp->daddr, rtpp->port, rtpp->iscaller, &monitor);
+				rtpp->call->read_rtp(rtpp->data, rtpp->datalen, &rtpp->header, &rtpp->header_ip, rtpp->saddr, rtpp->daddr, rtpp->port, rtpp->iscaller, &monitor);
 			}
 			rtpp->call->set_last_packet_time(rtpp->header.ts.tv_sec);
 		}
@@ -2844,7 +2845,7 @@ repeatrtpA:
 				return call;
 			}
 		} else {
-			call->read_rtp((unsigned char*) data, datalen, header, saddr, daddr, source, iscaller, &record);
+			call->read_rtp((unsigned char*) data, datalen, header, NULL, saddr, daddr, source, iscaller, &record);
 			call->set_last_packet_time(header->ts.tv_sec);
 		}
 		if(!dontsave && ((call->flags & FLAG_SAVERTPHEADER) || (call->flags & FLAG_SAVERTP) || (call->isfax && opt_saveudptl) || record)) {
@@ -2917,7 +2918,7 @@ repeatrtpB:
 			}
 			*was_rtp = 1;
 		} else {
-			call->read_rtp((unsigned char*) data, datalen, header, saddr, daddr, source, !iscaller, &record);
+			call->read_rtp((unsigned char*) data, datalen, header, NULL, saddr, daddr, source, !iscaller, &record);
 			call->set_last_packet_time(header->ts.tv_sec);
 		}
 		if(!dontsave && ((call->flags & FLAG_SAVERTP) || (call->isfax && opt_saveudptl) || record)) {
