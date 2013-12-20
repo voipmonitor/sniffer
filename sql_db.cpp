@@ -2197,6 +2197,19 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 			END",
 			"getIdOrInsertSIPRES", "(val VARCHAR(255)) RETURNS INT DETERMINISTIC");
 
+	this->createFunction(
+			"BEGIN \
+				DECLARE _ID INT; \
+				SET _ID = (SELECT id FROM contenttype WHERE contenttype = val LIMIT 1); \
+				IF ( _ID ) THEN \
+					RETURN _ID; \
+				ELSE  \
+					INSERT INTO contenttype SET contenttype = val; \
+					RETURN LAST_INSERT_ID(); \
+				END IF; \
+			END",
+			"getIdOrInsertCONTENTTYPE", "(val VARCHAR(255)) RETURNS INT DETERMINISTIC");
+
 	this->createProcedure(
 			"BEGIN \
 				DECLARE _ID INT; \

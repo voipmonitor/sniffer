@@ -2531,11 +2531,6 @@ Call::saveMessageToDb(bool enableBatchIfPossible) {
 	if(message) {
 		cdr.add(sqlEscapeString(message), "message");
 	}
-	if(contenttype) {
-		m_contenttype.add(sqlEscapeString(contenttype), "contenttype");
-		unsigned int id_contenttype = sqlDbSaveCall->getIdOrInsert("contenttype", "id", "contenttype", m_contenttype);
-		cdr.add(id_contenttype, "id_contenttype");
-	}
 
 	cdr.add(lastSIPresponseNum, "lastSIPresponseNum");
 /*
@@ -2563,6 +2558,9 @@ Call::saveMessageToDb(bool enableBatchIfPossible) {
 		if(b_ua) {
 			cdr.add(string("_\\_'SQL'_\\_:") + "getIdOrInsertUA(" + sqlEscapeStringBorder(b_ua) + ")", "b_ua_id");
 		}
+		if(contenttype) {
+			cdr.add(string("_\\_'SQL'_\\_:") + "getIdOrInsertCONTENTTYPE(" + sqlEscapeStringBorder(contenttype) + ")", "id_contenttype");
+		}
 		query_str += sqlDbSaveCall->insertQuery("message", cdr);
 		
 		pthread_mutex_lock(&mysqlquery_lock);
@@ -2582,6 +2580,11 @@ Call::saveMessageToDb(bool enableBatchIfPossible) {
 	a_ua_id = sqlDbSaveCall->getIdOrInsert(sql_cdr_ua_table, "id", "ua", cdr_ua_a);
 	cdr_ua_b.add(sqlEscapeString(b_ua), "ua");
 	b_ua_id = sqlDbSaveCall->getIdOrInsert(sql_cdr_ua_table, "id", "ua", cdr_ua_b);
+	if(contenttype) {
+		m_contenttype.add(sqlEscapeString(contenttype), "contenttype");
+		unsigned int id_contenttype = sqlDbSaveCall->getIdOrInsert("contenttype", "id", "contenttype", m_contenttype);
+		cdr.add(id_contenttype, "id_contenttype");
+	}
 
 	cdr.add(lastSIPresponse_id, "lastSIPresponse_id", true);
 	cdr.add(a_ua_id, "a_ua_id", true);
