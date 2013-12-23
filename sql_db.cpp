@@ -21,6 +21,7 @@ extern int terminating;
 extern int opt_ipaccount;
 extern int opt_id_sensor;
 extern bool opt_cdr_partition;
+extern int opt_cdr_sipport;
 extern int opt_create_old_partitions;
 extern bool opt_disable_partition_operations;
 extern vector<dstring> opt_custom_headers_cdr;
@@ -1347,7 +1348,9 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 			`called_domain` varchar(255) DEFAULT NULL,\
 			`called_reverse` varchar(255) DEFAULT NULL,\
 			`sipcallerip` int unsigned DEFAULT NULL,\
+			" + (opt_cdr_sipport ? "`sipcallerport` smallint unsigned DEFAULT NULL," : "") + "\
 			`sipcalledip` int unsigned DEFAULT NULL,\
+			" + (opt_cdr_sipport ? "`sipcalledport` smallint unsigned DEFAULT NULL," : "") + "\
 			`whohanged` enum('caller','callee') DEFAULT NULL,\
 			`bye` tinyint unsigned DEFAULT NULL,\
 			`lastSIPresponse_id` smallint unsigned DEFAULT NULL,\
@@ -1460,7 +1463,9 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 		KEY `callername` (`callername`),\
 		KEY `callername_reverse` (`callername_reverse`),\
 		KEY `sipcallerip` (`sipcallerip`),\
+		" + (opt_cdr_sipport ? "KEY `sipcallerport` (`sipcallerport`)," : "") + "\
 		KEY `sipcalledip` (`sipcalledip`),\
+		" + (opt_cdr_sipport ? "KEY `sipcalledport` (`sipcalledport`)," : "") + "\
 		KEY `lastSIPresponseNum` (`lastSIPresponseNum`),\
 		KEY `bye` (`bye`),\
 		KEY `a_saddr` (`a_saddr`),\
@@ -1524,7 +1529,9 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 		}
 	}
 
-	if(!federated) {
+	if(!federated && !opt_cdr_sipport) {
+		this->query("show columns from cdr where Field='sipcallerport'");
+		opt_cdr_sipport = this->fetchRow();
 	}
 
 	string cdrNextCustomFields;
@@ -2037,6 +2044,14 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 	
 	this->query("ALTER TABLE files\
 			ADD `regsize` bigint unsigned DEFAULT 0;");
+	
+	if(opt_cdr_sipport) {
+		this->query("ALTER TABLE cdr\
+				ADD `sipcallerport` smallint unsigned DEFAULT NULL AFTER `sipcallerip`,\
+				ADD `sipcalledport` smallint unsigned DEFAULT NULL AFTER `sipcalledip`,\
+				ADD KEY `sipcallerport` (`sipcallerport`),\
+				ADD KEY `sipcalledport` (`sipcalledport`);");
+	}
 
 	sql_noerror = 0;
 

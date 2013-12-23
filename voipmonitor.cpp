@@ -297,6 +297,7 @@ unsigned int graph_delimiter = GRAPH_DELIMITER;
 unsigned int graph_version = GRAPH_VERSION;
 
 bool opt_cdr_partition = 1;
+bool opt_cdr_sipport = 0;
 int opt_create_old_partitions = 0;
 bool opt_disable_partition_operations = 0;
 vector<dstring> opt_custom_headers_cdr;
@@ -1182,6 +1183,9 @@ int load_config(char *fname) {
 	}
 	if((value = ini.GetValue("general", "cdr_partition", NULL))) {
 		opt_cdr_partition = yesno(value);
+	}
+	if((value = ini.GetValue("general", "cdr_sipport", NULL))) {
+		opt_cdr_sipport = yesno(value);
 	}
 	if((value = ini.GetValue("general", "create_old_partitions", NULL))) {
 		opt_create_old_partitions = atoi(value);

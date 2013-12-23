@@ -1240,7 +1240,7 @@ struct skinny_container {
 #define HANDLE_FOR_PCAP_SAVE 		(ENABLE_CONVERT_DLT_SLL_TO_EN10 ? handle_dead_EN10MB : handle)
 
 
-Call *new_skinny_channel(int state, char *data, int datalen, struct pcap_pkthdr *header, char *callidstr, u_int32_t saddr, u_int32_t daddr, int source, char *s, long unsigned int l){
+Call *new_skinny_channel(int state, char *data, int datalen, struct pcap_pkthdr *header, char *callidstr, u_int32_t saddr, u_int32_t daddr, int source, int dest, char *s, long unsigned int l){
 	if(opt_callslimit != 0 and opt_callslimit > calls) {
 		if(verbosity > 0)
 			syslog(LOG_NOTICE, "callslimit[%d] > calls[%d] ignoring call\n", opt_callslimit, calls);
@@ -1251,6 +1251,8 @@ Call *new_skinny_channel(int state, char *data, int datalen, struct pcap_pkthdr 
 	call->set_first_packet_time(header->ts.tv_sec, header->ts.tv_usec);
 	call->sipcallerip = saddr;
 	call->sipcalledip = daddr;
+	call->sipcallerport = source;
+	call->sipcalledport = dest;
 	call->type = state;
 	ipfilter->add_call_flags(&(call->flags), ntohl(saddr), ntohl(daddr));
 	strncpy(call->fbasename, callidstr, MAX_FNAME - 1);
@@ -1435,13 +1437,17 @@ void *handle_skinny2(pcap_pkthdr *header, const u_char *packet, unsigned int sad
 		sprintf(callid, "%d", ref);
 		if ( ! (call = calltable->find_by_call_id(callid, strlen(callid)))){
 			// packet does not belongs to any call yet
-			call = new_skinny_channel(SKINNY_NEW, data, datalen, header, callid, saddr, daddr, source, callid, strlen(callid));
+			call = new_skinny_channel(SKINNY_NEW, data, datalen, header, callid, saddr, daddr, source, dest, callid, strlen(callid));
 			if(state == SKINNY_OFFHOOK) {
 				call->sipcallerip = daddr;
 				call->sipcalledip = saddr;
+				call->sipcallerport = dest;
+				call->sipcalledport = source;
 			} else {
 				call->sipcallerip = saddr;
 				call->sipcalledip = daddr;
+				call->sipcallerport = source;
+				call->sipcalledport = dest;
 			}
 		}
 		switch(state) {

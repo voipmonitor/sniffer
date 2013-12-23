@@ -96,6 +96,7 @@ extern char opt_convert_char[256];
 extern int opt_norecord_dtmf;
 extern char opt_silencedmtfseq[16];
 extern bool opt_cdr_partition;
+extern int opt_cdr_sipport;
 extern char get_customers_pn_query[1024];
 extern int opt_saverfc2833;
 extern int opt_dbdtmf;
@@ -205,6 +206,8 @@ Call::Call(char *call_id, unsigned long call_id_len, time_t time, void *ct) :
 	sipcalledip4 = 0;
 	sipcallerip4 = 0;
 	lastsipcallerip = 0;
+	sipcallerport = 0;
+	sipcalledport = 0;
 	fname2 = 0;
 	skinny_partyid = 0;
 	relationcall = NULL;
@@ -1371,6 +1374,10 @@ Call::getKeyValCDRtext() {
 	cdr.add(lastSIPresponse, "lastSIPresponse");
 	cdr.add(htonl(sipcallerip), "sipcallerip");
 	cdr.add(htonl(sipcalledip), "sipcalledip");
+	if(opt_cdr_sipport) {
+		cdr.add(sipcallerport, "sipcallerport");
+		cdr.add(sipcalledport, "sipcalledport");
+	}
 	cdr.add(duration(), "duration");
 	cdr.add(progress_time ? progress_time - first_packet_time : -1, "progress_time");
 	cdr.add(first_rtp_time ? first_rtp_time  - first_packet_time : -1, "first_rtp_time");
@@ -1713,6 +1720,10 @@ Call::saveToDb(bool enableBatchIfPossible) {
 	
 	cdr.add(htonl(sipcallerip), "sipcallerip");
 	cdr.add(htonl(sipcalledip), "sipcalledip");
+	if(opt_cdr_sipport) {
+		cdr.add(sipcallerport, "sipcallerport");
+		cdr.add(sipcalledport, "sipcalledport");
+	}
 	cdr.add(duration(), "duration");
 	cdr.add(progress_time ? progress_time - first_packet_time : -1, "progress_time");
 	cdr.add(first_rtp_time ? first_rtp_time  - first_packet_time : -1, "first_rtp_time");

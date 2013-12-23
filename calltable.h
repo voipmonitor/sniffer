@@ -161,6 +161,9 @@ public:
 	u_int32_t sipcallerip4;		//!< SIP signalling destination IP address
 	u_int32_t sipcalledip4;		//!< SIP signalling destination IP address
 
+	u_int16_t sipcallerport;
+	u_int16_t sipcalledport;
+
 	char lastSIPresponse[128];
 	int lastSIPresponseNum;
 	bool new_invite_after_lsr487;

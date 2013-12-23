@@ -1192,7 +1192,7 @@ void *rtp_read_thread_func(void *arg) {
 	return NULL;
 }
 
-Call *new_invite_register(int sip_method, char *data, int datalen, struct pcap_pkthdr *header, char *callidstr, u_int32_t saddr, u_int32_t daddr, int source, char *s, long unsigned int l){
+Call *new_invite_register(int sip_method, char *data, int datalen, struct pcap_pkthdr *header, char *callidstr, u_int32_t saddr, u_int32_t daddr, int source, int dest, char *s, long unsigned int l){
 	unsigned long gettagLimitLen = 0;
 	unsigned int flags = 0;
 	int res;
@@ -1269,6 +1269,8 @@ Call *new_invite_register(int sip_method, char *data, int datalen, struct pcap_p
 	call->set_first_packet_time(header->ts.tv_sec, header->ts.tv_usec);
 	call->sipcallerip = saddr;
 	call->sipcalledip = daddr;
+	call->sipcallerport = source;
+	call->sipcalledport = dest;
 	call->type = sip_method;
 	call->flags = flags;
 	strncpy(call->fbasename, callidstr, MAX_FNAME - 1);
@@ -2257,7 +2259,7 @@ if (header->ts.tv_sec - last_cleanup > 10){
 		if ( ! (call = calltable->find_by_call_id(s, l))){
 			// packet does not belongs to any call yet
 			if (sip_method == INVITE || sip_method == MESSAGE || (opt_sip_register && sip_method == REGISTER)) {
-				call = new_invite_register(sip_method, data, datalen, header, callidstr, saddr, daddr, source, s, l);
+				call = new_invite_register(sip_method, data, datalen, header, callidstr, saddr, daddr, source, dest, s, l);
 				if(call == NULL) {
 					return NULL;
 				}
@@ -2298,7 +2300,7 @@ if (header->ts.tv_sec - last_cleanup > 10){
 					// to much register attempts without OK or 401 responses
 					call->regstate = 4;
 					call->saveregister();
-					call = new_invite_register(sip_method, data, datalen, header, callidstr, saddr, daddr, source, (char*)call->call_id.c_str(), call->call_id.length());
+					call = new_invite_register(sip_method, data, datalen, header, callidstr, saddr, daddr, source, dest, (char*)call->call_id.c_str(), call->call_id.length());
 					if(call == NULL) {
 						return NULL;
 					}
@@ -2963,6 +2965,8 @@ repeatrtpB:
 			call->set_first_packet_time(header->ts.tv_sec, header->ts.tv_usec);
 			call->sipcallerip = saddr;
 			call->sipcalledip = daddr;
+			call->sipcallerport = source;
+			call->sipcalledport = dest;
 			call->type = INVITE;
 			ipfilter->add_call_flags(&(call->flags), ntohl(saddr), ntohl(daddr));
 			strncpy(call->fbasename, s, MAX_FNAME - 1);
