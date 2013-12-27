@@ -1865,7 +1865,9 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 		KEY `port` (`port`),\
 		KEY `proto` (`proto`),\
 		KEY `interval_time` (`interval_time`)\
-	) ENGINE=InnoDB DEFAULT CHARSET=latin1 " + compress + ";");
+	) ENGINE=InnoDB DEFAULT CHARSET=latin1 " + compress +
+			string(" PARTITION BY RANGE COLUMNS(interval_time)(\
+				 PARTITION ") + partDayName + " VALUES LESS THAN ('" + limitDay + "') engine innodb)");
 	}
 
 	this->query(
