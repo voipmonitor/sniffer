@@ -1,4 +1,7 @@
 #!/bin/bash
+echo "Installing /usr/local/share/voipmonitor/audio"
+mkdir -p /usr/local/share/voipmonitor/audio
+cp usr/local/share/voipmonitor/audio/* /usr/local/share/voipmonitor/audio/
 
 echo "Installing voipmonitor binary to /usr/local/sbin/voipmonitor"
 cp usr/local/sbin/voipmonitor /usr/local/sbin/voipmonitor
@@ -11,6 +14,7 @@ cp etc/init.d/voipmonitor /etc/init.d/
 
 echo "Creating /var/spool/voipmonitor"
 mkdir /var/spool/voipmonitor
+
 
 update-rc.d voipmonitor defaults &>/dev/null
 chkconfig --add voipmonitor &>/dev/null

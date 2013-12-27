@@ -258,6 +258,8 @@ char opt_database_backup_from_mysql_user[256] = "";
 char opt_database_backup_from_mysql_password[256] = "";
 int opt_database_backup_pause = 300;
 int opt_database_backup_use_federated = 0;
+string opt_mos_lqo_bin = "pesq";
+string opt_mos_lqo_ref = "/usr/local/share/voipmonitor/audio/mos_lqe_original.wav";
 
 unsigned int opt_maxpoolsize = 0;
 unsigned int opt_maxpooldays = 0;
@@ -295,6 +297,7 @@ int opt_cleandatabase_register_state = 0;
 int opt_cleandatabase_register_failed = 0;
 unsigned int graph_delimiter = GRAPH_DELIMITER;
 unsigned int graph_version = GRAPH_VERSION;
+int opt_mos_lqo = 0;
 
 bool opt_cdr_partition = 1;
 bool opt_cdr_sipport = 0;
@@ -827,6 +830,12 @@ void *storing_cdr( void *dummy ) {
 			calltable->calls_queue.pop_front();
 			calltable->unlock_calls_queue();
 	
+			call->closeRawFiles();
+			if( (opt_savewav_force || (call->flags & FLAG_SAVEWAV)) && (call->type == INVITE || call->type == SKINNY_NEW)) {
+				if(verbosity > 0) printf("converting RAW file to WAV Queue[%d]\n", (int)calltable->calls_queue.size());
+				call->convertRawToWav();
+			}
+
 			if(!opt_nocdr) {
 				if(call->type == INVITE or call->type == SKINNY_NEW) {
 					call->saveToDb(1);
@@ -843,11 +852,6 @@ void *storing_cdr( void *dummy ) {
 			}
 #endif
 
-			call->closeRawFiles();
-			if( (opt_savewav_force || (call->flags & FLAG_SAVEWAV)) && (call->type == INVITE || call->type == SKINNY_NEW)) {
-				if(verbosity > 0) printf("converting RAW file to WAV Queue[%d]\n", (int)calltable->calls_queue.size());
-				call->convertRawToWav();
-			}
 
 			/* if pcapcommand is defined, execute command */
 			if(strlen(pcapcommand)) {
@@ -1723,6 +1727,15 @@ int load_config(char *fname) {
 	}
 	if((value = ini.GetValue("general", "sdp_reverse_ipport", NULL))) {
 		opt_sdp_reverse_ipport = yesno(value);
+	}
+	if((value = ini.GetValue("general", "mos_lqo", NULL))) {
+		opt_mos_lqo = yesno(value);
+	}
+	if((value = ini.GetValue("general", "mos_lqo_bin", NULL))) {
+		opt_mos_lqo_bin = value;
+	}
+	if((value = ini.GetValue("general", "mos_lqo_ref", NULL))) {
+		opt_mos_lqo_ref = value;
 	}
 	
 	/*

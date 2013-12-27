@@ -22,6 +22,10 @@
 #define FLAG_NOSKIP     (1 << 11)
 #define FLAG_SCRIPT     (1 << 12)
 #define FLAG_NOSCRIPT   (1 << 13)
+#define FLAG_AMOSLQO    (1 << 14)
+#define FLAG_BMOSLQO    (1 << 15)
+#define FLAG_ABMOSLQO   (1 << 16)
+#define FLAG_NOMOSLQO   (1 << 17)
 
 #define MAX_PREFIX 64
 
@@ -37,6 +41,7 @@ private:
 		int graph;
 		int wav;
 		int skip;
+		int mos_lqo;
 		int script;
 	};
         struct t_node {
@@ -71,6 +76,7 @@ private:
 		int graph;
 		int wav;
 		int skip;
+		int mos_lqo;
 		int script;
 	};
 	struct t_payload {

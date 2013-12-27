@@ -58,6 +58,8 @@
 #define FLAG_SAVERTPHEADER	(1 << 5)
 #define FLAG_SKIPCDR		(1 << 6)
 #define FLAG_RUNSCRIPT		(1 << 7)
+#define FLAG_RUNAMOSLQO		(1 << 8)
+#define FLAG_RUNBMOSLQO		(1 << 9)
 
 typedef struct {
 	double ts;
@@ -127,6 +129,9 @@ public:
 	unsigned int ps_drop;
 	unsigned int ps_ifdrop;
 	char forcemark[2];
+
+	float a_mos_lqo;
+	float b_mos_lqo;
 
 	time_t progress_time;		//!< time in seconds of 18X response
 	time_t first_rtp_time;		//!< time in seconds of first RTP packet
@@ -416,6 +421,7 @@ public:
 
 	void addtofilesqueue(string file, string column, u_int64_t writeBytes);
 
+	float mos_lqo(char *deg, int samplerate);
 
 	void handle_dtmf(char dtmf, double dtmf_time, unsigned int saddr, unsigned int daddr);
 

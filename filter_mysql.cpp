@@ -57,7 +57,9 @@ IPfilter::load() {
 		filterRow->wav = row.isNull("wav") ? -1 : atoi(row["wav"].c_str());
 		filterRow->skip = row.isNull("skip") ? -1 : atoi(row["skip"].c_str());
 		filterRow->script = row.isNull("script") ? -1 : atoi(row["script"].c_str());
+		filterRow->mos_lqo = row.isNull("mos_lqo") ? -1 : atoi(row["mos_lqo"].c_str());
 		vectDbRow.push_back(*filterRow);
+
 		delete filterRow;
 	}
 	delete sqlDb;
@@ -84,6 +86,11 @@ IPfilter::load() {
 		else if(vectDbRow[i].skip == 0)	node->flags |= FLAG_NOSKIP;
 		if(vectDbRow[i].script == 1)	node->flags |= FLAG_SCRIPT;
 		else if(vectDbRow[i].script == 0)	node->flags |= FLAG_NOSCRIPT;
+
+		if(vectDbRow[i].mos_lqo == 1)	node->flags |= FLAG_AMOSLQO;
+		else if(vectDbRow[i].mos_lqo == 2)	node->flags |= FLAG_BMOSLQO;
+		else if(vectDbRow[i].mos_lqo == 3)	node->flags |= FLAG_ABMOSLQO;
+		else if(vectDbRow[i].mos_lqo == 0)	node->flags |= FLAG_NOMOSLQO;
 
 		// add node to the first position
 		node->next = first_node;
@@ -154,6 +161,18 @@ IPfilter::add_call_flags(unsigned int *flags, unsigned int saddr, unsigned int d
 			if(node->flags & FLAG_NOSCRIPT) {
 				*flags &= ~FLAG_RUNSCRIPT;
 			}
+
+			if(node->flags & FLAG_AMOSLQO || node->flags & FLAG_ABMOSLQO) {
+				*flags |= FLAG_RUNAMOSLQO;
+			}
+			if(node->flags & FLAG_BMOSLQO || node->flags & FLAG_ABMOSLQO) {
+				*flags |= FLAG_RUNBMOSLQO;
+			}
+			if(node->flags & FLAG_NOMOSLQO) {
+				*flags &= ~FLAG_RUNAMOSLQO;
+				*flags &= ~FLAG_RUNBMOSLQO;
+			}
+
 			return 1;
 		}
 	}
@@ -255,6 +274,7 @@ TELNUMfilter::load() {
 		filterRow->wav = row.isNull("wav") ? -1 : atoi(row["wav"].c_str());
 		filterRow->skip = row.isNull("skip") ? -1 : atoi(row["skip"].c_str());
 		filterRow->script = row.isNull("script") ? -1 : atoi(row["script"].c_str());
+		filterRow->mos_lqo = row.isNull("mos_lqo") ? -1 : atoi(row["mos_lqo"].c_str());
 		vectDbRow.push_back(*filterRow);
 		delete filterRow;
 	}
@@ -279,6 +299,11 @@ TELNUMfilter::load() {
 		else if(vectDbRow[i].skip == 0)	np->flags |= FLAG_NOSKIP;
 		if(vectDbRow[i].script == 1)	np->flags |= FLAG_SCRIPT;
 		else if(vectDbRow[i].script == 0)	np->flags |= FLAG_NOSCRIPT;
+
+		if(vectDbRow[i].mos_lqo == 1)	np->flags |= FLAG_AMOSLQO;
+		else if(vectDbRow[i].mos_lqo == 2)	np->flags |= FLAG_BMOSLQO;
+		else if(vectDbRow[i].mos_lqo == 3)	np->flags |= FLAG_ABMOSLQO;
+		else if(vectDbRow[i].mos_lqo == 0)	np->flags |= FLAG_NOMOSLQO;
 
 		add_payload(np);
 	}
@@ -375,6 +400,18 @@ TELNUMfilter::add_call_flags(unsigned int *flags, char *telnum_src, char *telnum
 		if(lastpayload->flags & FLAG_NOSCRIPT) {
 			*flags &= ~FLAG_RUNSCRIPT;
 		}
+
+		if(lastpayload->flags & FLAG_AMOSLQO || lastpayload->flags & FLAG_ABMOSLQO) {
+			*flags |= FLAG_RUNAMOSLQO;
+		}
+		if(lastpayload->flags & FLAG_BMOSLQO || lastpayload->flags & FLAG_ABMOSLQO) {
+			*flags |= FLAG_RUNBMOSLQO;
+		}
+		if(lastpayload->flags & FLAG_NOMOSLQO) {
+			*flags &= ~FLAG_RUNAMOSLQO;
+			*flags &= ~FLAG_RUNBMOSLQO;
+		}
+
 		return 1;
         }
 

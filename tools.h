@@ -198,4 +198,6 @@ private:
 	bool _64bit;
 };
 
+std::string pexec(char*);
+
 #endif

@@ -31,6 +31,7 @@ extern int opt_dscp;
 extern int opt_enable_lua_tables;
 extern int opt_mysqlcompress;
 extern pthread_mutex_t mysqlconnect_lock;      
+extern int opt_mos_lqo;
 
 int sql_noerror = 0;
 int sql_disable_next_attempt_if_error = 0;
@@ -1272,6 +1273,8 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 			`graph` tinyint DEFAULT '0',\
 			`wav` tinyint DEFAULT '0',\
 			`skip` tinyint DEFAULT '0',\
+			`script` tinyint DEFAULT '0',\
+			`mos_lqo` tinyint DEFAULT '0',\
 			`note` text,\
 		PRIMARY KEY (`id`)\
 	) ENGINE=InnoDB DEFAULT CHARSET=latin1;");
@@ -1288,6 +1291,8 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 			`graph` tinyint DEFAULT '0',\
 			`wav` tinyint DEFAULT '0',\
 			`skip` tinyint DEFAULT '0',\
+			`script` tinyint DEFAULT '0',\
+			`mos_lqo` tinyint DEFAULT '0',\
 			`note` text,\
 		PRIMARY KEY (`id`)\
 	) ENGINE=InnoDB DEFAULT CHARSET=latin1;");
@@ -1348,9 +1353,9 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 			`called_domain` varchar(255) DEFAULT NULL,\
 			`called_reverse` varchar(255) DEFAULT NULL,\
 			`sipcallerip` int unsigned DEFAULT NULL,\
-			" + (opt_cdr_sipport ? "`sipcallerport` smallint unsigned DEFAULT NULL," : "") + "\
+			`sipcallerport` smallint unsigned DEFAULT NULL,\
 			`sipcalledip` int unsigned DEFAULT NULL,\
-			" + (opt_cdr_sipport ? "`sipcalledport` smallint unsigned DEFAULT NULL," : "") + "\
+			`sipcalledport` smallint unsigned DEFAULT NULL,\
 			`whohanged` enum('caller','callee') DEFAULT NULL,\
 			`bye` tinyint unsigned DEFAULT NULL,\
 			`lastSIPresponse_id` smallint unsigned DEFAULT NULL,\
@@ -1407,6 +1412,8 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 			`b_d150` mediumint unsigned DEFAULT NULL,\
 			`b_d200` mediumint unsigned DEFAULT NULL,\
 			`b_d300` mediumint unsigned DEFAULT NULL,\
+			`a_mos_lqo_mult10` tinyint unsigned DEFAULT NULL,\
+			`b_mos_lqo_mult10` tinyint unsigned DEFAULT NULL,\
 			`a_mos_f1_mult10` tinyint unsigned DEFAULT NULL,\
 			`a_mos_f2_mult10` tinyint unsigned DEFAULT NULL,\
 			`a_mos_adapt_mult10` tinyint unsigned DEFAULT NULL,\
@@ -1463,9 +1470,7 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 		KEY `callername` (`callername`),\
 		KEY `callername_reverse` (`callername_reverse`),\
 		KEY `sipcallerip` (`sipcallerip`),\
-		" + (opt_cdr_sipport ? "KEY `sipcallerport` (`sipcallerport`)," : "") + "\
 		KEY `sipcalledip` (`sipcalledip`),\
-		" + (opt_cdr_sipport ? "KEY `sipcalledport` (`sipcalledport`)," : "") + "\
 		KEY `lastSIPresponseNum` (`lastSIPresponseNum`),\
 		KEY `bye` (`bye`),\
 		KEY `a_saddr` (`a_saddr`),\
@@ -2043,16 +2048,26 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 			ADD `script` tinyint NULL;");
 	this->query("ALTER TABLE filter_telnum\
 			ADD `script` tinyint NULL;");
+
+	this->query("ALTER TABLE filter_ip\
+			ADD `mos_lqo` tinyint NULL;");
+	this->query("ALTER TABLE filter_telnum\
+			ADD `mos_lqo` tinyint NULL;");
 	
 	this->query("ALTER TABLE files\
 			ADD `regsize` bigint unsigned DEFAULT 0;");
 	
+	//8.4
 	if(opt_cdr_sipport) {
 		this->query("ALTER TABLE cdr\
 				ADD `sipcallerport` smallint unsigned DEFAULT NULL AFTER `sipcallerip`,\
-				ADD `sipcalledport` smallint unsigned DEFAULT NULL AFTER `sipcalledip`,\
-				ADD KEY `sipcallerport` (`sipcallerport`),\
-				ADD KEY `sipcalledport` (`sipcalledport`);");
+				ADD `sipcalledport` smallint unsigned DEFAULT NULL AFTER `sipcalledip`;");
+	}
+
+	if(opt_mos_lqo) {
+		this->query("ALTER TABLE cdr\
+				ADD `a_mos_lqo_mult10` tinyint unsigned DEFAULT NULL,\
+				ADD `b_mos_lqo_mult10` tinyint unsigned DEFAULT NULL;");
 	}
 
 	sql_noerror = 0;
@@ -2615,6 +2630,8 @@ void SqlDb_odbc::createSchema(const char *host, const char *database, const char
 			graph tinyint DEFAULT '0',\
 			wav tinyint DEFAULT '0',\
 			skip tinyint DEFAULT '0',\
+			script tinyint DEFAULT '0',\
+			mos_lqo tinyint DEFAULT '0',\
 			note text);\
 	END");
 
@@ -2631,6 +2648,8 @@ void SqlDb_odbc::createSchema(const char *host, const char *database, const char
 			graph tinyint DEFAULT '0',\
 			wav tinyint DEFAULT '0',\
 			skip tinyint DEFAULT '0',\
+			script tinyint DEFAULT '0',\
+			mos_lqo tinyint DEFAULT '0',\
 			note text);\
 	END");
 
@@ -2729,6 +2748,8 @@ void SqlDb_odbc::createSchema(const char *host, const char *database, const char
 			b_d150 int NULL,\
 			b_d200 int NULL,\
 			b_d300 int NULL,\
+			a_mos_lqo_mult10 tinyint NULL,\
+			b_mos_lqo_mult10 tinyint NULL,\
 			a_mos_f1_mult10 tinyint NULL,\
 			a_mos_f2_mult10 tinyint NULL,\
 			a_mos_adapt_mult10 tinyint NULL,\
@@ -3103,6 +3124,11 @@ void SqlDb_odbc::createSchema(const char *host, const char *database, const char
 			ADD script tinyint NULL;");
 	this->query("ALTER TABLE filter_telnum\
 			ADD script tinyint NULL;");
+
+	this->query("ALTER TABLE filter_ip\
+			ADD mos_lqo tinyint NULL;");
+	this->query("ALTER TABLE filter_telnum\
+			ADD mos_lqo tinyint NULL;");
 
 	if(opt_dscp) {
 		this->query("ALTER TABLE filter_telnum ADD dscp bigint NULL;");

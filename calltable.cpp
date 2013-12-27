@@ -109,6 +109,9 @@ extern int opt_cdr_ua_enable;
 extern unsigned int graph_delimiter;
 extern unsigned int graph_version;
 extern int opt_mosmin_f2;
+extern string opt_mos_lqo_bin;
+extern string opt_mos_lqo_ref;
+extern int opt_mos_lqo;
 
 volatile int calls = 0;
 
@@ -223,6 +226,8 @@ Call::Call(char *call_id, unsigned long call_id_len, time_t time, void *ct) :
 		syslog(LOG_NOTICE, "CREATE CALL %s", this->call_id.c_str());
 	}
 	forcemark[0] = forcemark[1] = 0;
+	a_mos_lqo = -1;
+	b_mos_lqo = -1;
 }
 
 void
@@ -897,6 +902,41 @@ int convertULAW2WAV(char *fname1, char *fname3) {
 	return 0;
 }
 
+float
+Call::mos_lqo(char *deg, int samplerate) {
+	char buf[4092];
+	snprintf(buf, 4091, "PATH=/bin:/sbin:/usr/bin:/usr/sbin:/usr/local/sbin:/usr/local/bin %s +%d %s %s", opt_mos_lqo_bin.c_str(), samplerate, opt_mos_lqo_ref.c_str(), deg);
+	if(verbosity > 1) syslog(LOG_INFO, "MOS_LQO CMD [%s]\n", buf);
+	string out;
+	out = pexec(buf);
+	if(out == "ERROR") {
+		syslog(LOG_ERR, "mos_lqo exec failed: %s\n", buf);
+		return -1;
+	}
+	float mos, mos_lqo;
+
+	char *tmp = new char[out.length() + 1];
+	char *a = NULL;
+
+	strcpy(tmp, out.c_str());
+
+	a = strstr(tmp, "P.862 Prediction (Raw MOS, MOS-LQO):");
+
+	if(a) {
+		if(sscanf(a, "P.862 Prediction (Raw MOS, MOS-LQO):  = %f   %f", &mos, &mos_lqo) != EOF) {
+			if(mos_lqo > 0 and mos_lqo < 5) {
+				return mos_lqo;
+			}
+			//printf("mos[%f] [%f]\n", mos, mos_lqo);
+		}
+	}
+
+	delete tmp;
+	
+//	cout << out << "\n";
+	return -1;
+}
+
 int
 Call::convertRawToWav() {
 	char cmd[4092];
@@ -1231,7 +1271,15 @@ Call::convertRawToWav() {
 		unlink(rawInfo);
 	}
 
+	if(opt_mos_lqo and adir == 1 and flags & FLAG_RUNAMOSLQO and samplerate == 8000) {
+		a_mos_lqo = mos_lqo(wav0, samplerate);
+	}
+	if(opt_mos_lqo and bdir == 1 and flags & FLAG_RUNBMOSLQO and samplerate == 8000) {
+		b_mos_lqo = mos_lqo(wav1, samplerate);
+	}
+
 	if(adir == 1 && bdir == 1) {
+		// merge caller and called 
 		switch(opt_audio_format) {
 		case FORMAT_WAV:
 			wav_mix(wav0, wav1, out, samplerate);
@@ -1243,6 +1291,7 @@ Call::convertRawToWav() {
 		unlink(wav0);
 		unlink(wav1);
 	} else if(adir == 1) {
+		// there is only caller sound
 		switch(opt_audio_format) {
 		case FORMAT_WAV:
 			wav_mix(wav0, NULL, out, samplerate);
@@ -1253,6 +1302,7 @@ Call::convertRawToWav() {
 		}
 		unlink(wav0);
 	} else if(bdir == 1) {
+		// there is only called sound
 		switch(opt_audio_format) {
 		case FORMAT_WAV:
 			wav_mix(wav1, NULL, out, samplerate);
@@ -1413,6 +1463,16 @@ Call::getKeyValCDRtext() {
 	if(whohanged == 0 || whohanged == 1) {
 		cdr.add(whohanged ? "callee" : "caller", "whohanged");
 	}
+
+	if(a_mos_lqo != -1) {
+		int mos = a_mos_lqo * 10 
+		cdr.add(mos, "a_mos_lqo_mult10");
+	}
+	if(b_mos_lqo != -1) {
+		int mos = b_mos_lqo * 10 
+		cdr.add(mos, "b_mos_lqo_mult10");
+	}
+
 	if(ssrc_n > 0) {
 		// sort all RTP streams by received packets + loss packets descend and save only those two with the biggest received packets.
 		int indexes[MAX_SSRC_PER_CALL];
@@ -1452,7 +1512,7 @@ Call::getKeyValCDRtext() {
 		int rtcp_avgfr_mult10[2] = { -1, -1 };
 		int rtcp_avgjitter_mult10[2] = { -1, -1 };
 		int lost[2] = { -1, -1 };
-		
+
 		for(int i = 0; i < 2; i++) {
 			if(!rtp[indexes[i]]) continue;
 
@@ -1524,6 +1584,7 @@ Call::getKeyValCDRtext() {
 			if(mos_f1_mult10) {
 				mos_min_mult10[i] = mos_f1_mult10;
 			}
+
 
 			// Jitterbuffer MOS statistics
 			burstr_calculate(rtp[indexes[i]]->channel_fix2, rtp[indexes[i]]->stats.received, &burstr, &lossr);
@@ -1771,6 +1832,15 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			cdr.add(cr.cust_id, "called_customer_id");
 			cdr.add(cr.reseller_id, "called_reseller_id");
 		}
+	}
+
+	if(a_mos_lqo != -1) {
+		int mos = a_mos_lqo * 10;
+		cdr.add(mos, "a_mos_lqo_mult10");
+	}
+	if(b_mos_lqo != -1) {
+		int mos = b_mos_lqo * 10;
+		cdr.add(mos, "b_mos_lqo_mult10");
 	}
 	
 	if(ssrc_n > 0) {
