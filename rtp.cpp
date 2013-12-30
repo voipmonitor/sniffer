@@ -787,7 +787,14 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 					prevrtp->header = header;
 					prevrtp->saddr = saddr;
 					prevrtp->daddr = daddr;
-					prevrtp->jitterbuffer(prevrtp->channel_record, opt_saveRAW || opt_savewav_force || (owner->flags & FLAG_SAVEWAV) || (owner && (owner->audiobuffer1 || owner->audiobuffer2)));
+					if(owner->flags & FLAG_RUNAMOSLQO or owner->flags & FLAG_RUNBMOSLQO) {
+						// MOS LQO is calculated only if the call is connected 
+						if(owner->connect_time) {
+							prevrtp->jitterbuffer(prevrtp->channel_record, opt_saveRAW || opt_savewav_force || (owner->flags & FLAG_SAVEWAV) || (owner && (owner->audiobuffer1 || owner->audiobuffer2)));
+						}
+					} else {
+						prevrtp->jitterbuffer(prevrtp->channel_record, opt_saveRAW || opt_savewav_force || (owner->flags & FLAG_SAVEWAV) || (owner && (owner->audiobuffer1 || owner->audiobuffer2)));
+					}
 				}
 			}
 			gfileRAW = fopen(tmp, "w");
@@ -918,7 +925,13 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 				if(packetization < 10) {
 					packetization = channel_record->packetization = default_packetization;
 				}
-				jitterbuffer(channel_record, opt_saveRAW || opt_savewav_force || (owner->flags & FLAG_SAVEWAV) || (owner && (owner->audiobuffer1 || owner->audiobuffer2)));
+				if(owner->flags & FLAG_RUNAMOSLQO or owner->flags & FLAG_RUNBMOSLQO) {
+					if(owner->connect_time) {
+						jitterbuffer(channel_record, opt_saveRAW || opt_savewav_force || (owner->flags & FLAG_SAVEWAV) || (owner && (owner->audiobuffer1 || owner->audiobuffer2)));
+					}
+				} else {
+					jitterbuffer(channel_record, opt_saveRAW || opt_savewav_force || (owner->flags & FLAG_SAVEWAV) || (owner && (owner->audiobuffer1 || owner->audiobuffer2)));
+				}
 			}
 		} else if(packetization_iterator == 1) {
 			if(last_ts != 0 && seq == (last_seq + 1) && curpayload != 101 && prev_payload != 101 && !sid && !prev_sid) {
@@ -946,7 +959,13 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 						(owner && (owner->audiobuffer1 || owner->audiobuffer2))// if recording requested 
 					){
 						packetization = channel_record->packetization = default_packetization;
-						jitterbuffer(channel_record, 1);
+						if(owner->flags & FLAG_RUNAMOSLQO or owner->flags & FLAG_RUNBMOSLQO) {
+							if(owner->connect_time) {
+								jitterbuffer(channel_record, 1);
+							}
+						} else {
+							jitterbuffer(channel_record, 1);
+						}
 					}
 				} else {
 					packetization_iterator++;
@@ -962,7 +981,13 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 					if(opt_saveRAW || opt_savewav_force || (owner->flags & FLAG_SAVEWAV) ||
 						(owner && (owner->audiobuffer1 || owner->audiobuffer2))// if recording requested 
 					){
-						jitterbuffer(channel_record, 1);
+						if(owner->flags & FLAG_RUNAMOSLQO or owner->flags & FLAG_RUNBMOSLQO) {
+							if(owner->connect_time) {
+								jitterbuffer(channel_record, 1);
+							}
+						} else {
+							jitterbuffer(channel_record, 1);
+						}
 					}
 				}
 			} else {
@@ -972,7 +997,13 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 					(owner && (owner->audiobuffer1 || owner->audiobuffer2))// if recording requested 
 				){
 					packetization = channel_record->packetization = default_packetization;
-					jitterbuffer(channel_record, 1);
+					if(owner->flags & FLAG_RUNAMOSLQO or owner->flags & FLAG_RUNBMOSLQO) {
+						if(owner->connect_time) {
+							jitterbuffer(channel_record, 1);
+						}
+					} else {
+						jitterbuffer(channel_record, 1);
+					}
 				}
 			}
 		} else {
@@ -993,7 +1024,13 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 			if(opt_saveRAW || opt_savewav_force || (owner->flags & FLAG_SAVEWAV) ||
 				(owner && (owner->audiobuffer1 || owner->audiobuffer2))// if recording requested 
 			){
-				jitterbuffer(channel_record, 1);
+				if(owner->flags & FLAG_RUNAMOSLQO or owner->flags & FLAG_RUNBMOSLQO) {
+					if(owner->connect_time) {
+						jitterbuffer(channel_record, 1);
+					}
+				} else {
+					jitterbuffer(channel_record, 1);
+				}
 			}
 		}
 //	}
