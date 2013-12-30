@@ -1560,20 +1560,6 @@ void *handle_skinny2(pcap_pkthdr *header, const u_char *packet, unsigned int sad
 			if(data[MIN(datalen - 1, req.len + 7)] != '\0') break;
 
 			// skinny message has variable lenght strings - parse one by one 
-			/*
-				char callingParty];
-				char calledParty];
-				char originalCalledParty;
-				char lastRedirectingParty;
-				char callingPartyVoiceMailbox;
-				char calledPartyVoiceMailbox;
-				char originalCalledPartyVoiceMailbox;
-				char lastRedirectingVoiceMailbox;
-				char callingPartyName;
-				char calledPartyName;
-				char originalCalledPartyName;
-				char lastRedirectingPartyName;
-			*/
 			char *cur = data + 44;
 			char *end = NULL;
 			int i = 0;
@@ -1583,21 +1569,69 @@ void *handle_skinny2(pcap_pkthdr *header, const u_char *packet, unsigned int sad
 				cur = end + 1;
 				i++;
 			}
+			char *callingParty, *calledParty, *callingPartyName, *calledPartyName;
 
-	/*
-			printf("callingParty[%s] [%d]\n", strings[0], req.len);
-			printf("calledParty[%s] [%d]\n", strings[1], req.len);
-			printf("callingPartyName[%s] [%d]\n", strings[8], req.len);
-			printf("calledPartyName[%s] [%d]\n", strings[9], req.len);
-	*/
+			if(req.res == 0) {
+				/*
+				 BASIC 
+					char callingParty];			0
+					char calledParty];			1
+					char originalCalledParty;		2
+					char lastRedirectingParty;		3
+					char callingPartyVoiceMailbox;		4
+					char calledPartyVoiceMailbox;		5
+					char originalCalledPartyVoiceMailbox;	6
+					char lastRedirectingVoiceMailbox;	7
+					char callingPartyName;			8
+					char calledPartyName;			9
+					char originalCalledPartyName;	       10
+					char lastRedirectingPartyName;	       11
+				*/
+				callingParty = strings[0];
+				calledParty = strings[1];
+				callingPartyName = strings[8];
+				calledPartyName = strings[9];
+			} if(req.res == 20) {
+				 /* CM7 
+					char callingParty];			0
+					char callingPartyVoiceMailbox;		1
+					char calledParty];			2
+					char originalCalledParty;		3
+					char lastRedirectingParty;		4
+					char calledPartyVoiceMailbox;		5
+					char originalCalledPartyVoiceMailbox;	6
+					char lastRedirectingVoiceMailbox;	7
+					char callingPartyName;			8
+					char calledPartyName;			9
+					char originalCalledPartyName;	       10
+					char lastRedirectingPartyName;	       11
+
+				*/
+				callingParty = strings[0];
+				calledParty = strings[2];
+				callingPartyName = strings[8];
+				calledPartyName = strings[9];
+			} else {
+				if(verbosity > 0)
+					syslog(LOG_NOTICE, "Unsupported header version CM5CALL_INFO_MESSAGE:[%x]\n", req.res);
+				break;
+			}
+
+
+#if 0
+			printf("callingParty[%s] [%d]\n", callingParty, req.len);
+			printf("calledParty[%s] [%d]\n", calledParty, req.len);
+			printf("callingPartyName[%s] [%d]\n", callingPartyName, req.len);
+			printf("calledPartyName[%s] [%d]\n", calledPartyName, req.len);
+#endif
 
 
 			if(i > 0) 
-				memcpy(call->called, strings[0], strlen(strings[0]) + 1);
+				memcpy(call->called, callingParty, strlen(callingParty) + 1);
 			if(i > 1) 
-				memcpy(call->caller, strings[1], strlen(strings[1]) + 1);
+				memcpy(call->caller, calledParty, strlen(calledParty) + 1);
 			if(i > 8) 
-				memcpy(call->callername, strings[8], strlen(strings[8]) + 1);
+				memcpy(call->callername, callingPartyName, strlen(callingPartyName) + 1);
 
 			save_packet(call, header, packet, saddr, source, daddr, dest, 1, data, datalen, TYPE_SKINNY);
 		}
