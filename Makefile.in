@@ -162,7 +162,7 @@ targz64: static
 	cp voipmonitor /tmp/voipmonitor-amd64-${version}-static/usr/local/sbin/
 	chmod +x /tmp/voipmonitor-amd64-${version}-static/usr/local/sbin/voipmonitor
 	mkdir -p /tmp/voipmonitor-amd64-${version}-static/usr/local/share/voipmonitor/audio
-	cp samples/* /tmp/voipmonitor-amd64-${version}-static/usr/local/share/voipmonitor/audio/
+	cp samples/audio/* /tmp/voipmonitor-amd64-${version}-static/usr/local/share/voipmonitor/audio/
 	mkdir -p /tmp/voipmonitor-amd64-${version}-static/etc/init.d
 	cp config/voipmonitor.conf /tmp/voipmonitor-amd64-${version}-static/etc/
 	cp config/init.d/voipmonitor /tmp/voipmonitor-amd64-${version}-static/etc/init.d/
@@ -178,7 +178,7 @@ targz32: static
 	cp voipmonitor /tmp/voipmonitor-i686-${version}-static/usr/local/sbin/
 	chmod +x /tmp/voipmonitor-i686-${version}-static/usr/local/sbin/voipmonitor
 	mkdir -p /tmp/voipmonitor-amd64-${version}-static/usr/local/share/voipmonitor/audio
-	cp samples/* /tmp/voipmonitor-amd64-${version}-static/usr/local/share/voipmonitor/audio/
+	cp samples/audio/* /tmp/voipmonitor-amd64-${version}-static/usr/local/share/voipmonitor/audio/
 	mkdir -p /tmp/voipmonitor-i686-${version}-static/etc/init.d
 	cp config/voipmonitor.conf /tmp/voipmonitor-i686-${version}-static/etc/
 	cp config/init.d/voipmonitor /tmp/voipmonitor-i686-${version}-static/etc/init.d/
