@@ -650,11 +650,13 @@ char * gettag(const void *ptr, unsigned long len, const char *tag, unsigned long
 			}
 		}
 	}
-	if(!positionOK && verbosity > 2 && l > 0) {
-		char tagc[101];
-		strncpy(tagc, rc, min(l, 100ul));
-		tagc[min(l, 100ul)] = 0;
-		syslog(LOG_NOTICE, "bad tag position - tag: %s, content: %s\n", tag, tagc);
+	if(!positionOK) {
+		if(verbosity > 2 && l > 0) {
+			char tagc[101];
+			strncpy(tagc, rc, min(l, 100ul));
+			tagc[min(l, 100ul)] = 0;
+			syslog(LOG_NOTICE, "bad tag position - tag: %s, content: %s\n", tag, tagc);
+		}
 		*gettaglen = 0;
 	} else {
 		*gettaglen = l;
