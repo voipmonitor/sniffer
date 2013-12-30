@@ -2500,17 +2500,22 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 		// REGISTER failed. Check if there is already in register_failed table failed register within last hour 
 
 		if(enableBatchIfPossible && isTypeDb("mysql")) {
+
+			stringstream ssipcallerip;
+			ssipcallerip << htonl(sipcallerip);
+			stringstream ssipcalledip;
+			ssipcalledip << htonl(sipcalledip);
+
 			string q1 = string(
 				"SELECT counter FROM register_failed ") +
-				"WHERE to_num = " + sqlEscapeStringBorder(called) + " AND to_domain = " + sqlEscapeStringBorder(called_domain) + 
-					" AND digestusername = " + sqlEscapeStringBorder(digest_username) + " AND created_at >= SUBTIME(NOW(), '01:00:00') LIMIT 1";
+				"WHERE sipcallerip = " + ssipcallerip.str() + " AND sipcalledip = " + ssipcalledip.str() + " AND created_at >= SUBTIME(NOW(), '01:00:00') LIMIT 1";
 
 			char fname[32];
 			sprintf(fname, "%llu", fname2);
 			string q2 = string(
 				"UPDATE register_failed SET created_at = NOW(), fname = " + sqlEscapeStringBorder(fname) + ", counter = counter + 1 ") +
-				"WHERE to_num = " + sqlEscapeStringBorder(called) + " AND digestusername = " + sqlEscapeStringBorder(digest_username) + 
-					" AND created_at >= SUBTIME(NOW(), '01:00:00')";
+				", to_num = " + sqlEscapeStringBorder(called) + ", from_num = " + sqlEscapeStringBorder(called) + ", digestusername = " + sqlEscapeStringBorder(digest_username) +
+				"WHERE sipcallerip = " + ssipcallerip.str() + " AND sipcalledip = " + ssipcalledip.str() + " AND created_at >= SUBTIME(NOW(), '01:00:00')";
 
 			SqlDb_row reg;
 			reg.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "created_at");
@@ -2522,7 +2527,13 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 			reg.add(sqlEscapeString(contact_num), "contact_num");
 			reg.add(sqlEscapeString(contact_domain), "contact_domain");
 			reg.add(sqlEscapeString(digest_username), "digestusername");
-			reg.add(sqlDbSaveCall->getIdOrInsert(sql_cdr_ua_table, "id", "ua", cdr_ua), "ua_id");
+
+			sqlDbSaveCall->setEnableSqlStringInContent(true);
+
+			reg.add(string("_\\_'SQL'_\\_:") + "getIdOrInsertUA(" + sqlEscapeStringBorder(a_ua) + ")", "ua_id");
+
+//			reg.add(sqlDbSaveCall->getIdOrInsert(sql_cdr_ua_table, "id", "ua", cdr_ua), "ua_id");
+
 			reg.add(fname, "fname");
 			if(opt_id_sensor > -1) {
 				reg.add(opt_id_sensor, "id_sensor");
