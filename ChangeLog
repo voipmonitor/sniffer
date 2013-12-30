@@ -1,3 +1,10 @@
+8.4RC22 30.12.2013
+==================
+- do not parse SIP data after content-lenght = X. This fix was already done but only if verbose > 1 
+- implement new cdr columns - sipcallerport, sipcalledport - if configuration variable cdr_sipport is set to yes
+- implement ITU-T P.862 PESQ. pesq binary must be installed. mos_lqo in voipmonitor.conf must be enabled. in capture rules tables filter_ip or filter_telnum wav and mos_lqo must be anebled - cdr.a_mos_lqo_mult10 and cdr.b_mos_lqo_mult10 added.
+
+
 8.4RC21 19.12.2013
 ==================
 - SCCP: add CM5CALL_INFO_MESSAGE 0x014A type so caller/called numbers are set 
