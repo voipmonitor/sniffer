@@ -70,6 +70,7 @@ and insert them into Call class.
 #include "skinny.h"
 #include "tcpreassembly.h"
 #include "ip_frag.h"
+#include "regcache.h"
 
 extern MirrorIP *mirrorip;
 
@@ -180,6 +181,7 @@ extern TcpReassembly *tcpReassembly;
 extern char ifname[1024];
 extern uint8_t opt_sdp_reverse_ipport;
 extern int opt_fork;
+extern regcache *regfailedcache;
 
 #ifdef QUEUE_MUTEX
 extern sem_t readpacket_thread_semaphore;
@@ -1753,8 +1755,11 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 	*was_rtp = 0;
 
 	// checking and cleaning stuff every 10 seconds (if some packet arrive) 
-if (header->ts.tv_sec - last_cleanup > 10){
+	if (header->ts.tv_sec - last_cleanup > 10){
 		//if(verbosity > 0) syslog(LOG_NOTICE, "Active calls [%d] calls in sql queue [%d] calls in delete queue [%d]\n", (int)calltable->calls_listMAP.size(), (int)calltable->calls_queue.size(), (int)calltable->calls_deletequeue.size());
+
+		regfailedcache->prune(header->ts.tv_sec);
+
 		if(verbosity > 0 && !opt_pcap_queue) {
 			if(opt_dup_check) {
 				syslog(LOG_NOTICE, "Active calls [%d] calls in sql queue [%d] skipped dupe pkts [%u]\n", 

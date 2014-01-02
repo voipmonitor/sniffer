@@ -72,6 +72,7 @@
 #include "http.h"
 #include "ip_frag.h"
 #include "cleanspool.h"
+#include "regcache.h"
 
 #if defined(QUEUE_MUTEX) || defined(QUEUE_NONBLOCK)
 extern "C" {
@@ -260,6 +261,7 @@ int opt_database_backup_pause = 300;
 int opt_database_backup_use_federated = 0;
 string opt_mos_lqo_bin = "pesq";
 string opt_mos_lqo_ref = "/usr/local/share/voipmonitor/audio/mos_lqe_original.wav";
+regcache *regfailedcache;
 
 unsigned int opt_maxpoolsize = 0;
 unsigned int opt_maxpooldays = 0;
@@ -1932,6 +1934,8 @@ int main(int argc, char *argv[]) {
  
 	time(&startTime);
 
+	regfailedcache = new regcache;
+
 /*
 	if(mysql_library_init(0, NULL, NULL)) {
 		fprintf(stderr, "could not initialize MySQL library\n");
@@ -3032,6 +3036,7 @@ int main(int argc, char *argv[]) {
 	}
 	
 	// flush all queues
+
 	Call *call;
 	calltable->cleanup(0);
 	terminating = 1;
@@ -3055,6 +3060,8 @@ int main(int argc, char *argv[]) {
 			delete call;
 			calls--;
 	}
+
+	regfailedcache->prune(0);
 	
 	if(tcpReassembly) {
 		delete tcpReassembly;
@@ -3166,6 +3173,7 @@ int main(int argc, char *argv[]) {
 	clean_tcpstreams();
 	ipfrag_prune(0, 1);
 	freeMemIpacc();
+	delete regfailedcache;
 //	mysql_library_end();
 
 }

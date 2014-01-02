@@ -115,6 +115,8 @@ jitterbuffer/utils.c -text
 /pcap_queue_block.h -text
 /pstat.cpp -text
 /pstat.h -text
+/regcache.cpp -text
+/regcache.h -text
 /rqueue.h -text
 /rtcp.cpp -text
 /rtcp.h -text

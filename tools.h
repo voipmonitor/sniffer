@@ -2,6 +2,10 @@
 #define TOOLS_H
 
 #include <string>
+#include <vector>
+#include <sstream>
+#include <utility>
+
 #include <sys/types.h>
 #include <pcap.h>
 
@@ -33,7 +37,8 @@ unsigned int getNumberOfDayToNow(const char *date);
 string getActDateTimeF();
 int get_unix_tid(void);
 unsigned long getUptime();
-
+std::vector<std::string> &split(const std::string &s, char delim, std::vector<std::string> &elems);
+std::vector<std::string> split(const std::string &s, char delim);
 
 class CircularBuffer
 {

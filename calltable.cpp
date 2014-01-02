@@ -50,6 +50,7 @@
 #include "rtcp.h"
 #include "ipaccount.h"
 #include "cleanspool.h"
+#include "regcache.h"
 
 
 #define MIN(x,y) ((x) < (y) ? (x) : (y))
@@ -112,6 +113,7 @@ extern int opt_mosmin_f2;
 extern string opt_mos_lqo_bin;
 extern string opt_mos_lqo_ref;
 extern int opt_mos_lqo;
+extern regcache *regfailedcache;
 
 volatile int calls = 0;
 
@@ -2319,13 +2321,16 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 		}
 	} else if((last_register_clean + REGISTER_CLEAN_PERIOD) < now){
 		// last clean was done older than CLEAN_PERIOD seconds
-		query = "INSERT INTO register_state (created_at, sipcallerip, from_num, to_num, to_domain, contact_num, contact_domain, digestusername, expires, state, ua_id) SELECT expires_at, sipcallerip, from_num, to_num, to_domain, contact_num, contact_domain, digestusername, expires, 5, ua_id FROM register WHERE expires_at <= NOW()";
+		stringstream calldate;
+		calldate << calltime();
+
+		query = "INSERT INTO register_state (created_at, sipcallerip, from_num, to_num, to_domain, contact_num, contact_domain, digestusername, expires, state, ua_id) SELECT expires_at, sipcallerip, from_num, to_num, to_domain, contact_num, contact_domain, digestusername, expires, 5, ua_id FROM register WHERE expires_at <= FROM_UNIXTIME(" + calldate.str() + ")";
 		if(enableBatchIfPossible && isTypeDb("mysql")) {
 			qp = query + "; ";
 			if(opt_sip_register_active_nologbin) {
 				qp += "SET sql_log_bin = 0; ";
 			}
-			qp += "DELETE FROM register WHERE expires_at <= NOW(); ";
+			qp += "DELETE FROM register WHERE expires_at <= FROM_UNIXTIME(" + calldate.str() + "); ";
 			if(opt_sip_register_active_nologbin) {
 				qp += "SET sql_log_bin = 1 ";
 			}
@@ -2335,7 +2340,7 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 			if(opt_sip_register_active_nologbin && isTypeDb("mysql")) {
 				sqlDbSaveCall->query("SET sql_log_bin = 0");
 			}
-			sqlDbSaveCall->query("DELETE FROM register WHERE expires_at <= NOW()");
+			sqlDbSaveCall->query("DELETE FROM register WHERE expires_at <= FROM_UNIXTIME("+ calldate.str() + ")");
 			if(opt_sip_register_active_nologbin && isTypeDb("mysql")) {
 				sqlDbSaveCall->query("SET sql_log_bin = 1");
 			}
@@ -2506,16 +2511,28 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 			stringstream ssipcalledip;
 			ssipcalledip << htonl(sipcalledip);
 
+			unsigned int count = 1;
+			int res = regfailedcache->check(htonl(sipcallerip), htonl(sipcalledip), calltime(), &count);
+			if(res) {
+				break;
+			}
+
+			stringstream cnt;
+			cnt << count;
+
+			stringstream calldate;
+			calldate << calltime();
+
 			string q1 = string(
 				"SELECT counter FROM register_failed ") +
-				"WHERE sipcallerip = " + ssipcallerip.str() + " AND sipcalledip = " + ssipcalledip.str() + " AND created_at >= SUBTIME(NOW(), '01:00:00') LIMIT 1";
+				"WHERE sipcallerip = " + ssipcallerip.str() + " AND sipcalledip = " + ssipcalledip.str() + " AND created_at >= SUBTIME(FROM_UNIXTIME(" + calldate.str() + "), '01:00:00') LIMIT 1";
 
 			char fname[32];
 			sprintf(fname, "%llu", fname2);
 			string q2 = string(
-				"UPDATE register_failed SET created_at = NOW(), fname = " + sqlEscapeStringBorder(fname) + ", counter = counter + 1 ") +
+				"UPDATE register_failed SET created_at = FROM_UNIXTIME(" + calldate.str() + "), fname = " + sqlEscapeStringBorder(fname) + ", counter = counter + " + cnt.str()) +
 				", to_num = " + sqlEscapeStringBorder(called) + ", from_num = " + sqlEscapeStringBorder(called) + ", digestusername = " + sqlEscapeStringBorder(digest_username) +
-				"WHERE sipcallerip = " + ssipcallerip.str() + " AND sipcalledip = " + ssipcalledip.str() + " AND created_at >= SUBTIME(NOW(), '01:00:00')";
+				"WHERE sipcallerip = " + ssipcallerip.str() + " AND sipcalledip = " + ssipcalledip.str() + " AND created_at >= SUBTIME(FROM_UNIXTIME(" + calldate.str() + "), '01:00:00')";
 
 			SqlDb_row reg;
 			reg.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "created_at");
