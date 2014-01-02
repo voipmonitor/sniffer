@@ -65,6 +65,8 @@ regcache::prune(unsigned int timestamp) {
 			mysqlquerypush(query);
 
 			regcache_buffer.erase(iter++);
+		} else {
+			iter++;
 		}
 	}
 }

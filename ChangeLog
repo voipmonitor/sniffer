@@ -1,3 +1,7 @@
+8.4RC23 2.1.2013
+================
+- cache register_failed queries to not flood mysql database in case of register failed flood attack
+
 8.4RC22 30.12.2013
 ==================
 - do not parse SIP data after content-lenght = X. This fix was already done but only if verbose > 1 
