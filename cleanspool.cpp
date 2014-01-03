@@ -1111,8 +1111,8 @@ bool check_exists_act_records_in_files() {
 	}
 	char id_sensor_str[10];
 	sprintf(id_sensor_str, "%i", opt_id_sensor > 0 ? opt_id_sensor : 0);
-	sqlDbCleanspool->query(string("select max(calldate) as max_calldate from cdr ") +
-			       "where id_sensor " + (opt_id_sensor > 0 ? string("=") + id_sensor_str : "is null"));
+	sqlDbCleanspool->query(string("select max(calldate) as max_calldate from cdr where calldate > date_add(now(), interval -1 day) and ") +
+			       "id_sensor " + (opt_id_sensor > 0 ? string("=") + id_sensor_str : "is null"));
 	SqlDb_row row = sqlDbCleanspool->fetchRow();
 	if(!row || !row["max_calldate"].length()) {
 		return(true);
