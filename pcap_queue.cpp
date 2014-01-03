@@ -75,6 +75,7 @@ extern char opt_mirrorip_src[20];
 extern char opt_mirrorip_dst[20];
 extern int opt_enable_tcpreassembly;
 extern int opt_tcpreassembly_pb_lock;
+extern int opt_fork;
 
 extern pcap_t *handle;
 extern char *sipportmatrix;
@@ -1332,6 +1333,15 @@ bool PcapQueue_readFromInterface_base::startCapture() {
 	}
 	if((status = pcap_activate(this->pcapHandle)) != 0) {
 		syslog(LOG_ERR, "packetbuffer - %s: libpcap error: %s", this->getInterfaceName().c_str(), pcap_geterr(this->pcapHandle)); 
+		if(opt_fork) {
+			extern char daemonizeErrorTempFileName[L_tmpnam+1];
+			extern pthread_mutex_t daemonizeErrorTempFileLock;
+			pthread_mutex_lock(&daemonizeErrorTempFileLock);
+			ofstream daemonizeErrorStream(daemonizeErrorTempFileName, ofstream::out | ofstream::app);
+			daemonizeErrorStream << this->getInterfaceName() << ": libpcap error: " << pcap_geterr(this->pcapHandle) << endl;
+			daemonizeErrorStream.close();
+			pthread_mutex_unlock(&daemonizeErrorTempFileLock);
+		}
 		return(false);
 	}
 	if(opt_mirrorip) {

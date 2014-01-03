@@ -923,13 +923,29 @@ void *storing_cdr( void *dummy ) {
 	return NULL;
 }
 
+char daemonizeErrorTempFileName[L_tmpnam+1];
+pthread_mutex_t daemonizeErrorTempFileLock;
+
 static void daemonize(void)
 {
+ 
+	tmpnam(daemonizeErrorTempFileName);
+	pthread_mutex_init(&daemonizeErrorTempFileLock, NULL);
+ 
 	pid_t pid;
 
 	pid = fork();
 	if (pid) {
 		// parent
+		sleep(5);
+		FILE *daemonizeErrorFile = fopen(daemonizeErrorTempFileName, "r");
+		if(daemonizeErrorFile) {
+			char buff[1024];
+			while(fgets(buff, sizeof(buff), daemonizeErrorFile)) {
+				cout << buff;
+			}
+			unlink(daemonizeErrorTempFileName);
+		}
 		exit(0);
 	} else {
 		// child
