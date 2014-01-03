@@ -569,11 +569,6 @@ Call::read_rtp(unsigned char* data, int datalen, struct pcap_pkthdr *header, str
 		return;
 	}
 
-	// chekc if packet is DTMF and saverfc2833 is enabled 
-	if(opt_saverfc2833 and curpayload == 101) {
-		*record = 1;
-	}
-
 	if(opt_dscp) {
 		if(!header_ip) {
 			header_ip = (struct iphdr2 *)(data - sizeof(struct iphdr2) - sizeof(udphdr2));
@@ -590,18 +585,37 @@ Call::read_rtp(unsigned char* data, int datalen, struct pcap_pkthdr *header, str
 	for(int i = 0; i < ssrc_n; i++) {
 		if(rtp[i]->ssrc2 == curSSRC) {
 			// found 
+			// chekc if packet is DTMF and saverfc2833 is enabled 
+			if(opt_saverfc2833 and rtp[i]->codec == PAYLOAD_TELEVENT) {
+				*record = 1;
+			}
 			// check if codec did not changed but ignore payload 13 and 19 which is CNG and 101 which is DTMF
-			if(curpayload == 13 or curpayload == 19 or curpayload == 101 or rtp[i]->payload2 == curpayload) {
-				rtp[i]->read(data, datalen, header, saddr, daddr, seeninviteok);
-				if(iscaller) {
-					lastcallerrtp = rtp[i];
-				} else {
-					lastcalledrtp = rtp[i];
-				}
-				return;
+			if(curpayload == 13 or curpayload == 19 or rtp[i]->codec == PAYLOAD_TELEVENT or rtp[i]->payload2 == curpayload) {
+				goto read;
 			} else {
-				//codec changed, reset ssrc so the stream will not match and new one is used
-				rtp[i]->ssrc2 = 0;
+				//codec changed, check if it is not DTMF 
+				if(curpayload >= 96 && curpayload <= 127) {
+					for(int j = 0; j < MAX_RTPMAP; j++) {
+						if(rtp[i]->rtpmap[j] != 0 && curpayload == rtp[i]->rtpmap[j] / 1000) {
+							rtp[i]->codec = rtp[i]->rtpmap[j] - curpayload * 1000;
+						}      
+					}      
+				} else {
+					rtp[i]->codec = curpayload;
+				}
+				if(rtp[i]->codec == PAYLOAD_TELEVENT) {
+read:
+					rtp[i]->read(data, datalen, header, saddr, daddr, seeninviteok);
+					if(iscaller) {
+						lastcallerrtp = rtp[i];
+					} else {
+						lastcalledrtp = rtp[i];
+					}
+					return;
+				} else {
+					//codec changed and it is not DTMF, reset ssrc so the stream will not match and new one is used
+					rtp[i]->ssrc2 = 0;
+				}
 			}
 		}
 	}
@@ -670,6 +684,18 @@ Call::read_rtp(unsigned char* data, int datalen, struct pcap_pkthdr *header, str
 		rtp[ssrc_n]->read(data, datalen, header, saddr, daddr, seeninviteok);
 		this->rtp[ssrc_n]->ssrc = this->rtp[ssrc_n]->ssrc2 = curSSRC;
 		this->rtp[ssrc_n]->payload2 = curpayload;
+
+		//set codec
+                if(curpayload >= 96 && curpayload <= 127) {
+                        for(int i = 0; i < MAX_RTPMAP; i++) {
+                                if(this->rtp[ssrc_n]->rtpmap[i] != 0 && curpayload == this->rtp[ssrc_n]->rtpmap[i] / 1000) {
+                                        this->rtp[ssrc_n]->codec = this->rtp[ssrc_n]->rtpmap[i] - curpayload * 1000;
+                                }      
+                        }      
+                } else {
+                        this->rtp[ssrc_n]->codec = curpayload;
+                }
+		
 		if(iscaller) {
 			lastcallerrtp = rtp[ssrc_n];
 		} else {

@@ -171,6 +171,7 @@ public:
 	int packetization_iterator;	
 	int payload;
 	int prev_payload;
+	int prev_codec;
 	int payload2;
 	int codec;
 	int rtpmap[MAX_RTPMAP];

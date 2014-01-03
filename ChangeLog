@@ -1,3 +1,14 @@
+8.4RC24 3.1.2014
+================
+- fix memory leak in adaptive jitterbuffer if it is reset (leak since 8.4RC versions) 
+- DTMF events are not always 101 - take it from the SDP which fixes audio sync and g729 garble issues and many graph files in case telephone events payload is not 101 (typically 100) 
+
+
+8.4RC23 2.1.2014
+================
+- cache register_failed queries to not flood mysql database in case of register failed flood attack
+
+
 8.4RC22 30.12.2013
 ==================
 - do not parse SIP data after content-lenght = X. This fix was already done but only if verbose > 1 

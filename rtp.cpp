@@ -208,6 +208,7 @@ RTP::RTP()
 	packetization_iterator = 0;
 	payload = -1;
 	prev_payload = -1;
+	prev_codec = -1;
 	payload2 = -1;
 	codec = -1;
 	for(int i = 0; i < MAX_RTPMAP; i++) {
@@ -243,6 +244,7 @@ RTP::~RTP() {
 	delete s;
 	ast_jb_destroy(channel_fix1);
 	ast_jb_destroy(channel_fix2);
+	printf("destroy %x\n", channel_adapt);
 	ast_jb_destroy(channel_adapt);
 	ast_jb_destroy(channel_record);
 	free(channel_fix1);
@@ -340,6 +342,9 @@ RTP::jt_tail(struct pcap_pkthdr *header) {
 /* simulate jitterbuffer */
 void
 RTP::jitterbuffer(struct ast_channel *channel, int savePayload) {
+
+	if(codec == PAYLOAD_TELEVENT) return;
+
 	Call *owner = (Call*)call_owner;
 	if(owner and savePayload and owner->silencerecording) {
 		// skip recording 
@@ -626,6 +631,19 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 	int curpayload = getPayload();
 //	printf("p[%d]\n", curpayload);
 
+	if((codec == -1 || (curpayload != prev_payload))) {
+		if(curpayload >= 96 && curpayload <= 127) {
+			/* for dynamic payload we look into rtpmap */
+			for(int i = 0; i < MAX_RTPMAP; i++) {
+				if(rtpmap[i] != 0 && curpayload == rtpmap[i] / 1000) {
+					codec = rtpmap[i] - curpayload * 1000;
+				}
+			}
+		} else {
+			codec = curpayload;
+		}
+	}
+
 	/* in case there was packet loss we must predict lastTimeStamp to not add nonexistant delays */
 	forcemark = 0;
 	if(last_seq != 0 and ((last_seq + 1) != seq)) {
@@ -717,22 +735,12 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 		s->max_seq = seq;
 	}
 
-	if(curpayload == 101) {
+	if(codec == PAYLOAD_TELEVENT) {
 		process_dtmf_rfc2833();
 	}
 	
 	/* codec changed */
-	if((codec == -1 || (curpayload != prev_payload)) && (curpayload != 101 && prev_payload != 101)) {
-		if(curpayload >= 96 && curpayload <= 127) {
-			/* for dynamic payload we look into rtpmap */
-			for(int i = 0; i < MAX_RTPMAP; i++) {
-				if(rtpmap[i] != 0 && curpayload == rtpmap[i] / 1000) {
-					codec = rtpmap[i] - curpayload * 1000;
-				}
-			}
-		} else {
-			codec = curpayload;
-		}
+	if(curpayload != prev_payload and codec != PAYLOAD_TELEVENT and prev_codec != PAYLOAD_TELEVENT) {
 		switch(codec) {
 		case PAYLOAD_SILK12:
 		case PAYLOAD_OPUS12:
@@ -825,173 +833,131 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 		}
 	}
 
-	if(payload < 0 && curpayload != 101) {
+	if(payload < 0 && codec != PAYLOAD_TELEVENT) {
 		/* save payload to statistics based on first payload. TODO: what if payload is dynamically changing? */
 		payload = curpayload;
 	}
 
-	if(curpayload == 101) {
+	if(codec == PAYLOAD_TELEVENT) {
 		frame->frametype = AST_FRAME_DTMF;
 	} else {
 		frame->frametype = AST_FRAME_VOICE;
 	}
 	frame->lastframetype = (enum ast_frame_type)(lastframetype);
 
-// voipmonitor now handles RTP streams including progress  XXX: remove this comment if it will be confirmed stable enough
-//	if(seeninviteok) {
-
-
-		if(packetization_iterator == 0 || packetization_iterator == 1) {
-			// we dont know packetization yet. Behave differently n G723 codec 
-			if(curpayload == PAYLOAD_G723) {
-				default_packetization = 30;
-				/* check if RTP packet is not Silence packet (SID). Silence packets can have different
-				   packetization and if call starts with SID packets it will guess wrong packetization.
-				   typical sitation is for 60ms packetization and 30ms SID packetization */
-				payload_data = data + sizeof(RTPFixedHeader);
-				sid = (unsigned char)payload_data[0] & 2;
+	if(packetization_iterator == 0 || packetization_iterator == 1) {
+		// we dont know packetization yet. Behave differently n G723 codec 
+		if(curpayload == PAYLOAD_G723) {
+			default_packetization = 30;
+			/* check if RTP packet is not Silence packet (SID). Silence packets can have different
+			   packetization and if call starts with SID packets it will guess wrong packetization.
+			   typical sitation is for 60ms packetization and 30ms SID packetization */
+			payload_data = data + sizeof(RTPFixedHeader);
+			sid = (unsigned char)payload_data[0] & 2;
+		} else {
+			sid = false;
+			default_packetization = 20;
+		}
+	}
+	if(packetization_iterator == 0) {
+		if(last_ts != 0 && seq == (last_seq + 1) && (prev_codec != PAYLOAD_TELEVENT && codec != PAYLOAD_TELEVENT) && !sid && !prev_sid) {
+			// sequence numbers are ok, we can calculate packetization
+			if(curpayload == PAYLOAD_G729) {
+				// if G729 packet len is 20, packet len is 20ms. In other cases - will be added later (do not have 40ms packetizations samples right now)
+				if(get_payload_len() == 20) {
+					packetization = 20;
+				} else {
+					packetization = (getTimestamp() - last_ts) / 8;
+				}
 			} else {
-				sid = false;
-				default_packetization = 20;
+				packetization = (getTimestamp() - last_ts) / 8;
+			}
+			if(packetization > 0) {
+				last_packetization = packetization;
+				packetization_iterator++;
 			}
 		}
-		if(packetization_iterator == 0) {
-			if(last_ts != 0 && seq == (last_seq + 1) && (prev_payload != 101 && curpayload != 101) && !sid && !prev_sid) {
-				// sequence numbers are ok, we can calculate packetization
-				if(curpayload == PAYLOAD_G729) {
-					// if G729 packet len is 20, packet len is 20ms. In other cases - will be added later (do not have 40ms packetizations samples right now)
-					if(get_payload_len() == 20) {
-						packetization = 20;
-					} else {
-						packetization = (getTimestamp() - last_ts) / 8;
-					}
-				} else {
-					packetization = (getTimestamp() - last_ts) / 8;
-				}
-				if(packetization > 0) {
-					last_packetization = packetization;
-					packetization_iterator++;
-				}
-			}
 
 #if 1
-			// new way of getting packetization from packet datalen 
-			if(curpayload == PAYLOAD_PCMU or curpayload == PAYLOAD_PCMA) {
+		// new way of getting packetization from packet datalen 
+		if(curpayload == PAYLOAD_PCMU or curpayload == PAYLOAD_PCMA) {
 
-				channel_fix1->packetization = default_packetization = 
-					channel_fix2->packetization = channel_adapt->packetization = 
-					channel_record->packetization = packetization = get_payload_len() / 8;
+			channel_fix1->packetization = default_packetization = 
+				channel_fix2->packetization = channel_adapt->packetization = 
+				channel_record->packetization = packetization = get_payload_len() / 8;
 
-				if(packetization >= 10) {
-					if(verbosity > 3) printf("packetization:[%d] ssrc[%x]\n", packetization, getSSRC());
+			if(packetization >= 10) {
+				if(verbosity > 3) printf("packetization:[%d] ssrc[%x]\n", packetization, getSSRC());
 
-					packetization_iterator = 10; // this will cause that packetization is estimated as final
+				packetization_iterator = 10; // this will cause that packetization is estimated as final
 
-					if(opt_jitterbuffer_f1)
-						jitterbuffer(channel_fix1, 0);
-					if(opt_jitterbuffer_f2)
-						jitterbuffer(channel_fix2, 0);
-					if(opt_jitterbuffer_adapt)
-						jitterbuffer(channel_adapt, 0);
-				} 
-
+				if(opt_jitterbuffer_f1)
+					jitterbuffer(channel_fix1, 0);
+				if(opt_jitterbuffer_f2)
+					jitterbuffer(channel_fix2, 0);
+				if(opt_jitterbuffer_adapt)
+					jitterbuffer(channel_adapt, 0);
 			} 
 
-			// new way of getting packetization from packet datalen 
-			if(curpayload == PAYLOAD_GSM) {
+		} 
 
-				channel_fix1->packetization = default_packetization = 
-					channel_fix2->packetization = channel_adapt->packetization = 
-					channel_record->packetization = packetization = get_payload_len() / 33 * 20;
+		// new way of getting packetization from packet datalen 
+		if(curpayload == PAYLOAD_GSM) {
 
-				if(packetization >= 10) {
-					if(verbosity > 3) printf("packetization:[%d] ssrc[%x]\n", packetization, getSSRC());
+			channel_fix1->packetization = default_packetization = 
+				channel_fix2->packetization = channel_adapt->packetization = 
+				channel_record->packetization = packetization = get_payload_len() / 33 * 20;
 
-					packetization_iterator = 10; // this will cause that packetization is estimated as final
+			if(packetization >= 10) {
+				if(verbosity > 3) printf("packetization:[%d] ssrc[%x]\n", packetization, getSSRC());
 
-					if(opt_jitterbuffer_f1)
-						jitterbuffer(channel_fix1, 0);
-					if(opt_jitterbuffer_f2)
-						jitterbuffer(channel_fix2, 0);
-					if(opt_jitterbuffer_adapt)
-						jitterbuffer(channel_adapt, 0);
-				} 
+				packetization_iterator = 10; // this will cause that packetization is estimated as final
 
+				if(opt_jitterbuffer_f1)
+					jitterbuffer(channel_fix1, 0);
+				if(opt_jitterbuffer_f2)
+					jitterbuffer(channel_fix2, 0);
+				if(opt_jitterbuffer_adapt)
+					jitterbuffer(channel_adapt, 0);
 			} 
+
+		} 
 #endif
 
-			/* for recording, we cannot loose any packet */
-			if(opt_saveRAW || opt_savewav_force || (owner->flags & FLAG_SAVEWAV) || (owner && (owner->audiobuffer1 || owner->audiobuffer2))) { // if recording requested 
-				if(packetization < 10) {
-					packetization = channel_record->packetization = default_packetization;
-				}
-				if(owner->flags & FLAG_RUNAMOSLQO or owner->flags & FLAG_RUNBMOSLQO) {
-					if(owner->connect_time) {
-						jitterbuffer(channel_record, opt_saveRAW || opt_savewav_force || (owner->flags & FLAG_SAVEWAV) || (owner && (owner->audiobuffer1 || owner->audiobuffer2)));
-					}
-				} else {
+		/* for recording, we cannot loose any packet */
+		if(opt_saveRAW || opt_savewav_force || (owner->flags & FLAG_SAVEWAV) || (owner && (owner->audiobuffer1 || owner->audiobuffer2))) { // if recording requested 
+			if(packetization < 10) {
+				packetization = channel_record->packetization = default_packetization;
+			}
+			if(owner->flags & FLAG_RUNAMOSLQO or owner->flags & FLAG_RUNBMOSLQO) {
+				if(owner->connect_time) {
 					jitterbuffer(channel_record, opt_saveRAW || opt_savewav_force || (owner->flags & FLAG_SAVEWAV) || (owner && (owner->audiobuffer1 || owner->audiobuffer2)));
 				}
+			} else {
+				jitterbuffer(channel_record, opt_saveRAW || opt_savewav_force || (owner->flags & FLAG_SAVEWAV) || (owner && (owner->audiobuffer1 || owner->audiobuffer2)));
 			}
-		} else if(packetization_iterator == 1) {
-			if(last_ts != 0 && seq == (last_seq + 1) && curpayload != 101 && prev_payload != 101 && !sid && !prev_sid) {
-				// sequence numbers are ok, we can calculate packetization
-				if(curpayload == PAYLOAD_G729) {
-					// if G729 packet len is 20, packet len is 20ms. In other cases - will be added later (do not have 40ms packetizations samples right now)
-					if(get_payload_len() == 20) {
-						packetization = 20;
-					} else {
-						packetization = (getTimestamp() - last_ts) / 8;
-					}
+		}
+	} else if(packetization_iterator == 1) {
+		if(last_ts != 0 && seq == (last_seq + 1) && codec != PAYLOAD_TELEVENT && prev_codec != PAYLOAD_TELEVENT && !sid && !prev_sid) {
+			// sequence numbers are ok, we can calculate packetization
+			if(curpayload == PAYLOAD_G729) {
+				// if G729 packet len is 20, packet len is 20ms. In other cases - will be added later (do not have 40ms packetizations samples right now)
+				if(get_payload_len() == 20) {
+					packetization = 20;
 				} else {
 					packetization = (getTimestamp() - last_ts) / 8;
 				}
-
-				// now make packetization average
-				packetization = (packetization + last_packetization) / 2;
-
-				if(packetization <= 0 or getMarker()) {
-					// packetization failed or Marker bit is set, fall back to start
-					packetization_iterator = 0;
-
-					/* for recording, we cannot loose any packet */
-					if(opt_saveRAW || opt_savewav_force || (owner->flags & FLAG_SAVEWAV) ||
-						(owner && (owner->audiobuffer1 || owner->audiobuffer2))// if recording requested 
-					){
-						packetization = channel_record->packetization = default_packetization;
-						if(owner->flags & FLAG_RUNAMOSLQO or owner->flags & FLAG_RUNBMOSLQO) {
-							if(owner->connect_time) {
-								jitterbuffer(channel_record, 1);
-							}
-						} else {
-							jitterbuffer(channel_record, 1);
-						}
-					}
-				} else {
-					packetization_iterator++;
-					channel_fix1->packetization = channel_fix2->packetization = channel_adapt->packetization = channel_record->packetization = packetization;
-					if(verbosity > 3) printf("[%x] packetization:[%d]\n", getSSRC(), packetization);
-
-					if(opt_jitterbuffer_f1)
-						jitterbuffer(channel_fix1, 0);
-					if(opt_jitterbuffer_f2)
-						jitterbuffer(channel_fix2, 0);
-					if(opt_jitterbuffer_adapt)
-						jitterbuffer(channel_adapt, 0);
-					if(opt_saveRAW || opt_savewav_force || (owner->flags & FLAG_SAVEWAV) ||
-						(owner && (owner->audiobuffer1 || owner->audiobuffer2))// if recording requested 
-					){
-						if(owner->flags & FLAG_RUNAMOSLQO or owner->flags & FLAG_RUNBMOSLQO) {
-							if(owner->connect_time) {
-								jitterbuffer(channel_record, 1);
-							}
-						} else {
-							jitterbuffer(channel_record, 1);
-						}
-					}
-				}
 			} else {
+				packetization = (getTimestamp() - last_ts) / 8;
+			}
+
+			// now make packetization average
+			packetization = (packetization + last_packetization) / 2;
+
+			if(packetization <= 0 or getMarker()) {
+				// packetization failed or Marker bit is set, fall back to start
 				packetization_iterator = 0;
+
 				/* for recording, we cannot loose any packet */
 				if(opt_saveRAW || opt_savewav_force || (owner->flags & FLAG_SAVEWAV) ||
 					(owner && (owner->audiobuffer1 || owner->audiobuffer2))// if recording requested 
@@ -1005,25 +971,36 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 						jitterbuffer(channel_record, 1);
 					}
 				}
-			}
-		} else {
-			if(last_ts != 0 and seq == (last_seq + 1) and curpayload != 101 and !getMarker()) {
-				// packetization can change over time
-				int curpacketization = (getTimestamp() - last_ts) / 8;
-				if(curpacketization % 10 == 0 and curpacketization >= 20 and curpacketization <= 120) {
-					channel_fix1->packetization = channel_fix2->packetization = channel_adapt->packetization = channel_record->packetization = packetization = curpacketization;
+			} else {
+				packetization_iterator++;
+				channel_fix1->packetization = channel_fix2->packetization = channel_adapt->packetization = channel_record->packetization = packetization;
+				if(verbosity > 3) printf("[%x] packetization:[%d]\n", getSSRC(), packetization);
+
+				if(opt_jitterbuffer_f1)
+					jitterbuffer(channel_fix1, 0);
+				if(opt_jitterbuffer_f2)
+					jitterbuffer(channel_fix2, 0);
+				if(opt_jitterbuffer_adapt)
+					jitterbuffer(channel_adapt, 0);
+				if(opt_saveRAW || opt_savewav_force || (owner->flags & FLAG_SAVEWAV) ||
+					(owner && (owner->audiobuffer1 || owner->audiobuffer2))// if recording requested 
+				){
+					if(owner->flags & FLAG_RUNAMOSLQO or owner->flags & FLAG_RUNBMOSLQO) {
+						if(owner->connect_time) {
+							jitterbuffer(channel_record, 1);
+						}
+					} else {
+						jitterbuffer(channel_record, 1);
+					}
 				}
 			}
-			//printf("packetization [%d]\n", packetization);
-			if(opt_jitterbuffer_f1)
-				jitterbuffer(channel_fix1, 0);
-			if(opt_jitterbuffer_f2)
-				jitterbuffer(channel_fix2, 0);
-			if(opt_jitterbuffer_adapt)
-				jitterbuffer(channel_adapt, 0);
+		} else {
+			packetization_iterator = 0;
+			/* for recording, we cannot loose any packet */
 			if(opt_saveRAW || opt_savewav_force || (owner->flags & FLAG_SAVEWAV) ||
 				(owner && (owner->audiobuffer1 || owner->audiobuffer2))// if recording requested 
 			){
+				packetization = channel_record->packetization = default_packetization;
 				if(owner->flags & FLAG_RUNAMOSLQO or owner->flags & FLAG_RUNBMOSLQO) {
 					if(owner->connect_time) {
 						jitterbuffer(channel_record, 1);
@@ -1033,8 +1010,36 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 				}
 			}
 		}
-//	}
+	} else {
+		if(last_ts != 0 and seq == (last_seq + 1) and codec != PAYLOAD_TELEVENT and !getMarker()) {
+			// packetization can change over time
+			int curpacketization = (getTimestamp() - last_ts) / 8;
+			if(curpacketization % 10 == 0 and curpacketization >= 20 and curpacketization <= 120) {
+				channel_fix1->packetization = channel_fix2->packetization = channel_adapt->packetization = channel_record->packetization = packetization = curpacketization;
+			}
+		}
+		//printf("packetization [%d]\n", packetization);
+		if(opt_jitterbuffer_f1)
+			jitterbuffer(channel_fix1, 0);
+		if(opt_jitterbuffer_f2)
+			jitterbuffer(channel_fix2, 0);
+		if(opt_jitterbuffer_adapt)
+			jitterbuffer(channel_adapt, 0);
+		if(opt_saveRAW || opt_savewav_force || (owner->flags & FLAG_SAVEWAV) ||
+			(owner && (owner->audiobuffer1 || owner->audiobuffer2))// if recording requested 
+		){
+			if(owner->flags & FLAG_RUNAMOSLQO or owner->flags & FLAG_RUNBMOSLQO) {
+				if(owner->connect_time) {
+					jitterbuffer(channel_record, 1);
+				}
+			} else {
+				jitterbuffer(channel_record, 1);
+			}
+		}
+	}
+
 	prev_payload = curpayload;
+	prev_codec = codec;
 	prev_sid = sid;
 
 	if(getMarker()) {
@@ -1081,14 +1086,14 @@ RTP::update_stats() {
 	struct timeval tsdiff;	
 	double tsdiff2;
 
-
 //	printf("seq[%d] lseq[%d] lost[%d], ((s->cycles[%d] + s->max_seq[%d] - (s->base_seq[%d] + 1)) - s->received[%d]);\n", seq, last_seq, lost, s->cycles, s->max_seq, s->base_seq, s->received);
 
 	Call *owner = (Call*)call_owner;
 
-	/* if payload == 101 (EVENT) dont make delayes on this because it confuses stats */
-	if(getPayload() == 101)
+	/* if payload == PAYLOAD_TELEVENT dont make delayes on this because it confuses stats */
+	if(codec == PAYLOAD_TELEVENT) {
 		return;
+	}
 
 	/* differences between last timestamp and current timestamp (timestamp from ip heade)
 	 * frame1.time - frame0.time */
