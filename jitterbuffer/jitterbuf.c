@@ -73,6 +73,23 @@ static void decrement_losspct(jitterbuf *jb)
 
 void jb_reset(jitterbuf *jb) 
 {
+
+	jb_frame *frame;
+	frame = jb->free;
+	while (frame != NULL) {
+		jb_frame *next = frame->next;
+		free(frame);
+		frame = next;
+	}
+	frame = jb->frames;
+	while (frame != NULL) {
+		jb_frame *next = frame->next;
+		free(frame);
+		frame = next;
+	}
+	jb->free = NULL;
+	jb->frames = NULL;
+
 	/* only save settings */
 	jb_conf s = jb->info.conf;
 	memset(jb, 0, sizeof(*jb));
@@ -87,7 +104,7 @@ jitterbuf * jb_new()
 {
 	jitterbuf *jb;
 
-	if (!(jb = malloc(sizeof(*jb)))) 
+	if (!(jb = calloc(1, sizeof(*jb)))) 
 		return NULL;
 
 	jb_reset(jb);

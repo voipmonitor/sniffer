@@ -926,6 +926,8 @@ int mimeSubtypeToInt(char *mimeSubtype) {
 	       return PAYLOAD_CLEARMODE;
        else if(strcasecmp(mimeSubtype,"OPUS") == 0)
 	       return PAYLOAD_OPUS;
+       else if(strcasecmp(mimeSubtype,"telephone-event") == 0)
+	       return PAYLOAD_TELEVENT;
        else
 	       return 0;
 }
@@ -3286,7 +3288,7 @@ void *pcap_read_thread_func(void *arg) {
 		} else if(header_ip->protocol == IPPROTO_GRE) {
 			// gre protocol 
 			struct gre_hdr *grehdr = (struct gre_hdr *)((char*)header_ip + sizeof(iphdr2));
-			printf("[%d] [%d] [%x]\n", grehdr->version, grehdr->protocol, grehdr->protocol);
+			//printf("[%d] [%d] [%x]\n", grehdr->version, grehdr->protocol, grehdr->protocol);
 			exit(0);
 		}
 
