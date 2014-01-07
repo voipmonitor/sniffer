@@ -1760,8 +1760,6 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 	if (header->ts.tv_sec - last_cleanup > 10){
 		//if(verbosity > 0) syslog(LOG_NOTICE, "Active calls [%d] calls in sql queue [%d] calls in delete queue [%d]\n", (int)calltable->calls_listMAP.size(), (int)calltable->calls_queue.size(), (int)calltable->calls_deletequeue.size());
 
-		regfailedcache->prune(header->ts.tv_sec);
-
 		if(verbosity > 0 && !opt_pcap_queue) {
 			if(opt_dup_check) {
 				syslog(LOG_NOTICE, "Active calls [%d] calls in sql queue [%d] skipped dupe pkts [%u]\n", 

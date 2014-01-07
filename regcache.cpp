@@ -20,6 +20,8 @@ using namespace std;
 int
 regcache::check(unsigned int saddr, unsigned int daddr, unsigned int timestamp, unsigned int *count) {
 
+	lock();
+
 	char buf[32];
 	sprintf(buf, "%uD%u", saddr, daddr);
 	string key = buf;
@@ -33,8 +35,10 @@ regcache::check(unsigned int saddr, unsigned int daddr, unsigned int timestamp, 
 		if(iter->second.timestamp + 1 <= timestamp) {
 			iter->second.counter = 0;
 			iter->second.timestamp = timestamp;
+			unlock();
 			return 0;
 		} else {
+			unlock();
 			return 1;
 		}
 	} else {
@@ -45,12 +49,15 @@ regcache::check(unsigned int saddr, unsigned int daddr, unsigned int timestamp, 
 		regcache_buffer[key] = regcachenode;
 		*count = 1;
 
+		unlock();
 		return 0;
 	}
+	unlock();
 }
 
 void 
 regcache::prune(unsigned int timestamp) {
+	lock();
 	t_regcache_buffer::iterator iter;
 	for(iter = regcache_buffer.begin(); iter != regcache_buffer.end();) {
 		if(timestamp == 0 or timestamp > iter->second.timestamp + 5) {
@@ -69,8 +76,18 @@ regcache::prune(unsigned int timestamp) {
 			iter++;
 		}
 	}
+	unlock();
+}
+
+void
+regcache::prunecheck(unsigned int timestamp) {
+	if(lastprune + 10 < timestamp) {
+		prune(timestamp);
+		lastprune = timestamp;
+	}
 }
 
 regcache::~regcache() {
 	prune(0);
+	pthread_mutex_destroy(&buf_lock);
 }

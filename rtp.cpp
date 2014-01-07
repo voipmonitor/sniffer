@@ -244,7 +244,6 @@ RTP::~RTP() {
 	delete s;
 	ast_jb_destroy(channel_fix1);
 	ast_jb_destroy(channel_fix2);
-	printf("destroy %x\n", channel_adapt);
 	ast_jb_destroy(channel_adapt);
 	ast_jb_destroy(channel_record);
 	free(channel_fix1);

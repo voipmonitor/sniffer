@@ -838,6 +838,7 @@ void *storing_cdr( void *dummy ) {
 				call->convertRawToWav();
 			}
 
+			regfailedcache->prunecheck(call->first_packet_time);
 			if(!opt_nocdr) {
 				if(call->type == INVITE or call->type == SKINNY_NEW) {
 					call->saveToDb(1);
