@@ -3249,12 +3249,12 @@ void dropMysqlPartitionsCdr() {
 		syslog(LOG_NOTICE, "drop old partitions - begin");
 		SqlDb *sqlDb = createSqlObject();
 		sqlDb->setDisableNextAttemptIfError();
-		time_t act_time = time(NULL);
-		time_t next_day_time = act_time - opt_cleandatabase_cdr * 24 * 60 * 60;
-		struct tm *nextDayTime = localtime(&next_day_time);
-		char limitPartName[20] = "";
-		strftime(limitPartName, sizeof(limitPartName), "p%y%m%d", nextDayTime);
 		if(opt_cleandatabase_cdr > 0) {
+			time_t act_time = time(NULL);
+			time_t prev_day_time = act_time - opt_cleandatabase_cdr * 24 * 60 * 60;
+			struct tm *prevDayTime = localtime(&prev_day_time);
+			char limitPartName[20] = "";
+			strftime(limitPartName, sizeof(limitPartName), "p%y%m%d", prevDayTime);
 			vector<string> partitions;
 			if(counterDropPartitions == 0) {
 				sqlDb->query(string("select partition_name from information_schema.partitions where table_schema='") + 
@@ -3281,6 +3281,11 @@ void dropMysqlPartitionsCdr() {
 			}
 		}
 		if(opt_cleandatabase_register_state > 0) {
+			time_t act_time = time(NULL);
+			time_t prev_day_time = act_time - opt_cleandatabase_register_state * 24 * 60 * 60;
+			struct tm *prevDayTime = localtime(&prev_day_time);
+			char limitPartName[20] = "";
+			strftime(limitPartName, sizeof(limitPartName), "p%y%m%d", prevDayTime);
 			vector<string> partitions;
 			if(counterDropPartitions == 0) {
 				sqlDb->query(string("select partition_name from information_schema.partitions where table_schema='") + 
@@ -3298,6 +3303,11 @@ void dropMysqlPartitionsCdr() {
 			}
 		}
 		if(opt_cleandatabase_register_failed > 0) {
+			time_t act_time = time(NULL);
+			time_t prev_day_time = act_time - opt_cleandatabase_register_failed * 24 * 60 * 60;
+			struct tm *prevDayTime = localtime(&prev_day_time);
+			char limitPartName[20] = "";
+			strftime(limitPartName, sizeof(limitPartName), "p%y%m%d", prevDayTime);
 			vector<string> partitions;
 			if(counterDropPartitions == 0) {
 				sqlDb->query(string("select partition_name from information_schema.partitions where table_schema='") + 
