@@ -1,3 +1,12 @@
+8.4RC25 3.1.2014
+================
+- fix clean partitions when opt_cleandatabase is set
+- avoid race condition leading to crash when cleaning regfailed class (since 8.4RC24)
+- print error when any of sniffing interface fails to initialize
+- fix long startup of the sniffer optimizing mysql query checking cleaning 
+- document cdr_sipport option in voipmonitor.conf which was added recently
+
+
 8.4RC24 3.1.2014
 ================
 - fix memory leak in adaptive jitterbuffer if it is reset (leak since 8.4RC versions) 
