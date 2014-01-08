@@ -1457,9 +1457,15 @@ Call::getKeyValCDRtext() {
 		cdr.add(sipcalledport, "sipcalledport");
 	}
 	cdr.add(duration(), "duration");
-	cdr.add(progress_time ? progress_time - first_packet_time : -1, "progress_time");
-	cdr.add(first_rtp_time ? first_rtp_time  - first_packet_time : -1, "first_rtp_time");
-	cdr.add(connect_time ? (duration() - (connect_time - first_packet_time)) : -1, "connect_duration");
+	if(progress_time) {
+		cdr.add(progress_time - first_packet_time, "progress_time");
+	}
+	if(first_rtp_time) {
+		cdr.add(first_rtp_time  - first_packet_time, "first_rtp_time");
+	}
+	if(connect_time) {
+		cdr.add(duration() - (connect_time - first_packet_time), "connect_duration");
+	}
 	cdr.add(sqlDateTimeString(calltime()).c_str(), "calldate");
 	if(opt_callend) {
 		cdr.add(sqlDateTimeString(calltime() + duration()).c_str(), "callend");
@@ -1814,9 +1820,15 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		cdr.add(sipcalledport, "sipcalledport");
 	}
 	cdr.add(duration(), "duration");
-	cdr.add(progress_time ? progress_time - first_packet_time : -1, "progress_time");
-	cdr.add(first_rtp_time ? first_rtp_time  - first_packet_time : -1, "first_rtp_time");
-	cdr.add(connect_time ? (duration() - (connect_time - first_packet_time)) : -1, "connect_duration");
+	if(progress_time) {
+		cdr.add(progress_time - first_packet_time, "progress_time");
+	}
+	if(first_rtp_time) {
+		cdr.add(first_rtp_time  - first_packet_time, "first_rtp_time");
+	}
+	if(connect_time) {
+		cdr.add(duration() - (connect_time - first_packet_time), "connect_duration");
+	}
 	cdr.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
 	if(opt_callend) {
 		cdr.add(sqlEscapeString(sqlDateTimeString(calltime() + duration()).c_str()), "callend");
