@@ -275,6 +275,8 @@ unsigned int opt_maxpoolaudiosize = 0;
 unsigned int opt_maxpoolaudiodays = 0;
 int opt_maxpool_clean_obsolete = 0;
 
+char opt_php_path[1024];
+
 struct pcap_stat pcapstat;
 
 extern int opt_pcap_queue;
@@ -1755,6 +1757,10 @@ int load_config(char *fname) {
 	}
 	if((value = ini.GetValue("general", "mos_lqo_ref", NULL))) {
 		opt_mos_lqo_ref = value;
+	}
+	
+	if((value = ini.GetValue("general", "php_path", NULL))) {
+		strncpy(opt_php_path, value, sizeof(opt_php_path));
 	}
 	
 	/*

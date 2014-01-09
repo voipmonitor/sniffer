@@ -29,6 +29,7 @@
 #include "calltable.h"
 #include "format_ogg.h"
 #include "cleanspool.h"
+#include "manager.h"
 
 #define BUFSIZE 1024
 
@@ -41,6 +42,7 @@ extern int opt_clientmanagerport;
 extern char mac[32];
 extern int verbosity;
 extern char opt_chdir[1024];
+extern char opt_php_path[1024];
 extern int terminating;
 extern int manager_socket_server;
 extern int terminating;
@@ -61,6 +63,8 @@ static void updateLivesnifferfilters();
 static bool cmpCallBy_destroy_call_at(Call* a, Call* b);
 
 livesnifferfilter_use_siptypes_s livesnifferfilterUseSipTypes;
+
+ManagerClientThreads ClientThreads;
 
 /* 
  * this function runs as thread. It reads RTP audio data from call
@@ -228,7 +232,7 @@ void *listening_worker(void *arguments) {
 	return 0;
 }
 
-int parse_command(char *buf, int size, int client, int eof, const char *buf_long) {
+int parse_command(char *buf, int size, int client, int eof, const char *buf_long, ManagerClientThread **managerClientThread = NULL) {
 	char sendbuf[BUFSIZE];
 	u_int32_t uid = 0;
 
@@ -1089,6 +1093,8 @@ getwav:
 			return -1;
 		}
 		return 0;
+	} else if(strstr(buf, "login_screen_popup") != NULL) {
+		*managerClientThread =  new ManagerClientThread_screen_popup(client, buf);
 	} else {
 		if ((size = send(client, "command not found\n", 18, 0)) == -1){
 			cerr << "Error sending data to client" << endl;
@@ -1208,8 +1214,19 @@ void *manager_read_thread(void * arg) {
 			}
 		}
 	}
-	parse_command(buf, size, client, 0, buf_long.c_str());
-	close(client);
+	ManagerClientThread *managerClientThread = NULL;
+	parse_command(buf, size, client, 0, buf_long.c_str(), &managerClientThread);
+	if(managerClientThread) {
+		if(managerClientThread->parseCommand()) {
+			ClientThreads.add(managerClientThread);
+			managerClientThread->run();
+		} else {
+			delete managerClientThread;
+			close(client);
+		}
+	} else {
+		close(client);
+	}
 	return 0;
 }
 
@@ -1363,4 +1380,227 @@ void updateLivesnifferfilters() {
 
 bool cmpCallBy_destroy_call_at(Call* a, Call* b) {
 	return(a->destroy_call_at < b->destroy_call_at);   
+}
+
+
+ManagerClientThread::ManagerClientThread(int client, const char *type, const char *command, int commandLength) {
+	this->client = client;
+	this->type = type;
+	if(commandLength) {
+		this->command = string(command, commandLength);
+	} else {
+		this->command = command;
+	}
+	this->finished = false;
+	this->_sync_responses = 0;
+}
+
+void ManagerClientThread::run() {
+	unsigned int counter = 0;
+	bool disconnect = false;
+	while(true && !terminating && !disconnect) {
+		this->lock_responses();
+		while(this->responses.size() && !disconnect) {
+			string rsltString = this->responses.front();
+			this->responses.pop();
+			if(send(client, rsltString.c_str(), rsltString.length(), 0) == -1) {
+				disconnect = true;
+			}
+		}
+		this->unlock_responses();
+		++counter;
+		if((counter % 50) == 0 && !disconnect) {
+			if(send(client, "ping\n", 5, 0) == -1) {
+				disconnect = true;
+			}
+		}
+		usleep(100000);
+	}
+	close(client);
+	finished = true;
+}
+
+ManagerClientThread_screen_popup::ManagerClientThread_screen_popup(int client, const char *command, int commandLength) 
+ : ManagerClientThread(client, "screen_popup", command, commandLength) {
+	auto_popup = false;
+	non_numeric_caller_id = false;
+}
+
+bool ManagerClientThread_screen_popup::parseCommand() {
+	ClientThreads.cleanup();
+	return(this->parseUserPassword());
+}
+
+void ManagerClientThread_screen_popup::onCall(int sipResponseNum, const char *callerName, const char *callerNum, const char *calledNum,
+					      unsigned int sipSaddr, unsigned int sipDaddr) {
+	if(!(((this->popup_on == "200" && sipResponseNum == 200) ||
+	      (this->popup_on == "183/180" && (sipResponseNum == 183 || sipResponseNum == 180)) ||
+	      (this->popup_on == "183/180_200" && (sipResponseNum == 200 || (sipResponseNum == 183 || sipResponseNum == 180)))) &&
+	     (this->regex_calling_number.empty() ||
+	      reg_match(callerNum, this->regex_calling_number.c_str())) &&
+	     (this->non_numeric_caller_id ||
+	      this->isNumericId(callerNum)))) {
+		return;
+	}
+	char rsltString[4096];
+	char sipSaddrIP[18];
+	char sipDaddrIP[18];
+	struct in_addr in;
+	in.s_addr = sipSaddr;
+	strcpy(sipSaddrIP, inet_ntoa(in));
+	in.s_addr = sipDaddr;
+	strcpy(sipDaddrIP, inet_ntoa(in));
+	sprintf(rsltString,
+		"call_data: "
+		"sipresponse:[[%i]] "
+		"callername:[[%s]] "
+		"caller:[[%s]] "
+		"called:[[%s]] "
+		"sipcallerip:[[%s]] "
+		"sipcalledip:[[%s]]\n",
+		sipResponseNum,
+		callerName,
+		callerNum,
+		calledNum,
+		sipSaddrIP,
+		sipDaddrIP);
+	this->lock_responses();
+	this->responses.push(rsltString);
+	this->unlock_responses();
+}
+
+bool ManagerClientThread_screen_popup::parseUserPassword() {
+	char user[128];
+	char password[128];
+	char key[128];
+	sscanf(command.c_str(), "login_screen_popup %s %s %s", user, password, key);
+	string password_md5 = GetStringMD5(password);
+	SqlDb *sqlDb = createSqlObject();
+	sqlDb->query(
+		string(
+		"select u.username,\
+			u.name,\
+			p.name as profile_name,\
+			p.auto_popup,\
+			p.popup_on,\
+			p.non_numeric_caller_id,\
+			p.regex_calling_number,\
+			p.app_launch,\
+			p.app_launch_args_or_url\
+		 from screen_popup_users u\
+		 join screen_popup_profile p on (p.id=u.profile_id)\
+		 where username=") +
+		sqlEscapeStringBorder(user) +
+		" and password=" + 
+		sqlEscapeStringBorder(password_md5));
+	SqlDb_row row = sqlDb->fetchRow();
+	char rsltString[4096];
+	bool rslt;
+	if(row) {
+		rslt = true;
+		username = row["username"];
+		name = row["name"];
+		profile_name = row["profile_name"];
+		auto_popup = atoi(row["auto_popup"].c_str());
+		popup_on = row["popup_on"];
+		non_numeric_caller_id = atoi(row["non_numeric_caller_id"].c_str());
+		regex_calling_number = row["regex_calling_number"];
+		app_launch = row["app_launch"];
+		app_launch_args_or_url = row["app_launch_args_or_url"];
+		if(!opt_php_path[0]) {
+			rslt = false;
+			strcpy(rsltString, "login_failed error:[[missing sniffer configuration constant php_path]]\n");
+		} else {
+			string cmd = string("php ") + opt_php_path + "/php/run.php checkScreenPopupLicense -k " + key;
+			FILE *fp = popen(cmd.c_str(), "r");
+			if(fp == NULL) {
+				rslt = false;
+				strcpy(rsltString, "login_failed error:[[failed to run php checkScreenPopupLicense]]\n");
+			} else {
+				char rsltFromPhp[1024];
+				if(!fgets(rsltFromPhp, sizeof(rsltFromPhp) - 1, fp)) {
+					rslt = false;
+					strcpy(rsltString, "login_failed error:[[failed result from php]]\n");
+				} else if(!strncmp(rsltFromPhp, "error: ", 7)) {
+					rslt = false;
+					strcpy(rsltString, (string("login_failed error:[[") + (rsltFromPhp + 7) + "]]\n").c_str());
+				} else {
+					char key[1024];
+					int maxClients;
+					if(sscanf(rsltFromPhp, "key: %s max_clients: %i", key, &maxClients) == 2) {
+						if(maxClients && ClientThreads.getCount() >= maxClients) {
+							rslt = false;
+							strcpy(rsltString, "login_failed error:[[the maximum number of connections has been exhausted]]\n");
+						} else {
+							sprintf(rsltString, "login_ok auto_popup:[[%i]] app_launch:[[%s]] args_or_url:[[%s]] key:[[%s]]\n", 
+								auto_popup, app_launch.c_str(), app_launch_args_or_url.c_str(), key);
+						}
+					} else {
+						rslt = false;
+							strcpy(rsltString, "login_failed error:[[bad result from php]]\n");
+					}
+				}
+				pclose(fp);
+			}
+		}
+	} else {
+		rslt = false;
+		strcpy(rsltString, "login_failed error:[[invalid user or password]]\n");
+	}
+	delete sqlDb;
+	send(client, rsltString, strlen(rsltString), 0);
+	return(rslt);
+}
+
+bool ManagerClientThread_screen_popup::isNumericId(const char *id) {
+	while(*id) {
+		if(!isdigit(*id) &&
+		   *id != ' ' &&
+		   *id != '+') {
+			return(false);
+		}
+		++id;
+	}
+	return(true);
+}
+
+ManagerClientThreads::ManagerClientThreads() {
+	_sync_client_threads = 0;
+}
+	
+void ManagerClientThreads::add(ManagerClientThread *clientThread) {
+	this->lock_client_threads();
+	clientThreads.push_back(clientThread);
+	this->unlock_client_threads();
+	this->cleanup();
+}
+
+void ManagerClientThreads::onCall(int sipResponseNum, const char *callerName, const char *callerNum, const char *calledNum,
+				  unsigned int sipSaddr, unsigned int sipDaddr) {
+	this->lock_client_threads();
+	vector<ManagerClientThread*>::iterator iter;
+	for(iter = this->clientThreads.begin(); iter != this->clientThreads.end(); ++iter) {
+		(*iter)->onCall(sipResponseNum, callerName, callerNum, calledNum, sipSaddr, sipDaddr);
+	}
+	this->unlock_client_threads();
+}
+
+void ManagerClientThreads::cleanup() {
+	this->lock_client_threads();
+	for(int i = this->clientThreads.size() - 1; i >=0; i--) {
+		ManagerClientThread *ct = this->clientThreads[i];
+		if(ct->isFinished()) {
+			delete ct;
+			this->clientThreads.erase(this->clientThreads.begin() + i);
+			
+		}
+	}
+	this->unlock_client_threads();
+}
+
+int ManagerClientThreads::getCount() {
+	this->lock_client_threads();
+	int count = this->clientThreads.size();
+	this->unlock_client_threads();
+	return(count);
 }

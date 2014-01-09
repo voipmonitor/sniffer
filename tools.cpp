@@ -12,6 +12,7 @@
 #include <syslog.h>
 #include <netdb.h>
 #include <resolv.h>
+#include <regex.h>
 #include <sys/time.h>
 #include <string.h>
 #include <net/ethernet.h>
@@ -415,6 +416,16 @@ unsigned long long GetDU(unsigned long long fileSize) {
 		fileSize += 100; // inode / directory item size
 	}
 	return(fileSize);
+}
+
+string GetStringMD5(std::string str) {
+	string md5;
+	MD5_CTX ctx;
+	MD5_Init(&ctx);
+	MD5_Update(&ctx, (void*)str.c_str(), str.length());
+	unsigned char _md5[MD5_DIGEST_LENGTH];
+	MD5_Final(_md5, &ctx);
+	return(MD5_String(_md5));
 }
 
 string GetFileMD5(std::string filename) {
@@ -941,3 +952,15 @@ std::vector<std::string> split(const std::string &s, char delim) {
     return elems;
 }
 
+
+int reg_match(const char *string, const char *pattern) {
+	int status;
+	regex_t re;
+	if(regcomp(&re, pattern, REG_EXTENDED | REG_NOSUB) != 0) {
+		syslog(LOG_ERR, "regcomp %s error", pattern);
+		return(0);
+	}
+	status = regexec(&re, string, (size_t)0, NULL, 0);
+	regfree(&re);
+	return(status == 0);
+}

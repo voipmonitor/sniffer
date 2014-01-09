@@ -28,6 +28,7 @@ double ts2double(unsigned int sec, unsigned int usec);
 unsigned long long GetFileSize(std::string filename);
 unsigned long long GetFileSizeDU(std::string filename);
 unsigned long long GetDU(unsigned long long fileSize);
+string GetStringMD5(std::string str);
 string GetFileMD5(std::string filename);
 bool FileExists(char *strFilename);
 void ntoa(char *res, unsigned int addr);
@@ -39,6 +40,7 @@ int get_unix_tid(void);
 unsigned long getUptime();
 std::vector<std::string> &split(const std::string &s, char delim, std::vector<std::string> &elems);
 std::vector<std::string> split(const std::string &s, char delim);
+int reg_match(const char *string, const char *pattern);
 
 class CircularBuffer
 {

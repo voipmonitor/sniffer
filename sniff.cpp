@@ -71,6 +71,7 @@ and insert them into Call class.
 #include "tcpreassembly.h"
 #include "ip_frag.h"
 #include "regcache.h"
+#include "manager.h"
 
 extern MirrorIP *mirrorip;
 
@@ -182,6 +183,7 @@ extern char ifname[1024];
 extern uint8_t opt_sdp_reverse_ipport;
 extern int opt_fork;
 extern regcache *regfailedcache;
+extern ManagerClientThreads ClientThreads;
 
 #ifdef QUEUE_MUTEX
 extern sem_t readpacket_thread_semaphore;
@@ -2243,6 +2245,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 				strncpy(num, data + 8, 3);
 				num[3] = '\0';
 				lastSIPresponseNum = atoi(num);
+				
 /*
 				if(lastSIPresponseNum == 0) {
 					if(verbosity > 0) syslog(LOG_NOTICE, "lastSIPresponseNum = 0 [%s]\n", lastSIPresponse);
@@ -2584,10 +2587,15 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 						return NULL;
 					}
 				}
+				ClientThreads.onCall(lastSIPresponseNum, call->callername, call->caller, call->called,
+						     call->sipcallerip, call->sipcalledip);
+
 			} else if(sip_method == RES18X) {
 				if(call->progress_time == 0) {
 					call->progress_time = header->ts.tv_sec;
 				}
+				ClientThreads.onCall(lastSIPresponseNum, call->callername, call->caller, call->called,
+						     call->sipcallerip, call->sipcalledip);
 			}
 
 			// if the call ends with some of SIP [456]XX response code, we can shorten timeout when the call will be closed 
