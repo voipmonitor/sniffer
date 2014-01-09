@@ -47,6 +47,7 @@ private:
 	string name;
 	string profile_name;
 	bool auto_popup;
+	bool show_ip;
 	string popup_on;
 	bool non_numeric_caller_id;
 	string regex_calling_number;

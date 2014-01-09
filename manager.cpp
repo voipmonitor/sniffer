@@ -1482,6 +1482,7 @@ bool ManagerClientThread_screen_popup::parseUserPassword() {
 			u.name,\
 			p.name as profile_name,\
 			p.auto_popup,\
+			p.show_ip,\
 			p.popup_on,\
 			p.non_numeric_caller_id,\
 			p.regex_calling_number,\
@@ -1502,6 +1503,7 @@ bool ManagerClientThread_screen_popup::parseUserPassword() {
 		name = row["name"];
 		profile_name = row["profile_name"];
 		auto_popup = atoi(row["auto_popup"].c_str());
+		show_ip = atoi(row["show_ip"].c_str());
 		popup_on = row["popup_on"];
 		non_numeric_caller_id = atoi(row["non_numeric_caller_id"].c_str());
 		regex_calling_number = row["regex_calling_number"];
@@ -1509,18 +1511,18 @@ bool ManagerClientThread_screen_popup::parseUserPassword() {
 		app_launch_args_or_url = row["app_launch_args_or_url"];
 		if(!opt_php_path[0]) {
 			rslt = false;
-			strcpy(rsltString, "login_failed error:[[missing sniffer configuration constant php_path]]\n");
+			strcpy(rsltString, "login_failed error:[[Please set php_path parameter in voipmonitor.conf.]]\n");
 		} else {
 			string cmd = string("php ") + opt_php_path + "/php/run.php checkScreenPopupLicense -k " + key;
 			FILE *fp = popen(cmd.c_str(), "r");
 			if(fp == NULL) {
 				rslt = false;
-				strcpy(rsltString, "login_failed error:[[failed to run php checkScreenPopupLicense]]\n");
+				strcpy(rsltString, "login_failed error:[[Failed to run php checkScreenPopupLicense.]]\n");
 			} else {
 				char rsltFromPhp[1024];
 				if(!fgets(rsltFromPhp, sizeof(rsltFromPhp) - 1, fp)) {
 					rslt = false;
-					strcpy(rsltString, "login_failed error:[[failed result from php]]\n");
+					strcpy(rsltString, "login_failed error:[[License check failed please contact support.]]\n");
 				} else if(!strncmp(rsltFromPhp, "error: ", 7)) {
 					rslt = false;
 					strcpy(rsltString, (string("login_failed error:[[") + (rsltFromPhp + 7) + "]]\n").c_str());
@@ -1530,14 +1532,14 @@ bool ManagerClientThread_screen_popup::parseUserPassword() {
 					if(sscanf(rsltFromPhp, "key: %s max_clients: %i", key, &maxClients) == 2) {
 						if(maxClients && ClientThreads.getCount() >= maxClients) {
 							rslt = false;
-							strcpy(rsltString, "login_failed error:[[the maximum number of connections has been exhausted]]\n");
+							strcpy(rsltString, "login_failed error:[[Maximum connection limit reached.]]\n");
 						} else {
-							sprintf(rsltString, "login_ok auto_popup:[[%i]] app_launch:[[%s]] args_or_url:[[%s]] key:[[%s]]\n", 
-								auto_popup, app_launch.c_str(), app_launch_args_or_url.c_str(), key);
+							sprintf(rsltString, "login_ok auto_popup:[[%i]] show_ip:[[%i]] app_launch:[[%s]] args_or_url:[[%s]] key:[[%s]]\n", 
+								auto_popup, show_ip, app_launch.c_str(), app_launch_args_or_url.c_str(), key);
 						}
 					} else {
 						rslt = false;
-							strcpy(rsltString, "login_failed error:[[bad result from php]]\n");
+							strcpy(rsltString, "login_failed error:[[License is invalid.]]\n");
 					}
 				}
 				pclose(fp);
@@ -1545,7 +1547,7 @@ bool ManagerClientThread_screen_popup::parseUserPassword() {
 		}
 	} else {
 		rslt = false;
-		strcpy(rsltString, "login_failed error:[[invalid user or password]]\n");
+		strcpy(rsltString, "login_failed error:[[Invalid user or password.]]\n");
 	}
 	delete sqlDb;
 	send(client, rsltString, strlen(rsltString), 0);
