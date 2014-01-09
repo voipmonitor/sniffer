@@ -1,15 +1,36 @@
-#include <memory.h>
-#include <netdb.h>
-#include <pthread.h>
-#include <pcap.h>
-#include <deque>
-#include <queue>
-#include <string>
-#include <sstream>
-#include <vector>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <getopt.h>
+#include <time.h>
+#include <signal.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <net/ethernet.h>
+#include "voipmonitor.h"
+
+#ifdef FREEBSD
+#include <machine/endian.h>
+#else
+#include <malloc.h>
+#include <endian.h>
+#endif
+
+#include <sys/times.h>
+#include <sys/param.h>
+#include <sys/signal.h>
+#include <netinet/in.h>
 #include <netinet/ip.h>
+
 #include <netinet/tcp.h>
-#include <sys/syscall.h>
+#include <syslog.h>
+#include <semaphore.h>
+
+#include <sstream>
+
+#include <pcap.h>
+
 
 #include "tools.h"
 #include "regcache.h"

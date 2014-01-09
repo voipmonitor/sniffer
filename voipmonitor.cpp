@@ -3295,6 +3295,25 @@ void test() {
 		delete sqlDb;
 		}
 		return;
+	case 96:
+		{
+		union {
+			uint32_t i;
+			char c[4];
+		} e = { 0x01000000 };
+		cout << "real endian : " << (e.c[0] ? "big" : "little") << endl;
+		cout << "endian by cmp __BYTE_ORDER == __BIG_ENDIAN : ";
+		#if __BYTE_ORDER == __BIG_ENDIAN
+			cout << "big" << endl;
+		#else
+			cout << "little" << endl;
+		#endif
+		cout << "__BYTE_ORDER value (1234 is little, 4321 is big) : " << __BYTE_ORDER << endl;
+		#ifdef BYTE_ORDER
+			cout << "BYTE_ORDER value (1234 is little, 4321 is big) : " << BYTE_ORDER << endl;
+		#endif
+		}
+		break;
 	case 97:
 		{
 		SqlDb *sqlDb = createSqlObject();

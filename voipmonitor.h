@@ -56,6 +56,9 @@ void convert_filesindex();
 void mysqlquerypush(string);
 
 /* For compatibility with Linux definitions... */
+
+#include "jitterbuffer/asterisk/endian.h"
+
 #if __BYTE_ORDER == __BIG_ENDIAN
 # ifndef __BIG_ENDIAN_BITFIELD
 #  define __BIG_ENDIAN_BITFIELD

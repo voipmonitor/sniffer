@@ -29,7 +29,7 @@ headers = $(shell ls -1 *.h | tr "\n" " ")
 
 #LDFLAGS := $(LDFLAGS) -static -static-libgcc
 
-shared: LIBS=-lpthread -lpcap -lgzstream -lz -lvorbis -lvorbisenc -logg -lodbc -lmysqlclient -lrt -lsnappy #-lcurl #-lnids
+shared: LIBS=-lpthread -lpcap -lgzstream -lz -lvorbis -lvorbisenc -logg -lodbc -lmysqlclient -lrt -lsnappy -lssl #-lcurl #-lnids
 shared: CFLAGS+= -DQUEUE_NONBLOCK2 -I/usr/local/include -I/usr/include/mysql/ -Wall -I jitterbuffer/ -L/usr/local/lib/mysql -L/usr/lib/mysql -L/usr/local/lib/ -Lgzstream/ -L/usr/lib64/mysql -fPIC -g3 -O2 
 shared: args = -g3 -Wall  -march=$(GCCARCH) -O2 
 
@@ -150,6 +150,9 @@ pstat.o : pstat.cpp pstat.h
 
 odbc.o : odbc.cpp odbc.h
 	g++ -c odbc.cpp $(args) ${CFLAGS}
+
+generator.o : generator.cpp generator.h
+	g++ -c generator.cpp $(args) ${CFLAGS}
 
 regcache.o : regcache.cpp regcache.h
 	g++ -c regcache.cpp $(args) ${CFLAGS}
