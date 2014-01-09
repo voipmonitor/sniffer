@@ -462,6 +462,8 @@ string storingSqlLastWriteAt;
 
 time_t startTime;
 
+sem_t *globalSemaphore;
+
 
 void mysqlquerypush(string q) {
         pthread_mutex_lock(&mysqlquery_lock);
@@ -473,11 +475,22 @@ void terminate2() {
 	terminating = 1;
 }
 
+void exit_handler_fork_mode()
+{
+	if(opt_fork) {
+		sem_unlink("voipmonitor_fork_mode");      
+		if(globalSemaphore) {
+			sem_close(globalSemaphore);
+		}
+	}
+}
+
 /* handler for INTERRUPT signal */
 void sigint_handler(int param)
 {
 	syslog(LOG_ERR, "SIGINT received, terminating\n");
 	terminate2();
+	exit_handler_fork_mode();
 }
 
 /* handler for TERMINATE signal */
@@ -485,6 +498,7 @@ void sigterm_handler(int param)
 {
 	syslog(LOG_ERR, "SIGTERM received, terminating\n");
 	terminate2();
+	exit_handler_fork_mode();
 }
 
 void find_and_replace( string &source, const string find, string replace ) {
@@ -949,6 +963,7 @@ static void daemonize(void)
 			}
 			unlink(daemonizeErrorTempFileName);
 		}
+		opt_fork = 0;
 		exit(0);
 	} else {
 		// child
@@ -971,6 +986,8 @@ static void daemonize(void)
 		close(0); open("/dev/null", O_RDONLY);
 		close(1); open("/dev/null", O_WRONLY);
 		close(2); open("/dev/null", O_WRONLY);
+		
+		exit_handler_fork_mode();
 	}
 }
 
@@ -2495,6 +2512,51 @@ int main(int argc, char *argv[]) {
                         */
 
 		return 1;
+	}
+	
+	if(opt_fork) {
+		for(int pass = 0; pass < 2; pass ++) {
+			globalSemaphore = sem_open("voipmonitor_fork_mode", O_CREAT | O_EXCL);
+			if(globalSemaphore == NULL) {
+				if(pass == 0) {
+					string rslt = pexec("pgrep voipmonitor");
+					bool findOwnPid = false;
+					bool findOtherPid = false;
+					if(rslt != "ERROR") {
+						int ownPid = getpid();
+						char *point = (char*)rslt.c_str();
+						while(*point) {
+							while(*point && !isdigit(*point)) {
+								++point;
+							}
+							if(*point && isdigit(*point)) {
+								int checkPid = atoi(point);
+								if(checkPid == ownPid) {
+								       findOwnPid = true;
+								} else {
+								       findOtherPid =  true;
+								}
+							}
+							while(*point && isdigit(*point)) {
+								++point;
+							}
+						}
+					}
+					if(findOwnPid && !findOtherPid) {
+						sem_unlink("voipmonitor_fork_mode");
+					} else {
+						pass = 1;
+					}
+				}
+				if(pass == 1) {
+					syslog(LOG_ERR, "Already running fork mode!\n");
+					return 1;
+				}
+			} else {
+				break;
+			}
+		}
+		atexit(exit_handler_fork_mode);
 	}
 
 	if(opt_generator) {
