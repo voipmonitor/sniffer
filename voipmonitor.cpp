@@ -463,6 +463,7 @@ string storingSqlLastWriteAt;
 time_t startTime;
 
 sem_t *globalSemaphore;
+#define SAMAPHOR_FORK_MODE_NAME (configfile[0] ? configfile : "voipmonitor_fork_mode")
 
 
 void mysqlquerypush(string q) {
@@ -478,7 +479,7 @@ void terminate2() {
 void exit_handler_fork_mode()
 {
 	if(opt_fork) {
-		sem_unlink("voipmonitor_fork_mode");      
+		sem_unlink(SAMAPHOR_FORK_MODE_NAME);
 		if(globalSemaphore) {
 			sem_close(globalSemaphore);
 		}
@@ -2516,7 +2517,7 @@ int main(int argc, char *argv[]) {
 	
 	if(opt_fork) {
 		for(int pass = 0; pass < 2; pass ++) {
-			globalSemaphore = sem_open("voipmonitor_fork_mode", O_CREAT | O_EXCL);
+			globalSemaphore = sem_open(SAMAPHOR_FORK_MODE_NAME, O_CREAT | O_EXCL);
 			if(globalSemaphore == NULL) {
 				if(pass == 0) {
 					string rslt = pexec("pgrep voipmonitor");
@@ -2543,7 +2544,7 @@ int main(int argc, char *argv[]) {
 						}
 					}
 					if(findOwnPid && !findOtherPid) {
-						sem_unlink("voipmonitor_fork_mode");
+						sem_unlink(SAMAPHOR_FORK_MODE_NAME);
 					} else {
 						pass = 1;
 					}
