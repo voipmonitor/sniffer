@@ -1318,17 +1318,22 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 	char limitDay[20] = "";
 	bool opt_cdr_partition_oldver = false;
 	if(opt_cdr_partition && !federated) {
-		time_t act_time = time(NULL);
-		if(opt_create_old_partitions > 0) {
-			act_time -= opt_create_old_partitions * 24 * 60 * 60;
-		}
-		struct tm *actTime = localtime(&act_time);
-		strftime(partDayName, sizeof(partDayName), "p%y%m%d", actTime);
-		time_t next_day_time = act_time + 24 * 60 * 60;
-		struct tm *nextDayTime = localtime(&next_day_time);
-		strftime(limitDay, sizeof(partDayName), "%Y-%m-%d", nextDayTime);
-		if(this->getDbMajorVersion() * 100 + this->getDbMinorVersion() <= 501) {
-			opt_cdr_partition_oldver = true;
+		if(this->getDbMajorVersion() * 100 + this->getDbMinorVersion() <= 500) {
+			opt_cdr_partition = false;
+			syslog(LOG_NOTICE, "mysql <= 5.0 does not know partitions - we recommend to upgrade mysql");
+		} else { 
+			time_t act_time = time(NULL);
+			if(opt_create_old_partitions > 0) {
+				act_time -= opt_create_old_partitions * 24 * 60 * 60;
+			}
+			struct tm *actTime = localtime(&act_time);
+			strftime(partDayName, sizeof(partDayName), "p%y%m%d", actTime);
+			time_t next_day_time = act_time + 24 * 60 * 60;
+			struct tm *nextDayTime = localtime(&next_day_time);
+			strftime(limitDay, sizeof(partDayName), "%Y-%m-%d", nextDayTime);
+			if(this->getDbMajorVersion() * 100 + this->getDbMinorVersion() <= 501) {
+				opt_cdr_partition_oldver = true;
+			}
 		}
 	}
 	
