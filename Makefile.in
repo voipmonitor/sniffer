@@ -36,14 +36,11 @@ shared: CFLAGS+= -DQUEUE_NONBLOCK2 -I/usr/local/include -I/usr/include/mysql/ -W
 shared: args = -g3 -Wall  -march=$(GCCARCH) -mtune=${GCCARCH} -O2 
 
 static: LIBS=-static -L/usr/lib/mysql -L/usr/lib64/mysql -L/usr/lib/mysql -lodbc -lltdl -ldl -lrt -lz -lcrypt -lm -lssl -lcrypto -static-libstdc++ -static-libgcc -lpcap -L/usr/lib/mysql -lpthread -lmysqlclient -lpthread -lgzstream -lz -lc -lvorbis -lvorbisenc -logg -lrt -lsnappy 
-static: CFLAGS+= -DQUEUE_NONBLOCK2 -I /usr/include/mysql/ -Wall -I jitterbuffer/  -L/usr/local/lib/ -Lgzstream/ -fPIC -O2
+static: CFLAGS+= -DQUEUE_NONBLOCK2 -I/usr/local/include -I /usr/include/mysql/ -Wall -I jitterbuffer/  -L/usr/local/lib/ -Lgzstream/ -fPIC -O2
 static: args = -O2 -Wall  -march=$(GCCARCH) -mtune=${GCCARCH} 
 
-core2: GCCARCH=core2
-core2: static
-
 staticlibc: LIBS=-static -L/opt/libc/lib/ -L/usr/lib/mysql -L/usr/lib64/mysql -L/usr/lib/mysql -lc_nonshared -lodbc -lltdl -ldl -lrt -lz -lcrypt -lm -lssl -lcrypto -static-libstdc++ -static-libgcc -lpcap -L/usr/lib/mysql -lpthread -lmysqlclient -lpthread -lgzstream -lz -lc -lvorbis -lvorbisenc -logg -lrt -lsnappy 
-staticlibc: CFLAGS+= -DQUEUE_NONBLOCK2 -I/opt/libc/include -L/opt/libc/lib/ -I /usr/include/mysql/ -Wall -I jitterbuffer/  -L/usr/local/lib/ -Lgzstream/ -fPIC -O2
+staticlibc: CFLAGS+= -DQUEUE_NONBLOCK2 -I/opt/libc/include -L/opt/libc/lib/ -I/usr/local/include -I /usr/include/mysql/ -Wall -I jitterbuffer/  -L/usr/local/lib/ -Lgzstream/ -fPIC -O2
 staticlibc: args = -O2 -Wall  -march=$(GCCARCH) -mtune=${GCCARCH}
 
 armv5shared: LIBS=-lpthread -lpcap -lgzstream -lz -lvorbis -lvorbisenc -logg -lodbc -lmysqlclient -lrt -lsnappy
@@ -54,10 +51,17 @@ armv5static: LIBS=-static -L/usr/lib/mysql -lodbc -lltdl -ldl -lrt -lz -lcrypt -
 armv5static: CFLAGS+= -DQUEUE_NONBLOCK2 -DPACKED -I /usr/include/mysql/ -g3 -Wall -I jitterbuffer/  -L/usr/local/lib/ -Lgzstream/ -L/usr/lib64/mysql -fPIC
 armv5static: args = -g3 -Wall 
 
+core2: LIBS=-static -L/usr/lib/mysql -L/usr/lib64/mysql -L/usr/lib/mysql -lodbc -lltdl -ldl -lrt -lz -lcrypt -lm -lssl -lcrypto -static-libstdc++ -static-libgcc -lpcap -L/usr/lib/mysql -lpthread -lmysqlclient -lpthread -lgzstream -lz -lc -lvorbis -lvorbisenc -logg -lrt -lsnappy 
+core2: CFLAGS+= -DQUEUE_NONBLOCK2 -I /usr/include/mysql/ -Wall -I jitterbuffer/  -L/usr/local/lib/ -Lgzstream/ -fPIC -O2
+core2: args = -O2 -Wall  -march=core2 -mtune=core2
+
 shared: cleantest $(objects) 
 	g++ $(objects) ${CFLAGS} -o voipmonitor ${LIBS}
 
 static: cleantest $(objects)
+	g++ $(objects) ${CFLAGS} -o voipmonitor ${LIBS}
+
+core2: cleantest $(objects)
 	g++ $(objects) ${CFLAGS} -o voipmonitor ${LIBS}
 
 staticlibc: cleantest $(objects)
