@@ -4,6 +4,7 @@
 #include <string.h>
 #include <unistd.h>
 
+#include "voipmonitor.h"
 #include "pstat.h"
 
 bool pstat_get_data(const int pid, pstat_data* result) {
