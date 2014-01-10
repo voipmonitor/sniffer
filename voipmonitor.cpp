@@ -464,8 +464,9 @@ time_t startTime;
 
 sem_t *globalSemaphore;
 
-
-string SAMAPHOR_FORK_MODE_NAME() {
+#define ENABLE_SEMAPHOR_FORK_MODE 0
+#if ENABLE_SEMAPHOR_FORK_MODE
+string SEMAPHOR_FORK_MODE_NAME() {
  	char forkModeName[1024] = "";
 	if(!forkModeName[0]) {
 		strcpy(forkModeName, configfile[0] ? configfile : "voipmonitor_fork_mode");
@@ -481,6 +482,7 @@ string SAMAPHOR_FORK_MODE_NAME() {
 	}
 	return(forkModeName);
 }
+#endif
 
 void mysqlquerypush(string q) {
         pthread_mutex_lock(&mysqlquery_lock);
@@ -492,22 +494,26 @@ void terminate2() {
 	terminating = 1;
 }
 
+#if ENABLE_SEMAPHOR_FORK_MODE
 void exit_handler_fork_mode()
 {
 	if(opt_fork) {
-		sem_unlink(SAMAPHOR_FORK_MODE_NAME().c_str());
+		sem_unlink(SEMAPHOR_FORK_MODE_NAME().c_str());
 		if(globalSemaphore) {
 			sem_close(globalSemaphore);
 		}
 	}
 }
+#endif
 
 /* handler for INTERRUPT signal */
 void sigint_handler(int param)
 {
 	syslog(LOG_ERR, "SIGINT received, terminating\n");
 	terminate2();
+	#if ENABLE_SEMAPHOR_FORK_MODE
 	exit_handler_fork_mode();
+	#endif
 }
 
 /* handler for TERMINATE signal */
@@ -515,7 +521,9 @@ void sigterm_handler(int param)
 {
 	syslog(LOG_ERR, "SIGTERM received, terminating\n");
 	terminate2();
+	#if ENABLE_SEMAPHOR_FORK_MODE
 	exit_handler_fork_mode();
+	#endif
 }
 
 void find_and_replace( string &source, const string find, string replace ) {
@@ -2529,14 +2537,16 @@ int main(int argc, char *argv[]) {
 		return 1;
 	}
 	if(opt_fork) {
+		#if ENABLE_SEMAPHOR_FORK_MODE
 		for(int pass = 0; pass < 2; pass ++) {
-			globalSemaphore = sem_open(SAMAPHOR_FORK_MODE_NAME().c_str(), O_CREAT | O_EXCL);
+			globalSemaphore = sem_open(SEMAPHOR_FORK_MODE_NAME().c_str(), O_CREAT | O_EXCL);
 			if(globalSemaphore == SEM_FAILED) {
 				if(errno != EEXIST) {
 					syslog(LOG_ERR, "sem_open failed: %s", strerror(errno));
 					return 1;
 				}
 				if(pass == 0) {
+		#endif
 					bool findOwnPid = false;
 					bool findOtherPid = false;
 					char *appName = strrchr(argv[0], '/');
@@ -2598,8 +2608,9 @@ int main(int argc, char *argv[]) {
 							}
 						}
 					}
+		#if ENABLE_SEMAPHOR_FORK_MODE
 					if(findOwnPid && !findOtherPid) {
-						if(sem_unlink(SAMAPHOR_FORK_MODE_NAME().c_str())) {
+						if(sem_unlink(SEMAPHOR_FORK_MODE_NAME().c_str())) {
 							syslog(LOG_ERR, "sem_unlink failed: %s", strerror(errno));
 							return 1;
 						}
@@ -2616,6 +2627,12 @@ int main(int argc, char *argv[]) {
 			}
 		}
 		atexit(exit_handler_fork_mode);
+		#else
+		if(findOwnPid && findOtherPid) {
+			syslog(LOG_ERR, "another voipmonitor instance with the same configuration file is running");
+			return 1;
+		}
+		#endif
 	}
 
 	if(opt_generator) {
