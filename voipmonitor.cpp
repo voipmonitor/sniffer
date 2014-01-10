@@ -2547,10 +2547,6 @@ int main(int argc, char *argv[]) {
 					}
 					string pgrepCmdAll = string("pgrep ") + appName;
 					string rsltAll = pexec((char*)pgrepCmdAll.c_str());
-					
-					cout << pgrepCmdAll << endl;
-					cout << rsltAll << endl;
-					
 					vector<int> allVoipmonitorPid;
 					if(rsltAll != "ERROR") {
 						char *point = (char*)rsltAll.c_str();
@@ -2572,10 +2568,6 @@ int main(int argc, char *argv[]) {
 							pgrepCmd += string(".*") + configfile;
 						}
 						string rslt = pexec((char*)pgrepCmd.c_str());
-						
-						cout << pgrepCmd << endl;
-						cout << rslt << endl;
-						
 						if(rslt != "ERROR") {
 							int ownPid = getpid();
 							char *point = (char*)rslt.c_str();
