@@ -17,6 +17,8 @@ ifeq ($(findstring arm,$(GCCARCH)),arm)
   GCCARCH = armv6k
 endif
 
+GCCARCH = native
+
 version = $(shell grep RTPSENSOR_VERSION voipmonitor.h | cut -d" " -f 3 | tr -d "\"")
 
 objects = regcache.o codec_alaw.o codec_ulaw.o format_slinear.o format_wav.o format_ogg.o calltable.o rtp.o voipmonitor.o sniff.o jitterbuffer/astmm.o jitterbuffer/utils.o jitterbuffer/fixedjitterbuf.o jitterbuffer/jitterbuf.o jitterbuffer/abstract_jb.o jitterbuffer/frame.o gzstream/gzstream.o gzstream/libgzstream.a manager.o tools.o filter_mysql.o hash.o mos_g729.o odbc.o rtcp.o pcap_queue.o sql_db.o md5.o mirrorip.o ipaccount.o skinny.o pstat.o generator.o tcpreassembly.o http.o cleanspool.o 
@@ -31,15 +33,18 @@ headers = $(shell ls -1 *.h | tr "\n" " ")
 
 shared: LIBS=-lpthread -lpcap -lgzstream -lz -lvorbis -lvorbisenc -logg -lodbc -lmysqlclient -lrt -lsnappy -lssl -lcrypto #-lcurl #-lnids
 shared: CFLAGS+= -DQUEUE_NONBLOCK2 -I/usr/local/include -I/usr/include/mysql/ -Wall -I jitterbuffer/ -L/usr/local/lib/mysql -L/usr/lib/mysql -L/usr/local/lib/ -Lgzstream/ -L/usr/lib64/mysql -fPIC -g3 -O2 
-shared: args = -g3 -Wall  -march=$(GCCARCH) -O2 
+shared: args = -g3 -Wall  -march=$(GCCARCH) -mtune=${GCCARCH} -O2 
 
 static: LIBS=-static -L/usr/lib/mysql -L/usr/lib64/mysql -L/usr/lib/mysql -lodbc -lltdl -ldl -lrt -lz -lcrypt -lm -lssl -lcrypto -static-libstdc++ -static-libgcc -lpcap -L/usr/lib/mysql -lpthread -lmysqlclient -lpthread -lgzstream -lz -lc -lvorbis -lvorbisenc -logg -lrt -lsnappy 
 static: CFLAGS+= -DQUEUE_NONBLOCK2 -I /usr/include/mysql/ -Wall -I jitterbuffer/  -L/usr/local/lib/ -Lgzstream/ -fPIC -O2
-static: args = -O2 -Wall  -march=$(GCCARCH)
+static: args = -O2 -Wall  -march=$(GCCARCH) -mtune=${GCCARCH} 
+
+core2: GCCARCH=core2
+core2: static
 
 staticlibc: LIBS=-static -L/opt/libc/lib/ -L/usr/lib/mysql -L/usr/lib64/mysql -L/usr/lib/mysql -lc_nonshared -lodbc -lltdl -ldl -lrt -lz -lcrypt -lm -lssl -lcrypto -static-libstdc++ -static-libgcc -lpcap -L/usr/lib/mysql -lpthread -lmysqlclient -lpthread -lgzstream -lz -lc -lvorbis -lvorbisenc -logg -lrt -lsnappy 
 staticlibc: CFLAGS+= -DQUEUE_NONBLOCK2 -I/opt/libc/include -L/opt/libc/lib/ -I /usr/include/mysql/ -Wall -I jitterbuffer/  -L/usr/local/lib/ -Lgzstream/ -fPIC -O2
-staticlibc: args = -O2 -Wall  -march=$(GCCARCH)
+staticlibc: args = -O2 -Wall  -march=$(GCCARCH) -mtune=${GCCARCH}
 
 armv5shared: LIBS=-lpthread -lpcap -lgzstream -lz -lvorbis -lvorbisenc -logg -lodbc -lmysqlclient -lrt -lsnappy
 armv5shared: CFLAGS+= -DQUEUE_NONBLOCK2 -DPACKED -I /usr/include/mysql/ -g3 -Wall -I jitterbuffer/  -L/usr/local/lib/ -Lgzstream/ -L/usr/lib64/mysql -fPIC
