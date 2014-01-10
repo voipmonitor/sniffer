@@ -2652,9 +2652,18 @@ int main(int argc, char *argv[]) {
 	     !opt_pcap_queue_receive_from_ip_port &&
 	     opt_pcap_queue_send_to_ip_port)) {
 		SqlDb *sqlDb = createSqlObject();
-		if(sqlDb->connect(true, true)) {
+		for(int pass = 0; pass < 2; pass++) {
+			if(sqlDb->connect(true, true)) {
+				break;
+			}
+			sleep(1);
+		}
+		if(sqlDb->connected()) {
 			sqlDb->createSchema();
 			sqlDb->checkSchema();
+		} else {
+			syslog(LOG_ERR, "Can't connect to MySQL server - exit!");
+			return 1;
 		}
 		delete sqlDb;
 	}
