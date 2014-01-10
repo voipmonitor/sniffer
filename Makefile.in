@@ -19,6 +19,11 @@ endif
 
 GCCARCH = native
 
+GCCVERSION = $(shell gcc --version | grep ^gcc | sed 's/^.* //g' | cut -f1,2 -d.)
+ifeq "$(GCCVERSION)" "4.1"
+  GCCARCH = core2
+endif
+
 version = $(shell grep RTPSENSOR_VERSION voipmonitor.h | cut -d" " -f 3 | tr -d "\"")
 
 objects = regcache.o codec_alaw.o codec_ulaw.o format_slinear.o format_wav.o format_ogg.o calltable.o rtp.o voipmonitor.o sniff.o jitterbuffer/astmm.o jitterbuffer/utils.o jitterbuffer/fixedjitterbuf.o jitterbuffer/jitterbuf.o jitterbuffer/abstract_jb.o jitterbuffer/frame.o gzstream/gzstream.o gzstream/libgzstream.a manager.o tools.o filter_mysql.o hash.o mos_g729.o odbc.o rtcp.o pcap_queue.o sql_db.o md5.o mirrorip.o ipaccount.o skinny.o pstat.o generator.o tcpreassembly.o http.o cleanspool.o 
