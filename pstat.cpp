@@ -14,12 +14,16 @@ bool pstat_get_data(const int pid, pstat_data* result) {
 	
 	FILE *fpstat = fopen(stat_filepath, "r");
 	if(fpstat == NULL) {
-		perror("FOPEN ERROR ");
+		#ifndef FREEBSD
+		perror("pstat fopen error (/proc/[pid]/task/[taskid]/stat) ");
+		#endif
 		return(false);
 	}
 	FILE *fstat = fopen("/proc/stat", "r");
 	if(fstat == NULL) {
-		perror("FOPEN ERROR ");
+		#ifndef FREEBSD
+		perror("pstat fopen error (/proc/stat) ");
+		#endif
 		fclose(fpstat);
 		return(false);
 	}
