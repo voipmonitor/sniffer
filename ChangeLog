@@ -1,3 +1,15 @@
+8.4RC26 10.1.2014
+=================
+- do not try connect to mysql indefinitely when the sniffer is started. This was problem if mysql does not run and voipmonitor starts at boot which stucked the whole booting process. 
+- fix clean partitions if cleandatabase is set
+- if the call is not connected it was supposed to set -1 to connect_duration but the column is unsigned thus it will end up with 0 - this fix will set NULL if call is not connected (as well as first_rtp_time and progress_time)
+- check if another instance of voipmonitor is running on background based on name of the configuration file (so more instances can still run on background with different configs) 
+- in case call is closed with 403 response shorten close window to 5 seconds so that call will not timeout on rtp_timeout (which is 5 min by default). 
+- fix freebsd endianess detection which resulted in ignoring RTP packets
+- change mtune and march to native in Makefile
+- automatically disable partitions for mysql <= 5.0 
+
+
 8.4RC25 8.1.2014
 ================
 - fix clean partitions when opt_cleandatabase is set
