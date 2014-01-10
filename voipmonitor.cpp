@@ -465,8 +465,8 @@ time_t startTime;
 sem_t *globalSemaphore;
 
 
-char *SAMAPHOR_FORK_MODE_NAME() {
-	static char forkModeName[1024] = "";
+string SAMAPHOR_FORK_MODE_NAME() {
+ 	char forkModeName[1024] = "";
 	if(!forkModeName[0]) {
 		strcpy(forkModeName, configfile[0] ? configfile : "voipmonitor_fork_mode");
 		if(configfile[0]) {
@@ -495,7 +495,7 @@ void terminate2() {
 void exit_handler_fork_mode()
 {
 	if(opt_fork) {
-		sem_unlink(SAMAPHOR_FORK_MODE_NAME());
+		sem_unlink(SAMAPHOR_FORK_MODE_NAME().c_str());
 		if(globalSemaphore) {
 			sem_close(globalSemaphore);
 		}
@@ -1003,8 +1003,6 @@ static void daemonize(void)
 		close(0); open("/dev/null", O_RDONLY);
 		close(1); open("/dev/null", O_WRONLY);
 		close(2); open("/dev/null", O_WRONLY);
-		
-		exit_handler_fork_mode();
 	}
 }
 
@@ -2530,43 +2528,95 @@ int main(int argc, char *argv[]) {
 
 		return 1;
 	}
-	
 	if(opt_fork) {
 		for(int pass = 0; pass < 2; pass ++) {
-			globalSemaphore = sem_open(SAMAPHOR_FORK_MODE_NAME(), O_CREAT | O_EXCL);
-			if(globalSemaphore == NULL) {
+			globalSemaphore = sem_open(SAMAPHOR_FORK_MODE_NAME().c_str(), O_CREAT | O_EXCL);
+			if(globalSemaphore == SEM_FAILED) {
+				if(errno != EEXIST) {
+					syslog(LOG_ERR, "sem_open failed: %s", strerror(errno));
+					return 1;
+				}
 				if(pass == 0) {
-					string rslt = pexec("pgrep voipmonitor");
 					bool findOwnPid = false;
 					bool findOtherPid = false;
-					if(rslt != "ERROR") {
-						int ownPid = getpid();
-						char *point = (char*)rslt.c_str();
+					char *appName = strrchr(argv[0], '/');
+					if(appName) {
+						++appName;
+					} else {
+						appName = argv[0];
+					}
+					string pgrepCmdAll = string("pgrep ") + appName;
+					string rsltAll = pexec((char*)pgrepCmdAll.c_str());
+					
+					cout << pgrepCmdAll << endl;
+					cout << rsltAll << endl;
+					
+					vector<int> allVoipmonitorPid;
+					if(rsltAll != "ERROR") {
+						char *point = (char*)rsltAll.c_str();
 						while(*point) {
 							while(*point && !isdigit(*point)) {
 								++point;
 							}
 							if(*point && isdigit(*point)) {
-								int checkPid = atoi(point);
-								if(checkPid == ownPid) {
-								       findOwnPid = true;
-								} else {
-								       findOtherPid =  true;
-								}
+								allVoipmonitorPid.push_back(atoi(point));
 							}
 							while(*point && isdigit(*point)) {
 								++point;
 							}
 						}
 					}
+					if(allVoipmonitorPid.size()) {
+						string pgrepCmd = string("pgrep -f ") + appName;
+						if(configfile[0]) {
+							pgrepCmd += string(".*") + configfile;
+						}
+						string rslt = pexec((char*)pgrepCmd.c_str());
+						
+						cout << pgrepCmd << endl;
+						cout << rslt << endl;
+						
+						if(rslt != "ERROR") {
+							int ownPid = getpid();
+							char *point = (char*)rslt.c_str();
+							while(*point) {
+								while(*point && !isdigit(*point)) {
+									++point;
+								}
+								if(*point && isdigit(*point)) {
+									int checkPid = atoi(point);
+									bool findInAll = false;
+									for(size_t i = 0; i < allVoipmonitorPid.size(); i++) {
+										if(allVoipmonitorPid[i] == checkPid) {
+											findInAll = true;
+											break;
+										}
+									}
+									if(findInAll) {
+										if(checkPid == ownPid) {
+										       findOwnPid = true;
+										} else {
+										       findOtherPid =  true;
+										}
+									}
+								}
+								while(*point && isdigit(*point)) {
+									++point;
+								}
+							}
+						}
+					}
 					if(findOwnPid && !findOtherPid) {
-						sem_unlink(SAMAPHOR_FORK_MODE_NAME());
+						if(sem_unlink(SAMAPHOR_FORK_MODE_NAME().c_str())) {
+							syslog(LOG_ERR, "sem_unlink failed: %s", strerror(errno));
+							return 1;
+						}
 					} else {
 						pass = 1;
 					}
 				}
 				if(pass == 1) {
-					syslog(LOG_ERR, "Already running fork mode!\n");
+					syslog(LOG_ERR, "another voipmonitor instance with the same configuration file is running");
 					return 1;
 				}
 			} else {
