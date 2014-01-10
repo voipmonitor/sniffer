@@ -57,6 +57,21 @@ void mysqlquerypush(string);
 
 /* For compatibility with Linux definitions... */
 
+#if ( defined( __FreeBSD__ ) || defined ( __NetBSD__ ) )
+# ifndef FREEBSD
+#  define FREEBSD
+# endif
+#endif
+
+#ifdef FREEBSD
+# include <sys/endian.h>
+# define __BYTE_ORDER _BYTE_ORDER
+# define __BIG_ENDIAN _BIG_ENDIAN
+# define __LITTLE_ENDIAN _LITTLE_ENDIAN
+#else
+# include <endian.h>
+#endif
+
 #if __BYTE_ORDER == __BIG_ENDIAN
 # ifndef __BIG_ENDIAN_BITFIELD
 #  define __BIG_ENDIAN_BITFIELD
@@ -73,12 +88,6 @@ void mysqlquerypush(string);
 
 #ifndef ulong 
 #define ulong unsigned long 
-#endif
-
-#if ( defined( __FreeBSD__ ) || defined ( __NetBSD__ ) )
-#ifndef FREEBSD
-#define FREEBSD
-#endif
 #endif
 
 struct tcphdr2

@@ -3383,9 +3383,15 @@ void test() {
 		#else
 			cout << "little" << endl;
 		#endif
-		cout << "__BYTE_ORDER value (1234 is little, 4321 is big) : " << __BYTE_ORDER << endl;
+		#ifdef __BYTE_ORDER
+			cout << "__BYTE_ORDER value (1234 is little, 4321 is big) : " << __BYTE_ORDER << endl;
+		#else
+			cout << "undefined __BYTE_ORDER" << endl;
+		#endif
 		#ifdef BYTE_ORDER
 			cout << "BYTE_ORDER value (1234 is little, 4321 is big) : " << BYTE_ORDER << endl;
+		#else
+			cout << "undefined BYTE_ORDER" << endl;
 		#endif
 		}
 		break;
