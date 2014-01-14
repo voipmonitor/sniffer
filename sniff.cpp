@@ -2457,6 +2457,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 				}
 			} else if(sip_method == MESSAGE) {
 				call->destroy_call_at = header->ts.tv_sec + 60;
+				call->seeninviteok = false;
 
 				s = gettag(data, datalen, "\nUser-Agent:", &l, &gettagLimitLen);
 				if(l && ((unsigned int)l < ((unsigned int)datalen - (s - data)))) {

@@ -2381,8 +2381,7 @@ void SqlDb_mysql::copyFromSourceTable(SqlDb_mysql *sqlDbSrc, const char *tableNa
 		if(useMaxIdInSrc) {
 			queryStr << " and " << id << " <= " << useMaxIdInSrc;
 		}
-		if(string(tableName) == "register_state" ||
-		   string(tableName) == "register_failed") {
+		if(string(tableName) == "register_failed") {
 			queryStr << " and created_at < '" << sqlDateTimeString(time(NULL) - 3600) << "'";
 		}
 		queryStr << " order by " << id;
@@ -2395,6 +2394,7 @@ void SqlDb_mysql::copyFromSourceTable(SqlDb_mysql *sqlDbSrc, const char *tableNa
 			SqlDb_row row;
 			vector<SqlDb_row> rows;
 			unsigned int counterInsert = 0;
+			unsigned int insertThreads = 1;
 			while(!terminating && (row = sqlDbSrc->fetchRow(true))) {
 				if(maxDiffId) {
 					useMaxIdInSrc = atoll(row[id].c_str());
@@ -2402,7 +2402,10 @@ void SqlDb_mysql::copyFromSourceTable(SqlDb_mysql *sqlDbSrc, const char *tableNa
 				rows.push_back(row);
 				if(rows.size() >= 100) {
 					string insertQuery = this->insertQuery(tableName, &rows, false, true, true);
-					sqlStore->query(insertQuery.c_str(), (counterInsert++ % 3) + 1);
+					sqlStore->query(insertQuery.c_str(), 
+							insertThreads > 1 ?
+								((counterInsert++ % 3) + 1) :
+								1);
 					rows.clear();
 				}
 				while(!terminating && sqlStore->getSize() > 1000) {
@@ -2411,7 +2414,10 @@ void SqlDb_mysql::copyFromSourceTable(SqlDb_mysql *sqlDbSrc, const char *tableNa
 			}
 			if(!terminating && rows.size()) {
 				string insertQuery = this->insertQuery(tableName, &rows, false, true, true);
-				sqlStore->query(insertQuery.c_str(), (counterInsert++ % 3) + 1);
+				sqlStore->query(insertQuery.c_str(), 
+						insertThreads > 1 ?
+							((counterInsert++ % 3) + 1) :
+							1);
 				rows.clear();
 			}
 		}
