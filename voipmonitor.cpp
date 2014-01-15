@@ -262,6 +262,7 @@ int opt_database_backup_use_federated = 0;
 string opt_mos_lqo_bin = "pesq";
 string opt_mos_lqo_ref = "/usr/local/share/voipmonitor/audio/mos_lqe_original.wav";
 regcache *regfailedcache;
+int opt_onewaytimeout = 10;
 
 unsigned int opt_maxpoolsize = 0;
 unsigned int opt_maxpooldays = 0;
@@ -1759,7 +1760,6 @@ int load_config(char *fname) {
 	if((value = ini.GetValue("general", "convert_dlt_sll2en10", NULL))) {
 		opt_convert_dlt_sll_to_en10 = yesno(value);
 	}
-	
 	if((value = ini.GetValue("general", "threading_mod", NULL))) {
 		switch(atoi(value)) {
 		case 2:
@@ -1779,7 +1779,6 @@ int load_config(char *fname) {
 	if(!opt_pcap_queue_iface_separate_threads && strchr(ifname, ',')) {
 		opt_pcap_queue_iface_separate_threads = 1;
 	}
-
 	if((value = ini.GetValue("general", "maxpcapsize", NULL))) {
 		opt_maxpcapsize_mb = atoi(value);
 	}
@@ -1798,9 +1797,11 @@ int load_config(char *fname) {
 	if((value = ini.GetValue("general", "mos_lqo_ref", NULL))) {
 		opt_mos_lqo_ref = value;
 	}
-	
 	if((value = ini.GetValue("general", "php_path", NULL))) {
 		strncpy(opt_php_path, value, sizeof(opt_php_path));
+	}
+	if((value = ini.GetValue("general", "onewaytimeout", NULL))) {
+		opt_onewaytimeout = atoi(value);
 	}
 	
 	/*

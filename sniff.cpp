@@ -1205,7 +1205,7 @@ Call *new_invite_register(int sip_method, char *data, int datalen, struct pcap_p
 	unsigned int flags = 0;
 	int res;
 	bool anonymous_useRemotePartyID = false;
-
+	
 	if(opt_callslimit != 0 and opt_callslimit < calls) {
 		if(verbosity > 0)
 			syslog(LOG_NOTICE, "callslimit[%d] > calls[%d] ignoring call\n", opt_callslimit, calls);
@@ -1281,6 +1281,7 @@ Call *new_invite_register(int sip_method, char *data, int datalen, struct pcap_p
 	call->sipcalledport = dest;
 	call->type = sip_method;
 	call->flags = flags;
+	call->lastsrcip = saddr;
 	strncpy(call->fbasename, callidstr, MAX_FNAME - 1);
 	call->fbasename[MIN(strlen(callidstr), MAX_FNAME - 1)] = '\0';
 	call->msgcount++;
@@ -2293,6 +2294,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 			}
 		// check if the SIP msg is part of earlier REGISTER
 		} else if(call->type == REGISTER) {
+			if(call->lastsrcip != saddr) { call->oneway = 0; };
 			call->lastSIPresponseNum = lastSIPresponseNum;
 			call->msgcount++;
 			if(sip_method == REGISTER) {
@@ -2389,6 +2391,8 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 			(call->saddr == daddr && call->sport == dest))))
 
 			{
+
+			if(call->lastsrcip != saddr) { call->oneway = 0; };
 
 			char *cseq = NULL;
 			long unsigned int cseqlen = 0;
@@ -2600,7 +2604,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 			}
 
 			// if the call ends with some of SIP [456]XX response code, we can shorten timeout when the call will be closed 
-			if( ((call->saddr == saddr && call->sport == source) || (call->saddr == daddr && call->sport == dest))
+			if( (call->saddr == saddr || (call->saddr == daddr))
 				&&
 			    (sip_method == RES3XX || sip_method == RES4XX || sip_method == RES5XX || sip_method == RES6XX || sip_method == RES403) && lastSIPresponseNum != 401 && lastSIPresponseNum != 407
 				&& lastSIPresponseNum != 501 ) {
@@ -2625,6 +2629,8 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 					return call;
 			}
 		}
+
+		if(call->lastsrcip != saddr) { call->oneway = 0; };
 
 		if(opt_cdrproxy && sip_method == INVITE) {
 			if(call->sipcalledip != daddr and call->sipcallerip != daddr and call->lastsipcallerip != saddr) {

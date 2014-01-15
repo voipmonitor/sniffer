@@ -199,6 +199,9 @@ public:
 
 	int thread_num;
 
+	char oneway;
+	unsigned int lastsrcip;
+
 	void *listening_worker_args;
 	
 	int ssrc_n;				//!< last index of rtp array

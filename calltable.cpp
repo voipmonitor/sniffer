@@ -122,6 +122,7 @@ extern char mac[32];
 unsigned int last_register_clean = 0;
 
 extern CustPhoneNumberCache *custPnCache;
+extern int opt_onewaytimeout;
 
 SqlDb *sqlDbSaveCall = NULL;
 bool existsColumnCalldateInCdrNext = false;
@@ -230,6 +231,7 @@ Call::Call(char *call_id, unsigned long call_id_len, time_t time, void *ct) :
 	forcemark[0] = forcemark[1] = 0;
 	a_mos_lqo = -1;
 	b_mos_lqo = -1;
+	oneway = 1;
 }
 
 void
@@ -1475,8 +1477,14 @@ Call::getKeyValCDRtext() {
 	
 	cdr.add(sighup ? 1 : 0, "sighup");
 	cdr.add(lastSIPresponseNum, "lastSIPresponseNum");
-	cdr.add((pcapstat.ps_ifdrop != ps_ifdrop or pcapstat.ps_drop != ps_drop) ? 100 : 
-		(seeninviteok ? (seenbye ? (seenbyeandok ? 3 : 2) : 1) : 0), "bye");
+	int bye;
+	if(oneway) {
+		bye = 101;
+	} else {
+		bye = (pcapstat.ps_ifdrop != ps_ifdrop or pcapstat.ps_drop != ps_drop) ? 100 :
+		(seeninviteok ? (seenbye ? (seenbyeandok ? 3 : 2) : 1) : 0);
+	}
+	cdr.add(bye, "bye");
 
 	if(opt_dscp) {
 		unsigned int a,b,c,d;
@@ -1840,9 +1848,16 @@ Call::saveToDb(bool enableBatchIfPossible) {
 	}
 	cdr.add(sighup ? 1 : 0, "sighup");
 	cdr.add(lastSIPresponseNum, "lastSIPresponseNum");
-	cdr.add((pcapstat.ps_ifdrop != ps_ifdrop or pcapstat.ps_drop != ps_drop) ? 100 : 
-		(seeninviteok ? (seenbye ? (seenbyeandok ? 3 : 2) : 1) : 0), "bye");
-	
+
+	int bye;
+	if(oneway) {
+		bye = 101;
+	} else {
+		bye = (pcapstat.ps_ifdrop != ps_ifdrop or pcapstat.ps_drop != ps_drop) ? 100 :
+		(seeninviteok ? (seenbye ? (seenbyeandok ? 3 : 2) : 1) : 0);
+	}
+	cdr.add(bye, "bye");
+
 	if(strlen(match_header)) {
 		cdr_next.add(sqlEscapeString(match_header), "match_header");
 	}
@@ -3099,8 +3114,13 @@ Calltable::cleanup( time_t currtime ) {
 			syslog(LOG_NOTICE, "Calltable::cleanup - try callid %s", call->call_id.c_str());
 		}
 		// rtptimeout seconds of inactivity will save this call and remove from call table
+		printf("cleaning oneway[%d] currtime[%u] lastpacket[%u] opt_onewaytimeout[%d]\n", call->oneway, currtime, call->get_last_packet_time(), opt_onewaytimeout);
 		if(currtime == 0 || 
-		   (call->rtppcaketsinqueue == 0 and ((call->destroy_call_at != 0 and call->destroy_call_at <= currtime) || (currtime - call->get_last_packet_time() > rtptimeout)))) {
+		   (call->rtppcaketsinqueue == 0 and ((call->destroy_call_at != 0 and call->destroy_call_at <= currtime) || (currtime - call->get_last_packet_time() > rtptimeout)))
+			||
+		   (call->oneway == 1 and (currtime - call->get_last_packet_time() > opt_onewaytimeout))
+		) {
+			printf("oneway[%d]\n", call->oneway);
 			if(verbosity && verbosityE > 1) {
 				syslog(LOG_NOTICE, "Calltable::cleanup - callid %s", call->call_id.c_str());
 			}
