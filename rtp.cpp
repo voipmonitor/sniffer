@@ -19,6 +19,7 @@ Each Call class contains two RTP classes.
 
 #include <pcap.h>
 
+#include "voipmonitor.h"
 #include "tools.h"
 #include "rtp.h"
 #include "calltable.h"
