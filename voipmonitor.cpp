@@ -1433,7 +1433,7 @@ int load_config(char *fname) {
 		strncpy(sql_cdr_sip_response_table, value, sizeof(sql_cdr_sip_response_table));
 	}
 	if((value = ini.GetValue("general", "mysqlcompress", NULL))) {
-		opt_mysqlcompress = atoi(value);
+		opt_mysqlcompress = yesno(value);
 	}
 	if((value = ini.GetValue("general", "mysqlhost", NULL))) {
 		strncpy(mysql_host, value, sizeof(mysql_host));
