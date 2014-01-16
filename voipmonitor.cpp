@@ -793,6 +793,10 @@ void *storing_sql( void *dummy ) {
 				size = 0;
 			}
 
+			if(terminating && !sqlDb->connected()) {
+				break;
+			}
+
 		}
 
 		if(verbosity > 0 && _counterIpacc > 0) {
