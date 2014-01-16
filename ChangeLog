@@ -1,3 +1,13 @@
+8.4RC26 16.1.2014
+=================
+- fix mysqlcompress configuration option which has been always disabled. 
+- fix FreeBSD endiannes again. Now RTP works
+- calls which end with 4XX or 5XX was not released from memory immediatelly and was waiting for rtptimeout if sip source port differs from the first INVITE. 
+- fix if sniffer is terminated by TERM signal (service voipmonitor stop) and there were some calls in sql queue and the mysql server has gone the sniffer tries indefinitely to connect. 
+- new configuration option onewaytimeout ends sip call after set seconds which does not receive any reply from the other side. Technivally it takes sip source ip address from first invite/register and if there is no other sip source ip different from the first source ip the call will be terminated after onowaytimeout seconds. If a call is terminated due to this timeout in cdr.bye column will be 101. Purpose of this timeout is to release memory as soon as possible in case there INVITE flood which does not have any reply. Another reason is when mirroring is set incorrectly and the sniffer sees only one side of a SIP signalization. If onowaytimeout is not set default is 15.
+- support sccp skinny header ver. 0x17
+
+
 8.4RC26 10.1.2014
 =================
 - do not try connect to mysql indefinitely when the sniffer is started. This was problem if mysql does not run and voipmonitor starts at boot which stucked the whole booting process. 
