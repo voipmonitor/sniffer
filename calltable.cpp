@@ -3114,13 +3114,11 @@ Calltable::cleanup( time_t currtime ) {
 			syslog(LOG_NOTICE, "Calltable::cleanup - try callid %s", call->call_id.c_str());
 		}
 		// rtptimeout seconds of inactivity will save this call and remove from call table
-		printf("cleaning oneway[%d] currtime[%u] lastpacket[%u] opt_onewaytimeout[%d]\n", call->oneway, currtime, call->get_last_packet_time(), opt_onewaytimeout);
 		if(currtime == 0 || 
 		   (call->rtppcaketsinqueue == 0 and ((call->destroy_call_at != 0 and call->destroy_call_at <= currtime) || (currtime - call->get_last_packet_time() > rtptimeout)))
 			||
 		   (call->oneway == 1 and (currtime - call->get_last_packet_time() > opt_onewaytimeout))
 		) {
-			printf("oneway[%d]\n", call->oneway);
 			if(verbosity && verbosityE > 1) {
 				syslog(LOG_NOTICE, "Calltable::cleanup - callid %s", call->call_id.c_str());
 			}

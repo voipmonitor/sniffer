@@ -1591,7 +1591,7 @@ void *handle_skinny2(pcap_pkthdr *header, const u_char *packet, unsigned int sad
 				calledParty = strings[1];
 				callingPartyName = strings[8];
 				calledPartyName = strings[9];
-			} if(req.res == 20) {
+			} else if(req.res == 20 or req.res == 17) {
 				 /* CM7 
 					char callingParty];			0
 					char callingPartyVoiceMailbox;		1
@@ -1613,7 +1613,7 @@ void *handle_skinny2(pcap_pkthdr *header, const u_char *packet, unsigned int sad
 				calledPartyName = strings[9];
 			} else {
 				if(verbosity > 0)
-					syslog(LOG_NOTICE, "Unsupported header version CM5CALL_INFO_MESSAGE:[%x]\n", req.res);
+					syslog(LOG_NOTICE, "Unsupported header version CM5CALL_INFO_MESSAGE:[hex %x|dec %d]\n", req.res, req.res);
 				break;
 			}
 
@@ -1696,20 +1696,20 @@ void *handle_skinny2(pcap_pkthdr *header, const u_char *packet, unsigned int sad
 			ref = letohl(req.data.startmedia_ip4.conferenceId);
 			ipaddr = letohl(req.data.startmedia_ip4.remoteIp);
 			port = letohl(req.data.startmedia_ip4.remotePort);
-		} else if(req.res == 20) {
+		} else if(req.res == 20 or req.res == 17) {
 			ref = letohl(req.data.CM7_startmedia_ip4.conferenceId);
 			ipaddr = letohl(req.data.CM7_startmedia_ip4.remoteIp);
 			port = letohl(req.data.CM7_startmedia_ip4.remotePort);
 		} else {
 			if(verbosity > 0)
-				syslog(LOG_NOTICE, "Unsupported header version START_MEDIA_TRANSMISSION_MESSAGE:[%x]\n", req.res);
+				syslog(LOG_NOTICE, "Unsupported header version START_MEDIA_TRANSMISSION_MESSAGE:[hex %x|dec %d]\n", req.res, req.res);
 			break;
 		}
 
 
 		char callid[16];
 		sprintf(callid, "%d", ref);
-		SKINNY_DEBUG(DEBUG_PACKET, 3, "Received START_MEDIA_TRANSMISSION_MESSAGE partyId [%u] ipAddr[%x] port[%u]", ref, ipaddr, port);
+		SKINNY_DEBUG(DEBUG_PACKET, 3, "Received START_MEDIA_TRANSMISSION_MESSAGE partyId [%u] ipAddr[%x] port[%u] callid[%s]", ref, ipaddr, port, callid);
 		if((call = calltable->find_by_call_id(callid, strlen(callid)))){
 			int rtpmap[MAX_RTPMAP];
 			memset(&rtpmap, 0, sizeof(int) * MAX_RTPMAP);
