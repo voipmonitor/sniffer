@@ -1,4 +1,98 @@
-8.4RC26 16.1.2014
+9.0 17.1.2014
+=============
+Version 9.0 is formerly 8.4RC27 and this changelog sumarizes all changes since 8.3 (all features from 8.4)
+
+Optimizations 
+-------------
+- do not create RTP pcap file for every sip call but only if there is actually RTP which saves a lot of I/O 
+- take min MOS score from fixed2 jitterbuffer simulator by default which eliminates low mos score due to f1 and adapt sensitivness
+- do not flood log with "to much INVITEs in this call" show the message only once increase MAX_IP_PER_CALL from 30 to 40
+- Close SIP and SIP+RTP dump files ASAP to save some number of opened files and memory (Rob Gagnom)
+- optimize thread0 packetbuffer size
+- disable sendfile flood if not present in old kernel
+- modify install script which will ask if the user wants to overwrite configuration file
+- optimize SIP MESSAGE sql storing which accidentally access database for each SIP MESSAGE which leds in queueing sip message types 
+- do not create partitions every hour but every 12 hours 
+- add option disable_partition_operations which will not create partitions (in multisniffer environment all other sensors should have disabled partition creation which is redundant) 
+- enhance drop old partitions
+- check if another instance of voipmonitor is running on background based on name of the configuration file (so more instances can still run on background with different configs)
+- in case call is closed with 403 response shorten close window to 5 seconds so that call will not timeout on rtp_timeout (which is 5 min by default).
+- change mtune and march to native in Makefile
+- calls which end with 4XX or 5XX was not released from memory immediatelly and was waiting for rtptimeout if sip source port differs from the first INVITE.
+
+
+Bugfixes 
+--------
+- do not parse SIP data after content-lenght = X. This fix was already done before but only if verbose > 1 
+- save to register_failed all REGISTER which is not success and not only if the password is wrong. 
+- fix DSCP (reversed) and not working if pcapscandir is used. 
+- do not terminate call prematurely when SIP 501 "Not Implemented" is received
+- fix spooldir cleaning (broken in 8.3 version) and reindexfiles which has problem if directory has more then 2GB
+- fix potential crash in RTP processing
+- fix crash on some 32 bit platforms
+- fix audio decoding for comfort noise and dtmf - do not create new RTP instance if payload is one of 13,19,101
+- fix callslimit which did not worked at all
+- fix ODBC driver (tested for mssql) which was not maintained for a longer time
+- fix traffic speed in verbose output 
+- If cdr proxy is enabled (which is by default) fix called IP in cdr and false proxy record in proxy column in case called make reintive. Fix proxy in case there is INVITE to fail-over - write the last IP of the last SIP and not the first (failed) one. Fix hangup indication (cdr.whohangedup) in case call travers through proxies (called was marked as hanged up always)
+- following issue was fixed only when reading pcap files but not in realtime sniffing - prior verison 8.0.1 deduplicate (which is default off) was comparing only data without ip header and udp header so duplicate packets was matched also in case when IP addresses differs. This was good for some cases but it leads to completely ignore RTP streams in other cases. Now default option is to check duplicates based on not only data but ip headers too. To change this set deduplicate_ipheader = no. default = yes.deduplicate_ipheader = yes. fix recent deduplication fix which was wrong and it leads to remove packets which were not duplicated because it took less data than actual data (12 bytes less). This fixes T38 decoding in GUI for example.
+- do not send SID frames to G729 decoder which fixes garbled sound for G729 RTP streams. 
+- escape database name in sql queries ('-' caused problems) 
+- fix detect partitions in cdr% tables when upgrading from older versions
+- fix convert_dlt_sll2en10 parameter
+- do not flood syslog when RTP files cannot be created
+- fix IP header len when defragmenting packet which prevents to see some SIP packets in SIP history (and in wireshark).
+- fix SDP: sometimes SDP could not be parsed if the IP was the last line in SDP in the packet thus ignorind the whole RTP
+- fix parsing tags which can be terminated also by only new line instead of CRLF
+- fix rare issue with new invite after last sip response 487
+- do not report mysql error when recreating mysql stored functions. do not drop / create those functions if they are not different 
+- fix parsing custom headers for sip methods RES3XX, RES4XX, RES5XX, RES6XX
+- fix incorrect 200 OK last response code when CANCEL is confirmed by 200 OK without request terminated. 
+- if voip SIP device (with source IP 1.1.1.1) sends in SDP that it wants RTP for example to 10.0.0.1 and port 10000 the call also sniff RTP from 1.1.1.1:10000 or to 1.1.1.1:10000 which does more problems than it solves. Now this behaviour is changed and if you need this option back you can enable it sdp_reverse_ipport=yes. This change fixes RTP packets assigned to wrong call and other weired problems. 
+- fix crash in case the sniffer run outs of file descriptor
+- DTMF events are not always 101 - take it from the SDP which fixes audio sync and g729 garble issues and many graph files in case telephone events payload is not 101 (typically 100) 
+- do not try connect to mysql indefinitely when the sniffer is started. This was problem if mysql does not run and voipmonitor starts at boot which stucked the whole booting process.
+- if the call is not connected it was supposed to set -1 to connect_duration but the column is unsigned thus it will end up with 0 - this fix will set NULL if call is not connected (as well as first_rtp_time and progress_time)
+- automatically disable partitions for mysql <= 5.0
+- fix mysqlcompress configuration option which has been always disabled.
+- fix if sniffer is terminated by TERM signal (service voipmonitor stop) and there were some calls in sql queue and the mysql server has gone the sniffer tries indefinitely to connect.
+
+New features 
+------------
+- implement new cdr columns - sipcallerport, sipcalledport - if configuration variable cdr_sipport is set to yes
+- implement destination_number_mode which will take number from INVITE URI or To: SIP header. If destination_number_mode = 1 it will always save number from To: header. If destination_number_mode = 2 it will take number from INVITE URI. default: destination_number_mode = 1  
+- When scanpcapdir is being used, voipmonitor will by default read any new file that is created in that directory as soon as the file is closed.  This is the normal setting if your packet capture software is tcpdump.  If you are using a different packet capture software, you may need to change this setting to "rename" if that software writes to a temporary file, closes it, and then renames it to something else after the file is closed.  Default setting is "newfile" (Rob Gagnon)  
+- packetbuffer mirroring - add support for multiple sender connections to one central receiver. Now the receiver will accept unlimite number of connections at the same time. 
+- support compile on FreeBSD (tested on FreeBSD 8.3) 
+- implement reading from list of interfaces which is better alternative to interface = any. Now it is possible to sniff on eth0 and eth2 within one sniffer - interface = eth0,eth2. Reading is done in separate threads which takes benefit over interface = any  
+- fix reloading capture rules which dissapeared due to mysql race condition 
+- fix mysql issues causing random corruption when doing reload
+- fix long term issue (all versions) where the .graph file in CDR detail (in the GUI) suddenly jumps if sequence numbers changes either due to packet loss or due to VAD. Now graphs should not move up/down suddenly  
+- fix low MOS score for adaptive jitterbuffer in case a SIP session reinvites and RTP packets does not correctly increases sequence numbers or timestamps
+- fix low MOS score for adaptive jitterbuffer even for 5 packet loss caused by normal shrink/grow internal jitterbuffer simulator.A
+- fix inappropriate packet loss report if a SIP session reinvites and RTP stream with the same SSRC has hole which is normal (although the wireshark still report packet loss as well as any RFC RTP compliant RTP analyzer)  
+- fix excessive loss report for some cases in case of reinvite (regression since 8.4RC12)
+- if SSRC changes during call and there is another SSRC change to previous one and the RTP packet has the same seq and timestamp does not reflect the gap - do not report huge packet loss
+- implement GRE tunnel de-encapsulation
+- parse caller and called number in function save_live_packet if call is NULL which allows to filter OPTION and SUBSCRIBE in GUI live sniffer
+- Implement multipart/mixed SIP messages which voipmonitor ignored if there was SDP (for example SIP messages with SDP and ISUP)
+- implement binary format for graph file which makes *.graph files 5 times smaller which greatly reduces disk space and I/O operations. This needs the latest GUI 
+- implement autocleaning in cachedir and automatically move files when sniffer was interrupted and restarted
+- add pcap size limit - configuration option maxpcapsize (in MB)
+- add upgrade, restart and sniffer stats via manager
+- add option create_old_partitions and create_old_partitions_from to create old partitions
+- add uptime to sniffer statistics
+- for caller number use tag remote-party-id (if exists) and caller contain anonymous so the CDR still contains number of the caller 
+- add support for CM7 header version (missing RTP)
+- SCCP: add CM5CALL_INFO_MESSAGE 0x014A type so caller/called numbers are set 
+- implement ITU-T P.862 PESQ. pesq binary must be installed. mos_lqo in voipmonitor.conf must be enabled. in capture rules tables filter_ip or filter_telnum wav and mos_lqo must be anebled - cdr.a_mos_lqo_
+mult10 and cdr.b_mos_lqo_mult10 added.
+- new configuration option onewaytimeout ends sip call after set seconds which does not receive any reply from the other side. Technivally it takes sip source ip address from first invite/register and if there is no other sip source ip different from the first source ip the call will be terminated after onowaytimeout seconds. If a call is terminated due to this timeout in cdr.bye column will be 101. Purpose of this timeout is to release memory as soon as possible in case there INVITE flood which does not have any reply. Another reason is when mirroring is set incorrectly and the sniffer sees only one side of a SIP signalization. If onowaytimeout is not set default is 15.
+- support sccp skinny header ver. 0x17
+
+
+
+8.4RC27 16.1.2014
 =================
 - fix mysqlcompress configuration option which has been always disabled. 
 - fix FreeBSD endiannes again. Now RTP works
