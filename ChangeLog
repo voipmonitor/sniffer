@@ -20,7 +20,6 @@ Optimizations
 - change mtune and march to native in Makefile
 - calls which end with 4XX or 5XX was not released from memory immediatelly and was waiting for rtptimeout if sip source port differs from the first INVITE.
 
-
 Bugfixes 
 --------
 - do not parse SIP data after content-lenght = X. This fix was already done before but only if verbose > 1 
@@ -56,6 +55,12 @@ Bugfixes
 - automatically disable partitions for mysql <= 5.0
 - fix mysqlcompress configuration option which has been always disabled.
 - fix if sniffer is terminated by TERM signal (service voipmonitor stop) and there were some calls in sql queue and the mysql server has gone the sniffer tries indefinitely to connect.
+- fix reloading capture rules which dissapeared due to mysql race condition 
+- fix mysql issues causing random corruption when doing reload
+- fix long term issue (all versions) where the .graph file in CDR detail (in the GUI) suddenly jumps if sequence numbers changes either due to packet loss or due to VAD. Now graphs should not move up/down suddenly  
+- fix low MOS score for adaptive jitterbuffer in case a SIP session reinvites and RTP packets does not correctly increases sequence numbers or timestamps
+- fix low MOS score for adaptive jitterbuffer even for 5 packet loss caused by normal shrink/grow internal jitterbuffer simulator.A
+- fix inappropriate packet loss report if a SIP session reinvites and RTP stream with the same SSRC has hole which is normal (although the wireshark still report packet loss as well as any RFC RTP compliant RTP analyzer)
 
 New features 
 ------------
@@ -65,13 +70,6 @@ New features
 - packetbuffer mirroring - add support for multiple sender connections to one central receiver. Now the receiver will accept unlimite number of connections at the same time. 
 - support compile on FreeBSD (tested on FreeBSD 8.3) 
 - implement reading from list of interfaces which is better alternative to interface = any. Now it is possible to sniff on eth0 and eth2 within one sniffer - interface = eth0,eth2. Reading is done in separate threads which takes benefit over interface = any  
-- fix reloading capture rules which dissapeared due to mysql race condition 
-- fix mysql issues causing random corruption when doing reload
-- fix long term issue (all versions) where the .graph file in CDR detail (in the GUI) suddenly jumps if sequence numbers changes either due to packet loss or due to VAD. Now graphs should not move up/down suddenly  
-- fix low MOS score for adaptive jitterbuffer in case a SIP session reinvites and RTP packets does not correctly increases sequence numbers or timestamps
-- fix low MOS score for adaptive jitterbuffer even for 5 packet loss caused by normal shrink/grow internal jitterbuffer simulator.A
-- fix inappropriate packet loss report if a SIP session reinvites and RTP stream with the same SSRC has hole which is normal (although the wireshark still report packet loss as well as any RFC RTP compliant RTP analyzer)  
-- fix excessive loss report for some cases in case of reinvite (regression since 8.4RC12)
 - if SSRC changes during call and there is another SSRC change to previous one and the RTP packet has the same seq and timestamp does not reflect the gap - do not report huge packet loss
 - implement GRE tunnel de-encapsulation
 - parse caller and called number in function save_live_packet if call is NULL which allows to filter OPTION and SUBSCRIBE in GUI live sniffer
@@ -83,13 +81,10 @@ New features
 - add option create_old_partitions and create_old_partitions_from to create old partitions
 - add uptime to sniffer statistics
 - for caller number use tag remote-party-id (if exists) and caller contain anonymous so the CDR still contains number of the caller 
-- add support for CM7 header version (missing RTP)
+- SCCP: add support for CM7 header version (missing RTP)
 - SCCP: add CM5CALL_INFO_MESSAGE 0x014A type so caller/called numbers are set 
-- implement ITU-T P.862 PESQ. pesq binary must be installed. mos_lqo in voipmonitor.conf must be enabled. in capture rules tables filter_ip or filter_telnum wav and mos_lqo must be anebled - cdr.a_mos_lqo_
-mult10 and cdr.b_mos_lqo_mult10 added.
+- implement ITU-T P.862 PESQ. pesq binary must be installed. mos_lqo in voipmonitor.conf must be enabled. in capture rules tables filter_ip or filter_telnum wav and mos_lqo must be anebled - cdr.a_mos_lqo_mult10 and cdr.b_mos_lqo_mult10 added.
 - new configuration option onewaytimeout ends sip call after set seconds which does not receive any reply from the other side. Technivally it takes sip source ip address from first invite/register and if there is no other sip source ip different from the first source ip the call will be terminated after onowaytimeout seconds. If a call is terminated due to this timeout in cdr.bye column will be 101. Purpose of this timeout is to release memory as soon as possible in case there INVITE flood which does not have any reply. Another reason is when mirroring is set incorrectly and the sniffer sees only one side of a SIP signalization. If onowaytimeout is not set default is 15.
-- support sccp skinny header ver. 0x17
-
 
 
 8.4RC27 16.1.2014
