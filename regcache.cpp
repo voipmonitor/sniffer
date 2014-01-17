@@ -53,7 +53,7 @@ regcache::check(unsigned int saddr, unsigned int daddr, unsigned int timestamp, 
 		//found
 		iter->second.counter++;
 		*count = iter->second.counter;
-		if(iter->second.timestamp + 1 <= timestamp) {
+		if(iter->second.timestamp + 60 <= timestamp) {
 			iter->second.counter = 0;
 			iter->second.timestamp = timestamp;
 			unlock();
@@ -81,7 +81,7 @@ regcache::prune(unsigned int timestamp) {
 	lock();
 	t_regcache_buffer::iterator iter;
 	for(iter = regcache_buffer.begin(); iter != regcache_buffer.end();) {
-		if(timestamp == 0 or timestamp > iter->second.timestamp + 5) {
+		if(timestamp == 0 or timestamp > iter->second.timestamp + 300) {
 			vector<std::string> res = split(iter->first, 'D');
 
 			stringstream ts, cntr;
