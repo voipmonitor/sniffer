@@ -2285,11 +2285,24 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 void SqlDb_mysql::checkSchema() {
 	extern bool existsColumnCalldateInCdrNext;
 	extern bool existsColumnCalldateInCdrRtp;
+	extern bool existsColumnCalldateInCdrDtmf;
 	sql_disable_next_attempt_if_error = 1;
 	this->query("show columns from cdr_next where Field='calldate'");
 	existsColumnCalldateInCdrNext = this->fetchRow();
 	this->query("show columns from cdr_rtp where Field='calldate'");
 	existsColumnCalldateInCdrRtp = this->fetchRow();
+	this->query("show columns from cdr_dtmf where Field='calldate'");
+	existsColumnCalldateInCdrDtmf = this->fetchRow();
+	if(!opt_cdr_partition) {
+		this->query("EXPLAIN PARTITIONS SELECT * from cdr limit 1");
+		SqlDb_row row;
+		if((row = this->fetchRow())) {
+			if(row["partitions"] != "") {
+				syslog(LOG_INFO, "enable opt_cdr_partition (table cdr has partitions)");
+				opt_cdr_partition = true;
+			}
+		}
+	}
 	sql_disable_next_attempt_if_error = 1;
 }
 

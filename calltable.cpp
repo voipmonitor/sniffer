@@ -96,7 +96,6 @@ extern char opt_keycheck[1024];
 extern char opt_convert_char[256];
 extern int opt_norecord_dtmf;
 extern char opt_silencedmtfseq[16];
-extern bool opt_cdr_partition;
 extern int opt_cdr_sipport;
 extern char get_customers_pn_query[1024];
 extern int opt_saverfc2833;
@@ -125,8 +124,9 @@ extern CustPhoneNumberCache *custPnCache;
 extern int opt_onewaytimeout;
 
 SqlDb *sqlDbSaveCall = NULL;
-bool existsColumnCalldateInCdrNext = false;
-bool existsColumnCalldateInCdrRtp = false;
+bool existsColumnCalldateInCdrNext = true;
+bool existsColumnCalldateInCdrRtp = true;
+bool existsColumnCalldateInCdrDtmf = true;
 
 
 /* constructor */
@@ -1867,7 +1867,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 	for(size_t iCustHeaders = 0; iCustHeaders < custom_headers.size(); iCustHeaders++) {
 		cdr_next.add(sqlEscapeString(custom_headers[iCustHeaders][1]), custom_headers[iCustHeaders][0]);
 	}
-	if(opt_cdr_partition && existsColumnCalldateInCdrNext) {
+	if(existsColumnCalldateInCdrNext) {
 		cdr_next.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
 	}
 
@@ -2157,7 +2157,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 				rtps.add(rtp[i]->stats.lost, "loss");
 				rtps.add((unsigned int)(rtp[i]->stats.maxjitter * 10), "maxjitter_mult10");
 				rtps.add(diff, "firsttime");
-				if(opt_cdr_partition && existsColumnCalldateInCdrRtp) {
+				if(existsColumnCalldateInCdrRtp) {
 					rtps.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
 				}
 				query_str += sqlDbSaveCall->insertQuery("cdr_rtp", rtps) + ";\n";
@@ -2178,7 +2178,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 				dtmf.add(q.daddr, "daddr");
 				dtmf.add(tmp, "dtmf");
 				dtmf.add(q.ts, "firsttime");
-				if(opt_cdr_partition) {
+				if(existsColumnCalldateInCdrDtmf) {
 					dtmf.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
 				}
 				query_str += sqlDbSaveCall->insertQuery("cdr_dtmf", dtmf) + ";\n";
@@ -2276,7 +2276,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 				rtps.add(rtp[i]->stats.lost, "loss");
 				rtps.add((unsigned int)(rtp[i]->stats.maxjitter * 10), "maxjitter_mult10");
 				rtps.add(diff, "firsttime");
-				if(opt_cdr_partition && existsColumnCalldateInCdrRtp) {
+				if(existsColumnCalldateInCdrRtp) {
 					rtps.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
 				}
 				sqlDbSaveCall->insert("cdr_rtp", rtps);
@@ -2297,7 +2297,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 				dtmf.add(q.daddr, "daddr");
 				dtmf.add(tmp, "dtmf");
 				dtmf.add(q.ts, "firsttime");
-				if(opt_cdr_partition) {
+				if(existsColumnCalldateInCdrDtmf) {
 					dtmf.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
 				}
 				sqlDbSaveCall->insert("cdr_dtmf", dtmf);
