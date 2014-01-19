@@ -258,6 +258,7 @@ char opt_database_backup_from_mysql_database[256] = "";
 char opt_database_backup_from_mysql_user[256] = "";
 char opt_database_backup_from_mysql_password[256] = "";
 int opt_database_backup_pause = 300;
+int opt_database_backup_insert_threads = 1;
 int opt_database_backup_use_federated = 0;
 string opt_mos_lqo_bin = "pesq";
 string opt_mos_lqo_ref = "/usr/local/share/voipmonitor/audio/mos_lqe_original.wav";
@@ -1489,6 +1490,9 @@ int load_config(char *fname) {
 	}
 	if((value = ini.GetValue("general", "database_backup_pause", NULL))) {
 		opt_database_backup_pause = atoi(value);
+	}
+	if((value = ini.GetValue("general", "database_backup_insert_threads", NULL))) {
+		opt_database_backup_insert_threads = atoi(value);
 	}
 	if((value = ini.GetValue("general", "get_customer_by_ip_sql_driver", NULL))) {
 		strncpy(get_customer_by_ip_sql_driver, value, sizeof(get_customer_by_ip_sql_driver));

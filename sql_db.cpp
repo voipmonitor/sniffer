@@ -2394,7 +2394,8 @@ void SqlDb_mysql::copyFromSourceTable(SqlDb_mysql *sqlDbSrc, const char *tableNa
 			SqlDb_row row;
 			vector<SqlDb_row> rows;
 			unsigned int counterInsert = 0;
-			unsigned int insertThreads = 1;
+			extern int opt_database_backup_insert_threads;
+			unsigned int insertThreads = opt_database_backup_insert_threads > 1 ? opt_database_backup_insert_threads : 1;
 			while(!terminating && (row = sqlDbSrc->fetchRow(true))) {
 				if(maxDiffId) {
 					useMaxIdInSrc = atoll(row[id].c_str());
@@ -2404,7 +2405,7 @@ void SqlDb_mysql::copyFromSourceTable(SqlDb_mysql *sqlDbSrc, const char *tableNa
 					string insertQuery = this->insertQuery(tableName, &rows, false, true, true);
 					sqlStore->query(insertQuery.c_str(), 
 							insertThreads > 1 ?
-								((counterInsert++ % 3) + 1) :
+								((counterInsert++ % insertThreads) + 1) :
 								1);
 					rows.clear();
 				}
@@ -2416,7 +2417,7 @@ void SqlDb_mysql::copyFromSourceTable(SqlDb_mysql *sqlDbSrc, const char *tableNa
 				string insertQuery = this->insertQuery(tableName, &rows, false, true, true);
 				sqlStore->query(insertQuery.c_str(), 
 						insertThreads > 1 ?
-							((counterInsert++ % 3) + 1) :
+							((counterInsert++ % insertThreads) + 1) :
 							1);
 				rows.clear();
 			}

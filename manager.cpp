@@ -1437,9 +1437,9 @@ void ManagerClientThread_screen_popup::onCall(int sipResponseNum, const char *ca
 	      (this->popup_on == "183/180" && (sipResponseNum == 183 || sipResponseNum == 180)) ||
 	      (this->popup_on == "183/180_200" && (sipResponseNum == 200 || (sipResponseNum == 183 || sipResponseNum == 180)))) &&
 	     (this->regex_calling_number.empty() ||
-	      reg_match(callerNum, this->regex_calling_number.c_str())) &&
+	      reg_match(calledNum, this->regex_calling_number.c_str())) &&
 	     (this->non_numeric_caller_id ||
-	      this->isNumericId(callerNum)))) {
+	      this->isNumericId(calledNum)))) {
 		return;
 	}
 	char rsltString[4096];
