@@ -748,6 +748,7 @@ void *moving_cache( void *dummy ) {
 
 void *storing_sql( void *dummy ) {
         SqlDb *sqlDb = createSqlObject();
+	sqlDb->connect();
 
 	while(1) {
 		// process mysql query queue - concatenate queries to N messages
@@ -794,7 +795,8 @@ void *storing_sql( void *dummy ) {
 				size = 0;
 			}
 
-			if(terminating && !sqlDb->connected()) {
+			if(!opt_read_from_file &&
+			   terminating && !sqlDb->connected()) {
 				break;
 			}
 
@@ -2876,7 +2878,7 @@ int main(int argc, char *argv[]) {
 	}
 
 	// filters are ok, we can daemonize 
-	if (opt_fork){
+	if (opt_fork && !opt_read_from_file){
 		daemonize();
 	}
 	
