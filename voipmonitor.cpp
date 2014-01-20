@@ -748,7 +748,9 @@ void *moving_cache( void *dummy ) {
 
 void *storing_sql( void *dummy ) {
         SqlDb *sqlDb = createSqlObject();
-	sqlDb->connect();
+	if(!opt_nocdr) {
+		sqlDb->connect();
+	}
 
 	while(1) {
 		// process mysql query queue - concatenate queries to N messages
