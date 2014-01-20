@@ -384,19 +384,19 @@ double ts2double(unsigned int sec, unsigned int usec) {
 	return sec + fpart;
 }
 
-unsigned long long GetFileSize(std::string filename)
+long long GetFileSize(std::string filename)
 {
 	struct stat stat_buf;
 	int rc = stat(filename.c_str(), &stat_buf);
 	return rc == 0 ? stat_buf.st_size : -1;
 }
 
-unsigned long long GetFileSizeDU(std::string filename)
+long long GetFileSizeDU(std::string filename)
 {
 	return(GetDU(GetFileSize(filename)));
 }
 
-unsigned long long GetDU(unsigned long long fileSize) {
+long long GetDU(long long fileSize) {
 	static int block_size = -1;
 	if(block_size == -1) {
 		extern char opt_chdir[1024];
@@ -430,7 +430,7 @@ string GetStringMD5(std::string str) {
 
 string GetFileMD5(std::string filename) {
 	string md5;
-	unsigned long long fileSize = GetFileSize(filename);
+	long long fileSize = GetFileSize(filename);
 	if(!fileSize) {
 		return(md5);
 	}

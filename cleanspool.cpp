@@ -945,10 +945,10 @@ void convert_filesindex() {
 				fname = string("filesindex/audiosize/") + ymdh;
 				ofstream audiofile(fname.c_str(), ios::app | ios::out);
 
-				unsigned long long sipsize = 0;
-				unsigned long long rtpsize = 0;
-				unsigned long long graphsize = 0;
-				unsigned long long audiosize = 0;
+				long long sipsize = 0;
+				long long rtpsize = 0;
+				long long graphsize = 0;
+				long long audiosize = 0;
 
 				for(int m = 0; m < 60; m++) {
 
@@ -967,7 +967,7 @@ void convert_filesindex() {
 							if (string(de2->d_name) == ".." or string(de2->d_name) == ".") continue;
 							stringstream fn;
 							fn << de->d_name << "/" << hour << "/" << min << "/SIP/" << de2->d_name;
-							unsigned long long size = GetFileSizeDU(fn.str());
+							long long size = GetFileSizeDU(fn.str());
 							if(size == 0) size = 1;
 							sipsize += size;
 							sipfile << fn.str() << ":" << size << "\n";
@@ -988,7 +988,7 @@ void convert_filesindex() {
 							if (string(de2->d_name) == ".." or string(de2->d_name) == ".") continue;
 							stringstream fn;
 							fn << de->d_name << "/" << hour << "/" << min << "/RTP/" << de2->d_name;
-							unsigned long long size = GetFileSizeDU(fn.str());
+							long long size = GetFileSizeDU(fn.str());
 							if(size == 0) size = 1;
 							rtpsize += size;
 							rtpfile << fn.str() << ":" << size << "\n";
@@ -1010,7 +1010,7 @@ void convert_filesindex() {
 							if (string(de2->d_name) == ".." or string(de2->d_name) == ".") continue;
 							stringstream fn;
 							fn << de->d_name << "/" << hour << "/" << min << "/GRAPH/" << de2->d_name;
-							unsigned long long size = GetFileSizeDU(fn.str());
+							long long size = GetFileSizeDU(fn.str());
 							if(size == 0) size = 1;
 							graphsize += size;
 							graphfile << fn.str() << ":" << size << "\n";
@@ -1030,7 +1030,7 @@ void convert_filesindex() {
 							if (string(de2->d_name) == ".." or string(de2->d_name) == ".") continue;
 							stringstream fn;
 							fn << de->d_name << "/" << hour << "/" << min << "/AUDIO/" << de2->d_name;
-							unsigned long long size = GetFileSizeDU(fn.str());
+							long long size = GetFileSizeDU(fn.str());
 							if(size == 0) size = 1;
 							audiosize += size;
 							audiofile << fn.str() << ":" << size << "\n";
@@ -1173,7 +1173,7 @@ void check_spooldir_filesindex(const char *path, const char *dirfilter) {
 			//cycle through 24 hours
 			syslog(LOG_NOTICE, "check files in [%s]", de->d_name);
 			for(int h = 0; h < 24; h++) {
-				unsigned long long sumSizeMissingFilesInIndex[2] = {0, 0};
+				long long sumSizeMissingFilesInIndex[2] = {0, 0};
 				char hour[8];
 				sprintf(hour, "%02d", h);
 				syslog(LOG_NOTICE, " - hour [%s]", hour);
@@ -1253,8 +1253,8 @@ void check_spooldir_filesindex(const char *path, const char *dirfilter) {
 					}
 					for(uint j = 0; j < filesInFolder.size(); j++) {
 						if(!std::binary_search(filesInIndex.begin(), filesInIndex.end(), filesInFolder[j])) {
-							unsigned long long size = GetFileSize((string(opt_chdir) + "/" + filesInFolder[j]).c_str());
-							unsigned long long sizeDU = GetFileSizeDU((string(opt_chdir) + "/" + filesInFolder[j]).c_str());
+							long long size = GetFileSize((string(opt_chdir) + "/" + filesInFolder[j]).c_str());
+							long long sizeDU = GetFileSizeDU((string(opt_chdir) + "/" + filesInFolder[j]).c_str());
 							sumSizeMissingFilesInIndex[0] += size;
 							sumSizeMissingFilesInIndex[1] += sizeDU;
 							syslog(LOG_NOTICE,

@@ -169,10 +169,10 @@ public:
 	int last_packetization;	//!< last packetization in millisenocds
 	int last_ts;		//!< last timestamp 
 	int packetization_iterator;	
-	int payload;
 	int prev_payload;
 	int prev_codec;
 	int payload2;
+	int first_codec;
 	int codec;
 	int rtpmap[MAX_RTPMAP];
 	unsigned char* data;    //!< pointer to UDP payload

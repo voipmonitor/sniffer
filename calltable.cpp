@@ -263,7 +263,7 @@ Call::hashRemove() {
 }
 
 void
-Call::addtofilesqueue(string file, string column, u_int64_t writeBytes) {
+Call::addtofilesqueue(string file, string column, long long writeBytes) {
 
 	if(!opt_filesclean or opt_nocdr or file == "" or !isSqlDriver("mysql") or
 	   !isSetCleanspoolParameters()) return;
@@ -277,7 +277,7 @@ Call::addtofilesqueue(string file, string column, u_int64_t writeBytes) {
 	}
 	if(!fileExists && !fileCacheExists) return;
 
-	unsigned long long size = 0;
+	long long size = 0;
 	if(fileExists) {
 		size = GetFileSizeDU(file);
 	}
@@ -1044,7 +1044,7 @@ Call::convertRawToWav() {
 		/* write silence of msdiff duration */
 		short int zero = 0;
 		int samplerate = 8000;
-		switch(rtp[0]->codec) {
+		switch(rtp[0]->first_codec) {
 			case PAYLOAD_SILK8:
 				samplerate = 8000;
 				break;
@@ -1579,7 +1579,7 @@ Call::getKeyValCDRtext() {
 			jitter_mult10[i] = int(ceil(rtp[indexes[i]]->stats.avgjitter)) * 10; // !!!
 			cdr.add(jitter_mult10[i], c+"_avgjitter_mult10");
 			cdr.add(int(ceil(rtp[indexes[i]]->stats.maxjitter)), c+"_maxjitter");
-			payload[i] = rtp[indexes[i]]->codec;
+			payload[i] = rtp[indexes[i]]->first_codec;
 			cdr.add(payload[i], c+"_payload");
 			
 			// build a_sl1 - b_sl10 fields
@@ -1621,7 +1621,7 @@ Call::getKeyValCDRtext() {
 			// calculate lossrate and burst rate
 			double burstr, lossr;
 			burstr_calculate(rtp[indexes[i]]->channel_fix1, rtp[indexes[i]]->stats.received, &burstr, &lossr);
-			int mos_f1_mult10 = (int)round(calculate_mos(lossr, burstr, rtp[indexes[i]]->codec, rtp[indexes[i]]->stats.received) * 10);
+			int mos_f1_mult10 = (int)round(calculate_mos(lossr, burstr, rtp[indexes[i]]->first_codec, rtp[indexes[i]]->stats.received) * 10);
 			cdr.add(mos_f1_mult10, c+"_mos_f1_mult10");
 			if(mos_f1_mult10) {
 				mos_min_mult10[i] = mos_f1_mult10;
@@ -1630,14 +1630,14 @@ Call::getKeyValCDRtext() {
 
 			// Jitterbuffer MOS statistics
 			burstr_calculate(rtp[indexes[i]]->channel_fix2, rtp[indexes[i]]->stats.received, &burstr, &lossr);
-			int mos_f2_mult10 = (int)round(calculate_mos(lossr, burstr, rtp[indexes[i]]->codec, rtp[indexes[i]]->stats.received) * 10);
+			int mos_f2_mult10 = (int)round(calculate_mos(lossr, burstr, rtp[indexes[i]]->first_codec, rtp[indexes[i]]->stats.received) * 10);
 			cdr.add(mos_f2_mult10, c+"_mos_f2_mult10");
 			if(mos_f2_mult10 && (mos_min_mult10[i] < 0 || mos_f2_mult10 < mos_min_mult10[i])) {
 				mos_min_mult10[i] = mos_f2_mult10;
 			}
 
 			burstr_calculate(rtp[indexes[i]]->channel_adapt, rtp[indexes[i]]->stats.received, &burstr, &lossr);
-			int mos_adapt_mult10 = (int)round(calculate_mos(lossr, burstr, rtp[indexes[i]]->codec, rtp[indexes[i]]->stats.received) * 10);
+			int mos_adapt_mult10 = (int)round(calculate_mos(lossr, burstr, rtp[indexes[i]]->first_codec, rtp[indexes[i]]->stats.received) * 10);
 			cdr.add(mos_adapt_mult10, c+"_mos_adapt_mult10");
 			if(mos_adapt_mult10 && (mos_min_mult10[i] < 0 || mos_adapt_mult10 < mos_min_mult10[i])) {
 				mos_min_mult10[i] = mos_adapt_mult10;
@@ -1957,7 +1957,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			jitter_mult10[i] = int(ceil(rtpab[i]->stats.avgjitter)) * 10; // !!!
 			cdr.add(jitter_mult10[i], c+"_avgjitter_mult10");
 			cdr.add(int(ceil(rtpab[i]->stats.maxjitter)), c+"_maxjitter");
-			payload[i] = rtpab[i]->codec;
+			payload[i] = rtpab[i]->first_codec;
 			cdr.add(payload[i], c+"_payload");
 			
 			// build a_sl1 - b_sl10 fields
@@ -2001,7 +2001,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			burstr_calculate(rtpab[i]->channel_fix1, rtpab[i]->stats.received, &burstr, &lossr);
 			//cdr.add(lossr, c+"_lossr_f1");
 			//cdr.add(burstr, c+"_burstr_f1");
-			int mos_f1_mult10 = (int)round(calculate_mos(lossr, burstr, rtpab[i]->codec, rtpab[i]->stats.received) * 10);
+			int mos_f1_mult10 = (int)round(calculate_mos(lossr, burstr, rtpab[i]->first_codec, rtpab[i]->stats.received) * 10);
 			cdr.add(mos_f1_mult10, c+"_mos_f1_mult10");
 			if(mos_f1_mult10) {
 				mos_min_mult10[i] = mos_f1_mult10;
@@ -2011,7 +2011,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			burstr_calculate(rtpab[i]->channel_fix2, rtpab[i]->stats.received, &burstr, &lossr);
 			//cdr.add(lossr, c+"_lossr_f2");
 			//cdr.add(burstr, c+"_burstr_f2");
-			int mos_f2_mult10 = (int)round(calculate_mos(lossr, burstr, rtpab[i]->codec, rtpab[i]->stats.received) * 10);
+			int mos_f2_mult10 = (int)round(calculate_mos(lossr, burstr, rtpab[i]->first_codec, rtpab[i]->stats.received) * 10);
 			cdr.add(mos_f2_mult10, c+"_mos_f2_mult10");
 			if(mos_f2_mult10 && (mos_min_mult10[i] < 0 || mos_f2_mult10 < mos_min_mult10[i])) {
 				mos_min_mult10[i] = mos_f2_mult10;
@@ -2020,7 +2020,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			burstr_calculate(rtpab[i]->channel_adapt, rtpab[i]->stats.received, &burstr, &lossr);
 			//cdr.add(lossr, c+"_lossr_adapt");
 			//cdr.add(burstr, c+"_burstr_adapt");
-			int mos_adapt_mult10 = (int)round(calculate_mos(lossr, burstr, rtpab[i]->codec, rtpab[i]->stats.received) * 10);
+			int mos_adapt_mult10 = (int)round(calculate_mos(lossr, burstr, rtpab[i]->first_codec, rtpab[i]->stats.received) * 10);
 			cdr.add(mos_adapt_mult10, c+"_mos_adapt_mult10");
 			if(mos_adapt_mult10 && (mos_min_mult10[i] < 0 || mos_adapt_mult10 < mos_min_mult10[i])) {
 				mos_min_mult10[i] = mos_adapt_mult10;
@@ -2039,8 +2039,8 @@ Call::saveToDb(bool enableBatchIfPossible) {
 				cdr.add(rtpab[i]->rtcp.maxfr, c+"_rtcp_maxfr");
 				rtcp_avgfr_mult10[i] = (int)round(rtpab[i]->rtcp.avgfr * 10);
 				cdr.add(rtcp_avgfr_mult10[i], c+"_rtcp_avgfr_mult10");
-				cdr.add(rtpab[i]->rtcp.maxjitter / get_ticks_bycodec(rtpab[i]->codec), c+"_rtcp_maxjitter");
-				rtcp_avgjitter_mult10[i] = (int)round(rtpab[i]->rtcp.avgjitter / get_ticks_bycodec(rtpab[i]->codec) * 10);
+				cdr.add(rtpab[i]->rtcp.maxjitter / get_ticks_bycodec(rtpab[i]->first_codec), c+"_rtcp_maxjitter");
+				rtcp_avgjitter_mult10[i] = (int)round(rtpab[i]->rtcp.avgjitter / get_ticks_bycodec(rtpab[i]->first_codec) * 10);
 				cdr.add(rtcp_avgjitter_mult10[i], c+"_rtcp_avgjitter_mult10");
 			}
 		}
@@ -2149,7 +2149,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 
 				SqlDb_row rtps;
 				rtps.add("_\\_'SQL'_\\_:@cdr_id", "cdr_ID");
-				rtps.add(rtp[i]->payload, "payload");
+				rtps.add(rtp[i]->first_codec, "payload");
 				rtps.add(htonl(rtp[i]->saddr), "saddr");
 				rtps.add(htonl(rtp[i]->daddr), "daddr");
 				rtps.add(rtp[i]->ssrc, "ssrc");
@@ -2268,7 +2268,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 
 				SqlDb_row rtps;
 				rtps.add(cdrID, "cdr_ID");
-				rtps.add(rtp[i]->payload, "payload");
+				rtps.add(rtp[i]->first_codec, "payload");
 				rtps.add(htonl(rtp[i]->saddr), "saddr");
 				rtps.add(htonl(rtp[i]->daddr), "daddr");
 				rtps.add(rtp[i]->ssrc, "ssrc");

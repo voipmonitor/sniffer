@@ -2632,18 +2632,21 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 
 		if(call->lastsrcip != saddr) { call->oneway = 0; };
 
-		if(opt_cdrproxy && sip_method == INVITE) {
-			if(call->sipcalledip != daddr and call->sipcallerip != daddr and call->lastsipcallerip != saddr) {
-				if(daddr != 0) {
-					// daddr is already set, store previous daddr as sipproxy
-					call->proxies.push_back(call->sipcalledip);
+		if(sip_method == INVITE) {
+			ipfilter->add_call_flags(&(call->flags), ntohl(saddr), ntohl(daddr));
+			if(opt_cdrproxy) {
+				if(call->sipcalledip != daddr and call->sipcallerip != daddr and call->lastsipcallerip != saddr) {
+					if(daddr != 0) {
+						// daddr is already set, store previous daddr as sipproxy
+						call->proxies.push_back(call->sipcalledip);
+					}
+					call->sipcalledip = daddr;
+					call->lastsipcallerip = saddr;
+				} else if(call->lastsipcallerip == saddr) {
+					// update sipcalledip to this new one
+					call->sipcalledip = daddr;
+					call->lastsipcallerip = saddr;
 				}
-				call->sipcalledip = daddr;
-				call->lastsipcallerip = saddr;
-			} else if(call->lastsipcallerip == saddr) {
-				// update sipcalledip to this new one
-				call->sipcalledip = daddr;
-				call->lastsipcallerip = saddr;
 			}
 		}
 

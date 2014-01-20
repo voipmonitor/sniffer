@@ -25,9 +25,9 @@ inline unsigned long long mv_r(const char *src, const char *dst) { return(cp_r(s
 unsigned long long copy_file(const char *src, const char *dst, bool move = false);
 inline unsigned long long move_file(const char *src, const char *dst) { return(copy_file(src, dst, true)); }
 double ts2double(unsigned int sec, unsigned int usec);
-unsigned long long GetFileSize(std::string filename);
-unsigned long long GetFileSizeDU(std::string filename);
-unsigned long long GetDU(unsigned long long fileSize);
+long long GetFileSize(std::string filename);
+long long GetFileSizeDU(std::string filename);
+long long GetDU(long long fileSize);
 string GetStringMD5(std::string str);
 string GetFileMD5(std::string filename);
 bool FileExists(char *strFilename);

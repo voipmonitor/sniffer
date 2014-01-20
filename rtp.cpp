@@ -207,7 +207,7 @@ RTP::RTP()
 	packetization = 0;
 	last_packetization = 0;
 	packetization_iterator = 0;
-	payload = -1;
+	first_codec = -1;
 	prev_payload = -1;
 	prev_codec = -1;
 	payload2 = -1;
@@ -615,7 +615,7 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 
 	Call *owner = (Call*)call_owner;
 
-	//if(getSSRC() != 0x11724060) return;
+	if(getSSRC() != 0xfbff7e51) return;
 
 	if(getVersion() != 2) {
 		return;
@@ -833,9 +833,9 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 		}
 	}
 
-	if(payload < 0 && codec != PAYLOAD_TELEVENT) {
+	if(first_codec < 0 && codec != PAYLOAD_TELEVENT && codec != 13 && codec != 19) {
 		/* save payload to statistics based on first payload. TODO: what if payload is dynamically changing? */
-		payload = curpayload;
+		first_codec = codec;
 	}
 
 	if(codec == PAYLOAD_TELEVENT) {
@@ -1285,7 +1285,7 @@ void
 RTP::dump() {
 	int i;
 	printf("SSRC:%x %u ssrc_index[%d]\n", ssrc, ssrc, ssrc_index);
-	printf("payload:%d\n", payload);
+	printf("codec:%d\n", first_codec);
 	printf("src ip:%u\n", saddr);
 	printf("dst ip:%u\n", daddr);
 	printf("Packetization:%u\n", packetization);

@@ -422,7 +422,7 @@ public:
 	*/
 	void addtocachequeue(string file);
 
-	void addtofilesqueue(string file, string column, u_int64_t writeBytes);
+	void addtofilesqueue(string file, string column, long long writeBytes);
 
 	float mos_lqo(char *deg, int samplerate);
 
