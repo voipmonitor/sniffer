@@ -111,6 +111,7 @@ extern unsigned int graph_version;
 extern int opt_mosmin_f2;
 extern string opt_mos_lqo_bin;
 extern string opt_mos_lqo_ref;
+extern string opt_mos_lqo_ref16;
 extern int opt_mos_lqo;
 extern regcache *regfailedcache;
 
@@ -935,7 +936,17 @@ int convertULAW2WAV(char *fname1, char *fname3) {
 float
 Call::mos_lqo(char *deg, int samplerate) {
 	char buf[4092];
-	snprintf(buf, 4091, "PATH=/bin:/sbin:/usr/bin:/usr/sbin:/usr/local/sbin:/usr/local/bin %s +%d %s %s", opt_mos_lqo_bin.c_str(), samplerate, opt_mos_lqo_ref.c_str(), deg);
+	switch(samplerate) {
+	case 8000:
+		snprintf(buf, 4091, "PATH=/bin:/sbin:/usr/bin:/usr/sbin:/usr/local/sbin:/usr/local/bin %s +%d %s %s", opt_mos_lqo_bin.c_str(), samplerate, opt_mos_lqo_ref.c_str(), deg);
+		break;
+	case 16000:
+		snprintf(buf, 4091, "PATH=/bin:/sbin:/usr/bin:/usr/sbin:/usr/local/sbin:/usr/local/bin %s +%d %s %s", opt_mos_lqo_bin.c_str(), samplerate, opt_mos_lqo_ref16.c_str(), deg);
+		break;
+	default:
+		if(verbosity > 0) syslog(LOG_INFO, "MOS_LQO unsupported samplerate:[%d] only 8000 and 16000 are supported\n", samplerate);
+		return -1;
+	}
 	if(verbosity > 1) syslog(LOG_INFO, "MOS_LQO CMD [%s]\n", buf);
 	string out;
 	out = pexec(buf);
@@ -1282,7 +1293,7 @@ Call::convertRawToWav() {
 				if(opt_keycheck[0] != '\0') {
 					snprintf(cmd, 4092, "vmcodecs %s opus \"%s\" \"%s\" 48000", opt_keycheck, raw, wav);
 				} else {
-					snprintf(cmd, 4092, "vmcodecs %s a opus \"%s\" \"%s\" 48000", opt_keycheck, raw, wav);
+					snprintf(cmd, 4092, "vmcodecs-opus %s a opus \"%s\" \"%s\" 48000", opt_keycheck, raw, wav);
 					cout << cmd << "\n";
 					//snprintf(cmd, 4092, "voipmonitor-opus \"%s\" \"%s\" 48000", raw, wav);
 				}
@@ -1301,10 +1312,10 @@ Call::convertRawToWav() {
 		unlink(rawInfo);
 	}
 
-	if(opt_mos_lqo and adir == 1 and flags & FLAG_RUNAMOSLQO and samplerate == 8000) {
+	if(opt_mos_lqo and adir == 1 and flags & FLAG_RUNAMOSLQO and (samplerate == 8000 or samplerate == 16000)) {
 		a_mos_lqo = mos_lqo(wav0, samplerate);
 	}
-	if(opt_mos_lqo and bdir == 1 and flags & FLAG_RUNBMOSLQO and samplerate == 8000) {
+	if(opt_mos_lqo and bdir == 1 and flags & FLAG_RUNBMOSLQO and (samplerate == 8000 or samplerate == 16000)) {
 		b_mos_lqo = mos_lqo(wav1, samplerate);
 	}
 

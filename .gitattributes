@@ -123,6 +123,7 @@ jitterbuffer/utils.c -text
 /rtp.cpp -text
 /rtp.h -text
 samples/audio/mos_lqe_original.wav -text
+samples/audio/mos_lqe_original_16khz.wav -text
 scripts/install-script.sh -text
 scripts/mysql_copy_4.2to5.0.php -text
 simpleini/ConvertUTF.c -text

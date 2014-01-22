@@ -262,6 +262,7 @@ int opt_database_backup_insert_threads = 1;
 int opt_database_backup_use_federated = 0;
 string opt_mos_lqo_bin = "pesq";
 string opt_mos_lqo_ref = "/usr/local/share/voipmonitor/audio/mos_lqe_original.wav";
+string opt_mos_lqo_ref16 = "/usr/local/share/voipmonitor/audio/mos_lqe_original_16khz.wav";
 regcache *regfailedcache;
 int opt_onewaytimeout = 10;
 
@@ -1808,6 +1809,9 @@ int load_config(char *fname) {
 	}
 	if((value = ini.GetValue("general", "mos_lqo_ref", NULL))) {
 		opt_mos_lqo_ref = value;
+	}
+	if((value = ini.GetValue("general", "mos_lqo_ref16", NULL))) {
+		opt_mos_lqo_ref16 = value;
 	}
 	if((value = ini.GetValue("general", "php_path", NULL))) {
 		strncpy(opt_php_path, value, sizeof(opt_php_path));
