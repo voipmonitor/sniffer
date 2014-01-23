@@ -265,6 +265,7 @@ string opt_mos_lqo_ref = "/usr/local/share/voipmonitor/audio/mos_lqe_original.wa
 string opt_mos_lqo_ref16 = "/usr/local/share/voipmonitor/audio/mos_lqe_original_16khz.wav";
 regcache *regfailedcache;
 int opt_onewaytimeout = 10;
+int opt_saveaudio_reversestereo = 0;
 
 unsigned int opt_maxpoolsize = 0;
 unsigned int opt_maxpooldays = 0;
@@ -1818,6 +1819,9 @@ int load_config(char *fname) {
 	}
 	if((value = ini.GetValue("general", "onewaytimeout", NULL))) {
 		opt_onewaytimeout = atoi(value);
+	}
+	if((value = ini.GetValue("general", "saveaudio_reversestereo", NULL))) {
+		opt_saveaudio_reversestereo = yesno(value);
 	}
 	
 	/*

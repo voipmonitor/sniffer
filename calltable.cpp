@@ -123,6 +123,7 @@ unsigned int last_register_clean = 0;
 
 extern CustPhoneNumberCache *custPnCache;
 extern int opt_onewaytimeout;
+extern int opt_saveaudio_reversestereo;
 
 SqlDb *sqlDbSaveCall = NULL;
 bool existsColumnCalldateInCdrNext = true;
@@ -1323,10 +1324,18 @@ Call::convertRawToWav() {
 		// merge caller and called 
 		switch(opt_audio_format) {
 		case FORMAT_WAV:
-			wav_mix(wav0, wav1, out, samplerate);
+			if(!opt_saveaudio_reversestereo) {
+				wav_mix(wav0, wav1, out, samplerate);
+			} else {
+				wav_mix(wav1, wav0, out, samplerate);
+			}
 			break;
 		case FORMAT_OGG:
-			ogg_mix(wav0, wav1, out);
+			if(!opt_saveaudio_reversestereo) {
+				ogg_mix(wav0, wav1, out);
+			} else {
+				ogg_mix(wav1, wav0, out);
+			}
 			break;
 		}
 		unlink(wav0);
