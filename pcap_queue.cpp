@@ -990,6 +990,12 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 	sumPacketsSizeCompress[1] = sumPacketsSizeCompress[0];
 }
 
+string PcapQueue::pcapDropCountStat() {
+	return(this->instancePcapHandle ?
+		this->instancePcapHandle->pcapDropCountStat_interface() :
+		this->pcapDropCountStat_interface());
+}
+
 void PcapQueue::initStat() {
 	if(this->instancePcapHandle) {
 		this->instancePcapHandle->initStat_interface();
@@ -1648,6 +1654,20 @@ string PcapQueue_readFromInterface_base::pcapStatString_interface(int statPeriod
 	return(outStr.str());
 }
 
+string PcapQueue_readFromInterface_base::pcapDropCountStat_interface() {
+	ostringstream outStr;
+	if(this->pcapHandle) {
+		outStr << this->getInterfaceName(true) << " : " << "pdropsCount [" << this->countPacketDrop << "]";
+		pcap_stat ps;
+		int pcapstatres = pcap_stats(this->pcapHandle, &ps);
+		if(pcapstatres == 0) {
+			outStr << " ringdrop [" << ps.ps_drop << "]"
+			       << " ifdrop [" << ps.ps_ifdrop << "]";
+		}
+	}
+	return(outStr.str());
+}
+
 ulong PcapQueue_readFromInterface_base::getCountPacketDrop() {
 	return(this->countPacketDrop);
 }
@@ -1664,8 +1684,8 @@ void PcapQueue_readFromInterface_base::initStat_interface() {
 	}
 }
 
-string PcapQueue_readFromInterface_base::getInterfaceName() {
-	return("interface " + this->interfaceName);
+string PcapQueue_readFromInterface_base::getInterfaceName(bool simple) {
+	return((simple ? "" : "interface ") + this->interfaceName);
 }
 
 
@@ -2103,20 +2123,11 @@ bool PcapQueue_readFromInterface::init() {
 	if(opt_pb_read_from_file[0] || !opt_pcap_queue_iface_separate_threads) {
 		return(true);
 	}
-	char *pointToInterface = (char*)this->interfaceName.c_str();
-	while(pointToInterface && *pointToInterface &&
-	      this->readThreadsCount < READ_THREADS_MAX - 1) {
-		char *pointToSeparator = strchr(pointToInterface, ',');
-		if(pointToSeparator) {
-			*pointToSeparator = 0;
-		}
-		this->readThreads[this->readThreadsCount] = new PcapQueue_readFromInterfaceThread(pointToInterface);
-		++this->readThreadsCount;
-		if(pointToSeparator) {
-			*pointToSeparator = ',';
-			pointToInterface = pointToSeparator + 1;
-		} else {
-			pointToInterface = NULL;
+	vector<string> interfaces = split(this->interfaceName.c_str(), ",", true);
+	for(size_t i = 0; i < interfaces.size(); i++) {
+		if(this->readThreadsCount < READ_THREADS_MAX - 1) {
+			this->readThreads[this->readThreadsCount] = new PcapQueue_readFromInterfaceThread(interfaces[i].c_str());
+			++this->readThreadsCount;
 		}
 	}
 	return(this->readThreadsCount > 0);
@@ -2406,6 +2417,24 @@ string PcapQueue_readFromInterface::pcapStatString_interface(int statPeriod) {
 	return(outStr.str());
 }
 
+string PcapQueue_readFromInterface::pcapDropCountStat_interface() {
+	ostringstream outStr;
+	if(this->readThreadsCount) {
+		for(int i = 0; i < this->readThreadsCount; i++) {
+			string istat = this->readThreads[i]->pcapDropCountStat_interface();
+			if(istat.length()) {
+				if(outStr.str().length()) {
+					outStr << " | ";
+				}
+				outStr << this->readThreads[i]->pcapDropCountStat_interface();
+			}
+		}
+	} else if(this->pcapHandle) {
+		return(this->PcapQueue_readFromInterface_base::pcapDropCountStat_interface());
+	}
+	return(outStr.str());
+}
+
 ulong PcapQueue_readFromInterface::getCountPacketDrop() {
 	if(this->readThreadsCount) {
 		ulong countPacketDrop = 0;
@@ -2466,11 +2495,11 @@ string PcapQueue_readFromInterface::pcapStatString_cpuUsageReadThreads() {
 	return(outStrStat.str());
 }
 
-string PcapQueue_readFromInterface::getInterfaceName() {
+string PcapQueue_readFromInterface::getInterfaceName(bool simple) {
 	if(opt_pb_read_from_file[0]) {
 		return(string("file ") + opt_pb_read_from_file);
 	} else {
-		return(this->PcapQueue_readFromInterface_base::getInterfaceName());
+		return(this->PcapQueue_readFromInterface_base::getInterfaceName(simple));
 	}
 }
 

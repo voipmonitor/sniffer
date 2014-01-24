@@ -43,6 +43,10 @@
 extern char mac[32];
 extern int verbosity;
 
+
+using namespace std;
+
+
 int getUpdDifTime(struct timeval *before)
 {
 	int dif = getDifTime(before);
@@ -481,6 +485,16 @@ time_t stringToTime(const char *timeStr) {
 	dateTime.tm_min = min; 
 	dateTime.tm_sec = sec;
 	return(mktime(&dateTime));
+}
+
+struct tm getDateTime(time_t time) {
+	struct tm dateTime;
+	dateTime = *localtime(&time);
+	return(dateTime);
+}
+
+struct tm getDateTime(const char *timeStr) {
+	return(getDateTime(stringToTime(timeStr)));
 }
 
 unsigned int getNumberOfDayToNow(const char *date) {
@@ -936,6 +950,30 @@ std::string pexec(char* cmd) {
 	return result;
 }
 
+
+std::string &trim(std::string &s) {
+	if(!s.length()) {
+		 return(s);
+	}
+	size_t length = s.length();
+	size_t trimCharsLeft = 0;
+	while(trimCharsLeft < length && strchr("\r\n\t ", s[trimCharsLeft])) {
+		++trimCharsLeft;
+	}
+	if(trimCharsLeft) {
+		s = s.substr(trimCharsLeft);
+		length = s.length();
+	}
+	size_t trimCharsRight = 0;
+	while(trimCharsRight < length && strchr("\r\n\t ", s[length - trimCharsRight - 1])) {
+		++trimCharsRight;
+	}
+	if(trimCharsRight) {
+		s = s.substr(0, length - trimCharsRight);
+	}
+	return(s);
+}
+
 std::vector<std::string> &split(const std::string &s, char delim, std::vector<std::string> &elems) {
     std::stringstream ss(s);
     std::string item;
@@ -945,11 +983,48 @@ std::vector<std::string> &split(const std::string &s, char delim, std::vector<st
     return elems;
 }
 
-
 std::vector<std::string> split(const std::string &s, char delim) {
     std::vector<std::string> elems;
     split(s, delim, elems);
     return elems;
+}
+
+std::vector<std::string> split(const char *s, const char *delim, bool enableTrim) {
+	std::vector<std::string> elems;
+	char *p = (char*)s;
+	int delim_length = strlen(delim);
+	while(p) {
+		char *next_delim = strstr(p, delim);
+		string elem = next_delim ?
+			       std::string(p).substr(0, next_delim - p) :
+			       std::string(p);
+		if(enableTrim) {
+			trim(elem);
+		}
+		if(elem.length()) {
+			elems.push_back(elem);
+		}
+		p = next_delim ? next_delim + delim_length : NULL;
+	}
+	return elems;
+}
+
+std::vector<std::string> split(const char *s, std::vector<std::string> delim, bool enableTrim) {
+	vector<std::string> elems;
+	string elem = s;
+	trim(elem);
+	elems.push_back(elem);
+	for(size_t i = 0; i < delim.size(); i++) {
+		vector<std::string> _elems;
+		for(size_t j = 0; j < elems.size(); j++) {
+			vector<std::string> __elems = split(elems[j].c_str(), delim[i].c_str(), enableTrim);
+			for(size_t k = 0; k < __elems.size(); k++) {
+				_elems.push_back(__elems[k]);
+			}
+		}
+		elems = _elems;
+	}
+	return(elems);
 }
 
 
@@ -963,4 +1038,69 @@ int reg_match(const char *string, const char *pattern) {
 	status = regexec(&re, string, (size_t)0, NULL, 0);
 	regfree(&re);
 	return(status == 0);
+}
+
+
+void ListIP::addComb(string &ip) {
+	addComb(ip.c_str());
+}
+
+void ListIP::addComb(const char *ip) {
+	vector<string>ip_elems = split(ip, split(",|;|\t|\r|\n", "|"), true);
+	for(size_t i = 0; i < ip_elems.size(); i++) {
+		add(ip_elems[i].c_str());
+	}
+}
+
+void ListPhoneNumber::addComb(string &number) {
+	addComb(number.c_str());
+}
+
+void ListPhoneNumber::addComb(const char *number) {
+	vector<string>number_elems = split(number, split(",|;|\t|\r|\n", "|"), true);
+	for(size_t i = 0; i < number_elems.size(); i++) {
+		add(number_elems[i].c_str());
+	}
+}
+
+ListIP_wb::ListIP_wb(bool autoLock)
+ : white(autoLock),
+   black(autoLock) {
+}
+
+void ListIP_wb::addWhite(string &ip) {
+	white.addComb(ip);
+}
+
+void ListIP_wb::addWhite(const char *ip) {
+	white.addComb(ip);
+}
+
+void ListIP_wb::addBlack(string &ip) {
+	black.addComb(ip);
+}
+
+void ListIP_wb::addBlack(const char *ip) {
+	black.addComb(ip);
+}
+
+ListPhoneNumber_wb::ListPhoneNumber_wb(bool autoLock)
+ : white(autoLock),
+   black(autoLock) {
+}
+
+void ListPhoneNumber_wb::addWhite(string &number) {
+	white.addComb(number);
+}
+
+void ListPhoneNumber_wb::addWhite(const char *number) {
+	white.addComb(number);
+}
+
+void ListPhoneNumber_wb::addBlack(string &number) {
+	black.addComb(number);
+}
+
+void ListPhoneNumber_wb::addBlack(const char *number) {
+	black.addComb(number);
 }

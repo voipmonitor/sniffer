@@ -201,6 +201,7 @@ public:
 	void setInstancePcapHandle(PcapQueue *pcapQueue);
 	inline pcap_t* getPcapHandle();
 	void pcapStat(int statPeriod = 1, bool statCalls = true);
+	string pcapDropCountStat();
 	void initStat();
 	void getThreadCpuUsage(bool writeThread = false);
 protected:
@@ -233,6 +234,7 @@ protected:
 	virtual double pcapStat_get_disk_buffer_perc() { return(-1); }
 	virtual double pcapStat_get_disk_buffer_mb() { return(-1); }
 	virtual string pcapStatString_interface(int statPeriod) { return(""); }
+	virtual string pcapDropCountStat_interface() { return(""); }
 	virtual ulong getCountPacketDrop() { return(0); }
 	virtual string pcapStatString_cpuUsageReadThreads() { return(""); };
 	virtual void initStat_interface() {};
@@ -313,9 +315,10 @@ protected:
 	inline int pcapProcess(pcap_pkthdr** header, u_char** packet, bool *destroy, 
 			       bool enableDefrag = true, bool enableCalcMD5 = true, bool enableDedup = true, bool enableDump = true);
 	virtual string pcapStatString_interface(int statPeriod);
+	virtual string pcapDropCountStat_interface();
 	virtual ulong getCountPacketDrop();
 	virtual void initStat_interface();
-	virtual string getInterfaceName();
+	virtual string getInterfaceName(bool simple = false);
 protected:
 	string interfaceName;
 	bpf_u_int32 interfaceNet;
@@ -426,10 +429,11 @@ protected:
 	string pcapStatString_bypass_buffer(int statPeriod);
 	unsigned long pcapStat_get_bypass_buffer_size_exeeded();
 	string pcapStatString_interface(int statPeriod);
+	string pcapDropCountStat_interface();
 	virtual ulong getCountPacketDrop();
 	void initStat_interface();
 	string pcapStatString_cpuUsageReadThreads();
-	string getInterfaceName();
+	string getInterfaceName(bool simple = false);
 protected:
 	pcap_dumper_t *fifoWritePcapDumper;
 	PcapQueue_readFromInterfaceThread *readThreads[READ_THREADS_MAX];

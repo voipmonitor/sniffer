@@ -29,6 +29,7 @@
 #include "calltable.h"
 #include "format_ogg.h"
 #include "cleanspool.h"
+#include "pcap_queue.h"
 #include "manager.h"
 
 #define BUFSIZE 1024
@@ -1093,6 +1094,22 @@ getwav:
 			return -1;
 		}
 		return 0;
+	} else if(strstr(buf, "pcapstat") != NULL) {
+		extern PcapQueue *pcapQueueStatInterface;
+		string rslt;
+		if(pcapQueueStatInterface) {
+			rslt = pcapQueueStatInterface->pcapDropCountStat();
+			if(!rslt.length()) {
+				rslt = "ok";
+			}
+		} else {
+			rslt = "no PcapQueue mode";
+		}
+		if ((size = send(client, rslt.c_str(), rslt.length(), 0)) == -1){
+			cerr << "Error sending data to client" << endl;
+			return -1;
+		}
+		return(0);
 	} else if(strstr(buf, "login_screen_popup") != NULL) {
 		*managerClientThread =  new ManagerClientThread_screen_popup(client, buf);
 	} else {

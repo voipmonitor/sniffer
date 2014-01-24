@@ -458,6 +458,8 @@ MySqlStore *sqlStore = NULL;
 
 char mac[32] = "";
 
+PcapQueue *pcapQueueStatInterface;
+
 TcpReassembly *tcpReassembly;
 HttpData *httpData;
 
@@ -3083,6 +3085,7 @@ int main(int argc, char *argv[]) {
 					PcapQueue_readFromFifo *pcapQueueR = new PcapQueue_readFromFifo("receive", opt_pcap_queue_disk_folder.c_str());
 					pcapQueueR->setEnableAutoTerminate(false);
 					pcapQueueR->setPacketServer(opt_pcap_queue_receive_from_ip_port, PcapQueue_readFromFifo::directionRead);
+					pcapQueueStatInterface = pcapQueueR;
 					
 					pcapQueueR->start();
 					
@@ -3119,6 +3122,7 @@ int main(int argc, char *argv[]) {
 					if(opt_pcap_queue_send_to_ip_port) {
 						pcapQueueQ->setPacketServer(opt_pcap_queue_send_to_ip_port, PcapQueue_readFromFifo::directionWrite);
 					}
+					pcapQueueStatInterface = pcapQueueQ;
 					
 					pcapQueueQ->start();
 					pcapQueueI->start();

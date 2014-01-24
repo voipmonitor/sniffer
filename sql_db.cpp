@@ -2293,7 +2293,8 @@ void SqlDb_mysql::checkSchema() {
 	existsColumnCalldateInCdrRtp = this->fetchRow();
 	this->query("show columns from cdr_dtmf where Field='calldate'");
 	existsColumnCalldateInCdrDtmf = this->fetchRow();
-	if(!opt_cdr_partition) {
+	if(!opt_cdr_partition &&
+	   this->getDbMajorVersion() * 100 + this->getDbMinorVersion() > 500) {
 		this->query("EXPLAIN PARTITIONS SELECT * from cdr limit 1");
 		SqlDb_row row;
 		if((row = this->fetchRow())) {
