@@ -23,6 +23,8 @@
 /config.h.in -text
 config/init.d/voipmonitor -text
 config/voipmonitor.conf -text
+/config_mysql.cpp -text
+/config_mysql.h -text
 /configure -text
 /configure.in -text
 /filter_mysql.cpp -text
