@@ -341,6 +341,8 @@ bool SqlDb_mysql::connect(bool createDb, bool mainInit) {
 	pthread_mutex_lock(&mysqlconnect_lock);
 	this->hMysql = mysql_init(NULL);
 	if(this->hMysql) {
+		my_bool reconnect = 1;
+		mysql_options(this->hMysql, MYSQL_OPT_RECONNECT, &reconnect);
 		this->hMysqlConn = mysql_real_connect(
 					this->hMysql,
 					//this->conn_server.c_str(), this->conn_user.c_str(), this->conn_password.c_str(), this->conn_database.c_str(),
@@ -1261,6 +1263,103 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 	this->multi_off();
 
 	if(!federated) {
+	this->query(
+	"CREATE TABLE IF NOT EXISTS `sensor_conf` (\
+			`id` int NOT NULL AUTO_INCREMENT,\
+			`id_sensor` int unsigned DEFAULT NULL,\
+			`interface` varchar(255),\
+			`threading_mod` tinyint DEFAULT 1,\
+			`mirror_destination_ip` int unsigned DEFAULT NULL,\
+			`mirror_destination_port` smallint unsigned DEFAULT NULL,\
+			`mirror_bind_ip` int unsigned DEFAULT NULL,\
+			`mirror_bind_port` smallint unsigned DEFAULT 5030,\
+			`mirror_bind_dlt` int unsigned DEFAULT 1,\
+			`scanpcapdir` varchar(255) DEFAULT NULL,\
+			`scanpcapmethod` varchar(255) DEFAULT 'newfile',\
+			`natalias` text DEFAULT NULL,\
+			`sdp_reverse_ipport` tinyint DEFAULT 0,\
+			`managerip` varchar(255) DEFAULT '127.0.0.1',\
+			`sipport` varchar(255) DEFAULT '5060',\
+			`cdr_sipport` tinyint DEFAULT 1,\
+			`destination_number_mode` tinyint DEFAULT 1,\
+			`onowaytimeout` int DEFAULT 15,\
+			`rtptimeout` int DEFAULT 30,\
+			`ringbuffer` int DEFAULT 50,\
+			`packetbuffer_enable` tinyint DEFAULT 1,\
+			`packetbuffer_total_maxheap` int DEFAULT 2000,\
+			`packetbuffer_compress` tinyint DEFAULT 1,\
+			`packetbuffer_file_totalmaxsize` tinyint DEFAULT 0,\
+			`packetbuffer_file_path` varchar(255) DEFAULT '/var/spool/voipmonitor/packetbuffer',\
+			`rtpthreads` int DEFAULT NULL,\
+			`jitterbuffer_f1` tinyint DEFAULT 1,\
+			`jitterbuffer_f2` tinyint DEFAULT 1,\
+			`jitterbuffer_adapt` tinyint DEFAULT 1,\
+			`callslimit` int DEFAULT 0,\
+			`cdrproxy` tinyint DEFAULT 1,\
+			`cdr_ua_enable` tinyint DEFAULT 1,\
+			`rtp-firstleg` tinyint DEFAULT 0,\
+			`allow-zerossrc` tinyint DEFAULT 0,\
+			`deduplicate` tinyint DEFAULT 0,\
+			`deduplicate_ipheader` tinyint DEFAULT 1,\
+			`sipoverlap` tinyint DEFAULT 1,\
+			`sip-register` tinyint DEFAULT 0,\
+			`sip-register-active-nologbin` tinyint DEFAULT 1,\
+			`nocdr` tinyint DEFAULT 0,\
+			`skipdefault` tinyint DEFAULT 0,\
+			`cdronlyanswered` tinyint DEFAULT 0,\
+			`cdronlyrtp` tinyint DEFAULT 0,\
+			`maxpcapsize` int unsigned DEFAULT NULL,\
+			`savesip` tinyint DEFAULT 1,\
+			`savertp` tinyint DEFAULT 1,\
+			`pcapsplit` tinyint DEFAULT 1,\
+			`savertcp` tinyint DEFAULT 1,\
+			`saveaudio` varchar(255) DEFAULT NULL,\
+			`saveaudio_reversestereo` tinyint DEFAULT 0,\
+			`keycheck` text DEFAULT NULL,\
+			`saverfc2833` tinyint DEFAULT 0,\
+			`dtmf2db` tinyint DEFAULT 0,\
+			`savegraph` varchar(255) DEFAULT 'plain',\
+			`norecord-header` tinyint DEFAULT 0,\
+			`norecord-dtmf` tinyint DEFAULT 0,\
+			`pauserecordingdtmf` varchar(255) DEFAULT NULL,\
+			`convert_dlt_sll2en10` tinyint DEFAULT 0,\
+			`mos_g729` tinyint DEFAULT 0,\
+			`mos_lqo` tinyint DEFAULT 0,\
+			`mos_lqo_bin` varchar(255) DEFAULT 'pesq',\
+			`mos_lqo_ref` varchar(255) DEFAULT '/usr/local/share/voipmonitor/audio/mos_lqe_original.wav',\
+			`mos_lqo_ref16` varchar(255) DEFAULT '/usr/local/share/voipmonitor/audio/mos_lqe_original_16khz.wav',\
+			`dscp` tinyint DEFAULT 1,\
+			`custom_headers` text DEFAULT NULL,\
+			`custom_headers_message` text DEFAULT NULL,\
+			`matchheader` text DEFAULT NULL,\
+			`domainport` tinyint DEFAULT 0,\
+			`pcapcommand` text DEFAULT NULL,\
+			`filtercommand` text DEFAULT NULL,\
+			`filter` text DEFAULT NULL,\
+			`openfile_max` int DEFAULT NULL,\
+			`convertchar` text DEFAULT NULL,\
+			`spooldir` varchar(255) DEFAULT '/var/spool/voipmonitor',\
+			`spooldiroldschema` tinyint DEFAULT 0,\
+			`cleandatabase_cdr` int DEFAULT 0,\
+			`cleandatabase_register_failed` int DEFAULT 0,\
+			`cleandatabase` int DEFAULT 0,\
+			`maxpoolsize` int unsigned DEFAULT 102400,\
+			`maxpooldays` int DEFAULT 0,\
+			`maxpoolsipsize` int unsigned DEFAULT 0,\
+			`maxpoolsipdays` int DEFAULT 0,\
+			`maxpoolrtpsize` int unsigned DEFAULT 0,\
+			`maxpoolrtpdays` int DEFAULT 0,\
+			`maxpoolgraphsize` int unsigned DEFAULT 0,\
+			`maxpoolgraphdays` int DEFAULT 0,\
+			`cachedir` text DEFAULT NULL,\
+			`promisc` tinyint DEFAULT 1,\
+			`sqlcallend` tinyint DEFAULT 1,\
+			`cdr_partition` tinyint DEFAULT 1,\
+			`disable_partition_operations` tinyint DEFAULT 0,\
+			`upgrade_try_http_if_https_fail` tinyint DEFAULT 1,\
+		PRIMARY KEY (`id`)\
+	) ENGINE=InnoDB DEFAULT CHARSET=latin1;");
+
 	this->query(
 	"CREATE TABLE IF NOT EXISTS `filter_ip` (\
 			`id` int NOT NULL AUTO_INCREMENT,\

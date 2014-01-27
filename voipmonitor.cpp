@@ -73,6 +73,7 @@
 #include "ip_frag.h"
 #include "cleanspool.h"
 #include "regcache.h"
+#include "config_mysql.h"
 
 #if defined(QUEUE_MUTEX) || defined(QUEUE_NONBLOCK)
 extern "C" {
@@ -469,6 +470,8 @@ string storingSqlLastWriteAt;
 time_t startTime;
 
 sem_t *globalSemaphore;
+
+bool opt_loadsqlconfig = true;
 
 #define ENABLE_SEMAPHOR_FORK_MODE 0
 #if ENABLE_SEMAPHOR_FORK_MODE
@@ -2559,6 +2562,7 @@ int main(int argc, char *argv[]) {
 
 		return 1;
 	}
+
 	if(opt_fork) {
 		#if ENABLE_SEMAPHOR_FORK_MODE
 		for(int pass = 0; pass < 2; pass ++) {
@@ -2692,6 +2696,7 @@ int main(int argc, char *argv[]) {
 	}
 	if(isSqlDriver("mysql")) {
 		sqlStore = new MySqlStore(mysql_host, mysql_user, mysql_password, mysql_database);
+		config_load_mysql();
 	}
 
 	signal(SIGINT,sigint_handler);
