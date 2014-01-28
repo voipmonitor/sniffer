@@ -152,6 +152,7 @@ protected:
 	vector<string> fields;
 	bool enableSqlStringInContent;
 	bool disableNextAttemptIfError;
+	bool connecting;
 private:
 	unsigned int lastError;
 	string lastErrorString;
@@ -218,6 +219,7 @@ private:
 	MYSQL *hMysqlConn;
 	MYSQL_RES *hMysqlRes;
 	string dbVersion;
+	unsigned long mysqlThreadId;
 };
 
 class SqlDb_odbc_bindBufferItem {

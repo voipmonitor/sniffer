@@ -190,6 +190,7 @@ SqlDb::SqlDb() {
 	this->loginTimeout = (ulong)NULL;
 	this->enableSqlStringInContent = false;
 	this->disableNextAttemptIfError = false;
+	this->connecting = false;
 }
 
 SqlDb::~SqlDb() {
@@ -208,6 +209,10 @@ void SqlDb::setLoginTimeout(ulong loginTimeout) {
 }
 
 bool SqlDb::reconnect() {
+	if(this->connecting) {
+		syslog(LOG_NOTICE, "prevent recursion of connect to db");
+		return(false);
+	}
 	if(verbosity > 1) {
 		syslog(LOG_INFO, "start reconnect");
 	}
@@ -338,6 +343,7 @@ SqlDb_mysql::SqlDb_mysql() {
 	this->hMysql = NULL;
 	this->hMysqlConn = NULL;
 	this->hMysqlRes = NULL;
+	this->mysqlThreadId = 0;
 }
 
 SqlDb_mysql::~SqlDb_mysql() {
@@ -345,6 +351,7 @@ SqlDb_mysql::~SqlDb_mysql() {
 }
 
 bool SqlDb_mysql::connect(bool createDb, bool mainInit) {
+	this->connecting = true;
 	pthread_mutex_lock(&mysqlconnect_lock);
 	this->hMysql = mysql_init(NULL);
 	if(this->hMysql) {
@@ -358,10 +365,7 @@ bool SqlDb_mysql::connect(bool createDb, bool mainInit) {
 					//opt_mysql_port, NULL, 0);
 					opt_mysql_port, NULL, CLIENT_MULTI_RESULTS);
 		if(this->hMysqlConn) {
-			/*
-			my_bool reconnect = 1;
-			mysql_options(this->hMysqlConn, MYSQL_OPT_RECONNECT, &reconnect);
-			*/
+			this->mysqlThreadId = mysql_thread_id(this->hMysql);
 			sql_disable_next_attempt_if_error = 1;
 			this->query("SET NAMES UTF8");
 			sql_noerror = 1;
@@ -393,6 +397,7 @@ bool SqlDb_mysql::connect(bool createDb, bool mainInit) {
 				this->hMysqlRes = NULL;
 				this->cleanFields();
 			}
+			this->connecting = false;
 			return(true);
 		} else {
 			this->checkLastError("connect error", true);
@@ -401,6 +406,7 @@ bool SqlDb_mysql::connect(bool createDb, bool mainInit) {
 		this->setLastErrorString("mysql_init failed - insufficient memory ?", true);
 	}
 	pthread_mutex_unlock(&mysqlconnect_lock);
+	this->connecting = false;
 	return(false);
 }
 
@@ -491,6 +497,20 @@ bool SqlDb_mysql::connected() {
 }
 
 bool SqlDb_mysql::query(string query) {
+	if(this->connected()) {
+		if(mysql_ping(this->hMysql)) {
+			if(verbosity > 1) {
+				syslog(LOG_INFO, "mysql_ping failed -> force reconnect");
+			}
+			this->reconnect();
+		} else if(this->mysqlThreadId &&
+			  this->mysqlThreadId != mysql_thread_id(this->hMysql)) {
+			if(verbosity > 1) {
+				syslog(LOG_INFO, "diff thread_id -> force reconnect");
+			}
+			this->reconnect();
+		}
+	}
 	this->prepareQuery(&query);
 	if(verbosity > 1) {
 		syslog(LOG_INFO, query.c_str());
@@ -514,12 +534,10 @@ bool SqlDb_mysql::query(string query) {
 		if(this->connected()) {
 			if(mysql_query(this->hMysqlConn, query.c_str())) {
 				if(verbosity > 1) {
-					syslog(LOG_NOTICE, "query error - query %s", query.c_str());
-					syslog(LOG_NOTICE, "query error - error %s", mysql_error(this->hMysql));
+					syslog(LOG_NOTICE, "query error - query: %s", query.c_str());
+					syslog(LOG_NOTICE, "query error - error: %s", mysql_error(this->hMysql));
 				}
-				if(!sql_noerror) {
-					this->checkLastError("query error in [" + query + "]", true);
-				}
+				this->checkLastError("query error in [" + query + "]", !sql_noerror);
 				if(this->getLastError() == CR_SERVER_GONE_ERROR) {
 					if(pass < this->maxQueryPass - 1) {
 						this->reconnect();
@@ -712,6 +730,7 @@ void SqlDb_odbc::setSubtypeDb(string subtypeDb) {
 }
 
 bool SqlDb_odbc::connect(bool createDb, bool mainInit) {
+	this->connecting = true;
 	SQLRETURN rslt;
 	this->clearLastError();
 	if(!this->hEnvironment) {
@@ -719,6 +738,7 @@ bool SqlDb_odbc::connect(bool createDb, bool mainInit) {
 		if(!this->okRslt(rslt)) {
 			this->setLastError(rslt, "odbc: error in allocate environment handle", true);
 			this->disconnect();
+			this->connecting = false;
 			return(false);
 		}
 		if(this->odbcVersion) {
@@ -726,6 +746,7 @@ bool SqlDb_odbc::connect(bool createDb, bool mainInit) {
 			if(!this->okRslt(rslt)) {
 				this->setLastError(rslt, "odbc: error in set environment attributes");
 				this->disconnect();
+				this->connecting = false;
 				return(false);
 			}
 		}
@@ -735,6 +756,7 @@ bool SqlDb_odbc::connect(bool createDb, bool mainInit) {
 		if(!this->okRslt(rslt)) {
 			this->setLastError(rslt, "odbc: error in allocate connection handle");
 			this->disconnect();
+			this->connecting = false;
 			return(false);
 		}
 		if(this->loginTimeout) {
@@ -747,9 +769,11 @@ bool SqlDb_odbc::connect(bool createDb, bool mainInit) {
 		if(!this->okRslt(rslt)) {
 			this->checkLastError("odbc: connect error", true);
 			this->disconnect();
+			this->connecting = false;
 			return(false);
 		}
 	}
+	this->connecting = false;
 	return(true);
 }
 
