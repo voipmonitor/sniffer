@@ -1313,6 +1313,7 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 	this->multi_off();
 
 	if(!federated) {
+#if 0
 	this->query(
 	"CREATE TABLE IF NOT EXISTS `sensor_conf` (\
 			`id` int NOT NULL AUTO_INCREMENT,\
@@ -1329,6 +1330,7 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 			`natalias` text DEFAULT NULL,\
 			`sdp_reverse_ipport` tinyint DEFAULT 0,\
 			`managerip` varchar(255) DEFAULT '127.0.0.1',\
+			`httpport` varchar(255) DEFAULT NULL,\
 			`sipport` varchar(255) DEFAULT '5060',\
 			`cdr_sipport` tinyint DEFAULT 1,\
 			`destination_number_mode` tinyint DEFAULT 1,\
@@ -1409,6 +1411,7 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 			`upgrade_try_http_if_https_fail` tinyint DEFAULT 1,\
 		PRIMARY KEY (`id`)\
 	) ENGINE=InnoDB DEFAULT CHARSET=latin1;");
+#endif
 
 	this->query(
 	"CREATE TABLE IF NOT EXISTS `filter_ip` (\

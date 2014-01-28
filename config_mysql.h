@@ -262,6 +262,8 @@ extern vector<dstring> opt_custom_headers_message;
 extern vector<string> opt_national_prefix;
 extern volatile unsigned int readit;
 extern volatile unsigned int writeit;
+extern vector<u_int32_t> httpip;
+extern vector<d_u_int32_t> httpnet;
 
 void config_load_mysql();
 
