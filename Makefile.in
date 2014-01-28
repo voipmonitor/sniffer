@@ -57,7 +57,7 @@ armv5static: CFLAGS+= -DQUEUE_NONBLOCK2 -DPACKED -I /usr/include/mysql/ -g3 -Wal
 armv5static: args = -g3 -Wall 
 
 core2: LIBS=-static -L/usr/lib/mysql -L/usr/lib64/mysql -L/usr/lib/mysql -lodbc -lltdl -ldl -lrt -lz -lcrypt -lm -lssl -lcrypto -static-libstdc++ -static-libgcc -lpcap -L/usr/lib/mysql -lpthread -lmysqlclient -lpthread -lgzstream -lz -lc -lvorbis -lvorbisenc -logg -lrt -lsnappy 
-core2: CFLAGS+= -DQUEUE_NONBLOCK2 -I /usr/include/mysql/ -Wall -I jitterbuffer/  -L/usr/local/lib/ -Lgzstream/ -fPIC -O2
+core2: CFLAGS+= -DQUEUE_NONBLOCK2 -I /usr/include/mysql/ -Wall -I jitterbuffer/  -L/usr/local/lib/ -Lgzstream/ -fPIC -O2 
 core2: args = -O2 -Wall  -march=core2 -mtune=core2
 
 shared: cleantest $(objects) 
@@ -173,6 +173,9 @@ regcache.o : regcache.cpp regcache.h
 
 sql_mysql.o : sql_mysql.cpp sql_mysql.h
 	g++ -c sql_mysql.cpp $(args) ${CFLAGS}
+
+config_mysql.o : config_mysql.cpp config_mysql.h
+	g++ -c config_mysql.cpp $(args) ${CFLAGS}
 
 fraud.o : fraud.cpp fraud.h
 	g++ -c fraud.cpp $(args) ${CFLAGS}
