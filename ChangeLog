@@ -1,3 +1,16 @@
+9.1 29.1.2014
+=============
+- Fix MySQL deadlock in case the MySQL connection timeouts. This bug started since 8.4 - 9.0 verisons. 
+- Fix storing to MySQL if file is read from file (bug introduced in 8.4 and 9.0 versions) and do not fork when reading from file
+- Optimize failed registrations which caused mysql overload in case of register flood
+- fix configuration issue in case the datbase is partitioned and cdr_partition was not set 
+- fix MySQL indefinit reconnect in case the sniffer is stopping or starting which causes hang in linux bootup / shutdown process. 
+- fix undefined codec in case of CNG (comfort noise) frames. 
+- add new option saveaudio_reversestereo which reverts left and right channels 
+- add new manager command pcapstat which prints ringbuffer packet drop counter
+- fix issue in interface option when list of interfaces contains spaces like: interface = eth0, eth1
+- support mysql 5.0
+
 9.0 17.1.2014
 =============
 Version 9.0 is formerly 8.4RC27 and this changelog sumarizes all changes since 8.3 (all features from 8.4)
