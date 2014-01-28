@@ -3385,10 +3385,71 @@ void *readdump_libpcap_thread_fce(void *handle) {
 
 
 #include "rqueue.h"
+#include "fraud.h"
+#include <regex.h>
 
 void test() {
  
 	switch(opt_test) {
+	 
+	case 1:
+	{
+	 
+		CountryPrefixes *cp = new CountryPrefixes();
+		cp->load();
+		vector<string> countries;
+		cout << cp->getCountry("16335454", &countries) << endl;
+		for(size_t i = 0; i < countries.size(); i++) {
+			cout << countries[i] << endl;
+		}
+		delete cp;
+		
+		cout << "-" << endl;
+		
+		GeoIP_country *ipc = new GeoIP_country();
+		ipc->load();
+		cout << ipc->getCountry(3755988991) << endl;
+		delete ipc;
+	 
+		/*
+		char *test = "+123 456";
+ 		char *pattern = "\\+([0-9]+)(.*)";
+		
+		regmatch_t match[10];
+		
+		int status;
+		regex_t re;
+		if(regcomp(&re, pattern, REG_EXTENDED) != 0) {
+			syslog(LOG_ERR, "regcomp %s error", pattern);
+			exit;
+		}
+		status = regexec(&re, test, (size_t)10, match, 0);
+		if(!status) {
+			cout << "ok";
+		}
+		regfree(&re);
+		*/
+		
+		cout << "---------" << endl;
+	 
+	} break;
+	case 2: {
+		for(int i = 0; i < 10; i++) {
+			sleep(1);
+			cout << "." << flush;
+		}
+		cout << endl;
+		SqlDb *sqlDb = createSqlObject();
+		sqlDb->connect();
+		for(int i = 0; i < 10; i++) {
+			sleep(1);
+			cout << "." << flush;
+		}
+		cout << endl;
+		sqlDb->query("drop procedure if exists __insert_test");
+	 
+	} break;
+	
 	case 10:
 		{
 		SqlDb *sqlDb = createSqlObject();

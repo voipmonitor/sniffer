@@ -208,8 +208,15 @@ void SqlDb::setLoginTimeout(ulong loginTimeout) {
 }
 
 bool SqlDb::reconnect() {
+	if(verbosity > 1) {
+		syslog(LOG_INFO, "start reconnect");
+	}
 	this->disconnect();
-	return(this->connect());
+	bool rslt = this->connect();
+	if(verbosity > 1) {
+		syslog(LOG_INFO, "reconnect rslt: %s", rslt ? "OK" : "FAIL");
+	}
+	return(rslt);
 }
 
 void SqlDb::prepareQuery(string *query) {
@@ -351,6 +358,10 @@ bool SqlDb_mysql::connect(bool createDb, bool mainInit) {
 					//opt_mysql_port, NULL, 0);
 					opt_mysql_port, NULL, CLIENT_MULTI_RESULTS);
 		if(this->hMysqlConn) {
+			/*
+			my_bool reconnect = 1;
+			mysql_options(this->hMysqlConn, MYSQL_OPT_RECONNECT, &reconnect);
+			*/
 			sql_disable_next_attempt_if_error = 1;
 			this->query("SET NAMES UTF8");
 			sql_noerror = 1;
@@ -377,6 +388,11 @@ bool SqlDb_mysql::connect(bool createDb, bool mainInit) {
 			}
 			sql_disable_next_attempt_if_error = 0;
 			pthread_mutex_unlock(&mysqlconnect_lock);
+			if(this->hMysqlRes) {
+				mysql_free_result(this->hMysqlRes);
+				this->hMysqlRes = NULL;
+				this->cleanFields();
+			}
 			return(true);
 		} else {
 			this->checkLastError("connect error", true);
@@ -486,15 +502,21 @@ bool SqlDb_mysql::query(string query) {
 		this->hMysqlRes = NULL;
 	}
 	this->cleanFields();
+	unsigned int attempt = 1;
 	for(unsigned int pass = 0; pass < this->maxQueryPass; pass++) {
 		if(pass > 0) {
 			sleep(1);
+			syslog(LOG_INFO, "next attempt %u - query: %s", attempt - 1, query.c_str());
 		}
 		if(!this->connected()) {
 			this->connect();
 		}
 		if(this->connected()) {
 			if(mysql_query(this->hMysqlConn, query.c_str())) {
+				if(verbosity > 1) {
+					syslog(LOG_NOTICE, "query error - query %s", query.c_str());
+					syslog(LOG_NOTICE, "query error - error %s", mysql_error(this->hMysql));
+				}
 				if(!sql_noerror) {
 					this->checkLastError("query error in [" + query + "]", true);
 				}
@@ -514,6 +536,9 @@ bool SqlDb_mysql::query(string query) {
 					}
 				}
 			} else {
+				if(verbosity > 1) {
+					syslog(LOG_NOTICE, "query ok - %s", query.c_str());
+				}
 				rslt = true;
 				break;
 			}
@@ -521,6 +546,7 @@ bool SqlDb_mysql::query(string query) {
 		if(terminating) {
 			break;
 		}
+		++attempt;
 	}
 	return(rslt);
 }
