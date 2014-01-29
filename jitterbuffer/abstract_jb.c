@@ -358,7 +358,7 @@ void jb_fixed_flush_deliver(struct ast_channel *chan)
 	}
 
 	while ( fixed_jb_flush((struct fixed_jb*)jb->jbobj, &ff)) {
-		if(chan->rawstream || chan->audiobuf) { 
+		if((chan->rawstream || chan->audiobuf) && (chan->codec != 13 && chan->codec != 19)) { 
 			f = ff.data;
 			//write frame to file
 			stmp = (short int)f->datalen;
@@ -379,7 +379,7 @@ void jb_fixed_flush_deliver(struct ast_channel *chan)
 }       
 
 void save_empty_frame(struct ast_channel *chan) {
-	if(chan->rawstream) {
+	if((chan->rawstream || chan->audiobuf) && (chan->codec != 13 && chan->codec != 19)) {
 		int i;
 		short int zero = 0;
 		int zero2 = 0;
@@ -490,7 +490,7 @@ static void jb_get_and_deliver(struct ast_channel *chan, struct timeval *mynow)
 			}	
 			/* deliver the frame */
 			//ast_write(chan, f);
-			if((chan->rawstream || chan->audiobuf) && f->data && f->datalen > 0) {
+			if((chan->rawstream || chan->audiobuf) && f->data && f->datalen > 0 && (chan->codec != 13 && chan->codec != 19)) {
 				//write frame to file
 				stmp = (short int)f->datalen;
 				if(chan->codec == PAYLOAD_OPUS8 || chan->codec == PAYLOAD_OPUS12 || chan->codec == PAYLOAD_OPUS16 || chan->codec == PAYLOAD_OPUS24 || chan->codec == PAYLOAD_OPUS48 || chan->codec == PAYLOAD_ISAC16 || chan->codec == PAYLOAD_ISAC32 || chan->codec == PAYLOAD_SILK || chan->codec == PAYLOAD_SILK8 || chan->codec == PAYLOAD_SILK12 || chan->codec == PAYLOAD_SILK16 || chan->codec == PAYLOAD_SILK24 || chan->codec == PAYLOAD_SPEEX || chan->codec == PAYLOAD_G723 || chan->codec == PAYLOAD_G729 || chan->codec == PAYLOAD_GSM) {
