@@ -452,7 +452,7 @@ RTP::jitterbuffer(struct ast_channel *channel, int savePayload) {
 			}
 		}
 
-		if(codec == PAYLOAD_G729 and (payload_len == 2 or payload_len == 12)) {
+		if(codec == PAYLOAD_G729 and (payload_len == 2 or payload_len == 12 or payload_len == 10)) {
 			return;
 		}
 
@@ -544,6 +544,7 @@ RTP::jitterbuffer(struct ast_channel *channel, int savePayload) {
 		msdiff -= packetization;
 	}
 
+	//printf("s[%u] codec[%d]\n",getSeqNum(), codec);
 	ast_jb_put(channel, frame, &header->ts);
 }
 #endif
@@ -684,6 +685,8 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 		if(update_seq(seq)) {
 			update_stats();
 		}
+		prev_payload = curpayload;
+		prev_codec = codec;
 		return;
 	}
 
@@ -740,7 +743,7 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 	}
 	
 	/* codec changed */
-	if(curpayload != prev_payload and codec != PAYLOAD_TELEVENT and prev_codec != PAYLOAD_TELEVENT) {
+	if(curpayload != prev_payload and codec != PAYLOAD_TELEVENT and prev_codec != PAYLOAD_TELEVENT and codec != 13 and codec != 19 and prev_codec != 13 and prev_codec != 19) {
 		switch(codec) {
 		case PAYLOAD_SILK12:
 		case PAYLOAD_OPUS12:
