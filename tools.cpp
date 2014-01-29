@@ -753,7 +753,7 @@ bool RestartUpgrade::runUpgrade() {
 	string binaryGzFilepathName = this->upgradeTempFileName + "/voipmonitor.gz";
 	extern int opt_upgrade_try_http_if_https_fail;
 	for(int pass = 0; pass < (opt_upgrade_try_http_if_https_fail ? 2 : 1); pass++) {
-		string wgetCommand = string("wget ") + 
+		string wgetCommand = string("wget --no-cache ") + 
 				     (pass == 0 ? "--no-check-certificate " : "") +
 				     (pass == 1 ? urlHttp : url) + 
 				     "/voipmonitor.gz." + (this->_64bit ? "64" : "32") + 
