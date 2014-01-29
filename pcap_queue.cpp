@@ -3159,7 +3159,8 @@ void PcapQueue_readFromFifo::processPacket(pcap_pkthdr_plus *header_plus, u_char
 		a = ntohs(*(uint16_t*)((char*)header_ip + sizeof(iphdr2)));
 		b = ntohs(*(uint16_t*)((char*)header_ip + sizeof(iphdr2) + 2));
 		memcpy(gre, &a, 2);			memcpy(gre + 2, &b, 2);
-		struct gre_hdr *grehdr = (struct gre_hdr *)gre;			if(grehdr->version == 0 and grehdr->protocol == 0x6558) {				header_eth = (struct ether_header *)((char*)header_ip + sizeof(iphdr2) + 8);
+		struct gre_hdr *grehdr = (struct gre_hdr *)gre;			
+		if(grehdr->version == 0 and grehdr->protocol == 0x6558) {				header_eth = (struct ether_header *)((char*)header_ip + sizeof(iphdr2) + 8);
 			if(header_eth->ether_type == 129) {
 				// VLAN tag
 				offset = 4;
@@ -3175,9 +3176,10 @@ void PcapQueue_readFromFifo::processPacket(pcap_pkthdr_plus *header_plus, u_char
 				header_ip = (iphdr2*)((char*)header_ip + sizeof(iphdr2));
 			}
 		} else {
-			if(opt_ipaccount == 0) {
+			if(opt_ipaccount) {
 				ipaccount(header->ts.tv_sec, (iphdr2*) ((char*)(packet) + header_plus->offset), header->len - header_plus->offset, false);
 			}
+			return;
 		}
 	}
 
