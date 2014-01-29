@@ -1040,6 +1040,42 @@ int reg_match(const char *string, const char *pattern) {
 	return(status == 0);
 }
 
+string reg_replace(const char *str, const char *pattern, const char *replace) {
+	int status;
+	regex_t re;
+	if(regcomp(&re, pattern, REG_EXTENDED) != 0) {
+		syslog(LOG_ERR, "regcomp %s error", pattern);
+		return("");
+	}
+	int match_max = 20;
+	regmatch_t match[match_max];
+	memset(match, 0, sizeof(match));
+	status = regexec(&re, str, match_max, match, 0);
+	regfree(&re);
+	if(status == 0) {
+		string rslt = replace;
+		int match_count = 0;
+		for(int i = 0; i < match_max; i ++) {
+			if(match[i].rm_so == -1 && match[i].rm_eo == -1) {
+				break;
+			}
+			++match_count;
+		}
+		for(int i = match_count - 1; i > 0; i--) {
+			for(int j = 0; j < 2; j++) {
+				char findStr[10];
+				sprintf(findStr, j ? "{$%i}" : "$%i", i);
+				size_t findPos;
+				while((findPos = rslt.find(findStr)) != string::npos) {
+					rslt.replace(findPos, strlen(findStr), string(str).substr(match[i].rm_so, match[i].rm_eo - match[i].rm_so));
+				}
+			}
+		}
+		return(rslt);
+	}
+	return("");
+}
+
 
 void ListIP::addComb(string &ip) {
 	addComb(ip.c_str());

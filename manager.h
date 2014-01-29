@@ -35,6 +35,15 @@ private:
 
 class ManagerClientThread_screen_popup : public ManagerClientThread {
 public:
+	struct RegexReplace {
+		RegexReplace(const char *pattern, const char *replace) {
+			this->pattern = pattern;
+			this->replace = replace;
+		}
+		string pattern;
+		string replace;
+	};
+public:
 	ManagerClientThread_screen_popup(int client, const char *command, int commandLength = 0);
 	bool parseCommand();
 	void onCall(int sipResponseNum, const char *callerName, const char *callerNum, const char *calledNum,
@@ -45,12 +54,14 @@ private:
 private:
 	string username;
 	string name;
+	string dest_number;
 	string profile_name;
 	bool auto_popup;
 	bool show_ip;
 	string popup_on;
 	bool non_numeric_caller_id;
-	string regex_calling_number;
+	vector<RegexReplace> regex_calling_number;
+	ListIP_wb src_ip;
 	string app_launch;
 	string app_launch_args_or_url;
 };

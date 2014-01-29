@@ -50,6 +50,7 @@ std::vector<std::string> split(const std::string &s, char delim);
 std::vector<std::string> split(const char *s, const char *delim, bool enableTrim = false);
 std::vector<std::string> split(const char *s, std::vector<std::string> delim, bool enableTrim = false);
 int reg_match(const char *string, const char *pattern);
+string reg_replace(const char *string, const char *pattern, const char *replace);
 
 class CircularBuffer
 {
@@ -229,12 +230,12 @@ public:
 			*maskSeparator = 0;
 			in_addr ips;
 			inet_aton(ip, &ips);
-			this->ip = ips.s_addr;
+			this->ip = htonl(ips.s_addr);
 			*maskSeparator = '/';
 		} else {
 			in_addr ips;
 			inet_aton(ip, &ips);
-			this->ip = ips.s_addr;
+			this->ip = htonl(ips.s_addr);
 			mask_length = 32;
 			for(int i = 0; i < 32; i++) {
 				if(this->ip == this->ip >> i << i) {
@@ -255,7 +256,7 @@ public:
 	bool checkIP(const char *check_ip) {
 		in_addr ips;
 		inet_aton(check_ip, &ips);
-		return(checkIP(ips.s_addr));
+		return(checkIP(htonl(ips.s_addr)));
 	}
 public:
 	uint ip;
@@ -315,7 +316,7 @@ public:
 	bool checkIP(const char *check_ip) {
 		in_addr ips;
 		inet_aton(check_ip, &ips);
-		return(checkIP(ips.s_addr));
+		return(checkIP(htonl(ips.s_addr)));
 	}
 	void clear() {
 		if(autoLock) lock();
@@ -390,13 +391,13 @@ public:
 	void addBlack(string &ip);
 	void addBlack(const char *ip);
 	bool checkIP(uint check_ip) {
-		return(!white.size() && white.checkIP(check_ip) &&
+		return((!white.size() || white.checkIP(check_ip)) &&
 		       !black.checkIP(check_ip));
 	}
 	bool checkIP(const char *check_ip) {
 		in_addr ips;
 		inet_aton(check_ip, &ips);
-		return(checkIP(ips.s_addr));
+		return(checkIP(htonl(ips.s_addr)));
 	}
 private:
 	ListIP white;
@@ -411,7 +412,7 @@ public:
 	void addBlack(string &number);
 	void addBlack(const char *number);
 	bool checkNumber(const char *check_number) {
-		return(!white.size() && white.checkNumber(check_number) &&
+		return((!white.size() || white.checkNumber(check_number)) &&
 		       !black.checkNumber(check_number));
 	}
 private:

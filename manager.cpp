@@ -1450,13 +1450,22 @@ bool ManagerClientThread_screen_popup::parseCommand() {
 
 void ManagerClientThread_screen_popup::onCall(int sipResponseNum, const char *callerName, const char *callerNum, const char *calledNum,
 					      unsigned int sipSaddr, unsigned int sipDaddr) {
+	/*
+	cout << "** call 01" << endl;
+	cout << "** - called num : " << calledNum << endl;
+	struct in_addr _in;
+	_in.s_addr = sipSaddr;
+	cout << "** - src ip : " << inet_ntoa(_in) << endl;
+	cout << "** - reg_match : " << reg_match(calledNum, this->dest_number.empty() ? this->username.c_str() : this->dest_number.c_str()) << endl;
+	cout << "** - check ip : " << this->src_ip.checkIP(htonl(sipSaddr)) << endl;
+	*/
 	if(!(((this->popup_on == "200" && sipResponseNum == 200) ||
 	      (this->popup_on == "183/180" && (sipResponseNum == 183 || sipResponseNum == 180)) ||
 	      (this->popup_on == "183/180_200" && (sipResponseNum == 200 || (sipResponseNum == 183 || sipResponseNum == 180)))) &&
-	     (this->regex_calling_number.empty() ||
-	      reg_match(calledNum, this->regex_calling_number.c_str())) &&
+	     reg_match(calledNum, this->dest_number.empty() ? this->username.c_str() : this->dest_number.c_str()) &&
 	     (this->non_numeric_caller_id ||
-	      this->isNumericId(calledNum)))) {
+	      this->isNumericId(calledNum)) &&
+	     this->src_ip.checkIP(htonl(sipSaddr)))) {
 		return;
 	}
 	char rsltString[4096];
@@ -1467,6 +1476,15 @@ void ManagerClientThread_screen_popup::onCall(int sipResponseNum, const char *ca
 	strcpy(sipSaddrIP, inet_ntoa(in));
 	in.s_addr = sipDaddr;
 	strcpy(sipDaddrIP, inet_ntoa(in));
+	string callerNumStr = callerNum;
+	for(size_t i = 0; i < this->regex_calling_number.size(); i++) {
+		string temp = reg_replace(callerNumStr.c_str(), 
+					  this->regex_calling_number[i].pattern.c_str(), 
+					  this->regex_calling_number[i].replace.c_str());
+		if(!temp.empty()) {
+			callerNumStr = temp;
+		}
+	}
 	sprintf(rsltString,
 		"call_data: "
 		"sipresponse:[[%i]] "
@@ -1477,7 +1495,7 @@ void ManagerClientThread_screen_popup::onCall(int sipResponseNum, const char *ca
 		"sipcalledip:[[%s]]\n",
 		sipResponseNum,
 		callerName,
-		callerNum,
+		callerNumStr.c_str(),
 		calledNum,
 		sipSaddrIP,
 		sipDaddrIP);
@@ -1497,12 +1515,15 @@ bool ManagerClientThread_screen_popup::parseUserPassword() {
 		string(
 		"select u.username,\
 			u.name,\
+			u.dest_number,\
 			p.name as profile_name,\
 			p.auto_popup,\
 			p.show_ip,\
 			p.popup_on,\
 			p.non_numeric_caller_id,\
 			p.regex_calling_number,\
+			p.src_ip_whitelist,\
+			p.src_ip_blacklist,\
 			p.app_launch,\
 			p.app_launch_args_or_url\
 		 from screen_popup_users u\
@@ -1518,12 +1539,23 @@ bool ManagerClientThread_screen_popup::parseUserPassword() {
 		rslt = true;
 		username = row["username"];
 		name = row["name"];
+		dest_number = row["dest_number"];
 		profile_name = row["profile_name"];
 		auto_popup = atoi(row["auto_popup"].c_str());
 		show_ip = atoi(row["show_ip"].c_str());
 		popup_on = row["popup_on"];
 		non_numeric_caller_id = atoi(row["non_numeric_caller_id"].c_str());
-		regex_calling_number = row["regex_calling_number"];
+		if(!row["regex_calling_number"].empty()) {
+			vector<string> items = split(row["regex_calling_number"].c_str(), split("\r|\n", "|"), true);
+			for(size_t i = 0; i < items.size(); i++) {
+				vector<string> patternReplace = split(items[i].c_str(), "|", true);
+				if(patternReplace.size() == 2) {
+					this->regex_calling_number.push_back(RegexReplace(patternReplace[0].c_str(), patternReplace[1].c_str()));
+				}
+			}
+		}
+		src_ip.addWhite(row["src_ip_whitelist"].c_str());
+		src_ip.addBlack(row["src_ip_blacklist"].c_str());
 		app_launch = row["app_launch"];
 		app_launch_args_or_url = row["app_launch_args_or_url"];
 		if(!opt_php_path[0]) {

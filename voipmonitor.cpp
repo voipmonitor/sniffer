@@ -3394,7 +3394,7 @@ void test() {
 	 
 	case 1:
 	{
-	 
+		/*
 		CountryPrefixes *cp = new CountryPrefixes();
 		cp->load();
 		vector<string> countries;
@@ -3410,6 +3410,18 @@ void test() {
 		ipc->load();
 		cout << ipc->getCountry(3755988991) << endl;
 		delete ipc;
+		*/
+		
+		cout << reg_match("123456789", "456") << endl;
+		cout << reg_replace("123456789", "(.*)(456)(.*)", "$1-$2-$3") << endl;
+		
+		ListIP_wb ip;
+		ip.addWhite("192.168.1.0/24\r192.168.2.3");
+		ip.addBlack("192.168.1.13");
+		cout << ip.checkIP("192.168.1.12") << endl;
+		cout << ip.checkIP("192.168.1.13") << endl;
+		cout << ip.checkIP("192.168.2.3") << endl;
+		cout << ip.checkIP("192.168.2.5") << endl;
 	 
 		/*
 		char *test = "+123 456";
