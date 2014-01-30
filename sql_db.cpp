@@ -992,7 +992,14 @@ void MySqlStore_process::store() {
 			string query = this->query_buff.front();
 			this->query_buff.pop();
 			this->unlock();
-			queryqueue.append(query + "; ");
+			queryqueue.append(query);
+			size_t query_len = query.length();
+			while(query_len && query[query_len - 1] == ' ') {
+				--query_len;
+			}
+			if(query_len && query[query_len - 1] != ';') {
+				queryqueue.append("; ");
+			}
 			if(size < msgs) {
 				size++;
 			} else {
