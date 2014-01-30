@@ -786,7 +786,14 @@ void *storing_sql( void *dummy ) {
 			mysqlquery.pop();
 			--mysqlQuerySize;
 			pthread_mutex_unlock(&mysqlquery_lock);
-			queryqueue.append(query + "; ");
+			queryqueue.append(query);
+			size_t query_len = query.length();
+			while(query_len && query[query_len - 1] == ' ') {
+				--query_len;
+			}
+			if(query_len && query[query_len - 1] != ';') {
+				queryqueue.append("; ");
+			}
 			if(verbosity > 0) {
 				if(query.find("ipacc ") != string::npos) {
 					++_counterIpacc;

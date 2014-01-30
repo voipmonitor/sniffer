@@ -2378,9 +2378,9 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 			if(opt_sip_register_active_nologbin) {
 				qp += "SET sql_log_bin = 0; ";
 			}
-			qp += "DELETE FROM register; ";
+			qp += "DELETE FROM register";
 			if(opt_sip_register_active_nologbin) {
-				qp += "SET sql_log_bin = 1";
+				qp += "; SET sql_log_bin = 1";
 			}
 			mysqlquerypush(qp);
 		} else {
@@ -2403,9 +2403,9 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 			if(opt_sip_register_active_nologbin) {
 				qp += "SET sql_log_bin = 0; ";
 			}
-			qp += "DELETE FROM register WHERE expires_at <= FROM_UNIXTIME(" + calldate.str() + "); ";
+			qp += "DELETE FROM register WHERE expires_at <= FROM_UNIXTIME(" + calldate.str() + ")";
 			if(opt_sip_register_active_nologbin) {
-				qp += "SET sql_log_bin = 1 ";
+				qp += "; SET sql_log_bin = 1 ";
 			}
 			mysqlquerypush(qp);
 		} else {
