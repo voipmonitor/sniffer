@@ -1,3 +1,12 @@
+9.2 31.1.2014
+=============
+- do not put CNG frames into audio decoders which causes garbled g729 stream and causes low MOS score even thought there is no packet loss at all
+- use separate MySQL connections for live packet sniffer and for storing REGISTER messages which adds parallelization and speedups INSERTS
+- fix ipaccount for GRE protocol
+- add --no-cache parameter to wget in download upgrade
+- fix issue with double semicolon in sql query
+- add support for DLT_IEEE802_11_RADIO reading pcap files and sniffing on raw wifi
+
 9.1 29.1.2014
 =============
 - Fix MySQL deadlock in case the MySQL connection timeouts. This bug started since 8.4 - 9.0 verisons. 

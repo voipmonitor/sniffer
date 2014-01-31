@@ -15,7 +15,6 @@ using namespace std;
 
 void
 config_load_mysql() {
-#if 0
 	SqlDb *sqlDb = createSqlObject();
 	SqlDb_row row;
 	stringstream q;
@@ -307,7 +306,7 @@ config_load_mysql() {
 		}
 
 		if(row["disable_partition_operations"] != "") {
-			= atoi(row["disable_partition_operations"].c_str());
+			opt_disable_partition_operations = atoi(row["disable_partition_operations"].c_str());
 		}
 
 		if(row["cdr_ua_enable"] != "") {
@@ -315,182 +314,417 @@ config_load_mysql() {
 		}
 
 // custom headers 
+		{
+		char *custom_headers = NULL;	
+		char cusheaders[16000];
+		if(!row.isNull("custom_headers") and row["custom_headers"] != "") {
+			row["custom_headers"].copy(cusheaders, sizeof(cusheaders), 0);
+			custom_headers = cusheaders;
+		} else if(!row.isNull("custom_headers_cdr") and row["custom_headers_cdr"] != "") {
+			row["custom_headers_cdr"].copy(cusheaders, sizeof(cusheaders), 0);
+			custom_headers = cusheaders;
+		}
+		char *custom_headers_message = NULL;	
+		char cusheadersmsg[16000];
+		if(!row.isNull("custom_headers_message") and row["custom_headers_message"] != "") {
+			row["custom_headers_message"].copy(cusheadersmsg, sizeof(cusheadersmsg), 0);
+			custom_headers_message = cusheadersmsg;
+		}
+		char *value = NULL;
 		for(int i = 0; i < 2; i++) {
-			if(i == 0 ?
-				(value = ini.GetValue("general", "custom_headers_cdr", NULL)) ||
-				(value = ini.GetValue("general", "custom_headers", NULL)) :
-				(value = ini.GetValue("general", "custom_headers_message", NULL)) != NULL) {
-				char *pos = (char*)value;
-				while(pos && *pos) {
-					char *posSep = strchr(pos, ';');
-					if(posSep) {
-						*posSep = 0;
-					}
-					string custom_header = pos;
-					custom_header.erase(custom_header.begin(), std::find_if(custom_header.begin(), custom_header.end(), std::not1(std::ptr_fun<int, int>(std::isspace))));
-					custom_header.erase(std::find_if(custom_header.rbegin(), custom_header.rend(), std::not1(std::ptr_fun<int, int>(std::isspace))).base(), custom_header.end());
-					string custom_header_field = "custom_header__" + custom_header;
-					std::replace(custom_header_field.begin(), custom_header_field.end(), ' ', '_');
-					if(i == 0) {
-						opt_custom_headers_cdr.push_back(dstring(custom_header, custom_header_field));
-					} else {
-						opt_custom_headers_message.push_back(dstring(custom_header, custom_header_field));
-					}
-					pos = posSep ? posSep + 1 : NULL;
+			if(i == 0)
+				value = custom_headers;
+			else 
+				value = custom_headers_message;
+			char *pos = (char*)value;
+			while(pos && *pos) {
+				char *posSep = strchr(pos, ';');
+				if(posSep) {
+					*posSep = 0;
+				}
+				string custom_header = pos;
+				custom_header.erase(custom_header.begin(), std::find_if(custom_header.begin(), custom_header.end(), std::not1(std::ptr_fun<int, int>(std::isspace))));
+				custom_header.erase(std::find_if(custom_header.rbegin(), custom_header.rend(), std::not1(std::ptr_fun<int, int>(std::isspace))).base(), custom_header.end());
+				string custom_header_field = "custom_header__" + custom_header;
+				std::replace(custom_header_field.begin(), custom_header_field.end(), ' ', '_');
+				if(i == 0) {
+					opt_custom_headers_cdr.push_back(dstring(custom_header, custom_header_field));
+				} else {
+					opt_custom_headers_message.push_back(dstring(custom_header, custom_header_field));
+				}
+				pos = posSep ? posSep + 1 : NULL;
+			}
+		}
+		}
+
+		if(row["savesip"] != "") {
+			opt_saveSIP = atoi(row["savesip"].c_str());
+		}
+
+		if(row["savertp"] != "") {
+			switch(row["savertp"][0]) {
+			case 'y':
+			case 'Y':
+			case '1':
+				opt_saveRTP = 1;
+				break;
+			case 'h':
+			case 'H':
+				opt_onlyRTPheader = 1;
+				break;
+			}
+		}
+
+		if(row["saverfc2833"] != "") {
+			opt_saverfc2833 = atoi(row["saverfc2833"].c_str());
+		}
+
+		if(row["dtmf2db"] != "") {
+			opt_dbdtmf = atoi(row["dtmf2db"].c_str());
+		}
+
+		if(row["saveudptl"] != "") {
+			opt_saveudptl = atoi(row["saveudptl"].c_str());
+		}
+
+		if(row["norecord-header"] != "") {
+			opt_norecord_header = atoi(row["norecord-header"].c_str());
+		}
+
+		if(row["vmbuffer"] != "") {
+			qringmax = (unsigned int)((unsigned int)MIN(atoi(row["vmbuffer"].c_str()), 4000) * 1024 * 1024 / (unsigned int)sizeof(pcap_packet));
+		}
+
+		if(row["matchheader"] != "") {
+			row["matchheader"].copy(opt_match_header, sizeof(opt_match_header), 0);
+		}
+
+		if(row["domainport"] != "") {
+			opt_domainport = atoi(row["domainport"].c_str());
+		}
+
+		if(row["managerport"] != "") {
+			opt_manager_port = atoi(row["managerport"].c_str());
+		}
+
+		if(row["managerip"] != "") {
+			row["managerip"].copy(opt_manager_ip, sizeof(opt_manager_ip), 0);
+		}
+
+		if(row["managerclient"] != "") {
+			row["managerclient"].copy(opt_clientmanager, sizeof(opt_clientmanager), 0);
+		}
+
+		if(row["managerclientport"] != "") {
+			opt_clientmanagerport = atoi(row["managerclientport"].c_str());
+		}
+
+		if(row["savertcp"] != "") {
+			opt_saveRTCP = atoi(row["savertcp"].c_str());
+		}
+
+		if(row["saveaudio"] != "") {
+			switch(row["saveaudio"][0]) {
+			case 'y':
+			case '1':
+			case 'w':
+				opt_saveWAV = 1;
+				opt_audio_format = FORMAT_WAV;
+				break;
+			case 'o':
+				opt_saveWAV = 1;
+				opt_audio_format = FORMAT_OGG;
+				break;
+			}
+		}
+
+		if(row["savegraph"] != "") {
+			switch(row["savegraph"][0]) {
+			case 'y':
+			case '1':
+			case 'p':
+				opt_saveGRAPH = 1;
+				break;
+			case 'g':
+				opt_saveGRAPH = 1;
+				opt_gzipGRAPH = 1;
+				break;
+			}      
+		}
+
+		if(row["filter"] != "") {
+			row["filter"].copy(user_filter, sizeof(user_filter), 0);
+		}
+
+		if(row["cachedir"] != "") {
+			row["cachedir"].copy(opt_cachedir, sizeof(opt_cachedir), 0);
+			mkdir_r(opt_cachedir, 0777);
+		}
+
+		if(row["spooldir"] != "") {
+			row["spooldir"].copy(opt_chdir, sizeof(opt_chdir), 0);
+			mkdir_r(opt_chdir, 0777);
+		}
+
+		if(row["spooldiroldschema"] != "") {
+			opt_newdir = !atoi(row["spooldiroldschema"].c_str());
+		}
+
+		if(row["pcapsplit"] != "") {
+			opt_pcap_split = atoi(row["pcapsplit"].c_str());
+		}
+
+		if(row["scanpcapdir"] != "") {
+			row["scanpcapdir"].copy(opt_scanpcapdir, sizeof(opt_scanpcapdir), 0);
+		}
+
+#ifndef FREEBSD
+		if(row["scanpcapmethod"] != "") {
+			opt_scanpcapmethod = (row["scanpcapmethod"][0] == 'r') ? IN_MOVED_TO : IN_CLOSE_WRITE;
+		}      
+#endif 
+		if(row["promisc"] != "") {
+			opt_promisc = atoi(row["promisc"].c_str());
+		}
+
+
+		if(row["national_prefix"] != "") {
+			char *pos = (char*)row["national_prefix"].c_str();
+			while(pos && *pos) {
+				char *posSep = strchr(pos, ';');
+				if(posSep) {
+					*posSep = 0;
+				}      
+				opt_national_prefix.push_back(pos);
+				pos = posSep ? posSep + 1 : NULL;
+			} 
+		}
+
+		if(row["sipoverlap"] != "") {
+			opt_sipoverlap = atoi(row["sipoverlap"].c_str());
+		}
+
+		if(row["jitterbuffer_f1"] != "") {
+			opt_jitterbuffer_f1 = atoi(row["jitterbuffer_f1"].c_str());
+		}
+		if(row["jitterbuffer_f2"] != "") {
+			opt_jitterbuffer_f2 = atoi(row["jitterbuffer_f2"].c_str());
+		}
+		if(row["jitterbuffer_adapt"] != "") {
+			opt_jitterbuffer_adapt = atoi(row["jitterbuffer_adapt"].c_str());
+		}
+
+		if(row["sqlcallend"] != "") {
+			opt_callend = atoi(row["sqlcallend"].c_str());
+		}
+
+		if(row["cdrurl"] != "") {
+			row["cdrurl"].copy(opt_cdrurl, sizeof(opt_cdrurl), 0);
+		}
+
+		if(row["destination_number_mode"] != "") {
+			opt_destination_number_mode = atoi(row["destination_number_mode"].c_str());
+		}
+
+		if(row["cdronlyanswered"] != "") {
+			opt_cdronlyanswered = atoi(row["cdronlyanswered"].c_str());
+		}
+
+		if(row["cdronlyrtp"] != "") {
+			opt_cdronlyrtp = atoi(row["cdronlyrtp"].c_str());
+		}
+
+		if(row["callslimit"] != "") {
+			opt_callslimit = atoi(row["callslimit"].c_str());
+		}
+
+		if(row["pauserecordingdtmf"] != "") {
+			row["pauserecordingdtmf"].copy(opt_silencedmtfseq, sizeof(opt_silencedmtfseq), 0);
+		}
+
+		if(row["keycheck"] != "") {
+			row["keycheck"].copy(opt_keycheck, sizeof(opt_keycheck), 0);
+		}
+
+		if(row["convertchar"] != "") {
+			row["convertchar"].copy(opt_convert_char, sizeof(opt_convert_char), 0);
+		}
+
+		if(row["openfile_max"] != "") {
+			opt_openfile_max = atoi(row["openfile_max"].c_str());
+		}
+
+		if(row["packetbuffer_enable"] != "") {
+			opt_pcap_queue = atoi(row["packetbuffer_enable"].c_str());
+		}
+
+		if(row["packetbuffer_total_maxheap"] != "") {
+			opt_pcap_queue_store_queue_max_memory_size = atoi(row["packetbuffer_total_maxheap"].c_str());
+		}
+
+		if(row["packetbuffer_file_totalmaxsize"] != "") {
+			opt_pcap_queue_store_queue_max_disk_size = atoi(row["packetbuffer_file_totalmaxsize"].c_str());
+		}
+
+		if(row["packetbuffer_file_path"] != "") {
+			opt_pcap_queue_disk_folder = row["packetbuffer_file_path"];
+		}
+
+		if(row["packetbuffer_compress"] != "") {
+			opt_pcap_queue_compress = atoi(row["packetbuffer_compress"].c_str());
+		}
+
+		if(row["mirror_destination_ip"] != "" and row["mirror_destination_port"] != "") {
+			opt_pcap_queue_send_to_ip_port.set_ip(row["mirror_destination_ip"]);
+			opt_pcap_queue_receive_from_ip_port.set_port(atoi(row["mirror_destination_port"].c_str()));
+		}
+
+		if(row["mirror_destination"] != "") {
+			char *pointToPortSeparator = (char*)strchr(row["mirror_destination"].c_str(), ':');
+			if(pointToPortSeparator) {
+				*pointToPortSeparator = 0;
+				int port = atoi(pointToPortSeparator + 1);
+				if(row["mirror_destination"][0] && port) {
+					opt_pcap_queue_send_to_ip_port.set_ip(row["mirror_destination"].c_str());
+					opt_pcap_queue_send_to_ip_port.set_port(port);
 				}
 			}
 		}
 
-
-		if(row[""] != "") {
-			= atoi(row[""].c_str());
+		if(row["mirror_bind_ip"] != "" and row["mirror_bind_port"] != "") {
+			opt_pcap_queue_receive_from_ip_port.set_ip(row["mirror_bind_ip"].c_str());
+			opt_pcap_queue_receive_from_ip_port.set_port(atoi(row["mirror_bind_port"].c_str()));
 		}
 
-		if(row[""] != "") {
-			= atoi(row[""].c_str());
+		if(row["mirror_bind"] != "") {
+			char *pointToPortSeparator = (char*)strchr(row["mirror_bind"].c_str(), ':');
+			if(pointToPortSeparator) {
+				*pointToPortSeparator = 0;
+				int port = atoi(pointToPortSeparator + 1);
+				if(row["mirror_bind"][0] && port) {
+					opt_pcap_queue_receive_from_ip_port.set_ip(row["mirror_bind"].c_str());
+					opt_pcap_queue_receive_from_ip_port.set_port(port);
+				}
+			}
 		}
 
-		if(row[""] != "") {
-			= atoi(row[""].c_str());
+		if(row["mirror_bind_dlt"] != "") {
+			opt_pcap_queue_receive_dlt = atoi(row["mirror_bind_dlt"].c_str());
 		}
 
-		if(row[""] != "") {
-			= atoi(row[""].c_str());
+		if(row["convert_dlt_sll2en10"] != "") {
+			opt_convert_dlt_sll_to_en10 = atoi(row["convert_dlt_sll2en10"].c_str());
 		}
 
-		if(row[""] != "") {
-			= atoi(row[""].c_str());
+		if(row["threading_mod"] != "") {
+			switch(atoi(row["threading_mod"].c_str())) {
+			case 2: 
+				opt_pcap_queue_iface_separate_threads = 1;
+				break;
+			case 3: 
+				opt_pcap_queue_iface_separate_threads = 1;
+				opt_pcap_queue_iface_dedup_separate_threads = 1;
+				break;
+			case 4: 
+				opt_pcap_queue_iface_separate_threads = 1;
+				opt_pcap_queue_iface_dedup_separate_threads = 1;
+				opt_pcap_queue_iface_dedup_separate_threads_extend = 1;
+				break;
+			}      
 		}
 
-		if(row[""] != "") {
-			= atoi(row[""].c_str());
+		if(!opt_pcap_queue_iface_separate_threads && strchr(ifname, ',')) {
+			opt_pcap_queue_iface_separate_threads = 1;
 		}
 
-		if(row[""] != "") {
-			= atoi(row[""].c_str());
+		if(row["maxpcapsize"] != "") {
+			opt_maxpcapsize_mb = atoi(row["maxpcapsize"].c_str());
+		}
+		if(row["upgrade_try_http_if_https_fail"] != "") {
+			opt_upgrade_try_http_if_https_fail = atoi(row["upgrade_try_http_if_https_fail"].c_str());
+		}
+		if(row["sdp_reverse_ipport"] != "") {
+			opt_sdp_reverse_ipport = atoi(row["sdp_reverse_ipport"].c_str());
+		}
+		if(row["mos_lqo"] != "") {
+			opt_mos_lqo = atoi(row["mos_lqo"].c_str());
+		}
+		if(row["mos_lqo_bin"] != "") {
+			opt_mos_lqo_bin = row["mos_lqo_bin"];
+		}
+		if(row["mos_lqo_ref"] != "") {
+			opt_mos_lqo_ref = atoi(row["mos_lqo_ref"].c_str());
+		}
+		if(row["mos_lqo_ref16"] != "") {
+			opt_mos_lqo_ref = row["mos_lqo_ref"];
+		}
+		if(row["php_path"] != "") {
+			row["php_path"].copy(opt_php_path, sizeof(opt_php_path), 0);
+		}
+		if(row["onewaytimeout"] != "") {
+			opt_onewaytimeout = atoi(row["onewaytimeout"].c_str());
+		}
+		if(row["saveaudio_reversestereo"] != "") {
+			opt_saveaudio_reversestereo = atoi(row["saveaudio_reversestereo"].c_str());
 		}
 
-		if(row[""] != "") {
-			= atoi(row[""].c_str());
-		}
-
-		if(row[""] != "") {
-			= atoi(row[""].c_str());
-		}
-
-		if(row[""] != "") {
-			= atoi(row[""].c_str());
-		}
-
-		if(row[""] != "") {
-			= atoi(row[""].c_str());
-		}
-
-		if(row[""] != "") {
-			= atoi(row[""].c_str());
-		}
-
-		if(row[""] != "") {
-			= atoi(row[""].c_str());
-		}
-
-		if(row[""] != "") {
-			= atoi(row[""].c_str());
-		}
-
-		if(row[""] != "") {
-			= atoi(row[""].c_str());
-		}
-
-		if(row[""] != "") {
-			= atoi(row[""].c_str());
-		}
-
-		if(row[""] != "") {
-			= atoi(row[""].c_str());
-		}
-
-		if(row[""] != "") {
-		}
-
-		if(row[""] != "") {
-		}
-
-		if(row[""] != "") {
-		}
-
-		if(row[""] != "") {
-		}
-
-		if(row[""] != "") {
-		}
-
-		if(row[""] != "") {
-		}
-
-		if(row[""] != "") {
-		}
-
-		if(row[""] != "") {
-		}
-
-		if(row[""] != "") {
-		}
-
-		if(row[""] != "") {
-		}
-
-		if(row[""] != "") {
-		}
-
-		if(row[""] != "") {
-		}
-
-		if(row[""] != "") {
-		}
-
-		if(row[""] != "") {
-		}
-
-		if(row[""] != "") {
-		}
-
-		if(row[""] != "") {
-		}
-
-		if(row[""] != "") {
-		}
-
-		if(row[""] != "") {
-		}
-
-		if(row[""] != "") {
-		}
-
-		if(row[""] != "") {
-		}
-
-		if(row[""] != "") {
-		}
-
-		if(row[""] != "") {
-		}
-
-		if(row[""] != "") {
-		}
-
-		if(row[""] != "") {
-		}
-
+		/*
 		
+		packetbuffer default configuration
+		
+		packetbuffer_enable	     = no
+		packetbuffer_block_maxsize      = 500   #kB
+		packetbuffer_block_maxtime      = 500   #ms
+		packetbuffer_total_maxheap      = 500   #MB
+		packetbuffer_thread_maxheap     = 500   #MB
+		packetbuffer_file_totalmaxsize  = 20000 #MB
+		packetbuffer_file_path	  = /var/spool/voipmonitor/packetbuffer
+		packetbuffer_file_maxfilesize   = 1000  #MB
+		packetbuffer_file_maxtime       = 5000  #ms
+		packetbuffer_compress	   = yes
+		#mirror_destination_ip	  =
+		#mirror_destination_port	=
+		#mirror_source_ip	       =
+		#mirror_source_port	     =
+		*/
 
-/*
-		filterRow->ip = (unsigned int)strtoul(row["ip"].c_str(), NULL, 0);
-		filterRow->mask = atoi(row["mask"].c_str());
-		filterRow->direction = row.isNull("direction") ? 0 : atoi(row["direction"].c_str());
-		filterRow->rtp = row.isNull("rtp") ? -1 : atoi(row["rtp"].c_str());
-*/
+#ifdef QUEUE_NONBLOCK2
+		if(opt_scanpcapdir[0] != '\0') {
+			opt_pcap_queue = 0;
+		}
+#else   
+		opt_pcap_queue = 0;
+#endif
+
+		if(opt_pcap_queue) {
+			if(!opt_pcap_queue_disk_folder.length() || !opt_pcap_queue_store_queue_max_disk_size) {
+				// disable disc save
+				if(opt_pcap_queue_compress) {
+					// enable compress - maximum thread0 buffer = 100MB, minimum = 50MB
+					opt_pcap_queue_bypass_max_size = opt_pcap_queue_store_queue_max_memory_size / 8;
+					if(opt_pcap_queue_bypass_max_size > 100 * 1024 * 1024) {
+						opt_pcap_queue_bypass_max_size = 100 * 1024 * 1024;
+					} else if(opt_pcap_queue_bypass_max_size < 50 * 1024 * 1024) {
+						opt_pcap_queue_bypass_max_size = 50 * 1024 * 1024;
+					}      
+				} else {
+					// disable compress - thread0 buffer = 50MB
+					opt_pcap_queue_bypass_max_size = 50 * 1024 * 1024;
+				}      
+			} else {
+				// disable disc save - maximum thread0 buffer = 500MB
+				opt_pcap_queue_bypass_max_size = opt_pcap_queue_store_queue_max_memory_size / 4;
+				if(opt_pcap_queue_bypass_max_size > 500 * 1024 * 1024) {
+					opt_pcap_queue_bypass_max_size = 500 * 1024 * 1024;
+				}      
+			}      
+			if(opt_pcap_queue_store_queue_max_memory_size < opt_pcap_queue_bypass_max_size * 2) {
+				opt_pcap_queue_store_queue_max_memory_size = opt_pcap_queue_bypass_max_size * 2;
+			} else {
+				opt_pcap_queue_store_queue_max_memory_size -= opt_pcap_queue_bypass_max_size;
+			}      
+		}      
+
 	}
 	delete sqlDb;
-	#endif
 }
