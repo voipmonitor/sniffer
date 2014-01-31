@@ -1383,7 +1383,7 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 	this->multi_off();
 
 	if(!federated) {
-#if 0
+#if 1
 	this->query(
 	"CREATE TABLE IF NOT EXISTS `sensor_conf` (\
 			`id` int NOT NULL AUTO_INCREMENT,\
@@ -1479,6 +1479,7 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 			`cdr_partition` tinyint DEFAULT 1,\
 			`disable_partition_operations` tinyint DEFAULT 0,\
 			`upgrade_try_http_if_https_fail` tinyint DEFAULT 1,\
+			`opt_saveaudio_reversestereo` tinyint DEFAULT 0,\
 		PRIMARY KEY (`id`)\
 	) ENGINE=InnoDB DEFAULT CHARSET=latin1;");
 #endif

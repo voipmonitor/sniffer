@@ -264,7 +264,7 @@ string opt_mos_lqo_bin = "pesq";
 string opt_mos_lqo_ref = "/usr/local/share/voipmonitor/audio/mos_lqe_original.wav";
 string opt_mos_lqo_ref16 = "/usr/local/share/voipmonitor/audio/mos_lqe_original_16khz.wav";
 regcache *regfailedcache;
-int opt_onewaytimeout = 10;
+int opt_onewaytimeout = 15;
 int opt_saveaudio_reversestereo = 0;
 
 unsigned int opt_maxpoolsize = 0;
@@ -278,6 +278,7 @@ unsigned int opt_maxpoolgraphdays = 0;
 unsigned int opt_maxpoolaudiosize = 0;
 unsigned int opt_maxpoolaudiodays = 0;
 int opt_maxpool_clean_obsolete = 0;
+int opt_mysqlloadconfig = 1;
 
 char opt_php_path[1024];
 
@@ -1825,6 +1826,9 @@ int load_config(char *fname) {
 	if((value = ini.GetValue("general", "saveaudio_reversestereo", NULL))) {
 		opt_saveaudio_reversestereo = yesno(value);
 	}
+	if((value = ini.GetValue("general", "mysqlloadconfig", NULL))) {
+		opt_mysqlloadconfig = yesno(value);
+	}
 	
 	/*
 	
@@ -2692,8 +2696,10 @@ int main(int argc, char *argv[]) {
 		delete sqlDb;
 	}
 	if(isSqlDriver("mysql")) {
-		sqlStore = new MySqlStore(mysql_host, mysql_user, mysql_password, mysql_database);
-		config_load_mysql();
+		sqlStore = new MySqlStore(mysql_host, mysql_user, mysql_password, mysql_database);	
+		if(opt_mysqlloadconfig) {
+			config_load_mysql();
+		}
 	}
 
 	signal(SIGINT,sigint_handler);

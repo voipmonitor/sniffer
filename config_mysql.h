@@ -7,6 +7,10 @@
 #include <deque>
 #include <deque>
 
+#ifndef FREEBSD
+#include <sys/inotify.h>
+#endif
+
 #include "calltable.h"
 #include "sniff.h"
 #include "mirrorip.h"
@@ -263,6 +267,15 @@ extern volatile unsigned int readit;
 extern volatile unsigned int writeit;
 extern vector<u_int32_t> httpip;
 extern vector<d_u_int32_t> httpnet;
+extern char pcapcommand[4092];
+extern char filtercommand[4092];
+extern unsigned int rtpthreadbuffer;  
+extern unsigned int rtpthreadbuffer;
+#ifndef FREEBSD
+extern uint32_t opt_scanpcapmethod;  // Specifies how to watch for new files in opt_scanpcapdir
+#endif
+extern char opt_convert_char[64];
+extern unsigned int opt_openfile_max;
 
 void config_load_mysql();
 
