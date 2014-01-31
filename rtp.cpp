@@ -452,8 +452,8 @@ RTP::jitterbuffer(struct ast_channel *channel, int savePayload) {
 			}
 		}
 
-		if(codec == PAYLOAD_G729 and (payload_len == 2 or payload_len == 12 or payload_len == 10)) {
-			return;
+		if(codec == PAYLOAD_G729 and (payload_len <= 12)) {
+			frame->frametype = AST_FRAME_DTMF;
 		}
 
 		channel->rawstream = gfileRAW;

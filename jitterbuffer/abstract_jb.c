@@ -514,6 +514,7 @@ static void jb_get_and_deliver(struct ast_channel *chan, struct timeval *mynow)
 			if( !(((f->seqno - chan->last_seqno) == 1) && (abs(f->ts - chan->last_ms) > (chan->packetization)))
 				&& !f->marker && chan->last_loss_burst > 0 && chan->last_loss_burst < 1024
 				&& f->lastframetype == AST_FRAME_VOICE // if the lastframetype was no frame voice(for example dtmf), do not count packet loss 
+				&& !(chan->codec == PAYLOAD_G729 && f->datalen <= 12) // if g729 frame is CNG frame do not count interpolated frames
 				) {
 				
 				if(debug) fprintf(stdout, "\tSAVING chan->loss[%d] packetization[%d]\n", chan->last_loss_burst, chan->packetization);
