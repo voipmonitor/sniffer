@@ -322,6 +322,7 @@ public:
 	MySqlStore(const char *host, const char *user, const char *password, const char *database);
 	~MySqlStore();
 	void query(const char *query_str, int id);
+	void query_lock(const char *query_str, int id);
 	void lock(int id);
 	void unlock(int id);
 	void setIgnoreTerminating(int id, bool ignoreTerminating);

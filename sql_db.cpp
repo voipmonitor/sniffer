@@ -1052,6 +1052,13 @@ void MySqlStore::query(const char *query_str, int id) {
 	process->query(query_str);
 }
 
+void MySqlStore::query_lock(const char *query_str, int id) {
+	MySqlStore_process* process = this->find(id);
+	process->lock();
+	process->query(query_str);
+	process->unlock();
+}
+
 void MySqlStore::lock(int id) {
 	MySqlStore_process* process = this->find(id);
 	process->lock();

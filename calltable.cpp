@@ -114,6 +114,7 @@ extern string opt_mos_lqo_ref;
 extern string opt_mos_lqo_ref16;
 extern int opt_mos_lqo;
 extern regcache *regfailedcache;
+extern MySqlStore *sqlStore;
 
 volatile int calls = 0;
 
@@ -2382,7 +2383,7 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 			if(opt_sip_register_active_nologbin) {
 				qp += "; SET sql_log_bin = 1";
 			}
-			mysqlquerypush(qp);
+			sqlStore->query_lock(qp.c_str(), STORE_PROC_ID_REGISTER);
 		} else {
 			if(opt_sip_register_active_nologbin && isTypeDb("mysql")) {
 				sqlDbSaveCall->query("SET sql_log_bin = 0");
@@ -2407,7 +2408,7 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 			if(opt_sip_register_active_nologbin) {
 				qp += "; SET sql_log_bin = 1 ";
 			}
-			mysqlquerypush(qp);
+			sqlStore->query_lock(qp.c_str(), STORE_PROC_ID_REGISTER);
 		} else {
 			sqlDbSaveCall->query(query);
 			if(opt_sip_register_active_nologbin && isTypeDb("mysql")) {
@@ -2459,7 +2460,7 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 				fname + ", " +
 				idsensor +
 				")";
-			mysqlquerypush(query);
+			sqlStore->query_lock(query.c_str(), STORE_PROC_ID_REGISTER);
 		} else {
 			query = string(
 				"SELECT ID, state, ") +
@@ -2633,7 +2634,7 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 			string query = "SET @mcounter = (" + q1 + ");";
 			query += "IF @mcounter IS NOT NULL THEN " + q2 + "; ELSE " + q3 + "; END IF";
 
-			mysqlquerypush(query);
+			sqlStore->query_lock(query.c_str(), STORE_PROC_ID_REGISTER);
 		} else {
 			query = string(
 				"SELECT counter FROM register_failed ") +
