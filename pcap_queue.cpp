@@ -1489,6 +1489,10 @@ inline int PcapQueue_readFromInterface_base::pcapProcess(pcap_pkthdr** header, u
 			ppd.offset = 0;
 			ppd.protocol = 8;
 			break;
+		case DLT_IEEE802_11_RADIO:
+			ppd.offset = 52;
+			ppd.protocol = 8;
+			break;
 		default:
 			syslog(LOG_ERR, "packetbuffer - %s: datalink number [%d] is not supported", this->getInterfaceName().c_str(), this->pcapLinklayerHeaderType);
 			return(0);

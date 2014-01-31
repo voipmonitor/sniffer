@@ -3751,6 +3751,10 @@ void readdump_libpcap(pcap_t *handle) {
 				offset = 0;
 				protocol = 8;
 				break;
+			case DLT_IEEE802_11_RADIO:
+				offset = 52;
+				protocol = 8;
+				break;
 			default:
 				syslog(LOG_ERR, "This datalink number [%d] is not supported yet. For more information write to support@voipmonitor.org\n", pcap_dlink);
 				continue;
