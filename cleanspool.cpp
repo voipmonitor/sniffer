@@ -22,9 +22,6 @@
 using namespace std;
 
 
-void mysqlquerypush(string q);
-
-
 extern char opt_chdir[1024];
 extern int debugclean;
 extern int opt_id_sensor;
@@ -44,8 +41,7 @@ extern int opt_maxpool_clean_obsolete;
 extern int opt_cleanspool_interval;
 extern int opt_cleanspool_sizeMB;
 
-extern queue<string> mysqlquery;
-extern pthread_mutex_t mysqlquery_lock;
+extern MySqlStore *sqlStore;
 
 SqlDb *sqlDbCleanspool = NULL;
 
@@ -326,12 +322,12 @@ void clean_maxpoolsipsize() {
 			q.str( std::string() );
 			q.clear();
 			q << "UPDATE files SET sipsize = 0, regsize = 0 WHERE datehour = " << row["datehour"] << " AND id_sensor = " << (opt_id_sensor > 0 ? opt_id_sensor : 0);
-			mysqlquerypush(q.str());
+			sqlStore->query_lock(q.str().c_str(), STORE_PROC_ID_CLEANSPOOL);
 		} else {
 			q.str( std::string() );
 			q.clear();
 			q << "DELETE FROM files WHERE datehour = " << row["datehour"] << " AND " << (opt_id_sensor > 0 ? opt_id_sensor : 0);
-			mysqlquerypush(q.str());
+			sqlStore->query_lock(q.str().c_str(), STORE_PROC_ID_CLEANSPOOL);
 		}
 
 		
@@ -400,12 +396,12 @@ void clean_maxpoolrtpsize() {
 			q.str( std::string() );
 			q.clear();
 			q << "UPDATE files SET rtpsize = 0 WHERE datehour = " << row["datehour"] << " AND id_sensor = " << (opt_id_sensor > 0 ? opt_id_sensor : 0);
-			mysqlquerypush(q.str());
+			sqlStore->query_lock(q.str().c_str(), STORE_PROC_ID_CLEANSPOOL);
 		} else {
 			q.str( std::string() );
 			q.clear();
 			q << "DELETE FROM files WHERE datehour = " << row["datehour"] << " AND " << (opt_id_sensor > 0 ? opt_id_sensor : 0);
-			mysqlquerypush(q.str());
+			sqlStore->query_lock(q.str().c_str(), STORE_PROC_ID_CLEANSPOOL);
 		}
 
 		
@@ -473,12 +469,12 @@ void clean_maxpoolgraphsize() {
 			q.str( std::string() );
 			q.clear();
 			q << "UPDATE files SET graphsize = 0 WHERE datehour = " << row["datehour"] << " AND id_sensor = " << (opt_id_sensor > 0 ? opt_id_sensor : 0);
-			mysqlquerypush(q.str());
+			sqlStore->query_lock(q.str().c_str(), STORE_PROC_ID_CLEANSPOOL);
 		} else {
 			q.str( std::string() );
 			q.clear();
 			q << "DELETE FROM files WHERE datehour = " << row["datehour"] << " AND " << (opt_id_sensor > 0 ? opt_id_sensor : 0);
-			mysqlquerypush(q.str());
+			sqlStore->query_lock(q.str().c_str(), STORE_PROC_ID_CLEANSPOOL);
 		}
 
 		
@@ -546,12 +542,12 @@ void clean_maxpoolaudiosize() {
 			q.str( std::string() );
 			q.clear();
 			q << "UPDATE files SET audiosize = 0 WHERE datehour = " << row["datehour"] << " AND id_sensor = " << (opt_id_sensor > 0 ? opt_id_sensor : 0);
-			mysqlquerypush(q.str());
+			sqlStore->query_lock(q.str().c_str(), STORE_PROC_ID_CLEANSPOOL);
 		} else {
 			q.str( std::string() );
 			q.clear();
 			q << "DELETE FROM files WHERE datehour = " << row["datehour"] << " AND " << (opt_id_sensor > 0 ? opt_id_sensor : 0);
-			mysqlquerypush(q.str());
+			sqlStore->query_lock(q.str().c_str(), STORE_PROC_ID_CLEANSPOOL);
 		}
 
 		
@@ -618,7 +614,7 @@ void clean_maxpooldays() {
 		q.str( std::string() );
 		q.clear();
 		q << "DELETE FROM files WHERE datehour = " << row["datehour"] << " AND id_sensor = " << (opt_id_sensor > 0 ? opt_id_sensor : 0);
-		mysqlquerypush(q.str());
+		sqlStore->query_lock(q.str().c_str(), STORE_PROC_ID_CLEANSPOOL);
 	}
 }
 
@@ -658,11 +654,11 @@ void clean_maxpoolsipdays() {
 		if(rtpsize + graphsize + audiosize > 0) {
 			stringstream q;
 			q << "UPDATE files SET sipsize = 0, regsize = 0 WHERE datehour = " << row["datehour"] << " AND id_sensor = " << (opt_id_sensor > 0 ? opt_id_sensor : 0);
-			mysqlquerypush(q.str());
+			sqlStore->query_lock(q.str().c_str(), STORE_PROC_ID_CLEANSPOOL);
 		} else {
 			stringstream q;
 			q << "DELETE FROM files WHERE datehour = " << row["datehour"] << " AND id_sensor = " << (opt_id_sensor > 0 ? opt_id_sensor : 0);
-			mysqlquerypush(q.str());
+			sqlStore->query_lock(q.str().c_str(), STORE_PROC_ID_CLEANSPOOL);
 		}
 	}
 }
@@ -699,11 +695,11 @@ void clean_maxpoolrtpdays() {
 		if(sipsize + regsize + graphsize + audiosize > 0) {
 			stringstream q;
 			q << "UPDATE files SET rtpsize = 0 WHERE datehour = " << row["datehour"] << " AND id_sensor = " << (opt_id_sensor > 0 ? opt_id_sensor : 0);
-			mysqlquerypush(q.str());
+			sqlStore->query_lock(q.str().c_str(), STORE_PROC_ID_CLEANSPOOL);
 		} else {
 			stringstream q;
 			q << "DELETE FROM files WHERE datehour = " << row["datehour"] << " AND id_sensor = " << (opt_id_sensor > 0 ? opt_id_sensor : 0);
-			mysqlquerypush(q.str());
+			sqlStore->query_lock(q.str().c_str(), STORE_PROC_ID_CLEANSPOOL);
 		}
 	}
 }
@@ -742,12 +738,12 @@ void clean_maxpoolgraphdays() {
 		if(sipsize + regsize + rtpsize + audiosize > 0) {
 			stringstream q;
 			q << "UPDATE files SET graphsize = 0 WHERE datehour = " << row["datehour"] << " AND id_sensor = " << (opt_id_sensor > 0 ? opt_id_sensor : 0);
-			mysqlquerypush(q.str());
+			sqlStore->query_lock(q.str().c_str(), STORE_PROC_ID_CLEANSPOOL);
 			if(debugclean) cout << q.str() << "\n";
 		} else {
 			stringstream q;
 			q << "DELETE FROM files WHERE datehour = " << row["datehour"] << " AND id_sensor = " << (opt_id_sensor > 0 ? opt_id_sensor : 0);
-			mysqlquerypush(q.str());
+			sqlStore->query_lock(q.str().c_str(), STORE_PROC_ID_CLEANSPOOL);
 			if(debugclean) cout << q.str() << "\n";
 		}
 	}
@@ -785,11 +781,11 @@ void clean_maxpoolaudiodays() {
 		if(sipsize + regsize + rtpsize + graphsize > 0) {
 			stringstream q;
 			q << "UPDATE files SET audiosize = 0 WHERE datehour = " << row["datehour"] << " AND id_sensor = " << (opt_id_sensor > 0 ? opt_id_sensor : 0);
-			mysqlquerypush(q.str());
+			sqlStore->query_lock(q.str().c_str(), STORE_PROC_ID_CLEANSPOOL);
 		} else {
 			stringstream q;
 			q << "DELETE FROM files WHERE datehour = " << row["datehour"] << " AND id_sensor = " << (opt_id_sensor > 0 ? opt_id_sensor : 0);
-			mysqlquerypush(q.str());
+			sqlStore->query_lock(q.str().c_str(), STORE_PROC_ID_CLEANSPOOL);
 		}
 	}
 }
@@ -913,7 +909,8 @@ void convert_filesindex() {
 
 	char id_sensor_str[10];
 	sprintf(id_sensor_str, "%i", opt_id_sensor > 0 ? opt_id_sensor : 0);
-	mysqlquerypush(string("DELETE FROM files WHERE id_sensor=") + id_sensor_str);
+	string q = string("DELETE FROM files WHERE id_sensor=") + id_sensor_str;
+	sqlStore->query_lock(q.c_str(), STORE_PROC_ID_CLEANSPOOL);
 	rmdir_r("filesindex", true, true);
 	mkdir_r("filesindex/sipsize", 0777);
 	mkdir_r("filesindex/rtpsize", 0777);
@@ -1067,9 +1064,7 @@ void convert_filesindex() {
 					query << "INSERT INTO files SET files.datehour = " << ymdh << ", id_sensor = " << id_sensor << ", "
 						<< "sipsize = " << sipsize << ", rtpsize = " << rtpsize << ", graphsize = " << graphsize << ", audiosize = " << audiosize << 
 						" ON DUPLICATE KEY UPDATE sipsize = sipsize";
-					pthread_mutex_lock(&mysqlquery_lock);
-					mysqlquery.push(query.str());
-					pthread_mutex_unlock(&mysqlquery_lock);
+					sqlStore->query_lock(query.str().c_str(), STORE_PROC_ID_CLEANSPOOL);
 
 				}
 

@@ -327,7 +327,10 @@ public:
 	void unlock(int id);
 	void setIgnoreTerminating(int id, bool ignoreTerminating);
 	MySqlStore_process *find(int id);
-	size_t getSize();
+	MySqlStore_process *check(int id);
+	size_t getAllSize(bool lock = true);
+	int getSize(int id, bool lock = true);
+	int getSizeMult(int n, ...);
 private:
 	map<int, MySqlStore_process*> processes;
 	string host;

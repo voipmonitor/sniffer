@@ -52,7 +52,6 @@ extern int opt_ipacc_interval;
 extern bool opt_ipacc_sniffer_agregate;
 extern bool opt_ipacc_agregate_only_customers_on_main_side;
 extern bool opt_ipacc_agregate_only_customers_on_any_side;
-extern bool opt_ipacc_multithread_save;
 extern char get_customer_by_ip_sql_driver[256];
 extern char get_customer_by_ip_odbc_dsn[256];
 extern char get_customer_by_ip_odbc_user[256];
@@ -83,9 +82,6 @@ extern char mysql_user[256];
 extern char mysql_password[256];
 
 extern MySqlStore *sqlStore;
-
-extern queue<string> mysqlquery;
-extern pthread_mutex_t mysqlquery_lock;
 
 typedef map<unsigned int, octects_live_t*> t_ipacc_live;
 t_ipacc_live ipacc_live;
@@ -132,14 +128,10 @@ void ipacc_save(int indexIpaccBuffer, unsigned int interval_time_limit = 0) {
 	map<unsigned int,IpaccAgreg*> agreg;
 	map<unsigned int, IpaccAgreg*>::iterator agregIter;
 	char insertQueryBuff[1000];
-	if(opt_ipacc_multithread_save) {
-		sqlStore->lock(STORE_PROC_ID_IPACC_1);
-		if(opt_ipacc_sniffer_agregate) {
-			sqlStore->lock(STORE_PROC_ID_IPACC_2);
-			sqlStore->lock(STORE_PROC_ID_IPACC_3);
-		}
-	} else {
-		pthread_mutex_lock(&mysqlquery_lock);
+	sqlStore->lock(STORE_PROC_ID_IPACC_1);
+	if(opt_ipacc_sniffer_agregate) {
+		sqlStore->lock(STORE_PROC_ID_IPACC_2);
+		sqlStore->lock(STORE_PROC_ID_IPACC_3);
 	}
 	int _counter  = 0;
 	bool enableClear = true;
@@ -197,12 +189,7 @@ void ipacc_save(int indexIpaccBuffer, unsigned int interval_time_limit = 0) {
 						ipacc_data->numpackets,
 						ipacc_data->voippacket,
 						opt_ipacc_sniffer_agregate ? 0 : 1);
-					if(opt_ipacc_multithread_save) {
-						sqlStore->query(insertQueryBuff, STORE_PROC_ID_IPACC_1 + (opt_ipacc_sniffer_agregate ? _counter % 3 : 0));
-					} else {
-						mysqlquery.push(insertQueryBuff);
-					}
-					//sqlDb->query(insertQueryBuff);////
+					sqlStore->query(insertQueryBuff, STORE_PROC_ID_IPACC_1 + (opt_ipacc_sniffer_agregate ? _counter % 3 : 0));
 				} else {
 					SqlDb_row row;
 					row.add(sqlDateTimeString(ipacc_data->interval_time).c_str(), "interval_time");
@@ -256,21 +243,16 @@ void ipacc_save(int indexIpaccBuffer, unsigned int interval_time_limit = 0) {
 	if(enableClear) {
 		ipacc_buffer[indexIpaccBuffer].clear();
 	}
-	if(opt_ipacc_multithread_save) {
-		sqlStore->unlock(STORE_PROC_ID_IPACC_1);
-		if(opt_ipacc_sniffer_agregate) {
-			sqlStore->unlock(STORE_PROC_ID_IPACC_2);
-			sqlStore->unlock(STORE_PROC_ID_IPACC_3);
-		}
+	sqlStore->unlock(STORE_PROC_ID_IPACC_1);
+	if(opt_ipacc_sniffer_agregate) {
+		sqlStore->unlock(STORE_PROC_ID_IPACC_2);
+		sqlStore->unlock(STORE_PROC_ID_IPACC_3);
 	}
 	if(opt_ipacc_sniffer_agregate) {
 		for(agregIter = agreg.begin(); agregIter != agreg.end(); ++agregIter) {
 			agregIter->second->save(agregIter->first);
 			delete agregIter->second;
 		}
-	}
-	if(!opt_ipacc_multithread_save) {
-		pthread_mutex_unlock(&mysqlquery_lock);
 	}
 	
 	__sync_sub_and_fetch(&sync_save_ipacc_buffer[indexIpaccBuffer], 1);
@@ -480,11 +462,9 @@ void IpaccAgreg::save(unsigned int time_interval) {
 			(i == 1 ?
 				sqlDateTimeString(time_interval / 3600 * 3600).c_str() :
 				sqlDateString(time_interval).c_str()));
-	if(opt_ipacc_multithread_save) {
-		sqlStore->lock(
-			i == 0 ? STORE_PROC_ID_IPACC_AGR_INTERVAL :
-			(i == 1 ? STORE_PROC_ID_IPACC_AGR_HOUR : STORE_PROC_ID_IPACC_AGR_DAY));
-	}
+	sqlStore->lock(
+		i == 0 ? STORE_PROC_ID_IPACC_AGR_INTERVAL :
+		(i == 1 ? STORE_PROC_ID_IPACC_AGR_HOUR : STORE_PROC_ID_IPACC_AGR_DAY));
 	for(iter1 = this->map1.begin(); iter1 != this->map1.end(); iter1++) {
 		sprintf(insertQueryBuff,
 			"set @i = 0; "
@@ -564,19 +544,13 @@ void IpaccAgreg::save(unsigned int time_interval) {
 			iter1->second->packets_voip_in,
 			iter1->second->packets_voip_out,
 			iter1->second->packets_voip_in + iter1->second->packets_voip_out);
-		if(opt_ipacc_multithread_save) {
-			sqlStore->query(insertQueryBuff,
-					i == 0 ? STORE_PROC_ID_IPACC_AGR_INTERVAL :
-					(i == 1 ? STORE_PROC_ID_IPACC_AGR_HOUR : STORE_PROC_ID_IPACC_AGR_DAY));
-		} else {
-			mysqlquery.push(insertQueryBuff);
-		}
+		sqlStore->query(insertQueryBuff,
+				i == 0 ? STORE_PROC_ID_IPACC_AGR_INTERVAL :
+				(i == 1 ? STORE_PROC_ID_IPACC_AGR_HOUR : STORE_PROC_ID_IPACC_AGR_DAY));
 	}
-	if(opt_ipacc_multithread_save) {
-		sqlStore->unlock(
-			i == 0 ? STORE_PROC_ID_IPACC_AGR_INTERVAL :
-			(i == 1 ? STORE_PROC_ID_IPACC_AGR_HOUR : STORE_PROC_ID_IPACC_AGR_DAY));
-	}
+	sqlStore->unlock(
+		i == 0 ? STORE_PROC_ID_IPACC_AGR_INTERVAL :
+		(i == 1 ? STORE_PROC_ID_IPACC_AGR_HOUR : STORE_PROC_ID_IPACC_AGR_DAY));
 	}
 	
 	map<AgregIP2, AgregData*>::iterator iter2;
@@ -587,16 +561,14 @@ void IpaccAgreg::save(unsigned int time_interval) {
 		       i == 0 ?
 				sqlDateTimeString(time_interval / 3600 * 3600).c_str() :
 				sqlDateString(time_interval).c_str());
-	if(opt_ipacc_multithread_save) {
-		if(i == 0) {
-			sqlStore->lock(STORE_PROC_ID_IPACC_AGR2_HOUR_1);
-			sqlStore->lock(STORE_PROC_ID_IPACC_AGR2_HOUR_2);
-			sqlStore->lock(STORE_PROC_ID_IPACC_AGR2_HOUR_3);
-		} else {
-			sqlStore->lock(STORE_PROC_ID_IPACC_AGR2_DAY_1);
-			sqlStore->lock(STORE_PROC_ID_IPACC_AGR2_DAY_2);
-			sqlStore->lock(STORE_PROC_ID_IPACC_AGR2_DAY_3);
-		}
+	if(i == 0) {
+		sqlStore->lock(STORE_PROC_ID_IPACC_AGR2_HOUR_1);
+		sqlStore->lock(STORE_PROC_ID_IPACC_AGR2_HOUR_2);
+		sqlStore->lock(STORE_PROC_ID_IPACC_AGR2_HOUR_3);
+	} else {
+		sqlStore->lock(STORE_PROC_ID_IPACC_AGR2_DAY_1);
+		sqlStore->lock(STORE_PROC_ID_IPACC_AGR2_DAY_2);
+		sqlStore->lock(STORE_PROC_ID_IPACC_AGR2_DAY_3);
 	}
 	int _counter = 0;
 	for(iter2 = this->map2.begin(); iter2 != this->map2.end(); iter2++) {
@@ -680,25 +652,19 @@ void IpaccAgreg::save(unsigned int time_interval) {
 			iter2->second->packets_voip_in,
 			iter2->second->packets_voip_out,
 			iter2->second->packets_voip_in + iter2->second->packets_voip_out);
-		if(opt_ipacc_multithread_save) {
-			sqlStore->query(insertQueryBuff,
-					(i == 0 ? STORE_PROC_ID_IPACC_AGR2_HOUR_1 : STORE_PROC_ID_IPACC_AGR2_DAY_1) +
-					(_counter % 3));
-		} else {
-			mysqlquery.push(insertQueryBuff);
-		}
+		sqlStore->query(insertQueryBuff,
+				(i == 0 ? STORE_PROC_ID_IPACC_AGR2_HOUR_1 : STORE_PROC_ID_IPACC_AGR2_DAY_1) +
+				(_counter % 3));
 		++_counter;
 	}
-	if(opt_ipacc_multithread_save) {
-		if(i == 0) {
-			sqlStore->unlock(STORE_PROC_ID_IPACC_AGR2_HOUR_1);
-			sqlStore->unlock(STORE_PROC_ID_IPACC_AGR2_HOUR_2);
-			sqlStore->unlock(STORE_PROC_ID_IPACC_AGR2_HOUR_3);
-		} else {
-			sqlStore->unlock(STORE_PROC_ID_IPACC_AGR2_DAY_1);
-			sqlStore->unlock(STORE_PROC_ID_IPACC_AGR2_DAY_2);
-			sqlStore->unlock(STORE_PROC_ID_IPACC_AGR2_DAY_3);
-		}
+	if(i == 0) {
+		sqlStore->unlock(STORE_PROC_ID_IPACC_AGR2_HOUR_1);
+		sqlStore->unlock(STORE_PROC_ID_IPACC_AGR2_HOUR_2);
+		sqlStore->unlock(STORE_PROC_ID_IPACC_AGR2_HOUR_3);
+	} else {
+		sqlStore->unlock(STORE_PROC_ID_IPACC_AGR2_DAY_1);
+		sqlStore->unlock(STORE_PROC_ID_IPACC_AGR2_DAY_2);
+		sqlStore->unlock(STORE_PROC_ID_IPACC_AGR2_DAY_3);
 	}
 	}
 }

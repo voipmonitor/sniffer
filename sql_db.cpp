@@ -5,6 +5,7 @@
 #include <limits.h>
 #include <unistd.h>
 #include <sstream>
+#include <stdarg.h>
 #include <mysql/mysqld_error.h>
 #include <mysql/errmsg.h>
 #include "voipmonitor.h"
@@ -32,6 +33,7 @@ extern int opt_enable_lua_tables;
 extern int opt_mysqlcompress;
 extern pthread_mutex_t mysqlconnect_lock;      
 extern int opt_mos_lqo;
+extern int opt_read_from_file;
 
 int sql_noerror = 0;
 int sql_disable_next_attempt_if_error = 0;
@@ -1012,6 +1014,11 @@ void MySqlStore_process::store() {
 					syslog(LOG_INFO, "STORE id: %i", this->id);
 				}
 			}
+			
+			if(!opt_read_from_file &&
+			   terminating && !this->sqlDb->connected()) {
+				break;
+			}
 		}
 		if(terminating && !this->ignoreTerminating) {
 			break;
@@ -1084,12 +1091,61 @@ MySqlStore_process *MySqlStore::find(int id) {
 	return(process);
 }
 
-size_t MySqlStore::getSize() {
+MySqlStore_process *MySqlStore::check(int id) {
+	map<int, MySqlStore_process*>::iterator iter = this->processes.find(id);
+	if(iter == this->processes.end()) {
+		return(NULL);
+	} else {
+		return(iter->second);
+	}
+}
+
+size_t MySqlStore::getAllSize(bool lock) {
 	size_t size = 0;
 	map<int, MySqlStore_process*>::iterator iter;
 	for(iter = this->processes.begin(); iter != this->processes.end(); ++iter) {
+		if(lock) {
+			iter->second->lock();
+		}
 		size += iter->second->getSize();
+		if(lock) {
+			iter->second->unlock();
+		}
 	}
+	return(size);
+}
+
+int MySqlStore::getSize(int id, bool lock) {
+	MySqlStore_process *process = this->check(id);
+	if(process) {
+		if(lock) {
+			process->lock();
+		}
+		int size = process->getSize();
+		if(lock) {
+			process->unlock();
+		}
+		return(size);
+	} else {
+		return(-1);
+	}
+}
+
+int MySqlStore::getSizeMult(int n, ...) {
+	int size = -1;
+	va_list vl;
+	va_start(vl, n);
+	for(int i = 0; i < n; i++) {
+		int id = va_arg(vl, int);
+		int _size = this->getSize(id);
+		if(_size >= 0) {
+			if(size < 0) {
+				size = 0;
+			}
+			size += _size;
+		}
+	}
+	va_end(vl);
 	return(size);
 }
 
@@ -2589,7 +2645,7 @@ void SqlDb_mysql::copyFromSourceTable(SqlDb_mysql *sqlDbSrc, const char *tableNa
 								1);
 					rows.clear();
 				}
-				while(!terminating && sqlStore->getSize() > 1000) {
+				while(!terminating && sqlStore->getAllSize() > 1000) {
 					usleep(100000);
 				}
 			}

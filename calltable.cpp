@@ -315,8 +315,8 @@ Call::addtofilesqueue(string file, string column, long long writeBytes) {
 	query << "INSERT INTO files SET files.datehour = " << dirnamesqlfiles() << ", id_sensor = " << id_sensor << ", "
 		<< column << " = " << size << " ON DUPLICATE KEY UPDATE " << column << " = " << column << " + " << size;
 
-	pthread_mutex_lock(&mysqlquery_lock);
-	mysqlquery.push(query.str());
+	sqlStore->lock(STORE_PROC_ID_CLEANSPOOL);
+	sqlStore->query(query.str().c_str(), STORE_PROC_ID_CLEANSPOOL);
 
 
 	ostringstream fname;
@@ -328,7 +328,7 @@ Call::addtofilesqueue(string file, string column, long long writeBytes) {
 	myfile << file << ":" << size << "\n";
 	myfile.close();
 		
-	pthread_mutex_unlock(&mysqlquery_lock);
+	sqlStore->unlock(STORE_PROC_ID_CLEANSPOOL);
 }
 
 void

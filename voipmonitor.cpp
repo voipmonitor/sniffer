@@ -219,7 +219,6 @@ int opt_ipacc_interval = 300;
 bool opt_ipacc_sniffer_agregate = false;
 bool opt_ipacc_agregate_only_customers_on_main_side = true;
 bool opt_ipacc_agregate_only_customers_on_any_side = true;
-bool opt_ipacc_multithread_save = true;
 int opt_udpfrag = 1;
 MirrorIP *mirrorip = NULL;
 int opt_cdronlyanswered = 0;
@@ -493,12 +492,6 @@ string SEMAPHOR_FORK_MODE_NAME() {
 }
 #endif
 
-void mysqlquerypush(string q) {
-        pthread_mutex_lock(&mysqlquery_lock);
-        mysqlquery.push(q);
-        pthread_mutex_unlock(&mysqlquery_lock);
-}
-
 void terminate2() {
 	terminating = 1;
 }
@@ -643,7 +636,7 @@ void *database_backup(void *dummy) {
 			sleep(1);
 		}
 	}
-	while(sqlStore->getSize()) {
+	while(sqlStore->getAllSize()) {
 		syslog(LOG_NOTICE, "flush sqlStore");
 		sleep(1);
 	}
@@ -1672,9 +1665,6 @@ int load_config(char *fname) {
 	}
 	if((value = ini.GetValue("general", "ipaccount_agregate_only_customers_on_any_side", NULL))) {
 		opt_ipacc_agregate_only_customers_on_any_side = yesno(value);
-	}
-	if((value = ini.GetValue("general", "ipaccount_multithread_save", NULL))) {
-		opt_ipacc_multithread_save = yesno(value);
 	}
 	if((value = ini.GetValue("general", "cdronlyanswered", NULL))) {
 		opt_cdronlyanswered = yesno(value);

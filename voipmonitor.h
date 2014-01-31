@@ -21,6 +21,7 @@
 #define TYPE_RTCP 3
 #define TYPE_SKINNY 4
 
+#define STORE_PROC_ID_CLEANSPOOL 41
 #define STORE_PROC_ID_REGISTER 51
 #define STORE_PROC_ID_SAVE_PACKET_SQL 61
 #define STORE_PROC_ID_HTTP 71
@@ -55,7 +56,6 @@ using namespace std;
 void reload_config();
 void reload_capture_rules();
 void convert_filesindex();
-void mysqlquerypush(string);
 
 /* For compatibility with Linux definitions... */
 

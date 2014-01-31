@@ -35,8 +35,11 @@
 #include "tools.h"
 #include "regcache.h"
 #include "voipmonitor.h"
+#include "sql_db.h"
 
 using namespace std;
+
+extern MySqlStore *sqlStore;
 
 int
 regcache::check(unsigned int saddr, unsigned int daddr, unsigned int timestamp, unsigned int *count) {
@@ -90,7 +93,7 @@ regcache::prune(unsigned int timestamp) {
 
 			string query = string("UPDATE register_failed SET created_at = FROM_UNIXTIME(") + ts.str() + "), counter = counter + " + cntr.str() + " WHERE sipcallerip = " + res[0].c_str() + " AND sipcalledip = " + res[1].c_str() + " AND created_at >= SUBTIME(FROM_UNIXTIME(" + ts.str() + "), '01:00:00')"; 
 
-			mysqlquerypush(query);
+			sqlStore->query_lock(query.c_str(), STORE_PROC_ID_REGISTER);
 
 			regcache_buffer.erase(iter++);
 		} else {

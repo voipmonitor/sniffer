@@ -84,8 +84,6 @@ extern volatile unsigned int writeit;
 extern unsigned int qringmax;
 extern int opt_pcapdump;
 extern int opt_id_sensor;
-extern pthread_mutex_t mysqlquery_lock;
-extern queue<string> mysqlquery;
 extern int pcap_dlink;
 extern int opt_udpfrag;
 extern int global_livesniffer;

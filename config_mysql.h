@@ -20,7 +20,6 @@ extern bool opt_cdr_partition;
 extern bool opt_disable_partition_operations;
 extern bool opt_ipacc_agregate_only_customers_on_any_side;
 extern bool opt_ipacc_agregate_only_customers_on_main_side;
-extern bool opt_ipacc_multithread_save;
 extern bool opt_ipacc_sniffer_agregate;
 extern bool opt_pcap_queue_compress;
 extern Calltable *calltable;

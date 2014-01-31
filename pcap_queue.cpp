@@ -96,6 +96,7 @@ extern TcpReassembly *tcpReassembly;
 extern char opt_pb_read_from_file[256];
 extern int pcap_dlink;
 extern queue<string> mysqlquery;
+extern pthread_mutex_t mysqlquery_lock;
 extern char opt_cachedir[1024];
 extern unsigned long long cachedirtransfered;
 unsigned long long lastcachedirtransfered = 0;
@@ -156,6 +157,8 @@ static unsigned long long sumPacketsSizeCompress[2];
 static unsigned long maxBypassBufferItems;
 static unsigned long maxBypassBufferSize;
 static unsigned long countBypassBufferSizeExceeded;
+
+extern MySqlStore *sqlStore;
 
 
 bool pcap_block_store::add(pcap_pkthdr *header, u_char *packet, int offset) {
@@ -887,8 +890,45 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 		if(opt_ipaccount) {
 			outStr << "ipacc_buffer[" << lengthIpaccBuffer() << "] ";
 		}
-		outStr << "SQLqueue[" << mysqlquery.size() << "] "
-		       << "heap[" << setprecision(1) << memoryBufferPerc << "% / "
+		pthread_mutex_lock(&mysqlquery_lock);
+		outStr << "SQLq[C:" << mysqlquery.size();
+		pthread_mutex_unlock(&mysqlquery_lock);
+		int sizeSQLq = sqlStore->getSize(STORE_PROC_ID_REGISTER);
+		if(sizeSQLq >= 0) {
+			outStr << " R:" << sizeSQLq;
+		}
+		sizeSQLq = sqlStore->getSize(STORE_PROC_ID_SAVE_PACKET_SQL);
+		if(sizeSQLq >= 0) {
+			outStr << " L:" << sizeSQLq;
+		}
+		sizeSQLq = sqlStore->getSize(STORE_PROC_ID_CLEANSPOOL);
+		if(sizeSQLq >= 0) {
+			outStr << " Cl:" << sizeSQLq;
+		}
+		sizeSQLq = sqlStore->getSize(STORE_PROC_ID_HTTP);
+		if(sizeSQLq >= 0) {
+			outStr << " H:" << sizeSQLq;
+		}
+		if(opt_ipaccount) {
+			sizeSQLq = sqlStore->getSizeMult(12,
+							 STORE_PROC_ID_IPACC_1,
+							 STORE_PROC_ID_IPACC_2,
+							 STORE_PROC_ID_IPACC_3,
+							 STORE_PROC_ID_IPACC_AGR_INTERVAL,
+							 STORE_PROC_ID_IPACC_AGR_HOUR,
+							 STORE_PROC_ID_IPACC_AGR_DAY,
+							 STORE_PROC_ID_IPACC_AGR2_HOUR_1,
+							 STORE_PROC_ID_IPACC_AGR2_HOUR_2,
+							 STORE_PROC_ID_IPACC_AGR2_HOUR_3,
+							 STORE_PROC_ID_IPACC_AGR2_DAY_1,
+							 STORE_PROC_ID_IPACC_AGR2_DAY_2,
+							 STORE_PROC_ID_IPACC_AGR2_DAY_3);
+			if(sizeSQLq >= 0) {
+				outStr << " I:" << sizeSQLq;
+			}
+		}
+		outStr << "] ";
+		outStr << "heap[" << setprecision(1) << memoryBufferPerc << "% / "
 				  << setprecision(1) << memoryBufferPerc_trash << "%] ";
 		if(this->instancePcapHandle) {
 			unsigned long bypassBufferSizeExeeded = this->instancePcapHandle->pcapStat_get_bypass_buffer_size_exeeded();
