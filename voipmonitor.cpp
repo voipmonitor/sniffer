@@ -2697,7 +2697,7 @@ int main(int argc, char *argv[]) {
 	}
 	if(isSqlDriver("mysql")) {
 		sqlStore = new MySqlStore(mysql_host, mysql_user, mysql_password, mysql_database);	
-		if(opt_mysqlloadconfig) {
+		if(opt_mysqlloadconfig && !opt_nocdr) {
 			config_load_mysql();
 		}
 	}
