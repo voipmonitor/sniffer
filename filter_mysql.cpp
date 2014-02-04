@@ -323,10 +323,10 @@ TELNUMfilter::add_call_flags(unsigned int *flags, char *telnum_src, char *telnum
         t_node_tel *tmp = first_node;
         t_payload *lastpayload = NULL;
         for(unsigned int i = 0; i < strlen(telnum_src); i++) {
-                if(!tmp->nodes[(int)telnum_src[i]]) {
+                if(!tmp->nodes[(unsigned char)telnum_src[i]]) {
                         break;
                 }
-                tmp = tmp->nodes[(int)telnum_src[i]];
+                tmp = tmp->nodes[(unsigned char)telnum_src[i]];
                 if(tmp && tmp->payload) {
 			lastdirection = tmp->payload->direction;
                         lastpayload = tmp->payload;
@@ -341,10 +341,10 @@ TELNUMfilter::add_call_flags(unsigned int *flags, char *telnum_src, char *telnum
 		lastpayload = NULL;
 		//src not found or src found , try dst
 		for(unsigned int i = 0; i < strlen(telnum_dst); i++) {
-			if(!tmp->nodes[(int)telnum_dst[i]]) {
+			if(!tmp->nodes[(unsigned char)telnum_dst[i]]) {
 				break;
 			}
-			tmp = tmp->nodes[(int)telnum_dst[i]];
+			tmp = tmp->nodes[(unsigned char)telnum_dst[i]];
 			if(tmp && tmp->payload) {
 				lastdirection = tmp->payload->direction;
 				lastpayload = tmp->payload;
