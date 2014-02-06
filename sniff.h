@@ -101,7 +101,8 @@ typedef struct {
 	int datalen;
 	u_int32_t saddr;
 	u_int32_t daddr;
-	unsigned short port;
+	unsigned short sport;
+	unsigned short dport;
 	char iscaller;
 	char is_rtcp;
 	struct pcap_pkthdr header;
@@ -113,7 +114,8 @@ typedef struct {
 	Call *call;
 	u_int32_t saddr;
 	u_int32_t daddr;
-	unsigned short port;
+	unsigned short sport;
+	unsigned short dport;
 	char iscaller;
 	char is_rtcp;
 	u_char *data;

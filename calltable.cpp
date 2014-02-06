@@ -97,6 +97,7 @@ extern char opt_convert_char[256];
 extern int opt_norecord_dtmf;
 extern char opt_silencedmtfseq[16];
 extern int opt_cdr_sipport;
+extern int opt_cdr_rtpport;
 extern char get_customers_pn_query[1024];
 extern int opt_saverfc2833;
 extern int opt_dbdtmf;
@@ -550,13 +551,13 @@ Call::get_index_by_ip_port(in_addr_t addr, unsigned short port){
 
 /* analyze rtcp packet */
 void
-Call::read_rtcp(unsigned char* data, int datalen, struct pcap_pkthdr *header, u_int32_t saddr, unsigned short port, int iscaller) {
+Call::read_rtcp(unsigned char* data, int datalen, struct pcap_pkthdr *header, u_int32_t saddr, unsigned short sport, unsigned short dport, int iscaller) {
 	parse_rtcp((char*)data, datalen, this);
 }
 
 /* analyze rtp packet */
 void
-Call::read_rtp(unsigned char* data, int datalen, struct pcap_pkthdr *header, struct iphdr2 *header_ip, u_int32_t saddr, u_int32_t daddr, unsigned short port, int iscaller, int *record) {
+Call::read_rtp(unsigned char* data, int datalen, struct pcap_pkthdr *header, struct iphdr2 *header_ip, u_int32_t saddr, u_int32_t daddr, unsigned short sport, unsigned short dport, int iscaller, int *record) {
 
 	*record = 0;
 
@@ -565,7 +566,7 @@ Call::read_rtp(unsigned char* data, int datalen, struct pcap_pkthdr *header, str
 	}
 	
 	//RTP tmprtp; moved to Call structure to avoid creating and destroying class which is not neccessary
-	tmprtp.fill(data, datalen, header, saddr, daddr);
+	tmprtp.fill(data, datalen, header, saddr, daddr, sport, dport);
 	int curpayload = tmprtp.getPayload();
 	unsigned int curSSRC = tmprtp.getSSRC();
 
@@ -610,7 +611,7 @@ Call::read_rtp(unsigned char* data, int datalen, struct pcap_pkthdr *header, str
 				}
 				if(rtp[i]->codec == PAYLOAD_TELEVENT) {
 read:
-					rtp[i]->read(data, datalen, header, saddr, daddr, seeninviteok);
+					rtp[i]->read(data, datalen, header, saddr, daddr, sport, dport, seeninviteok);
 					if(iscaller) {
 						lastcallerrtp = rtp[i];
 					} else {
@@ -686,7 +687,7 @@ read:
 			memcpy(this->rtp[ssrc_n]->rtpmap, rtpmap[iscaller], MAX_RTPMAP * sizeof(int));
 //		}
 
-		rtp[ssrc_n]->read(data, datalen, header, saddr, daddr, seeninviteok);
+		rtp[ssrc_n]->read(data, datalen, header, saddr, daddr, sport, dport, seeninviteok);
 		this->rtp[ssrc_n]->ssrc = this->rtp[ssrc_n]->ssrc2 = curSSRC;
 		this->rtp[ssrc_n]->payload2 = curpayload;
 
@@ -2173,6 +2174,9 @@ Call::saveToDb(bool enableBatchIfPossible) {
 				rtps.add(rtp[i]->first_codec, "payload");
 				rtps.add(htonl(rtp[i]->saddr), "saddr");
 				rtps.add(htonl(rtp[i]->daddr), "daddr");
+				if(opt_cdr_rtpport) {
+					rtps.add(rtp[i]->dport, "dport");
+				}
 				rtps.add(rtp[i]->ssrc, "ssrc");
 				rtps.add(rtp[i]->s->received + 2, "received");
 				rtps.add(rtp[i]->stats.lost, "loss");
@@ -2292,6 +2296,9 @@ Call::saveToDb(bool enableBatchIfPossible) {
 				rtps.add(rtp[i]->first_codec, "payload");
 				rtps.add(htonl(rtp[i]->saddr), "saddr");
 				rtps.add(htonl(rtp[i]->daddr), "daddr");
+				if(opt_cdr_rtpport) {
+					rtps.add(rtp[i]->dport, "dport");
+				}
 				rtps.add(rtp[i]->ssrc, "ssrc");
 				rtps.add(rtp[i]->s->received + 2, "received");
 				rtps.add(rtp[i]->stats.lost, "loss");

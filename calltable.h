@@ -264,7 +264,7 @@ public:
 	 * @param saddr source IP adress of the packet
 	 * 
 	*/
-	void read_rtp( unsigned char *data, int datalen, struct pcap_pkthdr *header, struct iphdr2 *header_ip, u_int32_t saddr, u_int32_t daddr, unsigned short port, int iscaller, int *record);
+	void read_rtp( unsigned char *data, int datalen, struct pcap_pkthdr *header, struct iphdr2 *header_ip, u_int32_t saddr, u_int32_t daddr, unsigned short sport, unsigned short dport, int iscaller, int *record);
 
 	/**
 	 * @brief read RTCP packet 
@@ -277,7 +277,7 @@ public:
 	 * @param saddr source IP adress of the packet
 	 * 
 	*/
-	void read_rtcp(unsigned char*, int, pcap_pkthdr*, u_int32_t, short unsigned int, int);
+	void read_rtcp(unsigned char*, int, pcap_pkthdr*, u_int32_t, short unsigned int sport, short unsigned int dport, int iscaller);
 
 	/**
 	 * @brief adds RTP stream to the this Call 

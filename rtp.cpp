@@ -156,6 +156,7 @@ RTP::RTP()
 	nintervals = 1;
 	saddr = 0;
 	daddr = 0;
+	dport = 0;
 	ssrc = 0;
 	ssrc2 = 0;
 	gfilename[0] = '\0';
@@ -603,12 +604,13 @@ RTP::process_dtmf_rfc2833() {
 
 /* read rtp packet */
 void
-RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t saddr, u_int32_t daddr, int seeninviteok) {
+RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t saddr, u_int32_t daddr, u_int16_t sport, u_int16_t dport, int seeninviteok) {
 	this->data = data; 
 	this->len = len;
 	this->header = header;
 	this->saddr =  saddr;
 	this->daddr =  daddr;
+	this->dport = dport;
 	if(this->first_packet_time == 0 and this->first_packet_usec == 0) {
 		this->first_packet_time = header->ts.tv_sec;
 		this->first_packet_usec = header->ts.tv_usec;
@@ -798,6 +800,7 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 					prevrtp->header = header;
 					prevrtp->saddr = saddr;
 					prevrtp->daddr = daddr;
+					prevrtp->dport = dport;
 					if(owner->flags & FLAG_RUNAMOSLQO or owner->flags & FLAG_RUNBMOSLQO) {
 						// MOS LQO is calculated only if the call is connected 
 						if(owner->connect_time) {
@@ -1072,12 +1075,13 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 
 /* fill internal structures by the input RTP packet */
 void
-RTP::fill(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t saddr, u_int32_t daddr) {
+RTP::fill(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t saddr, u_int32_t daddr, u_int16_t sport, u_int16_t dport) {
 	this->data = data; 
 	this->len = len;
 	this->header = header;
 	this->saddr = saddr;
 	this->daddr = daddr;
+	this->dport = dport;
 }
 
 /* update statistics data */
@@ -1291,6 +1295,7 @@ RTP::dump() {
 	printf("codec:%d\n", first_codec);
 	printf("src ip:%u\n", saddr);
 	printf("dst ip:%u\n", daddr);
+	printf("dst port:%u\n", dport);
 	printf("Packetization:%u\n", packetization);
 	printf("s->received: %d\n", s->received);
 	printf("total loss:%u\n", stats.lost);

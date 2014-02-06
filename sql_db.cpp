@@ -23,6 +23,7 @@ extern int opt_ipaccount;
 extern int opt_id_sensor;
 extern bool opt_cdr_partition;
 extern int opt_cdr_sipport;
+extern int opt_cdr_rtpport;
 extern int opt_create_old_partitions;
 extern bool opt_disable_partition_operations;
 extern vector<dstring> opt_custom_headers_cdr;
@@ -1865,6 +1866,11 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 				 PARTITION ") + partDayName + " VALUES LESS THAN ('" + limitDay + "') engine innodb)") :
 		""));
 
+	if(!federated && !opt_cdr_rtpport) {
+		this->query("show columns from cdr_rtp where Field='dport'");
+		opt_cdr_rtpport = this->fetchRow();
+	}
+
 	this->query(string(
 	"CREATE TABLE IF NOT EXISTS `cdr_dtmf") + federatedSuffix + "` (\
 			`ID` int unsigned NOT NULL AUTO_INCREMENT,\
@@ -2296,6 +2302,11 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 		this->query("ALTER TABLE cdr\
 				ADD `a_mos_lqo_mult10` tinyint unsigned DEFAULT NULL,\
 				ADD `b_mos_lqo_mult10` tinyint unsigned DEFAULT NULL;");
+	}
+
+	if(opt_cdr_rtpport) {
+		this->query("ALTER TABLE cdr_rtp\
+				ADD `dport` smallint unsigned DEFAULT NULL AFTER `daddr`;");
 	}
 
 	sql_noerror = 0;
