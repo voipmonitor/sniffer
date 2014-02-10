@@ -1481,6 +1481,7 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 			`disable_partition_operations` tinyint DEFAULT 0,\
 			`upgrade_try_http_if_https_fail` tinyint DEFAULT 1,\
 			`opt_saveaudio_reversestereo` tinyint DEFAULT 0,\
+			`onewaytimeout` smallint DEFAULT 15,\
 		PRIMARY KEY (`id`)\
 	) ENGINE=InnoDB DEFAULT CHARSET=latin1;");
 #endif
