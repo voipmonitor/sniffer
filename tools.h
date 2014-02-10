@@ -9,6 +9,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <ctime>
+#include <limits.h>
 
 #include <sys/types.h>
 #include <pcap.h>
@@ -423,6 +424,11 @@ private:
 class ParsePacket {
 public:
 	struct ppContent {
+		ppContent() {
+			content = NULL;
+			length = 0;
+			isContentLength = false;
+		}
 		void trim() {
 			if(length <= 0) {
 				content = NULL;
@@ -443,7 +449,10 @@ public:
 	};
 	struct ppNode {
 		ppNode() {
-			memset(this, 0, sizeof(*this));
+			for(int i = 0; i < 256; i++) {
+				nodes[i] = 0;
+			}
+			leaf = false;
 		}
 		~ppNode() {
 			for(int i = 0; i < 256; i++) {
@@ -469,7 +478,7 @@ public:
 				}
 			}
 		}
-		ppContent *getContent(const char *nodeName, unsigned int *namelength) {
+		ppContent *getContent(const char *nodeName, unsigned int *namelength, unsigned int namelength_limit = UINT_MAX) {
 			if(*nodeName && !leaf) {
 				unsigned char nodeChar = (unsigned char)*nodeName;
 				if(nodeChar >= 'A' && nodeChar <= 'Z') {
@@ -478,6 +487,9 @@ public:
 				if(nodes[nodeChar]) {
 					if(namelength) {
 						++*namelength;
+						if(*namelength > namelength_limit) {
+							return(NULL);
+						}
 					}
 					return(nodes[nodeChar]->getContent(nodeName + 1, namelength));
 				} else {
@@ -559,11 +571,11 @@ public:
 	void addNode(const char *nodeName, bool isContentLength = false) {
 		root.addNode(nodeName, isContentLength);
 	}
-	ppContent *getContent(const char *nodeName, unsigned int *namelength = NULL) {
+	ppContent *getContent(const char *nodeName, unsigned int *namelength = NULL, unsigned int namelength_limit = UINT_MAX ) {
 		if(namelength) {
 			*namelength = 0;
 		}
-		return(root.getContent(nodeName, namelength));
+		return(root.getContent(nodeName, namelength, namelength_limit));
 	}
 	string getContentString(const char *nodeName) {
 		ppContent *content = root.getContent(nodeName, NULL);
@@ -587,15 +599,12 @@ public:
 			return(NULL);
 		}
 	}
-	void parseData(char *data, unsigned long datalen = 0, bool doClear = false, int checkContentLength = 0, bool enableEndAtNewTag = false) {
+	void parseData(char *data, unsigned long datalen, bool doClear = false, int checkContentLength = 0, bool enableEndAtNewTag = false) {
 		if(checkContentLength > 1) {
-			addNode("content-length:", true);
+			addNode("\ncontent-length:", true);
 		}
 		if(doClear) {
 			clear();
-		}
-		if(!datalen) {
-			datalen = strlen(data);
 		}
 		ppContent *content[2] = { NULL, NULL };
 		unsigned int namelength = 0;
@@ -616,8 +625,9 @@ public:
 				}
 			}
 			if(!content[1] || content[1]->length || enableEndAtNewTag) {
-				content[0] = getContent(data + i, &namelength);
+				content[0] = getContent(data + i, &namelength, datalen - i - 1);
 				if(content[0]) {
+					contents.push_back(content[0]);
 					if(!content[0]->content) {
 						content[0]->content = data + i + namelength;
 					} else {
@@ -643,7 +653,13 @@ public:
 		parseDataPtr = data;
 	}
 	void clear() {
-		root.clear();
+		//root.clear();
+		size_t len = contents.size();
+		for(size_t i = 0; i < len; i++) {
+			contents[i]->content = NULL;
+			contents[i]->length = 0;
+		}
+		contents.clear();
 		doubleEndLine = NULL;
 		contentLength = -1;
 		parseDataPtr = NULL;
@@ -659,6 +675,7 @@ private:
 	char *doubleEndLine;
 	long contentLength;
 	const char *parseDataPtr;
+	vector<ppContent*> contents;
 };
 
 #endif
