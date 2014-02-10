@@ -617,14 +617,15 @@ public:
 					datalen = doubleEndLine + 4 - data + contentLength;
 				}
 			}
-			if(content[1] && !content[1]->length && (data[i] == '\r' || data[i] == '\n')) {
+			if(content[1] && content[1]->content && !content[1]->length && 
+			   (data[i] == '\r' || data[i] == '\n')) {
 				content[1]->length = data + i - content[1]->content;
 				content[1]->trim();
 				if(content[1]->isContentLength) {
 					contentLength = atoi(content[1]->content);
 				}
 			}
-			if(!content[1] || content[1]->length || enableEndAtNewTag) {
+			if(!content[1] || !content[1]->content || content[1]->length || enableEndAtNewTag) {
 				content[0] = getContent(data + i, &namelength, datalen - i - 1);
 				if(content[0]) {
 					contents.push_back(content[0]);
@@ -646,7 +647,7 @@ public:
 				}
 			}
 		}
-		if(content[1] && !content[1]->length) {
+		if(content[1] && content[1]->content && !content[1]->length) {
 			content[1]->length = data + datalen - content[1]->content;
 			content[1]->trim();
 		}
