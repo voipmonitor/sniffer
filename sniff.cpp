@@ -569,8 +569,34 @@ int check_sip20(char *data, unsigned long len){
 	return ok;
 }
 
+ParsePacket _pp(true);
+
 /* get SIP tag from memory pointed to *ptr length of len */
 char * gettag(const void *ptr, unsigned long len, const char *tag, unsigned long *gettaglen, unsigned long *limitLen){
+ 
+	bool test_pp = false;
+	
+	const char *rc_pp = NULL;
+	long l_pp;
+	char _tag[1024];
+	if(_pp.getParseData() == ptr) {
+		rc_pp = _pp.getContentData(tag, &l_pp);
+		if((!rc_pp || l_pp <= 0) && tag[0] != '\n') {
+			_tag[0] = '\n';
+			strcpy(_tag + 1, tag);
+			rc_pp = _pp.getContentData(_tag, &l_pp);
+		}
+		if(!test_pp) {
+			if(rc_pp && l_pp > 0) {
+				*gettaglen = l_pp;
+				return((char*)rc_pp);
+			} else {
+				*gettaglen = NULL;
+				return(NULL);
+			}
+		}
+	}
+ 
 	unsigned long register r, l, tl;
 	char *rc = NULL;
 	char *tmp;
@@ -664,6 +690,20 @@ char * gettag(const void *ptr, unsigned long len, const char *tag, unsigned long
 	} else {
 		*gettaglen = l;
 	}
+	
+	if(test_pp && rc && l) {
+		if(_pp.getParseData() == ptr) {
+			//cout << "." << flush;
+			string content = string(rc_pp, l_pp);
+			if(content != string(rc, l)) {
+				cout << "GETTAG ERR " << tag << " :: " << content << " // " << string(rc, l) << endl;
+				//cout << (char*)ptr << endl << endl << endl << endl;
+			}
+		} else {
+			cout << "GETTAG --- " << tag << " :: " << string(rc, l) << endl;
+		}
+	}
+	
 	return rc;
 }
 
@@ -1737,6 +1777,8 @@ static void process_packet__parse_custom_headers(Call *call, char *data, int dat
 Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int dest, char *data, int datalen,
 	pcap_t *handle, pcap_pkthdr *header, const u_char *packet, int istcp, int dontsave, int can_thread, int *was_rtp, struct iphdr2 *header_ip, int *voippacket, int disabledsave,
 	pcap_block_store *block_store, int block_store_index) {
+ 
+	_pp.parseData(data, datalen, true, 1);
 
 	Call *call = NULL;
 	int last_sip_method = -1;

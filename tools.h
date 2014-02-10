@@ -420,4 +420,245 @@ private:
 	ListPhoneNumber black;
 };
 
+class ParsePacket {
+public:
+	struct ppContent {
+		void trim() {
+			if(length <= 0) {
+				content = NULL;
+				length = 0;
+			} else {
+				while(length && content[length - 1] == ' ') {
+					--length;
+				}
+				while(length && content[0] == ' ') {
+					++content;
+					--length;
+				}
+			}
+		}
+		const char *content;
+		long length;
+		bool isContentLength;
+	};
+	struct ppNode {
+		ppNode() {
+			memset(this, 0, sizeof(*this));
+		}
+		~ppNode() {
+			for(int i = 0; i < 256; i++) {
+				if(nodes[i]) {
+					delete nodes[i];
+				}
+			}
+		}
+		void addNode(const char *nodeName, bool isContentLength = false) {
+			if(*nodeName) {
+				unsigned char nodeChar = (unsigned char)*nodeName;
+				if(nodeChar >= 'A' && nodeChar <= 'Z') {
+					nodeChar -= 'A' - 'a';
+				}
+				if(!nodes[nodeChar]) {
+					nodes[nodeChar] = new ppNode;
+				}
+				nodes[nodeChar]->addNode(nodeName + 1, isContentLength);
+			} else {
+				leaf = true;
+				if(isContentLength) {
+					content.isContentLength = true;
+				}
+			}
+		}
+		ppContent *getContent(const char *nodeName, unsigned int *namelength) {
+			if(*nodeName && !leaf) {
+				unsigned char nodeChar = (unsigned char)*nodeName;
+				if(nodeChar >= 'A' && nodeChar <= 'Z') {
+					nodeChar -= 'A' - 'a';
+				}
+				if(nodes[nodeChar]) {
+					if(namelength) {
+						++*namelength;
+					}
+					return(nodes[nodeChar]->getContent(nodeName + 1, namelength));
+				} else {
+					return(NULL);
+				}
+			} else {
+				return(&content);
+			}
+		}
+		void clear() {
+			content.content = NULL;
+			content.length = 0;
+			for(int i = 0; i < 256; i++) {
+				if(nodes[i]) {
+					nodes[i]->clear();
+				}
+			}
+		}
+		void debugData(string nodeName) {
+			if(leaf) {
+				string _content;
+				if(content.content && content.length > 0) {
+					_content = string(content.content, content.length);
+					if(nodeName[0] == '\n') {
+						nodeName = nodeName.substr(1);
+					}
+					cout << nodeName << " : " << _content << " : L " << content.length << endl;
+				}
+			} else {
+				for(int i = 0; i < 256; i++) {
+					if(nodes[i]) {
+						char i_str[2];
+						i_str[0] = i;
+						i_str[1] =0;
+						nodes[i]->debugData(nodeName + i_str);
+					}
+				}
+			}
+		}
+		ppNode *nodes[256];
+		bool leaf;
+		ppContent content;
+	};
+public:
+	ParsePacket(bool stdParse = false) {
+		doubleEndLine = NULL;
+		contentLength = -1;
+		parseDataPtr = NULL;
+		if(stdParse) {
+			addNode("\ncontent-length:", true);
+			addNode("INVITE ");
+			addNode("\ncall-id:");
+			addNode("\ni:");
+			addNode("\nfrom:");
+			addNode("\nf:");
+			addNode("\nto:");
+			addNode("\nt:");
+			addNode("\ncontact:");
+			addNode("\nm:");
+			addNode("\nremote-party-id:");
+			addNode("\ngeoposition:");
+			addNode("\nuser-agent:");
+			addNode("\nauthorization:");
+			addNode("\nexpires:");
+			addNode("\nx-voipmonitor-norecord:");
+			addNode("\nsignal:");
+			addNode("\nsignal=");
+			addNode("\nx-voipmonitor-custom1:");
+			addNode("\ncontent-type:");
+			addNode("\nc:");
+			addNode("\ncseq:");
+			addNode("\nsupported:");
+			addNode("\nproxy-authenticate:");
+			addNode("m=audio ");
+			addNode("a=rtpmap:");
+			addNode("c=IN IP4 ");
+		}
+	}
+	void addNode(const char *nodeName, bool isContentLength = false) {
+		root.addNode(nodeName, isContentLength);
+	}
+	ppContent *getContent(const char *nodeName, unsigned int *namelength = NULL) {
+		if(namelength) {
+			*namelength = 0;
+		}
+		return(root.getContent(nodeName, namelength));
+	}
+	string getContentString(const char *nodeName) {
+		ppContent *content = root.getContent(nodeName, NULL);
+		if(content && content->content && content->length > 0) {
+			return(string(content->content, content->length));
+		} else {
+			return("");
+		}
+	}
+	const char *getContentData(const char *nodeName, long *dataLength) {
+		ppContent *content = root.getContent(nodeName, NULL);
+		if(content && content->content && content->length > 0) {
+			if(dataLength) {
+				*dataLength = content->length;
+			}
+			return(content->content);
+		} else {
+			if(dataLength) {
+				*dataLength = 0;
+			}
+			return(NULL);
+		}
+	}
+	void parseData(char *data, unsigned long datalen = 0, bool doClear = false, int checkContentLength = 0, bool enableEndAtNewTag = false) {
+		if(checkContentLength > 1) {
+			addNode("content-length:", true);
+		}
+		if(doClear) {
+			clear();
+		}
+		if(!datalen) {
+			datalen = strlen(data);
+		}
+		ppContent *content[2] = { NULL, NULL };
+		unsigned int namelength = 0;
+		for(unsigned long i = 0; i < datalen; i++) {
+			if(!doubleEndLine && 
+			   data[i] == '\r' && i < datalen - 3 && 
+			   data[i + 1] == '\n' && data[i + 2] == '\r' && data[i + 3] == '\n') {
+				doubleEndLine = data + i;
+				if(contentLength > -1) {
+					datalen = doubleEndLine + 4 - data + contentLength;
+				}
+			}
+			if(content[1] && !content[1]->length && (data[i] == '\r' || data[i] == '\n')) {
+				content[1]->length = data + i - content[1]->content;
+				content[1]->trim();
+				if(content[1]->isContentLength) {
+					contentLength = atoi(content[1]->content);
+				}
+			}
+			if(!content[1] || content[1]->length || enableEndAtNewTag) {
+				content[0] = getContent(data + i, &namelength);
+				if(content[0]) {
+					if(!content[0]->content) {
+						content[0]->content = data + i + namelength;
+					} else {
+						content[0] = NULL;
+					}
+					if(content[1] && !content[1]->length) {
+						content[1]->length = data + i - content[1]->content;
+						content[1]->trim();
+						if(content[1]->isContentLength) {
+							contentLength = atoi(content[1]->content);
+						}
+					}
+					if(content[0]) {
+						content[1] = content[0];
+					}
+				}
+			}
+		}
+		if(content[1] && !content[1]->length) {
+			content[1]->length = data + datalen - content[1]->content;
+			content[1]->trim();
+		}
+		parseDataPtr = data;
+	}
+	void clear() {
+		root.clear();
+		doubleEndLine = NULL;
+		contentLength = -1;
+		parseDataPtr = NULL;
+	}
+	void debugData() {
+		root.debugData("");
+	}
+	const char *getParseData() {
+		return(parseDataPtr);
+	}
+private:
+	ppNode root;
+	char *doubleEndLine;
+	long contentLength;
+	const char *parseDataPtr;
+};
+
 #endif
