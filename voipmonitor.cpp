@@ -2701,7 +2701,11 @@ int main(int argc, char *argv[]) {
 	}
 	if(isSqlDriver("mysql")) {
 		sqlStore = new MySqlStore(mysql_host, mysql_user, mysql_password, mysql_database);	
-		if(opt_mysqlloadconfig && !opt_nocdr) {
+		if(opt_mysqlloadconfig && 
+		   !opt_nocdr &&
+		   !(opt_pcap_threaded && opt_pcap_queue && 
+		     !opt_pcap_queue_receive_from_ip_port &&
+		     opt_pcap_queue_send_to_ip_port)) {
 			config_load_mysql();
 		}
 	}
@@ -3402,6 +3406,29 @@ void test() {
 	case 1:
 	{
 		/*
+		ParsePacket pp;
+		pp.addNode("test1");
+		pp.addNode("test2");
+		pp.addNode("test3");
+		
+		pp.getContent("test1")->content = "1";
+		pp.getContent("test2")->content = "2";
+		pp.getContent("test3")->content = "3";
+		
+		pp.parseData("test1abc\ncontent-length: 20 \rxx\r\n\r\nxtEst2deftest3ghi", 0, true, 2);
+		//            12345678 90123456789012345678 901 2 3 4 567890123456789012
+		//                      1         2          3             4         5
+		
+		pp.debugData();
+		*/
+		
+		/*
+		cout << pp.getContent("test1")->content << "   L: " << pp.getContent("test1")->length << endl;
+		cout << pp.getContent("test2")->content << "   L: " << pp.getContent("test2")->length << endl;
+		cout << pp.getContent("test3")->content << "   L: " << pp.getContent("test3")->length << endl;
+		*/
+		
+		/*
 		CountryPrefixes *cp = new CountryPrefixes();
 		cp->load();
 		vector<string> countries;
@@ -3419,6 +3446,7 @@ void test() {
 		delete ipc;
 		*/
 		
+		/*
 		cout << reg_match("123456789", "456") << endl;
 		cout << reg_replace("123456789", "(.*)(456)(.*)", "$1-$2-$3") << endl;
 		
@@ -3429,6 +3457,7 @@ void test() {
 		cout << ip.checkIP("192.168.1.13") << endl;
 		cout << ip.checkIP("192.168.2.3") << endl;
 		cout << ip.checkIP("192.168.2.5") << endl;
+		*/
 	 
 		/*
 		char *test = "+123 456";
