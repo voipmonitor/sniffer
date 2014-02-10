@@ -1,3 +1,12 @@
+9.3 10.2.2014
+=============
+- fix crashing when decoding audio in certain cases and also when doing realtime listening
+- do not connect to database if nocdr is set (-c)
+- fix crash if non ascii is put into telnum filter 
+- fix freebsd compile
+- implement storing rtp port to cdr_rtp database (cdr_rtpport option must be set to yes and it will upgrade database)
+
+
 9.2 31.1.2014
 =============
 - do not put CNG frames into audio decoders which causes garbled g729 stream and causes low MOS score even thought there is no packet loss at all
