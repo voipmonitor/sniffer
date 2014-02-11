@@ -1890,6 +1890,9 @@ int load_config(char *fname) {
 			opt_pcap_queue_store_queue_max_memory_size -= opt_pcap_queue_bypass_max_size;
 		}
 	}
+	
+	extern ParsePacket _parse_packet;
+	_parse_packet.setStdParse();
 
 	return 0;
 }
@@ -3405,22 +3408,30 @@ void test() {
 	 
 	case 1:
 	{
-		/*
+		
 		ParsePacket pp;
 		pp.addNode("test1");
 		pp.addNode("test2");
 		pp.addNode("test3");
 		
-		pp.getContent("test1")->content = "1";
-		pp.getContent("test2")->content = "2";
-		pp.getContent("test3")->content = "3";
+		//pp.getContent("test1")->content = "1";
+		//pp.getContent("test2")->content = "2";
+		//pp.getContent("test3")->content = "3";
 		
-		pp.parseData("test1abc\ncontent-length: 20 \rxx\r\n\r\nxtEst2deftest3ghi", 0, true, 2);
-		//            12345678 90123456789012345678 901 2 3 4 567890123456789012
-		//                      1         2          3             4         5
+		char *str = "test1abc\ncontent-length: 20 \rxx\r\n\r\ntEst2def\rtest3ghi\n";
+		//          12345678 90123456789012345678 901 2 3 4 567890123456789012
+		//                    1         2          3             4         5
+		
+		pp.parseData(str, strlen(str), true);
+		
+		
+		/*
+		ParsePacket pp(true);
+		pp.parseData("\200\022\n|\302\216\224\260\022m[\377t\352\376\210?\nT:\r\026\070\001\334\020Ѫ,o\355\026!\020\371R", 32, true, 1);
+		*/
 		
 		pp.debugData();
-		*/
+		
 		
 		/*
 		cout << pp.getContent("test1")->content << "   L: " << pp.getContent("test1")->length << endl;

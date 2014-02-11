@@ -541,34 +541,51 @@ public:
 		doubleEndLine = NULL;
 		contentLength = -1;
 		parseDataPtr = NULL;
-		if(stdParse) {
-			addNode("\ncontent-length:", true);
-			addNode("INVITE ");
-			addNode("\ncall-id:");
-			addNode("\ni:");
-			addNode("\nfrom:");
-			addNode("\nf:");
-			addNode("\nto:");
-			addNode("\nt:");
-			addNode("\ncontact:");
-			addNode("\nm:");
-			addNode("\nremote-party-id:");
-			addNode("\ngeoposition:");
-			addNode("\nuser-agent:");
-			addNode("\nauthorization:");
-			addNode("\nexpires:");
-			addNode("\nx-voipmonitor-norecord:");
-			addNode("\nsignal:");
-			addNode("\nsignal=");
-			addNode("\nx-voipmonitor-custom1:");
-			addNode("\ncontent-type:");
-			addNode("\nc:");
-			addNode("\ncseq:");
-			addNode("\nsupported:");
-			addNode("\nproxy-authenticate:");
-			addNode("m=audio ");
-			addNode("a=rtpmap:");
-			addNode("c=IN IP4 ");
+	}
+	void setStdParse() {
+		addNode("\ncontent-length:", true);
+		addNode("INVITE ");
+		addNode("\ncall-id:");
+		addNode("\ni:");
+		addNode("\nfrom:");
+		addNode("\nf:");
+		addNode("\nto:");
+		addNode("\nt:");
+		addNode("\ncontact:");
+		addNode("\nm:");
+		addNode("\nremote-party-id:");
+		addNode("\ngeoposition:");
+		addNode("\nuser-agent:");
+		addNode("\nauthorization:");
+		addNode("\nexpires:");
+		addNode("\nx-voipmonitor-norecord:");
+		addNode("\nsignal:");
+		addNode("\nsignal=");
+		addNode("\nx-voipmonitor-custom1:");
+		addNode("\ncontent-type:");
+		addNode("\nc:");
+		addNode("\ncseq:");
+		addNode("\nsupported:");
+		addNode("\nproxy-authenticate:");
+		addNode("m=audio ");
+		addNode("a=rtpmap:");
+		addNode("c=IN IP4 ");
+		addNode("expires=");
+		addNode("username=\"");
+		addNode("realm=\"");
+		
+		extern vector<dstring> opt_custom_headers_cdr;
+		extern vector<dstring> opt_custom_headers_message;
+		for(int i = 0; i < 2; i++) {
+			vector<dstring> *_customHeaders = i == 0 ? &opt_custom_headers_cdr : &opt_custom_headers_message;
+			size_t iCustHeaders;
+			for(size_t iCustHeaders = 0; iCustHeaders < _customHeaders->size(); iCustHeaders++) {
+				string findHeader = (*_customHeaders)[iCustHeaders][0];
+				if(findHeader[findHeader.length() - 1] != ':') {
+					findHeader.append(":");
+				}
+				addNode(findHeader.c_str());
+			}
 		}
 	}
 	void addNode(const char *nodeName, bool isContentLength = false) {
@@ -619,7 +636,7 @@ public:
 				i += 2;
 			} else if(i == 0 || data[i] == '\r' || data[i] == '\n' || data[i - 1] == '\r' || data[i - 1] == '\n') {
 				content = getContent(data + i, &namelength, datalen - i - 1);
-				if(content) {
+				if(content && !content->content) {
 					contents.push_back(content);
 					content->content = data + i + namelength;
 					i += namelength;

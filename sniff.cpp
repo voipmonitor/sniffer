@@ -569,7 +569,7 @@ int check_sip20(char *data, unsigned long len){
 	return ok;
 }
 
-ParsePacket _pp(true);
+ParsePacket _parse_packet;
 
 /* get SIP tag from memory pointed to *ptr length of len */
 char * gettag(const void *ptr, unsigned long len, const char *tag, unsigned long *gettaglen, unsigned long *limitLen){
@@ -579,12 +579,12 @@ char * gettag(const void *ptr, unsigned long len, const char *tag, unsigned long
 	const char *rc_pp = NULL;
 	long l_pp;
 	char _tag[1024];
-	if(_pp.getParseData() == ptr) {
-		rc_pp = _pp.getContentData(tag, &l_pp);
+	if(_parse_packet.getParseData() == ptr) {
+		rc_pp = _parse_packet.getContentData(tag, &l_pp);
 		if((!rc_pp || l_pp <= 0) && tag[0] != '\n') {
 			_tag[0] = '\n';
 			strcpy(_tag + 1, tag);
-			rc_pp = _pp.getContentData(_tag, &l_pp);
+			rc_pp = _parse_packet.getContentData(_tag, &l_pp);
 		}
 		if(!test_pp) {
 			if(rc_pp && l_pp > 0) {
@@ -692,10 +692,14 @@ char * gettag(const void *ptr, unsigned long len, const char *tag, unsigned long
 	}
 	
 	if(test_pp && rc && l) {
-		if(_pp.getParseData() == ptr) {
+		if(_parse_packet.getParseData() == ptr) {
 			//cout << "." << flush;
 			string content = string(rc_pp, l_pp);
-			if(content != string(rc, l)) {
+			string content2 = string(rc, l);
+			while(content2.length() && content2[content2.length() - 1] == ' ') {
+				content2.resize(content2.length() - 1);
+			}
+			if(content != content2) {
 				cout << "GETTAG ERR " << tag << " :: " << content << " // " << string(rc, l) << endl;
 				//cout << (char*)ptr << endl << endl << endl << endl;
 			}
@@ -1778,7 +1782,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 	pcap_t *handle, pcap_pkthdr *header, const u_char *packet, int istcp, int dontsave, int can_thread, int *was_rtp, struct iphdr2 *header_ip, int *voippacket, int disabledsave,
 	pcap_block_store *block_store, int block_store_index) {
  
-	_pp.parseData(data, datalen, true);
+	_parse_packet.parseData(data, datalen, true);
 
 	Call *call = NULL;
 	int last_sip_method = -1;
