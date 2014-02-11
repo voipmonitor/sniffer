@@ -164,9 +164,11 @@ IPfilter::add_call_flags(unsigned int *flags, unsigned int saddr, unsigned int d
 
 			if(node->flags & FLAG_AMOSLQO || node->flags & FLAG_ABMOSLQO) {
 				*flags |= FLAG_RUNAMOSLQO;
+				*flags |= FLAG_SAVEWAV;
 			}
 			if(node->flags & FLAG_BMOSLQO || node->flags & FLAG_ABMOSLQO) {
 				*flags |= FLAG_RUNBMOSLQO;
+				*flags |= FLAG_SAVEWAV;
 			}
 			if(node->flags & FLAG_NOMOSLQO) {
 				*flags &= ~FLAG_RUNAMOSLQO;
@@ -403,9 +405,11 @@ TELNUMfilter::add_call_flags(unsigned int *flags, char *telnum_src, char *telnum
 
 		if(lastpayload->flags & FLAG_AMOSLQO || lastpayload->flags & FLAG_ABMOSLQO) {
 			*flags |= FLAG_RUNAMOSLQO;
+			*flags |= FLAG_SAVEWAV;
 		}
 		if(lastpayload->flags & FLAG_BMOSLQO || lastpayload->flags & FLAG_ABMOSLQO) {
 			*flags |= FLAG_RUNBMOSLQO;
+			*flags |= FLAG_SAVEWAV;
 		}
 		if(lastpayload->flags & FLAG_NOMOSLQO) {
 			*flags &= ~FLAG_RUNAMOSLQO;
