@@ -479,7 +479,10 @@ public:
 			}
 		}
 		ppContent *getContent(const char *nodeName, unsigned int *namelength, unsigned int namelength_limit = UINT_MAX) {
-			if(*nodeName && !leaf) {
+			if(!leaf) {
+				if(!*nodeName) {
+					return(NULL);
+				}
 				unsigned char nodeChar = (unsigned char)*nodeName;
 				if(nodeChar >= 'A' && nodeChar <= 'Z') {
 					nodeChar -= 'A' - 'a';
@@ -599,15 +602,12 @@ public:
 			return(NULL);
 		}
 	}
-	void parseData(char *data, unsigned long datalen, bool doClear = false, int checkContentLength = 0, bool enableEndAtNewTag = false) {
-		if(checkContentLength > 1) {
-			addNode("\ncontent-length:", true);
-		}
+	void parseData(char *data, unsigned long datalen, bool doClear = false) {
 		if(doClear) {
 			clear();
 		}
-		ppContent *content[2] = { NULL, NULL };
-		unsigned int namelength = 0;
+		ppContent *content;
+		unsigned int namelength;
 		for(unsigned long i = 0; i < datalen; i++) {
 			if(!doubleEndLine && 
 			   data[i] == '\r' && i < datalen - 3 && 
@@ -616,40 +616,27 @@ public:
 				if(contentLength > -1) {
 					datalen = doubleEndLine + 4 - data + contentLength;
 				}
-			}
-			if(content[1] && content[1]->content && !content[1]->length && 
-			   (data[i] == '\r' || data[i] == '\n')) {
-				content[1]->length = data + i - content[1]->content;
-				content[1]->trim();
-				if(content[1]->isContentLength) {
-					contentLength = atoi(content[1]->content);
-				}
-			}
-			if(!content[1] || !content[1]->content || content[1]->length || enableEndAtNewTag) {
-				content[0] = getContent(data + i, &namelength, datalen - i - 1);
-				if(content[0]) {
-					contents.push_back(content[0]);
-					if(!content[0]->content) {
-						content[0]->content = data + i + namelength;
-					} else {
-						content[0] = NULL;
-					}
-					if(content[1] && !content[1]->length) {
-						content[1]->length = data + i - content[1]->content;
-						content[1]->trim();
-						if(content[1]->isContentLength) {
-							contentLength = atoi(content[1]->content);
+				i += 2;
+			} else if(i == 0 || data[i] == '\r' || data[i] == '\n' || data[i - 1] == '\r' || data[i - 1] == '\n') {
+				content = getContent(data + i, &namelength, datalen - i - 1);
+				if(content) {
+					contents.push_back(content);
+					content->content = data + i + namelength;
+					i += namelength;
+					for(; i < datalen; i++) {
+						if(data[i] == '\r' || data[i] == '\n') {
+							content->length = data + i - content->content;
+							content->trim();
+							if(content->isContentLength) {
+								contentLength = atoi(content->content);
+							}
+							--i;
+							break;
 						}
-					}
-					if(content[0]) {
-						content[1] = content[0];
+					 
 					}
 				}
 			}
-		}
-		if(content[1] && content[1]->content && !content[1]->length) {
-			content[1]->length = data + datalen - content[1]->content;
-			content[1]->trim();
 		}
 		parseDataPtr = data;
 	}
