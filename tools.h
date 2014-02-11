@@ -578,7 +578,6 @@ public:
 		extern vector<dstring> opt_custom_headers_message;
 		for(int i = 0; i < 2; i++) {
 			vector<dstring> *_customHeaders = i == 0 ? &opt_custom_headers_cdr : &opt_custom_headers_message;
-			size_t iCustHeaders;
 			for(size_t iCustHeaders = 0; iCustHeaders < _customHeaders->size(); iCustHeaders++) {
 				string findHeader = (*_customHeaders)[iCustHeaders][0];
 				if(findHeader[findHeader.length() - 1] != ':') {

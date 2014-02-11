@@ -3408,7 +3408,7 @@ void test() {
 	 
 	case 1:
 	{
-		
+		/*
 		ParsePacket pp;
 		pp.addNode("test1");
 		pp.addNode("test2");
@@ -3423,14 +3423,14 @@ void test() {
 		//                    1         2          3             4         5
 		
 		pp.parseData(str, strlen(str), true);
-		
+		*/
 		
 		/*
 		ParsePacket pp(true);
 		pp.parseData("\200\022\n|\302\216\224\260\022m[\377t\352\376\210?\nT:\r\026\070\001\334\020Ѫ,o\355\026!\020\371R", 32, true, 1);
 		*/
 		
-		pp.debugData();
+		//pp.debugData();
 		
 		
 		/*

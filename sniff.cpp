@@ -591,7 +591,7 @@ char * gettag(const void *ptr, unsigned long len, const char *tag, unsigned long
 				*gettaglen = l_pp;
 				return((char*)rc_pp);
 			} else {
-				*gettaglen = NULL;
+				*gettaglen = 0;
 				return(NULL);
 			}
 		}
