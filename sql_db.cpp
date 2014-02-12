@@ -1482,6 +1482,7 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 			`upgrade_try_http_if_https_fail` tinyint DEFAULT 1,\
 			`opt_saveaudio_reversestereo` tinyint DEFAULT 0,\
 			`onewaytimeout` smallint DEFAULT 15,\
+			`sip-register-timeout` tinyint DEFAULT 5,\
 		PRIMARY KEY (`id`)\
 	) ENGINE=InnoDB DEFAULT CHARSET=latin1;");
 #endif
@@ -2309,6 +2310,10 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 		this->query("ALTER TABLE cdr_rtp\
 				ADD `dport` smallint unsigned DEFAULT NULL AFTER `daddr`;");
 	}
+
+
+	//9.4
+	this->query("ALTER TABLE sensor_conf ADD `sip-register-timeout` tinyint DEFAULT 5;");
 
 	sql_noerror = 0;
 

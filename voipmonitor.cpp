@@ -266,7 +266,7 @@ string opt_mos_lqo_ref16 = "/usr/local/share/voipmonitor/audio/mos_lqe_original_
 regcache *regfailedcache;
 int opt_onewaytimeout = 15;
 int opt_saveaudio_reversestereo = 0;
-
+int opt_register_timeout = 5;
 unsigned int opt_maxpoolsize = 0;
 unsigned int opt_maxpooldays = 0;
 unsigned int opt_maxpoolsipsize = 0;
@@ -1237,6 +1237,9 @@ int load_config(char *fname) {
 	}
 	if((value = ini.GetValue("general", "sip-register", NULL))) {
 		opt_sip_register = yesno(value);
+	}
+	if((value = ini.GetValue("general", "sip-register-timeout", NULL))) {
+		opt_register_timeout = atoi(value);
 	}
 	if((value = ini.GetValue("general", "sip-register-active-nologbin", NULL))) {
 		opt_sip_register_active_nologbin = yesno(value);
