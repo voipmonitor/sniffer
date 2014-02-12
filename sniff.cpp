@@ -1788,8 +1788,6 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 	pcap_t *handle, pcap_pkthdr *header, const u_char *packet, int istcp, int dontsave, int can_thread, int *was_rtp, struct iphdr2 *header_ip, int *voippacket, int disabledsave,
 	pcap_block_store *block_store, int block_store_index) {
  
-	_parse_packet.parseData(data, datalen, true);
-
 	Call *call = NULL;
 	int last_sip_method = -1;
 	int iscaller;
@@ -1899,6 +1897,8 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 	
 	// check if the packet is SIP ports or SKINNY ports
 	if(sipportmatrix[source] || sipportmatrix[dest]) {
+
+		_parse_packet.parseData(data, datalen, true);
 
 		*voippacket = 1;
 #if 0

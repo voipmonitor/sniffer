@@ -3411,6 +3411,16 @@ void test() {
 	 
 	case 1:
 	{
+		ParsePacket pp;
+		pp.setStdParse();
+	 
+		char *str = "REGISTER sip:callcentric.com SIP/2.0\r\nv: SIP/2.0/UDP 204.11.192.171:5080;branch=z9hG4bK-804c747aad456d80042869fe42364659;nat=true\r\nv: SIP/2.0/UDP 82.167.23.80:5060;rport=5060;branch=z9hG4bK9C67626992FD6862\r\nRecord-Route: <sip:204.11.192.171:5080;transport=udp;dest=82.167.23.80-5060;to-tag=2064941198;lr=1>\r\nf: <sip:17772260557101@callcentric.com>;tag=2064941198\r\nt: <sip:17772260557101@callcentric.com>\r\ni: 74EB5975C4E31329@82.167.23.80\r\nCSeq: 128752 REGISTER\r\nMax-Forwards: 10\r\nAccept-Encoding: identity\r\nAccept: application/sdp, multipart/mixed\r\nAllow: INVITE,ACK,OPTIONS,CANCEL,BYE,UPDATE,PRACK,INFO,SUBSCRIBE,NOTIFY,REFER,MESSAGE,PUBLISH\r\nAllow-Events: telephone-event,refer,reg\r\nSupported: 100rel,replaces\r\nl: 0\r\n\r\n";
+		for(int i = 0; i < 100000; i++) {
+			pp.parseData(str, strlen(str), true);
+		}
+		
+		pp.debugData();
+		
 		/*
 		ParsePacket pp;
 		pp.addNode("test1");

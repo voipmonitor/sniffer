@@ -1140,3 +1140,44 @@ void ListPhoneNumber_wb::addBlack(string &number) {
 void ListPhoneNumber_wb::addBlack(const char *number) {
 	black.addComb(number);
 }
+
+
+void ParsePacket::parseData(char *data, unsigned long datalen, bool doClear) {
+	if(doClear) {
+		clear();
+	}
+	sip = isSipContent(data, datalen);
+	ppContent *content;
+	unsigned int namelength;
+	for(unsigned long i = 0; i < datalen; i++) {
+		if(!doubleEndLine && 
+		   data[i] == '\r' && i < datalen - 3 && 
+		   data[i + 1] == '\n' && data[i + 2] == '\r' && data[i + 3] == '\n') {
+			doubleEndLine = data + i;
+			if(contentLength > -1) {
+				datalen = doubleEndLine + 4 - data + contentLength;
+			}
+			i += 2;
+		} else if(i == 0 || data[i - 1] == '\n') {
+			content = getContent(data + i, &namelength, datalen - i - 1);
+			if(content && !content->content) {
+				contents[contents_count++] = content;
+				content->content = data + i + namelength;
+				i += namelength;
+				for(; i < datalen; i++) {
+					if(data[i] == '\r' || data[i] == '\n') {
+						content->length = data + i - content->content;
+						content->trim();
+						if(content->isContentLength) {
+							contentLength = atoi(content->content);
+						}
+						--i;
+						break;
+					}
+				 
+				}
+			}
+		}
+	}
+	parseDataPtr = data;
+}

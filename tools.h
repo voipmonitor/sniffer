@@ -541,33 +541,34 @@ public:
 		doubleEndLine = NULL;
 		contentLength = -1;
 		parseDataPtr = NULL;
+		contents_count = 0;
 		sip = false;
 	}
 	void setStdParse() {
-		addNode("\ncontent-length:", true);
+		addNode("content-length:", true);
 		addNode("INVITE ");
-		addNode("\ncall-id:");
-		addNode("\ni:");
-		addNode("\nfrom:");
-		addNode("\nf:");
-		addNode("\nto:");
-		addNode("\nt:");
-		addNode("\ncontact:");
-		addNode("\nm:");
-		addNode("\nremote-party-id:");
-		addNode("\ngeoposition:");
-		addNode("\nuser-agent:");
-		addNode("\nauthorization:");
-		addNode("\nexpires:");
-		addNode("\nx-voipmonitor-norecord:");
-		addNode("\nsignal:");
-		addNode("\nsignal=");
-		addNode("\nx-voipmonitor-custom1:");
-		addNode("\ncontent-type:");
-		addNode("\nc:");
-		addNode("\ncseq:");
-		addNode("\nsupported:");
-		addNode("\nproxy-authenticate:");
+		addNode("call-id:");
+		addNode("i:");
+		addNode("from:");
+		addNode("f:");
+		addNode("to:");
+		addNode("t:");
+		addNode("contact:");
+		addNode("m:");
+		addNode("remote-party-id:");
+		addNode("geoposition:");
+		addNode("user-agent:");
+		addNode("authorization:");
+		addNode("expires:");
+		addNode("x-voipmonitor-norecord:");
+		addNode("signal:");
+		addNode("signal=");
+		addNode("x-voipmonitor-custom1:");
+		addNode("content-type:");
+		addNode("c:");
+		addNode("cseq:");
+		addNode("supported:");
+		addNode("proxy-authenticate:");
 		addNode("m=audio ");
 		addNode("a=rtpmap:");
 		addNode("c=IN IP4 ");
@@ -619,6 +620,9 @@ public:
 		return(root.getContent(nodeName, namelength, namelength_limit));
 	}
 	string getContentString(const char *nodeName) {
+		while(*nodeName == '\n') {
+			 ++nodeName;
+		}
 		ppContent *content = root.getContent(nodeName, NULL);
 		if(content && content->content && content->length > 0) {
 			return(string(content->content, content->length));
@@ -627,6 +631,9 @@ public:
 		}
 	}
 	const char *getContentData(const char *nodeName, long *dataLength) {
+		while(*nodeName == '\n') {
+			 ++nodeName;
+		}
 		ppContent *content = root.getContent(nodeName, NULL);
 		if(content && content->content && content->length > 0) {
 			if(dataLength) {
@@ -644,53 +651,13 @@ public:
 		unsigned int namelength = 0;
 		return(rootCheckSip.getContent(nodeName, &namelength, namelength_limit));
 	}
-	void parseData(char *data, unsigned long datalen, bool doClear = false) {
-		if(doClear) {
-			clear();
-		}
-		sip = isSipContent(data, datalen);
-		ppContent *content;
-		unsigned int namelength;
-		for(unsigned long i = 0; i < datalen; i++) {
-			if(!doubleEndLine && 
-			   data[i] == '\r' && i < datalen - 3 && 
-			   data[i + 1] == '\n' && data[i + 2] == '\r' && data[i + 3] == '\n') {
-				doubleEndLine = data + i;
-				if(contentLength > -1) {
-					datalen = doubleEndLine + 4 - data + contentLength;
-				}
-				i += 2;
-			} else if(i == 0 || data[i] == '\r' || data[i] == '\n' || data[i - 1] == '\r' || data[i - 1] == '\n') {
-				content = getContent(data + i, &namelength, datalen - i - 1);
-				if(content && !content->content) {
-					contents.push_back(content);
-					content->content = data + i + namelength;
-					i += namelength;
-					for(; i < datalen; i++) {
-						if(data[i] == '\r' || data[i] == '\n') {
-							content->length = data + i - content->content;
-							content->trim();
-							if(content->isContentLength) {
-								contentLength = atoi(content->content);
-							}
-							--i;
-							break;
-						}
-					 
-					}
-				}
-			}
-		}
-		parseDataPtr = data;
-	}
+	void parseData(char *data, unsigned long datalen, bool doClear = false);
 	void clear() {
-		//root.clear();
-		size_t len = contents.size();
-		for(size_t i = 0; i < len; i++) {
+		for(unsigned int i = 0; i < contents_count; i++) {
 			contents[i]->content = NULL;
 			contents[i]->length = 0;
 		}
-		contents.clear();
+		contents_count = 0;
 		doubleEndLine = NULL;
 		contentLength = -1;
 		parseDataPtr = NULL;
@@ -711,7 +678,8 @@ private:
 	char *doubleEndLine;
 	long contentLength;
 	const char *parseDataPtr;
-	vector<ppContent*> contents;
+	ppContent *contents[100];
+	unsigned int contents_count;
 	bool sip;
 };
 
