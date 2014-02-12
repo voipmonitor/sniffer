@@ -541,6 +541,7 @@ public:
 		doubleEndLine = NULL;
 		contentLength = -1;
 		parseDataPtr = NULL;
+		sip = false;
 	}
 	void setStdParse() {
 		addNode("\ncontent-length:", true);
@@ -586,11 +587,32 @@ public:
 				addNode(findHeader.c_str());
 			}
 		}
+		
+		//RFC 3261
+		addNodeCheckSip("SIP/2.0");
+		addNodeCheckSip("INVITE");
+		addNodeCheckSip("ACK");
+		addNodeCheckSip("BYE");
+		addNodeCheckSip("CANCEL");
+		addNodeCheckSip("OPTIONS");
+		addNodeCheckSip("REGISTER");
+		//RFC 3262
+		addNodeCheckSip("PRACK");
+		addNodeCheckSip("SUBSCRIBE");
+		addNodeCheckSip("NOTIFY");
+		addNodeCheckSip("PUBLISH");
+		addNodeCheckSip("INFO");
+		addNodeCheckSip("REFER");
+		addNodeCheckSip("MESSAGE");
+		addNodeCheckSip("UPDATE");
 	}
 	void addNode(const char *nodeName, bool isContentLength = false) {
 		root.addNode(nodeName, isContentLength);
 	}
-	ppContent *getContent(const char *nodeName, unsigned int *namelength = NULL, unsigned int namelength_limit = UINT_MAX ) {
+	void addNodeCheckSip(const char *nodeName) {
+		rootCheckSip.addNode(nodeName);
+	}
+	ppContent *getContent(const char *nodeName, unsigned int *namelength = NULL, unsigned int namelength_limit = UINT_MAX) {
 		if(namelength) {
 			*namelength = 0;
 		}
@@ -618,10 +640,15 @@ public:
 			return(NULL);
 		}
 	}
+	bool isSipContent(const char *nodeName, unsigned int namelength_limit = UINT_MAX) {
+		unsigned int namelength = 0;
+		return(rootCheckSip.getContent(nodeName, &namelength, namelength_limit));
+	}
 	void parseData(char *data, unsigned long datalen, bool doClear = false) {
 		if(doClear) {
 			clear();
 		}
+		sip = isSipContent(data, datalen);
 		ppContent *content;
 		unsigned int namelength;
 		for(unsigned long i = 0; i < datalen; i++) {
@@ -667,6 +694,7 @@ public:
 		doubleEndLine = NULL;
 		contentLength = -1;
 		parseDataPtr = NULL;
+		sip = false;
 	}
 	void debugData() {
 		root.debugData("");
@@ -674,12 +702,17 @@ public:
 	const char *getParseData() {
 		return(parseDataPtr);
 	}
+	bool isSip() {
+		return(sip);
+	}
 private:
 	ppNode root;
+	ppNode rootCheckSip;
 	char *doubleEndLine;
 	long contentLength;
 	const char *parseDataPtr;
 	vector<ppContent*> contents;
+	bool sip;
 };
 
 #endif

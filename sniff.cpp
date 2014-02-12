@@ -522,11 +522,18 @@ inline void save_packet(Call *call, struct pcap_pkthdr *header, const u_char *pa
 	}
 }
 
+ParsePacket _parse_packet;
+
 int check_sip20(char *data, unsigned long len){
-	int ok;
 	if(len < 11) {
 		return 0;
 	}
+	
+	if(_parse_packet.getParseData() == data) {
+		return(_parse_packet.isSip());
+	}
+	
+	int ok;
 	char a = data[9];
 	data[9] = '\0';
 	//List of SIP request methods
@@ -568,8 +575,6 @@ int check_sip20(char *data, unsigned long len){
 	data[9] = a;
 	return ok;
 }
-
-ParsePacket _parse_packet;
 
 /* get SIP tag from memory pointed to *ptr length of len */
 char * gettag(const void *ptr, unsigned long len, const char *tag, unsigned long *gettaglen, unsigned long *limitLen){
