@@ -212,6 +212,9 @@ public:
 	vector<dstring> custom_headers;
 
 	list<unsigned int> proxies;
+	
+	bool onCall_2XX;
+	bool onCall_18X;
 
 	/**
 	 * constructor

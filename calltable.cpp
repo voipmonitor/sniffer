@@ -236,6 +236,9 @@ Call::Call(char *call_id, unsigned long call_id_len, time_t time, void *ct) :
 	a_mos_lqo = -1;
 	b_mos_lqo = -1;
 	oneway = 1;
+	
+	onCall_2XX = false;
+	onCall_18X = false;
 }
 
 void

@@ -839,7 +839,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 		return;
 	}
 	ostringstream outStr;
-	if(DEBUG_VERBOSE || verbosityE > 0) {
+	if(DEBUG_VERBOSE || verbosityE > 1) {
 		string statString = "\n";
 		if(statCalls) {
 			ostringstream outStr;
@@ -993,7 +993,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 	pbCountPacketDrop = this->instancePcapHandle ?
 				this->instancePcapHandle->getCountPacketDrop() :
 				this->getCountPacketDrop();
-	if(DEBUG_VERBOSE || verbosityE > 0) {
+	if(DEBUG_VERBOSE || verbosityE > 1) {
 		if(DEBUG_VERBOSE) {
 			cout << outStrStat.str() << endl;
 		} else {

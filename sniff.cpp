@@ -2647,15 +2647,21 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 						return NULL;
 					}
 				}
-				ClientThreads.onCall(lastSIPresponseNum, call->callername, call->caller, call->called,
-						     call->sipcallerip, call->sipcalledip);
+				if(!call->onCall_2XX) {
+					ClientThreads.onCall(lastSIPresponseNum, call->callername, call->caller, call->called,
+							     call->sipcallerip, call->sipcalledip);
+					call->onCall_2XX = true;
+				}
 
 			} else if(sip_method == RES18X) {
 				if(call->progress_time == 0) {
 					call->progress_time = header->ts.tv_sec;
 				}
-				ClientThreads.onCall(lastSIPresponseNum, call->callername, call->caller, call->called,
-						     call->sipcallerip, call->sipcalledip);
+				if(!call->onCall_18X) {
+					ClientThreads.onCall(lastSIPresponseNum, call->callername, call->caller, call->called,
+							     call->sipcallerip, call->sipcalledip);
+					call->onCall_18X = true;
+				}
 			}
 
 			// if the call ends with some of SIP [456]XX response code, we can shorten timeout when the call will be closed 
