@@ -1893,9 +1893,6 @@ int load_config(char *fname) {
 			opt_pcap_queue_store_queue_max_memory_size -= opt_pcap_queue_bypass_max_size;
 		}
 	}
-	
-	extern ParsePacket _parse_packet;
-	_parse_packet.setStdParse();
 
 	return 0;
 }
@@ -2573,6 +2570,9 @@ int main(int argc, char *argv[]) {
 
 		return 1;
 	}
+	
+	extern ParsePacket _parse_packet;
+	_parse_packet.setStdParse();
 
 	if(opt_fork) {
 		#if ENABLE_SEMAPHOR_FORK_MODE
