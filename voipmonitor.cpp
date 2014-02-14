@@ -1344,7 +1344,7 @@ int load_config(char *fname) {
 	if((value = ini.GetValue("general", "saveudptl", NULL))) {
 		opt_saveudptl = yesno(value);
 	}
-	if((value = ini.GetValue("general", "rtpsave-threaded", NULL))) {
+	if((value = ini.GetValue("general", "savertp-threaded", NULL))) {
 		opt_rtpsave_threaded = yesno(value);
 	}
 	if((value = ini.GetValue("general", "norecord-header", NULL))) {
