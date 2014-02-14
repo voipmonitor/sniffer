@@ -3,6 +3,7 @@
 
 #include <string>
 #include <vector>
+#include <queue>
 #include <sstream>
 #include <utility>
 #include <arpa/inet.h>
@@ -179,7 +180,9 @@ public:
 	void close(bool updateFilesQueue = true);
 	bool isOpen() {
 		extern int opt_gzipGRAPH;
-		return(opt_gzipGRAPH ? this->streamgz.is_open() : this->stream.is_open());
+		return(opt_gzipGRAPH ? 
+			this->streamgz && this->streamgz->is_open() : 
+			this->stream && this->stream->is_open());
 	}
 private:
 	string fileName;
@@ -187,8 +190,81 @@ private:
 	class RTP *rtp;
 	bool updateFilesQueueAtClose;
 	u_int64_t size;
-	ofstream stream;
-	ogzstream streamgz;
+	ofstream *stream;
+	ogzstream *streamgz;
+};
+
+class AsyncClose {
+public:
+	class AsyncCloseItem {
+	public:
+		virtual void close() = 0;
+	};
+	class AsyncCloseItem_pcap : public AsyncCloseItem {
+	public:
+		AsyncCloseItem_pcap(pcap_dumper_t *handle) {
+			this->handle = handle;
+		}
+		void close() {
+			pcap_dump_flush(handle);
+			pcap_dump_close(handle);
+		}
+	private:
+		pcap_dumper_t *handle;
+	};
+	class AsyncCloseItem_ofstream  : public AsyncCloseItem{
+	public:
+		AsyncCloseItem_ofstream(ofstream *stream) {
+			this->stream = stream;
+		}
+		void close() {
+			stream->close();
+			delete stream;
+		}
+	private:
+		ofstream *stream;
+	};
+	class AsyncCloseItem_ogzstream  : public AsyncCloseItem{
+	public:
+		AsyncCloseItem_ogzstream(ogzstream *stream) {
+			this->stream = stream;
+		}
+		void close() {
+			stream->close();
+			delete stream;
+		}
+	private:
+		ogzstream *stream;
+	};
+public:
+	AsyncClose();
+	void add(pcap_dumper_t *handle) {
+		add(new AsyncCloseItem_pcap(handle));
+	}
+	void add(ofstream *stream) {
+		add(new AsyncCloseItem_ofstream(stream));
+	}
+	void add(ogzstream *stream) {
+		add(new AsyncCloseItem_ogzstream(stream));
+	}
+	void add(AsyncCloseItem *item) {
+		lock();
+		q.push(item);
+		unlock();
+	}
+	void closeTask();
+	void closeAll();
+private:
+	void lock() {
+		while(__sync_lock_test_and_set(&this->_sync, 1));
+	}
+	void unlock() {
+		__sync_lock_release(&this->_sync);
+	}
+private:
+	queue<AsyncCloseItem*> q;
+	pthread_t thread;
+	volatile int _sync;
 };
 
 class RestartUpgrade {

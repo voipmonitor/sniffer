@@ -3270,6 +3270,8 @@ int main(int argc, char *argv[]) {
 
 	Call *call;
 	calltable->cleanup(0);
+	extern AsyncClose asyncClose;
+	asyncClose.closeAll();
 	terminating = 1;
 	if(!(opt_pcap_threaded && opt_pcap_queue && 
 	     !opt_pcap_queue_receive_from_ip_port &&

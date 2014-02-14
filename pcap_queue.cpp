@@ -2288,6 +2288,8 @@ void* PcapQueue_readFromInterface::threadFunction(void *arg, unsigned int arg2) 
 						blockStore = NULL;
 						sleep(1);
 						calltable->cleanup(0);
+						extern AsyncClose asyncClose;
+						asyncClose.closeAll();
 						this->pcapStat();
 						terminating = 1;
 					}

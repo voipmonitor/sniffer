@@ -42,9 +42,12 @@
 
 extern char mac[32];
 extern int verbosity;
+extern int terminating;
 
 
 using namespace std;
+
+AsyncClose asyncClose;
 
 
 int getUpdDifTime(struct timeval *before)
@@ -599,8 +602,8 @@ void PcapDumper::dump(pcap_pkthdr* header, const u_char *packet) {
 
 void PcapDumper::close(bool updateFilesQueue) {
 	if(this->handle) {
-		pcap_dump_flush(this->handle);
-		pcap_dump_close(this->handle);
+		asyncClose.add(this->handle);
+		this->handle = NULL;
 		if(updateFilesQueue && this->call) {
 			this->call->addtofilesqueue(this->fileNameSpoolRelative.c_str(), 
 						    type == rtp ? "rtpsize" : 
@@ -611,7 +614,6 @@ void PcapDumper::close(bool updateFilesQueue) {
 				this->call->addtocachequeue(this->fileNameSpoolRelative.c_str());
 			}
 		}
-		this->handle = NULL;
 	}
 }
 
@@ -629,6 +631,8 @@ RtpGraphSaver::RtpGraphSaver(RTP *rtp, bool updateFilesQueueAtClose) {
 	this->rtp = rtp;
 	this->updateFilesQueueAtClose = updateFilesQueueAtClose;
 	this->size = 0;
+	this->stream = NULL;
+	this->streamgz = NULL;
 }
 
 RtpGraphSaver::~RtpGraphSaver() {
@@ -648,9 +652,11 @@ bool RtpGraphSaver::open(const char *fileName, const char *fileNameSpoolRelative
 		}
 	}
 	if(opt_gzipGRAPH) {
-		this->streamgz.open(fileName);
+		this->streamgz = new ogzstream;
+		this->streamgz->open(fileName);
 	} else {
-		this->stream.open(fileName);
+		this->stream = new ofstream;
+		this->stream->open(fileName);
 	}
 	if(!this->isOpen()) {
 		syslog(LOG_NOTICE, "graphsaver: error open file %s", fileName);
@@ -665,10 +671,10 @@ bool RtpGraphSaver::open(const char *fileName, const char *fileNameSpoolRelative
 void RtpGraphSaver::write(char *buffer, int length) {
 	if(this->isOpen()) {
 		if(opt_gzipGRAPH) {
-			this->streamgz.write(buffer, length);
+			this->streamgz->write(buffer, length);
 			//// !!!! size
 		} else {
-			this->stream.write(buffer, length);
+			this->stream->write(buffer, length);
 			this->size += length;
 		}
 	}
@@ -677,9 +683,11 @@ void RtpGraphSaver::write(char *buffer, int length) {
 void RtpGraphSaver::close(bool updateFilesQueue) {
 	if(this->isOpen()) {
 		if(opt_gzipGRAPH) {
-			this->streamgz.close();
+			asyncClose.add(this->streamgz);
+			this->streamgz = NULL;
 		} else {
-			this->stream.close();
+			asyncClose.add(this->stream);
+			this->stream = NULL;
 		}
 		if(updateFilesQueue) {
 			if(this->rtp->call_owner) { 
@@ -691,6 +699,40 @@ void RtpGraphSaver::close(bool updateFilesQueue) {
 			} else {
 				syslog(LOG_ERR, "graphsaver: gfilename[%s] does not have owner", this->fileNameSpoolRelative.c_str());
 			}
+		}
+	}
+}
+
+void *AsyncClose_process(void *asyncClose_addr) {
+	AsyncClose *asyncClose = (AsyncClose*)asyncClose_addr;
+	asyncClose->closeTask();
+	return(NULL);
+}
+
+AsyncClose::AsyncClose() {
+	_sync = 0;
+	pthread_create(&this->thread, NULL, AsyncClose_process, this);
+}
+
+void AsyncClose::closeTask() {
+	do {
+		closeAll();
+		usleep(10000);
+	} while(!terminating);
+}
+
+void AsyncClose::closeAll() {
+	while(true) {
+		lock();
+		if(q.size()) {
+			AsyncCloseItem *item = q.front();
+			q.pop();
+			item->close();
+			delete item;
+			unlock();
+		} else {
+			unlock();
+			break;
 		}
 	}
 }
@@ -1144,7 +1186,7 @@ void ParsePacket::parseData(char *data, unsigned long datalen, bool doClear) {
 	if(doClear) {
 		clear();
 	}
-	sip = isSipContent(data, datalen);
+	sip = isSipContent(data, datalen - 1);
 	ppContent *content;
 	unsigned int namelength;
 	for(unsigned long i = 0; i < datalen; i++) {
