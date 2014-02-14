@@ -192,7 +192,7 @@ int opt_audio_format = FORMAT_WAV;	// define format for audio writing (if -W opt
 int opt_manager_port = 5029;	// manager api TCP port
 char opt_manager_ip[32] = "127.0.0.1";	// manager api listen IP address
 int opt_pcap_threaded = 0;	// run reading packets from pcap in one thread and process packets in another thread via queue
-int opt_rtpsave_threaded = 0;
+int opt_rtpsave_threaded = 1;
 int opt_norecord_header = 0;	// if = 1 SIP call with X-VoipMonitor-norecord header will be not saved although global configuration says to record. 
 int opt_rtpnosip = 0;		// if = 1 RTP stream will be saved into calls regardless on SIP signalizatoin (handy if you need extract RTP without SIP)
 int opt_norecord_dtmf = 0;	// if = 1 SIP call with dtmf == *0 sequence (in SIP INFO) will stop recording
