@@ -2930,6 +2930,9 @@ int main(int argc, char *argv[]) {
 		daemonize();
 	}
 	
+	extern AsyncClose asyncClose;
+	asyncClose.startThread();
+	
 	if(isSqlDriver("mysql") &&
 	   !(opt_pcap_queue && 
 	     !opt_pcap_queue_receive_from_ip_port &&

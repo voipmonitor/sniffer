@@ -238,6 +238,7 @@ public:
 	};
 public:
 	AsyncClose();
+	void startThread();
 	void add(pcap_dumper_t *handle) {
 		add(new AsyncCloseItem_pcap(handle));
 	}

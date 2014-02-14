@@ -711,6 +711,9 @@ void *AsyncClose_process(void *asyncClose_addr) {
 
 AsyncClose::AsyncClose() {
 	_sync = 0;
+}
+
+void AsyncClose::startThread() {
 	pthread_create(&this->thread, NULL, AsyncClose_process, this);
 }
 
