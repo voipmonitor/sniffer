@@ -160,9 +160,11 @@ public:
 			} 
 			if((!_redukSizeFindNumber || _redukSizeFindNumber > 1) &&
 			   atol(findRecIt->number.c_str()) < atol(_findNumber.substr(0, findRecIt->number.length()).c_str())) {
-				_redukSizeFindNumber = _redukSizeFindNumber ?
-							--_redukSizeFindNumber :
-							findRecIt->number.length() - 1;
+				if(_redukSizeFindNumber) {
+					--_redukSizeFindNumber;
+				} else {
+					_redukSizeFindNumber = findRecIt->number.length() - 1;
+				}
 				findRecIt = std::lower_bound(data.begin(), data.end(), string(number).substr(0, _redukSizeFindNumber).c_str());
 				if(findRecIt == data.end()) {
 					--findRecIt;

@@ -150,7 +150,7 @@ public:
 	};
 	PcapDumper(eTypePcapDump type, class Call *call, bool updateFilesQueueAtClose = true);
 	~PcapDumper();
-	bool open(const char *fileName, const char *fileNameSpoolRelative);
+	bool open(const char *fileName, const char *fileNameSpoolRelative, pcap_t *useHandle, int useDlt);
 	void dump(pcap_pkthdr* header, const u_char *packet);
 	void close(bool updateFilesQueue = true);
 	void remove(bool updateFilesQueue = true);

@@ -475,7 +475,7 @@ static void jb_get_and_deliver(struct ast_channel *chan, struct timeval *mynow)
 	long now;
 	int interpolation_len, res;
 	short int stmp;
-	int res2;
+	//int res2;
 
 	now = get_now(jb, NULL, mynow);
 	jb->next = jbimpl->next(jbobj);

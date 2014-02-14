@@ -81,6 +81,7 @@ extern char sql_cdr_ua_table[256];
 extern char sql_cdr_sip_response_table[256];
 extern int opt_callend;
 extern int opt_id_sensor;
+extern int opt_id_sensor_cleanspool;
 extern int rtptimeout;
 extern unsigned int gthread_num;
 extern int num_threads;
@@ -116,6 +117,9 @@ extern string opt_mos_lqo_ref16;
 extern int opt_mos_lqo;
 extern regcache *regfailedcache;
 extern MySqlStore *sqlStore;
+extern int global_pcap_dlink;
+extern pcap_t *global_pcap_handle;
+extern int opt_rtpsave_threaded;
 
 volatile int calls = 0;
 
@@ -239,6 +243,10 @@ Call::Call(char *call_id, unsigned long call_id_len, time_t time, void *ct) :
 	
 	onCall_2XX = false;
 	onCall_18X = false;
+	
+	useSensorId = opt_id_sensor;
+	useDlt = global_pcap_dlink;
+	useHandle = global_pcap_handle;
 }
 
 void
@@ -314,7 +322,7 @@ Call::addtofilesqueue(string file, string column, long long writeBytes) {
 
 	ostringstream query;
 
-	int id_sensor = opt_id_sensor == -1 ? 0 : opt_id_sensor;
+	int id_sensor = opt_id_sensor_cleanspool == -1 ? 0 : opt_id_sensor_cleanspool;
 	
 	query << "INSERT INTO files SET files.datehour = " << dirnamesqlfiles() << ", id_sensor = " << id_sensor << ", "
 		<< column << " = " << size << " ON DUPLICATE KEY UPDATE " << column << " = " << column << " + " << size;
@@ -554,13 +562,20 @@ Call::get_index_by_ip_port(in_addr_t addr, unsigned short port){
 
 /* analyze rtcp packet */
 void
-Call::read_rtcp(unsigned char* data, int datalen, struct pcap_pkthdr *header, u_int32_t saddr, unsigned short sport, unsigned short dport, int iscaller) {
+Call::read_rtcp(unsigned char* data, int datalen, struct pcap_pkthdr *header, u_int32_t saddr, u_int32_t daddr, unsigned short sport, unsigned short dport, int iscaller,
+		char enable_save_packet, const u_char *packet, char istcp, int dlt, int sensor_id) {
 	parse_rtcp((char*)data, datalen, this);
+
+	if(enable_save_packet && opt_rtpsave_threaded) {
+		save_packet(this, header, packet, saddr, sport, daddr, dport, istcp, (char*)data, datalen, TYPE_RTP, 
+			    dlt, sensor_id);
+	}
 }
 
 /* analyze rtp packet */
 void
-Call::read_rtp(unsigned char* data, int datalen, struct pcap_pkthdr *header, struct iphdr2 *header_ip, u_int32_t saddr, u_int32_t daddr, unsigned short sport, unsigned short dport, int iscaller, int *record) {
+Call::read_rtp(unsigned char* data, int datalen, struct pcap_pkthdr *header, struct iphdr2 *header_ip, u_int32_t saddr, u_int32_t daddr, unsigned short sport, unsigned short dport, int iscaller, int *record,
+	       char enable_save_packet, const u_char *packet, char istcp, int dlt, int sensor_id) {
 
 	*record = 0;
 
@@ -575,7 +590,7 @@ Call::read_rtp(unsigned char* data, int datalen, struct pcap_pkthdr *header, str
 
 	if((!opt_allow_zerossrc and curSSRC == 0) || tmprtp.getVersion() != 2) {
 		// invalid ssrc
-		return;
+		goto end;
 	}
 
 	if(opt_dscp) {
@@ -620,7 +635,7 @@ read:
 					} else {
 						lastcalledrtp = rtp[i];
 					}
-					return;
+					goto end;
 				} else {
 					//codec changed and it is not DTMF, reset ssrc so the stream will not match and new one is used
 					rtp[i]->ssrc2 = 0;
@@ -712,6 +727,20 @@ read:
 		}
 		rtplock = 0;
 		ssrc_n++;
+	}
+	
+end:
+	if(enable_save_packet && opt_rtpsave_threaded) {
+		if((this->silencerecording || (opt_onlyRTPheader && !(this->flags & FLAG_SAVERTP))) && !this->isfax) {
+			unsigned int tmp_u32 = header->caplen;
+			header->caplen = header->caplen - (datalen - RTP_FIXED_HEADERLEN);
+			save_packet(this, header, packet, saddr, sport, daddr, dport, istcp, (char*)data, datalen, TYPE_RTP, 
+				    dlt, sensor_id);
+			header->caplen = tmp_u32;
+		} else {
+			save_packet(this, header, packet, saddr, sport, daddr, dport, istcp, (char*)data, datalen, TYPE_RTP, 
+				    dlt, sensor_id);
+		}
 	}
 }
 
@@ -1464,8 +1493,8 @@ Call::getKeyValCDRtext() {
 	
 	SqlDb_row cdr;
 
-	if(opt_id_sensor > -1) {
-		cdr.add(opt_id_sensor, "id_sensor");
+	if(useSensorId > -1) {
+		cdr.add(useSensorId, "id_sensor");
 	}
 
 	cdr.add(caller, "caller");
@@ -1812,8 +1841,8 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		}
 	}
 
-	if(opt_id_sensor > -1) {
-		cdr.add(opt_id_sensor, "id_sensor");
+	if(useSensorId > -1) {
+		cdr.add(useSensorId, "id_sensor");
 	}
 
 	cdr.add(sqlEscapeString(caller), "caller");
@@ -2448,7 +2477,7 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 			char regexpires[32];
 			sprintf(regexpires, "%d", register_expires);
 			char idsensor[12];
-			sprintf(idsensor, "%d", opt_id_sensor);
+			sprintf(idsensor, "%d", useSensorId);
 			//stored procedure is much faster and eliminates latency reducing uuuuuuuuuuuuu
 
 			query = "CALL PROCESS_SIP_REGISTER(" + sqlEscapeStringBorder(sqlDateTimeString(calltime())) + ", " +
@@ -2513,7 +2542,7 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 					reg.add(register_expires, "expires");
 					reg.add(5, "state");
 					reg.add(fname, "fname");
-					reg.add(opt_id_sensor, "id_sensor");
+					reg.add(useSensorId, "id_sensor");
 					reg.add(sqlDbSaveCall->getIdOrInsert(sql_cdr_ua_table, "id", "ua", cdr_ua), "ua_id");
 					sqlDbSaveCall->insert("register_state", reg);
 				}
@@ -2534,7 +2563,7 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 					reg.add(regstate, "state");
 					reg.add(sqlDbSaveCall->getIdOrInsert(sql_cdr_ua_table, "id", "ua", cdr_ua), "ua_id");
 					reg.add(fname, "fname");
-					reg.add(opt_id_sensor, "id_sensor");
+					reg.add(useSensorId, "id_sensor");
 					sqlDbSaveCall->insert("register_state", reg);
 				}
 			} else {
@@ -2553,7 +2582,7 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 				reg.add(regstate, "state");
 				reg.add(sqlDbSaveCall->getIdOrInsert(sql_cdr_ua_table, "id", "ua", cdr_ua), "ua_id");
 				reg.add(fname, "fname");
-				reg.add(opt_id_sensor, "id_sensor");
+				reg.add(useSensorId, "id_sensor");
 				sqlDbSaveCall->insert("register_state", reg);
 			}
 
@@ -2577,7 +2606,7 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 				reg.add(register_expires, "expires");
 				reg.add(sqlEscapeString(sqlDateTimeString(calltime() + register_expires).c_str()), "expires_at");
 				reg.add(fname, "fname");
-				reg.add(opt_id_sensor, "id_sensor");
+				reg.add(useSensorId, "id_sensor");
 				reg.add(regstate, "state");
 				int res = sqlDbSaveCall->insert(register_table, reg) <= 0;
 				return res;
@@ -2636,8 +2665,8 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 //			reg.add(sqlDbSaveCall->getIdOrInsert(sql_cdr_ua_table, "id", "ua", cdr_ua), "ua_id");
 
 			reg.add(fname, "fname");
-			if(opt_id_sensor > -1) {
-				reg.add(opt_id_sensor, "id_sensor");
+			if(useSensorId > -1) {
+				reg.add(useSensorId, "id_sensor");
 			}
 			string q3 = sqlDbSaveCall->insertQuery("register_failed", reg);
 
@@ -2675,8 +2704,8 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 					reg.add(sqlEscapeString(digest_username), "digestusername");
 					reg.add(sqlDbSaveCall->getIdOrInsert(sql_cdr_ua_table, "id", "ua", cdr_ua), "ua_id");
 					reg.add(fname, "fname");
-					if(opt_id_sensor > -1) {
-						reg.add(opt_id_sensor, "id_sensor");
+					if(useSensorId > -1) {
+						reg.add(useSensorId, "id_sensor");
 					}
 					sqlDbSaveCall->insert("register_failed", reg);
 				}
@@ -2700,8 +2729,8 @@ Call::saveMessageToDb(bool enableBatchIfPossible) {
 			cdr_sip_response,
 			cdr_ua_a,
 			cdr_ua_b;
-	if(opt_id_sensor > -1) {
-		cdr.add(opt_id_sensor, "id_sensor");
+	if(useSensorId > -1) {
+		cdr.add(useSensorId, "id_sensor");
 	}
 	cdr.add(sqlEscapeString(caller), "caller");
 	cdr.add(sqlEscapeString(reverseString(caller).c_str()), "caller_reverse");
@@ -3018,8 +3047,19 @@ Calltable::hashfind_by_ip_port(in_addr_t addr, unsigned short port, int *iscalle
 }
 
 Call*
-Calltable::add(char *call_id, unsigned long call_id_len, time_t time, u_int32_t saddr, unsigned short port) {
+Calltable::add(char *call_id, unsigned long call_id_len, time_t time, u_int32_t saddr, unsigned short port,
+	       pcap_t *handle, int dlt, int sensorId
+) {
 	Call *newcall = new Call(call_id, call_id_len, time, this);
+	if(handle) {
+		newcall->useHandle = handle;
+	}
+	if(dlt) {
+		newcall->useDlt = dlt;
+	}
+	if(sensorId > -1) {
+		newcall->useSensorId = sensorId;
+	}
 	calls++;
 	newcall->saddr = saddr;
 	newcall->sport = port;

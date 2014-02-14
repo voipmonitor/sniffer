@@ -192,12 +192,14 @@ int opt_audio_format = FORMAT_WAV;	// define format for audio writing (if -W opt
 int opt_manager_port = 5029;	// manager api TCP port
 char opt_manager_ip[32] = "127.0.0.1";	// manager api listen IP address
 int opt_pcap_threaded = 0;	// run reading packets from pcap in one thread and process packets in another thread via queue
+int opt_rtpsave_threaded = 0;
 int opt_norecord_header = 0;	// if = 1 SIP call with X-VoipMonitor-norecord header will be not saved although global configuration says to record. 
 int opt_rtpnosip = 0;		// if = 1 RTP stream will be saved into calls regardless on SIP signalizatoin (handy if you need extract RTP without SIP)
 int opt_norecord_dtmf = 0;	// if = 1 SIP call with dtmf == *0 sequence (in SIP INFO) will stop recording
 int opt_savewav_force = 0;	// if = 1 WAV will be generated no matter on filter rules
 int opt_sipoverlap = 1;		
 int opt_id_sensor = -1;		
+int opt_id_sensor_cleanspool = -1;		
 int readend = 0;
 int opt_dup_check = 0;
 int opt_dup_check_ipheader = 1;
@@ -434,8 +436,8 @@ unsigned int qringmax = 12500;
 pcap_packet *qring;
 #endif
 
-pcap_t *handle = NULL;		// pcap handler 
-pcap_t *handle_dead_EN10MB = NULL;
+pcap_t *global_pcap_handle = NULL;		// pcap handler 
+pcap_t *global_pcap_handle_dead_EN10MB = NULL;
 
 read_thread *threads;
 
@@ -1208,6 +1210,7 @@ int load_config(char *fname) {
 	}
 	if((value = ini.GetValue("general", "id_sensor", NULL))) {
 		opt_id_sensor = atoi(value);
+		opt_id_sensor_cleanspool = opt_id_sensor;
 		insert_funcname = "__insert_";
 		insert_funcname.append(value);
 	}
@@ -1340,6 +1343,9 @@ int load_config(char *fname) {
 	}
 	if((value = ini.GetValue("general", "saveudptl", NULL))) {
 		opt_saveudptl = yesno(value);
+	}
+	if((value = ini.GetValue("general", "rtpsave-threaded", NULL))) {
+		opt_rtpsave_threaded = yesno(value);
 	}
 	if((value = ini.GetValue("general", "norecord-header", NULL))) {
 		opt_norecord_header = yesno(value);
@@ -1892,6 +1898,14 @@ int load_config(char *fname) {
 		} else {
 			opt_pcap_queue_store_queue_max_memory_size -= opt_pcap_queue_bypass_max_size;
 		}
+		
+		if(opt_pcap_queue_receive_from_ip_port) {
+			opt_id_sensor_cleanspool = -1;
+		}
+	}
+	
+	if(!opt_pcap_split) {
+		opt_rtpsave_threaded = 0;
 	}
 
 	return 0;
@@ -2763,8 +2777,8 @@ int main(int argc, char *argv[]) {
 					mask = PCAP_NETMASK_UNKNOWN;
 				}
 				/*
-				handle = pcap_open_live(ifname, 1600, opt_promisc, 1000, errbuf);
-				if (handle == NULL) {
+				global_pcap_handle = pcap_open_live(ifname, 1600, opt_promisc, 1000, errbuf);
+				if (global_pcap_handle == NULL) {
 					fprintf(stderr, "Couldn't open inteface '%s': %s\n", ifname, errbuf);
 					return(2);
 				}
@@ -2773,19 +2787,19 @@ int main(int argc, char *argv[]) {
 				/* to set own pcap_set_buffer_size it must be this way and not useing pcap_lookupnet */
 
 				int status = 0;
-				if((handle = pcap_create(ifname, errbuf)) == NULL) {
+				if((global_pcap_handle = pcap_create(ifname, errbuf)) == NULL) {
 					fprintf(stderr, "pcap_create failed on iface '%s': %s\n", ifname, errbuf);
 					return(2);
 				}
-				if((status = pcap_set_snaplen(handle, 3200)) != 0) {
+				if((status = pcap_set_snaplen(global_pcap_handle, 3200)) != 0) {
 					fprintf(stderr, "error pcap_set_snaplen\n");
 					return(2);
 				}
-				if((status = pcap_set_promisc(handle, opt_promisc)) != 0) {
+				if((status = pcap_set_promisc(global_pcap_handle, opt_promisc)) != 0) {
 					fprintf(stderr, "error pcap_set_promisc\n");
 					return(2);
 				}
-				if((status = pcap_set_timeout(handle, 1000)) != 0) {
+				if((status = pcap_set_timeout(global_pcap_handle, 1000)) != 0) {
 					fprintf(stderr, "error pcap_set_timeout\n");
 					return(2);
 				}
@@ -2795,18 +2809,18 @@ int main(int argc, char *argv[]) {
 					- default is 2MB for libpcap > 1.0.0
 					- for libpcap < 1.0.0 it is controled by /proc/sys/net/core/rmem_default which is very low 
 				*/
-				if((status = pcap_set_buffer_size(handle, opt_ringbuffer * 1024 * 1024)) != 0) {
+				if((status = pcap_set_buffer_size(global_pcap_handle, opt_ringbuffer * 1024 * 1024)) != 0) {
 					fprintf(stderr, "error pcap_set_buffer_size\n");
 					return(2);
 				}
 
-				if((status = pcap_activate(handle)) != 0) {
-					fprintf(stderr, "libpcap error: [%s]\n", pcap_geterr(handle));
+				if((status = pcap_activate(global_pcap_handle)) != 0) {
+					fprintf(stderr, "libpcap error: [%s]\n", pcap_geterr(global_pcap_handle));
 					return(2);
 				}
 			}
 			if(opt_convert_dlt_sll_to_en10) {
-				handle_dead_EN10MB = pcap_open_dead(DLT_EN10MB, 65535);
+				global_pcap_handle_dead_EN10MB = pcap_open_dead(DLT_EN10MB, 65535);
 			}
 		} else {
 			// if reading file
@@ -2829,8 +2843,8 @@ int main(int argc, char *argv[]) {
 			opt_manager_port = 0; // disable cleaning spooldir when reading from file 
 			printf("Reading file: %s\n", fname);
 			mask = PCAP_NETMASK_UNKNOWN;
-			handle = pcap_open_offline(fname, errbuf);
-			if(handle == NULL) {
+			global_pcap_handle = pcap_open_offline(fname, errbuf);
+			if(global_pcap_handle == NULL) {
 				fprintf(stderr, "Couldn't open pcap file '%s': %s\n", fname, errbuf);
 				return(2);
 			}
@@ -2854,12 +2868,12 @@ int main(int argc, char *argv[]) {
 				snprintf(filter_exp, sizeof(filter_exp), "%s", user_filter);
 
 				// Compile and apply the filter
-				if (pcap_compile(handle, &fp, filter_exp, 0, mask) == -1) {
-					fprintf(stderr, "Couldn't parse filter %s: %s\n", filter_exp, pcap_geterr(handle));
+				if (pcap_compile(global_pcap_handle, &fp, filter_exp, 0, mask) == -1) {
+					fprintf(stderr, "Couldn't parse filter %s: %s\n", filter_exp, pcap_geterr(global_pcap_handle));
 					return(2);
 				}
-				if (pcap_setfilter(handle, &fp) == -1) {
-					fprintf(stderr, "Couldn't install filter %s: %s\n", filter_exp, pcap_geterr(handle));
+				if (pcap_setfilter(global_pcap_handle, &fp) == -1) {
+					fprintf(stderr, "Couldn't install filter %s: %s\n", filter_exp, pcap_geterr(global_pcap_handle));
 					return(2);
 				}
 			}
@@ -3050,9 +3064,9 @@ int main(int argc, char *argv[]) {
 				    //printf("Reading file: %s\n", filename);
 				    mask = PCAP_NETMASK_UNKNOWN;
 				    scanhandle = pcap_open_offline(filename, errbuf);
-				    if(!handle) {
+				    if(!global_pcap_handle) {
 					    // keep the first handle as global handle and do not change it because it is not threadsafe to close/open it while the other parts are using it
-					    handle = scanhandle;
+					    global_pcap_handle = scanhandle;
 					    close = 0;
 				    } else {
 					    close = 1;
@@ -3091,7 +3105,7 @@ int main(int argc, char *argv[]) {
 			//readend = 1;
 		}
 		inotify_rm_watch(fd, wd);
-		if(handle) pcap_close(handle);
+		if(global_pcap_handle) pcap_close(global_pcap_handle);
 	} else {
 #else 
 	{
@@ -3191,11 +3205,11 @@ int main(int argc, char *argv[]) {
 				}
 				
 			} else {
-				pthread_create(&readdump_libpcap_thread, NULL, readdump_libpcap_thread_fce, handle);
+				pthread_create(&readdump_libpcap_thread, NULL, readdump_libpcap_thread_fce, global_pcap_handle);
 				pthread_join(readdump_libpcap_thread, NULL);
 			}
 		} else {
-			readdump_libpcap(handle);
+			readdump_libpcap(global_pcap_handle);
 		}
 	}
 
@@ -3245,10 +3259,10 @@ int main(int argc, char *argv[]) {
 	// close handler
 	if(opt_scanpcapdir[0] == '\0') {
 		if(!opt_pcap_queue) {
-			pcap_close(handle);
+			pcap_close(global_pcap_handle);
 		}
-		if(handle_dead_EN10MB) {
-			pcap_close(handle_dead_EN10MB);
+		if(global_pcap_handle_dead_EN10MB) {
+			pcap_close(global_pcap_handle_dead_EN10MB);
 		}
 	}
 	
@@ -3414,7 +3428,7 @@ void test() {
 		ParsePacket pp;
 		pp.setStdParse();
 	 
-		char *str = "REGISTER sip:mx.com SIP/2.0\r\nv: SIP/2.0/UDP 1.2.3.4:5080;branch=asf4aas-5454sadfasfasdf545fsd454asfd46saf;nat=true\r\nv: SIP/2.0/UDP 5.6.7.8:5060;rport=5060;branch=asdf4as54f65as4df5sdaffds\r\nRecord-Route: <sip:1.2.3.4:5080;transport=udp;dest=5.6.7.8-5060;to-tag=6546565654;lr=1>\r\nf: <sip:65465465464455@mx.com>;tag=6546565654\r\nt: <sip:65465465464455@mx.com>\r\ni: 74EB5975C4E31329@5.6.7.8\r\nCSeq: 128752 REGISTER\r\nMax-Forwards: 10\r\nAccept-Encoding: identity\r\nAccept: application/sdp, multipart/mixed\r\nAllow: INVITE,ACK,OPTIONS,CANCEL,BYE,UPDATE,PRACK,INFO,SUBSCRIBE,NOTIFY,REFER,MESSAGE,PUBLISH\r\nAllow-Events: telephone-event,refer,reg\r\nSupported: 100rel,replaces\r\nl: 0\r\n\r\n";
+		char *str = (char*)"REGISTER sip:mx.com SIP/2.0\r\nv: SIP/2.0/UDP 1.2.3.4:5080;branch=asf4aas-5454sadfasfasdf545fsd454asfd46saf;nat=true\r\nv: SIP/2.0/UDP 5.6.7.8:5060;rport=5060;branch=asdf4as54f65as4df5sdaffds\r\nRecord-Route: <sip:1.2.3.4:5080;transport=udp;dest=5.6.7.8-5060;to-tag=6546565654;lr=1>\r\nf: <sip:65465465464455@mx.com>;tag=6546565654\r\nt: <sip:65465465464455@mx.com>\r\ni: 74EB5975C4E31329@5.6.7.8\r\nCSeq: 128752 REGISTER\r\nMax-Forwards: 10\r\nAccept-Encoding: identity\r\nAccept: application/sdp, multipart/mixed\r\nAllow: INVITE,ACK,OPTIONS,CANCEL,BYE,UPDATE,PRACK,INFO,SUBSCRIBE,NOTIFY,REFER,MESSAGE,PUBLISH\r\nAllow-Events: telephone-event,refer,reg\r\nSupported: 100rel,replaces\r\nl: 0\r\n\r\n";
 		for(int i = 0; i < 100000; i++) {
 			pp.parseData(str, strlen(str), true);
 		}

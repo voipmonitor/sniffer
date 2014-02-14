@@ -547,7 +547,7 @@ PcapDumper::~PcapDumper() {
 	}
 }
 
-bool PcapDumper::open(const char *fileName, const char *fileNameSpoolRelative) {
+bool PcapDumper::open(const char *fileName, const char *fileNameSpoolRelative, pcap_t *useHandle, int useDlt) {
 	if(this->type == rtp && this->openAttempts >= 10) {
 		return(false);
 	}
@@ -560,20 +560,18 @@ bool PcapDumper::open(const char *fileName, const char *fileNameSpoolRelative) {
 			syslog(LOG_NOTICE,"pcapdumper: [%s] already exists, not overwriting", fileName);
 		}
 	}
-	extern int pcap_dlink;
-	extern pcap_t *handle;
-	extern pcap_t *handle_dead_EN10MB;
+	extern pcap_t *global_pcap_handle_dead_EN10MB;
 	extern int opt_convert_dlt_sll_to_en10;
-	pcap_t *_handle = pcap_dlink ==DLT_LINUX_SLL && opt_convert_dlt_sll_to_en10 && handle_dead_EN10MB ? 
-			   handle_dead_EN10MB : 
-			   handle;
+	pcap_t *_handle = useDlt == DLT_LINUX_SLL && opt_convert_dlt_sll_to_en10 && global_pcap_handle_dead_EN10MB ? 
+			   global_pcap_handle_dead_EN10MB : 
+			   useHandle;
 	this->capsize = 0;
 	this->size = 0;
 	this->handle = pcap_dump_open(_handle, fileName);
 	++this->openAttempts;
 	if(!this->handle) {
 		if(this->type != rtp || !this->openError) {
-			syslog(LOG_NOTICE, "pcapdumper: error open dump handle to file %s: %s", fileName, pcap_geterr(handle));
+			syslog(LOG_NOTICE, "pcapdumper: error open dump handle to file %s", fileName);
 		}
 		this->openError = true;
 	}

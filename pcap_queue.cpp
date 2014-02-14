@@ -59,7 +59,7 @@ using namespace std;
 
 extern Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int dest, char *data, int datalen,
 			    pcap_t *handle, pcap_pkthdr *header, const u_char *packet, int istcp, int dontsave, int can_thread, int *was_rtp, struct iphdr2 *header_ip, int *voippacket, int disabledsave,
-			    pcap_block_store *block_store, int block_store_index);
+			    pcap_block_store *block_store, int block_store_index, int dlt, int sensor_id);
 
 extern int verbosity;
 extern int verbosityE;
@@ -76,8 +76,9 @@ extern char opt_mirrorip_dst[20];
 extern int opt_enable_tcpreassembly;
 extern int opt_tcpreassembly_pb_lock;
 extern int opt_fork;
+extern int opt_id_sensor;
 
-extern pcap_t *handle;
+extern pcap_t *global_pcap_handle;
 extern char *sipportmatrix;
 extern char *httpportmatrix;
 extern unsigned int duplicate_counter;
@@ -94,7 +95,7 @@ extern Calltable *calltable;
 extern volatile int calls;
 extern TcpReassembly *tcpReassembly;
 extern char opt_pb_read_from_file[256];
-extern int pcap_dlink;
+extern int global_pcap_dlink;
 extern queue<string> mysqlquery;
 extern pthread_mutex_t mysqlquery_lock;
 extern char opt_cachedir[1024];
@@ -213,6 +214,8 @@ void pcap_block_store::destroy() {
 	this->count = 0;
 	this->offsets_size = 0;
 	this->full = false;
+	this->dlink = global_pcap_dlink;
+	this->sensor_id = opt_id_sensor;
 }
 
 void pcap_block_store::destroyRestoreBuffer() {
@@ -242,6 +245,8 @@ u_char* pcap_block_store::getSaveBuffer() {
 	header.size = this->size;
 	header.size_compress = this->size_compress;
 	header.count = this->count;
+	header.dlink = this->dlink;
+	header.sensor_id = this->sensor_id;
 	memcpy(saveBuffer, 
 	       &header, 
 	       sizeof(header));
@@ -259,6 +264,8 @@ void pcap_block_store::restoreFromSaveBuffer(u_char *saveBuffer) {
 	this->size = header->size;
 	this->size_compress = header->size_compress;
 	this->count = header->count;
+	this->dlink = header->dlink;
+	this->sensor_id = header->sensor_id;
 	if(this->offsets) {
 		free(this->offsets);
 	}
@@ -1044,10 +1051,10 @@ void PcapQueue::initStat() {
 	}
 }
 
-pcap_t* PcapQueue::getPcapHandle() {
+pcap_t* PcapQueue::getPcapHandle(int dlt) {
 	return(this->instancePcapHandle ?
-		this->instancePcapHandle->_getPcapHandle() :
-		this->_getPcapHandle());
+		this->instancePcapHandle->_getPcapHandle(dlt) :
+		this->_getPcapHandle(dlt));
 }
 
 bool PcapQueue::createThread() {
@@ -1359,7 +1366,7 @@ bool PcapQueue_readFromInterface_base::startCapture() {
 		syslog(LOG_ERR, "packetbuffer - %s: pcap_create failed: %s", this->getInterfaceName().c_str(), errbuf); 
 		return(false);
 	}
-	handle = this->pcapHandle;
+	global_pcap_handle = this->pcapHandle;
 	int status;
 	if((status = pcap_set_snaplen(this->pcapHandle, this->pcap_snaplen)) != 0) {
 		syslog(LOG_ERR, "packetbuffer - %s: pcap_snaplen failed", this->getInterfaceName().c_str()); 
@@ -1421,7 +1428,7 @@ bool PcapQueue_readFromInterface_base::startCapture() {
 		syslog(LOG_ERR, "packetbuffer - %s: pcap_datalink failed", this->getInterfaceName().c_str()); 
 		return(false);
 	}
-	pcap_dlink = this->pcapLinklayerHeaderType;
+	global_pcap_dlink = this->pcapLinklayerHeaderType;
 	syslog(LOG_NOTICE, "DLT - %s: %i", this->getInterfaceName().c_str(), this->pcapLinklayerHeaderType);
 	if(opt_pcapdump) {
 		char pname[1024];
@@ -2423,8 +2430,8 @@ bool PcapQueue_readFromInterface::startCapture() {
 	if(opt_pb_read_from_file[0]) {
 		this->pcapHandle = pcap_open_offline(opt_pb_read_from_file, errbuf);
 		this->pcapLinklayerHeaderType = pcap_datalink(this->pcapHandle);
-		handle = this->pcapHandle;
-		pcap_dlink = this->pcapLinklayerHeaderType;
+		global_pcap_handle = this->pcapHandle;
+		global_pcap_dlink = this->pcapLinklayerHeaderType;
 		return(true);
 	}
 	return(this->PcapQueue_readFromInterface_base::startCapture());
@@ -2553,7 +2560,11 @@ PcapQueue_readFromFifo::PcapQueue_readFromFifo(const char *nameQueue, const char
    pcapStoreQueue(fileStoreFolder) {
 	this->packetServerDirection = directionNA;
 	this->fifoReadPcapHandle = NULL;
-	this->pcapDeadHandle = NULL;
+	for(int i = 0; i < DLT_TYPES_MAX; i++) {
+		this->pcapDeadHandles[i] = NULL;
+		this->pcapDeadHandles_dlt[i] = 0;
+	}
+	this->pcapDeadHandles_count = 0;
 	this->blockStoreTrash_size = 0;
 	this->cleanupBlockStoreTrash_counter = 0;
 	this->socketHostEnt = NULL;
@@ -2569,8 +2580,10 @@ PcapQueue_readFromFifo::~PcapQueue_readFromFifo() {
 	if(this->fifoReadPcapHandle) {
 		pcap_close(this->fifoReadPcapHandle);
 	}
-	if(this->pcapDeadHandle) {
-		pcap_close(this->pcapDeadHandle);
+	for(int i = 0; i < this->pcapDeadHandles_count; i++) {
+		if(this->pcapDeadHandles[i]) {
+			pcap_close(this->pcapDeadHandles[i]);
+		}
 	}
 	if(this->socketHandle) {
 		this->socketClose();
@@ -2585,7 +2598,7 @@ void PcapQueue_readFromFifo::setPacketServer(ip_port ipPort, ePacketServerDirect
 
 bool PcapQueue_readFromFifo::initThread(void *arg, unsigned int arg2) {
 	if(this->packetServerDirection == directionRead &&
-	   !this->openPcapDeadHandle()) {
+	   !this->openPcapDeadHandle(0)) {
 		return(false);
 	}
 	return(PcapQueue::initThread(arg, arg2));
@@ -2822,7 +2835,8 @@ void *PcapQueue_readFromFifo::writeThreadFunction(void *arg, unsigned int arg2) 
 							sumPacketsCounterOut[0] = (u_long)atol((char*)(*blockStore)[i].packet);
 						}
 					} else {
-						this->processPacket((*blockStore)[i].header, (*blockStore)[i].packet, blockStore, i);
+						this->processPacket((*blockStore)[i].header, (*blockStore)[i].packet, blockStore, i,
+								    blockStore->dlink, blockStore->sensor_id);
 					}
 				}
 			}
@@ -2880,10 +2894,28 @@ bool PcapQueue_readFromFifo::openFifoForWrite(void *arg, unsigned int arg2) {
 	return(true);
 }
 
-bool PcapQueue_readFromFifo::openPcapDeadHandle() {
-	if((this->pcapDeadHandle = pcap_open_dead(opt_pcap_queue_receive_dlt, 65535)) == NULL) {
+bool PcapQueue_readFromFifo::openPcapDeadHandle(int dlt) {
+	if(this->pcapDeadHandles_count) {
+		if(dlt) {
+			for(int i = 0; i < this->pcapDeadHandles_count; i++) {
+				if(dlt == this->pcapDeadHandles_dlt[i]) {
+					return(true);
+				}
+			}
+		} else {
+			return(true);
+		}
+	}
+	if(this->pcapDeadHandles_count >= DLT_TYPES_MAX) {
+		syslog(LOG_ERR, "packetbuffer %s: limit the number of dlt exhausted", this->nameQueue.c_str()); 
+		return(false);
+	}
+	if((this->pcapDeadHandles[this->pcapDeadHandles_count] = pcap_open_dead(dlt ? dlt : opt_pcap_queue_receive_dlt, 65535)) == NULL) {
 		syslog(LOG_ERR, "packetbuffer %s: pcap_create failed", this->nameQueue.c_str()); 
 		return(false);
+	} else {
+		this->pcapDeadHandles_dlt[this->pcapDeadHandles_count] = dlt ? dlt : opt_pcap_queue_receive_dlt;
+		++this->pcapDeadHandles_count;
 	}
 	/*
 	char errbuf[PCAP_ERRBUF_SIZE];
@@ -2897,7 +2929,9 @@ bool PcapQueue_readFromFifo::openPcapDeadHandle() {
 		return(false);
 	}
 	*/
-	handle = this->pcapDeadHandle;
+	if(!dlt) {
+		global_pcap_handle = this->pcapDeadHandles[0];
+	}
 	return(true);
 }
 
@@ -3156,7 +3190,8 @@ void PcapQueue_readFromFifo::cleanupConnections(bool all) {
 }
 
 void PcapQueue_readFromFifo::processPacket(pcap_pkthdr_plus *header_plus, u_char *packet,
-					   pcap_block_store *block_store, int block_store_index) {
+					   pcap_block_store *block_store, int block_store_index,
+					   int dlt, int sensor_id) {
 	iphdr2 *header_ip;
 	tcphdr2 *header_tcp;
 	udphdr2 *header_udp;
@@ -3263,8 +3298,8 @@ void PcapQueue_readFromFifo::processPacket(pcap_pkthdr_plus *header_plus, u_char
 	int voippacket = 0;
 	if(!useTcpReassembly && opt_enable_tcpreassembly != 2) {
 		process_packet(header_ip->saddr, htons(header_udp->source), header_ip->daddr, htons(header_udp->dest), 
-			data, datalen, this->getPcapHandle(), header, packet, istcp, 0, 1, &was_rtp, header_ip, &voippacket, 0,
-			block_store, block_store_index);
+			data, datalen, this->getPcapHandle(dlt), header, packet, istcp, 0, 1, &was_rtp, header_ip, &voippacket, 0,
+			block_store, block_store_index, dlt, sensor_id);
 	}
 
 	// if packet was VoIP add it to ipaccount

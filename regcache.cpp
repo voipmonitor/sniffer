@@ -77,6 +77,7 @@ regcache::check(unsigned int saddr, unsigned int daddr, unsigned int timestamp, 
 		return 0;
 	}
 	unlock();
+	return 0;
 }
 
 void 

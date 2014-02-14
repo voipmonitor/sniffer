@@ -215,6 +215,10 @@ public:
 	
 	bool onCall_2XX;
 	bool onCall_18X;
+	
+	int useSensorId;
+	int useDlt;
+	pcap_t *useHandle;
 
 	/**
 	 * constructor
@@ -267,7 +271,8 @@ public:
 	 * @param saddr source IP adress of the packet
 	 * 
 	*/
-	void read_rtp( unsigned char *data, int datalen, struct pcap_pkthdr *header, struct iphdr2 *header_ip, u_int32_t saddr, u_int32_t daddr, unsigned short sport, unsigned short dport, int iscaller, int *record);
+	void read_rtp(unsigned char *data, int datalen, struct pcap_pkthdr *header, struct iphdr2 *header_ip, u_int32_t saddr, u_int32_t daddr, unsigned short sport, unsigned short dport, int iscaller, int *record,
+		      char enable_save_packet, const u_char *packet, char istcp, int dlt, int sensor_id);
 
 	/**
 	 * @brief read RTCP packet 
@@ -280,7 +285,8 @@ public:
 	 * @param saddr source IP adress of the packet
 	 * 
 	*/
-	void read_rtcp(unsigned char*, int, pcap_pkthdr*, u_int32_t, short unsigned int sport, short unsigned int dport, int iscaller);
+	void read_rtcp(unsigned char*, int, pcap_pkthdr*, u_int32_t saddr, u_int32_t daddr, short unsigned int sport, short unsigned int dport, int iscaller,
+		       char enable_save_packet, const u_char *packet, char istcp, int dlt, int sensor_id);
 
 	/**
 	 * @brief adds RTP stream to the this Call 
@@ -522,7 +528,7 @@ public:
 	 *
 	 * @return reference of the new Call class
 	*/
-	Call *add(char *call_id, unsigned long call_id_len, time_t time, u_int32_t saddr, unsigned short port);
+	Call *add(char *call_id, unsigned long call_id_len, time_t time, u_int32_t saddr, unsigned short port, pcap_t *handle, int dlt, int sensorId);
 
 	/**
 	 * @brief find Call by call_id

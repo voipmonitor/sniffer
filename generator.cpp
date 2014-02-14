@@ -15,9 +15,11 @@ void
 	udph.source = 5060;
 	udph.check = 0;
 
-	char buf[4092];
+	//char buf[4092];
 
 	gen->send((char*)&udph, 8);
+	
+	return NULL;
 }
 
 void 
@@ -77,7 +79,7 @@ Generator::send(char *data, int datalen) {
 	struct iphdr2 *iphdr;
 
 	iphdr = (struct iphdr2 *)generator_packet;
-	memset(iphdr, 0, sizeof(iphdr));
+	memset(iphdr, 0, sizeof(iphdr2));
 	iphdr->version = 4;
 	iphdr->tos = 0;
 	iphdr->id = htons(100);

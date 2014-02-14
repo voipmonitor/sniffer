@@ -20,6 +20,7 @@
 #include "ip_frag.h"
 
 #define READ_THREADS_MAX 20
+#define DLT_TYPES_MAX 10
 
 extern timeval t;
 
@@ -199,7 +200,7 @@ public:
 	bool isInitOk();
 	bool isTerminated();
 	void setInstancePcapHandle(PcapQueue *pcapQueue);
-	inline pcap_t* getPcapHandle();
+	inline pcap_t* getPcapHandle(int dlt);
 	void pcapStat(int statPeriod = 1, bool statCalls = true);
 	string pcapDropCountStat();
 	void initStat();
@@ -218,9 +219,9 @@ protected:
 	virtual void *writeThreadFunction(void *arg, unsigned int arg2) { return(NULL); }
 	virtual bool openFifoForRead(void *arg, unsigned int arg2);
 	virtual bool openFifoForWrite(void *arg, unsigned int arg2);
-	virtual pcap_t* _getPcapHandle() { 
-		extern pcap_t *handle;
-		return(handle); 
+	virtual pcap_t* _getPcapHandle(int dlt) { 
+		extern pcap_t *global_pcap_handle;
+		return(global_pcap_handle); 
 	}
 	virtual string pcapStatString_packets(int statPeriod);
 	virtual double pcapStat_get_compress();
@@ -423,7 +424,7 @@ protected:
 	void *threadFunction(void *arg, unsigned int arg2);
 	bool openFifoForWrite(void *arg, unsigned int arg2);
 	bool startCapture();
-	pcap_t* _getPcapHandle() { 
+	pcap_t* _getPcapHandle(int dlt) { 
 		return(this->pcapHandle);
 	}
 	string pcapStatString_bypass_buffer(int statPeriod);
@@ -487,11 +488,25 @@ protected:
 	void *writeThreadFunction(void *arg, unsigned int arg2);
 	bool openFifoForRead(void *arg, unsigned int arg2);
 	bool openFifoForWrite(void *arg, unsigned int arg2);
-	bool openPcapDeadHandle();
-	pcap_t* _getPcapHandle() {
-		extern pcap_t *handle;
-		return(this->pcapDeadHandle ? this->pcapDeadHandle :
-		       (this->fifoReadPcapHandle ? this->fifoReadPcapHandle : handle));
+	bool openPcapDeadHandle(int dlt);
+	pcap_t* _getPcapHandle(int dlt) {
+		extern pcap_t *global_pcap_handle;
+		if(this->pcapDeadHandles_count) {
+			if(!dlt) {
+				return(this->pcapDeadHandles[0]);
+			}
+			for(int i = 0; i < this->pcapDeadHandles_count; i++) {
+				if(this->pcapDeadHandles_dlt[i] == dlt) {
+					return(this->pcapDeadHandles[i]);
+				}
+			}
+			if(openPcapDeadHandle(dlt)) {
+				return(this->pcapDeadHandles[this->pcapDeadHandles_count - 1]);
+			} else {
+				return(NULL);
+			}
+		}
+		return(this->fifoReadPcapHandle ? this->fifoReadPcapHandle : global_pcap_handle);
 	}
 	string pcapStatString_memory_buffer(int statPeriod);
 	double pcapStat_get_memory_buffer_perc();
@@ -512,7 +527,8 @@ private:
 	void createConnection(int socketClient, sockaddr_in *socketClientInfo);
 	void cleanupConnections(bool all = false);
 	void processPacket(pcap_pkthdr_plus *header, u_char *packet,
-			   pcap_block_store *block_store, int block_store_index);
+			   pcap_block_store *block_store, int block_store_index,
+			   int dlt, int sensor_id);
 	void cleanupBlockStoreTrash(bool all = false);
 	void lock_packetServerConnections() {
 		while(__sync_lock_test_and_set(&this->_sync_packetServerConnections, 1));
@@ -524,7 +540,9 @@ protected:
 	ip_port packetServerIpPort;
 	ePacketServerDirection packetServerDirection;
 	pcap_t *fifoReadPcapHandle;
-	pcap_t *pcapDeadHandle;
+	pcap_t *pcapDeadHandles[DLT_TYPES_MAX];
+	int pcapDeadHandles_dlt[DLT_TYPES_MAX];
+	int pcapDeadHandles_count;
 private:
 	pcap_store_queue pcapStoreQueue;
 	vector<pcap_block_store*> blockStoreTrash;
