@@ -244,6 +244,12 @@ protected:
 	virtual string getCpuUsage(bool writeThread = false, bool preparePstatData = false) { return(""); }
 	long unsigned int getVsizeUsage(bool writeThread = false, bool preparePstatData = false);
 	long unsigned int getRssUsage(bool writeThread = false, bool preparePstatData = false);
+	virtual bool isMirrorSender() {
+		return(false);
+	}
+	virtual bool isMirrorReceiver() {
+		return(false);
+	}
 protected:
 	eTypeQueue typeQueue;
 	std::string nameQueue;
@@ -523,6 +529,12 @@ protected:
 	bool socketClose();
 	bool socketWrite(u_char *data, size_t dataLen);
 	bool socketRead(u_char *data, size_t *dataLen, int idConnection);
+	bool isMirrorSender() {
+		return(this->packetServerDirection == directionWrite);
+	}
+	bool isMirrorReceiver() {
+		return(this->packetServerDirection == directionRead);
+	}
 private:
 	void createConnection(int socketClient, sockaddr_in *socketClientInfo);
 	void cleanupConnections(bool all = false);

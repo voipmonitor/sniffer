@@ -2043,6 +2043,9 @@ void test();
 
 int main(int argc, char *argv[]) {
  
+	printf("voipmonitor version %s\n", RTPSENSOR_VERSION);
+	syslog(LOG_NOTICE, "start voipmonitor version %s", RTPSENSOR_VERSION);
+ 
 	time(&startTime);
 
 	regfailedcache = new regcache;

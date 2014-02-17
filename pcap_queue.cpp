@@ -892,49 +892,51 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 	} else {
 		double memoryBufferPerc = this->pcapStat_get_memory_buffer_perc();
 		double memoryBufferPerc_trash = this->pcapStat_get_memory_buffer_perc_trash();
-		outStr << fixed
-		       << "calls[" << calltable->calls_listMAP.size() << "][" << calls << "] ";
-		if(opt_ipaccount) {
-			outStr << "ipacc_buffer[" << lengthIpaccBuffer() << "] ";
-		}
-		pthread_mutex_lock(&mysqlquery_lock);
-		outStr << "SQLq[C:" << mysqlquery.size();
-		pthread_mutex_unlock(&mysqlquery_lock);
-		int sizeSQLq = sqlStore->getSize(STORE_PROC_ID_REGISTER);
-		if(sizeSQLq >= 0) {
-			outStr << " R:" << sizeSQLq;
-		}
-		sizeSQLq = sqlStore->getSize(STORE_PROC_ID_SAVE_PACKET_SQL);
-		if(sizeSQLq >= 0) {
-			outStr << " L:" << sizeSQLq;
-		}
-		sizeSQLq = sqlStore->getSize(STORE_PROC_ID_CLEANSPOOL);
-		if(sizeSQLq >= 0) {
-			outStr << " Cl:" << sizeSQLq;
-		}
-		sizeSQLq = sqlStore->getSize(STORE_PROC_ID_HTTP);
-		if(sizeSQLq >= 0) {
-			outStr << " H:" << sizeSQLq;
-		}
-		if(opt_ipaccount) {
-			sizeSQLq = sqlStore->getSizeMult(12,
-							 STORE_PROC_ID_IPACC_1,
-							 STORE_PROC_ID_IPACC_2,
-							 STORE_PROC_ID_IPACC_3,
-							 STORE_PROC_ID_IPACC_AGR_INTERVAL,
-							 STORE_PROC_ID_IPACC_AGR_HOUR,
-							 STORE_PROC_ID_IPACC_AGR_DAY,
-							 STORE_PROC_ID_IPACC_AGR2_HOUR_1,
-							 STORE_PROC_ID_IPACC_AGR2_HOUR_2,
-							 STORE_PROC_ID_IPACC_AGR2_HOUR_3,
-							 STORE_PROC_ID_IPACC_AGR2_DAY_1,
-							 STORE_PROC_ID_IPACC_AGR2_DAY_2,
-							 STORE_PROC_ID_IPACC_AGR2_DAY_3);
-			if(sizeSQLq >= 0) {
-				outStr << " I:" << sizeSQLq;
+		outStr << fixed;
+		if(!this->isMirrorSender()) {
+			outStr << "calls[" << calltable->calls_listMAP.size() << "][" << calls << "] ";
+			if(opt_ipaccount) {
+				outStr << "ipacc_buffer[" << lengthIpaccBuffer() << "] ";
 			}
+			pthread_mutex_lock(&mysqlquery_lock);
+			outStr << "SQLq[C:" << mysqlquery.size();
+			pthread_mutex_unlock(&mysqlquery_lock);
+			int sizeSQLq = sqlStore->getSize(STORE_PROC_ID_REGISTER);
+			if(sizeSQLq >= 0) {
+				outStr << " R:" << sizeSQLq;
+			}
+			sizeSQLq = sqlStore->getSize(STORE_PROC_ID_SAVE_PACKET_SQL);
+			if(sizeSQLq >= 0) {
+				outStr << " L:" << sizeSQLq;
+			}
+			sizeSQLq = sqlStore->getSize(STORE_PROC_ID_CLEANSPOOL);
+			if(sizeSQLq >= 0) {
+				outStr << " Cl:" << sizeSQLq;
+			}
+			sizeSQLq = sqlStore->getSize(STORE_PROC_ID_HTTP);
+			if(sizeSQLq >= 0) {
+				outStr << " H:" << sizeSQLq;
+			}
+			if(opt_ipaccount) {
+				sizeSQLq = sqlStore->getSizeMult(12,
+								 STORE_PROC_ID_IPACC_1,
+								 STORE_PROC_ID_IPACC_2,
+								 STORE_PROC_ID_IPACC_3,
+								 STORE_PROC_ID_IPACC_AGR_INTERVAL,
+								 STORE_PROC_ID_IPACC_AGR_HOUR,
+								 STORE_PROC_ID_IPACC_AGR_DAY,
+								 STORE_PROC_ID_IPACC_AGR2_HOUR_1,
+								 STORE_PROC_ID_IPACC_AGR2_HOUR_2,
+								 STORE_PROC_ID_IPACC_AGR2_HOUR_3,
+								 STORE_PROC_ID_IPACC_AGR2_DAY_1,
+								 STORE_PROC_ID_IPACC_AGR2_DAY_2,
+								 STORE_PROC_ID_IPACC_AGR2_DAY_3);
+				if(sizeSQLq >= 0) {
+					outStr << " I:" << sizeSQLq;
+				}
+			}
+			outStr << "] ";
 		}
-		outStr << "] ";
 		outStr << "heap[" << setprecision(1) << memoryBufferPerc << "% / "
 				  << setprecision(1) << memoryBufferPerc_trash << "%] ";
 		if(this->instancePcapHandle) {
