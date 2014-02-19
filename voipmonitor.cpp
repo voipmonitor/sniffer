@@ -2591,7 +2591,7 @@ int main(int argc, char *argv[]) {
 	extern ParsePacket _parse_packet;
 	_parse_packet.setStdParse();
 
-	if(opt_fork) {
+	if(opt_fork && !opt_read_from_file) {
 		#if ENABLE_SEMAPHOR_FORK_MODE
 		for(int pass = 0; pass < 2; pass ++) {
 			globalSemaphore = sem_open(SEMAPHOR_FORK_MODE_NAME().c_str(), O_CREAT | O_EXCL);
