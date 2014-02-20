@@ -1904,7 +1904,7 @@ int load_config(char *fname) {
 		}
 	}
 	
-	if(!opt_pcap_split) {
+	if(!opt_pcap_split || opt_scanpcapdir[0] != '\0') {
 		opt_rtpsave_threaded = 0;
 	}
 
