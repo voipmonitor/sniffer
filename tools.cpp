@@ -1211,7 +1211,7 @@ void ParsePacket::parseData(char *data, unsigned long datalen, bool doClear) {
 					if(data[i] == '\r' || data[i] == '\n') {
 						content->length = data + i - content->content;
 						content->trim();
-						if(content->isContentLength) {
+						if(content->isContentLength && content->content) {
 							contentLength = atoi(content->content);
 						}
 						--i;
