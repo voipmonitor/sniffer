@@ -1,3 +1,12 @@
+9.4 beta1 25.2.2014
+==================
+- Optimize SIP parser which is now much faster by factors (avoid rereading packets when serching for tags)
+- shorten register sip message timeout from 30 to 5 seconds (helps to manage RAM when there is REGISTER flood) and add option sip-register-timeout so it can be set to custom seconds
+- when mirroring packets send id_sensor and DLT number on connect so configuration option mirror_bind_dlt is not needed anymore and allows to set id_sensor for each sender. It is not backward compatible with older versions thus the receiver must be >= 9.4 beta1
+- Optimize saving RTP packets which is moved to threads which allows much higher throughput. Before Intel Xeon E5 on 2800Mhz can sniff and store RTP for 4500 calls only. Now it can handle more than 10000 calls. 
+- Close files in separate thread which prevents blocking threads causing packet loss. 
+
+
 9.3 10.2.2014
 =============
 - fix crashing when decoding audio in certain cases and also when doing realtime listening
