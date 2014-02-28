@@ -281,6 +281,7 @@ unsigned int opt_maxpoolaudiosize = 0;
 unsigned int opt_maxpoolaudiodays = 0;
 int opt_maxpool_clean_obsolete = 0;
 int opt_mysqlloadconfig = 1;
+int opt_last_rtp_from_end = 1;
 
 char opt_php_path[1024];
 

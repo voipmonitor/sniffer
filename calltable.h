@@ -137,6 +137,8 @@ public:
 	time_t first_rtp_time;		//!< time in seconds of first RTP packet
 	time_t connect_time;		//!< time in seconds of 200 OK
 	time_t last_packet_time;	
+	time_t last_rtp_a_packet_time;	
+	time_t last_rtp_b_packet_time;	
 	time_t first_packet_time;	
 	time_t destroy_call_at;	
 	unsigned int first_packet_usec;

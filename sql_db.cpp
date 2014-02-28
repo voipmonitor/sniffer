@@ -23,6 +23,7 @@ extern int opt_ipaccount;
 extern int opt_id_sensor;
 extern bool opt_cdr_partition;
 extern bool opt_cdr_sipport;
+extern bool opt_last_rtp_from_end;
 extern bool opt_cdr_rtpport;
 extern int opt_create_old_partitions;
 extern bool opt_disable_partition_operations;
@@ -1661,6 +1662,8 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 			`b_rtcp_avgfr_mult10` smallint unsigned DEFAULT NULL,\
 			`b_rtcp_maxjitter` smallint unsigned DEFAULT NULL,\
 			`b_rtcp_avgjitter_mult10` smallint unsigned DEFAULT NULL,\
+			`a_last_rtp_from_end` smallint unsigned DEFAULT NULL,\
+			`b_last_rtp_from_end` smallint unsigned DEFAULT NULL,\
 			`payload` int DEFAULT NULL,\
 			`jitter_mult10` mediumint unsigned DEFAULT NULL,\
 			`mos_min_mult10` tinyint unsigned DEFAULT NULL,\
@@ -1768,6 +1771,12 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 	if(!federated && !opt_cdr_sipport) {
 		this->query("show columns from cdr where Field='sipcallerport'");
 		opt_cdr_sipport = this->fetchRow();
+	}
+
+	this->query("show columns from cdr where Field='a_last_rtp_from_end'");
+	opt_last_rtp_from_end = this->fetchRow();
+	if(!opt_last_rtp_from_end) {
+		syslog(LOG_WARNING, "!!! Your database needs to be upgraded to support new features - ALTER TABLE cdr ADD a_last_rtp_from_end SMALLINT UNSIGNED DEFAULT NULL, ADD b_last_rtp_from_end SMALLINT UNSIGNED DEFAULT NULL;");
 	}
 
 	string cdrNextCustomFields;
@@ -3032,6 +3041,8 @@ void SqlDb_odbc::createSchema(const char *host, const char *database, const char
 			b_rtcp_avgfr_mult10 smallint NULL,\
 			b_rtcp_maxjitter smallint NULL,\
 			b_rtcp_avgjitter_mult10 smallint NULL,\
+			a_last_rtp_from_end smallint NULL,\
+			b_last_rtp_from_end smallint NULL,\
 			payload int NULL,\
 			jitter_mult10 int NULL,\
 			mos_min_mult10 tinyint NULL,\

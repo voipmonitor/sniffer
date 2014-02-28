@@ -120,6 +120,7 @@ extern MySqlStore *sqlStore;
 extern int global_pcap_dlink;
 extern pcap_t *global_pcap_handle;
 extern int opt_rtpsave_threaded;
+extern int opt_last_rtp_from_end;
 
 volatile int calls = 0;
 
@@ -150,6 +151,8 @@ Call::Call(char *call_id, unsigned long call_id_len, time_t time, void *ct) :
 	first_packet_time = time;
 	first_packet_usec = 0;
 	last_packet_time = time;
+	last_rtp_a_packet_time = 0;
+	last_rtp_b_packet_time = 0;
 	this->call_id = string(call_id, call_id_len);
 	this->call_id_len = call_id_len;
 	whohanged = -1;
@@ -604,6 +607,12 @@ Call::read_rtp(unsigned char* data, int datalen, struct pcap_pkthdr *header, str
 			this->called_rtpdscp = header_ip->tos >> 2;
 			////cout << "called_rtpdscp " << (int)(header_ip->tos>>2) << endl;
 		}
+	}
+
+	if(iscaller) {
+		last_rtp_a_packet_time = header->ts.tv_sec;
+	} else {
+		last_rtp_b_packet_time = header->ts.tv_sec;
 	}
 
 	for(int i = 0; i < ssrc_n; i++) {
@@ -1522,6 +1531,14 @@ Call::getKeyValCDRtext() {
 	if(connect_time) {
 		cdr.add(duration() - (connect_time - first_packet_time), "connect_duration");
 	}
+	if(opt_last_rtp_from_end) {
+		if(last_rtp_a_packet_time) {
+			cdr.add(last_packet_time - last_rtp_a_packet_time, "a_last_rtp_from_end");
+		}
+		if(last_rtp_b_packet_time) {
+			cdr.add(last_packet_time - last_rtp_b_packet_time, "b_last_rtp_from_end");
+		}
+	}
 	cdr.add(sqlDateTimeString(calltime()).c_str(), "calldate");
 	if(opt_callend) {
 		cdr.add(sqlDateTimeString(calltime() + duration()).c_str(), "callend");
@@ -1890,6 +1907,14 @@ Call::saveToDb(bool enableBatchIfPossible) {
 	}
 	if(connect_time) {
 		cdr.add(duration() - (connect_time - first_packet_time), "connect_duration");
+	}
+	if(opt_last_rtp_from_end) {
+		if(last_rtp_a_packet_time) {
+			cdr.add(last_packet_time - last_rtp_a_packet_time, "a_last_rtp_from_end");
+		}
+		if(last_rtp_b_packet_time) {
+			cdr.add(last_packet_time - last_rtp_b_packet_time, "b_last_rtp_from_end");
+		}
 	}
 	cdr.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
 	if(opt_callend) {
