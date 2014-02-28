@@ -500,6 +500,11 @@ bool SqlDb_mysql::connected() {
 }
 
 bool SqlDb_mysql::query(string query) {
+	if(this->hMysqlRes) {
+		while(mysql_fetch_row(this->hMysqlRes));
+		mysql_free_result(this->hMysqlRes);
+		this->hMysqlRes = NULL;
+	}
 	if(this->connected()) {
 		if(mysql_ping(this->hMysql)) {
 			if(verbosity > 1) {
@@ -519,11 +524,6 @@ bool SqlDb_mysql::query(string query) {
 		syslog(LOG_INFO, query.c_str());
 	}
 	bool rslt = false;
-	if(this->hMysqlRes) {
-		while(mysql_fetch_row(this->hMysqlRes));
-		mysql_free_result(this->hMysqlRes);
-		this->hMysqlRes = NULL;
-	}
 	this->cleanFields();
 	unsigned int attempt = 1;
 	for(unsigned int pass = 0; pass < this->maxQueryPass; pass++) {

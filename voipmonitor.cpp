@@ -2715,6 +2715,11 @@ int main(int argc, char *argv[]) {
 			sleep(1);
 		}
 		if(sqlDb->connected()) {
+			if(isSqlDriver("mysql")) {
+				sql_noerror = 1;
+				sqlDb->query("repair table mysql.proc");
+				sql_noerror = 0;
+			}
 			sqlDb->createSchema();
 			sqlDb->checkSchema();
 		} else {
