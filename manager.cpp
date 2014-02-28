@@ -1459,10 +1459,7 @@ void ManagerClientThread_screen_popup::onCall(int sipResponseNum, const char *ca
 	cout << "** - reg_match : " << reg_match(calledNum, this->dest_number.empty() ? this->username.c_str() : this->dest_number.c_str()) << endl;
 	cout << "** - check ip : " << this->src_ip.checkIP(htonl(sipSaddr)) << endl;
 	*/
-	if(!(((this->popup_on == "200" && sipResponseNum == 200) ||
-	      (this->popup_on == "183/180" && (sipResponseNum == 183 || sipResponseNum == 180)) ||
-	      (this->popup_on == "183/180_200" && (sipResponseNum == 200 || (sipResponseNum == 183 || sipResponseNum == 180)))) &&
-	     reg_match(calledNum, this->dest_number.empty() ? this->username.c_str() : this->dest_number.c_str()) &&
+	if(!(reg_match(calledNum, this->dest_number.empty() ? this->username.c_str() : this->dest_number.c_str()) &&
 	     (this->non_numeric_caller_id ||
 	      this->isNumericId(calledNum)) &&
 	     this->src_ip.checkIP(htonl(sipSaddr)))) {
@@ -1516,6 +1513,7 @@ bool ManagerClientThread_screen_popup::parseUserPassword() {
 		"select u.username,\
 			u.name,\
 			u.dest_number,\
+			u.allow_change_settings,\
 			p.name as profile_name,\
 			p.auto_popup,\
 			p.show_ip,\
@@ -1540,6 +1538,7 @@ bool ManagerClientThread_screen_popup::parseUserPassword() {
 		username = row["username"];
 		name = row["name"];
 		dest_number = row["dest_number"];
+		allow_change_settings = atoi(row["allow_change_settings"].c_str());
 		profile_name = row["profile_name"];
 		auto_popup = atoi(row["auto_popup"].c_str());
 		show_ip = atoi(row["show_ip"].c_str());
@@ -1583,8 +1582,24 @@ bool ManagerClientThread_screen_popup::parseUserPassword() {
 							rslt = false;
 							strcpy(rsltString, "login_failed error:[[Maximum connection limit reached.]]\n");
 						} else {
-							sprintf(rsltString, "login_ok auto_popup:[[%i]] show_ip:[[%i]] app_launch:[[%s]] args_or_url:[[%s]] key:[[%s]]\n", 
-								auto_popup, show_ip, app_launch.c_str(), app_launch_args_or_url.c_str(), key);
+							sprintf(rsltString, 
+								"login_ok "
+								"auto_popup:[[%i]] "
+								"popup_on_200:[[%i]] "
+								"popup_on_18:[[%i]] "
+								"show_ip:[[%i]] "
+								"app_launch:[[%s]] "
+								"args_or_url:[[%s]] "
+								"key:[[%s]] "
+								"allow_change_settings:[[%i]]\n", 
+								auto_popup, 
+								popup_on == "200" || popup_on == "183/180_200",
+								popup_on == "183/180" || popup_on == "183/180_200",
+								show_ip, 
+								app_launch.c_str(), 
+								app_launch_args_or_url.c_str(), 
+								key, 
+								allow_change_settings);
 						}
 					} else {
 						rslt = false;

@@ -55,6 +55,7 @@ private:
 	string username;
 	string name;
 	string dest_number;
+	bool allow_change_settings;
 	string profile_name;
 	bool auto_popup;
 	bool show_ip;
