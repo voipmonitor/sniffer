@@ -43,6 +43,7 @@ extern int opt_savewav_force;
 int dtmfdebug = 0;
 
 extern unsigned int graph_delimiter;
+extern unsigned int graph_mark;
 
 using namespace std;
 
@@ -1131,7 +1132,12 @@ RTP::update_stats() {
 	s->lastTimeRecJ = header->ts;
 	s->lastTimeStamp = getTimestamp();
 	s->lastTimeStampJ = getTimestamp();
-	
+
+	// store mark bit in graph file
+	if(getMarker() and owner and (owner->flags & FLAG_SAVEGRAPH) and this->graph.isOpen()) {
+		this->graph.write((char*)&graph_mark, 4);
+	}
+		
 	if((lost > stats.last_lost) > 0) {
 		stats.lost += lost - stats.last_lost;
 		if((lost - stats.last_lost) < 10)
@@ -1143,8 +1149,6 @@ RTP::update_stats() {
 			nintervals += lost - stats.last_lost;
 			while(nintervals > 20) {
 				if(this->graph.isOpen()) {
-					//gfile << endl;
-					//gfile.write("\n", 1);
 					this->graph.write((char*)&graph_delimiter, 4);
 				}
 				nintervals -= 20;
@@ -1155,11 +1159,9 @@ RTP::update_stats() {
 			if(this->graph.isOpen()) {
 				if(nintervals > 20) {
 					/* after 20 packets, send new line */
-					//gfileGZ << endl;
 					this->graph.write((char*)&graph_delimiter, 4);
 					nintervals -= 20;
 				}
-				//gfileGZ << s->fdelay << ":" << jitter << ";";
 				float tmp = s->fdelay;
 				if(tmp == graph_delimiter) tmp = graph_delimiter - 1;
 				this->graph.write((char*)&tmp, 4);
