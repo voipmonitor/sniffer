@@ -1915,7 +1915,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 		}
 		return NULL;
 	}
-	
+
 	// check if the packet is SIP ports or SKINNY ports
 	if(sipportmatrix[source] || sipportmatrix[dest]) {
 
@@ -3427,9 +3427,38 @@ void *pcap_read_thread_func(void *arg) {
 			header_ip = (struct iphdr2 *) ((char*)header_ip + sizeof(iphdr2));
 		} else if(header_ip->protocol == IPPROTO_GRE) {
 			// gre protocol 
-			//struct gre_hdr *grehdr = (struct gre_hdr *)((char*)header_ip + sizeof(iphdr2));
-			//printf("[%d] [%d] [%x]\n", grehdr->version, grehdr->protocol, grehdr->protocol);
-			exit(0);
+			char gre[8];
+			uint16_t a, b;
+			struct ether_header* header_eth;
+			int offset, protocol;
+			// if anyone know how to make network to hostbyte nicely, redesign this
+			a = ntohs(*(uint16_t*)((char*)header_ip + sizeof(iphdr2)));
+			b = ntohs(*(uint16_t*)((char*)header_ip + sizeof(iphdr2) + 2));
+			memcpy(gre, &a, 2);
+			memcpy(gre + 2, &b, 2);
+
+			struct gre_hdr *grehdr = (struct gre_hdr *)gre;
+			if(grehdr->version == 0 and grehdr->protocol == 0x6558) {
+				header_eth = (struct ether_header *)((char*)header_ip + sizeof(iphdr2) + 8);
+				if(header_eth->ether_type == 129) {
+					// VLAN tag
+					offset = 4;
+					//XXX: this is very ugly hack, please do it right! (it will work for "08 00" which is IPV4 but not for others! (find vlan_header or something)
+					protocol = *((char*)header_eth + 2);
+				} else {
+					offset = 0;
+					protocol = header_eth->ether_type;
+				}
+				if(protocol == IPPROTO_UDP or protocol == IPPROTO_TCP) {
+					offset += sizeof(struct ether_header);
+					header_ip = (struct iphdr2 *) ((char*)header_eth + offset);
+				}
+				continue;
+			} else if(grehdr->version == 0 and grehdr->protocol == 0x800) {
+				header_ip = (struct iphdr2 *) ((char*)header_ip + sizeof(iphdr2) + 4);
+			} else {
+				continue;
+			}
 		}
 
 		header_udp = &header_udp_tmp;
@@ -3957,6 +3986,10 @@ headerip:
 				}
 				offset += sizeof(struct ether_header);
 				header_ip = (struct iphdr2 *) ((char*)header_eth + offset);
+				goto headerip;
+			} else if(grehdr->version == 0 and grehdr->protocol == 0x800) {
+				offset += sizeof(iphdr2) + 4;
+				header_ip = (struct iphdr2 *) ((char*)header_ip + sizeof(iphdr2) + 4);
 				goto headerip;
 			} else {
 				if(destroy) { free(header); free(packet);};

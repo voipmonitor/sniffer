@@ -1,5 +1,15 @@
+9.4 beta2 25.2.2014
+===================
+- fix extern type which caused to upgrade database rtpport even though it was not enabled
+- store RTP mark bit into .graph file so the GUI will show where mark bits are set 
+- implement new cdr.a_last_rtp_from_end and cdr.b_last_rtp_from_end which stores number of seconds from last RTP packet to the end of call. This will be used to find calls where any of side ends RTP stream sooner. Such situation is not yet detectable without knowing those parameters.
+- add support for other GRE encapsulation (for IP protocol)
+- repair table mysql.proc at every sniffer start (it is broken after hard restart very often...) 
+- fix redundant reconnect to db - flush previous query before try mysql_ping (problem since 9.1)
+
+
 9.4 beta1 25.2.2014
-==================
+===================
 - Optimize SIP parser which is now much faster by factors (avoid rereading packets when serching for tags)
 - shorten register sip message timeout from 30 to 5 seconds (helps to manage RAM when there is REGISTER flood) and add option sip-register-timeout so it can be set to custom seconds
 - when mirroring packets send id_sensor and DLT number on connect so configuration option mirror_bind_dlt is not needed anymore and allows to set id_sensor for each sender. It is not backward compatible with older versions thus the receiver must be >= 9.4 beta1
