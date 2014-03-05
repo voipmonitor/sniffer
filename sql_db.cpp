@@ -947,6 +947,7 @@ MySqlStore_process::MySqlStore_process(int id, const char *host, const char *use
 	this->id = id;
 	this->terminated = false;
 	this->ignoreTerminating = false;
+	this->concatLimit = 50;
 	this->sqlDb = new SqlDb_mysql();
 	this->sqlDb->setConnectParameters(host, user, password, database);
 	this->sqlDb->connect();
@@ -976,7 +977,6 @@ void MySqlStore_process::store() {
 	}
 	while(1) {
 		int size = 0;
-		int msgs = 50;
 		string queryqueue = "";
 		while(1) {
 			this->lock();
@@ -1004,7 +1004,7 @@ void MySqlStore_process::store() {
 			if(query_len && query[query_len - 1] != ';') {
 				queryqueue.append("; ");
 			}
-			if(size < msgs) {
+			if(size < this->concatLimit) {
 				size++;
 			} else {
 				this->sqlDb->query(string("drop procedure if exists ") + insert_funcname);
@@ -1040,6 +1040,10 @@ void MySqlStore_process::unlock() {
 
 void MySqlStore_process::setIgnoreTerminating(bool ignoreTerminating) {
 	this->ignoreTerminating = ignoreTerminating;
+}
+
+void MySqlStore_process::setConcatLimit(int concatLimit) {
+	this->concatLimit = concatLimit;
 }
 
 MySqlStore::MySqlStore(const char *host, const char *user, const char *password, const char *database) {
@@ -1081,6 +1085,11 @@ void MySqlStore::unlock(int id) {
 void MySqlStore::setIgnoreTerminating(int id, bool ignoreTerminating) {
 	MySqlStore_process* process = this->find(id);
 	process->setIgnoreTerminating(ignoreTerminating);
+}
+
+void MySqlStore::setConcatLimit(int id, int concatLimit) {
+	MySqlStore_process* process = this->find(id);
+	process->setConcatLimit(concatLimit);
 }
 
 MySqlStore_process *MySqlStore::find(int id) {

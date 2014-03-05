@@ -298,6 +298,7 @@ public:
 	void lock();
 	void unlock();
 	void setIgnoreTerminating(bool ignoreTerminating);
+	void setConcatLimit(int concatLimit);
 	int getId() {
 		return(this->id);
 	}
@@ -309,6 +310,7 @@ public:
 	}
 private:
 	int id;
+	int concatLimit;
 	pthread_t thread;
 	pthread_mutex_t lock_mutex;
 	SqlDb *sqlDb;
@@ -326,6 +328,7 @@ public:
 	void lock(int id);
 	void unlock(int id);
 	void setIgnoreTerminating(int id, bool ignoreTerminating);
+	void setConcatLimit(int id, int concatLimit);
 	MySqlStore_process *find(int id);
 	MySqlStore_process *check(int id);
 	size_t getAllSize(bool lock = true);
