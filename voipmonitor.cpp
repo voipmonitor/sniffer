@@ -3038,7 +3038,7 @@ int main(int argc, char *argv[]) {
 			}
 		}
 		if(setHttpPorts) {
-			sqlStore->setConcatLimit(STORE_PROC_ID_HTTP, 200);
+			sqlStore->setConcatLimit(STORE_PROC_ID_HTTP, 400);
 			tcpReassembly = new TcpReassembly;
 			tcpReassembly->setEnableHttpForceInit();
 			tcpReassembly->setEnableCrazySequence();
