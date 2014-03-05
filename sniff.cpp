@@ -2520,7 +2520,8 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 			   (call->type == MESSAGE ?
 				call->lastSIPresponseNum != 487 :
 				(call->lastSIPresponseNum != 487 || (call->new_invite_after_lsr487 && lastSIPresponseNum == 200)) &&
-				!call->seeninviteok) &&
+				!call->seeninviteok &&
+			        !(call->lastSIPresponseNum / 100 == 5 && lastSIPresponseNum / 100 == 5)) &&
 			   !(call->cancelcseq[0] && cseq && cseqlen < 32 && strncmp(cseq, call->cancelcseq, cseqlen) == 0)) {
 				strncpy(call->lastSIPresponse, lastSIPresponse, 128);
 				call->lastSIPresponseNum = lastSIPresponseNum;
