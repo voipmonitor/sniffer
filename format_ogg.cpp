@@ -14,7 +14,7 @@
 #include "format_slinear.h"
 #include "format_ogg.h"
 
-int ogg_header(FILE *f, struct vorbis_desc *tmp)
+int ogg_header(FILE *f, struct vorbis_desc *tmp, int stereo, int samplerate, float quality)
 {
         ogg_packet header;
         ogg_packet header_comm;
@@ -22,7 +22,8 @@ int ogg_header(FILE *f, struct vorbis_desc *tmp)
 
         vorbis_info_init(&tmp->vi);
 
-        if (vorbis_encode_init_vbr(&tmp->vi, 1, 8000, 0.4)) {
+	//quality 0.4 
+        if (vorbis_encode_init_vbr(&tmp->vi, (stereo ? 2 : 1), samplerate, quality)) {
                 syslog(LOG_ERR, "Unable to initialize Vorbis encoder!\n");
                 return -1;
         }
@@ -168,6 +169,44 @@ static int ogg_write(struct vorbis_desc *s, FILE *f, short *data)
         return 0;
 }
 
+/* Requires little endian data (currently) */
+static void ogg_write2(struct vorbis_desc *s, FILE *f, char *buf, int bytes, int bigendian)
+{
+	float **buffer;
+	int i,j;
+	int channels = s->vi.channels;
+	int samples = bytes/(2*channels);
+
+	buffer = vorbis_analysis_buffer(&s->vd, samples);
+
+	if(bigendian)
+	{
+		for(i=0; i < samples; i++)
+		{
+			for(j=0; j < channels; j++)
+			{
+				buffer[j][i]=((buf[2*(i*channels + j)]<<8) |
+						      (0x00ff&(int)buf[2*(i*channels + j)+1]))/32768.f;
+			}
+		}
+	}
+	else
+	{
+		for(i=0; i < samples; i++)
+		{
+			for(j=0; j < channels; j++)
+			{
+				buffer[j][i]=((buf[2*(i*channels + j) + 1]<<8) | (0x00ff&(int)buf[2*(i*channels + j)]))/32768.f;
+			}
+		}
+	}
+
+	vorbis_analysis_wrote(&s->vd, samples);
+
+        write_stream(s, f);
+
+}
+
 
 void write_stream_live(struct vorbis_desc *s, std::queue <char> *spybuffer)
 {
@@ -229,8 +268,8 @@ static void ogg_close(struct vorbis_desc *s, FILE *f)
 	//ogg_sync_destroy(&s->oy);
 }
 
-
-int ogg_mix(char *in1, char *in2, char *out) {
+int ogg_mix(char *in1, char *in2, char *out, int stereo, int samplerate, double quality) {
+	printf("stereo[%d]\n", stereo);
 	FILE *f_in1 = NULL;
 	FILE *f_in2 = NULL;
 	FILE *f_out = NULL;
@@ -271,7 +310,7 @@ int ogg_mix(char *in1, char *in2, char *out) {
 	setvbuf(f_out, f_out_buffer, _IOFBF, 32768);
 
 	vorbis_desc ogg;
-	ogg_header(f_out, &ogg);
+	ogg_header(f_out, &ogg, stereo, samplerate, quality);
 
 	fseek(f_in1, 0, SEEK_END);
 	file_size1 = ftell(f_in1);
@@ -322,20 +361,41 @@ int ogg_mix(char *in1, char *in2, char *out) {
 		p2 = f2 = 0;
 	}
 
+	short int zero = 0;
 	while(p1 < f1 || p2 < f2 ) {
 		if(p1 < f1 && p2 < f2) {
-			slinear_saturated_add((short int*)p1, (short int*)p2);
-			ogg_write(&ogg, f_out, (short int*)p1);
-			//fwrite(p1, 2, 1, f_out);
+			if(stereo) {
+				char buf[4];
+				memcpy(buf, p1, 2);
+				memcpy(buf + 2, p2, 2);
+				ogg_write2(&ogg, f_out, buf, 4, 0);
+			} else {
+				slinear_saturated_add((short int*)p1, (short int*)p2);
+				ogg_write(&ogg, f_out, (short int*)p1);
+			}
 			p1 += 2;
 			p2 += 2;
 		} else if ( p1 < f1 ) {
-			//fwrite(p1, 2, 1, f_out);
-			ogg_write(&ogg, f_out, (short int*)p1);
+			if(stereo) {
+				char buf[4];
+				memcpy(buf, p1, 2);
+				memcpy(buf + 2, &zero, 2);
+				ogg_write2(&ogg, f_out, buf, 4, 0);
+			} else {
+				ogg_write(&ogg, f_out, (short int*)p1);
+				ogg_write(&ogg, f_out, &zero);
+			}
 			p1 += 2;
 		} else {
-			ogg_write(&ogg, f_out, (short int*)p2);
-			//fwrite(p2, 2, 1, f_out);
+			if(stereo) {
+				char buf[4];
+				memcpy(buf, p2, 2);
+				memcpy(buf + 2, &zero, 2);
+				ogg_write2(&ogg, f_out, buf, 4, 0);
+			} else {
+				ogg_write(&ogg, f_out, (short int*)p2);
+				ogg_write(&ogg, f_out, &zero);
+			}
 			p2 += 2;
 		}
 	}

@@ -132,6 +132,10 @@ extern CustPhoneNumberCache *custPnCache;
 extern int opt_onewaytimeout;
 extern int opt_saveaudio_reversestereo;
 
+extern int opt_saveaudio_stereo;
+extern int opt_saveaudio_reversestereo;
+extern float opt_saveaudio_oggquality;
+
 SqlDb *sqlDbSaveCall = NULL;
 bool existsColumnCalldateInCdrNext = true;
 bool existsColumnCalldateInCdrRtp = true;
@@ -1375,9 +1379,9 @@ Call::convertRawToWav() {
 			break;
 		case FORMAT_OGG:
 			if(!opt_saveaudio_reversestereo) {
-				ogg_mix(wav0, wav1, out);
+				ogg_mix(wav0, wav1, out, opt_saveaudio_stereo, samplerate, opt_saveaudio_oggquality);
 			} else {
-				ogg_mix(wav1, wav0, out);
+				ogg_mix(wav1, wav0, out, opt_saveaudio_stereo, samplerate, opt_saveaudio_oggquality);
 			}
 			break;
 		}
@@ -1390,7 +1394,7 @@ Call::convertRawToWav() {
 			wav_mix(wav0, NULL, out, samplerate);
 			break;
 		case FORMAT_OGG:
-			ogg_mix(wav0, NULL, out);
+			ogg_mix(wav0, NULL, out, opt_saveaudio_stereo, samplerate, opt_saveaudio_oggquality);
 			break;
 		}
 		unlink(wav0);
@@ -1401,7 +1405,7 @@ Call::convertRawToWav() {
 			wav_mix(wav1, NULL, out, samplerate);
 			break;
 		case FORMAT_OGG:
-			ogg_mix(wav1, NULL, out);
+			ogg_mix(wav1, NULL, out, opt_saveaudio_stereo, samplerate, opt_saveaudio_oggquality);
 			break;
 		}
 		unlink(wav1);

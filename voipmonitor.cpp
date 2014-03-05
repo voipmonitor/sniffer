@@ -268,6 +268,8 @@ string opt_mos_lqo_ref16 = "/usr/local/share/voipmonitor/audio/mos_lqe_original_
 regcache *regfailedcache;
 int opt_onewaytimeout = 15;
 int opt_saveaudio_reversestereo = 0;
+float opt_saveaudio_oggquality = 0.4;
+int opt_saveaudio_stereo = 1;
 int opt_register_timeout = 5;
 unsigned int opt_maxpoolsize = 0;
 unsigned int opt_maxpooldays = 0;
@@ -1838,8 +1840,14 @@ int load_config(char *fname) {
 	if((value = ini.GetValue("general", "onewaytimeout", NULL))) {
 		opt_onewaytimeout = atoi(value);
 	}
+	if((value = ini.GetValue("general", "saveaudio_stereo", NULL))) {
+		opt_saveaudio_stereo = yesno(value);
+	}
 	if((value = ini.GetValue("general", "saveaudio_reversestereo", NULL))) {
 		opt_saveaudio_reversestereo = yesno(value);
+	}
+	if((value = ini.GetValue("general", "ogg_quality", NULL))) {
+		opt_saveaudio_oggquality = atof(value);
 	}
 	if((value = ini.GetValue("general", "mysqlloadconfig", NULL))) {
 		opt_mysqlloadconfig = yesno(value);

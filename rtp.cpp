@@ -1093,6 +1093,7 @@ RTP::update_stats() {
 	int adelay = 0;
 	struct timeval tsdiff;	
 	double tsdiff2;
+	static double mx = 0;
 
 //	printf("seq[%d] lseq[%d] lost[%d], ((s->cycles[%d] + s->max_seq[%d] - (s->base_seq[%d] + 1)) - s->received[%d]);\n", seq, last_seq, lost, s->cycles, s->max_seq, s->base_seq, s->received);
 
@@ -1108,6 +1109,12 @@ RTP::update_stats() {
 	tsdiff2 = timeval_subtract(&tsdiff, header->ts, s->lastTimeRec) ? -timeval2micro(tsdiff)/1000.0 : timeval2micro(tsdiff)/1000.0;
 
 	long double transit = tsdiff2 - (double)(getTimestamp() - s->lastTimeStamp)/((double)samplerate/1000.0);
+	mx += transit;
+	if(getSSRC() == 0x60fcc365 ) {
+		printf("%f  %Lf %f %d %f\n", tsdiff2, transit, (double)(getTimestamp() - s->lastTimeStamp), getSeqNum(), mx);
+	}
+
+	
 	
 	if(abs((int)transit) > 5000) {
 		/* timestamp skew, discard delay, it is possible that timestamp changed  */

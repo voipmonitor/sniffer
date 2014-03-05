@@ -22,8 +22,8 @@ struct vorbis_desc {    /* format specific parameters */
         int eos;
 };
 
-int ogg_mix(char *, char *, char *);
-int ogg_header(FILE *, struct vorbis_desc *);
+int ogg_mix(char *in1, char *in2, char *out, int stereo, int samplerate, double quality);
+int ogg_header(FILE *f, struct vorbis_desc *tmp, int stereo, int samplerate, float quality);
 void write_stream_live(struct vorbis_desc *s, std::queue <char> spybuffer);
 int ogg_write_live(struct vorbis_desc *s, std::queue <char> *spybuffer, short *data);
 int ogg_header_live(std::queue <char> *spybuffer, struct vorbis_desc *tmp);
