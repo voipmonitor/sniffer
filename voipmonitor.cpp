@@ -3046,7 +3046,9 @@ int main(int argc, char *argv[]) {
 			}
 		}
 		if(setHttpPorts) {
-			sqlStore->setConcatLimit(STORE_PROC_ID_HTTP, 400);
+			for(int i = 0; i < STORE_PROC_ID_HTTP_MAX; i++) {
+				sqlStore->setConcatLimit(STORE_PROC_ID_HTTP_1 + i, 400);
+			}
 			tcpReassembly = new TcpReassembly;
 			tcpReassembly->setEnableHttpForceInit();
 			tcpReassembly->setEnableCrazySequence();
@@ -3164,7 +3166,9 @@ int main(int argc, char *argv[]) {
 				} else {
 				 
 					if(opt_pb_read_from_file[0] && opt_enable_tcpreassembly) {
-						sqlStore->setIgnoreTerminating(STORE_PROC_ID_HTTP, true);
+						for(int i = 0; i < STORE_PROC_ID_HTTP_MAX; i++) {
+							sqlStore->setIgnoreTerminating(STORE_PROC_ID_HTTP_1 + i, true);
+						}
 						if(opt_tcpreassembly_thread) {
 							tcpReassembly->setIgnoreTerminating(true);
 						}
@@ -3220,7 +3224,9 @@ int main(int argc, char *argv[]) {
 					
 					if(opt_pb_read_from_file[0] && opt_enable_tcpreassembly) {
 						sleep(2);
-						sqlStore->setIgnoreTerminating(STORE_PROC_ID_HTTP, false);
+						for(int i = 0; i < STORE_PROC_ID_HTTP_MAX; i++) {
+							sqlStore->setIgnoreTerminating(STORE_PROC_ID_HTTP_1 + i, false);
+						}
 						sleep(2);
 					}
 					

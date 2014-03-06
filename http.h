@@ -78,6 +78,7 @@ private:
 
 class HttpData : public TcpReassemblyProcessData {
 public:
+	HttpData();
 	~HttpData();
 	void processData(u_int32_t ip_src, u_int32_t ip_dst,
 			 u_int16_t port_src, u_int16_t port_dst,
@@ -89,6 +90,7 @@ public:
 	string getTag(string &data, const char *tag);
 	string getJsonValue(string &data, const char *valueName);
 private:
+	unsigned int counterProcessData;
 	HttpCache cache;
 };
 

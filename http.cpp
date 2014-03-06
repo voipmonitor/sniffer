@@ -13,6 +13,10 @@ extern MySqlStore *sqlStore;
 SqlDb *sqlDbSaveHttp = NULL;
 
 
+HttpData::HttpData() {
+	this->counterProcessData = 0;
+}
+
 HttpData::~HttpData() {
 	this->cache.clear();
 }
@@ -21,6 +25,8 @@ void HttpData::processData(u_int32_t ip_src, u_int32_t ip_dst,
 			   u_int16_t port_src, u_int16_t port_dst,
 			   TcpReassemblyData *data,
 			   bool debugSave) {
+ 
+	++this->counterProcessData;
 
 	if(!sqlDbSaveHttp) {
 		sqlDbSaveHttp = createSqlObject();
@@ -254,9 +260,13 @@ void HttpData::processData(u_int32_t ip_src, u_int32_t ip_dst,
 			}
 		}
 		if(queryInsert.length()) {
-			sqlStore->lock(STORE_PROC_ID_HTTP);
-			sqlStore->query(queryInsert.c_str(), STORE_PROC_ID_HTTP);
-			sqlStore->unlock(STORE_PROC_ID_HTTP);
+			int storeId = STORE_PROC_ID_HTTP_1 + 
+				      (sqlStore->getSize(STORE_PROC_ID_HTTP_1) > 1000 ? 
+					counterProcessData % STORE_PROC_ID_HTTP_MAX : 
+					0);
+			sqlStore->lock(storeId);
+			sqlStore->query(queryInsert.c_str(), storeId);
+			sqlStore->unlock(storeId);
 		}
 	}
 	delete data;

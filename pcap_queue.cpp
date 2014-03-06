@@ -913,9 +913,16 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 			if(sizeSQLq >= 0) {
 				outStr << " Cl:" << sizeSQLq;
 			}
-			sizeSQLq = sqlStore->getSize(STORE_PROC_ID_HTTP);
-			if(sizeSQLq >= 0) {
-				outStr << " H:" << sizeSQLq;
+			for(int i = 0; i < STORE_PROC_ID_HTTP_MAX; i++) {
+				sizeSQLq = sqlStore->getSize(STORE_PROC_ID_HTTP_1 + i);
+				if(sizeSQLq >= (i ? 1 : 0)) {
+					if(i) {
+						outStr << " H" << (i+1) << ":";
+					} else {
+						outStr << " H:";
+					}
+					outStr << sizeSQLq;
+				}
 			}
 			if(opt_ipaccount) {
 				sizeSQLq = sqlStore->getSizeMult(12,
