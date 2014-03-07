@@ -2959,6 +2959,7 @@ Calltable::hashAdd(in_addr_t addr, unsigned short port, Call* call, int iscaller
 	hash_node *node = NULL;
 
 	h = tuplehash(addr, port);
+	allowrelation = 1;
 
 	// check if there is not already call in hash 
 	for (node = (hash_node *)calls_hash[h]; node != NULL; node = node->next) {
