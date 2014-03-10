@@ -1256,6 +1256,12 @@ Call *new_skinny_channel(int state, char *data, int datalen, struct pcap_pkthdr 
 	ipfilter->add_call_flags(&(call->flags), ntohl(saddr), ntohl(daddr));
 	strncpy(call->fbasename, callidstr, MAX_FNAME - 1);
 
+	if(call->flags & FLAG_SKIPCDR) {
+		if(verbosity > 1)
+			syslog(LOG_NOTICE, "call skipped due to ip or tel capture rules\n");
+		return NULL;
+	}       
+
 	if(call->flags & (FLAG_SAVESIP | FLAG_SAVERTP | FLAG_SAVEWAV) || opt_savewav_force) {
 		static string lastdir;
 		if(lastdir != call->dirname()) {
