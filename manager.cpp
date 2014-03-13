@@ -1415,18 +1415,29 @@ ManagerClientThread::ManagerClientThread(int client, const char *type, const cha
 void ManagerClientThread::run() {
 	unsigned int counter = 0;
 	bool disconnect = false;
+	int flag = 0;
+	setsockopt(client, IPPROTO_TCP, TCP_NODELAY, (char *) &flag, sizeof(int));
+	int flushBuffLength = 1000;
+	char *flushBuff = new char[flushBuffLength];
+	memset(flushBuff, '_', flushBuffLength - 1);
+	flushBuff[flushBuffLength - 1] = '\n';
 	while(true && !terminating && !disconnect) {
+		string rsltString;
 		this->lock_responses();
-		while(this->responses.size() && !disconnect) {
-			string rsltString = this->responses.front();
+		if(this->responses.size()) {
+			rsltString = this->responses.front();
 			this->responses.pop();
-			if(send(client, rsltString.c_str(), rsltString.length(), 0) == -1) {
-				disconnect = true;
-			}
 		}
 		this->unlock_responses();
+		if(!rsltString.empty()) {
+			if(send(client, rsltString.c_str(), rsltString.length(), 0) == -1) {
+				disconnect = true;
+			} else {
+				send(client, flushBuff, flushBuffLength, 0);
+			}
+		}
 		++counter;
-		if((counter % 50) == 0 && !disconnect) {
+		if((counter % 5) == 0 && !disconnect) {
 			if(send(client, "ping\n", 5, 0) == -1) {
 				disconnect = true;
 			}
@@ -1435,6 +1446,7 @@ void ManagerClientThread::run() {
 	}
 	close(client);
 	finished = true;
+	delete [] flushBuff;
 }
 
 ManagerClientThread_screen_popup::ManagerClientThread_screen_popup(int client, const char *command, int commandLength) 
