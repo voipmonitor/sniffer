@@ -2518,7 +2518,8 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 			// save lastSIPresponseNum but only if previouse was not 487 (CANCEL) and call was not answered 
 			if(lastSIPresponseNum != 0 && lastSIPresponse[0] != '\0' && 
 			   (call->type == MESSAGE ?
-				call->lastSIPresponseNum != 487 :
+				call->lastSIPresponseNum != 487 &&
+				lastSIPresponseNum > call->lastSIPresponseNum :
 				(call->lastSIPresponseNum != 487 || (call->new_invite_after_lsr487 && lastSIPresponseNum == 200)) &&
 				!call->seeninviteok &&
 			        !(call->lastSIPresponseNum / 100 == 5 && lastSIPresponseNum / 100 == 5)) &&
