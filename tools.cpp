@@ -1189,7 +1189,7 @@ void ParsePacket::parseData(char *data, unsigned long datalen, bool doClear) {
 	if(doClear) {
 		clear();
 	}
-	sip = isSipContent(data, datalen - 1);
+	sip = datalen ? isSipContent(data, datalen - 1) : false;
 	ppContent *content;
 	unsigned int namelength;
 	for(unsigned long i = 0; i < datalen; i++) {
