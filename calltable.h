@@ -68,6 +68,21 @@ typedef struct {
 	unsigned int daddr;
 } dtmfq;
 
+struct hash_node_call {
+	hash_node_call *next;
+	Call *call;
+	int iscaller;
+	u_int16_t is_rtcp;
+	u_int16_t is_fax;
+};
+
+struct hash_node {
+	hash_node *next;
+	hash_node_call *calls;
+	u_int32_t addr;
+	u_int16_t port;
+};
+
 
 /**
   * This class implements operations on call
@@ -125,7 +140,6 @@ public:
 	unsigned long long flags1;	//!< bit flags used to store max 64 flags 
 	volatile unsigned int rtppcaketsinqueue;
 	unsigned int unrepliedinvite;
-	Call *relationcall;
 	unsigned int ps_drop;
 	unsigned int ps_ifdrop;
 	char forcemark[2];
@@ -577,13 +591,13 @@ public:
 	 * @brief find call
 	 *
 	*/
-	Call *hashfind_by_ip_port(in_addr_t addr, unsigned short port, int *iscaller, int *isrtcp, int *is_fax);
+	hash_node_call *hashfind_by_ip_port(in_addr_t addr, unsigned short port);
 
 	/**
 	 * @brief remove call from hash
 	 *
 	*/
-	void hashRemove(in_addr_t addr, unsigned short port);
+	void hashRemove(Call *call, in_addr_t addr, unsigned short port);
 
 	/**
 	 * @brief find call
@@ -608,16 +622,6 @@ private:
 	pthread_mutex_t flock;		//!< mutex locking calls_queue
 	pthread_mutex_t calls_listMAPlock;
 //	pthread_mutexattr_t   calls_listMAPlock_attr;
-
-	struct hash_node {
-		Call *call;
-		hash_node *next;
-		int iscaller;
-		u_int32_t addr;
-		u_int16_t port;
-		u_int16_t is_rtcp;
-		u_int16_t is_fax;
-	};
 
 	void *calls_hash[MAXNODE];
 

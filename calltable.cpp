@@ -231,7 +231,6 @@ Call::Call(char *call_id, unsigned long call_id_len, time_t time, void *ct) :
 	sipcalledport = 0;
 	fname2 = 0;
 	skinny_partyid = 0;
-	relationcall = NULL;
 	pthread_mutex_init(&buflock, NULL);
 	pthread_mutex_init(&listening_worker_run_lock, NULL);
 	caller_sipdscp = 0;
@@ -276,9 +275,9 @@ Call::hashRemove() {
 	Calltable *ct = (Calltable *)calltable;
 
 	for(i = 0; i < ipport_n; i++) {
-		ct->hashRemove(this->addr[i], this->port[i]);
+		ct->hashRemove(this, this->addr[i], this->port[i]);
 		if(opt_rtcp) {
-			ct->hashRemove(this->addr[i], this->port[i] + 1);
+			ct->hashRemove(this, this->addr[i], this->port[i] + 1);
 		}
 
 	}
@@ -382,12 +381,6 @@ Call::removeRTP() {
 
 /* destructor */
 Call::~Call(){
-	if(relationcall) {
-		// break relation 
-		relationcall->relationcall = NULL;
-		relationcall = NULL;
-	}
-
 	if(skinny_partyid) {
 		((Calltable *)calltable)->skinny_partyID.erase(skinny_partyid);
 	}
@@ -2957,6 +2950,7 @@ void
 Calltable::hashAdd(in_addr_t addr, unsigned short port, Call* call, int iscaller, int is_rtcp, int is_fax, int allowrelation) {
 	u_int32_t h;
 	hash_node *node = NULL;
+	hash_node_call *node_call = NULL;
 
 	h = tuplehash(addr, port);
 	//allowrelation = 1;
@@ -2965,62 +2959,90 @@ Calltable::hashAdd(in_addr_t addr, unsigned short port, Call* call, int iscaller
 	for (node = (hash_node *)calls_hash[h]; node != NULL; node = node->next) {
 		if ((node->addr == addr) && (node->port == port)) {
 			// there is already some call which is receiving packets to the same IP:port
-			// this can happen if the old call is waiting for hangup and is still in memory
-			// replace the node but also store the last call to new call and vice versa 
-			if(allowrelation && call != node->call) {
-				//syslog(LOG_NOTICE, "allowrelation %p %p\n", call, node->call);
-				node->call->relationcall = call;
-				call->relationcall = node->call;
+			// this can happen if the old call is waiting for hangup and is still in memory or two SIP different sessions shares the same call.
+
+			int found = 0;
+			for (node_call = (hash_node_call *)node->calls; node_call != NULL; node_call = node_call->next) {
+				node_call->is_fax = is_fax;
+				if(node_call->call == call) {
+					found = 1;
+				}
 			}
-			if(call != node->call) {
-				// just replace this IP:port to new call
-				node->addr = addr;
-				node->port = port;
-				node->call = call;
-				node->iscaller = iscaller;
-				node->is_rtcp = is_rtcp;
-				node->is_fax = is_fax;
-				return;
-			// or it can happen if voipmonitor is sniffing SIP proxy which forwards SIP
-			} else {
-				// packets to another SIP proxy with the same SDP ports
-				// in this case just return 
-				node->is_fax = is_fax;
-				return;
+			if(!found) {
+				// the same ip/port is shared with some other call which is not yet in node - add it
+				hash_node_call *node_call_new = (hash_node_call*)malloc(sizeof(hash_node_call));
+				node_call_new->next = node->calls;
+				node_call_new->call = call;
+				node_call_new->iscaller = iscaller;
+				node_call_new->is_rtcp = is_rtcp;
+				node_call_new->is_fax = is_fax;
+
+				//insert at first position
+				node->calls = node_call_new;
+				
 			}
+			return;
 		}
 	}
 
-	// adding to hash at first position
-	node = (hash_node *)malloc(sizeof(hash_node));
+	// addr / port combination not found - add it to hash at first position
+
+	node_call = (hash_node_call*)malloc(sizeof(hash_node_call));
+	node_call->next = NULL;
+	node_call->call = call;
+	node_call->iscaller = iscaller;
+	node_call->is_rtcp = is_rtcp;
+	node_call->is_fax = is_fax;
+
+	node = (hash_node*)malloc(sizeof(hash_node));
 	memset(node, 0x0, sizeof(hash_node));
 	node->addr = addr;
 	node->port = port;
-	node->call = call;
-	node->iscaller = iscaller;
-	node->is_rtcp = is_rtcp;
-	node->is_fax = is_fax;
 	node->next = (hash_node *)calls_hash[h];
+	node->calls = node_call;
 	calls_hash[h] = node;
 }
 
 /* remove node from hash */
 void
-Calltable::hashRemove(in_addr_t addr, unsigned short port) {
+Calltable::hashRemove(Call *call, in_addr_t addr, unsigned short port) {
 	hash_node *node = NULL, *prev = NULL;
+	hash_node_call *node_call = NULL, *prev_call = NULL;
 	int h;
 
 	h = tuplehash(addr, port);
 	for (node = (hash_node *)calls_hash[h]; node != NULL; node = node->next) {
 		if (node->addr == addr && node->port == port) {
-			if (prev == NULL) {
-				calls_hash[h] = node->next;
-				free(node);
-				return;
-			} else {
-				prev->next = node->next;
-				free(node);
-				return;
+			int found = 0;
+			for (node_call = (hash_node_call *)node->calls; node_call != NULL; node_call = node_call->next) {
+				// walk through all calls under the node and check if the call matches
+				if(node_call->call == call) {
+					// call matches - remote the call from node->calls
+					found = 1;
+					if (prev_call == NULL) {
+						node->calls = node_call->next;
+						free(node_call);
+						break; 
+					} else {
+						prev_call->next = node_call->next;
+						free(node_call);
+						break; 
+					}
+					break;
+				}
+				prev_call = node_call;
+			}
+			if(node->calls == NULL) {
+				// node now contains no calls so we can remove it 
+				if (prev == NULL) {
+					calls_hash[h] = node->next;
+					free(node);
+					return;
+				} else {
+					prev->next = node->next;
+					free(node);
+					return;
+				}
 			}
 		}
 		prev = node;
@@ -3059,18 +3081,19 @@ Calltable::mapfind_by_ip_port(in_addr_t addr, unsigned short port, int *iscaller
 }
 
 /* find call in hash */
-Call*
-Calltable::hashfind_by_ip_port(in_addr_t addr, unsigned short port, int *iscaller, int *is_rtcp, int *is_fax) {
+hash_node_call*
+Calltable::hashfind_by_ip_port(in_addr_t addr, unsigned short port) {
 	hash_node *node = NULL;
 	u_int32_t h;
 
 	h = tuplehash(addr, port);
 	for (node = (hash_node *)calls_hash[h]; node != NULL; node = node->next) {
 		if ((node->addr == addr) && (node->port == port)) {
-			*iscaller = node->iscaller;
-			*is_rtcp = node->is_rtcp;
-			*is_fax = node->is_fax;
-			return node->call;
+			return node->calls;
+//			*iscaller = node->iscaller;
+//			*is_rtcp = node->is_rtcp;
+//			*is_fax = node->is_fax;
+//			return node->call;
 		}
 	}
 	return NULL;
@@ -3225,11 +3248,6 @@ Calltable::cleanup( time_t currtime ) {
 			}
 			if(currtime == 0 && call->rtppcaketsinqueue) {
 				syslog(LOG_WARNING, "force destroy call (rtppcaketsinqueue > 0)");
-			}
-			if(call->relationcall) {
-				// break relation 
-				call->relationcall->relationcall = NULL;
-				call->relationcall = NULL;
 			}
 			call->hashRemove();
 			// Close RTP dump file ASAP to save file handles
