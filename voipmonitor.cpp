@@ -3435,6 +3435,7 @@ int main(int argc, char *argv[]) {
 	ipfrag_prune(0, 1);
 	freeMemIpacc();
 	delete regfailedcache;
+	asyncClose.closeAll();
 //	mysql_library_end();
 
 }
