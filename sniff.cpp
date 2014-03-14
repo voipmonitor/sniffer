@@ -1776,9 +1776,9 @@ void process_sdp(Call *call, unsigned int saddr, int source, unsigned int daddr,
 						calltable->hashAdd(alias, tmp_port + 1, call, !iscalled, 1, fax); //add rtcp
 						//calltable->mapAdd(alias, tmp_port + 1, call, !iscalled, 1); //add rtcp
 					}
+				} else if(fax){
+					calltable->hashAdd(alias, tmp_port, call, !iscalled, 0, fax);
 				}
-			} else if(fax){
-				calltable->hashAdd(alias, tmp_port, call, !iscalled, 0, fax);
 			}
 
 			if(opt_sdp_reverse_ipport) {
