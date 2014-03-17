@@ -65,6 +65,7 @@ private:
 	ListIP_wb src_ip;
 	string app_launch;
 	string app_launch_args_or_url;
+	string popup_title;
 };
 
 class ManagerClientThreads {

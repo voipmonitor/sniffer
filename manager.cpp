@@ -1549,7 +1549,8 @@ bool ManagerClientThread_screen_popup::parseUserPassword() {
 			p.src_ip_whitelist,\
 			p.src_ip_blacklist,\
 			p.app_launch,\
-			p.app_launch_args_or_url\
+			p.app_launch_args_or_url,\
+			p.popup_title\
 		 from screen_popup_users u\
 		 join screen_popup_profile p on (p.id=u.profile_id)\
 		 where username=") +
@@ -1583,6 +1584,7 @@ bool ManagerClientThread_screen_popup::parseUserPassword() {
 		src_ip.addBlack(row["src_ip_blacklist"].c_str());
 		app_launch = row["app_launch"];
 		app_launch_args_or_url = row["app_launch_args_or_url"];
+		popup_title = row["popup_title"];
 		if(!opt_php_path[0]) {
 			rslt = false;
 			strcpy(rsltString, "login_failed error:[[Please set php_path parameter in voipmonitor.conf.]]\n");
@@ -1617,7 +1619,8 @@ bool ManagerClientThread_screen_popup::parseUserPassword() {
 								"app_launch:[[%s]] "
 								"args_or_url:[[%s]] "
 								"key:[[%s]] "
-								"allow_change_settings:[[%i]]\n", 
+								"allow_change_settings:[[%i]] "
+								"popup_title:[[%s]]\n", 
 								auto_popup, 
 								popup_on == "200" || popup_on == "183/180_200",
 								popup_on == "183/180" || popup_on == "183/180_200",
@@ -1625,7 +1628,8 @@ bool ManagerClientThread_screen_popup::parseUserPassword() {
 								app_launch.c_str(), 
 								app_launch_args_or_url.c_str(), 
 								key, 
-								allow_change_settings);
+								allow_change_settings,
+								popup_title.c_str());
 						}
 					} else {
 						rslt = false;
