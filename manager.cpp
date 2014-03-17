@@ -776,6 +776,20 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 		}
 		close(fd);
 		return 0;
+	} else if(strstr(buf, "fileexists2") != NULL) {
+		char filename[2048];
+		unsigned int size;
+		char outbuf[100];
+
+		sscanf(buf, "fileexists2 %s", filename);
+		if(FileExists(filename)) {
+			size = file_exists(filename);
+			sprintf(outbuf, "%d", size);
+		} else {
+			strcpy(outbuf, "not_exists");
+		}
+		send(client, outbuf, strlen(outbuf), 0);
+		return 0;
 	} else if(strstr(buf, "fileexists") != NULL) {
 		char filename[2048];
 		unsigned int size;
