@@ -61,7 +61,8 @@ private:
 	bool show_ip;
 	string popup_on;
 	bool non_numeric_caller_id;
-	vector<RegexReplace> regex_calling_number;
+	vector<RegexReplace> regex_replace_calling_number;
+	vector<string> regex_check_calling_number;
 	ListIP_wb src_ip;
 	string app_launch;
 	string app_launch_args_or_url;

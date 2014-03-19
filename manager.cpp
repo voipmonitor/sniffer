@@ -1491,6 +1491,18 @@ void ManagerClientThread_screen_popup::onCall(int sipResponseNum, const char *ca
 	     this->src_ip.checkIP(htonl(sipSaddr)))) {
 		return;
 	}
+	if(this->regex_check_calling_number.size()) {
+		bool callerNumOk = false;
+		for(size_t i = 0; i < this->regex_check_calling_number.size(); i++) {
+			if(reg_match(callerNum, this->regex_check_calling_number[i].c_str())) {
+				callerNumOk = true;
+				break;
+			}
+		}
+		if(!callerNumOk) {
+			return;
+		}
+	}
 	char rsltString[4096];
 	char sipSaddrIP[18];
 	char sipDaddrIP[18];
@@ -1500,10 +1512,10 @@ void ManagerClientThread_screen_popup::onCall(int sipResponseNum, const char *ca
 	in.s_addr = sipDaddr;
 	strcpy(sipDaddrIP, inet_ntoa(in));
 	string callerNumStr = callerNum;
-	for(size_t i = 0; i < this->regex_calling_number.size(); i++) {
+	for(size_t i = 0; i < this->regex_replace_calling_number.size(); i++) {
 		string temp = reg_replace(callerNumStr.c_str(), 
-					  this->regex_calling_number[i].pattern.c_str(), 
-					  this->regex_calling_number[i].replace.c_str());
+					  this->regex_replace_calling_number[i].pattern.c_str(), 
+					  this->regex_replace_calling_number[i].replace.c_str());
 		if(!temp.empty()) {
 			callerNumStr = temp;
 		}
@@ -1574,9 +1586,11 @@ bool ManagerClientThread_screen_popup::parseUserPassword() {
 		if(!row["regex_calling_number"].empty()) {
 			vector<string> items = split(row["regex_calling_number"].c_str(), split("\r|\n", "|"), true);
 			for(size_t i = 0; i < items.size(); i++) {
-				vector<string> patternReplace = split(items[i].c_str(), "|", true);
-				if(patternReplace.size() == 2) {
-					this->regex_calling_number.push_back(RegexReplace(patternReplace[0].c_str(), patternReplace[1].c_str()));
+				vector<string> itemItems = split(items[i].c_str(), "|", true);
+				if(itemItems.size() == 2) {
+					this->regex_replace_calling_number.push_back(RegexReplace(itemItems[0].c_str(), itemItems[1].c_str()));
+				} else {
+					this->regex_check_calling_number.push_back(itemItems[0]);
 				}
 			}
 		}
