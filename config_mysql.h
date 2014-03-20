@@ -192,7 +192,6 @@ extern int opt_saveWAV;                // save RTP payload RAW data?
 extern int opt_saveWAV;                //save RTP payload RAW data?
 extern int opt_sipoverlap;
 extern int opt_sip_register;
-extern int opt_sip_register_active_nologbin;
 extern int opt_skinny;
 extern int opt_skipdefault;
 extern int opt_skiprtpdata;

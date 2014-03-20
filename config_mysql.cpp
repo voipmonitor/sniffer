@@ -247,10 +247,6 @@ config_load_mysql() {
 			opt_sip_register = atoi(row["sip-register"].c_str());
 		}
 
-		if(row["sip-register-active-nologbin"] != "") {
-			opt_sip_register_active_nologbin = atoi(row["sip-register-active-nologbin"].c_str());
-		}
-
 		if(row["deduplicate"] != "") {
 			opt_dup_check = atoi(row["deduplicate"].c_str());
 		}

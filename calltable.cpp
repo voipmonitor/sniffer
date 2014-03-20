@@ -87,7 +87,6 @@ extern unsigned int gthread_num;
 extern int num_threads;
 extern char opt_cdrurl[1024];
 extern int opt_printinsertid;
-extern int opt_sip_register_active_nologbin;
 extern pthread_mutex_t mysqlquery_lock;
 extern queue<string> mysqlquery;
 extern int opt_cdronlyanswered;
@@ -2437,22 +2436,10 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 	if(last_register_clean == 0) {
 		// on first run the register table has to be deleted 
 		if(enableBatchIfPossible && isTypeDb("mysql")) {
-			if(opt_sip_register_active_nologbin) {
-				qp += "SET sql_log_bin = 0; ";
-			}
 			qp += "DELETE FROM register";
-			if(opt_sip_register_active_nologbin) {
-				qp += "; SET sql_log_bin = 1";
-			}
 			sqlStore->query_lock(qp.c_str(), STORE_PROC_ID_REGISTER);
 		} else {
-			if(opt_sip_register_active_nologbin && isTypeDb("mysql")) {
-				sqlDbSaveCall->query("SET sql_log_bin = 0");
-			}
 			sqlDbSaveCall->query("DELETE FROM register");
-			if(opt_sip_register_active_nologbin && isTypeDb("mysql")) {
-				sqlDbSaveCall->query("SET sql_log_bin = 1");
-			}
 		}
 	} else if((last_register_clean + REGISTER_CLEAN_PERIOD) < now){
 		// last clean was done older than CLEAN_PERIOD seconds
@@ -2462,23 +2449,11 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 		query = "INSERT INTO register_state (created_at, sipcallerip, from_num, to_num, to_domain, contact_num, contact_domain, digestusername, expires, state, ua_id) SELECT expires_at, sipcallerip, from_num, to_num, to_domain, contact_num, contact_domain, digestusername, expires, 5, ua_id FROM register WHERE expires_at <= FROM_UNIXTIME(" + calldate.str() + ")";
 		if(enableBatchIfPossible && isTypeDb("mysql")) {
 			qp = query + "; ";
-			if(opt_sip_register_active_nologbin) {
-				qp += "SET sql_log_bin = 0; ";
-			}
 			qp += "DELETE FROM register WHERE expires_at <= FROM_UNIXTIME(" + calldate.str() + ")";
-			if(opt_sip_register_active_nologbin) {
-				qp += "; SET sql_log_bin = 1 ";
-			}
 			sqlStore->query_lock(qp.c_str(), STORE_PROC_ID_REGISTER);
 		} else {
 			sqlDbSaveCall->query(query);
-			if(opt_sip_register_active_nologbin && isTypeDb("mysql")) {
-				sqlDbSaveCall->query("SET sql_log_bin = 0");
-			}
 			sqlDbSaveCall->query("DELETE FROM register WHERE expires_at <= FROM_UNIXTIME("+ calldate.str() + ")");
-			if(opt_sip_register_active_nologbin && isTypeDb("mysql")) {
-				sqlDbSaveCall->query("SET sql_log_bin = 1");
-			}
 		}
 	}
 	last_register_clean = now;

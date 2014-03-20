@@ -2513,9 +2513,7 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 				DECLARE _expired INT; \
 				SELECT ID, state, expires_at, (UNIX_TIMESTAMP(expires_at) < UNIX_TIMESTAMP(calltime)) AS expired INTO _ID, _state, _expires_at, _expired FROM register WHERE to_num = called AND to_domain = called_domain ORDER BY ID DESC LIMIT 1; \
 				IF ( _ID ) THEN \
-					SET sql_log_bin = 0; \
 					DELETE FROM register WHERE ID = _ID; \
-					SET sql_log_bin = 1; \
 					IF ( _expired > 5 ) THEN \
 						INSERT INTO `register_state` SET `id_sensor` = id_sensor, `fname` = fname, `created_at` = _expires_at, `sipcallerip` = sipcallerip, `sipcalledip` = sipcalledip, `from_num` = caller, `to_num` = called, `to_domain` = called_domain, `contact_num` = contact_num, `contact_domain` = contact_domain, `digestusername` = digest_username, `expires` = register_expires, state = 5, ua_id = getIdOrInsertUA(cdr_ua); \
 					END IF; \
