@@ -846,6 +846,9 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 		return;
 	}
 	ostringstream outStr;
+	string pcapStatString_interface_rslt = this->instancePcapHandle ? 
+						this->instancePcapHandle->pcapStatString_interface(statPeriod) :
+						this->pcapStatString_interface(statPeriod);
 	if(DEBUG_VERBOSE || verbosityE > 1) {
 		string statString = "\n";
 		if(statCalls) {
@@ -864,9 +867,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 				this->pcapStatString_bypass_buffer(statPeriod)) +
 			this->pcapStatString_memory_buffer(statPeriod) +
 			this->pcapStatString_disk_buffer(statPeriod) +
-			(this->instancePcapHandle ? 
-				this->instancePcapHandle->pcapStatString_interface(statPeriod) :
-				this->pcapStatString_interface(statPeriod)) +
+			pcapStatString_interface_rslt +
 			"\n";
 		if(statString.length()) {
 			if(DEBUG_VERBOSE) {
@@ -948,7 +949,20 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 				  << setprecision(1) << memoryBufferPerc_trash << "%] ";
 		if(this->instancePcapHandle) {
 			unsigned long bypassBufferSizeExeeded = this->instancePcapHandle->pcapStat_get_bypass_buffer_size_exeeded();
-			outStr << "hoverruns[" << bypassBufferSizeExeeded << "] ";
+			string statPacketDrops = this->instancePcapHandle->getStatPacketDrop();
+			if(bypassBufferSizeExeeded || !statPacketDrops.empty()) {
+				outStr << "drop[";
+				if(bypassBufferSizeExeeded) {
+					outStr << "H:" << bypassBufferSizeExeeded;
+				}
+				if(!statPacketDrops.empty()) {
+					if(bypassBufferSizeExeeded) {
+						outStr << " ";
+					}
+					outStr << statPacketDrops;
+				}
+				outStr << "] ";
+			}
 		}
 		double diskBufferMb = this->pcapStat_get_disk_buffer_mb();
 		if(diskBufferMb >= 0) {
@@ -1019,9 +1033,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 	} else {
 		outStr << outStrStat.str();
 		outStr << endl;
-		outStr << (this->instancePcapHandle ? 
-				this->instancePcapHandle->pcapStatString_interface(statPeriod) :
-				this->pcapStatString_interface(statPeriod));
+		outStr << pcapStatString_interface_rslt;
 		string outStr_str = outStr.str();
 		char *pointToBeginLine = (char*)outStr_str.c_str();
 		while(pointToBeginLine && *pointToBeginLine) {
@@ -1706,9 +1718,6 @@ string PcapQueue_readFromInterface_base::pcapStatString_interface(int statPeriod
 				this->_last_ps_ifdrop = ps.ps_ifdrop;
 				++this->countPacketDrop;
 			}
-			if(this->countPacketDrop) {
-				outStr << "pdropsCount - " << this->getInterfaceName() << " [" << this->countPacketDrop << "]" << endl;
-			}
 		}
 	}
 	return(outStr.str());
@@ -1730,6 +1739,15 @@ string PcapQueue_readFromInterface_base::pcapDropCountStat_interface() {
 
 ulong PcapQueue_readFromInterface_base::getCountPacketDrop() {
 	return(this->countPacketDrop);
+}
+
+string PcapQueue_readFromInterface_base::getStatPacketDrop() {
+	if(this->countPacketDrop) {
+		ostringstream outStr;
+		outStr << "I-" << this->getInterfaceName(true) << ":" << this->countPacketDrop;
+		return(outStr.str());
+	}
+	return("");
 }
 
 void PcapQueue_readFromInterface_base::initStat_interface() {
@@ -2508,6 +2526,25 @@ ulong PcapQueue_readFromInterface::getCountPacketDrop() {
 		return(this->PcapQueue_readFromInterface_base::getCountPacketDrop());
 	}
 	return(0);
+}
+
+string PcapQueue_readFromInterface::getStatPacketDrop() {
+	if(this->readThreadsCount) {
+		string rslt = "";
+		for(int i = 0; i < this->readThreadsCount; i++) {
+			string subRslt = this->readThreads[i]->getStatPacketDrop();
+			if(!subRslt.empty()) {
+				if(!rslt.empty()) {
+					rslt += " ";
+				}
+				rslt += subRslt;
+			}
+		}
+		return(rslt);
+	} else if(this->pcapHandle) {
+		return(this->PcapQueue_readFromInterface_base::getStatPacketDrop());
+	}
+	return("");
 }
 
 void PcapQueue_readFromInterface::initStat_interface() {

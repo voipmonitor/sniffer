@@ -237,6 +237,7 @@ protected:
 	virtual string pcapStatString_interface(int statPeriod) { return(""); }
 	virtual string pcapDropCountStat_interface() { return(""); }
 	virtual ulong getCountPacketDrop() { return(0); }
+	virtual string getStatPacketDrop() { return(""); }
 	virtual string pcapStatString_cpuUsageReadThreads() { return(""); };
 	virtual void initStat_interface() {};
 	void preparePstatData(bool writeThread = false);
@@ -324,6 +325,7 @@ protected:
 	virtual string pcapStatString_interface(int statPeriod);
 	virtual string pcapDropCountStat_interface();
 	virtual ulong getCountPacketDrop();
+	virtual string getStatPacketDrop();
 	virtual void initStat_interface();
 	virtual string getInterfaceName(bool simple = false);
 protected:
@@ -438,6 +440,7 @@ protected:
 	string pcapStatString_interface(int statPeriod);
 	string pcapDropCountStat_interface();
 	virtual ulong getCountPacketDrop();
+	virtual string getStatPacketDrop();
 	void initStat_interface();
 	string pcapStatString_cpuUsageReadThreads();
 	string getInterfaceName(bool simple = false);
