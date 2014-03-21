@@ -400,10 +400,11 @@ RTP::jitterbuffer(struct ast_channel *channel, int savePayload) {
 		pinformed = 0;
 	}
 
-	if(savePayload) {
-		struct iphdr2 *header_ip = (struct iphdr2 *)(data - sizeof(struct iphdr2) - sizeof(udphdr2));
-		int mylen = MIN(len, ntohs(header_ip->tot_len) - header_ip->ihl * 4 - sizeof(udphdr2));
+	struct iphdr2 *header_ip = (struct iphdr2 *)(data - sizeof(struct iphdr2) - sizeof(udphdr2));
+	int mylen = MIN(len, ntohs(header_ip->tot_len) - header_ip->ihl * 4 - sizeof(udphdr2));
 
+
+	if(savePayload or (codec == PAYLOAD_G729 or codec == PAYLOAD_G723)) {
 		/* get RTP payload header and datalen */
 		payload_data = data + sizeof(RTPFixedHeader);
 		payload_len = mylen - sizeof(RTPFixedHeader);
@@ -439,9 +440,9 @@ RTP::jitterbuffer(struct ast_channel *channel, int savePayload) {
 			payload_len -= sizeof(extension_hdr_t) + rtpext->length;
 		}
 		frame->data = payload_data;
-		frame->datalen = payload_len > 0 ? payload_len : 0; /* ensure that datalen is never negative */
+		frame->datalen = frame->datalen2 = payload_len > 0 ? payload_len : 0; /* ensure that datalen is never negative */
 
-		if(getPayload() == PAYLOAD_G723) {
+		if(codec == PAYLOAD_G723) {
 			// voipmonitor does not handle SID packets well (silence packets) it causes out of sync
 			if((unsigned char)payload_data[0] & 2)  {
 				/* check if jitterbuffer is already created. If not we have to create it because 
@@ -457,9 +458,12 @@ RTP::jitterbuffer(struct ast_channel *channel, int savePayload) {
 		if(codec == PAYLOAD_G729 and (payload_len <= 12)) {
 			frame->frametype = AST_FRAME_DTMF;
 		}
+	} else {
+		frame->datalen2 = 0;
+	}
 
+	if(savePayload) {
 		channel->rawstream = gfileRAW;
-
 		Call *owner = (Call*)call_owner;
 		if(iscaller) {
 			owner->codec_caller = codec;
@@ -472,7 +476,6 @@ RTP::jitterbuffer(struct ast_channel *channel, int savePayload) {
 				channel->audiobuf = owner->audiobuffer2;
 			}
 		}
-
 		if(payload_len > 0) {
 			channel->last_datalen = frame->datalen;
 		}

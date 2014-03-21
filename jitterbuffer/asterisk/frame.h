@@ -139,6 +139,7 @@ struct ast_frame {
 	int subclass;				
 	/*! Length of data */
 	int datalen;				
+	int datalen2;				
 	/*! Number of samples in this frame */
 	int samples;				
 	/*! Was the data malloc'd?  i.e. should we free it when we discard the frame? */
