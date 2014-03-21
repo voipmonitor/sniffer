@@ -96,8 +96,6 @@ extern volatile int calls;
 extern TcpReassembly *tcpReassembly;
 extern char opt_pb_read_from_file[256];
 extern int global_pcap_dlink;
-extern queue<string> mysqlquery;
-extern pthread_mutex_t mysqlquery_lock;
 extern char opt_cachedir[1024];
 extern unsigned long long cachedirtransfered;
 unsigned long long lastcachedirtransfered = 0;
@@ -899,10 +897,27 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 			if(opt_ipaccount) {
 				outStr << "ipacc_buffer[" << lengthIpaccBuffer() << "] ";
 			}
-			pthread_mutex_lock(&mysqlquery_lock);
-			outStr << "SQLq[C:" << mysqlquery.size();
-			pthread_mutex_unlock(&mysqlquery_lock);
-			int sizeSQLq = sqlStore->getSize(STORE_PROC_ID_REGISTER);
+			outStr << "SQLq[";
+			int sizeSQLq;
+			for(int i = 0; i < STORE_PROC_ID_CDR_MAX; i++) {
+				sizeSQLq = sqlStore->getSize(STORE_PROC_ID_CDR_1 + i);
+				if(i == 0 || sizeSQLq >= 1) {
+					if(i) {
+						outStr << " C" << (i+1) << ":";
+					} else {
+						outStr << "C:";
+						if(sizeSQLq < 0) {
+							sizeSQLq = 0;
+						}
+					}
+					outStr << sizeSQLq;
+				}
+			}
+			sizeSQLq = sqlStore->getSize(STORE_PROC_ID_MESSAGE);
+			if(sizeSQLq >= 0) {
+				outStr << " M:" << sizeSQLq;
+			}
+			sizeSQLq = sqlStore->getSize(STORE_PROC_ID_REGISTER);
 			if(sizeSQLq >= 0) {
 				outStr << " R:" << sizeSQLq;
 			}

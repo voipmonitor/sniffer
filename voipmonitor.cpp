@@ -410,8 +410,6 @@ TELNUMfilter *telnumfilter_reload = NULL;	// IP filter based on MYSQL for reload
 int telnumfilter_reload_do = 0;	// for reload in main thread
 
 pthread_t call_thread;		// ID of worker storing CDR thread 
-pthread_t cdr_thread;		
-pthread_t sql_thread;		
 pthread_t readdump_libpcap_thread;
 pthread_t manager_thread = 0;	// ID of worker manager thread 
 pthread_t manager_client_thread;	// ID of worker manager thread 
@@ -427,8 +425,6 @@ vector<u_int32_t> httpip;
 vector<d_u_int32_t> httpnet;
 
 uint8_t opt_sdp_reverse_ipport = 0;
-
-queue<string> mysqlquery;
 
 volatile unsigned int readit = 0;
 volatile unsigned int writeit = 0;
@@ -446,7 +442,6 @@ read_thread *threads;
 
 int manager_socket_server = 0;
 
-pthread_mutex_t mysqlquery_lock;
 pthread_mutex_t mysqlconnect_lock;
 
 pthread_t pcap_read_thread;
@@ -750,92 +745,6 @@ void *moving_cache( void *dummy ) {
 		}
 		sleep(1);
 	}
-	return NULL;
-}
-
-void *storing_sql( void *dummy ) {
-        SqlDb *sqlDb = createSqlObject();
-	if(!opt_nocdr) {
-		sqlDb->connect();
-	}
-
-	while(1) {
-		// process mysql query queue - concatenate queries to N messages
-		int size = 0;
-		int msgs = 50;
-                int _counterIpacc = 0;
-		string queryqueue = "";
-		int mysqlQuerySize = mysqlquery.size();
-
-		while(1) {
-			pthread_mutex_lock(&mysqlquery_lock);
-			if(mysqlquery.size() == 0) {
-				pthread_mutex_unlock(&mysqlquery_lock);
-				if(queryqueue != "") {
-					// send the rest 
-					sqlDb->query("drop procedure if exists " + insert_funcname);
-					sqlDb->query("create procedure " + insert_funcname + "()\nbegin\n" + queryqueue + "\nend");
-					sqlDb->query("call " + insert_funcname + "();");
-					storingSqlLastWriteAt = getActDateTimeF();
-					//sqlDb->query(queryqueue);
-					queryqueue = "";
-				}
-				break;
-			}
-			string query = mysqlquery.front();
-			mysqlquery.pop();
-			--mysqlQuerySize;
-			pthread_mutex_unlock(&mysqlquery_lock);
-			queryqueue.append(query);
-			size_t query_len = query.length();
-			while(query_len && query[query_len - 1] == ' ') {
-				--query_len;
-			}
-			if(query_len && query[query_len - 1] != ';') {
-				queryqueue.append("; ");
-			}
-			if(verbosity > 0) {
-				if(query.find("ipacc ") != string::npos) {
-					++_counterIpacc;
-				}
-			}
-			if(size < msgs) {
-				size++;
-			} else {
-				sqlDb->query("drop procedure if exists " + insert_funcname);
-				sqlDb->query("create procedure " + insert_funcname + "()\nbegin\n" + queryqueue + "\nend");
-				sqlDb->query("call " + insert_funcname + "();");
-				storingSqlLastWriteAt = getActDateTimeF();
-				//sqlDb->query(queryqueue);
-				queryqueue = "";
-				size = 0;
-			}
-
-			if(!opt_read_from_file &&
-			   terminating && !sqlDb->connected()) {
-				break;
-			}
-
-		}
-
-		if(verbosity > 0 && _counterIpacc > 0) {
-			int _start = time(NULL);
-			int diffTime = time(NULL) - _start;
-			cout << "SAVE IPACC (" << sqlDateTimeString(time(NULL)) << "): " << _counterIpacc << " rec";
-			if(diffTime > 0) {
-				cout << "  " << diffTime << " s  " << (_counterIpacc/diffTime) << " rec/s";
-			}
-			cout << endl;
-		}
-                
-
-		if(terminating) {
-			break;
-		}
-	
-		sleep(1);
-	}
-	if(sqlDb) delete sqlDb;
 	return NULL;
 }
 
@@ -2097,7 +2006,6 @@ int main(int argc, char *argv[]) {
 	sipportmatrix[5060] = 1;
 	httpportmatrix = (char*)calloc(1, sizeof(char) * 65537);
 
-	pthread_mutex_init(&mysqlquery_lock, NULL);
 	pthread_mutex_init(&mysqlconnect_lock, NULL);
 
 	// if the system has more than one CPU enable threading
@@ -2961,9 +2869,6 @@ int main(int argc, char *argv[]) {
 	     !opt_pcap_queue_receive_from_ip_port &&
 	     opt_pcap_queue_send_to_ip_port)) {
 		pthread_create(&call_thread, NULL, storing_cdr, NULL);
-		if(isSqlDriver("mysql")) {
-			pthread_create(&cdr_thread, NULL, storing_sql, NULL);
-		}
 	}
 
 	if(opt_cachedir[0] != '\0') {
@@ -3301,9 +3206,6 @@ int main(int argc, char *argv[]) {
 	     !opt_pcap_queue_receive_from_ip_port &&
 	     opt_pcap_queue_send_to_ip_port)) {
 		pthread_join(call_thread, NULL);
-		if(isSqlDriver("mysql")) {
-			pthread_join(cdr_thread, NULL);
-		}
 	}
 	while(calltable->calls_queue.size() != 0) {
 			call = calltable->calls_queue.front();
@@ -3327,6 +3229,7 @@ int main(int argc, char *argv[]) {
 		delete httpData;
 	}
 
+	/* obsolete ?
 	if(!opt_nocdr) {
 		int size = 0;
 		int msgs = 50;
@@ -3371,6 +3274,7 @@ int main(int argc, char *argv[]) {
 		delete sqlDb;
 		pthread_mutex_unlock(&mysqlquery_lock);
 	}
+	*/
 
 	free(sipportmatrix);
 	free(httpportmatrix);
@@ -3425,7 +3329,6 @@ int main(int argc, char *argv[]) {
 	if (opt_fork){
 		unlink(opt_pidfile);
 	}
-	pthread_mutex_destroy(&mysqlquery_lock);
 	pthread_mutex_destroy(&mysqlconnect_lock);
 	clean_tcpstreams();
 	ipfrag_prune(0, 1);

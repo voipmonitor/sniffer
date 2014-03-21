@@ -264,9 +264,7 @@ void HttpData::processData(u_int32_t ip_src, u_int32_t ip_dst,
 				      (sqlStore->getSize(STORE_PROC_ID_HTTP_1) > 1000 ? 
 					counterProcessData % STORE_PROC_ID_HTTP_MAX : 
 					0);
-			sqlStore->lock(storeId);
-			sqlStore->query(queryInsert.c_str(), storeId);
-			sqlStore->unlock(storeId);
+			sqlStore->query_lock(queryInsert.c_str(), storeId);
 		}
 	}
 	delete data;

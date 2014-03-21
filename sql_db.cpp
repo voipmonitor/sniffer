@@ -36,6 +36,7 @@ extern int opt_mysqlcompress;
 extern pthread_mutex_t mysqlconnect_lock;      
 extern int opt_mos_lqo;
 extern int opt_read_from_file;
+extern int opt_nocdr;
 
 int sql_noerror = 0;
 int sql_disable_next_attempt_if_error = 0;
@@ -947,7 +948,7 @@ MySqlStore_process::MySqlStore_process(int id, const char *host, const char *use
 	this->id = id;
 	this->terminated = false;
 	this->ignoreTerminating = false;
-	this->concatLimit = 50;
+	this->concatLimit = 100;
 	this->sqlDb = new SqlDb_mysql();
 	this->sqlDb->setConnectParameters(host, user, password, database);
 	this->sqlDb->connect();
@@ -974,6 +975,11 @@ void MySqlStore_process::store() {
 	sprintf(insert_funcname, "__insert_%i", this->id);
 	if(opt_id_sensor > -1) {
 		sprintf(insert_funcname + strlen(insert_funcname), "S%i", opt_id_sensor);
+	}
+	if(!opt_nocdr && 
+	   (this->id == STORE_PROC_ID_CDR_1 ||
+	    this->id == STORE_PROC_ID_MESSAGE)) {
+		this->sqlDb->connect();
 	}
 	while(1) {
 		int size = 0;

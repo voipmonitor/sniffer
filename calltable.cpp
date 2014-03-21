@@ -87,8 +87,6 @@ extern unsigned int gthread_num;
 extern int num_threads;
 extern char opt_cdrurl[1024];
 extern int opt_printinsertid;
-extern pthread_mutex_t mysqlquery_lock;
-extern queue<string> mysqlquery;
 extern int opt_cdronlyanswered;
 extern int opt_cdronlyrtp;
 extern int opt_newdir;
@@ -2267,9 +2265,13 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		
 		query_str += "end if";
 		
-		pthread_mutex_lock(&mysqlquery_lock);
-		mysqlquery.push(query_str);
-		pthread_mutex_unlock(&mysqlquery_lock);
+		static unsigned int counterSqlStore = 0;
+		int storeId = STORE_PROC_ID_CDR_1 + 
+			      (sqlStore->getSize(STORE_PROC_ID_CDR_1) > 1000 ? 
+				counterSqlStore % STORE_PROC_ID_CDR_MAX : 
+				0);
+		sqlStore->query_lock(query_str.c_str(), storeId);
+		++counterSqlStore;
 		//cout << endl << endl << query_str << endl << endl << endl;
 		return(0);
 	}
@@ -2782,9 +2784,7 @@ Call::saveMessageToDb(bool enableBatchIfPossible) {
 		}
 		query_str += sqlDbSaveCall->insertQuery("message", cdr);
 		
-		pthread_mutex_lock(&mysqlquery_lock);
-		mysqlquery.push(query_str);
-		pthread_mutex_unlock(&mysqlquery_lock);
+		sqlStore->query_lock(query_str.c_str(), STORE_PROC_ID_MESSAGE);
 		//cout << endl << endl << query_str << endl << endl << endl;
 		return(0);
 	}

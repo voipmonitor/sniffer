@@ -317,9 +317,7 @@ inline void save_packet_sql(Call *call, struct pcap_pkthdr *header, const u_char
 		", callid = " << sqlEscapeStringBorder(call ? call->call_id : callidstr) << 
 		", description = " << sqlEscapeStringBorder(description) << 
 		", data = '#" << sqlEscapeString(mpacket, len) << "#'";
-	sqlStore->lock(STORE_PROC_ID_SAVE_PACKET_SQL);
-	sqlStore->query(query.str().c_str(), STORE_PROC_ID_SAVE_PACKET_SQL);
-	sqlStore->unlock(STORE_PROC_ID_SAVE_PACKET_SQL);
+	sqlStore->query_lock(query.str().c_str(), STORE_PROC_ID_SAVE_PACKET_SQL);
 	return;
 }
 
