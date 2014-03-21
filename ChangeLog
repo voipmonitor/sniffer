@@ -1,3 +1,22 @@
+9.4beta3 21.3.2014
+==================
+- fix regression for all versions >9.1 when (and only for) G729 RTP streams were not scored by MOS at all and although there were loss or delays the MOS was always 4.5. 
+- implement saving audio into ogg in stereo (new config saveaudio_stereo default is stereo now)
+- add new option ogg_quality so user can control quality of the ogg file
+- support also other than 8khz calls for ogg
+- allow RTP stream to be assigned to two independent calls with different call-id.
+- implement skip flag also for cisco skinny protocol
+- condition to apply lastsipresponse !(call->lastSIPresponseNum / 100 == 5 && lastSIPresponseNum / 100 == 5)
+- modify save last sip reponse for message - allowed only higher sip response
+- fix typo in voipmonitor.conf - onowaytimeout -> onewaytimeout
+- fix asyncClose memory leak when voipmomnitor exits 
+- fix small memory leak in case there is T38 in SDP (all versions)
+- fix ParsePacket::parseData for dataLen == 0 in rare cases
+- add new manager method file_exists2
+- remove parameter opt_sip_register_active_nologbin and query SET sql_log_bin = 0; SET sql_log_bin = 1; from SQL procedure PROCESS_SIP_REGISTER which required mysql SUPER privileges
+- modify packetbuffer log drop statistics (heapoverrun and drop packets on interace)
+
+
 9.4 beta2 25.2.2014
 ===================
 - fix extern type which caused to upgrade database rtpport even though it was not enabled
