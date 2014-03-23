@@ -37,7 +37,7 @@
 extern Calltable *calltable;
 extern int opt_manager_port;
 extern char opt_manager_ip[32];
-extern int calls;
+extern volatile int calls_counter;
 extern char opt_clientmanager[1024];
 extern int opt_clientmanagerport;
 extern char mac[32];
@@ -255,7 +255,7 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 			return -1;
 		}
 	} else if(strstr(buf, "totalcalls") != NULL) {
-		snprintf(sendbuf, BUFSIZE, "%d", calls);
+		snprintf(sendbuf, BUFSIZE, "%d", calls_counter);
 		if ((size = send(client, sendbuf, strlen(sendbuf), 0)) == -1){
 			cerr << "Error sending data to client" << endl;
 			return -1;

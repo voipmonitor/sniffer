@@ -102,7 +102,7 @@ extern struct pcap_stat pcapstat;
 int pcapstatresCount = 0;
 
 Calltable *calltable;
-extern volatile int calls;
+extern volatile int calls_counter;
 extern int opt_pcap_queue;
 extern int opt_saveSIP;	  	// save SIP packets to pcap file?
 extern int opt_saveRTP;	 	// save RTP packets to pcap file?
@@ -1275,9 +1275,9 @@ Call *new_invite_register(int sip_method, char *data, int datalen, struct pcap_p
 	int res;
 	bool anonymous_useRemotePartyID = false;
 	
-	if(opt_callslimit != 0 and opt_callslimit < calls) {
+	if(opt_callslimit != 0 and opt_callslimit < calls_counter) {
 		if(verbosity > 0)
-			syslog(LOG_NOTICE, "callslimit[%d] > calls[%d] ignoring call\n", opt_callslimit, calls);
+			syslog(LOG_NOTICE, "callslimit[%d] > calls[%d] ignoring call\n", opt_callslimit, calls_counter);
 		return NULL;
 	}
 
@@ -1866,7 +1866,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 			calltable->calls_deletequeue.pop();
 			call->hashRemove();
 			delete call;
-			calls--;
+			calls_counter--;
 		}
 		calltable->unlock_calls_deletequeue();
 

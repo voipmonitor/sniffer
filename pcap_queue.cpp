@@ -92,7 +92,7 @@ extern TELNUMfilter *telnumfilter_reload;
 extern int telnumfilter_reload_do;
 extern char user_filter[2048];
 extern Calltable *calltable;
-extern volatile int calls;
+extern volatile int calls_counter;
 extern TcpReassembly *tcpReassembly;
 extern char opt_pb_read_from_file[256];
 extern int global_pcap_dlink;
@@ -851,7 +851,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 		string statString = "\n";
 		if(statCalls) {
 			ostringstream outStr;
-			outStr << "CALLS: " << calltable->calls_listMAP.size() << ", " << calls;
+			outStr << "CALLS: " << calltable->calls_listMAP.size() << ", " << calls_counter;
 			if(opt_ipaccount) {
 				outStr << "  IPACC_BUFFER " << lengthIpaccBuffer();
 			}
@@ -893,7 +893,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 		double memoryBufferPerc_trash = this->pcapStat_get_memory_buffer_perc_trash();
 		outStr << fixed;
 		if(!this->isMirrorSender()) {
-			outStr << "calls[" << calltable->calls_listMAP.size() << "][" << calls << "] ";
+			outStr << "calls[" << calltable->calls_listMAP.size() << "][" << calls_counter << "] ";
 			if(opt_ipaccount) {
 				outStr << "ipacc_buffer[" << lengthIpaccBuffer() << "] ";
 			}

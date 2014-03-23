@@ -156,7 +156,7 @@ int debugclean = 0;
 /* global variables */
 
 extern Calltable *calltable;
-extern volatile int calls;
+extern volatile int calls_counter;
 unsigned int opt_openfile_max = 65535;
 int opt_packetbuffered = 0;	// Make .pcap files writing ‘‘packet-buffered’’ 
 				// more slow method, but you can use partitialy 
@@ -781,7 +781,7 @@ void *storing_cdr( void *dummy ) {
 #endif
 		if(verbosity > 0 && !opt_pcap_queue) { 
 			ostringstream outStr;
-			outStr << "calls[" << calls << "]";
+			outStr << "calls[" << calls_counter << "]";
 			if(opt_ipaccount) {
 				outStr << " ipacc_buffer[" << lengthIpaccBuffer() << "]";
 			}
@@ -3211,13 +3211,13 @@ int main(int argc, char *argv[]) {
 			call = calltable->calls_queue.front();
 			calltable->calls_queue.pop_front();
 			delete call;
-			calls--;
+			calls_counter--;
 	}
 	while(calltable->calls_deletequeue.size() != 0) {
 			call = calltable->calls_deletequeue.front();
 			calltable->calls_deletequeue.pop();
 			delete call;
-			calls--;
+			calls_counter--;
 	}
 
 	regfailedcache->prune(0);

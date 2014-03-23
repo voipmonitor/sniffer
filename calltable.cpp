@@ -119,7 +119,7 @@ extern pcap_t *global_pcap_handle;
 extern int opt_rtpsave_threaded;
 extern int opt_last_rtp_from_end;
 
-volatile int calls = 0;
+volatile int calls_counter = 0;
 
 extern char mac[32];
 
@@ -3088,7 +3088,7 @@ Calltable::add(char *call_id, unsigned long call_id_len, time_t time, u_int32_t 
 	if(sensorId > -1) {
 		newcall->useSensorId = sensorId;
 	}
-	calls++;
+	calls_counter++;
 	newcall->saddr = saddr;
 	newcall->sport = port;
 	

@@ -35,7 +35,7 @@
 
 
 extern Calltable *calltable;
-extern volatile int calls;
+extern volatile int calls_counter;
 extern int opt_saveSIP;         // save SIP packets to pcap file?
 extern int opt_saveRTP;         // save RTP packets to pcap file?
 extern int opt_saveRTCP;        // save RTCP packets to pcap file?
@@ -1240,9 +1240,9 @@ struct skinny_container {
 
 Call *new_skinny_channel(int state, char *data, int datalen, struct pcap_pkthdr *header, char *callidstr, u_int32_t saddr, u_int32_t daddr, int source, int dest, char *s, long unsigned int l,
 			 pcap_t *handle, int dlt, int sensor_id){
-	if(opt_callslimit != 0 and opt_callslimit > calls) {
+	if(opt_callslimit != 0 and opt_callslimit > calls_counter) {
 		if(verbosity > 0)
-			syslog(LOG_NOTICE, "callslimit[%d] > calls[%d] ignoring call\n", opt_callslimit, calls);
+			syslog(LOG_NOTICE, "callslimit[%d] > calls[%d] ignoring call\n", opt_callslimit, calls_counter);
 	}
 
 	// store this call only if it starts with invite
