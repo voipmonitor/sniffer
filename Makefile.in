@@ -199,6 +199,7 @@ targz64: core2
 	cp scripts/install-script.sh voipmonitor-amd64-${version}-static/
 	chmod +x voipmonitor-amd64-${version}-static/install-script.sh
 	tar -czf voipmonitor-amd64-${version}-static.tar.gz voipmonitor-amd64-${version}-static
+	rm -rf voipmonitor-amd64-${version}-static
 	
 targz32: core2
 	rm -rf voipmonitor-i686-${version}-static*
@@ -215,11 +216,13 @@ targz32: core2
 	cp scripts/install-script.sh voipmonitor-i686-${version}-static/
 	chmod +x voipmonitor-i686-${version}-static/install-script.sh
 	tar -czf voipmonitor-i686-${version}-static.tar.gz voipmonitor-i686-${version}-static
+	rm -rf voipmonitor-i686-${version}-static
 
 source: clean
 	rm -rf voipmonitor-${version}-src
 	mkdir voipmonitor-${version}-src
 	cp -a * voipmonitor-${version}-src/
+	rm -rf voipmonitor-${version}-src/voipmonitor-${version}-src
 	rm -rf `find voipmonitor-${version}-src -type d -name .svn`
 	rm voipmonitor-${version}-src/Makefile
 	echo 1 > voipmonitor-${version}-src/.cleancount
