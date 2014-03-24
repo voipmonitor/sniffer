@@ -250,6 +250,7 @@ Call::Call(char *call_id, unsigned long call_id_len, time_t time, void *ct) :
 	useSensorId = opt_id_sensor;
 	useDlt = global_pcap_dlink;
 	useHandle = global_pcap_handle;
+	first_codec = -1;
 }
 
 void
@@ -1032,6 +1033,8 @@ Call::convertRawToWav() {
 	int adir = 1;
 	int bdir = 1;
 
+
+
 	sprintf(wav0, "%s/%s/%s.i0.wav", dirname().c_str(), opt_newdir ? "AUDIO" : "", get_fbasename_safe());
 	sprintf(wav1, "%s/%s/%s.i1.wav", dirname().c_str(), opt_newdir ? "AUDIO" : "", get_fbasename_safe());
 	switch(opt_audio_format) {
@@ -1093,7 +1096,7 @@ Call::convertRawToWav() {
 		/* write silence of msdiff duration */
 		short int zero = 0;
 		int samplerate = 8000;
-		switch(rtp[0]->first_codec) {
+		switch(this->first_codec) {
 			case PAYLOAD_SILK8:
 				samplerate = 8000;
 				break;

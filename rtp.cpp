@@ -846,6 +846,9 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 	if(first_codec < 0 && codec != PAYLOAD_TELEVENT && codec != 13 && codec != 19) {
 		/* save payload to statistics based on first payload. TODO: what if payload is dynamically changing? */
 		first_codec = codec;
+		if(owner->first_codec < 0) {
+			owner->first_codec = codec;
+		}
 	}
 
 	if(codec == PAYLOAD_TELEVENT) {
