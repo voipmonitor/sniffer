@@ -77,6 +77,10 @@ extern int opt_enable_tcpreassembly;
 extern int opt_tcpreassembly_pb_lock;
 extern int opt_fork;
 extern int opt_id_sensor;
+extern int opt_mysqlstore_max_threads_cdr;
+extern int opt_mysqlstore_max_threads_message;
+extern int opt_mysqlstore_max_threads_register;
+extern int opt_mysqlstore_max_threads_http;
 
 extern pcap_t *global_pcap_handle;
 extern char *sipportmatrix;
@@ -899,7 +903,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 			}
 			outStr << "SQLq[";
 			int sizeSQLq;
-			for(int i = 0; i < STORE_PROC_ID_CDR_MAX; i++) {
+			for(int i = 0; i < opt_mysqlstore_max_threads_cdr; i++) {
 				sizeSQLq = sqlStore->getSize(STORE_PROC_ID_CDR_1 + i);
 				if(i == 0 || sizeSQLq >= 1) {
 					if(i) {
@@ -913,13 +917,33 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 					outStr << sizeSQLq;
 				}
 			}
-			sizeSQLq = sqlStore->getSize(STORE_PROC_ID_MESSAGE);
-			if(sizeSQLq >= 0) {
-				outStr << " M:" << sizeSQLq;
+			for(int i = 0; i < opt_mysqlstore_max_threads_message; i++) {
+				sizeSQLq = sqlStore->getSize(STORE_PROC_ID_MESSAGE_1 + i);
+				if(sizeSQLq >= (i ? 1 : 0)) {
+					if(i) {
+						outStr << " M" << (i+1) << ":";
+					} else {
+						outStr << " M:";
+						if(sizeSQLq < 0) {
+							sizeSQLq = 0;
+						}
+					}
+					outStr << sizeSQLq;
+				}
 			}
-			sizeSQLq = sqlStore->getSize(STORE_PROC_ID_REGISTER);
-			if(sizeSQLq >= 0) {
-				outStr << " R:" << sizeSQLq;
+			for(int i = 0; i < opt_mysqlstore_max_threads_register; i++) {
+				sizeSQLq = sqlStore->getSize(STORE_PROC_ID_REGISTER_1 + i);
+				if(sizeSQLq >= (i ? 1 : 0)) {
+					if(i) {
+						outStr << " R" << (i+1) << ":";
+					} else {
+						outStr << " R:";
+						if(sizeSQLq < 0) {
+							sizeSQLq = 0;
+						}
+					}
+					outStr << sizeSQLq;
+				}
 			}
 			sizeSQLq = sqlStore->getSize(STORE_PROC_ID_SAVE_PACKET_SQL);
 			if(sizeSQLq >= 0) {
@@ -929,7 +953,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 			if(sizeSQLq >= 0) {
 				outStr << " Cl:" << sizeSQLq;
 			}
-			for(int i = 0; i < STORE_PROC_ID_HTTP_MAX; i++) {
+			for(int i = 0; i < opt_mysqlstore_max_threads_http; i++) {
 				sizeSQLq = sqlStore->getSize(STORE_PROC_ID_HTTP_1 + i);
 				if(sizeSQLq >= (i ? 1 : 0)) {
 					if(i) {

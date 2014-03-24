@@ -944,11 +944,12 @@ void *MySqlStore_process_storing(void *storeProcess_addr) {
 	return(NULL);
 }
 	
-MySqlStore_process::MySqlStore_process(int id, const char *host, const char *user, const char *password, const char *database) {
+MySqlStore_process::MySqlStore_process(int id, const char *host, const char *user, const char *password, const char *database,
+				       int concatLimit) {
 	this->id = id;
 	this->terminated = false;
 	this->ignoreTerminating = false;
-	this->concatLimit = 100;
+	this->concatLimit = concatLimit;
 	this->sqlDb = new SqlDb_mysql();
 	this->sqlDb->setConnectParameters(host, user, password, database);
 	this->sqlDb->connect();
@@ -978,7 +979,7 @@ void MySqlStore_process::store() {
 	}
 	if(!opt_nocdr && 
 	   (this->id == STORE_PROC_ID_CDR_1 ||
-	    this->id == STORE_PROC_ID_MESSAGE)) {
+	    this->id == STORE_PROC_ID_MESSAGE_1)) {
 		this->sqlDb->connect();
 	}
 	while(1) {
@@ -1057,6 +1058,7 @@ MySqlStore::MySqlStore(const char *host, const char *user, const char *password,
 	this->user = user;
 	this->password = password;
 	this->database = database;
+	this->defaultConcatLimit = 400;
 }
 
 MySqlStore::~MySqlStore() {
@@ -1098,12 +1100,17 @@ void MySqlStore::setConcatLimit(int id, int concatLimit) {
 	process->setConcatLimit(concatLimit);
 }
 
+void MySqlStore::setDefaultConcatLimit(int defaultConcatLimit) {
+	this->defaultConcatLimit = defaultConcatLimit;
+}
+
 MySqlStore_process *MySqlStore::find(int id) {
 	MySqlStore_process* process = this->processes[id];
 	if(process) {
 		return(process);
 	}
-	process = new MySqlStore_process(id, this->host.c_str(), this->user.c_str(), this->password.c_str(), this->database.c_str());
+	process = new MySqlStore_process(id, this->host.c_str(), this->user.c_str(), this->password.c_str(), this->database.c_str(),
+					 this->defaultConcatLimit);
 	this->processes[id] = process;
 	return(process);
 }

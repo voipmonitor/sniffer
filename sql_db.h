@@ -291,7 +291,8 @@ private:
 
 class MySqlStore_process {
 public:
-	MySqlStore_process(int id, const char *host, const char *user, const char *password, const char *database);
+	MySqlStore_process(int id, const char *host, const char *user, const char *password, const char *database,
+			   int concatLimit);
 	~MySqlStore_process();
 	void query(const char *query_str);
 	void store();
@@ -328,6 +329,7 @@ public:
 	void lock(int id);
 	void unlock(int id);
 	void setIgnoreTerminating(int id, bool ignoreTerminating);
+	void setDefaultConcatLimit(int defaultConcatLimit);
 	void setConcatLimit(int id, int concatLimit);
 	MySqlStore_process *find(int id);
 	MySqlStore_process *check(int id);
@@ -340,6 +342,7 @@ private:
 	string user;
 	string password;
 	string database;
+	int defaultConcatLimit;
 };
 
 SqlDb *createSqlObject();
