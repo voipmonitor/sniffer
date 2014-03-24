@@ -1,3 +1,7 @@
+9.4beta6 24.3.2014
+==================
+implement new mysql fine tunning options - mysqlstore_concat_limit and mysqlstore_concat* - see voipmonitor.conf for more details 
+
 9.4beta5 24.3.2014
 ==================
 - fix race condition leading to crash when saving to wav is enabled
