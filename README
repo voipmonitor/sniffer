@@ -12,6 +12,7 @@ distribution. Voipmonitor also detects improperly terminated calls when
 BYE or OK was not seen. To accuratly transform latency to loss packets, 
 voipmonitor simulates fixed and adaptive jitterbuffer.
 
+
 Key features
 ------------
 
@@ -30,7 +31,6 @@ Installation
 -------------
 
 Check README.*
-
 
 
 
