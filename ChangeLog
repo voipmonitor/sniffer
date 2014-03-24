@@ -1,3 +1,7 @@
+9.4beta5 24.3.2014
+==================
+- fix race condition leading to crash when saving to wav is enabled
+
 9.4beta4 24.3.2014
 ==================
 - fix call counter in the syslog 
