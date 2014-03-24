@@ -1,3 +1,11 @@
+9.4beta5 24.3.2014
+==================
+- fix race condition leading to crash when saving to wav is enabled
+
+9.4beta4 24.3.2014
+==================
+- fix call counter in the syslog 
+
 9.4beta3 21.3.2014
 ==================
 - fix regression for all versions >9.1 when (and only for) G729 RTP streams were not scored by MOS at all and although there were loss or delays the MOS was always 4.5. 
