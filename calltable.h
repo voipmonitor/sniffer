@@ -143,6 +143,7 @@ public:
 	unsigned int ps_drop;
 	unsigned int ps_ifdrop;
 	char forcemark[2];
+	int first_codec;
 
 	float a_mos_lqo;
 	float b_mos_lqo;
