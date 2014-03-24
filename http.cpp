@@ -9,6 +9,7 @@ using namespace std;
 
 extern int opt_id_sensor;
 extern MySqlStore *sqlStore;
+extern int opt_mysqlstore_max_threads_http;
 
 SqlDb *sqlDbSaveHttp = NULL;
 
@@ -261,8 +262,9 @@ void HttpData::processData(u_int32_t ip_src, u_int32_t ip_dst,
 		}
 		if(queryInsert.length()) {
 			int storeId = STORE_PROC_ID_HTTP_1 + 
-				      (sqlStore->getSize(STORE_PROC_ID_HTTP_1) > 1000 ? 
-					counterProcessData % STORE_PROC_ID_HTTP_MAX : 
+				      (opt_mysqlstore_max_threads_http > 1 &&
+				       sqlStore->getSize(STORE_PROC_ID_HTTP_1) > 1000 ? 
+					counterProcessData % opt_mysqlstore_max_threads_http : 
 					0);
 			sqlStore->query_lock(queryInsert.c_str(), storeId);
 		}

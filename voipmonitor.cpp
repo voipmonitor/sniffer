@@ -474,6 +474,17 @@ sem_t *globalSemaphore;
 
 bool opt_loadsqlconfig = true;
 
+int opt_mysqlstore_concat_limit = 0;
+int opt_mysqlstore_concat_limit_cdr = 0;
+int opt_mysqlstore_concat_limit_message = 0;
+int opt_mysqlstore_concat_limit_register = 0;
+int opt_mysqlstore_concat_limit_http = 0;
+int opt_mysqlstore_concat_limit_ipacc = 0;
+int opt_mysqlstore_max_threads_cdr = 1;
+int opt_mysqlstore_max_threads_message = 1;
+int opt_mysqlstore_max_threads_register = 1;
+int opt_mysqlstore_max_threads_http = 1;
+
 #define ENABLE_SEMAPHOR_FORK_MODE 0
 #if ENABLE_SEMAPHOR_FORK_MODE
 string SEMAPHOR_FORK_MODE_NAME() {
@@ -1758,6 +1769,38 @@ int load_config(char *fname) {
 		opt_mysqlloadconfig = yesno(value);
 	}
 	
+	if((value = ini.GetValue("general", "mysqlstore_concat_limit", NULL))) {
+		opt_mysqlstore_concat_limit = atoi(value);
+	}
+	if((value = ini.GetValue("general", "mysqlstore_concat_limit_cdr", NULL))) {
+		opt_mysqlstore_concat_limit_cdr = atoi(value);
+	}
+	if((value = ini.GetValue("general", "mysqlstore_concat_limit_message", NULL))) {
+		opt_mysqlstore_concat_limit_message = atoi(value);
+	}
+	if((value = ini.GetValue("general", "mysqlstore_concat_limit_register", NULL))) {
+		opt_mysqlstore_concat_limit_register = atoi(value);
+	}
+	if((value = ini.GetValue("general", "mysqlstore_concat_limit_http", NULL))) {
+		opt_mysqlstore_concat_limit_http = atoi(value);
+	}
+	if((value = ini.GetValue("general", "mysqlstore_concat_limit_ipacc", NULL))) {
+		opt_mysqlstore_concat_limit_ipacc = atoi(value);
+	}
+	
+	if((value = ini.GetValue("general", "mysqlstore_max_threads_cdr", NULL))) {
+		opt_mysqlstore_max_threads_cdr = max(min(atoi(value), 9), 1);
+	}
+	if((value = ini.GetValue("general", "mysqlstore_max_threads_message", NULL))) {
+		opt_mysqlstore_max_threads_message = max(min(atoi(value), 9), 1);
+	}
+	if((value = ini.GetValue("general", "mysqlstore_max_threads_register", NULL))) {
+		opt_mysqlstore_max_threads_register = max(min(atoi(value), 9), 1);
+	}
+	if((value = ini.GetValue("general", "mysqlstore_max_threads_http", NULL))) {
+		opt_mysqlstore_max_threads_http = max(min(atoi(value), 9), 1);
+	}
+	
 	/*
 	
 	packetbuffer default configuration
@@ -2650,6 +2693,37 @@ int main(int argc, char *argv[]) {
 		     opt_pcap_queue_send_to_ip_port)) {
 			config_load_mysql();
 		}
+		if(opt_mysqlstore_concat_limit) {
+			 sqlStore->setDefaultConcatLimit(opt_mysqlstore_concat_limit);
+		}
+		if(opt_mysqlstore_concat_limit_cdr) {
+			for(int i = 0; i < opt_mysqlstore_max_threads_cdr; i++) {
+				sqlStore->setConcatLimit(STORE_PROC_ID_CDR_1 + i, opt_mysqlstore_concat_limit_cdr);
+			}
+		}
+		if(opt_mysqlstore_concat_limit_message) {
+			for(int i = 0; i < opt_mysqlstore_max_threads_message; i++) {
+				sqlStore->setConcatLimit(STORE_PROC_ID_MESSAGE_1 + i, opt_mysqlstore_concat_limit_message);
+			}
+		}
+		if(opt_mysqlstore_concat_limit_register) {
+			for(int i = 0; i < opt_mysqlstore_max_threads_register; i++) {
+				sqlStore->setConcatLimit(STORE_PROC_ID_REGISTER_1 + i, opt_mysqlstore_concat_limit_register);
+			}
+		}
+		if(opt_mysqlstore_concat_limit_http) {
+			for(int i = 0; i < opt_mysqlstore_max_threads_http; i++) {
+				sqlStore->setConcatLimit(STORE_PROC_ID_HTTP_1 + i, opt_mysqlstore_concat_limit_http);
+			}
+		}
+		if(opt_mysqlstore_concat_limit_ipacc) {
+			for(int i = STORE_PROC_ID_IPACC_1; i <= STORE_PROC_ID_IPACC_3; i++) {
+				sqlStore->setConcatLimit(i, opt_mysqlstore_concat_limit_ipacc);
+			}
+			for(int i = STORE_PROC_ID_IPACC_AGR_INTERVAL; i <= STORE_PROC_ID_IPACC_AGR2_DAY_3; i++) {
+				sqlStore->setConcatLimit(i, opt_mysqlstore_concat_limit_ipacc);
+			}
+		}
 	}
 
 	signal(SIGINT,sigint_handler);
@@ -2947,9 +3021,6 @@ int main(int argc, char *argv[]) {
 			}
 		}
 		if(setHttpPorts) {
-			for(int i = 0; i < STORE_PROC_ID_HTTP_MAX; i++) {
-				sqlStore->setConcatLimit(STORE_PROC_ID_HTTP_1 + i, 400);
-			}
 			tcpReassembly = new TcpReassembly;
 			tcpReassembly->setEnableHttpForceInit();
 			tcpReassembly->setEnableCrazySequence();
@@ -3067,7 +3138,7 @@ int main(int argc, char *argv[]) {
 				} else {
 				 
 					if(opt_pb_read_from_file[0] && opt_enable_tcpreassembly) {
-						for(int i = 0; i < STORE_PROC_ID_HTTP_MAX; i++) {
+						for(int i = 0; i < opt_mysqlstore_max_threads_http; i++) {
 							sqlStore->setIgnoreTerminating(STORE_PROC_ID_HTTP_1 + i, true);
 						}
 						if(opt_tcpreassembly_thread) {
@@ -3125,7 +3196,7 @@ int main(int argc, char *argv[]) {
 					
 					if(opt_pb_read_from_file[0] && opt_enable_tcpreassembly) {
 						sleep(2);
-						for(int i = 0; i < STORE_PROC_ID_HTTP_MAX; i++) {
+						for(int i = 0; i < opt_mysqlstore_max_threads_http; i++) {
 							sqlStore->setIgnoreTerminating(STORE_PROC_ID_HTTP_1 + i, false);
 						}
 						sleep(2);

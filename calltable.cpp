@@ -118,6 +118,10 @@ extern int global_pcap_dlink;
 extern pcap_t *global_pcap_handle;
 extern int opt_rtpsave_threaded;
 extern int opt_last_rtp_from_end;
+extern int opt_mysqlstore_max_threads_cdr;
+extern int opt_mysqlstore_max_threads_message;
+extern int opt_mysqlstore_max_threads_register;
+extern int opt_mysqlstore_max_threads_http;
 
 volatile int calls_counter = 0;
 
@@ -2267,11 +2271,12 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		
 		static unsigned int counterSqlStore = 0;
 		int storeId = STORE_PROC_ID_CDR_1 + 
-			      (sqlStore->getSize(STORE_PROC_ID_CDR_1) > 1000 ? 
-				counterSqlStore % STORE_PROC_ID_CDR_MAX : 
+			      (opt_mysqlstore_max_threads_cdr > 1 &&
+			       sqlStore->getSize(STORE_PROC_ID_CDR_1) > 1000 ? 
+				counterSqlStore % opt_mysqlstore_max_threads_cdr : 
 				0);
-		sqlStore->query_lock(query_str.c_str(), storeId);
 		++counterSqlStore;
+		sqlStore->query_lock(query_str.c_str(), storeId);
 		//cout << endl << endl << query_str << endl << endl << endl;
 		return(0);
 	}
@@ -2434,12 +2439,20 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 	unsigned int now = time(NULL);
 
 	string qp;
+	
+	static unsigned int counterSqlStore = 0;
+	int storeId = STORE_PROC_ID_REGISTER_1 + 
+		      (opt_mysqlstore_max_threads_register > 1 &&
+		       sqlStore->getSize(STORE_PROC_ID_REGISTER_1) > 1000 ? 
+			counterSqlStore % opt_mysqlstore_max_threads_register : 
+			0);
+	++counterSqlStore;
 
 	if(last_register_clean == 0) {
 		// on first run the register table has to be deleted 
 		if(enableBatchIfPossible && isTypeDb("mysql")) {
 			qp += "DELETE FROM register";
-			sqlStore->query_lock(qp.c_str(), STORE_PROC_ID_REGISTER);
+			sqlStore->query_lock(qp.c_str(), storeId);
 		} else {
 			sqlDbSaveCall->query("DELETE FROM register");
 		}
@@ -2452,7 +2465,7 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 		if(enableBatchIfPossible && isTypeDb("mysql")) {
 			qp = query + "; ";
 			qp += "DELETE FROM register WHERE expires_at <= FROM_UNIXTIME(" + calldate.str() + ")";
-			sqlStore->query_lock(qp.c_str(), STORE_PROC_ID_REGISTER);
+			sqlStore->query_lock(qp.c_str(), storeId);
 		} else {
 			sqlDbSaveCall->query(query);
 			sqlDbSaveCall->query("DELETE FROM register WHERE expires_at <= FROM_UNIXTIME("+ calldate.str() + ")");
@@ -2498,7 +2511,7 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 				fname + ", " +
 				idsensor +
 				")";
-			sqlStore->query_lock(query.c_str(), STORE_PROC_ID_REGISTER);
+			sqlStore->query_lock(query.c_str(), storeId);
 		} else {
 			query = string(
 				"SELECT ID, state, ") +
@@ -2672,7 +2685,7 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 			string query = "SET @mcounter = (" + q1 + ");";
 			query += "IF @mcounter IS NOT NULL THEN " + q2 + "; ELSE " + q3 + "; END IF";
 
-			sqlStore->query_lock(query.c_str(), STORE_PROC_ID_REGISTER);
+			sqlStore->query_lock(query.c_str(), storeId);
 		} else {
 			query = string(
 				"SELECT counter FROM register_failed ") +
@@ -2784,7 +2797,14 @@ Call::saveMessageToDb(bool enableBatchIfPossible) {
 		}
 		query_str += sqlDbSaveCall->insertQuery("message", cdr);
 		
-		sqlStore->query_lock(query_str.c_str(), STORE_PROC_ID_MESSAGE);
+		static unsigned int counterSqlStore = 0;
+		int storeId = STORE_PROC_ID_MESSAGE_1 + 
+			      (opt_mysqlstore_max_threads_message > 1 &&
+			       sqlStore->getSize(STORE_PROC_ID_MESSAGE_1) > 1000 ? 
+				counterSqlStore % opt_mysqlstore_max_threads_message : 
+				0);
+		++counterSqlStore;
+		sqlStore->query_lock(query_str.c_str(), storeId);
 		//cout << endl << endl << query_str << endl << endl << endl;
 		return(0);
 	}
