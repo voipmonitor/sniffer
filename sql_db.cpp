@@ -36,7 +36,6 @@ extern int opt_mysqlcompress;
 extern pthread_mutex_t mysqlconnect_lock;      
 extern int opt_mos_lqo;
 extern int opt_read_from_file;
-extern int opt_nocdr;
 
 int sql_noerror = 0;
 int sql_disable_next_attempt_if_error = 0;
@@ -949,25 +948,42 @@ MySqlStore_process::MySqlStore_process(int id, const char *host, const char *use
 	this->id = id;
 	this->terminated = false;
 	this->ignoreTerminating = false;
+	this->enableAutoDisconnect = false;
 	this->concatLimit = concatLimit;
 	this->sqlDb = new SqlDb_mysql();
 	this->sqlDb->setConnectParameters(host, user, password, database);
-	this->sqlDb->connect();
 	pthread_mutex_init(&this->lock_mutex, NULL);
-	pthread_create(&this->thread, NULL, MySqlStore_process_storing, this);
+	this->thread = NULL;
 }
 
 MySqlStore_process::~MySqlStore_process() {
-	while(!this->terminated) {
-		usleep(100000);
+	if(this->thread) {
+		while(!this->terminated) {
+			usleep(100000);
+		}
+		pthread_detach(this->thread);
 	}
-	pthread_detach(this->thread);
 	if(this->sqlDb) {
 		delete this->sqlDb;
 	}
 }
 
+void MySqlStore_process::connect() {
+	if(!this->sqlDb->connected()) {
+		this->sqlDb->connect();
+	}
+}
+
+void MySqlStore_process::disconnect() {
+	if(this->sqlDb->connected()) {
+		this->sqlDb->disconnect();
+	}
+}
+
 void MySqlStore_process::query(const char *query_str) {
+	if(!this->thread) {
+		pthread_create(&this->thread, NULL, MySqlStore_process_storing, this);
+	}
 	this->query_buff.push(query_str);
 }
 
@@ -976,11 +992,6 @@ void MySqlStore_process::store() {
 	sprintf(insert_funcname, "__insert_%i", this->id);
 	if(opt_id_sensor > -1) {
 		sprintf(insert_funcname + strlen(insert_funcname), "S%i", opt_id_sensor);
-	}
-	if(!opt_nocdr && 
-	   (this->id == STORE_PROC_ID_CDR_1 ||
-	    this->id == STORE_PROC_ID_MESSAGE_1)) {
-		this->sqlDb->connect();
 	}
 	while(1) {
 		int size = 0;
@@ -1031,6 +1042,8 @@ void MySqlStore_process::store() {
 		}
 		if(terminating && !this->ignoreTerminating) {
 			break;
+		} else if(this->enableAutoDisconnect) {
+			this->disconnect();
 		}
 		sleep(1);
 	}
@@ -1047,6 +1060,10 @@ void MySqlStore_process::unlock() {
 
 void MySqlStore_process::setIgnoreTerminating(bool ignoreTerminating) {
 	this->ignoreTerminating = ignoreTerminating;
+}
+
+void MySqlStore_process::setEnableAutoDisconnect(bool enableAutoDisconnect) {
+	this->enableAutoDisconnect = enableAutoDisconnect;
 }
 
 void MySqlStore_process::setConcatLimit(int concatLimit) {
@@ -1066,6 +1083,11 @@ MySqlStore::~MySqlStore() {
 	for(iter = this->processes.begin(); iter != this->processes.end(); ++iter) {
 		delete iter->second;
 	}
+}
+
+void MySqlStore::connect(int id) {
+	MySqlStore_process* process = this->find(id);
+	process->connect();
 }
 
 void MySqlStore::query(const char *query_str, int id) {
@@ -1093,6 +1115,11 @@ void MySqlStore::unlock(int id) {
 void MySqlStore::setIgnoreTerminating(int id, bool ignoreTerminating) {
 	MySqlStore_process* process = this->find(id);
 	process->setIgnoreTerminating(ignoreTerminating);
+}
+
+void MySqlStore::setEnableAutoDisconnect(int id, bool enableAutoDisconnect) {
+	MySqlStore_process* process = this->find(id);
+	process->setEnableAutoDisconnect(enableAutoDisconnect);
 }
 
 void MySqlStore::setConcatLimit(int id, int concatLimit) {
