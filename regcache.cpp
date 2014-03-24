@@ -40,6 +40,7 @@
 using namespace std;
 
 extern MySqlStore *sqlStore;
+extern int opt_mysqlstore_max_threads_register;
 
 int
 regcache::check(unsigned int saddr, unsigned int daddr, unsigned int timestamp, unsigned int *count) {
@@ -94,7 +95,14 @@ regcache::prune(unsigned int timestamp) {
 
 			string query = string("UPDATE register_failed SET created_at = FROM_UNIXTIME(") + ts.str() + "), counter = counter + " + cntr.str() + " WHERE sipcallerip = " + res[0].c_str() + " AND sipcalledip = " + res[1].c_str() + " AND created_at >= SUBTIME(FROM_UNIXTIME(" + ts.str() + "), '01:00:00')"; 
 
-			sqlStore->query_lock(query.c_str(), STORE_PROC_ID_REGISTER);
+			static unsigned int counterSqlStore = 0;
+			int storeId = STORE_PROC_ID_REGISTER_1 + 
+				      (opt_mysqlstore_max_threads_register > 1 &&
+				       sqlStore->getSize(STORE_PROC_ID_REGISTER_1) > 1000 ? 
+					counterSqlStore % opt_mysqlstore_max_threads_register : 
+					0);
+			++counterSqlStore;
+			sqlStore->query_lock(query.c_str(), storeId);
 
 			regcache_buffer.erase(iter++);
 		} else {
