@@ -6,6 +6,7 @@
 *.exe
 *.o
 *.so
+*.a
  
 # Packages #
 ############
@@ -35,3 +36,11 @@
 .Trashes
 ehthumbs.db
 Thumbs.db
+
+# vim 
+.*.swp
+
+#vm
+.lastclean
+Makefile
+voipmonitor
