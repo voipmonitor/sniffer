@@ -294,11 +294,14 @@ public:
 	MySqlStore_process(int id, const char *host, const char *user, const char *password, const char *database,
 			   int concatLimit);
 	~MySqlStore_process();
+	void connect();
+	void disconnect();
 	void query(const char *query_str);
 	void store();
 	void lock();
 	void unlock();
 	void setIgnoreTerminating(bool ignoreTerminating);
+	void setEnableAutoDisconnect(bool enableAutoDisconnect = true);
 	void setConcatLimit(int concatLimit);
 	int getId() {
 		return(this->id);
@@ -318,17 +321,20 @@ private:
 	queue<string> query_buff;
 	bool terminated;
 	bool ignoreTerminating;
+	bool enableAutoDisconnect;
 };
 
 class MySqlStore {
 public:
 	MySqlStore(const char *host, const char *user, const char *password, const char *database);
 	~MySqlStore();
+	void connect(int id);
 	void query(const char *query_str, int id);
 	void query_lock(const char *query_str, int id);
 	void lock(int id);
 	void unlock(int id);
 	void setIgnoreTerminating(int id, bool ignoreTerminating);
+	void setEnableAutoDisconnect(int id, bool enableAutoDisconnect = true);
 	void setDefaultConcatLimit(int defaultConcatLimit);
 	void setConcatLimit(int id, int concatLimit);
 	MySqlStore_process *find(int id);

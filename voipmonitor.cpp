@@ -2686,6 +2686,10 @@ int main(int argc, char *argv[]) {
 	}
 	if(isSqlDriver("mysql")) {
 		sqlStore = new MySqlStore(mysql_host, mysql_user, mysql_password, mysql_database);	
+		if(!opt_nocdr) {
+			sqlStore->connect(STORE_PROC_ID_CDR_1);
+			sqlStore->connect(STORE_PROC_ID_MESSAGE_1);
+		}
 		if(opt_mysqlloadconfig && 
 		   !opt_nocdr &&
 		   !(opt_pcap_threaded && opt_pcap_queue && 
@@ -2699,21 +2703,33 @@ int main(int argc, char *argv[]) {
 		if(opt_mysqlstore_concat_limit_cdr) {
 			for(int i = 0; i < opt_mysqlstore_max_threads_cdr; i++) {
 				sqlStore->setConcatLimit(STORE_PROC_ID_CDR_1 + i, opt_mysqlstore_concat_limit_cdr);
+				if(i) {
+					sqlStore->setEnableAutoDisconnect(STORE_PROC_ID_CDR_1 + i);
+				}
 			}
 		}
 		if(opt_mysqlstore_concat_limit_message) {
 			for(int i = 0; i < opt_mysqlstore_max_threads_message; i++) {
 				sqlStore->setConcatLimit(STORE_PROC_ID_MESSAGE_1 + i, opt_mysqlstore_concat_limit_message);
+				if(i) {
+					sqlStore->setEnableAutoDisconnect(STORE_PROC_ID_MESSAGE_1 + i);
+				}
 			}
 		}
 		if(opt_mysqlstore_concat_limit_register) {
 			for(int i = 0; i < opt_mysqlstore_max_threads_register; i++) {
 				sqlStore->setConcatLimit(STORE_PROC_ID_REGISTER_1 + i, opt_mysqlstore_concat_limit_register);
+				if(i) {
+					sqlStore->setEnableAutoDisconnect(STORE_PROC_ID_REGISTER_1 + i);
+				}
 			}
 		}
 		if(opt_mysqlstore_concat_limit_http) {
 			for(int i = 0; i < opt_mysqlstore_max_threads_http; i++) {
 				sqlStore->setConcatLimit(STORE_PROC_ID_HTTP_1 + i, opt_mysqlstore_concat_limit_http);
+				if(i) {
+					sqlStore->setEnableAutoDisconnect(STORE_PROC_ID_HTTP_1 + i);
+				}
 			}
 		}
 		if(opt_mysqlstore_concat_limit_ipacc) {
