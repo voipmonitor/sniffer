@@ -1,6 +1,10 @@
+9.4beta7 25.3.2014
+==================
+- fix crash in skinny when call is skipped due to capture rules
+
 9.4beta6 24.3.2014
 ==================
-implement new mysql fine tunning options - mysqlstore_concat_limit and mysqlstore_concat* - see voipmonitor.conf for more details 
+- implement new mysql fine tunning options - mysqlstore_concat_limit and mysqlstore_concat* - see voipmonitor.conf for more details 
 
 9.4beta5 24.3.2014
 ==================
