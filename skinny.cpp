@@ -1448,7 +1448,7 @@ void *handle_skinny2(pcap_pkthdr *header, const u_char *packet, unsigned int sad
 			// packet does not belongs to any call yet
 			call = new_skinny_channel(SKINNY_NEW, data, datalen, header, callid, saddr, daddr, source, dest, callid, strlen(callid),
 						  handle, dlt, sensor_id);
-			if(!call) return;
+			if(!call) return NULL;
 			if(state == SKINNY_OFFHOOK) {
 				call->sipcallerip = daddr;
 				call->sipcalledip = saddr;
