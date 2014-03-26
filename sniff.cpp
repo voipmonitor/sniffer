@@ -1690,68 +1690,8 @@ void process_sdp(Call *call, unsigned int saddr, int source, unsigned int daddr,
 			// store RTP stream
 			get_rtpmap_from_sdp(tmp + 1, datalen - (tmp + 1 - data), rtpmap);
 
-			// determine if the SDP message is coming from caller or called 
-			// 1) check by saddr
 			int iscalled;
-			if(call->sipcallerip == saddr) {
-				// SDP message is coming from the first IP address seen in first INVITE thus incoming stream to ip/port in this 
-				// SDP will be stream from called
-				iscalled = 1;
-			} else {
-				// The IP address is different, check if the request matches one of the address from the first invite
-				if(call->sipcallerip == daddr) {
-					// SDP message is addressed to caller and announced IP/port in SDP will be from caller. Thus set called = 0;
-					iscalled = 0;
-				// src IP address of this SDP SIP message is different from the src/dst IP address used in the first INVITE. 
-				} else {
-					if(call->sipcallerip2 == 0) { 
-						call->sipcallerip2 = saddr;
-						call->sipcalledip2 = daddr;
-					}
-					if(call->sipcallerip2 == saddr) {
-						iscalled = 1;
-					} else {
-						// The IP address is different, check if the request matches one of the address from the first invite
-						if(call->sipcallerip2 == daddr) {
-							// SDP message is addressed to caller and announced IP/port in SDP will be from caller. Thus set called = 0;
-							iscalled = 0;
-						// src IP address of this SDP SIP message is different from the src/dst IP address used in the first INVITE. 
-						} else {
-							if(call->sipcallerip3 == 0) { 
-								call->sipcallerip3 = saddr;
-								call->sipcalledip3 = daddr;
-							}
-							if(call->sipcallerip3 == saddr) {
-								iscalled = 1;
-							} else {
-								// The IP address is different, check if the request matches one of the address from the first invite
-								if(call->sipcallerip3 == daddr) {
-									// SDP message is addressed to caller and announced IP/port in SDP will be from caller. Thus set called = 0;
-									iscalled = 0;
-								// src IP address of this SDP SIP message is different from the src/dst IP address used in the first INVITE. 
-								} else {
-									if(call->sipcallerip4 == 0) { 
-										call->sipcallerip4 = saddr;
-										call->sipcalledip4 = daddr;
-									}
-									if(call->sipcallerip4 == saddr) {
-										iscalled = 1;
-									} else {
-										iscalled = 0;
-									}
-								}
-							}
-						}
-					}
-				}
-			}
-			if(iscalled) {
-				call->caller_sipdscp = header_ip->tos >> 2;
-				////cout << "caller_sipdscp " << (int)(header_ip->tos>>2) << endl;
-			} else {
-				call->called_sipdscp = header_ip->tos >> 2;
-				////cout << "called_sipdscp " << (int)(header_ip->tos>>2) << endl;
-			}
+			call->handle_dscp(header_ip, saddr, daddr, &iscalled);
 			//syslog(LOG_ERR, "ADDR: %u port %u iscalled[%d]\n", tmp_addr, tmp_port, iscalled);
 			if(call->add_ip_port(tmp_addr, tmp_port, ua, ua_len, !iscalled, rtpmap) != -1){
 				calltable->hashAdd(tmp_addr, tmp_port, call, !iscalled, 0, fax);
@@ -2346,7 +2286,11 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 		last_sip_method = sip_method;
 
 		// find call */
-		if ( ! (call = calltable->find_by_call_id(s, l))){
+		call = calltable->find_by_call_id(s, l);
+		if(call) {
+			call->handle_dscp(header_ip, saddr, daddr);
+		}
+		if (!call){
 			// packet does not belongs to any call yet
 			if (sip_method == INVITE || sip_method == MESSAGE || (opt_sip_register && sip_method == REGISTER)) {
 				call = new_invite_register(sip_method, data, datalen, header, callidstr, saddr, daddr, source, dest, s, l,

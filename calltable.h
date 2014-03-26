@@ -453,6 +453,8 @@ public:
 	float mos_lqo(char *deg, int samplerate);
 
 	void handle_dtmf(char dtmf, double dtmf_time, unsigned int saddr, unsigned int daddr);
+	
+	void handle_dscp(struct iphdr2 *header_ip, unsigned int saddr, unsigned int daddr, int *iscalledOut = NULL);
 
 	void dump();
 

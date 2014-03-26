@@ -143,6 +143,7 @@ public:
 	void setEnableNextAttemptIfError();
 protected:
 	string conn_server;
+	string conn_server_ip;
 	string conn_user;
 	string conn_password;
 	string conn_database;
