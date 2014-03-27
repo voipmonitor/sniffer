@@ -6,6 +6,7 @@
 #include <unistd.h>
 #include <sstream>
 #include <stdarg.h>
+#include <netdb.h>
 #include <mysql/mysqld_error.h>
 #include <mysql/errmsg.h>
 #include "voipmonitor.h"
@@ -361,10 +362,25 @@ bool SqlDb_mysql::connect(bool createDb, bool mainInit) {
 	if(this->hMysql) {
 		my_bool reconnect = 1;
 		mysql_options(this->hMysql, MYSQL_OPT_RECONNECT, &reconnect);
+		if(this->conn_server_ip.empty()) {
+			if(reg_match(this->conn_server.c_str(), "[0-9]\\.[0-9]\\.[0-9]\\.[0-9]")) {
+				this->conn_server_ip = this->conn_server;
+			} else {
+				hostent *conn_server_record = gethostbyname(this->conn_server.c_str());
+				if(conn_server_record == NULL) {
+					this->setLastErrorString("mysql connect failed - " + this->conn_server + " is unavailable", true);
+					pthread_mutex_unlock(&mysqlconnect_lock);
+					this->connecting = false;
+					return(false);
+				}
+				in_addr *conn_server_address = (in_addr*)conn_server_record->h_addr;
+				this->conn_server_ip = inet_ntoa(*conn_server_address);
+			}
+		}
 		this->hMysqlConn = mysql_real_connect(
 					this->hMysql,
 					//this->conn_server.c_str(), this->conn_user.c_str(), this->conn_password.c_str(), this->conn_database.c_str(),
-					this->conn_server.c_str(), this->conn_user.c_str(), this->conn_password.c_str(), NULL,
+					this->conn_server_ip.c_str(), this->conn_user.c_str(), this->conn_password.c_str(), NULL,
 					//opt_mysql_port, NULL, CLIENT_MULTI_STATEMENTS);
 					//opt_mysql_port, NULL, 0);
 					opt_mysql_port, NULL, CLIENT_MULTI_RESULTS);
@@ -953,7 +969,7 @@ MySqlStore_process::MySqlStore_process(int id, const char *host, const char *use
 	this->sqlDb = new SqlDb_mysql();
 	this->sqlDb->setConnectParameters(host, user, password, database);
 	pthread_mutex_init(&this->lock_mutex, NULL);
-	this->thread = NULL;
+	this->thread = (pthread_t)NULL;
 }
 
 MySqlStore_process::~MySqlStore_process() {

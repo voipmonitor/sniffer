@@ -1,3 +1,8 @@
+9.4beta8 27.3.2014
+==================
+- resolve mysql host only in main thread which fixes issues on some systems which crashes when resolv is in multiple threads. The static binary is now compatible with all centos versions again. 
+- fix parse DSCP bit. 
+
 9.4beta7 25.3.2014
 ==================
 - fix crash in skinny when call is skipped due to capture rules
