@@ -335,6 +335,7 @@ char sql_cdr_ua_table[256] = "cdr_ua";
 char sql_cdr_sip_response_table[256] = "cdr_sip_response";
 
 char mysql_host[256] = "localhost";
+char mysql_host_orig[256] = "";
 char mysql_database[256] = "voipmonitor";
 char mysql_table[256] = "cdr";
 char mysql_user[256] = "root";
@@ -2547,6 +2548,20 @@ int main(int argc, char *argv[]) {
 	
 	extern ParsePacket _parse_packet;
 	_parse_packet.setStdParse();
+
+	if(isSqlDriver("mysql") && mysql_host[0]) {
+		strcpy(mysql_host_orig, mysql_host);
+		if(!reg_match(mysql_host, "[0-9]\\.[0-9]\\.[0-9]\\.[0-9]")) {
+			hostent *conn_server_record = gethostbyname(mysql_host);
+			if(conn_server_record == NULL) {
+				syslog(LOG_ERR, "mysql host %s is unavailable", mysql_host);
+				exit(1);
+			}
+			in_addr *conn_server_address = (in_addr*)conn_server_record->h_addr;
+			strcpy(mysql_host, inet_ntoa(*conn_server_address));
+			syslog(LOG_NOTICE, "resolve mysql host %s to %s", mysql_host_orig, mysql_host);
+		}
+	}
 
 	if(opt_fork && !opt_read_from_file) {
 		#if ENABLE_SEMAPHOR_FORK_MODE
