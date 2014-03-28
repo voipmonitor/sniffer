@@ -3,7 +3,6 @@
 - fix skinny skip flag
 - if mysql procedure fails run repair table mysql.proc which is the most common source of the issue
 
-
 9.4beta8 27.3.2014
 ==================
 - resolve mysql host only in main thread which fixes issues on some systems which crashes when resolv is in multiple threads. The static binary is now compatible with all centos versions again. 
