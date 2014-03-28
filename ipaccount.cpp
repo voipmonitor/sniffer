@@ -75,6 +75,8 @@ extern char get_radius_ip_query[1024];
 extern char get_radius_ip_query_where[1024];
 extern int get_customer_by_ip_flush_period;
 extern vector<string> opt_national_prefix;
+extern int opt_mysqlstore_max_threads_ipacc_base;
+extern int opt_mysqlstore_max_threads_ipacc_agreg2;
 
 extern char mysql_host[256];
 extern char mysql_database[256];
@@ -130,8 +132,9 @@ void ipacc_save(int indexIpaccBuffer, unsigned int interval_time_limit = 0) {
 	char insertQueryBuff[1000];
 	sqlStore->lock(STORE_PROC_ID_IPACC_1);
 	if(opt_ipacc_sniffer_agregate) {
-		sqlStore->lock(STORE_PROC_ID_IPACC_2);
-		sqlStore->lock(STORE_PROC_ID_IPACC_3);
+		for(int i = 1; i < opt_mysqlstore_max_threads_ipacc_base; i++) {
+			sqlStore->lock(STORE_PROC_ID_IPACC_1 + i);
+		}
 	}
 	int _counter  = 0;
 	bool enableClear = true;
@@ -189,7 +192,9 @@ void ipacc_save(int indexIpaccBuffer, unsigned int interval_time_limit = 0) {
 						ipacc_data->numpackets,
 						ipacc_data->voippacket,
 						opt_ipacc_sniffer_agregate ? 0 : 1);
-					sqlStore->query(insertQueryBuff, STORE_PROC_ID_IPACC_1 + (opt_ipacc_sniffer_agregate ? _counter % 3 : 0));
+					sqlStore->query(insertQueryBuff, 
+							STORE_PROC_ID_IPACC_1 + 
+							(opt_ipacc_sniffer_agregate ? _counter % opt_mysqlstore_max_threads_ipacc_base : 0));
 				} else {
 					SqlDb_row row;
 					row.add(sqlDateTimeString(ipacc_data->interval_time).c_str(), "interval_time");
@@ -245,8 +250,9 @@ void ipacc_save(int indexIpaccBuffer, unsigned int interval_time_limit = 0) {
 	}
 	sqlStore->unlock(STORE_PROC_ID_IPACC_1);
 	if(opt_ipacc_sniffer_agregate) {
-		sqlStore->unlock(STORE_PROC_ID_IPACC_2);
-		sqlStore->unlock(STORE_PROC_ID_IPACC_3);
+		for(int i = 1; i < opt_mysqlstore_max_threads_ipacc_base; i++) {
+			sqlStore->unlock(STORE_PROC_ID_IPACC_1 + i);
+		}
 	}
 	if(opt_ipacc_sniffer_agregate) {
 		for(agregIter = agreg.begin(); agregIter != agreg.end(); ++agregIter) {
@@ -554,21 +560,11 @@ void IpaccAgreg::save(unsigned int time_interval) {
 	}
 	
 	map<AgregIP2, AgregData*>::iterator iter2;
-	for(int i = 0; i < 1; i++) {
-		agreg_table = i == 0 ? "ipacc_agr2_hour" : "ipacc_agr2_day";
-		agreg_time_field = i == 0 ? "time_hour" : "date_day";
-		strcpy(agreg_time,
-		       i == 0 ?
-				sqlDateTimeString(time_interval / 3600 * 3600).c_str() :
-				sqlDateString(time_interval).c_str());
-	if(i == 0) {
-		sqlStore->lock(STORE_PROC_ID_IPACC_AGR2_HOUR_1);
-		sqlStore->lock(STORE_PROC_ID_IPACC_AGR2_HOUR_2);
-		sqlStore->lock(STORE_PROC_ID_IPACC_AGR2_HOUR_3);
-	} else {
-		sqlStore->lock(STORE_PROC_ID_IPACC_AGR2_DAY_1);
-		sqlStore->lock(STORE_PROC_ID_IPACC_AGR2_DAY_2);
-		sqlStore->lock(STORE_PROC_ID_IPACC_AGR2_DAY_3);
+	agreg_table = "ipacc_agr2_hour";
+	agreg_time_field = "time_hour";
+	strcpy(agreg_time, sqlDateTimeString(time_interval / 3600 * 3600).c_str());
+	for(int i = 0; i < opt_mysqlstore_max_threads_ipacc_agreg2; i++) {
+		sqlStore->lock(STORE_PROC_ID_IPACC_AGR2_HOUR_1 + i);
 	}
 	int _counter = 0;
 	for(iter2 = this->map2.begin(); iter2 != this->map2.end(); iter2++) {
@@ -653,19 +649,12 @@ void IpaccAgreg::save(unsigned int time_interval) {
 			iter2->second->packets_voip_out,
 			iter2->second->packets_voip_in + iter2->second->packets_voip_out);
 		sqlStore->query(insertQueryBuff,
-				(i == 0 ? STORE_PROC_ID_IPACC_AGR2_HOUR_1 : STORE_PROC_ID_IPACC_AGR2_DAY_1) +
-				(_counter % 3));
+				STORE_PROC_ID_IPACC_AGR2_HOUR_1 +
+				(_counter % opt_mysqlstore_max_threads_ipacc_agreg2));
 		++_counter;
 	}
-	if(i == 0) {
-		sqlStore->unlock(STORE_PROC_ID_IPACC_AGR2_HOUR_1);
-		sqlStore->unlock(STORE_PROC_ID_IPACC_AGR2_HOUR_2);
-		sqlStore->unlock(STORE_PROC_ID_IPACC_AGR2_HOUR_3);
-	} else {
-		sqlStore->unlock(STORE_PROC_ID_IPACC_AGR2_DAY_1);
-		sqlStore->unlock(STORE_PROC_ID_IPACC_AGR2_DAY_2);
-		sqlStore->unlock(STORE_PROC_ID_IPACC_AGR2_DAY_3);
-	}
+	for(int i = 0; i < opt_mysqlstore_max_threads_ipacc_agreg2; i++) {
+		sqlStore->unlock(STORE_PROC_ID_IPACC_AGR2_HOUR_1 + i);
 	}
 }
 

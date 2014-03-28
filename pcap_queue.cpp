@@ -81,6 +81,8 @@ extern int opt_mysqlstore_max_threads_cdr;
 extern int opt_mysqlstore_max_threads_message;
 extern int opt_mysqlstore_max_threads_register;
 extern int opt_mysqlstore_max_threads_http;
+extern int opt_mysqlstore_max_threads_ipacc_base;
+extern int opt_mysqlstore_max_threads_ipacc_agreg2;
 
 extern pcap_t *global_pcap_handle;
 extern char *sipportmatrix;
@@ -965,6 +967,25 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 				}
 			}
 			if(opt_ipaccount) {
+				for(int i = 0; i < opt_mysqlstore_max_threads_ipacc_base; i++) {
+					sizeSQLq = sqlStore->getSize(STORE_PROC_ID_IPACC_1 + i);
+					if(sizeSQLq >= 1) {
+						outStr << " I" << (STORE_PROC_ID_IPACC_1 + i) << ":" << sizeSQLq;
+					}
+				}
+				for(int i = STORE_PROC_ID_IPACC_AGR_INTERVAL; i <= STORE_PROC_ID_IPACC_AGR_DAY; i++) {
+					sizeSQLq = sqlStore->getSize(i);
+					if(sizeSQLq >= 1) {
+						outStr << " I" << i << ":" << sizeSQLq;
+					}
+				}
+				for(int i = 0; i < opt_mysqlstore_max_threads_ipacc_agreg2; i++) {
+					sizeSQLq = sqlStore->getSize(STORE_PROC_ID_IPACC_AGR2_HOUR_1 + i);
+					if(sizeSQLq >= 1) {
+						outStr << " I" << (STORE_PROC_ID_IPACC_AGR2_HOUR_1 + i) << ":" << sizeSQLq;
+					}
+				}
+				/*
 				sizeSQLq = sqlStore->getSizeMult(12,
 								 STORE_PROC_ID_IPACC_1,
 								 STORE_PROC_ID_IPACC_2,
@@ -981,6 +1002,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 				if(sizeSQLq >= 0) {
 					outStr << " I:" << sizeSQLq;
 				}
+				*/
 			}
 			outStr << "] ";
 		}

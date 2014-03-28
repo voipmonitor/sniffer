@@ -363,7 +363,7 @@ bool SqlDb_mysql::connect(bool createDb, bool mainInit) {
 		my_bool reconnect = 1;
 		mysql_options(this->hMysql, MYSQL_OPT_RECONNECT, &reconnect);
 		if(this->conn_server_ip.empty()) {
-			if(reg_match(this->conn_server.c_str(), "[0-9]\\.[0-9]\\.[0-9]\\.[0-9]")) {
+			if(reg_match(this->conn_server.c_str(), "[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+")) {
 				this->conn_server_ip = this->conn_server;
 			} else {
 				hostent *conn_server_record = gethostbyname(this->conn_server.c_str());
@@ -375,6 +375,7 @@ bool SqlDb_mysql::connect(bool createDb, bool mainInit) {
 				}
 				in_addr *conn_server_address = (in_addr*)conn_server_record->h_addr;
 				this->conn_server_ip = inet_ntoa(*conn_server_address);
+				syslog(LOG_NOTICE, "resolve mysql host %s to %s", this->conn_server.c_str(), this->conn_server_ip.c_str());
 			}
 		}
 		this->hMysqlConn = mysql_real_connect(
@@ -1017,8 +1018,16 @@ void MySqlStore_process::store() {
 			if(this->query_buff.size() == 0) {
 				this->unlock();
 				if(queryqueue != "") {
-					this->sqlDb->query(string("drop procedure if exists ") + insert_funcname);
-					this->sqlDb->query(string("create procedure ") + insert_funcname + "()\nbegin\n" + queryqueue + "\nend");
+					for(int pass = 0; pass < 2; pass ++) {
+						this->sqlDb->query(string("drop procedure if exists ") + insert_funcname);
+						if(this->sqlDb->query(string("create procedure ") + insert_funcname + "()\nbegin\n" + queryqueue + "\nend")) {
+							break;
+						} else if(this->sqlDb->getLastError() == ER_SP_ALREADY_EXISTS) {
+							this->sqlDb->query("repair table mysql.proc");
+						} else {
+							break;
+						}
+					}
 					this->sqlDb->query(string("call ") + insert_funcname + "();");
 					queryqueue = "";
 					if(verbosity > 1) {
@@ -1041,8 +1050,16 @@ void MySqlStore_process::store() {
 			if(size < this->concatLimit) {
 				size++;
 			} else {
-				this->sqlDb->query(string("drop procedure if exists ") + insert_funcname);
-				this->sqlDb->query(string("create procedure ") + insert_funcname + "()\nbegin\n" + queryqueue + "\nend");
+				for(int pass = 0; pass < 2; pass ++) {
+					this->sqlDb->query(string("drop procedure if exists ") + insert_funcname);
+					if(this->sqlDb->query(string("create procedure ") + insert_funcname + "()\nbegin\n" + queryqueue + "\nend")) {
+						break;
+					} else if(this->sqlDb->getLastError() == ER_SP_ALREADY_EXISTS) {
+						this->sqlDb->query("repair table mysql.proc");
+					} else {
+						break;
+					}
+				}
 				this->sqlDb->query(string("call ") + insert_funcname + "();");
 				queryqueue = "";
 				size = 0;
