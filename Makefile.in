@@ -222,7 +222,7 @@ targz64debug: core2debug
 	chmod +x voipmonitor-amd64-${version}-static/etc/init.d/voipmonitor 
 	cp scripts/install-script.sh voipmonitor-amd64-${version}-static/
 	chmod +x voipmonitor-amd64-${version}-static/install-script.sh
-	tar -czf voipmonitor-amd64-${version}debug-static.tar.gz voipmonitor-amd64-${version}-static
+	tar -czf voipmonitor-amd64-${version}-static-debug.tar.gz voipmonitor-amd64-${version}-static
 	rm -rf voipmonitor-amd64-${version}-static
 	
 targz32: core2
