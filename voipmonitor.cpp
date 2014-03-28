@@ -485,6 +485,8 @@ int opt_mysqlstore_max_threads_cdr = 1;
 int opt_mysqlstore_max_threads_message = 1;
 int opt_mysqlstore_max_threads_register = 1;
 int opt_mysqlstore_max_threads_http = 1;
+int opt_mysqlstore_max_threads_ipacc_base = 3;
+int opt_mysqlstore_max_threads_ipacc_agreg2 = 3;
 
 #define ENABLE_SEMAPHOR_FORK_MODE 0
 #if ENABLE_SEMAPHOR_FORK_MODE
@@ -1801,6 +1803,12 @@ int load_config(char *fname) {
 	if((value = ini.GetValue("general", "mysqlstore_max_threads_http", NULL))) {
 		opt_mysqlstore_max_threads_http = max(min(atoi(value), 9), 1);
 	}
+	if((value = ini.GetValue("general", "mysqlstore_max_threads_ipacc_base", NULL))) {
+		opt_mysqlstore_max_threads_ipacc_base = max(min(atoi(value), 9), 1);
+	}
+	if((value = ini.GetValue("general", "mysqlstore_max_threads_ipacc_agreg2", NULL))) {
+		opt_mysqlstore_max_threads_ipacc_agreg2 = max(min(atoi(value), 9), 1);
+	}
 	
 	/*
 	
@@ -2551,7 +2559,7 @@ int main(int argc, char *argv[]) {
 
 	if(isSqlDriver("mysql") && mysql_host[0]) {
 		strcpy(mysql_host_orig, mysql_host);
-		if(!reg_match(mysql_host, "[0-9]\\.[0-9]\\.[0-9]\\.[0-9]")) {
+		if(!reg_match(mysql_host, "[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+")) {
 			hostent *conn_server_record = gethostbyname(mysql_host);
 			if(conn_server_record == NULL) {
 				syslog(LOG_ERR, "mysql host %s is unavailable", mysql_host);
@@ -2748,11 +2756,14 @@ int main(int argc, char *argv[]) {
 			}
 		}
 		if(opt_mysqlstore_concat_limit_ipacc) {
-			for(int i = STORE_PROC_ID_IPACC_1; i <= STORE_PROC_ID_IPACC_3; i++) {
+			for(int i = 0; i < opt_mysqlstore_max_threads_ipacc_base; i++) {
+				sqlStore->setConcatLimit(STORE_PROC_ID_IPACC_1 + i, opt_mysqlstore_concat_limit_ipacc);
+			}
+			for(int i = STORE_PROC_ID_IPACC_AGR_INTERVAL; i <= STORE_PROC_ID_IPACC_AGR_DAY; i++) {
 				sqlStore->setConcatLimit(i, opt_mysqlstore_concat_limit_ipacc);
 			}
-			for(int i = STORE_PROC_ID_IPACC_AGR_INTERVAL; i <= STORE_PROC_ID_IPACC_AGR2_DAY_3; i++) {
-				sqlStore->setConcatLimit(i, opt_mysqlstore_concat_limit_ipacc);
+			for(int i = 0; i < opt_mysqlstore_max_threads_ipacc_agreg2; i++) {
+				sqlStore->setConcatLimit(STORE_PROC_ID_IPACC_AGR2_HOUR_1 + i, opt_mysqlstore_concat_limit_ipacc);
 			}
 		}
 	}
