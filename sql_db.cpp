@@ -1018,8 +1018,16 @@ void MySqlStore_process::store() {
 			if(this->query_buff.size() == 0) {
 				this->unlock();
 				if(queryqueue != "") {
-					this->sqlDb->query(string("drop procedure if exists ") + insert_funcname);
-					this->sqlDb->query(string("create procedure ") + insert_funcname + "()\nbegin\n" + queryqueue + "\nend");
+					for(int pass = 0; pass < 2; pass ++) {
+						this->sqlDb->query(string("drop procedure if exists ") + insert_funcname);
+						if(this->sqlDb->query(string("create procedure ") + insert_funcname + "()\nbegin\n" + queryqueue + "\nend")) {
+							break;
+						} else if(this->sqlDb->getLastError() == ER_SP_ALREADY_EXISTS) {
+							this->sqlDb->query("repair table mysql.proc");
+						} else {
+							break;
+						}
+					}
 					this->sqlDb->query(string("call ") + insert_funcname + "();");
 					queryqueue = "";
 					if(verbosity > 1) {
@@ -1042,8 +1050,16 @@ void MySqlStore_process::store() {
 			if(size < this->concatLimit) {
 				size++;
 			} else {
-				this->sqlDb->query(string("drop procedure if exists ") + insert_funcname);
-				this->sqlDb->query(string("create procedure ") + insert_funcname + "()\nbegin\n" + queryqueue + "\nend");
+				for(int pass = 0; pass < 2; pass ++) {
+					this->sqlDb->query(string("drop procedure if exists ") + insert_funcname);
+					if(this->sqlDb->query(string("create procedure ") + insert_funcname + "()\nbegin\n" + queryqueue + "\nend")) {
+						break;
+					} else if(this->sqlDb->getLastError() == ER_SP_ALREADY_EXISTS) {
+						this->sqlDb->query("repair table mysql.proc");
+					} else {
+						break;
+					}
+				}
 				this->sqlDb->query(string("call ") + insert_funcname + "();");
 				queryqueue = "";
 				size = 0;
