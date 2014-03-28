@@ -1245,6 +1245,14 @@ Call *new_skinny_channel(int state, char *data, int datalen, struct pcap_pkthdr 
 			syslog(LOG_NOTICE, "callslimit[%d] > calls[%d] ignoring call\n", opt_callslimit, calls_counter);
 	}
 
+	unsigned int flags;
+	ipfilter->add_call_flags(&flags, ntohl(saddr), ntohl(daddr));
+	if(flags & FLAG_SKIPCDR) {
+		if(verbosity > 1)
+			syslog(LOG_NOTICE, "call skipped due to ip or tel capture rules\n");
+		return NULL;
+	}       
+
 	// store this call only if it starts with invite
 	Call *call = calltable->add(s, l, header->ts.tv_sec, saddr, source, handle, dlt, sensor_id);
 	call->set_first_packet_time(header->ts.tv_sec, header->ts.tv_usec);
@@ -1253,14 +1261,8 @@ Call *new_skinny_channel(int state, char *data, int datalen, struct pcap_pkthdr 
 	call->sipcallerport = source;
 	call->sipcalledport = dest;
 	call->type = state;
-	ipfilter->add_call_flags(&(call->flags), ntohl(saddr), ntohl(daddr));
+	call->flags = flags;
 	strncpy(call->fbasename, callidstr, MAX_FNAME - 1);
-
-	if(call->flags & FLAG_SKIPCDR) {
-		if(verbosity > 1)
-			syslog(LOG_NOTICE, "call skipped due to ip or tel capture rules\n");
-		return NULL;
-	}       
 
 	if(call->flags & (FLAG_SAVESIP | FLAG_SAVERTP | FLAG_SAVEWAV) || opt_savewav_force) {
 		static string lastdir;
