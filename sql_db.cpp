@@ -37,6 +37,8 @@ extern int opt_mysqlcompress;
 extern pthread_mutex_t mysqlconnect_lock;      
 extern int opt_mos_lqo;
 extern int opt_read_from_file;
+extern volatile int calls_cdr_save_counter;
+extern volatile int calls_message_save_counter;
 
 int sql_noerror = 0;
 int sql_disable_next_attempt_if_error = 0;
@@ -1046,6 +1048,12 @@ void MySqlStore_process::store() {
 			}
 			if(query_len && query[query_len - 1] != ';') {
 				queryqueue.append("; ");
+			}
+			if(this->id >= STORE_PROC_ID_CDR_1 && this->id < STORE_PROC_ID_CDR_1 + 10) {
+				--calls_cdr_save_counter;
+			}
+			else if(this->id >= STORE_PROC_ID_MESSAGE_1 && this->id < STORE_PROC_ID_MESSAGE_1 + 10) {
+				--calls_message_save_counter;
 			}
 			if(size < this->concatLimit) {
 				size++;
