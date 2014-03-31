@@ -72,8 +72,6 @@ inline void save_packet(Call *call, struct pcap_pkthdr *header, const u_char *pa
 
 typedef std::map<in_addr_t, in_addr_t> nat_aliases_t; //!< 
 
-void clean_tcpstreams();
-
 
 /* this is copied from libpcap sll.h header file, which is not included in debian distribution */
 #define SLL_ADDRLEN       8               /* length of address field */
@@ -268,6 +266,59 @@ struct gre_hdr {
 #else
 	__be16	protocol;
 #endif
+};
+
+
+#define MAX_TCPSTREAMS 1024
+
+class TcpReassemblySip {
+public:
+	struct tcp_stream2_s {
+		char *data;
+		int datalen;
+		pcap_pkthdr header;
+		u_char *packet;
+		u_int hash;
+		time_t ts;
+		u_int32_t seq;
+		u_int32_t next_seq;
+		u_int32_t ack_seq;
+		tcp_stream2_s *next;
+		int lastpsh;
+	};
+public:
+	TcpReassemblySip();
+	void processPacket(
+		unsigned int saddr, int source, unsigned int daddr, int dest, char *data, int datalen,
+		pcap_t *handle, pcap_pkthdr *header, const u_char *packet, int istcp, int dontsave, int can_thread, int *was_rtp, struct iphdr2 *header_ip, int *voippacket, int disabledsave,
+		pcap_block_store *block_store, int block_store_index, int dlt, int sensor_id,
+		bool issip);
+	void clean(time_t ts = 0);
+private:
+	tcp_stream2_s *addPacket(
+		tcp_stream2_s *stream,
+		unsigned int saddr, int source, unsigned int daddr, int dest, char *data, int datalen,
+		pcap_t *handle, pcap_pkthdr *header, const u_char *packet, int istcp, int dontsave, int can_thread, int *was_rtp, struct iphdr2 *header_ip, int *voippacket, int disabledsave,
+		pcap_block_store *block_store, int block_store_index, int dlt, int sensor_id);
+	void complete(
+		tcp_stream2_s *stream, u_int hash,
+		unsigned int saddr, int source, unsigned int daddr, int dest, char *data, int datalen,
+		pcap_t *handle, pcap_pkthdr *header, const u_char *packet, int istcp, int dontsave, int can_thread, int *was_rtp, struct iphdr2 *header_ip, int *voippacket, int disabledsave,
+		pcap_block_store *block_store, int block_store_index, int dlt, int sensor_id);
+	tcp_stream2_s *getLastStreamItem(tcp_stream2_s *stream) {
+		while(stream->next) {
+			stream = stream->next;
+		}
+		return(stream);
+	}
+	bool isCompleteStream(tcp_stream2_s *stream) {
+		tcp_stream2_s *lastStreamItem = getLastStreamItem(stream);
+		return(lastStreamItem->datalen >= 2 && 
+		       lastStreamItem->data[lastStreamItem->datalen - 2] == 0x0d && lastStreamItem->data[lastStreamItem->datalen - 1] == 0x0a);
+	}
+private:
+	tcp_stream2_s *tcp_streams_hashed[MAX_TCPSTREAMS];
+	list<tcp_stream2_s*> tcp_streams_list;
 };
  
 

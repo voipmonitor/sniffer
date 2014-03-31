@@ -1245,7 +1245,7 @@ Call *new_skinny_channel(int state, char *data, int datalen, struct pcap_pkthdr 
 			syslog(LOG_NOTICE, "callslimit[%d] > calls[%d] ignoring call\n", opt_callslimit, calls_counter);
 	}
 
-	unsigned int flags;
+	unsigned int flags = 0;
 	ipfilter->add_call_flags(&flags, ntohl(saddr), ntohl(daddr));
 	if(flags & FLAG_SKIPCDR) {
 		if(verbosity > 1)

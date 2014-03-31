@@ -124,6 +124,8 @@ extern int opt_mysqlstore_max_threads_register;
 extern int opt_mysqlstore_max_threads_http;
 
 volatile int calls_counter = 0;
+volatile int calls_cdr_save_counter = 0;
+volatile int calls_message_save_counter = 0;
 
 extern char mac[32];
 

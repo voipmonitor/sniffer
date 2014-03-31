@@ -622,7 +622,7 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 
 	Call *owner = (Call*)call_owner;
 
-	//if(getSSRC() != 0xfbff7e51) return;
+	//if(getSSRC() != 0xfc27e6de) return;
 
 	if(getVersion() != 2) {
 		return;
@@ -1026,10 +1026,28 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 	} else {
 		if(last_ts != 0 and seq == (last_seq + 1) and codec != PAYLOAD_TELEVENT and !getMarker()) {
 			// packetization can change over time
-			int curpacketization = (getTimestamp() - last_ts) / 8;
-			if(curpacketization % 10 == 0 and curpacketization >= 20 and curpacketization <= 120) {
-				channel_fix1->packetization = channel_fix2->packetization = channel_adapt->packetization = channel_record->packetization = packetization = curpacketization;
+			int curpacketization = 0;
+
+			if(curpayload == PAYLOAD_G729) {
+				// if G729 packet len is 20, packet len is 20ms. In other cases - will be added later (do not have 40ms packetizations samples right now)
+				if(get_payload_len() == 20) {
+					curpacketization = 20;	
+				} else {
+					curpacketization = (getTimestamp() - last_ts) / 8;
+				}
+			} else if(curpayload == PAYLOAD_PCMU or curpayload == PAYLOAD_PCMA) {
+				curpacketization = get_payload_len() / 8;
+			} else if(curpayload == PAYLOAD_GSM) {
+				curpacketization = get_payload_len() / 33 * 20;
+			} else {
+				curpacketization = (getTimestamp() - last_ts) / (samplerate / 1000);
 			}
+
+			if(curpacketization != packetization and curpacketization % 10 == 0 and curpacketization >= 10 and curpacketization <= 120) {
+				channel_fix1->packetization = channel_fix2->packetization = channel_adapt->packetization = channel_record->packetization = packetization = curpacketization;
+				if(verbosity > 3) printf("[%x] changing packetization:[%d]\n", getSSRC(), packetization);
+			}
+
 		}
 		//printf("packetization [%d]\n", packetization);
 		if(opt_jitterbuffer_f1)

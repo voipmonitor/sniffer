@@ -2274,7 +2274,6 @@ bool PcapQueue_readFromInterface::init() {
 
 bool PcapQueue_readFromInterface::initThread(void *arg, unsigned int arg2) {
 	init_hash();
-	memset(tcp_streams_hashed, 0, sizeof(tcp_stream2_t*) * MAX_TCPSTREAMS);
 	return(this->startCapture() &&
 	       this->openFifoForWrite(arg, arg2));
 }

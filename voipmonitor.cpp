@@ -157,6 +157,8 @@ int debugclean = 0;
 
 extern Calltable *calltable;
 extern volatile int calls_counter;
+extern volatile int calls_cdr_save_counter;
+extern volatile int calls_message_save_counter;
 unsigned int opt_openfile_max = 65535;
 int opt_packetbuffered = 0;	// Make .pcap files writing ‘‘packet-buffered’’ 
 				// more slow method, but you can use partitialy 
@@ -3314,6 +3316,15 @@ int main(int argc, char *argv[]) {
 	calltable->cleanup(0);
 	extern AsyncClose asyncClose;
 	asyncClose.closeAll();
+	if(opt_read_from_file && !opt_nocdr) {
+		for(int i = 0; i < 20; i++) {
+			if(calls_cdr_save_counter > 0 || calls_message_save_counter > 0) {
+				usleep(100000);
+			} else {
+				break;
+			}
+		}
+	}
 	terminating = 1;
 	if(!(opt_pcap_threaded && opt_pcap_queue && 
 	     !opt_pcap_queue_receive_from_ip_port &&
@@ -3443,7 +3454,8 @@ int main(int argc, char *argv[]) {
 		unlink(opt_pidfile);
 	}
 	pthread_mutex_destroy(&mysqlconnect_lock);
-	clean_tcpstreams();
+	extern TcpReassemblySip tcpReassemblySip;
+	tcpReassemblySip.clean();
 	ipfrag_prune(0, 1);
 	freeMemIpacc();
 	delete regfailedcache;
