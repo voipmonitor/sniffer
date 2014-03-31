@@ -4054,12 +4054,6 @@ void TcpReassemblySip::complete(
 		delete tmpstream;
 		tmpstream = next;
 	}
-	/*
-	if(call) {
-		save_packet(call, header, packet, saddr, source, daddr, dest, istcp, (char *)data, datalen, TYPE_SIP, 
-			    dlt, sensor_id);
-	}
-	*/
 	free(newdata);
 	tcp_streams_hashed[hash] = NULL;
 }

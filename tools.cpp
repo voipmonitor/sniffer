@@ -1198,7 +1198,10 @@ void ParsePacket::parseData(char *data, unsigned long datalen, bool doClear) {
 		   data[i + 1] == '\n' && data[i + 2] == '\r' && data[i + 3] == '\n') {
 			doubleEndLine = data + i;
 			if(contentLength > -1) {
-				datalen = doubleEndLine + 4 - data + contentLength;
+				unsigned long modify_datalen = doubleEndLine + 4 - data + contentLength;
+				if(modify_datalen < datalen) {
+					datalen = modify_datalen;
+				}
 			}
 			i += 2;
 		} else if(i == 0 || data[i - 1] == '\n') {
