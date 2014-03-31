@@ -1,6 +1,10 @@
 9.4beta10 31.3.2014
 ===================
 - fix low mos score in case call changes packetization from 10 to 20 and back to 10 which is pretty rare but it can happen
+- fix SIP TCP reassemble if the first SIP packet does not contain Call-ID it was not tracked at all. 
+- fix SIP TCP reassemble duplicate TCP packet - last fragment was stored twice 
+- fix racecondition when storing multiple calls from file - some of calls might not be saved due to preliminary end of the program not waiting to finish all queues
+- fix crash if SIP type MESSAGE has larger content-lenght than the whole message.
 
 
 9.4beta9 28.3.2014
