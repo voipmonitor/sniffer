@@ -1,4 +1,9 @@
-8.4beta9 28.3.2014
+9.4beta10 31.3.2014
+===================
+- fix low mos score in case call changes packetization from 10 to 20 and back to 10 which is pretty rare but it can happen
+
+
+9.4beta9 28.3.2014
 ==================
 - fix skinny skip flag
 - if mysql procedure fails run repair table mysql.proc which is the most common source of the issue
