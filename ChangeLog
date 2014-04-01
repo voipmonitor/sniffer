@@ -1,5 +1,6 @@
 
 - fix audio if caller/called changes codec from one sample rate to another 
+- do not resolve mysql for -c switch
 
 9.4beta11 1.4.2014
 ==================
