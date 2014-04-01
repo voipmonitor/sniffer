@@ -269,7 +269,6 @@ static void ogg_close(struct vorbis_desc *s, FILE *f)
 }
 
 int ogg_mix(char *in1, char *in2, char *out, int stereo, int samplerate, double quality) {
-	printf("stereo[%d]\n", stereo);
 	FILE *f_in1 = NULL;
 	FILE *f_in2 = NULL;
 	FILE *f_out = NULL;
