@@ -283,6 +283,9 @@ unsigned int opt_maxpoolgraphdays = 0;
 unsigned int opt_maxpoolaudiosize = 0;
 unsigned int opt_maxpoolaudiodays = 0;
 int opt_maxpool_clean_obsolete = 0;
+int opt_autocleanspool = 1;
+int opt_autocleanspoolminpercent = 5;
+int opt_autocleanmingb = 5;
 int opt_mysqlloadconfig = 1;
 int opt_last_rtp_from_end = 1;
 
@@ -417,7 +420,6 @@ pthread_t readdump_libpcap_thread;
 pthread_t manager_thread = 0;	// ID of worker manager thread 
 pthread_t manager_client_thread;	// ID of worker manager thread 
 pthread_t cachedir_thread;	// ID of worker cachedir thread 
-pthread_t cleanspool_thread;	// ID of worker clean thread 
 pthread_t database_backup_thread;	// ID of worker backup thread 
 int terminating;		// if set to 1, worker thread will terminate
 int terminating2;		// if set to 1, worker thread will terminate
@@ -552,46 +554,6 @@ void find_and_replace( string &source, const string find, string replace ) {
 	for ( ; (j = source.find( find )) != string::npos ; ) {
 		source.replace( j, find.length(), replace );
 	}
-}
-
-void *clean_spooldir(void *dummy) {
-
-	if(debugclean) syslog(LOG_ERR, "run clean_spooldir()");
-	while(!terminating2) {
-
-/* old code
-		char cmd[2048];
-		sprintf(cmd, "find \"%s/\" -type f -printf \"%%T@::%%p::%%s\\n\" | sort -rn | awk -v maxbytes=\"$((1024 * 1024 * %d))\" -F \"::\" 'BEGIN { curSize=0; } { curSize += $3; if (curSize > maxbytes) { print $2; } }'", opt_chdir, opt_cleanspool_sizeMB);
-
-		if(verbosity > 0) syslog(LOG_NOTICE, "cleaning spool: [%s]\n", cmd);
-		FILE* pipe = popen(cmd, "r");
-		if (!pipe) {
-			syslog(LOG_ERR, "cannot rum clean command: [%s] error:[%s]", cmd, strerror(errno));
-			continue;
-		}
-		while(!feof(pipe)) {
-			if(fgets(buffer, 4092, pipe) != NULL) {
-				// remove new line 
-				buffer[strlen(buffer) - 1] = '\0';
-				unlink(buffer);
-			}
-		}
-		pclose(pipe);
-		sleep(opt_cleanspool_interval);
-*/
-
-		/* obsolete
-		if(debugclean) syslog(LOG_ERR, "pthread_create(clean_spooldir_run)");
-		pthread_t tpid;	// ID of worker clean thread 
-		pthread_create(&tpid, NULL, clean_spooldir_run, NULL);
-		*/
-		if(debugclean) syslog(LOG_ERR, "run clean_spooldir_run");
-		clean_spooldir_run(NULL);
-		for(int i = 0; i < 300 && !terminating2; i++) {
-			sleep(1);
-		}
-	}
-	return NULL;
 }
 
 void *database_backup(void *dummy) {
@@ -770,6 +732,7 @@ void *storing_cdr( void *dummy ) {
 	time_t createPartitionAt = 0;
 	time_t dropPartitionAt = 0;
 	time_t createPartitionIpaccAt = 0;
+	time_t checkDiskFreeAt = 0;
 	while(1) {
 		if(!opt_nocdr and opt_cdr_partition and !opt_disable_partition_operations and isSqlDriver("mysql")) {
 			time_t actTime = time(NULL);
@@ -788,6 +751,20 @@ void *storing_cdr( void *dummy ) {
 			if(actTime - createPartitionIpaccAt > 12 * 3600) {
 				createMysqlPartitionsIpacc();
 				createPartitionIpaccAt = actTime;
+			}
+		}
+		
+		if(opt_autocleanspool &&
+		   isSqlDriver("mysql") &&
+		   !(opt_pcap_queue && 
+		     !opt_pcap_queue_receive_from_ip_port &&
+		     opt_pcap_queue_send_to_ip_port)) {
+			time_t actTime = time(NULL);
+			if(!checkDiskFreeAt) {
+				checkDiskFreeAt = actTime;
+			} else if(actTime - checkDiskFreeAt > 5 * 60) {
+				run_check_disk_free_thread();
+				checkDiskFreeAt = actTime;
 			}
 		}
 		
@@ -1135,6 +1112,15 @@ int load_config(char *fname) {
 	}
 	if((value = ini.GetValue("general", "maxpool_clean_obsolete", NULL))) {
 		opt_maxpool_clean_obsolete = yesno(value);
+	}
+	if((value = ini.GetValue("general", "autocleanspool", NULL))) {
+		opt_autocleanspool = yesno(value);
+	}
+	if((value = ini.GetValue("general", "autocleanspoolminpercent", NULL))) {
+		opt_autocleanspoolminpercent = atoi(value);
+	}
+	if((value = ini.GetValue("general", "autocleanmingb", NULL))) {
+		opt_autocleanmingb = atoi(value);
 	}
 	if((value = ini.GetValue("general", "id_sensor", NULL))) {
 		opt_id_sensor = atoi(value);
@@ -2978,8 +2964,7 @@ int main(int argc, char *argv[]) {
 	     !opt_pcap_queue_receive_from_ip_port &&
 	     opt_pcap_queue_send_to_ip_port) &&
 	   isSetCleanspoolParameters()) {
-		if(debugclean) syslog(LOG_ERR, "pthread_create(clean_spooldir)");
-		pthread_create(&cleanspool_thread, NULL, clean_spooldir, NULL);
+		runCleanSpoolThread();
 	}
 	
 	// start thread processing queued cdr and sql queue - supressed if run as sender

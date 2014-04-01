@@ -26,6 +26,8 @@ extern char opt_chdir[1024];
 extern int debugclean;
 extern int opt_id_sensor_cleanspool;
 extern char configfile[1024];
+extern int terminating;
+extern int terminating2;
 
 extern unsigned int opt_maxpoolsize;
 extern unsigned int opt_maxpooldays;
@@ -40,6 +42,9 @@ extern unsigned int opt_maxpoolaudiodays;
 extern int opt_maxpool_clean_obsolete;
 extern int opt_cleanspool_interval;
 extern int opt_cleanspool_sizeMB;
+extern int opt_autocleanspool;
+extern int opt_autocleanspoolminpercent;
+extern int opt_autocleanmingb;
 
 extern MySqlStore *sqlStore;
 
@@ -1099,6 +1104,48 @@ void convert_filesindex() {
 	return;
 }
 
+static pthread_mutex_t check_disk_free_mutex;
+static bool check_disk_free_mutex_init = false;
+
+void *check_disk_free_thread(void*) {
+	double freeSpacePercent = (double)GetFreeDiskSpace(opt_chdir, true) / 100;
+	double freeSpaceGB = (double)GetFreeDiskSpace(opt_chdir) / (1024 * 1024 * 1024);
+	double totalSpaceGB = (double)GetTotalDiskSpace(opt_chdir) / (1024 * 1024 * 1024);
+	if(freeSpacePercent < opt_autocleanspoolminpercent && freeSpaceGB < opt_autocleanmingb) {
+		syslog(LOG_NOTICE, "low spool disk space - executing filesindex");
+		convert_filesindex();
+		freeSpacePercent = (double)GetFreeDiskSpace(opt_chdir, true) / 100;
+		freeSpaceGB = (double)GetFreeDiskSpace(opt_chdir) / (1024 * 1024 * 1024);
+		if(freeSpacePercent < opt_autocleanspoolminpercent) {
+			SqlDb *sqlDb = createSqlObject();
+			stringstream q;
+			q << "SELECT SUM(sipsize + rtpsize + graphsize + audiosize) as sum_size FROM files WHERE id_sensor = " << (opt_id_sensor_cleanspool > 0 ? opt_id_sensor_cleanspool : 0);
+			sqlDb->query(q.str());
+			SqlDb_row row = sqlDb->fetchRow();
+			if(row) {
+			       double usedSizeGB = atol(row["sum_size"].c_str()) / (1024 * 1024 * 1024);
+			       opt_maxpoolsize = (usedSizeGB + freeSpaceGB - min(totalSpaceGB * opt_autocleanspoolminpercent / 100, (double)opt_autocleanmingb) - 1) * 1024;
+			       syslog(LOG_NOTICE, "low spool disk space - maxpoolsize set to new value: %u MB", opt_maxpoolsize);
+			       runCleanSpoolThread();
+			}
+			delete sqlDb;
+		}
+	}
+	pthread_mutex_unlock(&check_disk_free_mutex);
+	return(NULL);
+}
+
+void run_check_disk_free_thread() {
+	if(!check_disk_free_mutex_init) {
+		pthread_mutex_init(&check_disk_free_mutex, NULL);
+		check_disk_free_mutex_init = true;
+	}
+	if(pthread_mutex_trylock(&check_disk_free_mutex) == 0) {
+		pthread_t thread;
+		pthread_create(&thread, NULL, check_disk_free_thread, NULL);
+	}
+}
+
 bool check_exists_act_records_in_files() {
 	bool ok = false;
 	if(!sqlDbCleanspool) {
@@ -1411,3 +1458,22 @@ bool isSetCleanspoolParameters() {
 	       opt_cleanspool_sizeMB);
 }
 
+void *clean_spooldir(void *dummy) {
+	if(debugclean) syslog(LOG_ERR, "run clean_spooldir()");
+	while(!terminating2) {
+		if(debugclean) syslog(LOG_ERR, "run clean_spooldir_run");
+		clean_spooldir_run(NULL);
+		for(int i = 0; i < 300 && !terminating2; i++) {
+			sleep(1);
+		}
+	}
+	return NULL;
+}
+
+void runCleanSpoolThread() {
+	static pthread_t cleanspool_thread = 0;
+	if(!cleanspool_thread) {
+		if(debugclean) syslog(LOG_ERR, "pthread_create(clean_spooldir)");
+		pthread_create(&cleanspool_thread, NULL, clean_spooldir, NULL);
+	}
+}

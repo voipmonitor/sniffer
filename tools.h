@@ -34,6 +34,8 @@ double ts2double(unsigned int sec, unsigned int usec);
 long long GetFileSize(std::string filename);
 long long GetFileSizeDU(std::string filename);
 long long GetDU(long long fileSize);
+long long GetFreeDiskSpace(const char* absoluteFilePath, bool percent_mult_100 = false);
+long long GetTotalDiskSpace(const char* absoluteFilePath);
 string GetStringMD5(std::string str);
 string GetFileMD5(std::string filename);
 bool FileExists(char *strFilename);

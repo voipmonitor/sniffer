@@ -22,6 +22,7 @@
 #include <syslog.h>
 #include <sys/ioctl.h> 
 #include <sys/syscall.h>
+#include <sys/statvfs.h>
 
 #include "voipmonitor.h"
 
@@ -423,6 +424,44 @@ long long GetDU(long long fileSize) {
 		fileSize += 100; // inode / directory item size
 	}
 	return(fileSize);
+}
+
+long long GetFreeDiskSpace(const char* absoluteFilePath, bool percent_mult_100) {
+	struct statvfs buf;
+	if(!statvfs(absoluteFilePath, &buf)) {
+		unsigned long long blksize, blocks, freeblks, disk_size, used, free;
+		blksize = buf.f_bsize;
+		blocks = buf.f_blocks;
+		freeblks = buf.f_bfree;
+
+		disk_size = blocks*blksize;
+		free = freeblks*blksize;
+		used = disk_size - free;
+
+		return percent_mult_100 ?
+			(long long)((double)free / disk_size * 10000) :
+			free;
+	} else {
+		return -1;
+	}
+}
+
+long long GetTotalDiskSpace(const char* absoluteFilePath) {
+	struct statvfs buf;
+	if(!statvfs(absoluteFilePath, &buf)) {
+		unsigned long long blksize, blocks, freeblks, disk_size, used, free;
+		blksize = buf.f_bsize;
+		blocks = buf.f_blocks;
+		freeblks = buf.f_bfree;
+
+		disk_size = blocks*blksize;
+		free = freeblks*blksize;
+		used = disk_size - free;
+
+		return disk_size;
+	} else {
+		return -1;
+	}
 }
 
 string GetStringMD5(std::string str) {

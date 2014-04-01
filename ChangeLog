@@ -1,3 +1,8 @@
+9.4beta11 1.4.2014
+==================
+- implement autocleaning to prevent 100% disk space usage. in case the space is below 1% and below 5GB (which is default threshold) reindexfiles procedure will be executed and cleaning will be restarted. In case this will not help the new maxpoolsize will be set to size of current spool directory and will keep free space MIN(1% freespace, 5GB). Default is autoclean enabled, 1% free space or 5GB free space. New configuration options: autocleanspool = yes, autocleanspoolminpercent = 1, autocleanmingb = 5
+
+
 9.4beta10 31.3.2014
 ===================
 - fix low mos score in case call changes packetization from 10 to 20 and back to 10 which is pretty rare but it can happen
