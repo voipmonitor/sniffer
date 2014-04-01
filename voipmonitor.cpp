@@ -283,6 +283,9 @@ unsigned int opt_maxpoolgraphdays = 0;
 unsigned int opt_maxpoolaudiosize = 0;
 unsigned int opt_maxpoolaudiodays = 0;
 int opt_maxpool_clean_obsolete = 0;
+int opt_autocleanspool = 1;
+int opt_autocleanspoolminpercent = 5;
+int opt_autocleanmingb = 5;
 int opt_mysqlloadconfig = 1;
 int opt_last_rtp_from_end = 1;
 
@@ -751,7 +754,8 @@ void *storing_cdr( void *dummy ) {
 			}
 		}
 		
-		if(isSqlDriver("mysql") &&
+		if(opt_autocleanspool &&
+		   isSqlDriver("mysql") &&
 		   !(opt_pcap_queue && 
 		     !opt_pcap_queue_receive_from_ip_port &&
 		     opt_pcap_queue_send_to_ip_port)) {
@@ -1108,6 +1112,15 @@ int load_config(char *fname) {
 	}
 	if((value = ini.GetValue("general", "maxpool_clean_obsolete", NULL))) {
 		opt_maxpool_clean_obsolete = yesno(value);
+	}
+	if((value = ini.GetValue("general", "autocleanspool", NULL))) {
+		opt_autocleanspool = yesno(value);
+	}
+	if((value = ini.GetValue("general", "autocleanspoolminpercent", NULL))) {
+		opt_autocleanspoolminpercent = atoi(value);
+	}
+	if((value = ini.GetValue("general", "autocleanmingb", NULL))) {
+		opt_autocleanmingb = atoi(value);
 	}
 	if((value = ini.GetValue("general", "id_sensor", NULL))) {
 		opt_id_sensor = atoi(value);

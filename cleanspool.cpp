@@ -42,6 +42,9 @@ extern unsigned int opt_maxpoolaudiodays;
 extern int opt_maxpool_clean_obsolete;
 extern int opt_cleanspool_interval;
 extern int opt_cleanspool_sizeMB;
+extern int opt_autocleanspool;
+extern int opt_autocleanspoolminpercent;
+extern int opt_autocleanmingb;
 
 extern MySqlStore *sqlStore;
 
@@ -1108,12 +1111,12 @@ void *check_disk_free_thread(void*) {
 	double freeSpacePercent = (double)GetFreeDiskSpace(opt_chdir, true) / 100;
 	double freeSpaceGB = (double)GetFreeDiskSpace(opt_chdir) / (1024 * 1024 * 1024);
 	double totalSpaceGB = (double)GetTotalDiskSpace(opt_chdir) / (1024 * 1024 * 1024);
-	if(freeSpacePercent < 5 && freeSpaceGB < 5) {
-		syslog(LOG_NOTICE, "low spool disk space - force rebuild filesindex");
+	if(freeSpacePercent < opt_autocleanspoolminpercent && freeSpaceGB < opt_autocleanmingb) {
+		syslog(LOG_NOTICE, "low spool disk space - executing filesindex");
 		convert_filesindex();
 		freeSpacePercent = (double)GetFreeDiskSpace(opt_chdir, true) / 100;
 		freeSpaceGB = (double)GetFreeDiskSpace(opt_chdir) / (1024 * 1024 * 1024);
-		if(freeSpacePercent < 5) {
+		if(freeSpacePercent < opt_autocleanspoolminpercent) {
 			SqlDb *sqlDb = createSqlObject();
 			stringstream q;
 			q << "SELECT SUM(sipsize + rtpsize + graphsize + audiosize) as sum_size FROM files WHERE id_sensor = " << (opt_id_sensor_cleanspool > 0 ? opt_id_sensor_cleanspool : 0);
@@ -1121,8 +1124,8 @@ void *check_disk_free_thread(void*) {
 			SqlDb_row row = sqlDb->fetchRow();
 			if(row) {
 			       double usedSizeGB = atol(row["sum_size"].c_str()) / (1024 * 1024 * 1024);
-			       opt_maxpoolsize = usedSizeGB + freeSpaceGB - min(totalSpaceGB * 0.05, 5.0) - 1;
-			       syslog(LOG_NOTICE, "low spool disk space - force run cleanspool with maxpoolsize: %u", opt_maxpoolsize);
+			       opt_maxpoolsize = (usedSizeGB + freeSpaceGB - min(totalSpaceGB * opt_autocleanspoolminpercent / 100, (double)opt_autocleanmingb) - 1) * 1024;
+			       syslog(LOG_NOTICE, "low spool disk space - maxpoolsize set to new value: %u MB", opt_maxpoolsize);
 			       runCleanSpoolThread();
 			}
 			delete sqlDb;
