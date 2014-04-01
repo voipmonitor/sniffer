@@ -49,6 +49,7 @@ extern int opt_autocleanmingb;
 extern MySqlStore *sqlStore;
 
 SqlDb *sqlDbCleanspool = NULL;
+pthread_t cleanspool_thread = 0;
 
 
 void unlinkfileslist(string fname) {
@@ -1104,10 +1105,7 @@ void convert_filesindex() {
 	return;
 }
 
-static pthread_mutex_t check_disk_free_mutex;
-static bool check_disk_free_mutex_init = false;
-
-void *check_disk_free_thread(void*) {
+void check_disk_free_run(bool enableRunCleanSpoolThread) {
 	double freeSpacePercent = (double)GetFreeDiskSpace(opt_chdir, true) / 100;
 	double freeSpaceGB = (double)GetFreeDiskSpace(opt_chdir) / (1024 * 1024 * 1024);
 	double totalSpaceGB = (double)GetTotalDiskSpace(opt_chdir) / (1024 * 1024 * 1024);
@@ -1123,19 +1121,31 @@ void *check_disk_free_thread(void*) {
 			sqlDb->query(q.str());
 			SqlDb_row row = sqlDb->fetchRow();
 			if(row) {
-			       double usedSizeGB = atol(row["sum_size"].c_str()) / (1024 * 1024 * 1024);
-			       opt_maxpoolsize = (usedSizeGB + freeSpaceGB - min(totalSpaceGB * opt_autocleanspoolminpercent / 100, (double)opt_autocleanmingb) - 1) * 1024;
-			       syslog(LOG_NOTICE, "low spool disk space - maxpoolsize set to new value: %u MB", opt_maxpoolsize);
-			       runCleanSpoolThread();
+				double usedSizeGB = atol(row["sum_size"].c_str()) / (1024 * 1024 * 1024);
+				opt_maxpoolsize = (usedSizeGB + freeSpaceGB - min(totalSpaceGB * opt_autocleanspoolminpercent / 100, (double)opt_autocleanmingb)) * 1024;
+				syslog(LOG_NOTICE, "low spool disk space - maxpoolsize set to new value: %u MB", opt_maxpoolsize);
+				if(enableRunCleanSpoolThread) {
+					runCleanSpoolThread();
+				}
 			}
 			delete sqlDb;
 		}
 	}
+}
+
+static pthread_mutex_t check_disk_free_mutex;
+static bool check_disk_free_mutex_init = false;
+
+void *check_disk_free_thread(void*) {
+	check_disk_free_run(true);
 	pthread_mutex_unlock(&check_disk_free_mutex);
 	return(NULL);
 }
 
 void run_check_disk_free_thread() {
+	if(cleanspool_thread) {
+		return;
+	}
 	if(!check_disk_free_mutex_init) {
 		pthread_mutex_init(&check_disk_free_mutex, NULL);
 		check_disk_free_mutex_init = true;
@@ -1463,6 +1473,7 @@ void *clean_spooldir(void *dummy) {
 	while(!terminating2) {
 		if(debugclean) syslog(LOG_ERR, "run clean_spooldir_run");
 		clean_spooldir_run(NULL);
+		check_disk_free_run(false);
 		for(int i = 0; i < 300 && !terminating2; i++) {
 			sleep(1);
 		}
@@ -1471,7 +1482,6 @@ void *clean_spooldir(void *dummy) {
 }
 
 void runCleanSpoolThread() {
-	static pthread_t cleanspool_thread = 0;
 	if(!cleanspool_thread) {
 		if(debugclean) syslog(LOG_ERR, "pthread_create(clean_spooldir)");
 		pthread_create(&cleanspool_thread, NULL, clean_spooldir, NULL);
