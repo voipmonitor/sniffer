@@ -11,6 +11,7 @@
 #include <stdlib.h>
 #include <ctime>
 #include <limits.h>
+#include <list>
 
 #include <sys/types.h>
 #include <pcap.h>
@@ -200,6 +201,7 @@ class AsyncClose {
 public:
 	class AsyncCloseItem {
 	public:
+		virtual ~AsyncCloseItem() {}
 		virtual void close() = 0;
 	};
 	class AsyncCloseItem_pcap : public AsyncCloseItem {
@@ -761,5 +763,157 @@ private:
 	unsigned int contents_count;
 	bool sip;
 };
+
+class SafeAsyncQueue_base {
+public:
+	SafeAsyncQueue_base();
+	~SafeAsyncQueue_base();
+protected:
+	virtual void timerEv(unsigned long long timerCounter) = 0;
+private:
+	static void timerThread();
+	static void lock_list_saq() {
+		while(__sync_lock_test_and_set(&_sync_list_saq, 1));
+	}
+	static void unlock_list_saq() {
+		__sync_lock_release(&_sync_list_saq);
+	}
+private:
+	static list<SafeAsyncQueue_base*> list_saq;
+	static pthread_t timer_thread;
+	static unsigned long long timer_counter;
+	static volatile int _sync_list_saq;
+friend void *_SafeAsyncQueue_timerThread(void *arg);
+};
+
+template<class type_queue_item>
+class SafeAsyncQueue : public SafeAsyncQueue_base {
+public:
+	SafeAsyncQueue(int shiftIntervalMult10S = 5);
+	~SafeAsyncQueue();
+	void push(type_queue_item &item);
+	bool pop(type_queue_item *item, bool remove = true);
+protected:
+	void timerEv(unsigned long long timerCounter);
+private:
+	void shiftPush();
+	void lock_queue() {
+		while(__sync_lock_test_and_set(&_sync_queue, 1));
+	}
+	void unlock_queue() {
+		__sync_lock_release(&_sync_queue);
+	}
+	void lock_push_queue() {
+		while(__sync_lock_test_and_set(&_sync_push_queue, 1));
+	}
+	void unlock_push_queue() {
+		__sync_lock_release(&_sync_push_queue);
+	}
+	void lock_pop_queue() {
+		while(__sync_lock_test_and_set(&_sync_pop_queue, 1));
+	}
+	void unlock_pop_queue() {
+		__sync_lock_release(&_sync_pop_queue);
+	}
+private:
+	deque<type_queue_item> *push_queue;
+	deque<type_queue_item> *pop_queue;
+	deque<deque<type_queue_item>*> queue;
+	int shiftIntervalMult10S;
+	unsigned long long lastShiftTimerCounter;
+	volatile int _sync_queue;
+	volatile int _sync_push_queue;
+	volatile int _sync_pop_queue;
+};
+
+template<class type_queue_item>
+SafeAsyncQueue<type_queue_item>::SafeAsyncQueue(int shiftIntervalMult10S) {
+	push_queue = NULL;
+	pop_queue = NULL;
+	this->shiftIntervalMult10S = shiftIntervalMult10S;
+	lastShiftTimerCounter = 0;
+	_sync_queue = 0;
+	_sync_push_queue = 0;
+	_sync_pop_queue = 0;
+}
+
+template<class type_queue_item>
+SafeAsyncQueue<type_queue_item>::~SafeAsyncQueue() {
+	lock_queue();
+	lock_push_queue();
+	lock_pop_queue();
+	while(queue.size()) {
+		delete queue.front();
+		queue.pop_front();
+	}
+	if(push_queue) {
+		delete push_queue;
+	}
+	if(pop_queue) {
+		delete push_queue;
+	}
+}
+
+template<class type_queue_item>
+void SafeAsyncQueue<type_queue_item>::push(type_queue_item &item) {
+	lock_push_queue();
+	if(!push_queue) {
+		push_queue = new deque<type_queue_item>;
+	}
+	push_queue->push_back(item);
+	unlock_push_queue();
+}
+
+template<class type_queue_item>
+bool SafeAsyncQueue<type_queue_item>::pop(type_queue_item *item, bool remove) {
+	bool rslt = false;
+	lock_pop_queue();
+	if(!pop_queue || !pop_queue->size()) {
+		if(pop_queue) {
+			delete pop_queue;
+			pop_queue = NULL;
+		}
+		lock_queue();
+		if(queue.size()) {
+			pop_queue = queue.front();
+			queue.pop_front();
+		}
+		unlock_queue();
+	}
+	if(pop_queue && pop_queue->size()) {
+		*item = pop_queue->front();
+		rslt = true;
+		if(remove) {
+			pop_queue->pop_front();
+			if(!pop_queue->size()) {
+				delete pop_queue;
+				pop_queue = NULL;
+			}
+		}
+	}
+	unlock_pop_queue();
+	return(rslt);
+}
+
+template<class type_queue_item>
+void SafeAsyncQueue<type_queue_item>::timerEv(unsigned long long timerCounter) {
+	if(timerCounter - lastShiftTimerCounter >= shiftIntervalMult10S) {
+		shiftPush();
+		lastShiftTimerCounter = timerCounter;
+	}
+}
+
+template<class type_queue_item>
+void SafeAsyncQueue<type_queue_item>::shiftPush() {
+	if(push_queue && push_queue->size()) {
+		lock_push_queue();
+		deque<type_queue_item> *_push_queue = push_queue;
+		push_queue = NULL;
+		unlock_push_queue();
+		lock_queue();
+		queue.push_back(_push_queue);
+		unlock_queue();
+	}
+}
 
 #endif
