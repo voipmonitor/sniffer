@@ -3459,12 +3459,35 @@ void *readdump_libpcap_thread_fce(void *handle) {
 #include "fraud.h"
 #include <regex.h>
 
+struct XX {
+	XX(int a = 0, int b = 0) {
+		this->a = a;
+		this->b = b;
+	}
+	int a;
+	int b;
+};
+
 void test() {
  
 	switch(opt_test) {
 	 
 	case 1:
 	{
+		SafeAsyncQueue<XX> testSAQ;
+		XX xx(1,2);
+		testSAQ.push(xx);
+		XX yy;
+		sleep(1);
+		if(testSAQ.pop(&yy)) {
+			cout << "y" << endl;
+			cout << yy.a << "/" << yy.b << endl;
+		} else {
+			cout << "n" << endl;
+		}
+
+		return;
+	 
 		ParsePacket pp;
 		pp.setStdParse();
 	 

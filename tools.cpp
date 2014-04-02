@@ -111,7 +111,7 @@ bool FileExists(char *strFilename) {
 void
 set_mac() {   
 #ifndef FREEBSD
-	int s, res;
+	int s;
 	struct ifreq buffer;
 
 	s = socket(PF_INET, SOCK_DGRAM, 0);
@@ -121,7 +121,7 @@ set_mac() {
 	}
 	memset(&buffer, 0x00, sizeof(buffer));
 	strcpy(buffer.ifr_name, "eth0");
-	res = ioctl(s, SIOCGIFHWADDR, &buffer);
+	ioctl(s, SIOCGIFHWADDR, &buffer);
 	close(s);
 
 	sprintf(mac, "%02x:%02x:%02x:%02x:%02x:%02x",
@@ -429,14 +429,13 @@ long long GetDU(long long fileSize) {
 long long GetFreeDiskSpace(const char* absoluteFilePath, bool percent_mult_100) {
 	struct statvfs buf;
 	if(!statvfs(absoluteFilePath, &buf)) {
-		unsigned long long blksize, blocks, freeblks, disk_size, used, free;
+		unsigned long long blksize, blocks, freeblks, disk_size, free;
 		blksize = buf.f_bsize;
 		blocks = buf.f_blocks;
 		freeblks = buf.f_bfree;
 
 		disk_size = blocks*blksize;
 		free = freeblks*blksize;
-		used = disk_size - free;
 
 		return percent_mult_100 ?
 			(long long)((double)free / disk_size * 10000) :
@@ -449,14 +448,11 @@ long long GetFreeDiskSpace(const char* absoluteFilePath, bool percent_mult_100) 
 long long GetTotalDiskSpace(const char* absoluteFilePath) {
 	struct statvfs buf;
 	if(!statvfs(absoluteFilePath, &buf)) {
-		unsigned long long blksize, blocks, freeblks, disk_size, used, free;
+		unsigned long long blksize, blocks, disk_size;
 		blksize = buf.f_bsize;
 		blocks = buf.f_blocks;
-		freeblks = buf.f_bfree;
 
 		disk_size = blocks*blksize;
-		free = freeblks*blksize;
-		used = disk_size - free;
 
 		return disk_size;
 	} else {
@@ -1266,3 +1262,45 @@ void ParsePacket::parseData(char *data, unsigned long datalen, bool doClear) {
 	}
 	parseDataPtr = data;
 }
+
+
+void *_SafeAsyncQueue_timerThread(void *arg) {
+	((SafeAsyncQueue_base*)arg)->timerThread();
+	return(NULL);
+}
+
+SafeAsyncQueue_base::SafeAsyncQueue_base() {
+	if(!timer_thread) {
+		pthread_create(&timer_thread, NULL, _SafeAsyncQueue_timerThread, NULL);
+	}
+	lock_list_saq();
+	list_saq.push_back(this);
+	unlock_list_saq();
+}
+
+SafeAsyncQueue_base::~SafeAsyncQueue_base() {
+	lock_list_saq();
+	list_saq.remove(this);
+	unlock_list_saq();
+}
+
+void SafeAsyncQueue_base::timerThread() {
+	while(true) {
+		usleep(100000);
+		lock_list_saq();
+		list<SafeAsyncQueue_base*>::iterator iter;
+		for(iter = list_saq.begin(); iter != list_saq.end(); iter++) {
+			(*iter)->timerEv(timer_counter);
+		}
+		unlock_list_saq();
+		++timer_counter;
+	}
+}
+
+list<SafeAsyncQueue_base*> SafeAsyncQueue_base::list_saq;
+
+pthread_t SafeAsyncQueue_base::timer_thread = 0;
+
+unsigned long long SafeAsyncQueue_base::timer_counter = 0;
+
+volatile int SafeAsyncQueue_base::_sync_list_saq = 0;

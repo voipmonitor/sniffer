@@ -1174,10 +1174,12 @@ Call::convertRawToWav() {
 			case PAYLOAD_PCMA:
 				if(verbosity > 1) syslog(LOG_ERR, "Converting PCMA to WAV.\n");
 				convertALAW2WAV(raw, wav);
+				samplerate = 8000;
 				break;
 			case PAYLOAD_PCMU:
 				if(verbosity > 1) syslog(LOG_ERR, "Converting PCMU to WAV.\n");
 				convertULAW2WAV(raw, wav);
+				samplerate = 8000;
 				break;
 		/* following decoders are not included in free version. Please contact support@voipmonitor.org */
 			case PAYLOAD_G722:
@@ -1198,6 +1200,7 @@ Call::convertRawToWav() {
 					snprintf(cmd, 4092, "voipmonitor-gsm \"%s\" \"%s\"", raw, wav);
 				}
 				if(verbosity > 1) syslog(LOG_ERR, "Converting GSM to WAV.\n");
+				samplerate = 8000;
 				system(cmd);
 				break;
 			case PAYLOAD_G729:
@@ -1207,6 +1210,7 @@ Call::convertRawToWav() {
 					snprintf(cmd, 4092, "voipmonitor-g729 \"%s\" \"%s\"", raw, wav);
 				}
 				if(verbosity > 1) syslog(LOG_ERR, "Converting G.729 to WAV.\n");
+				samplerate = 8000;
 				system(cmd);
 				break;
 			case PAYLOAD_G723:
@@ -1216,6 +1220,7 @@ Call::convertRawToWav() {
 					snprintf(cmd, 4092, "voipmonitor-g723 \"%s\" \"%s\"", raw, wav);
 				}
 				if(verbosity > 1) syslog(LOG_ERR, "Converting G.723 to WAV.\n");
+				samplerate = 8000;
 				system(cmd);
 				break;
 			case PAYLOAD_ILBC:
@@ -1225,6 +1230,7 @@ Call::convertRawToWav() {
 					snprintf(cmd, 4092, "voipmonitor-ilbc \"%s\" \"%s\"", raw, wav);
 				}
 				if(verbosity > 1) syslog(LOG_ERR, "Converting iLBC to WAV.\n");
+				samplerate = 8000;
 				system(cmd);
 				break;
 			case PAYLOAD_SPEEX:
@@ -1234,6 +1240,7 @@ Call::convertRawToWav() {
 					snprintf(cmd, 4092, "voipmonitor-speex \"%s\" \"%s\"", raw, wav);
 				}
 				if(verbosity > 1) syslog(LOG_ERR, "Converting speex to WAV.\n");
+				samplerate = 8000;
 				system(cmd);
 				break;
 			case PAYLOAD_SILK8:
@@ -1370,6 +1377,7 @@ Call::convertRawToWav() {
 		// merge caller and called 
 		switch(opt_audio_format) {
 		case FORMAT_WAV:
+			printf("sr:[%u]\n", samplerate);
 			if(!opt_saveaudio_reversestereo) {
 				wav_mix(wav0, wav1, out, samplerate);
 			} else {
