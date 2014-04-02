@@ -3918,7 +3918,7 @@ void TcpReassemblySip::processPacket(
 	tcp_stream2_s *findStream;
 	if((findStream = tcp_streams_hashed[hash])) {
 		addPacket(
-			findStream,
+			findStream, hash,
 			saddr, source, daddr, dest, data, datalen,
 			handle, header, packet, istcp, dontsave, can_thread, was_rtp, header_ip, voippacket, disabledsave,
 			block_store, block_store_index, dlt, sensor_id);
@@ -3943,7 +3943,7 @@ void TcpReassemblySip::processPacket(
 			}
 		} else if(issip) {
 			tcp_streams_hashed[hash] = addPacket(
-				NULL, 
+				NULL, hash,
 				saddr, source, daddr, dest, data, datalen,
 				handle, header, packet, istcp, dontsave, can_thread, was_rtp, header_ip, voippacket, disabledsave,
 				block_store, block_store_index, dlt, sensor_id);
@@ -3982,7 +3982,7 @@ void TcpReassemblySip::clean(time_t ts) {
 }
 
 TcpReassemblySip::tcp_stream2_s *TcpReassemblySip::addPacket(
-		tcp_stream2_s *stream,
+		tcp_stream2_s *stream, u_int hash,
 		unsigned int saddr, int source, unsigned int daddr, int dest, char *data, int datalen,
 		pcap_t *handle, pcap_pkthdr *header, const u_char *packet, int istcp, int dontsave, int can_thread, int *was_rtp, struct iphdr2 *header_ip, int *voippacket, int disabledsave,
 		pcap_block_store *block_store, int block_store_index, int dlt, int sensor_id) {
@@ -3991,6 +3991,7 @@ TcpReassemblySip::tcp_stream2_s *TcpReassemblySip::addPacket(
 	tcp_stream2_s *newStreamItem = new tcp_stream2_s;
 	newStreamItem->next = NULL;
 	newStreamItem->ts = header->ts.tv_sec;
+	newStreamItem->hash = hash;
 
 	struct tcphdr2 *header_tcp = (struct tcphdr2 *) ((char *) header_ip + sizeof(*header_ip));
 	newStreamItem->lastpsh = header_tcp->psh;

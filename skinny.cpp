@@ -1261,10 +1261,11 @@ Call *new_skinny_channel(int state, char *data, int datalen, struct pcap_pkthdr 
 	call->sipcallerport = source;
 	call->sipcalledport = dest;
 	call->type = state;
-	call->flags = flags;
+	call->flags |= flags;
 	strncpy(call->fbasename, callidstr, MAX_FNAME - 1);
 
 	if(call->flags & (FLAG_SAVESIP | FLAG_SAVERTP | FLAG_SAVEWAV) || opt_savewav_force) {
+		printf("test\n");
 		static string lastdir;
 		if(lastdir != call->dirname()) {
 			string tmp, dir;
