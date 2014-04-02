@@ -139,6 +139,12 @@ inline u_long getTimeMS() {
     return(time.tv_sec * 1000 + time.tv_nsec / 1000000);
 }
 
+inline unsigned long long getTimeUS() {
+    timespec time;
+    clock_gettime(CLOCK_REALTIME, &time);
+    return(time.tv_sec * 1000000ull + time.tv_nsec / 1000);
+}
+
 inline unsigned long long getTimeNS() {
     timespec time;
     clock_gettime(CLOCK_REALTIME, &time);

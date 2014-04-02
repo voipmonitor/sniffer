@@ -484,6 +484,14 @@ public:
 		int threadId;
 		pstat_data threadPstatData[2];
 	};
+	struct sPacketTimeInfo {
+		pcap_block_store *blockStore;
+		size_t blockStoreIndex;
+		pcap_pkthdr_plus *header;
+		u_char *packet;
+		u_int64_t utime;
+		u_int64_t at;
+	};
 public:
 	PcapQueue_readFromFifo(const char *nameQueue, const char *fileStoreFolder);
 	virtual ~PcapQueue_readFromFifo();

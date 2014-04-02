@@ -296,7 +296,7 @@ public:
 	void clean(time_t ts = 0);
 private:
 	tcp_stream2_s *addPacket(
-		tcp_stream2_s *stream,
+		tcp_stream2_s *stream, u_int hash,
 		unsigned int saddr, int source, unsigned int daddr, int dest, char *data, int datalen,
 		pcap_t *handle, pcap_pkthdr *header, const u_char *packet, int istcp, int dontsave, int can_thread, int *was_rtp, struct iphdr2 *header_ip, int *voippacket, int disabledsave,
 		pcap_block_store *block_store, int block_store_index, int dlt, int sensor_id);

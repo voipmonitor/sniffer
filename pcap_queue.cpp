@@ -147,6 +147,7 @@ int opt_pcap_queue_iface_separate_threads 		= 0;
 int opt_pcap_queue_iface_dedup_separate_threads 	= 0;
 int opt_pcap_queue_iface_dedup_separate_threads_extend	= 0;
 int opt_pcap_queue_iface_qring_size 			= 5000;
+int opt_pcap_queue_dequeu_window_length			= -1;
 
 size_t _opt_pcap_queue_block_offset_inc_size		= opt_pcap_queue_block_max_size / AVG_PACKET_SIZE / 4;
 size_t _opt_pcap_queue_block_restore_buffer_inc_size	= opt_pcap_queue_block_max_size / 4;
@@ -2916,6 +2917,8 @@ void *PcapQueue_readFromFifo::writeThreadFunction(void *arg, unsigned int arg2) 
 		return(NULL);
 	}
 	pcap_block_store *blockStore;
+	map<pcap_block_store*, size_t> listBlockStore;
+	map<u_int64_t, list<sPacketTimeInfo> > listPacketTimeInfo;
 	while(!TERMINATING) {
 		if(DEBUG_SLEEP && access((this->pcapStoreQueue.fileStoreFolder + "/__/sleep").c_str(), F_OK ) != -1) {
 			sleep(1);
@@ -2925,31 +2928,75 @@ void *PcapQueue_readFromFifo::writeThreadFunction(void *arg, unsigned int arg2) 
 			++sumBlocksCounterOut[0];
 			if(this->packetServerDirection == directionWrite) {
 				this->socketWritePcapBlock(blockStore);
+				this->blockStoreTrash.push_back(blockStore);
+				this->blockStoreTrash_size += blockStore->getUseSize();
 			} else {
 				if(blockStore->size_compress && !blockStore->uncompress()) {
 					delete blockStore;
 					continue;
 				}
-				for(size_t i = 0; i < blockStore->count; i++) {
-					++sumPacketsCounterOut[0];
-					if(TEST_PACKETS) {
-						if(VERBOSE_TEST_PACKETS) {
-							cout << "test packet " << (*blockStore)[i].packet << endl;
-						}
-						if(sumPacketsCounterOut[0] != (u_long)atol((char*)(*blockStore)[i].packet)) {
-							cout << endl << endl << "ERROR: BAD PACKET ORDER" << endl << endl;
-							//exit(1);
-							sleep(5);
-							sumPacketsCounterOut[0] = (u_long)atol((char*)(*blockStore)[i].packet);
-						}
-					} else {
-						this->processPacket((*blockStore)[i].header, (*blockStore)[i].packet, blockStore, i,
-								    blockStore->dlink, blockStore->sensor_id);
+				if(opt_pcap_queue_dequeu_window_length > 0 &&
+				   (!TEST_PACKETS && !opt_pb_read_from_file[0])) {
+					listBlockStore[blockStore] = 0;
+					u_int64_t at = getTimeUS();
+					for(size_t i = 0; i < blockStore->count; i++) {
+						sPacketTimeInfo pti;
+						pti.blockStore = blockStore;
+						pti.blockStoreIndex = i;
+						pti.header = (*blockStore)[i].header;
+						pti.packet = (*blockStore)[i].packet;
+						pti.utime = pti.header->header_fix_size.ts_tv_sec * 1000000 + pti.header->header_fix_size.ts_tv_usec;
+						pti.at = at;
+						listPacketTimeInfo[pti.utime].push_back(pti);
 					}
+					map<u_int64_t, list<sPacketTimeInfo> >::iterator first = listPacketTimeInfo.begin();
+					map<u_int64_t, list<sPacketTimeInfo> >::iterator last = listPacketTimeInfo.end();
+					--last;
+					while(listPacketTimeInfo.size()) {
+						if(last->first - first->first > opt_pcap_queue_dequeu_window_length * 1000 && 
+						   at - first->second.begin()->at > opt_pcap_queue_dequeu_window_length * 1000) {
+							sPacketTimeInfo pti = *(first->second.begin());
+							first->second.pop_front();
+							++sumPacketsCounterOut[0];
+							this->processPacket(pti.header, pti.packet, 
+									    pti.blockStore, pti.blockStoreIndex,
+									    pti.blockStore->dlink, pti.blockStore->sensor_id);
+							++listBlockStore[pti.blockStore];
+							if(listBlockStore[pti.blockStore] == pti.blockStore->count) {
+								this->blockStoreTrash.push_back(pti.blockStore);
+								this->blockStoreTrash_size += pti.blockStore->getUseSize();
+								listBlockStore.erase(pti.blockStore);
+							}
+							if(first->second.empty()) {
+								listPacketTimeInfo.erase(first);
+								first = listPacketTimeInfo.begin();
+							}
+						} else {
+							break;
+						}
+					}
+				} else {
+					for(size_t i = 0; i < blockStore->count; i++) {
+						++sumPacketsCounterOut[0];
+						if(TEST_PACKETS) {
+							if(VERBOSE_TEST_PACKETS) {
+								cout << "test packet " << (*blockStore)[i].packet << endl;
+							}
+							if(sumPacketsCounterOut[0] != (u_long)atol((char*)(*blockStore)[i].packet)) {
+								cout << endl << endl << "ERROR: BAD PACKET ORDER" << endl << endl;
+								//exit(1);
+								sleep(5);
+								sumPacketsCounterOut[0] = (u_long)atol((char*)(*blockStore)[i].packet);
+							}
+						} else {
+							this->processPacket((*blockStore)[i].header, (*blockStore)[i].packet, blockStore, i,
+									    blockStore->dlink, blockStore->sensor_id);
+						}
+					}
+					this->blockStoreTrash.push_back(blockStore);
+					this->blockStoreTrash_size += blockStore->getUseSize();
 				}
 			}
-			this->blockStoreTrash.push_back(blockStore);
-			this->blockStoreTrash_size += blockStore->getUseSize();
 		} else {
 			usleep(1000);
 		}

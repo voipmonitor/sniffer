@@ -309,6 +309,7 @@ extern int opt_pcap_queue_receive_dlt;
 extern int opt_pcap_queue_iface_separate_threads;
 extern int opt_pcap_queue_iface_dedup_separate_threads;
 extern int opt_pcap_queue_iface_dedup_separate_threads_extend;
+extern int opt_pcap_queue_dequeu_window_length;
 extern int sql_noerror;
 int opt_cleandatabase_cdr = 0;
 int opt_cleandatabase_register_state = 0;
@@ -1717,8 +1718,8 @@ int load_config(char *fname) {
 			break;
 		}
 	}
-	if(!opt_pcap_queue_iface_separate_threads && strchr(ifname, ',')) {
-		opt_pcap_queue_iface_separate_threads = 1;
+	if((value = ini.GetValue("general", "pcap_queue_dequeu_window_length", NULL))) {
+		opt_pcap_queue_dequeu_window_length = atoi(value);
 	}
 	if((value = ini.GetValue("general", "maxpcapsize", NULL))) {
 		opt_maxpcapsize_mb = atoi(value);
@@ -2541,7 +2542,18 @@ int main(int argc, char *argv[]) {
 
 		return 1;
 	}
-	
+
+	if(!opt_pcap_queue_iface_separate_threads && strchr(ifname, ',')) {
+		opt_pcap_queue_iface_separate_threads = 1;
+	}
+	if(opt_pcap_queue_dequeu_window_length < 0) {
+		if(opt_pcap_queue_iface_separate_threads) {
+			 opt_pcap_queue_dequeu_window_length = 500;
+		} else if(opt_pcap_queue_receive_from_ip_port) {
+			 opt_pcap_queue_dequeu_window_length = 2000;
+		}
+	}
+
 	extern ParsePacket _parse_packet;
 	_parse_packet.setStdParse();
 
