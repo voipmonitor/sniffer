@@ -1,7 +1,12 @@
+9.4beta13 2.4.2014
+==================
+- add support for AMR codec
+
 9.4beta12 2.4.2014
 ==================
 - fix 9.4beta10 regression - crash in tcp SIP reassemble
 - fix audio if caller/called changes codec from one sample rate to another 
+- do not resolve mysql for -c switch
 
 9.4beta11 1.4.2014
 ==================
