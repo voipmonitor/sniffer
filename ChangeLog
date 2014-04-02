@@ -1,3 +1,7 @@
+9.4beta17 2.4.2014
+==================
+- fix SIP tcp reassemble ignoring some TCP messages in SIP (all versions) 
+
 9.4beta16 2.4.2014
 ==================
 - fix 9.4beta10 regression - crash in tcp SIP reassemble

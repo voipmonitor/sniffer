@@ -3941,7 +3941,8 @@ void TcpReassemblySip::processPacket(
 					handle, header, packet, istcp, dontsave, can_thread, was_rtp, header_ip, voippacket, disabledsave,
 					block_store, block_store_index, dlt, sensor_id);
 			}
-		} else if(issip) {
+		}
+		if(issip) {
 			tcp_streams_hashed[hash] = addPacket(
 				NULL, hash,
 				saddr, source, daddr, dest, data, datalen,
