@@ -1,7 +1,11 @@
-9.4beta15 2.4.2014
+9.4beta16 2.4.2014
 ==================
 - fix 9.4beta10 regression - crash in tcp SIP reassemble
 - properly dequeue remote sensors by the timestamp to prevent race conditions or if sniffing on interface = eth1,eth2
+
+9.4beta15 2.4.2014
+==================
+- beta15 never released
 
 9.4beta14 2.4.2014
 ==================
