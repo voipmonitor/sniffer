@@ -1644,9 +1644,9 @@ void *handle_skinny2(pcap_pkthdr *header, const u_char *packet, unsigned int sad
 
 
 			if(i > 0) 
-				memcpy(call->called, callingParty, strlen(callingParty) + 1);
+				memcpy(call->caller, callingParty, strlen(callingParty) + 1);
 			if(i > 1) 
-				memcpy(call->caller, calledParty, strlen(calledParty) + 1);
+				memcpy(call->called, calledParty, strlen(calledParty) + 1);
 			if(i > 8) 
 				memcpy(call->callername, callingPartyName, strlen(callingPartyName) + 1);
 
