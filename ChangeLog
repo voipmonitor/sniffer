@@ -1,3 +1,12 @@
+9.4beta16 2.4.2014
+==================
+- fix 9.4beta10 regression - crash in tcp SIP reassemble
+- properly dequeue remote sensors by the timestamp to prevent race conditions or if sniffing on interface = eth1,eth2
+
+9.4beta15 2.4.2014
+==================
+- beta15 never released
+
 9.4beta14 2.4.2014
 ==================
 - fix skinny called/calling swapped
@@ -8,7 +17,6 @@
 
 9.4beta12 2.4.2014
 ==================
-- fix 9.4beta10 regression - crash in tcp SIP reassemble
 - fix audio if caller/called changes codec from one sample rate to another 
 - do not resolve mysql for -c switch
 
