@@ -1,3 +1,7 @@
+9.4beta13 2.4.2014
+==================
+- add support for AMR codec
+
 9.4beta12 2.4.2014
 ==================
 - fix 9.4beta10 regression - crash in tcp SIP reassemble

@@ -622,7 +622,7 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 
 	Call *owner = (Call*)call_owner;
 
-	//if(getSSRC() != 0xfc27e6de) return;
+	//if(getSSRC() != 0xe6f6d4d8) return;
 
 	if(getVersion() != 2) {
 		return;
@@ -1134,11 +1134,6 @@ RTP::update_stats() {
 
 	long double transit = tsdiff2 - (double)(getTimestamp() - s->lastTimeStamp)/((double)samplerate/1000.0);
 	mx += transit;
-	if(getSSRC() == 0x60fcc365 ) {
-		printf("%f  %Lf %f %d %f\n", tsdiff2, transit, (double)(getTimestamp() - s->lastTimeStamp), getSeqNum(), mx);
-	}
-
-	
 	
 	if(abs((int)transit) > 5000) {
 		/* timestamp skew, discard delay, it is possible that timestamp changed  */

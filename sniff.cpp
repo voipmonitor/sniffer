@@ -965,6 +965,8 @@ int mimeSubtypeToInt(char *mimeSubtype) {
 	       return PAYLOAD_CLEARMODE;
        else if(strcasecmp(mimeSubtype,"OPUS") == 0)
 	       return PAYLOAD_OPUS;
+       else if(strcasecmp(mimeSubtype,"AMR") == 0)
+	       return PAYLOAD_AMR;
        else if(strcasecmp(mimeSubtype,"telephone-event") == 0)
 	       return PAYLOAD_TELEVENT;
        else
