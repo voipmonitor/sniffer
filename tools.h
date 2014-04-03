@@ -31,6 +31,7 @@ unsigned long long cp_r(const char *src, const char *dst, bool move = false);
 inline unsigned long long mv_r(const char *src, const char *dst) { return(cp_r(src, dst, true)); }  
 unsigned long long copy_file(const char *src, const char *dst, bool move = false);
 inline unsigned long long move_file(const char *src, const char *dst) { return(copy_file(src, dst, true)); }
+bool get_url_file(const char *url, const char *toFile, string *error = NULL);
 double ts2double(unsigned int sec, unsigned int usec);
 long long GetFileSize(std::string filename);
 long long GetFileSizeDU(std::string filename);

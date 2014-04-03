@@ -493,6 +493,9 @@ int opt_mysqlstore_max_threads_http = 1;
 int opt_mysqlstore_max_threads_ipacc_base = 3;
 int opt_mysqlstore_max_threads_ipacc_agreg2 = 3;
 
+char opt_curlproxy[256] = "";
+
+
 #define ENABLE_SEMAPHOR_FORK_MODE 0
 #if ENABLE_SEMAPHOR_FORK_MODE
 string SEMAPHOR_FORK_MODE_NAME() {
@@ -1797,6 +1800,10 @@ int load_config(char *fname) {
 	}
 	if((value = ini.GetValue("general", "mysqlstore_max_threads_ipacc_agreg2", NULL))) {
 		opt_mysqlstore_max_threads_ipacc_agreg2 = max(min(atoi(value), 9), 1);
+	}
+	
+	if((value = ini.GetValue("general", "curlproxy", NULL))) {
+		strncpy(opt_curlproxy, value, sizeof(opt_curlproxy));
 	}
 	
 	/*
