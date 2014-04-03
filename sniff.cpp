@@ -3027,6 +3027,7 @@ void *pcap_read_thread_func(void *arg) {
 	res = 0;
 
 	while(1) {
+		static int count = 0;
 
 #ifdef QUEUE_MUTEX
 		res = sem_wait(&readpacket_thread_semaphore);

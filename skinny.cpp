@@ -1264,8 +1264,16 @@ Call *new_skinny_channel(int state, char *data, int datalen, struct pcap_pkthdr 
 	call->flags |= flags;
 	strncpy(call->fbasename, callidstr, MAX_FNAME - 1);
 
+	// add saddr|daddr into map
+	stringstream tmp;
+	if(saddr < daddr) {
+		tmp << call->sipcallerip << '|' << call->sipcalledip;
+	} else {
+		tmp << call->sipcalledip << '|' << call->sipcallerip;
+	}
+	calltable->skinny_ipTuples[tmp.str()] = call;
+
 	if(call->flags & (FLAG_SAVESIP | FLAG_SAVERTP | FLAG_SAVEWAV) || opt_savewav_force) {
-		printf("test\n");
 		static string lastdir;
 		if(lastdir != call->dirname()) {
 			string tmp, dir;
@@ -1391,10 +1399,13 @@ void *handle_skinny(pcap_pkthdr *header, const u_char *packet, unsigned int sadd
 		//cycle through all PDUs in one message
 		handle_skinny2(header, packet, saddr, source, daddr, dest, data, datalen,
 			handle, dlt, sensor_id);
-		int plen = (unsigned int)letohl(*data); // first 4 bytes is length of skinny data
+		unsigned int plen = (unsigned int)letohl(*(uint32_t*)data); // first 4 bytes is length of skinny data
+		if(plen == 0 or plen > remain) {
+			break;
+		}
 		remain -= plen; 
 		if(remain > 8 and remain < 4092 and (datalen - plen > 8)) {
-			packet += plen + 8; // skinny header is 4byte length + 4byte header version. The rest is data with length plen
+			//packet += plen + 8; // skinny header is 4byte length + 4byte header version. The rest is data with length plen
 			data += plen + 8;
 			datalen -= plen + 8;
 			continue;
@@ -1414,19 +1425,7 @@ void *handle_skinny2(pcap_pkthdr *header, const u_char *packet, unsigned int sad
 
 	struct skinny_req req;
 	memcpy(&req, data, MIN(sizeof(skinny_req), (unsigned int)datalen));
-//	size_t len = MIN(letohl(*data) - 4, datalen - skinny_header_size);
 	Call *call;
-
-//	struct skinny_speeddial *sd;
-//	SKINNY_DEBUG(DEBUG_PACKET, 3, "len %d e[%x][%u] [%x]\n", datalen, req->e,  letohl(req->e), (unsigned char)*(data + 8));
-
-/*
-	if ((!s->device) && (letohl(req->e) != REGISTER_MESSAGE && letohl(req->e) != ALARM_MESSAGE)) {
-		ast_log(LOG_WARNING, "Client sent message #%d without first registering.\n", req->e);
-		ast_free(req);
-		return 0;
-	}
-*/
 
 	switch(letohl(req.e)) {
 	case SET_RINGER_MESSAGE:
@@ -1731,14 +1730,13 @@ void *handle_skinny2(pcap_pkthdr *header, const u_char *packet, unsigned int sad
 		char callid[16];
 		sprintf(callid, "%d", ref);
 		SKINNY_DEBUG(DEBUG_PACKET, 3, "Received START_MEDIA_TRANSMISSION_MESSAGE partyId [%u] ipAddr[%x] port[%u] callid[%s]", ref, ipaddr, port, callid);
-		if((call = calltable->find_by_call_id(callid, strlen(callid)))){
+		if((call = calltable->find_by_call_id(callid, strlen(callid))) or (call = calltable->find_by_skinny_ipTuples(saddr, daddr))){
 			int rtpmap[MAX_RTPMAP];
 			memset(&rtpmap, 0, sizeof(int) * MAX_RTPMAP);
 			if(call->add_ip_port(ipaddr, port, NULL, 0, call->sipcallerip == saddr, rtpmap) != -1){
 				calltable->hashAdd(ipaddr, port, call, call->sipcallerip == saddr, 0, 0, 1);
 			}
-			save_packet(call, header, packet, saddr, source, daddr, dest, 1, data, datalen, TYPE_SKINNY, 
-				    dlt, sensor_id);
+			save_packet(call, header, packet, saddr, source, daddr, dest, 1, data, datalen, TYPE_SKINNY, dlt, sensor_id);
 		}
 		}
 		break;
@@ -1927,7 +1925,7 @@ void *handle_skinny2(pcap_pkthdr *header, const u_char *packet, unsigned int sad
 		unsigned int ipaddr = letohl(req.data.openreceivechannelack_ip4.ipAddr);
 		unsigned int port = letohl(req.data.openreceivechannelack_ip4.port);
 		SKINNY_DEBUG(DEBUG_PACKET, 3, "Received OPEN_RECEIVE_CHANNEL_MESSAGE partyId [%u] ipAddr[%u] port[%u]", pid, ipaddr, port);
-		if((call = calltable->find_by_skinny_partyid(pid))){
+		if((call = calltable->find_by_skinny_partyid(pid)) or (call = calltable->find_by_skinny_ipTuples(saddr, daddr))){
 			int rtpmap[MAX_RTPMAP];
 			memset(&rtpmap, 0, sizeof(int) * MAX_RTPMAP);
 			if(call->add_ip_port(ipaddr, port, NULL, 0, call->sipcallerip == saddr, rtpmap) != -1){

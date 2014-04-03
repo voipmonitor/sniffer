@@ -488,6 +488,8 @@ public:
 	list<Call*>::iterator call;
 	map<string, Call*> calls_listMAP; //!< 
 	map<string, Call*>::iterator callMAPIT; //!< 
+	map<string, Call*> skinny_ipTuples; //!< 
+	map<string, Call*>::iterator skinny_ipTuplesIT; //!< 
 	map<unsigned int, Call*> skinny_partyID; //!< 
 	map<unsigned int, Call*>::iterator skinny_partyIDIT; //!< 
 	map<unsigned int, std::map<unsigned int, Ipportnode*> > ipportmap;
@@ -559,6 +561,7 @@ public:
 	*/
 	Call *find_by_call_id(char *call_id, unsigned long call_id_len);
 	Call *find_by_skinny_partyid(unsigned int partyid);
+	Call *find_by_skinny_ipTuples(unsigned int saddr, unsigned int daddr);
 
 	/**
 	 * @brief find Call by IP adress and port number

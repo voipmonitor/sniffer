@@ -138,6 +138,7 @@ extern int opt_saveaudio_reversestereo;
 extern int opt_saveaudio_stereo;
 extern int opt_saveaudio_reversestereo;
 extern float opt_saveaudio_oggquality;
+extern int opt_skinny;
 
 SqlDb *sqlDbSaveCall = NULL;
 bool existsColumnCalldateInCdrNext = true;
@@ -385,8 +386,23 @@ Call::removeRTP() {
 
 /* destructor */
 Call::~Call(){
-	if(skinny_partyid) {
-		((Calltable *)calltable)->skinny_partyID.erase(skinny_partyid);
+	if(opt_skinny) {
+		if(skinny_partyid) {
+			((Calltable *)calltable)->skinny_partyID.erase(skinny_partyid);
+		}
+		stringstream tmp[2];
+
+		tmp[0] << this->sipcallerip << '|' << this->sipcalledip;
+		tmp[1] << this->sipcallerip << '|' << this->sipcalledip;
+
+		for(int i = 0; i < 2; i++) {
+			((Calltable *)calltable)->skinny_ipTuplesIT = ((Calltable *)calltable)->skinny_ipTuples.find(tmp[i].str());
+			if(((Calltable *)calltable)->skinny_ipTuplesIT == ((Calltable *)calltable)->skinny_ipTuples.end()) {
+				if(((Calltable *)calltable)->skinny_ipTuplesIT->second == this) {
+					((Calltable *)calltable)->skinny_ipTuples.erase(((Calltable *)calltable)->skinny_ipTuplesIT);
+				}
+			}
+		}
 	}
 
 	if(contenttype) free(contenttype);
@@ -3186,6 +3202,24 @@ Calltable::find_by_skinny_partyid(unsigned int partyid) {
 		return NULL;
 	} else {
 		return (*skinny_partyIDIT).second;
+	}
+}
+
+Call*
+Calltable::find_by_skinny_ipTuples(unsigned int saddr, unsigned int daddr) {
+	stringstream tmp;
+
+	if(saddr < daddr) {
+		tmp << saddr << '|' << daddr;
+	} else {
+		tmp << daddr << '|' << saddr;
+	}
+
+	skinny_ipTuplesIT = skinny_ipTuples.find(tmp.str());
+	if(skinny_ipTuplesIT == skinny_ipTuples.end()) {
+		return NULL;
+	} else {
+		return skinny_ipTuplesIT->second;
 	}
 }
 
