@@ -2,6 +2,7 @@
 ==================
 - sccp skinny: record RTP stream for some cases where signalization does not contain conference number = call reference which fixes ampty RTP
 - fix invalid memory read in skinny protocol (found in valgrind)
+- use old partition schema even if mysql is upgraded from 5.1 to 5.6 - it autodetects old partitions.
 
 9.4beta17 2.4.2014
 ==================
