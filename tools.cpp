@@ -23,6 +23,7 @@
 #include <sys/ioctl.h> 
 #include <sys/syscall.h>
 #include <sys/statvfs.h>
+#include <curl/curl.h>
 
 #include "voipmonitor.h"
 
@@ -313,6 +314,51 @@ As you can see we are calling fdatasync right before calling posix_fadvise, this
 		unlink(src);
 	}
 	return(bytestransfered);
+}
+
+size_t _get_url_file_writer_function(void *ptr, size_t size, size_t nmemb, FILE *stream) {
+	size_t written = fwrite(ptr, size, nmemb, stream);
+	return written;
+}
+bool get_url_file(const char *url, const char *toFile, string *error) {
+	if(error) {
+		*error = "";
+	}
+	bool rslt = false;
+	CURL *curl = curl_easy_init();
+	if(curl) {
+		FILE *fp = fopen(toFile, "wb");
+		if(!fp) {
+			if(error) {
+				*error = string("open / create file ") + toFile + " failed";
+			}
+		} else {
+			char errorBuffer[1024];
+			curl_easy_setopt(curl, CURLOPT_ERRORBUFFER, errorBuffer);
+			curl_easy_setopt(curl, CURLOPT_URL, url);
+			curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, _get_url_file_writer_function);
+			curl_easy_setopt(curl, CURLOPT_WRITEDATA, fp);
+			curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, false);
+			extern char opt_curlproxy[256];
+			if(opt_curlproxy[0]) {
+				curl_easy_setopt(curl, CURLOPT_PROXY, opt_curlproxy);
+			}
+			if(curl_easy_perform(curl) == CURLE_OK) {
+				rslt = true;
+			} else {
+				if(error) {
+					*error = errorBuffer;
+				}
+			}
+			fclose(fp);
+		}
+		curl_easy_cleanup(curl);
+	} else {
+		if(error) {
+			*error = "initialize curl failed";
+		}
+	}
+	return(rslt);
 }
 
 /* circular buffer implementation */
@@ -800,12 +846,14 @@ bool RestartUpgrade::runUpgrade() {
 	bool okUrl;
 	string urlHttp;
 	if(url.find("http://voipmonitor.org") == 0 ||
-	   url.find("http://www.voipmonitor.org") == 0) {
+	   url.find("http://www.voipmonitor.org") == 0 ||
+	   url.find("http://download.voipmonitor.org") == 0) {
 		urlHttp = url;
 		url = "https" + url.substr(4);
 		okUrl = true;
 	} else if(url.find("https://voipmonitor.org") == 0 ||
-		  url.find("https://www.voipmonitor.org") == 0) {
+		  url.find("https://www.voipmonitor.org") == 0 ||
+		  url.find("https://download.voipmonitor.org") == 0) {
 		urlHttp = "http" + url.substr(5);
 		okUrl = true;
 	}
@@ -824,13 +872,27 @@ bool RestartUpgrade::runUpgrade() {
 	unlink(this->upgradeTempFileName.c_str());
 	char outputStdoutErr[L_tmpnam+1];
 	if(!tmpnam(outputStdoutErr)) {
-		this->errorString = "failed create temp name for output wget and gunzip";
+		this->errorString = "failed create temp name for output curl and gunzip";
 		return(false);
 	}
 	string binaryFilepathName = this->upgradeTempFileName + "/voipmonitor";
 	string binaryGzFilepathName = this->upgradeTempFileName + "/voipmonitor.gz";
 	extern int opt_upgrade_try_http_if_https_fail;
 	for(int pass = 0; pass < (opt_upgrade_try_http_if_https_fail ? 2 : 1); pass++) {
+		string error;
+		string _url = (pass == 1 ? urlHttp : url) + 
+			      "/voipmonitor.gz." + (this->_64bit ? "64" : "32");
+		if(get_url_file(_url.c_str(), binaryGzFilepathName.c_str(), &error)) {
+			this->errorString = "";
+			break;
+		} else {
+			this->errorString = "failed download upgrade: " + error;
+			if(pass || !opt_upgrade_try_http_if_https_fail) {
+				rmdir_r(this->upgradeTempFileName.c_str());
+				return(false);
+			}
+		}
+		/* obsolete
 		string wgetCommand = string("wget --no-cache ") + 
 				     (pass == 0 ? "--no-check-certificate " : "") +
 				     (pass == 1 ? urlHttp : url) + 
@@ -860,6 +922,7 @@ bool RestartUpgrade::runUpgrade() {
 			this->errorString = "";
 			break;
 		}
+		*/
 	}
 	if(!FileExists((char*)binaryGzFilepathName.c_str())) {
 		this->errorString = "failed download - missing destination file";
