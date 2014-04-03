@@ -497,6 +497,9 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 				//global_livesniffer_all = 0;
 			}
 			updateLivesnifferfilters();
+			if(verbosity > 0) {
+				 syslog(LOG_NOTICE, "stop livesniffer - uid: %u", uid);
+			}
                 }
                 return 0;
 	} else if(strstr(buf, "getlivesniffer") != NULL) {
@@ -517,6 +520,9 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 
 		global_livesniffer_all = 0;
 		sscanf(buf, "livefilter set %u %s %[^\n\r]", &uid, search, value);
+		if(verbosity > 0) {
+			syslog(LOG_NOTICE, "set livesniffer - uid: %u search: %s value: %s", uid, search, value);
+		}
 
 		if(memmem(search, sizeof(search), "all", 3)) {
 			global_livesniffer = 1;
