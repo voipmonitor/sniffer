@@ -42,6 +42,7 @@ extern volatile int calls_message_save_counter;
 
 int sql_noerror = 0;
 int sql_disable_next_attempt_if_error = 0;
+bool opt_cdr_partition_oldver = false;
 
 
 string SqlDb_row::operator [] (const char *fieldName) {
@@ -1633,25 +1634,16 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 
 	char partDayName[20] = "";
 	char limitDay[20] = "";
-	bool opt_cdr_partition_oldver = false;
 	if(opt_cdr_partition && !federated) {
-		if(this->getDbMajorVersion() * 100 + this->getDbMinorVersion() <= 500) {
-			opt_cdr_partition = false;
-			syslog(LOG_NOTICE, "mysql <= 5.0 does not know partitions - we recommend to upgrade mysql");
-		} else { 
-			time_t act_time = time(NULL);
-			if(opt_create_old_partitions > 0) {
-				act_time -= opt_create_old_partitions * 24 * 60 * 60;
-			}
-			struct tm *actTime = localtime(&act_time);
-			strftime(partDayName, sizeof(partDayName), "p%y%m%d", actTime);
-			time_t next_day_time = act_time + 24 * 60 * 60;
-			struct tm *nextDayTime = localtime(&next_day_time);
-			strftime(limitDay, sizeof(partDayName), "%Y-%m-%d", nextDayTime);
-			if(this->getDbMajorVersion() * 100 + this->getDbMinorVersion() <= 501) {
-				opt_cdr_partition_oldver = true;
-			}
+		time_t act_time = time(NULL);
+		if(opt_create_old_partitions > 0) {
+			act_time -= opt_create_old_partitions * 24 * 60 * 60;
 		}
+		struct tm *actTime = localtime(&act_time);
+		strftime(partDayName, sizeof(partDayName), "p%y%m%d", actTime);
+		time_t next_day_time = act_time + 24 * 60 * 60;
+		struct tm *nextDayTime = localtime(&next_day_time);
+		strftime(limitDay, sizeof(partDayName), "%Y-%m-%d", nextDayTime);
 	}
 	
 	this->query("show tables like 'cdr'");
@@ -2619,6 +2611,40 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 	syslog(LOG_DEBUG, "done");
 }
 
+void SqlDb_mysql::checkDbMode() {
+	sql_disable_next_attempt_if_error = 1;
+	if(!opt_cdr_partition &&
+	   this->getDbMajorVersion() * 100 + this->getDbMinorVersion() > 500) {
+		this->query("EXPLAIN PARTITIONS SELECT * from cdr limit 1");
+		SqlDb_row row;
+		if((row = this->fetchRow())) {
+			if(row["partitions"] != "") {
+				syslog(LOG_INFO, "enable opt_cdr_partition (table cdr has partitions)");
+				opt_cdr_partition = true;
+			}
+		}
+	}
+	if(opt_cdr_partition) {
+		if(this->getDbMajorVersion() * 100 + this->getDbMinorVersion() <= 500) {
+			opt_cdr_partition = false;
+			syslog(LOG_NOTICE, "mysql <= 5.0 does not know partitions - we recommend to upgrade mysql");
+		} else { 
+			if(this->getDbMajorVersion() * 100 + this->getDbMinorVersion() <= 501) {
+				opt_cdr_partition_oldver = true;
+				syslog(LOG_NOTICE, "mysql <= 5.1 - use old mode partitions");
+			} else {
+				this->query(string("select partition_description from information_schema.partitions where table_schema='") +mysql_database + 
+					    "' and table_name like 'cdr%' and partition_description is not null and  partition_description regexp '^[0-9]+$' limit 1");
+				if(this->fetchRow()) {
+					opt_cdr_partition_oldver = true;
+					syslog(LOG_NOTICE, "database contain old mode partitions");
+				}
+			}
+		}
+	}
+	sql_disable_next_attempt_if_error = 0;
+}
+
 void SqlDb_mysql::checkSchema() {
 	extern bool existsColumnCalldateInCdrNext;
 	extern bool existsColumnCalldateInCdrRtp;
@@ -2641,7 +2667,7 @@ void SqlDb_mysql::checkSchema() {
 			}
 		}
 	}
-	sql_disable_next_attempt_if_error = 1;
+	sql_disable_next_attempt_if_error = 0;
 }
 
 bool SqlDb_mysql::checkSourceTables() {
@@ -3577,8 +3603,10 @@ void SqlDb_odbc::createSchema(const char *host, const char *database, const char
 			END");
 }
 
-void SqlDb_odbc::checkSchema() {
+void SqlDb_odbc::checkDbMode() {
+}
 
+void SqlDb_odbc::checkSchema() {
 }
 
 void createMysqlPartitionsCdr() {

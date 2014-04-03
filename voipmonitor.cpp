@@ -2699,6 +2699,7 @@ int main(int argc, char *argv[]) {
 				sqlDb->query("repair table mysql.proc");
 				sql_noerror = 0;
 			}
+			sqlDb->checkDbMode();
 			sqlDb->createSchema();
 			sqlDb->checkSchema();
 		} else {
