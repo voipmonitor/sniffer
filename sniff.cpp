@@ -70,6 +70,7 @@ and insert them into Call class.
 #include "ip_frag.h"
 #include "regcache.h"
 #include "manager.h"
+#include "fraud.h"
 
 extern MirrorIP *mirrorip;
 
@@ -186,6 +187,7 @@ extern regcache *regfailedcache;
 extern ManagerClientThreads ClientThreads;
 extern int opt_register_timeout;
 extern int opt_nocdr;
+extern int opt_enable_fraud;
 
 #ifdef QUEUE_MUTEX
 extern sem_t readpacket_thread_semaphore;
@@ -1455,7 +1457,9 @@ Call *new_invite_register(int sip_method, char *data, int datalen, struct pcap_p
 				call->digest_username, call->digest_realm, call->register_expires);
 */
 		}
-
+		if(opt_enable_fraud) {
+			fraudBeginCall(call, header->ts);
+		}
 		if(sip_method == INVITE) {
 			call->seeninvite = true;
 #ifdef DEBUG_INVITE
@@ -2287,7 +2291,9 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 					}
 					if(verbosity > 2)
 						syslog(LOG_NOTICE, "Seen bye\n");
-						
+					if(opt_enable_fraud) {
+						fraudSeenByeCall(call, header->ts);
+					}
 				}
 				// save who hanged up 
 				if(call->sipcallerip == saddr) {
@@ -2333,11 +2339,15 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 						if(logPacketSipMethodCall_enable) {
 							logPacketSipMethodCall(sip_method, lastSIPresponseNum, header, call);
 						}
+						process_packet__parse_custom_headers(call, data, datalen);
 						return call;
 					} else if(strncmp(cseq, call->invitecseq, cseqlen) == 0) {
 						call->seeninviteok = true;
 						if(!call->connect_time) {
 							call->connect_time = header->ts.tv_sec;
+							if(opt_enable_fraud) {
+								fraudConnectCall(call, header->ts);
+							}
 						}
 						if(verbosity > 2)
 							syslog(LOG_NOTICE, "Call answered\n");

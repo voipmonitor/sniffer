@@ -208,12 +208,25 @@ class AsyncClose {
 public:
 	class AsyncCloseItem {
 	public:
+		AsyncCloseItem(Call *call = NULL, const char *file = NULL,
+			       const char *column = NULL, long long writeBytes = 0);
 		virtual ~AsyncCloseItem() {}
 		virtual void close() = 0;
+	protected:
+		void addtofilesqueue();
+	protected:
+		string file;
+		string column;
+		string dirnamesqlfiles;
+		long long writeBytes;
+		void *calltable;
 	};
 	class AsyncCloseItem_pcap : public AsyncCloseItem {
 	public:
-		AsyncCloseItem_pcap(pcap_dumper_t *handle) {
+		AsyncCloseItem_pcap(pcap_dumper_t *handle,
+				    Call *call = NULL, const char *file = NULL,
+				    const char *column = NULL, long long writeBytes = 0)
+		 : AsyncCloseItem(call, file, column, writeBytes) {
 			this->handle = handle;
 		}
 		void close() {
@@ -225,7 +238,10 @@ public:
 	};
 	class AsyncCloseItem_ofstream  : public AsyncCloseItem{
 	public:
-		AsyncCloseItem_ofstream(ofstream *stream) {
+		AsyncCloseItem_ofstream(ofstream *stream,
+					Call *call = NULL, const char *file = NULL,
+					const char *column = NULL, long long writeBytes = 0)
+		 : AsyncCloseItem(call, file, column, writeBytes) {
 			this->stream = stream;
 		}
 		void close() {
@@ -237,7 +253,10 @@ public:
 	};
 	class AsyncCloseItem_ogzstream  : public AsyncCloseItem{
 	public:
-		AsyncCloseItem_ogzstream(ogzstream *stream) {
+		AsyncCloseItem_ogzstream(ogzstream *stream,
+					 Call *call = NULL, const char *file = NULL,
+					 const char *column = NULL, long long writeBytes = 0)
+		 : AsyncCloseItem(call, file, column, writeBytes) {
 			this->stream = stream;
 		}
 		void close() {
@@ -250,14 +269,20 @@ public:
 public:
 	AsyncClose();
 	void startThread();
-	void add(pcap_dumper_t *handle) {
-		add(new AsyncCloseItem_pcap(handle));
+	void add(pcap_dumper_t *handle,
+		 Call *call = NULL, const char *file = NULL,
+		 const char *column = NULL, long long writeBytes = 0) {
+		add(new AsyncCloseItem_pcap(handle, call, file, column, writeBytes));
 	}
-	void add(ofstream *stream) {
-		add(new AsyncCloseItem_ofstream(stream));
+	void add(ofstream *stream,
+		 Call *call = NULL, const char *file = NULL,
+		 const char *column = NULL, long long writeBytes = 0) {
+		add(new AsyncCloseItem_ofstream(stream, call, file, column, writeBytes));
 	}
-	void add(ogzstream *stream) {
-		add(new AsyncCloseItem_ogzstream(stream));
+	void add(ogzstream *stream,
+		 Call *call = NULL, const char *file = NULL,
+		 const char *column = NULL, long long writeBytes = 0) {
+		add(new AsyncCloseItem_ogzstream(stream, call, file, column, writeBytes));
 	}
 	void add(AsyncCloseItem *item) {
 		lock();

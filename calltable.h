@@ -447,8 +447,10 @@ public:
 	 *
 	*/
 	void addtocachequeue(string file);
+	static void _addtocachequeue(string file, void *calltable);
 
 	void addtofilesqueue(string file, string column, long long writeBytes);
+	static void _addtofilesqueue(string file, string column, string dirnamesqlfiles, long long writeBytes);
 
 	float mos_lqo(char *deg, int samplerate);
 

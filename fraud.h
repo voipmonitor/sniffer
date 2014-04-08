@@ -16,8 +16,6 @@
 #define fraud_alert_chcr 23
 #define fraud_alert_d 24
 
-extern timeval t;
-
 class TimePeriod {
 public:
 	TimePeriod(SqlDb_row *dbRow = NULL);
@@ -144,10 +142,22 @@ public:
 	CountryPrefixes();
 	void load();
 	string getCountry(const char *number, vector<string> *countries) {
-		string _findNumber = number;
 		if(countries) {
 			countries->clear();
 		}
+		size_t numberLen = strlen(number);
+		if(numberLen > 1 && number[0] == '+') {
+			number += 1;
+		} else if(numberLen > 2 && number[0] == '0' && number[0] == '1') {
+			number += 2;
+		} else {
+			extern char opt_local_country_code[10];
+			if(countries) {
+				countries->push_back(opt_local_country_code);
+			}
+			return(opt_local_country_code);
+		}
+		string _findNumber = number;
 		vector<CountryPrefix_rec>::iterator findRecIt;
 		findRecIt = std::lower_bound(data.begin(), data.end(), number);
 		if(findRecIt == data.end()) {
@@ -239,6 +249,75 @@ private:
 	vector<GeoIP_country_rec> data;
 };
 
+class CacheNumber_location {
+public:
+	struct sIpRec {
+		sIpRec() {
+			ip = 0;
+			at = 0;
+			old_ip = 0;
+			old_at = 0;
+			fresh_at = 0;
+		}
+		u_int32_t ip;
+		string country_code;
+		string continent_code;
+		u_int64_t at;
+		u_int32_t old_ip;
+		string old_country_code;
+		string old_continent_code;
+		u_int64_t old_at;
+		u_int64_t fresh_at;
+	};
+	CacheNumber_location();
+	~CacheNumber_location();
+	bool checkNumber(const char *number, u_int32_t ip, u_int64_t at,
+			 bool *diffCountry = NULL, bool *diffContinent = NULL);
+	bool loadNumber(const char *number, u_int64_t at);
+	void saveNumber(const char *number, sIpRec *ipRec, bool update = false);
+private:
+	SqlDb *sqlDb;
+	map<string, sIpRec> cache;
+};
+
+struct sFraudCallInfo {
+	sFraudCallInfo() {
+		at_begin = 0;
+		at_connect = 0;
+		at_seen_bye = 0;
+		at_end = 0;
+		at_last = 0;
+	}
+	enum eTypeCallInfo {
+		typeCallInfo_beginCall,
+		typeCallInfo_connectCall,
+		typeCallInfo_seenByeCall,
+		typeCallInfo_endCall
+	};
+	eTypeCallInfo typeCallInfo;
+	string callid;
+	string caller_number;
+	string called_number;
+	u_int32_t caller_ip;
+	u_int32_t called_ip;
+	string country_code_caller_number;
+	string country2_code_caller_number;
+	string country_code_called_number;
+	string country2_code_called_number;
+	string continent_code_caller_number;
+	string continent2_code_caller_number;
+	string continent_code_called_number;
+	string continent2_code_called_number;
+	string country_code_caller_ip;
+	string country_code_called_ip;
+	string continent_code_caller_ip;
+	string continent_code_called_ip;
+	u_int64_t at_begin;
+	u_int64_t at_connect;
+	u_int64_t at_seen_bye;
+	u_int64_t at_end;
+	u_int64_t at_last;
+};
 
 class FraudAlert {
 public:
@@ -257,6 +336,7 @@ public:
 	virtual ~FraudAlert();
 	void loadAlert();
 	void loadFraudDef();
+	virtual void evCall(sFraudCallInfo *callInfo) {}
 protected:
 	virtual void addFraudDef(SqlDb_row *row) {}
 	virtual bool defFilterIp() { return(false); }
@@ -293,6 +373,7 @@ private:
 class FraudAlert_rcc : public FraudAlert {
 public:
 	FraudAlert_rcc(unsigned int dbId);
+	void evCall(sFraudCallInfo *callInfo);
 protected:
 	void addFraudDef(SqlDb_row *row);
 	bool defFilterIp() { return(true); }
@@ -331,12 +412,33 @@ protected:
 
 class FraudAlerts {
 public:
+	FraudAlerts();
 	~FraudAlerts();
 	void loadAlerts();
 	void clear();
+	void beginCall(Call *call, u_int64_t at);
+	void connectCall(Call *call, u_int64_t at);
+	void seenByeCall(Call *call, u_int64_t at);
+	void endCall(Call *call, u_int64_t at);
+private:
+	void initPopCallInfoThread();
+	void popCallInfoThread();
+	void getCallInfoFromCall(sFraudCallInfo *callInfo, Call *call, 
+				 sFraudCallInfo::eTypeCallInfo typeCallInfo, u_int64_t at);
+	void completeCallInfo_country_code(sFraudCallInfo *callInfo);
 private:
 	vector<FraudAlert*> alerts;
+	SafeAsyncQueue<sFraudCallInfo> callQueue;
+	pthread_t threadPopCallInfo;
+friend void *_FraudAlerts_popCallInfoThread(void *arg);
 };
+
+
+void initFraud();
+void fraudBeginCall(Call *call, struct timeval tv);
+void fraudConnectCall(Call *call, struct timeval tv);
+void fraudSeenByeCall(Call *call, struct timeval tv);
+void fraudEndCall(Call *call, struct timeval tv);
 
 
 #endif
