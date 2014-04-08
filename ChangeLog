@@ -1,3 +1,7 @@
+9.4beta21 8.4.2014
+==================
+- beta20 did not fixed the autocleaning properly, this version yes. 
+
 9.4beta20 8.4.2014
 ==================
 - fix calculating disk space by the autocleaning for all 9.4. Previous versions did not properly cleaned spool dir. 
