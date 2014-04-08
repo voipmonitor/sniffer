@@ -232,6 +232,7 @@ public:
 		void close() {
 			pcap_dump_flush(handle);
 			pcap_dump_close(handle);
+			this->addtofilesqueue();
 		}
 	private:
 		pcap_dumper_t *handle;
@@ -247,6 +248,7 @@ public:
 		void close() {
 			stream->close();
 			delete stream;
+			this->addtofilesqueue();
 		}
 	private:
 		ofstream *stream;
@@ -262,6 +264,7 @@ public:
 		void close() {
 			stream->close();
 			delete stream;
+			this->addtofilesqueue();
 		}
 	private:
 		ogzstream *stream;
