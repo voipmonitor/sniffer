@@ -2339,6 +2339,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 						if(logPacketSipMethodCall_enable) {
 							logPacketSipMethodCall(sip_method, lastSIPresponseNum, header, call);
 						}
+						process_packet__parse_custom_headers(call, data, datalen);
 						return call;
 					} else if(strncmp(cseq, call->invitecseq, cseqlen) == 0) {
 						call->seeninviteok = true;
