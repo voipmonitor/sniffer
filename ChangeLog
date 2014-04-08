@@ -1,3 +1,7 @@
+9.4beta19 3.4.2014
+==================
+- replace wget with libcurl when doing autoupgrades from the manager
+
 9.4beta18 3.4.2014
 ==================
 - sccp skinny: record RTP stream for some cases where signalization does not contain conference number = call reference which fixes ampty RTP
