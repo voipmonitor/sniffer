@@ -39,6 +39,7 @@ extern int opt_mos_lqo;
 extern int opt_read_from_file;
 extern volatile int calls_cdr_save_counter;
 extern volatile int calls_message_save_counter;
+extern int opt_enable_fraud;
 
 int sql_noerror = 0;
 int sql_disable_next_attempt_if_error = 0;
@@ -125,6 +126,16 @@ void SqlDb_row::add(double content,  string fieldName, bool null) {
 	} else {
 		char str_content[100];
 		sprintf(str_content, "%lf", content);
+		this->add(str_content, fieldName);
+	}
+}
+
+void SqlDb_row::add(u_int64_t content,  string fieldName, bool null) {
+	if(!content && null) {
+		this->add((const char*)NULL, fieldName);
+	} else {
+		char str_content[100];
+		sprintf(str_content, "%llu", (unsigned long long)content);
 		this->add(str_content, fieldName);
 	}
 }
@@ -2304,6 +2315,22 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 			""));
 	}
 
+	if(opt_enable_fraud) {
+	this->query(
+	"CREATE TABLE IF NOT EXISTS `cache_number_location` (\
+			`number` varchar(30) NOT NULL,\
+			`ip` int unsigned,\
+			`country_code` char(5),\
+			`continent_code` char(5),\
+			`at` bigint unsigned,\
+			`old_ip` int unsigned,\
+			`old_country_code` char(5),\
+			`old_continent_code` char(5),\
+			`old_at` bigint unsigned,\
+		PRIMARY KEY (`number`)\
+	) ENGINE=InnoDB DEFAULT CHARSET=latin1;");
+	}
+	
 	if(!federated) {
 	 
 	sql_noerror = 1;

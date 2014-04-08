@@ -74,6 +74,7 @@
 #include "cleanspool.h"
 #include "regcache.h"
 #include "config_mysql.h"
+#include "fraud.h"
 
 #if defined(QUEUE_MUTEX) || defined(QUEUE_NONBLOCK)
 extern "C" {
@@ -494,6 +495,8 @@ int opt_mysqlstore_max_threads_ipacc_base = 3;
 int opt_mysqlstore_max_threads_ipacc_agreg2 = 3;
 
 char opt_curlproxy[256] = "";
+int opt_enable_fraud = 0;
+char opt_local_country_code[10] = "";
 
 
 #define ENABLE_SEMAPHOR_FORK_MODE 0
@@ -1806,6 +1809,13 @@ int load_config(char *fname) {
 		strncpy(opt_curlproxy, value, sizeof(opt_curlproxy));
 	}
 	
+	if((value = ini.GetValue("general", "enable_fraud", NULL))) {
+		opt_enable_fraud = yesno(value);
+	}
+	if((value = ini.GetValue("general", "local_country_code", NULL))) {
+		strncpy(opt_local_country_code, value, sizeof(opt_local_country_code));
+	}
+	
 	/*
 	
 	packetbuffer default configuration
@@ -2926,6 +2936,10 @@ int main(int argc, char *argv[]) {
 		}
 	}
 	//opt_pcap_threaded = 0; //disable threading because it is useless while reading packets from file
+	
+	if(opt_enable_fraud) {
+		initFraud();
+	}
 
 	chdir(opt_chdir);
 

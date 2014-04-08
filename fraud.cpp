@@ -1,6 +1,20 @@
 #include <algorithm>
+#include <sstream>
 
 #include "fraud.h"
+#include "calltable.h"
+
+
+extern int opt_enable_fraud;
+extern int terminating;
+extern MySqlStore *sqlStore;
+
+FraudAlerts *fraudAlerts = NULL;
+int fraudDebug = 1;
+
+CountryCodes *countryCodes = NULL;
+CountryPrefixes *countryPrefixes = NULL;
+GeoIP_country *geoIP_country = NULL;
 
 
 TimePeriod::TimePeriod(SqlDb_row *dbRow) {
@@ -128,6 +142,145 @@ void GeoIP_country::load() {
 }
 
 
+CacheNumber_location::CacheNumber_location() {
+	if(!countryCodes) {
+		countryCodes = new CountryCodes();
+		countryCodes->load();
+	}
+	if(!geoIP_country) {
+		geoIP_country = new GeoIP_country();
+		geoIP_country->load();
+	}
+	sqlDb = createSqlObject();
+}
+
+CacheNumber_location::~CacheNumber_location() {
+	delete sqlDb;
+}
+
+bool CacheNumber_location::checkNumber(const char *number, u_int32_t ip, u_int64_t at,
+				       bool *diffCountry, bool *diffContinent) {
+	if(diffCountry) {
+		*diffCountry = false;
+	}
+	if(diffContinent) {
+		*diffContinent = false;
+	}
+	map<string, sIpRec>::iterator iterCache;
+	for(int pass = 0; pass < 2; pass++) {
+		iterCache = cache.find(number);
+		if(iterCache != cache.end()) {
+			break;
+		}
+		if(pass == 0) {
+			if(!this->loadNumber(number, at)) {
+				break;
+			}
+		}
+	}
+	if(iterCache == cache.end()) {
+		sIpRec ipRec;
+		ipRec.ip = ip;
+		ipRec.country_code = geoIP_country->getCountry(htonl(ip));
+		ipRec.continent_code = countryCodes->getContinent(ipRec.country_code.c_str());
+		ipRec.at = at;
+		ipRec.fresh_at = at;
+		cache[number] = ipRec;
+		this->saveNumber(number, &ipRec);
+		return(true);
+	}
+	if(cache[number].old_at &&
+	   cache[number].old_at <= at &&
+	   cache[number].at >= at &&
+	   cache[number].ip == ip) {
+		if(diffCountry && cache[number].country_code != cache[number].old_country_code) {
+			*diffCountry = true;
+		}
+		if(diffContinent && cache[number].continent_code != cache[number].old_continent_code) {
+			*diffContinent = true;
+		}
+		cache[number].fresh_at = at;
+		return(false);
+	}
+	if(cache[number].ip != ip) {
+		string country_code = geoIP_country->getCountry(htonl(ip));
+		string continent_code = countryCodes->getContinent(country_code.c_str());
+		
+		if(diffCountry && country_code != cache[number].country_code) {
+			*diffCountry = true;
+		}
+		if(diffContinent && continent_code != cache[number].continent_code) {
+			*diffCountry = true;
+		}
+		cache[number].old_ip = cache[number].ip;
+		cache[number].old_country_code = cache[number].country_code;
+		cache[number].old_continent_code = cache[number].continent_code;
+		cache[number].old_at = cache[number].at;
+		cache[number].ip = cache[number].ip;
+		cache[number].country_code = country_code;
+		cache[number].continent_code = continent_code;
+		cache[number].at = at;
+		cache[number].fresh_at = at;
+		this->saveNumber(number, &cache[number], true);
+		return(false);
+	}
+	return(true);
+}
+
+bool CacheNumber_location::loadNumber(const char *number, u_int64_t at) {
+	sqlDb->query(string("select * from cache_number_location where number=") +
+		     sqlEscapeStringBorder(number));
+	SqlDb_row row = sqlDb->fetchRow();
+	if(row) {
+		sIpRec ipRec;
+		ipRec.ip = atoll(row["ip"].c_str());
+		ipRec.country_code = row["country_code"];
+		ipRec.continent_code = row["continent_code"];
+		ipRec.at = atoll(row["at"].c_str());
+		ipRec.old_ip = atoll(row["old_ip"].c_str());
+		ipRec.old_country_code = row["old_country_code"];
+		ipRec.old_continent_code = row["old_continent_code"];
+		ipRec.old_at = atoll(row["old_at"].c_str());
+		ipRec.fresh_at = at;
+		cache[row["number"]] = ipRec;
+		return(true);
+	}
+	return(false);
+}
+
+void CacheNumber_location::saveNumber(const char *number, sIpRec *ipRec, bool update) {
+	if(update) {
+		ostringstream outStr;
+		outStr << "update cache_number_location\
+			   (ip, country_code, continent_code, at,\
+			    old_ip, old_country_code, old_continent_code, old_at)\
+			   values ("
+		       << ipRec->ip << ","
+		       << sqlEscapeStringBorder(ipRec->country_code) << ","
+		       << sqlEscapeStringBorder(ipRec->continent_code) << ","
+		       << ipRec->at << ","
+		       << ipRec->old_ip << ","
+		       << sqlEscapeStringBorder(ipRec->old_country_code) << ","
+		       << sqlEscapeStringBorder(ipRec->old_continent_code) << ","
+		       << ipRec->old_at << ")";
+		sqlStore->query_lock(outStr.str().c_str(), STORE_PROC_ID_CACHE_NUMBERS_LOCATIONS);
+	} else {
+		SqlDb_row row;
+		row.add(number, "number");
+		row.add(ipRec->ip, "ip");
+		row.add(ipRec->country_code, "country_code");
+		row.add(ipRec->continent_code, "continent_code");
+		row.add(ipRec->at, "at");
+		row.add(ipRec->old_ip, "old_ip");
+		row.add(ipRec->old_country_code, "old_country_code");
+		row.add(ipRec->old_continent_code, "old_continent_code");
+		row.add(ipRec->old_at, "old_at");
+		sqlStore->query_lock(sqlDb->insertQuery("cache_number_location", row).c_str(), STORE_PROC_ID_CACHE_NUMBERS_LOCATIONS);
+	}
+ 
+}
+
+
 FraudAlert::FraudAlert(eFraudAlertType type, unsigned int dbId) {
 	this->type = type;
 	this->dbId = dbId;
@@ -205,6 +358,9 @@ void FraudAlert::loadFraudDef() {
 		 where alerts_id = ") + dbIdStr);
 	SqlDb_row row;
 	while(row = sqlDb->fetchRow()) {
+		if(fraudDebug) {
+			cout << "add fraud def " << row["descr"] << endl;
+		}
 		addFraudDef(&row);
 	}
 	delete sqlDb;
@@ -242,6 +398,10 @@ FraudAlert_rcc::FraudAlert_rcc(unsigned int dbId)
  : FraudAlert(_rcc, dbId) {
 }
 
+void FraudAlert_rcc::evCall(sFraudCallInfo *callInfo) {
+	cout << "--- " << callInfo->typeCallInfo << endl;
+}
+
 FraudAlert_chc::FraudAlert_chc(unsigned int dbId)
  : FraudAlert(_chc, dbId) {
 }
@@ -255,17 +415,25 @@ FraudAlert_d::FraudAlert_d(unsigned int dbId)
 }
 
 
+FraudAlerts::FraudAlerts() {
+	threadPopCallInfo = 0;
+	initPopCallInfoThread();
+}
+
 FraudAlerts::~FraudAlerts() {
 	clear();
 }
 
 void FraudAlerts::loadAlerts() {
 	SqlDb *sqlDb = createSqlObject();
-	sqlDb->query("select id, alert_type from alerts\
+	sqlDb->query("select id, alert_type, descr from alerts\
 		      where alert_type > 20 and\
 			    (disable is null or not disable)");
 	SqlDb_row row;
 	while(row = sqlDb->fetchRow()) {
+		if(fraudDebug) {
+			cout << "load alert " << row["descr"] << endl;
+		}
 		FraudAlert *alert;
 		unsigned int dbId = atol(row["id"].c_str());
 		switch(atoi(row["alert_type"].c_str())) {
@@ -292,4 +460,157 @@ void FraudAlerts::clear() {
 		delete alerts[i];
 	}
 	alerts.clear();
+}
+
+void FraudAlerts::beginCall(Call *call, u_int64_t at) {
+	sFraudCallInfo callInfo;
+	this->getCallInfoFromCall(&callInfo, call, sFraudCallInfo::typeCallInfo_beginCall, at);
+	this->completeCallInfo_country_code(&callInfo);
+	callQueue.push(callInfo);
+}
+
+void FraudAlerts::connectCall(Call *call, u_int64_t at) {
+	sFraudCallInfo callInfo;
+	this->getCallInfoFromCall(&callInfo, call, sFraudCallInfo::typeCallInfo_connectCall, at);
+	this->completeCallInfo_country_code(&callInfo);
+	callQueue.push(callInfo);
+}
+
+void FraudAlerts::seenByeCall(Call *call, u_int64_t at) {
+	sFraudCallInfo callInfo;
+	this->getCallInfoFromCall(&callInfo, call, sFraudCallInfo::typeCallInfo_seenByeCall, at);
+	this->completeCallInfo_country_code(&callInfo);
+	callQueue.push(callInfo);
+}
+
+void FraudAlerts::endCall(Call *call, u_int64_t at) {
+	sFraudCallInfo callInfo;
+	this->getCallInfoFromCall(&callInfo, call, sFraudCallInfo::typeCallInfo_endCall, at);
+	this->completeCallInfo_country_code(&callInfo);
+	callQueue.push(callInfo);
+}
+
+void *_FraudAlerts_popCallInfoThread(void *arg) {
+	((FraudAlerts*)arg)->popCallInfoThread();
+	return(NULL);
+}
+void FraudAlerts::initPopCallInfoThread() {
+	pthread_create(&this->threadPopCallInfo, NULL, _FraudAlerts_popCallInfoThread, this);
+}
+
+void FraudAlerts::popCallInfoThread() {
+	while(!terminating || true) {
+		sFraudCallInfo callInfo;
+		if(callQueue.pop(&callInfo)) {
+			vector<FraudAlert*>::iterator iter;
+			for(iter = alerts.begin(); iter != alerts.end(); iter++) {
+				(*iter)->evCall(&callInfo);
+			}
+		} else {
+			usleep(1000);
+		}
+	}
+}
+
+void FraudAlerts::getCallInfoFromCall(sFraudCallInfo *callInfo, Call *call, 
+				      sFraudCallInfo::eTypeCallInfo typeCallInfo, u_int64_t at) {
+	callInfo->typeCallInfo = typeCallInfo;
+	callInfo->callid = call->call_id;
+	callInfo->caller_number = call->caller;
+	callInfo->called_number = call->called;
+	callInfo->caller_ip = call->sipcallerip;
+	callInfo->called_ip = call->sipcalledip;
+	switch(typeCallInfo) {
+	case sFraudCallInfo::typeCallInfo_beginCall:
+		callInfo->at_begin = at;
+		break;
+	case sFraudCallInfo::typeCallInfo_connectCall:
+		callInfo->at_connect = at;
+		break;
+	case sFraudCallInfo::typeCallInfo_seenByeCall:
+		callInfo->at_seen_bye = at;
+		break;
+	case sFraudCallInfo::typeCallInfo_endCall:
+		callInfo->at_end = at;
+		break;
+	}
+	callInfo->at_last = at;
+}
+
+void FraudAlerts::completeCallInfo_country_code(sFraudCallInfo *callInfo) {
+	for(int i = 0; i < 2; i++) {
+		string *number = i == 0 ? &callInfo->caller_number : &callInfo->called_number;
+		string *rslt_country_code = i == 0 ? &callInfo->country_code_caller_number : &callInfo->country_code_called_number;
+		string *rslt_continent_code = i == 0 ? &callInfo->continent_code_caller_number : &callInfo->continent_code_called_number;
+		string *rslt_country2_code = i == 0 ? &callInfo->country2_code_caller_number : &callInfo->country2_code_called_number;
+		string *rslt_continent2_code = i == 0 ? &callInfo->continent2_code_caller_number : &callInfo->continent2_code_called_number;
+		vector<string> countries;
+		if(countryPrefixes->getCountry(number->c_str(), &countries) != "" &&
+		   countries.size()) {
+			*rslt_country_code = countries[0];
+			*rslt_continent_code = countryCodes->getContinent(countries[0].c_str());
+			if(countries.size() > 1) {
+				*rslt_country2_code = countries[1];
+				*rslt_continent2_code = countryCodes->getContinent(countries[1].c_str());
+			}
+		}
+	}
+	for(int i = 0; i < 2; i++) {
+		u_int32_t *ip = i == 0 ? &callInfo->caller_ip : &callInfo->called_ip;
+		string *rslt_country_code = i == 0 ? &callInfo->country_code_caller_ip : &callInfo->country_code_called_ip;
+		string *rslt_continent_code = i == 0 ? &callInfo->continent_code_caller_ip : &callInfo->continent_code_called_ip;
+		string country = geoIP_country->getCountry(htonl(*ip));
+		if(country != "") {
+			*rslt_country_code = country;
+			*rslt_continent_code = countryCodes->getContinent(country.c_str());
+		}
+	}
+}
+
+
+void initFraud() {
+	if(!opt_enable_fraud) {
+		return;
+	}
+	if(!countryCodes) {
+		countryCodes = new CountryCodes();
+		countryCodes->load();
+	}
+	if(!countryPrefixes) {
+		countryPrefixes = new CountryPrefixes();
+		countryPrefixes->load();
+	}
+	if(!geoIP_country) {
+		geoIP_country = new GeoIP_country();
+		geoIP_country->load();
+	}
+	if(fraudAlerts) {
+		return;
+	}
+	fraudAlerts = new FraudAlerts();
+	fraudAlerts->loadAlerts();
+}
+
+void fraudBeginCall(Call *call, timeval tv) {
+	if(fraudAlerts) {
+		fraudAlerts->beginCall(call, tv.tv_sec * 1000000ull + tv.tv_usec);
+	}
+}
+
+void fraudConnectCall(Call *call, timeval tv) {
+	if(fraudAlerts) {
+		fraudAlerts->connectCall(call, tv.tv_sec * 1000000ull + tv.tv_usec);
+	}
+}
+
+void fraudSeenByeCall(Call *call, timeval tv) {
+	if(fraudAlerts) {
+		fraudAlerts->seenByeCall(call, tv.tv_sec * 1000000ull + tv.tv_usec);
+	}
+}
+
+void fraudEndCall(Call *call, timeval tv) {
+	if(fraudAlerts) {
+		fraudAlerts->endCall(call, tv.tv_sec * 1000000ull + tv.tv_usec);
+	}
 }

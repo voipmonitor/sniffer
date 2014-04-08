@@ -51,6 +51,7 @@
 #include "ipaccount.h"
 #include "cleanspool.h"
 #include "regcache.h"
+#include "fraud.h"
 
 
 #define MIN(x,y) ((x) < (y) ? (x) : (y))
@@ -139,6 +140,7 @@ extern int opt_saveaudio_stereo;
 extern int opt_saveaudio_reversestereo;
 extern float opt_saveaudio_oggquality;
 extern int opt_skinny;
+extern int opt_enable_fraud;
 
 SqlDb *sqlDbSaveCall = NULL;
 bool existsColumnCalldateInCdrNext = true;
@@ -290,6 +292,11 @@ Call::hashRemove() {
 
 void
 Call::addtofilesqueue(string file, string column, long long writeBytes) {
+	_addtofilesqueue(file, column, dirnamesqlfiles(), writeBytes);
+}
+
+void 
+Call::_addtofilesqueue(string file, string column, string dirnamesqlfiles, long long writeBytes) {
 
 	if(!opt_filesclean or opt_nocdr or file == "" or !isSqlDriver("mysql") or
 	   !isSetCleanspoolParameters()) return;
@@ -335,7 +342,7 @@ Call::addtofilesqueue(string file, string column, long long writeBytes) {
 
 	int id_sensor = opt_id_sensor_cleanspool == -1 ? 0 : opt_id_sensor_cleanspool;
 	
-	query << "INSERT INTO files SET files.datehour = " << dirnamesqlfiles() << ", id_sensor = " << id_sensor << ", "
+	query << "INSERT INTO files SET files.datehour = " << dirnamesqlfiles << ", id_sensor = " << id_sensor << ", "
 		<< column << " = " << size << " ON DUPLICATE KEY UPDATE " << column << " = " << column << " + " << size;
 
 	sqlStore->lock(STORE_PROC_ID_CLEANSPOOL);
@@ -343,7 +350,7 @@ Call::addtofilesqueue(string file, string column, long long writeBytes) {
 
 
 	ostringstream fname;
-	fname << "filesindex/" << column << "/" << dirnamesqlfiles();
+	fname << "filesindex/" << column << "/" << dirnamesqlfiles;
 	ofstream myfile(fname.str().c_str(), ios::app | ios::out);
 	if(!myfile.is_open()) {
 		syslog(LOG_ERR,"error write to [%s]", fname.str().c_str());
@@ -356,8 +363,12 @@ Call::addtofilesqueue(string file, string column, long long writeBytes) {
 
 void
 Call::addtocachequeue(string file) {
-	Calltable *ct = (Calltable *)calltable;
+	_addtocachequeue(file, this->calltable);
+}
 
+void 
+Call::_addtocachequeue(string file, void *calltable) {
+	Calltable *ct = (Calltable *)calltable;
 	ct->lock_files_queue();
 	ct->files_queue.push(file);
 	ct->unlock_files_queue();
@@ -3310,6 +3321,12 @@ Calltable::cleanup( time_t currtime ) {
 			calls_queue.push_back(call);
 			unlock_calls_queue();
 			calls_listMAP.erase(callMAPIT++);
+			if(opt_enable_fraud && currtime) {
+				struct timeval tv_currtime;
+				tv_currtime.tv_sec = currtime;
+				tv_currtime.tv_usec = 0;
+				fraudEndCall(call, tv_currtime);
+			}
 		} else {
 			++callMAPIT;
 		}

@@ -49,6 +49,7 @@ public:
 	void add(unsigned int content, string fieldName, bool null = false);
 	void add(long int content,  string fieldName, bool null = false);
 	void add(double content,  string fieldName, bool null = false);
+	void add(u_int64_t content,  string fieldName, bool null = false);
 	int getIndexField(string fieldName);
 	bool isEmpty();
 	bool isNull(string fieldName);

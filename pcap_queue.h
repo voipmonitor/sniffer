@@ -22,8 +22,6 @@
 #define READ_THREADS_MAX 20
 #define DLT_TYPES_MAX 10
 
-extern timeval t;
-
 class pcap_block_store_queue {
 public:
 	pcap_block_store_queue();
