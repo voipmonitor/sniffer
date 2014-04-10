@@ -44,6 +44,7 @@ bool FileExists(char *strFilename);
 void ntoa(char *res, unsigned int addr);
 string escapeshellR(string &);
 time_t stringToTime(const char *timeStr);
+struct tm getDateTime(u_int64_t us);
 struct tm getDateTime(time_t time);
 struct tm getDateTime(const char *timeStr);
 unsigned int getNumberOfDayToNow(const char *date);
@@ -389,9 +390,9 @@ public:
 	}
 	bool checkNumber(const char *check_number) {
 		if(prefix) {
-			return(check_number == number);
-		} else {
 			return(!strncmp(check_number, number.c_str(), lengthPrefix));
+		} else {
+			return(check_number == number);
 		}
 	}
 public:
@@ -486,7 +487,7 @@ public:
 		if(autoLock) unlock();
 	}
 	size_t size() {
-		return(ListPhoneNumber().size());
+		return(listPhoneNumber.size());
 	}
 	void lock() {
 		while(__sync_lock_test_and_set(&this->_sync, 1));

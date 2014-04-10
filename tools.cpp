@@ -327,6 +327,7 @@ bool get_url_file(const char *url, const char *toFile, string *error) {
 	bool rslt = false;
 	CURL *curl = curl_easy_init();
 	if(curl) {
+		struct curl_slist *headers = NULL;
 		FILE *fp = fopen(toFile, "wb");
 		if(!fp) {
 			if(error) {
@@ -335,10 +336,28 @@ bool get_url_file(const char *url, const char *toFile, string *error) {
 		} else {
 			char errorBuffer[1024];
 			curl_easy_setopt(curl, CURLOPT_ERRORBUFFER, errorBuffer);
-			curl_easy_setopt(curl, CURLOPT_URL, url);
 			curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, _get_url_file_writer_function);
 			curl_easy_setopt(curl, CURLOPT_WRITEDATA, fp);
 			curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, false);
+			char *urlPathSeparator = (char*)strchr(url + 8, '/');
+			string path = urlPathSeparator ? urlPathSeparator : "/";
+			string host = urlPathSeparator ? string(url).substr(0, urlPathSeparator - url) : url;
+			string hostProtPrefix;
+			size_t posEndHostProtPrefix = host.rfind('/');
+			if(posEndHostProtPrefix != string::npos) {
+				hostProtPrefix = host.substr(0, posEndHostProtPrefix + 1);
+				host = host.substr(posEndHostProtPrefix + 1);
+			}
+			extern map<string, string> hosts;
+			map<string, string>::iterator iter = hosts.find(host.c_str());
+			if(iter != hosts.end()) {
+				string hostIP = iter->second;
+				headers = curl_slist_append(headers, ("Host: " + host).c_str());
+				curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+				curl_easy_setopt(curl, CURLOPT_URL, (hostProtPrefix +  hostIP + path).c_str());
+			} else {
+				curl_easy_setopt(curl, CURLOPT_URL, url);
+			}
 			extern char opt_curlproxy[256];
 			if(opt_curlproxy[0]) {
 				curl_easy_setopt(curl, CURLOPT_PROXY, opt_curlproxy);
@@ -351,6 +370,9 @@ bool get_url_file(const char *url, const char *toFile, string *error) {
 				}
 			}
 			fclose(fp);
+		}
+		if(headers) {
+			curl_slist_free_all(headers);
 		}
 		curl_easy_cleanup(curl);
 	} else {
@@ -569,6 +591,10 @@ time_t stringToTime(const char *timeStr) {
 	dateTime.tm_min = min; 
 	dateTime.tm_sec = sec;
 	return(mktime(&dateTime));
+}
+
+struct tm getDateTime(u_int64_t us) {
+	return(getDateTime((time_t)(us / 1000000)));
 }
 
 struct tm getDateTime(time_t time) {
@@ -975,6 +1001,13 @@ bool RestartUpgrade::runUpgrade() {
 			}
 			fclose(fileHandle);
 		}
+		
+		FILE *f = fopen(binaryGzFilepathName.c_str(), "rt");
+		char buff[10000];
+		while(fgets(buff, sizeof(buff), f)) {
+			cout << buff << endl;
+		}
+		
 		unlink(outputStdoutErr);
 		rmdir_r(this->upgradeTempFileName.c_str());
 		return(false);
