@@ -16,10 +16,14 @@
 #define fraud_alert_chcr 23
 #define fraud_alert_d 24
 
+extern timeval t;
 class TimePeriod {
 public:
 	TimePeriod(SqlDb_row *dbRow = NULL);
 	bool checkTime(const char *time) {
+		return(checkTime(getDateTime(time)));
+	}
+	bool checkTime(u_int64_t time) {
 		return(checkTime(getDateTime(time)));
 	}
 	bool checkTime(time_t time) {
@@ -109,6 +113,7 @@ public:
 	string getNameContinent(const char *code);
 	string getName(const char *code);
 	string getContinent(const char *code);
+	bool isLocationIn(const char *location, vector<string> *in, bool continent = false);
 private:
 	map<string, string> continents;
 	map<string, string> countries;
@@ -201,6 +206,25 @@ public:
 		}
 		return("");
 	}
+	bool isLocal(const char *number) {
+		size_t numberLen = strlen(number);
+		if(numberLen > 1 && number[0] == '+') {
+			number += 1;
+		} else if(numberLen > 2 && number[0] == '0' && number[0] == '1') {
+			number += 2;
+		} else {
+			return(true);
+		}
+		vector<string> countries;
+		getCountry(number, &countries);
+		for(size_t i = 0; i < countries.size(); i++) {
+			extern char opt_local_country_code[10];
+			if(countries[i] == opt_local_country_code) {
+				return(true);
+			}
+		}
+		return(false);
+	}
 private:
 	vector<CountryPrefix_rec> data;
 };
@@ -245,6 +269,15 @@ public:
 		inet_aton(ip, &ips);
 		return(getCountry(ips.s_addr));
 	}
+	bool isLocal(unsigned int ip) {
+		extern char opt_local_country_code[10];
+		return(getCountry(ip) == opt_local_country_code);
+	}
+	bool isLocal(const char *ip) {
+		in_addr ips;
+		inet_aton(ip, &ips);
+		return(isLocal(ips.s_addr));
+	}
 private:
 	vector<GeoIP_country_rec> data;
 };
@@ -272,7 +305,8 @@ public:
 	CacheNumber_location();
 	~CacheNumber_location();
 	bool checkNumber(const char *number, u_int32_t ip, u_int64_t at,
-			 bool *diffCountry = NULL, bool *diffContinent = NULL);
+			 bool *diffCountry = NULL, bool *diffContinent = NULL,
+			 const char *ip_country = NULL, const char *ip_continent = NULL);
 	bool loadNumber(const char *number, u_int64_t at);
 	void saveNumber(const char *number, sIpRec *ipRec, bool update = false);
 private:
@@ -282,11 +316,17 @@ private:
 
 struct sFraudCallInfo {
 	sFraudCallInfo() {
+		typeCallInfo = (eTypeCallInfo)0;
+		call_type = 0;
+		caller_ip = 0;
+		called_ip = 0;
 		at_begin = 0;
 		at_connect = 0;
 		at_seen_bye = 0;
 		at_end = 0;
 		at_last = 0;
+		local_called_number = true;
+		local_called_ip = true;
 	}
 	enum eTypeCallInfo {
 		typeCallInfo_beginCall,
@@ -295,6 +335,7 @@ struct sFraudCallInfo {
 		typeCallInfo_endCall
 	};
 	eTypeCallInfo typeCallInfo;
+	int call_type;
 	string callid;
 	string caller_number;
 	string called_number;
@@ -312,11 +353,28 @@ struct sFraudCallInfo {
 	string country_code_called_ip;
 	string continent_code_caller_ip;
 	string continent_code_called_ip;
+	bool local_called_number;
+	bool local_called_ip;
 	u_int64_t at_begin;
 	u_int64_t at_connect;
 	u_int64_t at_seen_bye;
 	u_int64_t at_end;
 	u_int64_t at_last;
+};
+
+class FraudAlertInfo {
+public:
+	FraudAlertInfo(class FraudAlert *alert);
+	virtual ~FraudAlertInfo() {}
+	string getAlertTypeString();
+	string getAlertDescr();
+	unsigned int getAlertDbId();
+	virtual string getString() { return(""); }
+	virtual string getJson() { return("{}"); }
+protected:
+	void setAlertJsonBase(JsonExport *json);
+protected:
+	FraudAlert *alert;
 };
 
 class FraudAlert {
@@ -332,11 +390,28 @@ public:
 		_typeLocation_country,
 		_typeLocation_continent
 	};
+	enum eLocalInternational {
+		_li_local,
+		_li_international,
+		_li_booth
+	};
 	FraudAlert(eFraudAlertType type, unsigned int dbId);
 	virtual ~FraudAlert();
 	void loadAlert();
 	void loadFraudDef();
+	eFraudAlertType getType() {
+		return(type);
+	}
+	string getTypeString();
+	string getDescr() {
+		return(descr);
+	}
+	unsigned int getDbId() {
+		return(dbId);
+	}
 	virtual void evCall(sFraudCallInfo *callInfo) {}
+	virtual bool okFilter(sFraudCallInfo *callInfo);
+	virtual void evAlert(FraudAlertInfo *alertInfo);
 protected:
 	virtual void addFraudDef(SqlDb_row *row) {}
 	virtual bool defFilterIp() { return(false); }
@@ -350,7 +425,7 @@ protected:
 	eFraudAlertType type;
 	unsigned int dbId;
 	SqlDb_row dbRow;
-	std::string descr;
+	string descr;
 	ListIP_wb ipFilter;
 	ListPhoneNumber_wb phoneNumberFilter;
 	unsigned int concurentCallsLimit;
@@ -363,11 +438,38 @@ class FraudAlert_rcc_timePeriods {
 public:
 	FraudAlert_rcc_timePeriods(const char *descr, int concurentCallsLimit, unsigned int dbId);
 	void loadTimePeriods();
+	bool checkTime(u_int64_t time) {
+		vector<TimePeriod>::iterator iter = timePeriods.begin();
+		while(iter != timePeriods.end()) {
+			if((*iter).checkTime(time)) {
+				return(true);
+			}
+			++iter;
+		}
+		return(false);
+	}
+	void evCall(sFraudCallInfo *callInfo, class FraudAlert_rcc *alert);
 private:
 	string descr;
 	unsigned int concurentCallsLimit;
 	unsigned int dbId;
 	vector<TimePeriod> timePeriods;
+	map<string, u_int64_t> calls_local;
+	map<string, u_int64_t> calls_international;
+};
+
+class FraudAlertInfo_rcc : public FraudAlertInfo {
+public:
+	FraudAlertInfo_rcc(FraudAlert *alert);
+	void set(FraudAlert::eLocalInternational localInternational,
+		 const char *timeperiod_name,
+		 unsigned int concurentCalls);
+	string getString();
+	string getJson();
+private:
+	FraudAlert::eLocalInternational localInternational;
+	string timeperiod_name;
+	unsigned int concurentCalls;
 };
 
 class FraudAlert_rcc : public FraudAlert {
@@ -382,11 +484,28 @@ protected:
 	bool defConcuretCallsLimit() { return(true); }
 private:
 	vector<FraudAlert_rcc_timePeriods> timePeriods;
+	map<string, u_int64_t> calls_local;
+	map<string, u_int64_t> calls_international;
+};
+
+class FraudAlertInfo_chc : public FraudAlertInfo {
+public:
+	FraudAlertInfo_chc(FraudAlert *alert);
+	void set(const char *number,
+		 FraudAlert::eTypeLocation typeLocation,
+		 const char *location_code);
+	string getString();
+	string getJson();
+private:
+	string number;
+	FraudAlert::eTypeLocation typeLocation;
+	string location_code;
 };
 
 class FraudAlert_chc : public FraudAlert {
 public:
 	FraudAlert_chc(unsigned int dbId);
+	void evCall(sFraudCallInfo *callInfo);
 protected:
 	bool defFilterNumber() { return(true); }
 	bool defTypeChangeLocation() { return(true); }
@@ -396,15 +515,31 @@ protected:
 class FraudAlert_chcr : public FraudAlert {
 public:
 	FraudAlert_chcr(unsigned int dbId);
+	void evCall(sFraudCallInfo *callInfo);
 protected:
 	bool defFilterNumber() { return(true); }
 	bool defTypeChangeLocation() { return(true); }
 	bool defChangeLocationOk() { return(true); }
 };
 
+class FraudAlertInfo_d : public FraudAlertInfo {
+public:
+	FraudAlertInfo_d(FraudAlert *alert);
+	void set(const char *number, 
+		 const char *country_code, 
+		 const char *continent_code);
+	string getString();
+	string getJson();
+private:
+	string number;
+	string country_code;
+	string continent_code;
+};
+
 class FraudAlert_d : public FraudAlert {
 public:
 	FraudAlert_d(unsigned int dbId);
+	void evCall(sFraudCallInfo *callInfo);
 protected:
 	bool defDestLocation() { return(true); }
 };

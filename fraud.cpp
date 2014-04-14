@@ -15,6 +15,9 @@ int fraudDebug = 1;
 CountryCodes *countryCodes = NULL;
 CountryPrefixes *countryPrefixes = NULL;
 GeoIP_country *geoIP_country = NULL;
+CacheNumber_location *cacheNumber_location = NULL;
+
+SqlDb *sqlDbFraud = NULL;
 
 
 TimePeriod::TimePeriod(SqlDb_row *dbRow) {
@@ -105,6 +108,18 @@ string CountryCodes::getContinent(const char *code) {
 	return(iter != continents.end() ? iter->second : "");
 }
 
+bool CountryCodes::isLocationIn(const char *location, vector<string> *in, bool continent) {
+	string location_s = continent ? string("c_") + location : location;
+	vector<string>::iterator iter = in->begin();
+	while(iter != in->end()) {
+		if(location_s == *iter) {
+			return(true);
+		}
+		++iter;
+	}
+	return(false);
+}
+
 
 CountryPrefixes::CountryPrefixes() {
 }
@@ -159,7 +174,8 @@ CacheNumber_location::~CacheNumber_location() {
 }
 
 bool CacheNumber_location::checkNumber(const char *number, u_int32_t ip, u_int64_t at,
-				       bool *diffCountry, bool *diffContinent) {
+				       bool *diffCountry, bool *diffContinent,
+				       const char *ip_country, const char *ip_continent) {
 	if(diffCountry) {
 		*diffCountry = false;
 	}
@@ -178,11 +194,13 @@ bool CacheNumber_location::checkNumber(const char *number, u_int32_t ip, u_int64
 			}
 		}
 	}
+	string country_code = ip_country ? ip_country : geoIP_country->getCountry(ip);
+	string continent_code = ip_continent ? ip_continent : countryCodes->getContinent(country_code.c_str());
 	if(iterCache == cache.end()) {
 		sIpRec ipRec;
 		ipRec.ip = ip;
-		ipRec.country_code = geoIP_country->getCountry(htonl(ip));
-		ipRec.continent_code = countryCodes->getContinent(ipRec.country_code.c_str());
+		ipRec.country_code = country_code;
+		ipRec.continent_code = continent_code;
 		ipRec.at = at;
 		ipRec.fresh_at = at;
 		cache[number] = ipRec;
@@ -192,7 +210,7 @@ bool CacheNumber_location::checkNumber(const char *number, u_int32_t ip, u_int64
 	if(cache[number].old_at &&
 	   cache[number].old_at <= at &&
 	   cache[number].at >= at &&
-	   cache[number].ip == ip) {
+	   cache[number].country_code == country_code) {
 		if(diffCountry && cache[number].country_code != cache[number].old_country_code) {
 			*diffCountry = true;
 		}
@@ -202,10 +220,7 @@ bool CacheNumber_location::checkNumber(const char *number, u_int32_t ip, u_int64
 		cache[number].fresh_at = at;
 		return(false);
 	}
-	if(cache[number].ip != ip) {
-		string country_code = geoIP_country->getCountry(htonl(ip));
-		string continent_code = countryCodes->getContinent(country_code.c_str());
-		
+	if(cache[number].country_code != country_code) {
 		if(diffCountry && country_code != cache[number].country_code) {
 			*diffCountry = true;
 		}
@@ -281,6 +296,27 @@ void CacheNumber_location::saveNumber(const char *number, sIpRec *ipRec, bool up
 }
 
 
+FraudAlertInfo::FraudAlertInfo(FraudAlert *alert) {
+	this->alert = alert;
+}
+
+string FraudAlertInfo::getAlertTypeString() {
+	return(alert->getTypeString());
+}
+
+string FraudAlertInfo::getAlertDescr() {
+	return(alert->getDescr());
+}
+
+unsigned int FraudAlertInfo::getAlertDbId() {
+	return(alert->getDbId());
+}
+
+void FraudAlertInfo::setAlertJsonBase(JsonExport *json) {
+	json->add("alert_type", this->getAlertTypeString().c_str());
+	json->add("alert_descr", this->getAlertDescr().c_str());
+}
+
 FraudAlert::FraudAlert(eFraudAlertType type, unsigned int dbId) {
 	this->type = type;
 	this->dbId = dbId;
@@ -316,6 +352,7 @@ void FraudAlert::loadAlert() {
 		 from alerts\
 		 where id = ") + dbIdStr);
 	dbRow = sqlDb->fetchRow();
+	descr = dbRow["descr"];
 	if(defFilterIp()) {
 		ipFilter.addWhite(dbRow["fraud_whitelist_ip"].c_str());
 		ipFilter.addWhite(dbRow["fraud_whitelist_ip_g"].c_str());
@@ -328,7 +365,6 @@ void FraudAlert::loadAlert() {
 		phoneNumberFilter.addBlack(dbRow["fraud_blacklist_number"].c_str());
 		phoneNumberFilter.addBlack(dbRow["fraud_blacklist_number_g"].c_str());
 	}
-	delete sqlDb;
 	if(defFraudDef()) {
 		loadFraudDef();
 	}
@@ -346,6 +382,7 @@ void FraudAlert::loadAlert() {
 	if(defDestLocation()) {
 		destLocation = split(dbRow["fraud_dest_location"].c_str(), ",", true);
 	}
+	delete sqlDb;
 }
 
 void FraudAlert::loadFraudDef() {
@@ -366,10 +403,54 @@ void FraudAlert::loadFraudDef() {
 	delete sqlDb;
 }
 
+string FraudAlert::getTypeString() {
+	switch(type) {
+	case _rcc: return("rcc");
+	case _chc: return("chc");
+	case _chcr: return("chcr");
+	case _d: return("d");
+	}
+	return("");
+}
+
+bool FraudAlert::okFilter(sFraudCallInfo *callInfo) {
+	if(this->defFilterIp() && !this->ipFilter.checkIP(callInfo->caller_ip)) {
+		return(false);
+	}
+	if(this->defFilterNumber() && !this->phoneNumberFilter.checkNumber(callInfo->caller_number.c_str())) {
+		return(false);
+	}
+	return(true);
+}
+
+void FraudAlert::evAlert(FraudAlertInfo *alertInfo) {
+	cout << "FRAUD ALERT INFO: " 
+	     << alertInfo->getAlertTypeString() << " // "
+	     << alertInfo->getAlertDescr() << " // "
+	     << alertInfo->getString() 
+	     << endl
+	     << alertInfo->getJson()
+	     << endl
+	     << flush;
+	     
+	if(!sqlDbFraud) {
+		sqlDbFraud = createSqlObject();
+	}
+	SqlDb_row row;
+	row.add(alertInfo->getAlertDbId(), "alert_id");
+	time_t now;
+	time(&now);
+	row.add(sqlDateTimeString(now), "at");
+	row.add(alertInfo->getJson(), "alert_info");
+	sqlStore->query_lock(sqlDbFraud->insertQuery("fraud_alert_info", row).c_str(), STORE_PROC_ID_FRAUD_ALERT_INFO);
+	delete alertInfo;
+}
+
 FraudAlert_rcc_timePeriods::FraudAlert_rcc_timePeriods(const char *descr, int concurentCallsLimit, unsigned int dbId) {
 	this->descr = descr;
 	this->concurentCallsLimit = concurentCallsLimit;
 	this->dbId = dbId;
+	this->loadTimePeriods();
 }
 
 void FraudAlert_rcc_timePeriods::loadTimePeriods() {
@@ -379,12 +460,91 @@ void FraudAlert_rcc_timePeriods::loadTimePeriods() {
 	sqlDb->query(string(
 		"select *\
 		 from alerts_fraud_timeperiod\
+		 join cb_timeperiod on (cb_timeperiod.id = alerts_fraud_timeperiod.timeperiod_id)\
 		 where alerts_fraud_id = ") + dbIdStr);
 	SqlDb_row row;
 	while(row = sqlDb->fetchRow()) {
 		timePeriods.push_back(TimePeriod(&row));
 	}
 	delete sqlDb;
+}
+
+void FraudAlert_rcc_timePeriods::evCall(sFraudCallInfo *callInfo, FraudAlert_rcc *alert) {
+	switch(callInfo->typeCallInfo) {
+	case sFraudCallInfo::typeCallInfo_connectCall:
+		if(this->checkTime(callInfo->at_connect)) {
+			if(callInfo->local_called_number) {
+				this->calls_local[callInfo->callid] = callInfo->at_connect;
+			} else {
+				this->calls_international[callInfo->callid] = callInfo->at_connect;
+			}
+			if(this->calls_local.size() >= this->concurentCallsLimit) {
+				FraudAlertInfo_rcc *alertInfo = new FraudAlertInfo_rcc(alert);
+				alertInfo->set(FraudAlert::_li_local, this->descr.c_str(), this->calls_local.size()); 
+				alert->evAlert(alertInfo);
+			}
+			if(this->calls_international.size() >= this->concurentCallsLimit) {
+				FraudAlertInfo_rcc *alertInfo = new FraudAlertInfo_rcc(alert);
+				alertInfo->set(FraudAlert::_li_international, this->descr.c_str(), this->calls_international.size()); 
+				alert->evAlert(alertInfo);
+			}
+			if(this->calls_local.size() + this->calls_international.size() >= this->concurentCallsLimit) {
+				FraudAlertInfo_rcc *alertInfo = new FraudAlertInfo_rcc(alert);
+				alertInfo->set(FraudAlert::_li_booth, this->descr.c_str(), this->calls_local.size() + this->calls_international.size()); 
+				alert->evAlert(alertInfo);
+			}
+		}
+		break;
+	case sFraudCallInfo::typeCallInfo_seenByeCall:
+	case sFraudCallInfo::typeCallInfo_endCall:
+		if(callInfo->local_called_number) {
+			this->calls_local.erase(callInfo->callid);
+		} else {
+			this->calls_international.erase(callInfo->callid);
+		}
+		break;
+	default:
+		break;
+	}
+}
+
+FraudAlertInfo_rcc::FraudAlertInfo_rcc(FraudAlert *alert) 
+ : FraudAlertInfo(alert) {
+}
+
+void FraudAlertInfo_rcc::set(FraudAlert::eLocalInternational localInternational,
+			     const char *timeperiod_name,
+			     unsigned int concurentCalls) {
+	this->localInternational = localInternational;
+	if(timeperiod_name) {
+		this->timeperiod_name = timeperiod_name;
+	}
+	this->concurentCalls = concurentCalls;
+}
+
+string FraudAlertInfo_rcc::getString() {
+	ostringstream outStr;
+	outStr << (localInternational == FraudAlert::_li_local ? "local" :
+		   localInternational == FraudAlert::_li_international ? "international" : "local & international") << " // "
+	       << concurentCalls;
+	if(!timeperiod_name.empty()) {
+		outStr << " // "
+		       << timeperiod_name;
+	}
+	return(outStr.str());
+}
+
+string FraudAlertInfo_rcc::getJson() {
+	JsonExport json;
+	this->setAlertJsonBase(&json);
+	json.add("local_international", 
+		 (localInternational == FraudAlert::_li_local ? "local" :
+		  localInternational == FraudAlert::_li_international ? "international" : "local & international"));
+	if(!timeperiod_name.empty()) {
+		json.add("timeperiod_name", timeperiod_name);
+	}
+	json.add("concurent_calls", concurentCalls);
+	return(json.getJson());
 }
 
 void FraudAlert_rcc::addFraudDef(SqlDb_row *row) {
@@ -399,19 +559,245 @@ FraudAlert_rcc::FraudAlert_rcc(unsigned int dbId)
 }
 
 void FraudAlert_rcc::evCall(sFraudCallInfo *callInfo) {
-	cout << "--- " << callInfo->typeCallInfo << endl;
+	if(callInfo->call_type == REGISTER ||
+	   !this->okFilter(callInfo)) {
+		return;
+	}
+	switch(callInfo->typeCallInfo) {
+	case sFraudCallInfo::typeCallInfo_connectCall:
+		if(callInfo->local_called_number) {
+			this->calls_local[callInfo->callid] = callInfo->at_connect;
+		} else {
+			this->calls_international[callInfo->callid] = callInfo->at_connect;
+		}
+		if(this->calls_local.size() >= this->concurentCallsLimit) {
+			FraudAlertInfo_rcc *alertInfo = new FraudAlertInfo_rcc(this);
+			alertInfo->set(FraudAlert::_li_local, NULL, this->calls_local.size()); 
+			this->evAlert(alertInfo);
+		}
+		if(this->calls_international.size() >= this->concurentCallsLimit) {
+			FraudAlertInfo_rcc *alertInfo = new FraudAlertInfo_rcc(this);
+			alertInfo->set(FraudAlert::_li_international, NULL, this->calls_international.size()); 
+			this->evAlert(alertInfo);
+		}
+		if(this->calls_local.size() + this->calls_international.size() >= this->concurentCallsLimit) {
+			FraudAlertInfo_rcc *alertInfo = new FraudAlertInfo_rcc(this);
+			alertInfo->set(FraudAlert::_li_booth, NULL, this->calls_local.size() + this->calls_international.size()); 
+			this->evAlert(alertInfo);
+		}
+		break;
+	case sFraudCallInfo::typeCallInfo_seenByeCall:
+	case sFraudCallInfo::typeCallInfo_endCall:
+		if(callInfo->local_called_number) {
+			this->calls_local.erase(callInfo->callid);
+		} else {
+			this->calls_international.erase(callInfo->callid);
+		}
+		break;
+	default:
+		break;
+	}
+	vector<FraudAlert_rcc_timePeriods>::iterator iter = timePeriods.begin();
+	while(iter != timePeriods.end()) {
+		(*iter).evCall(callInfo, this);
+		++iter;
+	}
+}
+
+FraudAlertInfo_chc::FraudAlertInfo_chc(FraudAlert *alert) 
+ : FraudAlertInfo(alert) {
+}
+
+void FraudAlertInfo_chc::set(const char *number,
+			     FraudAlert::eTypeLocation typeLocation,
+			     const char *location_code) {
+	this->number = number;
+	this->typeLocation = typeLocation;
+	this->location_code = location_code;
+}
+
+string FraudAlertInfo_chc::getString() {
+	ostringstream outStr;
+	outStr << number << " // "
+	       << location_code << " // "
+	       << (typeLocation == FraudAlert::_typeLocation_country ?
+		    countryCodes->getNameCountry(location_code.c_str()) :
+		    countryCodes->getNameContinent(location_code.c_str()));
+	return(outStr.str());
+}
+
+string FraudAlertInfo_chc::getJson() {
+	JsonExport json;
+	this->setAlertJsonBase(&json);
+	json.add("number", number);
+	json.add("type_location", 
+		 typeLocation == FraudAlert::_typeLocation_country ? 
+		  "country" : 
+		  "continent");
+	json.add("location_code", location_code);
+	json.add("location_name",
+		 typeLocation == FraudAlert::_typeLocation_country ?
+		  countryCodes->getNameCountry(location_code.c_str()) :
+		  countryCodes->getNameContinent(location_code.c_str()));
+	return(json.getJson());
 }
 
 FraudAlert_chc::FraudAlert_chc(unsigned int dbId)
  : FraudAlert(_chc, dbId) {
 }
 
+void FraudAlert_chc::evCall(sFraudCallInfo *callInfo) {
+	if(callInfo->call_type == REGISTER ||
+	   !this->okFilter(callInfo)) {
+		return;
+	}
+	switch(callInfo->typeCallInfo) {
+	case sFraudCallInfo::typeCallInfo_beginCall:
+		{
+		if(this->changeLocationOk.size() &&
+		   (countryCodes->isLocationIn(callInfo->country_code_caller_ip.c_str(), &this->changeLocationOk) ||
+		    countryCodes->isLocationIn(callInfo->continent_code_caller_ip.c_str(), &this->changeLocationOk, true))) {
+			return;
+		}
+		bool diffCountry = false;
+		bool diffContinent = false;
+		if(!cacheNumber_location->checkNumber(callInfo->caller_number.c_str(), callInfo->caller_ip, callInfo->at_begin,
+						      &diffCountry, &diffContinent,
+						      callInfo->country_code_caller_ip.c_str(), callInfo->continent_code_caller_ip.c_str())) {
+			if(this->typeChangeLocation == _typeLocation_country && diffCountry) {
+				FraudAlertInfo_chc *alertInfo = new FraudAlertInfo_chc(this);
+				alertInfo->set(callInfo->caller_number.c_str(),
+					       _typeLocation_country,
+					       callInfo->country_code_caller_ip.c_str());
+				this->evAlert(alertInfo);
+			}
+			if(this->typeChangeLocation == _typeLocation_continent && diffContinent) {
+				FraudAlertInfo_chc *alertInfo = new FraudAlertInfo_chc(this);
+				alertInfo->set(callInfo->caller_number.c_str(),
+					       _typeLocation_continent,
+					       callInfo->continent_code_caller_ip.c_str());
+				this->evAlert(alertInfo);
+			}
+		} 
+		}
+		break;
+	default:
+		break;
+	}
+}
+
 FraudAlert_chcr::FraudAlert_chcr(unsigned int dbId)
  : FraudAlert(_chcr, dbId) {
 }
 
+void FraudAlert_chcr::evCall(sFraudCallInfo *callInfo) {
+	if(callInfo->call_type != REGISTER ||
+	   !this->okFilter(callInfo)) {
+		return;
+	}
+	switch(callInfo->typeCallInfo) {
+	case sFraudCallInfo::typeCallInfo_beginCall:
+		{
+		if(this->changeLocationOk.size() &&
+		   (countryCodes->isLocationIn(callInfo->country_code_caller_ip.c_str(), &this->changeLocationOk) ||
+		    countryCodes->isLocationIn(callInfo->continent_code_caller_ip.c_str(), &this->changeLocationOk, true))) {
+			return;
+		}
+		bool diffCountry = false;
+		bool diffContinent = false;
+		if(!cacheNumber_location->checkNumber(callInfo->caller_number.c_str(), callInfo->caller_ip, callInfo->at_begin,
+						      &diffCountry, &diffContinent,
+						      callInfo->country_code_caller_ip.c_str(), callInfo->continent_code_caller_ip.c_str())) {
+			if(this->typeChangeLocation == _typeLocation_country && diffCountry) {
+				FraudAlertInfo_chc *alertInfo = new FraudAlertInfo_chc(this);
+				alertInfo->set(callInfo->caller_number.c_str(),
+					       _typeLocation_country,
+					       callInfo->country_code_caller_ip.c_str());
+				this->evAlert(alertInfo);
+			}
+			if(this->typeChangeLocation == _typeLocation_continent && diffContinent) {
+				FraudAlertInfo_chc *alertInfo = new FraudAlertInfo_chc(this);
+				alertInfo->set(callInfo->caller_number.c_str(),
+					       _typeLocation_continent,
+					       callInfo->continent_code_caller_ip.c_str());
+				this->evAlert(alertInfo);
+			}
+		} 
+		}
+		break;
+	default:
+		break;
+	}
+}
+
+FraudAlertInfo_d::FraudAlertInfo_d(FraudAlert *alert) 
+ : FraudAlertInfo(alert) {
+}
+
+void FraudAlertInfo_d::set(const char *number, 
+			   const char *country_code, 
+			   const char *continent_code) {
+	this->number = number;
+	this->country_code = country_code;
+	this->continent_code = continent_code;
+}
+
+string FraudAlertInfo_d::getString() {
+	ostringstream outStr;
+	outStr << number;
+	if(!country_code.empty()) {
+		outStr << " // "
+		       << country_code << " // "
+		       << countryCodes->getNameCountry(country_code.c_str());
+	}
+	if(!continent_code.empty()) {
+		outStr << " // "
+		       << continent_code << " // "
+		       << countryCodes->getNameContinent(continent_code.c_str());
+	}
+	return(outStr.str());
+}
+
+string FraudAlertInfo_d::getJson() {
+	JsonExport json;
+	this->setAlertJsonBase(&json);
+	if(!country_code.empty()) {
+		json.add("country_code", country_code);
+		json.add("country_name", countryCodes->getNameCountry(country_code.c_str()));
+	}
+	if(!continent_code.empty()) {
+		json.add("continent_code", continent_code);
+		json.add("continent_name", countryCodes->getNameContinent(continent_code.c_str()));
+	}
+	return(json.getJson());
+}
+
 FraudAlert_d::FraudAlert_d(unsigned int dbId)
  : FraudAlert(_d, dbId) {
+}
+
+void FraudAlert_d::evCall(sFraudCallInfo *callInfo) {
+	if(callInfo->call_type == REGISTER ||
+	   !this->okFilter(callInfo)) {
+		return;
+	}
+	switch(callInfo->typeCallInfo) {
+	case sFraudCallInfo::typeCallInfo_beginCall:
+		{
+		if(this->destLocation.size() &&
+		   (countryCodes->isLocationIn(callInfo->country_code_called_number.c_str(), &this->destLocation) ||
+		    countryCodes->isLocationIn(callInfo->continent_code_called_number.c_str(), &this->destLocation, true))) {
+			FraudAlertInfo_d *alertInfo = new FraudAlertInfo_d(this);
+			alertInfo->set(callInfo->called_number.c_str(),
+				       callInfo->country_code_called_number.c_str(),
+				       callInfo->continent_code_called_number.c_str());
+			this->evAlert(alertInfo);
+		}
+		}
+		break;
+	default:
+		break;
+	}
 }
 
 
@@ -434,7 +820,7 @@ void FraudAlerts::loadAlerts() {
 		if(fraudDebug) {
 			cout << "load alert " << row["descr"] << endl;
 		}
-		FraudAlert *alert;
+		FraudAlert *alert = NULL;
 		unsigned int dbId = atol(row["id"].c_str());
 		switch(atoi(row["alert_type"].c_str())) {
 		case FraudAlert::_rcc:
@@ -450,7 +836,10 @@ void FraudAlerts::loadAlerts() {
 			alert = new FraudAlert_d(dbId);
 			break;
 		}
-		alerts.push_back(alert);
+		if(alert) {
+			alert->loadAlert();
+			alerts.push_back(alert);
+		}
 	}
 	delete sqlDb;
 }
@@ -515,11 +904,12 @@ void FraudAlerts::popCallInfoThread() {
 void FraudAlerts::getCallInfoFromCall(sFraudCallInfo *callInfo, Call *call, 
 				      sFraudCallInfo::eTypeCallInfo typeCallInfo, u_int64_t at) {
 	callInfo->typeCallInfo = typeCallInfo;
+	callInfo->call_type = call->type;
 	callInfo->callid = call->call_id;
 	callInfo->caller_number = call->caller;
 	callInfo->called_number = call->called;
-	callInfo->caller_ip = call->sipcallerip;
-	callInfo->called_ip = call->sipcalledip;
+	callInfo->caller_ip = htonl(call->sipcallerip);
+	callInfo->called_ip = htonl(call->sipcalledip);
 	switch(typeCallInfo) {
 	case sFraudCallInfo::typeCallInfo_beginCall:
 		callInfo->at_begin = at;
@@ -559,12 +949,14 @@ void FraudAlerts::completeCallInfo_country_code(sFraudCallInfo *callInfo) {
 		u_int32_t *ip = i == 0 ? &callInfo->caller_ip : &callInfo->called_ip;
 		string *rslt_country_code = i == 0 ? &callInfo->country_code_caller_ip : &callInfo->country_code_called_ip;
 		string *rslt_continent_code = i == 0 ? &callInfo->continent_code_caller_ip : &callInfo->continent_code_called_ip;
-		string country = geoIP_country->getCountry(htonl(*ip));
+		string country = geoIP_country->getCountry(*ip);
 		if(country != "") {
 			*rslt_country_code = country;
 			*rslt_continent_code = countryCodes->getContinent(country.c_str());
 		}
 	}
+	callInfo->local_called_number = countryPrefixes->isLocal(callInfo->called_number.c_str());
+	callInfo->local_called_ip = geoIP_country->isLocal(callInfo->called_ip);
 }
 
 
@@ -583,6 +975,9 @@ void initFraud() {
 	if(!geoIP_country) {
 		geoIP_country = new GeoIP_country();
 		geoIP_country->load();
+	}
+	if(!cacheNumber_location) {
+		cacheNumber_location = new CacheNumber_location();
 	}
 	if(fraudAlerts) {
 		return;

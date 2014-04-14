@@ -44,6 +44,7 @@ bool FileExists(char *strFilename);
 void ntoa(char *res, unsigned int addr);
 string escapeshellR(string &);
 time_t stringToTime(const char *timeStr);
+struct tm getDateTime(u_int64_t us);
 struct tm getDateTime(time_t time);
 struct tm getDateTime(const char *timeStr);
 unsigned int getNumberOfDayToNow(const char *date);
@@ -389,9 +390,9 @@ public:
 	}
 	bool checkNumber(const char *check_number) {
 		if(prefix) {
-			return(check_number == number);
-		} else {
 			return(!strncmp(check_number, number.c_str(), lengthPrefix));
+		} else {
+			return(check_number == number);
 		}
 	}
 public:
@@ -486,7 +487,7 @@ public:
 		if(autoLock) unlock();
 	}
 	size_t size() {
-		return(ListPhoneNumber().size());
+		return(listPhoneNumber.size());
 	}
 	void lock() {
 		while(__sync_lock_test_and_set(&this->_sync, 1));
@@ -950,5 +951,89 @@ void SafeAsyncQueue<type_queue_item>::shiftPush() {
 		unlock_queue();
 	}
 }
+
+class JsonExport {
+public:
+	enum eTypeItem {
+		_number,
+		_string
+	};
+	class JsonExportItem {
+	public:
+		virtual ~JsonExportItem() {}
+		void setTypeItem(eTypeItem typeItem) {
+			this->typeItem = typeItem;
+		}
+		void setName(const char *name) {
+			this->name = name;
+		}
+		virtual string getStringItem() {
+			return("");
+		}
+	protected:
+		eTypeItem typeItem;
+		string name;
+	};
+	template <class type_item>
+	class JsonExportItem_template : public JsonExportItem {
+	public:
+		void setContent(type_item content) {
+			this->content = content;
+		}
+		string getStringItem() {
+			ostringstream outStr;
+			outStr << '\"' << name << "\":";
+			if(typeItem == _string) {
+				outStr << '\"';
+			}
+			outStr << content;
+			if(typeItem == _string) {
+				outStr << '\"';
+			}
+			return(outStr.str());
+		}
+	private:
+		type_item content;
+	};
+public:
+	~JsonExport() {
+		while(items.size()) {
+			delete (*items.begin());
+			items.erase(items.begin());
+		}
+	}
+	string getJson() {
+		ostringstream outStr;
+		outStr << '{';
+		vector<JsonExportItem*>::iterator iter;
+		for(iter = items.begin(); iter != items.end(); iter++) {
+			if(iter != items.begin()) {
+				outStr << ',';
+			}
+			outStr << (*iter)->getStringItem();
+		}
+		outStr << '}';
+		return(outStr.str());
+	}
+	void add(const char *name, string content) {
+		this->add(name, content.c_str());
+	}
+	void add(const char *name, const char *content) {
+		JsonExportItem_template<string> *item = new JsonExportItem_template<string>;
+		item->setTypeItem(_string);
+		item->setName(name);
+		item->setContent(string(content));
+		items.push_back(item);
+	}
+	void add(const char *name, u_int64_t content) {
+		JsonExportItem_template<u_int64_t> *item = new JsonExportItem_template<u_int64_t>;
+		item->setTypeItem(_number);
+		item->setName(name);
+		item->setContent(content);
+		items.push_back(item);
+	}
+private:
+	vector<JsonExportItem*> items;
+};
 
 #endif

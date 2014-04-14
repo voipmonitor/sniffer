@@ -498,6 +498,8 @@ char opt_curlproxy[256] = "";
 int opt_enable_fraud = 0;
 char opt_local_country_code[10] = "";
 
+map<string, string> hosts;
+
 
 #define ENABLE_SEMAPHOR_FORK_MODE 0
 #if ENABLE_SEMAPHOR_FORK_MODE
@@ -2587,6 +2589,21 @@ int main(int argc, char *argv[]) {
 			syslog(LOG_NOTICE, "mysql host [%s] resolved to [%s]", mysql_host_orig, mysql_host);
 		}
 	}
+	
+	char *hostnames[] = {
+		"voipmonitor.org",
+		"www.voipmonitor.org",
+		"download.voipmonitor.org"
+	};
+	for(int i = 0; i < sizeof(hostnames) / sizeof(hostnames[0]); i++) {
+		hostent *conn_server_record = gethostbyname(hostnames[i]);
+		if(conn_server_record == NULL) {
+			syslog(LOG_ERR, "host [%s] failed to resolve to IP address", hostnames[i]);
+			continue;
+		}
+		in_addr *conn_server_address = (in_addr*)conn_server_record->h_addr;
+		hosts[hostnames[i]] = inet_ntoa(*conn_server_address);
+	}
 
 	if(opt_fork && !opt_read_from_file) {
 		#if ENABLE_SEMAPHOR_FORK_MODE
@@ -3342,6 +3359,10 @@ int main(int argc, char *argv[]) {
 			} else {
 				break;
 			}
+		}
+		if(opt_enable_fraud &&
+		   sqlStore->getSize(STORE_PROC_ID_FRAUD_ALERT_INFO)) {
+			sleep(2);
 		}
 	}
 	terminating = 1;
