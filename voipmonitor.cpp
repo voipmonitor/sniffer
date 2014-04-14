@@ -3360,6 +3360,10 @@ int main(int argc, char *argv[]) {
 				break;
 			}
 		}
+		if(opt_enable_fraud &&
+		   sqlStore->getSize(STORE_PROC_ID_FRAUD_ALERT_INFO)) {
+			sleep(2);
+		}
 	}
 	terminating = 1;
 	if(!(opt_pcap_threaded && opt_pcap_queue && 

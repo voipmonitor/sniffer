@@ -339,6 +339,7 @@ bool get_url_file(const char *url, const char *toFile, string *error) {
 			curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, _get_url_file_writer_function);
 			curl_easy_setopt(curl, CURLOPT_WRITEDATA, fp);
 			curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, false);
+			curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, false);
 			char *urlPathSeparator = (char*)strchr(url + 8, '/');
 			string path = urlPathSeparator ? urlPathSeparator : "/";
 			string host = urlPathSeparator ? string(url).substr(0, urlPathSeparator - url) : url;

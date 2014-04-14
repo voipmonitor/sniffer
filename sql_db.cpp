@@ -2329,6 +2329,15 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 			`old_at` bigint unsigned,\
 		PRIMARY KEY (`number`)\
 	) ENGINE=InnoDB DEFAULT CHARSET=latin1;");
+	this->query(
+	"CREATE TABLE IF NOT EXISTS `fraud_alert_info` (\
+			`id` INT UNSIGNED NOT NULL AUTO_INCREMENT,\
+			`alert_id` INT NOT NULL,\
+			`at` DATETIME NOT NULL,\
+			`alert_info` TEXT NOT NULL,\
+			PRIMARY KEY (`ID`),\
+			CONSTRAINT `fraud_alert_info_ibfk_1` FOREIGN KEY (`alert_id`) REFERENCES `alerts` (`id`) ON UPDATE CASCADE ON DELETE CASCADE\
+	) ENGINE=InnoDB DEFAULT CHARSET=latin1;");
 	}
 	
 	if(!federated) {

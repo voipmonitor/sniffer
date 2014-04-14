@@ -363,6 +363,18 @@ struct sFraudCallInfo {
 };
 
 class FraudAlertInfo {
+public:
+	FraudAlertInfo(class FraudAlert *alert);
+	virtual ~FraudAlertInfo() {}
+	string getAlertTypeString();
+	string getAlertDescr();
+	unsigned int getAlertDbId();
+	virtual string getString() { return(""); }
+	virtual string getJson() { return("{}"); }
+protected:
+	void setAlertJsonBase(JsonExport *json);
+protected:
+	FraudAlert *alert;
 };
 
 class FraudAlert {
@@ -387,6 +399,16 @@ public:
 	virtual ~FraudAlert();
 	void loadAlert();
 	void loadFraudDef();
+	eFraudAlertType getType() {
+		return(type);
+	}
+	string getTypeString();
+	string getDescr() {
+		return(descr);
+	}
+	unsigned int getDbId() {
+		return(dbId);
+	}
 	virtual void evCall(sFraudCallInfo *callInfo) {}
 	virtual bool okFilter(sFraudCallInfo *callInfo);
 	virtual void evAlert(FraudAlertInfo *alertInfo);
@@ -403,7 +425,7 @@ protected:
 	eFraudAlertType type;
 	unsigned int dbId;
 	SqlDb_row dbRow;
-	std::string descr;
+	string descr;
 	ListIP_wb ipFilter;
 	ListPhoneNumber_wb phoneNumberFilter;
 	unsigned int concurentCallsLimit;
@@ -438,9 +460,12 @@ private:
 
 class FraudAlertInfo_rcc : public FraudAlertInfo {
 public:
+	FraudAlertInfo_rcc(FraudAlert *alert);
 	void set(FraudAlert::eLocalInternational localInternational,
 		 const char *timeperiod_name,
 		 unsigned int concurentCalls);
+	string getString();
+	string getJson();
 private:
 	FraudAlert::eLocalInternational localInternational;
 	string timeperiod_name;
@@ -465,9 +490,12 @@ private:
 
 class FraudAlertInfo_chc : public FraudAlertInfo {
 public:
+	FraudAlertInfo_chc(FraudAlert *alert);
 	void set(const char *number,
 		 FraudAlert::eTypeLocation typeLocation,
 		 const char *location_code);
+	string getString();
+	string getJson();
 private:
 	string number;
 	FraudAlert::eTypeLocation typeLocation;
@@ -484,9 +512,6 @@ protected:
 	bool defChangeLocationOk() { return(true); }
 };
 
-class FraudAlertInfo_chcr : public FraudAlertInfo {
-};
-
 class FraudAlert_chcr : public FraudAlert {
 public:
 	FraudAlert_chcr(unsigned int dbId);
@@ -499,9 +524,12 @@ protected:
 
 class FraudAlertInfo_d : public FraudAlertInfo {
 public:
+	FraudAlertInfo_d(FraudAlert *alert);
 	void set(const char *number, 
 		 const char *country_code, 
 		 const char *continent_code);
+	string getString();
+	string getJson();
 private:
 	string number;
 	string country_code;
