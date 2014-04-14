@@ -306,9 +306,11 @@ public:
 	~CacheNumber_location();
 	bool checkNumber(const char *number, u_int32_t ip, u_int64_t at,
 			 bool *diffCountry = NULL, bool *diffContinent = NULL,
+			 string *oldCountry = NULL, string *oldContinent = NULL,
 			 const char *ip_country = NULL, const char *ip_continent = NULL);
 	bool loadNumber(const char *number, u_int64_t at);
 	void saveNumber(const char *number, sIpRec *ipRec, bool update = false);
+	void updateAt(const char *number, u_int64_t at);
 private:
 	SqlDb *sqlDb;
 	map<string, sIpRec> cache;
@@ -493,13 +495,15 @@ public:
 	FraudAlertInfo_chc(FraudAlert *alert);
 	void set(const char *number,
 		 FraudAlert::eTypeLocation typeLocation,
-		 const char *location_code);
+		 const char *location_code,
+		 const char *location_code_old);
 	string getString();
 	string getJson();
 private:
 	string number;
 	FraudAlert::eTypeLocation typeLocation;
 	string location_code;
+	string location_code_old;
 };
 
 class FraudAlert_chc : public FraudAlert {
@@ -525,13 +529,15 @@ protected:
 class FraudAlertInfo_d : public FraudAlertInfo {
 public:
 	FraudAlertInfo_d(FraudAlert *alert);
-	void set(const char *number, 
+	void set(const char *src_number, 
+		 const char *dst_number,
 		 const char *country_code, 
 		 const char *continent_code);
 	string getString();
 	string getJson();
 private:
-	string number;
+	string src_number;
+	string dst_number;
 	string country_code;
 	string continent_code;
 };
