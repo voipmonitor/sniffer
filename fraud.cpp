@@ -497,6 +497,9 @@ FraudAlert_rcc_timePeriods::FraudAlert_rcc_timePeriods(const char *descr, int co
 	this->descr = descr;
 	this->concurentCallsLimit = concurentCallsLimit;
 	this->dbId = dbId;
+	this->last_alert_info_local = 0;
+	this->last_alert_info_international = 0;
+	this->last_alert_info_li = 0;
 	this->loadTimePeriods();
 }
 
@@ -525,20 +528,26 @@ void FraudAlert_rcc_timePeriods::evCall(sFraudCallInfo *callInfo, FraudAlert_rcc
 			} else {
 				this->calls_international[callInfo->callid] = callInfo->at_connect;
 			}
-			if(this->calls_local.size() >= this->concurentCallsLimit) {
+			if(this->calls_local.size() >= this->concurentCallsLimit &&
+			   callInfo->at_connect > last_alert_info_local + 1000000ull) {
 				FraudAlertInfo_rcc *alertInfo = new FraudAlertInfo_rcc(alert);
 				alertInfo->set(FraudAlert::_li_local, this->descr.c_str(), this->calls_local.size()); 
 				alert->evAlert(alertInfo);
+				last_alert_info_local = callInfo->at_connect;
 			}
-			if(this->calls_international.size() >= this->concurentCallsLimit) {
+			if(this->calls_international.size() >= this->concurentCallsLimit &&
+			   callInfo->at_connect > last_alert_info_international + 1000000ull) {
 				FraudAlertInfo_rcc *alertInfo = new FraudAlertInfo_rcc(alert);
 				alertInfo->set(FraudAlert::_li_international, this->descr.c_str(), this->calls_international.size()); 
 				alert->evAlert(alertInfo);
+				last_alert_info_international = callInfo->at_connect;
 			}
-			if(this->calls_local.size() + this->calls_international.size() >= this->concurentCallsLimit) {
+			if(this->calls_local.size() + this->calls_international.size() >= this->concurentCallsLimit &&
+			   callInfo->at_connect > last_alert_info_li + 1000000ull) {
 				FraudAlertInfo_rcc *alertInfo = new FraudAlertInfo_rcc(alert);
 				alertInfo->set(FraudAlert::_li_booth, this->descr.c_str(), this->calls_local.size() + this->calls_international.size()); 
 				alert->evAlert(alertInfo);
+				last_alert_info_li = callInfo->at_connect;
 			}
 		}
 		break;
@@ -603,6 +612,9 @@ void FraudAlert_rcc::addFraudDef(SqlDb_row *row) {
 
 FraudAlert_rcc::FraudAlert_rcc(unsigned int dbId)
  : FraudAlert(_rcc, dbId) {
+	this->last_alert_info_local = 0;
+	this->last_alert_info_international = 0;
+	this->last_alert_info_li = 0;
 }
 
 void FraudAlert_rcc::evCall(sFraudCallInfo *callInfo) {
@@ -617,20 +629,26 @@ void FraudAlert_rcc::evCall(sFraudCallInfo *callInfo) {
 		} else {
 			this->calls_international[callInfo->callid] = callInfo->at_connect;
 		}
-		if(this->calls_local.size() >= this->concurentCallsLimit) {
+		if(this->calls_local.size() >= this->concurentCallsLimit &&
+		   callInfo->at_connect > last_alert_info_local + 1000000ull) {
 			FraudAlertInfo_rcc *alertInfo = new FraudAlertInfo_rcc(this);
 			alertInfo->set(FraudAlert::_li_local, NULL, this->calls_local.size()); 
 			this->evAlert(alertInfo);
+			last_alert_info_local = callInfo->at_connect;
 		}
-		if(this->calls_international.size() >= this->concurentCallsLimit) {
+		if(this->calls_international.size() >= this->concurentCallsLimit &&
+		   callInfo->at_connect > last_alert_info_international + 1000000ull) {
 			FraudAlertInfo_rcc *alertInfo = new FraudAlertInfo_rcc(this);
 			alertInfo->set(FraudAlert::_li_international, NULL, this->calls_international.size()); 
 			this->evAlert(alertInfo);
+			last_alert_info_international = callInfo->at_connect;
 		}
-		if(this->calls_local.size() + this->calls_international.size() >= this->concurentCallsLimit) {
+		if(this->calls_local.size() + this->calls_international.size() >= this->concurentCallsLimit &&
+		   callInfo->at_connect > last_alert_info_li + 1000000ull) {
 			FraudAlertInfo_rcc *alertInfo = new FraudAlertInfo_rcc(this);
 			alertInfo->set(FraudAlert::_li_booth, NULL, this->calls_local.size() + this->calls_international.size()); 
 			this->evAlert(alertInfo);
+			last_alert_info_li = callInfo->at_connect;
 		}
 		break;
 	case sFraudCallInfo::typeCallInfo_seenByeCall:

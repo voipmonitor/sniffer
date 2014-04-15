@@ -461,6 +461,9 @@ private:
 	vector<TimePeriod> timePeriods;
 	map<string, u_int64_t> calls_local;
 	map<string, u_int64_t> calls_international;
+	u_int64_t last_alert_info_local;
+	u_int64_t last_alert_info_international;
+	u_int64_t last_alert_info_li;
 };
 
 class FraudAlertInfo_rcc : public FraudAlertInfo {
@@ -491,6 +494,9 @@ private:
 	vector<FraudAlert_rcc_timePeriods> timePeriods;
 	map<string, u_int64_t> calls_local;
 	map<string, u_int64_t> calls_international;
+	u_int64_t last_alert_info_local;
+	u_int64_t last_alert_info_international;
+	u_int64_t last_alert_info_li;
 };
 
 class FraudAlertInfo_chc : public FraudAlertInfo {
