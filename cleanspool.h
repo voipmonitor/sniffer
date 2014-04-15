@@ -7,6 +7,7 @@ void convert_filesindex();
 void check_disk_free_run(bool enableRunCleanSpoolThread);
 void run_check_disk_free_thread();
 bool check_exists_act_records_in_files();
+bool check_exists_act_files_in_filesindex();
 void clean_obsolete_dirs(const char *path = NULL);
 bool isSetCleanspoolParameters();
 void runCleanSpoolThread();

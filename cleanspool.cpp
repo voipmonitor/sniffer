@@ -1185,6 +1185,41 @@ bool check_exists_act_records_in_files() {
 	return(ok);
 }
 
+bool check_exists_act_files_in_filesindex() {
+	bool ok = false;
+	if(!sqlDbCleanspool) {
+		sqlDbCleanspool = createSqlObject();
+	}
+	char id_sensor_str[10];
+	sprintf(id_sensor_str, "%i", opt_id_sensor_cleanspool > 0 ? opt_id_sensor_cleanspool : 0);
+	sqlDbCleanspool->query(string("select max(calldate) as max_calldate from cdr where calldate > date_add(now(), interval -1 day) and ") +
+			       "id_sensor " + (opt_id_sensor_cleanspool > 0 ? string("=") + id_sensor_str : "is null"));
+	SqlDb_row row = sqlDbCleanspool->fetchRow();
+	if(!row || !row["max_calldate"].length()) {
+		return(true);
+	}
+	time_t maxCdrTime = stringToTime(row["max_calldate"].c_str());
+	for(int i = 0; i < 12; i++) {
+		time_t checkTime = maxCdrTime - i * 60 * 60;
+		struct tm *checkTimeInfo = localtime(&checkTime);
+		char date[20];
+		strftime(date, 20, "%Y%m%d", checkTimeInfo);
+		for(int j = 0; j < 24; j++) {
+			char datehour[20];
+			strcpy(datehour, date);
+			sprintf(datehour + strlen(datehour), "%02i", j);
+			if(FileExists((char*)(string(opt_chdir) + "/filesindex/sipsize/" + datehour).c_str())) {
+				ok = true;
+				break;
+			}
+		}
+		if(ok) {
+			break;
+		}
+	}
+	return(ok);
+}
+
 void check_spooldir_filesindex(const char *path, const char *dirfilter) {
 	const char *typeFilesIndex[] = {
 		"sip",
@@ -1427,7 +1462,8 @@ void *clean_spooldir_run(void *dummy) {
 		}
 	}
 	
-	if(!check_exists_act_records_in_files()) {
+	if(!check_exists_act_records_in_files() ||
+	   !check_exists_act_files_in_filesindex()) {
 		convert_filesindex();
 	}
 

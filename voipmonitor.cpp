@@ -206,6 +206,7 @@ int readend = 0;
 int opt_dup_check = 0;
 int opt_dup_check_ipheader = 1;
 int rtptimeout = 300;
+int absolute_timeout = 4 * 3600;
 char opt_cdrurl[1024] = "";
 int opt_destination_number_mode = 1;
 int opt_cleanspool_interval = 0; // number of seconds between cleaning spool directory. 0 = disabled
@@ -1151,6 +1152,9 @@ int load_config(char *fname) {
 	}
 	if((value = ini.GetValue("general", "rtptimeout", NULL))) {
 		rtptimeout = atoi(value);
+	}
+	if((value = ini.GetValue("general", "absolute_timeout", NULL))) {
+		absolute_timeout = atoi(value);
 	}
 	if((value = ini.GetValue("general", "rtpthread-buffer", NULL))) {
 		rtpthreadbuffer = atoi(value);
