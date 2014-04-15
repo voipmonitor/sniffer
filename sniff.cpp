@@ -2280,6 +2280,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 			} else if(sip_method == BYE) {
 				
 				call->destroy_call_at = header->ts.tv_sec + 60;
+				call->destroy_call_at_bye = header->ts.tv_sec + 20 * 60;
 				
 				//check and save CSeq for later to compare with OK 
 				if(cseq && cseqlen < 32) {
