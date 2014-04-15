@@ -218,6 +218,7 @@ public:
 	int thread_num;
 
 	char oneway;
+	char absolute_timeout_exceeded;
 	unsigned int lastsrcip;
 
 	void *listening_worker_args;

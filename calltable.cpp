@@ -254,6 +254,7 @@ Call::Call(char *call_id, unsigned long call_id_len, time_t time, void *ct) :
 	a_mos_lqo = -1;
 	b_mos_lqo = -1;
 	oneway = 1;
+	absolute_timeout_exceeded = 0;
 	
 	onCall_2XX = false;
 	onCall_18X = false;
@@ -1589,7 +1590,9 @@ Call::getKeyValCDRtext() {
 	cdr.add(sighup ? 1 : 0, "sighup");
 	cdr.add(lastSIPresponseNum, "lastSIPresponseNum");
 	int bye;
-	if(oneway) {
+	if(absolute_timeout_exceeded) {
+		bye = 102;
+	} else if(oneway) {
 		bye = 101;
 	} else {
 		bye = (pcapstat.ps_ifdrop != ps_ifdrop or pcapstat.ps_drop != ps_drop) ? 100 :
@@ -1969,7 +1972,9 @@ Call::saveToDb(bool enableBatchIfPossible) {
 	cdr.add(lastSIPresponseNum, "lastSIPresponseNum");
 
 	int bye;
-	if(oneway) {
+	if(absolute_timeout_exceeded) {
+		bye = 102;
+	} else if(oneway) {
 		bye = 101;
 	} else {
 		bye = (pcapstat.ps_ifdrop != ps_ifdrop or pcapstat.ps_drop != ps_drop) ? 100 :
@@ -3300,6 +3305,9 @@ Calltable::cleanup( time_t currtime ) {
 		     (currtime - call->get_last_packet_time() > rtptimeout) ||
 		     (currtime - call->first_packet_time > absolute_timeout))) ||
 		   (call->oneway == 1 and (currtime - call->get_last_packet_time() > opt_onewaytimeout))) {
+			if(currtime && (currtime - call->first_packet_time > absolute_timeout)) {
+				call->absolute_timeout_exceeded = 1;
+			}
 			if(verbosity && verbosityE > 1) {
 				syslog(LOG_NOTICE, "Calltable::cleanup - callid %s", call->call_id.c_str());
 			}
