@@ -156,6 +156,7 @@ public:
 	time_t last_rtp_b_packet_time;	
 	time_t first_packet_time;	
 	time_t destroy_call_at;	
+	time_t destroy_call_at_bye;	
 	unsigned int first_packet_usec;
 	std::queue <short int> spybuffer;
 	std::queue <char> spybufferchar;
