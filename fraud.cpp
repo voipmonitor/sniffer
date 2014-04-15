@@ -874,6 +874,8 @@ void FraudAlert_d::evCall(sFraudCallInfo *callInfo) {
 
 FraudAlerts::FraudAlerts() {
 	threadPopCallInfo = 0;
+	runPopCallInfoThread = false;
+	terminatingPopCallInfoThread = false;
 	initPopCallInfoThread();
 }
 
@@ -950,6 +952,13 @@ void FraudAlerts::endCall(Call *call, u_int64_t at) {
 	callQueue.push(callInfo);
 }
 
+void FraudAlerts::stopPopCallInfoThread(bool wait) {
+	terminatingPopCallInfoThread = true;
+	while(wait && runPopCallInfoThread) {
+		usleep(1000);
+	}
+}
+
 void *_FraudAlerts_popCallInfoThread(void *arg) {
 	((FraudAlerts*)arg)->popCallInfoThread();
 	return(NULL);
@@ -959,7 +968,8 @@ void FraudAlerts::initPopCallInfoThread() {
 }
 
 void FraudAlerts::popCallInfoThread() {
-	while(!terminating || true) {
+	runPopCallInfoThread = true;
+	while(!terminating || !terminatingPopCallInfoThread) {
 		sFraudCallInfo callInfo;
 		if(callQueue.pop(&callInfo)) {
 			vector<FraudAlert*>::iterator iter;
@@ -970,6 +980,7 @@ void FraudAlerts::popCallInfoThread() {
 			usleep(1000);
 		}
 	}
+	runPopCallInfoThread = false;
 }
 
 void FraudAlerts::getCallInfoFromCall(sFraudCallInfo *callInfo, Call *call, 
@@ -1055,6 +1066,34 @@ void initFraud() {
 	}
 	fraudAlerts = new FraudAlerts();
 	fraudAlerts->loadAlerts();
+}
+
+void termFraud() {
+	if(countryCodes) {
+		delete countryCodes;
+		countryCodes = NULL;
+	}
+	if(countryPrefixes) {
+		delete countryPrefixes;
+		countryPrefixes = NULL;
+	}
+	if(geoIP_country) {
+		delete geoIP_country;
+		geoIP_country = NULL;
+	}
+	if(cacheNumber_location) {
+		delete cacheNumber_location;
+		cacheNumber_location = NULL;
+	}
+	if(fraudAlerts) {
+		fraudAlerts->stopPopCallInfoThread(true);
+		delete fraudAlerts;
+		fraudAlerts = NULL;
+	}
+	if(sqlDbFraud) {
+		delete sqlDbFraud;
+		sqlDbFraud = NULL;
+	}
 }
 
 void fraudBeginCall(Call *call, timeval tv) {

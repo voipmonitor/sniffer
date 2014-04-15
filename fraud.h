@@ -260,6 +260,9 @@ public:
 			if(findRecIt->ip_from <= ip && findRecIt->ip_to >= ip) {
 				return(findRecIt->country_code);
 			}
+			if(findRecIt == data.begin()) {
+				break;
+			}
 			--findRecIt;
 		}
 		return("");
@@ -561,6 +564,7 @@ public:
 	void connectCall(Call *call, u_int64_t at);
 	void seenByeCall(Call *call, u_int64_t at);
 	void endCall(Call *call, u_int64_t at);
+	void stopPopCallInfoThread(bool wait = false);
 private:
 	void initPopCallInfoThread();
 	void popCallInfoThread();
@@ -571,11 +575,14 @@ private:
 	vector<FraudAlert*> alerts;
 	SafeAsyncQueue<sFraudCallInfo> callQueue;
 	pthread_t threadPopCallInfo;
+	bool runPopCallInfoThread;
+	bool terminatingPopCallInfoThread;
 friend void *_FraudAlerts_popCallInfoThread(void *arg);
 };
 
 
 void initFraud();
+void termFraud();
 void fraudBeginCall(Call *call, struct timeval tv);
 void fraudConnectCall(Call *call, struct timeval tv);
 void fraudSeenByeCall(Call *call, struct timeval tv);

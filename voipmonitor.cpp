@@ -3465,6 +3465,13 @@ int main(int argc, char *argv[]) {
 		telnumfilter = NULL;
 	}
 	
+	if(opt_enable_fraud) {
+		termFraud();
+	}
+	if(SafeAsyncQueue_base::isRunTimerThread()) {
+		SafeAsyncQueue_base::stopTimerThread(true);
+	}
+	
 	extern SqlDb *sqlDbSaveCall;
 	if(sqlDbSaveCall) {
 		delete sqlDbSaveCall;
