@@ -1,3 +1,9 @@
+9.4beta23 15.4.2014
+===================
+- add new configuraiton option absolute_timeout (default set to 4 * 3600s) which ends call longer than 4 hours by default. 
+- add new configuration option destroy_call_at_bye which ends call after 20 minutes (default 20*60) no matter how many RTP/SIP packets arrives after the BYE. 
+- if filesindex directory is missing at all or there are no data past 12 hours reindexfiles will be initiated on sniffer start
+
 9.4beta22 14.4.2014
 ==================
 - fix automatic upgrade (problem with SSL selfsigned certs) 
