@@ -1,3 +1,7 @@
+9.4beta24 16.4.2014
+===================
+- take size of files from OS sys calls and do not rely on pcap caplen which fixes bug in cleaning which thinkgs there is much more space consumed 
+
 9.4beta23 15.4.2014
 ===================
 - add new configuraiton option absolute_timeout (default set to 4 * 3600s) which ends call longer than 4 hours by default. 
