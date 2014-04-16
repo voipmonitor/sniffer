@@ -24,6 +24,7 @@
 #include <sys/syscall.h>
 #include <sys/statvfs.h>
 #include <curl/curl.h>
+#include <cerrno>
 
 #include "voipmonitor.h"
 
@@ -682,7 +683,7 @@ bool PcapDumper::open(const char *fileName, const char *fileNameSpoolRelative, p
 	++this->openAttempts;
 	if(!this->handle) {
 		if(this->type != rtp || !this->openError) {
-			syslog(LOG_NOTICE, "pcapdumper: error open dump handle to file %s", fileName);
+			syslog(LOG_NOTICE, "pcapdumper: error open dump handle to file %s - %s", fileName, pcap_geterr(_handle));
 		}
 		this->openError = true;
 	}
@@ -766,7 +767,7 @@ bool RtpGraphSaver::open(const char *fileName, const char *fileNameSpoolRelative
 		this->stream->open(fileName);
 	}
 	if(!this->isOpen()) {
-		syslog(LOG_NOTICE, "graphsaver: error open file %s", fileName);
+		syslog(LOG_NOTICE, "graphsaver: error open file %s - %s", fileName, strerror(errno));
 	}
 	this->size = 0;
 	this->fileName = fileName;
