@@ -86,7 +86,7 @@ extern char sql_cdr_table_last7d[256];
 extern char sql_cdr_table[256];
 extern char sql_cdr_ua_table[256];
 extern char sql_driver[256];
-extern char user_filter[2048];
+extern char user_filter[10*2048];
 extern int debugclean;
 extern int get_customer_by_ip_flush_period;
 extern int global_livesniffer;

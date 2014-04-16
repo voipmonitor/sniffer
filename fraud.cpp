@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <sstream>
+#include <syslog.h>
 
 #include "fraud.h"
 #include "calltable.h"
@@ -497,6 +498,9 @@ FraudAlert_rcc_timePeriods::FraudAlert_rcc_timePeriods(const char *descr, int co
 	this->descr = descr;
 	this->concurentCallsLimit = concurentCallsLimit;
 	this->dbId = dbId;
+	this->last_alert_info_local = 0;
+	this->last_alert_info_international = 0;
+	this->last_alert_info_li = 0;
 	this->loadTimePeriods();
 }
 
@@ -525,20 +529,26 @@ void FraudAlert_rcc_timePeriods::evCall(sFraudCallInfo *callInfo, FraudAlert_rcc
 			} else {
 				this->calls_international[callInfo->callid] = callInfo->at_connect;
 			}
-			if(this->calls_local.size() >= this->concurentCallsLimit) {
+			if(this->calls_local.size() >= this->concurentCallsLimit &&
+			   callInfo->at_connect > last_alert_info_local + 1000000ull) {
 				FraudAlertInfo_rcc *alertInfo = new FraudAlertInfo_rcc(alert);
 				alertInfo->set(FraudAlert::_li_local, this->descr.c_str(), this->calls_local.size()); 
 				alert->evAlert(alertInfo);
+				last_alert_info_local = callInfo->at_connect;
 			}
-			if(this->calls_international.size() >= this->concurentCallsLimit) {
+			if(this->calls_international.size() >= this->concurentCallsLimit &&
+			   callInfo->at_connect > last_alert_info_international + 1000000ull) {
 				FraudAlertInfo_rcc *alertInfo = new FraudAlertInfo_rcc(alert);
 				alertInfo->set(FraudAlert::_li_international, this->descr.c_str(), this->calls_international.size()); 
 				alert->evAlert(alertInfo);
+				last_alert_info_international = callInfo->at_connect;
 			}
-			if(this->calls_local.size() + this->calls_international.size() >= this->concurentCallsLimit) {
+			if(this->calls_local.size() + this->calls_international.size() >= this->concurentCallsLimit &&
+			   callInfo->at_connect > last_alert_info_li + 1000000ull) {
 				FraudAlertInfo_rcc *alertInfo = new FraudAlertInfo_rcc(alert);
 				alertInfo->set(FraudAlert::_li_booth, this->descr.c_str(), this->calls_local.size() + this->calls_international.size()); 
 				alert->evAlert(alertInfo);
+				last_alert_info_li = callInfo->at_connect;
 			}
 		}
 		break;
@@ -603,6 +613,9 @@ void FraudAlert_rcc::addFraudDef(SqlDb_row *row) {
 
 FraudAlert_rcc::FraudAlert_rcc(unsigned int dbId)
  : FraudAlert(_rcc, dbId) {
+	this->last_alert_info_local = 0;
+	this->last_alert_info_international = 0;
+	this->last_alert_info_li = 0;
 }
 
 void FraudAlert_rcc::evCall(sFraudCallInfo *callInfo) {
@@ -617,20 +630,26 @@ void FraudAlert_rcc::evCall(sFraudCallInfo *callInfo) {
 		} else {
 			this->calls_international[callInfo->callid] = callInfo->at_connect;
 		}
-		if(this->calls_local.size() >= this->concurentCallsLimit) {
+		if(this->calls_local.size() >= this->concurentCallsLimit &&
+		   callInfo->at_connect > last_alert_info_local + 1000000ull) {
 			FraudAlertInfo_rcc *alertInfo = new FraudAlertInfo_rcc(this);
 			alertInfo->set(FraudAlert::_li_local, NULL, this->calls_local.size()); 
 			this->evAlert(alertInfo);
+			last_alert_info_local = callInfo->at_connect;
 		}
-		if(this->calls_international.size() >= this->concurentCallsLimit) {
+		if(this->calls_international.size() >= this->concurentCallsLimit &&
+		   callInfo->at_connect > last_alert_info_international + 1000000ull) {
 			FraudAlertInfo_rcc *alertInfo = new FraudAlertInfo_rcc(this);
 			alertInfo->set(FraudAlert::_li_international, NULL, this->calls_international.size()); 
 			this->evAlert(alertInfo);
+			last_alert_info_international = callInfo->at_connect;
 		}
-		if(this->calls_local.size() + this->calls_international.size() >= this->concurentCallsLimit) {
+		if(this->calls_local.size() + this->calls_international.size() >= this->concurentCallsLimit &&
+		   callInfo->at_connect > last_alert_info_li + 1000000ull) {
 			FraudAlertInfo_rcc *alertInfo = new FraudAlertInfo_rcc(this);
 			alertInfo->set(FraudAlert::_li_booth, NULL, this->calls_local.size() + this->calls_international.size()); 
 			this->evAlert(alertInfo);
+			last_alert_info_li = callInfo->at_connect;
 		}
 		break;
 	case sFraudCallInfo::typeCallInfo_seenByeCall:
@@ -874,6 +893,8 @@ void FraudAlert_d::evCall(sFraudCallInfo *callInfo) {
 
 FraudAlerts::FraudAlerts() {
 	threadPopCallInfo = 0;
+	runPopCallInfoThread = false;
+	terminatingPopCallInfoThread = false;
 	initPopCallInfoThread();
 }
 
@@ -925,29 +946,32 @@ void FraudAlerts::clear() {
 void FraudAlerts::beginCall(Call *call, u_int64_t at) {
 	sFraudCallInfo callInfo;
 	this->getCallInfoFromCall(&callInfo, call, sFraudCallInfo::typeCallInfo_beginCall, at);
-	this->completeCallInfo_country_code(&callInfo);
 	callQueue.push(callInfo);
 }
 
 void FraudAlerts::connectCall(Call *call, u_int64_t at) {
 	sFraudCallInfo callInfo;
 	this->getCallInfoFromCall(&callInfo, call, sFraudCallInfo::typeCallInfo_connectCall, at);
-	this->completeCallInfo_country_code(&callInfo);
 	callQueue.push(callInfo);
 }
 
 void FraudAlerts::seenByeCall(Call *call, u_int64_t at) {
 	sFraudCallInfo callInfo;
 	this->getCallInfoFromCall(&callInfo, call, sFraudCallInfo::typeCallInfo_seenByeCall, at);
-	this->completeCallInfo_country_code(&callInfo);
 	callQueue.push(callInfo);
 }
 
 void FraudAlerts::endCall(Call *call, u_int64_t at) {
 	sFraudCallInfo callInfo;
 	this->getCallInfoFromCall(&callInfo, call, sFraudCallInfo::typeCallInfo_endCall, at);
-	this->completeCallInfo_country_code(&callInfo);
 	callQueue.push(callInfo);
+}
+
+void FraudAlerts::stopPopCallInfoThread(bool wait) {
+	terminatingPopCallInfoThread = true;
+	while(wait && runPopCallInfoThread) {
+		usleep(1000);
+	}
 }
 
 void *_FraudAlerts_popCallInfoThread(void *arg) {
@@ -959,9 +983,11 @@ void FraudAlerts::initPopCallInfoThread() {
 }
 
 void FraudAlerts::popCallInfoThread() {
-	while(!terminating || true) {
+	runPopCallInfoThread = true;
+	while(!terminating || !terminatingPopCallInfoThread) {
 		sFraudCallInfo callInfo;
 		if(callQueue.pop(&callInfo)) {
+			this->completeCallInfo_country_code(&callInfo);
 			vector<FraudAlert*>::iterator iter;
 			for(iter = alerts.begin(); iter != alerts.end(); iter++) {
 				(*iter)->evCall(&callInfo);
@@ -970,6 +996,7 @@ void FraudAlerts::popCallInfoThread() {
 			usleep(1000);
 		}
 	}
+	runPopCallInfoThread = false;
 }
 
 void FraudAlerts::getCallInfoFromCall(sFraudCallInfo *callInfo, Call *call, 
@@ -1035,6 +1062,10 @@ void initFraud() {
 	if(!opt_enable_fraud) {
 		return;
 	}
+	if(!checkFraudTables()) {
+		opt_enable_fraud = false;
+		return;
+	}
 	if(!countryCodes) {
 		countryCodes = new CountryCodes();
 		countryCodes->load();
@@ -1055,6 +1086,75 @@ void initFraud() {
 	}
 	fraudAlerts = new FraudAlerts();
 	fraudAlerts->loadAlerts();
+}
+
+void termFraud() {
+	if(countryCodes) {
+		delete countryCodes;
+		countryCodes = NULL;
+	}
+	if(countryPrefixes) {
+		delete countryPrefixes;
+		countryPrefixes = NULL;
+	}
+	if(geoIP_country) {
+		delete geoIP_country;
+		geoIP_country = NULL;
+	}
+	if(cacheNumber_location) {
+		delete cacheNumber_location;
+		cacheNumber_location = NULL;
+	}
+	if(fraudAlerts) {
+		fraudAlerts->stopPopCallInfoThread(true);
+		delete fraudAlerts;
+		fraudAlerts = NULL;
+	}
+	if(sqlDbFraud) {
+		delete sqlDbFraud;
+		sqlDbFraud = NULL;
+	}
+}
+
+bool checkFraudTables() {
+	SqlDb *sqlDb = createSqlObject();
+	struct checkTable {
+		const char *table;
+		const char *help;
+		const char *emptyHelp;
+	};
+	checkTable checkTables[] = {
+		{"alerts", "login into web gui as admin first", NULL},
+		{"alerts_fraud", NULL, NULL},
+		{"fraud_alert_info", NULL, NULL},
+		{"country_code", NULL, "run in php gui: php php/run.php fillCountryCodeTables"},
+		{"country_code_prefix", NULL, "run in php gui: php php/run.php fillCountryCodeTables"},
+		{"geoip_country", NULL, "run in php gui: php php/run.php fillCountryCodeTables"}
+	};
+	for(size_t i = 0; i < sizeof(checkTables) / sizeof(checkTables[0]); i++) {
+		sqlDb->query((string("show tables like '") + checkTables[i].table + "'").c_str());
+		if(!sqlDb->fetchRow()) {
+			syslog(LOG_ERR, "missing table %s - fraud disabled", checkTables[i].table);
+			if(checkTables[i].help) {
+				syslog(LOG_NOTICE, checkTables[i].help);
+			}
+			delete sqlDb;
+			return(false);
+		} else if(checkTables[i].emptyHelp) {
+			sqlDb->query((string("select count(*) as cnt from ") + checkTables[i].table).c_str());
+			SqlDb_row row = sqlDb->fetchRow();
+			if(!row || !atol(row["cnt"].c_str())) {
+				syslog(LOG_ERR, "table %s is empty - fraud disabled", checkTables[i].table);
+				if(checkTables[i].emptyHelp) {
+					syslog(LOG_NOTICE, checkTables[i].emptyHelp);
+				}
+				delete sqlDb;
+				return(false);
+			}
+		}
+	}
+	delete sqlDb;
+	return(true);
 }
 
 void fraudBeginCall(Call *call, timeval tv) {

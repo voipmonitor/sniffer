@@ -193,14 +193,14 @@ public:
 			string rsltNumber = findRecIt->number;
 			if(countries) {
 				countries->push_back(rslt);
-				do {
+				while(findRecIt != data.begin()) {
 					--findRecIt;
 					if(rsltNumber == findRecIt->number) {
 						countries->push_back(findRecIt->country_code);
 					} else {
 						break;
 					}
-				} while(findRecIt != data.begin());
+				}
 			}
 			return(rslt);
 		}
@@ -259,6 +259,9 @@ public:
 		for(int i = 0; i < 2; i++) {
 			if(findRecIt->ip_from <= ip && findRecIt->ip_to >= ip) {
 				return(findRecIt->country_code);
+			}
+			if(findRecIt == data.begin()) {
+				break;
 			}
 			--findRecIt;
 		}
@@ -458,6 +461,9 @@ private:
 	vector<TimePeriod> timePeriods;
 	map<string, u_int64_t> calls_local;
 	map<string, u_int64_t> calls_international;
+	u_int64_t last_alert_info_local;
+	u_int64_t last_alert_info_international;
+	u_int64_t last_alert_info_li;
 };
 
 class FraudAlertInfo_rcc : public FraudAlertInfo {
@@ -488,6 +494,9 @@ private:
 	vector<FraudAlert_rcc_timePeriods> timePeriods;
 	map<string, u_int64_t> calls_local;
 	map<string, u_int64_t> calls_international;
+	u_int64_t last_alert_info_local;
+	u_int64_t last_alert_info_international;
+	u_int64_t last_alert_info_li;
 };
 
 class FraudAlertInfo_chc : public FraudAlertInfo {
@@ -561,6 +570,7 @@ public:
 	void connectCall(Call *call, u_int64_t at);
 	void seenByeCall(Call *call, u_int64_t at);
 	void endCall(Call *call, u_int64_t at);
+	void stopPopCallInfoThread(bool wait = false);
 private:
 	void initPopCallInfoThread();
 	void popCallInfoThread();
@@ -571,11 +581,15 @@ private:
 	vector<FraudAlert*> alerts;
 	SafeAsyncQueue<sFraudCallInfo> callQueue;
 	pthread_t threadPopCallInfo;
+	bool runPopCallInfoThread;
+	bool terminatingPopCallInfoThread;
 friend void *_FraudAlerts_popCallInfoThread(void *arg);
 };
 
 
 void initFraud();
+bool checkFraudTables();
+void termFraud();
 void fraudBeginCall(Call *call, struct timeval tv);
 void fraudConnectCall(Call *call, struct timeval tv);
 void fraudSeenByeCall(Call *call, struct timeval tv);

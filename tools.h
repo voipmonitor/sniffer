@@ -804,6 +804,8 @@ class SafeAsyncQueue_base {
 public:
 	SafeAsyncQueue_base();
 	~SafeAsyncQueue_base();
+	static bool isRunTimerThread();
+	static void stopTimerThread(bool wait = false);
 protected:
 	virtual void timerEv(unsigned long long timerCounter) = 0;
 private:
@@ -819,6 +821,8 @@ private:
 	static pthread_t timer_thread;
 	static unsigned long long timer_counter;
 	static volatile int _sync_list_saq;
+	static bool runTimerThread;
+	static bool terminateTimerThread;
 friend void *_SafeAsyncQueue_timerThread(void *arg);
 };
 
@@ -996,42 +1000,11 @@ public:
 		type_item content;
 	};
 public:
-	~JsonExport() {
-		while(items.size()) {
-			delete (*items.begin());
-			items.erase(items.begin());
-		}
-	}
-	string getJson() {
-		ostringstream outStr;
-		outStr << '{';
-		vector<JsonExportItem*>::iterator iter;
-		for(iter = items.begin(); iter != items.end(); iter++) {
-			if(iter != items.begin()) {
-				outStr << ',';
-			}
-			outStr << (*iter)->getStringItem();
-		}
-		outStr << '}';
-		return(outStr.str());
-	}
-	void add(const char *name, string content) {
-		this->add(name, content.c_str());
-	}
-	void add(const char *name, const char *content) {
-		JsonExportItem_template<string> *item = new JsonExportItem_template<string>;
-		item->setTypeItem(_string);
-		item->setName(name);
-		item->setContent(string(content));
-		items.push_back(item);
-	}
-	void add(const char *name, u_int64_t content) {
-		JsonExportItem_template<u_int64_t> *item = new JsonExportItem_template<u_int64_t>;
-		item->setTypeItem(_number);
-		item->setName(name);
-		item->setContent(content);
-		items.push_back(item);
-	}
+	~JsonExport();
+	string getJson();
+	void add(const char *name, string content);
+	void add(const char *name, const char *content);
+	void add(const char *name, u_int64_t content);
 private:
 	vector<JsonExportItem*> items;
 };

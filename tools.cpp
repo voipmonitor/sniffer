@@ -24,6 +24,7 @@
 #include <sys/syscall.h>
 #include <sys/statvfs.h>
 #include <curl/curl.h>
+#include <cerrno>
 
 #include "voipmonitor.h"
 
@@ -682,7 +683,7 @@ bool PcapDumper::open(const char *fileName, const char *fileNameSpoolRelative, p
 	++this->openAttempts;
 	if(!this->handle) {
 		if(this->type != rtp || !this->openError) {
-			syslog(LOG_NOTICE, "pcapdumper: error open dump handle to file %s", fileName);
+			syslog(LOG_NOTICE, "pcapdumper: error open dump handle to file %s - %s", fileName, pcap_geterr(_handle));
 		}
 		this->openError = true;
 	}
@@ -716,7 +717,7 @@ void PcapDumper::close(bool updateFilesQueue) {
 				       this->fileNameSpoolRelative.c_str(), 
 				       type == rtp ? "rtpsize" : 
 				       this->call->type == REGISTER ? "regsize" : "sipsize",
-				       this->capsize + PCAP_DUMPER_HEADER_SIZE);
+				       0/*this->capsize + PCAP_DUMPER_HEADER_SIZE ignore size counter - header->capsize can contain -1*/);
 		} else {
 			asyncClose.add(this->handle);
 		}
@@ -766,7 +767,7 @@ bool RtpGraphSaver::open(const char *fileName, const char *fileNameSpoolRelative
 		this->stream->open(fileName);
 	}
 	if(!this->isOpen()) {
-		syslog(LOG_NOTICE, "graphsaver: error open file %s", fileName);
+		syslog(LOG_NOTICE, "graphsaver: error open file %s - %s", fileName, strerror(errno));
 	}
 	this->size = 0;
 	this->fileName = fileName;
@@ -1407,8 +1408,20 @@ SafeAsyncQueue_base::~SafeAsyncQueue_base() {
 	unlock_list_saq();
 }
 
+bool SafeAsyncQueue_base::isRunTimerThread() {
+	return(runTimerThread);
+}
+
+void SafeAsyncQueue_base::stopTimerThread(bool wait) {
+	terminateTimerThread = true;
+	while(wait && runTimerThread) {
+		usleep(100000);
+	}
+}
+
 void SafeAsyncQueue_base::timerThread() {
-	while(true) {
+	runTimerThread = true;
+	while(!terminateTimerThread) {
 		usleep(100000);
 		lock_list_saq();
 		list<SafeAsyncQueue_base*>::iterator iter;
@@ -1418,6 +1431,7 @@ void SafeAsyncQueue_base::timerThread() {
 		unlock_list_saq();
 		++timer_counter;
 	}
+	runTimerThread = false;
 }
 
 list<SafeAsyncQueue_base*> SafeAsyncQueue_base::list_saq;
@@ -1427,3 +1441,49 @@ pthread_t SafeAsyncQueue_base::timer_thread = 0;
 unsigned long long SafeAsyncQueue_base::timer_counter = 0;
 
 volatile int SafeAsyncQueue_base::_sync_list_saq = 0;
+
+bool SafeAsyncQueue_base::runTimerThread = false;
+
+bool SafeAsyncQueue_base::terminateTimerThread = false;
+
+
+JsonExport::~JsonExport() {
+	while(items.size()) {
+		delete (*items.begin());
+		items.erase(items.begin());
+	}
+}
+
+string JsonExport::getJson() {
+	ostringstream outStr;
+	outStr << '{';
+	vector<JsonExportItem*>::iterator iter;
+	for(iter = items.begin(); iter != items.end(); iter++) {
+		if(iter != items.begin()) {
+			outStr << ',';
+		}
+		outStr << (*iter)->getStringItem();
+	}
+	outStr << '}';
+	return(outStr.str());
+}
+
+void JsonExport::add(const char *name, string content) {
+	this->add(name, content.c_str());
+}
+
+void JsonExport::add(const char *name, const char *content) {
+	JsonExportItem_template<string> *item = new JsonExportItem_template<string>;
+	item->setTypeItem(_string);
+	item->setName(name);
+	item->setContent(string(content));
+	items.push_back(item);
+}
+
+void JsonExport::add(const char *name, u_int64_t content) {
+	JsonExportItem_template<u_int64_t> *item = new JsonExportItem_template<u_int64_t>;
+	item->setTypeItem(_number);
+	item->setName(name);
+	item->setContent(content);
+	items.push_back(item);
+}

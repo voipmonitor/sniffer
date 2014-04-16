@@ -2316,6 +2316,8 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 	}
 
 	if(opt_enable_fraud) {
+	this->query("show tables like 'alerts'");
+	if(this->fetchRow()) {
 	this->query(
 	"CREATE TABLE IF NOT EXISTS `cache_number_location` (\
 			`number` varchar(30) NOT NULL,\
@@ -2338,7 +2340,7 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 			PRIMARY KEY (`ID`),\
 			CONSTRAINT `fraud_alert_info_ibfk_1` FOREIGN KEY (`alert_id`) REFERENCES `alerts` (`id`) ON UPDATE CASCADE ON DELETE CASCADE\
 	) ENGINE=InnoDB DEFAULT CHARSET=latin1;");
-	}
+	} }
 	
 	if(!federated) {
 	 

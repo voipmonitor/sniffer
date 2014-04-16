@@ -96,7 +96,7 @@ extern int ipfilter_reload_do;
 extern TELNUMfilter *telnumfilter;
 extern TELNUMfilter *telnumfilter_reload;
 extern int telnumfilter_reload_do;
-extern char user_filter[2048];
+extern char user_filter[10*2048];
 extern Calltable *calltable;
 extern volatile int calls_counter;
 extern TcpReassembly *tcpReassembly;
