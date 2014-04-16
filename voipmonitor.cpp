@@ -386,7 +386,7 @@ int get_customer_by_ip_flush_period = 1;
 
 char opt_pidfile[4098] = "/var/run/voipmonitor.pid";
 
-char user_filter[2048] = "";
+char user_filter[1024*20] = "";
 char ifname[1024];	// Specifies the name of the network device to use for 
 			// the network lookup, for example, eth0
 char opt_scanpcapdir[2048] = "";	// Specifies the name of the network device to use for 
@@ -2594,12 +2594,12 @@ int main(int argc, char *argv[]) {
 		}
 	}
 	
-	char *hostnames[] = {
+	const char *hostnames[] = {
 		"voipmonitor.org",
 		"www.voipmonitor.org",
 		"download.voipmonitor.org"
 	};
-	for(int i = 0; i < sizeof(hostnames) / sizeof(hostnames[0]); i++) {
+	for(unsigned int i = 0; i < sizeof(hostnames) / sizeof(hostnames[0]); i++) {
 		hostent *conn_server_record = gethostbyname(hostnames[i]);
 		if(conn_server_record == NULL) {
 			syslog(LOG_ERR, "host [%s] failed to resolve to IP address", hostnames[i]);
