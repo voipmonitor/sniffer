@@ -588,6 +588,7 @@ friend void *_FraudAlerts_popCallInfoThread(void *arg);
 
 
 void initFraud();
+bool checkFraudTables();
 void termFraud();
 void fraudBeginCall(Call *call, struct timeval tv);
 void fraudConnectCall(Call *call, struct timeval tv);

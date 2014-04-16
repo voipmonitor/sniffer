@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <sstream>
+#include <syslog.h>
 
 #include "fraud.h"
 #include "calltable.h"
@@ -1064,6 +1065,10 @@ void initFraud() {
 	if(!opt_enable_fraud) {
 		return;
 	}
+	if(!checkFraudTables()) {
+		opt_enable_fraud = false;
+		return;
+	}
 	if(!countryCodes) {
 		countryCodes = new CountryCodes();
 		countryCodes->load();
@@ -1112,6 +1117,44 @@ void termFraud() {
 		delete sqlDbFraud;
 		sqlDbFraud = NULL;
 	}
+}
+
+bool checkFraudTables() {
+	SqlDb *sqlDb = createSqlObject();
+	struct checkTable {
+		const char *table;
+		const char *help;
+		const char *emptyHelp;
+	};
+	checkTable checkTables[] = {
+		{"alerts", "login into web gui as admin first", NULL},
+		{"alerts_fraud", NULL, NULL},
+		{"fraud_alert_info", NULL, NULL},
+		{"country_code", NULL, "run in php gui: php php/run.php fillCountryCodeTables"},
+		{"country_code_prefix", NULL, "run in php gui: php php/run.php fillCountryCodeTables"},
+		{"geoip_country", NULL, "run in php gui: php php/run.php fillCountryCodeTables"}
+	};
+	for(size_t i = 0; i < sizeof(checkTables) / sizeof(checkTables[0]); i++) {
+		sqlDb->query((string("show tables like '") + checkTables[i].table + "'").c_str());
+		if(!sqlDb->fetchRow()) {
+			syslog(LOG_ERR, "missing table %s - fraud disabled", checkTables[i].table);
+			if(checkTables[i].help) {
+				syslog(LOG_NOTICE, checkTables[i].help);
+			}
+			delete sqlDb;
+			return(false);
+		} else if(checkTables[i].emptyHelp) {
+			sqlDb->query((string("select count(*) as cnt from ") + checkTables[i].table).c_str());
+			SqlDb_row row = sqlDb->fetchRow();
+			if(!row || !atol(row["cnt"].c_str())) {
+				syslog(LOG_ERR, "table %s is empty - %s", checkTables[i].table, checkTables[i].emptyHelp);
+				delete sqlDb;
+				return(false);
+			}
+		}
+	}
+	delete sqlDb;
+	return(true);
 }
 
 void fraudBeginCall(Call *call, timeval tv) {
