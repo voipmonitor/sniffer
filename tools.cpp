@@ -717,7 +717,7 @@ void PcapDumper::close(bool updateFilesQueue) {
 				       this->fileNameSpoolRelative.c_str(), 
 				       type == rtp ? "rtpsize" : 
 				       this->call->type == REGISTER ? "regsize" : "sipsize",
-				       this->capsize + PCAP_DUMPER_HEADER_SIZE);
+				       0/*this->capsize + PCAP_DUMPER_HEADER_SIZE ignore size counter - header->capsize can contain -1*/);
 		} else {
 			asyncClose.add(this->handle);
 		}
