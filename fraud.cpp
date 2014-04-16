@@ -946,28 +946,24 @@ void FraudAlerts::clear() {
 void FraudAlerts::beginCall(Call *call, u_int64_t at) {
 	sFraudCallInfo callInfo;
 	this->getCallInfoFromCall(&callInfo, call, sFraudCallInfo::typeCallInfo_beginCall, at);
-	this->completeCallInfo_country_code(&callInfo);
 	callQueue.push(callInfo);
 }
 
 void FraudAlerts::connectCall(Call *call, u_int64_t at) {
 	sFraudCallInfo callInfo;
 	this->getCallInfoFromCall(&callInfo, call, sFraudCallInfo::typeCallInfo_connectCall, at);
-	this->completeCallInfo_country_code(&callInfo);
 	callQueue.push(callInfo);
 }
 
 void FraudAlerts::seenByeCall(Call *call, u_int64_t at) {
 	sFraudCallInfo callInfo;
 	this->getCallInfoFromCall(&callInfo, call, sFraudCallInfo::typeCallInfo_seenByeCall, at);
-	this->completeCallInfo_country_code(&callInfo);
 	callQueue.push(callInfo);
 }
 
 void FraudAlerts::endCall(Call *call, u_int64_t at) {
 	sFraudCallInfo callInfo;
 	this->getCallInfoFromCall(&callInfo, call, sFraudCallInfo::typeCallInfo_endCall, at);
-	this->completeCallInfo_country_code(&callInfo);
 	callQueue.push(callInfo);
 }
 
@@ -991,6 +987,7 @@ void FraudAlerts::popCallInfoThread() {
 	while(!terminating || !terminatingPopCallInfoThread) {
 		sFraudCallInfo callInfo;
 		if(callQueue.pop(&callInfo)) {
+			this->completeCallInfo_country_code(&callInfo);
 			vector<FraudAlert*>::iterator iter;
 			for(iter = alerts.begin(); iter != alerts.end(); iter++) {
 				(*iter)->evCall(&callInfo);
@@ -1148,8 +1145,8 @@ bool checkFraudTables() {
 			SqlDb_row row = sqlDb->fetchRow();
 			if(!row || !atol(row["cnt"].c_str())) {
 				syslog(LOG_ERR, "table %s is empty - fraud disabled", checkTables[i].table);
-				if(checkTables[i].help) {
-					syslog(LOG_NOTICE, checkTables[i].help);
+				if(checkTables[i].emptyHelp) {
+					syslog(LOG_NOTICE, checkTables[i].emptyHelp);
 				}
 				delete sqlDb;
 				return(false);

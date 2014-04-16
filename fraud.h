@@ -193,14 +193,14 @@ public:
 			string rsltNumber = findRecIt->number;
 			if(countries) {
 				countries->push_back(rslt);
-				do {
+				while(findRecIt != data.begin()) {
 					--findRecIt;
 					if(rsltNumber == findRecIt->number) {
 						countries->push_back(findRecIt->country_code);
 					} else {
 						break;
 					}
-				} while(findRecIt != data.begin());
+				}
 			}
 			return(rslt);
 		}
