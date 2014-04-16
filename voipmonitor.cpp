@@ -3493,10 +3493,6 @@ int main(int argc, char *argv[]) {
 		delete sqlDbCleanspool;
 	}
 	
-	if(sqlStore) {
-		delete sqlStore;
-	}
-
 	if(mirrorip) {
 		delete mirrorip;
 	}
@@ -3513,6 +3509,9 @@ int main(int argc, char *argv[]) {
 	asyncClose.closeAll();
 //	mysql_library_end();
 
+	if(sqlStore) {
+		delete sqlStore;
+	}
 }
 
 void *readdump_libpcap_thread_fce(void *handle) {

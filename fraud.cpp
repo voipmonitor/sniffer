@@ -1147,7 +1147,10 @@ bool checkFraudTables() {
 			sqlDb->query((string("select count(*) as cnt from ") + checkTables[i].table).c_str());
 			SqlDb_row row = sqlDb->fetchRow();
 			if(!row || !atol(row["cnt"].c_str())) {
-				syslog(LOG_ERR, "table %s is empty - %s", checkTables[i].table, checkTables[i].emptyHelp);
+				syslog(LOG_ERR, "table %s is empty - fraud disabled", checkTables[i].table);
+				if(checkTables[i].help) {
+					syslog(LOG_NOTICE, checkTables[i].help);
+				}
 				delete sqlDb;
 				return(false);
 			}
