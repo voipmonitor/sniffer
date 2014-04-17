@@ -564,21 +564,24 @@ void FraudAlert_rcc_timePeriods::evCall(sFraudCallInfo *callInfo, FraudAlert_rcc
 			} else {
 				this->calls_international[callInfo->callid] = callInfo->at_connect;
 			}
-			if(this->calls_local.size() >= this->concurentCallsLimitLocal &&
+			if(this->concurentCallsLimitLocal && 
+			   this->calls_local.size() >= this->concurentCallsLimitLocal &&
 			   callInfo->at_connect > last_alert_info_local + 1000000ull) {
 				FraudAlertInfo_rcc *alertInfo = new FraudAlertInfo_rcc(alert);
 				alertInfo->set(FraudAlert::_li_local, this->descr.c_str(), this->calls_local.size()); 
 				alert->evAlert(alertInfo);
 				last_alert_info_local = callInfo->at_connect;
 			}
-			if(this->calls_international.size() >= this->concurentCallsLimitInternational &&
+			if(this->concurentCallsLimitInternational &&
+			   this->calls_international.size() >= this->concurentCallsLimitInternational &&
 			   callInfo->at_connect > last_alert_info_international + 1000000ull) {
 				FraudAlertInfo_rcc *alertInfo = new FraudAlertInfo_rcc(alert);
 				alertInfo->set(FraudAlert::_li_international, this->descr.c_str(), this->calls_international.size()); 
 				alert->evAlert(alertInfo);
 				last_alert_info_international = callInfo->at_connect;
 			}
-			if(this->calls_local.size() + this->calls_international.size() >= this->concurentCallsLimitBoth &&
+			if(this->concurentCallsLimitBoth &&
+			   this->calls_local.size() + this->calls_international.size() >= this->concurentCallsLimitBoth &&
 			   callInfo->at_connect > last_alert_info_li + 1000000ull) {
 				FraudAlertInfo_rcc *alertInfo = new FraudAlertInfo_rcc(alert);
 				alertInfo->set(FraudAlert::_li_booth, this->descr.c_str(), this->calls_local.size() + this->calls_international.size()); 
@@ -667,21 +670,24 @@ void FraudAlert_rcc::evCall(sFraudCallInfo *callInfo) {
 		} else {
 			this->calls_international[callInfo->callid] = callInfo->at_connect;
 		}
-		if(this->calls_local.size() >= this->concurentCallsLimitLocal &&
+		if(this->concurentCallsLimitLocal &&
+		   this->calls_local.size() >= this->concurentCallsLimitLocal &&
 		   callInfo->at_connect > last_alert_info_local + 1000000ull) {
 			FraudAlertInfo_rcc *alertInfo = new FraudAlertInfo_rcc(this);
 			alertInfo->set(FraudAlert::_li_local, NULL, this->calls_local.size()); 
 			this->evAlert(alertInfo);
 			last_alert_info_local = callInfo->at_connect;
 		}
-		if(this->calls_international.size() >= this->concurentCallsLimitInternational &&
+		if(this->concurentCallsLimitInternational &&
+		   this->calls_international.size() >= this->concurentCallsLimitInternational &&
 		   callInfo->at_connect > last_alert_info_international + 1000000ull) {
 			FraudAlertInfo_rcc *alertInfo = new FraudAlertInfo_rcc(this);
 			alertInfo->set(FraudAlert::_li_international, NULL, this->calls_international.size()); 
 			this->evAlert(alertInfo);
 			last_alert_info_international = callInfo->at_connect;
 		}
-		if(this->calls_local.size() + this->calls_international.size() >= this->concurentCallsLimitBoth &&
+		if(this->concurentCallsLimitBoth &&
+		   this->calls_local.size() + this->calls_international.size() >= this->concurentCallsLimitBoth &&
 		   callInfo->at_connect > last_alert_info_li + 1000000ull) {
 			FraudAlertInfo_rcc *alertInfo = new FraudAlertInfo_rcc(this);
 			alertInfo->set(FraudAlert::_li_booth, NULL, this->calls_local.size() + this->calls_international.size()); 
