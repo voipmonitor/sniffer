@@ -435,7 +435,9 @@ protected:
 	string descr;
 	ListIP_wb ipFilter;
 	ListPhoneNumber_wb phoneNumberFilter;
-	unsigned int concurentCallsLimit;
+	unsigned int concurentCallsLimitLocal;
+	unsigned int concurentCallsLimitInternational;
+	unsigned int concurentCallsLimitBoth;
 	eTypeLocation typeChangeLocation;
 	vector<string> changeLocationOk;
 	vector<string> destLocation;
@@ -443,7 +445,11 @@ protected:
 
 class FraudAlert_rcc_timePeriods {
 public:
-	FraudAlert_rcc_timePeriods(const char *descr, int concurentCallsLimit, unsigned int dbId);
+	FraudAlert_rcc_timePeriods(const char *descr, 
+				   int concurentCallsLimitLocal, 
+				   int concurentCallsLimitInternational, 
+				   int concurentCallsLimitBoth,
+				   unsigned int dbId);
 	void loadTimePeriods();
 	bool checkTime(u_int64_t time) {
 		vector<TimePeriod>::iterator iter = timePeriods.begin();
@@ -458,7 +464,9 @@ public:
 	void evCall(sFraudCallInfo *callInfo, class FraudAlert_rcc *alert);
 private:
 	string descr;
-	unsigned int concurentCallsLimit;
+	unsigned int concurentCallsLimitLocal;
+	unsigned int concurentCallsLimitInternational;
+	unsigned int concurentCallsLimitBoth;
 	unsigned int dbId;
 	vector<TimePeriod> timePeriods;
 	map<string, u_int64_t> calls_local;
@@ -558,6 +566,8 @@ public:
 	FraudAlert_d(unsigned int dbId);
 	void evCall(sFraudCallInfo *callInfo);
 protected:
+	bool defFilterIp() { return(true); }
+	bool defFilterNumber() { return(true); }
 	bool defDestLocation() { return(true); }
 };
 
