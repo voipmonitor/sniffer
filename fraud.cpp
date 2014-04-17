@@ -168,6 +168,7 @@ CacheNumber_location::CacheNumber_location() {
 		geoIP_country->load();
 	}
 	sqlDb = createSqlObject();
+	last_cleanup_at = 0;
 }
 
 CacheNumber_location::~CacheNumber_location() {
@@ -178,6 +179,12 @@ bool CacheNumber_location::checkNumber(const char *number, u_int32_t ip, u_int64
 				       bool *diffCountry, bool *diffContinent,
 				       string *oldCountry, string *oldContinent,
 				       const char *ip_country, const char *ip_continent) {
+	if(!last_cleanup_at) {
+		last_cleanup_at = at;
+	}
+	if(at > last_cleanup_at + 600 * 1000000ull) {
+		this->cleanup(at);
+	}
 	if(diffCountry) {
 		*diffCountry = false;
 	}
@@ -189,6 +196,11 @@ bool CacheNumber_location::checkNumber(const char *number, u_int32_t ip, u_int64
 	}
 	if(oldContinent) {
 		*oldContinent = "";
+	}
+	if(!strcasecmp(number, "anonymous") ||
+	   !strcasecmp(number, "restricted") ||
+	   !strcasecmp(number, "unknown")) {
+		return(true);
 	}
 	map<string, sIpRec>::iterator iterCache;
 	for(int pass = 0; pass < 2; pass++) {
@@ -259,7 +271,7 @@ bool CacheNumber_location::checkNumber(const char *number, u_int32_t ip, u_int64
 		cache[number].old_country_code = cache[number].country_code;
 		cache[number].old_continent_code = cache[number].continent_code;
 		cache[number].old_at = cache[number].at;
-		cache[number].ip = cache[number].ip;
+		cache[number].ip = ip;
 		cache[number].country_code = country_code;
 		cache[number].continent_code = continent_code;
 		cache[number].at = at;
@@ -270,6 +282,7 @@ bool CacheNumber_location::checkNumber(const char *number, u_int32_t ip, u_int64
 		  at - cache[number].at > 300 * 1000000ull) {
 		this->updateAt(number, at);
 	}
+	cache[number].fresh_at = at;
 	return(true);
 }
 
@@ -340,6 +353,17 @@ void CacheNumber_location::updateAt(const char *number, u_int64_t at) {
 	       << " where number = "
 	       << sqlEscapeStringBorder(number);
 	sqlStore->query_lock(outStr.str().c_str(), STORE_PROC_ID_CACHE_NUMBERS_LOCATIONS);
+}
+
+void CacheNumber_location::cleanup(u_int64_t at) {
+	map<string, sIpRec>::iterator iterCache;
+	for(iterCache = cache.begin(); iterCache != cache.end();) {
+		if(at > iterCache->second.fresh_at + 600 * 1000000ull) {
+			cache.erase(iterCache++);
+		} else {
+			++iterCache;
+		}
+	}
 }
 
 
@@ -895,6 +919,7 @@ FraudAlerts::FraudAlerts() {
 	threadPopCallInfo = 0;
 	runPopCallInfoThread = false;
 	terminatingPopCallInfoThread = false;
+	_sync_alerts = 0;
 	initPopCallInfoThread();
 }
 
@@ -903,6 +928,7 @@ FraudAlerts::~FraudAlerts() {
 }
 
 void FraudAlerts::loadAlerts() {
+	lock_alerts();
 	SqlDb *sqlDb = createSqlObject();
 	sqlDb->query("select id, alert_type, descr from alerts\
 		      where alert_type > 20 and\
@@ -934,13 +960,16 @@ void FraudAlerts::loadAlerts() {
 		}
 	}
 	delete sqlDb;
+	unlock_alerts();
 }
 
 void FraudAlerts::clear() {
+	lock_alerts();
 	for(size_t i = 0; i < alerts.size(); i++) {
 		delete alerts[i];
 	}
 	alerts.clear();
+	unlock_alerts();
 }
 
 void FraudAlerts::beginCall(Call *call, u_int64_t at) {
@@ -988,10 +1017,12 @@ void FraudAlerts::popCallInfoThread() {
 		sFraudCallInfo callInfo;
 		if(callQueue.pop(&callInfo)) {
 			this->completeCallInfo_country_code(&callInfo);
+			lock_alerts();
 			vector<FraudAlert*>::iterator iter;
 			for(iter = alerts.begin(); iter != alerts.end(); iter++) {
 				(*iter)->evCall(&callInfo);
 			}
+			unlock_alerts();
 		} else {
 			usleep(1000);
 		}
@@ -1055,6 +1086,11 @@ void FraudAlerts::completeCallInfo_country_code(sFraudCallInfo *callInfo) {
 	}
 	callInfo->local_called_number = countryPrefixes->isLocal(callInfo->called_number.c_str());
 	callInfo->local_called_ip = geoIP_country->isLocal(callInfo->called_ip);
+}
+
+void FraudAlerts::refresh() {
+	clear();
+	loadAlerts();
 }
 
 
@@ -1155,6 +1191,12 @@ bool checkFraudTables() {
 	}
 	delete sqlDb;
 	return(true);
+}
+
+void refreshFraud() {
+	if(opt_enable_fraud && fraudAlerts) {
+		fraudAlerts->refresh();
+	}
 }
 
 void fraudBeginCall(Call *call, timeval tv) {
