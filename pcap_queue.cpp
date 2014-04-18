@@ -1618,10 +1618,22 @@ inline int PcapQueue_readFromInterface_base::pcapProcess(pcap_pkthdr** header, u
 			} else {
 				offset = 0;
 				protocol = header_eth->ether_type;
-			}      
-			offset += sizeof(struct ether_header);
-			ppd.header_ip = (struct iphdr2 *) ((char*)header_eth + offset);
-		} else {	       
+			}
+			if(protocol == IPPROTO_UDP or protocol == IPPROTO_TCP) {
+				offset += sizeof(struct ether_header);
+				ppd.header_ip = (struct iphdr2 *) ((char*)header_eth + offset);
+				if(ppd.header_ip->protocol == IPPROTO_IPIP) {
+					ppd.header_ip = (iphdr2*)((char*)ppd.header_ip + sizeof(iphdr2));
+				}
+			} else {
+				return(0);
+			}
+		} else if(grehdr->version == 0 and grehdr->protocol == 0x800) {
+			ppd.header_ip = (struct iphdr2 *) ((char*)ppd.header_ip + sizeof(iphdr2) + 4);
+			if(ppd.header_ip->protocol == IPPROTO_IPIP) {
+				ppd.header_ip = (iphdr2*)((char*)ppd.header_ip + sizeof(iphdr2));
+			}
+		} else {
 			if(opt_ipaccount == 0) {
 				return(0);
 			}		      
@@ -3404,8 +3416,17 @@ void PcapQueue_readFromFifo::processPacket(pcap_pkthdr_plus *header_plus, u_char
 				offset = 0;
 				protocol = header_eth->ether_type;
 			}
-			offset += sizeof(struct ether_header);
-			header_ip = (struct iphdr2 *) ((char*)header_eth + offset);
+			if(protocol == IPPROTO_UDP or protocol == IPPROTO_TCP) {
+				offset += sizeof(struct ether_header);
+				header_ip = (struct iphdr2 *) ((char*)header_eth + offset);
+				if(header_ip->protocol == IPPROTO_IPIP) {
+					header_ip = (iphdr2*)((char*)header_ip + sizeof(iphdr2));
+				}
+			} else {
+				return;
+			}
+		} else if(grehdr->version == 0 and grehdr->protocol == 0x800) {
+			header_ip = (struct iphdr2 *) ((char*)header_ip + sizeof(iphdr2) + 4);
 			if(header_ip->protocol == IPPROTO_IPIP) {
 				header_ip = (iphdr2*)((char*)header_ip + sizeof(iphdr2));
 			}

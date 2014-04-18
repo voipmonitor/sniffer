@@ -3117,8 +3117,9 @@ void *pcap_read_thread_func(void *arg) {
 				if(protocol == IPPROTO_UDP or protocol == IPPROTO_TCP) {
 					offset += sizeof(struct ether_header);
 					header_ip = (struct iphdr2 *) ((char*)header_eth + offset);
+				} else {
+					continue;
 				}
-				continue;
 			} else if(grehdr->version == 0 and grehdr->protocol == 0x800) {
 				header_ip = (struct iphdr2 *) ((char*)header_ip + sizeof(iphdr2) + 4);
 			} else {
@@ -3650,9 +3651,13 @@ headerip:
 					offset = 0;
 					protocol = header_eth->ether_type;
 				}
-				offset += sizeof(struct ether_header);
-				header_ip = (struct iphdr2 *) ((char*)header_eth + offset);
-				goto headerip;
+				if(protocol == IPPROTO_UDP or protocol == IPPROTO_TCP) {
+					offset += sizeof(struct ether_header);
+					header_ip = (struct iphdr2 *) ((char*)header_eth + offset);
+					goto headerip;
+				} else {
+					goto skip;
+				}
 			} else if(grehdr->version == 0 and grehdr->protocol == 0x800) {
 				offset += sizeof(iphdr2) + 4;
 				header_ip = (struct iphdr2 *) ((char*)header_ip + sizeof(iphdr2) + 4);
