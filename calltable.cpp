@@ -409,6 +409,15 @@ Call::~Call(){
 		tmp[0] << this->sipcallerip << '|' << this->sipcalledip;
 		tmp[1] << this->sipcallerip << '|' << this->sipcalledip;
 
+		for (((Calltable *)calltable)->skinny_ipTuplesIT = ((Calltable *)calltable)->skinny_ipTuples.begin(); ((Calltable *)calltable)->skinny_ipTuplesIT != ((Calltable *)calltable)->skinny_ipTuples.end();) {
+			if(((Calltable *)calltable)->skinny_ipTuplesIT->second == this) {
+				((Calltable *)calltable)->skinny_ipTuples.erase(((Calltable *)calltable)->skinny_ipTuplesIT++);
+			} else {
+				++((Calltable *)calltable)->skinny_ipTuplesIT;
+			}
+		}
+
+/*
 		for(int i = 0; i < 2; i++) {
 			((Calltable *)calltable)->skinny_ipTuplesIT = ((Calltable *)calltable)->skinny_ipTuples.find(tmp[i].str());
 			if(((Calltable *)calltable)->skinny_ipTuplesIT == ((Calltable *)calltable)->skinny_ipTuples.end()) {
@@ -417,6 +426,7 @@ Call::~Call(){
 				}
 			}
 		}
+*/
 	}
 
 	if(contenttype) free(contenttype);
