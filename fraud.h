@@ -314,9 +314,11 @@ public:
 	bool loadNumber(const char *number, u_int64_t at);
 	void saveNumber(const char *number, sIpRec *ipRec, bool update = false);
 	void updateAt(const char *number, u_int64_t at);
+	void cleanup(u_int64_t at);
 private:
 	SqlDb *sqlDb;
 	map<string, sIpRec> cache;
+	u_int64_t last_cleanup_at;
 };
 
 struct sFraudCallInfo {
@@ -433,7 +435,9 @@ protected:
 	string descr;
 	ListIP_wb ipFilter;
 	ListPhoneNumber_wb phoneNumberFilter;
-	unsigned int concurentCallsLimit;
+	unsigned int concurentCallsLimitLocal;
+	unsigned int concurentCallsLimitInternational;
+	unsigned int concurentCallsLimitBoth;
 	eTypeLocation typeChangeLocation;
 	vector<string> changeLocationOk;
 	vector<string> destLocation;
@@ -441,7 +445,11 @@ protected:
 
 class FraudAlert_rcc_timePeriods {
 public:
-	FraudAlert_rcc_timePeriods(const char *descr, int concurentCallsLimit, unsigned int dbId);
+	FraudAlert_rcc_timePeriods(const char *descr, 
+				   int concurentCallsLimitLocal, 
+				   int concurentCallsLimitInternational, 
+				   int concurentCallsLimitBoth,
+				   unsigned int dbId);
 	void loadTimePeriods();
 	bool checkTime(u_int64_t time) {
 		vector<TimePeriod>::iterator iter = timePeriods.begin();
@@ -456,7 +464,9 @@ public:
 	void evCall(sFraudCallInfo *callInfo, class FraudAlert_rcc *alert);
 private:
 	string descr;
-	unsigned int concurentCallsLimit;
+	unsigned int concurentCallsLimitLocal;
+	unsigned int concurentCallsLimitInternational;
+	unsigned int concurentCallsLimitBoth;
 	unsigned int dbId;
 	vector<TimePeriod> timePeriods;
 	map<string, u_int64_t> calls_local;
@@ -556,6 +566,8 @@ public:
 	FraudAlert_d(unsigned int dbId);
 	void evCall(sFraudCallInfo *callInfo);
 protected:
+	bool defFilterIp() { return(true); }
+	bool defFilterNumber() { return(true); }
 	bool defDestLocation() { return(true); }
 };
 
@@ -571,18 +583,26 @@ public:
 	void seenByeCall(Call *call, u_int64_t at);
 	void endCall(Call *call, u_int64_t at);
 	void stopPopCallInfoThread(bool wait = false);
+	void refresh();
 private:
 	void initPopCallInfoThread();
 	void popCallInfoThread();
 	void getCallInfoFromCall(sFraudCallInfo *callInfo, Call *call, 
 				 sFraudCallInfo::eTypeCallInfo typeCallInfo, u_int64_t at);
 	void completeCallInfo_country_code(sFraudCallInfo *callInfo);
+	void lock_alerts() {
+		while(__sync_lock_test_and_set(&this->_sync_alerts, 1));
+	}
+	void unlock_alerts() {
+		__sync_lock_release(&this->_sync_alerts);
+	}
 private:
 	vector<FraudAlert*> alerts;
 	SafeAsyncQueue<sFraudCallInfo> callQueue;
 	pthread_t threadPopCallInfo;
 	bool runPopCallInfoThread;
 	bool terminatingPopCallInfoThread;
+	volatile int _sync_alerts;
 friend void *_FraudAlerts_popCallInfoThread(void *arg);
 };
 
@@ -590,6 +610,7 @@ friend void *_FraudAlerts_popCallInfoThread(void *arg);
 void initFraud();
 bool checkFraudTables();
 void termFraud();
+void refreshFraud();
 void fraudBeginCall(Call *call, struct timeval tv);
 void fraudConnectCall(Call *call, struct timeval tv);
 void fraudSeenByeCall(Call *call, struct timeval tv);
