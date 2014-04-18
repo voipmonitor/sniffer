@@ -1608,7 +1608,7 @@ void *handle_skinny2(pcap_pkthdr *header, const u_char *packet, unsigned int sad
 				calledParty = strings[1];
 				callingPartyName = strings[8];
 				calledPartyName = strings[9];
-			} else if(req.res == 20 or req.res == 17) {
+			} else if(req.res == 20 or req.res == 17 or req.res == 22 or req.res == 19) {
 				 /* CM7 
 					char callingParty];			0
 					char callingPartyVoiceMailbox;		1
@@ -1716,7 +1716,7 @@ void *handle_skinny2(pcap_pkthdr *header, const u_char *packet, unsigned int sad
 			ref = letohl(req.data.startmedia_ip4.conferenceId);
 			ipaddr = letohl(req.data.startmedia_ip4.remoteIp);
 			port = letohl(req.data.startmedia_ip4.remotePort);
-		} else if(req.res == 20 or req.res == 17) {
+		} else if(req.res == 20 or req.res == 17 or req.res == 18 or req.res == 22 or req.res == 19) {
 			ref = letohl(req.data.CM7_startmedia_ip4.conferenceId);
 			ipaddr = letohl(req.data.CM7_startmedia_ip4.remoteIp);
 			port = letohl(req.data.CM7_startmedia_ip4.remotePort);

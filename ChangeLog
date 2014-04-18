@@ -1,3 +1,7 @@
+9.4beta25 18.4.2014
+===================
+- fix skinny racecondition crash and add support for more version headers for some messages
+
 9.4beta24 16.4.2014
 ===================
 - take size of files from OS sys calls and do not rely on pcap caplen which fixes bug in cleaning which thinkgs there is much more space consumed 
