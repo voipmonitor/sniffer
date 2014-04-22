@@ -1178,20 +1178,26 @@ bool checkFraudTables() {
 		const char *help;
 		const char *emptyHelp;
 	};
+	char *help_gui_loginAdmin = 
+		"Login into web gui as admin. Login process create missing table.";
+	char *help_gui_loginAdmin_enableFraud =
+		"Login into web gui as admin and enable Fraud in System configuration in menu Setting.";
+	char *help_gui_loginAdmin_loadGeoIPcountry =
+		"Login into web gui as admin and load GeoIP country data in menu Setting.";
 	checkTable checkTables[] = {
-		{"alerts", "login into web gui as admin first", NULL},
-		{"alerts_fraud", NULL, NULL},
-		{"fraud_alert_info", NULL, NULL},
-		{"country_code", NULL, "run in php gui: php php/run.php fillCountryCodeTables"},
-		{"country_code_prefix", NULL, "run in php gui: php php/run.php fillCountryCodeTables"},
-		{"geoip_country", NULL, "run in php gui: php php/run.php fillCountryCodeTables"}
+		{"alerts", help_gui_loginAdmin, NULL},
+		{"alerts_fraud", help_gui_loginAdmin_enableFraud, NULL},
+		//{"fraud_alert_info", NULL, NULL},
+		{"country_code", help_gui_loginAdmin_enableFraud, help_gui_loginAdmin_enableFraud},
+		{"country_code_prefix", help_gui_loginAdmin_enableFraud, help_gui_loginAdmin_enableFraud},
+		{"geoip_country", help_gui_loginAdmin_loadGeoIPcountry, help_gui_loginAdmin_loadGeoIPcountry}
 	};
 	for(size_t i = 0; i < sizeof(checkTables) / sizeof(checkTables[0]); i++) {
 		sqlDb->query((string("show tables like '") + checkTables[i].table + "'").c_str());
 		if(!sqlDb->fetchRow()) {
 			syslog(LOG_ERR, "missing table %s - fraud disabled", checkTables[i].table);
 			if(checkTables[i].help) {
-				syslog(LOG_NOTICE, checkTables[i].help);
+				syslog(LOG_NOTICE, "try: %s", checkTables[i].help);
 			}
 			delete sqlDb;
 			return(false);
@@ -1201,7 +1207,7 @@ bool checkFraudTables() {
 			if(!row || !atol(row["cnt"].c_str())) {
 				syslog(LOG_ERR, "table %s is empty - fraud disabled", checkTables[i].table);
 				if(checkTables[i].emptyHelp) {
-					syslog(LOG_NOTICE, checkTables[i].emptyHelp);
+					syslog(LOG_NOTICE, "try: %s", checkTables[i].emptyHelp);
 				}
 				delete sqlDb;
 				return(false);

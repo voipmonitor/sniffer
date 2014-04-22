@@ -453,12 +453,22 @@ void save_empty_frame(struct ast_channel *chan) {
 				chan->lastbuflen = 0;
 			} else {
 				// write empty frame
-				for(i = 0; i < chan->last_datalen / 2; i++) {
-					if(chan->rawstream)
-						fwrite(&zero3, 2, 1, chan->rawstream);
-					//fputc(0, chan->rawstream);
-					if(chan->audiobuf)
-						circbuf_write(chan->audiobuf,(const char*)(&zero2), sizeof(char));
+				if(chan->codec == PAYLOAD_PCMA || chan->codec == PAYLOAD_PCMU) {
+					char zero;
+					zero = chan->codec == PAYLOAD_PCMA ? 213 : 255;
+					for(i = 0; i < chan->last_datalen; i++) {
+						if(chan->rawstream)
+							fwrite(&zero, 1, 1, chan->rawstream);
+						if(chan->audiobuf)
+							circbuf_write(chan->audiobuf,(const char*)(&zero), sizeof(char));
+					}
+				} else {
+					for(i = 0; i < chan->last_datalen / 2; i++) {
+						if(chan->rawstream)
+							fwrite(&zero3, 2, 1, chan->rawstream);
+						if(chan->audiobuf)
+							circbuf_write(chan->audiobuf,(const char*)(&zero2), sizeof(char));
+					}
 				}
 			}
 		}
