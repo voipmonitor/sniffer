@@ -1,3 +1,7 @@
+9.4beta27 22.4.2014
+===================
+- fix beeping in silence sequences for G711 ALAW/ULAW (all versions) 
+
 9.4beta26 18.4.2014
 ===================
 - fix GRE decapsupation
