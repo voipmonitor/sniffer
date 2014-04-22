@@ -1397,8 +1397,7 @@ void *handle_skinny(pcap_pkthdr *header, const u_char *packet, unsigned int sadd
 	int remain = datalen;
 	while(1) {	
 		//cycle through all PDUs in one message
-		handle_skinny2(header, packet, saddr, source, daddr, dest, data, datalen,
-			handle, dlt, sensor_id);
+		handle_skinny2(header, packet, saddr, source, daddr, dest, data, datalen, handle, dlt, sensor_id);
 		unsigned int plen = (unsigned int)letohl(*(uint32_t*)data); // first 4 bytes is length of skinny data
 		if(plen == 0 or plen > remain) {
 			break;
@@ -1584,6 +1583,7 @@ void *handle_skinny2(pcap_pkthdr *header, const u_char *packet, unsigned int sad
 			while(i < 20 and (end = strchr(cur, '\0'))) {	
 				strings[i] = cur;
 				cur = end + 1;
+				if(cur + 1 > data + datalen) break;
 				i++;
 			}
 			char *callingParty, *calledParty, *callingPartyName, *calledPartyName;
