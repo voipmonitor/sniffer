@@ -179,6 +179,7 @@ int opt_saverfc2833 = 0;
 int opt_dbdtmf = 0;
 int opt_rtcp = 1;		// pair RTP+1 port to RTCP and save it. 
 int opt_nocdr = 0;		// do not save cdr?
+int opt_only_cdr_next = 0;
 int opt_gzipPCAP = 0;		// compress PCAP data ? 
 int opt_mos_g729 = 0;		// calculate MOS for G729 codec
 int verbosity = 0;		// debug level
@@ -1188,6 +1189,9 @@ int load_config(char *fname) {
 	}
 	if((value = ini.GetValue("general", "nocdr", NULL))) {
 		opt_nocdr = yesno(value);
+	}
+	if((value = ini.GetValue("general", "only_cdr_next", NULL))) {
+		opt_only_cdr_next = yesno(value);
 	}
 	if((value = ini.GetValue("general", "skipdefault", NULL))) {
 		opt_skipdefault = yesno(value);

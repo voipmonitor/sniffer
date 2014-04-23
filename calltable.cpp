@@ -72,6 +72,7 @@ extern int opt_gzipGRAPH;	// compress GRAPH data to graph file?
 extern int opt_audio_format;	// define format for audio writing (if -W option)
 extern int opt_mos_g729;
 extern int opt_nocdr;
+extern int opt_only_cdr_next;
 extern char opt_cachedir[1024];
 extern char sql_cdr_table[256];
 extern char sql_cdr_table_last30d[256];
@@ -1854,6 +1855,27 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		(opt_cdronlyrtp and !ssrc_n)) {
 		// skip this CDR 
 		return 1;
+	}
+	
+	if(opt_only_cdr_next) {
+		SqlDb_row cdr_next;
+		cdr_next.add(sqlEscapeString(fbasename), "fbasename");
+		cdr_next.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
+		if(enableBatchIfPossible && isSqlDriver("mysql")) {
+			string query_str = sqlDbSaveCall->insertQuery(sql_cdr_next_table, cdr_next);
+			
+			static unsigned int counterSqlStore = 0;
+			int storeId = STORE_PROC_ID_CDR_1 + 
+				      (opt_mysqlstore_max_threads_cdr > 1 &&
+				       sqlStore->getSize(STORE_PROC_ID_CDR_1) > 1000 ? 
+					counterSqlStore % opt_mysqlstore_max_threads_cdr : 
+					0);
+			++counterSqlStore;
+			sqlStore->query_lock(query_str.c_str(), storeId);
+		} else {
+			sqlDbSaveCall->insert(sql_cdr_next_table, cdr_next);
+		}
+		return(0);
 	}
 
 	SqlDb_row cdr,
