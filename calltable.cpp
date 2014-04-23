@@ -1858,7 +1858,16 @@ Call::saveToDb(bool enableBatchIfPossible) {
 	}
 	
 	if(opt_only_cdr_next) {
+		static u_int32_t last_id_cdr_next = 0;
+		if(!last_id_cdr_next) {
+			sqlDbSaveCall->query("select max(cdr_ID) from cdr_next");
+			SqlDb_row rslt = sqlDbSaveCall->fetchRow();
+			if(rslt) {
+				last_id_cdr_next = atol(rslt[0].c_str());
+			}
+		}
 		SqlDb_row cdr_next;
+		cdr_next.add(++last_id_cdr_next, "cdr_ID");
 		cdr_next.add(sqlEscapeString(fbasename), "fbasename");
 		cdr_next.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
 		if(enableBatchIfPossible && isSqlDriver("mysql")) {
