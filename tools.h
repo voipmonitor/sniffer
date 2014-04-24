@@ -16,6 +16,7 @@
 #include <sys/types.h>
 #include <pcap.h>
 
+#include "pstat.h"
 #include "gzstream/gzstream.h"
 
 using namespace std;
@@ -58,6 +59,7 @@ std::vector<std::string> split(const char *s, const char *delim, bool enableTrim
 std::vector<std::string> split(const char *s, std::vector<std::string> delim, bool enableTrim = false);
 int reg_match(const char *string, const char *pattern);
 string reg_replace(const char *string, const char *pattern, const char *replace);
+string inet_ntostring(u_int32_t ip);
 
 class CircularBuffer
 {
@@ -178,6 +180,7 @@ private:
 	u_int64_t capsize;
 	u_int64_t size;
 	pcap_dumper_t *handle;
+	char *buffer;
 	bool openError;
 	int openAttempts;
 };
@@ -224,19 +227,24 @@ public:
 	};
 	class AsyncCloseItem_pcap : public AsyncCloseItem {
 	public:
-		AsyncCloseItem_pcap(pcap_dumper_t *handle,
+		AsyncCloseItem_pcap(pcap_dumper_t *handle, char *buffer,
 				    Call *call = NULL, const char *file = NULL,
 				    const char *column = NULL, long long writeBytes = 0)
 		 : AsyncCloseItem(call, file, column, writeBytes) {
 			this->handle = handle;
+			this->buffer = buffer;
 		}
 		void close() {
 			pcap_dump_flush(handle);
 			pcap_dump_close(handle);
+			if(buffer) {
+				delete [] buffer;
+			}
 			this->addtofilesqueue();
 		}
 	private:
 		pcap_dumper_t *handle;
+		char *buffer;
 	};
 	class AsyncCloseItem_ofstream  : public AsyncCloseItem{
 	public:
@@ -273,10 +281,10 @@ public:
 public:
 	AsyncClose();
 	void startThread();
-	void add(pcap_dumper_t *handle,
+	void add(pcap_dumper_t *handle, char *buffer,
 		 Call *call = NULL, const char *file = NULL,
 		 const char *column = NULL, long long writeBytes = 0) {
-		add(new AsyncCloseItem_pcap(handle, call, file, column, writeBytes));
+		add(new AsyncCloseItem_pcap(handle, buffer, call, file, column, writeBytes));
 	}
 	void add(ofstream *stream,
 		 Call *call = NULL, const char *file = NULL,
@@ -295,6 +303,8 @@ public:
 	}
 	void closeTask();
 	void closeAll();
+	void preparePstatData();
+	double getCpuUsagePerc(bool preparePstatData = false);
 private:
 	void lock() {
 		while(__sync_lock_test_and_set(&this->_sync, 1));
@@ -306,6 +316,8 @@ private:
 	queue<AsyncCloseItem*> q;
 	pthread_t thread;
 	volatile int _sync;
+	int threadId;
+	pstat_data threadPstatData[2];
 };
 
 class RestartUpgrade {

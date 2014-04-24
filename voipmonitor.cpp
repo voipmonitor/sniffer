@@ -291,6 +291,7 @@ int opt_autocleanspoolminpercent = 1;
 int opt_autocleanmingb = 5;
 int opt_mysqlloadconfig = 1;
 int opt_last_rtp_from_end = 1;
+int opt_pcap_dump_bufflength = 0;
 
 char opt_php_path[1024];
 
@@ -1824,6 +1825,9 @@ int load_config(char *fname) {
 	}
 	if((value = ini.GetValue("general", "local_country_code", NULL))) {
 		strncpy(opt_local_country_code, value, sizeof(opt_local_country_code));
+	}
+	if((value = ini.GetValue("general", "pcap_dump_bufflength", NULL))) {
+		opt_pcap_dump_bufflength = atoi(value);
 	}
 	
 	/*
@@ -3543,6 +3547,60 @@ void test() {
 	 
 	case 1:
 	{
+		// test FILE buffer
+		
+		int maxFiles = 1000;
+		int bufferLength = 8000;
+		FILE *file[maxFiles];
+		char *fbuffer[maxFiles];
+		
+		for(int i = 0; i < maxFiles; i++) {
+			char filename[100];
+			sprintf(filename, "/dev/shm/test/%i", i);
+			file[i] = fopen(filename, "w");
+			
+			setbuf(file[i], NULL);
+			
+			fbuffer[i] = new char[bufferLength];
+			
+		}
+		
+		printf("%d\n", BUFSIZ);
+		
+		char writebuffer[1000];
+		memset(writebuffer, 1, 1000);
+		
+		for(int i = 0; i < maxFiles; i++) {
+			fwrite(writebuffer, 1000, 1, file[i]);
+			fclose(file[i]);
+			char filename[100];
+			sprintf(filename, "/dev/shm/test/%i", i);
+			file[i] = fopen(filename, "a");
+			
+			fflush(file[i]);
+			setvbuf(file[i], fbuffer[i], _IOFBF, bufferLength);
+		}
+		
+		struct timeval tv;
+		struct timezone tz;
+		gettimeofday(&tv, &tz);
+		
+		cout << "---" << endl;
+		u_int64_t _start = tv.tv_sec * 1000000ull + tv.tv_usec;
+		
+		
+		for(int p = 0; p < 5; p++)
+		for(int i = 0; i < maxFiles; i++) {
+			fwrite(writebuffer, 1000, 1, file[i]);
+		}
+		
+		cout << "---" << endl;
+		gettimeofday(&tv, &tz);
+		u_int64_t _end = tv.tv_sec * 1000000ull + tv.tv_usec;
+		cout << (_end - _start) << endl;
+		
+		return;
+	 
 		SafeAsyncQueue<XX> testSAQ;
 		XX xx(1,2);
 		testSAQ.push(xx);

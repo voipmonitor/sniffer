@@ -46,6 +46,7 @@
 extern char mac[32];
 extern int verbosity;
 extern int terminating;
+extern int opt_pcap_dump_bufflength;
 
 
 using namespace std;
@@ -649,6 +650,7 @@ PcapDumper::PcapDumper(eTypePcapDump type, class Call *call, bool updateFilesQue
 	this->capsize = 0;
 	this->size = 0;
 	this->handle = NULL;
+	this->buffer = NULL;
 	this->openError = false;
 	this->openAttempts = 0;
 }
@@ -658,6 +660,9 @@ PcapDumper::~PcapDumper() {
 		this->close(this->updateFilesQueueAtClose);
 	}
 }
+
+pcap_dumper_t *
+__pcap_dump_open(pcap_t *p, const char *fname, int linktype, char *buffer, int bufferLength);
 
 bool PcapDumper::open(const char *fileName, const char *fileNameSpoolRelative, pcap_t *useHandle, int useDlt) {
 	if(this->type == rtp && this->openAttempts >= 10) {
@@ -679,7 +684,14 @@ bool PcapDumper::open(const char *fileName, const char *fileNameSpoolRelative, p
 			   useHandle;
 	this->capsize = 0;
 	this->size = 0;
-	this->handle = pcap_dump_open(_handle, fileName);
+	if(opt_pcap_dump_bufflength) {
+		this->buffer = new char[opt_pcap_dump_bufflength];
+		this->handle = __pcap_dump_open(_handle, fileName,
+						useDlt == DLT_LINUX_SLL && opt_convert_dlt_sll_to_en10 ? DLT_EN10MB : useDlt,
+						this->buffer, opt_pcap_dump_bufflength);
+	} else {
+		this->handle = pcap_dump_open(_handle, fileName);
+	}
 	++this->openAttempts;
 	if(!this->handle) {
 		if(this->type != rtp || !this->openError) {
@@ -712,14 +724,14 @@ void PcapDumper::dump(pcap_pkthdr* header, const u_char *packet) {
 void PcapDumper::close(bool updateFilesQueue) {
 	if(this->handle) {
 		if(updateFilesQueue && this->call) {
-			asyncClose.add(this->handle,
+			asyncClose.add(this->handle, this->buffer,
 				       this->call,
 				       this->fileNameSpoolRelative.c_str(), 
 				       type == rtp ? "rtpsize" : 
 				       this->call->type == REGISTER ? "regsize" : "sipsize",
 				       0/*this->capsize + PCAP_DUMPER_HEADER_SIZE ignore size counter - header->capsize can contain -1*/);
 		} else {
-			asyncClose.add(this->handle);
+			asyncClose.add(this->handle, this->buffer);
 		}
 		this->handle = NULL;
 	}
@@ -846,6 +858,8 @@ void *AsyncClose_process(void *asyncClose_addr) {
 
 AsyncClose::AsyncClose() {
 	_sync = 0;
+	threadId = 0;
+	memset(this->threadPstatData, 0, sizeof(this->threadPstatData));
 }
 
 void AsyncClose::startThread() {
@@ -853,6 +867,7 @@ void AsyncClose::startThread() {
 }
 
 void AsyncClose::closeTask() {
+	this->threadId = get_unix_tid();
 	do {
 		closeAll();
 		usleep(10000);
@@ -873,6 +888,31 @@ void AsyncClose::closeAll() {
 			break;
 		}
 	}
+}
+
+void AsyncClose::preparePstatData() {
+	if(this->threadId) {
+		if(this->threadPstatData[0].cpu_total_time) {
+			this->threadPstatData[1] = this->threadPstatData[0];
+		}
+		pstat_get_data(this->threadId, this->threadPstatData);
+	}
+}
+
+double AsyncClose::getCpuUsagePerc(bool preparePstatData) {
+	if(preparePstatData) {
+		this->preparePstatData();
+	}
+	if(this->threadId) {
+		double ucpu_usage, scpu_usage;
+		if(this->threadPstatData[0].cpu_total_time && this->threadPstatData[1].cpu_total_time) {
+			pstat_calc_cpu_usage_pct(
+				&this->threadPstatData[0], &this->threadPstatData[1],
+				&ucpu_usage, &scpu_usage);
+			return(ucpu_usage + scpu_usage);
+		}
+	}
+	return(-1);
 }
 
 RestartUpgrade::RestartUpgrade(bool upgrade, const char *version, const char *url, const char *md5_32, const char *md5_64) {
@@ -1278,6 +1318,12 @@ string reg_replace(const char *str, const char *pattern, const char *replace) {
 	return("");
 }
 
+string inet_ntostring(u_int32_t ip) {
+	struct in_addr in;
+	in.s_addr = ip;
+	return(inet_ntoa(in));
+}
+
 
 void ListIP::addComb(string &ip) {
 	addComb(ip.c_str());
@@ -1486,4 +1532,95 @@ void JsonExport::add(const char *name, u_int64_t content) {
 	item->setName(name);
 	item->setContent(content);
 	items.push_back(item);
+}
+
+
+//------------------------------------------------------------------------------
+// pcap_dump_open with set buffer
+
+
+#define TCPDUMP_MAGIC		0xa1b2c3d4
+#define NSEC_TCPDUMP_MAGIC	0xa1b23c4d
+
+static int
+__sf_write_header(pcap_t *p, FILE *fp, int linktype)
+{
+	struct pcap_file_header hdr;
+	
+	/****
+	hdr.magic = p->opt.tstamp_precision == PCAP_TSTAMP_PRECISION_NANO ? NSEC_TCPDUMP_MAGIC : TCPDUMP_MAGIC;
+	****/
+	hdr.magic = NSEC_TCPDUMP_MAGIC;
+	hdr.version_major = PCAP_VERSION_MAJOR;
+	hdr.version_minor = PCAP_VERSION_MINOR;
+
+	/****
+	hdr.thiszone = thiszone;
+	hdr.snaplen = snaplen;
+	****/
+	hdr.thiszone = 0;
+	hdr.snaplen = 0;
+	hdr.sigfigs = 0;
+	hdr.linktype = linktype;
+
+	if (fwrite((char *)&hdr, sizeof(hdr), 1, fp) != 1)
+		return (-1);
+
+	return (0);
+}
+
+static pcap_dumper_t *
+__pcap_setup_dump(pcap_t *p, int linktype, FILE *f, const char *fname)
+{
+
+	if (__sf_write_header(p, f, linktype) == -1) {
+		/****
+		snprintf(p->errbuf, PCAP_ERRBUF_SIZE, "Can't write to %s: %s",
+		    fname, pcap_strerror(errno));
+		if (f != stdout)
+			(void)fclose(f);
+		****/
+		return (NULL);
+	}
+	return ((pcap_dumper_t *)f);
+}
+
+pcap_dumper_t *
+__pcap_dump_open(pcap_t *p, const char *fname, int linktype, char *buffer, int bufferLength)
+{
+	FILE *f;
+	
+	/*
+	 * If this pcap_t hasn't been activated, it doesn't have a
+	 * link-layer type, so we can't use it.
+	 */
+	/****
+	if (!p->activated) {
+		snprintf(p->errbuf, PCAP_ERRBUF_SIZE,
+		    "%s: not-yet-activated pcap_t passed to pcap_dump_open",
+		    fname);
+		return (NULL);
+	}
+	linktype = dlt_to_linktype(p->linktype);
+	if (linktype == -1) {
+		snprintf(p->errbuf, PCAP_ERRBUF_SIZE,
+		    "%s: link-layer type %d isn't supported in savefiles",
+		    fname, p->linktype);
+		return (NULL);
+	}
+	linktype |= p->linktype_ext;
+	****/
+
+	f = fopen(fname, "wb");
+	if (f == NULL) {
+		/****
+		snprintf(p->errbuf, PCAP_ERRBUF_SIZE, "%s: %s",
+			    fname, pcap_strerror(errno));
+		****/
+		return (NULL);
+	}
+	if(buffer && bufferLength) {
+		setvbuf(f, buffer, _IOFBF, bufferLength);
+	}
+	return (__pcap_setup_dump(p, linktype, f, fname));
 }

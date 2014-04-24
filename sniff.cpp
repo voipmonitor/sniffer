@@ -1892,6 +1892,10 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 			}
 			return(NULL);
 		}
+		
+		if(issip && opt_enable_fraud) {
+			fraudSipPacket(saddr, header->ts);
+		}
 
 		// parse SIP method 
 		if ((datalen > 5) && !(memmem(data, 6, "INVITE", 6) == 0)) {
@@ -1902,6 +1906,9 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 			if(verbosity > 2) 
 				 syslog(LOG_NOTICE,"SIP msg: REGISTER\n");
 			sip_method = REGISTER;
+			if(opt_enable_fraud) {
+				fraudRegister(saddr, header->ts);
+			}
 		} else if ((datalen > 6) && !(memmem(data, 7, "MESSAGE", 7) == 0)) {
 			if(verbosity > 2) 
 				 syslog(LOG_NOTICE,"SIP msg: MESSAGE\n");

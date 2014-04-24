@@ -396,6 +396,8 @@ FraudAlert::FraudAlert(eFraudAlertType type, unsigned int dbId) {
 	concurentCallsLimitInternational = 0;
 	concurentCallsLimitBoth = 0;
 	typeChangeLocation = _typeLocation_NA;
+	intervalLength = 0;
+	intervalLimit = 0;
 }
 
 FraudAlert::~FraudAlert() {
@@ -458,6 +460,10 @@ void FraudAlert::loadAlert() {
 	if(defDestLocation()) {
 		destLocation = split(dbRow["fraud_dest_location"].c_str(), ",", true);
 	}
+	if(defInterval()) {
+		intervalLength = atol(dbRow["fraud_interval_length"].c_str());
+		intervalLimit = atol(dbRow["fraud_interval_limit"].c_str());
+	}
 	delete sqlDb;
 }
 
@@ -485,6 +491,8 @@ string FraudAlert::getTypeString() {
 	case _chc: return("chc");
 	case _chcr: return("chcr");
 	case _d: return("d");
+	case _spc: return("spc");
+	case _rc: return("rc");
 	}
 	return("");
 }
@@ -494,6 +502,13 @@ bool FraudAlert::okFilter(sFraudCallInfo *callInfo) {
 		return(false);
 	}
 	if(this->defFilterNumber() && !this->phoneNumberFilter.checkNumber(callInfo->caller_number.c_str())) {
+		return(false);
+	}
+	return(true);
+}
+
+bool FraudAlert::okFilter(sFraudEventInfo *eventInfo) {
+	if(this->defFilterIp() && !this->ipFilter.checkIP(eventInfo->src_ip)) {
 		return(false);
 	}
 	return(true);
@@ -933,6 +948,95 @@ void FraudAlert_d::evCall(sFraudCallInfo *callInfo) {
 	}
 }
 
+FraudAlertInfo_spc::FraudAlertInfo_spc(FraudAlert *alert) 
+ : FraudAlertInfo(alert) {
+}
+
+void FraudAlertInfo_spc::set(unsigned int ip, 
+			     unsigned int count) {
+	this->ip = ip;
+	this->count = count;
+}
+
+string FraudAlertInfo_spc::getString() {
+	ostringstream outStr;
+	outStr << inet_ntostring(ip) << " // " << count;
+	string country_code = geoIP_country->getCountry(htonl(ip));
+	if(!country_code.empty()) {
+		outStr << " // "
+		       << country_code << " // "
+		       << countryCodes->getNameCountry(country_code.c_str());
+	}
+	return(outStr.str());
+}
+
+string FraudAlertInfo_spc::getJson() {
+	JsonExport json;
+	this->setAlertJsonBase(&json);
+	json.add("ip", inet_ntostring(ip));
+	json.add("count", count);
+	string country_code = geoIP_country->getCountry(htonl(ip));
+	if(!country_code.empty()) {
+		json.add("country_code", country_code);
+		json.add("country_name", countryCodes->getNameCountry(country_code.c_str()));
+	}
+	return(json.getJson());
+}
+
+FraudAlert_spc::FraudAlert_spc(unsigned int dbId)
+ : FraudAlert(_spc, dbId) {
+	
+}
+
+void FraudAlert_spc::evEvent(sFraudEventInfo *eventInfo) {
+	map<u_int32_t, sCountItem>::iterator iter = count.find(eventInfo->src_ip);
+	if(iter == count.end()) {
+		count[eventInfo->src_ip] = sCountItem(1);
+	} else {
+		++count[eventInfo->src_ip].count;
+		if(count[eventInfo->src_ip].count >= intervalLimit && 
+		   eventInfo->at - count[eventInfo->src_ip].last_alert_info > 1000000ull) {
+			FraudAlertInfo_spc *alertInfo = new FraudAlertInfo_spc(this);
+			alertInfo->set(eventInfo->src_ip,
+				       count[eventInfo->src_ip].count);
+			this->evAlert(alertInfo);
+			count[eventInfo->src_ip].last_alert_info = eventInfo->at;
+		}
+	}
+	if(!start_interval) {
+		start_interval = eventInfo->at;
+	} else if(eventInfo->at - start_interval > intervalLength * 1000000ull) {
+		count.clear();
+		start_interval = eventInfo->at;
+	}
+}
+
+FraudAlert_rc::FraudAlert_rc(unsigned int dbId)
+ : FraudAlert(_spc, dbId) {
+	
+}
+
+void FraudAlert_rc::evEvent(sFraudEventInfo *eventInfo) {
+	map<u_int32_t, sCountItem>::iterator iter = count.find(eventInfo->src_ip);
+	if(iter == count.end()) {
+		count[eventInfo->src_ip] = sCountItem(1);
+	} else {
+		++count[eventInfo->src_ip].count;
+		if(count[eventInfo->src_ip].count >= intervalLimit && 
+		   eventInfo->at - count[eventInfo->src_ip].last_alert_info > 1000000ull) {
+			FraudAlertInfo_spc *alertInfo = new FraudAlertInfo_spc(this);
+			alertInfo->set(eventInfo->src_ip,
+				       count[eventInfo->src_ip].count);
+			this->evAlert(alertInfo);
+			count[eventInfo->src_ip].last_alert_info = eventInfo->at;
+		}
+	}
+	if(eventInfo->at - start_interval > intervalLength * 1000000ull) {
+		count.clear();
+		start_interval = eventInfo->at;
+	}
+}
+
 
 FraudAlerts::FraudAlerts() {
 	threadPopCallInfo = 0;
@@ -971,6 +1075,12 @@ void FraudAlerts::loadAlerts() {
 			break;
 		case FraudAlert::_d:
 			alert = new FraudAlert_d(dbId);
+			break;
+		case FraudAlert::_spc:
+			alert = new FraudAlert_spc(dbId);
+			break;
+		case FraudAlert::_rc:
+			alert = new FraudAlert_rc(dbId);
 			break;
 		}
 		if(alert) {
@@ -1015,6 +1125,22 @@ void FraudAlerts::endCall(Call *call, u_int64_t at) {
 	callQueue.push(callInfo);
 }
 
+void FraudAlerts::evSipPacket(u_int32_t ip, u_int64_t at) {
+	sFraudEventInfo eventInfo;
+	eventInfo.typeEventInfo = sFraudEventInfo::typeEventInfo_sipPacket;
+	eventInfo.src_ip = ip;
+	eventInfo.at = at;
+	eventQueue.push(eventInfo);
+}
+
+void FraudAlerts::evRegister(u_int32_t ip, u_int64_t at) {
+	sFraudEventInfo eventInfo;
+	eventInfo.typeEventInfo = sFraudEventInfo::typeEventInfo_register;
+	eventInfo.src_ip = ip;
+	eventInfo.at = at;
+	eventQueue.push(eventInfo);
+}
+
 void FraudAlerts::stopPopCallInfoThread(bool wait) {
 	terminatingPopCallInfoThread = true;
 	while(wait && runPopCallInfoThread) {
@@ -1033,6 +1159,7 @@ void FraudAlerts::initPopCallInfoThread() {
 void FraudAlerts::popCallInfoThread() {
 	runPopCallInfoThread = true;
 	while(!terminating || !terminatingPopCallInfoThread) {
+		bool okPop = false;
 		sFraudCallInfo callInfo;
 		if(callQueue.pop(&callInfo)) {
 			this->completeCallInfo_country_code(&callInfo);
@@ -1042,7 +1169,19 @@ void FraudAlerts::popCallInfoThread() {
 				(*iter)->evCall(&callInfo);
 			}
 			unlock_alerts();
-		} else {
+			okPop = true;
+		}
+		sFraudEventInfo eventInfo;
+		if(eventQueue.pop(&eventInfo)) {
+			lock_alerts();
+			vector<FraudAlert*>::iterator iter;
+			for(iter = alerts.begin(); iter != alerts.end(); iter++) {
+				(*iter)->evEvent(&eventInfo);
+			}
+			unlock_alerts();
+			okPop = true;
+		}
+		if(!okPop) {
 			usleep(1000);
 		}
 	}
@@ -1178,11 +1317,11 @@ bool checkFraudTables() {
 		const char *help;
 		const char *emptyHelp;
 	};
-	char *help_gui_loginAdmin = 
+	const char *help_gui_loginAdmin = 
 		"Login into web gui as admin. Login process create missing table.";
-	char *help_gui_loginAdmin_enableFraud =
+	const char *help_gui_loginAdmin_enableFraud =
 		"Login into web gui as admin and enable Fraud in System configuration in menu Setting.";
-	char *help_gui_loginAdmin_loadGeoIPcountry =
+	const char *help_gui_loginAdmin_loadGeoIPcountry =
 		"Login into web gui as admin and load GeoIP country data in menu Setting.";
 	checkTable checkTables[] = {
 		{"alerts", help_gui_loginAdmin, NULL},
@@ -1245,5 +1384,17 @@ void fraudSeenByeCall(Call *call, timeval tv) {
 void fraudEndCall(Call *call, timeval tv) {
 	if(fraudAlerts) {
 		fraudAlerts->endCall(call, tv.tv_sec * 1000000ull + tv.tv_usec);
+	}
+}
+
+void fraudSipPacket(u_int32_t ip, timeval tv) {
+	if(fraudAlerts) {
+		fraudAlerts->evSipPacket(ip, tv.tv_sec * 1000000ull + tv.tv_usec);
+	}
+}
+
+void fraudRegister(u_int32_t ip, timeval tv) {
+	if(fraudAlerts) {
+		fraudAlerts->evRegister(ip, tv.tv_sec * 1000000ull + tv.tv_usec);
 	}
 }

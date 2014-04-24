@@ -1073,6 +1073,11 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 			outStrStat << "thttpCPU[" << setprecision(1) << thttp_cpu << "%] ";
 		}
 	}
+	extern AsyncClose asyncClose;
+	double tac_cpu = asyncClose.getCpuUsagePerc(true);
+	if(tac_cpu >= 0) {
+		outStrStat << "tacCPU[" << setprecision(1) << tac_cpu << "%] ";
+	}
 	long unsigned int rss = this->getRssUsage();
 	if(rss > 0) {
 		outStrStat << "res[" << setprecision(1) << (double)rss/1024/1024 << "MB] ";
