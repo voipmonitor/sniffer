@@ -851,7 +851,7 @@ AsyncClose::AsyncClose() {
 	for(int i = 0; i < AsyncClose_maxPcapTheads + 1; i++) {
 		_sync[i] = 0;
 		threadId[i] = 0;
-		memset(this->threadPstatData[i], 0, sizeof(this->threadPstatData));
+		memset(this->threadPstatData[i], 0, sizeof(this->threadPstatData[i]));
 	}
 }
 
