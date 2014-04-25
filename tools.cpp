@@ -683,7 +683,7 @@ bool PcapDumper::open(const char *fileName, const char *fileNameSpoolRelative, p
 	this->capsize = 0;
 	this->size = 0;
 	string errorString;
-	this->handle = __pcap_dump_open(_handle, /*fileName*/"/123/456",
+	this->handle = __pcap_dump_open(_handle, fileName,
 					useDlt == DLT_LINUX_SLL && opt_convert_dlt_sll_to_en10 ? DLT_EN10MB : useDlt,
 					&errorString);
 	++this->openAttempts;
