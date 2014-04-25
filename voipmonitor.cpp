@@ -293,6 +293,7 @@ int opt_mysqlloadconfig = 1;
 int opt_last_rtp_from_end = 1;
 int opt_pcap_dump_bufflength = 0;
 int opt_pcap_dump_asyncwrite = 0;
+int opt_pcap_dump_zip = 0;
 
 char opt_php_path[1024];
 
@@ -1832,6 +1833,9 @@ int load_config(char *fname) {
 	}
 	if((value = ini.GetValue("general", "pcap_dump_asyncwrite", NULL))) {
 		opt_pcap_dump_asyncwrite = yesno(value);
+	}
+	if((value = ini.GetValue("general", "pcap_dump_zip", NULL))) {
+		opt_pcap_dump_zip = yesno(value);
 	}
 	
 	/*

@@ -48,6 +48,7 @@ extern int verbosity;
 extern int terminating;
 extern int opt_pcap_dump_bufflength;
 extern int opt_pcap_dump_asyncwrite;
+extern int opt_pcap_dump_zip;
 
 
 using namespace std;
@@ -1528,14 +1529,18 @@ void JsonExport::add(const char *name, u_int64_t content) {
 //------------------------------------------------------------------------------
 // pcap_dump_open with set buffer
 
-PcapDumpHandler::PcapDumpHandler(int bufferLength, int enableAsyncWrite) {
+PcapDumpHandler::PcapDumpHandler(int bufferLength, int enableAsyncWrite, int enableZip) {
 	if(bufferLength == -1) {
 		bufferLength = opt_pcap_dump_bufflength;
 	}
 	if(enableAsyncWrite == -1) {
 		enableAsyncWrite = opt_pcap_dump_bufflength > 0 && opt_pcap_dump_asyncwrite;
 	}
+	if(enableZip == -1) {
+		enableZip = opt_pcap_dump_bufflength > 0 && opt_pcap_dump_zip;
+	}
 	this->fh = 0;
+	this->fhz = NULL;
 	this->bufferLength = bufferLength;
 	if(bufferLength) {
 		this->buffer = new char[bufferLength];
@@ -1544,6 +1549,7 @@ PcapDumpHandler::PcapDumpHandler(int bufferLength, int enableAsyncWrite) {
 	}
 	this->useBufferLength = 0;
 	this->enableAsyncWrite = enableAsyncWrite;
+	this->enableZip = enableZip;
 }
 
 PcapDumpHandler::~PcapDumpHandler() {
@@ -1555,19 +1561,29 @@ PcapDumpHandler::~PcapDumpHandler() {
 
 bool PcapDumpHandler::open(const char *fileName) {
 	this->fileName = fileName;
-	this->fh = ::open(fileName, O_WRONLY | O_CREAT | O_TRUNC, S_IWRITE | S_IREAD);
-	if(this->fh < 0) {
+	if(this->enableZip) {
+		this->fhz = gzopen(fileName, "wb");
+	} else {
+		this->fh = ::open(fileName, O_WRONLY | O_CREAT | O_TRUNC, S_IWRITE | S_IREAD);
+	}
+	if(this->okHandle()) {
+		return(true);
+	} else {
 		this->setError();
 		return(false);
-	} else {
-		return(true);
 	}
 }
 
 void PcapDumpHandler::close() {
-	if(this->fh > 0) {
+	if(this->okHandle()) {
 		this->flushBuffer(true);
-		::close(this->fh);
+		if(this->enableZip) {
+			gzclose(this->fhz);
+			this->fhz = NULL;
+		} else {
+			::close(this->fh);
+			this->fh = 0;
+		}
 	}
 }
 
@@ -1606,11 +1622,13 @@ bool PcapDumpHandler::writeToFile(char *data, int length, bool force) {
 }
 
 bool PcapDumpHandler::_writeToFile(char *data, int length) {
-	if(this->fh <= 0) {
+	if(!this->okHandle()) {
 		return(false);
 	}
-	int rsltWrite = ::write(this->fh, data, length);
-	if(rsltWrite < 0) {
+	int rsltWrite = this->enableZip ?
+			 gzwrite(this->fhz, data, length) :
+			 ::write(this->fh, data, length);
+	if(rsltWrite <= 0) {
 		this->setError();
 		return(false);
 	} else {

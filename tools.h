@@ -156,7 +156,7 @@ inline unsigned long long getTimeNS() {
 
 class PcapDumpHandler {
 public:
-	PcapDumpHandler(int bufferLength = -1, int enableAsyncWrite = -1);
+	PcapDumpHandler(int bufferLength = -1, int enableAsyncWrite = -1, int enableZip = -1);
 	~PcapDumpHandler();
 	bool open(const char *fileName);
 	void close();
@@ -170,14 +170,19 @@ public:
 	bool writeToFile(char *data, int length, bool force = false);
 	bool _writeToFile(char *data, int length);
 	void setError();
+	bool okHandle() {
+		return(enableZip ? fhz != NULL : fh > 0);
+	}
 public:
 	string fileName;
 	int fh;
+	gzFile_s *fhz;
 	string error;
 	int bufferLength;
 	char *buffer;
 	int useBufferLength;
 	bool enableAsyncWrite;
+	bool enableZip;
 };
 
 pcap_dumper_t *__pcap_dump_open(pcap_t *p, const char *fname, int linktype);
