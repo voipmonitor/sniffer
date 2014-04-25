@@ -187,10 +187,10 @@ public:
 	static u_int64_t scounter;
 };
 
-pcap_dumper_t *__pcap_dump_open(pcap_t *p, const char *fname, int linktype);
+pcap_dumper_t *__pcap_dump_open(pcap_t *p, const char *fname, int linktype, string *errorString = NULL);
 void __pcap_dump(u_char *user, const struct pcap_pkthdr *h, const u_char *sp);
 void __pcap_dump_close(pcap_dumper_t *p);
-char *__pcap_geterr(pcap_t *p, pcap_dumper_t *pd);
+char *__pcap_geterr(pcap_t *p, pcap_dumper_t *pd = NULL);
 
 class PcapDumper {
 public:

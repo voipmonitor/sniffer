@@ -682,12 +682,17 @@ bool PcapDumper::open(const char *fileName, const char *fileNameSpoolRelative, p
 			   useHandle;
 	this->capsize = 0;
 	this->size = 0;
-	this->handle = __pcap_dump_open(_handle, fileName,
-					useDlt == DLT_LINUX_SLL && opt_convert_dlt_sll_to_en10 ? DLT_EN10MB : useDlt);
+	string errorString;
+	this->handle = __pcap_dump_open(_handle, /*fileName*/"/123/456",
+					useDlt == DLT_LINUX_SLL && opt_convert_dlt_sll_to_en10 ? DLT_EN10MB : useDlt,
+					&errorString);
 	++this->openAttempts;
 	if(!this->handle) {
 		if(this->type != rtp || !this->openError) {
-			syslog(LOG_NOTICE, "pcapdumper: error open dump handle to file %s - %s", fileName, __pcap_geterr(_handle, this->handle));
+			syslog(LOG_NOTICE, "pcapdumper: error open dump handle to file %s - %s", fileName, 
+			       opt_pcap_dump_bufflength ?
+				errorString.c_str() : 
+				__pcap_geterr(_handle));
 		}
 		this->openError = true;
 	}
@@ -1648,9 +1653,7 @@ bool PcapDumpHandler::_writeToFile(char *data, int length) {
 
 void PcapDumpHandler::setError() {
 	if(errno) {
-		char buffError[4092];
-		strerror_r(errno, buffError, 4092);
-		this->error = buffError;
+		this->error = strerror(errno);
 	}
 }
 
@@ -1659,7 +1662,7 @@ u_int64_t PcapDumpHandler::scounter = 0;
 #define TCPDUMP_MAGIC		0xa1b2c3d4
 #define NSEC_TCPDUMP_MAGIC	0xa1b23c4d
 
-pcap_dumper_t *__pcap_dump_open(pcap_t *p, const char *fname, int linktype) {
+pcap_dumper_t *__pcap_dump_open(pcap_t *p, const char *fname, int linktype, string *errorString) {
 	if(opt_pcap_dump_bufflength) {
 		PcapDumpHandler *handler = new PcapDumpHandler(-1);
 		if(handler->open(fname)) {
@@ -1681,6 +1684,11 @@ pcap_dumper_t *__pcap_dump_open(pcap_t *p, const char *fname, int linktype) {
 			handler->write((char *)&hdr, sizeof(hdr));
 			return((pcap_dumper_t*)handler);
 		} else {
+			handler->setError();
+			if(errorString) {
+				*errorString = handler->error;
+			}
+			delete handler;
 			return(NULL);
 		}
 	} else {
@@ -1723,7 +1731,7 @@ void __pcap_dump_close(pcap_dumper_t *p) {
 }
 
 char *__pcap_geterr(pcap_t *p, pcap_dumper_t *pd) {
-	if(opt_pcap_dump_bufflength) {
+	if(opt_pcap_dump_bufflength && pd) {
 		return((char*)((PcapDumpHandler*)pd)->error.c_str());
 	} else {
 		return(pcap_geterr(p));
