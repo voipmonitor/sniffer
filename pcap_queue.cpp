@@ -2394,7 +2394,7 @@ void* PcapQueue_readFromInterface::threadFunction(void *arg, unsigned int arg2) 
 						sleep(1);
 						calltable->cleanup(0);
 						extern AsyncClose asyncClose;
-						asyncClose.closeAll();
+						asyncClose.processAll();
 						this->pcapStat();
 						terminating = 1;
 					}

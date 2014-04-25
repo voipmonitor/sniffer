@@ -47,6 +47,7 @@ extern char mac[32];
 extern int verbosity;
 extern int terminating;
 extern int opt_pcap_dump_bufflength;
+extern int opt_pcap_dump_asyncwrite;
 
 
 using namespace std;
@@ -841,7 +842,7 @@ void AsyncClose::AsyncCloseItem::addtofilesqueue() {
 
 void *AsyncClose_process(void *asyncClose_addr) {
 	AsyncClose *asyncClose = (AsyncClose*)asyncClose_addr;
-	asyncClose->closeTask();
+	asyncClose->processTask();
 	return(NULL);
 }
 
@@ -855,21 +856,21 @@ void AsyncClose::startThread() {
 	pthread_create(&this->thread, NULL, AsyncClose_process, this);
 }
 
-void AsyncClose::closeTask() {
+void AsyncClose::processTask() {
 	this->threadId = get_unix_tid();
 	do {
-		closeAll();
+		processAll();
 		usleep(10000);
 	} while(!terminating);
 }
 
-void AsyncClose::closeAll() {
+void AsyncClose::processAll() {
 	while(true) {
 		lock();
 		if(q.size()) {
 			AsyncCloseItem *item = q.front();
 			q.pop();
-			item->close();
+			item->process();
 			delete item;
 			unlock();
 		} else {
@@ -1527,9 +1528,12 @@ void JsonExport::add(const char *name, u_int64_t content) {
 //------------------------------------------------------------------------------
 // pcap_dump_open with set buffer
 
-PcapDumpHandler::PcapDumpHandler(int bufferLength) {
+PcapDumpHandler::PcapDumpHandler(int bufferLength, int enableAsyncWrite) {
 	if(bufferLength == -1) {
 		bufferLength = opt_pcap_dump_bufflength;
+	}
+	if(enableAsyncWrite == -1) {
+		enableAsyncWrite = opt_pcap_dump_bufflength > 0 && opt_pcap_dump_asyncwrite;
 	}
 	this->fh = 0;
 	this->bufferLength = bufferLength;
@@ -1539,6 +1543,7 @@ PcapDumpHandler::PcapDumpHandler(int bufferLength) {
 		this->buffer = NULL;
 	}
 	this->useBufferLength = 0;
+	this->enableAsyncWrite = enableAsyncWrite;
 }
 
 PcapDumpHandler::~PcapDumpHandler() {
@@ -1561,16 +1566,16 @@ bool PcapDumpHandler::open(const char *fileName) {
 
 void PcapDumpHandler::close() {
 	if(this->fh > 0) {
-		this->flushBuffer();
+		this->flushBuffer(true);
 		::close(this->fh);
 	}
 }
 
-bool PcapDumpHandler::flushBuffer() {
+bool PcapDumpHandler::flushBuffer(bool force) {
 	if(!this->buffer || !this->useBufferLength) {
 		return(true);
 	}
-	bool rsltWrite = this->writeToFile(this->buffer, this->useBufferLength);
+	bool rsltWrite = this->writeToFile(this->buffer, this->useBufferLength, force);
 	this->useBufferLength = 0;
 	return(rsltWrite);
 }
@@ -1591,7 +1596,16 @@ bool PcapDumpHandler::writeToBuffer(char *data, int length) {
 	}
 }
 
-bool PcapDumpHandler::writeToFile(char *data, int length) {
+bool PcapDumpHandler::writeToFile(char *data, int length, bool force) {
+	if(enableAsyncWrite && !force) {
+		asyncClose.addWrite((pcap_dumper_t*)this, data, length);
+		return(true);
+	} else {
+		return(this->_writeToFile(data, length));
+	}
+}
+
+bool PcapDumpHandler::_writeToFile(char *data, int length) {
 	if(this->fh <= 0) {
 		return(false);
 	}

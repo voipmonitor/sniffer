@@ -156,7 +156,7 @@ inline unsigned long long getTimeNS() {
 
 class PcapDumpHandler {
 public:
-	PcapDumpHandler(int bufferLength = -1);
+	PcapDumpHandler(int bufferLength = -1, int enableAsyncWrite = -1);
 	~PcapDumpHandler();
 	bool open(const char *fileName);
 	void close();
@@ -165,9 +165,10 @@ public:
 			this->writeToBuffer(data, length) :
 			this->writeToFile(data, length));
 	}
-	bool flushBuffer();
+	bool flushBuffer(bool force = false);
 	bool writeToBuffer(char *data, int length);
-	bool writeToFile(char *data, int length);
+	bool writeToFile(char *data, int length, bool force = false);
+	bool _writeToFile(char *data, int length);
 	void setError();
 public:
 	string fileName;
@@ -176,6 +177,7 @@ public:
 	int bufferLength;
 	char *buffer;
 	int useBufferLength;
+	bool enableAsyncWrite;
 };
 
 pcap_dumper_t *__pcap_dump_open(pcap_t *p, const char *fname, int linktype);
@@ -242,7 +244,7 @@ public:
 		AsyncCloseItem(Call *call = NULL, const char *file = NULL,
 			       const char *column = NULL, long long writeBytes = 0);
 		virtual ~AsyncCloseItem() {}
-		virtual void close() = 0;
+		virtual void process() = 0;
 	protected:
 		void addtofilesqueue();
 	protected:
@@ -260,13 +262,33 @@ public:
 		 : AsyncCloseItem(call, file, column, writeBytes) {
 			this->handle = handle;
 		}
-		void close() {
+		void process() {
 			__pcap_dump_close(handle);
 			this->addtofilesqueue();
 		}
 	private:
 		pcap_dumper_t *handle;
 		char *buffer;
+	};
+	class AsyncWriteItem_pcap : public AsyncCloseItem {
+	public:
+		AsyncWriteItem_pcap(pcap_dumper_t *handle,
+				    char *data, int length) {
+			this->handle = handle;
+			this->data = new char[length];
+			memcpy(this->data, data, length);
+			this->length = length;
+		}
+		~AsyncWriteItem_pcap() {
+			delete [] data;
+		}
+		void process() {
+			((PcapDumpHandler*)handle)->_writeToFile(data, length);
+		}
+	private:
+		pcap_dumper_t *handle;
+		char *data;
+		int length;
 	};
 	class AsyncCloseItem_ofstream  : public AsyncCloseItem{
 	public:
@@ -276,7 +298,7 @@ public:
 		 : AsyncCloseItem(call, file, column, writeBytes) {
 			this->stream = stream;
 		}
-		void close() {
+		void process() {
 			stream->close();
 			delete stream;
 			this->addtofilesqueue();
@@ -292,7 +314,7 @@ public:
 		 : AsyncCloseItem(call, file, column, writeBytes) {
 			this->stream = stream;
 		}
-		void close() {
+		void process() {
 			stream->close();
 			delete stream;
 			this->addtofilesqueue();
@@ -307,6 +329,10 @@ public:
 		 Call *call = NULL, const char *file = NULL,
 		 const char *column = NULL, long long writeBytes = 0) {
 		add(new AsyncCloseItem_pcap(handle, call, file, column, writeBytes));
+	}
+	void addWrite(pcap_dumper_t *handle,
+		      char *data, int length) {
+		add(new AsyncWriteItem_pcap(handle, data, length));
 	}
 	void add(ofstream *stream,
 		 Call *call = NULL, const char *file = NULL,
@@ -323,8 +349,8 @@ public:
 		q.push(item);
 		unlock();
 	}
-	void closeTask();
-	void closeAll();
+	void processTask();
+	void processAll();
 	void preparePstatData();
 	double getCpuUsagePerc(bool preparePstatData = false);
 private:

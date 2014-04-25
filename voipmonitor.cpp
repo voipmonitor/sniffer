@@ -292,6 +292,7 @@ int opt_autocleanmingb = 5;
 int opt_mysqlloadconfig = 1;
 int opt_last_rtp_from_end = 1;
 int opt_pcap_dump_bufflength = 0;
+int opt_pcap_dump_asyncwrite = 0;
 
 char opt_php_path[1024];
 
@@ -1829,6 +1830,9 @@ int load_config(char *fname) {
 	if((value = ini.GetValue("general", "pcap_dump_bufflength", NULL))) {
 		opt_pcap_dump_bufflength = atoi(value);
 	}
+	if((value = ini.GetValue("general", "pcap_dump_asyncwrite", NULL))) {
+		opt_pcap_dump_asyncwrite = yesno(value);
+	}
 	
 	/*
 	
@@ -3363,7 +3367,7 @@ int main(int argc, char *argv[]) {
 	Call *call;
 	calltable->cleanup(0);
 	extern AsyncClose asyncClose;
-	asyncClose.closeAll();
+	asyncClose.processAll();
 	if(opt_read_from_file && !opt_nocdr) {
 		for(int i = 0; i < 20; i++) {
 			if(calls_cdr_save_counter > 0 || calls_message_save_counter > 0) {
@@ -3514,7 +3518,7 @@ int main(int argc, char *argv[]) {
 	ipfrag_prune(0, 1);
 	freeMemIpacc();
 	delete regfailedcache;
-	asyncClose.closeAll();
+	asyncClose.processAll();
 //	mysql_library_end();
 
 	if(sqlStore) {
