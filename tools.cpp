@@ -1549,7 +1549,7 @@ PcapDumpHandler::PcapDumpHandler(int bufferLength, int enableAsyncWrite, int ena
 		enableZip = opt_pcap_dump_bufflength > 0 && opt_pcap_dump_zip;
 	}
 	this->fh = 0;
-	this->fhz = NULL;
+	this->fhz = 0;
 	this->bufferLength = bufferLength;
 	if(bufferLength) {
 		this->buffer = new char[bufferLength];
@@ -1589,7 +1589,7 @@ void PcapDumpHandler::close() {
 		this->flushBuffer(true);
 		if(this->enableZip) {
 			gzclose(this->fhz);
-			this->fhz = NULL;
+			this->fhz = 0;
 		} else {
 			::close(this->fh);
 			this->fh = 0;

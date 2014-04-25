@@ -171,12 +171,12 @@ public:
 	bool _writeToFile(char *data, int length);
 	void setError();
 	bool okHandle() {
-		return(enableZip ? fhz != NULL : fh > 0);
+		return(enableZip ? fhz > 0 : fh > 0);
 	}
 public:
 	string fileName;
 	int fh;
-	gzFile_s *fhz;
+	gzFile fhz;
 	string error;
 	int bufferLength;
 	char *buffer;
