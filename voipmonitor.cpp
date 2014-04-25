@@ -294,6 +294,7 @@ int opt_last_rtp_from_end = 1;
 int opt_pcap_dump_bufflength = 0;
 int opt_pcap_dump_asyncwrite = 0;
 int opt_pcap_dump_zip = 0;
+int opt_pcap_dump_writethreads = 2;
 
 char opt_php_path[1024];
 
@@ -1837,6 +1838,9 @@ int load_config(char *fname) {
 	if((value = ini.GetValue("general", "pcap_dump_zip", NULL))) {
 		opt_pcap_dump_zip = yesno(value);
 	}
+	if((value = ini.GetValue("general", "pcap_dump_writethreads", NULL))) {
+		opt_pcap_dump_writethreads = atoi(value);
+	}
 	
 	/*
 	
@@ -3028,7 +3032,7 @@ int main(int argc, char *argv[]) {
 	}
 	
 	extern AsyncClose asyncClose;
-	asyncClose.startThread();
+	asyncClose.startThreads(opt_pcap_dump_writethreads);
 	
 	if(isSqlDriver("mysql") &&
 	   !(opt_pcap_queue && 

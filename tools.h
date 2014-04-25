@@ -183,6 +183,8 @@ public:
 	int useBufferLength;
 	bool enableAsyncWrite;
 	bool enableZip;
+	u_int64_t counter;
+	static u_int64_t scounter;
 };
 
 pcap_dumper_t *__pcap_dump_open(pcap_t *p, const char *fname, int linktype);
@@ -241,6 +243,8 @@ private:
 	ofstream *stream;
 	ogzstream *streamgz;
 };
+
+#define AsyncClose_maxPcapTheads 10
 
 class AsyncClose {
 public:
@@ -327,52 +331,76 @@ public:
 	private:
 		ogzstream *stream;
 	};
+	struct StartThreadData {
+		int threadIndex;
+		AsyncClose *asyncClose;
+	};
 public:
 	AsyncClose();
-	void startThread();
+	void startThreads(int countPcapThreads = 2);
 	void add(pcap_dumper_t *handle,
 		 Call *call = NULL, const char *file = NULL,
 		 const char *column = NULL, long long writeBytes = 0) {
-		add(new AsyncCloseItem_pcap(handle, call, file, column, writeBytes));
+		extern int opt_pcap_dump_bufflength;
+		add(new AsyncCloseItem_pcap(handle, call, file, column, writeBytes),
+		    opt_pcap_dump_bufflength ?
+		     ((((PcapDumpHandler*)handle)->counter % countPcapThreads) + 1) :
+		     1);
 	}
 	void addWrite(pcap_dumper_t *handle,
 		      char *data, int length) {
-		add(new AsyncWriteItem_pcap(handle, data, length));
+		extern int opt_pcap_dump_bufflength;
+		add(new AsyncWriteItem_pcap(handle, data, length),
+		    opt_pcap_dump_bufflength ?
+		     ((((PcapDumpHandler*)handle)->counter % countPcapThreads) + 1) :
+		     1);
 	}
 	void add(ofstream *stream,
 		 Call *call = NULL, const char *file = NULL,
 		 const char *column = NULL, long long writeBytes = 0) {
-		add(new AsyncCloseItem_ofstream(stream, call, file, column, writeBytes));
+		add(new AsyncCloseItem_ofstream(stream, call, file, column, writeBytes),
+		    0);
 	}
 	void add(ogzstream *stream,
 		 Call *call = NULL, const char *file = NULL,
 		 const char *column = NULL, long long writeBytes = 0) {
-		add(new AsyncCloseItem_ogzstream(stream, call, file, column, writeBytes));
+		add(new AsyncCloseItem_ogzstream(stream, call, file, column, writeBytes),
+		    0);
 	}
-	void add(AsyncCloseItem *item) {
-		lock();
-		q.push(item);
-		unlock();
+	void add(AsyncCloseItem *item, int threadIndex) {
+		lock(threadIndex);
+		q[threadIndex].push(item);
+		unlock(threadIndex);
 	}
-	void processTask();
-	void processAll();
-	void preparePstatData();
-	double getCpuUsagePerc(bool preparePstatData = false);
+	void processTask(int threadIndex);
+	void processAll(int threadIndex);
+	void processAll() {
+		for(int i = 0; i < getCountThreads(); i++) {
+			processAll(i);
+		}
+	}
+	void preparePstatData(int threadIndex);
+	double getCpuUsagePerc(int threadIndex, bool preparePstatData = false);
+	int getCountThreads() {
+		return(countPcapThreads + 1);
+	}
 private:
-	void lock() {
-		while(__sync_lock_test_and_set(&this->_sync, 1)) {
+	void lock(int threadIndex) {
+		while(__sync_lock_test_and_set(&this->_sync[threadIndex], 1)) {
 			usleep(10);
 		}
 	}
-	void unlock() {
-		__sync_lock_release(&this->_sync);
+	void unlock(int threadIndex) {
+		__sync_lock_release(&this->_sync[threadIndex]);
 	}
 private:
-	queue<AsyncCloseItem*> q;
-	pthread_t thread;
-	volatile int _sync;
-	int threadId;
-	pstat_data threadPstatData[2];
+	int countPcapThreads;
+	queue<AsyncCloseItem*> q[AsyncClose_maxPcapTheads + 1];
+	pthread_t thread[AsyncClose_maxPcapTheads + 1];
+	volatile int _sync[AsyncClose_maxPcapTheads + 1];
+	int threadId[AsyncClose_maxPcapTheads + 1];
+	pstat_data threadPstatData[AsyncClose_maxPcapTheads + 1][2];
+	StartThreadData startThreadData[AsyncClose_maxPcapTheads + 1];
 };
 
 class RestartUpgrade {

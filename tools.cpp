@@ -841,64 +841,73 @@ void AsyncClose::AsyncCloseItem::addtofilesqueue() {
 	}
 }
 
-void *AsyncClose_process(void *asyncClose_addr) {
-	AsyncClose *asyncClose = (AsyncClose*)asyncClose_addr;
-	asyncClose->processTask();
+void *AsyncClose_process(void *_startThreadData) {
+	AsyncClose::StartThreadData *startThreadData = (AsyncClose::StartThreadData*)_startThreadData;
+	startThreadData->asyncClose->processTask(startThreadData->threadIndex);
 	return(NULL);
 }
 
 AsyncClose::AsyncClose() {
-	_sync = 0;
-	threadId = 0;
-	memset(this->threadPstatData, 0, sizeof(this->threadPstatData));
+	for(int i = 0; i < AsyncClose_maxPcapTheads + 1; i++) {
+		_sync[i] = 0;
+		threadId[i] = 0;
+		memset(this->threadPstatData[i], 0, sizeof(this->threadPstatData));
+	}
 }
 
-void AsyncClose::startThread() {
-	pthread_create(&this->thread, NULL, AsyncClose_process, this);
+void AsyncClose::startThreads(int countPcapThreads) {
+	this->countPcapThreads = opt_pcap_dump_bufflength ?
+				  min(AsyncClose_maxPcapTheads, countPcapThreads) :
+				  1;
+	for(int i = 0; i < this->countPcapThreads + 1; i++) {
+		startThreadData[i].threadIndex = i;
+		startThreadData[i].asyncClose = this;
+		pthread_create(&this->thread[i], NULL, AsyncClose_process, &startThreadData[i]);
+	}
 }
 
-void AsyncClose::processTask() {
-	this->threadId = get_unix_tid();
+void AsyncClose::processTask(int threadIndex) {
+	this->threadId[threadIndex] = get_unix_tid();
 	do {
-		processAll();
+		processAll(threadIndex);
 		usleep(10000);
 	} while(!terminating);
 }
 
-void AsyncClose::processAll() {
+void AsyncClose::processAll(int threadIndex) {
 	while(true) {
-		lock();
-		if(q.size()) {
-			AsyncCloseItem *item = q.front();
-			q.pop();
+		lock(threadIndex);
+		if(q[threadIndex].size()) {
+			AsyncCloseItem *item = q[threadIndex].front();
+			q[threadIndex].pop();
 			item->process();
 			delete item;
-			unlock();
+			unlock(threadIndex);
 		} else {
-			unlock();
+			unlock(threadIndex);
 			break;
 		}
 	}
 }
 
-void AsyncClose::preparePstatData() {
-	if(this->threadId) {
-		if(this->threadPstatData[0].cpu_total_time) {
-			this->threadPstatData[1] = this->threadPstatData[0];
+void AsyncClose::preparePstatData(int threadIndex) {
+	if(this->threadId[threadIndex]) {
+		if(this->threadPstatData[threadIndex][0].cpu_total_time) {
+			this->threadPstatData[threadIndex][1] = this->threadPstatData[threadIndex][0];
 		}
-		pstat_get_data(this->threadId, this->threadPstatData);
+		pstat_get_data(this->threadId[threadIndex], this->threadPstatData[threadIndex]);
 	}
 }
 
-double AsyncClose::getCpuUsagePerc(bool preparePstatData) {
+double AsyncClose::getCpuUsagePerc(int threadIndex, bool preparePstatData) {
 	if(preparePstatData) {
-		this->preparePstatData();
+		this->preparePstatData(threadIndex);
 	}
-	if(this->threadId) {
+	if(this->threadId[threadIndex]) {
 		double ucpu_usage, scpu_usage;
-		if(this->threadPstatData[0].cpu_total_time && this->threadPstatData[1].cpu_total_time) {
+		if(this->threadPstatData[threadIndex][0].cpu_total_time && this->threadPstatData[threadIndex][1].cpu_total_time) {
 			pstat_calc_cpu_usage_pct(
-				&this->threadPstatData[0], &this->threadPstatData[1],
+				&this->threadPstatData[threadIndex][0], &this->threadPstatData[threadIndex][1],
 				&ucpu_usage, &scpu_usage);
 			return(ucpu_usage + scpu_usage);
 		}
@@ -1550,6 +1559,7 @@ PcapDumpHandler::PcapDumpHandler(int bufferLength, int enableAsyncWrite, int ena
 	this->useBufferLength = 0;
 	this->enableAsyncWrite = enableAsyncWrite;
 	this->enableZip = enableZip;
+	this->scounter = ++counter;
 }
 
 PcapDumpHandler::~PcapDumpHandler() {
@@ -1643,6 +1653,8 @@ void PcapDumpHandler::setError() {
 		this->error = buffError;
 	}
 }
+
+u_int64_t PcapDumpHandler::scounter = 0;
 
 #define TCPDUMP_MAGIC		0xa1b2c3d4
 #define NSEC_TCPDUMP_MAGIC	0xa1b23c4d
