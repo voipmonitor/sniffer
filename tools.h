@@ -12,7 +12,6 @@
 #include <ctime>
 #include <limits.h>
 #include <list>
-
 #include <sys/types.h>
 #include <pcap.h>
 
@@ -155,6 +154,35 @@ inline unsigned long long getTimeNS() {
     return(time.tv_sec * 1000000000ull + time.tv_nsec);
 }
 
+class PcapDumpHandler {
+public:
+	PcapDumpHandler(int bufferLength = -1);
+	~PcapDumpHandler();
+	bool open(const char *fileName);
+	void close();
+	bool write(char *data, int length) {
+		return(this->buffer ?
+			this->writeToBuffer(data, length) :
+			this->writeToFile(data, length));
+	}
+	bool flushBuffer();
+	bool writeToBuffer(char *data, int length);
+	bool writeToFile(char *data, int length);
+	void setError();
+public:
+	string fileName;
+	int fh;
+	string error;
+	int bufferLength;
+	char *buffer;
+	int useBufferLength;
+};
+
+pcap_dumper_t *__pcap_dump_open(pcap_t *p, const char *fname, int linktype);
+void __pcap_dump(u_char *user, const struct pcap_pkthdr *h, const u_char *sp);
+void __pcap_dump_close(pcap_dumper_t *p);
+char *__pcap_geterr(pcap_t *p, pcap_dumper_t *pd);
+
 class PcapDumper {
 public:
 	enum eTypePcapDump {
@@ -180,7 +208,6 @@ private:
 	u_int64_t capsize;
 	u_int64_t size;
 	pcap_dumper_t *handle;
-	char *buffer;
 	bool openError;
 	int openAttempts;
 };
@@ -227,19 +254,14 @@ public:
 	};
 	class AsyncCloseItem_pcap : public AsyncCloseItem {
 	public:
-		AsyncCloseItem_pcap(pcap_dumper_t *handle, char *buffer,
+		AsyncCloseItem_pcap(pcap_dumper_t *handle,
 				    Call *call = NULL, const char *file = NULL,
 				    const char *column = NULL, long long writeBytes = 0)
 		 : AsyncCloseItem(call, file, column, writeBytes) {
 			this->handle = handle;
-			this->buffer = buffer;
 		}
 		void close() {
-			pcap_dump_flush(handle);
-			pcap_dump_close(handle);
-			if(buffer) {
-				delete [] buffer;
-			}
+			__pcap_dump_close(handle);
 			this->addtofilesqueue();
 		}
 	private:
@@ -281,10 +303,10 @@ public:
 public:
 	AsyncClose();
 	void startThread();
-	void add(pcap_dumper_t *handle, char *buffer,
+	void add(pcap_dumper_t *handle,
 		 Call *call = NULL, const char *file = NULL,
 		 const char *column = NULL, long long writeBytes = 0) {
-		add(new AsyncCloseItem_pcap(handle, buffer, call, file, column, writeBytes));
+		add(new AsyncCloseItem_pcap(handle, call, file, column, writeBytes));
 	}
 	void add(ofstream *stream,
 		 Call *call = NULL, const char *file = NULL,

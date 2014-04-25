@@ -650,7 +650,6 @@ PcapDumper::PcapDumper(eTypePcapDump type, class Call *call, bool updateFilesQue
 	this->capsize = 0;
 	this->size = 0;
 	this->handle = NULL;
-	this->buffer = NULL;
 	this->openError = false;
 	this->openAttempts = 0;
 }
@@ -660,9 +659,6 @@ PcapDumper::~PcapDumper() {
 		this->close(this->updateFilesQueueAtClose);
 	}
 }
-
-pcap_dumper_t *
-__pcap_dump_open(pcap_t *p, const char *fname, int linktype, char *buffer, int bufferLength);
 
 bool PcapDumper::open(const char *fileName, const char *fileNameSpoolRelative, pcap_t *useHandle, int useDlt) {
 	if(this->type == rtp && this->openAttempts >= 10) {
@@ -684,18 +680,12 @@ bool PcapDumper::open(const char *fileName, const char *fileNameSpoolRelative, p
 			   useHandle;
 	this->capsize = 0;
 	this->size = 0;
-	if(opt_pcap_dump_bufflength) {
-		this->buffer = new char[opt_pcap_dump_bufflength];
-		this->handle = __pcap_dump_open(_handle, fileName,
-						useDlt == DLT_LINUX_SLL && opt_convert_dlt_sll_to_en10 ? DLT_EN10MB : useDlt,
-						this->buffer, opt_pcap_dump_bufflength);
-	} else {
-		this->handle = pcap_dump_open(_handle, fileName);
-	}
+	this->handle = __pcap_dump_open(_handle, fileName,
+					useDlt == DLT_LINUX_SLL && opt_convert_dlt_sll_to_en10 ? DLT_EN10MB : useDlt);
 	++this->openAttempts;
 	if(!this->handle) {
 		if(this->type != rtp || !this->openError) {
-			syslog(LOG_NOTICE, "pcapdumper: error open dump handle to file %s - %s", fileName, pcap_geterr(_handle));
+			syslog(LOG_NOTICE, "pcapdumper: error open dump handle to file %s - %s", fileName, __pcap_geterr(_handle, this->handle));
 		}
 		this->openError = true;
 	}
@@ -711,7 +701,7 @@ void PcapDumper::dump(pcap_pkthdr* header, const u_char *packet) {
 	extern unsigned int opt_maxpcapsize_mb;
 	if(this->handle && 
 	   (!opt_maxpcapsize_mb || this->capsize < opt_maxpcapsize_mb * 1024 * 1024)) {
-		pcap_dump((u_char*)this->handle, header, packet);
+		__pcap_dump((u_char*)this->handle, header, packet);
 		extern int opt_packetbuffered;
 		if(opt_packetbuffered) {
 			pcap_dump_flush(this->handle);
@@ -724,14 +714,13 @@ void PcapDumper::dump(pcap_pkthdr* header, const u_char *packet) {
 void PcapDumper::close(bool updateFilesQueue) {
 	if(this->handle) {
 		if(updateFilesQueue && this->call) {
-			asyncClose.add(this->handle, this->buffer,
-				       this->call,
+			asyncClose.add(this->handle, this->call,
 				       this->fileNameSpoolRelative.c_str(), 
 				       type == rtp ? "rtpsize" : 
 				       this->call->type == REGISTER ? "regsize" : "sipsize",
 				       0/*this->capsize + PCAP_DUMPER_HEADER_SIZE ignore size counter - header->capsize can contain -1*/);
 		} else {
-			asyncClose.add(this->handle, this->buffer);
+			asyncClose.add(this->handle);
 		}
 		this->handle = NULL;
 	}
@@ -1538,89 +1527,161 @@ void JsonExport::add(const char *name, u_int64_t content) {
 //------------------------------------------------------------------------------
 // pcap_dump_open with set buffer
 
+PcapDumpHandler::PcapDumpHandler(int bufferLength) {
+	if(bufferLength == -1) {
+		bufferLength = opt_pcap_dump_bufflength;
+	}
+	this->fh = 0;
+	this->bufferLength = bufferLength;
+	if(bufferLength) {
+		this->buffer = new char[bufferLength];
+	} else {
+		this->buffer = NULL;
+	}
+	this->useBufferLength = 0;
+}
+
+PcapDumpHandler::~PcapDumpHandler() {
+	this->close();
+	if(this->buffer) {
+		delete [] this->buffer;
+	}
+}
+
+bool PcapDumpHandler::open(const char *fileName) {
+	this->fileName = fileName;
+	this->fh = ::open(fileName, O_WRONLY | O_CREAT | O_TRUNC, S_IWRITE | S_IREAD);
+	if(this->fh < 0) {
+		this->setError();
+		return(false);
+	} else {
+		return(true);
+	}
+}
+
+void PcapDumpHandler::close() {
+	if(this->fh > 0) {
+		this->flushBuffer();
+		::close(this->fh);
+	}
+}
+
+bool PcapDumpHandler::flushBuffer() {
+	if(!this->buffer || !this->useBufferLength) {
+		return(true);
+	}
+	bool rsltWrite = this->writeToFile(this->buffer, this->useBufferLength);
+	this->useBufferLength = 0;
+	return(rsltWrite);
+}
+
+bool PcapDumpHandler::writeToBuffer(char *data, int length) {
+	if(!this->buffer) {
+		return(false);
+	}
+	if(this->useBufferLength && this->useBufferLength + length > this->bufferLength) {
+		flushBuffer();
+	}
+	if(length <= this->bufferLength) {
+		memcpy(this->buffer + this->useBufferLength, data, length);
+		this->useBufferLength += length;
+		return(true);
+	} else {
+		return(this->writeToFile(data, length));
+	}
+}
+
+bool PcapDumpHandler::writeToFile(char *data, int length) {
+	if(this->fh <= 0) {
+		return(false);
+	}
+	int rsltWrite = ::write(this->fh, data, length);
+	if(rsltWrite < 0) {
+		this->setError();
+		return(false);
+	} else {
+		return(true);
+	}
+}
+
+void PcapDumpHandler::setError() {
+	if(errno) {
+		char buffError[4092];
+		strerror_r(errno, buffError, 4092);
+		this->error = buffError;
+	}
+}
 
 #define TCPDUMP_MAGIC		0xa1b2c3d4
 #define NSEC_TCPDUMP_MAGIC	0xa1b23c4d
 
-static int
-__sf_write_header(pcap_t *p, FILE *fp, int linktype)
-{
-	struct pcap_file_header hdr;
-	
-	/****
-	hdr.magic = p->opt.tstamp_precision == PCAP_TSTAMP_PRECISION_NANO ? NSEC_TCPDUMP_MAGIC : TCPDUMP_MAGIC;
-	****/
-	hdr.magic = NSEC_TCPDUMP_MAGIC;
-	hdr.version_major = PCAP_VERSION_MAJOR;
-	hdr.version_minor = PCAP_VERSION_MINOR;
-
-	/****
-	hdr.thiszone = thiszone;
-	hdr.snaplen = snaplen;
-	****/
-	hdr.thiszone = 0;
-	hdr.snaplen = 0;
-	hdr.sigfigs = 0;
-	hdr.linktype = linktype;
-
-	if (fwrite((char *)&hdr, sizeof(hdr), 1, fp) != 1)
-		return (-1);
-
-	return (0);
+pcap_dumper_t *__pcap_dump_open(pcap_t *p, const char *fname, int linktype) {
+	if(opt_pcap_dump_bufflength) {
+		PcapDumpHandler *handler = new PcapDumpHandler(-1);
+		if(handler->open(fname)) {
+			struct pcap_file_header hdr;
+			/****
+			hdr.magic = p->opt.tstamp_precision == PCAP_TSTAMP_PRECISION_NANO ? NSEC_TCPDUMP_MAGIC : TCPDUMP_MAGIC;
+			****/
+			hdr.magic = NSEC_TCPDUMP_MAGIC;
+			hdr.version_major = PCAP_VERSION_MAJOR;
+			hdr.version_minor = PCAP_VERSION_MINOR;
+			/****
+			hdr.thiszone = thiszone;
+			hdr.snaplen = snaplen;
+			****/
+			hdr.thiszone = 0;
+			hdr.snaplen = 0;
+			hdr.sigfigs = 0;
+			hdr.linktype = linktype;
+			handler->write((char *)&hdr, sizeof(hdr));
+			return((pcap_dumper_t*)handler);
+		} else {
+			return(NULL);
+		}
+	} else {
+		return(pcap_dump_open(p, fname));
+	}
 }
 
-static pcap_dumper_t *
-__pcap_setup_dump(pcap_t *p, int linktype, FILE *f, const char *fname)
-{
-
-	if (__sf_write_header(p, f, linktype) == -1) {
-		/****
-		snprintf(p->errbuf, PCAP_ERRBUF_SIZE, "Can't write to %s: %s",
-		    fname, pcap_strerror(errno));
-		if (f != stdout)
-			(void)fclose(f);
-		****/
-		return (NULL);
+void __pcap_dump(u_char *user, const struct pcap_pkthdr *h, const u_char *sp) {
+	if(opt_pcap_dump_bufflength) {
+		struct pcap_timeval {
+		    bpf_int32 tv_sec;		/* seconds */
+		    bpf_int32 tv_usec;		/* microseconds */
+		};
+		struct pcap_sf_pkthdr {
+		    struct pcap_timeval ts;	/* time stamp */
+		    bpf_u_int32 caplen;		/* length of portion present */
+		    bpf_u_int32 len;		/* length this packet (off wire) */
+		};
+		PcapDumpHandler *handler = (PcapDumpHandler*)user;
+		struct pcap_sf_pkthdr sf_hdr;
+		sf_hdr.ts.tv_sec  = h->ts.tv_sec;
+		sf_hdr.ts.tv_usec = h->ts.tv_usec;
+		sf_hdr.caplen     = h->caplen;
+		sf_hdr.len        = h->len;
+		handler->write((char*)&sf_hdr, sizeof(sf_hdr));
+		handler->write((char*)sp, h->caplen);
+	} else {
+		pcap_dump(user, h, sp);
 	}
-	return ((pcap_dumper_t *)f);
 }
 
-pcap_dumper_t *
-__pcap_dump_open(pcap_t *p, const char *fname, int linktype, char *buffer, int bufferLength)
-{
-	FILE *f;
-	
-	/*
-	 * If this pcap_t hasn't been activated, it doesn't have a
-	 * link-layer type, so we can't use it.
-	 */
-	/****
-	if (!p->activated) {
-		snprintf(p->errbuf, PCAP_ERRBUF_SIZE,
-		    "%s: not-yet-activated pcap_t passed to pcap_dump_open",
-		    fname);
-		return (NULL);
+void __pcap_dump_close(pcap_dumper_t *p) {
+	if(opt_pcap_dump_bufflength) {
+		PcapDumpHandler *handler = (PcapDumpHandler*)p;
+		handler->close();
+		delete handler;
+	} else {
+		pcap_dump_close(p);
 	}
-	linktype = dlt_to_linktype(p->linktype);
-	if (linktype == -1) {
-		snprintf(p->errbuf, PCAP_ERRBUF_SIZE,
-		    "%s: link-layer type %d isn't supported in savefiles",
-		    fname, p->linktype);
-		return (NULL);
-	}
-	linktype |= p->linktype_ext;
-	****/
+}
 
-	f = fopen(fname, "wb");
-	if (f == NULL) {
-		/****
-		snprintf(p->errbuf, PCAP_ERRBUF_SIZE, "%s: %s",
-			    fname, pcap_strerror(errno));
-		****/
-		return (NULL);
+char *__pcap_geterr(pcap_t *p, pcap_dumper_t *pd) {
+	if(opt_pcap_dump_bufflength) {
+		return((char*)((PcapDumpHandler*)pd)->error.c_str());
+	} else {
+		return(pcap_geterr(p));
 	}
-	if(buffer && bufferLength) {
-		setvbuf(f, buffer, _IOFBF, bufferLength);
-	}
-	return (__pcap_setup_dump(p, linktype, f, fname));
 }
