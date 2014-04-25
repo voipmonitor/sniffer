@@ -1564,7 +1564,7 @@ PcapDumpHandler::PcapDumpHandler(int bufferLength, int enableAsyncWrite, int ena
 	this->useBufferLength = 0;
 	this->enableAsyncWrite = enableAsyncWrite;
 	this->enableZip = enableZip;
-	this->scounter = ++counter;
+	this->counter = ++scounter;
 }
 
 PcapDumpHandler::~PcapDumpHandler() {
