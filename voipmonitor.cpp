@@ -1836,7 +1836,11 @@ int load_config(char *fname) {
 		opt_pcap_dump_asyncwrite = yesno(value);
 	}
 	if((value = ini.GetValue("general", "pcap_dump_zip", NULL))) {
-		opt_pcap_dump_zip = yesno(value);
+		if(atoi(value)) {
+			opt_pcap_dump_zip = atoi(value);
+		} else if(yesno(value)) {
+			opt_pcap_dump_zip = Z_DEFAULT_COMPRESSION;
+		}
 	}
 	if((value = ini.GetValue("general", "pcap_dump_writethreads", NULL))) {
 		opt_pcap_dump_writethreads = atoi(value);

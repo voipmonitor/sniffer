@@ -746,9 +746,7 @@ extern int opt_gzipGRAPH;
 RtpGraphSaver::RtpGraphSaver(RTP *rtp, bool updateFilesQueueAtClose) {
 	this->rtp = rtp;
 	this->updateFilesQueueAtClose = updateFilesQueueAtClose;
-	this->size = 0;
-	this->stream = NULL;
-	this->streamgz = NULL;
+	this->handle = NULL;
 }
 
 RtpGraphSaver::~RtpGraphSaver() {
@@ -758,7 +756,7 @@ RtpGraphSaver::~RtpGraphSaver() {
 }
 
 bool RtpGraphSaver::open(const char *fileName, const char *fileNameSpoolRelative) {
-	if(this->isOpen()) {
+	if(this->handle) {
 		this->close(this->updateFilesQueueAtClose);
 		syslog(LOG_NOTICE, "graphsaver: reopen %s -> %s", this->fileName.c_str(), fileName);
 	}
@@ -767,17 +765,12 @@ bool RtpGraphSaver::open(const char *fileName, const char *fileNameSpoolRelative
 			syslog(LOG_NOTICE,"graphsaver: [%s] already exists, not overwriting", fileName);
 		}
 	}
-	if(opt_gzipGRAPH) {
-		this->streamgz = new ogzstream;
-		this->streamgz->open(fileName);
-	} else {
-		this->stream = new ofstream;
-		this->stream->open(fileName);
+	this->handle = new FileZipHandler(opt_pcap_dump_bufflength, opt_pcap_dump_asyncwrite, opt_gzipGRAPH);
+	if(!this->handle->open(fileName)) {
+		syslog(LOG_NOTICE, "graphsaver: error open file %s - %s", fileName, this->handle->error.c_str());
+		delete this->handle;
+		this->handle = NULL;
 	}
-	if(!this->isOpen()) {
-		syslog(LOG_NOTICE, "graphsaver: error open file %s - %s", fileName, strerror(errno));
-	}
-	this->size = 0;
 	this->fileName = fileName;
 	this->fileNameSpoolRelative = fileNameSpoolRelative;
 	return(this->isOpen());
@@ -786,42 +779,22 @@ bool RtpGraphSaver::open(const char *fileName, const char *fileNameSpoolRelative
 
 void RtpGraphSaver::write(char *buffer, int length) {
 	if(this->isOpen()) {
-		if(opt_gzipGRAPH) {
-			this->streamgz->write(buffer, length);
-			//// !!!! size
-		} else {
-			this->stream->write(buffer, length);
-			this->size += length;
-		}
+		this->handle->write(buffer, length);
 	}
 }
 
 void RtpGraphSaver::close(bool updateFilesQueue) {
 	if(this->isOpen()) {
 		Call *call = (Call*)this->rtp->call_owner;
-		if(opt_gzipGRAPH) {
-			if(updateFilesQueue && call) {
-				asyncClose.add(this->streamgz,
-					       call,
-					       this->fileNameSpoolRelative.c_str(), 
-					       "graphsize", 
-					       this->size);
-			} else {
-				asyncClose.add(this->streamgz);
-			}
-			this->streamgz = NULL;
+		if(updateFilesQueue && call) {
+			asyncClose.add(this->handle, call,
+				       this->fileNameSpoolRelative.c_str(), 
+				       "graphsize", 
+				       this->handle->size);
 		} else {
-			if(updateFilesQueue && call) {
-				asyncClose.add(this->stream,
-					       call,
-					       this->fileNameSpoolRelative.c_str(), 
-					       "graphsize", 
-					       this->size);
-			} else {
-				asyncClose.add(this->stream);
-			}
-			this->stream = NULL;
+			asyncClose.add(this->handle);
 		}
+		this->handle = NULL;
 		if(updateFilesQueue && !call) {
 			syslog(LOG_ERR, "graphsaver: gfilename[%s] does not have owner", this->fileNameSpoolRelative.c_str());
 		}
@@ -864,7 +837,7 @@ void AsyncClose::startThreads(int countPcapThreads) {
 	this->countPcapThreads = opt_pcap_dump_bufflength ?
 				  min(AsyncClose_maxPcapTheads, countPcapThreads) :
 				  1;
-	for(int i = 0; i < this->countPcapThreads + 1; i++) {
+	for(int i = 0; i < this->countPcapThreads; i++) {
 		startThreadData[i].threadIndex = i;
 		startThreadData[i].asyncClose = this;
 		pthread_create(&this->thread[i], NULL, AsyncClose_process, &startThreadData[i]);
@@ -1543,15 +1516,11 @@ void JsonExport::add(const char *name, u_int64_t content) {
 //------------------------------------------------------------------------------
 // pcap_dump_open with set buffer
 
-PcapDumpHandler::PcapDumpHandler(int bufferLength, int enableAsyncWrite, int enableZip) {
-	if(bufferLength == -1) {
-		bufferLength = opt_pcap_dump_bufflength;
-	}
-	if(enableAsyncWrite == -1) {
-		enableAsyncWrite = opt_pcap_dump_bufflength > 0 && opt_pcap_dump_asyncwrite;
-	}
-	if(enableZip == -1) {
-		enableZip = opt_pcap_dump_bufflength > 0 && opt_pcap_dump_zip;
+FileZipHandler::FileZipHandler(int bufferLength, int enableAsyncWrite, int enableZip,
+			       bool dumpHandler) {
+	if(bufferLength <= 0) {
+		enableAsyncWrite = 0;
+		enableZip = 0;
 	}
 	this->fh = 0;
 	if(enableZip) {
@@ -1559,7 +1528,7 @@ PcapDumpHandler::PcapDumpHandler(int bufferLength, int enableAsyncWrite, int ena
 		this->zipStream->zalloc = Z_NULL;
 		this->zipStream->zfree = Z_NULL;
 		this->zipStream->opaque = Z_NULL;
-		if(deflateInit2(this->zipStream, Z_DEFAULT_COMPRESSION, Z_DEFLATED, MAX_WBITS + 16, 8, Z_DEFAULT_STRATEGY) != Z_OK) {
+		if(deflateInit2(this->zipStream, opt_pcap_dump_zip, Z_DEFLATED, MAX_WBITS + 16, 8, Z_DEFAULT_STRATEGY) != Z_OK) {
 			deflateEnd(this->zipStream);
 			delete this->zipStream;
 			this->zipStream = NULL;
@@ -1581,10 +1550,12 @@ PcapDumpHandler::PcapDumpHandler(int bufferLength, int enableAsyncWrite, int ena
 	this->useBufferLength = 0;
 	this->enableAsyncWrite = enableAsyncWrite;
 	this->enableZip = enableZip;
+	this->dumpHandler = dumpHandler;
+	this->size = 0;
 	this->counter = ++scounter;
 }
 
-PcapDumpHandler::~PcapDumpHandler() {
+FileZipHandler::~FileZipHandler() {
 	this->close();
 	if(this->buffer) {
 		delete [] this->buffer;
@@ -1598,13 +1569,13 @@ PcapDumpHandler::~PcapDumpHandler() {
 	}
 }
 
-bool PcapDumpHandler::open(const char *fileName) {
+bool FileZipHandler::open(const char *fileName, int permission) {
 	this->fileName = fileName;
 	if(this->enableZip && !this->zipStream) {
 		this->setError("zip initialize failed");
 		return(false);
 	}
-	this->fh = ::open(fileName, O_WRONLY | O_CREAT | O_TRUNC, S_IWRITE | S_IREAD);
+	this->fh = ::open(fileName, O_WRONLY | O_CREAT | O_TRUNC, permission);
 	if(this->okHandle()) {
 		return(true);
 	} else {
@@ -1613,7 +1584,7 @@ bool PcapDumpHandler::open(const char *fileName) {
 	}
 }
 
-void PcapDumpHandler::close() {
+void FileZipHandler::close() {
 	if(this->okHandle()) {
 		this->flushBuffer(true);
 		::close(this->fh);
@@ -1621,7 +1592,7 @@ void PcapDumpHandler::close() {
 	}
 }
 
-bool PcapDumpHandler::flushBuffer(bool force) {
+bool FileZipHandler::flushBuffer(bool force) {
 	if(!this->buffer || !this->useBufferLength) {
 		return(true);
 	}
@@ -1630,7 +1601,7 @@ bool PcapDumpHandler::flushBuffer(bool force) {
 	return(rsltWrite);
 }
 
-bool PcapDumpHandler::writeToBuffer(char *data, int length) {
+bool FileZipHandler::writeToBuffer(char *data, int length) {
 	if(!this->buffer) {
 		return(false);
 	}
@@ -1646,16 +1617,20 @@ bool PcapDumpHandler::writeToBuffer(char *data, int length) {
 	}
 }
 
-bool PcapDumpHandler::writeToFile(char *data, int length, bool force) {
+bool FileZipHandler::writeToFile(char *data, int length, bool force) {
 	if(enableAsyncWrite && !force) {
-		asyncClose.addWrite((pcap_dumper_t*)this, data, length);
+		if(dumpHandler) {
+			asyncClose.addWrite((pcap_dumper_t*)this, data, length);
+		} else {
+			asyncClose.addWrite(this, data, length);
+		}
 		return(true);
 	} else {
 		return(this->_writeToFile(data, length, force));
 	}
 }
 
-bool PcapDumpHandler::_writeToFile(char *data, int length, bool flush) {
+bool FileZipHandler::_writeToFile(char *data, int length, bool flush) {
 	if(!this->okHandle()) {
 		return(false);
 	}
@@ -1670,6 +1645,8 @@ bool PcapDumpHandler::_writeToFile(char *data, int length, bool flush) {
 				if(::write(this->fh, this->zipBuffer, have) <= 0) {
 					this->setError();
 					return(false);
+				} else {
+					this->size += length;
 				}
 			} else {
 				this->setError("zip deflate failed");
@@ -1683,12 +1660,13 @@ bool PcapDumpHandler::_writeToFile(char *data, int length, bool flush) {
 			this->setError();
 			return(false);
 		} else {
+			this->size += length;
 			return(true);
 		}
 	}
 }
 
-void PcapDumpHandler::setError(const char *error) {
+void FileZipHandler::setError(const char *error) {
 	if(error) {
 		this->error = error;
 	} else if(errno) {
@@ -1696,14 +1674,14 @@ void PcapDumpHandler::setError(const char *error) {
 	}
 }
 
-u_int64_t PcapDumpHandler::scounter = 0;
+u_int64_t FileZipHandler::scounter = 0;
 
 #define TCPDUMP_MAGIC		0xa1b2c3d4
 #define NSEC_TCPDUMP_MAGIC	0xa1b23c4d
 
 pcap_dumper_t *__pcap_dump_open(pcap_t *p, const char *fname, int linktype, string *errorString) {
 	if(opt_pcap_dump_bufflength) {
-		PcapDumpHandler *handler = new PcapDumpHandler(-1);
+		FileZipHandler *handler = new FileZipHandler(opt_pcap_dump_bufflength, opt_pcap_dump_asyncwrite, opt_pcap_dump_zip, true);
 		if(handler->open(fname)) {
 			struct pcap_file_header hdr;
 			/****
@@ -1746,7 +1724,7 @@ void __pcap_dump(u_char *user, const struct pcap_pkthdr *h, const u_char *sp) {
 		    bpf_u_int32 caplen;		/* length of portion present */
 		    bpf_u_int32 len;		/* length this packet (off wire) */
 		};
-		PcapDumpHandler *handler = (PcapDumpHandler*)user;
+		FileZipHandler *handler = (FileZipHandler*)user;
 		struct pcap_sf_pkthdr sf_hdr;
 		sf_hdr.ts.tv_sec  = h->ts.tv_sec;
 		sf_hdr.ts.tv_usec = h->ts.tv_usec;
@@ -1761,7 +1739,7 @@ void __pcap_dump(u_char *user, const struct pcap_pkthdr *h, const u_char *sp) {
 
 void __pcap_dump_close(pcap_dumper_t *p) {
 	if(opt_pcap_dump_bufflength) {
-		PcapDumpHandler *handler = (PcapDumpHandler*)p;
+		FileZipHandler *handler = (FileZipHandler*)p;
 		handler->close();
 		delete handler;
 	} else {
@@ -1771,7 +1749,7 @@ void __pcap_dump_close(pcap_dumper_t *p) {
 
 char *__pcap_geterr(pcap_t *p, pcap_dumper_t *pd) {
 	if(opt_pcap_dump_bufflength && pd) {
-		return((char*)((PcapDumpHandler*)pd)->error.c_str());
+		return((char*)((FileZipHandler*)pd)->error.c_str());
 	} else {
 		return(pcap_geterr(p));
 	}

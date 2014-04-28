@@ -1077,7 +1077,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 	for(int i = 0; i < asyncClose.getCountThreads(); i++) {
 		double tac_cpu = asyncClose.getCpuUsagePerc(i, true);
 		if(tac_cpu >= 0) {
-			outStrStat << "tacCPU" << i << "[" << setprecision(1) << tac_cpu << "%] ";
+			outStrStat << "tacCPU" << (i+1) << "[" << setprecision(1) << tac_cpu << "%] ";
 		}
 	}
 	long unsigned int rss = this->getRssUsage();
