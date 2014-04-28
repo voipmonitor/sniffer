@@ -346,6 +346,7 @@ public:
 	};
 public:
 	AsyncClose();
+	~AsyncClose();
 	void startThreads(int countPcapThreads = 2);
 	void add(pcap_dumper_t *handle,
 		 Call *call = NULL, const char *file = NULL,
