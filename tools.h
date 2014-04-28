@@ -13,10 +13,12 @@
 #include <limits.h>
 #include <list>
 #include <sys/types.h>
+#include <unistd.h>
+#include <iostream>
+#include <zlib.h>
 #include <pcap.h>
 
 #include "pstat.h"
-#include "gzstream/gzstream.h"
 
 using namespace std;
 
