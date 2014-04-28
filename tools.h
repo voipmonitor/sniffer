@@ -168,18 +168,19 @@ public:
 	bool flushBuffer(bool force = false);
 	bool writeToBuffer(char *data, int length);
 	bool writeToFile(char *data, int length, bool force = false);
-	bool _writeToFile(char *data, int length);
-	void setError();
+	bool _writeToFile(char *data, int length, bool flush = false);
+	void setError(const char *error = NULL);
 	bool okHandle() {
-		return(enableZip ? fhz > 0 : fh > 0);
+		return(fh > 0);
 	}
 public:
 	string fileName;
 	int fh;
-	gzFile fhz;
+	z_stream *zipStream;
 	string error;
 	int bufferLength;
 	char *buffer;
+	char *zipBuffer;
 	int useBufferLength;
 	bool enableAsyncWrite;
 	bool enableZip;

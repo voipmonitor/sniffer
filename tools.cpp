@@ -1554,12 +1554,29 @@ PcapDumpHandler::PcapDumpHandler(int bufferLength, int enableAsyncWrite, int ena
 		enableZip = opt_pcap_dump_bufflength > 0 && opt_pcap_dump_zip;
 	}
 	this->fh = 0;
-	this->fhz = 0;
+	if(enableZip) {
+		this->zipStream =  new z_stream;
+		this->zipStream->zalloc = Z_NULL;
+		this->zipStream->zfree = Z_NULL;
+		this->zipStream->opaque = Z_NULL;
+		if(deflateInit2(this->zipStream, Z_DEFAULT_COMPRESSION, Z_DEFLATED, MAX_WBITS + 16, 8, Z_DEFAULT_STRATEGY) != Z_OK) {
+			deflateEnd(this->zipStream);
+			delete this->zipStream;
+			this->zipStream = NULL;
+		}
+	} else {
+		this->zipStream = NULL;
+	}
 	this->bufferLength = bufferLength;
 	if(bufferLength) {
 		this->buffer = new char[bufferLength];
 	} else {
 		this->buffer = NULL;
+	}
+	if(bufferLength && enableZip) {
+		this->zipBuffer = new char[bufferLength];
+	} else {
+		this->zipBuffer = NULL;
 	}
 	this->useBufferLength = 0;
 	this->enableAsyncWrite = enableAsyncWrite;
@@ -1572,15 +1589,22 @@ PcapDumpHandler::~PcapDumpHandler() {
 	if(this->buffer) {
 		delete [] this->buffer;
 	}
+	if(this->zipBuffer) {
+		delete [] this->zipBuffer;
+	}
+	if(this->zipStream) {
+		deflateEnd(this->zipStream);
+		delete this->zipStream;
+	}
 }
 
 bool PcapDumpHandler::open(const char *fileName) {
 	this->fileName = fileName;
-	if(this->enableZip) {
-		this->fhz = gzopen(fileName, "wb");
-	} else {
-		this->fh = ::open(fileName, O_WRONLY | O_CREAT | O_TRUNC, S_IWRITE | S_IREAD);
+	if(this->enableZip && !this->zipStream) {
+		this->setError("zip initialize failed");
+		return(false);
 	}
+	this->fh = ::open(fileName, O_WRONLY | O_CREAT | O_TRUNC, S_IWRITE | S_IREAD);
 	if(this->okHandle()) {
 		return(true);
 	} else {
@@ -1592,13 +1616,8 @@ bool PcapDumpHandler::open(const char *fileName) {
 void PcapDumpHandler::close() {
 	if(this->okHandle()) {
 		this->flushBuffer(true);
-		if(this->enableZip) {
-			gzclose(this->fhz);
-			this->fhz = 0;
-		} else {
-			::close(this->fh);
-			this->fh = 0;
-		}
+		::close(this->fh);
+		this->fh = 0;
 	}
 }
 
@@ -1632,27 +1651,47 @@ bool PcapDumpHandler::writeToFile(char *data, int length, bool force) {
 		asyncClose.addWrite((pcap_dumper_t*)this, data, length);
 		return(true);
 	} else {
-		return(this->_writeToFile(data, length));
+		return(this->_writeToFile(data, length, force));
 	}
 }
 
-bool PcapDumpHandler::_writeToFile(char *data, int length) {
+bool PcapDumpHandler::_writeToFile(char *data, int length, bool flush) {
 	if(!this->okHandle()) {
 		return(false);
 	}
-	int rsltWrite = this->enableZip ?
-			 gzwrite(this->fhz, data, length) :
-			 ::write(this->fh, data, length);
-	if(rsltWrite <= 0) {
-		this->setError();
-		return(false);
-	} else {
+	if(this->enableZip) {
+		this->zipStream->avail_in = length;
+		this->zipStream->next_in = (unsigned char*)data;
+		do {
+			this->zipStream->avail_out = this->bufferLength;
+			this->zipStream->next_out = (unsigned char*)this->zipBuffer;
+			if(deflate(this->zipStream, flush ? Z_FINISH : Z_NO_FLUSH) != Z_STREAM_ERROR) {
+				int have = this->bufferLength - this->zipStream->avail_out;
+				if(::write(this->fh, this->zipBuffer, have) <= 0) {
+					this->setError();
+					return(false);
+				}
+			} else {
+				this->setError("zip deflate failed");
+				return(false);
+			}
+		} while(this->zipStream->avail_out == 0);
 		return(true);
+	} else {
+		int rsltWrite = ::write(this->fh, data, length);
+		if(rsltWrite <= 0) {
+			this->setError();
+			return(false);
+		} else {
+			return(true);
+		}
 	}
 }
 
-void PcapDumpHandler::setError() {
-	if(errno) {
+void PcapDumpHandler::setError(const char *error) {
+	if(error) {
+		this->error = error;
+	} else if(errno) {
 		this->error = strerror(errno);
 	}
 }
