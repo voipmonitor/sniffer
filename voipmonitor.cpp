@@ -294,7 +294,9 @@ int opt_last_rtp_from_end = 1;
 int opt_pcap_dump_bufflength = 0;
 int opt_pcap_dump_asyncwrite = 0;
 int opt_pcap_dump_zip = 0;
+int opt_pcap_dump_ziplevel = Z_DEFAULT_COMPRESSION;
 int opt_pcap_dump_writethreads = 2;
+int opt_pcap_dump_asyncwrite_maxsize = 100; //MB
 
 char opt_php_path[1024];
 
@@ -1836,14 +1838,16 @@ int load_config(char *fname) {
 		opt_pcap_dump_asyncwrite = yesno(value);
 	}
 	if((value = ini.GetValue("general", "pcap_dump_zip", NULL))) {
-		if(atoi(value)) {
-			opt_pcap_dump_zip = atoi(value);
-		} else if(yesno(value)) {
-			opt_pcap_dump_zip = Z_DEFAULT_COMPRESSION;
-		}
+		opt_pcap_dump_zip = yesno(value);
+	}
+	if((value = ini.GetValue("general", "pcap_dump_ziplevel", NULL))) {
+		opt_pcap_dump_ziplevel = atoi(value);
 	}
 	if((value = ini.GetValue("general", "pcap_dump_writethreads", NULL))) {
 		opt_pcap_dump_writethreads = atoi(value);
+	}
+	if((value = ini.GetValue("general", "pcap_dump_asyncwrite_maxsize", NULL))) {
+		opt_pcap_dump_asyncwrite_maxsize = atoi(value);
 	}
 	
 	/*

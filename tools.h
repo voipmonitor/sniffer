@@ -263,6 +263,8 @@ public:
 		string dirnamesqlfiles;
 		long long writeBytes;
 		void *calltable;
+		int dataLength;
+	friend class AsyncClose;
 	};
 	class AsyncCloseItem_pcap : public AsyncCloseItem {
 	public:
@@ -271,6 +273,10 @@ public:
 				    const char *column = NULL, long long writeBytes = 0)
 		 : AsyncCloseItem(call, file, column, writeBytes) {
 			this->handle = handle;
+			extern int opt_pcap_dump_bufflength;
+			if(opt_pcap_dump_bufflength) {
+				this->dataLength = ((FileZipHandler*)handle)->size;
+			}
 		}
 		void process() {
 			__pcap_dump_close(handle);
@@ -286,18 +292,17 @@ public:
 			this->handle = handle;
 			this->data = new char[length];
 			memcpy(this->data, data, length);
-			this->length = length;
+			this->dataLength = length;
 		}
 		~AsyncWriteItem_pcap() {
 			delete [] data;
 		}
 		void process() {
-			((FileZipHandler*)handle)->_writeToFile(data, length);
+			((FileZipHandler*)handle)->_writeToFile(data, dataLength);
 		}
 	private:
 		pcap_dumper_t *handle;
 		char *data;
-		int length;
 	};
 	class AsyncCloseItem_fileZipHandler  : public AsyncCloseItem{
 	public:
@@ -306,6 +311,7 @@ public:
 					      const char *column = NULL, long long writeBytes = 0)
 		 : AsyncCloseItem(call, file, column, writeBytes) {
 			this->handle = handle;
+			this->dataLength = handle->size;
 		}
 		void process() {
 			handle->close();
@@ -322,18 +328,17 @@ public:
 			this->handle = handle;
 			this->data = new char[length];
 			memcpy(this->data, data, length);
-			this->length = length;
+			this->dataLength = length;
 		}
 		~AsyncWriteItem_fileZipHandler() {
 			delete [] data;
 		}
 		void process() {
-			handle->_writeToFile(data, length);
+			handle->_writeToFile(data, dataLength);
 		}
 	private:
 		FileZipHandler *handle;
 		char *data;
-		int length;
 	};
 	struct StartThreadData {
 		int threadIndex;
@@ -371,9 +376,17 @@ public:
 		    handle->counter % countPcapThreads);
 	}
 	void add(AsyncCloseItem *item, int threadIndex) {
-		lock(threadIndex);
-		q[threadIndex].push(item);
-		unlock(threadIndex);
+		extern int terminating;
+		extern int opt_pcap_dump_asyncwrite_maxsize;
+		add_sizeOfDataInMemory(item->dataLength);
+		while(sizeOfDataInMemory > opt_pcap_dump_asyncwrite_maxsize * 1024ull * 1024ull && !terminating) {
+			usleep(1000);
+		}
+		if(!terminating) {
+			lock(threadIndex);
+			q[threadIndex].push(item);
+			unlock(threadIndex);
+		}
 	}
 	void processTask(int threadIndex);
 	void processAll(int threadIndex);
@@ -396,6 +409,12 @@ private:
 	void unlock(int threadIndex) {
 		__sync_lock_release(&this->_sync[threadIndex]);
 	}
+	void add_sizeOfDataInMemory(size_t size) {
+		__sync_fetch_and_add(&this->sizeOfDataInMemory, size);
+	}
+	void sub_sizeOfDataInMemory(size_t size) {
+		__sync_fetch_and_sub(&this->sizeOfDataInMemory, size);
+	}
 private:
 	int countPcapThreads;
 	queue<AsyncCloseItem*> q[AsyncClose_maxPcapTheads];
@@ -404,6 +423,7 @@ private:
 	int threadId[AsyncClose_maxPcapTheads];
 	pstat_data threadPstatData[AsyncClose_maxPcapTheads][2];
 	StartThreadData startThreadData[AsyncClose_maxPcapTheads];
+	volatile uint64_t sizeOfDataInMemory;
 };
 
 class RestartUpgrade {

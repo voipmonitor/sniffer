@@ -49,6 +49,7 @@ extern int terminating;
 extern int opt_pcap_dump_bufflength;
 extern int opt_pcap_dump_asyncwrite;
 extern int opt_pcap_dump_zip;
+extern int opt_pcap_dump_ziplevel;
 
 
 using namespace std;
@@ -809,6 +810,7 @@ AsyncClose::AsyncCloseItem::AsyncCloseItem(Call *call, const char *file, const c
 		this->writeBytes = writeBytes;
 		this->calltable = call->calltable;
 	}
+	this->dataLength = 0;
 }
 
 void AsyncClose::AsyncCloseItem::addtofilesqueue() {
@@ -831,6 +833,7 @@ AsyncClose::AsyncClose() {
 		threadId[i] = 0;
 		memset(this->threadPstatData[i], 0, sizeof(this->threadPstatData[i]));
 	}
+	sizeOfDataInMemory = 0;
 }
 
 void AsyncClose::startThreads(int countPcapThreads) {
@@ -860,6 +863,7 @@ void AsyncClose::processAll(int threadIndex) {
 			q[threadIndex].pop();
 			unlock(threadIndex);
 			item->process();
+			sub_sizeOfDataInMemory(item->dataLength);
 			delete item;
 		} else {
 			unlock(threadIndex);
@@ -1528,7 +1532,7 @@ FileZipHandler::FileZipHandler(int bufferLength, int enableAsyncWrite, int enabl
 		this->zipStream->zalloc = Z_NULL;
 		this->zipStream->zfree = Z_NULL;
 		this->zipStream->opaque = Z_NULL;
-		if(deflateInit2(this->zipStream, opt_pcap_dump_zip, Z_DEFLATED, MAX_WBITS + 16, 8, Z_DEFAULT_STRATEGY) != Z_OK) {
+		if(deflateInit2(this->zipStream, opt_pcap_dump_ziplevel, Z_DEFLATED, MAX_WBITS + 16, 8, Z_DEFAULT_STRATEGY) != Z_OK) {
 			deflateEnd(this->zipStream);
 			delete this->zipStream;
 			this->zipStream = NULL;
