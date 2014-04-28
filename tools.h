@@ -400,6 +400,9 @@ public:
 	int getCountThreads() {
 		return(countPcapThreads);
 	}
+	u_int64_t getSizeOfDataInMemory() {
+		return(sizeOfDataInMemory);
+	}
 private:
 	void lock(int threadIndex) {
 		while(__sync_lock_test_and_set(&this->_sync[threadIndex], 1)) {

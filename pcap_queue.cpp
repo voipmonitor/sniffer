@@ -1009,6 +1009,12 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 		}
 		outStr << "heap[" << setprecision(1) << memoryBufferPerc << "% / "
 				  << setprecision(1) << memoryBufferPerc_trash << "%] ";
+		extern AsyncClose asyncClose;
+		u_int64_t ac_sizeOfDataInMemory = asyncClose.getSizeOfDataInMemory();
+		if(ac_sizeOfDataInMemory) {
+			extern int opt_pcap_dump_asyncwrite_maxsize;
+			outStr << "ac[" << setprecision(1) << ac_sizeOfDataInMemory / (opt_pcap_dump_asyncwrite_maxsize * 1024ull * 1024ull) * 100 << "%] ";
+		}
 		if(this->instancePcapHandle) {
 			unsigned long bypassBufferSizeExeeded = this->instancePcapHandle->pcapStat_get_bypass_buffer_size_exeeded();
 			string statPacketDrops = this->instancePcapHandle->getStatPacketDrop();
