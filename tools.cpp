@@ -828,7 +828,7 @@ void *AsyncClose_process(void *_startThreadData) {
 }
 
 AsyncClose::AsyncClose() {
-	for(int i = 0; i < AsyncClose_maxPcapTheads; i++) {
+	for(int i = 0; i < AsyncClose_maxPcapThreads; i++) {
 		_sync[i] = 0;
 		threadId[i] = 0;
 		memset(this->threadPstatData[i], 0, sizeof(this->threadPstatData[i]));
@@ -837,9 +837,10 @@ AsyncClose::AsyncClose() {
 }
 
 AsyncClose::~AsyncClose() {
-	for(int i = 0; i < AsyncClose_maxPcapTheads; i++) {
+	for(int i = 0; i < AsyncClose_maxPcapThreads; i++) {
 		while(q[i].size()) {
 			AsyncCloseItem *item = q[i].front();
+			item->processClose();
 			delete item;
 			q[i].pop();
 		}
@@ -848,7 +849,7 @@ AsyncClose::~AsyncClose() {
 
 void AsyncClose::startThreads(int countPcapThreads) {
 	this->countPcapThreads = opt_pcap_dump_bufflength ?
-				  min(AsyncClose_maxPcapTheads, countPcapThreads) :
+				  min(AsyncClose_maxPcapThreads, countPcapThreads) :
 				  1;
 	for(int i = 0; i < this->countPcapThreads; i++) {
 		startThreadData[i].threadIndex = i;

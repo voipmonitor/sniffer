@@ -2977,9 +2977,9 @@ void *PcapQueue_readFromFifo::writeThreadFunction(void *arg, unsigned int arg2) 
 					map<u_int64_t, list<sPacketTimeInfo> >::iterator first = listPacketTimeInfo.begin();
 					map<u_int64_t, list<sPacketTimeInfo> >::iterator last = listPacketTimeInfo.end();
 					--last;
-					while(listPacketTimeInfo.size()) {
-						if(last->first - first->first > opt_pcap_queue_dequeu_window_length * 1000 && 
-						   at - first->second.begin()->at > opt_pcap_queue_dequeu_window_length * 1000) {
+					while(listPacketTimeInfo.size() && !TERMINATING) {
+						if(last->first - first->first > (unsigned)opt_pcap_queue_dequeu_window_length * 1000 && 
+						   at - first->second.begin()->at > (unsigned)opt_pcap_queue_dequeu_window_length * 1000) {
 							sPacketTimeInfo pti = *(first->second.begin());
 							first->second.pop_front();
 							++sumPacketsCounterOut[0];
@@ -3001,7 +3001,7 @@ void *PcapQueue_readFromFifo::writeThreadFunction(void *arg, unsigned int arg2) 
 						}
 					}
 				} else {
-					for(size_t i = 0; i < blockStore->count; i++) {
+					for(size_t i = 0; i < blockStore->count && !TERMINATING; i++) {
 						++sumPacketsCounterOut[0];
 						if(TEST_PACKETS) {
 							if(VERBOSE_TEST_PACKETS) {
@@ -3028,6 +3028,10 @@ void *PcapQueue_readFromFifo::writeThreadFunction(void *arg, unsigned int arg2) 
 		if(!(++this->cleanupBlockStoreTrash_counter % 10)) {
 			this->cleanupBlockStoreTrash();
 		}
+	}
+	map<pcap_block_store*, size_t>::iterator iter;
+	for(iter = listBlockStore.begin(); iter != listBlockStore.end(); iter++) {
+		this->blockStoreTrash.push_back(iter->first);
 	}
 	this->writeThreadTerminated = true;
 	return(NULL);

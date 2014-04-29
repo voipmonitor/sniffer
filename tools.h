@@ -245,7 +245,7 @@ private:
 	FileZipHandler *handle;
 };
 
-#define AsyncClose_maxPcapTheads 10
+#define AsyncClose_maxPcapThreads 10
 
 class AsyncClose {
 public:
@@ -255,6 +255,7 @@ public:
 			       const char *column = NULL, long long writeBytes = 0);
 		virtual ~AsyncCloseItem() {}
 		virtual void process() = 0;
+		virtual void processClose() {}
 	protected:
 		void addtofilesqueue();
 	protected:
@@ -281,6 +282,9 @@ public:
 		void process() {
 			__pcap_dump_close(handle);
 			this->addtofilesqueue();
+		}
+		void processClose() {
+			__pcap_dump_close(handle);
 		}
 	private:
 		pcap_dumper_t *handle;
@@ -317,6 +321,10 @@ public:
 			handle->close();
 			delete handle;
 			this->addtofilesqueue();
+		}
+		void processClose() {
+			handle->close();
+			delete handle;
 		}
 	private:
 		FileZipHandler *handle;
@@ -383,11 +391,9 @@ public:
 		while(sizeOfDataInMemory > opt_pcap_dump_asyncwrite_maxsize * 1024ull * 1024ull && !terminating) {
 			usleep(1000);
 		}
-		if(!terminating) {
-			lock(threadIndex);
-			q[threadIndex].push(item);
-			unlock(threadIndex);
-		}
+		lock(threadIndex);
+		q[threadIndex].push(item);
+		unlock(threadIndex);
 	}
 	void processTask(int threadIndex);
 	void processAll(int threadIndex);
@@ -421,12 +427,12 @@ private:
 	}
 private:
 	int countPcapThreads;
-	queue<AsyncCloseItem*> q[AsyncClose_maxPcapTheads];
-	pthread_t thread[AsyncClose_maxPcapTheads];
-	volatile int _sync[AsyncClose_maxPcapTheads];
-	int threadId[AsyncClose_maxPcapTheads];
-	pstat_data threadPstatData[AsyncClose_maxPcapTheads][2];
-	StartThreadData startThreadData[AsyncClose_maxPcapTheads];
+	queue<AsyncCloseItem*> q[AsyncClose_maxPcapThreads];
+	pthread_t thread[AsyncClose_maxPcapThreads];
+	volatile int _sync[AsyncClose_maxPcapThreads];
+	int threadId[AsyncClose_maxPcapThreads];
+	pstat_data threadPstatData[AsyncClose_maxPcapThreads][2];
+	StartThreadData startThreadData[AsyncClose_maxPcapThreads];
 	volatile uint64_t sizeOfDataInMemory;
 };
 
