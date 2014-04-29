@@ -50,6 +50,7 @@ extern int opt_pcap_dump_bufflength;
 extern int opt_pcap_dump_asyncwrite;
 extern int opt_pcap_dump_zip;
 extern int opt_pcap_dump_ziplevel;
+extern int opt_read_from_file;
 
 
 using namespace std;
@@ -1538,32 +1539,16 @@ FileZipHandler::FileZipHandler(int bufferLength, int enableAsyncWrite, int enabl
 		enableZip = 0;
 	}
 	this->fh = 0;
-	if(enableZip) {
-		this->zipStream =  new z_stream;
-		this->zipStream->zalloc = Z_NULL;
-		this->zipStream->zfree = Z_NULL;
-		this->zipStream->opaque = Z_NULL;
-		if(deflateInit2(this->zipStream, opt_pcap_dump_ziplevel, Z_DEFLATED, MAX_WBITS + 16, 8, Z_DEFAULT_STRATEGY) != Z_OK) {
-			deflateEnd(this->zipStream);
-			delete this->zipStream;
-			this->zipStream = NULL;
-		}
-	} else {
-		this->zipStream = NULL;
-	}
+	this->zipStream = NULL;
 	this->bufferLength = bufferLength;
 	if(bufferLength) {
 		this->buffer = new char[bufferLength];
 	} else {
 		this->buffer = NULL;
 	}
-	if(bufferLength && enableZip) {
-		this->zipBuffer = new char[bufferLength];
-	} else {
-		this->zipBuffer = NULL;
-	}
+	this->zipBuffer = NULL;
 	this->useBufferLength = 0;
-	this->enableAsyncWrite = enableAsyncWrite;
+	this->enableAsyncWrite = enableAsyncWrite && !opt_read_from_file;
 	this->enableZip = enableZip;
 	this->dumpHandler = dumpHandler;
 	this->size = 0;
@@ -1586,10 +1571,6 @@ FileZipHandler::~FileZipHandler() {
 
 bool FileZipHandler::open(const char *fileName, int permission) {
 	this->fileName = fileName;
-	if(this->enableZip && !this->zipStream) {
-		this->setError("zip initialize failed");
-		return(false);
-	}
 	this->fh = ::open(fileName, O_WRONLY | O_CREAT | O_TRUNC, permission);
 	if(this->okHandle()) {
 		return(true);
@@ -1646,10 +1627,13 @@ bool FileZipHandler::writeToFile(char *data, int length, bool force) {
 }
 
 bool FileZipHandler::_writeToFile(char *data, int length, bool flush) {
-	if(!this->okHandle()) {
+	if(!this->error.empty() || !this->okHandle()) {
 		return(false);
 	}
 	if(this->enableZip) {
+		if(!this->zipStream && !this->initZip()) {
+			return(false);
+		}
 		this->zipStream->avail_in = length;
 		this->zipStream->next_in = (unsigned char*)data;
 		do {
@@ -1680,6 +1664,24 @@ bool FileZipHandler::_writeToFile(char *data, int length, bool flush) {
 		}
 	}
 }
+
+bool FileZipHandler::initZip() {
+	if(this->enableZip && !this->zipStream) {
+		this->zipStream =  new z_stream;
+		this->zipStream->zalloc = Z_NULL;
+		this->zipStream->zfree = Z_NULL;
+		this->zipStream->opaque = Z_NULL;
+		if(deflateInit2(this->zipStream, opt_pcap_dump_ziplevel, Z_DEFLATED, MAX_WBITS + 16, 8, Z_DEFAULT_STRATEGY) != Z_OK) {
+			deflateEnd(this->zipStream);
+			this->setError("zip initialize failed");
+			return(false);
+		} else {
+			this->zipBuffer = new char[bufferLength ? bufferLength : 8192];
+		}
+	}
+	return(true);
+}
+
 
 void FileZipHandler::setError(const char *error) {
 	if(error) {

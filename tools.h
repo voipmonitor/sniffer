@@ -172,6 +172,7 @@ public:
 	bool writeToBuffer(char *data, int length);
 	bool writeToFile(char *data, int length, bool force = false);
 	bool _writeToFile(char *data, int length, bool flush = false);
+	bool initZip();
 	void setError(const char *error = NULL);
 	bool okHandle() {
 		return(fh > 0);
