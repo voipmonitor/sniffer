@@ -2598,10 +2598,10 @@ int main(int argc, char *argv[]) {
 		opt_pcap_queue_iface_separate_threads = 1;
 	}
 	if(opt_pcap_queue_dequeu_window_length < 0) {
-		if(opt_pcap_queue_iface_separate_threads) {
-			 opt_pcap_queue_dequeu_window_length = 500;
-		} else if(opt_pcap_queue_receive_from_ip_port) {
+		if(opt_pcap_queue_receive_from_ip_port) {
 			 opt_pcap_queue_dequeu_window_length = 2000;
+		} else if(strchr(ifname, ',')) {
+			 opt_pcap_queue_dequeu_window_length = 500;
 		}
 	}
 
