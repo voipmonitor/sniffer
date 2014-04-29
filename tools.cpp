@@ -1548,6 +1548,7 @@ FileZipHandler::FileZipHandler(int bufferLength, int enableAsyncWrite, int enabl
 		enableAsyncWrite = 0;
 		enableZip = 0;
 	}
+	this->permission = 0;
 	this->fh = 0;
 	this->zipStream = NULL;
 	this->bufferLength = bufferLength;
@@ -1581,18 +1582,13 @@ FileZipHandler::~FileZipHandler() {
 
 bool FileZipHandler::open(const char *fileName, int permission) {
 	this->fileName = fileName;
-	this->fh = ::open(fileName, O_WRONLY | O_CREAT | O_TRUNC, permission);
-	if(this->okHandle()) {
-		return(true);
-	} else {
-		this->setError();
-		return(false);
-	}
+	this->permission = permission;
+	return(true);
 }
 
 void FileZipHandler::close() {
+	this->flushBuffer(true);
 	if(this->okHandle()) {
-		this->flushBuffer(true);
 		::close(this->fh);
 		this->fh = 0;
 	}
@@ -1637,7 +1633,7 @@ bool FileZipHandler::writeToFile(char *data, int length, bool force) {
 }
 
 bool FileZipHandler::_writeToFile(char *data, int length, bool flush) {
-	if(!this->error.empty() || !this->okHandle()) {
+	if(!this->error.empty()) {
 		return(false);
 	}
 	if(this->enableZip) {
@@ -1651,7 +1647,7 @@ bool FileZipHandler::_writeToFile(char *data, int length, bool flush) {
 			this->zipStream->next_out = (unsigned char*)this->zipBuffer;
 			if(deflate(this->zipStream, flush ? Z_FINISH : Z_NO_FLUSH) != Z_STREAM_ERROR) {
 				int have = this->bufferLength - this->zipStream->avail_out;
-				if(::write(this->fh, this->zipBuffer, have) <= 0) {
+				if(this->__writeToFile(this->zipBuffer, have) <= 0) {
 					this->setError();
 					return(false);
 				} else {
@@ -1664,7 +1660,7 @@ bool FileZipHandler::_writeToFile(char *data, int length, bool flush) {
 		} while(this->zipStream->avail_out == 0);
 		return(true);
 	} else {
-		int rsltWrite = ::write(this->fh, data, length);
+		int rsltWrite = this->__writeToFile(data, length);
 		if(rsltWrite <= 0) {
 			this->setError();
 			return(false);
@@ -1672,6 +1668,20 @@ bool FileZipHandler::_writeToFile(char *data, int length, bool flush) {
 			this->size += length;
 			return(true);
 		}
+	}
+}
+
+bool FileZipHandler::__writeToFile(char *data, int length) {
+	if(!this->okHandle()) {
+		if(!this->error.empty() || !this->_open()) {
+			return(false);
+		}
+	}
+	if(::write(this->fh, data, length) == length) {
+		return(true);
+	} else {
+		this->setError();
+		return(false);
 	}
 }
 
@@ -1690,6 +1700,17 @@ bool FileZipHandler::initZip() {
 		}
 	}
 	return(true);
+}
+
+bool FileZipHandler::_open() {
+	this->fh = ::open(fileName.c_str(), O_WRONLY | O_CREAT | O_TRUNC, permission);
+	if(this->okHandle()) {
+		return(true);
+	} else {
+		this->setError();
+		syslog(LOG_NOTICE, "error open handle to file %s - %s", fileName.c_str(), error.c_str());
+		return(false);
+	}
 }
 
 

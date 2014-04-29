@@ -172,13 +172,16 @@ public:
 	bool writeToBuffer(char *data, int length);
 	bool writeToFile(char *data, int length, bool force = false);
 	bool _writeToFile(char *data, int length, bool flush = false);
+	bool __writeToFile(char *data, int length);
 	bool initZip();
+	bool _open();
 	void setError(const char *error = NULL);
 	bool okHandle() {
 		return(fh > 0);
 	}
 public:
 	string fileName;
+	int permission;
 	int fh;
 	z_stream *zipStream;
 	string error;
