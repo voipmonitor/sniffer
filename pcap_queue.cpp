@@ -1080,11 +1080,16 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 		}
 	}
 	extern AsyncClose asyncClose;
+	double last_tac_cpu = 0;
 	for(int i = 0; i < asyncClose.getCountThreads(); i++) {
 		double tac_cpu = asyncClose.getCpuUsagePerc(i, true);
+		last_tac_cpu = tac_cpu;
 		if(tac_cpu >= 0) {
 			outStrStat << "tacCPU" << (i+1) << "[" << setprecision(1) << tac_cpu << "%] ";
 		}
+	}
+	if(last_tac_cpu > 95) {
+		asyncClose.addThread();
 	}
 	long unsigned int rss = this->getRssUsage();
 	if(rss > 0) {

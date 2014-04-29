@@ -829,6 +829,7 @@ void *AsyncClose_process(void *_startThreadData) {
 }
 
 AsyncClose::AsyncClose() {
+	maxPcapThreads = min(sysconf(_SC_NPROCESSORS_ONLN), (long)AsyncClose_maxPcapThreads);
 	for(int i = 0; i < AsyncClose_maxPcapThreads; i++) {
 		_sync[i] = 0;
 		threadId[i] = 0;
@@ -856,6 +857,15 @@ void AsyncClose::startThreads(int countPcapThreads) {
 		startThreadData[i].threadIndex = i;
 		startThreadData[i].asyncClose = this;
 		pthread_create(&this->thread[i], NULL, AsyncClose_process, &startThreadData[i]);
+	}
+}
+
+void AsyncClose::addThread() {
+	if(opt_pcap_dump_bufflength && countPcapThreads < maxPcapThreads) {
+		startThreadData[countPcapThreads].threadIndex = countPcapThreads;
+		startThreadData[countPcapThreads].asyncClose = this;
+		pthread_create(&this->thread[countPcapThreads], NULL, AsyncClose_process, &startThreadData[countPcapThreads]);
+		++countPcapThreads;
 	}
 }
 

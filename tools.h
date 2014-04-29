@@ -246,7 +246,7 @@ private:
 	FileZipHandler *handle;
 };
 
-#define AsyncClose_maxPcapThreads 10
+#define AsyncClose_maxPcapThreads 20
 
 class AsyncClose {
 public:
@@ -357,6 +357,7 @@ public:
 	AsyncClose();
 	~AsyncClose();
 	void startThreads(int countPcapThreads = 2);
+	void addThread();
 	void add(pcap_dumper_t *handle,
 		 Call *call = NULL, const char *file = NULL,
 		 const char *column = NULL, long long writeBytes = 0) {
@@ -427,6 +428,7 @@ private:
 		__sync_fetch_and_sub(&this->sizeOfDataInMemory, size);
 	}
 private:
+	int maxPcapThreads;
 	int countPcapThreads;
 	queue<AsyncCloseItem*> q[AsyncClose_maxPcapThreads];
 	pthread_t thread[AsyncClose_maxPcapThreads];
