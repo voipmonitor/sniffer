@@ -985,7 +985,7 @@ string FraudAlertInfo_spc::getJson() {
 
 FraudAlert_spc::FraudAlert_spc(unsigned int dbId)
  : FraudAlert(_spc, dbId) {
-	
+	start_interval = 0;
 }
 
 void FraudAlert_spc::evEvent(sFraudEventInfo *eventInfo) {
@@ -1013,7 +1013,7 @@ void FraudAlert_spc::evEvent(sFraudEventInfo *eventInfo) {
 
 FraudAlert_rc::FraudAlert_rc(unsigned int dbId)
  : FraudAlert(_spc, dbId) {
-	
+	start_interval = 0;
 }
 
 void FraudAlert_rc::evEvent(sFraudEventInfo *eventInfo) {

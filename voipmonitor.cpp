@@ -3382,8 +3382,6 @@ int main(int argc, char *argv[]) {
 
 	Call *call;
 	calltable->cleanup(0);
-	extern AsyncClose asyncClose;
-	asyncClose.processAll();
 	if(opt_read_from_file && !opt_nocdr) {
 		for(int i = 0; i < 20; i++) {
 			if(calls_cdr_save_counter > 0 || calls_message_save_counter > 0) {
@@ -3534,7 +3532,10 @@ int main(int argc, char *argv[]) {
 	ipfrag_prune(0, 1);
 	freeMemIpacc();
 	delete regfailedcache;
-	asyncClose.processAll();
+	if(opt_read_from_file) {
+		extern AsyncClose asyncClose;
+		asyncClose.processAll();
+	}
 //	mysql_library_end();
 
 	if(sqlStore) {
