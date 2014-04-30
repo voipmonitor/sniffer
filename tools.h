@@ -361,6 +361,7 @@ public:
 	~AsyncClose();
 	void startThreads(int countPcapThreads = 2);
 	void addThread();
+	void removeThread();
 	void add(pcap_dumper_t *handle,
 		 Call *call = NULL, const char *file = NULL,
 		 const char *column = NULL, long long writeBytes = 0) {

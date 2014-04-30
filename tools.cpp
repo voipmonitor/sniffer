@@ -51,6 +51,8 @@ extern int opt_pcap_dump_asyncwrite;
 extern int opt_pcap_dump_zip;
 extern int opt_pcap_dump_ziplevel;
 extern int opt_read_from_file;
+extern int opt_pcap_dump_writethreads;
+extern int opt_pcap_dump_writethreads_max;
 
 
 using namespace std;
@@ -833,7 +835,8 @@ void *AsyncClose_process(void *_startThreadData) {
 }
 
 AsyncClose::AsyncClose() {
-	maxPcapThreads = min(sysconf(_SC_NPROCESSORS_ONLN), (long)AsyncClose_maxPcapThreads);
+	maxPcapThreads = min(min((int)sysconf(_SC_NPROCESSORS_ONLN), AsyncClose_maxPcapThreads),
+			     opt_pcap_dump_writethreads_max);
 	for(int i = 0; i < AsyncClose_maxPcapThreads; i++) {
 		_sync[i] = 0;
 		threadId[i] = 0;
@@ -873,12 +876,20 @@ void AsyncClose::addThread() {
 	}
 }
 
+void AsyncClose::removeThread() {
+	if(opt_pcap_dump_bufflength && countPcapThreads > opt_pcap_dump_writethreads) {
+		--countPcapThreads;
+		startThreadData[countPcapThreads].threadIndex = 0;
+	}
+}
+
 void AsyncClose::processTask(int threadIndex) {
 	this->threadId[threadIndex] = get_unix_tid();
 	do {
 		processAll(threadIndex);
 		usleep(10000);
-	} while(!terminating);
+	} while(!(terminating ||
+		  (threadIndex && !startThreadData[threadIndex].threadIndex)));
 }
 
 void AsyncClose::processAll(int threadIndex) {

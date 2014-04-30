@@ -296,6 +296,7 @@ int opt_pcap_dump_asyncwrite = 0;
 int opt_pcap_dump_zip = 0;
 int opt_pcap_dump_ziplevel = Z_DEFAULT_COMPRESSION;
 int opt_pcap_dump_writethreads = 2;
+int opt_pcap_dump_writethreads_max = 10;
 int opt_pcap_dump_asyncwrite_maxsize = 100; //MB
 int opt_defer_create_spooldir = 0;
 
@@ -1850,6 +1851,9 @@ int load_config(char *fname) {
 	}
 	if((value = ini.GetValue("general", "pcap_dump_writethreads", NULL))) {
 		opt_pcap_dump_writethreads = atoi(value);
+	}
+	if((value = ini.GetValue("general", "pcap_dump_writethreads_max", NULL))) {
+		opt_pcap_dump_writethreads_max = atoi(value);
 	}
 	if((value = ini.GetValue("general", "pcap_dump_asyncwrite_maxsize", NULL))) {
 		opt_pcap_dump_asyncwrite_maxsize = atoi(value);

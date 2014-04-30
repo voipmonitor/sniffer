@@ -12,6 +12,7 @@
 #include <iostream>
 #include <sstream>
 #include <sys/syscall.h>
+#include <vector>
 
 #include <snappy-c.h>
 
@@ -1081,16 +1082,32 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 		}
 	}
 	extern AsyncClose asyncClose;
+	vector<double> v_tac_cpu;
 	double last_tac_cpu = 0;
+	bool exists_set_tac_cpu = false;
 	for(int i = 0; i < asyncClose.getCountThreads(); i++) {
 		double tac_cpu = asyncClose.getCpuUsagePerc(i, true);
 		last_tac_cpu = tac_cpu;
 		if(tac_cpu >= 0) {
-			outStrStat << "tacCPU" << (i+1) << "[" << setprecision(1) << tac_cpu << "%] ";
+			v_tac_cpu.push_back(tac_cpu);
+			exists_set_tac_cpu = true;
 		}
+	}
+	if(exists_set_tac_cpu) {
+		outStrStat << "tacCPU[";
+		for(size_t i = 0; i < v_tac_cpu.size(); i++) {
+			if(i) {
+				outStrStat << '|';
+			}
+			outStrStat << setprecision(1) << v_tac_cpu[i];
+		}
+		outStrStat << "%] ";
 	}
 	if(last_tac_cpu > 95) {
 		asyncClose.addThread();
+	}
+	if(last_tac_cpu < 5) {
+		asyncClose.removeThread();
 	}
 	long unsigned int rss = this->getRssUsage();
 	if(rss > 0) {
