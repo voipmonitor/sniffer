@@ -1,5 +1,6 @@
 #include "format_wav.h"
 #include "format_slinear.h"
+#include "tools.h"
 
 // sample rate 8000, 12000, 16000, 24000
 int wav_write_header(FILE *f, int samplerate)
@@ -135,7 +136,22 @@ int wav_mix(char *in1, char *in2, char *out, int samplerate) {
 			return 1;
 		}
 	}
-	f_out = fopen(out, "w");
+	for(int passOpen = 0; passOpen < 2; passOpen++) {
+		if(passOpen == 1) {
+			char *pointToLastDirSeparator = strrchr(out, '/');
+			if(pointToLastDirSeparator) {
+				*pointToLastDirSeparator = 0;
+				mkdir_r(out, 0777);
+				*pointToLastDirSeparator = '/';
+			} else {
+				break;
+			}
+		}
+		f_out = fopen(out, "w");
+		if(f_out) {
+			break;
+		}
+	}
 	if(!f_out) {
 		if(f_in1 != NULL)
 			fclose(f_in1);

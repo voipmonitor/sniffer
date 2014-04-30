@@ -1127,11 +1127,22 @@ Call::convertRawToWav() {
 	if(adir && bdir) {
 		/* calculate difference in milliseconds */
 		int msdiff = ast_tvdiff_ms(tv1, tv0);
-		if(msdiff < 0) {
-			/* add msdiff [ms] silence to i1 stream */
-			wav = fopen(wav0, "w");
-		} else {
-			wav = fopen(wav1, "w");
+		char *fileNameWav = msdiff < 0 ? wav0 : wav1;
+		for(int passOpen = 0; passOpen < 2; passOpen++) {
+			if(passOpen == 1) {
+				char *pointToLastDirSeparator = strrchr(fileNameWav, '/');
+				if(pointToLastDirSeparator) {
+					*pointToLastDirSeparator = 0;
+					mkdir_r(fileNameWav, 0777);
+					*pointToLastDirSeparator = '/';
+				} else {
+					break;
+				}
+			}
+			wav = fopen(fileNameWav, "w");
+			if(wav) {
+				break;
+			}
 		}
 		if(!wav) {
 			syslog(LOG_ERR, "Cannot open %s or %s\n", wav0, wav1);
