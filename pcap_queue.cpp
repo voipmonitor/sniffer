@@ -148,7 +148,7 @@ int opt_pcap_queue_iface_dedup_separate_threads 	= 0;
 int opt_pcap_queue_iface_dedup_separate_threads_extend	= 0;
 int opt_pcap_queue_iface_qring_size 			= 5000;
 int opt_pcap_queue_dequeu_window_length			= -1;
-int opt_pcap_queue_dequeu_method			= 1;
+int opt_pcap_queue_dequeu_method			= 2;
 
 size_t _opt_pcap_queue_block_offset_inc_size		= opt_pcap_queue_block_max_size / AVG_PACKET_SIZE / 4;
 size_t _opt_pcap_queue_block_restore_buffer_inc_size	= opt_pcap_queue_block_max_size / 4;
