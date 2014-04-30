@@ -1707,7 +1707,22 @@ bool FileZipHandler::initZip() {
 }
 
 bool FileZipHandler::_open() {
-	this->fh = ::open(fileName.c_str(), O_WRONLY | O_CREAT | O_TRUNC, permission);
+	for(int passOpen = 0; passOpen < 2; passOpen++) {
+		if(passOpen == 1) {
+			char *pointToLastDirSeparator = strrchr((char*)fileName.c_str(), '/');
+			if(pointToLastDirSeparator) {
+				*pointToLastDirSeparator = 0;
+				mkdir_r(fileName.c_str(), 0777);
+				*pointToLastDirSeparator = '/';
+			} else {
+				break;
+			}
+		}
+		this->fh = ::open(fileName.c_str(), O_WRONLY | O_CREAT | O_TRUNC, permission);
+		if(this->okHandle()) {
+			break;
+		}
+	}
 	if(this->okHandle()) {
 		return(true);
 	} else {

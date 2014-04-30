@@ -815,7 +815,22 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 					}
 				}
 			}
-			gfileRAW = fopen(tmp, "w");
+			for(int passOpen = 0; passOpen < 2; passOpen++) {
+				if(passOpen == 1) {
+					char *pointToLastDirSeparator = strrchr(tmp, '/');
+					if(pointToLastDirSeparator) {
+						*pointToLastDirSeparator = 0;
+						mkdir_r(tmp, 0777);
+						*pointToLastDirSeparator = '/';
+					} else {
+						break;
+					}
+				}
+				gfileRAW = fopen(tmp, "w");
+				if(gfileRAW) {
+					break;
+				}
+			}
 			if(!gfileRAW_buffer) {
 				gfileRAW_buffer = (char*)malloc(32768 * sizeof(char));
 				if(gfileRAW_buffer == NULL) {

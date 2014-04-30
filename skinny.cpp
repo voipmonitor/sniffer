@@ -1274,19 +1274,39 @@ Call *new_skinny_channel(int state, char *data, int datalen, struct pcap_pkthdr 
 	calltable->skinny_ipTuples[tmp.str()] = call;
 
 	if(call->flags & (FLAG_SAVESIP | FLAG_SAVERTP | FLAG_SAVEWAV) || opt_savewav_force) {
-		static string lastdir;
-		if(lastdir != call->dirname()) {
-			string tmp, dir;
-			if(opt_cachedir[0] != '\0') {
-				string dir;
-				dir = opt_cachedir;
-				dir += "/" + call->dirname();
+		extern int opt_defer_create_spooldir;
+		if(!opt_defer_create_spooldir) {
+			static string lastdir;
+			if(lastdir != call->dirname()) {
+				string tmp, dir;
+				if(opt_cachedir[0] != '\0') {
+					string dir;
+					dir = opt_cachedir;
+					dir += "/" + call->dirname();
+					if(opt_newdir) {
+						tmp = dir + "/ALL";
+						mkdir_r(tmp, 0777);
+						tmp = dir + "/REG";
+						mkdir_r(tmp, 0777);
+						tmp = dir + "/SKINNY";
+						mkdir_r(tmp, 0777);
+						tmp = dir + "/RTP";
+						mkdir_r(tmp, 0777);
+						tmp = dir + "/GRAPH";
+						mkdir_r(tmp, 0777);
+						tmp = dir + "/AUDIO";
+						mkdir_r(tmp, 0777);
+					} else {
+						mkdir_r(dir, 0777);
+					}
+				}
+				dir = call->dirname();
 				if(opt_newdir) {
 					tmp = dir + "/ALL";
 					mkdir_r(tmp, 0777);
-					tmp = dir + "/REG";
-					mkdir_r(tmp, 0777);
 					tmp = dir + "/SKINNY";
+					mkdir_r(tmp, 0777);
+					tmp = dir + "/REG";
 					mkdir_r(tmp, 0777);
 					tmp = dir + "/RTP";
 					mkdir_r(tmp, 0777);
@@ -1294,30 +1314,13 @@ Call *new_skinny_channel(int state, char *data, int datalen, struct pcap_pkthdr 
 					mkdir_r(tmp, 0777);
 					tmp = dir + "/AUDIO";
 					mkdir_r(tmp, 0777);
+					mkdir_r(call->dirname(), 0777);
 				} else {
 					mkdir_r(dir, 0777);
 				}
-			}
-			dir = call->dirname();
-			if(opt_newdir) {
-				tmp = dir + "/ALL";
-				mkdir_r(tmp, 0777);
-				tmp = dir + "/SKINNY";
-				mkdir_r(tmp, 0777);
-				tmp = dir + "/REG";
-				mkdir_r(tmp, 0777);
-				tmp = dir + "/RTP";
-				mkdir_r(tmp, 0777);
-				tmp = dir + "/GRAPH";
-				mkdir_r(tmp, 0777);
-				tmp = dir + "/AUDIO";
-				mkdir_r(tmp, 0777);
-				mkdir_r(call->dirname(), 0777);
-			} else {
-				mkdir_r(dir, 0777);
-			}
 
-			lastdir = call->dirname();
+				lastdir = call->dirname();
+			}
 		}
 
 		char str2[1024];

@@ -1480,20 +1480,40 @@ Call *new_invite_register(int sip_method, char *data, int datalen, struct pcap_p
 	// opening dump file
 	if((call->type == REGISTER && (call->flags & FLAG_SAVEREGISTER)) || 
 		(call->type != REGISTER && (call->flags & (FLAG_SAVESIP | FLAG_SAVERTP | FLAG_SAVEWAV) || opt_savewav_force))) {
-		static string lastdir;
-		if(lastdir != call->dirname()) {
-			string tmp, dir;
-			if(opt_cachedir[0] != '\0') {
-	//			sprintf(str2, "%s/%s", opt_cachedir, call->dirname().c_str());
-				string dir;
-				dir = opt_cachedir;
-				dir += "/" + call->dirname();
+		extern int opt_defer_create_spooldir;
+		if(!opt_defer_create_spooldir) {
+			static string lastdir;
+			if(lastdir != call->dirname()) {
+				string tmp, dir;
+				if(opt_cachedir[0] != '\0') {
+		//			sprintf(str2, "%s/%s", opt_cachedir, call->dirname().c_str());
+					string dir;
+					dir = opt_cachedir;
+					dir += "/" + call->dirname();
+					if(opt_newdir) {
+						tmp = dir + "/ALL";
+						mkdir_r(tmp, 0777);
+						tmp = dir + "/REG";
+						mkdir_r(tmp, 0777);
+						tmp = dir + "/SIP";
+						mkdir_r(tmp, 0777);
+						tmp = dir + "/RTP";
+						mkdir_r(tmp, 0777);
+						tmp = dir + "/GRAPH";
+						mkdir_r(tmp, 0777);
+						tmp = dir + "/AUDIO";
+						mkdir_r(tmp, 0777);
+					} else {
+						mkdir_r(dir, 0777);
+					}
+				}
+				dir = call->dirname();
 				if(opt_newdir) {
 					tmp = dir + "/ALL";
 					mkdir_r(tmp, 0777);
-					tmp = dir + "/REG";
-					mkdir_r(tmp, 0777);
 					tmp = dir + "/SIP";
+					mkdir_r(tmp, 0777);
+					tmp = dir + "/REG";
 					mkdir_r(tmp, 0777);
 					tmp = dir + "/RTP";
 					mkdir_r(tmp, 0777);
@@ -1501,30 +1521,13 @@ Call *new_invite_register(int sip_method, char *data, int datalen, struct pcap_p
 					mkdir_r(tmp, 0777);
 					tmp = dir + "/AUDIO";
 					mkdir_r(tmp, 0777);
+					mkdir_r(call->dirname(), 0777);
 				} else {
 					mkdir_r(dir, 0777);
 				}
+				
+				lastdir = call->dirname();
 			}
-			dir = call->dirname();
-			if(opt_newdir) {
-				tmp = dir + "/ALL";
-				mkdir_r(tmp, 0777);
-				tmp = dir + "/SIP";
-				mkdir_r(tmp, 0777);
-				tmp = dir + "/REG";
-				mkdir_r(tmp, 0777);
-				tmp = dir + "/RTP";
-				mkdir_r(tmp, 0777);
-				tmp = dir + "/GRAPH";
-				mkdir_r(tmp, 0777);
-				tmp = dir + "/AUDIO";
-				mkdir_r(tmp, 0777);
-				mkdir_r(call->dirname(), 0777);
-			} else {
-				mkdir_r(dir, 0777);
-			}
-			
-			lastdir = call->dirname();
 		}
 	}
 
