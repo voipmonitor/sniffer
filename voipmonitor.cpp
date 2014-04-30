@@ -319,6 +319,7 @@ extern int opt_pcap_queue_iface_separate_threads;
 extern int opt_pcap_queue_iface_dedup_separate_threads;
 extern int opt_pcap_queue_iface_dedup_separate_threads_extend;
 extern int opt_pcap_queue_dequeu_window_length;
+extern int opt_pcap_queue_dequeu_method;
 extern int sql_noerror;
 int opt_cleandatabase_cdr = 0;
 int opt_cleandatabase_register_state = 0;
@@ -1742,6 +1743,9 @@ int load_config(char *fname) {
 	}
 	if((value = ini.GetValue("general", "pcap_queue_dequeu_window_length", NULL))) {
 		opt_pcap_queue_dequeu_window_length = atoi(value);
+	}
+	if((value = ini.GetValue("general", "pcap_queue_dequeu_method", NULL))) {
+		opt_pcap_queue_dequeu_method = atoi(value);
 	}
 	if((value = ini.GetValue("general", "maxpcapsize", NULL))) {
 		opt_maxpcapsize_mb = atoi(value);

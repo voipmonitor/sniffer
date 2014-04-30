@@ -490,6 +490,13 @@ public:
 		u_int64_t utime;
 		u_int64_t at;
 	};
+	struct sBlockInfo {
+		pcap_block_store *blockStore;
+		size_t count_processed;
+		u_int64_t utime_first;
+		u_int64_t utime_last;
+		u_int64_t at;
+	};
 public:
 	PcapQueue_readFromFifo(const char *nameQueue, const char *fileStoreFolder);
 	virtual ~PcapQueue_readFromFifo();
