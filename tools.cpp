@@ -672,11 +672,13 @@ bool PcapDumper::open(const char *fileName, const char *fileNameSpoolRelative, p
 		this->close(this->updateFilesQueueAtClose);
 		syslog(LOG_NOTICE, "pcapdumper: reopen %s -> %s", this->fileName.c_str(), fileName);
 	}
+	/* disable - too slow
 	if(file_exists((char*)fileName)) {
 		if(verbosity > 2) {
 			syslog(LOG_NOTICE,"pcapdumper: [%s] already exists, not overwriting", fileName);
 		}
 	}
+	*/
 	extern pcap_t *global_pcap_handle_dead_EN10MB;
 	extern int opt_convert_dlt_sll_to_en10;
 	pcap_t *_handle = useDlt == DLT_LINUX_SLL && opt_convert_dlt_sll_to_en10 && global_pcap_handle_dead_EN10MB ? 
@@ -762,11 +764,13 @@ bool RtpGraphSaver::open(const char *fileName, const char *fileNameSpoolRelative
 		this->close(this->updateFilesQueueAtClose);
 		syslog(LOG_NOTICE, "graphsaver: reopen %s -> %s", this->fileName.c_str(), fileName);
 	}
+	/* disable - too slow
 	if(file_exists((char*)fileName)) {
 		if(verbosity > 2) {
 			syslog(LOG_NOTICE,"graphsaver: [%s] already exists, not overwriting", fileName);
 		}
 	}
+	*/
 	this->handle = new FileZipHandler(opt_pcap_dump_bufflength, opt_pcap_dump_asyncwrite, opt_gzipGRAPH);
 	if(!this->handle->open(fileName)) {
 		syslog(LOG_NOTICE, "graphsaver: error open file %s - %s", fileName, this->handle->error.c_str());
