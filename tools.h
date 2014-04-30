@@ -280,7 +280,7 @@ public:
 			this->handle = handle;
 			extern int opt_pcap_dump_bufflength;
 			if(opt_pcap_dump_bufflength) {
-				this->dataLength = ((FileZipHandler*)handle)->size;
+				this->dataLength = ((FileZipHandler*)handle)->useBufferLength;
 			}
 		}
 		void process() {
@@ -319,7 +319,7 @@ public:
 					      const char *column = NULL, long long writeBytes = 0)
 		 : AsyncCloseItem(call, file, column, writeBytes) {
 			this->handle = handle;
-			this->dataLength = handle->size;
+			this->dataLength = handle->useBufferLength;
 		}
 		void process() {
 			handle->close();
