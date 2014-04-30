@@ -392,12 +392,12 @@ public:
 	void add(AsyncCloseItem *item, int threadIndex) {
 		extern int terminating;
 		extern int opt_pcap_dump_asyncwrite_maxsize;
-		add_sizeOfDataInMemory(item->dataLength);
-		while(sizeOfDataInMemory > opt_pcap_dump_asyncwrite_maxsize * 1024ull * 1024ull && !terminating) {
+		while(sizeOfDataInMemory + item->dataLength > opt_pcap_dump_asyncwrite_maxsize * 1024ull * 1024ull && !terminating) {
 			usleep(1000);
 		}
 		lock(threadIndex);
 		q[threadIndex].push(item);
+		add_sizeOfDataInMemory(item->dataLength);
 		unlock(threadIndex);
 	}
 	void processTask(int threadIndex);

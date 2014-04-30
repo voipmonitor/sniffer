@@ -883,9 +883,9 @@ void AsyncClose::processAll(int threadIndex) {
 		if(q[threadIndex].size()) {
 			AsyncCloseItem *item = q[threadIndex].front();
 			q[threadIndex].pop();
+			sub_sizeOfDataInMemory(item->dataLength);
 			unlock(threadIndex);
 			item->process();
-			sub_sizeOfDataInMemory(item->dataLength);
 			delete item;
 		} else {
 			unlock(threadIndex);
