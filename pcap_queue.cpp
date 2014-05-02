@@ -1110,7 +1110,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 	if(last_tac_cpu < 5) {
 		asyncClose.removeThread();
 	}
-	outStrStat << "memMB[";
+	outStrStat << "RSS/VSZ[";
 	long unsigned int rss = this->getProcRssUsage(true);
 	if(rss > 0) {
 		outStrStat << setprecision(0) << (double)rss/1024/1024;
@@ -1118,11 +1118,11 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 	long unsigned int vsize = this->getProcVsizeUsage();
 	if(vsize > 0) {
 		if(rss > 0) {
-			outStrStat << ' ';
+			outStrStat << '|';
 		}
 		outStrStat << setprecision(0) << (double)vsize/1024/1024;
 	}
-	outStrStat << "] ";
+	outStrStat << "]MB ";
 	pbStatString = outStr.str() + outStrStat.str();
 	pbCountPacketDrop = this->instancePcapHandle ?
 				this->instancePcapHandle->getCountPacketDrop() :
