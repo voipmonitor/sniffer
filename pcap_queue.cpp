@@ -776,6 +776,7 @@ PcapQueue::PcapQueue(eTypeQueue typeQueue, const char *nameQueue) {
 	this->writeThreadId = 0;
 	memset(this->threadPstatData, 0, sizeof(this->threadPstatData));
 	memset(this->writeThreadPstatData, 0, sizeof(this->writeThreadPstatData));
+	memset(this->procPstatData, 0, sizeof(this->procPstatData));
 	this->packetBuffer = NULL;
 	this->instancePcapHandle = NULL;
 	this->initAllReadThreadsOk = false;
@@ -1015,7 +1016,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 		u_int64_t ac_sizeOfDataInMemory = asyncClose.getSizeOfDataInMemory();
 		if(ac_sizeOfDataInMemory) {
 			extern int opt_pcap_dump_asyncwrite_maxsize;
-			outStr << "ac[" << setprecision(1) << 100 * ac_sizeOfDataInMemory / (opt_pcap_dump_asyncwrite_maxsize * 1024ull * 1024ull) << "%] ";
+			outStr << "ac[" << setprecision(1) << 100 * (double)ac_sizeOfDataInMemory / (opt_pcap_dump_asyncwrite_maxsize * 1024ull * 1024ull) << "%] ";
 		}
 		if(this->instancePcapHandle) {
 			unsigned long bypassBufferSizeExeeded = this->instancePcapHandle->pcapStat_get_bypass_buffer_size_exeeded();
@@ -1109,14 +1110,19 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 	if(last_tac_cpu < 5) {
 		asyncClose.removeThread();
 	}
-	long unsigned int rss = this->getRssUsage();
+	outStrStat << "RSS/VSZ[";
+	long unsigned int rss = this->getProcRssUsage(true);
 	if(rss > 0) {
-		outStrStat << "res[" << setprecision(1) << (double)rss/1024/1024 << "MB] ";
+		outStrStat << setprecision(0) << (double)rss/1024/1024;
 	}
-	long unsigned int vsize = this->getVsizeUsage();
+	long unsigned int vsize = this->getProcVsizeUsage();
 	if(vsize > 0) {
-		outStrStat << "virt[" << setprecision(1) << (double)vsize/1024/1024 << "MB] ";
+		if(rss > 0) {
+			outStrStat << '|';
+		}
+		outStrStat << setprecision(0) << (double)vsize/1024/1024;
 	}
+	outStrStat << "]MB ";
 	pbStatString = outStr.str() + outStrStat.str();
 	pbCountPacketDrop = this->instancePcapHandle ?
 				this->instancePcapHandle->getCountPacketDrop() :
@@ -1380,6 +1386,10 @@ void PcapQueue::preparePstatData(bool writeThread) {
 	}
 }
 
+void PcapQueue::prepareProcPstatData() {
+	pstat_get_data(0, this->procPstatData);
+}
+
 double PcapQueue::getCpuUsagePerc(bool writeThread, bool preparePstatData) {
 	if(preparePstatData) {
 		this->preparePstatData(writeThread);
@@ -1426,6 +1436,20 @@ long unsigned int PcapQueue::getRssUsage(bool writeThread, bool preparePstatData
 		return(this->threadPstatData[0].rss);
 	}
 	return(0);
+}
+
+long unsigned int PcapQueue::getProcVsizeUsage(bool preparePstatData) {
+	if(preparePstatData) {
+		this->prepareProcPstatData();
+	}
+	return(this->procPstatData[0].vsize);
+}
+
+long unsigned int PcapQueue::getProcRssUsage(bool preparePstatData) {
+	if(preparePstatData) {
+		this->prepareProcPstatData();
+	}
+	return(this->procPstatData[0].rss);
 }
 
 
