@@ -714,6 +714,9 @@ public:
 			}
 		}
 		void addNode(const char *nodeName, bool isContentLength = false) {
+			while(*nodeName == '\n') {
+				 ++nodeName;
+			}
 			if(*nodeName) {
 				unsigned char nodeChar = (unsigned char)*nodeName;
 				if(nodeChar >= 'A' && nodeChar <= 'Z') {
@@ -827,6 +830,15 @@ public:
 		addNode("expires=");
 		addNode("username=\"");
 		addNode("realm=\"");
+		
+		extern char opt_match_header[128];
+		if(opt_match_header[0] != '\0') {
+			string findHeader = opt_match_header;
+			if(findHeader[findHeader.length() - 1] != ':') {
+				findHeader.append(":");
+			}
+			addNode(findHeader.c_str());
+		}
 		
 		extern vector<dstring> opt_custom_headers_cdr;
 		extern vector<dstring> opt_custom_headers_message;
