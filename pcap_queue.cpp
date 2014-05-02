@@ -1016,7 +1016,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 		u_int64_t ac_sizeOfDataInMemory = asyncClose.getSizeOfDataInMemory();
 		if(ac_sizeOfDataInMemory) {
 			extern int opt_pcap_dump_asyncwrite_maxsize;
-			outStr << "ac[" << setprecision(1) << 100 * ac_sizeOfDataInMemory / (opt_pcap_dump_asyncwrite_maxsize * 1024ull * 1024ull) << "%] ";
+			outStr << "ac[" << setprecision(1) << 100 * (double)ac_sizeOfDataInMemory / (opt_pcap_dump_asyncwrite_maxsize * 1024ull * 1024ull) << "%] ";
 		}
 		if(this->instancePcapHandle) {
 			unsigned long bypassBufferSizeExeeded = this->instancePcapHandle->pcapStat_get_bypass_buffer_size_exeeded();
@@ -1110,14 +1110,19 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 	if(last_tac_cpu < 5) {
 		asyncClose.removeThread();
 	}
+	outStrStat << "memMB[";
 	long unsigned int rss = this->getProcRssUsage(true);
 	if(rss > 0) {
-		outStrStat << "res[" << setprecision(1) << (double)rss/1024/1024 << "MB] ";
+		outStrStat << setprecision(0) << (double)rss/1024/1024;
 	}
 	long unsigned int vsize = this->getProcVsizeUsage();
 	if(vsize > 0) {
-		outStrStat << "virt[" << setprecision(1) << (double)vsize/1024/1024 << "MB] ";
+		if(rss > 0) {
+			outStrStat << ' ';
+		}
+		outStrStat << setprecision(0) << (double)vsize/1024/1024;
 	}
+	outStrStat << "] ";
 	pbStatString = outStr.str() + outStrStat.str();
 	pbCountPacketDrop = this->instancePcapHandle ?
 				this->instancePcapHandle->getCountPacketDrop() :
