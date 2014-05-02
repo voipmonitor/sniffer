@@ -362,6 +362,8 @@ int opt_mysql_port = 0; // 0 menas use standard port
 int opt_skiprtpdata = 0;
 
 char opt_match_header[128] = "";
+char opt_callidmerge_header[128] = "";
+char opt_callidmerge_secret[128] = "";
 
 char odbc_dsn[256] = "voipmonitor";
 char odbc_user[256];
@@ -1300,6 +1302,12 @@ int load_config(char *fname) {
 	if((value = ini.GetValue("general", "match_header", NULL))) {
 		snprintf(opt_match_header, sizeof(opt_match_header), "\n%s:", value);
 	}
+	if((value = ini.GetValue("general", "callidmerge_header", NULL))) {
+		snprintf(opt_callidmerge_header, sizeof(opt_callidmerge_header), "\n%s:", value);
+	}
+	if((value = ini.GetValue("general", "callidmerge_secret", NULL))) {
+		snprintf(opt_callidmerge_secret, sizeof(opt_callidmerge_secret), "\n%s:", value);
+	}
 	if((value = ini.GetValue("general", "domainport", NULL))) {
 		opt_domainport = atoi(value);
 	}
@@ -2068,6 +2076,8 @@ int main(int argc, char *argv[]) {
 	time(&startTime);
 
 	regfailedcache = new regcache;
+
+	base64_init();
 
 /*
 	if(mysql_library_init(0, NULL, NULL)) {

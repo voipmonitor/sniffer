@@ -54,6 +54,8 @@ extern int opt_read_from_file;
 extern int opt_pcap_dump_writethreads;
 extern int opt_pcap_dump_writethreads_max;
 
+static char b2a[256];
+static char base64[64];
 
 using namespace std;
 
@@ -1831,4 +1833,55 @@ char *__pcap_geterr(pcap_t *p, pcap_dumper_t *pd) {
 	} else {
 		return(pcap_geterr(p));
 	}
+}
+
+void base64_init(void)
+{
+        int x;
+        memset(b2a, -1, sizeof(b2a));
+        /* Initialize base-64 Conversion table */
+        for (x = 0; x < 26; x++) {
+                /* A-Z */
+                base64[x] = 'A' + x;
+                b2a['A' + x] = x;
+                /* a-z */
+                base64[x + 26] = 'a' + x;
+                b2a['a' + x] = x + 26;
+                /* 0-9 */
+                if (x < 10) {
+                        base64[x + 52] = '0' + x;
+                        b2a['0' + x] = x + 52;
+                }      
+        }      
+        base64[62] = '+';
+        base64[63] = '/';
+        b2a[(int)'+'] = 62;
+        b2a[(int)'/'] = 63;
+}      
+
+/*! \brief decode BASE64 encoded text */
+int base64decode(unsigned char *dst, const char *src, int max)
+{
+        int cnt = 0;
+        unsigned int byte = 0;
+        unsigned int bits = 0;
+        int incnt = 0;
+        while(*src && *src != '=' && (cnt < max)) {
+                /* Shift in 6 bits of input */
+                byte <<= 6;
+                byte |= (b2a[(int)(*src)]) & 0x3f;
+                bits += 6;
+                src++;
+                incnt++;
+                /* If we have at least 8 bits left over, take that character 
+                   off the top */
+                if (bits >= 8)  {
+                        bits -= 8;
+                        *dst = (byte >> bits) & 0xff;
+                        dst++;
+                        cnt++;
+                }
+        }
+        /* Dont worry about left over bits, they're extra anyway */
+        return cnt;
 }

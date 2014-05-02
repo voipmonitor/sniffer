@@ -239,6 +239,8 @@ public:
 	int useDlt;
 	pcap_t *useHandle;
 
+	vector<string> mergecalls;
+
 	/**
 	 * constructor
 	 *
@@ -492,6 +494,8 @@ public:
 	list<Call*>::iterator call;
 	map<string, Call*> calls_listMAP; //!< 
 	map<string, Call*>::iterator callMAPIT; //!< 
+	map<string, Call*> calls_mergeMAP; //!< 
+	map<string, Call*>::iterator mergeMAPIT; //!< 
 	map<string, Call*> skinny_ipTuples; //!< 
 	map<string, Call*>::iterator skinny_ipTuplesIT; //!< 
 	map<unsigned int, Call*> skinny_partyID; //!< 
@@ -499,7 +503,6 @@ public:
 	map<unsigned int, std::map<unsigned int, Ipportnode*> > ipportmap;
 //	map<unsigned int, std::map<unsigned int, Ipportnode*> >::iterator ipportmapIT;
 	map<unsigned int, Ipportnode*>::iterator ipportmapIT;
-
 
 	/**
 	 * @brief constructor
@@ -529,6 +532,7 @@ public:
 	void lock_calls_deletequeue() { pthread_mutex_lock(&qdellock); };
 	void lock_files_queue() { pthread_mutex_lock(&flock); };
 	void lock_calls_listMAP() { pthread_mutex_lock(&calls_listMAPlock); };
+	void lock_calls_mergeMAP() { pthread_mutex_lock(&calls_mergeMAPlock); };
 
 	/**
 	 * @brief unlock calls_queue structure 
@@ -538,6 +542,7 @@ public:
 	void unlock_calls_deletequeue() { pthread_mutex_unlock(&qdellock); };
 	void unlock_files_queue() { pthread_mutex_unlock(&flock); };
 	void unlock_calls_listMAP() { pthread_mutex_unlock(&calls_listMAPlock); };
+	void unlock_calls_mergeMAP() { pthread_mutex_unlock(&calls_mergeMAPlock); };
 	
 	/**
 	 * @brief lock files_queue structure 
@@ -564,6 +569,7 @@ public:
 	 * @return reference of the Call if found, otherwise return NULL
 	*/
 	Call *find_by_call_id(char *call_id, unsigned long call_id_len);
+	Call *find_by_mergecall_id(char *call_id, unsigned long call_id_len);
 	Call *find_by_skinny_partyid(unsigned int partyid);
 	Call *find_by_skinny_ipTuples(unsigned int saddr, unsigned int daddr);
 
@@ -631,6 +637,7 @@ private:
 	pthread_mutex_t qdellock;	//!< mutex locking calls_deletequeue
 	pthread_mutex_t flock;		//!< mutex locking calls_queue
 	pthread_mutex_t calls_listMAPlock;
+	pthread_mutex_t calls_mergeMAPlock;
 //	pthread_mutexattr_t   calls_listMAPlock_attr;
 
 	void *calls_hash[MAXNODE];

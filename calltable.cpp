@@ -143,6 +143,7 @@ extern int opt_saveaudio_reversestereo;
 extern float opt_saveaudio_oggquality;
 extern int opt_skinny;
 extern int opt_enable_fraud;
+extern char opt_callidmerge_header[128];
 
 SqlDb *sqlDbSaveCall = NULL;
 bool existsColumnCalldateInCdrNext = true;
@@ -418,16 +419,14 @@ Call::~Call(){
 			}
 		}
 
-/*
-		for(int i = 0; i < 2; i++) {
-			((Calltable *)calltable)->skinny_ipTuplesIT = ((Calltable *)calltable)->skinny_ipTuples.find(tmp[i].str());
-			if(((Calltable *)calltable)->skinny_ipTuplesIT == ((Calltable *)calltable)->skinny_ipTuples.end()) {
-				if(((Calltable *)calltable)->skinny_ipTuplesIT->second == this) {
-					((Calltable *)calltable)->skinny_ipTuples.erase(((Calltable *)calltable)->skinny_ipTuplesIT);
-				}
-			}
+	}
+
+	if(opt_callidmerge_header[0] != '\0') {
+		((Calltable*)calltable)->lock_calls_mergeMAP();
+		for(std::vector<string>::iterator it = mergecalls.begin(); it != mergecalls.end(); ++it) {
+			((Calltable*)calltable)->calls_mergeMAP.erase(*it);
 		}
-*/
+		((Calltable*)calltable)->unlock_calls_mergeMAP();
 	}
 
 	if(contenttype) free(contenttype);
@@ -443,36 +442,6 @@ Call::~Call(){
 		*listening_worker_run = 0;
 	}
 	pthread_mutex_lock(&listening_worker_run_lock);
-
-	/****
-	if (get_fsip_pcap() != NULL){
-		pcap_dump_flush(get_fsip_pcap());
-		pcap_dump_close(get_fsip_pcap());
-		set_fsip_pcap(NULL);
-		addtofilesqueue(sip_pcapfilename, type == REGISTER ? "regsize" : "sipsize");
-		if(opt_cachedir[0] != '\0') {
-			addtocachequeue(sip_pcapfilename);
-		}
-	}
-	if (get_frtp_pcap() != NULL){
-		pcap_dump_flush(get_frtp_pcap());
-		pcap_dump_close(get_frtp_pcap());
-		set_frtp_pcap(NULL);
-		addtofilesqueue(rtp_pcapfilename, "rtpsize");
-		if(opt_cachedir[0] != '\0') {
-			addtocachequeue(rtp_pcapfilename);
-		}
-	}
-	if (get_f_pcap() != NULL){
-		pcap_dump_flush(get_f_pcap());
-		pcap_dump_close(get_f_pcap());
-		set_f_pcap(NULL);
-		addtofilesqueue(pcapfilename, type == REGISTER ? "regsize" : "sipsize");
-		if(opt_cachedir[0] != '\0') {
-			addtocachequeue(pcapfilename);
-		}
-	}
-	****/
 
 	if(audiobuffer1) delete audiobuffer1;
 	if(audiobuffer2) delete audiobuffer2;
@@ -2987,9 +2956,8 @@ Calltable::Calltable() {
 	pthread_mutex_init(&qdellock, NULL);
 	pthread_mutex_init(&flock, NULL);
 
-//	pthread_mutexattr_init(&calls_listMAPlock_attr);
-//	pthread_mutexattr_settype(&mta, PTHREAD_MUTEX_NORMAL);
 	pthread_mutex_init(&calls_listMAPlock, NULL);
+	pthread_mutex_init(&calls_mergeMAPlock, NULL);
 
 	memset(calls_hash, 0x0, sizeof(calls_hash));
 };
@@ -3000,6 +2968,7 @@ Calltable::~Calltable() {
 	pthread_mutex_destroy(&qdellock);
 	pthread_mutex_destroy(&flock);
 	pthread_mutex_destroy(&calls_listMAPlock);
+	pthread_mutex_destroy(&calls_mergeMAPlock);
 };
 
 /* add node to hash. collisions are linked list of nodes*/
@@ -3262,6 +3231,22 @@ Calltable::find_by_call_id(char *call_id, unsigned long call_id_len) {
 	}
 	return NULL;
 */
+}
+
+/* find Call by SIP call-id in merge list and return reference to this Call */
+Call*
+Calltable::find_by_mergecall_id(char *call_id, unsigned long call_id_len) {
+	string call_idS = string(call_id, call_id_len);
+	lock_calls_mergeMAP();
+	callMAPIT = calls_mergeMAP.find(call_idS);
+	if(mergeMAPIT == calls_mergeMAP.end()) {
+		unlock_calls_mergeMAP();
+		// not found
+		return NULL;
+	} else {
+		unlock_calls_mergeMAP();
+		return (*mergeMAPIT).second;
+	}
 }
 
 Call*

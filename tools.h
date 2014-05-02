@@ -61,6 +61,8 @@ std::vector<std::string> split(const char *s, std::vector<std::string> delim, bo
 int reg_match(const char *string, const char *pattern);
 string reg_replace(const char *string, const char *pattern, const char *replace);
 string inet_ntostring(u_int32_t ip);
+void base64_init(void);
+int base64decode(unsigned char *dst, const char *src, int max);
 
 class CircularBuffer
 {
@@ -834,6 +836,15 @@ public:
 		extern char opt_match_header[128];
 		if(opt_match_header[0] != '\0') {
 			string findHeader = opt_match_header;
+			if(findHeader[findHeader.length() - 1] != ':') {
+				findHeader.append(":");
+			}
+			addNode(findHeader.c_str());
+		}
+		
+		extern char opt_callidmerge_header[128];
+		if(opt_callidmerge_header[0] != '\0') {
+			string findHeader = opt_callidmerge_header;
 			if(findHeader[findHeader.length() - 1] != ':') {
 				findHeader.append(":");
 			}
