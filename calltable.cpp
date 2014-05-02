@@ -1208,7 +1208,7 @@ Call::convertRawToWav() {
 		if(i == 1 && bdir == 0) {
 			continue;
 		}
-		char *wav = i ? wav1 : wav0;
+		char *wav = NULL;
 
 		/* open playlist */
 		sprintf(rawInfo, "%s/%s/%s.i%d.rawInfo", dirname().c_str(), opt_newdir ? "AUDIO" : "", get_fbasename_safe(), i);
@@ -1222,6 +1222,7 @@ Call::convertRawToWav() {
 			line[strlen(line)] = '\0'; // remove '\n' which is last character
 			sscanf(line, "%d:%lu:%d:%ld:%ld", &ssrc_index, &rawiterator, &codec, &tv0.tv_sec, &tv0.tv_usec);
 			sprintf(raw, "%s/%s/%s.i%d.%d.%lu.%d.%ld.%ld.raw", dirname().c_str(), opt_newdir ? "AUDIO" : "", get_fbasename_safe(), i, ssrc_index, rawiterator, codec, tv0.tv_sec, tv0.tv_usec);
+			wav = rtp[i]->iscaller ? wav0 : wav1;
 			switch(codec) {
 			case PAYLOAD_PCMA:
 				if(verbosity > 1) syslog(LOG_ERR, "Converting PCMA to WAV.\n");
@@ -1429,7 +1430,6 @@ Call::convertRawToWav() {
 		// merge caller and called 
 		switch(opt_audio_format) {
 		case FORMAT_WAV:
-			printf("sr:[%u]\n", samplerate);
 			if(!opt_saveaudio_reversestereo) {
 				wav_mix(wav0, wav1, out, samplerate);
 			} else {
