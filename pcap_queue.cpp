@@ -776,6 +776,7 @@ PcapQueue::PcapQueue(eTypeQueue typeQueue, const char *nameQueue) {
 	this->writeThreadId = 0;
 	memset(this->threadPstatData, 0, sizeof(this->threadPstatData));
 	memset(this->writeThreadPstatData, 0, sizeof(this->writeThreadPstatData));
+	memset(this->procPstatData, 0, sizeof(this->procPstatData));
 	this->packetBuffer = NULL;
 	this->instancePcapHandle = NULL;
 	this->initAllReadThreadsOk = false;
@@ -1109,11 +1110,11 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 	if(last_tac_cpu < 5) {
 		asyncClose.removeThread();
 	}
-	long unsigned int rss = this->getRssUsage();
+	long unsigned int rss = this->getProcRssUsage(true);
 	if(rss > 0) {
 		outStrStat << "res[" << setprecision(1) << (double)rss/1024/1024 << "MB] ";
 	}
-	long unsigned int vsize = this->getVsizeUsage();
+	long unsigned int vsize = this->getProcVsizeUsage();
 	if(vsize > 0) {
 		outStrStat << "virt[" << setprecision(1) << (double)vsize/1024/1024 << "MB] ";
 	}
@@ -1380,6 +1381,10 @@ void PcapQueue::preparePstatData(bool writeThread) {
 	}
 }
 
+void PcapQueue::prepareProcPstatData() {
+	pstat_get_data(0, this->procPstatData);
+}
+
 double PcapQueue::getCpuUsagePerc(bool writeThread, bool preparePstatData) {
 	if(preparePstatData) {
 		this->preparePstatData(writeThread);
@@ -1426,6 +1431,20 @@ long unsigned int PcapQueue::getRssUsage(bool writeThread, bool preparePstatData
 		return(this->threadPstatData[0].rss);
 	}
 	return(0);
+}
+
+long unsigned int PcapQueue::getProcVsizeUsage(bool preparePstatData) {
+	if(preparePstatData) {
+		this->prepareProcPstatData();
+	}
+	return(this->procPstatData[0].vsize);
+}
+
+long unsigned int PcapQueue::getProcRssUsage(bool preparePstatData) {
+	if(preparePstatData) {
+		this->prepareProcPstatData();
+	}
+	return(this->procPstatData[0].rss);
 }
 
 
