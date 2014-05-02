@@ -2031,7 +2031,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 				// this call-id is not yet tracked either in calls list or callidmerge list 
 				// check if there is SIP callidmerge_header which contains parent call-id call
 				char *s2 = NULL;
-				size_t l2 = 0;
+				long unsigned int l2 = 0;
 				unsigned char buf[1024];
 				s2 = gettag(data, datalen, opt_callidmerge_header, &l2, &gettagLimitLen);
 				if(l2 && l2 < 128) {
