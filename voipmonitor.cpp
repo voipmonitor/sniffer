@@ -3008,10 +3008,6 @@ int main(int argc, char *argv[]) {
 	}
 	//opt_pcap_threaded = 0; //disable threading because it is useless while reading packets from file
 	
-	if(opt_enable_fraud) {
-		initFraud();
-	}
-
 	chdir(opt_chdir);
 
 	mkdir_r("filesindex/sipsize", 0777);
@@ -3061,6 +3057,10 @@ int main(int argc, char *argv[]) {
 		daemonize();
 	}
 	
+	if(opt_enable_fraud) {
+		initFraud();
+	}
+
 	extern AsyncClose asyncClose;
 	asyncClose.startThreads(opt_pcap_dump_writethreads);
 	
