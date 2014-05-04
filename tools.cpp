@@ -1341,7 +1341,7 @@ string reg_replace(const char *str, const char *pattern, const char *replace) {
 
 string inet_ntostring(u_int32_t ip) {
 	struct in_addr in;
-	in.s_addr = ip;
+	in.s_addr = htonl(ip);
 	return(inet_ntoa(in));
 }
 

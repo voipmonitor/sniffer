@@ -272,7 +272,7 @@ public:
 	string getCountry(const char *ip) {
 		in_addr ips;
 		inet_aton(ip, &ips);
-		return(getCountry(ips.s_addr));
+		return(getCountry(htonl(ips.s_addr)));
 	}
 	bool isLocal(unsigned int ip) {
 		extern char opt_local_country_code[10];
@@ -281,7 +281,7 @@ public:
 	bool isLocal(const char *ip) {
 		in_addr ips;
 		inet_aton(ip, &ips);
-		return(isLocal(ips.s_addr));
+		return(isLocal(htonl(ips.s_addr)));
 	}
 private:
 	vector<GeoIP_country_rec> data;

@@ -3768,7 +3768,14 @@ void test() {
 		sqlDb->query("drop procedure if exists __insert_test");
 	 
 	} break;
-	
+	case 3: {
+		char *pointToSepOptTest = strchr(opt_test_str, '/');
+		if(pointToSepOptTest) {
+			initFraud();
+			extern GeoIP_country *geoIP_country;
+			cout << geoIP_country->getCountry(pointToSepOptTest + 1) << endl;
+		}
+	} break;
 	case 10:
 		{
 		SqlDb *sqlDb = createSqlObject();

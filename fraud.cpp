@@ -961,7 +961,7 @@ void FraudAlertInfo_spc::set(unsigned int ip,
 string FraudAlertInfo_spc::getString() {
 	ostringstream outStr;
 	outStr << inet_ntostring(ip) << " // " << count;
-	string country_code = geoIP_country->getCountry(htonl(ip));
+	string country_code = geoIP_country->getCountry(ip);
 	if(!country_code.empty()) {
 		outStr << " // "
 		       << country_code << " // "
@@ -975,7 +975,7 @@ string FraudAlertInfo_spc::getJson() {
 	this->setAlertJsonBase(&json);
 	json.add("ip", inet_ntostring(ip));
 	json.add("count", count);
-	string country_code = geoIP_country->getCountry(htonl(ip));
+	string country_code = geoIP_country->getCountry(ip);
 	if(!country_code.empty()) {
 		json.add("country_code", country_code);
 		json.add("country_name", countryCodes->getNameCountry(country_code.c_str()));
@@ -989,6 +989,9 @@ FraudAlert_spc::FraudAlert_spc(unsigned int dbId)
 }
 
 void FraudAlert_spc::evEvent(sFraudEventInfo *eventInfo) {
+	if(!this->okFilter(eventInfo)) {
+		return;
+	}
 	map<u_int32_t, sCountItem>::iterator iter = count.find(eventInfo->src_ip);
 	if(iter == count.end()) {
 		count[eventInfo->src_ip] = sCountItem(1);
@@ -1017,6 +1020,9 @@ FraudAlert_rc::FraudAlert_rc(unsigned int dbId)
 }
 
 void FraudAlert_rc::evEvent(sFraudEventInfo *eventInfo) {
+	if(!this->okFilter(eventInfo)) {
+		return;
+	}
 	map<u_int32_t, sCountItem>::iterator iter = count.find(eventInfo->src_ip);
 	if(iter == count.end()) {
 		count[eventInfo->src_ip] = sCountItem(1);
@@ -1128,7 +1134,7 @@ void FraudAlerts::endCall(Call *call, u_int64_t at) {
 void FraudAlerts::evSipPacket(u_int32_t ip, u_int64_t at) {
 	sFraudEventInfo eventInfo;
 	eventInfo.typeEventInfo = sFraudEventInfo::typeEventInfo_sipPacket;
-	eventInfo.src_ip = ip;
+	eventInfo.src_ip = htonl(ip);
 	eventInfo.at = at;
 	eventQueue.push(eventInfo);
 }
@@ -1136,7 +1142,7 @@ void FraudAlerts::evSipPacket(u_int32_t ip, u_int64_t at) {
 void FraudAlerts::evRegister(u_int32_t ip, u_int64_t at) {
 	sFraudEventInfo eventInfo;
 	eventInfo.typeEventInfo = sFraudEventInfo::typeEventInfo_register;
-	eventInfo.src_ip = ip;
+	eventInfo.src_ip = htonl(ip);
 	eventInfo.at = at;
 	eventQueue.push(eventInfo);
 }
