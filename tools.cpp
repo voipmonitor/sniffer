@@ -836,6 +836,7 @@ void *AsyncClose_process(void *_startThreadData) {
 
 AsyncClose::AsyncClose() {
 	maxPcapThreads = min((int)sysconf(_SC_NPROCESSORS_ONLN), AsyncClose_maxPcapThreads);
+	countPcapThreads = 1;
 	minPcapThreads = 1;
 	for(int i = 0; i < AsyncClose_maxPcapThreads; i++) {
 		_sync[i] = 0;

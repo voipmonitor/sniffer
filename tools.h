@@ -447,7 +447,7 @@ private:
 private:
 	int maxPcapThreads;
 	int minPcapThreads;
-	int countPcapThreads;
+	volatile int countPcapThreads;
 	queue<AsyncCloseItem*> q[AsyncClose_maxPcapThreads];
 	pthread_t thread[AsyncClose_maxPcapThreads];
 	volatile int _sync[AsyncClose_maxPcapThreads];
