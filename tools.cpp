@@ -958,6 +958,9 @@ RestartUpgrade::RestartUpgrade(bool upgrade, const char *version, const char *ur
 }
 
 bool RestartUpgrade::runUpgrade() {
+	if(verbosity > 0) {
+		syslog(LOG_NOTICE, "start upgrade from: '%s'", url.c_str());
+	}
 	bool okUrl;
 	string urlHttp;
 	if(url.find("http://voipmonitor.org") == 0 ||
@@ -974,20 +977,32 @@ bool RestartUpgrade::runUpgrade() {
 	}
 	if(!okUrl) {
 		this->errorString = "url " + url + " not allowed";
+		if(verbosity > 0) {
+			syslog(LOG_ERR, "upgrade failed - %s", this->errorString.c_str());
+		}
 		return(false);
 	}
 	if(!this->upgradeTempFileName.length() && !this->getUpgradeTempFileName()) {
 		this->errorString = "failed create temp name for new binary";
+		if(verbosity > 0) {
+			syslog(LOG_ERR, "upgrade failed - %s", this->errorString.c_str());
+		}
 		return(false);
 	}
 	if(mkdir(this->upgradeTempFileName.c_str(), 0700)) {
 		this->errorString = "failed create folder " + this->upgradeTempFileName;
+		if(verbosity > 0) {
+			syslog(LOG_ERR, "upgrade failed - %s", this->errorString.c_str());
+		}
 		return(false);
 	}
 	unlink(this->upgradeTempFileName.c_str());
 	char outputStdoutErr[L_tmpnam+1];
 	if(!tmpnam(outputStdoutErr)) {
 		this->errorString = "failed create temp name for output curl and gunzip";
+		if(verbosity > 0) {
+			syslog(LOG_ERR, "upgrade failed - %s", this->errorString.c_str());
+		}
 		return(false);
 	}
 	string binaryFilepathName = this->upgradeTempFileName + "/voipmonitor";
@@ -997,13 +1012,20 @@ bool RestartUpgrade::runUpgrade() {
 		string error;
 		string _url = (pass == 1 ? urlHttp : url) + 
 			      "/voipmonitor.gz." + (this->_64bit ? "64" : "32");
+		if(verbosity > 0) {
+			syslog(LOG_NOTICE, "try download file: '%s'", _url.c_str());
+		}
 		if(get_url_file(_url.c_str(), binaryGzFilepathName.c_str(), &error)) {
+			syslog(LOG_NOTICE, "download file '%s' finished", _url.c_str());
 			this->errorString = "";
 			break;
 		} else {
 			this->errorString = "failed download upgrade: " + error;
 			if(pass || !opt_upgrade_try_http_if_https_fail) {
 				rmdir_r(this->upgradeTempFileName.c_str());
+				if(verbosity > 0) {
+					syslog(LOG_ERR, "upgrade failed - %s", this->errorString.c_str());
+				}
 				return(false);
 			}
 		}
@@ -1042,15 +1064,24 @@ bool RestartUpgrade::runUpgrade() {
 	if(!FileExists((char*)binaryGzFilepathName.c_str())) {
 		this->errorString = "failed download - missing destination file";
 		rmdir_r(this->upgradeTempFileName.c_str());
+		if(verbosity > 0) {
+			syslog(LOG_ERR, "upgrade failed - %s", this->errorString.c_str());
+		}
 		return(false);
 	}
 	if(!GetFileSize(binaryGzFilepathName.c_str())) {
 		this->errorString = "failed download - zero size of destination file";
 		rmdir_r(this->upgradeTempFileName.c_str());
+		if(verbosity > 0) {
+			syslog(LOG_ERR, "upgrade failed - %s", this->errorString.c_str());
+		}
 		return(false);
 	}
 	string unzipCommand = "gunzip " + binaryGzFilepathName +
 			      " >" + outputStdoutErr + " 2>&1";
+	if(verbosity > 0) {
+		syslog(LOG_NOTICE, "try unzip command: '%s'", unzipCommand.c_str());
+	}
 	if(system(unzipCommand.c_str()) != 0) {
 		this->errorString = "failed run gunzip";
 		FILE *fileHandle = fopen(outputStdoutErr, "r");
@@ -1064,32 +1095,48 @@ bool RestartUpgrade::runUpgrade() {
 			}
 			fclose(fileHandle);
 		}
-		
-		FILE *f = fopen(binaryGzFilepathName.c_str(), "rt");
-		char buff[10000];
-		while(fgets(buff, sizeof(buff), f)) {
-			cout << buff << endl;
+		if(verbosity > 1) {
+			FILE *f = fopen(binaryGzFilepathName.c_str(), "rt");
+			char buff[10000];
+			while(fgets(buff, sizeof(buff), f)) {
+				cout << buff << endl;
+			}
 		}
-		
 		unlink(outputStdoutErr);
 		rmdir_r(this->upgradeTempFileName.c_str());
+		if(verbosity > 0) {
+			syslog(LOG_ERR, "upgrade failed - %s", this->errorString.c_str());
+		}
 		return(false);
+	} else {
+		if(verbosity > 0) {
+			syslog(LOG_NOTICE, "unzip finished");
+		}
 	}
 	string md5 = GetFileMD5(binaryFilepathName);
 	if((this->_64bit ? md5_64 : md5_32) != md5) {
 		this->errorString = "failed download - bad md5: " + md5 + " <> " + (this->_64bit ? md5_64 : md5_32);
 		rmdir_r(this->upgradeTempFileName.c_str());
+		if(verbosity > 0) {
+			syslog(LOG_ERR, "upgrade failed - %s", this->errorString.c_str());
+		}
 		return(false);
 	}
 	unlink("/usr/local/sbin/voipmonitor");
 	if(!copy_file(binaryFilepathName.c_str(), "/usr/local/sbin/voipmonitor", true)) {
 		this->errorString = "failed copy new binary to /usr/local/sbin";
 		rmdir_r(this->upgradeTempFileName.c_str());
+		if(verbosity > 0) {
+			syslog(LOG_ERR, "upgrade failed - %s", this->errorString.c_str());
+		}
 		return(false);
 	}
 	if(chmod("/usr/local/sbin/voipmonitor", 0755)) {
 		this->errorString = "failed chmod 0755 voipmonitor";
 		rmdir_r(this->upgradeTempFileName.c_str());
+		if(verbosity > 0) {
+			syslog(LOG_ERR, "upgrade failed - %s", this->errorString.c_str());
+		}
 		return(false);
 	}
 	rmdir_r(this->upgradeTempFileName.c_str());
@@ -1097,8 +1144,14 @@ bool RestartUpgrade::runUpgrade() {
 }
 
 bool RestartUpgrade::createRestartScript() {
+	if(verbosity > 0) {
+		syslog(LOG_NOTICE, "create restart script");
+	}
 	if(!this->restartTempScriptFileName.length() && !this->getRestartTempScriptFileName()) {
 		this->errorString = "failed create temp name for restart script";
+		if(verbosity > 0) {
+			syslog(LOG_ERR, "create restart script failed - %s", this->errorString.c_str());
+		}
 		return(false);
 	}
 	FILE *fileHandle = fopen(this->restartTempScriptFileName.c_str(), "wt");
@@ -1113,6 +1166,9 @@ bool RestartUpgrade::createRestartScript() {
 		return(true);
 	} else {
 		this->errorString = "failed create restart script";
+		if(verbosity > 0) {
+			syslog(LOG_ERR, "create restart script failed - %s", this->errorString.c_str());
+		}
 	}
 	return(false);
 }
@@ -1131,7 +1187,13 @@ bool RestartUpgrade::checkReadyRestart() {
 }
 
 bool RestartUpgrade::runRestart(int socket1, int socket2) {
+	if(verbosity > 0) {
+		syslog(LOG_NOTICE, "run restart script");
+	}
 	if(!this->checkReadyRestart()) {
+		if(verbosity > 0) {
+			syslog(LOG_ERR, "restart failed - %s", this->errorString.c_str());
+		}
 		return(false);
 	}
 	close(socket1);
@@ -1139,6 +1201,9 @@ bool RestartUpgrade::runRestart(int socket1, int socket2) {
 	int rsltExec = execl(this->restartTempScriptFileName.c_str(), "Command-line", 0, NULL);
 	if(rsltExec) {
 		this->errorString = "failed execution restart script";
+		if(verbosity > 0) {
+			syslog(LOG_ERR, "restart failed - %s", this->errorString.c_str());
+		}
 		return(false);
 	} else {
 		return(true);
