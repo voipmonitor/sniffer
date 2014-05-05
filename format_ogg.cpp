@@ -269,7 +269,7 @@ static void ogg_close(struct vorbis_desc *s, FILE *f)
 	//ogg_sync_destroy(&s->oy);
 }
 
-int ogg_mix(char *in1, char *in2, char *out, int stereo, int samplerate, double quality) {
+int ogg_mix(char *in1, char *in2, char *out, int stereo, int samplerate, double quality, int swap) {
 	FILE *f_in1 = NULL;
 	FILE *f_in2 = NULL;
 	FILE *f_out = NULL;
@@ -381,8 +381,13 @@ int ogg_mix(char *in1, char *in2, char *out, int stereo, int samplerate, double 
 		if(p1 < f1 && p2 < f2) {
 			if(stereo) {
 				char buf[4];
-				memcpy(buf, p1, 2);
-				memcpy(buf + 2, p2, 2);
+				if(swap){
+					memcpy(buf, p2, 2);
+					memcpy(buf + 2, p1, 2);
+				} else {
+					memcpy(buf, p1, 2);
+					memcpy(buf + 2, p2, 2);
+				}
 				ogg_write2(&ogg, f_out, buf, 4, 0);
 			} else {
 				slinear_saturated_add((short int*)p1, (short int*)p2);
@@ -393,8 +398,13 @@ int ogg_mix(char *in1, char *in2, char *out, int stereo, int samplerate, double 
 		} else if ( p1 < f1 ) {
 			if(stereo) {
 				char buf[4];
-				memcpy(buf, p1, 2);
-				memcpy(buf + 2, &zero, 2);
+				if(swap) {
+					memcpy(buf, &zero, 2);
+					memcpy(buf + 2, p1, 2);
+				} else {
+					memcpy(buf, p1, 2);
+					memcpy(buf + 2, &zero, 2);
+				}
 				ogg_write2(&ogg, f_out, buf, 4, 0);
 			} else {
 				ogg_write(&ogg, f_out, (short int*)p1);
@@ -404,8 +414,13 @@ int ogg_mix(char *in1, char *in2, char *out, int stereo, int samplerate, double 
 		} else {
 			if(stereo) {
 				char buf[4];
-				memcpy(buf, p2, 2);
-				memcpy(buf + 2, &zero, 2);
+				if(swap) {
+					memcpy(buf, &zero, 2);
+					memcpy(buf + 2, p2, 2);
+				} else {
+					memcpy(buf, p2, 2);
+					memcpy(buf + 2, &zero, 2);
+				}
 				ogg_write2(&ogg, f_out, buf, 4, 0);
 			} else {
 				ogg_write(&ogg, f_out, (short int*)p2);

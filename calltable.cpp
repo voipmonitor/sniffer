@@ -1036,8 +1036,8 @@ Call::mos_lqo(char *deg, int samplerate) {
 int
 Call::convertRawToWav() {
 	char cmd[4092];
-	char wav0[1024];
-	char wav1[1024];
+	char wav0[1024] = "";
+	char wav1[1024] = "";
 	char out[1024];
 	char rawInfo[1024];
 	char line[1024];
@@ -1046,13 +1046,11 @@ Call::convertRawToWav() {
 	int ssrc_index, codec;
 	unsigned long int rawiterator;
 	FILE *wav = NULL;
-	int adir = 1;
-	int bdir = 1;
+	int adir = 0;
+	int bdir = 0;
+	int aindex = -1, bindex = -1;
 
 
-
-	sprintf(wav0, "%s/%s/%s.i0.wav", dirname().c_str(), opt_newdir ? "AUDIO" : "", get_fbasename_safe());
-	sprintf(wav1, "%s/%s/%s.i1.wav", dirname().c_str(), opt_newdir ? "AUDIO" : "", get_fbasename_safe());
 	switch(opt_audio_format) {
 	case FORMAT_WAV:
 		sprintf(out, "%s/%s/%s.wav", dirname().c_str(), opt_newdir ? "AUDIO" : "", get_fbasename_safe());
@@ -1062,30 +1060,43 @@ Call::convertRawToWav() {
 		break;
 	}
 
-	/* do synchronisation - calculate difference between start of both RTP direction and put silence to achieve proper synchronisation */
+	if(rtp[0] != NULL) {
+		if(rtp[0]->iscaller) {
+			aindex = 0;
+		} else {
+			bindex = 0;
+		}
+	}
+	if(rtp[1] != NULL) {
+		if(rtp[1]->iscaller) {
+			aindex = 1;
+		} else {
+			bindex = 1;
+		}
+	}
 	/* first direction */
-	sprintf(rawInfo, "%s/%s/%s.i%d.rawInfo", dirname().c_str(), opt_newdir ? "AUDIO" : "", get_fbasename_safe(), 0);
-	pl = fopen(rawInfo, "r");
-	if(!pl) {
-		adir = 0;
-//		syslog(LOG_ERR, "Cannot open %s\n", rawInfo);
-//		return 1;
-	} else {
-		fgets(line, 1024, pl);
-		fclose(pl);
-		sscanf(line, "%d:%lu:%d:%ld:%ld", &ssrc_index, &rawiterator, &codec, &tv0.tv_sec, &tv0.tv_usec);
+	if(aindex > -1) {
+		sprintf(rawInfo, "%s/%s/%s.i%d.rawInfo", dirname().c_str(), opt_newdir ? "AUDIO" : "", get_fbasename_safe(), aindex);
+		pl = fopen(rawInfo, "r");
+		if(pl) {
+			adir = 1;
+			fgets(line, 1024, pl);
+			fclose(pl);
+			sscanf(line, "%d:%lu:%d:%ld:%ld", &ssrc_index, &rawiterator, &codec, &tv0.tv_sec, &tv0.tv_usec);
+		}
+		sprintf(wav0, "%s/%s/%s.i%d.wav", dirname().c_str(), opt_newdir ? "AUDIO" : "", get_fbasename_safe(), aindex);
 	}
 	/* second direction */
-	sprintf(rawInfo, "%s/%s/%s.i%d.rawInfo", dirname().c_str(), opt_newdir ? "AUDIO" : "", get_fbasename_safe(), 1);
-	pl = fopen(rawInfo, "r");
-	if(!pl) {
-		bdir = 0;
-//		syslog(LOG_ERR, "Cannot open %s\n", rawInfo);
-//		return 1;
-	} else {
-		fgets(line, 1024, pl);
-		fclose(pl);
-		sscanf(line, "%d:%lu:%d:%ld:%ld", &ssrc_index, &rawiterator, &codec, &tv1.tv_sec, &tv1.tv_usec);
+	if(bindex > -1) {
+		sprintf(rawInfo, "%s/%s/%s.i%d.rawInfo", dirname().c_str(), opt_newdir ? "AUDIO" : "", get_fbasename_safe(), bindex);
+		pl = fopen(rawInfo, "r");
+		if(pl) {
+			bdir = 1;
+			fgets(line, 1024, pl);
+			fclose(pl);
+			sscanf(line, "%d:%lu:%d:%ld:%ld", &ssrc_index, &rawiterator, &codec, &tv1.tv_sec, &tv1.tv_usec);
+		}
+		sprintf(wav1, "%s/%s/%s.i%d.wav", dirname().c_str(), opt_newdir ? "AUDIO" : "", get_fbasename_safe(), bindex);
 	}
 
 	if(adir == 0 && bdir == 0) {
@@ -1093,6 +1104,7 @@ Call::convertRawToWav() {
 		return 1;
 	}
 
+	/* do synchronisation - calculate difference between start of both RTP direction and put silence to achieve proper synchronisation */
 	if(adir && bdir) {
 		/* calculate difference in milliseconds */
 		int msdiff = ast_tvdiff_ms(tv1, tv0);
@@ -1171,16 +1183,28 @@ Call::convertRawToWav() {
 	/* process all files in playlist for each direction */
 	int samplerate = 8000;
 	for(int i = 0; i <= 1; i++) {
-		if(i == 0 && adir == 0) {
-			continue;
-		}
-		if(i == 1 && bdir == 0) {
-			continue;
-		}
 		char *wav = NULL;
+		int ii;
+		if(i != aindex and i != bindex) continue;
+		if(i == aindex) {
+			if(adir == 0) {
+				continue;
+			}
+			ii = aindex;
+			wav = wav0;
+		} else if(i == bindex) {
+			if(bdir == 0) {
+				continue;
+			}
+			ii = bindex;
+			wav = wav1;
+		} else {
+			continue;
+		}
+
 
 		/* open playlist */
-		sprintf(rawInfo, "%s/%s/%s.i%d.rawInfo", dirname().c_str(), opt_newdir ? "AUDIO" : "", get_fbasename_safe(), i);
+		sprintf(rawInfo, "%s/%s/%s.i%d.rawInfo", dirname().c_str(), opt_newdir ? "AUDIO" : "", get_fbasename_safe(), ii);
 		pl = fopen(rawInfo, "r");
 		if(!pl) {
 			syslog(LOG_ERR, "Cannot open %s\n", rawInfo);
@@ -1190,8 +1214,7 @@ Call::convertRawToWav() {
 			char raw[1024];
 			line[strlen(line)] = '\0'; // remove '\n' which is last character
 			sscanf(line, "%d:%lu:%d:%ld:%ld", &ssrc_index, &rawiterator, &codec, &tv0.tv_sec, &tv0.tv_usec);
-			sprintf(raw, "%s/%s/%s.i%d.%d.%lu.%d.%ld.%ld.raw", dirname().c_str(), opt_newdir ? "AUDIO" : "", get_fbasename_safe(), i, ssrc_index, rawiterator, codec, tv0.tv_sec, tv0.tv_usec);
-			wav = rtp[i]->iscaller ? wav0 : wav1;
+			sprintf(raw, "%s/%s/%s.i%d.%d.%lu.%d.%ld.%ld.raw", dirname().c_str(), opt_newdir ? "AUDIO" : "", get_fbasename_safe(), ii, ssrc_index, rawiterator, codec, tv0.tv_sec, tv0.tv_usec);
 			switch(codec) {
 			case PAYLOAD_PCMA:
 				if(verbosity > 1) syslog(LOG_ERR, "Converting PCMA to WAV.\n");
@@ -1400,16 +1423,16 @@ Call::convertRawToWav() {
 		switch(opt_audio_format) {
 		case FORMAT_WAV:
 			if(!opt_saveaudio_reversestereo) {
-				wav_mix(wav0, wav1, out, samplerate);
+				wav_mix(wav0, wav1, out, samplerate, 0);
 			} else {
-				wav_mix(wav1, wav0, out, samplerate);
+				wav_mix(wav1, wav0, out, samplerate, 0);
 			}
 			break;
 		case FORMAT_OGG:
 			if(!opt_saveaudio_reversestereo) {
-				ogg_mix(wav0, wav1, out, opt_saveaudio_stereo, samplerate, opt_saveaudio_oggquality);
+				ogg_mix(wav0, wav1, out, opt_saveaudio_stereo, samplerate, opt_saveaudio_oggquality, 0);
 			} else {
-				ogg_mix(wav1, wav0, out, opt_saveaudio_stereo, samplerate, opt_saveaudio_oggquality);
+				ogg_mix(wav1, wav0, out, opt_saveaudio_stereo, samplerate, opt_saveaudio_oggquality, 0);
 			}
 			break;
 		}
@@ -1419,10 +1442,10 @@ Call::convertRawToWav() {
 		// there is only caller sound
 		switch(opt_audio_format) {
 		case FORMAT_WAV:
-			wav_mix(wav0, NULL, out, samplerate);
+			wav_mix(wav0, NULL, out, samplerate, 0);
 			break;
 		case FORMAT_OGG:
-			ogg_mix(wav0, NULL, out, opt_saveaudio_stereo, samplerate, opt_saveaudio_oggquality);
+			ogg_mix(wav0, NULL, out, opt_saveaudio_stereo, samplerate, opt_saveaudio_oggquality, 0);
 			break;
 		}
 		unlink(wav0);
@@ -1430,10 +1453,10 @@ Call::convertRawToWav() {
 		// there is only called sound
 		switch(opt_audio_format) {
 		case FORMAT_WAV:
-			wav_mix(wav1, NULL, out, samplerate);
+			wav_mix(wav1, NULL, out, samplerate, 1);
 			break;
 		case FORMAT_OGG:
-			ogg_mix(wav1, NULL, out, opt_saveaudio_stereo, samplerate, opt_saveaudio_oggquality);
+			ogg_mix(wav1, NULL, out, opt_saveaudio_stereo, samplerate, opt_saveaudio_oggquality, 1);
 			break;
 		}
 		unlink(wav1);

@@ -36,4 +36,4 @@
 void slinear_saturated_add(short *input, short *value);
 int wav_write_header(FILE *f, int samplerate);
 int wav_update_header(FILE *f);
-int wav_mix(char *in1, char *in2, char *out, int samplerate);
+int wav_mix(char *in1, char *in2, char *out, int samplerate, int swap);

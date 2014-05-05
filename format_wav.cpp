@@ -107,7 +107,7 @@ int wav_update_header(FILE *f)
 	return 0;
 }
 
-int wav_mix(char *in1, char *in2, char *out, int samplerate) {
+int wav_mix(char *in1, char *in2, char *out, int samplerate, int swap) {
 	FILE *f_in1 = NULL;
 	FILE *f_in2 = NULL;
 	FILE *f_out = NULL;
@@ -217,17 +217,32 @@ int wav_mix(char *in1, char *in2, char *out, int samplerate) {
 			p2 += 2;
 			*/
 			/* stereo */
-			fwrite(p1, 2, 1, f_out);
-			fwrite(p2, 2, 1, f_out);
+			if(swap) {
+				fwrite(p2, 2, 1, f_out);
+				fwrite(p1, 2, 1, f_out);
+			} else {
+				fwrite(p1, 2, 1, f_out);
+				fwrite(p2, 2, 1, f_out);
+			}
 			p1 += 2;
 			p2 += 2;
 		} else if ( p1 < f1 ) {
-			fwrite(p1, 2, 1, f_out);
-			fwrite(&zero, 2, 1, f_out);
+			if(swap) {
+				fwrite(&zero, 2, 1, f_out);
+				fwrite(p1, 2, 1, f_out);
+			} else {
+				fwrite(p1, 2, 1, f_out);
+				fwrite(&zero, 2, 1, f_out);
+			}
 			p1 += 2;
 		} else if ( p2 < f2 ) {
-			fwrite(&zero, 2, 1, f_out);
-			fwrite(p2, 2, 1, f_out);
+			if(swap) {
+				fwrite(p2, 2, 1, f_out);
+				fwrite(&zero, 2, 1, f_out);
+			} else {
+				fwrite(&zero, 2, 1, f_out);
+				fwrite(p2, 2, 1, f_out);
+			}
 			p2 += 2;
 		}
 	}
