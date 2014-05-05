@@ -1003,7 +1003,6 @@ int get_rtpmap_from_sdp(char *sdp_text, unsigned long len, int *rtpmap){
 			// store payload type and its codec into one integer with 1000 offset
 			int mtype = mimeSubtypeToInt(mimeSubtype);
 			if(mtype == PAYLOAD_G7221) {
-				printf("test\n");
 				switch(rate) {
 					case 8000:
 						mtype = PAYLOAD_G72218;
