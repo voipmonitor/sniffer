@@ -951,6 +951,8 @@ int mimeSubtypeToInt(char *mimeSubtype) {
 	       return PAYLOAD_GSM;
        else if(strcasecmp(mimeSubtype,"G723") == 0)
 	       return PAYLOAD_G723;
+       else if(strcasecmp(mimeSubtype,"G7221") == 0)
+	       return PAYLOAD_G7221;
        else if(strcasecmp(mimeSubtype,"PCMA") == 0)
 	       return PAYLOAD_PCMA;
        else if(strcasecmp(mimeSubtype,"PCMU") == 0)
@@ -1000,7 +1002,29 @@ int get_rtpmap_from_sdp(char *sdp_text, unsigned long len, int *rtpmap){
 		if (sscanf(s, "%30u %[^/]/%d", &codec, mimeSubtype, &rate) == 3) {
 			// store payload type and its codec into one integer with 1000 offset
 			int mtype = mimeSubtypeToInt(mimeSubtype);
-			if(mtype == PAYLOAD_SILK) {
+			if(mtype == PAYLOAD_G7221) {
+				printf("test\n");
+				switch(rate) {
+					case 8000:
+						mtype = PAYLOAD_G72218;
+						break;
+					case 12000:
+						mtype = PAYLOAD_G722112;
+						break;
+					case 16000:
+						mtype = PAYLOAD_G722116;
+						break;
+					case 24000:
+						mtype = PAYLOAD_G722124;
+						break;
+					case 32000:
+						mtype = PAYLOAD_G722132;
+						break;
+					case 48000:
+						mtype = PAYLOAD_G722148;
+						break;
+				}
+			} else if(mtype == PAYLOAD_SILK) {
 				switch(rate) {
 					case 8000:
 						mtype = PAYLOAD_SILK8;

@@ -138,6 +138,24 @@ int get_ticks_bycodec(int codec) {
 	case PAYLOAD_OPUS48:
 		return 48;
 		break;
+	case PAYLOAD_G7221:
+		return 8;
+		break;
+	case PAYLOAD_G722112:
+		return 12;
+		break;
+	case PAYLOAD_G722116:
+		return 16;
+		break;
+	case PAYLOAD_G722124:
+		return 24;
+		break;
+	case PAYLOAD_G722132:
+		return 32;
+		break;
+	case PAYLOAD_G722148:
+		return 48;
+		break;
 	default:
 		return 8;
 	}
@@ -357,19 +375,27 @@ RTP::jitterbuffer(struct ast_channel *channel, int savePayload) {
 	struct timeval tsdiff;
 	switch(codec) {
 		case PAYLOAD_OPUS12:
+		case PAYLOAD_G722112:
 			frame->ts = getTimestamp() / 12;
 			frame->len = packetization * 2 / 3;
 			break;
 		case PAYLOAD_ISAC16:
 		case PAYLOAD_SILK16:
 		case PAYLOAD_OPUS16:
+		case PAYLOAD_G722116:
 			frame->ts = getTimestamp() / 16;
 			frame->len = packetization / 2;
 			break;
 		case PAYLOAD_SILK24:
 		case PAYLOAD_OPUS24:
+		case PAYLOAD_G722124:
 			frame->ts = getTimestamp() / 24;
 			frame->len = packetization / 3;
+			break;
+		case PAYLOAD_ISAC32:
+		case PAYLOAD_G722132:
+			frame->ts = getTimestamp() / 32;
+			frame->len = packetization / 4;
 			break;
 		case PAYLOAD_OPUS48:
 			frame->ts = getTimestamp() / 48;
@@ -753,21 +779,26 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 		switch(codec) {
 		case PAYLOAD_SILK12:
 		case PAYLOAD_OPUS12:
+		case PAYLOAD_G722112:
 			samplerate = 12000;
 			break;
 		case PAYLOAD_ISAC16:
 		case PAYLOAD_SILK16:
 		case PAYLOAD_OPUS16:
+		case PAYLOAD_G722116:
 			samplerate = 16000;
 			break;
 		case PAYLOAD_SILK24:
 		case PAYLOAD_OPUS24:
+		case PAYLOAD_G722124:
 			samplerate = 24000;
 			break;
 		case PAYLOAD_ISAC32:
+		case PAYLOAD_G722132:
 			samplerate = 32000;
 			break;
 		case PAYLOAD_OPUS48:
+		case PAYLOAD_G722148:
 			samplerate = 48000;
 			break;
 		default: 

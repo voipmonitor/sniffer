@@ -3024,7 +3024,7 @@ int main(int argc, char *argv[]) {
         rlp.rlim_max = opt_openfile_max;
         setrlimit(RLIMIT_NOFILE, &rlp);
         getrlimit(RLIMIT_NOFILE, &rlp);
-        if(rlp.rlim_cur < 65535) {
+        if(!opt_fork and rlp.rlim_cur < 65535) {
                 printf("Warning, max open files is: %d consider raise this to 65535 with ulimit -n 65535 and set it in config file\n", (int)rlp.rlim_cur);
         }
 	// set core file dump to unlimited size
