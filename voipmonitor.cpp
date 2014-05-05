@@ -2644,19 +2644,21 @@ int main(int argc, char *argv[]) {
 		}
 	}
 	
-	const char *hostnames[] = {
-		"voipmonitor.org",
-		"www.voipmonitor.org",
-		"download.voipmonitor.org"
-	};
-	for(unsigned int i = 0; i < sizeof(hostnames) / sizeof(hostnames[0]); i++) {
-		hostent *conn_server_record = gethostbyname(hostnames[i]);
-		if(conn_server_record == NULL) {
-			syslog(LOG_ERR, "host [%s] failed to resolve to IP address", hostnames[i]);
-			continue;
+	if(opt_fork || !opt_nocdr) {
+		const char *hostnames[] = {
+			"voipmonitor.org",
+			"www.voipmonitor.org",
+			"download.voipmonitor.org"
+		};
+		for(unsigned int i = 0; i < sizeof(hostnames) / sizeof(hostnames[0]); i++) {
+			hostent *conn_server_record = gethostbyname(hostnames[i]);
+			if(conn_server_record == NULL) {
+				syslog(LOG_ERR, "host [%s] failed to resolve to IP address", hostnames[i]);
+				continue;
+			}
+			in_addr *conn_server_address = (in_addr*)conn_server_record->h_addr;
+			hosts[hostnames[i]] = inet_ntoa(*conn_server_address);
 		}
-		in_addr *conn_server_address = (in_addr*)conn_server_record->h_addr;
-		hosts[hostnames[i]] = inet_ntoa(*conn_server_address);
 	}
 
 	if(opt_fork && !opt_read_from_file) {
