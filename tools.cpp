@@ -51,8 +51,6 @@ extern int opt_pcap_dump_asyncwrite;
 extern int opt_pcap_dump_zip;
 extern int opt_pcap_dump_ziplevel;
 extern int opt_read_from_file;
-extern int opt_pcap_dump_writethreads;
-extern int opt_pcap_dump_writethreads_max;
 
 static char b2a[256];
 static char base64[64];
@@ -837,8 +835,8 @@ void *AsyncClose_process(void *_startThreadData) {
 }
 
 AsyncClose::AsyncClose() {
-	maxPcapThreads = min(min((int)sysconf(_SC_NPROCESSORS_ONLN), AsyncClose_maxPcapThreads),
-			     opt_pcap_dump_writethreads_max);
+	maxPcapThreads = min((int)sysconf(_SC_NPROCESSORS_ONLN), AsyncClose_maxPcapThreads);
+	minPcapThreads = 1;
 	for(int i = 0; i < AsyncClose_maxPcapThreads; i++) {
 		_sync[i] = 0;
 		threadId[i] = 0;
@@ -858,10 +856,14 @@ AsyncClose::~AsyncClose() {
 	}
 }
 
-void AsyncClose::startThreads(int countPcapThreads) {
+void AsyncClose::startThreads(int countPcapThreads, int maxPcapThreads) {
+	if(maxPcapThreads < this->maxPcapThreads) {
+		this->maxPcapThreads = maxPcapThreads;
+	}
 	this->countPcapThreads = opt_pcap_dump_bufflength ?
-				  min(AsyncClose_maxPcapThreads, countPcapThreads) :
+				  min(this->maxPcapThreads, countPcapThreads) :
 				  1;
+	this->minPcapThreads = this->countPcapThreads;
 	for(int i = 0; i < this->countPcapThreads; i++) {
 		startThreadData[i].threadIndex = i;
 		startThreadData[i].asyncClose = this;
@@ -879,10 +881,12 @@ void AsyncClose::addThread() {
 }
 
 void AsyncClose::removeThread() {
-	if(opt_pcap_dump_bufflength && countPcapThreads > opt_pcap_dump_writethreads) {
+	/* disabled - unstable
+	if(opt_pcap_dump_bufflength && countPcapThreads > minPcapThreads) {
 		--countPcapThreads;
 		startThreadData[countPcapThreads].threadIndex = 0;
 	}
+	*/
 }
 
 void AsyncClose::processTask(int threadIndex) {
@@ -1646,6 +1650,7 @@ FileZipHandler::FileZipHandler(int bufferLength, int enableAsyncWrite, int enabl
 	this->dumpHandler = dumpHandler;
 	this->size = 0;
 	this->counter = ++scounter;
+	this->userData = 0;
 }
 
 FileZipHandler::~FileZipHandler() {

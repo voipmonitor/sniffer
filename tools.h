@@ -197,6 +197,7 @@ public:
 	u_int64_t size;
 	u_int64_t counter;
 	static u_int64_t scounter;
+	u_int32_t userData;
 };
 
 pcap_dumper_t *__pcap_dump_open(pcap_t *p, const char *fname, int linktype, string *errorString = NULL);
@@ -361,7 +362,7 @@ public:
 public:
 	AsyncClose();
 	~AsyncClose();
-	void startThreads(int countPcapThreads = 2);
+	void startThreads(int countPcapThreads, int maxPcapThreads);
 	void addThread();
 	void removeThread();
 	void add(pcap_dumper_t *handle,
@@ -370,27 +371,37 @@ public:
 		extern int opt_pcap_dump_bufflength;
 		add(new AsyncCloseItem_pcap(handle, call, file, column, writeBytes),
 		    opt_pcap_dump_bufflength ?
-		     ((FileZipHandler*)handle)->counter % countPcapThreads :
+		     (((FileZipHandler*)handle)->userData ?
+		       ((FileZipHandler*)handle)->userData - 1 :
+		       ((FileZipHandler*)handle)->counter % countPcapThreads) :
 		     0);
 	}
 	void addWrite(pcap_dumper_t *handle,
 		      char *data, int length) {
 		extern int opt_pcap_dump_bufflength;
+		if(opt_pcap_dump_bufflength && !((FileZipHandler*)handle)->userData) {
+			((FileZipHandler*)handle)->userData = (((FileZipHandler*)handle)->counter % countPcapThreads) + 1;
+		}
 		add(new AsyncWriteItem_pcap(handle, data, length),
 		    opt_pcap_dump_bufflength ?
-		     ((FileZipHandler*)handle)->counter % countPcapThreads :
+		     ((FileZipHandler*)handle)->userData - 1 :
 		     0);
 	}
 	void add(FileZipHandler *handle,
 		 Call *call = NULL, const char *file = NULL,
 		 const char *column = NULL, long long writeBytes = 0) {
 		add(new AsyncCloseItem_fileZipHandler(handle, call, file, column, writeBytes),
-		    handle->counter % countPcapThreads);
+		    handle->userData ?
+		     handle->userData - 1 :
+		     handle->counter % countPcapThreads);
 	}
 	void addWrite(FileZipHandler *handle,
 		      char *data, int length) {
+		if(!handle->userData) {
+			handle->userData = (handle->counter % countPcapThreads) + 1;
+		}
 		add(new AsyncWriteItem_fileZipHandler(handle, data, length),
-		    handle->counter % countPcapThreads);
+		    handle->userData - 1);
 	}
 	void add(AsyncCloseItem *item, int threadIndex) {
 		extern int terminating;
@@ -435,6 +446,7 @@ private:
 	}
 private:
 	int maxPcapThreads;
+	int minPcapThreads;
 	int countPcapThreads;
 	queue<AsyncCloseItem*> q[AsyncClose_maxPcapThreads];
 	pthread_t thread[AsyncClose_maxPcapThreads];
