@@ -403,7 +403,7 @@ public:
 	*/
 	int duration() { return last_packet_time - first_packet_time; };
 	
-	int connect_duration() { return(duration() - (connect_time - first_packet_time)); };
+	int connect_duration() { return(connect_time ? duration() - (connect_time - first_packet_time) : 0); };
 	
 	/**
 	 * @brief return start of the call which is first seen packet 
