@@ -509,7 +509,7 @@ int opt_mysqlstore_max_threads_ipacc_agreg2 = 3;
 
 char opt_curlproxy[256] = "";
 int opt_enable_fraud = 0;
-char opt_local_country_code[10] = "";
+char opt_local_country_code[10] = "local";
 
 map<string, string> hosts;
 
