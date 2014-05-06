@@ -1,3 +1,16 @@
+10.0RC1 6.5.2014
+================
+- reimplement saving pcap files and add native gzip pcap and graph files which is enabled by default. Zipping is done in threads which dynamically grows. Use open/write sys calls instead of libc fwrite/fopen/fclose to allow store files at >6000 calls/second rate (impossible with libc fwrite/fclose functions). Any writes to file are asynchronous by default using different queue which will not block processing packets. New parameters in config/voipmonitor.conf - pcap_dump_bufflength, pcap_dump_zip, pcap_dump_writethreads, pcap_dump_writethreads_max, pcap_dump_asyncwrite, pcap_dump_asyncbuffer. Those optimizations does not require cachedir for very high I/O loads now. 
+- fix speed of opt_pcap_queue_iface_separate_threads which was activated when sniffing on multiple ethernets or receiving from mirror sender. 
+- ensure that the left channel of the was is always caller
+- fix parse opt_matchheader (broken since 9.4beta)
+- add G722.1 codec support
+- add option only_cdr_next for save cdr only to cdr_next table
+- enable merging calls based on matching call-id. The idea is that the second leg with different call-id has in the first INVITE special header which has the call-id of the parent SIP call. The configuration option specifies name of the header.
+- add syslog messages when upgrading sniffer
+- be more tolerant in jitterbuffer simulater for burst RTP packets - add 200ms more so the MOS is not negatively affected
+- add connect_duration to listcalls manager command
+
 9.4beta27 22.4.2014
 ===================
 - fix beeping in silence sequences for G711 ALAW/ULAW (all versions) 
