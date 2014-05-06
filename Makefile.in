@@ -188,7 +188,6 @@ clean :
 targz64: core2
 	rm -rf voipmonitor-amd64-${version}-static*
 	mkdir -p voipmonitor-amd64-${version}-static/usr/local/sbin
-	strip voipmonitor
 	cp voipmonitor voipmonitor-amd64-${version}-static/usr/local/sbin/
 	chmod +x voipmonitor-amd64-${version}-static/usr/local/sbin/voipmonitor
 	mkdir -p voipmonitor-amd64-${version}-static/usr/local/share/voipmonitor/audio
@@ -205,7 +204,6 @@ targz64: core2
 targz64debug: core2debug
 	rm -rf voipmonitor-amd64-${version}-static*
 	mkdir -p voipmonitor-amd64-${version}-static/usr/local/sbin
-	strip voipmonitor
 	cp voipmonitor voipmonitor-amd64-${version}-static/usr/local/sbin/
 	chmod +x voipmonitor-amd64-${version}-static/usr/local/sbin/voipmonitor
 	mkdir -p voipmonitor-amd64-${version}-static/usr/local/share/voipmonitor/audio
@@ -222,7 +220,6 @@ targz64debug: core2debug
 targz32: core2
 	rm -rf voipmonitor-i686-${version}-static*
 	mkdir -p voipmonitor-i686-${version}-static/usr/local/sbin
-	strip voipmonitor
 	cp voipmonitor voipmonitor-i686-${version}-static/usr/local/sbin/
 	chmod +x voipmonitor-i686-${version}-static/usr/local/sbin/voipmonitor
 	mkdir -p voipmonitor-amd64-${version}-static/usr/local/share/voipmonitor/audio
