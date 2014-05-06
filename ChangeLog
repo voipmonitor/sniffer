@@ -1,3 +1,8 @@
+10.0RC2 6.5.2014
+================
+- fix pcap header so it can be laoded by tcpdump
+- support reading compressed pcap files (-r) 
+
 10.0RC1 6.5.2014
 ================
 - reimplement saving pcap files and add native gzip pcap and graph files which is enabled by default. Zipping is done in threads which dynamically grows. Use open/write sys calls instead of libc fwrite/fopen/fclose to allow store files at >6000 calls/second rate (impossible with libc fwrite/fclose functions). Any writes to file are asynchronous by default using different queue which will not block processing packets. New parameters in config/voipmonitor.conf - pcap_dump_bufflength, pcap_dump_zip, pcap_dump_writethreads, pcap_dump_writethreads_max, pcap_dump_asyncwrite, pcap_dump_asyncbuffer. Those optimizations does not require cachedir for very high I/O loads now. 

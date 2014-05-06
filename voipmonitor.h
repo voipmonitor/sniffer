@@ -1,7 +1,3 @@
-/* Martin Vit support@voipmonitor.org
- * This program is free software, distributed under the terms of
- * the GNU General Public License Version 2.
-*/
 
 #include <sys/types.h>
 #include <string>
@@ -9,7 +5,7 @@
 #ifndef VOIPMONITOR_H
 #define VOIPMONITOR_H
 
-#define RTPSENSOR_VERSION "10.0RC1"
+#define RTPSENSOR_VERSION "10.0RC2"
 #define NAT
 
 #define FORMAT_WAV	1

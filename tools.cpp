@@ -1838,7 +1838,7 @@ pcap_dumper_t *__pcap_dump_open(pcap_t *p, const char *fname, int linktype, stri
 			/****
 			hdr.magic = p->opt.tstamp_precision == PCAP_TSTAMP_PRECISION_NANO ? NSEC_TCPDUMP_MAGIC : TCPDUMP_MAGIC;
 			****/
-			hdr.magic = NSEC_TCPDUMP_MAGIC;
+			hdr.magic = TCPDUMP_MAGIC;
 			hdr.version_major = PCAP_VERSION_MAJOR;
 			hdr.version_minor = PCAP_VERSION_MINOR;
 			/****
@@ -1955,4 +1955,150 @@ int base64decode(unsigned char *dst, const char *src, int max)
         }
         /* Dont worry about left over bits, they're extra anyway */
         return cnt;
+}
+
+AutoDeleteAtExit GlobalAutoDeleteAtExit;
+
+void AutoDeleteAtExit::add(const char *file) {
+	files.push_back(file);
+}
+
+AutoDeleteAtExit::~AutoDeleteAtExit() {
+	vector<string>::iterator iter;
+	for(iter = files.begin(); iter != files.end(); ++iter) {
+		unlink((*iter).c_str());
+	}
+}
+
+pcap_t* pcap_open_offline_zip(const char *filename, char *errbuff) {
+	if(isGunzip(filename)) {
+		string error;
+		string unzip = gunzipToTemp(filename, &error, true);
+		if(!unzip.empty()) {
+			return(pcap_open_offline(unzip.c_str(), errbuff));
+		} else {
+			strcpy(errbuff, error.c_str());
+			return(NULL);
+		}
+	} else {
+		return(pcap_open_offline(filename, errbuff));
+	}
+}
+
+string gunzipToTemp(const char *zipFilename, string *error, bool autoDeleteAtExit) {
+	char unzipTempFileName[L_tmpnam+1];
+	if(tmpnam(unzipTempFileName)) {
+		if(autoDeleteAtExit) {
+			GlobalAutoDeleteAtExit.add(unzipTempFileName);
+		}
+		string _error = _gunzip_s(zipFilename, unzipTempFileName);
+		if(error) {
+		       *error = _error;
+		}
+		return(_error.empty() ? unzipTempFileName : "");
+	} else {
+		if(error) {
+			*error = "create template file for unzip failed";
+		}
+		return("");
+	}
+}
+
+string _gunzip_s(const char *zipFilename, const char *unzipFilename) {
+	string error = "";
+	FILE *zip = fopen(zipFilename, "r");
+	if(zip) {
+		FILE *unzip = fopen(unzipFilename, "w");
+		if(unzip) {
+			error = __gunzip_s(zip, unzip);
+			fclose(unzip);
+			fclose(zip);
+		} else {
+			char buf[4092];
+			strerror_r(errno, buf, 4092);
+			fclose(zip);
+			return(buf);
+		}
+	} else {
+		char buf[4092];
+		strerror_r(errno, buf, 4092);
+		return(buf);
+	}
+	return(error.empty() ? "" : ("unzip failed: " + error));
+}
+
+string __gunzip_s(FILE *zip, FILE *unzip) {
+	int ret = __gunzip(zip, unzip);
+	return ret ? zError(ret) : "";
+}
+
+#define GUNZIP_CHUNK 16384
+int __gunzip(FILE *zip, FILE *unzip) {
+	int ret;
+	unsigned have;
+	z_stream strm;
+	unsigned char in[GUNZIP_CHUNK];
+	unsigned char out[GUNZIP_CHUNK];
+
+	/* allocate inflate state */
+	strm.zalloc = Z_NULL;
+	strm.zfree = Z_NULL;
+	strm.opaque = Z_NULL;
+	strm.avail_in = 0;
+	strm.next_in = Z_NULL;
+	ret = inflateInit2(&strm, MAX_WBITS + 16);
+	if (ret != Z_OK)
+		return ret;
+
+	/* decompress until deflate stream ends or end of file */
+	do {
+		strm.avail_in = fread(in, 1, GUNZIP_CHUNK, zip);
+		if (ferror(zip)) {
+			(void)inflateEnd(&strm);
+			return Z_ERRNO;
+		}
+		if (strm.avail_in == 0)
+			break;
+		strm.next_in = in;
+
+		/* run inflate() on input until output buffer not full */
+		do {
+			strm.avail_out = GUNZIP_CHUNK;
+			strm.next_out = out;
+			ret = inflate(&strm, Z_NO_FLUSH);
+			switch (ret) {
+			case Z_NEED_DICT:
+				ret = Z_DATA_ERROR;     /* and fall through */
+			case Z_DATA_ERROR:
+			case Z_MEM_ERROR:
+			case Z_STREAM_ERROR:
+				(void)inflateEnd(&strm);
+				return ret;
+			}
+			have = GUNZIP_CHUNK - strm.avail_out;
+			if (fwrite(out, 1, have, unzip) != have || ferror(unzip)) {
+				(void)inflateEnd(&strm);
+				return Z_ERRNO;
+			}
+		} while (strm.avail_out == 0);
+
+		/* done when inflate() says it's done */
+	} while (ret != Z_STREAM_END);
+
+	/* clean up and return */
+	(void)inflateEnd(&strm);
+	return ret == Z_STREAM_END ? Z_OK : Z_DATA_ERROR;
+}
+
+bool isGunzip(const char *zipFilename) {
+	bool ret = false;
+	FILE *zip = fopen(zipFilename, "r");
+	if(zip) {
+		unsigned char buff[2];
+		if(fread(buff, 1, 2, zip) == 2) {
+			ret = buff[0] == 0x1F && buff[1] == 0x8B;
+		}
+		fclose(zip);
+	}
+	return(ret);
 }
