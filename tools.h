@@ -369,18 +369,39 @@ public:
 		 Call *call = NULL, const char *file = NULL,
 		 const char *column = NULL, long long writeBytes = 0) {
 		extern int opt_pcap_dump_bufflength;
+		if(opt_pcap_dump_bufflength && !((FileZipHandler*)handle)->userData) {
+			unsigned int size;
+			unsigned int minSize = UINT_MAX;
+			int minSizeIndex = 0;
+			for(int i = 0; i < countPcapThreads; i++) {
+				size = q[i].size();
+				if(size < minSize) {
+					minSize = size;
+					minSizeIndex = i;
+				}
+			}
+			((FileZipHandler*)handle)->userData = minSizeIndex + 1;
+		}
 		add(new AsyncCloseItem_pcap(handle, call, file, column, writeBytes),
 		    opt_pcap_dump_bufflength ?
-		     (((FileZipHandler*)handle)->userData ?
-		       ((FileZipHandler*)handle)->userData - 1 :
-		       ((FileZipHandler*)handle)->counter % countPcapThreads) :
+		     ((FileZipHandler*)handle)->userData - 1 :
 		     0);
 	}
 	void addWrite(pcap_dumper_t *handle,
 		      char *data, int length) {
 		extern int opt_pcap_dump_bufflength;
 		if(opt_pcap_dump_bufflength && !((FileZipHandler*)handle)->userData) {
-			((FileZipHandler*)handle)->userData = (((FileZipHandler*)handle)->counter % countPcapThreads) + 1;
+			unsigned int size;
+			unsigned int minSize = UINT_MAX;
+			int minSizeIndex = 0;
+			for(int i = 0; i < countPcapThreads; i++) {
+				size = q[i].size();
+				if(size < minSize) {
+					minSize = size;
+					minSizeIndex = i;
+				}
+			}
+			((FileZipHandler*)handle)->userData = minSizeIndex + 1;
 		}
 		add(new AsyncWriteItem_pcap(handle, data, length),
 		    opt_pcap_dump_bufflength ?
@@ -390,15 +411,36 @@ public:
 	void add(FileZipHandler *handle,
 		 Call *call = NULL, const char *file = NULL,
 		 const char *column = NULL, long long writeBytes = 0) {
+		if(!handle->userData) {
+			unsigned int size;
+			unsigned int minSize = UINT_MAX;
+			int minSizeIndex = 0;
+			for(int i = 0; i < countPcapThreads; i++) {
+				size = q[i].size();
+				if(size < minSize) {
+					minSize = size;
+					minSizeIndex = i;
+				}
+			}
+			handle->userData = minSizeIndex + 1;
+		}
 		add(new AsyncCloseItem_fileZipHandler(handle, call, file, column, writeBytes),
-		    handle->userData ?
-		     handle->userData - 1 :
-		     handle->counter % countPcapThreads);
+		    handle->userData - 1);
 	}
 	void addWrite(FileZipHandler *handle,
 		      char *data, int length) {
 		if(!handle->userData) {
-			handle->userData = (handle->counter % countPcapThreads) + 1;
+			unsigned int size;
+			unsigned int minSize = UINT_MAX;
+			int minSizeIndex = 0;
+			for(int i = 0; i < countPcapThreads; i++) {
+				size = q[i].size();
+				if(size < minSize) {
+					minSize = size;
+					minSizeIndex = i;
+				}
+			}
+			handle->userData = minSizeIndex + 1;
 		}
 		add(new AsyncWriteItem_fileZipHandler(handle, data, length),
 		    handle->userData - 1);
