@@ -2590,7 +2590,11 @@ bool PcapQueue_readFromInterface::startCapture() {
 	}
 	char errbuf[PCAP_ERRBUF_SIZE];
 	if(opt_pb_read_from_file[0]) {
-		this->pcapHandle = pcap_open_offline(opt_pb_read_from_file, errbuf);
+		this->pcapHandle = pcap_open_offline_zip(opt_pb_read_from_file, errbuf);
+		if(!this->pcapHandle) {
+			syslog(LOG_ERR, "pcap_open_offline %s failed: %s", opt_pb_read_from_file, errbuf); 
+			return(false);
+		}
 		this->pcapLinklayerHeaderType = pcap_datalink(this->pcapHandle);
 		global_pcap_handle = this->pcapHandle;
 		global_pcap_dlink = this->pcapLinklayerHeaderType;

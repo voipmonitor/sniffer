@@ -2972,7 +2972,7 @@ int main(int argc, char *argv[]) {
 			opt_manager_port = 0; // disable cleaning spooldir when reading from file 
 			printf("Reading file: %s\n", fname);
 			mask = PCAP_NETMASK_UNKNOWN;
-			global_pcap_handle = pcap_open_offline(fname, errbuf);
+			global_pcap_handle = pcap_open_offline_zip(fname, errbuf);
 			if(global_pcap_handle == NULL) {
 				fprintf(stderr, "Couldn't open pcap file '%s': %s\n", fname, errbuf);
 				return(2);
