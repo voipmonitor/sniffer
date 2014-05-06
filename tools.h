@@ -252,7 +252,7 @@ private:
 	FileZipHandler *handle;
 };
 
-#define AsyncClose_maxPcapThreads 20
+#define AsyncClose_maxPcapThreads 32
 
 class AsyncClose {
 public:
