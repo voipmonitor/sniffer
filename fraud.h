@@ -698,6 +698,7 @@ void fraudSeenByeCall(Call *call, struct timeval tv);
 void fraudEndCall(Call *call, struct timeval tv);
 void fraudSipPacket(u_int32_t ip, timeval tv);
 void fraudRegister(u_int32_t ip, timeval tv);
+bool isExistsFraudAlerts();
 
 
 #endif
