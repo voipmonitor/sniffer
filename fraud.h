@@ -15,6 +15,8 @@
 #define fraud_alert_chc 22
 #define fraud_alert_chcr 23
 #define fraud_alert_d 24
+#define fraud_alert_spc 25
+#define fraud_alert_rc 26
 
 extern timeval t;
 class TimePeriod {
@@ -270,7 +272,7 @@ public:
 	string getCountry(const char *ip) {
 		in_addr ips;
 		inet_aton(ip, &ips);
-		return(getCountry(ips.s_addr));
+		return(getCountry(htonl(ips.s_addr)));
 	}
 	bool isLocal(unsigned int ip) {
 		extern char opt_local_country_code[10];
@@ -279,7 +281,7 @@ public:
 	bool isLocal(const char *ip) {
 		in_addr ips;
 		inet_aton(ip, &ips);
-		return(isLocal(ips.s_addr));
+		return(isLocal(htonl(ips.s_addr)));
 	}
 private:
 	vector<GeoIP_country_rec> data;
@@ -322,6 +324,12 @@ private:
 };
 
 struct sFraudCallInfo {
+	enum eTypeCallInfo {
+		typeCallInfo_beginCall,
+		typeCallInfo_connectCall,
+		typeCallInfo_seenByeCall,
+		typeCallInfo_endCall
+	};
 	sFraudCallInfo() {
 		typeCallInfo = (eTypeCallInfo)0;
 		call_type = 0;
@@ -335,12 +343,6 @@ struct sFraudCallInfo {
 		local_called_number = true;
 		local_called_ip = true;
 	}
-	enum eTypeCallInfo {
-		typeCallInfo_beginCall,
-		typeCallInfo_connectCall,
-		typeCallInfo_seenByeCall,
-		typeCallInfo_endCall
-	};
 	eTypeCallInfo typeCallInfo;
 	int call_type;
 	string callid;
@@ -369,6 +371,21 @@ struct sFraudCallInfo {
 	u_int64_t at_last;
 };
 
+struct sFraudEventInfo {
+	enum eTypeEventInfo {
+		typeEventInfo_sipPacket,
+		typeEventInfo_register
+	};
+	sFraudEventInfo() {
+		typeEventInfo = (eTypeEventInfo)0;
+		src_ip = 0;
+		at = 0;
+	}
+	eTypeEventInfo typeEventInfo;
+	u_int32_t src_ip;
+	u_int64_t at;
+};
+
 class FraudAlertInfo {
 public:
 	FraudAlertInfo(class FraudAlert *alert);
@@ -390,7 +407,9 @@ public:
 		_rcc =	fraud_alert_rcc,
 		_chc =	fraud_alert_chc,
 		_chcr =	fraud_alert_chcr,
-		_d =	fraud_alert_d
+		_d =	fraud_alert_d,
+		_spc =	fraud_alert_spc,
+		_rc =	fraud_alert_rc
 	};
 	enum eTypeLocation {
 		_typeLocation_NA,
@@ -417,7 +436,9 @@ public:
 		return(dbId);
 	}
 	virtual void evCall(sFraudCallInfo *callInfo) {}
+	virtual void evEvent(sFraudEventInfo *eventInfo) {}
 	virtual bool okFilter(sFraudCallInfo *callInfo);
+	virtual bool okFilter(sFraudEventInfo *eventInfo);
 	virtual void evAlert(FraudAlertInfo *alertInfo);
 protected:
 	virtual void addFraudDef(SqlDb_row *row) {}
@@ -428,6 +449,7 @@ protected:
 	virtual bool defTypeChangeLocation() { return(false); }
 	virtual bool defChangeLocationOk() { return(false); }
 	virtual bool defDestLocation() { return(false); }
+	virtual bool defInterval() { return(false); }
 protected:
 	eFraudAlertType type;
 	unsigned int dbId;
@@ -441,6 +463,8 @@ protected:
 	eTypeLocation typeChangeLocation;
 	vector<string> changeLocationOk;
 	vector<string> destLocation;
+	u_int32_t intervalLength;
+	u_int32_t intervalLimit;
 };
 
 class FraudAlert_rcc_timePeriods {
@@ -571,6 +595,60 @@ protected:
 	bool defDestLocation() { return(true); }
 };
 
+class FraudAlertInfo_spc : public FraudAlertInfo {
+public:
+	FraudAlertInfo_spc(FraudAlert *alert);
+	void set(unsigned int ip, 
+		 unsigned int count);
+	string getString();
+	string getJson();
+private:
+	unsigned int ip;
+	unsigned int count;
+};
+
+class FraudAlert_spc : public FraudAlert {
+private:
+	struct sCountItem {
+		sCountItem(u_int64_t count = 0, u_int64_t last_alert_info = 0) {
+			this->count = count;
+			this->last_alert_info = last_alert_info;
+		}
+		u_int64_t count;
+		u_int64_t last_alert_info;
+	};
+public:
+	FraudAlert_spc(unsigned int dbId);
+	void evEvent(sFraudEventInfo *eventInfo);
+protected:
+	bool defFilterIp() { return(true); }
+	bool defInterval() { return(true); }
+private:
+	map<u_int32_t, sCountItem> count;
+	u_int64_t start_interval;
+};
+
+class FraudAlert_rc : public FraudAlert {
+private:
+	struct sCountItem {
+		sCountItem(u_int64_t count = 0, u_int64_t last_alert_info = 0) {
+			this->count = count;
+			this->last_alert_info = last_alert_info;
+		}
+		u_int64_t count;
+		u_int64_t last_alert_info;
+	};
+public:
+	FraudAlert_rc(unsigned int dbId);
+	void evEvent(sFraudEventInfo *eventInfo);
+protected:
+	bool defFilterIp() { return(true); }
+	bool defInterval() { return(true); }
+private:
+	map<u_int32_t, sCountItem> count;
+	u_int64_t start_interval;
+};
+
 
 class FraudAlerts {
 public:
@@ -582,6 +660,8 @@ public:
 	void connectCall(Call *call, u_int64_t at);
 	void seenByeCall(Call *call, u_int64_t at);
 	void endCall(Call *call, u_int64_t at);
+	void evSipPacket(u_int32_t ip, u_int64_t at);
+	void evRegister(u_int32_t ip, u_int64_t at);
 	void stopPopCallInfoThread(bool wait = false);
 	void refresh();
 private:
@@ -599,6 +679,7 @@ private:
 private:
 	vector<FraudAlert*> alerts;
 	SafeAsyncQueue<sFraudCallInfo> callQueue;
+	SafeAsyncQueue<sFraudEventInfo> eventQueue;
 	pthread_t threadPopCallInfo;
 	bool runPopCallInfoThread;
 	bool terminatingPopCallInfoThread;
@@ -615,6 +696,8 @@ void fraudBeginCall(Call *call, struct timeval tv);
 void fraudConnectCall(Call *call, struct timeval tv);
 void fraudSeenByeCall(Call *call, struct timeval tv);
 void fraudEndCall(Call *call, struct timeval tv);
+void fraudSipPacket(u_int32_t ip, timeval tv);
+void fraudRegister(u_int32_t ip, timeval tv);
 
 
 #endif

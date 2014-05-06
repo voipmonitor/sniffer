@@ -134,6 +134,8 @@ extern int readend;
 extern int opt_dup_check;
 extern int opt_dup_check_ipheader;
 extern char opt_match_header[128];
+extern char opt_callidmerge_header[128];
+extern char opt_callidmerge_secret[128];
 extern int opt_domainport;
 extern int opt_mirrorip;
 extern int opt_mirrorall;
@@ -949,6 +951,8 @@ int mimeSubtypeToInt(char *mimeSubtype) {
 	       return PAYLOAD_GSM;
        else if(strcasecmp(mimeSubtype,"G723") == 0)
 	       return PAYLOAD_G723;
+       else if(strcasecmp(mimeSubtype,"G7221") == 0)
+	       return PAYLOAD_G7221;
        else if(strcasecmp(mimeSubtype,"PCMA") == 0)
 	       return PAYLOAD_PCMA;
        else if(strcasecmp(mimeSubtype,"PCMU") == 0)
@@ -998,7 +1002,28 @@ int get_rtpmap_from_sdp(char *sdp_text, unsigned long len, int *rtpmap){
 		if (sscanf(s, "%30u %[^/]/%d", &codec, mimeSubtype, &rate) == 3) {
 			// store payload type and its codec into one integer with 1000 offset
 			int mtype = mimeSubtypeToInt(mimeSubtype);
-			if(mtype == PAYLOAD_SILK) {
+			if(mtype == PAYLOAD_G7221) {
+				switch(rate) {
+					case 8000:
+						mtype = PAYLOAD_G72218;
+						break;
+					case 12000:
+						mtype = PAYLOAD_G722112;
+						break;
+					case 16000:
+						mtype = PAYLOAD_G722116;
+						break;
+					case 24000:
+						mtype = PAYLOAD_G722124;
+						break;
+					case 32000:
+						mtype = PAYLOAD_G722132;
+						break;
+					case 48000:
+						mtype = PAYLOAD_G722148;
+						break;
+				}
+			} else if(mtype == PAYLOAD_SILK) {
 				switch(rate) {
 					case 8000:
 						mtype = PAYLOAD_SILK8;
@@ -1264,7 +1289,7 @@ Call *new_invite_register(int sip_method, char *data, int datalen, struct pcap_p
 	unsigned int flags = 0;
 	int res;
 	bool anonymous_useRemotePartyID = false;
-	
+
 	if(opt_callslimit != 0 and opt_callslimit < calls_counter) {
 		if(verbosity > 0)
 			syslog(LOG_NOTICE, "callslimit[%d] > calls[%d] ignoring call\n", opt_callslimit, calls_counter);
@@ -1480,20 +1505,40 @@ Call *new_invite_register(int sip_method, char *data, int datalen, struct pcap_p
 	// opening dump file
 	if((call->type == REGISTER && (call->flags & FLAG_SAVEREGISTER)) || 
 		(call->type != REGISTER && (call->flags & (FLAG_SAVESIP | FLAG_SAVERTP | FLAG_SAVEWAV) || opt_savewav_force))) {
-		static string lastdir;
-		if(lastdir != call->dirname()) {
-			string tmp, dir;
-			if(opt_cachedir[0] != '\0') {
-	//			sprintf(str2, "%s/%s", opt_cachedir, call->dirname().c_str());
-				string dir;
-				dir = opt_cachedir;
-				dir += "/" + call->dirname();
+		extern int opt_defer_create_spooldir;
+		if(!opt_defer_create_spooldir) {
+			static string lastdir;
+			if(lastdir != call->dirname()) {
+				string tmp, dir;
+				if(opt_cachedir[0] != '\0') {
+		//			sprintf(str2, "%s/%s", opt_cachedir, call->dirname().c_str());
+					string dir;
+					dir = opt_cachedir;
+					dir += "/" + call->dirname();
+					if(opt_newdir) {
+						tmp = dir + "/ALL";
+						mkdir_r(tmp, 0777);
+						tmp = dir + "/REG";
+						mkdir_r(tmp, 0777);
+						tmp = dir + "/SIP";
+						mkdir_r(tmp, 0777);
+						tmp = dir + "/RTP";
+						mkdir_r(tmp, 0777);
+						tmp = dir + "/GRAPH";
+						mkdir_r(tmp, 0777);
+						tmp = dir + "/AUDIO";
+						mkdir_r(tmp, 0777);
+					} else {
+						mkdir_r(dir, 0777);
+					}
+				}
+				dir = call->dirname();
 				if(opt_newdir) {
 					tmp = dir + "/ALL";
 					mkdir_r(tmp, 0777);
-					tmp = dir + "/REG";
-					mkdir_r(tmp, 0777);
 					tmp = dir + "/SIP";
+					mkdir_r(tmp, 0777);
+					tmp = dir + "/REG";
 					mkdir_r(tmp, 0777);
 					tmp = dir + "/RTP";
 					mkdir_r(tmp, 0777);
@@ -1501,30 +1546,13 @@ Call *new_invite_register(int sip_method, char *data, int datalen, struct pcap_p
 					mkdir_r(tmp, 0777);
 					tmp = dir + "/AUDIO";
 					mkdir_r(tmp, 0777);
+					mkdir_r(call->dirname(), 0777);
 				} else {
 					mkdir_r(dir, 0777);
 				}
+				
+				lastdir = call->dirname();
 			}
-			dir = call->dirname();
-			if(opt_newdir) {
-				tmp = dir + "/ALL";
-				mkdir_r(tmp, 0777);
-				tmp = dir + "/SIP";
-				mkdir_r(tmp, 0777);
-				tmp = dir + "/REG";
-				mkdir_r(tmp, 0777);
-				tmp = dir + "/RTP";
-				mkdir_r(tmp, 0777);
-				tmp = dir + "/GRAPH";
-				mkdir_r(tmp, 0777);
-				tmp = dir + "/AUDIO";
-				mkdir_r(tmp, 0777);
-				mkdir_r(call->dirname(), 0777);
-			} else {
-				mkdir_r(dir, 0777);
-			}
-			
-			lastdir = call->dirname();
 		}
 	}
 
@@ -1892,6 +1920,10 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 			}
 			return(NULL);
 		}
+		
+		if(issip && opt_enable_fraud) {
+			fraudSipPacket(saddr, header->ts);
+		}
 
 		// parse SIP method 
 		if ((datalen > 5) && !(memmem(data, 6, "INVITE", 6) == 0)) {
@@ -1902,6 +1934,9 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 			if(verbosity > 2) 
 				 syslog(LOG_NOTICE,"SIP msg: REGISTER\n");
 			sip_method = REGISTER;
+			if(opt_enable_fraud) {
+				fraudRegister(saddr, header->ts);
+			}
 		} else if ((datalen > 6) && !(memmem(data, 7, "MESSAGE", 7) == 0)) {
 			if(verbosity > 2) 
 				 syslog(LOG_NOTICE,"SIP msg: MESSAGE\n");
@@ -2011,6 +2046,44 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 		if(call) {
 			call->handle_dscp(header_ip, saddr, daddr);
 		}
+
+		// check presence of call-id merge header if callidmerge feature is enabled
+		if(!call and opt_callidmerge_header[0] != '\0') {
+			call = calltable->find_by_mergecall_id(s, l);
+			if(!call) {
+				// this call-id is not yet tracked either in calls list or callidmerge list 
+				// check if there is SIP callidmerge_header which contains parent call-id call
+				char *s2 = NULL;
+				long unsigned int l2 = 0;
+				unsigned char buf[1024];
+				s2 = gettag(data, datalen, opt_callidmerge_header, &l2, &gettagLimitLen);
+				if(l2 && l2 < 128) {
+					// header exists
+					if(opt_callidmerge_secret[0] != '\0') {
+						// header is encoded - decode it 
+						int enclen = base64decode(buf, (const char*)s2, l2);
+						int keysize = strlen(opt_callidmerge_header);
+						for(int i = 0; i < enclen; i++) {
+							buf[i] = buf[i] ^ opt_callidmerge_header[i % keysize];
+						}
+						// s2 is now decrypted call-id
+						s2 = (char*)buf;
+						l2 = enclen;
+					}
+					// check if the sniffer know about this call-id in mergeheader 
+					call = calltable->find_by_call_id(s2, l2);
+					if(!call) {
+						// there is no call with the call-id in merge header - this call will be created as new
+					} else {
+						calltable->lock_calls_mergeMAP();
+						calltable->calls_mergeMAP[string(s, l)] = call;
+						calltable->unlock_calls_mergeMAP();
+						call->mergecalls.push_back(string(s,l));
+					}
+				}
+			}
+		}
+	
 		if (!call){
 			// packet does not belongs to any call yet
 			if (sip_method == INVITE || sip_method == MESSAGE || (opt_sip_register && sip_method == REGISTER)) {
@@ -2458,7 +2531,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 				syslog(LOG_NOTICE, "Seen X-VoipMonitor-Custom1: %s\n", call->custom_header1);
 		}
 
-		// check if we have opt_match_header
+		// check for opt_match_header
 		if(opt_match_header[0] != '\0') {
 			s = gettag(data, datalen, opt_match_header, &l, &gettagLimitLen);
 			if(l && l < 128) {
@@ -3038,7 +3111,6 @@ void *pcap_read_thread_func(void *arg) {
 	res = 0;
 
 	while(1) {
-		static int count = 0;
 
 #ifdef QUEUE_MUTEX
 		res = sem_wait(&readpacket_thread_semaphore);
@@ -3743,13 +3815,14 @@ skip:
 				MD5_Update(&ctx, data, MAX(0, (unsigned long)datalen - traillen));
 			}
 			MD5_Final(md5, &ctx);
-			if(memcmp(md5, prevmd5s+( ( (*(uint16_t *)md5) ) * MD5_DIGEST_LENGTH), MD5_DIGEST_LENGTH) == 0) {
+			uint16_t *hash = (uint16_t*)md5;
+			if(memcmp(md5, prevmd5s+( *hash * MD5_DIGEST_LENGTH), MD5_DIGEST_LENGTH) == 0) {
 				if(destroy) { free(header); free(packet); };
 				//printf("dropping duplicate md5[%s]\n", md5);
 				duplicate_counter++;
 				continue;
 			}
-			memcpy(prevmd5s+( ( (*(uint16_t *)md5) ) * MD5_DIGEST_LENGTH), md5, MD5_DIGEST_LENGTH);
+			memcpy(prevmd5s+( *hash * MD5_DIGEST_LENGTH), md5, MD5_DIGEST_LENGTH);
 		}
 
 		if(opt_pcapdump) {

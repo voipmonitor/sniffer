@@ -46,7 +46,14 @@
 extern char mac[32];
 extern int verbosity;
 extern int terminating;
+extern int opt_pcap_dump_bufflength;
+extern int opt_pcap_dump_asyncwrite;
+extern int opt_pcap_dump_zip;
+extern int opt_pcap_dump_ziplevel;
+extern int opt_read_from_file;
 
+static char b2a[256];
+static char base64[64];
 
 using namespace std;
 
@@ -667,11 +674,13 @@ bool PcapDumper::open(const char *fileName, const char *fileNameSpoolRelative, p
 		this->close(this->updateFilesQueueAtClose);
 		syslog(LOG_NOTICE, "pcapdumper: reopen %s -> %s", this->fileName.c_str(), fileName);
 	}
+	/* disable - too slow
 	if(file_exists((char*)fileName)) {
 		if(verbosity > 2) {
 			syslog(LOG_NOTICE,"pcapdumper: [%s] already exists, not overwriting", fileName);
 		}
 	}
+	*/
 	extern pcap_t *global_pcap_handle_dead_EN10MB;
 	extern int opt_convert_dlt_sll_to_en10;
 	pcap_t *_handle = useDlt == DLT_LINUX_SLL && opt_convert_dlt_sll_to_en10 && global_pcap_handle_dead_EN10MB ? 
@@ -679,11 +688,17 @@ bool PcapDumper::open(const char *fileName, const char *fileNameSpoolRelative, p
 			   useHandle;
 	this->capsize = 0;
 	this->size = 0;
-	this->handle = pcap_dump_open(_handle, fileName);
+	string errorString;
+	this->handle = __pcap_dump_open(_handle, fileName,
+					useDlt == DLT_LINUX_SLL && opt_convert_dlt_sll_to_en10 ? DLT_EN10MB : useDlt,
+					&errorString);
 	++this->openAttempts;
 	if(!this->handle) {
 		if(this->type != rtp || !this->openError) {
-			syslog(LOG_NOTICE, "pcapdumper: error open dump handle to file %s - %s", fileName, pcap_geterr(_handle));
+			syslog(LOG_NOTICE, "pcapdumper: error open dump handle to file %s - %s", fileName, 
+			       opt_pcap_dump_bufflength ?
+				errorString.c_str() : 
+				__pcap_geterr(_handle));
 		}
 		this->openError = true;
 	}
@@ -699,7 +714,7 @@ void PcapDumper::dump(pcap_pkthdr* header, const u_char *packet) {
 	extern unsigned int opt_maxpcapsize_mb;
 	if(this->handle && 
 	   (!opt_maxpcapsize_mb || this->capsize < opt_maxpcapsize_mb * 1024 * 1024)) {
-		pcap_dump((u_char*)this->handle, header, packet);
+		__pcap_dump((u_char*)this->handle, header, packet);
 		extern int opt_packetbuffered;
 		if(opt_packetbuffered) {
 			pcap_dump_flush(this->handle);
@@ -712,8 +727,7 @@ void PcapDumper::dump(pcap_pkthdr* header, const u_char *packet) {
 void PcapDumper::close(bool updateFilesQueue) {
 	if(this->handle) {
 		if(updateFilesQueue && this->call) {
-			asyncClose.add(this->handle,
-				       this->call,
+			asyncClose.add(this->handle, this->call,
 				       this->fileNameSpoolRelative.c_str(), 
 				       type == rtp ? "rtpsize" : 
 				       this->call->type == REGISTER ? "regsize" : "sipsize",
@@ -738,9 +752,7 @@ extern int opt_gzipGRAPH;
 RtpGraphSaver::RtpGraphSaver(RTP *rtp, bool updateFilesQueueAtClose) {
 	this->rtp = rtp;
 	this->updateFilesQueueAtClose = updateFilesQueueAtClose;
-	this->size = 0;
-	this->stream = NULL;
-	this->streamgz = NULL;
+	this->handle = NULL;
 }
 
 RtpGraphSaver::~RtpGraphSaver() {
@@ -750,26 +762,23 @@ RtpGraphSaver::~RtpGraphSaver() {
 }
 
 bool RtpGraphSaver::open(const char *fileName, const char *fileNameSpoolRelative) {
-	if(this->isOpen()) {
+	if(this->handle) {
 		this->close(this->updateFilesQueueAtClose);
 		syslog(LOG_NOTICE, "graphsaver: reopen %s -> %s", this->fileName.c_str(), fileName);
 	}
+	/* disable - too slow
 	if(file_exists((char*)fileName)) {
 		if(verbosity > 2) {
 			syslog(LOG_NOTICE,"graphsaver: [%s] already exists, not overwriting", fileName);
 		}
 	}
-	if(opt_gzipGRAPH) {
-		this->streamgz = new ogzstream;
-		this->streamgz->open(fileName);
-	} else {
-		this->stream = new ofstream;
-		this->stream->open(fileName);
+	*/
+	this->handle = new FileZipHandler(opt_pcap_dump_bufflength, opt_pcap_dump_asyncwrite, opt_gzipGRAPH);
+	if(!this->handle->open(fileName)) {
+		syslog(LOG_NOTICE, "graphsaver: error open file %s - %s", fileName, this->handle->error.c_str());
+		delete this->handle;
+		this->handle = NULL;
 	}
-	if(!this->isOpen()) {
-		syslog(LOG_NOTICE, "graphsaver: error open file %s - %s", fileName, strerror(errno));
-	}
-	this->size = 0;
 	this->fileName = fileName;
 	this->fileNameSpoolRelative = fileNameSpoolRelative;
 	return(this->isOpen());
@@ -778,42 +787,22 @@ bool RtpGraphSaver::open(const char *fileName, const char *fileNameSpoolRelative
 
 void RtpGraphSaver::write(char *buffer, int length) {
 	if(this->isOpen()) {
-		if(opt_gzipGRAPH) {
-			this->streamgz->write(buffer, length);
-			//// !!!! size
-		} else {
-			this->stream->write(buffer, length);
-			this->size += length;
-		}
+		this->handle->write(buffer, length);
 	}
 }
 
 void RtpGraphSaver::close(bool updateFilesQueue) {
 	if(this->isOpen()) {
 		Call *call = (Call*)this->rtp->call_owner;
-		if(opt_gzipGRAPH) {
-			if(updateFilesQueue && call) {
-				asyncClose.add(this->streamgz,
-					       call,
-					       this->fileNameSpoolRelative.c_str(), 
-					       "graphsize", 
-					       this->size);
-			} else {
-				asyncClose.add(this->streamgz);
-			}
-			this->streamgz = NULL;
+		if(updateFilesQueue && call) {
+			asyncClose.add(this->handle, call,
+				       this->fileNameSpoolRelative.c_str(), 
+				       "graphsize", 
+				       this->handle->size);
 		} else {
-			if(updateFilesQueue && call) {
-				asyncClose.add(this->stream,
-					       call,
-					       this->fileNameSpoolRelative.c_str(), 
-					       "graphsize", 
-					       this->size);
-			} else {
-				asyncClose.add(this->stream);
-			}
-			this->stream = NULL;
+			asyncClose.add(this->handle);
 		}
+		this->handle = NULL;
 		if(updateFilesQueue && !call) {
 			syslog(LOG_ERR, "graphsaver: gfilename[%s] does not have owner", this->fileNameSpoolRelative.c_str());
 		}
@@ -828,6 +817,7 @@ AsyncClose::AsyncCloseItem::AsyncCloseItem(Call *call, const char *file, const c
 		this->writeBytes = writeBytes;
 		this->calltable = call->calltable;
 	}
+	this->dataLength = 0;
 }
 
 void AsyncClose::AsyncCloseItem::addtofilesqueue() {
@@ -838,41 +828,117 @@ void AsyncClose::AsyncCloseItem::addtofilesqueue() {
 	}
 }
 
-void *AsyncClose_process(void *asyncClose_addr) {
-	AsyncClose *asyncClose = (AsyncClose*)asyncClose_addr;
-	asyncClose->closeTask();
+void *AsyncClose_process(void *_startThreadData) {
+	AsyncClose::StartThreadData *startThreadData = (AsyncClose::StartThreadData*)_startThreadData;
+	startThreadData->asyncClose->processTask(startThreadData->threadIndex);
 	return(NULL);
 }
 
 AsyncClose::AsyncClose() {
-	_sync = 0;
+	maxPcapThreads = min((int)sysconf(_SC_NPROCESSORS_ONLN), AsyncClose_maxPcapThreads);
+	countPcapThreads = 1;
+	minPcapThreads = 1;
+	for(int i = 0; i < AsyncClose_maxPcapThreads; i++) {
+		_sync[i] = 0;
+		threadId[i] = 0;
+		memset(this->threadPstatData[i], 0, sizeof(this->threadPstatData[i]));
+	}
+	sizeOfDataInMemory = 0;
 }
 
-void AsyncClose::startThread() {
-	pthread_create(&this->thread, NULL, AsyncClose_process, this);
-}
-
-void AsyncClose::closeTask() {
-	do {
-		closeAll();
-		usleep(10000);
-	} while(!terminating);
-}
-
-void AsyncClose::closeAll() {
-	while(true) {
-		lock();
-		if(q.size()) {
-			AsyncCloseItem *item = q.front();
-			q.pop();
-			item->close();
+AsyncClose::~AsyncClose() {
+	for(int i = 0; i < AsyncClose_maxPcapThreads; i++) {
+		while(q[i].size()) {
+			AsyncCloseItem *item = q[i].front();
+			item->processClose();
 			delete item;
-			unlock();
+			q[i].pop();
+		}
+	}
+}
+
+void AsyncClose::startThreads(int countPcapThreads, int maxPcapThreads) {
+	if(maxPcapThreads < this->maxPcapThreads) {
+		this->maxPcapThreads = maxPcapThreads;
+	}
+	this->countPcapThreads = opt_pcap_dump_bufflength ?
+				  min(this->maxPcapThreads, countPcapThreads) :
+				  1;
+	this->minPcapThreads = this->countPcapThreads;
+	for(int i = 0; i < this->countPcapThreads; i++) {
+		startThreadData[i].threadIndex = i;
+		startThreadData[i].asyncClose = this;
+		pthread_create(&this->thread[i], NULL, AsyncClose_process, &startThreadData[i]);
+	}
+}
+
+void AsyncClose::addThread() {
+	if(opt_pcap_dump_bufflength && countPcapThreads < maxPcapThreads) {
+		startThreadData[countPcapThreads].threadIndex = countPcapThreads;
+		startThreadData[countPcapThreads].asyncClose = this;
+		pthread_create(&this->thread[countPcapThreads], NULL, AsyncClose_process, &startThreadData[countPcapThreads]);
+		++countPcapThreads;
+	}
+}
+
+void AsyncClose::removeThread() {
+	/* disabled - unstable
+	if(opt_pcap_dump_bufflength && countPcapThreads > minPcapThreads) {
+		--countPcapThreads;
+		startThreadData[countPcapThreads].threadIndex = 0;
+	}
+	*/
+}
+
+void AsyncClose::processTask(int threadIndex) {
+	this->threadId[threadIndex] = get_unix_tid();
+	do {
+		processAll(threadIndex);
+		usleep(10000);
+	} while(!(terminating ||
+		  (threadIndex && !startThreadData[threadIndex].threadIndex)));
+}
+
+void AsyncClose::processAll(int threadIndex) {
+	while(true) {
+		lock(threadIndex);
+		if(q[threadIndex].size()) {
+			AsyncCloseItem *item = q[threadIndex].front();
+			q[threadIndex].pop();
+			sub_sizeOfDataInMemory(item->dataLength);
+			unlock(threadIndex);
+			item->process();
+			delete item;
 		} else {
-			unlock();
+			unlock(threadIndex);
 			break;
 		}
 	}
+}
+
+void AsyncClose::preparePstatData(int threadIndex) {
+	if(this->threadId[threadIndex]) {
+		if(this->threadPstatData[threadIndex][0].cpu_total_time) {
+			this->threadPstatData[threadIndex][1] = this->threadPstatData[threadIndex][0];
+		}
+		pstat_get_data(this->threadId[threadIndex], this->threadPstatData[threadIndex]);
+	}
+}
+
+double AsyncClose::getCpuUsagePerc(int threadIndex, bool preparePstatData) {
+	if(preparePstatData) {
+		this->preparePstatData(threadIndex);
+	}
+	if(this->threadId[threadIndex]) {
+		double ucpu_usage, scpu_usage;
+		if(this->threadPstatData[threadIndex][0].cpu_total_time && this->threadPstatData[threadIndex][1].cpu_total_time) {
+			pstat_calc_cpu_usage_pct(
+				&this->threadPstatData[threadIndex][0], &this->threadPstatData[threadIndex][1],
+				&ucpu_usage, &scpu_usage);
+			return(ucpu_usage + scpu_usage);
+		}
+	}
+	return(-1);
 }
 
 RestartUpgrade::RestartUpgrade(bool upgrade, const char *version, const char *url, const char *md5_32, const char *md5_64) {
@@ -897,6 +963,9 @@ RestartUpgrade::RestartUpgrade(bool upgrade, const char *version, const char *ur
 }
 
 bool RestartUpgrade::runUpgrade() {
+	if(verbosity > 0) {
+		syslog(LOG_NOTICE, "start upgrade from: '%s'", url.c_str());
+	}
 	bool okUrl;
 	string urlHttp;
 	if(url.find("http://voipmonitor.org") == 0 ||
@@ -913,20 +982,32 @@ bool RestartUpgrade::runUpgrade() {
 	}
 	if(!okUrl) {
 		this->errorString = "url " + url + " not allowed";
+		if(verbosity > 0) {
+			syslog(LOG_ERR, "upgrade failed - %s", this->errorString.c_str());
+		}
 		return(false);
 	}
 	if(!this->upgradeTempFileName.length() && !this->getUpgradeTempFileName()) {
 		this->errorString = "failed create temp name for new binary";
+		if(verbosity > 0) {
+			syslog(LOG_ERR, "upgrade failed - %s", this->errorString.c_str());
+		}
 		return(false);
 	}
 	if(mkdir(this->upgradeTempFileName.c_str(), 0700)) {
 		this->errorString = "failed create folder " + this->upgradeTempFileName;
+		if(verbosity > 0) {
+			syslog(LOG_ERR, "upgrade failed - %s", this->errorString.c_str());
+		}
 		return(false);
 	}
 	unlink(this->upgradeTempFileName.c_str());
 	char outputStdoutErr[L_tmpnam+1];
 	if(!tmpnam(outputStdoutErr)) {
 		this->errorString = "failed create temp name for output curl and gunzip";
+		if(verbosity > 0) {
+			syslog(LOG_ERR, "upgrade failed - %s", this->errorString.c_str());
+		}
 		return(false);
 	}
 	string binaryFilepathName = this->upgradeTempFileName + "/voipmonitor";
@@ -936,13 +1017,20 @@ bool RestartUpgrade::runUpgrade() {
 		string error;
 		string _url = (pass == 1 ? urlHttp : url) + 
 			      "/voipmonitor.gz." + (this->_64bit ? "64" : "32");
+		if(verbosity > 0) {
+			syslog(LOG_NOTICE, "try download file: '%s'", _url.c_str());
+		}
 		if(get_url_file(_url.c_str(), binaryGzFilepathName.c_str(), &error)) {
+			syslog(LOG_NOTICE, "download file '%s' finished", _url.c_str());
 			this->errorString = "";
 			break;
 		} else {
 			this->errorString = "failed download upgrade: " + error;
 			if(pass || !opt_upgrade_try_http_if_https_fail) {
 				rmdir_r(this->upgradeTempFileName.c_str());
+				if(verbosity > 0) {
+					syslog(LOG_ERR, "upgrade failed - %s", this->errorString.c_str());
+				}
 				return(false);
 			}
 		}
@@ -981,15 +1069,24 @@ bool RestartUpgrade::runUpgrade() {
 	if(!FileExists((char*)binaryGzFilepathName.c_str())) {
 		this->errorString = "failed download - missing destination file";
 		rmdir_r(this->upgradeTempFileName.c_str());
+		if(verbosity > 0) {
+			syslog(LOG_ERR, "upgrade failed - %s", this->errorString.c_str());
+		}
 		return(false);
 	}
 	if(!GetFileSize(binaryGzFilepathName.c_str())) {
 		this->errorString = "failed download - zero size of destination file";
 		rmdir_r(this->upgradeTempFileName.c_str());
+		if(verbosity > 0) {
+			syslog(LOG_ERR, "upgrade failed - %s", this->errorString.c_str());
+		}
 		return(false);
 	}
 	string unzipCommand = "gunzip " + binaryGzFilepathName +
 			      " >" + outputStdoutErr + " 2>&1";
+	if(verbosity > 0) {
+		syslog(LOG_NOTICE, "try unzip command: '%s'", unzipCommand.c_str());
+	}
 	if(system(unzipCommand.c_str()) != 0) {
 		this->errorString = "failed run gunzip";
 		FILE *fileHandle = fopen(outputStdoutErr, "r");
@@ -1003,32 +1100,48 @@ bool RestartUpgrade::runUpgrade() {
 			}
 			fclose(fileHandle);
 		}
-		
-		FILE *f = fopen(binaryGzFilepathName.c_str(), "rt");
-		char buff[10000];
-		while(fgets(buff, sizeof(buff), f)) {
-			cout << buff << endl;
+		if(verbosity > 1) {
+			FILE *f = fopen(binaryGzFilepathName.c_str(), "rt");
+			char buff[10000];
+			while(fgets(buff, sizeof(buff), f)) {
+				cout << buff << endl;
+			}
 		}
-		
 		unlink(outputStdoutErr);
 		rmdir_r(this->upgradeTempFileName.c_str());
+		if(verbosity > 0) {
+			syslog(LOG_ERR, "upgrade failed - %s", this->errorString.c_str());
+		}
 		return(false);
+	} else {
+		if(verbosity > 0) {
+			syslog(LOG_NOTICE, "unzip finished");
+		}
 	}
 	string md5 = GetFileMD5(binaryFilepathName);
 	if((this->_64bit ? md5_64 : md5_32) != md5) {
 		this->errorString = "failed download - bad md5: " + md5 + " <> " + (this->_64bit ? md5_64 : md5_32);
 		rmdir_r(this->upgradeTempFileName.c_str());
+		if(verbosity > 0) {
+			syslog(LOG_ERR, "upgrade failed - %s", this->errorString.c_str());
+		}
 		return(false);
 	}
 	unlink("/usr/local/sbin/voipmonitor");
 	if(!copy_file(binaryFilepathName.c_str(), "/usr/local/sbin/voipmonitor", true)) {
 		this->errorString = "failed copy new binary to /usr/local/sbin";
 		rmdir_r(this->upgradeTempFileName.c_str());
+		if(verbosity > 0) {
+			syslog(LOG_ERR, "upgrade failed - %s", this->errorString.c_str());
+		}
 		return(false);
 	}
 	if(chmod("/usr/local/sbin/voipmonitor", 0755)) {
 		this->errorString = "failed chmod 0755 voipmonitor";
 		rmdir_r(this->upgradeTempFileName.c_str());
+		if(verbosity > 0) {
+			syslog(LOG_ERR, "upgrade failed - %s", this->errorString.c_str());
+		}
 		return(false);
 	}
 	rmdir_r(this->upgradeTempFileName.c_str());
@@ -1036,8 +1149,14 @@ bool RestartUpgrade::runUpgrade() {
 }
 
 bool RestartUpgrade::createRestartScript() {
+	if(verbosity > 0) {
+		syslog(LOG_NOTICE, "create restart script");
+	}
 	if(!this->restartTempScriptFileName.length() && !this->getRestartTempScriptFileName()) {
 		this->errorString = "failed create temp name for restart script";
+		if(verbosity > 0) {
+			syslog(LOG_ERR, "create restart script failed - %s", this->errorString.c_str());
+		}
 		return(false);
 	}
 	FILE *fileHandle = fopen(this->restartTempScriptFileName.c_str(), "wt");
@@ -1052,6 +1171,9 @@ bool RestartUpgrade::createRestartScript() {
 		return(true);
 	} else {
 		this->errorString = "failed create restart script";
+		if(verbosity > 0) {
+			syslog(LOG_ERR, "create restart script failed - %s", this->errorString.c_str());
+		}
 	}
 	return(false);
 }
@@ -1070,7 +1192,13 @@ bool RestartUpgrade::checkReadyRestart() {
 }
 
 bool RestartUpgrade::runRestart(int socket1, int socket2) {
+	if(verbosity > 0) {
+		syslog(LOG_NOTICE, "run restart script");
+	}
 	if(!this->checkReadyRestart()) {
+		if(verbosity > 0) {
+			syslog(LOG_ERR, "restart failed - %s", this->errorString.c_str());
+		}
 		return(false);
 	}
 	close(socket1);
@@ -1078,6 +1206,9 @@ bool RestartUpgrade::runRestart(int socket1, int socket2) {
 	int rsltExec = execl(this->restartTempScriptFileName.c_str(), "Command-line", 0, NULL);
 	if(rsltExec) {
 		this->errorString = "failed execution restart script";
+		if(verbosity > 0) {
+			syslog(LOG_ERR, "restart failed - %s", this->errorString.c_str());
+		}
 		return(false);
 	} else {
 		return(true);
@@ -1276,6 +1407,12 @@ string reg_replace(const char *str, const char *pattern, const char *replace) {
 		return(rslt);
 	}
 	return("");
+}
+
+string inet_ntostring(u_int32_t ip) {
+	struct in_addr in;
+	in.s_addr = htonl(ip);
+	return(inet_ntoa(in));
 }
 
 
@@ -1486,4 +1623,336 @@ void JsonExport::add(const char *name, u_int64_t content) {
 	item->setName(name);
 	item->setContent(content);
 	items.push_back(item);
+}
+
+
+//------------------------------------------------------------------------------
+// pcap_dump_open with set buffer
+
+FileZipHandler::FileZipHandler(int bufferLength, int enableAsyncWrite, int enableZip,
+			       bool dumpHandler) {
+	if(bufferLength <= 0) {
+		enableAsyncWrite = 0;
+		enableZip = 0;
+	}
+	this->permission = 0;
+	this->fh = 0;
+	this->zipStream = NULL;
+	this->bufferLength = bufferLength;
+	if(bufferLength) {
+		this->buffer = new char[bufferLength];
+	} else {
+		this->buffer = NULL;
+	}
+	this->zipBuffer = NULL;
+	this->useBufferLength = 0;
+	this->enableAsyncWrite = enableAsyncWrite && !opt_read_from_file;
+	this->enableZip = enableZip;
+	this->dumpHandler = dumpHandler;
+	this->size = 0;
+	this->counter = ++scounter;
+	this->userData = 0;
+}
+
+FileZipHandler::~FileZipHandler() {
+	this->close();
+	if(this->buffer) {
+		delete [] this->buffer;
+	}
+	if(this->zipBuffer) {
+		delete [] this->zipBuffer;
+	}
+	if(this->zipStream) {
+		deflateEnd(this->zipStream);
+		delete this->zipStream;
+	}
+}
+
+bool FileZipHandler::open(const char *fileName, int permission) {
+	this->fileName = fileName;
+	this->permission = permission;
+	return(true);
+}
+
+void FileZipHandler::close() {
+	this->flushBuffer(true);
+	if(this->okHandle()) {
+		::close(this->fh);
+		this->fh = 0;
+	}
+}
+
+bool FileZipHandler::flushBuffer(bool force) {
+	if(!this->buffer || !this->useBufferLength) {
+		return(true);
+	}
+	bool rsltWrite = this->writeToFile(this->buffer, this->useBufferLength, force);
+	this->useBufferLength = 0;
+	return(rsltWrite);
+}
+
+bool FileZipHandler::writeToBuffer(char *data, int length) {
+	if(!this->buffer) {
+		return(false);
+	}
+	if(this->useBufferLength && this->useBufferLength + length > this->bufferLength) {
+		flushBuffer();
+	}
+	if(length <= this->bufferLength) {
+		memcpy(this->buffer + this->useBufferLength, data, length);
+		this->useBufferLength += length;
+		return(true);
+	} else {
+		return(this->writeToFile(data, length));
+	}
+}
+
+bool FileZipHandler::writeToFile(char *data, int length, bool force) {
+	if(enableAsyncWrite && !force) {
+		if(dumpHandler) {
+			asyncClose.addWrite((pcap_dumper_t*)this, data, length);
+		} else {
+			asyncClose.addWrite(this, data, length);
+		}
+		return(true);
+	} else {
+		return(this->_writeToFile(data, length, force));
+	}
+}
+
+bool FileZipHandler::_writeToFile(char *data, int length, bool flush) {
+	if(!this->error.empty()) {
+		return(false);
+	}
+	if(this->enableZip) {
+		if(!this->zipStream && !this->initZip()) {
+			return(false);
+		}
+		this->zipStream->avail_in = length;
+		this->zipStream->next_in = (unsigned char*)data;
+		do {
+			this->zipStream->avail_out = this->bufferLength;
+			this->zipStream->next_out = (unsigned char*)this->zipBuffer;
+			if(deflate(this->zipStream, flush ? Z_FINISH : Z_NO_FLUSH) != Z_STREAM_ERROR) {
+				int have = this->bufferLength - this->zipStream->avail_out;
+				if(this->__writeToFile(this->zipBuffer, have) <= 0) {
+					this->setError();
+					return(false);
+				} else {
+					this->size += length;
+				}
+			} else {
+				this->setError("zip deflate failed");
+				return(false);
+			}
+		} while(this->zipStream->avail_out == 0);
+		return(true);
+	} else {
+		int rsltWrite = this->__writeToFile(data, length);
+		if(rsltWrite <= 0) {
+			this->setError();
+			return(false);
+		} else {
+			this->size += length;
+			return(true);
+		}
+	}
+}
+
+bool FileZipHandler::__writeToFile(char *data, int length) {
+	if(!this->okHandle()) {
+		if(!this->error.empty() || !this->_open()) {
+			return(false);
+		}
+	}
+	if(::write(this->fh, data, length) == length) {
+		return(true);
+	} else {
+		this->setError();
+		return(false);
+	}
+}
+
+bool FileZipHandler::initZip() {
+	if(this->enableZip && !this->zipStream) {
+		this->zipStream =  new z_stream;
+		this->zipStream->zalloc = Z_NULL;
+		this->zipStream->zfree = Z_NULL;
+		this->zipStream->opaque = Z_NULL;
+		if(deflateInit2(this->zipStream, opt_pcap_dump_ziplevel, Z_DEFLATED, MAX_WBITS + 16, 8, Z_DEFAULT_STRATEGY) != Z_OK) {
+			deflateEnd(this->zipStream);
+			this->setError("zip initialize failed");
+			return(false);
+		} else {
+			this->zipBuffer = new char[bufferLength ? bufferLength : 8192];
+		}
+	}
+	return(true);
+}
+
+bool FileZipHandler::_open() {
+	for(int passOpen = 0; passOpen < 2; passOpen++) {
+		if(passOpen == 1) {
+			char *pointToLastDirSeparator = strrchr((char*)fileName.c_str(), '/');
+			if(pointToLastDirSeparator) {
+				*pointToLastDirSeparator = 0;
+				mkdir_r(fileName.c_str(), 0777);
+				*pointToLastDirSeparator = '/';
+			} else {
+				break;
+			}
+		}
+		this->fh = ::open(fileName.c_str(), O_WRONLY | O_CREAT | O_TRUNC, permission);
+		if(this->okHandle()) {
+			break;
+		}
+	}
+	if(this->okHandle()) {
+		return(true);
+	} else {
+		this->setError();
+		syslog(LOG_NOTICE, "error open handle to file %s - %s", fileName.c_str(), error.c_str());
+		return(false);
+	}
+}
+
+
+void FileZipHandler::setError(const char *error) {
+	if(error) {
+		this->error = error;
+	} else if(errno) {
+		this->error = strerror(errno);
+	}
+}
+
+u_int64_t FileZipHandler::scounter = 0;
+
+#define TCPDUMP_MAGIC		0xa1b2c3d4
+#define NSEC_TCPDUMP_MAGIC	0xa1b23c4d
+
+pcap_dumper_t *__pcap_dump_open(pcap_t *p, const char *fname, int linktype, string *errorString) {
+	if(opt_pcap_dump_bufflength) {
+		FileZipHandler *handler = new FileZipHandler(opt_pcap_dump_bufflength, opt_pcap_dump_asyncwrite, opt_pcap_dump_zip, true);
+		if(handler->open(fname)) {
+			struct pcap_file_header hdr;
+			/****
+			hdr.magic = p->opt.tstamp_precision == PCAP_TSTAMP_PRECISION_NANO ? NSEC_TCPDUMP_MAGIC : TCPDUMP_MAGIC;
+			****/
+			hdr.magic = NSEC_TCPDUMP_MAGIC;
+			hdr.version_major = PCAP_VERSION_MAJOR;
+			hdr.version_minor = PCAP_VERSION_MINOR;
+			/****
+			hdr.thiszone = thiszone;
+			hdr.snaplen = snaplen;
+			****/
+			hdr.thiszone = 0;
+			hdr.snaplen = 0;
+			hdr.sigfigs = 0;
+			hdr.linktype = linktype;
+			handler->write((char *)&hdr, sizeof(hdr));
+			return((pcap_dumper_t*)handler);
+		} else {
+			handler->setError();
+			if(errorString) {
+				*errorString = handler->error;
+			}
+			delete handler;
+			return(NULL);
+		}
+	} else {
+		return(pcap_dump_open(p, fname));
+	}
+}
+
+void __pcap_dump(u_char *user, const struct pcap_pkthdr *h, const u_char *sp) {
+	if(opt_pcap_dump_bufflength) {
+		struct pcap_timeval {
+		    bpf_int32 tv_sec;		/* seconds */
+		    bpf_int32 tv_usec;		/* microseconds */
+		};
+		struct pcap_sf_pkthdr {
+		    struct pcap_timeval ts;	/* time stamp */
+		    bpf_u_int32 caplen;		/* length of portion present */
+		    bpf_u_int32 len;		/* length this packet (off wire) */
+		};
+		FileZipHandler *handler = (FileZipHandler*)user;
+		struct pcap_sf_pkthdr sf_hdr;
+		sf_hdr.ts.tv_sec  = h->ts.tv_sec;
+		sf_hdr.ts.tv_usec = h->ts.tv_usec;
+		sf_hdr.caplen     = h->caplen;
+		sf_hdr.len        = h->len;
+		handler->write((char*)&sf_hdr, sizeof(sf_hdr));
+		handler->write((char*)sp, h->caplen);
+	} else {
+		pcap_dump(user, h, sp);
+	}
+}
+
+void __pcap_dump_close(pcap_dumper_t *p) {
+	if(opt_pcap_dump_bufflength) {
+		FileZipHandler *handler = (FileZipHandler*)p;
+		handler->close();
+		delete handler;
+	} else {
+		pcap_dump_close(p);
+	}
+}
+
+char *__pcap_geterr(pcap_t *p, pcap_dumper_t *pd) {
+	if(opt_pcap_dump_bufflength && pd) {
+		return((char*)((FileZipHandler*)pd)->error.c_str());
+	} else {
+		return(pcap_geterr(p));
+	}
+}
+
+void base64_init(void)
+{
+        int x;
+        memset(b2a, -1, sizeof(b2a));
+        /* Initialize base-64 Conversion table */
+        for (x = 0; x < 26; x++) {
+                /* A-Z */
+                base64[x] = 'A' + x;
+                b2a['A' + x] = x;
+                /* a-z */
+                base64[x + 26] = 'a' + x;
+                b2a['a' + x] = x + 26;
+                /* 0-9 */
+                if (x < 10) {
+                        base64[x + 52] = '0' + x;
+                        b2a['0' + x] = x + 52;
+                }      
+        }      
+        base64[62] = '+';
+        base64[63] = '/';
+        b2a[(int)'+'] = 62;
+        b2a[(int)'/'] = 63;
+}      
+
+/*! \brief decode BASE64 encoded text */
+int base64decode(unsigned char *dst, const char *src, int max)
+{
+        int cnt = 0;
+        unsigned int byte = 0;
+        unsigned int bits = 0;
+        int incnt = 0;
+        while(*src && *src != '=' && (cnt < max)) {
+                /* Shift in 6 bits of input */
+                byte <<= 6;
+                byte |= (b2a[(int)(*src)]) & 0x3f;
+                bits += 6;
+                src++;
+                incnt++;
+                /* If we have at least 8 bits left over, take that character 
+                   off the top */
+                if (bits >= 8)  {
+                        bits -= 8;
+                        *dst = (byte >> bits) & 0xff;
+                        dst++;
+                        cnt++;
+                }
+        }
+        /* Dont worry about left over bits, they're extra anyway */
+        return cnt;
 }

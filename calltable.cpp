@@ -72,6 +72,7 @@ extern int opt_gzipGRAPH;	// compress GRAPH data to graph file?
 extern int opt_audio_format;	// define format for audio writing (if -W option)
 extern int opt_mos_g729;
 extern int opt_nocdr;
+extern int opt_only_cdr_next;
 extern char opt_cachedir[1024];
 extern char sql_cdr_table[256];
 extern char sql_cdr_table_last30d[256];
@@ -142,6 +143,7 @@ extern int opt_saveaudio_reversestereo;
 extern float opt_saveaudio_oggquality;
 extern int opt_skinny;
 extern int opt_enable_fraud;
+extern char opt_callidmerge_header[128];
 
 SqlDb *sqlDbSaveCall = NULL;
 bool existsColumnCalldateInCdrNext = true;
@@ -417,16 +419,14 @@ Call::~Call(){
 			}
 		}
 
-/*
-		for(int i = 0; i < 2; i++) {
-			((Calltable *)calltable)->skinny_ipTuplesIT = ((Calltable *)calltable)->skinny_ipTuples.find(tmp[i].str());
-			if(((Calltable *)calltable)->skinny_ipTuplesIT == ((Calltable *)calltable)->skinny_ipTuples.end()) {
-				if(((Calltable *)calltable)->skinny_ipTuplesIT->second == this) {
-					((Calltable *)calltable)->skinny_ipTuples.erase(((Calltable *)calltable)->skinny_ipTuplesIT);
-				}
-			}
+	}
+
+	if(opt_callidmerge_header[0] != '\0') {
+		((Calltable*)calltable)->lock_calls_mergeMAP();
+		for(std::vector<string>::iterator it = mergecalls.begin(); it != mergecalls.end(); ++it) {
+			((Calltable*)calltable)->calls_mergeMAP.erase(*it);
 		}
-*/
+		((Calltable*)calltable)->unlock_calls_mergeMAP();
 	}
 
 	if(contenttype) free(contenttype);
@@ -442,36 +442,6 @@ Call::~Call(){
 		*listening_worker_run = 0;
 	}
 	pthread_mutex_lock(&listening_worker_run_lock);
-
-	/****
-	if (get_fsip_pcap() != NULL){
-		pcap_dump_flush(get_fsip_pcap());
-		pcap_dump_close(get_fsip_pcap());
-		set_fsip_pcap(NULL);
-		addtofilesqueue(sip_pcapfilename, type == REGISTER ? "regsize" : "sipsize");
-		if(opt_cachedir[0] != '\0') {
-			addtocachequeue(sip_pcapfilename);
-		}
-	}
-	if (get_frtp_pcap() != NULL){
-		pcap_dump_flush(get_frtp_pcap());
-		pcap_dump_close(get_frtp_pcap());
-		set_frtp_pcap(NULL);
-		addtofilesqueue(rtp_pcapfilename, "rtpsize");
-		if(opt_cachedir[0] != '\0') {
-			addtocachequeue(rtp_pcapfilename);
-		}
-	}
-	if (get_f_pcap() != NULL){
-		pcap_dump_flush(get_f_pcap());
-		pcap_dump_close(get_f_pcap());
-		set_f_pcap(NULL);
-		addtofilesqueue(pcapfilename, type == REGISTER ? "regsize" : "sipsize");
-		if(opt_cachedir[0] != '\0') {
-			addtocachequeue(pcapfilename);
-		}
-	}
-	****/
 
 	if(audiobuffer1) delete audiobuffer1;
 	if(audiobuffer2) delete audiobuffer2;
@@ -1066,8 +1036,8 @@ Call::mos_lqo(char *deg, int samplerate) {
 int
 Call::convertRawToWav() {
 	char cmd[4092];
-	char wav0[1024];
-	char wav1[1024];
+	char wav0[1024] = "";
+	char wav1[1024] = "";
 	char out[1024];
 	char rawInfo[1024];
 	char line[1024];
@@ -1076,13 +1046,11 @@ Call::convertRawToWav() {
 	int ssrc_index, codec;
 	unsigned long int rawiterator;
 	FILE *wav = NULL;
-	int adir = 1;
-	int bdir = 1;
+	int adir = 0;
+	int bdir = 0;
+	int aindex = -1, bindex = -1;
 
 
-
-	sprintf(wav0, "%s/%s/%s.i0.wav", dirname().c_str(), opt_newdir ? "AUDIO" : "", get_fbasename_safe());
-	sprintf(wav1, "%s/%s/%s.i1.wav", dirname().c_str(), opt_newdir ? "AUDIO" : "", get_fbasename_safe());
 	switch(opt_audio_format) {
 	case FORMAT_WAV:
 		sprintf(out, "%s/%s/%s.wav", dirname().c_str(), opt_newdir ? "AUDIO" : "", get_fbasename_safe());
@@ -1092,30 +1060,43 @@ Call::convertRawToWav() {
 		break;
 	}
 
-	/* do synchronisation - calculate difference between start of both RTP direction and put silence to achieve proper synchronisation */
+	if(rtp[0] != NULL) {
+		if(rtp[0]->iscaller) {
+			aindex = 0;
+		} else {
+			bindex = 0;
+		}
+	}
+	if(rtp[1] != NULL) {
+		if(rtp[1]->iscaller) {
+			aindex = 1;
+		} else {
+			bindex = 1;
+		}
+	}
 	/* first direction */
-	sprintf(rawInfo, "%s/%s/%s.i%d.rawInfo", dirname().c_str(), opt_newdir ? "AUDIO" : "", get_fbasename_safe(), 0);
-	pl = fopen(rawInfo, "r");
-	if(!pl) {
-		adir = 0;
-//		syslog(LOG_ERR, "Cannot open %s\n", rawInfo);
-//		return 1;
-	} else {
-		fgets(line, 1024, pl);
-		fclose(pl);
-		sscanf(line, "%d:%lu:%d:%ld:%ld", &ssrc_index, &rawiterator, &codec, &tv0.tv_sec, &tv0.tv_usec);
+	if(aindex > -1) {
+		sprintf(rawInfo, "%s/%s/%s.i%d.rawInfo", dirname().c_str(), opt_newdir ? "AUDIO" : "", get_fbasename_safe(), aindex);
+		pl = fopen(rawInfo, "r");
+		if(pl) {
+			adir = 1;
+			fgets(line, 1024, pl);
+			fclose(pl);
+			sscanf(line, "%d:%lu:%d:%ld:%ld", &ssrc_index, &rawiterator, &codec, &tv0.tv_sec, &tv0.tv_usec);
+		}
+		sprintf(wav0, "%s/%s/%s.i%d.wav", dirname().c_str(), opt_newdir ? "AUDIO" : "", get_fbasename_safe(), aindex);
 	}
 	/* second direction */
-	sprintf(rawInfo, "%s/%s/%s.i%d.rawInfo", dirname().c_str(), opt_newdir ? "AUDIO" : "", get_fbasename_safe(), 1);
-	pl = fopen(rawInfo, "r");
-	if(!pl) {
-		bdir = 0;
-//		syslog(LOG_ERR, "Cannot open %s\n", rawInfo);
-//		return 1;
-	} else {
-		fgets(line, 1024, pl);
-		fclose(pl);
-		sscanf(line, "%d:%lu:%d:%ld:%ld", &ssrc_index, &rawiterator, &codec, &tv1.tv_sec, &tv1.tv_usec);
+	if(bindex > -1) {
+		sprintf(rawInfo, "%s/%s/%s.i%d.rawInfo", dirname().c_str(), opt_newdir ? "AUDIO" : "", get_fbasename_safe(), bindex);
+		pl = fopen(rawInfo, "r");
+		if(pl) {
+			bdir = 1;
+			fgets(line, 1024, pl);
+			fclose(pl);
+			sscanf(line, "%d:%lu:%d:%ld:%ld", &ssrc_index, &rawiterator, &codec, &tv1.tv_sec, &tv1.tv_usec);
+		}
+		sprintf(wav1, "%s/%s/%s.i%d.wav", dirname().c_str(), opt_newdir ? "AUDIO" : "", get_fbasename_safe(), bindex);
 	}
 
 	if(adir == 0 && bdir == 0) {
@@ -1123,14 +1104,26 @@ Call::convertRawToWav() {
 		return 1;
 	}
 
+	/* do synchronisation - calculate difference between start of both RTP direction and put silence to achieve proper synchronisation */
 	if(adir && bdir) {
 		/* calculate difference in milliseconds */
 		int msdiff = ast_tvdiff_ms(tv1, tv0);
-		if(msdiff < 0) {
-			/* add msdiff [ms] silence to i1 stream */
-			wav = fopen(wav0, "w");
-		} else {
-			wav = fopen(wav1, "w");
+		char *fileNameWav = msdiff < 0 ? wav0 : wav1;
+		for(int passOpen = 0; passOpen < 2; passOpen++) {
+			if(passOpen == 1) {
+				char *pointToLastDirSeparator = strrchr(fileNameWav, '/');
+				if(pointToLastDirSeparator) {
+					*pointToLastDirSeparator = 0;
+					mkdir_r(fileNameWav, 0777);
+					*pointToLastDirSeparator = '/';
+				} else {
+					break;
+				}
+			}
+			wav = fopen(fileNameWav, "w");
+			if(wav) {
+				break;
+			}
 		}
 		if(!wav) {
 			syslog(LOG_ERR, "Cannot open %s or %s\n", wav0, wav1);
@@ -1190,16 +1183,28 @@ Call::convertRawToWav() {
 	/* process all files in playlist for each direction */
 	int samplerate = 8000;
 	for(int i = 0; i <= 1; i++) {
-		if(i == 0 && adir == 0) {
+		char *wav = NULL;
+		int ii;
+		if(i != aindex and i != bindex) continue;
+		if(i == aindex) {
+			if(adir == 0) {
+				continue;
+			}
+			ii = aindex;
+			wav = wav0;
+		} else if(i == bindex) {
+			if(bdir == 0) {
+				continue;
+			}
+			ii = bindex;
+			wav = wav1;
+		} else {
 			continue;
 		}
-		if(i == 1 && bdir == 0) {
-			continue;
-		}
-		char *wav = i ? wav1 : wav0;
+
 
 		/* open playlist */
-		sprintf(rawInfo, "%s/%s/%s.i%d.rawInfo", dirname().c_str(), opt_newdir ? "AUDIO" : "", get_fbasename_safe(), i);
+		sprintf(rawInfo, "%s/%s/%s.i%d.rawInfo", dirname().c_str(), opt_newdir ? "AUDIO" : "", get_fbasename_safe(), ii);
 		pl = fopen(rawInfo, "r");
 		if(!pl) {
 			syslog(LOG_ERR, "Cannot open %s\n", rawInfo);
@@ -1209,7 +1214,7 @@ Call::convertRawToWav() {
 			char raw[1024];
 			line[strlen(line)] = '\0'; // remove '\n' which is last character
 			sscanf(line, "%d:%lu:%d:%ld:%ld", &ssrc_index, &rawiterator, &codec, &tv0.tv_sec, &tv0.tv_usec);
-			sprintf(raw, "%s/%s/%s.i%d.%d.%lu.%d.%ld.%ld.raw", dirname().c_str(), opt_newdir ? "AUDIO" : "", get_fbasename_safe(), i, ssrc_index, rawiterator, codec, tv0.tv_sec, tv0.tv_usec);
+			sprintf(raw, "%s/%s/%s.i%d.%d.%lu.%d.%ld.%ld.raw", dirname().c_str(), opt_newdir ? "AUDIO" : "", get_fbasename_safe(), ii, ssrc_index, rawiterator, codec, tv0.tv_sec, tv0.tv_usec);
 			switch(codec) {
 			case PAYLOAD_PCMA:
 				if(verbosity > 1) syslog(LOG_ERR, "Converting PCMA to WAV.\n");
@@ -1417,18 +1422,17 @@ Call::convertRawToWav() {
 		// merge caller and called 
 		switch(opt_audio_format) {
 		case FORMAT_WAV:
-			printf("sr:[%u]\n", samplerate);
 			if(!opt_saveaudio_reversestereo) {
-				wav_mix(wav0, wav1, out, samplerate);
+				wav_mix(wav0, wav1, out, samplerate, 0);
 			} else {
-				wav_mix(wav1, wav0, out, samplerate);
+				wav_mix(wav1, wav0, out, samplerate, 0);
 			}
 			break;
 		case FORMAT_OGG:
 			if(!opt_saveaudio_reversestereo) {
-				ogg_mix(wav0, wav1, out, opt_saveaudio_stereo, samplerate, opt_saveaudio_oggquality);
+				ogg_mix(wav0, wav1, out, opt_saveaudio_stereo, samplerate, opt_saveaudio_oggquality, 0);
 			} else {
-				ogg_mix(wav1, wav0, out, opt_saveaudio_stereo, samplerate, opt_saveaudio_oggquality);
+				ogg_mix(wav1, wav0, out, opt_saveaudio_stereo, samplerate, opt_saveaudio_oggquality, 0);
 			}
 			break;
 		}
@@ -1438,10 +1442,10 @@ Call::convertRawToWav() {
 		// there is only caller sound
 		switch(opt_audio_format) {
 		case FORMAT_WAV:
-			wav_mix(wav0, NULL, out, samplerate);
+			wav_mix(wav0, NULL, out, samplerate, 0);
 			break;
 		case FORMAT_OGG:
-			ogg_mix(wav0, NULL, out, opt_saveaudio_stereo, samplerate, opt_saveaudio_oggquality);
+			ogg_mix(wav0, NULL, out, opt_saveaudio_stereo, samplerate, opt_saveaudio_oggquality, 0);
 			break;
 		}
 		unlink(wav0);
@@ -1449,10 +1453,10 @@ Call::convertRawToWav() {
 		// there is only called sound
 		switch(opt_audio_format) {
 		case FORMAT_WAV:
-			wav_mix(wav1, NULL, out, samplerate);
+			wav_mix(wav1, NULL, out, samplerate, 1);
 			break;
 		case FORMAT_OGG:
-			ogg_mix(wav1, NULL, out, opt_saveaudio_stereo, samplerate, opt_saveaudio_oggquality);
+			ogg_mix(wav1, NULL, out, opt_saveaudio_stereo, samplerate, opt_saveaudio_oggquality, 1);
 			break;
 		}
 		unlink(wav1);
@@ -1854,6 +1858,36 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		(opt_cdronlyrtp and !ssrc_n)) {
 		// skip this CDR 
 		return 1;
+	}
+	
+	if(opt_only_cdr_next) {
+		static u_int32_t last_id_cdr_next = 0;
+		if(!last_id_cdr_next) {
+			sqlDbSaveCall->query("select max(cdr_ID) from cdr_next");
+			SqlDb_row rslt = sqlDbSaveCall->fetchRow();
+			if(rslt) {
+				last_id_cdr_next = atol(rslt[0].c_str());
+			}
+		}
+		SqlDb_row cdr_next;
+		cdr_next.add(++last_id_cdr_next, "cdr_ID");
+		cdr_next.add(sqlEscapeString(fbasename), "fbasename");
+		cdr_next.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
+		if(enableBatchIfPossible && isSqlDriver("mysql")) {
+			string query_str = sqlDbSaveCall->insertQuery(sql_cdr_next_table, cdr_next);
+			
+			static unsigned int counterSqlStore = 0;
+			int storeId = STORE_PROC_ID_CDR_1 + 
+				      (opt_mysqlstore_max_threads_cdr > 1 &&
+				       sqlStore->getSize(STORE_PROC_ID_CDR_1) > 1000 ? 
+					counterSqlStore % opt_mysqlstore_max_threads_cdr : 
+					0);
+			++counterSqlStore;
+			sqlStore->query_lock(query_str.c_str(), storeId);
+		} else {
+			sqlDbSaveCall->insert(sql_cdr_next_table, cdr_next);
+		}
+		return(0);
 	}
 
 	SqlDb_row cdr,
@@ -2945,9 +2979,8 @@ Calltable::Calltable() {
 	pthread_mutex_init(&qdellock, NULL);
 	pthread_mutex_init(&flock, NULL);
 
-//	pthread_mutexattr_init(&calls_listMAPlock_attr);
-//	pthread_mutexattr_settype(&mta, PTHREAD_MUTEX_NORMAL);
 	pthread_mutex_init(&calls_listMAPlock, NULL);
+	pthread_mutex_init(&calls_mergeMAPlock, NULL);
 
 	memset(calls_hash, 0x0, sizeof(calls_hash));
 };
@@ -2958,6 +2991,7 @@ Calltable::~Calltable() {
 	pthread_mutex_destroy(&qdellock);
 	pthread_mutex_destroy(&flock);
 	pthread_mutex_destroy(&calls_listMAPlock);
+	pthread_mutex_destroy(&calls_mergeMAPlock);
 };
 
 /* add node to hash. collisions are linked list of nodes*/
@@ -3220,6 +3254,22 @@ Calltable::find_by_call_id(char *call_id, unsigned long call_id_len) {
 	}
 	return NULL;
 */
+}
+
+/* find Call by SIP call-id in merge list and return reference to this Call */
+Call*
+Calltable::find_by_mergecall_id(char *call_id, unsigned long call_id_len) {
+	string call_idS = string(call_id, call_id_len);
+	lock_calls_mergeMAP();
+	callMAPIT = calls_mergeMAP.find(call_idS);
+	if(mergeMAPIT == calls_mergeMAP.end()) {
+		unlock_calls_mergeMAP();
+		// not found
+		return NULL;
+	} else {
+		unlock_calls_mergeMAP();
+		return (*mergeMAPIT).second;
+	}
 }
 
 Call*

@@ -12,11 +12,13 @@
 #include <ctime>
 #include <limits.h>
 #include <list>
-
 #include <sys/types.h>
+#include <unistd.h>
+#include <iostream>
+#include <zlib.h>
 #include <pcap.h>
 
-#include "gzstream/gzstream.h"
+#include "pstat.h"
 
 using namespace std;
 
@@ -58,6 +60,9 @@ std::vector<std::string> split(const char *s, const char *delim, bool enableTrim
 std::vector<std::string> split(const char *s, std::vector<std::string> delim, bool enableTrim = false);
 int reg_match(const char *string, const char *pattern);
 string reg_replace(const char *string, const char *pattern, const char *replace);
+string inet_ntostring(u_int32_t ip);
+void base64_init(void);
+int base64decode(unsigned char *dst, const char *src, int max);
 
 class CircularBuffer
 {
@@ -153,6 +158,53 @@ inline unsigned long long getTimeNS() {
     return(time.tv_sec * 1000000000ull + time.tv_nsec);
 }
 
+class FileZipHandler {
+public:
+	FileZipHandler(int bufferLength = 0, int enableAsyncWrite = 0, int enableZip = 0,
+		       bool dumpHandler = false);
+	~FileZipHandler();
+	bool open(const char *fileName, int permission = 0666);
+	void close();
+	bool write(char *data, int length) {
+		return(this->buffer ?
+			this->writeToBuffer(data, length) :
+			this->writeToFile(data, length));
+	}
+	bool flushBuffer(bool force = false);
+	bool writeToBuffer(char *data, int length);
+	bool writeToFile(char *data, int length, bool force = false);
+	bool _writeToFile(char *data, int length, bool flush = false);
+	bool __writeToFile(char *data, int length);
+	bool initZip();
+	bool _open();
+	void setError(const char *error = NULL);
+	bool okHandle() {
+		return(fh > 0);
+	}
+public:
+	string fileName;
+	int permission;
+	int fh;
+	z_stream *zipStream;
+	string error;
+	int bufferLength;
+	char *buffer;
+	char *zipBuffer;
+	int useBufferLength;
+	bool enableAsyncWrite;
+	bool enableZip;
+	bool dumpHandler;
+	u_int64_t size;
+	u_int64_t counter;
+	static u_int64_t scounter;
+	u_int32_t userData;
+};
+
+pcap_dumper_t *__pcap_dump_open(pcap_t *p, const char *fname, int linktype, string *errorString = NULL);
+void __pcap_dump(u_char *user, const struct pcap_pkthdr *h, const u_char *sp);
+void __pcap_dump_close(pcap_dumper_t *p);
+char *__pcap_geterr(pcap_t *p, pcap_dumper_t *pd = NULL);
+
 class PcapDumper {
 public:
 	enum eTypePcapDump {
@@ -190,20 +242,17 @@ public:
 	void write(char *buffer, int length);
 	void close(bool updateFilesQueue = true);
 	bool isOpen() {
-		extern int opt_gzipGRAPH;
-		return(opt_gzipGRAPH ? 
-			this->streamgz && this->streamgz->is_open() : 
-			this->stream && this->stream->is_open());
+		return(this->handle != NULL);
 	}
 private:
 	string fileName;
 	string fileNameSpoolRelative;
 	class RTP *rtp;
 	bool updateFilesQueueAtClose;
-	u_int64_t size;
-	ofstream *stream;
-	ogzstream *streamgz;
+	FileZipHandler *handle;
 };
+
+#define AsyncClose_maxPcapThreads 32
 
 class AsyncClose {
 public:
@@ -212,7 +261,8 @@ public:
 		AsyncCloseItem(Call *call = NULL, const char *file = NULL,
 			       const char *column = NULL, long long writeBytes = 0);
 		virtual ~AsyncCloseItem() {}
-		virtual void close() = 0;
+		virtual void process() = 0;
+		virtual void processClose() {}
 	protected:
 		void addtofilesqueue();
 	protected:
@@ -221,6 +271,8 @@ public:
 		string dirnamesqlfiles;
 		long long writeBytes;
 		void *calltable;
+		int dataLength;
+	friend class AsyncClose;
 	};
 	class AsyncCloseItem_pcap : public AsyncCloseItem {
 	public:
@@ -229,83 +281,222 @@ public:
 				    const char *column = NULL, long long writeBytes = 0)
 		 : AsyncCloseItem(call, file, column, writeBytes) {
 			this->handle = handle;
+			extern int opt_pcap_dump_bufflength;
+			if(opt_pcap_dump_bufflength) {
+				this->dataLength = ((FileZipHandler*)handle)->useBufferLength;
+			}
 		}
-		void close() {
-			pcap_dump_flush(handle);
-			pcap_dump_close(handle);
+		void process() {
+			__pcap_dump_close(handle);
 			this->addtofilesqueue();
+		}
+		void processClose() {
+			__pcap_dump_close(handle);
 		}
 	private:
 		pcap_dumper_t *handle;
 	};
-	class AsyncCloseItem_ofstream  : public AsyncCloseItem{
+	class AsyncWriteItem_pcap : public AsyncCloseItem {
 	public:
-		AsyncCloseItem_ofstream(ofstream *stream,
-					Call *call = NULL, const char *file = NULL,
-					const char *column = NULL, long long writeBytes = 0)
-		 : AsyncCloseItem(call, file, column, writeBytes) {
-			this->stream = stream;
+		AsyncWriteItem_pcap(pcap_dumper_t *handle,
+				    char *data, int length) {
+			this->handle = handle;
+			this->data = new char[length];
+			memcpy(this->data, data, length);
+			this->dataLength = length;
 		}
-		void close() {
-			stream->close();
-			delete stream;
-			this->addtofilesqueue();
+		~AsyncWriteItem_pcap() {
+			delete [] data;
+		}
+		void process() {
+			((FileZipHandler*)handle)->_writeToFile(data, dataLength);
 		}
 	private:
-		ofstream *stream;
+		pcap_dumper_t *handle;
+		char *data;
 	};
-	class AsyncCloseItem_ogzstream  : public AsyncCloseItem{
+	class AsyncCloseItem_fileZipHandler  : public AsyncCloseItem{
 	public:
-		AsyncCloseItem_ogzstream(ogzstream *stream,
-					 Call *call = NULL, const char *file = NULL,
-					 const char *column = NULL, long long writeBytes = 0)
+		AsyncCloseItem_fileZipHandler(FileZipHandler *handle,
+					      Call *call = NULL, const char *file = NULL,
+					      const char *column = NULL, long long writeBytes = 0)
 		 : AsyncCloseItem(call, file, column, writeBytes) {
-			this->stream = stream;
+			this->handle = handle;
+			this->dataLength = handle->useBufferLength;
 		}
-		void close() {
-			stream->close();
-			delete stream;
+		void process() {
+			handle->close();
+			delete handle;
 			this->addtofilesqueue();
 		}
+		void processClose() {
+			handle->close();
+			delete handle;
+		}
 	private:
-		ogzstream *stream;
+		FileZipHandler *handle;
+	};
+	class AsyncWriteItem_fileZipHandler : public AsyncCloseItem {
+	public:
+		AsyncWriteItem_fileZipHandler(FileZipHandler *handle,
+					      char *data, int length) {
+			this->handle = handle;
+			this->data = new char[length];
+			memcpy(this->data, data, length);
+			this->dataLength = length;
+		}
+		~AsyncWriteItem_fileZipHandler() {
+			delete [] data;
+		}
+		void process() {
+			handle->_writeToFile(data, dataLength);
+		}
+	private:
+		FileZipHandler *handle;
+		char *data;
+	};
+	struct StartThreadData {
+		int threadIndex;
+		AsyncClose *asyncClose;
 	};
 public:
 	AsyncClose();
-	void startThread();
+	~AsyncClose();
+	void startThreads(int countPcapThreads, int maxPcapThreads);
+	void addThread();
+	void removeThread();
 	void add(pcap_dumper_t *handle,
 		 Call *call = NULL, const char *file = NULL,
 		 const char *column = NULL, long long writeBytes = 0) {
-		add(new AsyncCloseItem_pcap(handle, call, file, column, writeBytes));
+		extern int opt_pcap_dump_bufflength;
+		if(opt_pcap_dump_bufflength && !((FileZipHandler*)handle)->userData) {
+			unsigned int size;
+			unsigned int minSize = UINT_MAX;
+			int minSizeIndex = 0;
+			for(int i = 0; i < countPcapThreads; i++) {
+				size = q[i].size();
+				if(size < minSize) {
+					minSize = size;
+					minSizeIndex = i;
+				}
+			}
+			((FileZipHandler*)handle)->userData = minSizeIndex + 1;
+		}
+		add(new AsyncCloseItem_pcap(handle, call, file, column, writeBytes),
+		    opt_pcap_dump_bufflength ?
+		     ((FileZipHandler*)handle)->userData - 1 :
+		     0);
 	}
-	void add(ofstream *stream,
+	void addWrite(pcap_dumper_t *handle,
+		      char *data, int length) {
+		extern int opt_pcap_dump_bufflength;
+		if(opt_pcap_dump_bufflength && !((FileZipHandler*)handle)->userData) {
+			unsigned int size;
+			unsigned int minSize = UINT_MAX;
+			int minSizeIndex = 0;
+			for(int i = 0; i < countPcapThreads; i++) {
+				size = q[i].size();
+				if(size < minSize) {
+					minSize = size;
+					minSizeIndex = i;
+				}
+			}
+			((FileZipHandler*)handle)->userData = minSizeIndex + 1;
+		}
+		add(new AsyncWriteItem_pcap(handle, data, length),
+		    opt_pcap_dump_bufflength ?
+		     ((FileZipHandler*)handle)->userData - 1 :
+		     0);
+	}
+	void add(FileZipHandler *handle,
 		 Call *call = NULL, const char *file = NULL,
 		 const char *column = NULL, long long writeBytes = 0) {
-		add(new AsyncCloseItem_ofstream(stream, call, file, column, writeBytes));
+		if(!handle->userData) {
+			unsigned int size;
+			unsigned int minSize = UINT_MAX;
+			int minSizeIndex = 0;
+			for(int i = 0; i < countPcapThreads; i++) {
+				size = q[i].size();
+				if(size < minSize) {
+					minSize = size;
+					minSizeIndex = i;
+				}
+			}
+			handle->userData = minSizeIndex + 1;
+		}
+		add(new AsyncCloseItem_fileZipHandler(handle, call, file, column, writeBytes),
+		    handle->userData - 1);
 	}
-	void add(ogzstream *stream,
-		 Call *call = NULL, const char *file = NULL,
-		 const char *column = NULL, long long writeBytes = 0) {
-		add(new AsyncCloseItem_ogzstream(stream, call, file, column, writeBytes));
+	void addWrite(FileZipHandler *handle,
+		      char *data, int length) {
+		if(!handle->userData) {
+			unsigned int size;
+			unsigned int minSize = UINT_MAX;
+			int minSizeIndex = 0;
+			for(int i = 0; i < countPcapThreads; i++) {
+				size = q[i].size();
+				if(size < minSize) {
+					minSize = size;
+					minSizeIndex = i;
+				}
+			}
+			handle->userData = minSizeIndex + 1;
+		}
+		add(new AsyncWriteItem_fileZipHandler(handle, data, length),
+		    handle->userData - 1);
 	}
-	void add(AsyncCloseItem *item) {
-		lock();
-		q.push(item);
-		unlock();
+	void add(AsyncCloseItem *item, int threadIndex) {
+		extern int terminating;
+		extern int opt_pcap_dump_asyncwrite_maxsize;
+		while(sizeOfDataInMemory + item->dataLength > opt_pcap_dump_asyncwrite_maxsize * 1024ull * 1024ull && !terminating) {
+			usleep(1000);
+		}
+		lock(threadIndex);
+		q[threadIndex].push(item);
+		add_sizeOfDataInMemory(item->dataLength);
+		unlock(threadIndex);
 	}
-	void closeTask();
-	void closeAll();
+	void processTask(int threadIndex);
+	void processAll(int threadIndex);
+	void processAll() {
+		for(int i = 0; i < getCountThreads(); i++) {
+			processAll(i);
+		}
+	}
+	void preparePstatData(int threadIndex);
+	double getCpuUsagePerc(int threadIndex, bool preparePstatData = false);
+	int getCountThreads() {
+		return(countPcapThreads);
+	}
+	u_int64_t getSizeOfDataInMemory() {
+		return(sizeOfDataInMemory);
+	}
 private:
-	void lock() {
-		while(__sync_lock_test_and_set(&this->_sync, 1));
+	void lock(int threadIndex) {
+		while(__sync_lock_test_and_set(&this->_sync[threadIndex], 1)) {
+			usleep(10);
+		}
 	}
-	void unlock() {
-		__sync_lock_release(&this->_sync);
+	void unlock(int threadIndex) {
+		__sync_lock_release(&this->_sync[threadIndex]);
+	}
+	void add_sizeOfDataInMemory(size_t size) {
+		__sync_fetch_and_add(&this->sizeOfDataInMemory, size);
+	}
+	void sub_sizeOfDataInMemory(size_t size) {
+		__sync_fetch_and_sub(&this->sizeOfDataInMemory, size);
 	}
 private:
-	queue<AsyncCloseItem*> q;
-	pthread_t thread;
-	volatile int _sync;
+	int maxPcapThreads;
+	int minPcapThreads;
+	volatile int countPcapThreads;
+	queue<AsyncCloseItem*> q[AsyncClose_maxPcapThreads];
+	pthread_t thread[AsyncClose_maxPcapThreads];
+	volatile int _sync[AsyncClose_maxPcapThreads];
+	int threadId[AsyncClose_maxPcapThreads];
+	pstat_data threadPstatData[AsyncClose_maxPcapThreads][2];
+	StartThreadData startThreadData[AsyncClose_maxPcapThreads];
+	volatile uint64_t sizeOfDataInMemory;
 };
 
 class RestartUpgrade {
@@ -579,6 +770,9 @@ public:
 			}
 		}
 		void addNode(const char *nodeName, bool isContentLength = false) {
+			while(*nodeName == '\n') {
+				 ++nodeName;
+			}
 			if(*nodeName) {
 				unsigned char nodeChar = (unsigned char)*nodeName;
 				if(nodeChar >= 'A' && nodeChar <= 'Z') {
@@ -692,6 +886,24 @@ public:
 		addNode("expires=");
 		addNode("username=\"");
 		addNode("realm=\"");
+		
+		extern char opt_match_header[128];
+		if(opt_match_header[0] != '\0') {
+			string findHeader = opt_match_header;
+			if(findHeader[findHeader.length() - 1] != ':') {
+				findHeader.append(":");
+			}
+			addNode(findHeader.c_str());
+		}
+		
+		extern char opt_callidmerge_header[128];
+		if(opt_callidmerge_header[0] != '\0') {
+			string findHeader = opt_callidmerge_header;
+			if(findHeader[findHeader.length() - 1] != ':') {
+				findHeader.append(":");
+			}
+			addNode(findHeader.c_str());
+		}
 		
 		extern vector<dstring> opt_custom_headers_cdr;
 		extern vector<dstring> opt_custom_headers_message;

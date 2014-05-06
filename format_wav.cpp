@@ -1,5 +1,6 @@
 #include "format_wav.h"
 #include "format_slinear.h"
+#include "tools.h"
 
 // sample rate 8000, 12000, 16000, 24000
 int wav_write_header(FILE *f, int samplerate)
@@ -106,7 +107,7 @@ int wav_update_header(FILE *f)
 	return 0;
 }
 
-int wav_mix(char *in1, char *in2, char *out, int samplerate) {
+int wav_mix(char *in1, char *in2, char *out, int samplerate, int swap) {
 	FILE *f_in1 = NULL;
 	FILE *f_in2 = NULL;
 	FILE *f_out = NULL;
@@ -135,7 +136,22 @@ int wav_mix(char *in1, char *in2, char *out, int samplerate) {
 			return 1;
 		}
 	}
-	f_out = fopen(out, "w");
+	for(int passOpen = 0; passOpen < 2; passOpen++) {
+		if(passOpen == 1) {
+			char *pointToLastDirSeparator = strrchr(out, '/');
+			if(pointToLastDirSeparator) {
+				*pointToLastDirSeparator = 0;
+				mkdir_r(out, 0777);
+				*pointToLastDirSeparator = '/';
+			} else {
+				break;
+			}
+		}
+		f_out = fopen(out, "w");
+		if(f_out) {
+			break;
+		}
+	}
 	if(!f_out) {
 		if(f_in1 != NULL)
 			fclose(f_in1);
@@ -201,17 +217,32 @@ int wav_mix(char *in1, char *in2, char *out, int samplerate) {
 			p2 += 2;
 			*/
 			/* stereo */
-			fwrite(p1, 2, 1, f_out);
-			fwrite(p2, 2, 1, f_out);
+			if(swap) {
+				fwrite(p2, 2, 1, f_out);
+				fwrite(p1, 2, 1, f_out);
+			} else {
+				fwrite(p1, 2, 1, f_out);
+				fwrite(p2, 2, 1, f_out);
+			}
 			p1 += 2;
 			p2 += 2;
 		} else if ( p1 < f1 ) {
-			fwrite(p1, 2, 1, f_out);
-			fwrite(&zero, 2, 1, f_out);
+			if(swap) {
+				fwrite(&zero, 2, 1, f_out);
+				fwrite(p1, 2, 1, f_out);
+			} else {
+				fwrite(p1, 2, 1, f_out);
+				fwrite(&zero, 2, 1, f_out);
+			}
 			p1 += 2;
 		} else if ( p2 < f2 ) {
-			fwrite(&zero, 2, 1, f_out);
-			fwrite(p2, 2, 1, f_out);
+			if(swap) {
+				fwrite(p2, 2, 1, f_out);
+				fwrite(&zero, 2, 1, f_out);
+			} else {
+				fwrite(&zero, 2, 1, f_out);
+				fwrite(p2, 2, 1, f_out);
+			}
 			p2 += 2;
 		}
 	}

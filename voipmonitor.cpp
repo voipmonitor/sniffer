@@ -179,6 +179,7 @@ int opt_saverfc2833 = 0;
 int opt_dbdtmf = 0;
 int opt_rtcp = 1;		// pair RTP+1 port to RTCP and save it. 
 int opt_nocdr = 0;		// do not save cdr?
+int opt_only_cdr_next = 0;
 int opt_gzipPCAP = 0;		// compress PCAP data ? 
 int opt_mos_g729 = 0;		// calculate MOS for G729 codec
 int verbosity = 0;		// debug level
@@ -290,6 +291,14 @@ int opt_autocleanspoolminpercent = 1;
 int opt_autocleanmingb = 5;
 int opt_mysqlloadconfig = 1;
 int opt_last_rtp_from_end = 1;
+int opt_pcap_dump_bufflength = 0;
+int opt_pcap_dump_asyncwrite = 0;
+int opt_pcap_dump_zip = 0;
+int opt_pcap_dump_ziplevel = Z_DEFAULT_COMPRESSION;
+int opt_pcap_dump_writethreads = 2;
+int opt_pcap_dump_writethreads_max = 10;
+int opt_pcap_dump_asyncwrite_maxsize = 100; //MB
+int opt_defer_create_spooldir = 0;
 
 char opt_php_path[1024];
 
@@ -312,6 +321,7 @@ extern int opt_pcap_queue_iface_separate_threads;
 extern int opt_pcap_queue_iface_dedup_separate_threads;
 extern int opt_pcap_queue_iface_dedup_separate_threads_extend;
 extern int opt_pcap_queue_dequeu_window_length;
+extern int opt_pcap_queue_dequeu_method;
 extern int sql_noerror;
 int opt_cleandatabase_cdr = 0;
 int opt_cleandatabase_register_state = 0;
@@ -352,6 +362,8 @@ int opt_mysql_port = 0; // 0 menas use standard port
 int opt_skiprtpdata = 0;
 
 char opt_match_header[128] = "";
+char opt_callidmerge_header[128] = "";
+char opt_callidmerge_secret[128] = "";
 
 char odbc_dsn[256] = "voipmonitor";
 char odbc_user[256];
@@ -1189,6 +1201,9 @@ int load_config(char *fname) {
 	if((value = ini.GetValue("general", "nocdr", NULL))) {
 		opt_nocdr = yesno(value);
 	}
+	if((value = ini.GetValue("general", "only_cdr_next", NULL))) {
+		opt_only_cdr_next = yesno(value);
+	}
 	if((value = ini.GetValue("general", "skipdefault", NULL))) {
 		opt_skipdefault = yesno(value);
 	}
@@ -1286,6 +1301,12 @@ int load_config(char *fname) {
 	//for compatibility 
 	if((value = ini.GetValue("general", "match_header", NULL))) {
 		snprintf(opt_match_header, sizeof(opt_match_header), "\n%s:", value);
+	}
+	if((value = ini.GetValue("general", "callidmerge_header", NULL))) {
+		snprintf(opt_callidmerge_header, sizeof(opt_callidmerge_header), "\n%s:", value);
+	}
+	if((value = ini.GetValue("general", "callidmerge_secret", NULL))) {
+		snprintf(opt_callidmerge_secret, sizeof(opt_callidmerge_secret), "\n%s:", value);
 	}
 	if((value = ini.GetValue("general", "domainport", NULL))) {
 		opt_domainport = atoi(value);
@@ -1733,6 +1754,9 @@ int load_config(char *fname) {
 	if((value = ini.GetValue("general", "pcap_queue_dequeu_window_length", NULL))) {
 		opt_pcap_queue_dequeu_window_length = atoi(value);
 	}
+	if((value = ini.GetValue("general", "pcap_queue_dequeu_method", NULL))) {
+		opt_pcap_queue_dequeu_method = atoi(value);
+	}
 	if((value = ini.GetValue("general", "maxpcapsize", NULL))) {
 		opt_maxpcapsize_mb = atoi(value);
 	}
@@ -1820,6 +1844,30 @@ int load_config(char *fname) {
 	}
 	if((value = ini.GetValue("general", "local_country_code", NULL))) {
 		strncpy(opt_local_country_code, value, sizeof(opt_local_country_code));
+	}
+	if((value = ini.GetValue("general", "pcap_dump_bufflength", NULL))) {
+		opt_pcap_dump_bufflength = atoi(value);
+	}
+	if((value = ini.GetValue("general", "pcap_dump_asyncwrite", NULL))) {
+		opt_pcap_dump_asyncwrite = yesno(value);
+	}
+	if((value = ini.GetValue("general", "pcap_dump_zip", NULL))) {
+		opt_pcap_dump_zip = yesno(value);
+	}
+	if((value = ini.GetValue("general", "pcap_dump_ziplevel", NULL))) {
+		opt_pcap_dump_ziplevel = atoi(value);
+	}
+	if((value = ini.GetValue("general", "pcap_dump_writethreads", NULL))) {
+		opt_pcap_dump_writethreads = atoi(value);
+	}
+	if((value = ini.GetValue("general", "pcap_dump_writethreads_max", NULL))) {
+		opt_pcap_dump_writethreads_max = atoi(value);
+	}
+	if((value = ini.GetValue("general", "pcap_dump_asyncwrite_maxsize", NULL))) {
+		opt_pcap_dump_asyncwrite_maxsize = atoi(value);
+	}
+	if((value = ini.GetValue("general", "defer_create_spooldir", NULL))) {
+		opt_defer_create_spooldir = yesno(value);
 	}
 	
 	/*
@@ -2028,6 +2076,8 @@ int main(int argc, char *argv[]) {
 	time(&startTime);
 
 	regfailedcache = new regcache;
+
+	base64_init();
 
 /*
 	if(mysql_library_init(0, NULL, NULL)) {
@@ -2570,10 +2620,10 @@ int main(int argc, char *argv[]) {
 		opt_pcap_queue_iface_separate_threads = 1;
 	}
 	if(opt_pcap_queue_dequeu_window_length < 0) {
-		if(opt_pcap_queue_iface_separate_threads) {
-			 opt_pcap_queue_dequeu_window_length = 500;
-		} else if(opt_pcap_queue_receive_from_ip_port) {
+		if(opt_pcap_queue_receive_from_ip_port) {
 			 opt_pcap_queue_dequeu_window_length = 2000;
+		} else if(strchr(ifname, ',')) {
+			 opt_pcap_queue_dequeu_window_length = 500;
 		}
 	}
 
@@ -2594,19 +2644,21 @@ int main(int argc, char *argv[]) {
 		}
 	}
 	
-	const char *hostnames[] = {
-		"voipmonitor.org",
-		"www.voipmonitor.org",
-		"download.voipmonitor.org"
-	};
-	for(unsigned int i = 0; i < sizeof(hostnames) / sizeof(hostnames[0]); i++) {
-		hostent *conn_server_record = gethostbyname(hostnames[i]);
-		if(conn_server_record == NULL) {
-			syslog(LOG_ERR, "host [%s] failed to resolve to IP address", hostnames[i]);
-			continue;
+	if(opt_fork || !opt_nocdr) {
+		const char *hostnames[] = {
+			"voipmonitor.org",
+			"www.voipmonitor.org",
+			"download.voipmonitor.org"
+		};
+		for(unsigned int i = 0; i < sizeof(hostnames) / sizeof(hostnames[0]); i++) {
+			hostent *conn_server_record = gethostbyname(hostnames[i]);
+			if(conn_server_record == NULL) {
+				syslog(LOG_ERR, "host [%s] failed to resolve to IP address", hostnames[i]);
+				continue;
+			}
+			in_addr *conn_server_address = (in_addr*)conn_server_record->h_addr;
+			hosts[hostnames[i]] = inet_ntoa(*conn_server_address);
 		}
-		in_addr *conn_server_address = (in_addr*)conn_server_record->h_addr;
-		hosts[hostnames[i]] = inet_ntoa(*conn_server_address);
 	}
 
 	if(opt_fork && !opt_read_from_file) {
@@ -2958,10 +3010,6 @@ int main(int argc, char *argv[]) {
 	}
 	//opt_pcap_threaded = 0; //disable threading because it is useless while reading packets from file
 	
-	if(opt_enable_fraud) {
-		initFraud();
-	}
-
 	chdir(opt_chdir);
 
 	mkdir_r("filesindex/sipsize", 0777);
@@ -2976,7 +3024,7 @@ int main(int argc, char *argv[]) {
         rlp.rlim_max = opt_openfile_max;
         setrlimit(RLIMIT_NOFILE, &rlp);
         getrlimit(RLIMIT_NOFILE, &rlp);
-        if(rlp.rlim_cur < 65535) {
+        if(opt_fork and rlp.rlim_cur < 65535) {
                 printf("Warning, max open files is: %d consider raise this to 65535 with ulimit -n 65535 and set it in config file\n", (int)rlp.rlim_cur);
         }
 	// set core file dump to unlimited size
@@ -3011,8 +3059,12 @@ int main(int argc, char *argv[]) {
 		daemonize();
 	}
 	
+	if(opt_enable_fraud) {
+		initFraud();
+	}
+
 	extern AsyncClose asyncClose;
-	asyncClose.startThread();
+	asyncClose.startThreads(opt_pcap_dump_writethreads, opt_pcap_dump_writethreads_max);
 	
 	if(isSqlDriver("mysql") &&
 	   !(opt_pcap_queue && 
@@ -3354,8 +3406,6 @@ int main(int argc, char *argv[]) {
 
 	Call *call;
 	calltable->cleanup(0);
-	extern AsyncClose asyncClose;
-	asyncClose.closeAll();
 	if(opt_read_from_file && !opt_nocdr) {
 		for(int i = 0; i < 20; i++) {
 			if(calls_cdr_save_counter > 0 || calls_message_save_counter > 0) {
@@ -3506,7 +3556,10 @@ int main(int argc, char *argv[]) {
 	ipfrag_prune(0, 1);
 	freeMemIpacc();
 	delete regfailedcache;
-	asyncClose.closeAll();
+	if(opt_read_from_file) {
+		extern AsyncClose asyncClose;
+		asyncClose.processAll();
+	}
 //	mysql_library_end();
 
 	if(sqlStore) {
@@ -3539,6 +3592,60 @@ void test() {
 	 
 	case 1:
 	{
+		// test FILE buffer
+		
+		int maxFiles = 1000;
+		int bufferLength = 8000;
+		FILE *file[maxFiles];
+		char *fbuffer[maxFiles];
+		
+		for(int i = 0; i < maxFiles; i++) {
+			char filename[100];
+			sprintf(filename, "/dev/shm/test/%i", i);
+			file[i] = fopen(filename, "w");
+			
+			setbuf(file[i], NULL);
+			
+			fbuffer[i] = new char[bufferLength];
+			
+		}
+		
+		printf("%d\n", BUFSIZ);
+		
+		char writebuffer[1000];
+		memset(writebuffer, 1, 1000);
+		
+		for(int i = 0; i < maxFiles; i++) {
+			fwrite(writebuffer, 1000, 1, file[i]);
+			fclose(file[i]);
+			char filename[100];
+			sprintf(filename, "/dev/shm/test/%i", i);
+			file[i] = fopen(filename, "a");
+			
+			fflush(file[i]);
+			setvbuf(file[i], fbuffer[i], _IOFBF, bufferLength);
+		}
+		
+		struct timeval tv;
+		struct timezone tz;
+		gettimeofday(&tv, &tz);
+		
+		cout << "---" << endl;
+		u_int64_t _start = tv.tv_sec * 1000000ull + tv.tv_usec;
+		
+		
+		for(int p = 0; p < 5; p++)
+		for(int i = 0; i < maxFiles; i++) {
+			fwrite(writebuffer, 1000, 1, file[i]);
+		}
+		
+		cout << "---" << endl;
+		gettimeofday(&tv, &tz);
+		u_int64_t _end = tv.tv_sec * 1000000ull + tv.tv_usec;
+		cout << (_end - _start) << endl;
+		
+		return;
+	 
 		SafeAsyncQueue<XX> testSAQ;
 		XX xx(1,2);
 		testSAQ.push(xx);
@@ -3663,7 +3770,14 @@ void test() {
 		sqlDb->query("drop procedure if exists __insert_test");
 	 
 	} break;
-	
+	case 3: {
+		char *pointToSepOptTest = strchr(opt_test_str, '/');
+		if(pointToSepOptTest) {
+			initFraud();
+			extern GeoIP_country *geoIP_country;
+			cout << geoIP_country->getCountry(pointToSepOptTest + 1) << endl;
+		}
+	} break;
 	case 10:
 		{
 		SqlDb *sqlDb = createSqlObject();

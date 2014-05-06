@@ -144,6 +144,7 @@ static int resynch_jb(struct fixed_jb *jb, void *data, long ms, long ts, long no
 	/* If jb is empty, just reinitialize the jb */
 	if (!jb->frames) {
 		/* debug check: tail should also be NULL */
+		if(debug) fprintf(stdout, "resynch_jb: empty jb\n");
 		ASSERT(jb->tail == NULL);
 		
 		jb->force_resynch = 0;
@@ -165,7 +166,7 @@ static int resynch_jb(struct fixed_jb *jb, void *data, long ms, long ts, long no
 
 
 	if ( !jb->force_resynch && (offset < jb->conf.resync_threshold && offset > -jb->conf.resync_threshold)) {
-		if(debug) fprintf(stdout, "dropping\n");
+		if(debug) fprintf(stdout, "resynch_jb - dropping offset [%lu] < jb->conf.resync_threshold [%lu] && offset [%lu] > -jb->conf.resync_threshol [%lu] | ts[%lu] jb->tail->ts[%lu] jb->tail->ms[%lu]\n", offset, jb->conf.resync_threshold, offset, -jb->conf.resync_threshold, ts, jb->tail->ts, jb->tail->ms);
 		jb->force_resynch = 0;
 		return FIXED_JB_DROP;
 	}
@@ -234,10 +235,11 @@ int fixed_jb_put(struct fixed_jb *jb, void *data, long ms, long ts, long now)
 	
 	/* what if the delivery time is bigger than next + delay? Seems like a frame for the future.
 	   However, allow more resync_threshold ms in advance */
-	if (delivery > jb->next_delivery + jb->delay + jb->conf.resync_threshold) {
+	/* festr 5.5.2014 - be more tolerant for future frame (bursts) and add 200ms more) */
+	if (delivery > jb->next_delivery + jb->delay + jb->conf.resync_threshold + 200) {
 		/* should drop the frame, but let first resynch_jb() check if this is not a jump in ts, or
 		   the force resynch flag was not set. */
-		if(debug) fprintf(stdout, "put: delivery > jb->next_delivery + jb->delay + jb->conf.resync_threshold\n");
+		if(debug) fprintf(stdout, "put: delivery[%lu] > jb->next_delivery[%lu] + jb->delay[%lu] + jb->conf.resync_threshold[%lu]\n", delivery, jb->next_delivery, jb->delay, jb->conf.resync_threshold);
 		return resynch_jb(jb, data, ms, ts, now);
 	}
 

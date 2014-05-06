@@ -1274,19 +1274,39 @@ Call *new_skinny_channel(int state, char *data, int datalen, struct pcap_pkthdr 
 	calltable->skinny_ipTuples[tmp.str()] = call;
 
 	if(call->flags & (FLAG_SAVESIP | FLAG_SAVERTP | FLAG_SAVEWAV) || opt_savewav_force) {
-		static string lastdir;
-		if(lastdir != call->dirname()) {
-			string tmp, dir;
-			if(opt_cachedir[0] != '\0') {
-				string dir;
-				dir = opt_cachedir;
-				dir += "/" + call->dirname();
+		extern int opt_defer_create_spooldir;
+		if(!opt_defer_create_spooldir) {
+			static string lastdir;
+			if(lastdir != call->dirname()) {
+				string tmp, dir;
+				if(opt_cachedir[0] != '\0') {
+					string dir;
+					dir = opt_cachedir;
+					dir += "/" + call->dirname();
+					if(opt_newdir) {
+						tmp = dir + "/ALL";
+						mkdir_r(tmp, 0777);
+						tmp = dir + "/REG";
+						mkdir_r(tmp, 0777);
+						tmp = dir + "/SKINNY";
+						mkdir_r(tmp, 0777);
+						tmp = dir + "/RTP";
+						mkdir_r(tmp, 0777);
+						tmp = dir + "/GRAPH";
+						mkdir_r(tmp, 0777);
+						tmp = dir + "/AUDIO";
+						mkdir_r(tmp, 0777);
+					} else {
+						mkdir_r(dir, 0777);
+					}
+				}
+				dir = call->dirname();
 				if(opt_newdir) {
 					tmp = dir + "/ALL";
 					mkdir_r(tmp, 0777);
-					tmp = dir + "/REG";
-					mkdir_r(tmp, 0777);
 					tmp = dir + "/SKINNY";
+					mkdir_r(tmp, 0777);
+					tmp = dir + "/REG";
 					mkdir_r(tmp, 0777);
 					tmp = dir + "/RTP";
 					mkdir_r(tmp, 0777);
@@ -1294,30 +1314,13 @@ Call *new_skinny_channel(int state, char *data, int datalen, struct pcap_pkthdr 
 					mkdir_r(tmp, 0777);
 					tmp = dir + "/AUDIO";
 					mkdir_r(tmp, 0777);
+					mkdir_r(call->dirname(), 0777);
 				} else {
 					mkdir_r(dir, 0777);
 				}
-			}
-			dir = call->dirname();
-			if(opt_newdir) {
-				tmp = dir + "/ALL";
-				mkdir_r(tmp, 0777);
-				tmp = dir + "/SKINNY";
-				mkdir_r(tmp, 0777);
-				tmp = dir + "/REG";
-				mkdir_r(tmp, 0777);
-				tmp = dir + "/RTP";
-				mkdir_r(tmp, 0777);
-				tmp = dir + "/GRAPH";
-				mkdir_r(tmp, 0777);
-				tmp = dir + "/AUDIO";
-				mkdir_r(tmp, 0777);
-				mkdir_r(call->dirname(), 0777);
-			} else {
-				mkdir_r(dir, 0777);
-			}
 
-			lastdir = call->dirname();
+				lastdir = call->dirname();
+			}
 		}
 
 		char str2[1024];
@@ -1397,8 +1400,7 @@ void *handle_skinny(pcap_pkthdr *header, const u_char *packet, unsigned int sadd
 	int remain = datalen;
 	while(1) {	
 		//cycle through all PDUs in one message
-		handle_skinny2(header, packet, saddr, source, daddr, dest, data, datalen,
-			handle, dlt, sensor_id);
+		handle_skinny2(header, packet, saddr, source, daddr, dest, data, datalen, handle, dlt, sensor_id);
 		unsigned int plen = (unsigned int)letohl(*(uint32_t*)data); // first 4 bytes is length of skinny data
 		if(plen == 0 or plen > remain) {
 			break;
@@ -1584,6 +1586,7 @@ void *handle_skinny2(pcap_pkthdr *header, const u_char *packet, unsigned int sad
 			while(i < 20 and (end = strchr(cur, '\0'))) {	
 				strings[i] = cur;
 				cur = end + 1;
+				if(cur + 1 > data + datalen) break;
 				i++;
 			}
 			char *callingParty, *calledParty, *callingPartyName, *calledPartyName;

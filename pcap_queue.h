@@ -239,10 +239,13 @@ protected:
 	virtual string pcapStatString_cpuUsageReadThreads() { return(""); };
 	virtual void initStat_interface() {};
 	void preparePstatData(bool writeThread = false);
+	void prepareProcPstatData();
 	double getCpuUsagePerc(bool writeThread = false, bool preparePstatData = false);
 	virtual string getCpuUsage(bool writeThread = false, bool preparePstatData = false) { return(""); }
 	long unsigned int getVsizeUsage(bool writeThread = false, bool preparePstatData = false);
 	long unsigned int getRssUsage(bool writeThread = false, bool preparePstatData = false);
+	long unsigned int getProcVsizeUsage(bool preparePstatData = false);
+	long unsigned int getProcRssUsage(bool preparePstatData = false);
 	virtual bool isMirrorSender() {
 		return(false);
 	}
@@ -269,6 +272,7 @@ protected:
 	int writeThreadId;
 	pstat_data threadPstatData[2];
 	pstat_data writeThreadPstatData[2];
+	pstat_data procPstatData[2];
 	bool initAllReadThreadsOk;
 private:
 	u_char* packetBuffer;
@@ -488,6 +492,13 @@ public:
 		pcap_pkthdr_plus *header;
 		u_char *packet;
 		u_int64_t utime;
+		u_int64_t at;
+	};
+	struct sBlockInfo {
+		pcap_block_store *blockStore;
+		size_t count_processed;
+		u_int64_t utime_first;
+		u_int64_t utime_last;
 		u_int64_t at;
 	};
 public:
