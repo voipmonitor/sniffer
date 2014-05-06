@@ -106,7 +106,7 @@ string CountryCodes::getName(const char *code) {
 string CountryCodes::getContinent(const char *code) {
 	map<string, string>::iterator iter;
 	iter = countryContinent.find(code);
-	return(iter != continents.end() ? iter->second : "");
+	return(iter != countryContinent.end() ? iter->second : "");
 }
 
 bool CountryCodes::isLocationIn(const char *location, vector<string> *in, bool continent) {
