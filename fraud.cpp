@@ -1266,6 +1266,9 @@ void initFraud() {
 		opt_enable_fraud = false;
 		return;
 	}
+	if(!isExistsFraudAlerts()) {
+		return;
+	}
 	if(!countryCodes) {
 		countryCodes = new CountryCodes();
 		countryCodes->load();
@@ -1364,8 +1367,19 @@ bool checkFraudTables() {
 }
 
 void refreshFraud() {
-	if(opt_enable_fraud && fraudAlerts) {
-		fraudAlerts->refresh();
+	if(opt_enable_fraud) {
+		if(isExistsFraudAlerts()) {
+			if(!fraudAlerts) {
+				initFraud();
+			}
+			if(fraudAlerts) {
+				fraudAlerts->refresh();
+			}
+		} else {
+			if(fraudAlerts) {
+				termFraud();
+			}
+		}
 	}
 }
 
@@ -1403,4 +1417,15 @@ void fraudRegister(u_int32_t ip, timeval tv) {
 	if(fraudAlerts) {
 		fraudAlerts->evRegister(ip, tv.tv_sec * 1000000ull + tv.tv_usec);
 	}
+}
+
+bool isExistsFraudAlerts() {
+	SqlDb *sqlDb = createSqlObject();
+	sqlDb->query("select id, alert_type, descr from alerts\
+		      where alert_type > 20 and\
+			    (disable is null or not disable)\
+			    limit 1");
+	bool rslt = sqlDb->fetchRow();
+	delete sqlDb;
+	return(rslt);
 }

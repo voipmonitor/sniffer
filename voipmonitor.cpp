@@ -291,14 +291,14 @@ int opt_autocleanspoolminpercent = 1;
 int opt_autocleanmingb = 5;
 int opt_mysqlloadconfig = 1;
 int opt_last_rtp_from_end = 1;
-int opt_pcap_dump_bufflength = 0;
-int opt_pcap_dump_asyncwrite = 0;
-int opt_pcap_dump_zip = 0;
+int opt_pcap_dump_bufflength = 8194;
+int opt_pcap_dump_asyncwrite = 1;
+int opt_pcap_dump_zip = 1;
 int opt_pcap_dump_ziplevel = Z_DEFAULT_COMPRESSION;
-int opt_pcap_dump_writethreads = 2;
-int opt_pcap_dump_writethreads_max = 10;
+int opt_pcap_dump_writethreads = 1;
+int opt_pcap_dump_writethreads_max = 32;
 int opt_pcap_dump_asyncwrite_maxsize = 100; //MB
-int opt_defer_create_spooldir = 0;
+int opt_defer_create_spooldir = 1;
 
 char opt_php_path[1024];
 
@@ -508,8 +508,8 @@ int opt_mysqlstore_max_threads_ipacc_base = 3;
 int opt_mysqlstore_max_threads_ipacc_agreg2 = 3;
 
 char opt_curlproxy[256] = "";
-int opt_enable_fraud = 0;
-char opt_local_country_code[10] = "";
+int opt_enable_fraud = 1;
+char opt_local_country_code[10] = "local";
 
 map<string, string> hosts;
 
