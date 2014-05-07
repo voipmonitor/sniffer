@@ -369,9 +369,79 @@ public:
 		 Call *call = NULL, const char *file = NULL,
 		 const char *column = NULL, long long writeBytes = 0) {
 		extern int opt_pcap_dump_bufflength;
-		int useThreadOper = 0;
-		if(opt_pcap_dump_bufflength) {
-			if(((FileZipHandler*)handle)->userData) {
+		for(int pass = 0; pass < 2; pass++) {
+			if(pass) {
+				((FileZipHandler*)handle)->userData = 0;
+			}
+			int useThreadOper = 0;
+			if(opt_pcap_dump_bufflength) {
+				if(((FileZipHandler*)handle)->userData) {
+					useThreadOper = -1;
+				} else {
+					unsigned int size;
+					unsigned int minSize = UINT_MAX;
+					int minSizeIndex = 0;
+					for(int i = 0; i < countPcapThreads; i++) {
+						size = q[i].size();
+						if(size < minSize) {
+							minSize = size;
+							minSizeIndex = i;
+						}
+					}
+					((FileZipHandler*)handle)->userData = minSizeIndex + 1;
+				}
+			}
+			if(add(new AsyncCloseItem_pcap(handle, call, file, column, writeBytes),
+			       opt_pcap_dump_bufflength ?
+				((FileZipHandler*)handle)->userData - 1 :
+				0,
+			       useThreadOper)) {
+				break;
+			}
+		}
+	}
+	void addWrite(pcap_dumper_t *handle,
+		      char *data, int length) {
+		extern int opt_pcap_dump_bufflength;
+		for(int pass = 0; pass < 2; pass++) {
+			if(pass) {
+				((FileZipHandler*)handle)->userData = 0;
+			}
+			int useThreadOper = 0;
+			if(opt_pcap_dump_bufflength) {
+				if(!((FileZipHandler*)handle)->userData) {
+					useThreadOper = 1;
+					unsigned int size;
+					unsigned int minSize = UINT_MAX;
+					int minSizeIndex = 0;
+					for(int i = 0; i < countPcapThreads; i++) {
+						size = q[i].size();
+						if(size < minSize) {
+							minSize = size;
+							minSizeIndex = i;
+						}
+					}
+					((FileZipHandler*)handle)->userData = minSizeIndex + 1;
+				}
+			}
+			if(add(new AsyncWriteItem_pcap(handle, data, length),
+			       opt_pcap_dump_bufflength ?
+				((FileZipHandler*)handle)->userData - 1 :
+				0,
+			       useThreadOper)) {
+				break;
+			}
+		}
+	}
+	void add(FileZipHandler *handle,
+		 Call *call = NULL, const char *file = NULL,
+		 const char *column = NULL, long long writeBytes = 0) {
+		for(int pass = 0; pass < 2; pass++) {
+			if(pass) {
+				handle->userData = 0;
+			}
+			int useThreadOper = 0;
+			if(handle->userData) {
 				useThreadOper = -1;
 			} else {
 				unsigned int size;
@@ -384,21 +454,23 @@ public:
 						minSizeIndex = i;
 					}
 				}
-				((FileZipHandler*)handle)->userData = minSizeIndex + 1;
+				handle->userData = minSizeIndex + 1;
+			}
+			if(add(new AsyncCloseItem_fileZipHandler(handle, call, file, column, writeBytes),
+			       handle->userData - 1,
+			       useThreadOper)) {
+				break;
 			}
 		}
-		add(new AsyncCloseItem_pcap(handle, call, file, column, writeBytes),
-		    opt_pcap_dump_bufflength ?
-		     ((FileZipHandler*)handle)->userData - 1 :
-		     0,
-		    useThreadOper);
 	}
-	void addWrite(pcap_dumper_t *handle,
+	void addWrite(FileZipHandler *handle,
 		      char *data, int length) {
-		extern int opt_pcap_dump_bufflength;
-		int useThreadOper = 0;
-		if(opt_pcap_dump_bufflength) {
-			if(!((FileZipHandler*)handle)->userData) {
+		for(int pass = 0; pass < 2; pass++) {
+			if(pass) {
+				handle->userData = 0;
+			}
+			int useThreadOper = 0;
+			if(!handle->userData) {
 				useThreadOper = 1;
 				unsigned int size;
 				unsigned int minSize = UINT_MAX;
@@ -410,72 +482,33 @@ public:
 						minSizeIndex = i;
 					}
 				}
-				((FileZipHandler*)handle)->userData = minSizeIndex + 1;
+				handle->userData = minSizeIndex + 1;
+			}
+			if(add(new AsyncWriteItem_fileZipHandler(handle, data, length),
+			       handle->userData - 1,
+			       useThreadOper)) {
+				break;
 			}
 		}
-		add(new AsyncWriteItem_pcap(handle, data, length),
-		    opt_pcap_dump_bufflength ?
-		     ((FileZipHandler*)handle)->userData - 1 :
-		     0,
-		    useThreadOper);
 	}
-	void add(FileZipHandler *handle,
-		 Call *call = NULL, const char *file = NULL,
-		 const char *column = NULL, long long writeBytes = 0) {
-		int useThreadOper = 0;
-		if(handle->userData) {
-			useThreadOper = -1;
-		} else {
-			unsigned int size;
-			unsigned int minSize = UINT_MAX;
-			int minSizeIndex = 0;
-			for(int i = 0; i < countPcapThreads; i++) {
-				size = q[i].size();
-				if(size < minSize) {
-					minSize = size;
-					minSizeIndex = i;
-				}
-			}
-			handle->userData = minSizeIndex + 1;
-		}
-		add(new AsyncCloseItem_fileZipHandler(handle, call, file, column, writeBytes),
-		    handle->userData - 1,
-		    useThreadOper);
-	}
-	void addWrite(FileZipHandler *handle,
-		      char *data, int length) {
-		int useThreadOper = 0;
-		if(!handle->userData) {
-			useThreadOper = 1;
-			unsigned int size;
-			unsigned int minSize = UINT_MAX;
-			int minSizeIndex = 0;
-			for(int i = 0; i < countPcapThreads; i++) {
-				size = q[i].size();
-				if(size < minSize) {
-					minSize = size;
-					minSizeIndex = i;
-				}
-			}
-			handle->userData = minSizeIndex + 1;
-		}
-		add(new AsyncWriteItem_fileZipHandler(handle, data, length),
-		    handle->userData - 1,
-		    useThreadOper);
-	}
-	void add(AsyncCloseItem *item, int threadIndex, int useThreadOper = 0) {
+	bool add(AsyncCloseItem *item, int threadIndex, int useThreadOper = 0) {
 		extern int terminating;
 		extern int opt_pcap_dump_asyncwrite_maxsize;
 		while(sizeOfDataInMemory + item->dataLength > opt_pcap_dump_asyncwrite_maxsize * 1024ull * 1024ull && !terminating) {
 			usleep(1000);
 		}
 		lock(threadIndex);
+		if(!activeThread[threadIndex]) {
+			unlock(threadIndex);
+			return(false);
+		}
 		if(useThreadOper) {
 			useThread[threadIndex] += useThreadOper;
 		}
 		q[threadIndex].push(item);
 		add_sizeOfDataInMemory(item->dataLength);
 		unlock(threadIndex);
+		return(true);
 	}
 	void processTask(int threadIndex);
 	void processAll(int threadIndex);
@@ -520,6 +553,8 @@ private:
 	volatile uint64_t sizeOfDataInMemory;
 	volatile int removeThreadProcessed;
 	volatile uint64_t useThread[AsyncClose_maxPcapThreads];
+	volatile int activeThread[AsyncClose_maxPcapThreads];
+	volatile int cpuPeak[AsyncClose_maxPcapThreads];
 };
 
 class RestartUpgrade {
