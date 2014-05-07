@@ -8,6 +8,7 @@
 
 extern int opt_enable_fraud;
 extern int terminating;
+extern int opt_nocdr;
 extern MySqlStore *sqlStore;
 
 FraudAlerts *fraudAlerts = NULL;
@@ -1262,7 +1263,7 @@ void initFraud() {
 	if(!opt_enable_fraud) {
 		return;
 	}
-	if(!checkFraudTables()) {
+	if(opt_nocdr || !checkFraudTables()) {
 		opt_enable_fraud = false;
 		return;
 	}
@@ -1420,6 +1421,9 @@ void fraudRegister(u_int32_t ip, timeval tv) {
 }
 
 bool isExistsFraudAlerts() {
+	if(opt_nocdr) {
+		return(false);
+	}
 	SqlDb *sqlDb = createSqlObject();
 	sqlDb->query("select id, alert_type, descr from alerts\
 		      where alert_type > 20 and\

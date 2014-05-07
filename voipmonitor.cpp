@@ -2616,6 +2616,10 @@ int main(int argc, char *argv[]) {
 		return 1;
 	}
 
+	if(opt_cachedir[0]) {
+		opt_defer_create_spooldir = false;
+	}
+
 	if(!opt_pcap_queue_iface_separate_threads && strchr(ifname, ',')) {
 		opt_pcap_queue_iface_separate_threads = 1;
 	}
