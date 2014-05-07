@@ -561,6 +561,7 @@ private:
 	void processPacket(pcap_pkthdr_plus *header, u_char *packet,
 			   pcap_block_store *block_store, int block_store_index,
 			   int dlt, int sensor_id);
+	void checkFreeSizeCachedir();
 	void cleanupBlockStoreTrash(bool all = false);
 	void lock_packetServerConnections() {
 		while(__sync_lock_test_and_set(&this->_sync_packetServerConnections, 1));
@@ -584,6 +585,7 @@ private:
 	int socketHandle;
 	map<unsigned int, sPacketServerConnection*> packetServerConnections;
 	volatile int _sync_packetServerConnections;
+	u_long lastCheckFreeSizeCachedir_timeMS;
 friend void *_PcapQueue_readFromFifo_connectionThreadFunction(void *arg);
 };
 

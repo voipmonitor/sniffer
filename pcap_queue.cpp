@@ -106,6 +106,7 @@ extern int global_pcap_dlink;
 extern char opt_cachedir[1024];
 extern unsigned long long cachedirtransfered;
 unsigned long long lastcachedirtransfered = 0;
+extern char opt_cachedir[1024];
 
 string pbStatString;
 u_long pbCountPacketDrop;
@@ -2755,6 +2756,7 @@ PcapQueue_readFromFifo::PcapQueue_readFromFifo(const char *nameQueue, const char
 	this->socketHostEnt = NULL;
 	this->socketHandle = 0;
 	this->_sync_packetServerConnections = 0;
+	this->lastCheckFreeSizeCachedir_timeMS = 0;
 	this->setEnableWriteThread();
 }
 
@@ -3011,6 +3013,9 @@ void *PcapQueue_readFromFifo::writeThreadFunction(void *arg, unsigned int arg2) 
 		}
 		this->pcapStoreQueue.pop(&blockStore);
 		if(blockStore) {
+			if(opt_cachedir[0]) {
+				this->checkFreeSizeCachedir();
+			}
 			++sumBlocksCounterOut[0];
 			if(this->packetServerDirection == directionWrite) {
 				this->socketWritePcapBlock(blockStore);
@@ -3666,6 +3671,25 @@ void PcapQueue_readFromFifo::processPacket(pcap_pkthdr_plus *header_plus, u_char
 		ipaccount(header->ts.tv_sec, (iphdr2*) ((char*)(packet) + header_plus->offset), header->len - header_plus->offset, voippacket);
 	}
 	
+}
+
+void PcapQueue_readFromFifo::checkFreeSizeCachedir() {
+	if(!opt_cachedir[0]) {
+		return;
+	}
+	u_long actTimeMS = getTimeMS();
+	if(!lastCheckFreeSizeCachedir_timeMS ||
+	   actTimeMS - lastCheckFreeSizeCachedir_timeMS > 2000) {
+		double freeSpacePerc = (double)GetFreeDiskSpace(opt_cachedir, true) / 100;
+		if(freeSpacePerc >= 0 && freeSpacePerc <= 5) {
+			syslog(freeSpacePerc <= 1 ? LOG_ERR : LOG_NOTICE,
+			       "%s low disk free space in cachedir (%s) - %lliMB",
+			       freeSpacePerc <= 1 ? "critical " : "",
+			       opt_cachedir,
+			       GetFreeDiskSpace(opt_cachedir) / (1024 * 1024));
+		}
+		lastCheckFreeSizeCachedir_timeMS = actTimeMS;
+	}
 }
 
 void PcapQueue_readFromFifo::cleanupBlockStoreTrash(bool all) {
