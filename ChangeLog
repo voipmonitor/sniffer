@@ -1,9 +1,9 @@
-10.0RC3 7.5.2014
+10.0RC4 7.5.2014
 ================
 - do not connect to db if -c switch 
 - fix moving files from cachedir 
 
-10.0RC2 7.5.2014
+10.0RC3 7.5.2014
 ================
 - fix left/right channel
 
