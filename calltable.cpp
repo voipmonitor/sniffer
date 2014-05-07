@@ -718,7 +718,7 @@ read:
 			}
 		}
 		rtp[ssrc_n]->gfileRAW = NULL;
-		sprintf(rtp[ssrc_n]->basefilename, "%s/%s/%s.i%d", dirname().c_str(), opt_newdir ? "AUDIO" : "", get_fbasename_safe(), iscaller);
+		sprintf(rtp[ssrc_n]->basefilename, "%s/%s/%s.i%d", dirname().c_str(), opt_newdir ? "AUDIO" : "", get_fbasename_safe(), !iscaller);
 //		int i = get_index_by_ip_port(saddr, port);
 //		if(i >= 0) {
 			//memcpy(this->rtp[ssrc_n]->rtpmap, rtpmap[i], MAX_RTPMAP * sizeof(int));
@@ -1048,8 +1048,6 @@ Call::convertRawToWav() {
 	FILE *wav = NULL;
 	int adir = 0;
 	int bdir = 0;
-	int aindex = -1, bindex = -1;
-
 
 	switch(opt_audio_format) {
 	case FORMAT_WAV:
@@ -1060,47 +1058,31 @@ Call::convertRawToWav() {
 		break;
 	}
 
-	if(rtp[0] != NULL) {
-		if(rtp[0]->iscaller) {
-			aindex = 0;
-		} else {
-			bindex = 0;
-		}
+	/* caller direction */
+	sprintf(rawInfo, "%s/%s/%s.i%d.rawInfo", dirname().c_str(), opt_newdir ? "AUDIO" : "", get_fbasename_safe(), 0);
+	pl = fopen(rawInfo, "r");
+	if(pl) {
+		adir = 1;
+		fgets(line, 1024, pl);
+		fclose(pl);
+		sscanf(line, "%d:%lu:%d:%ld:%ld", &ssrc_index, &rawiterator, &codec, &tv0.tv_sec, &tv0.tv_usec);
+		sprintf(wav0, "%s/%s/%s.i%d.wav", dirname().c_str(), opt_newdir ? "AUDIO" : "", get_fbasename_safe(), 0);
 	}
-	if(rtp[1] != NULL) {
-		if(rtp[1]->iscaller) {
-			aindex = 1;
-		} else {
-			bindex = 1;
-		}
-	}
-	/* first direction */
-	if(aindex > -1) {
-		sprintf(rawInfo, "%s/%s/%s.i%d.rawInfo", dirname().c_str(), opt_newdir ? "AUDIO" : "", get_fbasename_safe(), aindex);
-		pl = fopen(rawInfo, "r");
-		if(pl) {
-			adir = 1;
-			fgets(line, 1024, pl);
-			fclose(pl);
-			sscanf(line, "%d:%lu:%d:%ld:%ld", &ssrc_index, &rawiterator, &codec, &tv0.tv_sec, &tv0.tv_usec);
-		}
-		sprintf(wav0, "%s/%s/%s.i%d.wav", dirname().c_str(), opt_newdir ? "AUDIO" : "", get_fbasename_safe(), aindex);
-	}
-	/* second direction */
-	if(bindex > -1) {
-		sprintf(rawInfo, "%s/%s/%s.i%d.rawInfo", dirname().c_str(), opt_newdir ? "AUDIO" : "", get_fbasename_safe(), bindex);
-		pl = fopen(rawInfo, "r");
-		if(pl) {
-			bdir = 1;
-			fgets(line, 1024, pl);
-			fclose(pl);
-			sscanf(line, "%d:%lu:%d:%ld:%ld", &ssrc_index, &rawiterator, &codec, &tv1.tv_sec, &tv1.tv_usec);
-		}
-		sprintf(wav1, "%s/%s/%s.i%d.wav", dirname().c_str(), opt_newdir ? "AUDIO" : "", get_fbasename_safe(), bindex);
+
+	/* called direction */
+	sprintf(rawInfo, "%s/%s/%s.i%d.rawInfo", dirname().c_str(), opt_newdir ? "AUDIO" : "", get_fbasename_safe(), 1);
+	pl = fopen(rawInfo, "r");
+	if(pl) {
+		bdir = 1;
+		fgets(line, 1024, pl);
+		fclose(pl);
+		sscanf(line, "%d:%lu:%d:%ld:%ld", &ssrc_index, &rawiterator, &codec, &tv1.tv_sec, &tv1.tv_usec);
+		sprintf(wav1, "%s/%s/%s.i%d.wav", dirname().c_str(), opt_newdir ? "AUDIO" : "", get_fbasename_safe(), 1);
 	}
 
 	if(adir == 0 && bdir == 0) {
 		syslog(LOG_ERR, "PCAP file %s/%s/%s.pcap cannot be decoded to WAV probably missing RTP\n", dirname().c_str(), opt_newdir ? "AUDIO" : "", get_fbasename_safe());
+		exit(0);
 		return 1;
 	}
 
@@ -1184,27 +1166,12 @@ Call::convertRawToWav() {
 	int samplerate = 8000;
 	for(int i = 0; i <= 1; i++) {
 		char *wav = NULL;
-		int ii;
-		if(i != aindex and i != bindex) continue;
-		if(i == aindex) {
-			if(adir == 0) {
-				continue;
-			}
-			ii = aindex;
-			wav = wav0;
-		} else if(i == bindex) {
-			if(bdir == 0) {
-				continue;
-			}
-			ii = bindex;
-			wav = wav1;
-		} else {
-			continue;
-		}
-
+		if(i == 0 and adir == 0) continue;
+		if(i == 1 and bdir == 0) continue;
+		wav = i == 0 ? wav0 : wav1;
 
 		/* open playlist */
-		sprintf(rawInfo, "%s/%s/%s.i%d.rawInfo", dirname().c_str(), opt_newdir ? "AUDIO" : "", get_fbasename_safe(), ii);
+		sprintf(rawInfo, "%s/%s/%s.i%d.rawInfo", dirname().c_str(), opt_newdir ? "AUDIO" : "", get_fbasename_safe(), i);
 		pl = fopen(rawInfo, "r");
 		if(!pl) {
 			syslog(LOG_ERR, "Cannot open %s\n", rawInfo);
@@ -1214,7 +1181,7 @@ Call::convertRawToWav() {
 			char raw[1024];
 			line[strlen(line)] = '\0'; // remove '\n' which is last character
 			sscanf(line, "%d:%lu:%d:%ld:%ld", &ssrc_index, &rawiterator, &codec, &tv0.tv_sec, &tv0.tv_usec);
-			sprintf(raw, "%s/%s/%s.i%d.%d.%lu.%d.%ld.%ld.raw", dirname().c_str(), opt_newdir ? "AUDIO" : "", get_fbasename_safe(), ii, ssrc_index, rawiterator, codec, tv0.tv_sec, tv0.tv_usec);
+			sprintf(raw, "%s/%s/%s.i%d.%d.%lu.%d.%ld.%ld.raw", dirname().c_str(), opt_newdir ? "AUDIO" : "", get_fbasename_safe(), i, ssrc_index, rawiterator, codec, tv0.tv_sec, tv0.tv_usec);
 			switch(codec) {
 			case PAYLOAD_PCMA:
 				if(verbosity > 1) syslog(LOG_ERR, "Converting PCMA to WAV.\n");
