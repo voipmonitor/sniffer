@@ -3228,7 +3228,7 @@ Call*
 Calltable::find_by_mergecall_id(char *call_id, unsigned long call_id_len) {
 	string call_idS = string(call_id, call_id_len);
 	lock_calls_mergeMAP();
-	callMAPIT = calls_mergeMAP.find(call_idS);
+	mergeMAPIT = calls_mergeMAP.find(call_idS);
 	if(mergeMAPIT == calls_mergeMAP.end()) {
 		unlock_calls_mergeMAP();
 		// not found

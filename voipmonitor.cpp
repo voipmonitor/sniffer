@@ -1306,7 +1306,7 @@ int load_config(char *fname) {
 		snprintf(opt_callidmerge_header, sizeof(opt_callidmerge_header), "\n%s:", value);
 	}
 	if((value = ini.GetValue("general", "callidmerge_secret", NULL))) {
-		snprintf(opt_callidmerge_secret, sizeof(opt_callidmerge_secret), "\n%s:", value);
+		strncpy(opt_callidmerge_secret, value, sizeof(opt_callidmerge_secret));
 	}
 	if((value = ini.GetValue("general", "domainport", NULL))) {
 		opt_domainport = atoi(value);
