@@ -1790,7 +1790,11 @@ bool FileZipHandler::__writeToFile(char *data, int length) {
 	if(::write(this->fh, data, length) == length) {
 		return(true);
 	} else {
+		bool oldError = !error.empty();
 		this->setError();
+		if(!oldError) {
+			syslog(LOG_NOTICE, "error write to file %s - %s", fileName.c_str(), error.c_str());
+		}
 		return(false);
 	}
 }
