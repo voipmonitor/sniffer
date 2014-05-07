@@ -369,49 +369,63 @@ public:
 		 Call *call = NULL, const char *file = NULL,
 		 const char *column = NULL, long long writeBytes = 0) {
 		extern int opt_pcap_dump_bufflength;
-		if(opt_pcap_dump_bufflength && !((FileZipHandler*)handle)->userData) {
-			unsigned int size;
-			unsigned int minSize = UINT_MAX;
-			int minSizeIndex = 0;
-			for(int i = 0; i < countPcapThreads; i++) {
-				size = q[i].size();
-				if(size < minSize) {
-					minSize = size;
-					minSizeIndex = i;
+		int useThreadOper = 0;
+		if(opt_pcap_dump_bufflength) {
+			if(((FileZipHandler*)handle)->userData) {
+				useThreadOper = -1;
+			} else {
+				unsigned int size;
+				unsigned int minSize = UINT_MAX;
+				int minSizeIndex = 0;
+				for(int i = 0; i < countPcapThreads; i++) {
+					size = q[i].size();
+					if(size < minSize) {
+						minSize = size;
+						minSizeIndex = i;
+					}
 				}
+				((FileZipHandler*)handle)->userData = minSizeIndex + 1;
 			}
-			((FileZipHandler*)handle)->userData = minSizeIndex + 1;
 		}
 		add(new AsyncCloseItem_pcap(handle, call, file, column, writeBytes),
 		    opt_pcap_dump_bufflength ?
 		     ((FileZipHandler*)handle)->userData - 1 :
-		     0);
+		     0,
+		    useThreadOper);
 	}
 	void addWrite(pcap_dumper_t *handle,
 		      char *data, int length) {
 		extern int opt_pcap_dump_bufflength;
-		if(opt_pcap_dump_bufflength && !((FileZipHandler*)handle)->userData) {
-			unsigned int size;
-			unsigned int minSize = UINT_MAX;
-			int minSizeIndex = 0;
-			for(int i = 0; i < countPcapThreads; i++) {
-				size = q[i].size();
-				if(size < minSize) {
-					minSize = size;
-					minSizeIndex = i;
+		int useThreadOper = 0;
+		if(opt_pcap_dump_bufflength) {
+			if(!((FileZipHandler*)handle)->userData) {
+				useThreadOper = 1;
+				unsigned int size;
+				unsigned int minSize = UINT_MAX;
+				int minSizeIndex = 0;
+				for(int i = 0; i < countPcapThreads; i++) {
+					size = q[i].size();
+					if(size < minSize) {
+						minSize = size;
+						minSizeIndex = i;
+					}
 				}
+				((FileZipHandler*)handle)->userData = minSizeIndex + 1;
 			}
-			((FileZipHandler*)handle)->userData = minSizeIndex + 1;
 		}
 		add(new AsyncWriteItem_pcap(handle, data, length),
 		    opt_pcap_dump_bufflength ?
 		     ((FileZipHandler*)handle)->userData - 1 :
-		     0);
+		     0,
+		    useThreadOper);
 	}
 	void add(FileZipHandler *handle,
 		 Call *call = NULL, const char *file = NULL,
 		 const char *column = NULL, long long writeBytes = 0) {
-		if(!handle->userData) {
+		int useThreadOper = 0;
+		if(handle->userData) {
+			useThreadOper = -1;
+		} else {
 			unsigned int size;
 			unsigned int minSize = UINT_MAX;
 			int minSizeIndex = 0;
@@ -425,11 +439,14 @@ public:
 			handle->userData = minSizeIndex + 1;
 		}
 		add(new AsyncCloseItem_fileZipHandler(handle, call, file, column, writeBytes),
-		    handle->userData - 1);
+		    handle->userData - 1,
+		    useThreadOper);
 	}
 	void addWrite(FileZipHandler *handle,
 		      char *data, int length) {
+		int useThreadOper = 0;
 		if(!handle->userData) {
+			useThreadOper = 1;
 			unsigned int size;
 			unsigned int minSize = UINT_MAX;
 			int minSizeIndex = 0;
@@ -443,15 +460,19 @@ public:
 			handle->userData = minSizeIndex + 1;
 		}
 		add(new AsyncWriteItem_fileZipHandler(handle, data, length),
-		    handle->userData - 1);
+		    handle->userData - 1,
+		    useThreadOper);
 	}
-	void add(AsyncCloseItem *item, int threadIndex) {
+	void add(AsyncCloseItem *item, int threadIndex, int useThreadOper = 0) {
 		extern int terminating;
 		extern int opt_pcap_dump_asyncwrite_maxsize;
 		while(sizeOfDataInMemory + item->dataLength > opt_pcap_dump_asyncwrite_maxsize * 1024ull * 1024ull && !terminating) {
 			usleep(1000);
 		}
 		lock(threadIndex);
+		if(useThreadOper) {
+			useThread[threadIndex] += useThreadOper;
+		}
 		q[threadIndex].push(item);
 		add_sizeOfDataInMemory(item->dataLength);
 		unlock(threadIndex);
@@ -497,6 +518,8 @@ private:
 	pstat_data threadPstatData[AsyncClose_maxPcapThreads][2];
 	StartThreadData startThreadData[AsyncClose_maxPcapThreads];
 	volatile uint64_t sizeOfDataInMemory;
+	volatile int removeThreadProcessed;
+	volatile uint64_t useThread[AsyncClose_maxPcapThreads];
 };
 
 class RestartUpgrade {

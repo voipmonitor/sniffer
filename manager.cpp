@@ -1140,6 +1140,20 @@ getwav:
 		return(0);
 	} else if(strstr(buf, "login_screen_popup") != NULL) {
 		*managerClientThread =  new ManagerClientThread_screen_popup(client, buf);
+	} else if(strstr(buf, "ac_add_thread") != NULL) {
+		extern AsyncClose asyncClose;
+		asyncClose.addThread();
+		if ((size = send(client, "ok\n", 3, 0)) == -1){
+			cerr << "Error sending data to client" << endl;
+			return -1;
+		}
+	} else if(strstr(buf, "ac_remove_thread") != NULL) {
+		extern AsyncClose asyncClose;
+		asyncClose.removeThread();
+		if ((size = send(client, "ok\n", 3, 0)) == -1){
+			cerr << "Error sending data to client" << endl;
+			return -1;
+		}
 	} else {
 		if ((size = send(client, "command not found\n", 18, 0)) == -1){
 			cerr << "Error sending data to client" << endl;
