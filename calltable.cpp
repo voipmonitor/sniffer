@@ -1082,7 +1082,6 @@ Call::convertRawToWav() {
 
 	if(adir == 0 && bdir == 0) {
 		syslog(LOG_ERR, "PCAP file %s/%s/%s.pcap cannot be decoded to WAV probably missing RTP\n", dirname().c_str(), opt_newdir ? "AUDIO" : "", get_fbasename_safe());
-		exit(0);
 		return 1;
 	}
 
