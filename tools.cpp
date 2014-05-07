@@ -842,8 +842,12 @@ AsyncClose::AsyncClose() {
 		_sync[i] = 0;
 		threadId[i] = 0;
 		memset(this->threadPstatData[i], 0, sizeof(this->threadPstatData[i]));
+		useThread[i] = 0;
+		activeThread[i] = 0;
+		cpuPeak[i] = 0;
 	}
 	sizeOfDataInMemory = 0;
+	removeThreadProcessed = 0;
 }
 
 AsyncClose::~AsyncClose() {
@@ -868,35 +872,49 @@ void AsyncClose::startThreads(int countPcapThreads, int maxPcapThreads) {
 	for(int i = 0; i < this->countPcapThreads; i++) {
 		startThreadData[i].threadIndex = i;
 		startThreadData[i].asyncClose = this;
+		activeThread[i] = 1;
 		pthread_create(&this->thread[i], NULL, AsyncClose_process, &startThreadData[i]);
 	}
 }
 
 void AsyncClose::addThread() {
-	if(opt_pcap_dump_bufflength && countPcapThreads < maxPcapThreads) {
+	if(opt_pcap_dump_bufflength && countPcapThreads < maxPcapThreads &&
+	   !removeThreadProcessed) {
 		startThreadData[countPcapThreads].threadIndex = countPcapThreads;
 		startThreadData[countPcapThreads].asyncClose = this;
+		useThread[countPcapThreads] = 0;
+		activeThread[countPcapThreads] = 1;
+		cpuPeak[countPcapThreads] = 0;
+		memset(this->threadPstatData[countPcapThreads], 0, sizeof(this->threadPstatData[countPcapThreads]));
 		pthread_create(&this->thread[countPcapThreads], NULL, AsyncClose_process, &startThreadData[countPcapThreads]);
 		++countPcapThreads;
 	}
 }
 
 void AsyncClose::removeThread() {
-	/* disabled - unstable
-	if(opt_pcap_dump_bufflength && countPcapThreads > minPcapThreads) {
+	if(opt_pcap_dump_bufflength && countPcapThreads > minPcapThreads &&
+	   !removeThreadProcessed && cpuPeak[countPcapThreads - 1] > 10) {
+		removeThreadProcessed = 1;
 		--countPcapThreads;
-		startThreadData[countPcapThreads].threadIndex = 0;
 	}
-	*/
 }
 
 void AsyncClose::processTask(int threadIndex) {
 	this->threadId[threadIndex] = get_unix_tid();
 	do {
 		processAll(threadIndex);
+		if(removeThreadProcessed && threadIndex >= countPcapThreads) {
+			lock(threadIndex);
+			if(!useThread[threadIndex] || !q[threadIndex].size()) {
+				activeThread[threadIndex] = 0;
+				unlock(threadIndex);
+				removeThreadProcessed = 0;
+				break;
+			}
+			unlock(threadIndex);
+		}
 		usleep(10000);
-	} while(!(terminating ||
-		  (threadIndex && !startThreadData[threadIndex].threadIndex)));
+	} while(!terminating);
 }
 
 void AsyncClose::processAll(int threadIndex) {
@@ -935,7 +953,11 @@ double AsyncClose::getCpuUsagePerc(int threadIndex, bool preparePstatData) {
 			pstat_calc_cpu_usage_pct(
 				&this->threadPstatData[threadIndex][0], &this->threadPstatData[threadIndex][1],
 				&ucpu_usage, &scpu_usage);
-			return(ucpu_usage + scpu_usage);
+			double rslt = ucpu_usage + scpu_usage;
+			if(rslt > cpuPeak[threadIndex]) {
+				cpuPeak[threadIndex] = rslt;
+			}
+			return(rslt);
 		}
 	}
 	return(-1);

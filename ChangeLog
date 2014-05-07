@@ -1,3 +1,7 @@
+10.0RC3 6.5.2014
+================
+- fix left / richt channel properly
+
 10.0RC2 6.5.2014
 ================
 - fix pcap header so it can be laoded by tcpdump
