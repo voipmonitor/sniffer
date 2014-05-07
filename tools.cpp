@@ -885,6 +885,7 @@ void AsyncClose::addThread() {
 		useThread[countPcapThreads] = 0;
 		activeThread[countPcapThreads] = 1;
 		cpuPeak[countPcapThreads] = 0;
+		memset(this->threadPstatData[countPcapThreads], 0, sizeof(this->threadPstatData[countPcapThreads]));
 		pthread_create(&this->thread[countPcapThreads], NULL, AsyncClose_process, &startThreadData[countPcapThreads]);
 		++countPcapThreads;
 	}
