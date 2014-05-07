@@ -1,3 +1,8 @@
+10.0RC3 7.5.2014
+================
+- do not connect to db if -c switch 
+- fix moving files from cachedir 
+
 10.0RC2 6.5.2014
 ================
 - fix pcap header so it can be laoded by tcpdump
