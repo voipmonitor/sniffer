@@ -1693,10 +1693,12 @@ int load_config(char *fname) {
 	   (value2 = ini.GetValue("general", "mirror_destination_port", NULL))) {
 		opt_pcap_queue_send_to_ip_port.set_ip(value);
 		opt_pcap_queue_send_to_ip_port.set_port(atoi(value2));
+		opt_nocdr = 1;
 	}
 	if((value = ini.GetValue("general", "mirror_destination", NULL))) {
 		char *pointToPortSeparator = (char*)strchr(value, ':');
 		if(pointToPortSeparator) {
+			opt_nocdr = 1;
 			*pointToPortSeparator = 0;
 			int port = atoi(pointToPortSeparator + 1);
 			if(*value && port) {
