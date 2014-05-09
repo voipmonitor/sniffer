@@ -2108,6 +2108,8 @@ int main(int argc, char *argv[]) {
 //        sigaction(SIGUSR2, &sa, NULL);
 	
 #endif
+	
+	signal(SIGPIPE, SIG_IGN);
 
 	/* parse arguments */
 

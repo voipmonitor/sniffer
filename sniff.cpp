@@ -190,6 +190,7 @@ extern ManagerClientThreads ClientThreads;
 extern int opt_register_timeout;
 extern int opt_nocdr;
 extern int opt_enable_fraud;
+extern int pcap_drop_flag;
 
 #ifdef QUEUE_MUTEX
 extern sem_t readpacket_thread_semaphore;
@@ -1798,6 +1799,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 		}
 		/* also do every 10 seconds pcap statistics */
 		if(!opt_pcap_queue) {
+			pcap_drop_flag = 0;
 			pcapstatres = pcap_stats(handle, &pcapstat);
 			if (pcapstatres == 0 && (lostpacket < pcapstat.ps_drop || lostpacketif < pcapstat.ps_ifdrop)) {
 				if(pcapstatresCount) {
@@ -1808,6 +1810,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 				}
 				lostpacket = pcapstat.ps_drop;
 				lostpacketif = pcapstat.ps_ifdrop;
+				pcap_drop_flag = 1;
 			}
 		}
 		last_cleanup = header->ts.tv_sec;
@@ -2045,6 +2048,9 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 		call = calltable->find_by_call_id(s, l);
 		if(call) {
 			call->handle_dscp(header_ip, saddr, daddr);
+			if(pcap_drop_flag) {
+				call->pcap_drop = pcap_drop_flag;
+			}
 		}
 
 		// check presence of call-id merge header if callidmerge feature is enabled
@@ -2670,6 +2676,10 @@ notfound:
 			is_rtcp = node_call->is_rtcp;
 			is_fax = node_call->is_fax;
 
+			if(pcap_drop_flag) {
+				call->pcap_drop = pcap_drop_flag;
+			}
+
 			if(!is_rtcp && !is_fax &&
 			   (datalen <= RTP_FIXED_HEADERLEN ||
 			    header->caplen <= (unsigned)(datalen - RTP_FIXED_HEADERLEN))) {
@@ -2759,7 +2769,11 @@ notfound:
 			iscaller = node_call->iscaller;
 			is_rtcp = node_call->is_rtcp;
 			is_fax = node_call->is_fax;
-			
+
+			if(pcap_drop_flag) {
+				call->pcap_drop = pcap_drop_flag;
+			}
+
 			if(!is_rtcp && !is_fax &&
 			   (datalen <= RTP_FIXED_HEADERLEN ||
 			    header->caplen <= (unsigned)(datalen - RTP_FIXED_HEADERLEN))) {
