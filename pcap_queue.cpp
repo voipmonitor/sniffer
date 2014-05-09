@@ -155,6 +155,8 @@ int opt_pcap_queue_dequeu_method			= 2;
 size_t _opt_pcap_queue_block_offset_inc_size		= opt_pcap_queue_block_max_size / AVG_PACKET_SIZE / 4;
 size_t _opt_pcap_queue_block_restore_buffer_inc_size	= opt_pcap_queue_block_max_size / 4;
 
+int pcap_drop_flag = 0;
+
 static pcap_block_store_queue blockStoreBypassQueue; 
 
 static unsigned long sumPacketsCounterIn[2];
@@ -855,6 +857,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 		return;
 	}
 	ostringstream outStr;
+	pcap_drop_flag = 0;
 	string pcapStatString_interface_rslt = this->instancePcapHandle ? 
 						this->instancePcapHandle->pcapStatString_interface(statPeriod) :
 						this->pcapStatString_interface(statPeriod);
@@ -1852,6 +1855,7 @@ string PcapQueue_readFromInterface_base::pcapStatString_interface(int statPeriod
 				this->_last_ps_drop = ps.ps_drop;
 				this->_last_ps_ifdrop = ps.ps_ifdrop;
 				++this->countPacketDrop;
+				pcap_drop_flag = 1;
 			}
 		}
 	}

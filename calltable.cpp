@@ -258,6 +258,7 @@ Call::Call(char *call_id, unsigned long call_id_len, time_t time, void *ct) :
 	oneway = 1;
 	absolute_timeout_exceeded = 0;
 	destroy_call_at_bye_exceeded = 0;
+	pcap_drop = 0;
 	
 	onCall_2XX = false;
 	onCall_18X = false;
@@ -1578,8 +1579,8 @@ Call::getKeyValCDRtext() {
 	} else if(oneway) {
 		bye = 101;
 	} else {
-		bye = (pcapstat.ps_ifdrop != ps_ifdrop or pcapstat.ps_drop != ps_drop) ? 100 :
-		(seeninviteok ? (seenbye ? (seenbyeandok ? 3 : 2) : 1) : 0);
+		bye = pcap_drop ? 100 :
+		      (seeninviteok ? (seenbye ? (seenbyeandok ? 3 : 2) : 1) : 0);
 	}
 	cdr.add(bye, "bye");
 
@@ -1992,8 +1993,8 @@ Call::saveToDb(bool enableBatchIfPossible) {
 	} else if(oneway) {
 		bye = 101;
 	} else {
-		bye = (pcapstat.ps_ifdrop != ps_ifdrop or pcapstat.ps_drop != ps_drop) ? 100 :
-		(seeninviteok ? (seenbye ? (seenbyeandok ? 3 : 2) : 1) : 0);
+		bye = pcap_drop ? 100 :
+		      (seeninviteok ? (seenbye ? (seenbyeandok ? 3 : 2) : 1) : 0);
 	}
 	cdr.add(bye, "bye");
 
