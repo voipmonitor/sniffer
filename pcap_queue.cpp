@@ -172,7 +172,7 @@ static unsigned long countBypassBufferSizeExceeded;
 extern MySqlStore *sqlStore;
 
 
-bool pcap_block_store::add(pcap_pkthdr *header, u_char *packet, int offset) {
+bool pcap_block_store::add(pcap_pkthdr *header, u_char *packet, int offset, int dlink) {
 	if(this->full) {
 		return(false);
 	}
@@ -197,7 +197,7 @@ bool pcap_block_store::add(pcap_pkthdr *header, u_char *packet, int offset) {
 		free(offsets_old);
 	}
 	this->offsets[this->count] = this->size;
-	pcap_pkthdr_plus header_plus = pcap_pkthdr_plus(*header, offset);
+	pcap_pkthdr_plus header_plus = pcap_pkthdr_plus(*header, offset, dlink);
 	memcpy(this->block + this->size, &header_plus, sizeof(pcap_pkthdr_plus));
 	this->size += sizeof(pcap_pkthdr_plus);
 	memcpy(this->block + this->size, packet, header->caplen);
@@ -207,7 +207,7 @@ bool pcap_block_store::add(pcap_pkthdr *header, u_char *packet, int offset) {
 }
 
 bool pcap_block_store::add(pcap_pkthdr_plus *header, u_char *packet) {
-	return(this->add((pcap_pkthdr*)header, packet, header->offset));
+	return(this->add((pcap_pkthdr*)header, packet, header->offset, header->dlink));
 }
 
 void pcap_block_store::destroy() {
@@ -2379,6 +2379,7 @@ void* PcapQueue_readFromInterface::threadFunction(void *arg, unsigned int arg2) 
 	u_char *packet;
 	int res;
 	u_int offset = 0;
+	u_int dlink = global_pcap_dlink;
 	bool destroy = false;
 	size_t blockStoreBypassQueueSize;
 
@@ -2438,6 +2439,7 @@ void* PcapQueue_readFromInterface::threadFunction(void *arg, unsigned int arg2) 
 						packet = hpi.packet;
 						offset = hpi.offset;
 						destroy = opt_pcap_queue_iface_dedup_separate_threads_extend;
+						dlink = this->readThreads[minThreadTimeIndex]->pcapLinklayerHeaderType;
 					}
 					
 				}
@@ -2485,7 +2487,7 @@ void* PcapQueue_readFromInterface::threadFunction(void *arg, unsigned int arg2) 
 				header->caplen = 101;
 			}
 			if(!blockStore->full) {
-				blockStore->add(header, packet, offset);
+				blockStore->add(header, packet, offset, dlink);
 			}
 			if(blockStore->full) {
 				bool _syslog = true;
@@ -2511,7 +2513,7 @@ void* PcapQueue_readFromInterface::threadFunction(void *arg, unsigned int arg2) 
 				blockStoreBypassQueue.push(blockStore);
 				++sumBlocksCounterIn[0];
 				blockStore = new pcap_block_store;
-				blockStore->add(header, packet, offset);
+				blockStore->add(header, packet, offset, dlink);
 			}
 			if(!TEST_PACKETS && destroy) {
 				free(header);
@@ -2546,7 +2548,7 @@ void* PcapQueue_readFromInterface::threadFunction(void *arg, unsigned int arg2) 
 			if(__config_USE_PCAP_FOR_FIFO) {
 				pcap_dump((u_char*)this->fifoWritePcapDumper, header, packet);
 			} else {
-				pcap_pkthdr_plus header_plus(*header, this->ppd.offset);
+				pcap_pkthdr_plus header_plus(*header, this->ppd.offset, dlink);
 				this->writePcapToFifo(&header_plus, packet);
 			}
 			if(destroy) {
@@ -2951,7 +2953,7 @@ void *PcapQueue_readFromFifo::threadFunction(void *arg, unsigned int arg2) {
 			if(__config_USE_PCAP_FOR_FIFO) {
 				pcap_pkthdr *_header;
 				res = this->pcap_next_ex_queue(this->fifoReadPcapHandle, &_header, &packet);
-				header = pcap_pkthdr_plus(*_header, -1);
+				header = pcap_pkthdr_plus(*_header, -1, global_pcap_dlink);
 			} else {
 				res = this->readPcapFromFifo(&header, &packet, true);
 			}
@@ -3062,9 +3064,13 @@ void *PcapQueue_readFromFifo::writeThreadFunction(void *arg, unsigned int arg2) 
 								sPacketTimeInfo pti = *(first->second->begin());
 								first->second->pop_front();
 								++sumPacketsCounterOut[0];
-								this->processPacket(pti.header, pti.packet, 
-										    pti.blockStore, pti.blockStoreIndex,
-										    pti.blockStore->dlink, pti.blockStore->sensor_id);
+								this->processPacket(
+									pti.header, pti.packet, 
+									pti.blockStore, pti.blockStoreIndex,
+									pti.header->dlink ? 
+										pti.header->dlink : 
+										pti.blockStore->dlink, 
+									pti.blockStore->sensor_id);
 								++listBlockStore[pti.blockStore];
 								if(listBlockStore[pti.blockStore] == pti.blockStore->count) {
 									this->blockStoreTrash.push_back(pti.blockStore);
@@ -3128,7 +3134,9 @@ void *PcapQueue_readFromFifo::writeThreadFunction(void *arg, unsigned int arg2) 
 								(*actBlockInfo->blockStore)[actBlockInfo->count_processed].packet,
 								actBlockInfo->blockStore,
 								actBlockInfo->count_processed,
-								actBlockInfo->blockStore->dlink,
+								(*actBlockInfo->blockStore)[actBlockInfo->count_processed].header->dlink ? 
+									(*actBlockInfo->blockStore)[actBlockInfo->count_processed].header->dlink :
+									actBlockInfo->blockStore->dlink,
 								actBlockInfo->blockStore->sensor_id);
 							++actBlockInfo->count_processed;
 							if(actBlockInfo->count_processed == actBlockInfo->blockStore->count) {
@@ -3179,8 +3187,15 @@ void *PcapQueue_readFromFifo::writeThreadFunction(void *arg, unsigned int arg2) 
 								sumPacketsCounterOut[0] = (u_long)atol((char*)(*blockStore)[i].packet);
 							}
 						} else {
-							this->processPacket((*blockStore)[i].header, (*blockStore)[i].packet, blockStore, i,
-									    blockStore->dlink, blockStore->sensor_id);
+							this->processPacket(
+								(*blockStore)[i].header, 
+								(*blockStore)[i].packet, 
+								blockStore, 
+								i,
+								(*blockStore)[i].header->dlink ? 
+									(*blockStore)[i].header->dlink :
+									blockStore->dlink, 
+								blockStore->sensor_id);
 						}
 					}
 					this->blockStoreTrash.push_back(blockStore);

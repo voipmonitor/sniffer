@@ -8,7 +8,7 @@
 #include <pcap.h>
 #include <string>
 
-#define PCAP_BLOCK_STORE_HEADER_STRING		"pcap_block_st_01"
+#define PCAP_BLOCK_STORE_HEADER_STRING		"pcap_block_st_02"
 #define PCAP_BLOCK_STORE_HEADER_STRING_LEN	16
 
 
@@ -30,13 +30,14 @@ struct pcap_pkthdr_plus {
 	pcap_pkthdr_plus() {
 		memset(this, 0, sizeof(pcap_pkthdr_plus));
 	}
-	pcap_pkthdr_plus(pcap_pkthdr header, int offset = -1) {
+	pcap_pkthdr_plus(pcap_pkthdr header, int offset, u_int16_t dlink) {
 		memset(this, 0, sizeof(pcap_pkthdr_plus));
 		this->header_fix_size.ts_tv_sec = header.ts.tv_sec;
 		this->header_fix_size.ts_tv_usec = header.ts.tv_usec;
 		this->header_fix_size.caplen = header.caplen;
 		this->header_fix_size.len = header.len;
 		this->offset = offset;
+		this->dlink = dlink;
 	}
 	pcap_pkthdr *convertToStdHeader() {
 		if(!this->std) {
@@ -54,6 +55,7 @@ struct pcap_pkthdr_plus {
 		pcap_pkthdr_fix_size header_fix_size;
 		pcap_pkthdr header_std;
 	};
+	u_int16_t dlink;
 	int32_t offset;
 	int8_t std;
 };
@@ -102,7 +104,7 @@ struct pcap_block_store {
 			free(this->packet_lock);
 		}
 	}
-	inline bool add(pcap_pkthdr *header, u_char *packet, int offset = -1);
+	inline bool add(pcap_pkthdr *header, u_char *packet, int offset, int dlink);
 	inline bool add(pcap_pkthdr_plus *header, u_char *packet);
 	pcap_pkthdr_pcap operator [] (size_t indexItem) {
 		pcap_pkthdr_pcap headerPcap;
