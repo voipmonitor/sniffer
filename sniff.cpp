@@ -2670,6 +2670,12 @@ notfound:
 			is_rtcp = node_call->is_rtcp;
 			is_fax = node_call->is_fax;
 
+			if(!is_rtcp && !is_fax &&
+			   (datalen <= RTP_FIXED_HEADERLEN ||
+			    header->caplen <= (unsigned)(datalen - RTP_FIXED_HEADERLEN))) {
+				return(call);
+			}
+
 			*voippacket = 1;
 
 			// we have packet, extend pending destroy requests
@@ -2753,6 +2759,12 @@ notfound:
 			iscaller = node_call->iscaller;
 			is_rtcp = node_call->is_rtcp;
 			is_fax = node_call->is_fax;
+			
+			if(!is_rtcp && !is_fax &&
+			   (datalen <= RTP_FIXED_HEADERLEN ||
+			    header->caplen <= (unsigned)(datalen - RTP_FIXED_HEADERLEN))) {
+				return(call);
+			}
 
 			*voippacket = 1;
 

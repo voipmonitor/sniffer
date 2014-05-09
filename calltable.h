@@ -219,6 +219,7 @@ public:
 
 	char oneway;
 	char absolute_timeout_exceeded;
+	char destroy_call_at_bye_exceeded;
 	unsigned int lastsrcip;
 
 	void *listening_worker_args;

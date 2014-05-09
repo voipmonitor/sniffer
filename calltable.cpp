@@ -257,6 +257,7 @@ Call::Call(char *call_id, unsigned long call_id_len, time_t time, void *ct) :
 	b_mos_lqo = -1;
 	oneway = 1;
 	absolute_timeout_exceeded = 0;
+	destroy_call_at_bye_exceeded = 0;
 	
 	onCall_2XX = false;
 	onCall_18X = false;
@@ -1572,6 +1573,8 @@ Call::getKeyValCDRtext() {
 	int bye;
 	if(absolute_timeout_exceeded) {
 		bye = 102;
+	} else if(destroy_call_at_bye_exceeded) {
+		bye = 103;
 	} else if(oneway) {
 		bye = 101;
 	} else {
@@ -1984,6 +1987,8 @@ Call::saveToDb(bool enableBatchIfPossible) {
 	int bye;
 	if(absolute_timeout_exceeded) {
 		bye = 102;
+	} else if(destroy_call_at_bye_exceeded) {
+		bye = 103;
 	} else if(oneway) {
 		bye = 101;
 	} else {
@@ -3331,8 +3336,12 @@ Calltable::cleanup( time_t currtime ) {
 		     (currtime - call->get_last_packet_time() > rtptimeout) ||
 		     (currtime - call->first_packet_time > absolute_timeout))) ||
 		   (call->oneway == 1 and (currtime - call->get_last_packet_time() > opt_onewaytimeout))) {
-			if(currtime && (currtime - call->first_packet_time > absolute_timeout)) {
-				call->absolute_timeout_exceeded = 1;
+			if(currtime) {
+				if(currtime - call->first_packet_time > absolute_timeout) {
+					call->absolute_timeout_exceeded = 1;
+				} else if(call->destroy_call_at_bye && call->destroy_call_at_bye <= currtime) {
+					call->destroy_call_at_bye_exceeded = 1;
+				}
 			}
 			if(verbosity && verbosityE > 1) {
 				syslog(LOG_NOTICE, "Calltable::cleanup - callid %s", call->call_id.c_str());
