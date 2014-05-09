@@ -2062,9 +2062,9 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 					if(opt_callidmerge_secret[0] != '\0') {
 						// header is encoded - decode it 
 						int enclen = base64decode(buf, (const char*)s2, l2);
-						int keysize = strlen(opt_callidmerge_header);
+						int keysize = strlen(opt_callidmerge_secret);
 						for(int i = 0; i < enclen; i++) {
-							buf[i] = buf[i] ^ opt_callidmerge_header[i % keysize];
+							buf[i] = buf[i] ^ opt_callidmerge_secret[i % keysize];
 						}
 						// s2 is now decrypted call-id
 						s2 = (char*)buf;

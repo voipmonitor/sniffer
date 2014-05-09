@@ -1306,7 +1306,7 @@ int load_config(char *fname) {
 		snprintf(opt_callidmerge_header, sizeof(opt_callidmerge_header), "\n%s:", value);
 	}
 	if((value = ini.GetValue("general", "callidmerge_secret", NULL))) {
-		snprintf(opt_callidmerge_secret, sizeof(opt_callidmerge_secret), "\n%s:", value);
+		strncpy(opt_callidmerge_secret, value, sizeof(opt_callidmerge_secret));
 	}
 	if((value = ini.GetValue("general", "domainport", NULL))) {
 		opt_domainport = atoi(value);
@@ -1693,10 +1693,12 @@ int load_config(char *fname) {
 	   (value2 = ini.GetValue("general", "mirror_destination_port", NULL))) {
 		opt_pcap_queue_send_to_ip_port.set_ip(value);
 		opt_pcap_queue_send_to_ip_port.set_port(atoi(value2));
+		opt_nocdr = 1;
 	}
 	if((value = ini.GetValue("general", "mirror_destination", NULL))) {
 		char *pointToPortSeparator = (char*)strchr(value, ':');
 		if(pointToPortSeparator) {
+			opt_nocdr = 1;
 			*pointToPortSeparator = 0;
 			int port = atoi(pointToPortSeparator + 1);
 			if(*value && port) {

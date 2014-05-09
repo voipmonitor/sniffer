@@ -1083,7 +1083,6 @@ Call::convertRawToWav() {
 
 	if(adir == 0 && bdir == 0) {
 		syslog(LOG_ERR, "PCAP file %s/%s/%s.pcap cannot be decoded to WAV probably missing RTP\n", dirname().c_str(), opt_newdir ? "AUDIO" : "", get_fbasename_safe());
-		exit(0);
 		return 1;
 	}
 
@@ -3233,7 +3232,7 @@ Call*
 Calltable::find_by_mergecall_id(char *call_id, unsigned long call_id_len) {
 	string call_idS = string(call_id, call_id_len);
 	lock_calls_mergeMAP();
-	callMAPIT = calls_mergeMAP.find(call_idS);
+	mergeMAPIT = calls_mergeMAP.find(call_idS);
 	if(mergeMAPIT == calls_mergeMAP.end()) {
 		unlock_calls_mergeMAP();
 		// not found

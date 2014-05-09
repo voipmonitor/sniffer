@@ -1,3 +1,11 @@
+10.0RC6 8.5.2014
+================
+- do not connect to the database if mirroring is set
+
+10.0RC5 7.5.2014
+================
+- fix 10.0RC versions (accidentally exit in one function causing crash)
+
 10.0RC4 7.5.2014
 ================
 - do not connect to db if -c switch 
