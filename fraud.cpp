@@ -1263,11 +1263,15 @@ void initFraud() {
 	if(!opt_enable_fraud) {
 		return;
 	}
-	if(opt_nocdr || !checkFraudTables()) {
+	if(opt_nocdr) {
 		opt_enable_fraud = false;
 		return;
 	}
 	if(!isExistsFraudAlerts()) {
+		return;
+	}
+	if(!checkFraudTables()) {
+		opt_enable_fraud = false;
 		return;
 	}
 	if(!countryCodes) {
