@@ -25,8 +25,6 @@
 #include <sys/statvfs.h>
 #include <curl/curl.h>
 #include <cerrno>
-#include <openssl/bio.h>
-#include <openssl/evp.h>
 
 #include "voipmonitor.h"
 
@@ -2130,4 +2128,3 @@ bool isGunzip(const char *zipFilename) {
 	}
 	return(ret);
 }
-

@@ -1,3 +1,7 @@
+10.0RC9 10.5.2014
+=================
+- fix callidmerge_header and callidmerge_secret feature
+
 10.0RC8 10.5.2014
 =================
 - do not end sniffer when sending mirroring traffic to receiver and the connection resets - properly reconnect once the receiver is up again. 
