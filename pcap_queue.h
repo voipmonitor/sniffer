@@ -278,6 +278,8 @@ protected:
 private:
 	u_char* packetBuffer;
 	PcapQueue *instancePcapHandle;
+	u_int64_t counter_calls_old;
+	u_int64_t counter_sip_packets_old;
 friend void *_PcapQueue_threadFunction(void *arg);
 friend void *_PcapQueue_writeThreadFunction(void *arg);
 };
