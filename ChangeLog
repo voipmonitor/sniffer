@@ -1,3 +1,13 @@
+10.0RC9 10.5.2014
+=================
+- fix callidmerge_header and callidmerge_secret feature
+
+10.0RC8 10.5.2014
+=================
+- do not end sniffer when sending mirroring traffic to receiver and the connection resets - properly reconnect once the receiver is up again. 
+- fix pcap files when sending traffic from different interfaces (TUN / ETH) to one receiver
+- fix indication in CDR when packet loss in kernel / heap is detected so in the GUI CDR shows the loss might be not real
+
 10.0RC7 9.5.2014
 ================
 - fix crash when savertp = header in case the packet was shorter then ip+udp+rtpheader (fixes all versions) 
