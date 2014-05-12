@@ -257,7 +257,9 @@ Call::Call(char *call_id, unsigned long call_id_len, time_t time, void *ct) :
 	b_mos_lqo = -1;
 	oneway = 1;
 	absolute_timeout_exceeded = 0;
-	destroy_call_at_bye_exceeded = 0;
+	bye_timeout_exceeded = 0;
+	rtp_timeout_exceeded = 0;
+	oneway_timeout_exceeded = 0;
 	pcap_drop = 0;
 	
 	onCall_2XX = false;
@@ -1574,8 +1576,12 @@ Call::getKeyValCDRtext() {
 	int bye;
 	if(absolute_timeout_exceeded) {
 		bye = 102;
-	} else if(destroy_call_at_bye_exceeded) {
+	} else if(bye_timeout_exceeded) {
 		bye = 103;
+	} else if(rtp_timeout_exceeded) {
+		bye = 104;
+	} else if(oneway_timeout_exceeded) {
+		bye = 105;
 	} else if(oneway) {
 		bye = 101;
 	} else {
@@ -1988,8 +1994,12 @@ Call::saveToDb(bool enableBatchIfPossible) {
 	int bye;
 	if(absolute_timeout_exceeded) {
 		bye = 102;
-	} else if(destroy_call_at_bye_exceeded) {
+	} else if(bye_timeout_exceeded) {
 		bye = 103;
+	} else if(rtp_timeout_exceeded) {
+		bye = 104;
+	} else if(oneway_timeout_exceeded) {
+		bye = 105;
 	} else if(oneway) {
 		bye = 101;
 	} else {
@@ -3330,20 +3340,31 @@ Calltable::cleanup( time_t currtime ) {
 			syslog(LOG_NOTICE, "Calltable::cleanup - try callid %s", call->call_id.c_str());
 		}
 		// rtptimeout seconds of inactivity will save this call and remove from call table
-		if(currtime == 0 || 
-		   (call->rtppcaketsinqueue == 0 and 
-		    ((call->destroy_call_at != 0 and call->destroy_call_at <= currtime) || 
-		     (call->destroy_call_at_bye != 0 and call->destroy_call_at_bye <= currtime) || 
-		     (currtime - call->get_last_packet_time() > rtptimeout) ||
-		     (currtime - call->first_packet_time > absolute_timeout))) ||
-		   (call->oneway == 1 and (currtime - call->get_last_packet_time() > opt_onewaytimeout))) {
-			if(currtime) {
-				if(currtime - call->first_packet_time > absolute_timeout) {
-					call->absolute_timeout_exceeded = 1;
-				} else if(call->destroy_call_at_bye && call->destroy_call_at_bye <= currtime) {
-					call->destroy_call_at_bye_exceeded = 1;
+		bool closeCall = false;
+		if(currtime == 0) {
+			closeCall = true;
+		} else { 
+			if(call->rtppcaketsinqueue == 0) {
+				if(call->destroy_call_at != 0 && call->destroy_call_at <= currtime) {
+					closeCall = true;
+				} else if(call->destroy_call_at_bye != 0 && call->destroy_call_at_bye <= currtime) {
+					closeCall = true;
+					call->bye_timeout_exceeded = true;
+				} else if(currtime - call->get_last_packet_time() > rtptimeout) {
+					closeCall = true;
+					call->rtp_timeout_exceeded = true;
+				} else if(currtime - call->first_packet_time > absolute_timeout) {
+					closeCall = true;
+					call->absolute_timeout_exceeded = true;
 				}
 			}
+			if(!closeCall &&
+			   (call->oneway == 1 && (currtime - call->get_last_packet_time() > opt_onewaytimeout))) {
+				closeCall = true;
+				call->oneway_timeout_exceeded = true;
+			}
+		}
+		if(closeCall) {
 			if(verbosity && verbosityE > 1) {
 				syslog(LOG_NOTICE, "Calltable::cleanup - callid %s", call->call_id.c_str());
 			}

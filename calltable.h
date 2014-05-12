@@ -219,7 +219,9 @@ public:
 
 	char oneway;
 	char absolute_timeout_exceeded;
-	char destroy_call_at_bye_exceeded;
+	char bye_timeout_exceeded;
+	char rtp_timeout_exceeded;
+	char oneway_timeout_exceeded;
 	char pcap_drop;
 	unsigned int lastsrcip;
 

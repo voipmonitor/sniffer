@@ -203,6 +203,7 @@ public:
 	string pcapDropCountStat();
 	void initStat();
 	void getThreadCpuUsage(bool writeThread = false);
+	virtual void closeHandlersBeforeRestart() {}
 protected:
 	bool createThread();
 	virtual bool createMainThread();
@@ -507,6 +508,9 @@ public:
 	void setPacketServer(ip_port ipPort, ePacketServerDirection direction);
 	size_t getQueueSize() {
 		return(this->pcapStoreQueue.getQueueSize());
+	}
+	void closeHandlersBeforeRestart() {
+		this->socketClose();
 	}
 protected:
 	bool initThread(void *arg, unsigned int arg2);

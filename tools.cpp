@@ -44,6 +44,7 @@
 #include "rtp.h"
 #include "tools.h"
 #include "md5.h"
+#include "pcap_queue.h"
 
 extern char mac[32];
 extern int verbosity;
@@ -1227,6 +1228,11 @@ bool RestartUpgrade::runRestart(int socket1, int socket2) {
 	}
 	close(socket1);
 	close(socket2);
+	extern ip_port opt_pcap_queue_receive_from_ip_port;
+	extern PcapQueue *pcapQueueStatInterface;
+	if(opt_pcap_queue_receive_from_ip_port && pcapQueueStatInterface) {
+		pcapQueueStatInterface->closeHandlersBeforeRestart();
+	}
 	int rsltExec = execl(this->restartTempScriptFileName.c_str(), "Command-line", 0, NULL);
 	if(rsltExec) {
 		this->errorString = "failed execution restart script";
