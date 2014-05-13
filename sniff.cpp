@@ -2288,6 +2288,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 			if(sip_method == INVITE) {
 				if(!call->seenbye) {
 					call->destroy_call_at = 0;
+					call->destroy_call_at_bye = 0;
 				}
 				if(call->lastSIPresponseNum == 487) {
 					call->new_invite_after_lsr487 = true;
@@ -2467,10 +2468,9 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 			}
 
 			// if the call ends with some of SIP [456]XX response code, we can shorten timeout when the call will be closed 
-			if( (call->saddr == saddr || (call->saddr == daddr) || merged )
-				&&
-			    (sip_method == RES3XX || sip_method == RES4XX || sip_method == RES5XX || sip_method == RES6XX || sip_method == RES403) && lastSIPresponseNum != 401 && lastSIPresponseNum != 407
-				&& lastSIPresponseNum != 501 ) {
+			if((call->saddr == saddr || call->saddr == daddr || merged) &&
+			   (sip_method == RES3XX || sip_method == RES4XX || sip_method == RES5XX || sip_method == RES6XX || sip_method == RES403)) {
+				if(lastSIPresponseNum != 401 && lastSIPresponseNum != 407 && lastSIPresponseNum != 501) {
 					// if the progress time was not set yet set it here so PDD (Post Dial Delay) is accurate if no ringing is present
 					if(call->progress_time == 0) {
 						call->progress_time = header->ts.tv_sec;
@@ -2491,6 +2491,9 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 					}
 					process_packet__parse_custom_headers(call, data, datalen);
 					return call;
+				} else if(!call->destroy_call_at) {
+					call->destroy_call_at = header->ts.tv_sec + 60;
+				}
 			}
 		}
 
