@@ -242,6 +242,8 @@ public:
 	int useSensorId;
 	int useDlt;
 	pcap_t *useHandle;
+	
+	bool force_close;
 
 	vector<string> mergecalls;
 
