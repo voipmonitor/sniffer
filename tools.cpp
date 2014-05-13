@@ -714,6 +714,7 @@ bool PcapDumper::open(const char *fileName, const char *fileNameSpoolRelative, p
 void PcapDumper::dump(pcap_pkthdr* header, const u_char *packet) {
 	extern unsigned int opt_maxpcapsize_mb;
 	if(this->handle && 
+	   header->caplen > 0 && header->caplen <= header->len &&
 	   (!opt_maxpcapsize_mb || this->capsize < opt_maxpcapsize_mb * 1024 * 1024)) {
 		__pcap_dump((u_char*)this->handle, header, packet);
 		extern int opt_packetbuffered;
