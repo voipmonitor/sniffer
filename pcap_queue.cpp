@@ -783,6 +783,8 @@ PcapQueue::PcapQueue(eTypeQueue typeQueue, const char *nameQueue) {
 	this->packetBuffer = NULL;
 	this->instancePcapHandle = NULL;
 	this->initAllReadThreadsOk = false;
+	this->counter_calls_old = 0;
+	this->counter_sip_packets_old = 0;
 }
 
 PcapQueue::~PcapQueue() {
@@ -911,6 +913,14 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 			if(opt_ipaccount) {
 				outStr << "ipacc_buffer[" << lengthIpaccBuffer() << "] ";
 			}
+			extern u_int64_t counter_calls;
+			extern u_int64_t counter_sip_packets;
+			if(this->counter_calls_old && this->counter_sip_packets_old) {
+				outStr << "CPS/SPS[" << (counter_calls - this->counter_calls_old) / statPeriod
+				       << "|" << (counter_sip_packets - this->counter_sip_packets_old) / statPeriod << "] ";
+			}
+			this->counter_calls_old = counter_calls;
+			this->counter_sip_packets_old = counter_sip_packets;
 			outStr << "SQLq[";
 			int sizeSQLq;
 			for(int i = 0; i < opt_mysqlstore_max_threads_cdr; i++) {

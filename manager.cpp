@@ -1253,10 +1253,28 @@ connect:
 		goto connect;
 	}
 
+	// catch the reply
+	size = recv(client, buf, BUFSIZE - 1, 0);
+	buf[size] = '\0';
+
 	while(1) {
 
 		string buf_long;
-		
+		//cout << "New manager connect from: " << inet_ntoa((in_addr)clientInfo.sin_addr) << endl;
+		size = recv(client, buf, BUFSIZE - 1, 0);
+		if (size == -1 or size == 0) {
+			//cerr << "Error in receiving data" << endl;
+			perror("recv()");
+			close(client);
+			sleep(1);
+			goto connect;
+		}
+		buf[size] = '\0';
+//		if(verbosity > 0) syslog(LOG_NOTICE, "recv[%s]\n", buf);
+		//res = parse_command(buf, size, client, 1, buf_long.c_str());
+		res = parse_command(buf, size, client, 1, NULL);
+	
+#if 0	
 		//cout << "New manager connect from: " << inet_ntoa((in_addr)clientInfo.sin_addr) << endl;
 		size = recv(client, buf, BUFSIZE - 1, 0);
 		if (size == -1 or size == 0) {
@@ -1277,6 +1295,7 @@ connect:
 		buf[size] = '\0';
 		if(verbosity > 0) syslog(LOG_NOTICE, "recv[%s]\n", buf);
 		res = parse_command(buf, size, client, 1, buf_long.c_str());
+#endif
 	}
 
 	return 0;

@@ -222,6 +222,9 @@ typedef struct pcaprec_hdr_s {
 TcpReassemblySip tcpReassemblySip;
 ipfrag_data_s ipfrag_data;
 
+u_int64_t counter_calls;
+u_int64_t counter_sip_packets;
+
 extern struct queue_state *qs_readpacket_thread_queue;
 
 map<unsigned int, livesnifferfilter_t*> usersniffer;
@@ -1486,6 +1489,7 @@ Call *new_invite_register(int sip_method, char *data, int datalen, struct pcap_p
 		if(opt_enable_fraud) {
 			fraudBeginCall(call, header->ts);
 		}
+		++counter_calls;
 		if(sip_method == INVITE) {
 			call->seeninvite = true;
 #ifdef DEBUG_INVITE
@@ -1924,8 +1928,11 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 			return(NULL);
 		}
 		
-		if(issip && opt_enable_fraud) {
-			fraudSipPacket(saddr, header->ts);
+		if(issip) {
+			if(opt_enable_fraud) {
+				fraudSipPacket(saddr, header->ts);
+			}
+			++counter_sip_packets;
 		}
 
 		// parse SIP method 
@@ -2754,11 +2761,14 @@ notfound:
 			if((!rtp_threaded || !opt_rtpsave_threaded) &&
 			   !dontsave && ((call->flags & FLAG_SAVERTPHEADER) || (call->flags & FLAG_SAVERTP) || (call->isfax && opt_saveudptl) || record)) {
 				if((call->silencerecording || (opt_onlyRTPheader && !(call->flags & FLAG_SAVERTP))) && !call->isfax) {
-					tmp_u32 = header->caplen;
-					header->caplen = header->caplen - (datalen - RTP_FIXED_HEADERLEN);
-					save_packet(call, header, packet, saddr, source, daddr, dest, istcp, data, datalen, TYPE_RTP, 
-						    dlt, sensor_id);
-					header->caplen = tmp_u32;
+					if(datalen > RTP_FIXED_HEADERLEN &&
+					   header->caplen > (unsigned)(datalen - RTP_FIXED_HEADERLEN)) {
+						tmp_u32 = header->caplen;
+						header->caplen = header->caplen - (datalen - RTP_FIXED_HEADERLEN);
+						save_packet(call, header, packet, saddr, source, daddr, dest, istcp, data, datalen, TYPE_RTP, 
+							    dlt, sensor_id);
+						header->caplen = tmp_u32;
+					}
 				} else {
 					save_packet(call, header, packet, saddr, source, daddr, dest, istcp, data, datalen, TYPE_RTP, 
 						    dlt, sensor_id);
@@ -2843,11 +2853,14 @@ notfound:
 			if((!rtp_threaded || !opt_rtpsave_threaded) &&
 			   !dontsave && ((call->flags & FLAG_SAVERTP) || (call->isfax && opt_saveudptl) || record)) {
 				if((call->silencerecording || (opt_onlyRTPheader && !(call->flags & FLAG_SAVERTP))) && !call->isfax) {
-					tmp_u32 = header->caplen;
-					header->caplen = header->caplen - (datalen - RTP_FIXED_HEADERLEN);
-					save_packet(call, header, packet, saddr, source, daddr, dest, istcp, data, datalen, TYPE_RTP, 
-						    dlt, sensor_id);
-					header->caplen = tmp_u32;
+					if(datalen > RTP_FIXED_HEADERLEN &&
+					   header->caplen > (unsigned)(datalen - RTP_FIXED_HEADERLEN)) {
+						tmp_u32 = header->caplen;
+						header->caplen = header->caplen - (datalen - RTP_FIXED_HEADERLEN);
+						save_packet(call, header, packet, saddr, source, daddr, dest, istcp, data, datalen, TYPE_RTP, 
+							    dlt, sensor_id);
+						header->caplen = tmp_u32;
+					}
 				} else {
 					save_packet(call, header, packet, saddr, source, daddr, dest, istcp, data, datalen, TYPE_RTP, 
 						    dlt, sensor_id);

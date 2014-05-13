@@ -1,3 +1,8 @@
+10.0RC10 13.5.2014
+==================
+- properly fix crash when savertp = header in case the packet was shorter then ip+udp+rtpheader (fixes all versions) 
+- add call per second and sip packets per second to the syslog info line
+
 10.0RC9 10.5.2014
 =================
 - fix callidmerge_header and callidmerge_secret feature
