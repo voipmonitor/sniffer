@@ -1428,12 +1428,16 @@ bool isExistsFraudAlerts() {
 	if(opt_nocdr) {
 		return(false);
 	}
+	bool rslt = false;
 	SqlDb *sqlDb = createSqlObject();
-	sqlDb->query("select id, alert_type, descr from alerts\
-		      where alert_type > 20 and\
-			    (disable is null or not disable)\
-			    limit 1");
-	bool rslt = sqlDb->fetchRow();
+	sqlDb->query("show tables like 'alerts'");
+	if(sqlDb->fetchRow()) {
+		sqlDb->query("select id, alert_type, descr from alerts\
+			      where alert_type > 20 and\
+				    (disable is null or not disable)\
+				    limit 1");
+		rslt = sqlDb->fetchRow();
+	}
 	delete sqlDb;
 	return(rslt);
 }

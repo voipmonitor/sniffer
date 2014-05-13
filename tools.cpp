@@ -25,6 +25,8 @@
 #include <sys/statvfs.h>
 #include <curl/curl.h>
 #include <cerrno>
+#include <json/json.h>
+#include <iomanip>
 
 #include "voipmonitor.h"
 
@@ -380,6 +382,81 @@ bool get_url_file(const char *url, const char *toFile, string *error) {
 				}
 			}
 			fclose(fp);
+		}
+		if(headers) {
+			curl_slist_free_all(headers);
+		}
+		curl_easy_cleanup(curl);
+	} else {
+		if(error) {
+			*error = "initialize curl failed";
+		}
+	}
+	return(rslt);
+}
+
+size_t _get_url_response_writer_function(void *ptr, size_t size, size_t nmemb, SimpleBuffer *response) {
+	response->add(ptr, size * nmemb);
+	return size * nmemb;
+}
+bool get_url_response(const char *url, SimpleBuffer *response, vector<dstring> *postData, string *error) {
+	if(error) {
+		*error = "";
+	}
+	bool rslt = false;
+	CURL *curl = curl_easy_init();
+	if(curl) {
+		struct curl_slist *headers = NULL;
+		char errorBuffer[1024];
+		curl_easy_setopt(curl, CURLOPT_ERRORBUFFER, errorBuffer);
+		curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, _get_url_response_writer_function);
+		curl_easy_setopt(curl, CURLOPT_WRITEDATA, response);
+		curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, false);
+		curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, false);
+		char *urlPathSeparator = (char*)strchr(url + 8, '/');
+		string path = urlPathSeparator ? urlPathSeparator : "/";
+		string host = urlPathSeparator ? string(url).substr(0, urlPathSeparator - url) : url;
+		string hostProtPrefix;
+		size_t posEndHostProtPrefix = host.rfind('/');
+		if(posEndHostProtPrefix != string::npos) {
+			hostProtPrefix = host.substr(0, posEndHostProtPrefix + 1);
+			host = host.substr(posEndHostProtPrefix + 1);
+		}
+		extern map<string, string> hosts;
+		map<string, string>::iterator iter = hosts.find(host.c_str());
+		if(iter != hosts.end()) {
+			string hostIP = iter->second;
+			headers = curl_slist_append(headers, ("Host: " + host).c_str());
+			curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+			curl_easy_setopt(curl, CURLOPT_URL, (hostProtPrefix +  hostIP + path).c_str());
+		} else {
+			curl_easy_setopt(curl, CURLOPT_URL, url);
+		}
+		extern char opt_curlproxy[256];
+		if(opt_curlproxy[0]) {
+			curl_easy_setopt(curl, CURLOPT_PROXY, opt_curlproxy);
+		}
+		string postFields;
+		if(postData) {
+			for(size_t i = 0; i < postData->size(); i++) {
+				if(!postFields.empty()) {
+					postFields.append("&");
+				}
+				postFields.append((*postData)[i][0]);
+				postFields.append("=");
+				postFields.append(url_encode((*postData)[i][1]));
+			}
+			if(!postFields.empty()) {
+				curl_easy_setopt(curl, CURLOPT_POST, 1);
+				curl_easy_setopt(curl, CURLOPT_POSTFIELDS, postFields.c_str());
+			}
+		}
+		if(curl_easy_perform(curl) == CURLE_OK) {
+			rslt = true;
+		} else {
+			if(error) {
+				*error = errorBuffer;
+			}
 		}
 		if(headers) {
 			curl_slist_free_all(headers);
@@ -1613,6 +1690,98 @@ bool SafeAsyncQueue_base::runTimerThread = false;
 bool SafeAsyncQueue_base::terminateTimerThread = false;
 
 
+JsonItem::JsonItem(string name, string value) {
+	this->name = name;
+	this->value = value;
+	this->parse(value);
+}
+
+void JsonItem::parse(string valStr) {
+	////cerr << "valStr: " << valStr << endl;
+	if(valStr[0] != '{' && valStr[0] != '[') {
+		return;
+	}
+	json_object * object = json_tokener_parse(valStr.c_str());
+	json_type objectType = json_object_get_type(object);
+	////cerr << "type: " << objectType << endl;
+	if(objectType == json_type_object) {
+		lh_table *objectItems = json_object_get_object(object);
+		struct lh_entry *objectItem = objectItems->head;
+		while(objectItem) {
+			string fieldName = (char*)objectItem->k;
+			string value = objectItem->v ?
+					json_object_get_string((json_object*)objectItem->v) :
+					"";
+			////cerr << "objectItem: " << fieldName << " - " << value << endl;
+			JsonItem newItem(fieldName, value);
+			this->items.push_back(newItem);
+			objectItem = objectItem->next;
+		}
+	} else if(objectType == json_type_array) {
+		int length = json_object_array_length(object);
+		for(int i = 0; i < length; i++) {
+			json_object *obj = json_object_array_get_idx(object, i);
+			string value;
+			if(obj) {
+				value = json_object_get_string(obj);
+				////cerr << "arrayItem: " << i << " - " << value << endl;
+			}
+			stringstream streamIndexName;
+			streamIndexName << i;
+			JsonItem newItem(streamIndexName.str(), value);
+			this->items.push_back(newItem);
+		}
+	}
+}
+
+JsonItem *JsonItem::getItem(string path, int index) {
+	if(index >= 0) {
+		stringstream streamIndexName;
+		streamIndexName << index;
+		path += '/' + streamIndexName.str();
+	}
+	JsonItem *item = this->getPathItem(path);
+	if(item) {
+		string pathItemName = this->getPathItemName(path);
+		if(path.length()>pathItemName.length()) {
+			return(item->getItem(path.substr(pathItemName.length()+1)));
+		} else {
+			return(item);
+		}
+	}
+	return(NULL);
+}
+
+string JsonItem::getValue(string path, int index) {
+	JsonItem *item = this->getItem(path, index);
+	return(item ? item->value : "");
+}
+
+int JsonItem::getCount(string path) {
+	JsonItem *item = this->getItem(path);
+	return(item ? item->items.size() : 0);
+}
+
+JsonItem *JsonItem::getPathItem(string path) {
+	string pathItemName = this->getPathItemName(path);
+	for(int i = 0; i < (int)this->items.size(); i++) {
+		if(this->items[i].name == pathItemName) {
+			return(&this->items[i]);
+		}
+	}
+	return(NULL);
+}
+
+string JsonItem::getPathItemName(string path) {
+	string pathItemName = path;
+	int sepPos = pathItemName.find('/');
+	if(sepPos > 0) {
+		pathItemName.resize(sepPos);
+	}
+	return(pathItemName);
+}
+
+
 JsonExport::~JsonExport() {
 	while(items.size()) {
 		delete (*items.begin());
@@ -2134,4 +2303,23 @@ bool isGunzip(const char *zipFilename) {
 		fclose(zip);
 	}
 	return(ret);
+}
+
+string url_encode(const string &value) {
+	ostringstream escaped;
+	escaped.fill('0');
+	escaped << hex;
+	for (string::const_iterator i = value.begin(), n = value.end(); i != n; ++i) {
+		string::value_type c = (*i);
+		if (isalnum(c) || c == '-' || c == '_' || c == '.' || c == '~') {
+			escaped << c;
+		}
+		else if (c == ' ')  {
+			escaped << '+';
+		}
+		else {
+			escaped << '%' << setw(2) << ((int) c) << setw(0);
+		}
+	}
+	return escaped.str();
 }
