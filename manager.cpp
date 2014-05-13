@@ -466,7 +466,9 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 				<< sqlDateTimeString(call->calltime()) << "  ";
 				outStr.width(6);
 				outStr << call->duration() << "s  "
-				<< (call->destroy_call_at ? sqlDateTimeString(call->destroy_call_at) : "    -  -     :  :  ")  << "  "
+				<< (call->destroy_call_at ? sqlDateTimeString(call->destroy_call_at) : "    -  -     :  :  ")  << "  ";
+				outStr.width(3);
+				outStr << call->lastSIPresponseNum << "  "
 				<< call->fbasename;
 				outStr << endl;
 			}
