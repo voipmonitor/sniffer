@@ -2101,6 +2101,8 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 						call->mergecalls.push_back(string(s,l));
 					}
 				}
+			} else {
+				merged = 1;
 			}
 		}
 	
