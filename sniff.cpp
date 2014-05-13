@@ -1784,6 +1784,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 	hash_node_call *calls, *node_call;
 
 	*was_rtp = 0;
+	int merged;
 
 	// checking and cleaning stuff every 10 seconds (if some packet arrive) 
 	if (header->ts.tv_sec - last_cleanup > 10){
@@ -2061,6 +2062,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 		}
 
 		// check presence of call-id merge header if callidmerge feature is enabled
+		merged = 0;
 		if(!call and opt_callidmerge_header[0] != '\0') {
 			call = calltable->find_by_mergecall_id(s, l);
 			if(!call) {
@@ -2092,6 +2094,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 					if(!call) {
 						// there is no call with the call-id in merge header - this call will be created as new
 					} else {
+						merged = 1;
 						calltable->lock_calls_mergeMAP();
 						calltable->calls_mergeMAP[string(s, l)] = call;
 						calltable->unlock_calls_mergeMAP();
@@ -2464,7 +2467,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 			}
 
 			// if the call ends with some of SIP [456]XX response code, we can shorten timeout when the call will be closed 
-			if( (call->saddr == saddr || (call->saddr == daddr))
+			if( (call->saddr == saddr || (call->saddr == daddr) || merged )
 				&&
 			    (sip_method == RES3XX || sip_method == RES4XX || sip_method == RES5XX || sip_method == RES6XX || sip_method == RES403) && lastSIPresponseNum != 401 && lastSIPresponseNum != 407
 				&& lastSIPresponseNum != 501 ) {
