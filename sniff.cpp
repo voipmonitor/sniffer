@@ -2288,6 +2288,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 			if(sip_method == INVITE) {
 				if(!call->seenbye) {
 					call->destroy_call_at = 0;
+					call->destroy_call_at_bye = 0;
 				}
 				if(call->lastSIPresponseNum == 487) {
 					call->new_invite_after_lsr487 = true;
@@ -2491,6 +2492,9 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 					}
 					process_packet__parse_custom_headers(call, data, datalen);
 					return call;
+				} else if(!call->destroy_call_at) {
+					call->destroy_call_at = header->ts.tv_sec + 60;
+				}
 			}
 		}
 

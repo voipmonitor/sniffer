@@ -63,6 +63,7 @@ struct listening_worker_arg {
 
 static void updateLivesnifferfilters();
 static bool cmpCallBy_destroy_call_at(Call* a, Call* b);
+static bool cmpCallBy_first_packet_time(Call* a, Call* b);
 
 livesnifferfilter_use_siptypes_s livesnifferfilterUseSipTypes;
 
@@ -441,6 +442,59 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 		calltable->unlock_calls_listMAP();
 		outStr << "-----------" << endl;
 		if ((size = send(client, outStr.str().c_str(), outStr.str().length(), 0)) == -1){
+			cerr << "Error sending data to client" << endl;
+			return -1;
+		}
+		return 0;
+	} else if(strstr(buf, "d_lc_all") != NULL) {
+		ostringstream outStr;
+		map<string, Call*>::iterator callMAPIT;
+		Call *call;
+		vector<Call*> vectCall;
+		calltable->lock_calls_listMAP();
+		for (callMAPIT = calltable->calls_listMAP.begin(); callMAPIT != calltable->calls_listMAP.end(); ++callMAPIT) {
+			vectCall.push_back((*callMAPIT).second);
+		}
+		if(vectCall.size()) { 
+			std::sort(vectCall.begin(), vectCall.end(), cmpCallBy_first_packet_time);
+			for(size_t i = 0; i < vectCall.size(); i++) {
+				call = vectCall[i];
+				outStr.width(15);
+				outStr << call->caller << " -> ";
+				outStr.width(15);
+				outStr << call->called << "  "
+				<< sqlDateTimeString(call->calltime()) << "  ";
+				outStr.width(6);
+				outStr << call->duration() << "s  "
+				<< (call->destroy_call_at ? sqlDateTimeString(call->destroy_call_at) : "    -  -     :  :  ")  << "  ";
+				outStr.width(3);
+				outStr << call->lastSIPresponseNum << "  "
+				<< call->fbasename;
+				outStr << endl;
+			}
+		}
+		calltable->unlock_calls_listMAP();
+		outStr << "-----------" << endl;
+		if ((size = send(client, outStr.str().c_str(), outStr.str().length(), 0)) == -1){
+			cerr << "Error sending data to client" << endl;
+			return -1;
+		}
+		return 0;
+	} else if(strstr(buf, "d_close_call") != NULL) {
+		char fbasename[100];
+		sscanf(buf, "d_close_call %s", fbasename);
+		string rslt = fbasename + string(" missing");
+		map<string, Call*>::iterator callMAPIT;
+		calltable->lock_calls_listMAP();
+		for (callMAPIT = calltable->calls_listMAP.begin(); callMAPIT != calltable->calls_listMAP.end(); ++callMAPIT) {
+			if(!strcmp((*callMAPIT).second->fbasename, fbasename)) {
+				(*callMAPIT).second->force_close = true;
+				rslt = fbasename + string(" close");
+				break;
+			}
+		}
+		calltable->unlock_calls_listMAP();
+		if ((size = send(client, (rslt + "\n").c_str(), rslt.length() + 1, 0)) == -1){
 			cerr << "Error sending data to client" << endl;
 			return -1;
 		}
@@ -1503,6 +1557,9 @@ void updateLivesnifferfilters() {
 
 bool cmpCallBy_destroy_call_at(Call* a, Call* b) {
 	return(a->destroy_call_at < b->destroy_call_at);   
+}
+bool cmpCallBy_first_packet_time(Call* a, Call* b) {
+	return(a->first_packet_time < b->first_packet_time);   
 }
 
 

@@ -36,7 +36,7 @@ headers = $(shell ls -1 *.h | tr "\n" " ")
 
 #LDFLAGS := $(LDFLAGS) -static -static-libgcc
 
-shared: LIBS=-lpthread -lpcap -lz -lvorbis -lvorbisenc -logg -lodbc -lmysqlclient -lrt -lsnappy -lcurl -lssl -lcrypto #-lnids
+shared: LIBS=-lpthread -lpcap -lz -lvorbis -lvorbisenc -logg -lodbc -lmysqlclient -lrt -lsnappy -lcurl -lssl -lcrypto -ljson #-lnids
 shared: CFLAGS+= -DQUEUE_NONBLOCK2 -I/usr/local/include -I/usr/include/mysql/ -Wall -I jitterbuffer/ -L/usr/local/lib/mysql -L/usr/lib/mysql -L/usr/local/lib/ -L/usr/lib64/mysql -fPIC -g3 -O2 
 shared: args = -g3 -Wall  -march=$(GCCARCH) -mtune=${GCCARCH} -O2 
 

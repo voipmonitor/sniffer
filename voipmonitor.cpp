@@ -370,6 +370,9 @@ char odbc_user[256];
 char odbc_password[256];
 char odbc_driver[256];
 
+char cloud_host[256] = "";
+char cloud_token[256] = "";
+
 char get_customer_by_ip_sql_driver[256] = "odbc";
 char get_customer_by_ip_odbc_dsn[256];
 char get_customer_by_ip_odbc_user[256];
@@ -1445,6 +1448,12 @@ int load_config(char *fname) {
 	}
 	if((value = ini.GetValue("general", "odbcdriver", NULL))) {
 		strncpy(odbc_driver, value, sizeof(odbc_driver));
+	}
+	if((value = ini.GetValue("general", "cloud_host", NULL))) {
+		strncpy(cloud_host, value, sizeof(cloud_host));
+	}
+	if((value = ini.GetValue("general", "cloud_token", NULL))) {
+		strncpy(cloud_token, value, sizeof(cloud_token));
 	}
 	if((value = ini.GetValue("general", "database_backup_from_mysqlhost", NULL))) {
 		strncpy(opt_database_backup_from_mysql_host, value, sizeof(opt_database_backup_from_mysql_host));
