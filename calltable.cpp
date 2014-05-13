@@ -756,11 +756,14 @@ read:
 end:
 	if(enable_save_packet && opt_rtpsave_threaded) {
 		if((this->silencerecording || (opt_onlyRTPheader && !(this->flags & FLAG_SAVERTP))) && !this->isfax) {
-			unsigned int tmp_u32 = header->caplen;
-			header->caplen = header->caplen - (datalen - RTP_FIXED_HEADERLEN);
-			save_packet(this, header, packet, saddr, sport, daddr, dport, istcp, (char*)data, datalen, TYPE_RTP, 
-				    dlt, sensor_id);
-			header->caplen = tmp_u32;
+			if(datalen > RTP_FIXED_HEADERLEN &&
+			   header->caplen > (unsigned)(datalen - RTP_FIXED_HEADERLEN)) {
+				unsigned int tmp_u32 = header->caplen;
+				header->caplen = header->caplen - (datalen - RTP_FIXED_HEADERLEN);
+				save_packet(this, header, packet, saddr, sport, daddr, dport, istcp, (char*)data, datalen, TYPE_RTP, 
+					    dlt, sensor_id);
+				header->caplen = tmp_u32;
+			}
 		} else {
 			save_packet(this, header, packet, saddr, sport, daddr, dport, istcp, (char*)data, datalen, TYPE_RTP, 
 				    dlt, sensor_id);
