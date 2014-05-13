@@ -2447,7 +2447,10 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 						if(verbosity > 2)
 							syslog(LOG_NOTICE, "Call answered\n");
 					} else if(strncmp(cseq, call->cancelcseq, cseqlen) == 0) {
-						return NULL;
+						save_packet(call, header, packet, saddr, source, daddr, dest, istcp, data, datalen, TYPE_SIP, 
+							    dlt, sensor_id);
+						process_packet__parse_custom_headers(call, data, datalen);
+						return call;
 					}
 				}
 				if(!call->onCall_2XX) {
