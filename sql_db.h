@@ -66,12 +66,14 @@ public:
 	SqlDb();
 	virtual ~SqlDb();
 	void setConnectParameters(string server, string user, string password, string database = "", bool showversion = true);
+	void setCloudParameters(string cloud_host, string cloud_token);
 	void setLoginTimeout(ulong loginTimeout);
 	virtual bool connect(bool craeteDb = false, bool mainInit = false) = 0;
 	virtual void disconnect() = 0;
 	virtual bool connected() = 0;
 	bool reconnect();
 	virtual bool query(string query) = 0;
+	bool queryByCurl(string query);
 	virtual void prepareQuery(string *query);
 	virtual SqlDb_row fetchRow(bool assoc = false) = 0;
 	virtual string insertQuery(string table, SqlDb_row row, bool enableSqlStringInContent = false, bool escapeAll = false, bool insertIgnore = false);
@@ -102,6 +104,9 @@ public:
 		if(lastErrorString) {
 			this->setLastErrorString(lastErrorString, sysLog);
 		}
+	}
+	void setLastError(unsigned int lastError, string lastErrorString, bool sysLog = false) {
+		this->setLastError(lastError, lastErrorString.c_str(), sysLog);
 	}
 	unsigned int getLastError() {
 		return(this->lastError);
@@ -143,12 +148,18 @@ public:
 	void setEnableSqlStringInContent(bool enableSqlStringInContent);
 	void setDisableNextAttemptIfError();
 	void setEnableNextAttemptIfError();
+	bool isCloud() {
+		return(!cloud_host.empty());
+	}
 protected:
 	string conn_server;
 	string conn_server_ip;
 	string conn_user;
 	string conn_password;
 	string conn_database;
+	string cloud_host;
+	string cloud_redirect;
+	string cloud_token;
 	bool conn_showversion;
 	ulong loginTimeout;
 	unsigned int maxQueryPass;
@@ -156,6 +167,10 @@ protected:
 	bool enableSqlStringInContent;
 	bool disableNextAttemptIfError;
 	bool connecting;
+	vector<string> cloud_data_columns;
+	vector<vector<string> > cloud_data;
+	size_t cloud_data_rows;
+	size_t cloud_data_index;
 private:
 	unsigned int lastError;
 	string lastErrorString;

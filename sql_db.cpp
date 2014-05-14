@@ -41,6 +41,23 @@ extern volatile int calls_cdr_save_counter;
 extern volatile int calls_message_save_counter;
 extern int opt_enable_fraud;
 
+extern char sql_driver[256];
+
+extern char mysql_host[256];
+extern char mysql_database[256];
+extern char mysql_user[256];
+extern char mysql_password[256];
+extern int opt_mysql_port;
+extern int opt_skiprtpdata;
+
+extern char odbc_dsn[256];
+extern char odbc_user[256];
+extern char odbc_password[256];
+extern char odbc_driver[256];
+
+extern char cloud_host[256];
+extern char cloud_token[256];
+
 int sql_noerror = 0;
 int sql_disable_next_attempt_if_error = 0;
 bool opt_cdr_partition_oldver = false;
@@ -210,6 +227,8 @@ SqlDb::SqlDb() {
 	this->enableSqlStringInContent = false;
 	this->disableNextAttemptIfError = false;
 	this->connecting = false;
+	this->cloud_data_rows = 0;
+	this->cloud_data_index = 0;
 }
 
 SqlDb::~SqlDb() {
@@ -221,6 +240,11 @@ void SqlDb::setConnectParameters(string server, string user, string password, st
 	this->conn_password = password;
 	this->conn_database = database;
 	this->conn_showversion = showversion;
+}
+
+void SqlDb::setCloudParameters(string cloud_host, string cloud_token) {
+	this->cloud_host = cloud_host;
+	this->cloud_token = cloud_token;
 }
 
 void SqlDb::setLoginTimeout(ulong loginTimeout) {
@@ -241,6 +265,108 @@ bool SqlDb::reconnect() {
 		syslog(LOG_INFO, "reconnect rslt: %s", rslt ? "OK" : "FAIL");
 	}
 	return(rslt);
+}
+
+bool SqlDb::queryByCurl(string query) {
+	cloud_data_columns.clear();
+	cloud_data.clear();
+	cloud_data_rows = 0;
+	cloud_data_index = 0;
+	clearLastError();
+	bool ok;
+	vector<dstring> postData;
+	postData.push_back(dstring("query", query.c_str()));
+	postData.push_back(dstring("token", cloud_token));
+	for(unsigned int pass = 0; pass < this->maxQueryPass; pass++) {
+		ok = false;
+		SimpleBuffer responseBuffer;
+		string error;
+		bool tryNext = false;
+		get_url_response(cloud_redirect.empty() ? cloud_host.c_str() : cloud_redirect.c_str(),
+				 &responseBuffer, &postData, &error);
+		if(error.empty()) {
+			if(!responseBuffer.empty()) {
+				if(responseBuffer.isJsonObject()) {
+					JsonItem jsonData;
+					jsonData.parse((char*)responseBuffer);
+					string result = jsonData.getValue("result");
+					trim(result);
+					if(!strcasecmp(result.c_str(), "OK")) {
+						ok = true;
+					} else if(!strncasecmp(result.c_str(), "REDIRECT TO", 11)) {
+						cloud_redirect = result.substr(11);
+						trim(cloud_redirect);
+						if(cloud_redirect.empty()) {
+							setLastError(0, "missing redirect ip / server", true);
+						} else {
+							pass = 0;
+							continue;
+						}
+					} else {
+						unsigned int errorCode = atol(result.c_str());
+						size_t posSeparator = result.find('|');
+						string errorString;
+						if(posSeparator != string::npos) {
+							size_t posSeparator2 = result.find('|', posSeparator + 1);
+							if(posSeparator2 != string::npos) {
+								tryNext = atoi(result.substr(posSeparator + 1).c_str());
+								errorString = result.substr(posSeparator2 + 1);
+							} else {
+								errorString = result.substr(posSeparator + 1);
+							}
+						} else {
+							errorString = result;
+						}
+						if(!sql_noerror) {
+							setLastError(errorCode, errorString.c_str(), true);
+						}
+						if(sql_noerror || sql_disable_next_attempt_if_error || this->disableNextAttemptIfError ||
+						   errorCode == ER_PARSE_ERROR) {
+							break;
+						} else if(pass < this->maxQueryPass - 5) {
+							pass = this->maxQueryPass - 5;
+						}
+					}
+					if(ok) {
+						JsonItem *dataJsonDataRows = jsonData.getItem("data_rows");
+						if(dataJsonDataRows) {
+							cloud_data_rows = atol(dataJsonDataRows->getLocalValue().c_str());
+						}
+						JsonItem *dataJsonItems = jsonData.getItem("data");
+						if(dataJsonItems) {
+							for(size_t i = 0; i < dataJsonItems->getLocalCount(); i++) {
+								JsonItem *dataJsonItem = dataJsonItems->getLocalItem(i);
+								for(size_t j = 0; j < dataJsonItem->getLocalCount(); j++) {
+									string dataItem = dataJsonItem->getLocalItem(j)->getLocalValue();
+									if(i == 0) {
+										cloud_data_columns.push_back(dataItem);
+									} else {
+										if(cloud_data.size() < i) {
+											vector<string> row;
+											cloud_data.push_back(row);
+										}
+										cloud_data[i-1].push_back(dataItem);
+									}
+								}
+							}
+						}
+						break;
+					}
+				} else {
+					setLastError(0, "bad response - " + string(responseBuffer), true);
+				}
+			} else {
+				setLastError(0, "response is empty", true);
+			}
+		} else {
+			setLastError(0, error.c_str(), true);
+		}
+		if(!ok && !tryNext) {
+			break;
+		}
+		sleep(1);
+	}
+	return(ok);
 }
 
 void SqlDb::prepareQuery(string *query) {
@@ -326,9 +452,17 @@ int SqlDb::getIdOrInsert(string table, string idField, string uniqueField, SqlDb
 }
 
 int SqlDb::getIndexField(string fieldName) {
-	for(size_t i = 0; i < this->fields.size(); i++) {
-		if(this->fields[i] == fieldName) {
-			return(i);
+	if(isCloud()) {
+		for(size_t i = 0; i < this->cloud_data_columns.size(); i++) {
+			if(this->cloud_data_columns[i] == fieldName) {
+				return(i);
+			}
+		}
+	} else {
+		for(size_t i = 0; i < this->fields.size(); i++) {
+			if(this->fields[i] == fieldName) {
+				return(i);
+			}
 		}
 	}
 	return(-1);
@@ -370,6 +504,9 @@ SqlDb_mysql::~SqlDb_mysql() {
 }
 
 bool SqlDb_mysql::connect(bool createDb, bool mainInit) {
+	if(isCloud()) {
+		return(true);
+	}
 	this->connecting = true;
 	pthread_mutex_lock(&mysqlconnect_lock);
 	this->hMysql = mysql_init(NULL);
@@ -446,11 +583,11 @@ bool SqlDb_mysql::connect(bool createDb, bool mainInit) {
 }
 
 int SqlDb_mysql::multi_on() {
-	return mysql_set_server_option(this->hMysql, MYSQL_OPTION_MULTI_STATEMENTS_ON);
+	return isCloud() ? true : mysql_set_server_option(this->hMysql, MYSQL_OPTION_MULTI_STATEMENTS_ON);
 }
 
 int SqlDb_mysql::multi_off() {
-	return mysql_set_server_option(this->hMysql, MYSQL_OPTION_MULTI_STATEMENTS_OFF);
+	return isCloud() ? true : mysql_set_server_option(this->hMysql, MYSQL_OPTION_MULTI_STATEMENTS_OFF);
 }
 
 int SqlDb_mysql::getDbMajorVersion() {
@@ -508,6 +645,9 @@ bool SqlDb_mysql::createRoutine(string routine, string routineName, string routi
 }
 
 void SqlDb_mysql::disconnect() {
+	if(isCloud()) {
+		return;
+	}
 	if(this->hMysqlRes) {
 		while(mysql_fetch_row(this->hMysqlRes));
 		mysql_free_result(this->hMysqlRes);
@@ -528,10 +668,17 @@ void SqlDb_mysql::disconnect() {
 }
 
 bool SqlDb_mysql::connected() {
-	return(this->hMysqlConn != NULL);
+	return(isCloud() ? true : this->hMysqlConn != NULL);
 }
 
 bool SqlDb_mysql::query(string query) {
+	if(isCloud()) {
+		this->prepareQuery(&query);
+		if(verbosity > 1) {
+			syslog(LOG_INFO, query.c_str());
+		}
+		return(this->queryByCurl(query));
+	}
 	if(this->hMysqlRes) {
 		while(mysql_fetch_row(this->hMysqlRes));
 		mysql_free_result(this->hMysqlRes);
@@ -606,7 +753,15 @@ bool SqlDb_mysql::query(string query) {
 
 SqlDb_row SqlDb_mysql::fetchRow(bool assoc) {
 	SqlDb_row row(this);
-	if(this->hMysqlConn) {
+	if(isCloud()) {
+		if(cloud_data_index < cloud_data_rows &&
+		   cloud_data_index < cloud_data.size()) {
+			for(size_t i = 0; i < min(cloud_data[cloud_data_index].size(), cloud_data_columns.size()); i++) {
+				row.add(cloud_data[cloud_data_index][i], assoc ? cloud_data_columns[i] : "");
+			}
+			++cloud_data_index;
+		}
+	} else if(this->hMysqlConn) {
 		if(!this->hMysqlRes) {
 			this->hMysqlRes = mysql_use_result(this->hMysqlConn);
 			if(this->hMysqlRes) {
@@ -1253,25 +1408,15 @@ int MySqlStore::getSizeMult(int n, ...) {
 	return(size);
 }
 
-extern char sql_driver[256];
-
-extern char mysql_host[256];
-extern char mysql_database[256];
-extern char mysql_user[256];
-extern char mysql_password[256];
-extern int opt_mysql_port;
-extern int opt_skiprtpdata;
-
-extern char odbc_dsn[256];
-extern char odbc_user[256];
-extern char odbc_password[256];
-extern char odbc_driver[256];
 
 SqlDb *createSqlObject() {
 	SqlDb *sqlDb = NULL;
 	if(isSqlDriver("mysql")) {
 		sqlDb = new SqlDb_mysql();
 		sqlDb->setConnectParameters(mysql_host, mysql_user, mysql_password, mysql_database);
+		if(cloud_host[0]) {
+			sqlDb->setCloudParameters(cloud_host, cloud_token);
+		}
 	} else if(isSqlDriver("odbc")) {
 		SqlDb_odbc *sqlDb_odbc = new SqlDb_odbc();
 		sqlDb_odbc->setOdbcVersion(SQL_OV_ODBC3);
@@ -1306,7 +1451,7 @@ string sqlEscapeString(const char *inputStr, int length, const char *typeDb, Sql
 	if(!length) {
 		length = strlen(inputStr);
 	}
-	if(isTypeDb("mysql", sqlDbMysql ? sqlDbMysql->getTypeDb().c_str() : typeDb)) {
+	if(isTypeDb("mysql", sqlDbMysql ? sqlDbMysql->getTypeDb().c_str() : typeDb) && !cloud_host[0]) {
 		bool okEscape = false;
 		int sizeBuffer = length * 2 + 10;
 		char *buffer = new char[sizeBuffer];

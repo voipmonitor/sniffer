@@ -268,6 +268,9 @@ Call::Call(char *call_id, unsigned long call_id_len, time_t time, void *ct) :
 	useSensorId = opt_id_sensor;
 	useDlt = global_pcap_dlink;
 	useHandle = global_pcap_handle;
+	
+	force_close = false;
+	
 	first_codec = -1;
 }
 
@@ -3344,7 +3347,7 @@ Calltable::cleanup( time_t currtime ) {
 		}
 		// rtptimeout seconds of inactivity will save this call and remove from call table
 		bool closeCall = false;
-		if(currtime == 0) {
+		if(currtime == 0 || call->force_close) {
 			closeCall = true;
 		} else { 
 			if(call->rtppcaketsinqueue == 0) {

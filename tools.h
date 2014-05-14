@@ -22,6 +22,36 @@
 
 using namespace std;
 
+struct dstring
+{
+	dstring() {
+	}
+	dstring(std::string str1, std::string str2) {
+		str[0] = str1;
+		str[1] = str2;
+	}
+	std::string operator [] (int indexStr) {
+		return(str[indexStr]);
+	}
+	bool operator == (const dstring& other) const { 
+		return(this->str[0] == other.str[0] &&
+		       this->str[1] == other.str[1]); 
+	}
+	std::string str[2];
+};
+
+struct d_u_int32_t
+{
+	d_u_int32_t(u_int32_t val1 = 0, u_int32_t val2 = 0) {
+		val[0] = val1;
+		val[1] = val2;
+	}
+	u_int32_t operator [] (int indexVal) {
+		return(val[indexVal]);
+	}
+	u_int32_t val[2];
+};
+
 int getUpdDifTime(struct timeval *before);
 int getDifTime(struct timeval *before);
 int msleep(long msec);
@@ -34,6 +64,74 @@ inline unsigned long long mv_r(const char *src, const char *dst) { return(cp_r(s
 unsigned long long copy_file(const char *src, const char *dst, bool move = false);
 inline unsigned long long move_file(const char *src, const char *dst) { return(copy_file(src, dst, true)); }
 bool get_url_file(const char *url, const char *toFile, string *error = NULL);
+class SimpleBuffer {
+public:
+	SimpleBuffer(u_int32_t capacityReserve = 0) {
+		buffer = NULL;
+		bufferLength = 0;
+		bufferCapacity = 0;
+		this->capacityReserve = capacityReserve;
+	}
+	~SimpleBuffer() {
+		destroy();
+	}
+	void add(void *data, u_int32_t dataLength) {
+		if(!data || !dataLength) {
+			return;
+		}
+		if(!buffer) {
+			buffer = new u_char[dataLength + capacityReserve + 1];
+			bufferCapacity = dataLength + capacityReserve + 1;
+		} else if(bufferLength + dataLength > capacityReserve) {
+			u_char *bufferNew = new u_char[bufferLength + dataLength + capacityReserve + 1];
+			memcpy(bufferNew, buffer, bufferLength);
+			delete [] buffer;
+			buffer = bufferNew;
+			bufferCapacity = bufferLength + dataLength + capacityReserve + 1;
+		}
+		memcpy(buffer + bufferLength, data, dataLength);
+		bufferLength += dataLength;
+	}
+	void clear() {
+		bufferLength = 0;
+	}
+	void destroy() {
+		if(buffer) {
+			delete [] buffer;
+			buffer = 0;
+		}
+		bufferLength = 0;
+		bufferCapacity = 0;
+	}
+	bool empty() {
+		return(bufferLength == 0);
+	}
+	operator char*() {
+		if(bufferLength == 0) {
+			return((char*)"");
+		} else {
+			if(bufferCapacity <= bufferLength) {
+				u_char *newBuffer = new u_char[bufferLength + 1];
+				memcpy(newBuffer, buffer, bufferLength);
+				delete [] buffer;
+				buffer = newBuffer;
+				++bufferCapacity;
+			}
+			buffer[bufferLength] = 0;
+			return((char*)buffer);
+		}
+		return((char*)"");
+	}
+	bool isJsonObject() {
+		return(bufferLength && buffer[0] == '{' && buffer[bufferLength - 1] == '}');
+	}
+private:
+	u_char *buffer;
+	u_int32_t bufferLength;
+	u_int32_t bufferCapacity;
+	u_int32_t capacityReserve;
+};
+bool get_url_response(const char *url, SimpleBuffer *response, vector<dstring> *postData, string *error = NULL);
 double ts2double(unsigned int sec, unsigned int usec);
 long long GetFileSize(std::string filename);
 long long GetFileSizeDU(std::string filename);
@@ -80,36 +178,6 @@ public:
 private:
 	 size_t beg_index_, end_index_, size_, capacity_;
 	 char *data_;
-};
-
-struct dstring
-{
-	dstring() {
-	}
-	dstring(std::string str1, std::string str2) {
-		str[0] = str1;
-		str[1] = str2;
-	}
-	std::string operator [] (int indexStr) {
-		return(str[indexStr]);
-	}
-	bool operator == (const dstring& other) const { 
-		return(this->str[0] == other.str[0] &&
-		       this->str[1] == other.str[1]); 
-	}
-	std::string str[2];
-};
-
-struct d_u_int32_t
-{
-	d_u_int32_t(u_int32_t val1 = 0, u_int32_t val2 = 0) {
-		val[0] = val1;
-		val[1] = val2;
-	}
-	u_int32_t operator [] (int indexVal) {
-		return(val[indexVal]);
-	}
-	u_int32_t val[2];
 };
 
 struct ip_port
@@ -1226,6 +1294,25 @@ void SafeAsyncQueue<type_queue_item>::shiftPush() {
 	}
 }
 
+class JsonItem {
+public:
+	JsonItem(string name = "", string value = "");
+	void parse(string valStr);
+	JsonItem *getItem(string path, int index = -1);
+	string getValue(string path, int index = -1);
+	int getCount(string path);
+	string getLocalName() { return(this->name); }
+	string getLocalValue() { return(this->value); }
+	JsonItem *getLocalItem(int index = -1) { return(index == -1 ? this : &this->items[index]); }
+	size_t getLocalCount() { return(this->items.size()); }
+private:
+	JsonItem *getPathItem(string path);
+	string getPathItemName(string path);
+	string name;
+	string value;
+	vector<JsonItem> items;
+};
+
 class JsonExport {
 public:
 	enum eTypeItem {
@@ -1293,5 +1380,7 @@ string _gunzip_s(const char *zipFilename, const char *unzipFilename);
 string __gunzip_s(FILE *zip, FILE *unzip);
 int __gunzip(FILE *zip, FILE *unzip);
 bool isGunzip(const char *zipFilename);
+
+string url_encode(const string &value);
 
 #endif

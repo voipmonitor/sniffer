@@ -1784,6 +1784,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 	hash_node_call *calls, *node_call;
 
 	*was_rtp = 0;
+	int merged;
 
 	// checking and cleaning stuff every 10 seconds (if some packet arrive) 
 	if (header->ts.tv_sec - last_cleanup > 10){
@@ -2061,6 +2062,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 		}
 
 		// check presence of call-id merge header if callidmerge feature is enabled
+		merged = 0;
 		if(!call and opt_callidmerge_header[0] != '\0') {
 			call = calltable->find_by_mergecall_id(s, l);
 			if(!call) {
@@ -2092,12 +2094,15 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 					if(!call) {
 						// there is no call with the call-id in merge header - this call will be created as new
 					} else {
+						merged = 1;
 						calltable->lock_calls_mergeMAP();
 						calltable->calls_mergeMAP[string(s, l)] = call;
 						calltable->unlock_calls_mergeMAP();
 						call->mergecalls.push_back(string(s,l));
 					}
 				}
+			} else {
+				merged = 1;
 			}
 		}
 	
@@ -2285,6 +2290,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 			if(sip_method == INVITE) {
 				if(!call->seenbye) {
 					call->destroy_call_at = 0;
+					call->destroy_call_at_bye = 0;
 				}
 				if(call->lastSIPresponseNum == 487) {
 					call->new_invite_after_lsr487 = true;
@@ -2443,7 +2449,10 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 						if(verbosity > 2)
 							syslog(LOG_NOTICE, "Call answered\n");
 					} else if(strncmp(cseq, call->cancelcseq, cseqlen) == 0) {
-						return NULL;
+						save_packet(call, header, packet, saddr, source, daddr, dest, istcp, data, datalen, TYPE_SIP, 
+							    dlt, sensor_id);
+						process_packet__parse_custom_headers(call, data, datalen);
+						return call;
 					}
 				}
 				if(!call->onCall_2XX) {
@@ -2464,10 +2473,9 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 			}
 
 			// if the call ends with some of SIP [456]XX response code, we can shorten timeout when the call will be closed 
-			if( (call->saddr == saddr || (call->saddr == daddr))
-				&&
-			    (sip_method == RES3XX || sip_method == RES4XX || sip_method == RES5XX || sip_method == RES6XX || sip_method == RES403) && lastSIPresponseNum != 401 && lastSIPresponseNum != 407
-				&& lastSIPresponseNum != 501 ) {
+//			if((call->saddr == saddr || call->saddr == daddr || merged) &&
+			if (sip_method == RES3XX || sip_method == RES4XX || sip_method == RES5XX || sip_method == RES6XX || sip_method == RES403) {
+				if(lastSIPresponseNum != 401 && lastSIPresponseNum != 407 && lastSIPresponseNum != 501) {
 					// if the progress time was not set yet set it here so PDD (Post Dial Delay) is accurate if no ringing is present
 					if(call->progress_time == 0) {
 						call->progress_time = header->ts.tv_sec;
@@ -2488,6 +2496,9 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 					}
 					process_packet__parse_custom_headers(call, data, datalen);
 					return call;
+				} else if(!call->destroy_call_at) {
+					call->destroy_call_at = header->ts.tv_sec + 60;
+				}
 			}
 		}
 
