@@ -516,6 +516,9 @@ char opt_local_country_code[10] = "local";
 
 map<string, string> hosts;
 
+ip_port sipSendSocket_ip_port;
+SocketSimpleBufferWrite *sipSendSocket = NULL;
+
 
 #define ENABLE_SEMAPHOR_FORK_MODE 0
 #if ENABLE_SEMAPHOR_FORK_MODE
@@ -1880,6 +1883,23 @@ int load_config(char *fname) {
 	if((value = ini.GetValue("general", "defer_create_spooldir", NULL))) {
 		opt_defer_create_spooldir = yesno(value);
 	}
+	if((value = ini.GetValue("general", "sip_send_ip", NULL)) &&
+	   (value2 = ini.GetValue("general", "sip_send_port", NULL))) {
+		sipSendSocket_ip_port.set_ip(value);
+		sipSendSocket_ip_port.set_port(atoi(value2));
+	}
+	if((value = ini.GetValue("general", "sip_send", NULL))) {
+		char *pointToPortSeparator = (char*)strchr(value, ':');
+		if(pointToPortSeparator) {
+			opt_nocdr = 1;
+			*pointToPortSeparator = 0;
+			int port = atoi(pointToPortSeparator + 1);
+			if(*value && port) {
+				sipSendSocket_ip_port.set_ip(value);
+				sipSendSocket_ip_port.set_port(port);
+			}
+		}
+	}
 	
 	/*
 	
@@ -3181,6 +3201,11 @@ int main(int argc, char *argv[]) {
 			tcpReassembly->setDataCallback(httpData);
 		}
 	}
+	
+	if(sipSendSocket_ip_port) {
+		sipSendSocket = new SocketSimpleBufferWrite("send sip", sipSendSocket_ip_port);
+		sipSendSocket->startWriteThread();
+	}
 
 #ifndef FREEBSD
 	if(opt_scanpcapdir[0] != '\0') {
@@ -3462,6 +3487,10 @@ int main(int argc, char *argv[]) {
 	}
 	if(httpData) {
 		delete httpData;
+	}
+	
+	if(sipSendSocket) {
+		delete sipSendSocket;
 	}
 
 	/* obsolete ?

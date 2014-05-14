@@ -1933,6 +1933,12 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 			if(opt_enable_fraud) {
 				fraudSipPacket(saddr, header->ts);
 			}
+			extern SocketSimpleBufferWrite *sipSendSocket;
+			if(sipSendSocket) {
+				u_int16_t header_length = datalen;
+				sipSendSocket->addData(&header_length, 2,
+						       data, datalen);
+			}
 			++counter_sip_packets;
 		}
 
