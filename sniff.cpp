@@ -2107,6 +2107,8 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 						call->mergecalls.push_back(string(s,l));
 					}
 				}
+			} else {
+				merged = 1;
 			}
 		}
 	
@@ -2453,7 +2455,10 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 						if(verbosity > 2)
 							syslog(LOG_NOTICE, "Call answered\n");
 					} else if(strncmp(cseq, call->cancelcseq, cseqlen) == 0) {
-						return NULL;
+						save_packet(call, header, packet, saddr, source, daddr, dest, istcp, data, datalen, TYPE_SIP, 
+							    dlt, sensor_id);
+						process_packet__parse_custom_headers(call, data, datalen);
+						return call;
 					}
 				}
 				if(!call->onCall_2XX) {
@@ -2474,8 +2479,8 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 			}
 
 			// if the call ends with some of SIP [456]XX response code, we can shorten timeout when the call will be closed 
-			if((call->saddr == saddr || call->saddr == daddr || merged) &&
-			   (sip_method == RES3XX || sip_method == RES4XX || sip_method == RES5XX || sip_method == RES6XX || sip_method == RES403)) {
+//			if((call->saddr == saddr || call->saddr == daddr || merged) &&
+			if (sip_method == RES3XX || sip_method == RES4XX || sip_method == RES5XX || sip_method == RES6XX || sip_method == RES403) {
 				if(lastSIPresponseNum != 401 && lastSIPresponseNum != 407 && lastSIPresponseNum != 501) {
 					// if the progress time was not set yet set it here so PDD (Post Dial Delay) is accurate if no ringing is present
 					if(call->progress_time == 0) {
