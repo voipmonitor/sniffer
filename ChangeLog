@@ -1,3 +1,8 @@
+10.0RC11 14.5.2014
+==================
+- SIP 200 packet was never saved if it was not to BYE or to INVITE - all 200 to CANCEL were missing. (probably all versions)
+- release calls from memory sooner and do not wait on rtptimeout on some cases
+
 10.0RC10 13.5.2014
 ==================
 - properly fix crash when savertp = header in case the packet was shorter then ip+udp+rtpheader (fixes all versions) 
