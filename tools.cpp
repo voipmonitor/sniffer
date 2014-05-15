@@ -788,6 +788,8 @@ bool PcapDumper::open(const char *fileName, const char *fileNameSpoolRelative, p
 #define PCAP_DUMPER_PACKET_HEADER_SIZE 16
 #define PCAP_DUMPER_HEADER_SIZE 24
 
+bool incorrectCaplenDetected = false;
+
 void PcapDumper::dump(pcap_pkthdr* header, const u_char *packet) {
 	extern unsigned int opt_maxpcapsize_mb;
 	if(this->handle) {
@@ -803,6 +805,7 @@ void PcapDumper::dump(pcap_pkthdr* header, const u_char *packet) {
 			}
 		} else {
 			syslog(LOG_NOTICE, "pcapdumper: incorrect caplen/len (%u/%u) in %s", header->caplen, header->len, fileName.c_str());
+			incorrectCaplenDetected = true;
 		}
 	}
 }
@@ -2093,6 +2096,7 @@ void __pcap_dump(u_char *user, const struct pcap_pkthdr *h, const u_char *sp) {
 			handler->write((char*)sp, h->caplen);
 		} else {
 			syslog(LOG_NOTICE, "__pcap_dump: incorrect caplen/len (%u/%u) in %s", h->caplen, h->len, handler->fileName.c_str());
+			incorrectCaplenDetected = true;
 		}
 	} else {
 		pcap_dump(user, h, sp);

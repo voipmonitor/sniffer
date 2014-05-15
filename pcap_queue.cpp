@@ -925,31 +925,31 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 			   this->counter_sip_packets_old[1] ||
 			   this->counter_rtp_packets_old ||
 			   this->counter_all_packets_old) {
-				outStr << "C|S|R|T/PS[";
+				outStr << "PS[C:";
 				if(this->counter_calls_old) {
 					outStr << (counter_calls - this->counter_calls_old) / statPeriod;
 				} else {
 					outStr << "-";
 				}
-				outStr << "|(";
+				outStr << " S:";
 				if(this->counter_sip_packets_old[0]) {
 					outStr << (counter_sip_packets[0] - this->counter_sip_packets_old[0]) / statPeriod;
 				} else {
 					outStr << "-";
 				}
-				outStr << "|";
+				outStr << "/";
 				if(this->counter_sip_packets_old[1]) {
 					outStr << (counter_sip_packets[1] - this->counter_sip_packets_old[1]) / statPeriod;
 				} else {
 					outStr << "-";
 				}
-				outStr << ")|";
+				outStr << " R:";
 				if(this->counter_rtp_packets_old) {
 					outStr << (counter_rtp_packets - this->counter_rtp_packets_old) / statPeriod;
 				} else {
 					outStr << "-";
 				}
-				outStr << "|";
+				outStr << " A:";
 				if(this->counter_all_packets_old) {
 					outStr << (counter_all_packets - this->counter_all_packets_old) / statPeriod;
 				} else {
@@ -1065,12 +1065,12 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 			}
 			outStr << "] ";
 		}
-		outStr << "heap[" << setprecision(1) << memoryBufferPerc << "% / "
-				  << setprecision(1) << memoryBufferPerc_trash << "% / ";
+		outStr << "heap[" << setprecision(0) << memoryBufferPerc << "|"
+				  << setprecision(0) << memoryBufferPerc_trash << "|";
 		extern AsyncClose asyncClose;
 		u_int64_t ac_sizeOfDataInMemory = asyncClose.getSizeOfDataInMemory();
 		extern int opt_pcap_dump_asyncwrite_maxsize;
-		outStr << setprecision(1) << 100 * (double)ac_sizeOfDataInMemory / (opt_pcap_dump_asyncwrite_maxsize * 1024ull * 1024ull) << "%] ";
+		outStr << setprecision(0) << 100 * (double)ac_sizeOfDataInMemory / (opt_pcap_dump_asyncwrite_maxsize * 1024ull * 1024ull) << "] ";
 		if(this->instancePcapHandle) {
 			unsigned long bypassBufferSizeExeeded = this->instancePcapHandle->pcapStat_get_bypass_buffer_size_exeeded();
 			string statPacketDrops = this->instancePcapHandle->getStatPacketDrop();
@@ -1096,7 +1096,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 		}
 		double compress = this->pcapStat_get_compress();
 		if(compress >= 0) {
-			outStr << "comp[" << setprecision(1) << compress << "%] ";
+			outStr << "comp[" << setprecision(0) << compress << "] ";
 		}
 		double speed = this->pcapStat_get_speed_mb_s(statPeriod);
 		if(speed >= 0) {
@@ -1189,6 +1189,10 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 		}
 	} else {
 		outStr << outStrStat.str();
+		extern bool incorrectCaplenDetected;
+		if(incorrectCaplenDetected) {
+			outStr << " !CAPLEN";
+		}
 		outStr << endl;
 		outStr << pcapStatString_interface_rslt;
 		string outStr_str = outStr.str();
