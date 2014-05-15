@@ -41,7 +41,7 @@ AC_CHECK_LIB([vorbis], [main], ,AC_MSG_ERROR([Unable to find VORBIS library. Deb
 AC_CHECK_LIB([vorbisenc], [main], ,AC_MSG_ERROR([Unable to find VORBISENC library. Debian: apt-get install libvorbis-dev. Centos/Redhat: yum install libogg-devel libvorbis-devel]))
 # FIXME: Replace `main' with a function in `-lz':
 AC_CHECK_LIB([snappy], [main], ,AC_MSG_ERROR([Unable to find snappy library. Compile from source: https://snappy.googlecode.com/files/snappy-1.1.0.tar.gz]))
-AC_CHECK_LIB([curl], [main], , AC_MSG_ERROR([Unable to find curl library. Install the package via apt-get or yum.]))
+AC_CHECK_LIB([curl], [main], , AC_MSG_ERROR([Unable to find curl library. Install the package via apt-get or yum curl-devel.]))
 AC_CHECK_LIB([z], [main])
 
 # Checks for header files.
