@@ -3046,7 +3046,7 @@ Calltable::hashAdd(in_addr_t addr, unsigned short port, Call* call, int iscaller
 			}
 			if(count >= 3) {
 				// this port/ip combination is already in 3 calls - do not add to 4th to not cause multiplication attack. 
-				syslog(LOG_NOTICE, "SDP: ip addr[%u]:[%u] is already in 3 calls. Limit is 4 to not cause multiplication DDOS\n");
+				syslog(LOG_NOTICE, "SDP: ip addr[%u]:[%u] is already in 3 calls. Limit is 4 to not cause multiplication DDOS\n", addr, port);
 				return;
 			}
 			if(!found) {
