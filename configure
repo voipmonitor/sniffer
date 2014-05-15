@@ -4071,7 +4071,7 @@ _ACEOF
   LIBS="-lcurl $LIBS"
 
 else
-  as_fn_error $? "Unable to find curl library. Install the package via apt-get or yum." "$LINENO" 5
+  as_fn_error $? "Unable to find curl library. Install the package via apt-get or yum curl-devel." "$LINENO" 5
 fi
 
 { $as_echo "$as_me:${as_lineno-$LINENO}: checking for main in -lz" >&5

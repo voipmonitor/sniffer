@@ -437,6 +437,7 @@ pthread_t call_thread;		// ID of worker storing CDR thread
 pthread_t readdump_libpcap_thread;
 pthread_t manager_thread = 0;	// ID of worker manager thread 
 pthread_t manager_client_thread;	// ID of worker manager thread 
+pthread_t manager_ssh_thread;	
 pthread_t cachedir_thread;	// ID of worker cachedir thread 
 pthread_t database_backup_thread;	// ID of worker backup thread 
 int terminating;		// if set to 1, worker thread will terminate
@@ -3131,6 +3132,11 @@ int main(int argc, char *argv[]) {
 			pthread_create(&manager_client_thread, NULL, manager_client, NULL);
 		}
 	};
+
+	//if(opt_sshmanager[0] != '\0') {
+	if(0) {
+		pthread_create(&manager_ssh_thread, NULL, manager_ssh, NULL);
+	}
 
 	// start reading threads
 	if(rtp_threaded &&

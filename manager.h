@@ -7,6 +7,7 @@
 
 void *manager_client(void *dummy);
 void *manager_server(void *dummy);
+void *manager_ssh(void *dummy);
 
 class ManagerClientThread {
 public:
