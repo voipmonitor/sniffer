@@ -3036,11 +3036,18 @@ Calltable::hashAdd(in_addr_t addr, unsigned short port, Call* call, int iscaller
 			// this can happen if the old call is waiting for hangup and is still in memory or two SIP different sessions shares the same call.
 
 			int found = 0;
+			int count = 0;
 			for (node_call = (hash_node_call *)node->calls; node_call != NULL; node_call = node_call->next) {
+				count++;
 				node_call->is_fax = is_fax;
 				if(node_call->call == call) {
 					found = 1;
 				}
+			}
+			if(count >= 3) {
+				// this port/ip combination is already in 3 calls - do not add to 4th to not cause multiplication attack. 
+				syslog(LOG_NOTICE, "SDP: ip addr[%u]:[%u] is already in 3 calls. Limit is 4 to not cause multiplication DDOS\n", addr, port);
+				return;
 			}
 			if(!found) {
 				// the same ip/port is shared with some other call which is not yet in node - add it
@@ -3349,20 +3356,18 @@ Calltable::cleanup( time_t currtime ) {
 		bool closeCall = false;
 		if(currtime == 0 || call->force_close) {
 			closeCall = true;
-		} else { 
-			if(call->rtppcaketsinqueue == 0) {
-				if(call->destroy_call_at != 0 && call->destroy_call_at <= currtime) {
-					closeCall = true;
-				} else if(call->destroy_call_at_bye != 0 && call->destroy_call_at_bye <= currtime) {
-					closeCall = true;
-					call->bye_timeout_exceeded = true;
-				} else if(currtime - call->get_last_packet_time() > rtptimeout) {
-					closeCall = true;
-					call->rtp_timeout_exceeded = true;
-				} else if(currtime - call->first_packet_time > absolute_timeout) {
-					closeCall = true;
-					call->absolute_timeout_exceeded = true;
-				}
+		} else if(call->rtppcaketsinqueue == 0) {
+			if(call->destroy_call_at != 0 && call->destroy_call_at <= currtime) {
+				closeCall = true;
+			} else if(call->destroy_call_at_bye != 0 && call->destroy_call_at_bye <= currtime) {
+				closeCall = true;
+				call->bye_timeout_exceeded = true;
+			} else if(currtime - call->get_last_packet_time() > rtptimeout) {
+				closeCall = true;
+				call->rtp_timeout_exceeded = true;
+			} else if(currtime - call->first_packet_time > absolute_timeout) {
+				closeCall = true;
+				call->absolute_timeout_exceeded = true;
 			}
 			if(!closeCall &&
 			   (call->oneway == 1 && (currtime - call->get_last_packet_time() > opt_onewaytimeout))) {

@@ -15,6 +15,7 @@
 #include <vorbis/codec.h>
 #include <vorbis/vorbisenc.h>
 #include <pcap.h>
+#include <libssh2.h>
 
 #include <sstream>
 
@@ -54,6 +55,13 @@ extern int global_livesniffer_all;
 extern map<unsigned int, octects_live_t*> ipacc_live;
 
 extern map<unsigned int, livesnifferfilter_t*> usersniffer;
+
+extern char ssh_host[1024];
+extern int ssh_port;
+extern char ssh_username[256];
+extern char ssh_password[256];
+extern char ssh_remote_listenhost[1024];
+extern unsigned int ssh_remote_listenport;
 
 using namespace std;
 
@@ -235,42 +243,66 @@ void *listening_worker(void *arguments) {
 	return 0;
 }
 
-int parse_command(char *buf, int size, int client, int eof, const char *buf_long, ManagerClientThread **managerClientThread = NULL) {
+int sendssh(LIBSSH2_CHANNEL *channel, const char *buf, int len) {
+	int wr, i;
+	wr = 0;
+	do {   
+		i = libssh2_channel_write(channel, buf, len);
+		if (i < 0) {
+			fprintf(stderr, "libssh2_channel_write: %d\n", i);
+			return -1;
+		}
+		wr += i;
+	} while(i > 0 && wr < len);
+	return wr;
+}
+
+int sendvm(int socket, LIBSSH2_CHANNEL *channel, const char *buf, size_t len, int mode) {
+	int res;
+	if(channel) {
+		res = sendssh(channel, buf, len);
+	} else {
+		res = send(socket, buf, len, 0);
+	}
+	return res;
+}
+
+int parse_command(char *buf, int size, int client, int eof, const char *buf_long, ManagerClientThread **managerClientThread = NULL, LIBSSH2_CHANNEL *sshchannel = NULL) {
 	char sendbuf[BUFSIZE];
 	u_int32_t uid = 0;
 
 	if(strstr(buf, "getversion") != NULL) {
-		if ((size = send(client, RTPSENSOR_VERSION, strlen(RTPSENSOR_VERSION), 0)) == -1){
+		if ((size = sendvm(client, sshchannel, RTPSENSOR_VERSION, strlen(RTPSENSOR_VERSION), 0)) == -1){
 			cerr << "Error sending data to client" << endl;
 			return -1;
 		}
 	} else if(strstr(buf, "reindexfiles") != NULL) {
 		snprintf(sendbuf, BUFSIZE, "starting reindexing plesae wait...");
-		if ((size = send(client, sendbuf, strlen(sendbuf), 0)) == -1){
+		if ((size = sendvm(client, sshchannel, sendbuf, strlen(sendbuf), 0)) == -1){
 			cerr << "Error sending data to client" << endl;
 			return -1;
 		}
 		convert_filesindex();
 		snprintf(sendbuf, BUFSIZE, "done\r\n");
-		if ((size = send(client, sendbuf, strlen(sendbuf), 0)) == -1){
+		if ((size = sendvm(client, sshchannel, sendbuf, strlen(sendbuf), 0)) == -1){
 			cerr << "Error sending data to client" << endl;
 			return -1;
 		}
 	} else if(strstr(buf, "totalcalls") != NULL) {
 		snprintf(sendbuf, BUFSIZE, "%d", calls_counter);
-		if ((size = send(client, sendbuf, strlen(sendbuf), 0)) == -1){
+		if ((size = sendvm(client, sshchannel, sendbuf, strlen(sendbuf), 0)) == -1){
 			cerr << "Error sending data to client" << endl;
 			return -1;
 		}
 	} else if(strstr(buf, "disablecdr") != NULL) {
 		opt_nocdr = 1;
-		if ((size = send(client, "disabled", 8, 0)) == -1){
+		if ((size = sendvm(client, sshchannel, "disabled", 8, 0)) == -1){
 			cerr << "Error sending data to client" << endl;
 			return -1;
 		}
 	} else if(strstr(buf, "enablecdr") != NULL) {
 		opt_nocdr = 0;
-		if ((size = send(client, "enabled", 7, 0)) == -1){
+		if ((size = sendvm(client, sshchannel, "enabled", 7, 0)) == -1){
 			cerr << "Error sending data to client" << endl;
 			return -1;
 		}
@@ -369,7 +401,7 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 		}
 		resbuf[resbuflen] = ']';
 		resbuflen++;
-		if ((size = send(client, resbuf, resbuflen, 0)) == -1){
+		if ((size = sendvm(client, sshchannel, resbuf, resbuflen, 0)) == -1){
 			cerr << "Error sending data to client" << endl;
 			return -1;
 		}
@@ -406,7 +438,7 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 			calltable->unlock_calls_queue();
 		}
 		outStr << "-----------" << endl;
-		if ((size = send(client, outStr.str().c_str(), outStr.str().length(), 0)) == -1){
+		if ((size = sendvm(client, sshchannel, outStr.str().c_str(), outStr.str().length(), 0)) == -1){
 			cerr << "Error sending data to client" << endl;
 			return -1;
 		}
@@ -441,7 +473,7 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 		}
 		calltable->unlock_calls_listMAP();
 		outStr << "-----------" << endl;
-		if ((size = send(client, outStr.str().c_str(), outStr.str().length(), 0)) == -1){
+		if ((size = sendvm(client, sshchannel, outStr.str().c_str(), outStr.str().length(), 0)) == -1){
 			cerr << "Error sending data to client" << endl;
 			return -1;
 		}
@@ -475,7 +507,7 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 		}
 		calltable->unlock_calls_listMAP();
 		outStr << "-----------" << endl;
-		if ((size = send(client, outStr.str().c_str(), outStr.str().length(), 0)) == -1){
+		if ((size = sendvm(client, sshchannel, outStr.str().c_str(), outStr.str().length(), 0)) == -1){
 			cerr << "Error sending data to client" << endl;
 			return -1;
 		}
@@ -494,7 +526,7 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 			}
 		}
 		calltable->unlock_calls_listMAP();
-		if ((size = send(client, (rslt + "\n").c_str(), rslt.length() + 1, 0)) == -1){
+		if ((size = sendvm(client, sshchannel, (rslt + "\n").c_str(), rslt.length() + 1, 0)) == -1){
 			cerr << "Error sending data to client" << endl;
 			return -1;
 		}
@@ -507,7 +539,7 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 		} else {
 			snprintf(sendbuf, BUFSIZE, "%d", 0);
 		}
-		if ((size = send(client, sendbuf, strlen(sendbuf), 0)) == -1){
+		if ((size = sendvm(client, sshchannel, sendbuf, strlen(sendbuf), 0)) == -1){
 			cerr << "Error sending data to client" << endl;
 			return -1;
 		}
@@ -580,7 +612,7 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 				data->voipall_octects, data->voipall_numpackets);
 			data->fetch_timestamp = time(NULL);
 		}
-		if((size = send(client, sendbuf, strlen(sendbuf), 0)) == -1) {
+		if((size = sendvm(client, sshchannel, sendbuf, strlen(sendbuf), 0)) == -1) {
 			cerr << "Error sending data to client" << endl;
 			return -1;
 		}
@@ -610,7 +642,7 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 		} else {
 			snprintf(sendbuf, BUFSIZE, "%d", 0);
 		}
-		if ((size = send(client, sendbuf, strlen(sendbuf), 0)) == -1){
+		if ((size = sendvm(client, sshchannel, sendbuf, strlen(sendbuf), 0)) == -1){
 			cerr << "Error sending data to client" << endl;
 			return -1;
 		}
@@ -789,7 +821,7 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 			if(tmp1 == tmp2) {
 				if(call->listening_worker_run) {
 					// the thread is already running. 
-					if ((size = send(client, "call already listening", 22, 0)) == -1){
+					if ((size = sendvm(client, sshchannel, "call already listening", 22, 0)) == -1){
 						cerr << "Error sending data to client" << endl;
 						return -1;
 					}
@@ -806,7 +838,7 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 					pthread_t call_thread;
 					pthread_create(&call_thread, NULL, listening_worker, (void *)args);
 					calltable->unlock_calls_listMAP();
-					if ((size = send(client, "success", 7, 0)) == -1){
+					if ((size = sendvm(client, sshchannel, "success", 7, 0)) == -1){
 						cerr << "Error sending data to client" << endl;
 						return -1;
 					}
@@ -815,7 +847,7 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 			}
 		}
 		calltable->unlock_calls_listMAP();
-		if ((size = send(client, "call not found", 14, 0)) == -1){
+		if ((size = sendvm(client, sshchannel, "call not found", 14, 0)) == -1){
 			cerr << "Error sending data to client" << endl;
 			return -1;
 		}
@@ -840,7 +872,7 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 					call->spybufferchar.pop();
 				}
 				pthread_mutex_unlock(&call->buflock);
-				if ((size = send(client, buff, bsize, 0)) == -1){
+				if ((size = sendvm(client, sshchannel, buff, bsize, 0)) == -1){
 					free(buff);
 					calltable->unlock_calls_listMAP();
 					cerr << "Error sending data to client" << endl;
@@ -853,14 +885,14 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 		return 0;
 	} else if(strstr(buf, "reload") != NULL) {
 		reload_config();
-		if ((size = send(client, "reload ok", 9, 0)) == -1){
+		if ((size = sendvm(client, sshchannel, "reload ok", 9, 0)) == -1){
 			cerr << "Error sending data to client" << endl;
 			return -1;
 		}
 		return 0;
 	} else if(strstr(buf, "fraud_refresh") != NULL) {
 		refreshFraud();
-		if ((size = send(client, "reload ok", 9, 0)) == -1){
+		if ((size = sendvm(client, sshchannel, "reload ok", 9, 0)) == -1){
 			cerr << "Error sending data to client" << endl;
 			return -1;
 		}
@@ -876,13 +908,13 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 		fd = open(filename, O_RDONLY);
 		if(fd < 0) {
 			sprintf(buf, "error: cannot open file [%s]", filename);
-			if ((size = send(client, buf, strlen(buf), 0)) == -1){
+			if ((size = sendvm(client, sshchannel, buf, strlen(buf), 0)) == -1){
 				cerr << "Error sending data to client" << endl;
 			}
 			return -1;
 		}
 		while(nread = read(fd, rbuf, sizeof rbuf), nread > 0) {
-			if ((size = send(client, rbuf, nread, 0)) == -1){
+			if ((size = sendvm(client, sshchannel, rbuf, nread, 0)) == -1){
 				close(fd);
 				return -1;
 			}
@@ -901,7 +933,7 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 		} else {
 			strcpy(outbuf, "not_exists");
 		}
-		send(client, outbuf, strlen(outbuf), 0);
+		sendvm(client, sshchannel, outbuf, strlen(outbuf), 0);
 		return 0;
 	} else if(strstr(buf, "fileexists") != NULL) {
 		char filename[2048];
@@ -910,7 +942,7 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 		sscanf(buf, "fileexists %s", filename);
 		size = file_exists(filename);
 		sprintf(buf, "%d", size);
-		send(client, buf, strlen(buf), 0);
+		sendvm(client, sshchannel, buf, strlen(buf), 0);
 		return 0;
 	} else if(strstr(buf, "genwav") != NULL) {
 		char filename[2048];
@@ -929,19 +961,19 @@ getwav2:
 		size = file_exists(wavfile);
 		if(size) {
 			sprintf(buf, "%d", size);
-			send(client, buf, strlen(buf), 0);
+			sendvm(client, sshchannel, buf, strlen(buf), 0);
 			return 0;
 		}
 		if(secondrun > 0) {
 			// wav does not exist 
-			send(client, "0", 1, 0);
+			sendvm(client, sshchannel, "0", 1, 0);
 			return -1;
 		}
 
 		// wav does not exists, check if exists pcap and try to create wav
 		size = file_exists(pcapfile);
 		if(!size) {
-			send(client, "0", 1, 0);
+			sendvm(client, sshchannel, "0", 1, 0);
 			return -1;
 		}
 		sprintf(cmd, "PATH=/bin:/sbin:/usr/bin:/usr/sbin:/usr/local/sbin:/usr/local/bin voipmonitor --rtp-firstleg -k -WRc -r \"%s.pcap\" -y -d %s 2>/dev/null >/dev/null", filename, opt_chdir);
@@ -971,19 +1003,19 @@ getwav:
 			fd = open(wavfile, O_RDONLY);
 			if(fd < 0) {
 				sprintf(buf, "error: cannot open file [%s]", wavfile);
-				if ((res = send(client, buf, strlen(buf), 0)) == -1){
+				if ((res = sendvm(client, sshchannel, buf, strlen(buf), 0)) == -1){
 					cerr << "Error sending data to client" << endl;
 				}
 				return -1;
 			}
 			while(nread = read(fd, rbuf, sizeof rbuf), nread > 0) {
-				if ((res = send(client, rbuf, nread, 0)) == -1){
+				if ((res = sendvm(client, sshchannel, rbuf, nread, 0)) == -1){
 					close(fd);
 					return -1;
 				}
 			}
 			if(eof) {
-				if ((res = send(client, "EOF", 3, 0)) == -1){
+				if ((res = sendvm(client, sshchannel, "EOF", 3, 0)) == -1){
 					close(fd);
 					return -1;
 				}
@@ -993,14 +1025,14 @@ getwav:
 		}
 		if(secondrun > 0) {
 			// wav does not exist 
-			send(client, "0", 1, 0);
+			sendvm(client, sshchannel, "0", 1, 0);
 			return -1;
 		}
 
 		// wav does not exists, check if exists pcap and try to create wav
 		size = file_exists(pcapfile);
 		if(!size) {
-			send(client, "0", 1, 0);
+			sendvm(client, sshchannel, "0", 1, 0);
 			return -1;
 		}
 		sprintf(cmd, "PATH=/bin:/sbin:/usr/bin:/usr/sbin:/usr/local/sbin:/usr/local/bin voipmonitor --rtp-firstleg -k -WRc -r \"%s.pcap\" -y 2>/dev/null >/dev/null", filename);
@@ -1029,19 +1061,19 @@ getwav:
 			fd = open(tsharkfile, O_RDONLY);
 			if(fd < 0) {
 				sprintf(buf, "error: cannot open file [%s]", tsharkfile);
-				if ((res = send(client, buf, strlen(buf), 0)) == -1){
+				if ((res = sendvm(client, sshchannel, buf, strlen(buf), 0)) == -1){
 					cerr << "Error sending data to client" << endl;
 				}
 				return -1;
 			}
 			while(nread = read(fd, rbuf, sizeof rbuf), nread > 0) {
-				if ((res = send(client, rbuf, nread, 0)) == -1){
+				if ((res = sendvm(client, sshchannel, rbuf, nread, 0)) == -1){
 					close(fd);
 					return -1;
 				}
 			}
 			if(eof) {
-				if ((res = send(client, "EOF", 3, 0)) == -1){
+				if ((res = sendvm(client, sshchannel, "EOF", 3, 0)) == -1){
 					close(fd);
 					return -1;
 				}
@@ -1052,7 +1084,7 @@ getwav:
 
 		size = file_exists(pcapfile);
 		if(!size) {
-			send(client, "0", 1, 0);
+			sendvm(client, sshchannel, "0", 1, 0);
 			return -1;
 		}
 	
@@ -1071,13 +1103,13 @@ getwav:
 				return -1;
 			}
 			while(nread = read(fd, rbuf, sizeof rbuf), nread > 0) {
-				if ((res = send(client, rbuf, nread, 0)) == -1){
+				if ((res = sendvm(client, sshchannel, rbuf, nread, 0)) == -1){
 					close(fd);
 					return -1;
 				}
 			}
 			if(eof) {
-				if ((res = send(client, "EOF", 3, 0)) == -1){
+				if ((res = sendvm(client, sshchannel, "EOF", 3, 0)) == -1){
 					close(fd);
 					return -1;
 				}
@@ -1106,7 +1138,7 @@ getwav:
 		extern CustIpCache *custIpCache;
 		unsigned int cust_id = custIpCache->getCustByIp(inet_addr(ip));
 		snprintf(sendbuf, BUFSIZE, "cust_id: %u\n", cust_id);
-		if((size = send(client, sendbuf, strlen(sendbuf), 0)) == -1) {
+		if((size = sendvm(client, sshchannel, sendbuf, strlen(sendbuf), 0)) == -1) {
 			cerr << "Error sending data to client" << endl;
 			return -1;
 		}
@@ -1116,7 +1148,7 @@ getwav:
 		custIpCache->clear();
 		int rslt = custIpCache->fetchAllIpQueryFromDb();
 		snprintf(sendbuf, BUFSIZE, "rslt: %i\n", rslt);
-		if((size = send(client, sendbuf, strlen(sendbuf), 0)) == -1) {
+		if((size = sendvm(client, sshchannel, sendbuf, strlen(sendbuf), 0)) == -1) {
 			cerr << "Error sending data to client" << endl;
 			return -1;
 		}
@@ -1124,7 +1156,7 @@ getwav:
 	} else if(strstr(buf, "custipcache_vect_print") != NULL) {
 		extern CustIpCache *custIpCache;
 		string rslt = custIpCache->printVect();
-		if((size = send(client, rslt.c_str(), rslt.length(), 0)) == -1) {
+		if((size = sendvm(client, sshchannel, rslt.c_str(), rslt.length(), 0)) == -1) {
 			cerr << "Error sending data to client" << endl;
 			return -1;
 		}
@@ -1192,7 +1224,7 @@ getwav:
 			}
 			rsltForSend = restart.getRsltString();
 		}
-		if ((size = send(client, rsltForSend.c_str(), rsltForSend.length(), 0)) == -1){
+		if ((size = sendvm(client, sshchannel, rsltForSend.c_str(), rsltForSend.length(), 0)) == -1){
 			cerr << "Error sending data to client" << endl;
 			return -1;
 		}
@@ -1216,7 +1248,7 @@ getwav:
 			   << "}";
 		outStrStat << endl;
 		string outStrStatStr = outStrStat.str();
-		if ((size = send(client, outStrStatStr.c_str(), outStrStatStr.length(), 0)) == -1){
+		if ((size = sendvm(client, sshchannel, outStrStatStr.c_str(), outStrStatStr.length(), 0)) == -1){
 			cerr << "Error sending data to client" << endl;
 			return -1;
 		}
@@ -1232,7 +1264,7 @@ getwav:
 		} else {
 			rslt = "no PcapQueue mode";
 		}
-		if ((size = send(client, rslt.c_str(), rslt.length(), 0)) == -1){
+		if ((size = sendvm(client, sshchannel, rslt.c_str(), rslt.length(), 0)) == -1){
 			cerr << "Error sending data to client" << endl;
 			return -1;
 		}
@@ -1242,19 +1274,19 @@ getwav:
 	} else if(strstr(buf, "ac_add_thread") != NULL) {
 		extern AsyncClose asyncClose;
 		asyncClose.addThread();
-		if ((size = send(client, "ok\n", 3, 0)) == -1){
+		if ((size = sendvm(client, sshchannel, "ok\n", 3, 0)) == -1){
 			cerr << "Error sending data to client" << endl;
 			return -1;
 		}
 	} else if(strstr(buf, "ac_remove_thread") != NULL) {
 		extern AsyncClose asyncClose;
 		asyncClose.removeThread();
-		if ((size = send(client, "ok\n", 3, 0)) == -1){
+		if ((size = sendvm(client, sshchannel, "ok\n", 3, 0)) == -1){
 			cerr << "Error sending data to client" << endl;
 			return -1;
 		}
 	} else {
-		if ((size = send(client, "command not found\n", 18, 0)) == -1){
+		if ((size = sendvm(client, sshchannel, "command not found\n", 18, 0)) == -1){
 			cerr << "Error sending data to client" << endl;
 			return -1;
 		}
@@ -1406,6 +1438,223 @@ void *manager_read_thread(void * arg) {
 	}
 	return 0;
 }
+
+
+
+void *ssh_accept_thread(void *arg) {
+	
+	char buf[1024*1024]; 
+	int len;
+	LIBSSH2_CHANNEL *channel = (LIBSSH2_CHANNEL*)arg;
+	LIBSSH2_POLLFD *fds = (LIBSSH2_POLLFD*)malloc(sizeof (LIBSSH2_POLLFD));
+
+        fds[0].type = LIBSSH2_POLLFD_CHANNEL;
+        fds[0].fd.channel = channel;
+        fds[0].events = LIBSSH2_POLLFD_POLLIN;
+
+
+	while(1) {
+		int rc = (libssh2_poll(fds, 1, 100));
+		if (rc < 1)
+			continue;
+
+		if (fds[0].revents & LIBSSH2_POLLFD_POLLIN) {
+			len = libssh2_channel_read(channel, buf, 1024*1024);
+			if (LIBSSH2_ERROR_EAGAIN == len) {
+				continue;
+			} else if (len < 0) {
+				break;
+			}
+			if (libssh2_channel_eof(channel)) {
+				//remote client disconnected
+				break;
+			}
+			if(parse_command(buf, len, 0, 0, NULL, NULL, channel) == -1) break;
+			//if(sendvm(0, channel, buf, len, 0) == -1) break;
+		}
+	}
+
+	if(fds) free(fds);
+
+	return 0;
+}
+
+void perror_syslog(const char *msg) {
+	char buf[1024];
+	strerror_r(errno, buf, 1024);
+	syslog(LOG_ERR, "%s:%s\n", msg, buf);
+}
+
+void *manager_ssh_(void) {
+	const char *keyfile1 = "~/.voipmonitor/id_rsa.pub";
+	const char *keyfile2 = "~/.voipmonitor/id_rsa";
+		       
+	int remote_listenport;	
+				       
+	enum {	 
+	AUTH_NONE = 0,
+	AUTH_PASSWORD, 
+	AUTH_PUBLICKEY 
+	};			     
+		       
+	LIBSSH2_SESSION *session;      
+
+	int rc, sock = -1, auth = AUTH_NONE;
+	struct sockaddr_in sin;
+	char *userauthlist;
+	LIBSSH2_LISTENER *listener = NULL;
+	LIBSSH2_CHANNEL *channel = NULL;
+
+	LIBSSH2_POLLFD *fds = (LIBSSH2_POLLFD*)malloc(sizeof (LIBSSH2_POLLFD));
+
+
+	/* Connect to SSH server */
+	sock = socket(PF_INET, SOCK_STREAM, IPPROTO_TCP);
+	sin.sin_family = AF_INET;
+	if (INADDR_NONE == (sin.sin_addr.s_addr = inet_addr(ssh_host))) {
+		perror_syslog("\tinet_addr");
+		return 0;
+	}      
+	sin.sin_port = htons(ssh_port);
+	if (connect(sock, (struct sockaddr*)(&sin), sizeof(struct sockaddr_in)) != 0) {
+		syslog(LOG_ERR, "\tfailed to connect!\n");
+		return 0;
+	}
+	/* Create a session instance */
+	session = libssh2_session_init();
+	if(!session) {
+		syslog(LOG_ERR, "\tCould not initialize SSH session!\n");
+		return 0;
+	}
+       
+	/* ... start it up. This will trade welcome banners, exchange keys,
+	 * and setup crypto, compression, and MAC layers
+	 */
+	rc = libssh2_session_handshake(session, sock);
+	if(rc) {
+		syslog(LOG_ERR, "\tError when starting up SSH session: %d", rc);
+		return 0;
+	}
+	
+#if 0       
+	/* At this point we havn't yet authenticated.  The first thing to do
+	 * is check the hostkey's fingerprint against our known hosts Your app
+	 * may have it hard coded, may go to a file, may present it to the
+	 * user, that's your call
+	 */		    
+	fingerprint = libssh2_hostkey_hash(session, LIBSSH2_HOSTKEY_HASH_SHA1);
+	fprintf(stderr, "Fingerprint: ");
+	for(i = 0; i < 20; i++)
+		fprintf(stderr, "%02X ", (unsigned char)fingerprint[i]);
+	fprintf(stderr, "\n");
+#endif
+
+	/* check what authentication methods are available */
+	userauthlist = libssh2_userauth_list(session, ssh_username, strlen(ssh_username));
+	syslog(LOG_ERR, "\tAuthentication methods: %s", userauthlist);
+	if (strstr(userauthlist, "password"))
+		auth |= AUTH_PASSWORD;
+	if (strstr(userauthlist, "publickey"))
+		auth |= AUTH_PUBLICKEY;
+      
+#if 0 
+	/* check for options */
+	if(argc > 8) {
+		if ((auth & AUTH_PASSWORD) && !strcasecmp(argv[8], "-p"))
+			auth = AUTH_PASSWORD;
+		if ((auth & AUTH_PUBLICKEY) && !strcasecmp(argv[8], "-k"))
+			auth = AUTH_PUBLICKEY;
+	}
+#endif
+   
+	if (auth & AUTH_PASSWORD) {
+		if (libssh2_userauth_password(session, ssh_username, ssh_password)) {
+			syslog(LOG_ERR, "\tAuthentication by password failed.");
+			goto shutdown2;
+		}
+	} else if (auth & AUTH_PUBLICKEY) {
+		if (libssh2_userauth_publickey_fromfile(session, ssh_username, keyfile1, keyfile2, ssh_password)) {
+			syslog(LOG_ERR, "\tAuthentication by public key failed!");
+			goto shutdown2;
+		}
+		syslog(LOG_ERR, "\tAuthentication by public key succeeded.");
+	} else {
+		syslog(LOG_ERR, "\tNo supported authentication methods found!");
+		goto shutdown2;
+	}
+       
+	syslog(LOG_ERR, "\tAsking server to listen on remote %s:%d", ssh_remote_listenhost, ssh_remote_listenport);
+	listener = libssh2_channel_forward_listen_ex(session, ssh_remote_listenhost, ssh_remote_listenport, &remote_listenport, 1);
+	if (!listener) {
+		syslog(LOG_ERR, "\tCould not start the tcpip-forward listener! Note that this can be a problem at the server! Please review the server logs.)");
+		goto shutdown2; 
+	}       
+       
+	syslog(LOG_ERR, "\tServer is listening on %s:%d", ssh_remote_listenhost, remote_listenport);
+	syslog(LOG_ERR, "\tWaiting for remote connection");
+
+	pthread_t threads;
+	pthread_attr_t attr;
+	pthread_attr_init(&attr);
+	/* set the thread detach state */
+	pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
+
+	libssh2_session_set_blocking(session, 0); 
+
+	while(1) {
+
+		fds[0].type = LIBSSH2_POLLFD_LISTENER;
+		fds[0].fd.listener = listener;
+		fds[0].events = LIBSSH2_POLLFD_POLLIN | LIBSSH2_POLLFD_POLLERR | LIBSSH2_POLLFD_SESSION_CLOSED | LIBSSH2_POLLFD_POLLHUP | LIBSSH2_POLLFD_POLLNVAL | LIBSSH2_POLLFD_POLLEX;
+
+		int rc = (libssh2_poll(fds, 1, 100));
+		if (rc < 1)
+			continue;
+
+		if (fds[0].revents & LIBSSH2_POLLFD_POLLIN) {
+			channel = libssh2_channel_forward_accept(listener);
+			if (!channel) {
+				char errb[1024] = "";
+				int len;
+				syslog(LOG_ERR, "Could not accept connection! Note that this can be a problem at the server! Please review the server logs.");
+				libssh2_session_last_error(session, (char**)&errb, &len, 0);
+				syslog(LOG_ERR, "\terr:[%s]\n", errb);
+				continue;
+			}      
+			pthread_create (					/* Create a child thread		*/
+				&threads,			       /* Thread ID (system assigned)  */
+				&attr,			     /* Default thread attributes */
+				ssh_accept_thread,		     /* Thread routine		       */
+				channel);
+		} else {
+			break;
+		}
+	}
+		       
+	if (listener)	  
+		libssh2_channel_forward_cancel(listener);
+
+	libssh2_session_disconnect(session, "Client disconnecting normally");
+	libssh2_session_free(session);
+		       
+shutdown2:     
+	close(sock);   
+
+	libssh2_exit();
+	if(fds) free(fds);
+	       
+	return 0;
+}
+
+void *manager_ssh(void *arg) {
+	while(1 && terminating == 0) {
+		syslog(LOG_NOTICE, "Starting reverse SSH connection service\n");
+		manager_ssh_();
+		syslog(LOG_NOTICE, "SSH service stopped.\n");
+		sleep(1);
+	}
+}
+
 
 void *manager_server(void *dummy) {
 	sockaddr_in sockName;

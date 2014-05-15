@@ -1,3 +1,10 @@
+10.0RC12 15.5.2014
+==================
+- fix crash in case the call is one-way SIP and RTP frames are held in heap due to I/O 
+- limit number of calls which can share the same RTP port which avoids multiplication DDOS (high t2cpu thread)
+- rearrange packetbuffer syslog output and show PS statistics - call per second, sip per second, rtp packets per second and total packets per second
+- sip_send_ip = 127.0.0.1 (or 127.0.0.1:12345) sip_send_port = 12345 will send text SIP messages to TCP socket 
+
 10.0RC11 14.5.2014
 ==================
 - SIP 200 packet was never saved if it was not to BYE or to INVITE - all 200 to CANCEL were missing. (probably all versions)

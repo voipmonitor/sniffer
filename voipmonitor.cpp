@@ -373,6 +373,13 @@ char odbc_driver[256];
 char cloud_host[256] = "";
 char cloud_token[256] = "";
 
+char ssh_host[1024] = "";
+int ssh_port = 22;
+char ssh_username[256] = "";
+char ssh_password[256] = "";
+char ssh_remote_listenhost[1024] = "localhost";
+unsigned int ssh_remote_listenport = 5029;
+
 char get_customer_by_ip_sql_driver[256] = "odbc";
 char get_customer_by_ip_odbc_dsn[256];
 char get_customer_by_ip_odbc_user[256];
@@ -437,6 +444,7 @@ pthread_t call_thread;		// ID of worker storing CDR thread
 pthread_t readdump_libpcap_thread;
 pthread_t manager_thread = 0;	// ID of worker manager thread 
 pthread_t manager_client_thread;	// ID of worker manager thread 
+pthread_t manager_ssh_thread;	
 pthread_t cachedir_thread;	// ID of worker cachedir thread 
 pthread_t database_backup_thread;	// ID of worker backup thread 
 int terminating;		// if set to 1, worker thread will terminate
@@ -515,6 +523,9 @@ int opt_enable_fraud = 1;
 char opt_local_country_code[10] = "local";
 
 map<string, string> hosts;
+
+ip_port sipSendSocket_ip_port;
+SocketSimpleBufferWrite *sipSendSocket = NULL;
 
 
 #define ENABLE_SEMAPHOR_FORK_MODE 0
@@ -1880,7 +1891,42 @@ int load_config(char *fname) {
 	if((value = ini.GetValue("general", "defer_create_spooldir", NULL))) {
 		opt_defer_create_spooldir = yesno(value);
 	}
-	
+	if((value = ini.GetValue("general", "sip_send_ip", NULL)) &&
+	   (value2 = ini.GetValue("general", "sip_send_port", NULL))) {
+		sipSendSocket_ip_port.set_ip(value);
+		sipSendSocket_ip_port.set_port(atoi(value2));
+	}
+	if((value = ini.GetValue("general", "sip_send", NULL))) {
+		char *pointToPortSeparator = (char*)strchr(value, ':');
+		if(pointToPortSeparator) {
+			opt_nocdr = 1;
+			*pointToPortSeparator = 0;
+			int port = atoi(pointToPortSeparator + 1);
+			if(*value && port) {
+				sipSendSocket_ip_port.set_ip(value);
+				sipSendSocket_ip_port.set_port(port);
+			}
+		}
+	}
+	if((value = ini.GetValue("general", "manager_sshhost", NULL))) {
+		strncpy(ssh_host, value, sizeof(ssh_host));
+	}
+	if((value = ini.GetValue("general", "manager_sshport", NULL))) {
+		ssh_port = atoi(value);
+	}
+	if((value = ini.GetValue("general", "manager_sshusername", NULL))) {
+		strncpy(ssh_username, value, sizeof(ssh_username));
+	}
+	if((value = ini.GetValue("general", "manager_sshpassword", NULL))) {
+		strncpy(ssh_password, value, sizeof(ssh_password));
+	}
+	if((value = ini.GetValue("general", "manager_sshremoteip", NULL))) {
+		strncpy(ssh_remote_listenhost, value, sizeof(ssh_remote_listenhost));
+	}
+	if((value = ini.GetValue("general", "manager_sshremoteport", NULL))) {
+		ssh_remote_listenport = atoi(value);
+	}
+
 	/*
 	
 	packetbuffer default configuration
@@ -3112,6 +3158,10 @@ int main(int argc, char *argv[]) {
 		}
 	};
 
+	if(ssh_host[0] != '\0') {
+		pthread_create(&manager_ssh_thread, NULL, manager_ssh, NULL);
+	}
+
 	// start reading threads
 	if(rtp_threaded &&
 	   !(opt_pcap_threaded && opt_pcap_queue && 
@@ -3180,6 +3230,11 @@ int main(int argc, char *argv[]) {
 			httpData = new HttpData;
 			tcpReassembly->setDataCallback(httpData);
 		}
+	}
+	
+	if(sipSendSocket_ip_port) {
+		sipSendSocket = new SocketSimpleBufferWrite("send sip", sipSendSocket_ip_port);
+		sipSendSocket->startWriteThread();
 	}
 
 #ifndef FREEBSD
@@ -3462,6 +3517,10 @@ int main(int argc, char *argv[]) {
 	}
 	if(httpData) {
 		delete httpData;
+	}
+	
+	if(sipSendSocket) {
+		delete sipSendSocket;
 	}
 
 	/* obsolete ?
