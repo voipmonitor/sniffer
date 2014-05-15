@@ -790,16 +790,20 @@ bool PcapDumper::open(const char *fileName, const char *fileNameSpoolRelative, p
 
 void PcapDumper::dump(pcap_pkthdr* header, const u_char *packet) {
 	extern unsigned int opt_maxpcapsize_mb;
-	if(this->handle && 
-	   header->caplen > 0 && header->caplen <= header->len &&
-	   (!opt_maxpcapsize_mb || this->capsize < opt_maxpcapsize_mb * 1024 * 1024)) {
-		__pcap_dump((u_char*)this->handle, header, packet);
-		extern int opt_packetbuffered;
-		if(opt_packetbuffered) {
-			pcap_dump_flush(this->handle);
+	if(this->handle) {
+		if(header->caplen > 0 && header->caplen <= header->len) {
+			if(!opt_maxpcapsize_mb || this->capsize < opt_maxpcapsize_mb * 1024 * 1024) {
+				__pcap_dump((u_char*)this->handle, header, packet);
+				extern int opt_packetbuffered;
+				if(opt_packetbuffered) {
+					pcap_dump_flush(this->handle);
+				}
+				this->capsize += header->caplen + PCAP_DUMPER_PACKET_HEADER_SIZE;
+				this->size += header->len + PCAP_DUMPER_PACKET_HEADER_SIZE;
+			}
+		} else {
+			syslog(LOG_NOTICE, "pcapdumper: incorrect caplen/len (%u/%u) in %s", header->caplen, header->len, fileName.c_str());
 		}
-		this->capsize += header->caplen + PCAP_DUMPER_PACKET_HEADER_SIZE;
-		this->size += header->len + PCAP_DUMPER_PACKET_HEADER_SIZE;
 	}
 }
 
@@ -2068,23 +2072,28 @@ pcap_dumper_t *__pcap_dump_open(pcap_t *p, const char *fname, int linktype, stri
 
 void __pcap_dump(u_char *user, const struct pcap_pkthdr *h, const u_char *sp) {
 	if(opt_pcap_dump_bufflength) {
-		struct pcap_timeval {
-		    bpf_int32 tv_sec;		/* seconds */
-		    bpf_int32 tv_usec;		/* microseconds */
-		};
-		struct pcap_sf_pkthdr {
-		    struct pcap_timeval ts;	/* time stamp */
-		    bpf_u_int32 caplen;		/* length of portion present */
-		    bpf_u_int32 len;		/* length this packet (off wire) */
-		};
 		FileZipHandler *handler = (FileZipHandler*)user;
-		struct pcap_sf_pkthdr sf_hdr;
-		sf_hdr.ts.tv_sec  = h->ts.tv_sec;
-		sf_hdr.ts.tv_usec = h->ts.tv_usec;
-		sf_hdr.caplen     = h->caplen;
-		sf_hdr.len        = h->len;
-		handler->write((char*)&sf_hdr, sizeof(sf_hdr));
-		handler->write((char*)sp, h->caplen);
+		if(h->caplen > 0 && h->caplen <= h->len) {
+			struct pcap_timeval {
+			    bpf_int32 tv_sec;		/* seconds */
+			    bpf_int32 tv_usec;		/* microseconds */
+			};
+			struct pcap_sf_pkthdr {
+			    struct pcap_timeval ts;	/* time stamp */
+			    bpf_u_int32 caplen;		/* length of portion present */
+			    bpf_u_int32 len;		/* length this packet (off wire) */
+			};
+			
+			struct pcap_sf_pkthdr sf_hdr;
+			sf_hdr.ts.tv_sec  = h->ts.tv_sec;
+			sf_hdr.ts.tv_usec = h->ts.tv_usec;
+			sf_hdr.caplen     = h->caplen;
+			sf_hdr.len        = h->len;
+			handler->write((char*)&sf_hdr, sizeof(sf_hdr));
+			handler->write((char*)sp, h->caplen);
+		} else {
+			syslog(LOG_NOTICE, "__pcap_dump: incorrect caplen/len (%u/%u) in %s", h->caplen, h->len, handler->fileName.c_str());
+		}
 	} else {
 		pcap_dump(user, h, sp);
 	}
