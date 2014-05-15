@@ -373,6 +373,13 @@ char odbc_driver[256];
 char cloud_host[256] = "";
 char cloud_token[256] = "";
 
+char ssh_host[1024] = "";
+int ssh_port = 22;
+char ssh_username[256] = "";
+char ssh_password[256] = "";
+char ssh_remote_listenhost[1024] = "localhost";
+unsigned int ssh_remote_listenport = 5029;
+
 char get_customer_by_ip_sql_driver[256] = "odbc";
 char get_customer_by_ip_odbc_dsn[256];
 char get_customer_by_ip_odbc_user[256];
@@ -1901,7 +1908,25 @@ int load_config(char *fname) {
 			}
 		}
 	}
-	
+	if((value = ini.GetValue("general", "manager_sshhost", NULL))) {
+		strncpy(ssh_host, value, sizeof(ssh_host));
+	}
+	if((value = ini.GetValue("general", "manager_sshport", NULL))) {
+		ssh_port = atoi(value);
+	}
+	if((value = ini.GetValue("general", "manager_sshusername", NULL))) {
+		strncpy(ssh_username, value, sizeof(ssh_username));
+	}
+	if((value = ini.GetValue("general", "manager_sshpassword", NULL))) {
+		strncpy(ssh_password, value, sizeof(ssh_password));
+	}
+	if((value = ini.GetValue("general", "manager_sshremoteip", NULL))) {
+		strncpy(ssh_remote_listenhost, value, sizeof(ssh_remote_listenhost));
+	}
+	if((value = ini.GetValue("general", "manager_sshremoteport", NULL))) {
+		ssh_remote_listenport = atoi(value);
+	}
+
 	/*
 	
 	packetbuffer default configuration
@@ -3133,8 +3158,7 @@ int main(int argc, char *argv[]) {
 		}
 	};
 
-	//if(opt_sshmanager[0] != '\0') {
-	if(0) {
+	if(ssh_host[0] != '\0') {
 		pthread_create(&manager_ssh_thread, NULL, manager_ssh, NULL);
 	}
 

@@ -56,6 +56,13 @@ extern map<unsigned int, octects_live_t*> ipacc_live;
 
 extern map<unsigned int, livesnifferfilter_t*> usersniffer;
 
+extern char ssh_host[1024];
+extern int ssh_port;
+extern char ssh_username[256];
+extern char ssh_password[256];
+extern char ssh_remote_listenhost[1024];
+extern unsigned int ssh_remote_listenport;
+
 using namespace std;
 
 struct listening_worker_arg {
@@ -1472,16 +1479,16 @@ void *ssh_accept_thread(void *arg) {
 	return 0;
 }
 
-void *manager_ssh(void *arg) {
-	const char *keyfile1 = "/home/username/.ssh/id_rsa.pub";
-	const char *keyfile2 = "/home/username/.ssh/id_rsa";
-	const char *username = "";	 
-	const char *password = "";
+void perror_syslog(const char *msg) {
+	char buf[1024];
+	strerror_r(errno, buf, 1024);
+	syslog(LOG_ERR, "%s:%s\n", msg, buf);
+}
+
+void *manager_ssh_(void) {
+	const char *keyfile1 = "~/.voipmonitor/id_rsa.pub";
+	const char *keyfile2 = "~/.voipmonitor/id_rsa";
 		       
-	const char *server_ip = "";
-		       
-	const char *remote_listenhost = "localhost"; /* resolved by the server */
-	unsigned int remote_wantport = 2222;
 	int remote_listenport;	
 				       
 	enum {	 
@@ -1504,20 +1511,20 @@ void *manager_ssh(void *arg) {
 	/* Connect to SSH server */
 	sock = socket(PF_INET, SOCK_STREAM, IPPROTO_TCP);
 	sin.sin_family = AF_INET;
-	if (INADDR_NONE == (sin.sin_addr.s_addr = inet_addr(server_ip))) {
-		perror("inet_addr");
-		//return -1;
+	if (INADDR_NONE == (sin.sin_addr.s_addr = inet_addr(ssh_host))) {
+		perror_syslog("\tinet_addr");
+		return 0;
 	}      
-	sin.sin_port = htons(22);
+	sin.sin_port = htons(ssh_port);
 	if (connect(sock, (struct sockaddr*)(&sin), sizeof(struct sockaddr_in)) != 0) {
-		fprintf(stderr, "failed to connect!\n");
-		//return -1;
+		syslog(LOG_ERR, "\tfailed to connect!\n");
+		return 0;
 	}
 	/* Create a session instance */
 	session = libssh2_session_init();
 	if(!session) {
-		fprintf(stderr, "Could not initialize SSH session!\n");
-		//return -1;
+		syslog(LOG_ERR, "\tCould not initialize SSH session!\n");
+		return 0;
 	}
        
 	/* ... start it up. This will trade welcome banners, exchange keys,
@@ -1525,8 +1532,8 @@ void *manager_ssh(void *arg) {
 	 */
 	rc = libssh2_session_handshake(session, sock);
 	if(rc) {
-		fprintf(stderr, "Error when starting up SSH session: %d\n", rc);
-		//return -1;
+		syslog(LOG_ERR, "\tError when starting up SSH session: %d", rc);
+		return 0;
 	}
 	
 #if 0       
@@ -1543,8 +1550,8 @@ void *manager_ssh(void *arg) {
 #endif
 
 	/* check what authentication methods are available */
-	userauthlist = libssh2_userauth_list(session, username, strlen(username));
-	fprintf(stderr, "Authentication methods: %s\n", userauthlist);
+	userauthlist = libssh2_userauth_list(session, ssh_username, strlen(ssh_username));
+	syslog(LOG_ERR, "\tAuthentication methods: %s", userauthlist);
 	if (strstr(userauthlist, "password"))
 		auth |= AUTH_PASSWORD;
 	if (strstr(userauthlist, "publickey"))
@@ -1561,34 +1568,30 @@ void *manager_ssh(void *arg) {
 #endif
    
 	if (auth & AUTH_PASSWORD) {
-		if (libssh2_userauth_password(session, username, password)) {
-			fprintf(stderr, "Authentication by password failed.\n");
+		if (libssh2_userauth_password(session, ssh_username, ssh_password)) {
+			syslog(LOG_ERR, "\tAuthentication by password failed.");
 			goto shutdown2;
 		}
 	} else if (auth & AUTH_PUBLICKEY) {
-		if (libssh2_userauth_publickey_fromfile(session, username, keyfile1, keyfile2, password)) {
-			fprintf(stderr, "\tAuthentication by public key failed!\n");
+		if (libssh2_userauth_publickey_fromfile(session, ssh_username, keyfile1, keyfile2, ssh_password)) {
+			syslog(LOG_ERR, "\tAuthentication by public key failed!");
 			goto shutdown2;
 		}
-		fprintf(stderr, "\tAuthentication by public key succeeded.\n");
+		syslog(LOG_ERR, "\tAuthentication by public key succeeded.");
 	} else {
-		fprintf(stderr, "No supported authentication methods found!\n");
+		syslog(LOG_ERR, "\tNo supported authentication methods found!");
 		goto shutdown2;
 	}
        
-	fprintf(stderr, "Asking server to listen on remote %s:%d\n",
-	remote_listenhost, remote_wantport);
-	       
-	listener = libssh2_channel_forward_listen_ex(session, remote_listenhost, remote_wantport, &remote_listenport, 1);
+	syslog(LOG_ERR, "\tAsking server to listen on remote %s:%d", ssh_remote_listenhost, ssh_remote_listenport);
+	listener = libssh2_channel_forward_listen_ex(session, ssh_remote_listenhost, ssh_remote_listenport, &remote_listenport, 1);
 	if (!listener) {
-		fprintf(stderr, "Could not start the tcpip-forward listener!\n"
-				"(Note that this can be a problem at the server!"
-				" Please review the server logs.)\n");
+		syslog(LOG_ERR, "\tCould not start the tcpip-forward listener! Note that this can be a problem at the server! Please review the server logs.)");
 		goto shutdown2; 
 	}       
        
-	fprintf(stderr, "Server is listening on %s:%d\n", remote_listenhost, remote_listenport);
-	fprintf(stderr, "Waiting for remote connection\n");
+	syslog(LOG_ERR, "\tServer is listening on %s:%d", ssh_remote_listenhost, remote_listenport);
+	syslog(LOG_ERR, "\tWaiting for remote connection");
 
 	pthread_t threads;
 	pthread_attr_t attr;
@@ -1613,11 +1616,9 @@ void *manager_ssh(void *arg) {
 			if (!channel) {
 				char errb[1024] = "";
 				int len;
-				fprintf(stderr, "Could not accept connection!\n"
-					"(Note that this can be a problem at the server!"
-					" Please review the server logs.)\n");
+				syslog(LOG_ERR, "Could not accept connection! Note that this can be a problem at the server! Please review the server logs.");
 				libssh2_session_last_error(session, (char**)&errb, &len, 0);
-				printf("err:[%s]\n", errb);
+				syslog(LOG_ERR, "\terr:[%s]\n", errb);
 				continue;
 			}      
 			pthread_create (					/* Create a child thread		*/
@@ -1632,21 +1633,28 @@ void *manager_ssh(void *arg) {
 		       
 	if (listener)	  
 		libssh2_channel_forward_cancel(listener);
+
 	libssh2_session_disconnect(session, "Client disconnecting normally");
 	libssh2_session_free(session);
 		       
 shutdown2:     
-#ifdef WIN32
-	closesocket(sock);
-#else		  
 	close(sock);   
-#endif		 
-		       
+
 	libssh2_exit();
 	if(fds) free(fds);
 	       
 	return 0;
 }
+
+void *manager_ssh(void *arg) {
+	while(1 && terminating == 0) {
+		syslog(LOG_NOTICE, "Starting reverse SSH connection service\n");
+		manager_ssh_();
+		syslog(LOG_NOTICE, "SSH service stopped.\n");
+		sleep(1);
+	}
+}
+
 
 void *manager_server(void *dummy) {
 	sockaddr_in sockName;
