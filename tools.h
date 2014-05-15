@@ -17,6 +17,7 @@
 #include <iostream>
 #include <zlib.h>
 #include <pcap.h>
+#include <netdb.h>
 
 #include "pstat.h"
 
@@ -91,6 +92,12 @@ public:
 		}
 		memcpy(buffer + bufferLength, data, dataLength);
 		bufferLength += dataLength;
+	}
+	u_char *data() {
+		return(buffer);
+	}
+	u_int32_t size() {
+		return(bufferLength);
 	}
 	void clear() {
 		bufferLength = 0;
@@ -1382,5 +1389,46 @@ int __gunzip(FILE *zip, FILE *unzip);
 bool isGunzip(const char *zipFilename);
 
 string url_encode(const string &value);
+
+class SocketSimpleBufferWrite {
+public:
+	SocketSimpleBufferWrite(const char *name, ip_port ipPort, uint64_t maxSize = 100ul * 1024 * 1024);
+	~SocketSimpleBufferWrite();
+	void startWriteThread();
+	void stopWriteThread();
+	void addData(void *data1, u_int32_t dataLength1,
+		     void *data2 = NULL, u_int32_t dataLength2 = 0);
+private:
+	void write();
+	bool socketGetHost();
+	bool socketConnect();
+	bool socketClose();
+	bool socketWrite(void *data, u_int32_t dataLength);
+	void flushData();
+	void lock_data() {
+		while(__sync_lock_test_and_set(&this->_sync_data, 1));
+	}
+	void unlock_data() {
+		__sync_lock_release(&this->_sync_data);
+	}
+	void add_size(size_t size) {
+		__sync_fetch_and_add(&this->_size_all, size);
+	}
+	void sub_size(size_t size) {
+		__sync_fetch_and_sub(&this->_size_all, size);
+	}
+private:
+	string name;
+	ip_port ipPort;
+	u_int64_t maxSize;
+	queue<SimpleBuffer*> data;
+	hostent* socketHostEnt;
+	int socketHandle;
+	pthread_t writeThreadHandle;
+	volatile int _sync_data;
+	volatile uint64_t _size_all;
+	u_long lastTimeSyslogFullData;
+friend void *_SocketSimpleBufferWrite_writeFunction(void *arg);
+};
 
 #endif

@@ -788,18 +788,25 @@ bool PcapDumper::open(const char *fileName, const char *fileNameSpoolRelative, p
 #define PCAP_DUMPER_PACKET_HEADER_SIZE 16
 #define PCAP_DUMPER_HEADER_SIZE 24
 
+bool incorrectCaplenDetected = false;
+
 void PcapDumper::dump(pcap_pkthdr* header, const u_char *packet) {
 	extern unsigned int opt_maxpcapsize_mb;
-	if(this->handle && 
-	   header->caplen > 0 && header->caplen <= header->len &&
-	   (!opt_maxpcapsize_mb || this->capsize < opt_maxpcapsize_mb * 1024 * 1024)) {
-		__pcap_dump((u_char*)this->handle, header, packet);
-		extern int opt_packetbuffered;
-		if(opt_packetbuffered) {
-			pcap_dump_flush(this->handle);
+	if(this->handle) {
+		if(header->caplen > 0 && header->caplen <= header->len) {
+			if(!opt_maxpcapsize_mb || this->capsize < opt_maxpcapsize_mb * 1024 * 1024) {
+				__pcap_dump((u_char*)this->handle, header, packet);
+				extern int opt_packetbuffered;
+				if(opt_packetbuffered) {
+					pcap_dump_flush(this->handle);
+				}
+				this->capsize += header->caplen + PCAP_DUMPER_PACKET_HEADER_SIZE;
+				this->size += header->len + PCAP_DUMPER_PACKET_HEADER_SIZE;
+			}
+		} else {
+			syslog(LOG_NOTICE, "pcapdumper: incorrect caplen/len (%u/%u) in %s", header->caplen, header->len, fileName.c_str());
+			incorrectCaplenDetected = true;
 		}
-		this->capsize += header->caplen + PCAP_DUMPER_PACKET_HEADER_SIZE;
-		this->size += header->len + PCAP_DUMPER_PACKET_HEADER_SIZE;
 	}
 }
 
@@ -2068,23 +2075,29 @@ pcap_dumper_t *__pcap_dump_open(pcap_t *p, const char *fname, int linktype, stri
 
 void __pcap_dump(u_char *user, const struct pcap_pkthdr *h, const u_char *sp) {
 	if(opt_pcap_dump_bufflength) {
-		struct pcap_timeval {
-		    bpf_int32 tv_sec;		/* seconds */
-		    bpf_int32 tv_usec;		/* microseconds */
-		};
-		struct pcap_sf_pkthdr {
-		    struct pcap_timeval ts;	/* time stamp */
-		    bpf_u_int32 caplen;		/* length of portion present */
-		    bpf_u_int32 len;		/* length this packet (off wire) */
-		};
 		FileZipHandler *handler = (FileZipHandler*)user;
-		struct pcap_sf_pkthdr sf_hdr;
-		sf_hdr.ts.tv_sec  = h->ts.tv_sec;
-		sf_hdr.ts.tv_usec = h->ts.tv_usec;
-		sf_hdr.caplen     = h->caplen;
-		sf_hdr.len        = h->len;
-		handler->write((char*)&sf_hdr, sizeof(sf_hdr));
-		handler->write((char*)sp, h->caplen);
+		if(h->caplen > 0 && h->caplen <= h->len) {
+			struct pcap_timeval {
+			    bpf_int32 tv_sec;		/* seconds */
+			    bpf_int32 tv_usec;		/* microseconds */
+			};
+			struct pcap_sf_pkthdr {
+			    struct pcap_timeval ts;	/* time stamp */
+			    bpf_u_int32 caplen;		/* length of portion present */
+			    bpf_u_int32 len;		/* length this packet (off wire) */
+			};
+			
+			struct pcap_sf_pkthdr sf_hdr;
+			sf_hdr.ts.tv_sec  = h->ts.tv_sec;
+			sf_hdr.ts.tv_usec = h->ts.tv_usec;
+			sf_hdr.caplen     = h->caplen;
+			sf_hdr.len        = h->len;
+			handler->write((char*)&sf_hdr, sizeof(sf_hdr));
+			handler->write((char*)sp, h->caplen);
+		} else {
+			syslog(LOG_NOTICE, "__pcap_dump: incorrect caplen/len (%u/%u) in %s", h->caplen, h->len, handler->fileName.c_str());
+			incorrectCaplenDetected = true;
+		}
 	} else {
 		pcap_dump(user, h, sp);
 	}
@@ -2322,4 +2335,145 @@ string url_encode(const string &value) {
 		}
 	}
 	return escaped.str();
+}
+
+SocketSimpleBufferWrite::SocketSimpleBufferWrite(const char *name, ip_port ipPort, uint64_t maxSize) {
+	this->name = name;
+	this->ipPort = ipPort;
+	this->maxSize = maxSize;
+	socketHostEnt = NULL;
+	socketHandle = 0;
+	writeThreadHandle = 0;
+	_sync_data = 0;
+	_size_all = 0;
+	lastTimeSyslogFullData = 0;
+}
+
+SocketSimpleBufferWrite::~SocketSimpleBufferWrite() {
+	stopWriteThread();
+	flushData();
+	socketClose();
+}
+
+void *_SocketSimpleBufferWrite_writeFunction(void *arg) {
+	usleep(1000);
+	((SocketSimpleBufferWrite*)arg)->write();
+	return(NULL);
+}
+void SocketSimpleBufferWrite::startWriteThread() {
+	pthread_create(&writeThreadHandle, NULL, _SocketSimpleBufferWrite_writeFunction, this);
+}
+
+void SocketSimpleBufferWrite::stopWriteThread() {
+	if(writeThreadHandle) {
+		pthread_t _writeThreadHandle = writeThreadHandle;
+		writeThreadHandle = 0;
+		pthread_join(_writeThreadHandle, NULL);
+	}
+}
+
+void SocketSimpleBufferWrite::addData(void *data1, u_int32_t dataLength1,
+				      void *data2, u_int32_t dataLength2) {
+	if(!data1 || !dataLength1) {
+		return;
+	}
+	if(_size_all + (dataLength1 + dataLength2) > maxSize) {
+		u_long actTime = getTimeMS();
+		if(!lastTimeSyslogFullData || actTime > lastTimeSyslogFullData + 1000) {
+			syslog(LOG_NOTICE, "socketwrite %s: data buffer is full", name.c_str());
+			lastTimeSyslogFullData = actTime;
+		}
+	}
+	SimpleBuffer *simpleBuffer = new SimpleBuffer(dataLength2);
+	simpleBuffer->add(data1, dataLength1);
+	simpleBuffer->add(data2, dataLength2);
+	lock_data();
+	this->data.push(simpleBuffer);
+	add_size(dataLength1 + dataLength2);
+	unlock_data();
+}
+
+void SocketSimpleBufferWrite::write() {
+	while(!terminating && writeThreadHandle) {
+		SimpleBuffer *simpleBuffer = NULL;
+		lock_data();
+		if(data.size()) {
+			simpleBuffer = data.front();
+			data.pop();
+			sub_size(simpleBuffer->size());
+		}
+		unlock_data();
+		if(simpleBuffer) {
+			socketWrite(simpleBuffer->data(), simpleBuffer->size());
+			delete simpleBuffer;
+		} else {
+			usleep(1000);
+		}
+	}
+}
+
+bool SocketSimpleBufferWrite::socketGetHost() {
+	socketHostEnt = NULL;
+	while(!socketHostEnt) {
+		socketHostEnt = gethostbyname(ipPort.get_ip().c_str());
+		if(!socketHostEnt) {
+			syslog(LOG_ERR, "socketwrite %s: cannot resolv: %s: host [%s] - trying again", name.c_str(), hstrerror(h_errno), ipPort.get_ip().c_str());  
+			sleep(1);
+		}
+	}
+	return(true);
+}
+
+bool SocketSimpleBufferWrite::socketConnect() {
+	if(!socketHostEnt) {
+		socketGetHost();
+	}
+	if((socketHandle = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP)) == -1) {
+		syslog(LOG_NOTICE, "socketwrite %s: cannot create socket", name.c_str());
+		return(false);
+	}
+	sockaddr_in addr;
+	addr.sin_family = AF_INET;
+	addr.sin_port = htons(ipPort.get_port());
+	addr.sin_addr.s_addr = *(long*)socketHostEnt->h_addr_list[0];
+	while(connect(socketHandle, (struct sockaddr *)&addr, sizeof(addr)) == -1) {
+		syslog(LOG_NOTICE, "socketwrite %s: failed to connect to server [%s] error:[%s] - trying again", name.c_str(), inet_ntoa(*(struct in_addr *)socketHostEnt->h_addr_list[0]), strerror(errno));
+		sleep(1);
+	}
+	return(true);
+}
+
+bool SocketSimpleBufferWrite::socketClose() {
+	if(socketHandle) {
+		close(socketHandle);
+		socketHandle = 0;
+	}
+	return(true);
+}
+
+bool SocketSimpleBufferWrite::socketWrite(void *data, u_int32_t dataLength) {
+	if(!socketHandle) {
+		socketConnect();
+	}
+	size_t dataLengthWrited = 0;
+	while(dataLengthWrited < dataLength && !terminating) {
+		ssize_t _dataLengthWrited = send(socketHandle, (u_char*)data + dataLengthWrited, dataLength - dataLengthWrited, 0);
+		if(_dataLengthWrited == -1) {
+			socketConnect();
+		} else {
+			dataLengthWrited += _dataLengthWrited;
+		}
+	}
+	return(true);
+}
+
+void SocketSimpleBufferWrite::flushData() {
+	SimpleBuffer *simpleBuffer = NULL;
+	lock_data();
+	while(data.size()) {
+		simpleBuffer = data.front();
+		data.pop();
+		delete simpleBuffer;
+	}
+	unlock_data();
 }

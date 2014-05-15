@@ -784,7 +784,10 @@ PcapQueue::PcapQueue(eTypeQueue typeQueue, const char *nameQueue) {
 	this->instancePcapHandle = NULL;
 	this->initAllReadThreadsOk = false;
 	this->counter_calls_old = 0;
-	this->counter_sip_packets_old = 0;
+	this->counter_sip_packets_old[0] = 0;
+	this->counter_sip_packets_old[1] = 0;
+	this->counter_rtp_packets_old = 0;
+	this->counter_all_packets_old = 0;
 }
 
 PcapQueue::~PcapQueue() {
@@ -914,13 +917,51 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 				outStr << "ipacc_buffer[" << lengthIpaccBuffer() << "] ";
 			}
 			extern u_int64_t counter_calls;
-			extern u_int64_t counter_sip_packets;
-			if(this->counter_calls_old && this->counter_sip_packets_old) {
-				outStr << "CPS/SPS[" << (counter_calls - this->counter_calls_old) / statPeriod
-				       << "|" << (counter_sip_packets - this->counter_sip_packets_old) / statPeriod << "] ";
+			extern u_int64_t counter_sip_packets[2];
+			extern u_int64_t counter_rtp_packets;
+			extern u_int64_t counter_all_packets;
+			if(this->counter_calls_old ||
+			   this->counter_sip_packets_old[0] ||
+			   this->counter_sip_packets_old[1] ||
+			   this->counter_rtp_packets_old ||
+			   this->counter_all_packets_old) {
+				outStr << "PS[C:";
+				if(this->counter_calls_old) {
+					outStr << (counter_calls - this->counter_calls_old) / statPeriod;
+				} else {
+					outStr << "-";
+				}
+				outStr << " S:";
+				if(this->counter_sip_packets_old[0]) {
+					outStr << (counter_sip_packets[0] - this->counter_sip_packets_old[0]) / statPeriod;
+				} else {
+					outStr << "-";
+				}
+				outStr << "/";
+				if(this->counter_sip_packets_old[1]) {
+					outStr << (counter_sip_packets[1] - this->counter_sip_packets_old[1]) / statPeriod;
+				} else {
+					outStr << "-";
+				}
+				outStr << " R:";
+				if(this->counter_rtp_packets_old) {
+					outStr << (counter_rtp_packets - this->counter_rtp_packets_old) / statPeriod;
+				} else {
+					outStr << "-";
+				}
+				outStr << " A:";
+				if(this->counter_all_packets_old) {
+					outStr << (counter_all_packets - this->counter_all_packets_old) / statPeriod;
+				} else {
+					outStr << "-";
+				}
+				outStr << "] ";
 			}
 			this->counter_calls_old = counter_calls;
-			this->counter_sip_packets_old = counter_sip_packets;
+			this->counter_sip_packets_old[0] = counter_sip_packets[0];
+			this->counter_sip_packets_old[1] = counter_sip_packets[1];
+			this->counter_rtp_packets_old = counter_rtp_packets;
+			this->counter_all_packets_old = counter_all_packets;
 			outStr << "SQLq[";
 			int sizeSQLq;
 			for(int i = 0; i < opt_mysqlstore_max_threads_cdr; i++) {
@@ -1024,14 +1065,12 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 			}
 			outStr << "] ";
 		}
-		outStr << "heap[" << setprecision(1) << memoryBufferPerc << "% / "
-				  << setprecision(1) << memoryBufferPerc_trash << "%] ";
+		outStr << "heap[" << setprecision(0) << memoryBufferPerc << "|"
+				  << setprecision(0) << memoryBufferPerc_trash << "|";
 		extern AsyncClose asyncClose;
 		u_int64_t ac_sizeOfDataInMemory = asyncClose.getSizeOfDataInMemory();
-		if(ac_sizeOfDataInMemory) {
-			extern int opt_pcap_dump_asyncwrite_maxsize;
-			outStr << "ac[" << setprecision(1) << 100 * (double)ac_sizeOfDataInMemory / (opt_pcap_dump_asyncwrite_maxsize * 1024ull * 1024ull) << "%] ";
-		}
+		extern int opt_pcap_dump_asyncwrite_maxsize;
+		outStr << setprecision(0) << 100 * (double)ac_sizeOfDataInMemory / (opt_pcap_dump_asyncwrite_maxsize * 1024ull * 1024ull) << "] ";
 		if(this->instancePcapHandle) {
 			unsigned long bypassBufferSizeExeeded = this->instancePcapHandle->pcapStat_get_bypass_buffer_size_exeeded();
 			string statPacketDrops = this->instancePcapHandle->getStatPacketDrop();
@@ -1057,7 +1096,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 		}
 		double compress = this->pcapStat_get_compress();
 		if(compress >= 0) {
-			outStr << "comp[" << setprecision(1) << compress << "%] ";
+			outStr << "comp[" << setprecision(0) << compress << "] ";
 		}
 		double speed = this->pcapStat_get_speed_mb_s(statPeriod);
 		if(speed >= 0) {
@@ -1150,6 +1189,10 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 		}
 	} else {
 		outStr << outStrStat.str();
+		extern bool incorrectCaplenDetected;
+		if(incorrectCaplenDetected) {
+			outStr << " !CAPLEN";
+		}
 		outStr << endl;
 		outStr << pcapStatString_interface_rslt;
 		string outStr_str = outStr.str();

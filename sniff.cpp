@@ -223,7 +223,9 @@ TcpReassemblySip tcpReassemblySip;
 ipfrag_data_s ipfrag_data;
 
 u_int64_t counter_calls;
-u_int64_t counter_sip_packets;
+u_int64_t counter_sip_packets[2];
+u_int64_t counter_rtp_packets;
+u_int64_t counter_all_packets;
 
 extern struct queue_state *qs_readpacket_thread_queue;
 
@@ -1785,6 +1787,8 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 
 	*was_rtp = 0;
 	int merged;
+	
+	++counter_all_packets;
 
 	// checking and cleaning stuff every 10 seconds (if some packet arrive) 
 	if (header->ts.tv_sec - last_cleanup > 10){
@@ -1859,6 +1863,8 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 
 	// check if the packet is SIP ports or SKINNY ports
 	if(sipportmatrix[source] || sipportmatrix[dest]) {
+	 
+		++counter_sip_packets[0];
 
 		_parse_packet.parseData(data, datalen, true);
 
@@ -1933,7 +1939,13 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 			if(opt_enable_fraud) {
 				fraudSipPacket(saddr, header->ts);
 			}
-			++counter_sip_packets;
+			extern SocketSimpleBufferWrite *sipSendSocket;
+			if(sipSendSocket) {
+				u_int16_t header_length = datalen;
+				sipSendSocket->addData(&header_length, 2,
+						       data, datalen);
+			}
+			++counter_sip_packets[1];
 		}
 
 		// parse SIP method 
@@ -2691,6 +2703,7 @@ notfound:
 		}
 		return call;
 	} else if ((calls = calltable->hashfind_by_ip_port(daddr, dest))){
+		++counter_rtp_packets;
 		// packet (RTP) by destination:port is already part of some stored call  
 		for (node_call = (hash_node_call *)calls; node_call != NULL; node_call = node_call->next) {
 			call = node_call->call;
@@ -2788,6 +2801,7 @@ notfound:
 			}
 		}
 	} else if ((calls = calltable->hashfind_by_ip_port(saddr, source))){
+		++counter_rtp_packets;
 		// packet (RTP[C]) by source:port is already part of some stored call 
 		for (node_call = (hash_node_call *)calls; node_call != NULL; node_call = node_call->next) {
 			call = node_call->call;
