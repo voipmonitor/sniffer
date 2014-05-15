@@ -3349,20 +3349,18 @@ Calltable::cleanup( time_t currtime ) {
 		bool closeCall = false;
 		if(currtime == 0 || call->force_close) {
 			closeCall = true;
-		} else { 
-			if(call->rtppcaketsinqueue == 0) {
-				if(call->destroy_call_at != 0 && call->destroy_call_at <= currtime) {
-					closeCall = true;
-				} else if(call->destroy_call_at_bye != 0 && call->destroy_call_at_bye <= currtime) {
-					closeCall = true;
-					call->bye_timeout_exceeded = true;
-				} else if(currtime - call->get_last_packet_time() > rtptimeout) {
-					closeCall = true;
-					call->rtp_timeout_exceeded = true;
-				} else if(currtime - call->first_packet_time > absolute_timeout) {
-					closeCall = true;
-					call->absolute_timeout_exceeded = true;
-				}
+		} else if(call->rtppcaketsinqueue == 0) {
+			if(call->destroy_call_at != 0 && call->destroy_call_at <= currtime) {
+				closeCall = true;
+			} else if(call->destroy_call_at_bye != 0 && call->destroy_call_at_bye <= currtime) {
+				closeCall = true;
+				call->bye_timeout_exceeded = true;
+			} else if(currtime - call->get_last_packet_time() > rtptimeout) {
+				closeCall = true;
+				call->rtp_timeout_exceeded = true;
+			} else if(currtime - call->first_packet_time > absolute_timeout) {
+				closeCall = true;
+				call->absolute_timeout_exceeded = true;
 			}
 			if(!closeCall &&
 			   (call->oneway == 1 && (currtime - call->get_last_packet_time() > opt_onewaytimeout))) {
