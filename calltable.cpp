@@ -3067,7 +3067,7 @@ Calltable::hashAdd(in_addr_t addr, unsigned short port, Call* call, int iscaller
 			if(count >= opt_sdp_multiplication) {
 				static Call *lastcall = NULL;
 				// this port/ip combination is already in 3 calls - do not add to 4th to not cause multiplication attack. 
-				if(lastcall != call) {
+				if(lastcall != call and opt_sdp_multiplication >= 3) {
 					struct in_addr in;
 					in.s_addr = addr;
 					char *str = inet_ntoa(in);
@@ -3075,7 +3075,7 @@ Calltable::hashAdd(in_addr_t addr, unsigned short port, Call* call, int iscaller
 						call->fbasename, str, port, opt_sdp_multiplication,
 						node->calls->call->fbasename,
 						node->calls->next->call->fbasename,
-						node->calls->next->call->fbasename);
+						node->calls->next->next->call->fbasename);
 					lastcall = call;
 				}
 				return;
