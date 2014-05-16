@@ -300,6 +300,8 @@ int opt_pcap_dump_writethreads_max = 32;
 int opt_pcap_dump_asyncwrite_maxsize = 100; //MB
 int opt_defer_create_spooldir = 1;
 
+int opt_sdp_multiplication = 3;
+
 char opt_php_path[1024];
 
 struct pcap_stat pcapstat;
@@ -1925,6 +1927,9 @@ int load_config(char *fname) {
 	}
 	if((value = ini.GetValue("general", "manager_sshremoteport", NULL))) {
 		ssh_remote_listenport = atoi(value);
+	}
+	if((value = ini.GetValue("general", "sdp_multiplication", NULL))) {
+		opt_sdp_multiplication = atoi(value);
 	}
 
 	/*
