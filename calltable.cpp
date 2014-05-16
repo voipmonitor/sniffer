@@ -3070,7 +3070,7 @@ Calltable::hashAdd(in_addr_t addr, unsigned short port, Call* call, int iscaller
 					struct in_addr in;
 					in.s_addr = addr;
 					char *str = inet_ntoa(in);
-					syslog(LOG_NOTICE, "call-id[%s] SDP: connect %s:%u is already in %d calls [%s] [%s] [%s]. Limit is 4 to not cause multiplication DDOS. You can increas it sdp_multiplication = N\n", 
+					syslog(LOG_NOTICE, "call-id[%s] SDP: %s:%u is already in %d calls [%s] [%s] [%s]. Limit is 4 to not cause multiplication DDOS. You can increas it sdp_multiplication = N\n", 
 						call->fbasename, str, port, opt_sdp_multiplication,
 						node->calls->call->fbasename,
 						node->calls->next->call->fbasename,
