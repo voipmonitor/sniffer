@@ -3049,10 +3049,11 @@ Calltable::hashAdd(in_addr_t addr, unsigned short port, Call* call, int iscaller
 						node_call = prev->next;
 						continue;
 					} else {
+						//removing first node
+						node->calls = node->calls->next;
 						free(node_call);
-						node_call = NULL;
-						node->calls = NULL;
-						break;
+						node_call = node->calls;
+						continue;
 					}
 				}
 				prev = node_call;
