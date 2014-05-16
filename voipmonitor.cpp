@@ -2926,7 +2926,7 @@ int main(int argc, char *argv[]) {
 			}
 		}
 	}
-
+	
 	signal(SIGINT,sigint_handler);
 	signal(SIGTERM,sigterm_handler);
 	
@@ -3387,7 +3387,7 @@ int main(int argc, char *argv[]) {
 					}
 					
 					pcapQueueI->terminate();
-					sleep(opt_pb_read_from_file[0] && opt_enable_tcpreassembly ? 60 : 1);
+					sleep(opt_pb_read_from_file[0] && opt_enable_tcpreassembly ? 10 : 1);
 					if(opt_pb_read_from_file[0] && opt_enable_tcpreassembly && opt_tcpreassembly_thread) {
 						tcpReassembly->setIgnoreTerminating(false);
 						sleep(2);

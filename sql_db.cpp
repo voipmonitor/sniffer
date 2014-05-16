@@ -37,6 +37,7 @@ extern int opt_mysqlcompress;
 extern pthread_mutex_t mysqlconnect_lock;      
 extern int opt_mos_lqo;
 extern int opt_read_from_file;
+extern char opt_pb_read_from_file[256];
 extern volatile int calls_cdr_save_counter;
 extern volatile int calls_message_save_counter;
 extern int opt_enable_fraud;
@@ -1243,7 +1244,7 @@ void MySqlStore_process::store() {
 				}
 			}
 			
-			if(!opt_read_from_file &&
+			if(!opt_read_from_file && !opt_pb_read_from_file[0] &&
 			   terminating && !this->sqlDb->connected()) {
 				break;
 			}
