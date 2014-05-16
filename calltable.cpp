@@ -144,6 +144,7 @@ extern float opt_saveaudio_oggquality;
 extern int opt_skinny;
 extern int opt_enable_fraud;
 extern char opt_callidmerge_header[128];
+extern int opt_sdp_multiplication;
 
 SqlDb *sqlDbSaveCall = NULL;
 bool existsColumnCalldateInCdrNext = true;
@@ -3037,16 +3038,46 @@ Calltable::hashAdd(in_addr_t addr, unsigned short port, Call* call, int iscaller
 
 			int found = 0;
 			int count = 0;
-			for (node_call = (hash_node_call *)node->calls; node_call != NULL; node_call = node_call->next) {
+			hash_node_call *prev = NULL;
+			node_call = (hash_node_call *)node->calls;
+			while(node_call != NULL) {
+				if(node_call->call->destroy_call_at != 0) {
+					// remove this call
+					if(prev) {
+						prev->next = node_call->next;
+						free(node_call);
+						node_call = prev->next;
+						continue;
+					} else {
+						//removing first node
+						node->calls = node->calls->next;
+						free(node_call);
+						node_call = node->calls;
+						continue;
+					}
+				}
+				prev = node_call;
 				count++;
 				node_call->is_fax = is_fax;
 				if(node_call->call == call) {
 					found = 1;
 				}
+				node_call = node_call->next;
 			}
-			if(count >= 3) {
+			if(count >= opt_sdp_multiplication) {
+				static Call *lastcall = NULL;
 				// this port/ip combination is already in 3 calls - do not add to 4th to not cause multiplication attack. 
-				syslog(LOG_NOTICE, "SDP: ip addr[%u]:[%u] is already in 3 calls. Limit is 4 to not cause multiplication DDOS\n", addr, port);
+				if(lastcall != call) {
+					struct in_addr in;
+					in.s_addr = addr;
+					char *str = inet_ntoa(in);
+					syslog(LOG_NOTICE, "call-id[%s] SDP: %s:%u is already in %d calls [%s] [%s] [%s]. Limit is 4 to not cause multiplication DDOS. You can increas it sdp_multiplication = N\n", 
+						call->fbasename, str, port, opt_sdp_multiplication,
+						node->calls->call->fbasename,
+						node->calls->next->call->fbasename,
+						node->calls->next->call->fbasename);
+					lastcall = call;
+				}
 				return;
 			}
 			if(!found) {
@@ -3094,12 +3125,10 @@ Calltable::hashRemove(Call *call, in_addr_t addr, unsigned short port) {
 	h = tuplehash(addr, port);
 	for (node = (hash_node *)calls_hash[h]; node != NULL; node = node->next) {
 		if (node->addr == addr && node->port == port) {
-			int found = 0;
 			for (node_call = (hash_node_call *)node->calls; node_call != NULL; node_call = node_call->next) {
 				// walk through all calls under the node and check if the call matches
 				if(node_call->call == call) {
 					// call matches - remote the call from node->calls
-					found = 1;
 					if (prev_call == NULL) {
 						node->calls = node_call->next;
 						free(node_call);

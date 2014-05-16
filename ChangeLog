@@ -1,3 +1,7 @@
+10.0RC13 15.5.2014
+==================
+- fix it better - limit number of calls which can share the same RTP port which avoids multiplication DDOS 
+
 10.0RC12 15.5.2014
 ==================
 - fix crash in case the call is one-way SIP and RTP frames are held in heap due to I/O 
