@@ -500,8 +500,7 @@ PcapQueue *pcapQueueStatInterface;
 TcpReassembly *tcpReassembly;
 HttpData *httpData;
 
-string storingCdrLastWriteAt;
-string storingSqlLastWriteAt;
+vm_atomic<string> storingCdrLastWriteAt;
 
 time_t startTime;
 
@@ -1680,15 +1679,14 @@ int load_config(char *fname) {
 	if((value = ini.GetValue("general", "packetbuffer_enable", NULL))) {
 		opt_pcap_queue = yesno(value);
 	}
-	/*
-	DEFAULT VALUES
+	//EXPERT VALUES
 	if((value = ini.GetValue("general", "packetbuffer_block_maxsize", NULL))) {
 		opt_pcap_queue_block_max_size = atol(value) * 1024;
 	}
 	if((value = ini.GetValue("general", "packetbuffer_block_maxtime", NULL))) {
 		opt_pcap_queue_block_max_time_ms = atoi(value);
 	}
-	*/
+	//
 	if((value = ini.GetValue("general", "packetbuffer_total_maxheap", NULL))) {
 		opt_pcap_queue_store_queue_max_memory_size = atol(value) * 1024 *1024;
 	}
@@ -2916,7 +2914,7 @@ int main(int argc, char *argv[]) {
 		delete sqlDb;
 	}
 	if(isSqlDriver("mysql")) {
-		sqlStore = new MySqlStore(mysql_host, mysql_user, mysql_password, mysql_database);	
+		sqlStore = new MySqlStore(mysql_host, mysql_user, mysql_password, mysql_database, cloud_host, cloud_token);	
 		if(!opt_nocdr) {
 			sqlStore->connect(STORE_PROC_ID_CDR_1);
 			sqlStore->connect(STORE_PROC_ID_MESSAGE_1);
@@ -2975,7 +2973,7 @@ int main(int argc, char *argv[]) {
 			}
 		}
 	}
-
+	
 	signal(SIGINT,sigint_handler);
 	signal(SIGTERM,sigterm_handler);
 
@@ -3436,7 +3434,7 @@ int main(int argc, char *argv[]) {
 					}
 					
 					pcapQueueI->terminate();
-					sleep(opt_pb_read_from_file[0] && opt_enable_tcpreassembly ? 60 : 1);
+					sleep(opt_pb_read_from_file[0] && opt_enable_tcpreassembly ? 10 : 1);
 					if(opt_pb_read_from_file[0] && opt_enable_tcpreassembly && opt_tcpreassembly_thread) {
 						tcpReassembly->setIgnoreTerminating(false);
 						sleep(2);
@@ -3907,6 +3905,20 @@ void test() {
 			extern GeoIP_country *geoIP_country;
 			cout << geoIP_country->getCountry(pointToSepOptTest + 1) << endl;
 		}
+	} break;
+	case 4: {
+		vm_atomic<string> astr(string("000"));
+		cout << astr << endl;
+		astr = string("abc");
+		cout << astr << endl;
+		astr = "def";
+		cout << astr << endl;
+		
+		vm_atomic<string> astr2 = astr;
+		cout << astr2 << endl;
+		astr2 = astr;
+		cout << astr2 << endl;
+		
 	} break;
 	case 10:
 		{
