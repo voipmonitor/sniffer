@@ -1131,6 +1131,7 @@ void *MySqlStore_process_storing(void *storeProcess_addr) {
 }
 	
 MySqlStore_process::MySqlStore_process(int id, const char *host, const char *user, const char *password, const char *database,
+				       const char *cloud_host, const char *cloud_token,
 				       int concatLimit) {
 	this->id = id;
 	this->terminated = false;
@@ -1139,6 +1140,9 @@ MySqlStore_process::MySqlStore_process(int id, const char *host, const char *use
 	this->concatLimit = concatLimit;
 	this->sqlDb = new SqlDb_mysql();
 	this->sqlDb->setConnectParameters(host, user, password, database);
+	if(cloud_host && *cloud_host) {
+		this->sqlDb->setCloudParameters(cloud_host, cloud_token);
+	}
 	pthread_mutex_init(&this->lock_mutex, NULL);
 	this->thread = (pthread_t)NULL;
 }
@@ -1279,11 +1283,18 @@ void MySqlStore_process::setConcatLimit(int concatLimit) {
 	this->concatLimit = concatLimit;
 }
 
-MySqlStore::MySqlStore(const char *host, const char *user, const char *password, const char *database) {
+MySqlStore::MySqlStore(const char *host, const char *user, const char *password, const char *database,
+		       const char *cloud_host, const char *cloud_token) {
 	this->host = host;
 	this->user = user;
 	this->password = password;
 	this->database = database;
+	if(cloud_host) {
+		this->cloud_host = cloud_host;
+	}
+	if(cloud_token) {
+		this->cloud_token = cloud_token;
+	}
 	this->defaultConcatLimit = 400;
 }
 
@@ -1346,6 +1357,7 @@ MySqlStore_process *MySqlStore::find(int id) {
 		return(process);
 	}
 	process = new MySqlStore_process(id, this->host.c_str(), this->user.c_str(), this->password.c_str(), this->database.c_str(),
+					 this->cloud_host.c_str(), this->cloud_token.c_str(),
 					 this->defaultConcatLimit);
 	this->processes[id] = process;
 	return(process);

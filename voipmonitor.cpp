@@ -2867,7 +2867,7 @@ int main(int argc, char *argv[]) {
 		delete sqlDb;
 	}
 	if(isSqlDriver("mysql")) {
-		sqlStore = new MySqlStore(mysql_host, mysql_user, mysql_password, mysql_database);	
+		sqlStore = new MySqlStore(mysql_host, mysql_user, mysql_password, mysql_database, cloud_host, cloud_token);	
 		if(!opt_nocdr) {
 			sqlStore->connect(STORE_PROC_ID_CDR_1);
 			sqlStore->connect(STORE_PROC_ID_MESSAGE_1);
