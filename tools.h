@@ -100,7 +100,9 @@ public:
 	}
 private:
 	void lock() {
-		while(__sync_lock_test_and_set(&this->_sync, 1));
+		while(__sync_lock_test_and_set(&this->_sync, 1)) {
+			usleep(10);
+		}
 	}
 	void unlock() {
 		__sync_lock_release(&this->_sync);
