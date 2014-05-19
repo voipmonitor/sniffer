@@ -1674,15 +1674,14 @@ int load_config(char *fname) {
 	if((value = ini.GetValue("general", "packetbuffer_enable", NULL))) {
 		opt_pcap_queue = yesno(value);
 	}
-	/*
-	DEFAULT VALUES
+	//EXPERT VALUES
 	if((value = ini.GetValue("general", "packetbuffer_block_maxsize", NULL))) {
 		opt_pcap_queue_block_max_size = atol(value) * 1024;
 	}
 	if((value = ini.GetValue("general", "packetbuffer_block_maxtime", NULL))) {
 		opt_pcap_queue_block_max_time_ms = atoi(value);
 	}
-	*/
+	//
 	if((value = ini.GetValue("general", "packetbuffer_total_maxheap", NULL))) {
 		opt_pcap_queue_store_queue_max_memory_size = atol(value) * 1024 *1024;
 	}
