@@ -108,8 +108,8 @@ extern unsigned long long cachedirtransfered;
 unsigned long long lastcachedirtransfered = 0;
 extern char opt_cachedir[1024];
 
-string pbStatString;
-u_long pbCountPacketDrop;
+vm_atomic<string> pbStatString;
+vm_atomic<u_long> pbCountPacketDrop;
 
 
 void *_PcapQueue_threadFunction(void *arg);

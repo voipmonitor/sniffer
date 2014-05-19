@@ -53,6 +53,63 @@ struct d_u_int32_t
 	u_int32_t val[2];
 };
 
+template <class type_atomic>
+class vm_atomic {
+public:
+	vm_atomic() {
+		_sync = 0;
+	}
+	vm_atomic(vm_atomic& atomicClass) {
+		_sync = 0;
+		lock();
+		this->atomicValue = atomicClass.atomicValue;
+		unlock();
+	}
+	vm_atomic(type_atomic atomicValue) {
+		_sync = 0;
+		lock();
+		this->atomicValue = atomicValue;
+		unlock();
+	}
+	vm_atomic& operator = (const vm_atomic& atomicClass) {
+		lock();
+		this->atomicValue = atomicClass.atomicValue;
+		unlock();
+		return(*this);
+	}
+	vm_atomic& operator = (type_atomic atomicValue) {
+		lock();
+		this->atomicValue = atomicValue;
+		unlock();
+		return(*this);
+	}
+	operator type_atomic() {
+		type_atomic tempAtomicValue;
+		lock();
+		tempAtomicValue = this->atomicValue;
+		unlock();
+		return(tempAtomicValue);
+	}
+	friend std::ostream& operator << (std::ostream& stream, vm_atomic& atomicClass) {
+		type_atomic tempAtomicValue;
+		atomicClass.lock();
+		tempAtomicValue = atomicClass.atomicValue;
+		atomicClass.unlock();
+		stream << tempAtomicValue;
+		return(stream);
+	}
+private:
+	void lock() {
+		while(__sync_lock_test_and_set(&this->_sync, 1));
+	}
+	void unlock() {
+		__sync_lock_release(&this->_sync);
+	}
+private:
+	type_atomic atomicValue;
+	volatile int _sync;
+};
+
 int getUpdDifTime(struct timeval *before);
 int getDifTime(struct timeval *before);
 int msleep(long msec);

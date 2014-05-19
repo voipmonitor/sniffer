@@ -609,29 +609,34 @@ int SqlDb_mysql::getDbMinorVersion(int minorLevel) {
 bool SqlDb_mysql::createRoutine(string routine, string routineName, string routineParamsAndReturn, eRoutineType routineType) {
 	bool missing = false;
 	bool diff = false;
-	this->query(string("select routine_definition from information_schema.routines where routine_schema='") + this->conn_database + 
-		    "' and routine_name='" + routineName + 
-		    "' and routine_type='" + (routineType == procedure ? "PROCEDURE" : "FUNCTION") + "'");
-	SqlDb_row row = this->fetchRow();
-	if(!row) {
+	if(this->isCloud()) {
 		missing = true;
-	} else if(row["routine_definition"] != routine) {
-		size_t i = 0, j = 0;
-		while(i < routine.length() &&
-		      j < row["routine_definition"].length()) {
-			if(routine[i] == '\\' && i < routine.length() - 1) {
+		diff = true;
+	} else {
+		this->query(string("select routine_definition from information_schema.routines where routine_schema='") + this->conn_database + 
+			    "' and routine_name='" + routineName + 
+			    "' and routine_type='" + (routineType == procedure ? "PROCEDURE" : "FUNCTION") + "'");
+		SqlDb_row row = this->fetchRow();
+		if(!row) {
+			missing = true;
+		} else if(row["routine_definition"] != routine) {
+			size_t i = 0, j = 0;
+			while(i < routine.length() &&
+			      j < row["routine_definition"].length()) {
+				if(routine[i] == '\\' && i < routine.length() - 1) {
+					++i;
+				}
+				if(routine[i] != row["routine_definition"][j]) {
+					diff = true;
+					break;
+				}
 				++i;
+				++j;
 			}
-			if(routine[i] != row["routine_definition"][j]) {
+			if(!diff && 
+			   (i < routine.length() || j < row["routine_definition"].length())) {
 				diff = true;
-				break;
 			}
-			++i;
-			++j;
-		}
-		if(!diff && 
-		   (i < routine.length() || j < row["routine_definition"].length())) {
-			diff = true;
 		}
 	}
 	if(missing || diff) {

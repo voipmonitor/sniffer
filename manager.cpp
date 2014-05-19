@@ -1233,15 +1233,13 @@ getwav:
 		}
 		return 0;
 	} else if(strstr(buf, "sniffer_stat") != NULL) {
-		extern string storingCdrLastWriteAt;
-		extern string storingSqlLastWriteAt;
-		extern string pbStatString;
-		extern u_long pbCountPacketDrop;
+		extern vm_atomic<string> storingCdrLastWriteAt;
+		extern vm_atomic<string> pbStatString;
+		extern vm_atomic<u_long> pbCountPacketDrop;
 		ostringstream outStrStat;
 		outStrStat << "{"
 			   << "\"version\": \"" << RTPSENSOR_VERSION << "\","
 			   << "\"storingCdrLastWriteAt\": \"" << storingCdrLastWriteAt << "\","
-			   << "\"storingSqlLastWriteAt\": \"" << storingSqlLastWriteAt << "\","
 			   << "\"pbStatString\": \"" << pbStatString << "\","
 			   << "\"pbCountPacketDrop\": \"" << pbCountPacketDrop << "\","
 			   << "\"uptime\": \"" << getUptime() << "\""

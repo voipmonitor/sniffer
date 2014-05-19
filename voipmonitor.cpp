@@ -498,8 +498,7 @@ PcapQueue *pcapQueueStatInterface;
 TcpReassembly *tcpReassembly;
 HttpData *httpData;
 
-string storingCdrLastWriteAt;
-string storingSqlLastWriteAt;
+vm_atomic<string> storingCdrLastWriteAt;
 
 time_t startTime;
 
@@ -3858,6 +3857,20 @@ void test() {
 			extern GeoIP_country *geoIP_country;
 			cout << geoIP_country->getCountry(pointToSepOptTest + 1) << endl;
 		}
+	} break;
+	case 4: {
+		vm_atomic<string> astr(string("000"));
+		cout << astr << endl;
+		astr = string("abc");
+		cout << astr << endl;
+		astr = "def";
+		cout << astr << endl;
+		
+		vm_atomic<string> astr2 = astr;
+		cout << astr2 << endl;
+		astr2 = astr;
+		cout << astr2 << endl;
+		
 	} break;
 	case 10:
 		{
