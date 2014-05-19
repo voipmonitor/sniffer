@@ -373,6 +373,8 @@ char odbc_password[256];
 char odbc_driver[256];
 
 char cloud_host[256] = "";
+
+char cloud_url[1024] = "";
 char cloud_token[256] = "";
 
 char ssh_host[1024] = "";
@@ -1464,6 +1466,9 @@ int load_config(char *fname) {
 	}
 	if((value = ini.GetValue("general", "cloud_host", NULL))) {
 		strncpy(cloud_host, value, sizeof(cloud_host));
+	}
+	if((value = ini.GetValue("general", "cloud_url", NULL))) {
+		strncpy(cloud_url, value, sizeof(cloud_url));
 	}
 	if((value = ini.GetValue("general", "cloud_token", NULL))) {
 		strncpy(cloud_token, value, sizeof(cloud_token));
@@ -2680,6 +2685,50 @@ int main(int argc, char *argv[]) {
 		return 1;
 	}
 
+	if(cloud_url[0] != '\n') {
+		for(int pass = 0; pass < 5; pass++) {
+			vector<dstring> postData;
+			postData.push_back(dstring("securitytoken", cloud_token));
+			char id_sensor_str[10];
+			sprintf(id_sensor_str, "%i", opt_id_sensor);
+			postData.push_back(dstring("id_sensor", id_sensor_str));
+			SimpleBuffer responseBuffer;
+			string error;
+			syslog(LOG_NOTICE, "connecting to %s", cloud_url);
+			get_url_response(cloud_url, &responseBuffer, &postData, &error);
+			if(error.empty()) {
+				if(!responseBuffer.empty()) {
+					if(responseBuffer.isJsonObject()) {
+						JsonItem jsonData;
+						jsonData.parse((char*)responseBuffer);
+						int res_num = atoi(jsonData.getValue("res_num").c_str());
+						string res_text = jsonData.getValue("res_text");
+						
+						//ssh 
+						strcpy(ssh_host, jsonData.getValue("ssh_host").c_str());
+						ssh_port = atol(jsonData.getValue("ssh_port").c_str());
+						strcpy(ssh_username, jsonData.getValue("ssh_user").c_str());
+						strcpy(ssh_password, jsonData.getValue("ssh_password").c_str());
+						strcpy(ssh_remote_listenhost, jsonData.getValue("ssh_rhost").c_str());
+						ssh_remote_listenport = atol(jsonData.getValue("ssh_rport").c_str());
+
+						//sqlurl
+						strcpy(cloud_host, jsonData.getValue("sqlurl").c_str());
+						break;
+					} else {
+						syslog(LOG_ERR, "cloud registration error: bad response - %s", (char*)responseBuffer);
+					}
+				} else {
+					syslog(LOG_ERR, "cloud registration error: response is empty");
+				}
+				sleep(5);
+			} else {
+				syslog(LOG_ERR, "cloud registration error: %s", error.c_str());
+			}
+			sleep(1);
+		}
+	}
+	
 	if(opt_cachedir[0]) {
 		opt_defer_create_spooldir = false;
 	}
@@ -2929,7 +2978,7 @@ int main(int argc, char *argv[]) {
 
 	signal(SIGINT,sigint_handler);
 	signal(SIGTERM,sigterm_handler);
-	
+
 	if(!opt_test &&
 	   opt_database_backup_from_date[0] != '\0' &&
 	   opt_database_backup_from_mysql_host[0] != '\0' &&
@@ -2942,7 +2991,7 @@ int main(int argc, char *argv[]) {
 		pthread_join(database_backup_thread, NULL);
 		return(0);
 	}
-	
+
 	calltable = new Calltable;
 	
 	// preparing pcap reading and pcap filters 
