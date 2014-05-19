@@ -253,6 +253,7 @@ protected:
 	virtual bool isMirrorReceiver() {
 		return(false);
 	}
+	void processBeforeAddToPacketBuffer(pcap_pkthdr* header,u_char* packet, u_int offset);
 protected:
 	eTypeQueue typeQueue;
 	std::string nameQueue;

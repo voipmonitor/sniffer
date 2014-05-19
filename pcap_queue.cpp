@@ -61,6 +61,8 @@ using namespace std;
 extern Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int dest, char *data, int datalen,
 			    pcap_t *handle, pcap_pkthdr *header, const u_char *packet, int istcp, int dontsave, int can_thread, int *was_rtp, struct iphdr2 *header_ip, int *voippacket, int disabledsave,
 			    pcap_block_store *block_store, int block_store_index, int dlt, int sensor_id);
+extern int check_sip20(char *data, unsigned long len);
+extern iphdr2 *convertHeaderIP_GRE(iphdr2 *header_ip);
 
 extern int verbosity;
 extern int verbosityE;
@@ -1509,6 +1511,57 @@ long unsigned int PcapQueue::getProcRssUsage(bool preparePstatData) {
 	return(this->procPstatData[0].rss);
 }
 
+void PcapQueue::processBeforeAddToPacketBuffer(pcap_pkthdr* header,u_char* packet, u_int offset) {
+	if(offset < 0) {
+		//// doplnit zjištění offsetu
+		return;
+	}
+	
+	extern SocketSimpleBufferWrite *sipSendSocket;
+	extern int opt_sip_send_before_packetbuffer;
+	if(!sipSendSocket || !opt_sip_send_before_packetbuffer) {
+		return;
+	}
+ 
+	iphdr2 *header_ip = (iphdr2*)(packet + offset);
+	if(header_ip->protocol == IPPROTO_IPIP) {
+		// ip in ip protocol
+		header_ip = (iphdr2*)((char*)header_ip + sizeof(iphdr2));
+	} else if(header_ip->protocol == IPPROTO_GRE) {
+		// gre protocol
+		header_ip = convertHeaderIP_GRE(header_ip);
+		if(!header_ip) {
+			return;
+		}
+	}
+
+	char *data = NULL;
+	int datalen = 0;
+	uint16_t sport;
+	uint16_t dport;
+	if (header_ip->protocol == IPPROTO_UDP) {
+		udphdr2 *header_udp = (udphdr2*) ((char *) header_ip + sizeof(*header_ip));
+		data = (char *) header_udp + sizeof(*header_udp);
+		datalen = (int)(header->caplen - ((u_char*)data - packet));
+		sport = header_udp->source;
+		dport = header_udp->dest;
+	} else if (header_ip->protocol == IPPROTO_TCP) {
+		tcphdr2 *header_tcp = (tcphdr2*) ((char *) header_ip + sizeof(*header_ip));
+		data = (char *) header_tcp + (header_tcp->doff * 4);
+		datalen = (int)(header->caplen - ((u_char*)data - packet)); 
+		sport = header_tcp->source;
+		dport = header_tcp->dest;
+	}
+	
+	if(sipSendSocket && 
+	   (sipportmatrix[sport] || sipportmatrix[dport]) &&
+	   check_sip20(data, datalen)) {
+		u_int16_t header_length = datalen;
+		sipSendSocket->addData(&header_length, 2,
+				       data, datalen);
+	}
+}
+
 
 inline void *_PcapQueue_threadFunction(void *arg) {
 	return(((PcapQueue*)arg)->threadFunction(arg, 0));
@@ -1710,54 +1763,22 @@ inline int PcapQueue_readFromInterface_base::pcapProcess(pcap_pkthdr** header, u
 	}
 	
 	ppd.header_ip = (iphdr2*)(*packet + ppd.offset);
-
-	if(ppd.header_ip->protocol == IPPROTO_GRE) {
-		struct ether_header *header_eth;
-		unsigned int offset;
-		int protocol = 0;
-		// gre protocol 
-		char gre[8];
-		uint16_t a, b;
-		// if anyone know how to make network to hostbyte nicely, redesign this
-		a = ntohs(*(uint16_t*)((char*)ppd.header_ip + sizeof(iphdr2)));
-		b = ntohs(*(uint16_t*)((char*)ppd.header_ip + sizeof(iphdr2) + 2));
-		memcpy(gre, &a, 2);
-		memcpy(gre + 2, &b, 2);
-		       
-		struct gre_hdr *grehdr = (struct gre_hdr *)gre;
-		if(grehdr->version == 0 and grehdr->protocol == 0x6558) {
-			header_eth = (struct ether_header *)((char*)ppd.header_ip + sizeof(iphdr2) + 8);
-			if(header_eth->ether_type == 129) {
-				// VLAN tag
-				offset = 4;
-				//XXX: this is very ugly hack, please do it right! (it will work for "08 00" which is IPV4 but not for others! (find vlan_header or something)
-				protocol = *((char*)header_eth + 2);
-			} else {
-				offset = 0;
-				protocol = header_eth->ether_type;
-			}
-			if(protocol == IPPROTO_UDP or protocol == IPPROTO_TCP) {
-				offset += sizeof(struct ether_header);
-				ppd.header_ip = (struct iphdr2 *) ((char*)header_eth + offset);
-				if(ppd.header_ip->protocol == IPPROTO_IPIP) {
-					ppd.header_ip = (iphdr2*)((char*)ppd.header_ip + sizeof(iphdr2));
-				}
-			} else {
-				return(0);
-			}
-		} else if(grehdr->version == 0 and grehdr->protocol == 0x800) {
-			ppd.header_ip = (struct iphdr2 *) ((char*)ppd.header_ip + sizeof(iphdr2) + 4);
-			if(ppd.header_ip->protocol == IPPROTO_IPIP) {
-				ppd.header_ip = (iphdr2*)((char*)ppd.header_ip + sizeof(iphdr2));
-			}
+	
+	if(ppd.header_ip->protocol == IPPROTO_IPIP) {
+		// ip in ip protocol
+		ppd.header_ip = (iphdr2*)((char*)ppd.header_ip + sizeof(iphdr2));
+	} else if(ppd.header_ip->protocol == IPPROTO_GRE) {
+		// gre protocol
+		iphdr2 *header_ip = convertHeaderIP_GRE(ppd.header_ip);
+		if(header_ip) {
+			ppd.header_ip = header_ip;
 		} else {
 			if(opt_ipaccount == 0) {
 				return(0);
-			}		      
-		}			      
-	}			      
+			}
+		}
+	}
                                                
-	
 	if(enableDefrag) {
 	 
 		//if UDP defrag is enabled process only UDP packets and only SIP packets
@@ -2539,6 +2560,7 @@ void* PcapQueue_readFromInterface::threadFunction(void *arg, unsigned int arg2) 
 				header->len = 101;
 				header->caplen = 101;
 			}
+			this->processBeforeAddToPacketBuffer(header, packet, offset);
 			if(!blockStore->full) {
 				blockStore->add(header, packet, offset, dlink);
 			}
@@ -3016,7 +3038,9 @@ void *PcapQueue_readFromFifo::threadFunction(void *arg, unsigned int arg2) {
 				continue;
 			}
 			++sumPacketsCounterIn[0];
-			blockStore->add(&header, packet);
+			pcap_pkthdr *header_std = header.convertToStdHeader();
+			this->processBeforeAddToPacketBuffer(header_std, packet, header.offset);
+			blockStore->add(header_std, packet, header.offset, header.dlink);
 			if(blockStore->full) {
 				sumPacketsSize[0] += blockStore->size;
 				if(opt_pcap_queue_compress) {
@@ -3655,42 +3679,9 @@ void PcapQueue_readFromFifo::processPacket(pcap_pkthdr_plus *header_plus, u_char
 		// ip in ip protocol
 		header_ip = (iphdr2*)((char*)header_ip + sizeof(iphdr2));
 	} else if(header_ip->protocol == IPPROTO_GRE) {
-		struct ether_header *header_eth;
-		int protocol = 0;      
-		unsigned int offset;   
-		// gre protocol 
-		char gre[8];
-		uint16_t a, b;
-		// if anyone know how to make network to hostbyte nicely, redesign this
-		a = ntohs(*(uint16_t*)((char*)header_ip + sizeof(iphdr2)));
-		b = ntohs(*(uint16_t*)((char*)header_ip + sizeof(iphdr2) + 2));
-		memcpy(gre, &a, 2);			memcpy(gre + 2, &b, 2);
-		struct gre_hdr *grehdr = (struct gre_hdr *)gre;			
-		if(grehdr->version == 0 and grehdr->protocol == 0x6558) {				header_eth = (struct ether_header *)((char*)header_ip + sizeof(iphdr2) + 8);
-			if(header_eth->ether_type == 129) {
-				// VLAN tag
-				offset = 4;
-				//XXX: this is very ugly hack, please do it right! (it will work for "08 00" which is IPV4 but not for others! (find vlan_header or something)
-				protocol = *((char*)header_eth + 2);
-			} else {
-				offset = 0;
-				protocol = header_eth->ether_type;
-			}
-			if(protocol == IPPROTO_UDP or protocol == IPPROTO_TCP) {
-				offset += sizeof(struct ether_header);
-				header_ip = (struct iphdr2 *) ((char*)header_eth + offset);
-				if(header_ip->protocol == IPPROTO_IPIP) {
-					header_ip = (iphdr2*)((char*)header_ip + sizeof(iphdr2));
-				}
-			} else {
-				return;
-			}
-		} else if(grehdr->version == 0 and grehdr->protocol == 0x800) {
-			header_ip = (struct iphdr2 *) ((char*)header_ip + sizeof(iphdr2) + 4);
-			if(header_ip->protocol == IPPROTO_IPIP) {
-				header_ip = (iphdr2*)((char*)header_ip + sizeof(iphdr2));
-			}
-		} else {
+		// gre protocol
+		header_ip = convertHeaderIP_GRE(header_ip);
+		if(!header_ip) {
 			if(opt_ipaccount) {
 				ipaccount(header->ts.tv_sec, (iphdr2*) ((char*)(packet) + header_plus->offset), header->len - header_plus->offset, false);
 			}

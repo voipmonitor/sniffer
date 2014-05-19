@@ -527,6 +527,7 @@ map<string, string> hosts;
 
 ip_port sipSendSocket_ip_port;
 SocketSimpleBufferWrite *sipSendSocket = NULL;
+int opt_sip_send_before_packetbuffer = 0;
 
 
 #define ENABLE_SEMAPHOR_FORK_MODE 0
@@ -1907,6 +1908,9 @@ int load_config(char *fname) {
 				sipSendSocket_ip_port.set_port(port);
 			}
 		}
+	}
+	if((value = ini.GetValue("general", "sip_send_before_packetbuffer", NULL))) {
+		opt_sip_send_before_packetbuffer = yesno(value);
 	}
 	if((value = ini.GetValue("general", "manager_sshhost", NULL))) {
 		strncpy(ssh_host, value, sizeof(ssh_host));

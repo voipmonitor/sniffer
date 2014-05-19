@@ -196,6 +196,7 @@ extern int pcap_drop_flag;
 extern sem_t readpacket_thread_semaphore;
 #endif
 
+iphdr2 *convertHeaderIP_GRE(iphdr2 *header_ip);
 static char * gettag(const void *ptr, unsigned long len, const char *tag, unsigned long *gettaglen, unsigned long *limitLen = NULL);
 static void logPacketSipMethodCall(int sip_method, int lastSIPresponseNum, pcap_pkthdr *header, Call *call, const char *descr = NULL);
 #define logPacketSipMethodCall_enable ((opt_read_from_file && verbosity > 2) || verbosityE > 1)
@@ -1940,7 +1941,8 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 				fraudSipPacket(saddr, header->ts);
 			}
 			extern SocketSimpleBufferWrite *sipSendSocket;
-			if(sipSendSocket) {
+			extern int opt_sip_send_before_packetbuffer;
+			if(sipSendSocket && !opt_sip_send_before_packetbuffer) {
 				u_int16_t header_length = datalen;
 				sipSendSocket->addData(&header_length, 2,
 						       data, datalen);
@@ -3232,37 +3234,8 @@ void *pcap_read_thread_func(void *arg) {
 			header_ip = (struct iphdr2 *) ((char*)header_ip + sizeof(iphdr2));
 		} else if(header_ip->protocol == IPPROTO_GRE) {
 			// gre protocol 
-			char gre[8];
-			uint16_t a, b;
-			struct ether_header* header_eth;
-			int offset, protocol;
-			// if anyone know how to make network to hostbyte nicely, redesign this
-			a = ntohs(*(uint16_t*)((char*)header_ip + sizeof(iphdr2)));
-			b = ntohs(*(uint16_t*)((char*)header_ip + sizeof(iphdr2) + 2));
-			memcpy(gre, &a, 2);
-			memcpy(gre + 2, &b, 2);
-
-			struct gre_hdr *grehdr = (struct gre_hdr *)gre;
-			if(grehdr->version == 0 and grehdr->protocol == 0x6558) {
-				header_eth = (struct ether_header *)((char*)header_ip + sizeof(iphdr2) + 8);
-				if(header_eth->ether_type == 129) {
-					// VLAN tag
-					offset = 4;
-					//XXX: this is very ugly hack, please do it right! (it will work for "08 00" which is IPV4 but not for others! (find vlan_header or something)
-					protocol = *((char*)header_eth + 2);
-				} else {
-					offset = 0;
-					protocol = header_eth->ether_type;
-				}
-				if(protocol == IPPROTO_UDP or protocol == IPPROTO_TCP) {
-					offset += sizeof(struct ether_header);
-					header_ip = (struct iphdr2 *) ((char*)header_eth + offset);
-				} else {
-					continue;
-				}
-			} else if(grehdr->version == 0 and grehdr->protocol == 0x800) {
-				header_ip = (struct iphdr2 *) ((char*)header_ip + sizeof(iphdr2) + 4);
-			} else {
+			header_ip = convertHeaderIP_GRE(header_ip);
+			if(!header_ip) {
 				continue;
 			}
 		}
@@ -4218,4 +4191,46 @@ void TcpReassemblySip::complete(
 	}
 	free(newdata);
 	tcp_streams_hashed[hash] = NULL;
+}
+
+iphdr2 *convertHeaderIP_GRE(iphdr2 *header_ip) {
+	struct ether_header *header_eth;
+	int protocol = 0;      
+	unsigned int offset;   
+	// gre protocol 
+	char gre[8];
+	uint16_t a, b;
+	// if anyone know how to make network to hostbyte nicely, redesign this
+	a = ntohs(*(uint16_t*)((char*)header_ip + sizeof(iphdr2)));
+	b = ntohs(*(uint16_t*)((char*)header_ip + sizeof(iphdr2) + 2));
+	memcpy(gre, &a, 2);			memcpy(gre + 2, &b, 2);
+	struct gre_hdr *grehdr = (struct gre_hdr *)gre;			
+	if(grehdr->version == 0 and grehdr->protocol == 0x6558) {				header_eth = (struct ether_header *)((char*)header_ip + sizeof(iphdr2) + 8);
+		if(header_eth->ether_type == 129) {
+			// VLAN tag
+			offset = 4;
+			//XXX: this is very ugly hack, please do it right! (it will work for "08 00" which is IPV4 but not for others! (find vlan_header or something)
+			protocol = *((char*)header_eth + 2);
+		} else {
+			offset = 0;
+			protocol = header_eth->ether_type;
+		}
+		if(protocol == IPPROTO_UDP or protocol == IPPROTO_TCP) {
+			offset += sizeof(struct ether_header);
+			header_ip = (struct iphdr2 *) ((char*)header_eth + offset);
+			if(header_ip->protocol == IPPROTO_IPIP) {
+				header_ip = (iphdr2*)((char*)header_ip + sizeof(iphdr2));
+			}
+		} else {
+			return(NULL);
+		}
+	} else if(grehdr->version == 0 and grehdr->protocol == 0x800) {
+		header_ip = (struct iphdr2 *) ((char*)header_ip + sizeof(iphdr2) + 4);
+		if(header_ip->protocol == IPPROTO_IPIP) {
+			header_ip = (iphdr2*)((char*)header_ip + sizeof(iphdr2));
+		}
+	} else {
+		return(NULL);
+	}
+	return(header_ip);
 }
