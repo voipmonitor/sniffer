@@ -312,6 +312,7 @@ private:
 class MySqlStore_process {
 public:
 	MySqlStore_process(int id, const char *host, const char *user, const char *password, const char *database,
+			   const char *cloud_host, const char *cloud_token,
 			   int concatLimit);
 	~MySqlStore_process();
 	void connect();
@@ -346,7 +347,8 @@ private:
 
 class MySqlStore {
 public:
-	MySqlStore(const char *host, const char *user, const char *password, const char *database);
+	MySqlStore(const char *host, const char *user, const char *password, const char *database, 
+		   const char *cloud_host = NULL, const char *cloud_token = NULL);
 	~MySqlStore();
 	void connect(int id);
 	void query(const char *query_str, int id);
@@ -368,6 +370,8 @@ private:
 	string user;
 	string password;
 	string database;
+	string cloud_host;
+	string cloud_token;
 	int defaultConcatLimit;
 };
 

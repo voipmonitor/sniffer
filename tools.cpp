@@ -2394,6 +2394,7 @@ void SocketSimpleBufferWrite::addData(void *data1, u_int32_t dataLength1,
 }
 
 void SocketSimpleBufferWrite::write() {
+	socketConnect();
 	while(!terminating && writeThreadHandle) {
 		SimpleBuffer *simpleBuffer = NULL;
 		lock_data();

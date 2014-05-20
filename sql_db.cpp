@@ -37,6 +37,7 @@ extern int opt_mysqlcompress;
 extern pthread_mutex_t mysqlconnect_lock;      
 extern int opt_mos_lqo;
 extern int opt_read_from_file;
+extern char opt_pb_read_from_file[256];
 extern volatile int calls_cdr_save_counter;
 extern volatile int calls_message_save_counter;
 extern int opt_enable_fraud;
@@ -608,29 +609,34 @@ int SqlDb_mysql::getDbMinorVersion(int minorLevel) {
 bool SqlDb_mysql::createRoutine(string routine, string routineName, string routineParamsAndReturn, eRoutineType routineType) {
 	bool missing = false;
 	bool diff = false;
-	this->query(string("select routine_definition from information_schema.routines where routine_schema='") + this->conn_database + 
-		    "' and routine_name='" + routineName + 
-		    "' and routine_type='" + (routineType == procedure ? "PROCEDURE" : "FUNCTION") + "'");
-	SqlDb_row row = this->fetchRow();
-	if(!row) {
+	if(this->isCloud()) {
 		missing = true;
-	} else if(row["routine_definition"] != routine) {
-		size_t i = 0, j = 0;
-		while(i < routine.length() &&
-		      j < row["routine_definition"].length()) {
-			if(routine[i] == '\\' && i < routine.length() - 1) {
+		diff = true;
+	} else {
+		this->query(string("select routine_definition from information_schema.routines where routine_schema='") + this->conn_database + 
+			    "' and routine_name='" + routineName + 
+			    "' and routine_type='" + (routineType == procedure ? "PROCEDURE" : "FUNCTION") + "'");
+		SqlDb_row row = this->fetchRow();
+		if(!row) {
+			missing = true;
+		} else if(row["routine_definition"] != routine) {
+			size_t i = 0, j = 0;
+			while(i < routine.length() &&
+			      j < row["routine_definition"].length()) {
+				if(routine[i] == '\\' && i < routine.length() - 1) {
+					++i;
+				}
+				if(routine[i] != row["routine_definition"][j]) {
+					diff = true;
+					break;
+				}
 				++i;
+				++j;
 			}
-			if(routine[i] != row["routine_definition"][j]) {
+			if(!diff && 
+			   (i < routine.length() || j < row["routine_definition"].length())) {
 				diff = true;
-				break;
 			}
-			++i;
-			++j;
-		}
-		if(!diff && 
-		   (i < routine.length() || j < row["routine_definition"].length())) {
-			diff = true;
 		}
 	}
 	if(missing || diff) {
@@ -1130,6 +1136,7 @@ void *MySqlStore_process_storing(void *storeProcess_addr) {
 }
 	
 MySqlStore_process::MySqlStore_process(int id, const char *host, const char *user, const char *password, const char *database,
+				       const char *cloud_host, const char *cloud_token,
 				       int concatLimit) {
 	this->id = id;
 	this->terminated = false;
@@ -1138,6 +1145,9 @@ MySqlStore_process::MySqlStore_process(int id, const char *host, const char *use
 	this->concatLimit = concatLimit;
 	this->sqlDb = new SqlDb_mysql();
 	this->sqlDb->setConnectParameters(host, user, password, database);
+	if(cloud_host && *cloud_host) {
+		this->sqlDb->setCloudParameters(cloud_host, cloud_token);
+	}
 	pthread_mutex_init(&this->lock_mutex, NULL);
 	this->thread = (pthread_t)NULL;
 }
@@ -1243,7 +1253,7 @@ void MySqlStore_process::store() {
 				}
 			}
 			
-			if(!opt_read_from_file &&
+			if(!opt_read_from_file && !opt_pb_read_from_file[0] &&
 			   terminating && !this->sqlDb->connected()) {
 				break;
 			}
@@ -1278,11 +1288,18 @@ void MySqlStore_process::setConcatLimit(int concatLimit) {
 	this->concatLimit = concatLimit;
 }
 
-MySqlStore::MySqlStore(const char *host, const char *user, const char *password, const char *database) {
+MySqlStore::MySqlStore(const char *host, const char *user, const char *password, const char *database,
+		       const char *cloud_host, const char *cloud_token) {
 	this->host = host;
 	this->user = user;
 	this->password = password;
 	this->database = database;
+	if(cloud_host) {
+		this->cloud_host = cloud_host;
+	}
+	if(cloud_token) {
+		this->cloud_token = cloud_token;
+	}
 	this->defaultConcatLimit = 400;
 }
 
@@ -1345,6 +1362,7 @@ MySqlStore_process *MySqlStore::find(int id) {
 		return(process);
 	}
 	process = new MySqlStore_process(id, this->host.c_str(), this->user.c_str(), this->password.c_str(), this->database.c_str(),
+					 this->cloud_host.c_str(), this->cloud_token.c_str(),
 					 this->defaultConcatLimit);
 	this->processes[id] = process;
 	return(process);

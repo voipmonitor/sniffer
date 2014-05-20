@@ -1,3 +1,9 @@
+10.0RC14 20.5.2014
+==================
+- fix race condition leading to crash in get sniffer status via manager 
+- fix read rtp from pcap which was recorded with savertp=heder 
+- disable run cleanspool thread if set opt_nocdr
+
 10.0RC13 15.5.2014
 ==================
 - fix it better - limit number of calls which can share the same RTP port which avoids multiplication DDOS 

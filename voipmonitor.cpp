@@ -373,6 +373,8 @@ char odbc_password[256];
 char odbc_driver[256];
 
 char cloud_host[256] = "";
+
+char cloud_url[1024] = "";
 char cloud_token[256] = "";
 
 char ssh_host[1024] = "";
@@ -498,8 +500,7 @@ PcapQueue *pcapQueueStatInterface;
 TcpReassembly *tcpReassembly;
 HttpData *httpData;
 
-string storingCdrLastWriteAt;
-string storingSqlLastWriteAt;
+vm_atomic<string> storingCdrLastWriteAt;
 
 time_t startTime;
 
@@ -528,6 +529,7 @@ map<string, string> hosts;
 
 ip_port sipSendSocket_ip_port;
 SocketSimpleBufferWrite *sipSendSocket = NULL;
+int opt_sip_send_before_packetbuffer = 0;
 
 
 #define ENABLE_SEMAPHOR_FORK_MODE 0
@@ -1465,6 +1467,9 @@ int load_config(char *fname) {
 	if((value = ini.GetValue("general", "cloud_host", NULL))) {
 		strncpy(cloud_host, value, sizeof(cloud_host));
 	}
+	if((value = ini.GetValue("general", "cloud_url", NULL))) {
+		strncpy(cloud_url, value, sizeof(cloud_url));
+	}
 	if((value = ini.GetValue("general", "cloud_token", NULL))) {
 		strncpy(cloud_token, value, sizeof(cloud_token));
 	}
@@ -1675,15 +1680,14 @@ int load_config(char *fname) {
 	if((value = ini.GetValue("general", "packetbuffer_enable", NULL))) {
 		opt_pcap_queue = yesno(value);
 	}
-	/*
-	DEFAULT VALUES
+	//EXPERT VALUES
 	if((value = ini.GetValue("general", "packetbuffer_block_maxsize", NULL))) {
 		opt_pcap_queue_block_max_size = atol(value) * 1024;
 	}
 	if((value = ini.GetValue("general", "packetbuffer_block_maxtime", NULL))) {
 		opt_pcap_queue_block_max_time_ms = atoi(value);
 	}
-	*/
+	//
 	if((value = ini.GetValue("general", "packetbuffer_total_maxheap", NULL))) {
 		opt_pcap_queue_store_queue_max_memory_size = atol(value) * 1024 *1024;
 	}
@@ -1909,6 +1913,9 @@ int load_config(char *fname) {
 				sipSendSocket_ip_port.set_port(port);
 			}
 		}
+	}
+	if((value = ini.GetValue("general", "sip_send_before_packetbuffer", NULL))) {
+		opt_sip_send_before_packetbuffer = yesno(value);
 	}
 	if((value = ini.GetValue("general", "manager_sshhost", NULL))) {
 		strncpy(ssh_host, value, sizeof(ssh_host));
@@ -2680,6 +2687,50 @@ int main(int argc, char *argv[]) {
 		return 1;
 	}
 
+	if(cloud_url[0] != '\n') {
+		for(int pass = 0; pass < 5; pass++) {
+			vector<dstring> postData;
+			postData.push_back(dstring("securitytoken", cloud_token));
+			char id_sensor_str[10];
+			sprintf(id_sensor_str, "%i", opt_id_sensor);
+			postData.push_back(dstring("id_sensor", id_sensor_str));
+			SimpleBuffer responseBuffer;
+			string error;
+			syslog(LOG_NOTICE, "connecting to %s", cloud_url);
+			get_url_response(cloud_url, &responseBuffer, &postData, &error);
+			if(error.empty()) {
+				if(!responseBuffer.empty()) {
+					if(responseBuffer.isJsonObject()) {
+						JsonItem jsonData;
+						jsonData.parse((char*)responseBuffer);
+						int res_num = atoi(jsonData.getValue("res_num").c_str());
+						string res_text = jsonData.getValue("res_text");
+						
+						//ssh 
+						strcpy(ssh_host, jsonData.getValue("ssh_host").c_str());
+						ssh_port = atol(jsonData.getValue("ssh_port").c_str());
+						strcpy(ssh_username, jsonData.getValue("ssh_user").c_str());
+						strcpy(ssh_password, jsonData.getValue("ssh_password").c_str());
+						strcpy(ssh_remote_listenhost, jsonData.getValue("ssh_rhost").c_str());
+						ssh_remote_listenport = atol(jsonData.getValue("ssh_rport").c_str());
+
+						//sqlurl
+						strcpy(cloud_host, jsonData.getValue("sqlurl").c_str());
+						break;
+					} else {
+						syslog(LOG_ERR, "cloud registration error: bad response - %s", (char*)responseBuffer);
+					}
+				} else {
+					syslog(LOG_ERR, "cloud registration error: response is empty");
+				}
+				sleep(5);
+			} else {
+				syslog(LOG_ERR, "cloud registration error: %s", error.c_str());
+			}
+			sleep(1);
+		}
+	}
+	
 	if(opt_cachedir[0]) {
 		opt_defer_create_spooldir = false;
 	}
@@ -2867,7 +2918,7 @@ int main(int argc, char *argv[]) {
 		delete sqlDb;
 	}
 	if(isSqlDriver("mysql")) {
-		sqlStore = new MySqlStore(mysql_host, mysql_user, mysql_password, mysql_database);	
+		sqlStore = new MySqlStore(mysql_host, mysql_user, mysql_password, mysql_database, cloud_host, cloud_token);	
 		if(!opt_nocdr) {
 			sqlStore->connect(STORE_PROC_ID_CDR_1);
 			sqlStore->connect(STORE_PROC_ID_MESSAGE_1);
@@ -2926,10 +2977,10 @@ int main(int argc, char *argv[]) {
 			}
 		}
 	}
-
+	
 	signal(SIGINT,sigint_handler);
 	signal(SIGTERM,sigterm_handler);
-	
+
 	if(!opt_test &&
 	   opt_database_backup_from_date[0] != '\0' &&
 	   opt_database_backup_from_mysql_host[0] != '\0' &&
@@ -2942,7 +2993,7 @@ int main(int argc, char *argv[]) {
 		pthread_join(database_backup_thread, NULL);
 		return(0);
 	}
-	
+
 	calltable = new Calltable;
 	
 	// preparing pcap reading and pcap filters 
@@ -3134,7 +3185,8 @@ int main(int argc, char *argv[]) {
 	extern AsyncClose asyncClose;
 	asyncClose.startThreads(opt_pcap_dump_writethreads, opt_pcap_dump_writethreads_max);
 	
-	if(isSqlDriver("mysql") &&
+	if(!opt_nocdr &&
+	   isSqlDriver("mysql") &&
 	   !(opt_pcap_queue && 
 	     !opt_pcap_queue_receive_from_ip_port &&
 	     opt_pcap_queue_send_to_ip_port) &&
@@ -3387,7 +3439,7 @@ int main(int argc, char *argv[]) {
 					}
 					
 					pcapQueueI->terminate();
-					sleep(opt_pb_read_from_file[0] && opt_enable_tcpreassembly ? 60 : 1);
+					sleep(opt_pb_read_from_file[0] && opt_enable_tcpreassembly ? 10 : 1);
 					if(opt_pb_read_from_file[0] && opt_enable_tcpreassembly && opt_tcpreassembly_thread) {
 						tcpReassembly->setIgnoreTerminating(false);
 						sleep(2);
@@ -3858,6 +3910,20 @@ void test() {
 			extern GeoIP_country *geoIP_country;
 			cout << geoIP_country->getCountry(pointToSepOptTest + 1) << endl;
 		}
+	} break;
+	case 4: {
+		vm_atomic<string> astr(string("000"));
+		cout << astr << endl;
+		astr = string("abc");
+		cout << astr << endl;
+		astr = "def";
+		cout << astr << endl;
+		
+		vm_atomic<string> astr2 = astr;
+		cout << astr2 << endl;
+		astr2 = astr;
+		cout << astr2 << endl;
+		
 	} break;
 	case 10:
 		{

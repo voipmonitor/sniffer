@@ -760,7 +760,7 @@ read:
 end:
 	if(enable_save_packet && opt_rtpsave_threaded) {
 		if((this->silencerecording || (opt_onlyRTPheader && !(this->flags & FLAG_SAVERTP))) && !this->isfax) {
-			if(datalen > RTP_FIXED_HEADERLEN &&
+			if(datalen >= RTP_FIXED_HEADERLEN &&
 			   header->caplen > (unsigned)(datalen - RTP_FIXED_HEADERLEN)) {
 				unsigned int tmp_u32 = header->caplen;
 				header->caplen = header->caplen - (datalen - RTP_FIXED_HEADERLEN);
@@ -3067,15 +3067,16 @@ Calltable::hashAdd(in_addr_t addr, unsigned short port, Call* call, int iscaller
 			if(count >= opt_sdp_multiplication) {
 				static Call *lastcall = NULL;
 				// this port/ip combination is already in 3 calls - do not add to 4th to not cause multiplication attack. 
-				if(lastcall != call) {
+				if(lastcall != call and opt_sdp_multiplication >= 3) {
 					struct in_addr in;
 					in.s_addr = addr;
 					char *str = inet_ntoa(in);
-					syslog(LOG_NOTICE, "call-id[%s] SDP: %s:%u is already in %d calls [%s] [%s] [%s]. Limit is 4 to not cause multiplication DDOS. You can increas it sdp_multiplication = N\n", 
-						call->fbasename, str, port, opt_sdp_multiplication,
+					syslog(LOG_NOTICE, "call-id[%s] SDP: %s:%u is already in calls [%s] [%s] [%s]. Limit is %u to not cause multiplication DDOS. You can increas it sdp_multiplication = N\n", 
+						call->fbasename, str, port,
 						node->calls->call->fbasename,
 						node->calls->next->call->fbasename,
-						node->calls->next->call->fbasename);
+						node->calls->next->next->call->fbasename,
+						opt_sdp_multiplication);
 					lastcall = call;
 				}
 				return;
