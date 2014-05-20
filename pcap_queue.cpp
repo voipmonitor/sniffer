@@ -1554,7 +1554,7 @@ void PcapQueue::processBeforeAddToPacketBuffer(pcap_pkthdr* header,u_char* packe
 	}
 	
 	if(sipSendSocket && 
-	   (sipportmatrix[sport] || sipportmatrix[dport]) &&
+	   (sipportmatrix[htons(sport)] || sipportmatrix[htons(dport)]) &&
 	   check_sip20(data, datalen)) {
 		u_int16_t header_length = datalen;
 		sipSendSocket->addData(&header_length, 2,
