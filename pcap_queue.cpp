@@ -60,7 +60,8 @@ using namespace std;
 
 extern Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int dest, char *data, int datalen,
 			    pcap_t *handle, pcap_pkthdr *header, const u_char *packet, int istcp, int dontsave, int can_thread, int *was_rtp, struct iphdr2 *header_ip, int *voippacket, int disabledsave,
-			    pcap_block_store *block_store, int block_store_index, int dlt, int sensor_id);
+			    pcap_block_store *block_store, int block_store_index, int dlt, int sensor_id,
+			    bool mainProcess = true, int sipOffset = 0);
 extern int check_sip20(char *data, unsigned long len);
 extern iphdr2 *convertHeaderIP_GRE(iphdr2 *header_ip);
 

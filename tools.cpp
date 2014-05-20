@@ -1594,7 +1594,8 @@ void ListPhoneNumber_wb::addBlack(const char *number) {
 }
 
 
-void ParsePacket::parseData(char *data, unsigned long datalen, bool doClear) {
+unsigned long ParsePacket::parseData(char *data, unsigned long datalen, bool doClear) {
+	unsigned long rsltDataLen = datalen;
 	if(doClear) {
 		clear();
 	}
@@ -1610,7 +1611,10 @@ void ParsePacket::parseData(char *data, unsigned long datalen, bool doClear) {
 				unsigned long modify_datalen = doubleEndLine + 4 - data + contentLength;
 				if(modify_datalen < datalen) {
 					datalen = modify_datalen;
+					rsltDataLen = datalen;
 				}
+			} else {
+				rsltDataLen = doubleEndLine + 4 - data;
 			}
 			i += 2;
 		} else if(i == 0 || data[i - 1] == '\n') {
@@ -1635,6 +1639,7 @@ void ParsePacket::parseData(char *data, unsigned long datalen, bool doClear) {
 		}
 	}
 	parseDataPtr = data;
+	return(rsltDataLen);
 }
 
 
@@ -2437,7 +2442,7 @@ bool SocketSimpleBufferWrite::socketConnect() {
 	addr.sin_family = AF_INET;
 	addr.sin_port = htons(ipPort.get_port());
 	addr.sin_addr.s_addr = *(long*)socketHostEnt->h_addr_list[0];
-	while(connect(socketHandle, (struct sockaddr *)&addr, sizeof(addr)) == -1) {
+	while(connect(socketHandle, (struct sockaddr *)&addr, sizeof(addr)) == -1 && !terminating) {
 		syslog(LOG_NOTICE, "socketwrite %s: failed to connect to server [%s] error:[%s] - trying again", name.c_str(), inet_ntoa(*(struct in_addr *)socketHostEnt->h_addr_list[0]), strerror(errno));
 		sleep(1);
 	}

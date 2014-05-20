@@ -1764,7 +1764,8 @@ static void process_packet__parse_custom_headers(Call *call, char *data, int dat
 
 Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int dest, char *data, int datalen,
 	pcap_t *handle, pcap_pkthdr *header, const u_char *packet, int istcp, int dontsave, int can_thread, int *was_rtp, struct iphdr2 *header_ip, int *voippacket, int disabledsave,
-	pcap_block_store *block_store, int block_store_index, int dlt, int sensor_id) {
+	pcap_block_store *block_store, int block_store_index, int dlt, int sensor_id, 
+	bool mainProcess = true, int sipOffset = 0) {
  
 	Call *call = NULL;
 	int last_sip_method = -1;
@@ -1789,7 +1790,9 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 	*was_rtp = 0;
 	int merged;
 	
-	++counter_all_packets;
+	if(mainProcess) {
+		++counter_all_packets;
+	}
 
 	// checking and cleaning stuff every 10 seconds (if some packet arrive) 
 	if (header->ts.tv_sec - last_cleanup > 10){
@@ -1867,7 +1870,9 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 	 
 		++counter_sip_packets[0];
 
-		_parse_packet.parseData(data, datalen, true);
+		Call *returnCall = NULL;
+		
+		unsigned long sipDatalen = _parse_packet.parseData(data, datalen, true);
 
 		*voippacket = 1;
 #if 0
@@ -1888,6 +1893,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 		   messages use the same Call-ID. For example, when a user agent receives a 
 		   BYE message, it knows which call to hang up based on the Call-ID.
 		*/
+		
 		int issip = check_sip20(data, datalen);
 		s = gettag(data, datalen, "\nCall-ID:", &l, &gettagLimitLen);
 		if(!issip or (l <= 0 || l > 1023)) {
@@ -2126,7 +2132,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 				call = new_invite_register(sip_method, data, datalen, header, callidstr, saddr, daddr, source, dest, s, l,
 							   handle, dlt, sensor_id);
 				if(call == NULL) {
-					return NULL;
+					goto endsip;
 				}
 			} else {
 				// SIP packet does not belong to any call and it is not INVITE 
@@ -2146,7 +2152,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 					logPacketSipMethodCall(sip_method, lastSIPresponseNum, header, call, 
 						"SIP packet does not belong to any call and it is not INVITE");
 				}
-				return NULL;
+				goto endsip;
 			}
 		// check if the SIP msg is part of earlier REGISTER
 		} else if(call->type == REGISTER) {
@@ -2171,7 +2177,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 					call = new_invite_register(sip_method, data, datalen, header, callidstr, saddr, daddr, source, dest, (char*)call->call_id.c_str(), call->call_id.length(),
 								   handle, dlt, sensor_id);
 					if(call == NULL) {
-						return NULL;
+						goto endsip;
 					}
 					save_packet(call, header, packet, saddr, source, daddr, dest, istcp, data, datalen, TYPE_SIP, 
 						    dlt, sensor_id);
@@ -2179,7 +2185,8 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 						logPacketSipMethodCall(sip_method, lastSIPresponseNum, header, call, 
 							"to much register attempts without OK or 401 responses");
 					}
-					return call;
+					returnCall = call;
+					goto endsip;
 				}
 				s = gettag(data, datalen, "\nCSeq:", &l, &gettagLimitLen);
 				if(l && l < 32) {
@@ -2216,7 +2223,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 					logPacketSipMethodCall(sip_method, lastSIPresponseNum, header, call, 
 						"update expires header from all REGISTER dialog messages (from 200 OK which can override the expire)");
 				}
-				return NULL;
+				goto endsip;
 			} else if(sip_method == RES401 or sip_method == RES403) {
 				call->reg401count++;
 				if(verbosity > 3) syslog(LOG_DEBUG, "REGISTER 401 Call-ID[%s] reg401count[%d]", call->call_id.c_str(), call->reg401count);
@@ -2230,7 +2237,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 						logPacketSipMethodCall(sip_method, lastSIPresponseNum, header, call, 
 							"REGISTER 401 count > 1");
 					}
-					return NULL;
+					goto endsip;
 				}
 			}
 			if(call->msgcount > 20) {
@@ -2243,7 +2250,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 					logPacketSipMethodCall(sip_method, lastSIPresponseNum, header, call, 
 						"too many REGISTER messages within the same callid");
 				}
-				return NULL;
+				goto endsip;
 			}
 		// packet is already part of call
 		// check if SIP packet belongs to the first leg 
@@ -2451,7 +2458,8 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 							logPacketSipMethodCall(sip_method, lastSIPresponseNum, header, call);
 						}
 						process_packet__parse_custom_headers(call, data, datalen);
-						return call;
+						returnCall = call;
+						goto endsip;
 					} else if(strncmp(cseq, call->invitecseq, cseqlen) == 0) {
 						call->seeninviteok = true;
 						if(!call->connect_time) {
@@ -2466,7 +2474,8 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 						save_packet(call, header, packet, saddr, source, daddr, dest, istcp, data, datalen, TYPE_SIP, 
 							    dlt, sensor_id);
 						process_packet__parse_custom_headers(call, data, datalen);
-						return call;
+						returnCall = call;
+						goto endsip;
 					}
 				}
 				if(!call->onCall_2XX) {
@@ -2509,7 +2518,8 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 						logPacketSipMethodCall(sip_method, lastSIPresponseNum, header, call);
 					}
 					process_packet__parse_custom_headers(call, data, datalen);
-					return call;
+					returnCall = call;
+					goto endsip;
 				} else if(!call->destroy_call_at) {
 					call->destroy_call_at = header->ts.tv_sec + 60;
 				}
@@ -2599,7 +2609,8 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 			s = gettag(data,datalen,"\nc:",&l,&gettagLimitLen);
 		}
 
-		char a = data[datalen - 1];
+		char a;
+		a = data[datalen - 1];
 		data[datalen - 1] = 0;
 		char t;
 		char *sl;
@@ -2697,13 +2708,39 @@ notfound:
 		data[datalen - 1] = a;
 
 		if(!disabledsave) {
-			save_packet(call, header, packet, saddr, source, daddr, dest, istcp, data, datalen, TYPE_SIP, 
-				    dlt, sensor_id);
+			if(sipDatalen && (sipDatalen < datalen || sipOffset)) {
+				bpf_u_int32  oldcaplen = header->caplen;
+				bpf_u_int32  oldlen = header->len;
+				unsigned long origDatalen = datalen + sipOffset;
+				unsigned long diffLen = sipOffset + (datalen - sipDatalen);
+				unsigned long newPacketLen = oldcaplen - diffLen;
+				u_char *newPacket = new u_char[newPacketLen];
+				memcpy(newPacket, packet, oldcaplen - origDatalen);
+				memcpy(newPacket + (oldcaplen - origDatalen), data, sipDatalen);
+				save_packet(call, header, newPacket, saddr, source, daddr, dest, istcp, data, datalen, TYPE_SIP, 
+					    dlt, sensor_id);
+				delete [] newPacket;
+				header->caplen = oldcaplen;
+				header->len = oldlen;
+			} else {
+				save_packet(call, header, packet, saddr, source, daddr, dest, istcp, data, datalen, TYPE_SIP, 
+					    dlt, sensor_id);
+			}
 		}
 		if(logPacketSipMethodCall_enable) {
 			logPacketSipMethodCall(sip_method, lastSIPresponseNum, header, call);
 		}
-		return call;
+		returnCall = call;
+endsip:
+		if(sipDatalen < datalen - 11 &&
+		   check_sip20(data + sipDatalen, datalen - sipDatalen)) {
+			process_packet(saddr, source, daddr, dest, 
+				       data + sipDatalen, datalen - sipDatalen,
+				       handle, header, packet, istcp, dontsave, can_thread, was_rtp, header_ip, voippacket, disabledsave,
+				       block_store, block_store_index, dlt, sensor_id, 
+				       false, sipOffset + sipDatalen);
+		}
+		return returnCall;
 	} else if ((calls = calltable->hashfind_by_ip_port(daddr, dest))){
 		++counter_rtp_packets;
 		// packet (RTP) by destination:port is already part of some stored call  
@@ -4172,17 +4209,20 @@ void TcpReassemblySip::complete(
 	// sip message is now reassembled and can be processed 
 	// here we turns out istcp flag so the function process_packet will not reach tcp reassemble and will process the whole message
 	int tmp_was_rtp;
-	Call *call = process_packet(saddr, source, daddr, dest, (char*)newdata, newlen, handle, header, packet, 0, 1, 0, &tmp_was_rtp, header_ip, voippacket, 1,
-				    block_store, block_store_index, dlt, sensor_id);
+	Call *call = process_packet(saddr, source, daddr, dest, (char*)newdata, newlen, handle, header, packet, 0, 1, 0, &tmp_was_rtp, header_ip, voippacket, 0,
+				    block_store, block_store_index, dlt, sensor_id, 
+				    false);
 
 	// message was processed so the stream can be released from queue and destroyd all its parts
 	tcp_stream2_s *tmpstream = tcp_streams_hashed[hash];
 	while(tmpstream) {
+		/* disable save packet - save in process_packet
 		if(call) {
 			// if packet belongs to (or created) call, save each packets to pcap and destroy TCP stream
 			save_packet(call, &tmpstream->header, (const u_char*)tmpstream->packet, saddr, source, daddr, dest, istcp, (char *)newdata, sizeof(u_char) * newlen, TYPE_SIP, 
 				    dlt, sensor_id);
 		}
+		*/
 		free(tmpstream->data);
 		free(tmpstream->packet);
 		tcp_stream2_s *next = tmpstream->next;
