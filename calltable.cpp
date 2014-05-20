@@ -760,7 +760,7 @@ read:
 end:
 	if(enable_save_packet && opt_rtpsave_threaded) {
 		if((this->silencerecording || (opt_onlyRTPheader && !(this->flags & FLAG_SAVERTP))) && !this->isfax) {
-			if(datalen > RTP_FIXED_HEADERLEN &&
+			if(datalen >= RTP_FIXED_HEADERLEN &&
 			   header->caplen > (unsigned)(datalen - RTP_FIXED_HEADERLEN)) {
 				unsigned int tmp_u32 = header->caplen;
 				header->caplen = header->caplen - (datalen - RTP_FIXED_HEADERLEN);

@@ -529,6 +529,7 @@ map<string, string> hosts;
 
 ip_port sipSendSocket_ip_port;
 SocketSimpleBufferWrite *sipSendSocket = NULL;
+int opt_sip_send_before_packetbuffer = 0;
 
 
 #define ENABLE_SEMAPHOR_FORK_MODE 0
@@ -1913,6 +1914,9 @@ int load_config(char *fname) {
 			}
 		}
 	}
+	if((value = ini.GetValue("general", "sip_send_before_packetbuffer", NULL))) {
+		opt_sip_send_before_packetbuffer = yesno(value);
+	}
 	if((value = ini.GetValue("general", "manager_sshhost", NULL))) {
 		strncpy(ssh_host, value, sizeof(ssh_host));
 	}
@@ -3181,7 +3185,8 @@ int main(int argc, char *argv[]) {
 	extern AsyncClose asyncClose;
 	asyncClose.startThreads(opt_pcap_dump_writethreads, opt_pcap_dump_writethreads_max);
 	
-	if(isSqlDriver("mysql") &&
+	if(!opt_nocdr &&
+	   isSqlDriver("mysql") &&
 	   !(opt_pcap_queue && 
 	     !opt_pcap_queue_receive_from_ip_port &&
 	     opt_pcap_queue_send_to_ip_port) &&
