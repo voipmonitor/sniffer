@@ -2718,7 +2718,7 @@ notfound:
 			}
 
 			if(!is_rtcp && !is_fax &&
-			   (datalen <= RTP_FIXED_HEADERLEN ||
+			   (datalen < RTP_FIXED_HEADERLEN ||
 			    header->caplen <= (unsigned)(datalen - RTP_FIXED_HEADERLEN))) {
 				return(call);
 			}
@@ -2787,7 +2787,7 @@ notfound:
 			if((!rtp_threaded || !opt_rtpsave_threaded) &&
 			   !dontsave && ((call->flags & FLAG_SAVERTPHEADER) || (call->flags & FLAG_SAVERTP) || (call->isfax && opt_saveudptl) || record)) {
 				if((call->silencerecording || (opt_onlyRTPheader && !(call->flags & FLAG_SAVERTP))) && !call->isfax) {
-					if(datalen > RTP_FIXED_HEADERLEN &&
+					if(datalen >= RTP_FIXED_HEADERLEN &&
 					   header->caplen > (unsigned)(datalen - RTP_FIXED_HEADERLEN)) {
 						tmp_u32 = header->caplen;
 						header->caplen = header->caplen - (datalen - RTP_FIXED_HEADERLEN);
@@ -2816,7 +2816,7 @@ notfound:
 			}
 
 			if(!is_rtcp && !is_fax &&
-			   (datalen <= RTP_FIXED_HEADERLEN ||
+			   (datalen < RTP_FIXED_HEADERLEN ||
 			    header->caplen <= (unsigned)(datalen - RTP_FIXED_HEADERLEN))) {
 				return(call);
 			}
@@ -2880,7 +2880,7 @@ notfound:
 			if((!rtp_threaded || !opt_rtpsave_threaded) &&
 			   !dontsave && ((call->flags & FLAG_SAVERTP) || (call->isfax && opt_saveudptl) || record)) {
 				if((call->silencerecording || (opt_onlyRTPheader && !(call->flags & FLAG_SAVERTP))) && !call->isfax) {
-					if(datalen > RTP_FIXED_HEADERLEN &&
+					if(datalen >= RTP_FIXED_HEADERLEN &&
 					   header->caplen > (unsigned)(datalen - RTP_FIXED_HEADERLEN)) {
 						tmp_u32 = header->caplen;
 						header->caplen = header->caplen - (datalen - RTP_FIXED_HEADERLEN);
