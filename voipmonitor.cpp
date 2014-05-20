@@ -3136,7 +3136,8 @@ int main(int argc, char *argv[]) {
 	extern AsyncClose asyncClose;
 	asyncClose.startThreads(opt_pcap_dump_writethreads, opt_pcap_dump_writethreads_max);
 	
-	if(isSqlDriver("mysql") &&
+	if(!opt_nocdr &&
+	   isSqlDriver("mysql") &&
 	   !(opt_pcap_queue && 
 	     !opt_pcap_queue_receive_from_ip_port &&
 	     opt_pcap_queue_send_to_ip_port) &&
