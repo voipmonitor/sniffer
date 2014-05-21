@@ -1172,7 +1172,7 @@ public:
 		unsigned int namelength = 0;
 		return(rootCheckSip.getContent(nodeName, &namelength, namelength_limit));
 	}
-	void parseData(char *data, unsigned long datalen, bool doClear = false);
+	unsigned long parseData(char *data, unsigned long datalen, bool doClear = false);
 	void clear() {
 		for(unsigned int i = 0; i < contents_count; i++) {
 			contents[i]->content = NULL;
