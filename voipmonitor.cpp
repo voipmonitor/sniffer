@@ -2687,7 +2687,7 @@ int main(int argc, char *argv[]) {
 		return 1;
 	}
 
-	if(cloud_url[0] != '\n') {
+	if(cloud_url[0] != '\0') {
 		for(int pass = 0; pass < 5; pass++) {
 			vector<dstring> postData;
 			postData.push_back(dstring("securitytoken", cloud_token));
