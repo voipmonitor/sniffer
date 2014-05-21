@@ -1,3 +1,7 @@
+10.0RC15 21.5.2014
+==================
+- for TCP packets parse multiple SIP messages if carried in one TCP packet. 
+
 10.0RC14 20.5.2014
 ==================
 - fix race condition leading to crash in get sniffer status via manager 
