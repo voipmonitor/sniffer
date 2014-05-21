@@ -1901,7 +1901,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 			s = gettag(data, datalen,"\ni:", &l, &gettagLimitLen);
 			if(!issip or (l <= 0 || l > 1023)) {
 				// no Call-ID found in packet
-				if(istcp && header_ip) {
+				if(istcp ==1 && header_ip) {
 					tcpReassemblySip.processPacket(
 						saddr, source, daddr, dest, data, datalen,
 						handle, header, packet, istcp, dontsave, can_thread, was_rtp, header_ip, voippacket, disabledsave,
@@ -1929,7 +1929,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 		counter++;
 
 		// Call-ID is present
-		if(istcp and datalen >= 2) {
+		if(istcp == 1 && datalen >= 2) {
 			tcpReassemblySip.processPacket(
 				saddr, source, daddr, dest, data, datalen,
 				handle, header, packet, istcp, dontsave, can_thread, was_rtp, header_ip, voippacket, disabledsave,
@@ -2708,12 +2708,17 @@ notfound:
 		data[datalen - 1] = a;
 
 		if(!disabledsave) {
-			if(sipDatalen && (sipDatalen < datalen || sipOffset)) {
+			if(istcp && 
+			   sipDatalen && (sipDatalen < (unsigned)datalen || sipOffset)) {
 				bpf_u_int32  oldcaplen = header->caplen;
 				bpf_u_int32  oldlen = header->len;
+				u_int16_t oldHeaderIpLen = header_ip->tot_len;
 				unsigned long origDatalen = datalen + sipOffset;
 				unsigned long diffLen = sipOffset + (datalen - sipDatalen);
 				unsigned long newPacketLen = oldcaplen - diffLen;
+				header->caplen -= diffLen;
+				header->len -= diffLen;
+				header_ip->tot_len = htons(ntohs(header_ip->tot_len) - diffLen);
 				u_char *newPacket = new u_char[newPacketLen];
 				memcpy(newPacket, packet, oldcaplen - origDatalen);
 				memcpy(newPacket + (oldcaplen - origDatalen), data, sipDatalen);
@@ -2722,6 +2727,7 @@ notfound:
 				delete [] newPacket;
 				header->caplen = oldcaplen;
 				header->len = oldlen;
+				header_ip->tot_len = oldHeaderIpLen;
 			} else {
 				save_packet(call, header, packet, saddr, source, daddr, dest, istcp, data, datalen, TYPE_SIP, 
 					    dlt, sensor_id);
@@ -2732,7 +2738,8 @@ notfound:
 		}
 		returnCall = call;
 endsip:
-		if(sipDatalen < datalen - 11 &&
+		if(istcp &&
+		   sipDatalen < (unsigned)datalen - 11 &&
 		   check_sip20(data + sipDatalen, datalen - sipDatalen)) {
 			process_packet(saddr, source, daddr, dest, 
 				       data + sipDatalen, datalen - sipDatalen,
@@ -4209,10 +4216,12 @@ void TcpReassemblySip::complete(
 	// sip message is now reassembled and can be processed 
 	// here we turns out istcp flag so the function process_packet will not reach tcp reassemble and will process the whole message
 	int tmp_was_rtp;
-	Call *call = process_packet(saddr, source, daddr, dest, (char*)newdata, newlen, handle, header, packet, 0, 1, 0, &tmp_was_rtp, header_ip, voippacket, 0,
-				    block_store, block_store_index, dlt, sensor_id, 
-				    false);
-
+	/* obsolete
+	Call *call = 
+	*/
+	process_packet(saddr, source, daddr, dest, (char*)newdata, newlen, handle, header, packet, 2, 1, 0, &tmp_was_rtp, header_ip, voippacket, 0,
+		       block_store, block_store_index, dlt, sensor_id, 
+		       false);
 	// message was processed so the stream can be released from queue and destroyd all its parts
 	tcp_stream2_s *tmpstream = tcp_streams_hashed[hash];
 	while(tmpstream) {
