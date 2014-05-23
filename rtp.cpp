@@ -410,7 +410,6 @@ RTP::jitterbuffer(struct ast_channel *channel, int savePayload) {
 	channel->codec = codec;
 	memcpy(&frame->delivery, &header->ts, sizeof(struct timeval));
 
-	syslog(LOG_ERR, "call-id[%s] ssrc[%x]: packetization [%u]", owner->get_fbasename_safe(), getSSRC(), packetization);
 	/* protect for endless loops (it cannot happen in theory but to be sure */
 	if(packetization <= 0) {
 		if(pinformed == 0) {
