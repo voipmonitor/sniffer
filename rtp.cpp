@@ -49,7 +49,7 @@ using namespace std;
 
 /* Convert timeval structure into microsecond representation */
 inline u_int32_t timeval2micro(const timeval t) {
-	return ((t.tv_sec * 1000000ul) + t.tv_usec); 
+	return ((t.tv_sec * 1000000ull) + t.tv_usec); 
 }
 
 /* Subtract the `struct timeval' values X and Y,
