@@ -1,3 +1,7 @@
+10.0RC18 23.5.2014
+==================
+- remove extra syslog added in RC17
+
 10.0RC17 23.5.2014
 ==================
 - fix bug causing deadlock on 32bit 
