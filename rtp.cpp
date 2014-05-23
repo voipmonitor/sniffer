@@ -410,6 +410,7 @@ RTP::jitterbuffer(struct ast_channel *channel, int savePayload) {
 	channel->codec = codec;
 	memcpy(&frame->delivery, &header->ts, sizeof(struct timeval));
 
+	syslog(LOG_ERR, "call-id[%s] ssrc[%x]: packetization [%u]", owner->get_fbasename_safe(), getSSRC(), packetization);
 	/* protect for endless loops (it cannot happen in theory but to be sure */
 	if(packetization <= 0) {
 		if(pinformed == 0) {
@@ -646,9 +647,11 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 		this->first_packet_usec = header->ts.tv_usec;
 	}
 
+	unsigned int payload_len = get_payload_len();
+
 	Call *owner = (Call*)call_owner;
 
-	//if(getSSRC() != 0xe6f6d4d8) return;
+//	if(getSSRC() != 0xab6cc5b3) return;
 
 	if(getVersion() != 2) {
 		return;
@@ -721,6 +724,21 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 		prev_codec = codec;
 		return;
 	}
+	if(curpayload == PAYLOAD_G729 and payload_len <= 12) {
+		last_seq = seq;
+		if(update_seq(seq)) {
+			update_stats();
+		}
+		return;
+	}
+	if(codec == PAYLOAD_TELEVENT) {
+		process_dtmf_rfc2833();
+		last_seq = seq;
+		if(update_seq(seq)) {
+			update_stats();
+		}
+		return;
+	}
 
 	if(!owner) return;
 
@@ -770,10 +788,6 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 		s->max_seq = seq;
 	}
 
-	if(codec == PAYLOAD_TELEVENT) {
-		process_dtmf_rfc2833();
-	}
-	
 	/* codec changed */
 	if(curpayload != prev_payload and codec != PAYLOAD_TELEVENT and prev_codec != PAYLOAD_TELEVENT and codec != 13 and codec != 19 and prev_codec != 13 and prev_codec != 19) {
 		switch(codec) {
@@ -923,7 +937,7 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 			// sequence numbers are ok, we can calculate packetization
 			if(curpayload == PAYLOAD_G729) {
 				// if G729 packet len is 20, packet len is 20ms. In other cases - will be added later (do not have 40ms packetizations samples right now)
-				if(get_payload_len() == 20) {
+				if(payload_len == 20) {
 					packetization = 20;
 				} else {
 					packetization = (getTimestamp() - last_ts) / 8;
@@ -943,7 +957,7 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 
 			channel_fix1->packetization = default_packetization = 
 				channel_fix2->packetization = channel_adapt->packetization = 
-				channel_record->packetization = packetization = get_payload_len() / 8;
+				channel_record->packetization = packetization = payload_len / 8;
 
 			if(packetization >= 10) {
 				if(verbosity > 3) printf("packetization:[%d] ssrc[%x]\n", packetization, getSSRC());
@@ -965,7 +979,7 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 
 			channel_fix1->packetization = default_packetization = 
 				channel_fix2->packetization = channel_adapt->packetization = 
-				channel_record->packetization = packetization = get_payload_len() / 33 * 20;
+				channel_record->packetization = packetization = payload_len / 33 * 20;
 
 			if(packetization >= 10) {
 				if(verbosity > 3) printf("packetization:[%d] ssrc[%x]\n", packetization, getSSRC());
@@ -1001,7 +1015,7 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 			// sequence numbers are ok, we can calculate packetization
 			if(curpayload == PAYLOAD_G729) {
 				// if G729 packet len is 20, packet len is 20ms. In other cases - will be added later (do not have 40ms packetizations samples right now)
-				if(get_payload_len() == 20) {
+				if(payload_len == 20) {
 					packetization = 20;
 				} else {
 					packetization = (getTimestamp() - last_ts) / 8;
@@ -1076,15 +1090,15 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 
 			if(curpayload == PAYLOAD_G729) {
 				// if G729 packet len is 20, packet len is 20ms. In other cases - will be added later (do not have 40ms packetizations samples right now)
-				if(get_payload_len() == 20) {
+				if(payload_len == 20) {
 					curpacketization = 20;	
 				} else {
 					curpacketization = (getTimestamp() - last_ts) / 8;
 				}
 			} else if(curpayload == PAYLOAD_PCMU or curpayload == PAYLOAD_PCMA) {
-				curpacketization = get_payload_len() / 8;
+				curpacketization = payload_len / 8;
 			} else if(curpayload == PAYLOAD_GSM) {
-				curpacketization = get_payload_len() / 33 * 20;
+				curpacketization = payload_len / 33 * 20;
 			} else {
 				curpacketization = (getTimestamp() - last_ts) / (samplerate / 1000);
 			}
