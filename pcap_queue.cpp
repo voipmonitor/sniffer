@@ -3122,7 +3122,7 @@ void *PcapQueue_readFromFifo::writeThreadFunction(void *arg, unsigned int arg2) 
 							pti.blockStoreIndex = i;
 							pti.header = (*blockStore)[i].header;
 							pti.packet = (*blockStore)[i].packet;
-							pti.utime = pti.header->header_fix_size.ts_tv_sec * 1000000 + pti.header->header_fix_size.ts_tv_usec;
+							pti.utime = pti.header->header_fix_size.ts_tv_sec * 1000000ull + pti.header->header_fix_size.ts_tv_usec;
 							pti.at = at;
 							map<u_int64_t, list<sPacketTimeInfo>* >::iterator iter = listPacketTimeInfo.find(pti.utime);
 							if(iter != listPacketTimeInfo.end()) {
@@ -3167,9 +3167,9 @@ void *PcapQueue_readFromFifo::writeThreadFunction(void *arg, unsigned int arg2) 
 					} else {
 						blockInfo[blockInfoCount].blockStore = blockStore;
 						blockInfo[blockInfoCount].count_processed = 0;
-						blockInfo[blockInfoCount].utime_first = (*blockStore)[0].header->header_fix_size.ts_tv_sec * 1000000 +
+						blockInfo[blockInfoCount].utime_first = (*blockStore)[0].header->header_fix_size.ts_tv_sec * 1000000ull +
 											(*blockStore)[0].header->header_fix_size.ts_tv_usec;
-						blockInfo[blockInfoCount].utime_last = (*blockStore)[blockStore->count - 1].header->header_fix_size.ts_tv_sec * 1000000 +
+						blockInfo[blockInfoCount].utime_last = (*blockStore)[blockStore->count - 1].header->header_fix_size.ts_tv_sec * 1000000ull +
 										       (*blockStore)[blockStore->count - 1].header->header_fix_size.ts_tv_usec;
 						blockInfo[blockInfoCount].at = getTimeUS();
 						if(!blockInfo_utime_first ||

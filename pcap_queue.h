@@ -393,7 +393,7 @@ protected:
 		if(this->qring[index][this->readit[index] % this->qringmax].used == 0) {
 			return(0);
 		}
-		return(this->qring[index][this->readit[index] % this->qringmax].header->ts.tv_sec * 1000000 + 
+		return(this->qring[index][this->readit[index] % this->qringmax].header->ts.tv_sec * 1000000ull + 
 		       this->qring[index][this->readit[index] % this->qringmax].header->ts.tv_usec);
 	}
 	u_int64_t getTIME_usec() {

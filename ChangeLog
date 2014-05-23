@@ -1,3 +1,8 @@
+10.0RC17 23.5.2014
+==================
+- fix bug causing deadlock on 32bit 
+- fix audio out of sync for some g729 
+
 10.0RC16 21.5.2014
 ==================
 - fix RC14,15 cloud was enabled accidentaly
