@@ -32,6 +32,7 @@
 #include <assert.h>
 #include <string.h>
 #include <unistd.h>
+#include <syslog.h>
 
 #include "asterisk/utils.h"
 #include "fixedjitterbuf.h"
@@ -129,7 +130,11 @@ struct fixed_jb *fixed_jb_new(struct fixed_jb_conf *conf)
 void fixed_jb_destroy(struct fixed_jb *jb)
 {
 	/* jitterbuf MUST be empty before it can be destroyed */
-	ASSERT(jb->frames == NULL);
+	//ASSERT(jb->frames == NULL);
+	if(!(jb->frames == NULL)) {
+		syslog(5 /*notice */, "JB ASSERT - fixed_jb_destroy - jb->frames == NULL");
+		return;
+	}
 	
 	free(jb);
 }
@@ -145,7 +150,11 @@ static int resynch_jb(struct fixed_jb *jb, void *data, long ms, long ts, long no
 	if (!jb->frames) {
 		/* debug check: tail should also be NULL */
 		if(debug) fprintf(stdout, "resynch_jb: empty jb\n");
-		ASSERT(jb->tail == NULL);
+		//ASSERT(jb->tail == NULL);
+		if(!(jb->tail == NULL)) {
+			syslog(5 /*notice */, "JB ASSERT - resynch_jb - jb->tail == NULL");
+			return(0);
+		}
 		
 		jb->force_resynch = 0;
 		return fixed_jb_put_first(jb, data, ms, ts, now);
@@ -215,10 +224,22 @@ int fixed_jb_put(struct fixed_jb *jb, void *data, long ms, long ts, long now)
 	int res;
 	
 	/* debug check the validity of the input params */
-	ASSERT(data != NULL);
+	//ASSERT(data != NULL);
+	if(!(data != NULL)) {
+		syslog(5 /*notice */, "JB ASSERT - fixed_jb_put - data != NULL");
+		return(0);
+	}
 	/* do not allow frames shorter than 2 ms */
-	ASSERT(ms >= 2);
-	ASSERT(ts >= 0);
+	//ASSERT(ms >= 2);
+	if(!(ms >= 2)) {
+		syslog(5 /*notice */, "JB ASSERT - fixed_jb_put - ms >= 2");
+		return(0);
+	}
+	//ASSERT(ts >= 0);
+	if(!(ts >= 0)) {
+		syslog(5 /*notice */, "JB ASSERT - fixed_jb_put - ts >= 0");
+		return(0);
+	}
         // TODO: implement pcap reordering queue, ASSERT(now >= 0);
 
 	
@@ -296,7 +317,11 @@ int fixed_jb_put(struct fixed_jb *jb, void *data, long ms, long ts, long now)
 	} else if (!jb->frames) {
 		/* the frame list is empty or thats just the first frame ever */
 		/* tail should also be NULL is that case */
-		ASSERT(jb->tail == NULL);
+		//ASSERT(jb->tail == NULL);
+		if(!(jb->tail == NULL)) {
+			syslog(5 /*notice */, "JB ASSERT - fixed_jb_put - jb->tail == NULL");
+			return(0);
+		}
 		jb->frames = jb->tail = newframe;
 		newframe->next = NULL;
 		newframe->prev = NULL;
@@ -326,8 +351,16 @@ int fixed_jb_flush(struct fixed_jb *jb, struct fixed_jb_frame *frame)
 
 int fixed_jb_get(struct fixed_jb *jb, struct fixed_jb_frame *frame, long now, long interpl)
 {
-	ASSERT(now >= 0);
-	ASSERT(interpl >= 2);
+	//ASSERT(now >= 0);
+	if(!(now >= 0)) {
+		syslog(5 /*notice */, "JB ASSERT - fixed_jb_get - now >= 0");
+		return(0);
+	}
+	//ASSERT(interpl >= 2);
+	if(!(interpl >= 2)) {
+		syslog(5 /*notice */, "JB ASSERT - fixed_jb_get - interpl >= 2");
+		return(0);
+	}
 	
 	if (now < jb->next_delivery) {
 		/* too early for the next frame */
