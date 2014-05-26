@@ -2709,7 +2709,8 @@ notfound:
 
 		if(!disabledsave) {
 			if(istcp && 
-			   sipDatalen && (sipDatalen < (unsigned)datalen || sipOffset)) {
+			   sipDatalen && (sipDatalen < (unsigned)datalen || sipOffset) &&
+			   (unsigned)datalen + sipOffset < header->caplen) {
 				bpf_u_int32  oldcaplen = header->caplen;
 				bpf_u_int32  oldlen = header->len;
 				u_int16_t oldHeaderIpLen = header_ip->tot_len;
@@ -2740,6 +2741,7 @@ notfound:
 endsip:
 		if(istcp &&
 		   sipDatalen < (unsigned)datalen - 11 &&
+		   (unsigned)datalen + sipOffset < header->caplen &&
 		   check_sip20(data + sipDatalen, datalen - sipDatalen)) {
 			process_packet(saddr, source, daddr, dest, 
 				       data + sipDatalen, datalen - sipDatalen,
@@ -4219,9 +4221,20 @@ void TcpReassemblySip::complete(
 	/* obsolete
 	Call *call = 
 	*/
+
+	bpf_u_int32  oldcaplen = header->caplen;
+	bpf_u_int32  oldlen = header->len;
+	u_int16_t oldHeaderIpLen = header_ip->tot_len;
+	unsigned long diffLen = newlen - datalen;
+	header->caplen += diffLen;
+	header->len += diffLen;
+	header_ip->tot_len = htons(ntohs(header_ip->tot_len) + diffLen);
 	process_packet(saddr, source, daddr, dest, (char*)newdata, newlen, handle, header, packet, 2, 1, 0, &tmp_was_rtp, header_ip, voippacket, 0,
 		       block_store, block_store_index, dlt, sensor_id, 
 		       false);
+	header->caplen = oldcaplen;
+	header->len = oldlen;
+	header_ip->tot_len = oldHeaderIpLen;
 	// message was processed so the stream can be released from queue and destroyd all its parts
 	tcp_stream2_s *tmpstream = tcp_streams_hashed[hash];
 	while(tmpstream) {
