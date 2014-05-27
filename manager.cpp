@@ -1468,6 +1468,8 @@ void *ssh_accept_thread(void *arg) {
 				break;
 			}
 			if(parse_command(buf, len, 0, 0, NULL, NULL, channel) == -1) break;
+			libssh2_channel_close(channel);
+			break;
 			//if(sendvm(0, channel, buf, len, 0) == -1) break;
 		}
 	}
