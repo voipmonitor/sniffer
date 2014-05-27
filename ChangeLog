@@ -1,3 +1,7 @@
+10.0RC20 27.5.2014
+==================
+- fix versions >= 10.0RC15 which did not stored all TCP packets in case there was multiple messages in one TCP packet. 
+
 10.0RC19 26.5.2014
 ==================
 - fix versions >= 10.0RC15 which can crash when processing SIP multiple messages in one TCP packet.
