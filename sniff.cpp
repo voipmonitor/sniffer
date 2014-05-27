@@ -1904,8 +1904,8 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 				if(istcp ==1 && header_ip) {
 					tcpReassemblySip.processPacket(
 						saddr, source, daddr, dest, data, datalen,
-						handle, header, packet, istcp, dontsave, can_thread, was_rtp, header_ip, voippacket, disabledsave,
-						block_store, block_store_index, dlt, sensor_id,
+						handle, header, packet, dontsave, can_thread, header_ip, disabledsave,
+						dlt, sensor_id,
 						issip);
 					if(logPacketSipMethodCall_enable) {
 						logPacketSipMethodCall(sip_method, lastSIPresponseNum, header, call, 
@@ -1932,8 +1932,8 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 		if(istcp == 1 && datalen >= 2) {
 			tcpReassemblySip.processPacket(
 				saddr, source, daddr, dest, data, datalen,
-				handle, header, packet, istcp, dontsave, can_thread, was_rtp, header_ip, voippacket, disabledsave,
-				block_store, block_store_index, dlt, sensor_id,
+				handle, header, packet, dontsave, can_thread, header_ip, disabledsave,
+				dlt, sensor_id,
 				issip);
 			if(logPacketSipMethodCall_enable) {
 				logPacketSipMethodCall(sip_method, lastSIPresponseNum, header, call, 
@@ -4088,8 +4088,8 @@ TcpReassemblySip::TcpReassemblySip() {
 
 void TcpReassemblySip::processPacket(
 		unsigned int saddr, int source, unsigned int daddr, int dest, char *data, int datalen,
-		pcap_t *handle, pcap_pkthdr *header, const u_char *packet, int istcp, int dontsave, int can_thread, int *was_rtp, struct iphdr2 *header_ip, int *voippacket, int disabledsave,
-		pcap_block_store *block_store, int block_store_index, int dlt, int sensor_id,
+		pcap_t *handle, pcap_pkthdr *header, const u_char *packet, int dontsave, int can_thread, struct iphdr2 *header_ip, int disabledsave,
+		int dlt, int sensor_id,
 		bool issip) {
 	u_int hash = mkhash(saddr, source, daddr, dest) % MAX_TCPSTREAMS;
 	tcp_stream2_s *findStream;
@@ -4097,14 +4097,10 @@ void TcpReassemblySip::processPacket(
 		addPacket(
 			findStream, hash,
 			saddr, source, daddr, dest, data, datalen,
-			handle, header, packet, istcp, dontsave, can_thread, was_rtp, header_ip, voippacket, disabledsave,
-			block_store, block_store_index, dlt, sensor_id);
+			handle, header, packet, dontsave, can_thread, header_ip, disabledsave,
+			dlt, sensor_id);
 		if(isCompleteStream(findStream)) {
-			complete(
-				findStream, hash,
-				saddr, source, daddr, dest, data, datalen,
-				handle, header, packet, istcp, dontsave, can_thread, was_rtp, header_ip, voippacket, disabledsave,
-				block_store, block_store_index, dlt, sensor_id);
+			complete(findStream, hash);
 		}
 	} else {
 		u_int rhash = mkhash(daddr, dest, saddr, source) % MAX_TCPSTREAMS;
@@ -4112,26 +4108,18 @@ void TcpReassemblySip::processPacket(
 			tcp_stream2_s *lastStreamItem = getLastStreamItem(findStream);
 			struct tcphdr2 *header_tcp = (struct tcphdr2 *) ((char *) header_ip + sizeof(*header_ip));
 			if(lastStreamItem->lastpsh && lastStreamItem->ack_seq == htonl(header_tcp->seq)) {
-				complete(
-					findStream, rhash,
-					saddr, source, daddr, dest, data, datalen,
-					handle, header, packet, istcp, dontsave, can_thread, was_rtp, header_ip, voippacket, disabledsave,
-					block_store, block_store_index, dlt, sensor_id);
+				complete(findStream, rhash);
 			}
 		}
 		if(issip) {
 			tcp_streams_hashed[hash] = addPacket(
 				NULL, hash,
 				saddr, source, daddr, dest, data, datalen,
-				handle, header, packet, istcp, dontsave, can_thread, was_rtp, header_ip, voippacket, disabledsave,
-				block_store, block_store_index, dlt, sensor_id);
+				handle, header, packet, dontsave, can_thread, header_ip, disabledsave,
+				dlt, sensor_id);
 			tcp_streams_list.push_back(tcp_streams_hashed[hash]);
 			if(isCompleteStream(tcp_streams_hashed[hash])) {
-				complete(
-					tcp_streams_hashed[hash], hash,
-					saddr, source, daddr, dest, data, datalen,
-					handle, header, packet, istcp, dontsave, can_thread, was_rtp, header_ip, voippacket, disabledsave,
-					block_store, block_store_index, dlt, sensor_id);
+				complete(tcp_streams_hashed[hash], hash);
 			}
 		}
 	}
@@ -4162,8 +4150,8 @@ void TcpReassemblySip::clean(time_t ts) {
 TcpReassemblySip::tcp_stream2_s *TcpReassemblySip::addPacket(
 		tcp_stream2_s *stream, u_int hash,
 		unsigned int saddr, int source, unsigned int daddr, int dest, char *data, int datalen,
-		pcap_t *handle, pcap_pkthdr *header, const u_char *packet, int istcp, int dontsave, int can_thread, int *was_rtp, struct iphdr2 *header_ip, int *voippacket, int disabledsave,
-		pcap_block_store *block_store, int block_store_index, int dlt, int sensor_id) {
+		pcap_t *handle, pcap_pkthdr *header, const u_char *packet, int dontsave, int can_thread, struct iphdr2 *header_ip, int disabledsave,
+		int dlt, int sensor_id) {
 	tcp_stream2_s *lastStreamItem = stream ? getLastStreamItem(stream) : NULL;
 	
 	tcp_stream2_s *newStreamItem = new tcp_stream2_s;
@@ -4194,14 +4182,23 @@ TcpReassemblySip::tcp_stream2_s *TcpReassemblySip::addPacket(
 	newStreamItem->packet = (u_char*)malloc(sizeof(u_char) * header->caplen);
 	memcpy(newStreamItem->packet, packet, header->caplen);
 	
+	newStreamItem->header_ip = (iphdr2*)(newStreamItem->packet + ((u_char*)header_ip - packet));
+
+	newStreamItem->saddr = saddr;
+	newStreamItem->source = source;
+	newStreamItem->daddr = daddr;
+	newStreamItem->dest = dest;
+	newStreamItem->handle = handle;
+	newStreamItem->dontsave = dontsave;
+	newStreamItem->can_thread = can_thread;
+	newStreamItem->disabledsave = disabledsave;
+	newStreamItem->dlt = dlt;
+	newStreamItem->sensor_id = sensor_id;
+	
 	return(newStreamItem);
 }
 
-void TcpReassemblySip::complete(
-		tcp_stream2_s *stream, u_int hash,
-		unsigned int saddr, int source, unsigned int daddr, int dest, char *data, int datalen,
-		pcap_t *handle, pcap_pkthdr *header, const u_char *packet, int istcp, int dontsave, int can_thread, int *was_rtp, struct iphdr2 *header_ip, int *voippacket, int disabledsave,
-		pcap_block_store *block_store, int block_store_index, int dlt, int sensor_id) {
+void TcpReassemblySip::complete(tcp_stream2_s *stream, u_int hash) {
 	tcp_streams_list.remove(stream);
 	int newlen = 0;
 	// get SIP packet length from all TCP packets
@@ -4215,36 +4212,36 @@ void TcpReassemblySip::complete(
 		memcpy(newdata + len, tmpstream->data, tmpstream->datalen);
 		len += tmpstream->datalen;
 	}
+	
 	// sip message is now reassembled and can be processed 
-	// here we turns out istcp flag so the function process_packet will not reach tcp reassemble and will process the whole message
+	pcap_pkthdr header = stream->header;
+	iphdr2 *header_ip;
+	u_char *newpacket;
+	bool allocNewpacket = false;
+	unsigned long diffLen = newlen - stream->datalen;
+	if(diffLen) {
+		header.caplen += diffLen;
+		header.len += diffLen;
+		newpacket = (u_char*)malloc(sizeof(u_char) * header.caplen);
+		allocNewpacket = true;
+		memcpy(newpacket, stream->packet, stream->header.caplen - stream->datalen);
+		memcpy(newpacket + (stream->header.caplen - stream->datalen), newdata, newlen);
+		header_ip = (iphdr2*)(newpacket + ((u_char*)stream->header_ip - stream->packet));
+		header_ip->tot_len = htons(ntohs(header_ip->tot_len) + diffLen);
+	} else {
+		newpacket = stream->packet;
+		header_ip = stream->header_ip;
+	}
 	int tmp_was_rtp;
-	/* obsolete
-	Call *call = 
-	*/
-
-	bpf_u_int32  oldcaplen = header->caplen;
-	bpf_u_int32  oldlen = header->len;
-	u_int16_t oldHeaderIpLen = header_ip->tot_len;
-	unsigned long diffLen = newlen - datalen;
-	header->caplen += diffLen;
-	header->len += diffLen;
-	header_ip->tot_len = htons(ntohs(header_ip->tot_len) + diffLen);
-	process_packet(saddr, source, daddr, dest, (char*)newdata, newlen, handle, header, packet, 2, 1, 0, &tmp_was_rtp, header_ip, voippacket, 0,
-		       block_store, block_store_index, dlt, sensor_id, 
+	int tmp_voippacket;
+	// here we turns istcp flag to 2 so the function process_packet will not reach tcp reassemble and will process the whole message
+	process_packet(stream->saddr, stream->source, stream->daddr, stream->dest, (char*)newdata, newlen, stream->handle, &header, newpacket, 2, 1, 0, &tmp_was_rtp, header_ip, &tmp_voippacket, 0,
+		       NULL, 0, stream->dlt, stream->sensor_id, 
 		       false);
-	header->caplen = oldcaplen;
-	header->len = oldlen;
-	header_ip->tot_len = oldHeaderIpLen;
+	
 	// message was processed so the stream can be released from queue and destroyd all its parts
 	tcp_stream2_s *tmpstream = tcp_streams_hashed[hash];
 	while(tmpstream) {
-		/* disable save packet - save in process_packet
-		if(call) {
-			// if packet belongs to (or created) call, save each packets to pcap and destroy TCP stream
-			save_packet(call, &tmpstream->header, (const u_char*)tmpstream->packet, saddr, source, daddr, dest, istcp, (char *)newdata, sizeof(u_char) * newlen, TYPE_SIP, 
-				    dlt, sensor_id);
-		}
-		*/
 		free(tmpstream->data);
 		free(tmpstream->packet);
 		tcp_stream2_s *next = tmpstream->next;
@@ -4252,6 +4249,9 @@ void TcpReassemblySip::complete(
 		tmpstream = next;
 	}
 	free(newdata);
+	if(allocNewpacket) {
+		free(newpacket);
+	}
 	tcp_streams_hashed[hash] = NULL;
 }
 

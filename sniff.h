@@ -274,10 +274,21 @@ struct gre_hdr {
 class TcpReassemblySip {
 public:
 	struct tcp_stream2_s {
+		unsigned int saddr;
+		int source; 
+		unsigned int daddr;
+		int dest;
 		char *data;
 		int datalen;
 		pcap_pkthdr header;
 		u_char *packet;
+		iphdr2 *header_ip;
+		pcap_t *handle;
+		int dontsave; 
+		int can_thread; 
+		int disabledsave;
+		int dlt; 
+		int sensor_id;
 		u_int hash;
 		time_t ts;
 		u_int32_t seq;
@@ -290,21 +301,18 @@ public:
 	TcpReassemblySip();
 	void processPacket(
 		unsigned int saddr, int source, unsigned int daddr, int dest, char *data, int datalen,
-		pcap_t *handle, pcap_pkthdr *header, const u_char *packet, int istcp, int dontsave, int can_thread, int *was_rtp, struct iphdr2 *header_ip, int *voippacket, int disabledsave,
-		pcap_block_store *block_store, int block_store_index, int dlt, int sensor_id,
+		pcap_t *handle, pcap_pkthdr *header, const u_char *packet, int dontsave, int can_thread, struct iphdr2 *header_ip, int disabledsave,
+		int dlt, int sensor_id,
 		bool issip);
 	void clean(time_t ts = 0);
 private:
 	tcp_stream2_s *addPacket(
 		tcp_stream2_s *stream, u_int hash,
 		unsigned int saddr, int source, unsigned int daddr, int dest, char *data, int datalen,
-		pcap_t *handle, pcap_pkthdr *header, const u_char *packet, int istcp, int dontsave, int can_thread, int *was_rtp, struct iphdr2 *header_ip, int *voippacket, int disabledsave,
-		pcap_block_store *block_store, int block_store_index, int dlt, int sensor_id);
+		pcap_t *handle, pcap_pkthdr *header, const u_char *packet, int dontsave, int can_thread, struct iphdr2 *header_ip, int disabledsave,
+		int dlt, int sensor_id);
 	void complete(
-		tcp_stream2_s *stream, u_int hash,
-		unsigned int saddr, int source, unsigned int daddr, int dest, char *data, int datalen,
-		pcap_t *handle, pcap_pkthdr *header, const u_char *packet, int istcp, int dontsave, int can_thread, int *was_rtp, struct iphdr2 *header_ip, int *voippacket, int disabledsave,
-		pcap_block_store *block_store, int block_store_index, int dlt, int sensor_id);
+		tcp_stream2_s *stream, u_int hash);
 	tcp_stream2_s *getLastStreamItem(tcp_stream2_s *stream) {
 		while(stream->next) {
 			stream = stream->next;
