@@ -4203,7 +4203,7 @@ _ACEOF
   LIBS="-ljson $LIBS"
 
 else
-  as_fn_error $? "Unable to find json-c library. apt-get install libjson0-dev | or compile from source: git clone https://github.com/json-c/json-c.git; cd json-c; sh autogen.sh; ./configure; make; make install;ldconfig" "$LINENO" 5
+  as_fn_error $? "Unable to find json-c library. apt-get install libjson0-dev | yum install json-c-devel (RPM from EPEL) | or compile from source: git clone https://github.com/json-c/json-c.git; cd json-c; sh autogen.sh; ./configure; make; make install;ldconfig" "$LINENO" 5
 fi
 
 { $as_echo "$as_me:${as_lineno-$LINENO}: checking for main in -lmysqlclient" >&5
