@@ -1452,11 +1452,16 @@ void *ssh_accept_thread(void *arg) {
 
 
 	while(1) {
+		int res = libssh2_poll_channel_read(channel, 0);
+
+/*
 		int rc = (libssh2_poll(fds, 1, 100));
 		if (rc < 1)
 			continue;
 
 		if (fds[0].revents & LIBSSH2_POLLFD_POLLIN) {
+*/
+		if(res) {
 			len = libssh2_channel_read(channel, buf, 1024*1024);
 			if (LIBSSH2_ERROR_EAGAIN == len) {
 				continue;
@@ -1468,7 +1473,12 @@ void *ssh_accept_thread(void *arg) {
 				break;
 			}
 			if(parse_command(buf, len, 0, 0, NULL, NULL, channel) == -1) break;
+			libssh2_channel_close(channel);
+			break;
 			//if(sendvm(0, channel, buf, len, 0) == -1) break;
+		} else {
+			usleep(100);
+			continue;
 		}
 	}
 

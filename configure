@@ -3497,6 +3497,9 @@ $as_echo "no" >&6; }
 fi
 
 
+LD_LIBRARY_PATH="$LD_LIBRARY_PATH:/usr/local/lib"
+LDFLAGS="$LDFLAGS -L/usr/local/lib"
+
 # Checks for libraries.
 # FIXME: Replace `main' with a function in `-lc':
 
@@ -4030,7 +4033,7 @@ _ACEOF
   LIBS="-lsnappy $LIBS"
 
 else
-  as_fn_error $? "Unable to find snappy library. Compile from source: https://snappy.googlecode.com/files/snappy-1.1.0.tar.gz" "$LINENO" 5
+  as_fn_error $? "Unable to find snappy library. apt-get install libsnappy-dev | or compile from source: https://snappy.googlecode.com/files/snappy-1.1.0.tar.gz" "$LINENO" 5
 fi
 
 { $as_echo "$as_me:${as_lineno-$LINENO}: checking for main in -lcurl" >&5
@@ -4071,7 +4074,177 @@ _ACEOF
   LIBS="-lcurl $LIBS"
 
 else
-  as_fn_error $? "Unable to find curl library. Install the package via apt-get or yum curl-devel." "$LINENO" 5
+  as_fn_error $? "Unable to find curl library. apt-get libcurl4-openssl-dev | yum curl-devel" "$LINENO" 5
+fi
+
+{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for main in -lssh2" >&5
+$as_echo_n "checking for main in -lssh2... " >&6; }
+if test "${ac_cv_lib_ssh2_main+set}" = set; then :
+  $as_echo_n "(cached) " >&6
+else
+  ac_check_lib_save_LIBS=$LIBS
+LIBS="-lssh2  $LIBS"
+cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+
+
+int
+main ()
+{
+return main ();
+  ;
+  return 0;
+}
+_ACEOF
+if ac_fn_c_try_link "$LINENO"; then :
+  ac_cv_lib_ssh2_main=yes
+else
+  ac_cv_lib_ssh2_main=no
+fi
+rm -f core conftest.err conftest.$ac_objext \
+    conftest$ac_exeext conftest.$ac_ext
+LIBS=$ac_check_lib_save_LIBS
+fi
+{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $ac_cv_lib_ssh2_main" >&5
+$as_echo "$ac_cv_lib_ssh2_main" >&6; }
+if test "x$ac_cv_lib_ssh2_main" = x""yes; then :
+  cat >>confdefs.h <<_ACEOF
+#define HAVE_LIBSSH2 1
+_ACEOF
+
+  LIBS="-lssh2 $LIBS"
+
+else
+  as_fn_error $? "Unable to find libssh2 library. apt-get install libssh2-dev | yum install libssh2-devel | or compile from source http://www.libssh2.org/download/libssh2-1.4.3.tar.gz (current linux distributions have old library) " "$LINENO" 5
+fi
+
+{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for libssh2_session_handshake in -lssh2" >&5
+$as_echo_n "checking for libssh2_session_handshake in -lssh2... " >&6; }
+if test "${ac_cv_lib_ssh2_libssh2_session_handshake+set}" = set; then :
+  $as_echo_n "(cached) " >&6
+else
+  ac_check_lib_save_LIBS=$LIBS
+LIBS="-lssh2  $LIBS"
+cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+
+/* Override any GCC internal prototype to avoid an error.
+   Use char because int might match the return type of a GCC
+   builtin and then its argument prototype would still apply.  */
+#ifdef __cplusplus
+extern "C"
+#endif
+char libssh2_session_handshake ();
+int
+main ()
+{
+return libssh2_session_handshake ();
+  ;
+  return 0;
+}
+_ACEOF
+if ac_fn_c_try_link "$LINENO"; then :
+  ac_cv_lib_ssh2_libssh2_session_handshake=yes
+else
+  ac_cv_lib_ssh2_libssh2_session_handshake=no
+fi
+rm -f core conftest.err conftest.$ac_objext \
+    conftest$ac_exeext conftest.$ac_ext
+LIBS=$ac_check_lib_save_LIBS
+fi
+{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $ac_cv_lib_ssh2_libssh2_session_handshake" >&5
+$as_echo "$ac_cv_lib_ssh2_libssh2_session_handshake" >&6; }
+if test "x$ac_cv_lib_ssh2_libssh2_session_handshake" = x""yes; then :
+  cat >>confdefs.h <<_ACEOF
+#define HAVE_LIBSSH2 1
+_ACEOF
+
+  LIBS="-lssh2 $LIBS"
+
+else
+  as_fn_error $? "Your libssh2 is old. Compile from source http://www.libssh2.org/download/libssh2-1.4.3.tar.gz (current linux distributions have old library) " "$LINENO" 5
+fi
+
+{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for main in -ljson" >&5
+$as_echo_n "checking for main in -ljson... " >&6; }
+if test "${ac_cv_lib_json_main+set}" = set; then :
+  $as_echo_n "(cached) " >&6
+else
+  ac_check_lib_save_LIBS=$LIBS
+LIBS="-ljson  $LIBS"
+cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+
+
+int
+main ()
+{
+return main ();
+  ;
+  return 0;
+}
+_ACEOF
+if ac_fn_c_try_link "$LINENO"; then :
+  ac_cv_lib_json_main=yes
+else
+  ac_cv_lib_json_main=no
+fi
+rm -f core conftest.err conftest.$ac_objext \
+    conftest$ac_exeext conftest.$ac_ext
+LIBS=$ac_check_lib_save_LIBS
+fi
+{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $ac_cv_lib_json_main" >&5
+$as_echo "$ac_cv_lib_json_main" >&6; }
+if test "x$ac_cv_lib_json_main" = x""yes; then :
+  cat >>confdefs.h <<_ACEOF
+#define HAVE_LIBJSON 1
+_ACEOF
+
+  LIBS="-ljson $LIBS"
+
+else
+  as_fn_error $? "Unable to find json-c library. apt-get install libjson0-dev | yum install json-c-devel (RPM from EPEL) | or compile from source: git clone https://github.com/json-c/json-c.git; cd json-c; sh autogen.sh; ./configure; make; make install;ldconfig" "$LINENO" 5
+fi
+
+{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for main in -lmysqlclient" >&5
+$as_echo_n "checking for main in -lmysqlclient... " >&6; }
+if test "${ac_cv_lib_mysqlclient_main+set}" = set; then :
+  $as_echo_n "(cached) " >&6
+else
+  ac_check_lib_save_LIBS=$LIBS
+LIBS="-lmysqlclient  $LIBS"
+cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+
+
+int
+main ()
+{
+return main ();
+  ;
+  return 0;
+}
+_ACEOF
+if ac_fn_c_try_link "$LINENO"; then :
+  ac_cv_lib_mysqlclient_main=yes
+else
+  ac_cv_lib_mysqlclient_main=no
+fi
+rm -f core conftest.err conftest.$ac_objext \
+    conftest$ac_exeext conftest.$ac_ext
+LIBS=$ac_check_lib_save_LIBS
+fi
+{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $ac_cv_lib_mysqlclient_main" >&5
+$as_echo "$ac_cv_lib_mysqlclient_main" >&6; }
+if test "x$ac_cv_lib_mysqlclient_main" = x""yes; then :
+  cat >>confdefs.h <<_ACEOF
+#define HAVE_LIBMYSQLCLIENT 1
+_ACEOF
+
+  LIBS="-lmysqlclient $LIBS"
+
+else
+  as_fn_error $? "Unable to find libmysqlclient. apt-get install lbmysqlclient-dev | yum install mysql-devel" "$LINENO" 5
 fi
 
 { $as_echo "$as_me:${as_lineno-$LINENO}: checking for main in -lz" >&5
@@ -4111,6 +4284,8 @@ _ACEOF
 
   LIBS="-lz $LIBS"
 
+else
+  as_fn_error $? "Unable to find libz. apt-get install zlib1g-dev | yum install zlib-devel" "$LINENO" 5
 fi
 
 
