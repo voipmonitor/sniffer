@@ -486,13 +486,14 @@ Call::closeRawFiles() {
 /* returns name of the directory in format YYYY-MM-DD */
 string
 Call::dirname() {
-	char sdirname[255];
+	char sdirname[18];
 	struct tm *t = localtime((const time_t*)(&first_packet_time));
 	if(opt_newdir) {
-		sprintf(sdirname, "%04d-%02d-%02d/%02d/%02d",  t->tm_year + 1900, t->tm_mon + 1, t->tm_mday, t->tm_hour, t->tm_min);
+		snprintf(sdirname, 17, "%04d-%02d-%02d/%02d/%02d",  t->tm_year + 1900, t->tm_mon + 1, t->tm_mday, t->tm_hour, t->tm_min);
 	} else {
-		sprintf(sdirname, "%04d-%02d-%02d",  t->tm_year + 1900, t->tm_mon + 1, t->tm_mday);
+		snprintf(sdirname, 17, "%04d-%02d-%02d",  t->tm_year + 1900, t->tm_mon + 1, t->tm_mday);
 	}
+	sdirname[17] = 0;
 	string s(sdirname);
 	return s;
 }
@@ -500,9 +501,10 @@ Call::dirname() {
 /* returns name of the directory in format YYYY-MM-DD */
 string
 Call::dirnamesqlfiles() {
-	char sdirname[255];
+	char sdirname[12];
 	struct tm *t = localtime((const time_t*)(&first_packet_time));
-	sprintf(sdirname, "%04d%02d%02d%02d",  t->tm_year + 1900, t->tm_mon + 1, t->tm_mday, t->tm_hour);
+	snprintf(sdirname, 11, "%04d%02d%02d%02d",  t->tm_year + 1900, t->tm_mon + 1, t->tm_mday, t->tm_hour);
+	sdirname[11] = 0;
 	string s(sdirname);
 	return s;
 }
@@ -726,7 +728,8 @@ read:
 			}
 		}
 		rtp[ssrc_n]->gfileRAW = NULL;
-		sprintf(rtp[ssrc_n]->basefilename, "%s/%s/%s.i%d", dirname().c_str(), opt_newdir ? "AUDIO" : "", get_fbasename_safe(), !iscaller);
+		snprintf(rtp[ssrc_n]->basefilename, 1023, "%s/%s/%s.i%d", dirname().c_str(), opt_newdir ? "AUDIO" : "", get_fbasename_safe(), !iscaller);
+		rtp[ssrc_n]->basefilename[1023] = 0;
 //		int i = get_index_by_ip_port(saddr, port);
 //		if(i >= 0) {
 			//memcpy(this->rtp[ssrc_n]->rtpmap, rtpmap[i], MAX_RTPMAP * sizeof(int));
@@ -788,10 +791,11 @@ void Call::stoprecording() {
 			pcap_dump_close(this->get_fsip_pcap());
 			this->set_fsip_pcap(NULL);
 			if(opt_cachedir[0] != '\0') {
-				sprintf(str2, "%s/%s.pcap", opt_cachedir, sip_pcapfilename.c_str());
+				snprintf(str2, 2047, "%s/%s.pcap", opt_cachedir, sip_pcapfilename.c_str());
 			} else {
-				sprintf(str2, "%s.pcap", sip_pcapfilename.c_str());
+				snprintf(str2, 2047, "%s.pcap", sip_pcapfilename.c_str());
 			}
+			str2[2047] = 0;
 			unlink(str2);	
 		}
 		if(this->get_frtp_pcap() != NULL) {
@@ -799,9 +803,9 @@ void Call::stoprecording() {
 			pcap_dump_close(this->get_frtp_pcap());
 			this->set_frtp_pcap(NULL);
 			if(opt_cachedir[0] != '\0') {
-				sprintf(str2, "%s/%s.pcap", opt_cachedir, rtp_pcapfilename.c_str());
+				snprintf(str2, 2047, "%s/%s.pcap", opt_cachedir, rtp_pcapfilename.c_str());
 			} else {
-				sprintf(str2, "%s.pcap", rtp_pcapfilename.c_str());
+				snprintf(str2, 2047, "%s.pcap", rtp_pcapfilename.c_str());
 			}
 			unlink(str2);	
 		}
@@ -810,9 +814,9 @@ void Call::stoprecording() {
 			pcap_dump_close(this->get_f_pcap());
 			this->set_f_pcap(NULL);
 			if(opt_cachedir[0] != '\0') {
-				sprintf(str2, "%s/%s.pcap", opt_cachedir, pcapfilename.c_str());
+				snprintf(str2, 2047, "%s/%s.pcap", opt_cachedir, pcapfilename.c_str());
 			} else {
-				sprintf(str2, "%s.pcap", pcapfilename.c_str());
+				snprintf(str2, 2047, "%s.pcap", pcapfilename.c_str());
 			}
 			unlink(str2);	
 		}
@@ -1047,6 +1051,7 @@ Call::mos_lqo(char *deg, int samplerate) {
 int
 Call::convertRawToWav() {
 	char cmd[4092];
+	int cmd_len = sizeof(cmd) - 1;
 	char wav0[1024] = "";
 	char wav1[1024] = "";
 	char out[1024];
@@ -1062,33 +1067,38 @@ Call::convertRawToWav() {
 
 	switch(opt_audio_format) {
 	case FORMAT_WAV:
-		sprintf(out, "%s/%s/%s.wav", dirname().c_str(), opt_newdir ? "AUDIO" : "", get_fbasename_safe());
+		snprintf(out, 1023, "%s/%s/%s.wav", dirname().c_str(), opt_newdir ? "AUDIO" : "", get_fbasename_safe());
 		break;
 	case FORMAT_OGG:
-		sprintf(out, "%s/%s/%s.ogg", dirname().c_str(), opt_newdir ? "AUDIO" : "", get_fbasename_safe());
+		snprintf(out, 1023, "%s/%s/%s.ogg", dirname().c_str(), opt_newdir ? "AUDIO" : "", get_fbasename_safe());
 		break;
 	}
+	out[1023] = 0;
 
 	/* caller direction */
-	sprintf(rawInfo, "%s/%s/%s.i%d.rawInfo", dirname().c_str(), opt_newdir ? "AUDIO" : "", get_fbasename_safe(), 0);
+	snprintf(rawInfo, 1023, "%s/%s/%s.i%d.rawInfo", dirname().c_str(), opt_newdir ? "AUDIO" : "", get_fbasename_safe(), 0);
+	rawInfo[1023] = 0;
 	pl = fopen(rawInfo, "r");
 	if(pl) {
 		adir = 1;
-		fgets(line, 1024, pl);
+		fgets(line, sizeof(line), pl);
 		fclose(pl);
 		sscanf(line, "%d:%lu:%d:%ld:%ld", &ssrc_index, &rawiterator, &codec, &tv0.tv_sec, &tv0.tv_usec);
-		sprintf(wav0, "%s/%s/%s.i%d.wav", dirname().c_str(), opt_newdir ? "AUDIO" : "", get_fbasename_safe(), 0);
+		snprintf(wav0, 1023, "%s/%s/%s.i%d.wav", dirname().c_str(), opt_newdir ? "AUDIO" : "", get_fbasename_safe(), 0);
+		wav0[1023] = 0;
 	}
 
 	/* called direction */
-	sprintf(rawInfo, "%s/%s/%s.i%d.rawInfo", dirname().c_str(), opt_newdir ? "AUDIO" : "", get_fbasename_safe(), 1);
+	snprintf(rawInfo, 1023, "%s/%s/%s.i%d.rawInfo", dirname().c_str(), opt_newdir ? "AUDIO" : "", get_fbasename_safe(), 1);
+	rawInfo[1023] = 0;
 	pl = fopen(rawInfo, "r");
 	if(pl) {
 		bdir = 1;
-		fgets(line, 1024, pl);
+		fgets(line, sizeof(line), pl);
 		fclose(pl);
 		sscanf(line, "%d:%lu:%d:%ld:%ld", &ssrc_index, &rawiterator, &codec, &tv1.tv_sec, &tv1.tv_usec);
-		sprintf(wav1, "%s/%s/%s.i%d.wav", dirname().c_str(), opt_newdir ? "AUDIO" : "", get_fbasename_safe(), 1);
+		snprintf(wav1, 1023, "%s/%s/%s.i%d.wav", dirname().c_str(), opt_newdir ? "AUDIO" : "", get_fbasename_safe(), 1);
+		wav1[1023] = 0;
 	}
 
 	if(adir == 0 && bdir == 0) {
@@ -1181,7 +1191,8 @@ Call::convertRawToWav() {
 		wav = i == 0 ? wav0 : wav1;
 
 		/* open playlist */
-		sprintf(rawInfo, "%s/%s/%s.i%d.rawInfo", dirname().c_str(), opt_newdir ? "AUDIO" : "", get_fbasename_safe(), i);
+		snprintf(rawInfo, 1023, "%s/%s/%s.i%d.rawInfo", dirname().c_str(), opt_newdir ? "AUDIO" : "", get_fbasename_safe(), i);
+		rawInfo[1023] = 0;
 		pl = fopen(rawInfo, "r");
 		if(!pl) {
 			syslog(LOG_ERR, "Cannot open %s\n", rawInfo);
@@ -1191,7 +1202,8 @@ Call::convertRawToWav() {
 			char raw[1024];
 			line[strlen(line)] = '\0'; // remove '\n' which is last character
 			sscanf(line, "%d:%lu:%d:%ld:%ld", &ssrc_index, &rawiterator, &codec, &tv0.tv_sec, &tv0.tv_usec);
-			sprintf(raw, "%s/%s/%s.i%d.%d.%lu.%d.%ld.%ld.raw", dirname().c_str(), opt_newdir ? "AUDIO" : "", get_fbasename_safe(), i, ssrc_index, rawiterator, codec, tv0.tv_sec, tv0.tv_usec);
+			snprintf(raw, 1023, "%s/%s/%s.i%d.%d.%lu.%d.%ld.%ld.raw", dirname().c_str(), opt_newdir ? "AUDIO" : "", get_fbasename_safe(), i, ssrc_index, rawiterator, codec, tv0.tv_sec, tv0.tv_usec);
+			raw[1023] = 0;
 			switch(codec) {
 			case PAYLOAD_PCMA:
 				if(verbosity > 1) syslog(LOG_ERR, "Converting PCMA to WAV.\n");
@@ -1206,10 +1218,11 @@ Call::convertRawToWav() {
 		/* following decoders are not included in free version. Please contact support@voipmonitor.org */
 			case PAYLOAD_G722:
 				if(opt_keycheck[0] != '\0') {
-					snprintf(cmd, 4092, "vmcodecs %s g722 \"%s\" \"%s\" 64000", opt_keycheck, raw, wav);
+					snprintf(cmd, cmd_len, "vmcodecs %s g722 \"%s\" \"%s\" 64000", opt_keycheck, raw, wav);
 				} else {
-					snprintf(cmd, 4092, "voipmonitor-g722 \"%s\" \"%s\" 64000", raw, wav);
+					snprintf(cmd, cmd_len, "voipmonitor-g722 \"%s\" \"%s\" 64000", raw, wav);
 				}
+				cmd[cmd_len] = 0;
 				samplerate = 16000;
 				if(verbosity > 1) syslog(LOG_ERR, "Converting G.722 to WAV.\n");
 				if(verbosity > 2) syslog(LOG_ERR, "Converting G.722 to WAV. %s\n", cmd);
@@ -1217,162 +1230,178 @@ Call::convertRawToWav() {
 				break;
 			case PAYLOAD_GSM:
 				if(opt_keycheck[0] != '\0') {
-					snprintf(cmd, 4092, "vmcodecs %s gsm \"%s\" \"%s\"", opt_keycheck, raw, wav);
+					snprintf(cmd, cmd_len, "vmcodecs %s gsm \"%s\" \"%s\"", opt_keycheck, raw, wav);
 				} else {
-					snprintf(cmd, 4092, "voipmonitor-gsm \"%s\" \"%s\"", raw, wav);
+					snprintf(cmd, cmd_len, "voipmonitor-gsm \"%s\" \"%s\"", raw, wav);
 				}
+				cmd[cmd_len] = 0;
 				if(verbosity > 1) syslog(LOG_ERR, "Converting GSM to WAV.\n");
 				samplerate = 8000;
 				system(cmd);
 				break;
 			case PAYLOAD_G729:
 				if(opt_keycheck[0] != '\0') {
-					snprintf(cmd, 4092, "vmcodecs %s g729 \"%s\" \"%s\"", opt_keycheck, raw, wav);
+					snprintf(cmd, cmd_len, "vmcodecs %s g729 \"%s\" \"%s\"", opt_keycheck, raw, wav);
 				} else {
-					snprintf(cmd, 4092, "voipmonitor-g729 \"%s\" \"%s\"", raw, wav);
+					snprintf(cmd, cmd_len, "voipmonitor-g729 \"%s\" \"%s\"", raw, wav);
 				}
+				cmd[cmd_len] = 0;
 				if(verbosity > 1) syslog(LOG_ERR, "Converting G.729 to WAV.\n");
 				samplerate = 8000;
 				system(cmd);
 				break;
 			case PAYLOAD_G723:
 				if(opt_keycheck[0] != '\0') {
-					snprintf(cmd, 4092, "vmcodecs %s g723 \"%s\" \"%s\"", opt_keycheck, raw, wav);
+					snprintf(cmd, cmd_len, "vmcodecs %s g723 \"%s\" \"%s\"", opt_keycheck, raw, wav);
 				} else {
-					snprintf(cmd, 4092, "voipmonitor-g723 \"%s\" \"%s\"", raw, wav);
+					snprintf(cmd, cmd_len, "voipmonitor-g723 \"%s\" \"%s\"", raw, wav);
 				}
+				cmd[cmd_len] = 0;
 				if(verbosity > 1) syslog(LOG_ERR, "Converting G.723 to WAV.\n");
 				samplerate = 8000;
 				system(cmd);
 				break;
 			case PAYLOAD_ILBC:
 				if(opt_keycheck[0] != '\0') {
-					snprintf(cmd, 4092, "vmcodecs %s ilbc \"%s\" \"%s\"", opt_keycheck, raw, wav);
+					snprintf(cmd, cmd_len, "vmcodecs %s ilbc \"%s\" \"%s\"", opt_keycheck, raw, wav);
 				} else {
-					snprintf(cmd, 4092, "voipmonitor-ilbc \"%s\" \"%s\"", raw, wav);
+					snprintf(cmd, cmd_len, "voipmonitor-ilbc \"%s\" \"%s\"", raw, wav);
 				}
+				cmd[cmd_len] = 0;
 				if(verbosity > 1) syslog(LOG_ERR, "Converting iLBC to WAV.\n");
 				samplerate = 8000;
 				system(cmd);
 				break;
 			case PAYLOAD_SPEEX:
 				if(opt_keycheck[0] != '\0') {
-					snprintf(cmd, 4092, "vmcodecs %s speex \"%s\" \"%s\"", opt_keycheck, raw, wav);
+					snprintf(cmd, cmd_len, "vmcodecs %s speex \"%s\" \"%s\"", opt_keycheck, raw, wav);
 				} else {
-					snprintf(cmd, 4092, "voipmonitor-speex \"%s\" \"%s\"", raw, wav);
+					snprintf(cmd, cmd_len, "voipmonitor-speex \"%s\" \"%s\"", raw, wav);
 				}
+				cmd[cmd_len] = 0;
 				if(verbosity > 1) syslog(LOG_ERR, "Converting speex to WAV.\n");
 				samplerate = 8000;
 				system(cmd);
 				break;
 			case PAYLOAD_SILK8:
 				if(opt_keycheck[0] != '\0') {
-					snprintf(cmd, 4092, "vmcodecs %s silk \"%s\" \"%s\" 8000", opt_keycheck, raw, wav);
+					snprintf(cmd, cmd_len, "vmcodecs %s silk \"%s\" \"%s\" 8000", opt_keycheck, raw, wav);
 				} else {
-					snprintf(cmd, 4092, "voipmonitor-silk \"%s\" \"%s\" 8000", raw, wav);
+					snprintf(cmd, cmd_len, "voipmonitor-silk \"%s\" \"%s\" 8000", raw, wav);
 				}
+				cmd[cmd_len] = 0;
 				samplerate = 8000;
 				if(verbosity > 1) syslog(LOG_ERR, "Converting SILK8 to WAV.\n");
 				system(cmd);
 				break;
 			case PAYLOAD_SILK12:
 				if(opt_keycheck[0] != '\0') {
-					snprintf(cmd, 4092, "vmcodecs %s silk \"%s\" \"%s\" 12000", opt_keycheck, raw, wav);
+					snprintf(cmd, cmd_len, "vmcodecs %s silk \"%s\" \"%s\" 12000", opt_keycheck, raw, wav);
 				} else {
-					snprintf(cmd, 4092, "voipmonitor-silk \"%s\" \"%s\" 12000", raw, wav);
+					snprintf(cmd, cmd_len, "voipmonitor-silk \"%s\" \"%s\" 12000", raw, wav);
 				}
+				cmd[cmd_len] = 0;
 				samplerate = 12000;
 				if(verbosity > 1) syslog(LOG_ERR, "Converting SILK12 to WAV.\n");
 				system(cmd);
 				break;
 			case PAYLOAD_SILK16:
 				if(opt_keycheck[0] != '\0') {
-					snprintf(cmd, 4092, "vmcodecs %s silk \"%s\" \"%s\" 16000", opt_keycheck, raw, wav);
+					snprintf(cmd, cmd_len, "vmcodecs %s silk \"%s\" \"%s\" 16000", opt_keycheck, raw, wav);
 				} else {
-					snprintf(cmd, 4092, "voipmonitor-silk \"%s\" \"%s\" 16000", raw, wav);
+					snprintf(cmd, cmd_len, "voipmonitor-silk \"%s\" \"%s\" 16000", raw, wav);
 				}
+				cmd[cmd_len] = 0;
 				samplerate = 16000;
 				if(verbosity > 1) syslog(LOG_ERR, "Converting SILK16 to WAV.\n");
 				system(cmd);
 				break;
 			case PAYLOAD_SILK24:
 				if(opt_keycheck[0] != '\0') {
-					snprintf(cmd, 4092, "vmcodecs %s silk \"%s\" \"%s\" 24000", opt_keycheck, raw, wav);
+					snprintf(cmd, cmd_len, "vmcodecs %s silk \"%s\" \"%s\" 24000", opt_keycheck, raw, wav);
 				} else {
-					snprintf(cmd, 4092, "voipmonitor-silk \"%s\" \"%s\" 24000", raw, wav);
+					snprintf(cmd, cmd_len, "voipmonitor-silk \"%s\" \"%s\" 24000", raw, wav);
 				}
+				cmd[cmd_len] = 0;
 				if(verbosity > 1) syslog(LOG_ERR, "Converting SILK16 to WAV.\n");
 				samplerate = 24000;
 				system(cmd);
 				break;
 			case PAYLOAD_ISAC16:
 				if(opt_keycheck[0] != '\0') {
-					snprintf(cmd, 4092, "vmcodecs %s isac \"%s\" \"%s\" 16000", opt_keycheck, raw, wav);
+					snprintf(cmd, cmd_len, "vmcodecs %s isac \"%s\" \"%s\" 16000", opt_keycheck, raw, wav);
 				} else {
-					snprintf(cmd, 4092, "voipmonitor-isac \"%s\" \"%s\" 16000", raw, wav);
+					snprintf(cmd, cmd_len, "voipmonitor-isac \"%s\" \"%s\" 16000", raw, wav);
 				}
+				cmd[cmd_len] = 0;
 				samplerate = 16000;
 				if(verbosity > 1) syslog(LOG_ERR, "Converting ISAC16 to WAV.\n");
 				system(cmd);
 				break;
 			case PAYLOAD_ISAC32:
 				if(opt_keycheck[0] != '\0') {
-					snprintf(cmd, 4092, "vmcodecs %s isac \"%s\" \"%s\" 32000", opt_keycheck, raw, wav);
+					snprintf(cmd, cmd_len, "vmcodecs %s isac \"%s\" \"%s\" 32000", opt_keycheck, raw, wav);
 				} else {
-					snprintf(cmd, 4092, "voipmonitor-isac \"%s\" \"%s\" 32000", raw, wav);
+					snprintf(cmd, cmd_len, "voipmonitor-isac \"%s\" \"%s\" 32000", raw, wav);
 				}
+				cmd[cmd_len] = 0;
 				samplerate = 32000;
 				if(verbosity > 1) syslog(LOG_ERR, "Converting ISAC32 to WAV.\n");
 				system(cmd);
 				break;
 			case PAYLOAD_OPUS8:
 				if(opt_keycheck[0] != '\0') {
-					snprintf(cmd, 4092, "vmcodecs %s opus \"%s\" \"%s\" 8000", opt_keycheck, raw, wav);
+					snprintf(cmd, cmd_len, "vmcodecs %s opus \"%s\" \"%s\" 8000", opt_keycheck, raw, wav);
 				} else {
-					snprintf(cmd, 4092, "voipmonitor-opus \"%s\" \"%s\" 8000", raw, wav);
+					snprintf(cmd, cmd_len, "voipmonitor-opus \"%s\" \"%s\" 8000", raw, wav);
 				}
+				cmd[cmd_len] = 0;
 				samplerate = 8000;
 				if(verbosity > 1) syslog(LOG_ERR, "Converting OPUS8 to WAV.\n");
 				system(cmd);
 				break;
 			case PAYLOAD_OPUS12:
 				if(opt_keycheck[0] != '\0') {
-					snprintf(cmd, 4092, "vmcodecs %s opus \"%s\" \"%s\" 12000", opt_keycheck, raw, wav);
+					snprintf(cmd, cmd_len, "vmcodecs %s opus \"%s\" \"%s\" 12000", opt_keycheck, raw, wav);
 				} else {
-					snprintf(cmd, 4092, "voipmonitor-opus \"%s\" \"%s\" 12000", raw, wav);
+					snprintf(cmd, cmd_len, "voipmonitor-opus \"%s\" \"%s\" 12000", raw, wav);
 				}
+				cmd[cmd_len] = 0;
 				samplerate = 12000;
 				if(verbosity > 1) syslog(LOG_ERR, "Converting OPUS12 to WAV.\n");
 				system(cmd);
 				break;
 			case PAYLOAD_OPUS16:
 				if(opt_keycheck[0] != '\0') {
-					snprintf(cmd, 4092, "vmcodecs %s opus \"%s\" \"%s\" 16000", opt_keycheck, raw, wav);
+					snprintf(cmd, cmd_len, "vmcodecs %s opus \"%s\" \"%s\" 16000", opt_keycheck, raw, wav);
 				} else {
-					snprintf(cmd, 4092, "voipmonitor-opus \"%s\" \"%s\" 16000", raw, wav);
+					snprintf(cmd, cmd_len, "voipmonitor-opus \"%s\" \"%s\" 16000", raw, wav);
 				}
+				cmd[cmd_len] = 0;
 				samplerate = 16000;
 				if(verbosity > 1) syslog(LOG_ERR, "Converting OPUS16 to WAV.\n");
 				system(cmd);
 				break;
 			case PAYLOAD_OPUS24:
 				if(opt_keycheck[0] != '\0') {
-					snprintf(cmd, 4092, "vmcodecs %s opus \"%s\" \"%s\" 24000", opt_keycheck, raw, wav);
+					snprintf(cmd, cmd_len, "vmcodecs %s opus \"%s\" \"%s\" 24000", opt_keycheck, raw, wav);
 				} else {
-					snprintf(cmd, 4092, "voipmonitor-opus \"%s\" \"%s\" 24000", raw, wav);
+					snprintf(cmd, cmd_len, "voipmonitor-opus \"%s\" \"%s\" 24000", raw, wav);
 				}
+				cmd[cmd_len] = 0;
 				samplerate = 24000;
 				if(verbosity > 1) syslog(LOG_ERR, "Converting OPUS24 to WAV.\n");
 				system(cmd);
 				break;
 			case PAYLOAD_OPUS48:
 				if(opt_keycheck[0] != '\0') {
-					snprintf(cmd, 4092, "vmcodecs %s opus \"%s\" \"%s\" 48000", opt_keycheck, raw, wav);
+					snprintf(cmd, cmd_len, "vmcodecs %s opus \"%s\" \"%s\" 48000", opt_keycheck, raw, wav);
 				} else {
-					snprintf(cmd, 4092, "vmcodecs-opus %s a opus \"%s\" \"%s\" 48000", opt_keycheck, raw, wav);
+					snprintf(cmd, cmd_len, "vmcodecs-opus %s a opus \"%s\" \"%s\" 48000", opt_keycheck, raw, wav);
 					cout << cmd << "\n";
-					//snprintf(cmd, 4092, "voipmonitor-opus \"%s\" \"%s\" 48000", raw, wav);
+					//snprintf(cmd, cmd_len, "voipmonitor-opus \"%s\" \"%s\" 48000", raw, wav);
 				}
+				cmd[cmd_len] = 0;
 				samplerate = 48000;
 				if(verbosity > 1) syslog(LOG_ERR, "Converting OPUS48 to WAV.\n");
 				system(cmd);
@@ -2554,7 +2583,8 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 	last_register_clean = now;
 
 	char fname[32];
-	sprintf(fname, "%llu", fname2);
+	snprintf(fname, 31, "%llu", fname2);
+	fname[31] = 0;
 
 	switch(regstate) {
 	case 1:
@@ -2562,14 +2592,19 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 		if(enableBatchIfPossible && isTypeDb("mysql")) {
 			char ips[32];
 			char ipd[32];
-			sprintf(ips, "%u", htonl(sipcallerip));
-			sprintf(ipd, "%u", htonl(sipcalledip));
+			snprintf(ips, 31, "%u", htonl(sipcallerip));
+			ips[31] = 0;
+			snprintf(ipd, 31, "%u", htonl(sipcalledip));
+			ipd[31] = 0;
 			char tmpregstate[32];
-			sprintf(tmpregstate, "%d", regstate);
+			snprintf(tmpregstate, 31, "%d", regstate);
+			tmpregstate[31] = 0;
 			char regexpires[32];
-			sprintf(regexpires, "%d", register_expires);
+			snprintf(regexpires, 31, "%d", register_expires);
+			regexpires[31] = 0;
 			char idsensor[12];
-			sprintf(idsensor, "%d", useSensorId);
+			snprintf(idsensor, 11, "%d", useSensorId);
+			idsensor[11] = 0;
 			//stored procedure is much faster and eliminates latency reducing uuuuuuuuuuuuu
 
 			query = "CALL PROCESS_SIP_REGISTER(" + sqlEscapeStringBorder(sqlDateTimeString(calltime())) + ", " +
@@ -2733,7 +2768,8 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 				"WHERE sipcallerip = " + ssipcallerip.str() + " AND sipcalledip = " + ssipcalledip.str() + " AND created_at >= SUBTIME(FROM_UNIXTIME(" + calldate.str() + "), '01:00:00') LIMIT 1";
 
 			char fname[32];
-			sprintf(fname, "%llu", fname2);
+			snprintf(fname, 31, "%llu", fname2);
+			fname[31] = 0;
 			string q2 = string(
 				"UPDATE register_failed SET created_at = FROM_UNIXTIME(" + calldate.str() + "), fname = " + sqlEscapeStringBorder(fname) + ", counter = counter + " + cnt.str()) +
 				", to_num = " + sqlEscapeStringBorder(called) + ", from_num = " + sqlEscapeStringBorder(called) + ", digestusername = " + sqlEscapeStringBorder(digest_username) +
@@ -2774,7 +2810,8 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 			if(sqlDbSaveCall->query(query)) {
 				SqlDb_row rsltRow = sqlDbSaveCall->fetchRow();
 				char fname[32];
-				sprintf(fname, "%llu", fname2);
+				snprintf(fname, 31, "%llu", fname2);
+				fname[31] = 0;
 				if(rsltRow) {
 					// there is already failed register, update counter and do not insert
 					string query = string(
