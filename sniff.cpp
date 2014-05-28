@@ -1079,7 +1079,7 @@ int get_rtpmap_from_sdp(char *sdp_text, unsigned long len, int *rtpmap){
 		// return '\r' into sdp_text
 		*z = '\r';
 		i++;
-	 } while(l);
+	 } while(l && i < (MAX_RTPMAP - 2));
 	 rtpmap[i] = 0; //terminate rtpmap field
 	 return 0;
 }
@@ -1872,7 +1872,11 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 
 		Call *returnCall = NULL;
 		
+		unsigned long origDatalen = datalen;
 		unsigned long sipDatalen = _parse_packet.parseData(data, datalen, true);
+		if(sipDatalen > 0) {
+			datalen = sipDatalen;
+		}
 
 		*voippacket = 1;
 #if 0
@@ -1903,7 +1907,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 				// no Call-ID found in packet
 				if(istcp ==1 && header_ip) {
 					tcpReassemblySip.processPacket(
-						saddr, source, daddr, dest, data, datalen,
+						saddr, source, daddr, dest, data, origDatalen,
 						handle, header, packet, dontsave, can_thread, header_ip, disabledsave,
 						dlt, sensor_id,
 						issip);
@@ -1931,7 +1935,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 		// Call-ID is present
 		if(istcp == 1 && datalen >= 2) {
 			tcpReassemblySip.processPacket(
-				saddr, source, daddr, dest, data, datalen,
+				saddr, source, daddr, dest, data, origDatalen,
 				handle, header, packet, dontsave, can_thread, header_ip, disabledsave,
 				dlt, sensor_id,
 				issip);
@@ -2707,6 +2711,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 notfound:
 		data[datalen - 1] = a;
 
+		datalen = origDatalen;
 		if(!disabledsave) {
 			if(istcp && 
 			   sipDatalen && (sipDatalen < (unsigned)datalen || sipOffset) &&
@@ -2739,6 +2744,7 @@ notfound:
 		}
 		returnCall = call;
 endsip:
+		datalen = origDatalen;
 		if(istcp &&
 		   sipDatalen < (unsigned)datalen - 11 &&
 		   (unsigned)datalen + sipOffset < header->caplen &&
