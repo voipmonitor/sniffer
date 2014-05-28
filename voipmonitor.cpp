@@ -2705,6 +2705,10 @@ int main(int argc, char *argv[]) {
 						jsonData.parse((char*)responseBuffer);
 						int res_num = atoi(jsonData.getValue("res_num").c_str());
 						string res_text = jsonData.getValue("res_text");
+						if(res_num != 0) {
+							syslog(LOG_ERR, "cloud registration error: %s", res_text.c_str());
+							exit(1);
+						}
 						
 						//ssh 
 						strcpy(ssh_host, jsonData.getValue("ssh_host").c_str());
