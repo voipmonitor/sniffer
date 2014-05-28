@@ -1,3 +1,8 @@
+10.0RC21 28.5.2014
+==================
+- fix reassembling TCP which would lead to crash
+- end the call sooner than the rtptimeout if there is no further communication after 401 SIP response
+
 10.0RC20 27.5.2014
 ==================
 - fix versions >= 10.0RC15 which did not stored all TCP packets in case there was multiple messages in one TCP packet. 
