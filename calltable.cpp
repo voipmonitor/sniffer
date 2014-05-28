@@ -337,7 +337,7 @@ Call::_addtofilesqueue(string file, string column, string dirnamesqlfiles, long 
 		}
 	}
 
-	if(size == -1) {
+	if(size == (long long)-1) {
 		//error or file does not exists
 		char buf[4092];
 		buf[0] = '\0';
