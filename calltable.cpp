@@ -807,6 +807,7 @@ void Call::stoprecording() {
 			} else {
 				snprintf(str2, 2047, "%s.pcap", rtp_pcapfilename.c_str());
 			}
+			str2[2047] = 0;
 			unlink(str2);	
 		}
 		if(this->get_f_pcap() != NULL) {
@@ -818,6 +819,7 @@ void Call::stoprecording() {
 			} else {
 				snprintf(str2, 2047, "%s.pcap", pcapfilename.c_str());
 			}
+			str2[2047] = 0;
 			unlink(str2);	
 		}
 		****/
@@ -1017,6 +1019,7 @@ Call::mos_lqo(char *deg, int samplerate) {
 		if(verbosity > 0) syslog(LOG_INFO, "MOS_LQO unsupported samplerate:[%d] only 8000 and 16000 are supported\n", samplerate);
 		return -1;
 	}
+	buf[4091] = 0;
 	if(verbosity > 1) syslog(LOG_INFO, "MOS_LQO CMD [%s]\n", buf);
 	string out;
 	out = pexec(buf);
@@ -2592,17 +2595,17 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 		if(enableBatchIfPossible && isTypeDb("mysql")) {
 			char ips[32];
 			char ipd[32];
+			char tmpregstate[32];
+			char regexpires[32];
+			char idsensor[12];
 			snprintf(ips, 31, "%u", htonl(sipcallerip));
 			ips[31] = 0;
 			snprintf(ipd, 31, "%u", htonl(sipcalledip));
 			ipd[31] = 0;
-			char tmpregstate[32];
 			snprintf(tmpregstate, 31, "%d", regstate);
 			tmpregstate[31] = 0;
-			char regexpires[32];
 			snprintf(regexpires, 31, "%d", register_expires);
 			regexpires[31] = 0;
-			char idsensor[12];
 			snprintf(idsensor, 11, "%d", useSensorId);
 			idsensor[11] = 0;
 			//stored procedure is much faster and eliminates latency reducing uuuuuuuuuuuuu
