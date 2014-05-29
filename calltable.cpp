@@ -410,6 +410,7 @@ Call::removeRTP() {
 
 /* destructor */
 Call::~Call(){
+	printf("destruct\n");
 	if(opt_skinny) {
 		if(skinny_partyid) {
 			((Calltable *)calltable)->skinny_partyID.erase(skinny_partyid);
