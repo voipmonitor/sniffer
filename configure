@@ -3498,7 +3498,7 @@ fi
 
 
 LD_LIBRARY_PATH="$LD_LIBRARY_PATH:/usr/local/lib"
-LDFLAGS="$LDFLAGS -L/usr/local/lib -L/usr/lib64/mysql/"
+LDFLAGS="$LDFLAGS -L/usr/local/lib -L/usr/lib64/mysql/ -L/usr/lib/mysql/"
 
 # Checks for libraries.
 # FIXME: Replace `main' with a function in `-lc':
