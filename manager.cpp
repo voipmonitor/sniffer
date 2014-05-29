@@ -1521,6 +1521,8 @@ void *manager_ssh_(void) {
 		syslog(LOG_ERR, "\tCould not initialize SSH session!\n");
 		return 0;
 	}
+
+	libssh2_session_flag(session, LIBSSH2_FLAG_COMPRESS, 1);
        
 	/* ... start it up. This will trade welcome banners, exchange keys,
 	 * and setup crypto, compression, and MAC layers
@@ -1603,8 +1605,11 @@ void *manager_ssh_(void) {
 		fds[0].events = LIBSSH2_POLLFD_POLLIN | LIBSSH2_POLLFD_POLLERR | LIBSSH2_POLLFD_SESSION_CLOSED | LIBSSH2_POLLFD_POLLHUP | LIBSSH2_POLLFD_POLLNVAL | LIBSSH2_POLLFD_POLLEX;
 
 		int rc = (libssh2_poll(fds, 1, 100));
-		if (rc < 1)
+		int lastserr;
+		lastserr = libssh2_session_last_errno(session);
+		if (rc < 1) {
 			continue;
+		}
 
 		if (fds[0].revents & LIBSSH2_POLLFD_POLLIN) {
 			channel = libssh2_channel_forward_accept(listener);
