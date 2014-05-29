@@ -1443,46 +1443,33 @@ void *ssh_accept_thread(void *arg) {
 	
 	char buf[1024*1024]; 
 	int len;
+	int res = 0;
 	LIBSSH2_CHANNEL *channel = (LIBSSH2_CHANNEL*)arg;
-	LIBSSH2_POLLFD *fds = (LIBSSH2_POLLFD*)malloc(sizeof (LIBSSH2_POLLFD));
-
-        fds[0].type = LIBSSH2_POLLFD_CHANNEL;
-        fds[0].fd.channel = channel;
-        fds[0].events = LIBSSH2_POLLFD_POLLIN;
-
 
 	while(1) {
 		int res = libssh2_poll_channel_read(channel, 0);
 
-/*
-		int rc = (libssh2_poll(fds, 1, 100));
-		if (rc < 1)
-			continue;
-
-		if (fds[0].revents & LIBSSH2_POLLFD_POLLIN) {
-*/
 		if(res) {
 			len = libssh2_channel_read(channel, buf, 1024*1024);
 			if (LIBSSH2_ERROR_EAGAIN == len) {
 				continue;
 			} else if (len < 0) {
-				break;
+				libssh2_channel_close(channel);
+				return 0;
 			}
 			if (libssh2_channel_eof(channel)) {
 				//remote client disconnected
+				libssh2_channel_close(channel);
 				break;
 			}
-			if(parse_command(buf, len, 0, 0, NULL, NULL, channel) == -1) break;
+			res = parse_command(buf, len, 0, 0, NULL, NULL, channel);
 			libssh2_channel_close(channel);
 			break;
-			//if(sendvm(0, channel, buf, len, 0) == -1) break;
 		} else {
 			usleep(100);
 			continue;
 		}
 	}
-
-	if(fds) free(fds);
 
 	return 0;
 }
