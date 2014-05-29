@@ -1,3 +1,9 @@
+10.0RC22 29.5.2014
+==================
+- fix if device wants to unregister (send REGISTER expires=0) and server replies 200OK expires>0 the sniffer did not deregister it from active calls
+- fix mysqlclient path in configure for centos 
+- Add boundary checking for string manipulation functions
+
 10.0RC21 28.5.2014
 ==================
 - fix reassembling TCP which would lead to crash
