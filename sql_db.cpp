@@ -1750,7 +1750,7 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 			`onewaytimeout` smallint DEFAULT 15,\
 			`sip-register-timeout` tinyint DEFAULT 5,\
 		PRIMARY KEY (`id`)\
-	) ENGINE=InnoDB;");
+	) ENGINE=InnoDB DEFAULT CHARSET=latin1;");
 #endif
 
 	this->query(
@@ -1769,7 +1769,7 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 			`mos_lqo` tinyint DEFAULT '0',\
 			`note` text,\
 		PRIMARY KEY (`id`)\
-	) ENGINE=InnoDB;");
+	) ENGINE=InnoDB DEFAULT CHARSET=latin1;");
 
 	this->query(
 	"CREATE TABLE IF NOT EXISTS `filter_telnum` (\
@@ -1787,7 +1787,7 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 			`mos_lqo` tinyint DEFAULT '0',\
 			`note` text,\
 		PRIMARY KEY (`id`)\
-	) ENGINE=InnoDB;");
+	) ENGINE=InnoDB DEFAULT CHARSET=latin1;");
 	}
 
 	this->query(string(
@@ -1796,7 +1796,7 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 			`lastSIPresponse` varchar(255) DEFAULT NULL,\
 		PRIMARY KEY (`id`),\
 		UNIQUE KEY `lastSIPresponse` (`lastSIPresponse`)\
-	) ENGINE=" + (federated ? federatedConnection + "cdr_sip_response'" : "InnoDB") + ";");
+	) ENGINE=" + (federated ? federatedConnection + "cdr_sip_response'" : "InnoDB") + " DEFAULT CHARSET=latin1;");
 
 	this->query(string(
 	"CREATE TABLE IF NOT EXISTS `cdr_ua") + federatedSuffix + "` (\
@@ -1804,7 +1804,7 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 			`ua` varchar(512) DEFAULT NULL,\
 		PRIMARY KEY (`id`),\
 		UNIQUE KEY `ua` (`ua`)\
-	) ENGINE=" + (federated ? federatedConnection + "cdr_ua'" : "InnoDB") + " " + compress + ";");
+	) ENGINE=" + (federated ? federatedConnection + "cdr_ua'" : "InnoDB") + " DEFAULT CHARSET=latin1 " + compress + ";");
 
 	char partDayName[20] = "";
 	char limitDay[20] = "";
@@ -1995,7 +1995,7 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 			",CONSTRAINT `cdr_ibfk_1` FOREIGN KEY (`lastSIPresponse_id`) REFERENCES `cdr_sip_response` (`id`) ON UPDATE CASCADE,\
 			CONSTRAINT `cdr_ibfk_2` FOREIGN KEY (`a_ua_id`) REFERENCES `cdr_ua` (`id`) ON UPDATE CASCADE,\
 			CONSTRAINT `cdr_ibfk_3` FOREIGN KEY (`b_ua_id`) REFERENCES `cdr_ua` (`id`) ON UPDATE CASCADE") +
-	") ENGINE=" + (federated ? federatedConnection + "cdr'" : "InnoDB") + " " + compress +  
+	") ENGINE=" + (federated ? federatedConnection + "cdr'" : "InnoDB") + " DEFAULT CHARSET=latin1 " + compress +  
 	(opt_cdr_partition && !federated ?
 		(opt_cdr_partition_oldver ? 
 			string(" PARTITION BY RANGE (to_days(calldate))(\
@@ -2059,7 +2059,7 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 		(opt_cdr_partition ?
 			"" :
 			",CONSTRAINT `cdr_next_ibfk_1` FOREIGN KEY (`cdr_ID`) REFERENCES `cdr` (`ID`) ON DELETE CASCADE ON UPDATE CASCADE") +
-	") ENGINE=" + (federated ? federatedConnection + "cdr_next'" : "InnoDB") + " " + compress +  
+	") ENGINE=" + (federated ? federatedConnection + "cdr_next'" : "InnoDB") + " DEFAULT CHARSET=latin1 " + compress +  
 	(opt_cdr_partition && !federated ?
 		(opt_cdr_partition_oldver ? 
 			string(" PARTITION BY RANGE (to_days(calldate))(\
@@ -2093,7 +2093,7 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 		(opt_cdr_partition ?
 			"" :
 			",CONSTRAINT `cdr_proxy_ibfk_1` FOREIGN KEY (`cdr_ID`) REFERENCES `cdr` (`ID`) ON DELETE CASCADE ON UPDATE CASCADE") +
-	") ENGINE=" + (federated ? federatedConnection + "cdr_proxy'" : "InnoDB") + " " + compress  + 
+	") ENGINE=" + (federated ? federatedConnection + "cdr_proxy'" : "InnoDB") + " DEFAULT CHARSET=latin1 " + compress  + 
 	(opt_cdr_partition && !federated ?
 		(opt_cdr_partition_oldver ? 
 			string(" PARTITION BY RANGE (to_days(calldate))(\
@@ -2124,7 +2124,7 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 		(opt_cdr_partition ?
 			"" :
 			",CONSTRAINT `cdr_rtp_ibfk_1` FOREIGN KEY (`cdr_ID`) REFERENCES `cdr` (`ID`) ON DELETE CASCADE ON UPDATE CASCADE") +
-	") ENGINE=" + (federated ? federatedConnection + "cdr_rtp'" : "InnoDB") + " " + compress +  
+	") ENGINE=" + (federated ? federatedConnection + "cdr_rtp'" : "InnoDB") + " DEFAULT CHARSET=latin1 " + compress +  
 	(opt_cdr_partition && !federated ?
 		(opt_cdr_partition_oldver ? 
 			string(" PARTITION BY RANGE (to_days(calldate))(\
@@ -2156,7 +2156,7 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 		(opt_cdr_partition ?
 			"" :
 			",CONSTRAINT `cdr_dtmf_ibfk_1` FOREIGN KEY (`cdr_ID`) REFERENCES `cdr` (`ID`) ON DELETE CASCADE ON UPDATE CASCADE") +
-	") ENGINE=" + (federated ? federatedConnection + "cdr_dtmf'" : "InnoDB") +
+	") ENGINE=" + (federated ? federatedConnection + "cdr_dtmf'" : "InnoDB") + " DEFAULT CHARSET=latin1" + 
 	(opt_cdr_partition && !federated ?
 		(opt_cdr_partition_oldver ? 
 			string(" PARTITION BY RANGE (to_days(calldate))(\
@@ -2171,7 +2171,7 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 			`contenttype` varchar(255) DEFAULT NULL,\
 		PRIMARY KEY (`id`),\
 		KEY `contenttype` (`contenttype`)\
-	) ENGINE=" + (federated ? federatedConnection + "contenttype'" : "InnoDB") + " " + compress + ";");
+	) ENGINE=" + (federated ? federatedConnection + "contenttype'" : "InnoDB") + " DEFAULT CHARSET=utf8 " + compress + ";");
 
 	string messageNextCustomFields;
 	if(federated) {
@@ -2230,7 +2230,7 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 			CONSTRAINT `messages_ibfk_2` FOREIGN KEY (`a_ua_id`) REFERENCES `cdr_ua` (`id`) ON UPDATE CASCADE,\
 			CONSTRAINT `messages_ibfk_3` FOREIGN KEY (`b_ua_id`) REFERENCES `cdr_ua` (`id`) ON UPDATE CASCADE,\
 			CONSTRAINT `messages_ibfk_4` FOREIGN KEY (`id_contenttype`) REFERENCES `contenttype` (`id`) ON UPDATE CASCADE") +
-	") ENGINE=" + (federated ? federatedConnection + "message'" : "InnoDB") + " " + compress + 
+	") ENGINE=" + (federated ? federatedConnection + "message'" : "InnoDB") + " DEFAULT CHARSET=latin1 " + compress + 
 	(opt_cdr_partition && !federated ?
 		(opt_cdr_partition_oldver ? 
 			string(" PARTITION BY RANGE (to_days(calldate))(\
@@ -2276,7 +2276,7 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 		KEY `sipcalledip` (`sipcalledip`),\
 		KEY `from_num` (`from_num`),\
 		KEY `digestusername` (`digestusername`)\
-	) ENGINE=MEMORY " + compress + ";");
+	) ENGINE=MEMORY DEFAULT CHARSET=latin1 " + compress + ";");
 	}
 
 	this->query(string(
@@ -2302,7 +2302,7 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 		"KEY `created_at` (`created_at`),\
 		KEY `sipcallerip` (`sipcallerip`),\
 		KEY `sipcalledip` (`sipcalledip`)\
-	) ENGINE=" + (federated ? federatedConnection + "register_state'" : "InnoDB") + " " + compress +  
+	) ENGINE=" + (federated ? federatedConnection + "register_state'" : "InnoDB") + " DEFAULT CHARSET=latin1 " + compress +  
 	(opt_cdr_partition && !federated ?
 		(opt_cdr_partition_oldver ? 
 			string(" PARTITION BY RANGE (to_days(created_at))(\
@@ -2333,7 +2333,7 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 		"KEY `created_at` (`created_at`),\
 		KEY `sipcallerip` (`sipcallerip`),\
 		KEY `sipcalledip` (`sipcalledip`)\
-	) ENGINE=" + (federated ? federatedConnection + "register_failed'" : "InnoDB") + " " + compress +  
+	) ENGINE=" + (federated ? federatedConnection + "register_failed'" : "InnoDB") + " DEFAULT CHARSET=latin1 " + compress +  
 	(opt_cdr_partition && !federated ?
 		(opt_cdr_partition_oldver ? 
 			string(" PARTITION BY RANGE (to_days(created_at))(\
@@ -2348,7 +2348,7 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 			`host` varchar(255) NULL DEFAULT NULL,\
 			`port` int NULL DEFAULT NULL,\
 		PRIMARY KEY (`id_sensor`)\
-	) ENGINE=InnoDB;");
+	) ENGINE=InnoDB DEFAULT CHARSET=latin1;");
 
 	if(opt_ipaccount) {
 	this->query(
@@ -2371,7 +2371,7 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 		KEY `port` (`port`),\
 		KEY `proto` (`proto`),\
 		KEY `interval_time` (`interval_time`)\
-	) ENGINE=InnoDB " + compress +
+	) ENGINE=InnoDB DEFAULT CHARSET=latin1 " + compress +
 			string(" PARTITION BY RANGE COLUMNS(interval_time)(\
 				 PARTITION ") + partDayName + " VALUES LESS THAN ('" + limitDay + "') engine innodb)");
 	}
@@ -2392,7 +2392,7 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 			`data` VARBINARY(10000) NOT NULL ,\
 		PRIMARY KEY ( `id` ) ,\
 		INDEX (`created_at` , `microseconds`)\
-	) ENGINE=MEMORY " + compress + ";");
+	) ENGINE=MEMORY DEFAULT CHARSET=latin1 " + compress + ";");
 	
 	this->query(
 	"CREATE TABLE IF NOT EXISTS `files` (\
@@ -2404,7 +2404,7 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 			`audiosize` bigint unsigned DEFAULT 0,\
 			`regsize` bigint unsigned DEFAULT 0,\
 		PRIMARY KEY (`datehour`, `id_sensor`)\
-	) ENGINE=InnoDB;");
+	) ENGINE=InnoDB DEFAULT CHARSET=latin1;");
 	}
 	
 	if(opt_enable_lua_tables) {
@@ -2493,7 +2493,7 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 			`old_continent_code` char(5),\
 			`old_at` bigint unsigned,\
 		PRIMARY KEY (`number`)\
-	) ENGINE=InnoDB;");
+	) ENGINE=InnoDB DEFAULT CHARSET=latin1;");
 	this->query(
 	"CREATE TABLE IF NOT EXISTS `fraud_alert_info` (\
 			`id` INT UNSIGNED NOT NULL AUTO_INCREMENT,\
@@ -2502,7 +2502,7 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 			`alert_info` TEXT NOT NULL,\
 			PRIMARY KEY (`ID`),\
 			CONSTRAINT `fraud_alert_info_ibfk_1` FOREIGN KEY (`alert_id`) REFERENCES `alerts` (`id`) ON UPDATE CASCADE ON DELETE CASCADE\
-	) ENGINE=InnoDB;");
+	) ENGINE=InnoDB DEFAULT CHARSET=latin1;");
 	} }
 	
 	if(!federated) {
