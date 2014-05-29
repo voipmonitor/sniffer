@@ -2200,16 +2200,18 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 
 
 			} else if(sip_method == RES2XX) {
-				// update expires header from all REGISTER dialog messages (from 200 OK which can override the expire) 
-				s = gettag(data, datalen, "\nExpires:", &l, &gettagLimitLen);
-				if(l && ((unsigned int)l < ((unsigned int)datalen - (s - data)))) {
-					char c = s[l];
-					s[l] = '\0';
-					call->register_expires = atoi(s);
-					s[l] = c;
+				// update expires header from all REGISTER dialog messages (from 200 OK which can override the expire) but not if register_expires == 0
+				if(call->register_expires != 0) {
+					s = gettag(data, datalen, "\nExpires:", &l, &gettagLimitLen);
+					if(l && ((unsigned int)l < ((unsigned int)datalen - (s - data)))) {
+						char c = s[l];
+						s[l] = '\0';
+						call->register_expires = atoi(s);
+						s[l] = c;
+					}
+					// the expire can be also in contact header Contact: 79438652 <sip:6600006@192.168.10.202:1026>;expires=240
+					get_expires_from_contact(data, datalen, &call->register_expires);
 				}
-				// the expire can be also in contact header Contact: 79438652 <sip:6600006@192.168.10.202:1026>;expires=240
-				get_expires_from_contact(data, datalen, &call->register_expires);
 
 				if(verbosity > 3) syslog(LOG_DEBUG, "REGISTER OK Call-ID[%s]", call->call_id.c_str());
                                 s = gettag(data, datalen, "\nCSeq:", &l, &gettagLimitLen);
