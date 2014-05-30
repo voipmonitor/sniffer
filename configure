@@ -4077,13 +4077,13 @@ else
   as_fn_error $? "Unable to find curl library. apt-get libcurl4-openssl-dev | yum curl-devel" "$LINENO" 5
 fi
 
-{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for main in -lssh2" >&5
-$as_echo_n "checking for main in -lssh2... " >&6; }
-if test "${ac_cv_lib_ssh2_main+set}" = set; then :
+{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for main in -lssh" >&5
+$as_echo_n "checking for main in -lssh... " >&6; }
+if test "${ac_cv_lib_ssh_main+set}" = set; then :
   $as_echo_n "(cached) " >&6
 else
   ac_check_lib_save_LIBS=$LIBS
-LIBS="-lssh2  $LIBS"
+LIBS="-lssh  $LIBS"
 cat confdefs.h - <<_ACEOF >conftest.$ac_ext
 /* end confdefs.h.  */
 
@@ -4097,34 +4097,34 @@ return main ();
 }
 _ACEOF
 if ac_fn_c_try_link "$LINENO"; then :
-  ac_cv_lib_ssh2_main=yes
+  ac_cv_lib_ssh_main=yes
 else
-  ac_cv_lib_ssh2_main=no
+  ac_cv_lib_ssh_main=no
 fi
 rm -f core conftest.err conftest.$ac_objext \
     conftest$ac_exeext conftest.$ac_ext
 LIBS=$ac_check_lib_save_LIBS
 fi
-{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $ac_cv_lib_ssh2_main" >&5
-$as_echo "$ac_cv_lib_ssh2_main" >&6; }
-if test "x$ac_cv_lib_ssh2_main" = x""yes; then :
+{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $ac_cv_lib_ssh_main" >&5
+$as_echo "$ac_cv_lib_ssh_main" >&6; }
+if test "x$ac_cv_lib_ssh_main" = x""yes; then :
   cat >>confdefs.h <<_ACEOF
-#define HAVE_LIBSSH2 1
+#define HAVE_LIBSSH 1
 _ACEOF
 
-  LIBS="-lssh2 $LIBS"
+  LIBS="-lssh $LIBS"
 
 else
-  as_fn_error $? "Unable to find libssh2 library. apt-get install libssh2-dev | yum install libssh2-devel | or compile from source http://www.libssh2.org/download/libssh2-1.4.3.tar.gz (current linux distributions have old library) " "$LINENO" 5
+  as_fn_error $? "Unable to find libssh library. apt-get install libssh-dev | yum install libssh-devel | or compile from source https://red.libssh.org/projects/libssh/files " "$LINENO" 5
 fi
 
-{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for libssh2_session_handshake in -lssh2" >&5
-$as_echo_n "checking for libssh2_session_handshake in -lssh2... " >&6; }
-if test "${ac_cv_lib_ssh2_libssh2_session_handshake+set}" = set; then :
+{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for ssh_forward_accept in -lssh" >&5
+$as_echo_n "checking for ssh_forward_accept in -lssh... " >&6; }
+if test "${ac_cv_lib_ssh_ssh_forward_accept+set}" = set; then :
   $as_echo_n "(cached) " >&6
 else
   ac_check_lib_save_LIBS=$LIBS
-LIBS="-lssh2  $LIBS"
+LIBS="-lssh  $LIBS"
 cat confdefs.h - <<_ACEOF >conftest.$ac_ext
 /* end confdefs.h.  */
 
@@ -4134,35 +4134,35 @@ cat confdefs.h - <<_ACEOF >conftest.$ac_ext
 #ifdef __cplusplus
 extern "C"
 #endif
-char libssh2_session_handshake ();
+char ssh_forward_accept ();
 int
 main ()
 {
-return libssh2_session_handshake ();
+return ssh_forward_accept ();
   ;
   return 0;
 }
 _ACEOF
 if ac_fn_c_try_link "$LINENO"; then :
-  ac_cv_lib_ssh2_libssh2_session_handshake=yes
+  ac_cv_lib_ssh_ssh_forward_accept=yes
 else
-  ac_cv_lib_ssh2_libssh2_session_handshake=no
+  ac_cv_lib_ssh_ssh_forward_accept=no
 fi
 rm -f core conftest.err conftest.$ac_objext \
     conftest$ac_exeext conftest.$ac_ext
 LIBS=$ac_check_lib_save_LIBS
 fi
-{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $ac_cv_lib_ssh2_libssh2_session_handshake" >&5
-$as_echo "$ac_cv_lib_ssh2_libssh2_session_handshake" >&6; }
-if test "x$ac_cv_lib_ssh2_libssh2_session_handshake" = x""yes; then :
+{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $ac_cv_lib_ssh_ssh_forward_accept" >&5
+$as_echo "$ac_cv_lib_ssh_ssh_forward_accept" >&6; }
+if test "x$ac_cv_lib_ssh_ssh_forward_accept" = x""yes; then :
   cat >>confdefs.h <<_ACEOF
-#define HAVE_LIBSSH2 1
+#define HAVE_LIBSSH 1
 _ACEOF
 
-  LIBS="-lssh2 $LIBS"
+  LIBS="-lssh $LIBS"
 
 else
-  as_fn_error $? "Your libssh2 is old. Compile from source http://www.libssh2.org/download/libssh2-1.4.3.tar.gz (current linux distributions have old library) " "$LINENO" 5
+  as_fn_error $? "Your libssh is old. Compile from source https://red.libssh.org/projects/libssh/files (current linux distributions have old library) " "$LINENO" 5
 fi
 
 { $as_echo "$as_me:${as_lineno-$LINENO}: checking for main in -ljson" >&5
