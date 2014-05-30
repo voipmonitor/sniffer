@@ -15,7 +15,9 @@
 #include <vorbis/codec.h>
 #include <vorbis/vorbisenc.h>
 #include <pcap.h>
-#include <libssh2.h>
+#include <libssh/libssh.h>
+#include <libssh/callbacks.h>
+#include <openssl/crypto.h>  
 
 #include <sstream>
 
@@ -77,6 +79,9 @@ livesnifferfilter_use_siptypes_s livesnifferfilterUseSipTypes;
 
 ManagerClientThreads ClientThreads;
 
+volatile int ssh_threads;
+volatile int ssh_threads_break; 
+
 /* 
  * this function runs as thread. It reads RTP audio data from call
  * and write it to output buffer 
@@ -87,11 +92,9 @@ ManagerClientThreads ClientThreads;
 void *listening_worker(void *arguments) {
 	struct listening_worker_arg *args = (struct listening_worker_arg*)arguments;
 
-        int ret = 0;
         unsigned char read1[1024];
         unsigned char read2[1024];
         struct timeval tv;
-        int diff;
 
 	getUpdDifTime(&tv);
 	alaw_init();
@@ -140,14 +143,13 @@ void *listening_worker(void *arguments) {
 		tvwait.tv_sec = 0;
 		tvwait.tv_usec = 1000*20 - udiff; //20 ms
 //		long int usec = tvwait.tv_usec;
-		ret = select(0, NULL, NULL, NULL, &tvwait);
+		select(0, NULL, NULL, NULL, &tvwait);
 
 		clock_gettime(CLOCK_REALTIME, &tS);
 		char *s16char;
 
 		//usleep(tvwait.tv_usec);
 		pthread_mutex_lock(&args->call->buflock);
-		diff = getUpdDifTime(&tv) / 1000;
 		len1 = circbuf_read(args->call->audiobuffer1, (char*)read1, 160);
 		len2 = circbuf_read(args->call->audiobuffer2, (char*)read2, 160);
 //		printf("codec_caller[%d] codec_called[%d] len1[%d] len2[%d] outbc[%d] outbchar[%d] wait[%u]\n", args->call->codec_caller, args->call->codec_called, len1, len2, (int)args->call->spybuffer.size(), (int)args->call->spybufferchar.size(), usec);
@@ -210,7 +212,6 @@ void *listening_worker(void *arguments) {
 //				ogg_write_live(&ogg, &args->call->spybufferchar, (short int*)&r1);
 			}
 		} else {
-                        //printf("diff [%d] timeout\n", diff);
 			// write 20ms silence 
 			int16_t s = 0;
 			//unsigned char sa = 255;
@@ -243,13 +244,13 @@ void *listening_worker(void *arguments) {
 	return 0;
 }
 
-int sendssh(LIBSSH2_CHANNEL *channel, const char *buf, int len) {
+int sendssh(ssh_channel channel, const char *buf, int len) {
 	int wr, i;
 	wr = 0;
 	do {   
-		i = libssh2_channel_write(channel, buf, len);
+		i = ssh_channel_write(channel, buf, len);
 		if (i < 0) {
-			fprintf(stderr, "libssh2_channel_write: %d\n", i);
+			fprintf(stderr, "libssh_channel_write: %d\n", i);
 			return -1;
 		}
 		wr += i;
@@ -257,7 +258,7 @@ int sendssh(LIBSSH2_CHANNEL *channel, const char *buf, int len) {
 	return wr;
 }
 
-int sendvm(int socket, LIBSSH2_CHANNEL *channel, const char *buf, size_t len, int mode) {
+int sendvm(int socket, ssh_channel channel, const char *buf, size_t len, int mode) {
 	int res;
 	if(channel) {
 		res = sendssh(channel, buf, len);
@@ -267,7 +268,7 @@ int sendvm(int socket, LIBSSH2_CHANNEL *channel, const char *buf, size_t len, in
 	return res;
 }
 
-int parse_command(char *buf, int size, int client, int eof, const char *buf_long, ManagerClientThread **managerClientThread = NULL, LIBSSH2_CHANNEL *sshchannel = NULL) {
+int parse_command(char *buf, int size, int client, int eof, const char *buf_long, ManagerClientThread **managerClientThread = NULL, ssh_channel sshchannel = NULL) {
 	char sendbuf[BUFSIZE];
 	u_int32_t uid = 0;
 
@@ -570,7 +571,6 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 			}
 			return 0;
 		} else {
-			map<unsigned int, octects_live_t*>::iterator ipacc_liveIT = ipacc_live.find(id);
 			octects_live_t* filter;
 			filter = (octects_live_t*)calloc(1, sizeof(octects_live_t));
 			filter->setFilter(ipfilter.c_str());
@@ -1130,7 +1130,7 @@ getwav:
 	} else if(strstr(buf, "syslogstr") != NULL) {
 		char *pointToSpaceSeparator = strchr(buf, ' ');
 		if(pointToSpaceSeparator) {
-			syslog(LOG_NOTICE, pointToSpaceSeparator + 1);
+			syslog(LOG_NOTICE, "%s", pointToSpaceSeparator + 1);
 		}
 	} else if(strstr(buf, "custipcache_get_cust_id") != NULL) {
 		char ip[20];
@@ -1437,43 +1437,6 @@ void *manager_read_thread(void * arg) {
 	return 0;
 }
 
-
-
-void *ssh_accept_thread(void *arg) {
-	
-	char buf[1024*1024]; 
-	int len;
-	int res = 0;
-	LIBSSH2_CHANNEL *channel = (LIBSSH2_CHANNEL*)arg;
-
-	while(1) {
-		int res = libssh2_poll_channel_read(channel, 0);
-
-		if(res) {
-			len = libssh2_channel_read(channel, buf, 1024*1024);
-			if (LIBSSH2_ERROR_EAGAIN == len) {
-				continue;
-			} else if (len < 0) {
-				libssh2_channel_close(channel);
-				return 0;
-			}
-			if (libssh2_channel_eof(channel)) {
-				//remote client disconnected
-				libssh2_channel_close(channel);
-				break;
-			}
-			res = parse_command(buf, len, 0, 0, NULL, NULL, channel);
-			libssh2_channel_close(channel);
-			break;
-		} else {
-			usleep(100);
-			continue;
-		}
-	}
-
-	return 0;
-}
-
 void perror_syslog(const char *msg) {
 	char buf[1024];
 	strerror_r(errno, buf, 1024);
@@ -1481,178 +1444,115 @@ void perror_syslog(const char *msg) {
 }
 
 void *manager_ssh_(void) {
-	const char *keyfile1 = "~/.voipmonitor/id_rsa.pub";
-	const char *keyfile2 = "~/.voipmonitor/id_rsa";
-		       
-	int remote_listenport;	
-				       
-	enum {	 
-	AUTH_NONE = 0,
-	AUTH_PASSWORD, 
-	AUTH_PUBLICKEY 
-	};			     
-		       
-	LIBSSH2_SESSION *session;      
-
-	int rc, sock = -1, auth = AUTH_NONE;
-	struct sockaddr_in sin;
-	char *userauthlist;
-	LIBSSH2_LISTENER *listener = NULL;
-	LIBSSH2_CHANNEL *channel = NULL;
-
-	LIBSSH2_POLLFD *fds = (LIBSSH2_POLLFD*)malloc(sizeof (LIBSSH2_POLLFD));
-
-
-	/* Connect to SSH server */
-	sock = socket(PF_INET, SOCK_STREAM, IPPROTO_TCP);
-	sin.sin_family = AF_INET;
-	if (INADDR_NONE == (sin.sin_addr.s_addr = inet_addr(ssh_host))) {
-		perror_syslog("\tinet_addr");
-		return 0;
-	}      
-	sin.sin_port = htons(ssh_port);
-	if (connect(sock, (struct sockaddr*)(&sin), sizeof(struct sockaddr_in)) != 0) {
-		syslog(LOG_ERR, "\tfailed to connect!\n");
+	ssh_session session;
+	int rc;
+	// Open session and set options
+	list<ssh_channel> ssh_chans;
+	list<ssh_channel>::iterator it1;
+	char buf[1024*1024]; 
+	int len;
+	session = ssh_new();
+	if (session == NULL)
+		exit(-1);
+	ssh_options_set(session, SSH_OPTIONS_HOST, ssh_host);
+	ssh_options_set(session, SSH_OPTIONS_PORT, &ssh_port);
+	ssh_options_set(session, SSH_OPTIONS_COMPRESSION, "yes");
+	// Connect to server
+	rc = ssh_connect(session);
+	if (rc != SSH_OK) {
+		syslog(LOG_ERR, "Error connecting to %s: %s\n", ssh_host, ssh_get_error(session));
+		ssh_free(session);
 		return 0;
 	}
-	/* Create a session instance */
-	session = libssh2_session_init();
-	if(!session) {
-		syslog(LOG_ERR, "\tCould not initialize SSH session!\n");
-		return 0;
+/*
+	// Verify the server's identity
+	// For the source code of verify_knowhost(), check previous example
+	if (verify_knownhost(session) < 0)
+	{
+		ssh_disconnect(session);
+		ssh_free(session);
+		exit(-1);
 	}
+*/
+	// Authenticate ourselves
+	rc = ssh_userauth_password(session, ssh_username, ssh_password);
+	if (rc != SSH_AUTH_SUCCESS) {
+		syslog(LOG_ERR, "Error authenticating with password: %s\n", ssh_get_error(session));
+		ssh_disconnect(session);
+		ssh_free(session);
+		goto ssh_disconnect;
+	}
+	syslog(LOG_NOTICE, "Connected to ssh\n");
 
-	libssh2_session_flag(session, LIBSSH2_FLAG_COMPRESS, 1);
-       
-	/* ... start it up. This will trade welcome banners, exchange keys,
-	 * and setup crypto, compression, and MAC layers
-	 */
-	rc = libssh2_session_handshake(session, sock);
-	if(rc) {
-		syslog(LOG_ERR, "\tError when starting up SSH session: %d", rc);
-		return 0;
+	int remote_listenport;
+	rc = ssh_forward_listen(session, ssh_remote_listenhost, ssh_remote_listenport, &remote_listenport);
+	if (rc != SSH_OK) {
+		syslog(LOG_ERR, "Error opening remote port: %s\n", ssh_get_error(session));
+		goto ssh_disconnect;
 	}
-	
-#if 0       
-	/* At this point we havn't yet authenticated.  The first thing to do
-	 * is check the hostkey's fingerprint against our known hosts Your app
-	 * may have it hard coded, may go to a file, may present it to the
-	 * user, that's your call
-	 */		    
-	fingerprint = libssh2_hostkey_hash(session, LIBSSH2_HOSTKEY_HASH_SHA1);
-	fprintf(stderr, "Fingerprint: ");
-	for(i = 0; i < 20; i++)
-		fprintf(stderr, "%02X ", (unsigned char)fingerprint[i]);
-	fprintf(stderr, "\n");
-#endif
+	syslog(LOG_NOTICE, "connection established\n");
 
-	/* check what authentication methods are available */
-	userauthlist = libssh2_userauth_list(session, ssh_username, strlen(ssh_username));
-	syslog(LOG_ERR, "\tAuthentication methods: %s", userauthlist);
-	if (strstr(userauthlist, "password"))
-		auth |= AUTH_PASSWORD;
-	if (strstr(userauthlist, "publickey"))
-		auth |= AUTH_PUBLICKEY;
-      
-#if 0 
-	/* check for options */
-	if(argc > 8) {
-		if ((auth & AUTH_PASSWORD) && !strcasecmp(argv[8], "-p"))
-			auth = AUTH_PASSWORD;
-		if ((auth & AUTH_PUBLICKEY) && !strcasecmp(argv[8], "-k"))
-			auth = AUTH_PUBLICKEY;
-	}
-#endif
-   
-	if (auth & AUTH_PASSWORD) {
-		if (libssh2_userauth_password(session, ssh_username, ssh_password)) {
-			syslog(LOG_ERR, "\tAuthentication by password failed.");
-			goto shutdown2;
-		}
-	} else if (auth & AUTH_PUBLICKEY) {
-		if (libssh2_userauth_publickey_fromfile(session, ssh_username, keyfile1, keyfile2, ssh_password)) {
-			syslog(LOG_ERR, "\tAuthentication by public key failed!");
-			goto shutdown2;
-		}
-		syslog(LOG_ERR, "\tAuthentication by public key succeeded.");
-	} else {
-		syslog(LOG_ERR, "\tNo supported authentication methods found!");
-		goto shutdown2;
-	}
-       
-	syslog(LOG_ERR, "\tAsking server to listen on remote %s:%d", ssh_remote_listenhost, ssh_remote_listenport);
-	listener = libssh2_channel_forward_listen_ex(session, ssh_remote_listenhost, ssh_remote_listenport, &remote_listenport, 1);
-	if (!listener) {
-		syslog(LOG_ERR, "\tCould not start the tcpip-forward listener! Note that this can be a problem at the server! Please review the server logs.)");
-		goto shutdown2; 
-	}       
-       
-	syslog(LOG_ERR, "\tServer is listening on %s:%d", ssh_remote_listenhost, remote_listenport);
-	syslog(LOG_ERR, "\tWaiting for remote connection");
-
+	int port;
 	pthread_t threads;
 	pthread_attr_t attr;
 	pthread_attr_init(&attr);
 	/* set the thread detach state */
 	pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
 
-	libssh2_session_set_blocking(session, 0); 
-
 	while(1) {
-
-		fds[0].type = LIBSSH2_POLLFD_LISTENER;
-		fds[0].fd.listener = listener;
-		fds[0].events = LIBSSH2_POLLFD_POLLIN | LIBSSH2_POLLFD_POLLERR | LIBSSH2_POLLFD_SESSION_CLOSED | LIBSSH2_POLLFD_POLLHUP | LIBSSH2_POLLFD_POLLNVAL | LIBSSH2_POLLFD_POLLEX;
-
-		int rc = (libssh2_poll(fds, 1, 100));
-		int lastserr;
-		lastserr = libssh2_session_last_errno(session);
-		if (rc < 1) {
-			continue;
-		}
-
-		if (fds[0].revents & LIBSSH2_POLLFD_POLLIN) {
-			channel = libssh2_channel_forward_accept(listener);
-			if (!channel) {
-				char errb[1024] = "";
-				int len;
-				syslog(LOG_ERR, "Could not accept connection! Note that this can be a problem at the server! Please review the server logs.");
-				libssh2_session_last_error(session, (char**)&errb, &len, 0);
-				syslog(LOG_ERR, "\terr:[%s]\n", errb);
-				continue;
-			}      
-			pthread_create (					/* Create a child thread		*/
-				&threads,			       /* Thread ID (system assigned)  */
-				&attr,			     /* Default thread attributes */
-				ssh_accept_thread,		     /* Thread routine		       */
-				channel);
+		ssh_channel channel;
+		//channel = ssh_channel_accept_forward(session, 0, &port);
+		channel = ssh_forward_accept(session, 0);
+		usleep(10000);
+		if (channel == NULL) {
+			if(!ssh_is_connected(session)) {
+				break;
+			}
 		} else {
-			break;
+			ssh_chans.push_back(channel);
+		}
+		for (it1 = ssh_chans.begin(); it1 != ssh_chans.end();) {
+			ssh_channel channel = *it1;
+			if(ssh_channel_is_open(channel) && !ssh_channel_is_eof(channel)) {
+				len = ssh_channel_read_nonblocking(channel, buf, sizeof(buf), 0);
+				if(len == SSH_ERROR) {
+					// read error 
+					ssh_channel_free(channel);
+					ssh_chans.erase(it1++);
+					continue;
+				}
+				if (len <= 0) {
+					++it1;
+					continue;
+				}
+				parse_command(buf, len, 0, 0, NULL, NULL, channel);
+				ssh_channel_send_eof(channel);
+				ssh_channel_free(channel);
+				ssh_chans.erase(it1++);
+			} else {
+				// channel is closed already, remove it
+				ssh_channel_free(channel);
+				ssh_chans.erase(it1++);
+			}
 		}
 	}
-		       
-	if (listener)	  
-		libssh2_channel_forward_cancel(listener);
-
-	libssh2_session_disconnect(session, "Client disconnecting normally");
-	libssh2_session_free(session);
-		       
-shutdown2:     
-	close(sock);   
-
-	libssh2_exit();
-	if(fds) free(fds);
-	       
+ssh_disconnect:
+	ssh_disconnect(session);
+	ssh_free(session);
 	return 0;
 }
 
 void *manager_ssh(void *arg) {
+	ssh_threads_set_callbacks(ssh_threads_get_pthread());
+	ssh_init();
+//	ssh_set_log_level(SSH_LOG_WARNING | SSH_LOG_PROTOCOL | SSH_LOG_PACKET | SSH_LOG_FUNCTIONS);
 	while(1 && terminating == 0) {
 		syslog(LOG_NOTICE, "Starting reverse SSH connection service\n");
 		manager_ssh_();
 		syslog(LOG_NOTICE, "SSH service stopped.\n");
 		sleep(1);
 	}
+	return 0;
 }
 
 
