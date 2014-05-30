@@ -1,3 +1,7 @@
+10.0RC23 30.5.2014
+==================
+- fix ignoring RTP if the first RTP is TELEVEN (flash/dtmf etc) leading to silence in audio recording
+
 10.0RC22 29.5.2014
 ==================
 - fix if device wants to unregister (send REGISTER expires=0) and server replies 200OK expires>0 the sniffer did not deregister it from active calls
