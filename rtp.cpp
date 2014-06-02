@@ -650,7 +650,7 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 
 	Call *owner = (Call*)call_owner;
 
-//	if(getSSRC() != 0xab6cc5b3) return;
+//	if(getSSRC() != 3829060431) return;
 
 	if(getVersion() != 2) {
 		return;
@@ -736,6 +736,8 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 		if(update_seq(seq)) {
 			update_stats();
 		}
+		prev_payload = curpayload;
+		prev_codec = codec;
 		return;
 	}
 
@@ -787,7 +789,7 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 		s->max_seq = seq;
 	}
 
-	/* codec changed */
+	// codec changed 
 	if(curpayload != prev_payload and codec != PAYLOAD_TELEVENT and prev_codec != PAYLOAD_TELEVENT and codec != 13 and codec != 19 and prev_codec != 13 and prev_codec != 19) {
 		switch(codec) {
 		case PAYLOAD_SILK12:
