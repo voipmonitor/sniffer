@@ -10,6 +10,7 @@ extern int opt_enable_fraud;
 extern int terminating;
 extern int opt_nocdr;
 extern MySqlStore *sqlStore;
+extern char cloud_host[256];
 
 FraudAlerts *fraudAlerts = NULL;
 int fraudDebug = 1;
@@ -146,7 +147,7 @@ GeoIP_country::GeoIP_country() {
 
 void GeoIP_country::load() {
 	SqlDb *sqlDb = createSqlObject();
-	sqlDb->query("select * from geoip_country order by ip_from");
+	sqlDb->query(string("select * from ") + (cloud_host[0] ? "cloud." : "") + "geoip_country order by ip_from");
 	SqlDb_row row;
 	while(row = sqlDb->fetchRow()) {
 		data.push_back(GeoIP_country_rec(
@@ -1343,7 +1344,7 @@ bool checkFraudTables() {
 		//{"fraud_alert_info", NULL, NULL},
 		{"country_code", help_gui_loginAdmin_enableFraud, help_gui_loginAdmin_enableFraud},
 		{"country_code_prefix", help_gui_loginAdmin_enableFraud, help_gui_loginAdmin_enableFraud},
-		{"geoip_country", help_gui_loginAdmin_loadGeoIPcountry, help_gui_loginAdmin_loadGeoIPcountry}
+		{cloud_host[0]?"cloud.geoip_country":"geoip_country", help_gui_loginAdmin_loadGeoIPcountry, help_gui_loginAdmin_loadGeoIPcountry}
 	};
 	for(size_t i = 0; i < sizeof(checkTables) / sizeof(checkTables[0]); i++) {
 		sqlDb->query((string("show tables like '") + checkTables[i].table + "'").c_str());
