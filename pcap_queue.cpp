@@ -1552,6 +1552,8 @@ void PcapQueue::processBeforeAddToPacketBuffer(pcap_pkthdr* header,u_char* packe
 		datalen = (int)(header->caplen - ((u_char*)data - packet)); 
 		sport = header_tcp->source;
 		dport = header_tcp->dest;
+	} else {
+		return;
 	}
 	
 	if(sipSendSocket && sport && dport &&
