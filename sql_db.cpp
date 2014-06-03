@@ -552,7 +552,7 @@ bool SqlDb_mysql::connect(bool createDb, bool mainInit) {
 			}
 			sprintf(tmp, "USE `%s`", this->conn_database.c_str());
 			this->query(tmp);
-			if(mainInit) {
+			if(mainInit && !cloud_host[0]) {
 				this->query("SHOW VARIABLES LIKE \"version\"");
 				SqlDb_row row;
 				if((row = this->fetchRow())) {
@@ -2815,7 +2815,8 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 void SqlDb_mysql::checkDbMode() {
 	sql_disable_next_attempt_if_error = 1;
 	if(!opt_cdr_partition &&
-	   this->getDbMajorVersion() * 100 + this->getDbMinorVersion() > 500) {
+	   (cloud_host[0] ||
+	    this->getDbMajorVersion() * 100 + this->getDbMinorVersion() > 500)) {
 		this->query("EXPLAIN PARTITIONS SELECT * from cdr limit 1");
 		SqlDb_row row;
 		if((row = this->fetchRow())) {
@@ -2825,7 +2826,7 @@ void SqlDb_mysql::checkDbMode() {
 			}
 		}
 	}
-	if(opt_cdr_partition) {
+	if(opt_cdr_partition && !cloud_host[0]) {
 		if(this->getDbMajorVersion() * 100 + this->getDbMinorVersion() <= 500) {
 			opt_cdr_partition = false;
 			syslog(LOG_NOTICE, "mysql <= 5.0 does not know partitions - we recommend to upgrade mysql");
@@ -2858,7 +2859,8 @@ void SqlDb_mysql::checkSchema() {
 	this->query("show columns from cdr_dtmf where Field='calldate'");
 	existsColumnCalldateInCdrDtmf = this->fetchRow();
 	if(!opt_cdr_partition &&
-	   this->getDbMajorVersion() * 100 + this->getDbMinorVersion() > 500) {
+	   (cloud_host[0] ||
+	    this->getDbMajorVersion() * 100 + this->getDbMinorVersion() > 500)) {
 		this->query("EXPLAIN PARTITIONS SELECT * from cdr limit 1");
 		SqlDb_row row;
 		if((row = this->fetchRow())) {

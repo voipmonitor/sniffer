@@ -292,15 +292,15 @@ int ast_jb_put(struct ast_channel *chan, struct ast_frame *f, struct timeval *my
 	/* We consider an enabled jitterbuffer should receive frames with valid timing info. */
 
 	if (f->len < 2 || f->ts < 0) {
-		if(debug) fprintf(stdout, "%s recieved frame with invalid timing info: "
+		if(debug) fprintf(stdout, "recieved frame with invalid timing info: "
 			"has_timing_info=%d, len=%ld, ts=%ld, src=%s\n",
-			chan->name, ast_test_flag(f, AST_FRFLAG_HAS_TIMING_INFO), f->len, f->ts, f->src);
+			ast_test_flag(f, AST_FRFLAG_HAS_TIMING_INFO), f->len, f->ts, f->src);
 		return -1;
 	}
 	frr = ast_frdup(f);
 
 	if (!frr) {
-		if(debug) fprintf(stdout, "Failed to isolate frame for the jitterbuffer on channel '%s'\n", chan->name);
+		if(debug) fprintf(stdout, "Failed to isolate frame for the jitterbuffer on channel\n");
 		return -1;
 	}
 
@@ -358,13 +358,14 @@ void jb_fixed_flush_deliver(struct ast_channel *chan)
 	}
 
 	while ( fixed_jb_flush((struct fixed_jb*)jb->jbobj, &ff)) {
-		if((chan->rawstream || chan->audiobuf) && (chan->codec != 13 && chan->codec != 19)) { 
-			f = ff.data;
+		f = ff.data;
+		if(!f->ignore && (chan->rawstream || chan->audiobuf) && (chan->codec != 13 && chan->codec != 19)) { 
 			//write frame to file
 			stmp = (short int)f->datalen;
 			if(CODEC_LEN && (chan->codec == PAYLOAD_G72218 || chan->codec == PAYLOAD_G722112 || chan->codec == PAYLOAD_G722116 || chan->codec == PAYLOAD_G722124 || chan->codec == PAYLOAD_G722132 || chan->codec == PAYLOAD_G722148 || chan->codec == PAYLOAD_OPUS8 || chan->codec == PAYLOAD_OPUS12 || chan->codec == PAYLOAD_OPUS16 || chan->codec == PAYLOAD_OPUS24 || chan->codec == PAYLOAD_OPUS48 || chan->codec == PAYLOAD_ISAC16 || chan->codec == PAYLOAD_ISAC32 || chan->codec == PAYLOAD_SILK || chan->codec == PAYLOAD_SILK8 || chan->codec == PAYLOAD_SILK12 || chan->codec == PAYLOAD_SILK16 || chan->codec == PAYLOAD_SILK24 || chan->codec == PAYLOAD_SPEEX || chan->codec == PAYLOAD_G723 || chan->codec == PAYLOAD_G729 || chan->codec == PAYLOAD_GSM)) {
-				if(chan->rawstream)
+				if(chan->rawstream) {
 					fwrite(&stmp, 1, sizeof(short int), chan->rawstream);   // write packet len
+				}
 			}
 			if(chan->rawstream)
 				fwrite(f->data, 1, f->datalen, chan->rawstream);
@@ -536,14 +537,17 @@ static void jb_get_and_deliver(struct ast_channel *chan, struct timeval *mynow)
 				save_empty_frame(chan);
 				break;
 			}	
+			if(f->ignore) {
+				break;
+			}
 			/* deliver the frame */
-			//ast_write(chan, f);
 			if((chan->rawstream || chan->audiobuf) && f->data && f->datalen > 0 && (chan->codec != 13 && chan->codec != 19)) {
 				//write frame to file
 				stmp = (short int)f->datalen;
 				if(chan->codec == PAYLOAD_G72218 || chan->codec == PAYLOAD_G722112 || chan->codec == PAYLOAD_G722116 || chan->codec == PAYLOAD_G722124 || chan->codec == PAYLOAD_G722132 || chan->codec == PAYLOAD_G722148 || chan->codec == PAYLOAD_OPUS8 || chan->codec == PAYLOAD_OPUS12 || chan->codec == PAYLOAD_OPUS16 || chan->codec == PAYLOAD_OPUS24 || chan->codec == PAYLOAD_OPUS48 || chan->codec == PAYLOAD_ISAC16 || chan->codec == PAYLOAD_ISAC32 || chan->codec == PAYLOAD_SILK || chan->codec == PAYLOAD_SILK8 || chan->codec == PAYLOAD_SILK12 || chan->codec == PAYLOAD_SILK16 || chan->codec == PAYLOAD_SILK24 || chan->codec == PAYLOAD_SPEEX || chan->codec == PAYLOAD_G723 || chan->codec == PAYLOAD_G729 || chan->codec == PAYLOAD_GSM) {
-					if(chan->rawstream)
+					if(chan->rawstream) {
 						fwrite(&stmp, 1, sizeof(short int), chan->rawstream);   // write packet len
+					}
 				}
 				if(chan->rawstream)
 					fwrite(f->data, 1, f->datalen, chan->rawstream);
@@ -583,7 +587,6 @@ static void jb_get_and_deliver(struct ast_channel *chan, struct timeval *mynow)
 			/* interpolate a frame */
 			/* deliver the interpolated frame */
 			save_empty_frame(chan);
-			//ast_write(chan, f);
 			if(debug) fprintf(stdout, "\tJB_GET {now=%ld}: Interpolated frame with len=%d\n", now, interpolation_len);
 			// if marker bit, reset counter
 			chan->last_loss_burst++;
@@ -611,15 +614,12 @@ static int create_jb(struct ast_channel *chan, struct ast_frame *frr, struct tim
 	struct ast_jb_conf *jbconf = &jb->conf;
 	struct ast_jb_impl *jbimpl = jb->impl;
 	void *jbobj;
-	struct ast_channel *bridged = NULL;
 	long now;
-	char logfile_pathname[20 + AST_JB_IMPL_NAME_SIZE + 2*AST_CHANNEL_NAME + 1];
-	char name1[AST_CHANNEL_NAME], name2[AST_CHANNEL_NAME], *tmp;
 	int res;
 
 	jbobj = jb->jbobj = jbimpl->create(jbconf, jbconf->resync_threshold, chan);
 	if (!jbobj) {
-		if(debug) fprintf(stdout, "Failed to create jitterbuffer on channel '%s'\n", chan->name);
+		if(debug) fprintf(stdout, "Failed to create jitterbuffer on channel\n");
 		return -1;
 	}
 
@@ -629,7 +629,7 @@ static int create_jb(struct ast_channel *chan, struct ast_frame *frr, struct tim
 	/* The result of putting the first frame should not differ from OK. However, its possible
 	   some implementations (i.e. adaptive's when resynch_threshold is specified) to drop it. */
 	if (res != JB_IMPL_OK) {
-		if(debug) fprintf(stdout, "Failed to put first frame in the jitterbuffer on channel '%s'\n", chan->name);
+		if(debug) fprintf(stdout, "Failed to put first frame in the jitterbuffer on channel\n");
 		/*
 		jbimpl->destroy(jbobj);
 		return -1;
@@ -642,29 +642,7 @@ static int create_jb(struct ast_channel *chan, struct ast_frame *frr, struct tim
 	/* Init last format for a first time. */
 	jb->last_format = frr->subclass;
 	
-	/* Create a frame log file */
 	if (ast_test_flag(jbconf, AST_JB_LOG)) {
-		snprintf(name2, sizeof(name2), "%s", chan->name);
-		tmp = strchr(name2, '/');
-		if (tmp)
-			*tmp = '#';
-		
-		// festr: bridged = ast_bridged_channel(chan);
-		/* We should always have bridged chan if a jitterbuffer is in use */
-		ast_assert(bridged != NULL);
-
-		snprintf(name1, sizeof(name1), "%s", bridged->name);
-		tmp = strchr(name1, '/');
-		if (tmp)
-			*tmp = '#';
-		
-		snprintf(logfile_pathname, sizeof(logfile_pathname),
-			"/tmp/ast_%s_jb_%s--%s.log", jbimpl->name, name1, name2);
-		jb->logfile = fopen(logfile_pathname, "w+b");
-		
-		if (!jb->logfile)
-			if(debug) fprintf(stdout, "Failed to create frame log file with pathname '%s'\n", logfile_pathname);
-		
 		if (res == JB_IMPL_OK) {
 			if(debug) fprintf(stdout, "JB_PUT_FIRST {now=%ld}: Queued frame with ts=%ld and len=%ld\n",
 				now, frr->ts, frr->len);
@@ -675,7 +653,7 @@ static int create_jb(struct ast_channel *chan, struct ast_frame *frr, struct tim
 	}
 
 	//if (option_verbose > 2) 
-		if(debug) fprintf(stdout, "%s jitterbuffer created on channel %s\n", jbimpl->name, chan->name);
+		if(debug) fprintf(stdout, "%s jitterbuffer created on channel\n", jbimpl->name);
 	
 	/* Free the frame if it has not been queued in the jb */
 	if (res != JB_IMPL_OK)
@@ -708,7 +686,7 @@ void ast_jb_destroy(struct ast_channel *chan)
 		
 		ast_clear_flag(jb, JB_CREATED);
 
-			if(debug) fprintf(stdout, "%s jitterbuffer destroyed on channel %s\n", jbimpl->name, chan->name);
+			if(debug) fprintf(stdout, "%s jitterbuffer destroyed on channel\n", jbimpl->name);
 	}
 	ast_clear_flag(jb, JB_TIMEBASE_INITIALIZED);
 }

@@ -1538,8 +1538,8 @@ void PcapQueue::processBeforeAddToPacketBuffer(pcap_pkthdr* header,u_char* packe
 
 	char *data = NULL;
 	int datalen = 0;
-	uint16_t sport;
-	uint16_t dport;
+	uint16_t sport = 0;
+	uint16_t dport = 0;
 	if (header_ip->protocol == IPPROTO_UDP) {
 		udphdr2 *header_udp = (udphdr2*) ((char *) header_ip + sizeof(*header_ip));
 		data = (char *) header_udp + sizeof(*header_udp);
@@ -1552,9 +1552,11 @@ void PcapQueue::processBeforeAddToPacketBuffer(pcap_pkthdr* header,u_char* packe
 		datalen = (int)(header->caplen - ((u_char*)data - packet)); 
 		sport = header_tcp->source;
 		dport = header_tcp->dest;
+	} else {
+		return;
 	}
 	
-	if(sipSendSocket && 
+	if(sipSendSocket && sport && dport &&
 	   (sipportmatrix[htons(sport)] || sipportmatrix[htons(dport)]) &&
 	   check_sip20(data, datalen)) {
 		u_int16_t header_length = datalen;

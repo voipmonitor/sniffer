@@ -385,7 +385,7 @@ struct ast_frame *ast_frdup(const struct ast_frame *f)
 	out->lastframetype = f->lastframetype;
 	out->subclass = f->subclass;
 	out->datalen = f->datalen;
-	out->datalen2 = f->datalen2;
+	out->ignore = f->ignore;
 	out->samples = f->samples;
 	out->delivery = f->delivery;
 	out->skip = f->skip;

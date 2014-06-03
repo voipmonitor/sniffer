@@ -1,3 +1,8 @@
+10.0RC24 3.6.2014
+=================
+- fix g729 garbled if g729 changed to g711 without SSRC changing
+- save few kB for each jitterbuffer channel (3 per RTP stream) - removed unused structures
+
 10.0RC23 30.5.2014
 ==================
 - fix ignoring RTP if the first RTP is TELEVEN (flash/dtmf etc) leading to silence in audio recording
