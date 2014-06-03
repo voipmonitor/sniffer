@@ -192,6 +192,7 @@ public:
 	unsigned int last_end_timestamp;
 	char lastdtmf;
 	int forcemark;
+	char ignore;
 
 	/* RTCP data */
 	struct rtcp_t {

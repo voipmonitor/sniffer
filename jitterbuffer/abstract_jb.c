@@ -358,13 +358,14 @@ void jb_fixed_flush_deliver(struct ast_channel *chan)
 	}
 
 	while ( fixed_jb_flush((struct fixed_jb*)jb->jbobj, &ff)) {
-		if((chan->rawstream || chan->audiobuf) && (chan->codec != 13 && chan->codec != 19)) { 
-			f = ff.data;
+		f = ff.data;
+		if(!f->ignore && (chan->rawstream || chan->audiobuf) && (chan->codec != 13 && chan->codec != 19)) { 
 			//write frame to file
 			stmp = (short int)f->datalen;
 			if(CODEC_LEN && (chan->codec == PAYLOAD_G72218 || chan->codec == PAYLOAD_G722112 || chan->codec == PAYLOAD_G722116 || chan->codec == PAYLOAD_G722124 || chan->codec == PAYLOAD_G722132 || chan->codec == PAYLOAD_G722148 || chan->codec == PAYLOAD_OPUS8 || chan->codec == PAYLOAD_OPUS12 || chan->codec == PAYLOAD_OPUS16 || chan->codec == PAYLOAD_OPUS24 || chan->codec == PAYLOAD_OPUS48 || chan->codec == PAYLOAD_ISAC16 || chan->codec == PAYLOAD_ISAC32 || chan->codec == PAYLOAD_SILK || chan->codec == PAYLOAD_SILK8 || chan->codec == PAYLOAD_SILK12 || chan->codec == PAYLOAD_SILK16 || chan->codec == PAYLOAD_SILK24 || chan->codec == PAYLOAD_SPEEX || chan->codec == PAYLOAD_G723 || chan->codec == PAYLOAD_G729 || chan->codec == PAYLOAD_GSM)) {
-				if(chan->rawstream)
+				if(chan->rawstream) {
 					fwrite(&stmp, 1, sizeof(short int), chan->rawstream);   // write packet len
+				}
 			}
 			if(chan->rawstream)
 				fwrite(f->data, 1, f->datalen, chan->rawstream);
@@ -536,14 +537,17 @@ static void jb_get_and_deliver(struct ast_channel *chan, struct timeval *mynow)
 				save_empty_frame(chan);
 				break;
 			}	
+			if(f->ignore) {
+				break;
+			}
 			/* deliver the frame */
-			//ast_write(chan, f);
 			if((chan->rawstream || chan->audiobuf) && f->data && f->datalen > 0 && (chan->codec != 13 && chan->codec != 19)) {
 				//write frame to file
 				stmp = (short int)f->datalen;
 				if(chan->codec == PAYLOAD_G72218 || chan->codec == PAYLOAD_G722112 || chan->codec == PAYLOAD_G722116 || chan->codec == PAYLOAD_G722124 || chan->codec == PAYLOAD_G722132 || chan->codec == PAYLOAD_G722148 || chan->codec == PAYLOAD_OPUS8 || chan->codec == PAYLOAD_OPUS12 || chan->codec == PAYLOAD_OPUS16 || chan->codec == PAYLOAD_OPUS24 || chan->codec == PAYLOAD_OPUS48 || chan->codec == PAYLOAD_ISAC16 || chan->codec == PAYLOAD_ISAC32 || chan->codec == PAYLOAD_SILK || chan->codec == PAYLOAD_SILK8 || chan->codec == PAYLOAD_SILK12 || chan->codec == PAYLOAD_SILK16 || chan->codec == PAYLOAD_SILK24 || chan->codec == PAYLOAD_SPEEX || chan->codec == PAYLOAD_G723 || chan->codec == PAYLOAD_G729 || chan->codec == PAYLOAD_GSM) {
-					if(chan->rawstream)
+					if(chan->rawstream) {
 						fwrite(&stmp, 1, sizeof(short int), chan->rawstream);   // write packet len
+					}
 				}
 				if(chan->rawstream)
 					fwrite(f->data, 1, f->datalen, chan->rawstream);
@@ -583,7 +587,6 @@ static void jb_get_and_deliver(struct ast_channel *chan, struct timeval *mynow)
 			/* interpolate a frame */
 			/* deliver the interpolated frame */
 			save_empty_frame(chan);
-			//ast_write(chan, f);
 			if(debug) fprintf(stdout, "\tJB_GET {now=%ld}: Interpolated frame with len=%d\n", now, interpolation_len);
 			// if marker bit, reset counter
 			chan->last_loss_burst++;

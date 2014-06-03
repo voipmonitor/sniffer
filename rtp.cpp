@@ -243,6 +243,7 @@ RTP::RTP()
 	last_end_timestamp = 0;
 	lastdtmf = 0;
 	forcemark = 0;
+	ignore = 0;
 }
 
 /* destructor */
@@ -408,6 +409,7 @@ RTP::jitterbuffer(struct ast_channel *channel, int savePayload) {
 	frame->marker = getMarker();
 	frame->seqno = getSeqNum();
 	channel->codec = codec;
+	frame->ignore = ignore;
 	memcpy(&frame->delivery, &header->ts, sizeof(struct timeval));
 
 	/* protect for endless loops (it cannot happen in theory but to be sure */
@@ -466,7 +468,7 @@ RTP::jitterbuffer(struct ast_channel *channel, int savePayload) {
 			payload_len -= sizeof(extension_hdr_t) + rtpext->length;
 		}
 		frame->data = payload_data;
-		frame->datalen = frame->datalen2 = payload_len > 0 ? payload_len : 0; /* ensure that datalen is never negative */
+		frame->datalen = payload_len > 0 ? payload_len : 0; /* ensure that datalen is never negative */
 
 		if(codec == PAYLOAD_G723) {
 			// voipmonitor does not handle SID packets well (silence packets) it causes out of sync
@@ -484,8 +486,6 @@ RTP::jitterbuffer(struct ast_channel *channel, int savePayload) {
 		if(codec == PAYLOAD_G729 and (payload_len <= 12)) {
 			frame->frametype = AST_FRAME_DTMF;
 		}
-	} else {
-		frame->datalen2 = 0;
 	}
 
 	if(savePayload) {
@@ -641,6 +641,7 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 	this->saddr =  saddr;
 	this->daddr =  daddr;
 	this->dport = dport;
+	this->ignore = 0;
 	if(this->first_packet_time == 0 and this->first_packet_usec == 0) {
 		this->first_packet_time = header->ts.tv_sec;
 		this->first_packet_usec = header->ts.tv_usec;
@@ -650,7 +651,7 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 
 	Call *owner = (Call*)call_owner;
 
-//	if(getSSRC() != 3829060431) return;
+//	if(getSSRC() != 0x39a3cd5d) return;
 
 	if(getVersion() != 2) {
 		return;
@@ -845,12 +846,14 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 				 */
 				RTP *prevrtp = (RTP*)(owner->rtp_prev[iscaller]);
 				if(prevrtp && prevrtp != this) {
+					prevrtp->ignore = 1; 
 					prevrtp->data = data; 
 					prevrtp->len = len;
 					prevrtp->header = header;
 					prevrtp->saddr = saddr;
 					prevrtp->daddr = daddr;
 					prevrtp->dport = dport;
+					prevrtp->codec = prevrtp->prev_codec;
 					if(owner->flags & FLAG_RUNAMOSLQO or owner->flags & FLAG_RUNBMOSLQO) {
 						// MOS LQO is calculated only if the call is connected 
 						if(owner->connect_time) {
