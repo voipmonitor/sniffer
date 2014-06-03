@@ -1,3 +1,8 @@
+10.0RC25 3.6.2014
+=================
+- ignore g729 payload len 22 which is cng/silence and garbles g729a decoder
+
+
 10.0RC24 3.6.2014
 =================
 - fix g729 garbled if g729 changed to g711 without SSRC changing
