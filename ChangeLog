@@ -1,3 +1,8 @@
+10.0RC27 4.6.2014
+=================
+- if RTP src/dst port was the same as sipports the RTP was ignored (fixes all versions) - this also fixes decoding audio from GUI 
+- do not try to parse callid on UDP packet if it cannot be SIP (can save some CPU)
+
 10.0RC26 4.6.2014
 =================
 - do not end call on 481 transaction does not exist prematurily
