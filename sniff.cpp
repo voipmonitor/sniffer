@@ -2504,7 +2504,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 			// if the call ends with some of SIP [456]XX response code, we can shorten timeout when the call will be closed 
 //			if((call->saddr == saddr || call->saddr == daddr || merged) &&
 			if (sip_method == RES3XX || sip_method == RES4XX || sip_method == RES5XX || sip_method == RES6XX || sip_method == RES401 || sip_method == RES403) {
-				if(lastSIPresponseNum != 401 && lastSIPresponseNum != 407 && lastSIPresponseNum != 501) {
+				if(lastSIPresponseNum != 401 && lastSIPresponseNum != 407 && lastSIPresponseNum != 501 && lastSIPresponseNum != 481) {
 					// if the progress time was not set yet set it here so PDD (Post Dial Delay) is accurate if no ringing is present
 					if(call->progress_time == 0) {
 						call->progress_time = header->ts.tv_sec;
@@ -2526,6 +2526,9 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 					process_packet__parse_custom_headers(call, data, datalen);
 					returnCall = call;
 					goto endsip;
+				} else if(lastSIPresponseNum == 481) {
+					//481 CallLeg/Transaction doesnt exist
+					call->destroy_call_at = header->ts.tv_sec + 180;
 				} else if(!call->destroy_call_at) {
 					call->destroy_call_at = header->ts.tv_sec + 60;
 				}
@@ -2780,7 +2783,7 @@ endsip:
 			*voippacket = 1;
 
 			// we have packet, extend pending destroy requests
-			if(call->destroy_call_at > 0) {
+			if(call->destroy_call_at > 0 && header->ts.tv_sec + 5 > call->destroy_call_at) {
 				call->destroy_call_at = header->ts.tv_sec + 5; 
 			}
 
@@ -2878,7 +2881,7 @@ endsip:
 			*voippacket = 1;
 
 			// we have packet, extend pending destroy requests
-			if(call->destroy_call_at > 0) {
+			if(call->destroy_call_at > 0 && header->ts.tv_sec + 5 > call->destroy_call_at) {
 				call->destroy_call_at = header->ts.tv_sec + 5; 
 			}
 
