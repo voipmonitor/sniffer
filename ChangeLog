@@ -1,7 +1,10 @@
+10.0RC26 4.6.2014
+=================
+- do not end call on 481 transaction does not exist prematurily
+
 10.0RC25 3.6.2014
 =================
 - ignore g729 payload len 22 which is cng/silence and garbles g729a decoder
-
 
 10.0RC24 3.6.2014
 =================
