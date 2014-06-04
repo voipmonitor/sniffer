@@ -1899,6 +1899,10 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 		*/
 		
 		int issip = check_sip20(data, datalen);
+		if(!istcp and !issip) { 
+			goto rtpcheck;
+		}
+
 		s = gettag(data, datalen, "\nCall-ID:", &l, &gettagLimitLen);
 		if(!issip or (l <= 0 || l > 1023)) {
 			// try also compact header
@@ -2761,7 +2765,10 @@ endsip:
 				       false, sipOffset + sipDatalen);
 		}
 		return returnCall;
-	} else if ((calls = calltable->hashfind_by_ip_port(daddr, dest))){
+	}
+
+rtpcheck:
+	if ((calls = calltable->hashfind_by_ip_port(daddr, dest))){
 		++counter_rtp_packets;
 		// packet (RTP) by destination:port is already part of some stored call  
 		for (node_call = (hash_node_call *)calls; node_call != NULL; node_call = node_call->next) {
