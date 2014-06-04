@@ -311,7 +311,7 @@ public:
 	~CacheNumber_location();
 	bool checkNumber(const char *number, u_int32_t ip, u_int64_t at,
 			 bool *diffCountry = NULL, bool *diffContinent = NULL,
-			 string *oldCountry = NULL, string *oldContinent = NULL,
+			 u_int32_t *oldIp = NULL, string *oldCountry = NULL, string *oldContinent = NULL,
 			 const char *ip_country = NULL, const char *ip_continent = NULL);
 	bool loadNumber(const char *number, u_int64_t at);
 	void saveNumber(const char *number, sIpRec *ipRec, bool update = false);
@@ -554,13 +554,17 @@ public:
 	FraudAlertInfo_chc(FraudAlert *alert);
 	void set(const char *number,
 		 FraudAlert::eTypeLocation typeLocation,
+		 u_int32_t ip,
 		 const char *location_code,
+		 u_int32_t ip_old,
 		 const char *location_code_old);
 	string getString();
 	string getJson();
 private:
 	string number;
 	FraudAlert::eTypeLocation typeLocation;
+	u_int32_t ip;
+	u_int32_t ip_old;
 	string location_code;
 	string location_code_old;
 };
