@@ -467,6 +467,25 @@ protected:
 	u_int32_t intervalLimit;
 };
 
+class FraudAlert_rcc_callInfo {
+public:
+	FraudAlert_rcc_callInfo();
+	void addLocal(const char *callid, u_int64_t at) {
+		calls_local[callid] = at;
+	}
+	void addInternational(const char *callid, u_int64_t at) {
+		calls_international[callid] = at;
+	}
+private:
+	map<string, u_int64_t> calls_local;
+	map<string, u_int64_t> calls_international;
+	u_int64_t last_alert_info_local;
+	u_int64_t last_alert_info_international;
+	u_int64_t last_alert_info_li;
+friend class FraudAlert_rcc_timePeriods;
+friend class FraudAlert_rcc;
+};
+
 class FraudAlert_rcc_timePeriods {
 public:
 	FraudAlert_rcc_timePeriods(const char *descr, 
@@ -474,6 +493,7 @@ public:
 				   int concurentCallsLimitInternational, 
 				   int concurentCallsLimitBoth,
 				   unsigned int dbId);
+	~FraudAlert_rcc_timePeriods();
 	void loadTimePeriods();
 	bool checkTime(u_int64_t time) {
 		vector<TimePeriod>::iterator iter = timePeriods.begin();
@@ -493,11 +513,7 @@ private:
 	unsigned int concurentCallsLimitBoth;
 	unsigned int dbId;
 	vector<TimePeriod> timePeriods;
-	map<string, u_int64_t> calls_local;
-	map<string, u_int64_t> calls_international;
-	u_int64_t last_alert_info_local;
-	u_int64_t last_alert_info_international;
-	u_int64_t last_alert_info_li;
+	map<u_int32_t, FraudAlert_rcc_callInfo*> calls;
 };
 
 class FraudAlertInfo_rcc : public FraudAlertInfo {
@@ -505,18 +521,22 @@ public:
 	FraudAlertInfo_rcc(FraudAlert *alert);
 	void set(FraudAlert::eLocalInternational localInternational,
 		 const char *timeperiod_name,
+		 u_int32_t ip, const char *ip_location_code,
 		 unsigned int concurentCalls);
 	string getString();
 	string getJson();
 private:
 	FraudAlert::eLocalInternational localInternational;
 	string timeperiod_name;
+	u_int32_t ip;
+	string ip_location_code;
 	unsigned int concurentCalls;
 };
 
 class FraudAlert_rcc : public FraudAlert {
 public:
 	FraudAlert_rcc(unsigned int dbId);
+	~FraudAlert_rcc();
 	void evCall(sFraudCallInfo *callInfo);
 protected:
 	void addFraudDef(SqlDb_row *row);
@@ -526,11 +546,7 @@ protected:
 	bool defConcuretCallsLimit() { return(true); }
 private:
 	vector<FraudAlert_rcc_timePeriods> timePeriods;
-	map<string, u_int64_t> calls_local;
-	map<string, u_int64_t> calls_international;
-	u_int64_t last_alert_info_local;
-	u_int64_t last_alert_info_international;
-	u_int64_t last_alert_info_li;
+	map<u_int32_t, FraudAlert_rcc_callInfo*> calls;
 };
 
 class FraudAlertInfo_chc : public FraudAlertInfo {
