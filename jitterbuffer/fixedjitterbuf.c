@@ -130,10 +130,13 @@ struct fixed_jb *fixed_jb_new(struct fixed_jb_conf *conf)
 void fixed_jb_destroy(struct fixed_jb *jb)
 {
 	/* jitterbuf MUST be empty before it can be destroyed */
-	//ASSERT(jb->frames == NULL);
+	extern int opt_enable_jitterbuffer_asserts;
 	if(!(jb->frames == NULL)) {
 		syslog(5 /*notice */, "JB ASSERT - fixed_jb_destroy - jb->frames == NULL");
 		return;
+	}
+	if(opt_enable_jitterbuffer_asserts) {
+		ASSERT(jb->frames == NULL);
 	}
 	
 	free(jb);
@@ -224,21 +227,28 @@ int fixed_jb_put(struct fixed_jb *jb, void *data, long ms, long ts, long now)
 	int res;
 	
 	/* debug check the validity of the input params */
-	//ASSERT(data != NULL);
+	extern int opt_enable_jitterbuffer_asserts;
 	if(!(data != NULL)) {
 		syslog(5 /*notice */, "JB ASSERT - fixed_jb_put - data != NULL");
 		return(0);
 	}
+	if(opt_enable_jitterbuffer_asserts) {
+		ASSERT(data != NULL);
+	}
 	/* do not allow frames shorter than 2 ms */
-	//ASSERT(ms >= 2);
 	if(!(ms >= 2)) {
 		syslog(5 /*notice */, "JB ASSERT - fixed_jb_put - ms >= 2");
 		return(0);
 	}
-	//ASSERT(ts >= 0);
+	if(opt_enable_jitterbuffer_asserts) {
+		ASSERT(ms >= 2);
+	}
 	if(!(ts >= 0)) {
 		syslog(5 /*notice */, "JB ASSERT - fixed_jb_put - ts >= 0");
 		return(0);
+	}
+	if(opt_enable_jitterbuffer_asserts) {
+		ASSERT(ts >= 0);
 	}
         // TODO: implement pcap reordering queue, ASSERT(now >= 0);
 
@@ -317,10 +327,12 @@ int fixed_jb_put(struct fixed_jb *jb, void *data, long ms, long ts, long now)
 	} else if (!jb->frames) {
 		/* the frame list is empty or thats just the first frame ever */
 		/* tail should also be NULL is that case */
-		//ASSERT(jb->tail == NULL);
 		if(!(jb->tail == NULL)) {
 			syslog(5 /*notice */, "JB ASSERT - fixed_jb_put - jb->tail == NULL");
 			return(0);
+		}
+		if(opt_enable_jitterbuffer_asserts) {
+			ASSERT(jb->tail == NULL);
 		}
 		jb->frames = jb->tail = newframe;
 		newframe->next = NULL;
@@ -351,15 +363,20 @@ int fixed_jb_flush(struct fixed_jb *jb, struct fixed_jb_frame *frame)
 
 int fixed_jb_get(struct fixed_jb *jb, struct fixed_jb_frame *frame, long now, long interpl)
 {
-	//ASSERT(now >= 0);
+	extern int opt_enable_jitterbuffer_asserts;
 	if(!(now >= 0)) {
 		syslog(5 /*notice */, "JB ASSERT - fixed_jb_get - now >= 0");
 		return(0);
 	}
-	//ASSERT(interpl >= 2);
+	if(opt_enable_jitterbuffer_asserts) {
+		ASSERT(now >= 0);
+	}
 	if(!(interpl >= 2)) {
 		syslog(5 /*notice */, "JB ASSERT - fixed_jb_get - interpl >= 2");
 		return(0);
+	}
+	if(opt_enable_jitterbuffer_asserts) {
+		ASSERT(interpl >= 2);
 	}
 	
 	if (now < jb->next_delivery) {
