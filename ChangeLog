@@ -1,3 +1,7 @@
+10.0RC28 4.6.2014
+=================
+- add enable_jitterbuffer_asserts configuration parameter for enable asserts in jitterbuffer
+
 10.0RC27 4.6.2014
 =================
 - if RTP src/dst port was the same as sipports the RTP was ignored (fixes all versions) - this also fixes decoding audio from GUI 
