@@ -531,6 +531,8 @@ ip_port sipSendSocket_ip_port;
 SocketSimpleBufferWrite *sipSendSocket = NULL;
 int opt_sip_send_before_packetbuffer = 0;
 
+int opt_enable_jitterbuffer_asserts = 0;
+
 
 #include <stdio.h>
 #include <pthread.h>
@@ -2003,6 +2005,10 @@ int load_config(char *fname) {
 	}
 	if((value = ini.GetValue("general", "sdp_multiplication", NULL))) {
 		opt_sdp_multiplication = atoi(value);
+	}
+	
+	if((value = ini.GetValue("general", "enable_jitterbuffer_asserts", NULL))) {
+		opt_enable_jitterbuffer_asserts = yesno(value);
 	}
 
 	/*
