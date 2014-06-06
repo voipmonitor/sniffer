@@ -123,6 +123,64 @@ private:
 	map<string, string> countryContinent;
 };
 
+class CheckInternational {
+public:
+	CheckInternational();
+	void load(SqlDb_row *dbRow);
+	bool isInternational(const char *number, const char **prefix = NULL) {
+		if(prefix) {
+			*prefix = NULL;
+		}
+		int numberLength = strlen(number);
+		for(size_t i = 0; i < prefixes.size(); i++) {
+			if(numberLength > prefixes[i].size() &&
+			   !strncmp(number, prefixes[i].c_str(), prefixes[i].size())) {
+				if(prefix) {
+					*prefix = prefixes[i].c_str();
+				}
+				return(true);
+			}
+		}
+		if(internationalMinLength &&
+		   numberLength >= internationalMinLength) {
+			return(true);
+		}
+		return(false);
+	}
+	string normalize(const char *number, bool *international) {
+		if(international) {
+			*international = false;
+		}
+		const char *prefix;
+		if(isInternational(number, &prefix)) {
+			if(international) {
+				*international = true;
+			}
+			if(prefix) {
+				return(number + strlen(prefix));
+			}
+		}
+		return(number);
+	}
+	const char *getLocalCountry() {
+		extern char opt_local_country_code[10];
+		return(!countryCodeForLocalNumbers.empty() ? 
+			countryCodeForLocalNumbers.c_str() :
+			opt_local_country_code);
+	}
+	bool countryCodeIsLocal(const char *countryCode) {
+		extern char opt_local_country_code[10];
+		return(!countryCodeForLocalNumbers.empty() ?
+			!strcmp(countryCodeForLocalNumbers.c_str(), countryCode) :
+		       opt_local_country_code ?
+			!strcmp(opt_local_country_code, countryCode) :
+			false);
+	}
+private:
+	vector<string> prefixes;
+	int internationalMinLength;
+	string countryCodeForLocalNumbers;
+};
 
 class CountryPrefixes {
 public:
@@ -148,23 +206,17 @@ public:
 public:
 	CountryPrefixes();
 	void load();
-	string getCountry(const char *number, vector<string> *countries) {
+	string getCountry(const char *number, vector<string> *countries,
+			  CheckInternational *checkInternational) {
 		if(countries) {
 			countries->clear();
 		}
-		size_t numberLen = strlen(number);
-		if(numberLen > 1 && number[0] == '+') {
-			number += 1;
-		} else if(numberLen > 2 && number[0] == '0' && number[0] == '1') {
-			number += 2;
-		} else {
-			extern char opt_local_country_code[10];
-			if(countries) {
-				countries->push_back(opt_local_country_code);
-			}
-			return(opt_local_country_code);
+		bool isInternational;
+		string normalizeNumber = checkInternational->normalize(number, &isInternational);
+		if(!isInternational) {
+			return(checkInternational->getLocalCountry());
 		}
-		string _findNumber = number;
+		number = normalizeNumber.c_str();
 		vector<CountryPrefix_rec>::iterator findRecIt;
 		findRecIt = std::lower_bound(data.begin(), data.end(), number);
 		if(findRecIt == data.end()) {
@@ -176,7 +228,7 @@ public:
 				return("");
 			} 
 			if((!_redukSizeFindNumber || _redukSizeFindNumber > 1) &&
-			   atol(findRecIt->number.c_str()) < atol(_findNumber.substr(0, findRecIt->number.length()).c_str())) {
+			   atol(findRecIt->number.c_str()) < atol(normalizeNumber.substr(0, findRecIt->number.length()).c_str())) {
 				if(_redukSizeFindNumber) {
 					--_redukSizeFindNumber;
 				} else {
@@ -208,21 +260,16 @@ public:
 		}
 		return("");
 	}
-	bool isLocal(const char *number) {
-		size_t numberLen = strlen(number);
-		if(numberLen > 1 && number[0] == '+') {
-			number += 1;
-		} else if(numberLen > 2 && number[0] == '0' && number[0] == '1') {
-			number += 2;
-		} else {
+	bool isLocal(const char *number,
+		     CheckInternational *checkInternational) {
+		if(!checkInternational->isInternational(number)) {
 			return(true);
 		}
 		vector<string> countries;
-		getCountry(number, &countries);
+		getCountry(number, &countries, checkInternational);
 		for(size_t i = 0; i < countries.size(); i++) {
-			extern char opt_local_country_code[10];
-			if(countries[i] == opt_local_country_code) {
-				return(true);
+			if(checkInternational->countryCodeIsLocal(countries[i].c_str())) {
+				return(true); 
 			}
 		}
 		return(false);
@@ -274,14 +321,16 @@ public:
 		inet_aton(ip, &ips);
 		return(getCountry(htonl(ips.s_addr)));
 	}
-	bool isLocal(unsigned int ip) {
-		extern char opt_local_country_code[10];
-		return(getCountry(ip) == opt_local_country_code);
+	bool isLocal(unsigned int ip,
+		     CheckInternational *checkInternational) {
+		string countryCode = getCountry(ip);
+		return(checkInternational->countryCodeIsLocal(countryCode.c_str()));
 	}
-	bool isLocal(const char *ip) {
+	bool isLocal(const char *ip,
+		     CheckInternational *checkInternational) {
 		in_addr ips;
 		inet_aton(ip, &ips);
-		return(isLocal(htonl(ips.s_addr)));
+		return(isLocal(htonl(ips.s_addr), checkInternational));
 	}
 private:
 	vector<GeoIP_country_rec> data;
@@ -465,6 +514,8 @@ protected:
 	vector<string> destLocation;
 	u_int32_t intervalLength;
 	u_int32_t intervalLimit;
+	CheckInternational checkInternational;
+friend class FraudAlerts;
 };
 
 class FraudAlert_rcc_callInfo {
@@ -689,7 +740,7 @@ private:
 	void popCallInfoThread();
 	void getCallInfoFromCall(sFraudCallInfo *callInfo, Call *call, 
 				 sFraudCallInfo::eTypeCallInfo typeCallInfo, u_int64_t at);
-	void completeCallInfo_country_code(sFraudCallInfo *callInfo);
+	void completeCallInfo_country_code(sFraudCallInfo *callInfo, CheckInternational *checkInternational);
 	void lock_alerts() {
 		while(__sync_lock_test_and_set(&this->_sync_alerts, 1));
 	}
