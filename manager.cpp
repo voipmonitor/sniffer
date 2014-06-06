@@ -692,7 +692,7 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 			while(i < MAXLIVEFILTERS and getline(data, val,' ')){
 				global_livesniffer = 1;
 				//convert doted ip to unsigned int
-				filter->lv_bothaddr[i] = ntohl((unsigned int)inet_addr(val.c_str()));
+				filter->lv_saddr[i] = ntohl((unsigned int)inet_addr(val.c_str()));
 				i++;
 			}
 			updateLivesnifferfilters();
@@ -709,7 +709,7 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 			while(i < MAXLIVEFILTERS and getline(data, val,' ')){
 				global_livesniffer = 1;
 				//convert doted ip to unsigned int
-				filter->lv_bothaddr[i] = ntohl((unsigned int)inet_addr(val.c_str()));
+				filter->lv_daddr[i] = ntohl((unsigned int)inet_addr(val.c_str()));
 				i++;
 			}
 			updateLivesnifferfilters();

@@ -1111,7 +1111,7 @@ void FraudAlert_spc::evEvent(sFraudEventInfo *eventInfo) {
 }
 
 FraudAlert_rc::FraudAlert_rc(unsigned int dbId)
- : FraudAlert(_spc, dbId) {
+ : FraudAlert(_rc, dbId) {
 	start_interval = 0;
 }
 
