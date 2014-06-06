@@ -135,7 +135,7 @@ void CheckInternational::load(SqlDb_row *dbRow) {
 		prefixes = split(_prefixes.c_str(), split(",|;", "|"), true);
 	}
 	internationalMinLength = atoi((*dbRow)["international_number_min_length"].c_str());
-	countryCodeForLocalNumbers = (*dbRow)["international_number_min_length"];
+	countryCodeForLocalNumbers = (*dbRow)["country_code_for_local_numbers"];
 }
 
 

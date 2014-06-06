@@ -133,7 +133,7 @@ public:
 		}
 		int numberLength = strlen(number);
 		for(size_t i = 0; i < prefixes.size(); i++) {
-			if(numberLength > prefixes[i].size() &&
+			if(numberLength > (int)prefixes[i].size() &&
 			   !strncmp(number, prefixes[i].c_str(), prefixes[i].size())) {
 				if(prefix) {
 					*prefix = prefixes[i].c_str();
@@ -172,7 +172,7 @@ public:
 		extern char opt_local_country_code[10];
 		return(!countryCodeForLocalNumbers.empty() ?
 			!strcmp(countryCodeForLocalNumbers.c_str(), countryCode) :
-		       opt_local_country_code ?
+		       opt_local_country_code[0] ?
 			!strcmp(opt_local_country_code, countryCode) :
 			false);
 	}
