@@ -454,5 +454,7 @@ private:
 
 	void init_seq(u_int16_t seq);
 	int update_seq(u_int16_t seq);
+	
+	timeval _last_ts;
 };
 #endif

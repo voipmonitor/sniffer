@@ -595,6 +595,7 @@ private:
 	map<unsigned int, sPacketServerConnection*> packetServerConnections;
 	volatile int _sync_packetServerConnections;
 	u_long lastCheckFreeSizeCachedir_timeMS;
+	timeval _last_ts;
 friend void *_PcapQueue_readFromFifo_connectionThreadFunction(void *arg);
 };
 

@@ -2841,6 +2841,8 @@ PcapQueue_readFromFifo::PcapQueue_readFromFifo(const char *nameQueue, const char
 	this->socketHandle = 0;
 	this->_sync_packetServerConnections = 0;
 	this->lastCheckFreeSizeCachedir_timeMS = 0;
+	this->_last_ts.tv_sec = 0;
+	this->_last_ts.tv_usec = 0;
 	this->setEnableWriteThread();
 }
 
@@ -3657,6 +3659,15 @@ void PcapQueue_readFromFifo::processPacket(pcap_pkthdr_plus *header_plus, u_char
 	bool useTcpReassembly = false;
 	
 	pcap_pkthdr *header = header_plus->convertToStdHeader();
+	
+	if(!this->_last_ts.tv_sec) {
+		this->_last_ts = header->ts;
+	} else if(header->ts.tv_sec < this->_last_ts.tv_sec ||
+		  (header->ts.tv_sec == this->_last_ts.tv_sec &&
+		   header->ts.tv_usec < this->_last_ts.tv_usec)) {
+		syslog(LOG_NOTICE, "warning - bad packet order in processPacket");
+		this->_last_ts = header->ts;
+	}
 	
 	if(ipfilter_reload_do) {
 		delete ipfilter;
