@@ -516,6 +516,10 @@ RTP::jitterbuffer(struct ast_channel *channel, int savePayload) {
 
 	// create jitter buffer structures 
 	ast_jb_do_usecheck(channel, &header->ts);
+	if(channel->jb.timebase.tv_sec == header->ts.tv_sec &&
+	   channel->jb.timebase.tv_usec == header->ts.tv_usec) {
+		channel->last_ts = header->ts;
+	}
 	
 	if(!channel->jb_reseted) {
 		// initializing jitterbuffer 
