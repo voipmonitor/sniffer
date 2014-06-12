@@ -130,13 +130,13 @@ struct fixed_jb *fixed_jb_new(struct fixed_jb_conf *conf)
 void fixed_jb_destroy(struct fixed_jb *jb)
 {
 	/* jitterbuf MUST be empty before it can be destroyed */
-	extern int opt_enable_jitterbuffer_asserts;
 	if(!(jb->frames == NULL)) {
 		syslog(5 /*notice */, "JB ASSERT - fixed_jb_destroy - jb->frames == NULL");
+		extern int opt_enable_jitterbuffer_asserts;
+		if(opt_enable_jitterbuffer_asserts) {
+			ASSERT(jb->frames == NULL);
+		}
 		return;
-	}
-	if(opt_enable_jitterbuffer_asserts) {
-		ASSERT(jb->frames == NULL);
 	}
 	
 	free(jb);
@@ -153,9 +153,12 @@ static int resynch_jb(struct fixed_jb *jb, void *data, long ms, long ts, long no
 	if (!jb->frames) {
 		/* debug check: tail should also be NULL */
 		if(debug) fprintf(stdout, "resynch_jb: empty jb\n");
-		//ASSERT(jb->tail == NULL);
 		if(!(jb->tail == NULL)) {
 			syslog(5 /*notice */, "JB ASSERT - resynch_jb - jb->tail == NULL");
+			extern int opt_enable_jitterbuffer_asserts;
+			if(opt_enable_jitterbuffer_asserts) {
+				ASSERT(jb->tail == NULL);
+			}
 			return(0);
 		}
 		
@@ -230,25 +233,25 @@ int fixed_jb_put(struct fixed_jb *jb, void *data, long ms, long ts, long now)
 	extern int opt_enable_jitterbuffer_asserts;
 	if(!(data != NULL)) {
 		syslog(5 /*notice */, "JB ASSERT - fixed_jb_put - data != NULL");
+		if(opt_enable_jitterbuffer_asserts) {
+			ASSERT(data != NULL);
+		}
 		return(0);
-	}
-	if(opt_enable_jitterbuffer_asserts) {
-		ASSERT(data != NULL);
 	}
 	/* do not allow frames shorter than 2 ms */
 	if(!(ms >= 2)) {
 		syslog(5 /*notice */, "JB ASSERT - fixed_jb_put - ms >= 2");
+		if(opt_enable_jitterbuffer_asserts) {
+			ASSERT(ms >= 2);
+		}
 		return(0);
-	}
-	if(opt_enable_jitterbuffer_asserts) {
-		ASSERT(ms >= 2);
 	}
 	if(!(ts >= 0)) {
 		syslog(5 /*notice */, "JB ASSERT - fixed_jb_put - ts >= 0");
+		if(opt_enable_jitterbuffer_asserts) {
+			ASSERT(ts >= 0);
+		}
 		return(0);
-	}
-	if(opt_enable_jitterbuffer_asserts) {
-		ASSERT(ts >= 0);
 	}
         // TODO: implement pcap reordering queue, ASSERT(now >= 0);
 
@@ -329,10 +332,10 @@ int fixed_jb_put(struct fixed_jb *jb, void *data, long ms, long ts, long now)
 		/* tail should also be NULL is that case */
 		if(!(jb->tail == NULL)) {
 			syslog(5 /*notice */, "JB ASSERT - fixed_jb_put - jb->tail == NULL");
+			if(opt_enable_jitterbuffer_asserts) {
+				ASSERT(jb->tail == NULL);
+			}
 			return(0);
-		}
-		if(opt_enable_jitterbuffer_asserts) {
-			ASSERT(jb->tail == NULL);
 		}
 		jb->frames = jb->tail = newframe;
 		newframe->next = NULL;
@@ -366,17 +369,17 @@ int fixed_jb_get(struct fixed_jb *jb, struct fixed_jb_frame *frame, long now, lo
 	extern int opt_enable_jitterbuffer_asserts;
 	if(!(now >= 0)) {
 		syslog(5 /*notice */, "JB ASSERT - fixed_jb_get - now >= 0");
+		if(opt_enable_jitterbuffer_asserts) {
+			ASSERT(now >= 0);
+		}
 		return(0);
-	}
-	if(opt_enable_jitterbuffer_asserts) {
-		ASSERT(now >= 0);
 	}
 	if(!(interpl >= 2)) {
 		syslog(5 /*notice */, "JB ASSERT - fixed_jb_get - interpl >= 2");
+		if(opt_enable_jitterbuffer_asserts) {
+			ASSERT(interpl >= 2);
+		}
 		return(0);
-	}
-	if(opt_enable_jitterbuffer_asserts) {
-		ASSERT(interpl >= 2);
 	}
 	
 	if (now < jb->next_delivery) {

@@ -32,6 +32,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <syslog.h>
 
 #include "asterisk/frame.h"
 #include "asterisk/channel.h"
@@ -341,8 +342,15 @@ void ast_jb_get_and_deliver(struct ast_channel *c0, struct timeval *mynow)
 	int c0_use_jb = ast_test_flag(jb0, JB_USE);
 	int c0_jb_is_created = ast_test_flag(jb0, JB_CREATED);
 	
-	if (c0_use_jb && c0_jb_is_created)
-		jb_get_and_deliver(c0, mynow);
+	if (c0_use_jb && c0_jb_is_created) {
+		if(mynow->tv_sec < c0->jb.timebase.tv_sec ||
+		   (mynow->tv_sec == c0->jb.timebase.tv_sec &&
+		    mynow->tv_usec < c0->jb.timebase.tv_usec)) {
+			syslog(5 /*LOG_NOTICE*/, "warning - mynow < c0->jb.timebase in ast_jb_get_and_deliver - ignored");
+		} else {
+			jb_get_and_deliver(c0, mynow);
+		}
+	}
 	
 }
 

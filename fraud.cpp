@@ -124,6 +124,21 @@ bool CountryCodes::isLocationIn(const char *location, vector<string> *in, bool c
 }
 
 
+CheckInternational::CheckInternational() {
+	prefixes = split("+, 00", ",", true);
+	internationalMinLength = 0;
+}
+
+void CheckInternational::load(SqlDb_row *dbRow) {
+	string _prefixes = (*dbRow)["international_prefixes"];
+	if(!_prefixes.empty()) {
+		prefixes = split(_prefixes.c_str(), split(",|;", "|"), true);
+	}
+	internationalMinLength = atoi((*dbRow)["international_number_min_length"].c_str());
+	countryCodeForLocalNumbers = (*dbRow)["country_code_for_local_numbers"];
+}
+
+
 CountryPrefixes::CountryPrefixes() {
 }
 
@@ -481,6 +496,7 @@ void FraudAlert::loadAlert() {
 		intervalLength = atol(dbRow["fraud_interval_length"].c_str());
 		intervalLimit = atol(dbRow["fraud_interval_limit"].c_str());
 	}
+	checkInternational.load(&dbRow);
 	delete sqlDb;
 }
 
@@ -1111,7 +1127,7 @@ void FraudAlert_spc::evEvent(sFraudEventInfo *eventInfo) {
 }
 
 FraudAlert_rc::FraudAlert_rc(unsigned int dbId)
- : FraudAlert(_spc, dbId) {
+ : FraudAlert(_rc, dbId) {
 	start_interval = 0;
 }
 
@@ -1264,7 +1280,6 @@ void FraudAlerts::popCallInfoThread() {
 		bool okPop = false;
 		sFraudCallInfo callInfo;
 		if(callQueue.pop(&callInfo)) {
-			this->completeCallInfo_country_code(&callInfo);
 			lock_alerts();
 			vector<FraudAlert*>::iterator iter;
 			for(iter = alerts.begin(); iter != alerts.end(); iter++) {
@@ -1278,6 +1293,7 @@ void FraudAlerts::popCallInfoThread() {
 			lock_alerts();
 			vector<FraudAlert*>::iterator iter;
 			for(iter = alerts.begin(); iter != alerts.end(); iter++) {
+				this->completeCallInfo_country_code(&callInfo, &(*iter)->checkInternational);
 				(*iter)->evEvent(&eventInfo);
 			}
 			unlock_alerts();
@@ -1316,7 +1332,7 @@ void FraudAlerts::getCallInfoFromCall(sFraudCallInfo *callInfo, Call *call,
 	callInfo->at_last = at;
 }
 
-void FraudAlerts::completeCallInfo_country_code(sFraudCallInfo *callInfo) {
+void FraudAlerts::completeCallInfo_country_code(sFraudCallInfo *callInfo, CheckInternational *checkInternational) {
 	for(int i = 0; i < 2; i++) {
 		string *number = i == 0 ? &callInfo->caller_number : &callInfo->called_number;
 		string *rslt_country_code = i == 0 ? &callInfo->country_code_caller_number : &callInfo->country_code_called_number;
@@ -1324,7 +1340,7 @@ void FraudAlerts::completeCallInfo_country_code(sFraudCallInfo *callInfo) {
 		string *rslt_country2_code = i == 0 ? &callInfo->country2_code_caller_number : &callInfo->country2_code_called_number;
 		string *rslt_continent2_code = i == 0 ? &callInfo->continent2_code_caller_number : &callInfo->continent2_code_called_number;
 		vector<string> countries;
-		if(countryPrefixes->getCountry(number->c_str(), &countries) != "" &&
+		if(countryPrefixes->getCountry(number->c_str(), &countries, checkInternational) != "" &&
 		   countries.size()) {
 			*rslt_country_code = countries[0];
 			*rslt_continent_code = countryCodes->getContinent(countries[0].c_str());
@@ -1344,8 +1360,8 @@ void FraudAlerts::completeCallInfo_country_code(sFraudCallInfo *callInfo) {
 			*rslt_continent_code = countryCodes->getContinent(country.c_str());
 		}
 	}
-	callInfo->local_called_number = countryPrefixes->isLocal(callInfo->called_number.c_str());
-	callInfo->local_called_ip = geoIP_country->isLocal(callInfo->called_ip);
+	callInfo->local_called_number = countryPrefixes->isLocal(callInfo->called_number.c_str(), checkInternational);
+	callInfo->local_called_ip = geoIP_country->isLocal(callInfo->called_ip, checkInternational);
 }
 
 void FraudAlerts::refresh() {

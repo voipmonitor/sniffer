@@ -244,6 +244,9 @@ RTP::RTP()
 	lastdtmf = 0;
 	forcemark = 0;
 	ignore = 0;
+	
+	this->_last_ts.tv_sec = 0;
+	this->_last_ts.tv_usec = 0;
 }
 
 /* destructor */
@@ -513,6 +516,10 @@ RTP::jitterbuffer(struct ast_channel *channel, int savePayload) {
 
 	// create jitter buffer structures 
 	ast_jb_do_usecheck(channel, &header->ts);
+	if(channel->jb.timebase.tv_sec == header->ts.tv_sec &&
+	   channel->jb.timebase.tv_usec == header->ts.tv_usec) {
+		channel->last_ts = header->ts;
+	}
 	
 	if(!channel->jb_reseted) {
 		// initializing jitterbuffer 
@@ -642,6 +649,16 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 	this->daddr =  daddr;
 	this->dport = dport;
 	this->ignore = 0;
+	
+	if(this->_last_ts.tv_sec &&
+	   (header->ts.tv_sec < this->_last_ts.tv_sec ||
+	    (header->ts.tv_sec == this->_last_ts.tv_sec &&
+	     header->ts.tv_usec < this->_last_ts.tv_usec))) {
+		syslog(5 /*LOG_NOTICE*/, "warning - bad packet order in RTP::read - packet ignored");
+		return;
+	}
+	this->_last_ts = header->ts;
+	
 	if(this->first_packet_time == 0 and this->first_packet_usec == 0) {
 		this->first_packet_time = header->ts.tv_sec;
 		this->first_packet_usec = header->ts.tv_usec;
