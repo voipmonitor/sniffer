@@ -532,6 +532,7 @@ SocketSimpleBufferWrite *sipSendSocket = NULL;
 int opt_sip_send_before_packetbuffer = 0;
 
 int opt_enable_jitterbuffer_asserts = 0;
+int opt_hide_message_content = 0;
 
 
 #include <stdio.h>
@@ -2009,6 +2010,10 @@ int load_config(char *fname) {
 	
 	if((value = ini.GetValue("general", "enable_jitterbuffer_asserts", NULL))) {
 		opt_enable_jitterbuffer_asserts = yesno(value);
+	}
+	
+	if((value = ini.GetValue("general", "hide_message_content", NULL))) {
+		opt_hide_message_content = yesno(value);
 	}
 
 	/*

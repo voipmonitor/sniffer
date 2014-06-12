@@ -206,6 +206,7 @@ long long GetFreeDiskSpace(const char* absoluteFilePath, bool percent_mult_100 =
 long long GetTotalDiskSpace(const char* absoluteFilePath);
 string GetStringMD5(std::string str);
 string GetFileMD5(std::string filename);
+string GetStringSHA256(std::string str);
 bool FileExists(char *strFilename);
 void ntoa(char *res, unsigned int addr);
 string escapeshellR(string &);

@@ -58,7 +58,7 @@
 
 using namespace std;
 
-extern Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int dest, char *data, int datalen,
+extern Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int dest, char *data, int datalen, int dataoffset,
 			    pcap_t *handle, pcap_pkthdr *header, const u_char *packet, int istcp, int dontsave, int can_thread, int *was_rtp, struct iphdr2 *header_ip, int *voippacket, int disabledsave,
 			    pcap_block_store *block_store, int block_store_index, int dlt, int sensor_id,
 			    bool mainProcess = true, int sipOffset = 0);
@@ -3740,8 +3740,8 @@ void PcapQueue_readFromFifo::processPacket(pcap_pkthdr_plus *header_plus, u_char
 	int voippacket = 0;
 	if(!useTcpReassembly && opt_enable_tcpreassembly != 2) {
 		process_packet(header_ip->saddr, htons(header_udp->source), header_ip->daddr, htons(header_udp->dest), 
-			data, datalen, this->getPcapHandle(dlt), header, packet, istcp, 0, 1, &was_rtp, header_ip, &voippacket, 0,
-			block_store, block_store_index, dlt, sensor_id);
+			       data, datalen, data - (char*)packet, this->getPcapHandle(dlt), header, packet, istcp, 0, 1, &was_rtp, header_ip, &voippacket, 0,
+			       block_store, block_store_index, dlt, sensor_id);
 	}
 
 	// if packet was VoIP add it to ipaccount

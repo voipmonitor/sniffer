@@ -1390,17 +1390,17 @@ Call *new_skinny_channel(int state, char *data, int datalen, struct pcap_pkthdr 
 	return call;
 }
 
-void *handle_skinny2(pcap_pkthdr *header, const u_char *packet, unsigned int saddr, int source, unsigned int daddr, int dest, char *data, int datalen,
+void *handle_skinny2(pcap_pkthdr *header, const u_char *packet, unsigned int saddr, int source, unsigned int daddr, int dest, char *data, int datalen, int dataoffset,
 		     pcap_t *handle, int dlt, int sensor_id);
 
 
-void *handle_skinny(pcap_pkthdr *header, const u_char *packet, unsigned int saddr, int source, unsigned int daddr, int dest, char *data, int datalen,
+void *handle_skinny(pcap_pkthdr *header, const u_char *packet, unsigned int saddr, int source, unsigned int daddr, int dest, char *data, int datalen, int dataoffset,
 		    pcap_t *handle, int dlt, int sensor_id) {	
 	
 	int remain = datalen;
 	while(1) {	
 		//cycle through all PDUs in one message
-		handle_skinny2(header, packet, saddr, source, daddr, dest, data, datalen, handle, dlt, sensor_id);
+		handle_skinny2(header, packet, saddr, source, daddr, dest, data, datalen, dataoffset, handle, dlt, sensor_id);
 		unsigned int plen = (unsigned int)letohl(*(uint32_t*)data); // first 4 bytes is length of skinny data
 		if(plen == 0 or plen > remain) {
 			break;
@@ -1418,7 +1418,7 @@ void *handle_skinny(pcap_pkthdr *header, const u_char *packet, unsigned int sadd
 	return NULL;
 }
 
-void *handle_skinny2(pcap_pkthdr *header, const u_char *packet, unsigned int saddr, int source, unsigned int daddr, int dest, char *data, int datalen,
+void *handle_skinny2(pcap_pkthdr *header, const u_char *packet, unsigned int saddr, int source, unsigned int daddr, int dest, char *data, int datalen, int dataoffset,
 		     pcap_t *handle, int dlt, int sensor_id) {
 
 	if(data == 0 or datalen == 0 or datalen <= skinny_header_size) {
@@ -1521,7 +1521,7 @@ void *handle_skinny2(pcap_pkthdr *header, const u_char *packet, unsigned int sad
 			break;
 		}
 
-		save_packet(call, header, packet, saddr, source, daddr, dest, 1, data, datalen, TYPE_SKINNY, 
+		save_packet(call, header, packet, saddr, source, daddr, dest, 1, data, datalen, dataoffset, TYPE_SKINNY, 
 			    dlt, sensor_id);
 
 		}
@@ -1533,7 +1533,7 @@ void *handle_skinny2(pcap_pkthdr *header, const u_char *packet, unsigned int sad
 		SKINNY_DEBUG(DEBUG_PACKET, 3, "Received START_TONE_MESSAGE ref %d\n", ref);
 		sprintf(callid, "%d", ref);
 		if((call = calltable->find_by_call_id(callid, strlen(callid)))){
-			save_packet(call, header, packet, saddr, source, daddr, dest, 1, data, datalen, TYPE_SKINNY, 
+			save_packet(call, header, packet, saddr, source, daddr, dest, 1, data, datalen, dataoffset, TYPE_SKINNY, 
 				    dlt, sensor_id);
 		}
 		}
@@ -1545,7 +1545,7 @@ void *handle_skinny2(pcap_pkthdr *header, const u_char *packet, unsigned int sad
 		SKINNY_DEBUG(DEBUG_PACKET, 3, "Received STOP_TONE_MESSAGE ref %d\n", ref);
 		sprintf(callid, "%d", ref);
 		if ((call = calltable->find_by_call_id(callid, strlen(callid)))){
-			save_packet(call, header, packet, saddr, source, daddr, dest, 1, data, datalen, TYPE_SKINNY, 
+			save_packet(call, header, packet, saddr, source, daddr, dest, 1, data, datalen, dataoffset, TYPE_SKINNY, 
 				    dlt, sensor_id);
 		}
 		}
@@ -1561,7 +1561,7 @@ void *handle_skinny2(pcap_pkthdr *header, const u_char *packet, unsigned int sad
 			memcpy(call->caller, req.data.callinfo.callingParty, sizeof(req.data.callinfo.callingParty));
 			memcpy(call->called, req.data.callinfo.calledParty, sizeof(req.data.callinfo.calledParty));
 
-			save_packet(call, header, packet, saddr, source, daddr, dest, 1, data, datalen, TYPE_SKINNY, 
+			save_packet(call, header, packet, saddr, source, daddr, dest, 1, data, datalen, dataoffset, TYPE_SKINNY, 
 				    dlt, sensor_id);
 		}
 		}
@@ -1653,7 +1653,7 @@ void *handle_skinny2(pcap_pkthdr *header, const u_char *packet, unsigned int sad
 			if(i > 8) 
 				memcpy(call->callername, callingPartyName, strlen(callingPartyName) + 1);
 
-			save_packet(call, header, packet, saddr, source, daddr, dest, 1, data, datalen, TYPE_SKINNY, 
+			save_packet(call, header, packet, saddr, source, daddr, dest, 1, data, datalen, dataoffset, TYPE_SKINNY, 
 				    dlt, sensor_id);
 		}
 		}
@@ -1679,7 +1679,7 @@ void *handle_skinny2(pcap_pkthdr *header, const u_char *packet, unsigned int sad
 		sprintf(callid, "%d", ref);
 		if ((call = calltable->find_by_call_id(callid, strlen(callid)))){
 			calltable->skinny_partyID[pid] = call;
-			save_packet(call, header, packet, saddr, source, daddr, dest, 1, data, datalen, TYPE_SKINNY, 
+			save_packet(call, header, packet, saddr, source, daddr, dest, 1, data, datalen, dataoffset, TYPE_SKINNY, 
 				    dlt, sensor_id);
 		}
 		}
@@ -1692,7 +1692,7 @@ void *handle_skinny2(pcap_pkthdr *header, const u_char *packet, unsigned int sad
 		sprintf(callid, "%d", ref);
 		if((call = calltable->find_by_call_id(callid, strlen(callid)))){
 			strncpy(call->called, req.data.dialednumber.dialedNumber, sizeof(call->called));
-			save_packet(call, header, packet, saddr, source, daddr, dest, 1, data, datalen, TYPE_SKINNY, 
+			save_packet(call, header, packet, saddr, source, daddr, dest, 1, data, datalen, dataoffset, TYPE_SKINNY, 
 				    dlt, sensor_id);
 		}
 		}
@@ -1739,7 +1739,7 @@ void *handle_skinny2(pcap_pkthdr *header, const u_char *packet, unsigned int sad
 			if(call->add_ip_port(ipaddr, port, NULL, 0, call->sipcallerip == saddr, rtpmap) != -1){
 				calltable->hashAdd(ipaddr, port, call, call->sipcallerip == saddr, 0, 0, 1);
 			}
-			save_packet(call, header, packet, saddr, source, daddr, dest, 1, data, datalen, TYPE_SKINNY, dlt, sensor_id);
+			save_packet(call, header, packet, saddr, source, daddr, dest, 1, data, datalen, dataoffset, TYPE_SKINNY, dlt, sensor_id);
 		}
 		}
 		break;
@@ -1763,7 +1763,7 @@ void *handle_skinny2(pcap_pkthdr *header, const u_char *packet, unsigned int sad
 		char callid[16];
 		sprintf(callid, "%d", ref);
 		if((call = calltable->find_by_call_id(callid, strlen(callid)))){
-			save_packet(call, header, packet, saddr, source, daddr, dest, 1, data, datalen, TYPE_SKINNY, 
+			save_packet(call, header, packet, saddr, source, daddr, dest, 1, data, datalen, dataoffset, TYPE_SKINNY, 
 				    dlt, sensor_id);
 		}
 		}
@@ -1775,7 +1775,7 @@ void *handle_skinny2(pcap_pkthdr *header, const u_char *packet, unsigned int sad
 		SKINNY_DEBUG(DEBUG_PACKET, 3, "Received DISPLAY_PROMPT_STATUS_MESSAGE ref %u\n", ref);
 		sprintf(callid, "%d", ref);
 		if((call = calltable->find_by_call_id(callid, strlen(callid)))){
-			save_packet(call, header, packet, saddr, source, daddr, dest, 1, data, datalen, TYPE_SKINNY, 
+			save_packet(call, header, packet, saddr, source, daddr, dest, 1, data, datalen, dataoffset, TYPE_SKINNY, 
 				    dlt, sensor_id);
 		}
 		}
@@ -1934,7 +1934,7 @@ void *handle_skinny2(pcap_pkthdr *header, const u_char *packet, unsigned int sad
 			if(call->add_ip_port(ipaddr, port, NULL, 0, call->sipcallerip == saddr, rtpmap) != -1){
 				calltable->hashAdd(ipaddr, port, call, call->sipcallerip == saddr, 0, 0, 1);
 			}
-			save_packet(call, header, packet, saddr, source, daddr, dest, 1, data, datalen, TYPE_SKINNY, 
+			save_packet(call, header, packet, saddr, source, daddr, dest, 1, data, datalen, dataoffset, TYPE_SKINNY, 
 				    dlt, sensor_id);
 		}
 		}

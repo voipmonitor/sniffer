@@ -27,6 +27,7 @@
 #include <cerrno>
 #include <json/json.h>
 #include <iomanip>
+#include <openssl/sha.h>
 
 #include "voipmonitor.h"
 
@@ -645,6 +646,20 @@ string GetFileMD5(std::string filename) {
 	unsigned char _md5[MD5_DIGEST_LENGTH];
 	MD5_Final(_md5, &ctx);
 	return(MD5_String(_md5));
+}
+
+string GetStringSHA256(std::string str) {
+	unsigned char hash[SHA256_DIGEST_LENGTH];
+	SHA256_CTX sha256;
+	SHA256_Init(&sha256);
+	SHA256_Update(&sha256, str.c_str(), str.length());
+	SHA256_Final(hash, &sha256);
+	char outputBuffer[65];
+	for(int i = 0; i < SHA256_DIGEST_LENGTH; i++) {
+		sprintf(outputBuffer + (i * 2), "%02x", hash[i]);
+	}
+	outputBuffer[64] = 0;
+	return(outputBuffer);
 }
 
 void ntoa(char *res, unsigned int addr) {
