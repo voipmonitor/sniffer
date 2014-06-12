@@ -3260,13 +3260,7 @@ void *PcapQueue_readFromFifo::writeThreadFunction(void *arg, unsigned int arg2) 
 							} else {
 								actBlockInfo->utime_first = (*actBlockInfo->blockStore)[actBlockInfo->count_processed].header->header_fix_size.ts_tv_sec * 1000000ull +
 											    (*actBlockInfo->blockStore)[actBlockInfo->count_processed].header->header_fix_size.ts_tv_usec;
-								blockInfo_utime_first = 0;
-								for(int i = 0; i < blockInfoCount; i++) {
-									if(!blockInfo_utime_first ||
-									   blockInfo[i].utime_first < blockInfo_utime_first) {
-										blockInfo_utime_first = blockInfo[i].utime_first;
-									}
-								}
+								blockInfo_utime_first = minUtime;
 							}
 						}
 					}
