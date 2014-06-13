@@ -1,6 +1,6 @@
-10.0RC29 12.6.2014
-=================
-- fix jitterbuffer simulator which can cause crash / stop voipmonitor sniffer in some case
+10.0RC30 13.6.2014
+==================
+- fix proper packet ordering when sniffing on multiple interfaces or if receiving from multiple senders. bad order caused crash and other problems. 
 
 10.0RC28 4.6.2014
 =================
