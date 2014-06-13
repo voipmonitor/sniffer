@@ -66,7 +66,7 @@ void *pcap_read_thread_func(void *arg);
 //                    pcap_t *handle, pcap_pkthdr *header, const u_char *packet, int can_thread, int *was_rtp);
 void readdump_libnids(pcap_t *handle);
 void readdump_libpcap(pcap_t *handle);
-inline void save_packet(Call *call, struct pcap_pkthdr *header, const u_char *packet, unsigned int saddr, int source, unsigned int daddr, int dest, int istcp, char *data, int datalen, int type, 
+inline void save_packet(Call *call, struct pcap_pkthdr *header, const u_char *packet, unsigned int saddr, int source, unsigned int daddr, int dest, int istcp, char *data, int datalen, int dataoffset, int type, 
 			int dlt, int sensor_id);
 
 
@@ -99,6 +99,7 @@ typedef struct {
 	unsigned char data[MAXPACKETLENQRING];
 #endif
 	int datalen;
+	int dataoffset;
 	u_int32_t saddr;
 	u_int32_t daddr;
 	unsigned short sport;
@@ -130,6 +131,7 @@ typedef struct {
 	char istcp;
 	u_char *data;
 	int datalen;
+	int dataoffset;
 	pcap_block_store::pcap_pkthdr_pcap pkthdr_pcap; 
 	pcap_block_store *block_store;
 	int block_store_index;
@@ -280,6 +282,7 @@ public:
 		int dest;
 		char *data;
 		int datalen;
+		int dataoffset;
 		pcap_pkthdr header;
 		u_char *packet;
 		iphdr2 *header_ip;
@@ -300,7 +303,7 @@ public:
 public:
 	TcpReassemblySip();
 	void processPacket(
-		unsigned int saddr, int source, unsigned int daddr, int dest, char *data, int datalen,
+		unsigned int saddr, int source, unsigned int daddr, int dest, char *data, int datalen, int dataoffset,
 		pcap_t *handle, pcap_pkthdr *header, const u_char *packet, int dontsave, int can_thread, struct iphdr2 *header_ip, int disabledsave,
 		int dlt, int sensor_id,
 		bool issip);
@@ -308,7 +311,7 @@ public:
 private:
 	tcp_stream2_s *addPacket(
 		tcp_stream2_s *stream, u_int hash,
-		unsigned int saddr, int source, unsigned int daddr, int dest, char *data, int datalen,
+		unsigned int saddr, int source, unsigned int daddr, int dest, char *data, int datalen, int dataoffset,
 		pcap_t *handle, pcap_pkthdr *header, const u_char *packet, int dontsave, int can_thread, struct iphdr2 *header_ip, int disabledsave,
 		int dlt, int sensor_id);
 	void complete(

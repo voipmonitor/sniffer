@@ -145,6 +145,8 @@ extern int opt_skinny;
 extern int opt_enable_fraud;
 extern char opt_callidmerge_header[128];
 extern int opt_sdp_multiplication;
+extern int opt_hide_message_content;
+extern char opt_hide_message_content_secret[1024];
 
 SqlDb *sqlDbSaveCall = NULL;
 bool existsColumnCalldateInCdrNext = true;
@@ -586,19 +588,19 @@ Call::get_index_by_ip_port(in_addr_t addr, unsigned short port){
 
 /* analyze rtcp packet */
 void
-Call::read_rtcp(unsigned char* data, int datalen, struct pcap_pkthdr *header, u_int32_t saddr, u_int32_t daddr, unsigned short sport, unsigned short dport, int iscaller,
+Call::read_rtcp(unsigned char* data, int datalen, int dataoffset, struct pcap_pkthdr *header, u_int32_t saddr, u_int32_t daddr, unsigned short sport, unsigned short dport, int iscaller,
 		char enable_save_packet, const u_char *packet, char istcp, int dlt, int sensor_id) {
 	parse_rtcp((char*)data, datalen, this);
 
 	if(enable_save_packet && opt_rtpsave_threaded) {
-		save_packet(this, header, packet, saddr, sport, daddr, dport, istcp, (char*)data, datalen, TYPE_RTP, 
+		save_packet(this, header, packet, saddr, sport, daddr, dport, istcp, (char*)data, datalen, dataoffset, TYPE_RTP, 
 			    dlt, sensor_id);
 	}
 }
 
 /* analyze rtp packet */
 void
-Call::read_rtp(unsigned char* data, int datalen, struct pcap_pkthdr *header, struct iphdr2 *header_ip, u_int32_t saddr, u_int32_t daddr, unsigned short sport, unsigned short dport, int iscaller, int *record,
+Call::read_rtp(unsigned char* data, int datalen, int dataoffset, struct pcap_pkthdr *header, struct iphdr2 *header_ip, u_int32_t saddr, u_int32_t daddr, unsigned short sport, unsigned short dport, int iscaller, int *record,
 	       char enable_save_packet, const u_char *packet, char istcp, int dlt, int sensor_id) {
 
 	*record = 0;
@@ -767,12 +769,12 @@ end:
 			   header->caplen > (unsigned)(datalen - RTP_FIXED_HEADERLEN)) {
 				unsigned int tmp_u32 = header->caplen;
 				header->caplen = header->caplen - (datalen - RTP_FIXED_HEADERLEN);
-				save_packet(this, header, packet, saddr, sport, daddr, dport, istcp, (char*)data, datalen, TYPE_RTP, 
+				save_packet(this, header, packet, saddr, sport, daddr, dport, istcp, (char*)data, datalen, dataoffset, TYPE_RTP, 
 					    dlt, sensor_id);
 				header->caplen = tmp_u32;
 			}
 		} else {
-			save_packet(this, header, packet, saddr, sport, daddr, dport, istcp, (char*)data, datalen, TYPE_RTP, 
+			save_packet(this, header, packet, saddr, sport, daddr, dport, istcp, (char*)data, datalen, dataoffset, TYPE_RTP, 
 				    dlt, sensor_id);
 		}
 	}
@@ -2883,7 +2885,11 @@ Call::saveMessageToDb(bool enableBatchIfPossible) {
 	}
 	cdr.add(sqlEscapeString(fbasename), "fbasename");
 	if(message) {
-		cdr.add(sqlEscapeString(message), "message");
+		if(opt_hide_message_content) {
+			cdr.add("SHA256: " + GetStringSHA256(trim_str(message) + trim_str(opt_hide_message_content_secret)), "message");
+		} else {
+			cdr.add(sqlEscapeString(message), "message");
+		}
 	}
 
 	cdr.add(lastSIPresponseNum, "lastSIPresponseNum");

@@ -206,6 +206,7 @@ long long GetFreeDiskSpace(const char* absoluteFilePath, bool percent_mult_100 =
 long long GetTotalDiskSpace(const char* absoluteFilePath);
 string GetStringMD5(std::string str);
 string GetFileMD5(std::string filename);
+string GetStringSHA256(std::string str);
 bool FileExists(char *strFilename);
 void ntoa(char *res, unsigned int addr);
 string escapeshellR(string &);
@@ -218,6 +219,7 @@ string getActDateTimeF();
 int get_unix_tid(void);
 unsigned long getUptime();
 std::string &trim(std::string &s);
+std::string trim_str(std::string s);
 std::vector<std::string> &split(const std::string &s, char delim, std::vector<std::string> &elems);
 std::vector<std::string> split(const std::string &s, char delim);
 std::vector<std::string> split(const char *s, const char *delim, bool enableTrim = false);

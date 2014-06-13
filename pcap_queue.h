@@ -368,6 +368,7 @@ public:
 		u_char* packet;
 		u_int offset;
 		uint16_t md5[MD5_DIGEST_LENGTH / (sizeof(uint16_t) / sizeof(unsigned char))];
+		uint32_t counter;
 		volatile char used;
 	};
 	PcapQueue_readFromInterfaceThread(const char *interfaceName, eTypeInterfaceThread typeThread = read,
@@ -376,7 +377,7 @@ public:
 					  PcapQueue_readFromInterfaceThread *prevThread2 = NULL);
 	~PcapQueue_readFromInterfaceThread();
 protected:
-	inline void push(pcap_pkthdr* header,u_char* packet, u_int offset, uint16_t *md5, int index = 0);
+	inline void push(pcap_pkthdr* header,u_char* packet, u_int offset, uint16_t *md5, int index = 0, uint32_t counter = 0);
 	inline hpi pop(int index = 0, bool moveReadit = true);
         inline void moveReadit(int index = 0);
 	inline hpi POP(bool moveReadit = true) {
@@ -395,6 +396,12 @@ protected:
 		}
 		return(this->qring[index][this->readit[index] % this->qringmax].header->ts.tv_sec * 1000000ull + 
 		       this->qring[index][this->readit[index] % this->qringmax].header->ts.tv_usec);
+	}
+	u_int32_t getCounter(int index = 0) {
+		if(this->qring[index][this->readit[index] % this->qringmax].used == 0) {
+			return(0);
+		}
+		return(this->qring[index][this->readit[index] % this->qringmax].counter);
 	}
 	u_int64_t getTIME_usec() {
 		return(this->dedupThread ? this->dedupThread->getTime_usec() : this->getTime_usec());
@@ -425,6 +432,8 @@ private:
 	PcapQueue_readFromInterfaceThread *dedupThread;
 	PcapQueue_readFromInterfaceThread *prevThreads[2];
 	int indexDefragQring;
+	uint32_t push_counter;
+	uint32_t pop_counter;
 friend void *_PcapQueue_readFromInterfaceThread_threadFunction(void *arg);
 friend class PcapQueue_readFromInterface;
 };

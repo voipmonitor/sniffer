@@ -58,7 +58,7 @@
 
 using namespace std;
 
-extern Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int dest, char *data, int datalen,
+extern Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int dest, char *data, int datalen, int dataoffset,
 			    pcap_t *handle, pcap_pkthdr *header, const u_char *packet, int istcp, int dontsave, int can_thread, int *was_rtp, struct iphdr2 *header_ip, int *voippacket, int disabledsave,
 			    pcap_block_store *block_store, int block_store_index, int dlt, int sensor_id,
 			    bool mainProcess = true, int sipOffset = 0);
@@ -211,6 +211,17 @@ bool pcap_block_store::add(pcap_pkthdr *header, u_char *packet, int offset, int 
 
 bool pcap_block_store::add(pcap_pkthdr_plus *header, u_char *packet) {
 	return(this->add((pcap_pkthdr*)header, packet, header->offset, header->dlink));
+}
+
+bool pcap_block_store::isFull_checkTimout() {
+	if(this->full) {
+		return(true);
+	}
+	if(this->size && (getTimeMS() - this->timestampMS) >= opt_pcap_queue_block_max_time_ms) {
+		this->full = true;
+		return(true);
+	}
+	return(false);
 }
 
 void pcap_block_store::destroy() {
@@ -2021,6 +2032,8 @@ PcapQueue_readFromInterfaceThread::PcapQueue_readFromInterfaceThread(const char 
 	this->prevThreads[0] = prevThread;
 	this->prevThreads[1] = prevThread2;
 	this->indexDefragQring = 0;
+	this->push_counter = 1;
+	this->pop_counter = 1;
 	pthread_create(&this->threadHandle, NULL, _PcapQueue_readFromInterfaceThread_threadFunction, this);
 }
 
@@ -2063,9 +2076,10 @@ PcapQueue_readFromInterfaceThread::~PcapQueue_readFromInterfaceThread() {
 	}
 }
 
-inline void PcapQueue_readFromInterfaceThread::push(pcap_pkthdr* header,u_char* packet, u_int offset, uint16_t *md5, int index) {
+inline void PcapQueue_readFromInterfaceThread::push(pcap_pkthdr* header,u_char* packet, u_int offset, uint16_t *md5, int index, uint32_t counter) {
+	uint32_t writeIndex = this->writeit[index] % this->qringmax;
 	//while(__sync_lock_test_and_set(&this->_sync_qring, 1));
-	while(this->qring[index][this->writeit[index] % this->qringmax].used == 1) {
+	while(this->qring[index][writeIndex].used == 1) {
 		//__sync_lock_release(&this->_sync_qring);
 		usleep(100);
 		//while(__sync_lock_test_and_set(&this->_sync_qring, 1));
@@ -2075,19 +2089,20 @@ inline void PcapQueue_readFromInterfaceThread::push(pcap_pkthdr* header,u_char* 
 		if(header->caplen > this->pcap_snaplen) {
 			header->caplen = this->pcap_snaplen;
 		}
-		memcpy(this->qring[index][this->writeit[index] % this->qringmax].header, header, sizeof(pcap_pkthdr));
-		memcpy(this->qring[index][this->writeit[index] % this->qringmax].packet, packet, header->caplen);
+		memcpy(this->qring[index][writeIndex].header, header, sizeof(pcap_pkthdr));
+		memcpy(this->qring[index][writeIndex].packet, packet, header->caplen);
 	} else {
-		this->qring[index][this->writeit[index] % this->qringmax].header = header;
-		this->qring[index][this->writeit[index] % this->qringmax].packet = packet;
+		this->qring[index][writeIndex].header = header;
+		this->qring[index][writeIndex].packet = packet;
 	}
-	this->qring[index][this->writeit[index] % this->qringmax].offset = offset;
+	this->qring[index][writeIndex].offset = offset;
 	if(md5) {
-		memcpy(this->qring[index][this->writeit[index] % this->qringmax].md5, md5, MD5_DIGEST_LENGTH);
+		memcpy(this->qring[index][writeIndex].md5, md5, MD5_DIGEST_LENGTH);
 	} else {
-		this->qring[index][this->writeit[index] % this->qringmax].md5[0] = 0;
+		this->qring[index][writeIndex].md5[0] = 0;
 	}
-	this->qring[index][this->writeit[index] % this->qringmax].used = 1;
+	this->qring[index][writeIndex].counter = counter;
+	this->qring[index][writeIndex].used = 1;
 	if((this->writeit[index] + 1) == this->qringmax) {
 		this->writeit[index] = 0;
 	} else {
@@ -2097,22 +2112,25 @@ inline void PcapQueue_readFromInterfaceThread::push(pcap_pkthdr* header,u_char* 
 }
 
 inline PcapQueue_readFromInterfaceThread::hpi PcapQueue_readFromInterfaceThread::pop(int index, bool moveReadit) {
+	uint32_t readIndex = this->readit[index] % this->qringmax;
 	//while(__sync_lock_test_and_set(&this->_sync_qring, 1));
 	hpi rslt_hpi;
-	if(this->qring[index][this->readit[index] % this->qringmax].used == 0) {
+	if(this->qring[index][readIndex].used == 0) {
 		rslt_hpi.header = NULL;
 		rslt_hpi.packet = NULL;
 		rslt_hpi.offset = 0;
 		rslt_hpi.md5[0] = 0;
+		rslt_hpi.counter = 0;
 		rslt_hpi.used = 0;
 	} else {
-		rslt_hpi.header = this->qring[index][this->readit[index] % this->qringmax].header;
-		rslt_hpi.packet = this->qring[index][this->readit[index] % this->qringmax].packet;
-		rslt_hpi.offset = this->qring[index][this->readit[index] % this->qringmax].offset;
-		memcpy(rslt_hpi.md5, this->qring[index][this->readit[index] % this->qringmax].md5, MD5_DIGEST_LENGTH);
+		rslt_hpi.header = this->qring[index][readIndex].header;
+		rslt_hpi.packet = this->qring[index][readIndex].packet;
+		rslt_hpi.offset = this->qring[index][readIndex].offset;
+		memcpy(rslt_hpi.md5, this->qring[index][readIndex].md5, MD5_DIGEST_LENGTH);
+		rslt_hpi.counter = this->qring[index][readIndex].counter;
 		rslt_hpi.used = 0;
 		if(moveReadit) {
-			this->qring[index][this->readit[index] % this->qringmax].used = 0;
+			this->qring[index][readIndex].used = 0;
 			if((this->readit[index] + 1) == this->qringmax) {
 				this->readit[index] = 0;
 			} else {
@@ -2247,12 +2265,17 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void *arg, unsigned int 
 				free(_packet);
 				continue;
 			}
-			this->push(header, packet, 0, NULL, this->indexDefragQring);
+			this->push(header, packet, 0, NULL, this->indexDefragQring, this->push_counter);
+			++this->push_counter;
+			if(!this->push_counter) {
+				++this->push_counter;
+			}
 			this->indexDefragQring = this->indexDefragQring ? 0 : 1;
 			}
 			break;
 		case md1:
 		case md2: {
+			uint32_t counter = 0;
 			hpi hpii = this->prevThreads[0]->pop(this->typeThread == md1 ? 0 : 1);
 			if(!hpii.packet) {
 				usleep(100);
@@ -2260,6 +2283,7 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void *arg, unsigned int 
 			} else {
 				header = _header = hpii.header;
 				packet = _packet = hpii.packet;
+				counter = hpii.counter;
 			}
 			res = this->pcapProcess(&header, &packet, &destroy,
 						false, true, false, false);
@@ -2274,34 +2298,34 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void *arg, unsigned int 
 				free(_packet);
 				continue;
 			}
-			this->push(header, packet, 0, this->ppd.md5);
+			this->push(header, packet, 0, this->ppd.md5, 0, counter);
 			}
 			break;
 		case dedup: {
 			if(opt_pcap_queue_iface_dedup_separate_threads_extend) {
-				int minThreadTimeIndex = -1;
-				u_int64_t minThreadTime = 0;
-				u_int64_t threadTime = 0;
+				int threadIndex = -1;
 				for(int i = 0; i < 2; i++) {
-					threadTime = this->prevThreads[i]->getTime_usec();
-					if(threadTime) {
-						if(minThreadTime == 0 || minThreadTime > threadTime) {
-							minThreadTimeIndex = i;
-							minThreadTime = threadTime;
-						}
+					uint32_t counter = this->prevThreads[i]->getCounter();
+					if(counter && this->pop_counter == counter) {
+						threadIndex = i;
+						break;
 					}
 				}
-				if(minThreadTimeIndex < 0) {
+				if(threadIndex < 0) {
 					usleep(100);
 					continue;
 				} else {
-					hpi hpii = this->prevThreads[minThreadTimeIndex]->pop();
+					hpi hpii = this->prevThreads[threadIndex]->pop();
 					if(!hpii.packet) {
 						usleep(100);
 						continue;
 					} else {
 						header = _header = hpii.header;
 						packet = _packet = hpii.packet;
+						++this->pop_counter;
+						if(!this->pop_counter) {
+							++this->pop_counter;
+						}
 					}
 					if(hpii.md5[0]) {
 						memcpy(this->ppd.md5, hpii.md5, MD5_DIGEST_LENGTH);
@@ -2484,9 +2508,14 @@ void* PcapQueue_readFromInterface::threadFunction(void *arg, unsigned int arg2) 
 	this->initAllReadThreadsOk = true;
 	
 	if(__config_BYPASS_FIFO) {
-		pcap_block_store *blockStore = new pcap_block_store;
+		int blockStoreCount = this->readThreadsCount ? this->readThreadsCount : 1;
+		pcap_block_store *blockStore[blockStoreCount];
+		for(int i = 0; i < blockStoreCount; i++) {
+			 blockStore[i] = new pcap_block_store;
+		}
 		while(!TERMINATING) {
 			int minThreadTimeIndex = -1;
+			int blockStoreIndex = 0;
 			if(this->readThreadsCount) {
 				if(this->readThreadsCount == 1) {
 					 minThreadTimeIndex = 0;
@@ -2517,8 +2546,8 @@ void* PcapQueue_readFromInterface::threadFunction(void *arg, unsigned int arg2) 
 						offset = hpi.offset;
 						destroy = opt_pcap_queue_iface_dedup_separate_threads_extend;
 						dlink = this->readThreads[minThreadTimeIndex]->pcapLinklayerHeaderType;
+						blockStoreIndex = minThreadTimeIndex;
 					}
-					
 				}
 			} else {
 				res = this->pcap_next_ex_iface(this->pcapHandle, &header, &packet);
@@ -2527,9 +2556,9 @@ void* PcapQueue_readFromInterface::threadFunction(void *arg, unsigned int arg2) 
 				}
 				if(res == -1) {
 					if(opt_pb_read_from_file[0]) {
-						blockStoreBypassQueue.push(blockStore);
+						blockStoreBypassQueue.push(blockStore[blockStoreIndex]);
 						++sumBlocksCounterIn[0];
-						blockStore = NULL;
+						blockStore[blockStoreIndex] = NULL;
 						sleep(1);
 						calltable->cleanup(0);
 						extern AsyncClose asyncClose;
@@ -2564,34 +2593,38 @@ void* PcapQueue_readFromInterface::threadFunction(void *arg, unsigned int arg2) 
 				header->caplen = 101;
 			}
 			this->processBeforeAddToPacketBuffer(header, packet, offset);
-			if(!blockStore->full) {
-				blockStore->add(header, packet, offset, dlink);
+			if(!blockStore[blockStoreIndex]->full) {
+				blockStore[blockStoreIndex]->add(header, packet, offset, dlink);
 			}
-			if(blockStore->full) {
-				bool _syslog = true;
-				while((blockStoreBypassQueueSize = blockStoreBypassQueue.getUseSize()) > opt_pcap_queue_bypass_max_size) {
-					if(_syslog) {
-						u_long actTime = getTimeMS();
-						if(actTime - 1000 > this->lastTimeLogErrThread0BufferIsFull) {
-							syslog(LOG_ERR, "packetbuffer %s: THREAD0 BUFFER IS FULL", this->nameQueue.c_str());
-							this->lastTimeLogErrThread0BufferIsFull = actTime;
+			for(int i = 0; i < blockStoreCount; i++) {
+				if(i == blockStoreIndex ? blockStore[i]->full : blockStore[i]->isFull_checkTimout()) {
+					bool _syslog = true;
+					while((blockStoreBypassQueueSize = blockStoreBypassQueue.getUseSize()) > opt_pcap_queue_bypass_max_size) {
+						if(_syslog) {
+							u_long actTime = getTimeMS();
+							if(actTime - 1000 > this->lastTimeLogErrThread0BufferIsFull) {
+								syslog(LOG_ERR, "packetbuffer %s: THREAD0 BUFFER IS FULL", this->nameQueue.c_str());
+								this->lastTimeLogErrThread0BufferIsFull = actTime;
+							}
+							cout << "bypass buffer size " << blockStoreBypassQueue.getUseItems() << " (" << blockStoreBypassQueue.getUseSize() << ")" << endl;
+							_syslog = false;
+							++countBypassBufferSizeExceeded;
 						}
-						cout << "bypass buffer size " << blockStoreBypassQueue.getUseItems() << " (" << blockStoreBypassQueue.getUseSize() << ")" << endl;
-						_syslog = false;
-						++countBypassBufferSizeExceeded;
+						usleep(100);
+						maxBypassBufferSize = 0;
+						maxBypassBufferItems = 0;
 					}
-					usleep(100);
-					maxBypassBufferSize = 0;
-					maxBypassBufferItems = 0;
+					if(blockStoreBypassQueueSize > maxBypassBufferSize) {
+						maxBypassBufferSize = blockStoreBypassQueueSize;
+						maxBypassBufferItems = blockStoreBypassQueue.getUseItems();
+					}
+					blockStoreBypassQueue.push(blockStore[i]);
+					++sumBlocksCounterIn[0];
+					blockStore[i] = new pcap_block_store;
+					if(i == blockStoreIndex) {
+						blockStore[i]->add(header, packet, offset, dlink);
+					}
 				}
-				if(blockStoreBypassQueueSize > maxBypassBufferSize) {
-					maxBypassBufferSize = blockStoreBypassQueueSize;
-					maxBypassBufferItems = blockStoreBypassQueue.getUseItems();
-				}
-				blockStoreBypassQueue.push(blockStore);
-				++sumBlocksCounterIn[0];
-				blockStore = new pcap_block_store;
-				blockStore->add(header, packet, offset, dlink);
 			}
 			if(!TEST_PACKETS && destroy) {
 				free(header);
@@ -2602,8 +2635,10 @@ void* PcapQueue_readFromInterface::threadFunction(void *arg, unsigned int arg2) 
 				this->readThreads[minThreadTimeIndex]->moveREADIT();
 			}
 		}
-		if(blockStore) {
-			delete blockStore;
+		for(int i = 0; i < blockStoreCount; i++) {
+			if(blockStore[i]) {
+				delete blockStore[i];
+			}
 		}
 	} else {
 		while(!TERMINATING) {
@@ -3193,10 +3228,11 @@ void *PcapQueue_readFromFifo::writeThreadFunction(void *arg, unsigned int arg2) 
 							blockInfo_at_last = blockInfo[blockInfoCount].at;
 						}
 						++blockInfoCount;
-						while(blockInfoCount && 
-						      (blockInfo_utime_last - blockInfo_utime_first > (unsigned)opt_pcap_queue_dequeu_window_length * 1000 ||
-						       blockInfo_at_last - blockInfo_at_first > (unsigned)opt_pcap_queue_dequeu_window_length * 1000 ||
-						       blockInfoCount == blockInfoCountMax) &&
+						while(blockInfoCount &&
+                                                      ((blockInfo_utime_last - blockInfo_utime_first > (unsigned)opt_pcap_queue_dequeu_window_length * 1000 &&
+                                                        blockInfo_at_last - blockInfo_at_first > (unsigned)opt_pcap_queue_dequeu_window_length * 1000) ||
+                                                       blockInfo_at_last - blockInfo_at_first > (unsigned)opt_pcap_queue_dequeu_window_length * 1000 * 4 ||
+                                                       blockInfoCount == blockInfoCountMax) &&
 						      !TERMINATING) {
 							u_int64_t minUtime = 0;
 							int minUtimeIndexBlockInfo = -1;
@@ -3251,6 +3287,8 @@ void *PcapQueue_readFromFifo::writeThreadFunction(void *arg, unsigned int arg2) 
 									}
 								}
 							} else {
+								actBlockInfo->utime_first = (*actBlockInfo->blockStore)[actBlockInfo->count_processed].header->header_fix_size.ts_tv_sec * 1000000ull +
+											    (*actBlockInfo->blockStore)[actBlockInfo->count_processed].header->header_fix_size.ts_tv_usec;
 								blockInfo_utime_first = minUtime;
 							}
 						}
@@ -3665,7 +3703,12 @@ void PcapQueue_readFromFifo::processPacket(pcap_pkthdr_plus *header_plus, u_char
 	} else if(header->ts.tv_sec < this->_last_ts.tv_sec ||
 		  (header->ts.tv_sec == this->_last_ts.tv_sec &&
 		   header->ts.tv_usec < this->_last_ts.tv_usec)) {
-		syslog(LOG_NOTICE, "warning - bad packet order in processPacket");
+		static u_long lastTimeSyslog = 0;
+		u_long actTime = getTimeMS();
+		if(actTime - 1000 > lastTimeSyslog) {
+			syslog(LOG_NOTICE, "warning - bad packet order in processPacket");
+			lastTimeSyslog = actTime;
+		}
 	} else {
 		this->_last_ts = header->ts;
 	}
@@ -3740,8 +3783,8 @@ void PcapQueue_readFromFifo::processPacket(pcap_pkthdr_plus *header_plus, u_char
 	int voippacket = 0;
 	if(!useTcpReassembly && opt_enable_tcpreassembly != 2) {
 		process_packet(header_ip->saddr, htons(header_udp->source), header_ip->daddr, htons(header_udp->dest), 
-			data, datalen, this->getPcapHandle(dlt), header, packet, istcp, 0, 1, &was_rtp, header_ip, &voippacket, 0,
-			block_store, block_store_index, dlt, sensor_id);
+			       data, datalen, data - (char*)packet, this->getPcapHandle(dlt), header, packet, istcp, 0, 1, &was_rtp, header_ip, &voippacket, 0,
+			       block_store, block_store_index, dlt, sensor_id);
 	}
 
 	// if packet was VoIP add it to ipaccount

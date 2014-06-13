@@ -298,7 +298,7 @@ public:
 	 * @param saddr source IP adress of the packet
 	 * 
 	*/
-	void read_rtp(unsigned char *data, int datalen, struct pcap_pkthdr *header, struct iphdr2 *header_ip, u_int32_t saddr, u_int32_t daddr, unsigned short sport, unsigned short dport, int iscaller, int *record,
+	void read_rtp(unsigned char *data, int datalen, int dataoffset, struct pcap_pkthdr *header, struct iphdr2 *header_ip, u_int32_t saddr, u_int32_t daddr, unsigned short sport, unsigned short dport, int iscaller, int *record,
 		      char enable_save_packet, const u_char *packet, char istcp, int dlt, int sensor_id);
 
 	/**
@@ -312,7 +312,7 @@ public:
 	 * @param saddr source IP adress of the packet
 	 * 
 	*/
-	void read_rtcp(unsigned char*, int, pcap_pkthdr*, u_int32_t saddr, u_int32_t daddr, short unsigned int sport, short unsigned int dport, int iscaller,
+	void read_rtcp(unsigned char *data, int datalen, int dataoffset, pcap_pkthdr*, u_int32_t saddr, u_int32_t daddr, short unsigned int sport, short unsigned int dport, int iscaller,
 		       char enable_save_packet, const u_char *packet, char istcp, int dlt, int sensor_id);
 
 	/**
