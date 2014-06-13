@@ -213,6 +213,17 @@ bool pcap_block_store::add(pcap_pkthdr_plus *header, u_char *packet) {
 	return(this->add((pcap_pkthdr*)header, packet, header->offset, header->dlink));
 }
 
+bool pcap_block_store::isFull_checkTimout() {
+	if(this->full) {
+		return(true);
+	}
+	if((getTimeMS() - this->timestampMS) >= opt_pcap_queue_block_max_time_ms) {
+		this->full = true;
+		return(true);
+	}
+	return(false);
+}
+
 void pcap_block_store::destroy() {
 	if(this->offsets) {
 		free(this->offsets);
@@ -2572,31 +2583,35 @@ void* PcapQueue_readFromInterface::threadFunction(void *arg, unsigned int arg2) 
 			if(!blockStore[blockStoreIndex]->full) {
 				blockStore[blockStoreIndex]->add(header, packet, offset, dlink);
 			}
-			if(blockStore[blockStoreIndex]->full) {
-				bool _syslog = true;
-				while((blockStoreBypassQueueSize = blockStoreBypassQueue.getUseSize()) > opt_pcap_queue_bypass_max_size) {
-					if(_syslog) {
-						u_long actTime = getTimeMS();
-						if(actTime - 1000 > this->lastTimeLogErrThread0BufferIsFull) {
-							syslog(LOG_ERR, "packetbuffer %s: THREAD0 BUFFER IS FULL", this->nameQueue.c_str());
-							this->lastTimeLogErrThread0BufferIsFull = actTime;
+			for(int i = 0; i < blockStoreCount; i++) {
+				if(i == blockStoreIndex ? blockStore[i]->full : blockStore[i]->isFull_checkTimout()) {
+					bool _syslog = true;
+					while((blockStoreBypassQueueSize = blockStoreBypassQueue.getUseSize()) > opt_pcap_queue_bypass_max_size) {
+						if(_syslog) {
+							u_long actTime = getTimeMS();
+							if(actTime - 1000 > this->lastTimeLogErrThread0BufferIsFull) {
+								syslog(LOG_ERR, "packetbuffer %s: THREAD0 BUFFER IS FULL", this->nameQueue.c_str());
+								this->lastTimeLogErrThread0BufferIsFull = actTime;
+							}
+							cout << "bypass buffer size " << blockStoreBypassQueue.getUseItems() << " (" << blockStoreBypassQueue.getUseSize() << ")" << endl;
+							_syslog = false;
+							++countBypassBufferSizeExceeded;
 						}
-						cout << "bypass buffer size " << blockStoreBypassQueue.getUseItems() << " (" << blockStoreBypassQueue.getUseSize() << ")" << endl;
-						_syslog = false;
-						++countBypassBufferSizeExceeded;
+						usleep(100);
+						maxBypassBufferSize = 0;
+						maxBypassBufferItems = 0;
 					}
-					usleep(100);
-					maxBypassBufferSize = 0;
-					maxBypassBufferItems = 0;
+					if(blockStoreBypassQueueSize > maxBypassBufferSize) {
+						maxBypassBufferSize = blockStoreBypassQueueSize;
+						maxBypassBufferItems = blockStoreBypassQueue.getUseItems();
+					}
+					blockStoreBypassQueue.push(blockStore[i]);
+					++sumBlocksCounterIn[0];
+					blockStore[i] = new pcap_block_store;
+					if(i == blockStoreIndex) {
+						blockStore[i]->add(header, packet, offset, dlink);
+					}
 				}
-				if(blockStoreBypassQueueSize > maxBypassBufferSize) {
-					maxBypassBufferSize = blockStoreBypassQueueSize;
-					maxBypassBufferItems = blockStoreBypassQueue.getUseItems();
-				}
-				blockStoreBypassQueue.push(blockStore[blockStoreIndex]);
-				++sumBlocksCounterIn[0];
-				blockStore[blockStoreIndex] = new pcap_block_store;
-				blockStore[blockStoreIndex]->add(header, packet, offset, dlink);
 			}
 			if(!TEST_PACKETS && destroy) {
 				free(header);
@@ -3200,10 +3215,11 @@ void *PcapQueue_readFromFifo::writeThreadFunction(void *arg, unsigned int arg2) 
 							blockInfo_at_last = blockInfo[blockInfoCount].at;
 						}
 						++blockInfoCount;
-						while(blockInfoCount && 
-						      (blockInfo_utime_last - blockInfo_utime_first > (unsigned)opt_pcap_queue_dequeu_window_length * 1000 ||
-						       blockInfo_at_last - blockInfo_at_first > (unsigned)opt_pcap_queue_dequeu_window_length * 1000 ||
-						       blockInfoCount == blockInfoCountMax) &&
+						while(blockInfoCount &&
+                                                      ((blockInfo_utime_last - blockInfo_utime_first > (unsigned)opt_pcap_queue_dequeu_window_length * 1000 &&
+                                                        blockInfo_at_last - blockInfo_at_first > (unsigned)opt_pcap_queue_dequeu_window_length * 1000) ||
+                                                       blockInfo_at_last - blockInfo_at_first > (unsigned)opt_pcap_queue_dequeu_window_length * 1000 * 4 ||
+                                                       blockInfoCount == blockInfoCountMax) &&
 						      !TERMINATING) {
 							u_int64_t minUtime = 0;
 							int minUtimeIndexBlockInfo = -1;
