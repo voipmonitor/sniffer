@@ -146,6 +146,7 @@ extern int opt_enable_fraud;
 extern char opt_callidmerge_header[128];
 extern int opt_sdp_multiplication;
 extern int opt_hide_message_content;
+extern char opt_hide_message_content_secret[1024];
 
 SqlDb *sqlDbSaveCall = NULL;
 bool existsColumnCalldateInCdrNext = true;
@@ -2885,7 +2886,7 @@ Call::saveMessageToDb(bool enableBatchIfPossible) {
 	cdr.add(sqlEscapeString(fbasename), "fbasename");
 	if(message) {
 		if(opt_hide_message_content) {
-			cdr.add("SHA256: " + GetStringSHA256(message), "message");
+			cdr.add("SHA256: " + GetStringSHA256(trim_str(message) + trim_str(opt_hide_message_content_secret)), "message");
 		} else {
 			cdr.add(sqlEscapeString(message), "message");
 		}

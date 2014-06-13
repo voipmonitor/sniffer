@@ -1435,6 +1435,10 @@ std::string &trim(std::string &s) {
 	return(s);
 }
 
+std::string trim_str(std::string s) {
+	return(trim(s));
+}
+
 std::vector<std::string> &split(const std::string &s, char delim, std::vector<std::string> &elems) {
     std::stringstream ss(s);
     std::string item;

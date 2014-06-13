@@ -533,6 +533,7 @@ int opt_sip_send_before_packetbuffer = 0;
 
 int opt_enable_jitterbuffer_asserts = 0;
 int opt_hide_message_content = 0;
+char opt_hide_message_content_secret[1024] = "";
 
 
 #include <stdio.h>
@@ -2015,6 +2016,9 @@ int load_config(char *fname) {
 	if((value = ini.GetValue("general", "hide_message_content", NULL))) {
 		opt_hide_message_content = yesno(value);
 	}
+	if((value = ini.GetValue("general", "hide_message_content_secret", NULL))) {
+		strncpy(opt_hide_message_content_secret, value, sizeof(opt_hide_message_content_secret));
+	}
 
 	/*
 	
@@ -2824,7 +2828,7 @@ int main(int argc, char *argv[]) {
 		if(opt_pcap_queue_receive_from_ip_port) {
 			 opt_pcap_queue_dequeu_window_length = 2000;
 		} else if(strchr(ifname, ',')) {
-			 opt_pcap_queue_dequeu_window_length = 500;
+			 opt_pcap_queue_dequeu_window_length = 1000;
 		}
 	}
 

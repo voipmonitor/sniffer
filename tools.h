@@ -219,6 +219,7 @@ string getActDateTimeF();
 int get_unix_tid(void);
 unsigned long getUptime();
 std::string &trim(std::string &s);
+std::string trim_str(std::string s);
 std::vector<std::string> &split(const std::string &s, char delim, std::vector<std::string> &elems);
 std::vector<std::string> split(const std::string &s, char delim);
 std::vector<std::string> split(const char *s, const char *delim, bool enableTrim = false);

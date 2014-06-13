@@ -3674,7 +3674,12 @@ void PcapQueue_readFromFifo::processPacket(pcap_pkthdr_plus *header_plus, u_char
 	} else if(header->ts.tv_sec < this->_last_ts.tv_sec ||
 		  (header->ts.tv_sec == this->_last_ts.tv_sec &&
 		   header->ts.tv_usec < this->_last_ts.tv_usec)) {
-		syslog(LOG_NOTICE, "warning - bad packet order in processPacket");
+		static u_long lastTimeSyslog = 0;
+		u_long actTime = getTimeMS();
+		if(actTime - 1000 > lastTimeSyslog) {
+			syslog(LOG_NOTICE, "warning - bad packet order in processPacket");
+			lastTimeSyslog = actTime;
+		}
 	} else {
 		this->_last_ts = header->ts;
 	}

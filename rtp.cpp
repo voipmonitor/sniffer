@@ -654,7 +654,12 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 	   (header->ts.tv_sec < this->_last_ts.tv_sec ||
 	    (header->ts.tv_sec == this->_last_ts.tv_sec &&
 	     header->ts.tv_usec < this->_last_ts.tv_usec))) {
-		syslog(5 /*LOG_NOTICE*/, "warning - bad packet order in RTP::read - packet ignored");
+		static u_long lastTimeSyslog = 0;
+		u_long actTime = getTimeMS();
+		if(actTime - 1000 > lastTimeSyslog) {
+			syslog(5 /*LOG_NOTICE*/, "warning - bad packet order in RTP::read - packet ignored");
+			lastTimeSyslog = actTime;
+		}
 		return;
 	}
 	this->_last_ts = header->ts;
