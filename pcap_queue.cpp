@@ -217,7 +217,7 @@ bool pcap_block_store::isFull_checkTimout() {
 	if(this->full) {
 		return(true);
 	}
-	if((getTimeMS() - this->timestampMS) >= opt_pcap_queue_block_max_time_ms) {
+	if(this->size && (getTimeMS() - this->timestampMS) >= opt_pcap_queue_block_max_time_ms) {
 		this->full = true;
 		return(true);
 	}
@@ -2032,6 +2032,8 @@ PcapQueue_readFromInterfaceThread::PcapQueue_readFromInterfaceThread(const char 
 	this->prevThreads[0] = prevThread;
 	this->prevThreads[1] = prevThread2;
 	this->indexDefragQring = 0;
+	this->push_counter = 1;
+	this->pop_counter = 1;
 	pthread_create(&this->threadHandle, NULL, _PcapQueue_readFromInterfaceThread_threadFunction, this);
 }
 
@@ -2074,9 +2076,10 @@ PcapQueue_readFromInterfaceThread::~PcapQueue_readFromInterfaceThread() {
 	}
 }
 
-inline void PcapQueue_readFromInterfaceThread::push(pcap_pkthdr* header,u_char* packet, u_int offset, uint16_t *md5, int index) {
+inline void PcapQueue_readFromInterfaceThread::push(pcap_pkthdr* header,u_char* packet, u_int offset, uint16_t *md5, int index, uint32_t counter) {
+	uint32_t writeIndex = this->writeit[index] % this->qringmax;
 	//while(__sync_lock_test_and_set(&this->_sync_qring, 1));
-	while(this->qring[index][this->writeit[index] % this->qringmax].used == 1) {
+	while(this->qring[index][writeIndex].used == 1) {
 		//__sync_lock_release(&this->_sync_qring);
 		usleep(100);
 		//while(__sync_lock_test_and_set(&this->_sync_qring, 1));
@@ -2086,19 +2089,20 @@ inline void PcapQueue_readFromInterfaceThread::push(pcap_pkthdr* header,u_char* 
 		if(header->caplen > this->pcap_snaplen) {
 			header->caplen = this->pcap_snaplen;
 		}
-		memcpy(this->qring[index][this->writeit[index] % this->qringmax].header, header, sizeof(pcap_pkthdr));
-		memcpy(this->qring[index][this->writeit[index] % this->qringmax].packet, packet, header->caplen);
+		memcpy(this->qring[index][writeIndex].header, header, sizeof(pcap_pkthdr));
+		memcpy(this->qring[index][writeIndex].packet, packet, header->caplen);
 	} else {
-		this->qring[index][this->writeit[index] % this->qringmax].header = header;
-		this->qring[index][this->writeit[index] % this->qringmax].packet = packet;
+		this->qring[index][writeIndex].header = header;
+		this->qring[index][writeIndex].packet = packet;
 	}
-	this->qring[index][this->writeit[index] % this->qringmax].offset = offset;
+	this->qring[index][writeIndex].offset = offset;
 	if(md5) {
-		memcpy(this->qring[index][this->writeit[index] % this->qringmax].md5, md5, MD5_DIGEST_LENGTH);
+		memcpy(this->qring[index][writeIndex].md5, md5, MD5_DIGEST_LENGTH);
 	} else {
-		this->qring[index][this->writeit[index] % this->qringmax].md5[0] = 0;
+		this->qring[index][writeIndex].md5[0] = 0;
 	}
-	this->qring[index][this->writeit[index] % this->qringmax].used = 1;
+	this->qring[index][writeIndex].counter = counter;
+	this->qring[index][writeIndex].used = 1;
 	if((this->writeit[index] + 1) == this->qringmax) {
 		this->writeit[index] = 0;
 	} else {
@@ -2108,22 +2112,25 @@ inline void PcapQueue_readFromInterfaceThread::push(pcap_pkthdr* header,u_char* 
 }
 
 inline PcapQueue_readFromInterfaceThread::hpi PcapQueue_readFromInterfaceThread::pop(int index, bool moveReadit) {
+	uint32_t readIndex = this->readit[index] % this->qringmax;
 	//while(__sync_lock_test_and_set(&this->_sync_qring, 1));
 	hpi rslt_hpi;
-	if(this->qring[index][this->readit[index] % this->qringmax].used == 0) {
+	if(this->qring[index][readIndex].used == 0) {
 		rslt_hpi.header = NULL;
 		rslt_hpi.packet = NULL;
 		rslt_hpi.offset = 0;
 		rslt_hpi.md5[0] = 0;
+		rslt_hpi.counter = 0;
 		rslt_hpi.used = 0;
 	} else {
-		rslt_hpi.header = this->qring[index][this->readit[index] % this->qringmax].header;
-		rslt_hpi.packet = this->qring[index][this->readit[index] % this->qringmax].packet;
-		rslt_hpi.offset = this->qring[index][this->readit[index] % this->qringmax].offset;
-		memcpy(rslt_hpi.md5, this->qring[index][this->readit[index] % this->qringmax].md5, MD5_DIGEST_LENGTH);
+		rslt_hpi.header = this->qring[index][readIndex].header;
+		rslt_hpi.packet = this->qring[index][readIndex].packet;
+		rslt_hpi.offset = this->qring[index][readIndex].offset;
+		memcpy(rslt_hpi.md5, this->qring[index][readIndex].md5, MD5_DIGEST_LENGTH);
+		rslt_hpi.counter = this->qring[index][readIndex].counter;
 		rslt_hpi.used = 0;
 		if(moveReadit) {
-			this->qring[index][this->readit[index] % this->qringmax].used = 0;
+			this->qring[index][readIndex].used = 0;
 			if((this->readit[index] + 1) == this->qringmax) {
 				this->readit[index] = 0;
 			} else {
@@ -2258,12 +2265,17 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void *arg, unsigned int 
 				free(_packet);
 				continue;
 			}
-			this->push(header, packet, 0, NULL, this->indexDefragQring);
+			this->push(header, packet, 0, NULL, this->indexDefragQring, this->push_counter);
+			++this->push_counter;
+			if(!this->push_counter) {
+				++this->push_counter;
+			}
 			this->indexDefragQring = this->indexDefragQring ? 0 : 1;
 			}
 			break;
 		case md1:
 		case md2: {
+			uint32_t counter = 0;
 			hpi hpii = this->prevThreads[0]->pop(this->typeThread == md1 ? 0 : 1);
 			if(!hpii.packet) {
 				usleep(100);
@@ -2271,6 +2283,7 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void *arg, unsigned int 
 			} else {
 				header = _header = hpii.header;
 				packet = _packet = hpii.packet;
+				counter = hpii.counter;
 			}
 			res = this->pcapProcess(&header, &packet, &destroy,
 						false, true, false, false);
@@ -2285,34 +2298,34 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void *arg, unsigned int 
 				free(_packet);
 				continue;
 			}
-			this->push(header, packet, 0, this->ppd.md5);
+			this->push(header, packet, 0, this->ppd.md5, 0, counter);
 			}
 			break;
 		case dedup: {
 			if(opt_pcap_queue_iface_dedup_separate_threads_extend) {
-				int minThreadTimeIndex = -1;
-				u_int64_t minThreadTime = 0;
-				u_int64_t threadTime = 0;
+				int threadIndex = -1;
 				for(int i = 0; i < 2; i++) {
-					threadTime = this->prevThreads[i]->getTime_usec();
-					if(threadTime) {
-						if(minThreadTime == 0 || minThreadTime > threadTime) {
-							minThreadTimeIndex = i;
-							minThreadTime = threadTime;
-						}
+					uint32_t counter = this->prevThreads[i]->getCounter();
+					if(counter && this->pop_counter == counter) {
+						threadIndex = i;
+						break;
 					}
 				}
-				if(minThreadTimeIndex < 0) {
+				if(threadIndex < 0) {
 					usleep(100);
 					continue;
 				} else {
-					hpi hpii = this->prevThreads[minThreadTimeIndex]->pop();
+					hpi hpii = this->prevThreads[threadIndex]->pop();
 					if(!hpii.packet) {
 						usleep(100);
 						continue;
 					} else {
 						header = _header = hpii.header;
 						packet = _packet = hpii.packet;
+						++this->pop_counter;
+						if(!this->pop_counter) {
+							++this->pop_counter;
+						}
 					}
 					if(hpii.md5[0]) {
 						memcpy(this->ppd.md5, hpii.md5, MD5_DIGEST_LENGTH);
