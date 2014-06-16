@@ -274,15 +274,17 @@ bool SqlDb::queryByCurl(string query) {
 	cloud_data_rows = 0;
 	cloud_data_index = 0;
 	clearLastError();
-	bool ok;
+	bool ok = false;
 	vector<dstring> postData;
 	postData.push_back(dstring("query", query.c_str()));
 	postData.push_back(dstring("token", cloud_token));
 	for(unsigned int pass = 0; pass < this->maxQueryPass; pass++) {
-		ok = false;
+		if(pass > 0) {
+			sleep(1);
+			syslog(LOG_INFO, "next attempt %u - query: %s", pass, query.c_str());
+		}
 		SimpleBuffer responseBuffer;
 		string error;
-		bool tryNext = false;
 		get_url_response(cloud_redirect.empty() ? cloud_host.c_str() : cloud_redirect.c_str(),
 				 &responseBuffer, &postData, &error);
 		if(error.empty()) {
@@ -304,6 +306,7 @@ bool SqlDb::queryByCurl(string query) {
 							continue;
 						}
 					} else {
+						bool tryNext = true;
 						unsigned int errorCode = atol(result.c_str());
 						size_t posSeparator = result.find('|');
 						string errorString;
@@ -321,11 +324,16 @@ bool SqlDb::queryByCurl(string query) {
 						if(!sql_noerror) {
 							setLastError(errorCode, errorString.c_str(), true);
 						}
-						if(sql_noerror || sql_disable_next_attempt_if_error || this->disableNextAttemptIfError ||
-						   errorCode == ER_PARSE_ERROR) {
+						if(tryNext) {
+							if(sql_noerror || sql_disable_next_attempt_if_error || this->disableNextAttemptIfError ||
+							   errorCode == ER_PARSE_ERROR) {
+								break;
+							} else if(errorCode != CR_SERVER_GONE_ERROR &&
+								  pass < this->maxQueryPass - 5) {
+								pass = this->maxQueryPass - 5;
+							}
+						} else {
 							break;
-						} else if(pass < this->maxQueryPass - 5) {
-							pass = this->maxQueryPass - 5;
 						}
 					}
 					if(ok) {
@@ -362,10 +370,6 @@ bool SqlDb::queryByCurl(string query) {
 		} else {
 			setLastError(0, error.c_str(), true);
 		}
-		if(!ok && !tryNext) {
-			break;
-		}
-		sleep(1);
 	}
 	return(ok);
 }

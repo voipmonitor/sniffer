@@ -477,7 +477,7 @@ inline void save_packet(Call *call, struct pcap_pkthdr *header, const u_char *pa
 		unsigned long l;
 		char *s = gettag(data, datalen, "\nContent-Length:", &l);
 		if(l && l < (unsigned long)datalen) {
-			long contentLength = atol(s);
+			long int contentLength = atol(s);
 			if(contentLength) {
 				char *endHeaderSepPos = (char*)memmem(data, datalen, "\r\n\r\n", 4);
 				if(endHeaderSepPos) {
@@ -485,7 +485,7 @@ inline void save_packet(Call *call, struct pcap_pkthdr *header, const u_char *pa
 					packet = (const u_char*) new u_char[header->caplen];
 					memcpy((u_char*)packet, packet_orig, header->caplen);
 					u_char *message = (u_char*)packet + dataoffset + (endHeaderSepPos - data) + 4;
-					memset((u_char*)message, 'x', min(contentLength, header->caplen - (message - packet)));
+					memset((u_char*)message, 'x', min(contentLength, (long int)(header->caplen - (message - packet))));
 					allocPacket = true;
 				}
 			}

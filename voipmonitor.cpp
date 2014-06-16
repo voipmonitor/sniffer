@@ -3625,7 +3625,7 @@ int main(int argc, char *argv[]) {
 
 	Call *call;
 	calltable->cleanup(0);
-	if(opt_read_from_file && !opt_nocdr) {
+	if((opt_read_from_file || opt_pb_read_from_file[0]) && !opt_nocdr) {
 		for(int i = 0; i < 20; i++) {
 			if(calls_cdr_save_counter > 0 || calls_message_save_counter > 0) {
 				usleep(100000);
