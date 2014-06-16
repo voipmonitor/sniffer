@@ -3852,6 +3852,8 @@ void dropMysqlPartitionsCdr() {
 			char limitPartName[20] = "";
 			strftime(limitPartName, sizeof(limitPartName), "p%y%m%d", prevDayTime);
 			vector<string> partitions;
+			vector<string> partitions_http;
+			vector<string> partitions_enum;
 			if(counterDropPartitions == 0) {
 				sqlDb->query(string("select partition_name from information_schema.partitions where table_schema='") + 
 					     mysql_database+ "' and table_name='cdr' and partition_name<='" + limitPartName+ "' order by partition_name");
@@ -3859,8 +3861,25 @@ void dropMysqlPartitionsCdr() {
 				while((row = sqlDb->fetchRow())) {
 					partitions.push_back(row["partition_name"]);
 				}
+				if(opt_enable_lua_tables) {
+					sqlDb->query(string("select partition_name from information_schema.partitions where table_schema='") + 
+						     mysql_database+ "' and table_name='http_jj' and partition_name<='" + limitPartName+ "' order by partition_name");
+					SqlDb_row row;
+					while((row = sqlDb->fetchRow())) {
+						partitions_http.push_back(row["partition_name"]);
+					}
+					sqlDb->query(string("select partition_name from information_schema.partitions where table_schema='") + 
+						     mysql_database+ "' and table_name='enum_jj' and partition_name<='" + limitPartName+ "' order by partition_name");
+					while((row = sqlDb->fetchRow())) {
+						partitions_enum.push_back(row["partition_name"]);
+					}
+				}
 			} else {
 				partitions.push_back(limitPartName);
+				if(opt_enable_lua_tables) {
+					partitions_http.push_back(limitPartName);
+					partitions_enum.push_back(limitPartName);
+				}
 			}
 			for(size_t i = 0; i < partitions.size(); i++) {
 				syslog(LOG_NOTICE, "DROP CDR PARTITION %s", partitions[i].c_str());
@@ -3870,10 +3889,14 @@ void dropMysqlPartitionsCdr() {
 				sqlDb->query("ALTER TABLE cdr_dtmf DROP PARTITION " + partitions[i]);
 				sqlDb->query("ALTER TABLE cdr_proxy DROP PARTITION " + partitions[i]);
 				sqlDb->query("ALTER TABLE message DROP PARTITION " + partitions[i]);
-				if(opt_enable_lua_tables) {
-					sqlDb->query("ALTER TABLE enum_jj DROP PARTITION " + partitions[i]);
-					sqlDb->query("ALTER TABLE http_jj DROP PARTITION " + partitions[i]);
-				}
+			}
+			for(size_t i = 0; i < partitions_http.size(); i++) {
+				syslog(LOG_NOTICE, "DROP HTTP_JJ PARTITION %s", partitions_http[i].c_str());
+				sqlDb->query("ALTER TABLE http_jj DROP PARTITION " + partitions_http[i]);
+			}
+			for(size_t i = 0; i < partitions_enum.size(); i++) {
+				syslog(LOG_NOTICE, "DROP ENUM_JJ PARTITION %s", partitions_enum[i].c_str());
+				sqlDb->query("ALTER TABLE enum_jj DROP PARTITION " + partitions_enum[i]);
 			}
 		}
 		if(opt_cleandatabase_register_state > 0) {
