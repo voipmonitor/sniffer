@@ -1,3 +1,9 @@
+10.0RC31 13.6.2014
+==================
+- fix ordering packets in threading mode 4
+- fix drop http and enum partitions
+
+
 10.0RC30 13.6.2014
 ==================
 - fix proper packet ordering when sniffing on multiple interfaces or if receiving from multiple senders. bad order caused crash and other problems. 

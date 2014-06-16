@@ -2084,6 +2084,10 @@ int load_config(char *fname) {
 	if(!opt_pcap_split || opt_scanpcapdir[0] != '\0') {
 		opt_rtpsave_threaded = 0;
 	}
+	
+	if(opt_enable_tcpreassembly) {
+		opt_enable_lua_tables = true;
+	}
 
 	return 0;
 }
@@ -3621,7 +3625,7 @@ int main(int argc, char *argv[]) {
 
 	Call *call;
 	calltable->cleanup(0);
-	if(opt_read_from_file && !opt_nocdr) {
+	if((opt_read_from_file || opt_pb_read_from_file[0]) && !opt_nocdr) {
 		for(int i = 0; i < 20; i++) {
 			if(calls_cdr_save_counter > 0 || calls_message_save_counter > 0) {
 				usleep(100000);

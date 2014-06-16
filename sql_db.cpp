@@ -274,15 +274,17 @@ bool SqlDb::queryByCurl(string query) {
 	cloud_data_rows = 0;
 	cloud_data_index = 0;
 	clearLastError();
-	bool ok;
+	bool ok = false;
 	vector<dstring> postData;
 	postData.push_back(dstring("query", query.c_str()));
 	postData.push_back(dstring("token", cloud_token));
 	for(unsigned int pass = 0; pass < this->maxQueryPass; pass++) {
-		ok = false;
+		if(pass > 0) {
+			sleep(1);
+			syslog(LOG_INFO, "next attempt %u - query: %s", pass, query.c_str());
+		}
 		SimpleBuffer responseBuffer;
 		string error;
-		bool tryNext = false;
 		get_url_response(cloud_redirect.empty() ? cloud_host.c_str() : cloud_redirect.c_str(),
 				 &responseBuffer, &postData, &error);
 		if(error.empty()) {
@@ -304,6 +306,7 @@ bool SqlDb::queryByCurl(string query) {
 							continue;
 						}
 					} else {
+						bool tryNext = true;
 						unsigned int errorCode = atol(result.c_str());
 						size_t posSeparator = result.find('|');
 						string errorString;
@@ -321,11 +324,16 @@ bool SqlDb::queryByCurl(string query) {
 						if(!sql_noerror) {
 							setLastError(errorCode, errorString.c_str(), true);
 						}
-						if(sql_noerror || sql_disable_next_attempt_if_error || this->disableNextAttemptIfError ||
-						   errorCode == ER_PARSE_ERROR) {
+						if(tryNext) {
+							if(sql_noerror || sql_disable_next_attempt_if_error || this->disableNextAttemptIfError ||
+							   errorCode == ER_PARSE_ERROR) {
+								break;
+							} else if(errorCode != CR_SERVER_GONE_ERROR &&
+								  pass < this->maxQueryPass - 5) {
+								pass = this->maxQueryPass - 5;
+							}
+						} else {
 							break;
-						} else if(pass < this->maxQueryPass - 5) {
-							pass = this->maxQueryPass - 5;
 						}
 					}
 					if(ok) {
@@ -362,10 +370,6 @@ bool SqlDb::queryByCurl(string query) {
 		} else {
 			setLastError(0, error.c_str(), true);
 		}
-		if(!ok && !tryNext) {
-			break;
-		}
-		sleep(1);
 	}
 	return(ok);
 }
@@ -3852,6 +3856,8 @@ void dropMysqlPartitionsCdr() {
 			char limitPartName[20] = "";
 			strftime(limitPartName, sizeof(limitPartName), "p%y%m%d", prevDayTime);
 			vector<string> partitions;
+			vector<string> partitions_http;
+			vector<string> partitions_enum;
 			if(counterDropPartitions == 0) {
 				sqlDb->query(string("select partition_name from information_schema.partitions where table_schema='") + 
 					     mysql_database+ "' and table_name='cdr' and partition_name<='" + limitPartName+ "' order by partition_name");
@@ -3859,8 +3865,25 @@ void dropMysqlPartitionsCdr() {
 				while((row = sqlDb->fetchRow())) {
 					partitions.push_back(row["partition_name"]);
 				}
+				if(opt_enable_lua_tables) {
+					sqlDb->query(string("select partition_name from information_schema.partitions where table_schema='") + 
+						     mysql_database+ "' and table_name='http_jj' and partition_name<='" + limitPartName+ "' order by partition_name");
+					SqlDb_row row;
+					while((row = sqlDb->fetchRow())) {
+						partitions_http.push_back(row["partition_name"]);
+					}
+					sqlDb->query(string("select partition_name from information_schema.partitions where table_schema='") + 
+						     mysql_database+ "' and table_name='enum_jj' and partition_name<='" + limitPartName+ "' order by partition_name");
+					while((row = sqlDb->fetchRow())) {
+						partitions_enum.push_back(row["partition_name"]);
+					}
+				}
 			} else {
 				partitions.push_back(limitPartName);
+				if(opt_enable_lua_tables) {
+					partitions_http.push_back(limitPartName);
+					partitions_enum.push_back(limitPartName);
+				}
 			}
 			for(size_t i = 0; i < partitions.size(); i++) {
 				syslog(LOG_NOTICE, "DROP CDR PARTITION %s", partitions[i].c_str());
@@ -3870,10 +3893,14 @@ void dropMysqlPartitionsCdr() {
 				sqlDb->query("ALTER TABLE cdr_dtmf DROP PARTITION " + partitions[i]);
 				sqlDb->query("ALTER TABLE cdr_proxy DROP PARTITION " + partitions[i]);
 				sqlDb->query("ALTER TABLE message DROP PARTITION " + partitions[i]);
-				if(opt_enable_lua_tables) {
-					sqlDb->query("ALTER TABLE enum_jj DROP PARTITION " + partitions[i]);
-					sqlDb->query("ALTER TABLE http_jj DROP PARTITION " + partitions[i]);
-				}
+			}
+			for(size_t i = 0; i < partitions_http.size(); i++) {
+				syslog(LOG_NOTICE, "DROP HTTP_JJ PARTITION %s", partitions_http[i].c_str());
+				sqlDb->query("ALTER TABLE http_jj DROP PARTITION " + partitions_http[i]);
+			}
+			for(size_t i = 0; i < partitions_enum.size(); i++) {
+				syslog(LOG_NOTICE, "DROP ENUM_JJ PARTITION %s", partitions_enum[i].c_str());
+				sqlDb->query("ALTER TABLE enum_jj DROP PARTITION " + partitions_enum[i]);
 			}
 		}
 		if(opt_cleandatabase_register_state > 0) {
