@@ -2304,49 +2304,54 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void *arg, unsigned int 
 		case dedup: {
 			if(opt_pcap_queue_iface_dedup_separate_threads_extend) {
 				int threadIndex = -1;
+				uint32_t counter[2];
 				for(int i = 0; i < 2; i++) {
-					uint32_t counter = this->prevThreads[i]->getCounter();
-					if(counter && this->pop_counter == counter) {
+					counter[i] = this->prevThreads[i]->getCounter();
+					if(counter[i] && this->pop_counter == counter[i]) {
 						threadIndex = i;
 						break;
 					}
 				}
 				if(threadIndex < 0) {
+					if(counter[0] && counter[1]) {
+						threadIndex = counter[0] < counter[1] ? 0 : 1;
+						this->pop_counter = counter[threadIndex];
+					} else {
+						usleep(100);
+						continue;
+					}
+				}
+				hpi hpii = this->prevThreads[threadIndex]->pop();
+				if(!hpii.packet) {
 					usleep(100);
 					continue;
 				} else {
-					hpi hpii = this->prevThreads[threadIndex]->pop();
-					if(!hpii.packet) {
-						usleep(100);
-						continue;
-					} else {
-						header = _header = hpii.header;
-						packet = _packet = hpii.packet;
+					header = _header = hpii.header;
+					packet = _packet = hpii.packet;
+					++this->pop_counter;
+					if(!this->pop_counter) {
 						++this->pop_counter;
-						if(!this->pop_counter) {
-							++this->pop_counter;
-						}
 					}
-					if(hpii.md5[0]) {
-						memcpy(this->ppd.md5, hpii.md5, MD5_DIGEST_LENGTH);
-					} else {
-						this->ppd.md5[0] = 0;
-					}
-					res = this->pcapProcess(&header, &packet, &destroy,
-								false, false, true, true);
-					if(res == -1) {
-						break;
-					} else if(res == 0) {
-						if(destroy) {
-							if(header != _header) free(header);
-							if(packet != _packet) free(packet);
-						}
-						free(_header);
-						free(_packet);
-						continue;
-					}
-					this->push(header, packet, this->ppd.offset, NULL);
 				}
+				if(hpii.md5[0]) {
+					memcpy(this->ppd.md5, hpii.md5, MD5_DIGEST_LENGTH);
+				} else {
+					this->ppd.md5[0] = 0;
+				}
+				res = this->pcapProcess(&header, &packet, &destroy,
+							false, false, true, true);
+				if(res == -1) {
+					break;
+				} else if(res == 0) {
+					if(destroy) {
+						if(header != _header) free(header);
+						if(packet != _packet) free(packet);
+					}
+					free(_header);
+					free(_packet);
+					continue;
+				}
+				this->push(header, packet, this->ppd.offset, NULL);
 			} else {
 				hpi hpii = this->prevThreads[0]->pop(0, false);
 				if(!hpii.packet) {

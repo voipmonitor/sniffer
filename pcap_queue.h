@@ -368,7 +368,7 @@ public:
 		u_char* packet;
 		u_int offset;
 		uint16_t md5[MD5_DIGEST_LENGTH / (sizeof(uint16_t) / sizeof(unsigned char))];
-		uint32_t counter;
+		volatile uint32_t counter;
 		volatile char used;
 	};
 	PcapQueue_readFromInterfaceThread(const char *interfaceName, eTypeInterfaceThread typeThread = read,
