@@ -1726,6 +1726,17 @@ inline int PcapQueue_readFromInterface_base::pcap_next_ex_iface(pcap_t *pcapHand
 	} else if(res == 0) {
 		return(0);
 	}
+	/*
+	{static timeval last_ts;
+	 if(last_ts.tv_sec &&
+	    (last_ts.tv_sec > (*header)->ts.tv_sec ||
+	     (last_ts.tv_sec == (*header)->ts.tv_sec &&
+	      last_ts.tv_usec > (*header)->ts.tv_usec))) {
+		 cout << (last_ts.tv_usec - (*header)->ts.tv_usec) << " " << flush;
+	 }
+	 last_ts = (*header)->ts;
+	}
+	*/
 	return(1);
 }
 
@@ -3705,9 +3716,7 @@ void PcapQueue_readFromFifo::processPacket(pcap_pkthdr_plus *header_plus, u_char
 	
 	if(!this->_last_ts.tv_sec) {
 		this->_last_ts = header->ts;
-	} else if(header->ts.tv_sec < this->_last_ts.tv_sec ||
-		  (header->ts.tv_sec == this->_last_ts.tv_sec &&
-		   header->ts.tv_usec < this->_last_ts.tv_usec)) {
+	} else if(this->_last_ts.tv_sec * 1000000ull + this->_last_ts.tv_usec > header->ts.tv_sec * 1000000ull + header->ts.tv_usec + 1000) {
 		static u_long lastTimeSyslog = 0;
 		u_long actTime = getTimeMS();
 		if(actTime - 1000 > lastTimeSyslog) {
