@@ -1,3 +1,7 @@
+10.0RC32 13.6.2014
+==================
+- fix low MOS score when there is DTMF RFC2833 (broken since 10.0RC17 cca) 
+
 10.0RC31 13.6.2014
 ==================
 - fix ordering packets in threading mode 4
