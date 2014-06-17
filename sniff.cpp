@@ -516,7 +516,7 @@ inline void save_packet(Call *call, struct pcap_pkthdr *header, const u_char *pa
 				char pcapFilePath_spool_relative[1024];
 				snprintf(pcapFilePath_spool_relative , 1023, "%s/%s/%s.pcap", call->dirname().c_str(), opt_newdir ? "RTP" : "", call->get_fbasename_safe());
 				pcapFilePath_spool_relative[1023] = 0;
-				static char str2[1024];
+				char str2[1024];
 				if(opt_cachedir[0] != '\0') {
 					snprintf(str2, 1023, "%s/%s", opt_cachedir, pcapFilePath_spool_relative);
 				} else {
