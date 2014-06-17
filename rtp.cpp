@@ -673,7 +673,7 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 
 	Call *owner = (Call*)call_owner;
 
-//	if(getSSRC() != 0x1a75a920) return;
+//	if(getSSRC() != 0x2319f00a) return;
 
 	if(getVersion() != 2) {
 		return;
@@ -744,6 +744,7 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 		}
 		prev_payload = curpayload;
 		prev_codec = codec;
+		lastframetype = AST_FRAME_VOICE;
 		return;
 	}
 	if(curpayload == PAYLOAD_G729 and (payload_len <= 12 or payload_len == 22)) {
@@ -751,6 +752,7 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 		if(update_seq(seq)) {
 			update_stats();
 		}
+		lastframetype = AST_FRAME_VOICE;
 		return;
 	}
 	if(codec == PAYLOAD_TELEVENT) {
@@ -761,6 +763,7 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 		}
 		prev_payload = curpayload;
 		prev_codec = codec;
+		lastframetype = AST_FRAME_DTMF;
 		return;
 	}
 
