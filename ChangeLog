@@ -1,3 +1,8 @@
+10.0RC33 13.6.2014
+==================
+- fix error open handle to file  - No such file or directory due to race condition caused by static char
+- fix packet reorder warning
+
 10.0RC32 13.6.2014
 ==================
 - fix low MOS score when there is DTMF RFC2833 (broken since 10.0RC17 cca) 
