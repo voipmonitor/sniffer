@@ -2079,7 +2079,7 @@ pcap_dumper_t *__pcap_dump_open(pcap_t *p, const char *fname, int linktype, stri
 			hdr.snaplen = snaplen;
 			****/
 			hdr.thiszone = 0;
-			hdr.snaplen = 0;
+			hdr.snaplen = 10000;
 			hdr.sigfigs = 0;
 			hdr.linktype = linktype;
 			handler->write((char *)&hdr, sizeof(hdr));
