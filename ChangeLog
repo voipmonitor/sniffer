@@ -1,3 +1,9 @@
+10.0RC34 13.6.2014
+==================
+- set snaplen in pcap files 
+- add time shift information to syslog if detect bad packet order
+- move check bad packet order after check duplicity seq (in rtp)
+
 10.0RC33 13.6.2014
 ==================
 - fix error open handle to file  - No such file or directory due to race condition caused by static char
