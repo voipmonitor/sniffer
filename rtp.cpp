@@ -650,20 +650,6 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 	this->dport = dport;
 	this->ignore = 0;
 	
-	if(this->_last_ts.tv_sec &&
-	   (header->ts.tv_sec < this->_last_ts.tv_sec ||
-	    (header->ts.tv_sec == this->_last_ts.tv_sec &&
-	     header->ts.tv_usec < this->_last_ts.tv_usec))) {
-		static u_long lastTimeSyslog = 0;
-		u_long actTime = getTimeMS();
-		if(actTime - 1000 > lastTimeSyslog) {
-			syslog(5 /*LOG_NOTICE*/, "warning - bad packet order in RTP::read - packet ignored");
-			lastTimeSyslog = actTime;
-		}
-		return;
-	}
-	this->_last_ts = header->ts;
-	
 	if(this->first_packet_time == 0 and this->first_packet_usec == 0) {
 		this->first_packet_time = header->ts.tv_sec;
 		this->first_packet_usec = header->ts.tv_usec;
@@ -686,6 +672,21 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 		return;
 	}
 
+	if(this->_last_ts.tv_sec &&
+	   (header->ts.tv_sec < this->_last_ts.tv_sec ||
+	    (header->ts.tv_sec == this->_last_ts.tv_sec &&
+	     header->ts.tv_usec < this->_last_ts.tv_usec))) {
+		static u_long lastTimeSyslog = 0;
+		u_long actTime = getTimeMS();
+		if(actTime - 1000 > lastTimeSyslog) {
+			syslog(5 /*LOG_NOTICE*/, "warning - bad packet order (%llu us) in RTP::read - packet ignored",
+			       this->_last_ts.tv_sec * 1000000ull + this->_last_ts.tv_usec - header->ts.tv_sec * 1000000ull - header->ts.tv_usec);
+			lastTimeSyslog = actTime;
+		}
+		return;
+	}
+	this->_last_ts = header->ts;
+	
 	int curpayload = getPayload();
 //	printf("p[%d]\n", curpayload);
 
