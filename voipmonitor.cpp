@@ -340,7 +340,7 @@ int opt_create_old_partitions = 0;
 bool opt_disable_partition_operations = 0;
 vector<dstring> opt_custom_headers_cdr;
 vector<dstring> opt_custom_headers_message;
-int opt_custom_headers_last_value = 0;
+int opt_custom_headers_last_value = 1;
 
 char configfile[1024] = "";	// config file name
 
