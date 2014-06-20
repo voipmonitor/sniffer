@@ -60,6 +60,7 @@
 #define FLAG_RUNSCRIPT		(1 << 7)
 #define FLAG_RUNAMOSLQO		(1 << 8)
 #define FLAG_RUNBMOSLQO		(1 << 9)
+#define FLAG_HIDEMESSAGE	(1 << 10)
 
 typedef struct {
 	double ts;

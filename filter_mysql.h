@@ -26,12 +26,28 @@
 #define FLAG_BMOSLQO    (1 << 15)
 #define FLAG_ABMOSLQO   (1 << 16)
 #define FLAG_NOMOSLQO   (1 << 17)
+#define FLAG_HIDEMSG	(1 << 18)
+#define FLAG_SHOWMSG	(1 << 19)
 
 #define MAX_PREFIX 64
 
 class IPfilter {
 private:
 	struct db_row {
+		db_row() {
+			ip = 0;
+			mask = 0;
+			direction = 0;
+			rtp = 0;
+			sip = 0;
+			reg = 0;
+			graph = 0;
+			wav = 0;
+			skip = 0;
+			mos_lqo = 0;
+			script = 0;
+			hide_message = 0;
+		}
 		unsigned int ip;
 		int mask;
 		int direction;
@@ -43,17 +59,16 @@ private:
 		int skip;
 		int mos_lqo;
 		int script;
+		int hide_message;
 	};
         struct t_node {
 		unsigned int ip;
 		int mask;
 		int direction;
 		unsigned int flags;
-
                 t_node *next;
         };
         t_node *first_node;
-
 public: 
         IPfilter();
         ~IPfilter();
@@ -68,6 +83,19 @@ public:
 class TELNUMfilter {
 private:
 	struct db_row {
+		db_row() {
+			memset(prefix, 0, sizeof(prefix));
+			direction = 0;
+			rtp = 0;
+			sip = 0;
+			reg = 0;
+			graph = 0;
+			wav = 0;
+			skip = 0;
+			mos_lqo = 0;
+			script = 0;
+			hide_message = 0;
+		}
 		char prefix[MAX_PREFIX];
 		int direction;
 		int rtp;
@@ -78,6 +106,7 @@ private:
 		int skip;
 		int mos_lqo;
 		int script;
+		int hide_message;
 	};
 	struct t_payload {
 		char prefix[MAX_PREFIX];
@@ -100,4 +129,49 @@ public:
         void dump(t_node_tel *node = NULL);
 	void add_payload(t_payload *payload);
 	int add_call_flags(unsigned int *flags, char *telnum_src, char *telnum_dst);
+};
+
+class DOMAINfilter {
+private:
+	struct db_row {
+		db_row() {
+			direction = 0;
+			rtp = 0;
+			sip = 0;
+			reg = 0;
+			graph = 0;
+			wav = 0;
+			skip = 0;
+			mos_lqo = 0;
+			script = 0;
+			hide_message = 0;
+		}
+		std::string domain;
+		int direction;
+		int rtp;
+		int sip;
+		int reg;
+		int graph;
+		int wav;
+		int skip;
+		int mos_lqo;
+		int script;
+		int hide_message;
+	};
+        struct t_node {
+		std::string domain;
+		int direction;
+		unsigned int flags;
+		t_node *next;
+	};
+	t_node *first_node;
+public: 
+	DOMAINfilter();
+	~DOMAINfilter();
+
+	int count;
+	void load();
+	void dump();
+	int add_call_flags(unsigned int *flags, char *domain_src, char *domain_dst);
+
 };

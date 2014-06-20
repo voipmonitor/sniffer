@@ -100,6 +100,9 @@ extern int ipfilter_reload_do;
 extern TELNUMfilter *telnumfilter;
 extern TELNUMfilter *telnumfilter_reload;
 extern int telnumfilter_reload_do;
+extern DOMAINfilter *domainfilter;
+extern DOMAINfilter *domainfilter_reload;
+extern int domainfilter_reload_do;
 extern char user_filter[10*2048];
 extern Calltable *calltable;
 extern volatile int calls_counter;
@@ -3740,6 +3743,13 @@ void PcapQueue_readFromFifo::processPacket(pcap_pkthdr_plus *header_plus, u_char
 		telnumfilter = telnumfilter_reload;
 		telnumfilter_reload = NULL;
 		telnumfilter_reload_do = 0; 
+	}
+	
+	if(domainfilter_reload_do) {
+		delete domainfilter;
+		domainfilter = domainfilter_reload;
+		domainfilter_reload = NULL;
+		domainfilter_reload_do = 0; 
 	}
 	
 	if(header_plus->offset < 0) {
