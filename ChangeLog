@@ -59,6 +59,7 @@ Bugfixes
 
 New features 
 ------------
+- add support for capture rules by domain
 - parse multiple SIP messages carried in one TCP packet 
 - add call per second and sip packets per second to the syslog info line
 - if the call timeouts due to absolute timeout mark this in cdr.bye - 103 so the GUI can alert / see it
@@ -82,6 +83,8 @@ New features
 - sip_send_ip = 127.0.0.1 (or 127.0.0.1:12345) sip_send_port = 12345 will send text SIP messages to TCP socket 
 - implement skip flag also for cisco skinny protocol
 - sccp skinny: record RTP stream for some cases where signalization does not contain conference number = call reference which fixes ampty RTP
+- use only first detect value for custom headers or last if set configuration value custom_headers_last_value
+
 
 
 9.3 10.2.2014

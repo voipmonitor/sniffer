@@ -1762,16 +1762,18 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 			`id` int NOT NULL AUTO_INCREMENT,\
 			`ip` int unsigned DEFAULT NULL,\
 			`mask` int DEFAULT NULL,\
-			`direction` tinyint DEFAULT '0',\
-			`rtp` tinyint DEFAULT '0',\
-			`sip` tinyint DEFAULT '0',\
-			`register` tinyint DEFAULT '0',\
-			`graph` tinyint DEFAULT '0',\
-			`wav` tinyint DEFAULT '0',\
-			`skip` tinyint DEFAULT '0',\
-			`script` tinyint DEFAULT '0',\
-			`mos_lqo` tinyint DEFAULT '0',\
+			`direction` tinyint DEFAULT NULL,\
+			`rtp` tinyint DEFAULT NULL,\
+			`sip` tinyint DEFAULT NULL,\
+			`register` tinyint DEFAULT NULL,\
+			`graph` tinyint DEFAULT NULL,\
+			`wav` tinyint DEFAULT NULL,\
+			`skip` tinyint DEFAULT NULL,\
+			`script` tinyint DEFAULT NULL,\
+			`mos_lqo` tinyint DEFAULT NULL,\
+			`hide_message` tinyint DEFAULT NULL,\
 			`note` text,\
+			`remove_at` date default NULL,\
 		PRIMARY KEY (`id`)\
 	) ENGINE=InnoDB DEFAULT CHARSET=latin1;");
 
@@ -1780,20 +1782,41 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 			`id` int NOT NULL AUTO_INCREMENT,\
 			`prefix` bigint unsigned DEFAULT NULL,\
 			`fixed_len` int unsigned DEFAULT '0',\
-			`direction` tinyint DEFAULT '0',\
-			`rtp` tinyint DEFAULT '0',\
-			`sip` tinyint DEFAULT '0',\
-			`register` tinyint DEFAULT '0',\
-			`graph` tinyint DEFAULT '0',\
-			`wav` tinyint DEFAULT '0',\
-			`skip` tinyint DEFAULT '0',\
-			`script` tinyint DEFAULT '0',\
-			`mos_lqo` tinyint DEFAULT '0',\
+			`direction` tinyint DEFAULT NULL,\
+			`rtp` tinyint DEFAULT NULL,\
+			`sip` tinyint DEFAULT NULL,\
+			`register` tinyint DEFAULT NULL,\
+			`graph` tinyint DEFAULT NULL,\
+			`wav` tinyint DEFAULT NULL,\
+			`skip` tinyint DEFAULT NULL,\
+			`script` tinyint DEFAULT NULL,\
+			`mos_lqo` tinyint DEFAULT NULL,\
+			`hide_message` tinyint DEFAULT NULL,\
 			`note` text,\
+			`remove_at` date default NULL,\
 		PRIMARY KEY (`id`)\
 	) ENGINE=InnoDB DEFAULT CHARSET=latin1;");
 	}
 
+	this->query(
+	"CREATE TABLE IF NOT EXISTS `filter_domain` (\
+			`id` int NOT NULL AUTO_INCREMENT,\
+			`domain` char(128) DEFAULT NULL,\
+			`direction` tinyint DEFAULT NULL,\
+			`rtp` tinyint DEFAULT NULL,\
+			`sip` tinyint DEFAULT NULL,\
+			`register` tinyint DEFAULT NULL,\
+			`graph` tinyint DEFAULT NULL,\
+			`wav` tinyint DEFAULT NULL,\
+			`skip` tinyint DEFAULT NULL,\
+			`script` tinyint DEFAULT NULL,\
+			`mos_lqo` tinyint DEFAULT NULL,\
+			`hide_message` tinyint DEFAULT NULL,\
+			`note` text,\
+			`remove_at` date default NULL,\
+		PRIMARY KEY (`id`)\
+	) ENGINE=InnoDB DEFAULT CHARSET=latin1;");
+	
 	this->query(string(
 	"CREATE TABLE IF NOT EXISTS `cdr_sip_response") + federatedSuffix + "` (\
 			`id` smallint unsigned NOT NULL AUTO_INCREMENT,\
@@ -2610,6 +2633,16 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 
 	//9.4
 	this->query("ALTER TABLE sensor_conf ADD `sip-register-timeout` tinyint DEFAULT 5;");
+
+	//
+	this->query("ALTER TABLE filter_ip\
+			ADD `hide_message` tinyint default NULL;");
+	this->query("ALTER TABLE filter_telnum\
+			ADD `hide_message` tinyint default NULL;");
+	this->query("ALTER TABLE filter_ip\
+			ADD `remove_at` date default NULL;");
+	this->query("ALTER TABLE filter_telnum\
+			ADD `remove_at` date default NULL;");
 
 	sql_noerror = 0;
 

@@ -149,6 +149,9 @@ extern int ipfilter_reload_do;
 extern TELNUMfilter *telnumfilter;
 extern TELNUMfilter *telnumfilter_reload;
 extern int telnumfilter_reload_do;
+extern DOMAINfilter *domainfilter;
+extern DOMAINfilter *domainfilter_reload;
+extern int domainfilter_reload_do;
 extern int rtp_threaded;
 extern int opt_pcap_threaded;
 extern int opt_rtpsave_threaded;
@@ -179,6 +182,7 @@ extern int opt_read_from_file;
 extern int opt_saverfc2833;
 extern vector<dstring> opt_custom_headers_cdr;
 extern vector<dstring> opt_custom_headers_message;
+extern int opt_custom_headers_last_value;
 extern livesnifferfilter_use_siptypes_s livesnifferfilterUseSipTypes;
 extern int opt_skipdefault;
 extern TcpReassembly *tcpReassembly;
@@ -1357,6 +1361,32 @@ Call *new_invite_register(int sip_method, char *data, int datalen, struct pcap_p
 			strcpy(tcalled, tcalled_invite);
 		}
 	}
+	
+	//caller and called domain has to be checked before flags due to skip filter 
+	char tcaller_domain[1024] = "", tcalled_domain[1024] = "";
+	// caller domain 
+	if(anonymous_useRemotePartyID) {
+		get_sip_domain(data,datalen,"\nRemote-Party-ID:", tcaller_domain, sizeof(tcaller_domain));
+	} else {
+		res = get_sip_domain(data,datalen,"\nFrom:", tcaller_domain, sizeof(tcaller_domain));
+		if(res) {
+			// try compact header
+			get_sip_domain(data,datalen,"\nf:", tcaller_domain, sizeof(tcaller_domain));
+		}
+	}
+	// called domain 
+	res = get_sip_domain(data,datalen,"\nTo:", tcalled_domain, sizeof(tcalled_domain));
+	if(res) {
+		// try compact header
+		get_sip_domain(data,datalen,"\nt:", tcalled_domain, sizeof(tcalled_domain));
+	}
+	if(sip_method == INVITE && opt_destination_number_mode == 2) {
+		char tcalled_domain_invite[256] = "";
+		get_sip_domain(data,datalen,"INVITE ", tcalled_domain_invite, sizeof(tcalled_domain_invite));
+		if(tcalled_domain_invite[0] != '\0') {
+			strcpy(tcalled_domain, tcalled_domain_invite);
+		}
+	}
 
 	//flags
 	if(opt_saveSIP)
@@ -1377,8 +1407,12 @@ Call *new_invite_register(int sip_method, char *data, int datalen, struct pcap_p
 	if(opt_skipdefault)
 		flags |= FLAG_SKIPCDR;
 
+	if(opt_hide_message_content)
+		flags |= FLAG_HIDEMESSAGE;
+
 	ipfilter->add_call_flags(&flags, ntohl(saddr), ntohl(daddr));
 	telnumfilter->add_call_flags(&flags, tcaller, tcalled);
+	domainfilter->add_call_flags(&flags, tcaller_domain, tcalled_domain);
 
 	if(flags & FLAG_SKIPCDR) {
 		if(verbosity > 1)
@@ -1444,29 +1478,10 @@ Call *new_invite_register(int sip_method, char *data, int datalen, struct pcap_p
 		strncpy(call->called, tcalled, sizeof(call->called));
 
 		// caller domain 
-		if(anonymous_useRemotePartyID) {
-			get_sip_domain(data,datalen,"\nRemote-Party-ID:", call->caller_domain, sizeof(call->caller_domain));
-		} else {
-			res = get_sip_domain(data,datalen,"\nFrom:", call->caller_domain, sizeof(call->caller_domain));
-			if(res) {
-				// try compact header
-				get_sip_domain(data,datalen,"\nf:", call->caller_domain, sizeof(call->caller_domain));
-			}
-		}
+		strncpy(call->caller_domain, tcaller_domain, sizeof(call->caller_domain));
 
 		// called domain 
-		res = get_sip_domain(data,datalen,"\nTo:", call->called_domain, sizeof(call->called_domain));
-		if(res) {
-			// try compact header
-			get_sip_domain(data,datalen,"\nt:", call->called_domain, sizeof(call->called_domain));
-		}
-		if(sip_method == INVITE && opt_destination_number_mode == 2) {
-			char tcalled_domain_invite[256] = "";
-			get_sip_domain(data,datalen,"INVITE ", tcalled_domain_invite, sizeof(tcalled_domain_invite));
-			if(tcalled_domain_invite[0] != '\0') {
-				strcpy(call->called_domain, tcalled_domain_invite);
-			}
-		}
+		strncpy(call->called_domain, tcalled_domain, sizeof(call->called_domain));
 
 		if(sip_method == REGISTER) {	
 			// destroy all REGISTER from memory within 30 seconds 
@@ -3088,6 +3103,10 @@ void process_packet__parse_custom_headers(Call *call, char *data, int datalen) {
 	size_t iCustHeaders;
 	unsigned long gettagLimitLen = 0;
 	for(iCustHeaders = 0; iCustHeaders < _customHeaders->size(); iCustHeaders++) {
+		map<string, string>::iterator iter = call->custom_headers.find((*_customHeaders)[iCustHeaders][1]);
+		if(iter != call->custom_headers.end() && !opt_custom_headers_last_value) {
+			continue;
+		}
 		string findHeader = (*_customHeaders)[iCustHeaders][0];
 		if(findHeader[findHeader.length() - 1] != ':') {
 			findHeader.append(":");
@@ -3098,20 +3117,7 @@ void process_packet__parse_custom_headers(Call *call, char *data, int datalen) {
 			char customHeaderContent[256];
 			memcpy(customHeaderContent, s, min(l, 255lu));
 			customHeaderContent[min(l, 255lu)] = '\0';
-			dstring customHeaderNameValue((*_customHeaders)[iCustHeaders][1],customHeaderContent);
-			bool exists = false;
-			for(size_t i = 0; i < call->custom_headers.size(); i++) {
-				if(call->custom_headers[i] == customHeaderNameValue) {
-					exists = true;
-					break;
-				}
-			}
-			if(!exists) {
-				call->custom_headers.push_back(customHeaderNameValue);
-				//cout << "---" << call->call_id << " / " << (*_customHeaders)[iCustHeaders][1] << " / " << "[" << customHeaderContent << "]" << endl;
-			}
-			if(verbosity > 2)
-				syslog(LOG_NOTICE, "Seen header %s: %s\n", (*_customHeaders)[iCustHeaders][0].c_str(), customHeaderContent);
+			call->custom_headers[(*_customHeaders)[iCustHeaders][1]] = customHeaderContent;
 		}
 	}
 }
@@ -3739,6 +3745,13 @@ void readdump_libpcap(pcap_t *handle) {
 			telnumfilter = telnumfilter_reload;
 			telnumfilter_reload = NULL;
 			telnumfilter_reload_do = 0; 
+		}
+
+		if(domainfilter_reload_do) {
+			delete domainfilter;
+			domainfilter = domainfilter_reload;
+			domainfilter_reload = NULL;
+			domainfilter_reload_do = 0; 
 		}
 
 		numpackets++;	

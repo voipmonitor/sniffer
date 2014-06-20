@@ -340,6 +340,7 @@ int opt_create_old_partitions = 0;
 bool opt_disable_partition_operations = 0;
 vector<dstring> opt_custom_headers_cdr;
 vector<dstring> opt_custom_headers_message;
+int opt_custom_headers_last_value = 1;
 
 char configfile[1024] = "";	// config file name
 
@@ -440,9 +441,13 @@ IPfilter *ipfilter = NULL;		// IP filter based on MYSQL
 IPfilter *ipfilter_reload = NULL;	// IP filter based on MYSQL for reload purpose
 int ipfilter_reload_do = 0;	// for reload in main thread
 
-TELNUMfilter *telnumfilter = NULL;		// IP filter based on MYSQL 
-TELNUMfilter *telnumfilter_reload = NULL;	// IP filter based on MYSQL for reload purpose
+TELNUMfilter *telnumfilter = NULL;		// TELNUM filter based on MYSQL 
+TELNUMfilter *telnumfilter_reload = NULL;	// TELNUM filter based on MYSQL for reload purpose
 int telnumfilter_reload_do = 0;	// for reload in main thread
+
+DOMAINfilter *domainfilter = NULL;		// DOMAIN filter based on MYSQL 
+DOMAINfilter *domainfilter_reload = NULL;	// DOMAIN filter based on MYSQL for reload purpose
+int domainfilter_reload_do = 0;	// for reload in main thread
 
 pthread_t call_thread;		// ID of worker storing CDR thread 
 pthread_t readdump_libpcap_thread;
@@ -1346,6 +1351,9 @@ int load_config(char *fname) {
 			}
 		}
 	}
+	if((value = ini.GetValue("general", "custom_headers_last_value", NULL))) {
+		opt_custom_headers_last_value = yesno(value);
+	}
 	if((value = ini.GetValue("general", "savesip", NULL))) {
 		opt_saveSIP = yesno(value);
 	}
@@ -2114,6 +2122,14 @@ void reload_capture_rules() {
 	telnumfilter_reload = new TELNUMfilter;
 	telnumfilter_reload->load();
 	telnumfilter_reload_do = 1;
+
+	if(domainfilter_reload) {
+		delete domainfilter_reload;
+	}
+
+	domainfilter_reload = new DOMAINfilter;
+	domainfilter_reload->load();
+	domainfilter_reload_do = 1;
 }
 
 #ifdef BACKTRACE
@@ -3094,6 +3110,7 @@ int main(int argc, char *argv[]) {
 	if(opt_test) {
 		ipfilter = new IPfilter;
 		telnumfilter = new TELNUMfilter;
+		domainfilter =  new DOMAINfilter;
 		test();
 		if(sqlStore) {
 			delete sqlStore;
@@ -3242,25 +3259,22 @@ int main(int argc, char *argv[]) {
 	setrlimit(RLIMIT_CORE, &rlp);
 
 	ipfilter = new IPfilter;
+	telnumfilter = new TELNUMfilter;
+	domainfilter = new DOMAINfilter;
 	if(!opt_nocdr &&
 	   !(opt_pcap_threaded && opt_pcap_queue && 
 	     !opt_pcap_queue_receive_from_ip_port &&
 	     opt_pcap_queue_send_to_ip_port)) {
 		ipfilter->load();
+		telnumfilter->load();
+		domainfilter->load();
 	}
 //	ipfilter->dump();
+//	telnumfilter->dump();
+//	domainfilter->dump();
 
 	if(opt_ipaccount and !ipaccountportmatrix) {
 		ipaccountportmatrix = (char*)calloc(1, sizeof(char) * 65537);
-	}
-
-
-	telnumfilter = new TELNUMfilter;
-	if(!opt_nocdr &&
-	   !(opt_pcap_threaded && opt_pcap_queue && 
-	     !opt_pcap_queue_receive_from_ip_port &&
-	     opt_pcap_queue_send_to_ip_port)) {
-		telnumfilter->load();
 	}
 
 	// filters are ok, we can daemonize 
@@ -3736,6 +3750,10 @@ int main(int argc, char *argv[]) {
 	if(telnumfilter) {
 		delete telnumfilter;
 		telnumfilter = NULL;
+	}
+	if(domainfilter) {
+		delete domainfilter;
+		domainfilter = NULL;
 	}
 	
 	if(opt_enable_fraud) {

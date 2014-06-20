@@ -2055,8 +2055,8 @@ Call::saveToDb(bool enableBatchIfPossible) {
 	if(strlen(custom_header1)) {
 		cdr_next.add(sqlEscapeString(custom_header1), "custom_header1");
 	}
-	for(size_t iCustHeaders = 0; iCustHeaders < custom_headers.size(); iCustHeaders++) {
-		cdr_next.add(sqlEscapeString(custom_headers[iCustHeaders][1]), custom_headers[iCustHeaders][0]);
+	for(map<string, string>::iterator iCustHeadersIter = custom_headers.begin(); iCustHeadersIter != custom_headers.end(); iCustHeadersIter++) {
+		cdr_next.add(sqlEscapeString(iCustHeadersIter->second), iCustHeadersIter->first);
 	}
 	if(existsColumnCalldateInCdrNext) {
 		cdr_next.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
@@ -2885,7 +2885,7 @@ Call::saveMessageToDb(bool enableBatchIfPossible) {
 	}
 	cdr.add(sqlEscapeString(fbasename), "fbasename");
 	if(message) {
-		if(opt_hide_message_content) {
+		if(flags && FLAG_HIDEMESSAGE) {
 			cdr.add("SHA256: " + GetStringSHA256(trim_str(message) + trim_str(opt_hide_message_content_secret)), "message");
 		} else {
 			cdr.add(sqlEscapeString(message), "message");
@@ -2901,8 +2901,8 @@ Call::saveMessageToDb(bool enableBatchIfPossible) {
 		cdr_next.add(sqlEscapeString(custom_header1), "custom_header1");
 	}
 */
-	for(size_t iCustHeaders = 0; iCustHeaders < custom_headers.size(); iCustHeaders++) {
-		cdr.add(sqlEscapeString(custom_headers[iCustHeaders][1]), custom_headers[iCustHeaders][0]);
+	for(map<string, string>::iterator iCustHeadersIter = custom_headers.begin(); iCustHeadersIter != custom_headers.end(); iCustHeadersIter++) {
+		cdr.add(sqlEscapeString(iCustHeadersIter->second), iCustHeadersIter->first);
 	}
 
 
