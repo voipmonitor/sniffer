@@ -182,6 +182,7 @@ extern int opt_read_from_file;
 extern int opt_saverfc2833;
 extern vector<dstring> opt_custom_headers_cdr;
 extern vector<dstring> opt_custom_headers_message;
+extern int opt_custom_headers_last_value;
 extern livesnifferfilter_use_siptypes_s livesnifferfilterUseSipTypes;
 extern int opt_skipdefault;
 extern TcpReassembly *tcpReassembly;
@@ -3102,6 +3103,10 @@ void process_packet__parse_custom_headers(Call *call, char *data, int datalen) {
 	size_t iCustHeaders;
 	unsigned long gettagLimitLen = 0;
 	for(iCustHeaders = 0; iCustHeaders < _customHeaders->size(); iCustHeaders++) {
+		map<string, string>::iterator iter = call->custom_headers.find((*_customHeaders)[iCustHeaders][1]);
+		if(iter != call->custom_headers.end() && !opt_custom_headers_last_value) {
+			continue;
+		}
 		string findHeader = (*_customHeaders)[iCustHeaders][0];
 		if(findHeader[findHeader.length() - 1] != ':') {
 			findHeader.append(":");
@@ -3112,20 +3117,7 @@ void process_packet__parse_custom_headers(Call *call, char *data, int datalen) {
 			char customHeaderContent[256];
 			memcpy(customHeaderContent, s, min(l, 255lu));
 			customHeaderContent[min(l, 255lu)] = '\0';
-			dstring customHeaderNameValue((*_customHeaders)[iCustHeaders][1],customHeaderContent);
-			bool exists = false;
-			for(size_t i = 0; i < call->custom_headers.size(); i++) {
-				if(call->custom_headers[i] == customHeaderNameValue) {
-					exists = true;
-					break;
-				}
-			}
-			if(!exists) {
-				call->custom_headers.push_back(customHeaderNameValue);
-				//cout << "---" << call->call_id << " / " << (*_customHeaders)[iCustHeaders][1] << " / " << "[" << customHeaderContent << "]" << endl;
-			}
-			if(verbosity > 2)
-				syslog(LOG_NOTICE, "Seen header %s: %s\n", (*_customHeaders)[iCustHeaders][0].c_str(), customHeaderContent);
+			call->custom_headers[(*_customHeaders)[iCustHeaders][1]] = customHeaderContent;
 		}
 	}
 }

@@ -233,7 +233,7 @@ public:
 
 	string geoposition;
 	
-	vector<dstring> custom_headers;
+	map<string, string> custom_headers;
 
 	list<unsigned int> proxies;
 	

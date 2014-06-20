@@ -340,6 +340,7 @@ int opt_create_old_partitions = 0;
 bool opt_disable_partition_operations = 0;
 vector<dstring> opt_custom_headers_cdr;
 vector<dstring> opt_custom_headers_message;
+int opt_custom_headers_last_value = 0;
 
 char configfile[1024] = "";	// config file name
 
@@ -1349,6 +1350,9 @@ int load_config(char *fname) {
 				pos = posSep ? posSep + 1 : NULL;
 			}
 		}
+	}
+	if((value = ini.GetValue("general", "custom_headers_last_value", NULL))) {
+		opt_custom_headers_last_value = yesno(value);
 	}
 	if((value = ini.GetValue("general", "savesip", NULL))) {
 		opt_saveSIP = yesno(value);
