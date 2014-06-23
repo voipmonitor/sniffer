@@ -63,7 +63,6 @@ extern Call *process_packet(unsigned int saddr, int source, unsigned int daddr, 
 			    pcap_block_store *block_store, int block_store_index, int dlt, int sensor_id,
 			    bool mainProcess = true, int sipOffset = 0);
 extern int check_sip20(char *data, unsigned long len);
-extern iphdr2 *convertHeaderIP_GRE(iphdr2 *header_ip);
 
 extern int verbosity;
 extern int verbosityE;
@@ -176,6 +175,9 @@ static unsigned long maxBypassBufferSize;
 static unsigned long countBypassBufferSizeExceeded;
 
 extern MySqlStore *sqlStore;
+
+
+#include "sniff_inline.h"
 
 
 bool pcap_block_store::add(pcap_pkthdr *header, u_char *packet, int offset, int dlink) {
@@ -1539,16 +1541,22 @@ void PcapQueue::processBeforeAddToPacketBuffer(pcap_pkthdr* header,u_char* packe
 	}
  
 	iphdr2 *header_ip = (iphdr2*)(packet + offset);
-	if(header_ip->protocol == IPPROTO_IPIP) {
-		// ip in ip protocol
-		header_ip = (iphdr2*)((char*)header_ip + sizeof(iphdr2));
-	} else if(header_ip->protocol == IPPROTO_GRE) {
-		// gre protocol
-		header_ip = convertHeaderIP_GRE(header_ip);
-		if(!header_ip) {
-			return;
+	bool nextPass;
+	do {
+		nextPass = false;
+		if(header_ip->protocol == IPPROTO_IPIP) {
+			// ip in ip protocol
+			header_ip = (iphdr2*)((char*)header_ip + sizeof(iphdr2));
+		} else if(header_ip->protocol == IPPROTO_GRE) {
+			// gre protocol
+			header_ip = convertHeaderIP_GRE(header_ip);
+			if(header_ip) {
+				nextPass = true;
+			} else {
+				return;
+			}
 		}
-	}
+	} while(nextPass);
 
 	char *data = NULL;
 	int datalen = 0;
@@ -1745,200 +1753,9 @@ inline int PcapQueue_readFromInterface_base::pcap_next_ex_iface(pcap_t *pcapHand
 
 inline int PcapQueue_readFromInterface_base::pcapProcess(pcap_pkthdr** header, u_char** packet, bool *destroy,
 							 bool enableDefrag, bool enableCalcMD5, bool enableDedup, bool enableDump) {
-	*destroy = false;
-	switch(this->pcapLinklayerHeaderType) {
-		case DLT_LINUX_SLL:
-			ppd.header_sll = (sll_header*)*packet;
-			ppd.protocol = ppd.header_sll->sll_protocol;
-			if(ppd.header_sll->sll_protocol == 129) {
-				// VLAN tag
-				ppd.protocol = *(short*)(*packet + 16 + 2);
-				ppd.offset = 4;
-			} else {
-				ppd.offset = 0;
-				ppd.protocol = ppd.header_sll->sll_protocol;
-			}
-			ppd.offset += sizeof(sll_header);
-			break;
-		case DLT_EN10MB:
-			ppd.header_eth = (ether_header *)*packet;
-			if(ppd.header_eth->ether_type == 129) {
-				// VLAN tag
-				ppd.offset = 4;
-				//XXX: this is very ugly hack, please do it right! (it will work for "08 00" which is IPV4 but not for others! (find vlan_header or something)
-				ppd.protocol = *(*packet + sizeof(ether_header) + 2);
-			} else {
-				ppd.offset = 0;
-				ppd.protocol = ppd.header_eth->ether_type;
-			}
-			ppd.offset += sizeof(ether_header);
-			break;
-		case DLT_RAW:
-			ppd.offset = 0;
-			ppd.protocol = 8;
-			break;
-		case DLT_IEEE802_11_RADIO:
-			ppd.offset = 52;
-			ppd.protocol = 8;
-			break;
-		default:
-			syslog(LOG_ERR, "packetbuffer - %s: datalink number [%d] is not supported", this->getInterfaceName().c_str(), this->pcapLinklayerHeaderType);
-			return(0);
-	}
-	if(ppd.protocol != 8) {
-		// not ipv4 
-		return(0);
-	}
-	
-	ppd.header_ip = (iphdr2*)(*packet + ppd.offset);
-	
-	if(ppd.header_ip->protocol == IPPROTO_IPIP) {
-		// ip in ip protocol
-		ppd.header_ip = (iphdr2*)((char*)ppd.header_ip + sizeof(iphdr2));
-	} else if(ppd.header_ip->protocol == IPPROTO_GRE) {
-		// gre protocol
-		iphdr2 *header_ip = convertHeaderIP_GRE(ppd.header_ip);
-		if(header_ip) {
-			ppd.header_ip = header_ip;
-		} else {
-			if(opt_ipaccount == 0) {
-				return(0);
-			}
-		}
-	}
-                                               
-	if(enableDefrag) {
-	 
-		//if UDP defrag is enabled process only UDP packets and only SIP packets
-		if(opt_udpfrag && (ppd.header_ip->protocol == IPPROTO_UDP || ppd.header_ip->protocol == 4)) {
-			int foffset = ntohs(ppd.header_ip->frag_off);
-			if ((foffset & IP_MF) || ((foffset & IP_OFFSET) > 0)) {
-				// packet is fragmented
-				if(handle_defrag(ppd.header_ip, header, packet, 0, &ppd.ipfrag_data)) {
-					// packets are reassembled
-					ppd.header_ip = (iphdr2*)(*packet + ppd.offset);
-					*destroy = true;
-				} else {
-					return(0);
-				}
-			}
-		}
-
-		if(ppd.header_ip->protocol == 4) {
-			ppd.header_ip = (iphdr2*)((char*)ppd.header_ip + sizeof(iphdr2));
-
-			//if UDP defrag is enabled process only UDP packets and only SIP packets
-			if(opt_udpfrag && ppd.header_ip->protocol == IPPROTO_UDP) {
-				int foffset = ntohs(ppd.header_ip->frag_off);
-				if ((foffset & IP_MF) || ((foffset & IP_OFFSET) > 0)) {
-					// packet is fragmented
-					pcap_pkthdr* header_old = *header;
-					u_char* packet_old = *packet;
-					if(handle_defrag(ppd.header_ip, header, packet, 0, &ppd.ipfrag_data)) {
-						// packet was returned
-						iphdr2 *header_ip_1 = (iphdr2*)(*packet + ppd.offset);
-
-						// turn off frag flag in the first IP header
-						header_ip_1->frag_off = 0;
-
-						// turn off frag flag in the second IP header
-						ppd.header_ip = (iphdr2*)((char*)header_ip_1 + sizeof(iphdr2));
-						ppd.header_ip->frag_off = 0;
-
-						// update lenght of the first ip header to the len of the second IP header since it can be changed due to reassemble
-						header_ip_1->tot_len = htons((ntohs(ppd.header_ip->tot_len)) + sizeof(iphdr2));
-
-						if(*destroy) {
-							free(header_old);
-							free(packet_old);
-						}
-						*destroy = true;
-					} else {
-						return(0);
-					}
-				}
-			}
-		}
-		
-		// if IP defrag is enabled, run each 10 seconds cleaning 
-		if(opt_udpfrag && (ppd.ipfrag_lastprune + 10) < (*header)->ts.tv_sec) {
-			ipfrag_prune((*header)->ts.tv_sec, 0, &ppd.ipfrag_data);
-			ppd.ipfrag_lastprune = (*header)->ts.tv_sec;
-			//TODO it would be good to still pass fragmented packets even it does not contain the last semant, the ipgrad_prune just wipes all unfinished frags
-		}
-	}
-
-	ppd.header_udp = &ppd.header_udp_tmp;
-	if (ppd.header_ip->protocol == IPPROTO_UDP) {
-		// prepare packet pointers 
-		ppd.header_udp = (udphdr2*) ((char*) ppd.header_ip + sizeof(*ppd.header_ip));
-		ppd.data = (char*) ppd.header_udp + sizeof(*ppd.header_udp);
-		ppd.datalen = (int)((*header)->caplen - ((unsigned long) ppd.data - (unsigned long) *packet)); 
-		ppd.traillen = (int)((*header)->caplen - ((unsigned long) ppd.header_ip - (unsigned long) *packet)) - ntohs(ppd.header_ip->tot_len);
-		ppd.istcp = 0;
-	} else if (ppd.header_ip->protocol == IPPROTO_TCP) {
-		ppd.istcp = 1;
-		// prepare packet pointers 
-		ppd.header_tcp = (tcphdr2*) ((char*) ppd.header_ip + sizeof(*ppd.header_ip));
-		ppd.data = (char*) ppd.header_tcp + (ppd.header_tcp->doff * 4);
-		ppd.datalen = (int)((*header)->caplen - ((unsigned long) ppd.data - (unsigned long) *packet)); 
-		if (!(sipportmatrix[htons(ppd.header_tcp->source)] || sipportmatrix[htons(ppd.header_tcp->dest)]) &&
-		    !(opt_enable_tcpreassembly && (httpportmatrix[htons(ppd.header_tcp->source)] || httpportmatrix[htons(ppd.header_tcp->dest)]) &&
-		      (tcpReassembly->check_ip(htonl(ppd.header_ip->saddr)) || tcpReassembly->check_ip(htonl(ppd.header_ip->daddr)))) &&
-		    !(opt_skinny && (htons(ppd.header_tcp->source) == 2000 || htons(ppd.header_tcp->dest) == 2000))) {
-			// not interested in TCP packet other than SIP port
-			if(opt_ipaccount == 0 && !DEBUG_ALL_PACKETS) {
-				return(0);
-			}
-		}
-
-		ppd.header_udp->source = ppd.header_tcp->source;
-		ppd.header_udp->dest = ppd.header_tcp->dest;
-	} else {
-		//packet is not UDP and is not TCP, we are not interested, go to the next packet (but if ipaccount is enabled, do not skip IP
-		if(opt_ipaccount == 0 && !DEBUG_ALL_PACKETS) {
-			return(0);
-		}
-	}
-
-	if(ppd.datalen < 0) {
-		return(0);
-	}
-
-	if(enableCalcMD5 || enableDedup) {
-		/* check for duplicate packets (md5 is expensive operation - enable only if you really need it */
-		if(ppd.datalen > 0 && opt_dup_check && ppd.prevmd5s != NULL && (ppd.traillen < ppd.datalen) &&
-		   !(ppd.istcp && opt_enable_tcpreassembly && (httpportmatrix[htons(ppd.header_tcp->source)] || httpportmatrix[htons(ppd.header_tcp->dest)]))) {
-			if(enableCalcMD5) {
-				MD5_Init(&ppd.ctx);
-				if(opt_dup_check_ipheader) {
-					// check duplicates based on full ip header and data 
-					MD5_Update(&ppd.ctx, ppd.header_ip, MIN(ppd.datalen - ((char*)ppd.header_ip - ppd.data), ntohs(ppd.header_ip->tot_len)));
-				} else {
-					// check duplicates based only on data (without ip header and without UDP/TCP header). Duplicate packets 
-					// will be matched regardless on IP 
-					MD5_Update(&ppd.ctx, ppd.data, MAX(0, (unsigned long)ppd.datalen - ppd.traillen));
-				}
-				MD5_Final((unsigned char*)ppd.md5, &ppd.ctx);
-			}
-			if(enableDedup && ppd.md5[0]) {
-				if(memcmp(ppd.md5, ppd.prevmd5s + (*ppd.md5 * MD5_DIGEST_LENGTH), MD5_DIGEST_LENGTH) == 0) {
-					//printf("dropping duplicate md5[%s]\n", md5);
-					duplicate_counter++;
-					return(0);
-				}
-				memcpy(ppd.prevmd5s+(*ppd.md5 * MD5_DIGEST_LENGTH), ppd.md5, MD5_DIGEST_LENGTH);
-			}
-		}
-	}
-	
-	if(enableDump) {
-		if(this->pcapDumpHandle) {
-			pcap_dump((u_char*)this->pcapDumpHandle, *header, *packet);
-		}
-	}
-	
-	return(1);
+	return(::pcapProcess(header, packet, destroy,
+			     enableDefrag, enableCalcMD5, enableDedup, enableDump,
+			     &ppd, pcapLinklayerHeaderType, pcapDumpHandle, getInterfaceName().c_str()));
 }
 
 string PcapQueue_readFromInterface_base::pcapStatString_interface(int statPeriod) {
@@ -2246,7 +2063,7 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void *arg, unsigned int 
 					}
 					continue;
 				}
-				this->push(header, packet, this->ppd.offset, NULL);
+				this->push(header, packet, this->ppd.header_ip_offset, NULL);
 			} else {
 				this->push(header, packet, 0, NULL);
 			}
@@ -2365,7 +2182,7 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void *arg, unsigned int 
 					free(_packet);
 					continue;
 				}
-				this->push(header, packet, this->ppd.offset, NULL);
+				this->push(header, packet, this->ppd.header_ip_offset, NULL);
 			} else {
 				hpi hpii = this->prevThreads[0]->pop(0, false);
 				if(!hpii.packet) {
@@ -2387,7 +2204,7 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void *arg, unsigned int 
 					this->prevThreads[0]->moveReadit();
 					continue;
 				}
-				this->push(header, packet, this->ppd.offset, NULL);
+				this->push(header, packet, this->ppd.header_ip_offset, NULL);
 				this->prevThreads[0]->moveReadit();
 			}
 			}
@@ -2601,7 +2418,7 @@ void* PcapQueue_readFromInterface::threadFunction(void *arg, unsigned int arg2) 
 					}
 					continue;
 				}
-				offset = this->ppd.offset;
+				offset = this->ppd.header_ip_offset;
 			}
 			++sumPacketsCounterIn[0];
 			if(TEST_PACKETS) {
@@ -2680,7 +2497,7 @@ void* PcapQueue_readFromInterface::threadFunction(void *arg, unsigned int arg2) 
 			if(__config_USE_PCAP_FOR_FIFO) {
 				pcap_dump((u_char*)this->fifoWritePcapDumper, header, packet);
 			} else {
-				pcap_pkthdr_plus header_plus(*header, this->ppd.offset, dlink);
+				pcap_pkthdr_plus header_plus(*header, this->ppd.header_ip_offset, dlink);
 				this->writePcapToFifo(&header_plus, packet);
 			}
 			if(destroy) {
@@ -3758,19 +3575,25 @@ void PcapQueue_readFromFifo::processPacket(pcap_pkthdr_plus *header_plus, u_char
 	
 	header_ip = (iphdr2*)(packet + header_plus->offset);
 
-	if(header_ip->protocol == IPPROTO_IPIP) {
-		// ip in ip protocol
-		header_ip = (iphdr2*)((char*)header_ip + sizeof(iphdr2));
-	} else if(header_ip->protocol == IPPROTO_GRE) {
-		// gre protocol
-		header_ip = convertHeaderIP_GRE(header_ip);
-		if(!header_ip) {
-			if(opt_ipaccount) {
-				ipaccount(header->ts.tv_sec, (iphdr2*) ((char*)(packet) + header_plus->offset), header->len - header_plus->offset, false);
+	bool nextPass;
+	do {
+		nextPass = false;
+		if(header_ip->protocol == IPPROTO_IPIP) {
+			// ip in ip protocol
+			header_ip = (iphdr2*)((char*)header_ip + sizeof(iphdr2));
+		} else if(header_ip->protocol == IPPROTO_GRE) {
+			// gre protocol
+			header_ip = convertHeaderIP_GRE(header_ip);
+			if(header_ip) {
+				nextPass = true;
+			} else {
+				if(opt_ipaccount) {
+					ipaccount(header->ts.tv_sec, (iphdr2*) ((char*)(packet) + header_plus->offset), header->len - header_plus->offset, false);
+				}
+				return;
 			}
-			return;
 		}
-	}
+	} while(nextPass);
 
 	header_udp = &header_udp_tmp;
 	if (header_ip->protocol == IPPROTO_UDP) {
