@@ -239,7 +239,6 @@ map<unsigned int, livesnifferfilter_t*> usersniffer;
 #define ENABLE_CONVERT_DLT_SLL_TO_EN10(dlt)	(dlt == DLT_LINUX_SLL && opt_convert_dlt_sll_to_en10 && global_pcap_handle_dead_EN10MB)
 
 
-#include "pcap_queue.h"
 #include "sniff_inline.h"
 
 
