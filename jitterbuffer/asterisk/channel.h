@@ -357,7 +357,8 @@ struct ast_channel {
 	int jitter_resync_threshold;
 	int last_datalen;
 	struct timeval last_ts;       /*!< The time that an in process digit began, or the last digit ended */
-	char lastbuf[1024];
+	char *lastbuf;
+	int lastbufsize;
 	int lastbuflen;
 	int codec;
 	int resync; 	/*!< if jitterbuffer resync is allowed */
