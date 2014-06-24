@@ -2885,7 +2885,7 @@ Call::saveMessageToDb(bool enableBatchIfPossible) {
 	}
 	cdr.add(sqlEscapeString(fbasename), "fbasename");
 	if(message) {
-		if(flags && FLAG_HIDEMESSAGE) {
+		if(flags & FLAG_HIDEMESSAGE) {
 			cdr.add("SHA256: " + GetStringSHA256(trim_str(message) + trim_str(opt_hide_message_content_secret)), "message");
 		} else {
 			cdr.add(sqlEscapeString(message), "message");
