@@ -380,6 +380,14 @@ void jb_fixed_flush_deliver(struct ast_channel *chan)
 			if(chan->audiobuf)
 				circbuf_write(chan->audiobuf,f->data, f->datalen);
 			//save last frame
+			if(!chan->lastbuf) {
+				chan->lastbufsize = f->datalen > 1600 ? f->datalen : 1600;
+				chan->lastbuf = (char*)malloc(chan->lastbufsize);
+			} else if(chan->lastbufsize < f->datalen) {
+				free(chan->lastbuf);
+				chan->lastbufsize = f->datalen;
+				chan->lastbuf = (char*)malloc(chan->lastbufsize);
+			}
 			memcpy(chan->lastbuf, f->data, f->datalen);
 			chan->lastbuflen = f->datalen; 
 			ast_frfree(f);
@@ -563,6 +571,14 @@ static void jb_get_and_deliver(struct ast_channel *chan, struct timeval *mynow)
 					circbuf_write(chan->audiobuf, f->data, f->datalen);
 				}
 				//save last frame
+				if(!chan->lastbuf) {
+					chan->lastbufsize = f->datalen > 1600 ? f->datalen : 1600;
+					chan->lastbuf = (char*)malloc(chan->lastbufsize);
+				} else if(chan->lastbufsize < f->datalen) {
+					free(chan->lastbuf);
+					chan->lastbufsize = f->datalen;
+					chan->lastbuf = (char*)malloc(chan->lastbufsize);
+				}
 				memcpy(chan->lastbuf, f->data, f->datalen);
 				chan->lastbuflen = f->datalen;
 			}
@@ -673,6 +689,13 @@ static int create_jb(struct ast_channel *chan, struct ast_frame *frr, struct tim
 
 void ast_jb_destroy(struct ast_channel *chan)
 {
+	if(chan->lastbuf) {
+		free(chan->lastbuf);
+		chan->lastbuf = NULL;
+		chan->lastbufsize = 0;
+		chan->lastbuflen = 0;
+	}
+	
 	struct ast_jb *jb = &chan->jb;
 	struct ast_jb_impl *jbimpl = jb->impl;
 	void *jbobj = jb->jbobj;

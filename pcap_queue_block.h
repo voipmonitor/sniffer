@@ -8,7 +8,7 @@
 #include <pcap.h>
 #include <string>
 
-#define PCAP_BLOCK_STORE_HEADER_STRING		"pcap_block_st_02"
+#define PCAP_BLOCK_STORE_HEADER_STRING		"pcap_block_st_03"
 #define PCAP_BLOCK_STORE_HEADER_STRING_LEN	16
 
 
@@ -77,6 +77,7 @@ struct pcap_block_store {
 			this->count = 0;
 			this->dlink = 0;
 			this->sensor_id = 0;
+			memset(this->ifname, 0, sizeof(this->ifname));
 		}
 		char title[PCAP_BLOCK_STORE_HEADER_STRING_LEN];
 		uint32_t size;
@@ -84,6 +85,7 @@ struct pcap_block_store {
 		uint32_t count;
 		uint16_t dlink;
 		int16_t sensor_id;
+		char ifname[10];
 	};
 	pcap_block_store() {
 		this->offsets = NULL;
@@ -195,6 +197,7 @@ struct pcap_block_store {
 	bool full;
 	uint16_t dlink;
 	int16_t sensor_id;
+	char ifname[10];
 	u_char *restoreBuffer;
 	size_t restoreBufferSize;
 	size_t restoreBufferAllocSize;

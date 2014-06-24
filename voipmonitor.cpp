@@ -186,6 +186,7 @@ int verbosity = 0;		// debug level
 int verbosityE = 0;		// debug extended level
 int opt_rtp_firstleg = 0;	// if == 1 then save RTP stream only for first INVITE leg in case you are 
 				// sniffing on SIP proxy where voipmonitor see both SIP leg. 
+int opt_rtp_check_timestamp = 0;
 int opt_jitterbuffer_f1 = 1;		// turns off/on jitterbuffer simulator to compute MOS score mos_f1
 int opt_jitterbuffer_f2 = 1;		// turns off/on jitterbuffer simulator to compute MOS score mos_f2
 int opt_jitterbuffer_adapt = 1;		// turns off/on jitterbuffer simulator to compute MOS score mos_adapt
@@ -1266,6 +1267,9 @@ int load_config(char *fname) {
 	}
 	if((value = ini.GetValue("general", "rtp-firstleg", NULL))) {
 		opt_rtp_firstleg = yesno(value);
+	}
+	if((value = ini.GetValue("general", "rtp-check-timestamp", NULL))) {
+		opt_rtp_check_timestamp = yesno(value);
 	}
 	if((value = ini.GetValue("general", "allow-zerossrc", NULL))) {
 		opt_allow_zerossrc = yesno(value);

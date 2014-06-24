@@ -308,7 +308,7 @@ struct pcapProcessData {
 	udphdr2 *header_udp;
 	udphdr2 header_udp_tmp;
 	int protocol;
-	u_int offset;
+	u_int header_ip_offset;
 	char *data;
 	int datalen;
 	int traillen;

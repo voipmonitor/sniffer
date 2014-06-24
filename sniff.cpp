@@ -201,7 +201,6 @@ extern int opt_hide_message_content;
 extern sem_t readpacket_thread_semaphore;
 #endif
 
-iphdr2 *convertHeaderIP_GRE(iphdr2 *header_ip);
 static char * gettag(const void *ptr, unsigned long len, const char *tag, unsigned long *gettaglen, unsigned long *limitLen = NULL);
 static void logPacketSipMethodCall(int sip_method, int lastSIPresponseNum, pcap_pkthdr *header, Call *call, const char *descr = NULL);
 #define logPacketSipMethodCall_enable ((opt_read_from_file && verbosity > 2) || verbosityE > 1)
@@ -238,6 +237,10 @@ extern struct queue_state *qs_readpacket_thread_queue;
 map<unsigned int, livesnifferfilter_t*> usersniffer;
 
 #define ENABLE_CONVERT_DLT_SLL_TO_EN10(dlt)	(dlt == DLT_LINUX_SLL && opt_convert_dlt_sll_to_en10 && global_pcap_handle_dead_EN10MB)
+
+
+#include "sniff_inline.h"
+
 
 // return IP from nat_aliases[ip] or 0 if not found
 in_addr_t match_nat_aliases(in_addr_t ip) {
@@ -1276,7 +1279,8 @@ void *rtp_read_thread_func(void *arg) {
 			}  else {
 				int monitor;
 				rtpp_pq.call->read_rtp(rtpp_pq.data, rtpp_pq.datalen, rtpp_pq.dataoffset, &rtpp_pq.pkthdr_pcap.header->header_std, NULL, rtpp_pq.saddr, rtpp_pq.daddr, rtpp_pq.sport, rtpp_pq.dport, rtpp_pq.iscaller, &monitor,
-						       rtpp_pq.save_packet, rtpp_pq.packet, rtpp_pq.istcp, rtpp_pq.dlt, rtpp_pq.sensor_id);
+						       rtpp_pq.save_packet, rtpp_pq.packet, rtpp_pq.istcp, rtpp_pq.dlt, rtpp_pq.sensor_id,
+						       rtpp_pq.block_store && rtpp_pq.block_store->ifname[0] ? rtpp_pq.block_store->ifname : NULL);
 			}
 			rtpp_pq.call->set_last_packet_time(rtpp_pq.pkthdr_pcap.header->header_std.ts.tv_sec);
 			rtpp_pq.block_store->unlock_packet(rtpp_pq.block_store_index);
@@ -2885,7 +2889,8 @@ rtpcheck:
 				}
 			} else {
 				call->read_rtp((unsigned char*) data, datalen, dataoffset, header, NULL, saddr, daddr, source, dest, iscaller, &record,
-					       false, packet, istcp, dlt, sensor_id);
+					       false, packet, istcp, dlt, sensor_id,
+					       block_store && block_store->ifname[0] ? block_store->ifname : NULL);
 				call->set_last_packet_time(header->ts.tv_sec);
 			}
 			if((!rtp_threaded || !opt_rtpsave_threaded) &&
@@ -2978,7 +2983,8 @@ rtpcheck:
 				*was_rtp = 1;
 			} else {
 				call->read_rtp((unsigned char*) data, datalen, dataoffset, header, NULL, saddr, daddr, source, dest, !iscaller, &record,
-					       false, packet, istcp, dlt, sensor_id);
+					       false, packet, istcp, dlt, sensor_id,
+					       block_store && block_store->ifname[0] ? block_store->ifname : NULL);
 				call->set_last_packet_time(header->ts.tv_sec);
 			}
 			if((!rtp_threaded || !opt_rtpsave_threaded) &&
@@ -3324,15 +3330,22 @@ void *pcap_read_thread_func(void *arg) {
 
 		header_ip = (struct iphdr2 *) ((char*)packet + pp->offset);
 
-		if(header_ip->protocol == IPPROTO_IPIP) {
-			// ip in ip protocol
-			header_ip = (struct iphdr2 *) ((char*)header_ip + sizeof(iphdr2));
-		} else if(header_ip->protocol == IPPROTO_GRE) {
-			// gre protocol 
-			header_ip = convertHeaderIP_GRE(header_ip);
-			if(!header_ip) {
-				continue;
+		bool nextPass;
+		do {
+			nextPass = false;
+			if(header_ip->protocol == IPPROTO_IPIP) {
+				// ip in ip protocol
+				header_ip = (struct iphdr2 *) ((char*)header_ip + sizeof(iphdr2));
+			} else if(header_ip->protocol == IPPROTO_GRE) {
+				// gre protocol 
+				header_ip = convertHeaderIP_GRE(header_ip);
+				if(header_ip) {
+					nextPass = true;
+				}
 			}
+		} while(nextPass);
+		if(!header_ip) {
+			continue;
 		}
 
 		header_udp = &header_udp_tmp;
@@ -3660,39 +3673,14 @@ void readdump_libpcap(pcap_t *handle) {
 	pcap_pkthdr *header;	// The header that pcap gives us
 	const u_char *packetpcap = NULL;		// The actual packet 
 	u_char *packet = NULL;		// The actual packet 
-	struct ether_header *header_eth;
-	struct sll_header *header_sll;
-	struct iphdr2 *header_ip;
-	struct udphdr2 *header_udp = NULL;
-	struct udphdr2 header_udp_tmp;
-	struct tcphdr2 *header_tcp = NULL;
-	char *data = NULL;
-	int datalen = 0;
-	int res;
-	int protocol = 0;
-	unsigned int offset;
-	int istcp = 0;
+	bool destroy;
 	int was_rtp;
-	unsigned char md5[MD5_DIGEST_LENGTH];
-	unsigned char *prevmd5s = NULL;
-	int destroy = 0;
-	unsigned int ipfrag_lastprune = 0;
-	int traillen = 0;
-
-	// Space to remember up to 65536 previous packet hashes.
-	// We use 2 bytes of the md5 hash as the hash (index) by which we access this table.
-	// there is no "overflow", so duplicates just overwrite the previous
-	// therefore we won't actually remember the last 64k packets - it will be less and a little bit non-determinate
-	// but the idea is to answer the question: "did we recently see a packet with this exact md5 hash" without needing a linear search
-	if (opt_dup_check)
-		prevmd5s = (unsigned char *)calloc(65536, MD5_DIGEST_LENGTH); // 1M
+	pcapProcessData ppd;
 
 	global_pcap_dlink = pcap_datalink(handle);
 	if(verbosity > 0) {
 		syslog(LOG_NOTICE, "DLT: %i", global_pcap_dlink);
 	}
-
-	MD5_CTX ctx;
 
 	init_hash();
 
@@ -3706,7 +3694,7 @@ void readdump_libpcap(pcap_t *handle) {
 
 	while (!terminating) {
 		destroy = 0;
-		res = pcap_next_ex(handle, &headerpcap, &packetpcap);
+		int res = pcap_next_ex(handle, &headerpcap, &packetpcap);
 		packet = (u_char *)packetpcap;
 		header = headerpcap;
 		
@@ -3754,8 +3742,19 @@ void readdump_libpcap(pcap_t *handle) {
 			domainfilter_reload_do = 0; 
 		}
 
-		numpackets++;	
+		numpackets++;
+		
+		if(!pcapProcess(&header, &packet, &destroy,
+				true, true, true, true,
+				&ppd, global_pcap_dlink, tmppcap, ifname)) {
+			if(destroy) { 
+				free(header); 
+				free(packet); 
+			}
+			continue;
+		}
 
+		/* obsolete
 		switch(global_pcap_dlink) {
 			case DLT_LINUX_SLL:
 				header_sll = (struct sll_header *) (char*)packet;
@@ -3800,7 +3799,7 @@ void readdump_libpcap(pcap_t *handle) {
 			// not ipv4 
 			continue;
 		}
-
+		
 		header_ip = (struct iphdr2 *) ((char*)packet + offset);
 		//if UDP defrag is enabled process only UDP packets and only SIP packets
 		if(opt_udpfrag and (header_ip->protocol == IPPROTO_UDP or header_ip->protocol == 4)) {
@@ -3945,7 +3944,7 @@ skip:
 			continue;
 		}
 
-		/* check for duplicate packets (md5 is expensive operation - enable only if you really need it */
+		// check for duplicate packets (md5 is expensive operation - enable only if you really need it
 		if(datalen > 0 && opt_dup_check && prevmd5s != NULL && (traillen < datalen) && 
 		   !(istcp && opt_enable_tcpreassembly && (httpportmatrix[htons(header_tcp->source)] || httpportmatrix[htons(header_tcp->dest)]))) {
 			MD5_Init(&ctx);
@@ -3971,6 +3970,7 @@ skip:
 		if(opt_pcapdump) {
 			pcap_dump((u_char *)tmppcap, header, packet);
 		}
+		*/
 
 
 		if(opt_pcap_threaded) {
@@ -3978,7 +3978,7 @@ skip:
 #if defined(QUEUE_MUTEX) || defined(QUEUE_NONBLOCK)
 			pcap_packet *pp = (pcap_packet*)malloc(sizeof(pcap_packet));
 			pp->packet = (u_char*)malloc(sizeof(u_char) * header->caplen);
-			pp->offset = offset;
+			pp->offset = ppd.header_ip_offset;
 			memcpy(&pp->header, header, sizeof(struct pcap_pkthdr));
 			memcpy(pp->packet, packet, header->caplen);
 #endif
@@ -3998,7 +3998,7 @@ skip:
 				memcpy(&qring[writeit % qringmax].packet, packet, header->caplen);
 			}
 			memcpy(&qring[writeit % qringmax].header, header, sizeof(struct pcap_pkthdr));
-			qring[writeit % qringmax].offset = offset;
+			qring[writeit % qringmax].offset = ppd.header_ip_offset;
 			qring[writeit % qringmax].free = 0;
 			if((writeit + 1) == qringmax) {
 				writeit = 0;
@@ -4031,17 +4031,17 @@ skip:
 			continue;
 		}
 
-		if(opt_mirrorall || (opt_mirrorip && (sipportmatrix[htons(header_udp->source)] || sipportmatrix[htons(header_udp->dest)]))) {
-			mirrorip->send((char *)header_ip, (int)(header->caplen - ((unsigned long) header_ip - (unsigned long) packet)));
+		if(opt_mirrorall || (opt_mirrorip && (sipportmatrix[htons(ppd.header_udp->source)] || sipportmatrix[htons(ppd.header_udp->dest)]))) {
+			mirrorip->send((char *)ppd.header_ip, (int)(header->caplen - ((unsigned long) ppd.header_ip - (unsigned long) packet)));
 		}
 		int voippacket = 0;
 		if(!opt_mirroronly) {
-			process_packet(header_ip->saddr, htons(header_udp->source), header_ip->daddr, htons(header_udp->dest), 
-				       data, datalen, data - (char*)packet, handle, header, packet, istcp, 0, 1, &was_rtp, header_ip, &voippacket, 0,
+			process_packet(ppd.header_ip->saddr, htons(ppd.header_udp->source), ppd.header_ip->daddr, htons(ppd.header_udp->dest), 
+				       ppd.data, ppd.datalen, ppd.data - (char*)packet, handle, header, packet, ppd.istcp, 0, 1, &was_rtp, ppd.header_ip, &voippacket, 0,
 				       NULL, 0, global_pcap_dlink, opt_id_sensor);
 		}
 		if(opt_ipaccount) {
-			ipaccount(header->ts.tv_sec, (struct iphdr2 *) ((char*)packet + offset), header->len - offset, voippacket);
+			ipaccount(header->ts.tv_sec, (struct iphdr2 *) ((char*)packet + ppd.header_ip_offset), header->len - ppd.header_ip_offset, voippacket);
 		}
 
 
@@ -4053,10 +4053,6 @@ skip:
 
 	if(opt_pcapdump) {
 		pcap_dump_close(tmppcap);
-	}
-
-	if (prevmd5s) {
-		free(prevmd5s);
 	}
 }
 
@@ -4311,46 +4307,4 @@ void TcpReassemblySip::complete(tcp_stream2_s *stream, u_int hash) {
 		free(newpacket);
 	}
 	tcp_streams_hashed[hash] = NULL;
-}
-
-iphdr2 *convertHeaderIP_GRE(iphdr2 *header_ip) {
-	struct ether_header *header_eth;
-	int protocol = 0;      
-	unsigned int offset;   
-	// gre protocol 
-	char gre[8];
-	uint16_t a, b;
-	// if anyone know how to make network to hostbyte nicely, redesign this
-	a = ntohs(*(uint16_t*)((char*)header_ip + sizeof(iphdr2)));
-	b = ntohs(*(uint16_t*)((char*)header_ip + sizeof(iphdr2) + 2));
-	memcpy(gre, &a, 2);			memcpy(gre + 2, &b, 2);
-	struct gre_hdr *grehdr = (struct gre_hdr *)gre;			
-	if(grehdr->version == 0 and grehdr->protocol == 0x6558) {				header_eth = (struct ether_header *)((char*)header_ip + sizeof(iphdr2) + 8);
-		if(header_eth->ether_type == 129) {
-			// VLAN tag
-			offset = 4;
-			//XXX: this is very ugly hack, please do it right! (it will work for "08 00" which is IPV4 but not for others! (find vlan_header or something)
-			protocol = *((char*)header_eth + 2);
-		} else {
-			offset = 0;
-			protocol = header_eth->ether_type;
-		}
-		if(protocol == IPPROTO_UDP or protocol == IPPROTO_TCP) {
-			offset += sizeof(struct ether_header);
-			header_ip = (struct iphdr2 *) ((char*)header_eth + offset);
-			if(header_ip->protocol == IPPROTO_IPIP) {
-				header_ip = (iphdr2*)((char*)header_ip + sizeof(iphdr2));
-			}
-		} else {
-			return(NULL);
-		}
-	} else if(grehdr->version == 0 and grehdr->protocol == 0x800) {
-		header_ip = (struct iphdr2 *) ((char*)header_ip + sizeof(iphdr2) + 4);
-		if(header_ip->protocol == IPPROTO_IPIP) {
-			header_ip = (iphdr2*)((char*)header_ip + sizeof(iphdr2));
-		}
-	} else {
-		return(NULL);
-	}
-	return(header_ip);
 }

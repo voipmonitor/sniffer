@@ -2465,7 +2465,7 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 			"CONSTRAINT fk__http_jj__master_id\
 				FOREIGN KEY (`master_id`) REFERENCES `http_jj` (`id`)\
 				ON DELETE CASCADE ON UPDATE CASCADE") +
-		") ENGINE = " + (federated ? federatedConnection + "http_jj'" : "InnoDB") + 
+		") ENGINE = " + (federated ? federatedConnection + "http_jj'" : "InnoDB") + " " + compress +
 		(opt_cdr_partition && !federated ?
 			(opt_cdr_partition_oldver ? 
 				string(" PARTITION BY RANGE (to_days(timestamp))(\
@@ -2495,7 +2495,7 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 		KEY `dnsid` (`dnsid`),\
 		KEY `queryname` (`queryname`),\
 		KEY `responsename` (`responsename`)\
-		) ENGINE = " + (federated ? federatedConnection + "enum_jj'" : "InnoDB") + 
+		) ENGINE = " + (federated ? federatedConnection + "enum_jj'" : "InnoDB") + " " + compress +
 		(opt_cdr_partition && !federated ?
 			(opt_cdr_partition_oldver ? 
 				string(" PARTITION BY RANGE (to_days(timestamp))(\
