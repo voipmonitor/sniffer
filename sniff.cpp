@@ -1279,7 +1279,8 @@ void *rtp_read_thread_func(void *arg) {
 			}  else {
 				int monitor;
 				rtpp_pq.call->read_rtp(rtpp_pq.data, rtpp_pq.datalen, rtpp_pq.dataoffset, &rtpp_pq.pkthdr_pcap.header->header_std, NULL, rtpp_pq.saddr, rtpp_pq.daddr, rtpp_pq.sport, rtpp_pq.dport, rtpp_pq.iscaller, &monitor,
-						       rtpp_pq.save_packet, rtpp_pq.packet, rtpp_pq.istcp, rtpp_pq.dlt, rtpp_pq.sensor_id);
+						       rtpp_pq.save_packet, rtpp_pq.packet, rtpp_pq.istcp, rtpp_pq.dlt, rtpp_pq.sensor_id,
+						       rtpp_pq.block_store && rtpp_pq.block_store->ifname[0] ? rtpp_pq.block_store->ifname : NULL);
 			}
 			rtpp_pq.call->set_last_packet_time(rtpp_pq.pkthdr_pcap.header->header_std.ts.tv_sec);
 			rtpp_pq.block_store->unlock_packet(rtpp_pq.block_store_index);
@@ -2888,7 +2889,8 @@ rtpcheck:
 				}
 			} else {
 				call->read_rtp((unsigned char*) data, datalen, dataoffset, header, NULL, saddr, daddr, source, dest, iscaller, &record,
-					       false, packet, istcp, dlt, sensor_id);
+					       false, packet, istcp, dlt, sensor_id,
+					       block_store && block_store->ifname[0] ? block_store->ifname : NULL);
 				call->set_last_packet_time(header->ts.tv_sec);
 			}
 			if((!rtp_threaded || !opt_rtpsave_threaded) &&
@@ -2981,7 +2983,8 @@ rtpcheck:
 				*was_rtp = 1;
 			} else {
 				call->read_rtp((unsigned char*) data, datalen, dataoffset, header, NULL, saddr, daddr, source, dest, !iscaller, &record,
-					       false, packet, istcp, dlt, sensor_id);
+					       false, packet, istcp, dlt, sensor_id,
+					       block_store && block_store->ifname[0] ? block_store->ifname : NULL);
 				call->set_last_packet_time(header->ts.tv_sec);
 			}
 			if((!rtp_threaded || !opt_rtpsave_threaded) &&

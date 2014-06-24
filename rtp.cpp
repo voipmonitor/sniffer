@@ -247,6 +247,8 @@ RTP::RTP()
 	
 	this->_last_ts.tv_sec = 0;
 	this->_last_ts.tv_usec = 0;
+	this->_last_sensor_id = 0;
+	this->_last_ifname[0] = 0;
 }
 
 /* destructor */
@@ -641,7 +643,7 @@ RTP::process_dtmf_rfc2833() {
 
 /* read rtp packet */
 void
-RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t saddr, u_int32_t daddr, u_int16_t sport, u_int16_t dport, int seeninviteok) {
+RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t saddr, u_int32_t daddr, u_int16_t sport, u_int16_t dport, int seeninviteok, int sensor_id, char *ifname) {
 	this->data = data; 
 	this->len = len;
 	this->header = header;
@@ -679,14 +681,22 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 		static u_long lastTimeSyslog = 0;
 		u_long actTime = getTimeMS();
 		if(actTime - 1000 > lastTimeSyslog) {
-			syslog(5 /*LOG_NOTICE*/, "warning - bad packet order (%llu us) in RTP::read (seq/lastseq: %u/%u)- packet ignored",
+			syslog(5 /*LOG_NOTICE*/, "warning - bad packet order (%llu us) in RTP::read (seq/lastseq: %u/%u, ifname/lastifname: %s/%s, sensor/lastsenspor: %i/%i)- packet ignored",
 			       this->_last_ts.tv_sec * 1000000ull + this->_last_ts.tv_usec - header->ts.tv_sec * 1000000ull - header->ts.tv_usec,
-			       seq, last_seq);
+			       seq, last_seq,
+			       ifname && ifname[0] ? ifname : "--", this->_last_ifname[0] ? this->_last_ifname : "--",
+			       sensor_id, this->_last_sensor_id);
 			lastTimeSyslog = actTime;
 		}
 		return;
 	}
 	this->_last_ts = header->ts;
+	this->_last_sensor_id = sensor_id;
+	if(ifname) {
+		strcpy(this->_last_ifname, ifname);
+	} else {
+		this->_last_ifname[0] = 0;
+	}
 	
 	int curpayload = getPayload();
 //	printf("p[%d]\n", curpayload);

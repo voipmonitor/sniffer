@@ -245,6 +245,7 @@ void pcap_block_store::destroy() {
 	this->full = false;
 	this->dlink = global_pcap_dlink;
 	this->sensor_id = opt_id_sensor;
+	memset(this->ifname, 0, sizeof(this->ifname));
 }
 
 void pcap_block_store::destroyRestoreBuffer() {
@@ -276,6 +277,7 @@ u_char* pcap_block_store::getSaveBuffer() {
 	header.count = this->count;
 	header.dlink = this->dlink;
 	header.sensor_id = this->sensor_id;
+	strcpy(header.ifname, this->ifname);
 	memcpy(saveBuffer, 
 	       &header, 
 	       sizeof(header));
@@ -295,6 +297,7 @@ void pcap_block_store::restoreFromSaveBuffer(u_char *saveBuffer) {
 	this->count = header->count;
 	this->dlink = header->dlink;
 	this->sensor_id = header->sensor_id;
+	strcpy(this->ifname, header->ifname);
 	if(this->offsets) {
 		free(this->offsets);
 	}
@@ -2347,7 +2350,12 @@ void* PcapQueue_readFromInterface::threadFunction(void *arg, unsigned int arg2) 
 		int blockStoreCount = this->readThreadsCount ? this->readThreadsCount : 1;
 		pcap_block_store *blockStore[blockStoreCount];
 		for(int i = 0; i < blockStoreCount; i++) {
-			 blockStore[i] = new pcap_block_store;
+			blockStore[i] = new pcap_block_store;
+			strncpy(blockStore[i]->ifname, 
+				this->readThreadsCount ? 
+					this->readThreads[i]->getInterfaceName(true).c_str() :
+					this->getInterfaceName(true).c_str(), 
+				sizeof(blockStore[i]->ifname) - 1);
 		}
 		while(!TERMINATING) {
 			int minThreadTimeIndex = -1;
@@ -2457,6 +2465,11 @@ void* PcapQueue_readFromInterface::threadFunction(void *arg, unsigned int arg2) 
 					blockStoreBypassQueue.push(blockStore[i]);
 					++sumBlocksCounterIn[0];
 					blockStore[i] = new pcap_block_store;
+					strncpy(blockStore[i]->ifname, 
+						this->readThreadsCount ? 
+							this->readThreads[i]->getInterfaceName(true).c_str() :
+							this->getInterfaceName(true).c_str(), 
+						sizeof(blockStore[i]->ifname) - 1);
 					if(i == blockStoreIndex) {
 						blockStore[i]->add(header, packet, offset, dlink);
 					}

@@ -290,7 +290,7 @@ public:
 	 * @param saddr source IP adress of the packet
 	 *
 	*/
-	void read(unsigned char* data, int len, struct pcap_pkthdr *header, u_int32_t saddr, u_int32_t daddr, u_int16_t sport, u_int16_t dport, int seeninviteok);
+	void read(unsigned char* data, int len, struct pcap_pkthdr *header, u_int32_t saddr, u_int32_t daddr, u_int16_t sport, u_int16_t dport, int seeninviteok, int sensor_id = 0, char *ifname = NULL);
 
 
 	/**
@@ -456,5 +456,7 @@ private:
 	int update_seq(u_int16_t seq);
 	
 	timeval _last_ts;
+	int _last_sensor_id;
+	char _last_ifname[10];
 };
 #endif

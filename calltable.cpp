@@ -601,7 +601,7 @@ Call::read_rtcp(unsigned char* data, int datalen, int dataoffset, struct pcap_pk
 /* analyze rtp packet */
 void
 Call::read_rtp(unsigned char* data, int datalen, int dataoffset, struct pcap_pkthdr *header, struct iphdr2 *header_ip, u_int32_t saddr, u_int32_t daddr, unsigned short sport, unsigned short dport, int iscaller, int *record,
-	       char enable_save_packet, const u_char *packet, char istcp, int dlt, int sensor_id) {
+	       char enable_save_packet, const u_char *packet, char istcp, int dlt, int sensor_id, char *ifname) {
 
 	*record = 0;
 
@@ -661,7 +661,7 @@ Call::read_rtp(unsigned char* data, int datalen, int dataoffset, struct pcap_pkt
 				}
 				if(rtp[i]->codec == PAYLOAD_TELEVENT) {
 read:
-					rtp[i]->read(data, datalen, header, saddr, daddr, sport, dport, seeninviteok);
+					rtp[i]->read(data, datalen, header, saddr, daddr, sport, dport, seeninviteok, sensor_id, ifname);
 					if(iscaller) {
 						lastcallerrtp = rtp[i];
 					} else {
@@ -738,7 +738,7 @@ read:
 			memcpy(this->rtp[ssrc_n]->rtpmap, rtpmap[iscaller], MAX_RTPMAP * sizeof(int));
 //		}
 
-		rtp[ssrc_n]->read(data, datalen, header, saddr, daddr, sport, dport, seeninviteok);
+		rtp[ssrc_n]->read(data, datalen, header, saddr, daddr, sport, dport, seeninviteok, sensor_id, ifname);
 		this->rtp[ssrc_n]->ssrc = this->rtp[ssrc_n]->ssrc2 = curSSRC;
 		this->rtp[ssrc_n]->payload2 = curpayload;
 
