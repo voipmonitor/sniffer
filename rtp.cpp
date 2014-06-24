@@ -40,6 +40,7 @@ extern int opt_jitterbuffer_f2;            // turns off/on jitterbuffer simulato
 extern int opt_jitterbuffer_adapt;         // turns off/on jitterbuffer simulator to compute MOS score mos_adapt
 extern char opt_cachedir[1024];
 extern int opt_savewav_force;
+extern int opt_rtp_check_timestamp;
 int dtmfdebug = 0;
 
 extern unsigned int graph_delimiter;
@@ -674,28 +675,30 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 		return;
 	}
 
-	if(this->_last_ts.tv_sec &&
-	   (header->ts.tv_sec < this->_last_ts.tv_sec ||
-	    (header->ts.tv_sec == this->_last_ts.tv_sec &&
-	     header->ts.tv_usec < this->_last_ts.tv_usec))) {
-		static u_long lastTimeSyslog = 0;
-		u_long actTime = getTimeMS();
-		if(actTime - 1000 > lastTimeSyslog) {
-			syslog(5 /*LOG_NOTICE*/, "warning - bad packet order (%llu us) in RTP::read (seq/lastseq: %u/%u, ifname/lastifname: %s/%s, sensor/lastsenspor: %i/%i)- packet ignored",
-			       this->_last_ts.tv_sec * 1000000ull + this->_last_ts.tv_usec - header->ts.tv_sec * 1000000ull - header->ts.tv_usec,
-			       seq, last_seq,
-			       ifname && ifname[0] ? ifname : "--", this->_last_ifname[0] ? this->_last_ifname : "--",
-			       sensor_id, this->_last_sensor_id);
-			lastTimeSyslog = actTime;
+	if(opt_rtp_check_timestamp) {
+		if(this->_last_ts.tv_sec &&
+		   (header->ts.tv_sec < this->_last_ts.tv_sec ||
+		    (header->ts.tv_sec == this->_last_ts.tv_sec &&
+		     header->ts.tv_usec < this->_last_ts.tv_usec))) {
+			static u_long lastTimeSyslog = 0;
+			u_long actTime = getTimeMS();
+			if(actTime - 1000 > lastTimeSyslog) {
+				syslog(5 /*LOG_NOTICE*/, "warning - bad packet order (%llu us) in RTP::read (seq/lastseq: %u/%u, ifname/lastifname: %s/%s, sensor/lastsenspor: %i/%i)- packet ignored",
+				       this->_last_ts.tv_sec * 1000000ull + this->_last_ts.tv_usec - header->ts.tv_sec * 1000000ull - header->ts.tv_usec,
+				       seq, last_seq,
+				       ifname && ifname[0] ? ifname : "--", this->_last_ifname[0] ? this->_last_ifname : "--",
+				       sensor_id, this->_last_sensor_id);
+				lastTimeSyslog = actTime;
+			}
+			return;
 		}
-		return;
-	}
-	this->_last_ts = header->ts;
-	this->_last_sensor_id = sensor_id;
-	if(ifname) {
-		strcpy(this->_last_ifname, ifname);
-	} else {
-		this->_last_ifname[0] = 0;
+		this->_last_ts = header->ts;
+		this->_last_sensor_id = sensor_id;
+		if(ifname) {
+			strcpy(this->_last_ifname, ifname);
+		} else {
+			this->_last_ifname[0] = 0;
+		}
 	}
 	
 	int curpayload = getPayload();
