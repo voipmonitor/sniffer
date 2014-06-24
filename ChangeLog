@@ -1,3 +1,12 @@
+10.0.1 24.6.2014
+================
+- fix GRE protocol (10.0 regression) 
+- fix IP defragmentation 
+- fix crashing when decoding to WAV (10.0 regression) 
+- redesign timestamp reorder warning (10.0)
+- fix SIP SMS hide message capture rules
+
+
 10.0 19.6.2014
 ==============
 after several months of releasing 9.4 and 10.0RC/BETA versions there is new stable version 10.0 with many enhancements and bug fixes. The most interesting part is transparent pcap file compression and saving packet optimizations which allows to store thousands of simultaneous calls which was not possible before. The sniffer is now able to write pcap files for very high number of calls per second (>6000 / sec). Read the full changelog below: 
