@@ -1,3 +1,8 @@
+10.0.3 27.6.2014
+================
+- fix mirroring between 32bit and 64bit sniffers (9.3 regression) 
+
+
 10.0.2 27.6.2014
 ================
 - fix mos score for g729 (if enabled in voipmonitor.conf which is not recommended anyway) which was always high even for huge packet / PDV loss
