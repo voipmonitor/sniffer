@@ -55,9 +55,9 @@ struct pcap_pkthdr_plus {
 		pcap_pkthdr_fix_size header_fix_size;
 		pcap_pkthdr header_std;
 	};
-	u_int16_t dlink;
 	int32_t offset;
 	int8_t std;
+	u_int16_t dlink;
 };
 
 struct pcap_block_store {
