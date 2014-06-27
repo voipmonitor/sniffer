@@ -8,15 +8,17 @@ Author: Martin Vit support@voipmonitor.org
 
 
 /* 
-	l - packet loss 
+	l - packet loss on scale 0.0 - 1.0
 	b - burstr
 */
 
 #include <cmath>
+#include <stdio.h>
 #include "voipmonitor.h"
 
 long double mos_g729(long double l, long double b) {
 
+	l *= 100.0;
 	// this equation is validated only for l > 0 and l <= 60, and b >= 1 and b <= 30
 
 	if(l == 0) {
