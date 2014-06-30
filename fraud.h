@@ -681,12 +681,10 @@ private:
 class FraudAlert_spc : public FraudAlert {
 private:
 	struct sCountItem {
-		sCountItem(u_int64_t count = 0, u_int64_t last_alert_info = 0) {
+		sCountItem(u_int64_t count = 0) {
 			this->count = count;
-			this->last_alert_info = last_alert_info;
 		}
 		u_int64_t count;
-		u_int64_t last_alert_info;
 	};
 public:
 	FraudAlert_spc(unsigned int dbId);
@@ -702,12 +700,10 @@ private:
 class FraudAlert_rc : public FraudAlert {
 private:
 	struct sCountItem {
-		sCountItem(u_int64_t count = 0, u_int64_t last_alert_info = 0) {
+		sCountItem(u_int64_t count = 0) {
 			this->count = count;
-			this->last_alert_info = last_alert_info;
 		}
 		u_int64_t count;
-		u_int64_t last_alert_info;
 	};
 public:
 	FraudAlert_rc(unsigned int dbId);

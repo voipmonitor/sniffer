@@ -1110,18 +1110,18 @@ void FraudAlert_spc::evEvent(sFraudEventInfo *eventInfo) {
 		count[eventInfo->src_ip] = sCountItem(1);
 	} else {
 		++count[eventInfo->src_ip].count;
-		if(count[eventInfo->src_ip].count >= intervalLimit && 
-		   eventInfo->at - count[eventInfo->src_ip].last_alert_info > 1000000ull) {
-			FraudAlertInfo_spc *alertInfo = new FraudAlertInfo_spc(this);
-			alertInfo->set(eventInfo->src_ip,
-				       count[eventInfo->src_ip].count);
-			this->evAlert(alertInfo);
-			count[eventInfo->src_ip].last_alert_info = eventInfo->at;
-		}
 	}
 	if(!start_interval) {
 		start_interval = eventInfo->at;
 	} else if(eventInfo->at - start_interval > intervalLength * 1000000ull) {
+		for(iter = count.begin(); iter != count.end(); iter++) {
+			if(count[iter->first].count >= intervalLimit) {
+				FraudAlertInfo_spc *alertInfo = new FraudAlertInfo_spc(this);
+				alertInfo->set(iter->first,
+					       count[iter->first].count);
+				this->evAlert(alertInfo);
+			}
+		}
 		count.clear();
 		start_interval = eventInfo->at;
 	}
@@ -1142,16 +1142,16 @@ void FraudAlert_rc::evEvent(sFraudEventInfo *eventInfo) {
 		count[eventInfo->src_ip] = sCountItem(1);
 	} else {
 		++count[eventInfo->src_ip].count;
-		if(count[eventInfo->src_ip].count >= intervalLimit && 
-		   eventInfo->at - count[eventInfo->src_ip].last_alert_info > 1000000ull) {
-			FraudAlertInfo_spc *alertInfo = new FraudAlertInfo_spc(this);
-			alertInfo->set(eventInfo->src_ip,
-				       count[eventInfo->src_ip].count);
-			this->evAlert(alertInfo);
-			count[eventInfo->src_ip].last_alert_info = eventInfo->at;
-		}
 	}
 	if(eventInfo->at - start_interval > intervalLength * 1000000ull) {
+		for(iter = count.begin(); iter != count.end(); iter++) {
+			if(count[iter->first].count >= intervalLimit) {
+				FraudAlertInfo_spc *alertInfo = new FraudAlertInfo_spc(this);
+				alertInfo->set(iter->first,
+					       count[iter->first].count);
+				this->evAlert(alertInfo);
+			}
+		}
 		count.clear();
 		start_interval = eventInfo->at;
 	}
