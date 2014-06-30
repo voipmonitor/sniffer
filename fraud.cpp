@@ -1101,7 +1101,8 @@ FraudAlert_spc::FraudAlert_spc(unsigned int dbId)
 }
 
 void FraudAlert_spc::evEvent(sFraudEventInfo *eventInfo) {
-	if(!this->okFilter(eventInfo)) {
+	if(eventInfo->typeEventInfo != sFraudEventInfo::typeEventInfo_sipPacket ||
+	   !this->okFilter(eventInfo)) {
 		return;
 	}
 	map<u_int32_t, sCountItem>::iterator iter = count.find(eventInfo->src_ip);
@@ -1132,7 +1133,8 @@ FraudAlert_rc::FraudAlert_rc(unsigned int dbId)
 }
 
 void FraudAlert_rc::evEvent(sFraudEventInfo *eventInfo) {
-	if(!this->okFilter(eventInfo)) {
+	if(eventInfo->typeEventInfo != sFraudEventInfo::typeEventInfo_register ||
+	   !this->okFilter(eventInfo)) {
 		return;
 	}
 	map<u_int32_t, sCountItem>::iterator iter = count.find(eventInfo->src_ip);
