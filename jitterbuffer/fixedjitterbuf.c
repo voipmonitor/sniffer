@@ -270,7 +270,9 @@ int fixed_jb_put(struct fixed_jb *jb, void *data, long ms, long ts, long now)
 	/* what if the delivery time is bigger than next + delay? Seems like a frame for the future.
 	   However, allow more resync_threshold ms in advance */
 	/* festr 5.5.2014 - be more tolerant for future frame (bursts) and add 200ms more) */
-	if (delivery > jb->next_delivery + jb->delay + jb->conf.resync_threshold + 200) {
+	/* festr 30.6.2014 - adding more tolerace is not good idea because it ignores 50ms fixed jitter len. add it only for audio decoder */
+	int tolerance = jb->conf.resync_threshold == 1000 ? 200 : 0; // if threshold is 1000 it is jitterbuffer for audio decode - add 200ms more
+	if (delivery > jb->next_delivery + jb->delay + jb->conf.resync_threshold + tolerance) {
 		/* should drop the frame, but let first resynch_jb() check if this is not a jump in ts, or
 		   the force resynch flag was not set. */
 		if(debug) fprintf(stdout, "put: delivery[%lu] > jb->next_delivery[%lu] + jb->delay[%lu] + jb->conf.resync_threshold[%lu]\n", delivery, jb->next_delivery, jb->delay, jb->conf.resync_threshold);

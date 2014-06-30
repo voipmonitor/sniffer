@@ -1,3 +1,7 @@
+10.0.4 30.6.2014
+================
+- fix high MOS scores for fixed50 and fixed200 MOS scores. Fixed50 acts like 250ms and fixed200 like 400ms. (9.3 regression - broken since 5.5.2014)
+
 10.0.3 27.6.2014
 ================
 - fix mirroring between 32bit and 64bit sniffers (9.3 regression) 
