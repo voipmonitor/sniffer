@@ -2978,8 +2978,10 @@ void SqlDb_mysql::copyFromSourceTable(SqlDb_mysql *sqlDbSrc, const char *tableNa
 		    string(tableName) == "register_failed")) {
 			string timeColumn = (string(tableName) == "cdr" || string(tableName) == "message") ? "calldate" : 
 					    (string(tableName) == "http_jj" || string(tableName) == "enum_jj") ? "timestamp" : "created_at";
-			sqlDbSrc->query(string("select min(") + id + ") as min_id from " + tableName + 
-					" where " + timeColumn + " > '" + opt_database_backup_from_date + "'");
+			sqlDbSrc->query(string("select min(") + id + ") as min_id from " + tableName +
+					" where " + timeColumn + " = " + 
+					"(select min(" + timeColumn + ") from " + tableName + " where " + timeColumn + " > '" + opt_database_backup_from_date + "')");
+			
 			minIdInSrc = atoll(sqlDbSrc->fetchRow()["min_id"].c_str());
 		}
 	}
