@@ -1129,11 +1129,14 @@ void FraudAlert_spc::evEvent(sFraudEventInfo *eventInfo) {
 
 FraudAlert_rc::FraudAlert_rc(unsigned int dbId)
  : FraudAlert(_rc, dbId) {
+	withResponse = false;
 	start_interval = 0;
 }
 
 void FraudAlert_rc::evEvent(sFraudEventInfo *eventInfo) {
-	if(eventInfo->typeEventInfo != sFraudEventInfo::typeEventInfo_register ||
+	if((withResponse ?
+	     eventInfo->typeEventInfo != sFraudEventInfo::typeEventInfo_registerResponse :
+	     eventInfo->typeEventInfo != sFraudEventInfo::typeEventInfo_register) ||
 	   !this->okFilter(eventInfo)) {
 		return;
 	}
@@ -1155,6 +1158,10 @@ void FraudAlert_rc::evEvent(sFraudEventInfo *eventInfo) {
 		count.clear();
 		start_interval = eventInfo->at;
 	}
+}
+
+void FraudAlert_rc::loadAlertVirt(SqlDb_row *row) {
+	withResponse = atoi((*row)["fraud_register_only_with_response"].c_str());
 }
 
 
@@ -1256,6 +1263,14 @@ void FraudAlerts::evSipPacket(u_int32_t ip, u_int64_t at) {
 void FraudAlerts::evRegister(u_int32_t ip, u_int64_t at) {
 	sFraudEventInfo eventInfo;
 	eventInfo.typeEventInfo = sFraudEventInfo::typeEventInfo_register;
+	eventInfo.src_ip = htonl(ip);
+	eventInfo.at = at;
+	eventQueue.push(eventInfo);
+}
+
+void FraudAlerts::evRegisterResponse(u_int32_t ip, u_int64_t at) {
+	sFraudEventInfo eventInfo;
+	eventInfo.typeEventInfo = sFraudEventInfo::typeEventInfo_registerResponse;
 	eventInfo.src_ip = htonl(ip);
 	eventInfo.at = at;
 	eventQueue.push(eventInfo);
@@ -1534,6 +1549,12 @@ void fraudSipPacket(u_int32_t ip, timeval tv) {
 void fraudRegister(u_int32_t ip, timeval tv) {
 	if(fraudAlerts) {
 		fraudAlerts->evRegister(ip, tv.tv_sec * 1000000ull + tv.tv_usec);
+	}
+}
+
+void fraudRegisterResponse(u_int32_t ip, u_int64_t at) {
+	if(fraudAlerts) {
+		fraudAlerts->evRegisterResponse(ip, at);
 	}
 }
 

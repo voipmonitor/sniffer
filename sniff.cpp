@@ -2294,6 +2294,12 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 					goto endsip;
 				}
 			}
+			if(call->regstate && !call->regresponse) {
+				if(opt_enable_fraud) {
+					fraudRegisterResponse(call->sipcallerip, call->first_packet_time * 1000000ull + call->first_packet_usec);
+				}
+				call->regresponse = true;
+			}
 			if(call->msgcount > 20) {
 				// too many REGISTER messages within the same callid
 				call->regstate = 4;

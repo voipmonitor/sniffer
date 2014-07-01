@@ -138,6 +138,7 @@ public:
 	int regcount;
 	int reg401count;
 	int regstate;
+	bool regresponse;
 	unsigned long long flags1;	//!< bit flags used to store max 64 flags 
 	volatile unsigned int rtppcaketsinqueue;
 	unsigned int unrepliedinvite;

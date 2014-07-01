@@ -207,6 +207,7 @@ Call::Call(char *call_id, unsigned long call_id_len, time_t time, void *ct) :
 	regcount = 0;
 	reg401count = 0;
 	regstate = 0;
+	regresponse = false;
 	for(int i = 0; i < MAX_SSRC_PER_CALL; i++) {
 		rtp[i] = NULL;
 	}

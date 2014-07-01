@@ -423,7 +423,8 @@ struct sFraudCallInfo {
 struct sFraudEventInfo {
 	enum eTypeEventInfo {
 		typeEventInfo_sipPacket,
-		typeEventInfo_register
+		typeEventInfo_register,
+		typeEventInfo_registerResponse
 	};
 	sFraudEventInfo() {
 		typeEventInfo = (eTypeEventInfo)0;
@@ -490,6 +491,7 @@ public:
 	virtual bool okFilter(sFraudEventInfo *eventInfo);
 	virtual void evAlert(FraudAlertInfo *alertInfo);
 protected:
+	virtual void loadAlertVirt(SqlDb_row *row) {}
 	virtual void addFraudDef(SqlDb_row *row) {}
 	virtual bool defFilterIp() { return(false); }
 	virtual bool defFilterNumber() { return(false); }
@@ -712,6 +714,9 @@ protected:
 	bool defFilterIp() { return(true); }
 	bool defInterval() { return(true); }
 private:
+	void loadAlertVirt(SqlDb_row *row);
+private:
+	bool withResponse;
 	map<u_int32_t, sCountItem> count;
 	u_int64_t start_interval;
 };
@@ -729,6 +734,7 @@ public:
 	void endCall(Call *call, u_int64_t at);
 	void evSipPacket(u_int32_t ip, u_int64_t at);
 	void evRegister(u_int32_t ip, u_int64_t at);
+	void evRegisterResponse(u_int32_t ip, u_int64_t at);
 	void stopPopCallInfoThread(bool wait = false);
 	void refresh();
 private:
@@ -765,6 +771,7 @@ void fraudSeenByeCall(Call *call, struct timeval tv);
 void fraudEndCall(Call *call, struct timeval tv);
 void fraudSipPacket(u_int32_t ip, timeval tv);
 void fraudRegister(u_int32_t ip, timeval tv);
+void fraudRegisterResponse(u_int32_t ip, u_int64_t at);
 bool isExistsFraudAlerts();
 
 
