@@ -38,6 +38,10 @@ struct dstring
 		return(this->str[0] == other.str[0] &&
 		       this->str[1] == other.str[1]); 
 	}
+	bool operator < (const dstring& other) const { 
+		return(this->str[0] < other.str[0] ||
+		       (this->str[0] == other.str[0] && this->str[1] < other.str[1])); 
+	}
 	std::string str[2];
 };
 
