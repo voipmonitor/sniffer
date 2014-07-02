@@ -332,7 +332,7 @@ int ast_jb_put(struct ast_channel *chan, struct ast_frame *f, struct timeval *my
 
 		jb->next = jbimpl->next(jbobj);
 
-		if(debug) fprintf(stdout, "JB_PUT {now=%ld}: Queued frame with ts=%ld and len=%ld and seq=%d\n", now, frr->ts, frr->len, frr->seqno);
+		if(debug) firintf(stdout, "JB_PUT {now=%ld}: Queued frame with ts=%ld and len=%ld and seq=%d\n", now, frr->ts, frr->len, frr->seqno);
 
 		return 0;
 	}
