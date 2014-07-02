@@ -1182,6 +1182,9 @@ int load_config(char *fname) {
 		opt_cleandatabase_register_state = opt_cleandatabase_cdr;
 		opt_cleandatabase_register_failed = opt_cleandatabase_cdr;
 	}
+	if((value = ini.GetValue("general", "plcdisable", NULL))) {
+		opt_disableplc = yesno(value);
+	}
 	if((value = ini.GetValue("general", "cleandatabase_cdr", NULL))) {
 		opt_cleandatabase_cdr = atoi(value);
 	}
