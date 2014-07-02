@@ -47,6 +47,9 @@
 #include "jitterbuf.h"
 #include "../codecs.h"
 
+/*! \brief On and Off plc*/
+extern int opt_disableplc ;
+
 /*! Internal jb flags */
 enum {
 	JB_USE =                  (1 << 0),
@@ -490,7 +493,7 @@ void save_empty_frame(struct ast_channel *chan) {
 			}
 		} else {
 			// write previouse frame (better than zero frame), but only once
-			if(chan->lastbuflen) {
+			if(chan->lastbuflen && opt_disableplc == flase) {
 				if(chan->rawstream)
 					fwrite(chan->lastbuf, 1, chan->lastbuflen, chan->rawstream);
 				if(chan->audiobuf)
