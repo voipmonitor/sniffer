@@ -493,7 +493,7 @@ void save_empty_frame(struct ast_channel *chan) {
 			}
 		} else {
 			// write previouse frame (better than zero frame), but only once
-			if(chan->lastbuflen && opt_disableplc == flase) {
+			if(chan->lastbuflen && opt_disableplc == 0) {
 				if(chan->rawstream)
 					fwrite(chan->lastbuf, 1, chan->lastbuflen, chan->rawstream);
 				if(chan->audiobuf)
