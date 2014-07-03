@@ -713,8 +713,8 @@ bool FraudAlert_rcc_base::checkOkAlert(u_int32_t ip, size_t concurentCalls, u_in
 		(*alerts)[ip] = sAlertInfo(concurentCalls, at);
 		return(true);
 	} else {
-		if(iter->second.at + alert->alertOncePerHours * 3600 * 1000000ull < at ||
-		   iter->second.concurentCalls * 1.5 < concurentCalls) {
+		if(iter->second.at + alert->alertOncePerHours * 3600 * 1000000ull < at/* ||
+		   iter->second.concurentCalls * 1.5 < concurentCalls*/) {
 			(*alerts)[ip] = sAlertInfo(concurentCalls, at);
 		} else {
 			return(false);
@@ -794,6 +794,10 @@ FraudAlert_rcc::~FraudAlert_rcc() {
 }
 
 void FraudAlert_rcc::evCall(sFraudCallInfo *callInfo) {
+	if(callInfo->call_type == REGISTER ||
+	   !this->okFilter(callInfo)) {
+		return;
+	}
 	this->evCall_rcc(callInfo, this, false);
 	for(size_t i = 0; i < timePeriods.size(); i++) {
 		timePeriods[i].evCall_rcc(callInfo, this, true);
@@ -1136,8 +1140,8 @@ bool FraudAlert_spc::checkOkAlert(u_int32_t ip, u_int64_t count, u_int64_t at) {
 		alerts[ip] = sAlertInfo(count, at);
 		return(true);
 	} else {
-		if(iter->second.at + this->alertOncePerHours * 3600 * 1000000ull < at ||
-		   iter->second.count * 1.5 < count) {
+		if(iter->second.at + this->alertOncePerHours * 3600 * 1000000ull < at/* ||
+		   iter->second.count * 1.5 < count*/) {
 			alerts[ip] = sAlertInfo(count, at);
 		} else {
 			return(false);
@@ -1193,8 +1197,8 @@ bool FraudAlert_rc::checkOkAlert(u_int32_t ip, u_int64_t count, u_int64_t at) {
 		alerts[ip] = sAlertInfo(count, at);
 		return(true);
 	} else {
-		if(iter->second.at + this->alertOncePerHours * 3600 * 1000000ull < at ||
-		   iter->second.count * 1.5 < count) {
+		if(iter->second.at + this->alertOncePerHours * 3600 * 1000000ull < at/* ||
+		   iter->second.count * 1.5 < count*/) {
 			alerts[ip] = sAlertInfo(count, at);
 		} else {
 			return(false);

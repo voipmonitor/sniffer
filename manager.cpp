@@ -805,6 +805,9 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 		intptr_t tmp1,tmp2;
 
 		sscanf(buf, "listen %llu", &callreference);
+		if(!callreference) {
+			sscanf(buf, "listen %llxu", &callreference);
+		}
 
 		tmp1 = callreference;
 	
@@ -856,6 +859,9 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 		long long callreference;
 
 		sscanf(buf, "readaudio %llu", &callreference);
+		if(!callreference) {
+			sscanf(buf, "readaudio %llxu", &callreference);
+		}
 	
 		map<string, Call*>::iterator callMAPIT;
 		Call *call;
