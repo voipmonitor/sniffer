@@ -2355,8 +2355,8 @@ int main(int argc, char *argv[]) {
 	    {"pcapscan-dir", 1, 0, '0'},
 	    {"pcapscan-method", 1, 0, 900},
 	    {"keycheck", 1, 0, 'Z'},
-	    {"keycheck", 1, 0, 'Z'},
 	    {"pcapfilter", 1, 0, 'f'},
+	    {"plc-disable", 0, 0, 'l'},
 	    {"interface", 1, 0, 'i'},
 	    {"read", 1, 0, 'r'},
 	    {"spooldir", 1, 0, 'd'},
@@ -2390,7 +2390,7 @@ int main(int argc, char *argv[]) {
 	/* command line arguments overrides configuration in voipmonitor.conf file */
 	while(1) {
 		int c;
-		c = getopt_long(argc, argv, "C:f:i:r:d:v:O:h:b:t:u:p:P:s:T:D:e:E:m:X:LkncUSRoAWGNIKy4Mx", long_options, &option_index);
+		c = getopt_long(argc, argv, "C:f:i:r:d:v:O:h:b:t:u:p:P:s:T:D:e:E:m:X:lLkncUSRoAWGNIKy4Mx", long_options, &option_index);
 		//"i:r:d:v:h:b:u:p:fnU", NULL, NULL);
 		if (c == -1)
 			break;
@@ -2450,6 +2450,9 @@ int main(int argc, char *argv[]) {
 				break;
 			case 'I':
 				opt_rtpnosip = 1;
+				break;
+			case 'l':
+				opt_disableplc = 1;
 				break;
 			case 'L':
 				opt_dup_check = 1;
@@ -2734,6 +2737,10 @@ int main(int argc, char *argv[]) {
                         "      If any of SIP message during the call contains header\n"
                         "      X-VoipMonitor-norecord call will be not converted to wav and pcap file\n"
                         "      will be deleted.\n"
+                        "\n"
+                        " --plc-disable\n"
+                        "      This option disable voipmonitor's PLC\n"
+                        "      (voipmonitor will not mask effect of packet loss, when playing files).\n"
                         "\n"
                         " --ring-buffer=<n>\n"
                         "      Set ring buffer in MB (feature of newer >= 2.6.31 kernels and\n"
