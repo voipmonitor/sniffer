@@ -794,6 +794,10 @@ FraudAlert_rcc::~FraudAlert_rcc() {
 }
 
 void FraudAlert_rcc::evCall(sFraudCallInfo *callInfo) {
+	if(callInfo->call_type == REGISTER ||
+	   !this->okFilter(callInfo)) {
+		return;
+	}
 	this->evCall_rcc(callInfo, this, false);
 	for(size_t i = 0; i < timePeriods.size(); i++) {
 		timePeriods[i].evCall_rcc(callInfo, this, true);
