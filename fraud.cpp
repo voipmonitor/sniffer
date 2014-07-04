@@ -1343,6 +1343,7 @@ void FraudAlerts::popCallInfoThread() {
 			lock_alerts();
 			vector<FraudAlert*>::iterator iter;
 			for(iter = alerts.begin(); iter != alerts.end(); iter++) {
+				this->completeCallInfo_country_code(&callInfo, &(*iter)->checkInternational);
 				(*iter)->evCall(&callInfo);
 			}
 			unlock_alerts();
@@ -1353,7 +1354,6 @@ void FraudAlerts::popCallInfoThread() {
 			lock_alerts();
 			vector<FraudAlert*>::iterator iter;
 			for(iter = alerts.begin(); iter != alerts.end(); iter++) {
-				this->completeCallInfo_country_code(&callInfo, &(*iter)->checkInternational);
 				(*iter)->evEvent(&eventInfo);
 			}
 			unlock_alerts();
