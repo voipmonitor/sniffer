@@ -192,6 +192,7 @@ Call::Call(char *call_id, unsigned long call_id_len, time_t time, void *ct) :
 	sighup = false;
 	calltable = ct;
 	progress_time = 0;
+	set_progress_time_via_2XX_or18X = false;
 	first_rtp_time = 0;
 	connect_time = 0;
 	a_ua[0] = '\0';

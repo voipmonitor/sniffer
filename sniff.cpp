@@ -2490,8 +2490,9 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 				}
 			} else if(sip_method == RES2XX) {
 				// if the progress time was not set yet set it here so PDD (Post Dial Delay) is accurate if no ringing is present
-				if(call->progress_time == 0) {
+				if(!call->set_progress_time_via_2XX_or18X) {
 					call->progress_time = header->ts.tv_sec;
+					call->set_progress_time_via_2XX_or18X = true;
 				}
 
 				// if it is OK check for BYE
@@ -2545,8 +2546,9 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 				}
 
 			} else if(sip_method == RES18X) {
-				if(call->progress_time == 0) {
+				if(!call->set_progress_time_via_2XX_or18X) {
 					call->progress_time = header->ts.tv_sec;
+					call->set_progress_time_via_2XX_or18X = true;
 				}
 				if(!call->onCall_18X) {
 					ClientThreads.onCall(lastSIPresponseNum, call->callername, call->caller, call->called,

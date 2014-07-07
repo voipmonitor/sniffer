@@ -151,6 +151,7 @@ public:
 	float b_mos_lqo;
 
 	time_t progress_time;		//!< time in seconds of 18X response
+	bool set_progress_time_via_2XX_or18X;
 	time_t first_rtp_time;		//!< time in seconds of first RTP packet
 	time_t connect_time;		//!< time in seconds of 200 OK
 	time_t last_packet_time;	
