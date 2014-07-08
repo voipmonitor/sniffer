@@ -338,6 +338,25 @@ private:
 
 class CacheNumber_location {
 public:
+	struct sNumber {
+		sNumber(const char *number = NULL, u_int32_t ip = 0) {
+			if(number) {
+				this->number = number;
+			}
+			this->ip = ip;
+		}
+		string number;
+		u_int32_t ip;
+		bool operator == (const sNumber& other) const { 
+			return(this->number == other.number &&
+			       this->ip == other.ip); 
+		}
+		bool operator < (const sNumber& other) const { 
+			return(this->number < other.number ||
+			       (this->number == other.number &&
+				this->ip < other.ip)); 
+		}
+	};
 	struct sIpRec {
 		sIpRec() {
 			ip = 0;
@@ -358,17 +377,18 @@ public:
 	};
 	CacheNumber_location();
 	~CacheNumber_location();
-	bool checkNumber(const char *number, u_int32_t ip, u_int64_t at,
+	bool checkNumber(const char *number, u_int32_t number_ip,
+			 u_int32_t ip, u_int64_t at,
 			 bool *diffCountry = NULL, bool *diffContinent = NULL,
 			 u_int32_t *oldIp = NULL, string *oldCountry = NULL, string *oldContinent = NULL,
 			 const char *ip_country = NULL, const char *ip_continent = NULL);
-	bool loadNumber(const char *number, u_int64_t at);
-	void saveNumber(const char *number, sIpRec *ipRec, bool update = false);
-	void updateAt(const char *number, u_int64_t at);
+	bool loadNumber(const char *number, u_int32_t number_ip, u_int64_t at);
+	void saveNumber(const char *number, u_int32_t number_ip, sIpRec *ipRec, bool update = false);
+	void updateAt(const char *number, u_int32_t number_ip, u_int64_t at);
 	void cleanup(u_int64_t at);
 private:
 	SqlDb *sqlDb;
-	map<string, sIpRec> cache;
+	map<sNumber, sIpRec> cache;
 	u_int64_t last_cleanup_at;
 };
 

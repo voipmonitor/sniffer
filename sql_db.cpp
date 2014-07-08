@@ -2511,6 +2511,7 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 	this->query(
 	"CREATE TABLE IF NOT EXISTS `cache_number_location` (\
 			`number` varchar(30) NOT NULL,\
+			`number_ip` int unsigned DEFAULT NULL,\
 			`ip` int unsigned,\
 			`country_code` char(5),\
 			`continent_code` char(5),\
@@ -2519,7 +2520,7 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 			`old_country_code` char(5),\
 			`old_continent_code` char(5),\
 			`old_at` bigint unsigned,\
-		PRIMARY KEY (`number`)\
+		PRIMARY KEY (`number`, `number_ip`)\
 	) ENGINE=InnoDB DEFAULT CHARSET=latin1;");
 	this->query(
 	"CREATE TABLE IF NOT EXISTS `fraud_alert_info` (\
@@ -2643,6 +2644,12 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 			ADD `remove_at` date default NULL;");
 	this->query("ALTER TABLE filter_telnum\
 			ADD `remove_at` date default NULL;");
+
+	//10.0.5
+	this->query("ALTER TABLE cache_number_location\
+			ADD `number_ip` int unsigned DEFAULT NULL AFTER number,\
+			DROP PRIMARY KEY,\
+			ADD PRIMARY KEY (`number`, `number_ip`);");
 
 	sql_noerror = 0;
 
