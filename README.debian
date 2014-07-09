@@ -12,7 +12,6 @@ make
 make install
 mkdir /var/spool/voipmonitor
 mysqladmin create voipmonitor
-cat cdrtable.sql | mysql voipmonitor
 cp config/voipmonitor.conf /etc/
 #edit file /etc/voipmonitor.conf to your needs
 cp config/init.d/voipmonitor /etc/init.d/
