@@ -423,28 +423,43 @@ save:
 	for(usersnifferIT = usersniffer.begin(); usersnifferIT != usersniffer.end(); usersnifferIT++) {
 		livesnifferfilter_t *filter = usersnifferIT->second;
 		bool save = filter->state.all_all;
-		for(int i = 0; i < MAXLIVEFILTERS && !save; i++) {
-			bool okAddr = 
-				filter->state.all_addr ||
-				((filter->state.all_saddr || (filter->lv_saddr[i] && 
-					saddr == filter->lv_saddr[i])) &&
-				 (filter->state.all_daddr || (filter->lv_daddr[i] && 
-					daddr == filter->lv_daddr[i])) &&
-				 (filter->state.all_bothaddr || (filter->lv_bothaddr[i] && 
-					(saddr == filter->lv_bothaddr[i] || 
-					 daddr == filter->lv_bothaddr[i]))));
-			bool okNum = 
-				filter->state.all_num ||
-				((filter->state.all_srcnum || (filter->lv_srcnum[i][0] && 
-					memmem(caller, strlen(caller), filter->lv_srcnum[i], strlen(filter->lv_srcnum[i])))) &&
-				 (filter->state.all_dstnum || (filter->lv_dstnum[i][0] && 
-					memmem(called, strlen(called), filter->lv_dstnum[i], strlen(filter->lv_dstnum[i])))) &&
-				 (filter->state.all_bothnum || (filter->lv_bothnum[i][0] && 
-					(memmem(caller, strlen(caller), filter->lv_bothnum[i], strlen(filter->lv_bothnum[i])) ||
-					 memmem(called, strlen(called), filter->lv_bothnum[i], strlen(filter->lv_bothnum[i]))))));
-			bool okSipType =
-				filter->state.all_siptypes ||
-				filter->lv_siptypes[i] == sip_type;
+		if(!save) {
+			bool okAddr = filter->state.all_addr;
+			if(!okAddr) {
+				for(int i = 0; i < MAXLIVEFILTERS && !okAddr; i++) {
+					if((filter->state.all_saddr || (filter->lv_saddr[i] && 
+						saddr == filter->lv_saddr[i])) &&
+					   (filter->state.all_daddr || (filter->lv_daddr[i] && 
+						daddr == filter->lv_daddr[i])) &&
+					   (filter->state.all_bothaddr || (filter->lv_bothaddr[i] && 
+						(saddr == filter->lv_bothaddr[i] || 
+						 daddr == filter->lv_bothaddr[i])))) {
+						okAddr = true;
+					}
+				}
+			}
+			bool okNum = filter->state.all_num;
+			if(!okNum) {
+				for(int i = 0; i < MAXLIVEFILTERS && !okNum; i++) {
+					if((filter->state.all_srcnum || (filter->lv_srcnum[i][0] && 
+						memmem(caller, strlen(caller), filter->lv_srcnum[i], strlen(filter->lv_srcnum[i])))) &&
+					   (filter->state.all_dstnum || (filter->lv_dstnum[i][0] && 
+						memmem(called, strlen(called), filter->lv_dstnum[i], strlen(filter->lv_dstnum[i])))) &&
+					   (filter->state.all_bothnum || (filter->lv_bothnum[i][0] && 
+						(memmem(caller, strlen(caller), filter->lv_bothnum[i], strlen(filter->lv_bothnum[i])) ||
+						 memmem(called, strlen(called), filter->lv_bothnum[i], strlen(filter->lv_bothnum[i])))))) {
+						okNum = true;
+					}
+				}
+			}
+			bool okSipType = filter->state.all_siptypes;
+			if(!okSipType) {
+				for(int i = 0; i < MAXLIVEFILTERS && !okSipType; i++) {
+					if(filter->lv_siptypes[i] == sip_type) {
+						okSipType = true;
+					}
+				}
+			}
 			if(okAddr && okNum && okSipType) {
 				save = true;
 			}
