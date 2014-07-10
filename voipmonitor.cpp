@@ -212,6 +212,7 @@ int rtptimeout = 300;
 int absolute_timeout = 4 * 3600;
 char opt_cdrurl[1024] = "";
 int opt_destination_number_mode = 1;
+int opt_update_dstnum_onanswer = 0;
 int opt_cleanspool_interval = 0; // number of seconds between cleaning spool directory. 0 = disabled
 int opt_cleanspool_sizeMB = 0; // number of MB to keep in spooldir
 int opt_domainport = 0;
@@ -1058,7 +1059,7 @@ static void daemonize(void)
 }
 
 int yesno(const char *arg) {
-	if(arg[0] == 'y' or arg[0] == '1') 
+	if(arg[0] == 'y' or arg[0] == 'Y' or arg[0] == '1') 
 		return 1;
 	else
 		return 0;
@@ -1704,6 +1705,9 @@ int load_config(char *fname) {
 	}
 	if((value = ini.GetValue("general", "destination_number_mode", NULL))) {
 		opt_destination_number_mode = atoi(value);
+	}
+	if((value = ini.GetValue("general", "update_dstnum_onanswer", NULL))) {
+		opt_update_dstnum_onanswer = yesno(value);
 	}
 	if((value = ini.GetValue("general", "mirrorip", NULL))) {
 		opt_mirrorip = yesno(value);

@@ -1078,7 +1078,10 @@ public:
 		addNode("cseq:");
 		addNode("supported:");
 		addNode("proxy-authenticate:");
-		addNode("via:");
+		extern int opt_update_dstnum_onanswer;
+		if(opt_update_dstnum_onanswer) {
+			addNode("via:");
+		}
 		addNode("m=audio ");
 		addNode("a=rtpmap:");
 		addNode("c=IN IP4 ");

@@ -167,6 +167,7 @@ extern unsigned int qringmax;
 extern int opt_pcapdump;
 extern int opt_id_sensor;
 extern int opt_destination_number_mode;
+extern int opt_update_dstnum_onanswer;
 extern MySqlStore *sqlStore;
 int global_pcap_dlink;
 extern int opt_udpfrag;
@@ -2547,7 +2548,8 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 								fraudConnectCall(call, header->ts);
 							}
 						}
-						if(call->called_invite_branch_map.size()) {
+						if(opt_update_dstnum_onanswer &&
+						   call->called_invite_branch_map.size()) {
 							char branch[100];
 							if(!get_sip_branch(data, datalen, "via:", branch, sizeof(branch)) &&
 							   branch[0] != '\0') {
@@ -2622,13 +2624,15 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 		if(call->lastsrcip != saddr) { call->oneway = 0; };
 
 		if(sip_method == INVITE) {
-			char branch[100];
-			if(!get_sip_branch(data, datalen, "via:", branch, sizeof(branch)) &&
-			   branch[0] != '\0') {
-				char called_invite[1024] = "";
-				if(!get_sip_peername(data,datalen,"INVITE ", called_invite, sizeof(called_invite)) &&
-				   called_invite[0] != '\0') {
-					call->called_invite_branch_map[branch] = called_invite;
+			if(opt_update_dstnum_onanswer) {
+				char branch[100];
+				if(!get_sip_branch(data, datalen, "via:", branch, sizeof(branch)) &&
+				   branch[0] != '\0') {
+					char called_invite[1024] = "";
+					if(!get_sip_peername(data,datalen,"INVITE ", called_invite, sizeof(called_invite)) &&
+					   called_invite[0] != '\0') {
+						call->called_invite_branch_map[branch] = called_invite;
+					}
 				}
 			}
 			ipfilter->add_call_flags(&(call->flags), ntohl(saddr), ntohl(daddr));
