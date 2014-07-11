@@ -734,11 +734,21 @@ read:
 		rtp[ssrc_n]->gfileRAW = NULL;
 		snprintf(rtp[ssrc_n]->basefilename, 1023, "%s/%s/%s.i%d", dirname().c_str(), opt_newdir ? "AUDIO" : "", get_fbasename_safe(), !iscaller);
 		rtp[ssrc_n]->basefilename[1023] = 0;
-//		int i = get_index_by_ip_port(saddr, port);
-//		if(i >= 0) {
-			//memcpy(this->rtp[ssrc_n]->rtpmap, rtpmap[i], MAX_RTPMAP * sizeof(int));
+
+		bool rtpmapIsFill = false;
+		for(int i = 0; i < MAX_RTPMAP; i++) {
+			if(rtpmap[iscaller][i]) {
+				rtpmapIsFill = true;
+			}
+		}
+		int i;
+		if(!rtpmapIsFill &&
+		   (i = get_index_by_ip_port(saddr, sport)) >=0 &&
+		   i != iscaller) {
+			memcpy(this->rtp[ssrc_n]->rtpmap, rtpmap[i], MAX_RTPMAP * sizeof(int));
+		} else {
 			memcpy(this->rtp[ssrc_n]->rtpmap, rtpmap[iscaller], MAX_RTPMAP * sizeof(int));
-//		}
+		}
 
 		rtp[ssrc_n]->read(data, datalen, header, saddr, daddr, sport, dport, seeninviteok, sensor_id, ifname);
 		this->rtp[ssrc_n]->ssrc = this->rtp[ssrc_n]->ssrc2 = curSSRC;
