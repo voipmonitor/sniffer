@@ -1,3 +1,15 @@
+10.0.5 14.7.2014
+================
+- fix filter in live sniffer
+- optimize query for select min id in database backup
+- fix typo in configure script 
+- add plcdisable config option and --plc-disable cmd line for G711
+- add information about sniffer upgrade file size to error log
+- Fixed install command for libcurl4-openssl-dev
+- add update_dstnum_onanswer option
+- try to reconstruct both audio if 200 OK is missing (or 18X with SDP) 
+- support Yes or YES in voipmonitor.conf
+
 10.0.4 30.6.2014
 ================
 - fix high MOS scores for fixed50 and fixed200 MOS scores. Fixed50 acts like 250ms and fixed200 like 400ms. (9.3 regression - broken since 5.5.2014)
