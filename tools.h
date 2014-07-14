@@ -38,6 +38,10 @@ struct dstring
 		return(this->str[0] == other.str[0] &&
 		       this->str[1] == other.str[1]); 
 	}
+	bool operator < (const dstring& other) const { 
+		return(this->str[0] < other.str[0] ||
+		       (this->str[0] == other.str[0] && this->str[1] < other.str[1])); 
+	}
 	std::string str[2];
 };
 
@@ -1074,6 +1078,10 @@ public:
 		addNode("cseq:");
 		addNode("supported:");
 		addNode("proxy-authenticate:");
+		extern int opt_update_dstnum_onanswer;
+		if(opt_update_dstnum_onanswer) {
+			addNode("via:");
+		}
 		addNode("m=audio ");
 		addNode("a=rtpmap:");
 		addNode("c=IN IP4 ");

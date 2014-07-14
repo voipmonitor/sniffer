@@ -1197,7 +1197,8 @@ bool RestartUpgrade::runUpgrade() {
 		}
 		return(false);
 	}
-	if(!GetFileSize(binaryGzFilepathName.c_str())) {
+	long long binaryGzFilepathNameSize = GetFileSize(binaryGzFilepathName.c_str()); 
+	if(!binaryGzFilepathNameSize) {
 		this->errorString = "failed download - zero size of destination file";
 		rmdir_r(this->upgradeTempFileName.c_str());
 		if(verbosity > 0) {
@@ -1222,6 +1223,9 @@ bool RestartUpgrade::runUpgrade() {
 				this->errorString += ": " + string(outputStdoutErrBuffer);
 			}
 			fclose(fileHandle);
+			char sizeInfo[200];
+			sprintf(sizeInfo, "size of file %s: %lli", binaryGzFilepathName.c_str(), binaryGzFilepathNameSize);
+			this->errorString += string("\n") + sizeInfo;
 		}
 		if(verbosity > 1) {
 			FILE *f = fopen(binaryGzFilepathName.c_str(), "rt");
@@ -1231,7 +1235,9 @@ bool RestartUpgrade::runUpgrade() {
 			}
 		}
 		unlink(outputStdoutErr);
-		rmdir_r(this->upgradeTempFileName.c_str());
+		if(verbosity < 2) {
+			rmdir_r(this->upgradeTempFileName.c_str());
+		}
 		if(verbosity > 0) {
 			syslog(LOG_ERR, "upgrade failed - %s", this->errorString.c_str());
 		}

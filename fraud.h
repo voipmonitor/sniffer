@@ -338,6 +338,25 @@ private:
 
 class CacheNumber_location {
 public:
+	struct sNumber {
+		sNumber(const char *number = NULL, u_int32_t ip = 0) {
+			if(number) {
+				this->number = number;
+			}
+			this->ip = ip;
+		}
+		string number;
+		u_int32_t ip;
+		bool operator == (const sNumber& other) const { 
+			return(this->number == other.number &&
+			       this->ip == other.ip); 
+		}
+		bool operator < (const sNumber& other) const { 
+			return(this->number < other.number ||
+			       (this->number == other.number &&
+				this->ip < other.ip)); 
+		}
+	};
 	struct sIpRec {
 		sIpRec() {
 			ip = 0;
@@ -358,17 +377,18 @@ public:
 	};
 	CacheNumber_location();
 	~CacheNumber_location();
-	bool checkNumber(const char *number, u_int32_t ip, u_int64_t at,
+	bool checkNumber(const char *number, u_int32_t number_ip,
+			 u_int32_t ip, u_int64_t at,
 			 bool *diffCountry = NULL, bool *diffContinent = NULL,
 			 u_int32_t *oldIp = NULL, string *oldCountry = NULL, string *oldContinent = NULL,
 			 const char *ip_country = NULL, const char *ip_continent = NULL);
-	bool loadNumber(const char *number, u_int64_t at);
-	void saveNumber(const char *number, sIpRec *ipRec, bool update = false);
-	void updateAt(const char *number, u_int64_t at);
+	bool loadNumber(const char *number, u_int32_t number_ip, u_int64_t at);
+	void saveNumber(const char *number, u_int32_t number_ip, sIpRec *ipRec, bool update = false);
+	void updateAt(const char *number, u_int32_t number_ip, u_int64_t at);
 	void cleanup(u_int64_t at);
 private:
 	SqlDb *sqlDb;
-	map<string, sIpRec> cache;
+	map<sNumber, sIpRec> cache;
 	u_int64_t last_cleanup_at;
 };
 
@@ -423,7 +443,8 @@ struct sFraudCallInfo {
 struct sFraudEventInfo {
 	enum eTypeEventInfo {
 		typeEventInfo_sipPacket,
-		typeEventInfo_register
+		typeEventInfo_register,
+		typeEventInfo_registerResponse
 	};
 	sFraudEventInfo() {
 		typeEventInfo = (eTypeEventInfo)0;
@@ -490,6 +511,7 @@ public:
 	virtual bool okFilter(sFraudEventInfo *eventInfo);
 	virtual void evAlert(FraudAlertInfo *alertInfo);
 protected:
+	virtual void loadAlertVirt(SqlDb_row *row) {}
 	virtual void addFraudDef(SqlDb_row *row) {}
 	virtual bool defFilterIp() { return(false); }
 	virtual bool defFilterNumber() { return(false); }
@@ -499,6 +521,7 @@ protected:
 	virtual bool defChangeLocationOk() { return(false); }
 	virtual bool defDestLocation() { return(false); }
 	virtual bool defInterval() { return(false); }
+	virtual bool defSuppressRepeatingAlerts() { return(false); }
 protected:
 	eFraudAlertType type;
 	unsigned int dbId;
@@ -515,7 +538,10 @@ protected:
 	u_int32_t intervalLength;
 	u_int32_t intervalLimit;
 	CheckInternational checkInternational;
+	bool suppressRepeatingAlerts;
+	int alertOncePerHours;
 friend class FraudAlerts;
+friend class FraudAlert_rcc_base;
 };
 
 class FraudAlert_rcc_callInfo {
@@ -533,11 +559,55 @@ private:
 	u_int64_t last_alert_info_local;
 	u_int64_t last_alert_info_international;
 	u_int64_t last_alert_info_li;
+friend class FraudAlert_rcc_base;
 friend class FraudAlert_rcc_timePeriods;
 friend class FraudAlert_rcc;
 };
 
-class FraudAlert_rcc_timePeriods {
+class FraudAlert_rcc_base {
+private:
+	struct sAlertInfo {
+		sAlertInfo(size_t concurentCalls = 0, u_int64_t at = 0) {
+			this->concurentCalls = concurentCalls;
+			this->at = at;
+		}
+		size_t concurentCalls;
+		u_int64_t at;
+	};
+public:
+	void evCall_rcc(sFraudCallInfo *callInfo, class FraudAlert_rcc *alert, bool timeperiod);
+protected:
+	virtual bool checkTime(u_int64_t time) { return(true); }
+	virtual string getDescr() { return(""); }
+private:
+	bool checkOkAlert(u_int32_t ip, size_t concurentCalls, u_int64_t at,
+			  FraudAlert::eLocalInternational li,
+			  FraudAlert_rcc *alert);
+protected:
+	unsigned int concurentCallsLimitLocal_tp;
+	unsigned int concurentCallsLimitInternational_tp;
+	unsigned int concurentCallsLimitBoth_tp;
+	map<u_int32_t, FraudAlert_rcc_callInfo*> calls;
+private:
+	map<u_int32_t, sAlertInfo> alerts_local;
+	map<u_int32_t, sAlertInfo> alerts_international;
+	map<u_int32_t, sAlertInfo> alerts_booth;
+};
+
+class FraudAlert_rcc_timePeriods : public FraudAlert_rcc_base {
+private:
+	struct sAlertInfo {
+		sAlertInfo() {
+			concurentCallsLimitLocal = 0;
+			concurentCallsLimitInternational = 0;
+			concurentCallsLimitBoth = 0;
+			at = 0;
+		}
+		unsigned int concurentCallsLimitLocal;
+		unsigned int concurentCallsLimitInternational;
+		unsigned int concurentCallsLimitBoth;
+		u_int64_t at;
+	};
 public:
 	FraudAlert_rcc_timePeriods(const char *descr, 
 				   int concurentCallsLimitLocal, 
@@ -546,6 +616,7 @@ public:
 				   unsigned int dbId);
 	~FraudAlert_rcc_timePeriods();
 	void loadTimePeriods();
+protected: 
 	bool checkTime(u_int64_t time) {
 		vector<TimePeriod>::iterator iter = timePeriods.begin();
 		while(iter != timePeriods.end()) {
@@ -556,15 +627,14 @@ public:
 		}
 		return(false);
 	}
-	void evCall(sFraudCallInfo *callInfo, class FraudAlert_rcc *alert);
+	string getDescr() {
+		return(descr);
+	}
 private:
 	string descr;
-	unsigned int concurentCallsLimitLocal;
-	unsigned int concurentCallsLimitInternational;
-	unsigned int concurentCallsLimitBoth;
 	unsigned int dbId;
 	vector<TimePeriod> timePeriods;
-	map<u_int32_t, FraudAlert_rcc_callInfo*> calls;
+	map<u_int32_t, sAlertInfo> alerts;
 };
 
 class FraudAlertInfo_rcc : public FraudAlertInfo {
@@ -584,7 +654,7 @@ private:
 	unsigned int concurentCalls;
 };
 
-class FraudAlert_rcc : public FraudAlert {
+class FraudAlert_rcc : public FraudAlert, FraudAlert_rcc_base {
 public:
 	FraudAlert_rcc(unsigned int dbId);
 	~FraudAlert_rcc();
@@ -595,9 +665,9 @@ protected:
 	bool defFilterNumber() { return(true); }
 	bool defFraudDef() { return(true); }
 	bool defConcuretCallsLimit() { return(true); }
+	bool defSuppressRepeatingAlerts() { return(true); }
 private:
 	vector<FraudAlert_rcc_timePeriods> timePeriods;
-	map<u_int32_t, FraudAlert_rcc_callInfo*> calls;
 };
 
 class FraudAlertInfo_chc : public FraudAlertInfo {
@@ -657,6 +727,17 @@ private:
 };
 
 class FraudAlert_d : public FraudAlert {
+private:
+	struct sAlertInfo {
+		sAlertInfo(const char *country_code = NULL, u_int64_t at = 0) {
+			if(country_code) {
+				this->country_code = country_code;
+			}
+			this->at = at;
+		}
+		string country_code;
+		u_int64_t at;
+	};
 public:
 	FraudAlert_d(unsigned int dbId);
 	void evCall(sFraudCallInfo *callInfo);
@@ -664,6 +745,12 @@ protected:
 	bool defFilterIp() { return(true); }
 	bool defFilterNumber() { return(true); }
 	bool defDestLocation() { return(true); }
+	bool defSuppressRepeatingAlerts() { return(true); }
+private:
+	bool checkOkAlert(const char *src_number, const char *dst_number,
+			  const char *country_code, u_int64_t at);
+private:
+	map<dstring, sAlertInfo> alerts;
 };
 
 class FraudAlertInfo_spc : public FraudAlertInfo {
@@ -681,12 +768,18 @@ private:
 class FraudAlert_spc : public FraudAlert {
 private:
 	struct sCountItem {
-		sCountItem(u_int64_t count = 0, u_int64_t last_alert_info = 0) {
+		sCountItem(u_int64_t count = 0) {
 			this->count = count;
-			this->last_alert_info = last_alert_info;
 		}
 		u_int64_t count;
-		u_int64_t last_alert_info;
+	};
+	struct sAlertInfo {
+		sAlertInfo(u_int64_t count = 0, u_int64_t at = 0) {
+			this->count = count;
+			this->at = at;
+		}
+		u_int64_t count;
+		u_int64_t at;
 	};
 public:
 	FraudAlert_spc(unsigned int dbId);
@@ -694,20 +787,30 @@ public:
 protected:
 	bool defFilterIp() { return(true); }
 	bool defInterval() { return(true); }
+	bool defSuppressRepeatingAlerts() { return(true); }
+private:
+	bool checkOkAlert(u_int32_t ip, u_int64_t count, u_int64_t at);
 private:
 	map<u_int32_t, sCountItem> count;
 	u_int64_t start_interval;
+	map<u_int32_t, sAlertInfo> alerts;
 };
 
 class FraudAlert_rc : public FraudAlert {
 private:
 	struct sCountItem {
-		sCountItem(u_int64_t count = 0, u_int64_t last_alert_info = 0) {
+		sCountItem(u_int64_t count = 0) {
 			this->count = count;
-			this->last_alert_info = last_alert_info;
 		}
 		u_int64_t count;
-		u_int64_t last_alert_info;
+	};
+	struct sAlertInfo {
+		sAlertInfo(u_int64_t count = 0, u_int64_t at = 0) {
+			this->count = count;
+			this->at = at;
+		}
+		u_int64_t count;
+		u_int64_t at;
 	};
 public:
 	FraudAlert_rc(unsigned int dbId);
@@ -715,9 +818,15 @@ public:
 protected:
 	bool defFilterIp() { return(true); }
 	bool defInterval() { return(true); }
+	bool defSuppressRepeatingAlerts() { return(true); }
 private:
+	void loadAlertVirt(SqlDb_row *row);
+	bool checkOkAlert(u_int32_t ip, u_int64_t count, u_int64_t at);
+private:
+	bool withResponse;
 	map<u_int32_t, sCountItem> count;
 	u_int64_t start_interval;
+	map<u_int32_t, sAlertInfo> alerts;
 };
 
 
@@ -733,6 +842,7 @@ public:
 	void endCall(Call *call, u_int64_t at);
 	void evSipPacket(u_int32_t ip, u_int64_t at);
 	void evRegister(u_int32_t ip, u_int64_t at);
+	void evRegisterResponse(u_int32_t ip, u_int64_t at);
 	void stopPopCallInfoThread(bool wait = false);
 	void refresh();
 private:
@@ -769,6 +879,7 @@ void fraudSeenByeCall(Call *call, struct timeval tv);
 void fraudEndCall(Call *call, struct timeval tv);
 void fraudSipPacket(u_int32_t ip, timeval tv);
 void fraudRegister(u_int32_t ip, timeval tv);
+void fraudRegisterResponse(u_int32_t ip, u_int64_t at);
 bool isExistsFraudAlerts();
 
 

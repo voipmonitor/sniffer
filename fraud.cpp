@@ -192,7 +192,8 @@ CacheNumber_location::~CacheNumber_location() {
 	delete sqlDb;
 }
 
-bool CacheNumber_location::checkNumber(const char *number, u_int32_t ip, u_int64_t at,
+bool CacheNumber_location::checkNumber(const char *number, u_int32_t number_ip,
+				       u_int32_t ip, u_int64_t at,
 				       bool *diffCountry, bool *diffContinent,
 				       u_int32_t *oldIp, string *oldCountry, string *oldContinent,
 				       const char *ip_country, const char *ip_continent) {
@@ -222,14 +223,15 @@ bool CacheNumber_location::checkNumber(const char *number, u_int32_t ip, u_int64
 	   !strcasecmp(number, "unknown")) {
 		return(true);
 	}
-	map<string, sIpRec>::iterator iterCache;
+	sNumber numberIp(number, number_ip);
+	map<sNumber, sIpRec>::iterator iterCache;
 	for(int pass = 0; pass < 2; pass++) {
-		iterCache = cache.find(number);
+		iterCache = cache.find(numberIp);
 		if(iterCache != cache.end()) {
 			break;
 		}
 		if(pass == 0) {
-			if(!this->loadNumber(number, at)) {
+			if(!this->loadNumber(number, number_ip, at)) {
 				break;
 			}
 		}
@@ -243,84 +245,89 @@ bool CacheNumber_location::checkNumber(const char *number, u_int32_t ip, u_int64
 		ipRec.continent_code = continent_code;
 		ipRec.at = at;
 		ipRec.fresh_at = at;
-		cache[number] = ipRec;
-		this->saveNumber(number, &ipRec);
+		cache[numberIp] = ipRec;
+		this->saveNumber(number, number_ip, &ipRec);
 		return(true);
 	}
-	if(cache[number].old_at &&
-	   cache[number].old_at <= at &&
-	   cache[number].at >= at &&
-	   cache[number].country_code == country_code) {
-		if(cache[number].country_code != cache[number].old_country_code) {
+	iterCache = cache.find(numberIp);
+	if(iterCache->second.old_at &&
+	   iterCache->second.old_at <= at &&
+	   iterCache->second.at >= at &&
+	   iterCache->second.country_code == country_code) {
+		if(iterCache->second.country_code != iterCache->second.old_country_code) {
 			if(diffCountry) {
 				*diffCountry = true;
 			}
 			if(oldIp) {
-				*oldIp = cache[number].old_ip;
+				*oldIp = iterCache->second.old_ip;
 			}
 			if(oldCountry) {
-				*oldCountry = cache[number].old_country_code;
+				*oldCountry = iterCache->second.old_country_code;
 			}
 		}
-		if(cache[number].continent_code != cache[number].old_continent_code) {
+		if(iterCache->second.continent_code != iterCache->second.old_continent_code) {
 			if(diffContinent) {
 				*diffContinent = true;
 			}
 			if(oldIp) {
-				*oldIp = cache[number].old_ip;
+				*oldIp = iterCache->second.old_ip;
 			}
 			if(oldContinent) {
-				*oldContinent = cache[number].old_continent_code;
+				*oldContinent = iterCache->second.old_continent_code;
 			}
 		}
-		cache[number].fresh_at = at;
+		iterCache->second.fresh_at = at;
 		return(false);
 	}
-	if(cache[number].country_code != country_code) {
-		if(country_code != cache[number].country_code) {
+	if(iterCache->second.country_code != country_code) {
+		if(country_code != iterCache->second.country_code) {
 			if(diffCountry) {
 				*diffCountry = true;
 			}
 			if(oldIp) {
-				*oldIp = cache[number].ip;
+				*oldIp = iterCache->second.ip;
 			}
 			if(oldCountry) {
-				*oldCountry = cache[number].country_code;
+				*oldCountry = iterCache->second.country_code;
 			}
 		}
-		if(continent_code != cache[number].continent_code) {
+		if(continent_code != iterCache->second.continent_code) {
 			if(diffContinent) {
 				 *diffContinent = true;
 			}
 			if(oldIp) {
-				*oldIp = cache[number].ip;
+				*oldIp = iterCache->second.ip;
 			}
 			if(oldContinent) {
-				*oldContinent = cache[number].continent_code;
+				*oldContinent = iterCache->second.continent_code;
 			}
 		}
-		cache[number].old_ip = cache[number].ip;
-		cache[number].old_country_code = cache[number].country_code;
-		cache[number].old_continent_code = cache[number].continent_code;
-		cache[number].old_at = cache[number].at;
-		cache[number].ip = ip;
-		cache[number].country_code = country_code;
-		cache[number].continent_code = continent_code;
-		cache[number].at = at;
-		cache[number].fresh_at = at;
-		this->saveNumber(number, &cache[number], true);
+		iterCache->second.old_ip = iterCache->second.ip;
+		iterCache->second.old_country_code = iterCache->second.country_code;
+		iterCache->second.old_continent_code = iterCache->second.continent_code;
+		iterCache->second.old_at = iterCache->second.at;
+		iterCache->second.ip = ip;
+		iterCache->second.country_code = country_code;
+		iterCache->second.continent_code = continent_code;
+		iterCache->second.at = at;
+		iterCache->second.fresh_at = at;
+		this->saveNumber(number, number_ip, &cache[numberIp], true);
 		return(false);
-	} else if(at > cache[number].at &&
-		  at - cache[number].at > 300 * 1000000ull) {
-		this->updateAt(number, at);
+	} else if(at > iterCache->second.at &&
+		  at - iterCache->second.at > 300 * 1000000ull) {
+		this->updateAt(number, number_ip, at);
 	}
-	cache[number].fresh_at = at;
+	iterCache->second.fresh_at = at;
 	return(true);
 }
 
-bool CacheNumber_location::loadNumber(const char *number, u_int64_t at) {
+bool CacheNumber_location::loadNumber(const char *number, u_int32_t number_ip, u_int64_t at) {
+	char number_ip_string[20];
+	sprintf(number_ip_string, "%u", number_ip);
 	sqlDb->query(string("select * from cache_number_location where number=") +
-		     sqlEscapeStringBorder(number));
+		     sqlEscapeStringBorder(number) +
+		     " and number_ip=" +
+		     number_ip_string);
 	SqlDb_row row = sqlDb->fetchRow();
 	if(row) {
 		sIpRec ipRec;
@@ -333,13 +340,13 @@ bool CacheNumber_location::loadNumber(const char *number, u_int64_t at) {
 		ipRec.old_continent_code = row["old_continent_code"];
 		ipRec.old_at = atoll(row["old_at"].c_str());
 		ipRec.fresh_at = at;
-		cache[row["number"]] = ipRec;
+		cache[sNumber(number, number_ip)] = ipRec;
 		return(true);
 	}
 	return(false);
 }
 
-void CacheNumber_location::saveNumber(const char *number, sIpRec *ipRec, bool update) {
+void CacheNumber_location::saveNumber(const char *number, u_int32_t number_ip, sIpRec *ipRec, bool update) {
 	if(update) {
 		ostringstream outStr;
 		outStr << "update cache_number_location set "
@@ -360,11 +367,14 @@ void CacheNumber_location::saveNumber(const char *number, sIpRec *ipRec, bool up
 		       << "old_at = "
 		       << ipRec->old_at 
 		       << " where number = "
-		       << sqlEscapeStringBorder(number);
+		       << sqlEscapeStringBorder(number) 
+		       << " and number_ip = "
+		       << number_ip;
 		sqlStore->query_lock(outStr.str().c_str(), STORE_PROC_ID_CACHE_NUMBERS_LOCATIONS);
 	} else {
 		SqlDb_row row;
 		row.add(number, "number");
+		row.add(number_ip, "number_ip");
 		row.add(ipRec->ip, "ip");
 		row.add(ipRec->country_code, "country_code");
 		row.add(ipRec->continent_code, "continent_code");
@@ -377,18 +387,20 @@ void CacheNumber_location::saveNumber(const char *number, sIpRec *ipRec, bool up
 	}
 }
 
-void CacheNumber_location::updateAt(const char *number, u_int64_t at) {
+void CacheNumber_location::updateAt(const char *number, u_int32_t number_ip, u_int64_t at) {
 	ostringstream outStr;
 	outStr << "update cache_number_location\
 		   set at = "
 	       << at
 	       << " where number = "
-	       << sqlEscapeStringBorder(number);
+	       << sqlEscapeStringBorder(number)
+	       << " and number_ip = "
+	       << number_ip;
 	sqlStore->query_lock(outStr.str().c_str(), STORE_PROC_ID_CACHE_NUMBERS_LOCATIONS);
 }
 
 void CacheNumber_location::cleanup(u_int64_t at) {
-	map<string, sIpRec>::iterator iterCache;
+	map<sNumber, sIpRec>::iterator iterCache;
 	for(iterCache = cache.begin(); iterCache != cache.end();) {
 		if(at > iterCache->second.fresh_at + 600 * 1000000ull) {
 			cache.erase(iterCache++);
@@ -430,6 +442,8 @@ FraudAlert::FraudAlert(eFraudAlertType type, unsigned int dbId) {
 	typeChangeLocation = _typeLocation_NA;
 	intervalLength = 0;
 	intervalLimit = 0;
+	suppressRepeatingAlerts = false;
+	alertOncePerHours = 0;
 }
 
 FraudAlert::~FraudAlert() {
@@ -495,6 +509,12 @@ void FraudAlert::loadAlert() {
 	if(defInterval()) {
 		intervalLength = atol(dbRow["fraud_interval_length"].c_str());
 		intervalLimit = atol(dbRow["fraud_interval_limit"].c_str());
+	}
+	if(defSuppressRepeatingAlerts()) {
+		suppressRepeatingAlerts = atoi(dbRow["fraud_suppress_repeating_alerts"].c_str());
+		if(suppressRepeatingAlerts) {
+			alertOncePerHours = atoi(dbRow["fraud_alert_once_per_hours"].c_str());
+		}
 	}
 	checkInternational.load(&dbRow);
 	delete sqlDb;
@@ -583,9 +603,9 @@ FraudAlert_rcc_timePeriods::FraudAlert_rcc_timePeriods(const char *descr,
 						       int concurentCallsLimitBoth, 
 						       unsigned int dbId) {
 	this->descr = descr;
-	this->concurentCallsLimitLocal = concurentCallsLimitLocal;
-	this->concurentCallsLimitInternational = concurentCallsLimitInternational;
-	this->concurentCallsLimitBoth = concurentCallsLimitBoth;
+	this->concurentCallsLimitLocal_tp = concurentCallsLimitLocal;
+	this->concurentCallsLimitInternational_tp = concurentCallsLimitInternational;
+	this->concurentCallsLimitBoth_tp = concurentCallsLimitBoth;
 	this->dbId = dbId;
 	this->loadTimePeriods();
 }
@@ -613,7 +633,7 @@ void FraudAlert_rcc_timePeriods::loadTimePeriods() {
 	delete sqlDb;
 }
 
-void FraudAlert_rcc_timePeriods::evCall(sFraudCallInfo *callInfo, FraudAlert_rcc *alert) {
+void FraudAlert_rcc_base::evCall_rcc(sFraudCallInfo *callInfo, FraudAlert_rcc *alert, bool timeperiod) {
 	FraudAlert_rcc_callInfo *call;
 	map<u_int32_t, FraudAlert_rcc_callInfo*>::iterator callsIter;
 	switch(callInfo->typeCallInfo) {
@@ -631,31 +651,40 @@ void FraudAlert_rcc_timePeriods::evCall(sFraudCallInfo *callInfo, FraudAlert_rcc
 			} else {
 				call->addInternational(callInfo->callid.c_str(), callInfo->at_connect);
 			}
-			if(this->concurentCallsLimitLocal &&
-			   call->calls_local.size() >= this->concurentCallsLimitLocal &&
-			   callInfo->at_connect > call->last_alert_info_local + 1000000ull) {
+			unsigned int concurentCallsLimitLocal = timeperiod ? this->concurentCallsLimitLocal_tp : alert->concurentCallsLimitLocal;
+			unsigned int concurentCallsLimitInternational = timeperiod ? this->concurentCallsLimitInternational_tp : alert->concurentCallsLimitInternational;
+			unsigned int concurentCallsLimitBoth = timeperiod ? this->concurentCallsLimitBoth_tp : alert->concurentCallsLimitBoth;
+			if(concurentCallsLimitLocal &&
+			   call->calls_local.size() >= concurentCallsLimitLocal &&
+			   callInfo->at_connect > call->last_alert_info_local + 1000000ull &&
+			   this->checkOkAlert(callInfo->caller_ip, call->calls_local.size(), callInfo->at_connect,
+					      FraudAlert::_li_local, alert)) {
 				FraudAlertInfo_rcc *alertInfo = new FraudAlertInfo_rcc(alert);
-				alertInfo->set(FraudAlert::_li_local, this->descr.c_str(), 
+				alertInfo->set(FraudAlert::_li_local, this->getDescr().c_str(), 
 					       callInfo->caller_ip, callInfo->country_code_caller_ip.c_str(),
 					       call->calls_local.size()); 
 				alert->evAlert(alertInfo);
 				call->last_alert_info_local = callInfo->at_connect;
 			}
-			if(this->concurentCallsLimitInternational &&
-			   call->calls_international.size() >= this->concurentCallsLimitInternational &&
-			   callInfo->at_connect > call->last_alert_info_international + 1000000ull) {
+			if(concurentCallsLimitInternational &&
+			   call->calls_international.size() >= concurentCallsLimitInternational &&
+			   callInfo->at_connect > call->last_alert_info_international + 1000000ull &&
+			   this->checkOkAlert(callInfo->caller_ip, call->calls_international.size(), callInfo->at_connect,
+					      FraudAlert::_li_international, alert)) {
 				FraudAlertInfo_rcc *alertInfo = new FraudAlertInfo_rcc(alert);
-				alertInfo->set(FraudAlert::_li_international, this->descr.c_str(), 
+				alertInfo->set(FraudAlert::_li_international, this->getDescr().c_str(), 
 					       callInfo->caller_ip, callInfo->country_code_caller_ip.c_str(),
 					       call->calls_international.size()); 
 				alert->evAlert(alertInfo);
 				call->last_alert_info_international = callInfo->at_connect;
 			}
-			if(this->concurentCallsLimitBoth &&
-			   call->calls_local.size() + call->calls_international.size() >= this->concurentCallsLimitBoth &&
-			   callInfo->at_connect > call->last_alert_info_li + 1000000ull) {
+			if(concurentCallsLimitBoth &&
+			   call->calls_local.size() + call->calls_international.size() >= concurentCallsLimitBoth &&
+			   callInfo->at_connect > call->last_alert_info_li + 1000000ull &&
+			   this->checkOkAlert(callInfo->caller_ip, call->calls_local.size() + call->calls_international.size(), callInfo->at_connect,
+					      FraudAlert::_li_booth, alert)) {
 				FraudAlertInfo_rcc *alertInfo = new FraudAlertInfo_rcc(alert);
-				alertInfo->set(FraudAlert::_li_booth, this->descr.c_str(), 
+				alertInfo->set(FraudAlert::_li_booth, this->getDescr().c_str(), 
 					       callInfo->caller_ip, callInfo->country_code_caller_ip.c_str(),
 					       call->calls_local.size() + call->calls_international.size()); 
 				alert->evAlert(alertInfo);
@@ -678,6 +707,32 @@ void FraudAlert_rcc_timePeriods::evCall(sFraudCallInfo *callInfo, FraudAlert_rcc
 	default:
 		break;
 	}
+}
+
+bool FraudAlert_rcc_base::checkOkAlert(u_int32_t ip, size_t concurentCalls, u_int64_t at,
+				       FraudAlert::eLocalInternational li,
+				       FraudAlert_rcc *alert) {
+	if(!alert->alertOncePerHours) {
+		return(true);
+	}
+	map<u_int32_t, sAlertInfo> *alerts = li == FraudAlert::_li_local ?
+					      &this->alerts_local :
+					     li == FraudAlert::_li_international ?
+					      &this->alerts_international :
+					      &this->alerts_booth;
+	map<u_int32_t, sAlertInfo>::iterator iter = alerts->find(ip);
+	if(iter == alerts->end()) {
+		(*alerts)[ip] = sAlertInfo(concurentCalls, at);
+		return(true);
+	} else {
+		if(iter->second.at + alert->alertOncePerHours * 3600 * 1000000ull < at/* ||
+		   iter->second.concurentCalls * 1.5 < concurentCalls*/) {
+			(*alerts)[ip] = sAlertInfo(concurentCalls, at);
+		} else {
+			return(false);
+		}
+	}
+	return(true);
 }
 
 FraudAlertInfo_rcc::FraudAlertInfo_rcc(FraudAlert *alert) 
@@ -755,72 +810,9 @@ void FraudAlert_rcc::evCall(sFraudCallInfo *callInfo) {
 	   !this->okFilter(callInfo)) {
 		return;
 	}
-	FraudAlert_rcc_callInfo *call;
-	map<u_int32_t, FraudAlert_rcc_callInfo*>::iterator callsIter;
-	switch(callInfo->typeCallInfo) {
-	case sFraudCallInfo::typeCallInfo_connectCall:
-		callsIter = calls.find(callInfo->caller_ip);
-		if(callsIter != calls.end()) {
-			call = callsIter->second;
-		} else {
-			call = new FraudAlert_rcc_callInfo;
-			calls[callInfo->caller_ip] = call;
-		}
-		if(callInfo->local_called_number) {
-			call->addLocal(callInfo->callid.c_str(), callInfo->at_connect);
-		} else {
-			call->addInternational(callInfo->callid.c_str(), callInfo->at_connect);
-		}
-		if(this->concurentCallsLimitLocal &&
-		   call->calls_local.size() >= this->concurentCallsLimitLocal &&
-		   callInfo->at_connect > call->last_alert_info_local + 1000000ull) {
-			FraudAlertInfo_rcc *alertInfo = new FraudAlertInfo_rcc(this);
-			alertInfo->set(FraudAlert::_li_local, NULL, 
-				       callInfo->caller_ip, callInfo->country_code_caller_ip.c_str(),
-				       call->calls_local.size()); 
-			this->evAlert(alertInfo);
-			call->last_alert_info_local = callInfo->at_connect;
-		}
-		if(this->concurentCallsLimitInternational &&
-		   call->calls_international.size() >= this->concurentCallsLimitInternational &&
-		   callInfo->at_connect > call->last_alert_info_international + 1000000ull) {
-			FraudAlertInfo_rcc *alertInfo = new FraudAlertInfo_rcc(this);
-			alertInfo->set(FraudAlert::_li_international, NULL, 
-				       callInfo->caller_ip, callInfo->country_code_caller_ip.c_str(),
-				       call->calls_international.size()); 
-			this->evAlert(alertInfo);
-			call->last_alert_info_international = callInfo->at_connect;
-		}
-		if(this->concurentCallsLimitBoth &&
-		   call->calls_local.size() + call->calls_international.size() >= this->concurentCallsLimitBoth &&
-		   callInfo->at_connect > call->last_alert_info_li + 1000000ull) {
-			FraudAlertInfo_rcc *alertInfo = new FraudAlertInfo_rcc(this);
-			alertInfo->set(FraudAlert::_li_booth, NULL, 
-				       callInfo->caller_ip, callInfo->country_code_caller_ip.c_str(),
-				       call->calls_local.size() + call->calls_international.size()); 
-			this->evAlert(alertInfo);
-			call->last_alert_info_li = callInfo->at_connect;
-		}
-		break;
-	case sFraudCallInfo::typeCallInfo_seenByeCall:
-	case sFraudCallInfo::typeCallInfo_endCall:
-		callsIter = calls.find(callInfo->caller_ip);
-		if(callsIter != calls.end()) {
-			call = callsIter->second;
-			if(callInfo->local_called_number) {
-				call->calls_local.erase(callInfo->callid);
-			} else {
-				call->calls_international.erase(callInfo->callid);
-			}
-		}
-		break;
-	default:
-		break;
-	}
-	vector<FraudAlert_rcc_timePeriods>::iterator iter = timePeriods.begin();
-	while(iter != timePeriods.end()) {
-		(*iter).evCall(callInfo, this);
-		++iter;
+	this->evCall_rcc(callInfo, this, false);
+	for(size_t i = 0; i < timePeriods.size(); i++) {
+		timePeriods[i].evCall_rcc(callInfo, this, true);
 	}
 }
 
@@ -901,7 +893,8 @@ void FraudAlert_chc::evCall(sFraudCallInfo *callInfo) {
 		u_int32_t oldIp;
 		string oldCountry;
 		string oldContinent;
-		if(!cacheNumber_location->checkNumber(callInfo->caller_number.c_str(), callInfo->caller_ip, callInfo->at_begin,
+		if(!cacheNumber_location->checkNumber(callInfo->caller_number.c_str(), callInfo->called_ip,
+						      callInfo->caller_ip, callInfo->at_begin,
 						      &diffCountry, &diffContinent, &oldIp, &oldCountry, &oldContinent,
 						      callInfo->country_code_caller_ip.c_str(), callInfo->continent_code_caller_ip.c_str())) {
 			if(this->typeChangeLocation == _typeLocation_country && diffCountry) {
@@ -954,7 +947,8 @@ void FraudAlert_chcr::evCall(sFraudCallInfo *callInfo) {
 		u_int32_t oldIp;
 		string oldCountry;
 		string oldContinent;
-		if(!cacheNumber_location->checkNumber(callInfo->caller_number.c_str(), callInfo->caller_ip, callInfo->at_begin,
+		if(!cacheNumber_location->checkNumber(callInfo->caller_number.c_str(), callInfo->called_ip,
+						      callInfo->caller_ip, callInfo->at_begin,
 						      &diffCountry, &diffContinent, &oldIp, &oldCountry, &oldContinent,
 						      callInfo->country_code_caller_ip.c_str(), callInfo->continent_code_caller_ip.c_str())) {
 			if(this->typeChangeLocation == _typeLocation_country && diffCountry) {
@@ -1045,7 +1039,9 @@ void FraudAlert_d::evCall(sFraudCallInfo *callInfo) {
 		{
 		if(this->destLocation.size() &&
 		   (countryCodes->isLocationIn(callInfo->country_code_called_number.c_str(), &this->destLocation) ||
-		    countryCodes->isLocationIn(callInfo->continent_code_called_number.c_str(), &this->destLocation, true))) {
+		    countryCodes->isLocationIn(callInfo->continent_code_called_number.c_str(), &this->destLocation, true)) &&
+		   this->checkOkAlert(callInfo->caller_number.c_str(), callInfo->called_number.c_str(),
+				      callInfo->country_code_called_number.c_str(), callInfo->at_begin)) {
 			FraudAlertInfo_d *alertInfo = new FraudAlertInfo_d(this);
 			alertInfo->set(callInfo->caller_number.c_str(),
 				       callInfo->called_number.c_str(),
@@ -1058,6 +1054,27 @@ void FraudAlert_d::evCall(sFraudCallInfo *callInfo) {
 	default:
 		break;
 	}
+}
+
+bool FraudAlert_d::checkOkAlert(const char *src_number, const char *dst_number,
+				const char *country_code, u_int64_t at) {
+	if(!this->alertOncePerHours) {
+		return(true);
+	}
+	dstring src_dst_number(src_number, dst_number);
+	map<dstring, sAlertInfo>::iterator iter = alerts.find(src_dst_number);
+	if(iter == alerts.end()) {
+		alerts[src_dst_number] = sAlertInfo(country_code, at);
+		return(true);
+	} else {
+		if(iter->second.at + this->alertOncePerHours * 3600 * 1000000ull < at ||
+		   iter->second.country_code != country_code) {
+			alerts[src_dst_number] = sAlertInfo(country_code, at);
+		} else {
+			return(false);
+		}
+	}
+	return(true);
 }
 
 FraudAlertInfo_spc::FraudAlertInfo_spc(FraudAlert *alert) 
@@ -1101,7 +1118,8 @@ FraudAlert_spc::FraudAlert_spc(unsigned int dbId)
 }
 
 void FraudAlert_spc::evEvent(sFraudEventInfo *eventInfo) {
-	if(!this->okFilter(eventInfo)) {
+	if(eventInfo->typeEventInfo != sFraudEventInfo::typeEventInfo_sipPacket ||
+	   !this->okFilter(eventInfo)) {
 		return;
 	}
 	map<u_int32_t, sCountItem>::iterator iter = count.find(eventInfo->src_ip);
@@ -1109,30 +1127,54 @@ void FraudAlert_spc::evEvent(sFraudEventInfo *eventInfo) {
 		count[eventInfo->src_ip] = sCountItem(1);
 	} else {
 		++count[eventInfo->src_ip].count;
-		if(count[eventInfo->src_ip].count >= intervalLimit && 
-		   eventInfo->at - count[eventInfo->src_ip].last_alert_info > 1000000ull) {
-			FraudAlertInfo_spc *alertInfo = new FraudAlertInfo_spc(this);
-			alertInfo->set(eventInfo->src_ip,
-				       count[eventInfo->src_ip].count);
-			this->evAlert(alertInfo);
-			count[eventInfo->src_ip].last_alert_info = eventInfo->at;
-		}
 	}
 	if(!start_interval) {
 		start_interval = eventInfo->at;
 	} else if(eventInfo->at - start_interval > intervalLength * 1000000ull) {
+		for(iter = count.begin(); iter != count.end(); iter++) {
+			if(count[iter->first].count >= intervalLimit &&
+			   this->checkOkAlert(iter->first, count[iter->first].count, eventInfo->at)) {
+				FraudAlertInfo_spc *alertInfo = new FraudAlertInfo_spc(this);
+				alertInfo->set(iter->first,
+					       count[iter->first].count);
+				this->evAlert(alertInfo);
+			}
+		}
 		count.clear();
 		start_interval = eventInfo->at;
 	}
 }
 
+bool FraudAlert_spc::checkOkAlert(u_int32_t ip, u_int64_t count, u_int64_t at) {
+	if(!this->alertOncePerHours) {
+		return(true);
+	}
+	map<u_int32_t, sAlertInfo>::iterator iter = alerts.find(ip);
+	if(iter == alerts.end()) {
+		alerts[ip] = sAlertInfo(count, at);
+		return(true);
+	} else {
+		if(iter->second.at + this->alertOncePerHours * 3600 * 1000000ull < at/* ||
+		   iter->second.count * 1.5 < count*/) {
+			alerts[ip] = sAlertInfo(count, at);
+		} else {
+			return(false);
+		}
+	}
+	return(true);
+}
+
 FraudAlert_rc::FraudAlert_rc(unsigned int dbId)
  : FraudAlert(_rc, dbId) {
+	withResponse = false;
 	start_interval = 0;
 }
 
 void FraudAlert_rc::evEvent(sFraudEventInfo *eventInfo) {
-	if(!this->okFilter(eventInfo)) {
+	if((withResponse ?
+	     eventInfo->typeEventInfo != sFraudEventInfo::typeEventInfo_registerResponse :
+	     eventInfo->typeEventInfo != sFraudEventInfo::typeEventInfo_register) ||
+	   !this->okFilter(eventInfo)) {
 		return;
 	}
 	map<u_int32_t, sCountItem>::iterator iter = count.find(eventInfo->src_ip);
@@ -1140,19 +1182,43 @@ void FraudAlert_rc::evEvent(sFraudEventInfo *eventInfo) {
 		count[eventInfo->src_ip] = sCountItem(1);
 	} else {
 		++count[eventInfo->src_ip].count;
-		if(count[eventInfo->src_ip].count >= intervalLimit && 
-		   eventInfo->at - count[eventInfo->src_ip].last_alert_info > 1000000ull) {
-			FraudAlertInfo_spc *alertInfo = new FraudAlertInfo_spc(this);
-			alertInfo->set(eventInfo->src_ip,
-				       count[eventInfo->src_ip].count);
-			this->evAlert(alertInfo);
-			count[eventInfo->src_ip].last_alert_info = eventInfo->at;
-		}
 	}
 	if(eventInfo->at - start_interval > intervalLength * 1000000ull) {
+		for(iter = count.begin(); iter != count.end(); iter++) {
+			if(count[iter->first].count >= intervalLimit &&
+			   this->checkOkAlert(iter->first, count[iter->first].count, eventInfo->at)) {
+				FraudAlertInfo_spc *alertInfo = new FraudAlertInfo_spc(this);
+				alertInfo->set(iter->first,
+					       count[iter->first].count);
+				this->evAlert(alertInfo);
+			}
+		}
 		count.clear();
 		start_interval = eventInfo->at;
 	}
+}
+
+void FraudAlert_rc::loadAlertVirt(SqlDb_row *row) {
+	withResponse = atoi((*row)["fraud_register_only_with_response"].c_str());
+}
+
+bool FraudAlert_rc::checkOkAlert(u_int32_t ip, u_int64_t count, u_int64_t at) {
+	if(!this->alertOncePerHours) {
+		return(true);
+	}
+	map<u_int32_t, sAlertInfo>::iterator iter = alerts.find(ip);
+	if(iter == alerts.end()) {
+		alerts[ip] = sAlertInfo(count, at);
+		return(true);
+	} else {
+		if(iter->second.at + this->alertOncePerHours * 3600 * 1000000ull < at/* ||
+		   iter->second.count * 1.5 < count*/) {
+			alerts[ip] = sAlertInfo(count, at);
+		} else {
+			return(false);
+		}
+	}
+	return(true);
 }
 
 
@@ -1259,6 +1325,14 @@ void FraudAlerts::evRegister(u_int32_t ip, u_int64_t at) {
 	eventQueue.push(eventInfo);
 }
 
+void FraudAlerts::evRegisterResponse(u_int32_t ip, u_int64_t at) {
+	sFraudEventInfo eventInfo;
+	eventInfo.typeEventInfo = sFraudEventInfo::typeEventInfo_registerResponse;
+	eventInfo.src_ip = htonl(ip);
+	eventInfo.at = at;
+	eventQueue.push(eventInfo);
+}
+
 void FraudAlerts::stopPopCallInfoThread(bool wait) {
 	terminatingPopCallInfoThread = true;
 	while(wait && runPopCallInfoThread) {
@@ -1283,6 +1357,7 @@ void FraudAlerts::popCallInfoThread() {
 			lock_alerts();
 			vector<FraudAlert*>::iterator iter;
 			for(iter = alerts.begin(); iter != alerts.end(); iter++) {
+				this->completeCallInfo_country_code(&callInfo, &(*iter)->checkInternational);
 				(*iter)->evCall(&callInfo);
 			}
 			unlock_alerts();
@@ -1293,7 +1368,6 @@ void FraudAlerts::popCallInfoThread() {
 			lock_alerts();
 			vector<FraudAlert*>::iterator iter;
 			for(iter = alerts.begin(); iter != alerts.end(); iter++) {
-				this->completeCallInfo_country_code(&callInfo, &(*iter)->checkInternational);
 				(*iter)->evEvent(&eventInfo);
 			}
 			unlock_alerts();
@@ -1532,6 +1606,12 @@ void fraudSipPacket(u_int32_t ip, timeval tv) {
 void fraudRegister(u_int32_t ip, timeval tv) {
 	if(fraudAlerts) {
 		fraudAlerts->evRegister(ip, tv.tv_sec * 1000000ull + tv.tv_usec);
+	}
+}
+
+void fraudRegisterResponse(u_int32_t ip, u_int64_t at) {
+	if(fraudAlerts) {
+		fraudAlerts->evRegisterResponse(ip, at);
 	}
 }
 

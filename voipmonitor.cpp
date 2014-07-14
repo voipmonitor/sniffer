@@ -164,7 +164,8 @@ unsigned int opt_openfile_max = 65535;
 int opt_packetbuffered = 0;	// Make .pcap files writing ‘‘packet-buffered’’ 
 				// more slow method, but you can use partitialy 
 				// writen file anytime, it will be consistent.
-					
+	
+int opt_disableplc = 0 ;	// On or Off packet loss concealment			
 int opt_fork = 1;		// fork or run foreground 
 int opt_saveSIP = 0;		// save SIP packets to pcap file?
 int opt_saveRTP = 0;		// save RTP packets to pcap file?
@@ -211,6 +212,7 @@ int rtptimeout = 300;
 int absolute_timeout = 4 * 3600;
 char opt_cdrurl[1024] = "";
 int opt_destination_number_mode = 1;
+int opt_update_dstnum_onanswer = 0;
 int opt_cleanspool_interval = 0; // number of seconds between cleaning spool directory. 0 = disabled
 int opt_cleanspool_sizeMB = 0; // number of MB to keep in spooldir
 int opt_domainport = 0;
@@ -1057,7 +1059,7 @@ static void daemonize(void)
 }
 
 int yesno(const char *arg) {
-	if(arg[0] == 'y' or arg[0] == '1') 
+	if(arg[0] == 'y' or arg[0] == 'Y' or arg[0] == '1') 
 		return 1;
 	else
 		return 0;
@@ -1180,6 +1182,9 @@ int load_config(char *fname) {
 		opt_cleandatabase_cdr = atoi(value);
 		opt_cleandatabase_register_state = opt_cleandatabase_cdr;
 		opt_cleandatabase_register_failed = opt_cleandatabase_cdr;
+	}
+	if((value = ini.GetValue("general", "plcdisable", NULL))) {
+		opt_disableplc = yesno(value);
 	}
 	if((value = ini.GetValue("general", "cleandatabase_cdr", NULL))) {
 		opt_cleandatabase_cdr = atoi(value);
@@ -1700,6 +1705,9 @@ int load_config(char *fname) {
 	}
 	if((value = ini.GetValue("general", "destination_number_mode", NULL))) {
 		opt_destination_number_mode = atoi(value);
+	}
+	if((value = ini.GetValue("general", "update_dstnum_onanswer", NULL))) {
+		opt_update_dstnum_onanswer = yesno(value);
 	}
 	if((value = ini.GetValue("general", "mirrorip", NULL))) {
 		opt_mirrorip = yesno(value);
@@ -2351,8 +2359,8 @@ int main(int argc, char *argv[]) {
 	    {"pcapscan-dir", 1, 0, '0'},
 	    {"pcapscan-method", 1, 0, 900},
 	    {"keycheck", 1, 0, 'Z'},
-	    {"keycheck", 1, 0, 'Z'},
 	    {"pcapfilter", 1, 0, 'f'},
+	    {"plc-disable", 0, 0, 'l'},
 	    {"interface", 1, 0, 'i'},
 	    {"read", 1, 0, 'r'},
 	    {"spooldir", 1, 0, 'd'},
@@ -2386,7 +2394,7 @@ int main(int argc, char *argv[]) {
 	/* command line arguments overrides configuration in voipmonitor.conf file */
 	while(1) {
 		int c;
-		c = getopt_long(argc, argv, "C:f:i:r:d:v:O:h:b:t:u:p:P:s:T:D:e:E:m:X:LkncUSRoAWGNIKy4Mx", long_options, &option_index);
+		c = getopt_long(argc, argv, "C:f:i:r:d:v:O:h:b:t:u:p:P:s:T:D:e:E:m:X:lLkncUSRoAWGNIKy4Mx", long_options, &option_index);
 		//"i:r:d:v:h:b:u:p:fnU", NULL, NULL);
 		if (c == -1)
 			break;
@@ -2446,6 +2454,9 @@ int main(int argc, char *argv[]) {
 				break;
 			case 'I':
 				opt_rtpnosip = 1;
+				break;
+			case 'l':
+				opt_disableplc = 1;
 				break;
 			case 'L':
 				opt_dup_check = 1;
@@ -2730,6 +2741,10 @@ int main(int argc, char *argv[]) {
                         "      If any of SIP message during the call contains header\n"
                         "      X-VoipMonitor-norecord call will be not converted to wav and pcap file\n"
                         "      will be deleted.\n"
+                        "\n"
+                        " --plc-disable\n"
+                        "      This option disable voipmonitor's PLC\n"
+                        "      (voipmonitor will not mask effect of packet loss, when playing files).\n"
                         "\n"
                         " --ring-buffer=<n>\n"
                         "      Set ring buffer in MB (feature of newer >= 2.6.31 kernels and\n"

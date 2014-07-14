@@ -102,6 +102,7 @@ public:
 	char caller[256];		//!< From: xxx 
 	char caller_domain[256];	//!< From: xxx 
 	char called[256];		//!< To: xxx
+	map<string, string> called_invite_branch_map;
 	char called_domain[256];	//!< To: xxx
 	char contact_num[64];		//!< 
 	char contact_domain[128];	//!< 
@@ -138,6 +139,7 @@ public:
 	int regcount;
 	int reg401count;
 	int regstate;
+	bool regresponse;
 	unsigned long long flags1;	//!< bit flags used to store max 64 flags 
 	volatile unsigned int rtppcaketsinqueue;
 	unsigned int unrepliedinvite;
@@ -150,6 +152,7 @@ public:
 	float b_mos_lqo;
 
 	time_t progress_time;		//!< time in seconds of 18X response
+	bool set_progress_time_via_2XX_or18X;
 	time_t first_rtp_time;		//!< time in seconds of first RTP packet
 	time_t connect_time;		//!< time in seconds of 200 OK
 	time_t last_packet_time;	

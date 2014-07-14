@@ -167,6 +167,7 @@ extern unsigned int qringmax;
 extern int opt_pcapdump;
 extern int opt_id_sensor;
 extern int opt_destination_number_mode;
+extern int opt_update_dstnum_onanswer;
 extern MySqlStore *sqlStore;
 int global_pcap_dlink;
 extern int opt_udpfrag;
@@ -423,28 +424,43 @@ save:
 	for(usersnifferIT = usersniffer.begin(); usersnifferIT != usersniffer.end(); usersnifferIT++) {
 		livesnifferfilter_t *filter = usersnifferIT->second;
 		bool save = filter->state.all_all;
-		for(int i = 0; i < MAXLIVEFILTERS && !save; i++) {
-			bool okAddr = 
-				filter->state.all_addr ||
-				((filter->state.all_saddr || (filter->lv_saddr[i] && 
-					saddr == filter->lv_saddr[i])) &&
-				 (filter->state.all_daddr || (filter->lv_daddr[i] && 
-					daddr == filter->lv_daddr[i])) &&
-				 (filter->state.all_bothaddr || (filter->lv_bothaddr[i] && 
-					(saddr == filter->lv_bothaddr[i] || 
-					 daddr == filter->lv_bothaddr[i]))));
-			bool okNum = 
-				filter->state.all_num ||
-				((filter->state.all_srcnum || (filter->lv_srcnum[i][0] && 
-					memmem(caller, strlen(caller), filter->lv_srcnum[i], strlen(filter->lv_srcnum[i])))) &&
-				 (filter->state.all_dstnum || (filter->lv_dstnum[i][0] && 
-					memmem(called, strlen(called), filter->lv_dstnum[i], strlen(filter->lv_dstnum[i])))) &&
-				 (filter->state.all_bothnum || (filter->lv_bothnum[i][0] && 
-					(memmem(caller, strlen(caller), filter->lv_bothnum[i], strlen(filter->lv_bothnum[i])) ||
-					 memmem(called, strlen(called), filter->lv_bothnum[i], strlen(filter->lv_bothnum[i]))))));
-			bool okSipType =
-				filter->state.all_siptypes ||
-				filter->lv_siptypes[i] == sip_type;
+		if(!save) {
+			bool okAddr = filter->state.all_addr;
+			if(!okAddr) {
+				for(int i = 0; i < MAXLIVEFILTERS && !okAddr; i++) {
+					if((filter->state.all_saddr || (filter->lv_saddr[i] && 
+						saddr == filter->lv_saddr[i])) &&
+					   (filter->state.all_daddr || (filter->lv_daddr[i] && 
+						daddr == filter->lv_daddr[i])) &&
+					   (filter->state.all_bothaddr || (filter->lv_bothaddr[i] && 
+						(saddr == filter->lv_bothaddr[i] || 
+						 daddr == filter->lv_bothaddr[i])))) {
+						okAddr = true;
+					}
+				}
+			}
+			bool okNum = filter->state.all_num;
+			if(!okNum) {
+				for(int i = 0; i < MAXLIVEFILTERS && !okNum; i++) {
+					if((filter->state.all_srcnum || (filter->lv_srcnum[i][0] && 
+						memmem(caller, strlen(caller), filter->lv_srcnum[i], strlen(filter->lv_srcnum[i])))) &&
+					   (filter->state.all_dstnum || (filter->lv_dstnum[i][0] && 
+						memmem(called, strlen(called), filter->lv_dstnum[i], strlen(filter->lv_dstnum[i])))) &&
+					   (filter->state.all_bothnum || (filter->lv_bothnum[i][0] && 
+						(memmem(caller, strlen(caller), filter->lv_bothnum[i], strlen(filter->lv_bothnum[i])) ||
+						 memmem(called, strlen(called), filter->lv_bothnum[i], strlen(filter->lv_bothnum[i])))))) {
+						okNum = true;
+					}
+				}
+			}
+			bool okSipType = filter->state.all_siptypes;
+			if(!okSipType) {
+				for(int i = 0; i < MAXLIVEFILTERS && !okSipType; i++) {
+					if(filter->lv_siptypes[i] == sip_type) {
+						okSipType = true;
+					}
+				}
+			}
 			if(okAddr && okNum && okSipType) {
 				save = true;
 			}
@@ -861,20 +877,23 @@ fail_exit:
 
 
 int get_sip_branch(char *data, int data_len, const char *tag, char *branch, unsigned int branch_len){
-	unsigned long r, r2, branch_tag_len;
+	unsigned long branch_tag_len;
 	char *branch_tag = gettag(data, data_len, tag, &branch_tag_len);
-	if ((r = (unsigned long)memmem(branch_tag, branch_tag_len, "branch=", 7)) == 0){
+	char *branchBegin = (char*)memmem(branch_tag, branch_tag_len, "branch=", 7);
+	char *branchEnd;
+	if(!branchBegin) {
 		goto fail_exit;
 	}
-	r += 7;
-	if ((r2 = (unsigned long)memmem(branch_tag, branch_tag_len, ";", 1)) == 0){
+	branchBegin += 7;
+	branchEnd = (char*)memmem(branchBegin, branch_tag_len - (branchBegin - branch_tag), ";", 1);
+	if(!branchEnd) {
+		branchEnd = branchBegin + branch_tag_len - (branchBegin - branch_tag);
+	}
+	if(branchEnd <= branchBegin || ((branchEnd - branchBegin) > branch_len)) {
 		goto fail_exit;
 	}
-	if (r2 <= r || ((r2 - r) > (unsigned long)branch_len)  ){
-		goto fail_exit;
-	}
-	memcpy(branch, (void*)r, MIN(r2 - r, branch_len));
-	branch[MIN(r2 - r, branch_len - 1)] = '\0';
+	memcpy(branch, branchBegin, MIN(branchEnd - branchBegin, branch_len));
+	branch[MIN(branchEnd - branchBegin, branch_len - 1)] = '\0';
 	return 0;
 fail_exit:
 	strcpy(branch, "");
@@ -2294,6 +2313,12 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 					goto endsip;
 				}
 			}
+			if(call->regstate && !call->regresponse) {
+				if(opt_enable_fraud) {
+					fraudRegisterResponse(call->sipcallerip, call->first_packet_time * 1000000ull + call->first_packet_usec);
+				}
+				call->regresponse = true;
+			}
 			if(call->msgcount > 20) {
 				// too many REGISTER messages within the same callid
 				call->regstate = 4;
@@ -2484,8 +2509,9 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 				}
 			} else if(sip_method == RES2XX) {
 				// if the progress time was not set yet set it here so PDD (Post Dial Delay) is accurate if no ringing is present
-				if(call->progress_time == 0) {
+				if(!call->set_progress_time_via_2XX_or18X) {
 					call->progress_time = header->ts.tv_sec;
+					call->set_progress_time_via_2XX_or18X = true;
 				}
 
 				// if it is OK check for BYE
@@ -2522,6 +2548,17 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 								fraudConnectCall(call, header->ts);
 							}
 						}
+						if(opt_update_dstnum_onanswer &&
+						   call->called_invite_branch_map.size()) {
+							char branch[100];
+							if(!get_sip_branch(data, datalen, "via:", branch, sizeof(branch)) &&
+							   branch[0] != '\0') {
+								map<string, string>::iterator iter = call->called_invite_branch_map.find(branch);
+								if(iter != call->called_invite_branch_map.end()) {
+									strncpy(call->called, iter->second.c_str(), sizeof(call->called));
+								}
+							}
+						}
 						if(verbosity > 2)
 							syslog(LOG_NOTICE, "Call answered\n");
 					} else if(strncmp(cseq, call->cancelcseq, cseqlen) == 0) {
@@ -2539,8 +2576,9 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 				}
 
 			} else if(sip_method == RES18X) {
-				if(call->progress_time == 0) {
+				if(!call->set_progress_time_via_2XX_or18X) {
 					call->progress_time = header->ts.tv_sec;
+					call->set_progress_time_via_2XX_or18X = true;
 				}
 				if(!call->onCall_18X) {
 					ClientThreads.onCall(lastSIPresponseNum, call->callername, call->caller, call->called,
@@ -2586,6 +2624,17 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 		if(call->lastsrcip != saddr) { call->oneway = 0; };
 
 		if(sip_method == INVITE) {
+			if(opt_update_dstnum_onanswer) {
+				char branch[100];
+				if(!get_sip_branch(data, datalen, "via:", branch, sizeof(branch)) &&
+				   branch[0] != '\0') {
+					char called_invite[1024] = "";
+					if(!get_sip_peername(data,datalen,"INVITE ", called_invite, sizeof(called_invite)) &&
+					   called_invite[0] != '\0') {
+						call->called_invite_branch_map[branch] = called_invite;
+					}
+				}
+			}
 			ipfilter->add_call_flags(&(call->flags), ntohl(saddr), ntohl(daddr));
 			if(opt_cdrproxy) {
 				if(call->sipcalledip != daddr and call->sipcallerip != daddr and call->lastsipcallerip != saddr) {
