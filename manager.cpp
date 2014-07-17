@@ -279,7 +279,7 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 			return -1;
 		}
 	} else if(strstr(buf, "reindexfiles") != NULL) {
-		snprintf(sendbuf, BUFSIZE, "starting reindexing plesae wait...");
+		snprintf(sendbuf, BUFSIZE, "starting reindexing please wait...");
 		if ((size = sendvm(client, sshchannel, sendbuf, strlen(sendbuf), 0)) == -1){
 			cerr << "Error sending data to client" << endl;
 			return -1;

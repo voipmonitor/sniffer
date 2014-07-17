@@ -2267,7 +2267,9 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 					// the expire can be also in contact header Contact: 79438652 <sip:6600006@192.168.10.202:1026>;expires=240
 					get_expires_from_contact(data, datalen, &call->register_expires);
 				}
-
+				if(opt_enable_fraud) {
+					fraudConnectCall(call, header->ts);
+				}
 				if(verbosity > 3) syslog(LOG_DEBUG, "REGISTER OK Call-ID[%s]", call->call_id.c_str());
                                 s = gettag(data, datalen, "\nCSeq:", &l, &gettagLimitLen);
                                 if(l && strncmp(s, call->invitecseq, l) == 0) {
