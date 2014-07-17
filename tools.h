@@ -1084,6 +1084,7 @@ public:
 		}
 		addNode("m=audio ");
 		addNode("a=rtpmap:");
+		addNode("o=");
 		addNode("c=IN IP4 ");
 		addNode("expires=");
 		addNode("username=\"");

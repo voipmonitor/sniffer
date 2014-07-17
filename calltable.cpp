@@ -285,9 +285,9 @@ Call::mapRemove() {
 	Calltable *ct = (Calltable *)calltable;
 
 	for(i = 0; i < ipport_n; i++) {
-		ct->mapRemove(this->addr[i], this->port[i]);
+		ct->mapRemove(this->ip_port[i].addr, this->ip_port[i].port);
 		if(opt_rtcp) {
-			ct->mapRemove(this->addr[i], this->port[i] + 1);
+			ct->mapRemove(this->ip_port[i].addr, this->ip_port[i].port + 1);
 		}
 
 	}
@@ -299,9 +299,9 @@ Call::hashRemove() {
 	Calltable *ct = (Calltable *)calltable;
 
 	for(i = 0; i < ipport_n; i++) {
-		ct->hashRemove(this, this->addr[i], this->port[i]);
+		ct->hashRemove(this, this->ip_port[i].addr, this->ip_port[i].port);
 		if(opt_rtcp) {
-			ct->hashRemove(this, this->addr[i], this->port[i] + 1);
+			ct->hashRemove(this, this->ip_port[i].addr, this->ip_port[i].port + 1);
 		}
 
 	}
@@ -516,7 +516,7 @@ Call::dirnamesqlfiles() {
 
 /* add ip adress and port to this call */
 int
-Call::add_ip_port(in_addr_t addr, unsigned short port, char *ua, unsigned long ua_len, bool iscaller, int *rtpmap) {
+Call::add_ip_port(in_addr_t addr, unsigned short port, char *sessid, char *ua, unsigned long ua_len, bool iscaller, int *rtpmap) {
 	if(verbosity >= 4) {
 		struct in_addr in;
 		in.s_addr = addr;
@@ -526,9 +526,9 @@ Call::add_ip_port(in_addr_t addr, unsigned short port, char *ua, unsigned long u
 	if(ipport_n > 0) {
 		// check, if there is already IP:port
 		for(int i = 0; i < ipport_n; i++) {
-			if(this->addr[i] == addr && this->port[i] == port){
+			if(this->ip_port[i].addr == addr && this->ip_port[i].port == port) {
 				// reinit rtpmap
-				memcpy(this->rtpmap[i], rtpmap, MAX_RTPMAP * sizeof(int)); //XXX: is it neccessary?
+				memcpy(this->rtpmap[RTPMAP_BY_CALLERD ? iscaller : i], rtpmap, MAX_RTPMAP * sizeof(int));
 				// force mark bit for reinvite 
 				forcemark[!iscaller] = true;
 				return 1;
@@ -553,22 +553,57 @@ Call::add_ip_port(in_addr_t addr, unsigned short port, char *ua, unsigned long u
 		tmp[MIN(ua_len, 1023)] = '\0';
 	}
 
-	this->addr[ipport_n] = addr;
-	this->port[ipport_n] = port;
-	//memcpy(this->rtpmap[ipport_n], rtpmap, MAX_RTPMAP * sizeof(int));
-	memcpy(this->rtpmap[iscaller], rtpmap, MAX_RTPMAP * sizeof(int));
-	this->iscaller[ipport_n] = iscaller;
+	this->ip_port[ipport_n].addr = addr;
+	this->ip_port[ipport_n].port = port;
+	this->ip_port[ipport_n].iscaller = iscaller;
+	if(sessid) {
+		memcpy(this->ip_port[ipport_n].sessid, sessid, MAXLEN_SDP_SESSID);
+	} else {
+		memset(this->ip_port[ipport_n].sessid, 0, MAXLEN_SDP_SESSID);
+	}
+	
+	memcpy(this->rtpmap[RTPMAP_BY_CALLERD ? iscaller : ipport_n], rtpmap, MAX_RTPMAP * sizeof(int));
 	ipport_n++;
 	return 0;
+}
+
+void
+Call::add_ip_port_hash(in_addr_t addr, unsigned short port, char *sessid, char *ua, unsigned long ua_len, bool iscaller, int *rtpmap, bool fax, int allowrelation) {
+	if(sessid) {
+		int sessidIndex = get_index_by_sessid(sessid);
+		if(sessidIndex >= 0) {
+			if(this->ip_port[sessidIndex].addr != addr ||
+			   this->ip_port[sessidIndex].port != port ||
+			   this->ip_port[sessidIndex].iscaller != iscaller) {
+				((Calltable*)calltable)->hashRemove(this, ip_port[sessidIndex].addr, ip_port[sessidIndex].port);
+				((Calltable*)calltable)->hashAdd(addr, port, this, iscaller, 0, fax, allowrelation);
+				if(opt_rtcp) {
+					((Calltable*)calltable)->hashRemove(this, ip_port[sessidIndex].addr, ip_port[sessidIndex].port + 1);
+					((Calltable*)calltable)->hashAdd(addr, port + 1, this, iscaller, 1, fax);
+				}
+				//cout << "change ip/port for sessid " << sessid << " ip:" << inet_ntostring(htonl(addr)) << "/" << inet_ntostring(htonl(this->ip_port[sessidIndex].addr)) << " port:" << port << "/" <<  this->ip_port[sessidIndex].port << endl;
+				this->ip_port[sessidIndex].addr = addr;
+				this->ip_port[sessidIndex].port = port;
+				this->ip_port[sessidIndex].iscaller = iscaller;
+			}
+			return;
+		}
+	}
+	if(this->add_ip_port(addr, port, sessid, ua, ua_len, iscaller, rtpmap) != -1) {
+		((Calltable*)calltable)->hashAdd(addr, port, this, iscaller, 0, fax, allowrelation);
+		if(opt_rtcp) {
+			((Calltable*)calltable)->hashAdd(addr, port + 1, this, iscaller, 1, fax);
+		}
+	}
 }
 
 /* Return reference to Call if IP:port was found, otherwise return NULL */
 Call*
 Call::find_by_ip_port(in_addr_t addr, unsigned short port, int *iscaller){
 	for(int i = 0; i < ipport_n; i++) {
-		if(this->addr[i] == addr && this->port[i] == port){
+		if(this->ip_port[i].addr == addr && this->ip_port[i].port == port) {
 			// we have found it
-			*iscaller = this->iscaller[i];
+			*iscaller = this->ip_port[i].iscaller;
 			return this;
 		}
 	}
@@ -579,7 +614,31 @@ Call::find_by_ip_port(in_addr_t addr, unsigned short port, int *iscaller){
 int
 Call::get_index_by_ip_port(in_addr_t addr, unsigned short port){
 	for(int i = 0; i < ipport_n; i++) {
-		if(this->addr[i] == addr && this->port[i] == port){
+		if(this->ip_port[i].addr == addr && this->ip_port[i].port == port) {
+			// we have found it
+			return i;
+		}
+	}
+	// not found
+	return -1;
+}
+
+Call*
+Call::find_by_sessid(char *sessid){
+	for(int i = 0; i < ipport_n; i++) {
+		if(!memcmp(this->ip_port[i].sessid, sessid, MAXLEN_SDP_SESSID)) {
+			// we have found it
+			return this;
+		}
+	}
+	// not found
+	return NULL;
+}
+
+int
+Call::get_index_by_sessid(char *sessid){
+	for(int i = 0; i < ipport_n; i++) {
+		if(!memcmp(this->ip_port[i].sessid, sessid, MAXLEN_SDP_SESSID)) {
 			// we have found it
 			return i;
 		}
@@ -735,19 +794,21 @@ read:
 		snprintf(rtp[ssrc_n]->basefilename, 1023, "%s/%s/%s.i%d", dirname().c_str(), opt_newdir ? "AUDIO" : "", get_fbasename_safe(), !iscaller);
 		rtp[ssrc_n]->basefilename[1023] = 0;
 
-		bool rtpmapIsFill = false;
-		for(int i = 0; i < MAX_RTPMAP; i++) {
-			if(rtpmap[iscaller][i]) {
-				rtpmapIsFill = true;
-			}
-		}
-		int i;
-		if(!rtpmapIsFill &&
-		   (i = get_index_by_ip_port(saddr, sport)) >=0 &&
-		   i != iscaller) {
-			memcpy(this->rtp[ssrc_n]->rtpmap, rtpmap[i], MAX_RTPMAP * sizeof(int));
+		if(RTPMAP_BY_CALLERD) {
+			memcpy(this->rtp[ssrc_n]->rtpmap, rtpmap[isFillRtpMap(iscaller) ? iscaller : !iscaller], MAX_RTPMAP * sizeof(int));
 		} else {
-			memcpy(this->rtp[ssrc_n]->rtpmap, rtpmap[iscaller], MAX_RTPMAP * sizeof(int));
+			int i = get_index_by_ip_port(saddr, sport);
+			if(i >= 0 && isFillRtpMap(i)) {
+				memcpy(this->rtp[ssrc_n]->rtpmap, rtpmap[i], MAX_RTPMAP * sizeof(int));
+			} else {
+				for(int j = 0; j < 2; j++) {
+					i = getFillRtpMapByCallerd(j ? !iscaller : iscaller);
+					if(i >= 0) {
+						memcpy(this->rtp[ssrc_n]->rtpmap, rtpmap[i], MAX_RTPMAP * sizeof(int));
+						break;
+					}
+				}
+			}
 		}
 
 		rtp[ssrc_n]->read(data, datalen, header, saddr, daddr, sport, dport, seeninviteok, sensor_id, ifname);
@@ -3001,7 +3062,7 @@ Call::dump(){
 	if(ipport_n > 0) {
 		printf("ipport_n:%d\n", ipport_n);
 		for(int i = 0; i < ipport_n; i++) 
-			printf("addr: %u, port: %d\n", addr[i], port[i]);
+			printf("addr: %u, port: %d\n", ip_port[i].addr, ip_port[i].port);
 	} else {
 		printf("no IP:port assigned\n");
 	}

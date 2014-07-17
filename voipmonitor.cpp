@@ -3496,6 +3496,15 @@ int main(int argc, char *argv[]) {
 #endif
 		// start reading packets
 		//readdump_libnids(handle);
+	 
+		if((opt_read_from_file || opt_pb_read_from_file[0]) && !opt_nocdr) {
+			for(int i = 0; i < opt_mysqlstore_max_threads_cdr; i++) {
+				sqlStore->setIgnoreTerminating(STORE_PROC_ID_CDR_1 + i, true);
+			}
+			for(int i = 0; i < opt_mysqlstore_max_threads_message; i++) {
+				sqlStore->setIgnoreTerminating(STORE_PROC_ID_MESSAGE_1 + i, true);
+			}
+		}
 
 		if(opt_pcap_threaded) {
 			if(opt_pcap_queue) {
@@ -3669,6 +3678,12 @@ int main(int argc, char *argv[]) {
 		if(opt_enable_fraud &&
 		   sqlStore->getSize(STORE_PROC_ID_FRAUD_ALERT_INFO)) {
 			sleep(2);
+		}
+		for(int i = 0; i < opt_mysqlstore_max_threads_cdr; i++) {
+			sqlStore->setIgnoreTerminating(STORE_PROC_ID_CDR_1 + i, false);
+		}
+		for(int i = 0; i < opt_mysqlstore_max_threads_message; i++) {
+			sqlStore->setIgnoreTerminating(STORE_PROC_ID_MESSAGE_1 + i, false);
 		}
 	}
 	terminating = 1;
