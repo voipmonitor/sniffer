@@ -1878,16 +1878,6 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 			}
 		}
 		last_cleanup = header->ts.tv_sec;
-		/* delete all calls */
-		calltable->lock_calls_deletequeue();
-		while (calltable->calls_deletequeue.size() > 0) {
-			call = calltable->calls_deletequeue.front();
-			calltable->calls_deletequeue.pop();
-			call->hashRemove();
-			delete call;
-			calls_counter--;
-		}
-		calltable->unlock_calls_deletequeue();
 
 		// clean tcp_streams_list
 		tcpReassemblySip.clean(header->ts.tv_sec);

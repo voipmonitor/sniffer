@@ -499,6 +499,7 @@ public:
 		}
 		return(false);
 	}
+
 	int getFillRtpMapByCallerd(bool iscaller) {
 		for(int i = ipport_n - 1; i >= 0; i--) {
 			if(ip_port[i].iscaller == iscaller &&
@@ -507,6 +508,14 @@ public:
 			}
 		}
 		return(-1);
+	}
+
+	void atFinish();
+	
+	bool isPcapsClose() {
+		return(pcap.isClose() &&
+		       pcapSip.isClose() &&
+		       pcapRtp.isClose());
 	}
 private:
 	ip_port_call_info ip_port[MAX_IP_PER_CALL];
@@ -529,7 +538,7 @@ typedef struct {
 class Calltable {
 public:
 	deque<Call*> calls_queue; //!< this queue is used for asynchronous storing CDR by the worker thread
-	queue<Call*> calls_deletequeue; //!< this queue is used for asynchronous storing CDR by the worker thread
+	deque<Call*> calls_deletequeue; //!< this queue is used for asynchronous storing CDR by the worker thread
 	queue<string> files_queue; //!< this queue is used for asynchronous storing CDR by the worker thread
 	queue<string> files_sqlqueue; //!< this queue is used for asynchronous storing CDR by the worker thread
 	list<Call*> calls_list; //!< 

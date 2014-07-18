@@ -3081,6 +3081,47 @@ Call::dump(){
 	printf("-end call dump  %p----------------------------\n", this);
 }
 
+void Call::atFinish() {
+	extern char pcapcommand[4092];
+	if(pcapcommand[0]) {
+		extern char opt_chdir[1024];
+		string source(pcapcommand);
+		string find1 = "%pcap%";
+		string find2 = "%basename%";
+		string find3 = "%dirname%";
+		string replace;
+		replace.append("\"");
+		replace.append(opt_chdir);
+		replace.append("/");
+		replace.append(this->dirname());
+		replace.append("/");
+		replace.append(this->fbasename);
+		replace.append(".pcap");
+		replace.append("\"");
+		find_and_replace(source, find1, replace);
+		find_and_replace(source, find2, this->fbasename);
+		find_and_replace(source, find3, this->dirname());
+		if(verbosity >= 2) printf("command: [%s]\n", source.c_str());
+		system(source.c_str());
+	};
+	extern char filtercommand[4092];
+	if(filtercommand[0]/* && this->flags & FLAG_RUNSCRIPT*/) {
+		string source(filtercommand);
+		string tmp = this->fbasename;
+		find_and_replace(source, string("%callid%"), escapeshellR(tmp));
+		tmp = this->dirname();
+		find_and_replace(source, string("%dirname%"), escapeshellR(tmp));
+		tmp = sqlDateTimeString(this->calltime());
+		find_and_replace(source, string("%calldate%"), escapeshellR(tmp));
+		tmp = this->caller;
+		find_and_replace(source, string("%caller%"), escapeshellR(tmp));
+		tmp = this->called;
+		find_and_replace(source, string("%called%"), escapeshellR(tmp));
+		if(verbosity >= 2) printf("command: [%s]\n", source.c_str());
+		system(source.c_str());
+	}
+}
+
 /* constructor */
 Calltable::Calltable() {
 	pthread_mutex_init(&qlock, NULL);

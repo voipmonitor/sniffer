@@ -46,6 +46,7 @@
 #include "tools.h"
 #include "md5.h"
 #include "pcap_queue.h"
+#include "sql_db.h"
 
 extern char mac[32];
 extern int verbosity;
@@ -742,20 +743,20 @@ unsigned long getUptime() {
 }
 
 
-PcapDumper::PcapDumper(eTypePcapDump type, class Call *call, bool updateFilesQueueAtClose) {
+PcapDumper::PcapDumper(eTypePcapDump type, class Call *call) {
 	this->type = type;
 	this->call = call;
-	this->updateFilesQueueAtClose = updateFilesQueueAtClose;
 	this->capsize = 0;
 	this->size = 0;
 	this->handle = NULL;
 	this->openError = false;
 	this->openAttempts = 0;
+	this->state = state_na;
 }
 
 PcapDumper::~PcapDumper() {
 	if(this->handle) {
-		this->close(this->updateFilesQueueAtClose);
+		this->close();
 	}
 }
 
@@ -764,7 +765,7 @@ bool PcapDumper::open(const char *fileName, const char *fileNameSpoolRelative, p
 		return(false);
 	}
 	if(this->handle) {
-		this->close(this->updateFilesQueueAtClose);
+		this->close();
 		syslog(LOG_NOTICE, "pcapdumper: reopen %s -> %s", this->fileName.c_str(), fileName);
 	}
 	/* disable - too slow
@@ -797,7 +798,12 @@ bool PcapDumper::open(const char *fileName, const char *fileNameSpoolRelative, p
 	}
 	this->fileName = fileName;
 	this->fileNameSpoolRelative = fileNameSpoolRelative;
-	return(this->handle != NULL);
+	if(this->handle != NULL) {
+		this->state = state_open;
+		return(true);
+	} else {
+		return(false);
+	}
 }
 
 #define PCAP_DUMPER_PACKET_HEADER_SIZE 16
@@ -822,13 +828,15 @@ void PcapDumper::dump(pcap_pkthdr* header, const u_char *packet) {
 			syslog(LOG_NOTICE, "pcapdumper: incorrect caplen/len (%u/%u) in %s", header->caplen, header->len, fileName.c_str());
 			incorrectCaplenDetected = true;
 		}
+		this->state = state_dump;
 	}
 }
 
 void PcapDumper::close(bool updateFilesQueue) {
 	if(this->handle) {
-		if(updateFilesQueue && this->call) {
-			asyncClose.add(this->handle, this->call,
+		if(this->call) {
+			asyncClose.add(this->handle, updateFilesQueue,
+				       this->call, this,
 				       this->fileNameSpoolRelative.c_str(), 
 				       type == rtp ? "rtpsize" : 
 				       this->call->type == REGISTER ? "regsize" : "sipsize",
@@ -837,10 +845,11 @@ void PcapDumper::close(bool updateFilesQueue) {
 			asyncClose.add(this->handle);
 		}
 		this->handle = NULL;
+		this->state = state_do_close;
 	}
 }
 
-void PcapDumper::remove(bool updateFilesQueue) {
+void PcapDumper::remove() {
 	if(this->handle) {
 		this->close(false);
 		unlink(this->fileName.c_str());
@@ -850,21 +859,20 @@ void PcapDumper::remove(bool updateFilesQueue) {
 
 extern int opt_gzipGRAPH;
 
-RtpGraphSaver::RtpGraphSaver(RTP *rtp, bool updateFilesQueueAtClose) {
+RtpGraphSaver::RtpGraphSaver(RTP *rtp) {
 	this->rtp = rtp;
-	this->updateFilesQueueAtClose = updateFilesQueueAtClose;
 	this->handle = NULL;
 }
 
 RtpGraphSaver::~RtpGraphSaver() {
 	if(this->isOpen()) {
-		this->close(this->updateFilesQueueAtClose);
+		this->close();
 	}
 }
 
 bool RtpGraphSaver::open(const char *fileName, const char *fileNameSpoolRelative) {
 	if(this->handle) {
-		this->close(this->updateFilesQueueAtClose);
+		this->close();
 		syslog(LOG_NOTICE, "graphsaver: reopen %s -> %s", this->fileName.c_str(), fileName);
 	}
 	/* disable - too slow
@@ -895,8 +903,9 @@ void RtpGraphSaver::write(char *buffer, int length) {
 void RtpGraphSaver::close(bool updateFilesQueue) {
 	if(this->isOpen()) {
 		Call *call = (Call*)this->rtp->call_owner;
-		if(updateFilesQueue && call) {
-			asyncClose.add(this->handle, call,
+		if(call) {
+			asyncClose.add(this->handle, updateFilesQueue,
+				       call,
 				       this->fileNameSpoolRelative.c_str(), 
 				       "graphsize", 
 				       this->handle->size);
@@ -910,22 +919,27 @@ void RtpGraphSaver::close(bool updateFilesQueue) {
 	}
 }
 
-AsyncClose::AsyncCloseItem::AsyncCloseItem(Call *call, const char *file, const char *column, long long writeBytes) {
-	if(call) {
+AsyncClose::AsyncCloseItem::AsyncCloseItem(Call *call, PcapDumper *pcapDumper, const char *file, const char *column, long long writeBytes) {
+	this->call = call;
+	this->pcapDumper = pcapDumper;
+	if(file) {
 		this->file = file;
-		this->column = column;
-		this->dirnamesqlfiles = call->dirnamesqlfiles();
-		this->writeBytes = writeBytes;
-		this->calltable = call->calltable;
 	}
+	if(column) {
+		this->column = column;
+	}
+	this->writeBytes = writeBytes;
 	this->dataLength = 0;
 }
 
 void AsyncClose::AsyncCloseItem::addtofilesqueue() {
-	Call::_addtofilesqueue(this->file, this->column, this->dirnamesqlfiles, this->writeBytes);
+	if(!call) {
+		return;
+	}
+	Call::_addtofilesqueue(this->file, this->column, call->dirnamesqlfiles(), this->writeBytes);
 	extern char opt_cachedir[1024];
 	if(opt_cachedir[0] != '\0') {
-		Call::_addtocachequeue(this->file, this->calltable);
+		Call::_addtocachequeue(this->file, call->calltable);
 	}
 }
 
@@ -2200,6 +2214,13 @@ int base64decode(unsigned char *dst, const char *src, int max)
         }
         /* Dont worry about left over bits, they're extra anyway */
         return cnt;
+}
+
+void find_and_replace(string &source, const string find, string replace) {
+ 	size_t j;
+	for ( ; (j = source.find( find )) != string::npos ; ) {
+		source.replace( j, find.length(), replace );
+	}
 }
 
 AutoDeleteAtExit GlobalAutoDeleteAtExit;
