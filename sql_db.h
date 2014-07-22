@@ -171,9 +171,11 @@ protected:
 	vector<vector<string> > cloud_data;
 	size_t cloud_data_rows;
 	size_t cloud_data_index;
+	unsigned long maxAllowedPacket;
 private:
 	unsigned int lastError;
 	string lastErrorString;
+friend class MySqlStore_process;
 };
 
 class SqlDb_mysql : public SqlDb {
