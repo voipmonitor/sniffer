@@ -1156,7 +1156,10 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 					curpacketization = (getTimestamp() - last_ts) / 8;
 				}
 			} else if(curpayload == PAYLOAD_PCMU or curpayload == PAYLOAD_PCMA) {
-				curpacketization = payload_len / 8;
+				if((payload_len / 8) >= 20) {
+					// do not change packetization to 10ms frames. Case g711_20_10_sync.pcap
+					curpacketization = payload_len / 8;
+				}
 			} else if(curpayload == PAYLOAD_GSM) {
 				curpacketization = payload_len / 33 * 20;
 			} else {
