@@ -1,10 +1,12 @@
 10.0.6 22.7.2014
 ================
+- fix SQL queue which stuck when max_allow_packet in mysql is default 1MB (which is by default) 
 - do not add another IP/port but update the old one taken from SDP on RE-INVITE or other cases with SDP - take the unique session id from SDP header for matching which fixes problem with multiple RTP streams in calls which are not related to the call. Fixes all versions. On high throughput this would lead to less CPU and less I/O. 
 - fix offline reading pcap files - sql handler was terminated sooner 
 - fix: run pcapcommand after all packets are written to pcap file
 - reset jitterbuffer simulators when receving DTMF to not affect MOS score negatively
 - fix audio sync issue for g.711 CNG frames
+- add siren7 decode (G.722.1) support 
 
 
 10.0.5 14.7.2014
