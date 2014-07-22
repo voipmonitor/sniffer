@@ -230,6 +230,8 @@ SqlDb::SqlDb() {
 	this->connecting = false;
 	this->cloud_data_rows = 0;
 	this->cloud_data_index = 0;
+	this->maxAllowedPacket = 1024*1024;
+	this->lastError = 0;
 }
 
 SqlDb::~SqlDb() {
@@ -534,13 +536,45 @@ bool SqlDb_mysql::connect(bool createDb, bool mainInit) {
 				syslog(LOG_NOTICE, "resolve mysql host %s to %s", this->conn_server.c_str(), this->conn_server_ip.c_str());
 			}
 		}
-		this->hMysqlConn = mysql_real_connect(
-					this->hMysql,
-					//this->conn_server.c_str(), this->conn_user.c_str(), this->conn_password.c_str(), this->conn_database.c_str(),
-					this->conn_server_ip.c_str(), this->conn_user.c_str(), this->conn_password.c_str(), NULL,
-					//opt_mysql_port, NULL, CLIENT_MULTI_STATEMENTS);
-					//opt_mysql_port, NULL, 0);
-					opt_mysql_port, NULL, CLIENT_MULTI_RESULTS);
+		for(int connectPass = 0; connectPass < 2; connectPass++) {
+			if(connectPass) {
+				if(this->hMysqlRes) {
+					while(mysql_fetch_row(this->hMysqlRes));
+					mysql_free_result(this->hMysqlRes);
+					this->hMysqlRes = NULL;
+				}
+				mysql_close(this->hMysqlConn);
+			}
+			this->hMysql = mysql_init(NULL);
+			this->hMysqlConn = mysql_real_connect(
+						this->hMysql,
+						this->conn_server_ip.c_str(), this->conn_user.c_str(), this->conn_password.c_str(), NULL,
+						opt_mysql_port, NULL, CLIENT_MULTI_RESULTS);
+			if(!this->hMysqlConn) {
+				break;
+			}
+			sql_disable_next_attempt_if_error = 1;
+			if(this->query("SET GLOBAL max_allowed_packet=1024*1024*100") &&
+			   this->query("show variables like 'max_allowed_packet'")) {
+				sql_disable_next_attempt_if_error = 0;
+				SqlDb_row row;
+				if((row = this->fetchRow())) {
+					this->maxAllowedPacket = atoll(row[1].c_str());
+					if(this->maxAllowedPacket >= 1024*1024*100) {
+						break;
+					} else if(connectPass) {
+						syslog(LOG_WARNING, "max allowed packet size is only %lu - concat query size is limited", this->maxAllowedPacket);
+					}
+				} else {
+					syslog(LOG_WARNING, "unknown max allowed packet size - concat query size is limited");
+					break;
+				}
+			} else {
+				sql_disable_next_attempt_if_error = 0;
+				syslog(LOG_WARNING, "query for set / get max allowed packet size failed - concat query size is limited");
+				break;
+			}
+		}
 		if(this->hMysqlConn) {
 			this->mysqlThreadId = mysql_thread_id(this->hMysql);
 			sql_disable_next_attempt_if_error = 1;
@@ -1220,23 +1254,29 @@ void MySqlStore_process::store() {
 				break;
 			}
 			string query = this->query_buff.front();
-			this->query_buff.pop();
-			this->unlock();
-			queryqueue.append(query);
-			size_t query_len = query.length();
-			while(query_len && query[query_len - 1] == ' ') {
-				--query_len;
+			bool maxAllowedPacketIsFull = false;
+			if(queryqueue.size() + query.size() + 100 > this->sqlDb->maxAllowedPacket) {
+				maxAllowedPacketIsFull = true;
+				this->unlock();
+			} else {
+				this->query_buff.pop();
+				this->unlock();
+				queryqueue.append(query);
+				size_t query_len = query.length();
+				while(query_len && query[query_len - 1] == ' ') {
+					--query_len;
+				}
+				if(query_len && query[query_len - 1] != ';') {
+					queryqueue.append("; ");
+				}
+				if(this->id >= STORE_PROC_ID_CDR_1 && this->id < STORE_PROC_ID_CDR_1 + 10) {
+					--calls_cdr_save_counter;
+				}
+				else if(this->id >= STORE_PROC_ID_MESSAGE_1 && this->id < STORE_PROC_ID_MESSAGE_1 + 10) {
+					--calls_message_save_counter;
+				}
 			}
-			if(query_len && query[query_len - 1] != ';') {
-				queryqueue.append("; ");
-			}
-			if(this->id >= STORE_PROC_ID_CDR_1 && this->id < STORE_PROC_ID_CDR_1 + 10) {
-				--calls_cdr_save_counter;
-			}
-			else if(this->id >= STORE_PROC_ID_MESSAGE_1 && this->id < STORE_PROC_ID_MESSAGE_1 + 10) {
-				--calls_message_save_counter;
-			}
-			if(size < this->concatLimit) {
+			if(size < this->concatLimit && !maxAllowedPacketIsFull) {
 				size++;
 			} else {
 				for(int pass = 0; pass < 2; pass ++) {
