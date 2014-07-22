@@ -1252,6 +1252,12 @@ Call::convertRawToWav() {
 				samplerate = 48000;
 				system(cmd);
 				break;
+			case PAYLOAD_G722116:
+				samplerate = 16000;
+				break;
+			case PAYLOAD_G722132:
+				samplerate = 32000;
+				break;
 		}
 		for(int i = 0; i < (abs(msdiff) / 20) * samplerate / 50; i++) {
 			fwrite(&zero, 1, 2, wav);
@@ -1304,6 +1310,42 @@ Call::convertRawToWav() {
 				samplerate = 16000;
 				if(verbosity > 1) syslog(LOG_ERR, "Converting G.722 to WAV.\n");
 				if(verbosity > 2) syslog(LOG_ERR, "Converting G.722 to WAV. %s\n", cmd);
+				system(cmd);
+				break;
+			case PAYLOAD_G7221:
+				if(opt_keycheck[0] != '\0') {
+					snprintf(cmd, cmd_len, "vmcodecs %s siren \"%s\" \"%s\" 16000", opt_keycheck, raw, wav);
+				} else {
+					snprintf(cmd, cmd_len, "voipmonitor-siren \"%s\" \"%s\" 16000", raw, wav);
+				}
+				cmd[cmd_len] = 0;
+				samplerate = 32000;
+				if(verbosity > 1) syslog(LOG_ERR, "Converting G.7221 to WAV.\n");
+				if(verbosity > 2) syslog(LOG_ERR, "Converting G.7221 to WAV. %s\n", cmd);
+				system(cmd);
+				break;
+			case PAYLOAD_G722116:
+				if(opt_keycheck[0] != '\0') {
+					snprintf(cmd, cmd_len, "vmcodecs %s siren \"%s\" \"%s\" 16000", opt_keycheck, raw, wav);
+				} else {
+					snprintf(cmd, cmd_len, "voipmonitor-siren \"%s\" \"%s\" 16000", raw, wav);
+				}
+				cmd[cmd_len] = 0;
+				samplerate = 16000;
+				if(verbosity > 1) syslog(LOG_ERR, "Converting G.7221 to WAV.\n");
+				if(verbosity > 2) syslog(LOG_ERR, "Converting G.7221 to WAV. %s\n", cmd);
+				system(cmd);
+				break;
+			case PAYLOAD_G722132:
+				if(opt_keycheck[0] != '\0') {
+					snprintf(cmd, cmd_len, "vmcodecs %s siren \"%s\" \"%s\" 32000", opt_keycheck, raw, wav);
+				} else {
+					snprintf(cmd, cmd_len, "voipmonitor-siren \"%s\" \"%s\" 32000", raw, wav);
+				}
+				cmd[cmd_len] = 0;
+				samplerate = 32000;
+				if(verbosity > 1) syslog(LOG_ERR, "Converting G.7221c to WAV.\n");
+				if(verbosity > 2) syslog(LOG_ERR, "Converting G.7221 to WAV. %s\n", cmd);
 				system(cmd);
 				break;
 			case PAYLOAD_GSM:
