@@ -30,6 +30,8 @@
 #define MAX_FNAME 256		//!< max len of stored call-id
 #define MAX_RTPMAP 40          //!< max rtpmap records
 #define MAXNODE 150000
+#define MAXLEN_SDP_SESSID 16
+#define RTPMAP_BY_CALLERD true
 
 #define INVITE 1
 #define BYE 2
@@ -82,6 +84,13 @@ struct hash_node {
 	hash_node_call *calls;
 	u_int32_t addr;
 	u_int16_t port;
+};
+
+struct ip_port_call_info {
+	u_int32_t addr;
+	u_int16_t port;
+	bool iscaller;
+	char sessid[MAXLEN_SDP_SESSID];
 };
 
 
@@ -281,6 +290,10 @@ public:
 	Call *find_by_ip_port(in_addr_t addr, unsigned short port, int *iscaller);
 
 	int get_index_by_ip_port(in_addr_t addr, unsigned short port);
+	
+	Call* find_by_sessid(char *sessid);
+	
+	int get_index_by_sessid(char *sessid);
 
 	/**
 	 * @brief close all rtp[].gfileRAW
@@ -329,7 +342,9 @@ public:
 	 * 
 	 * @return return 0 on success, 1 if IP and port is duplicated and -1 on failure
 	*/
-	int add_ip_port(in_addr_t addr, unsigned short port, char *ua, unsigned long ua_len, bool iscaller, int *rtpmap);
+	int add_ip_port(in_addr_t addr, unsigned short port, char *sessid, char *ua, unsigned long ua_len, bool iscaller, int *rtpmap);
+	
+	void add_ip_port_hash(in_addr_t addr, unsigned short port, char *sessid, char *ua, unsigned long ua_len, bool iscaller, int *rtpmap, bool fax, int allowrelation = 0);
 
 	/**
 	 * @brief get pointer to PcapDumper of the writing pcap file  
@@ -476,10 +491,34 @@ public:
 
 	void dump();
 
+	bool isFillRtpMap(int index) {
+		for(int i = 0; i < MAX_RTPMAP; i++) {
+			if(rtpmap[index][i]) {
+				return(true);
+			}
+		}
+		return(false);
+	}
+
+	int getFillRtpMapByCallerd(bool iscaller) {
+		for(int i = ipport_n - 1; i >= 0; i--) {
+			if(ip_port[i].iscaller == iscaller &&
+			   isFillRtpMap(i)) {
+				return(i);
+			}
+		}
+		return(-1);
+	}
+
+	void atFinish();
+	
+	bool isPcapsClose() {
+		return(pcap.isClose() &&
+		       pcapSip.isClose() &&
+		       pcapRtp.isClose());
+	}
 private:
-	in_addr_t addr[MAX_IP_PER_CALL];	//!< IP address from SDP (indexed together with port)
-	unsigned short port[MAX_IP_PER_CALL];	//!< port number from SDP (indexed together with IP)
-	bool iscaller[MAX_IP_PER_CALL];         //!< is that RTP stream from CALLER party? 
+	ip_port_call_info ip_port[MAX_IP_PER_CALL];
 	PcapDumper pcap;
 	PcapDumper pcapSip;
 	PcapDumper pcapRtp;
@@ -499,7 +538,7 @@ typedef struct {
 class Calltable {
 public:
 	deque<Call*> calls_queue; //!< this queue is used for asynchronous storing CDR by the worker thread
-	queue<Call*> calls_deletequeue; //!< this queue is used for asynchronous storing CDR by the worker thread
+	deque<Call*> calls_deletequeue; //!< this queue is used for asynchronous storing CDR by the worker thread
 	queue<string> files_queue; //!< this queue is used for asynchronous storing CDR by the worker thread
 	queue<string> files_sqlqueue; //!< this queue is used for asynchronous storing CDR by the worker thread
 	list<Call*> calls_list; //!< 

@@ -161,6 +161,7 @@ size_t _opt_pcap_queue_block_offset_inc_size		= opt_pcap_queue_block_max_size / 
 size_t _opt_pcap_queue_block_restore_buffer_inc_size	= opt_pcap_queue_block_max_size / 4;
 
 int pcap_drop_flag = 0;
+int enable_bad_packet_order_warning = 0;
 
 static pcap_block_store_queue blockStoreBypassQueue; 
 
@@ -3550,12 +3551,14 @@ void PcapQueue_readFromFifo::processPacket(pcap_pkthdr_plus *header_plus, u_char
 	if(!this->_last_ts.tv_sec) {
 		this->_last_ts = header->ts;
 	} else if(this->_last_ts.tv_sec * 1000000ull + this->_last_ts.tv_usec > header->ts.tv_sec * 1000000ull + header->ts.tv_usec + 1000) {
-		static u_long lastTimeSyslog = 0;
-		u_long actTime = getTimeMS();
-		if(actTime - 1000 > lastTimeSyslog) {
-			syslog(LOG_NOTICE, "warning - bad packet order (%llu us) in processPacket", 
-			       this->_last_ts.tv_sec * 1000000ull + this->_last_ts.tv_usec - header->ts.tv_sec * 1000000ull - header->ts.tv_usec);
-			lastTimeSyslog = actTime;
+		if(verbosity > 1 || enable_bad_packet_order_warning) {
+			static u_long lastTimeSyslog = 0;
+			u_long actTime = getTimeMS();
+			if(actTime - 1000 > lastTimeSyslog) {
+				syslog(LOG_NOTICE, "warning - bad packet order (%llu us) in processPacket", 
+				       this->_last_ts.tv_sec * 1000000ull + this->_last_ts.tv_usec - header->ts.tv_sec * 1000000ull - header->ts.tv_usec);
+				lastTimeSyslog = actTime;
+			}
 		}
 	} else {
 		this->_last_ts = header->ts;

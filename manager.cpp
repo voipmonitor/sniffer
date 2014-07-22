@@ -64,6 +64,7 @@ extern char ssh_username[256];
 extern char ssh_password[256];
 extern char ssh_remote_listenhost[1024];
 extern unsigned int ssh_remote_listenport;
+extern int enable_bad_packet_order_warning;
 
 using namespace std;
 
@@ -278,7 +279,7 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 			return -1;
 		}
 	} else if(strstr(buf, "reindexfiles") != NULL) {
-		snprintf(sendbuf, BUFSIZE, "starting reindexing plesae wait...");
+		snprintf(sendbuf, BUFSIZE, "starting reindexing please wait...");
 		if ((size = sendvm(client, sshchannel, sendbuf, strlen(sendbuf), 0)) == -1){
 			cerr << "Error sending data to client" << endl;
 			return -1;
@@ -1285,6 +1286,13 @@ getwav:
 	} else if(strstr(buf, "ac_remove_thread") != NULL) {
 		extern AsyncClose asyncClose;
 		asyncClose.removeThread();
+		if ((size = sendvm(client, sshchannel, "ok\n", 3, 0)) == -1){
+			cerr << "Error sending data to client" << endl;
+			return -1;
+		}
+		
+	} else if(strstr(buf, "enable_bad_packet_order_warning") != NULL) {
+		enable_bad_packet_order_warning = 1;
 		if ((size = sendvm(client, sshchannel, "ok\n", 3, 0)) == -1){
 			cerr << "Error sending data to client" << endl;
 			return -1;

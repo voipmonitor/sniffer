@@ -233,6 +233,7 @@ string reg_replace(const char *string, const char *pattern, const char *replace)
 string inet_ntostring(u_int32_t ip);
 void base64_init(void);
 int base64decode(unsigned char *dst, const char *src, int max);
+void find_and_replace(string &source, const string find, string replace);
 
 class CircularBuffer
 {
@@ -352,31 +353,44 @@ public:
 		sip,
 		rtp
 	};
-	PcapDumper(eTypePcapDump type, class Call *call, bool updateFilesQueueAtClose = true);
+	enum eState {
+		state_na,
+		state_open,
+		state_dump,
+		state_do_close,
+		state_close
+	};
+	PcapDumper(eTypePcapDump type, class Call *call);
 	~PcapDumper();
 	bool open(const char *fileName, const char *fileNameSpoolRelative, pcap_t *useHandle, int useDlt);
 	void dump(pcap_pkthdr* header, const u_char *packet);
 	void close(bool updateFilesQueue = true);
-	void remove(bool updateFilesQueue = true);
+	void remove();
 	bool isOpen() {
 		return(this->handle != NULL);
+	}
+	bool isClose() {
+		return(this->state == state_na || this->state == state_close);
+	}
+	void setStateClose() {
+		this->state = state_close;
 	}
 private:
 	string fileName;
 	string fileNameSpoolRelative;
 	eTypePcapDump type;
 	class Call *call;
-	bool updateFilesQueueAtClose;
 	u_int64_t capsize;
 	u_int64_t size;
 	pcap_dumper_t *handle;
 	bool openError;
 	int openAttempts;
+	eState state;
 };
 
 class RtpGraphSaver {
 public:
-	RtpGraphSaver(class RTP *rtp,bool updateFilesQueueAtClose = true);
+	RtpGraphSaver(class RTP *rtp);
 	~RtpGraphSaver();
 	bool open(const char *fileName, const char *fileNameSpoolRelative);
 	void write(char *buffer, int length);
@@ -388,7 +402,6 @@ private:
 	string fileName;
 	string fileNameSpoolRelative;
 	class RTP *rtp;
-	bool updateFilesQueueAtClose;
 	FileZipHandler *handle;
 };
 
@@ -398,7 +411,7 @@ class AsyncClose {
 public:
 	class AsyncCloseItem {
 	public:
-		AsyncCloseItem(Call *call = NULL, const char *file = NULL,
+		AsyncCloseItem(Call *call = NULL, PcapDumper *pcapDumper = NULL, const char *file = NULL,
 			       const char *column = NULL, long long writeBytes = 0);
 		virtual ~AsyncCloseItem() {}
 		virtual void process() = 0;
@@ -406,21 +419,22 @@ public:
 	protected:
 		void addtofilesqueue();
 	protected:
+		Call *call;
+		PcapDumper *pcapDumper;
 		string file;
 		string column;
-		string dirnamesqlfiles;
 		long long writeBytes;
-		void *calltable;
 		int dataLength;
 	friend class AsyncClose;
 	};
 	class AsyncCloseItem_pcap : public AsyncCloseItem {
 	public:
-		AsyncCloseItem_pcap(pcap_dumper_t *handle,
-				    Call *call = NULL, const char *file = NULL,
+		AsyncCloseItem_pcap(pcap_dumper_t *handle, bool updateFilesQueue = false,
+				    Call *call = NULL, PcapDumper *pcapDumper = NULL, const char *file = NULL,
 				    const char *column = NULL, long long writeBytes = 0)
-		 : AsyncCloseItem(call, file, column, writeBytes) {
+		 : AsyncCloseItem(call, pcapDumper, file, column, writeBytes) {
 			this->handle = handle;
+			this->updateFilesQueue = updateFilesQueue;
 			extern int opt_pcap_dump_bufflength;
 			if(opt_pcap_dump_bufflength) {
 				this->dataLength = ((FileZipHandler*)handle)->useBufferLength;
@@ -428,13 +442,19 @@ public:
 		}
 		void process() {
 			__pcap_dump_close(handle);
-			this->addtofilesqueue();
+			if(pcapDumper) {
+				pcapDumper->setStateClose();
+			}
+			if(updateFilesQueue) {
+				this->addtofilesqueue();
+			}
 		}
 		void processClose() {
 			__pcap_dump_close(handle);
 		}
 	private:
 		pcap_dumper_t *handle;
+		bool updateFilesQueue;
 	};
 	class AsyncWriteItem_pcap : public AsyncCloseItem {
 	public:
@@ -457,17 +477,20 @@ public:
 	};
 	class AsyncCloseItem_fileZipHandler  : public AsyncCloseItem{
 	public:
-		AsyncCloseItem_fileZipHandler(FileZipHandler *handle,
+		AsyncCloseItem_fileZipHandler(FileZipHandler *handle, bool updateFilesQueue = false,
 					      Call *call = NULL, const char *file = NULL,
 					      const char *column = NULL, long long writeBytes = 0)
-		 : AsyncCloseItem(call, file, column, writeBytes) {
+		 : AsyncCloseItem(call, NULL, file, column, writeBytes) {
 			this->handle = handle;
+			this->updateFilesQueue = updateFilesQueue;
 			this->dataLength = handle->useBufferLength;
 		}
 		void process() {
 			handle->close();
 			delete handle;
-			this->addtofilesqueue();
+			if(this->updateFilesQueue) {
+				this->addtofilesqueue();
+			}
 		}
 		void processClose() {
 			handle->close();
@@ -475,6 +498,7 @@ public:
 		}
 	private:
 		FileZipHandler *handle;
+		bool updateFilesQueue;
 	};
 	class AsyncWriteItem_fileZipHandler : public AsyncCloseItem {
 	public:
@@ -505,8 +529,8 @@ public:
 	void startThreads(int countPcapThreads, int maxPcapThreads);
 	void addThread();
 	void removeThread();
-	void add(pcap_dumper_t *handle,
-		 Call *call = NULL, const char *file = NULL,
+	void add(pcap_dumper_t *handle, bool updateFilesQueue = false,
+		 Call *call = NULL, PcapDumper *pcapDumper = NULL, const char *file = NULL,
 		 const char *column = NULL, long long writeBytes = 0) {
 		extern int opt_pcap_dump_bufflength;
 		for(int pass = 0; pass < 2; pass++) {
@@ -531,7 +555,7 @@ public:
 					((FileZipHandler*)handle)->userData = minSizeIndex + 1;
 				}
 			}
-			if(add(new AsyncCloseItem_pcap(handle, call, file, column, writeBytes),
+			if(add(new AsyncCloseItem_pcap(handle, updateFilesQueue, call, pcapDumper, file, column, writeBytes),
 			       opt_pcap_dump_bufflength ?
 				((FileZipHandler*)handle)->userData - 1 :
 				0,
@@ -573,7 +597,7 @@ public:
 			}
 		}
 	}
-	void add(FileZipHandler *handle,
+	void add(FileZipHandler *handle, bool updateFilesQueue = false,
 		 Call *call = NULL, const char *file = NULL,
 		 const char *column = NULL, long long writeBytes = 0) {
 		for(int pass = 0; pass < 2; pass++) {
@@ -596,7 +620,7 @@ public:
 				}
 				handle->userData = minSizeIndex + 1;
 			}
-			if(add(new AsyncCloseItem_fileZipHandler(handle, call, file, column, writeBytes),
+			if(add(new AsyncCloseItem_fileZipHandler(handle, updateFilesQueue, call, file, column, writeBytes),
 			       handle->userData - 1,
 			       useThreadOper)) {
 				break;
@@ -1084,6 +1108,7 @@ public:
 		}
 		addNode("m=audio ");
 		addNode("a=rtpmap:");
+		addNode("o=");
 		addNode("c=IN IP4 ");
 		addNode("expires=");
 		addNode("username=\"");

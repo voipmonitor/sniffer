@@ -453,6 +453,7 @@ DOMAINfilter *domainfilter_reload = NULL;	// DOMAIN filter based on MYSQL for re
 int domainfilter_reload_do = 0;	// for reload in main thread
 
 pthread_t call_thread;		// ID of worker storing CDR thread 
+pthread_t destroy_calls_thread;
 pthread_t readdump_libpcap_thread;
 pthread_t manager_thread = 0;	// ID of worker manager thread 
 pthread_t manager_client_thread;	// ID of worker manager thread 
@@ -664,14 +665,6 @@ void sigterm_handler(int param)
 	#if ENABLE_SEMAPHOR_FORK_MODE
 	exit_handler_fork_mode();
 	#endif
-}
-
-void find_and_replace( string &source, const string find, string replace ) {
- 
-	size_t j;
-	for ( ; (j = source.find( find )) != string::npos ; ) {
-		source.replace( j, find.length(), replace );
-	}
 }
 
 void *database_backup(void *dummy) {
@@ -939,46 +932,6 @@ void *storing_cdr( void *dummy ) {
 				cdrtosend += "##vmdelimiter###\n";
 			}
 #endif
-
-
-			/* if pcapcommand is defined, execute command */
-			if(strlen(pcapcommand)) {
-				string source(pcapcommand);
-				string find1 = "%pcap%";
-				string find2 = "%basename%";
-				string find3 = "%dirname%";
-				string replace;
-				replace.append("\"");
-				replace.append(opt_chdir);
-				replace.append("/");
-				replace.append(call->dirname());
-				replace.append("/");
-				replace.append(call->fbasename);
-				replace.append(".pcap");
-				replace.append("\"");
-				find_and_replace(source, find1, replace);
-				find_and_replace(source, find2, call->fbasename);
-				find_and_replace(source, find3, call->dirname());
-				if(verbosity >= 2) printf("command: [%s]\n", source.c_str());
-				system(source.c_str());
-			};
-
-			if(call->flags & FLAG_RUNSCRIPT) {
-				string source(filtercommand);
-				string tmp = call->fbasename;
-				find_and_replace(source, string("%callid%"), escapeshellR(tmp));
-				tmp = call->dirname();
-				find_and_replace(source, string("%dirname%"), escapeshellR(tmp));
-				tmp = sqlDateTimeString(call->calltime());
-				find_and_replace(source, string("%calldate%"), escapeshellR(tmp));
-				tmp = call->caller;
-				find_and_replace(source, string("%caller%"), escapeshellR(tmp));
-				tmp = call->called;
-				find_and_replace(source, string("%called%"), escapeshellR(tmp));
-				if(verbosity >= 2) printf("command: [%s]\n", source.c_str());
-				system(source.c_str());
-			}
-
 			// Close SIP and SIP+RTP dump files ASAP to save file handles
 			call->getPcap()->close();
 			call->getPcapSip()->close();
@@ -990,7 +943,7 @@ void *storing_cdr( void *dummy ) {
 			 * processing packet.
 			*/
 			calltable->lock_calls_deletequeue();
-			calltable->calls_deletequeue.push(call);
+			calltable->calls_deletequeue.push_back(call);
 			calltable->unlock_calls_deletequeue();
 			storingCdrLastWriteAt = getActDateTimeF();
 		}
@@ -1005,6 +958,37 @@ void *storing_cdr( void *dummy ) {
 		}
 	
 		sleep(1);
+	}
+	return NULL;
+}
+
+void *destroy_calls( void *dummy ) {
+	Call *call;
+	while(1) {
+		calltable->lock_calls_deletequeue();
+		if(calltable->calls_deletequeue.size() > 0) {
+			size_t size = calltable->calls_deletequeue.size();
+			for(size_t i = 0; i < size;) {
+				call = calltable->calls_deletequeue[i];
+				if(call->isPcapsClose()) {
+					call->hashRemove();
+					call->atFinish();
+					delete call;
+					calls_counter--;
+					calltable->calls_deletequeue.erase(calltable->calls_deletequeue.begin() + i);
+					--size;
+				} else {
+					i++;
+				}
+			}
+		}
+		calltable->unlock_calls_deletequeue();
+		
+		if(terminating) {
+			break;
+		}
+	
+		sleep(2);
 	}
 	return NULL;
 }
@@ -3322,6 +3306,7 @@ int main(int argc, char *argv[]) {
 	     !opt_pcap_queue_receive_from_ip_port &&
 	     opt_pcap_queue_send_to_ip_port)) {
 		pthread_create(&call_thread, NULL, storing_cdr, NULL);
+		pthread_create(&destroy_calls_thread, NULL, destroy_calls, NULL);
 	}
 
 	if(opt_cachedir[0] != '\0') {
@@ -3496,6 +3481,15 @@ int main(int argc, char *argv[]) {
 #endif
 		// start reading packets
 		//readdump_libnids(handle);
+	 
+		if((opt_read_from_file || opt_pb_read_from_file[0]) && !opt_nocdr) {
+			for(int i = 0; i < opt_mysqlstore_max_threads_cdr; i++) {
+				sqlStore->setIgnoreTerminating(STORE_PROC_ID_CDR_1 + i, true);
+			}
+			for(int i = 0; i < opt_mysqlstore_max_threads_message; i++) {
+				sqlStore->setIgnoreTerminating(STORE_PROC_ID_MESSAGE_1 + i, true);
+			}
+		}
 
 		if(opt_pcap_threaded) {
 			if(opt_pcap_queue) {
@@ -3670,6 +3664,12 @@ int main(int argc, char *argv[]) {
 		   sqlStore->getSize(STORE_PROC_ID_FRAUD_ALERT_INFO)) {
 			sleep(2);
 		}
+		for(int i = 0; i < opt_mysqlstore_max_threads_cdr; i++) {
+			sqlStore->setIgnoreTerminating(STORE_PROC_ID_CDR_1 + i, false);
+		}
+		for(int i = 0; i < opt_mysqlstore_max_threads_message; i++) {
+			sqlStore->setIgnoreTerminating(STORE_PROC_ID_MESSAGE_1 + i, false);
+		}
 	}
 	terminating = 1;
 	if(!(opt_pcap_threaded && opt_pcap_queue && 
@@ -3685,7 +3685,8 @@ int main(int argc, char *argv[]) {
 	}
 	while(calltable->calls_deletequeue.size() != 0) {
 			call = calltable->calls_deletequeue.front();
-			calltable->calls_deletequeue.pop();
+			calltable->calls_deletequeue.pop_front();
+			call->atFinish();
 			delete call;
 			calls_counter--;
 	}

@@ -935,7 +935,7 @@ void FraudAlert_chcr::evCall(sFraudCallInfo *callInfo) {
 		return;
 	}
 	switch(callInfo->typeCallInfo) {
-	case sFraudCallInfo::typeCallInfo_beginCall:
+	case sFraudCallInfo::typeCallInfo_connectCall:
 		{
 		if(this->changeLocationOk.size() &&
 		   (countryCodes->isLocationIn(callInfo->country_code_caller_ip.c_str(), &this->changeLocationOk) ||

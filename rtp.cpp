@@ -751,6 +751,22 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 		memcpy(&s->lastTimeRec, &tmp, sizeof(struct timeval));
 	}
 
+	if(lastframetype == AST_FRAME_DTMF and codec != PAYLOAD_TELEVENT) {
+		// last frame was DTMF and now we have voice. Reset jitterbuffers (case 338f884b17f9e5de6c830c237dcc09dd) 
+		if(opt_jitterbuffer_adapt) {
+			ast_jb_empty_and_reset(channel_adapt);
+			ast_jb_destroy(channel_adapt);
+		}
+		if(opt_jitterbuffer_f1) {
+			ast_jb_empty_and_reset(channel_fix1);
+			ast_jb_destroy(channel_fix1);
+		}
+		if(opt_jitterbuffer_f2) {
+			ast_jb_empty_and_reset(channel_fix2);
+			ast_jb_destroy(channel_fix2);
+		}
+	}
+
 	// ignore CNG
 	if(curpayload == 13 or curpayload == 19) {
 		last_seq = seq;
@@ -1140,7 +1156,10 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 					curpacketization = (getTimestamp() - last_ts) / 8;
 				}
 			} else if(curpayload == PAYLOAD_PCMU or curpayload == PAYLOAD_PCMA) {
-				curpacketization = payload_len / 8;
+				if((payload_len / 8) >= 20) {
+					// do not change packetization to 10ms frames. Case g711_20_10_sync.pcap
+					curpacketization = payload_len / 8;
+				}
 			} else if(curpayload == PAYLOAD_GSM) {
 				curpacketization = payload_len / 33 * 20;
 			} else {

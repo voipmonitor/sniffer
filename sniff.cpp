@@ -901,7 +901,7 @@ fail_exit:
 }
 
 
-int get_ip_port_from_sdp(char *sdp_text, in_addr_t *addr, unsigned short *port, int *fax){
+int get_ip_port_from_sdp(char *sdp_text, in_addr_t *addr, unsigned short *port, int *fax, char *sessid){
 	unsigned long l;
 	char *s;
 	char s1[20];
@@ -909,6 +909,23 @@ int get_ip_port_from_sdp(char *sdp_text, in_addr_t *addr, unsigned short *port, 
 	unsigned long gettagLimitLen = 0;
 
 	*fax = 0;
+	s = gettag(sdp_text,sdp_text_len, "o=", &l, &gettagLimitLen);
+	if(l == 0) return 1;
+	while(l > 0 && *s != ' ') {
+		++s;
+		--l;
+	}
+	if(l <= 1) return 1;
+	++s;
+	--l;
+	unsigned long ispace = 0;
+	char *space = s;
+	while(ispace < l - 1 && *space != ' ') {
+		++ispace;
+		++space;
+	}
+	memset(sessid, 0, MAXLEN_SDP_SESSID);
+	memcpy(sessid, s, MIN(ispace, MAXLEN_SDP_SESSID));
 	s = gettag(sdp_text,sdp_text_len, "c=IN IP4 ", &l, &gettagLimitLen);
 	if(l == 0) return 1;
 	memset(s1, '\0', sizeof(s1));
@@ -1122,12 +1139,11 @@ int get_rtpmap_from_sdp(char *sdp_text, unsigned long len, int *rtpmap){
 						break;
 				}
 			}
-			rtpmap[i] = mtype + 1000*codec;
+			rtpmap[i++] = mtype + 1000*codec;
 			//printf("PAYLOAD: rtpmap[%d]:%d codec:%d, mimeSubtype [%d] [%s]\n", i, rtpmap[i], codec, mtype, mimeSubtype);
 		}
 		// return '\r' into sdp_text
 		*z = '\r';
-		i++;
 	 } while(l && i < (MAX_RTPMAP - 2));
 	 rtpmap[i] = 0; //terminate rtpmap field
 	 return 0;
@@ -1751,7 +1767,8 @@ void process_sdp(Call *call, unsigned int saddr, int source, unsigned int daddr,
 	int rtpmap[MAX_RTPMAP];
 	memset(rtpmap, 0, sizeof(int) * MAX_RTPMAP);
 	int fax;
-	if (!get_ip_port_from_sdp(tmp + 1, &tmp_addr, &tmp_port, &fax)){
+	char sessid[MAXLEN_SDP_SESSID];
+	if (!get_ip_port_from_sdp(tmp + 1, &tmp_addr, &tmp_port, &fax, sessid)){
 		if(fax) { 
 			if(verbosity >= 2){
 				syslog(LOG_ERR, "[%s] T38 detected", call->fbasename);
@@ -1776,44 +1793,15 @@ void process_sdp(Call *call, unsigned int saddr, int source, unsigned int daddr,
 			int iscalled;
 			call->handle_dscp(header_ip, saddr, daddr, &iscalled);
 			//syslog(LOG_ERR, "ADDR: %u port %u iscalled[%d]\n", tmp_addr, tmp_port, iscalled);
-			if(call->add_ip_port(tmp_addr, tmp_port, ua, ua_len, !iscalled, rtpmap) != -1){
-				calltable->hashAdd(tmp_addr, tmp_port, call, !iscalled, 0, fax);
-				//calltable->mapAdd(tmp_addr, tmp_port, call, !iscalled, 0);
-				if(opt_rtcp) {
-					calltable->hashAdd(tmp_addr, tmp_port + 1, call, !iscalled, 1, fax); //add rtcp
-					//calltable->mapAdd(tmp_addr, tmp_port + 1, call, !iscalled, 1); //add rtcp
-				}
-			} else if(fax){
-				calltable->hashAdd(tmp_addr, tmp_port, call, !iscalled, 0, fax);
-			}
-			
+		
+			call->add_ip_port_hash(tmp_addr, tmp_port, sessid, ua, ua_len, !iscalled, rtpmap, fax);
 			// check if the IP address is listed in nat_aliases
 			in_addr_t alias = 0;
 			if((alias = match_nat_aliases(tmp_addr)) != 0) {
-				if(call->add_ip_port(alias, tmp_port, ua, ua_len, !iscalled, rtpmap) != -1) {
-					calltable->hashAdd(alias, tmp_port, call, !iscalled, 0, fax);
-					//calltable->mapAdd(alias, tmp_port, call, !iscalled, 0);
-					if(opt_rtcp) {
-						calltable->hashAdd(alias, tmp_port + 1, call, !iscalled, 1, fax); //add rtcp
-						//calltable->mapAdd(alias, tmp_port + 1, call, !iscalled, 1); //add rtcp
-					}
-				} else if(fax){
-					calltable->hashAdd(alias, tmp_port, call, !iscalled, 0, fax);
-				}
+				call->add_ip_port_hash(alias, tmp_port, sessid, ua, ua_len, !iscalled, rtpmap, fax);
 			}
-
 			if(opt_sdp_reverse_ipport) {
-				// add source SIP IP and destination port from SDP
-				if(call->add_ip_port(saddr, tmp_port, ua, ua_len, !iscalled, rtpmap) != -1){
-					calltable->hashAdd(saddr, tmp_port, call, !iscalled, 0, fax);
-					//calltable->mapAdd(saddr, tmp_port, call, !iscalled, 0);
-					if(opt_rtcp) {
-						calltable->hashAdd(saddr, tmp_port + 1, call, !iscalled, 1, fax);
-						//calltable->mapAdd(saddr, tmp_port + 1, call, !iscalled, 1);
-					}
-				} else if(fax){
-					calltable->hashAdd(saddr, tmp_port, call, !iscalled, 0, fax);
-				}
+				call->add_ip_port_hash(saddr, tmp_port, sessid, ua, ua_len, !iscalled, rtpmap, fax);
 			}
 		}
 	} else {
@@ -1890,16 +1878,6 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 			}
 		}
 		last_cleanup = header->ts.tv_sec;
-		/* delete all calls */
-		calltable->lock_calls_deletequeue();
-		while (calltable->calls_deletequeue.size() > 0) {
-			call = calltable->calls_deletequeue.front();
-			calltable->calls_deletequeue.pop();
-			call->hashRemove();
-			delete call;
-			calls_counter--;
-		}
-		calltable->unlock_calls_deletequeue();
 
 		// clean tcp_streams_list
 		tcpReassemblySip.clean(header->ts.tv_sec);
@@ -2279,7 +2257,9 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 					// the expire can be also in contact header Contact: 79438652 <sip:6600006@192.168.10.202:1026>;expires=240
 					get_expires_from_contact(data, datalen, &call->register_expires);
 				}
-
+				if(opt_enable_fraud) {
+					fraudConnectCall(call, header->ts);
+				}
 				if(verbosity > 3) syslog(LOG_DEBUG, "REGISTER OK Call-ID[%s]", call->call_id.c_str());
                                 s = gettag(data, datalen, "\nCSeq:", &l, &gettagLimitLen);
                                 if(l && strncmp(s, call->invitecseq, l) == 0) {
@@ -3118,13 +3098,8 @@ rtpcheck:
 				syslog(LOG_NOTICE,"pcap_filename: [%s]\n",str2);
 			}
 
-			call->add_ip_port(daddr, dest, s, l, 1, rtpmap);
-			calltable->hashAdd(daddr, dest, call, 1, 0, 0);
-			//calltable->mapAdd(daddr, dest, call, 1, 0, 0);
-
-			call->add_ip_port(saddr, source, s, l, 0, rtpmap);
-			calltable->hashAdd(saddr, source, call, 0, 0, 0);
-			//calltable->mapAdd(saddr, source, call, 0, 0, 0);
+			call->add_ip_port_hash(daddr, dest, NULL, s, l, 1, rtpmap, false);
+			call->add_ip_port_hash(saddr, source, NULL, s, l, 0, rtpmap, false);
 			
 		}
 		// we are not interested in this packet
