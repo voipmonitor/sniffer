@@ -453,7 +453,7 @@ DOMAINfilter *domainfilter_reload = NULL;	// DOMAIN filter based on MYSQL for re
 int domainfilter_reload_do = 0;	// for reload in main thread
 
 pthread_t call_thread;		// ID of worker storing CDR thread 
-pthread_t destroy_calls_thread;
+//pthread_t destroy_calls_thread;
 pthread_t readdump_libpcap_thread;
 pthread_t manager_thread = 0;	// ID of worker manager thread 
 pthread_t manager_client_thread;	// ID of worker manager thread 
@@ -962,27 +962,10 @@ void *storing_cdr( void *dummy ) {
 	return NULL;
 }
 
+/*
 void *destroy_calls( void *dummy ) {
-	Call *call;
 	while(1) {
-		calltable->lock_calls_deletequeue();
-		if(calltable->calls_deletequeue.size() > 0) {
-			size_t size = calltable->calls_deletequeue.size();
-			for(size_t i = 0; i < size;) {
-				call = calltable->calls_deletequeue[i];
-				if(call->isPcapsClose()) {
-					call->hashRemove();
-					call->atFinish();
-					delete call;
-					calls_counter--;
-					calltable->calls_deletequeue.erase(calltable->calls_deletequeue.begin() + i);
-					--size;
-				} else {
-					i++;
-				}
-			}
-		}
-		calltable->unlock_calls_deletequeue();
+		calltable->destroyCallsIfPcapsClosed();
 		
 		if(terminating) {
 			break;
@@ -992,6 +975,7 @@ void *destroy_calls( void *dummy ) {
 	}
 	return NULL;
 }
+*/
 
 char daemonizeErrorTempFileName[L_tmpnam+1];
 pthread_mutex_t daemonizeErrorTempFileLock;
@@ -3306,7 +3290,9 @@ int main(int argc, char *argv[]) {
 	     !opt_pcap_queue_receive_from_ip_port &&
 	     opt_pcap_queue_send_to_ip_port)) {
 		pthread_create(&call_thread, NULL, storing_cdr, NULL);
+		/*
 		pthread_create(&destroy_calls_thread, NULL, destroy_calls, NULL);
+		*/
 	}
 
 	if(opt_cachedir[0] != '\0') {

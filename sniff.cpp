@@ -1824,6 +1824,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 	int is_rtcp = 0;
 	int is_fax = 0;
 	static unsigned long last_cleanup = 0;	// Last cleaning time
+	static unsigned long last_destroy_calls = 0;	// Last destroy calls time
 	char *s;
 	unsigned long l;
 	char callidstr[1024],str2[1024];
@@ -1893,6 +1894,11 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 		malloc_trim(0);
 #endif
 
+	}
+	
+	if(header->ts.tv_sec - last_destroy_calls >= 2) {
+		calltable->destroyCallsIfPcapsClosed();
+		last_destroy_calls = header->ts.tv_sec;
 	}
 
 	// check if the packet is SKINNY

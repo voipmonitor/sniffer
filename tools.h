@@ -442,11 +442,11 @@ public:
 		}
 		void process() {
 			__pcap_dump_close(handle);
-			if(pcapDumper) {
-				pcapDumper->setStateClose();
-			}
 			if(updateFilesQueue) {
 				this->addtofilesqueue();
+			}
+			if(pcapDumper) {
+				pcapDumper->setStateClose();
 			}
 		}
 		void processClose() {

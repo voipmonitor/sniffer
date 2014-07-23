@@ -136,7 +136,6 @@ public:
 	RTP tmprtp;			//!< temporary structure used to decode information from frame
 	RTP *lastcallerrtp;		//!< last RTP stream from caller
 	RTP *lastcalledrtp;		//!< last RTP stream from called
-	void *calltable;		//!< reference to calltable
 	u_int32_t saddr;		//!< source IP address of first INVITE
 	unsigned short sport;		//!< source port of first INVITE
 	int whohanged;			//!< who hanged up. 0 -> caller, 1-> callee, -1 -> unknown
@@ -269,7 +268,7 @@ public:
 	 * @param ct reference to calltable
 	 * 
 	*/
-	Call(char *call_id, unsigned long call_id_len, time_t time, void *ct);
+	Call(char *call_id, unsigned long call_id_len, time_t time);
 
 	/**
 	 * destructor
@@ -478,7 +477,7 @@ public:
 	 *
 	*/
 	void addtocachequeue(string file);
-	static void _addtocachequeue(string file, void *calltable);
+	static void _addtocachequeue(string file);
 
 	void addtofilesqueue(string file, string column, long long writeBytes);
 	static void _addtofilesqueue(string file, string column, string dirnamesqlfiles, long long writeBytes);
@@ -683,6 +682,8 @@ public:
 	 *
 	*/
 	void mapRemove(in_addr_t addr, unsigned short port);
+	
+	void destroyCallsIfPcapsClosed();
 private:
 	pthread_mutex_t qlock;		//!< mutex locking calls_queue
 	pthread_mutex_t qdellock;	//!< mutex locking calls_deletequeue

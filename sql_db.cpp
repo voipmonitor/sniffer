@@ -763,7 +763,7 @@ bool SqlDb_mysql::query(string query) {
 					syslog(LOG_NOTICE, "query error - query: %s", query.c_str());
 					syslog(LOG_NOTICE, "query error - error: %s", mysql_error(this->hMysql));
 				}
-				this->checkLastError("query error in [" + query + "]", !sql_noerror);
+				this->checkLastError("query error in [" + query.substr(0,200) + (query.size() > 200 ? "..." : "") + "]", !sql_noerror);
 				if(this->getLastError() == CR_SERVER_GONE_ERROR) {
 					if(pass < this->maxQueryPass - 1) {
 						this->reconnect();
