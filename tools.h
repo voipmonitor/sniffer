@@ -420,6 +420,7 @@ public:
 		void addtofilesqueue();
 	protected:
 		Call *call;
+		string call_dirnamesqlfiles;
 		PcapDumper *pcapDumper;
 		string file;
 		string column;

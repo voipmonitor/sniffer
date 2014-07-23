@@ -1,11 +1,10 @@
-
 #include <sys/types.h>
 #include <string>
 
 #ifndef VOIPMONITOR_H
 #define VOIPMONITOR_H
 
-#define RTPSENSOR_VERSION "10.0.7"
+#define RTPSENSOR_VERSION "10.0.8"
 #define NAT
 
 #define FORMAT_WAV	1

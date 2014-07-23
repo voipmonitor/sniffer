@@ -921,6 +921,9 @@ void RtpGraphSaver::close(bool updateFilesQueue) {
 
 AsyncClose::AsyncCloseItem::AsyncCloseItem(Call *call, PcapDumper *pcapDumper, const char *file, const char *column, long long writeBytes) {
 	this->call = call;
+	if(call) {
+		this->call_dirnamesqlfiles = call->dirnamesqlfiles();
+	}
 	this->pcapDumper = pcapDumper;
 	if(file) {
 		this->file = file;
@@ -936,7 +939,7 @@ void AsyncClose::AsyncCloseItem::addtofilesqueue() {
 	if(!call) {
 		return;
 	}
-	Call::_addtofilesqueue(this->file, this->column, call->dirnamesqlfiles(), this->writeBytes);
+	Call::_addtofilesqueue(this->file, this->column, call_dirnamesqlfiles, this->writeBytes);
 	extern char opt_cachedir[1024];
 	if(opt_cachedir[0] != '\0') {
 		Call::_addtocachequeue(this->file);
