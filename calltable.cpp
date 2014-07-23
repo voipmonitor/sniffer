@@ -125,6 +125,7 @@ extern int opt_mysqlstore_max_threads_cdr;
 extern int opt_mysqlstore_max_threads_message;
 extern int opt_mysqlstore_max_threads_register;
 extern int opt_mysqlstore_max_threads_http;
+extern Calltable *calltable;
 
 volatile int calls_counter = 0;
 volatile int calls_cdr_save_counter = 0;
@@ -155,7 +156,7 @@ bool existsColumnCalldateInCdrDtmf = true;
 
 
 /* constructor */
-Call::Call(char *call_id, unsigned long call_id_len, time_t time, void *ct) :
+Call::Call(char *call_id, unsigned long call_id_len, time_t time) :
  pcap(PcapDumper::na, this),
  pcapSip(PcapDumper::sip, this),
  pcapRtp(PcapDumper::rtp, this) {
@@ -190,7 +191,6 @@ Call::Call(char *call_id, unsigned long call_id_len, time_t time, void *ct) :
 	invitecseq[0] = '\0';
 	cancelcseq[0] = '\0';
 	sighup = false;
-	calltable = ct;
 	progress_time = 0;
 	set_progress_time_via_2XX_or18X = false;
 	first_rtp_time = 0;
@@ -380,15 +380,14 @@ Call::_addtofilesqueue(string file, string column, string dirnamesqlfiles, long 
 
 void
 Call::addtocachequeue(string file) {
-	_addtocachequeue(file, this->calltable);
+	_addtocachequeue(file);
 }
 
 void 
-Call::_addtocachequeue(string file, void *calltable) {
-	Calltable *ct = (Calltable *)calltable;
-	ct->lock_files_queue();
-	ct->files_queue.push(file);
-	ct->unlock_files_queue();
+Call::_addtocachequeue(string file) {
+	calltable->lock_files_queue();
+	calltable->files_queue.push(file);
+	calltable->unlock_files_queue();
 }
 
 void
@@ -3333,6 +3332,28 @@ Calltable::mapRemove(in_addr_t addr, unsigned short port) {
 	}
 }
 
+void
+Calltable::destroyCallsIfPcapsClosed() {
+	this->lock_calls_deletequeue();
+	if(this->calls_deletequeue.size() > 0) {
+		size_t size = this->calls_deletequeue.size();
+		for(size_t i = 0; i < size;) {
+			Call *call = this->calls_deletequeue[i];
+			if(call->isPcapsClose()) {
+				call->hashRemove();
+				call->atFinish();
+				delete call;
+				calls_counter--;
+				this->calls_deletequeue.erase(this->calls_deletequeue.begin() + i);
+				--size;
+			} else {
+				i++;
+			}
+		}
+	}
+	this->unlock_calls_deletequeue();
+}
+
 /* find call in hash */
 Call*
 Calltable::mapfind_by_ip_port(in_addr_t addr, unsigned short port, int *iscaller, int *is_rtcp, int *is_fax) {
@@ -3374,7 +3395,7 @@ Call*
 Calltable::add(char *call_id, unsigned long call_id_len, time_t time, u_int32_t saddr, unsigned short port,
 	       pcap_t *handle, int dlt, int sensorId
 ) {
-	Call *newcall = new Call(call_id, call_id_len, time, this);
+	Call *newcall = new Call(call_id, call_id_len, time);
 	if(handle) {
 		newcall->useHandle = handle;
 	}

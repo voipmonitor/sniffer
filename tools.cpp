@@ -939,7 +939,7 @@ void AsyncClose::AsyncCloseItem::addtofilesqueue() {
 	Call::_addtofilesqueue(this->file, this->column, call->dirnamesqlfiles(), this->writeBytes);
 	extern char opt_cachedir[1024];
 	if(opt_cachedir[0] != '\0') {
-		Call::_addtocachequeue(this->file, call->calltable);
+		Call::_addtocachequeue(this->file);
 	}
 }
 
