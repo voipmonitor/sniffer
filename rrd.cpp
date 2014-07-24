@@ -9,9 +9,10 @@
 #include <stdio.h>
 #include <fcntl.h>
 
-#include "rrd_tool.h"
-#include "rrd_xport.h"
-#include "rrd_i18n.h"
+//#include "rrd_tool.h"
+//#include "rrd_xport.h"
+//#include "rrd_i18n.h"
+#include "rrd.h"
 
 #include <locale.h>
 
@@ -92,13 +93,6 @@ static int HandleInputLine(
 		rrd_info_free(data);
 	}
 
-	else if (strcmp("--version", argv[1]) == 0 ||
-			 strcmp("version", argv[1]) == 0 ||
-			 strcmp("v", argv[1]) == 0 ||
-			 strcmp("-v", argv[1]) == 0 || strcmp("-version", argv[1]) == 0)
-		printf("RRDtool " PACKAGE_VERSION
-			   "  Copyright by Tobi Oetiker, 1997-2008 (%f)\n",
-			   rrd_version());
 	else if (strcmp("restore", argv[1]) == 0)
 		rrd_restore(argc - 1, &argv[1]);
 	else if (strcmp("resize", argv[1]) == 0)
@@ -343,7 +337,7 @@ int rrd_call(
 	memcpy(tmpLine, aLine, strlen(aLine) - 1);
 	tmpLine[strlen(aLine)] = '\0';
 
-	if ((myargc = CreateArgs("./rrdtool", tmpLine, myargv)) > 0) {
+if ((myargc = CreateArgs("voipmonitor-bin", tmpLine, myargv)) > 0) {
 		int result = HandleInputLine(myargc, myargv, stderr);
 		free(myargv);
 		return (result);
