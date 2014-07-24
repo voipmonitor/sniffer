@@ -883,7 +883,8 @@ void FraudAlert_chc::evCall(sFraudCallInfo *callInfo) {
 	switch(callInfo->typeCallInfo) {
 	case sFraudCallInfo::typeCallInfo_beginCall:
 		{
-		if(this->changeLocationOk.size() &&
+		if(!isLocalIP(callInfo->caller_ip) &&
+		   this->changeLocationOk.size() &&
 		   (countryCodes->isLocationIn(callInfo->country_code_caller_ip.c_str(), &this->changeLocationOk) ||
 		    countryCodes->isLocationIn(callInfo->continent_code_caller_ip.c_str(), &this->changeLocationOk, true))) {
 			return;
@@ -937,7 +938,8 @@ void FraudAlert_chcr::evCall(sFraudCallInfo *callInfo) {
 	switch(callInfo->typeCallInfo) {
 	case sFraudCallInfo::typeCallInfo_connectCall:
 		{
-		if(this->changeLocationOk.size() &&
+		if(!isLocalIP(callInfo->caller_ip) &&
+		   this->changeLocationOk.size() &&
 		   (countryCodes->isLocationIn(callInfo->country_code_caller_ip.c_str(), &this->changeLocationOk) ||
 		    countryCodes->isLocationIn(callInfo->continent_code_caller_ip.c_str(), &this->changeLocationOk, true))) {
 			return;

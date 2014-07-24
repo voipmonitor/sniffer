@@ -2226,6 +2226,32 @@ void find_and_replace(string &source, const string find, string replace) {
 	}
 }
 
+bool isLocalIP(u_int32_t ip) {
+	char *net_str[] = {
+		"192.168.0.0/16",
+		"10.0.0.0/8",
+		"172.16.0.0/20"
+	};
+	static u_int32_t net_mask[3] = { 0, 0, 0 };
+	if(!net_mask[0]) {
+		for(int i = 0; i < 3; i++) {
+			vector<string> ip_net = split(net_str[i], '/');
+			in_addr ips;
+			inet_aton(ip_net[0].c_str(), &ips);
+			u_int32_t ip = htonl(ips.s_addr);
+			u_int32_t mask = -1;
+			mask <<= (32 - atoi(ip_net[1].c_str()));
+			net_mask[i] = ip & mask;
+		}
+	}
+	for(int i = 0; i < 3; i++) {
+		if((ip & net_mask[i]) == net_mask[i]) {
+			return(true);
+		}
+	}
+	return(false);
+}
+
 AutoDeleteAtExit GlobalAutoDeleteAtExit;
 
 void AutoDeleteAtExit::add(const char *file) {
