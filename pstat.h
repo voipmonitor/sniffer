@@ -21,6 +21,7 @@ void pstat_calc_cpu_usage(const pstat_data* cur_usage,
 			  const pstat_data* last_usage,
 			  long unsigned int* ucpu_usage,
 			  long unsigned int* scpu_usage);
+long unsigned int getRss();
 
 
 #endif

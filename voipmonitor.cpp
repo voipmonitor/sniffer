@@ -1026,6 +1026,14 @@ static void daemonize(void)
 	}
 }
 
+void daemonizeOutput(string error) {
+	pthread_mutex_lock(&daemonizeErrorTempFileLock);
+	ofstream daemonizeErrorStream(daemonizeErrorTempFileName, ofstream::out | ofstream::app);
+	daemonizeErrorStream << error << endl;
+	daemonizeErrorStream.close();
+	pthread_mutex_unlock(&daemonizeErrorTempFileLock);
+}
+
 int yesno(const char *arg) {
 	if(arg[0] == 'y' or arg[0] == 'Y' or arg[0] == '1') 
 		return 1;
