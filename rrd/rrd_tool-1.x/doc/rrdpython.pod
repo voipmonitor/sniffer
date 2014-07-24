@@ -1,0 +1,78 @@
+=head1 NAME
+
+rrdpython - About the RRD Python bindings
+
+=head1 SYNOPSIS
+
+ import rrdtool
+ rrdtool.create('/tmp/test.rrd', 'DS:foo:GAUGE:20:0:U')
+
+=head1 DESCRIPTION
+
+The B<rrdtool> functions are directly callable via the Python programming
+language. This wrapper implementation has been written from the scratch
+(without  SWIG)
+
+The API's expects strings and/or list of strings as parameters to the functions.
+Please refer to the other B<rrdtool> documentation for functions and valid arguments.
+
+=head1 EXAMPLES
+
+=head2 Example 1
+
+ import sys
+ sys.path.append('/path/to/rrdtool/lib/python2.6/site-packages/')
+ import rrdtool, tempfile
+
+ DAY = 86400
+ YEAR = 365 * DAY
+ fd,path = tempfile.mkstemp('.png')
+
+ rrdtool.graph(path,
+              '--imgformat', 'PNG',
+              '--width', '540',
+              '--height', '100',
+              '--start', "-%i" % YEAR,
+              '--end', "-1",
+              '--vertical-label', 'Downloads/Day',
+              '--title', 'Annual downloads',
+              '--lower-limit', '0',
+              'DEF:downloads=downloads.rrd:downloads:AVERAGE',
+              'AREA:downloads#990033:Downloads')
+
+ info = rrdtool.info('downloads.rrd')
+ print info['last_update']
+ print info['ds[downloads].minimal_heartbeat']
+
+=head2 Example 2
+
+ import sys
+ sys.path.append('/path/to/rrdtool/lib/python2.6/site-packages/')
+ import rrdtool
+
+ # in real life data_sources would be populated in loop or something similar
+ data_sources=[ 'DS:speed1:COUNTER:600:U:U',
+                'DS:speed2:COUNTER:600:U:U',
+                'DS:speed3:COUNTER:600:U:U' ]
+
+ rrdtool.create( 'speed.rrd',
+                 '--start', '920804400',
+                 data_sources,
+                 'RRA:AVERAGE:0.5:1:24',
+                 'RRA:AVERAGE:0.5:6:10' )
+
+If you use the B<site-python-install> make target you can drop to first sys.path.append
+line since the RRDtool module will be available everywhere.
+
+If RRDtool runs into trouble, it will throw an exception which you might want to catch.
+
+=head1 SEE ALSO
+
+rrdcreate, rrdupdate, rrdgraph, rrddump, rrdfetch, rrdtune, rrdlast,
+rrdxport, rrdinfo
+
+=head1 AUTHOR
+
+Hye-Shik Chang E<lt>perky@i18n.orgE<gt>
+
+Alan Milligan E<lt>alan.milligan@last-bastion.netE<gt>
