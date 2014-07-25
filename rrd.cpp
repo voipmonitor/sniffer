@@ -5,11 +5,24 @@
 #include <locale.h>
 
 #include "rrd.h"
+#include "tools.h"
 
 #define TRUE		1
 #define FALSE		0
 #define MAX_LENGTH	10000
 
+
+int vm_rrd_calls_update(char *filename, int eachseconds, struct timevalue *last_updated)
+{
+//	struct timeval tv, *ptv = &tv;
+	extern volatile int calls_counter;
+
+	if (getDifTime(last_updated) > 1000 * eachseconds)
+	{
+		getUpdDifTime(last_updated);
+		vm_rrd_update(filename, calls_counter);
+	}
+}
 
 int vm_rrd_create(char *filename)
 {
@@ -21,9 +34,9 @@ int vm_rrd_create(char *filename)
 	} else {
 		printf("Creating RRD Database file: %s\n", filename);
 		char *commandStr;
-		int commandLen = snprintf(NULL,0,"create %s --step 60 DS:pl:GAUGE:120:0:100 DS:rtt:GAUGE:120:0:10000000 RRA:MAX:0.5:1:1500", filename);
+		int commandLen = snprintf(NULL,0,"create %s --step 10 DS:pl:GAUGE:20:0:100 DS:rtt:GAUGE:20:0:10000000 RRA:MAX:0.5:1:1500", filename);
 		commandStr = (char *) malloc(commandLen + 1);
-		sprintf(commandStr, "create %s --step 60 DS:pl:GAUGE:120:0:100 DS:rtt:GAUGE:120:0:10000000 RRA:MAX:0.5:1:1500", filename);
+		sprintf(commandStr, "create %s --step 10 DS:pl:GAUGE:20:0:100 DS:rtt:GAUGE:20:0:10000000 RRA:MAX:0.5:1:1500", filename);
 
 		res = rrd_call(commandStr);
 		printf("retval of rrd_call %s:%d", filename, res);

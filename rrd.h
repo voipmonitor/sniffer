@@ -1,3 +1,4 @@
+int vm_rrd_calls_update(char *filename, int eachseconds, struct timevalue *last_updated)
 int rrd_call(char *aLine);
 int vm_rrd_update(char *filename, int value);
 int vm_rrd_create(char *filename);
