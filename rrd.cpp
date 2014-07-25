@@ -1,25 +1,58 @@
-/*****************************************************************************
- * RRDtool 1.4.3  Copyright by Tobi Oetiker, 1997-2010
- *****************************************************************************
- * rrd_tool.c  Startup wrapper
- *****************************************************************************/
-
 #include <stdlib.h>
 #include <sys/stat.h>
 #include <stdio.h>
 #include <fcntl.h>
-
-//#include "rrd_tool.h"
-//#include "rrd_xport.h"
-//#include "rrd_i18n.h"
-#include "rrd.h"
-
 #include <locale.h>
 
+#include "rrd.h"
 
 #define TRUE		1
 #define FALSE		0
 #define MAX_LENGTH	10000
+
+
+int vm_rrd_create(char *filename)
+{
+	int res;
+	if(access(filename, 0) != -1) 
+	{	//existence
+		printf("RRD Database file %s already exist.\n", filename);
+		res = -1;
+	} else {
+		printf("Creating RRD Database file: %s\n", filename);
+		char *commandStr;
+		int commandLen = snprintf(NULL,0,"create %s --step 60 DS:pl:GAUGE:120:0:100 DS:rtt:GAUGE:120:0:10000000 RRA:MAX:0.5:1:1500", filename);
+		commandStr = (char *) malloc(commandLen + 1);
+		sprintf(commandStr, "create %s --step 60 DS:pl:GAUGE:120:0:100 DS:rtt:GAUGE:120:0:10000000 RRA:MAX:0.5:1:1500", filename);
+
+		res = rrd_call(commandStr);
+		printf("retval of rrd_call %s:%d", filename, res);
+		free(commandStr);
+	}
+	return res;
+}
+
+int vm_rrd_update(char *filename, int value)
+{
+	int res;
+	if(access(filename, 0|2) != -1)
+	{	//existence a zapis
+		printf("Updating RRD Database file: %s\n", filename);
+		char *commandStr;
+		int commandLen = snprintf(NULL,0,"update %s --template pl:rtt N:0:%d", filename, value);
+		commandStr = (char *) malloc(commandLen + 1);
+		sprintf(commandStr, "update %s --template pl:rtt N:0:%d", filename, value);
+
+		int res = rrd_call(commandStr);
+		printf("retval of rrd_call %s:%d", res);
+		free(commandStr);
+	} else {
+		printf("Cannot update non existent RRD Database file: %s\n", filename);
+		res = -1;
+	}
+	return res;
+}
+
 
 
 static char *fgetslong(
@@ -334,7 +367,7 @@ int rrd_call(
 		return (1);
 	}
 
-	memcpy(tmpLine, aLine, strlen(aLine) - 1);
+	memcpy(tmpLine, aLine, strlen(aLine));
 	tmpLine[strlen(aLine)] = '\0';
 
 if ((myargc = CreateArgs("voipmonitor-bin", tmpLine, myargv)) > 0) {

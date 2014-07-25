@@ -1,6 +1,8 @@
-int rrd_call(
-    char *aLine
-    );
+int rrd_call(char *aLine);
+int vm_rrd_update(char *filename, int value);
+int vm_rrd_create(char *filename);
+
+
 #ifndef RRDLIB_H_4FD7D37D56A448C392AF46508C56D3CC
 #define RRDLIB_H_4FD7D37D56A448C392AF46508C56D3CC
 
