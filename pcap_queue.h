@@ -18,6 +18,7 @@
 #include "sniff.h"
 #include "pstat.h"
 #include "ip_frag.h"
+#include "rrd.h"
 
 #define READ_THREADS_MAX 20
 #define DLT_TYPES_MAX 10
@@ -319,6 +320,7 @@ struct pcapProcessData {
 	u_int ipfrag_lastprune;
 	ipfrag_data_s ipfrag_data;
 };
+
 
 class PcapQueue_readFromInterface_base {
 public:

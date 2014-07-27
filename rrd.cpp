@@ -3,70 +3,178 @@
 #include <stdio.h>
 #include <fcntl.h>
 #include <locale.h>
+#include <syslog.h>
 
 #include "rrd.h"
 #include "tools.h"
+
+#include <iostream>  
+#include <sstream>  
+#include <iomanip>
+#include <string.h>
+
 
 #define TRUE		1
 #define FALSE		0
 #define MAX_LENGTH	10000
 
 
-int vm_rrd_calls_update(char *filename, int eachseconds, struct timevalue *last_updated)
-{
-//	struct timeval tv, *ptv = &tv;
-	extern volatile int calls_counter;
+int vm_rrd_create_rrdPS(const char *filename) {
+    std::ostringstream cmdCreate;
 
-	if (getDifTime(last_updated) > 1000 * eachseconds)
-	{
-		getUpdDifTime(last_updated);
-		vm_rrd_update(filename, calls_counter);
-	}
+    cmdCreate << "create " << filename << " ";
+    cmdCreate << "--start N --step 10 ";
+    cmdCreate << "DS:PS-C:GAUGE:20:0:1000000 ";
+    cmdCreate << "DS:PS-S0:GAUGE:20:0:1000000 ";
+    cmdCreate << "DS:PS-S1:GAUGE:20:0:1000000 ";
+    cmdCreate << "DS:PS-R:GAUGE:20:0:10000000 ";
+    cmdCreate << "DS:PS-A:GAUGE:20:0:10000000 ";
+    cmdCreate << "RRA:MIN:0.5:12:1440 ";
+    cmdCreate << "RRA:MAX:0.5:12:1440 ";
+    cmdCreate << "RRA:AVERAGE:0.5:1:1440";
+	int res = vm_rrd_create(filename, cmdCreate.str().c_str());
+	return (res);
 }
 
-int vm_rrd_create(char *filename)
+int vm_rrd_create_rrdSQLq(const char *filename) {
+    std::ostringstream cmdCreate;
+
+    cmdCreate << "create " << filename << " ";
+    cmdCreate << "--start N --step 10 ";
+    cmdCreate << "DS:SQLq-C:GAUGE:20:0:10000 ";
+    cmdCreate << "DS:SQLq-M:GAUGE:20:0:10000 ";
+    cmdCreate << "DS:SQLq-R:GAUGE:20:0:10000 ";
+    cmdCreate << "DS:SQLq-Cl:GAUGE:20:0:10000 ";
+    cmdCreate << "DS:SQLq-H:GAUGE:20:0:10000 ";
+    cmdCreate << "RRA:MIN:0.5:12:1440 ";
+    cmdCreate << "RRA:MAX:0.5:12:1440 ";
+    cmdCreate << "RRA:AVERAGE:0.5:1:1440";
+	int res = vm_rrd_create(filename, cmdCreate.str().c_str());
+	return (res);
+}
+
+int vm_rrd_create_rrdtCPU(const char *filename) {
+    std::ostringstream cmdCreate;
+
+    cmdCreate << "create " << filename << " ";
+    cmdCreate << "--start N --step 10 ";
+    cmdCreate << "DS:tCPU-t0:GAUGE:20:0:100 ";
+    cmdCreate << "DS:tCPU-t1:GAUGE:20:0:100 ";
+    cmdCreate << "DS:tCPU-t2:GAUGE:20:0:100 ";
+    cmdCreate << "RRA:MIN:0.5:12:1440 ";
+    cmdCreate << "RRA:MAX:0.5:12:1440 ";
+    cmdCreate << "RRA:AVERAGE:0.5:1:1440";
+	int res = vm_rrd_create(filename, cmdCreate.str().c_str());
+	return (res);
+}
+
+int vm_rrd_create_rrdtacCPU(const char *filename) {
+    std::ostringstream cmdCreate;
+
+    cmdCreate << "create " << filename << " ";
+    cmdCreate << "--start N --step 10 ";
+    cmdCreate << "DS:tacCPU:GAUGE:20:0:10000 ";
+    cmdCreate << "RRA:MIN:0.5:12:1440 ";
+    cmdCreate << "RRA:MAX:0.5:12:1440 ";
+    cmdCreate << "RRA:AVERAGE:0.5:1:1440";
+	int res = vm_rrd_create(filename, cmdCreate.str().c_str());
+	return (res);
+}
+
+int vm_rrd_create_rrdRSSVSZ(const char *filename) {
+    std::ostringstream cmdCreate;
+
+    cmdCreate << "create " << filename << " ";
+    cmdCreate << "--start N --step 10 ";
+    cmdCreate << "DS:RSS:GAUGE:20:0:1000000 ";
+    cmdCreate << "DS:VSZ:GAUGE:20:0:1000000 ";
+    cmdCreate << "RRA:MIN:0.5:12:1440 ";
+    cmdCreate << "RRA:MAX:0.5:12:1440 ";
+    cmdCreate << "RRA:AVERAGE:0.5:1:1440";
+	int res = vm_rrd_create(filename, cmdCreate.str().c_str());
+	return (res);
+}
+
+int vm_rrd_create_rrdspeedmbs(const char *filename) {
+    std::ostringstream cmdCreate;
+
+    cmdCreate << "create " << filename << " ";
+    cmdCreate << "--start N --step 10 ";
+    cmdCreate << "DS:mbs:GAUGE:20:0:100000 ";
+    cmdCreate << "RRA:MIN:0.5:12:1440 ";
+    cmdCreate << "RRA:MAX:0.5:12:1440 ";
+    cmdCreate << "RRA:AVERAGE:0.5:1:1440";
+	int res = vm_rrd_create(filename, cmdCreate.str().c_str());
+	return (res);
+}
+
+int vm_rrd_create_rrdcallscounter(const char *filename) {
+    std::ostringstream cmdCreate;
+
+    cmdCreate << "create " << filename << " ";
+    cmdCreate << "--start N --step 10 ";
+    cmdCreate << "DS:calls:GAUGE:20:0:200000 ";
+    cmdCreate << "RRA:MIN:0.5:12:1440 ";
+    cmdCreate << "RRA:MAX:0.5:12:1440 ";
+    cmdCreate << "RRA:AVERAGE:0.5:1:1440";
+	int res = vm_rrd_create(filename, cmdCreate.str().c_str());
+	return (res);
+}
+
+
+
+int vm_rrd_create(const char *filename, const char *cmdline)
 {
 	int res;
 	if(access(filename, 0) != -1) 
-	{	//existence
-		printf("RRD Database file %s already exist.\n", filename);
+	{			
+		syslog(LOG_NOTICE, "RRD file %s already exist. Creating Skipped.\n", filename);
 		res = -1;
 	} else {
-		printf("Creating RRD Database file: %s\n", filename);
-		char *commandStr;
-		int commandLen = snprintf(NULL,0,"create %s --step 10 DS:pl:GAUGE:20:0:100 DS:rtt:GAUGE:20:0:10000000 RRA:MAX:0.5:1:1500", filename);
-		commandStr = (char *) malloc(commandLen + 1);
-		sprintf(commandStr, "create %s --step 10 DS:pl:GAUGE:20:0:100 DS:rtt:GAUGE:20:0:10000000 RRA:MAX:0.5:1:1500", filename);
-
-		res = rrd_call(commandStr);
-		printf("retval of rrd_call %s:%d", filename, res);
-		free(commandStr);
+	//	syslog(LOG_NOTICE, "Creating RRD Database file: %s\n", filename);
+		res = rrd_call(cmdline);
+		syslog (LOG_NOTICE,"CREATED RRD file %s with result of: %d\n",filename, res);
 	}
 	return res;
 }
 
+int vm_rrd_update(const char *filename, const char *value)
+{
+	std::ostringstream cmdUpdate;
+	int res;
+	if(access(filename, 0|2) != -1) {
+		cmdUpdate.str()="";
+		cmdUpdate << "update " << filename << " " << value;
+		//syslog(LOG_NOTICE, "Updating RRD file: %s \n", filename);
+		res = rrd_call(cmdUpdate.str().c_str());
+		syslog(LOG_NOTICE, "Updated RRD file: %s with command %s resulted in retval:%d\n", filename, cmdUpdate.str().c_str(),res);
+	} else {		//rrd file is unaccessible
+		syslog(LOG_NOTICE, "Cannot update non existent RRD file: %s\n", filename);
+		res = -1;
+	}
+	return res;
+}
+/*
 int vm_rrd_update(char *filename, int value)
 {
 	int res;
 	if(access(filename, 0|2) != -1)
-	{	//existence a zapis
-		printf("Updating RRD Database file: %s\n", filename);
+	{				//if rrd file exist and ha w permissions, we can update it 
+		syslog(LOG_NOTICE, "Updating RRD Database file: %s\n", filename);
 		char *commandStr;
 		int commandLen = snprintf(NULL,0,"update %s --template pl:rtt N:0:%d", filename, value);
 		commandStr = (char *) malloc(commandLen + 1);
 		sprintf(commandStr, "update %s --template pl:rtt N:0:%d", filename, value);
-
 		int res = rrd_call(commandStr);
-		printf("retval of rrd_call %s:%d", res);
+		syslog(LOG_NOTICE, "retval of rrd_call %s:%d",filename, res);
 		free(commandStr);
-	} else {
-		printf("Cannot update non existent RRD Database file: %s\n", filename);
+	} else {		//rrd file is unaccessible
+		syslog(LOG_NOTICE, "Cannot update non existent RRD Database file: %s\n", filename);
 		res = -1;
 	}
 	return res;
 }
-
-
+*/
 
 static char *fgetslong(
 	char **aLinePtr,
@@ -275,6 +383,28 @@ static int CountArgs(
 	return aCount;
 }
 
+static int CountArgsC(
+	const char *aLine)
+{
+	int		  i = 0;
+	int		  aCount = 0;
+	int		  inarg = 0;
+
+	while (aLine[i] == ' ')
+		i++;
+	while (aLine[i] != 0) {
+		if ((aLine[i] == ' ') && inarg) {
+			inarg = 0;
+		}
+		if ((aLine[i] != ' ') && !inarg) {
+			inarg = 1;
+			aCount++;
+		}
+		i++;
+	}
+	return aCount;
+}
+
 /*
  * CreateArgs - take a string (aLine) and tokenize
  */
@@ -343,8 +473,8 @@ static int CreateArgs(
 
 	*putP = '\0';
 	int i=0;
-	while (pargv[i]) {
-		printf("Arg:%d = %s\n",i,pargv[i]);
+	while (i < argc) {
+		printf("ARGC:%d Arg:[%d] = %s\n",argc,i,pargv[i]);
 		i++;
 	}
 
@@ -356,14 +486,14 @@ static int CreateArgs(
 
 
 int rrd_call(
-	char *aLine
+	const char *aLine
 	)
 {
 	int myargc;
 	char *tmpLine;
 	char **myargv;
 
-	if ((myargc = CountArgs(aLine)) == 0) {
+	if ((myargc = CountArgsC(aLine)) == 0) {
 		printf("RRD_CALL ERROR: not enough arguments\n");
 		return (1);
 	}
@@ -383,14 +513,13 @@ int rrd_call(
 	memcpy(tmpLine, aLine, strlen(aLine));
 	tmpLine[strlen(aLine)] = '\0';
 
-if ((myargc = CreateArgs("voipmonitor-bin", tmpLine, myargv)) > 0) {
+	if ((myargc = CreateArgs("voipmonitor-bin", tmpLine, myargv)) > 0) {
 		int result = HandleInputLine(myargc, myargv, stderr);
 		free(myargv);
 		return (result);
 	} else {
+		free(myargv);
 		return (-1);
 	}
 }
-
-
 
