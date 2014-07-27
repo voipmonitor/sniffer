@@ -69,6 +69,7 @@ extern int verbosity;
 extern int verbosityE;
 extern int terminating;
 extern int opt_rrd;
+extern char opt_chdir[1024];
 extern int opt_udpfrag;
 extern int opt_skinny;
 extern int opt_ipaccount;
@@ -1308,15 +1309,27 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 		if (opt_rrd == 1) {
 			//CREATE:
 			//syslog(LOG_NOTICE,"Je cas vytvaret RRD\n");
-			vm_rrd_create_rrdPS("/tmp/db-PS.rrd");
-			vm_rrd_create_rrdSQLq("/tmp/db-SQLq.rrd");
-			vm_rrd_create_rrdtCPU("/tmp/db-tCPU.rrd");
-			vm_rrd_create_rrdtacCPU("/tmp/db-tacCPU.rrd");
-			vm_rrd_create_rrdRSSVSZ("/tmp/db-RSSVSZ.rrd");
-			vm_rrd_create_rrdspeedmbs("/tmp/db-speedmbs.rrd");
-			vm_rrd_create_rrdcallscounter("/tmp/db-callscounter.rrd");
+			char filename[1000];
+			sprintf(filename, "%s/rrd/" ,opt_chdir);
+			mkdir_r(filename, 0777);
+
+			sprintf(filename, "%s/rrd/db-PS.rrd", opt_chdir);
+			vm_rrd_create_rrdPS(filename);
+			sprintf(filename, "%s/rrd/db-SQLq.rrd", opt_chdir);
+			vm_rrd_create_rrdSQLq(filename);
+			sprintf(filename, "%s/rrd/db-tCPU.rrd", opt_chdir);
+			vm_rrd_create_rrdtCPU(filename);
+			sprintf(filename, "%s/rrd/db-tacCPU.rrd", opt_chdir);
+			vm_rrd_create_rrdtacCPU(filename);
+			sprintf(filename, "%s/rrd/db-RSSVSZ.rrd", opt_chdir);
+			vm_rrd_create_rrdRSSVSZ(filename);
+			sprintf(filename, "%s/rrd/db-speedmbs.rrd", opt_chdir);
+			vm_rrd_create_rrdspeedmbs(filename);
+			sprintf(filename, "%s/rrd/db-callscounter.rrd", opt_chdir);
+			vm_rrd_create_rrdcallscounter(filename);
 			opt_rrd ++;
 		} else {
+			char filename[1000];
 			std::ostringstream cmdUpdate;
 			//UPDATES:
 
@@ -1326,7 +1339,8 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 			cmdUpdate <<  ":" << rrdPS.S1;
 			cmdUpdate <<  ":" << rrdPS.R;
 			cmdUpdate <<  ":" << rrdPS.A;
-			int rrdres = vm_rrd_update("/tmp/db-PS.rrd", cmdUpdate.str().c_str());
+			sprintf(filename, "%s/rrd/db-PS.rrd", opt_chdir);
+			int rrdres = vm_rrd_update(filename, cmdUpdate.str().c_str());
 
 //			vm_rrd_update_rrdSQLq();
 			cmdUpdate.str(std::string());
@@ -1335,35 +1349,41 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 			cmdUpdate <<  ":" << rrdSQLq.R;
 			cmdUpdate <<  ":" << rrdSQLq.Cl;
 			cmdUpdate <<  ":" << rrdSQLq.H;
-			rrdres = vm_rrd_update("/tmp/db-SQLq.rrd", cmdUpdate.str().c_str());
+			sprintf(filename, "%s/rrd/db-SQLq.rrd", opt_chdir);
+			rrdres = vm_rrd_update(filename, cmdUpdate.str().c_str());
 
 //			vm_rrd_update_rrdtCPU();
 			cmdUpdate.str(std::string());
 			cmdUpdate << "N:" << rrdtCPU.t0;
 			cmdUpdate <<  ":" << rrdtCPU.t1;
 			cmdUpdate <<  ":" << rrdtCPU.t2;
-			rrdres = vm_rrd_update("/tmp/db-tCPU.rrd", cmdUpdate.str().c_str());
+			sprintf(filename, "%s/rrd/db-tCPU.rrd", opt_chdir);
+			rrdres = vm_rrd_update(filename, cmdUpdate.str().c_str());
 
 //			vm_rrd_update_rrdtacCPU();
 			cmdUpdate.str(std::string());
 			cmdUpdate << "N:" << ((rrdtacCPU.nmt * 100) + (rrdtacCPU.lastt / 2));
-			rrdres = vm_rrd_update("/tmp/db-tacCPU.rrd", cmdUpdate.str().c_str());
+			sprintf(filename, "%s/rrd/db-tacCPU.rrd", opt_chdir);
+			rrdres = vm_rrd_update(filename, cmdUpdate.str().c_str());
 
 //			vm_rrd_update_rrdRSSVSZ();
 			cmdUpdate.str(std::string());
 			cmdUpdate << "N:" << rrdRSSVSZ.rss;
 			cmdUpdate <<  ":" << rrdRSSVSZ.vsize;
-			rrdres = vm_rrd_update("/tmp/db-RSSVSZ.rrd", cmdUpdate.str().c_str());
+			sprintf(filename, "%s/rrd/db-RSSVSZ.rrd", opt_chdir);
+			rrdres = vm_rrd_update(filename, cmdUpdate.str().c_str());
 
 //			vm_rrd_update_rrdspeedmbs();
 			cmdUpdate.str(std::string());
 			cmdUpdate << "N:" << rrdspeedmbs;
-			rrdres = vm_rrd_update("/tmp/db-speedmbs.rrd", cmdUpdate.str().c_str());
+			sprintf(filename, "%s/rrd/db-speedmbs.rrd", opt_chdir);
+			rrdres = vm_rrd_update(filename, cmdUpdate.str().c_str());
 
 //			vm_rrd_update_rrdcallscounter();
 			cmdUpdate.str(std::string());
 			cmdUpdate << "N:" << rrdcallscounter;
-			rrdres = vm_rrd_update("/tmp/db-callscounter.rrd", cmdUpdate.str().c_str());
+			sprintf(filename, "%s/rrd/db-callscounter.rrd", opt_chdir);
+			rrdres = vm_rrd_update(filename, cmdUpdate.str().c_str());
 		}
 	}
 }

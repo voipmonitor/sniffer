@@ -131,7 +131,7 @@ int vm_rrd_create(const char *filename, const char *cmdline)
 		syslog(LOG_NOTICE, "RRD file %s already exist. Creating Skipped.\n", filename);
 		res = -1;
 	} else {
-	//	syslog(LOG_NOTICE, "Creating RRD Database file: %s\n", filename);
+		//syslog(LOG_NOTICE, "Creating RRD Database file: %s\n", filename);
 		res = rrd_call(cmdline);
 		syslog (LOG_NOTICE,"CREATED RRD file %s with result of: %d\n",filename, res);
 	}
@@ -143,7 +143,6 @@ int vm_rrd_update(const char *filename, const char *value)
 	std::ostringstream cmdUpdate;
 	int res;
 	if(access(filename, 0|2) != -1) {
-		cmdUpdate.str()="";
 		cmdUpdate << "update " << filename << " " << value;
 		//syslog(LOG_NOTICE, "Updating RRD file: %s \n", filename);
 		res = rrd_call(cmdUpdate.str().c_str());

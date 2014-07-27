@@ -2792,8 +2792,7 @@ int main(int argc, char *argv[]) {
 	}
 	
 	if(opt_rrd && opt_read_from_file) {
-		//disable rrd graphs when reading packets from file
-		syslog(LOG_NOTICE, "RRD cannot be set along with -r param (read pcap from file), disabling rrd.");
+		//disable update of rrd statistics when reading packets from file
 		opt_rrd = 0;
 	}
 
