@@ -52,7 +52,9 @@ SqlDb *sqlDbCleanspool = NULL;
 pthread_t cleanspool_thread = 0;
 
 
-void unlinkfileslist(string fname) {
+void unlinkfileslist(string fname, string callFrom) {
+	syslog(LOG_NOTICE, "cleanspool: call unlinkfileslist(%s) from %s", fname.c_str(), callFrom.c_str());
+
 	char buf[4092];
 
 	FILE *fd = fopen(fname.c_str(), "r");
@@ -85,7 +87,16 @@ void unlinkfileslist(string fname) {
 	return;
 }
 
-void unlink_dirs(string datehour, int all, int sip, int rtp, int graph, int audio, int reg) {
+void unlink_dirs(string datehour, int all, int sip, int rtp, int graph, int audio, int reg, string callFrom) {
+	syslog(LOG_NOTICE, "cleanspool: call unlink_dirs(%s,%s,%s,%s,%s,%s,%s) from %s", 
+	       datehour.c_str(), 
+	       all == 2 ? "ALL" : all == 1 ? "all" : "---",
+	       sip == 2 ? "SIP" : sip == 1 ? "sip" : "---",
+	       rtp == 2 ? "RTP" : rtp == 1 ? "rtp" : "---",
+	       graph == 2 ? "GRAPH" : graph == 1 ? "graph" : "---",
+	       audio == 2 ? "AUDIO" : audio == 1 ? "audio" : "---",
+	       reg == 2 ? "REG" : reg == 1 ? "reg" : "---",
+	       callFrom.c_str());
 
 	//unlink all directories
 	stringstream fname;
@@ -164,20 +175,26 @@ void unlink_dirs(string datehour, int all, int sip, int rtp, int graph, int audi
 		fname.str( std::string() );
 		fname.clear();
 		fname << datehour.substr(0,4) << "-" << datehour.substr(4,2) << "-" << datehour.substr(6,2) << "/" << datehour.substr(8,2) << "/" << min;
-		rmdir(fname.str().c_str());
+		if(rmdir(fname.str().c_str()) == 0) {
+			syslog(LOG_NOTICE, "cleanspool: unlink_dirs: remove %s", fname.str().c_str());
+		}
 	}
 	
 	// remove hour
 	fname.str( std::string() );
 	fname.clear();
 	fname << datehour.substr(0,4) << "-" << datehour.substr(4,2) << "-" << datehour.substr(6,2) << "/" << datehour.substr(8,2);
-	rmdir(fname.str().c_str());
+	if(rmdir(fname.str().c_str()) == 0) {
+		syslog(LOG_NOTICE, "cleanspool: unlink_dirs: remove %s", fname.str().c_str());
+	}
 
 	// remove day
 	fname.str( std::string() );
 	fname.clear();
 	fname << datehour.substr(0,4) << "-" << datehour.substr(4,2) << "-" << datehour.substr(6,2);
-	rmdir(fname.str().c_str());
+	if(rmdir(fname.str().c_str()) == 0) {
+		syslog(LOG_NOTICE, "cleanspool: unlink_dirs: remove %s", fname.str().c_str());
+	}
 }
 
 void clean_maxpoolsize() {
@@ -223,29 +240,29 @@ void clean_maxpoolsize() {
 		fname.str( std::string() );
 		fname.clear();
 		fname << "filesindex/sipsize/" << row["datehour"];
-		unlinkfileslist(fname.str());
+		unlinkfileslist(fname.str(), "clean_maxpoolsize");
 
 		fname.str( std::string() );
 		fname.clear();
 		fname << "filesindex/rtpsize/" << row["datehour"];
-		unlinkfileslist(fname.str());
+		unlinkfileslist(fname.str(), "clean_maxpoolsize");
 
 		fname.str( std::string() );
 		fname.clear();
 		fname << "filesindex/graphsize/" << row["datehour"];
-		unlinkfileslist(fname.str());
+		unlinkfileslist(fname.str(), "clean_maxpoolsize");
 
 		fname.str( std::string() );
 		fname.clear();
 		fname << "filesindex/audiosize/" << row["datehour"];
-		unlinkfileslist(fname.str());
+		unlinkfileslist(fname.str(), "clean_maxpoolsize");
 
 		fname.str( std::string() );
 		fname.clear();
 		fname << "filesindex/regsize/" << row["datehour"];
-		unlinkfileslist(fname.str());
+		unlinkfileslist(fname.str(), "clean_maxpoolsize");
 
-		unlink_dirs(row["datehour"], 2, 2, 2, 2, 2, 2);
+		unlink_dirs(row["datehour"], 2, 2, 2, 2, 2, 2, "clean_maxpoolsize");
 
 		q.str( std::string() );
 		q.clear();
@@ -315,14 +332,14 @@ void clean_maxpoolsipsize() {
 		fname.str( std::string() );
 		fname.clear();
 		fname << "filesindex/sipsize/" << row["datehour"];
-		unlinkfileslist(fname.str());
+		unlinkfileslist(fname.str(), "clean_maxpoolsipsize");
 
 		fname.str( std::string() );
 		fname.clear();
 		fname << "filesindex/regsize/" << row["datehour"];
-		unlinkfileslist(fname.str());
+		unlinkfileslist(fname.str(), "clean_maxpoolsipsize");
 
-		unlink_dirs(row["datehour"], 1, 2, 1, 1, 1, 2);
+		unlink_dirs(row["datehour"], 1, 2, 1, 1, 1, 2, "clean_maxpoolsipsize");
 
 		if(rtpsize + graphsize + audiosize > 0) {
 			q.str( std::string() );
@@ -394,9 +411,9 @@ void clean_maxpoolrtpsize() {
 		fname.str( std::string() );
 		fname.clear();
 		fname << "filesindex/rtpsize/" << row["datehour"];
-		unlinkfileslist(fname.str());
+		unlinkfileslist(fname.str(), "clean_maxpoolrtpsize");
 
-		unlink_dirs(row["datehour"], 1, 1, 2, 1, 1, 1);
+		unlink_dirs(row["datehour"], 1, 1, 2, 1, 1, 1, "clean_maxpoolrtpsize");
 
 		if(sipsize + regsize + graphsize + audiosize > 0) {
 			q.str( std::string() );
@@ -467,9 +484,9 @@ void clean_maxpoolgraphsize() {
 		fname.str( std::string() );
 		fname.clear();
 		fname << "filesindex/graphsize/" << row["datehour"];
-		unlinkfileslist(fname.str());
+		unlinkfileslist(fname.str(), "clean_maxpoolgraphsize");
 
-		unlink_dirs(row["datehour"], 1, 1, 1, 2, 1, 1);
+		unlink_dirs(row["datehour"], 1, 1, 1, 2, 1, 1, "clean_maxpoolgraphsize");
 
 		if(sipsize + regsize + rtpsize + audiosize > 0) {
 			q.str( std::string() );
@@ -540,9 +557,9 @@ void clean_maxpoolaudiosize() {
 		fname.str( std::string() );
 		fname.clear();
 		fname << "filesindex/audiosize/" << row["datehour"];
-		unlinkfileslist(fname.str());
+		unlinkfileslist(fname.str(), "clean_maxpoolaudiosize");
 
-		unlink_dirs(row["datehour"], 1, 1, 1, 1, 2, 1);
+		unlink_dirs(row["datehour"], 1, 1, 1, 1, 2, 1, "clean_maxpoolaudiosize");
 
 		if(sipsize + regsize + rtpsize + graphsize > 0) {
 			q.str( std::string() );
@@ -593,29 +610,29 @@ void clean_maxpooldays() {
 		fname.str( std::string() );
 		fname.clear();
 		fname << "filesindex/sipsize/" << row["datehour"];
-		unlinkfileslist(fname.str());
+		unlinkfileslist(fname.str(), "clean_maxpooldays");
 
 		fname.str( std::string() );
 		fname.clear();
 		fname << "filesindex/rtpsize/" << row["datehour"];
-		unlinkfileslist(fname.str());
+		unlinkfileslist(fname.str(), "clean_maxpooldays");
 
 		fname.str( std::string() );
 		fname.clear();
 		fname << "filesindex/graphsize/" << row["datehour"];
-		unlinkfileslist(fname.str());
+		unlinkfileslist(fname.str(), "clean_maxpooldays");
 
 		fname.str( std::string() );
 		fname.clear();
 		fname << "filesindex/audiosize/" << row["datehour"];
-		unlinkfileslist(fname.str());
+		unlinkfileslist(fname.str(), "clean_maxpooldays");
 
 		fname.str( std::string() );
 		fname.clear();
 		fname << "filesindex/regsize/" << row["datehour"];
-		unlinkfileslist(fname.str());
+		unlinkfileslist(fname.str(), "clean_maxpooldays");
 
-		unlink_dirs(row["datehour"], 2, 2, 2, 2, 2, 2);
+		unlink_dirs(row["datehour"], 2, 2, 2, 2, 2, 2, "clean_maxpooldays");
 
 		q.str( std::string() );
 		q.clear();
@@ -644,14 +661,14 @@ void clean_maxpoolsipdays() {
 		fname.str( std::string() );
 		fname.clear();
 		fname << "filesindex/sipsize/" << row["datehour"];
-		unlinkfileslist(fname.str());
+		unlinkfileslist(fname.str(), "clean_maxpoolsipdays");
 
 		fname.str( std::string() );
 		fname.clear();
 		fname << "filesindex/regsize/" << row["datehour"];
-		unlinkfileslist(fname.str());
+		unlinkfileslist(fname.str(), "clean_maxpoolsipdays");
 
-		unlink_dirs(row["datehour"], 1, 2, 1, 1, 1, 2);
+		unlink_dirs(row["datehour"], 1, 2, 1, 1, 1, 2, "clean_maxpoolsipdays");
 
 		uint64_t rtpsize = strtoull(row["rtpsize"].c_str(), NULL, 0);
 		uint64_t graphsize = strtoull(row["graphsize"].c_str(), NULL, 0);
@@ -689,9 +706,9 @@ void clean_maxpoolrtpdays() {
 		fname.str( std::string() );
 		fname.clear();
 		fname << "filesindex/rtpsize/" << row["datehour"];
-		unlinkfileslist(fname.str());
+		unlinkfileslist(fname.str(), "clean_maxpoolrtpdays");
 
-		unlink_dirs(row["datehour"], 1, 1, 2, 1, 1, 1);
+		unlink_dirs(row["datehour"], 1, 1, 2, 1, 1, 1, "clean_maxpoolrtpdays");
 
 		uint64_t sipsize = strtoull(row["sipsize"].c_str(), NULL, 0);
 		uint64_t regsize = strtoull(row["regsize"].c_str(), NULL, 0);
@@ -732,9 +749,9 @@ void clean_maxpoolgraphdays() {
 		fname.clear();
 		fname << "filesindex/graphsize/" << row["datehour"];
 		if(debugclean) cout << "reading: " << fname.str() << "\n";
-		unlinkfileslist(fname.str());
+		unlinkfileslist(fname.str(), "clean_maxpoolgraphdays");
 
-		unlink_dirs(row["datehour"], 1, 1, 1, 2, 1, 1);
+		unlink_dirs(row["datehour"], 1, 1, 1, 2, 1, 1, "clean_maxpoolgraphdays");
 
 		uint64_t sipsize = strtoull(row["sipsize"].c_str(), NULL, 0);
 		uint64_t rtpsize = strtoull(row["rtpsize"].c_str(), NULL, 0);
@@ -775,9 +792,9 @@ void clean_maxpoolaudiodays() {
 		fname.str( std::string() );
 		fname.clear();
 		fname << "filesindex/audiosize/" << row["datehour"];
-		unlinkfileslist(fname.str());
+		unlinkfileslist(fname.str(), "clean_maxpoolaudiodays");
 
-		unlink_dirs(row["datehour"], 1, 1, 1, 1, 2, 1);
+		unlink_dirs(row["datehour"], 1, 1, 1, 1, 2, 1, "clean_maxpoolaudiodays");
 
 		uint64_t sipsize = strtoull(row["sipsize"].c_str(), NULL, 0);
 		uint64_t rtpsize = strtoull(row["rtpsize"].c_str(), NULL, 0);
@@ -867,6 +884,7 @@ void clean_obsolete_dirs(const char *path) {
 										    !atoi(row[string(typeFilesIndex[i]) + "size"].c_str()) :
 										    !onlyMaxDays[i] || (unsigned int)numberOfDayToNow > onlyMaxDays[i]) {
 											rmdir_r(mintypedir.c_str());
+											syslog(LOG_NOTICE, "cleanspool: clean obsolete dir %s", mintypedir.c_str());
 											removeMinTypeDir = true;
 										} else {
 											keepMainMinTypeFolder = true;
@@ -878,24 +896,31 @@ void clean_obsolete_dirs(const char *path) {
 										string mintypedir = mindir + "/" + typeFilesFolder[i];
 										if(file_exists((char*)mintypedir.c_str())) {
 											rmdir_r(mintypedir.c_str());
+											syslog(LOG_NOTICE, "cleanspool: clean obsolete dir %s", mintypedir.c_str());
 											removeMinTypeDir = true;
 										}
 									}
 								}
 								if(removeMinTypeDir) {
-									rmdir(mindir.c_str());
+									if(rmdir(mindir.c_str()) == 0) {
+										syslog(LOG_NOTICE, "cleanspool: clean obsolete dir %s", mindir.c_str());
+									}
 									removeMinDir = true;
 								}
 							}
 						}
 						if(removeMinDir) {
-							rmdir(hourdir.c_str());
+							if(rmdir(hourdir.c_str()) == 0) {
+								syslog(LOG_NOTICE, "cleanspool: clean obsolete dir %s", hourdir.c_str());
+							}
 							removeHourDir = true;
 						}
 					}
 				}
 				if(removeHourDir) {
-					rmdir(daydir.c_str());
+					if(rmdir(daydir.c_str()) == 0) {
+						syslog(LOG_NOTICE, "cleanspool: clean obsolete dir %s", daydir.c_str());
+					}
 				}
 			}
 		}
