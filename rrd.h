@@ -13,6 +13,7 @@ int vm_rrd_create(const char *filename, const char *cmdline);
 int vm_rrd_update(const char *filename, const char *cmdline);
 int rrd_call(const char *aLine);
 
+extern int verbosity;
 #ifndef RRDLIB_H_4FD7D37D56A448C392AF46508C56D3CC
 #define RRDLIB_H_4FD7D37D56A448C392AF46508C56D3CC
 

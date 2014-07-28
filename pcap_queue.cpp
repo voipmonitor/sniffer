@@ -882,49 +882,30 @@ void PcapQueue::setInstancePcapHandle(PcapQueue *pcapQueue) {
 void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 
 //For RRD updates
-	struct {
-		double buffer = 0;
-		double trash = 0;
-		double ratio = 0;
-	} rrdheap;
-	struct {
-		unsigned long exceeded = 0;
-		unsigned long packets = 0;
-	} rrddrop;
-
-	struct {
-		int64_t C = 0;
-		uint64_t S0 = 0;
-		uint64_t S1 = 0;
-		uint64_t R = 0;
-		uint64_t A = 0;
-	} rrdPS;
-	struct {
-		int C = 0;
-		int M = 0;
-		int R = 0;
-		int Cl = 0;
-		int H = 0;
-	} rrdSQLq;
-	struct {
-		double t0 = 0.0;
-		double t1 = 0.0;
-		double t2 = 0.0;
-	} rrdtCPU;
-	struct {
-		int nmt = 0;        //pocet vlaken
-		double lastt = 0.0; //vytizeni posledniho vlakna
-	} rrdtacCPU;
-	struct {
-		double rss = 0;
-		double vsize = 0;
-	} rrdRSSVSZ;
+	double rrdheap_buffer = 0;
+	double rrdheap_trash = 0;
+	double rrdheap_ratio = 0;
+	unsigned long rrddrop_exceeded = 0;
+	unsigned long rrddrop_packets = 0;
+	int64_t rrdPS_C = 0;
+	uint64_t rrdPS_S0 = 0;
+	uint64_t rrdPS_S1 = 0;
+	uint64_t rrdPS_R = 0;
+	uint64_t rrdPS_A = 0;
+	int rrdSQLq_C = 0;
+	int rrdSQLq_M = 0;
+	int rrdSQLq_R = 0;
+	int rrdSQLq_Cl = 0;
+	int rrdSQLq_H = 0;
+	double rrdtCPU_t0 = 0.0;
+	double rrdtCPU_t1 = 0.0;
+	double rrdtCPU_t2 = 0.0;
+	int rrdtacCPU_nmt = 0;        //pocet vlaken
+	double rrdtacCPU_lastt = 0.0; //vytizeni posledniho vlakna
+	double rrdRSSVSZ_rss = 0;
+	double rrdRSSVSZ_vsize = 0;
 	double rrdspeedmbs = 0.0;
 	int rrdcallscounter = 0;
-
-
-
-
 
 	if(!VERBOSE && !DEBUG_VERBOSE) {
 		return;
@@ -1002,35 +983,35 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 				outStr << "PS[C:";
 				if(this->counter_calls_old) {
 					outStr << (counter_calls - this->counter_calls_old) / statPeriod;
-					if (opt_rrd) rrdPS.C = (counter_calls - this->counter_calls_old) / statPeriod;
+					if (opt_rrd) rrdPS_C = (counter_calls - this->counter_calls_old) / statPeriod;
 				} else {
 					outStr << "-";
 				}
 				outStr << " S:";
 				if(this->counter_sip_packets_old[0]) {
 					outStr << (counter_sip_packets[0] - this->counter_sip_packets_old[0]) / statPeriod;
-					if (opt_rrd) rrdPS.S0 = (counter_sip_packets[0] - this->counter_sip_packets_old[0]) / statPeriod;
+					if (opt_rrd) rrdPS_S0 = (counter_sip_packets[0] - this->counter_sip_packets_old[0]) / statPeriod;
 				} else {
 					outStr << "-";
 				}
 				outStr << "/";
 				if(this->counter_sip_packets_old[1]) {
 					outStr << (counter_sip_packets[1] - this->counter_sip_packets_old[1]) / statPeriod;
-					if (opt_rrd) rrdPS.S1 = (counter_sip_packets[1] - this->counter_sip_packets_old[1]) / statPeriod;
+					if (opt_rrd) rrdPS_S1 = (counter_sip_packets[1] - this->counter_sip_packets_old[1]) / statPeriod;
 				} else {
 					outStr << "-";
 				}
 				outStr << " R:";
 				if(this->counter_rtp_packets_old) {
 					outStr << (counter_rtp_packets - this->counter_rtp_packets_old) / statPeriod;
-					if (opt_rrd) rrdPS.R = (counter_rtp_packets - this->counter_rtp_packets_old) / statPeriod;
+					if (opt_rrd) rrdPS_R = (counter_rtp_packets - this->counter_rtp_packets_old) / statPeriod;
 				} else {
 					outStr << "-";
 				}
 				outStr << " A:";
 				if(this->counter_all_packets_old) {
 					outStr << (counter_all_packets - this->counter_all_packets_old) / statPeriod;
-					if (opt_rrd) rrdPS.A = (counter_all_packets - this->counter_all_packets_old) / statPeriod;
+					if (opt_rrd) rrdPS_A = (counter_all_packets - this->counter_all_packets_old) / statPeriod;
 				} else {
 					outStr << "-";
 				}
@@ -1054,7 +1035,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 							sizeSQLq = 0;
 						}
 					}
-					if (opt_rrd) rrdSQLq.C += sizeSQLq;
+					if (opt_rrd) rrdSQLq_C += sizeSQLq;
 					outStr << sizeSQLq;
 				}
 			}
@@ -1069,7 +1050,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 							sizeSQLq = 0;
 						}
 					}
-					if (opt_rrd) rrdSQLq.M += sizeSQLq;
+					if (opt_rrd) rrdSQLq_M += sizeSQLq;
 					outStr << sizeSQLq;
 				}
 			}
@@ -1084,7 +1065,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 							sizeSQLq = 0;
 						}
 					}
-					if (opt_rrd) rrdSQLq.R += sizeSQLq;
+					if (opt_rrd) rrdSQLq_R += sizeSQLq;
 					outStr << sizeSQLq;
 				}
 			}
@@ -1095,7 +1076,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 			sizeSQLq = sqlStore->getSize(STORE_PROC_ID_CLEANSPOOL);
 			if(sizeSQLq >= 0) {
 				outStr << " Cl:" << sizeSQLq;
-				if (opt_rrd) rrdSQLq.Cl = sizeSQLq;
+				if (opt_rrd) rrdSQLq_Cl = sizeSQLq;
 			}
 			for(int i = 0; i < opt_mysqlstore_max_threads_http; i++) {
 				sizeSQLq = sqlStore->getSize(STORE_PROC_ID_HTTP_1 + i);
@@ -1105,7 +1086,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 					} else {
 						outStr << " H:";
 					}
-					if (opt_rrd) rrdSQLq.H += sizeSQLq;
+					if (opt_rrd) rrdSQLq_H += sizeSQLq;
 					outStr << sizeSQLq;
 				}
 			}
@@ -1157,9 +1138,9 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 		outStr << setprecision(0) << 100 * (double)ac_sizeOfDataInMemory / (opt_pcap_dump_asyncwrite_maxsize * 1024ull * 1024ull) << "] ";
 		
 		if(opt_rrd) {
-			rrdheap.buffer = memoryBufferPerc;
-			rrdheap.trash = memoryBufferPerc_trash;
-			rrdheap.ratio =  100 * (double)ac_sizeOfDataInMemory / (opt_pcap_dump_asyncwrite_maxsize * 1024ull * 1024ull);
+			rrdheap_buffer = memoryBufferPerc;
+			rrdheap_trash = memoryBufferPerc_trash;
+			rrdheap_ratio =  100 * (double)ac_sizeOfDataInMemory / (opt_pcap_dump_asyncwrite_maxsize * 1024ull * 1024ull);
 		}
 
 		if(this->instancePcapHandle) {
@@ -1169,13 +1150,13 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 				outStr << "drop[";
 				if(bypassBufferSizeExeeded) {
 					outStr << "H:" << bypassBufferSizeExeeded;
-					if(opt_rrd) rrddrop.exceeded = bypassBufferSizeExeeded;
+					if(opt_rrd) rrddrop_exceeded = bypassBufferSizeExeeded;
 				}
 				if(!statPacketDrops.empty()) {
 					if(bypassBufferSizeExeeded) {
 						outStr << " ";
 					}
-					if(opt_rrd) rrddrop.packets = this->instancePcapHandle->getCountPacketDrop();
+					if(opt_rrd) rrddrop_packets = this->instancePcapHandle->getCountPacketDrop();
 					outStr << statPacketDrops;
 				}
 				outStr << "] ";
@@ -1208,7 +1189,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 		double t0cpu = this->instancePcapHandle->getCpuUsagePerc(false, true);
 		if(t0cpu >= 0) {
 			outStrStat << "t0CPU[" << setprecision(1) << t0cpu << "%] ";
-			if (opt_rrd) rrdtCPU.t0 = t0cpu;
+			if (opt_rrd) rrdtCPU_t0 = t0cpu;
 		}
 	}
 	string t1cpu = this->getCpuUsage(false, true);
@@ -1218,13 +1199,13 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 		double t1cpu = this->getCpuUsagePerc(false, true);
 		if(t1cpu >= 0) {
 			outStrStat << "t1CPU[" << setprecision(1) << t1cpu << "%] ";
-			if (opt_rrd) rrdtCPU.t1 = t1cpu;
+			if (opt_rrd) rrdtCPU_t1 = t1cpu;
 		}
 	}
 	double t2cpu = this->getCpuUsagePerc(true, true);
 	if(t2cpu >= 0) {
 		outStrStat << "t2CPU[" << setprecision(1) << t2cpu << "%] ";
-		if (opt_rrd) rrdtCPU.t2 = t2cpu;
+		if (opt_rrd) rrdtCPU_t2 = t2cpu;
 	}
 	if(tcpReassembly) {
 		double thttp_cpu = tcpReassembly->getCpuUsagePerc(true);
@@ -1254,8 +1235,8 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 		}
 		outStrStat << "%] ";
 		if (opt_rrd) {
-			rrdtacCPU.nmt = v_tac_cpu.size();
-			rrdtacCPU.lastt = last_tac_cpu;
+			rrdtacCPU_nmt = v_tac_cpu.size();
+			rrdtacCPU_lastt = last_tac_cpu;
 		}
 	}
 
@@ -1269,7 +1250,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 	long unsigned int rss = this->getProcRssUsage(true);
 	if(rss > 0) {
 		outStrStat << setprecision(0) << (double)rss/1024/1024;
-		if (opt_rrd) rrdRSSVSZ.rss = (double)rss/1024/1024;
+		if (opt_rrd) rrdRSSVSZ_rss = (double)rss/1024/1024;
 	}
 	long unsigned int vsize = this->getProcVsizeUsage();
 	if(vsize > 0) {
@@ -1277,7 +1258,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 			outStrStat << '|';
 		}
 		outStrStat << setprecision(0) << (double)vsize/1024/1024;
-		if (opt_rrd) rrdRSSVSZ.vsize =(double)vsize/1024/1024;
+		if (opt_rrd) rrdRSSVSZ_vsize =(double)vsize/1024/1024;
 	}
 	outStrStat << "]MB ";
 	pbStatString = outStr.str() + outStrStat.str();
@@ -1353,57 +1334,57 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 			std::ostringstream cmdUpdate;
 			//UPDATES:
 			//vm_rrd_update_rrddrop();
-			cmdUpdate << "N:" << rrddrop.exceeded;
-			cmdUpdate <<  ":" << rrddrop.packets;
+			cmdUpdate << "N:" << rrddrop_exceeded;
+			cmdUpdate <<  ":" << rrddrop_packets;
 			sprintf(filename, "%s/rrd/db-drop.rrd", opt_chdir);
 			int rrdres = vm_rrd_update(filename, cmdUpdate.str().c_str());
 
 			//vm_rrd_update_rrdheap();
 			cmdUpdate.str(std::string());
-			cmdUpdate << "N:" << rrdheap.buffer;
-			cmdUpdate <<  ":" << rrdheap.trash;
-			cmdUpdate <<  ":" << rrdheap.ratio;
+			cmdUpdate << "N:" << rrdheap_buffer;
+			cmdUpdate <<  ":" << rrdheap_trash;
+			cmdUpdate <<  ":" << rrdheap_ratio;
 			sprintf(filename, "%s/rrd/db-heap.rrd", opt_chdir);
 			rrdres = vm_rrd_update(filename, cmdUpdate.str().c_str());
 
 			//vm_rrd_update_rrdPS();
 			cmdUpdate.str(std::string());
-			cmdUpdate << "N:" << rrdPS.C;
-			cmdUpdate <<  ":" << rrdPS.S0;
-			cmdUpdate <<  ":" << rrdPS.S1;
-			cmdUpdate <<  ":" << rrdPS.R;
-			cmdUpdate <<  ":" << rrdPS.A;
+			cmdUpdate << "N:" << rrdPS_C;
+			cmdUpdate <<  ":" << rrdPS_S0;
+			cmdUpdate <<  ":" << rrdPS_S1;
+			cmdUpdate <<  ":" << rrdPS_R;
+			cmdUpdate <<  ":" << rrdPS_A;
 			sprintf(filename, "%s/rrd/db-PS.rrd", opt_chdir);
 			rrdres = vm_rrd_update(filename, cmdUpdate.str().c_str());
 
 //			vm_rrd_update_rrdSQLq();
 			cmdUpdate.str(std::string());
-			cmdUpdate << "N:" << rrdSQLq.C;
-			cmdUpdate <<  ":" << rrdSQLq.M;
-			cmdUpdate <<  ":" << rrdSQLq.R;
-			cmdUpdate <<  ":" << rrdSQLq.Cl;
-			cmdUpdate <<  ":" << rrdSQLq.H;
+			cmdUpdate << "N:" << rrdSQLq_C;
+			cmdUpdate <<  ":" << rrdSQLq_M;
+			cmdUpdate <<  ":" << rrdSQLq_R;
+			cmdUpdate <<  ":" << rrdSQLq_Cl;
+			cmdUpdate <<  ":" << rrdSQLq_H;
 			sprintf(filename, "%s/rrd/db-SQLq.rrd", opt_chdir);
 			rrdres = vm_rrd_update(filename, cmdUpdate.str().c_str());
 
 //			vm_rrd_update_rrdtCPU();
 			cmdUpdate.str(std::string());
-			cmdUpdate << "N:" << rrdtCPU.t0;
-			cmdUpdate <<  ":" << rrdtCPU.t1;
-			cmdUpdate <<  ":" << rrdtCPU.t2;
+			cmdUpdate << "N:" << rrdtCPU_t0;
+			cmdUpdate <<  ":" << rrdtCPU_t1;
+			cmdUpdate <<  ":" << rrdtCPU_t2;
 			sprintf(filename, "%s/rrd/db-tCPU.rrd", opt_chdir);
 			rrdres = vm_rrd_update(filename, cmdUpdate.str().c_str());
 
 //			vm_rrd_update_rrdtacCPU();
 			cmdUpdate.str(std::string());
-			cmdUpdate << "N:" << (double) ((rrdtacCPU.nmt * 100) + (rrdtacCPU.lastt / 2));
+			cmdUpdate << "N:" << (double) ((rrdtacCPU_nmt * 100) + (rrdtacCPU_lastt / 2));
 			sprintf(filename, "%s/rrd/db-tacCPU.rrd", opt_chdir);
 			rrdres = vm_rrd_update(filename, cmdUpdate.str().c_str());
 
 //			vm_rrd_update_rrdRSSVSZ();
 			cmdUpdate.str(std::string());
-			cmdUpdate << "N:" << rrdRSSVSZ.rss;
-			cmdUpdate <<  ":" << rrdRSSVSZ.vsize;
+			cmdUpdate << "N:" << rrdRSSVSZ_rss;
+			cmdUpdate <<  ":" << rrdRSSVSZ_vsize;
 			sprintf(filename, "%s/rrd/db-RSSVSZ.rrd", opt_chdir);
 			rrdres = vm_rrd_update(filename, cmdUpdate.str().c_str());
 

@@ -13,13 +13,44 @@
 #include <iomanip>
 #include <string.h>
 
+
 #define TRUE		1
 #define FALSE		0
 #define MAX_LENGTH	10000
 
 
+int vm_rrd_create_rrddrop(const char *filename) {
+    std::ostringstream cmdCreate;
+
+    cmdCreate << "create " << filename << " ";
+    cmdCreate << "--start N --step 10 ";
+    cmdCreate << "DS:exceeded:GAUGE:20:0:1000000 ";
+    cmdCreate << "DS:packets:GAUGE:20:0:1000000 ";
+    cmdCreate << "RRA:MIN:0.5:12:1440 ";
+    cmdCreate << "RRA:MAX:0.5:12:1440 ";
+    cmdCreate << "RRA:AVERAGE:0.5:1:1440";
+	int res = vm_rrd_create(filename, cmdCreate.str().c_str());
+	return (res);
+}
+
+int vm_rrd_create_rrdheap(const char *filename) {
+    std::ostringstream cmdCreate;
+
+    cmdCreate << "create " << filename << " ";
+    cmdCreate << "--start N --step 10 ";
+    cmdCreate << "DS:buffer:GAUGE:20:0:1000000 ";
+    cmdCreate << "DS:trash:GAUGE:20:0:1000000 ";
+    cmdCreate << "DS:ratio:GAUGE:20:0:10000000 ";
+    cmdCreate << "RRA:MIN:0.5:12:1440 ";
+    cmdCreate << "RRA:MAX:0.5:12:1440 ";
+    cmdCreate << "RRA:AVERAGE:0.5:1:1440";
+	int res = vm_rrd_create(filename, cmdCreate.str().c_str());
+	return (res);
+}
+
 int vm_rrd_create_rrdPS(const char *filename) {
     std::ostringstream cmdCreate;
+
     cmdCreate << "create " << filename << " ";
     cmdCreate << "--start N --step 10 ";
     cmdCreate << "DS:PS-C:GAUGE:20:0:1000000 ";
@@ -36,6 +67,7 @@ int vm_rrd_create_rrdPS(const char *filename) {
 
 int vm_rrd_create_rrdSQLq(const char *filename) {
     std::ostringstream cmdCreate;
+
     cmdCreate << "create " << filename << " ";
     cmdCreate << "--start N --step 10 ";
     cmdCreate << "DS:SQLq-C:GAUGE:20:0:10000 ";
@@ -52,6 +84,7 @@ int vm_rrd_create_rrdSQLq(const char *filename) {
 
 int vm_rrd_create_rrdtCPU(const char *filename) {
     std::ostringstream cmdCreate;
+
     cmdCreate << "create " << filename << " ";
     cmdCreate << "--start N --step 10 ";
     cmdCreate << "DS:tCPU-t0:GAUGE:20:0:100 ";
@@ -66,6 +99,7 @@ int vm_rrd_create_rrdtCPU(const char *filename) {
 
 int vm_rrd_create_rrdtacCPU(const char *filename) {
     std::ostringstream cmdCreate;
+
     cmdCreate << "create " << filename << " ";
     cmdCreate << "--start N --step 10 ";
     cmdCreate << "DS:tacCPU:GAUGE:20:0:10000 ";
@@ -78,6 +112,7 @@ int vm_rrd_create_rrdtacCPU(const char *filename) {
 
 int vm_rrd_create_rrdRSSVSZ(const char *filename) {
     std::ostringstream cmdCreate;
+
     cmdCreate << "create " << filename << " ";
     cmdCreate << "--start N --step 10 ";
     cmdCreate << "DS:RSS:GAUGE:20:0:1000000 ";
@@ -91,6 +126,7 @@ int vm_rrd_create_rrdRSSVSZ(const char *filename) {
 
 int vm_rrd_create_rrdspeedmbs(const char *filename) {
     std::ostringstream cmdCreate;
+
     cmdCreate << "create " << filename << " ";
     cmdCreate << "--start N --step 10 ";
     cmdCreate << "DS:mbs:GAUGE:20:0:100000 ";
@@ -103,6 +139,7 @@ int vm_rrd_create_rrdspeedmbs(const char *filename) {
 
 int vm_rrd_create_rrdcallscounter(const char *filename) {
     std::ostringstream cmdCreate;
+
     cmdCreate << "create " << filename << " ";
     cmdCreate << "--start N --step 10 ";
     cmdCreate << "DS:calls:GAUGE:20:0:200000 ";
@@ -120,12 +157,12 @@ int vm_rrd_create(const char *filename, const char *cmdline)
 	int res;
 	if(access(filename, 0) != -1) 
 	{			
-		syslog(LOG_NOTICE, "RRD file %s already exist. Creating Skipped.\n", filename);
+		if (verbosity > 0) syslog(LOG_NOTICE, "RRD file %s already exist. Creating Skipped.\n", filename);
 		res = -1;
 	} else {
 		//syslog(LOG_NOTICE, "Creating RRD Database file: %s\n", filename);
 		res = rrd_call(cmdline);
-		syslog (LOG_NOTICE,"CREATED RRD file %s with result of: %d\n",filename, res);
+		if (verbosity > 1) syslog (LOG_NOTICE,"CREATED RRD file %s with result of: %d\n",filename, res);
 	}
 	return res;
 }
@@ -138,9 +175,9 @@ int vm_rrd_update(const char *filename, const char *value)
 		cmdUpdate << "update " << filename << " " << value;
 		//syslog(LOG_NOTICE, "Updating RRD file: %s \n", filename);
 		res = rrd_call(cmdUpdate.str().c_str());
-		syslog(LOG_NOTICE, "Updated RRD file: %s with command %s resulted in retval:%d\n", filename, cmdUpdate.str().c_str(),res);
+		if (verbosity > 1) syslog(LOG_NOTICE, "Updated RRD file: %s with command %s resulted in retval:%d\n", filename, cmdUpdate.str().c_str(),res);
 	} else {		//rrd file is unaccessible
-		syslog(LOG_NOTICE, "Cannot update non existent RRD file: %s\n", filename);
+		if (verbosity > 0) syslog(LOG_NOTICE, "Cannot update non existent RRD file: %s\n", filename);
 		res = -1;
 	}
 	return res;
