@@ -13,7 +13,6 @@
 #include <iomanip>
 #include <string.h>
 
-
 #define TRUE		1
 #define FALSE		0
 #define MAX_LENGTH	10000
@@ -21,7 +20,6 @@
 
 int vm_rrd_create_rrdPS(const char *filename) {
     std::ostringstream cmdCreate;
-
     cmdCreate << "create " << filename << " ";
     cmdCreate << "--start N --step 10 ";
     cmdCreate << "DS:PS-C:GAUGE:20:0:1000000 ";
@@ -38,7 +36,6 @@ int vm_rrd_create_rrdPS(const char *filename) {
 
 int vm_rrd_create_rrdSQLq(const char *filename) {
     std::ostringstream cmdCreate;
-
     cmdCreate << "create " << filename << " ";
     cmdCreate << "--start N --step 10 ";
     cmdCreate << "DS:SQLq-C:GAUGE:20:0:10000 ";
@@ -55,7 +52,6 @@ int vm_rrd_create_rrdSQLq(const char *filename) {
 
 int vm_rrd_create_rrdtCPU(const char *filename) {
     std::ostringstream cmdCreate;
-
     cmdCreate << "create " << filename << " ";
     cmdCreate << "--start N --step 10 ";
     cmdCreate << "DS:tCPU-t0:GAUGE:20:0:100 ";
@@ -70,7 +66,6 @@ int vm_rrd_create_rrdtCPU(const char *filename) {
 
 int vm_rrd_create_rrdtacCPU(const char *filename) {
     std::ostringstream cmdCreate;
-
     cmdCreate << "create " << filename << " ";
     cmdCreate << "--start N --step 10 ";
     cmdCreate << "DS:tacCPU:GAUGE:20:0:10000 ";
@@ -83,7 +78,6 @@ int vm_rrd_create_rrdtacCPU(const char *filename) {
 
 int vm_rrd_create_rrdRSSVSZ(const char *filename) {
     std::ostringstream cmdCreate;
-
     cmdCreate << "create " << filename << " ";
     cmdCreate << "--start N --step 10 ";
     cmdCreate << "DS:RSS:GAUGE:20:0:1000000 ";
@@ -97,7 +91,6 @@ int vm_rrd_create_rrdRSSVSZ(const char *filename) {
 
 int vm_rrd_create_rrdspeedmbs(const char *filename) {
     std::ostringstream cmdCreate;
-
     cmdCreate << "create " << filename << " ";
     cmdCreate << "--start N --step 10 ";
     cmdCreate << "DS:mbs:GAUGE:20:0:100000 ";
@@ -110,7 +103,6 @@ int vm_rrd_create_rrdspeedmbs(const char *filename) {
 
 int vm_rrd_create_rrdcallscounter(const char *filename) {
     std::ostringstream cmdCreate;
-
     cmdCreate << "create " << filename << " ";
     cmdCreate << "--start N --step 10 ";
     cmdCreate << "DS:calls:GAUGE:20:0:200000 ";
