@@ -166,7 +166,7 @@ int opt_packetbuffered = 0;	// Make .pcap files writing ‘‘packet-buffered’
 				// more slow method, but you can use partitialy 
 				// writen file anytime, it will be consistent.
 	
-int opt_disableplc = 0 ;	// On or Off packet loss concealment
+int opt_disableplc = 0 ;	// On or Off packet loss concealment			
 int opt_rrd = 1;
 int opt_fork = 1;		// fork or run foreground 
 int opt_saveSIP = 0;		// save SIP packets to pcap file?
@@ -2299,6 +2299,7 @@ int main(int argc, char *argv[]) {
 
 	thread_setup();
 	int option_index = 0;
+ 
 	static struct option long_options[] = {
 	    {"gzip-graph", 0, 0, '1'},
 	    {"gzip-pcap", 0, 0, '2'},
@@ -2580,6 +2581,7 @@ int main(int argc, char *argv[]) {
 				break;
 		}
 	}
+
 	if(opt_ipaccount) {
 		initIpacc();
 	}
@@ -2787,6 +2789,11 @@ int main(int argc, char *argv[]) {
                         */
 
 		return 1;
+	}
+	
+	if(opt_rrd && opt_read_from_file) {
+		//disable update of rrd statistics when reading packets from file
+		opt_rrd = 0;
 	}
 
 	if(opt_rrd && opt_read_from_file) {

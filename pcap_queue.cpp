@@ -942,6 +942,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 		string statString = "\n";
 		if(statCalls) {
 			ostringstream outStr;
+			
 			outStr << "CALLS: " << calltable->calls_listMAP.size() << ", " << calls_counter;
 			if(opt_ipaccount) {
 				outStr << "  IPACC_BUFFER " << lengthIpaccBuffer();
@@ -1257,6 +1258,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 			rrdtacCPU.lastt = last_tac_cpu;
 		}
 	}
+
 	if(last_tac_cpu > 95) {
 		asyncClose.addThread();
 	}
@@ -1327,7 +1329,6 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 			char filename[1000];
 			sprintf(filename, "%s/rrd/" ,opt_chdir);
 			mkdir_r(filename, 0777);
-
 			sprintf(filename, "%s/rrd/db-drop.rrd", opt_chdir);
 			vm_rrd_create_rrddrop(filename);
 			sprintf(filename, "%s/rrd/db-heap.rrd", opt_chdir);
@@ -1351,7 +1352,6 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 			char filename[1000];
 			std::ostringstream cmdUpdate;
 			//UPDATES:
-
 			//vm_rrd_update_rrddrop();
 			cmdUpdate << "N:" << rrddrop.exceeded;
 			cmdUpdate <<  ":" << rrddrop.packets;
