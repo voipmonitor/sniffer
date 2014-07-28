@@ -543,9 +543,11 @@ int rrd_call(
 
 	if ((myargc = CreateArgs("voipmonitor-bin", tmpLine, myargv)) > 0) {
 		int result = HandleInputLine(myargc, myargv, stderr);
+		free(tmpLine);
 		free(myargv);
 		return (result);
 	} else {
+		free(tmpLine);
 		free(myargv);
 		return (-1);
 	}
