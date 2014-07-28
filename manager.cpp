@@ -35,6 +35,7 @@
 #include "pcap_queue.h"
 #include "manager.h"
 #include "fraud.h"
+#include "rrd.h"
 
 #define BUFSIZE 1024
 
@@ -278,7 +279,61 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 			cerr << "Error sending data to client" << endl;
 			return -1;
 		}
-	} else if(strstr(buf, "reindexfiles") != NULL) {
+	} else if(strstr(buf, "creategraph") != NULL) {
+		int manager_argc;
+		char *tmp_cmd_line;
+		char **manager_args;
+
+		send(client, buf, strlen(buf),0 );
+
+		if (( manager_argc = vm_rrd_countArgs(buf)) < 6) {	//few arguments passed
+			syslog(LOG_NOTICE, "parse_command creategraph too few arguments, passed%d need at least 6!\n", manager_argc);
+			snprintf(sendbuf, BUFSIZE, "Syntax: creategraph graph_type linuxTS_from linuxTS_to size_x_pixels size_y_pixels [ico]\n\tGraph_types: calls drop SQLq PS tCPU tacCPU\n", buf);
+			if ((size = sendvm(client, sshchannel, sendbuf, strlen(sendbuf), 0)) == -1){
+				cerr << "Error sending data to client 1" << endl;
+			}
+			return -1;
+		}
+		if ((tmp_cmd_line = (char *) malloc((strlen(buf) + 1) * sizeof(char *))) == NULL) {
+			syslog(LOG_ERR, "parse_command creategraph malloc error\n");
+			return -1;
+		}
+		if ((manager_args = (char **) malloc((manager_argc + 1) * sizeof(char *))) == NULL) {
+			free(tmp_cmd_line);
+			syslog(LOG_ERR, "parse_command creategraph malloc error2\n");
+			return -1;
+		}
+		
+		memcpy(tmp_cmd_line, buf, strlen(buf));
+		tmp_cmd_line[strlen(buf)] = '\0';
+
+		if ((manager_argc = vm_rrd_createArgs("voipmonitor-manager", tmp_cmd_line, manager_args))) {
+			syslog(LOG_NOTICE, "%d arguments detected. Showing them:\n", manager_argc);
+			for (int i = 0; i < manager_argc; i++) {
+				syslog (LOG_NOTICE, "%d.arg:%s",i, manager_args[i]);
+			}
+			//Arguments:
+			//0-voipmonitor-manager
+			//1-creategraphs
+			//2-typ grafu
+			//3-cas od
+			//4-cas do
+			//5-velikost x
+			//6-velikost y
+			//[7-ikona?]
+			snprintf(sendbuf, BUFSIZE, "OK");
+			if ((size = sendvm(client, sshchannel, sendbuf, strlen(sendbuf), 0)) == -1){
+				cerr << "Error sending data to client 2" << endl;
+				return -1;
+			}
+		}
+
+		free (tmp_cmd_line);
+		free (manager_args);
+		//snprintf(sendbuf, BUFSIZE, "no arguments given, nothing to create i've got \n|%s|\n", buf);
+		//sending out and check
+/*
+*/	} else if(strstr(buf, "reindexfiles") != NULL) {
 		snprintf(sendbuf, BUFSIZE, "starting reindexing please wait...");
 		if ((size = sendvm(client, sshchannel, sendbuf, strlen(sendbuf), 0)) == -1){
 			cerr << "Error sending data to client" << endl;

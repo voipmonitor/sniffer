@@ -11,6 +11,9 @@ int vm_rrd_create_rrdcallscounter(const char *filename);
 
 int vm_rrd_create(const char *filename, const char *cmdline);
 int vm_rrd_update(const char *filename, const char *cmdline);
+
+int vm_rrd_createArgs(char *pName, char *aLine, char **argv);
+int vm_rrd_countArgs(char *aLine);
 int rrd_call(const char *aLine);
 
 extern int verbosity;

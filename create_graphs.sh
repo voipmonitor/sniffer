@@ -16,6 +16,7 @@ $TOOL graph calls_graph.png \
 --lower-limit 0 \
 --x-grid MINUTE:10:HOUR:1:MINUTE:120:0:%R \
 --units-exponent 0 \
+--full-size-mode \
 DEF:callsmin=/var/spool/voipmonitor/rrd/db-callscounter.rrd:calls:MIN \
 DEF:callsavg=/var/spool/voipmonitor/rrd/db-callscounter.rrd:calls:AVERAGE \
 DEF:callsmax=/var/spool/voipmonitor/rrd/db-callscounter.rrd:calls:MAX \

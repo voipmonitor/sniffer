@@ -389,7 +389,7 @@ static int HandleInputLine(
 	return (0);
 }
 
-static int CountArgs(
+int vm_rrd_countArgs(
 	char *aLine)
 {
 	int		  i = 0;
@@ -434,9 +434,9 @@ static int CountArgsC(
 }
 
 /*
- * CreateArgs - take a string (aLine) and tokenize
+ * vm_rrd_createArgs - take a string (aLine) and tokenize
  */
-static int CreateArgs(
+int vm_rrd_createArgs(
 	char *pName,
 	char *aLine,
 	char **argv)
@@ -522,26 +522,25 @@ int rrd_call(
 	char **myargv;
 
 	if ((myargc = CountArgsC(aLine)) == 0) {
-		printf("RRD_CALL ERROR: not enough arguments\n");
-		return (1);
+		syslog(LOG_NOTICE, "rrd_call ERROR: not enough arguments\nYou gave: %s\n", aLine);
+		return -1;
 	}
 //	printf ("CountArgs vratil %d\n",myargc);
 
-	if ((tmpLine = (char *) malloc((strlen(aLine) + 1) *
-								   sizeof(char *))) == NULL) {
-		perror("malloc");
-		return (1);
+	if ((tmpLine = (char *) malloc((strlen(aLine) + 1) * sizeof(char *))) == NULL) {
+		syslog(LOG_ERR, "rrd_call malloc error\n");
+		return -1;
 	}
-	if ((myargv = (char **) malloc((myargc + 1) *
-								   sizeof(char *))) == NULL) {
-		perror("malloc");
-		return (1);
+	if ((myargv = (char **) malloc((myargc + 1) * sizeof(char *))) == NULL) {
+		free(tmpLine);
+		syslog(LOG_ERR, "rrd_call malloc error2\n");
+		return -1;
 	}
 
 	memcpy(tmpLine, aLine, strlen(aLine));
 	tmpLine[strlen(aLine)] = '\0';
 
-	if ((myargc = CreateArgs("voipmonitor-bin", tmpLine, myargv)) > 0) {
+	if ((myargc = vm_rrd_createArgs("voipmonitor-bin", tmpLine, myargv)) > 0) {
 		int result = HandleInputLine(myargc, myargv, stderr);
 		free(tmpLine);
 		free(myargv);
@@ -549,7 +548,7 @@ int rrd_call(
 	} else {
 		free(tmpLine);
 		free(myargv);
-		return (-1);
+		return -1;
 	}
 }
 
