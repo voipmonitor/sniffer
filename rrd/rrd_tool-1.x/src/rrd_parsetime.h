@@ -1,0 +1,8 @@
+#ifndef PARSETIME_H_B14FE5BC7E96473CB6CA6C7416412687
+#define PARSETIME_H_B14FE5BC7E96473CB6CA6C7416412687
+
+#include <stdio.h>
+
+#include "rrd.h"
+
+#endif
