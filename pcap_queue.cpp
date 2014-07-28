@@ -1377,7 +1377,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 
 //			vm_rrd_update_rrdtacCPU();
 			cmdUpdate.str(std::string());
-			cmdUpdate << "N:" << (double) ((rrdtacCPU_nmt * 100) + (rrdtacCPU_lastt / 2));
+			cmdUpdate << "N:" << ((double) (rrdtacCPU_nmt) + (double)((double) rrdtacCPU_lastt / 150.0));
 			sprintf(filename, "%s/rrd/db-tacCPU.rrd", opt_chdir);
 			rrdres = vm_rrd_update(filename, cmdUpdate.str().c_str());
 

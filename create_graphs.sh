@@ -2,10 +2,11 @@
 #
 ## change directory to the rrdtool script dir
 cd /var/www/grafy
+TOOL=`which rrdtool`
 
 ## Graphs for last 12 hours 
 ## calls
-/bin/rrdtool graph calls_graph.png \
+$TOOL graph calls_graph.png \
 -w 785 -h 120 -a PNG \
 --start -43200 --end now \
 --font DEFAULT:7: \
@@ -15,16 +16,19 @@ cd /var/www/grafy
 --lower-limit 0 \
 --x-grid MINUTE:10:HOUR:1:MINUTE:120:0:%R \
 --units-exponent 0 \
-DEF:calls=/var/spool/voipmonitor/rrd/db-callscounter.rrd:calls:MAX \
-AREA:calls#00FF00:calls \
-LINE1:calls#00FF00:"Calls" \
-GPRINT:calls:LAST:"Cur\: %5.0lf" \
-GPRINT:calls:AVERAGE:"Avg\: %5.2lf" \
-GPRINT:calls:MAX:"Max\: %5.0lf" \
-GPRINT:calls:MIN:"Min\: %5.0lf\t\t\t"
+DEF:callsmin=/var/spool/voipmonitor/rrd/db-callscounter.rrd:calls:MIN \
+DEF:callsavg=/var/spool/voipmonitor/rrd/db-callscounter.rrd:calls:AVERAGE \
+DEF:callsmax=/var/spool/voipmonitor/rrd/db-callscounter.rrd:calls:MAX \
+AREA:callsmax#00FF00:"calls max" \
+LINE1:callsavg#0000FF:"Calls avg\t" \
+LINE1:callsmin#FF0000:"Calls min\t" \
+GPRINT:callsmax:LAST:"Cur\: %5.0lf" \
+GPRINT:callsmax:AVERAGE:"Avg\: %5.2lf" \
+GPRINT:callsmax:MAX:"Max\: %5.0lf" \
+GPRINT:callsmax:MIN:"Min\: %5.0lf\t\t\t"
 
 ##DROPS
-/bin/rrdtool graph drop_graph.png \
+$TOOL graph drop_graph.png \
 -w 785 -h 120 -a PNG \
 --slope-mode \
 --start -43200 --end now \
@@ -37,19 +41,19 @@ GPRINT:calls:MIN:"Min\: %5.0lf\t\t\t"
 --units-exponent 0 \
 DEF:exc=/var/spool/voipmonitor/rrd/db-drop.rrd:exceeded:MAX \
 DEF:pck=/var/spool/voipmonitor/rrd/db-drop.rrd:packets:MAX \
-LINE1:exc#0000FF:"Mem Usage RSS\t" \
+LINE1:exc#0000FF:"Buffer overloaded\t" \
 GPRINT:exc:LAST:"Cur\: %5.0lf\t" \
 GPRINT:exc:AVERAGE:"Avg\: %5.2lf\t" \
 GPRINT:exc:MAX:"Max\: %5.0lf\t" \
 GPRINT:exc:MIN:"Min\: %5.0lf\n" \
-LINE1:pck#00FF00:"Mem Usage VSZ\t" \
+LINE1:pck#00FF00:"Packets droped\t" \
 GPRINT:pck:LAST:"Cur\: %5.0lf\t" \
 GPRINT:pck:AVERAGE:"Avg\: %5.2lf\t" \
 GPRINT:pck:MAX:"Max\: %5.0lf\t" \
 GPRINT:pck:MIN:"Min\: %5.0lf\n"
 
 ##HEAP
-/bin/rrdtool graph heap_graph.png \
+$TOOL graph heap_graph.png \
 -w 785 -h 120 -a PNG \
 --slope-mode \
 --start -43200 --end now \
@@ -80,7 +84,7 @@ GPRINT:ratio:MAX:"Max\: %5.2lf\t" \
 GPRINT:ratio:MIN:"Min\: %5.2lf\n"
  
 ## PS 
-/bin/rrdtool graph PS_graph.png \
+$TOOL graph PS_graph.png \
 -w 785 -h 120 -a PNG \
 --slope-mode \
 --start -43200 --end now \
@@ -123,7 +127,7 @@ GPRINT:PSA:MAX:"Max\: %5.0lf\t" \
 GPRINT:PSA:MIN:"Min\: %5.0lf\n"
  
 ## RSSVSZ 
-/bin/rrdtool graph RSSVSZ_graph.png \
+$TOOL graph RSSVSZ_graph.png \
 -w 785 -h 120 -a PNG \
 --slope-mode \
 --start -43200 --end now \
@@ -136,19 +140,19 @@ GPRINT:PSA:MIN:"Min\: %5.0lf\n"
 --units-exponent 0 \
 DEF:rss=/var/spool/voipmonitor/rrd/db-RSSVSZ.rrd:RSS:MAX \
 DEF:vsz=/var/spool/voipmonitor/rrd/db-RSSVSZ.rrd:VSZ:MAX \
-LINE1:rss#0000FF:"Mem Usage RSS\t" \
-GPRINT:rss:LAST:"Cur\: %5.0lf\t" \
-GPRINT:rss:AVERAGE:"Avg\: %5.2lf\t" \
-GPRINT:rss:MAX:"Max\: %5.0lf\t" \
-GPRINT:rss:MIN:"Min\: %5.0lf\n" \
-LINE1:vsz#00FF00:"Mem Usage VSZ\t" \
+AREA:vsz#00FF00:"Mem Usage VSZ\t" \
 GPRINT:vsz:LAST:"Cur\: %5.0lf\t" \
 GPRINT:vsz:AVERAGE:"Avg\: %5.2lf\t" \
 GPRINT:vsz:MAX:"Max\: %5.0lf\t" \
-GPRINT:vsz:MIN:"Min\: %5.0lf\n"
+GPRINT:vsz:MIN:"Min\: %5.0lf\n" \
+AREA:rss#0000FF:"Mem Usage RSS\t" \
+GPRINT:rss:LAST:"Cur\: %5.0lf\t" \
+GPRINT:rss:AVERAGE:"Avg\: %5.2lf\t" \
+GPRINT:rss:MAX:"Max\: %5.0lf\t" \
+GPRINT:rss:MIN:"Min\: %5.0lf\n"
  
 ## speed mbs
-/bin/rrdtool graph speed_graph.png \
+$TOOL graph speed_graph.png \
 -w 785 -h 120 -a PNG \
 --slope-mode \
 --start -86400 --end now \
@@ -160,15 +164,14 @@ GPRINT:vsz:MIN:"Min\: %5.0lf\n"
 --units-exponent 0 \
 --x-grid MINUTE:10:HOUR:1:MINUTE:120:0:%R \
 DEF:speed=/var/spool/voipmonitor/rrd/db-speedmbs.rrd:mbs:MAX \
-AREA:speed#0000FF:speed \
-LINE1:speed#0000FF:"speed(Mb/s)" \
+AREA:speed#00FF00:"speed (Mb/s)" \
 GPRINT:speed:LAST:"Cur\: %5.2lf" \
 GPRINT:speed:AVERAGE:"Avg\: %5.2lf" \
 GPRINT:speed:MAX:"Max\: %5.2lf" \
 GPRINT:speed:MIN:"Min\: %5.2lf\t\t\t"
  
 ## SQLq 
-/bin/rrdtool graph SQLq_graph.png \
+$TOOL graph SQLq_graph.png \
 -w 785 -h 120 -a PNG \
 --slope-mode \
 --start -43200 --end now \
@@ -211,7 +214,7 @@ GPRINT:SQLqH:MAX:"Max\: %5.0lf\t" \
 GPRINT:SQLqH:MIN:"Min\: %5.0lf\n"
  
 ## tacCPU
-/bin/rrdtool graph tacCPU_graph.png \
+$TOOL graph tacCPU_graph.png \
 -w 785 -h 120 -a PNG \
 --slope-mode \
 --start -43200 --end now \
@@ -230,7 +233,7 @@ GPRINT:tac:MAX:"Max\: %5.2lf" \
 GPRINT:tac:MIN:"Min\: %5.2lf\t\t\t"
  
 ## tCPU
-/bin/rrdtool graph tCPU_graph.png \
+$TOOL graph tCPU_graph.png \
 -w 785 -h 120 -a PNG \
 --slope-mode \
 --start -43200 --end now \
