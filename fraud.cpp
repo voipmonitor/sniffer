@@ -1454,11 +1454,8 @@ void initFraud() {
 		opt_enable_fraud = false;
 		return;
 	}
-	if(!isExistsFraudAlerts()) {
-		return;
-	}
-	if(!checkFraudTables()) {
-		opt_enable_fraud = false;
+	if(!isExistsFraudAlerts() ||
+	   !checkFraudTables()) {
 		return;
 	}
 	if(!countryCodes) {
@@ -1520,17 +1517,12 @@ bool checkFraudTables() {
 	};
 	const char *help_gui_loginAdmin = 
 		"Login into web gui as admin. Login process create missing table.";
-	const char *help_gui_loginAdmin_enableFraud =
-		"Login into web gui as admin and enable Fraud in System configuration in menu Setting.";
-	const char *help_gui_loginAdmin_loadGeoIPcountry =
-		"Login into web gui as admin and load GeoIP country data in menu Setting.";
 	checkTable checkTables[] = {
 		{"alerts", help_gui_loginAdmin, NULL},
-		{"alerts_fraud", help_gui_loginAdmin_enableFraud, NULL},
-		//{"fraud_alert_info", NULL, NULL},
-		{"country_code", help_gui_loginAdmin_enableFraud, help_gui_loginAdmin_enableFraud},
-		{"country_code_prefix", help_gui_loginAdmin_enableFraud, help_gui_loginAdmin_enableFraud},
-		{cloud_host[0]?"cloudshare.geoip_country":"geoip_country", help_gui_loginAdmin_loadGeoIPcountry, help_gui_loginAdmin_loadGeoIPcountry}
+		{"alerts_fraud", help_gui_loginAdmin, NULL},
+		{"country_code", help_gui_loginAdmin, help_gui_loginAdmin},
+		{"country_code_prefix", help_gui_loginAdmin, help_gui_loginAdmin},
+		{cloud_host[0]?"cloudshare.geoip_country":"geoip_country", help_gui_loginAdmin, help_gui_loginAdmin}
 	};
 	for(size_t i = 0; i < sizeof(checkTables) / sizeof(checkTables[0]); i++) {
 		sqlDb->query((string("show tables like '") + checkTables[i].table + "'").c_str());
