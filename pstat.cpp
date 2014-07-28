@@ -85,3 +85,12 @@ void pstat_calc_cpu_usage(const pstat_data* cur_usage,
     *scpu_usage = (cur_usage->stime_ticks + cur_usage->cstime_ticks)
 			- (last_usage->stime_ticks + last_usage->cstime_ticks);
 }
+
+long unsigned int getRss() {
+	pstat_data pstatData;
+	if(pstat_get_data(0, &pstatData)) {
+		return(pstatData.rss);
+	} else {
+		return(0);
+	}
+}

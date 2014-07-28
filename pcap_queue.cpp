@@ -63,6 +63,7 @@ extern Call *process_packet(unsigned int saddr, int source, unsigned int daddr, 
 			    pcap_block_store *block_store, int block_store_index, int dlt, int sensor_id,
 			    bool mainProcess = true, int sipOffset = 0);
 extern int check_sip20(char *data, unsigned long len);
+void daemonizeOutput(string error);
 
 extern int verbosity;
 extern int verbosityE;
@@ -1637,6 +1638,11 @@ PcapQueue_readFromInterface_base::~PcapQueue_readFromInterface_base() {
 }
 
 bool PcapQueue_readFromInterface_base::startCapture() {
+	static volatile int _sync_start_capture = 0;
+	long unsigned int rssBeforeActivate, rssAfterActivate;
+	while(__sync_lock_test_and_set(&_sync_start_capture, 1)) {
+		usleep(100);
+	}
 	char errbuf[PCAP_ERRBUF_SIZE];
 	if(VERBOSE) {
 		syslog(LOG_NOTICE, "packetbuffer - %s: capturing", this->getInterfaceName().c_str());
@@ -1646,38 +1652,54 @@ bool PcapQueue_readFromInterface_base::startCapture() {
 	}
 	if((this->pcapHandle = pcap_create(this->interfaceName.c_str(), errbuf)) == NULL) {
 		syslog(LOG_ERR, "packetbuffer - %s: pcap_create failed: %s", this->getInterfaceName().c_str(), errbuf); 
-		return(false);
+		goto failed;
 	}
 	global_pcap_handle = this->pcapHandle;
 	int status;
 	if((status = pcap_set_snaplen(this->pcapHandle, this->pcap_snaplen)) != 0) {
 		syslog(LOG_ERR, "packetbuffer - %s: pcap_snaplen failed", this->getInterfaceName().c_str()); 
-		return(false);
+		goto failed;
 	}
 	if((status = pcap_set_promisc(this->pcapHandle, this->pcap_promisc)) != 0) {
 		syslog(LOG_ERR, "packetbuffer - %s: pcap_set_promisc failed", this->getInterfaceName().c_str()); 
-		return(false);
+		goto failed;
 	}
 	if((status = pcap_set_timeout(this->pcapHandle, this->pcap_timeout)) != 0) {
 		syslog(LOG_ERR, "packetbuffer - %s: pcap_set_timeout failed", this->getInterfaceName().c_str()); 
-		return(false);
+		goto failed;
 	}
 	if((status = pcap_set_buffer_size(this->pcapHandle, this->pcap_buffer_size)) != 0) {
 		syslog(LOG_ERR, "packetbuffer - %s: pcap_set_buffer_size failed", this->getInterfaceName().c_str()); 
-		return(false);
+		goto failed;
 	}
+	rssBeforeActivate = getRss() / 1024 / 1024;
 	if((status = pcap_activate(this->pcapHandle)) != 0) {
 		syslog(LOG_ERR, "packetbuffer - %s: libpcap error: %s", this->getInterfaceName().c_str(), pcap_geterr(this->pcapHandle)); 
 		if(opt_fork) {
-			extern char daemonizeErrorTempFileName[L_tmpnam+1];
-			extern pthread_mutex_t daemonizeErrorTempFileLock;
-			pthread_mutex_lock(&daemonizeErrorTempFileLock);
-			ofstream daemonizeErrorStream(daemonizeErrorTempFileName, ofstream::out | ofstream::app);
-			daemonizeErrorStream << this->getInterfaceName() << ": libpcap error: " << pcap_geterr(this->pcapHandle) << endl;
-			daemonizeErrorStream.close();
-			pthread_mutex_unlock(&daemonizeErrorTempFileLock);
+			ostringstream outStr;
+			outStr << this->getInterfaceName() << ": libpcap error: " << pcap_geterr(this->pcapHandle);
+			daemonizeOutput(outStr.str());
 		}
-		return(false);
+		goto failed;
+	}
+	if(rssBeforeActivate) {
+		for(int i = 0; i < 50; i++) {
+			usleep(100);
+			rssAfterActivate = getRss() / 1024 / 1024;
+			if(!rssAfterActivate ||
+			   rssAfterActivate > rssBeforeActivate + this->pcap_buffer_size * 0.9 / 1024 / 1024) {
+				break;
+			}
+		}
+		if(rssAfterActivate && rssAfterActivate > rssBeforeActivate &&
+		   rssAfterActivate < rssBeforeActivate + this->pcap_buffer_size * 0.9 / 1024 / 1024) {
+			syslog(LOG_NOTICE, "packetbuffer - %s: ringbuffer has only %i MB", this->getInterfaceName().c_str(), rssAfterActivate - rssBeforeActivate); 
+			if(opt_fork) {
+				ostringstream outStr;
+				outStr << this->getInterfaceName() << ": ringbuffer has only " << (rssAfterActivate - rssBeforeActivate) << " MB";
+				daemonizeOutput(outStr.str());
+			}
+		}
 	}
 	if(opt_mirrorip) {
 		if(opt_mirrorip_dst[0] == '\0') {
@@ -1688,27 +1710,34 @@ bool PcapQueue_readFromInterface_base::startCapture() {
 			mirrorip = new MirrorIP(opt_mirrorip_src, opt_mirrorip_dst);
 		}
 	}
-	static volatile int _sync_filter = 0;
-	char filter_exp[2048] = "";	// The filter expression
-	struct bpf_program fp;		// The compiled filter 
 	if(*user_filter != '\0') {
-		while(__sync_lock_test_and_set(&_sync_filter, 1));
+		char filter_exp[2048] = "";
 		snprintf(filter_exp, sizeof(filter_exp), "%s", user_filter);
 		// Compile and apply the filter
+		struct bpf_program fp;
 		if (pcap_compile(this->pcapHandle, &fp, filter_exp, 0, this->interfaceMask) == -1) {
-			fprintf(stderr, "packetbuffer - %s: can not parse filter %s: %s", this->getInterfaceName().c_str(), filter_exp, pcap_geterr(this->pcapHandle));
-			return(2);
+			syslog(LOG_NOTICE, "packetbuffer - %s: can not parse filter %s: %s", this->getInterfaceName().c_str(), filter_exp, pcap_geterr(this->pcapHandle));
+			if(opt_fork) {
+				ostringstream outStr;
+				outStr << this->getInterfaceName() << ": can not parse filter " << filter_exp << ": " << pcap_geterr(this->pcapHandle);
+				daemonizeOutput(outStr.str());
+			}
+			goto failed;
 		}
 		if (pcap_setfilter(this->pcapHandle, &fp) == -1) {
-			fprintf(stderr, "packetbuffer - %s: can not install filter %s: %s", this->getInterfaceName().c_str(), filter_exp, pcap_geterr(this->pcapHandle));
-			return(2);
+			syslog(LOG_NOTICE, "packetbuffer - %s: can not install filter %s: %s", this->getInterfaceName().c_str(), filter_exp, pcap_geterr(this->pcapHandle));
+			if(opt_fork) {
+				ostringstream outStr;
+				outStr << this->getInterfaceName() << ": can not install filter " << filter_exp << ": " << pcap_geterr(this->pcapHandle);
+				daemonizeOutput(outStr.str());
+			}
+			goto failed;
 		}
-		__sync_lock_release(&_sync_filter);
 	}
 	this->pcapLinklayerHeaderType = pcap_datalink(this->pcapHandle);
 	if(!this->pcapLinklayerHeaderType) {
 		syslog(LOG_ERR, "packetbuffer - %s: pcap_datalink failed", this->getInterfaceName().c_str()); 
-		return(false);
+		goto failed;
 	}
 	global_pcap_dlink = this->pcapLinklayerHeaderType;
 	syslog(LOG_NOTICE, "DLT - %s: %i", this->getInterfaceName().c_str(), this->pcapLinklayerHeaderType);
@@ -1717,7 +1746,11 @@ bool PcapQueue_readFromInterface_base::startCapture() {
 		sprintf(pname, "/var/spool/voipmonitor/voipmonitordump-%s-%u.pcap", this->interfaceName.c_str(), (unsigned int)time(NULL));
 		this->pcapDumpHandle = pcap_dump_open(this->pcapHandle, pname);
 	}
+	__sync_lock_release(&_sync_start_capture);
 	return(true);
+failed:
+	__sync_lock_release(&_sync_start_capture);
+	return(false);
 }
 
 inline int PcapQueue_readFromInterface_base::pcap_next_ex_iface(pcap_t *pcapHandle, pcap_pkthdr** header, u_char** packet) {

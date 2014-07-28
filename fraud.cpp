@@ -883,7 +883,8 @@ void FraudAlert_chc::evCall(sFraudCallInfo *callInfo) {
 	switch(callInfo->typeCallInfo) {
 	case sFraudCallInfo::typeCallInfo_beginCall:
 		{
-		if(this->changeLocationOk.size() &&
+		if(!isLocalIP(callInfo->caller_ip) &&
+		   this->changeLocationOk.size() &&
 		   (countryCodes->isLocationIn(callInfo->country_code_caller_ip.c_str(), &this->changeLocationOk) ||
 		    countryCodes->isLocationIn(callInfo->continent_code_caller_ip.c_str(), &this->changeLocationOk, true))) {
 			return;
@@ -937,7 +938,8 @@ void FraudAlert_chcr::evCall(sFraudCallInfo *callInfo) {
 	switch(callInfo->typeCallInfo) {
 	case sFraudCallInfo::typeCallInfo_connectCall:
 		{
-		if(this->changeLocationOk.size() &&
+		if(!isLocalIP(callInfo->caller_ip) &&
+		   this->changeLocationOk.size() &&
 		   (countryCodes->isLocationIn(callInfo->country_code_caller_ip.c_str(), &this->changeLocationOk) ||
 		    countryCodes->isLocationIn(callInfo->continent_code_caller_ip.c_str(), &this->changeLocationOk, true))) {
 			return;
@@ -1452,11 +1454,8 @@ void initFraud() {
 		opt_enable_fraud = false;
 		return;
 	}
-	if(!isExistsFraudAlerts()) {
-		return;
-	}
-	if(!checkFraudTables()) {
-		opt_enable_fraud = false;
+	if(!isExistsFraudAlerts() ||
+	   !checkFraudTables()) {
 		return;
 	}
 	if(!countryCodes) {
@@ -1518,17 +1517,12 @@ bool checkFraudTables() {
 	};
 	const char *help_gui_loginAdmin = 
 		"Login into web gui as admin. Login process create missing table.";
-	const char *help_gui_loginAdmin_enableFraud =
-		"Login into web gui as admin and enable Fraud in System configuration in menu Setting.";
-	const char *help_gui_loginAdmin_loadGeoIPcountry =
-		"Login into web gui as admin and load GeoIP country data in menu Setting.";
 	checkTable checkTables[] = {
 		{"alerts", help_gui_loginAdmin, NULL},
-		{"alerts_fraud", help_gui_loginAdmin_enableFraud, NULL},
-		//{"fraud_alert_info", NULL, NULL},
-		{"country_code", help_gui_loginAdmin_enableFraud, help_gui_loginAdmin_enableFraud},
-		{"country_code_prefix", help_gui_loginAdmin_enableFraud, help_gui_loginAdmin_enableFraud},
-		{cloud_host[0]?"cloudshare.geoip_country":"geoip_country", help_gui_loginAdmin_loadGeoIPcountry, help_gui_loginAdmin_loadGeoIPcountry}
+		{"alerts_fraud", help_gui_loginAdmin, NULL},
+		{"country_code", help_gui_loginAdmin, help_gui_loginAdmin},
+		{"country_code_prefix", help_gui_loginAdmin, help_gui_loginAdmin},
+		{cloud_host[0]?"cloudshare.geoip_country":"geoip_country", help_gui_loginAdmin, help_gui_loginAdmin}
 	};
 	for(size_t i = 0; i < sizeof(checkTables) / sizeof(checkTables[0]); i++) {
 		sqlDb->query((string("show tables like '") + checkTables[i].table + "'").c_str());
