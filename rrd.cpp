@@ -19,10 +19,14 @@
 #define MAX_LENGTH	10000
 
 
-int rrd_vm_create_graph_PS(char *filename, char *fromatstyle, char *toatstyle, int resx, int resy, short slope, short icon) {
+int rrd_vm_create_graph_PS(char *filename, char *fromatstyle, char *toatstyle, int resx, int resy, short slope, short icon, char *dstfile, char *buffer, int size) {
     std::ostringstream cmdCreate;
 
-	cmdCreate << "`which rrdtool` graph " << filename << ".png ";
+
+	if (dstfile == NULL) 
+		cmdCreate << "`which rrdtool` graph - ";						//graph to stdout instead of file
+	else
+		cmdCreate << "`which rrdtool` graph " << dstfile << ".png ";
 	cmdCreate << "-w " << resx << " -h " << resy << " -a PNG ";
 	cmdCreate << "--start " << fromatstyle << " --end " << toatstyle << " ";
 	cmdCreate << "--font DEFAULT:7: ";
@@ -65,14 +69,43 @@ int rrd_vm_create_graph_PS(char *filename, char *fromatstyle, char *toatstyle, i
 	cmdCreate << "GPRINT:PSA:AVERAGE:\"Avg\\: %5.2lf\" ";
 	cmdCreate << "GPRINT:PSA:MAX:\"Max\\: %5.0lf\" ";
 	cmdCreate << "GPRINT:PSA:MIN:\"Min\\: %5.0lf\\t\\t\\t\" ";
-	int res = system(cmdCreate.str().c_str());
+	
+	int res = -1;
+	if (dstfile == NULL) {	//when cmd is drawing graph to stdout read this data thru pipe into buffer
+		FILE *inpipe;
+		inpipe = popen(cmdCreate.str().c_str(), "r");
+		if (!inpipe) {
+			syslog(LOG_ERR, "Create Graph: couldn't open pipe %s", cmdCreate.str().c_str());
+			return -1;
+		} else {
+			syslog(LOG_NOTICE, "Pipe <%s> opened for reading %i bytes", cmdCreate.str().c_str(), size);
+		} 
+		int rets;
+		rets = fread(buffer, sizeof(buffer[0]), size, inpipe);
+		syslog(LOG_NOTICE, "Pipe RET %i bytes", rets);
+		pclose(inpipe);
+
+
+		FILE* debFile;
+		debFile = fopen("/tmp/pokusne", "wb");
+		fwrite(buffer, sizeof(buffer[0]), rets, debFile);
+		fclose(debFile);
+
+	} else {				//normally create graph file
+		res = system(cmdCreate.str().c_str());
+	}
 	if (verbosity > 1) syslog(LOG_NOTICE, "Create graph's args:%s\nRetVal:%d", cmdCreate.str().c_str(), res);
+	else if (verbosity > 0) syslog(LOG_NOTICE, "%s\nRetVal:%d", cmdCreate.str().c_str(), res);
 	return res;
 }
 
-int rrd_vm_create_graph_speed(char *filename, char *fromatstyle, char *toatstyle, int resx, int resy, short slope, short icon) {
+int rrd_vm_create_graph_speed(char *filename, char *fromatstyle, char *toatstyle, int resx, int resy, short slope, short icon, char *dstfile, char *buffer) {
     std::ostringstream cmdCreate;
 
+	if (dstfile == NULL) 
+		cmdCreate << "`which rrdtool` graph - ";						//graph to stdout instead of file
+	else
+		cmdCreate << "`which rrdtool` graph " << filename << ".png ";
 	cmdCreate << "`which rrdtool` graph " << filename << ".png ";
 	cmdCreate << "-w " << resx << " -h " << resy << " -a PNG ";
 	cmdCreate << "--start " << fromatstyle << " --end " << toatstyle << " ";
@@ -97,9 +130,13 @@ int rrd_vm_create_graph_speed(char *filename, char *fromatstyle, char *toatstyle
 	return res;
 }
 
-int rrd_vm_create_graph_SQLq(char *filename, char *fromatstyle, char *toatstyle, int resx, int resy, short slope, short icon) {
+int rrd_vm_create_graph_SQLq(char *filename, char *fromatstyle, char *toatstyle, int resx, int resy, short slope, short icon, char *dstfile, char *buffer) {
     std::ostringstream cmdCreate;
 
+	if (dstfile == NULL) 
+		cmdCreate << "`which rrdtool` graph - ";						//graph to stdout instead of file
+	else
+		cmdCreate << "`which rrdtool` graph " << filename << ".png ";
 	cmdCreate << "`which rrdtool` graph " << filename << ".png ";
 	cmdCreate << "-w " << resx << " -h " << resy << " -a PNG ";
 	cmdCreate << "--start " << fromatstyle << " --end " << toatstyle << " ";
@@ -148,9 +185,13 @@ int rrd_vm_create_graph_SQLq(char *filename, char *fromatstyle, char *toatstyle,
 	return res;
 }
 
-int rrd_vm_create_graph_tCPU(char *filename, char *fromatstyle, char *toatstyle, int resx, int resy, short slope, short icon) {
+int rrd_vm_create_graph_tCPU(char *filename, char *fromatstyle, char *toatstyle, int resx, int resy, short slope, short icon, char *dstfile, char *buffer) {
     std::ostringstream cmdCreate;
 
+	if (dstfile == NULL) 
+		cmdCreate << "`which rrdtool` graph - ";						//graph to stdout instead of file
+	else
+		cmdCreate << "`which rrdtool` graph " << filename << ".png ";
 	cmdCreate << "`which rrdtool` graph " << filename << ".png ";
 	cmdCreate << "-w " << resx << " -h " << resy << " -a PNG ";
 	cmdCreate << "--start " << fromatstyle << " --end " << toatstyle << " ";
@@ -187,9 +228,13 @@ int rrd_vm_create_graph_tCPU(char *filename, char *fromatstyle, char *toatstyle,
 	return res;
 }
 
-int rrd_vm_create_graph_heap(char *filename, char *fromatstyle, char *toatstyle, int resx, int resy, short slope, short icon) {
+int rrd_vm_create_graph_heap(char *filename, char *fromatstyle, char *toatstyle, int resx, int resy, short slope, short icon, char *dstfile, char *buffer) {
     std::ostringstream cmdCreate;
 
+	if (dstfile == NULL) 
+		cmdCreate << "`which rrdtool` graph - ";						//graph to stdout instead of file
+	else
+		cmdCreate << "`which rrdtool` graph " << filename << ".png ";
 	cmdCreate << "`which rrdtool` graph " << filename << ".png ";
 	cmdCreate << "-w " << resx << " -h " << resy << " -a PNG ";
 	cmdCreate << "--start " << fromatstyle << " --end " << toatstyle << " ";
@@ -226,9 +271,13 @@ int rrd_vm_create_graph_heap(char *filename, char *fromatstyle, char *toatstyle,
 	return res;
 }
 
-int rrd_vm_create_graph_drop(char *filename, char *fromatstyle, char *toatstyle, int resx, int resy, short slope, short icon) {
+int rrd_vm_create_graph_drop(char *filename, char *fromatstyle, char *toatstyle, int resx, int resy, short slope, short icon, char *dstfile, char *buffer) {
     std::ostringstream cmdCreate;
 
+	if (dstfile == NULL) 
+		cmdCreate << "`which rrdtool` graph - ";						//graph to stdout instead of file
+	else
+		cmdCreate << "`which rrdtool` graph " << filename << ".png ";
 	cmdCreate << "`which rrdtool` graph " << filename << ".png ";
 	cmdCreate << "-w " << resx << " -h " << resy << " -a PNG ";
 	cmdCreate << "--start " << fromatstyle << " --end " << toatstyle << " ";
@@ -259,9 +308,13 @@ int rrd_vm_create_graph_drop(char *filename, char *fromatstyle, char *toatstyle,
 	return res;
 }
 
-int rrd_vm_create_graph_calls(char *filename, char *fromatstyle, char *toatstyle, int resx, int resy, short slope, short icon) {
+int rrd_vm_create_graph_calls(char *filename, char *fromatstyle, char *toatstyle, int resx, int resy, short slope, short icon, char *dstfile, char *buffer) {
     std::ostringstream cmdCreate;
 
+	if (dstfile == NULL) 
+		cmdCreate << "`which rrdtool` graph - ";						//graph to stdout instead of file
+	else
+		cmdCreate << "`which rrdtool` graph " << filename << ".png ";
 	cmdCreate << "`which rrdtool` graph " << filename << ".png ";
 	cmdCreate << "-w " << resx << " -h " << resy << " -a PNG ";
 	cmdCreate << "--start " << fromatstyle << " --end " << toatstyle << " ";
@@ -295,9 +348,13 @@ int rrd_vm_create_graph_calls(char *filename, char *fromatstyle, char *toatstyle
 */
 }
 
-int rrd_vm_create_graph_tacCPU(char *filename, char *fromatstyle, char *toatstyle, int resx, int resy, short slope, short icon) {
+int rrd_vm_create_graph_tacCPU(char *filename, char *fromatstyle, char *toatstyle, int resx, int resy, short slope, short icon, char *dstfile, char *buffer) {
     std::ostringstream cmdCreate;
 
+	if (dstfile == NULL) 
+		cmdCreate << "`which rrdtool` graph - ";						//graph to stdout instead of file
+	else
+		cmdCreate << "`which rrdtool` graph " << filename << ".png ";
 	cmdCreate << "`which rrdtool` graph " << filename << ".png ";
 	cmdCreate << "-w " << resx << " -h " << resy << " -a PNG ";
 	cmdCreate << "--start " << fromatstyle << " --end " << toatstyle << " ";
@@ -322,9 +379,13 @@ int rrd_vm_create_graph_tacCPU(char *filename, char *fromatstyle, char *toatstyl
 	return res;
 }
 
-int rrd_vm_create_graph_RSSVSZ(char *filename, char *fromatstyle, char *toatstyle, int resx, int resy, short slope, short icon) {
+int rrd_vm_create_graph_RSSVSZ(char *filename, char *fromatstyle, char *toatstyle, int resx, int resy, short slope, short icon, char *dstfile, char *buffer) {
     std::ostringstream cmdCreate;
 
+	if (dstfile == NULL) 
+		cmdCreate << "`which rrdtool` graph - ";						//graph to stdout instead of file
+	else
+		cmdCreate << "`which rrdtool` graph " << filename << ".png ";
 	cmdCreate << "`which rrdtool` graph " << filename << ".png ";
 	cmdCreate << "-w " << resx << " -h " << resy << " -a PNG ";
 	cmdCreate << "--start " << fromatstyle << " --end " << toatstyle << " ";
