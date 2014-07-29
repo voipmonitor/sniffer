@@ -19,6 +19,342 @@
 #define MAX_LENGTH	10000
 
 
+int rrd_vm_create_graph_PS(char *filename, char *fromatstyle, char *toatstyle, int resx, int resy, short slope, short icon) {
+    std::ostringstream cmdCreate;
+
+	cmdCreate << "`which rrdtool` graph " << filename << ".png ";
+	cmdCreate << "-w " << resx << " -h " << resy << " -a PNG ";
+	cmdCreate << "--start " << fromatstyle << " --end " << toatstyle << " ";
+	cmdCreate << "--font DEFAULT:7: ";
+	cmdCreate << "--title \"PS\" ";
+	cmdCreate << "--watermark \"`date`\" ";
+	cmdCreate << "--vertical-label \"queries\" ";
+	cmdCreate << "--lower-limit 0 ";
+	cmdCreate << "--x-grid MINUTE:10:HOUR:1:MINUTE:120:0:%R ";
+	cmdCreate << "--units-exponent 0 ";
+	cmdCreate << "--full-size-mode ";
+	if (slope) cmdCreate << "--slope-mode ";
+	if (icon) cmdCreate << "--only-graph "; //height need to be < 32px
+	cmdCreate << "DEF:PSC=" << filename << ":PS-C:MAX ";
+	cmdCreate << "DEF:PSS0=" << filename << ":PS-S0:MAX ";
+	cmdCreate << "DEF:PSS1=" << filename << ":PS-S1:MAX ";
+	cmdCreate << "DEF:PSR=" << filename << ":PS-R:MAX ";
+	cmdCreate << "DEF:PSA=" << filename << ":PS-A:MAX ";
+	cmdCreate << "LINE1:PSC#0000FF:\"-C\\t\" ";
+	cmdCreate << "GPRINT:PSC:LAST:\"Cur\\: %5.0lf\" ";
+	cmdCreate << "GPRINT:PSC:AVERAGE:\"Avg\\: %5.2lf\" ";
+	cmdCreate << "GPRINT:PSC:MAX:\"Max\\: %5.0lf\" ";
+	cmdCreate << "GPRINT:PSC:MIN:\"Min\\: %5.0lf\\t\\t\\t\" ";
+	cmdCreate << "LINE1:PSS0#00FF00:\"-S0\\t\" ";
+	cmdCreate << "GPRINT:PSS0:LAST:\"Cur\\: %5.0lf\" ";
+	cmdCreate << "GPRINT:PSS0:AVERAGE:\"Avg\\: %5.2lf\" ";
+	cmdCreate << "GPRINT:PSS0:MAX:\"Max\\: %5.0lf\" ";
+	cmdCreate << "GPRINT:PSS0:MIN:\"Min\\: %5.0lf\\t\\t\\t\" ";
+	cmdCreate << "LINE1:PSS1#FF0000:\"-S1\\t\" ";
+	cmdCreate << "GPRINT:PSS1:LAST:\"Cur\\: %5.0lf\" ";
+	cmdCreate << "GPRINT:PSS1:AVERAGE:\"Avg\\: %5.2lf\" ";
+	cmdCreate << "GPRINT:PSS1:MAX:\"Max\\: %5.0lf\" ";
+	cmdCreate << "GPRINT:PSS1:MIN:\"Min\\: %5.0lf\\t\\t\\t\" ";
+	cmdCreate << "LINE1:PSR#00FFFF:\"-R\\t\" ";
+	cmdCreate << "GPRINT:PSR:LAST:\"Cur\\: %5.0lf\" ";
+	cmdCreate << "GPRINT:PSR:AVERAGE:\"Avg\\: %5.2lf\" ";
+	cmdCreate << "GPRINT:PSR:MAX:\"Max\\: %5.0lf\" ";
+	cmdCreate << "GPRINT:PSR:MIN:\"Min\\: %5.0lf\\t\\t\\t\" ";
+	cmdCreate << "LINE1:PSA#FFFF00:\"-A\\t\" ";
+	cmdCreate << "GPRINT:PSA:LAST:\"Cur\\: %5.0lf\" ";
+	cmdCreate << "GPRINT:PSA:AVERAGE:\"Avg\\: %5.2lf\" ";
+	cmdCreate << "GPRINT:PSA:MAX:\"Max\\: %5.0lf\" ";
+	cmdCreate << "GPRINT:PSA:MIN:\"Min\\: %5.0lf\\t\\t\\t\" ";
+	int res = system(cmdCreate.str().c_str());
+	if (verbosity > 1) syslog(LOG_NOTICE, "Create graph's args:%s\nRetVal:%d", cmdCreate.str().c_str(), res);
+	return res;
+}
+
+int rrd_vm_create_graph_speed(char *filename, char *fromatstyle, char *toatstyle, int resx, int resy, short slope, short icon) {
+    std::ostringstream cmdCreate;
+
+	cmdCreate << "`which rrdtool` graph " << filename << ".png ";
+	cmdCreate << "-w " << resx << " -h " << resy << " -a PNG ";
+	cmdCreate << "--start " << fromatstyle << " --end " << toatstyle << " ";
+	cmdCreate << "--font DEFAULT:7: ";
+	cmdCreate << "--title \"Bw speed\" ";
+	cmdCreate << "--watermark \"`date`\" ";
+	cmdCreate << "--vertical-label \"MB/s\" ";
+	cmdCreate << "--lower-limit 0 ";
+	cmdCreate << "--x-grid MINUTE:10:HOUR:1:MINUTE:120:0:%R ";
+	cmdCreate << "--units-exponent 0 ";
+	cmdCreate << "--full-size-mode ";
+	if (slope) cmdCreate << "--slope-mode ";
+	if (icon) cmdCreate << "--only-graph "; //height need to be < 32px
+	cmdCreate << "DEF:speed=" << filename << ":mbs:MAX ";
+	cmdCreate << "AREA:speed#00FF00:\"speed (Mb/s)\" ";
+	cmdCreate << "GPRINT:speed:LAST:\"Cur\\: %5.2lf\" ";
+	cmdCreate << "GPRINT:speed:AVERAGE:\"Avg\\: %5.2lf\" ";
+	cmdCreate << "GPRINT:speed:MAX:\"Max\\: %5.2lf\" ";
+	cmdCreate << "GPRINT:speed:MIN:\"Min\\: %5.2lf\\t\\t\\t\" ";
+	int res = system(cmdCreate.str().c_str());
+	if (verbosity > 1) syslog(LOG_NOTICE, "Create graph's args:%s\nRetVal:%d", cmdCreate.str().c_str(), res);
+	return res;
+}
+
+int rrd_vm_create_graph_SQLq(char *filename, char *fromatstyle, char *toatstyle, int resx, int resy, short slope, short icon) {
+    std::ostringstream cmdCreate;
+
+	cmdCreate << "`which rrdtool` graph " << filename << ".png ";
+	cmdCreate << "-w " << resx << " -h " << resy << " -a PNG ";
+	cmdCreate << "--start " << fromatstyle << " --end " << toatstyle << " ";
+	cmdCreate << "--font DEFAULT:7: ";
+	cmdCreate << "--title \"SQLq\" ";
+	cmdCreate << "--watermark \"`date`\" ";
+	cmdCreate << "--vertical-label \"queries\" ";
+	cmdCreate << "--lower-limit 0 ";
+	cmdCreate << "--x-grid MINUTE:10:HOUR:1:MINUTE:120:0:%R ";
+	cmdCreate << "--units-exponent 0 ";
+	cmdCreate << "--full-size-mode ";
+	if (slope) cmdCreate << "--slope-mode ";
+	if (icon) cmdCreate << "--only-graph "; //height need to be < 32px
+	cmdCreate << "DEF:SQLqC=" << filename << ":SQLq-C:MAX ";
+	cmdCreate << "DEF:SQLqM=" << filename << ":SQLq-M:MAX ";
+	cmdCreate << "DEF:SQLqR=" << filename << ":SQLq-R:MAX ";
+	cmdCreate << "DEF:SQLqCl=" << filename << ":SQLq-Cl:MAX ";
+	cmdCreate << "DEF:SQLqH=" << filename << ":SQLq-H:MAX ";
+	cmdCreate << "LINE1:SQLqC#0000FF:\"-C\\t\" ";
+	cmdCreate << "GPRINT:SQLqC:LAST:\"Cur\\: %5.0lf\" ";
+	cmdCreate << "GPRINT:SQLqC:AVERAGE:\"Avg\\: %5.2lf\" ";
+	cmdCreate << "GPRINT:SQLqC:MAX:\"Max\\: %5.0lf\" ";
+	cmdCreate << "GPRINT:SQLqC:MIN:\"Min\\: %5.0lf\\t\\t\\t\" ";
+	cmdCreate << "LINE1:SQLqM#00FF00:\"-M\\t\" ";
+	cmdCreate << "GPRINT:SQLqM:LAST:\"Cur\\: %5.0lf\" ";
+	cmdCreate << "GPRINT:SQLqM:AVERAGE:\"Avg\\: %5.2lf\" ";
+	cmdCreate << "GPRINT:SQLqM:MAX:\"Max\\: %5.0lf\" ";
+	cmdCreate << "GPRINT:SQLqM:MIN:\"Min\\: %5.0lf\\t\\t\\t\" ";
+	cmdCreate << "LINE1:SQLqR#FF0000:\"-R\\t\" ";
+	cmdCreate << "GPRINT:SQLqR:LAST:\"Cur\\: %5.0lf\" ";
+	cmdCreate << "GPRINT:SQLqR:AVERAGE:\"Avg\\: %5.2lf\" ";
+	cmdCreate << "GPRINT:SQLqR:MAX:\"Max\\: %5.0lf\" ";
+	cmdCreate << "GPRINT:SQLqR:MIN:\"Min\\: %5.0lf\\t\\t\\t\" ";
+	cmdCreate << "LINE1:SQLqCl#00FFFF:\"-Cl\\t\" ";
+	cmdCreate << "GPRINT:SQLqCl:LAST:\"Cur\\: %5.0lf\" ";
+	cmdCreate << "GPRINT:SQLqCl:AVERAGE:\"Avg\\: %5.2lf\" ";
+	cmdCreate << "GPRINT:SQLqCl:MAX:\"Max\\: %5.0lf\" ";
+	cmdCreate << "GPRINT:SQLqCl:MIN:\"Min\\: %5.0lf\\t\\t\\t\" ";
+	cmdCreate << "LINE1:SQLqH#FFFF00:\"-H\\t\" ";
+	cmdCreate << "GPRINT:SQLqH:LAST:\"Cur\\: %5.0lf\" ";
+	cmdCreate << "GPRINT:SQLqH:AVERAGE:\"Avg\\: %5.2lf\" ";
+	cmdCreate << "GPRINT:SQLqH:MAX:\"Max\\: %5.0lf\" ";
+	cmdCreate << "GPRINT:SQLqH:MIN:\"Min\\: %5.0lf\\t\\t\\t\" ";
+	int res = system(cmdCreate.str().c_str());
+	if (verbosity > 1) syslog(LOG_NOTICE, "Create graph's args:%s\nRetVal:%d", cmdCreate.str().c_str(), res);
+	return res;
+}
+
+int rrd_vm_create_graph_tCPU(char *filename, char *fromatstyle, char *toatstyle, int resx, int resy, short slope, short icon) {
+    std::ostringstream cmdCreate;
+
+	cmdCreate << "`which rrdtool` graph " << filename << ".png ";
+	cmdCreate << "-w " << resx << " -h " << resy << " -a PNG ";
+	cmdCreate << "--start " << fromatstyle << " --end " << toatstyle << " ";
+	cmdCreate << "--font DEFAULT:7: ";
+	cmdCreate << "--title \"tCPU usage\" ";
+	cmdCreate << "--watermark \"`date`\" ";
+	cmdCreate << "--vertical-label \"percent[%]\" ";
+	cmdCreate << "--lower-limit 0 ";
+	cmdCreate << "--x-grid MINUTE:10:HOUR:1:MINUTE:120:0:%R ";
+	cmdCreate << "--units-exponent 0 ";
+	cmdCreate << "--full-size-mode ";
+	if (slope) cmdCreate << "--slope-mode ";
+	if (icon) cmdCreate << "--only-graph "; //height need to be < 32px
+	cmdCreate << "DEF:t0=" << filename << ":tCPU-t0:MAX ";
+	cmdCreate << "DEF:t1=" << filename << ":tCPU-t1:MAX ";
+	cmdCreate << "DEF:t2=" << filename << ":tCPU-t2:MAX ";
+	cmdCreate << "LINE1:t0#0000FF:\"t0 CPU Usage %\\t\" ";
+	cmdCreate << "GPRINT:t0:LAST:\"Cur\\: %5.2lf\" ";
+	cmdCreate << "GPRINT:t0:AVERAGE:\"Avg\\: %5.2lf\" ";
+	cmdCreate << "GPRINT:t0:MAX:\"Max\\: %5.2lf\" ";
+	cmdCreate << "GPRINT:t0:MIN:\"Min\\: %5.2lf\\t\\t\\t\" ";
+	cmdCreate << "LINE1:t1#0000FF:\"t1 CPU Usage %\\t\" ";
+	cmdCreate << "GPRINT:t1:LAST:\"Cur\\: %5.2lf\" ";
+	cmdCreate << "GPRINT:t1:AVERAGE:\"Avg\\: %5.2lf\" ";
+	cmdCreate << "GPRINT:t1:MAX:\"Max\\: %5.2lf\" ";
+	cmdCreate << "GPRINT:t1:MIN:\"Min\\: %5.2lf\\t\\t\\t\" ";
+	cmdCreate << "LINE1:t2#0000FF:\"t2 CPU Usage %\\t\" ";
+	cmdCreate << "GPRINT:t2:LAST:\"Cur\\: %5.2lf\" ";
+	cmdCreate << "GPRINT:t2:AVERAGE:\"Avg\\: %5.2lf\" ";
+	cmdCreate << "GPRINT:t2:MAX:\"Max\\: %5.2lf\" ";
+	cmdCreate << "GPRINT:t2:MIN:\"Min\\: %5.2lf\\t\\t\\t\" ";
+	int res = system(cmdCreate.str().c_str());
+	if (verbosity > 1) syslog(LOG_NOTICE, "Create graph's args:%s\nRetVal:%d", cmdCreate.str().c_str(), res);
+	return res;
+}
+
+int rrd_vm_create_graph_heap(char *filename, char *fromatstyle, char *toatstyle, int resx, int resy, short slope, short icon) {
+    std::ostringstream cmdCreate;
+
+	cmdCreate << "`which rrdtool` graph " << filename << ".png ";
+	cmdCreate << "-w " << resx << " -h " << resy << " -a PNG ";
+	cmdCreate << "--start " << fromatstyle << " --end " << toatstyle << " ";
+	cmdCreate << "--font DEFAULT:7: ";
+	cmdCreate << "--title \"Mem heap usage\" ";
+	cmdCreate << "--watermark \"`date`\" ";
+	cmdCreate << "--vertical-label \"percent[%]\" ";
+	cmdCreate << "--lower-limit 0 ";
+	cmdCreate << "--x-grid MINUTE:10:HOUR:1:MINUTE:120:0:%R ";
+	cmdCreate << "--units-exponent 0 ";
+	cmdCreate << "--full-size-mode ";
+	if (slope) cmdCreate << "--slope-mode ";
+	if (icon) cmdCreate << "--only-graph "; //height need to be < 32px
+	cmdCreate << "DEF:buffer=" << filename << ":buffer:MAX ";
+	cmdCreate << "DEF:trash=" << filename << ":trash:MAX ";
+	cmdCreate << "DEF:ratio=" << filename << ":ratio:MAX ";
+	cmdCreate << "LINE1:buffer#0000FF:\"Buffer usage %\\t\" ";
+	cmdCreate << "GPRINT:buffer:LAST:\"Cur\\: %5.2lf\" ";
+	cmdCreate << "GPRINT:buffer:AVERAGE:\"Avg\\: %5.2lf\" ";
+	cmdCreate << "GPRINT:buffer:MAX:\"Max\\: %5.2lf\" ";
+	cmdCreate << "GPRINT:buffer:MIN:\"Min\\: %5.2lf\\t\\t\\t\" ";
+	cmdCreate << "LINE1:trash#00FF00:\"Trash usage %\\t\" ";
+	cmdCreate << "GPRINT:trash:LAST:\"Cur\\: %5.2lf\" ";
+	cmdCreate << "GPRINT:trash:AVERAGE:\"Avg\\: %5.2lf\" ";
+	cmdCreate << "GPRINT:trash:MAX:\"Max\\: %5.2lf\" ";
+	cmdCreate << "GPRINT:trash:MIN:\"Min\\: %5.2lf\\t\\t\\t\" ";
+	cmdCreate << "LINE1:ratio#FF0000:\"Ratio %\\t\" ";
+	cmdCreate << "GPRINT:ratio:LAST:\"Cur\\: %5.2lf\" ";
+	cmdCreate << "GPRINT:ratio:AVERAGE:\"Avg\\: %5.2lf\" ";
+	cmdCreate << "GPRINT:ratio:MAX:\"Max\\: %5.2lf\" ";
+	cmdCreate << "GPRINT:ratio:MIN:\"Min\\: %5.2lf\\t\\t\\t\" ";
+	int res = system(cmdCreate.str().c_str());
+	if (verbosity > 1) syslog(LOG_NOTICE, "Create graph's args:%s\nRetVal:%d", cmdCreate.str().c_str(), res);
+	return res;
+}
+
+int rrd_vm_create_graph_drop(char *filename, char *fromatstyle, char *toatstyle, int resx, int resy, short slope, short icon) {
+    std::ostringstream cmdCreate;
+
+	cmdCreate << "`which rrdtool` graph " << filename << ".png ";
+	cmdCreate << "-w " << resx << " -h " << resy << " -a PNG ";
+	cmdCreate << "--start " << fromatstyle << " --end " << toatstyle << " ";
+	cmdCreate << "--font DEFAULT:7: ";
+	cmdCreate << "--title \"Dropping packets\" ";
+	cmdCreate << "--watermark \"`date`\" ";
+	cmdCreate << "--vertical-label \"packtets\" ";
+	cmdCreate << "--lower-limit 0 ";
+	cmdCreate << "--x-grid MINUTE:10:HOUR:1:MINUTE:120:0:%R ";
+	cmdCreate << "--units-exponent 0 ";
+	cmdCreate << "--full-size-mode ";
+	if (slope) cmdCreate << "--slope-mode ";
+	if (icon) cmdCreate << "--only-graph "; //height need to be < 32px
+	cmdCreate << "DEF:exc=" << filename << ":exceeded:MAX ";
+	cmdCreate << "DEF:pck=" << filename << ":packets:MAX ";
+	cmdCreate << "LINE1:exc#0000FF:\"Buffer overloaded\\t\" ";
+	cmdCreate << "GPRINT:exc:LAST:\"Cur\\: %5.0lf\" ";
+	cmdCreate << "GPRINT:exc:AVERAGE:\"Avg\\: %5.2lf\" ";
+	cmdCreate << "GPRINT:exc:MAX:\"Max\\: %5.0lf\" ";
+	cmdCreate << "GPRINT:exc:MIN:\"Min\\: %5.0lf\\t\\t\\t\" ";
+	cmdCreate << "LINE1:pck#00FF00:\"Packets dropped\\t\" ";
+	cmdCreate << "GPRINT:pck:LAST:\"Cur\\: %5.0lf\" ";
+	cmdCreate << "GPRINT:pck:AVERAGE:\"Avg\\: %5.2lf\" ";
+	cmdCreate << "GPRINT:pck:MAX:\"Max\\: %5.0lf\" ";
+	cmdCreate << "GPRINT:pck:MIN:\"Min\\: %5.0lf\\t\\t\\t\" ";
+	int res = system(cmdCreate.str().c_str());
+	if (verbosity > 1) syslog(LOG_NOTICE, "Create graph's args:%s\nRetVal:%d", cmdCreate.str().c_str(), res);
+	return res;
+}
+
+int rrd_vm_create_graph_calls(char *filename, char *fromatstyle, char *toatstyle, int resx, int resy, short slope, short icon) {
+    std::ostringstream cmdCreate;
+
+	cmdCreate << "`which rrdtool` graph " << filename << ".png ";
+	cmdCreate << "-w " << resx << " -h " << resy << " -a PNG ";
+	cmdCreate << "--start " << fromatstyle << " --end " << toatstyle << " ";
+	cmdCreate << "--font DEFAULT:7: ";
+	cmdCreate << "--title \"Number of calls\" ";
+	cmdCreate << "--watermark \"`date`\" ";
+	cmdCreate << "--vertical-label \"calls\" ";
+	cmdCreate << "--lower-limit 0 ";
+	cmdCreate << "--x-grid MINUTE:10:HOUR:1:MINUTE:120:0:%R ";
+	cmdCreate << "--units-exponent 0 ";
+	cmdCreate << "--full-size-mode ";
+	if (slope) cmdCreate << "--slope-mode ";
+	if (icon) cmdCreate << "--only-graph "; //height need to be < 32px
+	cmdCreate << "DEF:callsmin=" << filename << ":calls:MIN ";
+	cmdCreate << "DEF:callsavg=" << filename << ":calls:AVERAGE ";
+	cmdCreate << "DEF:callsmax=" << filename << ":calls:MAX ";
+	cmdCreate << "AREA:callsmax#00FF00:\"calls max\" ";
+	cmdCreate << "LINE1:callsavg#0000FF:\"Calls avg\\t\" ";
+	cmdCreate << "LINE1:callsmin#FF0000:\"Calls min\\t\" ";
+	cmdCreate << "GPRINT:callsmax:LAST:\"Cur\\: %5.0lf\" ";
+	cmdCreate << "GPRINT:callsmax:AVERAGE:\"Avg\\: %5.2lf\" ";
+	cmdCreate << "GPRINT:callsmax:MAX:\"Max\\: %5.0lf\" ";
+	cmdCreate << "GPRINT:callsmax:MIN:\"Min\\: %5.0lf\\t\\t\\t\" ";
+	int res = system(cmdCreate.str().c_str());
+	if (verbosity > 1) syslog(LOG_NOTICE, "Create graph's args:%s\nRetVal:%d", cmdCreate.str().c_str(), res);
+	return res;
+/*	FILE* destFile;
+	destFile = fopen("/tmp/pokusne", "wb");
+	fwrite(cmdCreate.str().c_str(), 1, strlen(cmdCreate.str().c_str()), destFile);
+	fclose(destFile);
+*/
+}
+
+int rrd_vm_create_graph_tacCPU(char *filename, char *fromatstyle, char *toatstyle, int resx, int resy, short slope, short icon) {
+    std::ostringstream cmdCreate;
+
+	cmdCreate << "`which rrdtool` graph " << filename << ".png ";
+	cmdCreate << "-w " << resx << " -h " << resy << " -a PNG ";
+	cmdCreate << "--start " << fromatstyle << " --end " << toatstyle << " ";
+	cmdCreate << "--font DEFAULT:7: ";
+	cmdCreate << "--title \"tac CPU\" ";
+	cmdCreate << "--watermark \"`date`\" ";
+	cmdCreate << "--vertical-label \"threads\" ";
+	cmdCreate << "--lower-limit 0 ";
+	cmdCreate << "--x-grid MINUTE:10:HOUR:1:MINUTE:120:0:%R ";
+	cmdCreate << "--units-exponent 0 ";
+	cmdCreate << "--full-size-mode ";
+	if (slope) cmdCreate << "--slope-mode ";
+	if (icon) cmdCreate << "--only-graph "; //height need to be < 32px
+	cmdCreate << "DEF:tac=" << filename << ":tacCPU:MAX ";
+	cmdCreate << "LINE1:tac#0000FF:\"Usage\\t\" ";
+	cmdCreate << "GPRINT:tac:LAST:\"Cur\\: %5.2lf\" ";
+	cmdCreate << "GPRINT:tac:AVERAGE:\"Avg\\: %5.2lf\" ";
+	cmdCreate << "GPRINT:tac:MAX:\"Max\\: %5.2lf\" ";
+	cmdCreate << "GPRINT:tac:MIN:\"Min\\: %5.2lf\\t\\t\\t\" ";
+	int res = system(cmdCreate.str().c_str());
+	if (verbosity > 1) syslog(LOG_NOTICE, "Create graph's args:%s\nRetVal:%d", cmdCreate.str().c_str(), res);
+	return res;
+}
+
+int rrd_vm_create_graph_RSSVSZ(char *filename, char *fromatstyle, char *toatstyle, int resx, int resy, short slope, short icon) {
+    std::ostringstream cmdCreate;
+
+	cmdCreate << "`which rrdtool` graph " << filename << ".png ";
+	cmdCreate << "-w " << resx << " -h " << resy << " -a PNG ";
+	cmdCreate << "--start " << fromatstyle << " --end " << toatstyle << " ";
+	cmdCreate << "--font DEFAULT:7: ";
+	cmdCreate << "--title \"RSS_VSZ\" ";
+	cmdCreate << "--watermark \"`date`\" ";
+	cmdCreate << "--vertical-label \"MB\" ";
+	cmdCreate << "--lower-limit 0 ";
+	cmdCreate << "--x-grid MINUTE:10:HOUR:1:MINUTE:120:0:%R ";
+	cmdCreate << "--units-exponent 0 ";
+	cmdCreate << "--full-size-mode ";
+	if (slope) cmdCreate << "--slope-mode ";
+	if (icon) cmdCreate << "--only-graph "; //height need to be < 32px
+	cmdCreate << "DEF:rss=" << filename << ":RSS:MAX ";
+	cmdCreate << "DEF:vsz=" << filename << ":VSZ:MAX ";
+	cmdCreate << "AREA:vsz#00FF00:\"Mem Usage VSZ\\t\" ";
+	cmdCreate << "GPRINT:vsz:LAST:\"Cur\\: %5.0lf\" ";
+	cmdCreate << "GPRINT:vsz:AVERAGE:\"Avg\\: %5.2lf\" ";
+	cmdCreate << "GPRINT:vsz:MAX:\"Max\\: %5.0lf\" ";
+	cmdCreate << "GPRINT:vsz:MIN:\"Min\\: %5.0lf\\t\\t\\t\" ";
+	cmdCreate << "AREA:rss#0000FF:\"-S0\\t\" ";
+	cmdCreate << "GPRINT:rss:LAST:\"Cur\\: %5.0lf\" ";
+	cmdCreate << "GPRINT:rss:AVERAGE:\"Avg\\: %5.2lf\" ";
+	cmdCreate << "GPRINT:rss:MAX:\"Max\\: %5.0lf\" ";
+	cmdCreate << "GPRINT:rss:MIN:\"Min\\: %5.0lf\\t\\t\\t\" ";
+	int res = system(cmdCreate.str().c_str());
+	if (verbosity > 1) syslog(LOG_NOTICE, "Create graph's args:%s\nRetVal:%d", cmdCreate.str().c_str(), res);
+	return res;
+}
+
 int vm_rrd_create_rrddrop(const char *filename) {
     std::ostringstream cmdCreate;
 
