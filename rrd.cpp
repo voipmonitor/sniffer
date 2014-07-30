@@ -19,35 +19,6 @@
 #define MAX_LENGTH	10000
 
 
-int vm_rrd_create_rrddrop(const char *filename) {
-    std::ostringstream cmdCreate;
-
-    cmdCreate << "create " << filename << " ";
-    cmdCreate << "--start N --step 10 ";
-    cmdCreate << "DS:exceeded:GAUGE:20:0:1000000 ";
-    cmdCreate << "DS:packets:GAUGE:20:0:1000000 ";
-    cmdCreate << "RRA:MIN:0.5:12:1440 ";
-    cmdCreate << "RRA:MAX:0.5:12:1440 ";
-    cmdCreate << "RRA:AVERAGE:0.5:1:1440";
-	int res = vm_rrd_create(filename, cmdCreate.str().c_str());
-	return (res);
-}
-
-int vm_rrd_create_rrdheap(const char *filename) {
-    std::ostringstream cmdCreate;
-
-    cmdCreate << "create " << filename << " ";
-    cmdCreate << "--start N --step 10 ";
-    cmdCreate << "DS:buffer:GAUGE:20:0:1000000 ";
-    cmdCreate << "DS:trash:GAUGE:20:0:1000000 ";
-    cmdCreate << "DS:ratio:GAUGE:20:0:10000000 ";
-    cmdCreate << "RRA:MIN:0.5:12:1440 ";
-    cmdCreate << "RRA:MAX:0.5:12:1440 ";
-    cmdCreate << "RRA:AVERAGE:0.5:1:1440";
-	int res = vm_rrd_create(filename, cmdCreate.str().c_str());
-	return (res);
-}
-
 int vm_rrd_create_rrdPS(const char *filename) {
     std::ostringstream cmdCreate;
 

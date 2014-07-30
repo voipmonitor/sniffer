@@ -883,16 +883,6 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 
 //For RRD updates
 	struct {
-		double buffer = 0;
-		double trash = 0;
-		double ratio = 0;
-	} rrdheap;
-	struct {
-		unsigned long exceeded = 0;
-		unsigned long packets = 0;
-	} rrddrop;
-
-	struct {
 		int64_t C = 0;
 		uint64_t S0 = 0;
 		uint64_t S1 = 0;
@@ -1154,13 +1144,6 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 		u_int64_t ac_sizeOfDataInMemory = asyncClose.getSizeOfDataInMemory();
 		extern int opt_pcap_dump_asyncwrite_maxsize;
 		outStr << setprecision(0) << 100 * (double)ac_sizeOfDataInMemory / (opt_pcap_dump_asyncwrite_maxsize * 1024ull * 1024ull) << "] ";
-		
-		if(opt_rrd) {
-			rrdheap.buffer = memoryBufferPerc;
-			rrdheap.trash = memoryBufferPerc_trash;
-			rrdheap.ratio =  100 * (double)ac_sizeOfDataInMemory / (opt_pcap_dump_asyncwrite_maxsize * 1024ull * 1024ull);
-		}
-
 		if(this->instancePcapHandle) {
 			unsigned long bypassBufferSizeExeeded = this->instancePcapHandle->pcapStat_get_bypass_buffer_size_exeeded();
 			string statPacketDrops = this->instancePcapHandle->getStatPacketDrop();
@@ -1168,13 +1151,11 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 				outStr << "drop[";
 				if(bypassBufferSizeExeeded) {
 					outStr << "H:" << bypassBufferSizeExeeded;
-					if(opt_rrd) rrddrop.exceeded = bypassBufferSizeExeeded;
 				}
 				if(!statPacketDrops.empty()) {
 					if(bypassBufferSizeExeeded) {
 						outStr << " ";
 					}
-					if(opt_rrd) rrddrop.packets = this->instancePcapHandle->getCountPacketDrop();
 					outStr << statPacketDrops;
 				}
 				outStr << "] ";
@@ -1328,10 +1309,6 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 			sprintf(filename, "%s/rrd/" ,opt_chdir);
 			mkdir_r(filename, 0777);
 
-			sprintf(filename, "%s/rrd/db-drop.rrd", opt_chdir);
-			vm_rrd_create_rrddrop(filename);
-			sprintf(filename, "%s/rrd/db-heap.rrd", opt_chdir);
-			vm_rrd_create_rrdheap(filename);
 			sprintf(filename, "%s/rrd/db-PS.rrd", opt_chdir);
 			vm_rrd_create_rrdPS(filename);
 			sprintf(filename, "%s/rrd/db-SQLq.rrd", opt_chdir);
@@ -1352,29 +1329,14 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 			std::ostringstream cmdUpdate;
 			//UPDATES:
 
-			//vm_rrd_update_rrddrop();
-			cmdUpdate << "N:" << rrddrop.exceeded;
-			cmdUpdate <<  ":" << rrddrop.packets;
-			sprintf(filename, "%s/rrd/db-drop.rrd", opt_chdir);
-			int rrdres = vm_rrd_update(filename, cmdUpdate.str().c_str());
-
-			//vm_rrd_update_rrdheap();
-			cmdUpdate.str(std::string());
-			cmdUpdate << "N:" << rrdheap.buffer;
-			cmdUpdate <<  ":" << rrdheap.trash;
-			cmdUpdate <<  ":" << rrdheap.ratio;
-			sprintf(filename, "%s/rrd/db-heap.rrd", opt_chdir);
-			rrdres = vm_rrd_update(filename, cmdUpdate.str().c_str());
-
 			//vm_rrd_update_rrdPS();
-			cmdUpdate.str(std::string());
 			cmdUpdate << "N:" << rrdPS.C;
 			cmdUpdate <<  ":" << rrdPS.S0;
 			cmdUpdate <<  ":" << rrdPS.S1;
 			cmdUpdate <<  ":" << rrdPS.R;
 			cmdUpdate <<  ":" << rrdPS.A;
 			sprintf(filename, "%s/rrd/db-PS.rrd", opt_chdir);
-			rrdres = vm_rrd_update(filename, cmdUpdate.str().c_str());
+			int rrdres = vm_rrd_update(filename, cmdUpdate.str().c_str());
 
 //			vm_rrd_update_rrdSQLq();
 			cmdUpdate.str(std::string());
@@ -1396,7 +1358,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 
 //			vm_rrd_update_rrdtacCPU();
 			cmdUpdate.str(std::string());
-			cmdUpdate << "N:" << (double) ((rrdtacCPU.nmt * 100) + (rrdtacCPU.lastt / 2));
+			cmdUpdate << "N:" << ((rrdtacCPU.nmt * 100) + (rrdtacCPU.lastt / 2));
 			sprintf(filename, "%s/rrd/db-tacCPU.rrd", opt_chdir);
 			rrdres = vm_rrd_update(filename, cmdUpdate.str().c_str());
 

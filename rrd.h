@@ -1,6 +1,4 @@
 //int vm_rrd_calls_update(char *filename, int eachseconds, struct timevalue *last_updated)
-int vm_rrd_create_rrdheap(const char *filename);
-int vm_rrd_create_rrddrop(const char *filename);
 int vm_rrd_create_rrdPS(const char *filename);
 int vm_rrd_create_rrdSQLq(const char *filename);
 int vm_rrd_create_rrdtCPU(const char *filename);
@@ -12,6 +10,7 @@ int vm_rrd_create_rrdcallscounter(const char *filename);
 int vm_rrd_create(const char *filename, const char *cmdline);
 int vm_rrd_update(const char *filename, const char *cmdline);
 int rrd_call(const char *aLine);
+//int vm_rrd_update(char *filename, int value);
 
 #ifndef RRDLIB_H_4FD7D37D56A448C392AF46508C56D3CC
 #define RRDLIB_H_4FD7D37D56A448C392AF46508C56D3CC
