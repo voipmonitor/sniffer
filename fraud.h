@@ -214,7 +214,9 @@ public:
 		bool isInternational;
 		string normalizeNumber = checkInternational->normalize(number, &isInternational);
 		if(!isInternational) {
-			return(checkInternational->getLocalCountry());
+			string country = checkInternational->getLocalCountry();
+			countries->push_back(country);
+			return(country);
 		}
 		number = normalizeNumber.c_str();
 		vector<CountryPrefix_rec>::iterator findRecIt;

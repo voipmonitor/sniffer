@@ -1297,6 +1297,20 @@ getwav:
 			cerr << "Error sending data to client" << endl;
 			return -1;
 		}
+	} else if(strstr(buf, "sipports") != NULL) {
+		ostringstream outStrSipPorts;
+		extern char *sipportmatrix;
+		for(int i = 0; i < 65537; i++) {
+			if(sipportmatrix[i]) {
+				outStrSipPorts << i << ',';
+			}
+		}
+		outStrSipPorts << endl;
+		string strSipPorts = outStrSipPorts.str();
+		if ((size = sendvm(client, sshchannel, strSipPorts.c_str(), strSipPorts.length(), 0)) == -1){
+			cerr << "Error sending data to client" << endl;
+			return -1;
+		}
 	} else {
 		if ((size = sendvm(client, sshchannel, "command not found\n", 18, 0)) == -1){
 			cerr << "Error sending data to client" << endl;
