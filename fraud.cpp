@@ -883,10 +883,10 @@ void FraudAlert_chc::evCall(sFraudCallInfo *callInfo) {
 	switch(callInfo->typeCallInfo) {
 	case sFraudCallInfo::typeCallInfo_beginCall:
 		{
-		if(!isLocalIP(callInfo->caller_ip) &&
-		   this->changeLocationOk.size() &&
-		   (countryCodes->isLocationIn(callInfo->country_code_caller_ip.c_str(), &this->changeLocationOk) ||
-		    countryCodes->isLocationIn(callInfo->continent_code_caller_ip.c_str(), &this->changeLocationOk, true))) {
+		if(isLocalIP(callInfo->caller_ip) ||
+		   (this->changeLocationOk.size() &&
+		    (countryCodes->isLocationIn(callInfo->country_code_caller_ip.c_str(), &this->changeLocationOk) ||
+		     countryCodes->isLocationIn(callInfo->continent_code_caller_ip.c_str(), &this->changeLocationOk, true)))) {
 			return;
 		}
 		bool diffCountry = false;
@@ -938,10 +938,10 @@ void FraudAlert_chcr::evCall(sFraudCallInfo *callInfo) {
 	switch(callInfo->typeCallInfo) {
 	case sFraudCallInfo::typeCallInfo_connectCall:
 		{
-		if(!isLocalIP(callInfo->caller_ip) &&
-		   this->changeLocationOk.size() &&
-		   (countryCodes->isLocationIn(callInfo->country_code_caller_ip.c_str(), &this->changeLocationOk) ||
-		    countryCodes->isLocationIn(callInfo->continent_code_caller_ip.c_str(), &this->changeLocationOk, true))) {
+		if(isLocalIP(callInfo->caller_ip) ||
+		   (this->changeLocationOk.size() &&
+		    (countryCodes->isLocationIn(callInfo->country_code_caller_ip.c_str(), &this->changeLocationOk) ||
+		     countryCodes->isLocationIn(callInfo->continent_code_caller_ip.c_str(), &this->changeLocationOk, true)))) {
 			return;
 		}
 		bool diffCountry = false;
