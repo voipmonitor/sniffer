@@ -18,7 +18,6 @@
 #include "sniff.h"
 #include "pstat.h"
 #include "ip_frag.h"
-#include "rrd.h"
 
 #define READ_THREADS_MAX 20
 #define DLT_TYPES_MAX 10

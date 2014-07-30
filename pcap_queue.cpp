@@ -68,8 +68,6 @@ void daemonizeOutput(string error);
 extern int verbosity;
 extern int verbosityE;
 extern int terminating;
-extern int opt_rrd;
-extern char opt_chdir[1024];
 extern int opt_udpfrag;
 extern int opt_skinny;
 extern int opt_ipaccount;
@@ -880,42 +878,6 @@ void PcapQueue::setInstancePcapHandle(PcapQueue *pcapQueue) {
 }
 
 void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
-
-//For RRD updates
-	struct {
-		int64_t C = 0;
-		uint64_t S0 = 0;
-		uint64_t S1 = 0;
-		uint64_t R = 0;
-		uint64_t A = 0;
-	} rrdPS;
-	struct {
-		int C = 0;
-		int M = 0;
-		int R = 0;
-		int Cl = 0;
-		int H = 0;
-	} rrdSQLq;
-	struct {
-		double t0 = 0.0;
-		double t1 = 0.0;
-		double t2 = 0.0;
-	} rrdtCPU;
-	struct {
-		int nmt = 0;        //pocet vlaken
-		double lastt = 0.0; //vytizeni posledniho vlakna
-	} rrdtacCPU;
-	struct {
-		double rss = 0;
-		double vsize = 0;
-	} rrdRSSVSZ;
-	double rrdspeedmbs = 0.0;
-	int rrdcallscounter = 0;
-
-
-
-
-
 	if(!VERBOSE && !DEBUG_VERBOSE) {
 		return;
 	}
@@ -978,7 +940,6 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 			if(opt_ipaccount) {
 				outStr << "ipacc_buffer[" << lengthIpaccBuffer() << "] ";
 			}
-			if (opt_rrd) rrdcallscounter = calltable->calls_listMAP.size();
 			extern u_int64_t counter_calls;
 			extern u_int64_t counter_sip_packets[2];
 			extern u_int64_t counter_rtp_packets;
@@ -991,35 +952,30 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 				outStr << "PS[C:";
 				if(this->counter_calls_old) {
 					outStr << (counter_calls - this->counter_calls_old) / statPeriod;
-					if (opt_rrd) rrdPS.C = (counter_calls - this->counter_calls_old) / statPeriod;
 				} else {
 					outStr << "-";
 				}
 				outStr << " S:";
 				if(this->counter_sip_packets_old[0]) {
 					outStr << (counter_sip_packets[0] - this->counter_sip_packets_old[0]) / statPeriod;
-					if (opt_rrd) rrdPS.S0 = (counter_sip_packets[0] - this->counter_sip_packets_old[0]) / statPeriod;
 				} else {
 					outStr << "-";
 				}
 				outStr << "/";
 				if(this->counter_sip_packets_old[1]) {
 					outStr << (counter_sip_packets[1] - this->counter_sip_packets_old[1]) / statPeriod;
-					if (opt_rrd) rrdPS.S1 = (counter_sip_packets[1] - this->counter_sip_packets_old[1]) / statPeriod;
 				} else {
 					outStr << "-";
 				}
 				outStr << " R:";
 				if(this->counter_rtp_packets_old) {
 					outStr << (counter_rtp_packets - this->counter_rtp_packets_old) / statPeriod;
-					if (opt_rrd) rrdPS.R = (counter_rtp_packets - this->counter_rtp_packets_old) / statPeriod;
 				} else {
 					outStr << "-";
 				}
 				outStr << " A:";
 				if(this->counter_all_packets_old) {
 					outStr << (counter_all_packets - this->counter_all_packets_old) / statPeriod;
-					if (opt_rrd) rrdPS.A = (counter_all_packets - this->counter_all_packets_old) / statPeriod;
 				} else {
 					outStr << "-";
 				}
@@ -1043,7 +999,6 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 							sizeSQLq = 0;
 						}
 					}
-					if (opt_rrd) rrdSQLq.C += sizeSQLq;
 					outStr << sizeSQLq;
 				}
 			}
@@ -1058,7 +1013,6 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 							sizeSQLq = 0;
 						}
 					}
-					if (opt_rrd) rrdSQLq.M += sizeSQLq;
 					outStr << sizeSQLq;
 				}
 			}
@@ -1073,7 +1027,6 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 							sizeSQLq = 0;
 						}
 					}
-					if (opt_rrd) rrdSQLq.R += sizeSQLq;
 					outStr << sizeSQLq;
 				}
 			}
@@ -1084,7 +1037,6 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 			sizeSQLq = sqlStore->getSize(STORE_PROC_ID_CLEANSPOOL);
 			if(sizeSQLq >= 0) {
 				outStr << " Cl:" << sizeSQLq;
-				if (opt_rrd) rrdSQLq.Cl = sizeSQLq;
 			}
 			for(int i = 0; i < opt_mysqlstore_max_threads_http; i++) {
 				sizeSQLq = sqlStore->getSize(STORE_PROC_ID_HTTP_1 + i);
@@ -1094,7 +1046,6 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 					} else {
 						outStr << " H:";
 					}
-					if (opt_rrd) rrdSQLq.H += sizeSQLq;
 					outStr << sizeSQLq;
 				}
 			}
@@ -1174,7 +1125,6 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 		double speed = this->pcapStat_get_speed_mb_s(statPeriod);
 		if(speed >= 0) {
 			outStr << "[" << setprecision(1) << speed << "Mb/s] ";
-			if (opt_rrd) rrdspeedmbs = speed;
 		}
 		if(opt_cachedir[0] != '\0') {
 			outStr << "cdq[" << calltable->files_queue.size() << "][" << ((float)(cachedirtransfered - lastcachedirtransfered) / 1024.0 / 1024.0 / (float)statPeriod) << " MB/s] ";
@@ -1188,7 +1138,6 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 		double t0cpu = this->instancePcapHandle->getCpuUsagePerc(false, true);
 		if(t0cpu >= 0) {
 			outStrStat << "t0CPU[" << setprecision(1) << t0cpu << "%] ";
-			if (opt_rrd) rrdtCPU.t0 = t0cpu;
 		}
 	}
 	string t1cpu = this->getCpuUsage(false, true);
@@ -1198,13 +1147,11 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 		double t1cpu = this->getCpuUsagePerc(false, true);
 		if(t1cpu >= 0) {
 			outStrStat << "t1CPU[" << setprecision(1) << t1cpu << "%] ";
-			if (opt_rrd) rrdtCPU.t1 = t1cpu;
 		}
 	}
 	double t2cpu = this->getCpuUsagePerc(true, true);
 	if(t2cpu >= 0) {
 		outStrStat << "t2CPU[" << setprecision(1) << t2cpu << "%] ";
-		if (opt_rrd) rrdtCPU.t2 = t2cpu;
 	}
 	if(tcpReassembly) {
 		double thttp_cpu = tcpReassembly->getCpuUsagePerc(true);
@@ -1233,10 +1180,6 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 			outStrStat << setprecision(1) << v_tac_cpu[i];
 		}
 		outStrStat << "%] ";
-		if (opt_rrd) {
-			rrdtacCPU.nmt = v_tac_cpu.size();
-			rrdtacCPU.lastt = last_tac_cpu;
-		}
 	}
 	if(last_tac_cpu > 95) {
 		asyncClose.addThread();
@@ -1248,7 +1191,6 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 	long unsigned int rss = this->getProcRssUsage(true);
 	if(rss > 0) {
 		outStrStat << setprecision(0) << (double)rss/1024/1024;
-		if (opt_rrd) rrdRSSVSZ.rss = (double)rss/1024/1024;
 	}
 	long unsigned int vsize = this->getProcVsizeUsage();
 	if(vsize > 0) {
@@ -1256,7 +1198,6 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 			outStrStat << '|';
 		}
 		outStrStat << setprecision(0) << (double)vsize/1024/1024;
-		if (opt_rrd) rrdRSSVSZ.vsize =(double)vsize/1024/1024;
 	}
 	outStrStat << "]MB ";
 	pbStatString = outStr.str() + outStrStat.str();
@@ -1300,88 +1241,6 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 	sumBlocksCounterOut[1] = sumBlocksCounterOut[0];
 	sumPacketsSize[1] = sumPacketsSize[0];
 	sumPacketsSizeCompress[1] = sumPacketsSizeCompress[0];
-
-	if (opt_rrd) {
-		if (opt_rrd == 1) {
-			//CREATE:
-			//syslog(LOG_NOTICE,"Je cas vytvaret RRD\n");
-			char filename[1000];
-			sprintf(filename, "%s/rrd/" ,opt_chdir);
-			mkdir_r(filename, 0777);
-
-			sprintf(filename, "%s/rrd/db-PS.rrd", opt_chdir);
-			vm_rrd_create_rrdPS(filename);
-			sprintf(filename, "%s/rrd/db-SQLq.rrd", opt_chdir);
-			vm_rrd_create_rrdSQLq(filename);
-			sprintf(filename, "%s/rrd/db-tCPU.rrd", opt_chdir);
-			vm_rrd_create_rrdtCPU(filename);
-			sprintf(filename, "%s/rrd/db-tacCPU.rrd", opt_chdir);
-			vm_rrd_create_rrdtacCPU(filename);
-			sprintf(filename, "%s/rrd/db-RSSVSZ.rrd", opt_chdir);
-			vm_rrd_create_rrdRSSVSZ(filename);
-			sprintf(filename, "%s/rrd/db-speedmbs.rrd", opt_chdir);
-			vm_rrd_create_rrdspeedmbs(filename);
-			sprintf(filename, "%s/rrd/db-callscounter.rrd", opt_chdir);
-			vm_rrd_create_rrdcallscounter(filename);
-			opt_rrd ++;
-		} else {
-			char filename[1000];
-			std::ostringstream cmdUpdate;
-			//UPDATES:
-
-			//vm_rrd_update_rrdPS();
-			cmdUpdate << "N:" << rrdPS.C;
-			cmdUpdate <<  ":" << rrdPS.S0;
-			cmdUpdate <<  ":" << rrdPS.S1;
-			cmdUpdate <<  ":" << rrdPS.R;
-			cmdUpdate <<  ":" << rrdPS.A;
-			sprintf(filename, "%s/rrd/db-PS.rrd", opt_chdir);
-			int rrdres = vm_rrd_update(filename, cmdUpdate.str().c_str());
-
-//			vm_rrd_update_rrdSQLq();
-			cmdUpdate.str(std::string());
-			cmdUpdate << "N:" << rrdSQLq.C;
-			cmdUpdate <<  ":" << rrdSQLq.M;
-			cmdUpdate <<  ":" << rrdSQLq.R;
-			cmdUpdate <<  ":" << rrdSQLq.Cl;
-			cmdUpdate <<  ":" << rrdSQLq.H;
-			sprintf(filename, "%s/rrd/db-SQLq.rrd", opt_chdir);
-			rrdres = vm_rrd_update(filename, cmdUpdate.str().c_str());
-
-//			vm_rrd_update_rrdtCPU();
-			cmdUpdate.str(std::string());
-			cmdUpdate << "N:" << rrdtCPU.t0;
-			cmdUpdate <<  ":" << rrdtCPU.t1;
-			cmdUpdate <<  ":" << rrdtCPU.t2;
-			sprintf(filename, "%s/rrd/db-tCPU.rrd", opt_chdir);
-			rrdres = vm_rrd_update(filename, cmdUpdate.str().c_str());
-
-//			vm_rrd_update_rrdtacCPU();
-			cmdUpdate.str(std::string());
-			cmdUpdate << "N:" << ((rrdtacCPU.nmt * 100) + (rrdtacCPU.lastt / 2));
-			sprintf(filename, "%s/rrd/db-tacCPU.rrd", opt_chdir);
-			rrdres = vm_rrd_update(filename, cmdUpdate.str().c_str());
-
-//			vm_rrd_update_rrdRSSVSZ();
-			cmdUpdate.str(std::string());
-			cmdUpdate << "N:" << rrdRSSVSZ.rss;
-			cmdUpdate <<  ":" << rrdRSSVSZ.vsize;
-			sprintf(filename, "%s/rrd/db-RSSVSZ.rrd", opt_chdir);
-			rrdres = vm_rrd_update(filename, cmdUpdate.str().c_str());
-
-//			vm_rrd_update_rrdspeedmbs();
-			cmdUpdate.str(std::string());
-			cmdUpdate << "N:" << rrdspeedmbs;
-			sprintf(filename, "%s/rrd/db-speedmbs.rrd", opt_chdir);
-			rrdres = vm_rrd_update(filename, cmdUpdate.str().c_str());
-
-//			vm_rrd_update_rrdcallscounter();
-			cmdUpdate.str(std::string());
-			cmdUpdate << "N:" << rrdcallscounter;
-			sprintf(filename, "%s/rrd/db-callscounter.rrd", opt_chdir);
-			rrdres = vm_rrd_update(filename, cmdUpdate.str().c_str());
-		}
-	}
 }
 
 string PcapQueue::pcapDropCountStat() {

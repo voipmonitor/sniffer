@@ -75,7 +75,6 @@
 #include "regcache.h"
 #include "config_mysql.h"
 #include "fraud.h"
-#include "rrd.h"
 
 #if defined(QUEUE_MUTEX) || defined(QUEUE_NONBLOCK)
 extern "C" {
@@ -166,8 +165,7 @@ int opt_packetbuffered = 0;	// Make .pcap files writing ‘‘packet-buffered’
 				// more slow method, but you can use partitialy 
 				// writen file anytime, it will be consistent.
 	
-int opt_disableplc = 0 ;	// On or Off packet loss concealment
-int opt_rrd = 1;
+int opt_disableplc = 0 ;	// On or Off packet loss concealment			
 int opt_fork = 1;		// fork or run foreground 
 int opt_saveSIP = 0;		// save SIP packets to pcap file?
 int opt_saveRTP = 0;		// save RTP packets to pcap file?
@@ -1163,9 +1161,6 @@ int load_config(char *fname) {
 	}
 	if((value = ini.GetValue("general", "plcdisable", NULL))) {
 		opt_disableplc = yesno(value);
-	}
-	if((value = ini.GetValue("general", "rrd", NULL))) {
-		opt_rrd = yesno(value);
 	}
 	if((value = ini.GetValue("general", "cleandatabase_cdr", NULL))) {
 		opt_cleandatabase_cdr = atoi(value);
@@ -2787,11 +2782,6 @@ int main(int argc, char *argv[]) {
                         */
 
 		return 1;
-	}
-
-	if(opt_rrd && opt_read_from_file) {
-          //disable update of rrd statistics when reading packets from file
-          opt_rrd = 0; 
 	}
 
 	if(cloud_url[0] != '\0') {
