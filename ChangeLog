@@ -1,5 +1,10 @@
+10.0.11 31.7.2014
+=================
+- fixes fixed jitterbuffer implementation - all versions. Certain packet loss patterns caused high MOS score. 
+
+
 10.0.10 30.7.2014
-================
+=================
 - fix condition for ignore local ip in fraud alerts
 - add sipports command to manager
 - fix set local country for local number in fraud

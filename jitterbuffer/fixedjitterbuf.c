@@ -408,9 +408,8 @@ int fixed_jb_get(struct fixed_jb *jb, struct fixed_jb_frame *frame, long now, lo
 	}
 	
 	/* isn't it too early to play the first frame available?
-	 * be tolerant 20ms
 	 */
-	if (now + 20 < jb->frames->delivery) {
+	if (now  < jb->frames->delivery) {
 
 		/* yes - should interpolate one frame */
 		/* this can happen if sequence number is ok but timestamp in frame is bigger than previous. that comes from asterisk servers which generates its own sequence but timestamp not */
