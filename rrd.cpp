@@ -18,6 +18,90 @@
 #define FALSE		0
 #define MAX_LENGTH	10000
 
+/*
+int sendout_from_stdout_of_command(char command) {
+//using pipe for sending stdout from given command to sendvm;
+
+	int rets;	
+	int res = 0;
+	FILE *inpipe;
+	long total = 0;
+
+	inpipe = popen(command, "r");
+	if (!inpipe) {
+		syslog(LOG_ERR, "sendout_from_stdout_of_command: couldn't open pipe for command %s", command);
+		return -1;
+	} else {
+		if (verbosity > 1)
+			syslog(LOG_NOTICE, "Pipe <%s> opened for reading max %i bytes blocks", command, BUFSIZE * sizeof(char));
+	} 
+	rets = fread(buffer, sizeof(buffer[0]), size, inpipe);
+	while ((size = read(pipe, buffer, BUFSIZE)) > 0) {
+		write(dest, buf, size);
+		total += size;
+	}
+
+	pclose(inpipe);
+
+	if (verbosity > 1) syslog(LOG_NOTICE, "Pipe RET %li bytes", total);
+
+	return res;
+}
+*/
+
+void rrd_vm_create_graph_PS_command (char *filename, char *fromatstyle, char *toatstyle, int resx, int resy, short slope, short icon, char *dstfile, char *buffer, int maxsize) {
+    std::ostringstream cmdCreate;
+	
+	if (dstfile == NULL) 
+		cmdCreate << "`which rrdtool` graph - ";						//graph to stdout instead of file
+	else
+		cmdCreate << "`which rrdtool` graph " << dstfile << ".png ";
+	cmdCreate << "-w " << resx << " -h " << resy << " -a PNG ";
+	cmdCreate << "--start " << fromatstyle << " --end " << toatstyle << " ";
+	cmdCreate << "--font DEFAULT:0:Courier ";
+	cmdCreate << "--title \"PS\" ";
+	cmdCreate << "--watermark \"`date`\" ";
+	cmdCreate << "--vertical-label \"queries\" ";
+	cmdCreate << "--lower-limit 0 ";
+//	cmdCreate << "--x-grid MINUTE:10:HOUR:1:MINUTE:120:0:%R ";
+	cmdCreate << "--units-exponent 0 ";
+	cmdCreate << "--full-size-mode ";
+	if (slope) cmdCreate << "--slope-mode ";
+	if (icon) cmdCreate << "--only-graph ";
+	cmdCreate << "DEF:PSC=" << filename << ":PS-C:MAX ";
+	cmdCreate << "DEF:PSS0=" << filename << ":PS-S0:MAX ";
+	cmdCreate << "DEF:PSS1=" << filename << ":PS-S1:MAX ";
+	cmdCreate << "DEF:PSR=" << filename << ":PS-R:MAX ";
+	cmdCreate << "DEF:PSA=" << filename << ":PS-A:MAX ";
+	cmdCreate << "LINE1:PSC#0000FF:\"-C\\t\" ";
+	cmdCreate << "GPRINT:PSC:LAST:\"Cur\\: %5.0lf\" ";
+	cmdCreate << "GPRINT:PSC:AVERAGE:\"Avg\\: %5.2lf\" ";
+	cmdCreate << "GPRINT:PSC:MAX:\"Max\\: %5.0lf\" ";
+	cmdCreate << "GPRINT:PSC:MIN:\"Min\\: %5.0lf\\t\\t\\t\" ";
+	cmdCreate << "LINE1:PSS0#00FF00:\"-S0\\t\" ";
+	cmdCreate << "GPRINT:PSS0:LAST:\"Cur\\: %5.0lf\" ";
+	cmdCreate << "GPRINT:PSS0:AVERAGE:\"Avg\\: %5.2lf\" ";
+	cmdCreate << "GPRINT:PSS0:MAX:\"Max\\: %5.0lf\" ";
+	cmdCreate << "GPRINT:PSS0:MIN:\"Min\\: %5.0lf\\t\\t\\t\" ";
+	cmdCreate << "LINE1:PSS1#FF0000:\"-S1\\t\" ";
+	cmdCreate << "GPRINT:PSS1:LAST:\"Cur\\: %5.0lf\" ";
+	cmdCreate << "GPRINT:PSS1:AVERAGE:\"Avg\\: %5.2lf\" ";
+	cmdCreate << "GPRINT:PSS1:MAX:\"Max\\: %5.0lf\" ";
+	cmdCreate << "GPRINT:PSS1:MIN:\"Min\\: %5.0lf\\t\\t\\t\" ";
+	cmdCreate << "LINE1:PSR#00FFFF:\"-R\\t\" ";
+	cmdCreate << "GPRINT:PSR:LAST:\"Cur\\: %5.0lf\" ";
+	cmdCreate << "GPRINT:PSR:AVERAGE:\"Avg\\: %5.2lf\" ";
+	cmdCreate << "GPRINT:PSR:MAX:\"Max\\: %5.0lf\" ";
+	cmdCreate << "GPRINT:PSR:MIN:\"Min\\: %5.0lf\\t\\t\\t\" ";
+	cmdCreate << "LINE1:PSA#FFFF00:\"-A\\t\" ";
+	cmdCreate << "GPRINT:PSA:LAST:\"Cur\\: %5.0lf\" ";
+	cmdCreate << "GPRINT:PSA:AVERAGE:\"Avg\\: %5.2lf\" ";
+	cmdCreate << "GPRINT:PSA:MAX:\"Max\\: %5.0lf\" ";
+	cmdCreate << "GPRINT:PSA:MIN:\"Min\\: %5.0lf\\t\\t\\t\" ";
+	std::string str ("Test string...");
+	std::size_t length = cmdCreate.str().copy(buffer, maxsize, 0);
+	buffer[length]='\0';	
+}
 
 int rrd_vm_create_graph_PS(char *filename, char *fromatstyle, char *toatstyle, int resx, int resy, short slope, short icon, char *dstfile, char *buffer, int size) {
     std::ostringstream cmdCreate;
@@ -37,7 +121,7 @@ int rrd_vm_create_graph_PS(char *filename, char *fromatstyle, char *toatstyle, i
 	cmdCreate << "--units-exponent 0 ";
 	cmdCreate << "--full-size-mode ";
 	if (slope) cmdCreate << "--slope-mode ";
-	if (icon) cmdCreate << "--only-graph "; //height need to be < 32px
+	if (icon) cmdCreate << "--only-graph ";
 	cmdCreate << "DEF:PSC=" << filename << ":PS-C:MAX ";
 	cmdCreate << "DEF:PSS0=" << filename << ":PS-S0:MAX ";
 	cmdCreate << "DEF:PSS1=" << filename << ":PS-S1:MAX ";
@@ -112,7 +196,7 @@ int rrd_vm_create_graph_speed(char *filename, char *fromatstyle, char *toatstyle
 	cmdCreate << "--units-exponent 0 ";
 	cmdCreate << "--full-size-mode ";
 	if (slope) cmdCreate << "--slope-mode ";
-	if (icon) cmdCreate << "--only-graph "; //height need to be < 32px
+	if (icon) cmdCreate << "--only-graph ";
 	cmdCreate << "DEF:speed=" << filename << ":mbs:MAX ";
 	cmdCreate << "AREA:speed#00FF00:\"speed (Mb/s)\" ";
 	cmdCreate << "GPRINT:speed:LAST:\"Cur\\: %5.2lf\" ";
@@ -163,7 +247,7 @@ int rrd_vm_create_graph_SQLq(char *filename, char *fromatstyle, char *toatstyle,
 	cmdCreate << "--units-exponent 0 ";
 	cmdCreate << "--full-size-mode ";
 	if (slope) cmdCreate << "--slope-mode ";
-	if (icon) cmdCreate << "--only-graph "; //height need to be < 32px
+	if (icon) cmdCreate << "--only-graph ";
 	cmdCreate << "DEF:SQLqC=" << filename << ":SQLq-C:MAX ";
 	cmdCreate << "DEF:SQLqM=" << filename << ":SQLq-M:MAX ";
 	cmdCreate << "DEF:SQLqR=" << filename << ":SQLq-R:MAX ";
@@ -238,7 +322,7 @@ int rrd_vm_create_graph_tCPU(char *filename, char *fromatstyle, char *toatstyle,
 	cmdCreate << "--units-exponent 0 ";
 	cmdCreate << "--full-size-mode ";
 	if (slope) cmdCreate << "--slope-mode ";
-	if (icon) cmdCreate << "--only-graph "; //height need to be < 32px
+	if (icon) cmdCreate << "--only-graph ";
 	cmdCreate << "DEF:t0=" << filename << ":tCPU-t0:MAX ";
 	cmdCreate << "DEF:t1=" << filename << ":tCPU-t1:MAX ";
 	cmdCreate << "DEF:t2=" << filename << ":tCPU-t2:MAX ";
@@ -301,7 +385,7 @@ int rrd_vm_create_graph_heap(char *filename, char *fromatstyle, char *toatstyle,
 	cmdCreate << "--units-exponent 0 ";
 	cmdCreate << "--full-size-mode ";
 	if (slope) cmdCreate << "--slope-mode ";
-	if (icon) cmdCreate << "--only-graph "; //height need to be < 32px
+	if (icon) cmdCreate << "--only-graph ";
 	cmdCreate << "DEF:buffer=" << filename << ":buffer:MAX ";
 	cmdCreate << "DEF:trash=" << filename << ":trash:MAX ";
 	cmdCreate << "DEF:ratio=" << filename << ":ratio:MAX ";
@@ -364,7 +448,7 @@ int rrd_vm_create_graph_drop(char *filename, char *fromatstyle, char *toatstyle,
 	cmdCreate << "--units-exponent 0 ";
 	cmdCreate << "--full-size-mode ";
 	if (slope) cmdCreate << "--slope-mode ";
-	if (icon) cmdCreate << "--only-graph "; //height need to be < 32px
+	if (icon) cmdCreate << "--only-graph ";
 	cmdCreate << "DEF:exc=" << filename << ":exceeded:MAX ";
 	cmdCreate << "DEF:pck=" << filename << ":packets:MAX ";
 	cmdCreate << "LINE1:exc#0000FF:\"Buffer overloaded\\t\" ";
@@ -421,7 +505,7 @@ int rrd_vm_create_graph_calls(char *filename, char *fromatstyle, char *toatstyle
 	cmdCreate << "--units-exponent 0 ";
 	cmdCreate << "--full-size-mode ";
 	if (slope) cmdCreate << "--slope-mode ";
-	if (icon) cmdCreate << "--only-graph "; //height need to be < 32px
+	if (icon) cmdCreate << "--only-graph ";
 	cmdCreate << "DEF:callsmin=" << filename << ":calls:MIN ";
 	cmdCreate << "DEF:callsavg=" << filename << ":calls:AVERAGE ";
 	cmdCreate << "DEF:callsmax=" << filename << ":calls:MAX ";
@@ -476,7 +560,7 @@ int rrd_vm_create_graph_tacCPU(char *filename, char *fromatstyle, char *toatstyl
 	cmdCreate << "--units-exponent 0 ";
 	cmdCreate << "--full-size-mode ";
 	if (slope) cmdCreate << "--slope-mode ";
-	if (icon) cmdCreate << "--only-graph "; //height need to be < 32px
+	if (icon) cmdCreate << "--only-graph ";
 	cmdCreate << "DEF:tac=" << filename << ":tacCPU:MAX ";
 	cmdCreate << "LINE1:tac#0000FF:\"Usage\\t\" ";
 	cmdCreate << "GPRINT:tac:LAST:\"Cur\\: %5.2lf\" ";
@@ -527,7 +611,7 @@ int rrd_vm_create_graph_RSSVSZ(char *filename, char *fromatstyle, char *toatstyl
 	cmdCreate << "--units-exponent 0 ";
 	cmdCreate << "--full-size-mode ";
 	if (slope) cmdCreate << "--slope-mode ";
-	if (icon) cmdCreate << "--only-graph "; //height need to be < 32px
+	if (icon) cmdCreate << "--only-graph ";
 	cmdCreate << "DEF:rss=" << filename << ":RSS:MAX ";
 	cmdCreate << "DEF:vsz=" << filename << ":VSZ:MAX ";
 	cmdCreate << "AREA:vsz#00FF00:\"Mem Usage VSZ\\t\" ";

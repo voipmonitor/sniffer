@@ -16,6 +16,8 @@ int vm_rrd_createArgs(char *pName, char *aLine, char **argv);
 int vm_rrd_countArgs(char *aLine);
 int rrd_call(const char *aLine);
 
+void rrd_vm_create_graph_PS_command(char *filename, char *fromatstyle, char *toatstyle, int resx, int resy, short slope, short icon, char *dstfile, char *buffer, int maxsize);
+
 int rrd_vm_create_graph_PS(char *filename, char *fromatstyle, char *toatstyle, int resx, int resy, short slope, short icon, char *dstfile, char *buffer, int size);
 int rrd_vm_create_graph_SQLq(char *filename, char *fromatstyle, char *toatstyle, int resx, int resy, short slope, short icon, char *dstfile, char *buffer, int size);
 int rrd_vm_create_graph_tCPU(char *filename, char *fromatstyle, char *toatstyle, int resx, int resy, short slope, short icon, char *dstfile, char *buffer, int size);

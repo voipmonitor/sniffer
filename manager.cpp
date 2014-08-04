@@ -38,7 +38,8 @@
 #include "rrd.h"
 
 //#define BUFSIZE 1024
-#define BUFSIZE 20480
+//define BUFSIZE 20480
+#define BUFSIZE 4096		//block size?
 
 extern Calltable *calltable;
 extern int opt_manager_port;
@@ -271,6 +272,36 @@ int sendvm(int socket, ssh_channel channel, const char *buf, size_t len, int mod
 	return res;
 }
 
+int sendvm_from_stdout_of_command(char *command, int socket, ssh_channel channel, char *buf, size_t len, int mode) {
+//using pipe for reading from stdout of given command;
+    int retch;
+    long total = 0;
+	int buflen = BUFSIZE;
+
+    FILE *inpipe;
+    inpipe = popen(command, "r");
+//    syslog(LOG_ERR, "ENTERED create command");
+    if (!inpipe) {
+        syslog(LOG_ERR, "sendout_from_stdout_of_command: couldn't open pipe for command %s", command);
+        return -1;
+    } else {
+        if (verbosity > 1)
+            syslog(LOG_NOTICE, "Pipe <%s> opened for reading max %i bytes blocks", command, buflen * sizeof(char));
+    }
+    while (retch = fread(buf, sizeof(char), 1, inpipe) > 0) {
+        total += retch;
+//		syslog(LOG_ERR, "CTU: %li create command", total);
+		if (sendvm(socket, channel, buf, retch, 0) == -1) {
+			if (verbosity > 1) syslog(LOG_NOTICE, "Pipe RET %li bytes, problem sending using sendvm", total);
+			return -1;
+		}
+    }
+    pclose(inpipe);
+    if (total > 0) return 0; 
+		else return -1;
+}
+
+
 int parse_command(char *buf, int size, int client, int eof, const char *buf_long, ManagerClientThread **managerClientThread = NULL, ssh_channel sshchannel = NULL) {
 	char sendbuf[BUFSIZE];
 	u_int32_t uid = 0;
@@ -283,8 +314,8 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 	} else if(strstr(buf, "creategraph") != NULL) {
 		int res = 0;
 		int manager_argc;
-		char *tmp_cmd_line;
-		char **manager_args;
+		char *manager_cmd_line;	//command line passed to voipmonitor manager
+		char **manager_args;	//cuted voipmonitor manager commandline to separate arguments
 
 		if (( manager_argc = vm_rrd_countArgs(buf)) < 6) {	//few arguments passed
 			if (verbosity > 0) syslog(LOG_NOTICE, "parse_command creategraph too few arguments, passed%d need at least 6!\n", manager_argc);
@@ -294,20 +325,20 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 			}
 			return -1;
 		}
-		if ((tmp_cmd_line = (char *) malloc((strlen(buf) + 1) * sizeof(char *))) == NULL) {
+		if ((manager_cmd_line = (char *) malloc((strlen(buf) + 1) * sizeof(char *))) == NULL) {
 			syslog(LOG_ERR, "parse_command creategraph malloc error\n");
 			return -1;
 		}
 		if ((manager_args = (char **) malloc((manager_argc + 1) * sizeof(char *))) == NULL) {
-			free(tmp_cmd_line);
+			free(manager_cmd_line);
 			syslog(LOG_ERR, "parse_command creategraph malloc error2\n");
 			return -1;
 		}
 		
-		memcpy(tmp_cmd_line, buf, strlen(buf));
-		tmp_cmd_line[strlen(buf)] = '\0';
+		memcpy(manager_cmd_line, buf, strlen(buf));
+		manager_cmd_line[strlen(buf)] = '\0';
 
-		if ((manager_argc = vm_rrd_createArgs("voipmonitor-manager", tmp_cmd_line, manager_args))) {
+		if ((manager_argc = vm_rrd_createArgs("voipmonitor-manager", manager_cmd_line, manager_args))) {
 			//Arguments:
 			//0-voipmonitor-manager
 			//1-creategraphs
@@ -338,17 +369,36 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 			resy = atoi(manager_args[6]);
 			if ((manager_argc > 7) && (manager_args[7][0] == '1')) slope = 1; else slope = 0;
 			if ((manager_argc > 8) && (manager_args[8][0] == '1')) icon = 1; else icon = 0;
-			if (manager_argc > 9) dstfile = manager_args[9]; else dstfile = NULL;
+			if (manager_argc > 9) dstfile = manager_args[9]; else dstfile = NULL;			//set dstfile == NULL if not specified
 
-			//limits check discarding graph's legend
+			//limits check discarding graph's legend and axis/grid
 			if ((resx < 600) or (resy < 240)) icon = 1;
 
 			if (verbosity > 0) {
 				if (dstfile != NULL ) snprintf(sendbuf, BUFSIZE, "Creating graph of type %s from:%s to:%s resx:%i resy:%i slopemode=%s, iconmode=%s\n", manager_args[2], fromat, toat, resx, resy, slope?"yes":"no", icon?"yes":"no");
 			}
+
+			char sendcommand[2048];	//buffer for send command string;
 			if (!strncmp(manager_args[2], "PS",3 )) {
 				sprintf(filename, "%s/rrd/db-PS.rrd", opt_chdir);
-				res = rrd_vm_create_graph_PS(filename, fromat, toat, resx, resy, slope, icon, dstfile, sendbuf, sizeof(sendbuf));
+
+				rrd_vm_create_graph_PS_command(filename, fromat, toat, resx, resy, slope, icon, dstfile, sendcommand, sizeof(sendcommand));
+				if (dstfile == NULL) {		//binary data
+					syslog(LOG_NOTICE, "BINARY DATA EVALUATING::");
+					if (sendvm_from_stdout_of_command(sendcommand, client, sshchannel, sendbuf, sizeof(sendbuf), 0) == -1 ){
+						cerr << "Error sending data to client 2" << endl;
+						free (manager_cmd_line);
+						free (manager_args);
+						return -1;
+					}
+				} else {				//string data
+					if ((size = sendvm(client, sshchannel, sendbuf, strlen(sendbuf), 0)) == -1){
+						cerr << "Error sending data to client 2" << endl;
+						free (manager_cmd_line);
+						free (manager_args);
+						return -1;					
+					}
+				}
 			} else if (!strncmp(manager_args[2], "SQLq", 5)) {
 				sprintf(filename, "%s/rrd/db-SQLq.rrd", opt_chdir);
 				res = rrd_vm_create_graph_SQLq(filename, fromat, toat, resx, resy, slope, icon, dstfile, sendbuf, sizeof(sendbuf));
@@ -385,20 +435,20 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 			if (res > 0) {				//binary data
 				if ((size = sendvm(client, sshchannel, sendbuf, res, 0)) == -1){
 					cerr << "Error sending data to client 2" << endl;
-					free (tmp_cmd_line);
+					free (manager_cmd_line);
 					free (manager_args);
 					return -1;
 				} else if (res == 0) {	//string data
 					if ((size = sendvm(client, sshchannel, sendbuf, strlen(sendbuf), 0)) == -1){
 						cerr << "Error sending data to client 2" << endl;
-						free (tmp_cmd_line);
+						free (manager_cmd_line);
 						free (manager_args);
 						return -1;
 					}
 				}
 			}
 		}
-		free (tmp_cmd_line);
+		free (manager_cmd_line);
 		free (manager_args);
 		return res;
 	} else if(strstr(buf, "reindexfiles") != NULL) {
