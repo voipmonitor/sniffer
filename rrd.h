@@ -17,14 +17,14 @@ int vm_rrd_countArgs(char *aLine);
 int rrd_call(const char *aLine);
 
 int rrd_vm_create_graph_PS(char *filename, char *fromatstyle, char *toatstyle, int resx, int resy, short slope, short icon, char *dstfile, char *buffer, int size);
-int rrd_vm_create_graph_SQLq(char *filename, char *fromatstyle, char *toatstyle, int resx, int resy, short slope, short icon, char *dstfile, char *buffer);
-int rrd_vm_create_graph_tCPU(char *filename, char *fromatstyle, char *toatstyle, int resx, int resy, short slope, short icon, char *dstfile, char *buffer);
-int rrd_vm_create_graph_drop(char *filename, char *fromatstyle, char *toatstyle, int resx, int resy, short slope, short icon, char *dstfile, char *buffer);
-int rrd_vm_create_graph_heap(char *filename, char *fromatstyle, char *toatstyle, int resx, int resy, short slope, short icon, char *dstfile, char *buffer);
-int rrd_vm_create_graph_speed(char *filename, char *fromatstyle, char *toatstyle, int resx, int resy, short slope, short icon, char *dstfile, char *buffer);
-int rrd_vm_create_graph_calls(char *filename, char *fromatstyle, char *toatstyle, int resx, int resy, short slope, short icon, char *dstfile, char *buffer);
-int rrd_vm_create_graph_tacCPU(char *filename, char *fromatstyle, char *toatstyle, int resx, int resy, short slope, short icon, char *dstfile, char *buffer);
-int rrd_vm_create_graph_RSSVSZ(char *filename, char *fromatstyle, char *toatstyle, int resx, int resy, short slope, short icon, char *dstfile, char *buffer);
+int rrd_vm_create_graph_SQLq(char *filename, char *fromatstyle, char *toatstyle, int resx, int resy, short slope, short icon, char *dstfile, char *buffer, int size);
+int rrd_vm_create_graph_tCPU(char *filename, char *fromatstyle, char *toatstyle, int resx, int resy, short slope, short icon, char *dstfile, char *buffer, int size);
+int rrd_vm_create_graph_drop(char *filename, char *fromatstyle, char *toatstyle, int resx, int resy, short slope, short icon, char *dstfile, char *buffer, int size);
+int rrd_vm_create_graph_heap(char *filename, char *fromatstyle, char *toatstyle, int resx, int resy, short slope, short icon, char *dstfile, char *buffer, int size);
+int rrd_vm_create_graph_speed(char *filename, char *fromatstyle, char *toatstyle, int resx, int resy, short slope, short icon, char *dstfile, char *buffer, int size);
+int rrd_vm_create_graph_calls(char *filename, char *fromatstyle, char *toatstyle, int resx, int resy, short slope, short icon, char *dstfile, char *buffer, int size);
+int rrd_vm_create_graph_tacCPU(char *filename, char *fromatstyle, char *toatstyle, int resx, int resy, short slope, short icon, char *dstfile, char *buffer, int size);
+int rrd_vm_create_graph_RSSVSZ(char *filename, char *fromatstyle, char *toatstyle, int resx, int resy, short slope, short icon, char *dstfile, char *buffer, int size);
 
 extern int verbosity;
 #ifndef RRDLIB_H_4FD7D37D56A448C392AF46508C56D3CC

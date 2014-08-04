@@ -37,7 +37,8 @@
 #include "fraud.h"
 #include "rrd.h"
 
-#define BUFSIZE 1024
+//#define BUFSIZE 1024
+#define BUFSIZE 20480
 
 extern Calltable *calltable;
 extern int opt_manager_port;
@@ -339,34 +340,34 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 			if ((manager_argc > 8) && (manager_args[8][0] == '1')) icon = 1; else icon = 0;
 			if (manager_argc > 9) dstfile = manager_args[9]; else dstfile = NULL;
 
-			if (dstfile != NULL ) snprintf(sendbuf, BUFSIZE, "CreAting graph of type %s from:%s to:%s resx:%i resy:%i slopemode=%s, iconmode=%s\n", manager_args[2], fromat, toat, resx, resy, slope?"yes":"no", icon?"yes":"no");
+			if (dstfile != NULL ) snprintf(sendbuf, BUFSIZE, "Creating graph of type %s from:%s to:%s resx:%i resy:%i slopemode=%s, iconmode=%s\n", manager_args[2], fromat, toat, resx, resy, slope?"yes":"no", icon?"yes":"no");
 			if (!strncmp(manager_args[2], "PS",3 )) {
 				sprintf(filename, "%s/rrd/db-PS.rrd", opt_chdir);
 				res = rrd_vm_create_graph_PS(filename, fromat, toat, resx, resy, slope, icon, dstfile, sendbuf, sizeof(sendbuf));
 			} else if (!strncmp(manager_args[2], "SQLq", 5)) {
 				sprintf(filename, "%s/rrd/db-SQLq.rrd", opt_chdir);
-				res = rrd_vm_create_graph_SQLq(filename, fromat, toat, resx, resy, slope, icon, dstfile, sendbuf);
+				res = rrd_vm_create_graph_SQLq(filename, fromat, toat, resx, resy, slope, icon, dstfile, sendbuf, sizeof(sendbuf));
 			} else if (!strncmp(manager_args[2], "tCPU", 5)) {
 				sprintf(filename, "%s/rrd/db-tCPU.rrd", opt_chdir);
-				res = rrd_vm_create_graph_tCPU(filename, fromat, toat, resx, resy, slope, icon, dstfile, sendbuf);
+				res = rrd_vm_create_graph_tCPU(filename, fromat, toat, resx, resy, slope, icon, dstfile, sendbuf, sizeof(sendbuf));
 			} else if (!strncmp(manager_args[2], "drop", 5)) {
 				sprintf(filename, "%s/rrd/db-drop.rrd", opt_chdir);
-				res = rrd_vm_create_graph_drop(filename, fromat, toat, resx, resy, slope, icon, dstfile, sendbuf);
+				res = rrd_vm_create_graph_drop(filename, fromat, toat, resx, resy, slope, icon, dstfile, sendbuf, sizeof(sendbuf));
 			} else if (!strncmp(manager_args[2], "speed", 5)) {
 				sprintf(filename, "%s/rrd/db-speedmbs.rrd", opt_chdir);
-				res = rrd_vm_create_graph_speed(filename, fromat, toat, resx, resy, slope, icon, dstfile, sendbuf);
+				res = rrd_vm_create_graph_speed(filename, fromat, toat, resx, resy, slope, icon, dstfile, sendbuf, sizeof(sendbuf));
 			} else if (!strncmp(manager_args[2], "heap", 5)) {
 				sprintf(filename, "%s/rrd/db-heap.rrd", opt_chdir);
-				res = rrd_vm_create_graph_heap(filename, fromat, toat, resx, resy, slope, icon, dstfile, sendbuf);
+				res = rrd_vm_create_graph_heap(filename, fromat, toat, resx, resy, slope, icon, dstfile, sendbuf, sizeof(sendbuf));
 			} else if (!strncmp(manager_args[2], "calls", 6)) {
 				sprintf(filename, "%s/rrd/db-callscounter.rrd", opt_chdir);
-				res = rrd_vm_create_graph_calls(filename, fromat, toat, resx ,resy, slope, icon, dstfile, sendbuf);
+				res = rrd_vm_create_graph_calls(filename, fromat, toat, resx ,resy, slope, icon, dstfile, sendbuf, sizeof(sendbuf));
 			} else if (!strncmp(manager_args[2], "tacCPU", 7)) {
 				sprintf(filename, "%s/rrd/db-tacCPU.rrd", opt_chdir);
-				res = rrd_vm_create_graph_tacCPU(filename, fromat, toat, resx, resy, slope, icon, dstfile, sendbuf);
+				res = rrd_vm_create_graph_tacCPU(filename, fromat, toat, resx, resy, slope, icon, dstfile, sendbuf, sizeof(sendbuf));
 			} else if (!strncmp(manager_args[2], "RSSVSZ", 7)) {
 				sprintf(filename, "%s/rrd/db-RSSVSZ.rrd", opt_chdir);
-				res = rrd_vm_create_graph_RSSVSZ(filename, fromat, toat, resx, resy, slope, icon, dstfile, sendbuf);
+				res = rrd_vm_create_graph_RSSVSZ(filename, fromat, toat, resx, resy, slope, icon, dstfile, sendbuf, sizeof(sendbuf));
 			} else {
 				snprintf(sendbuf, BUFSIZE, "Error: Graph type %s isn't known\n\tGraph types: PS SQLq tCPU drop speed heap calls tacCPU RSSVSZ\n", manager_args[2]);	
 				if (verbosity > 0) {
@@ -376,12 +377,26 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 				res = -1;
 			}
 
-			if ((size = sendvm(client, sshchannel, sendbuf, strlen(sendbuf), 0)) == -1){
-				cerr << "Error sending data to client 2" << endl;
-				free (tmp_cmd_line);
-				free (manager_args);
-				return -1;
+			if (res > 0) {				//binary data
+				if ((size = sendvm(client, sshchannel, sendbuf, res, 0)) == -1){
+					cerr << "Error sending data to client 2" << endl;
+					free (tmp_cmd_line);
+					free (manager_args);
+					return -1;
+				} else if (res == 0) {	//string data
+					if ((size = sendvm(client, sshchannel, sendbuf, strlen(sendbuf), 0)) == -1){
+						cerr << "Error sending data to client 2" << endl;
+						free (tmp_cmd_line);
+						free (manager_args);
+						return -1;
+					}
+				}
 			}
+        FILE* debFile;
+        debFile = fopen("/tmp/pokusne2", "wb");
+        fwrite(sendbuf, sizeof(sendbuf[0]), res, debFile);
+        fclose(debFile);
+
 		}
 		free (tmp_cmd_line);
 		free (manager_args);

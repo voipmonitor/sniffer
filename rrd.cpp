@@ -22,7 +22,6 @@
 int rrd_vm_create_graph_PS(char *filename, char *fromatstyle, char *toatstyle, int resx, int resy, short slope, short icon, char *dstfile, char *buffer, int size) {
     std::ostringstream cmdCreate;
 
-
 	if (dstfile == NULL) 
 		cmdCreate << "`which rrdtool` graph - ";						//graph to stdout instead of file
 	else
@@ -34,7 +33,7 @@ int rrd_vm_create_graph_PS(char *filename, char *fromatstyle, char *toatstyle, i
 	cmdCreate << "--watermark \"`date`\" ";
 	cmdCreate << "--vertical-label \"queries\" ";
 	cmdCreate << "--lower-limit 0 ";
-	cmdCreate << "--x-grid MINUTE:10:HOUR:1:MINUTE:120:0:%R ";
+//	cmdCreate << "--x-grid MINUTE:10:HOUR:1:MINUTE:120:0:%R ";
 	cmdCreate << "--units-exponent 0 ";
 	cmdCreate << "--full-size-mode ";
 	if (slope) cmdCreate << "--slope-mode ";
@@ -69,7 +68,7 @@ int rrd_vm_create_graph_PS(char *filename, char *fromatstyle, char *toatstyle, i
 	cmdCreate << "GPRINT:PSA:AVERAGE:\"Avg\\: %5.2lf\" ";
 	cmdCreate << "GPRINT:PSA:MAX:\"Max\\: %5.0lf\" ";
 	cmdCreate << "GPRINT:PSA:MIN:\"Min\\: %5.0lf\\t\\t\\t\" ";
-	
+	int rets;	
 	int res = -1;
 	if (dstfile == NULL) {	//when cmd is drawing graph to stdout read this data thru pipe into buffer
 		FILE *inpipe;
@@ -78,35 +77,30 @@ int rrd_vm_create_graph_PS(char *filename, char *fromatstyle, char *toatstyle, i
 			syslog(LOG_ERR, "Create Graph: couldn't open pipe %s", cmdCreate.str().c_str());
 			return -1;
 		} else {
-			syslog(LOG_NOTICE, "Pipe <%s> opened for reading %i bytes", cmdCreate.str().c_str(), size);
+			syslog(LOG_NOTICE, "Pipe <%s> opened for reading max %i bytes", cmdCreate.str().c_str(), size);
 		} 
-		int rets;
 		rets = fread(buffer, sizeof(buffer[0]), size, inpipe);
 		syslog(LOG_NOTICE, "Pipe RET %i bytes", rets);
 		pclose(inpipe);
-
-
-		FILE* debFile;
-		debFile = fopen("/tmp/pokusne", "wb");
-		fwrite(buffer, sizeof(buffer[0]), rets, debFile);
-		fclose(debFile);
-
+		res = rets;
 	} else {				//normally create graph file
 		res = system(cmdCreate.str().c_str());
 	}
-	if (verbosity > 1) syslog(LOG_NOTICE, "Create graph's args:%s\nRetVal:%d", cmdCreate.str().c_str(), res);
-	else if (verbosity > 0) syslog(LOG_NOTICE, "%s\nRetVal:%d", cmdCreate.str().c_str(), res);
+	if (verbosity > 1) {
+		syslog(LOG_NOTICE, "Create graph's args:%s",cmdCreate.str().c_str());
+		syslog(LOG_NOTICE, "RetCnt:%d", res);
+	}
+	else if (verbosity > 0) syslog(LOG_NOTICE, "manager creategraph Ret:%d", cmdCreate.str().c_str(), res);
 	return res;
 }
 
-int rrd_vm_create_graph_speed(char *filename, char *fromatstyle, char *toatstyle, int resx, int resy, short slope, short icon, char *dstfile, char *buffer) {
+int rrd_vm_create_graph_speed(char *filename, char *fromatstyle, char *toatstyle, int resx, int resy, short slope, short icon, char *dstfile, char *buffer, int size) {
     std::ostringstream cmdCreate;
 
 	if (dstfile == NULL) 
 		cmdCreate << "`which rrdtool` graph - ";						//graph to stdout instead of file
 	else
 		cmdCreate << "`which rrdtool` graph " << filename << ".png ";
-	cmdCreate << "`which rrdtool` graph " << filename << ".png ";
 	cmdCreate << "-w " << resx << " -h " << resy << " -a PNG ";
 	cmdCreate << "--start " << fromatstyle << " --end " << toatstyle << " ";
 	cmdCreate << "--font DEFAULT:7: ";
@@ -114,7 +108,7 @@ int rrd_vm_create_graph_speed(char *filename, char *fromatstyle, char *toatstyle
 	cmdCreate << "--watermark \"`date`\" ";
 	cmdCreate << "--vertical-label \"MB/s\" ";
 	cmdCreate << "--lower-limit 0 ";
-	cmdCreate << "--x-grid MINUTE:10:HOUR:1:MINUTE:120:0:%R ";
+	//cmdCreate << "--x-grid MINUTE:10:HOUR:1:MINUTE:120:0:%R ";
 	cmdCreate << "--units-exponent 0 ";
 	cmdCreate << "--full-size-mode ";
 	if (slope) cmdCreate << "--slope-mode ";
@@ -125,19 +119,39 @@ int rrd_vm_create_graph_speed(char *filename, char *fromatstyle, char *toatstyle
 	cmdCreate << "GPRINT:speed:AVERAGE:\"Avg\\: %5.2lf\" ";
 	cmdCreate << "GPRINT:speed:MAX:\"Max\\: %5.2lf\" ";
 	cmdCreate << "GPRINT:speed:MIN:\"Min\\: %5.2lf\\t\\t\\t\" ";
-	int res = system(cmdCreate.str().c_str());
-	if (verbosity > 1) syslog(LOG_NOTICE, "Create graph's args:%s\nRetVal:%d", cmdCreate.str().c_str(), res);
+	int rets;	
+	int res = -1;
+	if (dstfile == NULL) {	//when cmd is drawing graph to stdout read this data thru pipe into buffer
+		FILE *inpipe;
+		inpipe = popen(cmdCreate.str().c_str(), "r");
+		if (!inpipe) {
+			syslog(LOG_ERR, "Create Graph: couldn't open pipe %s", cmdCreate.str().c_str());
+			return -1;
+		} else {
+			syslog(LOG_NOTICE, "Pipe <%s> opened for reading %i bytes", cmdCreate.str().c_str(), size);
+		} 
+		rets = fread(buffer, sizeof(buffer[0]), size, inpipe);
+		syslog(LOG_NOTICE, "Pipe RET %i bytes", rets);
+		pclose(inpipe);
+		res = rets;
+	} else {				//normally create graph file
+		res = system(cmdCreate.str().c_str());
+	}
+	if (verbosity > 1) {
+		syslog(LOG_NOTICE, "Create graph's args:%s",cmdCreate.str().c_str());
+		syslog(LOG_NOTICE, "RetCnt:%d", res);
+	}
+	else if (verbosity > 0) syslog(LOG_NOTICE, "manager creategraph Ret:%d", cmdCreate.str().c_str(), res);
 	return res;
 }
 
-int rrd_vm_create_graph_SQLq(char *filename, char *fromatstyle, char *toatstyle, int resx, int resy, short slope, short icon, char *dstfile, char *buffer) {
+int rrd_vm_create_graph_SQLq(char *filename, char *fromatstyle, char *toatstyle, int resx, int resy, short slope, short icon, char *dstfile, char *buffer, int size) {
     std::ostringstream cmdCreate;
 
 	if (dstfile == NULL) 
 		cmdCreate << "`which rrdtool` graph - ";						//graph to stdout instead of file
 	else
 		cmdCreate << "`which rrdtool` graph " << filename << ".png ";
-	cmdCreate << "`which rrdtool` graph " << filename << ".png ";
 	cmdCreate << "-w " << resx << " -h " << resy << " -a PNG ";
 	cmdCreate << "--start " << fromatstyle << " --end " << toatstyle << " ";
 	cmdCreate << "--font DEFAULT:7: ";
@@ -145,7 +159,7 @@ int rrd_vm_create_graph_SQLq(char *filename, char *fromatstyle, char *toatstyle,
 	cmdCreate << "--watermark \"`date`\" ";
 	cmdCreate << "--vertical-label \"queries\" ";
 	cmdCreate << "--lower-limit 0 ";
-	cmdCreate << "--x-grid MINUTE:10:HOUR:1:MINUTE:120:0:%R ";
+	//cmdCreate << "--x-grid MINUTE:10:HOUR:1:MINUTE:120:0:%R ";
 	cmdCreate << "--units-exponent 0 ";
 	cmdCreate << "--full-size-mode ";
 	if (slope) cmdCreate << "--slope-mode ";
@@ -180,19 +194,39 @@ int rrd_vm_create_graph_SQLq(char *filename, char *fromatstyle, char *toatstyle,
 	cmdCreate << "GPRINT:SQLqH:AVERAGE:\"Avg\\: %5.2lf\" ";
 	cmdCreate << "GPRINT:SQLqH:MAX:\"Max\\: %5.0lf\" ";
 	cmdCreate << "GPRINT:SQLqH:MIN:\"Min\\: %5.0lf\\t\\t\\t\" ";
-	int res = system(cmdCreate.str().c_str());
-	if (verbosity > 1) syslog(LOG_NOTICE, "Create graph's args:%s\nRetVal:%d", cmdCreate.str().c_str(), res);
+	int rets;	
+	int res = -1;
+	if (dstfile == NULL) {	//when cmd is drawing graph to stdout read this data thru pipe into buffer
+		FILE *inpipe;
+		inpipe = popen(cmdCreate.str().c_str(), "r");
+		if (!inpipe) {
+			syslog(LOG_ERR, "Create Graph: couldn't open pipe %s", cmdCreate.str().c_str());
+			return -1;
+		} else {
+			syslog(LOG_NOTICE, "Pipe <%s> opened for reading %i bytes", cmdCreate.str().c_str(), size);
+		} 
+		rets = fread(buffer, sizeof(buffer[0]), size, inpipe);
+		syslog(LOG_NOTICE, "Pipe RET %i bytes", rets);
+		pclose(inpipe);
+		res = rets;
+	} else {				//normally create graph file
+		res = system(cmdCreate.str().c_str());
+	}
+	if (verbosity > 1) {
+		syslog(LOG_NOTICE, "Create graph's args:%s",cmdCreate.str().c_str());
+		syslog(LOG_NOTICE, "RetCnt:%d", res);
+	}
+	else if (verbosity > 0) syslog(LOG_NOTICE, "manager creategraph Ret:%d", cmdCreate.str().c_str(), res);
 	return res;
 }
 
-int rrd_vm_create_graph_tCPU(char *filename, char *fromatstyle, char *toatstyle, int resx, int resy, short slope, short icon, char *dstfile, char *buffer) {
+int rrd_vm_create_graph_tCPU(char *filename, char *fromatstyle, char *toatstyle, int resx, int resy, short slope, short icon, char *dstfile, char *buffer, int size) {
     std::ostringstream cmdCreate;
 
 	if (dstfile == NULL) 
 		cmdCreate << "`which rrdtool` graph - ";						//graph to stdout instead of file
 	else
 		cmdCreate << "`which rrdtool` graph " << filename << ".png ";
-	cmdCreate << "`which rrdtool` graph " << filename << ".png ";
 	cmdCreate << "-w " << resx << " -h " << resy << " -a PNG ";
 	cmdCreate << "--start " << fromatstyle << " --end " << toatstyle << " ";
 	cmdCreate << "--font DEFAULT:7: ";
@@ -200,7 +234,7 @@ int rrd_vm_create_graph_tCPU(char *filename, char *fromatstyle, char *toatstyle,
 	cmdCreate << "--watermark \"`date`\" ";
 	cmdCreate << "--vertical-label \"percent[%]\" ";
 	cmdCreate << "--lower-limit 0 ";
-	cmdCreate << "--x-grid MINUTE:10:HOUR:1:MINUTE:120:0:%R ";
+	//cmdCreate << "--x-grid MINUTE:10:HOUR:1:MINUTE:120:0:%R ";
 	cmdCreate << "--units-exponent 0 ";
 	cmdCreate << "--full-size-mode ";
 	if (slope) cmdCreate << "--slope-mode ";
@@ -223,19 +257,39 @@ int rrd_vm_create_graph_tCPU(char *filename, char *fromatstyle, char *toatstyle,
 	cmdCreate << "GPRINT:t2:AVERAGE:\"Avg\\: %5.2lf\" ";
 	cmdCreate << "GPRINT:t2:MAX:\"Max\\: %5.2lf\" ";
 	cmdCreate << "GPRINT:t2:MIN:\"Min\\: %5.2lf\\t\\t\\t\" ";
-	int res = system(cmdCreate.str().c_str());
-	if (verbosity > 1) syslog(LOG_NOTICE, "Create graph's args:%s\nRetVal:%d", cmdCreate.str().c_str(), res);
+	int rets;	
+	int res = -1;
+	if (dstfile == NULL) {	//when cmd is drawing graph to stdout read this data thru pipe into buffer
+		FILE *inpipe;
+		inpipe = popen(cmdCreate.str().c_str(), "r");
+		if (!inpipe) {
+			syslog(LOG_ERR, "Create Graph: couldn't open pipe %s", cmdCreate.str().c_str());
+			return -1;
+		} else {
+			syslog(LOG_NOTICE, "Pipe <%s> opened for reading %i bytes", cmdCreate.str().c_str(), size);
+		} 
+		rets = fread(buffer, sizeof(buffer[0]), size, inpipe);
+		syslog(LOG_NOTICE, "Pipe RET %i bytes", rets);
+		pclose(inpipe);
+		res = rets;
+	} else {				//normally create graph file
+		res = system(cmdCreate.str().c_str());
+	}
+	if (verbosity > 1) {
+		syslog(LOG_NOTICE, "Create graph's args:%s",cmdCreate.str().c_str());
+		syslog(LOG_NOTICE, "RetCnt:%d", res);
+	}
+	else if (verbosity > 0) syslog(LOG_NOTICE, "manager creategraph Ret:%d", cmdCreate.str().c_str(), res);
 	return res;
 }
 
-int rrd_vm_create_graph_heap(char *filename, char *fromatstyle, char *toatstyle, int resx, int resy, short slope, short icon, char *dstfile, char *buffer) {
+int rrd_vm_create_graph_heap(char *filename, char *fromatstyle, char *toatstyle, int resx, int resy, short slope, short icon, char *dstfile, char *buffer, int size) {
     std::ostringstream cmdCreate;
 
 	if (dstfile == NULL) 
 		cmdCreate << "`which rrdtool` graph - ";						//graph to stdout instead of file
 	else
 		cmdCreate << "`which rrdtool` graph " << filename << ".png ";
-	cmdCreate << "`which rrdtool` graph " << filename << ".png ";
 	cmdCreate << "-w " << resx << " -h " << resy << " -a PNG ";
 	cmdCreate << "--start " << fromatstyle << " --end " << toatstyle << " ";
 	cmdCreate << "--font DEFAULT:7: ";
@@ -243,7 +297,7 @@ int rrd_vm_create_graph_heap(char *filename, char *fromatstyle, char *toatstyle,
 	cmdCreate << "--watermark \"`date`\" ";
 	cmdCreate << "--vertical-label \"percent[%]\" ";
 	cmdCreate << "--lower-limit 0 ";
-	cmdCreate << "--x-grid MINUTE:10:HOUR:1:MINUTE:120:0:%R ";
+	//cmdCreate << "--x-grid MINUTE:10:HOUR:1:MINUTE:120:0:%R ";
 	cmdCreate << "--units-exponent 0 ";
 	cmdCreate << "--full-size-mode ";
 	if (slope) cmdCreate << "--slope-mode ";
@@ -266,19 +320,39 @@ int rrd_vm_create_graph_heap(char *filename, char *fromatstyle, char *toatstyle,
 	cmdCreate << "GPRINT:ratio:AVERAGE:\"Avg\\: %5.2lf\" ";
 	cmdCreate << "GPRINT:ratio:MAX:\"Max\\: %5.2lf\" ";
 	cmdCreate << "GPRINT:ratio:MIN:\"Min\\: %5.2lf\\t\\t\\t\" ";
-	int res = system(cmdCreate.str().c_str());
-	if (verbosity > 1) syslog(LOG_NOTICE, "Create graph's args:%s\nRetVal:%d", cmdCreate.str().c_str(), res);
+	int rets;	
+	int res = -1;
+	if (dstfile == NULL) {	//when cmd is drawing graph to stdout read this data thru pipe into buffer
+		FILE *inpipe;
+		inpipe = popen(cmdCreate.str().c_str(), "r");
+		if (!inpipe) {
+			syslog(LOG_ERR, "Create Graph: couldn't open pipe %s", cmdCreate.str().c_str());
+			return -1;
+		} else {
+			syslog(LOG_NOTICE, "Pipe <%s> opened for reading %i bytes", cmdCreate.str().c_str(), size);
+		} 
+		rets = fread(buffer, sizeof(buffer[0]), size, inpipe);
+		syslog(LOG_NOTICE, "Pipe RET %i bytes", rets);
+		pclose(inpipe);
+		res = rets;
+	} else {				//normally create graph file
+		res = system(cmdCreate.str().c_str());
+	}
+	if (verbosity > 1) {
+		syslog(LOG_NOTICE, "Create graph's args:%s",cmdCreate.str().c_str());
+		syslog(LOG_NOTICE, "RetCnt:%d", res);
+	}
+	else if (verbosity > 0) syslog(LOG_NOTICE, "manager creategraph Ret:%d", cmdCreate.str().c_str(), res);
 	return res;
 }
 
-int rrd_vm_create_graph_drop(char *filename, char *fromatstyle, char *toatstyle, int resx, int resy, short slope, short icon, char *dstfile, char *buffer) {
+int rrd_vm_create_graph_drop(char *filename, char *fromatstyle, char *toatstyle, int resx, int resy, short slope, short icon, char *dstfile, char *buffer, int size) {
     std::ostringstream cmdCreate;
 
 	if (dstfile == NULL) 
 		cmdCreate << "`which rrdtool` graph - ";						//graph to stdout instead of file
 	else
 		cmdCreate << "`which rrdtool` graph " << filename << ".png ";
-	cmdCreate << "`which rrdtool` graph " << filename << ".png ";
 	cmdCreate << "-w " << resx << " -h " << resy << " -a PNG ";
 	cmdCreate << "--start " << fromatstyle << " --end " << toatstyle << " ";
 	cmdCreate << "--font DEFAULT:7: ";
@@ -286,7 +360,7 @@ int rrd_vm_create_graph_drop(char *filename, char *fromatstyle, char *toatstyle,
 	cmdCreate << "--watermark \"`date`\" ";
 	cmdCreate << "--vertical-label \"packtets\" ";
 	cmdCreate << "--lower-limit 0 ";
-	cmdCreate << "--x-grid MINUTE:10:HOUR:1:MINUTE:120:0:%R ";
+	//cmdCreate << "--x-grid MINUTE:10:HOUR:1:MINUTE:120:0:%R ";
 	cmdCreate << "--units-exponent 0 ";
 	cmdCreate << "--full-size-mode ";
 	if (slope) cmdCreate << "--slope-mode ";
@@ -303,19 +377,39 @@ int rrd_vm_create_graph_drop(char *filename, char *fromatstyle, char *toatstyle,
 	cmdCreate << "GPRINT:pck:AVERAGE:\"Avg\\: %5.2lf\" ";
 	cmdCreate << "GPRINT:pck:MAX:\"Max\\: %5.0lf\" ";
 	cmdCreate << "GPRINT:pck:MIN:\"Min\\: %5.0lf\\t\\t\\t\" ";
-	int res = system(cmdCreate.str().c_str());
-	if (verbosity > 1) syslog(LOG_NOTICE, "Create graph's args:%s\nRetVal:%d", cmdCreate.str().c_str(), res);
+	int rets;	
+	int res = -1;
+	if (dstfile == NULL) {	//when cmd is drawing graph to stdout read this data thru pipe into buffer
+		FILE *inpipe;
+		inpipe = popen(cmdCreate.str().c_str(), "r");
+		if (!inpipe) {
+			syslog(LOG_ERR, "Create Graph: couldn't open pipe %s", cmdCreate.str().c_str());
+			return -1;
+		} else {
+			syslog(LOG_NOTICE, "Pipe <%s> opened for reading %i bytes", cmdCreate.str().c_str(), size);
+		} 
+		rets = fread(buffer, sizeof(buffer[0]), size, inpipe);
+		syslog(LOG_NOTICE, "Pipe RET %i bytes", rets);
+		pclose(inpipe);
+		res = rets;
+	} else {				//normally create graph file
+		res = system(cmdCreate.str().c_str());
+	}
+	if (verbosity > 1) {
+		syslog(LOG_NOTICE, "Create graph's args:%s",cmdCreate.str().c_str());
+		syslog(LOG_NOTICE, "RetCnt:%d", res);
+	}
+	else if (verbosity > 0) syslog(LOG_NOTICE, "manager creategraph Ret:%d", cmdCreate.str().c_str(), res);
 	return res;
 }
 
-int rrd_vm_create_graph_calls(char *filename, char *fromatstyle, char *toatstyle, int resx, int resy, short slope, short icon, char *dstfile, char *buffer) {
+int rrd_vm_create_graph_calls(char *filename, char *fromatstyle, char *toatstyle, int resx, int resy, short slope, short icon, char *dstfile, char *buffer, int size) {
     std::ostringstream cmdCreate;
 
 	if (dstfile == NULL) 
 		cmdCreate << "`which rrdtool` graph - ";						//graph to stdout instead of file
 	else
 		cmdCreate << "`which rrdtool` graph " << filename << ".png ";
-	cmdCreate << "`which rrdtool` graph " << filename << ".png ";
 	cmdCreate << "-w " << resx << " -h " << resy << " -a PNG ";
 	cmdCreate << "--start " << fromatstyle << " --end " << toatstyle << " ";
 	cmdCreate << "--font DEFAULT:7: ";
@@ -323,7 +417,7 @@ int rrd_vm_create_graph_calls(char *filename, char *fromatstyle, char *toatstyle
 	cmdCreate << "--watermark \"`date`\" ";
 	cmdCreate << "--vertical-label \"calls\" ";
 	cmdCreate << "--lower-limit 0 ";
-	cmdCreate << "--x-grid MINUTE:10:HOUR:1:MINUTE:120:0:%R ";
+	//cmdCreate << "--x-grid MINUTE:10:HOUR:1:MINUTE:120:0:%R ";
 	cmdCreate << "--units-exponent 0 ";
 	cmdCreate << "--full-size-mode ";
 	if (slope) cmdCreate << "--slope-mode ";
@@ -338,24 +432,39 @@ int rrd_vm_create_graph_calls(char *filename, char *fromatstyle, char *toatstyle
 	cmdCreate << "GPRINT:callsmax:AVERAGE:\"Avg\\: %5.2lf\" ";
 	cmdCreate << "GPRINT:callsmax:MAX:\"Max\\: %5.0lf\" ";
 	cmdCreate << "GPRINT:callsmax:MIN:\"Min\\: %5.0lf\\t\\t\\t\" ";
-	int res = system(cmdCreate.str().c_str());
-	if (verbosity > 1) syslog(LOG_NOTICE, "Create graph's args:%s\nRetVal:%d", cmdCreate.str().c_str(), res);
+	int rets;	
+	int res = -1;
+	if (dstfile == NULL) {	//when cmd is drawing graph to stdout read this data thru pipe into buffer
+		FILE *inpipe;
+		inpipe = popen(cmdCreate.str().c_str(), "r");
+		if (!inpipe) {
+			syslog(LOG_ERR, "Create Graph: couldn't open pipe %s", cmdCreate.str().c_str());
+			return -1;
+		} else {
+			syslog(LOG_NOTICE, "Pipe <%s> opened for reading %i bytes", cmdCreate.str().c_str(), size);
+		} 
+		rets = fread(buffer, sizeof(buffer[0]), size, inpipe);
+		syslog(LOG_NOTICE, "Pipe RET %i bytes", rets);
+		pclose(inpipe);
+		res = rets;
+	} else {				//normally create graph file
+		res = system(cmdCreate.str().c_str());
+	}
+	if (verbosity > 1) {
+		syslog(LOG_NOTICE, "Create graph's args:%s",cmdCreate.str().c_str());
+		syslog(LOG_NOTICE, "RetCnt:%d", res);
+	}
+	else if (verbosity > 0) syslog(LOG_NOTICE, "manager creategraph Ret:%d", cmdCreate.str().c_str(), res);
 	return res;
-/*	FILE* destFile;
-	destFile = fopen("/tmp/pokusne", "wb");
-	fwrite(cmdCreate.str().c_str(), 1, strlen(cmdCreate.str().c_str()), destFile);
-	fclose(destFile);
-*/
 }
 
-int rrd_vm_create_graph_tacCPU(char *filename, char *fromatstyle, char *toatstyle, int resx, int resy, short slope, short icon, char *dstfile, char *buffer) {
+int rrd_vm_create_graph_tacCPU(char *filename, char *fromatstyle, char *toatstyle, int resx, int resy, short slope, short icon, char *dstfile, char *buffer, int size) {
     std::ostringstream cmdCreate;
 
 	if (dstfile == NULL) 
 		cmdCreate << "`which rrdtool` graph - ";						//graph to stdout instead of file
 	else
 		cmdCreate << "`which rrdtool` graph " << filename << ".png ";
-	cmdCreate << "`which rrdtool` graph " << filename << ".png ";
 	cmdCreate << "-w " << resx << " -h " << resy << " -a PNG ";
 	cmdCreate << "--start " << fromatstyle << " --end " << toatstyle << " ";
 	cmdCreate << "--font DEFAULT:7: ";
@@ -363,7 +472,7 @@ int rrd_vm_create_graph_tacCPU(char *filename, char *fromatstyle, char *toatstyl
 	cmdCreate << "--watermark \"`date`\" ";
 	cmdCreate << "--vertical-label \"threads\" ";
 	cmdCreate << "--lower-limit 0 ";
-	cmdCreate << "--x-grid MINUTE:10:HOUR:1:MINUTE:120:0:%R ";
+	//cmdCreate << "--x-grid MINUTE:10:HOUR:1:MINUTE:120:0:%R ";
 	cmdCreate << "--units-exponent 0 ";
 	cmdCreate << "--full-size-mode ";
 	if (slope) cmdCreate << "--slope-mode ";
@@ -374,19 +483,39 @@ int rrd_vm_create_graph_tacCPU(char *filename, char *fromatstyle, char *toatstyl
 	cmdCreate << "GPRINT:tac:AVERAGE:\"Avg\\: %5.2lf\" ";
 	cmdCreate << "GPRINT:tac:MAX:\"Max\\: %5.2lf\" ";
 	cmdCreate << "GPRINT:tac:MIN:\"Min\\: %5.2lf\\t\\t\\t\" ";
-	int res = system(cmdCreate.str().c_str());
-	if (verbosity > 1) syslog(LOG_NOTICE, "Create graph's args:%s\nRetVal:%d", cmdCreate.str().c_str(), res);
+	int rets;	
+	int res = -1;
+	if (dstfile == NULL) {	//when cmd is drawing graph to stdout read this data thru pipe into buffer
+		FILE *inpipe;
+		inpipe = popen(cmdCreate.str().c_str(), "r");
+		if (!inpipe) {
+			syslog(LOG_ERR, "Create Graph: couldn't open pipe %s", cmdCreate.str().c_str());
+			return -1;
+		} else {
+			syslog(LOG_NOTICE, "Pipe <%s> opened for reading %i bytes", cmdCreate.str().c_str(), size);
+		} 
+		rets = fread(buffer, sizeof(buffer[0]), size, inpipe);
+		syslog(LOG_NOTICE, "Pipe RET %i bytes", rets);
+		pclose(inpipe);
+		res = rets;
+	} else {				//normally create graph file
+		res = system(cmdCreate.str().c_str());
+	}
+	if (verbosity > 1) {
+		syslog(LOG_NOTICE, "Create graph's args:%s",cmdCreate.str().c_str());
+		syslog(LOG_NOTICE, "RetCnt:%d", res);
+	}
+	else if (verbosity > 0) syslog(LOG_NOTICE, "manager creategraph Ret:%d", cmdCreate.str().c_str(), res);
 	return res;
 }
 
-int rrd_vm_create_graph_RSSVSZ(char *filename, char *fromatstyle, char *toatstyle, int resx, int resy, short slope, short icon, char *dstfile, char *buffer) {
+int rrd_vm_create_graph_RSSVSZ(char *filename, char *fromatstyle, char *toatstyle, int resx, int resy, short slope, short icon, char *dstfile, char *buffer, int size) {
     std::ostringstream cmdCreate;
 
 	if (dstfile == NULL) 
 		cmdCreate << "`which rrdtool` graph - ";						//graph to stdout instead of file
 	else
 		cmdCreate << "`which rrdtool` graph " << filename << ".png ";
-	cmdCreate << "`which rrdtool` graph " << filename << ".png ";
 	cmdCreate << "-w " << resx << " -h " << resy << " -a PNG ";
 	cmdCreate << "--start " << fromatstyle << " --end " << toatstyle << " ";
 	cmdCreate << "--font DEFAULT:7: ";
@@ -394,7 +523,7 @@ int rrd_vm_create_graph_RSSVSZ(char *filename, char *fromatstyle, char *toatstyl
 	cmdCreate << "--watermark \"`date`\" ";
 	cmdCreate << "--vertical-label \"MB\" ";
 	cmdCreate << "--lower-limit 0 ";
-	cmdCreate << "--x-grid MINUTE:10:HOUR:1:MINUTE:120:0:%R ";
+	//cmdCreate << "--x-grid MINUTE:10:HOUR:1:MINUTE:120:0:%R ";
 	cmdCreate << "--units-exponent 0 ";
 	cmdCreate << "--full-size-mode ";
 	if (slope) cmdCreate << "--slope-mode ";
@@ -411,8 +540,29 @@ int rrd_vm_create_graph_RSSVSZ(char *filename, char *fromatstyle, char *toatstyl
 	cmdCreate << "GPRINT:rss:AVERAGE:\"Avg\\: %5.2lf\" ";
 	cmdCreate << "GPRINT:rss:MAX:\"Max\\: %5.0lf\" ";
 	cmdCreate << "GPRINT:rss:MIN:\"Min\\: %5.0lf\\t\\t\\t\" ";
-	int res = system(cmdCreate.str().c_str());
-	if (verbosity > 1) syslog(LOG_NOTICE, "Create graph's args:%s\nRetVal:%d", cmdCreate.str().c_str(), res);
+	int rets;	
+	int res = -1;
+	if (dstfile == NULL) {	//when cmd is drawing graph to stdout read this data thru pipe into buffer
+		FILE *inpipe;
+		inpipe = popen(cmdCreate.str().c_str(), "r");
+		if (!inpipe) {
+			syslog(LOG_ERR, "Create Graph: couldn't open pipe %s", cmdCreate.str().c_str());
+			return -1;
+		} else {
+			syslog(LOG_NOTICE, "Pipe <%s> opened for reading %i bytes", cmdCreate.str().c_str(), size);
+		} 
+		rets = fread(buffer, sizeof(buffer[0]), size, inpipe);
+		syslog(LOG_NOTICE, "Pipe RET %i bytes", rets);
+		pclose(inpipe);
+		res = rets;
+	} else {				//normally create graph file
+		res = system(cmdCreate.str().c_str());
+	}
+	if (verbosity > 1) {
+		syslog(LOG_NOTICE, "Create graph's args:%s",cmdCreate.str().c_str());
+		syslog(LOG_NOTICE, "RetCnt:%d", res);
+	}
+	else if (verbosity > 0) syslog(LOG_NOTICE, "manager creategraph Ret:%d", cmdCreate.str().c_str(), res);
 	return res;
 }
 
