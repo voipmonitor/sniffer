@@ -311,14 +311,14 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 			//Arguments:
 			//0-voipmonitor-manager
 			//1-creategraphs
-			//2-typ grafu
-			//3-cas od
-			//4-cas do
-			//5-velikost x
-			//6-velikost y
+			//2-graph type
+			//3-at-style time from
+			//4-at-style time to
+			//5-total size x
+			//6-total size y
 			//[7-zaobleni hran(slope-mode)]
-			//[8-ikona]
-			//[9-dstfile]
+			//[8-discard graphs legend (for sizes bellow 600x240)]
+			//[9-dstfile (if not defined PNG goes to stdout)]
 			if (verbosity > 0) {
 				syslog(LOG_NOTICE, "%d arguments detected. Showing them:\n", manager_argc);
 				for (int i = 0; i < manager_argc; i++) {
@@ -340,7 +340,12 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 			if ((manager_argc > 8) && (manager_args[8][0] == '1')) icon = 1; else icon = 0;
 			if (manager_argc > 9) dstfile = manager_args[9]; else dstfile = NULL;
 
-			if (dstfile != NULL ) snprintf(sendbuf, BUFSIZE, "Creating graph of type %s from:%s to:%s resx:%i resy:%i slopemode=%s, iconmode=%s\n", manager_args[2], fromat, toat, resx, resy, slope?"yes":"no", icon?"yes":"no");
+			//limits check discarding graph's legend
+			if ((resx < 600) or (resy < 240)) icon = 1;
+
+			if (verbosity > 0) {
+				if (dstfile != NULL ) snprintf(sendbuf, BUFSIZE, "Creating graph of type %s from:%s to:%s resx:%i resy:%i slopemode=%s, iconmode=%s\n", manager_args[2], fromat, toat, resx, resy, slope?"yes":"no", icon?"yes":"no");
+			}
 			if (!strncmp(manager_args[2], "PS",3 )) {
 				sprintf(filename, "%s/rrd/db-PS.rrd", opt_chdir);
 				res = rrd_vm_create_graph_PS(filename, fromat, toat, resx, resy, slope, icon, dstfile, sendbuf, sizeof(sendbuf));
@@ -392,19 +397,11 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 					}
 				}
 			}
-        FILE* debFile;
-        debFile = fopen("/tmp/pokusne2", "wb");
-        fwrite(sendbuf, sizeof(sendbuf[0]), res, debFile);
-        fclose(debFile);
-
 		}
 		free (tmp_cmd_line);
 		free (manager_args);
 		return res;
-		//snprintf(sendbuf, BUFSIZE, "no arguments given, nothing to create i've got \n|%s|\n", buf);
-		//sending out and check
-/*
-*/	} else if(strstr(buf, "reindexfiles") != NULL) {
+	} else if(strstr(buf, "reindexfiles") != NULL) {
 		snprintf(sendbuf, BUFSIZE, "starting reindexing please wait...");
 		if ((size = sendvm(client, sshchannel, sendbuf, strlen(sendbuf), 0)) == -1){
 			cerr << "Error sending data to client" << endl;

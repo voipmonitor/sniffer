@@ -28,7 +28,7 @@ int rrd_vm_create_graph_PS(char *filename, char *fromatstyle, char *toatstyle, i
 		cmdCreate << "`which rrdtool` graph " << dstfile << ".png ";
 	cmdCreate << "-w " << resx << " -h " << resy << " -a PNG ";
 	cmdCreate << "--start " << fromatstyle << " --end " << toatstyle << " ";
-	cmdCreate << "--font DEFAULT:7: ";
+	cmdCreate << "--font DEFAULT:0:Courier ";
 	cmdCreate << "--title \"PS\" ";
 	cmdCreate << "--watermark \"`date`\" ";
 	cmdCreate << "--vertical-label \"queries\" ";
@@ -103,7 +103,7 @@ int rrd_vm_create_graph_speed(char *filename, char *fromatstyle, char *toatstyle
 		cmdCreate << "`which rrdtool` graph " << filename << ".png ";
 	cmdCreate << "-w " << resx << " -h " << resy << " -a PNG ";
 	cmdCreate << "--start " << fromatstyle << " --end " << toatstyle << " ";
-	cmdCreate << "--font DEFAULT:7: ";
+	cmdCreate << "--font DEFAULT:0:Courier ";
 	cmdCreate << "--title \"Bw speed\" ";
 	cmdCreate << "--watermark \"`date`\" ";
 	cmdCreate << "--vertical-label \"MB/s\" ";
@@ -154,7 +154,7 @@ int rrd_vm_create_graph_SQLq(char *filename, char *fromatstyle, char *toatstyle,
 		cmdCreate << "`which rrdtool` graph " << filename << ".png ";
 	cmdCreate << "-w " << resx << " -h " << resy << " -a PNG ";
 	cmdCreate << "--start " << fromatstyle << " --end " << toatstyle << " ";
-	cmdCreate << "--font DEFAULT:7: ";
+	cmdCreate << "--font DEFAULT:0:Courier ";
 	cmdCreate << "--title \"SQLq\" ";
 	cmdCreate << "--watermark \"`date`\" ";
 	cmdCreate << "--vertical-label \"queries\" ";
@@ -229,7 +229,7 @@ int rrd_vm_create_graph_tCPU(char *filename, char *fromatstyle, char *toatstyle,
 		cmdCreate << "`which rrdtool` graph " << filename << ".png ";
 	cmdCreate << "-w " << resx << " -h " << resy << " -a PNG ";
 	cmdCreate << "--start " << fromatstyle << " --end " << toatstyle << " ";
-	cmdCreate << "--font DEFAULT:7: ";
+	cmdCreate << "--font DEFAULT:0:Courier ";
 	cmdCreate << "--title \"tCPU usage\" ";
 	cmdCreate << "--watermark \"`date`\" ";
 	cmdCreate << "--vertical-label \"percent[%]\" ";
@@ -292,7 +292,7 @@ int rrd_vm_create_graph_heap(char *filename, char *fromatstyle, char *toatstyle,
 		cmdCreate << "`which rrdtool` graph " << filename << ".png ";
 	cmdCreate << "-w " << resx << " -h " << resy << " -a PNG ";
 	cmdCreate << "--start " << fromatstyle << " --end " << toatstyle << " ";
-	cmdCreate << "--font DEFAULT:7: ";
+	cmdCreate << "--font DEFAULT:0:Courier ";
 	cmdCreate << "--title \"Mem heap usage\" ";
 	cmdCreate << "--watermark \"`date`\" ";
 	cmdCreate << "--vertical-label \"percent[%]\" ";
@@ -355,7 +355,7 @@ int rrd_vm_create_graph_drop(char *filename, char *fromatstyle, char *toatstyle,
 		cmdCreate << "`which rrdtool` graph " << filename << ".png ";
 	cmdCreate << "-w " << resx << " -h " << resy << " -a PNG ";
 	cmdCreate << "--start " << fromatstyle << " --end " << toatstyle << " ";
-	cmdCreate << "--font DEFAULT:7: ";
+	cmdCreate << "--font DEFAULT:0:Courier ";
 	cmdCreate << "--title \"Dropping packets\" ";
 	cmdCreate << "--watermark \"`date`\" ";
 	cmdCreate << "--vertical-label \"packtets\" ";
@@ -412,7 +412,7 @@ int rrd_vm_create_graph_calls(char *filename, char *fromatstyle, char *toatstyle
 		cmdCreate << "`which rrdtool` graph " << filename << ".png ";
 	cmdCreate << "-w " << resx << " -h " << resy << " -a PNG ";
 	cmdCreate << "--start " << fromatstyle << " --end " << toatstyle << " ";
-	cmdCreate << "--font DEFAULT:7: ";
+	cmdCreate << "--font DEFAULT:0:Courier ";
 	cmdCreate << "--title \"Number of calls\" ";
 	cmdCreate << "--watermark \"`date`\" ";
 	cmdCreate << "--vertical-label \"calls\" ";
@@ -467,7 +467,7 @@ int rrd_vm_create_graph_tacCPU(char *filename, char *fromatstyle, char *toatstyl
 		cmdCreate << "`which rrdtool` graph " << filename << ".png ";
 	cmdCreate << "-w " << resx << " -h " << resy << " -a PNG ";
 	cmdCreate << "--start " << fromatstyle << " --end " << toatstyle << " ";
-	cmdCreate << "--font DEFAULT:7: ";
+	cmdCreate << "--font DEFAULT:0:Courier ";
 	cmdCreate << "--title \"tac CPU\" ";
 	cmdCreate << "--watermark \"`date`\" ";
 	cmdCreate << "--vertical-label \"threads\" ";
@@ -518,7 +518,7 @@ int rrd_vm_create_graph_RSSVSZ(char *filename, char *fromatstyle, char *toatstyl
 		cmdCreate << "`which rrdtool` graph " << filename << ".png ";
 	cmdCreate << "-w " << resx << " -h " << resy << " -a PNG ";
 	cmdCreate << "--start " << fromatstyle << " --end " << toatstyle << " ";
-	cmdCreate << "--font DEFAULT:7: ";
+	cmdCreate << "--font DEFAULT:0:Courier ";
 	cmdCreate << "--title \"RSS_VSZ\" ";
 	cmdCreate << "--watermark \"`date`\" ";
 	cmdCreate << "--vertical-label \"MB\" ";
