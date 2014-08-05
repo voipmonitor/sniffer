@@ -282,11 +282,8 @@ int sendvm_from_stdout_of_command(char *command, int socket, ssh_channel channel
     inpipe = popen(command, "r");
 
     if (!inpipe) {
-        syslog(LOG_ERR, "sendout_from_stdout_of_command: couldn't open pipe for command %s", command);
+        syslog(LOG_ERR, "sendvm_from_stdout_of_command: couldn't open pipe for command %s", command);
         return -1;
-    } else {
-        if (verbosity > 1)
-            syslog(LOG_NOTICE, "Pipe <%s> opened for reading max %i bytes blocks", command, buflen * sizeof(char));
     }
 
 /*
@@ -313,19 +310,19 @@ int sendvm_from_stdout_of_command(char *command, int socket, ssh_channel channel
 			filler = 0;
 			if (sendvm(socket, channel, buf, BUFSIZE, 0) == -1) 
 			{
-				if (verbosity > 1) syslog(LOG_NOTICE, "Pipe RET %li bytes, but problem sending using sendvm1", total);
+				if (verbosity > 0) syslog(LOG_NOTICE, "sendvm_from_stdout_of_command: Pipe RET %li bytes, but problem sending using sendvm1", total);
 				return -1;
 			}
 		}
     }
 	if (filler > 0) {
 		if (sendvm(socket, channel, buf, filler, 0) == -1) {
-			if (verbosity > 1) syslog(LOG_NOTICE, "Pipe RET %li bytes, but problem sending using sendvm2", total);
+			if (verbosity > 0) syslog(LOG_NOTICE, "sendvm_from_stdout_of_command: Pipe RET %li bytes, but problem sending using sendvm2", total);
 			return -1;
 		}
 	}
 
-	syslog(LOG_NOTICE, "Read: %li create command", total);
+	if (verbosity > 1) syslog(LOG_NOTICE, "sendvm_from_stdout_of_command: Read total %li chars.", total);
     pclose(inpipe);
     return 0; 
 }
@@ -442,9 +439,8 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 				}
 				res = -1;
 			}
-
 			if ((dstfile == NULL) && (res == 0)) {		//send from stdout of a command (binary data)
-				syslog(LOG_NOTICE, "BINARY DATA EVALUATING::");
+				if (verbosity > 1) syslog(LOG_NOTICE, "COMMAND for system pipe:%s", sendcommand);
 				if (sendvm_from_stdout_of_command(sendcommand, client, sshchannel, sendbuf, sizeof(sendbuf), 0) == -1 ){
 					cerr << "Error sending data to client 2" << endl;
 					free (manager_cmd_line);
@@ -452,31 +448,15 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 					return -1;
 				}
 			} else {									//send string data (text data or error response)
+				if (verbosity > 1) syslog(LOG_NOTICE, "COMMAND for system:%s", sendcommand);
 				res = system(sendcommand);
 				if ((size = sendvm(client, sshchannel, sendbuf, strlen(sendbuf), 0)) == -1){
 					cerr << "Error sending data to client 2" << endl;
 					free (manager_cmd_line);
 					free (manager_args);
-					return -1;					
+					return -1;				
 				}
 			}
-/*
-			if (res > 0) {				//binary data
-				if ((size = sendvm(client, sshchannel, sendbuf, res, 0)) == -1){
-					cerr << "Error sending data to client 2" << endl;
-					free (manager_cmd_line);
-					free (manager_args);
-					return -1;
-				} else if (res == 0) {	//string data
-					if ((size = sendvm(client, sshchannel, sendbuf, strlen(sendbuf), 0)) == -1){
-						cerr << "Error sending data to client 2" << endl;
-						free (manager_cmd_line);
-						free (manager_args);
-						return -1;
-					}
-				}
-			}
-*/
 		}
 		free (manager_cmd_line);
 		free (manager_args);

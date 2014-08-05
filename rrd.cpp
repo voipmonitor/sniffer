@@ -24,7 +24,7 @@ void rrd_vm_create_graph_tCPU_command(char *filename, char *fromatstyle, char *t
 	if (dstfile == NULL) 
 		cmdCreate << "`which rrdtool` graph - ";						//graph to stdout instead of file
 	else
-		cmdCreate << "`which rrdtool` graph " << filename << ".png ";
+		cmdCreate << "`which rrdtool` graph " << dstfile << " ";
 	cmdCreate << "-w " << resx << " -h " << resy << " -a PNG ";
 	cmdCreate << "--start " << fromatstyle << " --end " << toatstyle << " ";
 	cmdCreate << "--font DEFAULT:0:Courier ";
@@ -65,7 +65,7 @@ void rrd_vm_create_graph_heap_command(char *filename, char *fromatstyle, char *t
 	if (dstfile == NULL) 
 		cmdCreate << "`which rrdtool` graph - ";						//graph to stdout instead of file
 	else
-		cmdCreate << "`which rrdtool` graph " << filename << ".png ";
+		cmdCreate << "`which rrdtool` graph " << dstfile << " ";
 	cmdCreate << "-w " << resx << " -h " << resy << " -a PNG ";
 	cmdCreate << "--start " << fromatstyle << " --end " << toatstyle << " ";
 	cmdCreate << "--font DEFAULT:0:Courier ";
@@ -106,7 +106,7 @@ void rrd_vm_create_graph_drop_command(char *filename, char *fromatstyle, char *t
 	if (dstfile == NULL) 
 		cmdCreate << "`which rrdtool` graph - ";						//graph to stdout instead of file
 	else
-		cmdCreate << "`which rrdtool` graph " << filename << ".png ";
+		cmdCreate << "`which rrdtool` graph " << dstfile << " ";
 	cmdCreate << "-w " << resx << " -h " << resy << " -a PNG ";
 	cmdCreate << "--start " << fromatstyle << " --end " << toatstyle << " ";
 	cmdCreate << "--font DEFAULT:0:Courier ";
@@ -141,7 +141,7 @@ void rrd_vm_create_graph_calls_command(char *filename, char *fromatstyle, char *
 	if (dstfile == NULL) 
 		cmdCreate << "`which rrdtool` graph - ";						//graph to stdout instead of file
 	else
-		cmdCreate << "`which rrdtool` graph " << filename << ".png ";
+		cmdCreate << "`which rrdtool` graph " << dstfile << " ";
 	cmdCreate << "-w " << resx << " -h " << resy << " -a PNG ";
 	cmdCreate << "--start " << fromatstyle << " --end " << toatstyle << " ";
 	cmdCreate << "--font DEFAULT:0:Courier ";
@@ -174,7 +174,7 @@ void rrd_vm_create_graph_tacCPU_command(char *filename, char *fromatstyle, char 
 	if (dstfile == NULL) 
 		cmdCreate << "`which rrdtool` graph - ";						//graph to stdout instead of file
 	else
-		cmdCreate << "`which rrdtool` graph " << filename << ".png ";
+		cmdCreate << "`which rrdtool` graph " << dstfile << " ";
 	cmdCreate << "-w " << resx << " -h " << resy << " -a PNG ";
 	cmdCreate << "--start " << fromatstyle << " --end " << toatstyle << " ";
 	cmdCreate << "--font DEFAULT:0:Courier ";
@@ -203,7 +203,7 @@ void rrd_vm_create_graph_RSSVSZ_command(char *filename, char *fromatstyle, char 
 	if (dstfile == NULL) 
 		cmdCreate << "`which rrdtool` graph - ";						//graph to stdout instead of file
 	else
-		cmdCreate << "`which rrdtool` graph " << filename << ".png ";
+		cmdCreate << "`which rrdtool` graph " << dstfile << " ";
 	cmdCreate << "-w " << resx << " -h " << resy << " -a PNG ";
 	cmdCreate << "--start " << fromatstyle << " --end " << toatstyle << " ";
 	cmdCreate << "--font DEFAULT:0:Courier ";
@@ -241,7 +241,7 @@ void rrd_vm_create_graph_speed_command(char *filename, char *fromatstyle, char *
 	if (dstfile == NULL) 
 		cmdCreate << "`which rrdtool` graph - ";						//graph to stdout instead of file
 	else
-		cmdCreate << "`which rrdtool` graph " << filename << ".png ";
+		cmdCreate << "`which rrdtool` graph " << dstfile << " ";
 	cmdCreate << "-w " << resx << " -h " << resy << " -a PNG ";
 	cmdCreate << "--start " << fromatstyle << " --end " << toatstyle << " ";
 	cmdCreate << "--font DEFAULT:0:Courier ";
@@ -270,7 +270,7 @@ void rrd_vm_create_graph_SQLq_command(char *filename, char *fromatstyle, char *t
 	if (dstfile == NULL) 
 		cmdCreate << "`which rrdtool` graph - ";						//graph to stdout instead of file
 	else
-		cmdCreate << "`which rrdtool` graph " << filename << ".png ";
+		cmdCreate << "`which rrdtool` graph " << dstfile << " ";
 	cmdCreate << "-w " << resx << " -h " << resy << " -a PNG ";
 	cmdCreate << "--start " << fromatstyle << " --end " << toatstyle << " ";
 	cmdCreate << "--font DEFAULT:0:Courier ";
@@ -324,7 +324,7 @@ void rrd_vm_create_graph_PS_command (char *filename, char *fromatstyle, char *to
 	if (dstfile == NULL) 
 		cmdCreate << "`which rrdtool` graph - ";						//graph to stdout instead of file
 	else
-		cmdCreate << "`which rrdtool` graph " << dstfile << ".png ";
+		cmdCreate << "`which rrdtool` graph " << dstfile << " ";
 	cmdCreate << "-w " << resx << " -h " << resy << " -a PNG ";
 	cmdCreate << "--start " << fromatstyle << " --end " << toatstyle << " ";
 	cmdCreate << "--font DEFAULT:0:Courier ";
