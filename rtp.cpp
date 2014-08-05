@@ -245,6 +245,7 @@ RTP::RTP()
 	lastdtmf = 0;
 	forcemark = 0;
 	ignore = 0;
+	lastcng = 0;
 	
 	this->_last_ts.tv_sec = 0;
 	this->_last_ts.tv_usec = 0;
@@ -568,8 +569,11 @@ RTP::jitterbuffer(struct ast_channel *channel, int savePayload) {
 	 * it was silence and manually mark the frame which indicates to not count interpolated frame and resynchronize jitterbuffer
 	 */
 	if( msdiff > 1000 and (transit <= (sequencems + 200)) ) {
-		if(verbosity > 4) printf("jitterbuffer: manually marking packet, msdiff(%d) > 1000 and transit (%Lf) <= ((sequencems(%u) + 200)\n", msdiff, transit, sequencems);
-		frame->marker = 1;
+		// check if the last frame was CNG or the last frame was DTMF - force mark bit
+		if(lastcng or (lastframetype == AST_FRAME_DTMF)) {
+			if(verbosity > 4) printf("jitterbuffer: manually marking packet, msdiff(%d) > 1000 and transit (%Lf) <= ((sequencems(%u) + 200)\n", msdiff, transit, sequencems);
+			frame->marker = 1;
+		}
 	}
 	
 	// fetch packet from jitterbuffer every 20 ms regardless on packet loss or delay
@@ -662,7 +666,7 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 
 	Call *owner = (Call*)call_owner;
 
-//	if(getSSRC() != 0x2319f00a) return;
+//	if(getSSRC() != 0x30da4f3d) return;
 
 	if(getVersion() != 2) {
 		return;
@@ -768,6 +772,7 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 	}
 
 	// ignore CNG
+	lastcng = 0;
 	if(curpayload == 13 or curpayload == 19) {
 		last_seq = seq;
 		if(update_seq(seq)) {
@@ -776,6 +781,7 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 		prev_payload = curpayload;
 		prev_codec = codec;
 		lastframetype = AST_FRAME_VOICE;
+		lastcng = 1;
 		return;
 	}
 	if(curpayload == PAYLOAD_G729 and (payload_len <= 12 or payload_len == 22)) {
@@ -784,6 +790,7 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 			update_stats();
 		}
 		lastframetype = AST_FRAME_VOICE;
+		lastcng = 1;
 		return;
 	}
 	if(codec == PAYLOAD_TELEVENT) {
@@ -1409,7 +1416,7 @@ RTP::update_seq(u_int16_t seq) {
 void burstr_calculate(struct ast_channel *chan, u_int32_t received, double *burstr, double *lossr) {
 	int lost = 0;
 	int bursts = 0;
-	for(int i = 0; i < 500; i++) {
+	for(int i = 0; i <= 500; i++) {
 		lost += i * chan->loss[i];
 		bursts += chan->loss[i];
 		if(verbosity > 4 and chan->loss[i] > 0) printf("loss[%d]: %d\t", i, chan->loss[i]);
