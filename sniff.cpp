@@ -2115,11 +2115,11 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 */
 			} 
 			data[datalen - 1] = a;
-/* XXX: remove it once tested
 		} else if(sip_method == CANCEL) {
-			lastSIPresponseNum = 487;
-			strcpy(lastSIPresponse, "487 Request Terminated CANCEL");
-*/
+			if(!lastSIPresponseNum) {
+				lastSIPresponseNum = 487;
+				strcpy(lastSIPresponse, "487 Request Terminated CANCEL");
+			}
 		} else if(sip_method == BYE) {
 			strcpy(lastSIPresponse, "BYE");
 			lastSIPresponseNum = 0;
