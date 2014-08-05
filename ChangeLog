@@ -1,3 +1,8 @@
+10.0.14 5.8.2014
+================
+- do not report packet loss if RTP mark bit it set
+
+
 10.0.13 5.8.2014
 ================
 - fix: if RTP stream starts with CNG frame and seq number is > 0 it detected huge false packet loss and astronomic avg jitter. 

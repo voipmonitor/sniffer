@@ -753,6 +753,9 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 		s->lastTimeStamp = getTimestamp() - samplerate / 1000 * packetization;
 		struct timeval tmp = ast_tvadd(header->ts, ast_samp2tv(packetization, 1000));
 		memcpy(&s->lastTimeRec, &tmp, sizeof(struct timeval));
+		s->cycles = s->cycles - s->base_seq + s->max_seq;
+		s->base_seq = seq;
+		s->max_seq = seq;
 	}
 
 	if(lastframetype == AST_FRAME_DTMF and codec != PAYLOAD_TELEVENT) {
