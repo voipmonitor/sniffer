@@ -280,7 +280,7 @@ int sendvm_from_stdout_of_command(char *command, int socket, ssh_channel channel
 
     FILE *inpipe;
     inpipe = popen(command, "r");
-//    syslog(LOG_ERR, "ENTERED create command");
+
     if (!inpipe) {
         syslog(LOG_ERR, "sendout_from_stdout_of_command: couldn't open pipe for command %s", command);
         return -1;
@@ -288,19 +288,47 @@ int sendvm_from_stdout_of_command(char *command, int socket, ssh_channel channel
         if (verbosity > 1)
             syslog(LOG_NOTICE, "Pipe <%s> opened for reading max %i bytes blocks", command, buflen * sizeof(char));
     }
-    while (retch = fread(buf, sizeof(char), 1, inpipe) > 0) {
-        total += retch;
-//		syslog(LOG_ERR, "CTU: %li create command", total);
+
+/*
+    while (retch = fread(buf, sizeof(char), len, inpipe) > 0) {
+		total += retch;
+		syslog(LOG_ERR, "CTU: buflen:%d nacetl jsem %li create command",buflen, total);
+
 		if (sendvm(socket, channel, buf, retch, 0) == -1) {
 			if (verbosity > 1) syslog(LOG_NOTICE, "Pipe RET %li bytes, problem sending using sendvm", total);
 			return -1;
 		}
     }
-    pclose(inpipe);
-    if (total > 0) return 0; 
-		else return -1;
-}
+*/
 
+	int filler = 0;		//'offset' buf pointer
+	retch = 0;
+
+	//read char by char from a pipe
+    while (retch = fread(buf + filler, 1, 1, inpipe) > 0) {
+		total ++;
+		filler ++;
+
+		if (filler == BUFSIZE) {
+			filler = 0;
+			if (sendvm(socket, channel, buf, BUFSIZE, 0) == -1) 
+			{
+				if (verbosity > 1) syslog(LOG_NOTICE, "Pipe RET %li bytes, but problem sending using sendvm1", total);
+				return -1;
+			}
+		}
+    }
+	if (filler > 0) {
+		if (sendvm(socket, channel, buf, filler, 0) == -1) {
+			if (verbosity > 1) syslog(LOG_NOTICE, "Pipe RET %li bytes, but problem sending using sendvm2", total);
+			return -1;
+		}
+	}
+
+	syslog(LOG_NOTICE, "Read: %li create command", total);
+    pclose(inpipe);
+    return 0; 
+}
 
 int parse_command(char *buf, int size, int client, int eof, const char *buf_long, ManagerClientThread **managerClientThread = NULL, ssh_channel sshchannel = NULL) {
 	char sendbuf[BUFSIZE];
@@ -378,51 +406,34 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 				if (dstfile != NULL ) snprintf(sendbuf, BUFSIZE, "Creating graph of type %s from:%s to:%s resx:%i resy:%i slopemode=%s, iconmode=%s\n", manager_args[2], fromat, toat, resx, resy, slope?"yes":"no", icon?"yes":"no");
 			}
 
-			char sendcommand[2048];	//buffer for send command string;
+			char sendcommand[2048];			//buffer for send command string;
 			if (!strncmp(manager_args[2], "PS",3 )) {
 				sprintf(filename, "%s/rrd/db-PS.rrd", opt_chdir);
-
 				rrd_vm_create_graph_PS_command(filename, fromat, toat, resx, resy, slope, icon, dstfile, sendcommand, sizeof(sendcommand));
-				if (dstfile == NULL) {		//binary data
-					syslog(LOG_NOTICE, "BINARY DATA EVALUATING::");
-					if (sendvm_from_stdout_of_command(sendcommand, client, sshchannel, sendbuf, sizeof(sendbuf), 0) == -1 ){
-						cerr << "Error sending data to client 2" << endl;
-						free (manager_cmd_line);
-						free (manager_args);
-						return -1;
-					}
-				} else {				//string data
-					if ((size = sendvm(client, sshchannel, sendbuf, strlen(sendbuf), 0)) == -1){
-						cerr << "Error sending data to client 2" << endl;
-						free (manager_cmd_line);
-						free (manager_args);
-						return -1;					
-					}
-				}
 			} else if (!strncmp(manager_args[2], "SQLq", 5)) {
 				sprintf(filename, "%s/rrd/db-SQLq.rrd", opt_chdir);
-				res = rrd_vm_create_graph_SQLq(filename, fromat, toat, resx, resy, slope, icon, dstfile, sendbuf, sizeof(sendbuf));
+				rrd_vm_create_graph_SQLq_command(filename, fromat, toat, resx, resy, slope, icon, dstfile, sendcommand, sizeof(sendcommand));
 			} else if (!strncmp(manager_args[2], "tCPU", 5)) {
 				sprintf(filename, "%s/rrd/db-tCPU.rrd", opt_chdir);
-				res = rrd_vm_create_graph_tCPU(filename, fromat, toat, resx, resy, slope, icon, dstfile, sendbuf, sizeof(sendbuf));
+				rrd_vm_create_graph_tCPU_command(filename, fromat, toat, resx, resy, slope, icon, dstfile, sendcommand, sizeof(sendcommand));
 			} else if (!strncmp(manager_args[2], "drop", 5)) {
 				sprintf(filename, "%s/rrd/db-drop.rrd", opt_chdir);
-				res = rrd_vm_create_graph_drop(filename, fromat, toat, resx, resy, slope, icon, dstfile, sendbuf, sizeof(sendbuf));
+				rrd_vm_create_graph_drop_command(filename, fromat, toat, resx, resy, slope, icon, dstfile, sendcommand, sizeof(sendcommand));
 			} else if (!strncmp(manager_args[2], "speed", 5)) {
 				sprintf(filename, "%s/rrd/db-speedmbs.rrd", opt_chdir);
-				res = rrd_vm_create_graph_speed(filename, fromat, toat, resx, resy, slope, icon, dstfile, sendbuf, sizeof(sendbuf));
+				rrd_vm_create_graph_speed_command(filename, fromat, toat, resx, resy, slope, icon, dstfile, sendcommand, sizeof(sendcommand));
 			} else if (!strncmp(manager_args[2], "heap", 5)) {
 				sprintf(filename, "%s/rrd/db-heap.rrd", opt_chdir);
-				res = rrd_vm_create_graph_heap(filename, fromat, toat, resx, resy, slope, icon, dstfile, sendbuf, sizeof(sendbuf));
+				rrd_vm_create_graph_heap_command(filename, fromat, toat, resx, resy, slope, icon, dstfile, sendcommand, sizeof(sendcommand));
 			} else if (!strncmp(manager_args[2], "calls", 6)) {
 				sprintf(filename, "%s/rrd/db-callscounter.rrd", opt_chdir);
-				res = rrd_vm_create_graph_calls(filename, fromat, toat, resx ,resy, slope, icon, dstfile, sendbuf, sizeof(sendbuf));
+				rrd_vm_create_graph_calls_command(filename, fromat, toat, resx ,resy, slope, icon, dstfile, sendcommand, sizeof(sendcommand));
 			} else if (!strncmp(manager_args[2], "tacCPU", 7)) {
 				sprintf(filename, "%s/rrd/db-tacCPU.rrd", opt_chdir);
-				res = rrd_vm_create_graph_tacCPU(filename, fromat, toat, resx, resy, slope, icon, dstfile, sendbuf, sizeof(sendbuf));
+				rrd_vm_create_graph_tacCPU_command(filename, fromat, toat, resx, resy, slope, icon, dstfile, sendcommand, sizeof(sendcommand));
 			} else if (!strncmp(manager_args[2], "RSSVSZ", 7)) {
 				sprintf(filename, "%s/rrd/db-RSSVSZ.rrd", opt_chdir);
-				res = rrd_vm_create_graph_RSSVSZ(filename, fromat, toat, resx, resy, slope, icon, dstfile, sendbuf, sizeof(sendbuf));
+				rrd_vm_create_graph_RSSVSZ_command(filename, fromat, toat, resx, resy, slope, icon, dstfile, sendcommand, sizeof(sendcommand));
 			} else {
 				snprintf(sendbuf, BUFSIZE, "Error: Graph type %s isn't known\n\tGraph types: PS SQLq tCPU drop speed heap calls tacCPU RSSVSZ\n", manager_args[2]);	
 				if (verbosity > 0) {
@@ -432,6 +443,24 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 				res = -1;
 			}
 
+			if ((dstfile == NULL) && (res == 0)) {		//send from stdout of a command (binary data)
+				syslog(LOG_NOTICE, "BINARY DATA EVALUATING::");
+				if (sendvm_from_stdout_of_command(sendcommand, client, sshchannel, sendbuf, sizeof(sendbuf), 0) == -1 ){
+					cerr << "Error sending data to client 2" << endl;
+					free (manager_cmd_line);
+					free (manager_args);
+					return -1;
+				}
+			} else {									//send string data (text data or error response)
+				res = system(sendcommand);
+				if ((size = sendvm(client, sshchannel, sendbuf, strlen(sendbuf), 0)) == -1){
+					cerr << "Error sending data to client 2" << endl;
+					free (manager_cmd_line);
+					free (manager_args);
+					return -1;					
+				}
+			}
+/*
 			if (res > 0) {				//binary data
 				if ((size = sendvm(client, sshchannel, sendbuf, res, 0)) == -1){
 					cerr << "Error sending data to client 2" << endl;
@@ -447,10 +476,12 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 					}
 				}
 			}
+*/
 		}
 		free (manager_cmd_line);
 		free (manager_args);
 		return res;
+
 	} else if(strstr(buf, "reindexfiles") != NULL) {
 		snprintf(sendbuf, BUFSIZE, "starting reindexing please wait...");
 		if ((size = sendvm(client, sshchannel, sendbuf, strlen(sendbuf), 0)) == -1){
