@@ -1,6 +1,7 @@
 10.0.12 5.8.2014
 =================
 - fix MOS score in case there is large packet loss gap - the MOS did not reflected it at all
+- fix last sip response code is always 0 if the call was canceled before the ring. 
 
 
 10.0.11 31.7.2014
