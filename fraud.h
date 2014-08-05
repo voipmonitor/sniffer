@@ -126,6 +126,8 @@ private:
 class CheckInternational {
 public:
 	CheckInternational();
+	void setPrefixes(const char *prefixes);
+	void setInternationalMinLength(int internationalMinLength);
 	void load(SqlDb_row *dbRow);
 	bool isInternational(const char *number, const char **prefix = NULL) {
 		if(prefix) {
@@ -157,7 +159,10 @@ public:
 				*international = true;
 			}
 			if(prefix) {
-				return(number + strlen(prefix));
+				number += strlen(prefix);
+			}
+			while(*number == '0') {
+				++number;
 			}
 		}
 		return(number);
@@ -226,9 +231,9 @@ public:
 		}
 		int _redukSizeFindNumber = 0;
 		while(strncmp(findRecIt->number.c_str(), number, findRecIt->number.length())) {
-			if(findRecIt->number[0] != number[0]) {
+			if(findRecIt->number[0] < number[0]) {
 				return("");
-			} 
+			}
 			if((!_redukSizeFindNumber || _redukSizeFindNumber > 1) &&
 			   atol(findRecIt->number.c_str()) < atol(normalizeNumber.substr(0, findRecIt->number.length()).c_str())) {
 				if(_redukSizeFindNumber) {
@@ -241,7 +246,11 @@ public:
 					--findRecIt;
 				}
 			} else {
-				--findRecIt;
+				if(findRecIt == data.begin()) {
+					return("");
+				} else {
+					--findRecIt;
+				}
 			}
 		}
 		if(!strncmp(findRecIt->number.c_str(), number, findRecIt->number.length())) {
