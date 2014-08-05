@@ -40,21 +40,24 @@ void rrd_vm_create_graph_tCPU_command(char *filename, char *fromatstyle, char *t
 	cmdCreate << "DEF:t0=" << filename << ":tCPU-t0:MAX ";
 	cmdCreate << "DEF:t1=" << filename << ":tCPU-t1:MAX ";
 	cmdCreate << "DEF:t2=" << filename << ":tCPU-t2:MAX ";
-	cmdCreate << "LINE1:t0#0000FF:\"t0 CPU Usage %\\t\" ";
+	cmdCreate << "LINE1:t0#0000FF:\"t0 CPU Usage %\\l\" ";
+	cmdCreate << "COMMENT:\"\\u\" ";
 	cmdCreate << "GPRINT:t0:LAST:\"Cur\\: %5.2lf\" ";
 	cmdCreate << "GPRINT:t0:AVERAGE:\"Avg\\: %5.2lf\" ";
 	cmdCreate << "GPRINT:t0:MAX:\"Max\\: %5.2lf\" ";
-	cmdCreate << "GPRINT:t0:MIN:\"Min\\: %5.2lf\\t\\t\\t\" ";
-	cmdCreate << "LINE1:t1#0000FF:\"t1 CPU Usage %\\t\" ";
+	cmdCreate << "GPRINT:t0:MIN:\"Min\\: %5.2lf\\r\" ";
+	cmdCreate << "LINE1:t1#00FF00:\"t1 CPU Usage %\\l\" ";
+	cmdCreate << "COMMENT:\"\\u\" ";
 	cmdCreate << "GPRINT:t1:LAST:\"Cur\\: %5.2lf\" ";
 	cmdCreate << "GPRINT:t1:AVERAGE:\"Avg\\: %5.2lf\" ";
 	cmdCreate << "GPRINT:t1:MAX:\"Max\\: %5.2lf\" ";
-	cmdCreate << "GPRINT:t1:MIN:\"Min\\: %5.2lf\\t\\t\\t\" ";
-	cmdCreate << "LINE1:t2#0000FF:\"t2 CPU Usage %\\t\" ";
+	cmdCreate << "GPRINT:t1:MIN:\"Min\\: %5.2lf\\r\" ";
+	cmdCreate << "LINE1:t2#FF0000:\"t2 CPU Usage %\\l\" ";
+	cmdCreate << "COMMENT:\"\\u\" ";
 	cmdCreate << "GPRINT:t2:LAST:\"Cur\\: %5.2lf\" ";
 	cmdCreate << "GPRINT:t2:AVERAGE:\"Avg\\: %5.2lf\" ";
 	cmdCreate << "GPRINT:t2:MAX:\"Max\\: %5.2lf\" ";
-	cmdCreate << "GPRINT:t2:MIN:\"Min\\: %5.2lf\\t\\t\\t\" ";
+	cmdCreate << "GPRINT:t2:MIN:\"Min\\: %5.2lf\\r\" ";
 	std::size_t length = cmdCreate.str().copy(buffer, maxsize, 0);
 	buffer[length]='\0';
 }
@@ -81,21 +84,24 @@ void rrd_vm_create_graph_heap_command(char *filename, char *fromatstyle, char *t
 	cmdCreate << "DEF:buffer=" << filename << ":buffer:MAX ";
 	cmdCreate << "DEF:trash=" << filename << ":trash:MAX ";
 	cmdCreate << "DEF:ratio=" << filename << ":ratio:MAX ";
-	cmdCreate << "LINE1:buffer#0000FF:\"Buffer usage %\\t\" ";
+	cmdCreate << "LINE1:buffer#0000FF:\"Buffer usage %\\l\" ";
+	cmdCreate << "COMMENT:\"\\u\" ";
 	cmdCreate << "GPRINT:buffer:LAST:\"Cur\\: %5.2lf\" ";
 	cmdCreate << "GPRINT:buffer:AVERAGE:\"Avg\\: %5.2lf\" ";
 	cmdCreate << "GPRINT:buffer:MAX:\"Max\\: %5.2lf\" ";
-	cmdCreate << "GPRINT:buffer:MIN:\"Min\\: %5.2lf\\t\\t\\t\" ";
-	cmdCreate << "LINE1:trash#00FF00:\"Trash usage %\\t\" ";
+	cmdCreate << "GPRINT:buffer:MIN:\"Min\\: %5.2lf\\r\" ";
+	cmdCreate << "LINE1:trash#00FF00:\"Trash usage %\\l\" ";
+	cmdCreate << "COMMENT:\"\\u\" ";
 	cmdCreate << "GPRINT:trash:LAST:\"Cur\\: %5.2lf\" ";
 	cmdCreate << "GPRINT:trash:AVERAGE:\"Avg\\: %5.2lf\" ";
 	cmdCreate << "GPRINT:trash:MAX:\"Max\\: %5.2lf\" ";
-	cmdCreate << "GPRINT:trash:MIN:\"Min\\: %5.2lf\\t\\t\\t\" ";
-	cmdCreate << "LINE1:ratio#FF0000:\"Ratio %\\t\" ";
+	cmdCreate << "GPRINT:trash:MIN:\"Min\\: %5.2lf\\r\" ";
+	cmdCreate << "LINE1:ratio#FF0000:\"Ratio %\\l\" ";
+	cmdCreate << "COMMENT:\"\\u\" ";
 	cmdCreate << "GPRINT:ratio:LAST:\"Cur\\: %5.2lf\" ";
 	cmdCreate << "GPRINT:ratio:AVERAGE:\"Avg\\: %5.2lf\" ";
 	cmdCreate << "GPRINT:ratio:MAX:\"Max\\: %5.2lf\" ";
-	cmdCreate << "GPRINT:ratio:MIN:\"Min\\: %5.2lf\\t\\t\\t\" ";
+	cmdCreate << "GPRINT:ratio:MIN:\"Min\\: %5.2lf\\r\" ";
 	std::size_t length = cmdCreate.str().copy(buffer, maxsize, 0);
 	buffer[length]='\0';
 }
@@ -121,16 +127,18 @@ void rrd_vm_create_graph_drop_command(char *filename, char *fromatstyle, char *t
 	if (icon) cmdCreate << "--only-graph ";
 	cmdCreate << "DEF:exc=" << filename << ":exceeded:MAX ";
 	cmdCreate << "DEF:pck=" << filename << ":packets:MAX ";
-	cmdCreate << "LINE1:exc#0000FF:\"Buffer overloaded\\t\" ";
+	cmdCreate << "LINE1:exc#0000FF:\"Buffer overloaded\\l\" ";
+	cmdCreate << "COMMENT:\"\\u\" ";
 	cmdCreate << "GPRINT:exc:LAST:\"Cur\\: %5.0lf\" ";
 	cmdCreate << "GPRINT:exc:AVERAGE:\"Avg\\: %5.2lf\" ";
 	cmdCreate << "GPRINT:exc:MAX:\"Max\\: %5.0lf\" ";
-	cmdCreate << "GPRINT:exc:MIN:\"Min\\: %5.0lf\\t\\t\\t\" ";
-	cmdCreate << "LINE1:pck#00FF00:\"Packets dropped\\t\" ";
+	cmdCreate << "GPRINT:exc:MIN:\"Min\\: %5.0lf\\r\" ";
+	cmdCreate << "LINE1:pck#00FF00:\"Packets dropped\\l\" ";
+	cmdCreate << "COMMENT:\"\\u\" ";
 	cmdCreate << "GPRINT:pck:LAST:\"Cur\\: %5.0lf\" ";
 	cmdCreate << "GPRINT:pck:AVERAGE:\"Avg\\: %5.2lf\" ";
 	cmdCreate << "GPRINT:pck:MAX:\"Max\\: %5.0lf\" ";
-	cmdCreate << "GPRINT:pck:MIN:\"Min\\: %5.0lf\\t\\t\\t\" ";
+	cmdCreate << "GPRINT:pck:MIN:\"Min\\: %5.0lf\\r\" ";
 	std::size_t length = cmdCreate.str().copy(buffer, maxsize, 0);
 	buffer[length]='\0';
 }
@@ -157,13 +165,14 @@ void rrd_vm_create_graph_calls_command(char *filename, char *fromatstyle, char *
 	cmdCreate << "DEF:callsmin=" << filename << ":calls:MIN ";
 	cmdCreate << "DEF:callsavg=" << filename << ":calls:AVERAGE ";
 	cmdCreate << "DEF:callsmax=" << filename << ":calls:MAX ";
-	cmdCreate << "AREA:callsmax#00FF00:\"calls max\" ";
-	cmdCreate << "LINE1:callsavg#0000FF:\"Calls avg\\t\" ";
-	cmdCreate << "LINE1:callsmin#FF0000:\"Calls min\\t\" ";
+	cmdCreate << "AREA:callsmax#00FF00:\"calls max\\l\" ";
+	cmdCreate << "LINE1:callsavg#0000FF:\"Calls avg\\l\" ";
+	cmdCreate << "LINE1:callsmin#FF0000:\"Calls min\\l\" ";
+	cmdCreate << "COMMENT:\"\\u\" ";
 	cmdCreate << "GPRINT:callsmax:LAST:\"Cur\\: %5.0lf\" ";
 	cmdCreate << "GPRINT:callsmax:AVERAGE:\"Avg\\: %5.2lf\" ";
 	cmdCreate << "GPRINT:callsmax:MAX:\"Max\\: %5.0lf\" ";
-	cmdCreate << "GPRINT:callsmax:MIN:\"Min\\: %5.0lf\\t\\t\\t\" ";
+	cmdCreate << "GPRINT:callsmax:MIN:\"Min\\: %5.0lf\\r\" ";
 	std::size_t length = cmdCreate.str().copy(buffer, maxsize, 0);
 	buffer[length]='\0';
 }
@@ -188,11 +197,12 @@ void rrd_vm_create_graph_tacCPU_command(char *filename, char *fromatstyle, char 
 	if (slope) cmdCreate << "--slope-mode ";
 	if (icon) cmdCreate << "--only-graph ";
 	cmdCreate << "DEF:tac=" << filename << ":tacCPU:MAX ";
-	cmdCreate << "LINE1:tac#0000FF:\"Usage\\t\" ";
+	cmdCreate << "LINE1:tac#0000FF:\"Usage\\l\" ";
+	cmdCreate << "COMMENT:\"\\u\" ";
 	cmdCreate << "GPRINT:tac:LAST:\"Cur\\: %5.2lf\" ";
 	cmdCreate << "GPRINT:tac:AVERAGE:\"Avg\\: %5.2lf\" ";
 	cmdCreate << "GPRINT:tac:MAX:\"Max\\: %5.2lf\" ";
-	cmdCreate << "GPRINT:tac:MIN:\"Min\\: %5.2lf\\t\\t\\t\" ";
+	cmdCreate << "GPRINT:tac:MIN:\"Min\\: %5.2lf\\r\" ";
 	std::size_t length = cmdCreate.str().copy(buffer, maxsize, 0);
 	buffer[length]='\0';
 }
@@ -218,16 +228,18 @@ void rrd_vm_create_graph_RSSVSZ_command(char *filename, char *fromatstyle, char 
 	if (icon) cmdCreate << "--only-graph ";
 	cmdCreate << "DEF:rss=" << filename << ":RSS:MAX ";
 	cmdCreate << "DEF:vsz=" << filename << ":VSZ:MAX ";
-	cmdCreate << "AREA:vsz#00FF00:\"Mem Usage VSZ\\t\" ";
+	cmdCreate << "AREA:vsz#00FF00:\"Mem Usage VSZ \\l\" ";
+	cmdCreate << "COMMENT:\"\\u\" ";
 	cmdCreate << "GPRINT:vsz:LAST:\"Cur\\: %5.0lf\" ";
 	cmdCreate << "GPRINT:vsz:AVERAGE:\"Avg\\: %5.2lf\" ";
 	cmdCreate << "GPRINT:vsz:MAX:\"Max\\: %5.0lf\" ";
-	cmdCreate << "GPRINT:vsz:MIN:\"Min\\: %5.0lf\\t\\t\\t\" ";
-	cmdCreate << "AREA:rss#0000FF:\"-S0\\t\" ";
+	cmdCreate << "GPRINT:vsz:MIN:\"Min\\: %5.0lf\\r\" ";
+	cmdCreate << "AREA:rss#0000FF:\"Mem Usage RSS\\l\" ";
+	cmdCreate << "COMMENT:\"\\u\" ";
 	cmdCreate << "GPRINT:rss:LAST:\"Cur\\: %5.0lf\" ";
 	cmdCreate << "GPRINT:rss:AVERAGE:\"Avg\\: %5.2lf\" ";
 	cmdCreate << "GPRINT:rss:MAX:\"Max\\: %5.0lf\" ";
-	cmdCreate << "GPRINT:rss:MIN:\"Min\\: %5.0lf\\t\\t\\t\" ";
+	cmdCreate << "GPRINT:rss:MIN:\"Min\\: %5.0lf\\r\" ";
 	std::size_t length = cmdCreate.str().copy(buffer, maxsize, 0);
 	buffer[length]='\0';
 }
@@ -255,11 +267,12 @@ void rrd_vm_create_graph_speed_command(char *filename, char *fromatstyle, char *
 	if (slope) cmdCreate << "--slope-mode ";
 	if (icon) cmdCreate << "--only-graph ";
 	cmdCreate << "DEF:speed=" << filename << ":mbs:MAX ";
-	cmdCreate << "AREA:speed#00FF00:\"speed (Mb/s)\" ";
+	cmdCreate << "AREA:speed#00FF00:\"speed (Mb/s)\\l\" ";
+	cmdCreate << "COMMENT:\"\\u\" ";
 	cmdCreate << "GPRINT:speed:LAST:\"Cur\\: %5.2lf\" ";
 	cmdCreate << "GPRINT:speed:AVERAGE:\"Avg\\: %5.2lf\" ";
 	cmdCreate << "GPRINT:speed:MAX:\"Max\\: %5.2lf\" ";
-	cmdCreate << "GPRINT:speed:MIN:\"Min\\: %5.2lf\\t\\t\\t\" ";
+	cmdCreate << "GPRINT:speed:MIN:\"Min\\: %5.2lf\\r\" ";
 	std::size_t length = cmdCreate.str().copy(buffer, maxsize, 0);
 	buffer[length]='\0';
 }
@@ -288,31 +301,36 @@ void rrd_vm_create_graph_SQLq_command(char *filename, char *fromatstyle, char *t
 	cmdCreate << "DEF:SQLqR=" << filename << ":SQLq-R:MAX ";
 	cmdCreate << "DEF:SQLqCl=" << filename << ":SQLq-Cl:MAX ";
 	cmdCreate << "DEF:SQLqH=" << filename << ":SQLq-H:MAX ";
-	cmdCreate << "LINE1:SQLqC#0000FF:\"-C\\t\" ";
+	cmdCreate << "LINE1:SQLqC#0000FF:\"-C\\l\" ";
+	cmdCreate << "COMMENT:\"\\u\" ";
 	cmdCreate << "GPRINT:SQLqC:LAST:\"Cur\\: %5.0lf\" ";
 	cmdCreate << "GPRINT:SQLqC:AVERAGE:\"Avg\\: %5.2lf\" ";
 	cmdCreate << "GPRINT:SQLqC:MAX:\"Max\\: %5.0lf\" ";
-	cmdCreate << "GPRINT:SQLqC:MIN:\"Min\\: %5.0lf\\t\\t\\t\" ";
-	cmdCreate << "LINE1:SQLqM#00FF00:\"-M\\t\" ";
+	cmdCreate << "GPRINT:SQLqC:MIN:\"Min\\: %5.0lf\\r\" ";
+	cmdCreate << "LINE1:SQLqM#00FF00:\"-M\\l\" ";
+	cmdCreate << "COMMENT:\"\\u\" ";
 	cmdCreate << "GPRINT:SQLqM:LAST:\"Cur\\: %5.0lf\" ";
 	cmdCreate << "GPRINT:SQLqM:AVERAGE:\"Avg\\: %5.2lf\" ";
 	cmdCreate << "GPRINT:SQLqM:MAX:\"Max\\: %5.0lf\" ";
-	cmdCreate << "GPRINT:SQLqM:MIN:\"Min\\: %5.0lf\\t\\t\\t\" ";
-	cmdCreate << "LINE1:SQLqR#FF0000:\"-R\\t\" ";
+	cmdCreate << "GPRINT:SQLqM:MIN:\"Min\\: %5.0lf\\r\" ";
+	cmdCreate << "LINE1:SQLqR#FF0000:\"-R\\l\" ";
+	cmdCreate << "COMMENT:\"\\u\" ";
 	cmdCreate << "GPRINT:SQLqR:LAST:\"Cur\\: %5.0lf\" ";
 	cmdCreate << "GPRINT:SQLqR:AVERAGE:\"Avg\\: %5.2lf\" ";
 	cmdCreate << "GPRINT:SQLqR:MAX:\"Max\\: %5.0lf\" ";
-	cmdCreate << "GPRINT:SQLqR:MIN:\"Min\\: %5.0lf\\t\\t\\t\" ";
-	cmdCreate << "LINE1:SQLqCl#00FFFF:\"-Cl\\t\" ";
+	cmdCreate << "GPRINT:SQLqR:MIN:\"Min\\: %5.0lf\\r\" ";
+	cmdCreate << "LINE1:SQLqCl#00FFFF:\"-Cl\\l\" ";
+	cmdCreate << "COMMENT:\"\\u\" ";
 	cmdCreate << "GPRINT:SQLqCl:LAST:\"Cur\\: %5.0lf\" ";
 	cmdCreate << "GPRINT:SQLqCl:AVERAGE:\"Avg\\: %5.2lf\" ";
 	cmdCreate << "GPRINT:SQLqCl:MAX:\"Max\\: %5.0lf\" ";
-	cmdCreate << "GPRINT:SQLqCl:MIN:\"Min\\: %5.0lf\\t\\t\\t\" ";
-	cmdCreate << "LINE1:SQLqH#FFFF00:\"-H\\t\" ";
+	cmdCreate << "GPRINT:SQLqCl:MIN:\"Min\\: %5.0lf\\r\" ";
+	cmdCreate << "LINE1:SQLqH#FFFF00:\"-H\\l\" ";
+	cmdCreate << "COMMENT:\"\\u\" ";
 	cmdCreate << "GPRINT:SQLqH:LAST:\"Cur\\: %5.0lf\" ";
 	cmdCreate << "GPRINT:SQLqH:AVERAGE:\"Avg\\: %5.2lf\" ";
 	cmdCreate << "GPRINT:SQLqH:MAX:\"Max\\: %5.0lf\" ";
-	cmdCreate << "GPRINT:SQLqH:MIN:\"Min\\: %5.0lf\\t\\t\\t\" ";
+	cmdCreate << "GPRINT:SQLqH:MIN:\"Min\\: %5.0lf\\r\" ";
 	std::size_t length = cmdCreate.str().copy(buffer, maxsize, 0);
 	buffer[length]='\0';
 }
@@ -342,31 +360,36 @@ void rrd_vm_create_graph_PS_command (char *filename, char *fromatstyle, char *to
 	cmdCreate << "DEF:PSS1=" << filename << ":PS-S1:MAX ";
 	cmdCreate << "DEF:PSR=" << filename << ":PS-R:MAX ";
 	cmdCreate << "DEF:PSA=" << filename << ":PS-A:MAX ";
-	cmdCreate << "LINE1:PSC#0000FF:\"-C\\t\" ";
+	cmdCreate << "LINE1:PSC#0000FF:\"-C\\l\" ";
+	cmdCreate << "COMMENT:\"\\u\" ";
 	cmdCreate << "GPRINT:PSC:LAST:\"Cur\\: %5.0lf\" ";
 	cmdCreate << "GPRINT:PSC:AVERAGE:\"Avg\\: %5.2lf\" ";
 	cmdCreate << "GPRINT:PSC:MAX:\"Max\\: %5.0lf\" ";
-	cmdCreate << "GPRINT:PSC:MIN:\"Min\\: %5.0lf\\t\\t\\t\" ";
-	cmdCreate << "LINE1:PSS0#00FF00:\"-S0\\t\" ";
+	cmdCreate << "GPRINT:PSC:MIN:\"Min\\: %5.0lf\\r\" ";
+	cmdCreate << "LINE1:PSS0#00FF00:\"-S0\\l\" ";
+	cmdCreate << "COMMENT:\"\\u\" ";
 	cmdCreate << "GPRINT:PSS0:LAST:\"Cur\\: %5.0lf\" ";
 	cmdCreate << "GPRINT:PSS0:AVERAGE:\"Avg\\: %5.2lf\" ";
 	cmdCreate << "GPRINT:PSS0:MAX:\"Max\\: %5.0lf\" ";
-	cmdCreate << "GPRINT:PSS0:MIN:\"Min\\: %5.0lf\\t\\t\\t\" ";
-	cmdCreate << "LINE1:PSS1#FF0000:\"-S1\\t\" ";
+	cmdCreate << "GPRINT:PSS0:MIN:\"Min\\: %5.0lf\\r\" ";
+	cmdCreate << "LINE1:PSS1#FF0000:\"-S1\\l\" ";
+	cmdCreate << "COMMENT:\"\\u\" ";
 	cmdCreate << "GPRINT:PSS1:LAST:\"Cur\\: %5.0lf\" ";
 	cmdCreate << "GPRINT:PSS1:AVERAGE:\"Avg\\: %5.2lf\" ";
 	cmdCreate << "GPRINT:PSS1:MAX:\"Max\\: %5.0lf\" ";
-	cmdCreate << "GPRINT:PSS1:MIN:\"Min\\: %5.0lf\\t\\t\\t\" ";
-	cmdCreate << "LINE1:PSR#00FFFF:\"-R\\t\" ";
+	cmdCreate << "GPRINT:PSS1:MIN:\"Min\\: %5.0lf\\r\" ";
+	cmdCreate << "LINE1:PSR#00FFFF:\"-R\\l\" ";
+	cmdCreate << "COMMENT:\"\\u\" ";
 	cmdCreate << "GPRINT:PSR:LAST:\"Cur\\: %5.0lf\" ";
 	cmdCreate << "GPRINT:PSR:AVERAGE:\"Avg\\: %5.2lf\" ";
 	cmdCreate << "GPRINT:PSR:MAX:\"Max\\: %5.0lf\" ";
-	cmdCreate << "GPRINT:PSR:MIN:\"Min\\: %5.0lf\\t\\t\\t\" ";
-	cmdCreate << "LINE1:PSA#FFFF00:\"-A\\t\" ";
+	cmdCreate << "GPRINT:PSR:MIN:\"Min\\: %5.0lf\\r\" ";
+	cmdCreate << "LINE1:PSA#FFFF00:\"-A\\l\" ";
+	cmdCreate << "COMMENT:\"\\u\" ";
 	cmdCreate << "GPRINT:PSA:LAST:\"Cur\\: %5.0lf\" ";
 	cmdCreate << "GPRINT:PSA:AVERAGE:\"Avg\\: %5.2lf\" ";
 	cmdCreate << "GPRINT:PSA:MAX:\"Max\\: %5.0lf\" ";
-	cmdCreate << "GPRINT:PSA:MIN:\"Min\\: %5.0lf\\t\\t\\t\" ";
+	cmdCreate << "GPRINT:PSA:MIN:\"Min\\: %5.0lf\\r\" ";
 //	std::string str ("Test string...");
 	std::size_t length = cmdCreate.str().copy(buffer, maxsize, 0);
 	buffer[length]='\0';	
@@ -604,50 +627,30 @@ static int HandleInputLine(
 	struct dirent *dent;
 #endif
 
-	if (argc < 3
-		|| strcmp("help", argv[1]) == 0
-		|| strcmp("--help", argv[1]) == 0
-		|| strcmp("-help", argv[1]) == 0
-		|| strcmp("-?", argv[1]) == 0 || strcmp("-h", argv[1]) == 0) {
-		return 0;
-	}
-
-	if (strcmp("create", argv[1]) == 0)
-		rrd_create(argc - 1, &argv[1]);
-	else if (strcmp("dump", argv[1]) == 0)
-		rrd_dump(argc - 1, &argv[1]);
-	else if (strcmp("info", argv[1]) == 0 || strcmp("updatev", argv[1]) == 0) {
-		rrd_info_t *data;
-
-		if (strcmp("info", argv[1]) == 0)
-
-			data = rrd_info(argc - 1, &argv[1]);
-		else
-			data = rrd_update_v(argc - 1, &argv[1]);
-		rrd_info_print(data);
-		rrd_info_free(data);
-	}
-
-	else if (strcmp("restore", argv[1]) == 0)
-		rrd_restore(argc - 1, &argv[1]);
-	else if (strcmp("resize", argv[1]) == 0)
-		rrd_resize(argc - 1, &argv[1]);
-	else if (strcmp("last", argv[1]) == 0)
-		printf("%ld\n", rrd_last(argc - 1, &argv[1]));
-	else if (strcmp("lastupdate", argv[1]) == 0) {
-		rrd_lastupdate(argc - 1, &argv[1]);
-	} else if (strcmp("first", argv[1]) == 0)
-		printf("%ld\n", rrd_first(argc - 1, &argv[1]));
-	else if (strcmp("update", argv[1]) == 0)
-		rrd_update(argc - 1, &argv[1]);
-	else if (strcmp("fetch", argv[1]) == 0) {
+	if (strcmp("create", argv[0]) == 0)
+		rrd_create(argc, &argv[0]);
+	else if (strcmp("dump", argv[0]) == 0)
+		rrd_dump(argc, &argv[0]);
+	else if (strcmp("restore", argv[0]) == 0)
+		rrd_restore(argc, &argv[0]);
+	else if (strcmp("resize", argv[0]) == 0)
+		rrd_resize(argc, &argv[0]);
+	else if (strcmp("last", argv[0]) == 0)
+		printf("%ld\n", rrd_last(argc, &argv[0]));
+	else if (strcmp("lastupdate", argv[0]) == 0) {
+		rrd_lastupdate(argc, &argv[0]);
+	} else if (strcmp("first", argv[0]) == 0)
+		printf("%ld\n", rrd_first(argc, &argv[0]));
+	else if (strcmp("update", argv[0]) == 0)
+		rrd_update(argc, &argv[0]);
+	else if (strcmp("fetch", argv[0]) == 0) {
 		time_t	  start, end, ti;
 		unsigned long step, ds_cnt, i, ii;
 		rrd_value_t *data, *datai;
 		char	**ds_namv;
 
 		if (rrd_fetch
-			(argc - 1, &argv[1], &start, &end, &step, &ds_cnt, &ds_namv,
+			(argc, &argv[0], &start, &end, &step, &ds_cnt, &ds_namv,
 			 &data) == 0) {
 			datai = data;
 			printf("		   ");
@@ -665,29 +668,30 @@ static int HandleInputLine(
 			free(ds_namv);
 			free(data);
 		}
-	} else if (strcmp("xport", argv[1]) == 0) {
+/*
+	} else if (strcmp("xport", argv[0]) == 0) {
 #ifdef HAVE_RRD_GRAPH
 	  time_t	start, end;
 	  unsigned long step, col_cnt;
 	  rrd_value_t *data;
 	  char	  **legend_v;
 	  rrd_xport
-	(argc - 1, &argv[1], NULL, &start, &end, &step, &col_cnt,
+	(argc, &argv[0], NULL, &start, &end, &step, &col_cnt,
 	 &legend_v, &data);
 #else
 		rrd_set_error("the instance of rrdtool has been compiled without graphics");
 #endif
-	} else if (strcmp("graph", argv[1]) == 0) {
+	} else if (strcmp("graph", argv[0]) == 0) {
 #ifdef HAVE_RRD_GRAPH
 		char	**calcpr;
 
-#ifdef notused /*XXX*/
-		const char *imgfile = argv[2];	/* rrd_graph changes argv pointer */
+#ifdef notused
+		const char *imgfile = argv[1];
 #endif
 		int		  xsize, ysize;
 		double	  ymin, ymax;
 		int		  i;
-		int		  tostdout = (strcmp(argv[2], "-") == 0);
+		int		  tostdout = (strcmp(argv[1], "-") == 0);
 		int		  imginfo = 0;
 
 		for (i = 2; i < argc; i++) {
@@ -698,7 +702,7 @@ static int HandleInputLine(
 			}
 		}
 		if (rrd_graph
-			(argc - 1, &argv[1], &calcpr, &xsize, &ysize, NULL, &ymin,
+			(argc, &argv[0], &calcpr, &xsize, &ysize, NULL, &ymin,
 			 &ymax) == 0) {
 			if (!tostdout && !imginfo)
 				printf("%dx%d\n", xsize, ysize);
@@ -715,11 +719,11 @@ static int HandleInputLine(
 #else
 	   rrd_set_error("the instance of rrdtool has been compiled without graphics");
 #endif
-	} else if (strcmp("graphv", argv[1]) == 0) {
+	} else if (strcmp("graphv", argv[0]) == 0) {
 #ifdef HAVE_RRD_GRAPH
-		rrd_info_t *grinfo = NULL;	/* 1 to distinguish it from the NULL that rrd_graph sends in */
+		rrd_info_t *grinfo = NULL;
 
-		grinfo = rrd_graph_v(argc - 1, &argv[1]);
+		grinfo = rrd_graph_v(argc, &argv[0]);
 		if (grinfo) {
 			rrd_info_print(grinfo);
 			rrd_info_free(grinfo);
@@ -727,12 +731,13 @@ static int HandleInputLine(
 #else
 	   rrd_set_error("the instance of rrdtool has been compiled without graphics");
 #endif
-	} else if (strcmp("tune", argv[1]) == 0)
-		rrd_tune(argc - 1, &argv[1]);
-	else if (strcmp("flushcached", argv[1]) == 0)
-		rrd_flushcached(argc - 1, &argv[1]);
+*/
+	} else if (strcmp("tune", argv[0]) == 0)
+		rrd_tune(argc, &argv[0]);
+	else if (strcmp("flushcached", argv[0]) == 0)
+		rrd_flushcached(argc, &argv[0]);
 	else {
-		rrd_set_error("unknown function '%s'", argv[1]);
+		rrd_set_error("unknown function '%s'", argv[0]);
 	}
 	if (rrd_test_error()) {
 		fprintf(out, "ERROR: %s\n", rrd_get_error());
@@ -790,7 +795,6 @@ static int CountArgsC(
  * vm_rrd_createArgs - take a string (aLine) and tokenize
  */
 int vm_rrd_createArgs(
-	char *pName,
 	char *aLine,
 	char **argv)
 {
@@ -811,8 +815,7 @@ int vm_rrd_createArgs(
 	while (*aLine && *aLine <= ' ')
 		aLine++;
 
-	pargv[0] = pName;
-	argc = 1;
+	argc = 0;
 	getP = aLine;
 	putP = aLine;
 	while (*getP) {
@@ -853,12 +856,6 @@ int vm_rrd_createArgs(
 	}
 
 	*putP = '\0';
-	int i=0;
-	while (i < argc) {
-		printf("ARGC:%d Arg:[%d] = %s\n",argc,i,pargv[i]);
-		i++;
-	}
-
 	if (Quote)
 		return -1;
 	else
@@ -893,7 +890,7 @@ int rrd_call(
 	memcpy(tmpLine, aLine, strlen(aLine));
 	tmpLine[strlen(aLine)] = '\0';
 
-	if ((myargc = vm_rrd_createArgs("voipmonitor-bin", tmpLine, myargv)) > 0) {
+	if ((myargc = vm_rrd_createArgs(tmpLine, myargv)) > 0) {
 		int result = HandleInputLine(myargc, myargv, stderr);
 		free(tmpLine);
 		free(myargv);
