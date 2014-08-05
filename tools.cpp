@@ -2227,7 +2227,7 @@ void find_and_replace(string &source, const string find, string replace) {
 }
 
 bool isLocalIP(u_int32_t ip) {
-	char *net_str[] = {
+	const char *net_str[] = {
 		"192.168.0.0/16",
 		"10.0.0.0/8",
 		"172.16.0.0/20"
