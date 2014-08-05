@@ -1210,19 +1210,8 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 		last_ts = getTimestamp();
 	}
 
-	if(first) {
-		first = false;
-		init_seq(seq);
-		s->max_seq = seq - 1;
-		s->probation = MIN_SEQUENTIAL;
-		s->lastTimeRec = header->ts;
-		s->lastTimeRecJ = header->ts;
-		s->lastTimeStamp = getTimestamp();
-		s->lastTimeStampJ = getTimestamp();
-	} else {
-		if(update_seq(seq)) {
-			update_stats();
-		}
+	if(update_seq(seq)) {
+		update_stats();
 	}
 	lastframetype = frame->frametype;
 	last_seq = seq;
@@ -1362,6 +1351,18 @@ RTP::init_seq(u_int16_t seq) {
 /* this function is borrowed from the http://www.ietf.org/rfc/rfc3550.txt */
 int
 RTP::update_seq(u_int16_t seq) {
+	if(first) {
+		first = false;
+		init_seq(seq);
+		s->max_seq = seq - 1;
+		s->probation = MIN_SEQUENTIAL;
+		s->lastTimeRec = header->ts;
+		s->lastTimeRecJ = header->ts;
+		s->lastTimeStamp = getTimestamp();
+		s->lastTimeStampJ = getTimestamp();
+		return 0;
+	}
+
 	u_int16_t udelta = seq - s->max_seq;
 	/*
 	* Source is not valid until MIN_SEQUENTIAL packets with

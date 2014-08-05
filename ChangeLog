@@ -1,5 +1,10 @@
+10.0.13 5.8.2014
+================
+- fix: if RTP stream starts with CNG frame and seq number is > 0 it detected huge false packet loss and astronomic avg jitter. 
+
+
 10.0.12 5.8.2014
-=================
+================
 - fix MOS score in case there is large packet loss gap - the MOS did not reflected it at all
 - fix last sip response code is always 0 if the call was canceled before the ring. 
 
