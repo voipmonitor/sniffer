@@ -666,7 +666,7 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 
 	Call *owner = (Call*)call_owner;
 
-//	if(getSSRC() != 0x30da4f3d) return;
+//	if(getSSRC() != 0xe7eefc3) return;
 
 	if(getVersion() != 2) {
 		return;
@@ -1246,7 +1246,9 @@ RTP::update_stats() {
 	Call *owner = (Call*)call_owner;
 
 	/* if payload == PAYLOAD_TELEVENT dont make delayes on this because it confuses stats */
-	if(codec == PAYLOAD_TELEVENT) {
+	if(codec == PAYLOAD_TELEVENT or lastframetype == AST_FRAME_DTMF) {
+		s->lastTimeStamp = getTimestamp();
+		memcpy(&s->lastTimeRec, &header->ts, sizeof(struct timeval));
 		return;
 	}
 
@@ -1266,6 +1268,7 @@ RTP::update_stats() {
 		adelay = abs(int(transit));
 		s->fdelay += transit;
 	}
+//	printf("seq[%u] adelay[%u]\n", seq, adelay);
 
 	/* Jitterbuffer calculation
 	 * J(1) = J(0) + (|D(0,1)| - J(0))/16 */
