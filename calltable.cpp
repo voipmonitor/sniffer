@@ -3627,7 +3627,7 @@ Calltable::cleanup( time_t currtime ) {
 				closeCall = true;
 				call->bye_timeout_exceeded = true;
 			} else if(call->first_rtp_time &&
-				  currtime - call->get_last_rtp_packet_time() > rtptimeout) {
+				  currtime - call->get_last_packet_time() > rtptimeout) {
 				closeCall = true;
 				call->rtp_timeout_exceeded = true;
 			} else if(!call->first_rtp_time &&
