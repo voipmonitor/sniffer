@@ -127,6 +127,8 @@ public:
 	bool seeninviteok;			//!< true if we see SIP INVITE within the Call
 	bool seenbye;			//!< true if we see SIP BYE within the Call
 	bool seenbyeandok;		//!< true if we see SIP OK TO BYE OR TO CANEL within the Call
+	bool seenRES2XX;
+	bool seenRES18X;
 	bool sighup;			//!< true if call is saving during sighup
 	string dirname();		//!< name of the directory to store files for the Call
 	string dirnamesqlfiles();
@@ -231,8 +233,10 @@ public:
 
 	char oneway;
 	char absolute_timeout_exceeded;
+	char zombie_timeout_exceeded;
 	char bye_timeout_exceeded;
 	char rtp_timeout_exceeded;
+	char sipwithoutrtp_timeout_exceeded;
 	char oneway_timeout_exceeded;
 	char pcap_drop;
 	unsigned int lastsrcip;
@@ -360,6 +364,13 @@ public:
 	 * @return time of the last packet in seconds from UNIX epoch
 	*/
 	time_t get_last_packet_time() { return last_packet_time; };
+
+	/**
+	 * @brief get time of the last seen rtp packet which belongs to this call
+	 *
+	 * @return time of the last rtp packet in seconds from UNIX epoch
+	*/
+	time_t get_last_rtp_packet_time() { return max(last_rtp_a_packet_time, last_rtp_b_packet_time); };
 
 	/**
 	 * @brief set time of the last seen packet which belongs to this call

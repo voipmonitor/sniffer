@@ -256,7 +256,9 @@ void SqlDb::setLoginTimeout(ulong loginTimeout) {
 
 bool SqlDb::reconnect() {
 	if(this->connecting) {
-		syslog(LOG_NOTICE, "prevent recursion of connect to db");
+		if(verbosity > 1) {
+			syslog(LOG_NOTICE, "prevent recursion of connect to db");
+		}
 		return(false);
 	}
 	if(verbosity > 1) {
@@ -3107,6 +3109,9 @@ void SqlDb_mysql::copyFromSourceGuiTables(SqlDb_mysql *sqlDbSrc) {
 	SqlDb_row row;
 	while(row = sqlDbSrc->fetchRow()) {
 		string tableName = row[0];
+		if((tableName == "http_jj" || tableName == "enum_jj") && !opt_enable_lua_tables) {
+			continue;
+		}
 		bool isMainSourceTable = false;
 		for(size_t i = 0; i < mainSourceTables.size(); i++) {
 			if(tableName == mainSourceTables[i]) {

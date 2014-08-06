@@ -24,6 +24,7 @@
 #include "filter_mysql.h"
 #include "tcpreassembly.h"
 #include "sniff.h"
+#include "rrd.h"
 
 
 #define TEST_DEBUG_PARAMS 0
@@ -923,7 +924,6 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 		string statString = "\n";
 		if(statCalls) {
 			ostringstream outStr;
-			
 			outStr << "CALLS: " << calltable->calls_listMAP.size() << ", " << calls_counter;
 			if(opt_ipaccount) {
 				outStr << "  IPACC_BUFFER " << lengthIpaccBuffer();
@@ -1239,7 +1239,6 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 			rrdtacCPU_lastt = last_tac_cpu;
 		}
 	}
-
 	if(last_tac_cpu > 95) {
 		asyncClose.addThread();
 	}
@@ -1853,7 +1852,7 @@ bool PcapQueue_readFromInterface_base::startCapture() {
 		}
 		if(rssAfterActivate && rssAfterActivate > rssBeforeActivate &&
 		   rssAfterActivate < rssBeforeActivate + this->pcap_buffer_size * 0.9 / 1024 / 1024) {
-			syslog(LOG_NOTICE, "packetbuffer - %s: ringbuffer has only %i MB", this->getInterfaceName().c_str(), rssAfterActivate - rssBeforeActivate); 
+			syslog(LOG_NOTICE, "packetbuffer - %s: ringbuffer has only %lu MB", this->getInterfaceName().c_str(), rssAfterActivate - rssBeforeActivate); 
 			if(opt_fork) {
 				ostringstream outStr;
 				outStr << this->getInterfaceName() << ": ringbuffer has only " << (rssAfterActivate - rssBeforeActivate) << " MB";

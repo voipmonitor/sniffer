@@ -164,6 +164,7 @@ public:
 	struct ast_channel *channel_record;
 	struct ast_frame *frame;
 	int lastframetype;		//!< last packet sequence number
+	char lastcng;		//!< last packet sequence number
 	u_int16_t seq;		//!< current sequence number
 	int last_seq;		//!< last packet sequence number
 	int packetization;	//!< packetization in millisenocds

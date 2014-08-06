@@ -544,9 +544,7 @@ size_t CircularBuffer::read(char *data, size_t bytes)
 }
 
 double ts2double(unsigned int sec, unsigned int usec) {
-	double fpart = usec;
-	while(fpart > 1) fpart /= 10;
-	return sec + fpart;
+	return double((double)sec + (0.000001f * (double)usec));
 }
 
 long long GetFileSize(std::string filename)
@@ -2227,7 +2225,7 @@ void find_and_replace(string &source, const string find, string replace) {
 }
 
 bool isLocalIP(u_int32_t ip) {
-	char *net_str[] = {
+	const char *net_str[] = {
 		"192.168.0.0/16",
 		"10.0.0.0/8",
 		"172.16.0.0/20"

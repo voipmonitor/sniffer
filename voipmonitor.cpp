@@ -211,6 +211,7 @@ int readend = 0;
 int opt_dup_check = 0;
 int opt_dup_check_ipheader = 1;
 int rtptimeout = 300;
+int sipwithoutrtptimeout = 3600;
 int absolute_timeout = 4 * 3600;
 char opt_cdrurl[1024] = "";
 int opt_destination_number_mode = 1;
@@ -1244,6 +1245,9 @@ int load_config(char *fname) {
 	}
 	if((value = ini.GetValue("general", "rtptimeout", NULL))) {
 		rtptimeout = atoi(value);
+	}
+	if((value = ini.GetValue("general", "sipwithoutrtptimeout", NULL))) {
+		sipwithoutrtptimeout = atoi(value);
 	}
 	if((value = ini.GetValue("general", "absolute_timeout", NULL))) {
 		absolute_timeout = atoi(value);
@@ -2299,7 +2303,6 @@ int main(int argc, char *argv[]) {
 
 	thread_setup();
 	int option_index = 0;
- 
 	static struct option long_options[] = {
 	    {"gzip-graph", 0, 0, '1'},
 	    {"gzip-pcap", 0, 0, '2'},
@@ -2581,7 +2584,6 @@ int main(int argc, char *argv[]) {
 				break;
 		}
 	}
-
 	if(opt_ipaccount) {
 		initIpacc();
 	}
@@ -2790,7 +2792,6 @@ int main(int argc, char *argv[]) {
 
 		return 1;
 	}
-	
 	if(opt_rrd && opt_read_from_file) {
 		//disable update of rrd statistics when reading packets from file
 		opt_rrd = 0;
@@ -3859,173 +3860,139 @@ struct XX {
 	int b;
 };
 
+void test_search_country_by_number() {
+	CheckInternational *ci = new CheckInternational();
+	ci->setInternationalMinLength(9);
+	CountryPrefixes *cp = new CountryPrefixes();
+	cp->load();
+	vector<string> countries;
+	cout << cp->getCountry("00039123456789", &countries, ci) << endl;
+	for(size_t i = 0; i < countries.size(); i++) {
+		cout << countries[i] << endl;
+	}
+	delete cp;
+	delete ci;
+	cout << "-" << endl;
+}
+
+void test_geoip() {
+	GeoIP_country *ipc = new GeoIP_country();
+	ipc->load();
+	cout << ipc->getCountry(3755988991) << endl;
+	delete ipc;
+}
+
+void test_filebuffer() {
+	int maxFiles = 1000;
+	int bufferLength = 8000;
+	FILE *file[maxFiles];
+	char *fbuffer[maxFiles];
+	
+	for(int i = 0; i < maxFiles; i++) {
+		char filename[100];
+		sprintf(filename, "/dev/shm/test/%i", i);
+		file[i] = fopen(filename, "w");
+		
+		setbuf(file[i], NULL);
+		
+		fbuffer[i] = new char[bufferLength];
+		
+	}
+	
+	printf("%d\n", BUFSIZ);
+	
+	char writebuffer[1000];
+	memset(writebuffer, 1, 1000);
+	
+	for(int i = 0; i < maxFiles; i++) {
+		fwrite(writebuffer, 1000, 1, file[i]);
+		fclose(file[i]);
+		char filename[100];
+		sprintf(filename, "/dev/shm/test/%i", i);
+		file[i] = fopen(filename, "a");
+		
+		fflush(file[i]);
+		setvbuf(file[i], fbuffer[i], _IOFBF, bufferLength);
+	}
+	
+	struct timeval tv;
+	struct timezone tz;
+	gettimeofday(&tv, &tz);
+	
+	cout << "---" << endl;
+	u_int64_t _start = tv.tv_sec * 1000000ull + tv.tv_usec;
+	
+	
+	for(int p = 0; p < 5; p++)
+	for(int i = 0; i < maxFiles; i++) {
+		fwrite(writebuffer, 1000, 1, file[i]);
+	}
+	
+	cout << "---" << endl;
+	gettimeofday(&tv, &tz);
+	u_int64_t _end = tv.tv_sec * 1000000ull + tv.tv_usec;
+	cout << (_end - _start) << endl;
+}
+
+void test_safeasyncqueue() {
+	SafeAsyncQueue<XX> testSAQ;
+	XX xx(1,2);
+	testSAQ.push(xx);
+	XX yy;
+	sleep(1);
+	if(testSAQ.pop(&yy)) {
+		cout << "y" << endl;
+		cout << yy.a << "/" << yy.b << endl;
+	} else {
+		cout << "n" << endl;
+	}
+}
+
+void test_parsepacket() {
+	ParsePacket pp;
+	pp.setStdParse();
+ 
+	char *str = (char*)"REGISTER sip:mx.com SIP/2.0\r\nv: SIP/2.0/UDP 1.2.3.4:5080;branch=asf4aas-5454sadfasfasdf545fsd454asfd46saf;nat=true\r\nv: SIP/2.0/UDP 5.6.7.8:5060;rport=5060;branch=asdf4as54f65as4df5sdaffds\r\nRecord-Route: <sip:1.2.3.4:5080;transport=udp;dest=5.6.7.8-5060;to-tag=6546565654;lr=1>\r\nf: <sip:65465465464455@mx.com>;tag=6546565654\r\nt: <sip:65465465464455@mx.com>\r\ni: 74EB5975C4E31329@5.6.7.8\r\nCSeq: 128752 REGISTER\r\nMax-Forwards: 10\r\nAccept-Encoding: identity\r\nAccept: application/sdp, multipart/mixed\r\nAllow: INVITE,ACK,OPTIONS,CANCEL,BYE,UPDATE,PRACK,INFO,SUBSCRIBE,NOTIFY,REFER,MESSAGE,PUBLISH\r\nAllow-Events: telephone-event,refer,reg\r\nSupported: 100rel,replaces\r\nl: 0\r\n\r\n";
+	for(int i = 0; i < 100000; i++) {
+		pp.parseData(str, strlen(str), true);
+	}
+	
+	pp.debugData();
+}
+	
+void test_parsepacket2() {
+	ParsePacket pp;
+	pp.addNode("test1");
+	pp.addNode("test2");
+	pp.addNode("test3");
+	
+	//pp.getContent("test1")->content = "1";
+	//pp.getContent("test2")->content = "2";
+	//pp.getContent("test3")->content = "3";
+	
+	char *str = "test1abc\ncontent-length: 20 \rxx\r\n\r\ntEst2def\rtest3ghi\n";
+	//          12345678 90123456789012345678 901 2 3 4 567890123456789012
+	//                    1         2          3             4         5
+	
+	pp.parseData(str, strlen(str), true);
+	
+	cout << pp.getContent("test1")->content << "   L: " << pp.getContent("test1")->length << endl;
+	cout << pp.getContent("test2")->content << "   L: " << pp.getContent("test2")->length << endl;
+	cout << pp.getContent("test3")->content << "   L: " << pp.getContent("test3")->length << endl;
+}
+
+void test_reg() {
+	cout << reg_match("123456789", "456") << endl;
+	cout << reg_replace("123456789", "(.*)(456)(.*)", "$1-$2-$3") << endl;
+}
+
 void test() {
  
 	switch(opt_test) {
 	 
-	case 1:
-	{
-		// test FILE buffer
-		
-		int maxFiles = 1000;
-		int bufferLength = 8000;
-		FILE *file[maxFiles];
-		char *fbuffer[maxFiles];
-		
-		for(int i = 0; i < maxFiles; i++) {
-			char filename[100];
-			sprintf(filename, "/dev/shm/test/%i", i);
-			file[i] = fopen(filename, "w");
-			
-			setbuf(file[i], NULL);
-			
-			fbuffer[i] = new char[bufferLength];
-			
-		}
-		
-		printf("%d\n", BUFSIZ);
-		
-		char writebuffer[1000];
-		memset(writebuffer, 1, 1000);
-		
-		for(int i = 0; i < maxFiles; i++) {
-			fwrite(writebuffer, 1000, 1, file[i]);
-			fclose(file[i]);
-			char filename[100];
-			sprintf(filename, "/dev/shm/test/%i", i);
-			file[i] = fopen(filename, "a");
-			
-			fflush(file[i]);
-			setvbuf(file[i], fbuffer[i], _IOFBF, bufferLength);
-		}
-		
-		struct timeval tv;
-		struct timezone tz;
-		gettimeofday(&tv, &tz);
-		
-		cout << "---" << endl;
-		u_int64_t _start = tv.tv_sec * 1000000ull + tv.tv_usec;
-		
-		
-		for(int p = 0; p < 5; p++)
-		for(int i = 0; i < maxFiles; i++) {
-			fwrite(writebuffer, 1000, 1, file[i]);
-		}
-		
-		cout << "---" << endl;
-		gettimeofday(&tv, &tz);
-		u_int64_t _end = tv.tv_sec * 1000000ull + tv.tv_usec;
-		cout << (_end - _start) << endl;
-		
-		return;
-	 
-		SafeAsyncQueue<XX> testSAQ;
-		XX xx(1,2);
-		testSAQ.push(xx);
-		XX yy;
-		sleep(1);
-		if(testSAQ.pop(&yy)) {
-			cout << "y" << endl;
-			cout << yy.a << "/" << yy.b << endl;
-		} else {
-			cout << "n" << endl;
-		}
-
-		return;
-	 
-		ParsePacket pp;
-		pp.setStdParse();
-	 
-		char *str = (char*)"REGISTER sip:mx.com SIP/2.0\r\nv: SIP/2.0/UDP 1.2.3.4:5080;branch=asf4aas-5454sadfasfasdf545fsd454asfd46saf;nat=true\r\nv: SIP/2.0/UDP 5.6.7.8:5060;rport=5060;branch=asdf4as54f65as4df5sdaffds\r\nRecord-Route: <sip:1.2.3.4:5080;transport=udp;dest=5.6.7.8-5060;to-tag=6546565654;lr=1>\r\nf: <sip:65465465464455@mx.com>;tag=6546565654\r\nt: <sip:65465465464455@mx.com>\r\ni: 74EB5975C4E31329@5.6.7.8\r\nCSeq: 128752 REGISTER\r\nMax-Forwards: 10\r\nAccept-Encoding: identity\r\nAccept: application/sdp, multipart/mixed\r\nAllow: INVITE,ACK,OPTIONS,CANCEL,BYE,UPDATE,PRACK,INFO,SUBSCRIBE,NOTIFY,REFER,MESSAGE,PUBLISH\r\nAllow-Events: telephone-event,refer,reg\r\nSupported: 100rel,replaces\r\nl: 0\r\n\r\n";
-		for(int i = 0; i < 100000; i++) {
-			pp.parseData(str, strlen(str), true);
-		}
-		
-		pp.debugData();
-		
-		/*
-		ParsePacket pp;
-		pp.addNode("test1");
-		pp.addNode("test2");
-		pp.addNode("test3");
-		
-		//pp.getContent("test1")->content = "1";
-		//pp.getContent("test2")->content = "2";
-		//pp.getContent("test3")->content = "3";
-		
-		char *str = "test1abc\ncontent-length: 20 \rxx\r\n\r\ntEst2def\rtest3ghi\n";
-		//          12345678 90123456789012345678 901 2 3 4 567890123456789012
-		//                    1         2          3             4         5
-		
-		pp.parseData(str, strlen(str), true);
-		*/
-		
-		/*
-		ParsePacket pp(true);
-		pp.parseData("\200\022\n|\302\216\224\260\022m[\377t\352\376\210?\nT:\r\026\070\001\334\020Ѫ,o\355\026!\020\371R", 32, true, 1);
-		*/
-		
-		//pp.debugData();
-		
-		
-		/*
-		cout << pp.getContent("test1")->content << "   L: " << pp.getContent("test1")->length << endl;
-		cout << pp.getContent("test2")->content << "   L: " << pp.getContent("test2")->length << endl;
-		cout << pp.getContent("test3")->content << "   L: " << pp.getContent("test3")->length << endl;
-		*/
-		
-		/*
-		CountryPrefixes *cp = new CountryPrefixes();
-		cp->load();
-		vector<string> countries;
-		cout << cp->getCountry("16335454", &countries) << endl;
-		for(size_t i = 0; i < countries.size(); i++) {
-			cout << countries[i] << endl;
-		}
-		delete cp;
-		
-		cout << "-" << endl;
-		
-		GeoIP_country *ipc = new GeoIP_country();
-		ipc->load();
-		cout << ipc->getCountry(3755988991) << endl;
-		delete ipc;
-		*/
-		
-		/*
-		cout << reg_match("123456789", "456") << endl;
-		cout << reg_replace("123456789", "(.*)(456)(.*)", "$1-$2-$3") << endl;
-		
-		ListIP_wb ip;
-		ip.addWhite("192.168.1.0/24\r192.168.2.3");
-		ip.addBlack("192.168.1.13");
-		cout << ip.checkIP("192.168.1.12") << endl;
-		cout << ip.checkIP("192.168.1.13") << endl;
-		cout << ip.checkIP("192.168.2.3") << endl;
-		cout << ip.checkIP("192.168.2.5") << endl;
-		*/
-	 
-		/*
-		char *test = "+123 456";
- 		char *pattern = "\\+([0-9]+)(.*)";
-		
-		regmatch_t match[10];
-		
-		int status;
-		regex_t re;
-		if(regcomp(&re, pattern, REG_EXTENDED) != 0) {
-			syslog(LOG_ERR, "regcomp %s error", pattern);
-			exit;
-		}
-		status = regexec(&re, test, (size_t)10, match, 0);
-		if(!status) {
-			cout << "ok";
-		}
-		regfree(&re);
-		*/
-		
+	case 1: {
+		test_search_country_by_number();
 		cout << "---------" << endl;
-	 
 	} break;
 	case 2: {
 		for(int i = 0; i < 10; i++) {
