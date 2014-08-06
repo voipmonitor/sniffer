@@ -544,9 +544,7 @@ size_t CircularBuffer::read(char *data, size_t bytes)
 }
 
 double ts2double(unsigned int sec, unsigned int usec) {
-	double fpart = usec;
-	while(fpart > 1) fpart /= 10;
-	return sec + fpart;
+	return double((double)sec + (0.000001f * (double)usec));
 }
 
 long long GetFileSize(std::string filename)
