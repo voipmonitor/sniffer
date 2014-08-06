@@ -256,7 +256,9 @@ void SqlDb::setLoginTimeout(ulong loginTimeout) {
 
 bool SqlDb::reconnect() {
 	if(this->connecting) {
-		syslog(LOG_NOTICE, "prevent recursion of connect to db");
+		if(verbosity > 1) {
+			syslog(LOG_NOTICE, "prevent recursion of connect to db");
+		}
 		return(false);
 	}
 	if(verbosity > 1) {
