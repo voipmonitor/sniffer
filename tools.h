@@ -234,6 +234,7 @@ string inet_ntostring(u_int32_t ip);
 void base64_init(void);
 int base64decode(unsigned char *dst, const char *src, int max);
 void find_and_replace(string &source, const string find, string replace);
+string find_and_replace(const char *source, const char *find, const char *replace);
 bool isLocalIP(u_int32_t ip);
 
 class CircularBuffer
