@@ -2693,6 +2693,7 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 		} else {
 			sqlDbSaveCall->query("DELETE FROM register");
 		}
+		last_register_clean = now;
 	} else if((last_register_clean + REGISTER_CLEAN_PERIOD) < now){
 		// last clean was done older than CLEAN_PERIOD seconds
 		stringstream calldate;
@@ -2707,8 +2708,8 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 			sqlDbSaveCall->query(query);
 			sqlDbSaveCall->query("DELETE FROM register WHERE expires_at <= FROM_UNIXTIME("+ calldate.str() + ")");
 		}
+		last_register_clean = now;
 	}
-	last_register_clean = now;
 
 	char fname[32];
 	snprintf(fname, 31, "%llu", fname2);
