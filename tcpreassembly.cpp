@@ -33,8 +33,6 @@ bool debug_print_content = globalDebug && true;
 u_int16_t debug_counter = 0;
 u_int16_t debug_limit_counter = 0;
 u_int16_t debug_port = 0;
-// dořešit:
-// /home/jumbox/Plocha/http_pcaps/http_00684_20130903072226.pcap / 49668 - data jsou komplet i když je příznak expect continue - odpověď na expoct continue pak jde se stejným ack jako finální odpověď
 u_int32_t debug_seq = 0;
 
 
@@ -69,7 +67,8 @@ void TcpReassemblyStream::push(TcpReassemblyStream_packet packet) {
 }
 
 int TcpReassemblyStream::ok(bool crazySequence, bool enableSimpleCmpMaxNextSeq, u_int32_t maxNextSeq,
-			    bool enableCheckCompleteContent, TcpReassemblyStream *prevHttpStream, bool enableDebug) {
+			    bool enableCheckCompleteContent, TcpReassemblyStream *prevHttpStream, bool enableDebug,
+			    int forceFirstSeq) {
 	if(this->is_ok) {
 		return(1);
 	}
@@ -86,7 +85,9 @@ int TcpReassemblyStream::ok(bool crazySequence, bool enableSimpleCmpMaxNextSeq, 
 	while(true) {
 		u_int32_t seq = this->ok_packets.size() ? 
 					this->ok_packets.back()[1] : 
-					(crazySequence ? this->min_seq : this->first_seq);
+					(forceFirstSeq ?
+					  forceFirstSeq :
+					  (crazySequence ? this->min_seq : this->first_seq));
 		iter_var = this->queue.find(seq);
 		if(iter_var == this->queue.end() && this->ok_packets.size()) {
 			u_int32_t prev_seq = this->ok_packets.back()[0];
@@ -1047,7 +1048,7 @@ int TcpReassemblyLink::okQueue_crazy(bool final, bool enableDebug) {
 			*/
 			
 			/*
-			if(iter.stream->ack == 1406578986) {
+			if(iter.stream->ack == 2900664065) {
 				cout << " -- ***** -- ";
 			}
 			*/
@@ -1089,7 +1090,7 @@ int TcpReassemblyLink::okQueue_crazy(bool final, bool enableDebug) {
 			}
 			
 			/*
-			if(iter.stream->ack == 1406578986) {
+			if(iter.stream->ack == 2900664065) {
 				cout << " -- ***** -- ";
 			}
 			*/
@@ -1156,6 +1157,22 @@ int TcpReassemblyLink::okQueue_crazy(bool final, bool enableDebug) {
 						}
 					} else if(iter.stream->direction == TcpReassemblyStream::DIRECTION_TO_SOURCE) {
 						if(!iter.nextAckInReverseDirection()) {
+							if(iter.stream->direction == TcpReassemblyStream::DIRECTION_TO_SOURCE &&
+							   iter.stream->complete_data.getData() &&
+							   iter.stream->complete_data.getDatalen() == 25 &&
+							   !memcmp(iter.stream->complete_data.getData(), "HTTP/1.1 100 Continue\r\n\r\n", 25) &&
+							   this->ok_streams.size() > 1) {
+								TcpReassemblyDataItem dataItem = this->ok_streams[this->ok_streams.size() - 1]->complete_data;
+								this->ok_streams[this->ok_streams.size() - 1]->complete_data.clearData();
+								this->ok_streams[this->ok_streams.size() - 1]->is_ok = false;
+								if(!iter.stream->ok(true, false, 0,
+										    true, NULL, false,
+										    iter.stream->ok_packets[0][1]) ||
+								   memcmp(iter.stream->complete_data.getData(), "HTTP/1.1 200 OK", 15)) {
+									this->ok_streams[this->ok_streams.size() - 1]->is_ok = true;
+									this->ok_streams[this->ok_streams.size() - 1]->complete_data = dataItem;
+								}
+							}
 							break;
 						}
 					} else {

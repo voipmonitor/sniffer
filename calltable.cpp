@@ -85,6 +85,7 @@ extern int opt_callend;
 extern int opt_id_sensor;
 extern int opt_id_sensor_cleanspool;
 extern int rtptimeout;
+extern int sipwithoutrtptimeout;
 extern int absolute_timeout;
 extern unsigned int gthread_num;
 extern int num_threads;
@@ -177,6 +178,8 @@ Call::Call(char *call_id, unsigned long call_id_len, time_t time) :
 	seeninviteok = false;
 	seenbye = false;
 	seenbyeandok = false;
+	seenRES2XX = false;
+	seenRES18X = false;
 	caller[0] = '\0';
 	caller_domain[0] = '\0';
 	callername[0] = '\0';
@@ -262,8 +265,10 @@ Call::Call(char *call_id, unsigned long call_id_len, time_t time) :
 	b_mos_lqo = -1;
 	oneway = 1;
 	absolute_timeout_exceeded = 0;
+	zombie_timeout_exceeded = 0;
 	bye_timeout_exceeded = 0;
 	rtp_timeout_exceeded = 0;
+	sipwithoutrtp_timeout_exceeded = 0;
 	oneway_timeout_exceeded = 0;
 	pcap_drop = 0;
 	
@@ -1731,10 +1736,14 @@ Call::getKeyValCDRtext() {
 	int bye;
 	if(absolute_timeout_exceeded) {
 		bye = 102;
+	} else if(zombie_timeout_exceeded) {
+		bye = 107;
 	} else if(bye_timeout_exceeded) {
 		bye = 103;
 	} else if(rtp_timeout_exceeded) {
 		bye = 104;
+	} else if(sipwithoutrtp_timeout_exceeded) {
+		bye = 106;
 	} else if(oneway_timeout_exceeded) {
 		bye = 105;
 	} else if(oneway) {
@@ -3617,12 +3626,21 @@ Calltable::cleanup( time_t currtime ) {
 			} else if(call->destroy_call_at_bye != 0 && call->destroy_call_at_bye <= currtime) {
 				closeCall = true;
 				call->bye_timeout_exceeded = true;
-			} else if(currtime - call->get_last_packet_time() > rtptimeout) {
+			} else if(call->first_rtp_time &&
+				  currtime - call->get_last_packet_time() > rtptimeout) {
 				closeCall = true;
 				call->rtp_timeout_exceeded = true;
+			} else if(!call->first_rtp_time &&
+				  currtime - call->first_packet_time > sipwithoutrtptimeout) {
+				closeCall = true;
+				call->sipwithoutrtp_timeout_exceeded = true;
 			} else if(currtime - call->first_packet_time > absolute_timeout) {
 				closeCall = true;
 				call->absolute_timeout_exceeded = true;
+			} else if(currtime - call->first_packet_time > 300 &&
+				  !call->seenRES18X && !call->seenRES2XX && !call->first_rtp_time) {
+				closeCall = true;
+				call->zombie_timeout_exceeded = true;
 			}
 			if(!closeCall &&
 			   (call->oneway == 1 && (currtime - call->get_last_packet_time() > opt_onewaytimeout))) {

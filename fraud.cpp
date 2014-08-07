@@ -129,6 +129,14 @@ CheckInternational::CheckInternational() {
 	internationalMinLength = 0;
 }
 
+void CheckInternational::setPrefixes(const char *prefixes) {
+	this->prefixes = split(prefixes, ",", true);
+}
+
+void CheckInternational::setInternationalMinLength(int internationalMinLength) {
+	this->internationalMinLength = internationalMinLength;
+}
+
 void CheckInternational::load(SqlDb_row *dbRow) {
 	string _prefixes = (*dbRow)["international_prefixes"];
 	if(!_prefixes.empty()) {

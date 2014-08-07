@@ -1693,7 +1693,7 @@ bool PcapQueue_readFromInterface_base::startCapture() {
 		}
 		if(rssAfterActivate && rssAfterActivate > rssBeforeActivate &&
 		   rssAfterActivate < rssBeforeActivate + this->pcap_buffer_size * 0.9 / 1024 / 1024) {
-			syslog(LOG_NOTICE, "packetbuffer - %s: ringbuffer has only %i MB", this->getInterfaceName().c_str(), rssAfterActivate - rssBeforeActivate); 
+			syslog(LOG_NOTICE, "packetbuffer - %s: ringbuffer has only %lu MB", this->getInterfaceName().c_str(), rssAfterActivate - rssBeforeActivate); 
 			if(opt_fork) {
 				ostringstream outStr;
 				outStr << this->getInterfaceName() << ": ringbuffer has only " << (rssAfterActivate - rssBeforeActivate) << " MB";

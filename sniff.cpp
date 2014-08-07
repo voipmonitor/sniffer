@@ -2251,6 +2251,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 
 
 			} else if(sip_method == RES2XX) {
+				call->seenRES2XX = true;
 				// update expires header from all REGISTER dialog messages (from 200 OK which can override the expire) but not if register_expires == 0
 				if(call->register_expires != 0) {
 					s = gettag(data, datalen, "\nExpires:", &l, &gettagLimitLen);
@@ -2494,6 +2495,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 					call->cancelcseq[cseqlen] = '\0';
 				}
 			} else if(sip_method == RES2XX) {
+				call->seenRES2XX = true;
 				// if the progress time was not set yet set it here so PDD (Post Dial Delay) is accurate if no ringing is present
 				if(!call->set_progress_time_via_2XX_or18X) {
 					call->progress_time = header->ts.tv_sec;
@@ -2562,6 +2564,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 				}
 
 			} else if(sip_method == RES18X) {
+				call->seenRES18X = true;
 				if(!call->set_progress_time_via_2XX_or18X) {
 					call->progress_time = header->ts.tv_sec;
 					call->set_progress_time_via_2XX_or18X = true;

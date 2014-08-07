@@ -1,3 +1,15 @@
+10.0.15 7.8.2014
+================
+- fix zombie calls when sniffer is loosing packets. Add new sipwithoutrtptimeout so rtptimeout can be keep at reasonable values (300). See new config/voipmonitor.conf comments. 
+- close call if there is no 18X or 2XX responses 
+- fix search country by phone prefix
+- remove useless debug message "prevent recursion of connect to db"
+- fix dtmf reorder when storing dtmf to database
+- fix http issue with 100-continue before 200-OK with eq ack at end stream
+- fix false high PDV in case there are DTMF frames
+- fix IP capture rules which matches rules according to best fit based on higher network mask. for example 192.168.0.1/32 rule will match last if there is also rule 192.168.0.0/24.
+
+
 10.0.14 5.8.2014
 ================
 - do not report packet loss if RTP mark bit it set
