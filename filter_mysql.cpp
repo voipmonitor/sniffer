@@ -108,6 +108,9 @@ IPfilter::add_call_flags(unsigned int *flags, unsigned int saddr, unsigned int d
 		return 0;
 	}
 
+	int last_mask = 0;
+	char found = 0;
+
 	t_node *node;
 	long double mask;
 	for(node = first_node; node != NULL; node = node->next) {
@@ -116,6 +119,15 @@ IPfilter::add_call_flags(unsigned int *flags, unsigned int saddr, unsigned int d
 
 		if(((node->direction == 0 or node->direction == 2) and ((daddr & (unsigned int)mask) == (node->ip & (unsigned int)mask))) || 
 			((node->direction == 0 or node->direction == 1) and ((saddr & (unsigned int)mask) == (node->ip & (unsigned int)mask)))) {
+
+		
+			if(node->mask < last_mask) {
+				// continue 
+				last_mask = node->mask;
+				continue;
+			}
+	
+			last_mask = node->mask;
 
 			if(node->flags & FLAG_SCRIPT) {
 				*flags |= FLAG_RUNSCRIPT;
@@ -184,11 +196,11 @@ IPfilter::add_call_flags(unsigned int *flags, unsigned int saddr, unsigned int d
 				*flags &= ~FLAG_HIDEMESSAGE;
 			}
 
-			return 1;
+			found = 1;
 		}
 	}
 
-	return 0;
+	return found;
 }
 
 void
