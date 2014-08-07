@@ -1,3 +1,9 @@
+10.0.16 7.8.2014
+================
+- fix cleaning of active REGISTER which did not expired 
+- fix clean_obsolete_dirs which cleaned more than it should (not enabled by default) 
+
+
 10.0.15 7.8.2014
 ================
 - fix zombie calls when sniffer is loosing packets. Add new sipwithoutrtptimeout so rtptimeout can be keep at reasonable values (300). See new config/voipmonitor.conf comments. 
