@@ -117,12 +117,12 @@ IPfilter::add_call_flags(unsigned int *flags, unsigned int saddr, unsigned int d
 
 		mask = (pow(2, (long double)(node->mask)) - 1) * pow(2, (long double)(32 - node->mask));
 
-		unsigned int origflags = flags;
+		unsigned int origflags = *flags;
 
 		if(((node->direction == 0 or node->direction == 2) and ((daddr & (unsigned int)mask) == (node->ip & (unsigned int)mask))) || 
 			((node->direction == 0 or node->direction == 1) and ((saddr & (unsigned int)mask) == (node->ip & (unsigned int)mask)))) {
 
-			flags = origflags;
+			*flags = origflags;
 		
 			if(node->mask < last_mask) {
 				// continue 
