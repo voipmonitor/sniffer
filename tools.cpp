@@ -101,6 +101,27 @@ int file_exists (char * fileName)
 	return 0;
 }
 
+bool DirExists(char *strFilename) {
+	struct stat stFileInfo;
+	int intStat;
+
+	// Attempt to get the file attributes 
+	intStat = stat(strFilename, &stFileInfo);
+	if(intStat == 0 && S_ISDIR(stFileInfo.st_mode))  {
+		// We were able to get the dir attributes 
+		// so the file obviously exists. 
+		return true;
+	} else {
+		// We were not able to get the file attributes. 
+		// This may mean that we don't have permission to 
+		// access the folder which contains this file. If you 
+		// need to do that level of checking, lookup the 
+		// return values of stat which will give you 
+		// more details on why stat failed. 
+		return false;
+	}
+}
+
 bool FileExists(char *strFilename) {
 	struct stat stFileInfo;
 	int intStat;
