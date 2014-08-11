@@ -1,14 +1,15 @@
 Debian 6.0
 ----------
 
-apt-get install build-essential subversion libvorbis-dev libpcap-dev apache2 php5-mysql php5-gd mysql-server unixodbc-dev libapache2-mod-php5
+apt-get install build-essential subversion libvorbis-dev libpcap-dev apache2 php5-mysql php5-gd mysql-server unixodbc-dev libapache2-mod-php5 apt-get install libsnappy-dev libcurl4-openssl-dev libssh-dev apt-get libjson0-dev
 
 cd /usr/src
-svn co https://voipmonitor.svn.sourceforge.net/svnroot/voipmonitor/trunk  voipmonitor-svn
-cd voipmonitor-svn
+git clone git://git.code.sf.net/p/voipmonitor/git voipmonitor-git
+cd voipmonitor-git
 rm Makefile
 ./configure
 make
+(Is possible you will get a warning like this: " Warning: the use of `tmpnam' is dangerous, better use `mkstemp" just continue with the next command)
 make install
 mkdir /var/spool/voipmonitor
 mysqladmin create voipmonitor
