@@ -571,7 +571,7 @@ Call::refresh_data_ip_port(in_addr_t addr, unsigned short port, bool iscaller, i
 			// reinit rtpmap
 			memcpy(this->rtpmap[RTPMAP_BY_CALLERD ? iscaller : i], rtpmap, MAX_RTPMAP * sizeof(int));
 			// force mark bit for reinvite 
-			forcemark[!iscaller] = true;
+			forcemark[iscaller] = true;
 			return true;
 		}
 	}
