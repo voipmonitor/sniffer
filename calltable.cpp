@@ -586,6 +586,7 @@ Call::add_ip_port_hash(in_addr_t addr, unsigned short port, char *sessid, char *
 					((Calltable*)calltable)->hashAdd(addr, port + 1, this, iscaller, 1, fax);
 				}
 				//cout << "change ip/port for sessid " << sessid << " ip:" << inet_ntostring(htonl(addr)) << "/" << inet_ntostring(htonl(this->ip_port[sessidIndex].addr)) << " port:" << port << "/" <<  this->ip_port[sessidIndex].port << endl;
+				forcemark[iscaller] = true;
 				this->ip_port[sessidIndex].addr = addr;
 				this->ip_port[sessidIndex].port = port;
 				this->ip_port[sessidIndex].iscaller = iscaller;
