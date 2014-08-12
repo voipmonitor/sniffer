@@ -492,7 +492,12 @@ RTP::jitterbuffer(struct ast_channel *channel, int savePayload) {
 
 		if(codec == PAYLOAD_G729 and (payload_len <= 12)) {
 			frame->frametype = AST_FRAME_DTMF;
+			frame->marker = 1;
 		}
+	}
+
+	if(lastcng or lastframetype == AST_FRAME_DTMF) {
+		frame->marker = 1;
 	}
 
 	if(savePayload) {
@@ -775,7 +780,6 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 	}
 
 	// ignore CNG
-	lastcng = 0;
 	if(curpayload == 13 or curpayload == 19) {
 		last_seq = seq;
 		if(update_seq(seq)) {
@@ -805,10 +809,14 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 		prev_payload = curpayload;
 		prev_codec = codec;
 		lastframetype = AST_FRAME_DTMF;
+		lastcng = 0;
 		return;
 	}
 
-	if(!owner) return;
+	if(!owner) { 
+		lastcng = 0;
+		return;
+	}
 
 	if(iscaller) {
 		if(owner->lastcallerrtp and owner->lastcallerrtp != this) {
@@ -1218,6 +1226,7 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 	}
 	lastframetype = frame->frametype;
 	last_seq = seq;
+	lastcng = 0;
 }
 
 /* fill internal structures by the input RTP packet */
