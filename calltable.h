@@ -347,6 +347,8 @@ public:
 	*/
 	int add_ip_port(in_addr_t addr, unsigned short port, char *sessid, char *ua, unsigned long ua_len, bool iscaller, int *rtpmap);
 	
+	bool refresh_data_ip_port(in_addr_t addr, unsigned short port, bool iscaller, int *rtpmap);
+	
 	void add_ip_port_hash(in_addr_t addr, unsigned short port, char *sessid, char *ua, unsigned long ua_len, bool iscaller, int *rtpmap, bool fax, int allowrelation = 0);
 
 	/**
