@@ -528,15 +528,8 @@ Call::add_ip_port(in_addr_t addr, unsigned short port, char *sessid, char *ua, u
 	}
 
 	if(ipport_n > 0) {
-		// check, if there is already IP:port
-		for(int i = 0; i < ipport_n; i++) {
-			if(this->ip_port[i].addr == addr && this->ip_port[i].port == port) {
-				// reinit rtpmap
-				memcpy(this->rtpmap[RTPMAP_BY_CALLERD ? iscaller : i], rtpmap, MAX_RTPMAP * sizeof(int));
-				// force mark bit for reinvite 
-				forcemark[!iscaller] = true;
-				return 1;
-			}
+		if(this->refresh_data_ip_port(addr, port, iscaller, rtpmap)) {
+			return 1;
 		}
 	}
 
@@ -571,6 +564,20 @@ Call::add_ip_port(in_addr_t addr, unsigned short port, char *sessid, char *ua, u
 	return 0;
 }
 
+bool 
+Call::refresh_data_ip_port(in_addr_t addr, unsigned short port, bool iscaller, int *rtpmap) {
+	for(int i = 0; i < ipport_n; i++) {
+		if(this->ip_port[i].addr == addr && this->ip_port[i].port == port) {
+			// reinit rtpmap
+			memcpy(this->rtpmap[RTPMAP_BY_CALLERD ? iscaller : i], rtpmap, MAX_RTPMAP * sizeof(int));
+			// force mark bit for reinvite 
+			forcemark[!iscaller] = true;
+			return true;
+		}
+	}
+	return false;
+}
+
 void
 Call::add_ip_port_hash(in_addr_t addr, unsigned short port, char *sessid, char *ua, unsigned long ua_len, bool iscaller, int *rtpmap, bool fax, int allowrelation) {
 	if(sessid) {
@@ -586,11 +593,10 @@ Call::add_ip_port_hash(in_addr_t addr, unsigned short port, char *sessid, char *
 					((Calltable*)calltable)->hashAdd(addr, port + 1, this, iscaller, 1, fax);
 				}
 				//cout << "change ip/port for sessid " << sessid << " ip:" << inet_ntostring(htonl(addr)) << "/" << inet_ntostring(htonl(this->ip_port[sessidIndex].addr)) << " port:" << port << "/" <<  this->ip_port[sessidIndex].port << endl;
-				forcemark[iscaller] = true;
-				memcpy(this->rtpmap[RTPMAP_BY_CALLERD ? iscaller : i], rtpmap, MAX_RTPMAP * sizeof(int));
 				this->ip_port[sessidIndex].addr = addr;
 				this->ip_port[sessidIndex].port = port;
 				this->ip_port[sessidIndex].iscaller = iscaller;
+				this->refresh_data_ip_port(addr, port, iscaller, rtpmap);
 			}
 			return;
 		}
