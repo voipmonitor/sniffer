@@ -184,8 +184,8 @@ RTP::RTP()
 
 	channel_fix1 = (ast_channel*)calloc(1, sizeof(*channel_fix1));
 	channel_fix1->jitter_impl = 0; // fixed
-	channel_fix1->jitter_max = 60; 
-	channel_fix1->jitter_resync_threshold = 50;
+	channel_fix1->jitter_max = 50; 
+	channel_fix1->jitter_resync_threshold = 100;
 	channel_fix1->last_datalen = 0;
 	channel_fix1->lastbuflen = 0;
 	channel_fix1->resync = 1;
@@ -666,7 +666,7 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 
 	Call *owner = (Call*)call_owner;
 
-//	if(getSSRC() != 0xe7eefc3) return;
+//	if(getSSRC() != 0x4d2) return;
 
 	if(getVersion() != 2) {
 		return;
