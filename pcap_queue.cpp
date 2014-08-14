@@ -1693,10 +1693,10 @@ bool PcapQueue_readFromInterface_base::startCapture() {
 		}
 		if(rssAfterActivate && rssAfterActivate > rssBeforeActivate &&
 		   rssAfterActivate < rssBeforeActivate + this->pcap_buffer_size * 0.9 / 1024 / 1024) {
-			syslog(LOG_NOTICE, "packetbuffer - %s: ringbuffer has only %lu MB", this->getInterfaceName().c_str(), rssAfterActivate - rssBeforeActivate); 
+			syslog(LOG_NOTICE, "packetbuffer - %s: ringbuffer has only %lu MB which means that your kernel does not support ringbuffer (<2.6.32) or you have invalid ringbuffer setting", this->getInterfaceName().c_str(), rssAfterActivate - rssBeforeActivate); 
 			if(opt_fork) {
 				ostringstream outStr;
-				outStr << this->getInterfaceName() << ": ringbuffer has only " << (rssAfterActivate - rssBeforeActivate) << " MB";
+				outStr << this->getInterfaceName() << ": ringbuffer has only " << (rssAfterActivate - rssBeforeActivate) << " MB which means that your kernel does not support ringbuffer (<2.6.32) or you have invalid ringbuffer setting";
 				daemonizeOutput(outStr.str());
 			}
 		}
