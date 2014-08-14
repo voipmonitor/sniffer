@@ -282,10 +282,11 @@ bool SqlDb::queryByCurl(string query) {
 	vector<dstring> postData;
 	postData.push_back(dstring("query", query.c_str()));
 	postData.push_back(dstring("token", cloud_token));
-	for(unsigned int pass = 0; pass < this->maxQueryPass; pass++) {
+	unsigned int attempt = 0;
+	for(unsigned int pass = 0; pass < this->maxQueryPass; pass++, attempt++) {
 		if(pass > 0) {
 			sleep(1);
-			syslog(LOG_INFO, "next attempt %u - query: %s", pass, query.c_str());
+			syslog(LOG_INFO, "next attempt %u - query: %s", attempt, query.c_str());
 		}
 		SimpleBuffer responseBuffer;
 		string error;
@@ -2699,131 +2700,231 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 	
 	//BEGIN SQL SCRIPTS
 	if((opt_cdr_partition || opt_ipaccount) && !opt_disable_partition_operations) {
-		this->createProcedure(string(
-		"begin\
-		    declare part_date date;\
-		    declare part_limit date;\
-		    declare part_limit_int int;\
-		    declare part_name char(100);\
-		    declare test_exists_any_part_query varchar(1000);\
-		    declare test_exists_part_query varchar(1000);\
-		    declare create_part_query varchar(1000);\
-		    set test_exists_any_part_query = concat(\
-		       'set @_exists_any_part = exists (select * from information_schema.partitions where table_schema=\\'',\
-		       database_name,\
-		       '\\' and table_name = \\'',\
-		       table_name,\
-		       '\\' and partition_name is not null)');\
-		    set @_test_exists_any_part_query = test_exists_any_part_query;\
-		    prepare stmt FROM @_test_exists_any_part_query;\
-		    execute stmt;\
-		    deallocate prepare stmt;\
-		    if(@_exists_any_part) then\
-		       set part_date =  date_add(date(now()), interval next_days day);\
-		       if(type_part = 'month') then\
-			  set part_date = date_add(part_date, interval -(day(part_date)-1) day);\
-			  set part_limit = date_add(part_date, interval 1 month);\
-			  set part_name = concat('p', date_format(part_date, '%y%m'));\
-		       else\
-			  set part_limit = date_add(part_date, interval 1 day);\
-			  set part_name = concat('p', date_format(part_date, '%y%m%d'));\
-		       end if;\
-		       set part_limit_int = to_days(part_limit);\
-		       set test_exists_part_query = concat(\
-			  'set @_exists_part = exists (select * from information_schema.partitions where table_schema=\\'',\
-			  database_name,\
-			  '\\' and table_name = \\'',\
-			  table_name,\
-			  '\\' and partition_name = \\'',\
-			  part_name,\
-			  '\\')');\
-		       set @_test_exists_part_query = test_exists_part_query;\
-		       prepare stmt FROM @_test_exists_part_query;\
-		       execute stmt;\
-		       deallocate prepare stmt;\
-		       if(not @_exists_part) then\
-			  set create_part_query = concat(\
-			     'alter table ',\
-			     if(database_name is not null, concat('`', database_name, '`.'), ''),\
-			     '`',\
-			     table_name,\
-			     '` add partition (partition ',\
-			     part_name,") + 
-			     (opt_cdr_partition_oldver ? 
-				   "' VALUES LESS THAN (',\
-				    part_limit_int,\
-				    '))'" :
-				   "' VALUES LESS THAN (\\'',\
-				    part_limit,\
-				    '\\'))'") + 
-			     ");\
-			  set @_create_part_query = create_part_query;\
-			  prepare stmt FROM @_create_part_query;\
-			  execute stmt;\
-			  deallocate prepare stmt;\
-		       end if;\
-		    end if;\
-		 end",
-		"create_partition", "(database_name char(100), table_name char(100), type_part char(10), next_days int)");
+		if(!cloud_host.empty()) {
+			this->createProcedure(string(
+			"begin\
+			    declare part_date date;\
+			    declare part_limit date;\
+			    declare part_limit_int int;\
+			    declare part_name char(100);\
+			    declare create_part_query varchar(1000);\
+			    set part_date =  date_add(date(now()), interval next_days day);\
+			    if(type_part = 'month') then\
+			       set part_date = date_add(part_date, interval -(day(part_date)-1) day);\
+			       set part_limit = date_add(part_date, interval 1 month);\
+			       set part_name = concat('p', date_format(part_date, '%y%m'));\
+			    else\
+			       set part_limit = date_add(part_date, interval 1 day);\
+			       set part_name = concat('p', date_format(part_date, '%y%m%d'));\
+			    end if;\
+			    set part_limit_int = to_days(part_limit);\
+			    set create_part_query = concat(\
+			       'alter table `',\
+			       table_name,\
+			       '` add partition (partition ',\
+			       part_name,") + 
+			       (opt_cdr_partition_oldver ? 
+				     "' VALUES LESS THAN (',\
+				      part_limit_int,\
+				      '))'" :
+				     "' VALUES LESS THAN (\\'',\
+				      part_limit,\
+				      '\\'))'") + 
+			       ");\
+			    set @_create_part_query = create_part_query;\
+			    prepare stmt FROM @_create_part_query;\
+			    execute stmt;\
+			    deallocate prepare stmt;\
+			 end",
+			"create_partition", "(table_name char(100), type_part char(10), next_days int)");
+		} else {
+			this->createProcedure(string(
+			"begin\
+			    declare part_date date;\
+			    declare part_limit date;\
+			    declare part_limit_int int;\
+			    declare part_name char(100);\
+			    declare test_exists_any_part_query varchar(1000);\
+			    declare test_exists_part_query varchar(1000);\
+			    declare create_part_query varchar(1000);\
+			    set test_exists_any_part_query = concat(\
+			       'set @_exists_any_part = exists (select * from information_schema.partitions where table_schema=\\'',\
+			       database_name,\
+			       '\\' and table_name = \\'',\
+			       table_name,\
+			       '\\' and partition_name is not null)');\
+			    set @_test_exists_any_part_query = test_exists_any_part_query;\
+			    prepare stmt FROM @_test_exists_any_part_query;\
+			    execute stmt;\
+			    deallocate prepare stmt;\
+			    if(@_exists_any_part) then\
+			       set part_date =  date_add(date(now()), interval next_days day);\
+			       if(type_part = 'month') then\
+				  set part_date = date_add(part_date, interval -(day(part_date)-1) day);\
+				  set part_limit = date_add(part_date, interval 1 month);\
+				  set part_name = concat('p', date_format(part_date, '%y%m'));\
+			       else\
+				  set part_limit = date_add(part_date, interval 1 day);\
+				  set part_name = concat('p', date_format(part_date, '%y%m%d'));\
+			       end if;\
+			       set part_limit_int = to_days(part_limit);\
+			       set test_exists_part_query = concat(\
+				  'set @_exists_part = exists (select * from information_schema.partitions where table_schema=\\'',\
+				  database_name,\
+				  '\\' and table_name = \\'',\
+				  table_name,\
+				  '\\' and partition_name = \\'',\
+				  part_name,\
+				  '\\')');\
+			       set @_test_exists_part_query = test_exists_part_query;\
+			       prepare stmt FROM @_test_exists_part_query;\
+			       execute stmt;\
+			       deallocate prepare stmt;\
+			       if(not @_exists_part) then\
+				  set create_part_query = concat(\
+				     'alter table ',\
+				     if(database_name is not null, concat('`', database_name, '`.'), ''),\
+				     '`',\
+				     table_name,\
+				     '` add partition (partition ',\
+				     part_name,") + 
+				     (opt_cdr_partition_oldver ? 
+					   "' VALUES LESS THAN (',\
+					    part_limit_int,\
+					    '))'" :
+					   "' VALUES LESS THAN (\\'',\
+					    part_limit,\
+					    '\\'))'") + 
+				     ");\
+				  set @_create_part_query = create_part_query;\
+				  prepare stmt FROM @_create_part_query;\
+				  execute stmt;\
+				  deallocate prepare stmt;\
+			       end if;\
+			    end if;\
+			 end",
+			"create_partition", "(database_name char(100), table_name char(100), type_part char(10), next_days int)");
+		}
 	}
 	if(opt_cdr_partition && !opt_disable_partition_operations) {
-		this->createProcedure(
-		"begin\
-		    call create_partition(database_name, 'cdr', 'day', next_days);\
-		    call create_partition(database_name, 'cdr_next', 'day', next_days);\
-		    call create_partition(database_name, 'cdr_rtp', 'day', next_days);\
-		    call create_partition(database_name, 'cdr_dtmf', 'day', next_days);\
-		    call create_partition(database_name, 'cdr_proxy', 'day', next_days);\
-		    call create_partition(database_name, 'http_jj', 'day', next_days);\
-		    call create_partition(database_name, 'enum_jj', 'day', next_days);\
-		    call create_partition(database_name, 'message', 'day', next_days);\
-		    call create_partition(database_name, 'register_state', 'day', next_days);\
-		    call create_partition(database_name, 'register_failed', 'day', next_days);\
-		 end",
-		"create_partitions_cdr", "(database_name char(100), next_days int)");
-		if(opt_create_old_partitions > 0 && createdCdrTable) {
-			for(int i = opt_create_old_partitions - 1; i > 0; i--) {
-				char i_str[10];
-				sprintf(i_str, "%i", i);
-				this->query(string(
-				"call `") + mysql_database + "`.create_partitions_cdr('" + mysql_database + "', -" + i_str + ");");
+		if(!cloud_host.empty()) {
+			this->createProcedure(
+			"begin\
+			    call create_partition('cdr', 'day', next_days);\
+			    call create_partition('cdr_next', 'day', next_days);\
+			    call create_partition('cdr_rtp', 'day', next_days);\
+			    call create_partition('cdr_dtmf', 'day', next_days);\
+			    call create_partition('cdr_proxy', 'day', next_days);\
+			    call create_partition('http_jj', 'day', next_days);\
+			    call create_partition('enum_jj', 'day', next_days);\
+			    call create_partition('message', 'day', next_days);\
+			    call create_partition('register_state', 'day', next_days);\
+			    call create_partition('register_failed', 'day', next_days);\
+			 end",
+			"create_partitions_cdr", "(next_days int)");
+			if(opt_create_old_partitions > 0 && createdCdrTable) {
+				for(int i = opt_create_old_partitions - 1; i > 0; i--) {
+					char i_str[10];
+					sprintf(i_str, "%i", i);
+					this->query(string(
+					"call create_partitions_cdr('-") + i_str + ");");
+				}
 			}
+			this->query(
+			"call create_partitions_cdr(0);");
+			this->query(
+			"call create_partitions_cdr(1);");
+			this->query(
+			"drop event if exists cdr_add_partition");
+			this->query(
+			"create event if not exists cdr_add_partition\
+			 on schedule every 1 hour do\
+			 begin\
+			    call create_partitions_cdr(1);\
+			 end");
+		} else {
+			this->createProcedure(
+			"begin\
+			    call create_partition(database_name, 'cdr', 'day', next_days);\
+			    call create_partition(database_name, 'cdr_next', 'day', next_days);\
+			    call create_partition(database_name, 'cdr_rtp', 'day', next_days);\
+			    call create_partition(database_name, 'cdr_dtmf', 'day', next_days);\
+			    call create_partition(database_name, 'cdr_proxy', 'day', next_days);\
+			    call create_partition(database_name, 'http_jj', 'day', next_days);\
+			    call create_partition(database_name, 'enum_jj', 'day', next_days);\
+			    call create_partition(database_name, 'message', 'day', next_days);\
+			    call create_partition(database_name, 'register_state', 'day', next_days);\
+			    call create_partition(database_name, 'register_failed', 'day', next_days);\
+			 end",
+			"create_partitions_cdr", "(database_name char(100), next_days int)");
+			if(opt_create_old_partitions > 0 && createdCdrTable) {
+				for(int i = opt_create_old_partitions - 1; i > 0; i--) {
+					char i_str[10];
+					sprintf(i_str, "%i", i);
+					this->query(string(
+					"call `") + mysql_database + "`.create_partitions_cdr('" + mysql_database + "', -" + i_str + ");");
+				}
+			}
+			this->query(string(
+			"call `") + mysql_database + "`.create_partitions_cdr('" + mysql_database + "', 0);");
+			this->query(string(
+			"call `") + mysql_database + "`.create_partitions_cdr('" + mysql_database + "', 1);");
+			this->query(
+			"drop event if exists cdr_add_partition");
+			this->query(string(
+			"create event if not exists cdr_add_partition\
+			 on schedule every 1 hour do\
+			 begin\
+			    call `") + mysql_database + "`.create_partitions_cdr('" + mysql_database + "', 1);\
+			 end");
 		}
-		this->query(string(
-		"call `") + mysql_database + "`.create_partitions_cdr('" + mysql_database + "', 0);");
-		this->query(string(
-		"call `") + mysql_database + "`.create_partitions_cdr('" + mysql_database + "', 1);");
-		this->query(
-		"drop event if exists cdr_add_partition");
-		this->query(string(
-		"create event if not exists cdr_add_partition\
-		 on schedule every 1 hour do\
-		 begin\
-		    call `") + mysql_database + "`.create_partitions_cdr('" + mysql_database + "', 1);\
-		 end");
 	}
 	if(opt_ipaccount && !opt_disable_partition_operations) {
-		this->createProcedure(
-		"begin\
-		    call create_partition(database_name, 'ipacc', 'day', next_days);\
-		    call create_partition(database_name, 'ipacc_agr_interval', 'day', next_days);\
-		    call create_partition(database_name, 'ipacc_agr_hour', 'day', next_days);\
-		    call create_partition(database_name, 'ipacc_agr2_hour', 'day', next_days);\
-		    call create_partition(database_name, 'ipacc_agr_day', 'month', next_days);\
-		 end",
-		"create_partitions_ipacc", "(database_name char(100), next_days int)");
-		this->query(string(
-		"call `") + mysql_database + "`.create_partitions_ipacc('" + mysql_database + "', 0);");
-		this->query(string(
-		"call `") + mysql_database + "`.create_partitions_ipacc('" + mysql_database + "', 1);");
-		this->query(
-		"drop event if exists ipacc_add_partition");
-		this->query(string(
-		"create event if not exists ipacc_add_partition\
-		 on schedule every 1 hour do\
-		 begin\
-		    call `") + mysql_database + "`.create_partitions_ipacc('" + mysql_database + "', 1);\
-		 end");
+		if(!cloud_host.empty()) {
+			this->createProcedure(
+			"begin\
+			    call create_partition('ipacc', 'day', next_days);\
+			    call create_partition('ipacc_agr_interval', 'day', next_days);\
+			    call create_partition('ipacc_agr_hour', 'day', next_days);\
+			    call create_partition('ipacc_agr2_hour', 'day', next_days);\
+			    call create_partition('ipacc_agr_day', 'month', next_days);\
+			 end",
+			"create_partitions_ipacc", "(next_days int)");
+			this->query(
+			"call create_partitions_ipacc(0);");
+			this->query(
+			"call create_partitions_ipacc(1);");
+			this->query(
+			"drop event if exists ipacc_add_partition");
+			this->query(
+			"create event if not exists ipacc_add_partition\
+			 on schedule every 1 hour do\
+			 begin\
+			    call create_partitions_ipacc(1);\
+			 end");
+		} else {
+			this->createProcedure(
+			"begin\
+			    call create_partition(database_name, 'ipacc', 'day', next_days);\
+			    call create_partition(database_name, 'ipacc_agr_interval', 'day', next_days);\
+			    call create_partition(database_name, 'ipacc_agr_hour', 'day', next_days);\
+			    call create_partition(database_name, 'ipacc_agr2_hour', 'day', next_days);\
+			    call create_partition(database_name, 'ipacc_agr_day', 'month', next_days);\
+			 end",
+			"create_partitions_ipacc", "(database_name char(100), next_days int)");
+			this->query(string(
+			"call `") + mysql_database + "`.create_partitions_ipacc('" + mysql_database + "', 0);");
+			this->query(string(
+			"call `") + mysql_database + "`.create_partitions_ipacc('" + mysql_database + "', 1);");
+			this->query(
+			"drop event if exists ipacc_add_partition");
+			this->query(string(
+			"create event if not exists ipacc_add_partition\
+			 on schedule every 1 hour do\
+			 begin\
+			    call `") + mysql_database + "`.create_partitions_ipacc('" + mysql_database + "', 1);\
+			 end");
+		}
 	}
 
 	this->createFunction(
@@ -3906,10 +4007,18 @@ void SqlDb_odbc::checkSchema() {
 void createMysqlPartitionsCdr() {
 	syslog(LOG_NOTICE, "create cdr partitions - begin");
 	SqlDb *sqlDb = createSqlObject();
-	sqlDb->query(
-		string("call `") + mysql_database + "`.create_partitions_cdr('" + mysql_database + "', 0);");
-	sqlDb->query(
-		string("call `") + mysql_database + "`.create_partitions_cdr('" + mysql_database + "', 1);");
+	if(cloud_host[0]) {
+		sqlDb->setMaxQueryPass(1);
+		sqlDb->query(
+			"call create_partitions_cdr(0);");
+		sqlDb->query(
+			"call create_partitions_cdr(1);");
+	} else {
+		sqlDb->query(
+			string("call `") + mysql_database + "`.create_partitions_cdr('" + mysql_database + "', 0);");
+		sqlDb->query(
+			string("call `") + mysql_database + "`.create_partitions_cdr('" + mysql_database + "', 1);");
+	}
 	delete sqlDb;
 	syslog(LOG_NOTICE, "create cdr partitions - end");
 }
@@ -3917,10 +4026,18 @@ void createMysqlPartitionsCdr() {
 void createMysqlPartitionsIpacc() {
 	SqlDb *sqlDb = createSqlObject();
 	syslog(LOG_NOTICE, "create ipacc partitions - begin");
-	sqlDb->query(
-		string("call `") + mysql_database + "`.create_partitions_ipacc('" + mysql_database + "', 0);");
-	sqlDb->query(
-		string("call `") + mysql_database + "`.create_partitions_ipacc('" + mysql_database + "', 1);");
+	if(cloud_host[0]) {
+		sqlDb->setMaxQueryPass(1);
+		sqlDb->query(
+			"call create_partitions_ipacc(0);");
+		sqlDb->query(
+			"call create_partitions_ipacc(1);");
+	} else {
+		sqlDb->query(
+			string("call `") + mysql_database + "`.create_partitions_ipacc('" + mysql_database + "', 0);");
+		sqlDb->query(
+			string("call `") + mysql_database + "`.create_partitions_ipacc('" + mysql_database + "', 1);");
+	}
 	delete sqlDb;
 	syslog(LOG_NOTICE, "create ipacc partitions - end");
 }
@@ -3946,23 +4063,36 @@ void dropMysqlPartitionsCdr() {
 			vector<string> partitions_http;
 			vector<string> partitions_enum;
 			if(counterDropPartitions == 0) {
-				sqlDb->query(string("select partition_name from information_schema.partitions where table_schema='") + 
-					     mysql_database+ "' and table_name='cdr' and partition_name<='" + limitPartName+ "' order by partition_name");
-				SqlDb_row row;
-				while((row = sqlDb->fetchRow())) {
-					partitions.push_back(row["partition_name"]);
-				}
-				if(opt_enable_lua_tables) {
+				if(cloud_host[0]) {
+					sqlDb->query("explain partitions select * from cdr");
+					SqlDb_row row = sqlDb->fetchRow();
+					if(row) {
+						vector<string> exists_partitions = split(row["partitions"], ',');
+						for(size_t i = 0; i < exists_partitions.size(); i++) {
+							if(exists_partitions[i] <= limitPartName) {
+								partitions.push_back(exists_partitions[i]);
+							}
+						}
+					}
+				} else {
 					sqlDb->query(string("select partition_name from information_schema.partitions where table_schema='") + 
-						     mysql_database+ "' and table_name='http_jj' and partition_name<='" + limitPartName+ "' order by partition_name");
+						     mysql_database+ "' and table_name='cdr' and partition_name<='" + limitPartName+ "' order by partition_name");
 					SqlDb_row row;
 					while((row = sqlDb->fetchRow())) {
-						partitions_http.push_back(row["partition_name"]);
+						partitions.push_back(row["partition_name"]);
 					}
-					sqlDb->query(string("select partition_name from information_schema.partitions where table_schema='") + 
-						     mysql_database+ "' and table_name='enum_jj' and partition_name<='" + limitPartName+ "' order by partition_name");
-					while((row = sqlDb->fetchRow())) {
-						partitions_enum.push_back(row["partition_name"]);
+					if(opt_enable_lua_tables) {
+						sqlDb->query(string("select partition_name from information_schema.partitions where table_schema='") + 
+							     mysql_database+ "' and table_name='http_jj' and partition_name<='" + limitPartName+ "' order by partition_name");
+						SqlDb_row row;
+						while((row = sqlDb->fetchRow())) {
+							partitions_http.push_back(row["partition_name"]);
+						}
+						sqlDb->query(string("select partition_name from information_schema.partitions where table_schema='") + 
+							     mysql_database+ "' and table_name='enum_jj' and partition_name<='" + limitPartName+ "' order by partition_name");
+						while((row = sqlDb->fetchRow())) {
+							partitions_enum.push_back(row["partition_name"]);
+						}
 					}
 				}
 			} else {
@@ -3998,11 +4128,24 @@ void dropMysqlPartitionsCdr() {
 			strftime(limitPartName, sizeof(limitPartName), "p%y%m%d", prevDayTime);
 			vector<string> partitions;
 			if(counterDropPartitions == 0) {
-				sqlDb->query(string("select partition_name from information_schema.partitions where table_schema='") + 
-					     mysql_database+ "' and table_name='register_state' and partition_name<='" + limitPartName+ "' order by partition_name");
-				SqlDb_row row;
-				while((row = sqlDb->fetchRow())) {
-					partitions.push_back(row["partition_name"]);
+				if(cloud_host[0]) {
+					sqlDb->query("explain partitions select * from register_state");
+					SqlDb_row row = sqlDb->fetchRow();
+					if(row) {
+						vector<string> exists_partitions = split(row["partitions"], ',');
+						for(size_t i = 0; i < exists_partitions.size(); i++) {
+							if(exists_partitions[i] <= limitPartName) {
+								partitions.push_back(exists_partitions[i]);
+							}
+						}
+					}
+				} else {
+					sqlDb->query(string("select partition_name from information_schema.partitions where table_schema='") + 
+						     mysql_database+ "' and table_name='register_state' and partition_name<='" + limitPartName+ "' order by partition_name");
+					SqlDb_row row;
+					while((row = sqlDb->fetchRow())) {
+						partitions.push_back(row["partition_name"]);
+					}
 				}
 			} else {
 				partitions.push_back(limitPartName);
@@ -4020,11 +4163,24 @@ void dropMysqlPartitionsCdr() {
 			strftime(limitPartName, sizeof(limitPartName), "p%y%m%d", prevDayTime);
 			vector<string> partitions;
 			if(counterDropPartitions == 0) {
-				sqlDb->query(string("select partition_name from information_schema.partitions where table_schema='") + 
-					     mysql_database+ "' and table_name='register_failed' and partition_name<='" + limitPartName+ "' order by partition_name");
-				SqlDb_row row;
-				while((row = sqlDb->fetchRow())) {
-					partitions.push_back(row["partition_name"]);
+				if(cloud_host[0]) {
+					sqlDb->query("explain partitions select * from register_failed");
+					SqlDb_row row = sqlDb->fetchRow();
+					if(row) {
+						vector<string> exists_partitions = split(row["partitions"], ',');
+						for(size_t i = 0; i < exists_partitions.size(); i++) {
+							if(exists_partitions[i] <= limitPartName) {
+								partitions.push_back(exists_partitions[i]);
+							}
+						}
+					}
+				} else {
+					sqlDb->query(string("select partition_name from information_schema.partitions where table_schema='") + 
+						     mysql_database+ "' and table_name='register_failed' and partition_name<='" + limitPartName+ "' order by partition_name");
+					SqlDb_row row;
+					while((row = sqlDb->fetchRow())) {
+						partitions.push_back(row["partition_name"]);
+					}
 				}
 			} else {
 				partitions.push_back(limitPartName);
