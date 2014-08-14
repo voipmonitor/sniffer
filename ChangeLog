@@ -1,3 +1,8 @@
+10.0.19 12.8.2014
+=================
+- fix low MOS score for G729 silence suppresion / CNG 
+
+
 10.0.18 12.8.2014
 =================
 - force RTP resync in case of reINVITE which fixes false packet loss detection and low MOS score.
