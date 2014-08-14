@@ -12,6 +12,7 @@ void *manager_ssh(void *dummy);
 class ManagerClientThread {
 public:
 	ManagerClientThread(int client, const char *type, const char *command, int commandLength = 0);
+	virtual ~ManagerClientThread() {}
 	void run();
 	bool isFinished() { return(finished); }
 	virtual bool parseCommand() = 0;

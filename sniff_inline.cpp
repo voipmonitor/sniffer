@@ -108,9 +108,15 @@ inline int pcapProcess(pcap_pkthdr** header, u_char** packet, bool *destroy,
 			syslog(LOG_ERR, "packetbuffer - %s: datalink number [%d] is not supported", interfaceName, pcapLinklayerHeaderType);
 			return(0);
 	}
+	
 	if(ppd->protocol != 8) {
-		// not ipv4 
-		return(0);
+		/* if(ppd->protocol == 0) { // workarround for read via tcpreplay
+			ppd->header_ip_offset += 2;
+			ppd->protocol = 8;
+		} else */ {
+			// not ipv4 
+			return(0);
+		}
 	}
 	
 	ppd->header_ip = (iphdr2*)(*packet + ppd->header_ip_offset);
