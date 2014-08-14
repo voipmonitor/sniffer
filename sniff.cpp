@@ -527,14 +527,14 @@ inline void save_packet(Call *call, struct pcap_pkthdr *header, const u_char *pa
 		case TYPE_SIP:
 			if(call->getPcapSip()->isOpen()){
 				call->set_last_packet_time(header->ts.tv_sec);
-				call->getPcapSip()->dump(header, packet);
+				call->getPcapSip()->dump(header, packet, dlt);
 			}
 			break;
 		case TYPE_RTP:
 		case TYPE_RTCP:
 			if(call->getPcapRtp()->isOpen()){
 				call->set_last_packet_time(header->ts.tv_sec);
-				call->getPcapRtp()->dump(header, packet);
+				call->getPcapRtp()->dump(header, packet, dlt);
 			} else {
 				char pcapFilePath_spool_relative[1024];
 				snprintf(pcapFilePath_spool_relative , 1023, "%s/%s/%s.pcap", call->dirname().c_str(), opt_newdir ? "RTP" : "", call->get_fbasename_safe());
@@ -548,7 +548,7 @@ inline void save_packet(Call *call, struct pcap_pkthdr *header, const u_char *pa
 				if(call->getPcapRtp()->open(str2, pcapFilePath_spool_relative, call->useHandle, call->useDlt)) {
 					if(verbosity > 3) syslog(LOG_NOTICE,"pcap_filename: [%s]\n", str2);
 					call->set_last_packet_time(header->ts.tv_sec);
-					call->getPcapRtp()->dump(header, packet);
+					call->getPcapRtp()->dump(header, packet, dlt);
 				}
 			}
 			break;
@@ -556,7 +556,7 @@ inline void save_packet(Call *call, struct pcap_pkthdr *header, const u_char *pa
 	} else {
 		if (call->getPcap()->isOpen()){
 			call->set_last_packet_time(header->ts.tv_sec);
-			call->getPcap()->dump(header, packet);
+			call->getPcap()->dump(header, packet, dlt);
 		}
 	}
 	
@@ -1840,7 +1840,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 	hash_node_call *calls, *node_call;
 
 	*was_rtp = 0;
-	int merged;
+	//int merged;
 	
 	if(mainProcess) {
 		++counter_all_packets;
@@ -2137,7 +2137,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 		}
 
 		// check presence of call-id merge header if callidmerge feature is enabled
-		merged = 0;
+		//merged = 0;
 		if(!call and opt_callidmerge_header[0] != '\0') {
 			call = calltable->find_by_mergecall_id(s, l);
 			if(!call) {
@@ -2169,7 +2169,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 					if(!call) {
 						// there is no call with the call-id in merge header - this call will be created as new
 					} else {
-						merged = 1;
+						//merged = 1;
 						calltable->lock_calls_mergeMAP();
 						calltable->calls_mergeMAP[string(s, l)] = call;
 						calltable->unlock_calls_mergeMAP();
@@ -2177,7 +2177,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 					}
 				}
 			} else {
-				merged = 1;
+				//merged = 1;
 			}
 		}
 	
@@ -3048,11 +3048,11 @@ rtpcheck:
 		if(opt_rtpnosip) {
 			// decoding RTP without SIP signaling is enabled. Check if it is port >= 1024 and if RTP version is == 2
 			char s[256];
-			RTP rtp;
+			RTP rtp(-1);
 			int rtpmap[MAX_RTPMAP];
 			memset(rtpmap, 0, sizeof(int) * MAX_RTPMAP);
 
-			rtp.read((unsigned char*)data, datalen, header, saddr, daddr, source, dest, 0);
+			rtp.read((unsigned char*)data, datalen, header, saddr, daddr, source, dest, 0, sensor_id);
 
 			if(rtp.getVersion() != 2 && rtp.getPayload() > 18) {
 				if(logPacketSipMethodCall_enable) {
@@ -3307,17 +3307,18 @@ void *pcap_read_thread_func(void *arg) {
 	char *data;
 	int datalen;
 	int istcp = 0;
-	int res;
 	int was_rtp;
 	unsigned int packets = 0;
 	bool useTcpReassembly;
 
-	res = 0;
+#if defined(QUEUE_MUTEX) || defined(QUEUE_NONBLOCK)
+	int res = 0;
+#endif
 
 	while(1) {
 
 #ifdef QUEUE_MUTEX
-		res = sem_wait(&readpacket_thread_semaphore);
+		int res = sem_wait(&readpacket_thread_semaphore);
 		if(res != 0) {
 			printf("Error pcap_read_thread_func sem_wait returns != 0\n");
 		}
@@ -3489,7 +3490,7 @@ inline int ipfrag_dequeue(ip_frag_queue_t *queue, struct pcap_pkthdr **header, u
 	unsigned int additionallen = 0;
 	iphdr2 *iphdr = NULL;
 
-	int lastoffset = queue->begin()->second->offset;
+	//int lastoffset = queue->begin()->second->offset;
 	int i = 0;
 	unsigned int len = 0;
 	for (ip_frag_queue_it_t it = queue->begin(); it != queue->end(); ++it) {
@@ -3515,7 +3516,7 @@ inline int ipfrag_dequeue(ip_frag_queue_t *queue, struct pcap_pkthdr **header, u
 			len += node->len - sizeof(iphdr2);
 			additionallen += node->len - sizeof(iphdr2);
 		}
-		lastoffset = node->offset;
+		//lastoffset = node->offset;
 		free(node->packet);
 		if(node->firstheader) {
 			free(node->firstheader);

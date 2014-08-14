@@ -535,6 +535,18 @@ bool TcpReassemblyLink::streamIterator::nextSeqInDirection() {
 	return(false);
 }
 
+bool TcpReassemblyLink::streamIterator::nextAckByMaxSeqInReverseDirection() {
+	map<uint32_t, TcpReassemblyStream*>::iterator iter = link->queue_by_ack.find(this->stream->max_next_seq);
+	if(iter != link->queue_by_ack.end()) {
+		TcpReassemblyStream *stream = iter->second;
+		if(stream->direction != this->stream->direction) {
+			this->stream = stream;
+			return(true);
+		}
+	}
+	return(false);
+}
+
 void TcpReassemblyLink::streamIterator::print() {
 	cout << "iterator";
 	if(this->stream) {
@@ -1048,7 +1060,7 @@ int TcpReassemblyLink::okQueue_crazy(bool final, bool enableDebug) {
 			*/
 			
 			/*
-			if(iter.stream->ack == 2900664065) {
+			if(iter.stream->ack == 4180930954) {
 				cout << " -- ***** -- ";
 			}
 			*/
@@ -1090,7 +1102,7 @@ int TcpReassemblyLink::okQueue_crazy(bool final, bool enableDebug) {
 			}
 			
 			/*
-			if(iter.stream->ack == 2900664065) {
+			if(iter.stream->ack == 4180930954) {
 				cout << " -- ***** -- ";
 			}
 			*/
@@ -1152,7 +1164,8 @@ int TcpReassemblyLink::okQueue_crazy(bool final, bool enableDebug) {
 				}
 				if(!completeExpectContinue) {
 					if(iter.stream->direction == TcpReassemblyStream::DIRECTION_TO_DEST) {
-						if(!iter.nextAckInDirection()) {
+						if(!iter.nextAckByMaxSeqInReverseDirection() &&
+						   !iter.nextAckInDirection()) {
 							break;
 						}
 					} else if(iter.stream->direction == TcpReassemblyStream::DIRECTION_TO_SOURCE) {

@@ -158,6 +158,7 @@ bool existsColumnCalldateInCdrDtmf = true;
 
 /* constructor */
 Call::Call(char *call_id, unsigned long call_id_len, time_t time) :
+ tmprtp(-1),
  pcap(PcapDumper::na, this),
  pcapSip(PcapDumper::sip, this),
  pcapRtp(PcapDumper::rtp, this) {
@@ -778,7 +779,7 @@ read:
 			usleep(100);
 		}
 		rtplock = 1;
-		rtp[ssrc_n] = new RTP;
+		rtp[ssrc_n] = new RTP(sensor_id);
 		rtp[ssrc_n]->call_owner = this;
 		rtp[ssrc_n]->ssrc_index = ssrc_n; 
 		rtp[ssrc_n]->iscaller = iscaller; 
@@ -3287,10 +3288,10 @@ Calltable::hashAdd(in_addr_t addr, unsigned short port, Call* call, int iscaller
 				static Call *lastcall = NULL;
 				// this port/ip combination is already in 3 calls - do not add to 4th to not cause multiplication attack. 
 				if(lastcall != call and opt_sdp_multiplication >= 3) {
+					/*
 					struct in_addr in;
 					in.s_addr = addr;
 					char *str = inet_ntoa(in);
-					/*
 					syslog(LOG_NOTICE, "call-id[%s] SDP: %s:%u is already in calls [%s] [%s] [%s]. Limit is %u to not cause multiplication DDOS. You can increas it sdp_multiplication = N\n", 
 						call->fbasename, str, port,
 						node->calls->call->fbasename,

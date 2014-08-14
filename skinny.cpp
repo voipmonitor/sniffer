@@ -1405,7 +1405,7 @@ void *handle_skinny(pcap_pkthdr *header, const u_char *packet, unsigned int sadd
 		//cycle through all PDUs in one message
 		handle_skinny2(header, packet, saddr, source, daddr, dest, data, datalen, dataoffset, handle, dlt, sensor_id);
 		unsigned int plen = (unsigned int)letohl(*(uint32_t*)data); // first 4 bytes is length of skinny data
-		if(plen == 0 or plen > remain) {
+		if(plen == 0 or plen > (unsigned)remain) {
 			break;
 		}
 		remain -= plen; 
@@ -1592,7 +1592,8 @@ void *handle_skinny2(pcap_pkthdr *header, const u_char *packet, unsigned int sad
 				if(cur + 1 > data + datalen) break;
 				i++;
 			}
-			char *callingParty, *calledParty, *callingPartyName, *calledPartyName;
+			char *callingParty, *calledParty, *callingPartyName;
+			//char *calledPartyName;
 
 			if(req.res == 0) {
 				/*
@@ -1613,7 +1614,7 @@ void *handle_skinny2(pcap_pkthdr *header, const u_char *packet, unsigned int sad
 				callingParty = strings[0];
 				calledParty = strings[1];
 				callingPartyName = strings[8];
-				calledPartyName = strings[9];
+				//calledPartyName = strings[9];
 			} else if(req.res == 20 or req.res == 17 or req.res == 22 or req.res == 19) {
 				 /* CM7 
 					char callingParty];			0
@@ -1633,7 +1634,7 @@ void *handle_skinny2(pcap_pkthdr *header, const u_char *packet, unsigned int sad
 				callingParty = strings[0];
 				calledParty = strings[2];
 				callingPartyName = strings[8];
-				calledPartyName = strings[9];
+				//calledPartyName = strings[9];
 			} else {
 				if(verbosity > 0)
 					syslog(LOG_NOTICE, "Unsupported header version CM5CALL_INFO_MESSAGE:[hex %x|dec %d]\n", req.res, req.res);

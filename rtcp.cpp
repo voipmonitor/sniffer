@@ -419,7 +419,6 @@ void parse_rtcp(char *data, int datalen, Call* call)
 	u_int8_t			padding;
 	u_int8_t			version;
 	u_int8_t			count;
-	u_int16_t		 bytes_remaining;
 
 	while(1){
 		/* Get the fixed RTCP header */
@@ -446,7 +445,7 @@ void parse_rtcp(char *data, int datalen, Call* call)
 		
 		
 		/* Set the number of bytes remaining */
-		bytes_remaining = 4 * rtcp.length;
+		//u_int16_t bytes_remaining = 4 * rtcp.length;
 		
 		if(debug_rtcp) {
 			printf("\nRTCP Header\n");

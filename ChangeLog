@@ -1,3 +1,9 @@
+10.0.19 14.8.2014
+=================
+- fix low MOS score for G729 silence suppresion / CNG 
+- in multiple sender one receiver (mirroring) prevent mixing RTP stream from multiple sniffers and prevent mixing DLT mixing in one pcap file. 
+
+
 10.0.18 12.8.2014
 =================
 - force RTP resync in case of reINVITE which fixes false packet loss detection and low MOS score.

@@ -459,6 +459,7 @@ public:
 			bool nextAckInDirection();
 			bool nextAckInReverseDirection();
 			bool nextSeqInDirection();
+			bool nextAckByMaxSeqInReverseDirection();
 			void print();
 			u_int32_t getMaxNextSeq();
 		private:

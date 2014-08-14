@@ -3956,7 +3956,7 @@ void test_parsepacket2() {
 	//pp.getContent("test2")->content = "2";
 	//pp.getContent("test3")->content = "3";
 	
-	char *str = "test1abc\ncontent-length: 20 \rxx\r\n\r\ntEst2def\rtest3ghi\n";
+	char *str = (char*)"test1abc\ncontent-length: 20 \rxx\r\n\r\ntEst2def\rtest3ghi\n";
 	//          12345678 90123456789012345678 901 2 3 4 567890123456789012
 	//                    1         2          3             4         5
 	

@@ -79,7 +79,7 @@ private:
 class HttpData : public TcpReassemblyProcessData {
 public:
 	HttpData();
-	~HttpData();
+	virtual ~HttpData();
 	void processData(u_int32_t ip_src, u_int32_t ip_dst,
 			 u_int16_t port_src, u_int16_t port_dst,
 			 TcpReassemblyData *data,

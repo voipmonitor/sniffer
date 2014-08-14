@@ -163,7 +163,7 @@ int get_ticks_bycodec(int codec) {
 }
 
 /* constructor */
-RTP::RTP() 
+RTP::RTP(int sensor_id) 
  : graph(this) {
 	samplerate = 8000;
 	first = true;
@@ -247,10 +247,14 @@ RTP::RTP()
 	ignore = 0;
 	lastcng = 0;
 	
+	this->sensor_id = sensor_id;
+	
 	this->_last_ts.tv_sec = 0;
 	this->_last_ts.tv_usec = 0;
 	this->_last_sensor_id = 0;
 	this->_last_ifname[0] = 0;
+	
+	lastTimeSyslog = 0;
 }
 
 /* destructor */
@@ -492,7 +496,12 @@ RTP::jitterbuffer(struct ast_channel *channel, int savePayload) {
 
 		if(codec == PAYLOAD_G729 and (payload_len <= 12)) {
 			frame->frametype = AST_FRAME_DTMF;
+			frame->marker = 1;
 		}
+	}
+
+	if(lastcng or lastframetype == AST_FRAME_DTMF) {
+		frame->marker = 1;
 	}
 
 	if(savePayload) {
@@ -657,6 +666,16 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 	this->dport = dport;
 	this->ignore = 0;
 	
+	if(this->sensor_id >= 0 && this->sensor_id != sensor_id) {
+		u_long actTime = getTimeMS();
+		if(actTime - 1000 > lastTimeSyslog) {
+			syslog(5 /*LOG_NOTICE*/, "warning - packet from sensor (%i) in RTP created for sensor (%i)",
+			       sensor_id, this->sensor_id);
+			lastTimeSyslog = actTime;
+		}
+		return;
+	}
+	
 	if(this->first_packet_time == 0 and this->first_packet_usec == 0) {
 		this->first_packet_time = header->ts.tv_sec;
 		this->first_packet_usec = header->ts.tv_usec;
@@ -684,7 +703,6 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 		   (header->ts.tv_sec < this->_last_ts.tv_sec ||
 		    (header->ts.tv_sec == this->_last_ts.tv_sec &&
 		     header->ts.tv_usec < this->_last_ts.tv_usec))) {
-			static u_long lastTimeSyslog = 0;
 			u_long actTime = getTimeMS();
 			if(actTime - 1000 > lastTimeSyslog) {
 				syslog(5 /*LOG_NOTICE*/, "warning - bad packet order (%llu us) in RTP::read (seq/lastseq: %u/%u, ifname/lastifname: %s/%s, sensor/lastsenspor: %i/%i)- packet ignored",
@@ -775,7 +793,6 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 	}
 
 	// ignore CNG
-	lastcng = 0;
 	if(curpayload == 13 or curpayload == 19) {
 		last_seq = seq;
 		if(update_seq(seq)) {
@@ -805,10 +822,14 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 		prev_payload = curpayload;
 		prev_codec = codec;
 		lastframetype = AST_FRAME_DTMF;
+		lastcng = 0;
 		return;
 	}
 
-	if(!owner) return;
+	if(!owner) { 
+		lastcng = 0;
+		return;
+	}
 
 	if(iscaller) {
 		if(owner->lastcallerrtp and owner->lastcallerrtp != this) {
@@ -1218,6 +1239,7 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 	}
 	lastframetype = frame->frametype;
 	last_seq = seq;
+	lastcng = 0;
 }
 
 /* fill internal structures by the input RTP packet */
