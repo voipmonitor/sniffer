@@ -750,6 +750,8 @@ PcapDumper::PcapDumper(eTypePcapDump type, class Call *call) {
 	this->openError = false;
 	this->openAttempts = 0;
 	this->state = state_na;
+	this->dlt = -1;
+	this->lastTimeSyslog = 0;
 }
 
 PcapDumper::~PcapDumper() {
@@ -781,9 +783,8 @@ bool PcapDumper::open(const char *fileName, const char *fileNameSpoolRelative, p
 	this->capsize = 0;
 	this->size = 0;
 	string errorString;
-	this->handle = __pcap_dump_open(_handle, fileName,
-					useDlt == DLT_LINUX_SLL && opt_convert_dlt_sll_to_en10 ? DLT_EN10MB : useDlt,
-					&errorString);
+	this->dlt = useDlt == DLT_LINUX_SLL && opt_convert_dlt_sll_to_en10 ? DLT_EN10MB : useDlt;
+	this->handle = __pcap_dump_open(_handle, fileName, this->dlt, &errorString);
 	++this->openAttempts;
 	if(!this->handle) {
 		if(this->type != rtp || !this->openError) {
@@ -809,7 +810,17 @@ bool PcapDumper::open(const char *fileName, const char *fileNameSpoolRelative, p
 
 bool incorrectCaplenDetected = false;
 
-void PcapDumper::dump(pcap_pkthdr* header, const u_char *packet) {
+void PcapDumper::dump(pcap_pkthdr* header, const u_char *packet, int dlt) {
+	extern int opt_convert_dlt_sll_to_en10;
+	if((dlt == DLT_LINUX_SLL && opt_convert_dlt_sll_to_en10 ? DLT_EN10MB : dlt) != this->dlt) {
+		u_long actTime = getTimeMS();
+		if(actTime - 1000 > lastTimeSyslog) {
+			syslog(LOG_NOTICE, "warning - use dlt (%i) for pcap %s created for dlt (%i)",
+			       dlt, this->fileName.c_str(), this->dlt);
+			lastTimeSyslog = actTime;
+		}
+		return;
+	}
 	extern unsigned int opt_maxpcapsize_mb;
 	if(this->handle) {
 		if(header->caplen > 0 && header->caplen <= header->len) {

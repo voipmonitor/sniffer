@@ -365,7 +365,7 @@ public:
 	PcapDumper(eTypePcapDump type, class Call *call);
 	~PcapDumper();
 	bool open(const char *fileName, const char *fileNameSpoolRelative, pcap_t *useHandle, int useDlt);
-	void dump(pcap_pkthdr* header, const u_char *packet);
+	void dump(pcap_pkthdr* header, const u_char *packet, int dlt);
 	void close(bool updateFilesQueue = true);
 	void remove();
 	bool isOpen() {
@@ -388,6 +388,8 @@ private:
 	bool openError;
 	int openAttempts;
 	eState state;
+	int dlt;
+	u_long lastTimeSyslog;
 };
 
 class RtpGraphSaver {

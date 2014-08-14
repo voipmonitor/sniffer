@@ -527,14 +527,14 @@ inline void save_packet(Call *call, struct pcap_pkthdr *header, const u_char *pa
 		case TYPE_SIP:
 			if(call->getPcapSip()->isOpen()){
 				call->set_last_packet_time(header->ts.tv_sec);
-				call->getPcapSip()->dump(header, packet);
+				call->getPcapSip()->dump(header, packet, dlt);
 			}
 			break;
 		case TYPE_RTP:
 		case TYPE_RTCP:
 			if(call->getPcapRtp()->isOpen()){
 				call->set_last_packet_time(header->ts.tv_sec);
-				call->getPcapRtp()->dump(header, packet);
+				call->getPcapRtp()->dump(header, packet, dlt);
 			} else {
 				char pcapFilePath_spool_relative[1024];
 				snprintf(pcapFilePath_spool_relative , 1023, "%s/%s/%s.pcap", call->dirname().c_str(), opt_newdir ? "RTP" : "", call->get_fbasename_safe());
@@ -548,7 +548,7 @@ inline void save_packet(Call *call, struct pcap_pkthdr *header, const u_char *pa
 				if(call->getPcapRtp()->open(str2, pcapFilePath_spool_relative, call->useHandle, call->useDlt)) {
 					if(verbosity > 3) syslog(LOG_NOTICE,"pcap_filename: [%s]\n", str2);
 					call->set_last_packet_time(header->ts.tv_sec);
-					call->getPcapRtp()->dump(header, packet);
+					call->getPcapRtp()->dump(header, packet, dlt);
 				}
 			}
 			break;
@@ -556,7 +556,7 @@ inline void save_packet(Call *call, struct pcap_pkthdr *header, const u_char *pa
 	} else {
 		if (call->getPcap()->isOpen()){
 			call->set_last_packet_time(header->ts.tv_sec);
-			call->getPcap()->dump(header, packet);
+			call->getPcap()->dump(header, packet, dlt);
 		}
 	}
 	
