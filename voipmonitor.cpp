@@ -2869,17 +2869,18 @@ int main(int argc, char *argv[]) {
 	}
 	
 	if(cloud_url[0]) {
-		if(!reg_match(cloud_url, "[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+")) {
-			char cloud_url_orig[1024];
-			strcpy(cloud_url_orig, cloud_url);
-			hostent *conn_server_record = gethostbyname(cloud_url);
+		string cloud_hostname=  reg_replace(cloud_url, "http[s]?://([^/]+)", "$1");
+		if(!cloud_hostname.empty() &&
+		   !reg_match(cloud_hostname.c_str(), "[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+")) {
+			hostent *conn_server_record = gethostbyname(cloud_hostname.c_str());
 			if(conn_server_record == NULL) {
-				syslog(LOG_ERR, "cloud url [%s] failed to resolve to IP address", cloud_url);
+				syslog(LOG_ERR, "cloud hostname [%s] failed to resolve to IP address", cloud_hostname.c_str());
 				exit(1);
 			}
 			in_addr *conn_server_address = (in_addr*)conn_server_record->h_addr;
-			strcpy(cloud_url, inet_ntoa(*conn_server_address));
-			syslog(LOG_NOTICE, "cloud url [%s] resolved to [%s]", cloud_url_orig, cloud_url);
+			string cloud_ip = inet_ntoa(*conn_server_address);
+			syslog(LOG_NOTICE, "cloud hostname [%s] resolved to [%s]", cloud_hostname.c_str(), cloud_ip.c_str());
+			strcpy(cloud_url, find_and_replace(cloud_url, cloud_hostname.c_str(), cloud_ip.c_str()).c_str());
 		}
 	}
 	
