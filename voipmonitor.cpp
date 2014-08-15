@@ -46,10 +46,6 @@
 #include <sstream>
 #include <dirent.h>
 
-#ifdef ISCURL
-#include <curl/curl.h>
-#endif
-
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
@@ -211,7 +207,6 @@ int opt_dup_check_ipheader = 1;
 int rtptimeout = 300;
 int sipwithoutrtptimeout = 3600;
 int absolute_timeout = 4 * 3600;
-char opt_cdrurl[1024] = "";
 int opt_destination_number_mode = 1;
 int opt_update_dstnum_onanswer = 0;
 int opt_cleanspool_interval = 0; // number of seconds between cleaning spool directory. 0 = disabled
@@ -881,9 +876,7 @@ void *storing_cdr( void *dummy ) {
 		}
 		
 		if(request_iptelnum_reload == 1) { reload_capture_rules(); request_iptelnum_reload = 0;};
-#ifdef ISCURL
-		string cdrtosend;
-#endif
+		
 		if(verbosity > 0 && !opt_pcap_queue) { 
 			ostringstream outStr;
 			outStr << "calls[" << calls_counter << "]";
@@ -927,12 +920,6 @@ void *storing_cdr( void *dummy ) {
 					call->saveMessageToDb();
 				}
 			}
-#ifdef ISCURL
-			if(opt_cdrurl[0] != '\0') {
-				cdrtosend += call->getKeyValCDRtext();
-				cdrtosend += "##vmdelimiter###\n";
-			}
-#endif
 			// Close SIP and SIP+RTP dump files ASAP to save file handles
 			call->getPcap()->close();
 			call->getPcapSip()->close();
@@ -949,11 +936,6 @@ void *storing_cdr( void *dummy ) {
 			storingCdrLastWriteAt = getActDateTimeF();
 		}
 
-#ifdef ISCURL
-		if(opt_cdrurl[0] != '\0' && cdrtosend.length() > 0) {
-			sendCDR(cdrtosend);
-		}
-#endif
 		if(terminating) {
 			break;
 		}
@@ -1680,9 +1662,6 @@ int load_config(char *fname) {
 	if((value = ini.GetValue("general", "sqlcallend", NULL))) {
 		opt_callend = yesno(value);
 	}
-	if((value = ini.GetValue("general", "cdrurl", NULL))) {
-		strncpy(opt_cdrurl, value, sizeof(opt_cdrurl) - 1);
-	}
 	if((value = ini.GetValue("general", "destination_number_mode", NULL))) {
 		opt_destination_number_mode = atoi(value);
 	}
@@ -2291,10 +2270,6 @@ int main(int argc, char *argv[]) {
 	opt_pcap_threaded = 1; // TODO: this must be enabled for now. 
 	num_threads = sysconf( _SC_NPROCESSORS_ONLN ) - 1;
 	set_mac();
-
-#ifdef ISCURL
-	curl_global_init(CURL_GLOBAL_ALL);
-#endif
 
 	thread_setup();
 	int option_index = 0;

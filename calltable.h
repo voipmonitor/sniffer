@@ -407,14 +407,6 @@ public:
 	*/
 	int convertRawToWav();
  
-#ifdef ISCURL	
-	/**
-	 * @brief send cdr
-	 *
-	*/
-	string getKeyValCDRtext();
-#endif
-
 	/**
 	 * @brief save call to database
 	 *
@@ -720,9 +712,5 @@ private:
 		return key % MAXNODE;
 	}
 };
-
-#ifdef ISCURL  
-int sendCDR(string data);
-#endif
 
 #endif

@@ -1404,6 +1404,9 @@ void MySqlStore::setDefaultConcatLimit(int defaultConcatLimit) {
 }
 
 MySqlStore_process *MySqlStore::find(int id) {
+	if(cloud_host[0]) {
+		id = 1;
+	}
 	MySqlStore_process* process = this->processes[id];
 	if(process) {
 		return(process);
@@ -1416,6 +1419,9 @@ MySqlStore_process *MySqlStore::find(int id) {
 }
 
 MySqlStore_process *MySqlStore::check(int id) {
+	if(cloud_host[0]) {
+		id = 1;
+	}
 	map<int, MySqlStore_process*>::iterator iter = this->processes.find(id);
 	if(iter == this->processes.end()) {
 		return(NULL);
