@@ -2583,125 +2583,140 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 	} }
 	
 	if(!federated) {
-	 
-	sql_noerror = 1;
-	
 	//BEGIN ALTER TABLES
+	char alter_funcname[20];
+	sprintf(alter_funcname, "__alter");
+	if(opt_id_sensor > -1) {
+		sprintf(alter_funcname + strlen(alter_funcname), "_S%i", opt_id_sensor);
+	}
+	this->query(string("drop procedure if exists ") + alter_funcname);
+	ostringstream outStrAlter;
+	outStrAlter << "create procedure " << alter_funcname << "() begin" << endl
+		    << "DECLARE CONTINUE HANDLER FOR SQLSTATE '42S21' BEGIN END;" << endl
+		    << "DECLARE CONTINUE HANDLER FOR SQLSTATE '42000' BEGIN END;" << endl;
+	
 	//5.2 -> 5.3
 	if(opt_match_header[0] != '\0') {
-		this->query("ALTER TABLE cdr_next\
+		outStrAlter << "ALTER TABLE cdr_next\
 				ADD match_header VARCHAR(128),\
-				ADD KEY `match_header` (`match_header`);");
+				ADD KEY `match_header` (`match_header`);" << endl;
 	}
 	//5.3 -> 5.4
-	this->query("ALTER TABLE register\
+	outStrAlter << "ALTER TABLE register\
 			ADD KEY `to_domain` (`to_domain`),\
-			ADD KEY `to_num` (`to_num`);");
-	this->query("ALTER TABLE register_state\
-			ADD `to_domain` varchar(255) NULL DEFAULT NULL;");
-	this->query("ALTER TABLE register_failed\
-			ADD `to_domain` varchar(255) NULL DEFAULT NULL;");
+			ADD KEY `to_num` (`to_num`);" << endl;
+	outStrAlter << "ALTER TABLE register_state\
+			ADD `to_domain` varchar(255) NULL DEFAULT NULL;" << endl;
+	outStrAlter << "ALTER TABLE register_failed\
+			ADD `to_domain` varchar(255) NULL DEFAULT NULL;" << endl;
 	//5.4 -> 5.5
-	this->query("ALTER TABLE register_state\
+	outStrAlter << "ALTER TABLE register_state\
 			ADD `sipcalledip` int unsigned,\
-			ADD KEY `sipcalledip` (`sipcalledip`);");
-	this->query("ALTER TABLE register_failed\
+			ADD KEY `sipcalledip` (`sipcalledip`);" << endl;
+	outStrAlter << "ALTER TABLE register_failed\
 			ADD `sipcalledip` int unsigned,\
-			ADD KEY `sipcalledip` (`sipcalledip`);");
+			ADD KEY `sipcalledip` (`sipcalledip`);" << endl;
 	//6.0 -> 6.1
-	this->query("ALTER TABLE message\
+	outStrAlter << "ALTER TABLE message\
 			ADD id_contenttype INT AFTER ID,\
-			ADD KEY `id_contenttype` (`id_contenttype`);");
+			ADD KEY `id_contenttype` (`id_contenttype`);" << endl;
 	
 	//6.5RC2 ->
-	this->query("ALTER TABLE message ADD GeoPosition varchar(255)");
-	this->query("ALTER TABLE cdr_next ADD GeoPosition varchar(255)");
-	this->query("ALTER TABLE register\
-			ADD `fname` BIGINT NULL DEFAULT NULL;");
-	this->query("ALTER TABLE register_failed\
-			ADD `fname` BIGINT NULL DEFAULT NULL;");
-	this->query("ALTER TABLE register_state\
-			ADD `fname` BIGINT NULL DEFAULT NULL;");
-	this->query("ALTER TABLE register\
-			ADD `id_sensor` INT NULL DEFAULT NULL;");
-	this->query("ALTER TABLE register_failed\
-			ADD `id_sensor` INT NULL DEFAULT NULL;");
-	this->query("ALTER TABLE register_state\
-			ADD `id_sensor` INT NULL DEFAULT NULL;");
+	outStrAlter << "ALTER TABLE message ADD GeoPosition varchar(255);" << endl;
+	outStrAlter << "ALTER TABLE cdr_next ADD GeoPosition varchar(255);" << endl;
+	outStrAlter << "ALTER TABLE register\
+			ADD `fname` BIGINT NULL DEFAULT NULL;" << endl;
+	outStrAlter << "ALTER TABLE register_failed\
+			ADD `fname` BIGINT NULL DEFAULT NULL;" << endl;
+	outStrAlter << "ALTER TABLE register_state\
+			ADD `fname` BIGINT NULL DEFAULT NULL;" << endl;
+	outStrAlter << "ALTER TABLE register\
+			ADD `id_sensor` INT NULL DEFAULT NULL;" << endl;
+	outStrAlter << "ALTER TABLE register_failed\
+			ADD `id_sensor` INT NULL DEFAULT NULL;" << endl;
+	outStrAlter << "ALTER TABLE register_state\
+			ADD `id_sensor` INT NULL DEFAULT NULL;" << endl;
 
-	this->query("ALTER TABLE filter_ip\
-			ADD `skip` tinyint NULL;");
-	this->query("ALTER TABLE filter_telnum\
-			ADD `skip` tinyint NULL;");
+	outStrAlter << "ALTER TABLE filter_ip\
+			ADD `skip` tinyint NULL;" << endl;
+	outStrAlter << "ALTER TABLE filter_telnum\
+			ADD `skip` tinyint NULL;" << endl;
 	//8.0
 	if(opt_dscp) {
-		this->query("ALTER TABLE cdr ADD dscp int unsigned DEFAULT NULL");
+		outStrAlter << "ALTER TABLE cdr ADD dscp int unsigned DEFAULT NULL;" << endl;
 	}
 	
 	if(opt_enable_lua_tables) {
-		this->query("ALTER TABLE http_jj\
+		outStrAlter << "ALTER TABLE http_jj\
 				ADD external_transaction_id varchar( 255 ) NOT NULL,\
-				ADD KEY `external_transaction_id` (`external_transaction_id`);");
-		this->query("ALTER TABLE http_jj ADD type ENUM('http_ok') DEFAULT NULL AFTER url;");
-		this->query("ALTER TABLE http_jj ADD http TEXT CHARACTER SET utf8 COLLATE utf8_bin NOT NULL AFTER type;");
-		this->query("ALTER TABLE http_jj ADD id_sensor SMALLINT DEFAULT NULL;");
-		this->query("ALTER TABLE enum_jj ADD id_sensor SMALLINT DEFAULT NULL;");
+				ADD KEY `external_transaction_id` (`external_transaction_id`);" << endl;
+		outStrAlter << "ALTER TABLE http_jj ADD type ENUM('http_ok') DEFAULT NULL AFTER url;" << endl;
+		outStrAlter << "ALTER TABLE http_jj ADD http TEXT CHARACTER SET utf8 COLLATE utf8_bin NOT NULL AFTER type;" << endl;
+		outStrAlter << "ALTER TABLE http_jj ADD id_sensor SMALLINT DEFAULT NULL;" << endl;
+		outStrAlter << "ALTER TABLE enum_jj ADD id_sensor SMALLINT DEFAULT NULL;" << endl;
 	}
 
 	//8.2
-	this->query("ALTER TABLE filter_ip\
-			ADD `script` tinyint NULL;");
-	this->query("ALTER TABLE filter_telnum\
-			ADD `script` tinyint NULL;");
+	outStrAlter << "ALTER TABLE filter_ip\
+			ADD `script` tinyint NULL;" << endl;
+	outStrAlter << "ALTER TABLE filter_telnum\
+			ADD `script` tinyint NULL;" << endl;
 
-	this->query("ALTER TABLE filter_ip\
-			ADD `mos_lqo` tinyint NULL;");
-	this->query("ALTER TABLE filter_telnum\
-			ADD `mos_lqo` tinyint NULL;");
+	outStrAlter << "ALTER TABLE filter_ip\
+			ADD `mos_lqo` tinyint NULL;" << endl;
+	outStrAlter << "ALTER TABLE filter_telnum\
+			ADD `mos_lqo` tinyint NULL;" << endl;
 	
-	this->query("ALTER TABLE files\
-			ADD `regsize` bigint unsigned DEFAULT 0;");
+	outStrAlter << "ALTER TABLE files\
+			ADD `regsize` bigint unsigned DEFAULT 0;" << endl;
 	
 	//8.4
 	if(opt_cdr_sipport) {
-		this->query("ALTER TABLE cdr\
+		outStrAlter << "ALTER TABLE cdr\
 				ADD `sipcallerport` smallint unsigned DEFAULT NULL AFTER `sipcallerip`,\
-				ADD `sipcalledport` smallint unsigned DEFAULT NULL AFTER `sipcalledip`;");
+				ADD `sipcalledport` smallint unsigned DEFAULT NULL AFTER `sipcalledip`;" << endl;
 	}
 
 	if(opt_mos_lqo) {
-		this->query("ALTER TABLE cdr\
+		outStrAlter << "ALTER TABLE cdr\
 				ADD `a_mos_lqo_mult10` tinyint unsigned DEFAULT NULL,\
-				ADD `b_mos_lqo_mult10` tinyint unsigned DEFAULT NULL;");
+				ADD `b_mos_lqo_mult10` tinyint unsigned DEFAULT NULL;" << endl;
 	}
 
 	if(opt_cdr_rtpport) {
-		this->query("ALTER TABLE cdr_rtp\
-				ADD `dport` smallint unsigned DEFAULT NULL AFTER `daddr`;");
+		outStrAlter << "ALTER TABLE cdr_rtp\
+				ADD `dport` smallint unsigned DEFAULT NULL AFTER `daddr`;" << endl;
 	}
 
 
 	//9.4
-	this->query("ALTER TABLE sensor_conf ADD `sip-register-timeout` tinyint DEFAULT 5;");
+	outStrAlter << "ALTER TABLE sensor_conf ADD `sip-register-timeout` tinyint DEFAULT 5;" << endl;
 
 	//
-	this->query("ALTER TABLE filter_ip\
-			ADD `hide_message` tinyint default NULL;");
-	this->query("ALTER TABLE filter_telnum\
-			ADD `hide_message` tinyint default NULL;");
-	this->query("ALTER TABLE filter_ip\
-			ADD `remove_at` date default NULL;");
-	this->query("ALTER TABLE filter_telnum\
-			ADD `remove_at` date default NULL;");
+	outStrAlter << "ALTER TABLE filter_ip\
+			ADD `hide_message` tinyint default NULL;" << endl;
+	outStrAlter << "ALTER TABLE filter_telnum\
+			ADD `hide_message` tinyint default NULL;" << endl;
+	outStrAlter << "ALTER TABLE filter_ip\
+			ADD `remove_at` date default NULL;" << endl;
+	outStrAlter << "ALTER TABLE filter_telnum\
+			ADD `remove_at` date default NULL;" << endl;
 
 	//10.0.5
-	this->query("ALTER TABLE cache_number_location\
+	outStrAlter << "ALTER TABLE cache_number_location\
 			ADD `number_ip` int unsigned DEFAULT NULL AFTER number,\
 			DROP PRIMARY KEY,\
-			ADD PRIMARY KEY (`number`, `number_ip`);");
+			ADD PRIMARY KEY (`number`, `number_ip`);" << endl;
 
-	sql_noerror = 0;
-
+	outStrAlter << "end;" << endl;
+	/*
+	cout << "alter procedure" << endl
+	     << outStrAlter.str() << endl
+	     << "---" << endl;
+	*/
+	this->query(outStrAlter.str());
+	this->query(string("call ") + alter_funcname);
+	this->query(string("drop procedure if exists ") + alter_funcname);
 	//END ALTER TABLES
 	
 	//BEGIN SQL SCRIPTS
