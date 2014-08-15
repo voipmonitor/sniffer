@@ -382,6 +382,9 @@ bool get_url_file(const char *url, const char *toFile, string *error) {
 			if(opt_curlproxy[0]) {
 				curl_easy_setopt(curl, CURLOPT_PROXY, opt_curlproxy);
 			}
+			curl_easy_setopt(curl, CURLOPT_DNS_USE_GLOBAL_CACHE, 1);
+			curl_easy_setopt(curl, CURLOPT_DNS_CACHE_TIMEOUT, -1);
+			curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1);
 			if(curl_easy_perform(curl) == CURLE_OK) {
 				rslt = true;
 			} else {
