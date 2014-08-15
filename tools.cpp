@@ -369,8 +369,14 @@ bool get_url_file(const char *url, const char *toFile, string *error) {
 				headers = curl_slist_append(headers, ("Host: " + host).c_str());
 				curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
 				curl_easy_setopt(curl, CURLOPT_URL, (hostProtPrefix +  hostIP + path).c_str());
+				
+				syslog(LOG_NOTICE, (hostProtPrefix +  hostIP + path).c_str());
+				
 			} else {
 				curl_easy_setopt(curl, CURLOPT_URL, url);
+				
+				syslog(LOG_NOTICE, url);
+				
 			}
 			extern char opt_curlproxy[256];
 			if(opt_curlproxy[0]) {
