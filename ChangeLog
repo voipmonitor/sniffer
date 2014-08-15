@@ -1,6 +1,12 @@
-10.0.19 12.8.2014
+10.0.20 15.8.2014
+=================
+- fix low MOS score when stream was properly paused > 20sec
+
+
+10.0.19 14.8.2014
 =================
 - fix low MOS score for G729 silence suppresion / CNG 
+- in multiple sender one receiver (mirroring) prevent mixing RTP stream from multiple sniffers and prevent mixing DLT mixing in one pcap file. 
 
 
 10.0.18 12.8.2014
