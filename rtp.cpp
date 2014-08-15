@@ -550,7 +550,7 @@ RTP::jitterbuffer(struct ast_channel *channel, int savePayload) {
 	/* calculate time difference between last packet and current packet + packetization time*/ 
 	int msdiff = ast_tvdiff_ms( header->ts, ast_tvadd(channel->last_ts, ast_samp2tv(packetization, 1000)) );
 	//printf("ms:%d\n", msdiff);
-	if(msdiff > packetization * 1000) {
+	if(msdiff > packetization * 10000) {
 		// difference is too big, reseting last_ts to current packet. If we dont check this it could happen to run while cycle endlessly
 		memcpy(&channel->last_ts, &header->ts, sizeof(struct timeval));
 		ast_jb_put(channel, frame, &header->ts);
