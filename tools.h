@@ -1381,7 +1381,7 @@ bool SafeAsyncQueue<type_queue_item>::pop(type_queue_item *item, bool remove) {
 
 template<class type_queue_item>
 void SafeAsyncQueue<type_queue_item>::timerEv(unsigned long long timerCounter) {
-	if(timerCounter - lastShiftTimerCounter >= shiftIntervalMult10S) {
+	if(timerCounter - lastShiftTimerCounter >= (unsigned)shiftIntervalMult10S) {
 		shiftPush();
 		lastShiftTimerCounter = timerCounter;
 	}
