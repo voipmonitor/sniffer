@@ -2868,27 +2868,14 @@ int main(int argc, char *argv[]) {
 		}
 	}
 	
-	if(cloud_url[0]) {
-		string cloud_hostname=  reg_replace(cloud_url, "http[s]?://([^/]+)", "$1");
-		if(!cloud_hostname.empty() &&
-		   !reg_match(cloud_hostname.c_str(), "[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+")) {
-			hostent *conn_server_record = gethostbyname(cloud_hostname.c_str());
-			if(conn_server_record == NULL) {
-				syslog(LOG_ERR, "cloud hostname [%s] failed to resolve to IP address", cloud_hostname.c_str());
-				exit(1);
-			}
-			in_addr *conn_server_address = (in_addr*)conn_server_record->h_addr;
-			string cloud_ip = inet_ntoa(*conn_server_address);
-			syslog(LOG_NOTICE, "cloud hostname [%s] resolved to [%s]", cloud_hostname.c_str(), cloud_ip.c_str());
-			strcpy(cloud_url, find_and_replace(cloud_url, cloud_hostname.c_str(), cloud_ip.c_str()).c_str());
-		}
-	}
-	
 	if(opt_fork || !opt_nocdr) {
 		const char *hostnames[] = {
 			"voipmonitor.org",
 			"www.voipmonitor.org",
-			"download.voipmonitor.org"
+			"download.voipmonitor.org",
+			"cloud.voipmonitor.org",
+			"cloud2.voipmonitor.org",
+			"cloud3.voipmonitor.org"
 		};
 		for(unsigned int i = 0; i < sizeof(hostnames) / sizeof(hostnames[0]); i++) {
 			hostent *conn_server_record = gethostbyname(hostnames[i]);
