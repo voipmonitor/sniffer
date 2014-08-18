@@ -660,7 +660,7 @@ Call::read_rtcp(unsigned char* data, int datalen, int dataoffset, struct pcap_pk
 	parse_rtcp((char*)data, datalen, this);
 
 	if(enable_save_packet && opt_rtpsave_threaded) {
-		save_packet(this, header, packet, saddr, sport, daddr, dport, istcp, (char*)data, datalen, dataoffset, TYPE_RTP, 
+		save_packet(this, header, packet, saddr, sport, daddr, dport, istcp, NULL, (char*)data, datalen, dataoffset, TYPE_RTP, 
 			    dlt, sensor_id);
 	}
 }
@@ -848,12 +848,12 @@ end:
 			   header->caplen > (unsigned)(datalen - RTP_FIXED_HEADERLEN)) {
 				unsigned int tmp_u32 = header->caplen;
 				header->caplen = header->caplen - (datalen - RTP_FIXED_HEADERLEN);
-				save_packet(this, header, packet, saddr, sport, daddr, dport, istcp, (char*)data, datalen, dataoffset, TYPE_RTP, 
+				save_packet(this, header, packet, saddr, sport, daddr, dport, istcp, NULL, (char*)data, datalen, dataoffset, TYPE_RTP, 
 					    dlt, sensor_id);
 				header->caplen = tmp_u32;
 			}
 		} else {
-			save_packet(this, header, packet, saddr, sport, daddr, dport, istcp, (char*)data, datalen, dataoffset, TYPE_RTP, 
+			save_packet(this, header, packet, saddr, sport, daddr, dport, istcp, NULL, (char*)data, datalen, dataoffset, TYPE_RTP, 
 				    dlt, sensor_id);
 		}
 	}
