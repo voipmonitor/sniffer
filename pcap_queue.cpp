@@ -113,6 +113,7 @@ extern char opt_cachedir[1024];
 extern unsigned long long cachedirtransfered;
 unsigned long long lastcachedirtransfered = 0;
 extern char opt_cachedir[1024];
+extern char cloud_host[256];
 
 vm_atomic<string> pbStatString;
 vm_atomic<u_long> pbCountPacketDrop;
@@ -987,105 +988,110 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 			this->counter_rtp_packets_old = counter_rtp_packets;
 			this->counter_all_packets_old = counter_all_packets;
 			outStr << "SQLq[";
-			int sizeSQLq;
-			for(int i = 0; i < opt_mysqlstore_max_threads_cdr; i++) {
-				sizeSQLq = sqlStore->getSize(STORE_PROC_ID_CDR_1 + i);
-				if(i == 0 || sizeSQLq >= 1) {
-					if(i) {
-						outStr << " C" << (i+1) << ":";
-					} else {
-						outStr << "C:";
-						if(sizeSQLq < 0) {
-							sizeSQLq = 0;
+			if(cloud_host[0]) {
+				int sizeSQLq = sqlStore->getSize(1);
+				outStr << (sizeSQLq >=0 ? sizeSQLq : 0);
+			} else {
+				int sizeSQLq;
+				for(int i = 0; i < opt_mysqlstore_max_threads_cdr; i++) {
+					sizeSQLq = sqlStore->getSize(STORE_PROC_ID_CDR_1 + i);
+					if(i == 0 || sizeSQLq >= 1) {
+						if(i) {
+							outStr << " C" << (i+1) << ":";
+						} else {
+							outStr << "C:";
+							if(sizeSQLq < 0) {
+								sizeSQLq = 0;
+							}
 						}
+						outStr << sizeSQLq;
 					}
-					outStr << sizeSQLq;
 				}
-			}
-			for(int i = 0; i < opt_mysqlstore_max_threads_message; i++) {
-				sizeSQLq = sqlStore->getSize(STORE_PROC_ID_MESSAGE_1 + i);
-				if(sizeSQLq >= (i ? 1 : 0)) {
-					if(i) {
-						outStr << " M" << (i+1) << ":";
-					} else {
-						outStr << " M:";
-						if(sizeSQLq < 0) {
-							sizeSQLq = 0;
+				for(int i = 0; i < opt_mysqlstore_max_threads_message; i++) {
+					sizeSQLq = sqlStore->getSize(STORE_PROC_ID_MESSAGE_1 + i);
+					if(sizeSQLq >= (i ? 1 : 0)) {
+						if(i) {
+							outStr << " M" << (i+1) << ":";
+						} else {
+							outStr << " M:";
+							if(sizeSQLq < 0) {
+								sizeSQLq = 0;
+							}
 						}
+						outStr << sizeSQLq;
 					}
-					outStr << sizeSQLq;
 				}
-			}
-			for(int i = 0; i < opt_mysqlstore_max_threads_register; i++) {
-				sizeSQLq = sqlStore->getSize(STORE_PROC_ID_REGISTER_1 + i);
-				if(sizeSQLq >= (i ? 1 : 0)) {
-					if(i) {
-						outStr << " R" << (i+1) << ":";
-					} else {
-						outStr << " R:";
-						if(sizeSQLq < 0) {
-							sizeSQLq = 0;
+				for(int i = 0; i < opt_mysqlstore_max_threads_register; i++) {
+					sizeSQLq = sqlStore->getSize(STORE_PROC_ID_REGISTER_1 + i);
+					if(sizeSQLq >= (i ? 1 : 0)) {
+						if(i) {
+							outStr << " R" << (i+1) << ":";
+						} else {
+							outStr << " R:";
+							if(sizeSQLq < 0) {
+								sizeSQLq = 0;
+							}
 						}
-					}
-					outStr << sizeSQLq;
-				}
-			}
-			sizeSQLq = sqlStore->getSize(STORE_PROC_ID_SAVE_PACKET_SQL);
-			if(sizeSQLq >= 0) {
-				outStr << " L:" << sizeSQLq;
-			}
-			sizeSQLq = sqlStore->getSize(STORE_PROC_ID_CLEANSPOOL);
-			if(sizeSQLq >= 0) {
-				outStr << " Cl:" << sizeSQLq;
-			}
-			for(int i = 0; i < opt_mysqlstore_max_threads_http; i++) {
-				sizeSQLq = sqlStore->getSize(STORE_PROC_ID_HTTP_1 + i);
-				if(sizeSQLq >= (i ? 1 : 0)) {
-					if(i) {
-						outStr << " H" << (i+1) << ":";
-					} else {
-						outStr << " H:";
-					}
-					outStr << sizeSQLq;
-				}
-			}
-			if(opt_ipaccount) {
-				for(int i = 0; i < opt_mysqlstore_max_threads_ipacc_base; i++) {
-					sizeSQLq = sqlStore->getSize(STORE_PROC_ID_IPACC_1 + i);
-					if(sizeSQLq >= 1) {
-						outStr << " I" << (STORE_PROC_ID_IPACC_1 + i) << ":" << sizeSQLq;
+						outStr << sizeSQLq;
 					}
 				}
-				for(int i = STORE_PROC_ID_IPACC_AGR_INTERVAL; i <= STORE_PROC_ID_IPACC_AGR_DAY; i++) {
-					sizeSQLq = sqlStore->getSize(i);
-					if(sizeSQLq >= 1) {
-						outStr << " I" << i << ":" << sizeSQLq;
-					}
-				}
-				for(int i = 0; i < opt_mysqlstore_max_threads_ipacc_agreg2; i++) {
-					sizeSQLq = sqlStore->getSize(STORE_PROC_ID_IPACC_AGR2_HOUR_1 + i);
-					if(sizeSQLq >= 1) {
-						outStr << " I" << (STORE_PROC_ID_IPACC_AGR2_HOUR_1 + i) << ":" << sizeSQLq;
-					}
-				}
-				/*
-				sizeSQLq = sqlStore->getSizeMult(12,
-								 STORE_PROC_ID_IPACC_1,
-								 STORE_PROC_ID_IPACC_2,
-								 STORE_PROC_ID_IPACC_3,
-								 STORE_PROC_ID_IPACC_AGR_INTERVAL,
-								 STORE_PROC_ID_IPACC_AGR_HOUR,
-								 STORE_PROC_ID_IPACC_AGR_DAY,
-								 STORE_PROC_ID_IPACC_AGR2_HOUR_1,
-								 STORE_PROC_ID_IPACC_AGR2_HOUR_2,
-								 STORE_PROC_ID_IPACC_AGR2_HOUR_3,
-								 STORE_PROC_ID_IPACC_AGR2_DAY_1,
-								 STORE_PROC_ID_IPACC_AGR2_DAY_2,
-								 STORE_PROC_ID_IPACC_AGR2_DAY_3);
+				sizeSQLq = sqlStore->getSize(STORE_PROC_ID_SAVE_PACKET_SQL);
 				if(sizeSQLq >= 0) {
-					outStr << " I:" << sizeSQLq;
+					outStr << " L:" << sizeSQLq;
 				}
-				*/
+				sizeSQLq = sqlStore->getSize(STORE_PROC_ID_CLEANSPOOL);
+				if(sizeSQLq >= 0) {
+					outStr << " Cl:" << sizeSQLq;
+				}
+				for(int i = 0; i < opt_mysqlstore_max_threads_http; i++) {
+					sizeSQLq = sqlStore->getSize(STORE_PROC_ID_HTTP_1 + i);
+					if(sizeSQLq >= (i ? 1 : 0)) {
+						if(i) {
+							outStr << " H" << (i+1) << ":";
+						} else {
+							outStr << " H:";
+						}
+						outStr << sizeSQLq;
+					}
+				}
+				if(opt_ipaccount) {
+					for(int i = 0; i < opt_mysqlstore_max_threads_ipacc_base; i++) {
+						sizeSQLq = sqlStore->getSize(STORE_PROC_ID_IPACC_1 + i);
+						if(sizeSQLq >= 1) {
+							outStr << " I" << (STORE_PROC_ID_IPACC_1 + i) << ":" << sizeSQLq;
+						}
+					}
+					for(int i = STORE_PROC_ID_IPACC_AGR_INTERVAL; i <= STORE_PROC_ID_IPACC_AGR_DAY; i++) {
+						sizeSQLq = sqlStore->getSize(i);
+						if(sizeSQLq >= 1) {
+							outStr << " I" << i << ":" << sizeSQLq;
+						}
+					}
+					for(int i = 0; i < opt_mysqlstore_max_threads_ipacc_agreg2; i++) {
+						sizeSQLq = sqlStore->getSize(STORE_PROC_ID_IPACC_AGR2_HOUR_1 + i);
+						if(sizeSQLq >= 1) {
+							outStr << " I" << (STORE_PROC_ID_IPACC_AGR2_HOUR_1 + i) << ":" << sizeSQLq;
+						}
+					}
+					/*
+					sizeSQLq = sqlStore->getSizeMult(12,
+									 STORE_PROC_ID_IPACC_1,
+									 STORE_PROC_ID_IPACC_2,
+									 STORE_PROC_ID_IPACC_3,
+									 STORE_PROC_ID_IPACC_AGR_INTERVAL,
+									 STORE_PROC_ID_IPACC_AGR_HOUR,
+									 STORE_PROC_ID_IPACC_AGR_DAY,
+									 STORE_PROC_ID_IPACC_AGR2_HOUR_1,
+									 STORE_PROC_ID_IPACC_AGR2_HOUR_2,
+									 STORE_PROC_ID_IPACC_AGR2_HOUR_3,
+									 STORE_PROC_ID_IPACC_AGR2_DAY_1,
+									 STORE_PROC_ID_IPACC_AGR2_DAY_2,
+									 STORE_PROC_ID_IPACC_AGR2_DAY_3);
+					if(sizeSQLq >= 0) {
+						outStr << " I:" << sizeSQLq;
+					}
+					*/
+				}
 			}
 			outStr << "] ";
 		}

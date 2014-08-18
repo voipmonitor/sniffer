@@ -63,7 +63,6 @@ extern char odbc_dsn[256];
 extern char odbc_password[256];
 extern char odbc_user[256];
 extern char opt_cachedir[1024];
-extern char opt_cdrurl[1024];
 extern char opt_clientmanager[1024];
 extern char opt_database_backup_from_date[20];
 extern char opt_chdir[1024];

@@ -56,8 +56,8 @@ void HttpData::processData(u_int32_t ip_src, u_int32_t ip_dst,
 		expectContinue += (char*)data->expectContinue[i].data;
 	}
 	*/
-	TcpReassemblyDataItem *request_data;
-	TcpReassemblyDataItem *response_data;
+	TcpReassemblyDataItem *request_data = NULL;
+	TcpReassemblyDataItem *response_data = NULL;
 	
 	string uri;
 	string http;
