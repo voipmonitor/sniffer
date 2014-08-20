@@ -143,6 +143,10 @@ public:
 				return(true);
 			}
 		}
+		while(*number == '0') {
+			--numberLength;
+			++number;
+		}
 		if(internationalMinLength &&
 		   numberLength >= internationalMinLength) {
 			return(true);

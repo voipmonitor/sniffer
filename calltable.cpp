@@ -247,8 +247,6 @@ Call::Call(char *call_id, unsigned long call_id_len, time_t time) :
 	pthread_mutex_init(&listening_worker_run_lock, NULL);
 	caller_sipdscp = 0;
 	called_sipdscp = 0;
-	caller_rtpdscp = 0;
-	called_rtpdscp = 0;
 	ps_ifdrop = pcapstat.ps_ifdrop;
 	ps_drop = pcapstat.ps_drop;
 	if(verbosity && verbosityE > 1) {
@@ -690,13 +688,6 @@ Call::read_rtp(unsigned char* data, int datalen, int dataoffset, struct pcap_pkt
 		if(!header_ip) {
 			header_ip = (struct iphdr2 *)(data - sizeof(struct iphdr2) - sizeof(udphdr2));
 		}
-		if(iscaller) {
-			this->caller_rtpdscp = header_ip->tos >> 2;
-			////cout << "caller_rtpdscp " << (int)(header_ip->tos>>2) << endl;
-		} else {
-			this->called_rtpdscp = header_ip->tos >> 2;
-			////cout << "called_rtpdscp " << (int)(header_ip->tos>>2) << endl;
-		}
 	}
 
 	if(iscaller) {
@@ -708,6 +699,9 @@ Call::read_rtp(unsigned char* data, int datalen, int dataoffset, struct pcap_pkt
 	for(int i = 0; i < ssrc_n; i++) {
 		if(rtp[i]->ssrc2 == curSSRC) {
 			// found 
+			rtp[i]->dscp = header_ip->tos >> 2;
+			////cout << "rtpdscp " << (int)(header_ip->tos>>2) << endl;
+			
 			// chekc if packet is DTMF and saverfc2833 is enabled 
 			if(opt_saverfc2833 and rtp[i]->codec == PAYLOAD_TELEVENT) {
 				*record = 1;
@@ -780,6 +774,10 @@ read:
 			rtp_prev[iscaller] = rtp_cur[iscaller];
 		}
 		rtp_cur[iscaller] = rtp[ssrc_n]; 
+		
+		rtp[ssrc_n]->dscp = header_ip->tos >> 2;
+		////cout << "rtpdscp " << (int)(header_ip->tos>>2) << endl;
+
 		char graphFilePath_spool_relative[1024];
 		char graphFilePath[1024];
 		snprintf(graphFilePath_spool_relative, 1023, "%s/%s/%s.%d.graph%s", dirname().c_str(), opt_newdir ? "GRAPH" : "", get_fbasename_safe(), ssrc_n, opt_gzipGRAPH ? ".gz" : "");
@@ -1731,14 +1729,10 @@ Call::saveToDb(bool enableBatchIfPossible) {
 	
 	cdr_sip_response.add(sqlEscapeString(lastSIPresponse), "lastSIPresponse");
 
-	if(opt_dscp) {
-		unsigned int a,b,c,d;
-		a = caller_sipdscp;
-		b = called_sipdscp;
-		c = caller_rtpdscp;
-		d = called_rtpdscp;
-		cdr.add((a << 24) + (b << 16) + (c << 8) + d, "dscp");
-	}
+	unsigned int dscp_a = caller_sipdscp,
+		     dscp_b = called_sipdscp,
+		     dscp_c = 0,
+		     dscp_d = 0;
 	
 	cdr.add(htonl(sipcallerip), "sipcallerip");
 	cdr.add(htonl(sipcalledip), "sipcalledip");
@@ -1879,6 +1873,12 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		
 		for(int i = 0; i < 2; i++) {
 			if(!rtpab[i]) continue;
+			
+			if(i) {
+				dscp_d = rtpab[i]->dscp;
+			} else {
+				dscp_c = rtpab[i]->dscp;
+			}
 
 			string c = i == 0 ? "a" : "b";
 			
@@ -2030,6 +2030,10 @@ Call::saveToDb(bool enableBatchIfPossible) {
 
 	}
 
+	if(opt_dscp) {
+		cdr.add((dscp_a << 24) + (dscp_b << 16) + (dscp_c << 8) + dscp_d, "dscp");
+	}
+	
 	if(enableBatchIfPossible && isSqlDriver("mysql")) {
 		string query_str;
 		

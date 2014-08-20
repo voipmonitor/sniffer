@@ -1,3 +1,9 @@
+10.0.24 20.8.2014
+=================
+- fix issue with dscp and multi rtp streams
+- remove leading zeros when comparing number as international. 
+
+
 10.0.23 20.8.2014
 =================
 - fix low MOS score for all codecs with sample rate > 8khz (all wideband) and probably audio decoding

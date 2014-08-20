@@ -30,7 +30,10 @@ extern TcpReassembly *tcpReassembly;
 extern unsigned int duplicate_counter;
 
 
-inline iphdr2 *convertHeaderIP_GRE(iphdr2 *header_ip) {
+#if SNIFFER_INLINE_FUNCTIONS
+inline 
+#endif
+iphdr2 *convertHeaderIP_GRE(iphdr2 *header_ip) {
 	char gre[8];
 	uint16_t a, b;
 	// if anyone know how to make network to hostbyte nicely, redesign this
@@ -65,7 +68,10 @@ inline iphdr2 *convertHeaderIP_GRE(iphdr2 *header_ip) {
 	return(header_ip);
 }
 
-inline int pcapProcess(pcap_pkthdr** header, u_char** packet, bool *destroy,
+#if SNIFFER_INLINE_FUNCTIONS
+inline 
+#endif
+int pcapProcess(pcap_pkthdr** header, u_char** packet, bool *destroy,
 		       bool enableDefrag, bool enableCalcMD5, bool enableDedup, bool enableDump,
 		       pcapProcessData *ppd, int pcapLinklayerHeaderType, pcap_dumper_t *pcapDumpHandle, const char *interfaceName) {
 	*destroy = false;
@@ -110,10 +116,13 @@ inline int pcapProcess(pcap_pkthdr** header, u_char** packet, bool *destroy,
 	}
 	
 	if(ppd->protocol != 8) {
-		/* if(ppd->protocol == 0) { // workarround for read via tcpreplay
+		#if TCPREPLAY_WORKARROUND
+		if(ppd->protocol == 0) {
 			ppd->header_ip_offset += 2;
 			ppd->protocol = 8;
-		} else */ {
+		} else 
+		#endif
+		{
 			// not ipv4 
 			return(0);
 		}

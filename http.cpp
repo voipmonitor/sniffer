@@ -270,6 +270,7 @@ void HttpData::processData(u_int32_t ip_src, u_int32_t ip_dst,
 		}
 	}
 	delete data;
+	this->cache.cleanup(false);
 }
 
 string HttpData::getUri(string &request) {
@@ -393,10 +394,15 @@ string HttpData::getJsonValue(string &data, const char *valueName) {
 	return("");
 }
 
+void HttpData::printContentSummary() {
+	cout << "HTTP CACHE: " << this->cache.getSize() << endl;
+	this->cache.cleanup(true);
+}
+
 
 HttpCache::HttpCache() {
 	this->cleanupCounter = 0;
-	this->lastAddTimestamp = 0;
+	this->lastAddTimestamp = 0;	
 }
 
 HttpDataCache HttpCache::get(u_int32_t ip_src, u_int32_t ip_dst,
@@ -420,15 +426,17 @@ void HttpCache::add(u_int32_t ip_src, u_int32_t ip_dst,
 	HttpDataCache_id idc(ip_src, ip_dst, port_src, port_dst, http, body, http_master, body_master);
 	this->cache[idc] = HttpDataCache(id, timestamp);
 	this->lastAddTimestamp = timestamp;
-	this->cleanup();
 }
 
-void HttpCache::cleanup() {
+void HttpCache::cleanup(bool force) {
 	++this->cleanupCounter;
-	if(!(this->cleanupCounter % 100)) {
+	if(force ||
+	   !(this->cleanupCounter % 100)) {
+		u_int64_t clock = getTimeMS()/1000;
 		map<HttpDataCache_id, HttpDataCache>::iterator iter;
 		for(iter = this->cache.begin(); iter != this->cache.end(); ) {
-			if(iter->second.timestamp < this->lastAddTimestamp - 120) {
+			if(iter->second.timestamp < this->lastAddTimestamp - 120 ||
+			   iter->second.timestamp_clock < clock - 120) {
 				this->cache.erase(iter++);
 			} else {
 				++iter;
