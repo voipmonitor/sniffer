@@ -194,6 +194,7 @@ public:
 	char lastdtmf;
 	int forcemark;
 	char ignore;
+	uint8_t dscp;
 
 	/* RTCP data */
 	struct rtcp_t {

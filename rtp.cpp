@@ -246,6 +246,7 @@ RTP::RTP(int sensor_id)
 	forcemark = 0;
 	ignore = 0;
 	lastcng = 0;
+	dscp = 0;
 	
 	this->sensor_id = sensor_id;
 	
