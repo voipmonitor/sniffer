@@ -389,6 +389,8 @@ bool isSqlDriver(const char *sqlDriver, const char *checkSqlDriver = NULL);
 bool isTypeDb(const char *typeDb, const char *checkSqlDriver = NULL, const char *checkOdbcDriver = NULL);
 bool cmpStringIgnoreCase(const char* str1, const char* str2);
 string reverseString(const char *str);
+string prepareQueryForPrintf(const char *query);
+string prepareQueryForPrintf(string &query);
 
 void createMysqlPartitionsCdr();
 void createMysqlPartitionsIpacc();
