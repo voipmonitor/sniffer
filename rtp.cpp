@@ -385,37 +385,38 @@ RTP::jitterbuffer(struct ast_channel *channel, int savePayload) {
 		frame->skip = 0;
 	}
 	struct timeval tsdiff;
+	frame->len = packetization;
 	switch(codec) {
 		case PAYLOAD_OPUS12:
 		case PAYLOAD_G722112:
 			frame->ts = getTimestamp() / 12;
-			frame->len = packetization * 2 / 3;
+			//frame->len = packetization * 2 / 3;
 			break;
 		case PAYLOAD_ISAC16:
 		case PAYLOAD_SILK16:
 		case PAYLOAD_OPUS16:
 		case PAYLOAD_G722116:
 			frame->ts = getTimestamp() / 16;
-			frame->len = packetization / 2;
+			//frame->len = packetization / 2;
 			break;
 		case PAYLOAD_SILK24:
 		case PAYLOAD_OPUS24:
 		case PAYLOAD_G722124:
 			frame->ts = getTimestamp() / 24;
-			frame->len = packetization / 3;
+			//frame->len = packetization / 3;
 			break;
 		case PAYLOAD_ISAC32:
 		case PAYLOAD_G722132:
 			frame->ts = getTimestamp() / 32;
-			frame->len = packetization / 4;
+			//frame->len = packetization / 4;
 			break;
 		case PAYLOAD_OPUS48:
 			frame->ts = getTimestamp() / 48;
-			frame->len = packetization / 6;
+			//frame->len = packetization / 6;
 			break;
 		default: 
 			frame->ts = getTimestamp() / 8;
-			frame->len = packetization;
+			//frame->len = packetization;
 	}
 	frame->marker = getMarker();
 	frame->seqno = getSeqNum();
@@ -685,7 +686,7 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 
 	Call *owner = (Call*)call_owner;
 
-//	if(getSSRC() != 0x4d2) return;
+//	if(getSSRC() != 0xc3f5c945) return;
 
 	if(getVersion() != 2) {
 		return;
@@ -1034,7 +1035,7 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 					packetization = (getTimestamp() - last_ts) / 8;
 				}
 			} else {
-				packetization = (getTimestamp() - last_ts) / 8;
+				packetization = (getTimestamp() - last_ts) / (samplerate / 1000);
 			}
 			if(packetization > 0) {
 				last_packetization = packetization;
@@ -1112,7 +1113,7 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 					packetization = (getTimestamp() - last_ts) / 8;
 				}
 			} else {
-				packetization = (getTimestamp() - last_ts) / 8;
+				packetization = (getTimestamp() - last_ts) / (samplerate / 1000);
 			}
 
 			// now make packetization average
@@ -1195,6 +1196,7 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 				curpacketization = payload_len / 33 * 20;
 			} else {
 				curpacketization = (getTimestamp() - last_ts) / (samplerate / 1000);
+				if(verbosity > 3) printf("curpacketization = (getTimestamp()[%u] - last_ts[%u]) / (samplerate[%u] / 1000)", getTimestamp(), last_ts, samplerate);
 			}
 
 			if(curpacketization != packetization and curpacketization % 10 == 0 and curpacketization >= 10 and curpacketization <= 120) {
