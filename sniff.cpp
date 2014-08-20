@@ -1384,7 +1384,8 @@ void *rtp_read_thread_func(void *arg) {
 }
 
 Call *new_invite_register(int sip_method, char *data, int datalen, struct pcap_pkthdr *header, char *callidstr, u_int32_t saddr, u_int32_t daddr, int source, int dest, char *s, long unsigned int l,
-			  pcap_t *handle, int dlt, int sensor_id){
+			  pcap_t *handle, int dlt, int sensor_id,
+			  bool *detectUserAgent){
 	unsigned long gettagLimitLen = 0;
 	unsigned int flags = 0;
 	int res;
@@ -1557,6 +1558,9 @@ Call *new_invite_register(int sip_method, char *data, int datalen, struct pcap_p
 			if(l && ((unsigned int)l < ((unsigned int)datalen - (s - data)))) {
 				memcpy(call->a_ua, s, MIN(l, sizeof(call->a_ua)));
 				call->a_ua[MIN(l, sizeof(call->a_ua) - 1)] = '\0';
+			}
+			if(detectUserAgent) {
+				*detectUserAgent = true;
 			}
 
 			res = get_sip_peername(data,datalen,"\nContact:", call->contact_num, sizeof(call->contact_num));
@@ -1863,6 +1867,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 	int record = 0;
 	unsigned long gettagLimitLen = 0;
 	hash_node_call *calls, *node_call;
+	bool detectUserAgent = false;
 
 	*was_rtp = 0;
 	//int merged;
@@ -2210,7 +2215,8 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 			// packet does not belongs to any call yet
 			if (sip_method == INVITE || sip_method == MESSAGE || (opt_sip_register && sip_method == REGISTER)) {
 				call = new_invite_register(sip_method, data, datalen, header, callidstr, saddr, daddr, source, dest, s, l,
-							   handle, dlt, sensor_id);
+							   handle, dlt, sensor_id,
+							   &detectUserAgent);
 				if(call == NULL) {
 					goto endsip;
 				}
@@ -2255,7 +2261,8 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 					call->regstate = 4;
 					call->saveregister();
 					call = new_invite_register(sip_method, data, datalen, header, callidstr, saddr, daddr, source, dest, (char*)call->call_id.c_str(), call->call_id.length(),
-								   handle, dlt, sensor_id);
+								   handle, dlt, sensor_id,
+								   &detectUserAgent);
 					if(call == NULL) {
 						goto endsip;
 					}
@@ -2432,6 +2439,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 					memcpy(call->a_ua, s, MIN(l, sizeof(call->a_ua)));
 					call->a_ua[MIN(l, sizeof(call->a_ua) - 1)] = '\0';
 				}
+				detectUserAgent = true;
 
 				//check and save CSeq for later to compare with OK 
 				if(cseq && cseqlen < 32) {
@@ -2792,12 +2800,14 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 			char *ua = NULL;
 			unsigned long gettagLimitLen = 0, ua_len = 0;
 			ua = gettag(data, datalen, "\nUser-Agent:", &ua_len, &gettagLimitLen);
+			detectUserAgent = true;
 			process_sdp(call, saddr, source, daddr, dest, s, (unsigned int)datalen - (s - data), header_ip, callidstr, ua, ua_len);
 		} else if(strcasestr(s, "multipart/mixed")) {
 			*sl = t;
 			char *ua = NULL;
 			unsigned long gettagLimitLen = 0, ua_len = 0;
 			ua = gettag(data, datalen, "\nUser-Agent:", &ua_len, &gettagLimitLen);
+			detectUserAgent = true;
 			while(1) {
 				//continue searching  for another content-type
 				char *s2;
@@ -2860,6 +2870,13 @@ notfound:
 		}
 		returnCall = call;
 endsip:
+		if(!detectUserAgent && sip_method) {
+			s = gettag(data, datalen, "\nUser-Agent:", &l, &gettagLimitLen);
+			if(l && ((unsigned int)l < ((unsigned int)datalen - (s - data)))) {
+				memcpy(call->a_ua, s, MIN(l, sizeof(call->a_ua)));
+				call->a_ua[MIN(l, sizeof(call->a_ua) - 1)] = '\0';
+			}
+		}
 		datalen = origDatalen;
 		if(istcp &&
 		   sipDatalen < (unsigned)datalen - 11 &&
