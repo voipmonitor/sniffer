@@ -1084,6 +1084,7 @@ public:
 	}
 	void setStdParse() {
 		addNode("content-length:", true);
+		addNode("l:", true);
 		addNode("INVITE ");
 		addNode("call-id:");
 		addNode("i:");

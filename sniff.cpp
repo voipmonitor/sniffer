@@ -477,7 +477,7 @@ save:
    type - 1 is SIP, 2 is RTP, 3 is RTCP
 
 */
-inline void save_packet(Call *call, struct pcap_pkthdr *header, const u_char *packet, unsigned int saddr, int source, unsigned int daddr, int dest, int istcp, char *data, int datalen, int dataoffset, int type, 
+inline void save_packet(Call *call, struct pcap_pkthdr *header, const u_char *packet, unsigned int saddr, int source, unsigned int daddr, int dest, int istcp, iphdr2 *header_ip, char *data, int datalen, int dataoffset, int type, 
 			int dlt, int sensor_id) {
 	bool allocPacket = false;
 	bool allocHeader = false;
@@ -495,13 +495,38 @@ inline void save_packet(Call *call, struct pcap_pkthdr *header, const u_char *pa
 		header->len -= 2;
 		allocPacket = true;
 		allocHeader = true;
-	} else if(call->type == MESSAGE && opt_hide_message_content &&
-		  dataoffset > 0 && dataoffset < 100) {
+	}
+	unsigned int limitCapLen = 65535;
+	if(dataoffset > 0 && dataoffset < 100 &&
+	   ((call->type == MESSAGE && opt_hide_message_content) || 
+	    (istcp && header->caplen > limitCapLen))) {
 		unsigned long l;
 		char *s = gettag(data, datalen, "\nContent-Length:", &l);
 		if(l && l < (unsigned long)datalen) {
 			long int contentLength = atol(s);
 			if(contentLength) {
+				if(istcp &&
+				   header->caplen > limitCapLen &&
+				   (u_char*)header_ip > packet && 
+				   (u_char*)header_ip - packet < 100) {
+					u_int32_t diffLen = header->caplen - limitCapLen;
+					header->caplen -= diffLen;
+					header->len -= diffLen;
+					header_ip->tot_len = htons(ntohs(header_ip->tot_len) - diffLen);
+					contentLength -= diffLen;
+					while(*s == ' ') {
+						++s;
+					}
+					char contLengthStr[10];
+					sprintf(contLengthStr, "%u", (unsigned int)contentLength);
+					char *pointToModifyContLength = (char*)packet + dataoffset + (s - data); 
+					strncpy(pointToModifyContLength, contLengthStr, strlen(contLengthStr));
+					char *pointToEndModifyContLength = pointToModifyContLength + strlen(contLengthStr);
+					while(*pointToEndModifyContLength != '\r') {
+						*pointToEndModifyContLength = ' ';
+						++pointToEndModifyContLength;
+					}
+				}
 				char *endHeaderSepPos = (char*)memmem(data, datalen, "\r\n\r\n", 4);
 				if(endHeaderSepPos) {
 					const u_char *packet_orig = packet;
@@ -2234,7 +2259,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 					if(call == NULL) {
 						goto endsip;
 					}
-					save_packet(call, header, packet, saddr, source, daddr, dest, istcp, data, datalen, dataoffset, TYPE_SIP, 
+					save_packet(call, header, packet, saddr, source, daddr, dest, istcp, header_ip, data, datalen, dataoffset, TYPE_SIP, 
 						    dlt, sensor_id);
 					if(logPacketSipMethodCall_enable) {
 						logPacketSipMethodCall(sip_method, lastSIPresponseNum, header, call, 
@@ -2276,7 +2301,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 					// OK to unknown msg close the call
 					call->regstate = 3;
 				}
-				save_packet(call, header, packet, saddr, source, daddr, dest, istcp, data, datalen, dataoffset, TYPE_SIP, 
+				save_packet(call, header, packet, saddr, source, daddr, dest, istcp, header_ip, data, datalen, dataoffset, TYPE_SIP, 
 					    dlt, sensor_id);
 				call->saveregister();
 				if(logPacketSipMethodCall_enable) {
@@ -2290,7 +2315,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 				if(call->reg401count > 1) {
 					// registration failed
 					call->regstate = 2;
-					save_packet(call, header, packet, saddr, source, daddr, dest, istcp, data, datalen, dataoffset, TYPE_SIP, 
+					save_packet(call, header, packet, saddr, source, daddr, dest, istcp, header_ip, data, datalen, dataoffset, TYPE_SIP, 
 						    dlt, sensor_id);
 					call->saveregister();
 					if(logPacketSipMethodCall_enable) {
@@ -2309,7 +2334,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 			if(call->msgcount > 20) {
 				// too many REGISTER messages within the same callid
 				call->regstate = 4;
-				save_packet(call, header, packet, saddr, source, daddr, dest, istcp, data, datalen, dataoffset, TYPE_SIP, 
+				save_packet(call, header, packet, saddr, source, daddr, dest, istcp, header_ip, data, datalen, dataoffset, TYPE_SIP, 
 					    dlt, sensor_id);
 				call->saveregister();
 				if(logPacketSipMethodCall_enable) {
@@ -2514,7 +2539,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 						// terminate successfully acked call, put it into mysql CDR queue and remove it from calltable 
 
 						call->seenbyeandok = true;
-						save_packet(call, header, packet, saddr, source, daddr, dest, istcp, data, datalen, dataoffset, TYPE_SIP, 
+						save_packet(call, header, packet, saddr, source, daddr, dest, istcp, header_ip, data, datalen, dataoffset, TYPE_SIP, 
 							    dlt, sensor_id);
 /*
 	Whan voipmonitor listens for both SIP legs (with the same Call-ID it sees both BYE and should save both 200 OK after BYE so closing call after the 
@@ -2550,7 +2575,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 						if(verbosity > 2)
 							syslog(LOG_NOTICE, "Call answered\n");
 					} else if(strncmp(cseq, call->cancelcseq, cseqlen) == 0) {
-						save_packet(call, header, packet, saddr, source, daddr, dest, istcp, data, datalen, dataoffset, TYPE_SIP, 
+						save_packet(call, header, packet, saddr, source, daddr, dest, istcp, header_ip, data, datalen, dataoffset, TYPE_SIP, 
 							    dlt, sensor_id);
 						process_packet__parse_custom_headers(call, data, datalen);
 						returnCall = call;
@@ -2585,7 +2610,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 						call->progress_time = header->ts.tv_sec;
 					}
 					// save packet 
-					save_packet(call, header, packet, saddr, source, daddr, dest, istcp, data, datalen, dataoffset, TYPE_SIP, 
+					save_packet(call, header, packet, saddr, source, daddr, dest, istcp, header_ip, data, datalen, dataoffset, TYPE_SIP, 
 						    dlt, sensor_id);
 					call->destroy_call_at = header->ts.tv_sec + 5;
 
@@ -2819,14 +2844,14 @@ notfound:
 				u_char *newPacket = new u_char[newPacketLen];
 				memcpy(newPacket, packet, oldcaplen - origDatalen);
 				memcpy(newPacket + (oldcaplen - origDatalen), data, sipDatalen);
-				save_packet(call, header, newPacket, saddr, source, daddr, dest, istcp, data, datalen, dataoffset, TYPE_SIP, 
+				save_packet(call, header, newPacket, saddr, source, daddr, dest, istcp, header_ip, data, datalen, dataoffset, TYPE_SIP, 
 					    dlt, sensor_id);
 				delete [] newPacket;
 				header->caplen = oldcaplen;
 				header->len = oldlen;
 				header_ip->tot_len = oldHeaderIpLen;
 			} else {
-				save_packet(call, header, packet, saddr, source, daddr, dest, istcp, data, datalen, dataoffset, TYPE_SIP, 
+				save_packet(call, header, packet, saddr, source, daddr, dest, istcp, header_ip, data, datalen, dataoffset, TYPE_SIP, 
 					    dlt, sensor_id);
 			}
 		}
@@ -2898,7 +2923,7 @@ rtpcheck:
 				}
 				if((!rtp_threaded || !opt_rtpsave_threaded) &&
 				   !dontsave && (opt_saveRTP || opt_saveRTCP)) {
-					save_packet(call, header, packet, saddr, source, daddr, dest, istcp, data, datalen, dataoffset, TYPE_RTP, 
+					save_packet(call, header, packet, saddr, source, daddr, dest, istcp, header_ip, data, datalen, dataoffset, TYPE_RTP, 
 						    dlt, sensor_id);
 				}
 				if(logPacketSipMethodCall_enable) {
@@ -2938,12 +2963,12 @@ rtpcheck:
 					   header->caplen > (unsigned)(datalen - RTP_FIXED_HEADERLEN)) {
 						tmp_u32 = header->caplen;
 						header->caplen = header->caplen - (datalen - RTP_FIXED_HEADERLEN);
-						save_packet(call, header, packet, saddr, source, daddr, dest, istcp, data, datalen, dataoffset, TYPE_RTP, 
+						save_packet(call, header, packet, saddr, source, daddr, dest, istcp, header_ip, data, datalen, dataoffset, TYPE_RTP, 
 							    dlt, sensor_id);
 						header->caplen = tmp_u32;
 					}
 				} else {
-					save_packet(call, header, packet, saddr, source, daddr, dest, istcp, data, datalen, dataoffset, TYPE_RTP, 
+					save_packet(call, header, packet, saddr, source, daddr, dest, istcp, header_ip, data, datalen, dataoffset, TYPE_RTP, 
 						    dlt, sensor_id);
 				}
 
@@ -2997,7 +3022,7 @@ rtpcheck:
 				}
 				if((!rtp_threaded || !opt_rtpsave_threaded) &&
 				   !dontsave && (opt_saveRTP || opt_saveRTCP)) {
-					save_packet(call, header, packet, saddr, source, daddr, dest, istcp, data, datalen, dataoffset, TYPE_RTP, 
+					save_packet(call, header, packet, saddr, source, daddr, dest, istcp, header_ip, data, datalen, dataoffset, TYPE_RTP, 
 						    dlt, sensor_id);
 				}
 				if(logPacketSipMethodCall_enable) {
@@ -3032,12 +3057,12 @@ rtpcheck:
 					   header->caplen > (unsigned)(datalen - RTP_FIXED_HEADERLEN)) {
 						tmp_u32 = header->caplen;
 						header->caplen = header->caplen - (datalen - RTP_FIXED_HEADERLEN);
-						save_packet(call, header, packet, saddr, source, daddr, dest, istcp, data, datalen, dataoffset, TYPE_RTP, 
+						save_packet(call, header, packet, saddr, source, daddr, dest, istcp, header_ip, data, datalen, dataoffset, TYPE_RTP, 
 							    dlt, sensor_id);
 						header->caplen = tmp_u32;
 					}
 				} else {
-					save_packet(call, header, packet, saddr, source, daddr, dest, istcp, data, datalen, dataoffset, TYPE_RTP, 
+					save_packet(call, header, packet, saddr, source, daddr, dest, istcp, header_ip, data, datalen, dataoffset, TYPE_RTP, 
 						    dlt, sensor_id);
 				}
 			}
