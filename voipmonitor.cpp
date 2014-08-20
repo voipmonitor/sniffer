@@ -3916,10 +3916,8 @@ void test_parsepacket() {
 	ParsePacket pp;
 	pp.setStdParse();
  
-	char *str = (char*)"REGISTER sip:mx.com SIP/2.0\r\nv: SIP/2.0/UDP 1.2.3.4:5080;branch=asf4aas-5454sadfasfasdf545fsd454asfd46saf;nat=true\r\nv: SIP/2.0/UDP 5.6.7.8:5060;rport=5060;branch=asdf4as54f65as4df5sdaffds\r\nRecord-Route: <sip:1.2.3.4:5080;transport=udp;dest=5.6.7.8-5060;to-tag=6546565654;lr=1>\r\nf: <sip:65465465464455@mx.com>;tag=6546565654\r\nt: <sip:65465465464455@mx.com>\r\ni: 74EB5975C4E31329@5.6.7.8\r\nCSeq: 128752 REGISTER\r\nMax-Forwards: 10\r\nAccept-Encoding: identity\r\nAccept: application/sdp, multipart/mixed\r\nAllow: INVITE,ACK,OPTIONS,CANCEL,BYE,UPDATE,PRACK,INFO,SUBSCRIBE,NOTIFY,REFER,MESSAGE,PUBLISH\r\nAllow-Events: telephone-event,refer,reg\r\nSupported: 100rel,replaces\r\nl: 0\r\n\r\n";
-	for(int i = 0; i < 100000; i++) {
-		pp.parseData(str, strlen(str), true);
-	}
+	char *str = (char*)"";
+	cout << pp.parseData(str, strlen(str), true) << endl;
 	
 	pp.debugData();
 }

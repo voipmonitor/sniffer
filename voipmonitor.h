@@ -34,6 +34,8 @@
 #define GRAPH_VERSION 4294967294 
 #define GRAPH_MARK 4294967293 
 
+#define SNIFFER_INLINE_FUNCTIONS true
+#define TCPREPLAY_WORKARROUND false
 
 
 /* choose what method wil be used to synchronize threads. NONBLOCK is the fastest. Do not enable both at once */
