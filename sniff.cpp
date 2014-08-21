@@ -2870,7 +2870,7 @@ notfound:
 		}
 		returnCall = call;
 endsip:
-		if(!detectUserAgent && sip_method) {
+		if(!detectUserAgent && sip_method && call) {
 			bool iscaller = 0;
 			if(call->check_is_caller_called(saddr, daddr, &iscaller)) {
 				s = gettag(data, datalen, "\nUser-Agent:", &l, &gettagLimitLen);
