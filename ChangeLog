@@ -1,3 +1,8 @@
+10.0.25 21.8.2014
+=================
+- fix 10.0.24 dscp fix which caused immediate crash
+
+
 10.0.24 20.8.2014
 =================
 - fix issue with dscp and multi rtp streams
