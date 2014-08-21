@@ -684,10 +684,8 @@ Call::read_rtp(unsigned char* data, int datalen, int dataoffset, struct pcap_pkt
 		goto end;
 	}
 
-	if(opt_dscp) {
-		if(!header_ip) {
-			header_ip = (struct iphdr2 *)(data - sizeof(struct iphdr2) - sizeof(udphdr2));
-		}
+	if(opt_dscp && !header_ip) {
+		header_ip = (struct iphdr2 *)(data - sizeof(struct iphdr2) - sizeof(udphdr2));
 	}
 
 	if(iscaller) {
@@ -699,8 +697,10 @@ Call::read_rtp(unsigned char* data, int datalen, int dataoffset, struct pcap_pkt
 	for(int i = 0; i < ssrc_n; i++) {
 		if(rtp[i]->ssrc2 == curSSRC) {
 			// found 
-			rtp[i]->dscp = header_ip->tos >> 2;
-			////cout << "rtpdscp " << (int)(header_ip->tos>>2) << endl;
+			if(opt_dscp) {
+				rtp[i]->dscp = header_ip->tos >> 2;
+				////cout << "rtpdscp " << (int)(header_ip->tos>>2) << endl;
+			}
 			
 			// chekc if packet is DTMF and saverfc2833 is enabled 
 			if(opt_saverfc2833 and rtp[i]->codec == PAYLOAD_TELEVENT) {
@@ -775,8 +775,10 @@ read:
 		}
 		rtp_cur[iscaller] = rtp[ssrc_n]; 
 		
-		rtp[ssrc_n]->dscp = header_ip->tos >> 2;
-		////cout << "rtpdscp " << (int)(header_ip->tos>>2) << endl;
+		if(opt_dscp) {
+			rtp[ssrc_n]->dscp = header_ip->tos >> 2;
+			////cout << "rtpdscp " << (int)(header_ip->tos>>2) << endl;
+		}
 
 		char graphFilePath_spool_relative[1024];
 		char graphFilePath[1024];
