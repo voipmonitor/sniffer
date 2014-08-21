@@ -286,7 +286,7 @@ bool SqlDb::queryByCurl(string query) {
 	for(unsigned int pass = 0; pass < this->maxQueryPass; pass++, attempt++) {
 		if(pass > 0) {
 			sleep(1);
-			syslog(LOG_INFO, "next attempt %u - query: %s", attempt, query.c_str());
+			syslog(LOG_INFO, "next attempt %u - query: %s", attempt, prepareQueryForPrintf(query).c_str());
 		}
 		SimpleBuffer responseBuffer;
 		string error;
@@ -722,7 +722,7 @@ bool SqlDb_mysql::query(string query) {
 	if(isCloud()) {
 		this->prepareQuery(&query);
 		if(verbosity > 1) {
-			syslog(LOG_INFO, query.c_str());
+			syslog(LOG_INFO, prepareQueryForPrintf(query).c_str());
 		}
 		return(this->queryByCurl(query));
 	}
@@ -747,7 +747,7 @@ bool SqlDb_mysql::query(string query) {
 	}
 	this->prepareQuery(&query);
 	if(verbosity > 1) {
-		syslog(LOG_INFO, query.c_str());
+		syslog(LOG_INFO, prepareQueryForPrintf(query).c_str());
 	}
 	bool rslt = false;
 	this->cleanFields();
@@ -755,7 +755,7 @@ bool SqlDb_mysql::query(string query) {
 	for(unsigned int pass = 0; pass < this->maxQueryPass; pass++) {
 		if(pass > 0) {
 			sleep(1);
-			syslog(LOG_INFO, "next attempt %u - query: %s", attempt - 1, query.c_str());
+			syslog(LOG_INFO, "next attempt %u - query: %s", attempt - 1, prepareQueryForPrintf(query).c_str());
 		}
 		if(!this->connected()) {
 			this->connect();
@@ -763,7 +763,7 @@ bool SqlDb_mysql::query(string query) {
 		if(this->connected()) {
 			if(mysql_query(this->hMysqlConn, query.c_str())) {
 				if(verbosity > 1) {
-					syslog(LOG_NOTICE, "query error - query: %s", query.c_str());
+					syslog(LOG_NOTICE, "query error - query: %s", prepareQueryForPrintf(query).c_str());
 					syslog(LOG_NOTICE, "query error - error: %s", mysql_error(this->hMysql));
 				}
 				this->checkLastError("query error in [" + query.substr(0,200) + (query.size() > 200 ? "..." : "") + "]", !sql_noerror);
@@ -784,7 +784,7 @@ bool SqlDb_mysql::query(string query) {
 				}
 			} else {
 				if(verbosity > 1) {
-					syslog(LOG_NOTICE, "query ok - %s", query.c_str());
+					syslog(LOG_NOTICE, "query ok - %s", prepareQueryForPrintf(query).c_str());
 				}
 				rslt = true;
 				break;
@@ -1037,7 +1037,7 @@ bool SqlDb_odbc::connected() {
 bool SqlDb_odbc::query(string query) {
 	this->prepareQuery(&query);
 	if(verbosity > 1) { 
-		syslog(LOG_INFO, query.c_str());
+		syslog(LOG_INFO, prepareQueryForPrintf(query).c_str());
 	}
 	SQLRETURN rslt = SQL_NULL_DATA;
 	if(this->hStatement) {
@@ -1653,6 +1653,24 @@ string reverseString(const char *str) {
 		}
 	}
 	return rslt;
+}
+
+string prepareQueryForPrintf(const char *query) {
+	string rslt;
+	if(query) {
+		int length = strlen(query);
+		for(int i = 0; i < length; i++) {
+			rslt += query[i];
+			if(query[i] == '%') {
+				rslt += '%';
+			}
+		}
+	}
+	return rslt;
+}
+
+string prepareQueryForPrintf(string &query) {
+	return(prepareQueryForPrintf(query.c_str()));
 }
 
 

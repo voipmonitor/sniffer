@@ -684,10 +684,8 @@ Call::read_rtp(unsigned char* data, int datalen, int dataoffset, struct pcap_pkt
 		goto end;
 	}
 
-	if(opt_dscp) {
-		if(!header_ip) {
-			header_ip = (struct iphdr2 *)(data - sizeof(struct iphdr2) - sizeof(udphdr2));
-		}
+	if(opt_dscp && !header_ip) {
+		header_ip = (struct iphdr2 *)(data - sizeof(struct iphdr2) - sizeof(udphdr2));
 	}
 
 	if(iscaller) {
@@ -699,8 +697,10 @@ Call::read_rtp(unsigned char* data, int datalen, int dataoffset, struct pcap_pkt
 	for(int i = 0; i < ssrc_n; i++) {
 		if(rtp[i]->ssrc2 == curSSRC) {
 			// found 
-			rtp[i]->dscp = header_ip->tos >> 2;
-			////cout << "rtpdscp " << (int)(header_ip->tos>>2) << endl;
+			if(opt_dscp) {
+				rtp[i]->dscp = header_ip->tos >> 2;
+				////cout << "rtpdscp " << (int)(header_ip->tos>>2) << endl;
+			}
 			
 			// chekc if packet is DTMF and saverfc2833 is enabled 
 			if(opt_saverfc2833 and rtp[i]->codec == PAYLOAD_TELEVENT) {
@@ -775,8 +775,10 @@ read:
 		}
 		rtp_cur[iscaller] = rtp[ssrc_n]; 
 		
-		rtp[ssrc_n]->dscp = header_ip->tos >> 2;
-		////cout << "rtpdscp " << (int)(header_ip->tos>>2) << endl;
+		if(opt_dscp) {
+			rtp[ssrc_n]->dscp = header_ip->tos >> 2;
+			////cout << "rtpdscp " << (int)(header_ip->tos>>2) << endl;
+		}
 
 		char graphFilePath_spool_relative[1024];
 		char graphFilePath[1024];
@@ -3419,62 +3421,9 @@ Call::handle_dtmf(char dtmf, double dtmf_time, unsigned int saddr, unsigned int 
 
 void
 Call::handle_dscp(struct iphdr2 *header_ip, unsigned int saddr, unsigned int daddr, int *iscalledOut) {
-	int iscalled = 0;
-	int iscaller = 0;
-	// determine if the SDP message is coming from caller or called 
-	// 1) check by saddr
-	if(this->sipcallerip == saddr) {
-		// SDP message is coming from the first IP address seen in first INVITE thus incoming stream to ip/port in this 
-		// SDP will be stream from called
-		iscalled = 1;
-	} else {
-		// The IP address is different, check if the request matches one of the address from the first invite
-		if(this->sipcallerip == daddr) {
-			// SDP message is addressed to caller and announced IP/port in SDP will be from caller. Thus set called = 0;
-			iscaller = 1;
-		// src IP address of this SDP SIP message is different from the src/dst IP address used in the first INVITE. 
-		} else {
-			if(this->sipcallerip2 == 0) { 
-				this->sipcallerip2 = saddr;
-				this->sipcalledip2 = daddr;
-			}
-			if(this->sipcallerip2 == saddr) {
-				iscalled = 1;
-			} else {
-				// The IP address is different, check if the request matches one of the address from the first invite
-				if(this->sipcallerip2 == daddr) {
-					// SDP message is addressed to caller and announced IP/port in SDP will be from caller. Thus set called = 0;
-					iscaller = 1;
-				// src IP address of this SDP SIP message is different from the src/dst IP address used in the first INVITE. 
-				} else {
-					if(this->sipcallerip3 == 0) { 
-						this->sipcallerip3 = saddr;
-						this->sipcalledip3 = daddr;
-					}
-					if(this->sipcallerip3 == saddr) {
-						iscalled = 1;
-					} else {
-						// The IP address is different, check if the request matches one of the address from the first invite
-						if(this->sipcallerip3 == daddr) {
-							// SDP message is addressed to caller and announced IP/port in SDP will be from caller. Thus set called = 0;
-							iscaller = 1;
-						// src IP address of this SDP SIP message is different from the src/dst IP address used in the first INVITE. 
-						} else {
-							if(this->sipcallerip4 == 0) { 
-								this->sipcallerip4 = saddr;
-								this->sipcalledip4 = daddr;
-							}
-							if(this->sipcallerip4 == saddr) {
-								iscalled = 1;
-							} else {
-								iscaller = 1;
-							}
-						}
-					}
-				}
-			}
-		}
-	}
+	bool iscaller = 0;
+	bool iscalled = 0;
+	this->check_is_caller_called(saddr, daddr, &iscaller, &iscalled);
 	if(iscalled) {
 		this->caller_sipdscp = header_ip->tos >> 2;
 		////cout << "caller_sipdscp " << (int)(header_ip->tos>>2) << endl;
@@ -3486,4 +3435,67 @@ Call::handle_dscp(struct iphdr2 *header_ip, unsigned int saddr, unsigned int dad
 	if(iscalledOut) {
 		*iscalledOut = iscalled;
 	}
+}
+
+bool 
+Call::check_is_caller_called(unsigned int saddr, unsigned int daddr, bool *iscaller, bool *iscalled) {
+	*iscaller = 0;
+	bool _iscalled = 0;
+	// 1) check by saddr
+	if(this->sipcallerip == saddr) {
+		// SDP message is coming from the first IP address seen in first INVITE thus incoming stream to ip/port in this 
+		// SDP will be stream from called
+		_iscalled = 1;
+	} else {
+		// The IP address is different, check if the request matches one of the address from the first invite
+		if(this->sipcallerip == daddr) {
+			// SDP message is addressed to caller and announced IP/port in SDP will be from caller. Thus set called = 0;
+			*iscaller = 1;
+		// src IP address of this SDP SIP message is different from the src/dst IP address used in the first INVITE. 
+		} else {
+			if(this->sipcallerip2 == 0) { 
+				this->sipcallerip2 = saddr;
+				this->sipcalledip2 = daddr;
+			}
+			if(this->sipcallerip2 == saddr) {
+				_iscalled = 1;
+			} else {
+				// The IP address is different, check if the request matches one of the address from the first invite
+				if(this->sipcallerip2 == daddr) {
+					// SDP message is addressed to caller and announced IP/port in SDP will be from caller. Thus set called = 0;
+					*iscaller = 1;
+				// src IP address of this SDP SIP message is different from the src/dst IP address used in the first INVITE. 
+				} else {
+					if(this->sipcallerip3 == 0) { 
+						this->sipcallerip3 = saddr;
+						this->sipcalledip3 = daddr;
+					}
+					if(this->sipcallerip3 == saddr) {
+						_iscalled = 1;
+					} else {
+						// The IP address is different, check if the request matches one of the address from the first invite
+						if(this->sipcallerip3 == daddr) {
+							// SDP message is addressed to caller and announced IP/port in SDP will be from caller. Thus set called = 0;
+							*iscaller = 1;
+						// src IP address of this SDP SIP message is different from the src/dst IP address used in the first INVITE. 
+						} else {
+							if(this->sipcallerip4 == 0) { 
+								this->sipcallerip4 = saddr;
+								this->sipcalledip4 = daddr;
+							}
+							if(this->sipcallerip4 == saddr) {
+								_iscalled = 1;
+							} else {
+								*iscaller = 1;
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+	if(iscalled) {
+		*iscalled = _iscalled;
+	}
+	return(*iscaller || _iscalled);
 }
