@@ -490,6 +490,8 @@ public:
 	void handle_dtmf(char dtmf, double dtmf_time, unsigned int saddr, unsigned int daddr);
 	
 	void handle_dscp(struct iphdr2 *header_ip, unsigned int saddr, unsigned int daddr, int *iscalledOut = NULL);
+	
+	bool check_is_caller_called(unsigned int saddr, unsigned int daddr, bool *iscaller, bool *iscalled = NULL);
 
 	void dump();
 

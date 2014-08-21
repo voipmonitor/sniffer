@@ -2871,10 +2871,20 @@ notfound:
 		returnCall = call;
 endsip:
 		if(!detectUserAgent && sip_method) {
-			s = gettag(data, datalen, "\nUser-Agent:", &l, &gettagLimitLen);
-			if(l && ((unsigned int)l < ((unsigned int)datalen - (s - data)))) {
-				memcpy(call->a_ua, s, MIN(l, sizeof(call->a_ua)));
-				call->a_ua[MIN(l, sizeof(call->a_ua) - 1)] = '\0';
+			bool iscaller = 0;
+			if(call->check_is_caller_called(saddr, daddr, &iscaller)) {
+				s = gettag(data, datalen, "\nUser-Agent:", &l, &gettagLimitLen);
+				if(l && ((unsigned int)l < ((unsigned int)datalen - (s - data)))) {
+					//cout << "**** " << call->call_id << " " << (iscaller ? "b" : "a") << " / " << string(s).substr(0,l) << endl;
+					//cout << "**** " << call->call_id << " " << (iscaller ? "b" : "a") << " / " << string(data).substr(0,datalen) << endl;
+					if(iscaller) {
+						memcpy(call->b_ua, s, MIN(l, sizeof(call->b_ua)));
+						call->b_ua[MIN(l, sizeof(call->b_ua) - 1)] = '\0';
+					} else {
+						memcpy(call->a_ua, s, MIN(l, sizeof(call->a_ua)));
+						call->a_ua[MIN(l, sizeof(call->a_ua) - 1)] = '\0';
+					}
+				}
 			}
 		}
 		datalen = origDatalen;
