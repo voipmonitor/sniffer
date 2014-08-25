@@ -2854,6 +2854,9 @@ notfound:
 				u_char *newPacket = new u_char[newPacketLen];
 				memcpy(newPacket, packet, oldcaplen - origDatalen);
 				memcpy(newPacket + (oldcaplen - origDatalen), data, sipDatalen);
+				if((u_char*)header_ip > packet && (u_char*)header_ip - packet < 100) {
+					header_ip = (iphdr2*)(newPacket + ((u_char*)header_ip - packet));
+				}
 				save_packet(call, header, newPacket, saddr, source, daddr, dest, istcp, header_ip, data, datalen, dataoffset, TYPE_SIP, 
 					    dlt, sensor_id);
 				delete [] newPacket;
