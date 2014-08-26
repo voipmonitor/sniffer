@@ -1,3 +1,10 @@
+10.0.26 21.8.2014
+=================
+- handle corrupted IP header packet and do not crash the sniffer
+- fix header_ip address for large sip message method packets (VG-326)
+- fix issue with alter table cache_number_location
+
+
 10.0.25 21.8.2014
 =================
 - fix 10.0.24 dscp fix which caused immediate crash
