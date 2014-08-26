@@ -132,7 +132,7 @@ int pcapProcess(pcap_pkthdr** header, u_char** packet, bool *destroy,
 
 	static u_long lastTimeLogErrBadIpHeader = 0;
 	if(ppd->header_ip->version != 4) {
-		u_long actTime = getTimeMS();
+		u_long actTime = getTimeMS(*header);
 		if(actTime - 1000 > lastTimeLogErrBadIpHeader) {
 			syslog(LOG_ERR, "BAD HEADER_IP: %s: bogus ip header version %i", interfaceName, ppd->header_ip->version);
 			lastTimeLogErrBadIpHeader = actTime;
@@ -140,7 +140,7 @@ int pcapProcess(pcap_pkthdr** header, u_char** packet, bool *destroy,
 		return(0);
 	}
 	if(htons(ppd->header_ip->tot_len) + ppd->header_ip_offset > (*header)->len) {
-		u_long actTime = getTimeMS();
+		u_long actTime = getTimeMS(*header);
 		if(actTime - 1000 > lastTimeLogErrBadIpHeader) {
 			syslog(LOG_ERR, "BAD HEADER_IP: %s: bogus ip header length %i, len %i", interfaceName, htons(ppd->header_ip->tot_len), (*header)->len);
 			lastTimeLogErrBadIpHeader = actTime;
@@ -154,7 +154,7 @@ int pcapProcess(pcap_pkthdr** header, u_char** packet, bool *destroy,
 			int foffset = ntohs(ppd->header_ip->frag_off);
 			if ((foffset & IP_MF) || ((foffset & IP_OFFSET) > 0)) {
 				if(htons(ppd->header_ip->tot_len) + ppd->header_ip_offset > (*header)->caplen) {
-					u_long actTime = getTimeMS();
+					u_long actTime = getTimeMS(*header);
 					if(actTime - 1000 > lastTimeLogErrBadIpHeader) {
 						syslog(LOG_ERR, "BAD FRAGMENTED HEADER_IP: %s: bogus ip header length %i, caplen %i", interfaceName, htons(ppd->header_ip->tot_len), (*header)->caplen);
 						lastTimeLogErrBadIpHeader = actTime;
