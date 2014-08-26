@@ -1,5 +1,5 @@
 #!/bin/bash
-cloudToken=blabla
+#cloudToken=
 __VERSION=1.0b
 
 #__COLORS=1	#automagicaly set by checkTput function
