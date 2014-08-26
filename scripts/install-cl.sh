@@ -328,7 +328,7 @@ function cmd {
 	local result=$?
 
 	if [ "a$result" != "a0" ]; then
-		echo "$(printz "Problem")$(printn " while processing command '")$(printp " $1")"
+		echo "$(printz "Problem")$(printn " while processing command '")$(printp " $1 $2 $3 $4")"
 		echo "$(printn "Returned error code: ")$(printz "$result")"
 		exit_command 3
 	fi
