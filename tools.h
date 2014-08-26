@@ -283,7 +283,10 @@ struct ip_port
 	int port;
 };
 
-inline u_long getTimeMS() {
+inline u_long getTimeMS(pcap_pkthdr* header = NULL) {
+    if(header) {
+         return(header->ts.tv_sec * 1000ul + header->ts.tv_usec );
+    }
     timespec time;
     clock_gettime(CLOCK_REALTIME, &time);
     return(time.tv_sec * 1000 + time.tv_nsec / 1000000);

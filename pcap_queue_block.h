@@ -8,6 +8,8 @@
 #include <pcap.h>
 #include <string>
 
+#include "tools.h"
+
 #define PCAP_BLOCK_STORE_HEADER_STRING		"pcap_block_st_03"
 #define PCAP_BLOCK_STORE_HEADER_STRING_LEN	16
 
@@ -15,16 +17,13 @@
 extern int opt_enable_tcpreassembly;
 extern int opt_tcpreassembly_pb_lock;
 
-u_long getTimeMS();
-unsigned long long getTimeNS();
-
-
 struct pcap_pkthdr_fix_size {
 	uint64_t ts_tv_sec;
 	uint64_t ts_tv_usec;
 	uint64_t caplen;
 	uint64_t len;
 };
+
 
 struct pcap_pkthdr_plus {
 	pcap_pkthdr_plus() {
