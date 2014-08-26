@@ -1191,12 +1191,6 @@ installFromFile configFile oldConfigFile $tempDir/$fileName $tempDir
 verbose
 
 echo
-if [ $installedVoipmonitor -eq 1 ]; then
-	#echo "$(prints "New config")$(printn " file replaced previous config in ")$(printp "$configFile")"
-	echo "$(prints "Old config")$(printn " file backuped in ")$(printp "$oldConfigFile")"
-fi
-echo "$(prints "New config")$(printn " file is placed in ")$(printp "$configFile")$(printn ". Please check configuration.")" 
-echo
 
 #12. Would you like to run sniffer now?
 if ask2 "Would you like to run sniffer now?" "yes" "no"; then
@@ -1315,10 +1309,15 @@ commentoutArg "mysqlloadconfig" "$configFile"
 commentoutArg "sqlcallend" "$configFile"
 
 cmd mv "$configFile" "/etc/voipmonitor.conf"
+configFile=/etc/voipmonitor.conf
+
+echo
+if [ $installedVoipmonitor -eq 1 ]; then
+	echo "$(prints "Old config")$(printn " file backuped in ")$(printp "$oldConfigFile")"
+fi
+echo "$(prints "New config")$(printn " file is placed in ")$(printp "$configFile")$(printn ". Please check configuration.")" 
 
 removeDir $tempDir
-
-
 if [ $startResult -eq 1 ]; then
 	/etc/init.d/voipmonitor start
 fi
