@@ -496,20 +496,29 @@ function installFromFile {
 		cmd "mv" "$__oldTmpConfigFile" "$__oldConfigFile"
 
 		verbose "$(printn "Backuping your ")$(printp "/etc/voipmonitor.conf")$(printn " to ")$(printp "$__oldConfigFile")$(printn ".")"
-		verbose "$(printn "Installing new ")$(printp "voipmonitor.conf")$(printn " to ")$(printp "/etc/voipmonitor.conf")$(printn ". Please, check it for new options.")"
+		verbose "$(printn "Installing new ")$(printp "voipmonitor.conf")$(printn " to ")$(printp "/etc/voipmonitor.conf")$(printn ".")"
 
 		#non existence of old config file cannot cause instalator to say bye using cmdu
 		cmdu "mv" "/etc/voipmonitor.conf" "$__oldConfigFile"
 
 		local __configFile="$destdir/$subdir/$inDir/etc/voipmonitor.conf"
 	else
-		verbose "$(printn "Installing new ")$(printp "voipmonitor.conf")$(printn " to ")$(printp "/etc/voipmonitor.conf")$(printn ". Please, check it and ")$(prints "edit it")$(printn " for your needs.")"
+		verbose "$(printn "Installing new ")$(printp "voipmonitor.conf")$(printn " to ")$(printp "/etc/voipmonitor.conf")"
 		local __configFile="$destdir/$subdir/$inDir/etc/voipmonitor.conf"
 		local __oldConfigFile="NA"
 	fi
 
+	#showing where are config file located
 	echo
+	if [ $installedVoipmonitor -eq 1 ]; then
+		echo "$(prints "Old config")$(printn " file is backuped in ")$(printp "$__oldConfigFile")"
+	fi
+	verbose "$(prints "New config")$(printn " file is placed in ")$(printp "$__configFile")$(printn "")" 
+	echo "$(prints "New config")$(printn " file will be placed in ")$(printp "/etc/voipmonitor.conf")$(printn ".")"
+	echo "Please $(prints "check")$(printn " configuration")$(printn " and ")$(prints "edit it")$(printn " for your needs.") " 
 
+
+	echo
 	if ask2 "Would you like to start voipmonitor on each server boot? " "yes" "no" "yes"; then
 		verbose "Installing etc/init.d/voipmonitor starting script to $(printp "/etc/init.d/voipmonitor")$(printn ". You can start voipmonitor by ")$(printp "/etc/init.d/voipmonitor start")"
 		cmd "cp" "etc/init.d/voipmonitor" "/etc/init.d/"
@@ -528,8 +537,6 @@ function installFromFile {
 	else
 		initResult=0
 	fi
-	echo
-
 
 	verbose
 	verbose "$(printn "Returning into $dir .")"
@@ -1184,24 +1191,20 @@ fi
 
 #10. Absolute call timeout in seconds default [1440]
 askNumber timeoutResult "Absolute call timeout in seconds " 1 8640000 1440
-echo
 
-#11. Would you like to install init start script? and kill running voipmotnitor?
+echo
+#11. Would you like to install init start script? and kill running voipmotnitor? Also show where are configs located
 installFromFile configFile oldConfigFile $tempDir/$fileName $tempDir
-verbose
 
 echo
-
 #12. Would you like to run sniffer now?
 if ask2 "Would you like to run sniffer now?" "yes" "no"; then
 	startResult=1
 else
 	startResult=0
 fi
+
 echo
-
-
-
 echo $(printn "")
 ###
 ### end of prompting now doing
@@ -1310,12 +1313,6 @@ commentoutArg "sqlcallend" "$configFile"
 
 cmd mv "$configFile" "/etc/voipmonitor.conf"
 configFile=/etc/voipmonitor.conf
-
-echo
-if [ $installedVoipmonitor -eq 1 ]; then
-	echo "$(prints "Old config")$(printn " file backuped in ")$(printp "$oldConfigFile")"
-fi
-echo "$(prints "New config")$(printn " file is placed in ")$(printp "$configFile")$(printn ". Please check configuration.")" 
 
 removeDir $tempDir
 if [ $startResult -eq 1 ]; then
