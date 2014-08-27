@@ -81,7 +81,7 @@ int pcapProcess(pcap_pkthdr** header, u_char** packet, bool *destroy,
 			ppd->protocol = ppd->header_sll->sll_protocol;
 			if(ppd->header_sll->sll_protocol == 129) {
 				// VLAN tag
-				ppd->protocol = *(short*)(*packet + 16 + 2);
+				ppd->protocol = *(u_int16_t*)(*packet + sizeof(ether_header) + 2);
 				ppd->header_ip_offset = 4;
 			} else {
 				ppd->header_ip_offset = 0;
@@ -95,7 +95,7 @@ int pcapProcess(pcap_pkthdr** header, u_char** packet, bool *destroy,
 				// VLAN tag
 				ppd->header_ip_offset = 4;
 				//XXX: this is very ugly hack, please do it right! (it will work for "08 00" which is IPV4 but not for others! (find vlan_header or something)
-				ppd->protocol = *(*packet + sizeof(ether_header) + 2);
+				ppd->protocol = *(u_int16_t*)(*packet + sizeof(ether_header) + 2);
 			} else {
 				ppd->header_ip_offset = 0;
 				ppd->protocol = ppd->header_eth->ether_type;
