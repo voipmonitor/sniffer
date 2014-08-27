@@ -1,3 +1,11 @@
+10.0.27 27.8.2014
+=================
+- fix all 10.X which can corrupt heap (if saving sip packets) when doing IP defragmentation
+- fix 10.0.26 crashes and fix bogus packet message
+- fix all versions bug where ARP packets and other IP protocols can cause undefined behaviour 
+- fix hide SIP message body in MESSAGE packet only if set opt_hide_message is set
+
+
 10.0.26 21.8.2014
 =================
 - handle corrupted IP header packet and do not crash the sniffer
