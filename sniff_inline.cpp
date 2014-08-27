@@ -78,14 +78,13 @@ int pcapProcess(pcap_pkthdr** header, u_char** packet, bool *destroy,
 	switch(pcapLinklayerHeaderType) {
 		case DLT_LINUX_SLL:
 			ppd->header_sll = (sll_header*)*packet;
-			ppd->protocol = ppd->header_sll->sll_protocol;
 			if(ppd->header_sll->sll_protocol == 129) {
 				// VLAN tag
-				ppd->protocol = *(short*)(*packet + 16 + 2);
+				ppd->protocol = htons(*(u_int16_t*)(*packet + sizeof(ether_header) + 2));
 				ppd->header_ip_offset = 4;
 			} else {
 				ppd->header_ip_offset = 0;
-				ppd->protocol = ppd->header_sll->sll_protocol;
+				ppd->protocol = htons(ppd->header_sll->sll_protocol);
 			}
 			ppd->header_ip_offset += sizeof(sll_header);
 			break;
@@ -95,31 +94,31 @@ int pcapProcess(pcap_pkthdr** header, u_char** packet, bool *destroy,
 				// VLAN tag
 				ppd->header_ip_offset = 4;
 				//XXX: this is very ugly hack, please do it right! (it will work for "08 00" which is IPV4 but not for others! (find vlan_header or something)
-				ppd->protocol = *(*packet + sizeof(ether_header) + 2);
+				ppd->protocol = htons(*(u_int16_t*)(*packet + sizeof(ether_header) + 2));
 			} else {
 				ppd->header_ip_offset = 0;
-				ppd->protocol = ppd->header_eth->ether_type;
+				ppd->protocol = htons(ppd->header_eth->ether_type);
 			}
 			ppd->header_ip_offset += sizeof(ether_header);
 			break;
 		case DLT_RAW:
 			ppd->header_ip_offset = 0;
-			ppd->protocol = 8;
+			ppd->protocol = ETHERTYPE_IP;
 			break;
 		case DLT_IEEE802_11_RADIO:
 			ppd->header_ip_offset = 52;
-			ppd->protocol = 8;
+			ppd->protocol = ETHERTYPE_IP;
 			break;
 		default:
 			syslog(LOG_ERR, "BAD DATALINK %s: datalink number [%d] is not supported", interfaceName, pcapLinklayerHeaderType);
 			return(0);
 	}
 	
-	if(ppd->protocol != 8) {
+	if(ppd->protocol != ETHERTYPE_IP) {
 		#if TCPREPLAY_WORKARROUND
 		if(ppd->protocol == 0) {
 			ppd->header_ip_offset += 2;
-			ppd->protocol = 8;
+			ppd->protocol = ETHERTYPE_IP;
 		} else 
 		#endif
 		{
@@ -130,8 +129,12 @@ int pcapProcess(pcap_pkthdr** header, u_char** packet, bool *destroy,
 	
 	ppd->header_ip = (iphdr2*)(*packet + ppd->header_ip_offset);
 
+	extern BogusDumper *bogusDumper;
 	static u_long lastTimeLogErrBadIpHeader = 0;
 	if(ppd->header_ip->version != 4) {
+		if(bogusDumper) {
+			bogusDumper->dump(*header, *packet, pcapLinklayerHeaderType, interfaceName);
+		}
 		u_long actTime = getTimeMS(*header);
 		if(actTime - 1000 > lastTimeLogErrBadIpHeader) {
 			syslog(LOG_ERR, "BAD HEADER_IP: %s: bogus ip header version %i", interfaceName, ppd->header_ip->version);
@@ -140,6 +143,9 @@ int pcapProcess(pcap_pkthdr** header, u_char** packet, bool *destroy,
 		return(0);
 	}
 	if(htons(ppd->header_ip->tot_len) + ppd->header_ip_offset > (*header)->len) {
+		if(bogusDumper) {
+			bogusDumper->dump(*header, *packet, pcapLinklayerHeaderType, interfaceName);
+		}
 		u_long actTime = getTimeMS(*header);
 		if(actTime - 1000 > lastTimeLogErrBadIpHeader) {
 			syslog(LOG_ERR, "BAD HEADER_IP: %s: bogus ip header length %i, len %i", interfaceName, htons(ppd->header_ip->tot_len), (*header)->len);
@@ -154,6 +160,9 @@ int pcapProcess(pcap_pkthdr** header, u_char** packet, bool *destroy,
 			int foffset = ntohs(ppd->header_ip->frag_off);
 			if ((foffset & IP_MF) || ((foffset & IP_OFFSET) > 0)) {
 				if(htons(ppd->header_ip->tot_len) + ppd->header_ip_offset > (*header)->caplen) {
+					if(bogusDumper) {
+						bogusDumper->dump(*header, *packet, pcapLinklayerHeaderType, interfaceName);
+					}
 					u_long actTime = getTimeMS(*header);
 					if(actTime - 1000 > lastTimeLogErrBadIpHeader) {
 						syslog(LOG_ERR, "BAD FRAGMENTED HEADER_IP: %s: bogus ip header length %i, caplen %i", interfaceName, htons(ppd->header_ip->tot_len), (*header)->caplen);

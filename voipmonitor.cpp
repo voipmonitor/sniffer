@@ -540,6 +540,9 @@ int opt_enable_jitterbuffer_asserts = 0;
 int opt_hide_message_content = 0;
 char opt_hide_message_content_secret[1024] = "";
 
+char opt_bogus_dumper_path[1204];
+BogusDumper *bogusDumper;
+
 
 #include <stdio.h>
 #include <pthread.h>
@@ -1999,6 +2002,10 @@ int load_config(char *fname) {
 		strncpy(opt_hide_message_content_secret, value, sizeof(opt_hide_message_content_secret));
 	}
 
+	if((value = ini.GetValue("general", "bogus_dumper_path", NULL))) {
+		strncpy(opt_bogus_dumper_path, value, sizeof(opt_bogus_dumper_path));
+	}
+
 	/*
 	
 	packetbuffer default configuration
@@ -3377,6 +3384,10 @@ int main(int argc, char *argv[]) {
 		sipSendSocket = new SocketSimpleBufferWrite("send sip", sipSendSocket_ip_port);
 		sipSendSocket->startWriteThread();
 	}
+	
+	if(opt_bogus_dumper_path[0]) {
+		bogusDumper = new BogusDumper(opt_bogus_dumper_path);
+	}
 
 #ifndef FREEBSD
 	if(opt_scanpcapdir[0] != '\0') {
@@ -3802,6 +3813,11 @@ int main(int argc, char *argv[]) {
 	if(sqlStore) {
 		delete sqlStore;
 	}
+	
+	if(opt_bogus_dumper_path[0]) {
+		delete bogusDumper;
+	}
+	
 	thread_cleanup();
 }
 

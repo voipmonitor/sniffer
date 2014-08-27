@@ -527,14 +527,16 @@ inline void save_packet(Call *call, struct pcap_pkthdr *header, const u_char *pa
 						++pointToEndModifyContLength;
 					}
 				}
-				char *endHeaderSepPos = (char*)memmem(data, datalen, "\r\n\r\n", 4);
-				if(endHeaderSepPos) {
-					const u_char *packet_orig = packet;
-					packet = (const u_char*) new u_char[header->caplen];
-					memcpy((u_char*)packet, packet_orig, header->caplen);
-					u_char *message = (u_char*)packet + dataoffset + (endHeaderSepPos - data) + 4;
-					memset((u_char*)message, 'x', min(contentLength, (long int)(header->caplen - (message - packet))));
-					allocPacket = true;
+				if(call->type == MESSAGE && opt_hide_message_content) {
+					char *endHeaderSepPos = (char*)memmem(data, datalen, "\r\n\r\n", 4);
+					if(endHeaderSepPos) {
+						const u_char *packet_orig = packet;
+						packet = (const u_char*) new u_char[header->caplen];
+						memcpy((u_char*)packet, packet_orig, header->caplen);
+						u_char *message = (u_char*)packet + dataoffset + (endHeaderSepPos - data) + 4;
+						memset((u_char*)message, 'x', min(contentLength, (long int)(header->caplen - (message - packet))));
+						allocPacket = true;
+					}
 				}
 			}
 		}
@@ -2854,10 +2856,11 @@ notfound:
 				u_char *newPacket = new u_char[newPacketLen];
 				memcpy(newPacket, packet, oldcaplen - origDatalen);
 				memcpy(newPacket + (oldcaplen - origDatalen), data, sipDatalen);
+				iphdr2 *newHeaderIp = header_ip;
 				if((u_char*)header_ip > packet && (u_char*)header_ip - packet < 100) {
-					header_ip = (iphdr2*)(newPacket + ((u_char*)header_ip - packet));
+					newHeaderIp = (iphdr2*)(newPacket + ((u_char*)header_ip - packet));
 				}
-				save_packet(call, header, newPacket, saddr, source, daddr, dest, istcp, header_ip, data, datalen, dataoffset, TYPE_SIP, 
+				save_packet(call, header, newPacket, saddr, source, daddr, dest, istcp, newHeaderIp, data, datalen, dataoffset, TYPE_SIP, 
 					    dlt, sensor_id);
 				delete [] newPacket;
 				header->caplen = oldcaplen;

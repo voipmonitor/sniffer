@@ -800,6 +800,10 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 			}
 			updateLivesnifferfilters();
 		}
+		if ((size = sendvm(client, sshchannel, "ok", 2, 0)) == -1){
+			cerr << "Error sending data to client" << endl;
+			return -1;
+		}
 	} else if(strstr(buf, "listen") != NULL) {
 		long long callreference;
 

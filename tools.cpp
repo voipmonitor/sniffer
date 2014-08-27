@@ -734,11 +734,13 @@ unsigned int getNumberOfDayToNow(const char *date) {
 	return(difftime(now, mktime(&dateTime)) / (24 * 60 * 60));
 }
 
-string getActDateTimeF() {
+string getActDateTimeF(bool useT_symbol) {
 	time_t actTime = time(NULL);
 	struct tm *actTimeInfo = localtime(&actTime);
 	char dateTimeF[20];
-	strftime(dateTimeF, 20, "%Y-%m-%d %T", actTimeInfo);
+	strftime(dateTimeF, 20, 
+		 useT_symbol ? "%Y-%m-%dT%T" : "%Y-%m-%d %T", 
+		 actTimeInfo);
 	return(dateTimeF);
 }
 
@@ -761,6 +763,9 @@ PcapDumper::PcapDumper(eTypePcapDump type, class Call *call) {
 	this->state = state_na;
 	this->dlt = -1;
 	this->lastTimeSyslog = 0;
+	this->_bufflength = -1;
+	this->_asyncwrite = -1;
+	this->_zip = -1;
 }
 
 PcapDumper::~PcapDumper() {
@@ -786,14 +791,15 @@ bool PcapDumper::open(const char *fileName, const char *fileNameSpoolRelative, p
 	*/
 	extern pcap_t *global_pcap_handle_dead_EN10MB;
 	extern int opt_convert_dlt_sll_to_en10;
-	pcap_t *_handle = useDlt == DLT_LINUX_SLL && opt_convert_dlt_sll_to_en10 && global_pcap_handle_dead_EN10MB ? 
+	pcap_t *_handle = useDlt == (DLT_LINUX_SLL && opt_convert_dlt_sll_to_en10 && global_pcap_handle_dead_EN10MB) || !useHandle ?
 			   global_pcap_handle_dead_EN10MB : 
 			   useHandle;
 	this->capsize = 0;
 	this->size = 0;
 	string errorString;
 	this->dlt = useDlt == DLT_LINUX_SLL && opt_convert_dlt_sll_to_en10 ? DLT_EN10MB : useDlt;
-	this->handle = __pcap_dump_open(_handle, fileName, this->dlt, &errorString);
+	this->handle = __pcap_dump_open(_handle, fileName, this->dlt, &errorString,
+					_bufflength, _asyncwrite, _zip);
 	++this->openAttempts;
 	if(!this->handle) {
 		if(this->type != rtp || !this->openError) {
@@ -805,7 +811,9 @@ bool PcapDumper::open(const char *fileName, const char *fileNameSpoolRelative, p
 		this->openError = true;
 	}
 	this->fileName = fileName;
-	this->fileNameSpoolRelative = fileNameSpoolRelative;
+	if(fileNameSpoolRelative) {
+		this->fileNameSpoolRelative = fileNameSpoolRelative;
+	}
 	if(this->handle != NULL) {
 		this->state = state_open;
 		return(true);
@@ -837,7 +845,7 @@ void PcapDumper::dump(pcap_pkthdr* header, const u_char *packet, int dlt) {
 				__pcap_dump((u_char*)this->handle, header, packet);
 				extern int opt_packetbuffered;
 				if(opt_packetbuffered) {
-					pcap_dump_flush(this->handle);
+					this->flush();
 				}
 				this->capsize += header->caplen + PCAP_DUMPER_PACKET_HEADER_SIZE;
 				this->size += header->len + PCAP_DUMPER_PACKET_HEADER_SIZE;
@@ -852,19 +860,29 @@ void PcapDumper::dump(pcap_pkthdr* header, const u_char *packet, int dlt) {
 
 void PcapDumper::close(bool updateFilesQueue) {
 	if(this->handle) {
-		if(this->call) {
-			asyncClose.add(this->handle, updateFilesQueue,
-				       this->call, this,
-				       this->fileNameSpoolRelative.c_str(), 
-				       type == rtp ? "rtpsize" : 
-				       this->call->type == REGISTER ? "regsize" : "sipsize",
-				       0/*this->capsize + PCAP_DUMPER_HEADER_SIZE ignore size counter - header->capsize can contain -1*/);
+		if(this->_asyncwrite == 0) {
+			__pcap_dump_close(this->handle);
+			this->handle = NULL;
+			this->state = state_close;
 		} else {
-			asyncClose.add(this->handle);
+			if(this->call) {
+				asyncClose.add(this->handle, updateFilesQueue,
+					       this->call, this,
+					       this->fileNameSpoolRelative.c_str(), 
+					       type == rtp ? "rtpsize" : 
+					       this->call->type == REGISTER ? "regsize" : "sipsize",
+					       0/*this->capsize + PCAP_DUMPER_HEADER_SIZE ignore size counter - header->capsize can contain -1*/);
+			} else {
+				asyncClose.add(this->handle);
+			}
+			this->handle = NULL;
+			this->state = state_do_close;
 		}
-		this->handle = NULL;
-		this->state = state_do_close;
 	}
+}
+
+void PcapDumper::flush() {
+	__pcap_dump_flush(this->handle);
 }
 
 void PcapDumper::remove() {
@@ -2104,21 +2122,18 @@ u_int64_t FileZipHandler::scounter = 0;
 #define TCPDUMP_MAGIC		0xa1b2c3d4
 #define NSEC_TCPDUMP_MAGIC	0xa1b23c4d
 
-pcap_dumper_t *__pcap_dump_open(pcap_t *p, const char *fname, int linktype, string *errorString) {
+pcap_dumper_t *__pcap_dump_open(pcap_t *p, const char *fname, int linktype, string *errorString,
+				int _bufflength, int _asyncwrite, int _zip) {
 	if(opt_pcap_dump_bufflength) {
-		FileZipHandler *handler = new FileZipHandler(opt_pcap_dump_bufflength, opt_pcap_dump_asyncwrite, opt_pcap_dump_zip, true);
+		FileZipHandler *handler = new FileZipHandler(_bufflength < 0 ? opt_pcap_dump_bufflength : _bufflength, 
+							     _asyncwrite < 0 ? opt_pcap_dump_asyncwrite : _asyncwrite, 
+							     _zip < 0 ? opt_pcap_dump_zip : _zip, 
+							     true);
 		if(handler->open(fname)) {
 			struct pcap_file_header hdr;
-			/****
-			hdr.magic = p->opt.tstamp_precision == PCAP_TSTAMP_PRECISION_NANO ? NSEC_TCPDUMP_MAGIC : TCPDUMP_MAGIC;
-			****/
 			hdr.magic = TCPDUMP_MAGIC;
 			hdr.version_major = PCAP_VERSION_MAJOR;
 			hdr.version_minor = PCAP_VERSION_MINOR;
-			/****
-			hdr.thiszone = thiszone;
-			hdr.snaplen = snaplen;
-			****/
 			hdr.thiszone = 0;
 			hdr.snaplen = 10000;
 			hdr.sigfigs = 0;
@@ -2175,6 +2190,15 @@ void __pcap_dump_close(pcap_dumper_t *p) {
 		delete handler;
 	} else {
 		pcap_dump_close(p);
+	}
+}
+
+void __pcap_dump_flush(pcap_dumper_t *p) {
+	if(opt_pcap_dump_bufflength) {
+		FileZipHandler *handler = (FileZipHandler*)p;
+		handler->flushBuffer(true);
+	} else {
+		pcap_dump_flush(p);
 	}
 }
 
@@ -2581,4 +2605,49 @@ void SocketSimpleBufferWrite::flushData() {
 		delete simpleBuffer;
 	}
 	unlock_data();
+}
+
+
+BogusDumper::BogusDumper(const char *path) {
+	this->path = path;
+	time = getActDateTimeF(true);
+}
+
+BogusDumper::~BogusDumper() {
+	map<string, PcapDumper*>::iterator iter;
+	for(iter = dumpers.begin(); iter != dumpers.end(); iter++) {
+		iter->second->close();
+		delete iter->second;
+	}
+}
+
+void BogusDumper::dump(pcap_pkthdr* header, u_char* packet, int dlt, const char *interfaceName) {
+	if(!strncmp(interfaceName, "interface", 9)) {
+		interfaceName += 9;
+	}
+	while(*interfaceName == ' ') {
+		++interfaceName;
+	}
+	PcapDumper *dumper;
+	map<string, PcapDumper*>::iterator iter = dumpers.find(interfaceName);
+	if(iter != dumpers.end()) {
+		dumper = dumpers[interfaceName];
+	} else {
+		dumper = new PcapDumper(PcapDumper::na, NULL);
+		dumper->setEnableAsyncWrite(false);
+		dumper->setEnableZip(false);
+		string dumpFileName = path + "/bogus_" + 
+				      find_and_replace(find_and_replace(interfaceName, " ", "").c_str(), "/", "|") + 
+				      "_" + time + ".pcap";
+		if(dumper->open(dumpFileName.c_str(), dlt)) {
+			dumpers[interfaceName] = dumper;
+		} else {
+			delete dumper;
+			dumper = NULL;
+		}
+	}
+	if(dumper) {
+		dumper->dump(header, packet, dlt);
+		dumper->flush();
+	}
 }
