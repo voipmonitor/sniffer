@@ -117,6 +117,7 @@ private:
 	volatile int _sync;
 };
 
+vector<string> explode(const string&, const char&);
 int getUpdDifTime(struct timeval *before);
 int getDifTime(struct timeval *before);
 int msleep(long msec);

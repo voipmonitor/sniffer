@@ -64,6 +64,21 @@ using namespace std;
 
 AsyncClose asyncClose;
 
+vector<string> explode(const string& str, const char& ch) {                                                                             string next;                                                                                                                        vector<string> result;
+    for (string::const_iterator it = str.begin(); it != str.end(); it++) {
+        if (*it == ch) {
+            if (!next.empty()) {
+                result.push_back(next);
+                next.clear();
+            }
+        } else {
+            next += *it;
+        }
+    }
+    if (!next.empty())
+         result.push_back(next);
+    return result;
+}
 
 int getUpdDifTime(struct timeval *before)
 {
