@@ -78,14 +78,13 @@ int pcapProcess(pcap_pkthdr** header, u_char** packet, bool *destroy,
 	switch(pcapLinklayerHeaderType) {
 		case DLT_LINUX_SLL:
 			ppd->header_sll = (sll_header*)*packet;
-			ppd->protocol = ppd->header_sll->sll_protocol;
 			if(ppd->header_sll->sll_protocol == 129) {
 				// VLAN tag
-				ppd->protocol = *(u_int16_t*)(*packet + sizeof(ether_header) + 2);
+				ppd->protocol = htons(*(u_int16_t*)(*packet + sizeof(ether_header) + 2));
 				ppd->header_ip_offset = 4;
 			} else {
 				ppd->header_ip_offset = 0;
-				ppd->protocol = ppd->header_sll->sll_protocol;
+				ppd->protocol = htons(ppd->header_sll->sll_protocol);
 			}
 			ppd->header_ip_offset += sizeof(sll_header);
 			break;
@@ -95,31 +94,31 @@ int pcapProcess(pcap_pkthdr** header, u_char** packet, bool *destroy,
 				// VLAN tag
 				ppd->header_ip_offset = 4;
 				//XXX: this is very ugly hack, please do it right! (it will work for "08 00" which is IPV4 but not for others! (find vlan_header or something)
-				ppd->protocol = *(u_int16_t*)(*packet + sizeof(ether_header) + 2);
+				ppd->protocol = htons(*(u_int16_t*)(*packet + sizeof(ether_header) + 2));
 			} else {
 				ppd->header_ip_offset = 0;
-				ppd->protocol = ppd->header_eth->ether_type;
+				ppd->protocol = htons(ppd->header_eth->ether_type);
 			}
 			ppd->header_ip_offset += sizeof(ether_header);
 			break;
 		case DLT_RAW:
 			ppd->header_ip_offset = 0;
-			ppd->protocol = 8;
+			ppd->protocol = ETHERTYPE_IP;
 			break;
 		case DLT_IEEE802_11_RADIO:
 			ppd->header_ip_offset = 52;
-			ppd->protocol = 8;
+			ppd->protocol = ETHERTYPE_IP;
 			break;
 		default:
 			syslog(LOG_ERR, "BAD DATALINK %s: datalink number [%d] is not supported", interfaceName, pcapLinklayerHeaderType);
 			return(0);
 	}
 	
-	if(ppd->protocol != 8) {
+	if(ppd->protocol != ETHERTYPE_IP) {
 		#if TCPREPLAY_WORKARROUND
 		if(ppd->protocol == 0) {
 			ppd->header_ip_offset += 2;
-			ppd->protocol = 8;
+			ppd->protocol = ETHERTYPE_IP;
 		} else 
 		#endif
 		{
