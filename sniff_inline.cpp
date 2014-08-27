@@ -42,7 +42,7 @@ iphdr2 *convertHeaderIP_GRE(iphdr2 *header_ip) {
 	memcpy(gre, &a, 2);
 	memcpy(gre + 2, &b, 2);
 	struct gre_hdr *grehdr = (struct gre_hdr *)gre;			
-	if(grehdr->version == 0 and grehdr->protocol == 0x6558) {
+	if(grehdr->version == 0 and htons(grehdr->protocol) == 0x5865) {
 		struct ether_header *header_eth = (struct ether_header *)((char*)header_ip + sizeof(iphdr2) + 8);
 		unsigned int vlanoffset;
 		int protocol = 0;
@@ -60,7 +60,7 @@ iphdr2 *convertHeaderIP_GRE(iphdr2 *header_ip) {
 		} else {
 			return(NULL);
 		}
-	} else if(grehdr->version == 0 and grehdr->protocol == 0x800) {
+	} else if(grehdr->version == 0 and htons(grehdr->protocol) == 0x0008) {
 		header_ip = (struct iphdr2 *) ((char*)header_ip + sizeof(iphdr2) + 4);
 	} else {
 		return(NULL);
