@@ -1825,14 +1825,14 @@ void process_sdp(Call *call, unsigned int saddr, int source, unsigned int daddr,
 			call->handle_dscp(header_ip, saddr, daddr, &iscalled);
 			//syslog(LOG_ERR, "ADDR: %u port %u iscalled[%d]\n", tmp_addr, tmp_port, iscalled);
 		
-			call->add_ip_port_hash(tmp_addr, tmp_port, sessid, ua, ua_len, !iscalled, rtpmap, fax);
+			call->add_ip_port_hash(saddr, tmp_addr, tmp_port, sessid, ua, ua_len, !iscalled, rtpmap, fax);
 			// check if the IP address is listed in nat_aliases
 			in_addr_t alias = 0;
 			if((alias = match_nat_aliases(tmp_addr)) != 0) {
-				call->add_ip_port_hash(alias, tmp_port, sessid, ua, ua_len, !iscalled, rtpmap, fax);
+				call->add_ip_port_hash(saddr, alias, tmp_port, sessid, ua, ua_len, !iscalled, rtpmap, fax);
 			}
 			if(opt_sdp_reverse_ipport) {
-				call->add_ip_port_hash(saddr, tmp_port, sessid, ua, ua_len, !iscalled, rtpmap, fax);
+				call->add_ip_port_hash(tmp_addr, saddr, tmp_port, sessid, ua, ua_len, !iscalled, rtpmap, fax);
 			}
 		}
 	} else {
@@ -3154,8 +3154,8 @@ rtpcheck:
 				syslog(LOG_NOTICE,"pcap_filename: [%s]\n",str2);
 			}
 
-			call->add_ip_port_hash(daddr, dest, NULL, s, l, 1, rtpmap, false);
-			call->add_ip_port_hash(saddr, source, NULL, s, l, 0, rtpmap, false);
+			call->add_ip_port_hash(saddr, daddr, dest, NULL, s, l, 1, rtpmap, false);
+			call->add_ip_port_hash(daddr, saddr, source, NULL, s, l, 0, rtpmap, false);
 			
 		}
 		// we are not interested in this packet

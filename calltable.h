@@ -91,6 +91,7 @@ struct ip_port_call_info {
 	u_int16_t port;
 	bool iscaller;
 	char sessid[MAXLEN_SDP_SESSID];
+	u_int32_t sip_src_addr;
 };
 
 
@@ -294,7 +295,7 @@ public:
 	
 	Call* find_by_sessid(char *sessid);
 	
-	int get_index_by_sessid(char *sessid);
+	int get_index_by_sessid(char *sessid, in_addr_t sip_src_addr = 0);
 
 	/**
 	 * @brief close all rtp[].gfileRAW
@@ -343,11 +344,11 @@ public:
 	 * 
 	 * @return return 0 on success, 1 if IP and port is duplicated and -1 on failure
 	*/
-	int add_ip_port(in_addr_t addr, unsigned short port, char *sessid, char *ua, unsigned long ua_len, bool iscaller, int *rtpmap);
+	int add_ip_port(in_addr_t sip_src_addr, in_addr_t addr, unsigned short port, char *sessid, char *ua, unsigned long ua_len, bool iscaller, int *rtpmap);
 	
 	bool refresh_data_ip_port(in_addr_t addr, unsigned short port, bool iscaller, int *rtpmap);
 	
-	void add_ip_port_hash(in_addr_t addr, unsigned short port, char *sessid, char *ua, unsigned long ua_len, bool iscaller, int *rtpmap, bool fax, int allowrelation = 0);
+	void add_ip_port_hash(in_addr_t sip_src_addr, in_addr_t addr, unsigned short port, char *sessid, char *ua, unsigned long ua_len, bool iscaller, int *rtpmap, bool fax, int allowrelation = 0);
 
 	/**
 	 * @brief get pointer to PcapDumper of the writing pcap file  
