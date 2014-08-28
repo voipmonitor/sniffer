@@ -2743,6 +2743,12 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 		// Content-Type found 
 		if(call->type == MESSAGE && call->message == NULL) {
 			*sl = t;
+			
+			if(call->contenttype) free(call->contenttype);
+			call->contenttype = (char*)malloc(sizeof(char) * (l + 1));
+			memcpy(call->contenttype, s, l);
+			call->contenttype[l] = '\0';
+			
 			//find end of a message (\r\n)
 			char *tmp = strstr(s, "\r\n\r\n");;
 			if(!tmp) {
@@ -2779,11 +2785,6 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 				call->message[0] = '\0';
 			}
 			//printf("msg: contentlen[%d] datalen[%d] len[%d] [%s]\n", contentlen, datalen, strlen(call->message), call->message);
-
-			if(call->contenttype) free(call->contenttype);
-			call->contenttype = (char*)malloc(sizeof(char) * (l + 1));
-			memcpy(call->contenttype, s, l);
-			call->contenttype[l] = '\0';
 		} else if(strcasestr(s, "application/sdp")) {
 			*sl = t;
 			// prepare User-Agent
