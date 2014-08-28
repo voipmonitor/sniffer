@@ -201,6 +201,7 @@ Call::Call(char *call_id, unsigned long call_id_len, time_t time) :
 	lastSIPresponse[0] = '\0';
 	lastSIPresponseNum = 0;
 	new_invite_after_lsr487 = false;
+	cancel_lsr487 = false;
 	msgcount = 0;
 	regcount = 0;
 	reg401count = 0;

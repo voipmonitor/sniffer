@@ -1872,6 +1872,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 	unsigned long gettagLimitLen = 0;
 	hash_node_call *calls, *node_call;
 	bool detectUserAgent = false;
+	bool call_cancel_lsr487 = false;
 
 	*was_rtp = 0;
 	//int merged;
@@ -2153,6 +2154,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 			if(!lastSIPresponseNum) {
 				lastSIPresponseNum = 487;
 				strcpy(lastSIPresponse, "487 Request Terminated CANCEL");
+				call_cancel_lsr487 = true;
 			}
 		} else if(sip_method == BYE) {
 			strcpy(lastSIPresponse, "BYE");
@@ -2167,6 +2169,9 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 			call->handle_dscp(header_ip, saddr, daddr);
 			if(pcap_drop_flag) {
 				call->pcap_drop = pcap_drop_flag;
+			}
+			if(call_cancel_lsr487) {
+				call->cancel_lsr487 = call_cancel_lsr487;
 			}
 		}
 
@@ -2393,7 +2398,9 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 			   (call->type == MESSAGE ?
 				call->lastSIPresponseNum != 487 &&
 				lastSIPresponseNum > call->lastSIPresponseNum :
-				(call->lastSIPresponseNum != 487 || (call->new_invite_after_lsr487 && lastSIPresponseNum == 200)) &&
+				(call->lastSIPresponseNum != 487 || 
+				 (call->new_invite_after_lsr487 && lastSIPresponseNum == 200) ||
+				 (call->cancel_lsr487 && lastSIPresponseNum/10 == 48)) &&
 				!call->seeninviteok &&
 			        !(call->lastSIPresponseNum / 100 == 5 && lastSIPresponseNum / 100 == 5)) &&
 			   !(call->cancelcseq[0] && cseq && cseqlen < 32 && strncmp(cseq, call->cancelcseq, cseqlen) == 0)) {
