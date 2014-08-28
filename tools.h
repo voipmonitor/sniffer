@@ -858,8 +858,8 @@ public:
 		listIP.push_back(IP(ip));
 		if(autoLock) unlock();
 	}
-	void addComb(string &ip);
-	void addComb(const char *ip);
+	void addComb(string &ip, ListIP *negList = NULL);
+	void addComb(const char *ip, ListIP *negList = NULL);
 	bool checkIP(uint check_ip) {
 		bool rslt =  false;
 		if(autoLock) lock();
