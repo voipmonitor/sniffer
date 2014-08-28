@@ -1,3 +1,15 @@
+10.0.28 28.8.2014
+=================
+- fix problem with multiple SIP messages in one TCP message resulting in garbled SIP response codes
+- it can happen that next SIP hop reuses the SDP unique session identifier but changing port and ip which results to replace it in the first hop in voipmonitor RTP tracker which resulted in non capturing some RTP packets. This version ensure that SDP unique RTP session is replaced only within the same SIP source IP
+- fix content-type value in SIP MESSAGE db
+- add --sipport command line option 
+- fix reading pcap with linux cooked header (when sniffing with -i any) 
+- modfy column type message in table message from TEXT to MEDIUMTEXT (only for table create) to support messages > 64kb
+- fix issue with negated IP addresse in alerts when they are used in IP groups and not specified directly
+- Set "487 Request Terminated CANCEL" ONLY if the last SIP message is CANCEL without further response messages
+
+
 10.0.27 27.8.2014
 =================
 - fix all 10.X which can corrupt heap (if saving sip packets) when doing IP defragmentation

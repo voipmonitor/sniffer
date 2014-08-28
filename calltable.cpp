@@ -201,6 +201,7 @@ Call::Call(char *call_id, unsigned long call_id_len, time_t time) :
 	lastSIPresponse[0] = '\0';
 	lastSIPresponseNum = 0;
 	new_invite_after_lsr487 = false;
+	cancel_lsr487 = false;
 	msgcount = 0;
 	regcount = 0;
 	reg401count = 0;
@@ -512,7 +513,7 @@ Call::dirnamesqlfiles() {
 
 /* add ip adress and port to this call */
 int
-Call::add_ip_port(in_addr_t addr, unsigned short port, char *sessid, char *ua, unsigned long ua_len, bool iscaller, int *rtpmap) {
+Call::add_ip_port(in_addr_t sip_src_addr, in_addr_t addr, unsigned short port, char *sessid, char *ua, unsigned long ua_len, bool iscaller, int *rtpmap) {
 	if(verbosity >= 4) {
 		struct in_addr in;
 		in.s_addr = addr;
@@ -542,6 +543,7 @@ Call::add_ip_port(in_addr_t addr, unsigned short port, char *sessid, char *ua, u
 		tmp[MIN(ua_len, 1023)] = '\0';
 	}
 
+	this->ip_port[ipport_n].sip_src_addr = sip_src_addr;
 	this->ip_port[ipport_n].addr = addr;
 	this->ip_port[ipport_n].port = port;
 	this->ip_port[ipport_n].iscaller = iscaller;
@@ -571,13 +573,14 @@ Call::refresh_data_ip_port(in_addr_t addr, unsigned short port, bool iscaller, i
 }
 
 void
-Call::add_ip_port_hash(in_addr_t addr, unsigned short port, char *sessid, char *ua, unsigned long ua_len, bool iscaller, int *rtpmap, bool fax, int allowrelation) {
+Call::add_ip_port_hash(in_addr_t sip_src_addr, in_addr_t addr, unsigned short port, char *sessid, char *ua, unsigned long ua_len, bool iscaller, int *rtpmap, bool fax, int allowrelation) {
 	if(sessid) {
-		int sessidIndex = get_index_by_sessid(sessid);
+		int sessidIndex = get_index_by_sessid(sessid, sip_src_addr);
 		if(sessidIndex >= 0) {
-			if(this->ip_port[sessidIndex].addr != addr ||
-			   this->ip_port[sessidIndex].port != port ||
-			   this->ip_port[sessidIndex].iscaller != iscaller) {
+			if(this->ip_port[sessidIndex].sip_src_addr == sip_src_addr &&
+			   (this->ip_port[sessidIndex].addr != addr ||
+			    this->ip_port[sessidIndex].port != port ||
+			    this->ip_port[sessidIndex].iscaller != iscaller)) {
 				((Calltable*)calltable)->hashRemove(this, ip_port[sessidIndex].addr, ip_port[sessidIndex].port);
 				((Calltable*)calltable)->hashAdd(addr, port, this, iscaller, 0, fax, allowrelation);
 				if(opt_rtcp) {
@@ -593,7 +596,7 @@ Call::add_ip_port_hash(in_addr_t addr, unsigned short port, char *sessid, char *
 			return;
 		}
 	}
-	if(this->add_ip_port(addr, port, sessid, ua, ua_len, iscaller, rtpmap) != -1) {
+	if(this->add_ip_port(sip_src_addr, addr, port, sessid, ua, ua_len, iscaller, rtpmap) != -1) {
 		((Calltable*)calltable)->hashAdd(addr, port, this, iscaller, 0, fax, allowrelation);
 		if(opt_rtcp) {
 			((Calltable*)calltable)->hashAdd(addr, port + 1, this, iscaller, 1, fax);
@@ -640,9 +643,10 @@ Call::find_by_sessid(char *sessid){
 }
 
 int
-Call::get_index_by_sessid(char *sessid){
+Call::get_index_by_sessid(char *sessid, in_addr_t sip_src_addr){
 	for(int i = 0; i < ipport_n; i++) {
-		if(!memcmp(this->ip_port[i].sessid, sessid, MAXLEN_SDP_SESSID)) {
+		if(!memcmp(this->ip_port[i].sessid, sessid, MAXLEN_SDP_SESSID) &&
+		   (!sip_src_addr || sip_src_addr == this->ip_port[i].sip_src_addr)) {
 			// we have found it
 			return i;
 		}

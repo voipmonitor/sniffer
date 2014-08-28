@@ -117,6 +117,7 @@ private:
 	volatile int _sync;
 };
 
+vector<string> explode(const string&, const char&);
 int getUpdDifTime(struct timeval *before);
 int getDifTime(struct timeval *before);
 int msleep(long msec);
@@ -857,8 +858,8 @@ public:
 		listIP.push_back(IP(ip));
 		if(autoLock) unlock();
 	}
-	void addComb(string &ip);
-	void addComb(const char *ip);
+	void addComb(string &ip, ListIP *negList = NULL);
+	void addComb(const char *ip, ListIP *negList = NULL);
 	bool checkIP(uint check_ip) {
 		bool rslt =  false;
 		if(autoLock) lock();

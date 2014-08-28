@@ -80,7 +80,7 @@ int pcapProcess(pcap_pkthdr** header, u_char** packet, bool *destroy,
 			ppd->header_sll = (sll_header*)*packet;
 			if(ppd->header_sll->sll_protocol == 129) {
 				// VLAN tag
-				ppd->protocol = htons(*(u_int16_t*)(*packet + sizeof(ether_header) + 2));
+				ppd->protocol = htons(*(u_int16_t*)(*packet + sizeof(sll_header) + 2));
 				ppd->header_ip_offset = 4;
 			} else {
 				ppd->header_ip_offset = 0;

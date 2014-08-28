@@ -2332,6 +2332,7 @@ int main(int argc, char *argv[]) {
 	    {"pcapbuffered", 0, 0, 'U'},
 	    {"test", 0, 0, 'X'},
 	    {"allsipports", 0, 0, 'y'},
+	    {"sipports", 1, 0, 'Y'},
 	    {"skinny", 0, 0, 200},
 /*
 	    {"maxpoolsize", 1, 0, NULL},
@@ -2379,6 +2380,14 @@ int main(int argc, char *argv[]) {
 				}
 				sipportmatrix[443] = 1;
 				sipportmatrix[80] = 1;
+				break;
+			case 'Y':
+				{
+					vector<string> result = explode(optarg, ',');
+					for (size_t tier = 0; tier < result.size(); tier++) {
+						sipportmatrix[atoi(result[tier].c_str())] = 1;
+					}
+				}
 				break;
 			case 'm':
 				rtptimeout = atoi(optarg);

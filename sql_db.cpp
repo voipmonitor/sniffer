@@ -2295,7 +2295,7 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 			`a_ua_id` int unsigned DEFAULT NULL,\
 			`b_ua_id` int unsigned DEFAULT NULL,\
 			`fbasename` varchar(255) DEFAULT NULL,\
-			`message` TEXT CHARACTER SET utf8," +
+			`message` MEDIUMTEXT CHARACTER SET utf8," +
 			messageNextCustomFields +
 		(opt_cdr_partition ? 
 			"PRIMARY KEY (`ID`, `calldate`)," :
@@ -3746,7 +3746,7 @@ void SqlDb_odbc::createSchema(const char *host, const char *database, const char
 			b_ua_id int NULL\
 				FOREIGN KEY REFERENCES cdr_ua (id),\
 			fbasename varchar(255) NULL,\
-			message TEXT);\
+			message MEDIUMTEXT);\
 		CREATE INDEX calldate ON message (calldate);\
 		CREATE INDEX caller ON message (caller);\
 		CREATE INDEX caller_domain ON message (caller_domain);\

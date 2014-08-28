@@ -64,6 +64,21 @@ using namespace std;
 
 AsyncClose asyncClose;
 
+vector<string> explode(const string& str, const char& ch) {                                                                             string next;                                                                                                                        vector<string> result;
+    for (string::const_iterator it = str.begin(); it != str.end(); it++) {
+        if (*it == ch) {
+            if (!next.empty()) {
+                result.push_back(next);
+                next.clear();
+            }
+        } else {
+            next += *it;
+        }
+    }
+    if (!next.empty())
+         result.push_back(next);
+    return result;
+}
 
 int getUpdDifTime(struct timeval *before)
 {
@@ -1607,14 +1622,20 @@ string inet_ntostring(u_int32_t ip) {
 }
 
 
-void ListIP::addComb(string &ip) {
+void ListIP::addComb(string &ip, ListIP *negList) {
 	addComb(ip.c_str());
 }
 
-void ListIP::addComb(const char *ip) {
+void ListIP::addComb(const char *ip, ListIP *negList) {
 	vector<string>ip_elems = split(ip, split(",|;|\t|\r|\n", "|"), true);
 	for(size_t i = 0; i < ip_elems.size(); i++) {
-		add(ip_elems[i].c_str());
+		if(ip_elems[i][0] == '!') {
+			if(negList) {
+				negList->add(ip_elems[i].substr(1).c_str());
+			}
+		} else {
+			add(ip_elems[i].c_str());
+		}
 	}
 }
 
@@ -1635,19 +1656,19 @@ ListIP_wb::ListIP_wb(bool autoLock)
 }
 
 void ListIP_wb::addWhite(string &ip) {
-	white.addComb(ip);
+	white.addComb(ip, &black);
 }
 
 void ListIP_wb::addWhite(const char *ip) {
-	white.addComb(ip);
+	white.addComb(ip, &black);
 }
 
 void ListIP_wb::addBlack(string &ip) {
-	black.addComb(ip);
+	black.addComb(ip, &white);
 }
 
 void ListIP_wb::addBlack(const char *ip) {
-	black.addComb(ip);
+	black.addComb(ip, &white);
 }
 
 ListPhoneNumber_wb::ListPhoneNumber_wb(bool autoLock)
