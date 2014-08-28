@@ -1832,7 +1832,7 @@ void process_sdp(Call *call, unsigned int saddr, int source, unsigned int daddr,
 				call->add_ip_port_hash(saddr, alias, tmp_port, sessid, ua, ua_len, !iscalled, rtpmap, fax);
 			}
 			if(opt_sdp_reverse_ipport) {
-				call->add_ip_port_hash(tmp_addr, saddr, tmp_port, sessid, ua, ua_len, !iscalled, rtpmap, fax);
+				call->add_ip_port_hash(saddr, saddr, tmp_port, sessid, ua, ua_len, !iscalled, rtpmap, fax);
 			}
 		}
 	} else {
@@ -3155,7 +3155,7 @@ rtpcheck:
 			}
 
 			call->add_ip_port_hash(saddr, daddr, dest, NULL, s, l, 1, rtpmap, false);
-			call->add_ip_port_hash(daddr, saddr, source, NULL, s, l, 0, rtpmap, false);
+			call->add_ip_port_hash(saddr, saddr, source, NULL, s, l, 0, rtpmap, false);
 			
 		}
 		// we are not interested in this packet
