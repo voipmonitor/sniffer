@@ -18,6 +18,7 @@
 #include <zlib.h>
 #include <pcap.h>
 #include <netdb.h>
+#include <map>
 
 #include "pstat.h"
 
@@ -116,6 +117,7 @@ private:
 	volatile int _sync;
 };
 
+vector<string> explode(const string&, const char&);
 int getUpdDifTime(struct timeval *before);
 int getDifTime(struct timeval *before);
 int msleep(long msec);
@@ -220,7 +222,7 @@ struct tm getDateTime(u_int64_t us);
 struct tm getDateTime(time_t time);
 struct tm getDateTime(const char *timeStr);
 unsigned int getNumberOfDayToNow(const char *date);
-string getActDateTimeF();
+string getActDateTimeF(bool useT_symbol = false);
 int get_unix_tid(void);
 unsigned long getUptime();
 std::string &trim(std::string &s);
@@ -284,7 +286,10 @@ struct ip_port
 	int port;
 };
 
-inline u_long getTimeMS() {
+inline u_long getTimeMS(pcap_pkthdr* header = NULL) {
+    if(header) {
+         return(header->ts.tv_sec * 1000ul + header->ts.tv_usec );
+    }
     timespec time;
     clock_gettime(CLOCK_REALTIME, &time);
     return(time.tv_sec * 1000 + time.tv_nsec / 1000000);
@@ -344,9 +349,11 @@ public:
 	u_int32_t userData;
 };
 
-pcap_dumper_t *__pcap_dump_open(pcap_t *p, const char *fname, int linktype, string *errorString = NULL);
+pcap_dumper_t *__pcap_dump_open(pcap_t *p, const char *fname, int linktype, string *errorString = NULL,
+				int _bufflength = -1 , int _asyncwrite = -1, int _zip = -1);
 void __pcap_dump(u_char *user, const struct pcap_pkthdr *h, const u_char *sp);
 void __pcap_dump_close(pcap_dumper_t *p);
+void __pcap_dump_flush(pcap_dumper_t *p);
 char *__pcap_geterr(pcap_t *p, pcap_dumper_t *pd = NULL);
 
 class PcapDumper {
@@ -365,9 +372,22 @@ public:
 	};
 	PcapDumper(eTypePcapDump type, class Call *call);
 	~PcapDumper();
+	void setBuffLength(int bufflength) {
+		_bufflength = bufflength;
+	}
+	void setEnableAsyncWrite(int asyncwrite) {
+		_asyncwrite = asyncwrite;
+	}
+	void setEnableZip(int zip) {
+		_zip = zip;
+	}
 	bool open(const char *fileName, const char *fileNameSpoolRelative, pcap_t *useHandle, int useDlt);
-	void dump(pcap_pkthdr* header, const u_char *packet);
+	bool open(const char *fileName, int dlt) {
+		return(this->open(fileName, NULL, NULL, dlt));
+	}
+	void dump(pcap_pkthdr* header, const u_char *packet, int dlt);
 	void close(bool updateFilesQueue = true);
+	void flush();
 	void remove();
 	bool isOpen() {
 		return(this->handle != NULL);
@@ -389,6 +409,11 @@ private:
 	bool openError;
 	int openAttempts;
 	eState state;
+	int dlt;
+	u_long lastTimeSyslog;
+	int _bufflength;
+	int _asyncwrite;
+	int _zip;
 };
 
 class RtpGraphSaver {
@@ -834,8 +859,8 @@ public:
 		listIP.push_back(IP(ip));
 		if(autoLock) unlock();
 	}
-	void addComb(string &ip);
-	void addComb(const char *ip);
+	void addComb(string &ip, ListIP *negList = NULL);
+	void addComb(const char *ip, ListIP *negList = NULL);
 	bool checkIP(uint check_ip) {
 		bool rslt =  false;
 		if(autoLock) lock();
@@ -1083,6 +1108,7 @@ public:
 	}
 	void setStdParse() {
 		addNode("content-length:", true);
+		addNode("l:", true);
 		addNode("INVITE ");
 		addNode("call-id:");
 		addNode("i:");
@@ -1380,7 +1406,7 @@ bool SafeAsyncQueue<type_queue_item>::pop(type_queue_item *item, bool remove) {
 
 template<class type_queue_item>
 void SafeAsyncQueue<type_queue_item>::timerEv(unsigned long long timerCounter) {
-	if(timerCounter - lastShiftTimerCounter >= shiftIntervalMult10S) {
+	if(timerCounter - lastShiftTimerCounter >= (unsigned)shiftIntervalMult10S) {
 		shiftPush();
 		lastShiftTimerCounter = timerCounter;
 	}
@@ -1527,6 +1553,17 @@ private:
 	volatile uint64_t _size_all;
 	u_long lastTimeSyslogFullData;
 friend void *_SocketSimpleBufferWrite_writeFunction(void *arg);
+};
+
+class BogusDumper {
+public:
+	BogusDumper(const char *path);
+	~BogusDumper();
+	void dump(pcap_pkthdr* header, u_char* packet, int dlt, const char *interfaceName);
+private:
+	map<string, PcapDumper*> dumpers;
+	string path;
+	string time;
 };
 
 #endif

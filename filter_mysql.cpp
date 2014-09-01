@@ -559,7 +559,6 @@ DOMAINfilter::add_call_flags(unsigned int *flags, char *domain_src, char *domain
 	}
 
 	t_node *node;
-	long double mask;
 	for(node = first_node; node != NULL; node = node->next) {
 
 		if(((node->direction == 0 or node->direction == 2) and (domain_dst == node->domain)) || 

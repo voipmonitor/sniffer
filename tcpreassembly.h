@@ -151,6 +151,7 @@ public:
 				 u_int16_t port_src, u_int16_t port_dst,
 				 TcpReassemblyData *data,
 				 bool debugSave) = 0;
+	virtual void printContentSummary() {}
 };
 
 struct TcpReassemblyLink_id {
@@ -459,6 +460,7 @@ public:
 			bool nextAckInDirection();
 			bool nextAckInReverseDirection();
 			bool nextSeqInDirection();
+			bool nextAckByMaxSeqInReverseDirection();
 			void print();
 			u_int32_t getMaxNextSeq();
 		private:
@@ -705,6 +707,7 @@ public:
 	bool enableStop();
 	*/
 	void printContent();
+	void printContentSummary();
 	void setDoPrintContent() {
 		this->doPrintContent = true;
 	}

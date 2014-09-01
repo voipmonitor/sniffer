@@ -29,7 +29,9 @@ bool debug_data = globalDebug && true;
 bool debug_check_ok = globalDebug && true;
 bool debug_check_ok_process = globalDebug && true;
 bool debug_save = globalDebug && true;
-bool debug_print_content = globalDebug && true;
+bool debug_cleanup = globalDebug && true;
+bool debug_print_content_summary = globalDebug && true;
+bool debug_print_content = globalDebug && false;
 u_int16_t debug_counter = 0;
 u_int16_t debug_limit_counter = 0;
 u_int16_t debug_port = 0;
@@ -535,8 +537,22 @@ bool TcpReassemblyLink::streamIterator::nextSeqInDirection() {
 	return(false);
 }
 
+bool TcpReassemblyLink::streamIterator::nextAckByMaxSeqInReverseDirection() {
+	map<uint32_t, TcpReassemblyStream*>::iterator iter = link->queue_by_ack.find(this->stream->max_next_seq);
+	if(iter != link->queue_by_ack.end()) {
+		TcpReassemblyStream *stream = iter->second;
+		if(stream->direction != this->stream->direction) {
+			this->stream = stream;
+			return(true);
+		}
+	}
+	return(false);
+}
+
 void TcpReassemblyLink::streamIterator::print() {
-	cout << "iterator";
+	cout << "iterator " 
+	     << inet_ntostring(htonl(this->link->ip_src)) << " / " << this->link->port_src << " -> "
+	     << inet_ntostring(htonl(this->link->ip_dst)) << " / " << this->link->port_dst << " ";
 	if(this->stream) {
 		cout << "  ack: " << this->stream->ack
 		     << "  state: " << this->state;
@@ -964,7 +980,7 @@ void TcpReassemblyLink::cleanup(u_int64_t act_time) {
 	map<uint32_t, TcpReassemblyStream*>::iterator iter;
 	for(iter = this->queue_by_ack.begin(); iter != this->queue_by_ack.end(); ) {
 		if(iter->second->queue.size() > 500) {
-			if(this->reassembly->isActiveLog()) {
+			if(this->reassembly->isActiveLog() || debug_cleanup) {
 				in_addr ip;
 				ip.s_addr = this->ip_src;
 				string ip_src = inet_ntoa(ip);
@@ -977,6 +993,9 @@ void TcpReassemblyLink::cleanup(u_int64_t act_time) {
 				       << setw(15) << ip_src << "/" << setw(6) << this->port_src
 				       << " -> " 
 				       << setw(15) << ip_dst << "/" << setw(6) << this->port_dst;
+				if(debug_cleanup) {
+					cout << outStr.str() << endl;
+				}
 				this->reassembly->addLog(outStr.str().c_str());
 			}
 			delete iter->second;
@@ -1048,7 +1067,7 @@ int TcpReassemblyLink::okQueue_crazy(bool final, bool enableDebug) {
 			*/
 			
 			/*
-			if(iter.stream->ack == 2900664065) {
+			if(iter.stream->ack == 4180930954) {
 				cout << " -- ***** -- ";
 			}
 			*/
@@ -1090,7 +1109,7 @@ int TcpReassemblyLink::okQueue_crazy(bool final, bool enableDebug) {
 			}
 			
 			/*
-			if(iter.stream->ack == 2900664065) {
+			if(iter.stream->ack == 4180930954) {
 				cout << " -- ***** -- ";
 			}
 			*/
@@ -1152,7 +1171,8 @@ int TcpReassemblyLink::okQueue_crazy(bool final, bool enableDebug) {
 				}
 				if(!completeExpectContinue) {
 					if(iter.stream->direction == TcpReassemblyStream::DIRECTION_TO_DEST) {
-						if(!iter.nextAckInDirection()) {
+						if(!iter.nextAckByMaxSeqInReverseDirection() &&
+						   !iter.nextAckInDirection()) {
 							break;
 						}
 					} else if(iter.stream->direction == TcpReassemblyStream::DIRECTION_TO_SOURCE) {
@@ -1412,7 +1432,10 @@ void TcpReassemblyLink::complete_crazy(bool final, bool eraseCompletedStreams, b
 					if(i == 0 || i == countRequest) {
 						cout << endl << endl;
 					}
-					cout << "  ack: " << this->ok_streams[skip_offset + i]->ack << endl << endl;
+					cout << "  ack: " << this->ok_streams[skip_offset + i]->ack << "  "
+					     << inet_ntostring(htonl(this->ip_src)) << " / " << this->port_src << " -> "
+					     << inet_ntostring(htonl(this->ip_dst)) << " / " << this->port_dst << " "
+					     << endl << endl;
 					cout << data << endl << endl;
 				}
 				if(i < countRequest) {
@@ -1830,9 +1853,10 @@ void TcpReassembly::cleanup(bool all) {
 	}
 	this->unlock_links();
 	
-	u_int64_t act_time = this->act_time_from_header + getTimeMS() - this->last_time;
-	
 	while(true) {
+	 
+		u_int64_t act_time = this->act_time_from_header + getTimeMS() - this->last_time;
+	 
 		TcpReassemblyLink *link = NULL;
 		this->lock_links();
 		for(iter = this->links.begin(); iter != this->links.end(); iter++) {
@@ -1844,7 +1868,7 @@ void TcpReassembly::cleanup(bool all) {
 			}
 		}
 		if(link && link->queue_by_ack.size() > 500) {
-			if(this->isActiveLog()) {
+			if(this->isActiveLog() || debug_cleanup) {
 				in_addr ip;
 				ip.s_addr = link->ip_src;
 				string ip_src = inet_ntoa(ip);
@@ -1857,6 +1881,9 @@ void TcpReassembly::cleanup(bool all) {
 				       << setw(15) << ip_src << "/" << setw(6) << link->port_src
 				       << " -> "
 				       << setw(15) << ip_dst << "/" << setw(6) << link->port_dst;
+				if(debug_cleanup) {
+					cout << outStr.str() << endl;
+				}
 				this->addLog(outStr.str().c_str());
 			}
 			link->unlock_queue();
@@ -1873,7 +1900,7 @@ void TcpReassembly::cleanup(bool all) {
 		bool final = act_time > link->last_packet_at_from_header + 2 * 60 * 1000;
 		if((all || final ||
 		    (link->last_packet_at_from_header &&
-		     act_time > link->last_packet_at_from_header + 30 * 1000 &&
+		     act_time > link->last_packet_at_from_header + 5 * 1000 &&
 		     link->last_packet_at_from_header > link->last_packet_process_cleanup_at)) &&
 		   (link->link_is_ok < 2 || opt_tcpreassembly_thread)) {
 		 
@@ -1947,6 +1974,9 @@ void TcpReassembly::cleanup(bool all) {
 		}
 		this->doPrintContent = false;
 	}
+	if(debug_print_content_summary) {
+		this->printContentSummary();
+	}
 }
 
 /*
@@ -1963,4 +1993,9 @@ void TcpReassembly::printContent() {
 		     << endl;
 		iter->second->printContent(1);
 	}
+}
+
+void TcpReassembly::printContentSummary() {
+	cout << "LINKS: " << this->links.size() << endl;
+	this->dataCallback->printContentSummary();
 }

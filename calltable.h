@@ -91,6 +91,7 @@ struct ip_port_call_info {
 	u_int16_t port;
 	bool iscaller;
 	char sessid[MAXLEN_SDP_SESSID];
+	u_int32_t sip_src_addr;
 };
 
 
@@ -178,8 +179,6 @@ public:
 
 	uint8_t	caller_sipdscp;
 	uint8_t	called_sipdscp;
-	uint8_t	caller_rtpdscp;
-	uint8_t	called_rtpdscp;
 
 	int isfax;
 	char seenudptl;
@@ -204,6 +203,7 @@ public:
 	char lastSIPresponse[128];
 	int lastSIPresponseNum;
 	bool new_invite_after_lsr487;
+	bool cancel_lsr487;
 
 	string sip_pcapfilename;
 	string rtp_pcapfilename;
@@ -296,7 +296,7 @@ public:
 	
 	Call* find_by_sessid(char *sessid);
 	
-	int get_index_by_sessid(char *sessid);
+	int get_index_by_sessid(char *sessid, in_addr_t sip_src_addr = 0);
 
 	/**
 	 * @brief close all rtp[].gfileRAW
@@ -345,11 +345,11 @@ public:
 	 * 
 	 * @return return 0 on success, 1 if IP and port is duplicated and -1 on failure
 	*/
-	int add_ip_port(in_addr_t addr, unsigned short port, char *sessid, char *ua, unsigned long ua_len, bool iscaller, int *rtpmap);
+	int add_ip_port(in_addr_t sip_src_addr, in_addr_t addr, unsigned short port, char *sessid, char *ua, unsigned long ua_len, bool iscaller, int *rtpmap);
 	
 	bool refresh_data_ip_port(in_addr_t addr, unsigned short port, bool iscaller, int *rtpmap);
 	
-	void add_ip_port_hash(in_addr_t addr, unsigned short port, char *sessid, char *ua, unsigned long ua_len, bool iscaller, int *rtpmap, bool fax, int allowrelation = 0);
+	void add_ip_port_hash(in_addr_t sip_src_addr, in_addr_t addr, unsigned short port, char *sessid, char *ua, unsigned long ua_len, bool iscaller, int *rtpmap, bool fax, int allowrelation = 0);
 
 	/**
 	 * @brief get pointer to PcapDumper of the writing pcap file  
@@ -407,14 +407,6 @@ public:
 	*/
 	int convertRawToWav();
  
-#ifdef ISCURL	
-	/**
-	 * @brief send cdr
-	 *
-	*/
-	string getKeyValCDRtext();
-#endif
-
 	/**
 	 * @brief save call to database
 	 *
@@ -500,6 +492,8 @@ public:
 	void handle_dtmf(char dtmf, double dtmf_time, unsigned int saddr, unsigned int daddr);
 	
 	void handle_dscp(struct iphdr2 *header_ip, unsigned int saddr, unsigned int daddr, int *iscalledOut = NULL);
+	
+	bool check_is_caller_called(unsigned int saddr, unsigned int daddr, bool *iscaller, bool *iscalled = NULL);
 
 	void dump();
 
@@ -720,9 +714,5 @@ private:
 		return key % MAXNODE;
 	}
 };
-
-#ifdef ISCURL  
-int sendCDR(string data);
-#endif
 
 #endif

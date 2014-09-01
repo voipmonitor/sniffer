@@ -21,12 +21,6 @@
 #include <sys/socket.h>
 #include <net/if.h>
 
-#ifdef ISCURL
-#include <curl/curl.h>
-//#include <curl/types.h>
-//#include <curl/easy.h>
-#endif
-
 #include <iostream>
 #include <sstream>
 #include <vector>
@@ -89,7 +83,6 @@ extern int sipwithoutrtptimeout;
 extern int absolute_timeout;
 extern unsigned int gthread_num;
 extern int num_threads;
-extern char opt_cdrurl[1024];
 extern int opt_printinsertid;
 extern int opt_cdronlyanswered;
 extern int opt_cdronlyrtp;
@@ -158,6 +151,7 @@ bool existsColumnCalldateInCdrDtmf = true;
 
 /* constructor */
 Call::Call(char *call_id, unsigned long call_id_len, time_t time) :
+ tmprtp(-1),
  pcap(PcapDumper::na, this),
  pcapSip(PcapDumper::sip, this),
  pcapRtp(PcapDumper::rtp, this) {
@@ -207,6 +201,7 @@ Call::Call(char *call_id, unsigned long call_id_len, time_t time) :
 	lastSIPresponse[0] = '\0';
 	lastSIPresponseNum = 0;
 	new_invite_after_lsr487 = false;
+	cancel_lsr487 = false;
 	msgcount = 0;
 	regcount = 0;
 	reg401count = 0;
@@ -253,8 +248,6 @@ Call::Call(char *call_id, unsigned long call_id_len, time_t time) :
 	pthread_mutex_init(&listening_worker_run_lock, NULL);
 	caller_sipdscp = 0;
 	called_sipdscp = 0;
-	caller_rtpdscp = 0;
-	called_rtpdscp = 0;
 	ps_ifdrop = pcapstat.ps_ifdrop;
 	ps_drop = pcapstat.ps_drop;
 	if(verbosity && verbosityE > 1) {
@@ -520,7 +513,7 @@ Call::dirnamesqlfiles() {
 
 /* add ip adress and port to this call */
 int
-Call::add_ip_port(in_addr_t addr, unsigned short port, char *sessid, char *ua, unsigned long ua_len, bool iscaller, int *rtpmap) {
+Call::add_ip_port(in_addr_t sip_src_addr, in_addr_t addr, unsigned short port, char *sessid, char *ua, unsigned long ua_len, bool iscaller, int *rtpmap) {
 	if(verbosity >= 4) {
 		struct in_addr in;
 		in.s_addr = addr;
@@ -550,6 +543,7 @@ Call::add_ip_port(in_addr_t addr, unsigned short port, char *sessid, char *ua, u
 		tmp[MIN(ua_len, 1023)] = '\0';
 	}
 
+	this->ip_port[ipport_n].sip_src_addr = sip_src_addr;
 	this->ip_port[ipport_n].addr = addr;
 	this->ip_port[ipport_n].port = port;
 	this->ip_port[ipport_n].iscaller = iscaller;
@@ -579,13 +573,14 @@ Call::refresh_data_ip_port(in_addr_t addr, unsigned short port, bool iscaller, i
 }
 
 void
-Call::add_ip_port_hash(in_addr_t addr, unsigned short port, char *sessid, char *ua, unsigned long ua_len, bool iscaller, int *rtpmap, bool fax, int allowrelation) {
+Call::add_ip_port_hash(in_addr_t sip_src_addr, in_addr_t addr, unsigned short port, char *sessid, char *ua, unsigned long ua_len, bool iscaller, int *rtpmap, bool fax, int allowrelation) {
 	if(sessid) {
-		int sessidIndex = get_index_by_sessid(sessid);
+		int sessidIndex = get_index_by_sessid(sessid, sip_src_addr);
 		if(sessidIndex >= 0) {
-			if(this->ip_port[sessidIndex].addr != addr ||
-			   this->ip_port[sessidIndex].port != port ||
-			   this->ip_port[sessidIndex].iscaller != iscaller) {
+			if(this->ip_port[sessidIndex].sip_src_addr == sip_src_addr &&
+			   (this->ip_port[sessidIndex].addr != addr ||
+			    this->ip_port[sessidIndex].port != port ||
+			    this->ip_port[sessidIndex].iscaller != iscaller)) {
 				((Calltable*)calltable)->hashRemove(this, ip_port[sessidIndex].addr, ip_port[sessidIndex].port);
 				((Calltable*)calltable)->hashAdd(addr, port, this, iscaller, 0, fax, allowrelation);
 				if(opt_rtcp) {
@@ -601,7 +596,7 @@ Call::add_ip_port_hash(in_addr_t addr, unsigned short port, char *sessid, char *
 			return;
 		}
 	}
-	if(this->add_ip_port(addr, port, sessid, ua, ua_len, iscaller, rtpmap) != -1) {
+	if(this->add_ip_port(sip_src_addr, addr, port, sessid, ua, ua_len, iscaller, rtpmap) != -1) {
 		((Calltable*)calltable)->hashAdd(addr, port, this, iscaller, 0, fax, allowrelation);
 		if(opt_rtcp) {
 			((Calltable*)calltable)->hashAdd(addr, port + 1, this, iscaller, 1, fax);
@@ -648,9 +643,10 @@ Call::find_by_sessid(char *sessid){
 }
 
 int
-Call::get_index_by_sessid(char *sessid){
+Call::get_index_by_sessid(char *sessid, in_addr_t sip_src_addr){
 	for(int i = 0; i < ipport_n; i++) {
-		if(!memcmp(this->ip_port[i].sessid, sessid, MAXLEN_SDP_SESSID)) {
+		if(!memcmp(this->ip_port[i].sessid, sessid, MAXLEN_SDP_SESSID) &&
+		   (!sip_src_addr || sip_src_addr == this->ip_port[i].sip_src_addr)) {
 			// we have found it
 			return i;
 		}
@@ -666,7 +662,7 @@ Call::read_rtcp(unsigned char* data, int datalen, int dataoffset, struct pcap_pk
 	parse_rtcp((char*)data, datalen, this);
 
 	if(enable_save_packet && opt_rtpsave_threaded) {
-		save_packet(this, header, packet, saddr, sport, daddr, dport, istcp, (char*)data, datalen, dataoffset, TYPE_RTP, 
+		save_packet(this, header, packet, saddr, sport, daddr, dport, istcp, NULL, (char*)data, datalen, dataoffset, TYPE_RTP, 
 			    dlt, sensor_id);
 	}
 }
@@ -692,17 +688,8 @@ Call::read_rtp(unsigned char* data, int datalen, int dataoffset, struct pcap_pkt
 		goto end;
 	}
 
-	if(opt_dscp) {
-		if(!header_ip) {
-			header_ip = (struct iphdr2 *)(data - sizeof(struct iphdr2) - sizeof(udphdr2));
-		}
-		if(iscaller) {
-			this->caller_rtpdscp = header_ip->tos >> 2;
-			////cout << "caller_rtpdscp " << (int)(header_ip->tos>>2) << endl;
-		} else {
-			this->called_rtpdscp = header_ip->tos >> 2;
-			////cout << "called_rtpdscp " << (int)(header_ip->tos>>2) << endl;
-		}
+	if(opt_dscp && !header_ip) {
+		header_ip = (struct iphdr2 *)(data - sizeof(struct iphdr2) - sizeof(udphdr2));
 	}
 
 	if(iscaller) {
@@ -714,6 +701,11 @@ Call::read_rtp(unsigned char* data, int datalen, int dataoffset, struct pcap_pkt
 	for(int i = 0; i < ssrc_n; i++) {
 		if(rtp[i]->ssrc2 == curSSRC) {
 			// found 
+			if(opt_dscp) {
+				rtp[i]->dscp = header_ip->tos >> 2;
+				////cout << "rtpdscp " << (int)(header_ip->tos>>2) << endl;
+			}
+			
 			// chekc if packet is DTMF and saverfc2833 is enabled 
 			if(opt_saverfc2833 and rtp[i]->codec == PAYLOAD_TELEVENT) {
 				*record = 1;
@@ -778,7 +770,7 @@ read:
 			usleep(100);
 		}
 		rtplock = 1;
-		rtp[ssrc_n] = new RTP;
+		rtp[ssrc_n] = new RTP(sensor_id);
 		rtp[ssrc_n]->call_owner = this;
 		rtp[ssrc_n]->ssrc_index = ssrc_n; 
 		rtp[ssrc_n]->iscaller = iscaller; 
@@ -786,6 +778,12 @@ read:
 			rtp_prev[iscaller] = rtp_cur[iscaller];
 		}
 		rtp_cur[iscaller] = rtp[ssrc_n]; 
+		
+		if(opt_dscp) {
+			rtp[ssrc_n]->dscp = header_ip->tos >> 2;
+			////cout << "rtpdscp " << (int)(header_ip->tos>>2) << endl;
+		}
+
 		char graphFilePath_spool_relative[1024];
 		char graphFilePath[1024];
 		snprintf(graphFilePath_spool_relative, 1023, "%s/%s/%s.%d.graph%s", dirname().c_str(), opt_newdir ? "GRAPH" : "", get_fbasename_safe(), ssrc_n, opt_gzipGRAPH ? ".gz" : "");
@@ -854,12 +852,12 @@ end:
 			   header->caplen > (unsigned)(datalen - RTP_FIXED_HEADERLEN)) {
 				unsigned int tmp_u32 = header->caplen;
 				header->caplen = header->caplen - (datalen - RTP_FIXED_HEADERLEN);
-				save_packet(this, header, packet, saddr, sport, daddr, dport, istcp, (char*)data, datalen, dataoffset, TYPE_RTP, 
+				save_packet(this, header, packet, saddr, sport, daddr, dport, istcp, NULL, (char*)data, datalen, dataoffset, TYPE_RTP, 
 					    dlt, sensor_id);
 				header->caplen = tmp_u32;
 			}
 		} else {
-			save_packet(this, header, packet, saddr, sport, daddr, dport, istcp, (char*)data, datalen, dataoffset, TYPE_RTP, 
+			save_packet(this, header, packet, saddr, sport, daddr, dport, istcp, NULL, (char*)data, datalen, dataoffset, TYPE_RTP, 
 				    dlt, sensor_id);
 		}
 	}
@@ -1613,387 +1611,6 @@ size_t write_data(char *ptr, size_t size, size_t nmemb, void *userdata) {
 	return count;
 }
 
-#ifdef ISCURL
-int
-sendCDR(string data) {
-	CURL *curl;
-	CURLcode res;
-	struct curl_httppost *formpost = NULL;
-	struct curl_httppost *lastptr = NULL;
-	struct curl_slist *headerlist = NULL;
-
-startcurl:
-	headerlist = NULL;
-	formpost=NULL;
-	lastptr=NULL;
-
-	/* Fill in the filename field */ 
-	curl_formadd(&formpost,
-			 &lastptr,
-			 CURLFORM_COPYNAME, "mac",
-			 CURLFORM_COPYCONTENTS, mac,
-			 CURLFORM_END);
-
-	curl_formadd(&formpost,
-			 &lastptr,
-			 CURLFORM_COPYNAME, "data",
-			 CURLFORM_COPYCONTENTS, data.c_str(),
-			 CURLFORM_END);
-
-	curl = curl_easy_init();
-	/* initalize custom header list (stating that Expect: 100-continue is not
-		 wanted */ 
-//	headerlist = curl_slist_append(headerlist, buf);
-	if(curl) {
-
-		std::ostringstream stream;
-
-		/* what URL that receives this POST */ 
-		curl_easy_setopt(curl, CURLOPT_URL, opt_cdrurl);
-//		if ( (argc == 2) && (!strcmp(argv[1], "noexpectheader")) )
-			/* only disable 100-continue header if explicitly requested */ 
-		curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headerlist);
-		curl_easy_setopt(curl, CURLOPT_HTTPPOST, formpost);
-		curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, false);
-		curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_data);
-		curl_easy_setopt(curl, CURLOPT_WRITEDATA, &stream);
- 
-		/* Perform the request, res will get the return code */ 
-		res = curl_easy_perform(curl);
-		/* Check for errors */ 
-			
- 
-		/* always cleanup */ 
-		curl_easy_cleanup(curl);
- 
-		/* then cleanup the formpost chain */ 
-		curl_formfree(formpost);
-		/* free slist */ 
-
-		if(verbosity > 1) syslog(LOG_NOTICE, "sending CDR data");
-		curl_slist_free_all (headerlist);
-
-		if(res != CURLE_OK) {
-			syslog(LOG_ERR, "curl_easy_perform() failed: [%s] trying to send again.\n", curl_easy_strerror(res));
-			sleep(1);
-			goto startcurl;
-		}
-		if(strcmp(stream.str().c_str(), "TRUE") != 0) {
-			syslog(LOG_ERR, "CDR send failed: [%s] trying to send again.", stream.str().c_str());
-			sleep(1);
-			goto startcurl;
-		}
-	} else {
-		syslog(LOG_ERR, "curl_easy_init() failed\n");
-	}
-
-	return 0;
-}
-
-string
-Call::getKeyValCDRtext() {
-	
-	SqlDb_row cdr;
-
-	if(useSensorId > -1) {
-		cdr.add(useSensorId, "id_sensor");
-	}
-
-	cdr.add(caller, "caller");
-	cdr.add(reverseString(caller).c_str(), "caller_reverse");
-	cdr.add(called, "called");
-	cdr.add(reverseString(called).c_str(), "called_reverse");
-	cdr.add(caller_domain, "caller_domain");
-	cdr.add(called_domain, "called_domain");
-	cdr.add(callername, "callername");
-	cdr.add(reverseString(callername).c_str(), "callername_reverse");
-	cdr.add(lastSIPresponse, "lastSIPresponse");
-	cdr.add(htonl(sipcallerip), "sipcallerip");
-	cdr.add(htonl(sipcalledip), "sipcalledip");
-	if(opt_cdr_sipport) {
-		cdr.add(sipcallerport, "sipcallerport");
-		cdr.add(sipcalledport, "sipcalledport");
-	}
-	cdr.add(duration(), "duration");
-	if(progress_time) {
-		cdr.add(progress_time - first_packet_time, "progress_time");
-	}
-	if(first_rtp_time) {
-		cdr.add(first_rtp_time  - first_packet_time, "first_rtp_time");
-	}
-	if(connect_time) {
-		cdr.add(duration() - (connect_time - first_packet_time), "connect_duration");
-	}
-	if(opt_last_rtp_from_end) {
-		if(last_rtp_a_packet_time) {
-			cdr.add(last_packet_time - last_rtp_a_packet_time, "a_last_rtp_from_end");
-		}
-		if(last_rtp_b_packet_time) {
-			cdr.add(last_packet_time - last_rtp_b_packet_time, "b_last_rtp_from_end");
-		}
-	}
-	cdr.add(sqlDateTimeString(calltime()).c_str(), "calldate");
-	if(opt_callend) {
-		cdr.add(sqlDateTimeString(calltime() + duration()).c_str(), "callend");
-	}
-	
-	cdr.add(fbasename, "fbasename");
-	
-	cdr.add(sighup ? 1 : 0, "sighup");
-	cdr.add(lastSIPresponseNum, "lastSIPresponseNum");
-	int bye;
-	if(absolute_timeout_exceeded) {
-		bye = 102;
-	} else if(zombie_timeout_exceeded) {
-		bye = 107;
-	} else if(bye_timeout_exceeded) {
-		bye = 103;
-	} else if(rtp_timeout_exceeded) {
-		bye = 104;
-	} else if(sipwithoutrtp_timeout_exceeded) {
-		bye = 106;
-	} else if(oneway_timeout_exceeded) {
-		bye = 105;
-	} else if(oneway) {
-		bye = 101;
-	} else {
-		bye = pcap_drop ? 100 :
-		      (seeninviteok ? (seenbye ? (seenbyeandok ? 3 : 2) : 1) : 0);
-	}
-	cdr.add(bye, "bye");
-
-	if(opt_dscp) {
-		unsigned int a,b,c,d;
-		a = caller_sipdscp;
-		b = called_sipdscp;
-		c = caller_rtpdscp;
-		d = called_rtpdscp;
-		cdr.add((a << 24) + (b << 16) + (c << 8) + d, "dscp");
-	}
-	
-	if(strlen(match_header)) {
-		cdr.add(match_header, "match_header");
-	}
-	if(strlen(custom_header1)) {
-		cdr.add(custom_header1, "custom_header1");
-	}
-
-	if(whohanged == 0 || whohanged == 1) {
-		cdr.add(whohanged ? "callee" : "caller", "whohanged");
-	}
-
-	if(a_mos_lqo != -1) {
-		int mos = a_mos_lqo * 10 
-		cdr.add(mos, "a_mos_lqo_mult10");
-	}
-	if(b_mos_lqo != -1) {
-		int mos = b_mos_lqo * 10 
-		cdr.add(mos, "b_mos_lqo_mult10");
-	}
-
-	if(ssrc_n > 0) {
-		// sort all RTP streams by received packets + loss packets descend and save only those two with the biggest received packets.
-		int indexes[MAX_SSRC_PER_CALL];
-		// init indexex
-		for(int i = 0; i < MAX_SSRC_PER_CALL; i++) {
-			indexes[i] = i;
-		}
-		// bubble sort
-		for(int k = 0; k < ssrc_n; k++) {
-			for(int j = 0; j < ssrc_n; j++) {
-				if((rtp[indexes[k]]->stats.received + rtp[indexes[k]]->stats.lost) > ( rtp[indexes[j]]->stats.received + rtp[indexes[j]]->stats.lost)) {
-					int kTmp = indexes[k];
-					indexes[k] = indexes[j];
-					indexes[j] = kTmp;
-				}
-			}
-		}
-
-		// a_ is always caller, so check if we need to swap indexes
-		if (!rtp[indexes[0]]->iscaller) {
-			int tmp;
-			tmp = indexes[1];
-			indexes[1] = indexes[0];
-			indexes[0] = tmp;
-		}
-		cdr.add(a_ua, "a_ua");
-		cdr.add(b_ua, "b_ua");
-
-		// save only two streams with the biggest received packets
-		int payload[2] = { -1, -1 };
-		int jitter_mult10[2] = { -1, -1 };
-		int mos_min_mult10[2] = { -1, -1 };
-		int packet_loss_perc_mult1000[2] = { -1, -1 };
-		int delay_sum[2] = { -1, -1 };
-		int delay_cnt[2] = { -1, -1 };
-		int delay_avg_mult100[2] = { -1, -1 };
-		int rtcp_avgfr_mult10[2] = { -1, -1 };
-		int rtcp_avgjitter_mult10[2] = { -1, -1 };
-		int lost[2] = { -1, -1 };
-
-		for(int i = 0; i < 2; i++) {
-			if(!rtp[indexes[i]]) continue;
-
-			// if the stream for a_* is not caller there is probably case where one direction is missing at all and the second stream contains more SSRC streams so swap it
-			if(i == 0 && !rtp[indexes[i]]->iscaller) {
-				int tmp;
-				tmp = indexes[1];
-				indexes[1] = indexes[0];
-				indexes[0] = tmp;
-				continue;
-			}
-			
-			string c = i == 0 ? "a" : "b";
-			
-			cdr.add(indexes[i], c+"_index");
-			cdr.add(rtp[indexes[i]]->stats.received + 2, c+"_received"); // received is always 2 packet less compared to wireshark (add it here)
-			lost[i] = rtp[indexes[i]]->stats.lost;
-			cdr.add(lost[i], c+"_lost");
-			packet_loss_perc_mult1000[i] = (int)round((double)rtp[indexes[i]]->stats.lost / 
-									(rtp[indexes[i]]->stats.received + 2 + rtp[indexes[i]]->stats.lost) * 100 * 1000);
-			cdr.add(packet_loss_perc_mult1000[i], c+"_packet_loss_perc_mult1000");
-			jitter_mult10[i] = int(ceil(rtp[indexes[i]]->stats.avgjitter)) * 10; // !!!
-			cdr.add(jitter_mult10[i], c+"_avgjitter_mult10");
-			cdr.add(int(ceil(rtp[indexes[i]]->stats.maxjitter)), c+"_maxjitter");
-			payload[i] = rtp[indexes[i]]->first_codec;
-			cdr.add(payload[i], c+"_payload");
-			
-			// build a_sl1 - b_sl10 fields
-			for(int j = 1; j < 11; j++) {
-				char str_j[3];
-				sprintf(str_j, "%d", j);
-				cdr.add(rtp[indexes[i]]->stats.slost[j], c+"_sl"+str_j);
-			}
-			// build a_d50 - b_d300 fileds
-			cdr.add(rtp[indexes[i]]->stats.d50, c+"_d50");
-			cdr.add(rtp[indexes[i]]->stats.d70, c+"_d70");
-			cdr.add(rtp[indexes[i]]->stats.d90, c+"_d90");
-			cdr.add(rtp[indexes[i]]->stats.d120, c+"_d120");
-			cdr.add(rtp[indexes[i]]->stats.d150, c+"_d150");
-			cdr.add(rtp[indexes[i]]->stats.d200, c+"_d200");
-			cdr.add(rtp[indexes[i]]->stats.d300, c+"_d300");
-			delay_sum[i] = rtp[indexes[i]]->stats.d50 * 60 + 
-				       rtp[indexes[i]]->stats.d70 * 80 + 
-				       rtp[indexes[i]]->stats.d90 * 105 + 
-				       rtp[indexes[i]]->stats.d120 * 135 +
-				       rtp[indexes[i]]->stats.d150 * 175 + 
-				       rtp[indexes[i]]->stats.d200 * 250 + 
-				       rtp[indexes[i]]->stats.d300 * 300;
-			delay_cnt[i] = rtp[indexes[i]]->stats.d50 + 
-				       rtp[indexes[i]]->stats.d70 + 
-				       rtp[indexes[i]]->stats.d90 + 
-				       rtp[indexes[i]]->stats.d120 +
-				       rtp[indexes[i]]->stats.d150 + 
-				       rtp[indexes[i]]->stats.d200 + 
-				       rtp[indexes[i]]->stats.d300;
-			delay_avg_mult100[i] = (delay_cnt[i] != 0  ? (int)round((double)delay_sum[i] / delay_cnt[i] * 100) : 0);
-			cdr.add(delay_sum[i], c+"_delay_sum");
-			cdr.add(delay_cnt[i], c+"_delay_cnt");
-			cdr.add(delay_avg_mult100[i], c+"_delay_avg_mult100");
-			
-			// store source addr
-			cdr.add(htonl(rtp[indexes[i]]->saddr), c+"_saddr");
-
-			// calculate lossrate and burst rate
-			double burstr, lossr;
-			burstr_calculate(rtp[indexes[i]]->channel_fix1, rtp[indexes[i]]->stats.received, &burstr, &lossr);
-			int mos_f1_mult10 = (int)round(calculate_mos(lossr, burstr, rtp[indexes[i]]->first_codec, rtp[indexes[i]]->stats.received) * 10);
-			cdr.add(mos_f1_mult10, c+"_mos_f1_mult10");
-			if(mos_f1_mult10) {
-				mos_min_mult10[i] = mos_f1_mult10;
-			}
-
-
-			// Jitterbuffer MOS statistics
-			burstr_calculate(rtp[indexes[i]]->channel_fix2, rtp[indexes[i]]->stats.received, &burstr, &lossr);
-			int mos_f2_mult10 = (int)round(calculate_mos(lossr, burstr, rtp[indexes[i]]->first_codec, rtp[indexes[i]]->stats.received) * 10);
-			cdr.add(mos_f2_mult10, c+"_mos_f2_mult10");
-			if(mos_f2_mult10 && (mos_min_mult10[i] < 0 || mos_f2_mult10 < mos_min_mult10[i])) {
-				mos_min_mult10[i] = mos_f2_mult10;
-			}
-
-			burstr_calculate(rtp[indexes[i]]->channel_adapt, rtp[indexes[i]]->stats.received, &burstr, &lossr);
-			int mos_adapt_mult10 = (int)round(calculate_mos(lossr, burstr, rtp[indexes[i]]->first_codec, rtp[indexes[i]]->stats.received) * 10);
-			cdr.add(mos_adapt_mult10, c+"_mos_adapt_mult10");
-			if(mos_adapt_mult10 && (mos_min_mult10[i] < 0 || mos_adapt_mult10 < mos_min_mult10[i])) {
-				mos_min_mult10[i] = mos_adapt_mult10;
-			}
-			
-			if(mos_f2_mult10 && opt_mosmin_f2) {
-				mos_min_mult10[i] = mos_f2_mult10;
-			}
-
-			if(mos_min_mult10[i] >= 0) {
-				cdr.add(mos_min_mult10[i], c+"_mos_min_mult10");
-			}
-
-			if(rtp[indexes[i]]->rtcp.counter) {
-				cdr.add(rtp[indexes[i]]->rtcp.loss, c+"_rtcp_loss");
-				cdr.add(rtp[indexes[i]]->rtcp.maxfr, c+"_rtcp_maxfr");
-				rtcp_avgfr_mult10[i] = (int)round(rtp[indexes[i]]->rtcp.avgfr * 10);
-				cdr.add(rtcp_avgfr_mult10[i], c+"_rtcp_avgfr_mult10");
-				cdr.add(rtp[indexes[i]]->rtcp.maxjitter, c+"_rtcp_maxjitter");
-				rtcp_avgjitter_mult10[i] = (int)round(rtp[indexes[i]]->rtcp.avgjitter * 10);
-				cdr.add(rtcp_avgjitter_mult10[i], c+"_rtcp_avgjitter_mult10");
-			}
-		}
-
-		if(seenudptl) {
-		//if(isfax) {
-			cdr.add(1000, "payload");
-		} else if(payload[0] >= 0 || payload[1] >= 0) {
-			cdr.add(payload[0] >= 0 ? payload[0] : payload[1], "payload");
-		}
-
-		if(jitter_mult10[0] >= 0 || jitter_mult10[1] >= 0) {
-			cdr.add(max(jitter_mult10[0], jitter_mult10[1]), 
-				"jitter_mult10");
-		}
-		if(mos_min_mult10[0] >= 0 || mos_min_mult10[1] >= 0) {
-			cdr.add(mos_min_mult10[0] >= 0 && mos_min_mult10[1] >= 0 ?
-					min(mos_min_mult10[0], mos_min_mult10[1]) :
-					(mos_min_mult10[0] >= 0 ? mos_min_mult10[0] : mos_min_mult10[1]),
-				"mos_min_mult10");
-		}
-		if(packet_loss_perc_mult1000[0] >= 0 || packet_loss_perc_mult1000[1] >= 0) {
-			cdr.add(max(packet_loss_perc_mult1000[0], packet_loss_perc_mult1000[1]), 
-				"packet_loss_perc_mult1000");
-		}
-		if(delay_sum[0] >= 0 || delay_sum[1] >= 0) {
-			cdr.add(max(delay_sum[0], delay_sum[1]), 
-				"delay_sum");
-		}
-		if(delay_cnt[0] >= 0 || delay_cnt[1] >= 0) {
-			cdr.add(max(delay_cnt[0], delay_cnt[1]), 
-				"delay_cnt");
-		}
-		if(delay_avg_mult100[0] >= 0 || delay_avg_mult100[1] >= 0) {
-			cdr.add(max(delay_avg_mult100[0], delay_avg_mult100[1]), 
-				"delay_avg_mult100");
-		}
-		if(rtcp_avgfr_mult10[0] >= 0 || rtcp_avgfr_mult10[1] >= 0) {
-			cdr.add((rtcp_avgfr_mult10[0] >= 0 ? rtcp_avgfr_mult10[0] : 0) + 
-				(rtcp_avgfr_mult10[1] >= 0 ? rtcp_avgfr_mult10[1] : 0),
-				"rtcp_avgfr_mult10");
-		}
-		if(rtcp_avgjitter_mult10[0] >= 0 || rtcp_avgjitter_mult10[1] >= 0) {
-			cdr.add((rtcp_avgjitter_mult10[0] >= 0 ? rtcp_avgjitter_mult10[0] : 0) + 
-				(rtcp_avgjitter_mult10[1] >= 0 ? rtcp_avgjitter_mult10[1] : 0),
-				"rtcp_avgjitter_mult10");
-		}
-		if(lost[0] >= 0 || lost[1] >= 0) {
-			cdr.add(max(lost[0], lost[1]), 
-				"lost");
-		}
-	}
-
-	cdr.add(mac, "MAC");
-
-	return cdr.keyvalList(":");
-}
-#endif
-
-
 /* TODO: implement failover -> write INSERT into file */
 int
 Call::saveToDb(bool enableBatchIfPossible) {
@@ -2118,14 +1735,10 @@ Call::saveToDb(bool enableBatchIfPossible) {
 	
 	cdr_sip_response.add(sqlEscapeString(lastSIPresponse), "lastSIPresponse");
 
-	if(opt_dscp) {
-		unsigned int a,b,c,d;
-		a = caller_sipdscp;
-		b = called_sipdscp;
-		c = caller_rtpdscp;
-		d = called_rtpdscp;
-		cdr.add((a << 24) + (b << 16) + (c << 8) + d, "dscp");
-	}
+	unsigned int dscp_a = caller_sipdscp,
+		     dscp_b = called_sipdscp,
+		     dscp_c = 0,
+		     dscp_d = 0;
 	
 	cdr.add(htonl(sipcallerip), "sipcallerip");
 	cdr.add(htonl(sipcalledip), "sipcalledip");
@@ -2266,6 +1879,12 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		
 		for(int i = 0; i < 2; i++) {
 			if(!rtpab[i]) continue;
+			
+			if(i) {
+				dscp_d = rtpab[i]->dscp;
+			} else {
+				dscp_c = rtpab[i]->dscp;
+			}
 
 			string c = i == 0 ? "a" : "b";
 			
@@ -2417,6 +2036,10 @@ Call::saveToDb(bool enableBatchIfPossible) {
 
 	}
 
+	if(opt_dscp) {
+		cdr.add((dscp_a << 24) + (dscp_b << 16) + (dscp_c << 8) + dscp_d, "dscp");
+	}
+	
 	if(enableBatchIfPossible && isSqlDriver("mysql")) {
 		string query_str;
 		
@@ -3287,10 +2910,10 @@ Calltable::hashAdd(in_addr_t addr, unsigned short port, Call* call, int iscaller
 				static Call *lastcall = NULL;
 				// this port/ip combination is already in 3 calls - do not add to 4th to not cause multiplication attack. 
 				if(lastcall != call and opt_sdp_multiplication >= 3) {
+					/*
 					struct in_addr in;
 					in.s_addr = addr;
 					char *str = inet_ntoa(in);
-					/*
 					syslog(LOG_NOTICE, "call-id[%s] SDP: %s:%u is already in calls [%s] [%s] [%s]. Limit is %u to not cause multiplication DDOS. You can increas it sdp_multiplication = N\n", 
 						call->fbasename, str, port,
 						node->calls->call->fbasename,
@@ -3802,62 +3425,9 @@ Call::handle_dtmf(char dtmf, double dtmf_time, unsigned int saddr, unsigned int 
 
 void
 Call::handle_dscp(struct iphdr2 *header_ip, unsigned int saddr, unsigned int daddr, int *iscalledOut) {
-	int iscalled = 0;
-	int iscaller = 0;
-	// determine if the SDP message is coming from caller or called 
-	// 1) check by saddr
-	if(this->sipcallerip == saddr) {
-		// SDP message is coming from the first IP address seen in first INVITE thus incoming stream to ip/port in this 
-		// SDP will be stream from called
-		iscalled = 1;
-	} else {
-		// The IP address is different, check if the request matches one of the address from the first invite
-		if(this->sipcallerip == daddr) {
-			// SDP message is addressed to caller and announced IP/port in SDP will be from caller. Thus set called = 0;
-			iscaller = 1;
-		// src IP address of this SDP SIP message is different from the src/dst IP address used in the first INVITE. 
-		} else {
-			if(this->sipcallerip2 == 0) { 
-				this->sipcallerip2 = saddr;
-				this->sipcalledip2 = daddr;
-			}
-			if(this->sipcallerip2 == saddr) {
-				iscalled = 1;
-			} else {
-				// The IP address is different, check if the request matches one of the address from the first invite
-				if(this->sipcallerip2 == daddr) {
-					// SDP message is addressed to caller and announced IP/port in SDP will be from caller. Thus set called = 0;
-					iscaller = 1;
-				// src IP address of this SDP SIP message is different from the src/dst IP address used in the first INVITE. 
-				} else {
-					if(this->sipcallerip3 == 0) { 
-						this->sipcallerip3 = saddr;
-						this->sipcalledip3 = daddr;
-					}
-					if(this->sipcallerip3 == saddr) {
-						iscalled = 1;
-					} else {
-						// The IP address is different, check if the request matches one of the address from the first invite
-						if(this->sipcallerip3 == daddr) {
-							// SDP message is addressed to caller and announced IP/port in SDP will be from caller. Thus set called = 0;
-							iscaller = 1;
-						// src IP address of this SDP SIP message is different from the src/dst IP address used in the first INVITE. 
-						} else {
-							if(this->sipcallerip4 == 0) { 
-								this->sipcallerip4 = saddr;
-								this->sipcalledip4 = daddr;
-							}
-							if(this->sipcallerip4 == saddr) {
-								iscalled = 1;
-							} else {
-								iscaller = 1;
-							}
-						}
-					}
-				}
-			}
-		}
-	}
+	bool iscaller = 0;
+	bool iscalled = 0;
+	this->check_is_caller_called(saddr, daddr, &iscaller, &iscalled);
 	if(iscalled) {
 		this->caller_sipdscp = header_ip->tos >> 2;
 		////cout << "caller_sipdscp " << (int)(header_ip->tos>>2) << endl;
@@ -3869,4 +3439,67 @@ Call::handle_dscp(struct iphdr2 *header_ip, unsigned int saddr, unsigned int dad
 	if(iscalledOut) {
 		*iscalledOut = iscalled;
 	}
+}
+
+bool 
+Call::check_is_caller_called(unsigned int saddr, unsigned int daddr, bool *iscaller, bool *iscalled) {
+	*iscaller = 0;
+	bool _iscalled = 0;
+	// 1) check by saddr
+	if(this->sipcallerip == saddr) {
+		// SDP message is coming from the first IP address seen in first INVITE thus incoming stream to ip/port in this 
+		// SDP will be stream from called
+		_iscalled = 1;
+	} else {
+		// The IP address is different, check if the request matches one of the address from the first invite
+		if(this->sipcallerip == daddr) {
+			// SDP message is addressed to caller and announced IP/port in SDP will be from caller. Thus set called = 0;
+			*iscaller = 1;
+		// src IP address of this SDP SIP message is different from the src/dst IP address used in the first INVITE. 
+		} else {
+			if(this->sipcallerip2 == 0) { 
+				this->sipcallerip2 = saddr;
+				this->sipcalledip2 = daddr;
+			}
+			if(this->sipcallerip2 == saddr) {
+				_iscalled = 1;
+			} else {
+				// The IP address is different, check if the request matches one of the address from the first invite
+				if(this->sipcallerip2 == daddr) {
+					// SDP message is addressed to caller and announced IP/port in SDP will be from caller. Thus set called = 0;
+					*iscaller = 1;
+				// src IP address of this SDP SIP message is different from the src/dst IP address used in the first INVITE. 
+				} else {
+					if(this->sipcallerip3 == 0) { 
+						this->sipcallerip3 = saddr;
+						this->sipcalledip3 = daddr;
+					}
+					if(this->sipcallerip3 == saddr) {
+						_iscalled = 1;
+					} else {
+						// The IP address is different, check if the request matches one of the address from the first invite
+						if(this->sipcallerip3 == daddr) {
+							// SDP message is addressed to caller and announced IP/port in SDP will be from caller. Thus set called = 0;
+							*iscaller = 1;
+						// src IP address of this SDP SIP message is different from the src/dst IP address used in the first INVITE. 
+						} else {
+							if(this->sipcallerip4 == 0) { 
+								this->sipcallerip4 = saddr;
+								this->sipcalledip4 = daddr;
+							}
+							if(this->sipcallerip4 == saddr) {
+								_iscalled = 1;
+							} else {
+								*iscaller = 1;
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+	if(iscalled) {
+		*iscalled = _iscalled;
+	}
+	return(*iscaller || _iscalled);
 }

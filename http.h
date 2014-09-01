@@ -51,9 +51,11 @@ struct HttpDataCache {
 	HttpDataCache(uint32_t id = 0, u_int64_t timestamp = 0) {
 		this->id = id;
 		this->timestamp = timestamp;
+		this->timestamp_clock = getTimeMS()/1000;
 	}
 	uint32_t id;
 	u_int64_t timestamp;
+	u_int64_t timestamp_clock;
 };
 
 class HttpCache {
@@ -68,8 +70,11 @@ public:
 		 string *http, string *body,
 		 string *http_master, string *body_master,
 		 u_int32_t id, u_int64_t timestamp);
-	void cleanup();
+	void cleanup(bool force = false);
 	void clear();
+	u_int32_t getSize() {
+		return(this->cache.size());
+	}
 private:
 	map<HttpDataCache_id, HttpDataCache> cache;
 	u_int64_t cleanupCounter;
@@ -79,7 +84,7 @@ private:
 class HttpData : public TcpReassemblyProcessData {
 public:
 	HttpData();
-	~HttpData();
+	virtual ~HttpData();
 	void processData(u_int32_t ip_src, u_int32_t ip_dst,
 			 u_int16_t port_src, u_int16_t port_dst,
 			 TcpReassemblyData *data,
@@ -89,6 +94,7 @@ public:
 	string getUriPathValue(string &uri, const char *valueName);
 	string getTag(string &data, const char *tag);
 	string getJsonValue(string &data, const char *valueName);
+	void printContentSummary();
 private:
 	unsigned int counterProcessData;
 	HttpCache cache;

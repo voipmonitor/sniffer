@@ -55,6 +55,40 @@ struct ast_format_lock {
 	int usecnt;	/* number of active clients */
 };
 
+/*
+ * This structure is allocated by file.c in one chunk,
+ * together with buf_size and desc_size bytes of memory
+ * to be used for private purposes (e.g. buffers etc.)
+ */
+struct ast_filestream {
+	/*! Everybody reserves a block of AST_RESERVED_POINTERS pointers for us */
+	struct ast_format *fmt;	/* need to write to the lock and usecnt */
+	int flags;
+	mode_t mode;
+	char *filename;
+	char *realfilename;
+	/*! Video file stream */
+	struct ast_filestream *vfs;
+	/*! Transparently translate from another format -- just once */
+	struct ast_trans_pvt *trans;
+	struct ast_tranlator_pvt *tr;
+	int lastwriteformat;
+	int lasttimeout;
+	struct ast_channel *owner;
+	FILE *f;
+	struct ast_frame fr;	/* frame produced by read, typically */
+	char *buf;		/* buffer pointed to by ast_frame; */
+	/* pointer to private buffer */
+	union {
+		void *_private;
+#if !defined(__cplusplus) && !defined(c_plusplus)
+		void *private attribute_deprecated;
+#endif
+	};
+	const char *orig_chan_name;
+	char *write_buffer;
+};
+
 /*!
  * Each supported file format is described by the following fields.
  * Not all are necessary, the support routine implement default
@@ -109,40 +143,6 @@ struct ast_format {
 	int desc_size;			/*! size of private descriptor, if any */
 
 	struct ast_module *module;
-};
-
-/*
- * This structure is allocated by file.c in one chunk,
- * together with buf_size and desc_size bytes of memory
- * to be used for private purposes (e.g. buffers etc.)
- */
-struct ast_filestream {
-	/*! Everybody reserves a block of AST_RESERVED_POINTERS pointers for us */
-	struct ast_format *fmt;	/* need to write to the lock and usecnt */
-	int flags;
-	mode_t mode;
-	char *filename;
-	char *realfilename;
-	/*! Video file stream */
-	struct ast_filestream *vfs;
-	/*! Transparently translate from another format -- just once */
-	struct ast_trans_pvt *trans;
-	struct ast_tranlator_pvt *tr;
-	int lastwriteformat;
-	int lasttimeout;
-	struct ast_channel *owner;
-	FILE *f;
-	struct ast_frame fr;	/* frame produced by read, typically */
-	char *buf;		/* buffer pointed to by ast_frame; */
-	/* pointer to private buffer */
-	union {
-		void *_private;
-#if !defined(__cplusplus) && !defined(c_plusplus)
-		void *private attribute_deprecated;
-#endif
-	};
-	const char *orig_chan_name;
-	char *write_buffer;
 };
 
 #define SEEK_FORCECUR	10
