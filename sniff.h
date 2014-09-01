@@ -62,11 +62,9 @@ struct iphdr2 {
 void *rtp_read_thread_func(void *arg);
 void *pcap_read_thread_func(void *arg);
 
-//void process_packet(unsigned int saddr, int source, unsigned int daddr, int dest, char *data, int datalen,
-//                    pcap_t *handle, pcap_pkthdr *header, const u_char *packet, int can_thread, int *was_rtp);
 void readdump_libnids(pcap_t *handle);
 void readdump_libpcap(pcap_t *handle);
-inline void save_packet(Call *call, struct pcap_pkthdr *header, const u_char *packet, unsigned int saddr, int source, unsigned int daddr, int dest, int istcp, char *data, int datalen, int dataoffset, int type, 
+inline void save_packet(Call *call, struct pcap_pkthdr *header, const u_char *packet, unsigned int saddr, int source, unsigned int daddr, int dest, int istcp, iphdr2 *header_ip, char *data, int datalen, int dataoffset, int type, 
 			int dlt, int sensor_id);
 
 
@@ -287,9 +285,6 @@ public:
 		u_char *packet;
 		iphdr2 *header_ip;
 		pcap_t *handle;
-		int dontsave; 
-		int can_thread; 
-		int disabledsave;
 		int dlt; 
 		int sensor_id;
 		u_int hash;
@@ -304,7 +299,7 @@ public:
 	TcpReassemblySip();
 	void processPacket(
 		unsigned int saddr, int source, unsigned int daddr, int dest, char *data, int datalen, int dataoffset,
-		pcap_t *handle, pcap_pkthdr *header, const u_char *packet, int dontsave, int can_thread, struct iphdr2 *header_ip, int disabledsave,
+		pcap_t *handle, pcap_pkthdr *header, const u_char *packet, struct iphdr2 *header_ip,
 		int dlt, int sensor_id,
 		bool issip);
 	void clean(time_t ts = 0);
@@ -312,7 +307,7 @@ private:
 	tcp_stream2_s *addPacket(
 		tcp_stream2_s *stream, u_int hash,
 		unsigned int saddr, int source, unsigned int daddr, int dest, char *data, int datalen, int dataoffset,
-		pcap_t *handle, pcap_pkthdr *header, const u_char *packet, int dontsave, int can_thread, struct iphdr2 *header_ip, int disabledsave,
+		pcap_t *handle, pcap_pkthdr *header, const u_char *packet, struct iphdr2 *header_ip,
 		int dlt, int sensor_id);
 	void complete(
 		tcp_stream2_s *stream, u_int hash);

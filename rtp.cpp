@@ -163,7 +163,7 @@ int get_ticks_bycodec(int codec) {
 }
 
 /* constructor */
-RTP::RTP() 
+RTP::RTP(int sensor_id) 
  : graph(this) {
 	samplerate = 8000;
 	first = true;
@@ -184,8 +184,8 @@ RTP::RTP()
 
 	channel_fix1 = (ast_channel*)calloc(1, sizeof(*channel_fix1));
 	channel_fix1->jitter_impl = 0; // fixed
-	channel_fix1->jitter_max = 60; 
-	channel_fix1->jitter_resync_threshold = 50;
+	channel_fix1->jitter_max = 50; 
+	channel_fix1->jitter_resync_threshold = 100;
 	channel_fix1->last_datalen = 0;
 	channel_fix1->lastbuflen = 0;
 	channel_fix1->resync = 1;
@@ -246,11 +246,16 @@ RTP::RTP()
 	forcemark = 0;
 	ignore = 0;
 	lastcng = 0;
+	dscp = 0;
+	
+	this->sensor_id = sensor_id;
 	
 	this->_last_ts.tv_sec = 0;
 	this->_last_ts.tv_usec = 0;
 	this->_last_sensor_id = 0;
 	this->_last_ifname[0] = 0;
+	
+	lastTimeSyslog = 0;
 }
 
 /* destructor */
@@ -381,37 +386,38 @@ RTP::jitterbuffer(struct ast_channel *channel, int savePayload) {
 		frame->skip = 0;
 	}
 	struct timeval tsdiff;
+	frame->len = packetization;
 	switch(codec) {
 		case PAYLOAD_OPUS12:
 		case PAYLOAD_G722112:
 			frame->ts = getTimestamp() / 12;
-			frame->len = packetization * 2 / 3;
+			//frame->len = packetization * 2 / 3;
 			break;
 		case PAYLOAD_ISAC16:
 		case PAYLOAD_SILK16:
 		case PAYLOAD_OPUS16:
 		case PAYLOAD_G722116:
 			frame->ts = getTimestamp() / 16;
-			frame->len = packetization / 2;
+			//frame->len = packetization / 2;
 			break;
 		case PAYLOAD_SILK24:
 		case PAYLOAD_OPUS24:
 		case PAYLOAD_G722124:
 			frame->ts = getTimestamp() / 24;
-			frame->len = packetization / 3;
+			//frame->len = packetization / 3;
 			break;
 		case PAYLOAD_ISAC32:
 		case PAYLOAD_G722132:
 			frame->ts = getTimestamp() / 32;
-			frame->len = packetization / 4;
+			//frame->len = packetization / 4;
 			break;
 		case PAYLOAD_OPUS48:
 			frame->ts = getTimestamp() / 48;
-			frame->len = packetization / 6;
+			//frame->len = packetization / 6;
 			break;
 		default: 
 			frame->ts = getTimestamp() / 8;
-			frame->len = packetization;
+			//frame->len = packetization;
 	}
 	frame->marker = getMarker();
 	frame->seqno = getSeqNum();
@@ -492,7 +498,12 @@ RTP::jitterbuffer(struct ast_channel *channel, int savePayload) {
 
 		if(codec == PAYLOAD_G729 and (payload_len <= 12)) {
 			frame->frametype = AST_FRAME_DTMF;
+			frame->marker = 1;
 		}
+	}
+
+	if(lastcng or lastframetype == AST_FRAME_DTMF) {
+		frame->marker = 1;
 	}
 
 	if(savePayload) {
@@ -541,7 +552,7 @@ RTP::jitterbuffer(struct ast_channel *channel, int savePayload) {
 	/* calculate time difference between last packet and current packet + packetization time*/ 
 	int msdiff = ast_tvdiff_ms( header->ts, ast_tvadd(channel->last_ts, ast_samp2tv(packetization, 1000)) );
 	//printf("ms:%d\n", msdiff);
-	if(msdiff > packetization * 1000) {
+	if(msdiff > packetization * 10000) {
 		// difference is too big, reseting last_ts to current packet. If we dont check this it could happen to run while cycle endlessly
 		memcpy(&channel->last_ts, &header->ts, sizeof(struct timeval));
 		ast_jb_put(channel, frame, &header->ts);
@@ -657,6 +668,16 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 	this->dport = dport;
 	this->ignore = 0;
 	
+	if(this->sensor_id >= 0 && this->sensor_id != sensor_id) {
+		u_long actTime = getTimeMS();
+		if(actTime - 1000 > lastTimeSyslog) {
+			syslog(5 /*LOG_NOTICE*/, "warning - packet from sensor (%i) in RTP created for sensor (%i)",
+			       sensor_id, this->sensor_id);
+			lastTimeSyslog = actTime;
+		}
+		return;
+	}
+	
 	if(this->first_packet_time == 0 and this->first_packet_usec == 0) {
 		this->first_packet_time = header->ts.tv_sec;
 		this->first_packet_usec = header->ts.tv_usec;
@@ -666,7 +687,7 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 
 	Call *owner = (Call*)call_owner;
 
-//	if(getSSRC() != 0x30da4f3d) return;
+//	if(getSSRC() != 0xc3f5c945) return;
 
 	if(getVersion() != 2) {
 		return;
@@ -684,7 +705,6 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 		   (header->ts.tv_sec < this->_last_ts.tv_sec ||
 		    (header->ts.tv_sec == this->_last_ts.tv_sec &&
 		     header->ts.tv_usec < this->_last_ts.tv_usec))) {
-			static u_long lastTimeSyslog = 0;
 			u_long actTime = getTimeMS();
 			if(actTime - 1000 > lastTimeSyslog) {
 				syslog(5 /*LOG_NOTICE*/, "warning - bad packet order (%llu us) in RTP::read (seq/lastseq: %u/%u, ifname/lastifname: %s/%s, sensor/lastsenspor: %i/%i)- packet ignored",
@@ -775,7 +795,6 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 	}
 
 	// ignore CNG
-	lastcng = 0;
 	if(curpayload == 13 or curpayload == 19) {
 		last_seq = seq;
 		if(update_seq(seq)) {
@@ -805,10 +824,14 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 		prev_payload = curpayload;
 		prev_codec = codec;
 		lastframetype = AST_FRAME_DTMF;
+		lastcng = 0;
 		return;
 	}
 
-	if(!owner) return;
+	if(!owner) { 
+		lastcng = 0;
+		return;
+	}
 
 	if(iscaller) {
 		if(owner->lastcallerrtp and owner->lastcallerrtp != this) {
@@ -1013,7 +1036,7 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 					packetization = (getTimestamp() - last_ts) / 8;
 				}
 			} else {
-				packetization = (getTimestamp() - last_ts) / 8;
+				packetization = (getTimestamp() - last_ts) / (samplerate / 1000);
 			}
 			if(packetization > 0) {
 				last_packetization = packetization;
@@ -1091,7 +1114,7 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 					packetization = (getTimestamp() - last_ts) / 8;
 				}
 			} else {
-				packetization = (getTimestamp() - last_ts) / 8;
+				packetization = (getTimestamp() - last_ts) / (samplerate / 1000);
 			}
 
 			// now make packetization average
@@ -1174,6 +1197,7 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 				curpacketization = payload_len / 33 * 20;
 			} else {
 				curpacketization = (getTimestamp() - last_ts) / (samplerate / 1000);
+				if(verbosity > 3) printf("curpacketization = (getTimestamp()[%u] - last_ts[%u]) / (samplerate[%u] / 1000)", getTimestamp(), last_ts, samplerate);
 			}
 
 			if(curpacketization != packetization and curpacketization % 10 == 0 and curpacketization >= 10 and curpacketization <= 120) {
@@ -1218,6 +1242,7 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 	}
 	lastframetype = frame->frametype;
 	last_seq = seq;
+	lastcng = 0;
 }
 
 /* fill internal structures by the input RTP packet */
@@ -1246,7 +1271,9 @@ RTP::update_stats() {
 	Call *owner = (Call*)call_owner;
 
 	/* if payload == PAYLOAD_TELEVENT dont make delayes on this because it confuses stats */
-	if(codec == PAYLOAD_TELEVENT) {
+	if(codec == PAYLOAD_TELEVENT or lastframetype == AST_FRAME_DTMF) {
+		s->lastTimeStamp = getTimestamp();
+		memcpy(&s->lastTimeRec, &header->ts, sizeof(struct timeval));
 		return;
 	}
 
@@ -1266,6 +1293,7 @@ RTP::update_stats() {
 		adelay = abs(int(transit));
 		s->fdelay += transit;
 	}
+//	printf("seq[%u] adelay[%u]\n", seq, adelay);
 
 	/* Jitterbuffer calculation
 	 * J(1) = J(0) + (|D(0,1)| - J(0))/16 */

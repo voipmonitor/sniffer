@@ -526,6 +526,7 @@ public:
 	}
 	void closeHandlersBeforeRestart() {
 		this->socketClose();
+		this->cleanupConnections(true);
 	}
 protected:
 	bool initThread(void *arg, unsigned int arg2);

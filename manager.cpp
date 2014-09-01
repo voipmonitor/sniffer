@@ -991,6 +991,10 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 			}
 			updateLivesnifferfilters();
 		}
+		if ((size = sendvm(client, sshchannel, "ok", 2, 0)) == -1){
+			cerr << "Error sending data to client" << endl;
+			return -1;
+		}
 	} else if(strstr(buf, "listen") != NULL) {
 		long long callreference;
 
@@ -1711,8 +1715,6 @@ void *manager_ssh_(void) {
 	}
 	syslog(LOG_NOTICE, "connection established\n");
 
-	int port;
-	pthread_t threads;
 	pthread_attr_t attr;
 	pthread_attr_init(&attr);
 	/* set the thread detach state */
@@ -1720,6 +1722,7 @@ void *manager_ssh_(void) {
 
 	while(1) {
 		ssh_channel channel;
+		//int port;
 		//channel = ssh_channel_accept_forward(session, 0, &port);
 		channel = ssh_forward_accept(session, 0);
 		usleep(10000);

@@ -1,3 +1,103 @@
+10.0.29 1.9.2014
+================
+- handle memory allocation failure when there is no free RAM (do not crash)
+- fix support for multiple contacts for SIP REGISTER instead of replacing it with the latest REGISTER.
+
+
+10.0.28 28.8.2014
+=================
+- fix problem with multiple SIP messages in one TCP message resulting in garbled SIP response codes
+- it can happen that next SIP hop reuses the SDP unique session identifier but changing port and ip which results to replace it in the first hop in voipmonitor RTP tracker which resulted in non capturing some RTP packets. This version ensure that SDP unique RTP session is replaced only within the same SIP source IP
+- fix content-type value in SIP MESSAGE db
+- add --sipport command line option 
+- fix reading pcap with linux cooked header (when sniffing with -i any) 
+- modfy column type message in table message from TEXT to MEDIUMTEXT (only for table create) to support messages > 64kb
+- fix issue with negated IP addresse in alerts when they are used in IP groups and not specified directly
+- Set "487 Request Terminated CANCEL" ONLY if the last SIP message is CANCEL without further response messages
+
+
+10.0.27 27.8.2014
+=================
+- fix all 10.X which can corrupt heap (if saving sip packets) when doing IP defragmentation
+- fix 10.0.26 crashes and fix bogus packet message
+- fix all versions bug where ARP packets and other IP protocols can cause undefined behaviour 
+- fix hide SIP message body in MESSAGE packet only if set opt_hide_message is set
+
+
+10.0.26 21.8.2014
+=================
+- handle corrupted IP header packet and do not crash the sniffer
+- fix header_ip address for large sip message method packets (VG-326)
+- fix issue with alter table cache_number_location
+
+
+10.0.25 21.8.2014
+=================
+- fix 10.0.24 dscp fix which caused immediate crash
+
+
+10.0.24 20.8.2014
+=================
+- fix issue with dscp and multi rtp streams
+- remove leading zeros when comparing number as international. 
+
+
+10.0.23 20.8.2014
+=================
+- fix low MOS score for all codecs with sample rate > 8khz (all wideband) and probably audio decoding
+- fix no RTP stream when using SIP compat headers (content-lenght: = l:)
+- trim long packet (reassembled from tcp) to max 65535 bytes
+
+
+10.0.22 18.8.2014
+=================
+- when auto upgradeing sniffer close all connections properly so senders can reconnect 
+
+
+10.0.21 15.8.2014
+=================
+- compiler fix
+
+
+10.0.20 15.8.2014
+=================
+- fix low MOS score when stream was properly paused > 20sec
+
+
+10.0.19 14.8.2014
+=================
+- fix low MOS score for G729 silence suppresion / CNG 
+- in multiple sender one receiver (mirroring) prevent mixing RTP stream from multiple sniffers and prevent mixing DLT mixing in one pcap file. 
+
+
+10.0.18 12.8.2014
+=================
+- force RTP resync in case of reINVITE which fixes false packet loss detection and low MOS score.
+
+
+10.0.17 12.8.2014
+=================
+- adjust jitterbuffer f1 simulator to not lower MOS score for latencies <50ms
+
+
+10.0.16 7.8.2014
+================
+- fix cleaning of active REGISTER which did not expired 
+- fix clean_obsolete_dirs which cleaned more than it should (not enabled by default) 
+
+
+10.0.15 7.8.2014
+================
+- fix zombie calls when sniffer is loosing packets. Add new sipwithoutrtptimeout so rtptimeout can be keep at reasonable values (300). See new config/voipmonitor.conf comments. 
+- close call if there is no 18X or 2XX responses 
+- fix search country by phone prefix
+- remove useless debug message "prevent recursion of connect to db"
+- fix dtmf reorder when storing dtmf to database
+- fix http issue with 100-continue before 200-OK with eq ack at end stream
+- fix false high PDV in case there are DTMF frames
+- fix IP capture rules which matches rules according to best fit based on higher network mask. for example 192.168.0.1/32 rule will match last if there is also rule 192.168.0.0/24.
+
+
 10.0.14 5.8.2014
 ================
 - do not report packet loss if RTP mark bit it set

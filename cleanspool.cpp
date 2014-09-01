@@ -820,12 +820,17 @@ void clean_obsolete_dirs(const char *path) {
 		"graph",
 		"audio"
 	};
-	unsigned int onlyMaxDays[] = {
-		opt_maxpoolsize == 0 && opt_maxpoolsipsize == 0 ? (opt_maxpoolsipdays ? opt_maxpoolsipdays : opt_maxpooldays) : 0,
-		opt_maxpoolsize == 0 && opt_maxpoolrtpsize == 0 ? (opt_maxpoolrtpdays ? opt_maxpoolrtpdays : opt_maxpooldays) : 0,
-		opt_maxpoolsize == 0 && opt_maxpoolgraphsize == 0 ? (opt_maxpoolgraphdays ? opt_maxpoolgraphdays : opt_maxpooldays) : 0,
-		opt_maxpoolsize == 0 && opt_maxpoolaudiosize == 0 ? (opt_maxpoolaudiodays ? opt_maxpoolaudiodays : opt_maxpooldays) : 0
+	unsigned int maxDays[] = {
+		opt_maxpoolsipdays ? opt_maxpoolsipdays : opt_maxpooldays,
+		opt_maxpoolrtpdays ? opt_maxpoolrtpdays : opt_maxpooldays,
+		opt_maxpoolgraphdays ? opt_maxpoolgraphdays : opt_maxpooldays,
+		opt_maxpoolaudiodays ? opt_maxpoolaudiodays : opt_maxpooldays
 	};
+	for(unsigned int i = 0; i < sizeof(maxDays) / sizeof(maxDays[0]); i++) {
+		if(!maxDays[i]) {
+			maxDays[i] = 14;
+		}
+	}
 	const char *typeFilesFolder[] = {
 		"SIP",
 		"RTP",
@@ -867,7 +872,7 @@ void clean_obsolete_dirs(const char *path) {
 						char id_sensor_str[10];
 						sprintf(id_sensor_str, "%i", opt_id_sensor_cleanspool > 0 ? opt_id_sensor_cleanspool : 0);
 						sqlDbCleanspool->query((string("SELECT * FROM files where id_sensor = ") + id_sensor_str +
-									       " and datehour = '" + de->d_name + "-" + hour + "'").c_str());
+									       " and datehour = '" + find_and_replace(de->d_name, "-", "") + hour + "'").c_str());
 						SqlDb_row row = sqlDbCleanspool->fetchRow();
 						bool removeMinDir = false;
 						for(int m = 0; m < 60; m++) {
@@ -882,7 +887,7 @@ void clean_obsolete_dirs(const char *path) {
 									if(file_exists((char*)mintypedir.c_str())) {
 										if(row ?
 										    !atoi(row[string(typeFilesIndex[i]) + "size"].c_str()) :
-										    !onlyMaxDays[i] || (unsigned int)numberOfDayToNow > onlyMaxDays[i]) {
+										    (unsigned int)numberOfDayToNow > maxDays[i]) {
 											rmdir_r(mintypedir.c_str());
 											syslog(LOG_NOTICE, "cleanspool: clean obsolete dir %s", mintypedir.c_str());
 											removeMinTypeDir = true;

@@ -63,18 +63,17 @@ CountryCodes::CountryCodes() {
 
 void CountryCodes::load() {
 	SqlDb *sqlDb = createSqlObject();
-	sqlDb->query("select *\
-		      from country_code\
+	sqlDb->query(string("select * ") + 
+		     "from " + (cloud_host[0] ? "cloudshare." : "") + "country_code\
 		      where parent_id is null");
 	SqlDb_row row;
 	while(row = sqlDb->fetchRow()) {
 		continents[row["code"]] = row["name"];
 	}
-	sqlDb->query("select country.*,\
-			     continent.code as continent\
-		      from country_code country\
-		      join country_code continent on (continent.id = country.parent_id)\
-		      where country.parent_id is not null;");
+	sqlDb->query(string("select country.*, continent.code as continent ") + 
+		     "from " + (cloud_host[0] ? "cloudshare." : "") + "country_code country\
+		      join " + (cloud_host[0] ? "cloudshare." : "") + "country_code continent on (continent.id = country.parent_id)\
+		      where country.parent_id is not null");
 	while(row = sqlDb->fetchRow()) {
 		countries[row["code"]] = row["name"];
 		countryContinent[row["code"]] = row["continent"];
@@ -152,7 +151,9 @@ CountryPrefixes::CountryPrefixes() {
 
 void CountryPrefixes::load() {
 	SqlDb *sqlDb = createSqlObject();
-	sqlDb->query("select * from country_code_prefix order by prefix");
+	sqlDb->query(string("select * ") + 
+		     "from " + (cloud_host[0] ? "cloudshare." : "") + "country_code_prefix\
+		      order by prefix");
 	SqlDb_row row;
 	while(row = sqlDb->fetchRow()) {
 		data.push_back(CountryPrefix_rec(
@@ -170,7 +171,9 @@ GeoIP_country::GeoIP_country() {
 
 void GeoIP_country::load() {
 	SqlDb *sqlDb = createSqlObject();
-	sqlDb->query(string("select * from ") + (cloud_host[0] ? "cloudshare." : "") + "geoip_country order by ip_from");
+	sqlDb->query(string("select * ") + 
+		     "from " + (cloud_host[0] ? "cloudshare." : "") + "geoip_country\
+		      order by ip_from");
 	SqlDb_row row;
 	while(row = sqlDb->fetchRow()) {
 		data.push_back(GeoIP_country_rec(
@@ -1528,8 +1531,8 @@ bool checkFraudTables() {
 	checkTable checkTables[] = {
 		{"alerts", help_gui_loginAdmin, NULL},
 		{"alerts_fraud", help_gui_loginAdmin, NULL},
-		{"country_code", help_gui_loginAdmin, help_gui_loginAdmin},
-		{"country_code_prefix", help_gui_loginAdmin, help_gui_loginAdmin},
+		{cloud_host[0]?"cloudshare.country_code":"country_code", help_gui_loginAdmin, help_gui_loginAdmin},
+		{cloud_host[0]?"cloudshare.country_code_prefix":"country_code_prefix", help_gui_loginAdmin, help_gui_loginAdmin},
 		{cloud_host[0]?"cloudshare.geoip_country":"geoip_country", help_gui_loginAdmin, help_gui_loginAdmin}
 	};
 	for(size_t i = 0; i < sizeof(checkTables) / sizeof(checkTables[0]); i++) {

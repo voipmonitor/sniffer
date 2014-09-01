@@ -514,10 +514,6 @@ config_load_mysql() {
 			opt_callend = atoi(row["sqlcallend"].c_str());
 		}
 
-		if(row["cdrurl"] != "") {
-			row["cdrurl"].copy(opt_cdrurl, sizeof(opt_cdrurl), 0);
-		}
-
 		if(row["destination_number_mode"] != "") {
 			opt_destination_number_mode = atoi(row["destination_number_mode"].c_str());
 		}

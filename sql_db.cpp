@@ -282,10 +282,11 @@ bool SqlDb::queryByCurl(string query) {
 	vector<dstring> postData;
 	postData.push_back(dstring("query", query.c_str()));
 	postData.push_back(dstring("token", cloud_token));
-	for(unsigned int pass = 0; pass < this->maxQueryPass; pass++) {
+	unsigned int attempt = 0;
+	for(unsigned int pass = 0; pass < this->maxQueryPass; pass++, attempt++) {
 		if(pass > 0) {
 			sleep(1);
-			syslog(LOG_INFO, "next attempt %u - query: %s", pass, query.c_str());
+			syslog(LOG_INFO, "next attempt %u - query: %s", attempt, prepareQueryForPrintf(query).c_str());
 		}
 		SimpleBuffer responseBuffer;
 		string error;
@@ -721,7 +722,7 @@ bool SqlDb_mysql::query(string query) {
 	if(isCloud()) {
 		this->prepareQuery(&query);
 		if(verbosity > 1) {
-			syslog(LOG_INFO, query.c_str());
+			syslog(LOG_INFO, prepareQueryForPrintf(query).c_str());
 		}
 		return(this->queryByCurl(query));
 	}
@@ -746,7 +747,7 @@ bool SqlDb_mysql::query(string query) {
 	}
 	this->prepareQuery(&query);
 	if(verbosity > 1) {
-		syslog(LOG_INFO, query.c_str());
+		syslog(LOG_INFO, prepareQueryForPrintf(query).c_str());
 	}
 	bool rslt = false;
 	this->cleanFields();
@@ -754,7 +755,7 @@ bool SqlDb_mysql::query(string query) {
 	for(unsigned int pass = 0; pass < this->maxQueryPass; pass++) {
 		if(pass > 0) {
 			sleep(1);
-			syslog(LOG_INFO, "next attempt %u - query: %s", attempt - 1, query.c_str());
+			syslog(LOG_INFO, "next attempt %u - query: %s", attempt - 1, prepareQueryForPrintf(query).c_str());
 		}
 		if(!this->connected()) {
 			this->connect();
@@ -762,7 +763,7 @@ bool SqlDb_mysql::query(string query) {
 		if(this->connected()) {
 			if(mysql_query(this->hMysqlConn, query.c_str())) {
 				if(verbosity > 1) {
-					syslog(LOG_NOTICE, "query error - query: %s", query.c_str());
+					syslog(LOG_NOTICE, "query error - query: %s", prepareQueryForPrintf(query).c_str());
 					syslog(LOG_NOTICE, "query error - error: %s", mysql_error(this->hMysql));
 				}
 				this->checkLastError("query error in [" + query.substr(0,200) + (query.size() > 200 ? "..." : "") + "]", !sql_noerror);
@@ -783,7 +784,7 @@ bool SqlDb_mysql::query(string query) {
 				}
 			} else {
 				if(verbosity > 1) {
-					syslog(LOG_NOTICE, "query ok - %s", query.c_str());
+					syslog(LOG_NOTICE, "query ok - %s", prepareQueryForPrintf(query).c_str());
 				}
 				rslt = true;
 				break;
@@ -1036,7 +1037,7 @@ bool SqlDb_odbc::connected() {
 bool SqlDb_odbc::query(string query) {
 	this->prepareQuery(&query);
 	if(verbosity > 1) { 
-		syslog(LOG_INFO, query.c_str());
+		syslog(LOG_INFO, prepareQueryForPrintf(query).c_str());
 	}
 	SQLRETURN rslt = SQL_NULL_DATA;
 	if(this->hStatement) {
@@ -1403,6 +1404,9 @@ void MySqlStore::setDefaultConcatLimit(int defaultConcatLimit) {
 }
 
 MySqlStore_process *MySqlStore::find(int id) {
+	if(cloud_host[0]) {
+		id = 1;
+	}
 	MySqlStore_process* process = this->processes[id];
 	if(process) {
 		return(process);
@@ -1415,6 +1419,9 @@ MySqlStore_process *MySqlStore::find(int id) {
 }
 
 MySqlStore_process *MySqlStore::check(int id) {
+	if(cloud_host[0]) {
+		id = 1;
+	}
 	map<int, MySqlStore_process*>::iterator iter = this->processes.find(id);
 	if(iter == this->processes.end()) {
 		return(NULL);
@@ -1646,6 +1653,24 @@ string reverseString(const char *str) {
 		}
 	}
 	return rslt;
+}
+
+string prepareQueryForPrintf(const char *query) {
+	string rslt;
+	if(query) {
+		int length = strlen(query);
+		for(int i = 0; i < length; i++) {
+			rslt += query[i];
+			if(query[i] == '%') {
+				rslt += '%';
+			}
+		}
+	}
+	return rslt;
+}
+
+string prepareQueryForPrintf(string &query) {
+	return(prepareQueryForPrintf(query.c_str()));
 }
 
 
@@ -2270,7 +2295,7 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 			`a_ua_id` int unsigned DEFAULT NULL,\
 			`b_ua_id` int unsigned DEFAULT NULL,\
 			`fbasename` varchar(255) DEFAULT NULL,\
-			`message` TEXT CHARACTER SET utf8," +
+			`message` MEDIUMTEXT CHARACTER SET utf8," +
 			messageNextCustomFields +
 		(opt_cdr_partition ? 
 			"PRIMARY KEY (`ID`, `calldate`)," :
@@ -2548,8 +2573,6 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 	}
 
 	if(opt_enable_fraud) {
-	this->query("show tables like 'alerts'");
-	if(this->fetchRow()) {
 	this->query(
 	"CREATE TABLE IF NOT EXISTS `cache_number_location` (\
 			`number` varchar(30) NOT NULL,\
@@ -2573,257 +2596,374 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 			PRIMARY KEY (`ID`),\
 			CONSTRAINT `fraud_alert_info_ibfk_1` FOREIGN KEY (`alert_id`) REFERENCES `alerts` (`id`) ON UPDATE CASCADE ON DELETE CASCADE\
 	) ENGINE=InnoDB DEFAULT CHARSET=latin1;");
-	} }
+	}
 	
 	if(!federated) {
-	 
-	sql_noerror = 1;
-	
 	//BEGIN ALTER TABLES
+	char alter_funcname[20];
+	sprintf(alter_funcname, "__alter");
+	if(opt_id_sensor > -1) {
+		sprintf(alter_funcname + strlen(alter_funcname), "_S%i", opt_id_sensor);
+	}
+	this->query(string("drop procedure if exists ") + alter_funcname);
+	ostringstream outStrAlter;
+	outStrAlter << "create procedure " << alter_funcname << "() begin" << endl
+		    << "DECLARE CONTINUE HANDLER FOR SQLSTATE '42S21' BEGIN END;" << endl
+		    << "DECLARE CONTINUE HANDLER FOR SQLSTATE '42000' BEGIN END;" << endl;
+	
 	//5.2 -> 5.3
 	if(opt_match_header[0] != '\0') {
-		this->query("ALTER TABLE cdr_next\
+		outStrAlter << "ALTER TABLE cdr_next\
 				ADD match_header VARCHAR(128),\
-				ADD KEY `match_header` (`match_header`);");
+				ADD KEY `match_header` (`match_header`);" << endl;
 	}
 	//5.3 -> 5.4
-	this->query("ALTER TABLE register\
+	outStrAlter << "ALTER TABLE register\
 			ADD KEY `to_domain` (`to_domain`),\
-			ADD KEY `to_num` (`to_num`);");
-	this->query("ALTER TABLE register_state\
-			ADD `to_domain` varchar(255) NULL DEFAULT NULL;");
-	this->query("ALTER TABLE register_failed\
-			ADD `to_domain` varchar(255) NULL DEFAULT NULL;");
+			ADD KEY `to_num` (`to_num`);" << endl;
+	outStrAlter << "ALTER TABLE register_state\
+			ADD `to_domain` varchar(255) NULL DEFAULT NULL;" << endl;
+	outStrAlter << "ALTER TABLE register_failed\
+			ADD `to_domain` varchar(255) NULL DEFAULT NULL;" << endl;
 	//5.4 -> 5.5
-	this->query("ALTER TABLE register_state\
+	outStrAlter << "ALTER TABLE register_state\
 			ADD `sipcalledip` int unsigned,\
-			ADD KEY `sipcalledip` (`sipcalledip`);");
-	this->query("ALTER TABLE register_failed\
+			ADD KEY `sipcalledip` (`sipcalledip`);" << endl;
+	outStrAlter << "ALTER TABLE register_failed\
 			ADD `sipcalledip` int unsigned,\
-			ADD KEY `sipcalledip` (`sipcalledip`);");
+			ADD KEY `sipcalledip` (`sipcalledip`);" << endl;
 	//6.0 -> 6.1
-	this->query("ALTER TABLE message\
+	outStrAlter << "ALTER TABLE message\
 			ADD id_contenttype INT AFTER ID,\
-			ADD KEY `id_contenttype` (`id_contenttype`);");
+			ADD KEY `id_contenttype` (`id_contenttype`);" << endl;
 	
 	//6.5RC2 ->
-	this->query("ALTER TABLE message ADD GeoPosition varchar(255)");
-	this->query("ALTER TABLE cdr_next ADD GeoPosition varchar(255)");
-	this->query("ALTER TABLE register\
-			ADD `fname` BIGINT NULL DEFAULT NULL;");
-	this->query("ALTER TABLE register_failed\
-			ADD `fname` BIGINT NULL DEFAULT NULL;");
-	this->query("ALTER TABLE register_state\
-			ADD `fname` BIGINT NULL DEFAULT NULL;");
-	this->query("ALTER TABLE register\
-			ADD `id_sensor` INT NULL DEFAULT NULL;");
-	this->query("ALTER TABLE register_failed\
-			ADD `id_sensor` INT NULL DEFAULT NULL;");
-	this->query("ALTER TABLE register_state\
-			ADD `id_sensor` INT NULL DEFAULT NULL;");
+	outStrAlter << "ALTER TABLE message ADD GeoPosition varchar(255);" << endl;
+	outStrAlter << "ALTER TABLE cdr_next ADD GeoPosition varchar(255);" << endl;
+	outStrAlter << "ALTER TABLE register\
+			ADD `fname` BIGINT NULL DEFAULT NULL;" << endl;
+	outStrAlter << "ALTER TABLE register_failed\
+			ADD `fname` BIGINT NULL DEFAULT NULL;" << endl;
+	outStrAlter << "ALTER TABLE register_state\
+			ADD `fname` BIGINT NULL DEFAULT NULL;" << endl;
+	outStrAlter << "ALTER TABLE register\
+			ADD `id_sensor` INT NULL DEFAULT NULL;" << endl;
+	outStrAlter << "ALTER TABLE register_failed\
+			ADD `id_sensor` INT NULL DEFAULT NULL;" << endl;
+	outStrAlter << "ALTER TABLE register_state\
+			ADD `id_sensor` INT NULL DEFAULT NULL;" << endl;
 
-	this->query("ALTER TABLE filter_ip\
-			ADD `skip` tinyint NULL;");
-	this->query("ALTER TABLE filter_telnum\
-			ADD `skip` tinyint NULL;");
+	outStrAlter << "ALTER TABLE filter_ip\
+			ADD `skip` tinyint NULL;" << endl;
+	outStrAlter << "ALTER TABLE filter_telnum\
+			ADD `skip` tinyint NULL;" << endl;
 	//8.0
 	if(opt_dscp) {
-		this->query("ALTER TABLE cdr ADD dscp int unsigned DEFAULT NULL");
+		outStrAlter << "ALTER TABLE cdr ADD dscp int unsigned DEFAULT NULL;" << endl;
 	}
 	
 	if(opt_enable_lua_tables) {
-		this->query("ALTER TABLE http_jj\
+		outStrAlter << "ALTER TABLE http_jj\
 				ADD external_transaction_id varchar( 255 ) NOT NULL,\
-				ADD KEY `external_transaction_id` (`external_transaction_id`);");
-		this->query("ALTER TABLE http_jj ADD type ENUM('http_ok') DEFAULT NULL AFTER url;");
-		this->query("ALTER TABLE http_jj ADD http TEXT CHARACTER SET utf8 COLLATE utf8_bin NOT NULL AFTER type;");
-		this->query("ALTER TABLE http_jj ADD id_sensor SMALLINT DEFAULT NULL;");
-		this->query("ALTER TABLE enum_jj ADD id_sensor SMALLINT DEFAULT NULL;");
+				ADD KEY `external_transaction_id` (`external_transaction_id`);" << endl;
+		outStrAlter << "ALTER TABLE http_jj ADD type ENUM('http_ok') DEFAULT NULL AFTER url;" << endl;
+		outStrAlter << "ALTER TABLE http_jj ADD http TEXT CHARACTER SET utf8 COLLATE utf8_bin NOT NULL AFTER type;" << endl;
+		outStrAlter << "ALTER TABLE http_jj ADD id_sensor SMALLINT DEFAULT NULL;" << endl;
+		outStrAlter << "ALTER TABLE enum_jj ADD id_sensor SMALLINT DEFAULT NULL;" << endl;
 	}
 
 	//8.2
-	this->query("ALTER TABLE filter_ip\
-			ADD `script` tinyint NULL;");
-	this->query("ALTER TABLE filter_telnum\
-			ADD `script` tinyint NULL;");
+	outStrAlter << "ALTER TABLE filter_ip\
+			ADD `script` tinyint NULL;" << endl;
+	outStrAlter << "ALTER TABLE filter_telnum\
+			ADD `script` tinyint NULL;" << endl;
 
-	this->query("ALTER TABLE filter_ip\
-			ADD `mos_lqo` tinyint NULL;");
-	this->query("ALTER TABLE filter_telnum\
-			ADD `mos_lqo` tinyint NULL;");
+	outStrAlter << "ALTER TABLE filter_ip\
+			ADD `mos_lqo` tinyint NULL;" << endl;
+	outStrAlter << "ALTER TABLE filter_telnum\
+			ADD `mos_lqo` tinyint NULL;" << endl;
 	
-	this->query("ALTER TABLE files\
-			ADD `regsize` bigint unsigned DEFAULT 0;");
+	outStrAlter << "ALTER TABLE files\
+			ADD `regsize` bigint unsigned DEFAULT 0;" << endl;
 	
 	//8.4
 	if(opt_cdr_sipport) {
-		this->query("ALTER TABLE cdr\
+		outStrAlter << "ALTER TABLE cdr\
 				ADD `sipcallerport` smallint unsigned DEFAULT NULL AFTER `sipcallerip`,\
-				ADD `sipcalledport` smallint unsigned DEFAULT NULL AFTER `sipcalledip`;");
+				ADD `sipcalledport` smallint unsigned DEFAULT NULL AFTER `sipcalledip`;" << endl;
 	}
 
 	if(opt_mos_lqo) {
-		this->query("ALTER TABLE cdr\
+		outStrAlter << "ALTER TABLE cdr\
 				ADD `a_mos_lqo_mult10` tinyint unsigned DEFAULT NULL,\
-				ADD `b_mos_lqo_mult10` tinyint unsigned DEFAULT NULL;");
+				ADD `b_mos_lqo_mult10` tinyint unsigned DEFAULT NULL;" << endl;
 	}
 
 	if(opt_cdr_rtpport) {
-		this->query("ALTER TABLE cdr_rtp\
-				ADD `dport` smallint unsigned DEFAULT NULL AFTER `daddr`;");
+		outStrAlter << "ALTER TABLE cdr_rtp\
+				ADD `dport` smallint unsigned DEFAULT NULL AFTER `daddr`;" << endl;
 	}
 
 
 	//9.4
-	this->query("ALTER TABLE sensor_conf ADD `sip-register-timeout` tinyint DEFAULT 5;");
+	outStrAlter << "ALTER TABLE sensor_conf ADD `sip-register-timeout` tinyint DEFAULT 5;" << endl;
 
 	//
-	this->query("ALTER TABLE filter_ip\
-			ADD `hide_message` tinyint default NULL;");
-	this->query("ALTER TABLE filter_telnum\
-			ADD `hide_message` tinyint default NULL;");
-	this->query("ALTER TABLE filter_ip\
-			ADD `remove_at` date default NULL;");
-	this->query("ALTER TABLE filter_telnum\
-			ADD `remove_at` date default NULL;");
+	outStrAlter << "ALTER TABLE filter_ip\
+			ADD `hide_message` tinyint default NULL;" << endl;
+	outStrAlter << "ALTER TABLE filter_telnum\
+			ADD `hide_message` tinyint default NULL;" << endl;
+	outStrAlter << "ALTER TABLE filter_ip\
+			ADD `remove_at` date default NULL;" << endl;
+	outStrAlter << "ALTER TABLE filter_telnum\
+			ADD `remove_at` date default NULL;" << endl;
 
 	//10.0.5
-	this->query("ALTER TABLE cache_number_location\
+	if(opt_enable_fraud) {
+	outStrAlter << "ALTER TABLE cache_number_location\
 			ADD `number_ip` int unsigned DEFAULT NULL AFTER number,\
 			DROP PRIMARY KEY,\
-			ADD PRIMARY KEY (`number`, `number_ip`);");
+			ADD PRIMARY KEY (`number`, `number_ip`);" << endl;
+	}
 
-	sql_noerror = 0;
-
+	outStrAlter << "end;" << endl;
+	/*
+	cout << "alter procedure" << endl
+	     << outStrAlter.str() << endl
+	     << "---" << endl;
+	*/
+	this->query(outStrAlter.str());
+	this->query(string("call ") + alter_funcname);
+	this->query(string("drop procedure if exists ") + alter_funcname);
 	//END ALTER TABLES
 	
 	//BEGIN SQL SCRIPTS
 	if((opt_cdr_partition || opt_ipaccount) && !opt_disable_partition_operations) {
-		this->createProcedure(string(
-		"begin\
-		    declare part_date date;\
-		    declare part_limit date;\
-		    declare part_limit_int int;\
-		    declare part_name char(100);\
-		    declare test_exists_any_part_query varchar(1000);\
-		    declare test_exists_part_query varchar(1000);\
-		    declare create_part_query varchar(1000);\
-		    set test_exists_any_part_query = concat(\
-		       'set @_exists_any_part = exists (select * from information_schema.partitions where table_schema=\\'',\
-		       database_name,\
-		       '\\' and table_name = \\'',\
-		       table_name,\
-		       '\\' and partition_name is not null)');\
-		    set @_test_exists_any_part_query = test_exists_any_part_query;\
-		    prepare stmt FROM @_test_exists_any_part_query;\
-		    execute stmt;\
-		    deallocate prepare stmt;\
-		    if(@_exists_any_part) then\
-		       set part_date =  date_add(date(now()), interval next_days day);\
-		       if(type_part = 'month') then\
-			  set part_date = date_add(part_date, interval -(day(part_date)-1) day);\
-			  set part_limit = date_add(part_date, interval 1 month);\
-			  set part_name = concat('p', date_format(part_date, '%y%m'));\
-		       else\
-			  set part_limit = date_add(part_date, interval 1 day);\
-			  set part_name = concat('p', date_format(part_date, '%y%m%d'));\
-		       end if;\
-		       set part_limit_int = to_days(part_limit);\
-		       set test_exists_part_query = concat(\
-			  'set @_exists_part = exists (select * from information_schema.partitions where table_schema=\\'',\
-			  database_name,\
-			  '\\' and table_name = \\'',\
-			  table_name,\
-			  '\\' and partition_name = \\'',\
-			  part_name,\
-			  '\\')');\
-		       set @_test_exists_part_query = test_exists_part_query;\
-		       prepare stmt FROM @_test_exists_part_query;\
-		       execute stmt;\
-		       deallocate prepare stmt;\
-		       if(not @_exists_part) then\
-			  set create_part_query = concat(\
-			     'alter table ',\
-			     if(database_name is not null, concat('`', database_name, '`.'), ''),\
-			     '`',\
-			     table_name,\
-			     '` add partition (partition ',\
-			     part_name,") + 
-			     (opt_cdr_partition_oldver ? 
-				   "' VALUES LESS THAN (',\
-				    part_limit_int,\
-				    '))'" :
-				   "' VALUES LESS THAN (\\'',\
-				    part_limit,\
-				    '\\'))'") + 
-			     ");\
-			  set @_create_part_query = create_part_query;\
-			  prepare stmt FROM @_create_part_query;\
-			  execute stmt;\
-			  deallocate prepare stmt;\
-		       end if;\
-		    end if;\
-		 end",
-		"create_partition", "(database_name char(100), table_name char(100), type_part char(10), next_days int)");
+		if(!cloud_host.empty()) {
+			this->createProcedure(string(
+			"begin\
+			    declare part_date date;\
+			    declare part_limit date;\
+			    declare part_limit_int int;\
+			    declare part_name char(100);\
+			    declare create_part_query varchar(1000);\
+			    set part_date =  date_add(date(now()), interval next_days day);\
+			    if(type_part = 'month') then\
+			       set part_date = date_add(part_date, interval -(day(part_date)-1) day);\
+			       set part_limit = date_add(part_date, interval 1 month);\
+			       set part_name = concat('p', date_format(part_date, '%y%m'));\
+			    else\
+			       set part_limit = date_add(part_date, interval 1 day);\
+			       set part_name = concat('p', date_format(part_date, '%y%m%d'));\
+			    end if;\
+			    set part_limit_int = to_days(part_limit);\
+			    set create_part_query = concat(\
+			       'alter table `',\
+			       table_name,\
+			       '` add partition (partition ',\
+			       part_name,") + 
+			       (opt_cdr_partition_oldver ? 
+				     "' VALUES LESS THAN (',\
+				      part_limit_int,\
+				      '))'" :
+				     "' VALUES LESS THAN (\\'',\
+				      part_limit,\
+				      '\\'))'") + 
+			       ");\
+			    set @_create_part_query = create_part_query;\
+			    prepare stmt FROM @_create_part_query;\
+			    execute stmt;\
+			    deallocate prepare stmt;\
+			 end",
+			"create_partition", "(table_name char(100), type_part char(10), next_days int)");
+		} else {
+			this->createProcedure(string(
+			"begin\
+			    declare part_date date;\
+			    declare part_limit date;\
+			    declare part_limit_int int;\
+			    declare part_name char(100);\
+			    declare test_exists_any_part_query varchar(1000);\
+			    declare test_exists_part_query varchar(1000);\
+			    declare create_part_query varchar(1000);\
+			    set test_exists_any_part_query = concat(\
+			       'set @_exists_any_part = exists (select * from information_schema.partitions where table_schema=\\'',\
+			       database_name,\
+			       '\\' and table_name = \\'',\
+			       table_name,\
+			       '\\' and partition_name is not null)');\
+			    set @_test_exists_any_part_query = test_exists_any_part_query;\
+			    prepare stmt FROM @_test_exists_any_part_query;\
+			    execute stmt;\
+			    deallocate prepare stmt;\
+			    if(@_exists_any_part) then\
+			       set part_date =  date_add(date(now()), interval next_days day);\
+			       if(type_part = 'month') then\
+				  set part_date = date_add(part_date, interval -(day(part_date)-1) day);\
+				  set part_limit = date_add(part_date, interval 1 month);\
+				  set part_name = concat('p', date_format(part_date, '%y%m'));\
+			       else\
+				  set part_limit = date_add(part_date, interval 1 day);\
+				  set part_name = concat('p', date_format(part_date, '%y%m%d'));\
+			       end if;\
+			       set part_limit_int = to_days(part_limit);\
+			       set test_exists_part_query = concat(\
+				  'set @_exists_part = exists (select * from information_schema.partitions where table_schema=\\'',\
+				  database_name,\
+				  '\\' and table_name = \\'',\
+				  table_name,\
+				  '\\' and partition_name = \\'',\
+				  part_name,\
+				  '\\')');\
+			       set @_test_exists_part_query = test_exists_part_query;\
+			       prepare stmt FROM @_test_exists_part_query;\
+			       execute stmt;\
+			       deallocate prepare stmt;\
+			       if(not @_exists_part) then\
+				  set create_part_query = concat(\
+				     'alter table ',\
+				     if(database_name is not null, concat('`', database_name, '`.'), ''),\
+				     '`',\
+				     table_name,\
+				     '` add partition (partition ',\
+				     part_name,") + 
+				     (opt_cdr_partition_oldver ? 
+					   "' VALUES LESS THAN (',\
+					    part_limit_int,\
+					    '))'" :
+					   "' VALUES LESS THAN (\\'',\
+					    part_limit,\
+					    '\\'))'") + 
+				     ");\
+				  set @_create_part_query = create_part_query;\
+				  prepare stmt FROM @_create_part_query;\
+				  execute stmt;\
+				  deallocate prepare stmt;\
+			       end if;\
+			    end if;\
+			 end",
+			"create_partition", "(database_name char(100), table_name char(100), type_part char(10), next_days int)");
+		}
 	}
 	if(opt_cdr_partition && !opt_disable_partition_operations) {
-		this->createProcedure(
-		"begin\
-		    call create_partition(database_name, 'cdr', 'day', next_days);\
-		    call create_partition(database_name, 'cdr_next', 'day', next_days);\
-		    call create_partition(database_name, 'cdr_rtp', 'day', next_days);\
-		    call create_partition(database_name, 'cdr_dtmf', 'day', next_days);\
-		    call create_partition(database_name, 'cdr_proxy', 'day', next_days);\
-		    call create_partition(database_name, 'http_jj', 'day', next_days);\
-		    call create_partition(database_name, 'enum_jj', 'day', next_days);\
-		    call create_partition(database_name, 'message', 'day', next_days);\
-		    call create_partition(database_name, 'register_state', 'day', next_days);\
-		    call create_partition(database_name, 'register_failed', 'day', next_days);\
-		 end",
-		"create_partitions_cdr", "(database_name char(100), next_days int)");
-		if(opt_create_old_partitions > 0 && createdCdrTable) {
-			for(int i = opt_create_old_partitions - 1; i > 0; i--) {
-				char i_str[10];
-				sprintf(i_str, "%i", i);
-				this->query(string(
-				"call `") + mysql_database + "`.create_partitions_cdr('" + mysql_database + "', -" + i_str + ");");
+		if(!cloud_host.empty()) {
+			this->createProcedure(
+			"begin\
+			    call create_partition('cdr', 'day', next_days);\
+			    call create_partition('cdr_next', 'day', next_days);\
+			    call create_partition('cdr_rtp', 'day', next_days);\
+			    call create_partition('cdr_dtmf', 'day', next_days);\
+			    call create_partition('cdr_proxy', 'day', next_days);\
+			    call create_partition('http_jj', 'day', next_days);\
+			    call create_partition('enum_jj', 'day', next_days);\
+			    call create_partition('message', 'day', next_days);\
+			    call create_partition('register_state', 'day', next_days);\
+			    call create_partition('register_failed', 'day', next_days);\
+			 end",
+			"create_partitions_cdr", "(next_days int)");
+			if(opt_create_old_partitions > 0 && createdCdrTable) {
+				for(int i = opt_create_old_partitions - 1; i > 0; i--) {
+					char i_str[10];
+					sprintf(i_str, "%i", i);
+					this->query(string(
+					"call create_partitions_cdr('-") + i_str + ");");
+				}
 			}
+			this->query(
+			"call create_partitions_cdr(0);");
+			this->query(
+			"call create_partitions_cdr(1);");
+			this->query(
+			"drop event if exists cdr_add_partition");
+			this->query(
+			"create event if not exists cdr_add_partition\
+			 on schedule every 1 hour do\
+			 begin\
+			    call create_partitions_cdr(1);\
+			 end");
+		} else {
+			this->createProcedure(
+			"begin\
+			    call create_partition(database_name, 'cdr', 'day', next_days);\
+			    call create_partition(database_name, 'cdr_next', 'day', next_days);\
+			    call create_partition(database_name, 'cdr_rtp', 'day', next_days);\
+			    call create_partition(database_name, 'cdr_dtmf', 'day', next_days);\
+			    call create_partition(database_name, 'cdr_proxy', 'day', next_days);\
+			    call create_partition(database_name, 'http_jj', 'day', next_days);\
+			    call create_partition(database_name, 'enum_jj', 'day', next_days);\
+			    call create_partition(database_name, 'message', 'day', next_days);\
+			    call create_partition(database_name, 'register_state', 'day', next_days);\
+			    call create_partition(database_name, 'register_failed', 'day', next_days);\
+			 end",
+			"create_partitions_cdr", "(database_name char(100), next_days int)");
+			if(opt_create_old_partitions > 0 && createdCdrTable) {
+				for(int i = opt_create_old_partitions - 1; i > 0; i--) {
+					char i_str[10];
+					sprintf(i_str, "%i", i);
+					this->query(string(
+					"call `") + mysql_database + "`.create_partitions_cdr('" + mysql_database + "', -" + i_str + ");");
+				}
+			}
+			this->query(string(
+			"call `") + mysql_database + "`.create_partitions_cdr('" + mysql_database + "', 0);");
+			this->query(string(
+			"call `") + mysql_database + "`.create_partitions_cdr('" + mysql_database + "', 1);");
+			this->query(
+			"drop event if exists cdr_add_partition");
+			this->query(string(
+			"create event if not exists cdr_add_partition\
+			 on schedule every 1 hour do\
+			 begin\
+			    call `") + mysql_database + "`.create_partitions_cdr('" + mysql_database + "', 1);\
+			 end");
 		}
-		this->query(string(
-		"call `") + mysql_database + "`.create_partitions_cdr('" + mysql_database + "', 0);");
-		this->query(string(
-		"call `") + mysql_database + "`.create_partitions_cdr('" + mysql_database + "', 1);");
-		this->query(
-		"drop event if exists cdr_add_partition");
-		this->query(string(
-		"create event if not exists cdr_add_partition\
-		 on schedule every 1 hour do\
-		 begin\
-		    call `") + mysql_database + "`.create_partitions_cdr('" + mysql_database + "', 1);\
-		 end");
 	}
 	if(opt_ipaccount && !opt_disable_partition_operations) {
-		this->createProcedure(
-		"begin\
-		    call create_partition(database_name, 'ipacc', 'day', next_days);\
-		    call create_partition(database_name, 'ipacc_agr_interval', 'day', next_days);\
-		    call create_partition(database_name, 'ipacc_agr_hour', 'day', next_days);\
-		    call create_partition(database_name, 'ipacc_agr2_hour', 'day', next_days);\
-		    call create_partition(database_name, 'ipacc_agr_day', 'month', next_days);\
-		 end",
-		"create_partitions_ipacc", "(database_name char(100), next_days int)");
-		this->query(string(
-		"call `") + mysql_database + "`.create_partitions_ipacc('" + mysql_database + "', 0);");
-		this->query(string(
-		"call `") + mysql_database + "`.create_partitions_ipacc('" + mysql_database + "', 1);");
-		this->query(
-		"drop event if exists ipacc_add_partition");
-		this->query(string(
-		"create event if not exists ipacc_add_partition\
-		 on schedule every 1 hour do\
-		 begin\
-		    call `") + mysql_database + "`.create_partitions_ipacc('" + mysql_database + "', 1);\
-		 end");
+		if(!cloud_host.empty()) {
+			this->createProcedure(
+			"begin\
+			    call create_partition('ipacc', 'day', next_days);\
+			    call create_partition('ipacc_agr_interval', 'day', next_days);\
+			    call create_partition('ipacc_agr_hour', 'day', next_days);\
+			    call create_partition('ipacc_agr2_hour', 'day', next_days);\
+			    call create_partition('ipacc_agr_day', 'month', next_days);\
+			 end",
+			"create_partitions_ipacc", "(next_days int)");
+			this->query(
+			"call create_partitions_ipacc(0);");
+			this->query(
+			"call create_partitions_ipacc(1);");
+			this->query(
+			"drop event if exists ipacc_add_partition");
+			this->query(
+			"create event if not exists ipacc_add_partition\
+			 on schedule every 1 hour do\
+			 begin\
+			    call create_partitions_ipacc(1);\
+			 end");
+		} else {
+			this->createProcedure(
+			"begin\
+			    call create_partition(database_name, 'ipacc', 'day', next_days);\
+			    call create_partition(database_name, 'ipacc_agr_interval', 'day', next_days);\
+			    call create_partition(database_name, 'ipacc_agr_hour', 'day', next_days);\
+			    call create_partition(database_name, 'ipacc_agr2_hour', 'day', next_days);\
+			    call create_partition(database_name, 'ipacc_agr_day', 'month', next_days);\
+			 end",
+			"create_partitions_ipacc", "(database_name char(100), next_days int)");
+			this->query(string(
+			"call `") + mysql_database + "`.create_partitions_ipacc('" + mysql_database + "', 0);");
+			this->query(string(
+			"call `") + mysql_database + "`.create_partitions_ipacc('" + mysql_database + "', 1);");
+			this->query(
+			"drop event if exists ipacc_add_partition");
+			this->query(string(
+			"create event if not exists ipacc_add_partition\
+			 on schedule every 1 hour do\
+			 begin\
+			    call `") + mysql_database + "`.create_partitions_ipacc('" + mysql_database + "', 1);\
+			 end");
+		}
 	}
 
 	this->createFunction(
@@ -2871,23 +3011,108 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 				DECLARE _state INT; \
 				DECLARE _expires_at DATETIME; \
 				DECLARE _expired INT; \
-				SELECT ID, state, expires_at, (UNIX_TIMESTAMP(expires_at) < UNIX_TIMESTAMP(calltime)) AS expired INTO _ID, _state, _expires_at, _expired FROM register WHERE to_num = called AND to_domain = called_domain ORDER BY ID DESC LIMIT 1; \
+				SELECT ID, \
+				       state, \
+				       expires_at, \
+				       (UNIX_TIMESTAMP(expires_at) < UNIX_TIMESTAMP(calltime)) AS expired \
+				INTO _ID, _state, _expires_at, _expired FROM register \
+				WHERE to_num = called AND to_domain = called_domain AND \
+				      contact_num = contact_num_param AND contact_domain = contact_domain_param \
+				ORDER BY ID DESC LIMIT 1; \
 				IF ( _ID ) THEN \
 					DELETE FROM register WHERE ID = _ID; \
 					IF ( _expired > 5 ) THEN \
-						INSERT INTO `register_state` SET `id_sensor` = id_sensor, `fname` = fname, `created_at` = _expires_at, `sipcallerip` = sipcallerip, `sipcalledip` = sipcalledip, `from_num` = caller, `to_num` = called, `to_domain` = called_domain, `contact_num` = contact_num, `contact_domain` = contact_domain, `digestusername` = digest_username, `expires` = register_expires, state = 5, ua_id = getIdOrInsertUA(cdr_ua); \
+						INSERT INTO `register_state` \
+							SET `id_sensor` = id_sensor, \
+							    `fname` = fname, \
+							    `created_at` = _expires_at, \
+							    `sipcallerip` = sipcallerip, \
+							    `sipcalledip` = sipcalledip, \
+							    `from_num` = caller, \
+							    `to_num` = called, \
+							    `to_domain` = called_domain, \
+							    `contact_num` = contact_num_param, \
+							    `contact_domain` = contact_domain_param, \
+							    `digestusername` = digest_username, \
+							    `expires` = register_expires, \
+							    state = 5, \
+							    ua_id = getIdOrInsertUA(cdr_ua); \
 					END IF; \
 					IF ( _state <> regstate OR register_expires = 0) THEN \
-						INSERT INTO `register_state` SET `id_sensor` = id_sensor, `fname` = fname, `created_at` = calltime, `sipcallerip` = sipcallerip, `sipcalledip` = sipcalledip, `from_num` = caller, `to_num` = called, `to_domain` = called_domain, `contact_num` = contact_num, `contact_domain` = contact_domain, `digestusername` = digest_username, `expires` = register_expires, state = regstate, ua_id = getIdOrInsertUA(cdr_ua); \
+						INSERT INTO `register_state` \
+							SET `id_sensor` = id_sensor, \
+							    `fname` = fname, \
+							    `created_at` = calltime, \
+							    `sipcallerip` = sipcallerip, \
+							    `sipcalledip` = sipcalledip, \
+							    `from_num` = caller, \
+							    `to_num` = called, \
+							    `to_domain` = called_domain, \
+							    `contact_num` = contact_num_param, \
+							    `contact_domain` = contact_domain_param, \
+							    `digestusername` = digest_username, \
+							    `expires` = register_expires, \
+							    state = regstate, \
+							    ua_id = getIdOrInsertUA(cdr_ua); \
 					END IF; \
 				ELSE \
-					INSERT INTO `register_state` SET `id_sensor` = id_sensor, `fname` = fname, `created_at` = calltime, `sipcallerip` = sipcallerip, `sipcalledip` = sipcalledip, `from_num` = caller, `to_num` = called, `to_domain` = called_domain, `contact_num` = contact_num, `contact_domain` = contact_domain, `digestusername` = digest_username, `expires` = register_expires, state = regstate, ua_id = getIdOrInsertUA(cdr_ua);\
+					INSERT INTO `register_state` \
+						SET `id_sensor` = id_sensor, \
+						    `fname` = fname, \
+						    `created_at` = calltime, \
+						    `sipcallerip` = sipcallerip, \
+						    `sipcalledip` = sipcalledip, \
+						    `from_num` = caller, \
+						    `to_num` = called, \
+						    `to_domain` = called_domain, \
+						    `contact_num` = contact_num_param, \
+						    `contact_domain` = contact_domain_param, \
+						    `digestusername` = digest_username, \
+						    `expires` = register_expires, \
+						    state = regstate, \
+						    ua_id = getIdOrInsertUA(cdr_ua);\
 				END IF; \
 				IF ( register_expires > 0 ) THEN \
-					INSERT INTO `register` SET `id_sensor` = id_sensor, `fname` = fname, `calldate` = calltime, `sipcallerip` = sipcallerip, `sipcalledip` = sipcalledip, `from_num` = caller, `from_name` = callername, `from_domain` = caller_domain, `to_num` = called, `to_domain` = called_domain, `contact_num` = contact_num, `contact_domain` = contact_domain, `digestusername` = digest_username, `digestrealm` = digest_realm, `expires` = register_expires, state = regstate, ua_id = getIdOrInsertUA(cdr_ua), `expires_at` = mexpires_at; \
+					INSERT INTO `register` \
+						SET `id_sensor` = id_sensor, \
+						    `fname` = fname, \
+						    `calldate` = calltime, \
+						    `sipcallerip` = sipcallerip, \
+						    `sipcalledip` = sipcalledip, \
+						    `from_num` = caller, \
+						    `from_name` = callername, \
+						    `from_domain` = caller_domain, \
+						    `to_num` = called, \
+						    `to_domain` = called_domain, \
+						    `contact_num` = contact_num_param, \
+						    `contact_domain` = contact_domain_param, \
+						    `digestusername` = digest_username, \
+						    `digestrealm` = digest_realm, \
+						    `expires` = register_expires, \
+						    state = regstate, \
+						    ua_id = getIdOrInsertUA(cdr_ua), \
+						    `expires_at` = mexpires_at; \
 				END IF; \
 			END",
-			"PROCESS_SIP_REGISTER", "(IN calltime VARCHAR(32), IN caller VARCHAR(64), IN callername VARCHAR(64), IN caller_domain VARCHAR(64), IN called VARCHAR(64), IN called_domain VARCHAR(64), IN sipcallerip INT UNSIGNED, sipcalledip INT UNSIGNED, contact_num VARCHAR(64), IN contact_domain VARCHAR(64), IN digest_username VARCHAR(255), IN digest_realm VARCHAR(255), IN regstate INT, mexpires_at VARCHAR(128), IN register_expires INT, IN cdr_ua VARCHAR(255), IN fname BIGINT, IN id_sensor INT)");
+			"PROCESS_SIP_REGISTER", 
+			"(IN calltime VARCHAR(32), \
+			  IN caller VARCHAR(64), \
+			  IN callername VARCHAR(64), \
+			  IN caller_domain VARCHAR(64), \
+			  IN called VARCHAR(64), \
+			  IN called_domain VARCHAR(64), \
+			  IN sipcallerip INT UNSIGNED, \
+			  IN sipcalledip INT UNSIGNED, \
+			  IN contact_num_param VARCHAR(64), \
+			  IN contact_domain_param VARCHAR(64), \
+			  IN digest_username VARCHAR(255), \
+			  IN digest_realm VARCHAR(255), \
+			  IN regstate INT, \
+			  IN mexpires_at VARCHAR(128), \
+			  IN register_expires INT, \
+			  IN cdr_ua VARCHAR(255), \
+			  IN fname BIGINT, \
+			  IN id_sensor INT)");
 
 	//END SQL SCRIPTS
 	}
@@ -3606,7 +3831,7 @@ void SqlDb_odbc::createSchema(const char *host, const char *database, const char
 			b_ua_id int NULL\
 				FOREIGN KEY REFERENCES cdr_ua (id),\
 			fbasename varchar(255) NULL,\
-			message TEXT);\
+			message MEDIUMTEXT);\
 		CREATE INDEX calldate ON message (calldate);\
 		CREATE INDEX caller ON message (caller);\
 		CREATE INDEX caller_domain ON message (caller_domain);\
@@ -3906,10 +4131,18 @@ void SqlDb_odbc::checkSchema() {
 void createMysqlPartitionsCdr() {
 	syslog(LOG_NOTICE, "create cdr partitions - begin");
 	SqlDb *sqlDb = createSqlObject();
-	sqlDb->query(
-		string("call `") + mysql_database + "`.create_partitions_cdr('" + mysql_database + "', 0);");
-	sqlDb->query(
-		string("call `") + mysql_database + "`.create_partitions_cdr('" + mysql_database + "', 1);");
+	if(cloud_host[0]) {
+		sqlDb->setMaxQueryPass(1);
+		sqlDb->query(
+			"call create_partitions_cdr(0);");
+		sqlDb->query(
+			"call create_partitions_cdr(1);");
+	} else {
+		sqlDb->query(
+			string("call `") + mysql_database + "`.create_partitions_cdr('" + mysql_database + "', 0);");
+		sqlDb->query(
+			string("call `") + mysql_database + "`.create_partitions_cdr('" + mysql_database + "', 1);");
+	}
 	delete sqlDb;
 	syslog(LOG_NOTICE, "create cdr partitions - end");
 }
@@ -3917,10 +4150,18 @@ void createMysqlPartitionsCdr() {
 void createMysqlPartitionsIpacc() {
 	SqlDb *sqlDb = createSqlObject();
 	syslog(LOG_NOTICE, "create ipacc partitions - begin");
-	sqlDb->query(
-		string("call `") + mysql_database + "`.create_partitions_ipacc('" + mysql_database + "', 0);");
-	sqlDb->query(
-		string("call `") + mysql_database + "`.create_partitions_ipacc('" + mysql_database + "', 1);");
+	if(cloud_host[0]) {
+		sqlDb->setMaxQueryPass(1);
+		sqlDb->query(
+			"call create_partitions_ipacc(0);");
+		sqlDb->query(
+			"call create_partitions_ipacc(1);");
+	} else {
+		sqlDb->query(
+			string("call `") + mysql_database + "`.create_partitions_ipacc('" + mysql_database + "', 0);");
+		sqlDb->query(
+			string("call `") + mysql_database + "`.create_partitions_ipacc('" + mysql_database + "', 1);");
+	}
 	delete sqlDb;
 	syslog(LOG_NOTICE, "create ipacc partitions - end");
 }
@@ -3946,23 +4187,36 @@ void dropMysqlPartitionsCdr() {
 			vector<string> partitions_http;
 			vector<string> partitions_enum;
 			if(counterDropPartitions == 0) {
-				sqlDb->query(string("select partition_name from information_schema.partitions where table_schema='") + 
-					     mysql_database+ "' and table_name='cdr' and partition_name<='" + limitPartName+ "' order by partition_name");
-				SqlDb_row row;
-				while((row = sqlDb->fetchRow())) {
-					partitions.push_back(row["partition_name"]);
-				}
-				if(opt_enable_lua_tables) {
+				if(cloud_host[0]) {
+					sqlDb->query("explain partitions select * from cdr");
+					SqlDb_row row = sqlDb->fetchRow();
+					if(row) {
+						vector<string> exists_partitions = split(row["partitions"], ',');
+						for(size_t i = 0; i < exists_partitions.size(); i++) {
+							if(exists_partitions[i] <= limitPartName) {
+								partitions.push_back(exists_partitions[i]);
+							}
+						}
+					}
+				} else {
 					sqlDb->query(string("select partition_name from information_schema.partitions where table_schema='") + 
-						     mysql_database+ "' and table_name='http_jj' and partition_name<='" + limitPartName+ "' order by partition_name");
+						     mysql_database+ "' and table_name='cdr' and partition_name<='" + limitPartName+ "' order by partition_name");
 					SqlDb_row row;
 					while((row = sqlDb->fetchRow())) {
-						partitions_http.push_back(row["partition_name"]);
+						partitions.push_back(row["partition_name"]);
 					}
-					sqlDb->query(string("select partition_name from information_schema.partitions where table_schema='") + 
-						     mysql_database+ "' and table_name='enum_jj' and partition_name<='" + limitPartName+ "' order by partition_name");
-					while((row = sqlDb->fetchRow())) {
-						partitions_enum.push_back(row["partition_name"]);
+					if(opt_enable_lua_tables) {
+						sqlDb->query(string("select partition_name from information_schema.partitions where table_schema='") + 
+							     mysql_database+ "' and table_name='http_jj' and partition_name<='" + limitPartName+ "' order by partition_name");
+						SqlDb_row row;
+						while((row = sqlDb->fetchRow())) {
+							partitions_http.push_back(row["partition_name"]);
+						}
+						sqlDb->query(string("select partition_name from information_schema.partitions where table_schema='") + 
+							     mysql_database+ "' and table_name='enum_jj' and partition_name<='" + limitPartName+ "' order by partition_name");
+						while((row = sqlDb->fetchRow())) {
+							partitions_enum.push_back(row["partition_name"]);
+						}
 					}
 				}
 			} else {
@@ -3998,11 +4252,24 @@ void dropMysqlPartitionsCdr() {
 			strftime(limitPartName, sizeof(limitPartName), "p%y%m%d", prevDayTime);
 			vector<string> partitions;
 			if(counterDropPartitions == 0) {
-				sqlDb->query(string("select partition_name from information_schema.partitions where table_schema='") + 
-					     mysql_database+ "' and table_name='register_state' and partition_name<='" + limitPartName+ "' order by partition_name");
-				SqlDb_row row;
-				while((row = sqlDb->fetchRow())) {
-					partitions.push_back(row["partition_name"]);
+				if(cloud_host[0]) {
+					sqlDb->query("explain partitions select * from register_state");
+					SqlDb_row row = sqlDb->fetchRow();
+					if(row) {
+						vector<string> exists_partitions = split(row["partitions"], ',');
+						for(size_t i = 0; i < exists_partitions.size(); i++) {
+							if(exists_partitions[i] <= limitPartName) {
+								partitions.push_back(exists_partitions[i]);
+							}
+						}
+					}
+				} else {
+					sqlDb->query(string("select partition_name from information_schema.partitions where table_schema='") + 
+						     mysql_database+ "' and table_name='register_state' and partition_name<='" + limitPartName+ "' order by partition_name");
+					SqlDb_row row;
+					while((row = sqlDb->fetchRow())) {
+						partitions.push_back(row["partition_name"]);
+					}
 				}
 			} else {
 				partitions.push_back(limitPartName);
@@ -4020,11 +4287,24 @@ void dropMysqlPartitionsCdr() {
 			strftime(limitPartName, sizeof(limitPartName), "p%y%m%d", prevDayTime);
 			vector<string> partitions;
 			if(counterDropPartitions == 0) {
-				sqlDb->query(string("select partition_name from information_schema.partitions where table_schema='") + 
-					     mysql_database+ "' and table_name='register_failed' and partition_name<='" + limitPartName+ "' order by partition_name");
-				SqlDb_row row;
-				while((row = sqlDb->fetchRow())) {
-					partitions.push_back(row["partition_name"]);
+				if(cloud_host[0]) {
+					sqlDb->query("explain partitions select * from register_failed");
+					SqlDb_row row = sqlDb->fetchRow();
+					if(row) {
+						vector<string> exists_partitions = split(row["partitions"], ',');
+						for(size_t i = 0; i < exists_partitions.size(); i++) {
+							if(exists_partitions[i] <= limitPartName) {
+								partitions.push_back(exists_partitions[i]);
+							}
+						}
+					}
+				} else {
+					sqlDb->query(string("select partition_name from information_schema.partitions where table_schema='") + 
+						     mysql_database+ "' and table_name='register_failed' and partition_name<='" + limitPartName+ "' order by partition_name");
+					SqlDb_row row;
+					while((row = sqlDb->fetchRow())) {
+						partitions.push_back(row["partition_name"]);
+					}
 				}
 			} else {
 				partitions.push_back(limitPartName);

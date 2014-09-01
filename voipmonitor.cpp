@@ -46,10 +46,6 @@
 #include <sstream>
 #include <dirent.h>
 
-#ifdef ISCURL
-#include <curl/curl.h>
-#endif
-
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
@@ -213,7 +209,6 @@ int opt_dup_check_ipheader = 1;
 int rtptimeout = 300;
 int sipwithoutrtptimeout = 3600;
 int absolute_timeout = 4 * 3600;
-char opt_cdrurl[1024] = "";
 int opt_destination_number_mode = 1;
 int opt_update_dstnum_onanswer = 0;
 int opt_cleanspool_interval = 0; // number of seconds between cleaning spool directory. 0 = disabled
@@ -546,6 +541,9 @@ int opt_sip_send_before_packetbuffer = 0;
 int opt_enable_jitterbuffer_asserts = 0;
 int opt_hide_message_content = 0;
 char opt_hide_message_content_secret[1024] = "";
+
+char opt_bogus_dumper_path[1204];
+BogusDumper *bogusDumper;
 
 
 #include <stdio.h>
@@ -883,9 +881,7 @@ void *storing_cdr( void *dummy ) {
 		}
 		
 		if(request_iptelnum_reload == 1) { reload_capture_rules(); request_iptelnum_reload = 0;};
-#ifdef ISCURL
-		string cdrtosend;
-#endif
+		
 		if(verbosity > 0 && !opt_pcap_queue) { 
 			ostringstream outStr;
 			outStr << "calls[" << calls_counter << "]";
@@ -929,12 +925,6 @@ void *storing_cdr( void *dummy ) {
 					call->saveMessageToDb();
 				}
 			}
-#ifdef ISCURL
-			if(opt_cdrurl[0] != '\0') {
-				cdrtosend += call->getKeyValCDRtext();
-				cdrtosend += "##vmdelimiter###\n";
-			}
-#endif
 			// Close SIP and SIP+RTP dump files ASAP to save file handles
 			call->getPcap()->close();
 			call->getPcapSip()->close();
@@ -951,11 +941,6 @@ void *storing_cdr( void *dummy ) {
 			storingCdrLastWriteAt = getActDateTimeF();
 		}
 
-#ifdef ISCURL
-		if(opt_cdrurl[0] != '\0' && cdrtosend.length() > 0) {
-			sendCDR(cdrtosend);
-		}
-#endif
 		if(terminating) {
 			break;
 		}
@@ -1685,9 +1670,6 @@ int load_config(char *fname) {
 	if((value = ini.GetValue("general", "sqlcallend", NULL))) {
 		opt_callend = yesno(value);
 	}
-	if((value = ini.GetValue("general", "cdrurl", NULL))) {
-		strncpy(opt_cdrurl, value, sizeof(opt_cdrurl) - 1);
-	}
 	if((value = ini.GetValue("general", "destination_number_mode", NULL))) {
 		opt_destination_number_mode = atoi(value);
 	}
@@ -2025,6 +2007,10 @@ int load_config(char *fname) {
 		strncpy(opt_hide_message_content_secret, value, sizeof(opt_hide_message_content_secret));
 	}
 
+	if((value = ini.GetValue("general", "bogus_dumper_path", NULL))) {
+		strncpy(opt_bogus_dumper_path, value, sizeof(opt_bogus_dumper_path));
+	}
+
 	/*
 	
 	packetbuffer default configuration
@@ -2297,10 +2283,6 @@ int main(int argc, char *argv[]) {
 	num_threads = sysconf( _SC_NPROCESSORS_ONLN ) - 1;
 	set_mac();
 
-#ifdef ISCURL
-	curl_global_init(CURL_GLOBAL_ALL);
-#endif
-
 	thread_setup();
 	int option_index = 0;
 	static struct option long_options[] = {
@@ -2355,6 +2337,7 @@ int main(int argc, char *argv[]) {
 	    {"pcapbuffered", 0, 0, 'U'},
 	    {"test", 0, 0, 'X'},
 	    {"allsipports", 0, 0, 'y'},
+	    {"sipports", 1, 0, 'Y'},
 	    {"skinny", 0, 0, 200},
 /*
 	    {"maxpoolsize", 1, 0, NULL},
@@ -2402,6 +2385,14 @@ int main(int argc, char *argv[]) {
 				}
 				sipportmatrix[443] = 1;
 				sipportmatrix[80] = 1;
+				break;
+			case 'Y':
+				{
+					vector<string> result = explode(optarg, ',');
+					for (size_t tier = 0; tier < result.size(); tier++) {
+						sipportmatrix[atoi(result[tier].c_str())] = 1;
+					}
+				}
 				break;
 			case 'm':
 				rtptimeout = atoi(optarg);
@@ -2886,7 +2877,10 @@ int main(int argc, char *argv[]) {
 		const char *hostnames[] = {
 			"voipmonitor.org",
 			"www.voipmonitor.org",
-			"download.voipmonitor.org"
+			"download.voipmonitor.org",
+			"cloud.voipmonitor.org",
+			"cloud2.voipmonitor.org",
+			"cloud3.voipmonitor.org"
 		};
 		for(unsigned int i = 0; i < sizeof(hostnames) / sizeof(hostnames[0]); i++) {
 			hostent *conn_server_record = gethostbyname(hostnames[i]);
@@ -3413,6 +3407,10 @@ int main(int argc, char *argv[]) {
 		sipSendSocket = new SocketSimpleBufferWrite("send sip", sipSendSocket_ip_port);
 		sipSendSocket->startWriteThread();
 	}
+	
+	if(opt_bogus_dumper_path[0]) {
+		bogusDumper = new BogusDumper(opt_bogus_dumper_path);
+	}
 
 #ifndef FREEBSD
 	if(opt_scanpcapdir[0] != '\0') {
@@ -3838,6 +3836,11 @@ int main(int argc, char *argv[]) {
 	if(sqlStore) {
 		delete sqlStore;
 	}
+	
+	if(opt_bogus_dumper_path[0]) {
+		delete bogusDumper;
+	}
+	
 	thread_cleanup();
 }
 
@@ -3952,10 +3955,8 @@ void test_parsepacket() {
 	ParsePacket pp;
 	pp.setStdParse();
  
-	char *str = (char*)"REGISTER sip:mx.com SIP/2.0\r\nv: SIP/2.0/UDP 1.2.3.4:5080;branch=asf4aas-5454sadfasfasdf545fsd454asfd46saf;nat=true\r\nv: SIP/2.0/UDP 5.6.7.8:5060;rport=5060;branch=asdf4as54f65as4df5sdaffds\r\nRecord-Route: <sip:1.2.3.4:5080;transport=udp;dest=5.6.7.8-5060;to-tag=6546565654;lr=1>\r\nf: <sip:65465465464455@mx.com>;tag=6546565654\r\nt: <sip:65465465464455@mx.com>\r\ni: 74EB5975C4E31329@5.6.7.8\r\nCSeq: 128752 REGISTER\r\nMax-Forwards: 10\r\nAccept-Encoding: identity\r\nAccept: application/sdp, multipart/mixed\r\nAllow: INVITE,ACK,OPTIONS,CANCEL,BYE,UPDATE,PRACK,INFO,SUBSCRIBE,NOTIFY,REFER,MESSAGE,PUBLISH\r\nAllow-Events: telephone-event,refer,reg\r\nSupported: 100rel,replaces\r\nl: 0\r\n\r\n";
-	for(int i = 0; i < 100000; i++) {
-		pp.parseData(str, strlen(str), true);
-	}
+	char *str = (char*)"";
+	cout << pp.parseData(str, strlen(str), true) << endl;
 	
 	pp.debugData();
 }
@@ -3970,7 +3971,7 @@ void test_parsepacket2() {
 	//pp.getContent("test2")->content = "2";
 	//pp.getContent("test3")->content = "3";
 	
-	char *str = "test1abc\ncontent-length: 20 \rxx\r\n\r\ntEst2def\rtest3ghi\n";
+	char *str = (char*)"test1abc\ncontent-length: 20 \rxx\r\n\r\ntEst2def\rtest3ghi\n";
 	//          12345678 90123456789012345678 901 2 3 4 567890123456789012
 	//                    1         2          3             4         5
 	
