@@ -1,3 +1,9 @@
+10.0.29 1.9.2014
+================
+- handle memory allocation failure when there is no free RAM (do not crash)
+- fix support for multiple contacts for SIP REGISTER instead of replacing it with the latest REGISTER.
+
+
 10.0.28 28.8.2014
 =================
 - fix problem with multiple SIP messages in one TCP message resulting in garbled SIP response codes

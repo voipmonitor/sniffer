@@ -2288,7 +2288,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 /* TODO: implement failover -> write INSERT into file */
 int
 Call::saveRegisterToDb(bool enableBatchIfPossible) {
-
+ 
 	if(this->msgcount <= 1 or this->lastSIPresponseNum == 401 or this->lastSIPresponseNum == 403) {
 		this->regstate = 2;
 	}
@@ -2330,7 +2330,31 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 		stringstream calldate;
 		calldate << calltime();
 
-		query = "INSERT INTO register_state (created_at, sipcallerip, from_num, to_num, to_domain, contact_num, contact_domain, digestusername, expires, state, ua_id) SELECT expires_at, sipcallerip, from_num, to_num, to_domain, contact_num, contact_domain, digestusername, expires, 5, ua_id FROM register WHERE expires_at <= FROM_UNIXTIME(" + calldate.str() + ")";
+		query = "INSERT INTO register_state \
+			 (created_at, \
+			  sipcallerip, \
+			  from_num, \
+			  to_num, \
+			  to_domain, \
+			  contact_num, \
+			  contact_domain, \
+			  digestusername, \
+			  expires, \
+			  state, \
+			  ua_id) \
+			 SELECT expires_at, \
+				sipcallerip, \
+				from_num, \
+				to_num, \
+				to_domain, \
+				contact_num, \
+				contact_domain, \
+				digestusername, \
+				expires, \
+				5, \
+				ua_id \
+			FROM register \
+			WHERE expires_at <= FROM_UNIXTIME(" + calldate.str() + ")";
 		if(enableBatchIfPossible && isTypeDb("mysql")) {
 			qp = query + "; ";
 			qp += "DELETE FROM register WHERE expires_at <= FROM_UNIXTIME(" + calldate.str() + ")";
@@ -2393,8 +2417,9 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 				       "UNIX_TIMESTAMP(expires_at) AS expires_at, " +
 				       "_LC_[(UNIX_TIMESTAMP(expires_at) < UNIX_TIMESTAMP(" + sqlEscapeStringBorder(sqlDateTimeString(calltime())) + "))] AS expired " +
 				"FROM " + register_table + " " +
-				"WHERE to_num = " + sqlEscapeStringBorder(called) + " AND to_domain = " + sqlEscapeStringBorder(called_domain) + 
-					//" AND digestusername = " + sqlEscapeStringBorder(digest_username) + " " +
+				"WHERE to_num = " + sqlEscapeStringBorder(called) + " AND to_domain = " + sqlEscapeStringBorder(called_domain) + " AND " +
+				      "contact_num = " + sqlEscapeStringBorder(contact_num) + " AND contact_domain = " + sqlEscapeStringBorder(contact_domain) + 
+				      //" AND digestusername = " + sqlEscapeStringBorder(digest_username) + " " +
 				"ORDER BY ID DESC"; // LIMIT 1 
 //			if(verbosity > 2) cout << query << "\n";
 			{

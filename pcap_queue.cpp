@@ -195,7 +195,14 @@ bool pcap_block_store::add(pcap_pkthdr *header, u_char *packet, int offset, int 
 		return(false);
 	}
 	if(!this->block) {
-		this->block = (u_char*)malloc(opt_pcap_queue_block_max_size);
+		while(true) {
+			this->block = (u_char*)malloc(opt_pcap_queue_block_max_size);
+			if(this->block) {
+				break;
+			}
+			syslog(LOG_ERR, "not enough memory for alloc packetbuffer block");
+			sleep(1);
+		}
 	}
 	if(!this->offsets_size) {
 		this->offsets_size = _opt_pcap_queue_block_offset_inc_size;

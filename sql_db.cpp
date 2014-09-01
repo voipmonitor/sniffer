@@ -3011,23 +3011,108 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 				DECLARE _state INT; \
 				DECLARE _expires_at DATETIME; \
 				DECLARE _expired INT; \
-				SELECT ID, state, expires_at, (UNIX_TIMESTAMP(expires_at) < UNIX_TIMESTAMP(calltime)) AS expired INTO _ID, _state, _expires_at, _expired FROM register WHERE to_num = called AND to_domain = called_domain ORDER BY ID DESC LIMIT 1; \
+				SELECT ID, \
+				       state, \
+				       expires_at, \
+				       (UNIX_TIMESTAMP(expires_at) < UNIX_TIMESTAMP(calltime)) AS expired \
+				INTO _ID, _state, _expires_at, _expired FROM register \
+				WHERE to_num = called AND to_domain = called_domain AND \
+				      contact_num = contact_num_param AND contact_domain = contact_domain_param \
+				ORDER BY ID DESC LIMIT 1; \
 				IF ( _ID ) THEN \
 					DELETE FROM register WHERE ID = _ID; \
 					IF ( _expired > 5 ) THEN \
-						INSERT INTO `register_state` SET `id_sensor` = id_sensor, `fname` = fname, `created_at` = _expires_at, `sipcallerip` = sipcallerip, `sipcalledip` = sipcalledip, `from_num` = caller, `to_num` = called, `to_domain` = called_domain, `contact_num` = contact_num, `contact_domain` = contact_domain, `digestusername` = digest_username, `expires` = register_expires, state = 5, ua_id = getIdOrInsertUA(cdr_ua); \
+						INSERT INTO `register_state` \
+							SET `id_sensor` = id_sensor, \
+							    `fname` = fname, \
+							    `created_at` = _expires_at, \
+							    `sipcallerip` = sipcallerip, \
+							    `sipcalledip` = sipcalledip, \
+							    `from_num` = caller, \
+							    `to_num` = called, \
+							    `to_domain` = called_domain, \
+							    `contact_num` = contact_num_param, \
+							    `contact_domain` = contact_domain_param, \
+							    `digestusername` = digest_username, \
+							    `expires` = register_expires, \
+							    state = 5, \
+							    ua_id = getIdOrInsertUA(cdr_ua); \
 					END IF; \
 					IF ( _state <> regstate OR register_expires = 0) THEN \
-						INSERT INTO `register_state` SET `id_sensor` = id_sensor, `fname` = fname, `created_at` = calltime, `sipcallerip` = sipcallerip, `sipcalledip` = sipcalledip, `from_num` = caller, `to_num` = called, `to_domain` = called_domain, `contact_num` = contact_num, `contact_domain` = contact_domain, `digestusername` = digest_username, `expires` = register_expires, state = regstate, ua_id = getIdOrInsertUA(cdr_ua); \
+						INSERT INTO `register_state` \
+							SET `id_sensor` = id_sensor, \
+							    `fname` = fname, \
+							    `created_at` = calltime, \
+							    `sipcallerip` = sipcallerip, \
+							    `sipcalledip` = sipcalledip, \
+							    `from_num` = caller, \
+							    `to_num` = called, \
+							    `to_domain` = called_domain, \
+							    `contact_num` = contact_num_param, \
+							    `contact_domain` = contact_domain_param, \
+							    `digestusername` = digest_username, \
+							    `expires` = register_expires, \
+							    state = regstate, \
+							    ua_id = getIdOrInsertUA(cdr_ua); \
 					END IF; \
 				ELSE \
-					INSERT INTO `register_state` SET `id_sensor` = id_sensor, `fname` = fname, `created_at` = calltime, `sipcallerip` = sipcallerip, `sipcalledip` = sipcalledip, `from_num` = caller, `to_num` = called, `to_domain` = called_domain, `contact_num` = contact_num, `contact_domain` = contact_domain, `digestusername` = digest_username, `expires` = register_expires, state = regstate, ua_id = getIdOrInsertUA(cdr_ua);\
+					INSERT INTO `register_state` \
+						SET `id_sensor` = id_sensor, \
+						    `fname` = fname, \
+						    `created_at` = calltime, \
+						    `sipcallerip` = sipcallerip, \
+						    `sipcalledip` = sipcalledip, \
+						    `from_num` = caller, \
+						    `to_num` = called, \
+						    `to_domain` = called_domain, \
+						    `contact_num` = contact_num_param, \
+						    `contact_domain` = contact_domain_param, \
+						    `digestusername` = digest_username, \
+						    `expires` = register_expires, \
+						    state = regstate, \
+						    ua_id = getIdOrInsertUA(cdr_ua);\
 				END IF; \
 				IF ( register_expires > 0 ) THEN \
-					INSERT INTO `register` SET `id_sensor` = id_sensor, `fname` = fname, `calldate` = calltime, `sipcallerip` = sipcallerip, `sipcalledip` = sipcalledip, `from_num` = caller, `from_name` = callername, `from_domain` = caller_domain, `to_num` = called, `to_domain` = called_domain, `contact_num` = contact_num, `contact_domain` = contact_domain, `digestusername` = digest_username, `digestrealm` = digest_realm, `expires` = register_expires, state = regstate, ua_id = getIdOrInsertUA(cdr_ua), `expires_at` = mexpires_at; \
+					INSERT INTO `register` \
+						SET `id_sensor` = id_sensor, \
+						    `fname` = fname, \
+						    `calldate` = calltime, \
+						    `sipcallerip` = sipcallerip, \
+						    `sipcalledip` = sipcalledip, \
+						    `from_num` = caller, \
+						    `from_name` = callername, \
+						    `from_domain` = caller_domain, \
+						    `to_num` = called, \
+						    `to_domain` = called_domain, \
+						    `contact_num` = contact_num_param, \
+						    `contact_domain` = contact_domain_param, \
+						    `digestusername` = digest_username, \
+						    `digestrealm` = digest_realm, \
+						    `expires` = register_expires, \
+						    state = regstate, \
+						    ua_id = getIdOrInsertUA(cdr_ua), \
+						    `expires_at` = mexpires_at; \
 				END IF; \
 			END",
-			"PROCESS_SIP_REGISTER", "(IN calltime VARCHAR(32), IN caller VARCHAR(64), IN callername VARCHAR(64), IN caller_domain VARCHAR(64), IN called VARCHAR(64), IN called_domain VARCHAR(64), IN sipcallerip INT UNSIGNED, sipcalledip INT UNSIGNED, contact_num VARCHAR(64), IN contact_domain VARCHAR(64), IN digest_username VARCHAR(255), IN digest_realm VARCHAR(255), IN regstate INT, mexpires_at VARCHAR(128), IN register_expires INT, IN cdr_ua VARCHAR(255), IN fname BIGINT, IN id_sensor INT)");
+			"PROCESS_SIP_REGISTER", 
+			"(IN calltime VARCHAR(32), \
+			  IN caller VARCHAR(64), \
+			  IN callername VARCHAR(64), \
+			  IN caller_domain VARCHAR(64), \
+			  IN called VARCHAR(64), \
+			  IN called_domain VARCHAR(64), \
+			  IN sipcallerip INT UNSIGNED, \
+			  IN sipcalledip INT UNSIGNED, \
+			  IN contact_num_param VARCHAR(64), \
+			  IN contact_domain_param VARCHAR(64), \
+			  IN digest_username VARCHAR(255), \
+			  IN digest_realm VARCHAR(255), \
+			  IN regstate INT, \
+			  IN mexpires_at VARCHAR(128), \
+			  IN register_expires INT, \
+			  IN cdr_ua VARCHAR(255), \
+			  IN fname BIGINT, \
+			  IN id_sensor INT)");
 
 	//END SQL SCRIPTS
 	}
