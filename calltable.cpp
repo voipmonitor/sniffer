@@ -513,7 +513,7 @@ Call::dirnamesqlfiles() {
 
 /* add ip adress and port to this call */
 int
-Call::add_ip_port(in_addr_t sip_src_addr, in_addr_t addr, unsigned short port, char *sessid, char *ua, unsigned long ua_len, bool iscaller, int *rtpmap) {
+Call::add_ip_port(in_addr_t sip_src_addr, in_addr_t addr, unsigned short port, char *sessid, char *ua, unsigned long ua_len, bool iscaller, int *rtpmap, bool fax, bool reverse) {
 	if(verbosity >= 4) {
 		struct in_addr in;
 		in.s_addr = addr;
@@ -525,7 +525,6 @@ Call::add_ip_port(in_addr_t sip_src_addr, in_addr_t addr, unsigned short port, c
 			return 1;
 		}
 	}
-
 	if(ipport_n == MAX_IP_PER_CALL){
 		char tmp[18];
 		struct in_addr in;
@@ -547,6 +546,7 @@ Call::add_ip_port(in_addr_t sip_src_addr, in_addr_t addr, unsigned short port, c
 	this->ip_port[ipport_n].addr = addr;
 	this->ip_port[ipport_n].port = port;
 	this->ip_port[ipport_n].iscaller = iscaller;
+	this->ip_port[ipport_n].fax = fax;
 	if(sessid) {
 		memcpy(this->ip_port[ipport_n].sessid, sessid, MAXLEN_SDP_SESSID);
 	} else {
@@ -554,6 +554,7 @@ Call::add_ip_port(in_addr_t sip_src_addr, in_addr_t addr, unsigned short port, c
 	}
 	
 	memcpy(this->rtpmap[RTPMAP_BY_CALLERD ? iscaller : ipport_n], rtpmap, MAX_RTPMAP * sizeof(int));
+	this->ip_port[ipport_n].reverse = reverse;
 	ipport_n++;
 	return 0;
 }
@@ -573,9 +574,9 @@ Call::refresh_data_ip_port(in_addr_t addr, unsigned short port, bool iscaller, i
 }
 
 void
-Call::add_ip_port_hash(in_addr_t sip_src_addr, in_addr_t addr, unsigned short port, char *sessid, char *ua, unsigned long ua_len, bool iscaller, int *rtpmap, bool fax, int allowrelation) {
-	if(sessid) {
-		int sessidIndex = get_index_by_sessid(sessid, sip_src_addr);
+Call::add_ip_port_hash(in_addr_t sip_src_addr, in_addr_t addr, unsigned short port, char *sessid, char *ua, unsigned long ua_len, bool iscaller, int *rtpmap, bool fax, bool reverse, int allowrelation) {
+	if(sessid && !reverse) {
+		int sessidIndex = get_index_by_sessid(sessid, sip_src_addr, false);
 		if(sessidIndex >= 0) {
 			if(this->ip_port[sessidIndex].sip_src_addr == sip_src_addr &&
 			   (this->ip_port[sessidIndex].addr != addr ||
@@ -592,11 +593,17 @@ Call::add_ip_port_hash(in_addr_t sip_src_addr, in_addr_t addr, unsigned short po
 				this->ip_port[sessidIndex].port = port;
 				this->ip_port[sessidIndex].iscaller = iscaller;
 				this->refresh_data_ip_port(addr, port, iscaller, rtpmap);
+				while((sessidIndex = get_index_by_sessid(sessid, sip_src_addr, true)) >= 0) {
+					((Calltable*)calltable)->hashRemove(this, ip_port[sessidIndex].addr, ip_port[sessidIndex].port);
+					if(opt_rtcp) {
+						((Calltable*)calltable)->hashRemove(this, ip_port[sessidIndex].addr, ip_port[sessidIndex].port + 1);
+					}
+				}
 			}
 			return;
 		}
 	}
-	if(this->add_ip_port(sip_src_addr, addr, port, sessid, ua, ua_len, iscaller, rtpmap) != -1) {
+	if(this->add_ip_port(sip_src_addr, addr, port, sessid, ua, ua_len, iscaller, rtpmap, fax, reverse) != -1) {
 		((Calltable*)calltable)->hashAdd(addr, port, this, iscaller, 0, fax, allowrelation);
 		if(opt_rtcp) {
 			((Calltable*)calltable)->hashAdd(addr, port + 1, this, iscaller, 1, fax);
@@ -610,7 +617,9 @@ Call::find_by_ip_port(in_addr_t addr, unsigned short port, int *iscaller){
 	for(int i = 0; i < ipport_n; i++) {
 		if(this->ip_port[i].addr == addr && this->ip_port[i].port == port) {
 			// we have found it
-			*iscaller = this->ip_port[i].iscaller;
+			if(iscaller) {
+				*iscaller = this->ip_port[i].iscaller;
+			}
 			return this;
 		}
 	}
@@ -643,10 +652,11 @@ Call::find_by_sessid(char *sessid){
 }
 
 int
-Call::get_index_by_sessid(char *sessid, in_addr_t sip_src_addr){
+Call::get_index_by_sessid(char *sessid, in_addr_t sip_src_addr, int reverse){
 	for(int i = 0; i < ipport_n; i++) {
 		if(!memcmp(this->ip_port[i].sessid, sessid, MAXLEN_SDP_SESSID) &&
-		   (!sip_src_addr || sip_src_addr == this->ip_port[i].sip_src_addr)) {
+		   (!sip_src_addr || sip_src_addr == this->ip_port[i].sip_src_addr) &&
+		   (reverse == -1 || reverse == this->ip_port[i].reverse)) {
 			// we have found it
 			return i;
 		}

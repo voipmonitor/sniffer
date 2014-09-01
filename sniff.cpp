@@ -1825,14 +1825,11 @@ void process_sdp(Call *call, unsigned int saddr, int source, unsigned int daddr,
 			call->handle_dscp(header_ip, saddr, daddr, &iscalled);
 			//syslog(LOG_ERR, "ADDR: %u port %u iscalled[%d]\n", tmp_addr, tmp_port, iscalled);
 		
-			call->add_ip_port_hash(saddr, tmp_addr, tmp_port, sessid, ua, ua_len, !iscalled, rtpmap, fax);
+			call->add_ip_port_hash(saddr, tmp_addr, tmp_port, sessid, ua, ua_len, !iscalled, rtpmap, fax, false);
 			// check if the IP address is listed in nat_aliases
 			in_addr_t alias = 0;
 			if((alias = match_nat_aliases(tmp_addr)) != 0) {
-				call->add_ip_port_hash(saddr, alias, tmp_port, sessid, ua, ua_len, !iscalled, rtpmap, fax);
-			}
-			if(opt_sdp_reverse_ipport) {
-				call->add_ip_port_hash(saddr, saddr, tmp_port, sessid, ua, ua_len, !iscalled, rtpmap, fax);
+				call->add_ip_port_hash(saddr, alias, tmp_port, sessid, ua, ua_len, !iscalled, rtpmap, fax, false);
 			}
 		}
 	} else {
@@ -2923,6 +2920,21 @@ rtpcheck:
 			}
 
 			*voippacket = 1;
+			
+			if(!call->find_by_ip_port(saddr, source)) {
+				int index_ip_port_dest = call->get_index_by_ip_port(daddr, dest);
+				if(index_ip_port_dest >= 0) {
+					call->add_ip_port_hash(
+						call->ip_port[index_ip_port_dest].sip_src_addr,
+						saddr, source,
+						call->ip_port[index_ip_port_dest].sessid,
+						NULL, 0,
+						!call->ip_port[index_ip_port_dest].iscaller,
+						call->rtpmap[RTPMAP_BY_CALLERD ? call->ip_port[index_ip_port_dest].iscaller : index_ip_port_dest],
+						call->ip_port[index_ip_port_dest].fax,
+						true);
+				}
+			}
 
 			// we have packet, extend pending destroy requests
 			if(call->destroy_call_at > 0 && header->ts.tv_sec + 5 > call->destroy_call_at) {
@@ -3003,102 +3015,6 @@ rtpcheck:
 
 			}
 		}
-	} else if ((calls = calltable->hashfind_by_ip_port(saddr, source))){
-		++counter_rtp_packets;
-		// packet (RTP[C]) by source:port is already part of some stored call 
-		for (node_call = (hash_node_call *)calls; node_call != NULL; node_call = node_call->next) {
-			call = node_call->call;
-			iscaller = node_call->iscaller;
-			is_rtcp = node_call->is_rtcp;
-			is_fax = node_call->is_fax;
-
-			if(pcap_drop_flag) {
-				call->pcap_drop = pcap_drop_flag;
-			}
-
-			if(!is_rtcp && !is_fax &&
-			   (datalen < RTP_FIXED_HEADERLEN ||
-			    header->caplen <= (unsigned)(datalen - RTP_FIXED_HEADERLEN))) {
-				return(call);
-			}
-
-			*voippacket = 1;
-
-			// we have packet, extend pending destroy requests
-			if(call->destroy_call_at > 0 && header->ts.tv_sec + 5 > call->destroy_call_at) {
-				call->destroy_call_at = header->ts.tv_sec + 5; 
-			}
-
-			int can_thread = 1;
-			if(header->caplen > MAXPACKETLENQRING) {
-				// packets larger than MAXPACKETLENQRING was created in special heap and is destroyd immediately after leaving this functino - thus do not queue it 
-				// TODO: this can be enhanced by pasing flag that the packet should be freed
-				can_thread = 0;
-			}
-
-			if(is_fax) {
-				call->seenudptl = 1;
-			}
-
-			if(is_rtcp) {
-				if(rtp_threaded && can_thread) {
-					add_to_rtp_thread_queue(call, (unsigned char*) data, datalen, dataoffset, header, saddr, daddr, source, dest, !iscaller, is_rtcp,
-								block_store, block_store_index, 
-								opt_saveRTP || opt_saveRTCP, 
-								packet, istcp, dlt, sensor_id);
-				} else {
-					call->read_rtcp((unsigned char*) data, datalen, dataoffset, header, saddr, daddr, source, dest, !iscaller,
-							false, packet, istcp, dlt, sensor_id);
-				}
-				if((!rtp_threaded || !opt_rtpsave_threaded) &&
-				   (opt_saveRTP || opt_saveRTCP)) {
-					save_packet(call, header, packet, saddr, source, daddr, dest, istcp, header_ip, data, datalen, dataoffset, TYPE_RTP, 
-						    dlt, sensor_id);
-				}
-				if(logPacketSipMethodCall_enable) {
-					logPacketSipMethodCall(sip_method, lastSIPresponseNum, header, call);
-				}
-				return call;
-			}
-
-			// as we are searching by source address and find some call, revert iscaller 
-			if(rtp_threaded && can_thread) {
-				if(!((call->flags & FLAG_SAVERTP) || (call->isfax && opt_saveudptl)) && opt_saverfc2833) {
-					// if RTP is NOT saving but we still wants to save DTMF (rfc2833) and becuase RTP is going to be 
-					// queued and processed later in async queue we must decode if the RTP packet is DTMF here 
-					call->tmprtp.fill((unsigned char*)data, datalen, header, saddr, daddr, source, dest); //TODO: datalen can be shortned to only RTP header len
-					record = call->tmprtp.getPayload() == 101 ? 1 : 0;
-				}
-				add_to_rtp_thread_queue(call, (unsigned char*) data, datalen, dataoffset, header, saddr, daddr, source, dest, !iscaller, is_rtcp,
-							block_store, block_store_index, 
-							(call->flags & FLAG_SAVERTP) || (call->isfax && opt_saveudptl) || record, 
-							packet, istcp, dlt, sensor_id);
-				*was_rtp = 1;
-			} else {
-				call->read_rtp((unsigned char*) data, datalen, dataoffset, header, NULL, saddr, daddr, source, dest, !iscaller, &record,
-					       false, packet, istcp, dlt, sensor_id,
-					       block_store && block_store->ifname[0] ? block_store->ifname : NULL);
-				call->set_last_packet_time(header->ts.tv_sec);
-			}
-			if((!rtp_threaded || !opt_rtpsave_threaded) &&
-			   ((call->flags & FLAG_SAVERTP) || (call->isfax && opt_saveudptl) || record)) {
-				if((call->silencerecording || (opt_onlyRTPheader && !(call->flags & FLAG_SAVERTP))) && !call->isfax) {
-					if(datalen >= RTP_FIXED_HEADERLEN &&
-					   header->caplen > (unsigned)(datalen - RTP_FIXED_HEADERLEN)) {
-						tmp_u32 = header->caplen;
-						header->caplen = header->caplen - (datalen - RTP_FIXED_HEADERLEN);
-						save_packet(call, header, packet, saddr, source, daddr, dest, istcp, header_ip, data, datalen, dataoffset, TYPE_RTP, 
-							    dlt, sensor_id);
-						header->caplen = tmp_u32;
-					}
-				} else {
-					save_packet(call, header, packet, saddr, source, daddr, dest, istcp, header_ip, data, datalen, dataoffset, TYPE_RTP, 
-						    dlt, sensor_id);
-				}
-			}
-		}
-
-	// packet does not belongs to established call, check if it is on SIP port
 	} else {
 		if(opt_rtpnosip) {
 			// decoding RTP without SIP signaling is enabled. Check if it is port >= 1024 and if RTP version is == 2
@@ -3162,8 +3078,7 @@ rtpcheck:
 				syslog(LOG_NOTICE,"pcap_filename: [%s]\n",str2);
 			}
 
-			call->add_ip_port_hash(saddr, daddr, dest, NULL, s, l, 1, rtpmap, false);
-			call->add_ip_port_hash(saddr, saddr, source, NULL, s, l, 0, rtpmap, false);
+			call->add_ip_port_hash(saddr, daddr, dest, NULL, s, l, 1, rtpmap, false, false);
 			
 		}
 		// we are not interested in this packet
