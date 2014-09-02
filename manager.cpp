@@ -441,8 +441,6 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 				}
 				res = -1;
 			}
-			snprintf(sendbuf, BUFSIZE, "ERROR while creating graph of type %s from:%s to:%s resx:%i resy:%i slopemode=%s, iconmode=%s\n", manager_args[1], fromat, toat, resx, resy, slope?"yes":"no", icon?"yes":"no");
-
 			if ((dstfile == NULL) && (res == 0)) {		//send from stdout of a command (binary data)
 				if (verbosity > 1) syslog(LOG_NOTICE, "COMMAND for system pipe:%s", sendcommand);
 				if (sendvm_from_stdout_of_command(sendcommand, client, sshchannel, sendbuf, sizeof(sendbuf), 0) == -1 ){
@@ -455,6 +453,7 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 				if (verbosity > 1) syslog(LOG_NOTICE, "COMMAND for system:%s", sendcommand);
 				res = system(sendcommand);
 				if ((verbosity > 0) && (res > 0)) snprintf(sendbuf, BUFSIZE, "ERROR while creating graph of type %s from:%s to:%s resx:%i resy:%i slopemode=%s, iconmode=%s\n", manager_args[1], fromat, toat, resx, resy, slope?"yes":"no", icon?"yes":"no");
+				if ((verbosity > 0) && (res == 0)) snprintf(sendbuf, BUFSIZE, "Created graph of type %s from:%s to:%s resx:%i resy:%i slopemode=%s, iconmode=%s in file %s\n", manager_args[1], fromat, toat, resx, resy, slope?"yes":"no", icon?"yes":"no", dstfile);
 				if (strlen(sendbuf)) {
 					if ((size = sendvm(client, sshchannel, sendbuf, strlen(sendbuf), 0)) == -1){
 						cerr << "Error sending data to client 3" << endl;

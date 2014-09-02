@@ -911,8 +911,8 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 	double rrdtCPU_t0 = 0.0;
 	double rrdtCPU_t1 = 0.0;
 	double rrdtCPU_t2 = 0.0;
-	int rrdtacCPU_nmt = 0;        //pocet vlaken
-	double rrdtacCPU_lastt = 0.0; //vytizeni posledniho vlakna
+	int rrdtacCPU_nmt = 0;        //number of threads
+	double rrdtacCPU_lastt = 0.0; //last thread load
 	double rrdRSSVSZ_rss = 0;
 	double rrdRSSVSZ_vsize = 0;
 	double rrdspeedmbs = 0.0;
@@ -1318,8 +1318,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 
 	if (opt_rrd) {
 		if (opt_rrd == 1) {
-			//CREATE:
-			//syslog(LOG_NOTICE,"Je cas vytvaret RRD\n");
+			//CREATE rrd files:
 			char filename[1000];
 			sprintf(filename, "%s/rrd/" ,opt_chdir);
 			mkdir_r(filename, 0777);
@@ -1345,14 +1344,14 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 		} else {
 			char filename[1000];
 			std::ostringstream cmdUpdate;
-			//UPDATES:
-			//vm_rrd_update_rrddrop();
+//			UPDATES of rrd files:
+			//update rrddrop
 			cmdUpdate << "N:" << rrddrop_exceeded;
 			cmdUpdate <<  ":" << rrddrop_packets;
 			sprintf(filename, "%s/rrd/db-drop.rrd", opt_chdir);
 			int rrdres = vm_rrd_update(filename, cmdUpdate.str().c_str());
 
-			//vm_rrd_update_rrdheap();
+			//update rrdheap;
 			cmdUpdate.str(std::string());
 			cmdUpdate << "N:" << rrdheap_buffer;
 			cmdUpdate <<  ":" << rrdheap_trash;
@@ -1360,7 +1359,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 			sprintf(filename, "%s/rrd/db-heap.rrd", opt_chdir);
 			rrdres = vm_rrd_update(filename, cmdUpdate.str().c_str());
 
-			//vm_rrd_update_rrdPS();
+			//update rrdPS;
 			cmdUpdate.str(std::string());
 			cmdUpdate << "N:" << rrdPS_C;
 			cmdUpdate <<  ":" << rrdPS_S0;
@@ -1370,7 +1369,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 			sprintf(filename, "%s/rrd/db-PS.rrd", opt_chdir);
 			rrdres = vm_rrd_update(filename, cmdUpdate.str().c_str());
 
-//			vm_rrd_update_rrdSQLq();
+			//update rrdSQLq;
 			cmdUpdate.str(std::string());
 			cmdUpdate << "N:" << rrdSQLq_C;
 			cmdUpdate <<  ":" << rrdSQLq_M;
@@ -1380,7 +1379,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 			sprintf(filename, "%s/rrd/db-SQLq.rrd", opt_chdir);
 			rrdres = vm_rrd_update(filename, cmdUpdate.str().c_str());
 
-//			vm_rrd_update_rrdtCPU();
+			//update rrdtCPU;
 			cmdUpdate.str(std::string());
 			cmdUpdate << "N:" << rrdtCPU_t0;
 			cmdUpdate <<  ":" << rrdtCPU_t1;
@@ -1388,26 +1387,26 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 			sprintf(filename, "%s/rrd/db-tCPU.rrd", opt_chdir);
 			rrdres = vm_rrd_update(filename, cmdUpdate.str().c_str());
 
-//			vm_rrd_update_rrdtacCPU();
+			//update rrdtacCPU;
 			cmdUpdate.str(std::string());
 			cmdUpdate << "N:" << ((double) (rrdtacCPU_nmt) + (double)((double) rrdtacCPU_lastt / 150.0));
 			sprintf(filename, "%s/rrd/db-tacCPU.rrd", opt_chdir);
 			rrdres = vm_rrd_update(filename, cmdUpdate.str().c_str());
 
-//			vm_rrd_update_rrdRSSVSZ();
+			//update rrdRSSVSZ;
 			cmdUpdate.str(std::string());
 			cmdUpdate << "N:" << rrdRSSVSZ_rss;
 			cmdUpdate <<  ":" << rrdRSSVSZ_vsize;
 			sprintf(filename, "%s/rrd/db-RSSVSZ.rrd", opt_chdir);
 			rrdres = vm_rrd_update(filename, cmdUpdate.str().c_str());
 
-//			vm_rrd_update_rrdspeedmbs();
+			//update rrdspeedmbs;
 			cmdUpdate.str(std::string());
 			cmdUpdate << "N:" << rrdspeedmbs;
 			sprintf(filename, "%s/rrd/db-speedmbs.rrd", opt_chdir);
 			rrdres = vm_rrd_update(filename, cmdUpdate.str().c_str());
 
-//			vm_rrd_update_rrdcallscounter();
+			//update rrdcallscounter;
 			cmdUpdate.str(std::string());
 			cmdUpdate << "N:" << rrdcallscounter;
 			sprintf(filename, "%s/rrd/db-callscounter.rrd", opt_chdir);

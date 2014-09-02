@@ -24,7 +24,7 @@ void rrd_vm_create_graph_tCPU_command(char *filename, char *fromatstyle, char *t
 	if (dstfile == NULL) 
 		cmdCreate << "`which rrdtool` graph - ";						//graph to stdout instead of file
 	else
-		cmdCreate << "`which rrdtool` graph " << dstfile << " ";
+		cmdCreate << "`which rrdtool` graph \"" << dstfile << "\" ";
 	cmdCreate << "-w " << resx << " -h " << resy << " -a PNG ";
 	cmdCreate << "--start " << fromatstyle << " --end " << toatstyle << " ";
 	cmdCreate << "--font DEFAULT:0:Courier ";
@@ -558,27 +558,6 @@ int vm_rrd_update(const char *filename, const char *value)
 	}
 	return res;
 }
-/*
-int vm_rrd_update(char *filename, int value)
-{
-	int res;
-	if(access(filename, 0|2) != -1)
-	{				//if rrd file exist and ha w permissions, we can update it 
-		syslog(LOG_NOTICE, "Updating RRD Database file: %s\n", filename);
-		char *commandStr;
-		int commandLen = snprintf(NULL,0,"update %s --template pl:rtt N:0:%d", filename, value);
-		commandStr = (char *) malloc(commandLen + 1);
-		sprintf(commandStr, "update %s --template pl:rtt N:0:%d", filename, value);
-		int res = rrd_call(commandStr);
-		syslog(LOG_NOTICE, "retval of rrd_call %s:%d",filename, res);
-		free(commandStr);
-	} else {		//rrd file is unaccessible
-		syslog(LOG_NOTICE, "Cannot update non existent RRD Database file: %s\n", filename);
-		res = -1;
-	}
-	return res;
-}
-*/
 
 static char *fgetslong(
 	char **aLinePtr,

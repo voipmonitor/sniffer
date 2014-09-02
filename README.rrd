@@ -1,0 +1,86 @@
+1) Enabling collecting stats into rrd files and vreating graphs (note:rrd files will be automaticaly saved into your spool directory into subdir rrd)
+	Prerequisite:
+		a) installed librrd into your OS
+			I) For debian 7 based systems:
+				a) apt-get install librrd4
+
+			II) Red Hat
+				a) yum install rrdtool
+
+			III) For centOS 
+				a)you need rpmForge downloaded
+					i) For Centos6 i686 download
+						# wget http://pkgs.repoforge.org/rpmforge-release/rpmforge-release-0.5.3-1.el6.rf.i686.rpm
+					ii) For Centos6 x86_64 download 
+						# wget http://pkgs.repoforge.org/rpmforge-release/rpmforge-release-0.5.3-1.el6.rf.x86_64.rpm
+					iii) For Centos 5 i386 download 
+						# wget http://pkgs.repoforge.org/rpmforge-release/rpmforge-release-0.5.3-1.el5.rf.i386.rpm
+					iv) For Centos5 x86_64 download
+						# wget http://pkgs.repoforge.org/rpmforge-release/rpmforge-release-0.5.3-1.el5.rf.x86_64.rpm
+
+				b)you need to install rpmForge
+					i) First install RPM-GPG-KEY
+						# rpm --import http://apt.sw.be/RPM-GPG-KEY.dag.txt
+					ii) Optionaly check what you downloaded (substitute X for your CentOS version 5 or 6)
+						# rpm -K rpmforge-release-0.5.3-1.elX.rf.*.rpm
+					iii) install rpmForge (substitute X for your CentOS version 5 or 6)
+						# rpm -i rpmforge-release-0.5.3-1.elX.rf.*.rpm
+
+				c)Finally install rrd tools
+					i) For x86_64 download
+						# yum install rrdtool.x86_64
+					ii) Otherwise
+						# yum install rrdtool.i686
+
+		b) in voipmonitor.conf setting check for option 'rrd' and set it to yes (default is yes)
+			rrd = yes
+
+2) How to create graphs from vm?
+	a) you can ask voipmonitor's manager to do it
+		I) recheck manager's setting in your voipmonitor.conf
+			i) listen only for localhost connection (see option managerip = 127.0.0.1)
+			ii) and at default port 5029 (see option managerport = 5029)
+
+		II) connect to voipmonitor's manager using telnet and check for available option for creategraph command
+			i) in your shell:
+				# telnet 127.0.0.1 5029
+			ii) You will see something like this after successfull connect:
+				Trying 127.0.0.1...
+				Connected to localhost.localdomain (127.0.0.1).
+				Escape character is '^]'.
+			iii) Enter 
+				creategraph
+			iv) If you will see folllowing line, creategraph is supported in this manager version:
+				Syntax: creategraph graph_type linuxTS_from linuxTS_to size_x_pixels size_y_pixels [slope-mode=0/1] [icon=0/1] [dstfile=if_no_spec.to_stdout]
+			v) you can connect again and issue commands bellow:
+				creategraph PS now-2weeks now 600 400 0 0 /tmp/graph_PS.png
+				creategraph SQLq now-2weeks now 600 400 0 0 /tmp/graph_SQLq.png
+				creategraph tCPU now-2weeks now 600 400 0 0 /tmp/graph_tCPU.png
+				creategraph drop now-2weeks now 600 400 0 0 /tmp/graph_drop.png
+				creategraph speed now-2weeks now 600 400 0 0 /tmp/graph_speed.png
+				creategraph heap now-2weeks now 600 400 0 0 /tmp/graph_heap.png
+				creategraph calls now-2weeks now 600 400 0 0 /tmp/graph_calls.png
+				creategraph tacCPU now-2weeks now 600 400 0 0 /tmp/graph_tacCPU.png
+				creategraph RSSVSZ now-2weeks now 600 400 0 0 /tmp/graph_RSSVSZ.png
+
+3)APENDIX creategraph Syntax:
+
+	GraphType is one of the following:
+		PS SQLq tCPU drop speed heap calls tacCPU RSSVSZ
+	linuxTS_from linuxTS_to
+		both arguments are at-style time format
+		for example from Aug-12-2014 to now: "12.8.1999 22:00" now
+		for example from 2 weeks ago, to 1 week ago: "now-2weeks" "now-1week"
+	size_x_pixels size_y_pixels
+		Determines final resolution in pixels of graph image. Minimal setting is: 400 200
+		Beware: If you choose lower resolution than 400 for x-axis or 200 for y-axis resulting graph will be treated as icon. (read bellow)
+	[slope-mode]
+		Choose 1, if you want to have slope curves. Default is 0
+	[icon]
+		Choose 1, if you want only fillings of graph (no descriptions no axis no lines only fill). Default 0
+	[dstfile]
+		Specifies file to which you want to save the graph.
+		If you want PNG image into stdout instead of file use here minus sign
+		If not defined. Used default - sign
+
+* arguments in square brackets are optional, if you don't define them defaults are used.

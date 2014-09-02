@@ -1,4 +1,6 @@
-//int vm_rrd_calls_update(char *filename, int eachseconds, struct timevalue *last_updated)
+/*****************************************************************************
+ *Based on rrd tool 1.4.3 by Tobi Oetiker
+ *****************************************************************************/
 int vm_rrd_create_rrdheap(const char *filename);
 int vm_rrd_create_rrddrop(const char *filename);
 int vm_rrd_create_rrdPS(const char *filename);
@@ -30,53 +32,7 @@ extern int verbosity;
 #ifndef RRDLIB_H_4FD7D37D56A448C392AF46508C56D3CC
 #define RRDLIB_H_4FD7D37D56A448C392AF46508C56D3CC
 
-/*****************************************************************************
- * RRDtool 1.4.3  Copyright by Tobi Oetiker, 1997-2010
- *****************************************************************************
- * rrdlib.h   Public header file for librrd
- *****************************************************************************
- * $Id$
- * $Log$
- * Revision 1.9  2005/02/13 16:13:33  oetiker
- * let rrd_graph return the actual value range it picked ...
- * -- Henrik Stoerner <henrik@hswn.dk>
- *
- * Revision 1.8  2004/05/26 22:11:12  oetiker
- * reduce compiler warnings. Many small fixes. -- Mike Slifcak <slif@bellsouth.net>
- *
- * Revision 1.7  2003/11/12 22:14:26  oetiker
- * allow to pass an open filehandle into rrd_graph as an extra argument
- *
- * Revision 1.6  2003/11/11 19:46:21  oetiker
- * replaced time_value with rrd_time_value as MacOS X introduced a struct of that name in their standard headers
- *
- * Revision 1.5  2003/04/25 18:35:08  jake
- * Alternate update interface, updatev. Returns info about CDPs written to disk as result of update. Output format is similar to rrd_info, a hash of key-values.
- *
- * Revision 1.4  2003/04/01 22:52:23  jake
- * Fix Win32 build. VC++ 6.0 and 7.0 now use the thread-safe code.
- *
- * Revision 1.3  2003/02/13 07:05:27  oetiker
- * Find attached the patch I promised to send to you. Please note that there
- * are three new source files (src/rrd_is_thread_safe.h, src/rrd_thread_safe.c
- * and src/rrd_not_thread_safe.c) and the introduction of librrd_th. This
- * library is identical to librrd, but it contains support code for per-thread
- * global variables currently used for error information only. This is similar
- * to how errno per-thread variables are implemented.  librrd_th must be linked
- * alongside of libpthred
- *
- * There is also a new file "THREADS", holding some documentation.
- *
- * -- Peter Stamfest <peter@stamfest.at>
- *
- * Revision 1.2  2002/05/07 21:58:32  oetiker
- * new command rrdtool xport integrated
- * --  Wolfgang Schrimm <Wolfgang.Schrimm@urz.uni-heidelberg.de>
- *
- * Revision 1.1.1.1  2001/02/25 22:25:05  oetiker
- * checkin
- *
- *****************************************************************************/
+
 #ifdef  __cplusplus
 extern    "C" {
 #endif
