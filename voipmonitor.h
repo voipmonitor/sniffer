@@ -4,7 +4,7 @@
 #ifndef VOIPMONITOR_H
 #define VOIPMONITOR_H
 
-#define RTPSENSOR_VERSION "10.0.29"
+#define RTPSENSOR_VERSION "10.0.30"
 #define NAT
 
 #define FORMAT_WAV	1
@@ -121,5 +121,16 @@ struct tcphdr2
     u_int16_t urg_ptr;
 };
 
-#endif
+struct sVerbose {
+	int process_rtp;
+	int read_rtp;
+	int check_is_caller_called;
+	int disable_threads_rtp;
+};
 
+#ifndef GLOBAL_DECLARATION
+extern 
+#endif
+sVerbose sverb;
+
+#endif

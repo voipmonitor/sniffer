@@ -1,3 +1,10 @@
+10.0.30 1.9.2014
+================
+- fix case where call has multiple RTP streams (caller <--> rtp proxy A <--> rtp proxy B <--> called) - caller side was not decoded properly
+- fix FAX calls (fax codec was not stored as payload number 1000)
+- import configuration files from /etc/voipmonitor/conf.d/*
+
+
 10.0.29 1.9.2014
 ================
 - handle memory allocation failure when there is no free RAM (do not crash)

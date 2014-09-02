@@ -668,6 +668,12 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 	this->dport = dport;
 	this->ignore = 0;
 	
+	if(sverb.read_rtp) {
+		cout << "RTP - read: " 
+		     << inet_ntostring(htonl(this->daddr)) << " / " << this->dport 
+		     << " " << (this->iscaller ? "caller" : "called") << endl;
+	}
+	
 	if(this->sensor_id >= 0 && this->sensor_id != sensor_id) {
 		u_long actTime = getTimeMS();
 		if(actTime - 1000 > lastTimeSyslog) {
