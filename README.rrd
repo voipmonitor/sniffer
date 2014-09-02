@@ -86,7 +86,7 @@
 
 		[dstfile]
 			Specifies file to which you want to save the graph.
-			If you want PNG image send to stdout use minus sign.
-			If not defined. Used default '-' sign.
+			Default is sending image to stdout.
+			If you want to send image on stdout, skip this argument.
 
-* arguments in square brackets are optional, if you don't define them, defaults are used.
+* arguments in square brackets are optional, if you don't define them, default values are used.
