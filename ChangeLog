@@ -1,3 +1,9 @@
+10.0.31 2.9.2014
+================
+- fix create SQL table fraud_alert_info 
+- fix mysql loop connection has gone if error happens during mysql connect 
+
+
 10.0.30 1.9.2014
 ================
 - fix case where call has multiple RTP streams (caller <--> rtp proxy A <--> rtp proxy B <--> called) - caller side was not decoded properly
