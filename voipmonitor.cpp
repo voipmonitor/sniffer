@@ -1033,8 +1033,7 @@ int eval_config(string inistr) {
 	CSimpleIniA ini;
 	ini.SetUnicode();
 	ini.SetMultiKey(true);
-	ini.LoadData(inistr);			//load ini from passed string
-	int rc;
+	int rc = ini.LoadData(inistr);			//load ini from passed string
 	if (rc != 0) {
 		return 1;
 	}
@@ -2090,24 +2089,28 @@ int load_config(char *fname) {
 
 	//Is it really file or directory?
 	if(!DirExists(fname)) {
-		printf("Loading configuration from file %s\n", fname);
+		printf("Loading configuration from file %s ", fname);
 		ini.SetUnicode();
 		ini.SetMultiKey(true);
 		rc = ini.LoadFile(fname);
 		if (rc != 0) {
+			printf("ERROR\n");
 			syslog(LOG_ERR, "Loading config from file %s FAILED!", fname );
 			return 1;
 		}
 		rc = ini.Save(inistr);
 		if (rc != 0) {
+			printf("ERROR\n");
 			syslog(LOG_ERR, "Preparing config from file %s FAILED!", fname );
 			return 1;
 		}
 		rc = eval_config(inistr);
 		if (rc != 0) {
+			printf("ERROR\n");
 			syslog(LOG_ERR, "Evaluating config from file %s FAILED!", fname );
 			return 1;
 		}
+		printf("OK\n", fname);
 
 	} else {
 		DIR *dir;
@@ -2129,14 +2132,16 @@ int load_config(char *fname) {
 				strcat (fullname, "/etc/voipmonitor/conf.d/");
 				strcat (fullname, ent->d_name);
 				if (verbosity>1) syslog(LOG_NOTICE, "Loading configuration from file %s", fullname );
-				printf("Loading configuration from file %s\n", fullname);
+				printf("Loading configuration from file %s ", fullname);
 				fp = fopen(fullname, "rb");
 				if (!fp) {
+					printf("ERROR\n");
 					syslog(LOG_ERR, "Cannot access config file %s!", ent->d_name );
 					return 1;
 				}
 				int retval = fseek(fp, 0, SEEK_END);
 				if (retval == -1) {
+					printf("ERROR\n");
 					fclose(fp);
 					syslog(LOG_ERR, "Cannot access config file %s!", ent->d_name );
 					return 1;							//Problem accessing file
@@ -2144,21 +2149,24 @@ int load_config(char *fname) {
 
 				long lSize = ftell(fp);
 				if (lSize == 0) {
+					printf("is empty\n");
 					fclose(fp);
 					return 0;
 				}
 				char * pData = new char[lSize + 10];	//adding "[general]\n" on top
 				if (!pData) {
 					fclose(fp);
+					printf("ERROR\n");
 					syslog(LOG_ERR, "Cannot alloc memory for config file %s!", ent->d_name );
 					return 1;							//nomem for alloc
 				}
 				pData[0] = 0;							//resetting string
-				strcat(pData, "[general]");
+				strcat(pData, "[general]\n");
 				fseek(fp, 0, SEEK_SET);
 				size_t uRead = fread(&pData[10], sizeof(char), lSize, fp);
 				if (uRead != (size_t) lSize) {
 					fclose(fp);
+					printf("ERROR\n");
 					delete[] pData;
 					syslog(LOG_ERR, "Cannot read data from config file %s!", ent->d_name );
 					return 2;							//problem while reading
@@ -2166,20 +2174,24 @@ int load_config(char *fname) {
 				fclose(fp);
 				rc = ini.LoadData(pData, uRead + 10);	//with "[general]\n" thats not included in uRead
 				if (rc != 0) {
+					printf("ERROR\n");
 					syslog(LOG_ERR, "Loading config from file %s FAILED!", ent->d_name );
 					return 1;
 				}
 				delete[] pData;
 				rc = ini.Save(inistr);
 				if (rc != 0) {
+					printf("ERROR\n");
 					syslog(LOG_ERR, "Preparing config from file %s FAILED!", ent->d_name );
 					return 1;
 				}
 				rc = eval_config(inistr);
 				if (rc != 0) {
+					printf("ERROR\n");
 					syslog(LOG_ERR, "Evaluating config from file %s FAILED!", ent->d_name );
 					return 1;
 				}
+				printf("OK\n");
 			}
 			closedir (dir);
 		} else {
