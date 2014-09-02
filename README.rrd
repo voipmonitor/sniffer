@@ -2,7 +2,7 @@
 	Prerequisite:
 		a) installed librrd into your OS
 			I) For debian 7 based systems:
-				a) apt-get install librrd4
+				a) apt-get install rrdtool
 
 			II) Red Hat
 				a) yum install rrdtool
