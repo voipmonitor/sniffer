@@ -6,6 +6,7 @@
 #include <queue>
 #include <climits>
 // stevek - it could be smarter if sys/inotyfy.h available then use it otherwise use linux/inotify.h. I will do it later
+#define GLOBAL_DECLARATION true
 #include "voipmonitor.h"
 
 #ifndef FREEBSD
@@ -2477,10 +2478,21 @@ int main(int argc, char *argv[]) {
 				strncpy(ifname, optarg, sizeof(ifname));
 				break;
 			case 'v':
-				verbosity = atoi(optarg);
-				if(char *pointToSeparator = strchr(optarg, '/')) {
-					verbosityE = atoi(pointToSeparator + 1);
-				}
+				{
+				vector<string> verbparams = split(optarg, ',');
+				for(size_t i = 0; i < verbparams.size(); i++) {
+					if(isdigit(verbparams[i][0])) {
+						verbosity = atoi(optarg);
+						if(char *pointToSeparator = strchr(optarg, '/')) {
+							verbosityE = atoi(pointToSeparator + 1);
+						} 
+					} else {
+						if(verbparams[i] == "process_rtp")			sverb.process_rtp = 1;
+						else if(verbparams[i] == "read_rtp")			sverb.read_rtp = 1;
+						else if(verbparams[i] == "check_is_caller_called")	sverb.check_is_caller_called = 1;
+						else if(verbparams[i] == "disable_threads_rtp")		sverb.disable_threads_rtp = 1;
+					}
+				} }
 				break;
 			case 'r':
 				if(!strncmp(optarg, "pb:", 3)) {

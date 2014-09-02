@@ -121,5 +121,16 @@ struct tcphdr2
     u_int16_t urg_ptr;
 };
 
-#endif
+struct sVerbose {
+	int process_rtp;
+	int read_rtp;
+	int check_is_caller_called;
+	int disable_threads_rtp;
+};
 
+#ifndef GLOBAL_DECLARATION
+extern 
+#endif
+sVerbose sverb;
+
+#endif

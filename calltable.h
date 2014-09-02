@@ -32,6 +32,7 @@
 #define MAXNODE 150000
 #define MAXLEN_SDP_SESSID 16
 #define RTPMAP_BY_CALLERD true
+#define RTP_BY_IP_PORT true
 
 #define INVITE 1
 #define BYE 2
