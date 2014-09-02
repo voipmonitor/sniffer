@@ -513,7 +513,7 @@ Call::dirnamesqlfiles() {
 
 /* add ip adress and port to this call */
 int
-Call::add_ip_port(in_addr_t sip_src_addr, in_addr_t addr, unsigned short port, char *sessid, char *ua, unsigned long ua_len, bool iscaller, int *rtpmap) {
+Call::add_ip_port(in_addr_t sip_src_addr, in_addr_t addr, unsigned short port, char *sessid, char *ua, unsigned long ua_len, bool iscaller, int *rtpmap, bool fax) {
 	if(verbosity >= 4) {
 		struct in_addr in;
 		in.s_addr = addr;
@@ -521,9 +521,13 @@ Call::add_ip_port(in_addr_t sip_src_addr, in_addr_t addr, unsigned short port, c
 	}
 
 	if(ipport_n > 0) {
-		if(this->refresh_data_ip_port(addr, port, iscaller, rtpmap)) {
+		if(this->refresh_data_ip_port(addr, port, iscaller, rtpmap, fax)) {
 			return 1;
 		}
+	}
+	
+	if(sverb.process_rtp) {
+		cout << "RTP - add_ip_port: " << inet_ntostring(htonl(addr)) << " / " << port << " " << (iscaller ? "caller" : "called") << endl;
 	}
 
 	if(ipport_n == MAX_IP_PER_CALL){
@@ -547,6 +551,7 @@ Call::add_ip_port(in_addr_t sip_src_addr, in_addr_t addr, unsigned short port, c
 	this->ip_port[ipport_n].addr = addr;
 	this->ip_port[ipport_n].port = port;
 	this->ip_port[ipport_n].iscaller = iscaller;
+	this->ip_port[ipport_n].fax = fax;
 	if(sessid) {
 		memcpy(this->ip_port[ipport_n].sessid, sessid, MAXLEN_SDP_SESSID);
 	} else {
@@ -559,13 +564,22 @@ Call::add_ip_port(in_addr_t sip_src_addr, in_addr_t addr, unsigned short port, c
 }
 
 bool 
-Call::refresh_data_ip_port(in_addr_t addr, unsigned short port, bool iscaller, int *rtpmap) {
+Call::refresh_data_ip_port(in_addr_t addr, unsigned short port, bool iscaller, int *rtpmap, bool fax) {
 	for(int i = 0; i < ipport_n; i++) {
 		if(this->ip_port[i].addr == addr && this->ip_port[i].port == port) {
 			// reinit rtpmap
 			memcpy(this->rtpmap[RTPMAP_BY_CALLERD ? iscaller : i], rtpmap, MAX_RTPMAP * sizeof(int));
 			// force mark bit for reinvite 
 			forcemark[iscaller] = true;
+			if(fax && !this->ip_port[i].fax) {
+				this->ip_port[i].fax = fax;
+				hash_node_call *calls = calltable->hashfind_by_ip_port(addr, port);
+				if(calls) {
+					for(hash_node_call *node_call = calls; node_call != NULL; node_call = node_call->next) {
+						node_call->is_fax = fax;
+					}
+				}
+			}
 			return true;
 		}
 	}
@@ -591,12 +605,12 @@ Call::add_ip_port_hash(in_addr_t sip_src_addr, in_addr_t addr, unsigned short po
 				this->ip_port[sessidIndex].addr = addr;
 				this->ip_port[sessidIndex].port = port;
 				this->ip_port[sessidIndex].iscaller = iscaller;
-				this->refresh_data_ip_port(addr, port, iscaller, rtpmap);
 			}
+			this->refresh_data_ip_port(addr, port, iscaller, rtpmap, fax);
 			return;
 		}
 	}
-	if(this->add_ip_port(sip_src_addr, addr, port, sessid, ua, ua_len, iscaller, rtpmap) != -1) {
+	if(this->add_ip_port(sip_src_addr, addr, port, sessid, ua, ua_len, iscaller, rtpmap, fax) != -1) {
 		((Calltable*)calltable)->hashAdd(addr, port, this, iscaller, 0, fax, allowrelation);
 		if(opt_rtcp) {
 			((Calltable*)calltable)->hashAdd(addr, port + 1, this, iscaller, 1, fax);
@@ -699,7 +713,11 @@ Call::read_rtp(unsigned char* data, int datalen, int dataoffset, struct pcap_pkt
 	}
 
 	for(int i = 0; i < ssrc_n; i++) {
-		if(rtp[i]->ssrc2 == curSSRC) {
+		if(rtp[i]->ssrc2 == curSSRC 
+#ifdef RTP_BY_IP_PORT
+		   && rtp[i]->saddr == saddr && rtp[i]->daddr == daddr && rtp[i]->dport == dport
+#endif
+		   ) {
 			// found 
 			if(opt_dscp) {
 				rtp[i]->dscp = header_ip->tos >> 2;
@@ -1854,10 +1872,18 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		// find first caller and first called
 		RTP *rtpab[2] = {NULL, NULL};
 		for(int k = 0; k < ssrc_n; k++) {
-			if(rtp[indexes[k]]->iscaller && !rtpab[0]) {
+			if(sverb.process_rtp) {
+				cout << "RTP - final stream: " 
+				     << inet_ntostring(htonl(rtp[indexes[k]]->saddr)) << " -> "
+				     << inet_ntostring(htonl(rtp[indexes[k]]->daddr)) << " / "
+				     << (rtp[indexes[k]]->iscaller ? "caller" : "called") 
+				     << " packets received: " << rtp[indexes[k]]->stats.received << " "
+				     << endl;
+			}
+			if(rtp[indexes[k]]->iscaller && (!rtpab[0] || rtp[indexes[k]]->stats.received > rtpab[0]->stats.received)) {
 				rtpab[0] = rtp[indexes[k]];
 			}
-			if(!rtp[indexes[k]]->iscaller && !rtpab[1]) {
+			if(!rtp[indexes[k]]->iscaller && (!rtpab[1] || rtp[indexes[k]]->stats.received > rtpab[1]->stats.received)) {
 				rtpab[1] = rtp[indexes[k]];
 			}
 		}
@@ -3482,7 +3508,7 @@ Call::check_is_caller_called(unsigned int saddr, unsigned int daddr, bool *iscal
 			*iscaller = 1;
 		// src IP address of this SDP SIP message is different from the src/dst IP address used in the first INVITE. 
 		} else {
-			if(this->sipcallerip2 == 0) { 
+			if(this->sipcallerip2 == 0 && saddr && daddr) { 
 				this->sipcallerip2 = saddr;
 				this->sipcalledip2 = daddr;
 			}
@@ -3495,7 +3521,7 @@ Call::check_is_caller_called(unsigned int saddr, unsigned int daddr, bool *iscal
 					*iscaller = 1;
 				// src IP address of this SDP SIP message is different from the src/dst IP address used in the first INVITE. 
 				} else {
-					if(this->sipcallerip3 == 0) { 
+					if(this->sipcallerip3 == 0 && saddr && daddr) { 
 						this->sipcallerip3 = saddr;
 						this->sipcalledip3 = daddr;
 					}
@@ -3508,7 +3534,7 @@ Call::check_is_caller_called(unsigned int saddr, unsigned int daddr, bool *iscal
 							*iscaller = 1;
 						// src IP address of this SDP SIP message is different from the src/dst IP address used in the first INVITE. 
 						} else {
-							if(this->sipcallerip4 == 0) { 
+							if(this->sipcallerip4 == 0 && saddr && daddr) { 
 								this->sipcallerip4 = saddr;
 								this->sipcalledip4 = daddr;
 							}
@@ -3525,6 +3551,12 @@ Call::check_is_caller_called(unsigned int saddr, unsigned int daddr, bool *iscal
 	}
 	if(iscalled) {
 		*iscalled = _iscalled;
+	}
+	if(sverb.check_is_caller_called) {
+		cout << "check_is_caller_called: " 
+		     << inet_ntostring(htonl(saddr)) << " -> " << inet_ntostring(htonl(daddr))
+		     << " = " << (*iscaller ? "caller" : (_iscalled ? "called" : "undefine"))
+		     << endl;
 	}
 	return(*iscaller || _iscalled);
 }
