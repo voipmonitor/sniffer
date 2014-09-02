@@ -579,20 +579,29 @@ bool SqlDb_mysql::connect(bool createDb, bool mainInit) {
 			}
 		}
 		if(this->hMysqlConn) {
+			bool rslt = true;
 			this->mysqlThreadId = mysql_thread_id(this->hMysql);
 			sql_disable_next_attempt_if_error = 1;
-			this->query("SET NAMES UTF8");
+			if(!this->query("SET NAMES UTF8")) {
+				rslt = false;
+			}
 			sql_noerror = 1;
 			this->query("SET GLOBAL innodb_stats_on_metadata=0"); // this will speedup "Slow query on information_schema.tables"
 			sql_noerror = 0;
-			this->query("SET sql_mode = ''");
+			if(!this->query("SET sql_mode = ''")) {
+				rslt = false;
+			}
 			char tmp[1024];
 			if(createDb) {
 				sprintf(tmp, "CREATE DATABASE IF NOT EXISTS `%s`", this->conn_database.c_str());
-				this->query(tmp);
+				if(!this->query(tmp)) {
+					rslt = false;
+				}
 			}
 			sprintf(tmp, "USE `%s`", this->conn_database.c_str());
-			this->query(tmp);
+			if(!this->query(tmp)) {
+				rslt = false;
+			}
 			if(mainInit && !cloud_host[0]) {
 				this->query("SHOW VARIABLES LIKE \"version\"");
 				SqlDb_row row;
@@ -612,7 +621,7 @@ bool SqlDb_mysql::connect(bool createDb, bool mainInit) {
 				this->cleanFields();
 			}
 			this->connecting = false;
-			return(true);
+			return(rslt);
 		} else {
 			this->checkLastError("connect error", true);
 		}
@@ -767,19 +776,23 @@ bool SqlDb_mysql::query(string query) {
 					syslog(LOG_NOTICE, "query error - error: %s", mysql_error(this->hMysql));
 				}
 				this->checkLastError("query error in [" + query.substr(0,200) + (query.size() > 200 ? "..." : "") + "]", !sql_noerror);
-				if(this->getLastError() == CR_SERVER_GONE_ERROR) {
-					if(pass < this->maxQueryPass - 1) {
-						this->reconnect();
-					}
-				} else if(sql_noerror || sql_disable_next_attempt_if_error || this->disableNextAttemptIfError ||
-					  this->getLastError() == ER_PARSE_ERROR) {
+				if(this->connecting) {
 					break;
 				} else {
-					if(pass < this->maxQueryPass - 5) {
-						pass = this->maxQueryPass - 5;
-					}
-					if(pass < this->maxQueryPass - 1) {
-						this->reconnect();
+					if(this->getLastError() == CR_SERVER_GONE_ERROR) {
+						if(pass < this->maxQueryPass - 1) {
+							this->reconnect();
+						}
+					} else if(sql_noerror || sql_disable_next_attempt_if_error || this->disableNextAttemptIfError ||
+						  this->getLastError() == ER_PARSE_ERROR) {
+						break;
+					} else {
+						if(pass < this->maxQueryPass - 5) {
+							pass = this->maxQueryPass - 5;
+						}
+						if(pass < this->maxQueryPass - 1) {
+							this->reconnect();
+						}
 					}
 				}
 			} else {
