@@ -1823,16 +1823,21 @@ void process_sdp(Call *call, unsigned int saddr, int source, unsigned int daddr,
 
 			int iscalled;
 			call->handle_dscp(header_ip, saddr, daddr, &iscalled);
+			// parameter &iscalled need for set addresses for check caller / called
 			//syslog(LOG_ERR, "ADDR: %u port %u iscalled[%d]\n", tmp_addr, tmp_port, iscalled);
 		
-			call->add_ip_port_hash(saddr, tmp_addr, tmp_port, sessid, ua, ua_len, !iscalled, rtpmap, fax);
+			// check caller for tmp_addr
+			bool iscaller;
+			call->check_is_caller_called(tmp_addr, 0, &iscaller);
+		
+			call->add_ip_port_hash(saddr, tmp_addr, tmp_port, sessid, ua, ua_len, iscaller, rtpmap, fax);
 			// check if the IP address is listed in nat_aliases
 			in_addr_t alias = 0;
 			if((alias = match_nat_aliases(tmp_addr)) != 0) {
-				call->add_ip_port_hash(saddr, alias, tmp_port, sessid, ua, ua_len, !iscalled, rtpmap, fax);
+				call->add_ip_port_hash(saddr, alias, tmp_port, sessid, ua, ua_len, iscaller, rtpmap, fax);
 			}
 			if(opt_sdp_reverse_ipport) {
-				call->add_ip_port_hash(saddr, saddr, tmp_port, sessid, ua, ua_len, !iscalled, rtpmap, fax);
+				call->add_ip_port_hash(saddr, saddr, tmp_port, sessid, ua, ua_len, iscaller, rtpmap, fax);
 			}
 		}
 	} else {
@@ -2911,6 +2916,12 @@ rtpcheck:
 			iscaller = node_call->iscaller;
 			is_rtcp = node_call->is_rtcp;
 			is_fax = node_call->is_fax;
+			
+			if(sverb.process_rtp) {
+				cout << "RTP - process_packet (daddr, dest): " << inet_ntostring(htonl(daddr)) << " / " << dest
+				     << " " << (iscaller ? "caller" : "called") 
+				     << endl;
+			}
 
 			if(pcap_drop_flag) {
 				call->pcap_drop = pcap_drop_flag;
@@ -2929,7 +2940,7 @@ rtpcheck:
 				call->destroy_call_at = header->ts.tv_sec + 5; 
 			}
 
-			int can_thread = 1;
+			int can_thread = !sverb.disable_threads_rtp;
 			if(header->caplen > MAXPACKETLENQRING) {
 				// packets larger than MAXPACKETLENQRING was created in special heap and is destroyd immediately after leaving this functino - thus do not queue it 
 				// TODO: this can be enhanced by pasing flag that the packet should be freed
@@ -3012,6 +3023,12 @@ rtpcheck:
 			is_rtcp = node_call->is_rtcp;
 			is_fax = node_call->is_fax;
 
+			if(sverb.process_rtp) {
+				cout << "RTP - process_packet (saddr, source): " << inet_ntostring(htonl(saddr)) << " / " << source
+				     << " " << (iscaller ? "caller" : "called") 
+				     << endl;
+			}
+			
 			if(pcap_drop_flag) {
 				call->pcap_drop = pcap_drop_flag;
 			}
@@ -3029,7 +3046,7 @@ rtpcheck:
 				call->destroy_call_at = header->ts.tv_sec + 5; 
 			}
 
-			int can_thread = 1;
+			int can_thread = !sverb.disable_threads_rtp;
 			if(header->caplen > MAXPACKETLENQRING) {
 				// packets larger than MAXPACKETLENQRING was created in special heap and is destroyd immediately after leaving this functino - thus do not queue it 
 				// TODO: this can be enhanced by pasing flag that the packet should be freed

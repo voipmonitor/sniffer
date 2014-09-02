@@ -14,6 +14,7 @@
 #include "tools.h"
 
 #include "sql_db.h"
+#include "fraud.h"
 
 
 extern int verbosity;
@@ -579,20 +580,29 @@ bool SqlDb_mysql::connect(bool createDb, bool mainInit) {
 			}
 		}
 		if(this->hMysqlConn) {
+			bool rslt = true;
 			this->mysqlThreadId = mysql_thread_id(this->hMysql);
 			sql_disable_next_attempt_if_error = 1;
-			this->query("SET NAMES UTF8");
+			if(!this->query("SET NAMES UTF8")) {
+				rslt = false;
+			}
 			sql_noerror = 1;
 			this->query("SET GLOBAL innodb_stats_on_metadata=0"); // this will speedup "Slow query on information_schema.tables"
 			sql_noerror = 0;
-			this->query("SET sql_mode = ''");
+			if(!this->query("SET sql_mode = ''")) {
+				rslt = false;
+			}
 			char tmp[1024];
 			if(createDb) {
 				sprintf(tmp, "CREATE DATABASE IF NOT EXISTS `%s`", this->conn_database.c_str());
-				this->query(tmp);
+				if(!this->query(tmp)) {
+					rslt = false;
+				}
 			}
 			sprintf(tmp, "USE `%s`", this->conn_database.c_str());
-			this->query(tmp);
+			if(!this->query(tmp)) {
+				rslt = false;
+			}
 			if(mainInit && !cloud_host[0]) {
 				this->query("SHOW VARIABLES LIKE \"version\"");
 				SqlDb_row row;
@@ -612,7 +622,7 @@ bool SqlDb_mysql::connect(bool createDb, bool mainInit) {
 				this->cleanFields();
 			}
 			this->connecting = false;
-			return(true);
+			return(rslt);
 		} else {
 			this->checkLastError("connect error", true);
 		}
@@ -767,19 +777,23 @@ bool SqlDb_mysql::query(string query) {
 					syslog(LOG_NOTICE, "query error - error: %s", mysql_error(this->hMysql));
 				}
 				this->checkLastError("query error in [" + query.substr(0,200) + (query.size() > 200 ? "..." : "") + "]", !sql_noerror);
-				if(this->getLastError() == CR_SERVER_GONE_ERROR) {
-					if(pass < this->maxQueryPass - 1) {
-						this->reconnect();
-					}
-				} else if(sql_noerror || sql_disable_next_attempt_if_error || this->disableNextAttemptIfError ||
-					  this->getLastError() == ER_PARSE_ERROR) {
+				if(this->connecting) {
 					break;
 				} else {
-					if(pass < this->maxQueryPass - 5) {
-						pass = this->maxQueryPass - 5;
-					}
-					if(pass < this->maxQueryPass - 1) {
-						this->reconnect();
+					if(this->getLastError() == CR_SERVER_GONE_ERROR) {
+						if(pass < this->maxQueryPass - 1) {
+							this->reconnect();
+						}
+					} else if(sql_noerror || sql_disable_next_attempt_if_error || this->disableNextAttemptIfError ||
+						  this->getLastError() == ER_PARSE_ERROR) {
+						break;
+					} else {
+						if(pass < this->maxQueryPass - 5) {
+							pass = this->maxQueryPass - 5;
+						}
+						if(pass < this->maxQueryPass - 1) {
+							this->reconnect();
+						}
 					}
 				}
 			} else {
@@ -2587,15 +2601,7 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 			`old_at` bigint unsigned,\
 		PRIMARY KEY (`number`, `number_ip`)\
 	) ENGINE=InnoDB DEFAULT CHARSET=latin1;");
-	this->query(
-	"CREATE TABLE IF NOT EXISTS `fraud_alert_info` (\
-			`id` INT UNSIGNED NOT NULL AUTO_INCREMENT,\
-			`alert_id` INT NOT NULL,\
-			`at` DATETIME NOT NULL,\
-			`alert_info` TEXT NOT NULL,\
-			PRIMARY KEY (`ID`),\
-			CONSTRAINT `fraud_alert_info_ibfk_1` FOREIGN KEY (`alert_id`) REFERENCES `alerts` (`id`) ON UPDATE CASCADE ON DELETE CASCADE\
-	) ENGINE=InnoDB DEFAULT CHARSET=latin1;");
+	this->createTable("fraud_alert_info");
 	}
 	
 	if(!federated) {
@@ -3156,6 +3162,23 @@ void SqlDb_mysql::checkDbMode() {
 		}
 	}
 	sql_disable_next_attempt_if_error = 0;
+}
+
+void SqlDb_mysql::createTable(const char *tableName) {
+	if(!strcmp(tableName, "fraud_alert_info")) {
+		this->query("show tables like 'alerts'");
+		if(this->fetchRow()) {
+			this->query(
+			"CREATE TABLE IF NOT EXISTS `fraud_alert_info` (\
+					`id` INT UNSIGNED NOT NULL AUTO_INCREMENT,\
+					`alert_id` INT NOT NULL,\
+					`at` DATETIME NOT NULL,\
+					`alert_info` TEXT NOT NULL,\
+					PRIMARY KEY (`ID`),\
+					CONSTRAINT `fraud_alert_info_ibfk_1` FOREIGN KEY (`alert_id`) REFERENCES `alerts` (`id`) ON UPDATE CASCADE ON DELETE CASCADE\
+			) ENGINE=InnoDB DEFAULT CHARSET=latin1;");
+		}
+	}
 }
 
 void SqlDb_mysql::checkSchema() {
@@ -4120,6 +4143,9 @@ void SqlDb_odbc::createSchema(const char *host, const char *database, const char
 			BEGIN\
 				RETURN DATEADD(SECOND, -DATEDIFF(second, 0, @time2), @time1)\
 			END");
+}
+
+void SqlDb_odbc::createTable(const char *tableName) {
 }
 
 void SqlDb_odbc::checkDbMode() {

@@ -6,6 +6,7 @@
 #include <queue>
 #include <climits>
 // stevek - it could be smarter if sys/inotyfy.h available then use it otherwise use linux/inotify.h. I will do it later
+#define GLOBAL_DECLARATION true
 #include "voipmonitor.h"
 
 #ifndef FREEBSD
@@ -1029,18 +1030,16 @@ int yesno(const char *arg) {
 		return 0;
 }
 
-int load_config(char *fname) {
-	if(!FileExists(fname)) {
-		return 1;
-	}
 
-	printf("Loading configuration from file %s\n", fname);
-
+int eval_config(string inistr) {
 	CSimpleIniA ini;
 	ini.SetUnicode();
 	ini.SetMultiKey(true);
-	ini.LoadFile(fname);
-	const char *value;
+	int rc = ini.LoadData(inistr);			//load ini from passed string
+	if (rc != 0) {
+		return 1;
+	}
+ 	const char *value;
 	const char *value2;
 	CSimpleIniA::TNamesDepend values;
 
@@ -2079,12 +2078,139 @@ int load_config(char *fname) {
 	if(opt_enable_tcpreassembly) {
 		opt_enable_lua_tables = true;
 	}
-
 	return 0;
+}
+
+int load_config(char *fname) {
+	int res = 0;
+
+	if(!FileExists(fname)) {
+		return 1;
+	}
+
+	CSimpleIniA ini;
+	int rc = 0;
+	string inistr;
+
+	//Is it really file or directory?
+	if(!DirExists(fname)) {
+		printf("Loading configuration from file %s ", fname);
+		ini.SetUnicode();
+		ini.SetMultiKey(true);
+		rc = ini.LoadFile(fname);
+		if (rc != 0) {
+			printf("ERROR\n");
+			syslog(LOG_ERR, "Loading config from file %s FAILED!", fname );
+			return 1;
+		}
+		rc = ini.Save(inistr);
+		if (rc != 0) {
+			printf("ERROR\n");
+			syslog(LOG_ERR, "Preparing config from file %s FAILED!", fname );
+			return 1;
+		}
+		rc = eval_config(inistr);
+		if (rc != 0) {
+			printf("ERROR\n");
+			syslog(LOG_ERR, "Evaluating config from file %s FAILED!", fname );
+			return 1;
+		}
+		printf("OK\n", fname);
+
+	} else {
+		DIR *dir;
+		ini.SetUnicode();
+		ini.SetMultiKey(true);
+		if ((dir = opendir (fname)) != NULL) {
+			struct dirent *ent;
+			FILE * fp = NULL;
+			unsigned char isFile =0x8;
+
+			while ((ent = readdir (dir)) != NULL) {
+									//each directory inside conf.d directory is omitted
+				if ( ent->d_type != isFile) {
+					continue;
+				}
+									//its a file lets load it
+				char fullname[500];
+				fullname[0] = 0;    //reset string data
+				strcat (fullname, "/etc/voipmonitor/conf.d/");
+				strcat (fullname, ent->d_name);
+				if (verbosity>1) syslog(LOG_NOTICE, "Loading configuration from file %s", fullname );
+				printf("Loading configuration from file %s ", fullname);
+				fp = fopen(fullname, "rb");
+				if (!fp) {
+					printf("ERROR\n");
+					syslog(LOG_ERR, "Cannot access config file %s!", ent->d_name );
+					return 1;
+				}
+				int retval = fseek(fp, 0, SEEK_END);
+				if (retval == -1) {
+					printf("ERROR\n");
+					fclose(fp);
+					syslog(LOG_ERR, "Cannot access config file %s!", ent->d_name );
+					return 1;							//Problem accessing file
+				}
+
+				long lSize = ftell(fp);
+				if (lSize == 0) {
+					printf("is empty\n");
+					fclose(fp);
+					return 0;
+				}
+				char * pData = new char[lSize + 10];	//adding "[general]\n" on top
+				if (!pData) {
+					fclose(fp);
+					printf("ERROR\n");
+					syslog(LOG_ERR, "Cannot alloc memory for config file %s!", ent->d_name );
+					return 1;							//nomem for alloc
+				}
+				pData[0] = 0;							//resetting string
+				strcat(pData, "[general]\n");
+				fseek(fp, 0, SEEK_SET);
+				size_t uRead = fread(&pData[10], sizeof(char), lSize, fp);
+				if (uRead != (size_t) lSize) {
+					fclose(fp);
+					printf("ERROR\n");
+					delete[] pData;
+					syslog(LOG_ERR, "Cannot read data from config file %s!", ent->d_name );
+					return 2;							//problem while reading
+				}
+				fclose(fp);
+				rc = ini.LoadData(pData, uRead + 10);	//with "[general]\n" thats not included in uRead
+				if (rc != 0) {
+					printf("ERROR\n");
+					syslog(LOG_ERR, "Loading config from file %s FAILED!", ent->d_name );
+					return 1;
+				}
+				delete[] pData;
+				rc = ini.Save(inistr);
+				if (rc != 0) {
+					printf("ERROR\n");
+					syslog(LOG_ERR, "Preparing config from file %s FAILED!", ent->d_name );
+					return 1;
+				}
+				rc = eval_config(inistr);
+				if (rc != 0) {
+					printf("ERROR\n");
+					syslog(LOG_ERR, "Evaluating config from file %s FAILED!", ent->d_name );
+					return 1;
+				}
+				printf("OK\n");
+			}
+			closedir (dir);
+		} else {
+	  /* could not open directory */
+			syslog(LOG_ERR, "Cannot access directory file %s!", fname );
+			return EXIT_FAILURE;
+		}
+	}
+	return res;
 }
 
 void reload_config() {
 	load_config(configfile);
+	load_config("/etc/voipmonitor/conf.d/");
 	request_iptelnum_reload = 1;
 }
 
@@ -2468,6 +2594,7 @@ int main(int argc, char *argv[]) {
 			case '7':
 				strncpy(configfile, optarg, sizeof(configfile));
 				load_config(configfile);
+				load_config("/etc/voipmonitor/conf.d/");
 				break;
 			case '8':
 				opt_manager_port = atoi(optarg);
@@ -2482,10 +2609,21 @@ int main(int argc, char *argv[]) {
 				strncpy(ifname, optarg, sizeof(ifname));
 				break;
 			case 'v':
-				verbosity = atoi(optarg);
-				if(char *pointToSeparator = strchr(optarg, '/')) {
-					verbosityE = atoi(pointToSeparator + 1);
-				}
+				{
+				vector<string> verbparams = split(optarg, ',');
+				for(size_t i = 0; i < verbparams.size(); i++) {
+					if(isdigit(verbparams[i][0])) {
+						verbosity = atoi(optarg);
+						if(char *pointToSeparator = strchr(optarg, '/')) {
+							verbosityE = atoi(pointToSeparator + 1);
+						} 
+					} else {
+						if(verbparams[i] == "process_rtp")			sverb.process_rtp = 1;
+						else if(verbparams[i] == "read_rtp")			sverb.read_rtp = 1;
+						else if(verbparams[i] == "check_is_caller_called")	sverb.check_is_caller_called = 1;
+						else if(verbparams[i] == "disable_threads_rtp")		sverb.disable_threads_rtp = 1;
+					}
+				} }
 				break;
 			case 'r':
 				if(!strncmp(optarg, "pb:", 3)) {

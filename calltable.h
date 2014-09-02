@@ -32,6 +32,7 @@
 #define MAXNODE 150000
 #define MAXLEN_SDP_SESSID 16
 #define RTPMAP_BY_CALLERD true
+#define RTP_BY_IP_PORT true
 
 #define INVITE 1
 #define BYE 2
@@ -92,6 +93,7 @@ struct ip_port_call_info {
 	bool iscaller;
 	char sessid[MAXLEN_SDP_SESSID];
 	u_int32_t sip_src_addr;
+	bool fax;
 };
 
 
@@ -345,9 +347,9 @@ public:
 	 * 
 	 * @return return 0 on success, 1 if IP and port is duplicated and -1 on failure
 	*/
-	int add_ip_port(in_addr_t sip_src_addr, in_addr_t addr, unsigned short port, char *sessid, char *ua, unsigned long ua_len, bool iscaller, int *rtpmap);
+	int add_ip_port(in_addr_t sip_src_addr, in_addr_t addr, unsigned short port, char *sessid, char *ua, unsigned long ua_len, bool iscaller, int *rtpmap, bool fax);
 	
-	bool refresh_data_ip_port(in_addr_t addr, unsigned short port, bool iscaller, int *rtpmap);
+	bool refresh_data_ip_port(in_addr_t addr, unsigned short port, bool iscaller, int *rtpmap, bool fax);
 	
 	void add_ip_port_hash(in_addr_t sip_src_addr, in_addr_t addr, unsigned short port, char *sessid, char *ua, unsigned long ua_len, bool iscaller, int *rtpmap, bool fax, int allowrelation = 0);
 
