@@ -129,6 +129,7 @@ public:
 	virtual void cleanFields();
 	virtual void clean() = 0;
 	virtual void createSchema(const char *host = NULL, const char *database = NULL, const char *user = NULL, const char *password = NULL) = 0;
+	virtual void createTable(const char *tableName) = 0;
 	virtual void checkDbMode() = 0;
 	virtual void checkSchema() = 0;
 	virtual string getTypeDb() = 0;
@@ -200,6 +201,7 @@ public:
 	bool checkLastError(string prefixError, bool sysLog = false,bool clearLastError = false);
 	void clean();
 	void createSchema(const char *host = NULL, const char *database = NULL, const char *user = NULL, const char *password = NULL);
+	void createTable(const char *tableName);
 	void checkDbMode();
 	void checkSchema();
 	bool checkSourceTables();
@@ -290,6 +292,7 @@ public:
 	void cleanFields();
 	void clean();
 	void createSchema(const char *host = NULL, const char *database = NULL, const char *user = NULL, const char *password = NULL);
+	void createTable(const char *tableName);
 	void checkDbMode();
 	void checkSchema();
 	string getTypeDb() {

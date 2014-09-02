@@ -14,6 +14,7 @@
 #include "tools.h"
 
 #include "sql_db.h"
+#include "fraud.h"
 
 
 extern int verbosity;
@@ -2600,15 +2601,7 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 			`old_at` bigint unsigned,\
 		PRIMARY KEY (`number`, `number_ip`)\
 	) ENGINE=InnoDB DEFAULT CHARSET=latin1;");
-	this->query(
-	"CREATE TABLE IF NOT EXISTS `fraud_alert_info` (\
-			`id` INT UNSIGNED NOT NULL AUTO_INCREMENT,\
-			`alert_id` INT NOT NULL,\
-			`at` DATETIME NOT NULL,\
-			`alert_info` TEXT NOT NULL,\
-			PRIMARY KEY (`ID`),\
-			CONSTRAINT `fraud_alert_info_ibfk_1` FOREIGN KEY (`alert_id`) REFERENCES `alerts` (`id`) ON UPDATE CASCADE ON DELETE CASCADE\
-	) ENGINE=InnoDB DEFAULT CHARSET=latin1;");
+	this->createTable("fraud_alert_info");
 	}
 	
 	if(!federated) {
@@ -3169,6 +3162,23 @@ void SqlDb_mysql::checkDbMode() {
 		}
 	}
 	sql_disable_next_attempt_if_error = 0;
+}
+
+void SqlDb_mysql::createTable(const char *tableName) {
+	if(!strcmp(tableName, "fraud_alert_info")) {
+		this->query("show tables like 'alerts'");
+		if(this->fetchRow()) {
+			this->query(
+			"CREATE TABLE IF NOT EXISTS `fraud_alert_info` (\
+					`id` INT UNSIGNED NOT NULL AUTO_INCREMENT,\
+					`alert_id` INT NOT NULL,\
+					`at` DATETIME NOT NULL,\
+					`alert_info` TEXT NOT NULL,\
+					PRIMARY KEY (`ID`),\
+					CONSTRAINT `fraud_alert_info_ibfk_1` FOREIGN KEY (`alert_id`) REFERENCES `alerts` (`id`) ON UPDATE CASCADE ON DELETE CASCADE\
+			) ENGINE=InnoDB DEFAULT CHARSET=latin1;");
+		}
+	}
 }
 
 void SqlDb_mysql::checkSchema() {
@@ -4133,6 +4143,9 @@ void SqlDb_odbc::createSchema(const char *host, const char *database, const char
 			BEGIN\
 				RETURN DATEADD(SECOND, -DATEDIFF(second, 0, @time2), @time1)\
 			END");
+}
+
+void SqlDb_odbc::createTable(const char *tableName) {
 }
 
 void SqlDb_odbc::checkDbMode() {

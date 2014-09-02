@@ -1628,6 +1628,7 @@ bool isExistsFraudAlerts() {
 	SqlDb *sqlDb = createSqlObject();
 	sqlDb->query("show tables like 'alerts'");
 	if(sqlDb->fetchRow()) {
+		sqlDb->createTable("fraud_alert_info");
 		sqlDb->query("select id, alert_type, descr from alerts\
 			      where alert_type > 20 and\
 				    (disable is null or not disable)\
