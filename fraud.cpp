@@ -1,4 +1,3 @@
-#include <algorithm>
 #include <sstream>
 #include <syslog.h>
 
