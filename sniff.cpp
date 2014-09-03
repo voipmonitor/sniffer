@@ -1823,21 +1823,16 @@ void process_sdp(Call *call, unsigned int saddr, int source, unsigned int daddr,
 
 			int iscalled;
 			call->handle_dscp(header_ip, saddr, daddr, &iscalled);
-			// parameter &iscalled need for set addresses for check caller / called
 			//syslog(LOG_ERR, "ADDR: %u port %u iscalled[%d]\n", tmp_addr, tmp_port, iscalled);
 		
-			// check caller for tmp_addr
-			bool iscaller;
-			call->check_is_caller_called(tmp_addr, 0, &iscaller);
-		
-			call->add_ip_port_hash(saddr, tmp_addr, tmp_port, sessid, ua, ua_len, iscaller, rtpmap, fax);
+			call->add_ip_port_hash(saddr, tmp_addr, tmp_port, sessid, ua, ua_len, !iscalled, rtpmap, fax);
 			// check if the IP address is listed in nat_aliases
 			in_addr_t alias = 0;
 			if((alias = match_nat_aliases(tmp_addr)) != 0) {
-				call->add_ip_port_hash(saddr, alias, tmp_port, sessid, ua, ua_len, iscaller, rtpmap, fax);
+				call->add_ip_port_hash(saddr, alias, tmp_port, sessid, ua, ua_len, !iscalled, rtpmap, fax);
 			}
 			if(opt_sdp_reverse_ipport) {
-				call->add_ip_port_hash(saddr, saddr, tmp_port, sessid, ua, ua_len, iscaller, rtpmap, fax);
+				call->add_ip_port_hash(saddr, saddr, tmp_port, sessid, ua, ua_len, !iscalled, rtpmap, fax);
 			}
 		}
 	} else {
