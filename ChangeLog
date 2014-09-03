@@ -1,3 +1,8 @@
+10.0.32 2.9.2014
+================
+- fix 10.0.30 and 10.0.31 which did not recognized called or caller RTP stream in some cases 
+
+
 10.0.31 2.9.2014
 ================
 - fix create SQL table fraud_alert_info 
