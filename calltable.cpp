@@ -714,8 +714,8 @@ Call::read_rtp(unsigned char* data, int datalen, int dataoffset, struct pcap_pkt
 
 	for(int i = 0; i < ssrc_n; i++) {
 		if(rtp[i]->ssrc2 == curSSRC 
-#ifdef RTP_BY_IP_PORT
-		   && rtp[i]->saddr == saddr && rtp[i]->daddr == daddr && rtp[i]->dport == dport
+#if RTP_BY_IP_PORT
+		   && rtp[i]->saddr == saddr
 #endif
 		   ) {
 			// found 
@@ -1874,6 +1874,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		for(int k = 0; k < ssrc_n; k++) {
 			if(sverb.process_rtp) {
 				cout << "RTP - final stream: " 
+				     << rtp[indexes[k]]->ssrc << " : "
 				     << inet_ntostring(htonl(rtp[indexes[k]]->saddr)) << " -> "
 				     << inet_ntostring(htonl(rtp[indexes[k]]->daddr)) << " / "
 				     << (rtp[indexes[k]]->iscaller ? "caller" : "called") 
