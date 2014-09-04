@@ -1,3 +1,8 @@
+10.0.33 4.9.2014
+================
+- fix 10.0.28 - 10.0.32 versions where if RTP with the same SSRC changes destination IP it was treated incorrectly as new RTP stream causing low MOS score in some cases. 
+
+
 10.0.32 2.9.2014
 ================
 - fix 10.0.30 and 10.0.31 which did not recognized called or caller RTP stream in some cases 
