@@ -60,7 +60,7 @@
 		Suggestion: rrd files are located in you spool directory in subdir 'rrd'
 
 
-3)APENDIX creategraph syntax and its arguments:
+3)APPENDIX creategraph syntax and its arguments:
 
 	Syntax:
 		creategraph graph_type linuxTS_from linuxTS_to size_x_pixels size_y_pixels [slope-mode=0/1] [icon=0/1] [dstfile=if_no_spec.to_stdout]
