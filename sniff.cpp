@@ -197,7 +197,7 @@ extern int opt_nocdr;
 extern int opt_enable_fraud;
 extern int pcap_drop_flag;
 extern int opt_hide_message_content;
-extern int opt_remotepartyid_calling;
+extern int opt_remotepartyid;
 
 #ifdef QUEUE_MUTEX
 extern sem_t readpacket_thread_semaphore;
@@ -1409,21 +1409,26 @@ Call *new_invite_register(int sip_method, char *data, int datalen, struct pcap_p
 		// try compact header
 		get_sip_peername(data,datalen,"\nf:", tcaller, sizeof(tcaller));
 	}
-	if(!strcasecmp(tcaller, "anonymous") && (!opt_remotepartyid_calling)) {
+	if(!strcasecmp(tcaller, "anonymous")) {
 		char tcaller_remote_party[1024] = "";
 		if(!get_sip_peername(data,datalen,"\nRemote-Party-ID:", tcaller_remote_party, sizeof(tcaller_remote_party)) &&
 		   tcaller_remote_party[0] != '\0') {
 			strcpy(tcaller, tcaller_remote_party);
-			anonymous_useRemotePartyID = true;
+			if(opt_remotepartyid) {
+				caller_useRemotePartyID = true;
+			} else {
+				anonymous_useRemotePartyID = true;
+			}
 		}
-	}
-	if(opt_remotepartyid_calling) {
-		char tcaller_remote_party[1024] = "";
-		if(!get_sip_peername(data,datalen,"\nRemote-Party-ID:", tcaller_remote_party, sizeof(tcaller_remote_party)) &&
-		   tcaller_remote_party[0] != '\0') {
-			strcpy(tcaller, tcaller_remote_party);
-			caller_useRemotePartyID = true;
-		}
+	} else {
+		if(opt_remotepartyid) {
+			char tcaller_remote_party[1024] = "";
+			if(!get_sip_peername(data,datalen,"\nRemote-Party-ID:", tcaller_remote_party, sizeof(tcaller_remote_party)) &&
+			   tcaller_remote_party[0] != '\0') {
+				strcpy(tcaller, tcaller_remote_party);
+				caller_useRemotePartyID = true;
+			}
+		}	
 	}
 
 	// called number
