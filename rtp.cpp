@@ -1041,6 +1041,15 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 				} else {
 					packetization = (getTimestamp() - last_ts) / 8;
 				}
+			} else if(curpayload == PAYLOAD_G723) {
+				if(payload_len == 24) {
+					packetization = 30;
+				} else if(payload_len == 24*2) {
+					printf("pack:60\n");
+					packetization = 60;
+				} else if(payload_len == 24*3) {
+					packetization = 90;
+				}
 			} else {
 				packetization = (getTimestamp() - last_ts) / (samplerate / 1000);
 			}
@@ -1194,6 +1203,14 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 				} else {
 					curpacketization = (getTimestamp() - last_ts) / 8;
 				}
+			} else if(curpayload == PAYLOAD_G723) {
+				if(payload_len == 24) {
+					curpacketization = 30;	
+				} else if(payload_len == 24*2) {
+					curpacketization = 60;
+				} else if(payload_len == 24*3) {
+					curpacketization = 90;
+				}
 			} else if(curpayload == PAYLOAD_PCMU or curpayload == PAYLOAD_PCMA) {
 				if((payload_len / 8) >= 20) {
 					// do not change packetization to 10ms frames. Case g711_20_10_sync.pcap
@@ -1207,8 +1224,8 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 			}
 
 			if(curpacketization != packetization and curpacketization % 10 == 0 and curpacketization >= 10 and curpacketization <= 120) {
+				if(verbosity > 3) printf("[%x] changing packetization:[%d]->[%d]\n", getSSRC(), curpacketization, packetization);
 				channel_fix1->packetization = channel_fix2->packetization = channel_adapt->packetization = channel_record->packetization = packetization = curpacketization;
-				if(verbosity > 3) printf("[%x] changing packetization:[%d]\n", getSSRC(), packetization);
 			}
 
 		}
