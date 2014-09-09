@@ -1,3 +1,8 @@
+10.0.34 9.9.2014
+================
+- fix G723 packetization - if not 30ms audio is out of sync 
+
+
 10.0.33 4.9.2014
 ================
 - fix 10.0.28 - 10.0.32 versions where if RTP with the same SSRC changes destination IP it was treated incorrectly as new RTP stream causing low MOS score in some cases. 
