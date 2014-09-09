@@ -2055,6 +2055,10 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 				`called_customer_id` int DEFAULT NULL,\
 				`called_reseller_id` char(10) DEFAULT NULL," :
 				"") +
+		       "`price_operator_mult100` int unsigned DEFAULT NULL,\
+			`price_operator_currency_id` tinyint unsigned DEFAULT NULL,\
+			`price_customer_mult100` int unsigned DEFAULT NULL,\
+			`price_customer_currency_id` tinyint unsigned DEFAULT NULL," + 
 		(opt_cdr_partition ? 
 			"PRIMARY KEY (`ID`, `calldate`)," :
 			"PRIMARY KEY (`ID`),") + 
@@ -2141,6 +2145,19 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 	opt_last_rtp_from_end = this->fetchRow();
 	if(!opt_last_rtp_from_end) {
 		syslog(LOG_WARNING, "!!! Your database needs to be upgraded to support new features - ALTER TABLE cdr ADD a_last_rtp_from_end SMALLINT UNSIGNED DEFAULT NULL, ADD b_last_rtp_from_end SMALLINT UNSIGNED DEFAULT NULL;");
+	}
+	
+	this->query("show columns from cdr where Field='price_operator_mult100'");
+	if(!this->fetchRow()) {
+		this->query("show tables like 'billing'");
+		if(this->fetchRow()) {
+			syslog(LOG_WARNING, "!!! You need to alter cdr database table and add new columns to support billing feature. "
+					    "This operation can take hours based on ammount of data, CPU and I/O speed of your server. "
+					    "The alter table will prevent the database to insert new rows and will probably block other operations. "
+					    "It is recommended to alter the table in non working hours. "
+					    "Login to the mysql voipmonitor database (mysql -uroot voipmonitor) and run on the CLI> "
+					    "ALTER TABLE cdr ADD COLUMN price_operator_mult100 INT UNSIGNED, ADD COLUMN price_operator_currency_id TINYINT UNSIGNED, ADD COLUMN price_customer_mult100 INT UNSIGNED, ADD COLUMN price_customer_currency_id TINYINT UNSIGNED;");
+		}
 	}
 
 	string cdrNextCustomFields;
