@@ -909,7 +909,8 @@ void *storing_cdr( void *dummy ) {
 			calltable->unlock_calls_queue();
 	
 			call->closeRawFiles();
-			if( (opt_savewav_force || (call->flags & FLAG_SAVEWAV)) && (call->type == INVITE || call->type == SKINNY_NEW)) {
+			if( (opt_savewav_force || (call->flags & FLAG_SAVEWAV)) && (call->type == INVITE || call->type == SKINNY_NEW) &&
+			    call->getAllReceivedRtpPackets()) {
 				if(verbosity > 0) printf("converting RAW file to WAV Queue[%d]\n", (int)calltable->calls_queue.size());
 				call->convertRawToWav();
 			}
@@ -2110,7 +2111,7 @@ int load_config(char *fname) {
 			syslog(LOG_ERR, "Evaluating config from file %s FAILED!", fname );
 			return 1;
 		}
-		printf("OK\n", fname);
+		printf("OK\n");
 
 	} else {
 		DIR *dir;
@@ -2205,7 +2206,7 @@ int load_config(char *fname) {
 
 void reload_config() {
 	load_config(configfile);
-	load_config("/etc/voipmonitor/conf.d/");
+	load_config((char*)"/etc/voipmonitor/conf.d/");
 	request_iptelnum_reload = 1;
 }
 
@@ -2589,7 +2590,7 @@ int main(int argc, char *argv[]) {
 			case '7':
 				strncpy(configfile, optarg, sizeof(configfile));
 				load_config(configfile);
-				load_config("/etc/voipmonitor/conf.d/");
+				load_config((char*)"/etc/voipmonitor/conf.d/");
 				break;
 			case '8':
 				opt_manager_port = atoi(optarg);

@@ -2354,8 +2354,7 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 		last_register_clean = now;
 	} else if((last_register_clean + REGISTER_CLEAN_PERIOD) < now){
 		// last clean was done older than CLEAN_PERIOD seconds
-		stringstream calldate;
-		calldate << calltime();
+		string calldate_str = sqlDateTimeString(calltime());
 
 		query = "INSERT INTO register_state \
 			 (created_at, \
@@ -2381,14 +2380,14 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 				5, \
 				ua_id \
 			FROM register \
-			WHERE expires_at <= FROM_UNIXTIME(" + calldate.str() + ")";
+			WHERE expires_at <= '" + calldate_str + "'";
 		if(enableBatchIfPossible && isTypeDb("mysql")) {
 			qp = query + "; ";
-			qp += "DELETE FROM register WHERE expires_at <= FROM_UNIXTIME(" + calldate.str() + ")";
+			qp += "DELETE FROM register WHERE expires_at <= '" + calldate_str + "'";
 			sqlStore->query_lock(qp.c_str(), storeId);
 		} else {
 			sqlDbSaveCall->query(query);
-			sqlDbSaveCall->query("DELETE FROM register WHERE expires_at <= FROM_UNIXTIME("+ calldate.str() + ")");
+			sqlDbSaveCall->query("DELETE FROM register WHERE expires_at <= '"+ calldate_str + "'");
 		}
 		last_register_clean = now;
 	}
@@ -2572,20 +2571,21 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 			stringstream cnt;
 			cnt << count;
 
-			stringstream calldate;
-			calldate << calltime();
+			string calldate_str = sqlDateTimeString(calltime());
 
 			string q1 = string(
 				"SELECT counter FROM register_failed ") +
-				"WHERE sipcallerip = " + ssipcallerip.str() + " AND sipcalledip = " + ssipcalledip.str() + " AND created_at >= SUBTIME(FROM_UNIXTIME(" + calldate.str() + "), '01:00:00') LIMIT 1";
+				"WHERE sipcallerip = " + ssipcallerip.str() + " AND sipcalledip = " + ssipcalledip.str() + 
+				" AND created_at >= SUBTIME('" + calldate_str + "', '01:00:00') LIMIT 1";
 
 			char fname[32];
 			snprintf(fname, 31, "%llu", fname2);
 			fname[31] = 0;
 			string q2 = string(
-				"UPDATE register_failed SET created_at = FROM_UNIXTIME(" + calldate.str() + "), fname = " + sqlEscapeStringBorder(fname) + ", counter = counter + " + cnt.str()) +
+				"UPDATE register_failed SET created_at = '" + calldate_str + "', fname = " + sqlEscapeStringBorder(fname) + ", counter = counter + " + cnt.str()) +
 				", to_num = " + sqlEscapeStringBorder(called) + ", from_num = " + sqlEscapeStringBorder(called) + ", digestusername = " + sqlEscapeStringBorder(digest_username) +
-				"WHERE sipcallerip = " + ssipcallerip.str() + " AND sipcalledip = " + ssipcalledip.str() + " AND created_at >= SUBTIME(FROM_UNIXTIME(" + calldate.str() + "), '01:00:00')";
+				"WHERE sipcallerip = " + ssipcallerip.str() + " AND sipcalledip = " + ssipcalledip.str() + 
+				" AND created_at >= SUBTIME('" + calldate_str + "', '01:00:00')";
 
 			SqlDb_row reg;
 			reg.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "created_at");
@@ -2615,10 +2615,11 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 
 			sqlStore->query_lock(query.c_str(), storeId);
 		} else {
+			string calldate_str = sqlDateTimeString(calltime());
 			query = string(
 				"SELECT counter FROM register_failed ") +
 				"WHERE to_num = " + sqlEscapeStringBorder(called) + " AND to_domain = " + sqlEscapeStringBorder(called_domain) + 
-					" AND digestusername = " + sqlEscapeStringBorder(digest_username) + " AND created_at >= SUBTIME(NOW(), '01:00:00')";
+					" AND digestusername = " + sqlEscapeStringBorder(digest_username) + " AND created_at >= SUBTIME('" + calldate_str+ "', '01:00:00')";
 			if(sqlDbSaveCall->query(query)) {
 				SqlDb_row rsltRow = sqlDbSaveCall->fetchRow();
 				char fname[32];
@@ -2627,9 +2628,9 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 				if(rsltRow) {
 					// there is already failed register, update counter and do not insert
 					string query = string(
-						"UPDATE register_failed SET created_at = NOW(), fname = " + sqlEscapeStringBorder(fname) + ", counter = counter + 1 ") +
+						"UPDATE register_failed SET created_at = '" + calldate_str+ "', fname = " + sqlEscapeStringBorder(fname) + ", counter = counter + 1 ") +
 						"WHERE to_num = " + sqlEscapeStringBorder(called) + " AND digestusername = " + sqlEscapeStringBorder(digest_username) + 
-							" AND created_at >= SUBTIME(NOW(), '01:00:00');";
+							" AND created_at >= SUBTIME('" + calldate_str+ "', '01:00:00');";
 					sqlDbSaveCall->query(query);
 				} else {
 					// this is new failed attempt within hour, insert
@@ -2854,6 +2855,15 @@ void Call::atFinish() {
 		if(verbosity >= 2) printf("command: [%s]\n", source.c_str());
 		system(source.c_str());
 	}
+}
+
+u_int32_t 
+Call::getAllReceivedRtpPackets() {
+	u_int32_t receivedPackets = 0;
+	for(int i = 0; i < ssrc_n; i++) {
+		receivedPackets += rtp[i]->stats.received;
+	}
+	return(receivedPackets);
 }
 
 /* constructor */
