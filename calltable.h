@@ -525,6 +525,8 @@ public:
 		       pcapSip.isClose() &&
 		       pcapRtp.isClose());
 	}
+	
+	u_int32_t getAllReceivedRtpPackets();
 private:
 	ip_port_call_info ip_port[MAX_IP_PER_CALL];
 	PcapDumper pcap;

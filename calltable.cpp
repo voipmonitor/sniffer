@@ -2857,6 +2857,15 @@ void Call::atFinish() {
 	}
 }
 
+u_int32_t 
+Call::getAllReceivedRtpPackets() {
+	u_int32_t receivedPackets = 0;
+	for(int i = 0; i < ssrc_n; i++) {
+		receivedPackets += rtp[i]->stats.received;
+	}
+	return(receivedPackets);
+}
+
 /* constructor */
 Calltable::Calltable() {
 	pthread_mutex_init(&qlock, NULL);
