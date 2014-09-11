@@ -1,3 +1,12 @@
+10.0.36 11.9.2014
+================
+- fix ignoring RTP streams in case there are more legs and MARK bit sets
+- fix timezone issues for register failed when sniffer is in different timezone then mysql server
+- do not print to syslog when audio fails to decode because of missing RTP
+- fix duplicate errors for max_allowed_packet
+- add column message.content_length 
+
+
 10.0.35 9.9.2014
 ================
 - maintainance build (compiled with static libnss to prevent crashing on buggy libc) 
