@@ -1874,11 +1874,11 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		for(int k = 0; k < ssrc_n; k++) {
 			if(sverb.process_rtp) {
 				cout << "RTP - final stream: " 
-				     << rtp[indexes[k]]->ssrc << " : "
+				     << hex << rtp[indexes[k]]->ssrc << dec << " : "
 				     << inet_ntostring(htonl(rtp[indexes[k]]->saddr)) << " -> "
 				     << inet_ntostring(htonl(rtp[indexes[k]]->daddr)) << " / "
 				     << (rtp[indexes[k]]->iscaller ? "caller" : "called") 
-				     << " packets received: " << rtp[indexes[k]]->stats.received << " "
+				     << " packets received: " << rtp[indexes[k]]->s->received << " "
 				     << endl;
 			}
 			if(rtp[indexes[k]]->iscaller && (!rtpab[0] || rtp[indexes[k]]->stats.received > rtpab[0]->stats.received)) {

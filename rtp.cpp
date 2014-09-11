@@ -670,6 +670,7 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 	
 	if(sverb.read_rtp) {
 		cout << "RTP - read: " 
+		     << hex << this->ssrc << dec << " "
 		     << inet_ntostring(htonl(this->daddr)) << " / " << this->dport 
 		     << " " << (this->iscaller ? "caller" : "called") << endl;
 	}
@@ -844,13 +845,13 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 			// reset last sequence 
 			s->cycles = s->cycles - s->base_seq + s->max_seq;
 			s->base_seq = seq;
-			s->max_seq = seq;
+			s->max_seq = seq - 1;
 		}
 	} else {
 		if(owner->lastcalledrtp and owner->lastcalledrtp != this) {
 			s->cycles = s->cycles - s->base_seq + s->max_seq;
 			s->base_seq = seq;
-			s->max_seq = seq;
+			s->max_seq = seq - 1;
 		}
 	}
 
