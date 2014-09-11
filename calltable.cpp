@@ -232,6 +232,7 @@ Call::Call(char *call_id, unsigned long call_id_len, time_t time) :
 	rtppcaketsinqueue = 0;
 	message = NULL;
 	contenttype = NULL;
+	content_length = 0;
 	unrepliedinvite = 0;
 	sipcalledip2 = 0;
 	sipcallerip2 = 0;
@@ -2698,6 +2699,10 @@ Call::saveMessageToDb(bool enableBatchIfPossible) {
 		} else {
 			cdr.add(sqlEscapeString(message), "message");
 		}
+	}
+	extern bool exists_column_message_content_length;
+	if(exists_column_message_content_length && content_length) {
+		cdr.add(content_length, "content_length");
 	}
 
 	cdr.add(lastSIPresponseNum, "lastSIPresponseNum");

@@ -2769,6 +2769,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 				char c = s[l];
 				s[l] = '\0';
 				contentlen = atoi(s);
+				call->content_length = contentlen;
 				s[l] = c;
 			}
 			if(contentlen > 0) {

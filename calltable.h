@@ -213,6 +213,7 @@ public:
 
 	char *contenttype;
 	char *message;
+	int content_length;
 
 	int last_callercodec;		//!< Last caller codec 
 	int last_calledcodec;		//!< Last called codec 

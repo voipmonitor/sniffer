@@ -63,6 +63,7 @@ extern char cloud_token[256];
 int sql_noerror = 0;
 int sql_disable_next_attempt_if_error = 0;
 bool opt_cdr_partition_oldver = false;
+bool exists_column_message_content_length = false;
 
 
 string SqlDb_row::operator [] (const char *fieldName) {
@@ -2339,7 +2340,8 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 			`a_ua_id` int unsigned DEFAULT NULL,\
 			`b_ua_id` int unsigned DEFAULT NULL,\
 			`fbasename` varchar(255) DEFAULT NULL,\
-			`message` MEDIUMTEXT CHARACTER SET utf8," +
+			`message` MEDIUMTEXT CHARACTER SET utf8,\
+			`content_length` MEDIUMINT DEFAULT NULL," +
 			messageNextCustomFields +
 		(opt_cdr_partition ? 
 			"PRIMARY KEY (`ID`, `calldate`)," :
@@ -2384,6 +2386,11 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 			ADD COLUMN `") + opt_custom_headers_message[iCustHeaders][1] + "` VARCHAR(255);");
 	}
 	sql_noerror = 0;
+	}
+
+	if(!federated) {
+		this->query("show columns from message where Field='content_length'");
+		exists_column_message_content_length = this->fetchRow();
 	}
 
 	if(!federated) {
