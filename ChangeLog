@@ -1,3 +1,9 @@
+10.0.37 12.9.2014
+=================
+- static builds are compatible with 2.6.18 kernels again
+- fix active calls realtime audio monitor chopped sound - increase length of ringbuffer for chunkplayer
+
+
 10.0.36 11.9.2014
 ================
 - fix ignoring RTP streams in case there are more legs and MARK bit sets
