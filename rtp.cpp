@@ -840,6 +840,7 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 		return;
 	}
 
+/* this breaks 4 RTP streams (7b3fa6fb57a719f036fddfbf351234fe pcap sample) and it is not needed anymore (31955aa570d1f71624cea503052de62c)
 	if(iscaller) {
 		if(owner->lastcallerrtp and owner->lastcallerrtp != this) {
 			// reset last sequence 
@@ -854,6 +855,7 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 			s->max_seq = seq - 1;
 		}
 	}
+*/
 
 	if(owner->forcemark[iscaller]) {
 		// on reinvite (which indicates forcemark[iscaller] completely reset rtp jitterbuffer simulator and 

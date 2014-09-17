@@ -1,3 +1,8 @@
+10.0.38 17.9.2014
+=================
+- fix reported packet loss (>65000) for calls with more than 2 RTP streams (bug introduced since 10.0.36) 
+
+
 10.0.37 12.9.2014
 =================
 - static builds are compatible with 2.6.18 kernels again
