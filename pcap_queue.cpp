@@ -888,9 +888,6 @@ void PcapQueue::setInstancePcapHandle(PcapQueue *pcapQueue) {
 }
 
 void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
-	if(!VERBOSE && !DEBUG_VERBOSE) {
-		return;
-	}
 	if(this->instancePcapHandle &&
 	   !this->instancePcapHandle->initAllReadThreadsOk) {
 		return;
@@ -1226,7 +1223,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 			syslog(LOG_NOTICE, "packetbuffer cpu / mem stat:");
 			syslog(LOG_NOTICE, outStrStat.str().c_str());
 		}
-	} else {
+	} else if(VERBOSE) {
 		outStr << outStrStat.str();
 		extern bool incorrectCaplenDetected;
 		if(incorrectCaplenDetected) {
@@ -1769,7 +1766,6 @@ failed:
 }
 
 inline int PcapQueue_readFromInterface_base::pcap_next_ex_iface(pcap_t *pcapHandle, pcap_pkthdr** header, u_char** packet) {
-	extern int verbosity;
 	int res = ::pcap_next_ex(pcapHandle, header, (const u_char**)packet);
 	if(!packet && res != -2) {
 		if(VERBOSE) {
@@ -2035,9 +2031,9 @@ inline void PcapQueue_readFromInterfaceThread::moveReadit(int index) {
 }
 
 void *PcapQueue_readFromInterfaceThread::threadFunction(void *arg, unsigned int arg2) {
-	if(verbosity > 0) {
+	this->threadId = get_unix_tid();
+	if(VERBOSE) {
 		ostringstream outStr;
-		this->threadId = get_unix_tid();
 		outStr << "start thread t0i_" 
 		       << (this->typeThread == read ? "read" : 
 			   this->typeThread == defrag ? "defrag" :
@@ -2346,9 +2342,9 @@ bool PcapQueue_readFromInterface::initThread(void *arg, unsigned int arg2) {
 }
 
 void* PcapQueue_readFromInterface::threadFunction(void *arg, unsigned int arg2) {
+	this->threadId = get_unix_tid();
 	if(VERBOSE || DEBUG_VERBOSE) {
 		ostringstream outStr;
-		this->threadId = get_unix_tid();
 		outStr << "start thread t0 (" << this->nameQueue << ") - pid: " << this->threadId << endl;
 		if(DEBUG_VERBOSE) {
 			cout << outStr.str();
@@ -2811,15 +2807,15 @@ bool PcapQueue_readFromFifo::initThread(void *arg, unsigned int arg2) {
 }
 
 void *PcapQueue_readFromFifo::threadFunction(void *arg, unsigned int arg2) {
+	int pid = get_unix_tid();
+	if(this->packetServerDirection == directionRead && arg2) {
+		this->packetServerConnections[arg2]->threadId = pid;
+		this->packetServerConnections[arg2]->active = true;
+	} else {
+		this->threadId = get_unix_tid();
+	}
 	if(VERBOSE || DEBUG_VERBOSE) {
 		ostringstream outStr;
-		int pid = get_unix_tid();
-		if(this->packetServerDirection == directionRead && arg2) {
-			this->packetServerConnections[arg2]->threadId = pid;
-			this->packetServerConnections[arg2]->active = true;
-		} else {
-			this->threadId = get_unix_tid();
-		}
 		outStr << "start thread t1 (" << this->nameQueue;
 		if(this->packetServerDirection == directionRead && arg2) {
 			outStr << " " << this->packetServerConnections[arg2]->socketClientIP << ":" << this->packetServerConnections[arg2]->socketClientInfo.sin_port;
@@ -2998,9 +2994,9 @@ void *PcapQueue_readFromFifo::threadFunction(void *arg, unsigned int arg2) {
 }
 
 void *PcapQueue_readFromFifo::writeThreadFunction(void *arg, unsigned int arg2) {
+	this->writeThreadId = get_unix_tid();
 	if(VERBOSE || DEBUG_VERBOSE) {
 		ostringstream outStr;
-		this->writeThreadId = get_unix_tid();
 		outStr << "start thread t2 (" << this->nameQueue << " / write" << ") - pid: " << this->writeThreadId << endl;
 		if(DEBUG_VERBOSE) {
 			cout << outStr.str();
