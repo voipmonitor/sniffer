@@ -33,7 +33,7 @@ extern vector<dstring> opt_custom_headers_cdr;
 extern vector<dstring> opt_custom_headers_message;
 extern char get_customers_pn_query[1024];
 extern int opt_dscp;
-extern int opt_enable_lua_tables;
+extern int opt_enable_http_enum_tables;
 extern int opt_mysqlcompress;
 extern pthread_mutex_t mysqlconnect_lock;      
 extern int opt_mos_lqo;
@@ -2552,7 +2552,7 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 	) ENGINE=InnoDB DEFAULT CHARSET=latin1;");
 	}
 	
-	if(opt_enable_lua_tables) {
+	if(opt_enable_http_enum_tables) {
 		this->query(string(
 		"CREATE TABLE IF NOT EXISTS `http_jj") + federatedSuffix + "` (\
 			`id` INT UNSIGNED NOT NULL AUTO_INCREMENT,\
@@ -2705,7 +2705,7 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 		outStrAlter << "ALTER TABLE cdr ADD dscp int unsigned DEFAULT NULL;" << endl;
 	}
 	
-	if(opt_enable_lua_tables) {
+	if(opt_enable_http_enum_tables) {
 		outStrAlter << "ALTER TABLE http_jj\
 				ADD external_transaction_id varchar( 255 ) NOT NULL,\
 				ADD KEY `external_transaction_id` (`external_transaction_id`);" << endl;
@@ -3269,7 +3269,7 @@ void SqlDb_mysql::copyFromSourceTables(SqlDb_mysql *sqlDbSrc) {
 	if(terminating) return;
 	this->copyFromSourceTable(sqlDbSrc, "cdr", NULL, maxDiffId);
 	if(terminating) return;
-	if(opt_enable_lua_tables) {
+	if(opt_enable_http_enum_tables) {
 		this->copyFromSourceTable(sqlDbSrc, "http_jj", NULL, maxDiffId);
 		if(terminating) return;
 		this->copyFromSourceTable(sqlDbSrc, "enum_jj", NULL, maxDiffId);
@@ -3394,7 +3394,7 @@ void SqlDb_mysql::copyFromSourceGuiTables(SqlDb_mysql *sqlDbSrc) {
 	SqlDb_row row;
 	while(row = sqlDbSrc->fetchRow()) {
 		string tableName = row[0];
-		if((tableName == "http_jj" || tableName == "enum_jj") && !opt_enable_lua_tables) {
+		if((tableName == "http_jj" || tableName == "enum_jj") && !opt_enable_http_enum_tables) {
 			continue;
 		}
 		bool isMainSourceTable = false;
@@ -3445,8 +3445,8 @@ vector<string> SqlDb_mysql::getSourceTables() {
 		"cdr_rtp",
 		"cdr_dtmf",
 		"cdr_proxy",
-		opt_enable_lua_tables ? "http_jj" : NULL,
-		opt_enable_lua_tables ? "enum_jj" : NULL,
+		opt_enable_http_enum_tables ? "http_jj" : NULL,
+		opt_enable_http_enum_tables ? "enum_jj" : NULL,
 		"message",
 		"register_failed",
 		"register_state"
@@ -3485,7 +3485,7 @@ void SqlDb_mysql::copyFromFederatedTables() {
 	if(terminating) return;
 	this->copyFromFederatedTable("cdr", NULL, maxDiffId);
 	if(terminating) return;
-	if(opt_enable_lua_tables) {
+	if(opt_enable_http_enum_tables) {
 		this->copyFromFederatedTable("http_jj", NULL, maxDiffId);
 		if(terminating) return;
 		this->copyFromFederatedTable("enum_jj", NULL, maxDiffId);
@@ -3569,8 +3569,8 @@ vector<string> SqlDb_mysql::getFederatedTables() {
 		"cdr_rtp_fed",
 		"cdr_dtmf_fed",
 		"cdr_proxy_fed",
-		opt_enable_lua_tables ? "http_jj_fed" : NULL,
-		opt_enable_lua_tables ? "enum_jj_fed" : NULL,
+		opt_enable_http_enum_tables ? "http_jj_fed" : NULL,
+		opt_enable_http_enum_tables ? "enum_jj_fed" : NULL,
 		"message_fed",
 		"register_failed_fed",
 		"register_state_fed"
@@ -4249,10 +4249,12 @@ void createMysqlPartitionsBillingAgregation() {
 
 void dropMysqlPartitionsCdr() {
 	extern int opt_cleandatabase_cdr;
+	extern int opt_cleandatabase_http_enum;
 	extern int opt_cleandatabase_register_state;
 	extern int opt_cleandatabase_register_failed;
 	static unsigned long counterDropPartitions = 0;
 	if(opt_cleandatabase_cdr > 0 ||
+	   (opt_enable_http_enum_tables && opt_cleandatabase_http_enum > 0) ||
 	   opt_cleandatabase_register_state > 0 ||
 	   opt_cleandatabase_register_failed > 0) {
 		syslog(LOG_NOTICE, "drop old partitions - begin");
@@ -4265,8 +4267,6 @@ void dropMysqlPartitionsCdr() {
 			char limitPartName[20] = "";
 			strftime(limitPartName, sizeof(limitPartName), "p%y%m%d", prevDayTime);
 			vector<string> partitions;
-			vector<string> partitions_http;
-			vector<string> partitions_enum;
 			if(counterDropPartitions == 0) {
 				if(cloud_host[0]) {
 					sqlDb->query("explain partitions select * from cdr");
@@ -4286,26 +4286,9 @@ void dropMysqlPartitionsCdr() {
 					while((row = sqlDb->fetchRow())) {
 						partitions.push_back(row["partition_name"]);
 					}
-					if(opt_enable_lua_tables) {
-						sqlDb->query(string("select partition_name from information_schema.partitions where table_schema='") + 
-							     mysql_database+ "' and table_name='http_jj' and partition_name<='" + limitPartName+ "' order by partition_name");
-						SqlDb_row row;
-						while((row = sqlDb->fetchRow())) {
-							partitions_http.push_back(row["partition_name"]);
-						}
-						sqlDb->query(string("select partition_name from information_schema.partitions where table_schema='") + 
-							     mysql_database+ "' and table_name='enum_jj' and partition_name<='" + limitPartName+ "' order by partition_name");
-						while((row = sqlDb->fetchRow())) {
-							partitions_enum.push_back(row["partition_name"]);
-						}
-					}
 				}
 			} else {
 				partitions.push_back(limitPartName);
-				if(opt_enable_lua_tables) {
-					partitions_http.push_back(limitPartName);
-					partitions_enum.push_back(limitPartName);
-				}
 			}
 			for(size_t i = 0; i < partitions.size(); i++) {
 				syslog(LOG_NOTICE, "DROP CDR PARTITION %s", partitions[i].c_str());
@@ -4315,6 +4298,31 @@ void dropMysqlPartitionsCdr() {
 				sqlDb->query("ALTER TABLE cdr_dtmf DROP PARTITION " + partitions[i]);
 				sqlDb->query("ALTER TABLE cdr_proxy DROP PARTITION " + partitions[i]);
 				sqlDb->query("ALTER TABLE message DROP PARTITION " + partitions[i]);
+			}
+		}
+		if(opt_enable_http_enum_tables && opt_cleandatabase_http_enum > 0) {
+			time_t act_time = time(NULL);
+			time_t prev_day_time = act_time - opt_cleandatabase_http_enum * 24 * 60 * 60;
+			struct tm *prevDayTime = localtime(&prev_day_time);
+			char limitPartName[20] = "";
+			strftime(limitPartName, sizeof(limitPartName), "p%y%m%d", prevDayTime);
+			vector<string> partitions_http;
+			vector<string> partitions_enum;
+			if(counterDropPartitions == 0) {
+				sqlDb->query(string("select partition_name from information_schema.partitions where table_schema='") + 
+					     mysql_database+ "' and table_name='http_jj' and partition_name<='" + limitPartName+ "' order by partition_name");
+				SqlDb_row row;
+				while((row = sqlDb->fetchRow())) {
+					partitions_http.push_back(row["partition_name"]);
+				}
+				sqlDb->query(string("select partition_name from information_schema.partitions where table_schema='") + 
+					     mysql_database+ "' and table_name='enum_jj' and partition_name<='" + limitPartName+ "' order by partition_name");
+				while((row = sqlDb->fetchRow())) {
+					partitions_enum.push_back(row["partition_name"]);
+				}
+			} else {
+				partitions_http.push_back(limitPartName);
+				partitions_enum.push_back(limitPartName);
 			}
 			for(size_t i = 0; i < partitions_http.size(); i++) {
 				syslog(LOG_NOTICE, "DROP HTTP_JJ PARTITION %s", partitions_http[i].c_str());

@@ -242,7 +242,7 @@ int opt_read_from_file = 0;
 char opt_pb_read_from_file[256] = "";
 int opt_dscp = 0;
 int opt_cdrproxy = 1;
-int opt_enable_lua_tables = 0;
+int opt_enable_http_enum_tables = 0;
 int opt_generator = 0;
 int opt_generator_channels = 1;
 int opt_skipdefault = 0;
@@ -326,6 +326,7 @@ extern int opt_pcap_queue_dequeu_window_length;
 extern int opt_pcap_queue_dequeu_method;
 extern int sql_noerror;
 int opt_cleandatabase_cdr = 0;
+int opt_cleandatabase_http_enum = 0;
 int opt_cleandatabase_register_state = 0;
 int opt_cleandatabase_register_failed = 0;
 unsigned int graph_delimiter = GRAPH_DELIMITER;
@@ -1151,6 +1152,7 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "cleandatabase", NULL))) {
 		opt_cleandatabase_cdr = atoi(value);
+		opt_cleandatabase_http_enum = opt_cleandatabase_cdr;
 		opt_cleandatabase_register_state = opt_cleandatabase_cdr;
 		opt_cleandatabase_register_failed = opt_cleandatabase_cdr;
 	}
@@ -1159,6 +1161,10 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "cleandatabase_cdr", NULL))) {
 		opt_cleandatabase_cdr = atoi(value);
+		opt_cleandatabase_http_enum = opt_cleandatabase_cdr;
+	}
+	if((value = ini.GetValue("general", "cleandatabase_http_enum", NULL))) {
+		opt_cleandatabase_http_enum = atoi(value);
 	}
 	if((value = ini.GetValue("general", "cleandatabase_register_state", NULL))) {
 		opt_cleandatabase_register_state = atoi(value);
@@ -1734,8 +1740,10 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "openfile_max", NULL))) {
                 opt_openfile_max = atoi(value);
         }
-	if((value = ini.GetValue("general", "enable_lua_tables", NULL))) {
-		opt_enable_lua_tables = yesno(value);
+	if((value = ini.GetValue("general", "enable_lua_tables", NULL)) ||
+	   (value = ini.GetValue("general", "enable_http_enum_tables", NULL))
+	) {
+		opt_enable_http_enum_tables = yesno(value);
 	}
 
 	if((value = ini.GetValue("general", "packetbuffer_enable", NULL))) {
@@ -2081,7 +2089,7 @@ int eval_config(string inistr) {
 	}
 	
 	if(opt_enable_tcpreassembly) {
-		opt_enable_lua_tables = true;
+		opt_enable_http_enum_tables = true;
 	}
 	return 0;
 }

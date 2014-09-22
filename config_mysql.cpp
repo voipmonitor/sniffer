@@ -136,6 +136,10 @@ config_load_mysql() {
 			opt_cleandatabase_cdr = atoi(row["cleandatabase_cdr"].c_str());
 		}
 
+		if(row["cleandatabase_http_enum"] != "") {
+			opt_cleandatabase_http_enum = atoi(row["cleandatabase_http_enum"].c_str());
+		}
+
 		if(row["cleandatabase_register_state"] != "") {
 			opt_cleandatabase_register_failed = atoi(row["cleandatabase_register_state"].c_str());
 		}
