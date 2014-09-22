@@ -843,6 +843,7 @@ void *storing_cdr( void *dummy ) {
 	time_t createPartitionAt = 0;
 	time_t dropPartitionAt = 0;
 	time_t createPartitionIpaccAt = 0;
+	time_t createPartitionBillingAgregationAt = 0;
 	time_t checkDiskFreeAt = 0;
 	while(1) {
 		if(!opt_nocdr and opt_cdr_partition and !opt_disable_partition_operations and isSqlDriver("mysql")) {
@@ -857,11 +858,19 @@ void *storing_cdr( void *dummy ) {
 			}
 		}
 		
-		if(opt_ipaccount and !opt_disable_partition_operations and isSqlDriver("mysql")) {
+		if(!opt_nocdr and opt_ipaccount and !opt_disable_partition_operations and isSqlDriver("mysql")) {
 			time_t actTime = time(NULL);
 			if(actTime - createPartitionIpaccAt > 12 * 3600) {
 				createMysqlPartitionsIpacc();
 				createPartitionIpaccAt = actTime;
+			}
+		}
+		
+		if(!opt_nocdr and !opt_disable_partition_operations and isSqlDriver("mysql")) {
+			time_t actTime = time(NULL);
+			if(actTime - createPartitionBillingAgregationAt > 12 * 3600) {
+				createMysqlPartitionsBillingAgregation();
+				createPartitionBillingAgregationAt = actTime;
 			}
 		}
 		

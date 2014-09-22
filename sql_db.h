@@ -397,6 +397,7 @@ string prepareQueryForPrintf(string &query);
 
 void createMysqlPartitionsCdr();
 void createMysqlPartitionsIpacc();
+void createMysqlPartitionsBillingAgregation();
 void dropMysqlPartitionsCdr();
 
 #endif

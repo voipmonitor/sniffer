@@ -4229,6 +4229,24 @@ void createMysqlPartitionsIpacc() {
 	syslog(LOG_NOTICE, "create ipacc partitions - end");
 }
 
+void createMysqlPartitionsBillingAgregation() {
+	SqlDb *sqlDb = createSqlObject();
+	sqlDb->query("show tables like 'billing_agregation_day_addresses'");
+	if(!sqlDb->fetchRow()) {
+		delete sqlDb;
+		return;
+	}
+	syslog(LOG_NOTICE, "create billing agregation partitions - begin");
+	
+	if(cloud_host[0]) {
+		sqlDb->setMaxQueryPass(1);
+	}
+	sqlDb->query(
+		"call billing_agregation_create_parts();");
+	delete sqlDb;
+	syslog(LOG_NOTICE, "create billing agregation partitions - end");
+}
+
 void dropMysqlPartitionsCdr() {
 	extern int opt_cleandatabase_cdr;
 	extern int opt_cleandatabase_register_state;
