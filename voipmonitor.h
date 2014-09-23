@@ -126,6 +126,7 @@ struct sVerbose {
 	int read_rtp;
 	int check_is_caller_called;
 	int disable_threads_rtp;
+	int packet_lost;
 };
 
 #ifndef GLOBAL_DECLARATION

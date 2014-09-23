@@ -670,9 +670,11 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 	
 	if(sverb.read_rtp) {
 		cout << "RTP - read: " 
-		     << hex << this->ssrc << dec << " "
-		     << inet_ntostring(htonl(this->daddr)) << " / " << this->dport 
-		     << " " << (this->iscaller ? "caller" : "called") << endl;
+		     << "ssrc:" << hex << this->ssrc << dec << " "
+		     << "seq:" << getSeqNum() << " "
+		     << "saddr/sport:" << inet_ntostring(htonl(saddr)) << " / " << sport << " "
+		     << "daddr/dport:" << inet_ntostring(htonl(daddr)) << " / " << dport << " "
+		     << (this->iscaller ? "caller" : "called") << endl;
 	}
 	
 	if(this->sensor_id >= 0 && this->sensor_id != sensor_id) {
@@ -1341,6 +1343,13 @@ RTP::update_stats() {
 	}
 		
 	if((lost > stats.last_lost) > 0) {
+		if(sverb.packet_lost) {
+			cout << "RTP - packet_lost: " 
+			     << "ssrc:" << hex << this->ssrc << dec << " "
+			     << "saddr:" << inet_ntostring(htonl(this->saddr)) << " " 
+			     << "daddr/dport:" << inet_ntostring(htonl(this->daddr)) << " / " << this->dport << " " 
+			     << "lost:" << (lost - stats.last_lost) << endl;
+		}
 		stats.lost += lost - stats.last_lost;
 		if((lost - stats.last_lost) < 10)
 			stats.slost[lost - stats.last_lost]++;
