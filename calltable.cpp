@@ -119,6 +119,7 @@ extern int opt_mysqlstore_max_threads_cdr;
 extern int opt_mysqlstore_max_threads_message;
 extern int opt_mysqlstore_max_threads_register;
 extern int opt_mysqlstore_max_threads_http;
+extern int opt_mysqlstore_limit_queue_register;
 extern Calltable *calltable;
 
 volatile int calls_counter = 0;
@@ -2319,6 +2320,18 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
  
 	if(this->msgcount <= 1 or this->lastSIPresponseNum == 401 or this->lastSIPresponseNum == 403) {
 		this->regstate = 2;
+	}
+	
+	if(sqlStore->getSizeVect(STORE_PROC_ID_REGISTER_1, 
+				 STORE_PROC_ID_REGISTER_1 + 
+				 (opt_mysqlstore_max_threads_register > 1 ? opt_mysqlstore_max_threads_register - 1 : 0)) > opt_mysqlstore_limit_queue_register) {
+		static u_long lastTimeSyslog = 0;
+		u_long actTime = getTimeMS();
+		if(actTime - 1000 > lastTimeSyslog) {
+			syslog(LOG_NOTICE, "size of register queue exceeded limit - register record ignored");
+			lastTimeSyslog = actTime;
+		}
+		return(0);
 	}
 
 	if(!sqlDbSaveCall) {

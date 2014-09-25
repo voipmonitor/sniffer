@@ -1507,6 +1507,20 @@ int MySqlStore::getSizeMult(int n, ...) {
 	return(size);
 }
 
+int MySqlStore::getSizeVect(int id1, int id2, bool lock) {
+	int size = -1;
+	for(int id = id1; id <= id2; id++) {
+		int _size = this->getSize(id);
+		if(_size >= 0) {
+			if(size < 0) {
+				size = 0;
+			}
+			size += _size;
+		}
+	}
+	return(size);
+}
+
 
 SqlDb *createSqlObject() {
 	SqlDb *sqlDb = NULL;

@@ -369,6 +369,7 @@ public:
 	size_t getAllSize(bool lock = true);
 	int getSize(int id, bool lock = true);
 	int getSizeMult(int n, ...);
+	int getSizeVect(int id1, int id2, bool lock = true);
 private:
 	map<int, MySqlStore_process*> processes;
 	string host;

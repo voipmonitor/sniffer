@@ -527,6 +527,7 @@ int opt_mysqlstore_max_threads_register = 1;
 int opt_mysqlstore_max_threads_http = 1;
 int opt_mysqlstore_max_threads_ipacc_base = 3;
 int opt_mysqlstore_max_threads_ipacc_agreg2 = 3;
+int opt_mysqlstore_limit_queue_register = 1000000;
 
 char opt_curlproxy[256] = "";
 int opt_enable_fraud = 1;
@@ -1930,6 +1931,10 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "mysqlstore_max_threads_ipacc_agreg2", NULL))) {
 		opt_mysqlstore_max_threads_ipacc_agreg2 = max(min(atoi(value), 9), 1);
+	}
+	
+	if((value = ini.GetValue("general", "mysqlstore_limit_queue_register", NULL))) {
+		opt_mysqlstore_limit_queue_register = atoi(value);
 	}
 	
 	if((value = ini.GetValue("general", "curlproxy", NULL))) {
