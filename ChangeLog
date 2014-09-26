@@ -1,3 +1,40 @@
+10.0.39 26.9.2014
+=================
+- fix -v 0 parameter causing FULL BUFFER 
+- limit SIP REGISTER SQL queue to 1000000 then drop them to not cause buffering it until all ram is used. 
+- fix live sniffer for cloud mode
+
+
+10.0.38 17.9.2014
+=================
+- fix reported packet loss (>65000) for calls with more than 2 RTP streams (bug introduced since 10.0.36) 
+
+
+10.0.37 12.9.2014
+=================
+- static builds are compatible with 2.6.18 kernels again
+- fix active calls realtime audio monitor chopped sound - increase length of ringbuffer for chunkplayer
+
+
+10.0.36 11.9.2014
+================
+- fix ignoring RTP streams in case there are more legs and MARK bit sets
+- fix timezone issues for register failed when sniffer is in different timezone then mysql server
+- do not print to syslog when audio fails to decode because of missing RTP
+- fix duplicate errors for max_allowed_packet
+- add column message.content_length 
+
+
+10.0.35 9.9.2014
+================
+- maintainance build (compiled with static libnss to prevent crashing on buggy libc) 
+
+
+10.0.34 9.9.2014
+================
+- fix G723 packetization - if not 30ms audio is out of sync 
+
+
 10.0.33 4.9.2014
 ================
 - fix 10.0.28 - 10.0.32 versions where if RTP with the same SSRC changes destination IP it was treated incorrectly as new RTP stream causing low MOS score in some cases. 

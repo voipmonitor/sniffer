@@ -33,7 +33,7 @@ extern vector<dstring> opt_custom_headers_cdr;
 extern vector<dstring> opt_custom_headers_message;
 extern char get_customers_pn_query[1024];
 extern int opt_dscp;
-extern int opt_enable_lua_tables;
+extern int opt_enable_http_enum_tables;
 extern int opt_mysqlcompress;
 extern pthread_mutex_t mysqlconnect_lock;      
 extern int opt_mos_lqo;
@@ -63,6 +63,7 @@ extern char cloud_token[256];
 int sql_noerror = 0;
 int sql_disable_next_attempt_if_error = 0;
 bool opt_cdr_partition_oldver = false;
+bool exists_column_message_content_length = false;
 
 
 string SqlDb_row::operator [] (const char *fieldName) {
@@ -558,24 +559,37 @@ bool SqlDb_mysql::connect(bool createDb, bool mainInit) {
 				break;
 			}
 			sql_disable_next_attempt_if_error = 1;
+			sql_noerror = !mainInit;
 			if(this->query("SET GLOBAL max_allowed_packet=1024*1024*100") &&
 			   this->query("show variables like 'max_allowed_packet'")) {
 				sql_disable_next_attempt_if_error = 0;
+				sql_noerror = 0;
 				SqlDb_row row;
 				if((row = this->fetchRow())) {
 					this->maxAllowedPacket = atoll(row[1].c_str());
 					if(this->maxAllowedPacket >= 1024*1024*100) {
 						break;
 					} else if(connectPass) {
-						syslog(LOG_WARNING, "max allowed packet size is only %lu - concat query size is limited", this->maxAllowedPacket);
+						if(mainInit) {
+							syslog(LOG_WARNING, "Max allowed packet size is only %lu. Concat query size is limited. "
+									    "Please set max_allowed_packet to 100MB manually in your mysql configuration file.", 
+							       this->maxAllowedPacket);
+						}
 					}
 				} else {
-					syslog(LOG_WARNING, "unknown max allowed packet size - concat query size is limited");
+					if(mainInit) {
+						syslog(LOG_WARNING, "Unknown max allowed packet size. Concat query size is limited. "
+								    "Please set max_allowed_packet to 100MB manually in your mysql configuration file.");
+					}
 					break;
 				}
 			} else {
 				sql_disable_next_attempt_if_error = 0;
-				syslog(LOG_WARNING, "query for set / get max allowed packet size failed - concat query size is limited");
+				sql_noerror = 0;
+				if(mainInit) {
+					syslog(LOG_WARNING, "Query for set / get max allowed packet size failed. Concat query size is limited. "
+							    "Please set max_allowed_packet to 100MB manually in your mysql configuration file.");
+				}
 				break;
 			}
 		}
@@ -1493,6 +1507,20 @@ int MySqlStore::getSizeMult(int n, ...) {
 	return(size);
 }
 
+int MySqlStore::getSizeVect(int id1, int id2, bool lock) {
+	int size = -1;
+	for(int id = id1; id <= id2; id++) {
+		int _size = this->getSize(id);
+		if(_size >= 0) {
+			if(size < 0) {
+				size = 0;
+			}
+			size += _size;
+		}
+	}
+	return(size);
+}
+
 
 SqlDb *createSqlObject() {
 	SqlDb *sqlDb = NULL;
@@ -1560,10 +1588,10 @@ string sqlEscapeString(const char *inputStr, int length, const char *typeDb, Sql
 			return(rslt);
 		}
 	}
-	return _sqlEscapeString(inputStr, sqlDbMysql ? sqlDbMysql->getTypeDb().c_str() : typeDb);
+	return _sqlEscapeString(inputStr, length, sqlDbMysql ? sqlDbMysql->getTypeDb().c_str() : typeDb);
 }
 
-string _sqlEscapeString(const char *inputString, const char *typeDb) {
+string _sqlEscapeString(const char *inputStr, int length, const char *typeDb) {
 	string rsltString;
 	struct escChar {
 		char ch;
@@ -1576,12 +1604,16 @@ string _sqlEscapeString(const char *inputString, const char *typeDb) {
 					{ '\\', "\\\\" },
 					{ '\n', "\\n" }, 	// new line feed
 					{ '\r', "\\r" }, 	// cariage return
-					{ '\t', "\\t" }, 	// tab
-					{ '\v', "\\v" }, 	// vertical tab
-					{ '\b', "\\b" }, 	// backspace
-					{ '\f', "\\f" }, 	// form feed
-					{ '\a', "\\a" }, 	// alert (bell)
-					{ '\e', "" }, 		// escape
+					// remove after create function test_escape
+					//{ '\t', "\\t" }, 	// tab
+					//{ '\v', "\\v" }, 	// vertical tab
+					//{ '\b', "\\b" }, 	// backspace
+					//{ '\f', "\\f" }, 	// form feed
+					//{ '\a', "\\a" }, 	// alert (bell)
+					//{ '\e', "" }, 		// escape
+					// add after create function test_escape
+					{    0, "\\0" },
+					{   26, "\\Z" }
 				},
 	escCharsOdbc[] = 
 				{ 
@@ -1601,21 +1633,23 @@ string _sqlEscapeString(const char *inputString, const char *typeDb) {
 		escChars = escCharsOdbc;
 		countEscChars = sizeof(escCharsOdbc)/sizeof(escChar);
 	}
-	int lengthStr = strlen(inputString);
-	for(int posInputString = 0; posInputString<lengthStr; posInputString++) {
+	if(!length) {
+		length = strlen(inputStr);
+	}
+	for(int posInputString = 0; posInputString<length; posInputString++) {
 		bool isEscChar = false;
 		for(int i = 0; i<countEscChars; i++) {
-			if(escChars[i].ch == inputString[posInputString]) {
+			if(escChars[i].ch == inputStr[posInputString]) {
 				rsltString += escChars[i].escStr;
 				isEscChar = true;
 				break;
 			}
 		}
 		if(!isEscChar) {
-			rsltString += inputString[posInputString];
+			rsltString += inputStr[posInputString];
 		}
 	}
-	return(inputString);
+	return(rsltString);
 }
 
 string sqlEscapeStringBorder(string inputStr, char borderChar, const char *typeDb, SqlDb_mysql *sqlDbMysql) {
@@ -2055,6 +2089,10 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 				`called_customer_id` int DEFAULT NULL,\
 				`called_reseller_id` char(10) DEFAULT NULL," :
 				"") +
+		       "`price_operator_mult100` int unsigned DEFAULT NULL,\
+			`price_operator_currency_id` tinyint unsigned DEFAULT NULL,\
+			`price_customer_mult100` int unsigned DEFAULT NULL,\
+			`price_customer_currency_id` tinyint unsigned DEFAULT NULL," + 
 		(opt_cdr_partition ? 
 			"PRIMARY KEY (`ID`, `calldate`)," :
 			"PRIMARY KEY (`ID`),") + 
@@ -2141,6 +2179,19 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 	opt_last_rtp_from_end = this->fetchRow();
 	if(!opt_last_rtp_from_end) {
 		syslog(LOG_WARNING, "!!! Your database needs to be upgraded to support new features - ALTER TABLE cdr ADD a_last_rtp_from_end SMALLINT UNSIGNED DEFAULT NULL, ADD b_last_rtp_from_end SMALLINT UNSIGNED DEFAULT NULL;");
+	}
+	
+	this->query("show columns from cdr where Field='price_operator_mult100'");
+	if(!this->fetchRow()) {
+		this->query("show tables like 'billing'");
+		if(this->fetchRow()) {
+			syslog(LOG_WARNING, "!!! You need to alter cdr database table and add new columns to support billing feature. "
+					    "This operation can take hours based on ammount of data, CPU and I/O speed of your server. "
+					    "The alter table will prevent the database to insert new rows and will probably block other operations. "
+					    "It is recommended to alter the table in non working hours. "
+					    "Login to the mysql voipmonitor database (mysql -uroot voipmonitor) and run on the CLI> "
+					    "ALTER TABLE cdr ADD COLUMN price_operator_mult100 INT UNSIGNED, ADD COLUMN price_operator_currency_id TINYINT UNSIGNED, ADD COLUMN price_customer_mult100 INT UNSIGNED, ADD COLUMN price_customer_currency_id TINYINT UNSIGNED;");
+		}
 	}
 
 	string cdrNextCustomFields;
@@ -2309,7 +2360,8 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 			`a_ua_id` int unsigned DEFAULT NULL,\
 			`b_ua_id` int unsigned DEFAULT NULL,\
 			`fbasename` varchar(255) DEFAULT NULL,\
-			`message` MEDIUMTEXT CHARACTER SET utf8," +
+			`message` MEDIUMTEXT CHARACTER SET utf8,\
+			`content_length` MEDIUMINT DEFAULT NULL," +
 			messageNextCustomFields +
 		(opt_cdr_partition ? 
 			"PRIMARY KEY (`ID`, `calldate`)," :
@@ -2354,6 +2406,11 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 			ADD COLUMN `") + opt_custom_headers_message[iCustHeaders][1] + "` VARCHAR(255);");
 	}
 	sql_noerror = 0;
+	}
+
+	if(!federated) {
+		this->query("show columns from message where Field='content_length'");
+		exists_column_message_content_length = this->fetchRow();
 	}
 
 	if(!federated) {
@@ -2515,7 +2572,7 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 	) ENGINE=InnoDB DEFAULT CHARSET=latin1;");
 	}
 	
-	if(opt_enable_lua_tables) {
+	if(opt_enable_http_enum_tables) {
 		this->query(string(
 		"CREATE TABLE IF NOT EXISTS `http_jj") + federatedSuffix + "` (\
 			`id` INT UNSIGNED NOT NULL AUTO_INCREMENT,\
@@ -2668,7 +2725,7 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 		outStrAlter << "ALTER TABLE cdr ADD dscp int unsigned DEFAULT NULL;" << endl;
 	}
 	
-	if(opt_enable_lua_tables) {
+	if(opt_enable_http_enum_tables) {
 		outStrAlter << "ALTER TABLE http_jj\
 				ADD external_transaction_id varchar( 255 ) NOT NULL,\
 				ADD KEY `external_transaction_id` (`external_transaction_id`);" << endl;
@@ -3232,7 +3289,7 @@ void SqlDb_mysql::copyFromSourceTables(SqlDb_mysql *sqlDbSrc) {
 	if(terminating) return;
 	this->copyFromSourceTable(sqlDbSrc, "cdr", NULL, maxDiffId);
 	if(terminating) return;
-	if(opt_enable_lua_tables) {
+	if(opt_enable_http_enum_tables) {
 		this->copyFromSourceTable(sqlDbSrc, "http_jj", NULL, maxDiffId);
 		if(terminating) return;
 		this->copyFromSourceTable(sqlDbSrc, "enum_jj", NULL, maxDiffId);
@@ -3357,7 +3414,7 @@ void SqlDb_mysql::copyFromSourceGuiTables(SqlDb_mysql *sqlDbSrc) {
 	SqlDb_row row;
 	while(row = sqlDbSrc->fetchRow()) {
 		string tableName = row[0];
-		if((tableName == "http_jj" || tableName == "enum_jj") && !opt_enable_lua_tables) {
+		if((tableName == "http_jj" || tableName == "enum_jj") && !opt_enable_http_enum_tables) {
 			continue;
 		}
 		bool isMainSourceTable = false;
@@ -3408,8 +3465,8 @@ vector<string> SqlDb_mysql::getSourceTables() {
 		"cdr_rtp",
 		"cdr_dtmf",
 		"cdr_proxy",
-		opt_enable_lua_tables ? "http_jj" : NULL,
-		opt_enable_lua_tables ? "enum_jj" : NULL,
+		opt_enable_http_enum_tables ? "http_jj" : NULL,
+		opt_enable_http_enum_tables ? "enum_jj" : NULL,
 		"message",
 		"register_failed",
 		"register_state"
@@ -3448,7 +3505,7 @@ void SqlDb_mysql::copyFromFederatedTables() {
 	if(terminating) return;
 	this->copyFromFederatedTable("cdr", NULL, maxDiffId);
 	if(terminating) return;
-	if(opt_enable_lua_tables) {
+	if(opt_enable_http_enum_tables) {
 		this->copyFromFederatedTable("http_jj", NULL, maxDiffId);
 		if(terminating) return;
 		this->copyFromFederatedTable("enum_jj", NULL, maxDiffId);
@@ -3532,8 +3589,8 @@ vector<string> SqlDb_mysql::getFederatedTables() {
 		"cdr_rtp_fed",
 		"cdr_dtmf_fed",
 		"cdr_proxy_fed",
-		opt_enable_lua_tables ? "http_jj_fed" : NULL,
-		opt_enable_lua_tables ? "enum_jj_fed" : NULL,
+		opt_enable_http_enum_tables ? "http_jj_fed" : NULL,
+		opt_enable_http_enum_tables ? "enum_jj_fed" : NULL,
 		"message_fed",
 		"register_failed_fed",
 		"register_state_fed"
@@ -4192,12 +4249,32 @@ void createMysqlPartitionsIpacc() {
 	syslog(LOG_NOTICE, "create ipacc partitions - end");
 }
 
+void createMysqlPartitionsBillingAgregation() {
+	SqlDb *sqlDb = createSqlObject();
+	sqlDb->query("show tables like 'billing_agregation_day_addresses'");
+	if(!sqlDb->fetchRow()) {
+		delete sqlDb;
+		return;
+	}
+	syslog(LOG_NOTICE, "create billing agregation partitions - begin");
+	
+	if(cloud_host[0]) {
+		sqlDb->setMaxQueryPass(1);
+	}
+	sqlDb->query(
+		"call billing_agregation_create_parts();");
+	delete sqlDb;
+	syslog(LOG_NOTICE, "create billing agregation partitions - end");
+}
+
 void dropMysqlPartitionsCdr() {
 	extern int opt_cleandatabase_cdr;
+	extern int opt_cleandatabase_http_enum;
 	extern int opt_cleandatabase_register_state;
 	extern int opt_cleandatabase_register_failed;
 	static unsigned long counterDropPartitions = 0;
 	if(opt_cleandatabase_cdr > 0 ||
+	   (opt_enable_http_enum_tables && opt_cleandatabase_http_enum > 0) ||
 	   opt_cleandatabase_register_state > 0 ||
 	   opt_cleandatabase_register_failed > 0) {
 		syslog(LOG_NOTICE, "drop old partitions - begin");
@@ -4210,8 +4287,6 @@ void dropMysqlPartitionsCdr() {
 			char limitPartName[20] = "";
 			strftime(limitPartName, sizeof(limitPartName), "p%y%m%d", prevDayTime);
 			vector<string> partitions;
-			vector<string> partitions_http;
-			vector<string> partitions_enum;
 			if(counterDropPartitions == 0) {
 				if(cloud_host[0]) {
 					sqlDb->query("explain partitions select * from cdr");
@@ -4231,26 +4306,9 @@ void dropMysqlPartitionsCdr() {
 					while((row = sqlDb->fetchRow())) {
 						partitions.push_back(row["partition_name"]);
 					}
-					if(opt_enable_lua_tables) {
-						sqlDb->query(string("select partition_name from information_schema.partitions where table_schema='") + 
-							     mysql_database+ "' and table_name='http_jj' and partition_name<='" + limitPartName+ "' order by partition_name");
-						SqlDb_row row;
-						while((row = sqlDb->fetchRow())) {
-							partitions_http.push_back(row["partition_name"]);
-						}
-						sqlDb->query(string("select partition_name from information_schema.partitions where table_schema='") + 
-							     mysql_database+ "' and table_name='enum_jj' and partition_name<='" + limitPartName+ "' order by partition_name");
-						while((row = sqlDb->fetchRow())) {
-							partitions_enum.push_back(row["partition_name"]);
-						}
-					}
 				}
 			} else {
 				partitions.push_back(limitPartName);
-				if(opt_enable_lua_tables) {
-					partitions_http.push_back(limitPartName);
-					partitions_enum.push_back(limitPartName);
-				}
 			}
 			for(size_t i = 0; i < partitions.size(); i++) {
 				syslog(LOG_NOTICE, "DROP CDR PARTITION %s", partitions[i].c_str());
@@ -4260,6 +4318,31 @@ void dropMysqlPartitionsCdr() {
 				sqlDb->query("ALTER TABLE cdr_dtmf DROP PARTITION " + partitions[i]);
 				sqlDb->query("ALTER TABLE cdr_proxy DROP PARTITION " + partitions[i]);
 				sqlDb->query("ALTER TABLE message DROP PARTITION " + partitions[i]);
+			}
+		}
+		if(opt_enable_http_enum_tables && opt_cleandatabase_http_enum > 0) {
+			time_t act_time = time(NULL);
+			time_t prev_day_time = act_time - opt_cleandatabase_http_enum * 24 * 60 * 60;
+			struct tm *prevDayTime = localtime(&prev_day_time);
+			char limitPartName[20] = "";
+			strftime(limitPartName, sizeof(limitPartName), "p%y%m%d", prevDayTime);
+			vector<string> partitions_http;
+			vector<string> partitions_enum;
+			if(counterDropPartitions == 0) {
+				sqlDb->query(string("select partition_name from information_schema.partitions where table_schema='") + 
+					     mysql_database+ "' and table_name='http_jj' and partition_name<='" + limitPartName+ "' order by partition_name");
+				SqlDb_row row;
+				while((row = sqlDb->fetchRow())) {
+					partitions_http.push_back(row["partition_name"]);
+				}
+				sqlDb->query(string("select partition_name from information_schema.partitions where table_schema='") + 
+					     mysql_database+ "' and table_name='enum_jj' and partition_name<='" + limitPartName+ "' order by partition_name");
+				while((row = sqlDb->fetchRow())) {
+					partitions_enum.push_back(row["partition_name"]);
+				}
+			} else {
+				partitions_http.push_back(limitPartName);
+				partitions_enum.push_back(limitPartName);
 			}
 			for(size_t i = 0; i < partitions_http.size(); i++) {
 				syslog(LOG_NOTICE, "DROP HTTP_JJ PARTITION %s", partitions_http[i].c_str());

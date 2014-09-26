@@ -177,9 +177,12 @@ int wav_mix(char *in1, char *in2, char *out, int samplerate, int swap) {
 
 	bitstream_buf1 = (char *)malloc(file_size1);
 	if(!bitstream_buf1) {
-		fclose(f_in1);
-		fclose(f_in2);
-		fclose(f_out);
+		if(f_in1 != NULL)
+			fclose(f_in1);
+		if(f_in2 != NULL)
+			fclose(f_in2);
+		if(f_out != NULL)
+			fclose(f_out);
 		syslog(LOG_ERR,"Cannot malloc bitsream_buf1[%ld]", file_size1);
 		return 1;
 	}

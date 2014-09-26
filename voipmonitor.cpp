@@ -243,7 +243,7 @@ int opt_read_from_file = 0;
 char opt_pb_read_from_file[256] = "";
 int opt_dscp = 0;
 int opt_cdrproxy = 1;
-int opt_enable_lua_tables = 0;
+int opt_enable_http_enum_tables = 0;
 int opt_generator = 0;
 int opt_generator_channels = 1;
 int opt_skipdefault = 0;
@@ -327,6 +327,7 @@ extern int opt_pcap_queue_dequeu_window_length;
 extern int opt_pcap_queue_dequeu_method;
 extern int sql_noerror;
 int opt_cleandatabase_cdr = 0;
+int opt_cleandatabase_http_enum = 0;
 int opt_cleandatabase_register_state = 0;
 int opt_cleandatabase_register_failed = 0;
 unsigned int graph_delimiter = GRAPH_DELIMITER;
@@ -527,6 +528,7 @@ int opt_mysqlstore_max_threads_register = 1;
 int opt_mysqlstore_max_threads_http = 1;
 int opt_mysqlstore_max_threads_ipacc_base = 3;
 int opt_mysqlstore_max_threads_ipacc_agreg2 = 3;
+int opt_mysqlstore_limit_queue_register = 1000000;
 
 char opt_curlproxy[256] = "";
 int opt_enable_fraud = 1;
@@ -844,6 +846,7 @@ void *storing_cdr( void *dummy ) {
 	time_t createPartitionAt = 0;
 	time_t dropPartitionAt = 0;
 	time_t createPartitionIpaccAt = 0;
+	time_t createPartitionBillingAgregationAt = 0;
 	time_t checkDiskFreeAt = 0;
 	while(1) {
 		if(!opt_nocdr and opt_cdr_partition and !opt_disable_partition_operations and isSqlDriver("mysql")) {
@@ -858,11 +861,19 @@ void *storing_cdr( void *dummy ) {
 			}
 		}
 		
-		if(opt_ipaccount and !opt_disable_partition_operations and isSqlDriver("mysql")) {
+		if(!opt_nocdr and opt_ipaccount and !opt_disable_partition_operations and isSqlDriver("mysql")) {
 			time_t actTime = time(NULL);
 			if(actTime - createPartitionIpaccAt > 12 * 3600) {
 				createMysqlPartitionsIpacc();
 				createPartitionIpaccAt = actTime;
+			}
+		}
+		
+		if(!opt_nocdr and !opt_disable_partition_operations and isSqlDriver("mysql")) {
+			time_t actTime = time(NULL);
+			if(actTime - createPartitionBillingAgregationAt > 12 * 3600) {
+				createMysqlPartitionsBillingAgregation();
+				createPartitionBillingAgregationAt = actTime;
 			}
 		}
 		
@@ -910,7 +921,8 @@ void *storing_cdr( void *dummy ) {
 			calltable->unlock_calls_queue();
 	
 			call->closeRawFiles();
-			if( (opt_savewav_force || (call->flags & FLAG_SAVEWAV)) && (call->type == INVITE || call->type == SKINNY_NEW)) {
+			if( (opt_savewav_force || (call->flags & FLAG_SAVEWAV)) && (call->type == INVITE || call->type == SKINNY_NEW) &&
+			    call->getAllReceivedRtpPackets()) {
 				if(verbosity > 0) printf("converting RAW file to WAV Queue[%d]\n", (int)calltable->calls_queue.size());
 				call->convertRawToWav();
 			}
@@ -1142,6 +1154,7 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "cleandatabase", NULL))) {
 		opt_cleandatabase_cdr = atoi(value);
+		opt_cleandatabase_http_enum = opt_cleandatabase_cdr;
 		opt_cleandatabase_register_state = opt_cleandatabase_cdr;
 		opt_cleandatabase_register_failed = opt_cleandatabase_cdr;
 	}
@@ -1153,6 +1166,10 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "cleandatabase_cdr", NULL))) {
 		opt_cleandatabase_cdr = atoi(value);
+		opt_cleandatabase_http_enum = opt_cleandatabase_cdr;
+	}
+	if((value = ini.GetValue("general", "cleandatabase_http_enum", NULL))) {
+		opt_cleandatabase_http_enum = atoi(value);
 	}
 	if((value = ini.GetValue("general", "cleandatabase_register_state", NULL))) {
 		opt_cleandatabase_register_state = atoi(value);
@@ -1728,8 +1745,10 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "openfile_max", NULL))) {
                 opt_openfile_max = atoi(value);
         }
-	if((value = ini.GetValue("general", "enable_lua_tables", NULL))) {
-		opt_enable_lua_tables = yesno(value);
+	if((value = ini.GetValue("general", "enable_lua_tables", NULL)) ||
+	   (value = ini.GetValue("general", "enable_http_enum_tables", NULL))
+	) {
+		opt_enable_http_enum_tables = yesno(value);
 	}
 
 	if((value = ini.GetValue("general", "packetbuffer_enable", NULL))) {
@@ -1918,6 +1937,10 @@ int eval_config(string inistr) {
 		opt_mysqlstore_max_threads_ipacc_agreg2 = max(min(atoi(value), 9), 1);
 	}
 	
+	if((value = ini.GetValue("general", "mysqlstore_limit_queue_register", NULL))) {
+		opt_mysqlstore_limit_queue_register = atoi(value);
+	}
+	
 	if((value = ini.GetValue("general", "curlproxy", NULL))) {
 		strncpy(opt_curlproxy, value, sizeof(opt_curlproxy));
 	}
@@ -2075,7 +2098,7 @@ int eval_config(string inistr) {
 	}
 	
 	if(opt_enable_tcpreassembly) {
-		opt_enable_lua_tables = true;
+		opt_enable_http_enum_tables = true;
 	}
 	return 0;
 }
@@ -2114,7 +2137,7 @@ int load_config(char *fname) {
 			syslog(LOG_ERR, "Evaluating config from file %s FAILED!", fname );
 			return 1;
 		}
-		printf("OK\n", fname);
+		printf("OK\n");
 
 	} else {
 		DIR *dir;
@@ -2209,7 +2232,7 @@ int load_config(char *fname) {
 
 void reload_config() {
 	load_config(configfile);
-	load_config("/etc/voipmonitor/conf.d/");
+	load_config((char*)"/etc/voipmonitor/conf.d/");
 	request_iptelnum_reload = 1;
 }
 
@@ -2593,7 +2616,7 @@ int main(int argc, char *argv[]) {
 			case '7':
 				strncpy(configfile, optarg, sizeof(configfile));
 				load_config(configfile);
-				load_config("/etc/voipmonitor/conf.d/");
+				load_config((char*)"/etc/voipmonitor/conf.d/");
 				break;
 			case '8':
 				opt_manager_port = atoi(optarg);
@@ -2621,6 +2644,7 @@ int main(int argc, char *argv[]) {
 						else if(verbparams[i] == "read_rtp")			sverb.read_rtp = 1;
 						else if(verbparams[i] == "check_is_caller_called")	sverb.check_is_caller_called = 1;
 						else if(verbparams[i] == "disable_threads_rtp")		sverb.disable_threads_rtp = 1;
+						else if(verbparams[i] == "packet_lost")			sverb.packet_lost = 1;
 					}
 				} }
 				break;
@@ -4113,6 +4137,21 @@ void test_parsepacket2() {
 void test_reg() {
 	cout << reg_match("123456789", "456") << endl;
 	cout << reg_replace("123456789", "(.*)(456)(.*)", "$1-$2-$3") << endl;
+}
+
+void test_escape() {
+	char checkbuff[2] = " ";
+	for(int i = 0; i < 256; i++) {
+		checkbuff[0] = i;
+		string escapePacket1 = sqlEscapeString(checkbuff, 1);
+		string escapePacket2 = _sqlEscapeString(checkbuff, 1, "mysql");
+		if(escapePacket1 != escapePacket2) {
+			cout << i << endl;
+			cout << escapePacket1 << endl;
+			cout << escapePacket2 << endl;
+			break;
+		}
+	}
 }
 
 void test() {
