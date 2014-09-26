@@ -1,3 +1,10 @@
+10.0.39 26.9.2014
+=================
+- fix -v 0 parameter causing FULL BUFFER 
+- limit SIP REGISTER SQL queue to 1000000 then drop them to not cause buffering it until all ram is used. 
+- fix live sniffer for cloud mode
+
+
 10.0.38 17.9.2014
 =================
 - fix reported packet loss (>65000) for calls with more than 2 RTP streams (bug introduced since 10.0.36) 
