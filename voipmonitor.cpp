@@ -4135,6 +4135,21 @@ void test_reg() {
 	cout << reg_replace("123456789", "(.*)(456)(.*)", "$1-$2-$3") << endl;
 }
 
+void test_escape() {
+	char checkbuff[2] = " ";
+	for(int i = 0; i < 256; i++) {
+		checkbuff[0] = i;
+		string escapePacket1 = sqlEscapeString(checkbuff, 1);
+		string escapePacket2 = _sqlEscapeString(checkbuff, 1, "mysql");
+		if(escapePacket1 != escapePacket2) {
+			cout << i << endl;
+			cout << escapePacket1 << endl;
+			cout << escapePacket2 << endl;
+			break;
+		}
+	}
+}
+
 void test() {
  
 	switch(opt_test) {

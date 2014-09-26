@@ -1588,10 +1588,10 @@ string sqlEscapeString(const char *inputStr, int length, const char *typeDb, Sql
 			return(rslt);
 		}
 	}
-	return _sqlEscapeString(inputStr, sqlDbMysql ? sqlDbMysql->getTypeDb().c_str() : typeDb);
+	return _sqlEscapeString(inputStr, length, sqlDbMysql ? sqlDbMysql->getTypeDb().c_str() : typeDb);
 }
 
-string _sqlEscapeString(const char *inputString, const char *typeDb) {
+string _sqlEscapeString(const char *inputStr, int length, const char *typeDb) {
 	string rsltString;
 	struct escChar {
 		char ch;
@@ -1604,12 +1604,16 @@ string _sqlEscapeString(const char *inputString, const char *typeDb) {
 					{ '\\', "\\\\" },
 					{ '\n', "\\n" }, 	// new line feed
 					{ '\r', "\\r" }, 	// cariage return
-					{ '\t', "\\t" }, 	// tab
-					{ '\v', "\\v" }, 	// vertical tab
-					{ '\b', "\\b" }, 	// backspace
-					{ '\f', "\\f" }, 	// form feed
-					{ '\a', "\\a" }, 	// alert (bell)
-					{ '\e', "" }, 		// escape
+					// remove after create function test_escape
+					//{ '\t', "\\t" }, 	// tab
+					//{ '\v', "\\v" }, 	// vertical tab
+					//{ '\b', "\\b" }, 	// backspace
+					//{ '\f', "\\f" }, 	// form feed
+					//{ '\a', "\\a" }, 	// alert (bell)
+					//{ '\e', "" }, 		// escape
+					// add after create function test_escape
+					{    0, "\\0" },
+					{   26, "\\Z" }
 				},
 	escCharsOdbc[] = 
 				{ 
@@ -1629,21 +1633,23 @@ string _sqlEscapeString(const char *inputString, const char *typeDb) {
 		escChars = escCharsOdbc;
 		countEscChars = sizeof(escCharsOdbc)/sizeof(escChar);
 	}
-	int lengthStr = strlen(inputString);
-	for(int posInputString = 0; posInputString<lengthStr; posInputString++) {
+	if(!length) {
+		length = strlen(inputStr);
+	}
+	for(int posInputString = 0; posInputString<length; posInputString++) {
 		bool isEscChar = false;
 		for(int i = 0; i<countEscChars; i++) {
-			if(escChars[i].ch == inputString[posInputString]) {
+			if(escChars[i].ch == inputStr[posInputString]) {
 				rsltString += escChars[i].escStr;
 				isEscChar = true;
 				break;
 			}
 		}
 		if(!isEscChar) {
-			rsltString += inputString[posInputString];
+			rsltString += inputStr[posInputString];
 		}
 	}
-	return(inputString);
+	return(rsltString);
 }
 
 string sqlEscapeStringBorder(string inputStr, char borderChar, const char *typeDb, SqlDb_mysql *sqlDbMysql) {

@@ -386,7 +386,7 @@ string sqlDateTimeString(time_t unixTime);
 string sqlDateString(time_t unixTime);
 string sqlEscapeString(string inputStr, const char *typeDb = NULL, SqlDb_mysql *sqlDbMysql = NULL);
 string sqlEscapeString(const char *inputStr, int length = 0, const char *typeDb = NULL, SqlDb_mysql *sqlDbMysql = NULL);
-string _sqlEscapeString(const char *inputString, const char *typeDb);
+string _sqlEscapeString(const char *inputString, int length, const char *typeDb);
 string sqlEscapeStringBorder(string inputStr, char borderChar = '\'', const char *typeDb = NULL, SqlDb_mysql *sqlDbMysql = NULL);
 string sqlEscapeStringBorder(const char *inputStr, char borderChar = '\'', const char *typeDb = NULL, SqlDb_mysql *sqlDbMysql = NULL);
 bool isSqlDriver(const char *sqlDriver, const char *checkSqlDriver = NULL);

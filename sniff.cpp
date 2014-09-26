@@ -197,6 +197,7 @@ extern int opt_nocdr;
 extern int opt_enable_fraud;
 extern int pcap_drop_flag;
 extern int opt_hide_message_content;
+extern char cloud_host[256];
 
 #ifdef QUEUE_MUTEX
 extern sem_t readpacket_thread_semaphore;
@@ -322,7 +323,12 @@ inline void save_packet_sql(Call *call, struct pcap_pkthdr *header, const u_char
 		", microseconds = " << header->ts.tv_usec << 
 		", callid = " << sqlEscapeStringBorder(call ? call->call_id : callidstr) << 
 		", description = " << sqlEscapeStringBorder(description) << 
-		", data = '#" << sqlEscapeString(mpacket, len) << "#'";
+		", data = ";
+	if(cloud_host[0]) {
+		query << "concat('#', from_base64('" << base64_encode((unsigned char*)mpacket, len) << "'), '#')";
+	} else {
+		query << "'#" << _sqlEscapeString(mpacket, len, "mysql") << "#'";
+	}
 	sqlStore->query_lock(query.str().c_str(), STORE_PROC_ID_SAVE_PACKET_SQL);
 	return;
 }
