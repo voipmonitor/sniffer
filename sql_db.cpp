@@ -1934,7 +1934,7 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 	
 	this->query(string(
 	"CREATE TABLE IF NOT EXISTS `cdr_sip_response") + federatedSuffix + "` (\
-			`id` smallint unsigned NOT NULL AUTO_INCREMENT,\
+			`id` mediumint unsigned NOT NULL AUTO_INCREMENT,\
 			`lastSIPresponse` varchar(255) DEFAULT NULL,\
 		PRIMARY KEY (`id`),\
 		UNIQUE KEY `lastSIPresponse` (`lastSIPresponse`)\
@@ -1988,7 +1988,7 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 			`sipcalledport` smallint unsigned DEFAULT NULL,\
 			`whohanged` enum('caller','callee') DEFAULT NULL,\
 			`bye` tinyint unsigned DEFAULT NULL,\
-			`lastSIPresponse_id` smallint unsigned DEFAULT NULL,\
+			`lastSIPresponse_id` mediumint unsigned DEFAULT NULL,\
 			`lastSIPresponseNum` smallint unsigned DEFAULT NULL,\
 			`sighup` tinyint DEFAULT NULL,\
 			`dscp` int unsigned DEFAULT NULL,\
@@ -2354,7 +2354,7 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 			`sipcallerip` int unsigned DEFAULT NULL,\
 			`sipcalledip` int unsigned DEFAULT NULL,\
 			`bye` tinyint unsigned DEFAULT NULL,\
-			`lastSIPresponse_id` smallint unsigned DEFAULT NULL,\
+			`lastSIPresponse_id` mediumint unsigned DEFAULT NULL,\
 			`lastSIPresponseNum` smallint unsigned DEFAULT NULL,\
 			`id_sensor` smallint unsigned DEFAULT NULL,\
 			`a_ua_id` int unsigned DEFAULT NULL,\
@@ -3644,7 +3644,7 @@ void SqlDb_odbc::createSchema(const char *host, const char *database, const char
 	this->query(
 	"IF NOT EXISTS (SELECT * FROM sys.objects WHERE name = 'cdr_sip_response') BEGIN\
 		CREATE TABLE cdr_sip_response (\
-			id smallint PRIMARY KEY IDENTITY,\
+			id mediumint PRIMARY KEY IDENTITY,\
 			lastSIPresponse varchar(255) NULL);\
 		CREATE UNIQUE INDEX lastSIPresponse ON cdr_sip_response (lastSIPresponse);\
 	END");
@@ -3679,7 +3679,7 @@ void SqlDb_odbc::createSchema(const char *host, const char *database, const char
 			sipcalledip bigint NULL,\
 			whohanged char(10) NULL,\
 			bye tinyint NULL,\
-			lastSIPresponse_id smallint NULL\
+			lastSIPresponse_id mediumint NULL\
 				FOREIGN KEY REFERENCES cdr_sip_response (id),\
 			lastSIPresponseNum smallint NULL,\
 			dscp bigint NULL,\
@@ -3902,7 +3902,7 @@ void SqlDb_odbc::createSchema(const char *host, const char *database, const char
 			sipcallerip bigint NULL,\
 			sipcalledip bigint NULL,\
 			bye tinyint NULL,\
-			lastSIPresponse_id smallint NULL\
+			lastSIPresponse_id mediumint NULL\
 				FOREIGN KEY REFERENCES cdr_sip_response (id),\
 			lastSIPresponseNum smallint NULL,\
 			id_sensor smallint NULL,\

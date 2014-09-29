@@ -4029,7 +4029,9 @@ void test_search_country_by_number() {
 void test_geoip() {
 	GeoIP_country *ipc = new GeoIP_country();
 	ipc->load();
-	cout << ipc->getCountry(3755988991) << endl;
+	in_addr ips;
+	inet_aton("152.251.11.109", &ips);
+	cout << ipc->getCountry(htonl(ips.s_addr)) << endl;
 	delete ipc;
 }
 
@@ -4155,7 +4157,8 @@ void test() {
 	switch(opt_test) {
 	 
 	case 1: {
-		test_search_country_by_number();
+		//test_search_country_by_number();
+		test_geoip();
 		cout << "---------" << endl;
 	} break;
 	case 2: {
