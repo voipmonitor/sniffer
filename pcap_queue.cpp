@@ -367,6 +367,10 @@ bool pcap_block_store::compress() {
 	}
 	size_t snappyBuffSize = snappy_max_compressed_length(this->size);
 	u_char *snappyBuff = (u_char*)malloc(snappyBuffSize);
+	if(!snappyBuff) {
+		syslog(LOG_ERR, "packetbuffer: snappy_compress: snappy buffer allocation failed - PACKETBUFFER BLOCK DROPPED!");
+		return(false);
+	}
 	snappy_status snappyRslt = snappy_compress((char*)this->block, this->size, (char*)snappyBuff, &snappyBuffSize);
 	switch(snappyRslt) {
 		case SNAPPY_OK:
@@ -2943,14 +2947,19 @@ void *PcapQueue_readFromFifo::threadFunction(void *arg, unsigned int arg2) {
 				continue;
 			}
 			size_t blockSize = blockStore->size;
+			bool blockStoreOk = true;
 			if(opt_pcap_queue_compress) {
-				blockStore->compress();
+				blockStoreOk = blockStore->compress();
 			}
-			if(this->pcapStoreQueue.push(blockStore, this->blockStoreTrash_size, false)) {
-				sumPacketsSize[0] += blockSize;
-				blockStoreBypassQueue.pop(true, blockSize);
+			if(blockStoreOk) {
+				if(this->pcapStoreQueue.push(blockStore, this->blockStoreTrash_size, false)) {
+					sumPacketsSize[0] += blockSize;
+					blockStoreBypassQueue.pop(true, blockSize);
+				} else {
+					usleep(1000);
+				}
 			} else {
-				usleep(1000);
+				blockStoreBypassQueue.pop(true, blockSize);
 			}
 		}
 	} else {
@@ -2977,10 +2986,11 @@ void *PcapQueue_readFromFifo::threadFunction(void *arg, unsigned int arg2) {
 			blockStore->add(header_std, packet, header.offset, header.dlink);
 			if(blockStore->full) {
 				sumPacketsSize[0] += blockStore->size;
+				bool blockStoreOk = true;
 				if(opt_pcap_queue_compress) {
-					blockStore->compress();
+					blockStoreOk = blockStore->compress();
 				}
-				if(this->pcapStoreQueue.push(blockStore, this->blockStoreTrash_size)) {
+				if(blockStoreOk && this->pcapStoreQueue.push(blockStore, this->blockStoreTrash_size)) {
 					++sumBlocksCounterIn[0];
 					blockStore = new pcap_block_store;
 					blockStore->add(&header, packet);
