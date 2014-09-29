@@ -163,6 +163,7 @@ int opt_packetbuffered = 0;	// Make .pcap files writing ‘‘packet-buffered’
 				// writen file anytime, it will be consistent.
 	
 int opt_disableplc = 0 ;	// On or Off packet loss concealment			
+int opt_remotepartyid = 0;	//Rewrite caller? If sip invite contain header Remote-Party-ID, caller num/name is overwritten by its values.
 int opt_fork = 1;		// fork or run foreground 
 int opt_saveSIP = 0;		// save SIP packets to pcap file?
 int opt_saveRTP = 0;		// save RTP packets to pcap file?
@@ -1159,6 +1160,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "plcdisable", NULL))) {
 		opt_disableplc = yesno(value);
+	}
+	if((value = ini.GetValue("general", "remotepartyid", NULL))) {
+		opt_remotepartyid = yesno(value);
 	}
 	if((value = ini.GetValue("general", "cleandatabase_cdr", NULL))) {
 		opt_cleandatabase_cdr = atoi(value);
