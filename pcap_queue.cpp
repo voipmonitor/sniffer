@@ -24,6 +24,7 @@
 #include "filter_mysql.h"
 #include "tcpreassembly.h"
 #include "sniff.h"
+#include "cleanspool.h"
 
 
 #define TEST_DEBUG_PARAMS 0
@@ -1110,7 +1111,20 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 		extern AsyncClose asyncClose;
 		u_int64_t ac_sizeOfDataInMemory = asyncClose.getSizeOfDataInMemory();
 		extern int opt_pcap_dump_asyncwrite_maxsize;
-		outStr << setprecision(0) << 100 * (double)ac_sizeOfDataInMemory / (opt_pcap_dump_asyncwrite_maxsize * 1024ull * 1024ull) << "] ";
+		double useAsyncWriteBuffer = 100 * (double)ac_sizeOfDataInMemory / (opt_pcap_dump_asyncwrite_maxsize * 1024ull * 1024ull);
+		extern bool suspendCleanspool;
+		if(useAsyncWriteBuffer > 80) {
+			if(!suspendCleanspool && isSetCleanspoolParameters()) {
+				syslog(LOG_NOTICE, "large workload disk operation - cleanspool suspended");
+				suspendCleanspool = true;
+			}
+		} else {
+			if(suspendCleanspool) {
+				syslog(LOG_NOTICE, "cleanspool resumed");
+				suspendCleanspool = false;
+			}
+		}
+		outStr << setprecision(0) << useAsyncWriteBuffer << "] ";
 		if(this->instancePcapHandle) {
 			unsigned long bypassBufferSizeExeeded = this->instancePcapHandle->pcapStat_get_bypass_buffer_size_exeeded();
 			string statPacketDrops = this->instancePcapHandle->getStatPacketDrop();
