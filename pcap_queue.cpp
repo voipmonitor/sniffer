@@ -1118,7 +1118,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 				syslog(LOG_NOTICE, "large workload disk operation - cleanspool suspended");
 				suspendCleanspool = true;
 			}
-		} else {
+		} else if(useAsyncWriteBuffer < 10) {
 			if(suspendCleanspool) {
 				syslog(LOG_NOTICE, "cleanspool resumed");
 				suspendCleanspool = false;
