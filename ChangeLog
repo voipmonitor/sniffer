@@ -1,3 +1,7 @@
+10.0.40 26.9.2014
+- remotepartyid option is set to yes the SIP Remote-Party-ID is taken into account when storing caller/called number into the database. If callerid is anonymous and Remote-Party-ID is present the number is always taken from Remote-Party-ID if present regardless on the remotepartyid option. Default option is no. 
+- fix issues with memory allocation failed (if not enough memory) 
+
 10.0.39 26.9.2014
 =================
 - fix -v 0 parameter causing FULL BUFFER 

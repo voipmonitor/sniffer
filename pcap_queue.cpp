@@ -1113,7 +1113,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 		extern int opt_pcap_dump_asyncwrite_maxsize;
 		double useAsyncWriteBuffer = 100 * (double)ac_sizeOfDataInMemory / (opt_pcap_dump_asyncwrite_maxsize * 1024ull * 1024ull);
 		extern bool suspendCleanspool;
-		if(useAsyncWriteBuffer > 80) {
+		if(useAsyncWriteBuffer > 50) {
 			if(!suspendCleanspool && isSetCleanspoolParameters()) {
 				syslog(LOG_NOTICE, "large workload disk operation - cleanspool suspended");
 				suspendCleanspool = true;
