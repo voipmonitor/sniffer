@@ -473,10 +473,10 @@ function installFromFile {
 	done
 
 	verbose
-	verbose "Installing /usr/local/share/voipmonitor/audio"
-	cmd "mkdir -p" "/usr/local/share/voipmonitor/audio"
+	#verbose "Installing /usr/local/share/voipmonitor/audio"
+	#cmd "mkdir -p" "/usr/local/share/voipmonitor/audio"
 
-	cmd "cp" "usr/local/share/voipmonitor/audio/*" "/usr/local/share/voipmonitor/audio/"
+	#cmd "cp" "usr/local/share/voipmonitor/audio/*" "/usr/local/share/voipmonitor/audio/"
 
 	echo "Installing voipmonitor $(printp "binary")$(printn " to ")$(printp "/usr/local/sbin/voipmonitor")"
 	cmd "cp" "usr/local/sbin/voipmonitor" "/usr/local/sbin/voipmonitor"

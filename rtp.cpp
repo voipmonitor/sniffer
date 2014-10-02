@@ -670,8 +670,11 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 	
 	if(sverb.read_rtp) {
 		cout << "RTP - read: " 
-		     << inet_ntostring(htonl(this->daddr)) << " / " << this->dport 
-		     << " " << (this->iscaller ? "caller" : "called") << endl;
+		     << "ssrc:" << hex << this->ssrc << dec << " "
+		     << "seq:" << getSeqNum() << " "
+		     << "saddr/sport:" << inet_ntostring(htonl(saddr)) << " / " << sport << " "
+		     << "daddr/dport:" << inet_ntostring(htonl(daddr)) << " / " << dport << " "
+		     << (this->iscaller ? "caller" : "called") << endl;
 	}
 	
 	if(this->sensor_id >= 0 && this->sensor_id != sensor_id) {
@@ -839,20 +842,22 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 		return;
 	}
 
+/* this breaks 4 RTP streams (7b3fa6fb57a719f036fddfbf351234fe pcap sample) and it is not needed anymore (31955aa570d1f71624cea503052de62c)
 	if(iscaller) {
 		if(owner->lastcallerrtp and owner->lastcallerrtp != this) {
 			// reset last sequence 
 			s->cycles = s->cycles - s->base_seq + s->max_seq;
 			s->base_seq = seq;
-			s->max_seq = seq;
+			s->max_seq = seq - 1;
 		}
 	} else {
 		if(owner->lastcalledrtp and owner->lastcalledrtp != this) {
 			s->cycles = s->cycles - s->base_seq + s->max_seq;
 			s->base_seq = seq;
-			s->max_seq = seq;
+			s->max_seq = seq - 1;
 		}
 	}
+*/
 
 	if(owner->forcemark[iscaller]) {
 		// on reinvite (which indicates forcemark[iscaller] completely reset rtp jitterbuffer simulator and 
@@ -1041,6 +1046,15 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 				} else {
 					packetization = (getTimestamp() - last_ts) / 8;
 				}
+			} else if(curpayload == PAYLOAD_G723) {
+				if(payload_len == 24) {
+					packetization = 30;
+				} else if(payload_len == 24*2) {
+					printf("pack:60\n");
+					packetization = 60;
+				} else if(payload_len == 24*3) {
+					packetization = 90;
+				}
 			} else {
 				packetization = (getTimestamp() - last_ts) / (samplerate / 1000);
 			}
@@ -1194,6 +1208,14 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 				} else {
 					curpacketization = (getTimestamp() - last_ts) / 8;
 				}
+			} else if(curpayload == PAYLOAD_G723) {
+				if(payload_len == 24) {
+					curpacketization = 30;	
+				} else if(payload_len == 24*2) {
+					curpacketization = 60;
+				} else if(payload_len == 24*3) {
+					curpacketization = 90;
+				}
 			} else if(curpayload == PAYLOAD_PCMU or curpayload == PAYLOAD_PCMA) {
 				if((payload_len / 8) >= 20) {
 					// do not change packetization to 10ms frames. Case g711_20_10_sync.pcap
@@ -1207,8 +1229,8 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 			}
 
 			if(curpacketization != packetization and curpacketization % 10 == 0 and curpacketization >= 10 and curpacketization <= 120) {
+				if(verbosity > 3) printf("[%x] changing packetization:[%d]->[%d]\n", getSSRC(), curpacketization, packetization);
 				channel_fix1->packetization = channel_fix2->packetization = channel_adapt->packetization = channel_record->packetization = packetization = curpacketization;
-				if(verbosity > 3) printf("[%x] changing packetization:[%d]\n", getSSRC(), packetization);
 			}
 
 		}
@@ -1321,6 +1343,13 @@ RTP::update_stats() {
 	}
 		
 	if((lost > stats.last_lost) > 0) {
+		if(sverb.packet_lost) {
+			cout << "RTP - packet_lost: " 
+			     << "ssrc:" << hex << this->ssrc << dec << " "
+			     << "saddr:" << inet_ntostring(htonl(this->saddr)) << " " 
+			     << "daddr/dport:" << inet_ntostring(htonl(this->daddr)) << " / " << this->dport << " " 
+			     << "lost:" << (lost - stats.last_lost) << endl;
+		}
 		stats.lost += lost - stats.last_lost;
 		if((lost - stats.last_lost) < 10)
 			stats.slost[lost - stats.last_lost]++;

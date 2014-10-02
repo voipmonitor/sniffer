@@ -1251,6 +1251,7 @@ void FraudAlerts::loadAlerts() {
 	SqlDb *sqlDb = createSqlObject();
 	sqlDb->query("select id, alert_type, descr from alerts\
 		      where alert_type > 20 and\
+			    alert_type < 30 and\
 			    (disable is null or not disable)");
 	SqlDb_row row;
 	while(row = sqlDb->fetchRow()) {
@@ -1491,6 +1492,11 @@ void initFraud() {
 }
 
 void termFraud() {
+	if(fraudAlerts) {
+		fraudAlerts->stopPopCallInfoThread(true);
+		delete fraudAlerts;
+		fraudAlerts = NULL;
+	}
 	if(countryCodes) {
 		delete countryCodes;
 		countryCodes = NULL;
@@ -1506,11 +1512,6 @@ void termFraud() {
 	if(cacheNumber_location) {
 		delete cacheNumber_location;
 		cacheNumber_location = NULL;
-	}
-	if(fraudAlerts) {
-		fraudAlerts->stopPopCallInfoThread(true);
-		delete fraudAlerts;
-		fraudAlerts = NULL;
 	}
 	if(sqlDbFraud) {
 		delete sqlDbFraud;

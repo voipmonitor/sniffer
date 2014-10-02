@@ -50,9 +50,14 @@ extern MySqlStore *sqlStore;
 
 SqlDb *sqlDbCleanspool = NULL;
 pthread_t cleanspool_thread = 0;
+bool suspendCleanspool = false;
 
 
 void unlinkfileslist(string fname, string callFrom) {
+	if(suspendCleanspool) {
+		return;
+	}
+ 
 	syslog(LOG_NOTICE, "cleanspool: call unlinkfileslist(%s) from %s", fname.c_str(), callFrom.c_str());
 
 	char buf[4092];
@@ -80,6 +85,10 @@ void unlinkfileslist(string fname, string callFrom) {
 				}
 			}
 			unlink(buf);
+			if(suspendCleanspool) {
+				fclose(fd);
+				return;
+			}
 		}
 		fclose(fd);
 		unlink(fname.c_str());
@@ -88,6 +97,10 @@ void unlinkfileslist(string fname, string callFrom) {
 }
 
 void unlink_dirs(string datehour, int all, int sip, int rtp, int graph, int audio, int reg, string callFrom) {
+	if(suspendCleanspool) {
+		return;
+	}
+
 	syslog(LOG_NOTICE, "cleanspool: call unlink_dirs(%s,%s,%s,%s,%s,%s,%s) from %s", 
 	       datehour.c_str(), 
 	       all == 2 ? "ALL" : all == 1 ? "all" : "---",
@@ -101,7 +114,7 @@ void unlink_dirs(string datehour, int all, int sip, int rtp, int graph, int audi
 	//unlink all directories
 	stringstream fname;
 
-	for(int i = 0; i < 60; i++) {
+	for(int i = 0; i < 60 && !suspendCleanspool; i++) {
 		char min[8];
 		sprintf(min, "%02d", i);
 
@@ -1537,9 +1550,11 @@ bool isSetCleanspoolParameters() {
 void *clean_spooldir(void *dummy) {
 	if(debugclean) syslog(LOG_ERR, "run clean_spooldir()");
 	while(!terminating2) {
-		if(debugclean) syslog(LOG_ERR, "run clean_spooldir_run");
-		clean_spooldir_run(NULL);
-		check_disk_free_run(false);
+		if(!suspendCleanspool) {
+			if(debugclean) syslog(LOG_ERR, "run clean_spooldir_run");
+			clean_spooldir_run(NULL);
+			check_disk_free_run(false);
+		}
 		for(int i = 0; i < 300 && !terminating2; i++) {
 			sleep(1);
 		}

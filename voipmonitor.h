@@ -4,7 +4,7 @@
 #ifndef VOIPMONITOR_H
 #define VOIPMONITOR_H
 
-#define RTPSENSOR_VERSION "10.0.31"
+#define RTPSENSOR_VERSION "10.0.40"
 #define NAT
 
 #define FORMAT_WAV	1
@@ -126,6 +126,7 @@ struct sVerbose {
 	int read_rtp;
 	int check_is_caller_called;
 	int disable_threads_rtp;
+	int packet_lost;
 };
 
 #ifndef GLOBAL_DECLARATION

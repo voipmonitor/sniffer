@@ -197,6 +197,8 @@ extern int opt_nocdr;
 extern int opt_enable_fraud;
 extern int pcap_drop_flag;
 extern int opt_hide_message_content;
+extern int opt_remotepartyid;
+extern char cloud_host[256];
 
 #ifdef QUEUE_MUTEX
 extern sem_t readpacket_thread_semaphore;
@@ -322,7 +324,12 @@ inline void save_packet_sql(Call *call, struct pcap_pkthdr *header, const u_char
 		", microseconds = " << header->ts.tv_usec << 
 		", callid = " << sqlEscapeStringBorder(call ? call->call_id : callidstr) << 
 		", description = " << sqlEscapeStringBorder(description) << 
-		", data = '#" << sqlEscapeString(mpacket, len) << "#'";
+		", data = ";
+	if(cloud_host[0]) {
+		query << "concat('#', from_base64('" << base64_encode((unsigned char*)mpacket, len) << "'), '#')";
+	} else {
+		query << "'#" << _sqlEscapeString(mpacket, len, "mysql") << "#'";
+	}
 	sqlStore->query_lock(query.str().c_str(), STORE_PROC_ID_SAVE_PACKET_SQL);
 	return;
 }
@@ -1392,6 +1399,7 @@ Call *new_invite_register(int sip_method, char *data, int datalen, struct pcap_p
 	unsigned int flags = 0;
 	int res;
 	bool anonymous_useRemotePartyID = false;
+	bool caller_useRemotePartyID = false;
 
 	if(opt_callslimit != 0 and opt_callslimit < calls_counter) {
 		if(verbosity > 0)
@@ -1412,9 +1420,23 @@ Call *new_invite_register(int sip_method, char *data, int datalen, struct pcap_p
 		if(!get_sip_peername(data,datalen,"\nRemote-Party-ID:", tcaller_remote_party, sizeof(tcaller_remote_party)) &&
 		   tcaller_remote_party[0] != '\0') {
 			strcpy(tcaller, tcaller_remote_party);
-			anonymous_useRemotePartyID = true;
+			if(opt_remotepartyid) {
+				caller_useRemotePartyID = true;
+			} else {
+				anonymous_useRemotePartyID = true;
+			}
 		}
+	} else {
+		if(opt_remotepartyid) {
+			char tcaller_remote_party[1024] = "";
+			if(!get_sip_peername(data,datalen,"\nRemote-Party-ID:", tcaller_remote_party, sizeof(tcaller_remote_party)) &&
+			   tcaller_remote_party[0] != '\0') {
+				strcpy(tcaller, tcaller_remote_party);
+				caller_useRemotePartyID = true;
+			}
+		}	
 	}
+
 	// called number
 	res = get_sip_peername(data,datalen,"\nTo:", tcalled, sizeof(tcalled));
 	if(res) {
@@ -1432,7 +1454,7 @@ Call *new_invite_register(int sip_method, char *data, int datalen, struct pcap_p
 	//caller and called domain has to be checked before flags due to skip filter 
 	char tcaller_domain[1024] = "", tcalled_domain[1024] = "";
 	// caller domain 
-	if(anonymous_useRemotePartyID) {
+	if(anonymous_useRemotePartyID || caller_useRemotePartyID) {
 		get_sip_domain(data,datalen,"\nRemote-Party-ID:", tcaller_domain, sizeof(tcaller_domain));
 	} else {
 		res = get_sip_domain(data,datalen,"\nFrom:", tcaller_domain, sizeof(tcaller_domain));
@@ -1531,10 +1553,23 @@ Call *new_invite_register(int sip_method, char *data, int datalen, struct pcap_p
 		if(anonymous_useRemotePartyID) {
 			strcpy(call->callername, "anonymous");
 		} else {
-			res = get_sip_peercnam(data,datalen,"\nFrom:", call->callername, sizeof(call->callername));
-			if(res) {
-				// try compact header
-				get_sip_peercnam(data,datalen,"\nf:", call->callername, sizeof(call->callername));
+			if (caller_useRemotePartyID) {
+				//try Remote-Party-ID
+				res = get_sip_peercnam(data,datalen,"\nRemote-Party-ID:", call->callername, sizeof(call->callername));
+				if (res) {
+					//try from header
+					res = get_sip_peercnam(data,datalen,"\nFrom:", call->callername, sizeof(call->callername));
+					if(res) {
+						// try compact header
+						get_sip_peercnam(data,datalen,"\nf:", call->callername, sizeof(call->callername));
+					}
+				}
+			} else {
+				res = get_sip_peercnam(data,datalen,"\nFrom:", call->callername, sizeof(call->callername));
+				if(res) {
+					// try compact header
+					get_sip_peercnam(data,datalen,"\nf:", call->callername, sizeof(call->callername));
+				}
 			}
 		}
 
@@ -1823,21 +1858,16 @@ void process_sdp(Call *call, unsigned int saddr, int source, unsigned int daddr,
 
 			int iscalled;
 			call->handle_dscp(header_ip, saddr, daddr, &iscalled);
-			// parameter &iscalled need for set addresses for check caller / called
 			//syslog(LOG_ERR, "ADDR: %u port %u iscalled[%d]\n", tmp_addr, tmp_port, iscalled);
 		
-			// check caller for tmp_addr
-			bool iscaller;
-			call->check_is_caller_called(tmp_addr, 0, &iscaller);
-		
-			call->add_ip_port_hash(saddr, tmp_addr, tmp_port, sessid, ua, ua_len, iscaller, rtpmap, fax);
+			call->add_ip_port_hash(saddr, tmp_addr, tmp_port, sessid, ua, ua_len, !iscalled, rtpmap, fax);
 			// check if the IP address is listed in nat_aliases
 			in_addr_t alias = 0;
 			if((alias = match_nat_aliases(tmp_addr)) != 0) {
-				call->add_ip_port_hash(saddr, alias, tmp_port, sessid, ua, ua_len, iscaller, rtpmap, fax);
+				call->add_ip_port_hash(saddr, alias, tmp_port, sessid, ua, ua_len, !iscalled, rtpmap, fax);
 			}
 			if(opt_sdp_reverse_ipport) {
-				call->add_ip_port_hash(saddr, saddr, tmp_port, sessid, ua, ua_len, iscaller, rtpmap, fax);
+				call->add_ip_port_hash(saddr, saddr, tmp_port, sessid, ua, ua_len, !iscalled, rtpmap, fax);
 			}
 		}
 	} else {
@@ -2774,6 +2804,7 @@ Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int des
 				char c = s[l];
 				s[l] = '\0';
 				contentlen = atoi(s);
+				call->content_length = contentlen;
 				s[l] = c;
 			}
 			if(contentlen > 0) {

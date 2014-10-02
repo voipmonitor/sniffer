@@ -213,6 +213,7 @@ public:
 
 	char *contenttype;
 	char *message;
+	int content_length;
 
 	int last_callercodec;		//!< Last caller codec 
 	int last_calledcodec;		//!< Last called codec 
@@ -525,6 +526,8 @@ public:
 		       pcapSip.isClose() &&
 		       pcapRtp.isClose());
 	}
+	
+	u_int32_t getAllReceivedRtpPackets();
 private:
 	ip_port_call_info ip_port[MAX_IP_PER_CALL];
 	PcapDumper pcap;

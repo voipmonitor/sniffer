@@ -25,6 +25,7 @@
 #include "tcpreassembly.h"
 #include "sniff.h"
 #include "rrd.h"
+#include "cleanspool.h"
 
 
 #define TEST_DEBUG_PARAMS 0
@@ -370,6 +371,10 @@ bool pcap_block_store::compress() {
 	}
 	size_t snappyBuffSize = snappy_max_compressed_length(this->size);
 	u_char *snappyBuff = (u_char*)malloc(snappyBuffSize);
+	if(!snappyBuff) {
+		syslog(LOG_ERR, "packetbuffer: snappy_compress: snappy buffer allocation failed - PACKETBUFFER BLOCK DROPPED!");
+		return(false);
+	}
 	snappy_status snappyRslt = snappy_compress((char*)this->block, this->size, (char*)snappyBuff, &snappyBuffSize);
 	switch(snappyRslt) {
 		case SNAPPY_OK:
@@ -921,6 +926,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 	if(!VERBOSE && !DEBUG_VERBOSE) {
 		return;
 	}
+
 	if(this->instancePcapHandle &&
 	   !this->instancePcapHandle->initAllReadThreadsOk) {
 		return;
@@ -1149,7 +1155,6 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 		extern AsyncClose asyncClose;
 		u_int64_t ac_sizeOfDataInMemory = asyncClose.getSizeOfDataInMemory();
 		extern int opt_pcap_dump_asyncwrite_maxsize;
-		outStr << setprecision(0) << 100 * (double)ac_sizeOfDataInMemory / (opt_pcap_dump_asyncwrite_maxsize * 1024ull * 1024ull) << "] ";
 		
 		if(opt_rrd) {
 			rrdheap_buffer = memoryBufferPerc;
@@ -1157,6 +1162,20 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 			rrdheap_ratio =  100 * (double)ac_sizeOfDataInMemory / (opt_pcap_dump_asyncwrite_maxsize * 1024ull * 1024ull);
 		}
 
+		double useAsyncWriteBuffer = 100 * (double)ac_sizeOfDataInMemory / (opt_pcap_dump_asyncwrite_maxsize * 1024ull * 1024ull);
+		extern bool suspendCleanspool;
+		if(useAsyncWriteBuffer > 50) {
+			if(!suspendCleanspool && isSetCleanspoolParameters()) {
+				syslog(LOG_NOTICE, "large workload disk operation - cleanspool suspended");
+				suspendCleanspool = true;
+			}
+		} else if(useAsyncWriteBuffer < 10) {
+			if(suspendCleanspool) {
+				syslog(LOG_NOTICE, "cleanspool resumed");
+				suspendCleanspool = false;
+			}
+		}
+		outStr << setprecision(0) << useAsyncWriteBuffer << "] ";
 		if(this->instancePcapHandle) {
 			unsigned long bypassBufferSizeExeeded = this->instancePcapHandle->pcapStat_get_bypass_buffer_size_exeeded();
 			string statPacketDrops = this->instancePcapHandle->getStatPacketDrop();
@@ -1285,7 +1304,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 			syslog(LOG_NOTICE, "packetbuffer cpu / mem stat:");
 			syslog(LOG_NOTICE, outStrStat.str().c_str());
 		}
-	} else {
+	} else if(VERBOSE) {
 		outStr << outStrStat.str();
 		extern bool incorrectCaplenDetected;
 		if(incorrectCaplenDetected) {
@@ -1926,7 +1945,6 @@ failed:
 }
 
 inline int PcapQueue_readFromInterface_base::pcap_next_ex_iface(pcap_t *pcapHandle, pcap_pkthdr** header, u_char** packet) {
-	extern int verbosity;
 	int res = ::pcap_next_ex(pcapHandle, header, (const u_char**)packet);
 	if(!packet && res != -2) {
 		if(VERBOSE) {
@@ -2192,9 +2210,9 @@ inline void PcapQueue_readFromInterfaceThread::moveReadit(int index) {
 }
 
 void *PcapQueue_readFromInterfaceThread::threadFunction(void *arg, unsigned int arg2) {
-	if(verbosity > 0) {
+	this->threadId = get_unix_tid();
+	if(VERBOSE) {
 		ostringstream outStr;
-		this->threadId = get_unix_tid();
 		outStr << "start thread t0i_" 
 		       << (this->typeThread == read ? "read" : 
 			   this->typeThread == defrag ? "defrag" :
@@ -2503,9 +2521,9 @@ bool PcapQueue_readFromInterface::initThread(void *arg, unsigned int arg2) {
 }
 
 void* PcapQueue_readFromInterface::threadFunction(void *arg, unsigned int arg2) {
+	this->threadId = get_unix_tid();
 	if(VERBOSE || DEBUG_VERBOSE) {
 		ostringstream outStr;
-		this->threadId = get_unix_tid();
 		outStr << "start thread t0 (" << this->nameQueue << ") - pid: " << this->threadId << endl;
 		if(DEBUG_VERBOSE) {
 			cout << outStr.str();
@@ -2968,15 +2986,15 @@ bool PcapQueue_readFromFifo::initThread(void *arg, unsigned int arg2) {
 }
 
 void *PcapQueue_readFromFifo::threadFunction(void *arg, unsigned int arg2) {
+	int pid = get_unix_tid();
+	if(this->packetServerDirection == directionRead && arg2) {
+		this->packetServerConnections[arg2]->threadId = pid;
+		this->packetServerConnections[arg2]->active = true;
+	} else {
+		this->threadId = get_unix_tid();
+	}
 	if(VERBOSE || DEBUG_VERBOSE) {
 		ostringstream outStr;
-		int pid = get_unix_tid();
-		if(this->packetServerDirection == directionRead && arg2) {
-			this->packetServerConnections[arg2]->threadId = pid;
-			this->packetServerConnections[arg2]->active = true;
-		} else {
-			this->threadId = get_unix_tid();
-		}
 		outStr << "start thread t1 (" << this->nameQueue;
 		if(this->packetServerDirection == directionRead && arg2) {
 			outStr << " " << this->packetServerConnections[arg2]->socketClientIP << ":" << this->packetServerConnections[arg2]->socketClientInfo.sin_port;
@@ -3104,14 +3122,19 @@ void *PcapQueue_readFromFifo::threadFunction(void *arg, unsigned int arg2) {
 				continue;
 			}
 			size_t blockSize = blockStore->size;
+			bool blockStoreOk = true;
 			if(opt_pcap_queue_compress) {
-				blockStore->compress();
+				blockStoreOk = blockStore->compress();
 			}
-			if(this->pcapStoreQueue.push(blockStore, this->blockStoreTrash_size, false)) {
-				sumPacketsSize[0] += blockSize;
-				blockStoreBypassQueue.pop(true, blockSize);
+			if(blockStoreOk) {
+				if(this->pcapStoreQueue.push(blockStore, this->blockStoreTrash_size, false)) {
+					sumPacketsSize[0] += blockSize;
+					blockStoreBypassQueue.pop(true, blockSize);
+				} else {
+					usleep(1000);
+				}
 			} else {
-				usleep(1000);
+				blockStoreBypassQueue.pop(true, blockSize);
 			}
 		}
 	} else {
@@ -3138,10 +3161,11 @@ void *PcapQueue_readFromFifo::threadFunction(void *arg, unsigned int arg2) {
 			blockStore->add(header_std, packet, header.offset, header.dlink);
 			if(blockStore->full) {
 				sumPacketsSize[0] += blockStore->size;
+				bool blockStoreOk = true;
 				if(opt_pcap_queue_compress) {
-					blockStore->compress();
+					blockStoreOk = blockStore->compress();
 				}
-				if(this->pcapStoreQueue.push(blockStore, this->blockStoreTrash_size)) {
+				if(blockStoreOk && this->pcapStoreQueue.push(blockStore, this->blockStoreTrash_size)) {
 					++sumBlocksCounterIn[0];
 					blockStore = new pcap_block_store;
 					blockStore->add(&header, packet);
@@ -3155,9 +3179,9 @@ void *PcapQueue_readFromFifo::threadFunction(void *arg, unsigned int arg2) {
 }
 
 void *PcapQueue_readFromFifo::writeThreadFunction(void *arg, unsigned int arg2) {
+	this->writeThreadId = get_unix_tid();
 	if(VERBOSE || DEBUG_VERBOSE) {
 		ostringstream outStr;
-		this->writeThreadId = get_unix_tid();
 		outStr << "start thread t2 (" << this->nameQueue << " / write" << ") - pid: " << this->writeThreadId << endl;
 		if(DEBUG_VERBOSE) {
 			cout << outStr.str();

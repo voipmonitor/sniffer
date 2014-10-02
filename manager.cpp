@@ -1030,8 +1030,8 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 					args->call = call;
 					call->audiobuffer1 = new pvt_circbuf;
 					call->audiobuffer2 = new pvt_circbuf;
-					circbuf_init(call->audiobuffer1, 4092);
-					circbuf_init(call->audiobuffer2, 4092);
+					circbuf_init(call->audiobuffer1, 20000);
+					circbuf_init(call->audiobuffer2, 20000);
 
 					pthread_t call_thread;
 					pthread_create(&call_thread, NULL, listening_worker, (void *)args);
