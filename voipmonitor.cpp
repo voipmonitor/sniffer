@@ -1165,6 +1165,7 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "rrd", NULL))) {
 		opt_rrd = yesno(value);
+	}
 	if((value = ini.GetValue("general", "remotepartyid", NULL))) {
 		opt_remotepartyid = yesno(value);
 	}

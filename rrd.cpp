@@ -18,7 +18,7 @@
 #define FALSE		0
 #define MAX_LENGTH	10000
 
-void rrd_vm_create_graph_tCPU_command(char *filename, char *fromatstyle, char *toatstyle, int resx, int resy, short slope, short icon, char *dstfile, char *buffer, int maxsize) {
+void rrd_vm_create_graph_tCPU_command(char *filename, char *fromatstyle, char *toatstyle, char *color, int resx, int resy, short slope, short icon, char *dstfile, char *buffer, int maxsize) {
     std::ostringstream cmdCreate;
 
 	if (dstfile == NULL) 
@@ -26,10 +26,11 @@ void rrd_vm_create_graph_tCPU_command(char *filename, char *fromatstyle, char *t
 	else
 		cmdCreate << "`which rrdtool` graph \"" << dstfile << "\" ";
 	cmdCreate << "-w " << resx << " -h " << resy << " -a PNG ";
-	cmdCreate << "--start " << fromatstyle << " --end " << toatstyle << " ";
+	cmdCreate << "--start \"" << fromatstyle << "\" --end \"" << toatstyle << "\" ";
 	cmdCreate << "--font DEFAULT:0:Courier ";
-	cmdCreate << "--title \"tCPU usage\" ";
+	cmdCreate << "--title \"CPU usage\" ";
 	cmdCreate << "--watermark \"`date`\" ";
+	cmdCreate << "--disable-rrdtool-tag ";
 	cmdCreate << "--vertical-label \"percent[%]\" ";
 	cmdCreate << "--lower-limit 0 ";
 	//cmdCreate << "--x-grid MINUTE:10:HOUR:1:MINUTE:120:0:%R ";
@@ -37,6 +38,7 @@ void rrd_vm_create_graph_tCPU_command(char *filename, char *fromatstyle, char *t
 	cmdCreate << "--full-size-mode ";
 	if (slope) cmdCreate << "--slope-mode ";
 	if (icon) cmdCreate << "--only-graph ";
+	if (color != NULL) cmdCreate << "-c BACK#" << color << " -c SHADEA#" << color << " -c SHADEB#" << color << " ";
 	cmdCreate << "DEF:t0=" << filename << ":tCPU-t0:MAX ";
 	cmdCreate << "DEF:t1=" << filename << ":tCPU-t1:MAX ";
 	cmdCreate << "DEF:t2=" << filename << ":tCPU-t2:MAX ";
@@ -62,7 +64,7 @@ void rrd_vm_create_graph_tCPU_command(char *filename, char *fromatstyle, char *t
 	buffer[length]='\0';
 }
 
-void rrd_vm_create_graph_heap_command(char *filename, char *fromatstyle, char *toatstyle, int resx, int resy, short slope, short icon, char *dstfile, char *buffer, int maxsize) {
+void rrd_vm_create_graph_heap_command(char *filename, char *fromatstyle, char *toatstyle, char *color, int resx, int resy, short slope, short icon, char *dstfile, char *buffer, int maxsize) {
     std::ostringstream cmdCreate;
 
 	if (dstfile == NULL) 
@@ -70,10 +72,11 @@ void rrd_vm_create_graph_heap_command(char *filename, char *fromatstyle, char *t
 	else
 		cmdCreate << "`which rrdtool` graph " << dstfile << " ";
 	cmdCreate << "-w " << resx << " -h " << resy << " -a PNG ";
-	cmdCreate << "--start " << fromatstyle << " --end " << toatstyle << " ";
+	cmdCreate << "--start \"" << fromatstyle << "\" --end \"" << toatstyle << "\" ";
 	cmdCreate << "--font DEFAULT:0:Courier ";
-	cmdCreate << "--title \"Mem heap usage\" ";
+	cmdCreate << "--title \"Buffer usage\" ";
 	cmdCreate << "--watermark \"`date`\" ";
+	cmdCreate << "--disable-rrdtool-tag ";
 	cmdCreate << "--vertical-label \"percent[%]\" ";
 	cmdCreate << "--lower-limit 0 ";
 	//cmdCreate << "--x-grid MINUTE:10:HOUR:1:MINUTE:120:0:%R ";
@@ -81,22 +84,16 @@ void rrd_vm_create_graph_heap_command(char *filename, char *fromatstyle, char *t
 	cmdCreate << "--full-size-mode ";
 	if (slope) cmdCreate << "--slope-mode ";
 	if (icon) cmdCreate << "--only-graph ";
+	if (color != NULL) cmdCreate << "-c BACK#" << color << " -c SHADEA#" << color << " -c SHADEB#" << color << " ";
 	cmdCreate << "DEF:buffer=" << filename << ":buffer:MAX ";
-	cmdCreate << "DEF:trash=" << filename << ":trash:MAX ";
 	cmdCreate << "DEF:ratio=" << filename << ":ratio:MAX ";
-	cmdCreate << "LINE1:buffer#0000FF:\"Buffer usage %\\l\" ";
+	cmdCreate << "LINE1:buffer#0000FF:\"Packet buffer %\\l\" ";
 	cmdCreate << "COMMENT:\"\\u\" ";
 	cmdCreate << "GPRINT:buffer:LAST:\"Cur\\: %5.2lf\" ";
 	cmdCreate << "GPRINT:buffer:AVERAGE:\"Avg\\: %5.2lf\" ";
 	cmdCreate << "GPRINT:buffer:MAX:\"Max\\: %5.2lf\" ";
 	cmdCreate << "GPRINT:buffer:MIN:\"Min\\: %5.2lf\\r\" ";
-	cmdCreate << "LINE1:trash#00FF00:\"Trash usage %\\l\" ";
-	cmdCreate << "COMMENT:\"\\u\" ";
-	cmdCreate << "GPRINT:trash:LAST:\"Cur\\: %5.2lf\" ";
-	cmdCreate << "GPRINT:trash:AVERAGE:\"Avg\\: %5.2lf\" ";
-	cmdCreate << "GPRINT:trash:MAX:\"Max\\: %5.2lf\" ";
-	cmdCreate << "GPRINT:trash:MIN:\"Min\\: %5.2lf\\r\" ";
-	cmdCreate << "LINE1:ratio#FF0000:\"Ratio %\\l\" ";
+	cmdCreate << "LINE1:ratio#FF0000:\"I/O buffer usage %\\l\" ";
 	cmdCreate << "COMMENT:\"\\u\" ";
 	cmdCreate << "GPRINT:ratio:LAST:\"Cur\\: %5.2lf\" ";
 	cmdCreate << "GPRINT:ratio:AVERAGE:\"Avg\\: %5.2lf\" ";
@@ -106,7 +103,7 @@ void rrd_vm_create_graph_heap_command(char *filename, char *fromatstyle, char *t
 	buffer[length]='\0';
 }
 
-void rrd_vm_create_graph_drop_command(char *filename, char *fromatstyle, char *toatstyle, int resx, int resy, short slope, short icon, char *dstfile, char *buffer, int maxsize) {
+void rrd_vm_create_graph_drop_command(char *filename, char *fromatstyle, char *toatstyle, char *color, int resx, int resy, short slope, short icon, char *dstfile, char *buffer, int maxsize) {
     std::ostringstream cmdCreate;
 
 	if (dstfile == NULL) 
@@ -114,10 +111,11 @@ void rrd_vm_create_graph_drop_command(char *filename, char *fromatstyle, char *t
 	else
 		cmdCreate << "`which rrdtool` graph " << dstfile << " ";
 	cmdCreate << "-w " << resx << " -h " << resy << " -a PNG ";
-	cmdCreate << "--start " << fromatstyle << " --end " << toatstyle << " ";
+	cmdCreate << "--start \"" << fromatstyle << "\" --end \"" << toatstyle << "\" ";
 	cmdCreate << "--font DEFAULT:0:Courier ";
-	cmdCreate << "--title \"Dropping packets\" ";
+	cmdCreate << "--title \"Packet drops\" ";
 	cmdCreate << "--watermark \"`date`\" ";
+	cmdCreate << "--disable-rrdtool-tag ";
 	cmdCreate << "--vertical-label \"packtets\" ";
 	cmdCreate << "--lower-limit 0 ";
 	//cmdCreate << "--x-grid MINUTE:10:HOUR:1:MINUTE:120:0:%R ";
@@ -125,6 +123,7 @@ void rrd_vm_create_graph_drop_command(char *filename, char *fromatstyle, char *t
 	cmdCreate << "--full-size-mode ";
 	if (slope) cmdCreate << "--slope-mode ";
 	if (icon) cmdCreate << "--only-graph ";
+	if (color != NULL) cmdCreate << "-c BACK#" << color << " -c SHADEA#" << color << " -c SHADEB#" << color << " ";
 	cmdCreate << "DEF:exc=" << filename << ":exceeded:MAX ";
 	cmdCreate << "DEF:pck=" << filename << ":packets:MAX ";
 	cmdCreate << "LINE1:exc#0000FF:\"Buffer overloaded\\l\" ";
@@ -143,7 +142,7 @@ void rrd_vm_create_graph_drop_command(char *filename, char *fromatstyle, char *t
 	buffer[length]='\0';
 }
 
-void rrd_vm_create_graph_calls_command(char *filename, char *fromatstyle, char *toatstyle, int resx, int resy, short slope, short icon, char *dstfile, char *buffer, int maxsize) {
+void rrd_vm_create_graph_calls_command(char *filename, char *fromatstyle, char *toatstyle, char *color, int resx, int resy, short slope, short icon, char *dstfile, char *buffer, int maxsize) {
     std::ostringstream cmdCreate;
 
 	if (dstfile == NULL) 
@@ -151,10 +150,11 @@ void rrd_vm_create_graph_calls_command(char *filename, char *fromatstyle, char *
 	else
 		cmdCreate << "`which rrdtool` graph " << dstfile << " ";
 	cmdCreate << "-w " << resx << " -h " << resy << " -a PNG ";
-	cmdCreate << "--start " << fromatstyle << " --end " << toatstyle << " ";
+	cmdCreate << "--start \"" << fromatstyle << "\" --end \"" << toatstyle << "\" ";
 	cmdCreate << "--font DEFAULT:0:Courier ";
 	cmdCreate << "--title \"Number of calls\" ";
 	cmdCreate << "--watermark \"`date`\" ";
+	cmdCreate << "--disable-rrdtool-tag ";
 	cmdCreate << "--vertical-label \"calls\" ";
 	cmdCreate << "--lower-limit 0 ";
 	//cmdCreate << "--x-grid MINUTE:10:HOUR:1:MINUTE:120:0:%R ";
@@ -162,6 +162,7 @@ void rrd_vm_create_graph_calls_command(char *filename, char *fromatstyle, char *
 	cmdCreate << "--full-size-mode ";
 	if (slope) cmdCreate << "--slope-mode ";
 	if (icon) cmdCreate << "--only-graph ";
+	if (color != NULL) cmdCreate << "-c BACK#" << color << " -c SHADEA#" << color << " -c SHADEB#" << color << " ";
 	cmdCreate << "DEF:callsmin=" << filename << ":calls:MIN ";
 	cmdCreate << "DEF:callsavg=" << filename << ":calls:AVERAGE ";
 	cmdCreate << "DEF:callsmax=" << filename << ":calls:MAX ";
@@ -177,7 +178,7 @@ void rrd_vm_create_graph_calls_command(char *filename, char *fromatstyle, char *
 	buffer[length]='\0';
 }
 
-void rrd_vm_create_graph_tacCPU_command(char *filename, char *fromatstyle, char *toatstyle, int resx, int resy, short slope, short icon, char *dstfile, char *buffer, int maxsize) {
+void rrd_vm_create_graph_tacCPU_command(char *filename, char *fromatstyle, char *toatstyle, char *color, int resx, int resy, short slope, short icon, char *dstfile, char *buffer, int maxsize) {
     std::ostringstream cmdCreate;
 
 	if (dstfile == NULL) 
@@ -185,10 +186,11 @@ void rrd_vm_create_graph_tacCPU_command(char *filename, char *fromatstyle, char 
 	else
 		cmdCreate << "`which rrdtool` graph " << dstfile << " ";
 	cmdCreate << "-w " << resx << " -h " << resy << " -a PNG ";
-	cmdCreate << "--start " << fromatstyle << " --end " << toatstyle << " ";
+	cmdCreate << "--start \"" << fromatstyle << "\" --end \"" << toatstyle << "\" ";
 	cmdCreate << "--font DEFAULT:0:Courier ";
-	cmdCreate << "--title \"tac CPU\" ";
+	cmdCreate << "--title \"Zip compression\" ";
 	cmdCreate << "--watermark \"`date`\" ";
+	cmdCreate << "--disable-rrdtool-tag ";
 	cmdCreate << "--vertical-label \"threads\" ";
 	cmdCreate << "--lower-limit 0 ";
 	//cmdCreate << "--x-grid MINUTE:10:HOUR:1:MINUTE:120:0:%R ";
@@ -196,8 +198,9 @@ void rrd_vm_create_graph_tacCPU_command(char *filename, char *fromatstyle, char 
 	cmdCreate << "--full-size-mode ";
 	if (slope) cmdCreate << "--slope-mode ";
 	if (icon) cmdCreate << "--only-graph ";
+	if (color != NULL) cmdCreate << "-c BACK#" << color << " -c SHADEA#" << color << " -c SHADEB#" << color << " ";
 	cmdCreate << "DEF:tac=" << filename << ":tacCPU:MAX ";
-	cmdCreate << "LINE1:tac#0000FF:\"Usage\\l\" ";
+	cmdCreate << "LINE1:tac#0000FF:\"Number of CPU used\\l\" ";
 	cmdCreate << "COMMENT:\"\\u\" ";
 	cmdCreate << "GPRINT:tac:LAST:\"Cur\\: %5.2lf\" ";
 	cmdCreate << "GPRINT:tac:AVERAGE:\"Avg\\: %5.2lf\" ";
@@ -207,7 +210,7 @@ void rrd_vm_create_graph_tacCPU_command(char *filename, char *fromatstyle, char 
 	buffer[length]='\0';
 }
 
-void rrd_vm_create_graph_RSSVSZ_command(char *filename, char *fromatstyle, char *toatstyle, int resx, int resy, short slope, short icon, char *dstfile, char *buffer, int maxsize) {
+void rrd_vm_create_graph_RSSVSZ_command(char *filename, char *fromatstyle, char *toatstyle, char *color, int resx, int resy, short slope, short icon, char *dstfile, char *buffer, int maxsize) {
     std::ostringstream cmdCreate;
 
 	if (dstfile == NULL) 
@@ -215,10 +218,11 @@ void rrd_vm_create_graph_RSSVSZ_command(char *filename, char *fromatstyle, char 
 	else
 		cmdCreate << "`which rrdtool` graph " << dstfile << " ";
 	cmdCreate << "-w " << resx << " -h " << resy << " -a PNG ";
-	cmdCreate << "--start " << fromatstyle << " --end " << toatstyle << " ";
+	cmdCreate << "--start \"" << fromatstyle << "\" --end \"" << toatstyle << "\" ";
 	cmdCreate << "--font DEFAULT:0:Courier ";
-	cmdCreate << "--title \"RSS_VSZ\" ";
+	cmdCreate << "--title \"Memory usage\" ";
 	cmdCreate << "--watermark \"`date`\" ";
+	cmdCreate << "--disable-rrdtool-tag ";
 	cmdCreate << "--vertical-label \"MB\" ";
 	cmdCreate << "--lower-limit 0 ";
 	//cmdCreate << "--x-grid MINUTE:10:HOUR:1:MINUTE:120:0:%R ";
@@ -226,15 +230,17 @@ void rrd_vm_create_graph_RSSVSZ_command(char *filename, char *fromatstyle, char 
 	cmdCreate << "--full-size-mode ";
 	if (slope) cmdCreate << "--slope-mode ";
 	if (icon) cmdCreate << "--only-graph ";
+	if (color != NULL) cmdCreate << "-c BACK#" << color << " -c SHADEA#" << color << " -c SHADEB#" << color << " ";
 	cmdCreate << "DEF:rss=" << filename << ":RSS:MAX ";
 	cmdCreate << "DEF:vsz=" << filename << ":VSZ:MAX ";
-	cmdCreate << "AREA:vsz#00FF00:\"Mem Usage VSZ \\l\" ";
+	//cmdCreate << "AREA:vsz#0000FF:\"Virtual memory size (VSZ)\\l\" ";
+	cmdCreate << "LINE1:vsz#0000FF:\"Virtual memory size (VSZ)\\l\" ";
 	cmdCreate << "COMMENT:\"\\u\" ";
 	cmdCreate << "GPRINT:vsz:LAST:\"Cur\\: %5.0lf\" ";
 	cmdCreate << "GPRINT:vsz:AVERAGE:\"Avg\\: %5.2lf\" ";
 	cmdCreate << "GPRINT:vsz:MAX:\"Max\\: %5.0lf\" ";
 	cmdCreate << "GPRINT:vsz:MIN:\"Min\\: %5.0lf\\r\" ";
-	cmdCreate << "AREA:rss#0000FF:\"Mem Usage RSS\\l\" ";
+	cmdCreate << "AREA:rss#00FF00:\"Used memory (RSS)\\l\" ";
 	cmdCreate << "COMMENT:\"\\u\" ";
 	cmdCreate << "GPRINT:rss:LAST:\"Cur\\: %5.0lf\" ";
 	cmdCreate << "GPRINT:rss:AVERAGE:\"Avg\\: %5.2lf\" ";
@@ -247,7 +253,7 @@ void rrd_vm_create_graph_RSSVSZ_command(char *filename, char *fromatstyle, char 
 
 
 
-void rrd_vm_create_graph_speed_command(char *filename, char *fromatstyle, char *toatstyle, int resx, int resy, short slope, short icon, char *dstfile, char *buffer, int maxsize) {
+void rrd_vm_create_graph_speed_command(char *filename, char *fromatstyle, char *toatstyle, char *color, int resx, int resy, short slope, short icon, char *dstfile, char *buffer, int maxsize) {
     std::ostringstream cmdCreate;
 
 	if (dstfile == NULL) 
@@ -255,10 +261,11 @@ void rrd_vm_create_graph_speed_command(char *filename, char *fromatstyle, char *
 	else
 		cmdCreate << "`which rrdtool` graph " << dstfile << " ";
 	cmdCreate << "-w " << resx << " -h " << resy << " -a PNG ";
-	cmdCreate << "--start " << fromatstyle << " --end " << toatstyle << " ";
+	cmdCreate << "--start \"" << fromatstyle << "\" --end \"" << toatstyle << "\" ";
 	cmdCreate << "--font DEFAULT:0:Courier ";
-	cmdCreate << "--title \"Bw speed\" ";
+	cmdCreate << "--title \"Network throughput\" ";
 	cmdCreate << "--watermark \"`date`\" ";
+	cmdCreate << "--disable-rrdtool-tag ";
 	cmdCreate << "--vertical-label \"MB/s\" ";
 	cmdCreate << "--lower-limit 0 ";
 	//cmdCreate << "--x-grid MINUTE:10:HOUR:1:MINUTE:120:0:%R ";
@@ -266,6 +273,7 @@ void rrd_vm_create_graph_speed_command(char *filename, char *fromatstyle, char *
 	cmdCreate << "--full-size-mode ";
 	if (slope) cmdCreate << "--slope-mode ";
 	if (icon) cmdCreate << "--only-graph ";
+	if (color != NULL) cmdCreate << "-c BACK#" << color << " -c SHADEA#" << color << " -c SHADEB#" << color << " ";
 	cmdCreate << "DEF:speed=" << filename << ":mbs:MAX ";
 	cmdCreate << "AREA:speed#00FF00:\"speed (Mb/s)\\l\" ";
 	cmdCreate << "COMMENT:\"\\u\" ";
@@ -277,7 +285,7 @@ void rrd_vm_create_graph_speed_command(char *filename, char *fromatstyle, char *
 	buffer[length]='\0';
 }
 
-void rrd_vm_create_graph_SQLq_command(char *filename, char *fromatstyle, char *toatstyle, int resx, int resy, short slope, short icon, char *dstfile, char *buffer, int maxsize) {
+void rrd_vm_create_graph_SQLq_command(char *filename, char *fromatstyle, char *toatstyle, char *color, int resx, int resy, short slope, short icon, char *dstfile, char *buffer, int maxsize) {
     std::ostringstream cmdCreate;
 
 	if (dstfile == NULL) 
@@ -285,10 +293,11 @@ void rrd_vm_create_graph_SQLq_command(char *filename, char *fromatstyle, char *t
 	else
 		cmdCreate << "`which rrdtool` graph " << dstfile << " ";
 	cmdCreate << "-w " << resx << " -h " << resy << " -a PNG ";
-	cmdCreate << "--start " << fromatstyle << " --end " << toatstyle << " ";
+	cmdCreate << "--start \"" << fromatstyle << "\" --end \"" << toatstyle << "\" ";
 	cmdCreate << "--font DEFAULT:0:Courier ";
-	cmdCreate << "--title \"SQLq\" ";
+	cmdCreate << "--title \"SQL queue\" ";
 	cmdCreate << "--watermark \"`date`\" ";
+	cmdCreate << "--disable-rrdtool-tag ";
 	cmdCreate << "--vertical-label \"queries\" ";
 	cmdCreate << "--lower-limit 0 ";
 	//cmdCreate << "--x-grid MINUTE:10:HOUR:1:MINUTE:120:0:%R ";
@@ -296,36 +305,37 @@ void rrd_vm_create_graph_SQLq_command(char *filename, char *fromatstyle, char *t
 	cmdCreate << "--full-size-mode ";
 	if (slope) cmdCreate << "--slope-mode ";
 	if (icon) cmdCreate << "--only-graph ";
+	if (color != NULL) cmdCreate << "-c BACK#" << color << " -c SHADEA#" << color << " -c SHADEB#" << color << " ";
 	cmdCreate << "DEF:SQLqC=" << filename << ":SQLq-C:MAX ";
 	cmdCreate << "DEF:SQLqM=" << filename << ":SQLq-M:MAX ";
 	cmdCreate << "DEF:SQLqR=" << filename << ":SQLq-R:MAX ";
 	cmdCreate << "DEF:SQLqCl=" << filename << ":SQLq-Cl:MAX ";
 	cmdCreate << "DEF:SQLqH=" << filename << ":SQLq-H:MAX ";
-	cmdCreate << "LINE1:SQLqC#0000FF:\"-C\\l\" ";
+	cmdCreate << "LINE1:SQLqC#0000FF:\"CDR queue\\l\" ";
 	cmdCreate << "COMMENT:\"\\u\" ";
 	cmdCreate << "GPRINT:SQLqC:LAST:\"Cur\\: %5.0lf\" ";
 	cmdCreate << "GPRINT:SQLqC:AVERAGE:\"Avg\\: %5.2lf\" ";
 	cmdCreate << "GPRINT:SQLqC:MAX:\"Max\\: %5.0lf\" ";
 	cmdCreate << "GPRINT:SQLqC:MIN:\"Min\\: %5.0lf\\r\" ";
-	cmdCreate << "LINE1:SQLqM#00FF00:\"-M\\l\" ";
+	cmdCreate << "LINE1:SQLqM#00FF00:\"Message queue\\l\" ";
 	cmdCreate << "COMMENT:\"\\u\" ";
 	cmdCreate << "GPRINT:SQLqM:LAST:\"Cur\\: %5.0lf\" ";
 	cmdCreate << "GPRINT:SQLqM:AVERAGE:\"Avg\\: %5.2lf\" ";
 	cmdCreate << "GPRINT:SQLqM:MAX:\"Max\\: %5.0lf\" ";
 	cmdCreate << "GPRINT:SQLqM:MIN:\"Min\\: %5.0lf\\r\" ";
-	cmdCreate << "LINE1:SQLqR#FF0000:\"-R\\l\" ";
+	cmdCreate << "LINE1:SQLqR#FF0000:\"Register queue\\l\" ";
 	cmdCreate << "COMMENT:\"\\u\" ";
 	cmdCreate << "GPRINT:SQLqR:LAST:\"Cur\\: %5.0lf\" ";
 	cmdCreate << "GPRINT:SQLqR:AVERAGE:\"Avg\\: %5.2lf\" ";
 	cmdCreate << "GPRINT:SQLqR:MAX:\"Max\\: %5.0lf\" ";
 	cmdCreate << "GPRINT:SQLqR:MIN:\"Min\\: %5.0lf\\r\" ";
-	cmdCreate << "LINE1:SQLqCl#00FFFF:\"-Cl\\l\" ";
+	cmdCreate << "LINE1:SQLqCl#00FFFF:\"Cleanspool queue\\l\" ";
 	cmdCreate << "COMMENT:\"\\u\" ";
 	cmdCreate << "GPRINT:SQLqCl:LAST:\"Cur\\: %5.0lf\" ";
 	cmdCreate << "GPRINT:SQLqCl:AVERAGE:\"Avg\\: %5.2lf\" ";
 	cmdCreate << "GPRINT:SQLqCl:MAX:\"Max\\: %5.0lf\" ";
 	cmdCreate << "GPRINT:SQLqCl:MIN:\"Min\\: %5.0lf\\r\" ";
-	cmdCreate << "LINE1:SQLqH#FFFF00:\"-H\\l\" ";
+	cmdCreate << "LINE1:SQLqH#999966:\"Http queue\\l\" ";
 	cmdCreate << "COMMENT:\"\\u\" ";
 	cmdCreate << "GPRINT:SQLqH:LAST:\"Cur\\: %5.0lf\" ";
 	cmdCreate << "GPRINT:SQLqH:AVERAGE:\"Avg\\: %5.2lf\" ";
@@ -336,7 +346,7 @@ void rrd_vm_create_graph_SQLq_command(char *filename, char *fromatstyle, char *t
 }
 
 
-void rrd_vm_create_graph_PS_command (char *filename, char *fromatstyle, char *toatstyle, int resx, int resy, short slope, short icon, char *dstfile, char *buffer, int maxsize) {
+void rrd_vm_create_graph_PS_command (char *filename, char *fromatstyle, char *toatstyle, char *color, int resx, int resy, short slope, short icon, char *dstfile, char *buffer, int maxsize) {
     std::ostringstream cmdCreate;
 	
 	if (dstfile == NULL) 
@@ -344,47 +354,49 @@ void rrd_vm_create_graph_PS_command (char *filename, char *fromatstyle, char *to
 	else
 		cmdCreate << "`which rrdtool` graph " << dstfile << " ";
 	cmdCreate << "-w " << resx << " -h " << resy << " -a PNG ";
-	cmdCreate << "--start " << fromatstyle << " --end " << toatstyle << " ";
+	cmdCreate << "--start \"" << fromatstyle << "\" --end \"" << toatstyle << "\" ";
 	cmdCreate << "--font DEFAULT:0:Courier ";
-	cmdCreate << "--title \"PS\" ";
+	cmdCreate << "--title \"Packet Counter\" ";
 	cmdCreate << "--watermark \"`date`\" ";
-	cmdCreate << "--vertical-label \"queries\" ";
+	cmdCreate << "--disable-rrdtool-tag ";
+	cmdCreate << "--vertical-label \"packetss\" ";
 	cmdCreate << "--lower-limit 0 ";
 //	cmdCreate << "--x-grid MINUTE:10:HOUR:1:MINUTE:120:0:%R ";
 	cmdCreate << "--units-exponent 0 ";
 	cmdCreate << "--full-size-mode ";
 	if (slope) cmdCreate << "--slope-mode ";
 	if (icon) cmdCreate << "--only-graph ";
+	if (color != NULL) cmdCreate << "-c BACK#" << color << " -c SHADEA#" << color << " -c SHADEB#" << color << " ";
 	cmdCreate << "DEF:PSC=" << filename << ":PS-C:MAX ";
 	cmdCreate << "DEF:PSS0=" << filename << ":PS-S0:MAX ";
 	cmdCreate << "DEF:PSS1=" << filename << ":PS-S1:MAX ";
 	cmdCreate << "DEF:PSR=" << filename << ":PS-R:MAX ";
 	cmdCreate << "DEF:PSA=" << filename << ":PS-A:MAX ";
-	cmdCreate << "LINE1:PSC#0000FF:\"-C\\l\" ";
+	cmdCreate << "LINE1:PSC#0000FF:\"number of calls/second\\l\" ";
 	cmdCreate << "COMMENT:\"\\u\" ";
 	cmdCreate << "GPRINT:PSC:LAST:\"Cur\\: %5.0lf\" ";
 	cmdCreate << "GPRINT:PSC:AVERAGE:\"Avg\\: %5.2lf\" ";
 	cmdCreate << "GPRINT:PSC:MAX:\"Max\\: %5.0lf\" ";
 	cmdCreate << "GPRINT:PSC:MIN:\"Min\\: %5.0lf\\r\" ";
-	cmdCreate << "LINE1:PSS0#00FF00:\"-S0\\l\" ";
+	cmdCreate << "LINE1:PSS0#00FF00:\"valid SIP packets/second\\l\" ";
 	cmdCreate << "COMMENT:\"\\u\" ";
 	cmdCreate << "GPRINT:PSS0:LAST:\"Cur\\: %5.0lf\" ";
 	cmdCreate << "GPRINT:PSS0:AVERAGE:\"Avg\\: %5.2lf\" ";
 	cmdCreate << "GPRINT:PSS0:MAX:\"Max\\: %5.0lf\" ";
 	cmdCreate << "GPRINT:PSS0:MIN:\"Min\\: %5.0lf\\r\" ";
-	cmdCreate << "LINE1:PSS1#FF0000:\"-S1\\l\" ";
+	cmdCreate << "LINE1:PSS1#FF0000:\"number of SIP packets/second\\l\" ";
 	cmdCreate << "COMMENT:\"\\u\" ";
 	cmdCreate << "GPRINT:PSS1:LAST:\"Cur\\: %5.0lf\" ";
 	cmdCreate << "GPRINT:PSS1:AVERAGE:\"Avg\\: %5.2lf\" ";
 	cmdCreate << "GPRINT:PSS1:MAX:\"Max\\: %5.0lf\" ";
 	cmdCreate << "GPRINT:PSS1:MIN:\"Min\\: %5.0lf\\r\" ";
-	cmdCreate << "LINE1:PSR#00FFFF:\"-R\\l\" ";
+	cmdCreate << "LINE1:PSR#00FFFF:\"number of RTP packets/second\\l\" ";
 	cmdCreate << "COMMENT:\"\\u\" ";
 	cmdCreate << "GPRINT:PSR:LAST:\"Cur\\: %5.0lf\" ";
 	cmdCreate << "GPRINT:PSR:AVERAGE:\"Avg\\: %5.2lf\" ";
 	cmdCreate << "GPRINT:PSR:MAX:\"Max\\: %5.0lf\" ";
 	cmdCreate << "GPRINT:PSR:MIN:\"Min\\: %5.0lf\\r\" ";
-	cmdCreate << "LINE1:PSA#FFFF00:\"-A\\l\" ";
+	cmdCreate << "LINE1:PSA#999966:\"number of all packets/second\\l\" ";
 	cmdCreate << "COMMENT:\"\\u\" ";
 	cmdCreate << "GPRINT:PSA:LAST:\"Cur\\: %5.0lf\" ";
 	cmdCreate << "GPRINT:PSA:AVERAGE:\"Avg\\: %5.2lf\" ";
@@ -400,11 +412,21 @@ int vm_rrd_create_rrddrop(const char *filename) {
 
     cmdCreate << "create " << filename << " ";
     cmdCreate << "--start N --step 10 ";
-    cmdCreate << "DS:exceeded:GAUGE:20:0:1000000 ";
-    cmdCreate << "DS:packets:GAUGE:20:0:1000000 ";
-    cmdCreate << "RRA:MIN:0.5:12:1440 ";
-    cmdCreate << "RRA:MAX:0.5:12:1440 ";
-    cmdCreate << "RRA:AVERAGE:0.5:1:1440";
+    cmdCreate << "DS:exceeded:GAUGE:10:0:1000000 ";
+    cmdCreate << "DS:packets:GAUGE:10:0:1000000 ";
+    cmdCreate << "RRA:MIN:0.5:1:360 ";
+    cmdCreate << "RRA:MAX:0.5:1:360 ";
+    cmdCreate << "RRA:AVERAGE:0.5:1:360 ";
+    cmdCreate << "RRA:MIN:0.5:24:360 ";
+    cmdCreate << "RRA:MAX:0.5:24:360 ";
+    cmdCreate << "RRA:AVERAGE:0.5:24:360 ";
+    cmdCreate << "RRA:MIN:0.5:168:360 ";
+    cmdCreate << "RRA:MAX:0.5:168:360 ";
+    cmdCreate << "RRA:AVERAGE:0.5:168:360 ";
+    cmdCreate << "RRA:MIN:0.5:8760:360 ";
+    cmdCreate << "RRA:MAX:0.5:8760:360 ";
+    cmdCreate << "RRA:AVERAGE:0.5:8760:360";
+
 	int res = vm_rrd_create(filename, cmdCreate.str().c_str());
 	return (res);
 }
@@ -414,12 +436,20 @@ int vm_rrd_create_rrdheap(const char *filename) {
 
     cmdCreate << "create " << filename << " ";
     cmdCreate << "--start N --step 10 ";
-    cmdCreate << "DS:buffer:GAUGE:20:0:1000000 ";
-    cmdCreate << "DS:trash:GAUGE:20:0:1000000 ";
-    cmdCreate << "DS:ratio:GAUGE:20:0:10000000 ";
-    cmdCreate << "RRA:MIN:0.5:12:1440 ";
-    cmdCreate << "RRA:MAX:0.5:12:1440 ";
-    cmdCreate << "RRA:AVERAGE:0.5:1:1440";
+    cmdCreate << "DS:buffer:GAUGE:10:0:1000000 ";
+    cmdCreate << "DS:ratio:GAUGE:10:0:10000000 ";
+    cmdCreate << "RRA:MIN:0.5:1:360 ";
+    cmdCreate << "RRA:MAX:0.5:1:360 ";
+    cmdCreate << "RRA:AVERAGE:0.5:1:360 ";
+    cmdCreate << "RRA:MIN:0.5:24:360 ";
+    cmdCreate << "RRA:MAX:0.5:24:360 ";
+    cmdCreate << "RRA:AVERAGE:0.5:24:360 ";
+    cmdCreate << "RRA:MIN:0.5:168:360 ";
+    cmdCreate << "RRA:MAX:0.5:168:360 ";
+    cmdCreate << "RRA:AVERAGE:0.5:168:360 ";
+    cmdCreate << "RRA:MIN:0.5:8760:360 ";
+    cmdCreate << "RRA:MAX:0.5:8760:360 ";
+    cmdCreate << "RRA:AVERAGE:0.5:8760:360";
 	int res = vm_rrd_create(filename, cmdCreate.str().c_str());
 	return (res);
 }
@@ -429,14 +459,23 @@ int vm_rrd_create_rrdPS(const char *filename) {
 
     cmdCreate << "create " << filename << " ";
     cmdCreate << "--start N --step 10 ";
-    cmdCreate << "DS:PS-C:GAUGE:20:0:1000000 ";
-    cmdCreate << "DS:PS-S0:GAUGE:20:0:1000000 ";
-    cmdCreate << "DS:PS-S1:GAUGE:20:0:1000000 ";
-    cmdCreate << "DS:PS-R:GAUGE:20:0:10000000 ";
-    cmdCreate << "DS:PS-A:GAUGE:20:0:10000000 ";
-    cmdCreate << "RRA:MIN:0.5:12:1440 ";
-    cmdCreate << "RRA:MAX:0.5:12:1440 ";
-    cmdCreate << "RRA:AVERAGE:0.5:1:1440";
+    cmdCreate << "DS:PS-C:GAUGE:10:0:1000000 ";
+    cmdCreate << "DS:PS-S0:GAUGE:10:0:1000000 ";
+    cmdCreate << "DS:PS-S1:GAUGE:10:0:1000000 ";
+    cmdCreate << "DS:PS-R:GAUGE:10:0:10000000 ";
+    cmdCreate << "DS:PS-A:GAUGE:10:0:10000000 ";
+    cmdCreate << "RRA:MIN:0.5:1:360 ";
+    cmdCreate << "RRA:MAX:0.5:1:360 ";
+    cmdCreate << "RRA:AVERAGE:0.5:1:360 ";
+    cmdCreate << "RRA:MIN:0.5:24:360 ";
+    cmdCreate << "RRA:MAX:0.5:24:360 ";
+    cmdCreate << "RRA:AVERAGE:0.5:24:360 ";
+    cmdCreate << "RRA:MIN:0.5:168:360 ";
+    cmdCreate << "RRA:MAX:0.5:168:360 ";
+    cmdCreate << "RRA:AVERAGE:0.5:168:360 ";
+    cmdCreate << "RRA:MIN:0.5:8760:360 ";
+    cmdCreate << "RRA:MAX:0.5:8760:360 ";
+    cmdCreate << "RRA:AVERAGE:0.5:8760:360";
 	int res = vm_rrd_create(filename, cmdCreate.str().c_str());
 	return (res);
 }
@@ -446,14 +485,23 @@ int vm_rrd_create_rrdSQLq(const char *filename) {
 
     cmdCreate << "create " << filename << " ";
     cmdCreate << "--start N --step 10 ";
-    cmdCreate << "DS:SQLq-C:GAUGE:20:0:10000 ";
-    cmdCreate << "DS:SQLq-M:GAUGE:20:0:10000 ";
-    cmdCreate << "DS:SQLq-R:GAUGE:20:0:10000 ";
-    cmdCreate << "DS:SQLq-Cl:GAUGE:20:0:10000 ";
-    cmdCreate << "DS:SQLq-H:GAUGE:20:0:10000 ";
-    cmdCreate << "RRA:MIN:0.5:12:1440 ";
-    cmdCreate << "RRA:MAX:0.5:12:1440 ";
-    cmdCreate << "RRA:AVERAGE:0.5:1:1440";
+    cmdCreate << "DS:SQLq-C:GAUGE:10:0:10000 ";
+    cmdCreate << "DS:SQLq-M:GAUGE:10:0:10000 ";
+    cmdCreate << "DS:SQLq-R:GAUGE:10:0:10000 ";
+    cmdCreate << "DS:SQLq-Cl:GAUGE:10:0:10000 ";
+    cmdCreate << "DS:SQLq-H:GAUGE:10:0:10000 ";
+    cmdCreate << "RRA:MIN:0.5:1:360 ";
+    cmdCreate << "RRA:MAX:0.5:1:360 ";
+    cmdCreate << "RRA:AVERAGE:0.5:1:360 ";
+    cmdCreate << "RRA:MIN:0.5:24:360 ";
+    cmdCreate << "RRA:MAX:0.5:24:360 ";
+    cmdCreate << "RRA:AVERAGE:0.5:24:360 ";
+    cmdCreate << "RRA:MIN:0.5:168:360 ";
+    cmdCreate << "RRA:MAX:0.5:168:360 ";
+    cmdCreate << "RRA:AVERAGE:0.5:168:360 ";
+    cmdCreate << "RRA:MIN:0.5:8760:360 ";
+    cmdCreate << "RRA:MAX:0.5:8760:360 ";
+    cmdCreate << "RRA:AVERAGE:0.5:8760:360";
 	int res = vm_rrd_create(filename, cmdCreate.str().c_str());
 	return (res);
 }
@@ -463,12 +511,21 @@ int vm_rrd_create_rrdtCPU(const char *filename) {
 
     cmdCreate << "create " << filename << " ";
     cmdCreate << "--start N --step 10 ";
-    cmdCreate << "DS:tCPU-t0:GAUGE:20:0:100 ";
-    cmdCreate << "DS:tCPU-t1:GAUGE:20:0:100 ";
-    cmdCreate << "DS:tCPU-t2:GAUGE:20:0:100 ";
-    cmdCreate << "RRA:MIN:0.5:12:1440 ";
-    cmdCreate << "RRA:MAX:0.5:12:1440 ";
-    cmdCreate << "RRA:AVERAGE:0.5:1:1440";
+    cmdCreate << "DS:tCPU-t0:GAUGE:10:0:120 ";
+    cmdCreate << "DS:tCPU-t1:GAUGE:10:0:120 ";
+    cmdCreate << "DS:tCPU-t2:GAUGE:10:0:120 ";
+    cmdCreate << "RRA:MIN:0.5:1:360 ";
+    cmdCreate << "RRA:MAX:0.5:1:360 ";
+    cmdCreate << "RRA:AVERAGE:0.5:1:360 ";
+    cmdCreate << "RRA:MIN:0.5:24:360 ";
+    cmdCreate << "RRA:MAX:0.5:24:360 ";
+    cmdCreate << "RRA:AVERAGE:0.5:24:360 ";
+    cmdCreate << "RRA:MIN:0.5:168:360 ";
+    cmdCreate << "RRA:MAX:0.5:168:360 ";
+    cmdCreate << "RRA:AVERAGE:0.5:168:360 ";
+    cmdCreate << "RRA:MIN:0.5:8760:360 ";
+    cmdCreate << "RRA:MAX:0.5:8760:360 ";
+    cmdCreate << "RRA:AVERAGE:0.5:8760:360";
 	int res = vm_rrd_create(filename, cmdCreate.str().c_str());
 	return (res);
 }
@@ -478,10 +535,19 @@ int vm_rrd_create_rrdtacCPU(const char *filename) {
 
     cmdCreate << "create " << filename << " ";
     cmdCreate << "--start N --step 10 ";
-    cmdCreate << "DS:tacCPU:GAUGE:20:0:10000 ";
-    cmdCreate << "RRA:MIN:0.5:12:1440 ";
-    cmdCreate << "RRA:MAX:0.5:12:1440 ";
-    cmdCreate << "RRA:AVERAGE:0.5:1:1440";
+    cmdCreate << "DS:tacCPU:GAUGE:10:0:10000 ";
+    cmdCreate << "RRA:MIN:0.5:1:360 ";
+    cmdCreate << "RRA:MAX:0.5:1:360 ";
+    cmdCreate << "RRA:AVERAGE:0.5:1:360 ";
+    cmdCreate << "RRA:MIN:0.5:24:360 ";
+    cmdCreate << "RRA:MAX:0.5:24:360 ";
+    cmdCreate << "RRA:AVERAGE:0.5:24:360 ";
+    cmdCreate << "RRA:MIN:0.5:168:360 ";
+    cmdCreate << "RRA:MAX:0.5:168:360 ";
+    cmdCreate << "RRA:AVERAGE:0.5:168:360 ";
+    cmdCreate << "RRA:MIN:0.5:8760:360 ";
+    cmdCreate << "RRA:MAX:0.5:8760:360 ";
+    cmdCreate << "RRA:AVERAGE:0.5:8760:360";
 	int res = vm_rrd_create(filename, cmdCreate.str().c_str());
 	return (res);
 }
@@ -491,11 +557,20 @@ int vm_rrd_create_rrdRSSVSZ(const char *filename) {
 
     cmdCreate << "create " << filename << " ";
     cmdCreate << "--start N --step 10 ";
-    cmdCreate << "DS:RSS:GAUGE:20:0:1000000 ";
-    cmdCreate << "DS:VSZ:GAUGE:20:0:1000000 ";
-    cmdCreate << "RRA:MIN:0.5:12:1440 ";
-    cmdCreate << "RRA:MAX:0.5:12:1440 ";
-    cmdCreate << "RRA:AVERAGE:0.5:1:1440";
+    cmdCreate << "DS:RSS:GAUGE:10:0:1000000 ";
+    cmdCreate << "DS:VSZ:GAUGE:10:0:1000000 ";
+    cmdCreate << "RRA:MIN:0.5:1:360 ";
+    cmdCreate << "RRA:MAX:0.5:1:360 ";
+    cmdCreate << "RRA:AVERAGE:0.5:1:360 ";
+    cmdCreate << "RRA:MIN:0.5:24:360 ";
+    cmdCreate << "RRA:MAX:0.5:24:360 ";
+    cmdCreate << "RRA:AVERAGE:0.5:24:360 ";
+    cmdCreate << "RRA:MIN:0.5:168:360 ";
+    cmdCreate << "RRA:MAX:0.5:168:360 ";
+    cmdCreate << "RRA:AVERAGE:0.5:168:360 ";
+    cmdCreate << "RRA:MIN:0.5:8760:360 ";
+    cmdCreate << "RRA:MAX:0.5:8760:360 ";
+    cmdCreate << "RRA:AVERAGE:0.5:8760:360";
 	int res = vm_rrd_create(filename, cmdCreate.str().c_str());
 	return (res);
 }
@@ -505,10 +580,19 @@ int vm_rrd_create_rrdspeedmbs(const char *filename) {
 
     cmdCreate << "create " << filename << " ";
     cmdCreate << "--start N --step 10 ";
-    cmdCreate << "DS:mbs:GAUGE:20:0:100000 ";
-    cmdCreate << "RRA:MIN:0.5:12:1440 ";
-    cmdCreate << "RRA:MAX:0.5:12:1440 ";
-    cmdCreate << "RRA:AVERAGE:0.5:1:1440";
+    cmdCreate << "DS:mbs:GAUGE:10:0:100000 ";
+    cmdCreate << "RRA:MIN:0.5:1:360 ";
+    cmdCreate << "RRA:MAX:0.5:1:360 ";
+    cmdCreate << "RRA:AVERAGE:0.5:1:360 ";
+    cmdCreate << "RRA:MIN:0.5:24:360 ";
+    cmdCreate << "RRA:MAX:0.5:24:360 ";
+    cmdCreate << "RRA:AVERAGE:0.5:24:360 ";
+    cmdCreate << "RRA:MIN:0.5:168:360 ";
+    cmdCreate << "RRA:MAX:0.5:168:360 ";
+    cmdCreate << "RRA:AVERAGE:0.5:168:360 ";
+    cmdCreate << "RRA:MIN:0.5:8760:360 ";
+    cmdCreate << "RRA:MAX:0.5:8760:360 ";
+    cmdCreate << "RRA:AVERAGE:0.5:8760:360";
 	int res = vm_rrd_create(filename, cmdCreate.str().c_str());
 	return (res);
 }
@@ -518,10 +602,19 @@ int vm_rrd_create_rrdcallscounter(const char *filename) {
 
     cmdCreate << "create " << filename << " ";
     cmdCreate << "--start N --step 10 ";
-    cmdCreate << "DS:calls:GAUGE:20:0:200000 ";
-    cmdCreate << "RRA:MIN:0.5:12:1440 ";
-    cmdCreate << "RRA:MAX:0.5:12:1440 ";
-    cmdCreate << "RRA:AVERAGE:0.5:1:1440";
+    cmdCreate << "DS:calls:GAUGE:10:0:200000 ";
+    cmdCreate << "RRA:MIN:0.5:1:360 ";
+    cmdCreate << "RRA:MAX:0.5:1:360 ";
+    cmdCreate << "RRA:AVERAGE:0.5:1:360 ";
+    cmdCreate << "RRA:MIN:0.5:24:360 ";
+    cmdCreate << "RRA:MAX:0.5:24:360 ";
+    cmdCreate << "RRA:AVERAGE:0.5:24:360 ";
+    cmdCreate << "RRA:MIN:0.5:168:360 ";
+    cmdCreate << "RRA:MAX:0.5:168:360 ";
+    cmdCreate << "RRA:AVERAGE:0.5:168:360 ";
+    cmdCreate << "RRA:MIN:0.5:8760:360 ";
+    cmdCreate << "RRA:MAX:0.5:8760:360 ";
+    cmdCreate << "RRA:AVERAGE:0.5:8760:360";
 	int res = vm_rrd_create(filename, cmdCreate.str().c_str());
 	return (res);
 }

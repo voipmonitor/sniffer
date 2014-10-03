@@ -43,14 +43,14 @@
 			iv) If you will see folllowing line, creategraph option is supported in your manager:
 				Syntax: creategraph graph_type linuxTS_from linuxTS_to size_x_pixels size_y_pixels [slope-mode=0/1] [icon=0/1] [dstfile=if_no_spec.to_stdout]
 			v) You can connect again and issue commands bellow 
-				creategraph PS now-2weeks now 600 400 0 0 /tmp/graph_PS.png
-				creategraph SQLq now-2weeks now 600 400 0 0 /tmp/graph_SQLq.png
-				creategraph tCPU now-2weeks now 600 400 0 0 /tmp/graph_tCPU.png
-				creategraph drop now-2weeks now 600 400 0 0 /tmp/graph_drop.png
-				creategraph speed now-2weeks now 600 400 0 0 /tmp/graph_speed.png
-				creategraph heap now-2weeks now 600 400 0 0 /tmp/graph_heap.png
-				creategraph calls now-2weeks now 600 400 0 0 /tmp/graph_calls.png
-				creategraph tacCPU now-2weeks now 600 400 0 0 /tmp/graph_tacCPU.png
+				creategraph PS now-2weeks now 600 400 0 0 - /tmp/graph_PS.png
+				creategraph SQLq now-2weeks now 600 400 0 0 - /tmp/graph_SQLq.png
+				creategraph tCPU now-2weeks now 600 400 0 0 - /tmp/graph_tCPU.png
+				creategraph drop now-2weeks now 600 400 0 0 - /tmp/graph_drop.png
+				creategraph speed now-2weeks now 600 400 0 0 - /tmp/graph_speed.png
+				creategraph heap now-2weeks now 600 400 0 0 - /tmp/graph_heap.png
+				creategraph calls now-2weeks now 600 400 0 0 - /tmp/graph_calls.png
+				creategraph tacCPU now-2weeks now 600 400 0 0 - /tmp/graph_tacCPU.png
 
 			*) Last example sends PNG image to stdout instead of saving it into a file.
 				creategraph RSSVSZ "31.8.2014 00:00" now 600 400
@@ -63,7 +63,7 @@
 3)APPENDIX creategraph syntax and its arguments:
 
 	Syntax:
-		creategraph graph_type linuxTS_from linuxTS_to size_x_pixels size_y_pixels [slope-mode=0/1] [icon=0/1] [dstfile=if_no_spec.to_stdout]
+		creategraph graph_type linuxTS_from linuxTS_to size_x_pixels size_y_pixels [slope-mode=0/1] [icon=0/1] [color=FFFFFF] [dstfile=if_no_spec.to_stdout]
 
 	Arguments:
 		graphType is one of the following:
@@ -83,7 +83,8 @@
 
 		[icon]
 			Put 1, if you want only fillings of graph (no descriptions no axis no lines only fill). Default 0
-
+		[color]
+			Define color of outgoing graph. Use '-' sign to let rrd choose color for you
 		[dstfile]
 			Specifies file to which you want to save the graph.
 			Default is sending image to stdout.

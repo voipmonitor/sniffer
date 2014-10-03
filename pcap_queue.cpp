@@ -899,7 +899,6 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 
 //For RRD updates
 	double rrdheap_buffer = 0;
-	double rrdheap_trash = 0;
 	double rrdheap_ratio = 0;
 	unsigned long rrddrop_exceeded = 0;
 	unsigned long rrddrop_packets = 0;
@@ -1158,7 +1157,6 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 		
 		if(opt_rrd) {
 			rrdheap_buffer = memoryBufferPerc;
-			rrdheap_trash = memoryBufferPerc_trash;
 			rrdheap_ratio =  100 * (double)ac_sizeOfDataInMemory / (opt_pcap_dump_asyncwrite_maxsize * 1024ull * 1024ull);
 		}
 
@@ -1373,7 +1371,6 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 			//update rrdheap;
 			cmdUpdate.str(std::string());
 			cmdUpdate << "N:" << rrdheap_buffer;
-			cmdUpdate <<  ":" << rrdheap_trash;
 			cmdUpdate <<  ":" << rrdheap_ratio;
 			sprintf(filename, "%s/rrd/db-heap.rrd", opt_chdir);
 			rrdres = vm_rrd_update(filename, cmdUpdate.str().c_str());

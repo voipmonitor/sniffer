@@ -346,7 +346,7 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 
 		if (( manager_argc = vm_rrd_countArgs(buf)) < 6) {	//few arguments passed
 			if (verbosity > 0) syslog(LOG_NOTICE, "parse_command creategraph too few arguments, passed%d need at least 6!\n", manager_argc);
-			snprintf(sendbuf, BUFSIZE, "Syntax: creategraph graph_type linuxTS_from linuxTS_to size_x_pixels size_y_pixels [slope-mode=0/1] [icon=0/1] [dstfile=if_no_spec.to_stdout] \n");
+			snprintf(sendbuf, BUFSIZE, "Syntax: creategraph graph_type linuxTS_from linuxTS_to size_x_pixels size_y_pixels [slope-mode=0/1] [icon=0/1] [color=FFFFFF] [dstfile=if_no_spec.to_stdout] \n");
 			if ((size = sendvm(client, sshchannel, sendbuf, strlen(sendbuf), 0)) == -1){
 				cerr << "Error sending data to client 1" << endl;
 			}
@@ -380,7 +380,8 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 			//5-total size y
 			//[6-zaobleni hran(slope-mode)]
 			//[7-discard graphs legend (for sizes bellow 600x240)]
-			//[8-dstfile (if not defined PNG goes to stdout)]
+			//[8-color]
+			//[9-dstfile (if not defined PNG goes to stdout)]
 			if (verbosity > 0) {
 				syslog(LOG_NOTICE, "%d arguments detected. Showing them:\n", manager_argc);
 				for (int i = 0; i < manager_argc; i++) {
@@ -393,14 +394,16 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 			int resx, resy;
 			short slope, icon;
 			char *dstfile;
-			
+			char *color;
+
 			fromat = manager_args[2];
 			toat = manager_args[3];
 			resx = atoi(manager_args[4]);
 			resy = atoi(manager_args[5]);
 			if ((manager_argc > 6) && (manager_args[6][0] == '1')) slope = 1; else slope = 0;
 			if ((manager_argc > 7) && (manager_args[7][0] == '1')) icon = 1; else icon = 0;
-			if (manager_argc > 8) dstfile = manager_args[8]; else dstfile = NULL;			//set dstfile == NULL if not specified
+			if ((manager_argc > 8) && (manager_args[8][0] != '-')) color = manager_args[8]; else  color = NULL;
+			if (manager_argc > 9) dstfile = manager_args[9]; else dstfile = NULL;			//set dstfile == NULL if not specified
 
 			//limits check discarding graph's legend and axis/grid
 			if ((resx < 400) or (resy < 200)) icon = 1;
@@ -408,31 +411,31 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 			char sendcommand[2048];			//buffer for send command string;
 			if (!strncmp(manager_args[1], "PS",3 )) {
 				sprintf(filename, "%s/rrd/db-PS.rrd", opt_chdir);
-				rrd_vm_create_graph_PS_command(filename, fromat, toat, resx, resy, slope, icon, dstfile, sendcommand, sizeof(sendcommand));
+				rrd_vm_create_graph_PS_command(filename, fromat, toat, color, resx, resy, slope, icon, dstfile, sendcommand, sizeof(sendcommand));
 			} else if (!strncmp(manager_args[1], "SQLq", 5)) {
 				sprintf(filename, "%s/rrd/db-SQLq.rrd", opt_chdir);
-				rrd_vm_create_graph_SQLq_command(filename, fromat, toat, resx, resy, slope, icon, dstfile, sendcommand, sizeof(sendcommand));
+				rrd_vm_create_graph_SQLq_command(filename, fromat, toat, color, resx, resy, slope, icon, dstfile, sendcommand, sizeof(sendcommand));
 			} else if (!strncmp(manager_args[1], "tCPU", 5)) {
 				sprintf(filename, "%s/rrd/db-tCPU.rrd", opt_chdir);
-				rrd_vm_create_graph_tCPU_command(filename, fromat, toat, resx, resy, slope, icon, dstfile, sendcommand, sizeof(sendcommand));
+				rrd_vm_create_graph_tCPU_command(filename, fromat, toat, color, resx, resy, slope, icon, dstfile, sendcommand, sizeof(sendcommand));
 			} else if (!strncmp(manager_args[1], "drop", 5)) {
 				sprintf(filename, "%s/rrd/db-drop.rrd", opt_chdir);
-				rrd_vm_create_graph_drop_command(filename, fromat, toat, resx, resy, slope, icon, dstfile, sendcommand, sizeof(sendcommand));
+				rrd_vm_create_graph_drop_command(filename, fromat, toat, color, resx, resy, slope, icon, dstfile, sendcommand, sizeof(sendcommand));
 			} else if (!strncmp(manager_args[1], "speed", 5)) {
 				sprintf(filename, "%s/rrd/db-speedmbs.rrd", opt_chdir);
-				rrd_vm_create_graph_speed_command(filename, fromat, toat, resx, resy, slope, icon, dstfile, sendcommand, sizeof(sendcommand));
+				rrd_vm_create_graph_speed_command(filename, fromat, toat, color, resx, resy, slope, icon, dstfile, sendcommand, sizeof(sendcommand));
 			} else if (!strncmp(manager_args[1], "heap", 5)) {
 				sprintf(filename, "%s/rrd/db-heap.rrd", opt_chdir);
-				rrd_vm_create_graph_heap_command(filename, fromat, toat, resx, resy, slope, icon, dstfile, sendcommand, sizeof(sendcommand));
+				rrd_vm_create_graph_heap_command(filename, fromat, toat, color, resx, resy, slope, icon, dstfile, sendcommand, sizeof(sendcommand));
 			} else if (!strncmp(manager_args[1], "calls", 6)) {
 				sprintf(filename, "%s/rrd/db-callscounter.rrd", opt_chdir);
-				rrd_vm_create_graph_calls_command(filename, fromat, toat, resx ,resy, slope, icon, dstfile, sendcommand, sizeof(sendcommand));
+				rrd_vm_create_graph_calls_command(filename, fromat, toat, color, resx ,resy, slope, icon, dstfile, sendcommand, sizeof(sendcommand));
 			} else if (!strncmp(manager_args[1], "tacCPU", 7)) {
 				sprintf(filename, "%s/rrd/db-tacCPU.rrd", opt_chdir);
-				rrd_vm_create_graph_tacCPU_command(filename, fromat, toat, resx, resy, slope, icon, dstfile, sendcommand, sizeof(sendcommand));
+				rrd_vm_create_graph_tacCPU_command(filename, fromat, toat, color, resx, resy, slope, icon, dstfile, sendcommand, sizeof(sendcommand));
 			} else if (!strncmp(manager_args[1], "RSSVSZ", 7)) {
 				sprintf(filename, "%s/rrd/db-RSSVSZ.rrd", opt_chdir);
-				rrd_vm_create_graph_RSSVSZ_command(filename, fromat, toat, resx, resy, slope, icon, dstfile, sendcommand, sizeof(sendcommand));
+				rrd_vm_create_graph_RSSVSZ_command(filename, fromat, toat, color, resx, resy, slope, icon, dstfile, sendcommand, sizeof(sendcommand));
 			} else {
 				snprintf(sendbuf, BUFSIZE, "Error: Graph type %s isn't known\n\tGraph types: PS SQLq tCPU drop speed heap calls tacCPU RSSVSZ\n", manager_args[1]);	
 				if (verbosity > 0) {
