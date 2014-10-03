@@ -359,7 +359,7 @@ void rrd_vm_create_graph_PS_command (char *filename, char *fromatstyle, char *to
 	cmdCreate << "--title \"Packet Counter\" ";
 	cmdCreate << "--watermark \"`date`\" ";
 	cmdCreate << "--disable-rrdtool-tag ";
-	cmdCreate << "--vertical-label \"packetss\" ";
+	cmdCreate << "--vertical-label \"number of packets\" ";
 	cmdCreate << "--lower-limit 0 ";
 //	cmdCreate << "--x-grid MINUTE:10:HOUR:1:MINUTE:120:0:%R ";
 	cmdCreate << "--units-exponent 0 ";
@@ -372,7 +372,7 @@ void rrd_vm_create_graph_PS_command (char *filename, char *fromatstyle, char *to
 	cmdCreate << "DEF:PSS1=" << filename << ":PS-S1:MAX ";
 	cmdCreate << "DEF:PSR=" << filename << ":PS-R:MAX ";
 	cmdCreate << "DEF:PSA=" << filename << ":PS-A:MAX ";
-	cmdCreate << "LINE1:PSC#0000FF:\"number of calls/second\\l\" ";
+	cmdCreate << "LINE1:PSC#0000FF:\"calls/second\\l\" ";
 	cmdCreate << "COMMENT:\"\\u\" ";
 	cmdCreate << "GPRINT:PSC:LAST:\"Cur\\: %5.0lf\" ";
 	cmdCreate << "GPRINT:PSC:AVERAGE:\"Avg\\: %5.2lf\" ";
@@ -384,19 +384,19 @@ void rrd_vm_create_graph_PS_command (char *filename, char *fromatstyle, char *to
 	cmdCreate << "GPRINT:PSS0:AVERAGE:\"Avg\\: %5.2lf\" ";
 	cmdCreate << "GPRINT:PSS0:MAX:\"Max\\: %5.0lf\" ";
 	cmdCreate << "GPRINT:PSS0:MIN:\"Min\\: %5.0lf\\r\" ";
-	cmdCreate << "LINE1:PSS1#FF0000:\"number of SIP packets/second\\l\" ";
+	cmdCreate << "LINE1:PSS1#FF0000:\"SIP packets/second\\l\" ";
 	cmdCreate << "COMMENT:\"\\u\" ";
 	cmdCreate << "GPRINT:PSS1:LAST:\"Cur\\: %5.0lf\" ";
 	cmdCreate << "GPRINT:PSS1:AVERAGE:\"Avg\\: %5.2lf\" ";
 	cmdCreate << "GPRINT:PSS1:MAX:\"Max\\: %5.0lf\" ";
 	cmdCreate << "GPRINT:PSS1:MIN:\"Min\\: %5.0lf\\r\" ";
-	cmdCreate << "LINE1:PSR#00FFFF:\"number of RTP packets/second\\l\" ";
+	cmdCreate << "LINE1:PSR#00FFFF:\"RTP packets/second\\l\" ";
 	cmdCreate << "COMMENT:\"\\u\" ";
 	cmdCreate << "GPRINT:PSR:LAST:\"Cur\\: %5.0lf\" ";
 	cmdCreate << "GPRINT:PSR:AVERAGE:\"Avg\\: %5.2lf\" ";
 	cmdCreate << "GPRINT:PSR:MAX:\"Max\\: %5.0lf\" ";
 	cmdCreate << "GPRINT:PSR:MIN:\"Min\\: %5.0lf\\r\" ";
-	cmdCreate << "LINE1:PSA#999966:\"number of all packets/second\\l\" ";
+	cmdCreate << "LINE1:PSA#999966:\"all packets/second\\l\" ";
 	cmdCreate << "COMMENT:\"\\u\" ";
 	cmdCreate << "GPRINT:PSA:LAST:\"Cur\\: %5.0lf\" ";
 	cmdCreate << "GPRINT:PSA:AVERAGE:\"Avg\\: %5.2lf\" ";
@@ -412,8 +412,8 @@ int vm_rrd_create_rrddrop(const char *filename) {
 
     cmdCreate << "create " << filename << " ";
     cmdCreate << "--start N --step 10 ";
-    cmdCreate << "DS:exceeded:GAUGE:10:0:1000000 ";
-    cmdCreate << "DS:packets:GAUGE:10:0:1000000 ";
+    cmdCreate << "DS:exceeded:GAUGE:20:0:1000000 ";
+    cmdCreate << "DS:packets:GAUGE:20:0:1000000 ";
     cmdCreate << "RRA:MIN:0.5:1:360 ";
     cmdCreate << "RRA:MAX:0.5:1:360 ";
     cmdCreate << "RRA:AVERAGE:0.5:1:360 ";
@@ -436,8 +436,8 @@ int vm_rrd_create_rrdheap(const char *filename) {
 
     cmdCreate << "create " << filename << " ";
     cmdCreate << "--start N --step 10 ";
-    cmdCreate << "DS:buffer:GAUGE:10:0:1000000 ";
-    cmdCreate << "DS:ratio:GAUGE:10:0:10000000 ";
+    cmdCreate << "DS:buffer:GAUGE:20:0:1000000 ";
+    cmdCreate << "DS:ratio:GAUGE:20:0:10000000 ";
     cmdCreate << "RRA:MIN:0.5:1:360 ";
     cmdCreate << "RRA:MAX:0.5:1:360 ";
     cmdCreate << "RRA:AVERAGE:0.5:1:360 ";
@@ -459,11 +459,11 @@ int vm_rrd_create_rrdPS(const char *filename) {
 
     cmdCreate << "create " << filename << " ";
     cmdCreate << "--start N --step 10 ";
-    cmdCreate << "DS:PS-C:GAUGE:10:0:1000000 ";
-    cmdCreate << "DS:PS-S0:GAUGE:10:0:1000000 ";
-    cmdCreate << "DS:PS-S1:GAUGE:10:0:1000000 ";
-    cmdCreate << "DS:PS-R:GAUGE:10:0:10000000 ";
-    cmdCreate << "DS:PS-A:GAUGE:10:0:10000000 ";
+    cmdCreate << "DS:PS-C:GAUGE:20:0:1000000 ";
+    cmdCreate << "DS:PS-S0:GAUGE:20:0:1000000 ";
+    cmdCreate << "DS:PS-S1:GAUGE:20:0:1000000 ";
+    cmdCreate << "DS:PS-R:GAUGE:20:0:10000000 ";
+    cmdCreate << "DS:PS-A:GAUGE:20:0:10000000 ";
     cmdCreate << "RRA:MIN:0.5:1:360 ";
     cmdCreate << "RRA:MAX:0.5:1:360 ";
     cmdCreate << "RRA:AVERAGE:0.5:1:360 ";
@@ -485,11 +485,11 @@ int vm_rrd_create_rrdSQLq(const char *filename) {
 
     cmdCreate << "create " << filename << " ";
     cmdCreate << "--start N --step 10 ";
-    cmdCreate << "DS:SQLq-C:GAUGE:10:0:10000 ";
-    cmdCreate << "DS:SQLq-M:GAUGE:10:0:10000 ";
-    cmdCreate << "DS:SQLq-R:GAUGE:10:0:10000 ";
-    cmdCreate << "DS:SQLq-Cl:GAUGE:10:0:10000 ";
-    cmdCreate << "DS:SQLq-H:GAUGE:10:0:10000 ";
+    cmdCreate << "DS:SQLq-C:GAUGE:20:0:10000 ";
+    cmdCreate << "DS:SQLq-M:GAUGE:20:0:10000 ";
+    cmdCreate << "DS:SQLq-R:GAUGE:20:0:10000 ";
+    cmdCreate << "DS:SQLq-Cl:GAUGE:20:0:10000 ";
+    cmdCreate << "DS:SQLq-H:GAUGE:20:0:10000 ";
     cmdCreate << "RRA:MIN:0.5:1:360 ";
     cmdCreate << "RRA:MAX:0.5:1:360 ";
     cmdCreate << "RRA:AVERAGE:0.5:1:360 ";
@@ -511,9 +511,9 @@ int vm_rrd_create_rrdtCPU(const char *filename) {
 
     cmdCreate << "create " << filename << " ";
     cmdCreate << "--start N --step 10 ";
-    cmdCreate << "DS:tCPU-t0:GAUGE:10:0:120 ";
-    cmdCreate << "DS:tCPU-t1:GAUGE:10:0:120 ";
-    cmdCreate << "DS:tCPU-t2:GAUGE:10:0:120 ";
+    cmdCreate << "DS:tCPU-t0:GAUGE:20:0:120 ";
+    cmdCreate << "DS:tCPU-t1:GAUGE:20:0:120 ";
+    cmdCreate << "DS:tCPU-t2:GAUGE:20:0:120 ";
     cmdCreate << "RRA:MIN:0.5:1:360 ";
     cmdCreate << "RRA:MAX:0.5:1:360 ";
     cmdCreate << "RRA:AVERAGE:0.5:1:360 ";
@@ -535,7 +535,7 @@ int vm_rrd_create_rrdtacCPU(const char *filename) {
 
     cmdCreate << "create " << filename << " ";
     cmdCreate << "--start N --step 10 ";
-    cmdCreate << "DS:tacCPU:GAUGE:10:0:10000 ";
+    cmdCreate << "DS:tacCPU:GAUGE:20:0:10000 ";
     cmdCreate << "RRA:MIN:0.5:1:360 ";
     cmdCreate << "RRA:MAX:0.5:1:360 ";
     cmdCreate << "RRA:AVERAGE:0.5:1:360 ";
@@ -557,8 +557,8 @@ int vm_rrd_create_rrdRSSVSZ(const char *filename) {
 
     cmdCreate << "create " << filename << " ";
     cmdCreate << "--start N --step 10 ";
-    cmdCreate << "DS:RSS:GAUGE:10:0:1000000 ";
-    cmdCreate << "DS:VSZ:GAUGE:10:0:1000000 ";
+    cmdCreate << "DS:RSS:GAUGE:20:0:1000000 ";
+    cmdCreate << "DS:VSZ:GAUGE:20:0:1000000 ";
     cmdCreate << "RRA:MIN:0.5:1:360 ";
     cmdCreate << "RRA:MAX:0.5:1:360 ";
     cmdCreate << "RRA:AVERAGE:0.5:1:360 ";
@@ -580,7 +580,7 @@ int vm_rrd_create_rrdspeedmbs(const char *filename) {
 
     cmdCreate << "create " << filename << " ";
     cmdCreate << "--start N --step 10 ";
-    cmdCreate << "DS:mbs:GAUGE:10:0:100000 ";
+    cmdCreate << "DS:mbs:GAUGE:20:0:100000 ";
     cmdCreate << "RRA:MIN:0.5:1:360 ";
     cmdCreate << "RRA:MAX:0.5:1:360 ";
     cmdCreate << "RRA:AVERAGE:0.5:1:360 ";
@@ -602,7 +602,7 @@ int vm_rrd_create_rrdcallscounter(const char *filename) {
 
     cmdCreate << "create " << filename << " ";
     cmdCreate << "--start N --step 10 ";
-    cmdCreate << "DS:calls:GAUGE:10:0:200000 ";
+    cmdCreate << "DS:calls:GAUGE:20:0:200000 ";
     cmdCreate << "RRA:MIN:0.5:1:360 ";
     cmdCreate << "RRA:MAX:0.5:1:360 ";
     cmdCreate << "RRA:AVERAGE:0.5:1:360 ";
@@ -644,6 +644,7 @@ int vm_rrd_update(const char *filename, const char *value)
 		cmdUpdate << "update " << filename << " " << value;
 		//syslog(LOG_NOTICE, "Updating RRD file: %s \n", filename);
 		res = rrd_call(cmdUpdate.str().c_str());
+		//res = rrd_call(cmdUpdate.str());
 		if (verbosity > 1) syslog(LOG_NOTICE, "Updated RRD file: %s with command %s resulted in retval:%d\n", filename, cmdUpdate.str().c_str(),res);
 	} else {		//rrd file is unaccessible
 		if (verbosity > 0) syslog(LOG_NOTICE, "Cannot update non existent RRD file: %s\n", filename);
