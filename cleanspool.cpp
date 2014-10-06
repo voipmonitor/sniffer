@@ -254,28 +254,46 @@ void clean_maxpoolsize() {
 		fname.clear();
 		fname << "filesindex/sipsize/" << row["datehour"];
 		unlinkfileslist(fname.str(), "clean_maxpoolsize");
+		if(suspendCleanspool) {
+			break;
+		}
 
 		fname.str( std::string() );
 		fname.clear();
 		fname << "filesindex/rtpsize/" << row["datehour"];
 		unlinkfileslist(fname.str(), "clean_maxpoolsize");
+		if(suspendCleanspool) {
+			break;
+		}
 
 		fname.str( std::string() );
 		fname.clear();
 		fname << "filesindex/graphsize/" << row["datehour"];
 		unlinkfileslist(fname.str(), "clean_maxpoolsize");
+		if(suspendCleanspool) {
+			break;
+		}
 
 		fname.str( std::string() );
 		fname.clear();
 		fname << "filesindex/audiosize/" << row["datehour"];
 		unlinkfileslist(fname.str(), "clean_maxpoolsize");
+		if(suspendCleanspool) {
+			break;
+		}
 
 		fname.str( std::string() );
 		fname.clear();
 		fname << "filesindex/regsize/" << row["datehour"];
 		unlinkfileslist(fname.str(), "clean_maxpoolsize");
+		if(suspendCleanspool) {
+			break;
+		}
 
 		unlink_dirs(row["datehour"], 2, 2, 2, 2, 2, 2, "clean_maxpoolsize");
+		if(suspendCleanspool) {
+			break;
+		}
 
 		q.str( std::string() );
 		q.clear();
@@ -346,13 +364,22 @@ void clean_maxpoolsipsize() {
 		fname.clear();
 		fname << "filesindex/sipsize/" << row["datehour"];
 		unlinkfileslist(fname.str(), "clean_maxpoolsipsize");
+		if(suspendCleanspool) {
+			break;
+		}
 
 		fname.str( std::string() );
 		fname.clear();
 		fname << "filesindex/regsize/" << row["datehour"];
 		unlinkfileslist(fname.str(), "clean_maxpoolsipsize");
+		if(suspendCleanspool) {
+			break;
+		}
 
 		unlink_dirs(row["datehour"], 1, 2, 1, 1, 1, 2, "clean_maxpoolsipsize");
+		if(suspendCleanspool) {
+			break;
+		}
 
 		if(rtpsize + graphsize + audiosize > 0) {
 			q.str( std::string() );
@@ -425,8 +452,14 @@ void clean_maxpoolrtpsize() {
 		fname.clear();
 		fname << "filesindex/rtpsize/" << row["datehour"];
 		unlinkfileslist(fname.str(), "clean_maxpoolrtpsize");
+		if(suspendCleanspool) {
+			break;
+		}
 
 		unlink_dirs(row["datehour"], 1, 1, 2, 1, 1, 1, "clean_maxpoolrtpsize");
+		if(suspendCleanspool) {
+			break;
+		}
 
 		if(sipsize + regsize + graphsize + audiosize > 0) {
 			q.str( std::string() );
@@ -498,8 +531,14 @@ void clean_maxpoolgraphsize() {
 		fname.clear();
 		fname << "filesindex/graphsize/" << row["datehour"];
 		unlinkfileslist(fname.str(), "clean_maxpoolgraphsize");
+		if(suspendCleanspool) {
+			break;
+		}
 
 		unlink_dirs(row["datehour"], 1, 1, 1, 2, 1, 1, "clean_maxpoolgraphsize");
+		if(suspendCleanspool) {
+			break;
+		}
 
 		if(sipsize + regsize + rtpsize + audiosize > 0) {
 			q.str( std::string() );
@@ -571,8 +610,14 @@ void clean_maxpoolaudiosize() {
 		fname.clear();
 		fname << "filesindex/audiosize/" << row["datehour"];
 		unlinkfileslist(fname.str(), "clean_maxpoolaudiosize");
+		if(suspendCleanspool) {
+			break;
+		}
 
 		unlink_dirs(row["datehour"], 1, 1, 1, 1, 2, 1, "clean_maxpoolaudiosize");
+		if(suspendCleanspool) {
+			break;
+		}
 
 		if(sipsize + regsize + rtpsize + graphsize > 0) {
 			q.str( std::string() );
@@ -624,28 +669,46 @@ void clean_maxpooldays() {
 		fname.clear();
 		fname << "filesindex/sipsize/" << row["datehour"];
 		unlinkfileslist(fname.str(), "clean_maxpooldays");
+		if(suspendCleanspool) {
+			break;
+		}
 
 		fname.str( std::string() );
 		fname.clear();
 		fname << "filesindex/rtpsize/" << row["datehour"];
 		unlinkfileslist(fname.str(), "clean_maxpooldays");
+		if(suspendCleanspool) {
+			break;
+		}
 
 		fname.str( std::string() );
 		fname.clear();
 		fname << "filesindex/graphsize/" << row["datehour"];
 		unlinkfileslist(fname.str(), "clean_maxpooldays");
+		if(suspendCleanspool) {
+			break;
+		}
 
 		fname.str( std::string() );
 		fname.clear();
 		fname << "filesindex/audiosize/" << row["datehour"];
 		unlinkfileslist(fname.str(), "clean_maxpooldays");
+		if(suspendCleanspool) {
+			break;
+		}
 
 		fname.str( std::string() );
 		fname.clear();
 		fname << "filesindex/regsize/" << row["datehour"];
 		unlinkfileslist(fname.str(), "clean_maxpooldays");
+		if(suspendCleanspool) {
+			break;
+		}
 
 		unlink_dirs(row["datehour"], 2, 2, 2, 2, 2, 2, "clean_maxpooldays");
+		if(suspendCleanspool) {
+			break;
+		}
 
 		q.str( std::string() );
 		q.clear();
@@ -675,13 +738,22 @@ void clean_maxpoolsipdays() {
 		fname.clear();
 		fname << "filesindex/sipsize/" << row["datehour"];
 		unlinkfileslist(fname.str(), "clean_maxpoolsipdays");
+		if(suspendCleanspool) {
+			break;
+		}
 
 		fname.str( std::string() );
 		fname.clear();
 		fname << "filesindex/regsize/" << row["datehour"];
 		unlinkfileslist(fname.str(), "clean_maxpoolsipdays");
+		if(suspendCleanspool) {
+			break;
+		}
 
 		unlink_dirs(row["datehour"], 1, 2, 1, 1, 1, 2, "clean_maxpoolsipdays");
+		if(suspendCleanspool) {
+			break;
+		}
 
 		uint64_t rtpsize = strtoull(row["rtpsize"].c_str(), NULL, 0);
 		uint64_t graphsize = strtoull(row["graphsize"].c_str(), NULL, 0);
@@ -720,8 +792,14 @@ void clean_maxpoolrtpdays() {
 		fname.clear();
 		fname << "filesindex/rtpsize/" << row["datehour"];
 		unlinkfileslist(fname.str(), "clean_maxpoolrtpdays");
+		if(suspendCleanspool) {
+			break;
+		}
 
 		unlink_dirs(row["datehour"], 1, 1, 2, 1, 1, 1, "clean_maxpoolrtpdays");
+		if(suspendCleanspool) {
+			break;
+		}
 
 		uint64_t sipsize = strtoull(row["sipsize"].c_str(), NULL, 0);
 		uint64_t regsize = strtoull(row["regsize"].c_str(), NULL, 0);
@@ -763,8 +841,14 @@ void clean_maxpoolgraphdays() {
 		fname << "filesindex/graphsize/" << row["datehour"];
 		if(debugclean) cout << "reading: " << fname.str() << "\n";
 		unlinkfileslist(fname.str(), "clean_maxpoolgraphdays");
+		if(suspendCleanspool) {
+			break;
+		}
 
 		unlink_dirs(row["datehour"], 1, 1, 1, 2, 1, 1, "clean_maxpoolgraphdays");
+		if(suspendCleanspool) {
+			break;
+		}
 
 		uint64_t sipsize = strtoull(row["sipsize"].c_str(), NULL, 0);
 		uint64_t rtpsize = strtoull(row["rtpsize"].c_str(), NULL, 0);
@@ -806,8 +890,14 @@ void clean_maxpoolaudiodays() {
 		fname.clear();
 		fname << "filesindex/audiosize/" << row["datehour"];
 		unlinkfileslist(fname.str(), "clean_maxpoolaudiodays");
+		if(suspendCleanspool) {
+			break;
+		}
 
 		unlink_dirs(row["datehour"], 1, 1, 1, 1, 2, 1, "clean_maxpoolaudiodays");
+		if(suspendCleanspool) {
+			break;
+		}
 
 		uint64_t sipsize = strtoull(row["sipsize"].c_str(), NULL, 0);
 		uint64_t rtpsize = strtoull(row["rtpsize"].c_str(), NULL, 0);
@@ -1464,6 +1554,8 @@ void check_spooldir_filesindex(const char *path, const char *dirfilter) {
 	closedir(dp);
 }
 
+volatile int clean_spooldir_run_processing = 0;
+
 void *clean_spooldir_run(void *dummy) {
 
 	if(opt_cleanspool_interval and opt_cleanspool_sizeMB > 0) {
@@ -1509,6 +1601,8 @@ void *clean_spooldir_run(void *dummy) {
 	   !check_exists_act_files_in_filesindex()) {
 		convert_filesindex();
 	}
+	
+	clean_spooldir_run_processing = 1;
 
 	clean_maxpoolsize();
 	clean_maxpooldays();
@@ -1528,6 +1622,8 @@ void *clean_spooldir_run(void *dummy) {
 	if(opt_maxpool_clean_obsolete) {
 		clean_obsolete_dirs();
 	}
+	
+	clean_spooldir_run_processing = 0;
 
 	return NULL;
 }
