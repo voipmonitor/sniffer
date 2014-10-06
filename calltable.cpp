@@ -1881,6 +1881,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 				     << inet_ntostring(htonl(rtp[indexes[k]]->daddr)) << " / "
 				     << (rtp[indexes[k]]->iscaller ? "caller" : "called") 
 				     << " packets received: " << rtp[indexes[k]]->s->received << " "
+				     << " ssrc index: " << rtp[indexes[k]]->ssrc_index << " "
 				     << endl;
 			}
 			if(rtp[indexes[k]]->iscaller && (!rtpab[0] || rtp[indexes[k]]->stats.received > rtpab[0]->stats.received)) {

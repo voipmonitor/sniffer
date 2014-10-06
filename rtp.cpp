@@ -496,7 +496,7 @@ RTP::jitterbuffer(struct ast_channel *channel, int savePayload) {
 			}
 		}
 
-		if(codec == PAYLOAD_G729 and (payload_len <= 12)) {
+		if(codec == PAYLOAD_G729 and (payload_len <= (packetization == 10 ? 9 : 12))) {
 			frame->frametype = AST_FRAME_DTMF;
 			frame->marker = 1;
 		}
