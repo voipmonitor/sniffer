@@ -36,15 +36,15 @@ headers = $(shell ls -1 *.h | tr "\n" " ") sniff_inline.cpp
 
 #LDFLAGS := $(LDFLAGS) -static -static-libgcc
 
-shared: LIBS=-lpthread -lpcap -lz -lvorbis -lvorbisenc -logg -lodbc -lmysqlclient -lrt -lsnappy -lcurl -lssl -lcrypto -ljson -lssh -lssh_threads -lrrd #-lnids
+shared: LIBS=-lpthread -lpcap -lz -lvorbis -lvorbisenc -logg -lodbc -lmysqlclient -lrt -lsnappy -lcurl -lssl -lcrypto -ljson -lssh -lssh_threads -lxml2 -lrrd
 shared: CFLAGS+= -DQUEUE_NONBLOCK2 -I/usr/local/include -I/usr/include/mysql/ -Wall -I jitterbuffer/ -L/usr/local/lib/mysql -L/usr/lib/mysql -L/usr/local/lib/ -L/usr/lib64/mysql -fPIC -g3 -O2 
 shared: args = -g3 -Wall  -march=$(GCCARCH) -mtune=${GCCARCH} -O2 
 
-static: LIBS=-static -L/usr/lib/mysql -L/usr/lib64/mysql -L/usr/lib/mysql -lodbc -lltdl -ldl -lrt -lz -lssh -lssh_threads -lcrypt -lm -lcurl -lssl -lcrypto -static-libstdc++ -static-libgcc -lpcap -L/usr/lib/mysql -lpthread -lmysqlclient -lpthread -lz -lc -lvorbis -lvorbisenc -logg -lrt -lsnappy -ljson -lrrd
+static: LIBS=-static -L/usr/lib/mysql -L/usr/lib64/mysql -L/usr/lib/mysql -lodbc -lltdl -ldl -lrt -lz -lssh -lssh_threads -lcrypt -lm -lcurl -lssl -lcrypto -static-libstdc++ -static-libgcc -lpcap -L/usr/lib/mysql -lpthread -lmysqlclient -lpthread -lz -lc -lvorbis -lvorbisenc -logg -lrt -lsnappy -ljson -lrrd -lxml2 -lglib-2.0 -lz
 static: CFLAGS+= -DQUEUE_NONBLOCK2 -I/usr/local/include -I /usr/include/mysql/ -Wall -I jitterbuffer/  -L/usr/local/lib/ -fPIC -O2
 static: args = -O2 -Wall  -march=$(GCCARCH) -mtune=${GCCARCH} 
 
-staticlibc: LIBS=-static -L/opt/libc/lib/ -L/usr/lib/mysql -L/usr/lib64/mysql -L/usr/lib/mysql -lc_nonshared -lodbc -lltdl -ldl -lrt -lz -lssh -lssh_threads -lcurl -lcrypt -lm -lssl -lcrypto -static-libstdc++ -static-libgcc -lpcap -L/usr/lib/mysql -lpthread -lmysqlclient -lpthread -lz -lc -lvorbis -lvorbisenc -logg -lrt -lsnappy -ljson 
+staticlibc: LIBS=-static -L/opt/libc/lib/ -L/usr/lib/mysql -L/usr/lib64/mysql -L/usr/lib/mysql -lc_nonshared -lodbc -lltdl -ldl -lrt -lz -lssh -lssh_threads -lcurl -lcrypt -lm -lssl -lcrypto -static-libstdc++ -static-libgcc -lpcap -L/usr/lib/mysql -lpthread -lmysqlclient -lpthread -lz -lc -lvorbis -lvorbisenc -logg -lrt -lsnappy -ljson  -lrrd -lxml2 -lglib-2.0 -lz
 staticlibc: CFLAGS+= -DQUEUE_NONBLOCK2 -I/opt/libc/include -L/opt/libc/lib/ -I/usr/local/include -I /usr/include/mysql/ -Wall -I jitterbuffer/  -L/usr/local/lib/ -fPIC -O2
 staticlibc: args = -O2 -Wall  -march=$(GCCARCH) -mtune=${GCCARCH}
 
@@ -52,15 +52,15 @@ armv5shared: LIBS=-lpthread -lpcap -lz -lcurl -lssl -lcrypto -lvorbis -lvorbisen
 armv5shared: CFLAGS+= -DQUEUE_NONBLOCK2 -DPACKED -I /usr/include/mysql/ -g3 -Wall -I jitterbuffer/  -L/usr/local/lib/ -L/usr/lib64/mysql -fPIC
 armv5shared: args = -g3 -Wall  
 
-armv5static: LIBS=-static -L/usr/lib/mysql -lodbc -lltdl -ldl -lrt -lz -lcrypt -lm -lssh -lssh_threads -lcurl -lssl -lcrypto -static-libstdc++ -static-libgcc -lpcap -L/usr/lib/mysql -L/usr/lib64/mysql/ -lmysqlclient -lpthread -lz -lc -lvorbis -lvorbisenc -logg -lrt -lsnappy -ljson 
+armv5static: LIBS=-static -L/usr/lib/mysql -lodbc -lltdl -ldl -lrt -lz -lcrypt -lm -lssh -lssh_threads -lcurl -lssl -lcrypto -static-libstdc++ -static-libgcc -lpcap -L/usr/lib/mysql -L/usr/lib64/mysql/ -lmysqlclient -lpthread -lz -lc -lvorbis -lvorbisenc -logg -lrt -lsnappy -ljson  -lrrd -lxml2 -lglib-2.0 -lz
 armv5static: CFLAGS+= -DQUEUE_NONBLOCK2 -DPACKED -I /usr/include/mysql/ -g3 -Wall -I jitterbuffer/  -L/usr/local/lib/ -L/usr/lib64/mysql -fPIC
 armv5static: args = -g3 -Wall 
 
-core2: LIBS=-static -L/usr/lib/mysql -L/usr/lib64/mysql -L/usr/lib/mysql -lodbc -lltdl -ldl -lrt -lz -lssh -lssh_threads -lcrypt -lm -lcurl -lssl -lcrypto -static-libstdc++ -static-libgcc -lpcap -L/usr/lib/mysql -lpthread -lmysqlclient -lpthread -lz -lc -lvorbis -lvorbisenc -logg -lrt -lsnappy -ljson 
+core2: LIBS=-static -L/usr/lib/mysql -L/usr/lib64/mysql -L/usr/lib/mysql -lodbc -lltdl -ldl -lrt -lz -lssh -lssh_threads -lcrypt -lm -lcurl -lssl -lcrypto -static-libstdc++ -static-libgcc -lpcap -L/usr/lib/mysql -lpthread -lmysqlclient -lpthread -lz -lc -lvorbis -lvorbisenc -logg -lrt -lsnappy -ljson  -lrrd -lxml2 -lglib-2.0 -lz
 core2: CFLAGS+= -DQUEUE_NONBLOCK2 -I /usr/include/mysql/ -Wall -I jitterbuffer/  -L/usr/local/lib/ -fPIC -O2 -g3
 core2: args = -O2 -Wall  -march=core2 -mtune=core2 -g3
 
-core2debug: LIBS=-static -L/usr/lib/mysql -L/usr/lib64/mysql -L/usr/lib/mysql -lodbc -lltdl -ldl -lrt -lz -lcrypt -lm -lssh -lssh_threads -lcurl -lssl -lcrypto -static-libstdc++ -static-libgcc -lpcap -L/usr/lib/mysql -lpthread -lmysqlclient -lpthread -lz -lc -lvorbis -lvorbisenc -logg -lrt -lsnappy -ljson 
+core2debug: LIBS=-static -L/usr/lib/mysql -L/usr/lib64/mysql -L/usr/lib/mysql -lodbc -lltdl -ldl -lrt -lz -lcrypt -lm -lssh -lssh_threads -lcurl -lssl -lcrypto -static-libstdc++ -static-libgcc -lpcap -L/usr/lib/mysql -lpthread -lmysqlclient -lpthread -lz -lc -lvorbis -lvorbisenc -logg -lrt -lsnappy -ljson  -lrrd -lxml2 -lglib-2.0 -lz
 core2debug: CFLAGS+= -DQUEUE_NONBLOCK2 -I /usr/include/mysql/ -Wall -I jitterbuffer/  -L/usr/local/lib/ -fPIC -O2 -g3
 core2debug: args = -O2 -Wall  -march=core2 -mtune=core2 -g3
 
