@@ -807,13 +807,13 @@ static int HandleInputLine(
 */
 	} else if (strcmp("tune", argv[0]) == 0)
 		rrd_tune(argc, &argv[0]);
-	else if (strcmp("flushcached", argv[0]) == 0)
+/*	else if (strcmp("flushcached", argv[0]) == 0)		//breaks compatibility with rrdtool versions before 1.4.0
 		rrd_flushcached(argc, &argv[0]);
-	else {
+*/	else {
 		rrd_set_error("unknown function '%s'", argv[0]);
 	}
 	if (rrd_test_error()) {
-		fprintf(out, "ERROR: %s\n", rrd_get_error());
+		fprintf(out, "ERROR: %s\n", rrd_get_error()); 
 		rrd_clear_error();
 		return 1;
 	}
