@@ -60,6 +60,15 @@ core2: LIBS=-static -L/usr/lib/mysql -L/usr/lib64/mysql -L/usr/lib/mysql -lodbc 
 core2: CFLAGS+= -DQUEUE_NONBLOCK2 -I /usr/include/mysql/ -Wall -I jitterbuffer/  -L/usr/local/lib/ -fPIC -O2 -g3
 core2: args = -O2 -Wall  -march=core2 -mtune=core2 -g3
 
+core2cust: LDFLAGS = -nostartfiles -static
+core2cust: GLIBCDIR = /opt/libc/lib
+core2cust: STARTFILES = $(GLIBCDIR)/crt1.o $(GLIBCDIR)/crti.o $(shell gcc --print-file-name=crtbegin.o)
+core2cust: ENDFILES = $(shell gcc --print-file-name=crtend.o) $(GLIBCDIR)/crtn.o
+core2cust: LIBGROUP = -Wl,--start-group $(GLIBCDIR)/libc.a -lgcc -lgcc_eh -Wl,--end-group
+core2cust: LIBS = -L/opt/libc/lib -L/usr/lib/mysql -L/usr/lib64/mysql -L/usr/lib/mysql -L/usr/local/lib -lodbc -lltdl -ldl -lrt -lz -lssh -lssh_threads -lcrypt -lm -lcurl -lssl -lcrypto -static-libstdc++ -static-libgcc -lpcap -L/usr/lib/mysql -lmysqlclient -lpthread -lz -lc -lvorbis -lvorbisenc -logg -lrt -lsnappy -ljson -lrrd -lxml2 -lglib-2.0 -lz
+core2cust: CFLAGS+= -DQUEUE_NONBLOCK2 -I /opt/libc/include -I /usr/include/mysql/ -Wall -I jitterbuffer/  -L/usr/local/lib/ -fPIC -O2 -g3
+core2cust: args = -O2 -Wall  -march=core2 -mtune=core2 -g3
+
 core2debug: LIBS=-static -L/usr/lib/mysql -L/usr/lib64/mysql -L/usr/lib/mysql -lodbc -lltdl -ldl -lrt -lz -lcrypt -lm -lssh -lssh_threads -lcurl -lssl -lcrypto -static-libstdc++ -static-libgcc -lpcap -L/usr/lib/mysql -lpthread -lmysqlclient -lpthread -lz -lc -lvorbis -lvorbisenc -logg -lrt -lsnappy -ljson  -lrrd -lxml2 -lglib-2.0 -lz
 core2debug: CFLAGS+= -DQUEUE_NONBLOCK2 -I /usr/include/mysql/ -Wall -I jitterbuffer/  -L/usr/local/lib/ -fPIC -O2 -g3
 core2debug: args = -O2 -Wall  -march=core2 -mtune=core2 -g3
@@ -72,6 +81,9 @@ static: cleantest $(objects)
 
 core2: cleantest $(objects)
 	g++ $(objects) ${CFLAGS} -o voipmonitor ${LIBS}
+
+core2cust: cleantest $(objects)
+	g++ $(LDFLAGS) -o voipmonitor $(STARTFILES) ${objects} $(LIBGROUP) $(ENDFILES) ${LIBS}
 
 core2debug: cleantest $(objects)
 	g++ $(objects) ${CFLAGS} -o voipmonitor ${LIBS}
@@ -220,7 +232,7 @@ targz64debug: core2debug
 	tar -czf voipmonitor-amd64-${version}-static-debug.tar.gz voipmonitor-amd64-${version}-static
 	rm -rf voipmonitor-amd64-${version}-static
 	
-targz32: core2
+targz32: core2cust
 	rm -rf voipmonitor-i686-${version}-static*
 	mkdir -p voipmonitor-i686-${version}-static/usr/local/sbin
 	cp voipmonitor voipmonitor-i686-${version}-static/usr/local/sbin/

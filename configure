@@ -4074,7 +4074,7 @@ _ACEOF
   LIBS="-lcurl $LIBS"
 
 else
-  as_fn_error $? "Unable to find curl library. apt-get install  libcurl4-openssl-dev | yum install curl-devel" "$LINENO" 5
+  as_fn_error $? "Unable to find curl library. apt-get libcurl4-openssl-dev | yum curl-devel" "$LINENO" 5
 fi
 
 { $as_echo "$as_me:${as_lineno-$LINENO}: checking for main in -lssh" >&5
@@ -4206,6 +4206,129 @@ else
   as_fn_error $? "Unable to find json-c library. apt-get install libjson0-dev | yum install json-c-devel (RPM from EPEL) | or compile from source: git clone https://github.com/json-c/json-c.git; cd json-c; sh autogen.sh; ./configure; make; make install;ldconfig" "$LINENO" 5
 fi
 
+{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for main in -lrrd" >&5
+$as_echo_n "checking for main in -lrrd... " >&6; }
+if test "${ac_cv_lib_rrd_main+set}" = set; then :
+  $as_echo_n "(cached) " >&6
+else
+  ac_check_lib_save_LIBS=$LIBS
+LIBS="-lrrd  $LIBS"
+cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+
+
+int
+main ()
+{
+return main ();
+  ;
+  return 0;
+}
+_ACEOF
+if ac_fn_c_try_link "$LINENO"; then :
+  ac_cv_lib_rrd_main=yes
+else
+  ac_cv_lib_rrd_main=no
+fi
+rm -f core conftest.err conftest.$ac_objext \
+    conftest$ac_exeext conftest.$ac_ext
+LIBS=$ac_check_lib_save_LIBS
+fi
+{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $ac_cv_lib_rrd_main" >&5
+$as_echo "$ac_cv_lib_rrd_main" >&6; }
+if test "x$ac_cv_lib_rrd_main" = x""yes; then :
+  cat >>confdefs.h <<_ACEOF
+#define HAVE_LIBRRD 1
+_ACEOF
+
+  LIBS="-lrrd $LIBS"
+
+else
+  as_fn_error $? "Unable to find librrd library. apt-get install librrd-dev | yum install rrdtool-devel | or compile from source http://oss.oetiker.ch/rrdtool/doc/librrd.en.html" "$LINENO" 5
+fi
+
+{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for main in -lglib-2.0" >&5
+$as_echo_n "checking for main in -lglib-2.0... " >&6; }
+if test "${ac_cv_lib_glib_2_0_main+set}" = set; then :
+  $as_echo_n "(cached) " >&6
+else
+  ac_check_lib_save_LIBS=$LIBS
+LIBS="-lglib-2.0  $LIBS"
+cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+
+
+int
+main ()
+{
+return main ();
+  ;
+  return 0;
+}
+_ACEOF
+if ac_fn_c_try_link "$LINENO"; then :
+  ac_cv_lib_glib_2_0_main=yes
+else
+  ac_cv_lib_glib_2_0_main=no
+fi
+rm -f core conftest.err conftest.$ac_objext \
+    conftest$ac_exeext conftest.$ac_ext
+LIBS=$ac_check_lib_save_LIBS
+fi
+{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $ac_cv_lib_glib_2_0_main" >&5
+$as_echo "$ac_cv_lib_glib_2_0_main" >&6; }
+if test "x$ac_cv_lib_glib_2_0_main" = x""yes; then :
+  cat >>confdefs.h <<_ACEOF
+#define HAVE_LIBGLIB_2_0 1
+_ACEOF
+
+  LIBS="-lglib-2.0 $LIBS"
+
+else
+  as_fn_error $? "Unable to find libglib library. apt-get install  libglib2.0-dev | yum install glib2-devel" "$LINENO" 5
+fi
+
+{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for main in -lxml2" >&5
+$as_echo_n "checking for main in -lxml2... " >&6; }
+if test "${ac_cv_lib_xml2_main+set}" = set; then :
+  $as_echo_n "(cached) " >&6
+else
+  ac_check_lib_save_LIBS=$LIBS
+LIBS="-lxml2  $LIBS"
+cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+
+
+int
+main ()
+{
+return main ();
+  ;
+  return 0;
+}
+_ACEOF
+if ac_fn_c_try_link "$LINENO"; then :
+  ac_cv_lib_xml2_main=yes
+else
+  ac_cv_lib_xml2_main=no
+fi
+rm -f core conftest.err conftest.$ac_objext \
+    conftest$ac_exeext conftest.$ac_ext
+LIBS=$ac_check_lib_save_LIBS
+fi
+{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $ac_cv_lib_xml2_main" >&5
+$as_echo "$ac_cv_lib_xml2_main" >&6; }
+if test "x$ac_cv_lib_xml2_main" = x""yes; then :
+  cat >>confdefs.h <<_ACEOF
+#define HAVE_LIBXML2 1
+_ACEOF
+
+  LIBS="-lxml2 $LIBS"
+
+else
+  as_fn_error $? "Unable to find xml2 library. apt-get install libxml2-dev | yum install libxml2-devel" "$LINENO" 5
+fi
+
 { $as_echo "$as_me:${as_lineno-$LINENO}: checking for main in -lmysqlclient" >&5
 $as_echo_n "checking for main in -lmysqlclient... " >&6; }
 if test "${ac_cv_lib_mysqlclient_main+set}" = set; then :
@@ -4244,7 +4367,7 @@ _ACEOF
   LIBS="-lmysqlclient $LIBS"
 
 else
-  as_fn_error $? "Unable to find libmysqlclient. apt-get install libmysqlclient-dev | yum install mysql-devel" "$LINENO" 5
+  as_fn_error $? "Unable to find libmysqlclient. apt-get install lbmysqlclient-dev | yum install mysql-devel" "$LINENO" 5
 fi
 
 { $as_echo "$as_me:${as_lineno-$LINENO}: checking for main in -lz" >&5
