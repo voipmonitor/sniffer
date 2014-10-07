@@ -232,7 +232,7 @@ targz64debug: core2debug
 	tar -czf voipmonitor-amd64-${version}-static-debug.tar.gz voipmonitor-amd64-${version}-static
 	rm -rf voipmonitor-amd64-${version}-static
 	
-targz32: core2cust
+targz32: core2
 	rm -rf voipmonitor-i686-${version}-static*
 	mkdir -p voipmonitor-i686-${version}-static/usr/local/sbin
 	cp voipmonitor voipmonitor-i686-${version}-static/usr/local/sbin/

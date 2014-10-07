@@ -2,7 +2,6 @@
 ================
 - add new library dependency into configure script
 - remove unused rrd function to make it compatible with older librrd
-- 32bit static binary is now compatible with older centos 
 
 
 10.1 6.10.2014
