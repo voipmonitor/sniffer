@@ -1616,30 +1616,38 @@ tryagain:
 	}
 	unsigned int ids;
 	pthread_t threads;
-	pthread_attr_t        attr;
+	pthread_attr_t attr;
 	pthread_attr_init(&attr);
+	fd_set rfds;
+	struct timeval tv;
 	/* set the thread detach state */
 	pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
-	while(1 && terminating == 0) {
-		addrlen = sizeof(clientInfo);
-		int client = accept(manager_socket_server, (sockaddr*)&clientInfo, &addrlen);
-		if(terminating == 1) {
-			close(client);
-			close(manager_socket_server);
-			return 0;
-		}
-		if (client == -1) {
-			//cerr << "Problem with accept client" <<endl;
-			close(client);
-			continue;
-		}
+	while(terminating == 0) {
+		FD_ZERO(&rfds);
+		FD_SET(manager_socket_server, &rfds);
+		tv.tv_sec = 10;
+		tv.tv_usec = 0;
+		if(select(manager_socket_server + 1, &rfds, (fd_set *) 0, (fd_set *) 0, &tv) > 0) {
+			addrlen = sizeof(clientInfo);
+			int client = accept(manager_socket_server, (sockaddr*)&clientInfo, &addrlen);
+			if(terminating == 1) {
+				close(client);
+				close(manager_socket_server);
+				return 0;
+			}
+			if (client == -1) {
+				//cerr << "Problem with accept client" <<endl;
+				close(client);
+				continue;
+			}
 
-		ids = client;
-		pthread_create (                    /* Create a child thread        */
-			&threads,                /* Thread ID (system assigned)  */    
-			&attr,                   /* Default thread attributes    */
-			manager_read_thread,               /* Thread routine               */
-			&ids);                   /* Arguments to be passed       */
+			ids = client;
+			pthread_create (		/* Create a child thread        */
+				&threads,		/* Thread ID (system assigned)  */    
+				&attr,			/* Default thread attributes    */
+				manager_read_thread,	/* Thread routine               */
+				&ids);			/* Arguments to be passed       */
+		}
 	}
 	close(manager_socket_server);
 	return 0;
