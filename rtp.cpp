@@ -815,7 +815,7 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 		lastcng = 1;
 		return;
 	}
-	if(curpayload == PAYLOAD_G729 and (payload_len <= 12 or payload_len == 22)) {
+	if(curpayload == PAYLOAD_G729 and (payload_len <= (packetization == 10 ? 9 : 12) or payload_len == 22)) {
 		last_seq = seq;
 		if(update_seq(seq)) {
 			update_stats();

@@ -320,6 +320,7 @@ struct pcapProcessData {
 	ipfrag_data_s ipfrag_data;
 };
 
+
 class PcapQueue_readFromInterface_base {
 public:
 	PcapQueue_readFromInterface_base(const char *interfaceName = NULL);

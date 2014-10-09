@@ -72,6 +72,7 @@
 #include "regcache.h"
 #include "config_mysql.h"
 #include "fraud.h"
+#include "rrd.h"
 
 #if defined(QUEUE_MUTEX) || defined(QUEUE_NONBLOCK)
 extern "C" {
@@ -163,6 +164,7 @@ int opt_packetbuffered = 0;	// Make .pcap files writing ‘‘packet-buffered’
 				// writen file anytime, it will be consistent.
 	
 int opt_disableplc = 0 ;	// On or Off packet loss concealment			
+int opt_rrd = 1;
 int opt_remotepartyid = 0;	//Rewrite caller? If sip invite contain header Remote-Party-ID, caller num/name is overwritten by its values.
 int opt_fork = 1;		// fork or run foreground 
 int opt_saveSIP = 0;		// save SIP packets to pcap file?
@@ -1160,6 +1162,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "plcdisable", NULL))) {
 		opt_disableplc = yesno(value);
+	}
+	if((value = ini.GetValue("general", "rrd", NULL))) {
+		opt_rrd = yesno(value);
 	}
 	if((value = ini.GetValue("general", "remotepartyid", NULL))) {
 		opt_remotepartyid = yesno(value);
@@ -2943,6 +2948,15 @@ int main(int argc, char *argv[]) {
                         */
 
 		return 1;
+	}
+	if(opt_rrd && opt_read_from_file) {
+		//disable update of rrd statistics when reading packets from file
+		opt_rrd = 0;
+	}
+
+	if(opt_rrd && opt_read_from_file) {
+          //disable update of rrd statistics when reading packets from file
+          opt_rrd = 0; 
 	}
 
 	if(cloud_url[0] != '\0') {
