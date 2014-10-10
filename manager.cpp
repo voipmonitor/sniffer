@@ -276,7 +276,6 @@ int sendvm_from_stdout_of_command(char *command, int socket, ssh_channel channel
 //using pipe for reading from stdout of given command;
     int retch;
     long total = 0;
-	int buflen = BUFSIZE;
 
     FILE *inpipe;
     inpipe = popen(command, "r");
@@ -302,7 +301,7 @@ int sendvm_from_stdout_of_command(char *command, int socket, ssh_channel channel
 	retch = 0;
 
 	//read char by char from a pipe
-    while (retch = fread(buf + filler, 1, 1, inpipe) > 0) {
+    while ((retch = fread(buf + filler, 1, 1, inpipe)) > 0) {
 		total ++;
 		filler ++;
 
@@ -342,7 +341,7 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 		char *manager_cmd_line = NULL;	//command line passed to voipmonitor manager
 		char **manager_args = NULL;		//cuted voipmonitor manager commandline to separate arguments
 	
-		sprintf(sendbuf, "");			//for reseting sendbuf
+		sendbuf[0] = 0;			//for reseting sendbuf
 
 		if (( manager_argc = vm_rrd_countArgs(buf)) < 6) {	//few arguments passed
 			if (verbosity > 0) syslog(LOG_NOTICE, "parse_command creategraph too few arguments, passed%d need at least 6!\n", manager_argc);
@@ -366,7 +365,7 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 		manager_cmd_line[strlen(buf)] = '\0';
 
 		syslog(LOG_NOTICE, "creategraph VERBOSE ALL: %s", manager_cmd_line);
-		if (manager_argc = vm_rrd_createArgs(manager_cmd_line, manager_args)) {
+		if ((manager_argc = vm_rrd_createArgs(manager_cmd_line, manager_args))) {
 		if (verbosity > 2) {
 			int i;
 			for (i=0;i<manager_argc;i++) syslog(LOG_NOTICE, "creategraph VERBOSE[%d]: %s",i, manager_args[i]);

@@ -4237,6 +4237,9 @@ void test() {
 		delete sqlDb;
 		}
 		return;
+	case 95:
+		check_filesindex();
+		break;
 	case 96:
 		{
 		union {

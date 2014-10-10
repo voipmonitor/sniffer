@@ -22,6 +22,12 @@
 using namespace std;
 
 
+static long long reindex_date(string date);
+static void check_index_date(string date);
+static long long reindex_date_hour(string date, int h, bool readOnly = false, map<string, long long> *typeSize = NULL, bool quickCheck = false);
+static void reindex_date_hour_start_syslog(string date, string hour);
+
+
 extern char opt_chdir[1024];
 extern int debugclean;
 extern int opt_id_sensor_cleanspool;
@@ -66,11 +72,11 @@ void unlinkfileslist(string fname, string callFrom) {
 	if(fd) {
 		while(fgets(buf, 4092, fd) != NULL) {
 			char *pos;
-			if ((pos = strchr(buf, '\n')) != NULL) {
+			if((pos = strchr(buf, '\n')) != NULL) {
 				*pos = '\0';
 			}
 			char *posSizeSeparator;
-			if ((posSizeSeparator = strrchr(buf, ':')) != NULL) {
+			if((posSizeSeparator = strrchr(buf, ':')) != NULL) {
 				bool isSize = true;
 				pos = posSizeSeparator + 1;
 				while(*pos) {
@@ -947,7 +953,7 @@ void clean_obsolete_dirs(const char *path) {
 		path = opt_chdir;
 	}
 	DIR* dp = opendir(path);
-	if (!dp) {
+	if(!dp) {
 		return;
 	}
 	
@@ -959,8 +965,8 @@ void clean_obsolete_dirs(const char *path) {
 	string basedir = path;
 	while (true) {
 		de = readdir(dp);
-		if (de == NULL) break;
-		if (string(de->d_name) == ".." or string(de->d_name) == ".") continue;
+		if(de == NULL) break;
+		if(string(de->d_name) == ".." or string(de->d_name) == ".") continue;
 		
 		if(de->d_name[0] == '2' && strlen(de->d_name) == 10) {
 			int numberOfDayToNow = getNumberOfDayToNow(de->d_name);
@@ -1041,11 +1047,11 @@ void convert_filesindex() {
 	dirent* de;
 	DIR* dp;
 	errno = 0;
-	dp = opendir( path.empty() ? "." : path.c_str() );
-	if (!dp) {
+	dp = opendir(path.empty() ? "." : path.c_str());
+	if(!dp) {
 		return;
 	}
-
+	syslog(LOG_NOTICE, "reindexing start");
 	char id_sensor_str[10];
 	sprintf(id_sensor_str, "%i", opt_id_sensor_cleanspool > 0 ? opt_id_sensor_cleanspool : 0);
 	string q = string("DELETE FROM files WHERE id_sensor=") + id_sensor_str;
@@ -1060,182 +1066,357 @@ void convert_filesindex() {
 	while (true) {
 		errno = 0;
 		de = readdir( dp );
-		if (de == NULL) break;
-		if (string(de->d_name) == ".." or string(de->d_name) == ".") continue;
+		if(de == NULL) break;
+		if(string(de->d_name) == ".." or string(de->d_name) == ".") continue;
 
 		if(de->d_name[0] == '2' && strlen(de->d_name) == 10) {
-			syslog(LOG_NOTICE, "reindexing files in [%s]\n", de->d_name);
-			//cycle through 24 hours
-			for(int h = 0; h < 24; h++) {
-				char hour[8];
-				sprintf(hour, "%02d", h);
-
-				string ymd = de->d_name;
-				string ymdh = string(ymd.substr(0,4)) + ymd.substr(5,2) + ymd.substr(8,2) + hour;
-				string fname = string("filesindex/sipsize/") + ymdh;
-				ofstream sipfile(fname.c_str(), ios::app | ios::out);
-				fname = string("filesindex/rtpsize/") + ymdh;
-				ofstream rtpfile(fname.c_str(), ios::app | ios::out);
-				fname = string("filesindex/graphsize/") + ymdh;
-				ofstream graphfile(fname.c_str(), ios::app | ios::out);
-				fname = string("filesindex/audiosize/") + ymdh;
-				ofstream audiofile(fname.c_str(), ios::app | ios::out);
-
-				long long sipsize = 0;
-				long long rtpsize = 0;
-				long long graphsize = 0;
-				long long audiosize = 0;
-
-				for(int m = 0; m < 60; m++) {
-
-					//SIP
-					stringstream t;
-					char min[8];
-					sprintf(min, "%02d", m);
-					t << de->d_name << "/" << hour << "/" << min << "/SIP";
-					DIR* dp;
-					dp = opendir( t.str().c_str());
-					dirent* de2;
-					if(dp) {
-						while (true) {
-							de2 = readdir( dp );
-							if (de2 == NULL) break;
-							if (string(de2->d_name) == ".." or string(de2->d_name) == ".") continue;
-							stringstream fn;
-							fn << de->d_name << "/" << hour << "/" << min << "/SIP/" << de2->d_name;
-							long long size = GetFileSizeDU(fn.str());
-							if(size == 0) size = 1;
-							sipsize += size;
-							sipfile << fn.str() << ":" << size << "\n";
-						}
-						closedir(dp);
-					}
-					rmdir(t.str().c_str());
-					//RTP
-					t.str( std::string() );
-					t.clear();
-					sprintf(min, "%02d", m);
-					t << de->d_name << "/" << hour << "/" << min << "/RTP";
-					dp = opendir( t.str().c_str());
-					if(dp) {
-						while (true) {
-							de2 = readdir( dp );
-							if (de2 == NULL) break;
-							if (string(de2->d_name) == ".." or string(de2->d_name) == ".") continue;
-							stringstream fn;
-							fn << de->d_name << "/" << hour << "/" << min << "/RTP/" << de2->d_name;
-							long long size = GetFileSizeDU(fn.str());
-							if(size == 0) size = 1;
-							rtpsize += size;
-							rtpfile << fn.str() << ":" << size << "\n";
-						}
-						closedir(dp);
-					}
-					rmdir(t.str().c_str());
-					//GRAPH
-					t.str( std::string() );
-					t.clear();
-					sprintf(min, "%02d", m);
-					t << de->d_name << "/" << hour << "/" << min << "/GRAPH";
-					dp = opendir( t.str().c_str());
-					if(dp) {
-						while (true) {
-							de2 = readdir( dp );
-							//if (de2 == NULL or string(de2->d_name) == ".." or string(de2->d_name) == ".") break;
-							if (de2 == NULL) break;
-							if (string(de2->d_name) == ".." or string(de2->d_name) == ".") continue;
-							stringstream fn;
-							fn << de->d_name << "/" << hour << "/" << min << "/GRAPH/" << de2->d_name;
-							long long size = GetFileSizeDU(fn.str());
-							if(size == 0) size = 1;
-							graphsize += size;
-							graphfile << fn.str() << ":" << size << "\n";
-						}
-						closedir(dp);
-					}
-					rmdir(t.str().c_str());
-					//AUDIO
-					t.str( std::string() );
-					t.clear();
-					t << de->d_name << "/" << hour << "/" << min << "/AUDIO";
-					dp = opendir( t.str().c_str());
-					if(dp) {
-						while (true) {
-							de2 = readdir( dp );
-							if (de2 == NULL) break;
-							if (string(de2->d_name) == ".." or string(de2->d_name) == ".") continue;
-							stringstream fn;
-							fn << de->d_name << "/" << hour << "/" << min << "/AUDIO/" << de2->d_name;
-							long long size = GetFileSizeDU(fn.str());
-							if(size == 0) size = 1;
-							audiosize += size;
-							audiofile << fn.str() << ":" << size << "\n";
-						}
-						closedir(dp);
-					}
-					rmdir(t.str().c_str());
-
-					t.str( std::string() );
-					t.clear();
-					t << de->d_name << "/" << hour << "/" << min << "/ALL";
-					rmdir(t.str().c_str());
-
-					t.str( std::string() );
-					t.clear();
-					t << de->d_name << "/" << hour << "/" << min << "/REG";
-					rmdir(t.str().c_str());
-
-					t.str( std::string() );
-					t.clear();
-					t << de->d_name << "/" << hour << "/" << min;
-					rmdir(t.str().c_str());
-				}
-
-				stringstream t;
-				t.str( std::string() );
-				t.clear();
-				t << de->d_name << "/" << hour;
-				rmdir(t.str().c_str());
-
-				if(sipsize + rtpsize + graphsize + audiosize > 0) {
-					stringstream query;
-					int id_sensor = opt_id_sensor_cleanspool == -1 ? 0 : opt_id_sensor_cleanspool;
-					query << "INSERT INTO files SET files.datehour = " << ymdh << ", id_sensor = " << id_sensor << ", "
-						<< "sipsize = " << sipsize << ", rtpsize = " << rtpsize << ", graphsize = " << graphsize << ", audiosize = " << audiosize << 
-						" ON DUPLICATE KEY UPDATE sipsize = sipsize";
-					sqlStore->query_lock(query.str().c_str(), STORE_PROC_ID_CLEANSPOOL);
-
-				}
-
-				sipfile.close();
-				rtpfile.close();
-				graphfile.close();
-				audiofile.close();
-
-				if(sipsize == 0) {
-					fname = string("filesindex/sipsize/") + ymdh;
-					unlink(fname.c_str());
-				}
-				if(rtpsize == 0) {
-					fname = string("filesindex/rtpsize/") + ymdh;
-					unlink(fname.c_str());
-				}
-				if(graphsize == 0) {
-					fname = string("filesindex/graphsize/") + ymdh;
-					unlink(fname.c_str());
-				}
-				if(audiosize == 0) {
-					fname = string("filesindex/audiosize/") + ymdh;
-					unlink(fname.c_str());
-				}
-			}
-		
-			rmdir(de->d_name);
+			reindex_date(de->d_name);
 		}
 	}
-	syslog(LOG_NOTICE, "reindexing done\n");
+	syslog(LOG_NOTICE, "reindexing done");
 	closedir( dp );
-	return;
+}
+
+void check_filesindex() {
+	string path = "./";
+	dirent* de;
+	DIR* dp;
+	errno = 0;
+	dp = opendir(path.empty() ? "." : path.c_str());
+	if(!dp) {
+		return;
+	}
+	syslog(LOG_NOTICE, "check indexes start");
+
+	while (true) {
+		errno = 0;
+		de = readdir( dp );
+		if(de == NULL) break;
+		if(string(de->d_name) == ".." or string(de->d_name) == ".") continue;
+
+		if(de->d_name[0] == '2' && strlen(de->d_name) == 10) {
+			check_index_date(de->d_name);
+		}
+	}
+	syslog(LOG_NOTICE, "check indexes done");
+	closedir( dp );
+}
+
+long long reindex_date(string date) {
+	long long sumDaySize = 0;
+	for(int h = 0; h < 24; h++) {
+		sumDaySize += reindex_date_hour(date, h);
+	}
+	if(!sumDaySize) {
+		rmdir(date.c_str());
+	}
+	return(sumDaySize);
+}
+
+void check_index_date(string date) {
+	if(!sqlDbCleanspool) {
+		sqlDbCleanspool = createSqlObject();
+	}
+	char id_sensor_str[10];
+	sprintf(id_sensor_str, "%i", opt_id_sensor_cleanspool > 0 ? opt_id_sensor_cleanspool : 0);
+	for(int h = 0; h < 24; h++) {
+		char hour[8];
+		sprintf(hour, "%02d", h);
+		string ymdh = string(date.substr(0,4)) + date.substr(5,2) + date.substr(8,2) + hour;
+		map<string, long long> typeSize;
+		reindex_date_hour(date, h, true, &typeSize, true);
+		if(typeSize["sip"] || typeSize["rtp"] || typeSize["graph"] || typeSize["audio"]) {
+			bool needReindex = false;
+			sqlDbCleanspool->query(string("select * from files where datehour ='") + ymdh + "'" +
+					       " and id_sensor = " + id_sensor_str);
+			SqlDb_row row = sqlDbCleanspool->fetchRow();
+			if(row) {
+				if((typeSize["sip"] && !atoll(row["sipsize"].c_str())) ||
+				   (typeSize["rtp"] && !atoll(row["rtpsize"].c_str())) ||
+				   (typeSize["graph"] && !atoll(row["graphsize"].c_str())) ||
+				   (typeSize["audio"] && !atoll(row["audiosize"].c_str()))) {
+					needReindex = true;
+				}
+			} else {
+				needReindex = true;
+			}
+			if(!needReindex &&
+			   ((typeSize["sip"] && !file_exists((string("filesindex/sipsize/") + ymdh).c_str())) ||
+			    (typeSize["rtp"] && !file_exists((string("filesindex/rtpsize/") + ymdh).c_str())) ||
+			    (typeSize["graph"] && !file_exists((string("filesindex/graphsize/") + ymdh).c_str())) ||
+			    (typeSize["audio"] && !file_exists((string("filesindex/audiosize/") + ymdh).c_str())))) {
+				needReindex = true;
+			}
+			if(needReindex) {
+				reindex_date_hour(date, h);
+			}
+		}
+	}
+}
+
+long long reindex_date_hour(string date, int h, bool readOnly, map<string, long long> *typeSize, bool quickCheck) {
+ 
+	bool syslog_start = false;
+			
+	char hour[8];
+	sprintf(hour, "%02d", h);
+
+	string ymd = date;
+	string ymdh = string(ymd.substr(0,4)) + ymd.substr(5,2) + ymd.substr(8,2) + hour;
+	
+	ofstream *sipfile = NULL;
+	ofstream *rtpfile = NULL;
+	ofstream *graphfile = NULL;
+	ofstream *audiofile = NULL;
+	if(!readOnly) {
+		sipfile = new ofstream((string("filesindex/sipsize/") + ymdh).c_str(), ios::trunc | ios::out);
+		rtpfile = new ofstream((string("filesindex/rtpsize/") + ymdh).c_str(), ios::trunc | ios::out);
+		graphfile = new ofstream((string("filesindex/graphsize/") + ymdh).c_str(), ios::trunc | ios::out);
+		audiofile = new ofstream((string("filesindex/audiosize/") + ymdh).c_str(), ios::trunc | ios::out);
+	}
+
+	long long sipsize = 0;
+	long long rtpsize = 0;
+	long long graphsize = 0;
+	long long audiosize = 0;
+	if(typeSize) {
+		(*typeSize)["sip"] = 0;
+		(*typeSize)["rtp"] = 0;
+		(*typeSize)["graph"] = 0;
+		(*typeSize)["audio"] = 0;
+	}
+
+	for(int m = 0; m < 60; m++) {
+
+		char min[8];
+		sprintf(min, "%02d", m);
+		DIR* dp;
+		dirent* de2;
+		bool existsFilesInMinute = false;
+	 
+		//SIP
+		if(!quickCheck || !typeSize || !(*typeSize)["sip"]) {
+			stringstream t;
+			bool existsFilesInMinuteType = false;
+			t << date << "/" << hour << "/" << min << "/SIP";
+			dp = opendir(t.str().c_str());
+			if(dp) {
+				while (true) {
+					de2 = readdir( dp );
+					if(de2 == NULL) break;
+					if(string(de2->d_name) == ".." or string(de2->d_name) == ".") continue;
+					existsFilesInMinuteType = true;
+					if(!syslog_start && !readOnly) {
+						reindex_date_hour_start_syslog(date, hour);
+						syslog_start = true;
+					}
+					stringstream fn;
+					fn << date << "/" << hour << "/" << min << "/SIP/" << de2->d_name;
+					long long size = GetFileSizeDU(fn.str());
+					if(size == 0) size = 1;
+					sipsize += size;
+					if(!readOnly) {
+						(*sipfile) << fn.str() << ":" << size << "\n";
+					}
+					if(quickCheck && typeSize) {
+						(*typeSize)["sip"] = sipsize;
+						break;
+					}
+				}
+				closedir(dp);
+			}
+			if(existsFilesInMinuteType) {
+				existsFilesInMinute = true;
+			} else if(!readOnly) {
+				rmdir(t.str().c_str());
+			}
+		}
+		//RTP
+		if(!quickCheck || !typeSize || !(*typeSize)["rtp"]) {
+			stringstream t;
+			bool existsFilesInMinuteType = false;
+			t << date << "/" << hour << "/" << min << "/RTP";
+			dp = opendir(t.str().c_str());
+			if(dp) {
+				while (true) {
+					de2 = readdir( dp );
+					if(de2 == NULL) break;
+					if(string(de2->d_name) == ".." or string(de2->d_name) == ".") continue;
+					existsFilesInMinuteType = true;
+					if(!syslog_start && !readOnly) {
+						reindex_date_hour_start_syslog(date, hour);
+						syslog_start = true;
+					}
+					stringstream fn;
+					fn << date << "/" << hour << "/" << min << "/RTP/" << de2->d_name;
+					long long size = GetFileSizeDU(fn.str());
+					if(size == 0) size = 1;
+					rtpsize += size;
+					if(!readOnly) {
+						(*rtpfile) << fn.str() << ":" << size << "\n";
+					}
+					if(quickCheck && typeSize) {
+						(*typeSize)["rtp"] = rtpsize;
+						break;
+					}
+				}
+				closedir(dp);
+			}
+			if(existsFilesInMinuteType) {
+				existsFilesInMinute = true;
+			} else if(!readOnly) {
+				rmdir(t.str().c_str());
+			}
+		}
+		//GRAPH
+		if(!quickCheck || !typeSize || !(*typeSize)["graph"]) {
+			stringstream t;
+			bool existsFilesInMinuteType = false;
+			t << date << "/" << hour << "/" << min << "/GRAPH";
+			dp = opendir(t.str().c_str());
+			if(dp) {
+				while (true) {
+					de2 = readdir( dp );
+					if(de2 == NULL) break;
+					if(string(de2->d_name) == ".." or string(de2->d_name) == ".") continue;
+					existsFilesInMinuteType = true;
+					if(!syslog_start && !readOnly) {
+						reindex_date_hour_start_syslog(date, hour);
+						syslog_start = true;
+					}
+					stringstream fn;
+					fn << date << "/" << hour << "/" << min << "/GRAPH/" << de2->d_name;
+					long long size = GetFileSizeDU(fn.str());
+					if(size == 0) size = 1;
+					graphsize += size;
+					if(!readOnly) {
+						(*graphfile) << fn.str() << ":" << size << "\n";
+					}
+					if(quickCheck && typeSize) {
+						(*typeSize)["graph"] = graphsize;
+						break;
+					}
+				}
+				closedir(dp);
+			}
+			if(existsFilesInMinuteType) {
+				existsFilesInMinute = true;
+			} else if(!readOnly) {
+				rmdir(t.str().c_str());
+			}
+		}
+		//AUDIO
+		if(!quickCheck || !typeSize || !(*typeSize)["audio"]) {
+			stringstream t;
+			bool existsFilesInMinuteType = false;
+			t << date << "/" << hour << "/" << min << "/AUDIO";
+			dp = opendir(t.str().c_str());
+			if(dp) {
+				while (true) {
+					de2 = readdir( dp );
+					if(de2 == NULL) break;
+					if(string(de2->d_name) == ".." or string(de2->d_name) == ".") continue;
+					existsFilesInMinuteType = true;
+					if(!syslog_start && !readOnly) {
+						reindex_date_hour_start_syslog(date, hour);
+						syslog_start = true;
+					}
+					stringstream fn;
+					fn << date << "/" << hour << "/" << min << "/AUDIO/" << de2->d_name;
+					long long size = GetFileSizeDU(fn.str());
+					if(size == 0) size = 1;
+					audiosize += size;
+					if(!readOnly) {
+						(*audiofile) << fn.str() << ":" << size << "\n";
+					}
+					if(quickCheck && typeSize) {
+						(*typeSize)["audio"] = audiosize;
+						break;
+					}
+				}
+				closedir(dp);
+			}
+			if(existsFilesInMinuteType) {
+				existsFilesInMinute = true;
+			} else if(!readOnly) {
+				rmdir(t.str().c_str());
+			}
+		}
+
+		// remove obsolete directories
+		stringstream t;
+		t.str( std::string() );
+		t.clear();
+		t << date << "/" << hour << "/" << min << "/ALL";
+		rmdir(t.str().c_str());
+		t.str( std::string() );
+		t.clear();
+		t << date << "/" << hour << "/" << min << "/REG";
+		rmdir(t.str().c_str());
+
+		if(!existsFilesInMinute && !readOnly) {
+			t.str( std::string() );
+			t.clear();
+			t << date << "/" << hour << "/" << min;
+			rmdir(t.str().c_str());
+		}
+	}
+
+	if(!readOnly) {
+		if(sipsize + rtpsize + graphsize + audiosize) {
+			stringstream query;
+			int id_sensor = opt_id_sensor_cleanspool == -1 ? 0 : opt_id_sensor_cleanspool;
+			query << "INSERT INTO files SET files.datehour = " << ymdh << ", id_sensor = " << id_sensor << ", "
+			      << "sipsize = " << sipsize << ", rtpsize = " << rtpsize << ", graphsize = " << graphsize << ", audiosize = " << audiosize << " " 
+			      << "ON DUPLICATE KEY UPDATE "
+			      << "sipsize = " << sipsize << ", rtpsize = " << rtpsize << ", graphsize = " << graphsize << ", audiosize = " << audiosize << ";"; 
+			sqlStore->query_lock(query.str().c_str(), STORE_PROC_ID_CLEANSPOOL);
+
+		} else {
+			stringstream query;
+			int id_sensor = opt_id_sensor_cleanspool == -1 ? 0 : opt_id_sensor_cleanspool;
+			query << "DELETE FROM files WHERE datehour = " << ymdh << " AND " << "id_sensor = " << id_sensor << ";";
+			sqlStore->query_lock(query.str().c_str(), STORE_PROC_ID_CLEANSPOOL);
+			stringstream t;
+			t.str( std::string() );
+			t.clear();
+			t << date << "/" << hour;
+			rmdir(t.str().c_str());
+		}
+
+		sipfile->close();
+		rtpfile->close();
+		graphfile->close();
+		audiofile->close();
+		if(sipsize == 0) {
+			unlink((string("filesindex/sipsize/") + ymdh).c_str());
+		}
+		if(rtpsize == 0) {
+			unlink((string("filesindex/rtpsize/") + ymdh).c_str());
+		}
+		if(graphsize == 0) {
+			unlink((string("filesindex/graphsize/") + ymdh).c_str());
+		}
+		if(audiosize == 0) {
+			unlink((string("filesindex/audiosize/") + ymdh).c_str());
+		}
+		
+		if(sipsize + rtpsize + graphsize + audiosize) {
+			syslog(LOG_NOTICE, "reindexing files in [%s/%s] done", date.c_str(), hour);
+		}
+	}
+	if(typeSize) {
+		(*typeSize)["sip"] = sipsize;
+		(*typeSize)["rtp"] = rtpsize;
+		(*typeSize)["graph"] = graphsize;
+		(*typeSize)["audio"] = audiosize;
+	}
+	
+	return(sipsize + rtpsize + graphsize + audiosize);
+}
+
+void reindex_date_hour_start_syslog(string date, string hour) {
+	syslog(LOG_NOTICE, "reindexing files in [%s/%s] start", date.c_str(), hour.c_str());
 }
 
 void check_disk_free_run(bool enableRunCleanSpoolThread) {
@@ -1374,7 +1555,7 @@ void check_spooldir_filesindex(const char *path, const char *dirfilter) {
 		path = opt_chdir;
 	}
 	DIR* dp = opendir(path);
-	if (!dp) {
+	if(!dp) {
 		return;
 	}
 	dirent* de;
@@ -1385,8 +1566,8 @@ void check_spooldir_filesindex(const char *path, const char *dirfilter) {
 	while (true) {
 		errno = 0;
 		de = readdir(dp);
-		if (de == NULL) break;
-		if (string(de->d_name) == ".." or string(de->d_name) == ".") continue;
+		if(de == NULL) break;
+		if(string(de->d_name) == ".." or string(de->d_name) == ".") continue;
 		
 		if(de->d_name[0] == '2' && strlen(de->d_name) == 10 &&
 		   (!dirfilter || strstr(de->d_name, dirfilter))) {
@@ -1410,11 +1591,11 @@ void check_spooldir_filesindex(const char *path, const char *dirfilter) {
 							char buf[4092];
 							while(fgets(buf, 4092, fd) != NULL) {
 								char *pos;
-								if ((pos = strchr(buf, '\n')) != NULL) {
+								if((pos = strchr(buf, '\n')) != NULL) {
 									*pos = '\0';
 								}
 								char *posSizeSeparator;
-								if ((posSizeSeparator = strrchr(buf, ':')) != NULL) {
+								if((posSizeSeparator = strrchr(buf, ':')) != NULL) {
 									bool isSize = true;
 									pos = posSizeSeparator + 1;
 									while(*pos) {
@@ -1465,8 +1646,8 @@ void check_spooldir_filesindex(const char *path, const char *dirfilter) {
 						dirent* de2;
 						while (true) {
 							de2 = readdir( dp );
-							if (de2 == NULL) break;
-							if (de2->d_type == 4 or string(de2->d_name) == ".." or string(de2->d_name) == ".") continue;
+							if(de2 == NULL) break;
+							if(de2->d_type == 4 or string(de2->d_name) == ".." or string(de2->d_name) == ".") continue;
 							filesInFolder.push_back(timetypedir + "/" + de2->d_name);
 						}
 						closedir(dp);
