@@ -1,3 +1,8 @@
+10.1.2 10.10.2014
+=================
+- Try to fix stucked TCP manager on accept (use select before accept) and blocking all new connections until restart
+
+
 10.1.1 7.10.2014
 ================
 - add new library dependency into configure script
