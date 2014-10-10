@@ -1063,7 +1063,7 @@ void convert_filesindex() {
 	mkdir_r("filesindex/audiosize", 0777);
 	mkdir_r("filesindex/regsize", 0777);
 
-	while (true) {
+	while(!terminating) {
 		errno = 0;
 		de = readdir( dp );
 		if(de == NULL) break;
@@ -1088,7 +1088,7 @@ void check_filesindex() {
 	}
 	syslog(LOG_NOTICE, "check indexes start");
 
-	while (true) {
+	while(!terminating) {
 		errno = 0;
 		de = readdir( dp );
 		if(de == NULL) break;
@@ -1104,10 +1104,10 @@ void check_filesindex() {
 
 long long reindex_date(string date) {
 	long long sumDaySize = 0;
-	for(int h = 0; h < 24; h++) {
+	for(int h = 0; h < 24 && !terminating; h++) {
 		sumDaySize += reindex_date_hour(date, h);
 	}
-	if(!sumDaySize) {
+	if(!sumDaySize && !terminating) {
 		rmdir(date.c_str());
 	}
 	return(sumDaySize);
@@ -1119,7 +1119,7 @@ void check_index_date(string date) {
 	}
 	char id_sensor_str[10];
 	sprintf(id_sensor_str, "%i", opt_id_sensor_cleanspool > 0 ? opt_id_sensor_cleanspool : 0);
-	for(int h = 0; h < 24; h++) {
+	for(int h = 0; h < 24 && !terminating; h++) {
 		char hour[8];
 		sprintf(hour, "%02d", h);
 		string ymdh = string(date.substr(0,4)) + date.substr(5,2) + date.substr(8,2) + hour;
