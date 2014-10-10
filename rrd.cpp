@@ -807,8 +807,8 @@ static int HandleInputLine(
 */
 	} else if (strcmp("tune", argv[0]) == 0)
 		rrd_tune(argc, &argv[0]);
-	else if (strcmp("flushcached", argv[0]) == 0)
-		rrd_flushcached(argc, &argv[0]);
+//	else if (strcmp("flushcached", argv[0]) == 0)
+//		rrd_flushcached(argc, &argv[0]);
 	else {
 		rrd_set_error("unknown function '%s'", argv[0]);
 	}
