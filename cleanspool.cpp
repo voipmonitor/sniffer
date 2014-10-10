@@ -1199,36 +1199,38 @@ long long reindex_date_hour(string date, int h, bool readOnly, map<string, long 
 			stringstream t;
 			bool existsFilesInMinuteType = false;
 			t << date << "/" << hour << "/" << min << "/SIP";
-			dp = opendir(t.str().c_str());
-			if(dp) {
-				while (true) {
-					de2 = readdir( dp );
-					if(de2 == NULL) break;
-					if(string(de2->d_name) == ".." or string(de2->d_name) == ".") continue;
-					existsFilesInMinuteType = true;
-					if(!syslog_start && !readOnly) {
-						reindex_date_hour_start_syslog(date, hour);
-						syslog_start = true;
+			if(file_exists(t.str().c_str())) {
+				dp = opendir(t.str().c_str());
+				if(dp) {
+					while (true) {
+						de2 = readdir( dp );
+						if(de2 == NULL) break;
+						if(string(de2->d_name) == ".." or string(de2->d_name) == ".") continue;
+						existsFilesInMinuteType = true;
+						if(!syslog_start && !readOnly) {
+							reindex_date_hour_start_syslog(date, hour);
+							syslog_start = true;
+						}
+						stringstream fn;
+						fn << date << "/" << hour << "/" << min << "/SIP/" << de2->d_name;
+						long long size = GetFileSizeDU(fn.str());
+						if(size == 0) size = 1;
+						sipsize += size;
+						if(!readOnly) {
+							(*sipfile) << fn.str() << ":" << size << "\n";
+						}
+						if(quickCheck && typeSize) {
+							(*typeSize)["sip"] = sipsize;
+							break;
+						}
 					}
-					stringstream fn;
-					fn << date << "/" << hour << "/" << min << "/SIP/" << de2->d_name;
-					long long size = GetFileSizeDU(fn.str());
-					if(size == 0) size = 1;
-					sipsize += size;
-					if(!readOnly) {
-						(*sipfile) << fn.str() << ":" << size << "\n";
-					}
-					if(quickCheck && typeSize) {
-						(*typeSize)["sip"] = sipsize;
-						break;
-					}
+					closedir(dp);
 				}
-				closedir(dp);
-			}
-			if(existsFilesInMinuteType) {
-				existsFilesInMinute = true;
-			} else if(!readOnly) {
-				rmdir(t.str().c_str());
+				if(existsFilesInMinuteType) {
+					existsFilesInMinute = true;
+				} else if(!readOnly) {
+					rmdir(t.str().c_str());
+				}
 			}
 		}
 		//RTP
@@ -1236,36 +1238,38 @@ long long reindex_date_hour(string date, int h, bool readOnly, map<string, long 
 			stringstream t;
 			bool existsFilesInMinuteType = false;
 			t << date << "/" << hour << "/" << min << "/RTP";
-			dp = opendir(t.str().c_str());
-			if(dp) {
-				while (true) {
-					de2 = readdir( dp );
-					if(de2 == NULL) break;
-					if(string(de2->d_name) == ".." or string(de2->d_name) == ".") continue;
-					existsFilesInMinuteType = true;
-					if(!syslog_start && !readOnly) {
-						reindex_date_hour_start_syslog(date, hour);
-						syslog_start = true;
+			if(file_exists(t.str().c_str())) {
+				dp = opendir(t.str().c_str());
+				if(dp) {
+					while (true) {
+						de2 = readdir( dp );
+						if(de2 == NULL) break;
+						if(string(de2->d_name) == ".." or string(de2->d_name) == ".") continue;
+						existsFilesInMinuteType = true;
+						if(!syslog_start && !readOnly) {
+							reindex_date_hour_start_syslog(date, hour);
+							syslog_start = true;
+						}
+						stringstream fn;
+						fn << date << "/" << hour << "/" << min << "/RTP/" << de2->d_name;
+						long long size = GetFileSizeDU(fn.str());
+						if(size == 0) size = 1;
+						rtpsize += size;
+						if(!readOnly) {
+							(*rtpfile) << fn.str() << ":" << size << "\n";
+						}
+						if(quickCheck && typeSize) {
+							(*typeSize)["rtp"] = rtpsize;
+							break;
+						}
 					}
-					stringstream fn;
-					fn << date << "/" << hour << "/" << min << "/RTP/" << de2->d_name;
-					long long size = GetFileSizeDU(fn.str());
-					if(size == 0) size = 1;
-					rtpsize += size;
-					if(!readOnly) {
-						(*rtpfile) << fn.str() << ":" << size << "\n";
-					}
-					if(quickCheck && typeSize) {
-						(*typeSize)["rtp"] = rtpsize;
-						break;
-					}
+					closedir(dp);
 				}
-				closedir(dp);
-			}
-			if(existsFilesInMinuteType) {
-				existsFilesInMinute = true;
-			} else if(!readOnly) {
-				rmdir(t.str().c_str());
+				if(existsFilesInMinuteType) {
+					existsFilesInMinute = true;
+				} else if(!readOnly) {
+					rmdir(t.str().c_str());
+				}
 			}
 		}
 		//GRAPH
@@ -1273,36 +1277,38 @@ long long reindex_date_hour(string date, int h, bool readOnly, map<string, long 
 			stringstream t;
 			bool existsFilesInMinuteType = false;
 			t << date << "/" << hour << "/" << min << "/GRAPH";
-			dp = opendir(t.str().c_str());
-			if(dp) {
-				while (true) {
-					de2 = readdir( dp );
-					if(de2 == NULL) break;
-					if(string(de2->d_name) == ".." or string(de2->d_name) == ".") continue;
-					existsFilesInMinuteType = true;
-					if(!syslog_start && !readOnly) {
-						reindex_date_hour_start_syslog(date, hour);
-						syslog_start = true;
+			if(file_exists(t.str().c_str())) {
+				dp = opendir(t.str().c_str());
+				if(dp) {
+					while (true) {
+						de2 = readdir( dp );
+						if(de2 == NULL) break;
+						if(string(de2->d_name) == ".." or string(de2->d_name) == ".") continue;
+						existsFilesInMinuteType = true;
+						if(!syslog_start && !readOnly) {
+							reindex_date_hour_start_syslog(date, hour);
+							syslog_start = true;
+						}
+						stringstream fn;
+						fn << date << "/" << hour << "/" << min << "/GRAPH/" << de2->d_name;
+						long long size = GetFileSizeDU(fn.str());
+						if(size == 0) size = 1;
+						graphsize += size;
+						if(!readOnly) {
+							(*graphfile) << fn.str() << ":" << size << "\n";
+						}
+						if(quickCheck && typeSize) {
+							(*typeSize)["graph"] = graphsize;
+							break;
+						}
 					}
-					stringstream fn;
-					fn << date << "/" << hour << "/" << min << "/GRAPH/" << de2->d_name;
-					long long size = GetFileSizeDU(fn.str());
-					if(size == 0) size = 1;
-					graphsize += size;
-					if(!readOnly) {
-						(*graphfile) << fn.str() << ":" << size << "\n";
-					}
-					if(quickCheck && typeSize) {
-						(*typeSize)["graph"] = graphsize;
-						break;
-					}
+					closedir(dp);
 				}
-				closedir(dp);
-			}
-			if(existsFilesInMinuteType) {
-				existsFilesInMinute = true;
-			} else if(!readOnly) {
-				rmdir(t.str().c_str());
+				if(existsFilesInMinuteType) {
+					existsFilesInMinute = true;
+				} else if(!readOnly) {
+					rmdir(t.str().c_str());
+				}
 			}
 		}
 		//AUDIO
@@ -1310,55 +1316,59 @@ long long reindex_date_hour(string date, int h, bool readOnly, map<string, long 
 			stringstream t;
 			bool existsFilesInMinuteType = false;
 			t << date << "/" << hour << "/" << min << "/AUDIO";
-			dp = opendir(t.str().c_str());
-			if(dp) {
-				while (true) {
-					de2 = readdir( dp );
-					if(de2 == NULL) break;
-					if(string(de2->d_name) == ".." or string(de2->d_name) == ".") continue;
-					existsFilesInMinuteType = true;
-					if(!syslog_start && !readOnly) {
-						reindex_date_hour_start_syslog(date, hour);
-						syslog_start = true;
+			if(file_exists(t.str().c_str())) {
+				dp = opendir(t.str().c_str());
+				if(dp) {
+					while (true) {
+						de2 = readdir( dp );
+						if(de2 == NULL) break;
+						if(string(de2->d_name) == ".." or string(de2->d_name) == ".") continue;
+						existsFilesInMinuteType = true;
+						if(!syslog_start && !readOnly) {
+							reindex_date_hour_start_syslog(date, hour);
+							syslog_start = true;
+						}
+						stringstream fn;
+						fn << date << "/" << hour << "/" << min << "/AUDIO/" << de2->d_name;
+						long long size = GetFileSizeDU(fn.str());
+						if(size == 0) size = 1;
+						audiosize += size;
+						if(!readOnly) {
+							(*audiofile) << fn.str() << ":" << size << "\n";
+						}
+						if(quickCheck && typeSize) {
+							(*typeSize)["audio"] = audiosize;
+							break;
+						}
 					}
-					stringstream fn;
-					fn << date << "/" << hour << "/" << min << "/AUDIO/" << de2->d_name;
-					long long size = GetFileSizeDU(fn.str());
-					if(size == 0) size = 1;
-					audiosize += size;
-					if(!readOnly) {
-						(*audiofile) << fn.str() << ":" << size << "\n";
-					}
-					if(quickCheck && typeSize) {
-						(*typeSize)["audio"] = audiosize;
-						break;
-					}
+					closedir(dp);
 				}
-				closedir(dp);
-			}
-			if(existsFilesInMinuteType) {
-				existsFilesInMinute = true;
-			} else if(!readOnly) {
-				rmdir(t.str().c_str());
+				if(existsFilesInMinuteType) {
+					existsFilesInMinute = true;
+				} else if(!readOnly) {
+					rmdir(t.str().c_str());
+				}
 			}
 		}
 
-		// remove obsolete directories
-		stringstream t;
-		t.str( std::string() );
-		t.clear();
-		t << date << "/" << hour << "/" << min << "/ALL";
-		rmdir(t.str().c_str());
-		t.str( std::string() );
-		t.clear();
-		t << date << "/" << hour << "/" << min << "/REG";
-		rmdir(t.str().c_str());
-
-		if(!existsFilesInMinute && !readOnly) {
+		if(!readOnly) {
+			// remove obsolete directories
+			stringstream t;
 			t.str( std::string() );
 			t.clear();
-			t << date << "/" << hour << "/" << min;
+			t << date << "/" << hour << "/" << min << "/ALL";
 			rmdir(t.str().c_str());
+			t.str( std::string() );
+			t.clear();
+			t << date << "/" << hour << "/" << min << "/REG";
+			rmdir(t.str().c_str());
+
+			if(!existsFilesInMinute) {
+				t.str( std::string() );
+				t.clear();
+				t << date << "/" << hour << "/" << min;
+				rmdir(t.str().c_str());
+			}
 		}
 	}
 

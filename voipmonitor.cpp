@@ -4238,6 +4238,7 @@ void test() {
 		}
 		return;
 	case 95:
+		chdir(opt_chdir);
 		check_filesindex();
 		break;
 	case 96:
