@@ -22,9 +22,7 @@
 using namespace std;
 
 
-static long long reindex_date(string date);
 static void check_index_date(string date);
-static long long reindex_date_hour(string date, int h, bool readOnly = false, map<string, long long> *typeSize = NULL, bool quickCheck = false);
 static void reindex_date_hour_start_syslog(string date, string hour);
 
 
