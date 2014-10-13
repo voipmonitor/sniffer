@@ -276,7 +276,6 @@ int sendvm_from_stdout_of_command(char *command, int socket, ssh_channel channel
 //using pipe for reading from stdout of given command;
     int retch;
     long total = 0;
-	int buflen = BUFSIZE;
 
     FILE *inpipe;
     inpipe = popen(command, "r");
@@ -302,7 +301,7 @@ int sendvm_from_stdout_of_command(char *command, int socket, ssh_channel channel
 	retch = 0;
 
 	//read char by char from a pipe
-    while (retch = fread(buf + filler, 1, 1, inpipe) > 0) {
+    while ((retch = fread(buf + filler, 1, 1, inpipe)) > 0) {
 		total ++;
 		filler ++;
 
@@ -342,7 +341,7 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 		char *manager_cmd_line = NULL;	//command line passed to voipmonitor manager
 		char **manager_args = NULL;		//cuted voipmonitor manager commandline to separate arguments
 	
-		sprintf(sendbuf, "");			//for reseting sendbuf
+		sendbuf[0] = 0;			//for reseting sendbuf
 
 		if (( manager_argc = vm_rrd_countArgs(buf)) < 6) {	//few arguments passed
 			if (verbosity > 0) syslog(LOG_NOTICE, "parse_command creategraph too few arguments, passed%d need at least 6!\n", manager_argc);
@@ -366,7 +365,7 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 		manager_cmd_line[strlen(buf)] = '\0';
 
 		syslog(LOG_NOTICE, "creategraph VERBOSE ALL: %s", manager_cmd_line);
-		if (manager_argc = vm_rrd_createArgs(manager_cmd_line, manager_args)) {
+		if ((manager_argc = vm_rrd_createArgs(manager_cmd_line, manager_args))) {
 		if (verbosity > 2) {
 			int i;
 			for (i=0;i<manager_argc;i++) syslog(LOG_NOTICE, "creategraph VERBOSE[%d]: %s",i, manager_args[i]);
@@ -472,12 +471,49 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 		return res;
 
 	} else if(strstr(buf, "reindexfiles") != NULL) {
+		char date[21];
+		int hour;
+		bool badParams = false;
+		if(strstr(buf, "reindexfiles_datehour")) {
+			if(sscanf(buf + strlen("reindexfiles_datehour") + 1, "%20s %i", date, &hour) != 2) {
+				badParams = true;
+			}
+		} else if(strstr(buf, "reindexfiles_date")) {
+			if(sscanf(buf + strlen("reindexfiles_date") + 1, "%20s", date) != 1) {
+				badParams = true;
+			}
+		}
+		if(badParams) {
+			snprintf(sendbuf, BUFSIZE, "bad parameters");
+			if ((size = sendvm(client, sshchannel, sendbuf, strlen(sendbuf), 0)) == -1){
+				cerr << "Error sending data to client" << endl;
+			}
+			return -1;
+		}
 		snprintf(sendbuf, BUFSIZE, "starting reindexing please wait...");
 		if ((size = sendvm(client, sshchannel, sendbuf, strlen(sendbuf), 0)) == -1){
 			cerr << "Error sending data to client" << endl;
 			return -1;
 		}
-		convert_filesindex();
+		if(strstr(buf, "reindexfiles_datehour")) {
+			reindex_date_hour(date, hour);
+		} else if(strstr(buf, "reindexfiles_date")) {
+			reindex_date(date);
+		} else {
+			convert_filesindex();
+		}
+		snprintf(sendbuf, BUFSIZE, "done\r\n");
+		if ((size = sendvm(client, sshchannel, sendbuf, strlen(sendbuf), 0)) == -1){
+			cerr << "Error sending data to client" << endl;
+			return -1;
+		}
+	} else if(strstr(buf, "check_filesindex") != NULL) {
+		snprintf(sendbuf, BUFSIZE, "starting checking indexing please wait...");
+		if ((size = sendvm(client, sshchannel, sendbuf, strlen(sendbuf), 0)) == -1){
+			cerr << "Error sending data to client" << endl;
+			return -1;
+		}
+		check_filesindex();
 		snprintf(sendbuf, BUFSIZE, "done\r\n");
 		if ((size = sendvm(client, sshchannel, sendbuf, strlen(sendbuf), 0)) == -1){
 			cerr << "Error sending data to client" << endl;
@@ -1796,6 +1832,10 @@ void *manager_server(void *dummy) {
 	sockName.sin_addr.s_addr = inet_addr(opt_manager_ip);
 	int on = 1;
 	setsockopt(manager_socket_server, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on));
+	int flags = fcntl(manager_socket_server, F_GETFL, 0);
+	if(flags >= 0) {
+		fcntl(manager_socket_server, F_SETFL, flags | O_NONBLOCK);
+	}
 tryagain:
 	if (bind(manager_socket_server, (sockaddr *)&sockName, sizeof(sockName)) == -1) {
 		syslog(LOG_ERR, "Cannot bind to port [%d] trying again after 5 seconds intervals\n", opt_manager_port);

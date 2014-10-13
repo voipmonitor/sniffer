@@ -122,6 +122,7 @@ int getUpdDifTime(struct timeval *before);
 int getDifTime(struct timeval *before);
 int msleep(long msec);
 int file_exists (char * fileName);
+int file_exists (const char * fileName);
 void set_mac();
 int mkdir_r(std::string, mode_t);
 int rmdir_r(const char *dir, bool enableSubdir = false, bool withoutRemoveRoot = false);

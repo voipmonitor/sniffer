@@ -653,6 +653,7 @@ int vm_rrd_update(const char *filename, const char *value)
 	return res;
 }
 
+/*
 static char *fgetslong(
 	char **aLinePtr,
 	FILE * stream)
@@ -686,7 +687,7 @@ static char *fgetslong(
 	free(linebuf);
 	return *aLinePtr = 0;
 }
-
+*/
 
 /* HandleInputLine is NOT thread safe - due to readdir issues,
    resolving them portably is not really simple. */
@@ -810,7 +811,7 @@ static int HandleInputLine(
 //	else if (strcmp("flushcached", argv[0]) == 0)
 //		rrd_flushcached(argc, &argv[0]);
 	else {
-		rrd_set_error("unknown function '%s'", argv[0]);
+		rrd_set_error((char*)"unknown function '%s'", argv[0]);
 	}
 	if (rrd_test_error()) {
 		fprintf(out, "ERROR: %s\n", rrd_get_error());

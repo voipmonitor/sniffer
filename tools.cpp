@@ -116,6 +116,10 @@ int file_exists (char * fileName)
 	return 0;
 }
 
+int file_exists (const char * fileName) {
+	return(file_exists((char*)fileName));
+}
+
 bool DirExists(char *strFilename) {
 	struct stat stFileInfo;
 	int intStat;

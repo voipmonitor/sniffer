@@ -1367,14 +1367,14 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 			cmdUpdate << "N:" << rrddrop_exceeded;
 			cmdUpdate <<  ":" << rrddrop_packets;
 			sprintf(filename, "%s/rrd/db-drop.rrd", opt_chdir);
-			int rrdres = vm_rrd_update(filename, cmdUpdate.str().c_str());
+			vm_rrd_update(filename, cmdUpdate.str().c_str());
 
 			//update rrdheap;
 			cmdUpdate.str(std::string());
 			cmdUpdate << "N:" << rrdheap_buffer;
 			cmdUpdate <<  ":" << rrdheap_ratio;
 			sprintf(filename, "%s/rrd/db-heap.rrd", opt_chdir);
-			rrdres = vm_rrd_update(filename, cmdUpdate.str().c_str());
+			vm_rrd_update(filename, cmdUpdate.str().c_str());
 
 			//update rrdPS;
 			cmdUpdate.str(std::string());
@@ -1384,7 +1384,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 			cmdUpdate <<  ":" << rrdPS_R;
 			cmdUpdate <<  ":" << rrdPS_A;
 			sprintf(filename, "%s/rrd/db-PS.rrd", opt_chdir);
-			rrdres = vm_rrd_update(filename, cmdUpdate.str().c_str());
+			vm_rrd_update(filename, cmdUpdate.str().c_str());
 
 			//update rrdSQLq;
 			cmdUpdate.str(std::string());
@@ -1394,7 +1394,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 			cmdUpdate <<  ":" << rrdSQLq_Cl;
 			cmdUpdate <<  ":" << rrdSQLq_H;
 			sprintf(filename, "%s/rrd/db-SQLq.rrd", opt_chdir);
-			rrdres = vm_rrd_update(filename, cmdUpdate.str().c_str());
+			vm_rrd_update(filename, cmdUpdate.str().c_str());
 
 			//update rrdtCPU;
 			cmdUpdate.str(std::string());
@@ -1402,32 +1402,32 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 			cmdUpdate <<  ":" << rrdtCPU_t1;
 			cmdUpdate <<  ":" << rrdtCPU_t2;
 			sprintf(filename, "%s/rrd/db-tCPU.rrd", opt_chdir);
-			rrdres = vm_rrd_update(filename, cmdUpdate.str().c_str());
+			vm_rrd_update(filename, cmdUpdate.str().c_str());
 
 			//update rrdtacCPU;
 			cmdUpdate.str(std::string());
 			cmdUpdate << "N:" << ((double) (rrdtacCPU_nmt) + (double)((double) rrdtacCPU_lastt / 150.0));
 			sprintf(filename, "%s/rrd/db-tacCPU.rrd", opt_chdir);
-			rrdres = vm_rrd_update(filename, cmdUpdate.str().c_str());
+			vm_rrd_update(filename, cmdUpdate.str().c_str());
 
 			//update rrdRSSVSZ;
 			cmdUpdate.str(std::string());
 			cmdUpdate << "N:" << rrdRSSVSZ_rss;
 			cmdUpdate <<  ":" << rrdRSSVSZ_vsize;
 			sprintf(filename, "%s/rrd/db-RSSVSZ.rrd", opt_chdir);
-			rrdres = vm_rrd_update(filename, cmdUpdate.str().c_str());
+			vm_rrd_update(filename, cmdUpdate.str().c_str());
 
 			//update rrdspeedmbs;
 			cmdUpdate.str(std::string());
 			cmdUpdate << "N:" << rrdspeedmbs;
 			sprintf(filename, "%s/rrd/db-speedmbs.rrd", opt_chdir);
-			rrdres = vm_rrd_update(filename, cmdUpdate.str().c_str());
+			vm_rrd_update(filename, cmdUpdate.str().c_str());
 
 			//update rrdcallscounter;
 			cmdUpdate.str(std::string());
 			cmdUpdate << "N:" << rrdcallscounter;
 			sprintf(filename, "%s/rrd/db-callscounter.rrd", opt_chdir);
-			rrdres = vm_rrd_update(filename, cmdUpdate.str().c_str());
+			vm_rrd_update(filename, cmdUpdate.str().c_str());
 		}
 	}
 }
