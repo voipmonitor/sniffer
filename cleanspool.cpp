@@ -22,7 +22,7 @@
 using namespace std;
 
 
-static void check_index_date(string date);
+static void check_index_date(string date, SqlDb *sqlDb);
 static void reindex_date_hour_start_syslog(string date, string hour);
 
 
@@ -1060,13 +1060,11 @@ void convert_filesindex() {
 	mkdir_r("filesindex/graphsize", 0777);
 	mkdir_r("filesindex/audiosize", 0777);
 	mkdir_r("filesindex/regsize", 0777);
-
 	while(!terminating) {
 		errno = 0;
 		de = readdir( dp );
 		if(de == NULL) break;
 		if(string(de->d_name) == ".." or string(de->d_name) == ".") continue;
-
 		if(de->d_name[0] == '2' && strlen(de->d_name) == 10) {
 			reindex_date(de->d_name);
 		}
@@ -1084,20 +1082,20 @@ void check_filesindex() {
 	if(!dp) {
 		return;
 	}
+	SqlDb *sqlDb = createSqlObject();
 	syslog(LOG_NOTICE, "check indexes start");
-
 	while(!terminating) {
 		errno = 0;
 		de = readdir( dp );
 		if(de == NULL) break;
 		if(string(de->d_name) == ".." or string(de->d_name) == ".") continue;
-
 		if(de->d_name[0] == '2' && strlen(de->d_name) == 10) {
-			check_index_date(de->d_name);
+			check_index_date(de->d_name, sqlDb);
 		}
 	}
 	syslog(LOG_NOTICE, "check indexes done");
 	closedir( dp );
+	delete sqlDb;
 }
 
 long long reindex_date(string date) {
@@ -1111,10 +1109,7 @@ long long reindex_date(string date) {
 	return(sumDaySize);
 }
 
-void check_index_date(string date) {
-	if(!sqlDbCleanspool) {
-		sqlDbCleanspool = createSqlObject();
-	}
+void check_index_date(string date, SqlDb *sqlDb) {
 	char id_sensor_str[10];
 	sprintf(id_sensor_str, "%i", opt_id_sensor_cleanspool > 0 ? opt_id_sensor_cleanspool : 0);
 	for(int h = 0; h < 24 && !terminating; h++) {
@@ -1125,9 +1120,9 @@ void check_index_date(string date) {
 		reindex_date_hour(date, h, true, &typeSize, true);
 		if(typeSize["sip"] || typeSize["rtp"] || typeSize["graph"] || typeSize["audio"]) {
 			bool needReindex = false;
-			sqlDbCleanspool->query(string("select * from files where datehour ='") + ymdh + "'" +
-					       " and id_sensor = " + id_sensor_str);
-			SqlDb_row row = sqlDbCleanspool->fetchRow();
+			sqlDb->query(string("select * from files where datehour ='") + ymdh + "'" +
+				     " and id_sensor = " + id_sensor_str);
+			SqlDb_row row = sqlDb->fetchRow();
 			if(row) {
 				if((typeSize["sip"] && !atoll(row["sipsize"].c_str())) ||
 				   (typeSize["rtp"] && !atoll(row["rtpsize"].c_str())) ||
