@@ -1832,6 +1832,10 @@ void *manager_server(void *dummy) {
 	sockName.sin_addr.s_addr = inet_addr(opt_manager_ip);
 	int on = 1;
 	setsockopt(manager_socket_server, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on));
+	int flags = fcntl(manager_socket_server, F_GETFL, 0);
+	if(flags >= 0) {
+		fcntl(manager_socket_server, F_SETFL, flags | O_NONBLOCK);
+	}
 tryagain:
 	if (bind(manager_socket_server, (sockaddr *)&sockName, sizeof(sockName)) == -1) {
 		syslog(LOG_ERR, "Cannot bind to port [%d] trying again after 5 seconds intervals\n", opt_manager_port);
