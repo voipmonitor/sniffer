@@ -1974,7 +1974,8 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "pcap_dump_writethreads_max", NULL))) {
 		opt_pcap_dump_writethreads_max = atoi(value);
 	}
-	if((value = ini.GetValue("general", "pcap_dump_asyncwrite_maxsize", NULL))) {
+	if((value = ini.GetValue("general", "pcap_dump_asyncwrite_maxsize", NULL)) ||
+	   (value = ini.GetValue("general", "pcap_dump_asyncbuffer", NULL))) {
 		opt_pcap_dump_asyncwrite_maxsize = atoi(value);
 	}
 	if((value = ini.GetValue("general", "defer_create_spooldir", NULL))) {
