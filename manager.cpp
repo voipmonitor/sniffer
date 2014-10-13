@@ -471,12 +471,49 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 		return res;
 
 	} else if(strstr(buf, "reindexfiles") != NULL) {
+		char date[21];
+		int hour;
+		bool badParams = false;
+		if(strstr(buf, "reindexfiles_datehour")) {
+			if(sscanf(buf + strlen("reindexfiles_datehour") + 1, "%20s %i", date, &hour) != 2) {
+				badParams = true;
+			}
+		} else if(strstr(buf, "reindexfiles_date")) {
+			if(sscanf(buf + strlen("reindexfiles_date") + 1, "%20s", date) != 1) {
+				badParams = true;
+			}
+		}
+		if(badParams) {
+			snprintf(sendbuf, BUFSIZE, "bad parameters");
+			if ((size = sendvm(client, sshchannel, sendbuf, strlen(sendbuf), 0)) == -1){
+				cerr << "Error sending data to client" << endl;
+			}
+			return -1;
+		}
 		snprintf(sendbuf, BUFSIZE, "starting reindexing please wait...");
 		if ((size = sendvm(client, sshchannel, sendbuf, strlen(sendbuf), 0)) == -1){
 			cerr << "Error sending data to client" << endl;
 			return -1;
 		}
-		convert_filesindex();
+		if(strstr(buf, "reindexfiles_datehour")) {
+			reindex_date_hour(date, hour);
+		} else if(strstr(buf, "reindexfiles_date")) {
+			reindex_date(date);
+		} else {
+			convert_filesindex();
+		}
+		snprintf(sendbuf, BUFSIZE, "done\r\n");
+		if ((size = sendvm(client, sshchannel, sendbuf, strlen(sendbuf), 0)) == -1){
+			cerr << "Error sending data to client" << endl;
+			return -1;
+		}
+	} else if(strstr(buf, "check_filesindex") != NULL) {
+		snprintf(sendbuf, BUFSIZE, "starting checking indexing please wait...");
+		if ((size = sendvm(client, sshchannel, sendbuf, strlen(sendbuf), 0)) == -1){
+			cerr << "Error sending data to client" << endl;
+			return -1;
+		}
+		check_filesindex();
 		snprintf(sendbuf, BUFSIZE, "done\r\n");
 		if ((size = sendvm(client, sshchannel, sendbuf, strlen(sendbuf), 0)) == -1){
 			cerr << "Error sending data to client" << endl;
