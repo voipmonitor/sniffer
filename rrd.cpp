@@ -26,6 +26,7 @@ int vm_rrd_version;
 void rrd_vm_create_graph_tCPU_command(char *filename, char *fromatstyle, char *toatstyle, char *color, int resx, int resy, short slope, short icon, char *dstfile, char *buffer, int maxsize) {
     std::ostringstream cmdCreate;
 
+
 	if (dstfile == NULL) 
 		cmdCreate << "`which rrdtool` graph - ";						//graph to stdout instead of file
 	else
@@ -47,24 +48,42 @@ void rrd_vm_create_graph_tCPU_command(char *filename, char *fromatstyle, char *t
 	cmdCreate << "DEF:t0=" << filename << ":tCPU-t0:MAX ";
 	cmdCreate << "DEF:t1=" << filename << ":tCPU-t1:MAX ";
 	cmdCreate << "DEF:t2=" << filename << ":tCPU-t2:MAX ";
-	cmdCreate << "LINE1:t0#0000FF:\"t0 CPU Usage %\\l\" ";
-	cmdCreate << "COMMENT:\"\\u\" ";
-	cmdCreate << "GPRINT:t0:LAST:\"Cur\\: %5.2lf\" ";
-	cmdCreate << "GPRINT:t0:AVERAGE:\"Avg\\: %5.2lf\" ";
-	cmdCreate << "GPRINT:t0:MAX:\"Max\\: %5.2lf\" ";
-	cmdCreate << "GPRINT:t0:MIN:\"Min\\: %5.2lf\\r\" ";
-	cmdCreate << "LINE1:t1#00FF00:\"t1 CPU Usage %\\l\" ";
-	cmdCreate << "COMMENT:\"\\u\" ";
-	cmdCreate << "GPRINT:t1:LAST:\"Cur\\: %5.2lf\" ";
-	cmdCreate << "GPRINT:t1:AVERAGE:\"Avg\\: %5.2lf\" ";
-	cmdCreate << "GPRINT:t1:MAX:\"Max\\: %5.2lf\" ";
-	cmdCreate << "GPRINT:t1:MIN:\"Min\\: %5.2lf\\r\" ";
-	cmdCreate << "LINE1:t2#FF0000:\"t2 CPU Usage %\\l\" ";
-	cmdCreate << "COMMENT:\"\\u\" ";
-	cmdCreate << "GPRINT:t2:LAST:\"Cur\\: %5.2lf\" ";
-	cmdCreate << "GPRINT:t2:AVERAGE:\"Avg\\: %5.2lf\" ";
-	cmdCreate << "GPRINT:t2:MAX:\"Max\\: %5.2lf\" ";
-	cmdCreate << "GPRINT:t2:MIN:\"Min\\: %5.2lf\\r\" ";
+	if (vm_rrd_version < 10403) {
+		cmdCreate << "LINE1:t0#0000FF:\"t0 CPU Usage %\\t\" ";
+		cmdCreate << "GPRINT:t0:LAST:\"Cur\\: %5.2lf\" ";
+		cmdCreate << "GPRINT:t0:AVERAGE:\"Avg\\: %5.2lf\" ";
+		cmdCreate << "GPRINT:t0:MAX:\"Max\\: %5.2lf\" ";
+		cmdCreate << "GPRINT:t0:MIN:\"Min\\: %5.2lf\\l\" ";
+		cmdCreate << "LINE1:t1#00FF00:\"t1 CPU Usage %\\t\" ";
+		cmdCreate << "GPRINT:t1:LAST:\"Cur\\: %5.2lf\" ";
+		cmdCreate << "GPRINT:t1:AVERAGE:\"Avg\\: %5.2lf\" ";
+		cmdCreate << "GPRINT:t1:MAX:\"Max\\: %5.2lf\" ";
+		cmdCreate << "GPRINT:t1:MIN:\"Min\\: %5.2lf\\l\" ";
+		cmdCreate << "LINE1:t2#FF0000:\"t2 CPU Usage %\\t\" ";
+		cmdCreate << "GPRINT:t2:LAST:\"Cur\\: %5.2lf\" ";
+		cmdCreate << "GPRINT:t2:AVERAGE:\"Avg\\: %5.2lf\" ";
+		cmdCreate << "GPRINT:t2:MAX:\"Max\\: %5.2lf\" ";
+		cmdCreate << "GPRINT:t2:MIN:\"Min\\: %5.2lf\\l\" ";
+	} else {
+		cmdCreate << "LINE1:t0#0000FF:\"t0 CPU Usage %\\l\" ";
+		cmdCreate << "COMMENT:\"\\u\" ";
+		cmdCreate << "GPRINT:t0:LAST:\"Cur\\: %5.2lf\" ";
+		cmdCreate << "GPRINT:t0:AVERAGE:\"Avg\\: %5.2lf\" ";
+		cmdCreate << "GPRINT:t0:MAX:\"Max\\: %5.2lf\" ";
+		cmdCreate << "GPRINT:t0:MIN:\"Min\\: %5.2lf\\r\" ";
+		cmdCreate << "LINE1:t1#00FF00:\"t1 CPU Usage %\\l\" ";
+		cmdCreate << "COMMENT:\"\\u\" ";
+		cmdCreate << "GPRINT:t1:LAST:\"Cur\\: %5.2lf\" ";
+		cmdCreate << "GPRINT:t1:AVERAGE:\"Avg\\: %5.2lf\" ";
+		cmdCreate << "GPRINT:t1:MAX:\"Max\\: %5.2lf\" ";
+		cmdCreate << "GPRINT:t1:MIN:\"Min\\: %5.2lf\\r\" ";
+		cmdCreate << "LINE1:t2#FF0000:\"t2 CPU Usage %\\l\" ";
+		cmdCreate << "COMMENT:\"\\u\" ";
+		cmdCreate << "GPRINT:t2:LAST:\"Cur\\: %5.2lf\" ";
+		cmdCreate << "GPRINT:t2:AVERAGE:\"Avg\\: %5.2lf\" ";
+		cmdCreate << "GPRINT:t2:MAX:\"Max\\: %5.2lf\" ";
+		cmdCreate << "GPRINT:t2:MIN:\"Min\\: %5.2lf\\r\" ";
+	}
 	std::size_t length = cmdCreate.str().copy(buffer, maxsize, 0);
 	buffer[length]='\0';
 }
@@ -92,18 +111,31 @@ void rrd_vm_create_graph_heap_command(char *filename, char *fromatstyle, char *t
 	if (color != NULL) cmdCreate << "-c BACK#" << color << " -c SHADEA#" << color << " -c SHADEB#" << color << " ";
 	cmdCreate << "DEF:buffer=" << filename << ":buffer:MAX ";
 	cmdCreate << "DEF:ratio=" << filename << ":ratio:MAX ";
-	cmdCreate << "LINE1:buffer#0000FF:\"Packet buffer %\\l\" ";
-	cmdCreate << "COMMENT:\"\\u\" ";
-	cmdCreate << "GPRINT:buffer:LAST:\"Cur\\: %5.2lf\" ";
-	cmdCreate << "GPRINT:buffer:AVERAGE:\"Avg\\: %5.2lf\" ";
-	cmdCreate << "GPRINT:buffer:MAX:\"Max\\: %5.2lf\" ";
-	cmdCreate << "GPRINT:buffer:MIN:\"Min\\: %5.2lf\\r\" ";
-	cmdCreate << "LINE1:ratio#FF0000:\"I/O buffer usage %\\l\" ";
-	cmdCreate << "COMMENT:\"\\u\" ";
-	cmdCreate << "GPRINT:ratio:LAST:\"Cur\\: %5.2lf\" ";
-	cmdCreate << "GPRINT:ratio:AVERAGE:\"Avg\\: %5.2lf\" ";
-	cmdCreate << "GPRINT:ratio:MAX:\"Max\\: %5.2lf\" ";
-	cmdCreate << "GPRINT:ratio:MIN:\"Min\\: %5.2lf\\r\" ";
+	if (vm_rrd_version < 10403) {
+		cmdCreate << "LINE1:buffer#0000FF:\"Packet buffer %\\t\\t\" ";
+		cmdCreate << "GPRINT:buffer:LAST:\"Cur\\: %5.2lf\" ";
+		cmdCreate << "GPRINT:buffer:AVERAGE:\"Avg\\: %5.2lf\" ";
+		cmdCreate << "GPRINT:buffer:MAX:\"Max\\: %5.2lf\" ";
+		cmdCreate << "GPRINT:buffer:MIN:\"Min\\: %5.2lf\\l\" ";
+		cmdCreate << "LINE1:ratio#FF0000:\"I/O buffer usage %\\t\" ";
+		cmdCreate << "GPRINT:ratio:LAST:\"Cur\\: %5.2lf\" ";
+		cmdCreate << "GPRINT:ratio:AVERAGE:\"Avg\\: %5.2lf\" ";
+		cmdCreate << "GPRINT:ratio:MAX:\"Max\\: %5.2lf\" ";
+		cmdCreate << "GPRINT:ratio:MIN:\"Min\\: %5.2lf\\l\" ";
+	} else {
+		cmdCreate << "LINE1:buffer#0000FF:\"Packet buffer %\\l\" ";
+		cmdCreate << "COMMENT:\"\\u\" ";
+		cmdCreate << "GPRINT:buffer:LAST:\"Cur\\: %5.2lf\" ";
+		cmdCreate << "GPRINT:buffer:AVERAGE:\"Avg\\: %5.2lf\" ";
+		cmdCreate << "GPRINT:buffer:MAX:\"Max\\: %5.2lf\" ";
+		cmdCreate << "GPRINT:buffer:MIN:\"Min\\: %5.2lf\\r\" ";
+		cmdCreate << "LINE1:ratio#FF0000:\"I/O buffer usage %\\l\" ";
+		cmdCreate << "COMMENT:\"\\u\" ";
+		cmdCreate << "GPRINT:ratio:LAST:\"Cur\\: %5.2lf\" ";
+		cmdCreate << "GPRINT:ratio:AVERAGE:\"Avg\\: %5.2lf\" ";
+		cmdCreate << "GPRINT:ratio:MAX:\"Max\\: %5.2lf\" ";
+		cmdCreate << "GPRINT:ratio:MIN:\"Min\\: %5.2lf\\r\" ";
+	}
 	std::size_t length = cmdCreate.str().copy(buffer, maxsize, 0);
 	buffer[length]='\0';
 }
@@ -131,18 +163,31 @@ void rrd_vm_create_graph_drop_command(char *filename, char *fromatstyle, char *t
 	if (color != NULL) cmdCreate << "-c BACK#" << color << " -c SHADEA#" << color << " -c SHADEB#" << color << " ";
 	cmdCreate << "DEF:exc=" << filename << ":exceeded:MAX ";
 	cmdCreate << "DEF:pck=" << filename << ":packets:MAX ";
-	cmdCreate << "LINE1:exc#0000FF:\"Buffer overloaded\\l\" ";
-	cmdCreate << "COMMENT:\"\\u\" ";
-	cmdCreate << "GPRINT:exc:LAST:\"Cur\\: %5.0lf\" ";
-	cmdCreate << "GPRINT:exc:AVERAGE:\"Avg\\: %5.2lf\" ";
-	cmdCreate << "GPRINT:exc:MAX:\"Max\\: %5.0lf\" ";
-	cmdCreate << "GPRINT:exc:MIN:\"Min\\: %5.0lf\\r\" ";
-	cmdCreate << "LINE1:pck#00FF00:\"Packets dropped\\l\" ";
-	cmdCreate << "COMMENT:\"\\u\" ";
-	cmdCreate << "GPRINT:pck:LAST:\"Cur\\: %5.0lf\" ";
-	cmdCreate << "GPRINT:pck:AVERAGE:\"Avg\\: %5.2lf\" ";
-	cmdCreate << "GPRINT:pck:MAX:\"Max\\: %5.0lf\" ";
-	cmdCreate << "GPRINT:pck:MIN:\"Min\\: %5.0lf\\r\" ";
+	if (vm_rrd_version < 10403) {
+		cmdCreate << "LINE1:exc#0000FF:\"Buffer overloaded\\t\" ";
+		cmdCreate << "GPRINT:exc:LAST:\"Cur\\: %5.0lf\" ";
+		cmdCreate << "GPRINT:exc:AVERAGE:\"Avg\\: %5.2lf\" ";
+		cmdCreate << "GPRINT:exc:MAX:\"Max\\: %5.0lf\" ";
+		cmdCreate << "GPRINT:exc:MIN:\"Min\\: %5.0lf\\l\" ";
+		cmdCreate << "LINE1:pck#00FF00:\"Packets dropped\\t\" ";
+		cmdCreate << "GPRINT:pck:LAST:\"Cur\\: %5.0lf\" ";
+		cmdCreate << "GPRINT:pck:AVERAGE:\"Avg\\: %5.2lf\" ";
+		cmdCreate << "GPRINT:pck:MAX:\"Max\\: %5.0lf\" ";
+		cmdCreate << "GPRINT:pck:MIN:\"Min\\: %5.0lf\\l\" ";
+	} else {
+		cmdCreate << "LINE1:exc#0000FF:\"Buffer overloaded\\l\" ";
+		cmdCreate << "COMMENT:\"\\u\" ";
+		cmdCreate << "GPRINT:exc:LAST:\"Cur\\: %5.0lf\" ";
+		cmdCreate << "GPRINT:exc:AVERAGE:\"Avg\\: %5.2lf\" ";
+		cmdCreate << "GPRINT:exc:MAX:\"Max\\: %5.0lf\" ";
+		cmdCreate << "GPRINT:exc:MIN:\"Min\\: %5.0lf\\r\" ";
+		cmdCreate << "LINE1:pck#00FF00:\"Packets dropped\\l\" ";
+		cmdCreate << "COMMENT:\"\\u\" ";
+		cmdCreate << "GPRINT:pck:LAST:\"Cur\\: %5.0lf\" ";
+		cmdCreate << "GPRINT:pck:AVERAGE:\"Avg\\: %5.2lf\" ";
+		cmdCreate << "GPRINT:pck:MAX:\"Max\\: %5.0lf\" ";
+		cmdCreate << "GPRINT:pck:MIN:\"Min\\: %5.0lf\\r\" ";
+	}
 	std::size_t length = cmdCreate.str().copy(buffer, maxsize, 0);
 	buffer[length]='\0';
 }
@@ -171,14 +216,24 @@ void rrd_vm_create_graph_calls_command(char *filename, char *fromatstyle, char *
 	cmdCreate << "DEF:callsmin=" << filename << ":calls:MIN ";
 	cmdCreate << "DEF:callsavg=" << filename << ":calls:AVERAGE ";
 	cmdCreate << "DEF:callsmax=" << filename << ":calls:MAX ";
-	cmdCreate << "AREA:callsmax#00FF00:\"calls max\\l\" ";
-	cmdCreate << "LINE1:callsavg#0000FF:\"Calls avg\\l\" ";
-	cmdCreate << "LINE1:callsmin#FF0000:\"Calls min\\l\" ";
-	cmdCreate << "COMMENT:\"\\u\" ";
-	cmdCreate << "GPRINT:callsmax:LAST:\"Cur\\: %5.0lf\" ";
-	cmdCreate << "GPRINT:callsmax:AVERAGE:\"Avg\\: %5.2lf\" ";
-	cmdCreate << "GPRINT:callsmax:MAX:\"Max\\: %5.0lf\" ";
-	cmdCreate << "GPRINT:callsmax:MIN:\"Min\\: %5.0lf\\r\" ";
+	if (vm_rrd_version < 10403) {
+		cmdCreate << "AREA:callsmax#00FF00:\"calls max\\l\" ";
+		cmdCreate << "LINE1:callsavg#0000FF:\"Calls avg\\l\" ";
+		cmdCreate << "LINE1:callsmin#FF0000:\"Calls min\\t\" ";
+		cmdCreate << "GPRINT:callsmax:LAST:\"Cur\\: %5.0lf\" ";
+		cmdCreate << "GPRINT:callsmax:AVERAGE:\"Avg\\: %5.2lf\" ";
+		cmdCreate << "GPRINT:callsmax:MAX:\"Max\\: %5.0lf\" ";
+		cmdCreate << "GPRINT:callsmax:MIN:\"Min\\: %5.0lf\\l\" ";
+	} else {
+		cmdCreate << "AREA:callsmax#00FF00:\"calls max\\l\" ";
+		cmdCreate << "LINE1:callsavg#0000FF:\"Calls avg\\l\" ";
+		cmdCreate << "LINE1:callsmin#FF0000:\"Calls min\\l\" ";
+		cmdCreate << "COMMENT:\"\\u\" ";
+		cmdCreate << "GPRINT:callsmax:LAST:\"Cur\\: %5.0lf\" ";
+		cmdCreate << "GPRINT:callsmax:AVERAGE:\"Avg\\: %5.2lf\" ";
+		cmdCreate << "GPRINT:callsmax:MAX:\"Max\\: %5.0lf\" ";
+		cmdCreate << "GPRINT:callsmax:MIN:\"Min\\: %5.0lf\\r\" ";
+	}
 	std::size_t length = cmdCreate.str().copy(buffer, maxsize, 0);
 	buffer[length]='\0';
 }
@@ -205,12 +260,20 @@ void rrd_vm_create_graph_tacCPU_command(char *filename, char *fromatstyle, char 
 	if (icon) cmdCreate << "--only-graph ";
 	if (color != NULL) cmdCreate << "-c BACK#" << color << " -c SHADEA#" << color << " -c SHADEB#" << color << " ";
 	cmdCreate << "DEF:tac=" << filename << ":tacCPU:MAX ";
-	cmdCreate << "LINE1:tac#0000FF:\"Number of CPU used\\l\" ";
-	cmdCreate << "COMMENT:\"\\u\" ";
-	cmdCreate << "GPRINT:tac:LAST:\"Cur\\: %5.2lf\" ";
-	cmdCreate << "GPRINT:tac:AVERAGE:\"Avg\\: %5.2lf\" ";
-	cmdCreate << "GPRINT:tac:MAX:\"Max\\: %5.2lf\" ";
-	cmdCreate << "GPRINT:tac:MIN:\"Min\\: %5.2lf\\r\" ";
+	if (vm_rrd_version < 10403) {
+		cmdCreate << "LINE1:tac#0000FF:\"Number of CPU used\\t\" ";
+		cmdCreate << "GPRINT:tac:LAST:\"Cur\\: %5.2lf\" ";
+		cmdCreate << "GPRINT:tac:AVERAGE:\"Avg\\: %5.2lf\" ";
+		cmdCreate << "GPRINT:tac:MAX:\"Max\\: %5.2lf\" ";
+		cmdCreate << "GPRINT:tac:MIN:\"Min\\: %5.2lf\\l\" ";
+	} else {
+		cmdCreate << "LINE1:tac#0000FF:\"Number of CPU used\\l\" ";
+		cmdCreate << "COMMENT:\"\\u\" ";
+		cmdCreate << "GPRINT:tac:LAST:\"Cur\\: %5.2lf\" ";
+		cmdCreate << "GPRINT:tac:AVERAGE:\"Avg\\: %5.2lf\" ";
+		cmdCreate << "GPRINT:tac:MAX:\"Max\\: %5.2lf\" ";
+		cmdCreate << "GPRINT:tac:MIN:\"Min\\: %5.2lf\\r\" ";
+	}
 	std::size_t length = cmdCreate.str().copy(buffer, maxsize, 0);
 	buffer[length]='\0';
 }
@@ -238,19 +301,32 @@ void rrd_vm_create_graph_RSSVSZ_command(char *filename, char *fromatstyle, char 
 	if (color != NULL) cmdCreate << "-c BACK#" << color << " -c SHADEA#" << color << " -c SHADEB#" << color << " ";
 	cmdCreate << "DEF:rss=" << filename << ":RSS:MAX ";
 	cmdCreate << "DEF:vsz=" << filename << ":VSZ:MAX ";
-	//cmdCreate << "AREA:vsz#0000FF:\"Virtual memory size (VSZ)\\l\" ";
-	cmdCreate << "LINE1:vsz#0000FF:\"Virtual memory size (VSZ)\\l\" ";
-	cmdCreate << "COMMENT:\"\\u\" ";
-	cmdCreate << "GPRINT:vsz:LAST:\"Cur\\: %5.0lf\" ";
-	cmdCreate << "GPRINT:vsz:AVERAGE:\"Avg\\: %5.2lf\" ";
-	cmdCreate << "GPRINT:vsz:MAX:\"Max\\: %5.0lf\" ";
-	cmdCreate << "GPRINT:vsz:MIN:\"Min\\: %5.0lf\\r\" ";
-	cmdCreate << "AREA:rss#00FF00:\"Used memory (RSS)\\l\" ";
-	cmdCreate << "COMMENT:\"\\u\" ";
-	cmdCreate << "GPRINT:rss:LAST:\"Cur\\: %5.0lf\" ";
-	cmdCreate << "GPRINT:rss:AVERAGE:\"Avg\\: %5.2lf\" ";
-	cmdCreate << "GPRINT:rss:MAX:\"Max\\: %5.0lf\" ";
-	cmdCreate << "GPRINT:rss:MIN:\"Min\\: %5.0lf\\r\" ";
+	if (vm_rrd_version < 10403) {
+		//cmdCreate << "AREA:vsz#0000FF:\"Virtual memory size (VSZ)\\l\" ";
+		cmdCreate << "LINE1:vsz#0000FF:\"Virtual memory size\\t\" ";
+		cmdCreate << "GPRINT:vsz:LAST:\"Cur\\: %5.0lf\" ";
+		cmdCreate << "GPRINT:vsz:AVERAGE:\"Avg\\: %5.2lf\" ";
+		cmdCreate << "GPRINT:vsz:MAX:\"Max\\: %5.0lf\" ";
+		cmdCreate << "GPRINT:vsz:MIN:\"Min\\: %5.0lf\\l\" ";
+		cmdCreate << "AREA:rss#00FF00:\"Used memory\\t\\t\\t\" ";
+		cmdCreate << "GPRINT:rss:LAST:\"Cur\\: %5.0lf\" ";
+		cmdCreate << "GPRINT:rss:AVERAGE:\"Avg\\: %5.2lf\" ";
+		cmdCreate << "GPRINT:rss:MAX:\"Max\\: %5.0lf\" ";
+		cmdCreate << "GPRINT:rss:MIN:\"Min\\: %5.0lf\\l\" ";
+	} else {
+		cmdCreate << "LINE1:vsz#0000FF:\"Virtual memory size (VSZ)\\l\" ";
+		cmdCreate << "COMMENT:\"\\u\" ";
+		cmdCreate << "GPRINT:vsz:LAST:\"Cur\\: %5.0lf\" ";
+		cmdCreate << "GPRINT:vsz:AVERAGE:\"Avg\\: %5.2lf\" ";
+		cmdCreate << "GPRINT:vsz:MAX:\"Max\\: %5.0lf\" ";
+		cmdCreate << "GPRINT:vsz:MIN:\"Min\\: %5.0lf\\r\" ";
+		cmdCreate << "AREA:rss#00FF00:\"Used memory (RSS)\\l\" ";
+		cmdCreate << "COMMENT:\"\\u\" ";
+		cmdCreate << "GPRINT:rss:LAST:\"Cur\\: %5.0lf\" ";
+		cmdCreate << "GPRINT:rss:AVERAGE:\"Avg\\: %5.2lf\" ";
+		cmdCreate << "GPRINT:rss:MAX:\"Max\\: %5.0lf\" ";
+		cmdCreate << "GPRINT:rss:MIN:\"Min\\: %5.0lf\\r\" ";
+	}
 	std::size_t length = cmdCreate.str().copy(buffer, maxsize, 0);
 	buffer[length]='\0';
 }
@@ -280,12 +356,20 @@ void rrd_vm_create_graph_speed_command(char *filename, char *fromatstyle, char *
 	if (icon) cmdCreate << "--only-graph ";
 	if (color != NULL) cmdCreate << "-c BACK#" << color << " -c SHADEA#" << color << " -c SHADEB#" << color << " ";
 	cmdCreate << "DEF:speed=" << filename << ":mbs:MAX ";
-	cmdCreate << "AREA:speed#00FF00:\"speed (Mb/s)\\l\" ";
-	cmdCreate << "COMMENT:\"\\u\" ";
-	cmdCreate << "GPRINT:speed:LAST:\"Cur\\: %5.2lf\" ";
-	cmdCreate << "GPRINT:speed:AVERAGE:\"Avg\\: %5.2lf\" ";
-	cmdCreate << "GPRINT:speed:MAX:\"Max\\: %5.2lf\" ";
-	cmdCreate << "GPRINT:speed:MIN:\"Min\\: %5.2lf\\r\" ";
+	if (vm_rrd_version < 10403) {
+		cmdCreate << "AREA:speed#00FF00:\"speed (Mb/s)\\t\" ";
+		cmdCreate << "GPRINT:speed:LAST:\"Cur\\: %5.2lf\" ";
+		cmdCreate << "GPRINT:speed:AVERAGE:\"Avg\\: %5.2lf\" ";
+		cmdCreate << "GPRINT:speed:MAX:\"Max\\: %5.2lf\" ";
+		cmdCreate << "GPRINT:speed:MIN:\"Min\\: %5.2lf\\l\" ";
+	} else {
+		cmdCreate << "AREA:speed#00FF00:\"speed (Mb/s)\\l\" ";
+		cmdCreate << "COMMENT:\"\\u\" ";
+		cmdCreate << "GPRINT:speed:LAST:\"Cur\\: %5.2lf\" ";
+		cmdCreate << "GPRINT:speed:AVERAGE:\"Avg\\: %5.2lf\" ";
+		cmdCreate << "GPRINT:speed:MAX:\"Max\\: %5.2lf\" ";
+		cmdCreate << "GPRINT:speed:MIN:\"Min\\: %5.2lf\\r\" ";
+	}
 	std::size_t length = cmdCreate.str().copy(buffer, maxsize, 0);
 	buffer[length]='\0';
 }
@@ -316,36 +400,64 @@ void rrd_vm_create_graph_SQLq_command(char *filename, char *fromatstyle, char *t
 	cmdCreate << "DEF:SQLqR=" << filename << ":SQLq-R:MAX ";
 	cmdCreate << "DEF:SQLqCl=" << filename << ":SQLq-Cl:MAX ";
 	cmdCreate << "DEF:SQLqH=" << filename << ":SQLq-H:MAX ";
-	cmdCreate << "LINE1:SQLqC#0000FF:\"CDR queue\\l\" ";
-	cmdCreate << "COMMENT:\"\\u\" ";
-	cmdCreate << "GPRINT:SQLqC:LAST:\"Cur\\: %5.0lf\" ";
-	cmdCreate << "GPRINT:SQLqC:AVERAGE:\"Avg\\: %5.2lf\" ";
-	cmdCreate << "GPRINT:SQLqC:MAX:\"Max\\: %5.0lf\" ";
-	cmdCreate << "GPRINT:SQLqC:MIN:\"Min\\: %5.0lf\\r\" ";
-	cmdCreate << "LINE1:SQLqM#00FF00:\"Message queue\\l\" ";
-	cmdCreate << "COMMENT:\"\\u\" ";
-	cmdCreate << "GPRINT:SQLqM:LAST:\"Cur\\: %5.0lf\" ";
-	cmdCreate << "GPRINT:SQLqM:AVERAGE:\"Avg\\: %5.2lf\" ";
-	cmdCreate << "GPRINT:SQLqM:MAX:\"Max\\: %5.0lf\" ";
-	cmdCreate << "GPRINT:SQLqM:MIN:\"Min\\: %5.0lf\\r\" ";
-	cmdCreate << "LINE1:SQLqR#FF0000:\"Register queue\\l\" ";
-	cmdCreate << "COMMENT:\"\\u\" ";
-	cmdCreate << "GPRINT:SQLqR:LAST:\"Cur\\: %5.0lf\" ";
-	cmdCreate << "GPRINT:SQLqR:AVERAGE:\"Avg\\: %5.2lf\" ";
-	cmdCreate << "GPRINT:SQLqR:MAX:\"Max\\: %5.0lf\" ";
-	cmdCreate << "GPRINT:SQLqR:MIN:\"Min\\: %5.0lf\\r\" ";
-	cmdCreate << "LINE1:SQLqCl#00FFFF:\"Cleanspool queue\\l\" ";
-	cmdCreate << "COMMENT:\"\\u\" ";
-	cmdCreate << "GPRINT:SQLqCl:LAST:\"Cur\\: %5.0lf\" ";
-	cmdCreate << "GPRINT:SQLqCl:AVERAGE:\"Avg\\: %5.2lf\" ";
-	cmdCreate << "GPRINT:SQLqCl:MAX:\"Max\\: %5.0lf\" ";
-	cmdCreate << "GPRINT:SQLqCl:MIN:\"Min\\: %5.0lf\\r\" ";
-	cmdCreate << "LINE1:SQLqH#999966:\"Http queue\\l\" ";
-	cmdCreate << "COMMENT:\"\\u\" ";
-	cmdCreate << "GPRINT:SQLqH:LAST:\"Cur\\: %5.0lf\" ";
-	cmdCreate << "GPRINT:SQLqH:AVERAGE:\"Avg\\: %5.2lf\" ";
-	cmdCreate << "GPRINT:SQLqH:MAX:\"Max\\: %5.0lf\" ";
-	cmdCreate << "GPRINT:SQLqH:MIN:\"Min\\: %5.0lf\\r\" ";
+	if (vm_rrd_version < 10403) {
+		cmdCreate << "LINE1:SQLqC#0000FF:\"CDR queue\\t\\t\" ";
+		cmdCreate << "GPRINT:SQLqC:LAST:\"Cur\\: %5.0lf\" ";
+		cmdCreate << "GPRINT:SQLqC:AVERAGE:\"Avg\\: %5.2lf\" ";
+		cmdCreate << "GPRINT:SQLqC:MAX:\"Max\\: %5.0lf\" ";
+		cmdCreate << "GPRINT:SQLqC:MIN:\"Min\\: %5.0lf\\l\" ";
+		cmdCreate << "LINE1:SQLqM#00FF00:\"Message queue\\t\" ";
+		cmdCreate << "GPRINT:SQLqM:LAST:\"Cur\\: %5.0lf\" ";
+		cmdCreate << "GPRINT:SQLqM:AVERAGE:\"Avg\\: %5.2lf\" ";
+		cmdCreate << "GPRINT:SQLqM:MAX:\"Max\\: %5.0lf\" ";
+		cmdCreate << "GPRINT:SQLqM:MIN:\"Min\\: %5.0lf\\l\" ";
+		cmdCreate << "LINE1:SQLqR#FF0000:\"Register queue\\t\" ";
+		cmdCreate << "GPRINT:SQLqR:LAST:\"Cur\\: %5.0lf\" ";
+		cmdCreate << "GPRINT:SQLqR:AVERAGE:\"Avg\\: %5.2lf\" ";
+		cmdCreate << "GPRINT:SQLqR:MAX:\"Max\\: %5.0lf\" ";
+		cmdCreate << "GPRINT:SQLqR:MIN:\"Min\\: %5.0lf\\l\" ";
+		cmdCreate << "LINE1:SQLqCl#00FFFF:\"Cleanspool queue\\t\" ";
+		cmdCreate << "GPRINT:SQLqCl:LAST:\"Cur\\: %5.0lf\" ";
+		cmdCreate << "GPRINT:SQLqCl:AVERAGE:\"Avg\\: %5.2lf\" ";
+		cmdCreate << "GPRINT:SQLqCl:MAX:\"Max\\: %5.0lf\" ";
+		cmdCreate << "GPRINT:SQLqCl:MIN:\"Min\\: %5.0lf\\l\" ";
+		cmdCreate << "LINE1:SQLqH#999966:\"Http queue\\t\\t\" ";
+		cmdCreate << "GPRINT:SQLqH:LAST:\"Cur\\: %5.0lf\" ";
+		cmdCreate << "GPRINT:SQLqH:AVERAGE:\"Avg\\: %5.2lf\" ";
+		cmdCreate << "GPRINT:SQLqH:MAX:\"Max\\: %5.0lf\" ";
+		cmdCreate << "GPRINT:SQLqH:MIN:\"Min\\: %5.0lf\\l\" ";
+	} else {
+		cmdCreate << "LINE1:SQLqC#0000FF:\"CDR queue\\l\" ";
+		cmdCreate << "COMMENT:\"\\u\" ";
+		cmdCreate << "GPRINT:SQLqC:LAST:\"Cur\\: %5.0lf\" ";
+		cmdCreate << "GPRINT:SQLqC:AVERAGE:\"Avg\\: %5.2lf\" ";
+		cmdCreate << "GPRINT:SQLqC:MAX:\"Max\\: %5.0lf\" ";
+		cmdCreate << "GPRINT:SQLqC:MIN:\"Min\\: %5.0lf\\r\" ";
+		cmdCreate << "LINE1:SQLqM#00FF00:\"Message queue\\l\" ";
+		cmdCreate << "COMMENT:\"\\u\" ";
+		cmdCreate << "GPRINT:SQLqM:LAST:\"Cur\\: %5.0lf\" ";
+		cmdCreate << "GPRINT:SQLqM:AVERAGE:\"Avg\\: %5.2lf\" ";
+		cmdCreate << "GPRINT:SQLqM:MAX:\"Max\\: %5.0lf\" ";
+		cmdCreate << "GPRINT:SQLqM:MIN:\"Min\\: %5.0lf\\r\" ";
+		cmdCreate << "LINE1:SQLqR#FF0000:\"Register queue\\l\" ";
+		cmdCreate << "COMMENT:\"\\u\" ";
+		cmdCreate << "GPRINT:SQLqR:LAST:\"Cur\\: %5.0lf\" ";
+		cmdCreate << "GPRINT:SQLqR:AVERAGE:\"Avg\\: %5.2lf\" ";
+		cmdCreate << "GPRINT:SQLqR:MAX:\"Max\\: %5.0lf\" ";
+		cmdCreate << "GPRINT:SQLqR:MIN:\"Min\\: %5.0lf\\r\" ";
+		cmdCreate << "LINE1:SQLqCl#00FFFF:\"Cleanspool queue\\l\" ";
+		cmdCreate << "COMMENT:\"\\u\" ";
+		cmdCreate << "GPRINT:SQLqCl:LAST:\"Cur\\: %5.0lf\" ";
+		cmdCreate << "GPRINT:SQLqCl:AVERAGE:\"Avg\\: %5.2lf\" ";
+		cmdCreate << "GPRINT:SQLqCl:MAX:\"Max\\: %5.0lf\" ";
+		cmdCreate << "GPRINT:SQLqCl:MIN:\"Min\\: %5.0lf\\r\" ";
+		cmdCreate << "LINE1:SQLqH#999966:\"Http queue\\l\" ";
+		cmdCreate << "COMMENT:\"\\u\" ";
+		cmdCreate << "GPRINT:SQLqH:LAST:\"Cur\\: %5.0lf\" ";
+		cmdCreate << "GPRINT:SQLqH:AVERAGE:\"Avg\\: %5.2lf\" ";
+		cmdCreate << "GPRINT:SQLqH:MAX:\"Max\\: %5.0lf\" ";
+		cmdCreate << "GPRINT:SQLqH:MIN:\"Min\\: %5.0lf\\r\" ";
+	}
 	std::size_t length = cmdCreate.str().copy(buffer, maxsize, 0);
 	buffer[length]='\0';
 }
@@ -377,36 +489,64 @@ void rrd_vm_create_graph_PS_command (char *filename, char *fromatstyle, char *to
 	cmdCreate << "DEF:PSS1=" << filename << ":PS-S1:MAX ";
 	cmdCreate << "DEF:PSR=" << filename << ":PS-R:MAX ";
 	cmdCreate << "DEF:PSA=" << filename << ":PS-A:MAX ";
-	cmdCreate << "LINE1:PSC#0000FF:\"calls/second\\l\" ";
-	cmdCreate << "COMMENT:\"\\u\" ";
-	cmdCreate << "GPRINT:PSC:LAST:\"Cur\\: %5.0lf\" ";
-	cmdCreate << "GPRINT:PSC:AVERAGE:\"Avg\\: %5.2lf\" ";
-	cmdCreate << "GPRINT:PSC:MAX:\"Max\\: %5.0lf\" ";
-	cmdCreate << "GPRINT:PSC:MIN:\"Min\\: %5.0lf\\r\" ";
-	cmdCreate << "LINE1:PSS0#00FF00:\"valid SIP packets/second\\l\" ";
-	cmdCreate << "COMMENT:\"\\u\" ";
-	cmdCreate << "GPRINT:PSS0:LAST:\"Cur\\: %5.0lf\" ";
-	cmdCreate << "GPRINT:PSS0:AVERAGE:\"Avg\\: %5.2lf\" ";
-	cmdCreate << "GPRINT:PSS0:MAX:\"Max\\: %5.0lf\" ";
-	cmdCreate << "GPRINT:PSS0:MIN:\"Min\\: %5.0lf\\r\" ";
-	cmdCreate << "LINE1:PSS1#FF0000:\"SIP packets/second\\l\" ";
-	cmdCreate << "COMMENT:\"\\u\" ";
-	cmdCreate << "GPRINT:PSS1:LAST:\"Cur\\: %5.0lf\" ";
-	cmdCreate << "GPRINT:PSS1:AVERAGE:\"Avg\\: %5.2lf\" ";
-	cmdCreate << "GPRINT:PSS1:MAX:\"Max\\: %5.0lf\" ";
-	cmdCreate << "GPRINT:PSS1:MIN:\"Min\\: %5.0lf\\r\" ";
-	cmdCreate << "LINE1:PSR#00FFFF:\"RTP packets/second\\l\" ";
-	cmdCreate << "COMMENT:\"\\u\" ";
-	cmdCreate << "GPRINT:PSR:LAST:\"Cur\\: %5.0lf\" ";
-	cmdCreate << "GPRINT:PSR:AVERAGE:\"Avg\\: %5.2lf\" ";
-	cmdCreate << "GPRINT:PSR:MAX:\"Max\\: %5.0lf\" ";
-	cmdCreate << "GPRINT:PSR:MIN:\"Min\\: %5.0lf\\r\" ";
-	cmdCreate << "LINE1:PSA#999966:\"all packets/second\\l\" ";
-	cmdCreate << "COMMENT:\"\\u\" ";
-	cmdCreate << "GPRINT:PSA:LAST:\"Cur\\: %5.0lf\" ";
-	cmdCreate << "GPRINT:PSA:AVERAGE:\"Avg\\: %5.2lf\" ";
-	cmdCreate << "GPRINT:PSA:MAX:\"Max\\: %5.0lf\" ";
-	cmdCreate << "GPRINT:PSA:MIN:\"Min\\: %5.0lf\\r\" ";
+	if (vm_rrd_version < 10403) {
+		cmdCreate << "LINE1:PSC#0000FF:\"calls/second\\t\\t\\t\" ";
+		cmdCreate << "GPRINT:PSC:LAST:\"Cur\\: %5.0lf\" ";
+		cmdCreate << "GPRINT:PSC:AVERAGE:\"Avg\\: %5.2lf\" ";
+		cmdCreate << "GPRINT:PSC:MAX:\"Max\\: %5.0lf\" ";
+		cmdCreate << "GPRINT:PSC:MIN:\"Min\\: %5.0lf\\l\" ";
+		cmdCreate << "LINE1:PSS0#00FF00:\"valid SIP packets/second\\t\" ";
+		cmdCreate << "GPRINT:PSS0:LAST:\"Cur\\: %5.0lf\" ";
+		cmdCreate << "GPRINT:PSS0:AVERAGE:\"Avg\\: %5.2lf\" ";
+		cmdCreate << "GPRINT:PSS0:MAX:\"Max\\: %5.0lf\" ";
+		cmdCreate << "GPRINT:PSS0:MIN:\"Min\\: %5.0lf\\l\" ";
+		cmdCreate << "LINE1:PSS1#FF0000:\"SIP packets/second\\t\\t\" ";
+		cmdCreate << "GPRINT:PSS1:LAST:\"Cur\\: %5.0lf\" ";
+		cmdCreate << "GPRINT:PSS1:AVERAGE:\"Avg\\: %5.2lf\" ";
+		cmdCreate << "GPRINT:PSS1:MAX:\"Max\\: %5.0lf\" ";
+		cmdCreate << "GPRINT:PSS1:MIN:\"Min\\: %5.0lf\\l\" ";
+		cmdCreate << "LINE1:PSR#00FFFF:\"RTP packets/second\\t\\t\" ";
+		cmdCreate << "GPRINT:PSR:LAST:\"Cur\\: %5.0lf\" ";
+		cmdCreate << "GPRINT:PSR:AVERAGE:\"Avg\\: %5.2lf\" ";
+		cmdCreate << "GPRINT:PSR:MAX:\"Max\\: %5.0lf\" ";
+		cmdCreate << "GPRINT:PSR:MIN:\"Min\\: %5.0lf\\l\" ";
+		cmdCreate << "LINE1:PSA#999966:\"all packets/second\\t\\t\" ";
+		cmdCreate << "GPRINT:PSA:LAST:\"Cur\\: %5.0lf\" ";
+		cmdCreate << "GPRINT:PSA:AVERAGE:\"Avg\\: %5.2lf\" ";
+		cmdCreate << "GPRINT:PSA:MAX:\"Max\\: %5.0lf\" ";
+		cmdCreate << "GPRINT:PSA:MIN:\"Min\\: %5.0lf\\l\" ";
+	} else {
+		cmdCreate << "LINE1:PSC#0000FF:\"calls/second\\l\" ";
+		cmdCreate << "COMMENT:\"\\u\" ";
+		cmdCreate << "GPRINT:PSC:LAST:\"Cur\\: %5.0lf\" ";
+		cmdCreate << "GPRINT:PSC:AVERAGE:\"Avg\\: %5.2lf\" ";
+		cmdCreate << "GPRINT:PSC:MAX:\"Max\\: %5.0lf\" ";
+		cmdCreate << "GPRINT:PSC:MIN:\"Min\\: %5.0lf\\r\" ";
+		cmdCreate << "LINE1:PSS0#00FF00:\"valid SIP packets/second\\l\" ";
+		cmdCreate << "COMMENT:\"\\u\" ";
+		cmdCreate << "GPRINT:PSS0:LAST:\"Cur\\: %5.0lf\" ";
+		cmdCreate << "GPRINT:PSS0:AVERAGE:\"Avg\\: %5.2lf\" ";
+		cmdCreate << "GPRINT:PSS0:MAX:\"Max\\: %5.0lf\" ";
+		cmdCreate << "GPRINT:PSS0:MIN:\"Min\\: %5.0lf\\r\" ";
+		cmdCreate << "LINE1:PSS1#FF0000:\"SIP packets/second\\l\" ";
+		cmdCreate << "COMMENT:\"\\u\" ";
+		cmdCreate << "GPRINT:PSS1:LAST:\"Cur\\: %5.0lf\" ";
+		cmdCreate << "GPRINT:PSS1:AVERAGE:\"Avg\\: %5.2lf\" ";
+		cmdCreate << "GPRINT:PSS1:MAX:\"Max\\: %5.0lf\" ";
+		cmdCreate << "GPRINT:PSS1:MIN:\"Min\\: %5.0lf\\r\" ";
+		cmdCreate << "LINE1:PSR#00FFFF:\"RTP packets/second\\l\" ";
+		cmdCreate << "COMMENT:\"\\u\" ";
+		cmdCreate << "GPRINT:PSR:LAST:\"Cur\\: %5.0lf\" ";
+		cmdCreate << "GPRINT:PSR:AVERAGE:\"Avg\\: %5.2lf\" ";
+		cmdCreate << "GPRINT:PSR:MAX:\"Max\\: %5.0lf\" ";
+		cmdCreate << "GPRINT:PSR:MIN:\"Min\\: %5.0lf\\r\" ";
+		cmdCreate << "LINE1:PSA#999966:\"all packets/second\\l\" ";
+		cmdCreate << "COMMENT:\"\\u\" ";
+		cmdCreate << "GPRINT:PSA:LAST:\"Cur\\: %5.0lf\" ";
+		cmdCreate << "GPRINT:PSA:AVERAGE:\"Avg\\: %5.2lf\" ";
+		cmdCreate << "GPRINT:PSA:MAX:\"Max\\: %5.0lf\" ";
+		cmdCreate << "GPRINT:PSA:MIN:\"Min\\: %5.0lf\\r\" ";
+	}
 //	std::string str ("Test string...");
 	std::size_t length = cmdCreate.str().copy(buffer, maxsize, 0);
 	buffer[length]='\0';	
@@ -990,6 +1130,7 @@ void checkRrdVersion() {
 			int version[3] = { 0, 0, 0 };
 			sscanf((char*)versionString.c_str(), "%i-%i-%i", &version[0], &version[1], &version[2]);
 			vm_rrd_version = version[0] * 10000 + version[1] * 100 + version[2];
+			syslog(LOG_NOTICE, "detected rrdtool version %d", vm_rrd_version);
 		} else {
 			syslog(LOG_NOTICE, "unknown rrdtool version - rrd graph may be wrong");
 		}
