@@ -346,8 +346,9 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 	
 		sendbuf[0] = 0;			//for reseting sendbuf
 
+
 		if (( manager_argc = vm_rrd_countArgs(buf)) < 6) {	//few arguments passed
-			if (verbosity > 0) syslog(LOG_NOTICE, "parse_command creategraph too few arguments, passed%d need at least 6!\n", manager_argc);
+			if (sverb.rrd_info) syslog(LOG_NOTICE, "parse_command creategraph too few arguments, passed %d need at least 6!\n", manager_argc);
 			snprintf(sendbuf, BUFSIZE, "Syntax: creategraph graph_type linuxTS_from linuxTS_to size_x_pixels size_y_pixels  [ slope-mode  [ icon-mode  [ color  [ dstfile ]]]]\n");
 			if ((size = sendvm(client, sshchannel, sendbuf, strlen(sendbuf), 0)) == -1){
 				cerr << "Error sending data to client 1" << endl;
@@ -372,10 +373,6 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 
 		syslog(LOG_NOTICE, "creategraph VERBOSE ALL: %s", manager_cmd_line);
 		if ((manager_argc = vm_rrd_createArgs(manager_cmd_line, manager_args))) {
-		if (verbosity > 2) {
-			int i;
-			for (i=0;i<manager_argc;i++) syslog(LOG_NOTICE, "creategraph VERBOSE[%d]: %s",i, manager_args[i]);
-		}
 			//Arguments:
 			//0-creategraphs
 			//1-graph type
@@ -387,7 +384,7 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 			//[7-discard graphs legend (for sizes bellow 600x240)]
 			//[8-color]
 			//[9-dstfile (if not defined PNG goes to stdout)]
-			if (verbosity > 0) {
+			if (sverb.rrd_info) {
 				syslog(LOG_NOTICE, "%d arguments detected. Showing them:\n", manager_argc);
 				for (int i = 0; i < manager_argc; i++) {
 					syslog (LOG_NOTICE, "%d.arg:%s",i, manager_args[i]);
@@ -443,14 +440,14 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 				rrd_vm_create_graph_RSSVSZ_command(filename, fromat, toat, color, resx, resy, slope, icon, dstfile, sendcommand, sizeof(sendcommand));
 			} else {
 				snprintf(sendbuf, BUFSIZE, "Error: Graph type %s isn't known\n\tGraph types: PS SQLq tCPU drop speed heap calls tacCPU RSSVSZ\n", manager_args[1]);	
-				if (verbosity > 0) {
+				if (sverb.rrd_info) {
 					syslog(LOG_NOTICE, "creategraph Error: Unrecognized graph type %s", manager_args[1]);
 					syslog(LOG_NOTICE, "    Graph types: PS SQLq tCPU drop speed heap calls tacCPU RSSVSZ");
 				}
 				res = -1;
 			}
 			if ((dstfile == NULL) && (res == 0)) {		//send from stdout of a command (binary data)
-				if (verbosity > 1) syslog(LOG_NOTICE, "COMMAND for system pipe:%s", sendcommand);
+				if (sverb.rrd_info) syslog(LOG_NOTICE, "COMMAND for system pipe:%s", sendcommand);
 				if (sendvm_from_stdout_of_command(sendcommand, client, sshchannel, sendbuf, sizeof(sendbuf), 0) == -1 ){
 					cerr << "Error sending data to client 2" << endl;
 					free (manager_cmd_line);
@@ -459,10 +456,10 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 					return -1;
 				}
 			} else {									//send string data (text data or error response)
-				if (verbosity > 1) syslog(LOG_NOTICE, "COMMAND for system:%s", sendcommand);
+				if (sverb.rrd_info) syslog(LOG_NOTICE, "COMMAND for system:%s", sendcommand);
 				res = system(sendcommand);
-				if ((verbosity > 0) && (res > 0)) snprintf(sendbuf, BUFSIZE, "ERROR while creating graph of type %s from:%s to:%s resx:%i resy:%i slopemode=%s, iconmode=%s\n", manager_args[1], fromat, toat, resx, resy, slope?"yes":"no", icon?"yes":"no");
-				if ((verbosity > 0) && (res == 0)) snprintf(sendbuf, BUFSIZE, "Created graph of type %s from:%s to:%s resx:%i resy:%i slopemode=%s, iconmode=%s in file %s\n", manager_args[1], fromat, toat, resx, resy, slope?"yes":"no", icon?"yes":"no", dstfile);
+				if ((sverb.rrd_info) && (res > 0)) snprintf(sendbuf, BUFSIZE, "ERROR while creating graph of type %s from:%s to:%s resx:%i resy:%i slopemode=%s, iconmode=%s\n", manager_args[1], fromat, toat, resx, resy, slope?"yes":"no", icon?"yes":"no");
+				if ((sverb.rrd_info) && (res == 0)) snprintf(sendbuf, BUFSIZE, "Created graph of type %s from:%s to:%s resx:%i resy:%i slopemode=%s, iconmode=%s in file %s\n", manager_args[1], fromat, toat, resx, resy, slope?"yes":"no", icon?"yes":"no", dstfile);
 				if (strlen(sendbuf)) {
 					if ((size = sendvm(client, sshchannel, sendbuf, strlen(sendbuf), 0)) == -1){
 						cerr << "Error sending data to client 3" << endl;
