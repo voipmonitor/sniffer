@@ -488,7 +488,7 @@ read_thread *threads;
 int manager_socket_server = 0;
 
 pthread_mutex_t mysqlconnect_lock;
-pthread_mutex_t rrd_lock;
+pthread_mutex_t vm_rrd_lock;
 
 pthread_t pcap_read_thread;
 #ifdef QUEUE_MUTEX
@@ -2431,7 +2431,7 @@ int main(int argc, char *argv[]) {
 	httpportmatrix = (char*)calloc(1, sizeof(char) * 65537);
 
 	pthread_mutex_init(&mysqlconnect_lock, NULL);
-	pthread_mutex_init(&rrd_lock, NULL);
+	pthread_mutex_init(&vm_rrd_lock, NULL);
 
 	// if the system has more than one CPU enable threading
 	opt_pcap_threaded = sysconf( _SC_NPROCESSORS_ONLN ) > 1; 

@@ -336,8 +336,8 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 			return -1;
 		}
 	} else if(strstr(buf, "creategraph") != NULL) {
-		extern pthread_mutex_t rrd_lock;
-		pthread_mutex_lock(&rrd_lock);
+		extern pthread_mutex_t vm_rrd_lock;
+		pthread_mutex_lock(&vm_rrd_lock);
 		
 		int res = 0;
 		int manager_argc;
@@ -352,18 +352,18 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 			if ((size = sendvm(client, sshchannel, sendbuf, strlen(sendbuf), 0)) == -1){
 				cerr << "Error sending data to client 1" << endl;
 			}
-			pthread_mutex_unlock(&rrd_lock);
+			pthread_mutex_unlock(&vm_rrd_lock);
 			return -1;
 		}
 		if ((manager_cmd_line = (char *) malloc((strlen(buf) + 1) * sizeof(char *))) == NULL) {
 			syslog(LOG_ERR, "parse_command creategraph malloc error\n");
-			pthread_mutex_unlock(&rrd_lock);
+			pthread_mutex_unlock(&vm_rrd_lock);
 			return -1;
 		}
 		if ((manager_args = (char **) malloc((manager_argc + 1) * sizeof(char *))) == NULL) {
 			free(manager_cmd_line);
 			syslog(LOG_ERR, "parse_command creategraph malloc error2\n");
-			pthread_mutex_unlock(&rrd_lock);
+			pthread_mutex_unlock(&vm_rrd_lock);
 			return -1;
 		}
 		
@@ -451,7 +451,7 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 					cerr << "Error sending data to client 2" << endl;
 					free (manager_cmd_line);
 					free (manager_args);
-					pthread_mutex_unlock(&rrd_lock);
+					pthread_mutex_unlock(&vm_rrd_lock);
 					return -1;
 				}
 			} else {									//send string data (text data or error response)
@@ -464,7 +464,7 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 						cerr << "Error sending data to client 3" << endl;
 						free (manager_cmd_line);
 						free (manager_args);
-						pthread_mutex_unlock(&rrd_lock);
+						pthread_mutex_unlock(&vm_rrd_lock);
 						return -1;
 					}
 				}
@@ -472,7 +472,7 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 		}
 		free (manager_cmd_line);
 		free (manager_args);
-		pthread_mutex_unlock(&rrd_lock);
+		pthread_mutex_unlock(&vm_rrd_lock);
 		return res;
 
 	} else if(strstr(buf, "reindexfiles") != NULL) {
