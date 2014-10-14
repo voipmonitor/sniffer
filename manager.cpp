@@ -1859,11 +1859,8 @@ tryagain:
 	unsigned int ids;
 	pthread_t threads;
 	pthread_attr_t attr;
-	pthread_attr_init(&attr);
 	fd_set rfds;
 	struct timeval tv;
-	/* set the thread detach state */
-	pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
 	while(terminating == 0) {
 		FD_ZERO(&rfds);
 		FD_SET(manager_socket_server, &rfds);
@@ -1883,12 +1880,19 @@ tryagain:
 				continue;
 			}
 
+			pthread_attr_init(&attr);
+			// set the thread detach state
+			pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
 			ids = client;
-			pthread_create (		/* Create a child thread        */
-				&threads,		/* Thread ID (system assigned)  */    
-				&attr,			/* Default thread attributes    */
-				manager_read_thread,	/* Thread routine               */
-				&ids);			/* Arguments to be passed       */
+			int rslt = pthread_create (		/* Create a child thread        */
+				       &threads,		/* Thread ID (system assigned)  */    
+				       &attr,			/* Default thread attributes    */
+				       manager_read_thread,	/* Thread routine               */
+				       &ids);			/* Arguments to be passed       */
+			pthread_attr_destroy(&attr);
+			if(rslt != 0) {
+				syslog(LOG_ERR, "manager pthread_create failed with rslt code %i", rslt);
+			}
 		}
 	}
 	close(manager_socket_server);
