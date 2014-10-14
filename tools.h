@@ -776,7 +776,7 @@ private:
 	bool _64bit;
 };
 
-std::string pexec(char*);
+std::string pexec(char*, int *exitCode = NULL);
 
 class IP {
 public:

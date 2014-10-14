@@ -19,6 +19,10 @@
 #define FALSE		0
 #define MAX_LENGTH	10000
 
+
+int vm_rrd_version;
+
+
 void rrd_vm_create_graph_tCPU_command(char *filename, char *fromatstyle, char *toatstyle, char *color, int resx, int resy, short slope, short icon, char *dstfile, char *buffer, int maxsize) {
     std::ostringstream cmdCreate;
 
@@ -977,3 +981,19 @@ int rrd_call(
 	}
 }
 
+void checkRrdVersion() {
+	int exitCode;
+	string rsltRrdTool = pexec((char*)"rrdtool", &exitCode);
+	if(!exitCode) {
+		string versionString = reg_replace(rsltRrdTool.c_str(), "([0-9]+)\\.([0-9]+)\\.?([0-9]*)", "$1-$2-$3");
+		if(!versionString.empty()) {
+			int version[3] = { 0, 0, 0 };
+			sscanf((char*)versionString.c_str(), "%i-%i-%i", &version[0], &version[1], &version[2]);
+			vm_rrd_version = version[0] * 10000 + version[1] * 100 + version[2];
+		} else {
+			syslog(LOG_NOTICE, "unknown rrdtool version - rrd graph may be wrong");
+		}
+	} else {
+		syslog(LOG_NOTICE, "for rrd graph you need install rrdtool");
+	}
+}

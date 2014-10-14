@@ -28,6 +28,8 @@ void rrd_vm_create_graph_calls_command(char *filename, char *fromatstyle, char *
 void rrd_vm_create_graph_tacCPU_command(char *filename, char *fromatstyle, char *toatstyle, char *color, int resx, int resy, short slope, short icon, char *dstfile, char *buffer, int maxsize);
 void rrd_vm_create_graph_RSSVSZ_command(char *filename, char *fromatstyle, char *toatstyle, char *color, int resx, int resy, short slope, short icon, char *dstfile, char *buffer, int maxsize);
 
+void checkRrdVersion();
+
 extern int verbosity;
 #ifndef RRDLIB_H_4FD7D37D56A448C392AF46508C56D3CC
 #define RRDLIB_H_4FD7D37D56A448C392AF46508C56D3CC

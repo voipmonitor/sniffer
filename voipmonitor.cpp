@@ -3011,6 +3011,8 @@ int main(int argc, char *argv[]) {
 		}
 	}
 	
+	checkRrdVersion();
+	
 	if(opt_cachedir[0]) {
 		opt_defer_create_spooldir = false;
 	}

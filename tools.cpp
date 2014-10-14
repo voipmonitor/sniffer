@@ -1497,7 +1497,7 @@ int get_unix_tid(void) {
 	return ret;
 }
 
-std::string pexec(char* cmd) {
+std::string pexec(char* cmd, int *exitCode) {
 	FILE* pipe = popen(cmd, "r");
 	if (!pipe) return "ERROR";
 	char buffer[128];
@@ -1506,7 +1506,10 @@ std::string pexec(char* cmd) {
 		if(fgets(buffer, 128, pipe) != NULL)
 			result += buffer;
 	}
-	pclose(pipe);
+	int _exitCode = pclose(pipe);
+	if(exitCode) {
+		*exitCode = _exitCode;
+	}
 	return result;
 }
 
