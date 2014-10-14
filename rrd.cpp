@@ -5,6 +5,7 @@
 #include <locale.h>
 #include <syslog.h>
 
+#include "voipmonitor.h"
 #include "rrd.h"
 #include "tools.h"
 
@@ -631,7 +632,7 @@ int vm_rrd_create(const char *filename, const char *cmdline)
 	} else {
 		//syslog(LOG_NOTICE, "Creating RRD Database file: %s\n", filename);
 		res = rrd_call(cmdline);
-		if (verbosity > 1) syslog (LOG_NOTICE,"CREATED RRD file %s with result of: %d\n",filename, res);
+		if (sverb.rrd_info) syslog (LOG_NOTICE,"CREATED RRD file %s with result of: %d\n",filename, res);
 	}
 	return res;
 }
@@ -645,7 +646,7 @@ int vm_rrd_update(const char *filename, const char *value)
 		//syslog(LOG_NOTICE, "Updating RRD file: %s \n", filename);
 		res = rrd_call(cmdUpdate.str().c_str());
 		//res = rrd_call(cmdUpdate.str());
-		if (verbosity > 1) syslog(LOG_NOTICE, "Updated RRD file: %s with command %s resulted in retval:%d\n", filename, cmdUpdate.str().c_str(),res);
+		if (sverb.rrd_info) syslog(LOG_NOTICE, "Updated RRD file: %s with command %s resulted in retval:%d\n", filename, cmdUpdate.str().c_str(),res);
 	} else {		//rrd file is unaccessible
 		if (verbosity > 0) syslog(LOG_NOTICE, "Cannot update non existent RRD file: %s\n", filename);
 		res = -1;

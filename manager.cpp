@@ -336,8 +336,8 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 			return -1;
 		}
 	} else if(strstr(buf, "creategraph") != NULL) {
-		extern pthread_mutex_t rdd_lock;
-		pthread_mutex_lock(&rdd_lock);
+		extern pthread_mutex_t rrd_lock;
+		pthread_mutex_lock(&rrd_lock);
 		
 		int res = 0;
 		int manager_argc;
@@ -352,18 +352,18 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 			if ((size = sendvm(client, sshchannel, sendbuf, strlen(sendbuf), 0)) == -1){
 				cerr << "Error sending data to client 1" << endl;
 			}
-			pthread_mutex_unlock(&rdd_lock);
+			pthread_mutex_unlock(&rrd_lock);
 			return -1;
 		}
 		if ((manager_cmd_line = (char *) malloc((strlen(buf) + 1) * sizeof(char *))) == NULL) {
 			syslog(LOG_ERR, "parse_command creategraph malloc error\n");
-			pthread_mutex_unlock(&rdd_lock);
+			pthread_mutex_unlock(&rrd_lock);
 			return -1;
 		}
 		if ((manager_args = (char **) malloc((manager_argc + 1) * sizeof(char *))) == NULL) {
 			free(manager_cmd_line);
 			syslog(LOG_ERR, "parse_command creategraph malloc error2\n");
-			pthread_mutex_unlock(&rdd_lock);
+			pthread_mutex_unlock(&rrd_lock);
 			return -1;
 		}
 		
@@ -372,10 +372,6 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 
 		syslog(LOG_NOTICE, "creategraph VERBOSE ALL: %s", manager_cmd_line);
 		if ((manager_argc = vm_rrd_createArgs(manager_cmd_line, manager_args))) {
-		if (verbosity > 2) {
-			int i;
-			for (i=0;i<manager_argc;i++) syslog(LOG_NOTICE, "creategraph VERBOSE[%d]: %s",i, manager_args[i]);
-		}
 			//Arguments:
 			//0-creategraphs
 			//1-graph type
@@ -387,7 +383,7 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 			//[7-discard graphs legend (for sizes bellow 600x240)]
 			//[8-color]
 			//[9-dstfile (if not defined PNG goes to stdout)]
-			if (verbosity > 0) {
+			if (sverb.rrd_info) {
 				syslog(LOG_NOTICE, "%d arguments detected. Showing them:\n", manager_argc);
 				for (int i = 0; i < manager_argc; i++) {
 					syslog (LOG_NOTICE, "%d.arg:%s",i, manager_args[i]);
@@ -450,16 +446,16 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 				res = -1;
 			}
 			if ((dstfile == NULL) && (res == 0)) {		//send from stdout of a command (binary data)
-				if (verbosity > 1) syslog(LOG_NOTICE, "COMMAND for system pipe:%s", sendcommand);
+				if (sverb.rrd_info) syslog(LOG_NOTICE, "COMMAND for system pipe:%s", sendcommand);
 				if (sendvm_from_stdout_of_command(sendcommand, client, sshchannel, sendbuf, sizeof(sendbuf), 0) == -1 ){
 					cerr << "Error sending data to client 2" << endl;
 					free (manager_cmd_line);
 					free (manager_args);
-					pthread_mutex_unlock(&rdd_lock);
+					pthread_mutex_unlock(&rrd_lock);
 					return -1;
 				}
 			} else {									//send string data (text data or error response)
-				if (verbosity > 1) syslog(LOG_NOTICE, "COMMAND for system:%s", sendcommand);
+				if (sverb.rrd_info) syslog(LOG_NOTICE, "COMMAND for system:%s", sendcommand);
 				res = system(sendcommand);
 				if ((verbosity > 0) && (res > 0)) snprintf(sendbuf, BUFSIZE, "ERROR while creating graph of type %s from:%s to:%s resx:%i resy:%i slopemode=%s, iconmode=%s\n", manager_args[1], fromat, toat, resx, resy, slope?"yes":"no", icon?"yes":"no");
 				if ((verbosity > 0) && (res == 0)) snprintf(sendbuf, BUFSIZE, "Created graph of type %s from:%s to:%s resx:%i resy:%i slopemode=%s, iconmode=%s in file %s\n", manager_args[1], fromat, toat, resx, resy, slope?"yes":"no", icon?"yes":"no", dstfile);
@@ -468,7 +464,7 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 						cerr << "Error sending data to client 3" << endl;
 						free (manager_cmd_line);
 						free (manager_args);
-						pthread_mutex_unlock(&rdd_lock);
+						pthread_mutex_unlock(&rrd_lock);
 						return -1;
 					}
 				}
@@ -476,7 +472,7 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 		}
 		free (manager_cmd_line);
 		free (manager_args);
-		pthread_mutex_unlock(&rdd_lock);
+		pthread_mutex_unlock(&rrd_lock);
 		return res;
 
 	} else if(strstr(buf, "reindexfiles") != NULL) {
