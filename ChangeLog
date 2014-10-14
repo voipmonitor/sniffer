@@ -1,3 +1,9 @@
+10.1.4 13.10.2014
+=================
+- support older rrd library when generating graphs
+- fix concurrent access to rrd graphs
+
+
 10.1.3 13.10.2014
 =================
 - Stucked TCP manager was not properly set to non blocking socket thus the timeout never occured. 

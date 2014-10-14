@@ -4,7 +4,7 @@
 #ifndef VOIPMONITOR_H
 #define VOIPMONITOR_H
 
-#define RTPSENSOR_VERSION "10.1.3"
+#define RTPSENSOR_VERSION "10.1.4"
 #define NAT
 
 #define FORMAT_WAV	1
