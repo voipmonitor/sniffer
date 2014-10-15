@@ -2124,6 +2124,10 @@ Call::saveToDb(bool enableBatchIfPossible) {
 
 				SqlDb_row rtps;
 				rtps.add("_\\_'SQL'_\\_:@cdr_id", "cdr_ID");
+				if(rtp[i]->first_codec == -1) {
+					//do not store this stream into the database
+					continue;
+				}
 				rtps.add(rtp[i]->first_codec, "payload");
 				rtps.add(htonl(rtp[i]->saddr), "saddr");
 				rtps.add(htonl(rtp[i]->daddr), "daddr");
@@ -2248,6 +2252,11 @@ Call::saveToDb(bool enableBatchIfPossible) {
 				double rtime = rtp[i]->first_packet_time + fpart;
 
 				double diff = rtime - stime;
+
+				if(rtp[i]->first_codec == -1) {
+					//do not store this stream into the database
+					continue;
+				}
 
 				SqlDb_row rtps;
 				rtps.add(cdrID, "cdr_ID");
