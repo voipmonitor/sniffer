@@ -2,6 +2,7 @@
 =================
 - support older rrd library when generating graphs
 - fix concurrent access to rrd graphs
+- try to fix TCP manager problem with creating threads on 32bit (manager stuck) 
 
 
 10.1.3 13.10.2014
