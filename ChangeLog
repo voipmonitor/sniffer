@@ -1,4 +1,9 @@
-10.1.5 13.10.2014
+10.1.6 16.10.2014
+=================
+- Another attempt to fix stucked manager interface - clean threads with function pthread_detach() instead of pthread_attr_setdetachstate(&attr,PTHREAD_CREATE_DETACHED)
+
+
+10.1.5 15.10.2014
 =================
 - fix parsing DTMF sip calls with DTMF RTP frames with payload 101 where payload 101 is not in SDP 
 
