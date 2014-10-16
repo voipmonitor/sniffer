@@ -1,3 +1,8 @@
+10.1.5 13.10.2014
+=================
+- fix parsing DTMF sip calls with DTMF RTP frames with payload 101 where payload 101 is not in SDP 
+
+
 10.1.4 13.10.2014
 =================
 - support older rrd library when generating graphs

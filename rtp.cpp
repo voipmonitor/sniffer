@@ -740,10 +740,16 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 	if((codec == -1 || (curpayload != prev_payload))) {
 		if(curpayload >= 96 && curpayload <= 127) {
 			/* for dynamic payload we look into rtpmap */
+			int found = 0;
 			for(int i = 0; i < MAX_RTPMAP; i++) {
 				if(rtpmap[i] != 0 && curpayload == rtpmap[i] / 1000) {
 					codec = rtpmap[i] - curpayload * 1000;
+					found = 1;
 				}
+			}
+			if(curpayload == 101 and !found) {
+				// payload 101 was not in SDP, assume it is televent 
+				codec = PAYLOAD_TELEVENT;
 			}
 		} else {
 			codec = curpayload;
