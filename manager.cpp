@@ -1877,14 +1877,13 @@ tryagain:
 			}
 
 			pthread_attr_init(&attr);
-			// set the thread detach state
-			pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
 			ids = client;
 			int rslt = pthread_create (		/* Create a child thread        */
 				       &threads,		/* Thread ID (system assigned)  */    
 				       &attr,			/* Default thread attributes    */
 				       manager_read_thread,	/* Thread routine               */
 				       &ids);			/* Arguments to be passed       */
+			pthread_detach(&threads);
 			pthread_attr_destroy(&attr);
 			if(rslt != 0) {
 				syslog(LOG_ERR, "manager pthread_create failed with rslt code %i", rslt);
