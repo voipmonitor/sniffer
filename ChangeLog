@@ -1,3 +1,8 @@
+10.1.7 16.10.2014
+=================
+- Implement new configuration option which will restrict spool cleaning based on time (for example cleanspool_enable_fromto = 1-5 will run cleaning only in night between 1-5 hours) 
+
+
 10.1.6 16.10.2014
 =================
 - Another attempt to fix stucked manager interface - clean threads with function pthread_detach() instead of pthread_attr_setdetachstate(&attr,PTHREAD_CREATE_DETACHED)
