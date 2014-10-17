@@ -292,6 +292,8 @@ int opt_maxpool_clean_obsolete = 0;
 int opt_autocleanspool = 1;
 int opt_autocleanspoolminpercent = 1;
 int opt_autocleanmingb = 5;
+int opt_cleanspool_enable_run_hour_from = -1;
+int opt_cleanspool_enable_run_hour_to = -1;
 int opt_mysqlloadconfig = 1;
 int opt_last_rtp_from_end = 1;
 int opt_pcap_dump_bufflength = 8194;
@@ -1230,6 +1232,25 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "autocleanmingb", NULL))) {
 		opt_autocleanmingb = atoi(value);
+	}
+	if((value = ini.GetValue("general", "cleanspool_enable_fromto", NULL))) {
+		string fromTo = reg_replace(value, "([0-9]+)[- ]*([0-9]+)", "$1-$2");
+		if(fromTo.empty()) {
+			int h = atoi(value);
+			if(h >= 0 && h < 24) {
+				opt_cleanspool_enable_run_hour_from = h;
+				opt_cleanspool_enable_run_hour_to = h;
+			}
+		} else {
+			sscanf(fromTo.c_str(), "%i-%i", &opt_cleanspool_enable_run_hour_from, &opt_cleanspool_enable_run_hour_to);
+			if(opt_cleanspool_enable_run_hour_from < 0 ||
+			   opt_cleanspool_enable_run_hour_from > 23 ||
+			   opt_cleanspool_enable_run_hour_to < 0 ||
+			   opt_cleanspool_enable_run_hour_to > 23) {
+				opt_cleanspool_enable_run_hour_from = -1;
+				opt_cleanspool_enable_run_hour_to = -1;
+			}
+		}
 	}
 	if((value = ini.GetValue("general", "id_sensor", NULL))) {
 		opt_id_sensor = atoi(value);
