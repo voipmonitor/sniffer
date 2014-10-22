@@ -336,6 +336,16 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 			return -1;
 		}
 	} else if(strstr(buf, "creategraph") != NULL) {
+		checkRrdVersion(true);
+		extern int vm_rrd_version;
+		if(!vm_rrd_version) {
+			if ((size = sendvm(client, sshchannel, "missing rrdtool", 15, 0)) == -1){
+				cerr << "Error sending data to client" << endl;
+				return -1;
+			}
+			return 0;
+		}
+	 
 		extern pthread_mutex_t vm_rrd_lock;
 		pthread_mutex_lock(&vm_rrd_lock);
 		
@@ -1482,8 +1492,11 @@ getwav:
 		extern vm_atomic<string> pbStatString;
 		extern vm_atomic<u_long> pbCountPacketDrop;
 		ostringstream outStrStat;
+		extern int vm_rrd_version;
+		checkRrdVersion(true);
 		outStrStat << "{"
 			   << "\"version\": \"" << RTPSENSOR_VERSION << "\","
+			   << "\"rrd_version\": \"" << vm_rrd_version << "\","
 			   << "\"storingCdrLastWriteAt\": \"" << storingCdrLastWriteAt << "\","
 			   << "\"pbStatString\": \"" << pbStatString << "\","
 			   << "\"pbCountPacketDrop\": \"" << pbCountPacketDrop << "\","
