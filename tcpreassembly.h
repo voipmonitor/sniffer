@@ -366,7 +366,6 @@ public:
 		min_seq = 0;
 		max_next_seq = 0;
 		is_ok = false;
-		completed = false;
 		completed_finally = false;
 		exists_data = false;
 		http_type = HTTP_TYPE_NA;
@@ -388,7 +387,8 @@ public:
 	       bool enableCheckCompleteContent = false, TcpReassemblyStream *prevHttpStream = NULL, bool enableDebug = false,
 	       int forceFirstSeq = 0);
 	bool ok2_ec(u_int32_t nextAck, bool enableDebug = false);
-	u_char *complete(u_int32_t *datalen, timeval *time, bool check = false, bool unlockPackets = true);
+	u_char *complete(u_int32_t *datalen, timeval *time, bool check = false, bool unlockPackets = true,
+			 size_t startIndex = 0, size_t *endIndex = NULL, bool breakIfPsh = false);
 	bool saveCompleteData(bool unlockPackets = true, bool check = false, TcpReassemblyStream *prevHttpStream = NULL);
 	void clearCompleteData();
 	void unlockPackets();
@@ -415,10 +415,10 @@ private:
 	map<uint32_t, TcpReassemblyStream_packet_var> queue;
 	deque<d_u_int32_t> ok_packets;
 	bool is_ok;
-	bool completed;
 	bool completed_finally;
 	bool exists_data;
 	TcpReassemblyDataItem complete_data;
+	vector<TcpReassemblyDataItem> complete_data_vector;
 	eHttpType http_type;
 	u_int32_t http_header_length;
 	u_int32_t http_content_length;
@@ -515,13 +515,11 @@ public:
 				block_store, block_store_index,
 				lockQueue));
 		} else {
-			/*
 			return(this->push_normal(
 				direction, time, header_tcp, 
 				data, datalen, datacaplen,
-				block_store, block_store_index));
-			*/
-			return(false);
+				block_store, block_store_index,
+				lockQueue));
 		}
 	}
 	bool push_normal(
@@ -540,11 +538,8 @@ public:
 		if(this->state == STATE_CRAZY) {
 			return(this->okQueue_crazy(final, enableDebug));
 		} else {
-			/*
 			return(this->okQueue_normal(final, enableDebug));
-			*/
 		}
-		return(0);
 	}
 	int okQueue_normal(bool final = false, bool enableDebug = false);
 	int okQueue_crazy(bool final = false, bool enableDebug = false);
@@ -552,12 +547,10 @@ public:
 		if(this->state == STATE_CRAZY) {
 			this->complete_crazy(final, eraseCompletedStreams, lockQueue);
 		} else {
-			/*
-			this->complete_normal();
-			*/
+			this->complete_normal(final, lockQueue);
 		}
 	}
-	void complete_normal();
+	void complete_normal(bool final = false, bool lockQueue = true);
 	void complete_crazy(bool final = false, bool eraseCompletedStreams = false, bool lockQueue = true);
 	streamIterator createIterator();
 	TcpReassemblyStream *findStreamBySeq(u_int32_t seq) {
@@ -620,16 +613,6 @@ public:
 		}
 		return(NULL);
 	}
-	bool existsUncompletedDataStream() {
-		map<uint32_t, TcpReassemblyStream*>::iterator iter;
-		for(iter = this->queue_by_ack.begin(); iter != this->queue_by_ack.end(); iter++) {
-			if(iter->second->exists_data &&
-			   !iter->second->completed) {
-				return(true);
-			}
-		}
-		return(false);
-	}
 	bool existsFinallyUncompletedDataStream() {
 		map<uint32_t, TcpReassemblyStream*>::iterator iter;
 		for(iter = this->queue_by_ack.begin(); iter != this->queue_by_ack.end(); iter++) {
@@ -650,7 +633,8 @@ private:
 		__sync_lock_release(&this->_sync_queue);
 	}
 	void pushpacket(TcpReassemblyStream::eDirection direction,
-		        TcpReassemblyStream_packet packet);
+		        TcpReassemblyStream_packet packet,
+			bool lockQueue = true);
 	void setLastSeq(TcpReassemblyStream::eDirection direction, 
 			u_int32_t lastSeq);
 	void switchDirection(bool lockQueue = true);
@@ -682,14 +666,19 @@ private:
 	size_t completed_offset;
 	int direction_confirm;
 	vector<TcpReassemblyStream*> ok_streams;
-	int cleanup_state;
+	volatile int cleanup_state;
 friend class TcpReassembly;
 friend class TcpReassemblyStream;
 };
 
 class TcpReassembly {
 public:
-	TcpReassembly();
+	enum eType {
+		http,
+		webrtc
+	};
+public:
+	TcpReassembly(eType type);
 	~TcpReassembly();
 	void push(pcap_pkthdr *header, iphdr2 *header_ip, u_char *packet,
 		  pcap_block_store *block_store = NULL, int block_store_index = 0);
@@ -721,24 +710,31 @@ public:
 	bool check_ip(u_int32_t ipl) {
 		extern vector<u_int32_t> httpip;
 		extern vector<d_u_int32_t> httpnet;
-		if(!httpip.size() && !httpnet.size()) {
+		extern vector<u_int32_t> webrtcip;
+		extern vector<d_u_int32_t> webrtcnet;
+		vector<u_int32_t> *_ip = (type == http ? &httpip : &webrtcip);
+		vector<d_u_int32_t> *_net  = (type == http ? &httpnet : &webrtcnet);
+		if(!_ip->size() && !_net->size()) {
 			return(true);
 		}
-		if(httpip.size()) {
+		if(_ip->size()) {
 			vector<u_int32_t>::iterator findHttpIp;
-			findHttpIp = std::lower_bound(httpip.begin(), httpip.end(), ipl);
-			if(findHttpIp != httpip.end() && ((*findHttpIp) & ipl) == (*findHttpIp)) {
+			findHttpIp = std::lower_bound(_ip->begin(), _ip->end(), ipl);
+			if(findHttpIp != _ip->end() && ((*findHttpIp) & ipl) == (*findHttpIp)) {
 				return(true);
 			}
 		}
-		if(httpnet.size()) {
-			for(size_t i = 0; i < httpnet.size(); i++) {
-				if(httpnet[i][0] == ipl >> (32 - httpnet[i][1]) << (32 - httpnet[i][1])) {
+		if(_net->size()) {
+			for(size_t i = 0; i < _net->size(); i++) {
+				if((*_net)[i][0] == ipl >> (32 - (*_net)[i][1]) << (32 - (*_net)[i][1])) {
 					return(true);
 				}
 			}
 		}
 		return(false);
+	}
+	eType getType() {
+		return(type);
 	}
 private:
 	void createThread();
@@ -750,6 +746,7 @@ private:
 		__sync_lock_release(&this->_sync_links);
 	}
 private:
+	eType type;
 	map<TcpReassemblyLink_id, TcpReassemblyLink*> links;
 	volatile int _sync_links;
 	bool enableHttpForceInit;

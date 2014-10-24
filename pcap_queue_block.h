@@ -14,7 +14,8 @@
 #define PCAP_BLOCK_STORE_HEADER_STRING_LEN	16
 
 
-extern int opt_enable_tcpreassembly;
+extern int opt_enable_http;
+extern int opt_enable_webrtc;
 extern int opt_tcpreassembly_pb_lock;
 
 struct pcap_pkthdr_fix_size {
@@ -140,7 +141,7 @@ struct pcap_block_store {
 	bool compress();
 	bool uncompress();
 	void lock_packet(int index) {
-		if(opt_enable_tcpreassembly && opt_tcpreassembly_pb_lock) {
+		if((opt_enable_http || opt_enable_webrtc) && opt_tcpreassembly_pb_lock) {
 			this->lock_sync_packet_lock();
 			if(!this->packet_lock) {
 				this->packet_lock = (bool*)calloc(this->count, sizeof(bool));
@@ -153,7 +154,7 @@ struct pcap_block_store {
 		
 	}
 	void unlock_packet(int index) {
-		if(opt_enable_tcpreassembly && opt_tcpreassembly_pb_lock) {
+		if((opt_enable_http || opt_enable_webrtc) && opt_tcpreassembly_pb_lock) {
 			this->lock_sync_packet_lock();
 			if(this->packet_lock) {
 				this->packet_lock[index] = false;
@@ -164,7 +165,7 @@ struct pcap_block_store {
 		}
 	}
 	bool enableDestroy() {
-	        if(opt_enable_tcpreassembly && opt_tcpreassembly_pb_lock) {
+	        if((opt_enable_http || opt_enable_webrtc) && opt_tcpreassembly_pb_lock) {
 			bool enableDestroy = true;
 			this->lock_sync_packet_lock();
 			bool checkLock = true;

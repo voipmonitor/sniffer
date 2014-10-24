@@ -83,7 +83,8 @@ extern int opt_dup_check_ipheader;
 extern int opt_mirrorip;
 extern char opt_mirrorip_src[20];
 extern char opt_mirrorip_dst[20];
-extern int opt_enable_tcpreassembly;
+extern int opt_enable_http;
+extern int opt_enable_webrtc;
 extern int opt_tcpreassembly_pb_lock;
 extern int opt_fork;
 extern int opt_id_sensor;
@@ -97,6 +98,7 @@ extern int opt_mysqlstore_max_threads_ipacc_agreg2;
 extern pcap_t *global_pcap_handle;
 extern char *sipportmatrix;
 extern char *httpportmatrix;
+extern char *webrtcportmatrix;
 extern unsigned int duplicate_counter;
 extern struct tcp_stream2_t *tcp_streams_hashed[MAX_TCPSTREAMS];
 extern MirrorIP *mirrorip;
@@ -112,7 +114,8 @@ extern int domainfilter_reload_do;
 extern char user_filter[10*2048];
 extern Calltable *calltable;
 extern volatile int calls_counter;
-extern TcpReassembly *tcpReassembly;
+extern TcpReassembly *tcpReassemblyHttp;
+extern TcpReassembly *tcpReassemblyWebrtc;
 extern char opt_pb_read_from_file[256];
 extern int global_pcap_dlink;
 extern char opt_cachedir[1024];
@@ -1239,10 +1242,16 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 		outStrStat << "t2CPU[" << setprecision(1) << t2cpu << "%] ";
 		if (opt_rrd) rrdtCPU_t2 = t2cpu;
 	}
-	if(tcpReassembly) {
-		double thttp_cpu = tcpReassembly->getCpuUsagePerc(true);
+	if(tcpReassemblyHttp) {
+		double thttp_cpu = tcpReassemblyHttp->getCpuUsagePerc(true);
 		if(thttp_cpu >= 0) {
 			outStrStat << "thttpCPU[" << setprecision(1) << thttp_cpu << "%] ";
+		}
+	}
+	if(tcpReassemblyWebrtc) {
+		double twebrtc_cpu = tcpReassemblyWebrtc->getCpuUsagePerc(true);
+		if(twebrtc_cpu >= 0) {
+			outStrStat << "twebrtcCPU[" << setprecision(1) << twebrtc_cpu << "%] ";
 		}
 	}
 	extern AsyncClose asyncClose;
@@ -1803,7 +1812,7 @@ PcapQueue_readFromInterface_base::PcapQueue_readFromInterface_base(const char *i
 	// CONFIG
 	extern int opt_promisc;
 	extern int opt_ringbuffer;
-	this->pcap_snaplen = opt_enable_tcpreassembly ? 6000 : 3200;
+	this->pcap_snaplen = opt_enable_http || opt_enable_webrtc ? 6000 : 3200;
 	this->pcap_promisc = opt_promisc;
 	this->pcap_timeout = 1000;
 	this->pcap_buffer_size = opt_ringbuffer * 1024 * 1024;
@@ -3771,7 +3780,8 @@ void PcapQueue_readFromFifo::processPacket(pcap_pkthdr_plus *header_plus, u_char
 	int datalen = 0;
 	int istcp = 0;
 	int was_rtp;
-	bool useTcpReassembly = false;
+	bool useTcpReassemblyHttp = false;
+	bool useTcpReassemblyWebrtc = false;
 	
 	pcap_pkthdr *header = header_plus->convertToStdHeader();
 	
@@ -3847,10 +3857,14 @@ void PcapQueue_readFromFifo::processPacket(pcap_pkthdr_plus *header_plus, u_char
 		istcp = 0;
 	} else if (header_ip->protocol == IPPROTO_TCP) {
 		header_tcp = (tcphdr2*) ((char *) header_ip + sizeof(*header_ip));
-		if(opt_enable_tcpreassembly && (httpportmatrix[htons(header_tcp->source)] || httpportmatrix[htons(header_tcp->dest)])) {
-			tcpReassembly->push(header, header_ip, packet,
-					    block_store, block_store_index);
-			useTcpReassembly = true;
+		if(opt_enable_http && (httpportmatrix[htons(header_tcp->source)] || httpportmatrix[htons(header_tcp->dest)])) {
+			tcpReassemblyHttp->push(header, header_ip, packet,
+						block_store, block_store_index);
+			useTcpReassemblyHttp = true;
+		} else if(opt_enable_webrtc && (webrtcportmatrix[htons(header_tcp->source)] || webrtcportmatrix[htons(header_tcp->dest)])) {
+			tcpReassemblyWebrtc->push(header, header_ip, packet,
+						  block_store, block_store_index);
+			useTcpReassemblyWebrtc = true;
 		} else {
 			istcp = 1;
 			// prepare packet pointers 
@@ -3872,7 +3886,9 @@ void PcapQueue_readFromFifo::processPacket(pcap_pkthdr_plus *header_plus, u_char
 		mirrorip->send((char *)header_ip, (int)(header->caplen - ((u_char*)header_ip - packet)));
 	}
 	int voippacket = 0;
-	if(!useTcpReassembly && opt_enable_tcpreassembly != 2) {
+	if((opt_enable_http == 2 && useTcpReassemblyHttp) ||
+	   (opt_enable_webrtc == 2 && useTcpReassemblyWebrtc) ||
+	   (opt_enable_http < 2 && opt_enable_webrtc < 2)) {
 		process_packet(header_ip->saddr, htons(header_udp->source), header_ip->daddr, htons(header_udp->dest), 
 			       data, datalen, data - (char*)packet, 
 			       this->getPcapHandle(dlt), header, packet, 
@@ -3907,7 +3923,7 @@ void PcapQueue_readFromFifo::checkFreeSizeCachedir() {
 }
 
 void PcapQueue_readFromFifo::cleanupBlockStoreTrash(bool all) {
-	if(all && opt_enable_tcpreassembly && opt_pb_read_from_file[0]) {
+	if(all && (opt_enable_http || opt_enable_webrtc) && opt_pb_read_from_file[0]) {
 		this->cleanupBlockStoreTrash();
 		cout << "COUNT REST BLOCKS: " << this->blockStoreTrash.size() << endl;
 	}

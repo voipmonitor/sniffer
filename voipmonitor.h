@@ -22,8 +22,9 @@
 #define STORE_PROC_ID_REGISTER_1 51
 #define STORE_PROC_ID_SAVE_PACKET_SQL 61
 #define STORE_PROC_ID_HTTP_1 71
-#define STORE_PROC_ID_CACHE_NUMBERS_LOCATIONS 81
-#define STORE_PROC_ID_FRAUD_ALERT_INFO 82
+#define STORE_PROC_ID_WEBRTC_1 81
+#define STORE_PROC_ID_CACHE_NUMBERS_LOCATIONS 91
+#define STORE_PROC_ID_FRAUD_ALERT_INFO 92
 #define STORE_PROC_ID_IPACC_1 101
 #define STORE_PROC_ID_IPACC_AGR_INTERVAL 111
 #define STORE_PROC_ID_IPACC_AGR_HOUR 112
@@ -50,6 +51,7 @@ using namespace std;
 
 void reload_config();
 void reload_capture_rules();
+void set_context_config();
 void convert_filesindex();
 
 /* For compatibility with Linux definitions... */

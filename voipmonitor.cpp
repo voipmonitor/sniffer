@@ -67,6 +67,7 @@
 #include "generator.h"
 #include "tcpreassembly.h"
 #include "http.h"
+#include "webrtc.h"
 #include "ip_frag.h"
 #include "cleanspool.h"
 #include "regcache.h"
@@ -246,11 +247,13 @@ char opt_pb_read_from_file[256] = "";
 int opt_dscp = 0;
 int opt_cdrproxy = 1;
 int opt_enable_http_enum_tables = 0;
+int opt_enable_webrtc_table = 0;
 int opt_generator = 0;
 int opt_generator_channels = 1;
 int opt_skipdefault = 0;
 int opt_filesclean = 1;
-int opt_enable_tcpreassembly = 0;
+int opt_enable_http = 0;
+int opt_enable_webrtc = 0;
 int opt_tcpreassembly_pb_lock = 0;
 int opt_tcpreassembly_thread = 1;
 char opt_tcpreassembly_log[1024];
@@ -330,6 +333,7 @@ extern int opt_pcap_queue_dequeu_method;
 extern int sql_noerror;
 int opt_cleandatabase_cdr = 0;
 int opt_cleandatabase_http_enum = 0;
+int opt_cleandatabase_webrtc = 0;
 int opt_cleandatabase_register_state = 0;
 int opt_cleandatabase_register_failed = 0;
 unsigned int graph_delimiter = GRAPH_DELIMITER;
@@ -465,9 +469,12 @@ int terminating;		// if set to 1, worker thread will terminate
 int terminating2;		// if set to 1, worker thread will terminate
 char *sipportmatrix;		// matrix of sip ports to monitor
 char *httpportmatrix;		// matrix of http ports to monitor
+char *webrtcportmatrix;		// matrix of webrtc ports to monitor
 char *ipaccountportmatrix;
 vector<u_int32_t> httpip;
 vector<d_u_int32_t> httpnet;
+vector<u_int32_t> webrtcip;
+vector<d_u_int32_t> webrtcnet;
 
 uint8_t opt_sdp_reverse_ipport = 0;
 
@@ -508,8 +515,10 @@ char mac[32] = "";
 
 PcapQueue *pcapQueueStatInterface;
 
-TcpReassembly *tcpReassembly;
+TcpReassembly *tcpReassemblyHttp;
+TcpReassembly *tcpReassemblyWebrtc;
 HttpData *httpData;
+WebrtcData *webrtcData;
 
 vm_atomic<string> storingCdrLastWriteAt;
 
@@ -524,11 +533,13 @@ int opt_mysqlstore_concat_limit_cdr = 0;
 int opt_mysqlstore_concat_limit_message = 0;
 int opt_mysqlstore_concat_limit_register = 0;
 int opt_mysqlstore_concat_limit_http = 0;
+int opt_mysqlstore_concat_limit_webrtc = 0;
 int opt_mysqlstore_concat_limit_ipacc = 0;
 int opt_mysqlstore_max_threads_cdr = 1;
 int opt_mysqlstore_max_threads_message = 1;
 int opt_mysqlstore_max_threads_register = 1;
 int opt_mysqlstore_max_threads_http = 1;
+int opt_mysqlstore_max_threads_webrtc = 1;
 int opt_mysqlstore_max_threads_ipacc_base = 3;
 int opt_mysqlstore_max_threads_ipacc_agreg2 = 3;
 int opt_mysqlstore_limit_queue_register = 1000000;
@@ -1076,6 +1087,15 @@ int eval_config(string inistr) {
 		}
 	}
 	
+	// webrtc ports
+	if (ini.GetAllValues("general", "webrtcport", values)) {
+		CSimpleIni::TNamesDepend::const_iterator i = values.begin();
+		// reset default port 
+		for (; i != values.end(); ++i) {
+			webrtcportmatrix[atoi(i->pItem)] = 1;
+		}
+	}
+	
 	// http ip
 	if (ini.GetAllValues("general", "httpip", values)) {
 		CSimpleIni::TNamesDepend::const_iterator i = values.begin();
@@ -1103,6 +1123,36 @@ int eval_config(string inistr) {
 		}
 		if(httpip.size() > 1) {
 			std::sort(httpip.begin(), httpip.end());
+		}
+	}
+
+	// webrtc ip
+	if (ini.GetAllValues("general", "webrtcip", values)) {
+		CSimpleIni::TNamesDepend::const_iterator i = values.begin();
+		for (; i != values.end(); ++i) {
+			u_int32_t ip;
+			int lengthMask = 32;
+			char *pointToSeparatorLengthMask = strchr((char*)i->pItem, '/');
+			if(pointToSeparatorLengthMask) {
+				*pointToSeparatorLengthMask = 0;
+				ip = htonl(inet_addr(i->pItem));
+				lengthMask = atoi(pointToSeparatorLengthMask + 1);
+			} else {
+				ip = htonl(inet_addr(i->pItem));
+			}
+			if(lengthMask < 32) {
+				ip = ip >> (32 - lengthMask) << (32 - lengthMask);
+			}
+			if(ip) {
+				if(lengthMask < 32) {
+					webrtcnet.push_back(d_u_int32_t(ip, lengthMask));
+				} else {
+					webrtcip.push_back(ip);
+				}
+			}
+		}
+		if(webrtcip.size() > 1) {
+			std::sort(webrtcip.begin(), webrtcip.end());
 		}
 	}
 
@@ -1158,6 +1208,7 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "cleandatabase", NULL))) {
 		opt_cleandatabase_cdr = atoi(value);
 		opt_cleandatabase_http_enum = opt_cleandatabase_cdr;
+		opt_cleandatabase_webrtc = opt_cleandatabase_cdr;
 		opt_cleandatabase_register_state = opt_cleandatabase_cdr;
 		opt_cleandatabase_register_failed = opt_cleandatabase_cdr;
 	}
@@ -1173,9 +1224,13 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "cleandatabase_cdr", NULL))) {
 		opt_cleandatabase_cdr = atoi(value);
 		opt_cleandatabase_http_enum = opt_cleandatabase_cdr;
+		opt_cleandatabase_webrtc = opt_cleandatabase_cdr;
 	}
 	if((value = ini.GetValue("general", "cleandatabase_http_enum", NULL))) {
 		opt_cleandatabase_http_enum = atoi(value);
+	}
+	if((value = ini.GetValue("general", "cleandatabase_webrtc", NULL))) {
+		opt_cleandatabase_webrtc = atoi(value);
 	}
 	if((value = ini.GetValue("general", "cleandatabase_register_state", NULL))) {
 		opt_cleandatabase_register_state = atoi(value);
@@ -1752,9 +1807,11 @@ int eval_config(string inistr) {
                 opt_openfile_max = atoi(value);
         }
 	if((value = ini.GetValue("general", "enable_lua_tables", NULL)) ||
-	   (value = ini.GetValue("general", "enable_http_enum_tables", NULL))
-	) {
+	   (value = ini.GetValue("general", "enable_http_enum_tables", NULL))) {
 		opt_enable_http_enum_tables = yesno(value);
+	}
+	if((value = ini.GetValue("general", "enable_webrtc_table", NULL))) {
+		opt_enable_webrtc_table = yesno(value);
 	}
 
 	if((value = ini.GetValue("general", "packetbuffer_enable", NULL))) {
@@ -1833,8 +1890,12 @@ int eval_config(string inistr) {
 		opt_pcap_queue_receive_dlt = atoi(value);
 	}
 	
-	if((value = ini.GetValue("general", "tcpreassembly", NULL))) {
-		opt_enable_tcpreassembly = strcmp(value, "only") ? yesno(value) : 2;
+	if((value = ini.GetValue("general", "tcpreassembly", NULL)) ||
+	   (value = ini.GetValue("general", "http", NULL))) {
+		opt_enable_http = strcmp(value, "only") ? yesno(value) : 2;
+	}
+	if((value = ini.GetValue("general", "webrtc", NULL))) {
+		opt_enable_webrtc = strcmp(value, "only") ? yesno(value) : 2;
 	}
 	if((value = ini.GetValue("general", "tcpreassembly_log", NULL))) {
 		strncpy(opt_tcpreassembly_log, value, sizeof(opt_tcpreassembly_log));
@@ -1920,6 +1981,9 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "mysqlstore_concat_limit_http", NULL))) {
 		opt_mysqlstore_concat_limit_http = atoi(value);
 	}
+	if((value = ini.GetValue("general", "mysqlstore_concat_limit_webrtc", NULL))) {
+		opt_mysqlstore_concat_limit_webrtc = atoi(value);
+	}
 	if((value = ini.GetValue("general", "mysqlstore_concat_limit_ipacc", NULL))) {
 		opt_mysqlstore_concat_limit_ipacc = atoi(value);
 	}
@@ -1935,6 +1999,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "mysqlstore_max_threads_http", NULL))) {
 		opt_mysqlstore_max_threads_http = max(min(atoi(value), 9), 1);
+	}
+	if((value = ini.GetValue("general", "mysqlstore_max_threads_webrtc", NULL))) {
+		opt_mysqlstore_max_threads_webrtc = max(min(atoi(value), 9), 1);
 	}
 	if((value = ini.GetValue("general", "mysqlstore_max_threads_ipacc_base", NULL))) {
 		opt_mysqlstore_max_threads_ipacc_base = max(min(atoi(value), 9), 1);
@@ -2058,7 +2125,13 @@ int eval_config(string inistr) {
 	#mirror_source_ip		=
 	#mirror_source_port		=
 	*/
+	
+	set_context_config();
 
+	return 0;
+}
+
+void set_context_config() {
 	#ifdef QUEUE_NONBLOCK2
 		if(opt_scanpcapdir[0] != '\0') {
 			opt_pcap_queue = 0;
@@ -2104,10 +2177,12 @@ int eval_config(string inistr) {
 		opt_rtpsave_threaded = 0;
 	}
 	
-	if(opt_enable_tcpreassembly) {
+	if(opt_enable_http) {
 		opt_enable_http_enum_tables = true;
 	}
-	return 0;
+	if(opt_enable_webrtc) {
+		opt_enable_webrtc_table = true;
+	}
 }
 
 int load_config(char *fname) {
@@ -2429,6 +2504,7 @@ int main(int argc, char *argv[]) {
 	// set default SIP port to 5060
 	sipportmatrix[5060] = 1;
 	httpportmatrix = (char*)calloc(1, sizeof(char) * 65537);
+	webrtcportmatrix = (char*)calloc(1, sizeof(char) * 65537);
 
 	pthread_mutex_init(&mysqlconnect_lock, NULL);
 	pthread_mutex_init(&vm_rrd_lock, NULL);
@@ -3250,6 +3326,14 @@ int main(int argc, char *argv[]) {
 				}
 			}
 		}
+		if(opt_mysqlstore_concat_limit_webrtc) {
+			for(int i = 0; i < opt_mysqlstore_max_threads_webrtc; i++) {
+				sqlStore->setConcatLimit(STORE_PROC_ID_WEBRTC_1 + i, opt_mysqlstore_concat_limit_webrtc);
+				if(i) {
+					sqlStore->setEnableAutoDisconnect(STORE_PROC_ID_WEBRTC_1 + i);
+				}
+			}
+		}
 		if(opt_mysqlstore_concat_limit_ipacc) {
 			for(int i = 0; i < opt_mysqlstore_max_threads_ipacc_base; i++) {
 				sqlStore->setConcatLimit(STORE_PROC_ID_IPACC_1 + i, opt_mysqlstore_concat_limit_ipacc);
@@ -3559,7 +3643,7 @@ int main(int argc, char *argv[]) {
 #endif 
 	}
 
-	if(opt_enable_tcpreassembly) {
+	if(opt_enable_http) {
 		bool setHttpPorts = false;
 		for(int i = 0; i < 65537; i++) {
 			if(httpportmatrix[i]) {
@@ -3567,11 +3651,24 @@ int main(int argc, char *argv[]) {
 			}
 		}
 		if(setHttpPorts) {
-			tcpReassembly = new TcpReassembly;
-			tcpReassembly->setEnableHttpForceInit();
-			tcpReassembly->setEnableCrazySequence();
+			tcpReassemblyHttp = new TcpReassembly(TcpReassembly::http);
+			tcpReassemblyHttp->setEnableHttpForceInit();
+			tcpReassemblyHttp->setEnableCrazySequence();
 			httpData = new HttpData;
-			tcpReassembly->setDataCallback(httpData);
+			tcpReassemblyHttp->setDataCallback(httpData);
+		}
+	}
+	if(opt_enable_webrtc) {
+		bool setWebrtcPorts = false;
+		for(int i = 0; i < 65537; i++) {
+			if(webrtcportmatrix[i]) {
+				setWebrtcPorts = true;
+			}
+		}
+		if(setWebrtcPorts) {
+			tcpReassemblyWebrtc = new TcpReassembly(TcpReassembly::webrtc);
+			webrtcData = new WebrtcData;
+			tcpReassemblyWebrtc->setDataCallback(webrtcData);
 		}
 	}
 	
@@ -3701,12 +3798,20 @@ int main(int argc, char *argv[]) {
 					
 				} else {
 				 
-					if(opt_pb_read_from_file[0] && opt_enable_tcpreassembly) {
+					if(opt_pb_read_from_file[0] && opt_enable_http) {
 						for(int i = 0; i < opt_mysqlstore_max_threads_http; i++) {
 							sqlStore->setIgnoreTerminating(STORE_PROC_ID_HTTP_1 + i, true);
 						}
 						if(opt_tcpreassembly_thread) {
-							tcpReassembly->setIgnoreTerminating(true);
+							tcpReassemblyHttp->setIgnoreTerminating(true);
+						}
+					}
+					if(opt_pb_read_from_file[0] && opt_enable_webrtc) {
+						for(int i = 0; i < opt_mysqlstore_max_threads_webrtc; i++) {
+							sqlStore->setIgnoreTerminating(STORE_PROC_ID_WEBRTC_1 + i, true);
+						}
+						if(opt_tcpreassembly_thread) {
+							tcpReassemblyWebrtc->setIgnoreTerminating(true);
 						}
 					}
 				
@@ -3729,8 +3834,11 @@ int main(int argc, char *argv[]) {
 					while(!terminating) {
 						if(_counter && (verbosityE > 0 || !(_counter % 10))) {
 							pcapQueueQ->pcapStat(verbosityE > 0 ? 1 : 10);
-							if(tcpReassembly) {
-								tcpReassembly->setDoPrintContent();
+							if(tcpReassemblyHttp) {
+								tcpReassemblyHttp->setDoPrintContent();
+							}
+							if(tcpReassemblyWebrtc) {
+								tcpReassemblyWebrtc->setDoPrintContent();
 							}
 						}
 						sleep(1);
@@ -3738,30 +3846,50 @@ int main(int argc, char *argv[]) {
 					}
 					
 					pcapQueueI->terminate();
-					sleep(opt_pb_read_from_file[0] && opt_enable_tcpreassembly ? 10 : 1);
-					if(opt_pb_read_from_file[0] && opt_enable_tcpreassembly && opt_tcpreassembly_thread) {
-						tcpReassembly->setIgnoreTerminating(false);
+					sleep(opt_pb_read_from_file[0] && (opt_enable_http || opt_enable_webrtc) ? 10 : 1);
+					if(opt_pb_read_from_file[0] && (opt_enable_http || opt_enable_webrtc) && opt_tcpreassembly_thread) {
+						if(opt_enable_http) {
+							tcpReassemblyHttp->setIgnoreTerminating(false);
+						}
+						if(opt_enable_webrtc) {
+							tcpReassemblyWebrtc->setIgnoreTerminating(false);
+						}
 						sleep(2);
 					}
 					pcapQueueQ->terminate();
 					sleep(1);
 					
-					if(tcpReassembly) {
-						delete tcpReassembly;
-						tcpReassembly = NULL;
+					if(tcpReassemblyHttp) {
+						delete tcpReassemblyHttp;
+						tcpReassemblyHttp = NULL;
 					}
 					if(httpData) {
 						delete httpData;
 						httpData = NULL;
 					}
+					if(tcpReassemblyWebrtc) {
+						delete tcpReassemblyWebrtc;
+						tcpReassemblyWebrtc = NULL;
+					}
+					if(webrtcData) {
+						delete webrtcData;
+						webrtcData = NULL;
+					}
 					
 					delete pcapQueueI;
 					delete pcapQueueQ;
 					
-					if(opt_pb_read_from_file[0] && opt_enable_tcpreassembly) {
+					if(opt_pb_read_from_file[0] && (opt_enable_http || opt_enable_webrtc)) {
 						sleep(2);
-						for(int i = 0; i < opt_mysqlstore_max_threads_http; i++) {
-							sqlStore->setIgnoreTerminating(STORE_PROC_ID_HTTP_1 + i, false);
+						if(opt_enable_http) {
+							for(int i = 0; i < opt_mysqlstore_max_threads_http; i++) {
+								sqlStore->setIgnoreTerminating(STORE_PROC_ID_HTTP_1 + i, false);
+							}
+						}
+						if(opt_enable_webrtc) {
+							for(int i = 0; i < opt_mysqlstore_max_threads_webrtc; i++) {
+								sqlStore->setIgnoreTerminating(STORE_PROC_ID_WEBRTC_1 + i, false);
+							}
 						}
 						sleep(2);
 					}
@@ -3875,11 +4003,17 @@ int main(int argc, char *argv[]) {
 
 	regfailedcache->prune(0);
 	
-	if(tcpReassembly) {
-		delete tcpReassembly;
+	if(tcpReassemblyHttp) {
+		delete tcpReassemblyHttp;
 	}
 	if(httpData) {
 		delete httpData;
+	}
+	if(tcpReassemblyWebrtc) {
+		delete tcpReassemblyWebrtc;
+	}
+	if(webrtcData) {
+		delete webrtcData;
 	}
 	
 	if(sipSendSocket) {
@@ -3935,6 +4069,7 @@ int main(int argc, char *argv[]) {
 
 	free(sipportmatrix);
 	free(httpportmatrix);
+	free(webrtcportmatrix);
 	if(opt_ipaccount) {
 		free(ipaccountportmatrix);
 	}

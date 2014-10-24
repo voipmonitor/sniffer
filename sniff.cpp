@@ -120,10 +120,12 @@ extern int terminating;
 extern int opt_rtp_firstleg;
 extern int opt_sip_register;
 extern int opt_norecord_header;
-extern int opt_enable_tcpreassembly;
+extern int opt_enable_http;
+extern int opt_enable_webrtc;
 extern int opt_convert_dlt_sll_to_en10;
 extern char *sipportmatrix;
 extern char *httpportmatrix;
+extern char *webrtcportmatrix;
 extern pcap_t *global_pcap_handle;
 extern pcap_t *global_pcap_handle_dead_EN10MB;
 extern read_thread *threads;
@@ -186,7 +188,8 @@ extern vector<dstring> opt_custom_headers_message;
 extern int opt_custom_headers_last_value;
 extern livesnifferfilter_use_siptypes_s livesnifferfilterUseSipTypes;
 extern int opt_skipdefault;
-extern TcpReassembly *tcpReassembly;
+extern TcpReassembly *tcpReassemblyHttp;
+extern TcpReassembly *tcpReassemblyWebrtc;
 extern char ifname[1024];
 extern uint8_t opt_sdp_reverse_ipport;
 extern int opt_fork;
@@ -3415,7 +3418,8 @@ void *pcap_read_thread_func(void *arg) {
 	int istcp = 0;
 	int was_rtp;
 	unsigned int packets = 0;
-	bool useTcpReassembly;
+	bool useTcpReassemblyHttp;
+	bool useTcpReassemblyWebrtc;
 
 #if defined(QUEUE_MUTEX) || defined(QUEUE_NONBLOCK)
 	int res = 0;
@@ -3489,7 +3493,8 @@ void *pcap_read_thread_func(void *arg) {
 		}
 
 		header_udp = &header_udp_tmp;
-		useTcpReassembly = false;
+		useTcpReassemblyHttp = false;
+		useTcpReassemblyWebrtc = false;
 		if (header_ip->protocol == IPPROTO_UDP) {
 			// prepare packet pointers 
 			header_udp = (struct udphdr2 *) ((char *) header_ip + sizeof(*header_ip));
@@ -3501,11 +3506,13 @@ void *pcap_read_thread_func(void *arg) {
 			// dokončit nezbytné paměťové operace pro udržení obsahu paketu !!!!
 			// zatím reassemblování v módu bez pb zakázáno
 			/*
-			if(opt_enable_tcpreassembly && (httpportmatrix[htons(header_tcp->source)] || httpportmatrix[htons(header_tcp->dest)])) {
+			if(opt_enable_http && (httpportmatrix[htons(header_tcp->source)] || httpportmatrix[htons(header_tcp->dest)])) {
 				tcpReassembly->push(&pp->header, header_ip, packet);
-				
-				useTcpReassembly = true;
-			} else */{
+				useTcpReassemblyHttp = true;
+			} else if(opt_enable_webrtc && (webrtcportmatrix[htons(header_tcp->source)] || webrtcportmatrix[htons(header_tcp->dest)])) {
+				tcpReassembly->push(&pp->header, header_ip, packet);
+				useTcpReassemblyWebrtc = true;
+			} else*/{
 				istcp = 1;
 				// prepare packet pointers 
 				data = (char *) header_tcp + (header_tcp->doff * 4);
@@ -3538,7 +3545,9 @@ void *pcap_read_thread_func(void *arg) {
 			mirrorip->send((char *)header_ip, (int)(pp->header.caplen - ((char*)header_ip - (char*)packet)));
 		}
 		int voippacket = 0;
-		if(!useTcpReassembly || opt_enable_tcpreassembly != 2) {
+		if((opt_enable_http == 2 && useTcpReassemblyHttp) ||
+		   (opt_enable_webrtc == 2 && useTcpReassemblyWebrtc) ||
+		   (opt_enable_http < 2 && opt_enable_webrtc < 2)) {
 			process_packet(header_ip->saddr, htons(header_udp->source), header_ip->daddr, htons(header_udp->dest), 
 				       data, datalen, data - (char*)packet, 
 				       global_pcap_handle, &pp->header, packet, 
@@ -3895,225 +3904,6 @@ void readdump_libpcap(pcap_t *handle) {
 			}
 			continue;
 		}
-
-		/* obsolete
-		switch(global_pcap_dlink) {
-			case DLT_LINUX_SLL:
-				header_sll = (struct sll_header *) (char*)packet;
-				protocol = header_sll->sll_protocol;
-				if(header_sll->sll_protocol == 129) {
-					// VLAN tag
-					protocol = *(short *)((char*)packet + 16 + 2);
-					offset = 4;
-				} else {
-					offset = 0;
-					protocol = header_sll->sll_protocol;
-				}
-				offset += sizeof(struct sll_header);
-				break;
-			case DLT_EN10MB:
-				header_eth = (struct ether_header *) (char*)(packet);
-				if(header_eth->ether_type == 129) {
-					// VLAN tag
-					offset = 4;
-					//XXX: this is very ugly hack, please do it right! (it will work for "08 00" which is IPV4 but not for others! (find vlan_header or something)
-					protocol = *(packet + sizeof(struct ether_header) + 2);
-				} else {
-					offset = 0;
-					protocol = header_eth->ether_type;
-				}
-				offset += sizeof(struct ether_header);
-				break;
-			case DLT_RAW:
-				offset = 0;
-				protocol = 8;
-				break;
-			case DLT_IEEE802_11_RADIO:
-				offset = 52;
-				protocol = 8;
-				break;
-			default:
-				syslog(LOG_ERR, "This datalink number [%d] is not supported yet. For more information write to support@voipmonitor.org\n", global_pcap_dlink);
-				continue;
-		}
-
-		if(protocol != 8) {
-			// not ipv4 
-			continue;
-		}
-		
-		header_ip = (struct iphdr2 *) ((char*)packet + offset);
-		//if UDP defrag is enabled process only UDP packets and only SIP packets
-		if(opt_udpfrag and (header_ip->protocol == IPPROTO_UDP or header_ip->protocol == 4)) {
-			int foffset = ntohs(header_ip->frag_off);
-			if ((foffset & IP_MF) or ((foffset & IP_OFFSET) > 0)) {
-				// packet is fragmented
-				if(handle_defrag(header_ip, &header, &packet, 0)) {
-					// packets are reassembled
-					header_ip = (struct iphdr2 *)((char*)packet + offset);
-					destroy = true;
-				} else {
-					continue;
-				}
-			}
-		}
-
-headerip:
-		if(header_ip->protocol == IPPROTO_IPIP) {
-			header_ip = (struct iphdr2 *) ((char*)header_ip + sizeof(iphdr2));
-
-			//if UDP defrag is enabled process only UDP packets and only SIP packets
-			if(opt_udpfrag and header_ip->protocol == IPPROTO_UDP) {
-				int foffset = ntohs(header_ip->frag_off);
-				if ((foffset & IP_MF) or ((foffset & IP_OFFSET) > 0)) {
-					// packet is fragmented
-					if(handle_defrag(header_ip, &header, &packet, destroy)) {
-						// packet was returned, turn off frag flag for both packets
-						iphdr2 *header_ip_1 = (struct iphdr2 *)((char*)packet + offset);
-						header_ip_1->frag_off = 0;
-
-						// turn off frag for the second IP header 
-						header_ip = (struct iphdr2 *) ((char*)header_ip_1 + sizeof(iphdr2));
-						header_ip->frag_off = 0;
-
-						// update lenght of the first ip header to the len of the second IP header since it can be changed due to reassemble
-						header_ip_1->tot_len = htons((ntohs(header_ip->tot_len)) + sizeof(iphdr2)); 
-
-						destroy = true;
-					} else {
-						continue;
-					}
-				}
-			}
-		} else if(header_ip->protocol == IPPROTO_GRE) {
-			// gre protocol 
-			char gre[8];
-			uint16_t a, b;
-			// if anyone know how to make network to hostbyte nicely, redesign this
-			a = ntohs(*(uint16_t*)((char*)header_ip + sizeof(iphdr2)));
-			b = ntohs(*(uint16_t*)((char*)header_ip + sizeof(iphdr2) + 2));
-			memcpy(gre, &a, 2);
-			memcpy(gre + 2, &b, 2);
-
-			struct gre_hdr *grehdr = (struct gre_hdr *)gre;
-			if(grehdr->version == 0 and grehdr->protocol == 0x6558) {
-				header_eth = (struct ether_header *)((char*)header_ip + sizeof(iphdr2) + 8);
-				if(header_eth->ether_type == 129) {
-					// VLAN tag
-					offset = 4;
-					//XXX: this is very ugly hack, please do it right! (it will work for "08 00" which is IPV4 but not for others! (find vlan_header or something)
-					protocol = *((char*)header_eth + 2);
-				} else {
-					offset = 0;
-					protocol = header_eth->ether_type;
-				}
-				if(protocol == IPPROTO_UDP or protocol == IPPROTO_TCP) {
-					offset += sizeof(struct ether_header);
-					header_ip = (struct iphdr2 *) ((char*)header_eth + offset);
-					goto headerip;
-				} else {
-					goto skip;
-				}
-			} else if(grehdr->version == 0 and grehdr->protocol == 0x800) {
-				offset += sizeof(iphdr2) + 4;
-				header_ip = (struct iphdr2 *) ((char*)header_ip + sizeof(iphdr2) + 4);
-				goto headerip;
-			} else {
-				if(destroy) { free(header); free(packet);};
-				if(opt_ipaccount == 0) {
-					continue;
-				} else {
-					goto skip;
-				}
-			}
-		}
-
-		// if IP defrag is enabled, run each 10 seconds cleaning 
-		if(opt_udpfrag and (ipfrag_lastprune + 10) < header->ts.tv_sec) {
-			ipfrag_prune(header->ts.tv_sec, 0);
-			ipfrag_lastprune = header->ts.tv_sec;
-			//TODO it would be good to still pass fragmented packets even it does not contain the last semant, the ipgrad_prune just wipes all unfinished frags
-		}
-
-		header_udp = &header_udp_tmp;
-		if (header_ip->protocol == IPPROTO_UDP) {
-			// prepare packet pointers 
-			header_udp = (struct udphdr2 *) ((char *) header_ip + sizeof(*header_ip));
-			data = (char *) header_udp + sizeof(*header_udp);
-			datalen = (int)(header->caplen - ((unsigned long) data - (unsigned long) packet)); 
-			traillen = (int)(header->caplen - ((unsigned long) header_ip - (unsigned long) packet)) - ntohs(header_ip->tot_len);
-			istcp = 0;
-		} else if (header_ip->protocol == IPPROTO_TCP) {
-			istcp = 1;
-			// prepare packet pointers 
-			header_tcp = (struct tcphdr2 *) ((char *) header_ip + sizeof(*header_ip));
-			data = (char *) header_tcp + (header_tcp->doff * 4);
-			datalen = (int)(header->caplen - ((unsigned long) data - (unsigned long) packet)); 
-			//if (datalen == 0 || !(sipportmatrix[htons(header_tcp->source)] || sipportmatrix[htons(header_tcp->dest)])) {
-			if (!(sipportmatrix[htons(header_tcp->source)] || sipportmatrix[htons(header_tcp->dest)]) &&
-			    !(opt_enable_tcpreassembly && (httpportmatrix[htons(header_tcp->source)] || httpportmatrix[htons(header_tcp->dest)])) &&
-			    !(opt_skinny && (htons(header_tcp->source) == 2000 || htons(header_tcp->dest) == 2000))) {
-				// not interested in TCP packet other than SIP port
-				if(opt_ipaccount == 0) {
-					if(destroy) { 
-						free(header); 
-						free(packet);
-					}
-					continue;
-				}
-			}
-#if 0
-			char tmp = data[datalen-1];
-			data[datalen-1] = '\0';
-			printf("tcp packet datalen[%d] [%s]!!!\n", datalen, data);
-			data[datalen-1] = tmp;
-#endif
-
-			header_udp->source = header_tcp->source;
-			header_udp->dest = header_tcp->dest;
-		} else {
-			//packet is not UDP and is not TCP, we are not interested, go to the next packet (but if ipaccount is enabled, do not skip IP
-			if(opt_ipaccount == 0) {
-				if(destroy) { free(header); free(packet);};
-				continue;
-			}
-		}
-
-skip:
-	
-		if(datalen < 0) {
-			if(destroy) { free(header); free(packet);};
-			continue;
-		}
-
-		// check for duplicate packets (md5 is expensive operation - enable only if you really need it
-		if(datalen > 0 && opt_dup_check && prevmd5s != NULL && (traillen < datalen) && 
-		   !(istcp && opt_enable_tcpreassembly && (httpportmatrix[htons(header_tcp->source)] || httpportmatrix[htons(header_tcp->dest)]))) {
-			MD5_Init(&ctx);
-			if(opt_dup_check_ipheader) {
-				// check duplicates based on full ip header and data 
-				MD5_Update(&ctx, header_ip, MIN(datalen - ((char*)header_ip - data), ntohs(header_ip->tot_len)));
-			} else {
-				// check duplicates based only on data (without ip header and without UDP/TCP header). Duplicate packets 
-				// will be matched regardless on IP 
-				MD5_Update(&ctx, data, MAX(0, (unsigned long)datalen - traillen));
-			}
-			MD5_Final(md5, &ctx);
-			uint16_t *hash = (uint16_t*)md5;
-			if(memcmp(md5, prevmd5s+( *hash * MD5_DIGEST_LENGTH), MD5_DIGEST_LENGTH) == 0) {
-				if(destroy) { free(header); free(packet); };
-				//printf("dropping duplicate md5[%s]\n", md5);
-				duplicate_counter++;
-				continue;
-			}
-			memcpy(prevmd5s+( *hash * MD5_DIGEST_LENGTH), md5, MD5_DIGEST_LENGTH);
-		}
-
-		if(opt_pcapdump) {
-			pcap_dump((u_char *)tmppcap, header, packet);
-		}
-		*/
-
 
 		if(opt_pcap_threaded) {
 			//add packet to queue

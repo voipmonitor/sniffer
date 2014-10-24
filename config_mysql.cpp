@@ -40,9 +40,15 @@ config_load_mysql() {
 // httport 
 		{
 		vector<string>ports = split(row["httpport"].c_str(), split(",|;|\t|\r|\n", "|"), true);
-		httpportmatrix[5060] = 0;
 		for(size_t i = 0; i < ports.size(); i++) {
                         httpportmatrix[atoi(ports[i].c_str())] = 1;
+                }
+		}
+// webrtcport
+		{
+		vector<string>ports = split(row["webrtcport"].c_str(), split(",|;|\t|\r|\n", "|"), true);
+		for(size_t i = 0; i < ports.size(); i++) {
+                        webrtcportmatrix[atoi(ports[i].c_str())] = 1;
                 }
 		}
 
@@ -138,6 +144,10 @@ config_load_mysql() {
 
 		if(row["cleandatabase_http_enum"] != "") {
 			opt_cleandatabase_http_enum = atoi(row["cleandatabase_http_enum"].c_str());
+		}
+
+		if(row["cleandatabase_webrtc"] != "") {
+			opt_cleandatabase_webrtc = atoi(row["cleandatabase_webrtc"].c_str());
 		}
 
 		if(row["cleandatabase_register_state"] != "") {

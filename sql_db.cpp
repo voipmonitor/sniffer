@@ -34,6 +34,7 @@ extern vector<dstring> opt_custom_headers_message;
 extern char get_customers_pn_query[1024];
 extern int opt_dscp;
 extern int opt_enable_http_enum_tables;
+extern int opt_enable_webrtc_table;
 extern int opt_mysqlcompress;
 extern pthread_mutex_t mysqlconnect_lock;      
 extern int opt_mos_lqo;
@@ -2643,6 +2644,42 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 			""));
 	}
 
+	if(opt_enable_webrtc_table) {
+		this->query(string(
+		"CREATE TABLE IF NOT EXISTS `webrtc") + federatedSuffix + "` (\
+			`id` INT UNSIGNED NOT NULL AUTO_INCREMENT,\
+			`master_id` INT UNSIGNED,\
+			`timestamp` DATETIME NOT NULL,\
+			`usec` INT UNSIGNED NOT NULL,\
+			`srcip` INT UNSIGNED NOT NULL,\
+			`dstip` INT UNSIGNED NOT NULL,\
+			`srcport` SMALLINT UNSIGNED DEFAULT NULL,\
+			`dstport` SMALLINT UNSIGNED DEFAULT NULL,\
+			`type` ENUM('http', 'http_resp', 'websocket', 'websocket_resp') DEFAULT NULL,\
+			`method` VARCHAR(32) DEFAULT NULL,\
+			`body` TEXT CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,\
+			`external_transaction_id` VARCHAR( 255 ) NOT NULL,\
+			`id_sensor` smallint DEFAULT NULL," +
+		(opt_cdr_partition ? 
+			"PRIMARY KEY (`id`, `timestamp`)," :
+			"PRIMARY KEY (`id`),") + 
+		"KEY `timestamp` (`timestamp`),\
+		KEY `external_transaction_id` (`external_transaction_id`)," +
+		(opt_cdr_partition ? 
+			"KEY `master_id` (`master_id`)" :
+			"CONSTRAINT fk__http_jj__master_id\
+				FOREIGN KEY (`master_id`) REFERENCES `http_jj` (`id`)\
+				ON DELETE CASCADE ON UPDATE CASCADE") +
+		") ENGINE = " + (federated ? federatedConnection + "http_jj'" : "InnoDB") + " " + compress +
+		(opt_cdr_partition && !federated ?
+			(opt_cdr_partition_oldver ? 
+				string(" PARTITION BY RANGE (to_days(timestamp))(\
+					PARTITION ") + partDayName + " VALUES LESS THAN (to_days('" + limitDay + "')) engine innodb)" :
+				string(" PARTITION BY RANGE COLUMNS(timestamp)(\
+					PARTITION ") + partDayName + " VALUES LESS THAN ('" + limitDay + "') engine innodb)") :
+			""));
+	}
+
 	if(opt_enable_fraud) {
 	this->query(
 	"CREATE TABLE IF NOT EXISTS `cache_number_location` (\
@@ -3295,6 +3332,10 @@ void SqlDb_mysql::copyFromSourceTables(SqlDb_mysql *sqlDbSrc) {
 		this->copyFromSourceTable(sqlDbSrc, "enum_jj", NULL, maxDiffId);
 		if(terminating) return;
 	}
+	if(opt_enable_webrtc_table) {
+		this->copyFromSourceTable(sqlDbSrc, "webrtc", NULL, maxDiffId);
+		if(terminating) return;
+	}
 	this->copyFromSourceTable(sqlDbSrc, "message", NULL, maxDiffId);
 	if(terminating) return;
 	this->copyFromSourceTable(sqlDbSrc, "register_state", NULL, maxDiffId);
@@ -3417,6 +3458,9 @@ void SqlDb_mysql::copyFromSourceGuiTables(SqlDb_mysql *sqlDbSrc) {
 		if((tableName == "http_jj" || tableName == "enum_jj") && !opt_enable_http_enum_tables) {
 			continue;
 		}
+		if(tableName == "webrtc" && !opt_enable_webrtc_table) {
+			continue;
+		}
 		bool isMainSourceTable = false;
 		for(size_t i = 0; i < mainSourceTables.size(); i++) {
 			if(tableName == mainSourceTables[i]) {
@@ -3467,6 +3511,7 @@ vector<string> SqlDb_mysql::getSourceTables() {
 		"cdr_proxy",
 		opt_enable_http_enum_tables ? "http_jj" : NULL,
 		opt_enable_http_enum_tables ? "enum_jj" : NULL,
+		opt_enable_webrtc_table ? "webrtc" : NULL,
 		"message",
 		"register_failed",
 		"register_state"
@@ -3509,6 +3554,10 @@ void SqlDb_mysql::copyFromFederatedTables() {
 		this->copyFromFederatedTable("http_jj", NULL, maxDiffId);
 		if(terminating) return;
 		this->copyFromFederatedTable("enum_jj", NULL, maxDiffId);
+		if(terminating) return;
+	}
+	if(opt_enable_webrtc_table) {
+		this->copyFromFederatedTable("webrtc", NULL, maxDiffId);
 		if(terminating) return;
 	}
 	this->copyFromFederatedTable("message", NULL, maxDiffId);
@@ -3591,6 +3640,7 @@ vector<string> SqlDb_mysql::getFederatedTables() {
 		"cdr_proxy_fed",
 		opt_enable_http_enum_tables ? "http_jj_fed" : NULL,
 		opt_enable_http_enum_tables ? "enum_jj_fed" : NULL,
+		opt_enable_webrtc_table ? "webrtc" : NULL,
 		"message_fed",
 		"register_failed_fed",
 		"register_state_fed"
@@ -4270,11 +4320,13 @@ void createMysqlPartitionsBillingAgregation() {
 void dropMysqlPartitionsCdr() {
 	extern int opt_cleandatabase_cdr;
 	extern int opt_cleandatabase_http_enum;
+	extern int opt_cleandatabase_webrtc;
 	extern int opt_cleandatabase_register_state;
 	extern int opt_cleandatabase_register_failed;
 	static unsigned long counterDropPartitions = 0;
 	if(opt_cleandatabase_cdr > 0 ||
 	   (opt_enable_http_enum_tables && opt_cleandatabase_http_enum > 0) ||
+	   (opt_enable_webrtc_table && opt_cleandatabase_webrtc > 0) ||
 	   opt_cleandatabase_register_state > 0 ||
 	   opt_cleandatabase_register_failed > 0) {
 		syslog(LOG_NOTICE, "drop old partitions - begin");
@@ -4351,6 +4403,28 @@ void dropMysqlPartitionsCdr() {
 			for(size_t i = 0; i < partitions_enum.size(); i++) {
 				syslog(LOG_NOTICE, "DROP ENUM_JJ PARTITION %s", partitions_enum[i].c_str());
 				sqlDb->query("ALTER TABLE enum_jj DROP PARTITION " + partitions_enum[i]);
+			}
+		}
+		if(opt_enable_webrtc_table && opt_cleandatabase_webrtc > 0) {
+			time_t act_time = time(NULL);
+			time_t prev_day_time = act_time - opt_cleandatabase_webrtc * 24 * 60 * 60;
+			struct tm *prevDayTime = localtime(&prev_day_time);
+			char limitPartName[20] = "";
+			strftime(limitPartName, sizeof(limitPartName), "p%y%m%d", prevDayTime);
+			vector<string> partitions;
+			if(counterDropPartitions == 0) {
+				sqlDb->query(string("select partition_name from information_schema.partitions where table_schema='") + 
+					     mysql_database+ "' and table_name='webrtc' and partition_name<='" + limitPartName+ "' order by partition_name");
+				SqlDb_row row;
+				while((row = sqlDb->fetchRow())) {
+					partitions.push_back(row["partition_name"]);
+				}
+			} else {
+				partitions.push_back(limitPartName);
+			}
+			for(size_t i = 0; i < partitions.size(); i++) {
+				syslog(LOG_NOTICE, "DROP WEBRTC PARTITION %s", partitions[i].c_str());
+				sqlDb->query("ALTER TABLE webrtc DROP PARTITION " + partitions[i]);
 			}
 		}
 		if(opt_cleandatabase_register_state > 0) {

@@ -1883,7 +1883,7 @@ tryagain:
 				       &attr,			/* Default thread attributes    */
 				       manager_read_thread,	/* Thread routine               */
 				       &ids);			/* Arguments to be passed       */
-			pthread_detach(&threads);
+			pthread_detach(threads);
 			pthread_attr_destroy(&attr);
 			if(rslt != 0) {
 				syslog(LOG_ERR, "manager pthread_create failed with rslt code %i", rslt);

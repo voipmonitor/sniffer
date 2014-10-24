@@ -26,7 +26,9 @@ extern int opt_dup_check;
 extern int opt_dup_check_ipheader;
 extern char *sipportmatrix;
 extern char *httpportmatrix;
-extern TcpReassembly *tcpReassembly;
+extern char *webrtcportmatrix;
+extern TcpReassembly *tcpReassemblyHttp;
+extern TcpReassembly *tcpReassemblyWebrtc;
 extern unsigned int duplicate_counter;
 
 
@@ -262,8 +264,10 @@ int pcapProcess(pcap_pkthdr** header, u_char** packet, bool *destroy,
 		ppd->data = (char*) ppd->header_tcp + (ppd->header_tcp->doff * 4);
 		ppd->datalen = (int)((*header)->caplen - ((unsigned long) ppd->data - (unsigned long) *packet)); 
 		if (!(sipportmatrix[htons(ppd->header_tcp->source)] || sipportmatrix[htons(ppd->header_tcp->dest)]) &&
-		    !(opt_enable_tcpreassembly && (httpportmatrix[htons(ppd->header_tcp->source)] || httpportmatrix[htons(ppd->header_tcp->dest)]) &&
-		      (tcpReassembly->check_ip(htonl(ppd->header_ip->saddr)) || tcpReassembly->check_ip(htonl(ppd->header_ip->daddr)))) &&
+		    !(opt_enable_http && (httpportmatrix[htons(ppd->header_tcp->source)] || httpportmatrix[htons(ppd->header_tcp->dest)]) &&
+		      (tcpReassemblyHttp->check_ip(htonl(ppd->header_ip->saddr)) || tcpReassemblyHttp->check_ip(htonl(ppd->header_ip->daddr)))) &&
+		    !(opt_enable_webrtc && (webrtcportmatrix[htons(ppd->header_tcp->source)] || webrtcportmatrix[htons(ppd->header_tcp->dest)]) &&
+		      (tcpReassemblyWebrtc->check_ip(htonl(ppd->header_ip->saddr)) || tcpReassemblyWebrtc->check_ip(htonl(ppd->header_ip->daddr)))) &&
 		    !(opt_skinny && (htons(ppd->header_tcp->source) == 2000 || htons(ppd->header_tcp->dest) == 2000))) {
 			// not interested in TCP packet other than SIP port
 			if(opt_ipaccount == 0 && !DEBUG_ALL_PACKETS) {
@@ -287,7 +291,8 @@ int pcapProcess(pcap_pkthdr** header, u_char** packet, bool *destroy,
 	if(enableCalcMD5 || enableDedup) {
 		/* check for duplicate packets (md5 is expensive operation - enable only if you really need it */
 		if(ppd->datalen > 0 && opt_dup_check && ppd->prevmd5s != NULL && (ppd->traillen < ppd->datalen) &&
-		   !(ppd->istcp && opt_enable_tcpreassembly && (httpportmatrix[htons(ppd->header_tcp->source)] || httpportmatrix[htons(ppd->header_tcp->dest)]))) {
+		   !(ppd->istcp && opt_enable_http && (httpportmatrix[htons(ppd->header_tcp->source)] || httpportmatrix[htons(ppd->header_tcp->dest)])) &&
+		   !(ppd->istcp && opt_enable_webrtc && (webrtcportmatrix[htons(ppd->header_tcp->source)] || webrtcportmatrix[htons(ppd->header_tcp->dest)]))) {
 			if(enableCalcMD5) {
 				MD5_Init(&ppd->ctx);
 				if(opt_dup_check_ipheader) {
