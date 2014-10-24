@@ -777,6 +777,13 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 			return -1;
 		}
 		return 0;
+	} else if(strstr(buf, "cleanup_calls") != NULL) {
+		calltable->cleanup(0);
+		if ((size = sendvm(client, sshchannel, "ok", 2, 0)) == -1){
+			cerr << "Error sending data to client" << endl;
+			return -1;
+		}
+		return 0;
 	} else if(strstr(buf, "getipaccount") != NULL) {
 		sscanf(buf, "getipaccount %u", &uid);
 		map<unsigned int, octects_live_t*>::iterator it = ipacc_live.find(uid);
