@@ -1121,7 +1121,7 @@ int rrd_call(
 	}
 }
 
-void checkRrdVersion() {
+void checkRrdVersion(bool silent) {
 	int exitCode;
 	string rsltRrdTool = pexec((char*)"rrdtool", &exitCode);
 	if(!exitCode) {
@@ -1130,11 +1130,19 @@ void checkRrdVersion() {
 			int version[3] = { 0, 0, 0 };
 			sscanf((char*)versionString.c_str(), "%i-%i-%i", &version[0], &version[1], &version[2]);
 			vm_rrd_version = version[0] * 10000 + version[1] * 100 + version[2];
-			syslog(LOG_NOTICE, "detected rrdtool version %d", vm_rrd_version);
+			if(!silent) {
+				syslog(LOG_NOTICE, "detected rrdtool version %d", vm_rrd_version);
+			}
 		} else {
-			syslog(LOG_NOTICE, "unknown rrdtool version - rrd graph may be wrong");
+			vm_rrd_version = 1;
+			if(!silent) {
+				syslog(LOG_NOTICE, "unknown rrdtool version - rrd graph may be wrong");
+			}
 		}
 	} else {
-		syslog(LOG_NOTICE, "for rrd graph you need install rrdtool");
+		vm_rrd_version = 0;
+		if(!silent) {
+			syslog(LOG_NOTICE, "for rrd graph you need install rrdtool");
+		}
 	}
 }

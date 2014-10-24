@@ -49,6 +49,8 @@ extern int opt_cleanspool_sizeMB;
 extern int opt_autocleanspool;
 extern int opt_autocleanspoolminpercent;
 extern int opt_autocleanmingb;
+extern int opt_cleanspool_enable_run_hour_from;
+extern int opt_cleanspool_enable_run_hour_to;
 
 extern MySqlStore *sqlStore;
 
@@ -1823,9 +1825,32 @@ void *clean_spooldir(void *dummy) {
 	if(debugclean) syslog(LOG_ERR, "run clean_spooldir()");
 	while(!terminating2) {
 		if(!suspendCleanspool) {
-			if(debugclean) syslog(LOG_ERR, "run clean_spooldir_run");
-			clean_spooldir_run(NULL);
-			check_disk_free_run(false);
+			bool timeOk = false;
+			if(opt_cleanspool_enable_run_hour_from >= 0 &&
+			   opt_cleanspool_enable_run_hour_to >= 0) {
+				time_t now;
+				time(&now);
+				struct tm dateTime;
+				dateTime = *localtime(&now);
+				if(opt_cleanspool_enable_run_hour_to >= opt_cleanspool_enable_run_hour_from) {
+					if(dateTime.tm_hour >= opt_cleanspool_enable_run_hour_from &&
+					   dateTime.tm_hour <= opt_cleanspool_enable_run_hour_to) {
+						timeOk = true;
+					}
+				} else {
+					if((dateTime.tm_hour >= opt_cleanspool_enable_run_hour_from && dateTime.tm_hour < 24) ||
+					   dateTime.tm_hour <= opt_cleanspool_enable_run_hour_to) {
+						timeOk = true;
+					}
+				}
+			} else {
+				timeOk = true;
+			}
+			if(timeOk) {
+				if(debugclean) syslog(LOG_ERR, "run clean_spooldir_run");
+				clean_spooldir_run(NULL);
+				check_disk_free_run(false);
+			}
 		}
 		for(int i = 0; i < 300 && !terminating2; i++) {
 			sleep(1);
