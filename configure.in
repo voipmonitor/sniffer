@@ -12,8 +12,8 @@ AC_PROG_CC
 AC_PROG_INSTALL
 AC_PROG_MAKE_SET
 
-LD_LIBRARY_PATH="$LD_LIBRARY_PATH:/usr/local/lib"
-LDFLAGS="$LDFLAGS -L/usr/local/lib -L/usr/lib64/mysql/ -L/usr/lib/mysql/"
+LD_LIBRARY_PATH="$LD_LIBRARY_PATH:/usr/local/lib:/usr/local/mysql/lib"
+LDFLAGS="$LDFLAGS -L/usr/local/mysql/lib -L/usr/local/lib -L/usr/lib64/mysql/ -L/usr/lib/mysql/"
 
 # Checks for libraries.
 # FIXME: Replace `main' with a function in `-lc':
