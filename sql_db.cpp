@@ -2991,6 +2991,7 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 			    call create_partition(database_name, 'cdr_proxy', 'day', next_days);\
 			    call create_partition(database_name, 'http_jj', 'day', next_days);\
 			    call create_partition(database_name, 'enum_jj', 'day', next_days);\
+			    call create_partition(database_name, 'webrtc', 'day', next_days);\
 			    call create_partition(database_name, 'message', 'day', next_days);\
 			    call create_partition(database_name, 'register_state', 'day', next_days);\
 			    call create_partition(database_name, 'register_failed', 'day', next_days);\
