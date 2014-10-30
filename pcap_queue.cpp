@@ -2725,10 +2725,10 @@ void* PcapQueue_readFromInterface::threadFunction(void *arg, unsigned int arg2) 
 					free(header);
 					free(packet);
 				}
-			}
-			if(this->readThreadsCount &&
-			   !opt_pcap_queue_iface_dedup_separate_threads_extend) {
-				this->readThreads[minThreadTimeIndex]->moveREADIT();
+				if(this->readThreadsCount &&
+				   !opt_pcap_queue_iface_dedup_separate_threads_extend) {
+					this->readThreads[minThreadTimeIndex]->moveREADIT();
+				}
 			}
 		}
 		for(int i = 0; i < blockStoreCount; i++) {
