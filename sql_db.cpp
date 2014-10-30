@@ -7,8 +7,8 @@
 #include <sstream>
 #include <stdarg.h>
 #include <netdb.h>
-#include <mysql/mysqld_error.h>
-#include <mysql/errmsg.h>
+#include <mysqld_error.h>
+#include <errmsg.h>
 #include "voipmonitor.h"
 
 #include "tools.h"
