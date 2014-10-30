@@ -1,3 +1,14 @@
+10.1.9 30.10.2014
+=================
+- Fix loading old files when scanpcapdir is used. (If files were moved/created in scanpcapdir and voipmonitor was not running, files were not loaded after voipmonitor started - only new files were processed.)
+
+
+10.1.8 27.10.2014
+=================
+- 32 bit static compiled versions are now compatible with all > 2.6.18 (centos 5.10 etc.) 
+- add manager command cleanup_calls
+
+
 10.1.7 16.10.2014
 =================
 - Implement new configuration option which will restrict spool cleaning based on time (for example cleanspool_enable_fromto = 1-5 will run cleaning only in night between 1-5 hours) 
