@@ -1,3 +1,8 @@
+10.1.9 30.10.2014
+=================
+- Fix loading old files when scanpcapdir is used. (If files were moved/created in scanpcapdir and voipmonitor was not running, files were not loaded after voipmonitor started - only new files were processed.)
+
+
 10.1.8 27.10.2014
 =================
 - 32 bit static compiled versions are now compatible with all > 2.6.18 (centos 5.10 etc.) 
