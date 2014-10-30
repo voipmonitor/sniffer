@@ -353,6 +353,7 @@ private:
 	u_int _last_ps_drop;
 	u_int _last_ps_ifdrop;
 	u_long countPacketDrop;
+	u_int64_t lastPacketTimeUS;
 };
 
 class PcapQueue_readFromInterfaceThread : protected PcapQueue_readFromInterface_base {

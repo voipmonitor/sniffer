@@ -6,6 +6,7 @@
 #include <sys/syscall.h>
 
 #include "tcpreassembly.h"
+#include "webrtc.h"
 #include "sql_db.h"
 #include "tools.h"
 
@@ -278,7 +279,10 @@ u_char *TcpReassemblyStream::complete(u_int32_t *datalen, timeval *time, bool ch
 			*datalen += PACKET_DATALEN(packet.datalen, packet.datacaplen);
 			lastNextSeq = this->ok_packets[i][1];
 		}
-		if(breakIfPsh && packet.header_tcp.psh) {
+		if(breakIfPsh && packet.header_tcp.psh && 
+		   (link->reassembly->getType() != TcpReassembly::webrtc ||
+		    checkOkWebrtcHttpData(data, *datalen) ||
+		    checkOkWebrtcData(data, *datalen))) {
 			break;
 		}
 	}
@@ -770,7 +774,7 @@ bool TcpReassemblyLink::push_normal(
 		if(debug_check_ok && this->queue.size()) {
 			cout << " ";
 		}
-		int rslt_check_ok = this->okQueue(false, debug_check_ok);
+		int rslt_check_ok = this->okQueue(0, debug_check_ok);
 		if(debug_check_ok && this->queue.size()) {
 			cout << endl;
 		}
@@ -886,11 +890,11 @@ bool TcpReassemblyLink::push_crazy(
 			}
 		}
 	}
+	//this->last_packet_at = getTimeMS();
+	this->last_packet_at_from_header = time.tv_sec * 1000 + time.tv_usec / 1000;
 	if(lockQueue) {
 		this->unlock_queue();
 	}
-	//this->last_packet_at = getTimeMS();
-	this->last_packet_at_from_header = time.tv_sec * 1000 + time.tv_usec / 1000;
 	if(!this->created_at_from_header) {
 		this->created_at_from_header = this->last_packet_at_from_header;
 	}
@@ -979,10 +983,10 @@ void TcpReassemblyLink::pushpacket(TcpReassemblyStream::eDirection direction,
 		stream->max_next_seq = packet.next_seq;
 	}
 	this->last_ack = stream->ack;
+	this->last_packet_at_from_header = packet.time.tv_sec * 1000 + packet.time.tv_usec / 1000;
 	if(lockQueue) {
 		this->unlock_queue();
 	}
-	this->last_packet_at_from_header = packet.time.tv_sec * 1000 + packet.time.tv_usec / 1000;
 }
 
 void TcpReassemblyLink::printContent(int level) {
@@ -1017,7 +1021,9 @@ void TcpReassemblyLink::cleanup(u_int64_t act_time) {
 				string ip_dst = inet_ntoa(ip);
 				ostringstream outStr;
 				outStr << fixed 
-				       << "cleanup - remove ack " << iter->first 
+				       << "cleanup " 
+				       << (reassembly->getType() == TcpReassembly::http ? "http" : "webrtc")
+				       << " - remove ack " << iter->first 
 				       << " (too much seq - " << iter->second->queue.size() << ") "
 				       << setw(15) << ip_src << "/" << setw(6) << this->port_src
 				       << " -> " 
@@ -1031,6 +1037,26 @@ void TcpReassemblyLink::cleanup(u_int64_t act_time) {
 			this->queue_by_ack.erase(iter++);
 		} else {
 			++iter;
+		}
+	}
+	if(!reassembly->enableCrazySequence) {
+		while(this->queue.size() && this->queue[0]->completed_finally) {
+			if(debug_cleanup) {
+				cout << fixed 
+				     << "cleanup " 
+				     << (reassembly->getType() == TcpReassembly::http ? "http" : "webrtc")
+				     << " - remove ack " << this->queue[0]->ack 
+				     << setw(15) << inet_ntostring(htonl(this->ip_src)) << "/" << setw(6) << this->port_src
+				     << " -> " 
+				     << setw(15) << inet_ntostring(htonl(this->ip_dst)) << "/" << setw(6) << this->port_dst
+				     << endl;
+			}
+			iter = this->queue_by_ack.find(this->queue[0]->ack);
+			if(iter != this->queue_by_ack.end()) {
+				this->queue_by_ack.erase(iter);
+			}
+			delete this->queue[0];
+			this->queue.erase(this->queue.begin());
 		}
 	}
 }
@@ -1051,22 +1077,28 @@ void TcpReassemblyLink::setLastSeq(TcpReassemblyStream::eDirection direction,
 	}
 }
 
-int TcpReassemblyLink::okQueue_normal(bool final, bool enableDebug) {
+int TcpReassemblyLink::okQueue_normal(int final, bool enableDebug) {
+	if(enableDebug) {
+		cout << "call okQueue_normal - port: " << this->port_src 
+		     << " / size: " << this->queue.size()
+		     << (final == 2 ? " FINAL" : "")
+		     << endl;
+	}
 	int countDataStream = 0;
 	this->ok_streams.clear();
 	size_t size = this->queue.size();
 	bool finOrRst = this->fin_to_dest || this->fin_to_source || this->rst;
-	for(size_t i = 0; i < (finOrRst || final ? size : size - 1); i++) {
+	for(size_t i = 0; i < (finOrRst || final == 2 ? size : size - 1); i++) {
 		if(enableDebug) {
 			cout << "|";
 		}
 		int rslt = this->queue[i]->ok(false, 
-					      i == size - 1 && finOrRst, 
+					      i == size - 1 && (finOrRst || final == 2), 
 					      i == size - 1 ? 0 : this->queue[i + 1]->max_next_seq,
 					      false, NULL, enableDebug,
-					      0);
+					      this->forceOk && i == 0 ? this->queue[0]->min_seq : 0);
 		if(rslt <= 0) {
-			if(i == 0 && this->state == STATE_SYN_FORCE_OK) {
+			if(i == 0 && this->forceOk) {
 				// skip bad first stream
 			} else {
 				break;
@@ -1079,7 +1111,7 @@ int TcpReassemblyLink::okQueue_normal(bool final, bool enableDebug) {
 	return(countDataStream);
 }
 
-int TcpReassemblyLink::okQueue_crazy(bool final, bool enableDebug) {
+int TcpReassemblyLink::okQueue_crazy(int final, bool enableDebug) {
 	streamIterator iter = this->createIterator();
 	if(!this->direction_confirm) {
 		return(-2);
@@ -1329,9 +1361,9 @@ void TcpReassemblyLink::complete_normal(bool final, bool lockQueue) {
 					u_int32_t datalen = dataItem->getDatalen();
 					timeval time = dataItem->getTime();
 					if(direction == TcpReassemblyStream::DIRECTION_TO_DEST) {
-						reassemblyData->addRequest(data, datalen, time);
+						reassemblyData->addRequest(data, datalen, time, stream->ack);
 					} else {
-						reassemblyData->addResponse(data, datalen, time);
+						reassemblyData->addResponse(data, datalen, time, stream->ack);
 					}
 				}
 			} else {
@@ -1819,19 +1851,54 @@ void TcpReassembly::push(pcap_pkthdr *header, iphdr2 *header_ip, u_char *packet,
 	} else {
 		if(!this->enableCrazySequence &&
 		   header_tcp.syn && !header_tcp.ack) {
-			link = new TcpReassemblyLink(this, header_ip->saddr, header_ip->daddr, header_tcp.source, header_tcp.dest);
-			link->lock_queue();
-			this->links[id] = link;
+			if(this->check_port(header_tcp.dest)) {
+				if(debug_packet) {
+					cout << fixed
+					     << " ** NEW LINK " 
+					     << (type == http ? "HTTP" : "WEBRTC")
+					     << " NORMAL: " 
+					     << setw(15) << inet_ntostring(htonl(header_ip->saddr)) << "/" << setw(6) << header_tcp.source
+					     << " -> " 
+					     << setw(15) << inet_ntostring(htonl(header_ip->daddr)) << "/" << setw(6) << header_tcp.dest
+					     << endl;
+				}
+				link = new TcpReassemblyLink(this, header_ip->saddr, header_ip->daddr, header_tcp.source, header_tcp.dest);
+				link->lock_queue();
+				this->links[id] = link;
+			}
 		} else if(!this->enableCrazySequence &&
 			  type == webrtc) {
-			link = new TcpReassemblyLink(this, header_ip->saddr, header_ip->daddr, header_tcp.source, header_tcp.dest);
-			link->lock_queue();
-			this->links[id] = link;
-			link->state = TcpReassemblyLink::STATE_SYN_FORCE_OK;
+			if(this->check_port(header_tcp.dest)) {
+				if(debug_packet) {
+					cout << fixed
+					     << " ** NEW LINK "
+					     << (type == http ? "HTTP" : "WEBRTC")
+					     << " FORCE: " 
+					     << setw(15) << inet_ntostring(htonl(header_ip->saddr)) << "/" << setw(6) << header_tcp.source
+					     << " -> " 
+					     << setw(15) << inet_ntostring(htonl(header_ip->daddr)) << "/" << setw(6) << header_tcp.dest
+					     << endl;
+				}
+				link = new TcpReassemblyLink(this, header_ip->saddr, header_ip->daddr, header_tcp.source, header_tcp.dest);
+				link->lock_queue();
+				this->links[id] = link;
+				link->state = TcpReassemblyLink::STATE_SYN_FORCE_OK;
+				link->forceOk = true;
+			}
 		} else if(this->enableCrazySequence ||
 			  (this->enableHttpForceInit &&
 			   ((datalen > 5 && !memcmp(data, "POST ", 5)) ||
 			    (datalen > 4 && !memcmp(data, "GET ", 4))))) {
+			if(debug_packet) {
+				cout << fixed
+				     << " ** NEW LINK "
+				     << (type == http ? "HTTP" : "WEBRTC")
+				     << " CRAZY: " 
+				     << setw(15) << inet_ntostring(htonl(header_ip->saddr)) << "/" << setw(6) << header_tcp.source
+				     << " -> " 
+				     << setw(15) << inet_ntostring(htonl(header_ip->daddr)) << "/" << setw(6) << header_tcp.dest
+				     << endl;
+			}
 			link = new TcpReassemblyLink(this, header_ip->saddr, header_ip->daddr, header_tcp.source, header_tcp.dest);
 			link->lock_queue();
 			this->links[id] = link;
@@ -1853,11 +1920,6 @@ void TcpReassembly::push(pcap_pkthdr *header, iphdr2 *header_ip, u_char *packet,
 	this->unlock_links();
 
 	if(debug_packet) {
-		in_addr ip;
-		ip.s_addr = header_ip->saddr;
-		string ip_src = inet_ntoa(ip);
-		ip.s_addr = header_ip->daddr;
-		string ip_dst = inet_ntoa(ip);
 		string _data;
 		if(datalen) {
 			char *__data = new char[datalen + 1];
@@ -1878,9 +1940,9 @@ void TcpReassembly::push(pcap_pkthdr *header, iphdr2 *header_ip, u_char *packet,
 		cout << fixed
 		     << sqlDateTimeString(header->ts.tv_sec) << "." << setw(6) << header->ts.tv_usec
 		     << " : "
-		     << setw(15) << ip_src << "/" << setw(6) << header_tcp.source
+		     << setw(15) << inet_ntostring(htonl(header_ip->saddr)) << "/" << setw(6) << header_tcp.source
 		     << " -> " 
-		     << setw(15) << ip_dst << "/" << setw(6) << header_tcp.dest
+		     << setw(15) << inet_ntostring(htonl(header_ip->daddr)) << "/" << setw(6) << header_tcp.dest
 		     << "   "
 		     << (header_tcp.fin ? 'F' : '-')
 		     << (header_tcp.syn ? 'S' : '-') 
@@ -1941,7 +2003,7 @@ void TcpReassembly::cleanup(bool all) {
 				break;
 			}
 		}
-		if(link && link->queue_by_ack.size() > 500) {
+		if(link && link->queue_by_ack.size() > (type == http ? 500 : 10000)) {
 			if(this->isActiveLog() || debug_cleanup) {
 				in_addr ip;
 				ip.s_addr = link->ip_src;
@@ -1950,7 +2012,9 @@ void TcpReassembly::cleanup(bool all) {
 				string ip_dst = inet_ntoa(ip);
 				ostringstream outStr;
 				outStr << fixed 
-				       << "cleanup - remove link "
+				       << "cleanup " 
+				       << (type == http ? "http" : "webrtc")
+				       << " - remove link "
 				       << "(too much ack - " << link->queue_by_ack.size() << ") "
 				       << setw(15) << ip_src << "/" << setw(6) << link->port_src
 				       << " -> "
@@ -1971,7 +2035,8 @@ void TcpReassembly::cleanup(bool all) {
 			break;
 		}
 		link->cleanup(act_time);
-		bool final = act_time > link->last_packet_at_from_header + 2 * 60 * 1000;
+		bool final = link->last_packet_at_from_header &&
+			     act_time > link->last_packet_at_from_header + 2 * 60 * 1000;
 		if((all || final ||
 		    (link->last_packet_at_from_header &&
 		     act_time > link->last_packet_at_from_header + 5 * 1000 &&
@@ -1992,7 +2057,7 @@ void TcpReassembly::cleanup(bool all) {
 					_cout = true;
 				}
 			} else {
-				int countDataStream = link->okQueue(true, debug_check_ok);
+				int countDataStream = link->okQueue(all || final ? 2 : 1, debug_check_ok);
 				if(countDataStream > 0) {
 					link->complete(all || final, true, false);
 					link->link_is_ok = 2;
@@ -2029,7 +2094,7 @@ void TcpReassembly::cleanup(bool all) {
 			}
 		}
 		if(all || final ||
-		   !link->existsFinallyUncompletedDataStream()) {
+		   (link->queue_by_ack.size() && !link->existsFinallyUncompletedDataStream())) {
 			link->unlock_queue();
 			this->lock_links();
 			delete link;
@@ -2070,7 +2135,7 @@ void TcpReassembly::printContent() {
 }
 
 void TcpReassembly::printContentSummary() {
-	cout << "LINKS: " << this->links.size() << endl;
+	cout << "LINKS " << (type == webrtc ? "WEBRTC" : "HTTP") << ": " << this->links.size() << endl;
 	if(this->dataCallback) {
 		this->dataCallback->printContentSummary();
 	}

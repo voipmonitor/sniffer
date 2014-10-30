@@ -23,8 +23,9 @@ public:
 		this->datalen = 0;
 		this->time.tv_sec = 0;
 		this->time.tv_usec = 0;
+		this->ack = 0;
 	}
-	TcpReassemblyDataItem(u_char *data, u_int32_t datalen, timeval time) {
+	TcpReassemblyDataItem(u_char *data, u_int32_t datalen, timeval time, u_int32_t ack = 0) {
 		if(data && datalen) {
 			this->data = new u_char[datalen + 1];
 			memcpy(this->data, data, datalen);
@@ -35,6 +36,7 @@ public:
 			this->datalen = 0;
 		}
 		this->time = time;
+		this->ack = ack;
 	}
 	TcpReassemblyDataItem(const TcpReassemblyDataItem &dataItem) {
 		if(dataItem.data && dataItem.datalen) {
@@ -47,6 +49,7 @@ public:
 			this->datalen = 0;
 		}
 		this->time = dataItem.time;
+		this->ack = dataItem.ack;
 	}
 	~TcpReassemblyDataItem() {
 		if(this->data) {
@@ -67,6 +70,7 @@ public:
 			this->datalen = 0;
 		}
 		this->time = dataItem.time;
+		this->ack = dataItem.ack;
 		return(*this);
 	}
 	void setData(u_char *data, u_int32_t datalen, bool newAlloc = true) {
@@ -90,9 +94,17 @@ public:
 	void setTime(timeval time) {
 		this->time = time;
 	}
+	void setAck(u_int32_t ack) {
+		this->ack = ack;
+	}
 	void setDataTime(u_char *data, u_int32_t datalen, timeval time, bool newAlloc = true) {
 		this->setData(data, datalen, newAlloc);
 		this->setTime(time);
+	}
+	void setDataTimeAck(u_char *data, u_int32_t datalen, timeval time, u_int32_t ack, bool newAlloc = true) {
+		this->setData(data, datalen, newAlloc);
+		this->setTime(time);
+		this->setAck(ack);
 	}
 	void clearData() {
 		if(this->data) {
@@ -100,6 +112,7 @@ public:
 		}
 		this->data = NULL;
 		this->datalen = 0;
+		this->ack = 0;
 	}
 	u_char *getData() {
 		return(this->data);
@@ -110,6 +123,9 @@ public:
 	timeval getTime() {
 		return(this->time);
 	}
+	u_int32_t getAck() {
+		return(this->ack);
+	}
 	bool isFill() {
 		return(this->data != NULL);
 	}
@@ -117,6 +133,7 @@ private:
 	u_char *data;
 	u_int32_t datalen;
 	timeval time;
+	u_int32_t ack;
 };
 
 class TcpReassemblyData {
@@ -124,17 +141,17 @@ public:
 	TcpReassemblyData() {
 		this->forceAppendExpectContinue = false;
 	}
-	void addRequest(u_char *data, u_int32_t datalen, timeval time) {
-		request.push_back(TcpReassemblyDataItem(data, datalen, time));
+	void addRequest(u_char *data, u_int32_t datalen, timeval time, u_int32_t ack = 0) {
+		request.push_back(TcpReassemblyDataItem(data, datalen, time, ack));
 	}
-	void addResponse(u_char *data, u_int32_t datalen, timeval time) {
-		response.push_back(TcpReassemblyDataItem(data, datalen, time));
+	void addResponse(u_char *data, u_int32_t datalen, timeval time, u_int32_t ack = 0) {
+		response.push_back(TcpReassemblyDataItem(data, datalen, time, ack));
 	}
-	void addExpectContinue(u_char *data, u_int32_t datalen, timeval time) {
-		expectContinue.push_back(TcpReassemblyDataItem(data, datalen, time));
+	void addExpectContinue(u_char *data, u_int32_t datalen, timeval time, u_int32_t ack = 0) {
+		expectContinue.push_back(TcpReassemblyDataItem(data, datalen, time, ack));
 	}
-	void addExpectContinueResponse(u_char *data, u_int32_t datalen, timeval time) {
-		expectContinueResponse.push_back(TcpReassemblyDataItem(data, datalen, time));
+	void addExpectContinueResponse(u_char *data, u_int32_t datalen, timeval time, u_int32_t ack = 0) {
+		expectContinueResponse.push_back(TcpReassemblyDataItem(data, datalen, time, ack));
 	}
 	bool isFill();
 public:
@@ -481,6 +498,7 @@ public:
 		this->port_src = port_src; 
 		this->port_dst = port_dst;
 		this->state = STATE_NA;
+		this->forceOk = false;
 		this->first_seq_to_dest = 0;
 		this->first_seq_to_source = 0;
 		this->rst = false;
@@ -534,15 +552,15 @@ public:
 		  u_char *data, u_int32_t datalen, u_int32_t datacaplen,
 		  pcap_block_store *block_store, int block_store_index,
 		  bool lockQueue);
-	int okQueue(bool final = false, bool enableDebug = false) {
+	int okQueue(int final = 0, bool enableDebug = false) {
 		if(this->state == STATE_CRAZY) {
 			return(this->okQueue_crazy(final, enableDebug));
 		} else {
 			return(this->okQueue_normal(final, enableDebug));
 		}
 	}
-	int okQueue_normal(bool final = false, bool enableDebug = false);
-	int okQueue_crazy(bool final = false, bool enableDebug = false);
+	int okQueue_normal(int final = 0, bool enableDebug = false);
+	int okQueue_crazy(int final = 0, bool enableDebug = false);
 	void complete(bool final = false, bool eraseCompletedStreams = false, bool lockQueue = true) {
 		if(this->state == STATE_CRAZY) {
 			this->complete_crazy(final, eraseCompletedStreams, lockQueue);
@@ -645,6 +663,7 @@ private:
 	u_int16_t port_src;
 	u_int16_t port_dst;
 	eState state;
+	bool forceOk;
 	u_int32_t first_seq_to_dest;
 	u_int32_t first_seq_to_source;
 	bool rst;
@@ -732,6 +751,11 @@ public:
 			}
 		}
 		return(false);
+	}
+	bool check_port(u_int16_t port) {
+		extern char *httpportmatrix;
+		extern char *webrtcportmatrix;
+		return(type == http ? httpportmatrix[port] : webrtcportmatrix[port]);
 	}
 	eType getType() {
 		return(type);

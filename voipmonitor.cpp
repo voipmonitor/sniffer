@@ -244,6 +244,7 @@ char opt_convert_char[64] = "";
 int opt_skinny = 0;
 int opt_read_from_file = 0;
 char opt_pb_read_from_file[256] = "";
+int opt_pb_read_from_file_speed = 0;
 int opt_dscp = 0;
 int opt_cdrproxy = 1;
 int opt_enable_http_enum_tables = 0;
@@ -2192,6 +2193,10 @@ void set_context_config() {
 		if(opt_pcap_queue_receive_from_ip_port) {
 			opt_id_sensor_cleanspool = -1;
 		}
+		
+		if(!strcmp(ifname, "lo")) {
+			opt_pcap_queue_dequeu_method = 0;
+		}
 	}
 	
 	if(!opt_pcap_split || opt_scanpcapdir[0] != '\0') {
@@ -2757,6 +2762,10 @@ int main(int argc, char *argv[]) {
 			case 'r':
 				if(!strncmp(optarg, "pb:", 3)) {
 					strcpy(opt_pb_read_from_file, optarg + 3);
+				} else if(!strncmp(optarg, "pbs", 3) &&
+					  strchr(optarg, ':')) {
+					opt_pb_read_from_file_speed = atoi(optarg + 3);
+					strcpy(opt_pb_read_from_file, strchr(optarg, ':') + 1);
 				} else {
 					strcpy(fname, optarg);
 					opt_read_from_file = 1;
@@ -4132,6 +4141,10 @@ int main(int argc, char *argv[]) {
 	extern SqlDb *sqlDbSaveHttp;
 	if(sqlDbSaveHttp) {
 		delete sqlDbSaveHttp;
+	}
+	extern SqlDb *sqlDbSaveWebrtc;
+	if(sqlDbSaveWebrtc) {
+		delete sqlDbSaveWebrtc;
 	}
 	extern SqlDb_mysql *sqlDbEscape;
 	if(sqlDbEscape) {

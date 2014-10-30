@@ -170,7 +170,7 @@ public:
 				delete [] data;
 			}
 		}
-		unsigned int decode(u_char *data, unsigned int data_length);
+		unsigned int decode(u_char *data, unsigned int data_length, bool checkOkOnly = false);
 		void clear() {
 			opcode = opcode_NA;
 			masking_key = 0;
@@ -201,5 +201,10 @@ private:
 	unsigned int counterProcessData;
 	WebrtcCache cache;
 };
+
+
+bool checkOkWebrtcHttpData(u_char *data, u_int32_t datalen);
+bool checkOkWebrtcData(u_char *data, u_int32_t datalen);
+
 
 #endif
