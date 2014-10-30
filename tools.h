@@ -24,6 +24,11 @@
 
 using namespace std;
 
+struct TfileListElem {
+    string filename;
+    time_t mtime;
+};
+
 struct dstring
 {
 	dstring() {
@@ -117,6 +122,7 @@ private:
 	volatile int _sync;
 };
 
+vector<string> listFilesDir(char * dir);
 vector<string> explode(const string&, const char&);
 int getUpdDifTime(struct timeval *before);
 int getDifTime(struct timeval *before);

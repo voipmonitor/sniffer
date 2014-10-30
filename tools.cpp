@@ -64,20 +64,89 @@ using namespace std;
 
 AsyncClose asyncClose;
 
-vector<string> explode(const string& str, const char& ch) {                                                                             string next;                                                                                                                        vector<string> result;
-    for (string::const_iterator it = str.begin(); it != str.end(); it++) {
-        if (*it == ch) {
-            if (!next.empty()) {
-                result.push_back(next);
-                next.clear();
-            }
-        } else {
-            next += *it;
-        }
-    }
-    if (!next.empty())
-         result.push_back(next);
-    return result;
+//Sort files in given directory using mtime from oldest (files not already openned for write).
+vector<string> listFilesDir (char * dir) {
+	struct privListDir {          //sort by mtime asc. function
+		static bool files_sorter_asc(TfileListElem const& lhs, TfileListElem const& rhs) {
+			if (lhs.mtime != rhs.mtime)
+				return lhs.mtime < rhs.mtime;
+			return 1;
+		}
+		static bool file_mtimer(TfileListElem elem, int timeout) {
+			time_t  actualTS;
+			time(&actualTS);
+			if ((elem.mtime + timeout) < actualTS) { //file is old enough
+				return 1;
+			}
+			return 0;
+		}
+	};
+
+	char filename[1024];
+	vector<TfileListElem> tmpVec;   //vector for sorting
+	TfileListElem elem;             //element of sorting
+	vector<string> outVec;          //sorted filenames list
+	struct stat fileStats;          //for file stat
+	struct dirent * ent;            //for dir ent
+	DIR *dirP;
+	unsigned char isFile =0x8;
+
+	if ((dirP = opendir (dir)) != NULL) {
+		while ((ent = readdir (dirP)) != NULL) {
+			if ( ent->d_type != isFile) {
+				//directory skipping
+				continue;
+			}
+            snprintf (filename, sizeof(filename), "%s/%s", dir, ent->d_name);
+			int fd = open(filename, O_RDONLY);
+			if (fd < 0) {
+				//skiping if unable to open a file
+				syslog(LOG_ERR, "listFilesDir: unable to open %s.",filename);
+				continue;
+			}
+			//elem.filename = ent->d_name;      //result are filenames only
+			stat(filename,&fileStats);
+			elem.filename = filename;           //result are pathnames
+			elem.mtime = fileStats.st_mtime;
+
+			if (fcntl(fd, F_SETLEASE, F_WRLCK) && EAGAIN == errno) {        //this test not work on tmpfs,nfs,ramfs as a workaround check mtime and actual date
+                                                                            //if used one of fs above, test only mtime of a file and given timeout (120)
+				if (!privListDir::file_mtimer(elem, 120)) {
+					//skip this file, because it is already write locked
+					close(fd);
+					continue;
+				}
+			}
+			fcntl(fd, F_SETLEASE, F_UNLCK);
+			//add this file to list
+			close(fd);
+			tmpVec.push_back(elem);
+		}
+	}
+	sort( tmpVec.begin(), tmpVec.begin() + tmpVec.size(), &privListDir::files_sorter_asc);
+	for (unsigned n=0; n<tmpVec.size(); ++n) {
+		outVec.push_back(tmpVec.at(n).filename);
+	}
+	return outVec;
+}
+
+vector<string> explode(const string& str, const char& ch) {
+	string next;
+    vector<string> result;
+
+	for (string::const_iterator it = str.begin(); it != str.end(); it++) {
+		if (*it == ch) {
+			if (!next.empty()) {
+				result.push_back(next);
+				next.clear();
+			}
+		} else {
+			next += *it;
+		}
+	}
+	if (!next.empty())
+		result.push_back(next);
+	return result;
 }
 
 int getUpdDifTime(struct timeval *before)
