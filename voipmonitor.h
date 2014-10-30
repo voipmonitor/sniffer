@@ -130,6 +130,8 @@ struct sVerbose {
 	int disable_threads_rtp;
 	int packet_lost;
 	int rrd_info;
+	int http;
+	int webrtc;
 };
 
 #ifndef GLOBAL_DECLARATION

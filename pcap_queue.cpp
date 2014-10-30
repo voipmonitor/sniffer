@@ -3941,7 +3941,7 @@ void PcapQueue_readFromFifo::checkFreeSizeCachedir() {
 void PcapQueue_readFromFifo::cleanupBlockStoreTrash(bool all) {
 	if(all && (opt_enable_http || opt_enable_webrtc) && opt_pb_read_from_file[0]) {
 		this->cleanupBlockStoreTrash();
-		cout << "COUNT REST BLOCKS: " << this->blockStoreTrash.size() << endl;
+		cout << "COUNT REST PACKETBUFFER BLOCKS: " << this->blockStoreTrash.size() << endl;
 	}
 	for(size_t i = 0; i < this->blockStoreTrash.size(); i++) {
 		if(all || this->blockStoreTrash[i]->enableDestroy()) {

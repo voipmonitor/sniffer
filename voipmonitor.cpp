@@ -2755,7 +2755,9 @@ int main(int argc, char *argv[]) {
 						else if(verbparams[i] == "check_is_caller_called")	sverb.check_is_caller_called = 1;
 						else if(verbparams[i] == "disable_threads_rtp")		sverb.disable_threads_rtp = 1;
 						else if(verbparams[i] == "packet_lost")			sverb.packet_lost = 1;
-						else if(verbparams[i] == "rrd_info")		sverb.rrd_info = 1;
+						else if(verbparams[i] == "rrd_info")			sverb.rrd_info = 1;
+						else if(verbparams[i] == "http")			sverb.http = 1;
+						else if(verbparams[i] == "webrtc")			sverb.webrtc = 1;
 					}
 				} }
 				break;
