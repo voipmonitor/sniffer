@@ -235,12 +235,10 @@ Call::Call(char *call_id, unsigned long call_id_len, time_t time) :
 	contenttype = NULL;
 	content_length = 0;
 	unrepliedinvite = 0;
-	sipcalledip2 = 0;
-	sipcallerip2 = 0;
-	sipcalledip3 = 0;
-	sipcallerip3 = 0;
-	sipcalledip4 = 0;
-	sipcallerip4 = 0;
+	for(int i = 0; i < MAX_SIPCALLERDIP; i++) {
+		 sipcallerip[i] = 0;
+		 sipcalledip[i] = 0;
+	}
 	lastsipcallerip = 0;
 	sipcallerport = 0;
 	sipcalledport = 0;
@@ -417,10 +415,12 @@ Call::~Call(){
 		if(skinny_partyid) {
 			((Calltable *)calltable)->skinny_partyID.erase(skinny_partyid);
 		}
+		/*
 		stringstream tmp[2];
 
 		tmp[0] << this->sipcallerip << '|' << this->sipcalledip;
 		tmp[1] << this->sipcallerip << '|' << this->sipcalledip;
+		*/
 
 		for (((Calltable *)calltable)->skinny_ipTuplesIT = ((Calltable *)calltable)->skinny_ipTuples.begin(); ((Calltable *)calltable)->skinny_ipTuplesIT != ((Calltable *)calltable)->skinny_ipTuples.end();) {
 			if(((Calltable *)calltable)->skinny_ipTuplesIT->second == this) {
@@ -1717,7 +1717,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 
 		iter = proxies.begin();
 		while (iter != proxies.end()) {
-			if(*iter == sipcalledip) { ++iter; continue; };
+			if(*iter == sipcalledip[0]) { ++iter; continue; };
 			sqlDbSaveCall->setEnableSqlStringInContent(true);
 			SqlDb_row cdrproxy;
 			cdrproxy.add("_\\_'SQL'_\\_:@cdr_id", "cdr_ID");
@@ -1760,8 +1760,8 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		     dscp_c = 0,
 		     dscp_d = 0;
 	
-	cdr.add(htonl(sipcallerip), "sipcallerip");
-	cdr.add(htonl(sipcalledip), "sipcalledip");
+	cdr.add(htonl(sipcallerip[0]), "sipcallerip");
+	cdr.add(htonl(sipcalledip[0]), "sipcalledip");
 	if(opt_cdr_sipport) {
 		cdr.add(sipcallerport, "sipcallerport");
 		cdr.add(sipcalledport, "sipcalledport");
@@ -2230,7 +2230,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 
 			iter = proxies.begin();
 			while (iter != proxies.end()) {
-				if(*iter == sipcalledip) { ++iter; continue; };
+				if(*iter == sipcalledip[0]) { ++iter; continue; };
 				SqlDb_row cdrproxy;
 				cdrproxy.add(cdrID, "cdr_ID");
 				cdrproxy.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
@@ -2429,9 +2429,9 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 			char tmpregstate[32];
 			char regexpires[32];
 			char idsensor[12];
-			snprintf(ips, 31, "%u", htonl(sipcallerip));
+			snprintf(ips, 31, "%u", htonl(sipcallerip[0]));
 			ips[31] = 0;
-			snprintf(ipd, 31, "%u", htonl(sipcalledip));
+			snprintf(ipd, 31, "%u", htonl(sipcalledip[0]));
 			ipd[31] = 0;
 			snprintf(tmpregstate, 31, "%d", regstate);
 			tmpregstate[31] = 0;
@@ -2493,8 +2493,8 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 					// the previous REGISTER expired, save to register_state
 					SqlDb_row reg;
 					reg.add(sqlEscapeString(sqlDateTimeString(expires_at).c_str()), "created_at");
-					reg.add(htonl(sipcallerip), "sipcallerip");
-					reg.add(htonl(sipcalledip), "sipcalledip");
+					reg.add(htonl(sipcallerip[0]), "sipcallerip");
+					reg.add(htonl(sipcalledip[0]), "sipcalledip");
 					reg.add(sqlEscapeString(caller), "from_num");
 					reg.add(sqlEscapeString(called), "to_num");
 					reg.add(sqlEscapeString(called_domain), "to_domain");
@@ -2513,8 +2513,8 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 					// state changed or device unregistered, store to register_state
 					SqlDb_row reg;
 					reg.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "created_at");
-					reg.add(htonl(sipcallerip), "sipcallerip");
-					reg.add(htonl(sipcalledip), "sipcalledip");
+					reg.add(htonl(sipcallerip[0]), "sipcallerip");
+					reg.add(htonl(sipcalledip[0]), "sipcalledip");
 					reg.add(sqlEscapeString(caller), "from_num");
 					reg.add(sqlEscapeString(called), "to_num");
 					reg.add(sqlEscapeString(called_domain), "to_domain");
@@ -2532,8 +2532,8 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 				// REGISTER message is new, store it to register_state
 				SqlDb_row reg;
 				reg.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "created_at");
-				reg.add(htonl(sipcallerip), "sipcallerip");
-				reg.add(htonl(sipcalledip), "sipcalledip");
+				reg.add(htonl(sipcallerip[0]), "sipcallerip");
+				reg.add(htonl(sipcalledip[0]), "sipcalledip");
 				reg.add(sqlEscapeString(caller), "from_num");
 				reg.add(sqlEscapeString(called), "to_num");
 				reg.add(sqlEscapeString(called_domain), "to_domain");
@@ -2552,8 +2552,8 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 			if(register_expires > 0) {
 				SqlDb_row reg;
 				reg.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
-				reg.add(htonl(sipcallerip), "sipcallerip");
-				reg.add(htonl(sipcalledip), "sipcalledip");
+				reg.add(htonl(sipcallerip[0]), "sipcallerip");
+				reg.add(htonl(sipcalledip[0]), "sipcalledip");
 				//reg.add(sqlEscapeString(fbasename), "fbasename");
 				reg.add(sqlEscapeString(caller), "from_num");
 				reg.add(sqlEscapeString(callername), "from_name");
@@ -2582,12 +2582,12 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 		if(enableBatchIfPossible && isTypeDb("mysql")) {
 
 			stringstream ssipcallerip;
-			ssipcallerip << htonl(sipcallerip);
+			ssipcallerip << htonl(sipcallerip[0]);
 			stringstream ssipcalledip;
-			ssipcalledip << htonl(sipcalledip);
+			ssipcalledip << htonl(sipcalledip[0]);
 
 			unsigned int count = 1;
-			int res = regfailedcache->check(htonl(sipcallerip), htonl(sipcalledip), calltime(), &count);
+			int res = regfailedcache->check(htonl(sipcallerip[0]), htonl(sipcalledip[0]), calltime(), &count);
 			if(res) {
 				break;
 			}
@@ -2613,8 +2613,8 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 
 			SqlDb_row reg;
 			reg.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "created_at");
-			reg.add(htonl(sipcallerip), "sipcallerip");
-			reg.add(htonl(sipcalledip), "sipcalledip");
+			reg.add(htonl(sipcallerip[0]), "sipcallerip");
+			reg.add(htonl(sipcalledip[0]), "sipcalledip");
 			reg.add(sqlEscapeString(caller), "from_num");
 			reg.add(sqlEscapeString(called), "to_num");
 			reg.add(sqlEscapeString(called_domain), "to_domain");
@@ -2660,8 +2660,8 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 					// this is new failed attempt within hour, insert
 					SqlDb_row reg;
 					reg.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "created_at");
-					reg.add(htonl(sipcallerip), "sipcallerip");
-					reg.add(htonl(sipcalledip), "sipcalledip");
+					reg.add(htonl(sipcallerip[0]), "sipcallerip");
+					reg.add(htonl(sipcalledip[0]), "sipcalledip");
 					reg.add(sqlEscapeString(caller), "from_num");
 					reg.add(sqlEscapeString(called), "to_num");
 					reg.add(sqlEscapeString(called_domain), "to_domain");
@@ -2709,8 +2709,8 @@ Call::saveMessageToDb(bool enableBatchIfPossible) {
 
 	cdr_sip_response.add(sqlEscapeString(lastSIPresponse), "lastSIPresponse");
 
-	cdr.add(htonl(sipcallerip), "sipcallerip");
-	cdr.add(htonl(sipcalledip), "sipcalledip");
+	cdr.add(htonl(sipcallerip[0]), "sipcallerip");
+	cdr.add(htonl(sipcalledip[0]), "sipcalledip");
 	cdr.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
 	if(!geoposition.empty()) {
 		cdr.add(sqlEscapeString(geoposition), "GeoPosition");
@@ -3514,10 +3514,10 @@ Call::handle_dtmf(char dtmf, double dtmf_time, unsigned int saddr, unsigned int 
 }
 
 void
-Call::handle_dscp(struct iphdr2 *header_ip, unsigned int saddr, unsigned int daddr, int *iscalledOut) {
+Call::handle_dscp(int sip_method, struct iphdr2 *header_ip, unsigned int saddr, unsigned int daddr, int *iscalledOut, bool enableSetSipcallerdip) {
 	bool iscaller = 0;
 	bool iscalled = 0;
-	this->check_is_caller_called(saddr, daddr, &iscaller, &iscalled);
+	this->check_is_caller_called(sip_method, saddr, daddr, &iscaller, &iscalled, enableSetSipcallerdip);
 	if(iscalled) {
 		this->caller_sipdscp = header_ip->tos >> 2;
 		////cout << "caller_sipdscp " << (int)(header_ip->tos>>2) << endl;
@@ -3532,55 +3532,177 @@ Call::handle_dscp(struct iphdr2 *header_ip, unsigned int saddr, unsigned int dad
 }
 
 bool 
-Call::check_is_caller_called(unsigned int saddr, unsigned int daddr, bool *iscaller, bool *iscalled) {
+Call::check_is_caller_called(int sip_method, unsigned int saddr, unsigned int daddr, bool *iscaller, bool *iscalled, bool enableSetSipcallerdip) {
 	*iscaller = 0;
 	bool _iscalled = 0;
+	string debug_str_set;
+	string debug_str_cmp;
+	if(this->type == MESSAGE) {
+		if(sip_method == MESSAGE) {
+			_iscalled = 1;
+			debug_str_cmp = string(" / == MSG");
+		} else {
+			*iscaller = 1;
+			debug_str_cmp = string(" / != MSG");
+		}
+	} else {
+		int i;
+		char i_str[3];
+		if(enableSetSipcallerdip) {
+			for(i = 1; i < MAX_SIPCALLERDIP; i++) {
+				if(sverb.check_is_caller_called) {
+					sprintf(i_str, "%i", i);
+				}
+				if(this->sipcallerip[i] == daddr && this->sipcalledip[i] == saddr) {
+					this->sipcallerip[i] = saddr;
+					this->sipcalledip[i] = daddr;
+					if(sverb.check_is_caller_called) {
+						debug_str_set += string(" / reverse sipcallerdip[") + i_str + "]: s " + inet_ntostring(htonl(saddr)) + ", d " + inet_ntostring(htonl(daddr));
+					}
+				}
+			}
+		}
+		for(i = 0; i < MAX_SIPCALLERDIP; i++) {
+			if(sverb.check_is_caller_called) {
+				sprintf(i_str, "%i", i);
+			}
+			if(enableSetSipcallerdip && i > 0 && !this->sipcallerip[i] && saddr && daddr) {
+				this->sipcallerip[i] = saddr;
+				this->sipcalledip[i] = daddr;
+				if(sverb.check_is_caller_called) {
+					debug_str_set += string(" / set sipcallerdip[") + i_str + "]: s " + inet_ntostring(htonl(saddr)) + ", d " + inet_ntostring(htonl(daddr));
+				}
+			}
+			if(this->sipcallerip[i]) {
+				if(this->sipcallerip[i] == saddr) {
+					// SDP message is coming from the first IP address seen in first INVITE thus incoming stream to ip/port in this 
+					// SDP will be stream from called
+					_iscalled = 1;
+					if(sverb.check_is_caller_called) {
+						debug_str_cmp += string(" / cmp this->sipcallerip[") + i_str + "] (" + inet_ntostring(htonl(this->sipcallerip[i])) + ") == " + 
+								 "saddr (" + inet_ntostring(htonl(saddr)) + ")";
+					}
+					break;
+				} else {
+					// The IP address is different, check if the request matches one of the address from the first invite
+					if(this->sipcallerip[i] == daddr) {
+						// SDP message is addressed to caller and announced IP/port in SDP will be from caller. Thus set called = 0;
+						*iscaller = 1;
+						if(sverb.check_is_caller_called) {
+							debug_str_cmp += string(" / this->sipcallerip[") + i_str + "] (" + inet_ntostring(htonl(this->sipcallerip[i])) + ") == " + 
+									 "daddr (" + inet_ntostring(htonl(daddr)) + ")";
+						}
+						break;
+					}
+				}
+			} else {
+				break;
+			}
+		}
+		if(i == MAX_SIPCALLERDIP && !*iscaller && !_iscalled) {
+			*iscaller = 1;
+			if(sverb.check_is_caller_called) {
+				debug_str_cmp += " / last set";
+			}
+		}
+	}
+	if(iscalled) {
+		*iscalled = _iscalled;
+	}
+	if(sverb.check_is_caller_called) {
+		cout << "check_is_caller_called: " 
+		     << inet_ntostring(htonl(saddr)) << " -> " << inet_ntostring(htonl(daddr))
+		     << " = " << (*iscaller ? "caller" : (_iscalled ? "called" : "undefine"))
+		     << debug_str_set
+		     << debug_str_cmp
+		     << endl;
+	}
+	return(*iscaller || _iscalled);
+	
+	/* obsolete
+	*iscaller = 0;
+	bool _iscalled = 0;
+	string debug_str_set;
+	string debug_str_cmp;
 	// 1) check by saddr
 	if(this->sipcallerip == saddr) {
 		// SDP message is coming from the first IP address seen in first INVITE thus incoming stream to ip/port in this 
 		// SDP will be stream from called
 		_iscalled = 1;
+		if(sverb.check_is_caller_called) {
+			debug_str_cmp = "this->sipcallerip (" + inet_ntostring(htonl(this->sipcallerip)) + ") == saddr (" + inet_ntostring(htonl(saddr)) + ")";
+		}
 	} else {
 		// The IP address is different, check if the request matches one of the address from the first invite
 		if(this->sipcallerip == daddr) {
 			// SDP message is addressed to caller and announced IP/port in SDP will be from caller. Thus set called = 0;
 			*iscaller = 1;
+			if(sverb.check_is_caller_called) {
+				debug_str_cmp = "this->sipcallerip (" + inet_ntostring(htonl(this->sipcallerip)) + ") == daddr (" + inet_ntostring(htonl(daddr)) + ")";
+			}
 		// src IP address of this SDP SIP message is different from the src/dst IP address used in the first INVITE. 
 		} else {
 			if(this->sipcallerip2 == 0 && saddr && daddr) { 
 				this->sipcallerip2 = saddr;
 				this->sipcalledip2 = daddr;
+				if(sverb.check_is_caller_called) {
+					debug_str_set = "sipcallerdip2: s " + inet_ntostring(htonl(saddr)) + ", d " + inet_ntostring(htonl(daddr));
+				}
 			}
 			if(this->sipcallerip2 == saddr) {
 				_iscalled = 1;
+				if(sverb.check_is_caller_called) {
+					debug_str_cmp = "this->sipcallerip2 (" + inet_ntostring(htonl(this->sipcallerip2)) + ") == saddr (" + inet_ntostring(htonl(saddr)) + ")";
+				}
 			} else {
 				// The IP address is different, check if the request matches one of the address from the first invite
 				if(this->sipcallerip2 == daddr) {
 					// SDP message is addressed to caller and announced IP/port in SDP will be from caller. Thus set called = 0;
 					*iscaller = 1;
+					if(sverb.check_is_caller_called) {
+						debug_str_cmp = "this->sipcallerip2 (" + inet_ntostring(htonl(this->sipcallerip2)) + ") == daddr (" + inet_ntostring(htonl(daddr)) + ")";
+					}
 				// src IP address of this SDP SIP message is different from the src/dst IP address used in the first INVITE. 
 				} else {
 					if(this->sipcallerip3 == 0 && saddr && daddr) { 
 						this->sipcallerip3 = saddr;
 						this->sipcalledip3 = daddr;
+						if(sverb.check_is_caller_called) {
+							debug_str_set = "sipcallerdip3: s " + inet_ntostring(htonl(saddr)) + ", d " + inet_ntostring(htonl(daddr));
+						}
 					}
 					if(this->sipcallerip3 == saddr) {
 						_iscalled = 1;
+						if(sverb.check_is_caller_called) {
+							debug_str_cmp = "this->sipcallerip3 (" + inet_ntostring(htonl(this->sipcallerip3)) + ") == saddr (" + inet_ntostring(htonl(saddr)) + ")";
+						}
 					} else {
 						// The IP address is different, check if the request matches one of the address from the first invite
 						if(this->sipcallerip3 == daddr) {
 							// SDP message is addressed to caller and announced IP/port in SDP will be from caller. Thus set called = 0;
 							*iscaller = 1;
+							if(sverb.check_is_caller_called) {
+								debug_str_cmp = "this->sipcallerip3 (" + inet_ntostring(htonl(this->sipcallerip3)) + ") == daddr (" + inet_ntostring(htonl(daddr)) + ")";
+							}
 						// src IP address of this SDP SIP message is different from the src/dst IP address used in the first INVITE. 
 						} else {
 							if(this->sipcallerip4 == 0 && saddr && daddr) { 
 								this->sipcallerip4 = saddr;
 								this->sipcalledip4 = daddr;
+								if(sverb.check_is_caller_called) {
+									debug_str_set = "sipcallerdip4: s " + inet_ntostring(htonl(saddr)) + ", d " + inet_ntostring(htonl(daddr));
+								}
 							}
 							if(this->sipcallerip4 == saddr) {
 								_iscalled = 1;
+								if(sverb.check_is_caller_called) {
+									debug_str_cmp = "this->sipcallerip4 (" + inet_ntostring(htonl(this->sipcallerip4)) + ") == saddr (" + inet_ntostring(htonl(saddr)) + ")";
+								}
 							} else {
 								*iscaller = 1;
+								if(sverb.check_is_caller_called) {
+									debug_str_cmp = "this->sipcallerip4 (" + inet_ntostring(htonl(this->sipcallerip4)) + ") != saddr (" + inet_ntostring(htonl(saddr)) + ")";
+								}
 							}
 						}
 					}
@@ -3595,7 +3717,10 @@ Call::check_is_caller_called(unsigned int saddr, unsigned int daddr, bool *iscal
 		cout << "check_is_caller_called: " 
 		     << inet_ntostring(htonl(saddr)) << " -> " << inet_ntostring(htonl(daddr))
 		     << " = " << (*iscaller ? "caller" : (_iscalled ? "called" : "undefine"))
+		     << (debug_str_set.empty() ? "" : " / " + debug_str_set)
+		     << (debug_str_cmp.empty() ? "" : " / " + debug_str_cmp)
 		     << endl;
 	}
 	return(*iscaller || _iscalled);
+	*/
 }

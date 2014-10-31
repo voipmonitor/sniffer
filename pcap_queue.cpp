@@ -60,7 +60,8 @@
 
 using namespace std;
 
-extern Call *process_packet(unsigned int saddr, int source, unsigned int daddr, int dest, 
+extern Call *process_packet(u_int64_t packet_number,
+			    unsigned int saddr, int source, unsigned int daddr, int dest, 
 			    char *data, int datalen, int dataoffset,
 			    pcap_t *handle, pcap_pkthdr *header, const u_char *packet, 
 			    int istcp, int *was_rtp, struct iphdr2 *header_ip, int *voippacket,
@@ -3798,6 +3799,9 @@ void PcapQueue_readFromFifo::processPacket(pcap_pkthdr_plus *header_plus, u_char
 	int was_rtp;
 	bool useTcpReassemblyHttp = false;
 	bool useTcpReassemblyWebrtc = false;
+	static u_int64_t packet_counter_all;
+	
+	++packet_counter_all;
 	
 	pcap_pkthdr *header = header_plus->convertToStdHeader();
 	
@@ -3905,7 +3909,8 @@ void PcapQueue_readFromFifo::processPacket(pcap_pkthdr_plus *header_plus, u_char
 	if((opt_enable_http == 2 && useTcpReassemblyHttp) ||
 	   (opt_enable_webrtc == 2 && useTcpReassemblyWebrtc) ||
 	   (opt_enable_http < 2 && opt_enable_webrtc < 2)) {
-		process_packet(header_ip->saddr, htons(header_udp->source), header_ip->daddr, htons(header_udp->dest), 
+		process_packet(packet_counter_all,
+			       header_ip->saddr, htons(header_udp->source), header_ip->daddr, htons(header_udp->dest), 
 			       data, datalen, data - (char*)packet, 
 			       this->getPcapHandle(dlt), header, packet, 
 			       istcp, &was_rtp, header_ip, &voippacket,

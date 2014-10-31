@@ -274,6 +274,7 @@ struct gre_hdr {
 class TcpReassemblySip {
 public:
 	struct tcp_stream2_s {
+		u_int64_t packet_number;
 		unsigned int saddr;
 		int source; 
 		unsigned int daddr;
@@ -298,6 +299,7 @@ public:
 public:
 	TcpReassemblySip();
 	void processPacket(
+		u_int64_t packet_number,
 		unsigned int saddr, int source, unsigned int daddr, int dest, char *data, int datalen, int dataoffset,
 		pcap_t *handle, pcap_pkthdr *header, const u_char *packet, struct iphdr2 *header_ip,
 		int dlt, int sensor_id,
@@ -306,6 +308,7 @@ public:
 private:
 	tcp_stream2_s *addPacket(
 		tcp_stream2_s *stream, u_int hash,
+		u_int64_t packet_number,
 		unsigned int saddr, int source, unsigned int daddr, int dest, char *data, int datalen, int dataoffset,
 		pcap_t *handle, pcap_pkthdr *header, const u_char *packet, struct iphdr2 *header_ip,
 		int dlt, int sensor_id);

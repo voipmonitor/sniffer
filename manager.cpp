@@ -629,8 +629,8 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 					    call->calltime(), 
 					    call->duration(), 
 					    call->connect_duration(), 
-					    htonl(call->sipcallerip), 
-					    htonl(call->sipcalledip), 
+					    htonl(call->sipcallerip[0]), 
+					    htonl(call->sipcalledip[0]), 
 					    (unsigned int)call->get_last_packet_time(), 
 					    call->lastSIPresponseNum);
 			if((resbuflen + outbuflen) > resbufalloc) {

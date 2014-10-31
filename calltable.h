@@ -33,6 +33,7 @@
 #define MAXLEN_SDP_SESSID 16
 #define RTPMAP_BY_CALLERD true
 #define RTP_BY_IP_PORT true
+#define MAX_SIPCALLERDIP 4
 
 #define INVITE 1
 #define BYE 2
@@ -188,16 +189,9 @@ public:
 	void *rtp_cur[2];		//!< last RTP structure in direction 0 and 1 (iscaller = 1)
 	void *rtp_prev[2];		//!< previouse RTP structure in direction 0 and 1 (iscaller = 1)
 
-	u_int32_t sipcallerip;		//!< SIP signalling source IP address
-	u_int32_t sipcalledip;		//!< SIP signalling destination IP address
+	u_int32_t sipcallerip[MAX_SIPCALLERDIP];	//!< SIP signalling source IP address
+	u_int32_t sipcalledip[MAX_SIPCALLERDIP];	//!< SIP signalling destination IP address
 	u_int32_t lastsipcallerip;		
-
-	u_int32_t sipcallerip2;		//!< SIP signalling destination IP address
-	u_int32_t sipcalledip2;		//!< SIP signalling destination IP address
-	u_int32_t sipcallerip3;		//!< SIP signalling destination IP address
-	u_int32_t sipcalledip3;		//!< SIP signalling destination IP address
-	u_int32_t sipcallerip4;		//!< SIP signalling destination IP address
-	u_int32_t sipcalledip4;		//!< SIP signalling destination IP address
 
 	u_int16_t sipcallerport;
 	u_int16_t sipcalledport;
@@ -494,9 +488,9 @@ public:
 
 	void handle_dtmf(char dtmf, double dtmf_time, unsigned int saddr, unsigned int daddr);
 	
-	void handle_dscp(struct iphdr2 *header_ip, unsigned int saddr, unsigned int daddr, int *iscalledOut = NULL);
+	void handle_dscp(int sip_method, struct iphdr2 *header_ip, unsigned int saddr, unsigned int daddr, int *iscalledOut = NULL, bool enableSetSipcallerdip = false);
 	
-	bool check_is_caller_called(unsigned int saddr, unsigned int daddr, bool *iscaller, bool *iscalled = NULL);
+	bool check_is_caller_called(int sip_method, unsigned int saddr, unsigned int daddr, bool *iscaller, bool *iscalled = NULL, bool enableSetSipcallerdip = false);
 
 	void dump();
 

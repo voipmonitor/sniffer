@@ -2758,6 +2758,8 @@ int main(int argc, char *argv[]) {
 						else if(verbparams[i] == "rrd_info")			sverb.rrd_info = 1;
 						else if(verbparams[i] == "http")			sverb.http = 1;
 						else if(verbparams[i] == "webrtc")			sverb.webrtc = 1;
+						else if(verbparams[i] == "sip_packets")			sverb.sip_packets = 1;
+						else if(verbparams[i] == "set_ua")			sverb.set_ua = 1;
 					}
 				} }
 				break;
