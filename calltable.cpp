@@ -3548,6 +3548,7 @@ Call::check_is_caller_called(int sip_method, unsigned int saddr, unsigned int da
 	} else {
 		int i;
 		char i_str[3];
+		/* reverse sipcaller(d)ip - experiment - disabled
 		if(enableSetSipcallerdip) {
 			for(i = 1; i < MAX_SIPCALLERDIP; i++) {
 				if(sverb.check_is_caller_called) {
@@ -3562,6 +3563,7 @@ Call::check_is_caller_called(int sip_method, unsigned int saddr, unsigned int da
 				}
 			}
 		}
+		*/
 		for(i = 0; i < MAX_SIPCALLERDIP; i++) {
 			if(sverb.check_is_caller_called) {
 				sprintf(i_str, "%i", i);

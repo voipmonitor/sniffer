@@ -54,6 +54,8 @@
 #define SKINNY_NEW 100
 #define SKINNY_NEW 100
 
+#define IS_SIP_RESXXX(sip_method) (sip_method == RES2XX || sip_method == RES3XX || sip_method == RES401 || sip_method == RES403 || sip_method == RES4XX || sip_method == RES5XX || sip_method == RES6XX || sip_method == RES18X)
+
 #define FLAG_SAVERTP		(1 << 0)
 #define FLAG_SAVESIP		(1 << 1)
 #define FLAG_SAVEREGISTER	(1 << 2)

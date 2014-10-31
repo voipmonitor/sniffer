@@ -2215,7 +2215,7 @@ Call *process_packet(u_int64_t packet_number,
 		// find call */
 		call = calltable->find_by_call_id(s, l);
 		if(call) {
-			call->handle_dscp(sip_method, header_ip, saddr, daddr, NULL, sip_method != RES2XX);
+			call->handle_dscp(sip_method, header_ip, saddr, daddr, NULL, IS_SIP_RESXXX(sip_method));
 			if(pcap_drop_flag) {
 				call->pcap_drop = pcap_drop_flag;
 			}
