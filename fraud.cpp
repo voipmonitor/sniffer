@@ -1400,8 +1400,8 @@ void FraudAlerts::getCallInfoFromCall(sFraudCallInfo *callInfo, Call *call,
 	callInfo->callid = call->call_id;
 	callInfo->caller_number = call->caller;
 	callInfo->called_number = call->called;
-	callInfo->caller_ip = htonl(call->sipcallerip);
-	callInfo->called_ip = htonl(call->sipcalledip);
+	callInfo->caller_ip = htonl(call->sipcallerip[0]);
+	callInfo->called_ip = htonl(call->sipcalledip[0]);
 	switch(typeCallInfo) {
 	case sFraudCallInfo::typeCallInfo_beginCall:
 		callInfo->at_begin = at;
