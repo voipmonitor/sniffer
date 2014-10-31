@@ -723,7 +723,9 @@ Call::read_rtp(unsigned char* data, int datalen, int dataoffset, struct pcap_pkt
 			// found 
 			if(opt_dscp) {
 				rtp[i]->dscp = header_ip->tos >> 2;
-				////cout << "rtpdscp " << (int)(header_ip->tos>>2) << endl;
+				if(sverb.dscp) {
+					cout << "rtpdscp " << (int)(header_ip->tos>>2) << endl;
+				}
 			}
 			
 			// chekc if packet is DTMF and saverfc2833 is enabled 
@@ -801,7 +803,9 @@ read:
 		
 		if(opt_dscp) {
 			rtp[ssrc_n]->dscp = header_ip->tos >> 2;
-			////cout << "rtpdscp " << (int)(header_ip->tos>>2) << endl;
+			if(sverb.dscp) {
+				cout << "rtpdscp " << (int)(header_ip->tos>>2) << endl;
+			}
 		}
 
 		char graphFilePath_spool_relative[1024];
@@ -3520,11 +3524,15 @@ Call::handle_dscp(int sip_method, struct iphdr2 *header_ip, unsigned int saddr, 
 	this->check_is_caller_called(sip_method, saddr, daddr, &iscaller, &iscalled, enableSetSipcallerdip);
 	if(iscalled) {
 		this->caller_sipdscp = header_ip->tos >> 2;
-		////cout << "caller_sipdscp " << (int)(header_ip->tos>>2) << endl;
+		if(sverb.dscp) {
+			cout << "caller_sipdscp " << (int)(header_ip->tos>>2) << endl;
+		}
 	} 
 	if(iscaller) {
 		this->called_sipdscp = header_ip->tos >> 2;
-		////cout << "called_sipdscp " << (int)(header_ip->tos>>2) << endl;
+		if(sverb.dscp) {
+			cout << "called_sipdscp " << (int)(header_ip->tos>>2) << endl;
+		}
 	}
 	if(iscalledOut) {
 		*iscalledOut = iscalled;

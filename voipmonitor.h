@@ -134,6 +134,7 @@ struct sVerbose {
 	int webrtc;
 	int sip_packets;
 	int set_ua;
+	int dscp;
 };
 
 #ifndef GLOBAL_DECLARATION
