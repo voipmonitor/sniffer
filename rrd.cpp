@@ -36,12 +36,12 @@ void rrd_vm_create_graph_tCPU_command(char *filename, char *fromatstyle, char *t
 	cmdCreate << "--font DEFAULT:0:Courier ";
 	cmdCreate << "--title \"CPU usage\" ";
 	cmdCreate << "--watermark \"`date`\" ";
-	cmdCreate << "--disable-rrdtool-tag ";
+	if (vm_rrd_version >= 10400) { cmdCreate << "--disable-rrdtool-tag "; }
 	cmdCreate << "--vertical-label \"percent[%]\" ";
 	cmdCreate << "--lower-limit 0 ";
 	//cmdCreate << "--x-grid MINUTE:10:HOUR:1:MINUTE:120:0:%R ";
 	cmdCreate << "--units-exponent 0 ";
-	cmdCreate << "--full-size-mode ";
+	if (vm_rrd_version >= 10400) { cmdCreate << "--full-size-mode "; }
 	if (slope) cmdCreate << "--slope-mode ";
 	if (icon) cmdCreate << "--only-graph ";
 	if (color != NULL) cmdCreate << "-c BACK#" << color << " -c SHADEA#" << color << " -c SHADEB#" << color << " ";
@@ -100,12 +100,12 @@ void rrd_vm_create_graph_heap_command(char *filename, char *fromatstyle, char *t
 	cmdCreate << "--font DEFAULT:0:Courier ";
 	cmdCreate << "--title \"Buffer usage\" ";
 	cmdCreate << "--watermark \"`date`\" ";
-	cmdCreate << "--disable-rrdtool-tag ";
+	if (vm_rrd_version >= 10400) { cmdCreate << "--disable-rrdtool-tag "; }
 	cmdCreate << "--vertical-label \"percent[%]\" ";
 	cmdCreate << "--lower-limit 0 ";
 	//cmdCreate << "--x-grid MINUTE:10:HOUR:1:MINUTE:120:0:%R ";
 	cmdCreate << "--units-exponent 0 ";
-	cmdCreate << "--full-size-mode ";
+	if (vm_rrd_version >= 10400) { cmdCreate << "--full-size-mode "; }
 	if (slope) cmdCreate << "--slope-mode ";
 	if (icon) cmdCreate << "--only-graph ";
 	if (color != NULL) cmdCreate << "-c BACK#" << color << " -c SHADEA#" << color << " -c SHADEB#" << color << " ";
@@ -152,12 +152,12 @@ void rrd_vm_create_graph_drop_command(char *filename, char *fromatstyle, char *t
 	cmdCreate << "--font DEFAULT:0:Courier ";
 	cmdCreate << "--title \"Packet drops\" ";
 	cmdCreate << "--watermark \"`date`\" ";
-	cmdCreate << "--disable-rrdtool-tag ";
+	if (vm_rrd_version >= 10400) { cmdCreate << "--disable-rrdtool-tag "; }
 	cmdCreate << "--vertical-label \"packtets\" ";
 	cmdCreate << "--lower-limit 0 ";
 	//cmdCreate << "--x-grid MINUTE:10:HOUR:1:MINUTE:120:0:%R ";
 	cmdCreate << "--units-exponent 0 ";
-	cmdCreate << "--full-size-mode ";
+	if (vm_rrd_version >= 10400) { cmdCreate << "--full-size-mode "; }
 	if (slope) cmdCreate << "--slope-mode ";
 	if (icon) cmdCreate << "--only-graph ";
 	if (color != NULL) cmdCreate << "-c BACK#" << color << " -c SHADEA#" << color << " -c SHADEB#" << color << " ";
@@ -204,12 +204,12 @@ void rrd_vm_create_graph_calls_command(char *filename, char *fromatstyle, char *
 	cmdCreate << "--font DEFAULT:0:Courier ";
 	cmdCreate << "--title \"Number of calls\" ";
 	cmdCreate << "--watermark \"`date`\" ";
-	cmdCreate << "--disable-rrdtool-tag ";
+	if (vm_rrd_version >= 10400) { cmdCreate << "--disable-rrdtool-tag "; }
 	cmdCreate << "--vertical-label \"calls\" ";
 	cmdCreate << "--lower-limit 0 ";
 	//cmdCreate << "--x-grid MINUTE:10:HOUR:1:MINUTE:120:0:%R ";
 	cmdCreate << "--units-exponent 0 ";
-	cmdCreate << "--full-size-mode ";
+	if (vm_rrd_version >= 10400) { cmdCreate << "--full-size-mode "; }
 	if (slope) cmdCreate << "--slope-mode ";
 	if (icon) cmdCreate << "--only-graph ";
 	if (color != NULL) cmdCreate << "-c BACK#" << color << " -c SHADEA#" << color << " -c SHADEB#" << color << " ";
@@ -250,12 +250,12 @@ void rrd_vm_create_graph_tacCPU_command(char *filename, char *fromatstyle, char 
 	cmdCreate << "--font DEFAULT:0:Courier ";
 	cmdCreate << "--title \"Zip compression\" ";
 	cmdCreate << "--watermark \"`date`\" ";
-	cmdCreate << "--disable-rrdtool-tag ";
+	if (vm_rrd_version >= 10400) { cmdCreate << "--disable-rrdtool-tag "; }
 	cmdCreate << "--vertical-label \"threads\" ";
 	cmdCreate << "--lower-limit 0 ";
 	//cmdCreate << "--x-grid MINUTE:10:HOUR:1:MINUTE:120:0:%R ";
 	cmdCreate << "--units-exponent 0 ";
-	cmdCreate << "--full-size-mode ";
+	if (vm_rrd_version >= 10400) { cmdCreate << "--full-size-mode "; }
 	if (slope) cmdCreate << "--slope-mode ";
 	if (icon) cmdCreate << "--only-graph ";
 	if (color != NULL) cmdCreate << "-c BACK#" << color << " -c SHADEA#" << color << " -c SHADEB#" << color << " ";
@@ -290,12 +290,12 @@ void rrd_vm_create_graph_RSSVSZ_command(char *filename, char *fromatstyle, char 
 	cmdCreate << "--font DEFAULT:0:Courier ";
 	cmdCreate << "--title \"Memory usage\" ";
 	cmdCreate << "--watermark \"`date`\" ";
-	cmdCreate << "--disable-rrdtool-tag ";
+	if (vm_rrd_version >= 10400) { cmdCreate << "--disable-rrdtool-tag "; }
 	cmdCreate << "--vertical-label \"MB\" ";
 	cmdCreate << "--lower-limit 0 ";
 	//cmdCreate << "--x-grid MINUTE:10:HOUR:1:MINUTE:120:0:%R ";
 	cmdCreate << "--units-exponent 0 ";
-	cmdCreate << "--full-size-mode ";
+	if (vm_rrd_version >= 10400) { cmdCreate << "--full-size-mode "; }
 	if (slope) cmdCreate << "--slope-mode ";
 	if (icon) cmdCreate << "--only-graph ";
 	if (color != NULL) cmdCreate << "-c BACK#" << color << " -c SHADEA#" << color << " -c SHADEB#" << color << " ";
@@ -346,12 +346,12 @@ void rrd_vm_create_graph_speed_command(char *filename, char *fromatstyle, char *
 	cmdCreate << "--font DEFAULT:0:Courier ";
 	cmdCreate << "--title \"Network throughput\" ";
 	cmdCreate << "--watermark \"`date`\" ";
-	cmdCreate << "--disable-rrdtool-tag ";
+	if (vm_rrd_version >= 10400) { cmdCreate << "--disable-rrdtool-tag "; }
 	cmdCreate << "--vertical-label \"MB/s\" ";
 	cmdCreate << "--lower-limit 0 ";
 	//cmdCreate << "--x-grid MINUTE:10:HOUR:1:MINUTE:120:0:%R ";
 	cmdCreate << "--units-exponent 0 ";
-	cmdCreate << "--full-size-mode ";
+	if (vm_rrd_version >= 10400) { cmdCreate << "--full-size-mode "; }
 	if (slope) cmdCreate << "--slope-mode ";
 	if (icon) cmdCreate << "--only-graph ";
 	if (color != NULL) cmdCreate << "-c BACK#" << color << " -c SHADEA#" << color << " -c SHADEB#" << color << " ";
@@ -386,12 +386,12 @@ void rrd_vm_create_graph_SQLq_command(char *filename, char *fromatstyle, char *t
 	cmdCreate << "--font DEFAULT:0:Courier ";
 	cmdCreate << "--title \"SQL queue\" ";
 	cmdCreate << "--watermark \"`date`\" ";
-	cmdCreate << "--disable-rrdtool-tag ";
+	if (vm_rrd_version >= 10400) { cmdCreate << "--disable-rrdtool-tag "; }
 	cmdCreate << "--vertical-label \"queries\" ";
 	cmdCreate << "--lower-limit 0 ";
 	//cmdCreate << "--x-grid MINUTE:10:HOUR:1:MINUTE:120:0:%R ";
 	cmdCreate << "--units-exponent 0 ";
-	cmdCreate << "--full-size-mode ";
+	if (vm_rrd_version >= 10400) { cmdCreate << "--full-size-mode "; }
 	if (slope) cmdCreate << "--slope-mode ";
 	if (icon) cmdCreate << "--only-graph ";
 	if (color != NULL) cmdCreate << "-c BACK#" << color << " -c SHADEA#" << color << " -c SHADEB#" << color << " ";
@@ -475,12 +475,12 @@ void rrd_vm_create_graph_PS_command (char *filename, char *fromatstyle, char *to
 	cmdCreate << "--font DEFAULT:0:Courier ";
 	cmdCreate << "--title \"Packet Counter\" ";
 	cmdCreate << "--watermark \"`date`\" ";
-	cmdCreate << "--disable-rrdtool-tag ";
+	if (vm_rrd_version >= 10400) { cmdCreate << "--disable-rrdtool-tag "; }
 	cmdCreate << "--vertical-label \"number of packets\" ";
 	cmdCreate << "--lower-limit 0 ";
 //	cmdCreate << "--x-grid MINUTE:10:HOUR:1:MINUTE:120:0:%R ";
 	cmdCreate << "--units-exponent 0 ";
-	cmdCreate << "--full-size-mode ";
+	if (vm_rrd_version >= 10400) { cmdCreate << "--full-size-mode "; }
 	if (slope) cmdCreate << "--slope-mode ";
 	if (icon) cmdCreate << "--only-graph ";
 	if (color != NULL) cmdCreate << "-c BACK#" << color << " -c SHADEA#" << color << " -c SHADEB#" << color << " ";
