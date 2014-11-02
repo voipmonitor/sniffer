@@ -2761,6 +2761,7 @@ int main(int argc, char *argv[]) {
 						else if(verbparams[i] == "sip_packets")			sverb.sip_packets = 1;
 						else if(verbparams[i] == "set_ua")			sverb.set_ua = 1;
 						else if(verbparams[i] == "dscp")			sverb.dscp = 1;
+						else if(verbparams[i] == "store_process_query")		sverb.store_process_query = 1;
 					}
 				} }
 				break;

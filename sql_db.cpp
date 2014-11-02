@@ -1247,6 +1247,9 @@ void MySqlStore_process::disconnect() {
 }
 
 void MySqlStore_process::query(const char *query_str) {
+	if(sverb.store_process_query) {
+		cout << "store_process_query_" << this->id << ": " << query_str << endl;
+	}
 	if(!this->thread) {
 		pthread_create(&this->thread, NULL, MySqlStore_process_storing, this);
 	}
@@ -1274,10 +1277,15 @@ void MySqlStore_process::store() {
 						} else if(this->sqlDb->getLastError() == ER_SP_ALREADY_EXISTS) {
 							this->sqlDb->query("repair table mysql.proc");
 						} else {
+							if(sverb.store_process_query) {
+								cout << "store_process_query_" << this->id << ": " << "ERROR " << this->sqlDb->getLastErrorString() << endl;
+							}
 							break;
 						}
 					}
-					this->sqlDb->query(string("call ") + insert_funcname + "();");
+					if(!this->sqlDb->query(string("call ") + insert_funcname + "();") && sverb.store_process_query) {
+						cout << "store_process_query_" << this->id << ": " << "ERROR " << this->sqlDb->getLastErrorString() << endl;
+					}
 					queryqueue = "";
 					if(verbosity > 1) {
 						syslog(LOG_INFO, "STORE id: %i", this->id);

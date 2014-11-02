@@ -135,6 +135,7 @@ struct sVerbose {
 	int sip_packets;
 	int set_ua;
 	int dscp;
+	int store_process_query;
 };
 
 #ifndef GLOBAL_DECLARATION
