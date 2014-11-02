@@ -3078,7 +3078,7 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 	this->createFunction(
 			"BEGIN \
 				DECLARE _ID INT; \
-				SET _ID = (SELECT id FROM cdr_ua WHERE ua = val); \
+				SET _ID = (SELECT id FROM cdr_ua WHERE lower(ua) = lower(val)); \
 				IF ( _ID ) THEN \
 					RETURN _ID; \
 				ELSE  \
@@ -3091,7 +3091,7 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 	this->createFunction(
 			"BEGIN \
 				DECLARE _ID INT; \
-				SET _ID = (SELECT id FROM cdr_sip_response WHERE lastSIPresponse = val); \
+				SET _ID = (SELECT id FROM cdr_sip_response WHERE lower(lastSIPresponse) = lower(val)); \
 				IF ( _ID ) THEN \
 					RETURN _ID; \
 				ELSE  \
@@ -3104,7 +3104,7 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 	this->createFunction(
 			"BEGIN \
 				DECLARE _ID INT; \
-				SET _ID = (SELECT id FROM contenttype WHERE contenttype = val LIMIT 1); \
+				SET _ID = (SELECT id FROM contenttype WHERE lower(contenttype) = lower(val) LIMIT 1); \
 				IF ( _ID ) THEN \
 					RETURN _ID; \
 				ELSE  \
