@@ -3589,9 +3589,8 @@ void *pcap_read_thread_func(void *arg) {
 			mirrorip->send((char *)header_ip, (int)(pp->header.caplen - ((char*)header_ip - (char*)packet)));
 		}
 		int voippacket = 0;
-		if((opt_enable_http == 2 && useTcpReassemblyHttp) ||
-		   (opt_enable_webrtc == 2 && useTcpReassemblyWebrtc) ||
-		   (opt_enable_http < 2 && opt_enable_webrtc < 2)) {
+		if(!useTcpReassemblyHttp && !useTcpReassemblyWebrtc &&
+		   opt_enable_http < 2 && opt_enable_webrtc < 2) {
 			process_packet(packet_counter,
 				       header_ip->saddr, htons(header_udp->source), header_ip->daddr, htons(header_udp->dest), 
 				       data, datalen, data - (char*)packet, 
