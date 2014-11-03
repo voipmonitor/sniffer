@@ -1323,30 +1323,38 @@ void TcpReassemblyLink::complete_normal(bool final, bool lockQueue) {
 	while(this->ok_streams.size()) {
 		TcpReassemblyData *reassemblyData = NULL;
 		size_t countIgnore = 0;
+		size_t countData = 0;
 		size_t countRequest = 0;
 		size_t countResponse = 0;
 		while(countIgnore < this->ok_streams.size()) {
 			TcpReassemblyStream* stream = this->ok_streams[countIgnore];
-			if(stream->completed_finally ||
-			   stream->direction == TcpReassemblyStream::DIRECTION_TO_SOURCE ) {
+			if(reassembly->enableIgnorePairReqResp ?
+			    stream->completed_finally :
+			    (stream->completed_finally ||
+			     stream->direction == TcpReassemblyStream::DIRECTION_TO_SOURCE)) {
 				++countIgnore;
 			} else {
 				break;
 			}
 		}
 		TcpReassemblyStream::eDirection direction = TcpReassemblyStream::DIRECTION_TO_DEST;
-		while(countIgnore + countRequest + countResponse < this->ok_streams.size()) {
-			TcpReassemblyStream* stream = this->ok_streams[countIgnore + countRequest + countResponse];
-			if(stream->direction == direction ||
+		while(countIgnore + countData + countRequest + countResponse < this->ok_streams.size()) {
+			TcpReassemblyStream* stream = this->ok_streams[countIgnore + countData + countRequest + countResponse];
+			if(reassembly->enableIgnorePairReqResp ||
+			   stream->direction == direction ||
 			   (stream->direction == TcpReassemblyStream::DIRECTION_TO_SOURCE && countRequest)) {
 				if(!reassemblyData) {
 					reassemblyData = new TcpReassemblyData;
 				}
-				direction = stream->direction;
-				if(direction == TcpReassemblyStream::DIRECTION_TO_DEST) {
-					++countRequest;
+				if(reassembly->enableIgnorePairReqResp) {
+					++countData;
 				} else {
-					++countResponse;
+					direction = stream->direction;
+					if(direction == TcpReassemblyStream::DIRECTION_TO_DEST) {
+						++countRequest;
+					} else {
+						++countResponse;
+					}
 				}
 				for(size_t i = 0; 
 				    i < (stream->complete_data_vector.size() ? stream->complete_data_vector.size() : 1);
@@ -1360,17 +1368,21 @@ void TcpReassemblyLink::complete_normal(bool final, bool lockQueue) {
 					u_char *data = dataItem->getData();
 					u_int32_t datalen = dataItem->getDatalen();
 					timeval time = dataItem->getTime();
-					if(direction == TcpReassemblyStream::DIRECTION_TO_DEST) {
-						reassemblyData->addRequest(data, datalen, time, stream->ack);
+					if(reassembly->enableIgnorePairReqResp) {
+						reassemblyData->addData(data, datalen, time, stream->ack, (TcpReassemblyDataItem::eDirection)stream->direction);
 					} else {
-						reassemblyData->addResponse(data, datalen, time, stream->ack);
+						if(direction == TcpReassemblyStream::DIRECTION_TO_DEST) {
+							reassemblyData->addRequest(data, datalen, time, stream->ack);
+						} else {
+							reassemblyData->addResponse(data, datalen, time, stream->ack);
+						}
 					}
 				}
 			} else {
 				break;
 			}
 		}
-		if(countRequest && (countResponse || final)) {
+		if(countData || (countRequest && (countResponse || final))) {
 			if(reassembly->dataCallback) {
 				reassembly->dataCallback->processData(
 					this->ip_src, this->ip_dst,
@@ -1379,7 +1391,7 @@ void TcpReassemblyLink::complete_normal(bool final, bool lockQueue) {
 					ENABLE_DEBUG(reassembly->getType(), _debug_save));
 				reassemblyData = NULL;
 			}
-			for(size_t i = 0; i < countIgnore + countRequest + countResponse; i++) {
+			for(size_t i = 0; i < countIgnore + countData + countRequest + countResponse; i++) {
 				this->ok_streams[0]->is_ok = false;
 				this->ok_streams[0]->completed_finally = true;
 				this->ok_streams.erase(this->ok_streams.begin());
@@ -1666,6 +1678,7 @@ TcpReassembly::TcpReassembly(eType type) {
 	this->_sync_links = 0;
 	this->enableHttpForceInit = false;
 	this->enableCrazySequence = false;
+	this->enableIgnorePairReqResp = false;
 	this->dataCallback = NULL;
 	this->act_time_from_header = 0;
 	this->last_time = 0;
@@ -1868,23 +1881,21 @@ void TcpReassembly::push(pcap_pkthdr *header, iphdr2 *header_ip, u_char *packet,
 			}
 		} else if(!this->enableCrazySequence &&
 			  type == webrtc) {
-			if(this->check_port(header_tcp.dest)) {
-				if(ENABLE_DEBUG(type, _debug_packet)) {
-					cout << fixed
-					     << " ** NEW LINK "
-					     << (type == http ? "HTTP" : "WEBRTC")
-					     << " FORCE: " 
-					     << setw(15) << inet_ntostring(htonl(header_ip->saddr)) << "/" << setw(6) << header_tcp.source
-					     << " -> " 
-					     << setw(15) << inet_ntostring(htonl(header_ip->daddr)) << "/" << setw(6) << header_tcp.dest
-					     << endl;
-				}
-				link = new TcpReassemblyLink(this, header_ip->saddr, header_ip->daddr, header_tcp.source, header_tcp.dest);
-				link->lock_queue();
-				this->links[id] = link;
-				link->state = TcpReassemblyLink::STATE_SYN_FORCE_OK;
-				link->forceOk = true;
+			if(ENABLE_DEBUG(type, _debug_packet)) {
+				cout << fixed
+				     << " ** NEW LINK "
+				     << (type == http ? "HTTP" : "WEBRTC")
+				     << " FORCE: " 
+				     << setw(15) << inet_ntostring(htonl(header_ip->saddr)) << "/" << setw(6) << header_tcp.source
+				     << " -> " 
+				     << setw(15) << inet_ntostring(htonl(header_ip->daddr)) << "/" << setw(6) << header_tcp.dest
+				     << endl;
 			}
+			link = new TcpReassemblyLink(this, header_ip->saddr, header_ip->daddr, header_tcp.source, header_tcp.dest);
+			link->lock_queue();
+			this->links[id] = link;
+			link->state = TcpReassemblyLink::STATE_SYN_FORCE_OK;
+			link->forceOk = true;
 		} else if(this->enableCrazySequence ||
 			  (this->enableHttpForceInit &&
 			   ((datalen > 5 && !memcmp(data, "POST ", 5)) ||

@@ -3703,6 +3703,7 @@ int main(int argc, char *argv[]) {
 		}
 		if(setWebrtcPorts) {
 			tcpReassemblyWebrtc = new TcpReassembly(TcpReassembly::webrtc);
+			tcpReassemblyWebrtc->setEnableIgnorePairReqResp(true);
 			webrtcData = new WebrtcData;
 			tcpReassemblyWebrtc->setDataCallback(webrtcData);
 		}

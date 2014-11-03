@@ -87,8 +87,7 @@ public:
 struct WebrtcDataCache_id {
 	WebrtcDataCache_id(u_int32_t ip_src, u_int32_t ip_dst,
 			   u_int16_t port_src, u_int16_t port_dst,
-			   WebrtcDataItem *data,
-			   WebrtcDataItem *data_master) {
+			   WebrtcDataItem *data) {
 		this->ip_src = ip_src;
 		this->ip_dst = ip_dst;
 		this->port_src = port_src; 
@@ -96,23 +95,18 @@ struct WebrtcDataCache_id {
 		if(data) {
 			this->data = *data;
 		}
-		if(data_master) {
-			this->data_master = *data_master;
-		}
 	}
 	u_int32_t ip_src;
 	u_int32_t ip_dst;
 	u_int16_t port_src;
 	u_int16_t port_dst;
 	WebrtcDataItem data;
-	WebrtcDataItem data_master;
 	bool operator < (const WebrtcDataCache_id& other) const {
 		return((this->ip_src < other.ip_src) ? 1 : (this->ip_src > other.ip_src) ? 0 :
 		       (this->ip_dst < other.ip_dst) ? 1 : (this->ip_dst > other.ip_dst) ? 0 :
 		       (this->port_src < other.port_src) ? 1 : (this->port_src > other.port_src) ? 0 :
 		       (this->port_dst < other.port_dst) ? 1 : (this->port_dst > other.port_dst) ? 0 :
-		       (this->data < other.data) ? 1 : (this->data > other.data) ? 0 :
-		       (this->data_master < other.data_master));
+		       this->data < other.data);
 	}
 };
 
@@ -130,12 +124,10 @@ public:
 	WebrtcCache();
 	WebrtcDataCache get(u_int32_t ip_src, u_int32_t ip_dst,
 			    u_int16_t port_src, u_int16_t port_dst,
-			    WebrtcDataItem *data,
-			    WebrtcDataItem *data_master = NULL);
+			    WebrtcDataItem *data);
 	void add(u_int32_t ip_src, u_int32_t ip_dst,
 		 u_int16_t port_src, u_int16_t port_dst,
 		 WebrtcDataItem *data,
-		 WebrtcDataItem *data_master,
 		 u_int64_t timestamp);
 	void cleanup(bool force = false);
 	void clear();
@@ -186,6 +178,7 @@ public:
 		unsigned int payload_length;
 		u_char *data;
 		string method;
+		string type;
 		string deviceId;
 		string commCorrelationId;
 	};
