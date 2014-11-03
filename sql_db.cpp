@@ -2656,7 +2656,6 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 		this->query(string(
 		"CREATE TABLE IF NOT EXISTS `webrtc") + federatedSuffix + "` (\
 			`id` INT UNSIGNED NOT NULL AUTO_INCREMENT,\
-			`master_id` INT UNSIGNED,\
 			`timestamp` DATETIME NOT NULL,\
 			`usec` INT UNSIGNED NOT NULL,\
 			`srcip` INT UNSIGNED NOT NULL,\
@@ -2672,13 +2671,8 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 			"PRIMARY KEY (`id`, `timestamp`)," :
 			"PRIMARY KEY (`id`),") + 
 		"KEY `timestamp` (`timestamp`),\
-		KEY `external_transaction_id` (`external_transaction_id`)," +
-		(opt_cdr_partition ? 
-			"KEY `master_id` (`master_id`)" :
-			"CONSTRAINT fk__http_jj__master_id\
-				FOREIGN KEY (`master_id`) REFERENCES `http_jj` (`id`)\
-				ON DELETE CASCADE ON UPDATE CASCADE") +
-		") ENGINE = " + (federated ? federatedConnection + "http_jj'" : "InnoDB") + " " + compress +
+		KEY `external_transaction_id` (`external_transaction_id`)\
+		) ENGINE = " + (federated ? federatedConnection + "http_jj'" : "InnoDB") + " " + compress +
 		(opt_cdr_partition && !federated ?
 			(opt_cdr_partition_oldver ? 
 				string(" PARTITION BY RANGE (to_days(timestamp))(\
