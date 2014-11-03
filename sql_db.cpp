@@ -3075,8 +3075,8 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 		}
 	}
 
-	this->createFunction(
-			"BEGIN \
+	this->createFunction( // double space after begin for invocation rebuild function if change parameter - createRoutine compare only body
+			"BEGIN  \
 				DECLARE _ID INT; \
 				SET _ID = (SELECT id FROM cdr_ua WHERE ua = val); \
 				IF ( _ID ) THEN \
@@ -3088,8 +3088,8 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 			END",
 			"getIdOrInsertUA", "(val VARCHAR(255) CHARACTER SET latin1) RETURNS INT DETERMINISTIC");
 
-	this->createFunction(
-			"BEGIN \
+	this->createFunction( // double space after begin for invocation rebuild function if change parameter - createRoutine compare only body
+			"BEGIN  \
 				DECLARE _ID INT; \
 				SET _ID = (SELECT id FROM cdr_sip_response WHERE lastSIPresponse = val); \
 				IF ( _ID ) THEN \
@@ -3099,10 +3099,10 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 					RETURN LAST_INSERT_ID(); \
 				END IF; \
 			END",
-			"getIdOrInsertSIPRES", "(val VARCHAR(255)  CHARACTER SET latin1) RETURNS INT DETERMINISTIC");
+			"getIdOrInsertSIPRES", "(val VARCHAR(255) CHARACTER SET latin1) RETURNS INT DETERMINISTIC");
 
-	this->createFunction(
-			"BEGIN \
+	this->createFunction( // double space after begin for invocation rebuild function if change parameter - createRoutine compare only body
+			"BEGIN  \
 				DECLARE _ID INT; \
 				SET _ID = (SELECT id FROM contenttype WHERE contenttype = val LIMIT 1); \
 				IF ( _ID ) THEN \
@@ -3112,7 +3112,7 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 					RETURN LAST_INSERT_ID(); \
 				END IF; \
 			END",
-			"getIdOrInsertCONTENTTYPE", "(val VARCHAR(255) CHARACTER SET latin1) RETURNS INT DETERMINISTIC");
+			"getIdOrInsertCONTENTTYPE", "(val VARCHAR(255) CHARACTER SET utf8) RETURNS INT DETERMINISTIC");
 
 	this->createProcedure(
 			"BEGIN \
