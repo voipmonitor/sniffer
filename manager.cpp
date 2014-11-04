@@ -115,9 +115,10 @@ void *listening_worker(void *arguments) {
 	args->call->listening_worker_run = &listening_worker_run;
 	pthread_mutex_lock(&args->call->listening_worker_run_lock);
 
-
-//	FILE *out = fopen("/tmp/test.raw", "w");
-//	FILE *outa = fopen("/tmp/test.alaw", "w");
+	FILE *out = NULL;
+	if(sverb.call_listening) {
+		out = fopen("/tmp/test.raw", "w");
+	}
 
 //	vorbis_desc ogg;
 //	ogg_header(out, &ogg);
@@ -178,7 +179,9 @@ void *listening_worker(void *arguments) {
 				}
 				s16char = (char *)&r1;
 				slinear_saturated_add((short int*)&r1, (short int*)&r2);
-				//fwrite(&r1, 1, 2, out);
+				if(sverb.call_listening) {
+					fwrite(&r1, 1, 2, out);
+				}
 				args->call->spybufferchar.push(s16char[0]);
 				args->call->spybufferchar.push(s16char[1]);
 //				ogg_write_live(&ogg, &args->call->spybufferchar, (short int*)&r1);
@@ -193,7 +196,9 @@ void *listening_worker(void *arguments) {
 					r2 = ALAW(read2[i]);
 					break;
 				}
-				//fwrite(&r2, 1, 2, out);
+				if(sverb.call_listening) {
+					fwrite(&r2, 1, 2, out);
+				}
 				s16char = (char *)&r2;
 				args->call->spybufferchar.push(s16char[0]);
 				args->call->spybufferchar.push(s16char[1]);
@@ -209,7 +214,9 @@ void *listening_worker(void *arguments) {
 					r1 = ALAW(read1[i]);
 					break;
 				}
-				//fwrite(&r1, 1, 2, out);
+				if(sverb.call_listening) {
+					fwrite(&r1, 1, 2, out);
+				}
 				s16char = (char *)&r1;
 				args->call->spybufferchar.push(s16char[0]);
 				args->call->spybufferchar.push(s16char[1]);
@@ -220,7 +227,9 @@ void *listening_worker(void *arguments) {
 			int16_t s = 0;
 			//unsigned char sa = 255;
 			for(int i = 0; i < 160; i++) {
-				//fwrite(&s, 1, 2, out);
+				if(sverb.call_listening) {
+					fwrite(&s, 1, 2, out);
+				}
 				s16char = (char *)&s;
 				args->call->spybufferchar.push(s16char[0]);
 				args->call->spybufferchar.push(s16char[1]);
@@ -235,6 +244,10 @@ void *listening_worker(void *arguments) {
 	args->call->listening_worker_run = NULL;
 	pthread_mutex_unlock(&args->call->listening_worker_run_lock);
 
+	if(sverb.call_listening) {
+		fclose(out);
+	}
+	
 	//clean ogg
 /*
         ogg_stream_clear(&ogg.os);

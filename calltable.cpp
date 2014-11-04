@@ -213,7 +213,9 @@ Call::Call(char *call_id, unsigned long call_id_len, time_t time) :
 	}
 	rtplock = 0;
 	audiobuffer1 = NULL;
+	last_seq_audiobuffer1 = 0;
 	audiobuffer2 = NULL;
+	last_seq_audiobuffer2 = 0;
 	listening_worker_run = NULL;
 	tmprtp.call_owner = this;
 	flags = 0;
@@ -716,7 +718,7 @@ Call::read_rtp(unsigned char* data, int datalen, int dataoffset, struct pcap_pkt
 
 	for(int i = 0; i < ssrc_n; i++) {
 		if(rtp[i]->ssrc2 == curSSRC 
-#if RTP_BY_IP_PORT
+#if RTP_BY_SRC_IP
 		   && rtp[i]->saddr == saddr
 #endif
 		   ) {
@@ -779,10 +781,12 @@ read:
 
 		// if previouse RTP streams are present it should be filled by silence to keep it in sync
 		if(iscaller) {
+			last_seq_audiobuffer1 = 0;
 			if(lastcallerrtp) {
 				lastcallerrtp->jt_tail(header);
 			}
 		} else { 
+			last_seq_audiobuffer2 = 0;
 			if(lastcalledrtp) {
 				lastcalledrtp->jt_tail(header);
 			}

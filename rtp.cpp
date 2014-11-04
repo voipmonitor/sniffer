@@ -511,13 +511,19 @@ RTP::jitterbuffer(struct ast_channel *channel, int savePayload) {
 		Call *owner = (Call*)call_owner;
 		if(iscaller) {
 			owner->codec_caller = codec;
-			if(owner->audiobuffer1) {
+			if(owner->audiobuffer1 &&
+			   (!owner->last_seq_audiobuffer1 ||
+			    owner->last_seq_audiobuffer1 < frame->seqno)) {
 				channel->audiobuf = owner->audiobuffer1;
+				owner->last_seq_audiobuffer1 = frame->seqno;
 			}
 		} else {
 			owner->codec_called = codec;
-			if(owner->audiobuffer2) {
+			if(owner->audiobuffer2 &&
+			   (!owner->last_seq_audiobuffer2 ||
+			    owner->last_seq_audiobuffer2 < frame->seqno)) {
 				channel->audiobuf = owner->audiobuffer2;
+				owner->last_seq_audiobuffer2 = frame->seqno;
 			}
 		}
 		if(payload_len > 0) {
@@ -546,6 +552,7 @@ RTP::jitterbuffer(struct ast_channel *channel, int savePayload) {
 		channel->jb_reseted = 1;
 		memcpy(&channel->last_ts, &header->ts, sizeof(struct timeval));
 		ast_jb_put(channel, frame, &header->ts);
+		this->clearAudioBuff(owner, channel);
 		return;
 	}
 
@@ -557,6 +564,7 @@ RTP::jitterbuffer(struct ast_channel *channel, int savePayload) {
 		memcpy(&channel->last_ts, &header->ts, sizeof(struct timeval));
 		ast_jb_put(channel, frame, &header->ts);
 		if(verbosity > 4) syslog(LOG_ERR, "big timestamp jump (msdiff:%d packetization: %d) in this file: %s\n", msdiff, packetization, gfilename);
+		this->clearAudioBuff(owner, channel);
 		return;
 	}
 
@@ -602,6 +610,8 @@ RTP::jitterbuffer(struct ast_channel *channel, int savePayload) {
 
 	//printf("s[%u] codec[%d]\n",getSeqNum(), codec);
 	ast_jb_put(channel, frame, &header->ts);
+	
+	this->clearAudioBuff(owner, channel);
 }
 #endif
 
@@ -1556,3 +1566,16 @@ RTP::dump() {
 	printf("adapt(500/500)\tburst rate:\t%f\n", burstr);
 	printf("---\n");
 }
+
+void RTP::clearAudioBuff(Call *call, ast_channel *channel) {
+	if(iscaller) {
+		if(call->audiobuffer1) {
+			channel->audiobuf = NULL;
+		}
+	} else {
+		if(call->audiobuffer2) {
+			channel->audiobuf = NULL;
+		}
+	}
+}
+

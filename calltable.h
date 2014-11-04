@@ -32,7 +32,7 @@
 #define MAXNODE 150000
 #define MAXLEN_SDP_SESSID 16
 #define RTPMAP_BY_CALLERD true
-#define RTP_BY_IP_PORT true
+#define RTP_BY_SRC_IP true
 #define MAX_SIPCALLERDIP 4
 
 #define INVITE 1
@@ -219,7 +219,9 @@ public:
 
 	pthread_mutex_t buflock;		//!< mutex locking calls_queue
 	pvt_circbuf *audiobuffer1;
+	int last_seq_audiobuffer1;
 	pvt_circbuf *audiobuffer2;
+	int last_seq_audiobuffer2;
 
 	unsigned int skinny_partyid;
 

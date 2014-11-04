@@ -439,6 +439,8 @@ public:
 	 * @return count of lost packets
 	*/
 	u_int32_t getLost() { return s->probation ? 0 : ((s->cycles + s->max_seq) - s->base_seq + 1) - s->received; };
+	
+	inline void clearAudioBuff(Call *call, ast_channel *channel);
 
 private: 
 	/*
