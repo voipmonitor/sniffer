@@ -51,6 +51,7 @@ extern char mysql_database[256];
 extern char mysql_user[256];
 extern char mysql_password[256];
 extern int opt_mysql_port;
+extern char opt_mysql_timezone[256];
 extern int opt_skiprtpdata;
 
 extern char odbc_dsn[256];
@@ -603,6 +604,9 @@ bool SqlDb_mysql::connect(bool createDb, bool mainInit) {
 			}
 			sql_noerror = 1;
 			this->query("SET GLOBAL innodb_stats_on_metadata=0"); // this will speedup "Slow query on information_schema.tables"
+			if(opt_mysql_timezone[0]) {
+				this->query(string("SET time_zone = '") + opt_mysql_timezone + "'");
+			}
 			sql_noerror = 0;
 			if(!this->query("SET sql_mode = ''")) {
 				rslt = false;
