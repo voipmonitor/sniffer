@@ -373,6 +373,7 @@ char mysql_table[256] = "cdr";
 char mysql_user[256] = "root";
 char mysql_password[256] = "";
 int opt_mysql_port = 0; // 0 menas use standard port 
+char opt_mysql_timezone[256] = "";
 int opt_skiprtpdata = 0;
 
 char opt_match_header[128] = "";
@@ -1590,6 +1591,9 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "mysqlport", NULL))) {
 		opt_mysql_port = atoi(value);
 	}
+	if((value = ini.GetValue("general", "mysql_timezone", NULL))) {
+		strncpy(opt_mysql_timezone, value, sizeof(opt_mysql_timezone));
+	}
 	if((value = ini.GetValue("general", "myqslhost", NULL))) {
 		printf("You have old version of config file! there were typo in myqslhost instead of mysqlhost! Fix your config! exiting...\n");
 		syslog(LOG_ERR, "You have old version of config file! there were typo in myqslhost instead of mysqlhost! Fix your config! exiting...\n");
@@ -2485,6 +2489,10 @@ int main(int argc, char *argv[]) {
  
 	printf("voipmonitor version %s\n", RTPSENSOR_VERSION);
 	syslog(LOG_NOTICE, "start voipmonitor version %s", RTPSENSOR_VERSION);
+	
+	string localActTime = sqlDateTimeString(time(NULL));
+	printf("local time %s\n", localActTime.c_str());
+	syslog(LOG_NOTICE, "local time %s", localActTime.c_str());
  
 	time(&startTime);
 
@@ -3707,6 +3715,7 @@ int main(int argc, char *argv[]) {
 		}
 		if(setWebrtcPorts) {
 			tcpReassemblyWebrtc = new TcpReassembly(TcpReassembly::webrtc);
+			tcpReassemblyWebrtc->setEnableIgnorePairReqResp(true);
 			webrtcData = new WebrtcData;
 			tcpReassemblyWebrtc->setDataCallback(webrtcData);
 		}

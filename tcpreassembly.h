@@ -18,14 +18,20 @@ extern int opt_tcpreassembly_thread;
 
 class TcpReassemblyDataItem {
 public: 
+	enum eDirection {
+		DIRECTION_NA = 0,
+		DIRECTION_TO_DEST,
+		DIRECTION_TO_SOURCE
+	};
 	TcpReassemblyDataItem() {
 		this->data = NULL;
 		this->datalen = 0;
 		this->time.tv_sec = 0;
 		this->time.tv_usec = 0;
 		this->ack = 0;
+		this->direction = DIRECTION_NA;
 	}
-	TcpReassemblyDataItem(u_char *data, u_int32_t datalen, timeval time, u_int32_t ack = 0) {
+	TcpReassemblyDataItem(u_char *data, u_int32_t datalen, timeval time, u_int32_t ack = 0, eDirection direction = DIRECTION_NA) {
 		if(data && datalen) {
 			this->data = new u_char[datalen + 1];
 			memcpy(this->data, data, datalen);
@@ -37,6 +43,7 @@ public:
 		}
 		this->time = time;
 		this->ack = ack;
+		this->direction = direction;
 	}
 	TcpReassemblyDataItem(const TcpReassemblyDataItem &dataItem) {
 		if(dataItem.data && dataItem.datalen) {
@@ -50,6 +57,7 @@ public:
 		}
 		this->time = dataItem.time;
 		this->ack = dataItem.ack;
+		this->direction = dataItem.direction;
 	}
 	~TcpReassemblyDataItem() {
 		if(this->data) {
@@ -71,6 +79,7 @@ public:
 		}
 		this->time = dataItem.time;
 		this->ack = dataItem.ack;
+		this->direction = dataItem.direction;
 		return(*this);
 	}
 	void setData(u_char *data, u_int32_t datalen, bool newAlloc = true) {
@@ -96,6 +105,9 @@ public:
 	}
 	void setAck(u_int32_t ack) {
 		this->ack = ack;
+	}
+	void setDirection(eDirection direction) {
+		this->direction = direction;
 	}
 	void setDataTime(u_char *data, u_int32_t datalen, timeval time, bool newAlloc = true) {
 		this->setData(data, datalen, newAlloc);
@@ -126,6 +138,9 @@ public:
 	u_int32_t getAck() {
 		return(this->ack);
 	}
+	eDirection getDirection() {
+		return(this->direction);
+	}
 	bool isFill() {
 		return(this->data != NULL);
 	}
@@ -134,12 +149,16 @@ private:
 	u_int32_t datalen;
 	timeval time;
 	u_int32_t ack;
+	eDirection direction;
 };
 
 class TcpReassemblyData {
 public:
 	TcpReassemblyData() {
 		this->forceAppendExpectContinue = false;
+	}
+	void addData(u_char *data, u_int32_t datalen, timeval time, u_int32_t ack = 0, TcpReassemblyDataItem::eDirection direction = TcpReassemblyDataItem::DIRECTION_NA) {
+		this->data.push_back(TcpReassemblyDataItem(data, datalen, time, ack, direction));
 	}
 	void addRequest(u_char *data, u_int32_t datalen, timeval time, u_int32_t ack = 0) {
 		request.push_back(TcpReassemblyDataItem(data, datalen, time, ack));
@@ -155,6 +174,7 @@ public:
 	}
 	bool isFill();
 public:
+	vector<TcpReassemblyDataItem> data;
 	vector<TcpReassemblyDataItem> request;
 	vector<TcpReassemblyDataItem> response;
 	vector<TcpReassemblyDataItem> expectContinue;
@@ -708,6 +728,9 @@ public:
 	void setEnableCrazySequence(bool enableCrazySequence = true) {
 		this->enableCrazySequence = enableCrazySequence;
 	}
+	void setEnableIgnorePairReqResp(bool enableIgnorePairReqResp = true) {
+		this->enableIgnorePairReqResp = enableIgnorePairReqResp;
+	}
 	void setDataCallback(TcpReassemblyProcessData *dataCallback) {
 		this->dataCallback = dataCallback;
 	}
@@ -775,6 +798,7 @@ private:
 	volatile int _sync_links;
 	bool enableHttpForceInit;
 	bool enableCrazySequence;
+	bool enableIgnorePairReqResp;
 	TcpReassemblyProcessData *dataCallback;
 	u_int64_t act_time_from_header;
 	u_int64_t last_time;

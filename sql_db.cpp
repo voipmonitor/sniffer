@@ -51,6 +51,7 @@ extern char mysql_database[256];
 extern char mysql_user[256];
 extern char mysql_password[256];
 extern int opt_mysql_port;
+extern char opt_mysql_timezone[256];
 extern int opt_skiprtpdata;
 
 extern char odbc_dsn[256];
@@ -603,6 +604,9 @@ bool SqlDb_mysql::connect(bool createDb, bool mainInit) {
 			}
 			sql_noerror = 1;
 			this->query("SET GLOBAL innodb_stats_on_metadata=0"); // this will speedup "Slow query on information_schema.tables"
+			if(opt_mysql_timezone[0]) {
+				this->query(string("SET time_zone = '") + opt_mysql_timezone + "'");
+			}
 			sql_noerror = 0;
 			if(!this->query("SET sql_mode = ''")) {
 				rslt = false;
@@ -2656,7 +2660,6 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 		this->query(string(
 		"CREATE TABLE IF NOT EXISTS `webrtc") + federatedSuffix + "` (\
 			`id` INT UNSIGNED NOT NULL AUTO_INCREMENT,\
-			`master_id` INT UNSIGNED,\
 			`timestamp` DATETIME NOT NULL,\
 			`usec` INT UNSIGNED NOT NULL,\
 			`srcip` INT UNSIGNED NOT NULL,\
@@ -2672,13 +2675,8 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 			"PRIMARY KEY (`id`, `timestamp`)," :
 			"PRIMARY KEY (`id`),") + 
 		"KEY `timestamp` (`timestamp`),\
-		KEY `external_transaction_id` (`external_transaction_id`)," +
-		(opt_cdr_partition ? 
-			"KEY `master_id` (`master_id`)" :
-			"CONSTRAINT fk__http_jj__master_id\
-				FOREIGN KEY (`master_id`) REFERENCES `http_jj` (`id`)\
-				ON DELETE CASCADE ON UPDATE CASCADE") +
-		") ENGINE = " + (federated ? federatedConnection + "http_jj'" : "InnoDB") + " " + compress +
+		KEY `external_transaction_id` (`external_transaction_id`)\
+		) ENGINE = " + (federated ? federatedConnection + "http_jj'" : "InnoDB") + " " + compress +
 		(opt_cdr_partition && !federated ?
 			(opt_cdr_partition_oldver ? 
 				string(" PARTITION BY RANGE (to_days(timestamp))(\

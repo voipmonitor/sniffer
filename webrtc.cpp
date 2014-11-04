@@ -32,207 +32,139 @@ void WebrtcData::processData(u_int32_t ip_src, u_int32_t ip_dst,
 	if(!sqlDbSaveWebrtc) {
 		sqlDbSaveWebrtc = createSqlObject();
 	}
-	WebrtcDataItem webrtcDataItemRequest;
-	string deviceIdRequest;
-	string commCorrelationIdRequest;
-	string bodyRequest;
-	string queryInsert;
-	WebrtcDataCache requestDataFromCache;
-	int countWebrtcDataOk = 0;
-	bool okSave = false;
-	for(int direction = TcpReassemblyStream::DIRECTION_TO_DEST;
-	    direction <= TcpReassemblyStream::DIRECTION_TO_SOURCE;
-	    direction++) {
-		vector<TcpReassemblyDataItem> *dataItems = direction == TcpReassemblyStream::DIRECTION_TO_DEST ? 
-							    &data->request :
-							    &data->response;
-		string typeReqResp = direction == TcpReassemblyStream::DIRECTION_TO_DEST ? "REQ" : "RESP";
-		for(size_t i_data = 0; i_data < dataItems->size(); i_data++) {
-			TcpReassemblyDataItem *dataItem = &(*dataItems)[i_data];
-			if(debugSave) {
-				cout << fixed
-				     << setw(15) << inet_ntostring(htonl(ip_src))
-				     << " / "
-				     << setw(5) << port_src
-				     << (direction == TcpReassemblyStream::DIRECTION_TO_DEST ? " -> " : " <- ")
-				     << setw(15) << inet_ntostring(htonl(ip_dst))
-				     << " / "
-				     << setw(5) << port_dst
-				     << "  len: " << setw(4) << dataItem->getDatalen();
-				u_int32_t ack = dataItem->getAck();
-				if(ack) {
-					cout << "  ack: " << setw(5) << ack;
-				}
-				cout << endl;
+	for(size_t i_data = 0; i_data < data->data.size(); i_data++) {
+		TcpReassemblyDataItem *dataItem = &data->data[i_data];
+		if(debugSave) {
+			cout << fixed
+			     << setw(15) << inet_ntostring(htonl(ip_src))
+			     << " / "
+			     << setw(5) << port_src
+			     << (dataItem->getDirection() == TcpReassemblyDataItem::DIRECTION_TO_DEST ? " --> " : " <-- ")
+			     << setw(15) << inet_ntostring(htonl(ip_dst))
+			     << " / "
+			     << setw(5) << port_dst
+			     << "  len: " << setw(4) << dataItem->getDatalen();
+			u_int32_t ack = dataItem->getAck();
+			if(ack) {
+				cout << "  ack: " << setw(5) << ack;
 			}
-			WebrtcDecodeData webrtcDD;
-			bool webrtcDD_ok = false;
-			if(dataItem->getDatalen() > 4 &&
-			   (!strncmp((char*)dataItem->getData(), "POST", 4) ||
-			    !strncmp((char*)dataItem->getData(), "GET", 3) ||
-			    !strncmp((char*)dataItem->getData(), "HTTP", 4))) {
+			cout << endl;
+		}
+		WebrtcDecodeData webrtcDD;
+		if(dataItem->getDatalen() > 4 &&
+		   (!strncmp((char*)dataItem->getData(), "POST", 4) ||
+		    !strncmp((char*)dataItem->getData(), "GET", 3) ||
+		    !strncmp((char*)dataItem->getData(), "HTTP", 4))) {
+			if(debugSave) {
+				cout << "  HTTP DATA: " << dataItem->getData() << endl;
+			}
+			continue;
+		} else {
+			unsigned int rsltDecode = webrtcDD.decode(dataItem->getData(), dataItem->getDatalen());
+			if(rsltDecode) {
+				if(webrtcDD.method == "hb") {
+					if(debugSave) {
+						cout << "   method: hb - skip" << endl;
+					}
+					continue;
+				}
 				if(debugSave) {
-					cout << "  HTTP " << typeReqResp << " DATA: " << dataItem->getData() << endl;
+					switch(webrtcDD.opcode) {
+					case opcode_textData:
+						cout << "  WEBRTC " << webrtcDD.type << " DATA";
+						if(webrtcDD.data) {
+							cout << ": (len: " << strlen((char*)webrtcDD.data)
+							     << " payload len: " << webrtcDD.payload_length << ") "
+							     << webrtcDD.data;
+						}
+						cout << endl;
+						if(!webrtcDD.method.empty()) {
+							cout << "   method: " << webrtcDD.method << endl;
+						}
+						if(!webrtcDD.type.empty()) {
+							cout << "   type: " << webrtcDD.type << endl;
+						}
+						if(!webrtcDD.deviceId.empty()) {
+							cout << "   deviceId: " << webrtcDD.deviceId << endl;
+						}
+						if(!webrtcDD.commCorrelationId.empty()) {
+							cout << "   commCorrelationId: " << webrtcDD.commCorrelationId << endl;
+						}
+						break;
+					case opcode_binaryData:
+						cout << "  WEBRTC BINARY DATA" << endl;
+						break;
+					case opcode_terminatesConnection:
+						cout << "  WEBRTC TERMINATES CONNECTION" << endl;
+						break;
+					default:
+						cout << "  WEBRTC OTHER OPCODE" << endl;
+						break;
+					}
+				}
+				if(rsltDecode != dataItem->getDatalen()) {
+					if(debugSave) {
+						cout << "  WARNING - BAD LENGTH WEBRTC DATA" << endl;
+					}
+				}
+				if(webrtcDD.opcode != opcode_textData) {
+					continue;
 				}
 			} else {
-				unsigned int rsltDecode = webrtcDD.decode(dataItem->getData(), dataItem->getDatalen());
-				if(rsltDecode) {
-					if(webrtcDD.method == "hb") {
-						if(debugSave) {
-							cout << "   method: hb - skip" << endl;
-						}
-						continue;
-					}
-					if(debugSave) {
-						switch(webrtcDD.opcode) {
-						case opcode_textData:
-							cout << "  WEBRTC " << typeReqResp << " DATA";
-							if(webrtcDD.data) {
-								cout << ": (len: " << strlen((char*)webrtcDD.data)
-								     << " payload len: " << webrtcDD.payload_length << ") "
-								     << webrtcDD.data;
-							}
-							cout << endl;
-							if(!webrtcDD.method.empty()) {
-								cout << "   method: " << webrtcDD.method << endl;
-							}
-							if(!webrtcDD.deviceId.empty()) {
-								cout << "   deviceId: " << webrtcDD.deviceId << endl;
-							}
-							if(!webrtcDD.commCorrelationId.empty()) {
-								cout << "   commCorrelationId: " << webrtcDD.commCorrelationId << endl;
-							}
-							break;
-						case opcode_binaryData:
-							cout << "  WEBRTC " << typeReqResp << " BINARY DATA" << endl;
-							break;
-						case opcode_terminatesConnection:
-							cout << "  WEBRTC " << typeReqResp << " TERMINATES CONNECTION" << endl;
-							break;
-						default:
-							cout << "  WEBRTC " << typeReqResp << " OTHER OPCODE" << endl;
-							break;
-						}
-					}
-					if(webrtcDD.opcode == opcode_textData && webrtcDD.data) {
-						webrtcDD_ok = true;
-						++countWebrtcDataOk;
-					}
-					if(rsltDecode != dataItem->getDatalen()) {
-						if(debugSave) {
-							cout << "  WARNING - BAD LENGTH WEBRTC DATA" << endl;
-						}
-					}
-				} else {
-					if(debugSave) {
-						cout << "  BAD WEBRTC DATA: " << endl;
-					}
+				if(debugSave) {
+					cout << "  BAD WEBRTC DATA: " << endl;
 				}
-			}
-			if(webrtcDD_ok) {
-				WebrtcDataItem webrtcDataItem(webrtcDD.opcode, webrtcDD.data);
-				if(direction == TcpReassemblyStream::DIRECTION_TO_DEST) {
-					if(i_data == 0) {
-						webrtcDataItemRequest = webrtcDataItem;
-						deviceIdRequest = webrtcDD.deviceId;
-						commCorrelationIdRequest = webrtcDD.commCorrelationId;
-						bodyRequest = (char*)webrtcDD.data;
-					}
-					requestDataFromCache = this->cache.get(ip_src, ip_dst, port_src, port_dst, &webrtcDataItem);
-					if(requestDataFromCache.timestamp) {
-						if(debugSave) {
-							cout << "DUPL" << endl;
-						}
-					} else {
-						SqlDb_row rowRequest;
-						rowRequest.add(sqlDateTimeString(dataItem->getTime().tv_sec), "timestamp");
-						rowRequest.add(dataItem->getTime().tv_usec, "usec");
-						rowRequest.add(htonl(ip_src), "srcip");
-						rowRequest.add(htonl(ip_dst), "dstip");
-						rowRequest.add(port_src, "srcport"); 
-						rowRequest.add(port_dst, "dstport"); 
-						rowRequest.add("websocket", "type");
-						rowRequest.add(webrtcDD.method, "method"); 
-						rowRequest.add(sqlEscapeString((char*)webrtcDD.data).c_str(), "body");
-						rowRequest.add(sqlEscapeString(!webrtcDD.deviceId.empty() ? 
-										 webrtcDD.deviceId :
-										 webrtcDD.commCorrelationId).c_str(), 
-							       "external_transaction_id");
-						rowRequest.add(opt_id_sensor > 0 ? opt_id_sensor : 0, "id_sensor", opt_id_sensor <= 0);
-						queryInsert = sqlDbSaveWebrtc->insertQuery("webrtc", rowRequest);
-						this->cache.add(ip_src, ip_dst, port_src, port_dst,
-								&webrtcDataItem, NULL,
-								dataItem->getTime().tv_sec);
-					}
-				} else {
-					WebrtcDataCache responseDataFromCache = this->cache.get(ip_src, ip_dst, port_src, port_dst,
-												&webrtcDataItem, &webrtcDataItemRequest);
-					if(responseDataFromCache.timestamp) {
-						if(debugSave) {
-							cout << "DUPL" << endl;
-						}
-					} else {
-						if(requestDataFromCache.timestamp) {
-							ostringstream queryFindMasterId;
-							queryFindMasterId << "set @webrtc_id = (select id from webrtc where"
-									  << " srcip = " << htonl(ip_src)
-									  << " and dstip = " << htonl(ip_dst)
-									  << " and srcport = " << port_src
-									  << " and dstport = " << port_dst
-									  << " and body = '" << sqlEscapeString(bodyRequest) << "'"
-									  << " and timestamp = '" << sqlDateTimeString(requestDataFromCache.timestamp) << "'" 
-									  << " limit 1);" << endl
-									  << "if @webrtc_id then" << endl;
-							queryInsert += queryFindMasterId.str();
-						} else {
-							queryInsert += ";\n";
-							queryInsert += "set @webrtc_id = last_insert_id();\n";
-						}
-						SqlDb_row rowRequest;
-						rowRequest.add("_\\_'SQL'_\\_:@webrtc_id", "master_id");
-						rowRequest.add(sqlDateTimeString(dataItem->getTime().tv_sec), "timestamp");
-						rowRequest.add(dataItem->getTime().tv_usec, "usec");
-						rowRequest.add(htonl(ip_dst), "srcip"); 
-						rowRequest.add(htonl(ip_src), "dstip"); 
-						rowRequest.add(port_dst, "srcport"); 
-						rowRequest.add(port_src, "dstport"); 
-						rowRequest.add("websocket_resp", "type");
-						rowRequest.add(webrtcDD.method, "method"); 
-						rowRequest.add(sqlEscapeString((char*)webrtcDD.data).c_str(), "body");
-						rowRequest.add(sqlEscapeString(!webrtcDD.deviceId.empty() ? 
-										 webrtcDD.deviceId :
-									       !webrtcDD.commCorrelationId.empty() ? 
-										 webrtcDD.commCorrelationId :
-									       !deviceIdRequest.empty() ?
-										 deviceIdRequest :
-										 commCorrelationIdRequest),
-							       "external_transaction_id");
-						rowRequest.add(opt_id_sensor > 0 ? opt_id_sensor : 0, "id_sensor", opt_id_sensor <= 0);
-						queryInsert += sqlDbSaveWebrtc->insertQuery("webrtc", rowRequest, true);
-						if(requestDataFromCache.timestamp) {
-							queryInsert += ";\n";
-							queryInsert += "end if";
-						}
-						this->cache.add(ip_src, ip_dst, port_src, port_dst,
-								&webrtcDataItem, &webrtcDataItemRequest,
-								dataItem->getTime().tv_sec);
-					}
-				}
+				continue;
 			}
 		}
-		if(direction == TcpReassemblyStream::DIRECTION_TO_DEST && countWebrtcDataOk) {
-			okSave = true;
-		}
-	}
-	if(queryInsert.length() && okSave) {
-		int storeId = STORE_PROC_ID_WEBRTC_1 + 
-			      (opt_mysqlstore_max_threads_webrtc > 1 &&
-			       sqlStore->getSize(STORE_PROC_ID_WEBRTC_1) > 1000 ? 
-				counterProcessData % opt_mysqlstore_max_threads_webrtc : 
-				0);
-		sqlStore->query_lock(queryInsert.c_str(), storeId);
-		if(debugSave) {
-			cout << "SAVE" << endl;
+		if((webrtcDD.opcode == opcode_textData && webrtcDD.data) &&
+		   (webrtcDD.type == "req" || webrtcDD.type == "rsp") &&
+		   ((webrtcDD.method == "login" && !webrtcDD.deviceId.empty()) || 
+		    (webrtcDD.method == "msg" && !webrtcDD.commCorrelationId.empty()))) {
+			WebrtcDataItem webrtcDataItem(webrtcDD.opcode, webrtcDD.data);
+			u_int32_t _ip_src = dataItem->getDirection() == TcpReassemblyDataItem::DIRECTION_TO_DEST ? ip_src : ip_dst;
+			u_int32_t _ip_dst = dataItem->getDirection() == TcpReassemblyDataItem::DIRECTION_TO_DEST ? ip_dst : ip_src;
+			u_int16_t _port_src = dataItem->getDirection() == TcpReassemblyDataItem::DIRECTION_TO_DEST ? port_src : port_dst;
+			u_int16_t _port_dst = dataItem->getDirection() == TcpReassemblyDataItem::DIRECTION_TO_DEST ? port_dst : port_src;
+			WebrtcDataCache requestDataFromCache = this->cache.get(_ip_src, _ip_dst, _port_src, _port_dst, &webrtcDataItem);
+			if(requestDataFromCache.timestamp) {
+				if(debugSave) {
+					cout << "DUPL" << endl;
+				}
+			} else {
+				SqlDb_row rowRequest;
+				rowRequest.add(sqlDateTimeString(dataItem->getTime().tv_sec), "timestamp");
+				rowRequest.add(dataItem->getTime().tv_usec, "usec");
+				rowRequest.add(htonl(_ip_src), "srcip");
+				rowRequest.add(htonl(_ip_dst), "dstip");
+				rowRequest.add(_port_src, "srcport"); 
+				rowRequest.add(_port_dst, "dstport"); 
+				rowRequest.add(webrtcDD.type == "req" ? "websocket" : "websocket_resp", "type");
+				rowRequest.add(webrtcDD.method, "method"); 
+				rowRequest.add(sqlEscapeString((char*)webrtcDD.data).c_str(), "body");
+				rowRequest.add(sqlEscapeString(!webrtcDD.deviceId.empty() ? 
+								 webrtcDD.deviceId :
+								 webrtcDD.commCorrelationId).c_str(), 
+					       "external_transaction_id");
+				rowRequest.add(opt_id_sensor > 0 ? opt_id_sensor : 0, "id_sensor", opt_id_sensor <= 0);
+				string queryInsert = sqlDbSaveWebrtc->insertQuery("webrtc", rowRequest);
+				int storeId = STORE_PROC_ID_WEBRTC_1 + 
+					      (opt_mysqlstore_max_threads_webrtc > 1 &&
+					       sqlStore->getSize(STORE_PROC_ID_WEBRTC_1) > 1000 ? 
+						counterProcessData % opt_mysqlstore_max_threads_webrtc : 
+						0);
+				sqlStore->query_lock(queryInsert.c_str(), storeId);
+				if(debugSave) {
+					cout << "SAVE" << endl;
+				}
+				this->cache.add(_ip_src, _ip_dst, _port_src, _port_dst,
+						&webrtcDataItem,
+						dataItem->getTime().tv_sec);
+			}
+		} else {
+			if(debugSave) {
+				cout << "  UNCOMPLETE WEBRTC DATA: " << endl;
+			}
 		}
 	}
 	delete data;
@@ -307,8 +239,12 @@ unsigned int WebrtcData::WebrtcDecodeData::decode(u_char *data, unsigned int dat
 		}
 		if(opcode == opcode_textData) {
 			this->method = reg_replace((char*)this->data, "\"method\":\"([^\"]+)\"", "$1");
+			this->type = reg_replace((char*)this->data, "\"type\":\"([^\"]+)\"", "$1");
 			this->deviceId = reg_replace((char*)this->data, "\"deviceId\":\"([^\"]+)\"", "$1");
 			this->commCorrelationId = reg_replace((char*)this->data, "\"Comm-Correlation-ID\":\"([^\"]+)\"", "$1");
+			if(this->commCorrelationId.empty()) {
+				this->commCorrelationId = reg_replace((char*)this->data, "\"comm-correlation-id\":\"([^\"]+)\"", "$1");
+			}
 		}
 	}
 	return(headerLength + payload_length);
@@ -322,9 +258,8 @@ WebrtcCache::WebrtcCache() {
 
 WebrtcDataCache WebrtcCache::get(u_int32_t ip_src, u_int32_t ip_dst,
 				 u_int16_t port_src, u_int16_t port_dst,
-				 WebrtcDataItem *data,
-				 WebrtcDataItem *data_master) {
-	WebrtcDataCache_id idc(ip_src, ip_dst, port_src, port_dst, data, data_master);
+				 WebrtcDataItem *data) {
+	WebrtcDataCache_id idc(ip_src, ip_dst, port_src, port_dst, data);
 	map<WebrtcDataCache_id, WebrtcDataCache>::iterator iter = this->cache.find(idc);
 	if(iter == this->cache.end()) {
 		return(WebrtcDataCache());
@@ -336,9 +271,8 @@ WebrtcDataCache WebrtcCache::get(u_int32_t ip_src, u_int32_t ip_dst,
 void WebrtcCache::add(u_int32_t ip_src, u_int32_t ip_dst,
 		      u_int16_t port_src, u_int16_t port_dst,
 		      WebrtcDataItem *data,
-		      WebrtcDataItem *data_master,
 		      u_int64_t timestamp) {
-	WebrtcDataCache_id idc(ip_src, ip_dst, port_src, port_dst, data, data_master);
+	WebrtcDataCache_id idc(ip_src, ip_dst, port_src, port_dst, data);
 	this->cache[idc] = WebrtcDataCache(timestamp);
 	this->lastAddTimestamp = timestamp;
 }
