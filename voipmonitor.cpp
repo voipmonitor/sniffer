@@ -2478,6 +2478,10 @@ void *readdump_libpcap_thread_fce(void *handle);
 void test();
 
 int main(int argc, char *argv[]) {
+
+	if(file_exists("/etc/localtime")) {
+		setenv("TZ", "/etc/localtime", 1);
+	}
  
 	printf("voipmonitor version %s\n", RTPSENSOR_VERSION);
 	syslog(LOG_NOTICE, "start voipmonitor version %s", RTPSENSOR_VERSION);
