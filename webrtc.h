@@ -68,15 +68,12 @@ public:
 	bool operator == (const WebrtcDataItem& other) const {
 		return(this->opcode == other.opcode &&
 		       this->datalen == other.datalen &&
-		       !memcmp(this->data, other.data, this->datalen));
+		       (this->datalen == 0 || !memcmp(this->data, other.data, this->datalen)));
 	}
 	bool operator < (const WebrtcDataItem& other) const {
 		return((this->opcode < other.opcode) ? 1 : (this->opcode > other.opcode) ? 0 :
 		       (this->datalen < other.datalen) ? 1 : (this->datalen > other.datalen) ? 0 :
 		       (this->datalen ? memcmp(this->data, other.data, this->datalen) : 0));
-	}
-	bool operator > (const WebrtcDataItem& other) const {
-		return(!(this->opcode == other.opcode || this->opcode < other.opcode));
 	}
 public:
 	eWebrtcOpcode opcode;
