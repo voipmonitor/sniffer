@@ -1,3 +1,12 @@
+10.1.10 4.11.2014
+=================
+- fix issue with detect user agent for caller / called (VS-135)
+- support charts for older librrd (<1.4) 
+- fix not storing CDR for some mysql versions / configurations if there is more sip reponse with the same text but case sensitive (200 OK | 200 ok) 
+- use /etc/localtime even if sniffer is statically linked with non default localtime location which fixes our 32bit sniffer builds wchih have bad timezone since 10.1.6. Print time on stdout when sniffer starts for control purpose. 
+- fix live audio monitor when there is duplicated RTP streams (choppy sound) 
+
+
 10.1.9 30.10.2014
 =================
 - Fix loading old files when scanpcapdir is used. (If files were moved/created in scanpcapdir and voipmonitor was not running, files were not loaded after voipmonitor started - only new files were processed.)
