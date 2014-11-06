@@ -2879,7 +2879,7 @@ Call *process_packet(u_int64_t packet_number,
 				if(s2 and l > 0) {
 					//Content-Type found try if it is SDP 
 					if(l > 0 && strcasestr(s2, "application/sdp")){
-						process_sdp(call, sip_method, saddr, source, daddr, dest, s2, (unsigned int)datalen - (s - data), header_ip, callidstr, ua, ua_len);
+						process_sdp(call, sip_method, saddr, source, daddr, dest, s2, (unsigned int)datalen - (s2 - data), header_ip, callidstr, ua, ua_len);
 						break;	// stop searching
 					} else {
 						// it is not SDP continue searching for another content-type 
