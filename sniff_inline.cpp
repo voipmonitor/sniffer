@@ -111,6 +111,10 @@ int pcapProcess(pcap_pkthdr** header, u_char** packet, bool *destroy,
 			ppd->header_ip_offset = 52;
 			ppd->protocol = ETHERTYPE_IP;
 			break;
+		case DLT_NULL:
+			ppd->header_ip_offset = 4;
+			ppd->protocol = ETHERTYPE_IP;
+			break;
 		default:
 			syslog(LOG_ERR, "BAD DATALINK %s: datalink number [%d] is not supported", interfaceName, pcapLinklayerHeaderType);
 			return(0);
