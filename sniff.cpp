@@ -1980,7 +1980,7 @@ Call *process_packet(u_int64_t packet_number,
 	}
 
 	// check if the packet is SKINNY
-	if(opt_skinny && (source == 2000 || dest == 2000)) {
+	if(istcp && opt_skinny && (source == 2000 || dest == 2000)) {
 		handle_skinny(header, packet, saddr, source, daddr, dest, data, datalen, dataoffset,
 			      handle, dlt, sensor_id);
 		if(logPacketSipMethodCall_enable) {
