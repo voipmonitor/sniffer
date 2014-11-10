@@ -734,7 +734,6 @@ long long GetTotalDiskSpace(const char* absoluteFilePath) {
 }
 
 string GetStringMD5(std::string str) {
-	string md5;
 	MD5_CTX ctx;
 	MD5_Init(&ctx);
 	MD5_Update(&ctx, (void*)str.c_str(), str.length());
@@ -744,14 +743,13 @@ string GetStringMD5(std::string str) {
 }
 
 string GetFileMD5(std::string filename) {
-	string md5;
 	long long fileSize = GetFileSize(filename);
 	if(!fileSize) {
-		return(md5);
+		return("");
 	}
 	FILE *fileHandle = fopen(filename.c_str(), "rb");
 	if(!fileHandle) {
-		return(md5);
+		return("");
 	}
 	MD5_CTX ctx;
 	MD5_Init(&ctx);
@@ -760,6 +758,15 @@ string GetFileMD5(std::string filename) {
 	fclose(fileHandle);
 	MD5_Update(&ctx, fileBuffer, fileSize);
 	delete [] fileBuffer;
+	unsigned char _md5[MD5_DIGEST_LENGTH];
+	MD5_Final(_md5, &ctx);
+	return(MD5_String(_md5));
+}
+
+string GetDataMD5(u_char *data, u_int32_t datalen) {
+	MD5_CTX ctx;
+	MD5_Init(&ctx);
+	MD5_Update(&ctx, data, datalen);
 	unsigned char _md5[MD5_DIGEST_LENGTH];
 	MD5_Final(_md5, &ctx);
 	return(MD5_String(_md5));

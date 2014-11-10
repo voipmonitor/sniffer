@@ -121,12 +121,12 @@ void WebrtcData::processData(u_int32_t ip_src, u_int32_t ip_dst,
 		   (webrtcDD.type == "req" || webrtcDD.type == "rsp") &&
 		   ((webrtcDD.method == "login" && !webrtcDD.deviceId.empty()) || 
 		    (webrtcDD.method == "msg" && !webrtcDD.commCorrelationId.empty()))) {
-			WebrtcDataItem webrtcDataItem(webrtcDD.opcode, webrtcDD.data);
+			string data_md5 = GetDataMD5(webrtcDD.data, webrtcDD.payload_length);
 			u_int32_t _ip_src = dataItem->getDirection() == TcpReassemblyDataItem::DIRECTION_TO_DEST ? ip_src : ip_dst;
 			u_int32_t _ip_dst = dataItem->getDirection() == TcpReassemblyDataItem::DIRECTION_TO_DEST ? ip_dst : ip_src;
 			u_int16_t _port_src = dataItem->getDirection() == TcpReassemblyDataItem::DIRECTION_TO_DEST ? port_src : port_dst;
 			u_int16_t _port_dst = dataItem->getDirection() == TcpReassemblyDataItem::DIRECTION_TO_DEST ? port_dst : port_src;
-			WebrtcDataCache requestDataFromCache = this->cache.get(_ip_src, _ip_dst, _port_src, _port_dst, &webrtcDataItem);
+			WebrtcDataCache requestDataFromCache = this->cache.get(_ip_src, _ip_dst, _port_src, _port_dst, data_md5);
 			if(requestDataFromCache.timestamp) {
 				if(debugSave) {
 					cout << "DUPL" << endl;
@@ -157,8 +157,7 @@ void WebrtcData::processData(u_int32_t ip_src, u_int32_t ip_dst,
 				if(debugSave) {
 					cout << "SAVE" << endl;
 				}
-				this->cache.add(_ip_src, _ip_dst, _port_src, _port_dst,
-						&webrtcDataItem,
+				this->cache.add(_ip_src, _ip_dst, _port_src, _port_dst, data_md5,
 						dataItem->getTime().tv_sec);
 			}
 		} else {
@@ -258,8 +257,8 @@ WebrtcCache::WebrtcCache() {
 
 WebrtcDataCache WebrtcCache::get(u_int32_t ip_src, u_int32_t ip_dst,
 				 u_int16_t port_src, u_int16_t port_dst,
-				 WebrtcDataItem *data) {
-	WebrtcDataCache_id idc(ip_src, ip_dst, port_src, port_dst, data);
+				 string data_md5) {
+	WebrtcDataCache_id idc(ip_src, ip_dst, port_src, port_dst, data_md5);
 	map<WebrtcDataCache_id, WebrtcDataCache>::iterator iter = this->cache.find(idc);
 	if(iter == this->cache.end()) {
 		return(WebrtcDataCache());
@@ -270,9 +269,9 @@ WebrtcDataCache WebrtcCache::get(u_int32_t ip_src, u_int32_t ip_dst,
 
 void WebrtcCache::add(u_int32_t ip_src, u_int32_t ip_dst,
 		      u_int16_t port_src, u_int16_t port_dst,
-		      WebrtcDataItem *data,
+		      string data_md5,
 		      u_int64_t timestamp) {
-	WebrtcDataCache_id idc(ip_src, ip_dst, port_src, port_dst, data);
+	WebrtcDataCache_id idc(ip_src, ip_dst, port_src, port_dst, data_md5);
 	this->cache[idc] = WebrtcDataCache(timestamp);
 	this->lastAddTimestamp = timestamp;
 }
