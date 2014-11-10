@@ -1,3 +1,8 @@
+10.1.12 10.11.2014
+==================
+- revert manager interface to use BLOCK socket which might fix recent issues with timeout
+
+
 10.1.11 5.11.2014
 =================
 - fix crashing when SIP message is multipart/mixed (for example if contains SIPI). All versions >= 9.0
