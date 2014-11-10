@@ -44,6 +44,7 @@
 extern Calltable *calltable;
 extern int opt_manager_port;
 extern char opt_manager_ip[32];
+extern int opt_manager_nonblock_mode;
 extern volatile int calls_counter;
 extern char opt_clientmanager[1024];
 extern int opt_clientmanagerport;
@@ -1870,9 +1871,11 @@ void *manager_server(void *dummy) {
 	sockName.sin_addr.s_addr = inet_addr(opt_manager_ip);
 	int on = 1;
 	setsockopt(manager_socket_server, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on));
-	int flags = fcntl(manager_socket_server, F_GETFL, 0);
-	if(flags >= 0) {
-		fcntl(manager_socket_server, F_SETFL, flags | O_NONBLOCK);
+	if(opt_manager_nonblock_mode) {
+		int flags = fcntl(manager_socket_server, F_GETFL, 0);
+		if(flags >= 0) {
+			fcntl(manager_socket_server, F_SETFL, flags | O_NONBLOCK);
+		}
 	}
 tryagain:
 	if (bind(manager_socket_server, (sockaddr *)&sockName, sizeof(sockName)) == -1) {
@@ -1895,7 +1898,8 @@ tryagain:
 		FD_SET(manager_socket_server, &rfds);
 		tv.tv_sec = 10;
 		tv.tv_usec = 0;
-		if(select(manager_socket_server + 1, &rfds, (fd_set *) 0, (fd_set *) 0, &tv) > 0) {
+		if(!opt_manager_nonblock_mode ||
+		   select(manager_socket_server + 1, &rfds, (fd_set *) 0, (fd_set *) 0, &tv) > 0) {
 			addrlen = sizeof(clientInfo);
 			int client = accept(manager_socket_server, (sockaddr*)&clientInfo, &addrlen);
 			if(terminating == 1) {
