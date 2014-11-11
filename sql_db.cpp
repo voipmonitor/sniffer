@@ -4308,7 +4308,17 @@ void createMysqlPartitionsIpacc() {
 
 void createMysqlPartitionsBillingAgregation() {
 	SqlDb *sqlDb = createSqlObject();
+	sqlDb->query("show tables like 'billing'");
+	if(!sqlDb->fetchRow()) {
+		delete sqlDb;
+		return;
+	}
 	sqlDb->query("show tables like 'billing_agregation_day_addresses'");
+	if(!sqlDb->fetchRow()) {
+		delete sqlDb;
+		return;
+	}
+	sqlDb->query("select * from billing");
 	if(!sqlDb->fetchRow()) {
 		delete sqlDb;
 		return;
