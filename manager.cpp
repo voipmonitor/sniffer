@@ -1757,6 +1757,8 @@ void *manager_ssh_(void) {
 	ssh_options_set(session, SSH_OPTIONS_HOST, ssh_host);
 	ssh_options_set(session, SSH_OPTIONS_PORT, &ssh_port);
 	ssh_options_set(session, SSH_OPTIONS_COMPRESSION, "yes");
+	ssh_options_set(session, SSH_OPTIONS_SSH_DIR, "/tmp");
+	ssh_options_set(session, SSH_OPTIONS_USER, "root");
 	// Connect to server
 	rc = ssh_connect(session);
 	if (rc != SSH_OK) {
