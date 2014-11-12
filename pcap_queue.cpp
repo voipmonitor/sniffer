@@ -2149,6 +2149,13 @@ PcapQueue_readFromInterfaceThread::~PcapQueue_readFromInterfaceThread() {
 					delete this->qring[i][j].header;
 					delete [] this->qring[i][j].packet;
 				}
+			} else {
+				for(uint j = 0; j < this->qringmax; j++) {
+					if(this->qring[i][j].used < 0) {
+						free(this->qring[i][j].header);
+						free(this->qring[i][j].packet);
+					}
+				}
 			}
 			delete [] this->qring[i];
 		}
@@ -2158,7 +2165,7 @@ PcapQueue_readFromInterfaceThread::~PcapQueue_readFromInterfaceThread() {
 inline void PcapQueue_readFromInterfaceThread::push(pcap_pkthdr* header,u_char* packet, u_int offset, uint16_t *md5, int index, uint32_t counter) {
 	uint32_t writeIndex = this->writeit[index] % this->qringmax;
 	//while(__sync_lock_test_and_set(&this->_sync_qring, 1));
-	while(this->qring[index][writeIndex].used == 1) {
+	while(this->qring[index][writeIndex].used > 0) {
 		//__sync_lock_release(&this->_sync_qring);
 		usleep(100);
 		//while(__sync_lock_test_and_set(&this->_sync_qring, 1));
@@ -2171,6 +2178,10 @@ inline void PcapQueue_readFromInterfaceThread::push(pcap_pkthdr* header,u_char* 
 		memcpy(this->qring[index][writeIndex].header, header, sizeof(pcap_pkthdr));
 		memcpy(this->qring[index][writeIndex].packet, packet, header->caplen);
 	} else {
+		if(this->qring[index][writeIndex].used < 0) {
+			free(this->qring[index][writeIndex].header);
+			free(this->qring[index][writeIndex].packet);
+		}
 		this->qring[index][writeIndex].header = header;
 		this->qring[index][writeIndex].packet = packet;
 	}
@@ -2190,11 +2201,11 @@ inline void PcapQueue_readFromInterfaceThread::push(pcap_pkthdr* header,u_char* 
 	//__sync_lock_release(&this->_sync_qring);
 }
 
-inline PcapQueue_readFromInterfaceThread::hpi PcapQueue_readFromInterfaceThread::pop(int index, bool moveReadit) {
+inline PcapQueue_readFromInterfaceThread::hpi PcapQueue_readFromInterfaceThread::pop(int index, bool moveReadit, bool deferDestroy) {
 	uint32_t readIndex = this->readit[index] % this->qringmax;
 	//while(__sync_lock_test_and_set(&this->_sync_qring, 1));
 	hpi rslt_hpi;
-	if(this->qring[index][readIndex].used == 0) {
+	if(this->qring[index][readIndex].used <= 0) {
 		rslt_hpi.header = NULL;
 		rslt_hpi.packet = NULL;
 		rslt_hpi.offset = 0;
@@ -2209,7 +2220,7 @@ inline PcapQueue_readFromInterfaceThread::hpi PcapQueue_readFromInterfaceThread:
 		rslt_hpi.counter = this->qring[index][readIndex].counter;
 		rslt_hpi.used = 0;
 		if(moveReadit) {
-			this->qring[index][readIndex].used = 0;
+			this->qring[index][readIndex].used = deferDestroy ? -1 : 0;
 			if((this->readit[index] + 1) == this->qringmax) {
 				this->readit[index] = 0;
 			} else {
@@ -2221,8 +2232,8 @@ inline PcapQueue_readFromInterfaceThread::hpi PcapQueue_readFromInterfaceThread:
 	return(rslt_hpi);
 }
 
-inline void PcapQueue_readFromInterfaceThread::moveReadit(int index) {
-	this->qring[index][this->readit[index] % this->qringmax].used = 0;
+inline void PcapQueue_readFromInterfaceThread::moveReadit(int index, bool deferDestroy) {
+	this->qring[index][this->readit[index] % this->qringmax].used = deferDestroy ? -1 : 0;
 	if((this->readit[index] + 1) == this->qringmax) {
 		this->readit[index] = 0;
 	} else {
@@ -2625,14 +2636,14 @@ void* PcapQueue_readFromInterface::threadFunction(void *arg, unsigned int arg2) 
 				if(minThreadTimeIndex < 0) {
 					usleep(100);
 				} else {
-					PcapQueue_readFromInterfaceThread::hpi hpi = this->readThreads[minThreadTimeIndex]->POP(opt_pcap_queue_iface_dedup_separate_threads_extend);
+					PcapQueue_readFromInterfaceThread::hpi hpi = this->readThreads[minThreadTimeIndex]->POP(false);
 					if(!hpi.packet) {
 						usleep(100);
 					} else {
 						header = hpi.header;
 						packet = hpi.packet;
 						offset = hpi.offset;
-						destroy = opt_pcap_queue_iface_dedup_separate_threads_extend;
+						destroy = false;
 						dlink = this->readThreads[minThreadTimeIndex]->pcapLinklayerHeaderType;
 						blockStoreIndex = minThreadTimeIndex;
 						fetchPacketOk = true;
@@ -2726,9 +2737,8 @@ void* PcapQueue_readFromInterface::threadFunction(void *arg, unsigned int arg2) 
 					free(header);
 					free(packet);
 				}
-				if(this->readThreadsCount &&
-				   !opt_pcap_queue_iface_dedup_separate_threads_extend) {
-					this->readThreads[minThreadTimeIndex]->moveREADIT();
+				if(this->readThreadsCount) {
+					this->readThreads[minThreadTimeIndex]->moveREADIT(opt_pcap_queue_iface_dedup_separate_threads_extend);
 				}
 			}
 		}

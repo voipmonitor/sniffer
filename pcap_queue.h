@@ -371,7 +371,7 @@ public:
 		u_int offset;
 		uint16_t md5[MD5_DIGEST_LENGTH / (sizeof(uint16_t) / sizeof(unsigned char))];
 		volatile uint32_t counter;
-		volatile char used;
+		volatile signed char used;
 	};
 	PcapQueue_readFromInterfaceThread(const char *interfaceName, eTypeInterfaceThread typeThread = read,
 					  PcapQueue_readFromInterfaceThread *readThread = NULL,
@@ -380,27 +380,27 @@ public:
 	~PcapQueue_readFromInterfaceThread();
 protected:
 	inline void push(pcap_pkthdr* header,u_char* packet, u_int offset, uint16_t *md5, int index = 0, uint32_t counter = 0);
-	inline hpi pop(int index = 0, bool moveReadit = true);
-        inline void moveReadit(int index = 0);
-	inline hpi POP(bool moveReadit = true) {
-		return(this->dedupThread ? this->dedupThread->pop(0, moveReadit) : this->pop(0, moveReadit));
+	inline hpi pop(int index = 0, bool moveReadit = true, bool deferDestroy = false);
+        inline void moveReadit(int index = 0, bool deferDestroy = false);
+	inline hpi POP(bool moveReadit = true, bool deferDestroy = false) {
+		return(this->dedupThread ? this->dedupThread->pop(0, moveReadit, deferDestroy) : this->pop(0, moveReadit, deferDestroy));
 	}
-	inline void moveREADIT() {
+	inline void moveREADIT(bool deferDestroy = false) {
 		if(this->dedupThread) {
-			this->dedupThread->moveReadit();
+			this->dedupThread->moveReadit(0, deferDestroy);
 		} else {
-			this->moveReadit();
+			this->moveReadit(0, deferDestroy);
 		}
 	}
 	u_int64_t getTime_usec(int index = 0) {
-		if(this->qring[index][this->readit[index] % this->qringmax].used == 0) {
+		if(this->qring[index][this->readit[index] % this->qringmax].used <= 0) {
 			return(0);
 		}
 		return(this->qring[index][this->readit[index] % this->qringmax].header->ts.tv_sec * 1000000ull + 
 		       this->qring[index][this->readit[index] % this->qringmax].header->ts.tv_usec);
 	}
 	u_int32_t getCounter(int index = 0) {
-		if(this->qring[index][this->readit[index] % this->qringmax].used == 0) {
+		if(this->qring[index][this->readit[index] % this->qringmax].used <= 0) {
 			return(0);
 		}
 		return(this->qring[index][this->readit[index] % this->qringmax].counter);
