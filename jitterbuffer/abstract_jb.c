@@ -157,7 +157,7 @@ enum {
 	JB_IMPL_NOFRAME
 };
 
-static int debug = 1;
+static int debug = 0;
 
 /* Translations between impl and abstract return codes */
 static int fixed_to_abstract_code[] =

@@ -1568,11 +1568,11 @@ Call::convertRawToWav() {
 				syslog(LOG_ERR, "Call [%s] cannot be converted to WAV, unknown payloadtype [%d]\n", raw, codec);
 			}
 #if UNLINK_RAW
-			//unlink(raw);
+			unlink(raw);
 #endif
 		}
 		fclose(pl);
-		//unlink(rawInfo);
+		unlink(rawInfo);
 	}
 
 	if(opt_mos_lqo and adir == 1 and flags & FLAG_RUNAMOSLQO and (samplerate == 8000 or samplerate == 16000)) {

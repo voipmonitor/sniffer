@@ -706,9 +706,7 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 
 	Call *owner = (Call*)call_owner;
 
-	if(getSSRC() != 0x30e23ea6 and getSSRC() != 0x103d6052 and getSSRC() != 0x735544c) return;
-
-	printf("RTP[%p] SSRC[%x]\n", this, getSSRC());
+//	if(getSSRC() != 0xc3f5c945) return;
 
 	if(getVersion() != 2) {
 		return;
