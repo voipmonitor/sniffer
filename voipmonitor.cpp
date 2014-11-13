@@ -348,6 +348,7 @@ int opt_mos_lqo = 0;
 bool opt_cdr_partition = 1;
 bool opt_cdr_sipport = 0;
 bool opt_cdr_rtpport = 0;
+bool opt_cdr_check_exists_callid = 0;
 int opt_create_old_partitions = 0;
 bool opt_disable_partition_operations = 0;
 vector<dstring> opt_custom_headers_cdr;
@@ -1390,6 +1391,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "cdr_rtpport", NULL))) {
 		opt_cdr_rtpport = yesno(value);
+	}
+	if((value = ini.GetValue("general", "cdr_check_exists_callid", NULL))) {
+		opt_cdr_check_exists_callid = yesno(value);
 	}
 	if((value = ini.GetValue("general", "create_old_partitions", NULL))) {
 		opt_create_old_partitions = atoi(value);

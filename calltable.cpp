@@ -2093,32 +2093,34 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			}
 		}
 		
-		// check if exists call-id & rtp records - begin if
-		bool existsRtp = false;
-		for(int i = 0; i < MAX_SSRC_PER_CALL; i++) {
-			if(rtp[i] and rtp[i]->s->received) {
-				existsRtp = true;
-				break;
+		extern bool opt_cdr_check_exists_callid;
+		if(opt_cdr_check_exists_callid) {
+			// check if exists call-id & rtp records - begin if
+			bool existsRtp = false;
+			for(int i = 0; i < MAX_SSRC_PER_CALL; i++) {
+				if(rtp[i] and rtp[i]->s->received) {
+					existsRtp = true;
+					break;
+				}
 			}
+			query_str += string("set @exists_call_id =\n") +
+				     "(select max(cdr_ID) from cdr_next\n" +
+				     " where calldate > ('" + sqlDateTimeString(calltime()) + "' - interval 1 hour) and\n" +
+				     "       calldate < ('" + sqlDateTimeString(calltime()) + "' + interval 1 hour) and\n" +
+				     "       fbasename = '" + sqlEscapeString(fbasename) + "');\n";
+			query_str += string("set @exists_rtp =\n") +
+				     "if(@exists_call_id,\n" +
+				     "   exists (select * from cdr_rtp where cdr_id = @exists_call_id),\n" +
+				     "   0);\n";
+			query_str += string("if @exists_call_id and not @exists_rtp and ") + (existsRtp ? "1" : "0") + " then\n" +
+				     "  delete from cdr where id = @exists_call_id;\n" +
+				     "  delete from cdr_next where cdr_id = @exists_call_id;\n" +
+				     "  delete from cdr_rtp where cdr_id = @exists_call_id;\n" +
+				     (opt_dbdtmf ? "delete from cdr_dtmf where cdr_id = @exists_call_id\n" : "") +
+				     "  set @exists_call_id = 0;\n" +
+				     "end if;\n";
+			query_str += "if not @exists_call_id then\n";
 		}
-		query_str += string("set @exists_call_id =\n") +
-			     "(select max(cdr_ID) from cdr_next\n" +
-			     " where calldate > ('" + sqlDateTimeString(calltime()) + "' - interval 1 hour) and\n" +
-			     "       calldate < ('" + sqlDateTimeString(calltime()) + "' + interval 1 hour) and\n" +
-			     "       fbasename = '" + sqlEscapeString(fbasename) + "');\n";
-		query_str += string("set @exists_rtp =\n") +
-			     "if(@exists_call_id,\n" +
-			     "   exists (select * from cdr_rtp where cdr_id = @exists_call_id),\n" +
-			     "   0);\n";
-		query_str += string("if @exists_call_id and not @exists_rtp and ") + (existsRtp ? "1" : "0") + " then\n" +
-			     "  delete from cdr where id = @exists_call_id;\n" +
-			     "  delete from cdr_next where cdr_id = @exists_call_id;\n" +
-			     "  delete from cdr_rtp where cdr_id = @exists_call_id;\n" +
-			     (opt_dbdtmf ? "delete from cdr_dtmf where cdr_id = @exists_call_id\n" : "") +
-			     "  set @exists_call_id = 0;\n" +
-			     "end if;\n";
-		query_str += "if not @exists_call_id then\n";
-		//
 		
 		query_str += sqlDbSaveCall->insertQuery(sql_cdr_table, cdr) + ";\n";
 		
@@ -2207,9 +2209,10 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		
 		query_str += "end if";
 		
-		// check if exists call-id & rtp records - end if
-		query_str += ";\nend if";
-		//
+		if(opt_cdr_check_exists_callid) {
+			// check if exists call-id & rtp records - end if
+			query_str += ";\nend if";
+		}
 		
 		static unsigned int counterSqlStore = 0;
 		int storeId = STORE_PROC_ID_CDR_1 + 
