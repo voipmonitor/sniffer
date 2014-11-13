@@ -2831,6 +2831,9 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 			DROP PRIMARY KEY,\
 			ADD PRIMARY KEY (`number`, `number_ip`);" << endl;
 	}
+	
+	// drop old cdr trigger
+	outStrAlter << "drop trigger if exists cdr_bi;" << endl;
 
 	outStrAlter << "end;" << endl;
 	/*
