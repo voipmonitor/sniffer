@@ -139,6 +139,7 @@ struct sVerbose {
 	int call_listening;
 	int skinny;
 	int fraud;
+	int disable_bt_sighandler;
 };
 
 #ifndef GLOBAL_DECLARATION

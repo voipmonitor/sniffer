@@ -2520,19 +2520,21 @@ int main(int argc, char *argv[]) {
 	pcapstat.ps_drop = 0;
 	pcapstat.ps_ifdrop = 0;
 
-        /* Install our signal handler */
-        struct sigaction sa;
+	if(!sverb.disable_bt_sighandler) {
+		/* Install our signal handler */
+		struct sigaction sa;
 
-        sa.sa_sigaction = bt_sighandler;
-        sigemptyset (&sa.sa_mask);
-        sa.sa_flags = SA_RESTART | SA_SIGINFO;
+		sa.sa_sigaction = bt_sighandler;
+		sigemptyset (&sa.sa_mask);
+		sa.sa_flags = SA_RESTART | SA_SIGINFO;
 
-        sigaction(SIGSEGV, &sa, NULL);
-        sigaction(SIGBUS, &sa, NULL);
-        sigaction(SIGILL, &sa, NULL);
-        sigaction(SIGFPE, &sa, NULL);
-//        sigaction(SIGUSR1, &sa, NULL);
-//        sigaction(SIGUSR2, &sa, NULL);
+		sigaction(SIGSEGV, &sa, NULL);
+		sigaction(SIGBUS, &sa, NULL);
+		sigaction(SIGILL, &sa, NULL);
+		sigaction(SIGFPE, &sa, NULL);
+		//sigaction(SIGUSR1, &sa, NULL);
+		//sigaction(SIGUSR2, &sa, NULL);
+	}
 	
 #endif
 	
@@ -2785,6 +2787,7 @@ int main(int argc, char *argv[]) {
 						else if(verbparams[i] == "call_listening")		sverb.call_listening = 1;
 						else if(verbparams[i] == "skinny")			sverb.skinny = 1;
 						else if(verbparams[i] == "fraud")			sverb.fraud = 1;
+						else if(verbparams[i] == "disable_bt_sighandler")	sverb.disable_bt_sighandler = 1;
 					}
 				} }
 				break;
