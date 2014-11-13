@@ -1307,6 +1307,15 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 	pbCountPacketDrop = this->instancePcapHandle ?
 				this->instancePcapHandle->getCountPacketDrop() :
 				this->getCountPacketDrop();
+	if(sverb.skinny) {
+		u_int64_t _handle_skinny_counter_all;
+		u_int64_t _handle_skinny_counter_next_iterate;
+		outStrStat << "skinny["
+			   << _handle_skinny_counter_all
+			   << "/"
+			   << _handle_skinny_counter_next_iterate
+			   << "] ";
+	}
 	if(DEBUG_VERBOSE || verbosityE > 1) {
 		if(DEBUG_VERBOSE) {
 			cout << outStrStat.str() << endl;
@@ -3957,7 +3966,7 @@ void PcapQueue_readFromFifo::cleanupBlockStoreTrash(bool all) {
 		this->cleanupBlockStoreTrash();
 		cout << "COUNT REST PACKETBUFFER BLOCKS: " << this->blockStoreTrash.size() << endl;
 	}
-	for(size_t i = 0; i < this->blockStoreTrash.size(); i++) {
+	for(int i = 0; i < ((int)this->blockStoreTrash.size() - (all ? 0 : 2)); i++) {
 		if(all || this->blockStoreTrash[i]->enableDestroy()) {
 			this->blockStoreTrash_size -= this->blockStoreTrash[i]->getUseSize();
 			delete this->blockStoreTrash[i];

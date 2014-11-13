@@ -1397,11 +1397,18 @@ void *handle_skinny2(pcap_pkthdr *header, const u_char *packet, unsigned int sad
 		     pcap_t *handle, int dlt, int sensor_id);
 
 
+u_int64_t _handle_skinny_counter_all;
+u_int64_t _handle_skinny_counter_next_iterate;
 void *handle_skinny(pcap_pkthdr *header, const u_char *packet, unsigned int saddr, int source, unsigned int daddr, int dest, char *data, int datalen, int dataoffset,
 		    pcap_t *handle, int dlt, int sensor_id) {	
 	
+	++_handle_skinny_counter_all;
 	int remain = datalen;
-	while(1) {	
+	int counter = 0;
+	while(1) {
+		if(counter == 1) {
+			++_handle_skinny_counter_next_iterate;
+		}
 		//cycle through all PDUs in one message
 		handle_skinny2(header, packet, saddr, source, daddr, dest, data, datalen, dataoffset, handle, dlt, sensor_id);
 		unsigned int plen = (unsigned int)letohl(*(uint32_t*)data); // first 4 bytes is length of skinny data
@@ -1417,6 +1424,7 @@ void *handle_skinny(pcap_pkthdr *header, const u_char *packet, unsigned int sadd
 		} else {
 			break;
 		}
+		++counter;
 	}
 	return NULL;
 }

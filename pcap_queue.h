@@ -599,7 +599,7 @@ protected:
 	int pcapDeadHandles_count;
 private:
 	pcap_store_queue pcapStoreQueue;
-	vector<pcap_block_store*> blockStoreTrash;
+	deque<pcap_block_store*> blockStoreTrash;
 	size_t blockStoreTrash_size;
 	u_int cleanupBlockStoreTrash_counter;
 	hostent* socketHostEnt;

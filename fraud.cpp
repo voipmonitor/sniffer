@@ -658,8 +658,20 @@ void FraudAlert_rcc_base::evCall_rcc(sFraudCallInfo *callInfo, FraudAlert_rcc *a
 			}
 			if(callInfo->local_called_number) {
 				call->addLocal(callInfo->callid.c_str(), callInfo->at_connect);
+				if(sverb.fraud) {
+					syslog(LOG_NOTICE, "fraud local rcc ++ %s / %s / %lu", 
+					       inet_ntostring(callInfo->caller_ip).c_str(), 
+					       callInfo->callid.c_str(),
+					       call->calls_local.size());
+				}
 			} else {
 				call->addInternational(callInfo->callid.c_str(), callInfo->at_connect);
+				if(sverb.fraud) {
+					syslog(LOG_NOTICE, "fraud international rcc ++ %s / %s / %lu", 
+					       inet_ntostring(callInfo->caller_ip).c_str(), 
+					       callInfo->callid.c_str(),
+					       call->calls_international.size());
+				}
 			}
 			unsigned int concurentCallsLimitLocal = timeperiod ? this->concurentCallsLimitLocal_tp : alert->concurentCallsLimitLocal;
 			unsigned int concurentCallsLimitInternational = timeperiod ? this->concurentCallsLimitInternational_tp : alert->concurentCallsLimitInternational;
@@ -709,8 +721,20 @@ void FraudAlert_rcc_base::evCall_rcc(sFraudCallInfo *callInfo, FraudAlert_rcc *a
 			call = callsIter->second;
 			if(callInfo->local_called_number) {
 				call->calls_local.erase(callInfo->callid);
+				if(sverb.fraud) {
+					syslog(LOG_NOTICE, "fraud local rcc -- %s / %s / %lu", 
+					       inet_ntostring(callInfo->caller_ip).c_str(), 
+					       callInfo->callid.c_str(),
+					       call->calls_local.size());
+				}
 			} else {
 				call->calls_international.erase(callInfo->callid);
+				if(sverb.fraud) {
+					syslog(LOG_NOTICE, "fraud international rcc -- %s / %s / %lu", 
+					       inet_ntostring(callInfo->caller_ip).c_str(), 
+					       callInfo->callid.c_str(),
+					       call->calls_international.size());
+				}
 			}
 		}
 		break;

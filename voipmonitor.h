@@ -137,6 +137,8 @@ struct sVerbose {
 	int dscp;
 	int store_process_query;
 	int call_listening;
+	int skinny;
+	int fraud;
 };
 
 #ifndef GLOBAL_DECLARATION
