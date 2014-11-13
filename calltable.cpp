@@ -2103,11 +2103,11 @@ Call::saveToDb(bool enableBatchIfPossible) {
 					break;
 				}
 			}
-			query_str += string("set @exists_call_id =\n") +
-				     "(select max(cdr_ID) from cdr_next\n" +
+			query_str += string("set @exists_call_id = coalesce(\n") +
+				     "(select cdr_ID from cdr_next\n" +
 				     " where calldate > ('" + sqlDateTimeString(calltime()) + "' - interval 1 hour) and\n" +
 				     "       calldate < ('" + sqlDateTimeString(calltime()) + "' + interval 1 hour) and\n" +
-				     "       fbasename = '" + sqlEscapeString(fbasename) + "');\n";
+				     "       fbasename = '" + sqlEscapeString(fbasename) + "'), 0);\n";
 			query_str += string("set @exists_rtp =\n") +
 				     "if(@exists_call_id,\n" +
 				     "   exists (select * from cdr_rtp where cdr_id = @exists_call_id),\n" +
