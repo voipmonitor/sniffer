@@ -1,3 +1,9 @@
+10.1.15 17.11.2014
+==================
+- move memory deallocation in threading mod 4 to different thread which offloads 10% for t0 thread
+- add new option cdr_check_exists_callid: when storing CDR check if there is the same CDR with the same sip.Call-ID and replace it if the new one contains RTP and the old one not this option is intended for case where you need to mirror SIP signalling to RTP media nodes and every RTP voipmonitor node sends CDR based on the same SIP thus diplicating CDR and only one CDR have RTP associated. default is off
+
+
 10.1.14 12.11.2014
 ==================
 - fix crash on some linux versions when connecting to cloud (in cloud mode) 
