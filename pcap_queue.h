@@ -194,7 +194,7 @@ public:
 	void setEnableWriteThread();
 	void setEnableAutoTerminate(bool enableAutoTerminate);
 	bool start();
-	void terminate();
+	virtual void terminate();
 	bool isInitOk();
 	bool isTerminated();
 	void setInstancePcapHandle(PcapQueue *pcapQueue);
@@ -203,7 +203,6 @@ public:
 	string pcapDropCountStat();
 	void initStat();
 	void getThreadCpuUsage(bool writeThread = false);
-	virtual void closeHandlersBeforeRestart() {}
 protected:
 	bool createThread();
 	virtual bool createMainThread();
@@ -415,6 +414,7 @@ private:
 	void *threadFunction(void *arg, unsigned int arg2);
 	void preparePstatData();
 	double getCpuUsagePerc(bool preparePstatData = false);
+	void terminate();
 private:
 	pthread_t threadHandle;
 	int threadId;
@@ -436,6 +436,7 @@ private:
 	int indexDefragQring;
 	uint32_t push_counter;
 	uint32_t pop_counter;
+	bool threadDoTerminate;
 friend void *_PcapQueue_readFromInterfaceThread_threadFunction(void *arg);
 friend class PcapQueue_readFromInterface;
 };
@@ -445,6 +446,7 @@ public:
 	PcapQueue_readFromInterface(const char *nameQueue);
 	virtual ~PcapQueue_readFromInterface();
 	void setInterfaceName(const char *interfaceName);
+	void terminate();
 protected:
 	bool init();
 	bool initThread(void *arg, unsigned int arg2);
@@ -524,10 +526,6 @@ public:
 	void setPacketServer(ip_port ipPort, ePacketServerDirection direction);
 	size_t getQueueSize() {
 		return(this->pcapStoreQueue.getQueueSize());
-	}
-	void closeHandlersBeforeRestart() {
-		this->socketClose();
-		this->cleanupConnections(true);
 	}
 protected:
 	bool initThread(void *arg, unsigned int arg2);

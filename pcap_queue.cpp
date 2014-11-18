@@ -843,9 +843,11 @@ PcapQueue::~PcapQueue() {
 	}
 	if(this->fifoWriteHandle >= 0) {
 		close(this->fifoWriteHandle);
+		syslog(LOG_NOTICE, "packetbuffer terminating (%s): close fifoWriteHandle", nameQueue.c_str());
 	}
 	if(this->packetBuffer) {
 		free(this->packetBuffer);
+		syslog(LOG_NOTICE, "packetbuffer terminating (%s): free packetBuffer", nameQueue.c_str());
 	}
 }
 
@@ -1841,9 +1843,11 @@ void PcapQueue_readFromInterface_base::setInterfaceName(const char *interfaceNam
 PcapQueue_readFromInterface_base::~PcapQueue_readFromInterface_base() {
 	if(this->pcapHandle) {
 		pcap_close(this->pcapHandle);
+		syslog(LOG_NOTICE, "packetbuffer terminating: pcap_close pcapHandle (%s)", interfaceName.c_str());
 	}
 	if(this->pcapDumpHandle) {
 		pcap_dump_close(this->pcapDumpHandle);
+		syslog(LOG_NOTICE, "packetbuffer terminating: pcap_close pcapDumpHandle (%s)", interfaceName.c_str());
 	}
 }
 
@@ -2122,6 +2126,7 @@ PcapQueue_readFromInterfaceThread::PcapQueue_readFromInterfaceThread(const char 
 	this->indexDefragQring = 0;
 	this->push_counter = 1;
 	this->pop_counter = 1;
+	this->threadDoTerminate = false;
 	pthread_create(&this->threadHandle, NULL, _PcapQueue_readFromInterfaceThread_threadFunction, this);
 }
 
@@ -2310,7 +2315,7 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void *arg, unsigned int 
 	pcap_pkthdr *header = NULL, *_header = NULL;
 	u_char *packet = NULL, *_packet = NULL;
 	int res;
-	while(!terminating) {
+	while(!(terminating || this->threadDoTerminate)) {
 		bool destroy = false;
 		switch(this->typeThread) {
 		case read: {
@@ -2517,6 +2522,22 @@ double PcapQueue_readFromInterfaceThread::getCpuUsagePerc(bool preparePstatData)
 	return(-1);
 }
 
+void PcapQueue_readFromInterfaceThread::terminate() {
+	if(this->defragThread) {
+		this->defragThread->terminate();
+	}
+	if(this->md1Thread) {
+		this->md1Thread->terminate();
+	}
+	if(this->md2Thread) {
+		this->md2Thread->terminate();
+	}
+	if(this->dedupThread) {
+		this->dedupThread->terminate();
+	}
+	this->threadDoTerminate = true;
+}
+
 
 inline void *_PcapQueue_readFromInterfaceThread_threadFunction(void *arg) {
 	return(((PcapQueue_readFromInterfaceThread*)arg)->threadFunction(arg, 0));
@@ -2534,11 +2555,19 @@ PcapQueue_readFromInterface::PcapQueue_readFromInterface(const char *nameQueue)
 PcapQueue_readFromInterface::~PcapQueue_readFromInterface() {
 	if(this->fifoWritePcapDumper) {
 		pcap_dump_close(this->fifoWritePcapDumper);
+		syslog(LOG_NOTICE, "packetbuffer terminating: pcap_dump_close fifoWritePcapDumper (%s)", interfaceName.c_str());
 	}
 }
 
 void PcapQueue_readFromInterface::setInterfaceName(const char* interfaceName) {
 	this->interfaceName = interfaceName;
+}
+
+void PcapQueue_readFromInterface::terminate() {
+	for(int i = 0; i < this->readThreadsCount; i++) {
+		this->readThreads[i]->terminate();
+	}
+	PcapQueue::terminate();
 }
 
 bool PcapQueue_readFromInterface::init() {
@@ -3000,19 +3029,26 @@ PcapQueue_readFromFifo::PcapQueue_readFromFifo(const char *nameQueue, const char
 PcapQueue_readFromFifo::~PcapQueue_readFromFifo() {
 	if(this->packetServerDirection == directionRead) {
 		this->cleanupConnections(true);
+		syslog(LOG_NOTICE, "packetbuffer terminating (%s): cleanupConnections", nameQueue.c_str());
 	}
 	if(this->fifoReadPcapHandle) {
 		pcap_close(this->fifoReadPcapHandle);
+		syslog(LOG_NOTICE, "packetbuffer terminating (%s): pcap_close fifoReadPcapHandle", nameQueue.c_str());
 	}
-	for(int i = 0; i < this->pcapDeadHandles_count; i++) {
-		if(this->pcapDeadHandles[i]) {
-			pcap_close(this->pcapDeadHandles[i]);
+	if(this->pcapDeadHandles_count) {
+		for(int i = 0; i < this->pcapDeadHandles_count; i++) {
+			if(this->pcapDeadHandles[i]) {
+				pcap_close(this->pcapDeadHandles[i]);
+			}
 		}
+		syslog(LOG_NOTICE, "packetbuffer terminating (%s): pcap_close pcapDeadHandles", nameQueue.c_str());
 	}
 	if(this->socketHandle) {
 		this->socketClose();
+		syslog(LOG_NOTICE, "packetbuffer terminating (%s): socketClose", nameQueue.c_str());
 	}
 	this->cleanupBlockStoreTrash(true);
+	syslog(LOG_NOTICE, "packetbuffer terminating (%s): cleanupBlockStoreTrash", nameQueue.c_str());
 }
 
 void PcapQueue_readFromFifo::setPacketServer(ip_port ipPort, ePacketServerDirection direction) {

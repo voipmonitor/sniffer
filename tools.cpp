@@ -1503,11 +1503,8 @@ bool RestartUpgrade::runRestart(int socket1, int socket2) {
 	}
 	close(socket1);
 	close(socket2);
-	extern ip_port opt_pcap_queue_receive_from_ip_port;
-	extern PcapQueue *pcapQueueStatInterface;
-	if(opt_pcap_queue_receive_from_ip_port && pcapQueueStatInterface) {
-		pcapQueueStatInterface->closeHandlersBeforeRestart();
-	}
+	terminate_packetbuffer(15);
+	sleep(2);
 	int rsltExec = execl(this->restartTempScriptFileName.c_str(), "Command-line", 0, NULL);
 	if(rsltExec) {
 		this->errorString = "failed execution restart script";

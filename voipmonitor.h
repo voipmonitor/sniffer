@@ -54,6 +54,8 @@ void reload_capture_rules();
 void set_context_config();
 void convert_filesindex();
 
+void terminate_packetbuffer(int afterTerminateSleepSec = 0);
+
 /* For compatibility with Linux definitions... */
 
 #if ( defined( __FreeBSD__ ) || defined ( __NetBSD__ ) )

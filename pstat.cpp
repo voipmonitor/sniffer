@@ -7,6 +7,10 @@
 #include "voipmonitor.h"
 #include "pstat.h"
 
+
+bool pstat_quietly_errors = false;
+
+
 bool pstat_get_data(const int pid, pstat_data* result) {
 	char stat_filepath[100]; 
 	//sprintf(stat_filepath, "/proc/%u/stat", pid);
@@ -20,14 +24,18 @@ bool pstat_get_data(const int pid, pstat_data* result) {
 	FILE *fpstat = fopen(stat_filepath, "r");
 	if(fpstat == NULL) {
 		#ifndef FREEBSD
-		perror("pstat fopen error (/proc/[pid]/task/[taskid]/stat) ");
+		if(!pstat_quietly_errors) {
+			perror("pstat fopen error (/proc/[pid]/task/[taskid]/stat) ");
+		}
 		#endif
 		return(false);
 	}
 	FILE *fstat = fopen("/proc/stat", "r");
 	if(fstat == NULL) {
 		#ifndef FREEBSD
-		perror("pstat fopen error (/proc/stat) ");
+		if(!pstat_quietly_errors) {
+			perror("pstat fopen error (/proc/stat) ");
+		}
 		#endif
 		fclose(fpstat);
 		return(false);

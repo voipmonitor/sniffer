@@ -2484,10 +2484,15 @@ void bt_sighandler(int sig, struct sigcontext ctx)
 }
 #endif
 
+int _terminate_packetbuffer_afterTerminateSleepSec;
 int opt_test = 0;
 char opt_test_str[1024];
 void *readdump_libpcap_thread_fce(void *handle);
 void test();
+
+PcapQueue_readFromFifo *pcapQueueR;
+PcapQueue_readFromInterface *pcapQueueI;
+PcapQueue_readFromFifo *pcapQueueQ;
 
 int main(int argc, char *argv[]) {
 
@@ -3864,7 +3869,7 @@ int main(int argc, char *argv[]) {
 				
 				if(opt_pcap_queue_receive_from_ip_port) {
 					
-					PcapQueue_readFromFifo *pcapQueueR = new PcapQueue_readFromFifo("receive", opt_pcap_queue_disk_folder.c_str());
+					pcapQueueR = new PcapQueue_readFromFifo("receive", opt_pcap_queue_disk_folder.c_str());
 					pcapQueueR->setEnableAutoTerminate(false);
 					pcapQueueR->setPacketServer(opt_pcap_queue_receive_from_ip_port, PcapQueue_readFromFifo::directionRead);
 					pcapQueueStatInterface = pcapQueueR;
@@ -3880,10 +3885,10 @@ int main(int argc, char *argv[]) {
 						++_counter;
 					}
 					
-					pcapQueueR->terminate();
-					sleep(1);
-					
-					delete pcapQueueR;
+					if(_terminate_packetbuffer_afterTerminateSleepSec) {
+						sleep(_terminate_packetbuffer_afterTerminateSleepSec);
+					}
+					terminate_packetbuffer();
 					
 				} else {
 				 
@@ -3904,11 +3909,11 @@ int main(int argc, char *argv[]) {
 						}
 					}
 				
-					PcapQueue_readFromInterface *pcapQueueI = new PcapQueue_readFromInterface("interface");
+					pcapQueueI = new PcapQueue_readFromInterface("interface");
 					pcapQueueI->setInterfaceName(ifname);
 					pcapQueueI->setEnableAutoTerminate(false);
 					
-					PcapQueue_readFromFifo *pcapQueueQ = new PcapQueue_readFromFifo("queue", opt_pcap_queue_disk_folder.c_str());
+					pcapQueueQ = new PcapQueue_readFromFifo("queue", opt_pcap_queue_disk_folder.c_str());
 					pcapQueueQ->setInstancePcapHandle(pcapQueueI);
 					pcapQueueQ->setEnableAutoTerminate(false);
 					if(opt_pcap_queue_send_to_ip_port) {
@@ -3934,39 +3939,10 @@ int main(int argc, char *argv[]) {
 						++_counter;
 					}
 					
-					pcapQueueI->terminate();
-					sleep(opt_pb_read_from_file[0] && (opt_enable_http || opt_enable_webrtc) ? 10 : 1);
-					if(opt_pb_read_from_file[0] && (opt_enable_http || opt_enable_webrtc) && opt_tcpreassembly_thread) {
-						if(opt_enable_http) {
-							tcpReassemblyHttp->setIgnoreTerminating(false);
-						}
-						if(opt_enable_webrtc) {
-							tcpReassemblyWebrtc->setIgnoreTerminating(false);
-						}
-						sleep(2);
+					if(_terminate_packetbuffer_afterTerminateSleepSec) {
+						sleep(_terminate_packetbuffer_afterTerminateSleepSec);
 					}
-					pcapQueueQ->terminate();
-					sleep(1);
-					
-					if(tcpReassemblyHttp) {
-						delete tcpReassemblyHttp;
-						tcpReassemblyHttp = NULL;
-					}
-					if(httpData) {
-						delete httpData;
-						httpData = NULL;
-					}
-					if(tcpReassemblyWebrtc) {
-						delete tcpReassemblyWebrtc;
-						tcpReassemblyWebrtc = NULL;
-					}
-					if(webrtcData) {
-						delete webrtcData;
-						webrtcData = NULL;
-					}
-					
-					delete pcapQueueI;
-					delete pcapQueueQ;
+					terminate_packetbuffer();
 					
 					if(opt_pb_read_from_file[0] && (opt_enable_http || opt_enable_webrtc)) {
 						sleep(2);
@@ -4242,6 +4218,53 @@ int main(int argc, char *argv[]) {
 	}
 	
 	thread_cleanup();
+}
+
+void terminate_packetbuffer(int afterTerminateSleepSec) {
+	if(opt_pcap_threaded && opt_pcap_queue) {
+		_terminate_packetbuffer_afterTerminateSleepSec = afterTerminateSleepSec;
+		extern bool pstat_quietly_errors;
+		pstat_quietly_errors = true;
+		if(opt_pcap_queue_receive_from_ip_port) {
+			pcapQueueR->terminate();
+			sleep(1);
+			delete pcapQueueR;
+		} else {
+			pcapQueueI->terminate();
+			sleep(opt_pb_read_from_file[0] && (opt_enable_http || opt_enable_webrtc) ? 10 : 1);
+			if(opt_pb_read_from_file[0] && (opt_enable_http || opt_enable_webrtc) && opt_tcpreassembly_thread) {
+				if(opt_enable_http) {
+					tcpReassemblyHttp->setIgnoreTerminating(false);
+				}
+				if(opt_enable_webrtc) {
+					tcpReassemblyWebrtc->setIgnoreTerminating(false);
+				}
+				sleep(2);
+			}
+			pcapQueueQ->terminate();
+			sleep(1);
+			
+			if(tcpReassemblyHttp) {
+				delete tcpReassemblyHttp;
+				tcpReassemblyHttp = NULL;
+			}
+			if(httpData) {
+				delete httpData;
+				httpData = NULL;
+			}
+			if(tcpReassemblyWebrtc) {
+				delete tcpReassemblyWebrtc;
+				tcpReassemblyWebrtc = NULL;
+			}
+			if(webrtcData) {
+				delete webrtcData;
+				webrtcData = NULL;
+			}
+			
+			delete pcapQueueI;
+			delete pcapQueueQ;
+		}
+	}
 }
 
 void *readdump_libpcap_thread_fce(void *handle) {
