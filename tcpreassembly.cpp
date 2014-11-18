@@ -954,7 +954,7 @@ void TcpReassemblyLink::pushpacket(TcpReassemblyStream::eDirection direction,
 			prevStreamByLastAck->last_seq = packet.header_tcp.seq;
 			stream->first_seq = prevStreamByLastAck->last_seq;
 		} else {
-			stream->first_seq = this->queue.size() ? 
+			stream->first_seq = prevStreamByLastAck ? 
 						prevStreamByLastAck->ack : 
 						(direction == TcpReassemblyStream::DIRECTION_TO_DEST ?
 							this->first_seq_to_dest :
