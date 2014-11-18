@@ -1308,8 +1308,8 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 				this->instancePcapHandle->getCountPacketDrop() :
 				this->getCountPacketDrop();
 	if(sverb.skinny) {
-		u_int64_t _handle_skinny_counter_all;
-		u_int64_t _handle_skinny_counter_next_iterate;
+		extern u_int64_t _handle_skinny_counter_all;
+		extern u_int64_t _handle_skinny_counter_next_iterate;
 		outStrStat << "skinny["
 			   << _handle_skinny_counter_all
 			   << "/"
