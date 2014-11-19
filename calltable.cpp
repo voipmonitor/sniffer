@@ -195,6 +195,7 @@ Call::Call(char *call_id, unsigned long call_id_len, time_t time) :
 	connect_time = 0;
 	a_ua[0] = '\0';
 	b_ua[0] = '\0';
+	memset(rtpmap, 0, sizeof(rtpmap));
 	rtp_cur[0] = NULL;
 	rtp_cur[1] = NULL;
 	rtp_prev[0] = NULL;

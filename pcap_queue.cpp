@@ -187,6 +187,7 @@ static unsigned long long sumPacketsSizeCompress[2];
 static unsigned long maxBypassBufferItems;
 static unsigned long maxBypassBufferSize;
 static unsigned long countBypassBufferSizeExceeded;
+static double heapPerc = 0;
 
 extern MySqlStore *sqlStore;
 
@@ -985,6 +986,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 		}
 	} else {
 		double memoryBufferPerc = this->pcapStat_get_memory_buffer_perc();
+		heapPerc = memoryBufferPerc;
 		double memoryBufferPerc_trash = this->pcapStat_get_memory_buffer_perc_trash();
 		outStr << fixed;
 		if(!this->isMirrorSender()) {
@@ -1330,6 +1332,10 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 		extern bool incorrectCaplenDetected;
 		if(incorrectCaplenDetected) {
 			outStr << " !CAPLEN";
+		}
+		extern char opt_syslog_string[256];
+		if(opt_syslog_string[0]) {
+			outStr << " " << opt_syslog_string;
 		}
 		outStr << endl;
 		outStr << pcapStatString_interface_rslt;
@@ -2006,7 +2012,9 @@ inline int PcapQueue_readFromInterface_base::pcap_next_ex_iface(pcap_t *pcapHand
 			}
 			this->lastPacketTimeUS = packetTime;
 		} else {
-			usleep(1);
+			if(heapPerc > 10) {
+				usleep(1);
+			}
 		}
 	}
 	return(1);

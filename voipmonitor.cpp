@@ -567,6 +567,8 @@ char opt_hide_message_content_secret[1024] = "";
 char opt_bogus_dumper_path[1204];
 BogusDumper *bogusDumper;
 
+char opt_syslog_string[256];
+
 
 #include <stdio.h>
 #include <pthread.h>
@@ -2138,6 +2140,10 @@ int eval_config(string inistr) {
 
 	if((value = ini.GetValue("general", "bogus_dumper_path", NULL))) {
 		strncpy(opt_bogus_dumper_path, value, sizeof(opt_bogus_dumper_path));
+	}
+
+	if((value = ini.GetValue("general", "syslog_string", NULL))) {
+		strncpy(opt_syslog_string, value, sizeof(opt_syslog_string));
 	}
 
 	/*
