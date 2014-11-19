@@ -1405,7 +1405,7 @@ void *handle_skinny(pcap_pkthdr *header, const u_char *packet, unsigned int sadd
 	++_handle_skinny_counter_all;
 	int remain = datalen;
 	int counter = 0;
-	while(1) {
+	while(remain > 8) {
 		if(counter == 1) {
 			++_handle_skinny_counter_next_iterate;
 		}
