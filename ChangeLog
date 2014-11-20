@@ -1,3 +1,10 @@
+10.1.17 20.11.2014
+==================
+- clean buffers before issuing restart which might solve problem with allocating ringbuffer when upgrading from GUI
+- fix potential crash in skinny packet handling
+- fix updating destination number for ring group if connected call does reinvite 
+
+
 10.1.16 18.11.2014
 ==================
 - fix crash in tcpreassembly 
