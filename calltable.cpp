@@ -270,6 +270,7 @@ Call::Call(char *call_id, unsigned long call_id_len, time_t time) :
 	
 	onCall_2XX = false;
 	onCall_18X = false;
+	updateDstnumOnAnswer = false;
 	
 	useSensorId = opt_id_sensor;
 	useDlt = global_pcap_dlink;
