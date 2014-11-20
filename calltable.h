@@ -68,6 +68,9 @@
 #define FLAG_RUNBMOSLQO		(1 << 9)
 #define FLAG_HIDEMESSAGE	(1 << 10)
 
+#define CHAN_SIP	1
+#define CHAN_SKINNY	2
+
 typedef struct {
 	double ts;
 	char dtmf;
@@ -106,6 +109,7 @@ struct ip_port_call_info {
 class Call {
 public:
 	int type;			//!< type of call, INVITE or REGISTER
+	char chantype;
 	RTP *rtp[MAX_SSRC_PER_CALL];		//!< array of RTP streams
 	volatile int rtplock;
 	unsigned long call_id_len;	//!< length of call-id 	

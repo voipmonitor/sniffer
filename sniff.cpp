@@ -1517,6 +1517,7 @@ Call *new_invite_register(int sip_method, char *data, int datalen, struct pcap_p
 	static char str2[1024];
 	// store this call only if it starts with invite
 	Call *call = calltable->add(s, l, header->ts.tv_sec, saddr, source, handle, dlt, sensor_id);
+	call->chantype = CHAN_SIP;
 	call->set_first_packet_time(header->ts.tv_sec, header->ts.tv_usec);
 	call->sipcallerip[0] = saddr;
 	call->sipcalledip[0] = daddr;
@@ -3089,6 +3090,12 @@ rtpcheck:
 		// packet (RTP[C]) by source:port is already part of some stored call 
 		for (node_call = (hash_node_call *)calls; node_call != NULL; node_call = node_call->next) {
 			call = node_call->call;
+#if 0
+			if(call->chantype == CHAN_SKINNY) {
+				// if channel is skinny do not assign RTP packet based on source IP and source port. 
+				continue;
+			}
+#endif
 			iscaller = node_call->iscaller;
 			is_rtcp = node_call->is_rtcp;
 			is_fax = node_call->is_fax;
@@ -3211,6 +3218,7 @@ rtpcheck:
 			//printf("ssrc [%x] ver[%d] src[%u] dst[%u]\n", rtp.getSSRC(), rtp.getVersion(), source, dest);
 
 			call = calltable->add(s, strlen(s), header->ts.tv_sec, saddr, source, handle, dlt, sensor_id);
+			call->chantype = CHAN_SIP;
 			call->set_first_packet_time(header->ts.tv_sec, header->ts.tv_usec);
 			call->sipcallerip[0] = saddr;
 			call->sipcalledip[0] = daddr;
