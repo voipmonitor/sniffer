@@ -2479,6 +2479,13 @@ Call *process_packet(u_int64_t packet_number,
 						// try compact header
 						get_sip_peername(data,datalen,"\nt:", call->called, sizeof(call->called));
 					}
+					if(opt_destination_number_mode == 2) {
+						char called[1024] = "";
+						if(!get_sip_peername(data,datalen,"INVITE ", called, sizeof(called)) &&
+						   called[0] != '\0') {
+							strcpy(call->called, called);
+						}
+					}
 				}
 
 				//check and save CSeq for later to compare with OK 
@@ -2631,6 +2638,7 @@ Call *process_packet(u_int64_t packet_number,
 							}
 						}
 						if(opt_update_dstnum_onanswer &&
+						   !call->updateDstnumOnAnswer &&
 						   call->called_invite_branch_map.size()) {
 							char branch[100];
 							if(!get_sip_branch(data, datalen, "via:", branch, sizeof(branch)) &&
@@ -2638,6 +2646,7 @@ Call *process_packet(u_int64_t packet_number,
 								map<string, string>::iterator iter = call->called_invite_branch_map.find(branch);
 								if(iter != call->called_invite_branch_map.end()) {
 									strncpy(call->called, iter->second.c_str(), sizeof(call->called));
+									call->updateDstnumOnAnswer = true;
 								}
 							}
 						}
