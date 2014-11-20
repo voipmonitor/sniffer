@@ -279,6 +279,7 @@ Call::Call(char *call_id, unsigned long call_id_len, time_t time) :
 	force_close = false;
 	
 	first_codec = -1;
+	chan_type = 0;
 }
 
 void
