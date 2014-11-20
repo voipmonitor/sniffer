@@ -28,6 +28,7 @@
 #include <json/json.h>
 #include <iomanip>
 #include <openssl/sha.h>
+#include <fcntl.h>
 
 #include "voipmonitor.h"
 
@@ -1505,6 +1506,17 @@ bool RestartUpgrade::runRestart(int socket1, int socket2) {
 	close(socket2);
 	terminate_packetbuffer(15);
 	sleep(2);
+
+	// set to all descriptors flag CLOEXEC so exec* will close it and will not inherit it so the next voipmonitor instance will be not blocking it
+	long maxfd = sysconf(_SC_OPEN_MAX);
+	int flags;
+	for(int fd = 3; fd < maxfd; fd++) {
+		if((flags = fcntl(fd, F_GETFD)) != -1) {
+			fcntl(fd, F_SETFD, flags | FD_CLOEXEC);
+		}
+		close(fd);
+	}
+
 	int rsltExec = execl(this->restartTempScriptFileName.c_str(), "Command-line", 0, NULL);
 	if(rsltExec) {
 		this->errorString = "failed execution restart script";
