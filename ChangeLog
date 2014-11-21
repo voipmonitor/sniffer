@@ -1,3 +1,13 @@
+10.1.19 21.11.2014
+==================
+- implement skinny_ignore_rtpip option for cisco skinny protocol in case call manager receives RTP always on the same port. More info in voipmonitor.conf
+
+
+10.1.18 20.11.2014
+==================
+- close all file descriptors when upgrading / restarting sniffer to prevent leakage and other problems (manual restart after autoupgrade is recommended again until this version) 
+
+
 10.1.17 20.11.2014
 ==================
 - clean buffers before issuing restart which might solve problem with allocating ringbuffer when upgrading from GUI

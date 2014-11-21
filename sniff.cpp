@@ -203,6 +203,8 @@ extern int pcap_drop_flag;
 extern int opt_hide_message_content;
 extern int opt_remotepartyid;
 extern char cloud_host[256];
+extern SocketSimpleBufferWrite *sipSendSocket;
+extern int opt_sip_send_before_packetbuffer;
 
 #ifdef QUEUE_MUTEX
 extern sem_t readpacket_thread_semaphore;
@@ -2086,13 +2088,14 @@ Call *process_packet(u_int64_t packet_number,
 			if(opt_enable_fraud) {
 				fraudSipPacket(saddr, header->ts);
 			}
-			extern SocketSimpleBufferWrite *sipSendSocket;
-			extern int opt_sip_send_before_packetbuffer;
+#if 0
+//this block was moved at the end so it will mirror only relevant SIP belonging to real calls 
 			if(sipSendSocket && !opt_sip_send_before_packetbuffer) {
 				u_int16_t header_length = datalen;
 				sipSendSocket->addData(&header_length, 2,
 						       data, datalen);
 			}
+#endif 
 			++counter_sip_packets[1];
 		}
 
@@ -2913,6 +2916,13 @@ notfound:
 		returnCall = call;
 		data[datalen - 1] = a;
 endsip_save_packet:
+		if(call && call->type != REGISTER && sipSendSocket && !opt_sip_send_before_packetbuffer) {
+			// send packet to socket if enabled
+			u_int16_t header_length = datalen;
+			sipSendSocket->addData(&header_length, 2,
+					       data, datalen);
+		}
+
 		datalen = origDatalen;
 		if(istcp && 
 		   sipDatalen && (sipDatalen < (unsigned)datalen || sipOffset) &&

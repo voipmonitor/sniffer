@@ -243,6 +243,7 @@ char opt_silencedmtfseq[16] = "";
 char opt_keycheck[1024] = "";
 char opt_convert_char[64] = "";
 int opt_skinny = 0;
+unsigned int opt_skinny_ignore_rtpip = 0;
 int opt_read_from_file = 0;
 char opt_pb_read_from_file[256] = "";
 int opt_pb_read_from_file_speed = 0;
@@ -1384,6 +1385,11 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "skinny", NULL))) {
 		opt_skinny = yesno(value);
+	}
+	if((value = ini.GetValue("general", "skinny_ignore_rtpip", NULL))) {
+		struct sockaddr_in sa;
+		inet_pton(AF_INET, value, &(sa.sin_addr));
+		opt_skinny_ignore_rtpip = (unsigned int)(sa.sin_addr.s_addr);
 	}
 	if((value = ini.GetValue("general", "cdr_partition", NULL))) {
 		opt_cdr_partition = yesno(value);
