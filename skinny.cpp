@@ -1416,16 +1416,16 @@ void *handle_skinny(pcap_pkthdr *header, const u_char *packet, unsigned int sadd
 		if(plen == 0 or plen > (unsigned)remain) {
 			break;
 		}
-		remain -= plen; 
+		remain -= plen + 8; 
 		if(remain > 8 and remain < 4092 and (datalen - plen > 8)) {
 			//packet += plen + 8; // skinny header is 4byte length + 4byte header version. The rest is data with length plen
 			data += plen + 8;
 			datalen -= plen + 8;
+			++counter;
 			continue;
 		} else {
 			break;
 		}
-		++counter;
 	}
 	return NULL;
 }
