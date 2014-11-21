@@ -97,6 +97,7 @@ extern int opt_callslimit;
 extern int opt_skiprtpdata;
 extern char opt_silencedmtfseq[16];
 extern int opt_skinny;
+extern unsigned int opt_skinny_ignore_rtpip;
 
 /* Skinny debugging only available if asterisk configured with --enable-dev-mode */
 #define AST_DEVMODE 1
@@ -1743,6 +1744,10 @@ void *handle_skinny2(pcap_pkthdr *header, const u_char *packet, unsigned int sad
 			break;
 		}
 
+		if(opt_skinny_ignore_rtpip > 0 && opt_skinny_ignore_rtpip == ipaddr) {
+			//ignore_rtpip is enabled and it matches to it - skip tracking this IP RTP 
+			break;
+		}
 
 		char callid[16];
 		sprintf(callid, "%d", ref);
@@ -1939,6 +1944,10 @@ void *handle_skinny2(pcap_pkthdr *header, const u_char *packet, unsigned int sad
 		unsigned int pid = letohl(req.data.openreceivechannelack_ip4.callReference);
 		unsigned int ipaddr = letohl(req.data.openreceivechannelack_ip4.ipAddr);
 		unsigned int port = letohl(req.data.openreceivechannelack_ip4.port);
+		if(opt_skinny_ignore_rtpip > 0 && opt_skinny_ignore_rtpip == ipaddr) {
+			//ignore_rtpip is enabled and it matches to it - skip tracking this IP RTP 
+			break;
+		}
 		SKINNY_DEBUG(DEBUG_PACKET, 3, "Received OPEN_RECEIVE_CHANNEL_MESSAGE partyId [%u] ipAddr[%u] port[%u]", pid, ipaddr, port);
 		if((call = calltable->find_by_skinny_partyid(pid)) or (call = calltable->find_by_skinny_ipTuples(saddr, daddr))){
 			int rtpmap[MAX_RTPMAP];
