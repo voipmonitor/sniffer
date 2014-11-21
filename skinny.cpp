@@ -1662,11 +1662,11 @@ void *handle_skinny2(pcap_pkthdr *header, const u_char *packet, unsigned int sad
 
 
 			if(i > 0) 
-				memcpy(call->caller, callingParty, strlen(callingParty) + 1);
+				memcpy(call->caller, callingParty, MIN(sizeof(call->caller), strlen(callingParty) + 1));
 			if(i > 1) 
-				memcpy(call->called, calledParty, strlen(calledParty) + 1);
+				memcpy(call->called, calledParty, MIN(sizeof(call->called), strlen(calledParty) + 1));
 			if(i > 8) 
-				memcpy(call->callername, callingPartyName, strlen(callingPartyName) + 1);
+				memcpy(call->callername, callingPartyName, MIN(sizeof(call->callername), strlen(callingPartyName) + 1));
 
 			save_packet(call, header, packet, saddr, source, daddr, dest, 1, NULL, data, datalen, dataoffset, TYPE_SKINNY, 
 				    dlt, sensor_id);
