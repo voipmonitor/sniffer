@@ -1,3 +1,8 @@
+10.1.20 21.11.2014
+==================
+- fix crash in skinny when parsing multiple skinny messages in one packet (all versions)
+
+
 10.1.19 21.11.2014
 ==================
 - implement skinny_ignore_rtpip option for cisco skinny protocol in case call manager receives RTP always on the same port. More info in voipmonitor.conf
