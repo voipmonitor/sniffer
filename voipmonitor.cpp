@@ -255,6 +255,7 @@ int opt_generator = 0;
 int opt_generator_channels = 1;
 int opt_skipdefault = 0;
 int opt_filesclean = 1;
+int opt_enable_preprocess_packet;
 int opt_enable_http = 0;
 int opt_enable_webrtc = 0;
 int opt_tcpreassembly_pb_lock = 0;
@@ -521,6 +522,8 @@ MySqlStore *sqlStore = NULL;
 char mac[32] = "";
 
 PcapQueue *pcapQueueStatInterface;
+
+PreProcessPacket *preProcessPacket;
 
 TcpReassembly *tcpReassemblyHttp;
 TcpReassembly *tcpReassemblyWebrtc;
@@ -1932,6 +1935,10 @@ int eval_config(string inistr) {
 		opt_pcap_queue_receive_dlt = atoi(value);
 	}
 	
+	if((value = ini.GetValue("general", "enable_preprocess_packet", NULL))) {
+		opt_enable_preprocess_packet = yesno(value);
+	}
+	
 	if((value = ini.GetValue("general", "tcpreassembly", NULL)) ||
 	   (value = ini.GetValue("general", "http", NULL))) {
 		opt_enable_http = strcmp(value, "only") ? yesno(value) : 2;
@@ -3183,8 +3190,8 @@ int main(int argc, char *argv[]) {
 		}
 	}
 
-	extern ParsePacket _parse_packet;
-	_parse_packet.setStdParse();
+	extern ParsePacket _parse_packet_global;
+	_parse_packet_global.setStdParse();
 
 	if(!opt_nocdr && isSqlDriver("mysql") && mysql_host[0]) {
 		strcpy(mysql_host_orig, mysql_host);
@@ -3721,6 +3728,10 @@ int main(int argc, char *argv[]) {
 		}
 #endif 
 	}
+	
+	if(opt_enable_preprocess_packet) {
+		preProcessPacket = new PreProcessPacket();
+	}
 
 	if(opt_enable_http) {
 		bool setHttpPorts = false;
@@ -4079,6 +4090,10 @@ int main(int argc, char *argv[]) {
 	}
 
 	regfailedcache->prune(0);
+	
+	if(preProcessPacket) {
+		delete preProcessPacket;
+	}
 	
 	if(tcpReassemblyHttp) {
 		delete tcpReassemblyHttp;
@@ -4445,6 +4460,15 @@ void test() {
 	 
 	case 1: {
 		//test_search_country_by_number();
+	 
+		map<int, string> testmap;
+		testmap[1] = "aaa";
+		testmap[2] = "bbb";
+		
+		map<int, string>::iterator iter = testmap.begin();
+		
+		cout << testmap[1] << testmap[2] << iter->second << endl;
+	 
 		test_geoip();
 		cout << "---------" << endl;
 	} break;

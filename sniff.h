@@ -329,6 +329,70 @@ private:
 	tcp_stream2_s *tcp_streams_hashed[MAX_TCPSTREAMS];
 	list<tcp_stream2_s*> tcp_streams_list;
 };
+
+
+class PreProcessPacket {
+public:
+	struct packet_s {
+		u_int64_t packet_number;
+		unsigned int saddr;
+		int source; 
+		unsigned int daddr; 
+		int dest;
+		char *data; 
+		int datalen; 
+		int dataoffset;
+		pcap_t *handle; 
+		pcap_pkthdr *header; 
+		const u_char *packet; 
+		int istcp; 
+		int *was_rtp; 
+		struct iphdr2 *header_ip; 
+		int *voippacket;
+		pcap_block_store *block_store; 
+		int block_store_index; 
+		int dlt; 
+		int sensor_id;
+	};
+	struct packet_parse_s {
+		packet_s packet;
+		ParsePacket parse;
+		u_int32_t sipDataLen;
+		bool isSip;
+		volatile int set_data;
+		pthread_t thread_handle;
+	};
+	struct thread_arg {
+		PreProcessPacket *me;
+		int qring_index;
+		int threadId;
+		pstat_data threadPstatData[2];
+	};
+public:
+	PreProcessPacket();
+	~PreProcessPacket();
+	void push(u_int64_t packet_number,
+		  unsigned int saddr, int source, unsigned int daddr, int dest, 
+		  char *data, int datalen, int dataoffset,
+		  pcap_t *handle, pcap_pkthdr *header, const u_char *packet, 
+		  int istcp, int *was_rtp, struct iphdr2 *header_ip, int *voippacket,
+		  pcap_block_store *block_store, int block_store_index, int dlt, int sensor_id);
+	void parsePacket(unsigned int qring_index);
+	void preparePstatData(int qring_index);
+	double getCpuUsagePerc(int qring_index, bool preparePstatData);
+	unsigned int getQringmax() {
+		return(qringmax);
+	}
+private:
+	void *threadFunction(unsigned int qring_index);
+private:
+	packet_parse_s **qring;
+	thread_arg *thread_args;
+	unsigned int qringmax;
+	volatile unsigned int readit;
+	volatile unsigned int writeit;
+friend inline void *_PreProcessPacket_threadFunction(void *arg);
+};
  
 
 #endif
