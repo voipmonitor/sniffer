@@ -4382,25 +4382,23 @@ void TcpReassemblySip::complete(tcp_stream2_s *stream, u_int hash) {
 }
 
 
-inline void *_PreProcessPacket_threadFunction(void *arg) {
-	PreProcessPacket::thread_arg *ta = (PreProcessPacket::thread_arg*)arg;
-	return(ta->me->threadFunction(ta->qring_index));
+inline void *_PreProcessPacket_outThreadFunction(void *arg) {
+	return(((PreProcessPacket*)arg)->outThreadFunction());
 }
 
 PreProcessPacket::PreProcessPacket() {
-	this->qringmax = 5;
+	this->qringmax = 100;
 	this->readit = 0;
 	this->writeit = 0;
 	this->qring = new packet_parse_s*[this->qringmax];
-	this->thread_args = new thread_arg[this->qringmax];
 	for(unsigned int i = 0; i < this->qringmax; i++) {
 		this->qring[i] = new packet_parse_s;
+		this->qring[i]->used = 0;
 		this->qring[i]->parse.setStdParse();
-		this->qring[i]->set_data = 0;
-		this->thread_args[i].me = this;
-		this->thread_args[i].qring_index = i;
-		pthread_create(&this->qring[i]->thread_handle, NULL, _PreProcessPacket_threadFunction, &this->thread_args[i]);
 	}
+	memset(this->threadPstatData, 0, sizeof(this->threadPstatData));
+	this->outThreadId = 0;
+	pthread_create(&this->out_thread_handle, NULL, _PreProcessPacket_outThreadFunction, this);
 }
 
 PreProcessPacket::~PreProcessPacket() {
@@ -4408,7 +4406,6 @@ PreProcessPacket::~PreProcessPacket() {
 		delete this->qring[i];
 	}
 	delete [] this->qring;
-	delete [] this->thread_args;
 }
 
 void PreProcessPacket::push(u_int64_t packet_number,
@@ -4417,7 +4414,8 @@ void PreProcessPacket::push(u_int64_t packet_number,
 			    pcap_t *handle, pcap_pkthdr *header, const u_char *packet, 
 			    int istcp, int *was_rtp, struct iphdr2 *header_ip, int *voippacket,
 			    pcap_block_store *block_store, int block_store_index, int dlt, int sensor_id) {
-	while(this->qring[this->writeit]->set_data > 0) {
+	block_store->lock_packet(block_store_index);
+	while(this->qring[this->writeit]->used != 0) {
 		usleep(10);
 	}
 	this->qring[this->writeit]->packet.packet_number = packet_number;
@@ -4439,7 +4437,18 @@ void PreProcessPacket::push(u_int64_t packet_number,
 	this->qring[this->writeit]->packet.block_store_index = block_store_index; 
 	this->qring[this->writeit]->packet.dlt = dlt; 
 	this->qring[this->writeit]->packet.sensor_id = sensor_id;
-	this->qring[this->writeit]->set_data = 1;
+	if(sipportmatrix[this->qring[this->writeit]->packet.source] || 
+	   sipportmatrix[this->qring[this->writeit]->packet.dest]) {
+		this->qring[this->writeit]->sipDataLen = this->qring[this->writeit]->parse.parseData(
+								this->qring[this->writeit]->packet.data, 
+								this->qring[this->writeit]->packet.datalen, 
+								true);
+		this->qring[this->writeit]->isSip = this->qring[this->writeit]->parse.isSip();
+	} else {
+		this->qring[this->writeit]->sipDataLen = 0;
+		this->qring[this->writeit]->isSip = false;
+	}
+	this->qring[this->writeit]->used = 1;
 	if((this->writeit + 1) == this->qringmax) {
 		this->writeit = 0;
 	} else {
@@ -4447,68 +4456,51 @@ void PreProcessPacket::push(u_int64_t packet_number,
 	}
 }
 
-void PreProcessPacket::parsePacket(unsigned int qring_index) {
-	if(sipportmatrix[this->qring[qring_index]->packet.source] || 
-	   sipportmatrix[this->qring[qring_index]->packet.dest]) {
-		this->qring[qring_index]->sipDataLen = this->qring[qring_index]->parse.parseData(
-							this->qring[qring_index]->packet.data, 
-							this->qring[qring_index]->packet.datalen, 
-							true);
-		this->qring[qring_index]->isSip = this->qring[qring_index]->parse.isSip();
-	} else {
-		this->qring[qring_index]->sipDataLen = 0;
-		this->qring[qring_index]->isSip = false;
-	}
-}
-
-void *PreProcessPacket::threadFunction(unsigned int qring_index) {
-	this->thread_args[qring_index].threadId = get_unix_tid();
-	syslog(LOG_NOTICE, "start PreProcessPacket thread %i", this->thread_args[qring_index].threadId);
+void *PreProcessPacket::outThreadFunction() {
+	this->outThreadId = get_unix_tid();
+	syslog(LOG_NOTICE, "start PreProcessPacket out thread %i", this->outThreadId);
 	while(!terminating) {
-		if(this->qring[qring_index]->set_data == 1) {
-			this->parsePacket(qring_index);
-			this->qring[qring_index]->set_data = 2;
-		} else if(this->readit == qring_index &&
-			  this->qring[qring_index]->set_data == 2) {
-			process_packet(this->qring[qring_index]->packet.packet_number,
-				       this->qring[qring_index]->packet.saddr, this->qring[qring_index]->packet.source, this->qring[qring_index]->packet.daddr, this->qring[qring_index]->packet.dest, 
-				       this->qring[qring_index]->packet.data, this->qring[qring_index]->packet.datalen, this->qring[qring_index]->packet.dataoffset,
-				       this->qring[qring_index]->packet.handle, this->qring[qring_index]->packet.header, this->qring[qring_index]->packet.packet, 
-				       this->qring[qring_index]->packet.istcp, this->qring[qring_index]->packet.was_rtp, this->qring[qring_index]->packet.header_ip, this->qring[qring_index]->packet.voippacket,
-				       this->qring[qring_index]->packet.block_store, this->qring[qring_index]->packet.block_store_index, this->qring[qring_index]->packet.dlt, this->qring[qring_index]->packet.sensor_id, 
+		if(this->qring[this->readit]->used == 1) {
+			process_packet(this->qring[this->readit]->packet.packet_number,
+				       this->qring[this->readit]->packet.saddr, this->qring[this->readit]->packet.source, this->qring[this->readit]->packet.daddr, this->qring[this->readit]->packet.dest, 
+				       this->qring[this->readit]->packet.data, this->qring[this->readit]->packet.datalen, this->qring[this->readit]->packet.dataoffset,
+				       this->qring[this->readit]->packet.handle, this->qring[this->readit]->packet.header, this->qring[this->readit]->packet.packet, 
+				       this->qring[this->readit]->packet.istcp, this->qring[this->readit]->packet.was_rtp, this->qring[this->readit]->packet.header_ip, this->qring[this->readit]->packet.voippacket,
+				       this->qring[this->readit]->packet.block_store, this->qring[this->readit]->packet.block_store_index, this->qring[this->readit]->packet.dlt, this->qring[this->readit]->packet.sensor_id, 
 				       true, 0,
-				       &this->qring[qring_index]->parse, this->qring[qring_index]->sipDataLen, this->qring[qring_index]->isSip);
-			this->qring[qring_index]->set_data = 0;
+				       &this->qring[this->readit]->parse, this->qring[this->readit]->sipDataLen, this->qring[this->readit]->isSip);
+			this->qring[this->readit]->packet.block_store->unlock_packet(this->qring[this->readit]->packet.block_store_index);
+			this->qring[this->readit]->used = 0;
 			if((this->readit + 1) == this->qringmax) {
 				this->readit = 0;
 			} else {
 				this->readit++;
 			}
 		} else {
-			usleep(20);
+			usleep(10);
 		}
 	}
 	return(NULL);
 }
 
-void PreProcessPacket::preparePstatData(int qring_index) {
-	if(this->thread_args[qring_index].threadId) {
-		if(this->thread_args[qring_index].threadPstatData[0].cpu_total_time) {
-			this->thread_args[qring_index].threadPstatData[1] = this->thread_args[qring_index].threadPstatData[0];
+void PreProcessPacket::preparePstatData() {
+	if(this->outThreadId) {
+		if(this->threadPstatData[0].cpu_total_time) {
+			this->threadPstatData[1] = this->threadPstatData[0];
 		}
-		pstat_get_data(this->thread_args[qring_index].threadId, this->thread_args[qring_index].threadPstatData);
+		pstat_get_data(this->outThreadId, this->threadPstatData);
 	}
 }
 
-double PreProcessPacket::getCpuUsagePerc(int qring_index, bool preparePstatData) {
+double PreProcessPacket::getCpuUsagePerc(bool preparePstatData) {
 	if(preparePstatData) {
-		this->preparePstatData(qring_index);
+		this->preparePstatData();
 	}
-	if(this->thread_args[qring_index].threadId) {
+	if(this->outThreadId) {
 		double ucpu_usage, scpu_usage;
-		if(this->thread_args[qring_index].threadPstatData[0].cpu_total_time && this->thread_args[qring_index].threadPstatData[1].cpu_total_time) {
+		if(this->threadPstatData[0].cpu_total_time && this->threadPstatData[1].cpu_total_time) {
 			pstat_calc_cpu_usage_pct(
-				&this->thread_args[qring_index].threadPstatData[0], &this->thread_args[qring_index].threadPstatData[1],
+				&this->threadPstatData[0], &this->threadPstatData[1],
 				&ucpu_usage, &scpu_usage);
 			return(ucpu_usage + scpu_usage);
 		}

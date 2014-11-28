@@ -1250,11 +1250,9 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 		outStrStat << "t2CPU[" << setprecision(1) << t2cpu;
 		if (opt_rrd) rrdtCPU_t2 = t2cpu;
 		if(preProcessPacket) {
-			for(unsigned int i = 0; i < preProcessPacket->getQringmax(); i++) {
-				double t2cpu_preprocess_packet = preProcessPacket->getCpuUsagePerc(i, true);
-				if(t2cpu_preprocess_packet >= 0) {
-					outStrStat << "/" << setprecision(1) << t2cpu_preprocess_packet;
-				}
+			double t2cpu_preprocess_packet_out_thread = preProcessPacket->getCpuUsagePerc(true);
+			if(t2cpu_preprocess_packet_out_thread >= 0) {
+				outStrStat << "/" << setprecision(1) << t2cpu_preprocess_packet_out_thread;
 			}
 		}
 		outStrStat << "%] ";

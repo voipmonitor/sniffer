@@ -359,14 +359,7 @@ public:
 		ParsePacket parse;
 		u_int32_t sipDataLen;
 		bool isSip;
-		volatile int set_data;
-		pthread_t thread_handle;
-	};
-	struct thread_arg {
-		PreProcessPacket *me;
-		int qring_index;
-		int threadId;
-		pstat_data threadPstatData[2];
+		volatile int used;
 	};
 public:
 	PreProcessPacket();
@@ -377,21 +370,19 @@ public:
 		  pcap_t *handle, pcap_pkthdr *header, const u_char *packet, 
 		  int istcp, int *was_rtp, struct iphdr2 *header_ip, int *voippacket,
 		  pcap_block_store *block_store, int block_store_index, int dlt, int sensor_id);
-	void parsePacket(unsigned int qring_index);
-	void preparePstatData(int qring_index);
-	double getCpuUsagePerc(int qring_index, bool preparePstatData);
-	unsigned int getQringmax() {
-		return(qringmax);
-	}
+	void preparePstatData();
+	double getCpuUsagePerc(bool preparePstatData);
 private:
-	void *threadFunction(unsigned int qring_index);
+	void *outThreadFunction();
 private:
 	packet_parse_s **qring;
-	thread_arg *thread_args;
 	unsigned int qringmax;
 	volatile unsigned int readit;
 	volatile unsigned int writeit;
-friend inline void *_PreProcessPacket_threadFunction(void *arg);
+	pthread_t out_thread_handle;
+	pstat_data threadPstatData[2];
+	int outThreadId;
+friend inline void *_PreProcessPacket_outThreadFunction(void *arg);
 };
  
 
