@@ -3868,7 +3868,6 @@ void PcapQueue_readFromFifo::processPacket(pcap_pkthdr_plus *header_plus, u_char
 	char *data = NULL;
 	int datalen = 0;
 	int istcp = 0;
-	int was_rtp;
 	bool useTcpReassemblyHttp = false;
 	bool useTcpReassemblyWebrtc = false;
 	static u_int64_t packet_counter_all;
@@ -3977,7 +3976,6 @@ void PcapQueue_readFromFifo::processPacket(pcap_pkthdr_plus *header_plus, u_char
 	if(opt_mirrorip && (sipportmatrix[htons(header_udp->source)] || sipportmatrix[htons(header_udp->dest)])) {
 		mirrorip->send((char *)header_ip, (int)(header->caplen - ((u_char*)header_ip - packet)));
 	}
-	int voippacket = 0;
 	if(!useTcpReassemblyHttp && !useTcpReassemblyWebrtc &&
 	   opt_enable_http < 2 && opt_enable_webrtc < 2) {
 		if(preProcessPacket) {
@@ -3985,23 +3983,23 @@ void PcapQueue_readFromFifo::processPacket(pcap_pkthdr_plus *header_plus, u_char
 					       header_ip->saddr, htons(header_udp->source), header_ip->daddr, htons(header_udp->dest), 
 					       data, datalen, data - (char*)packet, 
 					       this->getPcapHandle(dlt), header, packet, 
-					       istcp, &was_rtp, header_ip, &voippacket,
+					       istcp, header_ip,
 					       block_store, block_store_index, dlt, sensor_id);
 		} else {
+			int voippacket = 0;
+			int was_rtp = 0;
 			process_packet(packet_counter_all,
 				       header_ip->saddr, htons(header_udp->source), header_ip->daddr, htons(header_udp->dest), 
 				       data, datalen, data - (char*)packet, 
 				       this->getPcapHandle(dlt), header, packet, 
 				       istcp, &was_rtp, header_ip, &voippacket,
 				       block_store, block_store_index, dlt, sensor_id);
+			// if packet was VoIP add it to ipaccount
+			if(opt_ipaccount) {
+				ipaccount(header->ts.tv_sec, (iphdr2*) ((char*)(packet) + header_plus->offset), header->len - header_plus->offset, voippacket);
+			}
 		}
 	}
-
-	// if packet was VoIP add it to ipaccount
-	if(opt_ipaccount) {
-		ipaccount(header->ts.tv_sec, (iphdr2*) ((char*)(packet) + header_plus->offset), header->len - header_plus->offset, voippacket);
-	}
-	
 }
 
 void PcapQueue_readFromFifo::checkFreeSizeCachedir() {

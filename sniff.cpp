@@ -4412,7 +4412,7 @@ void PreProcessPacket::push(u_int64_t packet_number,
 			    unsigned int saddr, int source, unsigned int daddr, int dest, 
 			    char *data, int datalen, int dataoffset,
 			    pcap_t *handle, pcap_pkthdr *header, const u_char *packet, 
-			    int istcp, int *was_rtp, struct iphdr2 *header_ip, int *voippacket,
+			    int istcp, struct iphdr2 *header_ip,
 			    pcap_block_store *block_store, int block_store_index, int dlt, int sensor_id) {
 	block_store->lock_packet(block_store_index);
 	while(this->qring[this->writeit]->used != 0) {
@@ -4430,9 +4430,7 @@ void PreProcessPacket::push(u_int64_t packet_number,
 	this->qring[this->writeit]->packet.header = header; 
 	this->qring[this->writeit]->packet.packet = packet; 
 	this->qring[this->writeit]->packet.istcp = istcp; 
-	this->qring[this->writeit]->packet.was_rtp = was_rtp; 
 	this->qring[this->writeit]->packet.header_ip = header_ip; 
-	this->qring[this->writeit]->packet.voippacket = voippacket;
 	this->qring[this->writeit]->packet.block_store = block_store; 
 	this->qring[this->writeit]->packet.block_store_index = block_store_index; 
 	this->qring[this->writeit]->packet.dlt = dlt; 
@@ -4461,11 +4459,13 @@ void *PreProcessPacket::outThreadFunction() {
 	syslog(LOG_NOTICE, "start PreProcessPacket out thread %i", this->outThreadId);
 	while(!terminating) {
 		if(this->qring[this->readit]->used == 1) {
+			int was_rtp = 0;
+			int voippacket = 0;
 			process_packet(this->qring[this->readit]->packet.packet_number,
 				       this->qring[this->readit]->packet.saddr, this->qring[this->readit]->packet.source, this->qring[this->readit]->packet.daddr, this->qring[this->readit]->packet.dest, 
 				       this->qring[this->readit]->packet.data, this->qring[this->readit]->packet.datalen, this->qring[this->readit]->packet.dataoffset,
 				       this->qring[this->readit]->packet.handle, this->qring[this->readit]->packet.header, this->qring[this->readit]->packet.packet, 
-				       this->qring[this->readit]->packet.istcp, this->qring[this->readit]->packet.was_rtp, this->qring[this->readit]->packet.header_ip, this->qring[this->readit]->packet.voippacket,
+				       this->qring[this->readit]->packet.istcp, &was_rtp, this->qring[this->readit]->packet.header_ip, &voippacket,
 				       this->qring[this->readit]->packet.block_store, this->qring[this->readit]->packet.block_store_index, this->qring[this->readit]->packet.dlt, this->qring[this->readit]->packet.sensor_id, 
 				       true, 0,
 				       &this->qring[this->readit]->parse, this->qring[this->readit]->sipDataLen, this->qring[this->readit]->isSip);

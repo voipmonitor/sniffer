@@ -346,9 +346,7 @@ public:
 		pcap_pkthdr *header; 
 		const u_char *packet; 
 		int istcp; 
-		int *was_rtp; 
 		struct iphdr2 *header_ip; 
-		int *voippacket;
 		pcap_block_store *block_store; 
 		int block_store_index; 
 		int dlt; 
@@ -368,7 +366,7 @@ public:
 		  unsigned int saddr, int source, unsigned int daddr, int dest, 
 		  char *data, int datalen, int dataoffset,
 		  pcap_t *handle, pcap_pkthdr *header, const u_char *packet, 
-		  int istcp, int *was_rtp, struct iphdr2 *header_ip, int *voippacket,
+		  int istcp, struct iphdr2 *header_ip,
 		  pcap_block_store *block_store, int block_store_index, int dlt, int sensor_id);
 	void preparePstatData();
 	double getCpuUsagePerc(bool preparePstatData);
