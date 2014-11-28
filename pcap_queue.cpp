@@ -67,7 +67,8 @@ extern Call *process_packet(u_int64_t packet_number,
 			    int istcp, int *was_rtp, struct iphdr2 *header_ip, int *voippacket,
 			    pcap_block_store *block_store, int block_store_index, int dlt, int sensor_id,
 			    bool mainProcess = true, int sipOffset = 0,
-			    ParsePacket *parsePacket = NULL, u_int32_t parsePacket_sipDataLen = 0, bool parsePacket_isSip = false);
+			    ParsePacket *parsePacket = NULL, u_int32_t parsePacket_sipDataLen = 0, bool parsePacket_isSip = false,
+			    unsigned int hash_s = 0, unsigned int hash_d = 0);
 extern int check_sip20(char *data, unsigned long len);
 void daemonizeOutput(string error);
 

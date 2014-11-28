@@ -3195,11 +3195,11 @@ Calltable::mapfind_by_ip_port(in_addr_t addr, unsigned short port, int *iscaller
 
 /* find call in hash */
 hash_node_call*
-Calltable::hashfind_by_ip_port(in_addr_t addr, unsigned short port) {
+Calltable::hashfind_by_ip_port(in_addr_t addr, unsigned short port, unsigned int hash) {
 	hash_node *node = NULL;
 	u_int32_t h;
 
-	h = tuplehash(addr, port);
+	h = hash ? hash : tuplehash(addr, port);
 	for (node = (hash_node *)calls_hash[h]; node != NULL; node = node->next) {
 		if ((node->addr == addr) && (node->port == port)) {
 			return node->calls;

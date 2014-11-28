@@ -357,6 +357,7 @@ public:
 		ParsePacket parse;
 		u_int32_t sipDataLen;
 		bool isSip;
+		unsigned int hash[2];
 		volatile int used;
 	};
 public:

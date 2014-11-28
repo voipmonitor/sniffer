@@ -672,7 +672,7 @@ public:
 	 * @brief find call
 	 *
 	*/
-	hash_node_call *hashfind_by_ip_port(in_addr_t addr, unsigned short port);
+	hash_node_call *hashfind_by_ip_port(in_addr_t addr, unsigned short port, unsigned int hash = 0);
 
 	/**
 	 * @brief remove call from hash
@@ -708,19 +708,21 @@ private:
 //	pthread_mutexattr_t   calls_listMAPlock_attr;
 
 	void *calls_hash[MAXNODE];
-
-	unsigned int tuplehash(u_int32_t addr, u_int16_t port) {
-		unsigned int key;
-
-		key = (unsigned int)(addr * port);
-		key += ~(key << 15);
-		key ^=  (key >> 10);
-		key +=  (key << 3);
-		key ^=  (key >> 6);
-		key += ~(key << 11);
-		key ^=  (key >> 16);
-		return key % MAXNODE;
-	}
 };
+
+
+inline unsigned int tuplehash(u_int32_t addr, u_int16_t port) {
+	unsigned int key;
+
+	key = (unsigned int)(addr * port);
+	key += ~(key << 15);
+	key ^=  (key >> 10);
+	key +=  (key << 3);
+	key ^=  (key >> 6);
+	key += ~(key << 11);
+	key ^=  (key >> 16);
+	return key % MAXNODE;
+}
+
 
 #endif

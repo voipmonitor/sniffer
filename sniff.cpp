@@ -1910,7 +1910,8 @@ Call *process_packet(u_int64_t packet_number,
 		     int istcp, int *was_rtp, struct iphdr2 *header_ip, int *voippacket,
 		     pcap_block_store *block_store, int block_store_index, int dlt, int sensor_id, 
 		     bool mainProcess = true, int sipOffset = 0,
-		     ParsePacket *parsePacket = NULL, u_int32_t parsePacket_sipDataLen = 0, bool parsePacket_isSip = false) {
+		     ParsePacket *parsePacket = NULL, u_int32_t parsePacket_sipDataLen = 0, bool parsePacket_isSip = false,
+		     unsigned int hash_s = 0, unsigned int hash_d = 0) {
  
 	Call *call = NULL;
 	int last_sip_method = -1;
@@ -3012,7 +3013,7 @@ endsip:
 	}
 
 rtpcheck:
-	if ((calls = calltable->hashfind_by_ip_port(daddr, dest))){
+	if ((calls = calltable->hashfind_by_ip_port(daddr, dest, hash_d))){
 		++counter_rtp_packets;
 		// packet (RTP) by destination:port is already part of some stored call  
 		for (node_call = (hash_node_call *)calls; node_call != NULL; node_call = node_call->next) {
@@ -3122,7 +3123,7 @@ rtpcheck:
 
 			}
 		}
-	} else if ((calls = calltable->hashfind_by_ip_port(saddr, source))){
+	} else if ((calls = calltable->hashfind_by_ip_port(saddr, source, hash_s))){
 		++counter_rtp_packets;
 		// packet (RTP[C]) by source:port is already part of some stored call 
 		for (node_call = (hash_node_call *)calls; node_call != NULL; node_call = node_call->next) {
@@ -4446,6 +4447,15 @@ void PreProcessPacket::push(u_int64_t packet_number,
 		this->qring[this->writeit]->sipDataLen = 0;
 		this->qring[this->writeit]->isSip = false;
 	}
+	
+	if(this->qring[this->writeit]->isSip) {
+		this->qring[this->writeit]->hash[0] = NULL;
+		this->qring[this->writeit]->hash[1] = NULL;
+	} else {
+		this->qring[this->writeit]->hash[0] = tuplehash(saddr, source);
+		this->qring[this->writeit]->hash[1] = tuplehash(daddr, dest);
+	}
+	
 	this->qring[this->writeit]->used = 1;
 	if((this->writeit + 1) == this->qringmax) {
 		this->writeit = 0;
@@ -4468,7 +4478,8 @@ void *PreProcessPacket::outThreadFunction() {
 				       this->qring[this->readit]->packet.istcp, &was_rtp, this->qring[this->readit]->packet.header_ip, &voippacket,
 				       this->qring[this->readit]->packet.block_store, this->qring[this->readit]->packet.block_store_index, this->qring[this->readit]->packet.dlt, this->qring[this->readit]->packet.sensor_id, 
 				       true, 0,
-				       &this->qring[this->readit]->parse, this->qring[this->readit]->sipDataLen, this->qring[this->readit]->isSip);
+				       &this->qring[this->readit]->parse, this->qring[this->readit]->sipDataLen, this->qring[this->readit]->isSip,
+				       this->qring[this->readit]->hash[0], this->qring[this->readit]->hash[1]);
 			this->qring[this->readit]->packet.block_store->unlock_packet(this->qring[this->readit]->packet.block_store_index);
 			this->qring[this->readit]->used = 0;
 			if((this->readit + 1) == this->qringmax) {
