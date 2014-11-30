@@ -4118,9 +4118,9 @@ else
   as_fn_error $? "Unable to find curl library. apt-get libcurl4-openssl-dev | yum curl-devel" "$LINENO" 5
 fi
 
-{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for ssh_forward_accept2 in -lssh" >&5
-$as_echo_n "checking for ssh_forward_accept2 in -lssh... " >&6; }
-if ${ac_cv_lib_ssh_ssh_forward_accept2+:} false; then :
+{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for ssh_forward_accept in -lssh" >&5
+$as_echo_n "checking for ssh_forward_accept in -lssh... " >&6; }
+if ${ac_cv_lib_ssh_ssh_forward_accept+:} false; then :
   $as_echo_n "(cached) " >&6
 else
   ac_check_lib_save_LIBS=$LIBS
@@ -4134,31 +4134,31 @@ cat confdefs.h - <<_ACEOF >conftest.$ac_ext
 #ifdef __cplusplus
 extern "C"
 #endif
-char ssh_forward_accept2 ();
+char ssh_forward_accept ();
 int
 main ()
 {
-return ssh_forward_accept2 ();
+return ssh_forward_accept ();
   ;
   return 0;
 }
 _ACEOF
 if ac_fn_c_try_link "$LINENO"; then :
-  ac_cv_lib_ssh_ssh_forward_accept2=yes
+  ac_cv_lib_ssh_ssh_forward_accept=yes
 else
-  ac_cv_lib_ssh_ssh_forward_accept2=no
+  ac_cv_lib_ssh_ssh_forward_accept=no
 fi
 rm -f core conftest.err conftest.$ac_objext \
     conftest$ac_exeext conftest.$ac_ext
 LIBS=$ac_check_lib_save_LIBS
 fi
-{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $ac_cv_lib_ssh_ssh_forward_accept2" >&5
-$as_echo "$ac_cv_lib_ssh_ssh_forward_accept2" >&6; }
-if test "x$ac_cv_lib_ssh_ssh_forward_accept2" = xyes; then :
+{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $ac_cv_lib_ssh_ssh_forward_accept" >&5
+$as_echo "$ac_cv_lib_ssh_ssh_forward_accept" >&6; }
+if test "x$ac_cv_lib_ssh_ssh_forward_accept" = xyes; then :
   HAVE_LIBSSH=1
 else
-  { $as_echo "$as_me:${as_lineno-$LINENO}: Your libssh is old or missing. apt-get install libssh-dev | yum install libssh-devel | or compile from source https://red.libssh.org/projects/libssh/files" >&5
-$as_echo "$as_me: Your libssh is old or missing. apt-get install libssh-dev | yum install libssh-devel | or compile from source https://red.libssh.org/projects/libssh/files" >&6;}
+  { $as_echo "$as_me:${as_lineno-$LINENO}: Your libssh is old or missing - cloud feature is disabled. apt-get install libssh-dev | yum install libssh-devel | or compile from source https://red.libssh.org/projects/libssh/files" >&5
+$as_echo "$as_me: Your libssh is old or missing - cloud feature is disabled. apt-get install libssh-dev | yum install libssh-devel | or compile from source https://red.libssh.org/projects/libssh/files" >&6;}
 fi
 
 { $as_echo "$as_me:${as_lineno-$LINENO}: checking for main in -ljson" >&5
