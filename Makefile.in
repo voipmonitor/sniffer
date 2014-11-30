@@ -24,6 +24,7 @@ ifeq "$(GCCVERSION)" "4.1"
   GCCARCH = core2
 endif
 
+core2cust: GCCARCH = core2
 
 
 version = $(shell grep RTPSENSOR_VERSION voipmonitor.h | cut -d" " -f 3 | tr -d "\"")
@@ -65,8 +66,8 @@ core2cust: GLIBCDIR = /opt/libc/lib
 core2cust: STARTFILES = $(GLIBCDIR)/crt1.o $(GLIBCDIR)/crti.o $(shell gcc --print-file-name=crtbegin.o)
 core2cust: ENDFILES = $(shell gcc --print-file-name=crtend.o) $(GLIBCDIR)/crtn.o
 core2cust: LIBGROUP = -Wl,--start-group $(GLIBCDIR)/libc.a -lgcc -lgcc_eh -Wl,--end-group
-core2cust: CXXFLAGS+= -DQUEUE_NONBLOCK2 -I /opt/libc/include -I /usr/local/mysql/include/ -I /usr/include/mysql/ -Wall -I jitterbuffer/  -L/usr/local/lib/ -fPIC -O2 -g3 -march=core2 -mtune=core2 
-core2cust: CFLAGS += CXXFLAGS
+core2cust: CXXFLAGS += -I /opt/libc/include 
+core2cust: CFLAGS += ${CXXFLAGS}
 core2cust: cleantest $(objects)
 	${CXX} $(LDFLAGS) -o voipmonitor $(STARTFILES) ${objects} $(LIBGROUP) $(ENDFILES) -L/opt/libc/lib ${STATIC_LIBS} ${LIBS_PATH}
 
