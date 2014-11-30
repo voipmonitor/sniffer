@@ -1,5 +1,6 @@
 #include <sys/types.h>
 #include <string>
+#include "config.h"
 
 #ifndef VOIPMONITOR_H
 #define VOIPMONITOR_H

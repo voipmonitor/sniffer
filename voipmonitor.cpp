@@ -3664,9 +3664,11 @@ int main(int argc, char *argv[]) {
 		}
 	};
 
+#ifdef HAVE_SSH
 	if(ssh_host[0] != '\0') {
 		pthread_create(&manager_ssh_thread, NULL, manager_ssh, NULL);
 	}
+#endif
 
 	// start reading threads
 	if(rtp_threaded &&

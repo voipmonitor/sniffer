@@ -5,6 +5,10 @@
 #include <vector>
 #include <queue>
 
+#ifndef HAVE_SSH
+typedef void* ssh_channel;
+#endif
+
 void *manager_client(void *dummy);
 void *manager_server(void *dummy);
 void *manager_ssh(void *dummy);

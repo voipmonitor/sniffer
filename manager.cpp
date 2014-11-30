@@ -15,8 +15,12 @@
 #include <vorbis/codec.h>
 #include <vorbis/vorbisenc.h>
 #include <pcap.h>
+
+#if HAVE_LIBSSH
 #include <libssh/libssh.h>
 #include <libssh/callbacks.h>
+#endif 
+
 #include <openssl/crypto.h>  
 
 #include <sstream>
@@ -262,6 +266,7 @@ void *listening_worker(void *arguments) {
 	return 0;
 }
 
+#ifdef HAVE_LIBSSH
 int sendssh(ssh_channel channel, const char *buf, int len) {
 	int wr, i;
 	wr = 0;
@@ -275,6 +280,11 @@ int sendssh(ssh_channel channel, const char *buf, int len) {
 	} while(i > 0 && wr < len);
 	return wr;
 }
+#else 
+int sendssh(ssh_channel channel, const char *buf, int len) {
+	return 0;
+}
+#endif
 
 int sendvm(int socket, ssh_channel channel, const char *buf, size_t len, int mode) {
 	int res;
@@ -1743,6 +1753,7 @@ void perror_syslog(const char *msg) {
 	syslog(LOG_ERR, "%s:%s\n", msg, buf);
 }
 
+#ifdef HAVE_SSH
 void *manager_ssh_(void) {
 	ssh_session session;
 	int rc;
@@ -1842,7 +1853,9 @@ ssh_disconnect:
 	ssh_free(session);
 	return 0;
 }
+#endif
 
+#ifdef HAVE_SSH
 void *manager_ssh(void *arg) {
 	ssh_threads_set_callbacks(ssh_threads_get_pthread());
 	ssh_init();
@@ -1855,6 +1868,7 @@ void *manager_ssh(void *arg) {
 	}
 	return 0;
 }
+#endif
 
 
 void *manager_server(void *dummy) {

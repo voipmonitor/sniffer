@@ -1,3 +1,6 @@
+#ifndef SNIFF_INLINE_C
+#define SNIFF_INLINE_C
+
 #include <syslog.h>
 #include <net/ethernet.h>
 
@@ -328,3 +331,5 @@ int pcapProcess(pcap_pkthdr** header, u_char** packet, bool *destroy,
 	
 	return(1);
 }
+
+#endif

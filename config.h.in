@@ -45,14 +45,17 @@
 /* Define to 1 if you have the `crypt' library (-lcrypt). */
 #undef HAVE_LIBCRYPT
 
+/* Define to 1 if you have the `curl' library (-lcurl). */
+#undef HAVE_LIBCURL
+
 /* Define to 1 if you have the `dl' library (-ldl). */
 #undef HAVE_LIBDL
 
-/* Define to 1 if you have the `gzstream' library (-lgzstream). */
-#undef HAVE_LIBGZSTREAM
+/* Define to 1 if you have the `glib-2.0' library (-lglib-2.0). */
+#undef HAVE_LIBGLIB_2_0
 
-/* Define to 1 if you have the `lfds' library (-llfds). */
-#undef HAVE_LIBLFDS
+/* Define to 1 if you have the `json' library (-ljson). */
+#undef HAVE_LIBJSON
 
 /* Define to 1 if you have the `ltdl' library (-lltdl). */
 #undef HAVE_LIBLTDL
@@ -62,9 +65,6 @@
 
 /* Define to 1 if you have the `mysqlclient' library (-lmysqlclient). */
 #undef HAVE_LIBMYSQLCLIENT
-
-/* Define to 1 if you have the `mysqlpp' library (-lmysqlpp). */
-#undef HAVE_LIBMYSQLPP
 
 /* Define to 1 if you have the `odbc' library (-lodbc). */
 #undef HAVE_LIBODBC
@@ -78,17 +78,26 @@
 /* Define to 1 if you have the `pthread' library (-lpthread). */
 #undef HAVE_LIBPTHREAD
 
+/* Define to 1 if you have the `rrd' library (-lrrd). */
+#undef HAVE_LIBRRD
+
 /* Define to 1 if you have the `rt' library (-lrt). */
 #undef HAVE_LIBRT
 
-/* Define to 1 if you have the `ssl' library (-lssl). */
-#undef HAVE_LIBSSL
+/* Define to 1 if you have the `snappy' library (-lsnappy). */
+#undef HAVE_LIBSNAPPY
+
+/* Define to 1 if you have the `ssh' library (-lssh). */
+#undef HAVE_LIBSSH
 
 /* Define to 1 if you have the `vorbis' library (-lvorbis). */
 #undef HAVE_LIBVORBIS
 
 /* Define to 1 if you have the `vorbisenc' library (-lvorbisenc). */
 #undef HAVE_LIBVORBISENC
+
+/* Define to 1 if you have the `xml2' library (-lxml2). */
+#undef HAVE_LIBXML2
 
 /* Define to 1 if you have the `z' library (-lz). */
 #undef HAVE_LIBZ
@@ -258,6 +267,9 @@
 
 /* Define to 1 if you have the ANSI C header files. */
 #undef STDC_HEADERS
+
+/* Define if using libssh */
+#undef USE_LIBSSH
 
 /* Enable extensions on AIX 3, Interix.  */
 #ifndef _ALL_SOURCE

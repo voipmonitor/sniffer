@@ -45,14 +45,18 @@ AC_CHECK_LIB([vorbisenc], [main], ,AC_MSG_ERROR([Unable to find VORBISENC librar
 # FIXME: Replace `main' with a function in `-lz':
 AC_CHECK_LIB([snappy], [main], ,AC_MSG_ERROR([Unable to find snappy library. apt-get install libsnappy-dev | or compile from source: https://snappy.googlecode.com/files/snappy-1.1.0.tar.gz]))
 AC_CHECK_LIB([curl], [main], , AC_MSG_ERROR([Unable to find curl library. apt-get libcurl4-openssl-dev | yum curl-devel]))
-AC_CHECK_LIB([ssh], [main], , AC_MSG_ERROR([Unable to find libssh library. apt-get install libssh-dev | yum install libssh-devel | or compile from source https://red.libssh.org/projects/libssh/files ]))
-AC_CHECK_LIB([ssh], [ssh_forward_accept], , AC_MSG_ERROR([Your libssh is old. Compile from source https://red.libssh.org/projects/libssh/files (current linux distributions have old library) ]))
+AC_CHECK_LIB([ssh], [ssh_forward_accept2], HAVE_LIBSSH=1, AC_MSG_NOTICE([Your libssh is old or missing - cloud feature is disabled. apt-get install libssh-dev | yum install libssh-devel | or compile from source https://red.libssh.org/projects/libssh/files]))
 AC_CHECK_LIB([json], [main], , AC_MSG_ERROR([Unable to find json-c library. apt-get install libjson0-dev | yum install json-c-devel (RPM from EPEL) | or compile from source: git clone https://github.com/json-c/json-c.git; cd json-c; sh autogen.sh; ./configure; make; make install;ldconfig]))
 AC_CHECK_LIB([rrd], [main], , AC_MSG_ERROR([Unable to find librrd library. apt-get install librrd-dev | yum install rrdtool-devel | or compile from source http://oss.oetiker.ch/rrdtool/doc/librrd.en.html]))
 AC_CHECK_LIB([glib-2.0], [main], , AC_MSG_ERROR([Unable to find libglib library. apt-get install  libglib2.0-dev | yum install glib2-devel]))
 AC_CHECK_LIB([xml2], [main], , AC_MSG_ERROR([Unable to find xml2 library. apt-get install libxml2-dev | yum install libxml2-devel]))
 AC_CHECK_LIB([mysqlclient], [main], , AC_MSG_ERROR([Unable to find libmysqlclient. apt-get install lbmysqlclient-dev | yum install mysql-devel]))
 AC_CHECK_LIB([z], [main], , AC_MSG_ERROR([Unable to find libz. apt-get install zlib1g-dev | yum install zlib-devel]))
+
+if test "x$HAVE_LIBSSH" = "x1"; then 
+	AC_DEFINE([HAVE_LIBSSH], [1], [Define if using libss])
+	AC_SUBST([LIBSSH],["-lssh -lssh_threads"])
+fi
 
 # Checks for header files.
 AC_FUNC_ALLOCA
