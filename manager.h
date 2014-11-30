@@ -1,11 +1,12 @@
 #ifndef MANAGER_H
 #define MANAGER_H
 
+#include "config.h"
 #include <string>
 #include <vector>
 #include <queue>
 
-#ifndef HAVE_SSH
+#ifndef HAVE_LIBSSH
 typedef void* ssh_channel;
 #endif
 

@@ -1,3 +1,4 @@
+#include "config.h"
 #include <iostream>
 #include <sys/types.h>
 #include <sys/stat.h>
