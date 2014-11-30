@@ -329,6 +329,60 @@ private:
 	tcp_stream2_s *tcp_streams_hashed[MAX_TCPSTREAMS];
 	list<tcp_stream2_s*> tcp_streams_list;
 };
+
+
+class PreProcessPacket {
+public:
+	struct packet_s {
+		u_int64_t packet_number;
+		unsigned int saddr;
+		int source; 
+		unsigned int daddr; 
+		int dest;
+		char *data; 
+		int datalen; 
+		int dataoffset;
+		pcap_t *handle; 
+		pcap_pkthdr *header; 
+		const u_char *packet; 
+		int istcp; 
+		struct iphdr2 *header_ip; 
+		pcap_block_store *block_store; 
+		int block_store_index; 
+		int dlt; 
+		int sensor_id;
+	};
+	struct packet_parse_s {
+		packet_s packet;
+		ParsePacket parse;
+		u_int32_t sipDataLen;
+		bool isSip;
+		unsigned int hash[2];
+		volatile int used;
+	};
+public:
+	PreProcessPacket();
+	~PreProcessPacket();
+	void push(u_int64_t packet_number,
+		  unsigned int saddr, int source, unsigned int daddr, int dest, 
+		  char *data, int datalen, int dataoffset,
+		  pcap_t *handle, pcap_pkthdr *header, const u_char *packet, 
+		  int istcp, struct iphdr2 *header_ip,
+		  pcap_block_store *block_store, int block_store_index, int dlt, int sensor_id);
+	void preparePstatData();
+	double getCpuUsagePerc(bool preparePstatData);
+private:
+	void *outThreadFunction();
+private:
+	packet_parse_s **qring;
+	unsigned int qringmax;
+	volatile unsigned int readit;
+	volatile unsigned int writeit;
+	pthread_t out_thread_handle;
+	pstat_data threadPstatData[2];
+	int outThreadId;
+friend inline void *_PreProcessPacket_outThreadFunction(void *arg);
+};
  
 
 #endif

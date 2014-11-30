@@ -608,15 +608,22 @@ inline void save_packet(Call *call, struct pcap_pkthdr *header, const u_char *pa
 	}
 }
 
-ParsePacket _parse_packet;
+ParsePacket _parse_packet_global;
+ParsePacket *_parse_packet_process_packet;
 
 int check_sip20(char *data, unsigned long len){
 	if(len < 11) {
 		return 0;
 	}
 	
-	if(_parse_packet.getParseData() == data) {
-		return(_parse_packet.isSip());
+	ParsePacket *parsePacket = NULL;
+	if(_parse_packet_process_packet && _parse_packet_process_packet->getParseData() == data) {
+		parsePacket = _parse_packet_process_packet;
+	} else if(_parse_packet_global.getParseData() == data) {
+		parsePacket = &_parse_packet_global;
+	}
+	if(parsePacket) {
+		return(parsePacket->isSip());
 	}
 	
 	int ok;
@@ -670,12 +677,19 @@ char * gettag(const void *ptr, unsigned long len, const char *tag, unsigned long
 	const char *rc_pp = NULL;
 	long l_pp;
 	char _tag[1024];
-	if(_parse_packet.getParseData() == ptr) {
-		rc_pp = _parse_packet.getContentData(tag, &l_pp);
+	
+	ParsePacket *parsePacket = NULL;
+	if(_parse_packet_process_packet && _parse_packet_process_packet->getParseData() == ptr) {
+		parsePacket = _parse_packet_process_packet;
+	} else if(_parse_packet_global.getParseData() == ptr) {
+		parsePacket = &_parse_packet_global;
+	}
+	if(parsePacket) {
+		rc_pp = parsePacket->getContentData(tag, &l_pp);
 		if((!rc_pp || l_pp <= 0) && tag[0] != '\n') {
 			_tag[0] = '\n';
 			strcpy(_tag + 1, tag);
-			rc_pp = _parse_packet.getContentData(_tag, &l_pp);
+			rc_pp = parsePacket->getContentData(_tag, &l_pp);
 		}
 		if(!test_pp) {
 			if(rc_pp && l_pp > 0) {
@@ -783,7 +797,7 @@ char * gettag(const void *ptr, unsigned long len, const char *tag, unsigned long
 	}
 	
 	if(test_pp && rc && l) {
-		if(_parse_packet.getParseData() == ptr) {
+		if(_parse_packet_global.getParseData() == ptr) {
 			//cout << "." << flush;
 			string content = string(rc_pp, l_pp);
 			string content2 = string(rc, l);
@@ -1895,7 +1909,9 @@ Call *process_packet(u_int64_t packet_number,
 		     pcap_t *handle, pcap_pkthdr *header, const u_char *packet, 
 		     int istcp, int *was_rtp, struct iphdr2 *header_ip, int *voippacket,
 		     pcap_block_store *block_store, int block_store_index, int dlt, int sensor_id, 
-		     bool mainProcess = true, int sipOffset = 0) {
+		     bool mainProcess = true, int sipOffset = 0,
+		     ParsePacket *parsePacket = NULL, u_int32_t parsePacket_sipDataLen = 0, bool parsePacket_isSip = false,
+		     unsigned int hash_s = 0, unsigned int hash_d = 0) {
  
 	Call *call = NULL;
 	int last_sip_method = -1;
@@ -1922,6 +1938,7 @@ Call *process_packet(u_int64_t packet_number,
 
 	*was_rtp = 0;
 	//int merged;
+	_parse_packet_process_packet = parsePacket;
 	
 	if(mainProcess) {
 		++counter_all_packets;
@@ -2002,7 +2019,9 @@ Call *process_packet(u_int64_t packet_number,
 		Call *returnCall = NULL;
 		
 		unsigned long origDatalen = datalen;
-		unsigned long sipDatalen = _parse_packet.parseData(data, datalen, true);
+		unsigned long sipDatalen = parsePacket ? 
+					    parsePacket_sipDataLen :
+					    _parse_packet_global.parseData(data, datalen, true);
 		if(sipDatalen > 0) {
 			datalen = sipDatalen;
 		}
@@ -2027,7 +2046,7 @@ Call *process_packet(u_int64_t packet_number,
 		   BYE message, it knows which call to hang up based on the Call-ID.
 		*/
 		
-		int issip = check_sip20(data, datalen);
+		int issip = parsePacket ? parsePacket_isSip : check_sip20(data, datalen);
 		if(!istcp and !issip) { 
 			goto rtpcheck;
 		}
@@ -2994,7 +3013,7 @@ endsip:
 	}
 
 rtpcheck:
-	if ((calls = calltable->hashfind_by_ip_port(daddr, dest))){
+	if ((calls = calltable->hashfind_by_ip_port(daddr, dest, hash_d))){
 		++counter_rtp_packets;
 		// packet (RTP) by destination:port is already part of some stored call  
 		for (node_call = (hash_node_call *)calls; node_call != NULL; node_call = node_call->next) {
@@ -3104,7 +3123,7 @@ rtpcheck:
 
 			}
 		}
-	} else if ((calls = calltable->hashfind_by_ip_port(saddr, source))){
+	} else if ((calls = calltable->hashfind_by_ip_port(saddr, source, hash_s))){
 		++counter_rtp_packets;
 		// packet (RTP[C]) by source:port is already part of some stored call 
 		for (node_call = (hash_node_call *)calls; node_call != NULL; node_call = node_call->next) {
@@ -4361,4 +4380,141 @@ void TcpReassemblySip::complete(tcp_stream2_s *stream, u_int hash) {
 		free(newpacket);
 	}
 	tcp_streams_hashed[hash] = NULL;
+}
+
+
+inline void *_PreProcessPacket_outThreadFunction(void *arg) {
+	return(((PreProcessPacket*)arg)->outThreadFunction());
+}
+
+PreProcessPacket::PreProcessPacket() {
+	this->qringmax = 100;
+	this->readit = 0;
+	this->writeit = 0;
+	this->qring = new packet_parse_s*[this->qringmax];
+	for(unsigned int i = 0; i < this->qringmax; i++) {
+		this->qring[i] = new packet_parse_s;
+		this->qring[i]->used = 0;
+		this->qring[i]->parse.setStdParse();
+	}
+	memset(this->threadPstatData, 0, sizeof(this->threadPstatData));
+	this->outThreadId = 0;
+	pthread_create(&this->out_thread_handle, NULL, _PreProcessPacket_outThreadFunction, this);
+}
+
+PreProcessPacket::~PreProcessPacket() {
+	for(unsigned int i = 0; i < this->qringmax; i++) {
+		delete this->qring[i];
+	}
+	delete [] this->qring;
+}
+
+void PreProcessPacket::push(u_int64_t packet_number,
+			    unsigned int saddr, int source, unsigned int daddr, int dest, 
+			    char *data, int datalen, int dataoffset,
+			    pcap_t *handle, pcap_pkthdr *header, const u_char *packet, 
+			    int istcp, struct iphdr2 *header_ip,
+			    pcap_block_store *block_store, int block_store_index, int dlt, int sensor_id) {
+	block_store->lock_packet(block_store_index);
+	while(this->qring[this->writeit]->used != 0) {
+		usleep(10);
+	}
+	this->qring[this->writeit]->packet.packet_number = packet_number;
+	this->qring[this->writeit]->packet.saddr = saddr;
+	this->qring[this->writeit]->packet.source = source;
+	this->qring[this->writeit]->packet.daddr = daddr; 
+	this->qring[this->writeit]->packet.dest = dest;
+	this->qring[this->writeit]->packet.data = data; 
+	this->qring[this->writeit]->packet.datalen = datalen; 
+	this->qring[this->writeit]->packet.dataoffset = dataoffset;
+	this->qring[this->writeit]->packet.handle = handle; 
+	this->qring[this->writeit]->packet.header = header; 
+	this->qring[this->writeit]->packet.packet = packet; 
+	this->qring[this->writeit]->packet.istcp = istcp; 
+	this->qring[this->writeit]->packet.header_ip = header_ip; 
+	this->qring[this->writeit]->packet.block_store = block_store; 
+	this->qring[this->writeit]->packet.block_store_index = block_store_index; 
+	this->qring[this->writeit]->packet.dlt = dlt; 
+	this->qring[this->writeit]->packet.sensor_id = sensor_id;
+	if(sipportmatrix[this->qring[this->writeit]->packet.source] || 
+	   sipportmatrix[this->qring[this->writeit]->packet.dest]) {
+		this->qring[this->writeit]->sipDataLen = this->qring[this->writeit]->parse.parseData(
+								this->qring[this->writeit]->packet.data, 
+								this->qring[this->writeit]->packet.datalen, 
+								true);
+		this->qring[this->writeit]->isSip = this->qring[this->writeit]->parse.isSip();
+	} else {
+		this->qring[this->writeit]->sipDataLen = 0;
+		this->qring[this->writeit]->isSip = false;
+	}
+	
+	if(this->qring[this->writeit]->isSip) {
+		this->qring[this->writeit]->hash[0] = NULL;
+		this->qring[this->writeit]->hash[1] = NULL;
+	} else {
+		this->qring[this->writeit]->hash[0] = tuplehash(saddr, source);
+		this->qring[this->writeit]->hash[1] = tuplehash(daddr, dest);
+	}
+	
+	this->qring[this->writeit]->used = 1;
+	if((this->writeit + 1) == this->qringmax) {
+		this->writeit = 0;
+	} else {
+		this->writeit++;
+	}
+}
+
+void *PreProcessPacket::outThreadFunction() {
+	this->outThreadId = get_unix_tid();
+	syslog(LOG_NOTICE, "start PreProcessPacket out thread %i", this->outThreadId);
+	while(!terminating) {
+		if(this->qring[this->readit]->used == 1) {
+			int was_rtp = 0;
+			int voippacket = 0;
+			process_packet(this->qring[this->readit]->packet.packet_number,
+				       this->qring[this->readit]->packet.saddr, this->qring[this->readit]->packet.source, this->qring[this->readit]->packet.daddr, this->qring[this->readit]->packet.dest, 
+				       this->qring[this->readit]->packet.data, this->qring[this->readit]->packet.datalen, this->qring[this->readit]->packet.dataoffset,
+				       this->qring[this->readit]->packet.handle, this->qring[this->readit]->packet.header, this->qring[this->readit]->packet.packet, 
+				       this->qring[this->readit]->packet.istcp, &was_rtp, this->qring[this->readit]->packet.header_ip, &voippacket,
+				       this->qring[this->readit]->packet.block_store, this->qring[this->readit]->packet.block_store_index, this->qring[this->readit]->packet.dlt, this->qring[this->readit]->packet.sensor_id, 
+				       true, 0,
+				       &this->qring[this->readit]->parse, this->qring[this->readit]->sipDataLen, this->qring[this->readit]->isSip,
+				       this->qring[this->readit]->hash[0], this->qring[this->readit]->hash[1]);
+			this->qring[this->readit]->packet.block_store->unlock_packet(this->qring[this->readit]->packet.block_store_index);
+			this->qring[this->readit]->used = 0;
+			if((this->readit + 1) == this->qringmax) {
+				this->readit = 0;
+			} else {
+				this->readit++;
+			}
+		} else {
+			usleep(10);
+		}
+	}
+	return(NULL);
+}
+
+void PreProcessPacket::preparePstatData() {
+	if(this->outThreadId) {
+		if(this->threadPstatData[0].cpu_total_time) {
+			this->threadPstatData[1] = this->threadPstatData[0];
+		}
+		pstat_get_data(this->outThreadId, this->threadPstatData);
+	}
+}
+
+double PreProcessPacket::getCpuUsagePerc(bool preparePstatData) {
+	if(preparePstatData) {
+		this->preparePstatData();
+	}
+	if(this->outThreadId) {
+		double ucpu_usage, scpu_usage;
+		if(this->threadPstatData[0].cpu_total_time && this->threadPstatData[1].cpu_total_time) {
+			pstat_calc_cpu_usage_pct(
+				&this->threadPstatData[0], &this->threadPstatData[1],
+				&ucpu_usage, &scpu_usage);
+			return(ucpu_usage + scpu_usage);
+		}
+	}
+	return(-1);
 }
