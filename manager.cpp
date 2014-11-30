@@ -16,7 +16,7 @@
 #include <vorbis/vorbisenc.h>
 #include <pcap.h>
 
-#if HAVE_LIBSSH
+#ifdef HAVE_LIBSSH
 #include <libssh/libssh.h>
 #include <libssh/callbacks.h>
 #endif 
