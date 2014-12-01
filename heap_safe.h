@@ -91,18 +91,18 @@ inline void *memcpy_heapsafe(void *destination, const void *destination_begin, c
 		}
 		if(!error) {
 			if(destination_begin) {
-				if((unsigned char*)destination_begin < (unsigned char*)destination) {
+				if((unsigned char*)destination < (unsigned char*)destination_begin) {
 					HeapSafeMemcpyError("negative offset of destination", file, line);
 				}
-				if((unsigned char*)destination_begin - (unsigned char*)destination + length > destinationLength) {
+				if((unsigned char*)destination - (unsigned char*)destination_begin + length > destinationLength) {
 					HeapSafeMemcpyError("write after destination length", file, line);
 				}
 			}
 			if(source_begin) {
-				if((unsigned char*)source_begin < (unsigned char*)source) {
+				if((unsigned char*)source < (unsigned char*)source_begin) {
 					HeapSafeMemcpyError("negative offset of source", file, line);
 				}
-				if((unsigned char*)source_begin - (unsigned char*)source + length > sourceLength) {
+				if((unsigned char*)source - (unsigned char*)source_begin + length > sourceLength) {
 					HeapSafeMemcpyError("write after source length", file, line);
 				}
 			}
@@ -135,10 +135,10 @@ inline void *memset_heapsafe(void *ptr, void *ptr_begin, int value, size_t lengt
 		}
 		if(!error) {
 			if(ptr_begin) {
-				if((unsigned char*)ptr_begin < (unsigned char*)ptr) {
+				if((unsigned char*)ptr < (unsigned char*)ptr_begin) {
 					HeapSafeMemsetError("negative offset of ptr", file, line);
 				}
-				if((unsigned char*)ptr_begin - (unsigned char*)ptr + length > ptrLength) {
+				if((unsigned char*)ptr - (unsigned char*)ptr_begin + length > ptrLength) {
 					HeapSafeMemsetError("write after ptr length", file, line);
 				}
 			}
