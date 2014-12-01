@@ -22,6 +22,7 @@
 #include <sys/types.h>
 #include <stdarg.h>
 
+#if 0
 #if !defined(HAVE_ASPRINTF) && !defined(__AST_DEBUG_MALLOC)
 int asprintf(char **str, const char *fmt, ...);
 #endif
@@ -40,6 +41,7 @@ size_t strlcat(char *dst, const char *src, size_t siz) attribute_deprecated;
 
 #ifndef HAVE_STRLCPY
 size_t strlcpy(char *dst, const char *src, size_t siz) attribute_deprecated;
+#endif
 #endif
 
 #ifdef SOLARIS
@@ -106,10 +108,6 @@ typedef unsigned long long uint64_t;
 #define GLOB_ABORTED GLOB_ABEND
 #endif
 
-#if !defined(HAVE_GLOB_NOMAGIC) || !defined(HAVE_GLOB_BRACE)
-#define MY_GLOB_FLAGS   GLOB_NOCHECK
-#else
 #define MY_GLOB_FLAGS   (GLOB_NOMAGIC | GLOB_BRACE)
-#endif
 
 #endif
