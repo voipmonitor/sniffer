@@ -21,6 +21,7 @@
 #include <inttypes.h>
 #include <sys/types.h>
 #include <stdarg.h>
+#include <stdio.h>
 
 #if 0
 #if !defined(HAVE_ASPRINTF) && !defined(__AST_DEBUG_MALLOC)
