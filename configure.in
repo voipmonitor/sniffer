@@ -53,6 +53,7 @@ AC_CHECK_LIB([xml2], [main], , AC_MSG_ERROR([Unable to find xml2 library. apt-ge
 AC_CHECK_LIB([mysqlclient], [main], , AC_MSG_ERROR([Unable to find libmysqlclient. apt-get install lbmysqlclient-dev | yum install mysql-devel]))
 AC_CHECK_LIB([z], [main], , AC_MSG_ERROR([Unable to find libz. apt-get install zlib1g-dev | yum install zlib-devel]))
 AC_CHECK_LIB([gnutls], [gnutls_init], HAVE_LIBGNUTLS=1, AC_MSG_ERROR([Unable to find gnutls disabling SIP TLS decoder. apt-get install libgnutls-dev | yum install gnutls-devel]))
+AC_CHECK_LIB([tcmalloc_minimal], [tc_malloc], HAVE_LIBTCMALLOC=1, AC_MSG_NOTICE([Unable to find tcmalloc_minimal library which speeds up threads by 10%. The library is optional: apt-get install libtcmalloc-minimal4 or compile from source https://code.google.com/p/gperftools/]))
 
 if test "x$HAVE_LIBSSH" = "x1"; then 
 	AC_DEFINE([HAVE_LIBSSH], [1], [Define if using libss])
@@ -62,6 +63,10 @@ fi
 if test "x$HAVE_LIBGNUTLS" = "x1"; then 
 	AC_DEFINE([HAVE_LIBGNUTLS], [1], [Define if using gnutls])
 	AC_SUBST([LIBGNUTLS],["-lgcrypt -lgnutls"])
+fi
+if test "x$HAVE_LIBTCMALLOC" = "x1"; then 
+	AC_DEFINE([HAVE_LIBTCMALLOC], [1], [Define if using libtcmalloc])
+	AC_SUBST([LIBTCMALLOC],["-ltcmalloc_minimal"])
 fi
 
 # Checks for header files.
