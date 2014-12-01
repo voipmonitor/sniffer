@@ -656,13 +656,13 @@ config_load_mysql() {
 			opt_mos_lqo = atoi(row["mos_lqo"].c_str());
 		}
 		if(row["mos_lqo_bin"] != "") {
-			opt_mos_lqo_bin = row["mos_lqo_bin"];
+			strncpy(opt_mos_lqo_bin, row["mos_lqo_bin"].c_str(), sizeof(opt_mos_lqo_bin));
 		}
 		if(row["mos_lqo_ref"] != "") {
-			opt_mos_lqo_ref = atoi(row["mos_lqo_ref"].c_str());
+			strncpy(opt_mos_lqo_ref, row["mos_lqo_bin"].c_str(), sizeof(opt_mos_lqo_ref));
 		}
 		if(row["mos_lqo_ref16"] != "") {
-			opt_mos_lqo_ref = row["mos_lqo_ref"];
+			strncpy(opt_mos_lqo_ref16, row["mos_lqo_bin"].c_str(), sizeof(opt_mos_lqo_ref16));
 		}
 		if(row["php_path"] != "") {
 			row["php_path"].copy(opt_php_path, sizeof(opt_php_path), 0);

@@ -63,7 +63,7 @@ static char base64[64];
 
 using namespace std;
 
-AsyncClose asyncClose;
+AsyncClose *asyncClose;
 
 //Sort files in given directory using mtime from oldest (files not already openned for write).
 vector<string> listFilesDir (char * dir) {
@@ -985,14 +985,14 @@ void PcapDumper::close(bool updateFilesQueue) {
 			this->state = state_close;
 		} else {
 			if(this->call) {
-				asyncClose.add(this->handle, updateFilesQueue,
-					       this->call, this,
-					       this->fileNameSpoolRelative.c_str(), 
-					       type == rtp ? "rtpsize" : 
-					       this->call->type == REGISTER ? "regsize" : "sipsize",
-					       0/*this->capsize + PCAP_DUMPER_HEADER_SIZE ignore size counter - header->capsize can contain -1*/);
+				asyncClose->add(this->handle, updateFilesQueue,
+						this->call, this,
+						this->fileNameSpoolRelative.c_str(), 
+						type == rtp ? "rtpsize" : 
+						this->call->type == REGISTER ? "regsize" : "sipsize",
+						0/*this->capsize + PCAP_DUMPER_HEADER_SIZE ignore size counter - header->capsize can contain -1*/);
 			} else {
-				asyncClose.add(this->handle);
+				asyncClose->add(this->handle);
 			}
 			this->handle = NULL;
 			this->state = state_do_close;
@@ -1059,13 +1059,13 @@ void RtpGraphSaver::close(bool updateFilesQueue) {
 	if(this->isOpen()) {
 		Call *call = (Call*)this->rtp->call_owner;
 		if(call) {
-			asyncClose.add(this->handle, updateFilesQueue,
-				       call,
-				       this->fileNameSpoolRelative.c_str(), 
-				       "graphsize", 
-				       this->handle->size);
+			asyncClose->add(this->handle, updateFilesQueue,
+					call,
+					this->fileNameSpoolRelative.c_str(), 
+					"graphsize", 
+					this->handle->size);
 		} else {
-			asyncClose.add(this->handle);
+			asyncClose->add(this->handle);
 		}
 		this->handle = NULL;
 		if(updateFilesQueue && !call) {
@@ -2134,9 +2134,9 @@ bool FileZipHandler::writeToBuffer(char *data, int length) {
 bool FileZipHandler::writeToFile(char *data, int length, bool force) {
 	if(enableAsyncWrite && !force) {
 		if(dumpHandler) {
-			asyncClose.addWrite((pcap_dumper_t*)this, data, length);
+			asyncClose->addWrite((pcap_dumper_t*)this, data, length);
 		} else {
-			asyncClose.addWrite(this, data, length);
+			asyncClose->addWrite(this, data, length);
 		}
 		return(true);
 	} else {

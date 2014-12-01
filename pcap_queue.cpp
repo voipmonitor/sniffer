@@ -179,7 +179,7 @@ size_t _opt_pcap_queue_block_restore_buffer_inc_size	= opt_pcap_queue_block_max_
 int pcap_drop_flag = 0;
 int enable_bad_packet_order_warning = 0;
 
-static pcap_block_store_queue blockStoreBypassQueue; 
+static pcap_block_store_queue *blockStoreBypassQueue; 
 
 static unsigned long sumPacketsCounterIn[2];
 static unsigned long sumPacketsCounterOut[2];
@@ -2709,7 +2709,7 @@ void* PcapQueue_readFromInterface::threadFunction(void *arg, unsigned int arg2) 
 				res = this->pcap_next_ex_iface(this->pcapHandle, &header, &packet);
 				if(res == -1) {
 					if(opt_pb_read_from_file[0]) {
-						blockStoreBypassQueue.push(blockStore[blockStoreIndex]);
+						blockStoreBypassQueue->push(blockStore[blockStoreIndex]);
 						++sumBlocksCounterIn[0];
 						blockStore[blockStoreIndex] = NULL;
 						sleep(1);
@@ -2756,14 +2756,14 @@ void* PcapQueue_readFromInterface::threadFunction(void *arg, unsigned int arg2) 
 			for(int i = 0; i < blockStoreCount; i++) {
 				if(fetchPacketOk && i == blockStoreIndex ? blockStore[i]->full : blockStore[i]->isFull_checkTimout()) {
 					bool _syslog = true;
-					while((blockStoreBypassQueueSize = blockStoreBypassQueue.getUseSize()) > opt_pcap_queue_bypass_max_size) {
+					while((blockStoreBypassQueueSize = blockStoreBypassQueue->getUseSize()) > opt_pcap_queue_bypass_max_size) {
 						if(_syslog) {
 							u_long actTime = getTimeMS();
 							if(actTime - 1000 > this->lastTimeLogErrThread0BufferIsFull) {
 								syslog(LOG_ERR, "packetbuffer %s: THREAD0 BUFFER IS FULL", this->nameQueue.c_str());
 								this->lastTimeLogErrThread0BufferIsFull = actTime;
 							}
-							cout << "bypass buffer size " << blockStoreBypassQueue.getUseItems() << " (" << blockStoreBypassQueue.getUseSize() << ")" << endl;
+							cout << "bypass buffer size " << blockStoreBypassQueue->getUseItems() << " (" << blockStoreBypassQueue->getUseSize() << ")" << endl;
 							_syslog = false;
 							++countBypassBufferSizeExceeded;
 						}
@@ -2773,9 +2773,9 @@ void* PcapQueue_readFromInterface::threadFunction(void *arg, unsigned int arg2) 
 					}
 					if(blockStoreBypassQueueSize > maxBypassBufferSize) {
 						maxBypassBufferSize = blockStoreBypassQueueSize;
-						maxBypassBufferItems = blockStoreBypassQueue.getUseItems();
+						maxBypassBufferItems = blockStoreBypassQueue->getUseItems();
 					}
-					blockStoreBypassQueue.push(blockStore[i]);
+					blockStoreBypassQueue->push(blockStore[i]);
 					++sumBlocksCounterIn[0];
 					blockStore[i] = new pcap_block_store;
 					strncpy(blockStore[i]->ifname, 
@@ -2890,8 +2890,8 @@ string PcapQueue_readFromInterface::pcapStatString_bypass_buffer(int statPeriod)
 	ostringstream outStr;
 	if(__config_BYPASS_FIFO) {
 		outStr << fixed;
-		uint64_t useSize = blockStoreBypassQueue.getUseSize();
-		uint64_t useItems = blockStoreBypassQueue.getUseItems();
+		uint64_t useSize = blockStoreBypassQueue->getUseSize();
+		uint64_t useItems = blockStoreBypassQueue->getUseItems();
 		outStr << "PACKETBUFFER_THREAD0_HEAP: "
 		       << setw(6) << (useSize / 1024 / 1024) << "MB (" << setw(3) << useItems << ")"
 		       << " " << setw(5) << setprecision(1) << (100. * useSize / opt_pcap_queue_bypass_max_size) << "%"
@@ -3213,7 +3213,7 @@ void *PcapQueue_readFromFifo::threadFunction(void *arg, unsigned int arg2) {
 	} else if(__config_BYPASS_FIFO) {
 		pcap_block_store *blockStore;
 		while(!TERMINATING) {
-			blockStore = blockStoreBypassQueue.pop(false);
+			blockStore = blockStoreBypassQueue->pop(false);
 			if(!blockStore) {
 				usleep(1000);
 				continue;
@@ -3226,12 +3226,12 @@ void *PcapQueue_readFromFifo::threadFunction(void *arg, unsigned int arg2) {
 			if(blockStoreOk) {
 				if(this->pcapStoreQueue.push(blockStore, this->blockStoreTrash_size, false)) {
 					sumPacketsSize[0] += blockSize;
-					blockStoreBypassQueue.pop(true, blockSize);
+					blockStoreBypassQueue->pop(true, blockSize);
 				} else {
 					usleep(1000);
 				}
 			} else {
-				blockStoreBypassQueue.pop(true, blockSize);
+				blockStoreBypassQueue->pop(true, blockSize);
 			}
 		}
 	} else {
@@ -4041,4 +4041,13 @@ void *_PcapQueue_readFromFifo_connectionThreadFunction(void *arg) {
 	PcapQueue_readFromFifo::sPacketServerConnection *connection = (PcapQueue_readFromFifo::sPacketServerConnection*)arg;
 	return(connection->parent->threadFunction(connection->parent, connection->id));
 	
+}
+
+
+void PcapQueue_init() {
+	blockStoreBypassQueue = new pcap_block_store_queue;
+}
+
+void PcapQueue_term() {
+	delete blockStoreBypassQueue;
 }

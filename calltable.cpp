@@ -105,9 +105,9 @@ extern int opt_cdr_ua_enable;
 extern unsigned int graph_delimiter;
 extern unsigned int graph_version;
 extern int opt_mosmin_f2;
-extern string opt_mos_lqo_bin;
-extern string opt_mos_lqo_ref;
-extern string opt_mos_lqo_ref16;
+extern char opt_mos_lqo_bin[1024];
+extern char opt_mos_lqo_ref[1024];
+extern char opt_mos_lqo_ref16[1024];
 extern int opt_mos_lqo;
 extern regcache *regfailedcache;
 extern MySqlStore *sqlStore;
@@ -1126,10 +1126,10 @@ Call::mos_lqo(char *deg, int samplerate) {
 	char buf[4092];
 	switch(samplerate) {
 	case 8000:
-		snprintf(buf, 4091, "PATH=/bin:/sbin:/usr/bin:/usr/sbin:/usr/local/sbin:/usr/local/bin %s +%d %s %s", opt_mos_lqo_bin.c_str(), samplerate, opt_mos_lqo_ref.c_str(), deg);
+		snprintf(buf, 4091, "PATH=/bin:/sbin:/usr/bin:/usr/sbin:/usr/local/sbin:/usr/local/bin %s +%d %s %s", opt_mos_lqo_bin, samplerate, opt_mos_lqo_ref, deg);
 		break;
 	case 16000:
-		snprintf(buf, 4091, "PATH=/bin:/sbin:/usr/bin:/usr/sbin:/usr/local/sbin:/usr/local/bin %s +%d %s %s", opt_mos_lqo_bin.c_str(), samplerate, opt_mos_lqo_ref16.c_str(), deg);
+		snprintf(buf, 4091, "PATH=/bin:/sbin:/usr/bin:/usr/sbin:/usr/local/sbin:/usr/local/bin %s +%d %s %s", opt_mos_lqo_bin, samplerate, opt_mos_lqo_ref16, deg);
 		break;
 	default:
 		if(verbosity > 0) syslog(LOG_INFO, "MOS_LQO unsupported samplerate:[%d] only 8000 and 16000 are supported\n", samplerate);

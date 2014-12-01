@@ -610,4 +610,8 @@ friend void *_PcapQueue_readFromFifo_connectionThreadFunction(void *arg);
 };
 
 
+void PcapQueue_init();
+void PcapQueue_term();
+
+
 #endif

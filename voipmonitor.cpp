@@ -74,6 +74,7 @@
 #include "config_mysql.h"
 #include "fraud.h"
 #include "rrd.h"
+#include "heap_safe.h"
 
 #if defined(QUEUE_MUTEX) || defined(QUEUE_NONBLOCK)
 extern "C" {
@@ -276,9 +277,9 @@ char opt_database_backup_from_mysql_password[256] = "";
 int opt_database_backup_pause = 300;
 int opt_database_backup_insert_threads = 1;
 int opt_database_backup_use_federated = 0;
-string opt_mos_lqo_bin = "pesq";
-string opt_mos_lqo_ref = "/usr/local/share/voipmonitor/audio/mos_lqe_original.wav";
-string opt_mos_lqo_ref16 = "/usr/local/share/voipmonitor/audio/mos_lqe_original_16khz.wav";
+char opt_mos_lqo_bin[1024] = "pesq";
+char opt_mos_lqo_ref[1024] = "/usr/local/share/voipmonitor/audio/mos_lqe_original.wav";
+char opt_mos_lqo_ref16[1024] = "/usr/local/share/voipmonitor/audio/mos_lqe_original_16khz.wav";
 regcache *regfailedcache;
 int opt_onewaytimeout = 15;
 int opt_saveaudio_reversestereo = 0;
@@ -358,8 +359,6 @@ vector<dstring> opt_custom_headers_message;
 int opt_custom_headers_last_value = 1;
 
 char configfile[1024] = "";	// config file name
-
-string insert_funcname = "__insert";
 
 char sql_driver[256] = "mysql";
 char sql_cdr_table[256] = "cdr";
@@ -1320,8 +1319,6 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "id_sensor", NULL))) {
 		opt_id_sensor = atoi(value);
 		opt_id_sensor_cleanspool = opt_id_sensor;
-		insert_funcname = "__insert_";
-		insert_funcname.append(value);
 	}
 	if((value = ini.GetValue("general", "pcapcommand", NULL))) {
 		strncpy(pcapcommand, value, sizeof(pcapcommand));
@@ -1988,13 +1985,13 @@ int eval_config(string inistr) {
 		opt_mos_lqo = yesno(value);
 	}
 	if((value = ini.GetValue("general", "mos_lqo_bin", NULL))) {
-		opt_mos_lqo_bin = value;
+		strncpy(opt_mos_lqo_bin, value, sizeof(opt_mos_lqo_bin));
 	}
 	if((value = ini.GetValue("general", "mos_lqo_ref", NULL))) {
-		opt_mos_lqo_ref = value;
+		strncpy(opt_mos_lqo_ref, value, sizeof(opt_mos_lqo_ref));
 	}
 	if((value = ini.GetValue("general", "mos_lqo_ref16", NULL))) {
-		opt_mos_lqo_ref16 = value;
+		strncpy(opt_mos_lqo_ref16, value, sizeof(opt_mos_lqo_ref16));
 	}
 	if((value = ini.GetValue("general", "php_path", NULL))) {
 		strncpy(opt_php_path, value, sizeof(opt_php_path));
@@ -2514,6 +2511,17 @@ PcapQueue_readFromInterface *pcapQueueI;
 PcapQueue_readFromFifo *pcapQueueQ;
 
 int main(int argc, char *argv[]) {
+ 
+	for(int i = 0; i < argc; i++) {
+		if(strstr(argv[i], "--heapsafe")) {
+			extern unsigned int HeapSafeCheck;
+			HeapSafeCheck = _HeapSafeErrorNotEnoughMemory |
+					_HeapSafeErrorBeginEnd |
+					_HeapSafeErrorFreed |
+					_HeapSafeErrorInAllocFce |
+					_HeapSafeErrorAllocReserve;
+		}
+	}
 
 	if(file_exists("/etc/localtime")) {
 		setenv("TZ", "/etc/localtime", 1);
@@ -2715,8 +2723,6 @@ int main(int argc, char *argv[]) {
 				break;
 			case 's':
 				opt_id_sensor = atoi(optarg);
-				insert_funcname = "__insert_";
-				insert_funcname.append(optarg);
 				break;
 			case 'Z':
 				strncpy(opt_keycheck, optarg, sizeof(opt_keycheck));
@@ -3635,8 +3641,9 @@ int main(int argc, char *argv[]) {
 		initFraud();
 	}
 
-	extern AsyncClose asyncClose;
-	asyncClose.startThreads(opt_pcap_dump_writethreads, opt_pcap_dump_writethreads_max);
+	extern AsyncClose *asyncClose;
+	asyncClose = new AsyncClose;
+	asyncClose->startThreads(opt_pcap_dump_writethreads, opt_pcap_dump_writethreads_max);
 	
 	if(!opt_nocdr &&
 	   isSqlDriver("mysql") &&
@@ -3891,6 +3898,8 @@ int main(int argc, char *argv[]) {
 
 		if(opt_pcap_threaded) {
 			if(opt_pcap_queue) {
+			 
+				PcapQueue_init();
 				
 				if(opt_pcap_queue_receive_from_ip_port) {
 					
@@ -3985,6 +3994,8 @@ int main(int argc, char *argv[]) {
 					}
 					
 				}
+				
+				PcapQueue_term();
 				
 			} else {
 				pthread_create(&readdump_libpcap_thread, NULL, readdump_libpcap_thread_fce, global_pcap_handle);
@@ -4233,8 +4244,11 @@ int main(int argc, char *argv[]) {
 	freeMemIpacc();
 	delete regfailedcache;
 	if(opt_read_from_file) {
-		extern AsyncClose asyncClose;
-		asyncClose.processAll();
+		extern AsyncClose *asyncClose;
+		if(asyncClose) {
+			asyncClose->processAll();
+			delete asyncClose;
+		}
 	}
 //	mysql_library_end();
 
