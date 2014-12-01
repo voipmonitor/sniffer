@@ -25,7 +25,7 @@
 #include <sys/statvfs.h>
 #include <curl/curl.h>
 #include <cerrno>
-#include <json/json.h>
+#include <json.h>
 #include <iomanip>
 #include <openssl/sha.h>
 #include <fcntl.h>

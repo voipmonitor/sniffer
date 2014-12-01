@@ -33,12 +33,14 @@ objects = $(shell ls -1 *.cpp | sed 's/\.cpp/.o/' | tr "\n" " ") $(shell ls -1 j
 
 #headers = $(shell ls -1 *.h | tr "\n" " ") $(shell ls -1 jitterbuffer/*.h | tr "\n" " ") $(shell ls -1 jitterbuffer/asterisk/*.h | tr "\n" " ")
 
+JSONLIB = $(shell pkg-config --libs json)
+JSONCFLAGS = $(shell pkg-config --cflags json)
 
 LIBSSH=@LIBSSH@
 LIBGNUTLS=@LIBGNUTLS@
-SHARED_LIBS = -ldl -lpthread -lpcap -lz -lvorbis -lvorbisenc -logg -lodbc -lmysqlclient -lrt -lsnappy -lcurl -lssl -lcrypto -ljson ${LIBSSH} -lxml2 -lrrd ${LIBGNUTLS}
-STATIC_LIBS = -static -lodbc -lltdl -ldl -lrt -lz ${LIBSSH} -lcrypt -lm -lcurl -lssl -lcrypto -static-libstdc++ -static-libgcc -lpcap -lpthread -lmysqlclient -lpthread -lz -lc -lvorbis -lvorbisenc -logg -lrt -lsnappy -ljson -lrrd -lxml2 -lglib-2.0 -lz
-INCLUDES =  -I/usr/local/include -I/usr/include/mysql/ -I/usr/local/mysql/include -I jitterbuffer/ 
+SHARED_LIBS = -ldl -lpthread -lpcap -lz -lvorbis -lvorbisenc -logg -lodbc -lmysqlclient -lrt -lsnappy -lcurl -lssl -lcrypto ${JSONLIB} ${LIBSSH} -lxml2 -lrrd ${LIBGNUTLS}
+STATIC_LIBS = -static -lodbc -lltdl -ldl -lrt -lz ${LIBSSH} -lcrypt -lm -lcurl -lssl -lcrypto -static-libstdc++ -static-libgcc -lpcap -lpthread -lmysqlclient -lpthread -lz -lc -lvorbis -lvorbisenc -logg -lrt -lsnappy ${JSONLIB} -lrrd -lxml2 -lglib-2.0 -lz
+INCLUDES =  -I/usr/local/include -I/usr/include/mysql/ -I/usr/local/mysql/include -I jitterbuffer/ ${JSONCFLAGS} 
 LIBS_PATH = -L/usr/local/lib/mysql -L/usr/local/mysql/lib -L/usr/lib/mysql -L/usr/local/lib/ -L/usr/lib64/mysql
 CXXFLAGS +=  -DQUEUE_NONBLOCK2  -Wall -fPIC -g3 -O2 -march=$(GCCARCH) -mtune=${GCCARCH} ${INCLUDES}
 CFLAGS += ${CXXFLAGS}
