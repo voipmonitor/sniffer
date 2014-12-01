@@ -10,6 +10,7 @@
 #include "sniff.h"
 #include "pcap_queue_block.h"
 #include "pstat.h"
+#include "heap_safe.h"
 
 
 extern int opt_tcpreassembly_pb_lock;
@@ -34,7 +35,8 @@ public:
 	TcpReassemblyDataItem(u_char *data, u_int32_t datalen, timeval time, u_int32_t ack = 0, eDirection direction = DIRECTION_NA) {
 		if(data && datalen) {
 			this->data = new u_char[datalen + 1];
-			memcpy(this->data, data, datalen);
+			memcpy_heapsafe(this->data, data, datalen, 
+					__FILE__, __LINE__);
 			this->data[datalen] = 0;
 			this->datalen = datalen;
 		} else {
@@ -48,7 +50,8 @@ public:
 	TcpReassemblyDataItem(const TcpReassemblyDataItem &dataItem) {
 		if(dataItem.data && dataItem.datalen) {
 			this->data = new u_char[dataItem.datalen + 1];
-			memcpy(this->data, dataItem.data, dataItem.datalen);
+			memcpy_heapsafe(this->data, dataItem.data, dataItem.datalen, 
+					__FILE__, __LINE__);
 			this->data[dataItem.datalen] = 0;
 			this->datalen = dataItem.datalen;
 		} else {
@@ -70,7 +73,8 @@ public:
 		}
 		if(dataItem.data && dataItem.datalen) {
 			this->data = new u_char[dataItem.datalen + 1];
-			memcpy(this->data, dataItem.data, dataItem.datalen);
+			memcpy_heapsafe(this->data, dataItem.data, dataItem.datalen, 
+					__FILE__, __LINE__);
 			this->data[dataItem.datalen] = 0;
 			this->datalen = dataItem.datalen;
 		} else {
@@ -89,7 +93,8 @@ public:
 		if(data && datalen) {
 			if(newAlloc) {
 				this->data = new u_char[datalen + 1];
-				memcpy(this->data, data, datalen);
+				memcpy_heapsafe(this->data, data, datalen, 
+						__FILE__, __LINE__);
 				this->data[datalen] = 0;
 			} else {
 				this->data = data;
@@ -243,7 +248,8 @@ public:
 		this->copyFrom(packet);
 		if(!opt_tcpreassembly_pb_lock && packet.data) {
 			this->data = new u_char[packet.datacaplen];
-			memcpy(this->data, packet.data, packet.datacaplen);
+			memcpy_heapsafe(this->data, packet.data, packet.datacaplen, 
+					__FILE__, __LINE__);
 		}
 	}
 	~TcpReassemblyStream_packet() {
@@ -258,7 +264,8 @@ public:
 		this->copyFrom(packet);
 		if(!opt_tcpreassembly_pb_lock && packet.data) {
 			this->data = new u_char[packet.datacaplen];
-			memcpy(this->data, packet.data, packet.datacaplen);
+			memcpy_heapsafe(this->data, packet.data, packet.datacaplen, 
+					__FILE__, __LINE__);
 		}
 		return(*this);
 	}
@@ -273,7 +280,10 @@ public:
 		} else {
 			if(datacaplen) {
 				this->data = new u_char[datacaplen];
-				memcpy(this->data, data, datacaplen);
+				memcpy_heapsafe(this->data, this->data,
+						data, block_store ? NULL : data,
+						datacaplen, 
+						__FILE__, __LINE__);
 			} else {
 				this->data = NULL;
 			}

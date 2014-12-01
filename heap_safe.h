@@ -58,11 +58,12 @@ struct sHeapSafeMemoryControlBlock {
 
 
 void HeapSafeAllocError(int error);
-void HeapSafeMemcpyError(const char *errorString);
-void HeapSafeMemsetError(const char *errorString);
+void HeapSafeMemcpyError(const char *errorString, const char *file = NULL, unsigned int line = 0);
+void HeapSafeMemsetError(const char *errorString, const char *file = NULL, unsigned int line = 0);
 
 
-inline void *memcpy_heapsafe(void *destination, const void *destination_begin, const void *source, const void *source_begin, size_t length) {
+inline void *memcpy_heapsafe(void *destination, const void *destination_begin, const void *source, const void *source_begin, size_t length,
+			     const char *file = NULL, unsigned int line = 0) {
 	extern unsigned int HeapSafeCheck;
 	if(HeapSafeCheck & _HeapSafeErrorBeginEnd) {
 		bool error = false;
@@ -74,7 +75,7 @@ inline void *memcpy_heapsafe(void *destination, const void *destination_begin, c
 				destinationLength = destination_beginMemoryBlock->length;
 			} else {
 				error = true;
-				HeapSafeMemcpyError("destination corrupted (bad begin memory block)");
+				HeapSafeMemcpyError("destination corrupted (bad begin memory block)", file, line);
 			}
 		}
 		sHeapSafeMemoryControlBlock *source_beginMemoryBlock;
@@ -85,24 +86,24 @@ inline void *memcpy_heapsafe(void *destination, const void *destination_begin, c
 				sourceLength = source_beginMemoryBlock->length;
 			} else {
 				error = true;
-				HeapSafeMemcpyError("source corrupted (bad begin memory block)");
+				HeapSafeMemcpyError("source corrupted (bad begin memory block)", file, line);
 			}
 		}
 		if(!error) {
 			if(destination_begin) {
 				if((unsigned char*)destination_begin < (unsigned char*)destination) {
-					HeapSafeMemcpyError("negative offset of destination");
+					HeapSafeMemcpyError("negative offset of destination", file, line);
 				}
 				if((unsigned char*)destination_begin - (unsigned char*)destination + length > destinationLength) {
-					HeapSafeMemcpyError("write after destination length");
+					HeapSafeMemcpyError("write after destination length", file, line);
 				}
 			}
 			if(source_begin) {
 				if((unsigned char*)source_begin < (unsigned char*)source) {
-					HeapSafeMemcpyError("negative offset of source");
+					HeapSafeMemcpyError("negative offset of source", file, line);
 				}
 				if((unsigned char*)source_begin - (unsigned char*)source + length > sourceLength) {
-					HeapSafeMemcpyError("write after source length");
+					HeapSafeMemcpyError("write after source length", file, line);
 				}
 			}
 		}
@@ -110,7 +111,14 @@ inline void *memcpy_heapsafe(void *destination, const void *destination_begin, c
 	return(memcpy(destination, source, length));
 }
 
-inline void *memset_heapsafe(void *ptr, void *ptr_begin, int value, size_t length) {
+inline void *memcpy_heapsafe(void *destination, const void *source, size_t length,
+			     const char *file = NULL, unsigned int line = 0) {
+	return(memcpy_heapsafe(destination, destination, source, source, length,
+			       file, line));
+}
+
+inline void *memset_heapsafe(void *ptr, void *ptr_begin, int value, size_t length,
+			     const char *file = NULL, unsigned int line = 0) {
 	extern unsigned int HeapSafeCheck;
 	if(HeapSafeCheck & _HeapSafeErrorBeginEnd) {
 		bool error = false;
@@ -122,21 +130,27 @@ inline void *memset_heapsafe(void *ptr, void *ptr_begin, int value, size_t lengt
 				ptrLength = ptr_beginMemoryBlock->length;
 			} else {
 				error = true;
-				HeapSafeMemsetError("ptr corrupted (bad begin memory block)");
+				HeapSafeMemsetError("ptr corrupted (bad begin memory block)", file, line);
 			}
 		}
 		if(!error) {
 			if(ptr_begin) {
 				if((unsigned char*)ptr_begin < (unsigned char*)ptr) {
-					HeapSafeMemsetError("negative offset of ptr");
+					HeapSafeMemsetError("negative offset of ptr", file, line);
 				}
 				if((unsigned char*)ptr_begin - (unsigned char*)ptr + length > ptrLength) {
-					HeapSafeMemsetError("write after ptr length");
+					HeapSafeMemsetError("write after ptr length", file, line);
 				}
 			}
 		}
 	}
 	return(memset(ptr, value, length));
+}
+
+inline void *memset_heapsafe(void *ptr, int value, size_t length,
+			     const char *file = NULL, unsigned int line = 0) {
+	return(memset_heapsafe(ptr, ptr, value, length,
+			       file, line));
 }
 
 #endif //HEAP_SAFE_H

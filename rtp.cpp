@@ -684,7 +684,9 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 		     << "seq:" << getSeqNum() << " "
 		     << "saddr/sport:" << inet_ntostring(htonl(saddr)) << " / " << sport << " "
 		     << "daddr/dport:" << inet_ntostring(htonl(daddr)) << " / " << dport << " "
-		     << (this->iscaller ? "caller" : "called") << endl;
+		     << (this->iscaller ? "caller" : "called") 
+		     << " packets received: " << this->stats.received
+		     << endl;
 	}
 	
 	if(this->sensor_id >= 0 && this->sensor_id != sensor_id) {

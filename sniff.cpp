@@ -4449,8 +4449,8 @@ void PreProcessPacket::push(u_int64_t packet_number,
 	}
 	
 	if(this->qring[this->writeit]->isSip) {
-		this->qring[this->writeit]->hash[0] = NULL;
-		this->qring[this->writeit]->hash[1] = NULL;
+		this->qring[this->writeit]->hash[0] = 0;
+		this->qring[this->writeit]->hash[1] = 0;
 	} else {
 		this->qring[this->writeit]->hash[0] = tuplehash(saddr, source);
 		this->qring[this->writeit]->hash[1] = tuplehash(daddr, dest);

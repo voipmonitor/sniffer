@@ -268,13 +268,20 @@ u_char *TcpReassemblyStream::complete(u_int32_t *datalen, timeval *time, bool ch
 			} else if(databuff_len < *datalen + PACKET_DATALEN(packet.datalen, packet.datacaplen)) {
 				databuff_len = max(*datalen, databuff_len) + max(PACKET_DATALEN(packet.datalen, packet.datacaplen) + 1, 10000u);
 				u_char* newdata = new u_char[databuff_len];
-				memcpy(newdata, data, *datalen);
+				memcpy_heapsafe(newdata, data, *datalen, 
+						__FILE__, __LINE__);
 				delete [] data;
 				data = newdata;
 			}
-			memcpy(data + *datalen, packet.data, min(PACKET_DATALEN(packet.datalen, packet.datacaplen), packet.datacaplen));
+			memcpy_heapsafe(data + *datalen, data, 
+					packet.data, packet.data, 
+					min(PACKET_DATALEN(packet.datalen, packet.datacaplen), packet.datacaplen), 
+					__FILE__, __LINE__);
 			if(packet.datacaplen < PACKET_DATALEN(packet.datalen, packet.datacaplen)) {
-				memset(data + *datalen + packet.datacaplen, ' ', PACKET_DATALEN(packet.datalen, packet.datacaplen) - packet.datacaplen);
+				memset_heapsafe(data + *datalen + packet.datacaplen, data, 
+						' ', 
+						PACKET_DATALEN(packet.datalen, packet.datacaplen) - packet.datacaplen, 
+						__FILE__, __LINE__);
 			}
 			*datalen += PACKET_DATALEN(packet.datalen, packet.datacaplen);
 			lastNextSeq = this->ok_packets[i][1];
@@ -425,9 +432,13 @@ bool TcpReassemblyStream::checkOkPost(TcpReassemblyStream *nextStream) {
 		useNextStream = true;
 	}
 	char *data = new char[datalen + 1];
-	memcpy(data, this->complete_data.getData(), this->complete_data.getDatalen());
+	memcpy_heapsafe(data, this->complete_data.getData(), this->complete_data.getDatalen(), 
+			__FILE__, __LINE__);
 	if(useNextStream) {
-		memcpy(data + this->complete_data.getDatalen(), nextStream->complete_data.getData(), nextStream->complete_data.getDatalen());
+		memcpy_heapsafe(data + this->complete_data.getDatalen(), data, 
+				nextStream->complete_data.getData(), nextStream->complete_data.getData(), 
+				nextStream->complete_data.getDatalen(),
+				__FILE__, __LINE__);
 	}
 	data[datalen] = 0;
 	if(datalen > 5 && !memcmp(data, "POST ", 5)) {
@@ -1011,6 +1022,21 @@ void TcpReassemblyLink::printContent(int level) {
 
 void TcpReassemblyLink::cleanup(u_int64_t act_time) {
 	map<uint32_t, TcpReassemblyStream*>::iterator iter;
+	
+	/*
+	in_addr ip;
+	ip.s_addr = this->ip_src;
+	string ip_src = inet_ntoa(ip);
+	ip.s_addr = this->ip_dst;
+	string ip_dst = inet_ntoa(ip);
+	cout << "*** call cleanup " 
+	     << fixed
+	     << setw(15) << ip_src << "/" << setw(6) << this->port_src
+	     << " -> " 
+	     << setw(15) << ip_dst << "/" << setw(6) << this->port_dst
+	     << endl;
+	*/
+	
 	for(iter = this->queue_by_ack.begin(); iter != this->queue_by_ack.end(); ) {
 		if(iter->second->queue.size() > 500) {
 			if(this->reassembly->isActiveLog() || ENABLE_DEBUG(reassembly->getType(), _debug_cleanup)) {
@@ -1051,6 +1077,13 @@ void TcpReassemblyLink::cleanup(u_int64_t act_time) {
 				     << setw(15) << inet_ntostring(htonl(this->ip_dst)) << "/" << setw(6) << this->port_dst
 				     << endl;
 			}
+			
+			/*
+			cout << "*** cleanup finally ack " 
+			     << this->queue[0]->ack
+			     << endl;
+			*/
+			
 			iter = this->queue_by_ack.find(this->queue[0]->ack);
 			if(iter != this->queue_by_ack.end()) {
 				this->queue_by_ack.erase(iter);
@@ -1934,7 +1967,8 @@ void TcpReassembly::push(pcap_pkthdr *header, iphdr2 *header_ip, u_char *packet,
 		string _data;
 		if(datalen) {
 			char *__data = new char[datalen + 1];
-			memcpy(__data, data, datalen);
+			memcpy_heapsafe(__data, data, datalen, 
+					__FILE__, __LINE__);
 			__data[datalen] = 0;
 			_data = __data;
 			delete [] __data;

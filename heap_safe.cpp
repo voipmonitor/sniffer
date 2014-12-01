@@ -158,14 +158,16 @@ void HeapSafeAllocError(int error) {
 	}
 }
 
-void HeapSafeMemcpyError(const char *errorString) {
+void HeapSafeMemcpyError(const char *errorString, const char *file, unsigned int line) {
 	if(errorString) {
-		syslog(LOG_ERR, "HEAPSAFE MEMCPY ERROR: %s", errorString);
+		syslog(LOG_ERR, "HEAPSAFE MEMCPY ERROR: %s - %s:%d", errorString, 
+		       file ? file : "unknown source file", line);
 	}
 }
 
-void HeapSafeMemsetError(const char *errorString) {
+void HeapSafeMemsetError(const char *errorString, const char *file, unsigned int line) {
 	if(errorString) {
-		syslog(LOG_ERR, "HEAPSAFE MEMSET ERROR: %s", errorString);
+		syslog(LOG_ERR, "HEAPSAFE MEMSET ERROR: %s - %s:%d", errorString, 
+		       file ? file : "unknown source file", line);
 	}
 }
