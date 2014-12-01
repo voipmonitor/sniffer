@@ -2,7 +2,7 @@
 # Process this file with autoconf to produce a configure script.
 
 AC_PREREQ([2.67])
-AC_INIT([FULL-PACKAGE-NAME], [VERSION], [BUG-REPORT-ADDRESS])
+AC_INIT([voipmonitor], [VERSION], [support@voipmonitor.org])
 AC_CONFIG_SRCDIR([voipmonitor.cpp])
 AC_CONFIG_HEADERS([config.h])
 
@@ -52,40 +52,46 @@ AC_CHECK_LIB([glib-2.0], [main], , AC_MSG_ERROR([Unable to find libglib library.
 AC_CHECK_LIB([xml2], [main], , AC_MSG_ERROR([Unable to find xml2 library. apt-get install libxml2-dev | yum install libxml2-devel]))
 AC_CHECK_LIB([mysqlclient], [main], , AC_MSG_ERROR([Unable to find libmysqlclient. apt-get install lbmysqlclient-dev | yum install mysql-devel]))
 AC_CHECK_LIB([z], [main], , AC_MSG_ERROR([Unable to find libz. apt-get install zlib1g-dev | yum install zlib-devel]))
+AC_CHECK_LIB([gnutls], [gnutls_init], HAVE_LIBGNUTLS=1, AC_MSG_ERROR([Unable to find gnutls disabling SIP TLS decoder. apt-get install libgnutls-dev | yum install gnutls-devel]))
 
 if test "x$HAVE_LIBSSH" = "x1"; then 
 	AC_DEFINE([HAVE_LIBSSH], [1], [Define if using libss])
 	AC_SUBST([LIBSSH],["-lssh -lssh_threads"])
 fi
 
+if test "x$HAVE_LIBGNUTLS" = "x1"; then 
+	AC_DEFINE([HAVE_LIBGNUTLS], [1], [Define if using gnutls])
+	AC_SUBST([LIBGNUTLS],["-lgcrypt -lgnutls"])
+fi
+
 # Checks for header files.
-AC_FUNC_ALLOCA
-AC_CHECK_HEADERS([arpa/inet.h fcntl.h inttypes.h limits.h locale.h malloc.h netdb.h netinet/in.h stddef.h stdint.h stdlib.h string.h strings.h sys/param.h sys/socket.h sys/time.h syslog.h unistd.h wchar.h])
+#AC_FUNC_ALLOCA
+#AC_CHECK_HEADERS([arpa/inet.h fcntl.h inttypes.h limits.h locale.h malloc.h netdb.h netinet/in.h stddef.h stdint.h stdlib.h string.h strings.h sys/param.h sys/socket.h sys/time.h syslog.h unistd.h wchar.h])
 
 # Checks for typedefs, structures, and compiler characteristics.
-AC_HEADER_STDBOOL
-AC_C_INLINE
-AC_TYPE_INT16_T
-AC_TYPE_INT32_T
-AC_TYPE_INT64_T
-AC_TYPE_MODE_T
-AC_TYPE_OFF_T
-AC_TYPE_PID_T
-AC_TYPE_SIZE_T
-AC_TYPE_UINT16_T
-AC_TYPE_UINT32_T
-AC_TYPE_UINT64_T
-AC_TYPE_UINT8_T
+#AC_HEADER_STDBOOL
+#AC_C_INLINE
+#AC_TYPE_INT16_T
+#AC_TYPE_INT32_T
+#AC_TYPE_INT64_T
+#AC_TYPE_MODE_T
+#AC_TYPE_OFF_T
+#AC_TYPE_PID_T
+#AC_TYPE_SIZE_T
+#AC_TYPE_UINT16_T
+#AC_TYPE_UINT32_T
+#AC_TYPE_UINT64_T
+#AC_TYPE_UINT8_T
 
 # Checks for library functions.
-AC_FUNC_ERROR_AT_LINE
-AC_FUNC_FORK
-AC_FUNC_FSEEKO
+#AC_FUNC_ERROR_AT_LINE
+#AC_FUNC_FORK
+#AC_FUNC_FSEEKO
 #AC_FUNC_MALLOC
 #AC_FUNC_REALLOC
-AC_FUNC_STRNLEN
-AC_FUNC_STRTOD
-AC_CHECK_FUNCS([gethostbyname gettimeofday inet_ntoa memmove memset mkdir mkfifo pow select setenv setlocale socket sqrt strcasecmp strchr strdup strerror strncasecmp strndup strstr strtol])
+#AC_FUNC_STRNLEN
+#AC_FUNC_STRTOD
+#AC_CHECK_FUNCS([gethostbyname gettimeofday inet_ntoa memmove memset mkdir mkfifo pow select setenv setlocale socket sqrt strcasecmp strchr strdup strerror strncasecmp strndup strstr strtol])
 
 AC_CONFIG_FILES([Makefile
                  simpleini/Makefile])

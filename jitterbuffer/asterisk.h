@@ -18,7 +18,7 @@
 #ifndef _ASTERISK_H
 #define _ASTERISK_H
 
-#include "asterisk/autoconfig.h"
+//#include "asterisk/autoconfig.h"
 
 #if !defined(NO_MALLOC_DEBUG) && !defined(STANDALONE_AEL) && defined(MALLOC_DEBUG)
 #include "asterisk/astmm.h"

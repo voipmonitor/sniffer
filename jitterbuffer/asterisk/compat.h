@@ -16,7 +16,7 @@
 #ifndef _COMPAT_H
 #define _COMPAT_H
 
-#include "asterisk/autoconfig.h"
+//#include "asterisk/autoconfig.h"
 #include "asterisk/compiler.h"
 #include <inttypes.h>
 #include <sys/types.h>
@@ -26,36 +26,8 @@
 int asprintf(char **str, const char *fmt, ...);
 #endif
 
-#ifndef HAVE_GETLOADAVG
-int getloadavg(double *list, int nelem);
-#endif
-
-#ifndef HAVE_SETENV
-int setenv(const char *name, const char *value, int overwrite);
-#endif
-
-#ifndef HAVE_STRCASESTR
-char *strcasestr(const char *, const char *);
-#endif
-
 #if !defined(HAVE_STRNDUP) && !defined(__AST_DEBUG_MALLOC)
 char *strndup(const char *, size_t);
-#endif
-
-#ifndef HAVE_STRNLEN
-size_t strnlen(const char *, size_t);
-#endif
-
-#ifndef HAVE_STRSEP
-char* strsep(char** str, const char* delims);
-#endif
-
-#ifndef HAVE_STRTOQ
-uint64_t strtoq(const char *nptr, char **endptr, int base);
-#endif
-
-#ifndef HAVE_UNSETENV
-int unsetenv(const char *name);
 #endif
 
 #if !defined(HAVE_VASPRINTF) && !defined(__AST_DEBUG_MALLOC)
