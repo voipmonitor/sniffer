@@ -4250,13 +4250,16 @@ int main(int argc, char *argv[]) {
 	ipfrag_prune(0, 1);
 	freeMemIpacc();
 	delete regfailedcache;
-	if(opt_read_from_file) {
-		extern AsyncClose *asyncClose;
-		if(asyncClose) {
+
+	extern AsyncClose *asyncClose;
+	if(asyncClose) {
+		if(opt_read_from_file ||
+		   opt_pb_read_from_file[0]) {
 			asyncClose->processAll();
-			delete asyncClose;
 		}
+		delete asyncClose;
 	}
+
 //	mysql_library_end();
 
 	if(sqlStore) {
