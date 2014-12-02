@@ -209,7 +209,7 @@ bool pcap_block_store::add(pcap_pkthdr *header, u_char *packet, int offset, int 
 	}
 	if(!this->block) {
 		while(true) {
-			this->block = (u_char*)malloc(opt_pcap_queue_block_max_size);
+			this->block = new u_char[opt_pcap_queue_block_max_size];
 			if(this->block) {
 				break;
 			}
@@ -219,21 +219,28 @@ bool pcap_block_store::add(pcap_pkthdr *header, u_char *packet, int offset, int 
 	}
 	if(!this->offsets_size) {
 		this->offsets_size = _opt_pcap_queue_block_offset_inc_size;
-		this->offsets = (uint32_t*)malloc(this->offsets_size * sizeof(uint32_t));
+		this->offsets = new uint32_t[this->offsets_size];
 	}
 	if(this->count == this->offsets_size) {
 		uint32_t *offsets_old = this->offsets;
 		size_t offsets_size_old = this->offsets_size;
 		this->offsets_size += _opt_pcap_queue_block_offset_inc_size;
-		this->offsets = (uint32_t*)malloc(this->offsets_size * sizeof(uint32_t));
-		memcpy(this->offsets, offsets_old, sizeof(uint32_t) * offsets_size_old);
-		free(offsets_old);
+		this->offsets = new uint32_t[this->offsets_size];
+		memcpy_heapsafe(this->offsets, offsets_old, sizeof(uint32_t) * offsets_size_old,
+				__FILE__, __LINE__);
+		delete [] offsets_old;
 	}
 	this->offsets[this->count] = this->size;
 	pcap_pkthdr_plus header_plus = pcap_pkthdr_plus(*header, offset, dlink);
-	memcpy(this->block + this->size, &header_plus, sizeof(pcap_pkthdr_plus));
+	memcpy_heapsafe(this->block + this->size, this->block,
+			&header_plus, NULL,
+			sizeof(pcap_pkthdr_plus),
+			__FILE__, __LINE__);
 	this->size += sizeof(pcap_pkthdr_plus);
-	memcpy(this->block + this->size, packet, header->caplen);
+	memcpy_heapsafe(this->block + this->size, this->block,
+			packet, NULL,
+			header->caplen,
+			__FILE__, __LINE__);
 	this->size += header->caplen;
 	++this->count;
 	return(true);
@@ -256,11 +263,11 @@ bool pcap_block_store::isFull_checkTimout() {
 
 void pcap_block_store::destroy() {
 	if(this->offsets) {
-		free(this->offsets);
+		delete [] this->offsets;
 		this->offsets = NULL;
 	}
 	if(this->block) {
-		free(this->block);
+		delete [] this->block;
 		this->block = NULL;
 	}
 	this->size = 0;
@@ -275,7 +282,7 @@ void pcap_block_store::destroy() {
 
 void pcap_block_store::destroyRestoreBuffer() {
 	if(this->restoreBuffer) {
-		free(this->restoreBuffer);
+		delete [] this->restoreBuffer;
 		this->restoreBuffer = NULL;
 	}
 	this->restoreBufferSize = 0;
@@ -288,14 +295,14 @@ bool pcap_block_store::isEmptyRestoreBuffer() {
 
 void pcap_block_store::freeBlock() {
 	if(this->block) {
-		free(this->block);
+		delete [] this->block;
 		this->block = NULL;
 	}
 }
 
 u_char* pcap_block_store::getSaveBuffer() {
 	size_t sizeSaveBuffer = this->getSizeSaveBuffer();
-	u_char *saveBuffer = (u_char*)malloc(sizeSaveBuffer);
+	u_char *saveBuffer = new u_char[sizeSaveBuffer];
 	pcap_block_store_header header;
 	header.size = this->size;
 	header.size_compress = this->size_compress;
@@ -303,15 +310,18 @@ u_char* pcap_block_store::getSaveBuffer() {
 	header.dlink = this->dlink;
 	header.sensor_id = this->sensor_id;
 	strcpy(header.ifname, this->ifname);
-	memcpy(saveBuffer, 
-	       &header, 
-	       sizeof(header));
-	memcpy(saveBuffer + sizeof(header), 
-	       this->offsets, 
-	       sizeof(uint32_t) * this->count);
-	memcpy(saveBuffer + sizeof(pcap_block_store_header) + this->count * sizeof(uint32_t),
-	       this->block,
-	       this->getUseSize());
+	memcpy_heapsafe(saveBuffer, saveBuffer,
+			&header, NULL,
+			sizeof(header),
+			__FILE__, __LINE__);
+	memcpy_heapsafe(saveBuffer + sizeof(header), saveBuffer,
+			this->offsets, this->offsets,
+			sizeof(uint32_t) * this->count,
+			__FILE__, __LINE__);
+	memcpy_heapsafe(saveBuffer + sizeof(pcap_block_store_header) + this->count * sizeof(uint32_t), saveBuffer,
+			this->block, this->block,
+			this->getUseSize(),
+			__FILE__, __LINE__);
 	return(saveBuffer);
 }
 
@@ -324,21 +334,23 @@ void pcap_block_store::restoreFromSaveBuffer(u_char *saveBuffer) {
 	this->sensor_id = header->sensor_id;
 	strcpy(this->ifname, header->ifname);
 	if(this->offsets) {
-		free(this->offsets);
+		delete [] this->offsets;
 	}
 	if(this->block) {
-		free(this->block);
+		delete [] this->block;
 	}
 	this->offsets_size = this->count;
-	this->offsets = (uint32_t*)malloc(this->offsets_size * sizeof(uint32_t));
-	memcpy(this->offsets,
-	       saveBuffer + sizeof(pcap_block_store_header), 
-	       sizeof(uint32_t) * this->count);
+	this->offsets = new uint32_t[this->offsets_size];
+	memcpy_heapsafe(this->offsets, this->offsets,
+			saveBuffer + sizeof(pcap_block_store_header), saveBuffer,
+			sizeof(uint32_t) * this->count,
+			__FILE__, __LINE__);
 	size_t sizeBlock = this->getUseSize();
-	this->block = (u_char*)malloc(sizeBlock);
-	memcpy(this->block,
-	       saveBuffer + sizeof(pcap_block_store_header) + this->count * sizeof(uint32_t),
-	       sizeBlock);
+	this->block = new u_char[sizeBlock];
+	memcpy_heapsafe(this->block, this->block,
+			saveBuffer + sizeof(pcap_block_store_header) + this->count * sizeof(uint32_t), saveBuffer,
+			sizeBlock,
+			__FILE__, __LINE__);
 	this->full = true;
 }
 
@@ -350,14 +362,18 @@ int pcap_block_store::addRestoreChunk(u_char *buffer, size_t size, size_t *offse
 	}
 	if(this->restoreBufferAllocSize < this->restoreBufferSize + _size) {
 		this->restoreBufferAllocSize = this->restoreBufferSize + _size + _opt_pcap_queue_block_restore_buffer_inc_size;
-		u_char *restoreBufferNew = (u_char*)malloc(this->restoreBufferAllocSize);
+		u_char *restoreBufferNew = new u_char[this->restoreBufferAllocSize];
 		if(this->restoreBuffer) {
-			memcpy(restoreBufferNew, this->restoreBuffer, this->restoreBufferSize);
-			free(this->restoreBuffer);
+			memcpy_heapsafe(restoreBufferNew, this->restoreBuffer, this->restoreBufferSize,
+					__FILE__, __LINE__);
+			delete [] this->restoreBuffer;
 		}
 		this->restoreBuffer = restoreBufferNew;
 	}
-	memcpy(this->restoreBuffer + this->restoreBufferSize, _buffer, _size);
+	memcpy_heapsafe(this->restoreBuffer + this->restoreBufferSize, this->restoreBuffer,
+			_buffer, _buffer,
+			_size,
+			__FILE__, __LINE__);
 	this->restoreBufferSize += _size;
 	int sizeRestoreBuffer = this->getSizeSaveBufferFromRestoreBuffer();
 	if(sizeRestoreBuffer < 0 ||
@@ -379,7 +395,7 @@ bool pcap_block_store::compress() {
 		return(true);
 	}
 	size_t snappyBuffSize = snappy_max_compressed_length(this->size);
-	u_char *snappyBuff = (u_char*)malloc(snappyBuffSize);
+	u_char *snappyBuff = new u_char[snappyBuffSize];
 	if(!snappyBuff) {
 		syslog(LOG_ERR, "packetbuffer: snappy_compress: snappy buffer allocation failed - PACKETBUFFER BLOCK DROPPED!");
 		return(false);
@@ -387,10 +403,11 @@ bool pcap_block_store::compress() {
 	snappy_status snappyRslt = snappy_compress((char*)this->block, this->size, (char*)snappyBuff, &snappyBuffSize);
 	switch(snappyRslt) {
 		case SNAPPY_OK:
-			free(this->block);
-			this->block = (u_char*)malloc(snappyBuffSize);
-			memcpy(this->block, snappyBuff, snappyBuffSize);
-			free(snappyBuff);
+			delete [] this->block;
+			this->block = new u_char[snappyBuffSize];
+			memcpy_heapsafe(this->block, snappyBuff, snappyBuffSize,
+					__FILE__, __LINE__);
+			delete [] snappyBuff;
 			this->size_compress = snappyBuffSize;
 			sumPacketsSizeCompress[0] += this->size_compress;
 			return(true);
@@ -404,7 +421,7 @@ bool pcap_block_store::compress() {
 			syslog(LOG_ERR, "packetbuffer: snappy_compress: unknown error");
 			break;
 	}
-	free(snappyBuff);
+	delete [] snappyBuff; 
 	return(false);
 }
 
@@ -413,11 +430,11 @@ bool pcap_block_store::uncompress() {
 		return(true);
 	}
 	size_t snappyBuffSize = this->size;
-	u_char *snappyBuff = (u_char*)malloc(snappyBuffSize);
+	u_char *snappyBuff = new u_char[snappyBuffSize];
 	snappy_status snappyRslt = snappy_uncompress((char*)this->block, this->size_compress, (char*)snappyBuff, &snappyBuffSize);
 	switch(snappyRslt) {
 		case SNAPPY_OK:
-			free(this->block);
+			delete [] this->block;
 			this->block = snappyBuff;
 			this->size_compress = 0;
 			return(true);
@@ -431,7 +448,7 @@ bool pcap_block_store::uncompress() {
 			syslog(LOG_ERR, "packetbuffer: snappy_compress: unknown error");
 			break;
 	}
-	free(snappyBuff);
+	delete [] snappyBuff;
 	return(false);
 }
 
@@ -493,7 +510,7 @@ bool pcap_file_store::push(pcap_block_store *blockStore) {
 		syslog(LOG_ERR, "packetbuffer: write to %s failed", this->getFilePathName().c_str());
 	}
 	this->unlock_sync_flush_file();
-	free(saveBuffer);
+	delete [] saveBuffer;
 	if(rsltWrite == sizeSaveBuffer) {
 		blockStore->freeBlock();
 		blockStore->idFileStore = this->id;
@@ -524,14 +541,14 @@ bool pcap_file_store::pop(pcap_block_store *blockStore) {
 	fseek(this->fileHandlePop, blockStore->filePosition, SEEK_SET);
 	blockStore->destroyRestoreBuffer();
 	size_t readBuffSize = 1000;
-	u_char *readBuff = (u_char*)malloc(readBuffSize);
+	u_char *readBuff = new u_char[readBuffSize];
 	size_t readed;
 	while((readed = fread(readBuff, 1, readBuffSize, this->fileHandlePop)) > 0) {
 		if(blockStore->addRestoreChunk(readBuff, readed) > 0) {
 			break;
 		}
 	}
-	free(readBuff);
+	delete [] readBuff;
 	++this->countPop;
 	blockStore->destroyRestoreBuffer();
 	if(this->countPop == this->countPush && this->isFull()) {
@@ -562,7 +579,7 @@ bool pcap_file_store::open(eTypeHandle typeHandle) {
 					syslog(LOG_ERR, "packetbuffer: %s", outStr.str().c_str());
 				}
 			}
-			this->fileBufferPush = (u_char*)malloc(FILE_BUFFER_SIZE);
+			this->fileBufferPush = new u_char[FILE_BUFFER_SIZE];
 			setbuffer(this->fileHandlePush, (char*)this->fileBufferPush, FILE_BUFFER_SIZE);
 		} else {
 			syslog(LOG_ERR, "packetbuffer: open %s for write failed", filePathName.c_str());
@@ -583,7 +600,7 @@ bool pcap_file_store::open(eTypeHandle typeHandle) {
 					syslog(LOG_ERR, "packetbuffer: %s", outStr.str().c_str());
 				}
 			}
-			this->fileBufferPop = (u_char*)malloc(FILE_BUFFER_SIZE);
+			this->fileBufferPop = new u_char[FILE_BUFFER_SIZE];
 			setbuffer(this->fileHandlePop, (char*)this->fileBufferPop, FILE_BUFFER_SIZE);
 		} else {
 			syslog(LOG_ERR, "packetbuffer: open %s for read failed", filePathName.c_str());
@@ -600,7 +617,7 @@ bool pcap_file_store::close(eTypeHandle typeHandle) {
 		if(this->fileHandlePush) {
 			fclose(this->fileHandlePush);
 			this->fileHandlePush = NULL;
-			free(this->fileBufferPush);
+			delete [] this->fileBufferPush;
 			this->fileBufferPush = NULL;
 		}
 		this->unlock_sync_flush_file();
@@ -609,7 +626,7 @@ bool pcap_file_store::close(eTypeHandle typeHandle) {
 	   this->fileHandlePop != NULL) {
 		fclose(this->fileHandlePop);
 		this->fileHandlePop = NULL;
-		free(this->fileBufferPop);
+		delete [] this->fileBufferPop;
 		this->fileBufferPop = NULL;
 	}
 	return(true);
@@ -748,14 +765,14 @@ bool pcap_store_queue::pop(pcap_block_store **blockStore) {
 		if((*blockStore)->idFileStore) {
 			pcap_file_store *_fileStore = this->findFileStoreById((*blockStore)->idFileStore);
 			if(!_fileStore) {
-				free(*blockStore);
+				delete *blockStore;
 				return(false);
 			}
 			while(!__config_ENABLE_TOGETHER_READ_WRITE_FILE && !_fileStore->full) {
 				usleep(100);
 			}
 			if(!_fileStore->pop(*blockStore)) {
-				free(*blockStore);
+				delete *blockStore;
 				return(false);
 			}
 		} else {
@@ -850,7 +867,7 @@ PcapQueue::~PcapQueue() {
 		syslog(LOG_NOTICE, "packetbuffer terminating (%s): close fifoWriteHandle", nameQueue.c_str());
 	}
 	if(this->packetBuffer) {
-		free(this->packetBuffer);
+		delete [] this->packetBuffer;
 		syslog(LOG_NOTICE, "packetbuffer terminating (%s): free packetBuffer", nameQueue.c_str());
 	}
 }
@@ -1547,18 +1564,18 @@ int PcapQueue::readPcapFromFifo(pcap_pkthdr_plus *header, u_char **packet, bool 
 	}
 	if(usePacketBuffer) {
 		if(!this->packetBuffer) {
-			this->packetBuffer = (u_char*)malloc(100000);
+			this->packetBuffer = new u_char[100000];
 		}
 		*packet = this->packetBuffer;
 	} else {
-		*packet = (u_char*)malloc(header->header_fix_size.caplen);
+		*packet = new u_char[header->header_fix_size.caplen];
 	}
 	size_t readPacket = 0;
 	while(readPacket < header->header_fix_size.caplen) {
 		rsltRead = read(this->fifoReadHandle, *packet + readPacket, header->header_fix_size.caplen - readPacket);
 		if(rsltRead < 0) {
 			if(!usePacketBuffer) {
-				free(*packet);
+				delete [] *packet;
 			}
 			return(0);
 		}
@@ -2184,8 +2201,8 @@ PcapQueue_readFromInterfaceThread::~PcapQueue_readFromInterfaceThread() {
 			} else {
 				for(uint j = 0; j < this->qringmax; j++) {
 					if(this->qring[i][j].used < 0) {
-						free(this->qring[i][j].header);
-						free(this->qring[i][j].packet);
+						delete this->qring[i][j].header;
+						delete [] this->qring[i][j].packet;
 					}
 				}
 			}
@@ -2211,8 +2228,8 @@ inline void PcapQueue_readFromInterfaceThread::push(pcap_pkthdr* header,u_char* 
 		memcpy(this->qring[index][writeIndex].packet, packet, header->caplen);
 	} else {
 		if(this->qring[index][writeIndex].used < 0) {
-			free(this->qring[index][writeIndex].header);
-			free(this->qring[index][writeIndex].packet);
+			delete this->qring[index][writeIndex].header;
+			delete [] this->qring[index][writeIndex].packet;
 		}
 		this->qring[index][writeIndex].header = header;
 		this->qring[index][writeIndex].packet = packet;
@@ -2349,8 +2366,8 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void *arg, unsigned int 
 					break;
 				} else if(res == 0) {
 					if(destroy) {
-						free(header);
-						free(packet);
+						delete header;
+						delete [] packet;
 					}
 					continue;
 				}
@@ -2366,8 +2383,8 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void *arg, unsigned int 
 				usleep(100);
 				continue;
 			} else {
-				_header = (pcap_pkthdr*)malloc(sizeof(pcap_pkthdr));
-				_packet = (u_char*)malloc(hpii.header->caplen);
+				_header = new pcap_pkthdr;
+				_packet = new u_char[hpii.header->caplen];
 				memcpy(_header, hpii.header, sizeof(pcap_pkthdr));
 				memcpy(_packet, hpii.packet, hpii.header->caplen);
 				header = _header;
@@ -2380,11 +2397,11 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void *arg, unsigned int 
 				break;
 			} else if(res == 0) {
 				if(destroy) {
-					if(header != _header) free(header);
-					if(packet != _packet) free(packet);
+					if(header != _header) delete header;
+					if(packet != _packet) delete [] packet;
 				}
-				free(_header);
-				free(_packet);
+				delete _header;
+				delete [] _packet;
 				continue;
 			}
 			this->push(header, packet, 0, NULL, this->indexDefragQring, this->push_counter);
@@ -2413,11 +2430,11 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void *arg, unsigned int 
 				break;
 			} else if(res == 0) {
 				if(destroy) {
-					if(header != _header) free(header);
-					if(packet != _packet) free(packet);
+					if(header != _header) delete header;
+					if(packet != _packet) delete [] packet;
 				}
-				free(_header);
-				free(_packet);
+				delete _header;
+				delete [] _packet; 
 				continue;
 			}
 			this->push(header, packet, 0, this->ppd.md5, 0, counter);
@@ -2466,11 +2483,11 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void *arg, unsigned int 
 					break;
 				} else if(res == 0) {
 					if(destroy) {
-						if(header != _header) free(header);
-						if(packet != _packet) free(packet);
+						if(header != _header) delete header;
+						if(packet != _packet) delete [] packet;
 					}
-					free(_header);
-					free(_packet);
+					delete _header;
+					delete [] _packet;
 					continue;
 				}
 				this->push(header, packet, this->ppd.header_ip_offset, NULL);
@@ -2489,8 +2506,8 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void *arg, unsigned int 
 					break;
 				} else if(res == 0) {
 					if(destroy) {
-						free(header);
-						free(packet);
+						delete header;
+						delete [] packet;
 					}
 					this->prevThreads[0]->moveReadit();
 					continue;
@@ -2503,11 +2520,11 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void *arg, unsigned int 
 		}
 		if(destroy) {
 			if(opt_pcap_queue_iface_dedup_separate_threads_extend) {
-				free(_header);
-				free(_packet);
+				delete _header;
+				delete [] _packet;
 			} else {
-				free(header);
-				free(packet);
+				delete header;
+				delete [] packet;
 			}
 		}
 	}
@@ -2733,8 +2750,8 @@ void* PcapQueue_readFromInterface::threadFunction(void *arg, unsigned int arg2) 
 						break;
 					} else if(res == 0) {
 						if(destroy) {
-							free(header);
-							free(packet);
+							delete header;
+							delete [] packet;
 						}
 						continue;
 					}
@@ -2790,8 +2807,8 @@ void* PcapQueue_readFromInterface::threadFunction(void *arg, unsigned int arg2) 
 			}
 			if(fetchPacketOk) {
 				if(!TEST_PACKETS && destroy) {
-					free(header);
-					free(packet);
+					delete header;
+					delete [] packet;
 				}
 				if(this->readThreadsCount) {
 					this->readThreads[minThreadTimeIndex]->moveREADIT(opt_pcap_queue_iface_dedup_separate_threads_extend);
@@ -2816,8 +2833,8 @@ void* PcapQueue_readFromInterface::threadFunction(void *arg, unsigned int arg2) 
 				break;
 			} else if(res == 0) {
 				if(destroy) {
-					free(header);
-					free(packet);
+					delete header;
+					delete [] packet;
 				}
 				continue;
 			}
@@ -2828,8 +2845,8 @@ void* PcapQueue_readFromInterface::threadFunction(void *arg, unsigned int arg2) 
 				this->writePcapToFifo(&header_plus, packet);
 			}
 			if(destroy) {
-				free(header);
-				free(packet);
+				delete header;
+				delete [] packet;
 			}
 		}
 	}
@@ -3151,7 +3168,10 @@ void *PcapQueue_readFromFifo::threadFunction(void *arg, unsigned int arg2) {
 							if(pointToBeginBlock) {
 								if(pointToBeginBlock > buffer) {
 									u_char *buffer2 = new u_char[bufferSize * 2];
-									memcpy(buffer2, pointToBeginBlock, bufferLen - (pointToBeginBlock - buffer));
+									memcpy_heapsafe(buffer2, buffer2,
+											pointToBeginBlock, buffer,
+											bufferLen - (pointToBeginBlock - buffer),
+											__FILE__, __LINE__);
 									bufferLen -= (pointToBeginBlock - buffer);
 									delete [] buffer;
 									buffer = buffer2;
@@ -3164,7 +3184,10 @@ void *PcapQueue_readFromFifo::threadFunction(void *arg, unsigned int arg2) {
 								}
 							} else {
 								if(offsetBufferSyncRead) {
-									memcpy(buffer, buffer + offsetBufferSyncRead, readLen);
+									memcpy_heapsafe(buffer, buffer,
+											buffer + offsetBufferSyncRead, buffer,
+											readLen,
+											__FILE__, __LINE__);
 								}
 								offsetBufferSyncRead = readLen;
 								bufferLen = readLen;
@@ -3712,7 +3735,7 @@ bool PcapQueue_readFromFifo::socketWritePcapBlock(pcap_block_store *blockStore) 
 	size_t sizeSaveBuffer = blockStore->getSizeSaveBuffer();
 	u_char *saveBuffer = blockStore->getSaveBuffer();
 	bool rslt = this->socketWrite(saveBuffer, sizeSaveBuffer);
-	free(saveBuffer);
+	delete [] saveBuffer;
 	return(rslt);
 }
 

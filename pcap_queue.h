@@ -291,12 +291,13 @@ struct pcapProcessData {
 		memset(this, 0, sizeof(pcapProcessData) - sizeof(ipfrag_data_s));
 		extern int opt_dup_check;
 		if(opt_dup_check) {
-			this->prevmd5s = (unsigned char *)calloc(65536, MD5_DIGEST_LENGTH); // 1M
+			this->prevmd5s = new unsigned char[65536 * MD5_DIGEST_LENGTH]; // 1M
+			memset(this->prevmd5s, 0, 65536 * MD5_DIGEST_LENGTH * sizeof(unsigned char));
 		}
 	}
 	~pcapProcessData() {
 		if(this->prevmd5s) {
-			free(this->prevmd5s);
+			delete [] this->prevmd5s;
 		}
 		ipfrag_prune(0, 1, &ipfrag_data);
 	}

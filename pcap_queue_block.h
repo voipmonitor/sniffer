@@ -103,7 +103,7 @@ struct pcap_block_store {
 		this->destroy();
 		this->destroyRestoreBuffer();
 		if(this->packet_lock) {
-			free(this->packet_lock);
+			delete [] this->packet_lock;
 		}
 	}
 	inline bool add(pcap_pkthdr *header, u_char *packet, int offset, int dlink);
@@ -144,7 +144,8 @@ struct pcap_block_store {
 		if((opt_enable_http || opt_enable_webrtc) && opt_tcpreassembly_pb_lock) {
 			this->lock_sync_packet_lock();
 			if(!this->packet_lock) {
-				this->packet_lock = (bool*)calloc(this->count, sizeof(bool));
+				this->packet_lock = new bool[this->count];
+				memset(this->packet_lock, 0, this->count * sizeof(bool));
 			}
 			this->packet_lock[index] = true;
 			this->unlock_sync_packet_lock();
