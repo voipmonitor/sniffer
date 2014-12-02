@@ -2513,13 +2513,20 @@ PcapQueue_readFromFifo *pcapQueueQ;
 int main(int argc, char *argv[]) {
  
 	for(int i = 0; i < argc; i++) {
-		if(strstr(argv[i], "--heapsafe")) {
-			extern unsigned int HeapSafeCheck;
+		extern unsigned int HeapSafeCheck;
+		if(strstr(argv[i], "heapsafe")) {
 			HeapSafeCheck = _HeapSafeErrorNotEnoughMemory |
 					_HeapSafeErrorBeginEnd |
 					_HeapSafeErrorFreed |
 					_HeapSafeErrorInAllocFce |
 					_HeapSafeErrorAllocReserve;
+		} else if(strstr(argv[i], "HEAPSAFE")) {
+			HeapSafeCheck = _HeapSafeErrorNotEnoughMemory |
+					_HeapSafeErrorBeginEnd |
+					_HeapSafeErrorFreed |
+					_HeapSafeErrorInAllocFce |
+					_HeapSafeErrorAllocReserve |
+					_HeapSafeErrorFillFF;
 		}
 	}
 
@@ -4243,13 +4250,16 @@ int main(int argc, char *argv[]) {
 	ipfrag_prune(0, 1);
 	freeMemIpacc();
 	delete regfailedcache;
-	if(opt_read_from_file) {
-		extern AsyncClose *asyncClose;
-		if(asyncClose) {
+
+	extern AsyncClose *asyncClose;
+	if(asyncClose) {
+		if(opt_read_from_file ||
+		   opt_pb_read_from_file[0]) {
 			asyncClose->processAll();
-			delete asyncClose;
 		}
+		delete asyncClose;
 	}
+
 //	mysql_library_end();
 
 	if(sqlStore) {
@@ -4470,6 +4480,20 @@ void test_escape() {
 	}
 }
 
+void test_alloc_speed() {
+	uint32_t ii = 1000000;
+	for(int p = 0; p < 10; p++) {
+		char **pointers = new char*[ii];
+		for(u_int32_t i = 0; i < ii; i++) {
+			pointers[i] = new char[1000];
+		}
+		for(u_int32_t i = 0; i < ii; i++) {
+			delete [] pointers[i];
+		}
+		delete pointers;
+	}
+}
+
 void test() {
  
 	switch(opt_test) {
@@ -4526,6 +4550,9 @@ void test() {
 		cout << astr2 << endl;
 		
 	} break;
+	case 5:
+		test_alloc_speed();
+		break;
 	case 10:
 		{
 		SqlDb *sqlDb = createSqlObject();

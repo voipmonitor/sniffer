@@ -227,7 +227,10 @@ unsigned int WebrtcData::WebrtcDecodeData::decode(u_char *data, unsigned int dat
 	if(payload_length && !checkOkOnly) {
 		u_int32_t dataLength = payload_length / 4 * 4 + (payload_length % 4 ? 4 : 0);
 		this->data = new u_char[dataLength + 1];
-		memcpy(this->data, data + headerLength, payload_length);
+		memcpy_heapsafe(this->data, this->data,
+				data + headerLength, data,
+				payload_length,
+				__FILE__, __LINE__);
 		if(masking_key) {
 			for(u_int32_t i = 0; i < dataLength; i += 4) {
 				*(u_int32_t*)(this->data + i) = htonl(htonl(*(u_int32_t*)(this->data + i)) ^ masking_key);
