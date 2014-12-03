@@ -724,7 +724,8 @@ class TcpReassembly {
 public:
 	enum eType {
 		http,
-		webrtc
+		webrtc,
+		ssl
 	};
 public:
 	TcpReassembly(eType type);
@@ -737,6 +738,9 @@ public:
 	}
 	void setEnableCrazySequence(bool enableCrazySequence = true) {
 		this->enableCrazySequence = enableCrazySequence;
+	}
+	void setEnableWildLink(bool enableWildLink = true) {
+		this->enableWildLink = enableWildLink;
 	}
 	void setEnableIgnorePairReqResp(bool enableIgnorePairReqResp = true) {
 		this->enableIgnorePairReqResp = enableIgnorePairReqResp;
@@ -759,39 +763,61 @@ public:
 	}
 	void preparePstatData();
 	double getCpuUsagePerc(bool preparePstatData = false);
-	bool check_ip(u_int32_t ipl) {
-		extern vector<u_int32_t> httpip;
-		extern vector<d_u_int32_t> httpnet;
-		extern vector<u_int32_t> webrtcip;
-		extern vector<d_u_int32_t> webrtcnet;
-		vector<u_int32_t> *_ip = (type == http ? &httpip : &webrtcip);
-		vector<d_u_int32_t> *_net  = (type == http ? &httpnet : &webrtcnet);
-		if(!_ip->size() && !_net->size()) {
-			return(true);
-		}
-		if(_ip->size()) {
-			vector<u_int32_t>::iterator findHttpIp;
-			findHttpIp = std::lower_bound(_ip->begin(), _ip->end(), ipl);
-			if(findHttpIp != _ip->end() && ((*findHttpIp) & ipl) == (*findHttpIp)) {
+	bool check_ip(u_int32_t ip, u_int16_t port = 0) {
+		if(type == http || type == webrtc) {
+			extern vector<u_int32_t> httpip;
+			extern vector<d_u_int32_t> httpnet;
+			extern vector<u_int32_t> webrtcip;
+			extern vector<d_u_int32_t> webrtcnet;
+			vector<u_int32_t> *_ip = (type == http ? &httpip : &webrtcip);
+			vector<d_u_int32_t> *_net  = (type == http ? &httpnet : &webrtcnet);
+			if(!_ip->size() && !_net->size()) {
 				return(true);
 			}
-		}
-		if(_net->size()) {
-			for(size_t i = 0; i < _net->size(); i++) {
-				if((*_net)[i][0] == ipl >> (32 - (*_net)[i][1]) << (32 - (*_net)[i][1])) {
+			if(_ip->size()) {
+				vector<u_int32_t>::iterator iterIp;
+				iterIp = std::lower_bound(_ip->begin(), _ip->end(), ip);
+				if(iterIp != _ip->end() && ((*iterIp) & ip) == (*iterIp)) {
 					return(true);
 				}
 			}
+			if(_net->size()) {
+				for(size_t i = 0; i < _net->size(); i++) {
+					if((*_net)[i][0] == ip >> (32 - (*_net)[i][1]) << (32 - (*_net)[i][1])) {
+						return(true);
+					}
+				}
+			}
+		} else if(type == ssl) {
+			extern map<d_u_int32_t, bool> ssl_ipport;
+			map<d_u_int32_t, bool>::iterator iter = ssl_ipport.find(d_u_int32_t(ip, port));
+			return(iter != ssl_ipport.end());
 		}
 		return(false);
 	}
-	bool check_port(u_int16_t port) {
-		extern char *httpportmatrix;
-		extern char *webrtcportmatrix;
-		return(type == http ? httpportmatrix[port] : webrtcportmatrix[port]);
+	bool check_port(u_int16_t port, u_int32_t ip = 0) {
+		if(type == http || type == webrtc) {
+			extern char *httpportmatrix;
+			extern char *webrtcportmatrix;
+			return(type == http ? httpportmatrix[port] : webrtcportmatrix[port]);
+		} else if(type == ssl) {
+			extern map<d_u_int32_t, bool> ssl_ipport;
+			map<d_u_int32_t, bool>::iterator iter = ssl_ipport.find(d_u_int32_t(ip, port));
+			return(iter != ssl_ipport.end());
+		}
+		return(false);
 	}
 	eType getType() {
 		return(type);
+	}
+	string getTypeString(bool upper = false) {
+		string str = type == http ? "http" :
+			     type == webrtc ? "webrtc" : 
+			     type == ssl ? "ssl" : "";
+		if(upper) {
+			std::transform(str.begin(), str.end(), str.begin(), ::toupper);
+		}
+		return(str);
 	}
 private:
 	void createThread();
@@ -808,6 +834,7 @@ private:
 	volatile int _sync_links;
 	bool enableHttpForceInit;
 	bool enableCrazySequence;
+	bool enableWildLink;
 	bool enableIgnorePairReqResp;
 	TcpReassemblyProcessData *dataCallback;
 	u_int64_t act_time_from_header;

@@ -60,6 +60,14 @@ struct d_u_int32_t
 	u_int32_t operator [] (int indexVal) {
 		return(val[indexVal]);
 	}
+	bool operator == (const d_u_int32_t& other) const { 
+		return(this->val[0] == other.val[0] &&
+		       this->val[1] == other.val[1]); 
+	}
+	bool operator < (const d_u_int32_t& other) const { 
+		return(this->val[0] < other.val[0] ||
+		       (this->val[0] == other.val[0] && this->val[1] < other.val[1])); 
+	}
 	u_int32_t val[2];
 };
 

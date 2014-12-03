@@ -68,6 +68,7 @@
 #include "tcpreassembly.h"
 #include "http.h"
 #include "webrtc.h"
+#include "ssldata.h"
 #include "ip_frag.h"
 #include "cleanspool.h"
 #include "regcache.h"
@@ -259,6 +260,7 @@ int opt_filesclean = 1;
 int opt_enable_preprocess_packet;
 int opt_enable_http = 0;
 int opt_enable_webrtc = 0;
+int opt_enable_ssl = 0;
 int opt_tcpreassembly_pb_lock = 0;
 int opt_tcpreassembly_thread = 1;
 char opt_tcpreassembly_log[1024];
@@ -478,6 +480,7 @@ char *sipportmatrix;		// matrix of sip ports to monitor
 char *httpportmatrix;		// matrix of http ports to monitor
 char *webrtcportmatrix;		// matrix of webrtc ports to monitor
 char *ipaccountportmatrix;
+map<d_u_int32_t, bool> ssl_ipport;
 vector<u_int32_t> httpip;
 vector<d_u_int32_t> httpnet;
 vector<u_int32_t> webrtcip;
@@ -526,8 +529,10 @@ PreProcessPacket *preProcessPacket;
 
 TcpReassembly *tcpReassemblyHttp;
 TcpReassembly *tcpReassemblyWebrtc;
+TcpReassembly *tcpReassemblySsl;
 HttpData *httpData;
 WebrtcData *webrtcData;
+SslData *sslData;
 
 vm_atomic<string> storingCdrLastWriteAt;
 
@@ -1104,6 +1109,25 @@ int eval_config(string inistr) {
 		// reset default port 
 		for (; i != values.end(); ++i) {
 			webrtcportmatrix[atoi(i->pItem)] = 1;
+		}
+	}
+	
+	// ssl ip/ports
+	if (ini.GetAllValues("general", "ssl_ipport", values)) {
+		CSimpleIni::TNamesDepend::const_iterator i = values.begin();
+		// reset default port 
+		for (; i != values.end(); ++i) {
+			u_int32_t ip = 0;
+			u_int32_t port = 0;;
+			char *pointToSeparatorPort = strchr((char*)i->pItem, ':');
+			if(pointToSeparatorPort) {
+				*pointToSeparatorPort = 0;
+				ip = htonl(inet_addr(i->pItem));
+				port = atoi(pointToSeparatorPort + 1);
+			}
+			if(ip && port) {
+				ssl_ipport[d_u_int32_t(ip, port)] = 1;
+			}
 		}
 	}
 	
@@ -1942,6 +1966,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "webrtc", NULL))) {
 		opt_enable_webrtc = strcmp(value, "only") ? yesno(value) : 2;
+	}
+	if((value = ini.GetValue("general", "ssl", NULL))) {
+		opt_enable_ssl = yesno(value);
 	}
 	if((value = ini.GetValue("general", "tcpreassembly_log", NULL))) {
 		strncpy(opt_tcpreassembly_log, value, sizeof(opt_tcpreassembly_log));
@@ -2817,6 +2844,7 @@ int main(int argc, char *argv[]) {
 						else if(verbparams[i] == "rrd_info")			sverb.rrd_info = 1;
 						else if(verbparams[i] == "http")			sverb.http = 1;
 						else if(verbparams[i] == "webrtc")			sverb.webrtc = 1;
+						else if(verbparams[i] == "ssl")				sverb.ssl = 1;
 						else if(verbparams[i] == "sip_packets")			sverb.sip_packets = 1;
 						else if(verbparams[i] == "set_ua")			sverb.set_ua = 1;
 						else if(verbparams[i] == "dscp")			sverb.dscp = 1;
@@ -3774,9 +3802,16 @@ int main(int argc, char *argv[]) {
 		if(setWebrtcPorts) {
 			tcpReassemblyWebrtc = new TcpReassembly(TcpReassembly::webrtc);
 			tcpReassemblyWebrtc->setEnableIgnorePairReqResp(true);
+			tcpReassemblyWebrtc->setEnableWildLink(true);
 			webrtcData = new WebrtcData;
 			tcpReassemblyWebrtc->setDataCallback(webrtcData);
 		}
+	}
+	if(opt_enable_ssl && ssl_ipport.size()) {
+		tcpReassemblySsl = new TcpReassembly(TcpReassembly::ssl);
+		tcpReassemblySsl->setEnableIgnorePairReqResp(true);
+		sslData = new SslData;
+		tcpReassemblySsl->setDataCallback(sslData);
 	}
 	
 	if(sipSendSocket_ip_port) {
@@ -4126,6 +4161,12 @@ int main(int argc, char *argv[]) {
 	}
 	if(webrtcData) {
 		delete webrtcData;
+	}
+	if(tcpReassemblySsl) {
+		delete tcpReassemblySsl;
+	}
+	if(sslData) {
+		delete sslData;
 	}
 	
 	if(sipSendSocket) {
