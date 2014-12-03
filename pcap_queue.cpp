@@ -26,6 +26,7 @@
 #include "sniff.h"
 #include "rrd.h"
 #include "cleanspool.h"
+#include "ssldata.h"
 
 
 #define TEST_DEBUG_PARAMS 0
@@ -88,6 +89,7 @@ extern char opt_mirrorip_src[20];
 extern char opt_mirrorip_dst[20];
 extern int opt_enable_http;
 extern int opt_enable_webrtc;
+extern int opt_enable_ssl;
 extern int opt_tcpreassembly_pb_lock;
 extern int opt_fork;
 extern int opt_id_sensor;
@@ -120,6 +122,7 @@ extern volatile int calls_counter;
 extern PreProcessPacket *preProcessPacket;
 extern TcpReassembly *tcpReassemblyHttp;
 extern TcpReassembly *tcpReassemblyWebrtc;
+extern TcpReassembly *tcpReassemblySsl;
 extern char opt_pb_read_from_file[256];
 extern int opt_pb_read_from_file_speed;
 extern int global_pcap_dlink;
@@ -1180,8 +1183,8 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 		}
 		outStr << "heap[" << setprecision(0) << memoryBufferPerc << "|"
 				  << setprecision(0) << memoryBufferPerc_trash << "|";
-		extern AsyncClose asyncClose;
-		u_int64_t ac_sizeOfDataInMemory = asyncClose.getSizeOfDataInMemory();
+		extern AsyncClose *asyncClose;
+		u_int64_t ac_sizeOfDataInMemory = asyncClose->getSizeOfDataInMemory();
 		extern int opt_pcap_dump_asyncwrite_maxsize;
 		
 		if(opt_rrd) {
@@ -1287,12 +1290,18 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 			outStrStat << "twebrtcCPU[" << setprecision(1) << twebrtc_cpu << "%] ";
 		}
 	}
-	extern AsyncClose asyncClose;
+	if(tcpReassemblySsl) {
+		double tssl_cpu = tcpReassemblySsl->getCpuUsagePerc(true);
+		if(tssl_cpu >= 0) {
+			outStrStat << "tsslCPU[" << setprecision(1) << tssl_cpu << "%] ";
+		}
+	}
+	extern AsyncClose *asyncClose;
 	vector<double> v_tac_cpu;
 	double last_tac_cpu = 0;
 	bool exists_set_tac_cpu = false;
-	for(int i = 0; i < asyncClose.getCountThreads(); i++) {
-		double tac_cpu = asyncClose.getCpuUsagePerc(i, true);
+	for(int i = 0; i < asyncClose->getCountThreads(); i++) {
+		double tac_cpu = asyncClose->getCpuUsagePerc(i, true);
 		last_tac_cpu = tac_cpu;
 		if(tac_cpu >= 0) {
 			v_tac_cpu.push_back(tac_cpu);
@@ -1314,10 +1323,10 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 		}
 	}
 	if(last_tac_cpu > 95) {
-		asyncClose.addThread();
+		asyncClose->addThread();
 	}
 	if(last_tac_cpu < 5) {
-		asyncClose.removeThread();
+		asyncClose->removeThread();
 	}
 	outStrStat << "RSS/VSZ[";
 	long unsigned int rss = this->getProcRssUsage(true);
@@ -2731,8 +2740,8 @@ void* PcapQueue_readFromInterface::threadFunction(void *arg, unsigned int arg2) 
 						blockStore[blockStoreIndex] = NULL;
 						sleep(1);
 						calltable->cleanup(0);
-						extern AsyncClose asyncClose;
-						asyncClose.processAll();
+						extern AsyncClose *asyncClose;
+						asyncClose->processAll();
 						this->pcapStat();
 						terminating = 1;
 					}
@@ -3980,6 +3989,11 @@ void PcapQueue_readFromFifo::processPacket(pcap_pkthdr_plus *header_plus, u_char
 			tcpReassemblyWebrtc->push(header, header_ip, packet,
 						  block_store, block_store_index);
 			useTcpReassemblyWebrtc = true;
+		} else if(opt_enable_ssl && 
+			  (isSslIpPort(htonl(header_ip->saddr), htons(header_tcp->source)) ||
+			   isSslIpPort(htonl(header_ip->daddr), htons(header_tcp->dest)))) {
+			tcpReassemblySsl->push(header, header_ip, packet,
+					       block_store, block_store_index);
 		} else {
 			istcp = 1;
 			// prepare packet pointers 
