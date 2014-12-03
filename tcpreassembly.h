@@ -789,8 +789,8 @@ public:
 				}
 			}
 		} else if(type == ssl) {
-			extern map<d_u_int32_t, bool> ssl_ipport;
-			map<d_u_int32_t, bool>::iterator iter = ssl_ipport.find(d_u_int32_t(ip, port));
+			extern map<d_u_int32_t, string> ssl_ipport;
+			map<d_u_int32_t, string>::iterator iter = ssl_ipport.find(d_u_int32_t(ip, port));
 			return(iter != ssl_ipport.end());
 		}
 		return(false);
@@ -801,8 +801,8 @@ public:
 			extern char *webrtcportmatrix;
 			return(type == http ? httpportmatrix[port] : webrtcportmatrix[port]);
 		} else if(type == ssl) {
-			extern map<d_u_int32_t, bool> ssl_ipport;
-			map<d_u_int32_t, bool>::iterator iter = ssl_ipport.find(d_u_int32_t(ip, port));
+			extern map<d_u_int32_t, string> ssl_ipport;
+			map<d_u_int32_t, string>::iterator iter = ssl_ipport.find(d_u_int32_t(ip, port));
 			return(iter != ssl_ipport.end());
 		}
 		return(false);

@@ -480,7 +480,7 @@ char *sipportmatrix;		// matrix of sip ports to monitor
 char *httpportmatrix;		// matrix of http ports to monitor
 char *webrtcportmatrix;		// matrix of webrtc ports to monitor
 char *ipaccountportmatrix;
-map<d_u_int32_t, bool> ssl_ipport;
+map<d_u_int32_t, string> ssl_ipport;
 vector<u_int32_t> httpip;
 vector<d_u_int32_t> httpnet;
 vector<u_int32_t> webrtcip;
@@ -1118,15 +1118,27 @@ int eval_config(string inistr) {
 		// reset default port 
 		for (; i != values.end(); ++i) {
 			u_int32_t ip = 0;
-			u_int32_t port = 0;;
-			char *pointToSeparatorPort = strchr((char*)i->pItem, ':');
-			if(pointToSeparatorPort) {
-				*pointToSeparatorPort = 0;
+			u_int32_t port = 0;
+			string key;
+			char *pointToSeparator = strchr((char*)i->pItem, ':');
+			if(pointToSeparator) {
+				*pointToSeparator = 0;
 				ip = htonl(inet_addr(i->pItem));
-				port = atoi(pointToSeparatorPort + 1);
+				++pointToSeparator;
+				while(*pointToSeparator == ' ') {
+					++pointToSeparator;
+				}
+				port = atoi(pointToSeparator);
+				while(*pointToSeparator != ' ') {
+					++pointToSeparator;
+				}
+				while(*pointToSeparator == ' ') {
+					++pointToSeparator;
+				}
+				key = pointToSeparator;
 			}
 			if(ip && port) {
-				ssl_ipport[d_u_int32_t(ip, port)] = 1;
+				ssl_ipport[d_u_int32_t(ip, port)] = key;
 			}
 		}
 	}
