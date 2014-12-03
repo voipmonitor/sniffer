@@ -783,16 +783,25 @@ bool TcpReassemblyLink::push_normal(
 				cout << " -- DATA" << endl;
 			}
 		} else {
-			if(this->last_ack && header_tcp.ack != this->last_ack) {
+			if(this->last_ack && header_tcp.ack_seq != this->last_ack) {
 				TcpReassemblyStream *prevStreamByLastAck = this->queue_by_ack[this->last_ack];
 				if(prevStreamByLastAck && !prevStreamByLastAck->last_seq &&
-					prevStreamByLastAck->direction == direction) {
+				   prevStreamByLastAck->direction == direction) {
 					prevStreamByLastAck->last_seq = header_tcp.seq;
 				}
 			}
 		}
 		rslt = true;
 	}
+	
+	if(reassembly->type == TcpReassembly::ssl && this->queue.size()) {
+		bool final = this->state == STATE_RESET || this->state == STATE_CLOSE;
+		int countDataStream = this->okQueue(final ? 2 : 1, ENABLE_DEBUG(reassembly->type, _debug_check_ok));
+		if(countDataStream > 0) {
+			this->complete(final, true, false);
+		}
+	}
+	
 	if(!opt_tcpreassembly_thread &&
 	   (this->state == STATE_RESET || this->state == STATE_CLOSE)) {
 		if(ENABLE_DEBUG(reassembly->getType(), _debug_check_ok) && this->queue.size()) {
@@ -1750,9 +1759,15 @@ TcpReassembly::TcpReassembly(eType type) {
 	this->ignoreTerminating = false;
 	memset(this->threadPstatData, 0, sizeof(this->threadPstatData));
 	this->lastTimeLogErrExceededMaximumAttempts = 0;
+	
+	if(type != ssl) {
+	
 	if(opt_tcpreassembly_thread) {
 		this->createThread();
 	}
+	
+	}
+	
 	if(opt_tcpreassembly_log[0]) {
 		this->log = fopen(opt_tcpreassembly_log, "at");
 		if(this->log) {
