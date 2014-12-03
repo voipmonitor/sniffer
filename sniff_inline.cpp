@@ -305,7 +305,8 @@ int pcapProcess(pcap_pkthdr** header, u_char** packet, bool *destroy,
 		/* check for duplicate packets (md5 is expensive operation - enable only if you really need it */
 		if(ppd->datalen > 0 && opt_dup_check && ppd->prevmd5s != NULL && (ppd->traillen < ppd->datalen) &&
 		   !(ppd->istcp && opt_enable_http && (httpportmatrix[htons(ppd->header_tcp->source)] || httpportmatrix[htons(ppd->header_tcp->dest)])) &&
-		   !(ppd->istcp && opt_enable_webrtc && (webrtcportmatrix[htons(ppd->header_tcp->source)] || webrtcportmatrix[htons(ppd->header_tcp->dest)]))) {
+		   !(ppd->istcp && opt_enable_webrtc && (webrtcportmatrix[htons(ppd->header_tcp->source)] || webrtcportmatrix[htons(ppd->header_tcp->dest)])) &&
+		   !(ppd->istcp && opt_enable_ssl && (isSslIpPort(htonl(ppd->header_ip->saddr), htons(ppd->header_tcp->source)) || isSslIpPort(htonl(ppd->header_ip->daddr), htons(ppd->header_tcp->dest))))) {
 			if(enableCalcMD5) {
 				MD5_Init(&ppd->ctx);
 				if(opt_dup_check_ipheader) {

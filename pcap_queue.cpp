@@ -2738,7 +2738,7 @@ void* PcapQueue_readFromInterface::threadFunction(void *arg, unsigned int arg2) 
 						blockStoreBypassQueue->push(blockStore[blockStoreIndex]);
 						++sumBlocksCounterIn[0];
 						blockStore[blockStoreIndex] = NULL;
-						sleep(1);
+						sleep(opt_enable_ssl ? 10 : 1);
 						calltable->cleanup(0);
 						extern AsyncClose *asyncClose;
 						asyncClose->processAll();
@@ -4065,7 +4065,7 @@ void PcapQueue_readFromFifo::checkFreeSizeCachedir() {
 }
 
 void PcapQueue_readFromFifo::cleanupBlockStoreTrash(bool all) {
-	if(all && (opt_enable_http || opt_enable_webrtc) && opt_pb_read_from_file[0]) {
+	if(all && (opt_enable_http || opt_enable_webrtc || opt_enable_ssl) && opt_pb_read_from_file[0]) {
 		this->cleanupBlockStoreTrash();
 		cout << "COUNT REST PACKETBUFFER BLOCKS: " << this->blockStoreTrash.size() << endl;
 	}

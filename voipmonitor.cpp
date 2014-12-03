@@ -4001,6 +4001,11 @@ int main(int argc, char *argv[]) {
 							tcpReassemblyWebrtc->setIgnoreTerminating(true);
 						}
 					}
+					if(opt_pb_read_from_file[0] && opt_enable_ssl) {
+						if(opt_tcpreassembly_thread) {
+							tcpReassemblySsl->setIgnoreTerminating(true);
+						}
+					}
 				
 					pcapQueueI = new PcapQueue_readFromInterface("interface");
 					pcapQueueI->setInterfaceName(ifname);
@@ -4037,7 +4042,7 @@ int main(int argc, char *argv[]) {
 					}
 					terminate_packetbuffer();
 					
-					if(opt_pb_read_from_file[0] && (opt_enable_http || opt_enable_webrtc)) {
+					if(opt_pb_read_from_file[0] && (opt_enable_http || opt_enable_webrtc || opt_enable_ssl)) {
 						sleep(2);
 						if(opt_enable_http) {
 							for(int i = 0; i < opt_mysqlstore_max_threads_http; i++) {
@@ -4342,13 +4347,16 @@ void terminate_packetbuffer(int afterTerminateSleepSec) {
 			delete pcapQueueR;
 		} else {
 			pcapQueueI->terminate();
-			sleep(opt_pb_read_from_file[0] && (opt_enable_http || opt_enable_webrtc) ? 10 : 1);
-			if(opt_pb_read_from_file[0] && (opt_enable_http || opt_enable_webrtc) && opt_tcpreassembly_thread) {
+			sleep(opt_pb_read_from_file[0] && (opt_enable_http || opt_enable_webrtc || opt_enable_ssl) ? 10 : 1);
+			if(opt_pb_read_from_file[0] && (opt_enable_http || opt_enable_webrtc || opt_enable_ssl) && opt_tcpreassembly_thread) {
 				if(opt_enable_http) {
 					tcpReassemblyHttp->setIgnoreTerminating(false);
 				}
 				if(opt_enable_webrtc) {
 					tcpReassemblyWebrtc->setIgnoreTerminating(false);
+				}
+				if(opt_enable_ssl) {
+					tcpReassemblySsl->setIgnoreTerminating(false);
 				}
 				sleep(2);
 			}
