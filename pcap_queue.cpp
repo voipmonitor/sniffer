@@ -4025,8 +4025,8 @@ void PcapQueue_readFromFifo::processPacket(pcap_pkthdr_plus *header_plus, u_char
 			preProcessPacket->push(packet_counter_all,
 					       header_ip->saddr, htons(header_udp->source), header_ip->daddr, htons(header_udp->dest), 
 					       data, datalen, data - (char*)packet, 
-					       this->getPcapHandle(dlt), header, packet, 
-					       istcp, header_ip,
+					       this->getPcapHandle(dlt), header, packet, false,
+					       istcp, header_ip, 0,
 					       block_store, block_store_index, dlt, sensor_id);
 		} else {
 			int voippacket = 0;

@@ -20,6 +20,7 @@ extern Call *process_packet(u_int64_t packet_number,
 
 
 extern map<d_u_int32_t, string> ssl_ipport;
+extern PreProcessPacket *preProcessPacket;
 
 
 SslData::SslData() {
@@ -111,12 +112,20 @@ void SslData::processData(u_int32_t ip_src, u_int32_t ip_dst,
 					header.len = udpPacketLength;
 					int was_rtp = 0;
 					int voippacket = 0;
-					process_packet(0, _ip_src, _port_src, _ip_dst, _port_dst, 
-						       (char*)rslt_decrypt[i].c_str(), rslt_decrypt[i].size(), ethHeaderLength + sizeof(iphdr2) + sizeof(udphdr2),
-						       handle, &header, udpPacket, 
-						       false, &was_rtp, (iphdr2*)(udpPacket + ethHeaderLength), &voippacket, 1,
-						       NULL, 0, dlt, sensor_id);
-					delete [] udpPacket;
+					if(preProcessPacket) {
+						preProcessPacket->push(0, _ip_src, _port_src, _ip_dst, _port_dst, 
+								       (char*)(udpPacket + ethHeaderLength + sizeof(iphdr2) + sizeof(udphdr2)), rslt_decrypt[i].size(), ethHeaderLength + sizeof(iphdr2) + sizeof(udphdr2),
+								       handle, &header, udpPacket, true, 
+								       false, (iphdr2*)(udpPacket + ethHeaderLength), 1,
+								       NULL, 0, dlt, sensor_id);
+					} else {
+						process_packet(0, _ip_src, _port_src, _ip_dst, _port_dst, 
+							       (char*)rslt_decrypt[i].c_str(), rslt_decrypt[i].size(), ethHeaderLength + sizeof(iphdr2) + sizeof(udphdr2),
+							       handle, &header, udpPacket, 
+							       false, &was_rtp, (iphdr2*)(udpPacket + ethHeaderLength), &voippacket, 1,
+							       NULL, 0, dlt, sensor_id);
+						delete [] udpPacket;
+					}
 				}
 				ssl_data_offset += header.length + 5;
 			} else {

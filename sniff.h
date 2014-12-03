@@ -343,10 +343,12 @@ public:
 		int datalen; 
 		int dataoffset;
 		pcap_t *handle; 
-		pcap_pkthdr *header; 
+		pcap_pkthdr header; 
 		const u_char *packet; 
+		bool packetDelete;
 		int istcp; 
 		struct iphdr2 *header_ip; 
+		int forceSip;
 		pcap_block_store *block_store; 
 		int block_store_index; 
 		int dlt; 
@@ -366,13 +368,22 @@ public:
 	void push(u_int64_t packet_number,
 		  unsigned int saddr, int source, unsigned int daddr, int dest, 
 		  char *data, int datalen, int dataoffset,
-		  pcap_t *handle, pcap_pkthdr *header, const u_char *packet, 
-		  int istcp, struct iphdr2 *header_ip,
+		  pcap_t *handle, pcap_pkthdr *header, const u_char *packet, bool packetDelete,
+		  int istcp, struct iphdr2 *header_ip, int forceSip,
 		  pcap_block_store *block_store, int block_store_index, int dlt, int sensor_id);
 	void preparePstatData();
 	double getCpuUsagePerc(bool preparePstatData);
+	void terminating();
 private:
 	void *outThreadFunction();
+	void lock_push() {
+		while(__sync_lock_test_and_set(&this->_sync_push, 1)) {
+			usleep(10);
+		}
+	}
+	void unlock_push() {
+		__sync_lock_release(&this->_sync_push);
+	}
 private:
 	packet_parse_s **qring;
 	unsigned int qringmax;
@@ -381,6 +392,8 @@ private:
 	pthread_t out_thread_handle;
 	pstat_data threadPstatData[2];
 	int outThreadId;
+	volatile int _sync_push;
+	bool _terminating;
 friend inline void *_PreProcessPacket_outThreadFunction(void *arg);
 };
  

@@ -3790,7 +3790,7 @@ int main(int argc, char *argv[]) {
 #endif 
 	}
 	
-	if(opt_enable_preprocess_packet) {
+	if(opt_enable_preprocess_packet || opt_enable_ssl) {
 		preProcessPacket = new PreProcessPacket();
 	}
 
@@ -4168,10 +4168,6 @@ int main(int argc, char *argv[]) {
 
 	regfailedcache->prune(0);
 	
-	if(preProcessPacket) {
-		delete preProcessPacket;
-	}
-	
 	if(tcpReassemblyHttp) {
 		delete tcpReassemblyHttp;
 	}
@@ -4189,6 +4185,11 @@ int main(int argc, char *argv[]) {
 	}
 	if(sslData) {
 		delete sslData;
+	}
+	
+	if(preProcessPacket) {
+		preProcessPacket->terminating();
+		delete preProcessPacket;
 	}
 	
 	if(sipSendSocket) {
