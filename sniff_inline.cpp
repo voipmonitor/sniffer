@@ -22,6 +22,9 @@
 #endif
 
 
+extern bool isSslIpPort(u_int32_t ip, u_int16_t port);
+
+
 extern int opt_udpfrag;
 extern int opt_ipaccount;
 extern int opt_skinny;
@@ -275,6 +278,9 @@ int pcapProcess(pcap_pkthdr** header, u_char** packet, bool *destroy,
 		      (tcpReassemblyHttp->check_ip(htonl(ppd->header_ip->saddr)) || tcpReassemblyHttp->check_ip(htonl(ppd->header_ip->daddr)))) &&
 		    !(opt_enable_webrtc && (webrtcportmatrix[htons(ppd->header_tcp->source)] || webrtcportmatrix[htons(ppd->header_tcp->dest)]) &&
 		      (tcpReassemblyWebrtc->check_ip(htonl(ppd->header_ip->saddr)) || tcpReassemblyWebrtc->check_ip(htonl(ppd->header_ip->daddr)))) &&
+		    !(opt_enable_ssl && 
+		      (isSslIpPort(htonl(ppd->header_ip->saddr), htons(ppd->header_tcp->source)) ||
+		       isSslIpPort(htonl(ppd->header_ip->daddr), htons(ppd->header_tcp->dest)))) &&
 		    !(opt_skinny && (htons(ppd->header_tcp->source) == 2000 || htons(ppd->header_tcp->dest) == 2000))) {
 			// not interested in TCP packet other than SIP port
 			if(opt_ipaccount == 0 && !DEBUG_ALL_PACKETS) {

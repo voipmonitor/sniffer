@@ -16,6 +16,7 @@
 
 extern int opt_enable_http;
 extern int opt_enable_webrtc;
+extern int opt_enable_ssl;
 extern int opt_tcpreassembly_pb_lock;
 
 struct pcap_pkthdr_fix_size {
@@ -141,7 +142,7 @@ struct pcap_block_store {
 	bool compress();
 	bool uncompress();
 	void lock_packet(int index) {
-		if((opt_enable_http || opt_enable_webrtc) && opt_tcpreassembly_pb_lock) {
+		if((opt_enable_http || opt_enable_webrtc || opt_enable_ssl) && opt_tcpreassembly_pb_lock) {
 			this->lock_sync_packet_lock();
 			if(!this->packet_lock) {
 				this->packet_lock = new bool[this->count];
@@ -155,7 +156,7 @@ struct pcap_block_store {
 		
 	}
 	void unlock_packet(int index) {
-		if((opt_enable_http || opt_enable_webrtc) && opt_tcpreassembly_pb_lock) {
+		if((opt_enable_http || opt_enable_webrtc || opt_enable_ssl) && opt_tcpreassembly_pb_lock) {
 			this->lock_sync_packet_lock();
 			if(this->packet_lock) {
 				this->packet_lock[index] = false;
@@ -166,7 +167,7 @@ struct pcap_block_store {
 		}
 	}
 	bool enableDestroy() {
-	        if((opt_enable_http || opt_enable_webrtc) && opt_tcpreassembly_pb_lock) {
+	        if((opt_enable_http || opt_enable_webrtc || opt_enable_ssl) && opt_tcpreassembly_pb_lock) {
 			bool enableDestroy = true;
 			this->lock_sync_packet_lock();
 			bool checkLock = true;

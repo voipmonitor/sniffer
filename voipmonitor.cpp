@@ -1985,7 +1985,7 @@ int eval_config(string inistr) {
 		opt_enable_webrtc = strcmp(value, "only") ? yesno(value) : 2;
 	}
 	if((value = ini.GetValue("general", "ssl", NULL))) {
-		opt_enable_ssl = yesno(value);
+		opt_enable_ssl = strcmp(value, "only") ? yesno(value) : 2;
 	}
 	if((value = ini.GetValue("general", "tcpreassembly_log", NULL))) {
 		strncpy(opt_tcpreassembly_log, value, sizeof(opt_tcpreassembly_log));

@@ -123,6 +123,7 @@ extern int opt_sip_register;
 extern int opt_norecord_header;
 extern int opt_enable_http;
 extern int opt_enable_webrtc;
+extern int opt_enable_ssl;
 extern int opt_convert_dlt_sll_to_en10;
 extern char *sipportmatrix;
 extern char *httpportmatrix;
@@ -191,6 +192,7 @@ extern livesnifferfilter_use_siptypes_s livesnifferfilterUseSipTypes;
 extern int opt_skipdefault;
 extern TcpReassembly *tcpReassemblyHttp;
 extern TcpReassembly *tcpReassemblyWebrtc;
+extern TcpReassembly *tcpReassemblySsl;
 extern char ifname[1024];
 extern uint8_t opt_sdp_reverse_ipport;
 extern int opt_fork;
@@ -491,7 +493,7 @@ save:
 
 */
 inline void save_packet(Call *call, struct pcap_pkthdr *header, const u_char *packet, unsigned int saddr, int source, unsigned int daddr, int dest, int istcp, iphdr2 *header_ip, char *data, int datalen, int dataoffset, int type, 
-			int dlt, int sensor_id) {
+			int forceSip, int dlt, int sensor_id) {
 	bool allocPacket = false;
 	bool allocHeader = false;
 	if(ENABLE_CONVERT_DLT_SLL_TO_EN10(dlt)) {
@@ -556,7 +558,7 @@ inline void save_packet(Call *call, struct pcap_pkthdr *header, const u_char *pa
 	}
  
 	// check if it should be stored to mysql 
-	if(type == TYPE_SIP and global_livesniffer and (sipportmatrix[source] || sipportmatrix[dest])) {
+	if(type == TYPE_SIP and global_livesniffer and (sipportmatrix[source] || sipportmatrix[dest] || forceSip)) {
 		save_live_packet(call, header, packet, saddr, source, daddr, dest, istcp, data, datalen, call->type, 
 				 dlt, sensor_id);
 	}
@@ -1907,7 +1909,7 @@ Call *process_packet(u_int64_t packet_number,
 		     unsigned int saddr, int source, unsigned int daddr, int dest, 
 		     char *data, int datalen, int dataoffset,
 		     pcap_t *handle, pcap_pkthdr *header, const u_char *packet, 
-		     int istcp, int *was_rtp, struct iphdr2 *header_ip, int *voippacket,
+		     int istcp, int *was_rtp, struct iphdr2 *header_ip, int *voippacket, int forceSip,
 		     pcap_block_store *block_store, int block_store_index, int dlt, int sensor_id, 
 		     bool mainProcess = true, int sipOffset = 0,
 		     ParsePacket *parsePacket = NULL, u_int32_t parsePacket_sipDataLen = 0, bool parsePacket_isSip = false,
@@ -2012,7 +2014,7 @@ Call *process_packet(u_int64_t packet_number,
 	}
 
 	// check if the packet is SIP ports or SKINNY ports
-	if(sipportmatrix[source] || sipportmatrix[dest]) {
+	if(sipportmatrix[source] || sipportmatrix[dest] || forceSip) {
 	 
 		++counter_sip_packets[0];
 
@@ -2963,14 +2965,14 @@ endsip_save_packet:
 				newHeaderIp = (iphdr2*)(newPacket + ((u_char*)header_ip - packet));
 			}
 			save_packet(call, header, newPacket, saddr, source, daddr, dest, istcp, newHeaderIp, data, sipDatalen, dataoffset, TYPE_SIP, 
-				    dlt, sensor_id);
+				    forceSip, dlt, sensor_id);
 			delete [] newPacket;
 			header->caplen = oldcaplen;
 			header->len = oldlen;
 			header_ip->tot_len = oldHeaderIpLen;
 		} else {
 			save_packet(call, header, packet, saddr, source, daddr, dest, istcp, header_ip, data, sipDatalen, dataoffset, TYPE_SIP, 
-				    dlt, sensor_id);
+				    forceSip, dlt, sensor_id);
 		}
 endsip:
 		if(!detectUserAgent && sip_method && call) {
@@ -3005,7 +3007,7 @@ endsip:
 				       saddr, source, daddr, dest, 
 				       data + sipDatalen, datalen - sipDatalen, dataoffset,
 				       handle, header, packet, 
-				       istcp, was_rtp, header_ip, voippacket,
+				       istcp, was_rtp, header_ip, voippacket, forceSip,
 				       block_store, block_store_index, dlt, sensor_id, 
 				       false, sipOffset + sipDatalen);
 		}
@@ -3069,7 +3071,7 @@ rtpcheck:
 				if((!rtp_threaded || !opt_rtpsave_threaded) &&
 				   (opt_saveRTP || opt_saveRTCP)) {
 					save_packet(call, header, packet, saddr, source, daddr, dest, istcp, header_ip, data, datalen, dataoffset, TYPE_RTP, 
-						    dlt, sensor_id);
+						    forceSip, dlt, sensor_id);
 				}
 				if(logPacketSipMethodCall_enable) {
 					logPacketSipMethodCall(packet_number, sip_method, lastSIPresponseNum, header, 
@@ -3113,12 +3115,12 @@ rtpcheck:
 						tmp_u32 = header->caplen;
 						header->caplen = header->caplen - (datalen - RTP_FIXED_HEADERLEN);
 						save_packet(call, header, packet, saddr, source, daddr, dest, istcp, header_ip, data, datalen, dataoffset, TYPE_RTP, 
-							    dlt, sensor_id);
+							    forceSip, dlt, sensor_id);
 						header->caplen = tmp_u32;
 					}
 				} else {
 					save_packet(call, header, packet, saddr, source, daddr, dest, istcp, header_ip, data, datalen, dataoffset, TYPE_RTP, 
-						    dlt, sensor_id);
+						    forceSip, dlt, sensor_id);
 				}
 
 			}
@@ -3185,7 +3187,7 @@ rtpcheck:
 				if((!rtp_threaded || !opt_rtpsave_threaded) &&
 				   (opt_saveRTP || opt_saveRTCP)) {
 					save_packet(call, header, packet, saddr, source, daddr, dest, istcp, header_ip, data, datalen, dataoffset, TYPE_RTP, 
-						    dlt, sensor_id);
+						    forceSip, dlt, sensor_id);
 				}
 				if(logPacketSipMethodCall_enable) {
 					logPacketSipMethodCall(packet_number, sip_method, lastSIPresponseNum, header, 
@@ -3222,12 +3224,12 @@ rtpcheck:
 						tmp_u32 = header->caplen;
 						header->caplen = header->caplen - (datalen - RTP_FIXED_HEADERLEN);
 						save_packet(call, header, packet, saddr, source, daddr, dest, istcp, header_ip, data, datalen, dataoffset, TYPE_RTP, 
-							    dlt, sensor_id);
+							    forceSip, dlt, sensor_id);
 						header->caplen = tmp_u32;
 					}
 				} else {
 					save_packet(call, header, packet, saddr, source, daddr, dest, istcp, header_ip, data, datalen, dataoffset, TYPE_RTP, 
-						    dlt, sensor_id);
+						    forceSip, dlt, sensor_id);
 				}
 			}
 		}
@@ -3436,7 +3438,7 @@ libnids_udp_callback(struct tuple4 *addr, u_char *data, int len, struct ip *pkt)
 	process_packet(addr->saddr, addr->source, addr->daddr, addr->dest, 
 		       (char*)data, len, data - nids_last_pcap_data, 
 		       handle, nids_last_pcap_header, nids_last_pcap_data, 
-		       0, &was_rtp, NULL, &voippacket);
+		       0, &was_rtp, NULL, &voippacket, 0);
 	return;
 }
 
@@ -3507,6 +3509,7 @@ void *pcap_read_thread_func(void *arg) {
 	unsigned int packets = 0;
 	bool useTcpReassemblyHttp;
 	bool useTcpReassemblyWebrtc;
+	bool useTcpReassemblySsl;
 	u_int64_t packet_counter = 0;
 
 #if defined(QUEUE_MUTEX) || defined(QUEUE_NONBLOCK)
@@ -3585,6 +3588,7 @@ void *pcap_read_thread_func(void *arg) {
 		header_udp = &header_udp_tmp;
 		useTcpReassemblyHttp = false;
 		useTcpReassemblyWebrtc = false;
+		useTcpReassemblySsl = false;
 		if (header_ip->protocol == IPPROTO_UDP) {
 			// prepare packet pointers 
 			header_udp = (struct udphdr2 *) ((char *) header_ip + sizeof(*header_ip));
@@ -3600,8 +3604,13 @@ void *pcap_read_thread_func(void *arg) {
 				tcpReassembly->push(&pp->header, header_ip, packet);
 				useTcpReassemblyHttp = true;
 			} else if(opt_enable_webrtc && (webrtcportmatrix[htons(header_tcp->source)] || webrtcportmatrix[htons(header_tcp->dest)])) {
-				tcpReassembly->push(&pp->header, header_ip, packet);
+				tcpReassemblyWebrtc->push(&pp->header, header_ip, packet);
 				useTcpReassemblyWebrtc = true;
+			} els if(opt_enable_ssl && 
+				 (isSslIpPort(htonl(header_ip->saddr), htons(header_tcp->source)) ||
+				  isSslIpPort(htonl(header_ip->daddr), htons(header_tcp->dest)))) {
+				tcpReassemblySsl->push(&pp->header, header_ip, packet);
+				useTcpReassemblySsl = true;
 			} else*/{
 				istcp = 1;
 				// prepare packet pointers 
@@ -3635,13 +3644,13 @@ void *pcap_read_thread_func(void *arg) {
 			mirrorip->send((char *)header_ip, (int)(pp->header.caplen - ((char*)header_ip - (char*)packet)));
 		}
 		int voippacket = 0;
-		if(!useTcpReassemblyHttp && !useTcpReassemblyWebrtc &&
-		   opt_enable_http < 2 && opt_enable_webrtc < 2) {
+		if(!useTcpReassemblyHttp && !useTcpReassemblyWebrtc && !useTcpReassemblySsl &&
+		   opt_enable_http < 2 && opt_enable_webrtc < 2 && opt_enable_ssl < 2) {
 			process_packet(packet_counter,
 				       header_ip->saddr, htons(header_udp->source), header_ip->daddr, htons(header_udp->dest), 
 				       data, datalen, data - (char*)packet, 
 				       global_pcap_handle, &pp->header, packet, 
-				       istcp, &was_rtp, header_ip, &voippacket,
+				       istcp, &was_rtp, header_ip, &voippacket, 0,
 				       NULL, 0, global_pcap_dlink, opt_id_sensor);
 		}
 
@@ -4063,7 +4072,7 @@ void readdump_libpcap(pcap_t *handle) {
 				       ppd.header_ip->saddr, htons(ppd.header_udp->source), ppd.header_ip->daddr, htons(ppd.header_udp->dest), 
 				       ppd.data, ppd.datalen, ppd.data - (char*)packet, 
 				       handle, header, packet, 
-				       ppd.istcp, &was_rtp, ppd.header_ip, &voippacket,
+				       ppd.istcp, &was_rtp, ppd.header_ip, &voippacket, 0,
 				       NULL, 0, global_pcap_dlink, opt_id_sensor);
 		}
 		if(opt_ipaccount) {
@@ -4362,7 +4371,7 @@ void TcpReassemblySip::complete(tcp_stream2_s *stream, u_int hash) {
 		       stream->saddr, stream->source, stream->daddr, stream->dest, 
 		       (char*)newdata, newlen, stream->dataoffset,
 		       stream->handle, &header, newpacket, 
-		       2, &tmp_was_rtp, header_ip, &tmp_voippacket,
+		       2, &tmp_was_rtp, header_ip, &tmp_voippacket, 0,
 		       NULL, 0, stream->dlt, stream->sensor_id, 
 		       false);
 	
@@ -4475,7 +4484,7 @@ void *PreProcessPacket::outThreadFunction() {
 				       this->qring[this->readit]->packet.saddr, this->qring[this->readit]->packet.source, this->qring[this->readit]->packet.daddr, this->qring[this->readit]->packet.dest, 
 				       this->qring[this->readit]->packet.data, this->qring[this->readit]->packet.datalen, this->qring[this->readit]->packet.dataoffset,
 				       this->qring[this->readit]->packet.handle, this->qring[this->readit]->packet.header, this->qring[this->readit]->packet.packet, 
-				       this->qring[this->readit]->packet.istcp, &was_rtp, this->qring[this->readit]->packet.header_ip, &voippacket,
+				       this->qring[this->readit]->packet.istcp, &was_rtp, this->qring[this->readit]->packet.header_ip, &voippacket, 0,
 				       this->qring[this->readit]->packet.block_store, this->qring[this->readit]->packet.block_store_index, this->qring[this->readit]->packet.dlt, this->qring[this->readit]->packet.sensor_id, 
 				       true, 0,
 				       &this->qring[this->readit]->parse, this->qring[this->readit]->sipDataLen, this->qring[this->readit]->isSip,

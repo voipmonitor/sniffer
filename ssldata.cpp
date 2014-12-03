@@ -12,7 +12,7 @@ extern Call *process_packet(u_int64_t packet_number,
 			    unsigned int saddr, int source, unsigned int daddr, int dest, 
 			    char *data, int datalen, int dataoffset,
 			    pcap_t *handle, pcap_pkthdr *header, const u_char *packet, 
-			    int istcp, int *was_rtp, struct iphdr2 *header_ip, int *voippacket,
+			    int istcp, int *was_rtp, struct iphdr2 *header_ip, int *voippacket, int forceSip,
 			    pcap_block_store *block_store, int block_store_index, int dlt, int sensor_id,
 			    bool mainProcess = true, int sipOffset = 0,
 			    ParsePacket *parsePacket = NULL, u_int32_t parsePacket_sipDataLen = 0, bool parsePacket_isSip = false,
@@ -114,7 +114,7 @@ void SslData::processData(u_int32_t ip_src, u_int32_t ip_dst,
 					process_packet(0, _ip_src, _port_src, _ip_dst, _port_dst, 
 						       (char*)rslt_decrypt[i].c_str(), rslt_decrypt[i].size(), ethHeaderLength + sizeof(iphdr2) + sizeof(udphdr2),
 						       handle, &header, udpPacket, 
-						       false, &was_rtp, (iphdr2*)(udpPacket + ethHeaderLength), &voippacket,
+						       false, &was_rtp, (iphdr2*)(udpPacket + ethHeaderLength), &voippacket, 1,
 						       NULL, 0, dlt, sensor_id);
 					delete [] udpPacket;
 				}

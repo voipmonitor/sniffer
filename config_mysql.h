@@ -123,6 +123,7 @@ extern int opt_dup_check_ipheader;
 extern int opt_enable_http_enum_tables;
 extern int opt_enable_http;
 extern int opt_enable_webrtc;
+extern int opt_enable_ssl;
 extern int opt_filesclean;
 extern int opt_fork;
 extern int opt_gzipGRAPH;

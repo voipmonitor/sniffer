@@ -65,7 +65,7 @@ extern Call *process_packet(u_int64_t packet_number,
 			    unsigned int saddr, int source, unsigned int daddr, int dest, 
 			    char *data, int datalen, int dataoffset,
 			    pcap_t *handle, pcap_pkthdr *header, const u_char *packet, 
-			    int istcp, int *was_rtp, struct iphdr2 *header_ip, int *voippacket,
+			    int istcp, int *was_rtp, struct iphdr2 *header_ip, int *voippacket, int forceSip,
 			    pcap_block_store *block_store, int block_store_index, int dlt, int sensor_id,
 			    bool mainProcess = true, int sipOffset = 0,
 			    ParsePacket *parsePacket = NULL, u_int32_t parsePacket_sipDataLen = 0, bool parsePacket_isSip = false,
@@ -1867,7 +1867,7 @@ PcapQueue_readFromInterface_base::PcapQueue_readFromInterface_base(const char *i
 	// CONFIG
 	extern int opt_promisc;
 	extern int opt_ringbuffer;
-	this->pcap_snaplen = opt_enable_http || opt_enable_webrtc ? 6000 : 3200;
+	this->pcap_snaplen = opt_enable_http || opt_enable_webrtc || opt_enable_ssl ? 6000 : 3200;
 	this->pcap_promisc = opt_promisc;
 	this->pcap_timeout = 1000;
 	this->pcap_buffer_size = opt_ringbuffer * 1024 * 1024;
@@ -3903,6 +3903,7 @@ void PcapQueue_readFromFifo::processPacket(pcap_pkthdr_plus *header_plus, u_char
 	int istcp = 0;
 	bool useTcpReassemblyHttp = false;
 	bool useTcpReassemblyWebrtc = false;
+	bool useTcpReassemblySsl = false;
 	static u_int64_t packet_counter_all;
 	
 	++packet_counter_all;
@@ -3997,6 +3998,7 @@ void PcapQueue_readFromFifo::processPacket(pcap_pkthdr_plus *header_plus, u_char
 			tcpReassemblySsl->push(header, header_ip, packet,
 					       block_store, block_store_index,
 					       this->getPcapHandle(dlt), dlt, sensor_id);
+			useTcpReassemblySsl = true;
 		} else {
 			istcp = 1;
 			// prepare packet pointers 
@@ -4017,8 +4019,8 @@ void PcapQueue_readFromFifo::processPacket(pcap_pkthdr_plus *header_plus, u_char
 	if(opt_mirrorip && (sipportmatrix[htons(header_udp->source)] || sipportmatrix[htons(header_udp->dest)])) {
 		mirrorip->send((char *)header_ip, (int)(header->caplen - ((u_char*)header_ip - packet)));
 	}
-	if(!useTcpReassemblyHttp && !useTcpReassemblyWebrtc &&
-	   opt_enable_http < 2 && opt_enable_webrtc < 2) {
+	if(!useTcpReassemblyHttp && !useTcpReassemblyWebrtc && !useTcpReassemblySsl && 
+	   opt_enable_http < 2 && opt_enable_webrtc < 2 && opt_enable_ssl < 2) {
 		if(preProcessPacket) {
 			preProcessPacket->push(packet_counter_all,
 					       header_ip->saddr, htons(header_udp->source), header_ip->daddr, htons(header_udp->dest), 
@@ -4033,7 +4035,7 @@ void PcapQueue_readFromFifo::processPacket(pcap_pkthdr_plus *header_plus, u_char
 				       header_ip->saddr, htons(header_udp->source), header_ip->daddr, htons(header_udp->dest), 
 				       data, datalen, data - (char*)packet, 
 				       this->getPcapHandle(dlt), header, packet, 
-				       istcp, &was_rtp, header_ip, &voippacket,
+				       istcp, &was_rtp, header_ip, &voippacket, 0,
 				       block_store, block_store_index, dlt, sensor_id);
 			// if packet was VoIP add it to ipaccount
 			if(opt_ipaccount) {
