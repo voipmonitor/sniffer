@@ -150,6 +150,8 @@ signal_def signal_data[] =
 };
 #endif
 
+extern void ssl_init();
+
 using namespace std;
 
 int debugclean = 0;
@@ -1140,6 +1142,9 @@ int eval_config(string inistr) {
 			if(ip && port) {
 				ssl_ipport[d_u_int32_t(ip, port)] = key;
 			}
+		}
+		if(ssl_ipport.size()) {
+			ssl_init();
 		}
 	}
 	
