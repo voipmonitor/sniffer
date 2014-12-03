@@ -24,6 +24,8 @@ WebrtcData::~WebrtcData() {
 void WebrtcData::processData(u_int32_t ip_src, u_int32_t ip_dst,
 			     u_int16_t port_src, u_int16_t port_dst,
 			     TcpReassemblyData *data,
+			     u_char *ethHeader, u_int32_t ethHeaderLength,
+			     pcap_t *handle, int dlt, int sensor_id,
 			     bool debugSave) {
 	++this->counterProcessData;
 	if(debugSave) {

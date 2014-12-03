@@ -3983,17 +3983,20 @@ void PcapQueue_readFromFifo::processPacket(pcap_pkthdr_plus *header_plus, u_char
 		header_tcp = (tcphdr2*) ((char *) header_ip + sizeof(*header_ip));
 		if(opt_enable_http && (httpportmatrix[htons(header_tcp->source)] || httpportmatrix[htons(header_tcp->dest)])) {
 			tcpReassemblyHttp->push(header, header_ip, packet,
-						block_store, block_store_index);
+						block_store, block_store_index,
+						this->getPcapHandle(dlt), dlt, sensor_id);
 			useTcpReassemblyHttp = true;
 		} else if(opt_enable_webrtc && (webrtcportmatrix[htons(header_tcp->source)] || webrtcportmatrix[htons(header_tcp->dest)])) {
 			tcpReassemblyWebrtc->push(header, header_ip, packet,
-						  block_store, block_store_index);
+						  block_store, block_store_index,
+						  this->getPcapHandle(dlt), dlt, sensor_id);
 			useTcpReassemblyWebrtc = true;
 		} else if(opt_enable_ssl && 
 			  (isSslIpPort(htonl(header_ip->saddr), htons(header_tcp->source)) ||
 			   isSslIpPort(htonl(header_ip->daddr), htons(header_tcp->dest)))) {
 			tcpReassemblySsl->push(header, header_ip, packet,
-					       block_store, block_store_index);
+					       block_store, block_store_index,
+					       this->getPcapHandle(dlt), dlt, sensor_id);
 		} else {
 			istcp = 1;
 			// prepare packet pointers 
