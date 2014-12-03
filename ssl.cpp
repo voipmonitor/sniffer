@@ -3216,9 +3216,11 @@ ssl_init() {
 	//init keys
 	for(it = ssl_ipport.begin(); it != ssl_ipport.end(); it++) {
 		ssl_keys_t *key = new(ssl_keys_t);
-		key->ip = it->first[0];
-		key->port = it->first[1];
-		key->filename = *it->second;
+		
+		d_u_int32_t ipport = it->first;
+		key->ip = ipport[0];
+		key->port = ipport[1];
+		key->filename = it->second;
 
 		ssl_keys.push_back(key);
 
@@ -3248,7 +3250,7 @@ ssl_clean(){
 }
 
 
-test_ssl() {
+void test_ssl() {
 	ssl_init();
 
 
