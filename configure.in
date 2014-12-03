@@ -126,7 +126,7 @@ AC_MSG_NOTICE([
 
 ssh library enabled (cloud)            : $HAVE_LIBSSH_T
 gnutls library enabled (SIP TLS)       : $LIBGNUTLS_T
-tcmalloc lib found (10% speed increase): $TCMALLOC_T
+tcmalloc (faster *alloc) lib found     : $TCMALLOC_T
 
 shared binary: run make 
 static binary: run make static
