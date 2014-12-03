@@ -9,6 +9,7 @@
 #include <iostream>
 #include <unistd.h>
 
+#include "tools.h"
 #include "ssl.h"
 #include "ssl-test.h"
 
@@ -20,6 +21,8 @@ static StringInfo		  ssl_compressed_data	  = {NULL, 0};
 static GHashTable		 *ssl_key_hash			 = NULL;
 static ssl_master_key_map_t	   ssl_master_key_map = {NULL, NULL, NULL};
 static ssl_common_options_t ssl_options = { NULL, NULL};
+extern map<d_u_int32_t, string>::ssl_ipport;
+
 
 struct session_t {
 	SslDecryptSessionC *session;
@@ -3207,7 +3210,19 @@ ssl_init() {
 
 	ssl_data_alloc(&ssl_decrypted_data, 32);
 	ssl_data_alloc(&ssl_compressed_data, 32);
-	
+
+	map<d_u_int32_t, string>::iterator it;
+
+	//init keys
+	for(it = ssl_ipport.begin(); it != ssl_ipport.end(); it++) {
+		ssl_keys_t *key = new(ssl_keys_t);
+		key->ip = iter->first[0];
+		key->port = iter->first[1];
+		key->filename = iter->second;
+
+		ssl_keys.push_back(key);
+
+	}
 }
 
 void
