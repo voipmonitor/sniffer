@@ -2,6 +2,7 @@
 #ifndef SSL_H
 #define SSL_H
 
+#include <glib.h>
 #include <stdint.h>
 #include <arpa/inet.h>
 #include <string.h>
@@ -44,7 +45,7 @@ typedef bool gboolean;
 
 void decrypt_ssl(char *data, unsigned int datalen);
 static inline void ssl_cipher_cleanup(gcry_cipher_hd_t *cipher);
-extern int debug;
+int debug = 0;
 
 /* other defines */
 typedef enum {

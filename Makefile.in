@@ -42,11 +42,13 @@ JSONCFLAGS = $(shell pkg-config --cflags json)
 MYSQLLIB = $(shell PATH=$$PATH:/usr/local/mysql/bin/ mysql_config --libs)
 MYSQLINC = $(shell PATH=$$PATH:/usr/local/mysql/bin/ mysql_config --include)
 
+GLIBCFLAGS =$(shell pkg-config --cflags glib-2.0)
+
 LIBSSH=@LIBSSH@
 LIBGNUTLS=@LIBGNUTLS@
 SHARED_LIBS = -ldl -lpthread -lpcap -lz -lvorbis -lvorbisenc -logg -lodbc ${MYSQLLIB} -lrt -lsnappy -lcurl -lssl -lcrypto ${JSONLIB} ${LIBSSH} -lxml2 -lrrd ${LIBGNUTLS} @LIBTCMALLOC@
 STATIC_LIBS = -static @LIBTCMALLOC@ -lodbc -lltdl -ldl -lrt -lz ${LIBSSH} -lcrypt -lm -lcurl -lssl -lcrypto -static-libstdc++ -static-libgcc -lpcap -lpthread ${MYSQLLIB} -lpthread -lz -lc -lvorbis -lvorbisenc -logg -lrt -lsnappy ${JSONLIB} -lrrd -lxml2 -lglib-2.0 -lz -ldbi -llzma
-INCLUDES =  -I/usr/local/include ${MYSQLINC} -I jitterbuffer/ ${JSONCFLAGS} 
+INCLUDES =  -I/usr/local/include ${MYSQLINC} -I jitterbuffer/ ${JSONCFLAGS} ${GLIBCFLAGS}
 LIBS_PATH = -L/usr/local/lib/ 
 CXXFLAGS +=  -Wall -fPIC -g3 -O2 -march=$(GCCARCH) -mtune=${GCCARCH} ${INCLUDES}
 CFLAGS += ${CXXFLAGS}

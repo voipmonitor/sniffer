@@ -1,3 +1,5 @@
+#include "config.h"
+
 #ifdef HAVE_LIBGNUTLS
 
 #include <stdlib.h>
@@ -21,7 +23,7 @@ static StringInfo		  ssl_compressed_data	  = {NULL, 0};
 static GHashTable		 *ssl_key_hash			 = NULL;
 static ssl_master_key_map_t	   ssl_master_key_map = {NULL, NULL, NULL};
 static ssl_common_options_t ssl_options = { NULL, NULL};
-extern map<d_u_int32_t, string>::ssl_ipport;
+extern map<d_u_int32_t, string> ssl_ipport;
 
 
 struct session_t {
@@ -33,8 +35,6 @@ map<string, session_t*> sessions;
 map<string, session_t*>::iterator sessions_it;
 
 gboolean ssl_ignore_mac_failed = FALSE;
-
-int debug = 0;
 
 struct ssl_keys_t {
 	unsigned int ip;
@@ -3216,9 +3216,9 @@ ssl_init() {
 	//init keys
 	for(it = ssl_ipport.begin(); it != ssl_ipport.end(); it++) {
 		ssl_keys_t *key = new(ssl_keys_t);
-		key->ip = iter->first[0];
-		key->port = iter->first[1];
-		key->filename = iter->second;
+		key->ip = it->first[0];
+		key->port = it->first[1];
+		key->filename = *it->second;
 
 		ssl_keys.push_back(key);
 
