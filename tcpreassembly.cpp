@@ -979,7 +979,7 @@ void TcpReassemblyLink::pushpacket(TcpReassemblyStream::eDirection direction,
 		this->lock_queue();
 	}
 	iter = this->queue_by_ack.find(packet.header_tcp.ack_seq);
-	if(iter == this->queue_by_ack.end()) {
+	if(iter == this->queue_by_ack.end() || !iter->second) {
 		TcpReassemblyStream *prevStreamByLastAck = NULL;
 		if(this->queue.size()) {
 			prevStreamByLastAck = this->queue_by_ack[this->last_ack];
