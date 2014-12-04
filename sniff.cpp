@@ -4454,7 +4454,8 @@ void PreProcessPacket::push(u_int64_t packet_number,
 	this->qring[this->writeit]->packet.block_store_index = block_store_index; 
 	this->qring[this->writeit]->packet.dlt = dlt; 
 	this->qring[this->writeit]->packet.sensor_id = sensor_id;
-	if(sipportmatrix[this->qring[this->writeit]->packet.source] || 
+	if(forceSip ||
+	   sipportmatrix[this->qring[this->writeit]->packet.source] || 
 	   sipportmatrix[this->qring[this->writeit]->packet.dest]) {
 		this->qring[this->writeit]->sipDataLen = this->qring[this->writeit]->parse.parseData(
 								this->qring[this->writeit]->packet.data, 

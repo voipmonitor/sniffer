@@ -134,7 +134,7 @@ int pcapProcess(pcap_pkthdr** header, u_char** packet, bool *destroy,
 		} else 
 		#endif
 		{
-			// not ipv4 
+			syslog(LOG_ERR, "BAD PROTOCOL (not ipv4) IN %s (dlt %d) - TRY TCPREPLAY_WORKARROUND", interfaceName, pcapLinklayerHeaderType);
 			return(0);
 		}
 	}
