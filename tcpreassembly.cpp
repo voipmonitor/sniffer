@@ -1144,6 +1144,10 @@ int TcpReassemblyLink::okQueue_normal(int final, bool enableDebug) {
 		     << " / size: " << this->queue.size()
 		     << (final == 2 ? " FINAL" : "")
 		     << endl;
+		if(!this->queue.size()) {
+			cout << "empty" << endl;
+			return(0);
+		}
 	}
 	int countDataStream = 0;
 	this->ok_streams.clear();
@@ -2267,10 +2271,11 @@ void TcpReassembly::cleanup_simple(bool all) {
 		TcpReassemblyLink *link = iter->second;
 		bool final = link->last_packet_at_from_header &&
 			     act_time > link->last_packet_at_from_header + 2 * 60 * 1000;
-		if(all || final ||
-		   (link->last_packet_at_from_header &&
-		    act_time > link->last_packet_at_from_header + 5 * 1000 &&
-		    link->last_packet_at_from_header > link->last_packet_process_cleanup_at)) {
+		if(link->queue.size() &&
+		   (all || final ||
+		    (link->last_packet_at_from_header &&
+		     act_time > link->last_packet_at_from_header + 5 * 1000 &&
+		     link->last_packet_at_from_header > link->last_packet_process_cleanup_at))) {
 			int countDataStream = link->okQueue(all || final ? 2 : 1, ENABLE_DEBUG(this->type, _debug_check_ok));
 			if(ENABLE_DEBUG(this->getType(), _debug_check_ok)) {
 				cout << endl;
