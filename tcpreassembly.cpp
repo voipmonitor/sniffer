@@ -791,11 +791,18 @@ bool TcpReassemblyLink::push_normal(
 					prevStreamByLastAck->last_seq = header_tcp.seq;
 				}
 			}
-			if(reassembly->enableAllCompleteAfterZerodataAck &&
-			   prevStreamByLastAck &&
-			   prevStreamByLastAck->direction != direction &&
-			   header_tcp.ack) {
-				runCompleteAfterZerodataAck = true;
+			if(reassembly->enableAllCompleteAfterZerodataAck) {
+				if(!header_tcp.psh && header_tcp.ack) {
+					this->setLastSeq(direction == TcpReassemblyStream::DIRECTION_TO_DEST ?
+								TcpReassemblyStream::DIRECTION_TO_SOURCE :
+								TcpReassemblyStream::DIRECTION_TO_DEST, 
+							 header_tcp.ack_seq);
+					runCompleteAfterZerodataAck = true;
+				} else if(prevStreamByLastAck &&
+					 prevStreamByLastAck->direction != direction &&
+					 header_tcp.ack) {
+					runCompleteAfterZerodataAck = true;
+				}
 			}
 		}
 		rslt = true;
@@ -822,7 +829,7 @@ bool TcpReassemblyLink::push_normal(
 						}
 					}
 				} else if(countDataStream < 0) {
-					cout << "ERROR " << countDataStream;
+					cout << "empty";
 				} else {
 					cout << "OK";
 				}
@@ -1153,7 +1160,9 @@ int TcpReassemblyLink::okQueue_normal(int final, bool enableDebug) {
 	this->ok_streams.clear();
 	size_t size = this->queue.size();
 	bool finOrRst = this->fin_to_dest || this->fin_to_source || this->rst;
+	int countIter = 0;
 	for(size_t i = 0; i < (finOrRst || final == 2 ? size : size - 1); i++) {
+		++countIter;
 		if(enableDebug) {
 			cout << "|";
 		}
@@ -1173,7 +1182,7 @@ int TcpReassemblyLink::okQueue_normal(int final, bool enableDebug) {
 			++countDataStream;
 		}
 	}
-	return(countDataStream);
+	return(countIter ? countDataStream : -1);
 }
 
 int TcpReassemblyLink::okQueue_crazy(int final, bool enableDebug) {
@@ -2289,7 +2298,7 @@ void TcpReassembly::cleanup_simple(bool all) {
 						cout << "ERROR ";
 					}
 				} else if(countDataStream < 0) {
-					cout << "ERROR " << countDataStream;
+					cout << "empty";
 				} else {
 					cout << "OK";
 				}
