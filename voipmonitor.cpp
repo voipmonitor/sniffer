@@ -260,6 +260,8 @@ int opt_generator_channels = 1;
 int opt_skipdefault = 0;
 int opt_filesclean = 1;
 int opt_enable_preprocess_packet;
+unsigned int opt_preprocess_packets_qring_length = 100;
+unsigned int opt_preprocess_packets_qring_usleep = 10;
 int opt_enable_http = 0;
 int opt_enable_webrtc = 0;
 int opt_enable_ssl = 0;
@@ -495,6 +497,7 @@ volatile unsigned int writeit = 0;
 int global_livesniffer = 0;
 int global_livesniffer_all = 0;
 unsigned int qringmax = 12500;
+unsigned int qringusleep = 10000;
 #if defined(QUEUE_MUTEX) || defined(QUEUE_NONBLOCK) || defined(QUEUE_NONBLOCK2)
 pcap_packet *qring;
 #endif
@@ -2200,6 +2203,20 @@ int eval_config(string inistr) {
 		strncpy(opt_syslog_string, value, sizeof(opt_syslog_string));
 	}
 
+	if((value = ini.GetValue("general", "preprocess_packets_qring_length", NULL))) {
+		opt_preprocess_packets_qring_length = atol(value);
+	}
+	if((value = ini.GetValue("general", "preprocess_packets_qring_usleep", NULL))) {
+		opt_preprocess_packets_qring_usleep = atol(value);
+	}
+
+	if((value = ini.GetValue("general", "rtp_qring_length", NULL))) {
+		qringmax = atol(value);
+	}
+	if((value = ini.GetValue("general", "rtp_qring_usleep", NULL))) {
+		qringusleep = atol(value);
+	}
+	
 	/*
 	
 	packetbuffer default configuration
@@ -4622,6 +4639,11 @@ void test() {
 	} break;
 	case 5:
 		test_alloc_speed();
+		break;
+	case 6:
+		for(u_int64_t i = 0; i < 1000000 / 100; i++) {
+			usleep(100);
+		}
 		break;
 	case 10:
 		{

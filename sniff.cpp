@@ -168,6 +168,9 @@ extern pcap_packet *qring;
 extern volatile unsigned int readit;
 extern volatile unsigned int writeit;
 extern unsigned int qringmax;
+extern unsigned int qringusleep;
+extern unsigned int opt_preprocess_packets_qring_length;
+extern unsigned int opt_preprocess_packets_qring_usleep;
 extern int opt_pcapdump;
 extern int opt_id_sensor;
 extern int opt_destination_number_mode;
@@ -2121,66 +2124,34 @@ Call *process_packet(u_int64_t packet_number,
 		}
 
 		// parse SIP method 
-		if ((datalen > 5) && !(memmem(data, 6, "INVITE", 6) == 0)) {
+		if ((datalen > 5) && data[0] == 'I' && !(memmem(data, 6, "INVITE", 6) == 0)) {
 			if(verbosity > 2) 
 				 syslog(LOG_NOTICE,"SIP msg: INVITE\n");
 			sip_method = INVITE;
-		} else if ((datalen > 7) && !(memmem(data, 8, "REGISTER", 8) == 0)) {
+		} else if ((datalen > 7) && data[0] == 'R' && !(memmem(data, 8, "REGISTER", 8) == 0)) {
 			if(verbosity > 2) 
 				 syslog(LOG_NOTICE,"SIP msg: REGISTER\n");
 			sip_method = REGISTER;
 			if(opt_enable_fraud) {
 				fraudRegister(saddr, header->ts);
 			}
-		} else if ((datalen > 6) && !(memmem(data, 7, "MESSAGE", 7) == 0)) {
+		} else if ((datalen > 6) && data[0] == 'M' && !(memmem(data, 7, "MESSAGE", 7) == 0)) {
 			if(verbosity > 2) 
 				 syslog(LOG_NOTICE,"SIP msg: MESSAGE\n");
 			sip_method = MESSAGE;
-		} else if ((datalen > 2) && !(memmem(data, 3, "BYE", 3) == 0)) {
+		} else if ((datalen > 2) && data[0] == 'B' && !(memmem(data, 3, "BYE", 3) == 0)) {
 			if(verbosity > 2) 
 				 syslog(LOG_NOTICE,"SIP msg: BYE\n");
 			sip_method = BYE;
-		} else if ((datalen > 5) && !(memmem(data, 4, "INFO", 4) == 0)) {
+		} else if ((datalen > 3) && data[0] == 'I' && !(memmem(data, 4, "INFO", 4) == 0)) {
 			if(verbosity > 2) 
 				 syslog(LOG_NOTICE,"SIP msg: INFO\n");
 			sip_method = INFO;
-		} else if ((datalen > 5) && !(memmem(data, 6, "CANCEL", 6) == 0)) {
+		} else if ((datalen > 5) && data[0] == 'C' && !(memmem(data, 6, "CANCEL", 6) == 0)) {
 			if(verbosity > 2) 
 				 syslog(LOG_NOTICE,"SIP msg: CANCEL\n");
 			sip_method = CANCEL;
-		} else if ((datalen > 8) && !(memmem(data, 9, "SIP/2.0 2", 9) == 0)) {
-			if(verbosity > 2) 
-				 syslog(LOG_NOTICE,"SIP msg: 2XX\n");
-			sip_method = RES2XX;
-		} else if ((datalen > 9) && !(memmem(data, 10, "SIP/2.0 18", 10) == 0)) {
-			if(verbosity > 2) 
-				 syslog(LOG_NOTICE,"SIP msg: 18X\n");
-			sip_method = RES18X;
-		} else if ((datalen > 8) && !(memmem(data, 9, "SIP/2.0 3", 9) == 0)) {
-			if(verbosity > 2) 
-				 syslog(LOG_NOTICE,"SIP msg: 3XX\n");
-			sip_method = RES3XX;
-		} else if ((datalen > 10) && !(memmem(data, 11, "SIP/2.0 401", 11) == 0)) {
-			if(verbosity > 2) 
-				 syslog(LOG_NOTICE,"SIP msg: 401\n");
-			sip_method = RES401;
-		} else if ((datalen > 10) && !(memmem(data, 11, "SIP/2.0 403", 11) == 0)) {
-			if(verbosity > 2) 
-				 syslog(LOG_NOTICE,"SIP msg: 403\n");
-			sip_method = RES403;
-		} else if ((datalen > 8) && !(memmem(data, 9, "SIP/2.0 4", 9) == 0)) {
-			if(verbosity > 2) 
-				 syslog(LOG_NOTICE,"SIP msg: 4XX\n");
-			sip_method = RES4XX;
-		} else if ((datalen > 8) && !(memmem(data, 9, "SIP/2.0 5", 9) == 0)) {
-			if(verbosity > 2) 
-				 syslog(LOG_NOTICE,"SIP msg: 5XX\n");
-			sip_method = RES5XX;
-		} else if ((datalen > 8) && !(memmem(data, 9, "SIP/2.0 6", 9) == 0)) {
-			if(verbosity > 2) 
-				 syslog(LOG_NOTICE,"SIP msg: 6XX\n");
-			sip_method = RES6XX;
-		} else if ((datalen > 6) && !(memmem(data, 7, "OPTIONS", 9) == 0)) {
+		} else if ((datalen > 6) && data[0] == 'O' && !(memmem(data, 7, "OPTIONS", 7) == 0)) {
 			if(verbosity > 2) 
 				 syslog(LOG_NOTICE,"SIP msg: OPTIONS\n");
 			sip_method = OPTIONS;
@@ -2188,7 +2159,7 @@ Call *process_packet(u_int64_t packet_number,
 				save_live_packet(NULL, header, packet, saddr, source, daddr, dest, istcp, data, datalen, OPTIONS, 
 						 dlt, sensor_id);
 			}
-		} else if ((datalen > 8) && !(memmem(data, 9, "SUBSCRIBE", 9) == 0)) {
+		} else if ((datalen > 8) && data[0] == 'S' && data[1] == 'U' && !(memmem(data, 9, "SUBSCRIBE", 9) == 0)) {
 			if(verbosity > 2) 
 				 syslog(LOG_NOTICE,"SIP msg: SUBSCRIBE\n");
 			sip_method = SUBSCRIBE;
@@ -2196,11 +2167,56 @@ Call *process_packet(u_int64_t packet_number,
 				save_live_packet(NULL, header, packet, saddr, source, daddr, dest, istcp, data, datalen, SUBSCRIBE, 
 						 dlt, sensor_id);
 			}
-		} else {
+		} else if( (datalen > 8) && data[0] == 'S' && data[1] == 'I' && !(memmem(data, 8, "SIP/2.0 ", 8) == 0)){
+			switch(data[8]) {
+			case '2':
+				if(verbosity > 2) 
+					 syslog(LOG_NOTICE,"SIP msg: 2XX\n");
+				sip_method = RES2XX;
+				break;
+			case '1':
+				if ((datalen > 9) && data[9] == '8') {
+					if(verbosity > 2) 
+						 syslog(LOG_NOTICE,"SIP msg: 18X\n");
+					sip_method = RES18X;
+				}
+				break;
+			case '3':
+				if(verbosity > 2) 
+					 syslog(LOG_NOTICE,"SIP msg: 3XX\n");
+				sip_method = RES3XX;
+				break;
+			case '4':
+				if ((datalen > 10) && data[9] == '0' && data[10] == '1') {
+					if(verbosity > 2) 
+						 syslog(LOG_NOTICE,"SIP msg: 401\n");
+					sip_method = RES401;
+				} else if ((datalen > 10) && data[9] == '0' && data[10] == '3') {
+					if(verbosity > 2) 
+						 syslog(LOG_NOTICE,"SIP msg: 403\n");
+					sip_method = RES403;
+				} else {
+					if(verbosity > 2) 
+						 syslog(LOG_NOTICE,"SIP msg: 4XX\n");
+					sip_method = RES4XX;
+				}
+				break;
+			case '5':
+				if(verbosity > 2) 
+					 syslog(LOG_NOTICE,"SIP msg: 5XX\n");
+				sip_method = RES5XX;
+				break;
+			case '6':
+				if(verbosity > 2) 
+					 syslog(LOG_NOTICE,"SIP msg: 6XX\n");
+				sip_method = RES6XX;
+				break;
+			}
+		}
+		if(!sip_method) {
 			if(verbosity > 2) {
 				syslog(LOG_NOTICE,"SIP msg: 1XX or Unknown msg \n");
 			}
-			sip_method = 0;
 		}
 		strcpy(lastSIPresponse, "NO RESPONSE");
 		lastSIPresponseNum = 0;
@@ -3015,6 +3031,7 @@ endsip:
 	}
 
 rtpcheck:
+	if(data[0] == 0x80) {
 	if ((calls = calltable->hashfind_by_ip_port(daddr, dest, hash_d))){
 		++counter_rtp_packets;
 		// packet (RTP) by destination:port is already part of some stored call  
@@ -3323,6 +3340,7 @@ rtpcheck:
 		}
 		return NULL;
 	}
+	}
 
 	if(logPacketSipMethodCall_enable) {
 		logPacketSipMethodCall(packet_number, sip_method, lastSIPresponseNum, header, 
@@ -3539,7 +3557,7 @@ void *pcap_read_thread_func(void *arg) {
 				//printf("packets: [%u]\n", packets);
 				return NULL;
 			}
-			usleep(10000);
+			usleep(qringusleep);
 			continue;
 		};
 #endif
@@ -3551,7 +3569,7 @@ void *pcap_read_thread_func(void *arg) {
 				//printf("packets: [%u]\n", packets);
 				return NULL;
 			}
-			usleep(10000);
+			usleep(qringusleep);
 			continue;
 		} else {
 			pp = &(qring[readit % qringmax]);
@@ -4397,7 +4415,7 @@ inline void *_PreProcessPacket_outThreadFunction(void *arg) {
 }
 
 PreProcessPacket::PreProcessPacket() {
-	this->qringmax = 100;
+	this->qringmax = opt_preprocess_packets_qring_length;
 	this->readit = 0;
 	this->writeit = 0;
 	this->qring = new packet_parse_s*[this->qringmax];
@@ -4470,7 +4488,7 @@ void PreProcessPacket::push(u_int64_t packet_number,
 	if(this->qring[this->writeit]->isSip) {
 		this->qring[this->writeit]->hash[0] = 0;
 		this->qring[this->writeit]->hash[1] = 0;
-	} else {
+	} else if(data[0] == 0x80) {
 		this->qring[this->writeit]->hash[0] = tuplehash(saddr, source);
 		this->qring[this->writeit]->hash[1] = tuplehash(daddr, dest);
 	}
@@ -4493,29 +4511,31 @@ void *PreProcessPacket::outThreadFunction() {
 		if(this->qring[this->readit]->used == 1) {
 			int was_rtp = 0;
 			int voippacket = 0;
-			process_packet(this->qring[this->readit]->packet.packet_number,
-				       this->qring[this->readit]->packet.saddr, this->qring[this->readit]->packet.source, this->qring[this->readit]->packet.daddr, this->qring[this->readit]->packet.dest, 
-				       this->qring[this->readit]->packet.data, this->qring[this->readit]->packet.datalen, this->qring[this->readit]->packet.dataoffset,
-				       this->qring[this->readit]->packet.handle, &this->qring[this->readit]->packet.header, this->qring[this->readit]->packet.packet, 
-				       this->qring[this->readit]->packet.istcp, &was_rtp, this->qring[this->readit]->packet.header_ip, &voippacket, this->qring[this->readit]->packet.forceSip,
-				       this->qring[this->readit]->packet.block_store, this->qring[this->readit]->packet.block_store_index, this->qring[this->readit]->packet.dlt, this->qring[this->readit]->packet.sensor_id, 
+			packet_parse_s *_parse_packet = this->qring[this->readit];
+			packet_s *_packet = &_parse_packet->packet;
+			process_packet(_packet->packet_number,
+				       _packet->saddr, _packet->source, _packet->daddr, _packet->dest, 
+				       _packet->data, _packet->datalen, _packet->dataoffset,
+				       _packet->handle, &_packet->header, _packet->packet, 
+				       _packet->istcp, &was_rtp, _packet->header_ip, &voippacket, _packet->forceSip,
+				       _packet->block_store, _packet->block_store_index, _packet->dlt, _packet->sensor_id, 
 				       true, 0,
-				       &this->qring[this->readit]->parse, this->qring[this->readit]->sipDataLen, this->qring[this->readit]->isSip,
-				       this->qring[this->readit]->hash[0], this->qring[this->readit]->hash[1]);
-			if(this->qring[this->readit]->packet.block_store) {
-				this->qring[this->readit]->packet.block_store->unlock_packet(this->qring[this->readit]->packet.block_store_index);
+				       &_parse_packet->parse, _parse_packet->sipDataLen, _parse_packet->isSip,
+				       _parse_packet->hash[0], _parse_packet->hash[1]);
+			if(_packet->block_store) {
+				_packet->block_store->unlock_packet(_packet->block_store_index);
 			}
-			if(this->qring[this->readit]->packet.packetDelete) {
-				delete [] this->qring[this->readit]->packet.packet;
+			if(_packet->packetDelete) {
+				delete [] _packet->packet;
 			}
-			this->qring[this->readit]->used = 0;
+			_parse_packet->used = 0;
 			if((this->readit + 1) == this->qringmax) {
 				this->readit = 0;
 			} else {
 				this->readit++;
 			}
 		} else {
-			usleep(10);
+			usleep(opt_preprocess_packets_qring_usleep);
 		}
 	}
 	return(NULL);
