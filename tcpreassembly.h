@@ -752,6 +752,7 @@ public:
 		  pcap_block_store *block_store = NULL, int block_store_index = 0,
 		  pcap_t *handle = NULL, int dlt = 0, int sensor_id = 0);
 	void cleanup(bool all = false);
+	void cleanup_simple(bool all = false);
 	void setEnableHttpForceInit(bool enableHttpForceInit = true) {
 		this->enableHttpForceInit = enableHttpForceInit;
 	}
@@ -879,6 +880,7 @@ private:
 	FILE *log;
 	pstat_data threadPstatData[2];
 	u_long lastTimeLogErrExceededMaximumAttempts;
+	u_long _cleanupCounter;
 friend class TcpReassemblyLink;
 friend void *_TcpReassembly_threadFunction(void* arg);
 };

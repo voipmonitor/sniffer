@@ -1783,6 +1783,7 @@ TcpReassembly::TcpReassembly(eType type) {
 	this->ignoreTerminating = false;
 	memset(this->threadPstatData, 0, sizeof(this->threadPstatData));
 	this->lastTimeLogErrExceededMaximumAttempts = 0;
+	this->_cleanupCounter = 0;
 	if(opt_tcpreassembly_log[0]) {
 		this->log = fopen(opt_tcpreassembly_log, "at");
 		if(this->log) {
@@ -1795,7 +1796,11 @@ TcpReassembly::TcpReassembly(eType type) {
 
 TcpReassembly::~TcpReassembly() {
 	if(!this->enableCleanupThread || opt_pb_read_from_file[0]) {
-		this->cleanup(true);
+		if(this->enableCleanupThread) {
+			this->cleanup(true);
+		} else {
+			this->cleanup_simple(true);
+		}
 	}
 	if(this->log) {
 		this->addLog((string(" -- stop ") + sqlDateTimeString(getTimeMS()/1000)).c_str());
@@ -1808,6 +1813,9 @@ inline void *_TcpReassembly_threadFunction(void* arg) {
 }
 
 void TcpReassembly::preparePstatData() {
+	if(!this->enableCleanupThread) {
+		return;
+	}
 	if(this->threadPstatData[0].cpu_total_time) {
 		this->threadPstatData[1] = this->threadPstatData[0];
 	}
@@ -1815,6 +1823,9 @@ void TcpReassembly::preparePstatData() {
 }
 
 double TcpReassembly::getCpuUsagePerc(bool preparePstatData) {
+	if(!this->enableCleanupThread) {
+		return(-1);
+	}
 	if(preparePstatData) {
 		this->preparePstatData();
 	}
@@ -2080,11 +2091,9 @@ void TcpReassembly::push(pcap_pkthdr *header, iphdr2 *header_ip, u_char *packet,
 		*/
 		
 	}
-
 	if(!this->enableCleanupThread) {
-		static u_int32_t _counter;
-		if(!((_counter++) % 100)) {
-			this->cleanup();
+		if(!((_cleanupCounter++) % 100)) {
+			this->cleanup_simple();
 		}
 	}
 }
@@ -2229,6 +2238,69 @@ void TcpReassembly::cleanup(bool all) {
 		}
 		if(link) {
 			link->unlock_queue();
+		}
+	}
+	
+	if(this->doPrintContent) {
+		if(ENABLE_DEBUG(type, _debug_print_content)) {
+			this->printContent();
+		}
+		this->doPrintContent = false;
+	}
+	if(ENABLE_DEBUG(type, _debug_print_content_summary)) {
+		this->printContentSummary();
+	}
+}
+
+void TcpReassembly::cleanup_simple(bool all) {
+	if(all && ENABLE_DEBUG(type, _debug_cleanup)) {
+		cout << "cleanup simple all " << getTypeString() << endl;
+	}
+	if(all && opt_pb_read_from_file[0] && ENABLE_DEBUG(type, _debug_cleanup)) {
+		cout << "COUNT REST LINKS " 
+		     << getTypeString(true) << ": "
+		     << this->links.size() << endl;
+	}
+	map<TcpReassemblyLink_id, TcpReassemblyLink*>::iterator iter;
+	for(iter = this->links.begin(); iter != this->links.end(); ) {
+		u_int64_t act_time = this->act_time_from_header + getTimeMS() - this->last_time;
+		TcpReassemblyLink *link = iter->second;
+		bool final = link->last_packet_at_from_header &&
+			     act_time > link->last_packet_at_from_header + 2 * 60 * 1000;
+		if(all || final ||
+		   (link->last_packet_at_from_header &&
+		    act_time > link->last_packet_at_from_header + 5 * 1000 &&
+		    link->last_packet_at_from_header > link->last_packet_process_cleanup_at)) {
+			int countDataStream = link->okQueue(all || final ? 2 : 1, ENABLE_DEBUG(this->type, _debug_check_ok));
+			if(ENABLE_DEBUG(this->getType(), _debug_check_ok)) {
+				cout << endl;
+			}
+			if(ENABLE_DEBUG(this->getType(), _debug_rslt)) {
+				cout << " -- RSLT: ";
+				if(countDataStream == 0) {
+					if(!link->queue.size()) {
+						cout << "EMPTY";
+					} else {
+						cout << "ERROR ";
+					}
+				} else if(countDataStream < 0) {
+					cout << "ERROR " << countDataStream;
+				} else {
+					cout << "OK";
+				}
+				cout << " " << link->port_src << " / " << link->port_dst;
+				cout << endl;
+			}
+			if(countDataStream > 0) {
+				link->complete(all || final, true, false);
+			}
+		}
+		if(all || final) {
+			delete link;
+			link = NULL;
+			this->links.erase(iter++);
+		} else {
+			iter++;
 		}
 	}
 	
