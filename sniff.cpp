@@ -3031,7 +3031,7 @@ endsip:
 	}
 
 rtpcheck:
-	if(data[0] == 0x80) {
+	if((htons(*(unsigned int*)data) & 0xC000) == 0x8000) {
 	if ((calls = calltable->hashfind_by_ip_port(daddr, dest, hash_d))){
 		++counter_rtp_packets;
 		// packet (RTP) by destination:port is already part of some stored call  
@@ -4488,7 +4488,7 @@ void PreProcessPacket::push(u_int64_t packet_number,
 	if(this->qring[this->writeit]->isSip) {
 		this->qring[this->writeit]->hash[0] = 0;
 		this->qring[this->writeit]->hash[1] = 0;
-	} else if(data[0] == 0x80) {
+	} else if((htons(*(unsigned int*)data) & 0xC000) == 0x8000) {
 		this->qring[this->writeit]->hash[0] = tuplehash(saddr, source);
 		this->qring[this->writeit]->hash[1] = tuplehash(daddr, dest);
 	}
