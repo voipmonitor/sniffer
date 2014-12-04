@@ -769,6 +769,7 @@ bool TcpReassemblyLink::push_normal(
 	case STATE_CRAZY:
 		return(false);
 	}
+	bool runCompleteAfterZerodataAck = false;
 	if(state == STATE_SYN_OK || 
 	   state == STATE_SYN_FORCE_OK ||
 	   (state >= STATE_RESET &&
@@ -783,54 +784,57 @@ bool TcpReassemblyLink::push_normal(
 				cout << " -- DATA" << endl;
 			}
 		} else {
+			TcpReassemblyStream *prevStreamByLastAck = this->queue_by_ack[this->last_ack];
 			if(this->last_ack && header_tcp.ack_seq != this->last_ack) {
-				TcpReassemblyStream *prevStreamByLastAck = this->queue_by_ack[this->last_ack];
 				if(prevStreamByLastAck && !prevStreamByLastAck->last_seq &&
 				   prevStreamByLastAck->direction == direction) {
 					prevStreamByLastAck->last_seq = header_tcp.seq;
 				}
 			}
+			if(reassembly->enableAllCompleteAfterZerodataAck &&
+			   prevStreamByLastAck &&
+			   prevStreamByLastAck->direction != direction &&
+			   header_tcp.ack) {
+				runCompleteAfterZerodataAck = true;
+			}
 		}
 		rslt = true;
 	}
-	
-	if(reassembly->type == TcpReassembly::ssl && this->queue.size()) {
+	if(!reassembly->enableCleanupThread) {
 		bool final = this->state == STATE_RESET || this->state == STATE_CLOSE;
-		int countDataStream = this->okQueue(final ? 2 : 1, ENABLE_DEBUG(reassembly->type, _debug_check_ok));
-		if(countDataStream > 0) {
-			this->complete(final, true, false);
-		}
-	}
-	
-	if(!opt_tcpreassembly_thread &&
-	   (this->state == STATE_RESET || this->state == STATE_CLOSE)) {
-		if(ENABLE_DEBUG(reassembly->getType(), _debug_check_ok) && this->queue.size()) {
-			cout << " ";
-		}
-		int rslt_check_ok = this->okQueue(0, ENABLE_DEBUG(reassembly->getType(), _debug_check_ok));
-		if(ENABLE_DEBUG(reassembly->getType(), _debug_check_ok) && this->queue.size()) {
-			cout << endl;
-		}
-		if(ENABLE_DEBUG(reassembly->getType(), _debug_rslt)) {
-			cout << " -- RSLT: ";
-			if(rslt_check_ok <= 0) {
-				if(!this->queue.size()) {
-					cout << "EMPTY";
-				} else {
-					cout << "ERRRRRRRRRRRRRRRROOOOOORRRRRRRRRR";
-					if(this->rst) {
-						cout << " - RST";
-					}
-				}
-			} else {
-				cout << "OK";
+		if(this->queue.size()) {
+			if(ENABLE_DEBUG(reassembly->getType(), _debug_check_ok)) {
+				cout << " ";
 			}
-			cout << " " << this->port_src << " / " << this->port_dst;
-			cout << endl;
-		}
-		if(rslt_check_ok > 0) {
-			this->complete();
-			this->state = STATE_CLOSED;
+			int countDataStream = this->okQueue(final || runCompleteAfterZerodataAck ? 2 : 1, ENABLE_DEBUG(reassembly->type, _debug_check_ok));
+			if(ENABLE_DEBUG(reassembly->getType(), _debug_check_ok)) {
+				cout << endl;
+			}
+			if(ENABLE_DEBUG(reassembly->getType(), _debug_rslt)) {
+				cout << " -- RSLT: ";
+				if(countDataStream == 0) {
+					if(!this->queue.size()) {
+						cout << "EMPTY";
+					} else {
+						cout << "ERROR ";
+						if(this->rst) {
+							cout << " - RST";
+						}
+					}
+				} else if(countDataStream < 0) {
+					cout << "ERROR " << countDataStream;
+				} else {
+					cout << "OK";
+				}
+				cout << " " << this->port_src << " / " << this->port_dst;
+				cout << endl;
+			}
+			if(countDataStream > 0) {
+				this->complete(final || runCompleteAfterZerodataAck, true, false);
+				if(final) {
+					this->state = STATE_CLOSED;
+				}
+			}
 		}
 	}
 	return(rslt);
@@ -931,7 +935,7 @@ bool TcpReassemblyLink::push_crazy(
 	if(!this->created_at_from_header) {
 		this->created_at_from_header = this->last_packet_at_from_header;
 	}
-	if(!opt_tcpreassembly_thread &&
+	if(!reassembly->enableCleanupThread &&
 	   (this->rst || this->fin_to_dest || this->fin_to_source) &&
 	   !this->link_is_ok) {
 		bool _cout = false;
@@ -1451,9 +1455,26 @@ void TcpReassemblyLink::complete_normal(bool final, bool lockQueue) {
 				reassemblyData = NULL;
 			}
 			for(size_t i = 0; i < countIgnore + countData + countRequest + countResponse; i++) {
-				this->ok_streams[0]->is_ok = false;
-				this->ok_streams[0]->completed_finally = true;
-				this->ok_streams.erase(this->ok_streams.begin());
+				if(reassembly->enableDestroyStreamsInComplete) {
+					TcpReassemblyStream *stream = this->ok_streams[0];
+					this->ok_streams.erase(this->ok_streams.begin());
+					this->queue.erase(this->queue.begin());
+					this->queue_by_ack.erase(stream->ack);
+					if(stream->direction == TcpReassemblyStream::DIRECTION_TO_DEST) {
+						if(stream->first_seq == this->first_seq_to_dest) {
+							this->first_seq_to_dest = stream->max_next_seq;
+						}
+					} else {
+						if(stream->first_seq == this->first_seq_to_source) {
+							this->first_seq_to_source = stream->max_next_seq;
+						}
+					}
+					delete stream;
+				} else {
+					this->ok_streams[0]->is_ok = false;
+					this->ok_streams[0]->completed_finally = true;
+					this->ok_streams.erase(this->ok_streams.begin());
+				}
 			}
 		} else {
 			if(reassemblyData) {
@@ -1749,6 +1770,9 @@ TcpReassembly::TcpReassembly(eType type) {
 	this->enableCrazySequence = false;
 	this->enableWildLink = false;
 	this->enableIgnorePairReqResp = false;
+	this->enableDestroyStreamsInComplete = false;
+	this->enableAllCompleteAfterZerodataAck = false;
+	this->enableCleanupThread = false;
 	this->dataCallback = NULL;
 	this->act_time_from_header = 0;
 	this->last_time = 0;
@@ -1759,15 +1783,6 @@ TcpReassembly::TcpReassembly(eType type) {
 	this->ignoreTerminating = false;
 	memset(this->threadPstatData, 0, sizeof(this->threadPstatData));
 	this->lastTimeLogErrExceededMaximumAttempts = 0;
-	
-	if(type != ssl) {
-	
-	if(opt_tcpreassembly_thread) {
-		this->createThread();
-	}
-	
-	}
-	
 	if(opt_tcpreassembly_log[0]) {
 		this->log = fopen(opt_tcpreassembly_log, "at");
 		if(this->log) {
@@ -1779,7 +1794,7 @@ TcpReassembly::TcpReassembly(eType type) {
 }
 
 TcpReassembly::~TcpReassembly() {
-	if(!opt_tcpreassembly_thread || opt_pb_read_from_file[0]) {
+	if(!this->enableCleanupThread || opt_pb_read_from_file[0]) {
 		this->cleanup(true);
 	}
 	if(this->log) {
@@ -1814,7 +1829,9 @@ double TcpReassembly::getCpuUsagePerc(bool preparePstatData) {
 }
 
 void TcpReassembly::createThread() {
-	pthread_create(&this->threadHandle, NULL, _TcpReassembly_threadFunction, this);
+	if(!this->threadHandle) {
+		pthread_create(&this->threadHandle, NULL, _TcpReassembly_threadFunction, this);
+	}
 }
 
 void* TcpReassembly::threadFunction(void* ) {
@@ -2064,7 +2081,7 @@ void TcpReassembly::push(pcap_pkthdr *header, iphdr2 *header_ip, u_char *packet,
 		
 	}
 
-	if(!opt_tcpreassembly_thread) {
+	if(!this->enableCleanupThread) {
 		static u_int32_t _counter;
 		if(!((_counter++) % 100)) {
 			this->cleanup();
@@ -2141,7 +2158,7 @@ void TcpReassembly::cleanup(bool all) {
 		    (link->last_packet_at_from_header &&
 		     act_time > link->last_packet_at_from_header + 5 * 1000 &&
 		     link->last_packet_at_from_header > link->last_packet_process_cleanup_at)) &&
-		   (link->link_is_ok < 2 || opt_tcpreassembly_thread)) {
+		   (link->link_is_ok < 2 || this->enableCleanupThread)) {
 		 
 			/*
 			if(link->port_src == 53442 || link->port_dst == 53442) {
@@ -2173,7 +2190,15 @@ void TcpReassembly::cleanup(bool all) {
 					} else if(countDataStream > 0) {
 						cout << "RSLT: ONLY REQUEST (" << countDataStream << ")";
 					} else {
-						cout << "RSLT: ERRRRRRRROR";
+						if(countDataStream == 0) {
+							if(!link->queue.size()) {
+								cout << "EMPTY";
+							} else {
+								cout << "ERROR";
+							}
+						} else {
+							cout << "ERROR " << countDataStream;
+						}
 					}
 					_cout = true;
 				}

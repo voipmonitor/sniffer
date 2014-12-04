@@ -66,7 +66,7 @@ void SslData::processData(u_int32_t ip_src, u_int32_t ip_dst,
 			SslHeader header(ssl_data + ssl_data_offset, ssl_datalen - ssl_data_offset);
 			if(header.length && header.length + 5 <= ssl_datalen - ssl_data_offset) {
 				if(debugSave) {
-					cout << "SSL header "
+					cout << "SSL HEADER "
 					     << "content type: " << (int)header.content_type << " / "
 					     << "version: " << hex << header.version << dec << " / "
 					     << "length: " << header.length

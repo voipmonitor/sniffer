@@ -3805,6 +3805,7 @@ int main(int argc, char *argv[]) {
 			tcpReassemblyHttp = new TcpReassembly(TcpReassembly::http);
 			tcpReassemblyHttp->setEnableHttpForceInit();
 			tcpReassemblyHttp->setEnableCrazySequence();
+			tcpReassemblyHttp->setEnableCleanupThread();
 			httpData = new HttpData;
 			tcpReassemblyHttp->setDataCallback(httpData);
 		}
@@ -3818,15 +3819,17 @@ int main(int argc, char *argv[]) {
 		}
 		if(setWebrtcPorts) {
 			tcpReassemblyWebrtc = new TcpReassembly(TcpReassembly::webrtc);
-			tcpReassemblyWebrtc->setEnableIgnorePairReqResp(true);
-			tcpReassemblyWebrtc->setEnableWildLink(true);
+			tcpReassemblyWebrtc->setEnableIgnorePairReqResp();
+			tcpReassemblyWebrtc->setEnableWildLink();
 			webrtcData = new WebrtcData;
 			tcpReassemblyWebrtc->setDataCallback(webrtcData);
 		}
 	}
 	if(opt_enable_ssl && ssl_ipport.size()) {
 		tcpReassemblySsl = new TcpReassembly(TcpReassembly::ssl);
-		tcpReassemblySsl->setEnableIgnorePairReqResp(true);
+		tcpReassemblySsl->setEnableIgnorePairReqResp();
+		tcpReassemblySsl->setEnableDestroyStreamsInComplete();
+		tcpReassemblySsl->setEnableAllCompleteAfterZerodataAck();
 		sslData = new SslData;
 		tcpReassemblySsl->setDataCallback(sslData);
 	}

@@ -764,6 +764,16 @@ public:
 	void setEnableIgnorePairReqResp(bool enableIgnorePairReqResp = true) {
 		this->enableIgnorePairReqResp = enableIgnorePairReqResp;
 	}
+	void setEnableDestroyStreamsInComplete(bool enableDestroyStreamsInComplete = true) {
+		this->enableDestroyStreamsInComplete = enableDestroyStreamsInComplete;
+	}
+	void setEnableAllCompleteAfterZerodataAck(bool enableAllCompleteAfterZerodataAck = true) {
+		this->enableAllCompleteAfterZerodataAck = enableAllCompleteAfterZerodataAck;
+	}
+	void setEnableCleanupThread(bool enableCleanupThread = true) {
+		this->enableCleanupThread = enableCleanupThread;
+		this->createThread();
+	}
 	void setDataCallback(TcpReassemblyProcessData *dataCallback) {
 		this->dataCallback = dataCallback;
 	}
@@ -855,6 +865,9 @@ private:
 	bool enableCrazySequence;
 	bool enableWildLink;
 	bool enableIgnorePairReqResp;
+	bool enableDestroyStreamsInComplete;
+	bool enableAllCompleteAfterZerodataAck;
+	bool enableCleanupThread;
 	TcpReassemblyProcessData *dataCallback;
 	u_int64_t act_time_from_header;
 	u_int64_t last_time;
