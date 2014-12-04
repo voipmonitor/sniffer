@@ -1269,12 +1269,14 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 	double t2cpu = this->getCpuUsagePerc(true, true);
 	if(t2cpu >= 0) {
 		outStrStat << "t2CPU[" << setprecision(1) << t2cpu;
-		if (opt_rrd) rrdtCPU_t2 = t2cpu;
 		if(preProcessPacket) {
 			double t2cpu_preprocess_packet_out_thread = preProcessPacket->getCpuUsagePerc(true);
 			if(t2cpu_preprocess_packet_out_thread >= 0) {
 				outStrStat << "/" << setprecision(1) << t2cpu_preprocess_packet_out_thread;
+				if (opt_rrd) rrdtCPU_t2 = t2cpu_preprocess_packet_out_thread;
 			}
+		} else {
+			if (opt_rrd) rrdtCPU_t2 = t2cpu;
 		}
 		outStrStat << "%] ";
 	}
