@@ -146,6 +146,7 @@ struct sVerbose {
 	int skinny;
 	int fraud;
 	int disable_bt_sighandler;
+	int tcp_debug_port;
 };
 
 #ifndef GLOBAL_DECLARATION

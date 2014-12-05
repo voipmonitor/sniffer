@@ -434,7 +434,7 @@ public:
 	void push(TcpReassemblyStream_packet packet);
 	int ok(bool crazySequence = false, bool enableSimpleCmpMaxNextSeq = false, u_int32_t maxNextSeq = 0,
 	       bool enableCheckCompleteContent = false, TcpReassemblyStream *prevHttpStream = NULL, bool enableDebug = false,
-	       int forceFirstSeq = 0);
+	       int forceFirstSeq = 0, bool ignorePsh = false);
 	bool ok2_ec(u_int32_t nextAck, bool enableDebug = false);
 	u_char *complete(u_int32_t *datalen, timeval *time, bool check = false, bool unlockPackets = true,
 			 size_t startIndex = 0, size_t *endIndex = NULL, bool breakIfPsh = false);
@@ -467,7 +467,6 @@ private:
 	bool completed_finally;
 	bool exists_data;
 	TcpReassemblyDataItem complete_data;
-	vector<TcpReassemblyDataItem> complete_data_vector;
 	eHttpType http_type;
 	u_int32_t http_header_length;
 	u_int32_t http_content_length;
@@ -594,14 +593,16 @@ public:
 		  u_char *data, u_int32_t datalen, u_int32_t datacaplen,
 		  pcap_block_store *block_store, int block_store_index,
 		  bool lockQueue);
-	int okQueue(int final = 0, bool enableDebug = false) {
+	int okQueue(int final = 0, bool enableDebug = false, 
+		    bool checkCompleteContent = false, bool ignorePsh = false) {
 		if(this->state == STATE_CRAZY) {
 			return(this->okQueue_crazy(final, enableDebug));
 		} else {
-			return(this->okQueue_normal(final, enableDebug));
+			return(this->okQueue_normal(final, enableDebug, checkCompleteContent, ignorePsh));
 		}
 	}
-	int okQueue_normal(int final = 0, bool enableDebug = false);
+	int okQueue_normal(int final = 0, bool enableDebug = false, 
+			   bool checkCompleteContent = false, bool ignorePsh = false);
 	int okQueue_crazy(int final = 0, bool enableDebug = false);
 	void complete(bool final = false, bool eraseCompletedStreams = false, bool lockQueue = true) {
 		if(this->state == STATE_CRAZY) {

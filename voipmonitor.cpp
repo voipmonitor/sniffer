@@ -2887,6 +2887,8 @@ int main(int argc, char *argv[]) {
 						else if(verbparams[i] == "skinny")			sverb.skinny = 1;
 						else if(verbparams[i] == "fraud")			sverb.fraud = 1;
 						else if(verbparams[i] == "disable_bt_sighandler")	sverb.disable_bt_sighandler = 1;
+						else if(verbparams[i].substr(0, 15) == "tcp_debug_port=")
+													sverb.tcp_debug_port = atoi(verbparams[i].c_str() + 15);
 					}
 				} }
 				break;
@@ -4639,11 +4641,6 @@ void test() {
 	} break;
 	case 5:
 		test_alloc_speed();
-		break;
-	case 6:
-		for(u_int64_t i = 0; i < 1000000 / 100; i++) {
-			usleep(100);
-		}
 		break;
 	case 10:
 		{

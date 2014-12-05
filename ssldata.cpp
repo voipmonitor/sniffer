@@ -25,9 +25,14 @@ extern PreProcessPacket *preProcessPacket;
 
 SslData::SslData() {
 	this->counterProcessData = 0;
+	this->remainData = NULL;
+	this->remainDataLength = 0;
 }
 
 SslData::~SslData() {
+	if(this->remainData) {
+		delete remainData;
+	}
 }
 
 void SslData::processData(u_int32_t ip_src, u_int32_t ip_dst,
@@ -58,8 +63,22 @@ void SslData::processData(u_int32_t ip_src, u_int32_t ip_dst,
 			}
 			cout << endl;
 		}
-		u_char *ssl_data = dataItem->getData();
-		u_int32_t ssl_datalen = dataItem->getDatalen();
+		u_char *ssl_data;
+		u_int32_t ssl_datalen;
+		bool alloc_ssl_data = false;
+		if(this->remainData && this->remainDataLength) {
+			ssl_datalen = this->remainDataLength + dataItem->getDatalen();
+			ssl_data = new u_char[ssl_datalen];
+			memcpy(ssl_data, this->remainData, this->remainDataLength);
+			memcpy(ssl_data + this->remainDataLength, dataItem->getData(), dataItem->getDatalen());
+			delete [] this->remainData;
+			this->remainData = NULL;
+			this->remainDataLength = 0;
+			alloc_ssl_data = true;
+		} else {
+			ssl_data = dataItem->getData();
+			ssl_datalen = dataItem->getDatalen();
+		}
 		u_int32_t ssl_data_offset = 0;
 		while(ssl_data_offset < ssl_datalen &&
 		      ssl_datalen - ssl_data_offset >= 5) {
@@ -131,6 +150,15 @@ void SslData::processData(u_int32_t ip_src, u_int32_t ip_dst,
 			} else {
 				break;
 			}
+		}
+		if(ssl_data_offset < ssl_datalen) {
+			this->remainDataLength = ssl_datalen - ssl_data_offset;
+			this->remainData =  new u_char[this->remainDataLength];
+			memcpy(this->remainData, ssl_data + ssl_data_offset, this->remainDataLength);
+			cout << "REMAIN DATA LENGTH: " << ssl_datalen - ssl_data_offset << endl;
+		}
+		if(alloc_ssl_data) {
+			delete [] ssl_data;
 		}
 	}
 	delete data;

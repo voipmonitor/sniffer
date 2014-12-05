@@ -38,7 +38,6 @@ bool _debug_print_content_summary = true;
 bool _debug_print_content = false;
 u_int16_t debug_counter = 0;
 u_int16_t debug_limit_counter = 0;
-u_int16_t debug_port = 0;
 u_int32_t debug_seq = 0;
 
 
@@ -74,7 +73,7 @@ void TcpReassemblyStream::push(TcpReassemblyStream_packet packet) {
 
 int TcpReassemblyStream::ok(bool crazySequence, bool enableSimpleCmpMaxNextSeq, u_int32_t maxNextSeq,
 			    bool enableCheckCompleteContent, TcpReassemblyStream *prevHttpStream, bool enableDebug,
-			    int forceFirstSeq) {
+			    int forceFirstSeq, bool ignorePsh) {
 	if(this->is_ok) {
 		return(1);
 	}
@@ -127,23 +126,43 @@ int TcpReassemblyStream::ok(bool crazySequence, bool enableSimpleCmpMaxNextSeq, 
 					   link->reassembly->getType() == TcpReassembly::http) {
 						this->saveCompleteData(false, true, prevHttpStream);
 					}
-					if(this->http_ok) {
-						this->is_ok = true;
-						if(opt_tcpreassembly_pb_lock && ENABLE_UNLOCK_PACKET_IN_OK) {
-							this->unlockPackets();
-						}
-						this->detect_ok_max_next_seq = next_seq;
-						return(1);
-					} else {
-						u_int32_t datalen = this->complete_data.getDatalen();
-						this->clearCompleteData();
-						if(this->http_content_length > 100000 ||
-						   (!this->http_content_length && datalen > 100000)) {
-							if(enableDebug) {
-								cout << " --- ERR - reassembly failed - maximum size of the data exceeded";
+					switch(link->reassembly->getType()) {
+					case TcpReassembly::http:
+						if(this->http_ok) {
+							this->is_ok = true;
+							if(opt_tcpreassembly_pb_lock && ENABLE_UNLOCK_PACKET_IN_OK) {
+								this->unlockPackets();
 							}
-							return(0);
+							this->detect_ok_max_next_seq = next_seq;
+							return(1);
+						} else {
+							u_int32_t datalen = this->complete_data.getDatalen();
+							this->clearCompleteData();
+							if(this->http_content_length > 100000 ||
+							   (!this->http_content_length && datalen > 100000)) {
+								if(enableDebug) {
+									cout << " --- ERR - reassembly failed - maximum size of the data exceeded";
+								}
+								return(0);
+							}
 						}
+						break;
+					case TcpReassembly::webrtc:
+						if(checkOkWebrtcData(this->complete_data.getData(), this->complete_data.getDatalen())) {
+							this->detect_ok_max_next_seq = next_seq;
+							return(1);
+						} else {
+							this->clearCompleteData();
+						}
+						break;
+					case TcpReassembly::ssl:
+						if(checkOkSslData(this->complete_data.getData(), this->complete_data.getDatalen())) {
+							this->detect_ok_max_next_seq = next_seq;
+							return(1);
+						} else {
+							this->clearCompleteData();
+						}
+						break;
 					}
 				}
 				this->queue[this->ok_packets.back()[0]].queue[this->ok_packets.back()[1]].state = TcpReassemblyStream_packet::CHECK;
@@ -158,7 +177,8 @@ int TcpReassemblyStream::ok(bool crazySequence, bool enableSimpleCmpMaxNextSeq, 
 				     (this->last_seq && next_seq == this->last_seq - 1) ||
 				     (enableSimpleCmpMaxNextSeq && next_seq == this->max_next_seq) ||
 				     (!crazySequence && next_seq == this->max_next_seq && next_seq == this->getLastSeqFromNextStream()))) {
-					if(!this->queue[this->ok_packets.back()[0]].queue[this->ok_packets.back()[1]].header_tcp.psh) {
+					if(!this->queue[this->ok_packets.back()[0]].queue[this->ok_packets.back()[1]].header_tcp.psh && 
+					   !ignorePsh) {
 						waitForPsh = true;
 					} else {
 						if(!waitForPsh && this->_force_wait_for_next_psh) {
@@ -189,7 +209,7 @@ int TcpReassemblyStream::ok(bool crazySequence, bool enableSimpleCmpMaxNextSeq, 
 				}
 			} else {
 				if(enableDebug) {
-					cout << " --- ERR - reassembly failed (3)";
+					cout << " --- ERR - reassembly failed (3 last seq: " << this->last_seq << ")";
 				}
 				return(0);
 			}
@@ -291,12 +311,27 @@ u_char *TcpReassemblyStream::complete(u_int32_t *datalen, timeval *time, bool ch
 			*datalen += PACKET_DATALEN(packet.datalen, packet.datacaplen);
 			lastNextSeq = this->ok_packets[i][1];
 		}
-		if(breakIfPsh && packet.header_tcp.psh && 
-		   (link->reassembly->getType() == TcpReassembly::webrtc ?
-		     checkOkWebrtcHttpData(data, *datalen) || checkOkWebrtcData(data, *datalen) :
-		    link->reassembly->getType() == TcpReassembly::ssl ?
-		     checkOkSslData(data, *datalen) :
-		     true)) {
+		bool _break = false;
+		switch(link->reassembly->getType()) {
+		case TcpReassembly::http:
+			if(breakIfPsh && packet.header_tcp.psh) {
+				_break = true;
+			}
+			break;
+		case TcpReassembly::webrtc:
+			if(breakIfPsh && packet.header_tcp.psh &&
+			   (checkOkWebrtcHttpData(data, *datalen) || checkOkWebrtcData(data, *datalen))) {
+				_break = true;
+			}
+			break;
+		case TcpReassembly::ssl:
+			if(breakIfPsh && packet.header_tcp.psh &&
+			   checkOkSslData(data, *datalen)) {
+				_break = true;
+			}
+			break;
+		}
+		if(_break) {
 			break;
 		}
 	}
@@ -379,23 +414,10 @@ bool TcpReassemblyStream::saveCompleteData(bool unlockPackets, bool check, TcpRe
 				break;
 			case TcpReassembly::webrtc:
 			case TcpReassembly::ssl:
-				{
-				size_t index = 0;
-				bool ok = false;
-				do {
-					data = this->complete(&datalen, &time, check, unlockPackets,
-							      index, &index, true);
-					if(data) {
-						TcpReassemblyDataItem dataItem;
-						dataItem.setDataTime(data, datalen, time, false);
-						this->complete_data_vector.push_back(dataItem);
-						++index;
-						ok = true;
-					}
-				} while(data);
-				if(ok) {
+				data = this->complete(&datalen, &time, check, unlockPackets);
+				if(data) {
+					this->complete_data.setDataTime(data, datalen, time, false);
 					return(true);
-				}
 				}
 				break;
 			}
@@ -797,6 +819,10 @@ bool TcpReassemblyLink::push_normal(
 								TcpReassemblyStream::DIRECTION_TO_SOURCE :
 								TcpReassemblyStream::DIRECTION_TO_DEST, 
 							 header_tcp.ack_seq);
+					this->setLastSeq(direction == TcpReassemblyStream::DIRECTION_TO_DEST ?
+								TcpReassemblyStream::DIRECTION_TO_DEST :
+								TcpReassemblyStream::DIRECTION_TO_SOURCE, 
+							 header_tcp.seq);
 					runCompleteAfterZerodataAck = true;
 				} else if(prevStreamByLastAck &&
 					 prevStreamByLastAck->direction != direction &&
@@ -813,7 +839,8 @@ bool TcpReassemblyLink::push_normal(
 			if(ENABLE_DEBUG(reassembly->getType(), _debug_check_ok)) {
 				cout << " ";
 			}
-			int countDataStream = this->okQueue(final || runCompleteAfterZerodataAck ? 2 : 1, ENABLE_DEBUG(reassembly->type, _debug_check_ok));
+			int countDataStream = this->okQueue(final || runCompleteAfterZerodataAck ? 2 : 1, ENABLE_DEBUG(reassembly->type, _debug_check_ok),
+							    false, true);
 			if(ENABLE_DEBUG(reassembly->getType(), _debug_check_ok)) {
 				cout << endl;
 			}
@@ -831,7 +858,7 @@ bool TcpReassemblyLink::push_normal(
 				} else if(countDataStream < 0) {
 					cout << "empty";
 				} else {
-					cout << "OK";
+					cout << "OK (" << countDataStream << ")";
 				}
 				cout << " " << this->port_src << " / " << this->port_dst;
 				cout << endl;
@@ -1131,21 +1158,24 @@ void TcpReassemblyLink::cleanup(u_int64_t act_time) {
 
 void TcpReassemblyLink::setLastSeq(TcpReassemblyStream::eDirection direction, 
 				   u_int32_t lastSeq) {
-	int index = this->queue.size();
-	if(index > 0 && this->queue[index - 1]->direction == direction) {
-		index = index - 1;
-	} else if(index > 1 && this->queue[index - 2]->direction == direction) { 
-		index = index - 2;
-	} else {
+	int index = -1;
+	for(int i = this->queue.size() - 1; i >=0; i--) {
+		if(this->queue[i]->direction == direction &&
+		   this->queue[i]->max_next_seq == lastSeq) {
+			index = i;
+		}
+	}
+	if(index < 0) {
 		return;
 	}
 	this->queue[index]->last_seq = lastSeq;
 	if(ENABLE_DEBUG(reassembly->getType(), _debug_packet)) {
-		cout << " -- set last seq: " << lastSeq << endl; 
+		cout << " -- set last seq: " << lastSeq << " for ack: " << this->queue[index]->ack << endl; 
 	}
 }
 
-int TcpReassemblyLink::okQueue_normal(int final, bool enableDebug) {
+int TcpReassemblyLink::okQueue_normal(int final, bool enableDebug, 
+				      bool checkCompleteContent, bool ignorePsh) {
 	if(enableDebug) {
 		cout << "call okQueue_normal - port: " << this->port_src 
 		     << " / size: " << this->queue.size()
@@ -1169,8 +1199,9 @@ int TcpReassemblyLink::okQueue_normal(int final, bool enableDebug) {
 		int rslt = this->queue[i]->ok(false, 
 					      i == size - 1 && (finOrRst || final == 2), 
 					      i == size - 1 ? 0 : this->queue[i + 1]->max_next_seq,
-					      false, NULL, enableDebug,
-					      this->forceOk && i == 0 ? this->queue[0]->min_seq : 0);
+					      checkCompleteContent, NULL, enableDebug,
+					      this->forceOk && i == 0 ? this->queue[0]->min_seq : 0, 
+					      ignorePsh);
 		if(rslt <= 0) {
 			if(i == 0 && this->forceOk) {
 				// skip bad first stream
@@ -1430,26 +1461,16 @@ void TcpReassemblyLink::complete_normal(bool final, bool lockQueue) {
 						++countResponse;
 					}
 				}
-				for(size_t i = 0; 
-				    i < (stream->complete_data_vector.size() ? stream->complete_data_vector.size() : 1);
-				    i++) {
-					TcpReassemblyDataItem *dataItem;
-					if(stream->complete_data_vector.size()) {
-						dataItem = &stream->complete_data_vector[i];
+				u_char *data = stream->complete_data.getData();
+				u_int32_t datalen = stream->complete_data.getDatalen();
+				timeval time = stream->complete_data.getTime();
+				if(reassembly->enableIgnorePairReqResp) {
+					reassemblyData->addData(data, datalen, time, stream->ack, (TcpReassemblyDataItem::eDirection)stream->direction);
+				} else {
+					if(direction == TcpReassemblyStream::DIRECTION_TO_DEST) {
+						reassemblyData->addRequest(data, datalen, time, stream->ack);
 					} else {
-						dataItem = &stream->complete_data;
-					}
-					u_char *data = dataItem->getData();
-					u_int32_t datalen = dataItem->getDatalen();
-					timeval time = dataItem->getTime();
-					if(reassembly->enableIgnorePairReqResp) {
-						reassemblyData->addData(data, datalen, time, stream->ack, (TcpReassemblyDataItem::eDirection)stream->direction);
-					} else {
-						if(direction == TcpReassemblyStream::DIRECTION_TO_DEST) {
-							reassemblyData->addRequest(data, datalen, time, stream->ack);
-						} else {
-							reassemblyData->addResponse(data, datalen, time, stream->ack);
-						}
+						reassemblyData->addResponse(data, datalen, time, stream->ack);
 					}
 				}
 			} else {
@@ -1916,8 +1937,8 @@ void TcpReassembly::push(pcap_pkthdr *header, iphdr2 *header_ip, u_char *packet,
 	header_tcp.ack_seq = htonl(header_tcp.ack_seq);
 	u_int32_t next_seq = header_tcp.seq + datalen;
 	
-	if(debug_port) {
-		if(header_tcp.source != debug_port && header_tcp.dest != debug_port) {
+	if(sverb.tcp_debug_port) {
+		if(header_tcp.source != sverb.tcp_debug_port && header_tcp.dest != sverb.tcp_debug_port) {
 			return;
 		}
 	}
@@ -2285,7 +2306,8 @@ void TcpReassembly::cleanup_simple(bool all) {
 		    (link->last_packet_at_from_header &&
 		     act_time > link->last_packet_at_from_header + 5 * 1000 &&
 		     link->last_packet_at_from_header > link->last_packet_process_cleanup_at))) {
-			int countDataStream = link->okQueue(all || final ? 2 : 1, ENABLE_DEBUG(this->type, _debug_check_ok));
+			int countDataStream = link->okQueue(all || final ? 2 : 1, ENABLE_DEBUG(this->type, _debug_check_ok), 
+							    false, true);
 			if(ENABLE_DEBUG(this->getType(), _debug_check_ok)) {
 				cout << endl;
 			}
@@ -2300,7 +2322,7 @@ void TcpReassembly::cleanup_simple(bool all) {
 				} else if(countDataStream < 0) {
 					cout << "empty";
 				} else {
-					cout << "OK";
+					cout << "OK (" << countDataStream << ")";
 				}
 				cout << " " << link->port_src << " / " << link->port_dst;
 				cout << endl;
