@@ -7,7 +7,12 @@
 using namespace std;
 
 
+#ifdef HAVE_LIBGNUTLS
 extern vector<string> decrypt_ssl(char *data, unsigned int datalen, unsigned int saddr, unsigned int daddr, int sport, int dport);
+#else
+vector<string> decrypt_ssl(char *data, unsigned int datalen, unsigned int saddr, unsigned int daddr, int sport, int dport) { return vector<string> empty;};
+#endif
+
 extern Call *process_packet(u_int64_t packet_number,
 			    unsigned int saddr, int source, unsigned int daddr, int dest, 
 			    char *data, int datalen, int dataoffset,
