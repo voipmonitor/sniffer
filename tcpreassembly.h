@@ -726,7 +726,7 @@ private:
 	map<uint32_t, TcpReassemblyStream*> queue_flags_by_ack;
 	map<uint32_t, TcpReassemblyStream*> queue_nul_by_ack;
 	deque<TcpReassemblyStream*> queue;
-	map<uint32_t, bool> processed_ack;
+	//map<uint32_t, bool> processed_ack;
 	volatile int _sync_queue;
 	//u_int64_t created_at;
 	//u_int64_t last_packet_at;
