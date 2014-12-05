@@ -25,14 +25,9 @@ extern PreProcessPacket *preProcessPacket;
 
 SslData::SslData() {
 	this->counterProcessData = 0;
-	this->remainData = NULL;
-	this->remainDataLength = 0;
 }
 
 SslData::~SslData() {
-	if(this->remainData) {
-		delete remainData;
-	}
 }
 
 void SslData::processData(u_int32_t ip_src, u_int32_t ip_dst,
@@ -40,6 +35,7 @@ void SslData::processData(u_int32_t ip_src, u_int32_t ip_dst,
 			  TcpReassemblyData *data,
 			  u_char *ethHeader, u_int32_t ethHeaderLength,
 			  pcap_t *handle, int dlt, int sensor_id,
+			  TcpReassemblyLink *reassemblyLink,
 			  bool debugSave) {
 	++this->counterProcessData;
 	if(debugSave) {
@@ -48,7 +44,8 @@ void SslData::processData(u_int32_t ip_src, u_int32_t ip_dst,
 	for(size_t i_data = 0; i_data < data->data.size(); i_data++) {
 		TcpReassemblyDataItem *dataItem = &data->data[i_data];
 		if(debugSave) {
-			cout << fixed
+			cout << "###"
+			     << fixed
 			     << setw(15) << inet_ntostring(htonl(ip_src))
 			     << " / "
 			     << setw(5) << port_src
@@ -67,13 +64,11 @@ void SslData::processData(u_int32_t ip_src, u_int32_t ip_dst,
 			u_char *ssl_data;
 			u_int32_t ssl_datalen;
 			bool alloc_ssl_data = false;
-			if(this->remainData) {
-				ssl_datalen = this->remainDataLength + dataItem->getDatalen();
+			if(reassemblyLink->getRemainData()) {
+				ssl_datalen = reassemblyLink->getRemainDataLength() + dataItem->getDatalen();
 				ssl_data = new u_char[ssl_datalen];
-				memcpy(ssl_data, this->remainData, this->remainDataLength);
-				memcpy(ssl_data + this->remainDataLength, dataItem->getData(), dataItem->getDatalen());
-				delete [] this->remainData;
-				this->remainData = NULL;
+				memcpy(ssl_data, reassemblyLink->getRemainData(), reassemblyLink->getRemainDataLength());
+				memcpy(ssl_data + reassemblyLink->getRemainDataLength(), dataItem->getData(), dataItem->getDatalen());
 				alloc_ssl_data = true;
 			} else {
 				ssl_data = dataItem->getData();
@@ -116,6 +111,22 @@ void SslData::processData(u_int32_t ip_src, u_int32_t ip_dst,
 					vector<string> rslt_decrypt = decrypt_ssl((char*)(ssl_data + ssl_data_offset), header.length + 5, htonl(_ip_src), htonl(_ip_dst), _port_src, _port_dst);
 					for(size_t i = 0; i < rslt_decrypt.size(); i++) {
 						if(debugSave) {
+
+                                                string out(rslt_decrypt[i], 0,100);
+                                                std::replace( out.begin(), out.end(), '\n', ' ');
+                                                std::replace( out.begin(), out.end(), '\r', ' ');
+                                                    
+                                                unsigned long s_addr = _ip_src;
+                                                unsigned long d_addr = _ip_dst;
+                                                char src[INET_ADDRSTRLEN];
+                                                char dst[INET_ADDRSTRLEN];
+                                                inet_ntop(AF_INET, &s_addr, src, INET_ADDRSTRLEN);
+                                                inet_ntop(AF_INET, &d_addr, dst, INET_ADDRSTRLEN);
+                                       
+                                               
+                                                if(out.length())
+                                                        cout << "TS: " << dataItem->getTime().tv_sec << "." << dataItem->getTime().tv_usec << " " << src << " -> " << dst << " SIP " << rslt_decrypt[i].length() << " " << out << endl;
+
 							cout << "DECRYPT DATA: " << rslt_decrypt[i] << endl;
 						}
 						if(!ethHeader || !ethHeaderLength) {
@@ -171,21 +182,22 @@ void SslData::processData(u_int32_t ip_src, u_int32_t ip_dst,
 			}
 			if(pass == 0) {
 				bool ok = false;
-				if(this->remainDataLength &&
+				if(reassemblyLink->getRemainDataLength() &&
 				   !ssl_data_offset &&
 				   _checkOkSslData(dataItem->getData(), dataItem->getDatalen())) {
 					// next pass with ignore remainData
+					reassemblyLink->clearRemainData();
 					if(debugSave) {
 						cout << "SKIP REMAIN DATA" << endl;
 					}
 				} else {
 					if(ssl_data_offset < ssl_datalen) {
-						this->remainDataLength = ssl_datalen - ssl_data_offset;
-						this->remainData =  new u_char[this->remainDataLength];
-						memcpy(this->remainData, ssl_data + ssl_data_offset, this->remainDataLength);
+						reassemblyLink->setRemainData(ssl_data + ssl_data_offset, ssl_datalen - ssl_data_offset);
 						if(debugSave) {
 							cout << "REMAIN DATA LENGTH: " << ssl_datalen - ssl_data_offset << endl;
 						}
+					} else {
+						reassemblyLink->clearRemainData();
 					}
 					ok = true;
 				}
