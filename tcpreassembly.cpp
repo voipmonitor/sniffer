@@ -1029,9 +1029,11 @@ bool TcpReassemblyLink::push_crazy(
 void TcpReassemblyLink::pushpacket(TcpReassemblyStream::eDirection direction,
 				   TcpReassemblyStream_packet packet,
 				   bool lockQueue) {
+	/*
 	if(this->processed_ack.find(packet.header_tcp.ack_seq) != this->processed_ack.end()) {
 		return;
 	}
+	*/
 	TcpReassemblyStream *stream;
 	map<uint32_t, TcpReassemblyStream*>::iterator iter;
 	if(lockQueue) {
@@ -1521,7 +1523,9 @@ void TcpReassemblyLink::complete_normal(bool final, bool lockQueue) {
 			for(size_t i = 0; i < countIgnore + countData + countRequest + countResponse; i++) {
 				if(reassembly->enableDestroyStreamsInComplete) {
 					TcpReassemblyStream *stream = this->ok_streams[0];
+					/*
 					this->processed_ack[stream->ack] = true;
+					*/
 					this->ok_streams.erase(this->ok_streams.begin());
 					this->queue.erase(this->queue.begin());
 					this->queue_by_ack.erase(stream->ack);
