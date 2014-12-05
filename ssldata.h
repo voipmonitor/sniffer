@@ -35,6 +35,8 @@ public:
 	void printContentSummary();
 private:
 	unsigned int counterProcessData;
+	u_char *remainData;
+	u_int32_t remainDataLength;
 };
 
 
