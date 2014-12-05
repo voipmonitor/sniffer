@@ -194,6 +194,7 @@ public:
 				 TcpReassemblyData *data,
 				 u_char *ethHeader, u_int32_t ethHeaderLength,
 				 pcap_t *handle, int dlt, int sensor_id,
+				 class TcpReassemblyLink *reassemblyLink,
 				 bool debugSave) = 0;
 	virtual void printContentSummary() {}
 };
@@ -430,6 +431,7 @@ public:
 		_force_wait_for_next_psh = false;
 		last_packet_at_from_header = 0;
 		this->link = link;
+		counterTryOk = 0;
 	}
 	void push(TcpReassemblyStream_packet packet);
 	int ok(bool crazySequence = false, bool enableSimpleCmpMaxNextSeq = false, u_int32_t maxNextSeq = 0,
@@ -481,6 +483,7 @@ private:
 	bool _force_wait_for_next_psh;
 	u_int64_t last_packet_at_from_header;
 	TcpReassemblyLink *link;
+	int counterTryOk;
 friend class TcpReassemblyLink;
 };
 
@@ -557,6 +560,8 @@ public:
 		this->handle = handle;
 		this->dlt = dlt;
 		this->sensor_id = sensor_id;
+		this->remainData = NULL;
+		this->remainDataLength = 0;
 	}
 	~TcpReassemblyLink();
 	bool push(TcpReassemblyStream::eDirection direction,
@@ -686,6 +691,10 @@ public:
 	}
 	void cleanup(u_int64_t act_time);
 	void printContent(int level  = 0);
+	void setRemainData(u_char *data, u_int32_t datalen);
+	void clearRemainData();
+	u_char *getRemainData();
+	u_int32_t getRemainDataLength();
 private:
 	void lock_queue() {
 		while(__sync_lock_test_and_set(&this->_sync_queue, 1));
@@ -717,6 +726,7 @@ private:
 	map<uint32_t, TcpReassemblyStream*> queue_flags_by_ack;
 	map<uint32_t, TcpReassemblyStream*> queue_nul_by_ack;
 	deque<TcpReassemblyStream*> queue;
+	map<uint32_t, bool> processed_ack;
 	volatile int _sync_queue;
 	//u_int64_t created_at;
 	//u_int64_t last_packet_at;
@@ -735,6 +745,8 @@ private:
 	pcap_t *handle;
 	int dlt; 
 	int sensor_id;
+	u_char *remainData;
+	u_int32_t remainDataLength;
 friend class TcpReassembly;
 friend class TcpReassemblyStream;
 };
