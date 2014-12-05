@@ -1583,7 +1583,7 @@ int eval_config(string inistr) {
 			break;
 		case 'g':
 			opt_saveGRAPH = 1;
-			opt_gzipGRAPH = 1;
+//gzip is disabled			opt_gzipGRAPH = 1;
 			break;
 		}
 	}
