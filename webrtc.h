@@ -119,6 +119,7 @@ public:
 			 TcpReassemblyData *data,
  			 u_char *ethHeader, u_int32_t ethHeaderLength,
 			 pcap_t *handle, int dlt, int sensor_id,
+			 TcpReassemblyLink *reassemblyLink,
 			 bool debugSave);
 	void printContentSummary();
 private:

@@ -74,9 +74,11 @@ void TcpReassemblyStream::push(TcpReassemblyStream_packet packet) {
 int TcpReassemblyStream::ok(bool crazySequence, bool enableSimpleCmpMaxNextSeq, u_int32_t maxNextSeq,
 			    bool enableCheckCompleteContent, TcpReassemblyStream *prevHttpStream, bool enableDebug,
 			    int forceFirstSeq, bool ignorePsh) {
-	if(this->is_ok) {
+	if(this->is_ok || 
+	   (link->reassembly->getType() != TcpReassembly::http && counterTryOk > 10)) {
 		return(1);
 	}
+	++counterTryOk;
 	this->cleanPacketsState();
 	if(!this->queue.begin()->second.getNextSeqCheck()) {
 		if(enableDebug) {
@@ -735,6 +737,9 @@ TcpReassemblyLink::~TcpReassemblyLink() {
 		delete [] this->ethHeader;
 	}
 	this->unlock_queue();
+	if(this->remainData) {
+		delete remainData;
+	}
 }
 
 bool TcpReassemblyLink::push_normal(
@@ -1024,6 +1029,9 @@ bool TcpReassemblyLink::push_crazy(
 void TcpReassemblyLink::pushpacket(TcpReassemblyStream::eDirection direction,
 				   TcpReassemblyStream_packet packet,
 				   bool lockQueue) {
+	if(this->processed_ack.find(packet.header_tcp.ack_seq) != this->processed_ack.end()) {
+		return;
+	}
 	TcpReassemblyStream *stream;
 	map<uint32_t, TcpReassemblyStream*>::iterator iter;
 	if(lockQueue) {
@@ -1506,12 +1514,14 @@ void TcpReassemblyLink::complete_normal(bool final, bool lockQueue) {
 					reassemblyData,
 					this->ethHeader, this->ethHeaderLength,
 					this->handle, this->dlt, this->sensor_id,
+					this,
 					ENABLE_DEBUG(reassembly->getType(), _debug_save));
 				reassemblyData = NULL;
 			}
 			for(size_t i = 0; i < countIgnore + countData + countRequest + countResponse; i++) {
 				if(reassembly->enableDestroyStreamsInComplete) {
 					TcpReassemblyStream *stream = this->ok_streams[0];
+					this->processed_ack[stream->ack] = true;
 					this->ok_streams.erase(this->ok_streams.begin());
 					this->queue.erase(this->queue.begin());
 					this->queue_by_ack.erase(stream->ack);
@@ -1750,6 +1760,7 @@ void TcpReassemblyLink::complete_crazy(bool final, bool eraseCompletedStreams, b
 					reassemblyData,
 					this->ethHeader, this->ethHeaderLength,
 					this->handle, this->dlt, this->sensor_id,
+					this,
 					ENABLE_DEBUG(reassembly->getType(), _debug_save));
 				reassemblyData = NULL;
 			}
@@ -1815,6 +1826,31 @@ void TcpReassemblyLink::createEthHeader(u_char *packet, iphdr2 *header_ip) {
 		this->ethHeader = new u_char[this->ethHeaderLength];
 		memcpy(this->ethHeader, packet, this->ethHeaderLength);
 	}
+}
+
+void TcpReassemblyLink::setRemainData(u_char *data, u_int32_t datalen) {
+	this->clearRemainData();
+	if(data && datalen) {
+		this->remainData = new u_char[datalen];
+		memcpy(this->remainData, data, datalen);
+		this->remainDataLength = datalen;
+	}
+}
+
+void TcpReassemblyLink::clearRemainData() {
+	if(remainData) {
+		delete [] remainData;
+		remainData = NULL;
+		remainDataLength = 0;
+	}
+}
+
+u_char *TcpReassemblyLink::getRemainData() {
+	return(remainData);
+}
+
+u_int32_t TcpReassemblyLink::getRemainDataLength() {
+	return(remainData ? remainDataLength : 0);
 }
 
 
