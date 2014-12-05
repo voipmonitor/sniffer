@@ -106,10 +106,17 @@ int TcpReassemblyStream::ok(bool crazySequence, bool enableSimpleCmpMaxNextSeq, 
 		}
 		if(iter_var == this->queue.end()) {
 			if(!this->ok_packets.size()) {
-				if(enableDebug) {
-					cout << " --- ERR - reassembly failed (2)";
+				if(_counter) {
+					if(enableDebug) {
+						cout << " --- ERR - reassembly failed (2)";
+					} 
+					return(0);
+				} else {
+					if(enableDebug) {
+						cout << " --- WARN - skip incorrect";
+					} 
+					return(1);
 				}
-				return(0);
 			} else {
 				this->queue[this->ok_packets.back()[0]].queue[this->ok_packets.back()[1]].state = TcpReassemblyStream_packet::FAIL;
 				this->ok_packets.pop_back();
@@ -1184,6 +1191,10 @@ int TcpReassemblyLink::okQueue_normal(int final, bool enableDebug,
 		if(!this->queue.size()) {
 			cout << "empty" << endl;
 			return(0);
+		} else {
+			for(size_t i = 0; i < this->queue.size(); i++) {
+				cout << " - ack : " << this->queue[i]->ack << endl;
+			}
 		}
 	}
 	int countDataStream = 0;
