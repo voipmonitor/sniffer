@@ -80,29 +80,11 @@ void SslData::processData(u_int32_t ip_src, u_int32_t ip_dst,
 				SslHeader header(ssl_data + ssl_data_offset, ssl_datalen - ssl_data_offset);
 				if(header.length && header.length + 5 <= ssl_datalen - ssl_data_offset) {
 					if(debugSave) {
-<<<<<<< HEAD
-						cout << "DECRYPT DATA: " << rslt_decrypt[i] << endl;
-						string out(rslt_decrypt[i], 0,100);
-						std::replace( out.begin(), out.end(), '\n', ' ');
-						std::replace( out.begin(), out.end(), '\r', ' ');
-
-						unsigned long s_addr = _ip_src;
-						unsigned long d_addr = _ip_dst;
-						char src[INET_ADDRSTRLEN];
-						char dst[INET_ADDRSTRLEN];
-						inet_ntop(AF_INET, &s_addr, src, INET_ADDRSTRLEN);
-						inet_ntop(AF_INET, &d_addr, dst, INET_ADDRSTRLEN);
-
-
-						if(out.length()) 
-							cout << "TS: " << dataItem->getTime().tv_sec << "." << dataItem->getTime().tv_usec << " " << src << " -> " << dst << " SIP " << rslt_decrypt[i].length() << " " << out << endl;
-=======
 						cout << "SSL HEADER "
 						     << "content type: " << (int)header.content_type << " / "
 						     << "version: " << hex << header.version << dec << " / "
 						     << "length: " << header.length
 						     << endl;
->>>>>>> 0c55fa6d653f7c98ff60bb623614d28225e89cae
 					}
 					u_int32_t _ip_src = dataItem->getDirection() == TcpReassemblyDataItem::DIRECTION_TO_DEST ? ip_src : ip_dst;
 					u_int32_t _ip_dst = dataItem->getDirection() == TcpReassemblyDataItem::DIRECTION_TO_DEST ? ip_dst : ip_src;
