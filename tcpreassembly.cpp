@@ -80,7 +80,8 @@ int TcpReassemblyStream::ok(bool crazySequence, bool enableSimpleCmpMaxNextSeq, 
 	this->cleanPacketsState();
 	if(!this->queue.begin()->second.getNextSeqCheck()) {
 		if(enableDebug) {
-			cout << " --- ERR - reassembly failed (1)";
+			cout << " --- reassembly failed ack: " << this->ack << " " 
+			     << "(getNextSeqCheck return 0)";
 		}
 		return(0);
 	}
@@ -108,12 +109,14 @@ int TcpReassemblyStream::ok(bool crazySequence, bool enableSimpleCmpMaxNextSeq, 
 			if(!this->ok_packets.size()) {
 				if(_counter) {
 					if(enableDebug) {
-						cout << " --- ERR - reassembly failed (2)";
+						cout << " --- reassembly failed ack: " << this->ack << " " 
+						     << "(unknown seq: " << seq << ")";
 					} 
 					return(0);
 				} else {
 					if(enableDebug) {
-						cout << " --- WARN - skip incorrect";
+						cout << " --- skip incorrect ack: " << this->ack << " " 
+						     << "(unknown seq: " << seq << ")";
 					} 
 					return(1);
 				}
@@ -148,7 +151,8 @@ int TcpReassemblyStream::ok(bool crazySequence, bool enableSimpleCmpMaxNextSeq, 
 							if(this->http_content_length > 100000 ||
 							   (!this->http_content_length && datalen > 100000)) {
 								if(enableDebug) {
-									cout << " --- ERR - reassembly failed - maximum size of the data exceeded";
+									cout << " --- reassembly failed ack: " << this->ack << " " 
+									     << "(maximum size of the data exceeded)";
 								}
 								return(0);
 							}
@@ -216,7 +220,8 @@ int TcpReassemblyStream::ok(bool crazySequence, bool enableSimpleCmpMaxNextSeq, 
 				}
 			} else {
 				if(enableDebug) {
-					cout << " --- ERR - reassembly failed (3 last seq: " << this->last_seq << ")";
+					cout << " --- reassembly failed ack: " << this->ack << " "
+					     << "(unexpected last seq for required: " << this->last_seq << "/" << maxNextSeq << " last_seq/maxNextSeq)";
 				}
 				return(0);
 			}
@@ -226,7 +231,8 @@ int TcpReassemblyStream::ok(bool crazySequence, bool enableSimpleCmpMaxNextSeq, 
 		}
 	}
 	if(enableDebug) {
-		cout << " --- ERR - reassembly failed (4)";
+		cout << " --- reassembly failed ack: " << this->ack << " "
+		     << "(unknown error)";
 	}
 	return(0);
 }
@@ -812,6 +818,10 @@ bool TcpReassemblyLink::push_normal(
 			if(ENABLE_DEBUG(reassembly->getType(), _debug_packet)) {
 				cout << " -- DATA" << endl;
 			}
+			this->setLastSeq(direction == TcpReassemblyStream::DIRECTION_TO_DEST ?
+						TcpReassemblyStream::DIRECTION_TO_DEST :
+						TcpReassemblyStream::DIRECTION_TO_SOURCE, 
+					 header_tcp.seq);
 		} else {
 			TcpReassemblyStream *prevStreamByLastAck = this->queue_by_ack[this->last_ack];
 			if(this->last_ack && header_tcp.ack_seq != this->last_ack) {
