@@ -1149,7 +1149,9 @@ int eval_config(string inistr) {
 			}
 		}
 		if(ssl_ipport.size()) {
+#ifdef HAVE_LIBGNUTLS
 			ssl_init();
+#endif
 		}
 	}
 	
