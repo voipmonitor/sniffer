@@ -862,6 +862,9 @@ public:
 		}
 		return(str);
 	}
+	void setLinkTimeout(u_int32_t linkTimeout) {
+		this->linkTimeout = linkTimeout;
+	}
 private:
 	void createThread();
 	void *threadFunction(void *);
@@ -894,6 +897,7 @@ private:
 	pstat_data threadPstatData[2];
 	u_long lastTimeLogErrExceededMaximumAttempts;
 	u_long _cleanupCounter;
+	u_int32_t linkTimeout;
 friend class TcpReassemblyLink;
 friend void *_TcpReassembly_threadFunction(void* arg);
 };

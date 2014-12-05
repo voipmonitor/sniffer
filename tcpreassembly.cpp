@@ -1879,6 +1879,7 @@ TcpReassembly::TcpReassembly(eType type) {
 	memset(this->threadPstatData, 0, sizeof(this->threadPstatData));
 	this->lastTimeLogErrExceededMaximumAttempts = 0;
 	this->_cleanupCounter = 0;
+	this->linkTimeout = 2 * 60;
 	if(opt_tcpreassembly_log[0]) {
 		this->log = fopen(opt_tcpreassembly_log, "at");
 		if(this->log) {
@@ -2257,7 +2258,7 @@ void TcpReassembly::cleanup(bool all) {
 		}
 		link->cleanup(act_time);
 		bool final = link->last_packet_at_from_header &&
-			     act_time > link->last_packet_at_from_header + 2 * 60 * 1000;
+			     act_time > link->last_packet_at_from_header + linkTimeout * 1000;
 		if((all || final ||
 		    (link->last_packet_at_from_header &&
 		     act_time > link->last_packet_at_from_header + 5 * 1000 &&
@@ -2361,7 +2362,7 @@ void TcpReassembly::cleanup_simple(bool all) {
 		u_int64_t act_time = this->act_time_from_header + getTimeMS() - this->last_time;
 		TcpReassemblyLink *link = iter->second;
 		bool final = link->last_packet_at_from_header &&
-			     act_time > link->last_packet_at_from_header + 2 * 60 * 1000;
+			     act_time > link->last_packet_at_from_header + linkTimeout * 1000;
 		if(link->queue.size() &&
 		   (all || final ||
 		    (link->last_packet_at_from_header &&
