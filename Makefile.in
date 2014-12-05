@@ -47,8 +47,9 @@ GLIBLIB =$(shell pkg-config --libs glib-2.0)
 
 LIBSSH=@LIBSSH@
 LIBGNUTLS=@LIBGNUTLS@
+LIBGNUTLSSTATIC=@LIBGNUTLS@ -lnettle -lhogweed -lgmp -lgpg-error -lpthread
 SHARED_LIBS = -ldl -lpthread -lpcap -lz -lvorbis -lvorbisenc -logg -lodbc ${MYSQLLIB} -lrt -lsnappy -lcurl -lssl -lcrypto ${JSONLIB} ${LIBSSH} -lxml2 -lrrd ${LIBGNUTLS} @LIBTCMALLOC@ ${GLIBLIB}
-STATIC_LIBS = -static @LIBTCMALLOC@ -lodbc -lltdl -ldl -lrt -lz ${LIBSSH} -lcrypt -lm -lcurl -lssl -lcrypto -static-libstdc++ -static-libgcc -lpcap -lpthread ${MYSQLLIB} -lpthread -lz -lc -lvorbis -lvorbisenc -logg -lrt -lsnappy ${JSONLIB} -lrrd -lxml2 ${GLIBLIB} -lz -ldbi -llzma ${LIBGNUTLS} -lnettle -lhogweed -lgmp -lgpg-error -lpthread
+STATIC_LIBS = -static @LIBTCMALLOC@ -lodbc -lltdl -ldl -lrt -lz ${LIBSSH} -lcrypt -lm -lcurl -lssl -lcrypto -static-libstdc++ -static-libgcc -lpcap -lpthread ${MYSQLLIB} -lpthread -lz -lc -lvorbis -lvorbisenc -logg -lrt -lsnappy ${JSONLIB} -lrrd -lxml2 ${GLIBLIB} -lz -ldbi -llzma ${LIBGNUTLSSTATIC} 
 INCLUDES =  -I/usr/local/include ${MYSQLINC} -I jitterbuffer/ ${JSONCFLAGS} ${GLIBCFLAGS}
 LIBS_PATH = -L/usr/local/lib/ 
 CXXFLAGS +=  -Wall -fPIC -g3 -O2 -march=$(GCCARCH) -mtune=${GCCARCH} ${INCLUDES}
