@@ -98,6 +98,22 @@ void SslData::processData(u_int32_t ip_src, u_int32_t ip_dst,
 					vector<string> rslt_decrypt = decrypt_ssl((char*)(ssl_data + ssl_data_offset), header.length + 5, htonl(_ip_src), htonl(_ip_dst), _port_src, _port_dst);
 					for(size_t i = 0; i < rslt_decrypt.size(); i++) {
 						if(debugSave) {
+
+                                                string out(rslt_decrypt[i], 0,100);
+                                                std::replace( out.begin(), out.end(), '\n', ' ');
+                                                std::replace( out.begin(), out.end(), '\r', ' ');
+                                                    
+                                                unsigned long s_addr = _ip_src;
+                                                unsigned long d_addr = _ip_dst;
+                                                char src[INET_ADDRSTRLEN];
+                                                char dst[INET_ADDRSTRLEN];
+                                                inet_ntop(AF_INET, &s_addr, src, INET_ADDRSTRLEN);
+                                                inet_ntop(AF_INET, &d_addr, dst, INET_ADDRSTRLEN);
+                                       
+                                               
+                                                if(out.length())
+                                                        cout << "TS: " << dataItem->getTime().tv_sec << "." << dataItem->getTime().tv_usec << " " << src << " -> " << dst << " SIP " << rslt_decrypt[i].length() << " " << out << endl;
+
 							cout << "DECRYPT DATA: " << rslt_decrypt[i] << endl;
 						}
 						if(!ethHeader || !ethHeaderLength) {
