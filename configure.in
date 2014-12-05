@@ -66,6 +66,7 @@ LIBGNUTLS_T=no
 if test "x$HAVE_LIBGNUTLS" = "x1"; then 
 	AC_DEFINE([HAVE_LIBGNUTLS], [1], [Define if using gnutls])
 	AC_SUBST([LIBGNUTLS],["-lgcrypt -lgnutls"])
+	AC_SUBST([LIBGNUTLSSTATIC],["-lgcrypt -lgnutls -lnettle -lhogweed -lgmp -lgpg-error -lpthread "])
 	LIBGNUTLS_T=yes
 fi
 TCMALLOC_T=no

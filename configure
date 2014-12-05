@@ -588,6 +588,7 @@ ac_unique_file="voipmonitor.cpp"
 ac_subst_vars='LTLIBOBJS
 LIBOBJS
 LIBTCMALLOC
+LIBGNUTLSSTATIC
 LIBGNUTLS
 LIBSSH
 SET_MAKE
@@ -4003,6 +4004,8 @@ if test "x$HAVE_LIBGNUTLS" = "x1"; then
 $as_echo "#define HAVE_LIBGNUTLS 1" >>confdefs.h
 
 	LIBGNUTLS="-lgcrypt -lgnutls"
+
+	LIBGNUTLSSTATIC="-lgcrypt -lgnutls -lnettle -lhogweed -lgmp -lgpg-error -lpthread "
 
 	LIBGNUTLS_T=yes
 fi
