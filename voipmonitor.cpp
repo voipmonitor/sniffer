@@ -3851,6 +3851,7 @@ int main(int argc, char *argv[]) {
 		tcpReassemblySsl->setEnableAllCompleteAfterZerodataAck();
 		sslData = new SslData;
 		tcpReassemblySsl->setDataCallback(sslData);
+		tcpReassemblySsl->setLinkTimeout(15 * 60);
 	}
 	
 	if(sipSendSocket_ip_port) {
