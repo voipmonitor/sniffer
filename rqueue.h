@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <iostream>
+#include <unistd.h>
 
 
 template<class typeItem>
@@ -358,6 +359,99 @@ void rqueue<typeItem>::_testPerf(bool useRqueue) {
 		}
 	}
 }
+
+
+
+typedef volatile int v_int;
+typedef volatile u_int32_t v_u_int32_t;
+
+template<class typeItem>
+class rqueue_quick {
+public:
+	rqueue_quick(size_t length,
+		     unsigned int pushUsleep, unsigned int popUsleep,
+		     int *terminating = NULL,
+		     bool binaryBuffer = true) {
+		this->length = length;
+		this->pushUsleep = pushUsleep;
+		this->popUsleep = popUsleep;
+		this->terminating = terminating;
+		this->binaryBuffer = binaryBuffer;
+		buffer = new typeItem[this->length + 1];
+		free = new v_int[this->length + 1];
+		for(size_t i = 0; i < this->length; i++) {
+			free[i] = 1;
+		}
+		readit = 0;
+		writeit = 0;
+	}
+	~rqueue_quick() {
+		delete [] buffer;
+		delete [] free;
+	}
+	bool push(typeItem *item, bool waitForFree) {
+		while(free[writeit % length] == 0) {
+			if(waitForFree) {
+				if(terminating && *terminating) {
+					return(false);
+				}
+				usleep(pushUsleep);
+			} else {
+				return(false);
+			}
+		}
+		if(binaryBuffer) {
+			memcpy(&buffer[writeit % length], item, sizeof(typeItem));
+		} else {
+			buffer[writeit % length] = *item;
+		}
+		free[writeit % this->length] = 0;
+		if((writeit + 1) == length) {
+			writeit = 0;
+		} else {
+			writeit++;
+		}
+		return(true);
+	}
+	bool pop(typeItem *item, bool waitForFree) {
+		while(free[readit % length] == 1) {
+			if(waitForFree) {
+				if(terminating && *terminating) {
+					return(false);
+				}
+				usleep(popUsleep);
+			} else {
+				return(false);
+			}
+		}
+		if(binaryBuffer) {
+			memcpy(item, &buffer[readit % length], sizeof(typeItem));
+		} else {
+			*item = buffer[writeit % length];
+		}
+		free[readit % length] = 1;
+		if((readit + 1) == length) {
+			readit = 0;
+		} else {
+			readit++;
+		}
+		return(true);
+	}
+	size_t size() {
+		return(writeit >= readit ? writeit - readit : writeit + length - readit);
+	}
+private:
+	size_t length;
+	bool binaryBuffer;
+	unsigned int pushUsleep;
+	unsigned int popUsleep;
+	int *terminating;
+	typeItem *buffer;
+	v_int *free;
+	v_u_int32_t readit;
+	v_u_int32_t writeit;
+};
+
 
 
 #endif

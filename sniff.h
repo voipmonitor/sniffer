@@ -139,12 +139,8 @@ typedef struct {
 extern int opt_pcap_queue;
 #endif
 
-struct read_thread {
-	read_thread() 
-		#ifdef QUEUE_NONBLOCK2
-		: rtpp_queue(opt_pcap_queue ? 1000 : 0, 1000)
-		#endif
-		{
+struct rtp_read_thread {
+	rtp_read_thread()  {
 		#ifdef QUEUE_NONBLOCK
 			this->pqueue = NULL;
 		#endif
@@ -153,6 +149,8 @@ struct read_thread {
 			this->vmbuffermax = 0;
 			this->readit = 0;
 			this->writeit = 0;
+			this->rtpp_queue = NULL;
+			this->rtpp_queue_quick = NULL;
 		#endif
 	}
 	pthread_t thread;	       // ID of worker storing CDR thread 
@@ -169,7 +167,8 @@ struct read_thread {
 	int vmbuffermax;
 	volatile int readit;
 	volatile int writeit;
-	rqueue<rtp_packet_pcap_queue> rtpp_queue;
+	rqueue<rtp_packet_pcap_queue> *rtpp_queue;
+	rqueue_quick<rtp_packet_pcap_queue> *rtpp_queue_quick;
 #endif
 };
 
