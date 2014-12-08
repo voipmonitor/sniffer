@@ -120,7 +120,7 @@ struct pcap_block_store {
 		pcap_pkthdr_pcap headerPcap;
 		if(indexItem < this->count) {
 			headerPcap.header = (pcap_pkthdr_plus*)(this->block + this->offsets[indexItem]);
-			headerPcap.packet = (u_char*)(this->block + this->offsets[indexItem] + sizeof(pcap_pkthdr_plus));
+			headerPcap.packet = (u_char*)headerPcap.header + sizeof(pcap_pkthdr_plus);
 		}
 		return(headerPcap);
 	}

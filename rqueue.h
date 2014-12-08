@@ -390,7 +390,7 @@ public:
 		delete [] free;
 	}
 	bool push(typeItem *item, bool waitForFree) {
-		while(free[writeit % length] == 0) {
+		while(free[writeit] == 0) {
 			if(waitForFree) {
 				if(terminating && *terminating) {
 					return(false);
@@ -401,11 +401,11 @@ public:
 			}
 		}
 		if(binaryBuffer) {
-			memcpy(&buffer[writeit % length], item, sizeof(typeItem));
+			memcpy(&buffer[writeit], item, sizeof(typeItem));
 		} else {
-			buffer[writeit % length] = *item;
+			buffer[writeit] = *item;
 		}
-		free[writeit % this->length] = 0;
+		free[writeit] = 0;
 		if((writeit + 1) == length) {
 			writeit = 0;
 		} else {
@@ -414,7 +414,7 @@ public:
 		return(true);
 	}
 	bool pop(typeItem *item, bool waitForFree) {
-		while(free[readit % length] == 1) {
+		while(free[readit] == 1) {
 			if(waitForFree) {
 				if(terminating && *terminating) {
 					return(false);
@@ -425,11 +425,11 @@ public:
 			}
 		}
 		if(binaryBuffer) {
-			memcpy(item, &buffer[readit % length], sizeof(typeItem));
+			memcpy(item, &buffer[readit], sizeof(typeItem));
 		} else {
-			*item = buffer[writeit % length];
+			*item = buffer[readit];
 		}
-		free[readit % length] = 1;
+		free[readit] = 1;
 		if((readit + 1) == length) {
 			readit = 0;
 		} else {
