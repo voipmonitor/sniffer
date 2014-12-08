@@ -1216,7 +1216,11 @@ void add_to_rtp_thread_queue(Call *call, unsigned char *data, int datalen, int d
 		return;
 	}
 	
+	#if SYNC_CALL_RTP
 	__sync_add_and_fetch(&call->rtppcaketsinqueue, 1);
+	#else
+	++call->rtppcaketsinqueue_p;
+	#endif
 	rtp_read_thread *params = &(rtp_threads[call->thread_num]);
 
 #if defined(QUEUE_MUTEX) || defined(QUEUE_NONBLOCK)
@@ -1438,9 +1442,17 @@ void *rtp_read_thread_func(void *arg) {
 #endif
 
 		if(opt_pcap_queue) {
+			#if SYNC_CALL_RTP
 			__sync_sub_and_fetch(&rtpp_pq.call->rtppcaketsinqueue, 1);
+			#else
+			++rtpp_pq.call->rtppcaketsinqueue_m;
+			#endif
 		} else {
+			#if SYNC_CALL_RTP
 			__sync_sub_and_fetch(&rtpp->call->rtppcaketsinqueue, 1);
+			#else
+			++rtpp->call->rtppcaketsinqueue_m;
+			#endif
 		}
 
 	}

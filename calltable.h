@@ -24,6 +24,7 @@
 #include "jitterbuffer/asterisk/circbuf.h"
 #include "rtp.h"
 #include "tools.h"
+#include "voipmonitor.h"
 
 #define MAX_IP_PER_CALL 40	//!< total maxumum of SDP sessions for one call-id
 #define MAX_SSRC_PER_CALL 40	//!< total maxumum of SDP sessions for one call-id
@@ -161,7 +162,12 @@ public:
 	int regstate;
 	bool regresponse;
 	unsigned long long flags1;	//!< bit flags used to store max 64 flags 
+	#if SYNC_CALL_RTP
 	volatile unsigned int rtppcaketsinqueue;
+	#else
+	volatile u_int32_t rtppcaketsinqueue_p;
+	volatile u_int32_t rtppcaketsinqueue_m;
+	#endif
 	unsigned int unrepliedinvite;
 	unsigned int ps_drop;
 	unsigned int ps_ifdrop;
