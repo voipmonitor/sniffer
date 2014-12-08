@@ -150,7 +150,9 @@ signal_def signal_data[] =
 };
 #endif
 
+#ifdef HAVE_LIBGNUTLS
 extern void ssl_init();
+#endif
 
 using namespace std;
 
@@ -1150,7 +1152,9 @@ int eval_config(string inistr) {
 			}
 		}
 		if(ssl_ipport.size()) {
+#ifdef HAVE_LIBGNUTLS
 			ssl_init();
+#endif
 		}
 	}
 	

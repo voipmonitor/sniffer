@@ -588,6 +588,7 @@ ac_unique_file="voipmonitor.cpp"
 ac_subst_vars='LTLIBOBJS
 LIBOBJS
 LIBTCMALLOC
+LIBGNUTLSSTATIC
 LIBGNUTLS
 LIBSSH
 SET_MAKE
@@ -3939,7 +3940,8 @@ $as_echo "$ac_cv_lib_gnutls_gnutls_init" >&6; }
 if test "x$ac_cv_lib_gnutls_gnutls_init" = xyes; then :
   HAVE_LIBGNUTLS=1
 else
-  as_fn_error $? "Unable to find gnutls disabling SIP TLS decoder. apt-get install libgnutls-dev | yum install gnutls-devel" "$LINENO" 5
+  { $as_echo "$as_me:${as_lineno-$LINENO}: Unable to find gnutls disabling SIP TLS decoder. apt-get install libgnutls-dev | yum install gnutls-devel" >&5
+$as_echo "$as_me: Unable to find gnutls disabling SIP TLS decoder. apt-get install libgnutls-dev | yum install gnutls-devel" >&6;}
 fi
 
 { $as_echo "$as_me:${as_lineno-$LINENO}: checking for tc_malloc in -ltcmalloc_minimal" >&5
@@ -4002,6 +4004,8 @@ if test "x$HAVE_LIBGNUTLS" = "x1"; then
 $as_echo "#define HAVE_LIBGNUTLS 1" >>confdefs.h
 
 	LIBGNUTLS="-lgcrypt -lgnutls"
+
+	LIBGNUTLSSTATIC="-lgcrypt -lgnutls -lnettle -lhogweed -lgmp -lgpg-error -lpthread "
 
 	LIBGNUTLS_T=yes
 fi
