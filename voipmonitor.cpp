@@ -3795,11 +3795,17 @@ int main(int argc, char *argv[]) {
 					rtp_threads[i].rtpp_queue_quick = new rqueue_quick<rtp_packet_pcap_queue>(
 										rtp_qring_length ? 
 											rtp_qring_length :
-											rtpthreadbuffer * 1024 * 1024 / sizeof(rtp_packet),
+											rtpthreadbuffer * 1024 * 1024 / sizeof(rtp_packet_pcap_queue),
 										100, rtp_qring_usleep,
 										&terminating);
 				} else {
-					rtp_threads[i].rtpp_queue = new rqueue<rtp_packet_pcap_queue>;
+					size_t _rtp_qring_length = rtp_qring_length ? 
+									rtp_qring_length :
+									rtpthreadbuffer * 1024 * 1024 / sizeof(rtp_packet_pcap_queue);
+					rtp_threads[i].rtpp_queue = new rqueue<rtp_packet_pcap_queue>(_rtp_qring_length / 2, _rtp_qring_length / 5, _rtp_qring_length * 1.5);
+					char rtpp_queue_name[20];
+					sprintf(rtpp_queue_name, "rtp thread %i", i + 1);
+					rtp_threads[i].rtpp_queue->setName(rtpp_queue_name);
 				}
 			} else {
 				rtp_threads[i].vmbuffermax = rtp_qring_length ?

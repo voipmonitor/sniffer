@@ -5,15 +5,18 @@
 #include <string.h>
 #include <iostream>
 #include <unistd.h>
+#include <syslog.h>
+#include <string>
 
 
 template<class typeItem>
 class rqueue {
 public:
-	rqueue(size_t length = 100, size_t inc_length = 100, bool binaryBuffer = false, 
+	rqueue(size_t length = 100, size_t inc_length = 100, size_t limit_length = 0, bool binaryBuffer = false, 
 	       bool clearBuff = false,bool clearAtPop = false) {
 		this->length = length;
 		this->inc_length = inc_length;
+		this->limit_length = limit_length;
 		this->binaryBuffer = binaryBuffer;
 		this->clearBuff = clearBuff;
 		this->clearAtPop = clearAtPop;
@@ -41,7 +44,8 @@ public:
 			this->buffer[(this->startIndex + this->countItems) % this->length] = item;
 			++this->countItems;
 		} else {
-			if(this->inc_length) {
+			if(this->inc_length && 
+			   (!this->limit_length || (this->length + this->inc_length) < this->limit_length)) {
 				this->incBuffer();
 				this->buffer[(this->startIndex + this->countItems) % this->length] = item;
 				++this->countItems;
@@ -59,7 +63,8 @@ public:
 		if(lock) {
 			this->lock();
 		}
-		if(this->countItems >= this->length && this->inc_length) {
+		if(this->countItems >= this->length && this->inc_length && 
+		   (!this->limit_length || (this->length + this->inc_length) < this->limit_length)) {
 			this->incBuffer();
 		}
 		if(this->countItems < this->length) {
@@ -84,7 +89,8 @@ public:
 			item = &this->buffer[(this->startIndex + this->countItems) % this->length];
 			++this->countItems;
 		} else {
-			if(this->inc_length) {
+			if(this->inc_length && 
+			   (!this->limit_length || (this->length + this->inc_length) < this->limit_length)) {
 				this->incBuffer();
 				item = &this->buffer[(this->startIndex + this->countItems) % this->length];
 				++this->countItems;
@@ -172,22 +178,27 @@ public:
 	}
 	void _test();
 	void _testPerf(bool useRqueue);
+	void setName(const char *name) {
+	}
 private:
 	typeItem *buffer;
 	size_t length;
 	size_t inc_length;
+	size_t limit_length;
 	bool binaryBuffer;
 	bool clearBuff;
 	bool clearAtPop;
 	size_t startIndex;
 	size_t countItems;
 	volatile int _sync_lock;
+	std::string name;
 };
 
 
 template <class typeItem>
 void rqueue<typeItem>::incBuffer() {
 	size_t newLength = this->length + this->inc_length;
+	syslog(LOG_NOTICE, "increase size of rqueue %s to %d", name.c_str(), newLength);
 	typeItem *newBuffer = new typeItem[newLength];
 	if(this->binaryBuffer) {
 		if(this->clearBuff) {

@@ -1324,7 +1324,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 			rrdtacCPU_lastt = last_tac_cpu;
 		}
 	}
-	if(last_tac_cpu > 95) {
+	if(last_tac_cpu > 80) {
 		asyncClose->addThread();
 	}
 	if(last_tac_cpu < 5) {
