@@ -3857,7 +3857,7 @@ _ACEOF
   LIBS="-lmysqlclient $LIBS"
 
 else
-  as_fn_error $? "Unable to find libmysqlclient. apt-get install lbmysqlclient-dev | yum install mysql-devel" "$LINENO" 5
+  as_fn_error $? "Unable to find libmysqlclient. apt-get install libmysqlclient-dev | yum install mysql-devel" "$LINENO" 5
 fi
 
 { $as_echo "$as_me:${as_lineno-$LINENO}: checking for main in -lz" >&5
