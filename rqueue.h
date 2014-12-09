@@ -198,7 +198,7 @@ private:
 template <class typeItem>
 void rqueue<typeItem>::incBuffer() {
 	size_t newLength = this->length + this->inc_length;
-	syslog(LOG_NOTICE, "increase size of rqueue %s to %d", name.c_str(), newLength);
+	syslog(LOG_NOTICE, "increase size of rqueue %s to %lu", name.c_str(), newLength);
 	typeItem *newBuffer = new typeItem[newLength];
 	if(this->binaryBuffer) {
 		if(this->clearBuff) {

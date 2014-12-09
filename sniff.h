@@ -354,10 +354,26 @@ public:
 		int sensor_id;
 	};
 	struct packet_parse_s {
+		void init() {
+			sip_method = -1;
+			lastSIPresponseNum = -1;
+			call_cancel_lsr487 = false;
+			call = NULL;
+			call_created = NULL;
+			detectUserAgent = false;
+		}
 		packet_s packet;
 		ParsePacket parse;
 		u_int32_t sipDataLen;
 		bool isSip;
+		string callid;
+		int sip_method;
+		int lastSIPresponseNum;
+		string lastSIPresponse;
+		bool call_cancel_lsr487;
+		Call *call;
+		Call *call_created;
+		bool detectUserAgent;
 		unsigned int hash[2];
 		volatile int used;
 	};
@@ -374,6 +390,13 @@ public:
 	double getCpuUsagePerc(bool preparePstatData);
 	void terminating();
 private:
+	bool sipProcess(packet_parse_s *parse_packet);
+	bool sipProcess_getCallID(packet_parse_s *parse_packet);
+	bool sipProcess_reassembly(packet_parse_s *parse_packet);
+	void sipProcess_getSipMethod(packet_parse_s *parse_packet);
+	void sipProcess_getLastSipResponse(packet_parse_s *parse_packet);
+	void sipProcess_findCall(packet_parse_s *parse_packet);
+	void sipProcess_createCall(packet_parse_s *parse_packet);
 	void *outThreadFunction();
 	void lock_push() {
 		while(__sync_lock_test_and_set(&this->_sync_push, 1)) {
