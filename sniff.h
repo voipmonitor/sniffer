@@ -385,7 +385,8 @@ public:
 		  char *data, int datalen, int dataoffset,
 		  pcap_t *handle, pcap_pkthdr *header, const u_char *packet, bool packetDelete,
 		  int istcp, struct iphdr2 *header_ip, int forceSip,
-		  pcap_block_store *block_store, int block_store_index, int dlt, int sensor_id);
+		  pcap_block_store *block_store, int block_store_index, int dlt, int sensor_id,
+		  bool disableLock = false);
 	void preparePstatData();
 	double getCpuUsagePerc(bool preparePstatData);
 	void terminating();

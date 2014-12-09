@@ -1467,6 +1467,11 @@ void *rtp_read_thread_func(void *arg) {
 Call *new_invite_register(int sip_method, char *data, int datalen, struct pcap_pkthdr *header, char *callidstr, u_int32_t saddr, u_int32_t daddr, int source, int dest,
 			  pcap_t *handle, int dlt, int sensor_id,
 			  bool *detectUserAgent){
+ 
+	if(!strcmp("1169860043@192.168.0.36", callidstr)) {
+		cout << callidstr << endl;
+	}
+ 
 	unsigned long gettagLimitLen = 0;
 	unsigned int flags = 0;
 	int res;
@@ -1998,7 +2003,7 @@ Call *process_packet(u_int64_t packet_number,
 		++counter_all_packets;
 	}
 
-	if(!parsePacket) {
+	//if(!parsePacket) {
 		// checking and cleaning stuff every 10 seconds (if some packet arrive) 
 		if (header->ts.tv_sec - process_packet__last_cleanup > 10){
 			process_packet__cleanup(header, handle);
@@ -2008,7 +2013,7 @@ Call *process_packet(u_int64_t packet_number,
 			calltable->destroyCallsIfPcapsClosed();
 			process_packet__last_destroy_calls = header->ts.tv_sec;
 		}
-	}
+	//}
 
 	// check if the packet is SKINNY
 	if(istcp && opt_skinny && (source == 2000 || dest == 2000)) {
@@ -2062,56 +2067,55 @@ Call *process_packet(u_int64_t packet_number,
 			goto rtpcheck;
 		}
 
-		s = gettag(data, datalen, "\nCall-ID:", &l, &gettagLimitLen);
-		if(!issip or (l <= 0 || l > 1023)) {
-			// try also compact header
-			s = gettag(data, datalen,"\ni:", &l, &gettagLimitLen);
+		if(!parsePacket) {
+			s = gettag(data, datalen, "\nCall-ID:", &l, &gettagLimitLen);
 			if(!issip or (l <= 0 || l > 1023)) {
-				// no Call-ID found in packet
-				if(istcp ==1 && header_ip) {
-					tcpReassemblySip.processPacket(
-						packet_number,
-						saddr, source, daddr, dest, data, origDatalen, dataoffset,
-						handle, header, packet, header_ip,
-						dlt, sensor_id,
-						issip);
-					if(logPacketSipMethodCall_enable) {
-						logPacketSipMethodCall(packet_number, sip_method, lastSIPresponseNum, header, 
-							saddr, source, daddr, dest,
-							call, "it is TCP and callid not found");
+				// try also compact header
+				s = gettag(data, datalen,"\ni:", &l, &gettagLimitLen);
+				if(!issip or (l <= 0 || l > 1023)) {
+					// no Call-ID found in packet
+					if(istcp ==1 && header_ip) {
+						tcpReassemblySip.processPacket(
+							packet_number,
+							saddr, source, daddr, dest, data, origDatalen, dataoffset,
+							handle, header, packet, header_ip,
+							dlt, sensor_id,
+							issip);
+						if(logPacketSipMethodCall_enable) {
+							logPacketSipMethodCall(packet_number, sip_method, lastSIPresponseNum, header, 
+								saddr, source, daddr, dest,
+								call, "it is TCP and callid not found");
+						}
+						return NULL;
+					} else {
+						// it is not TCP and callid not found
+						if(logPacketSipMethodCall_enable) {
+							logPacketSipMethodCall(packet_number, sip_method, lastSIPresponseNum, header, 
+								saddr, source, daddr, dest,
+								call, "it is not TCP and callid not found");
+						}
+						return NULL;
 					}
-					return NULL;
-				} else {
-					// it is not TCP and callid not found
-					if(logPacketSipMethodCall_enable) {
-						logPacketSipMethodCall(packet_number, sip_method, lastSIPresponseNum, header, 
-							saddr, source, daddr, dest,
-							call, "it is not TCP and callid not found");
-					}
-					return NULL;
 				}
 			}
-		}
-		memcpy(callidstr, s, MIN(l, 1024));
-		callidstr[MIN(l, 1023)] = '\0';
+			memcpy(callidstr, s, MIN(l, 1024));
+			callidstr[MIN(l, 1023)] = '\0';
 
-		static int counter = 0;
-		counter++;
-
-		// Call-ID is present
-		if(istcp == 1 && datalen >= 2) {
-			tcpReassemblySip.processPacket(
-				packet_number,
-				saddr, source, daddr, dest, data, origDatalen, dataoffset,
-				handle, header, packet, header_ip,
-				dlt, sensor_id,
-				issip);
-			if(logPacketSipMethodCall_enable) {
-				logPacketSipMethodCall(packet_number, sip_method, lastSIPresponseNum, header, 
-					saddr, source, daddr, dest,
-					call, "it is TCP and callid found");
+			// Call-ID is present
+			if(istcp == 1 && datalen >= 2) {
+				tcpReassemblySip.processPacket(
+					packet_number,
+					saddr, source, daddr, dest, data, origDatalen, dataoffset,
+					handle, header, packet, header_ip,
+					dlt, sensor_id,
+					issip);
+				if(logPacketSipMethodCall_enable) {
+					logPacketSipMethodCall(packet_number, sip_method, lastSIPresponseNum, header, 
+						saddr, source, daddr, dest,
+						call, "it is TCP and callid found");
+				}
+				return(NULL);
 			}
-			return(NULL);
 		}
 		
 		if(issip) {
@@ -4489,7 +4493,8 @@ void TcpReassemblySip::complete(tcp_stream2_s *stream, u_int hash) {
 				       (char*)newdata, newlen, stream->dataoffset,
 				       stream->handle, &header, newpacket, false,
 				       2, header_ip, 0,
-				       NULL, 0, stream->dlt, stream->sensor_id);
+				       NULL, 0, stream->dlt, stream->sensor_id,
+				       true);
 	} else {
 		process_packet(stream->packet_number,
 			       stream->saddr, stream->source, stream->daddr, stream->dest, 
@@ -4550,8 +4555,10 @@ void PreProcessPacket::push(u_int64_t packet_number,
 			    char *data, int datalen, int dataoffset,
 			    pcap_t *handle, pcap_pkthdr *header, const u_char *packet, bool packetDelete,
 			    int istcp, struct iphdr2 *header_ip, int forceSip,
-			    pcap_block_store *block_store, int block_store_index, int dlt, int sensor_id) {
- 
+			    pcap_block_store *block_store, int block_store_index, int dlt, int sensor_id,
+			    bool disableLock) {
+
+	/*
 	// checking and cleaning stuff every 10 seconds (if some packet arrive) 
 	if (header->ts.tv_sec - process_packet__last_cleanup > 10){
 		process_packet__cleanup(header, handle);
@@ -4561,9 +4568,9 @@ void PreProcessPacket::push(u_int64_t packet_number,
 		calltable->destroyCallsIfPcapsClosed();
 		process_packet__last_destroy_calls = header->ts.tv_sec;
 	}
+	*/
  
- 
-	if(opt_enable_ssl) {
+	if(opt_enable_ssl && !disableLock) {
 		this->lock_push();
 	}
 	if(block_store) {
@@ -4605,7 +4612,15 @@ void PreProcessPacket::push(u_int64_t packet_number,
 	
 	if(_parse_packet->isSip) {
 		_parse_packet->init();
-		this->sipProcess(_parse_packet);
+		if(!this->sipProcess(_parse_packet)) {
+			if(block_store) {
+				block_store->unlock_packet(block_store_index);
+			}
+			if(opt_enable_ssl && !disableLock) {
+				this->unlock_push();
+			}
+			return;
+		}
 		_parse_packet->hash[0] = 0;
 		_parse_packet->hash[1] = 0;
 	} else if((htons(*(unsigned int*)data) & 0xC000) == 0x8000) {
@@ -4619,7 +4634,7 @@ void PreProcessPacket::push(u_int64_t packet_number,
 	} else {
 		this->writeit++;
 	}
-	if(opt_enable_ssl) {
+	if(opt_enable_ssl && !disableLock) {
 		this->unlock_push();
 	}
 }
