@@ -130,7 +130,7 @@ private:
 	volatile int _sync;
 };
 
-vector<string> listFilesDir(char * dir);
+queue<string> listFilesDir(char * dir);
 vector<string> explode(const string&, const char&);
 int getUpdDifTime(struct timeval *before);
 int getDifTime(struct timeval *before);

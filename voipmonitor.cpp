@@ -3907,47 +3907,39 @@ int main(int argc, char *argv[]) {
 		struct inotify_event *event;
 		char buff[1024];
 		int i=0, fd, wd, len=0;
-		vector<string> dirList;
-		unsigned dirListIter=0;
-		bool preload=1;
-
+		queue<string> fileList;
 
 		fd = inotify_init();
 		/*checking for error*/
 		if(fd < 0) perror( "inotify_init" );
 		wd = inotify_add_watch(fd, opt_scanpcapdir, opt_scanpcapmethod);
 
+		// pre-populate the fileList with anything pre-existing in the directory
+		fileList = listFilesDir(opt_scanpcapdir);
+
 		while(1 and terminating == 0) {
 
-			if (preload) {		//read files already in opt_scanpcapdir
-				if (!dirListIter) {
-					dirList = listFilesDir (opt_scanpcapdir);
-					//syslog(LOG_NOTICE, "PRELOAD START: (%s) %d", opt_scanpcapdir, dirList.size());
-				}
-				if (dirListIter < dirList.size()) {
-					strcpy (filename, dirList.at(dirListIter).c_str());
-					if(verbosity > 2) syslog(LOG_NOTICE, "scanpcapdir: scandir PRELOAD: (%d) %s", dirListIter, filename);
-				} else {
-					preload = 0;
-					//syslog(LOG_NOTICE, "PRELOAD STOP: (%d)", dirListIter);
-				}
-				++dirListIter;
-			}
-
-			if (!preload) {		//read files if inotify triggered
+			if (fileList.empty()) {
+				// queue is empty, time to wait on inotify for some work
 				i = 0;
 				len = read(fd, buff, 1024);
-
-				if ( i >= len ) continue;
-				event = (struct inotify_event *) &buff[i];
-				i += sizeof(struct inotify_event) + event->len;
-				if (event->mask & opt_scanpcapmethod) { // this will prevent opening files which is still open for writes
-				    snprintf(filename, sizeof(filename), "%s/%s", opt_scanpcapdir, event->name);
-				} else {
+				while ((i < len) and terminating == 0) {
+					event = (struct inotify_event *) &buff[i];
+					i += sizeof(struct inotify_event) + event->len;
+					if (event->mask & opt_scanpcapmethod) { // this will prevent opening files which is still open for writes
+						// add filename to end of queue
+						snprintf(filename, sizeof(filename), "%s/%s", opt_scanpcapdir, event->name);
+						fileList.push(filename);
+					}
+				}
+				if (fileList.empty()) {
 					continue;
 				}
-				if(verbosity > 2) syslog(LOG_NOTICE, "scanpcapdir: inotify LOAD: %s", filename);
 			}
+
+			// grab the next file in line to be processed
+			strncpy(filename, fileList.front().c_str(), sizeof(filename));
+			fileList.pop();
 
 			int close = 1;
 			//printf("File [%s]\n", filename);
