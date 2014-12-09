@@ -1258,7 +1258,7 @@ void add_to_rtp_thread_queue(Call *call, unsigned char *data, int datalen, int d
 			rtpp_pq.data = data;
 			rtpp_pq.datalen = datalen;
 			rtpp_pq.dataoffset = dataoffset;
-			rtpp_pq.pkthdr_pcap = (*block_store)[block_store_index];
+			rtpp_pq.header = *header;
 			rtpp_pq.block_store = block_store;
 			rtpp_pq.block_store_index =block_store_index;
 			params->rtpp_queue_quick->push(&rtpp_pq, true);
@@ -1280,7 +1280,7 @@ void add_to_rtp_thread_queue(Call *call, unsigned char *data, int datalen, int d
 			rtpp_pq->data = data;
 			rtpp_pq->datalen = datalen;
 			rtpp_pq->dataoffset = dataoffset;
-			rtpp_pq->pkthdr_pcap = (*block_store)[block_store_index];
+			rtpp_pq->header = *header;
 			rtpp_pq->block_store = block_store;
 			rtpp_pq->block_store_index =block_store_index;
 			params->rtpp_queue->unlock();
@@ -1403,15 +1403,15 @@ void *rtp_read_thread_func(void *arg) {
 
 		if(opt_pcap_queue) {
 			if(rtpp_pq.is_rtcp) {
-				rtpp_pq.call->read_rtcp(rtpp_pq.data, rtpp_pq.datalen, rtpp_pq.dataoffset, &rtpp_pq.pkthdr_pcap.header->header_std, rtpp_pq.saddr, rtpp_pq.daddr, rtpp_pq.sport, rtpp_pq.dport, rtpp_pq.iscaller,
+				rtpp_pq.call->read_rtcp(rtpp_pq.data, rtpp_pq.datalen, rtpp_pq.dataoffset, &rtpp_pq.header, rtpp_pq.saddr, rtpp_pq.daddr, rtpp_pq.sport, rtpp_pq.dport, rtpp_pq.iscaller,
 							rtpp_pq.save_packet, rtpp_pq.packet, rtpp_pq.istcp, rtpp_pq.dlt, rtpp_pq.sensor_id);
 			}  else {
 				int monitor;
-				rtpp_pq.call->read_rtp(rtpp_pq.data, rtpp_pq.datalen, rtpp_pq.dataoffset, &rtpp_pq.pkthdr_pcap.header->header_std, NULL, rtpp_pq.saddr, rtpp_pq.daddr, rtpp_pq.sport, rtpp_pq.dport, rtpp_pq.iscaller, &monitor,
+				rtpp_pq.call->read_rtp(rtpp_pq.data, rtpp_pq.datalen, rtpp_pq.dataoffset, &rtpp_pq.header, NULL, rtpp_pq.saddr, rtpp_pq.daddr, rtpp_pq.sport, rtpp_pq.dport, rtpp_pq.iscaller, &monitor,
 						       rtpp_pq.save_packet, rtpp_pq.packet, rtpp_pq.istcp, rtpp_pq.dlt, rtpp_pq.sensor_id,
 						       rtpp_pq.block_store && rtpp_pq.block_store->ifname[0] ? rtpp_pq.block_store->ifname : NULL);
 			}
-			rtpp_pq.call->set_last_packet_time(rtpp_pq.pkthdr_pcap.header->header_std.ts.tv_sec);
+			rtpp_pq.call->set_last_packet_time(rtpp_pq.header.ts.tv_sec);
 			rtpp_pq.block_store->unlock_packet(rtpp_pq.block_store_index);
 		} else {
 			if(rtpp->is_rtcp) {

@@ -130,7 +130,7 @@ typedef struct {
 	u_char *data;
 	int datalen;
 	int dataoffset;
-	pcap_block_store::pcap_pkthdr_pcap pkthdr_pcap; 
+	struct pcap_pkthdr header;
 	pcap_block_store *block_store;
 	int block_store_index;
 } rtp_packet_pcap_queue;
