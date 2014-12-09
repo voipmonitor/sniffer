@@ -9,6 +9,7 @@
 #include <string>
 
 #include "tools.h"
+#include "voipmonitor.h"
 
 #define PCAP_BLOCK_STORE_HEADER_STRING		"pcap_block_st_03"
 #define PCAP_BLOCK_STORE_HEADER_STRING_LEN	16
@@ -98,7 +99,12 @@ struct pcap_block_store {
 		this->filePosition = 0;
 		this->timestampMS = getTimeMS();
 		this->packet_lock = NULL;
+		#if SYNC_PCAP_BLOCK_STORE
 		this->_sync_packet_lock = 0;
+		#else
+		this->_sync_packet_lock_p = 0;
+		this->_sync_packet_lock_m = 0;
+		#endif
 	}
 	~pcap_block_store() {
 		this->destroy();
@@ -114,7 +120,7 @@ struct pcap_block_store {
 		pcap_pkthdr_pcap headerPcap;
 		if(indexItem < this->count) {
 			headerPcap.header = (pcap_pkthdr_plus*)(this->block + this->offsets[indexItem]);
-			headerPcap.packet = (u_char*)(this->block + this->offsets[indexItem] + sizeof(pcap_pkthdr_plus));
+			headerPcap.packet = (u_char*)headerPcap.header + sizeof(pcap_pkthdr_plus);
 		}
 		return(headerPcap);
 	}
@@ -151,7 +157,11 @@ struct pcap_block_store {
 			this->packet_lock[index] = true;
 			this->unlock_sync_packet_lock();
 		} else {
+			#if SYNC_PCAP_BLOCK_STORE
 			__sync_add_and_fetch(&this->_sync_packet_lock, 1);
+			#else
+			++this->_sync_packet_lock_p;
+			#endif
 		}
 		
 	}
@@ -163,7 +173,11 @@ struct pcap_block_store {
 			}
 			this->unlock_sync_packet_lock();
 		} else {
+			#if SYNC_PCAP_BLOCK_STORE
 			__sync_sub_and_fetch(&this->_sync_packet_lock, 1);
+			#else
+			++this->_sync_packet_lock_m;
+			#endif
 		}
 	}
 	bool enableDestroy() {
@@ -178,15 +192,23 @@ struct pcap_block_store {
 			this->unlock_sync_packet_lock();
 			return(enableDestroy);
 		} else {
+			#if SYNC_PCAP_BLOCK_STORE
 			return(this->_sync_packet_lock == 0);
+			#else
+			return(this->_sync_packet_lock_p == this->_sync_packet_lock_m);
+			#endif
 		}
 	}
 	
 	void lock_sync_packet_lock() {
+		#if SYNC_PCAP_BLOCK_STORE
 		while(__sync_lock_test_and_set(&this->_sync_packet_lock, 1));
+		#endif
 	}
 	void unlock_sync_packet_lock() {
+		#if SYNC_PCAP_BLOCK_STORE
 		__sync_lock_release(&this->_sync_packet_lock);
+		#endif
 	}
 	
 	//
@@ -207,7 +229,12 @@ struct pcap_block_store {
 	u_long filePosition;
 	u_long timestampMS;
 	bool *packet_lock;
+	#if SYNC_PCAP_BLOCK_STORE
 	volatile int _sync_packet_lock;
+	#else
+	volatile u_int32_t _sync_packet_lock_p;
+	volatile u_int32_t _sync_packet_lock_m;
+	#endif
 };
 
 

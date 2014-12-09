@@ -450,6 +450,9 @@ char filtercommand[4092] = "";
 int rtp_threaded = 0; // do not enable this until it will be reworked to be thread safe
 int num_threads = 0; // this has to be 1 for now
 unsigned int rtpthreadbuffer = 20;	// default 20MB
+unsigned int rtp_qring_length = 0;
+unsigned int rtp_qring_usleep = 10000;
+bool rtp_qring_quick = false;
 unsigned int gthread_num = 0;
 
 int opt_pcapdump = 0;
@@ -494,20 +497,20 @@ vector<d_u_int32_t> webrtcnet;
 
 uint8_t opt_sdp_reverse_ipport = 0;
 
-volatile unsigned int readit = 0;
-volatile unsigned int writeit = 0;
+volatile unsigned int pcap_readit = 0;
+volatile unsigned int pcap_writeit = 0;
 int global_livesniffer = 0;
 int global_livesniffer_all = 0;
-unsigned int qringmax = 12500;
-unsigned int qringusleep = 10000;
+unsigned int pcap_qring_max = 12500;
+unsigned int pcap_qring_usleep = 10000;
 #if defined(QUEUE_MUTEX) || defined(QUEUE_NONBLOCK) || defined(QUEUE_NONBLOCK2)
-pcap_packet *qring;
+pcap_packet *pcap_qring;
 #endif
 
 pcap_t *global_pcap_handle = NULL;		// pcap handler 
 pcap_t *global_pcap_handle_dead_EN10MB = NULL;
 
-read_thread *threads;
+rtp_read_thread *rtp_threads;
 
 int manager_socket_server = 0;
 
@@ -938,8 +941,8 @@ void *storing_cdr( void *dummy ) {
 			}
 			#ifdef QUEUE_NONBLOCK2
 			if(!opt_pcap_queue) {
-				outStr << " qring[" << (writeit >= readit ? writeit - readit : writeit + qringmax - readit)
-				       << " (w" << writeit << ",r" << readit << ")]";
+				outStr << " qring[" << (pcap_writeit >= pcap_readit ? pcap_writeit - pcap_readit : pcap_writeit + pcap_qring_max - pcap_readit)
+				       << " (w" << pcap_writeit << ",r" << pcap_readit << ")]";
 			}
 			#endif
 			syslog(LOG_NOTICE, outStr.str().c_str());
@@ -1528,7 +1531,7 @@ int eval_config(string inistr) {
 		opt_norecord_dtmf = yesno(value);
 	}
 	if((value = ini.GetValue("general", "vmbuffer", NULL))) {
-		qringmax = (unsigned int)((unsigned int)MIN(atoi(value), 4000) * 1024 * 1024 / (unsigned int)sizeof(pcap_packet));
+		pcap_qring_max = (unsigned int)((unsigned int)MIN(atoi(value), 4000) * 1024 * 1024 / (unsigned int)sizeof(pcap_packet));
 	}
 	if((value = ini.GetValue("general", "matchheader", NULL))) {
 		snprintf(opt_match_header, sizeof(opt_match_header), "\n%s:", value);
@@ -2214,11 +2217,21 @@ int eval_config(string inistr) {
 		opt_preprocess_packets_qring_usleep = atol(value);
 	}
 
+	if((value = ini.GetValue("general", "pcap_qring_length", NULL))) {
+		pcap_qring_max = atol(value);
+	}
+	if((value = ini.GetValue("general", "pcap_qring_usleep", NULL))) {
+		pcap_qring_usleep = atol(value);
+	}
+	
 	if((value = ini.GetValue("general", "rtp_qring_length", NULL))) {
-		qringmax = atol(value);
+		rtp_qring_length = atol(value);
 	}
 	if((value = ini.GetValue("general", "rtp_qring_usleep", NULL))) {
-		qringusleep = atol(value);
+		rtp_qring_usleep = atol(value);
+	}
+	if((value = ini.GetValue("general", "rtp_qring_quick", NULL))) {
+		rtp_qring_quick = yesno(value);
 	}
 	
 	/*
@@ -2791,7 +2804,7 @@ int main(int argc, char *argv[]) {
 				rtpthreadbuffer = atoi(optarg);
 				break;
 			case 'T':
-				qringmax = (unsigned int)((unsigned int)MIN(atoi(optarg), 4000) * 1024 * 1024 / (unsigned int)sizeof(pcap_packet));
+				pcap_qring_max = (unsigned int)((unsigned int)MIN(atoi(optarg), 4000) * 1024 * 1024 / (unsigned int)sizeof(pcap_packet));
 				break;
 			case 's':
 				opt_id_sensor = atoi(optarg);
@@ -3764,31 +3777,44 @@ int main(int argc, char *argv[]) {
 	   !(opt_pcap_threaded && opt_pcap_queue && 
 	     !opt_pcap_queue_receive_from_ip_port &&
 	     opt_pcap_queue_send_to_ip_port)) {
-		threads = new read_thread[num_threads];
+		rtp_threads = new rtp_read_thread[num_threads];
 		for(int i = 0; i < num_threads; i++) {
 #ifdef QUEUE_MUTEX
-			pthread_mutex_init(&(threads[i].qlock), NULL);
-			sem_init(&(threads[i].semaphore), 0, 0);
+			pthread_mutex_init(&(rtp_threads[i].qlock), NULL);
+			sem_init(&(rtp_threads[i].semaphore), 0, 0);
 #endif
 
 #ifdef QUEUE_NONBLOCK
-			threads[i].pqueue = NULL;
-			queue_new(&(threads[i].pqueue), 10000);
+			rtp_threads[i].pqueue = NULL;
+			queue_new(&(rtp_threads[i].pqueue), 10000);
 #endif
 
 #ifdef QUEUE_NONBLOCK2
-			threads[i].vmbuffermax = rtpthreadbuffer * 1024 * 1024 / sizeof(rtp_packet);
-			threads[i].writeit = 0;
-			threads[i].readit = 0;
-			if(!opt_pcap_queue) {
-				threads[i].vmbuffer = (rtp_packet*)malloc(sizeof(rtp_packet) * (threads[i].vmbuffermax + 1));
-				for(int j = 0; j < threads[i].vmbuffermax + 1; j++) {
-					threads[i].vmbuffer[j].free = 1;
+			if(opt_pcap_queue) {
+				if(rtp_qring_quick) {
+					rtp_threads[i].rtpp_queue_quick = new rqueue_quick<rtp_packet_pcap_queue>(
+										rtp_qring_length ? 
+											rtp_qring_length :
+											rtpthreadbuffer * 1024 * 1024 / sizeof(rtp_packet),
+										100, rtp_qring_usleep,
+										&terminating);
+				} else {
+					rtp_threads[i].rtpp_queue = new rqueue<rtp_packet_pcap_queue>;
+				}
+			} else {
+				rtp_threads[i].vmbuffermax = rtp_qring_length ?
+								 rtp_qring_length :
+								 rtpthreadbuffer * 1024 * 1024 / sizeof(rtp_packet);
+				rtp_threads[i].writeit = 0;
+				rtp_threads[i].readit = 0;
+				rtp_threads[i].vmbuffer = (rtp_packet*)malloc(sizeof(rtp_packet) * (rtp_threads[i].vmbuffermax + 1));
+				for(int j = 0; j < rtp_threads[i].vmbuffermax + 1; j++) {
+					rtp_threads[i].vmbuffer[j].free = 1;
 				}
 			}
 #endif
 
-			pthread_create(&(threads[i].thread), NULL, rtp_read_thread_func, (void*)&threads[i]);
+			pthread_create(&(rtp_threads[i].thread), NULL, rtp_read_thread_func, (void*)&rtp_threads[i]);
 		}
 	}
 	if(opt_pcap_threaded) {
@@ -3804,9 +3830,9 @@ int main(int argc, char *argv[]) {
 
 #ifdef QUEUE_NONBLOCK2
 		if(!opt_pcap_queue) {
-			qring = (pcap_packet*)malloc((size_t)((unsigned int)sizeof(pcap_packet) * (qringmax + 1)));
-			for(unsigned int i = 0; i < qringmax + 1; i++) {
-				qring[i].free = 1;
+			pcap_qring = (pcap_packet*)malloc((size_t)((unsigned int)sizeof(pcap_packet) * (pcap_qring_max + 1)));
+			for(unsigned int i = 0; i < pcap_qring_max + 1; i++) {
+				pcap_qring[i].free = 1;
 			}
 			pthread_create(&pcap_read_thread, NULL, pcap_read_thread_func, NULL);
 		}
@@ -4130,14 +4156,20 @@ int main(int argc, char *argv[]) {
 	     !opt_pcap_queue_receive_from_ip_port &&
 	     opt_pcap_queue_send_to_ip_port)) {
 		for(int i = 0; i < num_threads; i++) {
-			pthread_join((threads[i].thread), NULL);
+			pthread_join((rtp_threads[i].thread), NULL);
 #ifdef QUEUE_NONBLOCK2
-			if(!opt_pcap_queue) {
-				free(threads[i].vmbuffer);
+			if(opt_pcap_queue) {
+				if(rtp_threads[i].rtpp_queue_quick) {
+					delete rtp_threads[i].rtpp_queue_quick;
+				} else {
+					delete rtp_threads[i].rtpp_queue;
+				}
+			} else {
+				free(rtp_threads[i].vmbuffer);
 			}
 #endif
 		}
-		delete [] threads;
+		delete [] rtp_threads;
 	}
 
 	// close handler

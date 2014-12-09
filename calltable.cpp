@@ -233,7 +233,12 @@ Call::Call(char *call_id, unsigned long call_id_len, time_t time) :
 	dtmfflag2 = 0;
 	silencerecording = 0;
 	flags1 = 0;
+	#if SYNC_CALL_RTP
 	rtppcaketsinqueue = 0;
+	#else
+	rtppcaketsinqueue_p = 0;
+	rtppcaketsinqueue_m = 0;
+	#endif
 	message = NULL;
 	contenttype = NULL;
 	content_length = 0;
@@ -3388,7 +3393,13 @@ Calltable::cleanup( time_t currtime ) {
 		bool closeCall = false;
 		if(currtime == 0 || call->force_close) {
 			closeCall = true;
-		} else if(call->rtppcaketsinqueue == 0) {
+		} else if(
+			#if SYNC_CALL_RTP
+			call->rtppcaketsinqueue == 0
+			#else
+			call->rtppcaketsinqueue_p == call->rtppcaketsinqueue_m
+			#endif 
+			) {
 			if(call->destroy_call_at != 0 && call->destroy_call_at <= currtime) {
 				closeCall = true;
 			} else if(call->destroy_call_at_bye != 0 && call->destroy_call_at_bye <= currtime) {
@@ -3420,9 +3431,15 @@ Calltable::cleanup( time_t currtime ) {
 			if(verbosity && verbosityE > 1) {
 				syslog(LOG_NOTICE, "Calltable::cleanup - callid %s", call->call_id.c_str());
 			}
+			#if SYNC_CALL_RTP
 			if(currtime == 0 && call->rtppcaketsinqueue) {
 				syslog(LOG_WARNING, "force destroy call (rtppcaketsinqueue > 0)");
 			}
+			#else
+			if(currtime == 0 && call->rtppcaketsinqueue_p != call->rtppcaketsinqueue_m) {
+				syslog(LOG_WARNING, "force destroy call (rtppcaketsinqueue_p != rtppcaketsinqueue_m)");
+			}
+			#endif
 			call->hashRemove();
 			// Close RTP dump file ASAP to save file handles
 			call->getPcapRtp()->close();

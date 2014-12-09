@@ -52,7 +52,7 @@ extern int opt_convert_dlt_sll_to_en10;
 extern char *sipportmatrix;
 extern pcap_t *global_pcap_handle;
 extern pcap_t *global_pcap_handle_dead_EN10MB;
-extern read_thread *threads;
+extern rtp_read_thread *rtp_threads;
 extern int opt_norecord_dtmf;
 extern int opt_onlyRTPheader;
 extern int opt_sipoverlap;

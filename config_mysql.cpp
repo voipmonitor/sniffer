@@ -402,7 +402,7 @@ config_load_mysql() {
 		}
 
 		if(row["vmbuffer"] != "") {
-			qringmax = (unsigned int)((unsigned int)MIN(atoi(row["vmbuffer"].c_str()), 4000) * 1024 * 1024 / (unsigned int)sizeof(pcap_packet));
+			pcap_qring_max = (unsigned int)((unsigned int)MIN(atoi(row["vmbuffer"].c_str()), 4000) * 1024 * 1024 / (unsigned int)sizeof(pcap_packet));
 		}
 
 		if(row["matchheader"] != "") {

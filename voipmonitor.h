@@ -41,6 +41,9 @@
 
 #define QUEUE_NONBLOCK2 1
 
+#define SYNC_PCAP_BLOCK_STORE true
+#define SYNC_CALL_RTP true
+
 
 /* choose what method wil be used to synchronize threads. NONBLOCK is the fastest. Do not enable both at once */
 // this is now defined in Makefile 
