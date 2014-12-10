@@ -56,7 +56,7 @@ armv5static: LIBS=-static -L /usr/local/mysql/lib -L/usr/lib/mysql -lodbc -lltdl
 armv5static: CFLAGS+= -DQUEUE_NONBLOCK2 -DPACKED -I /usrl/local/mysql/include -I /usr/include/mysql/ -g3 -Wall -I jitterbuffer/  -L/usr/local/lib/ -L/usr/lib64/mysql -fPIC
 armv5static: args = -g3 -Wall 
 
-core2: LIBS=-static -L/usr/local/lib -L/usr/local/mysql/lib -L/usr/lib/mysql -L/usr/lib64/mysql -L/usr/lib/mysql -lodbc -lltdl -ldl -lrt -lz -lssh -lssh_threads -lcrypt -lm -lcurl -lssl -lcrypto -static-libstdc++ -static-libgcc -lpcap -L/usr/lib/mysql -lpthread -lmysqlclient -lpthread -lz -lc -lvorbis -lvorbisenc -logg -lrt -lsnappy -ljson  -lrrd -lxml2 -lglib-2.0 -lz
+core2: LIBS=-static -L/usr/local/lib -L/usr/local/mysql/lib -L/usr/lib/mysql -L/usr/lib64/mysql -L/usr/lib/mysql -lodbc -lltdl -ldl -lrt -lz -lssh -lssh_threads -lcrypt -lm -lcurl -lssl -lcrypto -static-libstdc++ -static-libgcc -lpcap -L/usr/lib/mysql -lpthread -lmysqlclient -lpthread -lz -lc -lvorbis -lvorbisenc -logg -lrt -lsnappy -ljson  -lrrd -lxml2 -lglib-2.0 -lz -ldbi -llzma -ldl
 core2: CFLAGS+= -DQUEUE_NONBLOCK2 -I /usr/local/mysql/include -I /usr/include/mysql/ -Wall -I jitterbuffer/  -L/usr/local/lib/ -fPIC -O2 -g3
 core2: args = -O2 -Wall  -march=core2 -mtune=core2 -g3
 
