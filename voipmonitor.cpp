@@ -262,6 +262,7 @@ int opt_generator_channels = 1;
 int opt_skipdefault = 0;
 int opt_filesclean = 1;
 int opt_enable_preprocess_packet;
+int opt_enable_process_rtp_packet;
 unsigned int opt_preprocess_packets_qring_length = 100;
 unsigned int opt_preprocess_packets_qring_usleep = 10;
 int opt_enable_http = 0;
@@ -536,6 +537,7 @@ char mac[32] = "";
 PcapQueue *pcapQueueStatInterface;
 
 PreProcessPacket *preProcessPacket;
+ProcessRtpPacket *processRtpPacket;
 
 TcpReassembly *tcpReassemblyHttp;
 TcpReassembly *tcpReassemblyWebrtc;
@@ -1985,6 +1987,9 @@ int eval_config(string inistr) {
 	
 	if((value = ini.GetValue("general", "enable_preprocess_packet", NULL))) {
 		opt_enable_preprocess_packet = yesno(value);
+	}
+	if((value = ini.GetValue("general", "enable_process_rtp_packet", NULL))) {
+		opt_enable_process_rtp_packet = yesno(value);
 	}
 	
 	if((value = ini.GetValue("general", "tcpreassembly", NULL)) ||
@@ -3850,6 +3855,9 @@ int main(int argc, char *argv[]) {
 	if(opt_enable_preprocess_packet || opt_enable_ssl) {
 		preProcessPacket = new PreProcessPacket();
 	}
+	if(opt_enable_process_rtp_packet) {
+		processRtpPacket = new ProcessRtpPacket();
+	}
 
 	if(opt_enable_http) {
 		bool setHttpPorts = false;
@@ -4254,8 +4262,14 @@ int main(int argc, char *argv[]) {
 		delete sslData;
 	}
 	
+	if(processRtpPacket) {
+		processRtpPacket->terminating();
+		usleep(250000);
+		delete processRtpPacket;
+	}
 	if(preProcessPacket) {
 		preProcessPacket->terminating();
+		usleep(250000);
 		delete preProcessPacket;
 	}
 	

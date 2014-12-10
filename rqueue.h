@@ -7,7 +7,10 @@
 #include <unistd.h>
 #include <syslog.h>
 #include <string>
+
+#ifdef HAVE_LIBBOOST
 #include <boost/lockfree/spsc_queue.hpp>
+#endif
 
 
 template<class typeItem>
@@ -465,6 +468,7 @@ private:
 };
 
 
+#ifdef HAVE_LIBBOOST
 template<class typeItem>
 class rqueue_quick_boost {
 public:
@@ -506,6 +510,19 @@ private:
 	unsigned int popUsleep;
 	int *terminating;
 };
+#else
+template<class typeItem>
+class rqueue_quick_boost : public rqueue_quick<typeItem> {
+public:
+	rqueue_quick_boost(unsigned int pushUsleep, unsigned int popUsleep,
+			   int *terminating = NULL) 
+	 : rqueue_quick<typeItem>(20000,
+				  pushUsleep, popUsleep,
+				  terminating,
+				  true) {
+	}
+};
+#endif
 
 
 #endif

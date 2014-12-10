@@ -119,6 +119,7 @@ extern char user_filter[10*2048];
 extern Calltable *calltable;
 extern volatile int calls_counter;
 extern PreProcessPacket *preProcessPacket;
+extern ProcessRtpPacket *processRtpPacket;
 extern TcpReassembly *tcpReassemblyHttp;
 extern TcpReassembly *tcpReassemblyWebrtc;
 extern TcpReassembly *tcpReassemblySsl;
@@ -1276,6 +1277,12 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 			}
 		} else {
 			if (opt_rrd) rrdtCPU_t2 = t2cpu;
+		}
+		if(processRtpPacket) {
+			double t2cpu_process_rtp_packet_out_thread = processRtpPacket->getCpuUsagePerc(true);
+			if(t2cpu_process_rtp_packet_out_thread >= 0) {
+				outStrStat << "/" << setprecision(1) << t2cpu_process_rtp_packet_out_thread;
+			}
 		}
 		outStrStat << "%] ";
 	}

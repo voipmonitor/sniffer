@@ -429,6 +429,56 @@ private:
 	bool _terminating;
 friend inline void *_PreProcessPacket_outThreadFunction(void *arg);
 };
+
+
+class ProcessRtpPacket {
+public:
+	struct packet_s {
+		unsigned int saddr;
+		int source; 
+		unsigned int daddr; 
+		int dest;
+		char *data; 
+		int datalen; 
+		int dataoffset;
+		pcap_t *handle;
+		pcap_pkthdr header; 
+		const u_char *packet; 
+		int istcp;
+		struct iphdr2 *header_ip; 
+		pcap_block_store *block_store; 
+		int block_store_index; 
+		int dlt; 
+		int sensor_id;
+		unsigned int hash_s;
+		unsigned int hash_d;
+		volatile int used;
+	};
+public:
+	ProcessRtpPacket();
+	~ProcessRtpPacket();
+	void push(unsigned int saddr, int source, unsigned int daddr, int dest, 
+		  char *data, int datalen, int dataoffset,
+		  pcap_t *handle, pcap_pkthdr *header, const u_char *packet, int istcp, struct iphdr2 *header_ip,
+		  pcap_block_store *block_store, int block_store_index, int dlt, int sensor_id,
+		  unsigned int hash_s, unsigned int hash_d);
+	void preparePstatData();
+	double getCpuUsagePerc(bool preparePstatData);
+	void terminating();
+private:
+	void *outThreadFunction();
+	void rtp(packet_s *_packet);
+private:
+	packet_s *qring;
+	unsigned int qringmax;
+	volatile unsigned int readit;
+	volatile unsigned int writeit;
+	pthread_t out_thread_handle;
+	pstat_data threadPstatData[2];
+	int outThreadId;
+	bool _terminating;
+friend inline void *_ProcessRtpPacket_outThreadFunction(void *arg);
+};
  
 
 #endif
