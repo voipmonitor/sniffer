@@ -3917,93 +3917,88 @@ int main(int argc, char *argv[]) {
 		struct bpf_program fp;		// The compiled filter 
 		pcap_t *scanhandle = NULL;		// pcap handler
 		struct inotify_event *event;
-		char buff[1024];
-		int eventOffset=0, fd, wd, len=0;
-		vector<string> dirList;
-		unsigned dirListIter=0;
-		bool preload=1;
-
+		char buff[4096];
+		int i=0, fd, wd, len=0;
+		queue<string> fileList;
 
 		fd = inotify_init();
 		/*checking for error*/
 		if(fd < 0) perror( "inotify_init" );
 		wd = inotify_add_watch(fd, opt_scanpcapdir, opt_scanpcapmethod);
 
+		// pre-populate the fileList with anything pre-existing in the directory
+		fileList = listFilesDir(opt_scanpcapdir);
+
 		while(1 and terminating == 0) {
 
-			if (preload) {		//read files already in opt_scanpcapdir
-				if (!dirListIter) {
-					dirList = listFilesDir (opt_scanpcapdir);
-					//syslog(LOG_NOTICE, "PRELOAD START: (%s) %d", opt_scanpcapdir, dirList.size());
-				}
-				if (dirListIter < dirList.size()) {
-					strcpy (filename, dirList.at(dirListIter).c_str());
-					if(verbosity > 2) syslog(LOG_NOTICE, "scanpcapdir: scandir PRELOAD: (%d) %s", dirListIter, filename);
-				} else {
-					preload = 0;
-					//syslog(LOG_NOTICE, "PRELOAD STOP: (%d)", dirListIter);
-				}
-				++dirListIter;
-			}
+			if (fileList.empty()) {
+				// queue is empty, time to wait on inotify for some work
+				i = 0;
+				len = read(fd, buff, 4096);
 
-			if (!preload) {		//read files if inotify triggered
-				eventOffset = 0;
-				len = read(fd, buff, 1024);
-				while ( eventOffset < len ) {
-					//usleep(10000000); For events testing
-					event = (struct inotify_event *) &buff[eventOffset];
-					eventOffset += sizeof(struct inotify_event) + event->len;
+				if (len==4096) {
+					syslog(LOG_NOTICE, "Warning: inotify events filled whole buffer.");
+				}
+
+				while (( i < len ) and terminating==0) {
+					event = (struct inotify_event *) &buff[i];
+					i += sizeof(struct inotify_event) + event->len;
 					if (event->mask & opt_scanpcapmethod) { // this will prevent opening files which is still open for writes
+						// add filename to end of queue
 						snprintf(filename, sizeof(filename), "%s/%s", opt_scanpcapdir, event->name);
-					} else {
-						continue;
+						fileList.push(filename);
 					}
-
-					int close = 1;
-					//printf("File [%s]\n", filename);
-					if(!file_exists(filename)) {
-						continue;
-					}
-					// if reading file
-					//printf("Reading file: %s\n", filename);
-					mask = PCAP_NETMASK_UNKNOWN;
-					scanhandle = pcap_open_offline(filename, errbuf);
-					if(!global_pcap_handle) {
-						// keep the first handle as global handle and do not change it because it is not threadsafe to close/open it while the other parts are using it
-						global_pcap_handle = scanhandle;
-						close = 0;
-					} else {
-						close = 1;
-					}
-					if(scanhandle == NULL) {
-						syslog(LOG_ERR, "Couldn't open pcap file '%s': %s\n", filename, errbuf);
-						continue;
-					}
-					if(*user_filter != '\0') {
-						snprintf(filter_exp, sizeof(filter_exp), "%s", user_filter);
-
-						// Compile and apply the filter
-						if (pcap_compile(scanhandle, &fp, filter_exp, 0, mask) == -1) {
-							syslog(LOG_ERR, "Couldn't parse filter %s: %s\n", filter_exp, pcap_geterr(scanhandle));
-							inotify_rm_watch(fd, wd);
-							return(2);
-						}
-						if (pcap_setfilter(scanhandle, &fp) == -1) {
-							syslog(LOG_ERR, "Couldn't install filter %s: %s\n", filter_exp, pcap_geterr(scanhandle));
-							inotify_rm_watch(fd, wd);
-							return(2);
-						}
-					}
-					readdump_libpcap(scanhandle);
-					unlink(filename);
-					if(*user_filter != '\0') {
-						pcap_freecode(&fp);
-					}
-					if(close) {
-						pcap_close(scanhandle);
-					}
-					if(verbosity > 2) syslog(LOG_NOTICE, "scanpcapdir: inotify LOAD: %s", filename);
 				}
+				if (fileList.empty()) {
+					continue;
+				}
+			}
+			// grab the next file in line to be processed
+			strncpy(filename, fileList.front().c_str(), sizeof(filename));
+			fileList.pop();
+
+			int close = 1;
+			//printf("File [%s]\n", filename);
+			if(!file_exists(filename)) {
+				continue;
+			}
+			// if reading file
+			//printf("Reading file: %s\n", filename);
+			mask = PCAP_NETMASK_UNKNOWN;
+			scanhandle = pcap_open_offline(filename, errbuf);
+			if(!global_pcap_handle) {
+				// keep the first handle as global handle and do not change it because it is not threadsafe to close/open it while the other parts are using it
+				global_pcap_handle = scanhandle;
+				close = 0;
+			} else {
+				close = 1;
+			}
+			if(scanhandle == NULL) {
+				syslog(LOG_ERR, "Couldn't open pcap file '%s': %s\n", filename, errbuf);
+				continue;
+			}
+			if(*user_filter != '\0') {
+				snprintf(filter_exp, sizeof(filter_exp), "%s", user_filter);
+
+				// Compile and apply the filter
+				if (pcap_compile(scanhandle, &fp, filter_exp, 0, mask) == -1) {
+					syslog(LOG_ERR, "Couldn't parse filter %s: %s\n", filter_exp, pcap_geterr(scanhandle));
+					inotify_rm_watch(fd, wd);
+					return(2);
+				}
+				if (pcap_setfilter(scanhandle, &fp) == -1) {
+					syslog(LOG_ERR, "Couldn't install filter %s: %s\n", filter_exp, pcap_geterr(scanhandle));
+					inotify_rm_watch(fd, wd);
+					return(2);
+				}
+			}
+			readdump_libpcap(scanhandle);
+			unlink(filename);
+			if(*user_filter != '\0') {
+				pcap_freecode(&fp);
+			}
+			if(close) {
+				pcap_close(scanhandle);
 			}
 			//readend = 1;
 		}
