@@ -2184,7 +2184,7 @@ Call *process_packet(u_int64_t packet_number,
 		// check presence of call-id merge header if callidmerge feature is enabled
 		//merged = 0;
 		if(!call and opt_callidmerge_header[0] != '\0') {
-			call = calltable->find_by_mergecall_id(s, l);
+			call = calltable->find_by_mergecall_id(callidstr, strlen(callidstr));
 			if(!call) {
 				// this call-id is not yet tracked either in calls list or callidmerge list 
 				// check if there is SIP callidmerge_header which contains parent call-id call
@@ -2216,9 +2216,9 @@ Call *process_packet(u_int64_t packet_number,
 					} else {
 						//merged = 1;
 						calltable->lock_calls_mergeMAP();
-						calltable->calls_mergeMAP[string(s, l)] = call;
+						calltable->calls_mergeMAP[callidstr] = call;
 						calltable->unlock_calls_mergeMAP();
-						call->mergecalls.push_back(string(s,l));
+						call->mergecalls.push_back(callidstr);
 					}
 				}
 			} else {
