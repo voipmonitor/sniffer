@@ -300,7 +300,7 @@ public:
 	void processPacket(
 		u_int64_t packet_number,
 		unsigned int saddr, int source, unsigned int daddr, int dest, char *data, int datalen, int dataoffset,
-		pcap_t *handle, pcap_pkthdr *header, const u_char *packet, struct iphdr2 *header_ip,
+		pcap_t *handle, pcap_pkthdr header, const u_char *packet, struct iphdr2 *header_ip,
 		int dlt, int sensor_id,
 		bool issip);
 	void clean(time_t ts = 0);
@@ -309,7 +309,7 @@ private:
 		tcp_stream2_s *stream, u_int hash,
 		u_int64_t packet_number,
 		unsigned int saddr, int source, unsigned int daddr, int dest, char *data, int datalen, int dataoffset,
-		pcap_t *handle, pcap_pkthdr *header, const u_char *packet, struct iphdr2 *header_ip,
+		pcap_t *handle, pcap_pkthdr header, const u_char *packet, struct iphdr2 *header_ip,
 		int dlt, int sensor_id);
 	void complete(
 		tcp_stream2_s *stream, u_int hash);
@@ -361,6 +361,10 @@ public:
 			call = NULL;
 			call_created = NULL;
 			detectUserAgent = false;
+			_getSipMethod = false;
+			_getLastSipResponse = false;
+			_findCall = false;
+			_createCall = false;
 		}
 		packet_s packet;
 		ParsePacket parse;
@@ -374,6 +378,10 @@ public:
 		Call *call;
 		Call *call_created;
 		bool detectUserAgent;
+		bool _getSipMethod;
+		bool _getLastSipResponse;
+		bool _findCall;
+		bool _createCall;
 		unsigned int hash[2];
 		volatile int used;
 	};
