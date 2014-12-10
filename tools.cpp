@@ -66,7 +66,7 @@ using namespace std;
 AsyncClose asyncClose;
 
 //Sort files in given directory using mtime from oldest (files not already openned for write).
-vector<string> listFilesDir (char * dir) {
+queue<string> listFilesDir (char * dir) {
 	struct privListDir {          //sort by mtime asc. function
 		static bool files_sorter_asc(TfileListElem const& lhs, TfileListElem const& rhs) {
 			if (lhs.mtime != rhs.mtime)
@@ -86,7 +86,7 @@ vector<string> listFilesDir (char * dir) {
 	char filename[1024];
 	vector<TfileListElem> tmpVec;   //vector for sorting
 	TfileListElem elem;             //element of sorting
-	vector<string> outVec;          //sorted filenames list
+	queue<string> outQueue;         //sorted filenames list
 	struct stat fileStats;          //for file stat
 	struct dirent * ent;            //for dir ent
 	DIR *dirP;
@@ -126,9 +126,9 @@ vector<string> listFilesDir (char * dir) {
 	}
 	sort( tmpVec.begin(), tmpVec.begin() + tmpVec.size(), &privListDir::files_sorter_asc);
 	for (unsigned n=0; n<tmpVec.size(); ++n) {
-		outVec.push_back(tmpVec.at(n).filename);
+		outQueue.push(tmpVec.at(n).filename);
 	}
-	return outVec;
+	return outQueue;
 }
 
 vector<string> explode(const string& str, const char& ch) {
