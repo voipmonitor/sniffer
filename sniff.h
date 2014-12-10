@@ -151,6 +151,7 @@ struct rtp_read_thread {
 			this->writeit = 0;
 			this->rtpp_queue = NULL;
 			this->rtpp_queue_quick = NULL;
+			this->rtpp_queue_quick_boost = NULL;
 		#endif
 	}
 	pthread_t thread;	       // ID of worker storing CDR thread 
@@ -169,6 +170,7 @@ struct rtp_read_thread {
 	volatile int writeit;
 	rqueue<rtp_packet_pcap_queue> *rtpp_queue;
 	rqueue_quick<rtp_packet_pcap_queue> *rtpp_queue_quick;
+	rqueue_quick_boost<rtp_packet_pcap_queue> *rtpp_queue_quick_boost;
 #endif
 };
 

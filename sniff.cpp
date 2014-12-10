@@ -1245,7 +1245,8 @@ void add_to_rtp_thread_queue(Call *call, unsigned char *data, int datalen, int d
 	
 	if(opt_pcap_queue) {
 		block_store->lock_packet(block_store_index);
-		if(params->rtpp_queue_quick) {
+		if(params->rtpp_queue_quick ||
+		   params->rtpp_queue_quick_boost) {
 			rtp_packet_pcap_queue rtpp_pq;
 			rtpp_pq.call = call;
 			rtpp_pq.saddr = saddr;
@@ -1265,7 +1266,11 @@ void add_to_rtp_thread_queue(Call *call, unsigned char *data, int datalen, int d
 			rtpp_pq.header = *header;
 			rtpp_pq.block_store = block_store;
 			rtpp_pq.block_store_index =block_store_index;
-			params->rtpp_queue_quick->push(&rtpp_pq, true);
+			if(params->rtpp_queue_quick) {
+				params->rtpp_queue_quick->push(&rtpp_pq, true);
+			} else {
+				params->rtpp_queue_quick_boost->push(&rtpp_pq, true);
+			}
 		} else {
 			params->rtpp_queue->lock();
 			rtp_packet_pcap_queue *rtpp_pq = params->rtpp_queue->push_get_pointer();
@@ -1377,6 +1382,11 @@ void *rtp_read_thread_func(void *arg) {
 		if(opt_pcap_queue) {
 			if(params->rtpp_queue_quick) {
 				if(!params->rtpp_queue_quick->pop(&rtpp_pq, true) &&
+				   terminating) {
+					return(NULL);
+				}
+			} else if(params->rtpp_queue_quick_boost) {
+				if(!params->rtpp_queue_quick_boost->pop(&rtpp_pq, true) &&
 				   terminating) {
 					return(NULL);
 				}
@@ -2069,22 +2079,24 @@ Call *process_packet(u_int64_t packet_number,
 				s = gettag(data, datalen,"\ni:", &l, &gettagLimitLen);
 				if(!issip or (l <= 0 || l > 1023)) {
 					// no Call-ID found in packet
-					if(istcp ==1 && header_ip) {
-						tcpReassemblySip.processPacket(
-							packet_number,
-							saddr, source, daddr, dest, data, origDatalen, dataoffset,
-							handle, *header, packet, header_ip,
-							dlt, sensor_id,
-							issip);
-						if(logPacketSipMethodCall_enable) {
-							logPacketSipMethodCall(packet_number, sip_method, lastSIPresponseNum, header, 
-								saddr, source, daddr, dest,
-								call, "it is TCP and callid not found");
+					if(istcp == 1 && header_ip) {
+						if(!preProcessPacket) {
+							tcpReassemblySip.processPacket(
+								packet_number,
+								saddr, source, daddr, dest, data, origDatalen, dataoffset,
+								handle, *header, packet, header_ip,
+								dlt, sensor_id,
+								issip);
+							if(logPacketSipMethodCall_enable) {
+								logPacketSipMethodCall(packet_number, sip_method, lastSIPresponseNum, header, 
+									saddr, source, daddr, dest,
+									call, "it is TCP and callid not found");
+							}
 						}
 						return NULL;
 					} else {
 						// it is not TCP and callid not found
-						if(logPacketSipMethodCall_enable) {
+						if(!preProcessPacket && logPacketSipMethodCall_enable) {
 							logPacketSipMethodCall(packet_number, sip_method, lastSIPresponseNum, header, 
 								saddr, source, daddr, dest,
 								call, "it is not TCP and callid not found");
@@ -2098,16 +2110,18 @@ Call *process_packet(u_int64_t packet_number,
 
 			// Call-ID is present
 			if(istcp == 1 && datalen >= 2) {
-				tcpReassemblySip.processPacket(
-					packet_number,
-					saddr, source, daddr, dest, data, origDatalen, dataoffset,
-					handle, *header, packet, header_ip,
-					dlt, sensor_id,
-					issip);
-				if(logPacketSipMethodCall_enable) {
-					logPacketSipMethodCall(packet_number, sip_method, lastSIPresponseNum, header, 
-						saddr, source, daddr, dest,
-						call, "it is TCP and callid found");
+				if(!preProcessPacket) {
+					tcpReassemblySip.processPacket(
+						packet_number,
+						saddr, source, daddr, dest, data, origDatalen, dataoffset,
+						handle, *header, packet, header_ip,
+						dlt, sensor_id,
+						issip);
+					if(logPacketSipMethodCall_enable) {
+						logPacketSipMethodCall(packet_number, sip_method, lastSIPresponseNum, header, 
+							saddr, source, daddr, dest,
+							call, "it is TCP and callid found");
+					}
 				}
 				return(NULL);
 			}

@@ -452,7 +452,7 @@ int num_threads = 0; // this has to be 1 for now
 unsigned int rtpthreadbuffer = 20;	// default 20MB
 unsigned int rtp_qring_length = 0;
 unsigned int rtp_qring_usleep = 10000;
-bool rtp_qring_quick = false;
+int rtp_qring_quick = 0;
 unsigned int gthread_num = 0;
 
 int opt_pcapdump = 0;
@@ -2231,7 +2231,7 @@ int eval_config(string inistr) {
 		rtp_qring_usleep = atol(value);
 	}
 	if((value = ini.GetValue("general", "rtp_qring_quick", NULL))) {
-		rtp_qring_quick = yesno(value);
+		rtp_qring_quick = strcmp(value, "boost") ? yesno(value) : 2;
 	}
 	
 	/*
@@ -3794,7 +3794,11 @@ int main(int argc, char *argv[]) {
 				size_t _rtp_qring_length = rtp_qring_length ? 
 								rtp_qring_length :
 								rtpthreadbuffer * 1024 * 1024 / sizeof(rtp_packet_pcap_queue);
-				if(rtp_qring_quick) {
+				if(rtp_qring_quick == 2) {
+					rtp_threads[i].rtpp_queue_quick_boost = new rqueue_quick_boost<rtp_packet_pcap_queue>(
+											100, rtp_qring_usleep,
+											&terminating);
+				} else if(rtp_qring_quick) {
 					rtp_threads[i].rtpp_queue_quick = new rqueue_quick<rtp_packet_pcap_queue>(
 										_rtp_qring_length,
 										100, rtp_qring_usleep,

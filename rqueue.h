@@ -7,6 +7,7 @@
 #include <unistd.h>
 #include <syslog.h>
 #include <string>
+#include <boost/lockfree/spsc_queue.hpp>
 
 
 template<class typeItem>
@@ -463,6 +464,48 @@ private:
 	v_u_int32_t writeit;
 };
 
+
+template<class typeItem>
+class rqueue_quick_boost {
+public:
+	rqueue_quick_boost(unsigned int pushUsleep, unsigned int popUsleep,
+			   int *terminating = NULL) {
+		this->pushUsleep = pushUsleep;
+		this->popUsleep = popUsleep;
+		this->terminating = terminating;
+	}
+	bool push(typeItem *item, bool waitForFree) {
+		while(!spsc_queue.push(*item)) {
+			if(waitForFree) {
+				if(terminating && *terminating) {
+					return(false);
+				}
+				usleep(pushUsleep);
+			} else {
+				return(false);
+			}
+		}
+		return(true);
+	}
+	bool pop(typeItem *item, bool waitForFree) {
+		while(!spsc_queue.pop(*item)) {
+			if(waitForFree) {
+				if(terminating && *terminating) {
+					return(false);
+				}
+				usleep(popUsleep);
+			} else {
+				return(false);
+			}
+		}
+		return(true);
+	}
+private:
+	boost::lockfree::spsc_queue<typeItem, boost::lockfree::capacity<20000> > spsc_queue;
+	unsigned int pushUsleep;
+	unsigned int popUsleep;
+	int *terminating;
+};
 
 
 #endif
