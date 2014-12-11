@@ -2066,6 +2066,7 @@ inline int PcapQueue_readFromInterface_base::pcap_next_ex_iface(pcap_t *pcapHand
 	return(1);
 }
 
+/*
 inline void __pcap_dispatch_handler(u_char *user, const pcap_pkthdr *header, const u_char *data) {
 	if(header && data) {
 		PcapQueue_readFromInterface_base *me = (PcapQueue_readFromInterface_base*)user;
@@ -2090,6 +2091,7 @@ inline int PcapQueue_readFromInterface_base::pcap_dispatch(pcap_t *pcapHandle) {
 	}
 	return(1);
 }
+*/
 
 inline int PcapQueue_readFromInterface_base::pcapProcess(pcap_pkthdr** header, u_char** packet, bool *destroy,
 							 bool enableDefrag, bool enableCalcMD5, bool enableDedup, bool enableDump) {
@@ -2398,10 +2400,10 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void *arg, unsigned int 
 		bool destroy = false;
 		switch(this->typeThread) {
 		case read:
-			if(opt_pcap_queue_iface_dedup_separate_threads_extend &&
+			/*if(opt_pcap_queue_iface_dedup_separate_threads_extend &&
 			   opt_pcap_dispatch) {
 				res = this->pcap_dispatch(this->pcapHandle);
-			} else {
+			} else */{
 				res = this->pcap_next_ex_iface(this->pcapHandle, &header, &packet);
 				if(res == -1) {
 					break;

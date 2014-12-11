@@ -326,7 +326,6 @@ public:
 	PcapQueue_readFromInterface_base(const char *interfaceName = NULL);
 	virtual ~PcapQueue_readFromInterface_base();
 	void setInterfaceName(const char *interfaceName);
-	inline virtual void push(pcap_pkthdr* header,u_char* packet, u_int offset, uint16_t *md5, int index = 0, uint32_t counter = 0) {}
 protected:
 	virtual bool startCapture();
 	inline int pcap_next_ex_iface(pcap_t *pcapHandle, pcap_pkthdr** header, u_char** packet);
@@ -381,7 +380,7 @@ public:
 					  PcapQueue_readFromInterfaceThread *prevThread2 = NULL);
 	~PcapQueue_readFromInterfaceThread();
 protected:
-	inline virtual void push(pcap_pkthdr* header,u_char* packet, u_int offset, uint16_t *md5, int index = 0, uint32_t counter = 0);
+	inline void push(pcap_pkthdr* header,u_char* packet, u_int offset, uint16_t *md5, int index = 0, uint32_t counter = 0);
 	inline hpi pop(int index = 0, bool moveReadit = true, bool deferDestroy = false);
         inline void moveReadit(int index = 0, bool deferDestroy = false);
 	inline hpi POP(bool moveReadit = true, bool deferDestroy = false) {
