@@ -363,6 +363,7 @@ public:
 			call = NULL;
 			call_created = NULL;
 			detectUserAgent = false;
+			_getCallID_reassembly = false;
 			_getSipMethod = false;
 			_getLastSipResponse = false;
 			_findCall = false;
@@ -380,6 +381,7 @@ public:
 		Call *call;
 		Call *call_created;
 		bool detectUserAgent;
+		bool _getCallID_reassembly;
 		bool _getSipMethod;
 		bool _getLastSipResponse;
 		bool _findCall;

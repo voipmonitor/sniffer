@@ -3410,13 +3410,7 @@ Calltable::cleanup( time_t currtime ) {
 		bool closeCall = false;
 		if(currtime == 0 || call->force_close) {
 			closeCall = true;
-		} else if(
-			#if SYNC_CALL_RTP
-			call->rtppcaketsinqueue == 0
-			#else
-			call->rtppcaketsinqueue_p == call->rtppcaketsinqueue_m
-			#endif 
-			) {
+		} else {
 			if(call->destroy_call_at != 0 && call->destroy_call_at <= currtime) {
 				closeCall = true;
 			} else if(call->destroy_call_at_bye != 0 && call->destroy_call_at_bye <= currtime) {
@@ -3445,6 +3439,18 @@ Calltable::cleanup( time_t currtime ) {
 			}
 		}
 		if(closeCall) {
+			call->hashRemove();
+			if(!(
+			     #if SYNC_CALL_RTP
+			     call->rtppcaketsinqueue == 0
+			     #else
+			     call->rtppcaketsinqueue_p == call->rtppcaketsinqueue_m
+			     #endif 
+			     )) {
+				closeCall = false;
+			}
+		}
+		if(closeCall) {
 			if(verbosity && verbosityE > 1) {
 				syslog(LOG_NOTICE, "Calltable::cleanup - callid %s", call->call_id.c_str());
 			}
@@ -3457,7 +3463,6 @@ Calltable::cleanup( time_t currtime ) {
 				syslog(LOG_WARNING, "force destroy call (rtppcaketsinqueue_p != rtppcaketsinqueue_m)");
 			}
 			#endif
-			call->hashRemove();
 			// Close RTP dump file ASAP to save file handles
 			call->getPcapRtp()->close();
 

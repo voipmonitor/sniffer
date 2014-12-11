@@ -317,6 +317,7 @@ int opt_mysqlloadconfig = 1;
 int opt_last_rtp_from_end = 1;
 int opt_pcap_dump_bufflength = 8194;
 int opt_pcap_dump_asyncwrite = 1;
+int opt_pcap_dump_asyncwrite_limit_new_thread = 80;
 int opt_pcap_dump_zip = 1;
 int opt_pcap_dump_ziplevel = Z_DEFAULT_COMPRESSION;
 int opt_pcap_dump_writethreads = 1;
@@ -348,6 +349,7 @@ extern int opt_pcap_queue_iface_dedup_separate_threads;
 extern int opt_pcap_queue_iface_dedup_separate_threads_extend;
 extern int opt_pcap_queue_dequeu_window_length;
 extern int opt_pcap_queue_dequeu_method;
+extern int opt_pcap_dispatch;
 extern int sql_noerror;
 int opt_cleandatabase_cdr = 0;
 int opt_cleandatabase_http_enum = 0;
@@ -1988,7 +1990,7 @@ int eval_config(string inistr) {
 	}
 	
 	if((value = ini.GetValue("general", "enable_preprocess_packet", NULL))) {
-		opt_enable_preprocess_packet = yesno(value);
+		opt_enable_preprocess_packet = strcmp(value, "sip") ? yesno(value) : 2;
 	}
 	if((value = ini.GetValue("general", "enable_process_rtp_packet", NULL))) {
 		opt_enable_process_rtp_packet = yesno(value);
@@ -2032,6 +2034,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "pcap_queue_dequeu_method", NULL))) {
 		opt_pcap_queue_dequeu_method = atoi(value);
+	}
+	if((value = ini.GetValue("general", "pcap_dispatch", NULL))) {
+		opt_pcap_dispatch = yesno(value);
 	}
 	if((value = ini.GetValue("general", "maxpcapsize", NULL))) {
 		opt_maxpcapsize_mb = atoi(value);
@@ -2136,6 +2141,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "pcap_dump_asyncwrite", NULL))) {
 		opt_pcap_dump_asyncwrite = yesno(value);
+	}
+	if((value = ini.GetValue("general", "pcap_dump_asyncwrite_limit_new_thread", NULL))) {
+		opt_pcap_dump_asyncwrite_limit_new_thread = atoi(value);
 	}
 	if((value = ini.GetValue("general", "pcap_dump_zip", NULL))) {
 		opt_pcap_dump_zip = yesno(value);

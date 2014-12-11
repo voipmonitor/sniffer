@@ -169,6 +169,7 @@ extern volatile unsigned int pcap_readit;
 extern volatile unsigned int pcap_writeit;
 extern unsigned int pcap_qring_max;
 extern unsigned int pcap_qring_usleep;
+extern int opt_enable_preprocess_packet;
 extern unsigned int opt_preprocess_packets_qring_length;
 extern unsigned int opt_preprocess_packets_qring_usleep;
 extern unsigned int opt_process_rtp_packets_qring_length;
@@ -265,7 +266,6 @@ map<unsigned int, livesnifferfilter_t*> usersniffer;
 static unsigned long process_packet__last_cleanup = 0;
 static unsigned long process_packet__last_destroy_calls = 0;
 static unsigned long preprocess_packet__last_cleanup = 0;
-static unsigned long process_rtp_packet__last_cleanup = 0;
 
 
 // return IP from nat_aliases[ip] or 0 if not found
@@ -1224,24 +1224,18 @@ int get_rtpmap_from_sdp(char *sdp_text, unsigned long len, int *rtpmap){
 
 void add_to_rtp_thread_queue(Call *call, unsigned char *data, int datalen, int dataoffset, struct pcap_pkthdr *header,  u_int32_t saddr, u_int32_t daddr, unsigned short sport, unsigned short dport, int iscaller, int is_rtcp,
 			     pcap_block_store *block_store, int block_store_index, 
-			     int enable_save_packet, const u_char *packet, char istcp, int dlt, int sensor_id) {
+			     int enable_save_packet, const u_char *packet, char istcp, int dlt, int sensor_id,
+			     bool preSyncRtp) {
 	if(terminating) {
 		return;
 	}
 	
-	#if SYNC_CALL_RTP
-	__sync_add_and_fetch(&call->rtppcaketsinqueue, 1);
-	#else
-	++call->rtppcaketsinqueue_p;
-	#endif
-	
-	if(processRtpPacket) {
-		if (header->ts.tv_sec - process_rtp_packet__last_cleanup > 10){
-			if (process_rtp_packet__last_cleanup >= 0){
-				calltable->cleanup(header->ts.tv_sec);
-			}
-			process_rtp_packet__last_cleanup = header->ts.tv_sec;
-		}
+	if(!preSyncRtp) {
+		#if SYNC_CALL_RTP
+		__sync_add_and_fetch(&call->rtppcaketsinqueue, 1);
+		#else
+		++call->rtppcaketsinqueue_p;
+		#endif
 	}
 	
 	rtp_read_thread *params = &(rtp_threads[call->thread_num]);
@@ -2087,7 +2081,9 @@ Call *process_packet(u_int64_t packet_number,
 			goto rtpcheck;
 		}
 
-		if(!parsePacket) {
+		if(parsePacket && parsePacket->_getCallID_reassembly) {
+			strcpy(callidstr, parsePacket->callid.c_str());
+		} else {
 			s = gettag(data, datalen, "\nCall-ID:", &l, &gettagLimitLen);
 			if(!issip or (l <= 0 || l > 1023)) {
 				// try also compact header
@@ -2140,10 +2136,6 @@ Call *process_packet(u_int64_t packet_number,
 				}
 				return(NULL);
 			}
-		}
-		
-		if(parsePacket) {
-			strcpy(callidstr, parsePacket->callid.c_str());
 		}
 		
 		if(issip) {
@@ -3038,7 +3030,8 @@ rtpcheck:
 					add_to_rtp_thread_queue(call, (unsigned char*) data, datalen, dataoffset, header, saddr, daddr, source, dest, iscaller, is_rtcp,
 								block_store, block_store_index, 
 								opt_saveRTP || opt_saveRTCP, 
-								packet, istcp, dlt, sensor_id);
+								packet, istcp, dlt, sensor_id,
+								false);
 				} else {
 					call->read_rtcp((unsigned char*) data, datalen, dataoffset, header, saddr, daddr, source, dest, iscaller,
 							false, packet, istcp, dlt, sensor_id);
@@ -3066,7 +3059,8 @@ rtpcheck:
 				add_to_rtp_thread_queue(call, (unsigned char*) data, datalen, dataoffset, header, saddr, daddr, source, dest, iscaller, is_rtcp,
 							block_store, block_store_index, 
 							(call->flags & FLAG_SAVERTPHEADER) || (call->flags & FLAG_SAVERTP) || (call->isfax && opt_saveudptl) || record, 
-							packet, istcp, dlt, sensor_id);
+							packet, istcp, dlt, sensor_id,
+							false);
 				*was_rtp = 1;
 				if(is_rtcp) {
 					if(logPacketSipMethodCall_enable) {
@@ -3154,7 +3148,8 @@ rtpcheck:
 					add_to_rtp_thread_queue(call, (unsigned char*) data, datalen, dataoffset, header, saddr, daddr, source, dest, !iscaller, is_rtcp,
 								block_store, block_store_index, 
 								opt_saveRTP || opt_saveRTCP, 
-								packet, istcp, dlt, sensor_id);
+								packet, istcp, dlt, sensor_id,
+								false);
 				} else {
 					call->read_rtcp((unsigned char*) data, datalen, dataoffset, header, saddr, daddr, source, dest, !iscaller,
 							false, packet, istcp, dlt, sensor_id);
@@ -3183,7 +3178,8 @@ rtpcheck:
 				add_to_rtp_thread_queue(call, (unsigned char*) data, datalen, dataoffset, header, saddr, daddr, source, dest, !iscaller, is_rtcp,
 							block_store, block_store_index, 
 							(call->flags & FLAG_SAVERTP) || (call->isfax && opt_saveudptl) || record, 
-							packet, istcp, dlt, sensor_id);
+							packet, istcp, dlt, sensor_id,
+							false);
 				*was_rtp = 1;
 			} else {
 				call->read_rtp((unsigned char*) data, datalen, dataoffset, header, NULL, saddr, daddr, source, dest, !iscaller, &record,
@@ -3350,10 +3346,8 @@ void process_packet__cleanup(pcap_pkthdr *header, pcap_t *handle) {
 		}
 	}
 	
-	if(!processRtpPacket) {
-		if (process_packet__last_cleanup >= 0){
-			calltable->cleanup(header->ts.tv_sec);
-		}
+	if (process_packet__last_cleanup >= 0){
+		calltable->cleanup(header->ts.tv_sec);
 	}
 	
 	/* also do every 10 seconds pcap statistics */
@@ -3524,7 +3518,7 @@ Call *process_packet__rtp(ProcessRtpPacket::rtp_call_info *call_info,size_t call
 			  pcap_pkthdr *header, const u_char *packet, int istcp, struct iphdr2 *header_ip,
 			  pcap_block_store *block_store, int block_store_index, int dlt, int sensor_id,
 			  int *voippacket, int *was_rtp,
-			  bool find_by_dest) {
+			  bool find_by_dest, bool preSyncRtp) {
 	++counter_rtp_packets;
 	Call *call;
 	bool iscaller;
@@ -3560,6 +3554,13 @@ Call *process_packet__rtp(ProcessRtpPacket::rtp_call_info *call_info,size_t call
 		if(!is_rtcp && !is_fax &&
 		   (datalen < RTP_FIXED_HEADERLEN ||
 		    header->caplen <= (unsigned)(datalen - RTP_FIXED_HEADERLEN))) {
+			if(preSyncRtp) {
+				#if SYNC_CALL_RTP
+				__sync_sub_and_fetch(&call->rtppcaketsinqueue, 1);
+				#else
+				++call->rtppcaketsinqueue_m;
+				#endif
+			}
 			return(call);
 		}
 
@@ -3582,13 +3583,17 @@ Call *process_packet__rtp(ProcessRtpPacket::rtp_call_info *call_info,size_t call
 		if(is_fax) {
 			call->seenudptl = 1;
 		}
+		
+		bool call_add_to_rtp_thread_queue = false;
 
 		if(is_rtcp) {
 			if(rtp_threaded && can_thread) {
 				add_to_rtp_thread_queue(call, (unsigned char*) data, datalen, dataoffset, header, saddr, daddr, source, dest, iscaller, is_rtcp,
 							block_store, block_store_index, 
 							opt_saveRTP || opt_saveRTCP, 
-							packet, istcp, dlt, sensor_id);
+							packet, istcp, dlt, sensor_id,
+							preSyncRtp);
+				call_add_to_rtp_thread_queue = true;
 			} else {
 				call->read_rtcp((unsigned char*) data, datalen, dataoffset, header, saddr, daddr, source, dest, iscaller,
 						false, packet, istcp, dlt, sensor_id);
@@ -3597,6 +3602,13 @@ Call *process_packet__rtp(ProcessRtpPacket::rtp_call_info *call_info,size_t call
 			   (opt_saveRTP || opt_saveRTCP)) {
 				save_packet(call, header, packet, saddr, source, daddr, dest, istcp, header_ip, data, datalen, dataoffset, TYPE_RTP, 
 					    false, dlt, sensor_id);
+			}
+			if(preSyncRtp && !call_add_to_rtp_thread_queue) {
+				#if SYNC_CALL_RTP
+				__sync_sub_and_fetch(&call->rtppcaketsinqueue, 1);
+				#else
+				++call->rtppcaketsinqueue_m;
+				#endif
 			}
 			return call;
 		}
@@ -3611,11 +3623,20 @@ Call *process_packet__rtp(ProcessRtpPacket::rtp_call_info *call_info,size_t call
 			add_to_rtp_thread_queue(call, (unsigned char*) data, datalen, dataoffset, header, saddr, daddr, source, dest, iscaller, is_rtcp,
 						block_store, block_store_index, 
 						(call->flags & FLAG_SAVERTPHEADER) || (call->flags & FLAG_SAVERTP) || (call->isfax && opt_saveudptl) || record, 
-						packet, istcp, dlt, sensor_id);
+						packet, istcp, dlt, sensor_id,
+						preSyncRtp);
+			call_add_to_rtp_thread_queue = true;
 			if(was_rtp) {
 				*was_rtp = 1;
 			}
 			if(is_rtcp) {
+				if(preSyncRtp && !call_add_to_rtp_thread_queue) {
+					#if SYNC_CALL_RTP
+					__sync_sub_and_fetch(&call->rtppcaketsinqueue, 1);
+					#else
+					++call->rtppcaketsinqueue_m;
+					#endif
+				}
 				return call;
 			}
 		} else {
@@ -3640,6 +3661,14 @@ Call *process_packet__rtp(ProcessRtpPacket::rtp_call_info *call_info,size_t call
 					    false, dlt, sensor_id);
 			}
 
+		}
+		
+		if(preSyncRtp && !call_add_to_rtp_thread_queue) {
+			#if SYNC_CALL_RTP
+			__sync_sub_and_fetch(&call->rtppcaketsinqueue, 1);
+			#else
+			++call->rtppcaketsinqueue_m;
+			#endif
 		}
 	}
 	return(NULL);
@@ -4852,7 +4881,8 @@ void PreProcessPacket::push(u_int64_t packet_number,
 	
 	if(_parse_packet->isSip) {
 		_parse_packet->init();
-		if(!this->sipProcess(_parse_packet)) {
+		if(opt_enable_preprocess_packet == 2 &&
+		   !this->sipProcess(_parse_packet)) {
 			if(block_store) {
 				block_store->unlock_packet(block_store_index);
 			}
@@ -4945,6 +4975,7 @@ void PreProcessPacket::terminating() {
 }
 
 bool PreProcessPacket::sipProcess(packet_parse_s *parse_packet) {
+	parse_packet->_getCallID_reassembly = true;
 	if(!this->sipProcess_getCallID(parse_packet)) {
 		return(false);
 	}
@@ -5186,6 +5217,11 @@ void ProcessRtpPacket::rtp(packet_s *_packet) {
 			call_info[call_info_length].iscaller = node_call->iscaller;
 			call_info[call_info_length].is_rtcp = node_call->is_rtcp;
 			call_info[call_info_length].is_fax = node_call->is_fax;
+			#if SYNC_CALL_RTP
+			__sync_add_and_fetch(&node_call->call->rtppcaketsinqueue, 1);
+			#else
+			++node_call->call->rtppcaketsinqueue_p;
+			#endif
 			++call_info_length;
 		}
 	}
@@ -5197,7 +5233,7 @@ void ProcessRtpPacket::rtp(packet_s *_packet) {
 				    &_packet->header, _packet->packet, _packet->istcp, _packet->header_ip,
 				    _packet->block_store, _packet->block_store_index, _packet->dlt, _packet->sensor_id,
 				    NULL, NULL,
-				    find_by_dest);
+				    find_by_dest, true);
 	} else {
 		if(opt_rtpnosip) {
 			process_packet__rtp_nosip(_packet->saddr, _packet->source, _packet->daddr, _packet->dest, 

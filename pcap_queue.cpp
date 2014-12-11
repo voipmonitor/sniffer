@@ -175,6 +175,7 @@ int opt_pcap_queue_iface_dedup_separate_threads_extend	= 0;
 int opt_pcap_queue_iface_qring_size 			= 5000;
 int opt_pcap_queue_dequeu_window_length			= -1;
 int opt_pcap_queue_dequeu_method			= 2;
+int opt_pcap_dispatch					= 0;
 
 size_t _opt_pcap_queue_block_offset_inc_size		= opt_pcap_queue_block_max_size / AVG_PACKET_SIZE / 4;
 size_t _opt_pcap_queue_block_restore_buffer_inc_size	= opt_pcap_queue_block_max_size / 4;
@@ -1330,7 +1331,8 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 			rrdtacCPU_lastt = last_tac_cpu;
 		}
 	}
-	if(last_tac_cpu > 80) {
+	extern int opt_pcap_dump_asyncwrite_limit_new_thread;
+	if(last_tac_cpu > opt_pcap_dump_asyncwrite_limit_new_thread) {
 		asyncClose->addThread();
 	}
 	if(last_tac_cpu < 5) {
@@ -2064,6 +2066,31 @@ inline int PcapQueue_readFromInterface_base::pcap_next_ex_iface(pcap_t *pcapHand
 	return(1);
 }
 
+inline void __pcap_dispatch_handler(u_char *user, const pcap_pkthdr *header, const u_char *data) {
+	if(header && data) {
+		PcapQueue_readFromInterface_base *me = (PcapQueue_readFromInterface_base*)user;
+		me->push((pcap_pkthdr*)header, (u_char*)data, 0, NULL);
+	}
+}
+
+inline int PcapQueue_readFromInterface_base::pcap_dispatch(pcap_t *pcapHandle) {
+	int res = ::pcap_dispatch(pcapHandle, 1, __pcap_dispatch_handler, ((u_char*)this));
+	if(res == -1) {
+		if(VERBOSE) {
+			syslog (LOG_NOTICE,"packetbuffer dispatch - %s: error reading packets", this->getInterfaceName().c_str());
+		}
+		return(0);
+	} else if(res == -2) {
+		if(VERBOSE) {
+			syslog(LOG_NOTICE,"packetbuffer dispatch - %s: end of pcap file, exiting", this->getInterfaceName().c_str());
+		}
+		return(-1);
+	} else if(res == 0) {
+		return(0);
+	}
+	return(1);
+}
+
 inline int PcapQueue_readFromInterface_base::pcapProcess(pcap_pkthdr** header, u_char** packet, bool *destroy,
 							 bool enableDefrag, bool enableCalcMD5, bool enableDedup, bool enableDump) {
 	return(::pcapProcess(header, packet, destroy,
@@ -2370,28 +2397,32 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void *arg, unsigned int 
 	while(!(terminating || this->threadDoTerminate)) {
 		bool destroy = false;
 		switch(this->typeThread) {
-		case read: {
-			res = this->pcap_next_ex_iface(this->pcapHandle, &header, &packet);
-			if(res == -1) {
-				break;
-			} else if(res == 0) {
-				continue;
-			}
-			if(!this->dedupThread) {
-				res = this->pcapProcess(&header, &packet, &destroy);
+		case read:
+			if(opt_pcap_queue_iface_dedup_separate_threads_extend &&
+			   opt_pcap_dispatch) {
+				res = this->pcap_dispatch(this->pcapHandle);
+			} else {
+				res = this->pcap_next_ex_iface(this->pcapHandle, &header, &packet);
 				if(res == -1) {
 					break;
 				} else if(res == 0) {
-					if(destroy) {
-						delete header;
-						delete [] packet;
-					}
 					continue;
 				}
-				this->push(header, packet, this->ppd.header_ip_offset, NULL);
-			} else {
-				this->push(header, packet, 0, NULL);
-			}
+				if(!this->dedupThread) {
+					res = this->pcapProcess(&header, &packet, &destroy);
+					if(res == -1) {
+						break;
+					} else if(res == 0) {
+						if(destroy) {
+							delete header;
+							delete [] packet;
+						}
+						continue;
+					}
+					this->push(header, packet, this->ppd.header_ip_offset, NULL);
+				} else {
+					this->push(header, packet, 0, NULL);
+				}
 			}
 			break;
 		case defrag: {
