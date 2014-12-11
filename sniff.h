@@ -356,6 +356,9 @@ public:
 		int sensor_id;
 	};
 	struct packet_parse_s {
+		packet_parse_s() {
+			init();
+		}
 		void init() {
 			sip_method = -1;
 			lastSIPresponseNum = -1;
