@@ -2979,8 +2979,8 @@ rtpcheck:
 				       data, datalen, dataoffset,
 				       handle, header, packet, istcp, header_ip,
 				       block_store, block_store_index, dlt, sensor_id,
-				       parsePacket ? parsePacket->hash[0] : 0,
-				       parsePacket ? parsePacket->hash[1] : 0);
+				       parsePacket ? parsePacket->hash[0] : tuplehash(saddr, source),
+				       parsePacket ? parsePacket->hash[1] : tuplehash(daddr, dest));
 	} else {
 	if ((calls = calltable->hashfind_by_ip_port(daddr, dest, parsePacket ? parsePacket->hash[1] : 0))){
 		++counter_rtp_packets;
