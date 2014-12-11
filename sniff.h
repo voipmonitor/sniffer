@@ -454,6 +454,12 @@ public:
 		unsigned int hash_d;
 		volatile int used;
 	};
+	struct rtp_call_info {
+		Call *call;
+		bool iscaller;
+		bool is_rtcp;
+		bool is_fax;
+	};
 public:
 	ProcessRtpPacket();
 	~ProcessRtpPacket();

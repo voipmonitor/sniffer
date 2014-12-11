@@ -265,6 +265,8 @@ int opt_enable_preprocess_packet;
 int opt_enable_process_rtp_packet;
 unsigned int opt_preprocess_packets_qring_length = 100;
 unsigned int opt_preprocess_packets_qring_usleep = 10;
+unsigned int opt_process_rtp_packets_qring_length = 100;
+unsigned int opt_process_rtp_packets_qring_usleep = 10;
 int opt_enable_http = 0;
 int opt_enable_webrtc = 0;
 int opt_enable_ssl = 0;
@@ -2220,6 +2222,12 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "preprocess_packets_qring_usleep", NULL))) {
 		opt_preprocess_packets_qring_usleep = atol(value);
+	}
+	if((value = ini.GetValue("general", "process_rtp_packets_qring_length", NULL))) {
+		opt_process_rtp_packets_qring_length = atol(value);
+	}
+	if((value = ini.GetValue("general", "process_rtp_packets_qring_usleep", NULL))) {
+		opt_process_rtp_packets_qring_usleep = atol(value);
 	}
 
 	if((value = ini.GetValue("general", "pcap_qring_length", NULL))) {

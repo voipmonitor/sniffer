@@ -171,6 +171,8 @@ extern unsigned int pcap_qring_max;
 extern unsigned int pcap_qring_usleep;
 extern unsigned int opt_preprocess_packets_qring_length;
 extern unsigned int opt_preprocess_packets_qring_usleep;
+extern unsigned int opt_process_rtp_packets_qring_length;
+extern unsigned int opt_process_rtp_packets_qring_usleep;
 extern unsigned int rtp_qring_usleep;
 extern int opt_pcapdump;
 extern int opt_id_sensor;
@@ -1233,7 +1235,7 @@ void add_to_rtp_thread_queue(Call *call, unsigned char *data, int datalen, int d
 	++call->rtppcaketsinqueue_p;
 	#endif
 	
-	if(!processRtpPacket) {
+	if(processRtpPacket) {
 		if (header->ts.tv_sec - process_rtp_packet__last_cleanup > 10){
 			if (process_rtp_packet__last_cleanup >= 0){
 				calltable->cleanup(header->ts.tv_sec);
@@ -3516,27 +3518,27 @@ int parse_packet__last_sip_response(char *data, unsigned int datalen, int sip_me
 	return(lastSIPresponseNum);
 }
 
-Call *process_packet__rtp(hash_node_call *calls,
+Call *process_packet__rtp(ProcessRtpPacket::rtp_call_info *call_info,size_t call_info_length,
 			  unsigned int saddr, int source, unsigned int daddr, int dest, 
 			  char *data, int datalen, int dataoffset,
 			  pcap_pkthdr *header, const u_char *packet, int istcp, struct iphdr2 *header_ip,
 			  pcap_block_store *block_store, int block_store_index, int dlt, int sensor_id,
 			  int *voippacket, int *was_rtp,
-			  bool _daddr) {
-	hash_node_call *node_call;
+			  bool find_by_dest) {
+	++counter_rtp_packets;
 	Call *call;
 	bool iscaller;
 	bool is_rtcp;
 	bool is_fax;
 	int record = 0;
-	for (node_call = (hash_node_call *)calls; node_call != NULL; node_call = node_call->next) {
-		call = node_call->call;
-		iscaller = node_call->iscaller;
-		is_rtcp = node_call->is_rtcp;
-		is_fax = node_call->is_fax;
+	for(size_t call_info_index = 0; call_info_index < call_info_length; call_info_index++) {
+		call = call_info[call_info_index].call;
+		iscaller = call_info[call_info_index].iscaller;
+		is_rtcp = call_info[call_info_index].is_rtcp;
+		is_fax = call_info[call_info_index].is_fax;
 		
 		if(sverb.process_rtp) {
-			if(_daddr) {
+			if(find_by_dest) {
 				cout << "RTP - process_packet (daddr, dest): " << inet_ntostring(htonl(daddr)) << " / " << dest
 				     << " " << (iscaller ? "caller" : "called") 
 				     << endl;
@@ -3547,7 +3549,7 @@ Call *process_packet__rtp(hash_node_call *calls,
 			}
 		}
 		
-		if(!_daddr) {
+		if(!find_by_dest) {
 			iscaller = !iscaller;
 		}
 
@@ -3648,6 +3650,7 @@ Call *process_packet__rtp_nosip(unsigned int saddr, int source, unsigned int dad
 				pcap_pkthdr *header, const u_char *packet, int istcp, struct iphdr2 *header_ip,
 				pcap_block_store *block_store, int block_store_index, int dlt, int sensor_id,
 				pcap_t *handle) {
+	++counter_rtp_packets;
 	// decoding RTP without SIP signaling is enabled. Check if it is port >= 1024 and if RTP version is == 2
 	char s[256];
 	RTP rtp(-1);
@@ -5087,7 +5090,7 @@ inline void *_ProcessRtpPacket_outThreadFunction(void *arg) {
 }
 
 ProcessRtpPacket::ProcessRtpPacket() {
-	this->qringmax = opt_preprocess_packets_qring_length;
+	this->qringmax = opt_process_rtp_packets_qring_length;
 	this->readit = 0;
 	this->writeit = 0;
 	this->qring = new packet_s[this->qringmax];
@@ -5159,32 +5162,42 @@ void *ProcessRtpPacket::outThreadFunction() {
 				this->readit++;
 			}
 		} else {
-			usleep(opt_preprocess_packets_qring_usleep);
+			usleep(opt_process_rtp_packets_qring_usleep);
 		}
 	}
 	return(NULL);
 }
 
 void ProcessRtpPacket::rtp(packet_s *_packet) {
-	hash_node_call *calls;
-	if ((calls = calltable->hashfind_by_ip_port(_packet->daddr, _packet->dest, _packet->hash_d))){
-		++counter_rtp_packets;
-		process_packet__rtp(calls,
+	hash_node_call *calls = NULL;;
+	bool find_by_dest = false;
+	calltable->lock_calls_hash();
+	if((calls = calltable->hashfind_by_ip_port(_packet->daddr, _packet->dest, _packet->hash_d, false))) {
+		find_by_dest = true;
+	} else {
+		calls = calltable->hashfind_by_ip_port(_packet->saddr, _packet->source, _packet->hash_s, false);
+	}
+	rtp_call_info call_info[20];
+	size_t call_info_length = 0;
+	if(calls) {
+		hash_node_call *node_call;
+		for (node_call = (hash_node_call *)calls; node_call != NULL; node_call = node_call->next) {
+			call_info[call_info_length].call = node_call->call;
+			call_info[call_info_length].iscaller = node_call->iscaller;
+			call_info[call_info_length].is_rtcp = node_call->is_rtcp;
+			call_info[call_info_length].is_fax = node_call->is_fax;
+			++call_info_length;
+		}
+	}
+	calltable->unlock_calls_hash();
+	if(call_info_length) {
+		process_packet__rtp(call_info, call_info_length,
 				    _packet->saddr, _packet->source, _packet->daddr, _packet->dest, 
 				    _packet->data, _packet->datalen, _packet->dataoffset,
 				    &_packet->header, _packet->packet, _packet->istcp, _packet->header_ip,
 				    _packet->block_store, _packet->block_store_index, _packet->dlt, _packet->sensor_id,
 				    NULL, NULL,
-				    true);
-	} else if ((calls = calltable->hashfind_by_ip_port(_packet->saddr, _packet->source, _packet->hash_s))){
-		++counter_rtp_packets;
-		process_packet__rtp(calls,
-				    _packet->saddr, _packet->source, _packet->daddr, _packet->dest, 
-				    _packet->data, _packet->datalen, _packet->dataoffset,
-				    &_packet->header, _packet->packet, _packet->istcp, _packet->header_ip,
-				    _packet->block_store, _packet->block_store_index, _packet->dlt, _packet->sensor_id,
-				    NULL, NULL,
-				    false);
+				    find_by_dest);
 	} else {
 		if(opt_rtpnosip) {
 			process_packet__rtp_nosip(_packet->saddr, _packet->source, _packet->daddr, _packet->dest, 

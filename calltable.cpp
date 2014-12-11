@@ -585,12 +585,14 @@ Call::refresh_data_ip_port(in_addr_t addr, unsigned short port, bool iscaller, i
 			forcemark[iscaller] = true;
 			if(fax && !this->ip_port[i].fax) {
 				this->ip_port[i].fax = fax;
-				hash_node_call *calls = calltable->hashfind_by_ip_port(addr, port);
+				calltable->lock_calls_hash();
+				hash_node_call *calls = calltable->hashfind_by_ip_port(addr, port, 0, false);
 				if(calls) {
 					for(hash_node_call *node_call = calls; node_call != NULL; node_call = node_call->next) {
 						node_call->is_fax = fax;
 					}
 				}
+				calltable->unlock_calls_hash();
 			}
 			return true;
 		}
@@ -2955,6 +2957,7 @@ Calltable::Calltable() {
 	pthread_mutex_init(&calls_mergeMAPlock, NULL);
 
 	memset(calls_hash, 0x0, sizeof(calls_hash));
+	_sync_lock_calls_hash = 0;
 };
 
 /* destructor */
@@ -3012,7 +3015,7 @@ Calltable::hashAdd(in_addr_t addr, unsigned short port, Call* call, int iscaller
 
 	h = tuplehash(addr, port);
 	//allowrelation = 1;
-
+	lock_calls_hash();
 	// check if there is not already call in hash 
 	for (node = (hash_node *)calls_hash[h]; node != NULL; node = node->next) {
 		if ((node->addr == addr) && (node->port == port)) {
@@ -3064,6 +3067,7 @@ Calltable::hashAdd(in_addr_t addr, unsigned short port, Call* call, int iscaller
 					*/
 					lastcall = call;
 				}
+				unlock_calls_hash();
 				return;
 			}
 			if(!found) {
@@ -3079,6 +3083,7 @@ Calltable::hashAdd(in_addr_t addr, unsigned short port, Call* call, int iscaller
 				node->calls = node_call_new;
 				
 			}
+			unlock_calls_hash();
 			return;
 		}
 	}
@@ -3099,6 +3104,7 @@ Calltable::hashAdd(in_addr_t addr, unsigned short port, Call* call, int iscaller
 	node->next = (hash_node *)calls_hash[h];
 	node->calls = node_call;
 	calls_hash[h] = node;
+	unlock_calls_hash();
 }
 
 /* remove node from hash */
@@ -3109,6 +3115,7 @@ Calltable::hashRemove(Call *call, in_addr_t addr, unsigned short port) {
 	int h;
 
 	h = tuplehash(addr, port);
+	lock_calls_hash();
 	for (node = (hash_node *)calls_hash[h]; node != NULL; node = node->next) {
 		if (node->addr == addr && node->port == port) {
 			for (node_call = (hash_node_call *)node->calls; node_call != NULL; node_call = node_call->next) {
@@ -3133,16 +3140,19 @@ Calltable::hashRemove(Call *call, in_addr_t addr, unsigned short port) {
 				if (prev == NULL) {
 					calls_hash[h] = node->next;
 					free(node);
+					unlock_calls_hash();
 					return;
 				} else {
 					prev->next = node->next;
 					free(node);
+					unlock_calls_hash();
 					return;
 				}
 			}
 		}
 		prev = node;
 	}
+	unlock_calls_hash();
 }
 
 /* remove node from hash */
@@ -3200,21 +3210,28 @@ Calltable::mapfind_by_ip_port(in_addr_t addr, unsigned short port, int *iscaller
 
 /* find call in hash */
 hash_node_call*
-Calltable::hashfind_by_ip_port(in_addr_t addr, unsigned short port, unsigned int hash) {
+Calltable::hashfind_by_ip_port(in_addr_t addr, unsigned short port, unsigned int hash, bool lock) {
 	hash_node *node = NULL;
 	u_int32_t h;
 
 	h = hash ? hash : tuplehash(addr, port);
+	if(lock) {
+		lock_calls_hash();
+	}
+	hash_node_call *rslt = NULL;
 	for (node = (hash_node *)calls_hash[h]; node != NULL; node = node->next) {
 		if ((node->addr == addr) && (node->port == port)) {
-			return node->calls;
+			rslt = node->calls;
 //			*iscaller = node->iscaller;
 //			*is_rtcp = node->is_rtcp;
 //			*is_fax = node->is_fax;
 //			return node->call;
 		}
 	}
-	return NULL;
+	if(lock) {
+		unlock_calls_hash();
+	}
+	return rslt;
 }
 
 Call*

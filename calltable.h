@@ -678,7 +678,7 @@ public:
 	 * @brief find call
 	 *
 	*/
-	hash_node_call *hashfind_by_ip_port(in_addr_t addr, unsigned short port, unsigned int hash = 0);
+	hash_node_call *hashfind_by_ip_port(in_addr_t addr, unsigned short port, unsigned int hash = 0, bool lock = true);
 
 	/**
 	 * @brief remove call from hash
@@ -705,6 +705,13 @@ public:
 	void mapRemove(in_addr_t addr, unsigned short port);
 	
 	void destroyCallsIfPcapsClosed();
+	
+	void lock_calls_hash() {
+		while(__sync_lock_test_and_set(&this->_sync_lock_calls_hash, 1));
+	}
+	void unlock_calls_hash() {
+		__sync_lock_release(&this->_sync_lock_calls_hash);
+	}
 private:
 	pthread_mutex_t qlock;		//!< mutex locking calls_queue
 	pthread_mutex_t qdellock;	//!< mutex locking calls_deletequeue
@@ -714,6 +721,7 @@ private:
 //	pthread_mutexattr_t   calls_listMAPlock_attr;
 
 	void *calls_hash[MAXNODE];
+	volatile int _sync_lock_calls_hash;
 };
 
 
