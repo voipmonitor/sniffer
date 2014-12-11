@@ -4086,9 +4086,9 @@ inline int ipfrag_dequeue(ip_frag_queue_t *queue, struct pcap_pkthdr **header, u
 
 	// prepare newpacket structure and header structure
 	u_int32_t totallen = queue->begin()->second->totallen + queue->begin()->second->firstheaderlen;
-	u_char *newpacket = (u_char *)malloc(totallen);
+	u_char *newpacket = new u_char[totallen];
 	*packet = newpacket;
-	struct pcap_pkthdr *newheader = (struct pcap_pkthdr*)malloc(sizeof(struct pcap_pkthdr)); // copy header
+	struct pcap_pkthdr *newheader = new pcap_pkthdr; // copy header
 	memcpy(newheader, *header, sizeof(struct pcap_pkthdr));
 	newheader->len = newheader->caplen = totallen;
 	*header = newheader;
@@ -4268,8 +4268,8 @@ int handle_defrag(iphdr2 *header_ip, struct pcap_pkthdr **header, u_char **packe
 	};
 	if(destroy) {
 		// defrag was called with destroy=1 delete original packet and header which was replaced by new defragmented packet
-		free(tmpheader);
-		free(tmppacket);
+		delete tmpheader;
+		delete [] tmppacket;
 	}
 	return res;
 }
