@@ -2160,14 +2160,8 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		for(int i = 0; i < MAX_SSRC_PER_CALL; i++) {
 			// lets check whole array as there can be holes due rtp[0] <=> rtp[1] swaps in mysql rutine
 			if(rtp[i] and rtp[i]->s->received) {
-				double fpart = this->first_packet_usec;
-				while(fpart > 1) fpart /= 10;
-				double stime = this->first_packet_time + fpart;
-
-				fpart = rtp[i]->first_packet_usec;
-				while(fpart > 1) fpart /= 10;
-				double rtime = rtp[i]->first_packet_time + fpart;
-
+				double stime = this->first_packet_time + this->first_packet_usec / 1000000.0;
+				double rtime = rtp[i]->first_packet_time + rtp[i]->first_packet_usec / 1000000.0;
 				double diff = rtime - stime;
 
 				SqlDb_row rtps;
