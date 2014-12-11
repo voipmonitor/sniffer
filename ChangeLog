@@ -1,3 +1,8 @@
+10.1.22 11.12.2014
+==================
+- fix bad arithmetic when writing time of RTP packets (in wors case it was +- 1 sec) which can lead to show RTP packets before SIP packets in SIP history
+
+
 10.1.21 11.12.2014
 ==================
 - fix pcapscandir which ignored pcap files if they were added before some pcap file was processed (it read only first inotify event from the queue) 
