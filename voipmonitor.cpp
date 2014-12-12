@@ -270,6 +270,7 @@ unsigned int opt_process_rtp_packets_qring_usleep = 10;
 int opt_enable_http = 0;
 int opt_enable_webrtc = 0;
 int opt_enable_ssl = 0;
+unsigned int opt_ssl_link_timeout = 5 * 60;
 int opt_tcpreassembly_pb_lock = 0;
 int opt_tcpreassembly_thread = 1;
 char opt_tcpreassembly_log[1024];
@@ -2005,6 +2006,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "ssl", NULL))) {
 		opt_enable_ssl = strcmp(value, "only") ? yesno(value) : 2;
+	}
+	if((value = ini.GetValue("general", "ssl_link_timeout", NULL))) {
+		opt_ssl_link_timeout = atol(value);
 	}
 	if((value = ini.GetValue("general", "tcpreassembly_log", NULL))) {
 		strncpy(opt_tcpreassembly_log, value, sizeof(opt_tcpreassembly_log));
@@ -3913,7 +3917,7 @@ int main(int argc, char *argv[]) {
 		tcpReassemblySsl->setEnableAllCompleteAfterZerodataAck();
 		sslData = new SslData;
 		tcpReassemblySsl->setDataCallback(sslData);
-		tcpReassemblySsl->setLinkTimeout(15 * 60);
+		tcpReassemblySsl->setLinkTimeout(opt_ssl_link_timeout);
 	}
 	
 	if(sipSendSocket_ip_port) {
