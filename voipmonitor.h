@@ -150,6 +150,7 @@ struct sVerbose {
 	int fraud;
 	int disable_bt_sighandler;
 	int tcp_debug_port;
+	int test_rtp_performance;
 };
 
 #ifndef GLOBAL_DECLARATION

@@ -1286,7 +1286,10 @@ void add_to_rtp_thread_queue(Call *call, unsigned char *data, int datalen, int d
 			}
 		} else {
 			params->rtpp_queue->lock();
-			rtp_packet_pcap_queue *rtpp_pq = params->rtpp_queue->push_get_pointer();
+			rtp_packet_pcap_queue *rtpp_pq;
+			while((rtpp_pq = params->rtpp_queue->push_get_pointer()) == NULL) {
+				usleep(10);
+			}
 			rtpp_pq->call = call;
 			rtpp_pq->saddr = saddr;
 			rtpp_pq->daddr = daddr;

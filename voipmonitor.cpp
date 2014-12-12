@@ -2931,6 +2931,8 @@ int main(int argc, char *argv[]) {
 						else if(verbparams[i] == "disable_bt_sighandler")	sverb.disable_bt_sighandler = 1;
 						else if(verbparams[i].substr(0, 15) == "tcp_debug_port=")
 													sverb.tcp_debug_port = atoi(verbparams[i].c_str() + 15);
+						else if(verbparams[i].substr(0, 21) == "test_rtp_performance=")
+													sverb.test_rtp_performance = atoi(verbparams[i].c_str() + 21);
 					}
 				} }
 				break;

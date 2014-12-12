@@ -2779,7 +2779,8 @@ void* PcapQueue_readFromInterface::threadFunction(void *arg, unsigned int arg2) 
 						blockStoreBypassQueue->push(blockStore[blockStoreIndex]);
 						++sumBlocksCounterIn[0];
 						blockStore[blockStoreIndex] = NULL;
-						sleep(opt_enable_ssl ? 10 : 1);
+						sleep(sverb.test_rtp_performance ? 120 :
+						      opt_enable_ssl ? 10 : 1);
 						calltable->cleanup(0);
 						extern AsyncClose *asyncClose;
 						asyncClose->processAll();
@@ -4072,12 +4073,28 @@ void PcapQueue_readFromFifo::processPacket(pcap_pkthdr_plus *header_plus, u_char
 		} else {
 			int voippacket = 0;
 			int was_rtp = 0;
-			process_packet(packet_counter_all,
-				       header_ip->saddr, htons(header_udp->source), header_ip->daddr, htons(header_udp->dest), 
-				       data, datalen, data - (char*)packet, 
-				       this->getPcapHandle(dlt), header, packet, 
-				       istcp, &was_rtp, header_ip, &voippacket, 0,
-				       block_store, block_store_index, dlt, sensor_id);
+			if(sverb.test_rtp_performance) {
+				u_int64_t _counter;
+				do {
+					++_counter;
+					process_packet(packet_counter_all,
+						       header_ip->saddr, htons(header_udp->source), header_ip->daddr, htons(header_udp->dest), 
+						       data, datalen, data - (char*)packet, 
+						       this->getPcapHandle(dlt), header, packet, 
+						       istcp, &was_rtp, header_ip, &voippacket, 0,
+						       block_store, block_store_index, dlt, sensor_id);
+					if(!(_counter % 50)) {
+						usleep(1);
+					}
+				} while(packet_counter_all == sverb.test_rtp_performance);
+			} else {
+				process_packet(packet_counter_all,
+					       header_ip->saddr, htons(header_udp->source), header_ip->daddr, htons(header_udp->dest), 
+					       data, datalen, data - (char*)packet, 
+					       this->getPcapHandle(dlt), header, packet, 
+					       istcp, &was_rtp, header_ip, &voippacket, 0,
+					       block_store, block_store_index, dlt, sensor_id);
+			}
 			// if packet was VoIP add it to ipaccount
 			if(opt_ipaccount) {
 				ipaccount(header->ts.tv_sec, (iphdr2*) ((char*)(packet) + header_plus->offset), header->len - header_plus->offset, voippacket);

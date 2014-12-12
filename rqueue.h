@@ -183,6 +183,7 @@ public:
 	void _test();
 	void _testPerf(bool useRqueue);
 	void setName(const char *name) {
+		this->name = name;
 	}
 private:
 	typeItem *buffer;
@@ -202,7 +203,7 @@ private:
 template <class typeItem>
 void rqueue<typeItem>::incBuffer() {
 	size_t newLength = this->length + this->inc_length;
-	syslog(LOG_NOTICE, "increase size of rqueue %s to %lu", name.c_str(), newLength);
+	syslog(LOG_NOTICE, "increase size of rqueue %s from %lu to %lu", name.c_str(), this->length, newLength);
 	typeItem *newBuffer = new typeItem[newLength];
 	if(this->binaryBuffer) {
 		if(this->clearBuff) {
