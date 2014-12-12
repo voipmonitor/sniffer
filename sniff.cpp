@@ -3577,10 +3577,19 @@ Call *process_packet__rtp(ProcessRtpPacket::rtp_call_info *call_info,size_t call
 		}
 
 		int can_thread = !sverb.disable_threads_rtp;
-		if(header->caplen > MAXPACKETLENQRING) {
+		if(can_thread && header->caplen > MAXPACKETLENQRING) {
 			// packets larger than MAXPACKETLENQRING was created in special heap and is destroyd immediately after leaving this functino - thus do not queue it 
 			// TODO: this can be enhanced by pasing flag that the packet should be freed
-			can_thread = 0;
+			if(preSyncRtp) {
+				#if SYNC_CALL_RTP
+				__sync_sub_and_fetch(&call->rtppcaketsinqueue, 1);
+				#else
+				++call->rtppcaketsinqueue_m;
+				#endif
+				return(call);
+			} else {
+				can_thread = 0;
+			}
 		}
 
 		if(is_fax) {
