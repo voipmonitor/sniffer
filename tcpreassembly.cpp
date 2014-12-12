@@ -1871,6 +1871,7 @@ TcpReassembly::TcpReassembly(eType type) {
 	this->dataCallback = NULL;
 	this->act_time_from_header = 0;
 	this->last_time = 0;
+	this->last_cleanup_call_time_from_header = 0;
 	this->doPrintContent = false;
 	this->threadHandle = 0;
 	this->threadId = 0;
@@ -2188,8 +2189,9 @@ void TcpReassembly::push(pcap_pkthdr *header, iphdr2 *header_ip, u_char *packet,
 		
 	}
 	if(!this->enableCleanupThread) {
-		if(!((_cleanupCounter++) % 100)) {
+		if(this->last_cleanup_call_time_from_header - this->act_time_from_header > 20 * 1000) {
 			this->cleanup_simple();
+			this->last_cleanup_call_time_from_header = this->act_time_from_header;
 		}
 	}
 }
@@ -2357,9 +2359,15 @@ void TcpReassembly::cleanup_simple(bool all) {
 		     << getTypeString(true) << ": "
 		     << this->links.size() << endl;
 	}
+	size_t counter;
+	u_int64_t time_correction = 0;
 	map<TcpReassemblyLink_id, TcpReassemblyLink*>::iterator iter;
 	for(iter = this->links.begin(); iter != this->links.end(); ) {
-		u_int64_t act_time = this->act_time_from_header + getTimeMS() - this->last_time;
+		++counter;
+		if(!(counter % 1000)) {
+			time_correction = getTimeMS() - this->last_time;
+		}
+		u_int64_t act_time = this->act_time_from_header + time_correction;
 		TcpReassemblyLink *link = iter->second;
 		bool final = link->last_packet_at_from_header &&
 			     act_time > link->last_packet_at_from_header + linkTimeout * 1000;
