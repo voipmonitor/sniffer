@@ -3722,9 +3722,10 @@ int main(int argc, char *argv[]) {
                 printf("Warning, max open files is: %d consider raise this to 65535 with ulimit -n 65535 and set it in config file\n", (int)rlp.rlim_cur);
         }
 	// set core file dump to unlimited size
-	rlp.rlim_cur = UINT_MAX;
-	rlp.rlim_max = UINT_MAX;
-	setrlimit(RLIMIT_CORE, &rlp);
+	rlp.rlim_cur = RLIM_INFINITY;
+	rlp.rlim_max = RLIM_INFINITY;
+	if (setrlimit(RLIMIT_CORE, &rlp) < 0)
+		fprintf(stderr, "setrlimit: %s\nWarning: core dumps may be truncated or non-existant\n", strerror(errno));
 
 	ipfilter = new IPfilter;
 	telnumfilter = new TELNUMfilter;
