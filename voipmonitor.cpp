@@ -2259,6 +2259,10 @@ int eval_config(string inistr) {
 		rtp_qring_quick = strcmp(value, "boost") ? yesno(value) : 2;
 	}
 	
+	if((value = ini.GetValue("general", "udpfrag", NULL))) {
+		opt_udpfrag = yesno(value);
+	}
+	
 	/*
 	
 	packetbuffer default configuration
