@@ -3660,6 +3660,7 @@ Call *process_packet__rtp(ProcessRtpPacket::rtp_call_info *call_info,size_t call
 				__sync_sub_and_fetch(&call_info[call_info_index].call->rtppcaketsinqueue, 1);
 				#else
 				++call_info[call_info_index].call->rtppcaketsinqueue_m;
+				#endif
 			}
 		}
 	}
