@@ -464,6 +464,7 @@ public:
 		bool iscaller;
 		bool is_rtcp;
 		bool is_fax;
+		bool use_sync;
 	};
 public:
 	ProcessRtpPacket();
