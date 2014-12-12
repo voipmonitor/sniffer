@@ -4746,7 +4746,7 @@ void TcpReassemblySip::complete(tcp_stream2_s *stream, u_int hash) {
 		newdata = stream->packet + stream->dataoffset;
 		header_ip = stream->header_ip;
 	}
-	if(preProcessPacket) {
+	if(preProcessPacket && opt_enable_preprocess_packet == 2) {
 		preProcessPacket->push(stream->packet_number,
 				       stream->saddr, stream->source, stream->daddr, stream->dest, 
 				       (char*)newdata, newlen, stream->dataoffset,
