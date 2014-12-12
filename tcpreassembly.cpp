@@ -2189,7 +2189,7 @@ void TcpReassembly::push(pcap_pkthdr *header, iphdr2 *header_ip, u_char *packet,
 		
 	}
 	if(!this->enableCleanupThread) {
-		if(this->last_cleanup_call_time_from_header - this->act_time_from_header > 20 * 1000) {
+		if(this->act_time_from_header - this->last_cleanup_call_time_from_header > 20 * 1000) {
 			this->cleanup_simple();
 			this->last_cleanup_call_time_from_header = this->act_time_from_header;
 		}
