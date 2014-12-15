@@ -215,7 +215,7 @@ extern char cloud_host[256];
 extern SocketSimpleBufferWrite *sipSendSocket;
 extern int opt_sip_send_before_packetbuffer;
 extern PreProcessPacket *preProcessPacket;
-extern ProcessRtpPacket *processRtpPacket;
+extern ProcessRtpPacket *processRtpPacket[2];
 
 #ifdef QUEUE_MUTEX
 extern sem_t readpacket_thread_semaphore;
@@ -1238,6 +1238,9 @@ void add_to_rtp_thread_queue(Call *call, unsigned char *data, int datalen, int d
 			     pcap_block_store *block_store, int block_store_index, 
 			     int enable_save_packet, const u_char *packet, char istcp, int dlt, int sensor_id,
 			     bool preSyncRtp) {
+	if(!call) {
+		cout << "***" << endl;
+	}
 	#if RTP_PROF
 	unsigned long long __prof_begin = rdtsc();
 	#endif
@@ -2997,13 +3000,17 @@ endsip:
 
 rtpcheck:
 	if((htons(*(unsigned int*)data) & 0xC000) == 0x8000) {
-	if(processRtpPacket) {
-		processRtpPacket->push(saddr, source, daddr, dest, 
-				       data, datalen, dataoffset,
-				       handle, header, packet, istcp, header_ip,
-				       block_store, block_store_index, dlt, sensor_id,
-				       parsePacket ? parsePacket->hash[0] : tuplehash(saddr, source),
-				       parsePacket ? parsePacket->hash[1] : tuplehash(daddr, dest));
+	if(processRtpPacket[0]) {
+		static int processRtpPacket_switchThread;
+		ProcessRtpPacket *_processRtpPacket = processRtpPacket[1] ?
+						       (processRtpPacket_switchThread = !processRtpPacket_switchThread, processRtpPacket[processRtpPacket_switchThread]) :
+						       processRtpPacket[0];
+		_processRtpPacket->push(saddr, source, daddr, dest, 
+					data, datalen, dataoffset,
+					handle, header, packet, istcp, header_ip,
+					block_store, block_store_index, dlt, sensor_id,
+					parsePacket ? parsePacket->hash[0] : tuplehash(saddr, source),
+					parsePacket ? parsePacket->hash[1] : tuplehash(daddr, dest));
 	} else {
 	if ((calls = calltable->hashfind_by_ip_port(daddr, dest, parsePacket ? parsePacket->hash[1] : 0))){
 		++counter_rtp_packets;

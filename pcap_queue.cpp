@@ -119,7 +119,7 @@ extern char user_filter[10*2048];
 extern Calltable *calltable;
 extern volatile int calls_counter;
 extern PreProcessPacket *preProcessPacket;
-extern ProcessRtpPacket *processRtpPacket;
+extern ProcessRtpPacket *processRtpPacket[2];
 extern TcpReassembly *tcpReassemblyHttp;
 extern TcpReassembly *tcpReassemblyWebrtc;
 extern TcpReassembly *tcpReassemblySsl;
@@ -1279,10 +1279,12 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 		} else {
 			if (opt_rrd) rrdtCPU_t2 = t2cpu;
 		}
-		if(processRtpPacket) {
-			double t2cpu_process_rtp_packet_out_thread = processRtpPacket->getCpuUsagePerc(true);
-			if(t2cpu_process_rtp_packet_out_thread >= 0) {
-				outStrStat << "/" << setprecision(1) << t2cpu_process_rtp_packet_out_thread;
+		for(int i = 0; i < 2; i++) {
+			if(processRtpPacket[i]) {
+				double t2cpu_process_rtp_packet_out_thread = processRtpPacket[i]->getCpuUsagePerc(true);
+				if(t2cpu_process_rtp_packet_out_thread >= 0) {
+					outStrStat << "/" << setprecision(1) << t2cpu_process_rtp_packet_out_thread;
+				}
 			}
 		}
 		outStrStat << "%] ";
@@ -2058,7 +2060,7 @@ inline int PcapQueue_readFromInterface_base::pcap_next_ex_iface(pcap_t *pcapHand
 			}
 			this->lastPacketTimeUS = packetTime;
 		} else {
-			if(heapPerc > 10) {
+			if(heapPerc > 80) {
 				usleep(1);
 			}
 		}
@@ -4086,7 +4088,7 @@ void PcapQueue_readFromFifo::processPacket(pcap_pkthdr_plus *header_plus, u_char
 					if(!(_counter % 50)) {
 						usleep(1);
 					}
-				} while(packet_counter_all == sverb.test_rtp_performance);
+				} while(packet_counter_all == (u_int64_t)sverb.test_rtp_performance);
 			} else {
 				process_packet(packet_counter_all,
 					       header_ip->saddr, htons(header_udp->source), header_ip->daddr, htons(header_udp->dest), 

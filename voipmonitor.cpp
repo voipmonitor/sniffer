@@ -543,7 +543,7 @@ char mac[32] = "";
 PcapQueue *pcapQueueStatInterface;
 
 PreProcessPacket *preProcessPacket;
-ProcessRtpPacket *processRtpPacket;
+ProcessRtpPacket *processRtpPacket[2];
 
 TcpReassembly *tcpReassemblyHttp;
 TcpReassembly *tcpReassemblyWebrtc;
@@ -3884,7 +3884,9 @@ int main(int argc, char *argv[]) {
 		preProcessPacket = new PreProcessPacket();
 	}
 	if(opt_enable_process_rtp_packet) {
-		processRtpPacket = new ProcessRtpPacket();
+		for(int i = 0; i < 2; i++) {
+			processRtpPacket[i] = new ProcessRtpPacket();
+		}
 	}
 
 	if(opt_enable_http) {
@@ -4141,6 +4143,7 @@ int main(int argc, char *argv[]) {
 							unsigned long long ___prof__ProcessRtpPacket_rtp__fill_call_array = __prof__ProcessRtpPacket_rtp__fill_call_array;
 							unsigned long long ___prof__process_packet__rtp = __prof__process_packet__rtp;
 							unsigned long long ___prof__add_to_rtp_thread_queue = __prof__add_to_rtp_thread_queue;
+							unsigned long long ___prof__ProcessRtpPacket_outThreadFunction2 = ___prof__ProcessRtpPacket_outThreadFunction - ___prof__ProcessRtpPacket_outThreadFunction__usleep;
 							cout << fixed
 							     << "RTP PROF" << endl
 							     << left << setw(50) << "ProcessRtpPacket::outThreadFunction"
@@ -4148,33 +4151,34 @@ int main(int argc, char *argv[]) {
 									<< endl
 							     << left << setw(50) << "ProcessRtpPacket::outThreadFunction / usleep"
 							     << right << setw(15) << ___prof__ProcessRtpPacket_outThreadFunction__usleep
-							     << setw(15) << setprecision(5) 
-								<< ((double)___prof__ProcessRtpPacket_outThreadFunction__usleep / ___prof__ProcessRtpPacket_outThreadFunction) * 100 << "%"
+									<< endl
+							     << left << setw(50) << "ProcessRtpPacket::outThreadFunction / process time"
+							     << right << setw(15) << ___prof__ProcessRtpPacket_outThreadFunction2
 									<< endl
 							     << left << setw(50) << "ProcessRtpPacket::rtp"
 							     << right << setw(15) << ___prof__ProcessRtpPacket_rtp
 							     << setw(15) << setprecision(5) 
-								<< ((double)___prof__ProcessRtpPacket_rtp / ___prof__ProcessRtpPacket_outThreadFunction) * 100 << "%"
+								<< ((double)___prof__ProcessRtpPacket_rtp / ___prof__ProcessRtpPacket_outThreadFunction2) * 100 << "%"
 									<< endl
 							     << left << setw(50) << "ProcessRtpPacket::rtp / hashfind"
 							     << right << setw(15) << ___prof__ProcessRtpPacket_rtp__hashfind
 							     << setw(15) << setprecision(5) 
-								<< ((double)___prof__ProcessRtpPacket_rtp__hashfind / ___prof__ProcessRtpPacket_outThreadFunction) * 100 << "%"
+								<< ((double)___prof__ProcessRtpPacket_rtp__hashfind / ___prof__ProcessRtpPacket_outThreadFunction2) * 100 << "%"
 									<< endl
 							     << left << setw(50) << "ProcessRtpPacket::rtp / fill call array"
 							     << right << setw(15) << ___prof__ProcessRtpPacket_rtp__fill_call_array
 							     << setw(15) << setprecision(5) 
-								<< ((double)___prof__ProcessRtpPacket_rtp__fill_call_array / ___prof__ProcessRtpPacket_outThreadFunction) * 100 << "%"
+								<< ((double)___prof__ProcessRtpPacket_rtp__fill_call_array / ___prof__ProcessRtpPacket_outThreadFunction2) * 100 << "%"
 									<< endl
 							     << left << setw(50) << "process_packet__rtp"
 							     << right << setw(15) << ___prof__process_packet__rtp
 							     << setw(15) << setprecision(5) 
-								<< ((double)___prof__process_packet__rtp / ___prof__ProcessRtpPacket_outThreadFunction) * 100 << "%"
+								<< ((double)___prof__process_packet__rtp / ___prof__ProcessRtpPacket_outThreadFunction2) * 100 << "%"
 									<< endl
 							     << left << setw(50) << "add_to_rtp_thread_queue"
 							     << right << setw(15) << ___prof__add_to_rtp_thread_queue
 							     << setw(15) << setprecision(5) 
-								<< ((double)___prof__add_to_rtp_thread_queue / ___prof__ProcessRtpPacket_outThreadFunction) * 100 << "%"
+								<< ((double)___prof__add_to_rtp_thread_queue / ___prof__ProcessRtpPacket_outThreadFunction2) * 100 << "%"
 									<< endl;
 							__prof__ProcessRtpPacket_outThreadFunction_begin = rdtsc();
 							__prof__ProcessRtpPacket_outThreadFunction__usleep = 0;
@@ -4345,10 +4349,12 @@ int main(int argc, char *argv[]) {
 		delete sslData;
 	}
 	
-	if(processRtpPacket) {
-		processRtpPacket->terminating();
-		usleep(250000);
-		delete processRtpPacket;
+	for(int i = 0; i < 2; i++) {
+		if(processRtpPacket[i]) {
+			processRtpPacket[i]->terminating();
+			usleep(250000);
+			delete processRtpPacket[i];
+		}
 	}
 	if(preProcessPacket) {
 		preProcessPacket->terminating();

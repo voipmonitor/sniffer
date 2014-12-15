@@ -400,19 +400,23 @@ public:
 		}
 		readit = 0;
 		writeit = 0;
+		_sync_lock = 0;
 	}
 	~rqueue_quick() {
 		delete [] buffer;
 		delete [] free;
 	}
 	bool push(typeItem *item, bool waitForFree) {
+		lock();
 		while(free[writeit] == 0) {
 			if(waitForFree) {
 				if(terminating && *terminating) {
+					unlock();
 					return(false);
 				}
 				usleep(pushUsleep);
 			} else {
+				unlock();
 				return(false);
 			}
 		}
@@ -427,16 +431,20 @@ public:
 		} else {
 			writeit++;
 		}
+		unlock();
 		return(true);
 	}
 	bool pop(typeItem *item, bool waitForFree) {
+		//lock();
 		while(free[readit] == 1) {
 			if(waitForFree) {
 				if(terminating && *terminating) {
+					//unlock();
 					return(false);
 				}
 				usleep(popUsleep);
 			} else {
+				//unlock();
 				return(false);
 			}
 		}
@@ -451,7 +459,14 @@ public:
 		} else {
 			readit++;
 		}
+		//unlock();
 		return(true);
+	}
+	void lock() {
+		while(__sync_lock_test_and_set(&this->_sync_lock, 1));
+	}
+	void unlock() {
+		__sync_lock_release(&this->_sync_lock);
 	}
 	size_t size() {
 		return(writeit >= readit ? writeit - readit : writeit + length - readit);
@@ -466,6 +481,8 @@ private:
 	v_int *free;
 	v_u_int32_t readit;
 	v_u_int32_t writeit;
+	
+	volatile int _sync_lock;
 };
 
 
@@ -478,38 +495,54 @@ public:
 		this->pushUsleep = pushUsleep;
 		this->popUsleep = popUsleep;
 		this->terminating = terminating;
+		this->_sync_lock = 0;
 	}
 	bool push(typeItem *item, bool waitForFree) {
+		lock();
 		while(!spsc_queue.push(*item)) {
 			if(waitForFree) {
 				if(terminating && *terminating) {
+					unlock();
 					return(false);
 				}
 				usleep(pushUsleep);
 			} else {
+				unlock();
 				return(false);
 			}
 		}
+		unlock();
 		return(true);
 	}
 	bool pop(typeItem *item, bool waitForFree) {
+		//lock();
 		while(!spsc_queue.pop(*item)) {
 			if(waitForFree) {
 				if(terminating && *terminating) {
+					//unlock();
 					return(false);
 				}
 				usleep(popUsleep);
 			} else {
+				//unlock();
 				return(false);
 			}
 		}
+		//unlock();
 		return(true);
+	}
+	void lock() {
+		while(__sync_lock_test_and_set(&this->_sync_lock, 1));
+	}
+	void unlock() {
+		__sync_lock_release(&this->_sync_lock);
 	}
 private:
 	boost::lockfree::spsc_queue<typeItem, boost::lockfree::capacity<20000> > spsc_queue;
 	unsigned int pushUsleep;
 	unsigned int popUsleep;
 	int *terminating;
+	volatile int _sync_lock;
 };
 #else
 template<class typeItem>
