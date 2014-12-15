@@ -20,6 +20,7 @@
 #include <getopt.h>
 #include <time.h>
 #include <signal.h>
+#include <iomanip>
 
 #ifdef FREEBSD
 #include <sys/endian.h>
@@ -4124,6 +4125,49 @@ int main(int argc, char *argv[]) {
 							if(tcpReassemblyWebrtc) {
 								tcpReassemblyWebrtc->setDoPrintContent();
 							}
+							#if RTP_PROF
+							extern unsigned long long __prof__ProcessRtpPacket_outThreadFunction_begin;
+							extern unsigned long long __prof__ProcessRtpPacket_outThreadFunction;
+							extern unsigned long long __prof__ProcessRtpPacket_rtp;
+							extern unsigned long long __prof__ProcessRtpPacket_rtp__hashfind;
+							extern unsigned long long __prof__process_packet__rtp;
+							extern unsigned long long __prof__add_to_rtp_thread_queue;
+							unsigned long long ___prof__ProcessRtpPacket_outThreadFunction = __prof__ProcessRtpPacket_outThreadFunction;
+							unsigned long long ___prof__ProcessRtpPacket_rtp = __prof__ProcessRtpPacket_rtp;
+							unsigned long long ___prof__ProcessRtpPacket_rtp__hashfind = __prof__ProcessRtpPacket_rtp__hashfind;
+							unsigned long long ___prof__process_packet__rtp = __prof__process_packet__rtp;
+							unsigned long long ___prof__add_to_rtp_thread_queue = __prof__add_to_rtp_thread_queue;
+							cout << fixed
+							     << "RTP PROF" << endl
+							     << left << setw(50) << "ProcessRtpPacket::outThreadFunction"
+							     << right << setw(15) << ___prof__ProcessRtpPacket_outThreadFunction
+									<< endl
+							     << left << setw(50) << "ProcessRtpPacket::rtp"
+							     << right << setw(15) << ___prof__ProcessRtpPacket_rtp
+							     << setw(15) << setprecision(5) 
+								<< ((double)___prof__ProcessRtpPacket_rtp / ___prof__ProcessRtpPacket_outThreadFunction) * 100 << "%"
+									<< endl
+							     << left << setw(50) << "ProcessRtpPacket::rtp / hashfind"
+							     << right << setw(15) << ___prof__ProcessRtpPacket_rtp__hashfind
+							     << setw(15) << setprecision(5) 
+								<< ((double)___prof__ProcessRtpPacket_rtp__hashfind / ___prof__ProcessRtpPacket_outThreadFunction) * 100 << "%"
+									<< endl
+							     << left << setw(50) << "process_packet__rtp"
+							     << right << setw(15) << ___prof__process_packet__rtp
+							     << setw(15) << setprecision(5) 
+								<< ((double)___prof__process_packet__rtp / ___prof__ProcessRtpPacket_outThreadFunction) * 100 << "%"
+									<< endl
+							     << left << setw(50) << "add_to_rtp_thread_queue"
+							     << right << setw(15) << ___prof__add_to_rtp_thread_queue
+							     << setw(15) << setprecision(5) 
+								<< ((double)___prof__add_to_rtp_thread_queue / ___prof__ProcessRtpPacket_outThreadFunction) * 100 << "%"
+									<< endl;
+							__prof__ProcessRtpPacket_outThreadFunction_begin = rdtsc();
+							__prof__ProcessRtpPacket_rtp = 0;
+							__prof__ProcessRtpPacket_rtp__hashfind = 0;
+							__prof__process_packet__rtp = 0;
+							__prof__add_to_rtp_thread_queue = 0;
+							#endif
 						}
 						sleep(1);
 						++_counter;

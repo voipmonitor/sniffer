@@ -3277,38 +3277,38 @@ void test_ssl() {
 
 #if 1
 
-	dec = decrypt_ssl(ssl1_peer0_0, sizeof(ssl1_peer0_0), 1, 3633813416, 123, 5061);
+	dec = decrypt_ssl((char*)ssl1_peer0_0, sizeof(ssl1_peer0_0), 1, 3633813416, 123, 5061);
 	print_decvec(&dec);
-	dec = decrypt_ssl(ssl1_peer1_0, sizeof(ssl1_peer1_0), 3633813416, 1, 5061, 123);
+	dec = decrypt_ssl((char*)ssl1_peer1_0, sizeof(ssl1_peer1_0), 3633813416, 1, 5061, 123);
 	print_decvec(&dec);
-	dec = decrypt_ssl(ssl1_peer0_1, sizeof(ssl1_peer0_1), 1, 3633813416, 123, 5061);
+	dec = decrypt_ssl((char*)ssl1_peer0_1, sizeof(ssl1_peer0_1), 1, 3633813416, 123, 5061);
 	print_decvec(&dec);
-	dec = decrypt_ssl(ssl1_peer1_1, sizeof(ssl1_peer1_1), 3633813416, 1, 5061, 123);
+	dec = decrypt_ssl((char*)ssl1_peer1_1, sizeof(ssl1_peer1_1), 3633813416, 1, 5061, 123);
 	print_decvec(&dec);
-	dec = decrypt_ssl(ssl1_peer0_2, sizeof(ssl1_peer0_2), 1, 3633813416, 123, 5061);
+	dec = decrypt_ssl((char*)ssl1_peer0_2, sizeof(ssl1_peer0_2), 1, 3633813416, 123, 5061);
 	print_decvec(&dec);
-	dec = decrypt_ssl(ssl1_peer1_2, sizeof(ssl1_peer1_2), 3633813416, 1, 5061, 123);
+	dec = decrypt_ssl((char*)ssl1_peer1_2, sizeof(ssl1_peer1_2), 3633813416, 1, 5061, 123);
 	print_decvec(&dec);
-	dec = decrypt_ssl(ssl1_peer0_3, sizeof(ssl1_peer0_3), 1, 3633813416, 123, 5061);
+	dec = decrypt_ssl((char*)ssl1_peer0_3, sizeof(ssl1_peer0_3), 1, 3633813416, 123, 5061);
 	print_decvec(&dec);
-	dec = decrypt_ssl(ssl1_peer1_3, sizeof(ssl1_peer1_3), 3633813416, 1, 5061, 123);
+	dec = decrypt_ssl((char*)ssl1_peer1_3, sizeof(ssl1_peer1_3), 3633813416, 1, 5061, 123);
 #endif
 
 #if 1
 	printf("############################################\n");
-	dec = decrypt_ssl(ssl2peer0_0, sizeof(ssl2peer0_0), 1, 1123116675, 123, 5061);
+	dec = decrypt_ssl((char*)ssl2peer0_0, sizeof(ssl2peer0_0), 1, 1123116675, 123, 5061);
 	print_decvec(&dec);
-	dec = decrypt_ssl(ssl2peer1_0, sizeof(ssl2peer1_0), 1123116675, 1, 5061, 123);
+	dec = decrypt_ssl((char*)ssl2peer1_0, sizeof(ssl2peer1_0), 1123116675, 1, 5061, 123);
 	print_decvec(&dec);
-	dec = decrypt_ssl(ssl2peer0_2, sizeof(ssl2peer0_2), 1, 1123116675, 123, 5061);
+	dec = decrypt_ssl((char*)ssl2peer0_2, sizeof(ssl2peer0_2), 1, 1123116675, 123, 5061);
 	print_decvec(&dec);
-	dec = decrypt_ssl(ssl2peer1_2, sizeof(ssl2peer1_2), 1123116675, 1, 5061, 123);
+	dec = decrypt_ssl((char*)ssl2peer1_2, sizeof(ssl2peer1_2), 1123116675, 1, 5061, 123);
 	print_decvec(&dec);
-	dec = decrypt_ssl(ssl2peer0_8, sizeof(ssl2peer0_8), 1, 1123116675, 123, 5061);
+	dec = decrypt_ssl((char*)ssl2peer0_8, sizeof(ssl2peer0_8), 1, 1123116675, 123, 5061);
 	print_decvec(&dec);
-	dec = decrypt_ssl(ssl2peer1_3, sizeof(ssl2peer1_3), 1123116675, 1, 5061, 123);
+	dec = decrypt_ssl((char*)ssl2peer1_3, sizeof(ssl2peer1_3), 1123116675, 1, 5061, 123);
 	print_decvec(&dec);
-	dec = decrypt_ssl(ssl2peer0_12, sizeof(ssl2peer0_12), 1, 1123116675, 123, 5061);
+	dec = decrypt_ssl((char*)ssl2peer0_12, sizeof(ssl2peer0_12), 1, 1123116675, 123, 5061);
 	print_decvec(&dec);
 #endif
 

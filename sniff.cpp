@@ -268,6 +268,16 @@ static unsigned long process_packet__last_destroy_calls = 0;
 static unsigned long preprocess_packet__last_cleanup = 0;
 
 
+#if RTP_PROF
+unsigned long long __prof__ProcessRtpPacket_outThreadFunction_begin;
+unsigned long long __prof__ProcessRtpPacket_outThreadFunction;
+unsigned long long __prof__ProcessRtpPacket_rtp;
+unsigned long long __prof__ProcessRtpPacket_rtp__hashfind;
+unsigned long long __prof__process_packet__rtp;
+unsigned long long __prof__add_to_rtp_thread_queue;
+#endif
+
+
 // return IP from nat_aliases[ip] or 0 if not found
 in_addr_t match_nat_aliases(in_addr_t ip) {
 	nat_aliases_t::iterator iter;
@@ -1226,6 +1236,10 @@ void add_to_rtp_thread_queue(Call *call, unsigned char *data, int datalen, int d
 			     pcap_block_store *block_store, int block_store_index, 
 			     int enable_save_packet, const u_char *packet, char istcp, int dlt, int sensor_id,
 			     bool preSyncRtp) {
+	#if RTP_PROF
+	unsigned long long __prof_begin = rdtsc();
+	#endif
+ 
 	if(terminating) {
 		return;
 	}
@@ -1365,6 +1379,10 @@ void add_to_rtp_thread_queue(Call *call, unsigned char *data, int datalen, int d
 		}
 	}
 #endif
+
+	#if RTP_PROF
+	__prof__add_to_rtp_thread_queue += rdtsc() - __prof_begin;
+	#endif
 }
 
 
@@ -3515,6 +3533,7 @@ int parse_packet__last_sip_response(char *data, unsigned int datalen, int sip_me
 	return(lastSIPresponseNum);
 }
 
+inline
 Call *process_packet__rtp(ProcessRtpPacket::rtp_call_info *call_info,size_t call_info_length,
 			  unsigned int saddr, int source, unsigned int daddr, int dest, 
 			  char *data, int datalen, int dataoffset,
@@ -3522,6 +3541,9 @@ Call *process_packet__rtp(ProcessRtpPacket::rtp_call_info *call_info,size_t call
 			  pcap_block_store *block_store, int block_store_index, int dlt, int sensor_id,
 			  int *voippacket, int *was_rtp,
 			  bool find_by_dest, bool preSyncRtp) {
+	#if RTP_PROF
+	unsigned long long __prof_begin = rdtsc();
+	#endif
 	++counter_rtp_packets;
 	Call *call;
 	bool iscaller;
@@ -3664,6 +3686,9 @@ Call *process_packet__rtp(ProcessRtpPacket::rtp_call_info *call_info,size_t call
 			}
 		}
 	}
+	#if RTP_PROF
+	__prof__process_packet__rtp += rdtsc() - __prof_begin;
+	#endif
 	return(rsltCall);
 }
 
@@ -5170,6 +5195,9 @@ void ProcessRtpPacket::push(unsigned int saddr, int source, unsigned int daddr, 
 }
 
 void *ProcessRtpPacket::outThreadFunction() {
+	#if RTP_PROF
+	__prof__ProcessRtpPacket_outThreadFunction_begin = rdtsc();
+	#endif
 	this->outThreadId = get_unix_tid();
 	syslog(LOG_NOTICE, "start ProcessRtpPacket out thread %i", this->outThreadId);
 	while(!this->_terminating) {
@@ -5188,19 +5216,31 @@ void *ProcessRtpPacket::outThreadFunction() {
 		} else {
 			usleep(opt_process_rtp_packets_qring_usleep);
 		}
+		#if RTP_PROF
+		__prof__ProcessRtpPacket_outThreadFunction = rdtsc() - __prof__ProcessRtpPacket_outThreadFunction_begin;
+		#endif
 	}
 	return(NULL);
 }
 
 void ProcessRtpPacket::rtp(packet_s *_packet) {
+	#if RTP_PROF
+	unsigned long long __prof_begin = rdtsc();
+	#endif
 	hash_node_call *calls = NULL;;
 	bool find_by_dest = false;
 	calltable->lock_calls_hash();
+	#if RTP_PROF
+	unsigned long long __prof_begin2 = rdtsc();
+	#endif
 	if((calls = calltable->hashfind_by_ip_port(_packet->daddr, _packet->dest, _packet->hash_d, false))) {
 		find_by_dest = true;
 	} else {
 		calls = calltable->hashfind_by_ip_port(_packet->saddr, _packet->source, _packet->hash_s, false);
 	}
+	#if RTP_PROF
+	__prof__ProcessRtpPacket_rtp__hashfind += rdtsc() - __prof_begin2;
+	#endif
 	rtp_call_info call_info[20];
 	size_t call_info_length = 0;
 	if(calls) {
@@ -5237,6 +5277,9 @@ void ProcessRtpPacket::rtp(packet_s *_packet) {
 						  _packet->handle);
 		}
 	}
+	#if RTP_PROF
+	__prof__ProcessRtpPacket_rtp += rdtsc() - __prof_begin;
+	#endif
 }
 
 void ProcessRtpPacket::preparePstatData() {
