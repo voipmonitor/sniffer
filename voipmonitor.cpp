@@ -4128,11 +4128,13 @@ int main(int argc, char *argv[]) {
 							#if RTP_PROF
 							extern unsigned long long __prof__ProcessRtpPacket_outThreadFunction_begin;
 							extern unsigned long long __prof__ProcessRtpPacket_outThreadFunction;
+							extern unsigned long long __prof__ProcessRtpPacket_outThreadFunction__usleep;
 							extern unsigned long long __prof__ProcessRtpPacket_rtp;
 							extern unsigned long long __prof__ProcessRtpPacket_rtp__hashfind;
 							extern unsigned long long __prof__process_packet__rtp;
 							extern unsigned long long __prof__add_to_rtp_thread_queue;
 							unsigned long long ___prof__ProcessRtpPacket_outThreadFunction = __prof__ProcessRtpPacket_outThreadFunction;
+							unsigned long long ___prof__ProcessRtpPacket_outThreadFunction__usleep = __prof__ProcessRtpPacket_outThreadFunction__usleep;
 							unsigned long long ___prof__ProcessRtpPacket_rtp = __prof__ProcessRtpPacket_rtp;
 							unsigned long long ___prof__ProcessRtpPacket_rtp__hashfind = __prof__ProcessRtpPacket_rtp__hashfind;
 							unsigned long long ___prof__process_packet__rtp = __prof__process_packet__rtp;
@@ -4141,6 +4143,11 @@ int main(int argc, char *argv[]) {
 							     << "RTP PROF" << endl
 							     << left << setw(50) << "ProcessRtpPacket::outThreadFunction"
 							     << right << setw(15) << ___prof__ProcessRtpPacket_outThreadFunction
+									<< endl
+							     << left << setw(50) << "ProcessRtpPacket::outThreadFunction / usleep"
+							     << right << setw(15) << ___prof__ProcessRtpPacket_outThreadFunction__usleep
+							     << setw(15) << setprecision(5) 
+								<< ((double)___prof__ProcessRtpPacket_outThreadFunction__usleep / ___prof__ProcessRtpPacket_outThreadFunction) * 100 << "%"
 									<< endl
 							     << left << setw(50) << "ProcessRtpPacket::rtp"
 							     << right << setw(15) << ___prof__ProcessRtpPacket_rtp
@@ -4163,6 +4170,7 @@ int main(int argc, char *argv[]) {
 								<< ((double)___prof__add_to_rtp_thread_queue / ___prof__ProcessRtpPacket_outThreadFunction) * 100 << "%"
 									<< endl;
 							__prof__ProcessRtpPacket_outThreadFunction_begin = rdtsc();
+							__prof__ProcessRtpPacket_outThreadFunction__usleep = 0;
 							__prof__ProcessRtpPacket_rtp = 0;
 							__prof__ProcessRtpPacket_rtp__hashfind = 0;
 							__prof__process_packet__rtp = 0;

@@ -271,6 +271,7 @@ static unsigned long preprocess_packet__last_cleanup = 0;
 #if RTP_PROF
 unsigned long long __prof__ProcessRtpPacket_outThreadFunction_begin;
 unsigned long long __prof__ProcessRtpPacket_outThreadFunction;
+unsigned long long __prof__ProcessRtpPacket_outThreadFunction__usleep;
 unsigned long long __prof__ProcessRtpPacket_rtp;
 unsigned long long __prof__ProcessRtpPacket_rtp__hashfind;
 unsigned long long __prof__process_packet__rtp;
@@ -5214,7 +5215,13 @@ void *ProcessRtpPacket::outThreadFunction() {
 				this->readit++;
 			}
 		} else {
+			#if RTP_PROF
+			unsigned long long __prof_begin2 = rdtsc();
+			#endif
 			usleep(opt_process_rtp_packets_qring_usleep);
+			#if RTP_PROF
+			__prof__ProcessRtpPacket_outThreadFunction__usleep += rdtsc() - __prof_begin2;
+			#endif
 		}
 		#if RTP_PROF
 		__prof__ProcessRtpPacket_outThreadFunction = rdtsc() - __prof__ProcessRtpPacket_outThreadFunction_begin;
