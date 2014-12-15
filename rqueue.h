@@ -406,17 +406,17 @@ public:
 		delete [] buffer;
 		delete [] free;
 	}
-	bool push(typeItem *item, bool waitForFree) {
-		lock();
+	bool push(typeItem *item, bool waitForFree, bool useLock = false) {
+		if(useLock) lock();
 		while(free[writeit] == 0) {
 			if(waitForFree) {
 				if(terminating && *terminating) {
-					unlock();
+					if(useLock) unlock();
 					return(false);
 				}
 				usleep(pushUsleep);
 			} else {
-				unlock();
+				if(useLock) unlock();
 				return(false);
 			}
 		}
@@ -431,20 +431,20 @@ public:
 		} else {
 			writeit++;
 		}
-		unlock();
+		if(useLock) unlock();
 		return(true);
 	}
-	bool pop(typeItem *item, bool waitForFree) {
-		//lock();
+	bool pop(typeItem *item, bool waitForFree, bool useLock = false) {
+		if(useLock) lock();
 		while(free[readit] == 1) {
 			if(waitForFree) {
 				if(terminating && *terminating) {
-					//unlock();
+					if(useLock) unlock();
 					return(false);
 				}
 				usleep(popUsleep);
 			} else {
-				//unlock();
+				if(useLock) unlock();
 				return(false);
 			}
 		}
@@ -459,7 +459,7 @@ public:
 		} else {
 			readit++;
 		}
-		//unlock();
+		if(useLock) unlock();
 		return(true);
 	}
 	void lock() {
@@ -481,7 +481,6 @@ private:
 	v_int *free;
 	v_u_int32_t readit;
 	v_u_int32_t writeit;
-	
 	volatile int _sync_lock;
 };
 
@@ -497,38 +496,38 @@ public:
 		this->terminating = terminating;
 		this->_sync_lock = 0;
 	}
-	bool push(typeItem *item, bool waitForFree) {
-		lock();
+	bool push(typeItem *item, bool waitForFree, bool useLock = false) {
+		if(useLock) lock();
 		while(!spsc_queue.push(*item)) {
 			if(waitForFree) {
 				if(terminating && *terminating) {
-					unlock();
+					if(useLock) unlock();
 					return(false);
 				}
 				usleep(pushUsleep);
 			} else {
-				unlock();
+				if(useLock) unlock();
 				return(false);
 			}
 		}
-		unlock();
+		if(useLock) unlock();
 		return(true);
 	}
-	bool pop(typeItem *item, bool waitForFree) {
-		//lock();
+	bool pop(typeItem *item, bool waitForFree, bool useLock = false) {
+		if(useLock) lock();
 		while(!spsc_queue.pop(*item)) {
 			if(waitForFree) {
 				if(terminating && *terminating) {
-					//unlock();
+					if(useLock) unlock();
 					return(false);
 				}
 				usleep(popUsleep);
 			} else {
-				//unlock();
+				if(useLock) unlock();
 				return(false);
 			}
 		}
-		//unlock();
+		if(useLock) unlock();
 		return(true);
 	}
 	void lock() {

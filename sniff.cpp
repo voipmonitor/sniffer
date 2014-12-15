@@ -216,6 +216,7 @@ extern SocketSimpleBufferWrite *sipSendSocket;
 extern int opt_sip_send_before_packetbuffer;
 extern PreProcessPacket *preProcessPacket;
 extern ProcessRtpPacket *processRtpPacket[2];
+extern int opt_enable_process_rtp_packet;
 
 #ifdef QUEUE_MUTEX
 extern sem_t readpacket_thread_semaphore;
@@ -1238,9 +1239,6 @@ void add_to_rtp_thread_queue(Call *call, unsigned char *data, int datalen, int d
 			     pcap_block_store *block_store, int block_store_index, 
 			     int enable_save_packet, const u_char *packet, char istcp, int dlt, int sensor_id,
 			     bool preSyncRtp) {
-	if(!call) {
-		cout << "***" << endl;
-	}
 	#if RTP_PROF
 	unsigned long long __prof_begin = rdtsc();
 	#endif
@@ -1299,9 +1297,9 @@ void add_to_rtp_thread_queue(Call *call, unsigned char *data, int datalen, int d
 			rtpp_pq.block_store = block_store;
 			rtpp_pq.block_store_index =block_store_index;
 			if(params->rtpp_queue_quick) {
-				params->rtpp_queue_quick->push(&rtpp_pq, true);
+				params->rtpp_queue_quick->push(&rtpp_pq, true, opt_enable_process_rtp_packet > 1);
 			} else {
-				params->rtpp_queue_quick_boost->push(&rtpp_pq, true);
+				params->rtpp_queue_quick_boost->push(&rtpp_pq, true, opt_enable_process_rtp_packet > 1);
 			}
 		} else {
 			params->rtpp_queue->lock();

@@ -1995,7 +1995,7 @@ int eval_config(string inistr) {
 		opt_enable_preprocess_packet = strcmp(value, "sip") ? yesno(value) : 2;
 	}
 	if((value = ini.GetValue("general", "enable_process_rtp_packet", NULL))) {
-		opt_enable_process_rtp_packet = yesno(value);
+		opt_enable_process_rtp_packet = strcmp(value, "2") ? yesno(value) : 2;
 	}
 	
 	if((value = ini.GetValue("general", "tcpreassembly", NULL)) ||
@@ -2344,6 +2344,10 @@ void set_context_config() {
 	}
 	if(opt_enable_webrtc) {
 		opt_enable_webrtc_table = true;
+	}
+	
+	if(rtp_qring_quick == 0 && opt_enable_process_rtp_packet > 1) {
+		rtp_qring_quick = 1;
 	}
 }
 
@@ -3884,7 +3888,7 @@ int main(int argc, char *argv[]) {
 		preProcessPacket = new PreProcessPacket();
 	}
 	if(opt_enable_process_rtp_packet) {
-		for(int i = 0; i < 2; i++) {
+		for(int i = 0; i < opt_enable_process_rtp_packet; i++) {
 			processRtpPacket[i] = new ProcessRtpPacket();
 		}
 	}
