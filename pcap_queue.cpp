@@ -4076,7 +4076,7 @@ void PcapQueue_readFromFifo::processPacket(pcap_pkthdr_plus *header_plus, u_char
 			int voippacket = 0;
 			int was_rtp = 0;
 			if(sverb.test_rtp_performance) {
-				u_int64_t _counter;
+				u_int64_t _counter = 0;
 				do {
 					++_counter;
 					process_packet(packet_counter_all,
