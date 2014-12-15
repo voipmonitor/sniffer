@@ -274,6 +274,7 @@ volatile unsigned long long __prof__ProcessRtpPacket_outThreadFunction;
 volatile unsigned long long __prof__ProcessRtpPacket_outThreadFunction__usleep;
 volatile unsigned long long __prof__ProcessRtpPacket_rtp;
 volatile unsigned long long __prof__ProcessRtpPacket_rtp__hashfind;
+volatile unsigned long long __prof__ProcessRtpPacket_rtp__fill_call_array;
 volatile unsigned long long __prof__process_packet__rtp;
 volatile unsigned long long __prof__add_to_rtp_thread_queue;
 #endif
@@ -5249,6 +5250,9 @@ void ProcessRtpPacket::rtp(packet_s *_packet) {
 	__prof__ProcessRtpPacket_rtp__hashfind += rdtsc() - __prof_begin2;
 	#endif
 	rtp_call_info call_info[20];
+	#if RTP_PROF
+	unsigned long long __prof_begin3 = rdtsc();
+	#endif
 	size_t call_info_length = 0;
 	if(calls) {
 		hash_node_call *node_call;
@@ -5266,6 +5270,9 @@ void ProcessRtpPacket::rtp(packet_s *_packet) {
 			++call_info_length;
 		}
 	}
+	#if RTP_PROF
+	__prof__ProcessRtpPacket_rtp__fill_call_array += rdtsc() - __prof_begin3;
+	#endif
 	calltable->unlock_calls_hash();
 	if(call_info_length) {
 		process_packet__rtp(call_info, call_info_length,
