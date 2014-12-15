@@ -2999,9 +2999,8 @@ endsip:
 rtpcheck:
 	if((htons(*(unsigned int*)data) & 0xC000) == 0x8000) {
 	if(processRtpPacket[0]) {
-		static int processRtpPacket_switchThread;
 		ProcessRtpPacket *_processRtpPacket = processRtpPacket[1] ?
-						       (processRtpPacket_switchThread = !processRtpPacket_switchThread, processRtpPacket[processRtpPacket_switchThread]) :
+						       processRtpPacket[dest % 2] :
 						       processRtpPacket[0];
 		_processRtpPacket->push(saddr, source, daddr, dest, 
 					data, datalen, dataoffset,
