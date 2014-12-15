@@ -269,13 +269,13 @@ static unsigned long preprocess_packet__last_cleanup = 0;
 
 
 #if RTP_PROF
-unsigned long long __prof__ProcessRtpPacket_outThreadFunction_begin;
-unsigned long long __prof__ProcessRtpPacket_outThreadFunction;
-unsigned long long __prof__ProcessRtpPacket_outThreadFunction__usleep;
-unsigned long long __prof__ProcessRtpPacket_rtp;
-unsigned long long __prof__ProcessRtpPacket_rtp__hashfind;
-unsigned long long __prof__process_packet__rtp;
-unsigned long long __prof__add_to_rtp_thread_queue;
+volatile unsigned long long __prof__ProcessRtpPacket_outThreadFunction_begin;
+volatile unsigned long long __prof__ProcessRtpPacket_outThreadFunction;
+volatile unsigned long long __prof__ProcessRtpPacket_outThreadFunction__usleep;
+volatile unsigned long long __prof__ProcessRtpPacket_rtp;
+volatile unsigned long long __prof__ProcessRtpPacket_rtp__hashfind;
+volatile unsigned long long __prof__process_packet__rtp;
+volatile unsigned long long __prof__add_to_rtp_thread_queue;
 #endif
 
 

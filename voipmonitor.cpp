@@ -4126,13 +4126,13 @@ int main(int argc, char *argv[]) {
 								tcpReassemblyWebrtc->setDoPrintContent();
 							}
 							#if RTP_PROF
-							extern unsigned long long __prof__ProcessRtpPacket_outThreadFunction_begin;
-							extern unsigned long long __prof__ProcessRtpPacket_outThreadFunction;
-							extern unsigned long long __prof__ProcessRtpPacket_outThreadFunction__usleep;
-							extern unsigned long long __prof__ProcessRtpPacket_rtp;
-							extern unsigned long long __prof__ProcessRtpPacket_rtp__hashfind;
-							extern unsigned long long __prof__process_packet__rtp;
-							extern unsigned long long __prof__add_to_rtp_thread_queue;
+							extern volatile unsigned long long __prof__ProcessRtpPacket_outThreadFunction_begin;
+							extern volatile unsigned long long __prof__ProcessRtpPacket_outThreadFunction;
+							extern volatile unsigned long long __prof__ProcessRtpPacket_outThreadFunction__usleep;
+							extern volatile unsigned long long __prof__ProcessRtpPacket_rtp;
+							extern volatile unsigned long long __prof__ProcessRtpPacket_rtp__hashfind;
+							extern volatile unsigned long long __prof__process_packet__rtp;
+							extern volatile unsigned long long __prof__add_to_rtp_thread_queue;
 							unsigned long long ___prof__ProcessRtpPacket_outThreadFunction = __prof__ProcessRtpPacket_outThreadFunction;
 							unsigned long long ___prof__ProcessRtpPacket_outThreadFunction__usleep = __prof__ProcessRtpPacket_outThreadFunction__usleep;
 							unsigned long long ___prof__ProcessRtpPacket_rtp = __prof__ProcessRtpPacket_rtp;
