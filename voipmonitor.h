@@ -46,6 +46,8 @@
 
 #define RTP_PROF false
 
+#define MAX_PROCESS_RTP_PACKET_THREADS 6
+
 
 /* choose what method wil be used to synchronize threads. NONBLOCK is the fastest. Do not enable both at once */
 // this is now defined in Makefile 

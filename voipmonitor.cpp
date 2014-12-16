@@ -543,7 +543,7 @@ char mac[32] = "";
 PcapQueue *pcapQueueStatInterface;
 
 PreProcessPacket *preProcessPacket;
-ProcessRtpPacket *processRtpPacket[2];
+ProcessRtpPacket *processRtpPacket[MAX_PROCESS_RTP_PACKET_THREADS];
 
 TcpReassembly *tcpReassemblyHttp;
 TcpReassembly *tcpReassemblyWebrtc;
@@ -1995,7 +1995,7 @@ int eval_config(string inistr) {
 		opt_enable_preprocess_packet = strcmp(value, "sip") ? yesno(value) : 2;
 	}
 	if((value = ini.GetValue("general", "enable_process_rtp_packet", NULL))) {
-		opt_enable_process_rtp_packet = strcmp(value, "2") ? yesno(value) : 2;
+		opt_enable_process_rtp_packet = atoi(value) > 1 ? min(atoi(value), MAX_PROCESS_RTP_PACKET_THREADS) : yesno(value);
 	}
 	
 	if((value = ini.GetValue("general", "tcpreassembly", NULL)) ||
@@ -4353,7 +4353,7 @@ int main(int argc, char *argv[]) {
 		delete sslData;
 	}
 	
-	for(int i = 0; i < 2; i++) {
+	for(int i = 0; i < opt_enable_process_rtp_packet; i++) {
 		if(processRtpPacket[i]) {
 			processRtpPacket[i]->terminating();
 			usleep(250000);

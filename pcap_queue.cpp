@@ -119,7 +119,7 @@ extern char user_filter[10*2048];
 extern Calltable *calltable;
 extern volatile int calls_counter;
 extern PreProcessPacket *preProcessPacket;
-extern ProcessRtpPacket *processRtpPacket[2];
+extern ProcessRtpPacket *processRtpPacket[MAX_PROCESS_RTP_PACKET_THREADS];
 extern TcpReassembly *tcpReassemblyHttp;
 extern TcpReassembly *tcpReassemblyWebrtc;
 extern TcpReassembly *tcpReassemblySsl;
@@ -1279,7 +1279,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 		} else {
 			if (opt_rrd) rrdtCPU_t2 = t2cpu;
 		}
-		for(int i = 0; i < 2; i++) {
+		for(int i = 0; i < MAX_PROCESS_RTP_PACKET_THREADS; i++) {
 			if(processRtpPacket[i]) {
 				double t2cpu_process_rtp_packet_out_thread = processRtpPacket[i]->getCpuUsagePerc(true);
 				if(t2cpu_process_rtp_packet_out_thread >= 0) {

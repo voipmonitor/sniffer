@@ -215,7 +215,7 @@ extern char cloud_host[256];
 extern SocketSimpleBufferWrite *sipSendSocket;
 extern int opt_sip_send_before_packetbuffer;
 extern PreProcessPacket *preProcessPacket;
-extern ProcessRtpPacket *processRtpPacket[2];
+extern ProcessRtpPacket *processRtpPacket[MAX_PROCESS_RTP_PACKET_THREADS];
 extern int opt_enable_process_rtp_packet;
 
 #ifdef QUEUE_MUTEX
@@ -3000,7 +3000,7 @@ rtpcheck:
 	if((htons(*(unsigned int*)data) & 0xC000) == 0x8000) {
 	if(processRtpPacket[0]) {
 		ProcessRtpPacket *_processRtpPacket = processRtpPacket[1] ?
-						       processRtpPacket[dest / 2 % 2] :
+						       processRtpPacket[dest / 2 % opt_enable_process_rtp_packet] :
 						       processRtpPacket[0];
 		_processRtpPacket->push(saddr, source, daddr, dest, 
 					data, datalen, dataoffset,
