@@ -57,6 +57,7 @@ extern int opt_pcap_dump_asyncwrite;
 extern int opt_pcap_dump_zip;
 extern int opt_pcap_dump_ziplevel;
 extern int opt_read_from_file;
+extern int opt_pcap_dump_tar;
 
 static char b2a[256];
 static char base64[64];
@@ -918,7 +919,8 @@ bool PcapDumper::open(const char *fileName, const char *fileNameSpoolRelative, p
 	string errorString;
 	this->dlt = useDlt == DLT_LINUX_SLL && opt_convert_dlt_sll_to_en10 ? DLT_EN10MB : useDlt;
 	this->handle = __pcap_dump_open(_handle, fileName, this->dlt, &errorString,
-					_bufflength, _asyncwrite, _zip);
+					_bufflength, _asyncwrite, _zip,
+					call ? call->calltime() : 0);
 	++this->openAttempts;
 	if(!this->handle) {
 		if(this->type != rtp || !this->openError) {
@@ -1037,7 +1039,8 @@ bool RtpGraphSaver::open(const char *fileName, const char *fileNameSpoolRelative
 		}
 	}
 	*/
-	this->handle = new FileZipHandler(opt_pcap_dump_bufflength, opt_pcap_dump_asyncwrite, opt_gzipGRAPH);
+	this->handle = new FileZipHandler(opt_pcap_dump_bufflength, opt_pcap_dump_asyncwrite, opt_gzipGRAPH,
+					  false, rtp && rtp->call_owner ? ((Call*)rtp->call_owner)->calltime() : 0);
 	if(!this->handle->open(fileName)) {
 		syslog(LOG_NOTICE, "graphsaver: error open file %s - %s", fileName, this->handle->error.c_str());
 		delete this->handle;
@@ -2053,8 +2056,10 @@ void JsonExport::add(const char *name, u_int64_t content) {
 //------------------------------------------------------------------------------
 // pcap_dump_open with set buffer
 
+#define TAR_BUFFER_INC_LENGTH	5000
+
 FileZipHandler::FileZipHandler(int bufferLength, int enableAsyncWrite, int enableZip,
-			       bool dumpHandler) {
+			       bool dumpHandler, int time) {
 	if(bufferLength <= 0) {
 		enableAsyncWrite = 0;
 		enableZip = 0;
@@ -2068,11 +2073,16 @@ FileZipHandler::FileZipHandler(int bufferLength, int enableAsyncWrite, int enabl
 	} else {
 		this->buffer = NULL;
 	}
-	this->zipBuffer = NULL;
 	this->useBufferLength = 0;
+	this->zipBufferLength = 0;
+	this->zipBuffer = NULL;
+	this->tarBufferLength = 0;
+	this->tarBuffer = NULL;
+	this->useTarBufferLength = 0;
 	this->enableAsyncWrite = enableAsyncWrite && !opt_read_from_file;
 	this->enableZip = enableZip;
 	this->dumpHandler = dumpHandler;
+	this->time = time;
 	this->size = 0;
 	this->counter = ++scounter;
 	this->userData = 0;
@@ -2085,6 +2095,9 @@ FileZipHandler::~FileZipHandler() {
 	}
 	if(this->zipBuffer) {
 		delete [] this->zipBuffer;
+	}
+	if(this->tarBuffer) {
+		delete [] this->tarBuffer;
 	}
 	if(this->zipStream) {
 		deflateEnd(this->zipStream);
@@ -2099,10 +2112,15 @@ bool FileZipHandler::open(const char *fileName, int permission) {
 }
 
 void FileZipHandler::close() {
-	this->flushBuffer(true);
-	if(this->okHandle()) {
-		::close(this->fh);
-		this->fh = 0;
+	if(opt_pcap_dump_tar) {
+		this->flushBuffer(true);
+		this->flushTarBuffer();
+	} else  {
+		this->flushBuffer(true);
+		if(this->okHandle()) {
+			::close(this->fh);
+			this->fh = 0;
+		}
 	}
 }
 
@@ -2113,6 +2131,18 @@ bool FileZipHandler::flushBuffer(bool force) {
 	bool rsltWrite = this->writeToFile(this->buffer, this->useBufferLength, force);
 	this->useBufferLength = 0;
 	return(rsltWrite);
+}
+
+void FileZipHandler::flushTarBuffer() {
+	if(!this->useTarBufferLength) {
+		return;
+	}
+	cout << "DATA " 
+	     << this->fileName << " "
+	     << sqlDateTimeString(this->time) << " " 
+	     << this->useTarBufferLength << " " 
+	     << endl;
+	this->useTarBufferLength = 0;
 }
 
 bool FileZipHandler::writeToBuffer(char *data, int length) {
@@ -2155,7 +2185,7 @@ bool FileZipHandler::_writeToFile(char *data, int length, bool flush) {
 		this->zipStream->avail_in = length;
 		this->zipStream->next_in = (unsigned char*)data;
 		do {
-			this->zipStream->avail_out = this->bufferLength;
+			this->zipStream->avail_out = this->zipBufferLength;
 			this->zipStream->next_out = (unsigned char*)this->zipBuffer;
 			if(deflate(this->zipStream, flush ? Z_FINISH : Z_NO_FLUSH) != Z_STREAM_ERROR) {
 				int have = this->bufferLength - this->zipStream->avail_out;
@@ -2184,20 +2214,33 @@ bool FileZipHandler::_writeToFile(char *data, int length, bool flush) {
 }
 
 bool FileZipHandler::__writeToFile(char *data, int length) {
-	if(!this->okHandle()) {
-		if(!this->error.empty() || !this->_open()) {
-			return(false);
+	if(opt_pcap_dump_tar) {
+		if(this->useTarBufferLength + length > this->tarBufferLength) {
+			this->tarBufferLength = max(this->useTarBufferLength + length, this->tarBufferLength + TAR_BUFFER_INC_LENGTH);
+			char *newTarBuffer = new char[this->tarBufferLength];
+			memcpy(newTarBuffer, this->tarBuffer, this->useTarBufferLength);
+			delete [] this->tarBuffer;
+			this->tarBuffer = newTarBuffer;
 		}
-	}
-	if(::write(this->fh, data, length) == length) {
+		memcpy(this->tarBuffer + this->useTarBufferLength, data, length);
+		this->useTarBufferLength += length;
 		return(true);
 	} else {
-		bool oldError = !error.empty();
-		this->setError();
-		if(!oldError) {
-			syslog(LOG_NOTICE, "error write to file %s - %s", fileName.c_str(), error.c_str());
+		if(!this->okHandle()) {
+			if(!this->error.empty() || !this->_open()) {
+				return(false);
+			}
 		}
-		return(false);
+		if(::write(this->fh, data, length) == length) {
+			return(true);
+		} else {
+			bool oldError = !error.empty();
+			this->setError();
+			if(!oldError) {
+				syslog(LOG_NOTICE, "error write to file %s - %s", fileName.c_str(), error.c_str());
+			}
+			return(false);
+		}
 	}
 }
 
@@ -2212,13 +2255,17 @@ bool FileZipHandler::initZip() {
 			this->setError("zip initialize failed");
 			return(false);
 		} else {
-			this->zipBuffer = new char[bufferLength ? bufferLength : 8192];
+			this->zipBufferLength = bufferLength ? bufferLength : 8192;
+			this->zipBuffer = new char[this->zipBufferLength];
 		}
 	}
 	return(true);
 }
 
 bool FileZipHandler::_open() {
+	if(opt_pcap_dump_tar) {
+		return(true);
+	}
 	for(int passOpen = 0; passOpen < 2; passOpen++) {
 		if(passOpen == 1) {
 			char *pointToLastDirSeparator = strrchr((char*)fileName.c_str(), '/');
@@ -2259,12 +2306,13 @@ u_int64_t FileZipHandler::scounter = 0;
 #define NSEC_TCPDUMP_MAGIC	0xa1b23c4d
 
 pcap_dumper_t *__pcap_dump_open(pcap_t *p, const char *fname, int linktype, string *errorString,
-				int _bufflength, int _asyncwrite, int _zip) {
+				int _bufflength, int _asyncwrite, int _zip,
+				int calltime) {
 	if(opt_pcap_dump_bufflength) {
 		FileZipHandler *handler = new FileZipHandler(_bufflength < 0 ? opt_pcap_dump_bufflength : _bufflength, 
 							     _asyncwrite < 0 ? opt_pcap_dump_asyncwrite : _asyncwrite, 
 							     _zip < 0 ? opt_pcap_dump_zip : _zip, 
-							     true);
+							     true, calltime);
 		if(handler->open(fname)) {
 			struct pcap_file_header hdr;
 			hdr.magic = TCPDUMP_MAGIC;

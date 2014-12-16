@@ -326,7 +326,7 @@ inline unsigned long long getTimeNS() {
 class FileZipHandler {
 public:
 	FileZipHandler(int bufferLength = 0, int enableAsyncWrite = 0, int enableZip = 0,
-		       bool dumpHandler = false);
+		       bool dumpHandler = false, int time = 0);
 	~FileZipHandler();
 	bool open(const char *fileName, int permission = 0666);
 	void close();
@@ -336,6 +336,7 @@ public:
 			this->writeToFile(data, length));
 	}
 	bool flushBuffer(bool force = false);
+	void flushTarBuffer();
 	bool writeToBuffer(char *data, int length);
 	bool writeToFile(char *data, int length, bool force = false);
 	bool _writeToFile(char *data, int length, bool flush = false);
@@ -344,7 +345,8 @@ public:
 	bool _open();
 	void setError(const char *error = NULL);
 	bool okHandle() {
-		return(fh > 0);
+		extern int opt_pcap_dump_tar;
+		return(opt_pcap_dump_tar ? true : fh > 0);
 	}
 public:
 	string fileName;
@@ -354,11 +356,16 @@ public:
 	string error;
 	int bufferLength;
 	char *buffer;
-	char *zipBuffer;
 	int useBufferLength;
+	int zipBufferLength;
+	char *zipBuffer;
+	int tarBufferLength;
+	char *tarBuffer;
+	int useTarBufferLength;
 	bool enableAsyncWrite;
 	bool enableZip;
 	bool dumpHandler;
+	int time;
 	u_int64_t size;
 	u_int64_t counter;
 	static u_int64_t scounter;
@@ -366,7 +373,8 @@ public:
 };
 
 pcap_dumper_t *__pcap_dump_open(pcap_t *p, const char *fname, int linktype, string *errorString = NULL,
-				int _bufflength = -1 , int _asyncwrite = -1, int _zip = -1);
+				int _bufflength = -1 , int _asyncwrite = -1, int _zip = -1,
+				int calltime = 0);
 void __pcap_dump(u_char *user, const struct pcap_pkthdr *h, const u_char *sp);
 void __pcap_dump_close(pcap_dumper_t *p);
 void __pcap_dump_flush(pcap_dumper_t *p);

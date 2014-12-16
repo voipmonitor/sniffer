@@ -325,6 +325,7 @@ int opt_pcap_dump_ziplevel = Z_DEFAULT_COMPRESSION;
 int opt_pcap_dump_writethreads = 1;
 int opt_pcap_dump_writethreads_max = 32;
 int opt_pcap_dump_asyncwrite_maxsize = 100; //MB
+int opt_pcap_dump_tar = 0;
 int opt_defer_create_spooldir = 1;
 
 int opt_sdp_multiplication = 3;
@@ -2166,6 +2167,9 @@ int eval_config(string inistr) {
 	   (value = ini.GetValue("general", "pcap_dump_asyncbuffer", NULL))) {
 		opt_pcap_dump_asyncwrite_maxsize = atoi(value);
 	}
+	if((value = ini.GetValue("general", "pcap_dump_tar", NULL))) {
+		opt_pcap_dump_tar = yesno(value);
+	}
 	if((value = ini.GetValue("general", "defer_create_spooldir", NULL))) {
 		opt_defer_create_spooldir = yesno(value);
 	}
@@ -2348,6 +2352,10 @@ void set_context_config() {
 	
 	if(rtp_qring_quick == 0 && opt_enable_process_rtp_packet > 1) {
 		rtp_qring_quick = 1;
+	}
+	
+	if(opt_pcap_dump_tar) {
+		opt_pcap_dump_writethreads_max = 1;
 	}
 }
 
