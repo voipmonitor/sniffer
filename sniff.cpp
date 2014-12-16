@@ -1226,7 +1226,7 @@ int get_rtpmap_from_sdp(char *sdp_text, unsigned long len, int *rtpmap){
 void add_to_rtp_thread_queue(Call *call, unsigned char *data, int datalen, int dataoffset, struct pcap_pkthdr *header,  u_int32_t saddr, u_int32_t daddr, unsigned short sport, unsigned short dport, int iscaller, int is_rtcp,
 			     pcap_block_store *block_store, int block_store_index, 
 			     int enable_save_packet, const u_char *packet, char istcp, int dlt, int sensor_id,
-			     bool preSyncRtp) {
+			     int preSyncRtp) {
 	#if RTP_PROF
 	unsigned long long __prof_begin = rdtsc();
 	#endif
