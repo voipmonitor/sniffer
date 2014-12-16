@@ -3889,7 +3889,7 @@ int main(int argc, char *argv[]) {
 	}
 	if(opt_enable_process_rtp_packet) {
 		for(int i = 0; i < opt_enable_process_rtp_packet; i++) {
-			processRtpPacket[i] = new ProcessRtpPacket();
+			processRtpPacket[i] = new ProcessRtpPacket(i);
 		}
 	}
 
@@ -4132,65 +4132,60 @@ int main(int argc, char *argv[]) {
 								tcpReassemblyWebrtc->setDoPrintContent();
 							}
 							#if RTP_PROF
-							extern volatile unsigned long long __prof__ProcessRtpPacket_outThreadFunction_begin;
-							extern volatile unsigned long long __prof__ProcessRtpPacket_outThreadFunction;
-							extern volatile unsigned long long __prof__ProcessRtpPacket_outThreadFunction__usleep;
-							extern volatile unsigned long long __prof__ProcessRtpPacket_rtp;
-							extern volatile unsigned long long __prof__ProcessRtpPacket_rtp__hashfind;
-							extern volatile unsigned long long __prof__ProcessRtpPacket_rtp__fill_call_array;
-							extern volatile unsigned long long __prof__process_packet__rtp;
-							extern volatile unsigned long long __prof__add_to_rtp_thread_queue;
-							unsigned long long ___prof__ProcessRtpPacket_outThreadFunction = __prof__ProcessRtpPacket_outThreadFunction;
-							unsigned long long ___prof__ProcessRtpPacket_outThreadFunction__usleep = __prof__ProcessRtpPacket_outThreadFunction__usleep;
-							unsigned long long ___prof__ProcessRtpPacket_rtp = __prof__ProcessRtpPacket_rtp;
-							unsigned long long ___prof__ProcessRtpPacket_rtp__hashfind = __prof__ProcessRtpPacket_rtp__hashfind;
-							unsigned long long ___prof__ProcessRtpPacket_rtp__fill_call_array = __prof__ProcessRtpPacket_rtp__fill_call_array;
-							unsigned long long ___prof__process_packet__rtp = __prof__process_packet__rtp;
-							unsigned long long ___prof__add_to_rtp_thread_queue = __prof__add_to_rtp_thread_queue;
-							unsigned long long ___prof__ProcessRtpPacket_outThreadFunction2 = ___prof__ProcessRtpPacket_outThreadFunction - ___prof__ProcessRtpPacket_outThreadFunction__usleep;
-							cout << fixed
-							     << "RTP PROF" << endl
-							     << left << setw(50) << "ProcessRtpPacket::outThreadFunction"
-							     << right << setw(15) << ___prof__ProcessRtpPacket_outThreadFunction
-									<< endl
-							     << left << setw(50) << "ProcessRtpPacket::outThreadFunction / usleep"
-							     << right << setw(15) << ___prof__ProcessRtpPacket_outThreadFunction__usleep
-									<< endl
-							     << left << setw(50) << "ProcessRtpPacket::outThreadFunction / process time"
-							     << right << setw(15) << ___prof__ProcessRtpPacket_outThreadFunction2
-									<< endl
-							     << left << setw(50) << "ProcessRtpPacket::rtp"
-							     << right << setw(15) << ___prof__ProcessRtpPacket_rtp
-							     << setw(15) << setprecision(5) 
-								<< ((double)___prof__ProcessRtpPacket_rtp / ___prof__ProcessRtpPacket_outThreadFunction2) * 100 << "%"
-									<< endl
-							     << left << setw(50) << "ProcessRtpPacket::rtp / hashfind"
-							     << right << setw(15) << ___prof__ProcessRtpPacket_rtp__hashfind
-							     << setw(15) << setprecision(5) 
-								<< ((double)___prof__ProcessRtpPacket_rtp__hashfind / ___prof__ProcessRtpPacket_outThreadFunction2) * 100 << "%"
-									<< endl
-							     << left << setw(50) << "ProcessRtpPacket::rtp / fill call array"
-							     << right << setw(15) << ___prof__ProcessRtpPacket_rtp__fill_call_array
-							     << setw(15) << setprecision(5) 
-								<< ((double)___prof__ProcessRtpPacket_rtp__fill_call_array / ___prof__ProcessRtpPacket_outThreadFunction2) * 100 << "%"
-									<< endl
-							     << left << setw(50) << "process_packet__rtp"
-							     << right << setw(15) << ___prof__process_packet__rtp
-							     << setw(15) << setprecision(5) 
-								<< ((double)___prof__process_packet__rtp / ___prof__ProcessRtpPacket_outThreadFunction2) * 100 << "%"
-									<< endl
-							     << left << setw(50) << "add_to_rtp_thread_queue"
-							     << right << setw(15) << ___prof__add_to_rtp_thread_queue
-							     << setw(15) << setprecision(5) 
-								<< ((double)___prof__add_to_rtp_thread_queue / ___prof__ProcessRtpPacket_outThreadFunction2) * 100 << "%"
-									<< endl;
-							__prof__ProcessRtpPacket_outThreadFunction_begin = rdtsc();
-							__prof__ProcessRtpPacket_outThreadFunction__usleep = 0;
-							__prof__ProcessRtpPacket_rtp = 0;
-							__prof__ProcessRtpPacket_rtp__hashfind = 0;
-							__prof__ProcessRtpPacket_rtp__fill_call_array = 0;
-							__prof__process_packet__rtp = 0;
-							__prof__add_to_rtp_thread_queue = 0;
+							for(int i = 0; i < opt_enable_process_rtp_packet; i++) if(processRtpPacket[i]) {
+								unsigned long long ___prof__ProcessRtpPacket_outThreadFunction = processRtpPacket[i]->__prof__ProcessRtpPacket_outThreadFunction;
+								unsigned long long ___prof__ProcessRtpPacket_outThreadFunction__usleep = processRtpPacket[i]->__prof__ProcessRtpPacket_outThreadFunction__usleep;
+								unsigned long long ___prof__ProcessRtpPacket_rtp = processRtpPacket[i]->__prof__ProcessRtpPacket_rtp;
+								unsigned long long ___prof__ProcessRtpPacket_rtp__hashfind = processRtpPacket[i]->__prof__ProcessRtpPacket_rtp__hashfind;
+								unsigned long long ___prof__ProcessRtpPacket_rtp__fill_call_array = processRtpPacket[i]->__prof__ProcessRtpPacket_rtp__fill_call_array;
+								unsigned long long ___prof__process_packet__rtp = processRtpPacket[i]->__prof__process_packet__rtp;
+								unsigned long long ___prof__add_to_rtp_thread_queue = processRtpPacket[i]->__prof__add_to_rtp_thread_queue;
+								unsigned long long ___prof__ProcessRtpPacket_outThreadFunction2 = ___prof__ProcessRtpPacket_outThreadFunction - ___prof__ProcessRtpPacket_outThreadFunction__usleep;
+								cout << fixed
+								     << "RTP PROF - " << (processRtpPacket[i]->indexThread + 1) << "/" << processRtpPacket[i]->outThreadId
+										<< endl
+								     << left << setw(50) << "ProcessRtpPacket::outThreadFunction"
+								     << right << setw(15) << ___prof__ProcessRtpPacket_outThreadFunction
+										<< endl
+								     << left << setw(50) << "ProcessRtpPacket::outThreadFunction / usleep"
+								     << right << setw(15) << ___prof__ProcessRtpPacket_outThreadFunction__usleep
+										<< endl
+								     << left << setw(50) << "ProcessRtpPacket::outThreadFunction / process time"
+								     << right << setw(15) << ___prof__ProcessRtpPacket_outThreadFunction2
+										<< endl
+								     << left << setw(50) << "   ProcessRtpPacket::rtp"
+								     << right << setw(15) << ___prof__ProcessRtpPacket_rtp
+								     << setw(15) << setprecision(5) 
+									<< ((double)___prof__ProcessRtpPacket_rtp / ___prof__ProcessRtpPacket_outThreadFunction2) * 100 << "%"
+										<< endl
+								     << left << setw(50) << "      ProcessRtpPacket::rtp / hashfind"
+								     << right << setw(15) << ___prof__ProcessRtpPacket_rtp__hashfind
+								     << setw(15) << setprecision(5) 
+									<< ((double)___prof__ProcessRtpPacket_rtp__hashfind / ___prof__ProcessRtpPacket_outThreadFunction2) * 100 << "%"
+										<< endl
+								     << left << setw(50) << "      ProcessRtpPacket::rtp / fill call array"
+								     << right << setw(15) << ___prof__ProcessRtpPacket_rtp__fill_call_array
+								     << setw(15) << setprecision(5) 
+									<< ((double)___prof__ProcessRtpPacket_rtp__fill_call_array / ___prof__ProcessRtpPacket_outThreadFunction2) * 100 << "%"
+										<< endl
+								     << left << setw(50) << "      process_packet__rtp"
+								     << right << setw(15) << ___prof__process_packet__rtp
+								     << setw(15) << setprecision(5) 
+									<< ((double)___prof__process_packet__rtp / ___prof__ProcessRtpPacket_outThreadFunction2) * 100 << "%"
+										<< endl
+								     << left << setw(50) << "         add_to_rtp_thread_queue"
+								     << right << setw(15) << ___prof__add_to_rtp_thread_queue
+								     << setw(15) << setprecision(5) 
+									<< ((double)___prof__add_to_rtp_thread_queue / ___prof__ProcessRtpPacket_outThreadFunction2) * 100 << "%"
+										<< endl;
+								processRtpPacket[i]->__prof__ProcessRtpPacket_outThreadFunction_begin = rdtsc();
+								processRtpPacket[i]->__prof__ProcessRtpPacket_outThreadFunction__usleep = 0;
+								processRtpPacket[i]->__prof__ProcessRtpPacket_rtp = 0;
+								processRtpPacket[i]->__prof__ProcessRtpPacket_rtp__hashfind = 0;
+								processRtpPacket[i]->__prof__ProcessRtpPacket_rtp__fill_call_array = 0;
+								processRtpPacket[i]->__prof__process_packet__rtp = 0;
+								processRtpPacket[i]->__prof__add_to_rtp_thread_queue = 0;
+							}
 							#endif
 						}
 						sleep(1);

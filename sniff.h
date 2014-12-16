@@ -467,7 +467,7 @@ public:
 		bool use_sync;
 	};
 public:
-	ProcessRtpPacket();
+	ProcessRtpPacket(int indexThread);
 	~ProcessRtpPacket();
 	void push(unsigned int saddr, int source, unsigned int daddr, int dest, 
 		  char *data, int datalen, int dataoffset,
@@ -480,6 +480,19 @@ public:
 private:
 	void *outThreadFunction();
 	void rtp(packet_s *_packet);
+public:
+	#if RTP_PROF
+	volatile unsigned long long __prof__ProcessRtpPacket_outThreadFunction_begin;
+	volatile unsigned long long __prof__ProcessRtpPacket_outThreadFunction;
+	volatile unsigned long long __prof__ProcessRtpPacket_outThreadFunction__usleep;
+	volatile unsigned long long __prof__ProcessRtpPacket_rtp;
+	volatile unsigned long long __prof__ProcessRtpPacket_rtp__hashfind;
+	volatile unsigned long long __prof__ProcessRtpPacket_rtp__fill_call_array;
+	volatile unsigned long long __prof__process_packet__rtp;
+	volatile unsigned long long __prof__add_to_rtp_thread_queue;
+	#endif
+	int indexThread;
+	int outThreadId;
 private:
 	packet_s *qring;
 	unsigned int qringmax;
@@ -487,7 +500,6 @@ private:
 	volatile unsigned int writeit;
 	pthread_t out_thread_handle;
 	pstat_data threadPstatData[2];
-	int outThreadId;
 	bool _terminating;
 friend inline void *_ProcessRtpPacket_outThreadFunction(void *arg);
 };

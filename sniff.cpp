@@ -269,18 +269,6 @@ static unsigned long process_packet__last_destroy_calls = 0;
 static unsigned long preprocess_packet__last_cleanup = 0;
 
 
-#if RTP_PROF
-volatile unsigned long long __prof__ProcessRtpPacket_outThreadFunction_begin;
-volatile unsigned long long __prof__ProcessRtpPacket_outThreadFunction;
-volatile unsigned long long __prof__ProcessRtpPacket_outThreadFunction__usleep;
-volatile unsigned long long __prof__ProcessRtpPacket_rtp;
-volatile unsigned long long __prof__ProcessRtpPacket_rtp__hashfind;
-volatile unsigned long long __prof__ProcessRtpPacket_rtp__fill_call_array;
-volatile unsigned long long __prof__process_packet__rtp;
-volatile unsigned long long __prof__add_to_rtp_thread_queue;
-#endif
-
-
 // return IP from nat_aliases[ip] or 0 if not found
 in_addr_t match_nat_aliases(in_addr_t ip) {
 	nat_aliases_t::iterator iter;
@@ -1384,7 +1372,9 @@ void add_to_rtp_thread_queue(Call *call, unsigned char *data, int datalen, int d
 #endif
 
 	#if RTP_PROF
-	__prof__add_to_rtp_thread_queue += rdtsc() - __prof_begin;
+	if(preSyncRtp) {
+		processRtpPacket[preSyncRtp - 1]->__prof__add_to_rtp_thread_queue += rdtsc() - __prof_begin;
+	}
 	#endif
 }
 
@@ -3546,7 +3536,7 @@ Call *process_packet__rtp(ProcessRtpPacket::rtp_call_info *call_info,size_t call
 			  pcap_pkthdr *header, const u_char *packet, int istcp, struct iphdr2 *header_ip,
 			  pcap_block_store *block_store, int block_store_index, int dlt, int sensor_id,
 			  int *voippacket, int *was_rtp,
-			  bool find_by_dest, bool preSyncRtp) {
+			  bool find_by_dest, int preSyncRtp) {
 	#if RTP_PROF
 	unsigned long long __prof_begin = rdtsc();
 	#endif
@@ -3693,7 +3683,9 @@ Call *process_packet__rtp(ProcessRtpPacket::rtp_call_info *call_info,size_t call
 		}
 	}
 	#if RTP_PROF
-	__prof__process_packet__rtp += rdtsc() - __prof_begin;
+	if(preSyncRtp) {
+		processRtpPacket[preSyncRtp - 1]->__prof__process_packet__rtp += rdtsc() - __prof_begin;
+	}
 	#endif
 	return(rsltCall);
 }
@@ -5144,7 +5136,8 @@ inline void *_ProcessRtpPacket_outThreadFunction(void *arg) {
 	return(((ProcessRtpPacket*)arg)->outThreadFunction());
 }
 
-ProcessRtpPacket::ProcessRtpPacket() {
+ProcessRtpPacket::ProcessRtpPacket(int indexThread) {
+	this->indexThread = indexThread;
 	this->qringmax = opt_process_rtp_packets_qring_length;
 	this->readit = 0;
 	this->writeit = 0;
@@ -5155,6 +5148,16 @@ ProcessRtpPacket::ProcessRtpPacket() {
 	memset(this->threadPstatData, 0, sizeof(this->threadPstatData));
 	this->outThreadId = 0;
 	this->_terminating = false;
+	#if RTP_PROF
+	__prof__ProcessRtpPacket_outThreadFunction_begin = 0;
+	__prof__ProcessRtpPacket_outThreadFunction = 0;
+	__prof__ProcessRtpPacket_outThreadFunction__usleep = 0;
+	__prof__ProcessRtpPacket_rtp = 0;
+	__prof__ProcessRtpPacket_rtp__hashfind = 0;
+	__prof__ProcessRtpPacket_rtp__fill_call_array = 0;
+	__prof__process_packet__rtp = 0;
+	__prof__add_to_rtp_thread_queue = 0;
+	#endif
 	pthread_create(&this->out_thread_handle, NULL, _ProcessRtpPacket_outThreadFunction, this);
 }
 
@@ -5285,7 +5288,7 @@ void ProcessRtpPacket::rtp(packet_s *_packet) {
 				    &_packet->header, _packet->packet, _packet->istcp, _packet->header_ip,
 				    _packet->block_store, _packet->block_store_index, _packet->dlt, _packet->sensor_id,
 				    NULL, NULL,
-				    find_by_dest, true);
+				    find_by_dest, indexThread + 1);
 	} else {
 		if(opt_rtpnosip) {
 			process_packet__rtp_nosip(_packet->saddr, _packet->source, _packet->daddr, _packet->dest, 
