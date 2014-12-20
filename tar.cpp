@@ -296,21 +296,21 @@ Tar::tar_append_buffer(char *buffer, size_t size)
 
 int    
 Tar::initZip() {
-        if(!this->zipStream) {
-                this->zipStream =  new z_stream;
-                this->zipStream->zalloc = Z_NULL;
-                this->zipStream->zfree = Z_NULL;
-                this->zipStream->opaque = Z_NULL;
-                if(deflateInit2(this->zipStream, gziplevel, Z_DEFLATED, MAX_WBITS + 16, 8, Z_DEFAULT_STRATEGY) != Z_OK) {
-                        deflateEnd(this->zipStream);
-                        //this->setError("zip initialize failed");
-                        return(false);
-                } else {
-                        this->zipBufferLength = 8192*4;
-                        this->zipBuffer = new char[this->zipBufferLength];
-                }
-        }
-        return(true);
+	if(!this->zipStream) {
+		this->zipStream =  new z_stream;
+		this->zipStream->zalloc = Z_NULL;
+		this->zipStream->zfree = Z_NULL;
+		this->zipStream->opaque = Z_NULL;
+		if(deflateInit2(this->zipStream, gziplevel, Z_DEFLATED, MAX_WBITS + 16, 8, Z_DEFAULT_STRATEGY) != Z_OK) {
+			deflateEnd(this->zipStream);
+			//this->setError("zip initialize failed");
+			return(false);
+		} else {
+			this->zipBufferLength = 8192*4;
+			this->zipBuffer = new char[this->zipBufferLength];
+		}
+	}
+	return(true);
 }
        
 void 
@@ -330,34 +330,34 @@ Tar::flushZip() {
 
 ssize_t
 Tar::writeZip(const void *buf, size_t len) {
-        int flush = 0;
-        if(!this->initZip()) {
-                return(false);
-        }      
-        this->zipStream->avail_in = len;
-        this->zipStream->next_in = (unsigned char*)buf;
-        do {
+	int flush = 0;
+	if(!this->initZip()) {
+		return(false);
+	}      
+	this->zipStream->avail_in = len;
+	this->zipStream->next_in = (unsigned char*)buf;
+	do {
 		this->zipStream->avail_out = this->zipBufferLength;
 		this->zipStream->next_out = (unsigned char*)this->zipBuffer;
 
-                if(deflate(this->zipStream, flush ? Z_FINISH : Z_NO_FLUSH) != Z_STREAM_ERROR) {
+		if(deflate(this->zipStream, flush ? Z_FINISH : Z_NO_FLUSH) != Z_STREAM_ERROR) {
 			int have = this->zipBufferLength - this->zipStream->avail_out;
-                        if(::write(tar.fd, (const char*)this->zipBuffer, have) <= 0) {
-                                //this->setError();
-                                return(false);
-                        };     
-                } else {
-                        //this->setError("zip deflate failed");
-                        return(false);
-                }      
-        } while(this->zipStream->avail_out == 0);
-        return(true);
+			if(::write(tar.fd, (const char*)this->zipBuffer, have) <= 0) {
+				//this->setError();
+				return(false);
+			};     
+		} else {
+			//this->setError("zip deflate failed");
+			return(false);
+		}      
+	} while(this->zipStream->avail_out == 0);
+	return(true);
 }      
 
 #ifdef HAVE_LIBLZMA
 int
 Tar::initLzma() {
-        if(!this->lzmaStream) {
+	if(!this->lzmaStream) {
 		/* initialize xz encoder */
 		//uint32_t preset = LZMA_COMPRESSION_LEVEL | (LZMA_COMPRESSION_EXTREME ? LZMA_PRESET_EXTREME : 0);
 		lzmaStream = new lzma_stream;
@@ -373,7 +373,7 @@ Tar::initLzma() {
 			this->zipBuffer = new char[this->zipBufferLength];
 		}
 	}
-        return(true);
+	return(true);
 }
 
 void 
@@ -404,12 +404,12 @@ Tar::flushLzma() {
 ssize_t
 Tar::writeLzma(const void *buf, size_t len) {
 	int ret_xz;
-        if(!this->initLzma()) {
-                return(false);
-        }
+	if(!this->initLzma()) {
+		return(false);
+	}
 	this->lzmaStream->next_in = (const uint8_t*)buf;
 	this->lzmaStream->avail_in = len;
-        do {
+	do {
 		this->lzmaStream->next_out = (unsigned char*)this->zipBuffer;
 		this->lzmaStream->avail_out = this->zipBufferLength;
 
@@ -426,8 +426,8 @@ Tar::writeLzma(const void *buf, size_t len) {
 				return(false);
 			}
 		}
-        } while(this->lzmaStream->avail_out == 0);
-        return(true);
+	} while(this->lzmaStream->avail_out == 0);
+	return(true);
 }      
 #endif
 
@@ -479,49 +479,49 @@ Tar::tar_block_write(const char *buf){
 
 Tar::~Tar() {
 
-        if(this->zipStream) {
+	if(this->zipStream) {
 		flushZip();
-                deflateEnd(this->zipStream);
-                delete this->zipStream;
-        }
+		deflateEnd(this->zipStream);
+		delete this->zipStream;
+	}
 #if HAVE_LIBLZMA
-        if(this->lzmaStream) {
+	if(this->lzmaStream) {
 		flushLzma();
-                lzma_end(this->lzmaStream);
-                delete this->lzmaStream;
+		lzma_end(this->lzmaStream);
+		delete this->lzmaStream;
 		this->lzmaStream = NULL;
-        }
+	}
 #endif
-        if(this->zipBuffer) {
-                delete [] this->zipBuffer;
-        }
+	if(this->zipBuffer) {
+		delete [] this->zipBuffer;
+	}
 	if(sverb.tar) syslog(LOG_NOTICE, "tar %s deatroyd (destructor)\n", pathname.c_str());
 }
 
-void                           
+void			   
 TarQueue::add(string filename, unsigned int time, char *buffer, size_t len){
 	glob_tar_queued_files++;
-        data_t data;
-        data.buffer = buffer;
-        data.len = len;
-        lock();
-        unsigned int year, mon, day, hour, minute;
-        char type[12];
-        char fbasename[2*1024];
-        sscanf(filename.c_str(), "%u-%u-%u/%u/%u/%[^/]/%s", &year, &mon, &day, &hour, &minute, type, fbasename);
+	data_t data;
+	data.buffer = buffer;
+	data.len = len;
+	lock();
+	unsigned int year, mon, day, hour, minute;
+	char type[12];
+	char fbasename[2*1024];
+	sscanf(filename.c_str(), "%u-%u-%u/%u/%u/%[^/]/%s", &year, &mon, &day, &hour, &minute, type, fbasename);
 //      printf("%s: %u-%u-%u/%u/%u/%s/%s\n", filename.c_str(), year, mon, day, hour, minute, type, fbasename);
-        data.filename = fbasename;
-        data.year = year;
-        data.mon = mon;
-        data.day = day;
-        if(type[0] == 'S') {
-                queue[1][time - time % TAR_MODULO_SECONDS].push_back(data);
-        } else if(type[0] == 'R') {
-                queue[2][time - time % TAR_MODULO_SECONDS].push_back(data);
-        } else if(type[0] == 'G') {
-                queue[3][time - time % TAR_MODULO_SECONDS].push_back(data);
-        }      
-        unlock();
+	data.filename = fbasename;
+	data.year = year;
+	data.mon = mon;
+	data.day = day;
+	if(type[0] == 'S') {
+		queue[1][time - time % TAR_MODULO_SECONDS].push_back(data);
+	} else if(type[0] == 'R') {
+		queue[2][time - time % TAR_MODULO_SECONDS].push_back(data);
+	} else if(type[0] == 'G') {
+		queue[3][time - time % TAR_MODULO_SECONDS].push_back(data);
+	}      
+	unlock();
 }      
 
 string
@@ -532,12 +532,12 @@ qtype2str(int qtype) {
 	else return "all";
 }
 
-int                            
+int			    
 TarQueue::write(int qtype, unsigned int time, data_t data) {
 	glob_tar_queued_files--;
-        stringstream tar_dir, tar_name;
-        tar_dir << opt_chdir << "/" << data.year << "-" << data.mon << "-" << data.day;
-        tar_name << tar_dir.str() << "/" << qtype2str(qtype) << "_" << time << ".tar";
+	stringstream tar_dir, tar_name;
+	tar_dir << opt_chdir << "/" << data.year << "-" << data.mon << "-" << data.day;
+	tar_name << tar_dir.str() << "/" << qtype2str(qtype) << "_" << time << ".tar";
 	switch(qtype) {
 	case 1:
 		switch(opt_pcap_dump_tar_compress_sip) {
@@ -570,53 +570,55 @@ TarQueue::write(int qtype, unsigned int time, data_t data) {
 		}
 		break;
 	}
-        mkdir_r(tar_dir.str(), 0777);
+	mkdir_r(tar_dir.str(), 0777);
 	//printf("tar_name %s\n", tar_name.str().c_str());
        
-        Tar *tar = tars[tar_name.str()];
-        if(!tar) {
+	Tar *tar = tars[tar_name.str()];
+	if(!tar) {
 		tar = new Tar;
 		if(sverb.tar) syslog(LOG_NOTICE, "new tar %s\n", tar_name.str().c_str());
 		tars[tar_name.str()] = tar;
-                tar->tar_open(tar_name.str(), O_WRONLY | O_CREAT | O_APPEND, 0777, TAR_GNU);
+		tar->tar_open(tar_name.str(), O_WRONLY | O_CREAT | O_APPEND, 0777, TAR_GNU);
 		tar->tar.qtype = qtype;
 		tar->created_at = time;
-        }      
+	}      
        
-        //reset and set header
-        memset(&(tar->tar.th_buf), 0, sizeof(struct Tar::tar_header));
-        tar->th_set_type(0); //s->st_mode, 0 is regular file
-        tar->th_set_user(0); //st_uid
-        tar->th_set_group(0); //st_gid
-        tar->th_set_mode(0); //s->st_mode
-        tar->th_set_mtime(time);
-        tar->th_set_size(data.len);
-        tar->th_set_path((char*)data.filename.c_str());
+	//reset and set header
+	memset(&(tar->tar.th_buf), 0, sizeof(struct Tar::tar_header));
+	tar->th_set_type(0); //s->st_mode, 0 is regular file
+	tar->th_set_user(0); //st_uid
+	tar->th_set_group(0); //st_gid
+	tar->th_set_mode(0); //s->st_mode
+	tar->th_set_mtime(time);
+	tar->th_set_size(data.len);
+	tar->th_set_path((char*)data.filename.c_str());
        
-        /* write header */
-        if (tar->th_write() != 0) {
-                return -1;
-        }
-
-        /* if it's a regular file, write the contents as well */
-        if(tar->tar_append_buffer(data.buffer, data.len) != 0) {
-                return -1;
+	/* write header */
+	if (tar->th_write() != 0) {
+		return -1;
 	}
 
-        return 0;
+	/* if it's a regular file, write the contents as well */
+	if(tar->tar_append_buffer(data.buffer, data.len) != 0) {
+		delete [] data.buffer;
+		return -1;
+	}
+	delete [] data.buffer;
+
+	return 0;
 }
 
 void   
 TarQueue::flushQueue() {
 	pthread_mutex_lock(&flushlock);
-        // get candidate vector which has the biggest datalen in all files 
-        int winner_qtype = 0;
-        
-        vector<data_t> winner;
-        unsigned int winnertime = 0;
-        size_t maxlen = 0;
-        map<unsigned int, vector<data_t> >::iterator it;
-        // walk all maps
+	// get candidate vector which has the biggest datalen in all files 
+	int winner_qtype = 0;
+	
+	vector<data_t> winner;
+	unsigned int winnertime = 0;
+	size_t maxlen = 0;
+	map<unsigned int, vector<data_t> >::iterator it;
+	// walk all maps
 
 	while(1) {
 		lock();
@@ -676,7 +678,7 @@ TarQueue::flushQueue() {
 int
 TarQueue::queuelen() {
 	int len = 0;
-        for(int i = 0; i < 4; i++) {
+	for(int i = 0; i < 4; i++) {
 		len += queue[i].size();
 	}
 	return len;
@@ -684,8 +686,8 @@ TarQueue::queuelen() {
 
 TarQueue::~TarQueue() {
 
-        pthread_mutex_destroy(&mutexlock);
-        pthread_mutex_destroy(&flushlock);
+	pthread_mutex_destroy(&mutexlock);
+	pthread_mutex_destroy(&flushlock);
 
 	// destroy all tars
 	for(map<string, Tar*>::iterator it = tars.begin(); it != tars.end(); it++) {
@@ -696,11 +698,11 @@ TarQueue::~TarQueue() {
 
 
 void *TarQueueThread(void *dummy) {
-        // run each second flushQueue
-        while(!terminating) {
-                tarQueue.flushQueue();
-                sleep(1);
-        }      
-        return NULL;
+	// run each second flushQueue
+	while(!terminating) {
+		tarQueue.flushQueue();
+		sleep(1);
+	}      
+	return NULL;
 }      
 
