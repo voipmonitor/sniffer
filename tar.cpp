@@ -536,7 +536,7 @@ int
 TarQueue::write(int qtype, unsigned int time, data_t data) {
 	glob_tar_queued_files--;
         stringstream tar_dir, tar_name;
-        tar_dir << opt_chdir << data.year << "-" << data.mon << "-" << data.day;
+        tar_dir << opt_chdir << "/" << data.year << "-" << data.mon << "-" << data.day;
         tar_name << tar_dir.str() << "/" << qtype2str(qtype) << "_" << time << ".tar";
 	switch(qtype) {
 	case 1:
