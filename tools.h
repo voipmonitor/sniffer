@@ -1,6 +1,7 @@
 #ifndef TOOLS_H
 #define TOOLS_H
 
+#include <pthread.h>
 #include <string>
 #include <vector>
 #include <queue>
@@ -21,8 +22,10 @@
 #include <map>
 
 #include "pstat.h"
+#include "tar.h"
 
 using namespace std;
+
 
 struct TfileListElem {
     string filename;
@@ -135,6 +138,7 @@ vector<string> explode(const string&, const char&);
 int getUpdDifTime(struct timeval *before);
 int getDifTime(struct timeval *before);
 int msleep(long msec);
+int file_exists (string filename);
 int file_exists (char * fileName);
 int file_exists (const char * fileName);
 void set_mac();
@@ -1609,6 +1613,5 @@ __inline__ unsigned long long rdtsc(void)
     return ( (unsigned long long)lo)|( ((unsigned long long)hi)<<32 );
 }
 #endif
-
 
 #endif

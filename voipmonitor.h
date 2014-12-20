@@ -48,6 +48,8 @@
 
 #define MAX_PROCESS_RTP_PACKET_THREADS 6
 
+#define TAR_MODULO_SECONDS 60
+
 
 /* choose what method wil be used to synchronize threads. NONBLOCK is the fastest. Do not enable both at once */
 // this is now defined in Makefile 
@@ -155,6 +157,7 @@ struct sVerbose {
 	int disable_bt_sighandler;
 	int tcp_debug_port;
 	int test_rtp_performance;
+	int tar;
 };
 
 #ifndef GLOBAL_DECLARATION

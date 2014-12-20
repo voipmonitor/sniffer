@@ -326,6 +326,15 @@ int opt_pcap_dump_writethreads = 1;
 int opt_pcap_dump_writethreads_max = 32;
 int opt_pcap_dump_asyncwrite_maxsize = 100; //MB
 int opt_pcap_dump_tar = 0;
+int opt_pcap_dump_tar_compress_sip = 0; //0 off, 1 gzip, 2 lzma
+int opt_pcap_dump_tar_gzip_sip_level = Z_DEFAULT_COMPRESSION;
+int opt_pcap_dump_tar_lzma_sip_level = 0;
+int opt_pcap_dump_tar_compress_rtp = 0;
+int opt_pcap_dump_tar_gzip_rtp_level = Z_DEFAULT_COMPRESSION;
+int opt_pcap_dump_tar_lzma_rtp_level = 1;
+int opt_pcap_dump_tar_compress_graph = 0;
+int opt_pcap_dump_tar_gzip_graph_level = Z_DEFAULT_COMPRESSION;
+int opt_pcap_dump_tar_lzma_graph_level = 1;
 int opt_defer_create_spooldir = 1;
 
 int opt_sdp_multiplication = 3;
@@ -491,6 +500,7 @@ pthread_t manager_client_thread;	// ID of worker manager thread
 pthread_t manager_ssh_thread;	
 pthread_t cachedir_thread;	// ID of worker cachedir thread 
 pthread_t database_backup_thread;	// ID of worker backup thread 
+pthread_t tarqueuethread;	// ID of worker manager thread 
 int terminating;		// if set to 1, worker thread will terminate
 int terminating2;		// if set to 1, worker thread will terminate
 char *sipportmatrix;		// matrix of sip ports to monitor
@@ -595,6 +605,10 @@ char opt_bogus_dumper_path[1204];
 BogusDumper *bogusDumper;
 
 char opt_syslog_string[256];
+
+extern pthread_mutex_t tartimemaplock;
+
+TarQueue tarQueue;
 
 
 #include <stdio.h>
@@ -2167,8 +2181,68 @@ int eval_config(string inistr) {
 	   (value = ini.GetValue("general", "pcap_dump_asyncbuffer", NULL))) {
 		opt_pcap_dump_asyncwrite_maxsize = atoi(value);
 	}
-	if((value = ini.GetValue("general", "pcap_dump_tar", NULL))) {
+	if((value = ini.GetValue("general", "tar", NULL))) {
 		opt_pcap_dump_tar = yesno(value);
+	}
+	if((value = ini.GetValue("general", "tar_compress_sip", NULL))) {
+		switch(value[0]) {
+		case 'z':
+		case 'Z':
+		case 'g':
+		case 'G':
+			opt_pcap_dump_tar_compress_sip = 1; // gzip
+			break;
+		case 'l':
+		case 'L':
+			opt_pcap_dump_tar_compress_sip = 2; // lzma
+			break;
+		}
+	}
+	if((value = ini.GetValue("general", "tar_compress_rtp", NULL))) {
+		switch(value[0]) {
+		case 'z':
+		case 'Z':
+		case 'g':
+		case 'G':
+			opt_pcap_dump_tar_compress_rtp = 1; // gzip
+			break;
+		case 'l':
+		case 'L':
+			opt_pcap_dump_tar_compress_rtp = 2; // lzma
+			break;
+		}
+	}
+	if((value = ini.GetValue("general", "tar_compress_graph", NULL))) {
+		switch(value[0]) {
+		case 'z':
+		case 'Z':
+		case 'g':
+		case 'G':
+			opt_pcap_dump_tar_compress_graph = 1; // gzip
+			break;
+		case 'l':
+		case 'L':
+			opt_pcap_dump_tar_compress_graph = 2; // lzma
+			break;
+		}
+	}
+	if((value = ini.GetValue("general", "tar_gzip_sip_level", NULL))) {
+		opt_pcap_dump_tar_gzip_sip_level = atoi(value);
+	}
+	if((value = ini.GetValue("general", "tar_gzip_rtp_level", NULL))) {
+		opt_pcap_dump_tar_gzip_rtp_level = atoi(value);
+	}
+	if((value = ini.GetValue("general", "tar_gzip_graph_level", NULL))) {
+		opt_pcap_dump_tar_gzip_graph_level = atoi(value);
+	}
+	if((value = ini.GetValue("general", "tar_lzma_sip_level", NULL))) {
+		opt_pcap_dump_tar_lzma_sip_level = atoi(value);
+	}
+	if((value = ini.GetValue("general", "tar_lzma_rtp_level", NULL))) {
+		opt_pcap_dump_tar_lzma_rtp_level = atoi(value);
+	}
+	if((value = ini.GetValue("general", "tar_lzma_graph_level", NULL))) {
+		opt_pcap_dump_tar_lzma_graph_level = atoi(value);
 	}
 	if((value = ini.GetValue("general", "defer_create_spooldir", NULL))) {
 		opt_defer_create_spooldir = yesno(value);
@@ -2715,6 +2789,7 @@ int main(int argc, char *argv[]) {
 
 	pthread_mutex_init(&mysqlconnect_lock, NULL);
 	pthread_mutex_init(&vm_rrd_lock, NULL);
+	pthread_mutex_init(&tartimemaplock, NULL);
 
 	// if the system has more than one CPU enable threading
 	opt_pcap_threaded = sysconf( _SC_NPROCESSORS_ONLN ) > 1; 
@@ -2946,6 +3021,7 @@ int main(int argc, char *argv[]) {
 						else if(verbparams[i] == "skinny")			sverb.skinny = 1;
 						else if(verbparams[i] == "fraud")			sverb.fraud = 1;
 						else if(verbparams[i] == "disable_bt_sighandler")	sverb.disable_bt_sighandler = 1;
+						else if(verbparams[i] == "tar")				sverb.tar = 1;
 						else if(verbparams[i].substr(0, 15) == "tcp_debug_port=")
 													sverb.tcp_debug_port = atoi(verbparams[i].c_str() + 15);
 						else if(verbparams[i].substr(0, 21) == "test_rtp_performance=")
@@ -3725,11 +3801,13 @@ int main(int argc, char *argv[]) {
 	
 	chdir(opt_chdir);
 
-	mkdir_r("filesindex/sipsize", 0777);
-	mkdir_r("filesindex/rtpsize", 0777);
-	mkdir_r("filesindex/graphsize", 0777);
-	mkdir_r("filesindex/audiosize", 0777);
-	mkdir_r("filesindex/regsize", 0777);
+	if(!opt_pcap_dump_tar) {
+		mkdir_r("filesindex/sipsize", 0777);
+		mkdir_r("filesindex/rtpsize", 0777);
+		mkdir_r("filesindex/graphsize", 0777);
+		mkdir_r("filesindex/audiosize", 0777);
+		mkdir_r("filesindex/regsize", 0777);
+	}
 
 	// set maximum open files 
 	struct rlimit rlp;
@@ -3810,6 +3888,11 @@ int main(int argc, char *argv[]) {
 			pthread_create(&manager_client_thread, NULL, manager_client, NULL);
 		}
 	};
+
+	// start tar dumper
+	if(opt_pcap_dump_tar) {
+		pthread_create(&tarqueuethread, NULL, TarQueueThread, NULL);
+	}
 
 #ifdef HAVE_SSH
 	if(ssh_host[0] != '\0') {
@@ -4419,6 +4502,9 @@ int main(int argc, char *argv[]) {
 		pthread_mutex_unlock(&mysqlquery_lock);
 	}
 	*/
+	if(opt_pcap_dump_tar) {
+		tarQueue.flushQueue();
+	}
 
 	free(sipportmatrix);
 	free(httpportmatrix);
@@ -4486,6 +4572,7 @@ int main(int argc, char *argv[]) {
 		unlink(opt_pidfile);
 	}
 	pthread_mutex_destroy(&mysqlconnect_lock);
+	pthread_mutex_destroy(&tartimemaplock);
 	extern TcpReassemblySip tcpReassemblySip;
 	tcpReassemblySip.clean();
 	ipfrag_prune(0, 1);

@@ -591,6 +591,7 @@ LIBTCMALLOC
 LIBGNUTLSSTATIC
 LIBGNUTLS
 LIBSSH
+LIBLZMA
 SET_MAKE
 INSTALL_DATA
 INSTALL_SCRIPT
@@ -3901,6 +3902,43 @@ else
   as_fn_error $? "Unable to find libz. apt-get install zlib1g-dev | yum install zlib-devel" "$LINENO" 5
 fi
 
+{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for main in -llzma" >&5
+$as_echo_n "checking for main in -llzma... " >&6; }
+if ${ac_cv_lib_lzma_main+:} false; then :
+  $as_echo_n "(cached) " >&6
+else
+  ac_check_lib_save_LIBS=$LIBS
+LIBS="-llzma  $LIBS"
+cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+
+
+int
+main ()
+{
+return main ();
+  ;
+  return 0;
+}
+_ACEOF
+if ac_fn_c_try_link "$LINENO"; then :
+  ac_cv_lib_lzma_main=yes
+else
+  ac_cv_lib_lzma_main=no
+fi
+rm -f core conftest.err conftest.$ac_objext \
+    conftest$ac_exeext conftest.$ac_ext
+LIBS=$ac_check_lib_save_LIBS
+fi
+{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $ac_cv_lib_lzma_main" >&5
+$as_echo "$ac_cv_lib_lzma_main" >&6; }
+if test "x$ac_cv_lib_lzma_main" = xyes; then :
+  HAVE_LIBLZMA=1
+else
+  { $as_echo "$as_me:${as_lineno-$LINENO}: Unable to find lzma. apt-get install liblzma-dev | yum install lzma-devel" >&5
+$as_echo "$as_me: Unable to find lzma. apt-get install liblzma-dev | yum install lzma-devel" >&6;}
+fi
+
 { $as_echo "$as_me:${as_lineno-$LINENO}: checking for gnutls_init in -lgnutls" >&5
 $as_echo_n "checking for gnutls_init in -lgnutls... " >&6; }
 if ${ac_cv_lib_gnutls_gnutls_init+:} false; then :
@@ -3987,6 +4025,16 @@ else
 $as_echo "$as_me: Unable to find tcmalloc_minimal library which speeds up threads by 10%. The library is optional: apt-get install libtcmalloc-minimal4 or compile from source https://code.google.com/p/gperftools/" >&6;}
 fi
 
+
+HAVE_LIBLZMA_T=no
+if test "x$HAVE_LIBLZMA" = "x1"; then
+
+$as_echo "#define HAVE_LIBLZMA 1" >>confdefs.h
+
+	LIBLZMA="-llzma"
+
+	HAVE_LIBLZMA_T=yes
+fi
 
 HAVE_LIBSSH_T=no
 if test "x$HAVE_LIBSSH" = "x1"; then
@@ -5346,6 +5394,7 @@ fi
 
 
 
+lzma compression enabled               : $HAVE_LIBLZMA_T
 ssh library enabled (cloud)            : $HAVE_LIBSSH_T
 gnutls library enabled (SIP TLS)       : $LIBGNUTLS_T
 tcmalloc (faster *alloc) lib found     : $TCMALLOC_T
@@ -5371,6 +5420,7 @@ $as_echo "$as_me:
 
 
 
+lzma compression enabled               : $HAVE_LIBLZMA_T
 ssh library enabled (cloud)            : $HAVE_LIBSSH_T
 gnutls library enabled (SIP TLS)       : $LIBGNUTLS_T
 tcmalloc (faster *alloc) lib found     : $TCMALLOC_T

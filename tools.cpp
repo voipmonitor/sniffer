@@ -48,6 +48,7 @@
 #include "md5.h"
 #include "pcap_queue.h"
 #include "sql_db.h"
+#include "tar.h"
 
 extern char mac[32];
 extern int verbosity;
@@ -58,10 +59,12 @@ extern int opt_pcap_dump_zip;
 extern int opt_pcap_dump_ziplevel;
 extern int opt_read_from_file;
 extern int opt_pcap_dump_tar;
+extern char opt_chdir[1024];
 
 static char b2a[256];
 static char base64[64];
 
+extern TarQueue tarQueue;
 using namespace std;
 
 AsyncClose *asyncClose;
@@ -175,6 +178,16 @@ int msleep(long msec)
 	tv.tv_sec=(int)((float)msec/1000000);
 	tv.tv_usec=msec-tv.tv_sec*1000000;
 	return select(0,0,0,0,&tv);
+}
+
+int file_exists (string fileName)
+{
+	struct stat buf;
+	/* File found */
+	if (stat(fileName.c_str(), &buf) == 0) {
+		return buf.st_size;
+	}
+	return 0;
 }
 
 int file_exists (char * fileName)
@@ -2137,11 +2150,15 @@ void FileZipHandler::flushTarBuffer() {
 	if(!this->useTarBufferLength) {
 		return;
 	}
+/*
 	cout << "DATA " 
 	     << this->fileName << " "
 	     << sqlDateTimeString(this->time) << " " 
 	     << this->useTarBufferLength << " " 
 	     << endl;
+*/
+	tarQueue.add(this->fileName, this->time, this->tarBuffer, this->useTarBufferLength);
+	this->tarBuffer = NULL;
 	this->useTarBufferLength = 0;
 }
 

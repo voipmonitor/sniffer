@@ -131,6 +131,8 @@ extern unsigned long long cachedirtransfered;
 unsigned long long lastcachedirtransfered = 0;
 extern char opt_cachedir[1024];
 extern char cloud_host[256];
+extern int opt_pcap_dump_tar;
+extern volatile unsigned int glob_tar_queued_files;
 
 vm_atomic<string> pbStatString;
 vm_atomic<u_long> pbCountPacketDrop;
@@ -1246,6 +1248,9 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 			outStr << "cdq[" << calltable->files_queue.size() << "][" << ((float)(cachedirtransfered - lastcachedirtransfered) / 1024.0 / 1024.0 / (float)statPeriod) << " MB/s] ";
 			lastcachedirtransfered = cachedirtransfered;
 		}
+	}
+	if(opt_pcap_dump_tar) {
+		outStr << "tarQ[" << glob_tar_queued_files << "] ";
 	}
 	ostringstream outStrStat;
 	outStrStat << fixed;

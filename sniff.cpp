@@ -102,6 +102,8 @@ unsigned int duplicate_counter = 0;
 extern struct pcap_stat pcapstat;
 int pcapstatresCount = 0;
 
+volatile unsigned int glob_last_packet_time;
+
 Calltable *calltable;
 extern volatile int calls_counter;
 extern volatile int calls_cdr_save_counter;
@@ -2007,7 +2009,8 @@ Call *process_packet(u_int64_t packet_number,
 		     pcap_block_store *block_store, int block_store_index, int dlt, int sensor_id, 
 		     bool mainProcess = true, int sipOffset = 0,
 		     PreProcessPacket::packet_parse_s *parsePacket = NULL) {
- 
+
+	glob_last_packet_time = header->ts.tv_sec;
 	Call *call = NULL;
 	int iscaller;
 	int is_rtcp = 0;
