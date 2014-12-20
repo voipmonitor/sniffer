@@ -2069,7 +2069,9 @@ void JsonExport::add(const char *name, u_int64_t content) {
 //------------------------------------------------------------------------------
 // pcap_dump_open with set buffer
 
-#define TAR_BUFFER_INC_LENGTH	5000
+#define DEFAULT_BUFFER_LENGTH		8192
+#define DEFAULT_BUFFER_ZIP_LENGTH	8192
+#define TAR_BUFFER_INC_LENGTH		5000
 
 FileZipHandler::FileZipHandler(int bufferLength, int enableAsyncWrite, int enableZip,
 			       bool dumpHandler, int time) {
@@ -2080,7 +2082,9 @@ FileZipHandler::FileZipHandler(int bufferLength, int enableAsyncWrite, int enabl
 	this->permission = 0;
 	this->fh = 0;
 	this->zipStream = NULL;
-	this->bufferLength = bufferLength;
+	this->bufferLength = opt_pcap_dump_tar ?
+			      (bufferLength ? bufferLength : DEFAULT_BUFFER_LENGTH) :
+			      bufferLength;
 	if(bufferLength) {
 		this->buffer = new char[bufferLength];
 	} else {
@@ -2169,12 +2173,29 @@ bool FileZipHandler::writeToBuffer(char *data, int length) {
 	if(this->useBufferLength && this->useBufferLength + length > this->bufferLength) {
 		flushBuffer();
 	}
-	if(length <= this->bufferLength) {
-		memcpy(this->buffer + this->useBufferLength, data, length);
-		this->useBufferLength += length;
+	if(opt_pcap_dump_tar) {
+		int start_part = 0;
+		while(start_part < length) {
+			if(start_part) {
+				flushBuffer();
+			}
+			int length_part = length - start_part;
+			if(length_part > this->bufferLength - this->useBufferLength) {
+				length_part = this->bufferLength - this->useBufferLength;
+			}
+			memcpy(this->buffer + this->useBufferLength, data + start_part, length_part);
+			this->useBufferLength += length_part;
+			start_part += length_part;
+		}
 		return(true);
 	} else {
-		return(this->writeToFile(data, length));
+		if(length <= this->bufferLength) {
+			memcpy(this->buffer + this->useBufferLength, data, length);
+			this->useBufferLength += length;
+			return(true);
+		} else {
+			return(this->writeToFile(data, length));
+		}
 	}
 }
 
@@ -2272,7 +2293,7 @@ bool FileZipHandler::initZip() {
 			this->setError("zip initialize failed");
 			return(false);
 		} else {
-			this->zipBufferLength = bufferLength ? bufferLength : 8192;
+			this->zipBufferLength = bufferLength ? bufferLength : DEFAULT_BUFFER_ZIP_LENGTH;
 			this->zipBuffer = new char[this->zipBufferLength];
 		}
 	}
