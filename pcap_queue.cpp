@@ -3169,7 +3169,13 @@ void *PcapQueue_readFromFifo::threadFunction(void *arg, unsigned int arg2) {
 							while(offsetBuffer < bufferLen) {
 								if(blockStore->addRestoreChunk(buffer, bufferLen, &offsetBuffer)) {
 									endBlock = true;
-									this->pcapStoreQueue.push(blockStore, this->blockStoreTrash_size);
+									while(!this->pcapStoreQueue.push(blockStore, this->blockStoreTrash_size)) {
+										if(TERMINATING || forceStop) {
+											break;
+										} else {
+											usleep(1000);
+										}
+									}
 									sumPacketsCounterIn[0] += blockStore->count;
 									sumPacketsSize[0] += blockStore->size;
 									sumPacketsSizeCompress[0] += blockStore->size_compress;

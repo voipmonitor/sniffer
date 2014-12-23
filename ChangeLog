@@ -1,3 +1,8 @@
+10.1.23 23.12.2014
+==================
+- do not use more memory then set in packetbuffer_total_maxheap in case the sniffer is in receiver mode and remote sniffer reconnect to the receiver and sends all traffic in burst (receiver will slow down)
+
+
 10.1.22 11.12.2014
 ==================
 - fix bad arithmetic when writing time of RTP packets (in wors case it was +- 1 sec) which can lead to show RTP packets before SIP packets in SIP history
