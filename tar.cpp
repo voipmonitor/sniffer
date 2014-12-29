@@ -142,9 +142,10 @@ Tar::th_set_user(uid_t uid)
 void
 Tar::th_set_group(gid_t gid)
 {
-	struct group *gr;
 
 /*
+	struct group *gr;
+
 	gr = getgrgid(gid);
 	if (gr != NULL)
 		*((char *)mempcpy(tar.th_buf.gname, gr->gr_name, sizeof(tar.th_buf.gname))) = '\0';
@@ -274,10 +275,8 @@ Tar::th_write()
 int
 Tar::tar_append_buffer(Bucketbuffer *buffer, size_t size)
 {
-	char block[T_BLOCKSIZE];
+//	char block[T_BLOCKSIZE];
 	int copied = 0;
-	//char *tmp = buffer;
-
 	for(list<char*>::iterator it = buffer->listbuffer.begin(); it != buffer->listbuffer.end(); it++) {
 /*
 		if((size - copied) < T_BLOCKSIZE) {
@@ -287,15 +286,16 @@ Tar::tar_append_buffer(Bucketbuffer *buffer, size_t size)
 				return -1;
 		}
 */
-		for(int i = 0; (i < buffer->bucketlen / T_BLOCKSIZE) and (size - copied > T_BLOCKSIZE); i++) {
+		int i;
+		for(i = 0; (i < buffer->bucketlen / T_BLOCKSIZE); i++) {
 			if (tar_block_write(*it + i * T_BLOCKSIZE) == -1)
 				return -1;
 			copied += T_BLOCKSIZE;
 		}
-		if((size - copied) < T_BLOCKSIZE) {
+		if((size - copied) <= T_BLOCKSIZE) {
 			// write last block 
 			memset(*it + (size - copied), 0, T_BLOCKSIZE - (size - copied));
-			if (tar_block_write(*it) == -1)
+			if (tar_block_write(*it + (i+1)*T_BLOCKSIZE) == -1)
 				return -1;
 		}
 	}
@@ -546,7 +546,7 @@ TarQueue::add(string filename, unsigned int time, Bucketbuffer *buffer){
 	} else if(type[0] == 'G') {
 		queue[3][time - time % TAR_MODULO_SECONDS].push_back(data);
 	}      
-//	if(sverb.tar) syslog(LOG_NOTICE, "adding tar %s\n", filename.c_str());
+	if(sverb.tar) syslog(LOG_NOTICE, "adding tar %s len:%u\n", filename.c_str(), buffer->len);
 
 	unlock();
 }      
@@ -658,8 +658,8 @@ TarQueue::cleanTars() {
 		// find the tar in tartimemap 
 		if((tartimemap.find(tar->created_at) == tartimemap.end()) and (tar->created_at != (lpt - lpt % TAR_MODULO_SECONDS))) {
 			// there are no calls in this start time - clean it
-			if(sverb.tar) syslog(LOG_NOTICE, "destroying tar %s - (no calls in mem)\n", tars_it->second->pathname.c_str());
 			pthread_mutex_unlock(&tartimemaplock);
+			if(sverb.tar) syslog(LOG_NOTICE, "destroying tar %s - (no calls in mem)\n", tars_it->second->pathname.c_str());
 			delete tars_it->second;
 			tars.erase(tars_it++);
 		} else {
@@ -681,7 +681,6 @@ TarQueue::flushQueue() {
 	size_t maxlen = 0;
 	map<unsigned int, vector<data_t> >::iterator it;
 	// walk all maps
-	unsigned int last_clean = glob_last_packet_time;
 
 	while(1) {
 		lock();
