@@ -3258,7 +3258,7 @@ Calltable::add(char *call_id, unsigned long call_id_len, time_t time, u_int32_t 
 		pthread_mutex_lock(&tartimemaplock);
 		map<unsigned int, int>::iterator tartimemap_it = tartimemap.find(newcall->first_packet_time - newcall->first_packet_time % TAR_MODULO_SECONDS);
 		if(tartimemap_it != tartimemap.end()) {
-			(*tartimemap_it)++;
+			tartimemap_it->second++;
 		} else {
 			tartimemap[newcall->first_packet_time - newcall->first_packet_time % TAR_MODULO_SECONDS] = 1;
 		}
