@@ -6,6 +6,9 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <string>
+#include <map>
+#include <vector>
+#include <zlib.h>
 #include "config.h"
 #ifdef HAVE_LIBLZMA
 #include <lzma.h>

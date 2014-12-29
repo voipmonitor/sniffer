@@ -23,6 +23,7 @@
 
 #include "pstat.h"
 #include "tar.h"
+#include "tools_dynamic_buffer.h"
 
 using namespace std;
 
@@ -329,8 +330,16 @@ inline unsigned long long getTimeNS() {
 
 class FileZipHandler {
 public:
+	enum eTypeFile {
+		na,
+		pcap_sip,
+		pcap_rtp,
+		graph_rtp
+	};
+public:
 	FileZipHandler(int bufferLength = 0, int enableAsyncWrite = 0, int enableZip = 0,
-		       bool dumpHandler = false, int time = 0);
+		       bool dumpHandler = false, int time = 0,
+		       eTypeFile typeFile = na);
 	~FileZipHandler();
 	bool open(const char *fileName, int permission = 0666);
 	void close();
@@ -363,9 +372,7 @@ public:
 	int useBufferLength;
 	int zipBufferLength;
 	char *zipBuffer;
-	int tarBufferLength;
-	char *tarBuffer;
-	int useTarBufferLength;
+	DynamicBuffer *tarBuffer;
 	bool enableAsyncWrite;
 	bool enableZip;
 	bool dumpHandler;
@@ -374,15 +381,8 @@ public:
 	u_int64_t counter;
 	static u_int64_t scounter;
 	u_int32_t userData;
+	eTypeFile typeFile;
 };
-
-pcap_dumper_t *__pcap_dump_open(pcap_t *p, const char *fname, int linktype, string *errorString = NULL,
-				int _bufflength = -1 , int _asyncwrite = -1, int _zip = -1,
-				int calltime = 0);
-void __pcap_dump(u_char *user, const struct pcap_pkthdr *h, const u_char *sp);
-void __pcap_dump_close(pcap_dumper_t *p);
-void __pcap_dump_flush(pcap_dumper_t *p);
-char *__pcap_geterr(pcap_t *p, pcap_dumper_t *pd = NULL);
 
 class PcapDumper {
 public:
@@ -443,6 +443,15 @@ private:
 	int _asyncwrite;
 	int _zip;
 };
+
+pcap_dumper_t *__pcap_dump_open(pcap_t *p, const char *fname, int linktype, string *errorString = NULL,
+				int _bufflength = -1 , int _asyncwrite = -1, int _zip = -1,
+				int calltime = 0,
+				PcapDumper::eTypePcapDump type = PcapDumper::na);
+void __pcap_dump(u_char *user, const struct pcap_pkthdr *h, const u_char *sp);
+void __pcap_dump_close(pcap_dumper_t *p);
+void __pcap_dump_flush(pcap_dumper_t *p);
+char *__pcap_geterr(pcap_t *p, pcap_dumper_t *pd = NULL);
 
 class RtpGraphSaver {
 public:

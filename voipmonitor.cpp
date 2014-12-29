@@ -4825,6 +4825,20 @@ void test_alloc_speed() {
 	}
 }
 
+#include "tools_dynamic_buffer.h"
+void test_dynamic_buffer() {
+	DynamicBuffer *buffer = new DynamicBuffer();
+	buffer->setMinItemBufferLength(4);
+	buffer->setMaxItemBufferLength(5);
+	buffer->add((u_char*)"123456789", 9);
+	buffer->add((u_char*)"abcdefghi", 9);
+	cout << buffer->getSize() << endl;
+	buffer->cout(true);
+	cout << endl;
+	cout << (char*)buffer->getConcatBuffer() << endl;
+	delete buffer;
+}
+
 void test() {
  
 	switch(opt_test) {
@@ -4883,6 +4897,9 @@ void test() {
 	} break;
 	case 5:
 		test_alloc_speed();
+		break;
+	case 6:
+		test_dynamic_buffer();
 		break;
 	case 10:
 		{
