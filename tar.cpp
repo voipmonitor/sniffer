@@ -525,7 +525,7 @@ Tar::~Tar() {
 
 void			   
 TarQueue::add(string filename, unsigned int time, Bucketbuffer *buffer){
-	glob_tar_queued_files++;
+	__sync_add_and_fetch(&glob_tar_queued_files, 1);
 	data_t data;
 	data.buffer = buffer;
 	data.len = buffer->len;
@@ -561,7 +561,7 @@ qtype2str(int qtype) {
 
 int			    
 TarQueue::write(int qtype, unsigned int time, data_t data) {
-	glob_tar_queued_files--;
+	__sync_sub_and_fetch(&glob_tar_queued_files, 1);
 	stringstream tar_dir, tar_name;
 	tar_dir << opt_chdir << "/" << data.year << "-" << data.mon << "-" << data.day;
 	tar_name << tar_dir.str() << "/" << qtype2str(qtype) << "_" << time << ".tar";
