@@ -546,7 +546,7 @@ TarQueue::add(string filename, unsigned int time, Bucketbuffer *buffer){
 	} else if(type[0] == 'G') {
 		queue[3][time - time % TAR_MODULO_SECONDS].push_back(data);
 	}      
-	if(sverb.tar) syslog(LOG_NOTICE, "adding tar %s len:%u\n", filename.c_str(), buffer->len);
+//	if(sverb.tar) syslog(LOG_NOTICE, "adding tar %s len:%u\n", filename.c_str(), buffer->len);
 
 	unlock();
 }      
