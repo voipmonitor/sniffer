@@ -688,7 +688,7 @@ TarQueue::flushQueue() {
 		Tar *tar = tars_it->second;
 		pthread_mutex_lock(&tartimemaplock);
 		unsigned int lpt = glob_last_packet_time;
-		if(!tartimemap[tar->created_at] and (tar->created_at != (lpt - lpt % TAR_MODULO_SECONDS))) {
+		if((tartimemap.find(tar->created_at) == tartimemap.end()) and (tar->created_at != (lpt - lpt % TAR_MODULO_SECONDS))) {
 			// there are no calls in this time and possible new calls goes to new tar 
 			if(sverb.tar) syslog(LOG_NOTICE, "destroying tar %s - (no calls in mem)\n", tars_it->second->pathname.c_str());
 			pthread_mutex_unlock(&tartimemaplock);
