@@ -1387,7 +1387,7 @@ void FraudAlerts::initPopCallInfoThread() {
 
 void FraudAlerts::popCallInfoThread() {
 	runPopCallInfoThread = true;
-	while(!terminating || !terminatingPopCallInfoThread) {
+	while(!terminating && !terminatingPopCallInfoThread) {
 		bool okPop = false;
 		sFraudCallInfo callInfo;
 		if(callQueue.pop(&callInfo)) {
