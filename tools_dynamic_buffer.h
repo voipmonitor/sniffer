@@ -1,11 +1,14 @@
 #ifndef TOOLS_DYNAMIC_BUFFER_H
 #define TOOLS_DYNAMIC_BUFFER_H
 
+#include <list>
 #include <string.h>
 #include <string>
 #include <iostream>
 #include <sys/types.h>
 #include <algorithm>
+
+using namespace std;
 
 class DynamicBuffer {
 public:
@@ -126,5 +129,20 @@ class DynamicBufferTar : public DynamicBuffer {
 public:
 	virtual void write(const char *fileName, int time);
 };
+
+
+class Bucketbuffer {
+public: 
+	list<char*> listbuffer;
+	char *buffer;
+	int len;       
+	int bucketlen;	 
+		       
+	Bucketbuffer();
+	Bucketbuffer(int bucketlen);
+	~Bucketbuffer();
+	void add(char *buffer, int len);
+};      
+
 
 #endif

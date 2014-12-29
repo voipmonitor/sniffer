@@ -1,6 +1,7 @@
 #include "tar.h"
 #include "tools_dynamic_buffer.h"
 
+#define MIN(x,y) ((x) < (y) ? (x) : (y))
 
 extern TarQueue tarQueue;
 
@@ -40,8 +41,46 @@ void DynamicBufferTar::write(const char *fileName, int time) {
 		u_char *concatTarBuffer = this->getConcatBuffer();
 		if(concatTarBuffer) {
 			
-			tarQueue.add(fileName, time, (char*)concatTarBuffer, tarBufferSize);
+			//tarQueue.add(fileName, time, (char*)concatTarBuffer, tarBufferSize);
 			delete [] concatTarBuffer;
 		}
+	}
+}
+
+
+
+Bucketbuffer::Bucketbuffer() {
+	this->bucketlen = 32*1024;
+	buffer = new char[bucketlen];
+	listbuffer.push_back(buffer);
+	len = 0;
+}
+
+Bucketbuffer::Bucketbuffer(int bucketlen) {
+	this->bucketlen = bucketlen;
+	buffer = new char[bucketlen];
+	listbuffer.push_back(buffer);
+	len = 0;
+}
+
+void
+Bucketbuffer::add(char *data, int datalen) {
+	int copied = 0;
+	do {   
+		int whattocopy = MIN(bucketlen - len % bucketlen, datalen - copied);
+		memcpy(buffer + len % bucketlen, data + copied, whattocopy);
+		copied += whattocopy;
+		len += whattocopy;
+		if(!(len % bucketlen)) {
+			buffer = new char[bucketlen];
+			listbuffer.push_back(buffer);
+		}
+	} while(datalen > copied);
+}
+
+Bucketbuffer::~Bucketbuffer() {
+	list<char*>::iterator it = listbuffer.begin();
+	for(it = listbuffer.begin(); it != listbuffer.end(); it++) {
+		delete *it;
 	}
 }

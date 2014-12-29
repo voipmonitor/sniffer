@@ -22,8 +22,8 @@
 #include <map>
 
 #include "pstat.h"
-#include "tar.h"
 #include "tools_dynamic_buffer.h"
+#include "tar.h"
 
 using namespace std;
 
@@ -372,7 +372,8 @@ public:
 	int useBufferLength;
 	int zipBufferLength;
 	char *zipBuffer;
-	DynamicBuffer *tarBuffer;
+	//DynamicBuffer *tarBuffer;
+	Bucketbuffer *tarBuffer;
 	bool enableAsyncWrite;
 	bool enableZip;
 	bool dumpHandler;

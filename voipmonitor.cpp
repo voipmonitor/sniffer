@@ -4502,10 +4502,6 @@ int main(int argc, char *argv[]) {
 		pthread_mutex_unlock(&mysqlquery_lock);
 	}
 	*/
-	if(opt_pcap_dump_tar) {
-		tarQueue.flushQueue();
-	}
-
 	free(sipportmatrix);
 	free(httpportmatrix);
 	free(webrtcportmatrix);
@@ -4587,6 +4583,11 @@ int main(int argc, char *argv[]) {
 		}
 		delete asyncClose;
 	}
+
+	if(opt_pcap_dump_tar) {
+		tarQueue.flushQueue();
+	}
+
 
 //	mysql_library_end();
 

@@ -6,14 +6,12 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <string>
-#include <map>
-#include <vector>
-#include <zlib.h>
 #include "config.h"
 #ifdef HAVE_LIBLZMA
 #include <lzma.h>
 #endif
 
+#include "tools.h"
 
 #define T_BLOCKSIZE		512
 #define T_NAMELEN	       100
@@ -102,6 +100,7 @@ public:
 		this->zipBuffer = new char[this->zipBufferLength];
 #ifdef HAVE_LIBLZMA
 		this->lzmaStream = NULL;
+		memset(&tar, 0, sizeof(tar));
 #endif
 	};
 	~Tar();
@@ -111,7 +110,7 @@ public:
 	int tar_open(string, int, int, int);
 	void th_finish();
 	int th_write();
-	int tar_append_buffer(char *buffer, size_t size);
+	int tar_append_buffer(Bucketbuffer *buffer, size_t size);
 	int gziplevel;
 	int lzmalevel;
 
@@ -179,14 +178,14 @@ public:
 	void unlock() {pthread_mutex_unlock(&mutexlock);};
 	       
 	struct data_t {
-		char *buffer;
+		Bucketbuffer *buffer;
 		size_t len;
 		string filename;
 		int year, mon, day;
 	};
 	
 	
-	void add(string filename, unsigned int time, char *buffer, size_t len);
+	void add(string filename, unsigned int time, Bucketbuffer *buffer);
 	void flushQueue();
 	int write(int, unsigned int, data_t);
 	int queuelen();

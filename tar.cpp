@@ -30,6 +30,7 @@
 #include <algorithm> // for std::min
 #include <iostream>
 
+#include "tools_dynamic_buffer.h"
 #include "voipmonitor.h"
 #include "calltable.h"
 #include "rtp.h"
@@ -143,9 +144,11 @@ Tar::th_set_group(gid_t gid)
 {
 	struct group *gr;
 
+/*
 	gr = getgrgid(gid);
 	if (gr != NULL)
 		*((char *)mempcpy(tar.th_buf.gname, gr->gr_name, sizeof(tar.th_buf.gname))) = '\0';
+*/
 
 	int_to_oct(gid, tar.th_buf.gid, 8);
 }
@@ -269,26 +272,48 @@ Tar::th_write()
 
 /* add file contents to a tarchive */
 int
-Tar::tar_append_buffer(char *buffer, size_t size)
+Tar::tar_append_buffer(Bucketbuffer *buffer, size_t size)
 {
 	char block[T_BLOCKSIZE];
-	int i;
-	char *tmp = buffer;
-       
-	for (i = size; i > T_BLOCKSIZE; i -= T_BLOCKSIZE)
-	{
+	int copied = 0;
+	//char *tmp = buffer;
+
+	for(list<char*>::iterator it = buffer->listbuffer.begin(); it != buffer->listbuffer.end(); it++) {
+/*
+		if((size - copied) < T_BLOCKSIZE) {
+			// write last block 
+			memset(buffer->buffer + (size - copied), 0, T_BLOCKSIZE - (size - copied));
+			if (tar_block_write(buffer->buffer) == -1)
+				return -1;
+		}
+*/
+		for(int i = 0; (i < buffer->bucketlen / T_BLOCKSIZE) and (size - copied > T_BLOCKSIZE); i++) {
+			if (tar_block_write(*it + i * T_BLOCKSIZE) == -1)
+				return -1;
+			copied += T_BLOCKSIZE;
+		}
+		if((size - copied) < T_BLOCKSIZE) {
+			// write last block 
+			memset(*it + (size - copied), 0, T_BLOCKSIZE - (size - copied));
+			if (tar_block_write(*it) == -1)
+				return -1;
+		}
+	}
+	
+/*  
+	for (i = size; i > T_BLOCKSIZE; i -= T_BLOCKSIZE) {
 		if (tar_block_write(tmp) == -1)
 			return -1;
 		tmp += T_BLOCKSIZE;
 	}	      
        
-	if (i > 0)
-	{
+	if (i > 0) {
 		memcpy(block, tmp, i);
 		memset(&(block[i]), 0, T_BLOCKSIZE - i);
 		if (tar_block_write(block) == -1)
 			return -1;
 	}	      
+*/
        
 	return 0;
 }
@@ -499,11 +524,11 @@ Tar::~Tar() {
 }
 
 void			   
-TarQueue::add(string filename, unsigned int time, char *buffer, size_t len){
+TarQueue::add(string filename, unsigned int time, Bucketbuffer *buffer){
 	glob_tar_queued_files++;
 	data_t data;
 	data.buffer = buffer;
-	data.len = len;
+	data.len = buffer->len;
 	lock();
 	unsigned int year, mon, day, hour, minute;
 	char type[12];
@@ -521,6 +546,8 @@ TarQueue::add(string filename, unsigned int time, char *buffer, size_t len){
 	} else if(type[0] == 'G') {
 		queue[3][time - time % TAR_MODULO_SECONDS].push_back(data);
 	}      
+	if(sverb.tar) syslog(LOG_NOTICE, "adding tar %s\n", filename.c_str());
+
 	unlock();
 }      
 
@@ -600,10 +627,10 @@ TarQueue::write(int qtype, unsigned int time, data_t data) {
 
 	/* if it's a regular file, write the contents as well */
 	if(tar->tar_append_buffer(data.buffer, data.len) != 0) {
-		delete [] data.buffer;
+		delete data.buffer;
 		return -1;
 	}
-	delete [] data.buffer;
+	delete data.buffer;
 
 	return 0;
 }

@@ -2096,10 +2096,13 @@ FileZipHandler::FileZipHandler(int bufferLength, int enableAsyncWrite, int enabl
 	this->useBufferLength = 0;
 	this->zipBufferLength = 0;
 	this->zipBuffer = NULL;
-	this->tarBuffer = new DynamicBufferTar();
+	//this->tarBuffer = new DynamicBufferTar();
+	this->tarBuffer = NULL;
+/*
 	this->tarBuffer->setMinItemBufferLength(typeFile == pcap_sip ? 10000 :
 						typeFile == pcap_rtp ? 50000 :
 						typeFile == graph_rtp ? 5000 : 5000);
+*/
 	this->enableAsyncWrite = enableAsyncWrite && !opt_read_from_file;
 	this->enableZip = enableZip;
 	this->dumpHandler = dumpHandler;
@@ -2156,9 +2159,13 @@ bool FileZipHandler::flushBuffer(bool force) {
 }
 
 void FileZipHandler::flushTarBuffer() {
+	if(!this->tarBuffer)
+		return;
+/*
 	if(this->tarBuffer->isEmpty()) {
 		return;
 	}
+*/
 	/*
 	cout << "DATA " 
 	     << this->fileName << " "
@@ -2166,8 +2173,12 @@ void FileZipHandler::flushTarBuffer() {
 	     << this->tarBuffer->getSize() << " " 
 	     << endl;
 	*/
+/*
 	this->tarBuffer->write(this->fileName.c_str(), this->time);
 	this->tarBuffer->free();
+*/
+	tarQueue.add(this->fileName, this->time, this->tarBuffer);
+	this->tarBuffer = NULL;
 }
 
 bool FileZipHandler::writeToBuffer(char *data, int length) {
@@ -2257,7 +2268,9 @@ bool FileZipHandler::_writeToFile(char *data, int length, bool flush) {
 
 bool FileZipHandler::__writeToFile(char *data, int length) {
 	if(opt_pcap_dump_tar) {
-		this->tarBuffer->add((u_char*)data, length);
+//		this->tarBuffer->add((u_char*)data, length);
+		if(!this->tarBuffer) this->tarBuffer = new Bucketbuffer(typeFile == pcap_sip ? 8*1024 : (typeFile == pcap_rtp ? 32 * 1024 : (typeFile == graph_rtp ? 16 * 1024 : 8*1024)));
+		this->tarBuffer->add(data, length);
 		return(true);
 	} else {
 		if(!this->okHandle()) {
