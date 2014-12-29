@@ -172,6 +172,8 @@ public:
 	TarQueue() {    
 		pthread_mutex_init(&mutexlock, NULL);
 		pthread_mutex_init(&flushlock, NULL);
+		pthread_mutex_init(&tarslock, NULL);
+		last_flushTars = 0;
 	};
 	~TarQueue();
 	void lock() {pthread_mutex_lock(&mutexlock);};
@@ -189,13 +191,15 @@ public:
 	void flushQueue();
 	int write(int, unsigned int, data_t);
 	int queuelen();
-
+	unsigned int last_flushTars;
+	void cleanTars();
 
 
 private:
 	map<unsigned int, vector<data_t> > queue[4]; //queue for all, sip, rtp, graph
 	pthread_mutex_t mutexlock;
 	pthread_mutex_t flushlock;
+	pthread_mutex_t tarslock;
 	map<string, Tar*> tars; //queue for all, sip, rtp, graph
 	map<string, Tar*>::iterator tars_it; //queue for all, sip, rtp, graph
 };

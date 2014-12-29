@@ -604,11 +604,14 @@ TarQueue::write(int qtype, unsigned int time, data_t data) {
 	if(!tar) {
 		tar = new Tar;
 		if(sverb.tar) syslog(LOG_NOTICE, "new tar %s\n", tar_name.str().c_str());
+		pthread_mutex_lock(&tarslock);
 		tars[tar_name.str()] = tar;
+		pthread_mutex_unlock(&tarslock);
 		tar->tar_open(tar_name.str(), O_WRONLY | O_CREAT | O_APPEND, 0777, TAR_GNU);
 		tar->tar.qtype = qtype;
 		tar->created_at = time;
-	}      
+		pthread_mutex_unlock(&tarslock);
+	}
        
 	//reset and set header
 	memset(&(tar->tar.th_buf), 0, sizeof(struct Tar::tar_header));
@@ -635,6 +638,38 @@ TarQueue::write(int qtype, unsigned int time, data_t data) {
 	return 0;
 }
 
+void
+TarQueue::cleanTars() {
+	// check if tar can be removed from map (check if there are still calls in memory) 
+	if((last_flushTars + 10) > glob_last_packet_time) {
+		// clean only each >10 seconds 
+		return;
+	}
+	if(sverb.tar) syslog(LOG_NOTICE, "cleanTars()");
+
+	last_flushTars = glob_last_packet_time;
+	map<string, Tar*>::iterator tars_it;
+	pthread_mutex_lock(&tarslock);
+	for(tars_it = tars.begin(); tars_it != tars.end();) {
+		// walk through all tars
+		Tar *tar = tars_it->second;
+		pthread_mutex_lock(&tartimemaplock);
+		unsigned int lpt = glob_last_packet_time;
+		// find the tar in tartimemap 
+		if((tartimemap.find(tar->created_at) == tartimemap.end()) and (tar->created_at != (lpt - lpt % TAR_MODULO_SECONDS))) {
+			// there are no calls in this start time - clean it
+			if(sverb.tar) syslog(LOG_NOTICE, "destroying tar %s - (no calls in mem)\n", tars_it->second->pathname.c_str());
+			pthread_mutex_unlock(&tartimemaplock);
+			delete tars_it->second;
+			tars.erase(tars_it++);
+		} else {
+			pthread_mutex_unlock(&tartimemaplock);
+			tars_it++;
+		}
+	}
+	pthread_mutex_unlock(&tarslock);
+}
+
 void   
 TarQueue::flushQueue() {
 	pthread_mutex_lock(&flushlock);
@@ -646,6 +681,7 @@ TarQueue::flushQueue() {
 	size_t maxlen = 0;
 	map<unsigned int, vector<data_t> >::iterator it;
 	// walk all maps
+	unsigned int last_clean = glob_last_packet_time;
 
 	while(1) {
 		lock();
@@ -667,7 +703,7 @@ TarQueue::flushQueue() {
 				}       
 			}       
 		}       
-		
+
 		if(maxlen > 0) {
 			queue[winner_qtype][winnertime].clear();
 			queue[winner_qtype].erase(winnertime);
@@ -677,26 +713,12 @@ TarQueue::flushQueue() {
 			for(itv = winner.begin(); itv != winner.end(); itv++) {
 				this->write(winner_qtype, winnertime, *itv);
 			}
+			cleanTars();
 			continue;
 		} else {
 			unlock();
+			cleanTars();
 			break;
-		}
-	}
-	// check if tar can be removed from map (check if there are still calls in memory) 
-	for(tars_it = tars.begin(); tars_it != tars.end();) {
-		Tar *tar = tars_it->second;
-		pthread_mutex_lock(&tartimemaplock);
-		unsigned int lpt = glob_last_packet_time;
-		if((tartimemap.find(tar->created_at) == tartimemap.end()) and (tar->created_at != (lpt - lpt % TAR_MODULO_SECONDS))) {
-			// there are no calls in this time and possible new calls goes to new tar 
-			if(sverb.tar) syslog(LOG_NOTICE, "destroying tar %s - (no calls in mem)\n", tars_it->second->pathname.c_str());
-			pthread_mutex_unlock(&tartimemaplock);
-			delete tars_it->second;
-			tars.erase(tars_it++);
-		} else {
-			pthread_mutex_unlock(&tartimemaplock);
-			tars_it++;
 		}
 	}
 	pthread_mutex_unlock(&flushlock);
@@ -715,6 +737,7 @@ TarQueue::~TarQueue() {
 
 	pthread_mutex_destroy(&mutexlock);
 	pthread_mutex_destroy(&flushlock);
+	pthread_mutex_destroy(&tarslock);
 
 	// destroy all tars
 	for(map<string, Tar*>::iterator it = tars.begin(); it != tars.end(); it++) {
