@@ -804,7 +804,8 @@ bool SqlDb_mysql::query(string query) {
 							this->reconnect();
 						}
 					} else if(sql_noerror || sql_disable_next_attempt_if_error || this->disableNextAttemptIfError ||
-						  this->getLastError() == ER_PARSE_ERROR) {
+						  this->getLastError() == ER_PARSE_ERROR ||
+						  this->getLastError() == ER_NO_REFERENCED_ROW_2) {
 						break;
 					} else {
 						if(pass < this->maxQueryPass - 5) {
