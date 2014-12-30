@@ -982,10 +982,8 @@ ssl_privkey_to_sexp(struct gnutls_x509_privkey_int* priv_key)
 	for(i=0; i<RSA_PARS; i++) {
 		if (gcry_mpi_scan(&rsa_params[i], GCRYMPI_FMT_USG, rsa_datum[i].data, rsa_datum[i].size,&tmp_size) != 0) {
 			if (debug) printf("ssl_load_key: can't convert m rsa param to int (size %d)\n", rsa_datum[i].size);
-			for (i = 0; i < RSA_PARS; i++) {
-				if(rsa_datum[i].data)
-					free(rsa_datum[i].data);
-			}
+			if(rsa_datum[i].data)
+				free(rsa_datum[i].data);
 			return NULL;
 		}
 	}
