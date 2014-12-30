@@ -535,6 +535,7 @@ Tar::~Tar() {
 		delete [] this->zipBuffer;
 	}
 	if(sverb.tar) syslog(LOG_NOTICE, "tar %s deatroyd (destructor)\n", pathname.c_str());
+
 }
 
 void			   
@@ -571,6 +572,20 @@ qtype2str(int qtype) {
 	else if(qtype == 2) return "rtp";
 	else if(qtype == 3) return "graph";
 	else return "all";
+}
+
+void decreaseTartimemap(unsigned int created_at){
+	// decrease tartimemap
+	pthread_mutex_lock(&tartimemaplock);
+	map<unsigned int, int>::iterator tartimemap_it;
+	tartimemap_it = tartimemap.find(created_at);
+	if(tartimemap_it != tartimemap.end()) {
+		tartimemap_it->second--;
+		if(tartimemap_it->second == 0){
+			tartimemap.erase(tartimemap_it);
+		}
+	}
+	pthread_mutex_unlock(&tartimemaplock);
 }
 
 int			    
@@ -645,9 +660,12 @@ TarQueue::write(int qtype, unsigned int time, data_t data) {
 	/* if it's a regular file, write the contents as well */
 	if(tar->tar_append_buffer(data.buffer, data.len) != 0) {
 		delete data.buffer;
+		// decrease tartimemap
+		decreaseTartimemap(tar->created_at);
 		return -1;
 	}
 	delete data.buffer;
+	decreaseTartimemap(tar->created_at);
 
 	return 0;
 }

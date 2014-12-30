@@ -479,20 +479,6 @@ Call::~Call(){
 	pthread_mutex_destroy(&buflock);
 	pthread_mutex_unlock(&listening_worker_run_lock);
 	pthread_mutex_destroy(&listening_worker_run_lock);
-
-	if(opt_pcap_dump_tar){
-		pthread_mutex_lock(&tartimemaplock);
-		map<unsigned int, int>::iterator tartimemap_it;
-		tartimemap_it = tartimemap.find(first_packet_time - first_packet_time % TAR_MODULO_SECONDS);
-		if(tartimemap_it != tartimemap.end()) {
-			tartimemap_it->second--;
-			if(tartimemap_it->second == 0){
-				tartimemap.erase(tartimemap_it);
-			}
-		}
-		pthread_mutex_unlock(&tartimemaplock);
-	}
-
 }
 
 void
@@ -3253,17 +3239,6 @@ Calltable::add(char *call_id, unsigned long call_id_len, time_t time, u_int32_t 
 	       pcap_t *handle, int dlt, int sensorId
 ) {
 	Call *newcall = new Call(call_id, call_id_len, time);
-
-	if(opt_pcap_dump_tar){
-		pthread_mutex_lock(&tartimemaplock);
-		map<unsigned int, int>::iterator tartimemap_it = tartimemap.find(newcall->first_packet_time - newcall->first_packet_time % TAR_MODULO_SECONDS);
-		if(tartimemap_it != tartimemap.end()) {
-			tartimemap_it->second++;
-		} else {
-			tartimemap[newcall->first_packet_time - newcall->first_packet_time % TAR_MODULO_SECONDS] = 1;
-		}
-		pthread_mutex_unlock(&tartimemaplock);
-	}
 
 	if(handle) {
 		newcall->useHandle = handle;
