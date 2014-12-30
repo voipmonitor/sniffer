@@ -287,18 +287,29 @@ Tar::tar_append_buffer(Bucketbuffer *buffer, size_t size)
 		}
 */
 		int i;
-		for(i = 0; (i < buffer->bucketlen / T_BLOCKSIZE); i++) {
+		for(i = 0; ((i < buffer->bucketlen / T_BLOCKSIZE) and (size - copied > 0)); i++) {
+			if((size - copied) < T_BLOCKSIZE) {
+				memset(*it + i * T_BLOCKSIZE + (size - copied), 0, T_BLOCKSIZE - (size - copied));
+				if (tar_block_write(*it + i * T_BLOCKSIZE) == -1) {
+					return -1;
+				}
+				copied += T_BLOCKSIZE;
+				break;
+			}
 			if (tar_block_write(*it + i * T_BLOCKSIZE) == -1)
 				return -1;
 			copied += T_BLOCKSIZE;
 		}
-		if((size - copied) <= T_BLOCKSIZE) {
+/*
+		if((size - copied) > 0 and (size - copied) <= T_BLOCKSIZE) {
 			// write last block 
-			memset(*it + (size - copied), 0, T_BLOCKSIZE - (size - copied));
+			memset(*it + (i+1)*T_BLOCKSIZE + (size - copied), 0, T_BLOCKSIZE - (size - copied));
 			if (tar_block_write(*it + (i+1)*T_BLOCKSIZE) == -1)
 				return -1;
 		}
+*/
 	}
+	printf("copied %u size %u\n", copied, size);
 	
 /*  
 	for (i = size; i > T_BLOCKSIZE; i -= T_BLOCKSIZE) {
@@ -503,7 +514,10 @@ Tar::tar_block_write(const char *buf){
 };
 
 Tar::~Tar() {
-
+	char zeroblock[T_BLOCKSIZE];
+	memset(zeroblock, 0, T_BLOCKSIZE);
+	tar_block_write(zeroblock);
+	tar_block_write(zeroblock);
 	if(this->zipStream) {
 		flushZip();
 		deflateEnd(this->zipStream);
