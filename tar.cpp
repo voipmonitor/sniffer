@@ -670,7 +670,7 @@ TarQueue::cleanTars() {
 		pthread_mutex_lock(&tartimemaplock);
 		unsigned int lpt = glob_last_packet_time;
 		// find the tar in tartimemap 
-		if((tartimemap.find(tar->created_at) == tartimemap.end()) and (tar->created_at != (lpt - lpt % TAR_MODULO_SECONDS))) {
+		if((tartimemap.find(tar->created_at) == tartimemap.end()) and (lpt > (tar->created_at + TAR_MODULO_SECONDS + 10))) {  // +10 seconds more in new period to be sure nothing is in buffers
 			// there are no calls in this start time - clean it
 			pthread_mutex_unlock(&tartimemaplock);
 			if(sverb.tar) syslog(LOG_NOTICE, "destroying tar %s - (no calls in mem)\n", tars_it->second->pathname.c_str());
