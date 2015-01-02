@@ -640,11 +640,11 @@ TarQueue::write(int qtype, unsigned int time, data_t data) {
 		tar->created_at = time;
 
 		// allocate it to thread with the lowest total byte len 
-		unsigned long int max = 0;
+		unsigned long int min = 0 - 1;
 		int winner = 0;
 		for(int i = 0; i < maxthreads; i++) {
-			if(max < tarthreads[i].len) {
-				max = tarthreads[i].len;
+			if(min >= tarthreads[i].len) {
+				min = tarthreads[i].len;
 				winner = i;
 			}
 		}
