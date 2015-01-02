@@ -3333,6 +3333,7 @@ int main(int argc, char *argv[]) {
 
 		return 1;
 	}
+
 	if(opt_rrd && opt_read_from_file) {
 		//disable update of rrd statistics when reading packets from file
 		opt_rrd = 0;
@@ -3542,10 +3543,6 @@ int main(int argc, char *argv[]) {
 			return 1;
 		}
 		#endif
-	}
-
-	if(opt_pcap_dump_tar) {
-		tarQueue = new TarQueue;
 	}
 
 	if(opt_generator) {
@@ -3854,6 +3851,10 @@ int main(int argc, char *argv[]) {
 	// filters are ok, we can daemonize 
 	if (opt_fork && !opt_read_from_file){
 		daemonize();
+	}
+
+	if(opt_pcap_dump_tar) {
+		tarQueue = new TarQueue;
 	}
 	
 	if(opt_enable_fraud) {
