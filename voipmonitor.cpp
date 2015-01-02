@@ -326,6 +326,7 @@ int opt_pcap_dump_writethreads = 1;
 int opt_pcap_dump_writethreads_max = 32;
 int opt_pcap_dump_asyncwrite_maxsize = 100; //MB
 int opt_pcap_dump_tar = 0;
+int opt_pcap_dump_tar_threads = 4;
 int opt_pcap_dump_tar_compress_sip = 0; //0 off, 1 gzip, 2 lzma
 int opt_pcap_dump_tar_gzip_sip_level = Z_DEFAULT_COMPRESSION;
 int opt_pcap_dump_tar_lzma_sip_level = 0;
@@ -2183,6 +2184,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "tar", NULL))) {
 		opt_pcap_dump_tar = yesno(value);
+	}
+	if((value = ini.GetValue("general", "tar_maxthreads", NULL))) {
+		opt_pcap_dump_tar_threads = atoi(value);
 	}
 	if((value = ini.GetValue("general", "tar_compress_sip", NULL))) {
 		switch(value[0]) {

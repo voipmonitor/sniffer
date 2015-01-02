@@ -276,7 +276,7 @@ int
 Tar::tar_append_buffer(Bucketbuffer *buffer, size_t size)
 {
 //	char block[T_BLOCKSIZE];
-	int copied = 0;
+	unsigned long int copied = 0;
 	for(list<char*>::iterator it = buffer->listbuffer.begin(); it != buffer->listbuffer.end(); it++) {
 /*
 		if((size - copied) < T_BLOCKSIZE) {
@@ -309,7 +309,6 @@ Tar::tar_append_buffer(Bucketbuffer *buffer, size_t size)
 		}
 */
 	}
-	printf("copied %u size %u\n", copied, size);
 	
 /*  
 	for (i = size; i > T_BLOCKSIZE; i -= T_BLOCKSIZE) {
@@ -590,7 +589,6 @@ void decreaseTartimemap(unsigned int created_at){
 
 int			    
 TarQueue::write(int qtype, unsigned int time, data_t data) {
-	__sync_sub_and_fetch(&glob_tar_queued_files, 1);
 	stringstream tar_dir, tar_name;
 	tar_dir << opt_chdir << "/" << data.year << "-" << data.mon << "-" << data.day;
 	tar_name << tar_dir.str() << "/" << qtype2str(qtype) << "_" << time << ".tar";
@@ -629,45 +627,93 @@ TarQueue::write(int qtype, unsigned int time, data_t data) {
 	mkdir_r(tar_dir.str(), 0777);
 	//printf("tar_name %s\n", tar_name.str().c_str());
        
+	pthread_mutex_lock(&tarslock);
 	Tar *tar = tars[tar_name.str()];
 	if(!tar) {
 		tar = new Tar;
 		if(sverb.tar) syslog(LOG_NOTICE, "new tar %s\n", tar_name.str().c_str());
-		pthread_mutex_lock(&tarslock);
 		tars[tar_name.str()] = tar;
 		pthread_mutex_unlock(&tarslock);
 		tar->tar_open(tar_name.str(), O_WRONLY | O_CREAT | O_APPEND, 0777, TAR_GNU);
 		tar->tar.qtype = qtype;
 		tar->created_at = time;
+
+		// allocate it to thread with the lowest total byte len 
+		unsigned long int max = 0;
+		int winner = 0;
+		for(int i = 0; i < maxthreads; i++) {
+			if(max < tarthreads[i].len) {
+				max = tarthreads[i].len;
+				winner = i;
+			}
+		}
+		tar->thread_id = winner;
+	} else {
 		pthread_mutex_unlock(&tarslock);
 	}
-       
-	//reset and set header
-	memset(&(tar->tar.th_buf), 0, sizeof(struct Tar::tar_header));
-	tar->th_set_type(0); //s->st_mode, 0 is regular file
-	tar->th_set_user(0); //st_uid
-	tar->th_set_group(0); //st_gid
-	tar->th_set_mode(0); //s->st_mode
-	tar->th_set_mtime(time);
-	tar->th_set_size(data.len);
-	tar->th_set_path((char*)data.filename.c_str());
-       
-	/* write header */
-	if (tar->th_write() != 0) {
-		return -1;
-	}
-
-	/* if it's a regular file, write the contents as well */
-	if(tar->tar_append_buffer(data.buffer, data.len) != 0) {
-		delete data.buffer;
-		// decrease tartimemap
-		decreaseTartimemap(tar->created_at);
-		return -1;
-	}
-	delete data.buffer;
-	decreaseTartimemap(tar->created_at);
-
+     
+	__sync_add_and_fetch(&tarthreads[tar->thread_id].len, data.len);
+	data.tar = tar;
+	data.time = time;
+	pthread_mutex_lock(&tarthreads[tar->thread_id].queuelock);
+//	printf("push id:%u\n", tar->thread_id);
+	tarthreads[tar->thread_id].queue.push(data);
+	pthread_mutex_unlock(&tarthreads[tar->thread_id].queuelock);
 	return 0;
+}
+
+void *TarQueue::tarthreadworker(void *arg) {
+	
+	TarQueue *this2 = ((tarthreadworker_arg*)arg)->tq;
+	int i = ((tarthreadworker_arg*)arg)->i;
+	delete (tarthreadworker_arg*)arg;
+
+	this2->tarthreads[i].threadId = get_unix_tid();
+
+	while(1) {
+		while(1) {
+			pthread_mutex_lock(&this2->tarthreads[i].queuelock);
+			if(this2->tarthreads[i].queue.empty()) { 
+				pthread_mutex_unlock(&this2->tarthreads[i].queuelock);
+				if(this2->terminate) {
+					return NULL;
+				} else {
+					break;
+				}
+			};
+			data_t data = this2->tarthreads[i].queue.front();
+			this2->tarthreads[i].queue.pop();
+			pthread_mutex_unlock(&this2->tarthreads[i].queuelock);
+			
+			Tar *tar = data.tar;
+
+			//reset and set header
+			memset(&(tar->tar.th_buf), 0, sizeof(struct Tar::tar_header));
+			tar->th_set_type(0); //s->st_mode, 0 is regular file
+			tar->th_set_user(0); //st_uid
+			tar->th_set_group(0); //st_gid
+			tar->th_set_mode(0); //s->st_mode
+			tar->th_set_mtime(data.time);
+			tar->th_set_size(data.len);
+			tar->th_set_path((char*)data.filename.c_str());
+		       
+			/* write header */
+			if (tar->th_write() != 0) {
+				continue;
+			}
+
+			/* if it's a regular file, write the contents as well */
+			tar->tar_append_buffer(data.buffer, data.len);
+			
+			__sync_sub_and_fetch(&this2->tarthreads[i].len, data.len);
+			delete data.buffer;
+			decreaseTartimemap(tar->created_at);
+			__sync_sub_and_fetch(&glob_tar_queued_files, 1);
+		}
+		// quque is empty - sleep before next run
+		usleep(100000);
+	}
+	return NULL;
 }
 
 void
@@ -677,7 +723,7 @@ TarQueue::cleanTars() {
 		// clean only each >10 seconds 
 		return;
 	}
-	if(sverb.tar) syslog(LOG_NOTICE, "cleanTars()");
+//	if(sverb.tar) syslog(LOG_NOTICE, "cleanTars()");
 
 	last_flushTars = glob_last_packet_time;
 	map<string, Tar*>::iterator tars_it;
@@ -765,6 +811,11 @@ TarQueue::queuelen() {
 }
 
 TarQueue::~TarQueue() {
+	terminate = true;
+	for(int i = 0; i < maxthreads; i++) { 
+		pthread_join(tarthreads[i].thread, NULL);
+		pthread_mutex_destroy(&tarthreads[i].queuelock);
+	}
 
 	pthread_mutex_destroy(&mutexlock);
 	pthread_mutex_destroy(&flushlock);
@@ -774,7 +825,61 @@ TarQueue::~TarQueue() {
 	for(map<string, Tar*>::iterator it = tars.begin(); it != tars.end(); it++) {
 		delete(it->second);
 	}
+
 }      
+
+TarQueue::TarQueue() {   
+	      
+	terminate = false;
+	extern int opt_pcap_dump_tar_threads;
+	maxthreads = opt_pcap_dump_tar_threads;
+
+	pthread_mutex_init(&mutexlock, NULL);
+	pthread_mutex_init(&flushlock, NULL);
+	pthread_mutex_init(&tarslock, NULL);
+	last_flushTars = 0;
+	for(int i = 0; i < maxthreads; i++) {
+		tarthreadworker_arg *arg = new tarthreadworker_arg;
+		arg->i = i;
+		arg->tq = this;
+		tarthreads[i].cpuPeak = 0;
+
+		pthread_mutex_init(&tarthreads[i].queuelock, NULL);
+		pthread_create(&tarthreads[i].thread, NULL, &TarQueue::tarthreadworker, arg);
+	}
+
+	// create tarthreads
+	
+};	      
+
+void TarQueue::preparePstatData(int threadIndex) {
+	if(this->tarthreads[threadIndex].threadId) {
+		if(this->tarthreads[threadIndex].threadPstatData[0].cpu_total_time) {
+			this->tarthreads[threadIndex].threadPstatData[1] = this->tarthreads[threadIndex].threadPstatData[0];
+		}
+		pstat_get_data(this->tarthreads[threadIndex].threadId, this->tarthreads[threadIndex].threadPstatData);
+	}
+}
+
+double TarQueue::getCpuUsagePerc(int threadIndex, bool preparePstatData) {
+	if(preparePstatData) {
+		this->preparePstatData(threadIndex);
+	}
+	if(this->tarthreads[threadIndex].threadId) {
+		double ucpu_usage, scpu_usage;
+		if(this->tarthreads[threadIndex].threadPstatData[0].cpu_total_time && this->tarthreads[threadIndex].threadPstatData[1].cpu_total_time) {
+			pstat_calc_cpu_usage_pct(
+				&this->tarthreads[threadIndex].threadPstatData[0], &this->tarthreads[threadIndex].threadPstatData[1],
+				&ucpu_usage, &scpu_usage);
+			double rslt = ucpu_usage + scpu_usage;
+			if(rslt > this->tarthreads[threadIndex].cpuPeak) {
+				this->tarthreads[threadIndex].cpuPeak = rslt;
+			}
+			return(rslt);
+		}
+	}
+	return(-1);
+}
 
 
 

@@ -122,11 +122,6 @@ extern int opt_mysqlstore_max_threads_register;
 extern int opt_mysqlstore_max_threads_http;
 extern int opt_mysqlstore_limit_queue_register;
 extern Calltable *calltable;
-extern pthread_mutex_t tartimemaplock;
-extern int opt_pcap_dump_tar;
-extern map<unsigned int, int> tartimemap;
-extern pthread_mutex_t tartimemaplock;
-
 
 volatile int calls_counter = 0;
 volatile int calls_cdr_save_counter = 0;
