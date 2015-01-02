@@ -609,7 +609,7 @@ char opt_syslog_string[256];
 
 extern pthread_mutex_t tartimemaplock;
 
-TarQueue tarQueue;
+TarQueue *tarQueue = NULL;
 
 
 #include <stdio.h>
@@ -3544,6 +3544,10 @@ int main(int argc, char *argv[]) {
 		#endif
 	}
 
+	if(opt_pcap_dump_tar) {
+		tarQueue = new TarQueue;
+	}
+
 	if(opt_generator) {
 		opt_generator_channels = 2;
 		pthread_t *genthreads = (pthread_t*)malloc(opt_generator_channels * sizeof(pthread_t));		// ID of worker storing CDR thread 
@@ -4589,7 +4593,8 @@ int main(int argc, char *argv[]) {
 	}
 
 	if(opt_pcap_dump_tar) {
-		tarQueue.flushQueue();
+		tarQueue->flushQueue();
+		delete tarQueue;
 	}
 
 

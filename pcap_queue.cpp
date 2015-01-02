@@ -1252,13 +1252,13 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 	if(opt_pcap_dump_tar) {
 		outStr << "tarQ[" << glob_tar_queued_files << "] ";
 
-		extern TarQueue tarQueue;
+		extern TarQueue *tarQueue;
 		outStr << "tarCPU[";
-		for(int i = 0; i < tarQueue.maxthreads; i++) {
+		for(int i = 0; i < tarQueue->maxthreads; i++) {
 			if(i) {
 				outStr << '|';
 			}
-			double tar_cpu = tarQueue.getCpuUsagePerc(i, true);
+			double tar_cpu = tarQueue->getCpuUsagePerc(i, true);
 			outStr << setprecision(1) << tar_cpu;
 		}
 		outStr << "%] ";

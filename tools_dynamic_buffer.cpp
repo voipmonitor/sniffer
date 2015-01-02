@@ -3,7 +3,7 @@
 
 #define MIN(x,y) ((x) < (y) ? (x) : (y))
 
-extern TarQueue tarQueue;
+extern TarQueue *tarQueue;
 
 
 void DynamicBuffer::cout(bool itemSeparator) {
@@ -41,7 +41,7 @@ void DynamicBufferTar::write(const char *fileName, int time) {
 		u_char *concatTarBuffer = this->getConcatBuffer();
 		if(concatTarBuffer) {
 			
-			//tarQueue.add(fileName, time, (char*)concatTarBuffer, tarBufferSize);
+			//tarQueue->add(fileName, time, (char*)concatTarBuffer, tarBufferSize);
 			delete [] concatTarBuffer;
 		}
 	}

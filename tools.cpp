@@ -70,7 +70,7 @@ extern pthread_mutex_t tartimemaplock;
 static char b2a[256];
 static char base64[64];
 
-extern TarQueue tarQueue;
+extern TarQueue *tarQueue;
 using namespace std;
 
 AsyncClose *asyncClose;
@@ -2210,7 +2210,7 @@ void FileZipHandler::flushTarBuffer() {
 	this->tarBuffer->write(this->fileName.c_str(), this->time);
 	this->tarBuffer->free();
 */
-	tarQueue.add(this->fileName, this->time, this->tarBuffer);
+	tarQueue->add(this->fileName, this->time, this->tarBuffer);
 	this->tarBuffer = NULL;
 }
 

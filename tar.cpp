@@ -60,10 +60,11 @@ extern int opt_pcap_dump_tar_lzma_rtp_level;
 extern int opt_pcap_dump_tar_compress_graph;
 extern int opt_pcap_dump_tar_gzip_graph_level;
 extern int opt_pcap_dump_tar_lzma_graph_level;
+extern int opt_pcap_dump_tar_threads;
 
 
 extern int terminating; 
-extern TarQueue tarQueue;
+extern TarQueue *tarQueue;
 extern volatile unsigned int glob_last_packet_time;
 
 /* magic, version, and checksum */
@@ -663,6 +664,7 @@ TarQueue::write(int qtype, unsigned int time, data_t data) {
 }
 
 void *TarQueue::tarthreadworker(void *arg) {
+
 	
 	TarQueue *this2 = ((tarthreadworker_arg*)arg)->tq;
 	int i = ((tarthreadworker_arg*)arg)->i;
@@ -828,10 +830,9 @@ TarQueue::~TarQueue() {
 
 }      
 
-TarQueue::TarQueue() {   
-	      
+TarQueue::TarQueue() {
+
 	terminate = false;
-	extern int opt_pcap_dump_tar_threads;
 	maxthreads = opt_pcap_dump_tar_threads;
 
 	pthread_mutex_init(&mutexlock, NULL);
@@ -886,7 +887,7 @@ double TarQueue::getCpuUsagePerc(int threadIndex, bool preparePstatData) {
 void *TarQueueThread(void *dummy) {
 	// run each second flushQueue
 	while(!terminating) {
-		tarQueue.flushQueue();
+		tarQueue->flushQueue();
 		sleep(1);
 	}      
 	return NULL;
