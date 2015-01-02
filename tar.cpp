@@ -719,7 +719,7 @@ TarQueue::write(int qtype, unsigned int time, data_t data) {
 		// allocate it to thread with the lowest total byte len 
 		unsigned long int min = 0 - 1;
 		int winner = 0;
-		for(int i = 0; i < maxthreads; i++) {
+		for(int i = maxthreads - 1; i >= 0; i--) {
 			if(min >= tarthreads[i].len) {
 				min = tarthreads[i].len;
 				winner = i;
@@ -730,12 +730,12 @@ TarQueue::write(int qtype, unsigned int time, data_t data) {
 		pthread_mutex_unlock(&tarslock);
 	}
      
-	__sync_add_and_fetch(&tarthreads[tar->thread_id].len, data.len);
 	data.tar = tar;
 	data.time = time;
 	pthread_mutex_lock(&tarthreads[tar->thread_id].queuelock);
 //	printf("push id:%u\n", tar->thread_id);
 	tarthreads[tar->thread_id].queue.push(data);
+	__sync_add_and_fetch(&tarthreads[tar->thread_id].len, data.len);
 	pthread_mutex_unlock(&tarthreads[tar->thread_id].queuelock);
 	return 0;
 }
@@ -921,6 +921,7 @@ TarQueue::TarQueue() {
 		arg->i = i;
 		arg->tq = this;
 		tarthreads[i].cpuPeak = 0;
+		tarthreads[i].len = 0;
 
 		pthread_mutex_init(&tarthreads[i].queuelock, NULL);
 		pthread_create(&tarthreads[i].thread, NULL, &TarQueue::tarthreadworker, arg);

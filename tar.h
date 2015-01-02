@@ -193,7 +193,7 @@ public:
 	
 	struct tarthreads_t {
 		std::queue<data_t> queue;
-		unsigned long int len;
+		size_t len;
 		pthread_mutex_t queuelock;
 		pthread_t thread;
 		int threadId;
