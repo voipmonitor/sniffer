@@ -83,12 +83,13 @@ public:
 	}
 	TAR;
 	TAR tar;
+	int year, mon, day, hour;
 
 	struct data_t {
 		char *buffer;
 		size_t len;
 		string filename;
-		int year, mon, day;
+		int year, mon, day, hour;
 	};
 
 	unsigned int created_at;
@@ -143,6 +144,7 @@ public:
 	ssize_t writeLzma(const void *buf, size_t len);
 #endif
 
+	void addtofilesqueue();
 
 private:
 	z_stream *zipStream;
@@ -184,7 +186,7 @@ public:
 		Bucketbuffer *buffer;
 		size_t len;
 		string filename;
-		int year, mon, day;
+		int year, mon, day, hour;
 		Tar *tar;
 		time_t time;
 	};

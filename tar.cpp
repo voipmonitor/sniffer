@@ -41,6 +41,7 @@
 #include "tar.h"
 #include "tools.h"
 #include "config.h"
+#include "cleanspool.h"
 
 
 using namespace std;
@@ -61,6 +62,11 @@ extern int opt_pcap_dump_tar_compress_graph;
 extern int opt_pcap_dump_tar_gzip_graph_level;
 extern int opt_pcap_dump_tar_lzma_graph_level;
 extern int opt_pcap_dump_tar_threads;
+
+extern int opt_filesclean;
+extern int opt_nocdr;
+
+extern MySqlStore *sqlStore;
 
 
 extern int terminating; 
@@ -513,6 +519,72 @@ Tar::tar_block_write(const char *buf){
 	return(T_BLOCKSIZE);
 };
 
+void Tar::addtofilesqueue() {
+
+	string column;
+	switch(tar.qtype) {
+	case 1:
+		column = "sipsize";
+		break;
+	case 2:
+		column = "rtpsize";
+		break;
+	case 3:
+		column = "graphsize";
+		break;
+	default:
+		column = "rtpsize";
+	}
+
+	if(!opt_filesclean or opt_nocdr or !isSqlDriver("mysql") or !isSetCleanspoolParameters()) return;
+
+	long long size = 0;
+	size = GetFileSizeDU(pathname.c_str());
+
+	if(size == (long long)-1) {
+		//error or file does not exists
+		char buf[4092];
+		buf[0] = '\0';
+		strerror_r(errno, buf, 4092);
+		syslog(LOG_ERR, "addtofilesqueue ERROR file[%s] - error[%d][%s]", pathname.c_str(), errno, buf);
+		return;
+	}
+
+	if(size == 0) {
+		// if the file has 0 size we still need to add it to cleaning procedure
+		size = 1;
+	}
+
+	ostringstream query;
+
+	extern int opt_id_sensor_cleanspool;
+	int id_sensor = opt_id_sensor_cleanspool == -1 ? 0 : opt_id_sensor_cleanspool;
+
+
+/* returns name of the directory in format YYYY-MM-DD */
+        char sdirname[12];
+        snprintf(sdirname, 11, "%04d%02d%02d%02d",  year, mon, day, hour);
+        sdirname[11] = 0;
+        string dirnamesqlfiles(sdirname);
+
+	query << "INSERT INTO files SET files.datehour = " << dirnamesqlfiles << ", id_sensor = " << id_sensor << ", "
+		<< column << " = " << size << " ON DUPLICATE KEY UPDATE " << column << " = " << column << " + " << size;
+
+	sqlStore->lock(STORE_PROC_ID_CLEANSPOOL);
+	sqlStore->query(query.str().c_str(), STORE_PROC_ID_CLEANSPOOL);
+
+	ostringstream fname;
+	fname << "filesindex/" << column << "/" << dirnamesqlfiles;
+	ofstream myfile(fname.str().c_str(), ios::app | ios::out);
+	if(!myfile.is_open()) {
+		syslog(LOG_ERR,"error write to [%s]", fname.str().c_str());
+	}
+	myfile << pathname << ":" << size << "\n";
+	myfile.close();    
+
+	sqlStore->unlock(STORE_PROC_ID_CLEANSPOOL);
+}
+
 Tar::~Tar() {
 	char zeroblock[T_BLOCKSIZE];
 	memset(zeroblock, 0, T_BLOCKSIZE);
@@ -534,6 +606,7 @@ Tar::~Tar() {
 	if(this->zipBuffer) {
 		delete [] this->zipBuffer;
 	}
+	addtofilesqueue();
 	if(sverb.tar) syslog(LOG_NOTICE, "tar %s deatroyd (destructor)\n", pathname.c_str());
 
 }
@@ -554,6 +627,7 @@ TarQueue::add(string filename, unsigned int time, Bucketbuffer *buffer){
 	data.year = year;
 	data.mon = mon;
 	data.day = day;
+	data.hour = hour;
 	if(type[0] == 'S') {
 		queue[1][time - time % TAR_MODULO_SECONDS].push_back(data);
 	} else if(type[0] == 'R') {
@@ -638,6 +712,9 @@ TarQueue::write(int qtype, unsigned int time, data_t data) {
 		tar->tar_open(tar_name.str(), O_WRONLY | O_CREAT | O_APPEND, 0777, TAR_GNU);
 		tar->tar.qtype = qtype;
 		tar->created_at = time;
+		tar->year = data.year;
+		tar->mon = data.mon;
+		tar->day = data.day;
 
 		// allocate it to thread with the lowest total byte len 
 		unsigned long int min = 0 - 1;
@@ -881,7 +958,6 @@ double TarQueue::getCpuUsagePerc(int threadIndex, bool preparePstatData) {
 	}
 	return(-1);
 }
-
 
 
 void *TarQueueThread(void *dummy) {

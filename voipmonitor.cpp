@@ -3806,13 +3806,11 @@ int main(int argc, char *argv[]) {
 	
 	chdir(opt_chdir);
 
-	if(!opt_pcap_dump_tar) {
-		mkdir_r("filesindex/sipsize", 0777);
-		mkdir_r("filesindex/rtpsize", 0777);
-		mkdir_r("filesindex/graphsize", 0777);
-		mkdir_r("filesindex/audiosize", 0777);
-		mkdir_r("filesindex/regsize", 0777);
-	}
+	mkdir_r("filesindex/sipsize", 0777);
+	mkdir_r("filesindex/rtpsize", 0777);
+	mkdir_r("filesindex/graphsize", 0777);
+	mkdir_r("filesindex/audiosize", 0777);
+	mkdir_r("filesindex/regsize", 0777);
 
 	// set maximum open files 
 	struct rlimit rlp;
