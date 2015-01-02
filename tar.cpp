@@ -607,7 +607,7 @@ Tar::~Tar() {
 		delete [] this->zipBuffer;
 	}
 	addtofilesqueue();
-	if(sverb.tar) syslog(LOG_NOTICE, "tar %s deatroyd (destructor)\n", pathname.c_str());
+	if(sverb.tar) syslog(LOG_NOTICE, "tar %s destroyd (destructor)\n", pathname.c_str());
 
 }
 
