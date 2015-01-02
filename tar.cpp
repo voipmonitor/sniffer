@@ -590,7 +590,7 @@ void decreaseTartimemap(unsigned int created_at){
 int			    
 TarQueue::write(int qtype, unsigned int time, data_t data) {
 	stringstream tar_dir, tar_name;
-	tar_dir << opt_chdir << "/" << data.year << "-" << data.mon << "-" << data.day;
+	tar_dir << opt_chdir << "/" << setfill('0') << setw(4) << data.year << setw(1) << "-" << setw(2) << data.mon << setw(1) << "-" << setw(2) << data.day;
 	tar_name << tar_dir.str() << "/" << qtype2str(qtype) << "_" << time << ".tar";
 	switch(qtype) {
 	case 1:
