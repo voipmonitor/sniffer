@@ -715,6 +715,7 @@ TarQueue::write(int qtype, unsigned int time, data_t data) {
 		tar->year = data.year;
 		tar->mon = data.mon;
 		tar->day = data.day;
+		tar->hour = data.hour;
 
 		// allocate it to thread with the lowest total byte len 
 		unsigned long int min = 0 - 1;
