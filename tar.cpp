@@ -628,6 +628,7 @@ TarQueue::add(string filename, unsigned int time, Bucketbuffer *buffer){
 	data.mon = mon;
 	data.day = day;
 	data.hour = hour;
+	data.minute = minute;
 	if(type[0] == 'S') {
 		queue[1][time - time % TAR_MODULO_SECONDS].push_back(data);
 	} else if(type[0] == 'R') {
@@ -648,6 +649,15 @@ qtype2str(int qtype) {
 	else return "all";
 }
 
+string
+qtype2strC(int qtype) {
+	if(qtype == 1) return "SIP";
+	else if(qtype == 2) return "RTP";
+	else if(qtype == 3) return "GRAPH";
+	else return "ALL";
+}
+
+
 void decreaseTartimemap(unsigned int created_at){
 	// decrease tartimemap
 	pthread_mutex_lock(&tartimemaplock);
@@ -665,7 +675,8 @@ void decreaseTartimemap(unsigned int created_at){
 int			    
 TarQueue::write(int qtype, unsigned int time, data_t data) {
 	stringstream tar_dir, tar_name;
-	tar_dir << opt_chdir << "/" << setfill('0') << setw(4) << data.year << setw(1) << "-" << setw(2) << data.mon << setw(1) << "-" << setw(2) << data.day;
+	tar_dir << opt_chdir << "/" << setfill('0') << setw(4) << data.year << setw(1) << "-" << setw(2) << data.mon << setw(1) << "-" << setw(2) << data.day << setw(1) << "/" << setw(2) << data.hour << setw(1) << "/" << setw(2) << data.minute << setw(1) << "/" << setw(0) << qtype2strC(qtype);
+	
 	tar_name << tar_dir.str() << "/" << qtype2str(qtype) << "_" << time << ".tar";
 	switch(qtype) {
 	case 1:
@@ -716,6 +727,7 @@ TarQueue::write(int qtype, unsigned int time, data_t data) {
 		tar->mon = data.mon;
 		tar->day = data.day;
 		tar->hour = data.hour;
+		tar->minute = data.minute;
 
 		// allocate it to thread with the lowest total byte len 
 		unsigned long int min = 0 - 1;

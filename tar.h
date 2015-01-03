@@ -83,13 +83,13 @@ public:
 	}
 	TAR;
 	TAR tar;
-	int year, mon, day, hour;
+	int year, mon, day, hour, minute;
 
 	struct data_t {
 		char *buffer;
 		size_t len;
 		string filename;
-		int year, mon, day, hour;
+		int year, mon, day, hour, minute;
 	};
 
 	unsigned int created_at;
@@ -186,7 +186,7 @@ public:
 		Bucketbuffer *buffer;
 		size_t len;
 		string filename;
-		int year, mon, day, hour;
+		int year, mon, day, hour, minute;
 		Tar *tar;
 		time_t time;
 	};
