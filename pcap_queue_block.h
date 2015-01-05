@@ -63,6 +63,11 @@ struct pcap_pkthdr_plus {
 };
 
 struct pcap_block_store {
+	enum compress_method {
+		compress_method_default,
+		snappy,
+		lz4
+	};
 	struct pcap_pkthdr_pcap {
 		pcap_pkthdr_pcap() {
 			this->header = NULL;
@@ -145,8 +150,12 @@ struct pcap_block_store {
 	u_char *getSaveBuffer();
 	void restoreFromSaveBuffer(u_char *saveBuffer);
 	int addRestoreChunk(u_char *buffer, size_t size, size_t *offset = NULL, bool autoRestore = true);
-	bool compress();
-	bool uncompress();
+	inline bool compress();
+	bool compress_snappy();
+	bool compress_lz4();
+	inline bool uncompress(compress_method method = compress_method_default);
+	bool uncompress_snappy();
+	bool uncompress_lz4();
 	void lock_packet(int index) {
 		if((opt_enable_http || opt_enable_webrtc || opt_enable_ssl) && opt_tcpreassembly_pb_lock) {
 			this->lock_sync_packet_lock();

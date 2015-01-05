@@ -55,7 +55,7 @@ extern int verbosity;
 extern int terminating;
 extern int opt_pcap_dump_bufflength;
 extern int opt_pcap_dump_asyncwrite;
-extern int opt_pcap_dump_zip;
+extern FileZipHandler::eTypeCompress opt_pcap_dump_zip;
 extern int opt_pcap_dump_ziplevel;
 extern int opt_read_from_file;
 extern int opt_pcap_dump_tar;
@@ -921,7 +921,7 @@ PcapDumper::PcapDumper(eTypePcapDump type, class Call *call) {
 	this->lastTimeSyslog = 0;
 	this->_bufflength = -1;
 	this->_asyncwrite = -1;
-	this->_zip = -1;
+	this->_typeCompress = FileZipHandler::compress_default;
 }
 
 PcapDumper::~PcapDumper() {
@@ -955,7 +955,7 @@ bool PcapDumper::open(const char *fileName, const char *fileNameSpoolRelative, p
 	string errorString;
 	this->dlt = useDlt == DLT_LINUX_SLL && opt_convert_dlt_sll_to_en10 ? DLT_EN10MB : useDlt;
 	this->handle = __pcap_dump_open(_handle, fileName, this->dlt, &errorString,
-					_bufflength, _asyncwrite, _zip,
+					_bufflength, _asyncwrite, _typeCompress,
 					call ? call->calltime() : 0,
 					this->type);
 	++this->openAttempts;
@@ -1051,7 +1051,7 @@ void PcapDumper::remove() {
 }
 
 
-extern int opt_gzipGRAPH;
+extern FileZipHandler::eTypeCompress opt_gzipGRAPH;
 
 RtpGraphSaver::RtpGraphSaver(RTP *rtp) {
 	this->rtp = rtp;
@@ -2096,9 +2096,10 @@ void JsonExport::add(const char *name, u_int64_t content) {
 
 #define DEFAULT_BUFFER_LENGTH		8192
 #define DEFAULT_BUFFER_ZIP_LENGTH	8192
+#define DEFAULT_BUFFER_LZ4_LENGTH	8192
 #define TAR_BUFFER_INC_LENGTH		5000
 
-FileZipHandler::FileZipHandler(int bufferLength, int enableAsyncWrite, int enableZip,
+FileZipHandler::FileZipHandler(int bufferLength, int enableAsyncWrite, eTypeCompress typeCompress,
 			       bool dumpHandler, int time,
 			       eTypeFile typeFile) {
 
@@ -2116,11 +2117,12 @@ FileZipHandler::FileZipHandler(int bufferLength, int enableAsyncWrite, int enabl
 
 	if(bufferLength <= 0) {
 		enableAsyncWrite = 0;
-		enableZip = 0;
+		typeCompress = compress_na;
 	}
 	this->permission = 0;
 	this->fh = 0;
 	this->zipStream = NULL;
+	this->lz4Stream = NULL;
 	this->bufferLength = opt_pcap_dump_tar ?
 			      (bufferLength ? bufferLength : DEFAULT_BUFFER_LENGTH) :
 			      bufferLength;
@@ -2131,6 +2133,7 @@ FileZipHandler::FileZipHandler(int bufferLength, int enableAsyncWrite, int enabl
 	}
 	this->useBufferLength = 0;
 	this->zipBufferLength = 0;
+	this->zipBufferLengthCompressBound = 0;
 	this->zipBuffer = NULL;
 	//this->tarBuffer = new DynamicBufferTar();
 	this->tarBuffer = NULL;
@@ -2140,7 +2143,7 @@ FileZipHandler::FileZipHandler(int bufferLength, int enableAsyncWrite, int enabl
 						typeFile == graph_rtp ? 5000 : 5000);
 */
 	this->enableAsyncWrite = enableAsyncWrite && !opt_read_from_file;
-	this->enableZip = enableZip;
+	this->typeCompress = typeCompress;
 	this->dumpHandler = dumpHandler;
 	this->time = time;
 	this->size = 0;
@@ -2177,6 +2180,9 @@ FileZipHandler::~FileZipHandler() {
 	if(this->zipStream) {
 		deflateEnd(this->zipStream);
 		delete this->zipStream;
+	}
+	if(this->lz4Stream) {
+		LZ4_freeStream(this->lz4Stream);
 	}
 }
 
@@ -2281,7 +2287,20 @@ bool FileZipHandler::_writeToFile(char *data, int length, bool flush) {
 	if(!this->error.empty()) {
 		return(false);
 	}
-	if(this->enableZip) {
+	switch(this->typeCompress) {
+	case compress_na:
+		{
+		int rsltWrite = this->__writeToFile(data, length);
+		if(rsltWrite <= 0) {
+			this->setError();
+			return(false);
+		} else {
+			this->size += length;
+			return(true);
+		}
+		}
+		break;
+	case zip:
 		if(!this->zipStream && !this->initZip()) {
 			return(false);
 		}
@@ -2296,7 +2315,7 @@ bool FileZipHandler::_writeToFile(char *data, int length, bool flush) {
 					this->setError();
 					return(false);
 				} else {
-					this->size += length;
+					this->size += have;
 				}
 			} else {
 				this->setError("zip deflate failed");
@@ -2304,16 +2323,32 @@ bool FileZipHandler::_writeToFile(char *data, int length, bool flush) {
 			}
 		} while(this->zipStream->avail_out == 0);
 		return(true);
-	} else {
-		int rsltWrite = this->__writeToFile(data, length);
-		if(rsltWrite <= 0) {
-			this->setError();
+	case lz4:
+		{
+		if(!this->lz4Stream && !this->initLz4()) {
 			return(false);
-		} else {
-			this->size += length;
-			return(true);
 		}
+		int pos = 0;
+		while(pos < length) {
+			int have = LZ4_compress_continue(this->lz4Stream, data + pos, this->zipBuffer, this->zipBufferLength);
+			if(have > 0) {
+				if(this->__writeToFile(this->zipBuffer, have) <= 0) {
+					this->setError();
+					return(false);
+				} else {
+					this->size += have;
+				}
+			} else {
+				break;
+			}
+			pos += this->zipBufferLength;
+		}
+		}
+		return(true);
+	case compress_default:
+		return(false);
 	}
+	return(false);
 }
 
 bool FileZipHandler::__writeToFile(char *data, int length) {
@@ -2342,7 +2377,7 @@ bool FileZipHandler::__writeToFile(char *data, int length) {
 }
 
 bool FileZipHandler::initZip() {
-	if(this->enableZip && !this->zipStream) {
+	if(this->typeCompress == zip && !this->zipStream) {
 		this->zipStream =  new z_stream;
 		this->zipStream->zalloc = Z_NULL;
 		this->zipStream->zfree = Z_NULL;
@@ -2355,6 +2390,16 @@ bool FileZipHandler::initZip() {
 			this->zipBufferLength = bufferLength ? bufferLength : DEFAULT_BUFFER_ZIP_LENGTH;
 			this->zipBuffer = new char[this->zipBufferLength];
 		}
+	}
+	return(true);
+}
+
+bool FileZipHandler::initLz4() {
+	if(this->typeCompress == lz4 && !this->lz4Stream) {
+		this->lz4Stream = LZ4_createStream();
+		this->zipBufferLength = bufferLength ? bufferLength : DEFAULT_BUFFER_LZ4_LENGTH;
+		this->zipBufferLengthCompressBound = LZ4_compressBound(this->zipBufferLength);
+		this->zipBuffer = new char[this->zipBufferLengthCompressBound];
 	}
 	return(true);
 }
@@ -2403,13 +2448,13 @@ u_int64_t FileZipHandler::scounter = 0;
 #define NSEC_TCPDUMP_MAGIC	0xa1b23c4d
 
 pcap_dumper_t *__pcap_dump_open(pcap_t *p, const char *fname, int linktype, string *errorString,
-				int _bufflength, int _asyncwrite, int _zip,
+				int _bufflength, int _asyncwrite, FileZipHandler::eTypeCompress _typeCompress,
 				int calltime,
 				PcapDumper::eTypePcapDump type) {
 	if(opt_pcap_dump_bufflength) {
 		FileZipHandler *handler = new FileZipHandler(_bufflength < 0 ? opt_pcap_dump_bufflength : _bufflength, 
 							     _asyncwrite < 0 ? opt_pcap_dump_asyncwrite : _asyncwrite, 
-							     _zip < 0 ? opt_pcap_dump_zip : _zip, 
+							     _typeCompress == FileZipHandler::compress_default ? opt_pcap_dump_zip : _typeCompress, 
 							     true, calltime,
 							     type == PcapDumper::sip ? FileZipHandler::pcap_sip :
 							     type == PcapDumper::rtp ? FileZipHandler::pcap_rtp :
@@ -2583,6 +2628,19 @@ bool isLocalIP(u_int32_t ip) {
 		}
 	}
 	return(false);
+}
+
+char *strlwr(char *string, u_int32_t maxLength) {
+	char *string_pos = string;
+	u_int32_t length = 0;
+	while((!maxLength || length < maxLength) && *string_pos) {
+		if(isupper(*string_pos)) {
+			*string_pos = tolower(*string_pos);
+		}
+		string_pos++;
+		++length;
+	}
+	return(string);
 }
 
 AutoDeleteAtExit GlobalAutoDeleteAtExit;
@@ -2920,7 +2978,7 @@ void BogusDumper::dump(pcap_pkthdr* header, u_char* packet, int dlt, const char 
 	} else {
 		dumper = new PcapDumper(PcapDumper::na, NULL);
 		dumper->setEnableAsyncWrite(false);
-		dumper->setEnableZip(false);
+		dumper->setTypeCompress(FileZipHandler::compress_na);
 		string dumpFileName = path + "/bogus_" + 
 				      find_and_replace(find_and_replace(interfaceName, " ", "").c_str(), "/", "|") + 
 				      "_" + time + ".pcap";

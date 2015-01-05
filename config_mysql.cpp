@@ -457,7 +457,7 @@ config_load_mysql() {
 				break;
 			case 'g':
 				opt_saveGRAPH = 1;
-				opt_gzipGRAPH = 1;
+				opt_gzipGRAPH = FileZipHandler::zip;
 				break;
 			}      
 		}
@@ -578,6 +578,9 @@ config_load_mysql() {
 
 		if(row["packetbuffer_compress"] != "") {
 			opt_pcap_queue_compress = atoi(row["packetbuffer_compress"].c_str());
+		}
+		if(row["packetbuffer_compress_method"] != "") {
+			opt_pcap_queue_compress_method = (pcap_block_store::compress_method)atoi(row["packetbuffer_compress_method"].c_str());
 		}
 
 		if(row["mirror_destination_ip"] != "" and row["mirror_destination_port"] != "") {

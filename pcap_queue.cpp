@@ -15,6 +15,7 @@
 #include <vector>
 
 #include <snappy-c.h>
+#include <lz4.h>
 
 #include "pcap_queue_block.h"
 #include "pcap_queue.h"
@@ -166,6 +167,8 @@ int opt_pcap_queue					= 1;
 	uint64_t opt_pcap_queue_bypass_max_size			= 256 * 1024 * 1024;
 #endif
 bool opt_pcap_queue_compress				= true;
+pcap_block_store::compress_method opt_pcap_queue_compress_method 
+							= pcap_block_store::snappy;
 string opt_pcap_queue_disk_folder;
 ip_port opt_pcap_queue_send_to_ip_port;
 ip_port opt_pcap_queue_receive_from_ip_port;
@@ -397,9 +400,21 @@ int pcap_block_store::addRestoreChunk(u_char *buffer, size_t size, size_t *offse
 }
 
 bool pcap_block_store::compress() {
-	if(this->size_compress) {
+	if(!opt_pcap_queue_compress ||
+	   this->size_compress) {
 		return(true);
 	}
+	switch(opt_pcap_queue_compress_method) {
+	case lz4:
+		return(this->compress_lz4());
+	case snappy:
+	default:
+		return(this->compress_snappy());
+	}
+	return(true);
+}
+
+bool pcap_block_store::compress_snappy() {
 	size_t snappyBuffSize = snappy_max_compressed_length(this->size);
 	u_char *snappyBuff = new u_char[snappyBuffSize];
 	if(!snappyBuff) {
@@ -431,7 +446,45 @@ bool pcap_block_store::compress() {
 	return(false);
 }
 
-bool pcap_block_store::uncompress() {
+bool pcap_block_store::compress_lz4() {
+	size_t lz4BuffSize = LZ4_compressBound(this->size);
+	u_char *lz4Buff = new u_char[lz4BuffSize];
+	if(!lz4Buff) {
+		syslog(LOG_ERR, "packetbuffer: lz4_compress: lz4 buffer allocation failed - PACKETBUFFER BLOCK DROPPED!");
+		return(false);
+	}
+	int lz4_size = LZ4_compress((char*)this->block, (char*)lz4Buff, this->size);
+	if(lz4_size > 0) {
+		delete [] this->block;
+		this->block = new u_char[lz4_size];
+		memcpy_heapsafe(this->block, lz4Buff, lz4_size,
+				__FILE__, __LINE__);
+		delete [] lz4Buff;
+		this->size_compress = lz4_size;
+		sumPacketsSizeCompress[0] += this->size_compress;
+		return(true);
+	} else {
+		syslog(LOG_ERR, "packetbuffer: lz4_compress: error");
+	}
+	delete [] lz4Buff; 
+	return(false);
+}
+
+bool pcap_block_store::uncompress(compress_method method) {
+	if(!this->size_compress) {
+		return(true);
+	}
+	switch(method == compress_method_default ? opt_pcap_queue_compress_method : method) {
+	case lz4:
+		return(this->uncompress_lz4());
+	case snappy:
+	default:
+		return(this->uncompress_snappy());
+	}
+	return(true);
+}
+
+bool pcap_block_store::uncompress_snappy() {
 	if(!this->size_compress) {
 		return(true);
 	}
@@ -445,16 +498,36 @@ bool pcap_block_store::uncompress() {
 			this->size_compress = 0;
 			return(true);
 		case SNAPPY_INVALID_INPUT:
-			syslog(LOG_ERR, "packetbuffer: snappy_compress: invalid input");
+			syslog(LOG_ERR, "packetbuffer: snappy_uncompress: invalid input");
 			break;
 		case SNAPPY_BUFFER_TOO_SMALL:
-			syslog(LOG_ERR, "packetbuffer: snappy_compress: buffer is too small");
+			syslog(LOG_ERR, "packetbuffer: snappy_uncompress: buffer is too small");
 			break;
 		default:
-			syslog(LOG_ERR, "packetbuffer: snappy_compress: unknown error");
+			syslog(LOG_ERR, "packetbuffer: snappy_uncompress: unknown error");
 			break;
 	}
 	delete [] snappyBuff;
+	return(false);
+}
+
+
+
+bool pcap_block_store::uncompress_lz4() {
+	if(!this->size_compress) {
+		return(true);
+	}
+	size_t lz4BuffSize = this->size;
+	u_char *lz4Buff = new u_char[lz4BuffSize];
+	if(LZ4_decompress_fast((char*)this->block, (char*)lz4Buff, this->size) >= 0) {
+		delete [] this->block;
+		this->block = lz4Buff;
+		this->size_compress = 0;
+		return(true);
+	} else {
+		syslog(LOG_ERR, "packetbuffer: lz4_uncompress: error");
+	}
+	delete [] lz4Buff;
 	return(false);
 }
 
@@ -3330,11 +3403,7 @@ void *PcapQueue_readFromFifo::threadFunction(void *arg, unsigned int arg2) {
 				continue;
 			}
 			size_t blockSize = blockStore->size;
-			bool blockStoreOk = true;
-			if(opt_pcap_queue_compress) {
-				blockStoreOk = blockStore->compress();
-			}
-			if(blockStoreOk) {
+			if(blockStore->compress()) {
 				if(this->pcapStoreQueue.push(blockStore, this->blockStoreTrash_size, false)) {
 					sumPacketsSize[0] += blockSize;
 					blockStoreBypassQueue->pop(true, blockSize);
@@ -3369,11 +3438,8 @@ void *PcapQueue_readFromFifo::threadFunction(void *arg, unsigned int arg2) {
 			blockStore->add(header_std, packet, header.offset, header.dlink);
 			if(blockStore->full) {
 				sumPacketsSize[0] += blockStore->size;
-				bool blockStoreOk = true;
-				if(opt_pcap_queue_compress) {
-					blockStoreOk = blockStore->compress();
-				}
-				if(blockStoreOk && this->pcapStoreQueue.push(blockStore, this->blockStoreTrash_size)) {
+				if(blockStore->compress() && 
+				   this->pcapStoreQueue.push(blockStore, this->blockStoreTrash_size)) {
 					++sumBlocksCounterIn[0];
 					blockStore = new pcap_block_store;
 					blockStore->add(&header, packet);

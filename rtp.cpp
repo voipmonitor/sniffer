@@ -34,7 +34,7 @@ extern int verbosity;
 extern int opt_saveRAW;                //save RTP payload RAW data?
 extern int opt_saveWAV;                //save RTP payload RAW data?
 extern int opt_saveGRAPH;	//save GRAPH data?
-extern int opt_gzipGRAPH;	//save gzip GRAPH data?
+extern FileZipHandler::eTypeCompress opt_gzipGRAPH;	//save gzip GRAPH data?
 extern int opt_jitterbuffer_f1;            // turns off/on jitterbuffer simulator to compute MOS score mos_f1
 extern int opt_jitterbuffer_f2;            // turns off/on jitterbuffer simulator to compute MOS score mos_f2
 extern int opt_jitterbuffer_adapt;         // turns off/on jitterbuffer simulator to compute MOS score mos_adapt

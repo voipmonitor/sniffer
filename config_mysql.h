@@ -26,6 +26,7 @@ extern bool opt_ipacc_agregate_only_customers_on_any_side;
 extern bool opt_ipacc_agregate_only_customers_on_main_side;
 extern bool opt_ipacc_sniffer_agregate;
 extern bool opt_pcap_queue_compress;
+extern pcap_block_store::compress_method opt_pcap_queue_compress_method;
 extern Calltable *calltable;
 extern char configfile[1024];
 extern char daemonizeErrorTempFileName[L_tmpnam+1];
@@ -126,9 +127,7 @@ extern int opt_enable_webrtc;
 extern int opt_enable_ssl;
 extern int opt_filesclean;
 extern int opt_fork;
-extern int opt_gzipGRAPH;
-extern int opt_gzipGRAPH;// compress GRAPH data to graph file? 
-extern int opt_gzipGRAPH;//save gzip GRAPH data?
+extern FileZipHandler::eTypeCompress opt_gzipGRAPH;
 extern int opt_id_sensor;
 extern int opt_ipacc_interval;
 extern int opt_ipaccount;

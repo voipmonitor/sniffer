@@ -17,6 +17,7 @@
 #include <unistd.h>
 #include <iostream>
 #include <zlib.h>
+#include <lz4.h>
 #include <pcap.h>
 #include <netdb.h>
 #include <map>
@@ -263,6 +264,7 @@ int base64decode(unsigned char *dst, const char *src, int max);
 void find_and_replace(string &source, const string find, string replace);
 string find_and_replace(const char *source, const char *find, const char *replace);
 bool isLocalIP(u_int32_t ip);
+char *strlwr(char *string, u_int32_t maxLength = 0);
 
 class CircularBuffer
 {
@@ -339,8 +341,14 @@ public:
 		pcap_rtp,
 		graph_rtp
 	};
+	enum eTypeCompress {
+		compress_na,
+		compress_default,
+		zip,
+		lz4
+	};
 public:
-	FileZipHandler(int bufferLength = 0, int enableAsyncWrite = 0, int enableZip = 0,
+	FileZipHandler(int bufferLength = 0, int enableAsyncWrite = 0, eTypeCompress typeCompress = compress_na,
 		       bool dumpHandler = false, int time = 0,
 		       eTypeFile typeFile = na);
 	~FileZipHandler();
@@ -358,6 +366,7 @@ public:
 	bool _writeToFile(char *data, int length, bool flush = false);
 	bool __writeToFile(char *data, int length);
 	bool initZip();
+	bool initLz4();
 	bool _open();
 	void setError(const char *error = NULL);
 	bool okHandle() {
@@ -369,16 +378,18 @@ public:
 	int permission;
 	int fh;
 	z_stream *zipStream;
+	LZ4_stream_t *lz4Stream;
 	string error;
 	int bufferLength;
 	char *buffer;
 	int useBufferLength;
 	int zipBufferLength;
+	int zipBufferLengthCompressBound;
 	char *zipBuffer;
 	//DynamicBuffer *tarBuffer;
 	Bucketbuffer *tarBuffer;
 	bool enableAsyncWrite;
-	bool enableZip;
+	eTypeCompress typeCompress;
 	bool dumpHandler;
 	int time;
 	u_int64_t size;
@@ -410,8 +421,8 @@ public:
 	void setEnableAsyncWrite(int asyncwrite) {
 		_asyncwrite = asyncwrite;
 	}
-	void setEnableZip(int zip) {
-		_zip = zip;
+	void setTypeCompress(FileZipHandler::eTypeCompress typeCompress) {
+		_typeCompress = typeCompress;
 	}
 	bool open(const char *fileName, const char *fileNameSpoolRelative, pcap_t *useHandle, int useDlt);
 	bool open(const char *fileName, int dlt) {
@@ -445,11 +456,11 @@ private:
 	u_long lastTimeSyslog;
 	int _bufflength;
 	int _asyncwrite;
-	int _zip;
+	FileZipHandler::eTypeCompress _typeCompress;
 };
 
 pcap_dumper_t *__pcap_dump_open(pcap_t *p, const char *fname, int linktype, string *errorString = NULL,
-				int _bufflength = -1 , int _asyncwrite = -1, int _zip = -1,
+				int _bufflength = -1 , int _asyncwrite = -1, FileZipHandler::eTypeCompress _typeCompress = FileZipHandler::compress_na,
 				int calltime = 0,
 				PcapDumper::eTypePcapDump type = PcapDumper::na);
 void __pcap_dump(u_char *user, const struct pcap_pkthdr *h, const u_char *sp);

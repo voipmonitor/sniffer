@@ -63,7 +63,7 @@ extern int opt_rtcp;
 extern int opt_saveRAW;                // save RTP payload RAW data?
 extern int opt_saveWAV;                // save RTP payload RAW data?
 extern int opt_saveGRAPH;	// save GRAPH data to graph file? 
-extern int opt_gzipGRAPH;	// compress GRAPH data to graph file? 
+extern FileZipHandler::eTypeCompress opt_gzipGRAPH;	// compress GRAPH data to graph file? 
 extern int opt_audio_format;	// define format for audio writing (if -W option)
 extern int opt_mos_g729;
 extern int opt_nocdr;
@@ -825,7 +825,9 @@ read:
 
 		char graphFilePath_spool_relative[1024];
 		char graphFilePath[1024];
-		snprintf(graphFilePath_spool_relative, 1023, "%s/%s/%s.%d.graph%s", dirname().c_str(), opt_newdir ? "GRAPH" : "", get_fbasename_safe(), ssrc_n, opt_gzipGRAPH ? ".gz" : "");
+		snprintf(graphFilePath_spool_relative, 1023, "%s/%s/%s.%d.graph%s", dirname().c_str(), opt_newdir ? "GRAPH" : "", get_fbasename_safe(), ssrc_n, 
+			 opt_gzipGRAPH == FileZipHandler::zip ? ".gz" :
+			 opt_gzipGRAPH == FileZipHandler::lz4 ? ".lz4" : "");
 		graphFilePath_spool_relative[1023] = 0;
 		if(opt_cachedir[0] != '\0') {
 			snprintf(graphFilePath, 1023, "%s/%s", opt_cachedir, graphFilePath_spool_relative);

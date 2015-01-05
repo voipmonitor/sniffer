@@ -183,7 +183,7 @@ int opt_saveudptl = 0;		// if = 1 all UDPTL packets will be saved (T.38 fax)
 int opt_saveRAW = 0;		// save RTP packets to pcap file?
 int opt_saveWAV = 0;		// save RTP packets to pcap file?
 int opt_saveGRAPH = 0;		// save GRAPH data to *.graph file? 
-int opt_gzipGRAPH = 0;		// compress GRAPH data ? 
+FileZipHandler::eTypeCompress opt_gzipGRAPH = FileZipHandler::compress_na;	// compress GRAPH data ? 
 int opt_saverfc2833 = 0;
 int opt_dbdtmf = 0;
 int opt_rtcp = 1;		// pair RTP+1 port to RTCP and save it. 
@@ -320,7 +320,7 @@ int opt_last_rtp_from_end = 1;
 int opt_pcap_dump_bufflength = 8194;
 int opt_pcap_dump_asyncwrite = 1;
 int opt_pcap_dump_asyncwrite_limit_new_thread = 80;
-int opt_pcap_dump_zip = 1;
+FileZipHandler::eTypeCompress opt_pcap_dump_zip = FileZipHandler::zip;
 int opt_pcap_dump_ziplevel = Z_DEFAULT_COMPRESSION;
 int opt_pcap_dump_writethreads = 1;
 int opt_pcap_dump_writethreads_max = 32;
@@ -353,6 +353,7 @@ extern uint64_t opt_pcap_queue_store_queue_max_memory_size;
 extern uint64_t opt_pcap_queue_store_queue_max_disk_size;
 extern uint64_t opt_pcap_queue_bypass_max_size;
 extern bool opt_pcap_queue_compress;
+extern pcap_block_store::compress_method opt_pcap_queue_compress_method;
 extern string opt_pcap_queue_disk_folder;
 extern ip_port opt_pcap_queue_send_to_ip_port;
 extern ip_port opt_pcap_queue_receive_from_ip_port;
@@ -1614,7 +1615,7 @@ int eval_config(string inistr) {
 			break;
 		case 'g':
 			opt_saveGRAPH = 1;
-//gzip is disabled			opt_gzipGRAPH = 1;
+//gzip is disabled			opt_gzipGRAPH = FileZipHandler::zip;
 			break;
 		}
 	}
@@ -1969,6 +1970,18 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "packetbuffer_compress", NULL))) {
 		opt_pcap_queue_compress = yesno(value);
 	}
+	if((value = ini.GetValue("general", "packetbuffer_compress_method", NULL))) {
+		char _opt_pcap_queue_compress_method[10];
+		strncpy(_opt_pcap_queue_compress_method, value, sizeof(_opt_pcap_queue_compress_method));
+		strlwr(_opt_pcap_queue_compress_method, sizeof(_opt_pcap_queue_compress_method));
+		if(!strcmp(_opt_pcap_queue_compress_method, "snappy")) {
+			opt_pcap_queue_compress_method = pcap_block_store::snappy;
+			opt_pcap_queue_compress = true;
+		} else if(!strcmp(_opt_pcap_queue_compress_method, "lz4")) {
+			opt_pcap_queue_compress_method = pcap_block_store::lz4;
+			opt_pcap_queue_compress = true;
+		}
+	}
 	if((value = ini.GetValue("general", "mirror_destination_ip", NULL)) &&
 	   (value2 = ini.GetValue("general", "mirror_destination_port", NULL))) {
 		opt_pcap_queue_send_to_ip_port.set_ip(value);
@@ -2167,7 +2180,9 @@ int eval_config(string inistr) {
 		opt_pcap_dump_asyncwrite_limit_new_thread = atoi(value);
 	}
 	if((value = ini.GetValue("general", "pcap_dump_zip", NULL))) {
-		opt_pcap_dump_zip = yesno(value);
+		strlwr((char*)value);
+		opt_pcap_dump_zip = !strcmp(value, "lz4") ? FileZipHandler::lz4 :
+				    !strcmp(value, "zip") || yesno(value) ? FileZipHandler::zip : FileZipHandler::compress_na;
 	}
 	if((value = ini.GetValue("general", "pcap_dump_ziplevel", NULL))) {
 		opt_pcap_dump_ziplevel = atoi(value);
@@ -2960,7 +2975,7 @@ int main(int argc, char *argv[]) {
 				opt_norecord_header = 1;
 				break;
 			case '1':
-				opt_gzipGRAPH = 1;
+				opt_gzipGRAPH = FileZipHandler::zip;
 				break;
 			case '2':
 				opt_gzipPCAP = 1;
@@ -3113,7 +3128,7 @@ int main(int argc, char *argv[]) {
 			case 'G':
 				opt_saveGRAPH = 1;
 				if(optarg && optarg[0] == 'g') {
-					opt_gzipGRAPH = 1;
+					opt_gzipGRAPH = FileZipHandler::zip;
 				}
 				break;
 			case 'X':
