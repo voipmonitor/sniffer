@@ -1029,11 +1029,6 @@ bool TcpReassemblyLink::push_crazy(
 void TcpReassemblyLink::pushpacket(TcpReassemblyStream::eDirection direction,
 				   TcpReassemblyStream_packet packet,
 				   bool lockQueue) {
-	/*
-	if(this->processed_ack.find(packet.header_tcp.ack_seq) != this->processed_ack.end()) {
-		return;
-	}
-	*/
 	TcpReassemblyStream *stream;
 	map<uint32_t, TcpReassemblyStream*>::iterator iter;
 	if(lockQueue) {
@@ -1523,9 +1518,6 @@ void TcpReassemblyLink::complete_normal(bool final, bool lockQueue) {
 			for(size_t i = 0; i < countIgnore + countData + countRequest + countResponse; i++) {
 				if(reassembly->enableDestroyStreamsInComplete) {
 					TcpReassemblyStream *stream = this->ok_streams[0];
-					/*
-					this->processed_ack[stream->ack] = true;
-					*/
 					this->ok_streams.erase(this->ok_streams.begin());
 					this->queue.erase(this->queue.begin());
 					this->queue_by_ack.erase(stream->ack);
@@ -1868,16 +1860,20 @@ TcpReassembly::TcpReassembly(eType type) {
 	this->enableDestroyStreamsInComplete = false;
 	this->enableAllCompleteAfterZerodataAck = false;
 	this->enableCleanupThread = false;
+	this->enablePacketThread = false;
 	this->dataCallback = NULL;
 	this->act_time_from_header = 0;
 	this->last_time = 0;
 	this->last_cleanup_call_time_from_header = 0;
 	this->doPrintContent = false;
-	this->threadHandle = 0;
-	this->threadId = 0;
+	this->cleanupThreadHandle = 0;
+	this->packetThreadHandle = 0;
+	this->cleanupThreadId = 0;
+	this->packetThreadId = 0;
 	this->terminated = false;
 	this->ignoreTerminating = false;
-	memset(this->threadPstatData, 0, sizeof(this->threadPstatData));
+	memset(this->cleanupThreadPstatData, 0, sizeof(this->cleanupThreadPstatData));
+	memset(this->packetThreadPstatData, 0, sizeof(this->packetThreadPstatData));
 	this->lastTimeLogErrExceededMaximumAttempts = 0;
 	this->_cleanupCounter = 0;
 	this->linkTimeout = 2 * 60;
@@ -1905,49 +1901,108 @@ TcpReassembly::~TcpReassembly() {
 	}
 }
 
-inline void *_TcpReassembly_threadFunction(void* arg) {
-	return(((TcpReassembly*)arg)->threadFunction(arg));
+inline void *_TcpReassembly_cleanupThreadFunction(void* arg) {
+	return(((TcpReassembly*)arg)->cleanupThreadFunction(arg));
 }
 
-void TcpReassembly::preparePstatData() {
+inline void *_TcpReassembly_packetThreadFunction(void* arg) {
+	return(((TcpReassembly*)arg)->packetThreadFunction(arg));
+}
+
+void TcpReassembly::prepareCleanupPstatData() {
 	if(!this->enableCleanupThread) {
 		return;
 	}
-	if(this->threadPstatData[0].cpu_total_time) {
-		this->threadPstatData[1] = this->threadPstatData[0];
+	if(this->cleanupThreadPstatData[0].cpu_total_time) {
+		this->cleanupThreadPstatData[1] = this->cleanupThreadPstatData[0];
 	}
-	pstat_get_data(this->threadId, this->threadPstatData);
+	pstat_get_data(this->cleanupThreadId, this->cleanupThreadPstatData);
 }
 
-double TcpReassembly::getCpuUsagePerc(bool preparePstatData) {
+double TcpReassembly::getCleanupCpuUsagePerc(bool preparePstatData) {
 	if(!this->enableCleanupThread) {
 		return(-1);
 	}
 	if(preparePstatData) {
-		this->preparePstatData();
+		this->prepareCleanupPstatData();
 	}
 	double ucpu_usage, scpu_usage;
-	if(this->threadPstatData[0].cpu_total_time && this->threadPstatData[1].cpu_total_time) {
+	if(this->cleanupThreadPstatData[0].cpu_total_time && this->cleanupThreadPstatData[1].cpu_total_time) {
 		pstat_calc_cpu_usage_pct(
-			&this->threadPstatData[0], &this->threadPstatData[1],
+			&this->cleanupThreadPstatData[0], &this->cleanupThreadPstatData[1],
 			&ucpu_usage, &scpu_usage);
 		return(ucpu_usage + scpu_usage);
 	}
 	return(-1);
 }
 
-void TcpReassembly::createThread() {
-	if(!this->threadHandle) {
-		pthread_create(&this->threadHandle, NULL, _TcpReassembly_threadFunction, this);
+void TcpReassembly::preparePacketPstatData() {
+	if(!this->enablePacketThread) {
+		return;
+	}
+	if(this->packetThreadPstatData[0].cpu_total_time) {
+		this->packetThreadPstatData[1] = this->packetThreadPstatData[0];
+	}
+	pstat_get_data(this->packetThreadId, this->packetThreadPstatData);
+}
+
+double TcpReassembly::getPacketCpuUsagePerc(bool preparePstatData) {
+	if(!this->enablePacketThread) {
+		return(-1);
+	}
+	if(preparePstatData) {
+		this->preparePacketPstatData();
+	}
+	double ucpu_usage, scpu_usage;
+	if(this->packetThreadPstatData[0].cpu_total_time && this->packetThreadPstatData[1].cpu_total_time) {
+		pstat_calc_cpu_usage_pct(
+			&this->packetThreadPstatData[0], &this->packetThreadPstatData[1],
+			&ucpu_usage, &scpu_usage);
+		return(ucpu_usage + scpu_usage);
+	}
+	return(-1);
+}
+
+string TcpReassembly::getCpuUsagePerc() {
+	ostringstream outStr;
+	double tPacketCpu = -1;
+	double tCleanupCpu = -1;
+	if(this->enablePacketThread) {
+		tPacketCpu = this->getPacketCpuUsagePerc(true);
+		if(tPacketCpu >= 0) {
+			outStr << setprecision(1) << tPacketCpu;
+		}
+	}
+	if(this->enableCleanupThread) {
+		tCleanupCpu = this->getCleanupCpuUsagePerc(true);
+		if(tCleanupCpu >= 0) {
+			if(tPacketCpu >= 0) {
+				outStr << '|';
+			}
+			outStr << setprecision(1) << tCleanupCpu;
+		}
+	}
+	return(outStr.str());
+}
+
+void TcpReassembly::createCleanupThread() {
+	if(!this->cleanupThreadHandle) {
+		pthread_create(&this->cleanupThreadHandle, NULL, _TcpReassembly_cleanupThreadFunction, this);
 	}
 }
 
-void* TcpReassembly::threadFunction(void* ) {
+void TcpReassembly::createPacketThread() {
+	if(!this->packetThreadHandle) {
+		pthread_create(&this->packetThreadHandle, NULL, _TcpReassembly_packetThreadFunction, this);
+	}
+}
+
+void* TcpReassembly::cleanupThreadFunction(void*) {
 	if(verbosity) {
 		ostringstream outStr;
-		this->threadId = get_unix_tid();
-		outStr << "start thread t" << getTypeString()
-		       << " - pid: " << this->threadId << endl;
+		this->cleanupThreadId = get_unix_tid();
+		outStr << "start cleanup thread t" << getTypeString()
+		       << " - pid: " << this->cleanupThreadId << endl;
 		syslog(LOG_NOTICE, outStr.str().c_str());
 	}
 	while(!terminating || this->ignoreTerminating) {
@@ -1956,6 +2011,28 @@ void* TcpReassembly::threadFunction(void* ) {
 		}
 		if(!terminating || this->ignoreTerminating) {
 			this->cleanup();
+		}
+	}
+	return(NULL);
+}
+
+void* TcpReassembly::packetThreadFunction(void*) {
+	if(verbosity) {
+		ostringstream outStr;
+		this->packetThreadId = get_unix_tid();
+		outStr << "start packet thread t" << getTypeString()
+		       << " - pid: " << this->packetThreadId << endl;
+		syslog(LOG_NOTICE, outStr.str().c_str());
+	}
+	sPacket packet;
+	while(!terminating || this->ignoreTerminating) {
+		if(packetQueue.pop(&packet)) {
+			packet.block_store->unlock_packet(packet.block_store_index);
+			this->_push(&packet.header, packet.header_ip, packet.packet,
+				    packet.block_store, packet.block_store_index,
+				    packet.handle, packet.dlt, packet.sensor_id);
+		} else {
+			usleep(1000);
 		}
 	}
 	return(NULL);
@@ -1982,6 +2059,28 @@ void TcpReassembly::push(pcap_pkthdr *header, iphdr2 *header_ip, u_char *packet,
 	     this->check_ip(htonl(header_ip->saddr)) || this->check_ip(htonl(header_ip->daddr)))) {
 		return;
 	}
+	if(this->enablePacketThread) {
+		block_store->lock_packet(block_store_index);
+		sPacket _packet;
+		_packet.header = *header;
+		_packet.header_ip = header_ip;
+		_packet.packet = packet;
+		_packet.block_store = block_store;
+		_packet.block_store_index = block_store_index;
+		_packet.handle = handle;
+		_packet.dlt = dlt;
+		_packet.sensor_id = sensor_id;
+		this->packetQueue.push(_packet);
+	} else {
+		this->_push(header, header_ip, packet,
+			    block_store, block_store_index,
+			    handle, dlt, sensor_id);
+	}
+}
+ 
+void TcpReassembly::_push(pcap_pkthdr *header, iphdr2 *header_ip, u_char *packet,
+			  pcap_block_store *block_store, int block_store_index,
+			  pcap_t *handle, int dlt, int sensor_id) {
 
 	tcphdr2 *header_tcp_pointer;
 	tcphdr2 header_tcp;
@@ -2020,14 +2119,18 @@ void TcpReassembly::push(pcap_pkthdr *header, iphdr2 *header_ip, u_char *packet,
 	TcpReassemblyLink_id idr(header_ip->daddr, header_ip->saddr, header_tcp.dest, header_tcp.source);
 	bool findLink = false;
 	int passFindLink;
-	int maxPassFindLink = 5;
+	int maxPassFindLink = this->enableCleanupThread ? 5 : 1;
 	// maxPassFindLink - prevent by infinite loop
 	for(passFindLink = 0; passFindLink < maxPassFindLink; passFindLink++) {
-		this->lock_links();
+		if(this->enableCleanupThread) {
+			this->lock_links();
+		}
 		iter = this->links.find(id);
 		if(iter != this->links.end()) {
 			if(iter->second->_sync_queue == 0) {
-				iter->second->lock_queue();
+				if(this->enableCleanupThread) {
+					iter->second->lock_queue();
+				}
 				findLink = true;
 				break;
 			}
@@ -2035,7 +2138,9 @@ void TcpReassembly::push(pcap_pkthdr *header, iphdr2 *header_ip, u_char *packet,
 			iter = this->links.find(idr);
 			if(iter != this->links.end()) {
 				if(iter->second->_sync_queue == 0) {
-					iter->second->lock_queue();
+					if(this->enableCleanupThread) {
+						iter->second->lock_queue();
+					}
 					direction = TcpReassemblyStream::DIRECTION_TO_SOURCE;
 					findLink = true;
 					break;
@@ -2081,7 +2186,9 @@ void TcpReassembly::push(pcap_pkthdr *header, iphdr2 *header_ip, u_char *packet,
 				link = new TcpReassemblyLink(this, header_ip->saddr, header_ip->daddr, header_tcp.source, header_tcp.dest,
 							     packet, header_ip,
 							     handle, dlt, sensor_id);
-				link->lock_queue();
+				if(this->enableCleanupThread) {
+					link->lock_queue();
+				}
 				this->links[id] = link;
 			}
 		} else if(!this->enableCrazySequence && this->enableWildLink) {
@@ -2098,7 +2205,9 @@ void TcpReassembly::push(pcap_pkthdr *header, iphdr2 *header_ip, u_char *packet,
 			link = new TcpReassemblyLink(this, header_ip->saddr, header_ip->daddr, header_tcp.source, header_tcp.dest,
 						     packet, header_ip,
 						     handle, dlt, sensor_id);
-			link->lock_queue();
+			if(this->enableCleanupThread) {
+				link->lock_queue();
+			}
 			this->links[id] = link;
 			link->state = TcpReassemblyLink::STATE_SYN_FORCE_OK;
 			link->forceOk = true;
@@ -2119,7 +2228,9 @@ void TcpReassembly::push(pcap_pkthdr *header, iphdr2 *header_ip, u_char *packet,
 			link = new TcpReassemblyLink(this, header_ip->saddr, header_ip->daddr, header_tcp.source, header_tcp.dest,
 						     packet, header_ip,
 						     handle, dlt, sensor_id);
-			link->lock_queue();
+			if(this->enableCleanupThread) {
+				link->lock_queue();
+			}
 			this->links[id] = link;
 			if(this->enableCrazySequence) {
 				link->state = TcpReassemblyLink::STATE_CRAZY;
@@ -2134,9 +2245,13 @@ void TcpReassembly::push(pcap_pkthdr *header, iphdr2 *header_ip, u_char *packet,
 			   data, datalen, datacaplen,
 			   block_store, block_store_index,
 			   false);
-		link->unlock_queue();
+		if(this->enableCleanupThread) {
+			link->unlock_queue();
+		}
 	}
-	this->unlock_links();
+	if(this->enableCleanupThread) {
+		this->unlock_links();
+	}
 
 	if(ENABLE_DEBUG(type, _debug_packet)) {
 		string _data;

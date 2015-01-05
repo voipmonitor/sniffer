@@ -383,16 +383,8 @@ protected:
 	inline void push(pcap_pkthdr* header,u_char* packet, u_int offset, uint16_t *md5, int index = 0, uint32_t counter = 0);
 	inline hpi pop(int index = 0, bool moveReadit = true, bool deferDestroy = false);
         inline void moveReadit(int index = 0, bool deferDestroy = false);
-	inline hpi POP(bool moveReadit = true, bool deferDestroy = false) {
-		return(this->dedupThread ? this->dedupThread->pop(0, moveReadit, deferDestroy) : this->pop(0, moveReadit, deferDestroy));
-	}
-	inline void moveREADIT(bool deferDestroy = false) {
-		if(this->dedupThread) {
-			this->dedupThread->moveReadit(0, deferDestroy);
-		} else {
-			this->moveReadit(0, deferDestroy);
-		}
-	}
+	inline hpi POP(bool moveReadit = true, bool deferDestroy = false);
+	inline void moveREADIT(bool deferDestroy = false);
 	u_int64_t getTime_usec(int index = 0) {
 		if(this->qring[index][this->readit[index] % this->qringmax].used <= 0) {
 			return(0);

@@ -1387,9 +1387,10 @@ void FraudAlerts::initPopCallInfoThread() {
 
 void FraudAlerts::popCallInfoThread() {
 	runPopCallInfoThread = true;
+	sFraudCallInfo callInfo;
+	sFraudEventInfo eventInfo;
 	while(!terminating && !terminatingPopCallInfoThread) {
 		bool okPop = false;
-		sFraudCallInfo callInfo;
 		if(callQueue.pop(&callInfo)) {
 			lock_alerts();
 			vector<FraudAlert*>::iterator iter;
@@ -1400,7 +1401,6 @@ void FraudAlerts::popCallInfoThread() {
 			unlock_alerts();
 			okPop = true;
 		}
-		sFraudEventInfo eventInfo;
 		if(eventQueue.pop(&eventInfo)) {
 			lock_alerts();
 			vector<FraudAlert*>::iterator iter;

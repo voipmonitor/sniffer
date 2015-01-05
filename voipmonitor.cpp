@@ -4011,6 +4011,9 @@ int main(int argc, char *argv[]) {
 			tcpReassemblyWebrtc = new TcpReassembly(TcpReassembly::webrtc);
 			tcpReassemblyWebrtc->setEnableIgnorePairReqResp();
 			tcpReassemblyWebrtc->setEnableWildLink();
+			tcpReassemblyWebrtc->setEnableDestroyStreamsInComplete();
+			tcpReassemblyWebrtc->setEnableAllCompleteAfterZerodataAck();
+			tcpReassemblyWebrtc->setEnablePacketThread();
 			webrtcData = new WebrtcData;
 			tcpReassemblyWebrtc->setDataCallback(webrtcData);
 		}

@@ -233,6 +233,9 @@ long long GetTotalDiskSpace(const char* absoluteFilePath);
 string GetStringMD5(std::string str);
 string GetFileMD5(std::string filename);
 string GetDataMD5(u_char *data, u_int32_t datalen);
+string GetDataMD5(u_char *data, u_int32_t datalen,
+		  u_char *data2, u_int32_t data2len,
+		  u_char *data3 = NULL, u_int32_t data3len = 0);
 string GetStringSHA256(std::string str);
 bool DirExists(char *strFilename);
 bool FileExists(char *strFilename);

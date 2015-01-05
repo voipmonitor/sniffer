@@ -124,7 +124,9 @@ void WebrtcData::processData(u_int32_t ip_src, u_int32_t ip_dst,
 		   (webrtcDD.type == "req" || webrtcDD.type == "rsp") &&
 		   ((webrtcDD.method == "login" && !webrtcDD.deviceId.empty()) || 
 		    (webrtcDD.method == "msg" && !webrtcDD.commCorrelationId.empty()))) {
-			string data_md5 = GetDataMD5(webrtcDD.data, webrtcDD.payload_length);
+			uint32_t ip_ports[4] = { ip_src, ip_dst, port_src, port_dst };
+			string data_md5 = GetDataMD5(webrtcDD.data, webrtcDD.payload_length,
+						     (u_char*)ip_ports, sizeof(ip_ports));
 			u_int32_t _ip_src = dataItem->getDirection() == TcpReassemblyDataItem::DIRECTION_TO_DEST ? ip_src : ip_dst;
 			u_int32_t _ip_dst = dataItem->getDirection() == TcpReassemblyDataItem::DIRECTION_TO_DEST ? ip_dst : ip_src;
 			u_int16_t _port_src = dataItem->getDirection() == TcpReassemblyDataItem::DIRECTION_TO_DEST ? port_src : port_dst;

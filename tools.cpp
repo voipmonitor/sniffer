@@ -795,6 +795,23 @@ string GetDataMD5(u_char *data, u_int32_t datalen) {
 	return(MD5_String(_md5));
 }
 
+string GetDataMD5(u_char *data, u_int32_t datalen,
+		  u_char *data2, u_int32_t data2len,
+		  u_char *data3, u_int32_t data3len) {
+	MD5_CTX ctx;
+	MD5_Init(&ctx);
+	MD5_Update(&ctx, data, datalen);
+	if(data2 && data2len) {
+		MD5_Update(&ctx, data2, data2len);
+	}
+	if(data3 && data3len) {
+		MD5_Update(&ctx, data3, data3len);
+	}
+	unsigned char _md5[MD5_DIGEST_LENGTH];
+	MD5_Final(_md5, &ctx);
+	return(MD5_String(_md5));
+}
+
 string GetStringSHA256(std::string str) {
 	unsigned char hash[SHA256_DIGEST_LENGTH];
 	SHA256_CTX sha256;

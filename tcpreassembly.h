@@ -726,7 +726,6 @@ private:
 	map<uint32_t, TcpReassemblyStream*> queue_flags_by_ack;
 	map<uint32_t, TcpReassemblyStream*> queue_nul_by_ack;
 	deque<TcpReassemblyStream*> queue;
-	//map<uint32_t, bool> processed_ack;
 	volatile int _sync_queue;
 	//u_int64_t created_at;
 	//u_int64_t last_packet_at;
@@ -758,6 +757,16 @@ public:
 		webrtc,
 		ssl
 	};
+	struct sPacket {
+		pcap_pkthdr header; 
+		iphdr2 *header_ip; 
+		u_char *packet;
+		pcap_block_store *block_store; 
+		int block_store_index;
+		pcap_t *handle; 
+		int dlt; 
+		int sensor_id;
+	};
 public:
 	TcpReassembly(eType type);
 	~TcpReassembly();
@@ -786,7 +795,11 @@ public:
 	}
 	void setEnableCleanupThread(bool enableCleanupThread = true) {
 		this->enableCleanupThread = enableCleanupThread;
-		this->createThread();
+		this->createCleanupThread();
+	}
+	void setEnablePacketThread(bool enablePacketThread = true) {
+		this->enablePacketThread = enablePacketThread;
+		this->createPacketThread();
 	}
 	void setDataCallback(TcpReassemblyProcessData *dataCallback) {
 		this->dataCallback = dataCallback;
@@ -804,8 +817,11 @@ public:
 	bool isActiveLog() {
 		return(this->log != NULL);
 	}
-	void preparePstatData();
-	double getCpuUsagePerc(bool preparePstatData = false);
+	void prepareCleanupPstatData();
+	double getCleanupCpuUsagePerc(bool preparePstatData = false);
+	void preparePacketPstatData();
+	double getPacketCpuUsagePerc(bool preparePstatData = false);
+	string getCpuUsagePerc();
 	bool check_ip(u_int32_t ip, u_int16_t port = 0) {
 		if(type == http || type == webrtc) {
 			extern vector<u_int32_t> httpip;
@@ -866,8 +882,13 @@ public:
 		this->linkTimeout = linkTimeout;
 	}
 private:
-	void createThread();
-	void *threadFunction(void *);
+	void _push(pcap_pkthdr *header, iphdr2 *header_ip, u_char *packet,
+		   pcap_block_store *block_store, int block_store_index,
+		   pcap_t *handle, int dlt, int sensor_id);
+	void createCleanupThread();
+	void createPacketThread();
+	void *cleanupThreadFunction(void *);
+	void *packetThreadFunction(void *);
 	void lock_links() {
 		while(__sync_lock_test_and_set(&this->_sync_links, 1));
 	}
@@ -885,22 +906,28 @@ private:
 	bool enableDestroyStreamsInComplete;
 	bool enableAllCompleteAfterZerodataAck;
 	bool enableCleanupThread;
+	bool enablePacketThread;
 	TcpReassemblyProcessData *dataCallback;
 	u_int64_t act_time_from_header;
 	u_int64_t last_time;
 	u_int64_t last_cleanup_call_time_from_header;
 	bool doPrintContent;
-	pthread_t threadHandle;
-	int threadId;
+	pthread_t cleanupThreadHandle;
+	pthread_t packetThreadHandle;
+	int cleanupThreadId;
+	int packetThreadId;
 	bool terminated;
 	bool ignoreTerminating;
 	FILE *log;
-	pstat_data threadPstatData[2];
+	pstat_data cleanupThreadPstatData[2];
+	pstat_data packetThreadPstatData[2];
 	u_long lastTimeLogErrExceededMaximumAttempts;
 	u_long _cleanupCounter;
 	u_int32_t linkTimeout;
+	SafeAsyncQueue<sPacket> packetQueue;
 friend class TcpReassemblyLink;
-friend void *_TcpReassembly_threadFunction(void* arg);
+friend void *_TcpReassembly_cleanupThreadFunction(void* arg);
+friend void *_TcpReassembly_packetThreadFunction(void* arg);
 };
 
 #endif

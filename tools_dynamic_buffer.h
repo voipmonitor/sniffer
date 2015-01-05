@@ -73,7 +73,7 @@ public:
 		this->min_item_buffer_length = 0;
 		this->max_item_buffer_length = 0;
 	}
-	~DynamicBuffer() {
+	virtual ~DynamicBuffer() {
 		this->free();
 	}
 	void add(u_char *buffer, u_int32_t length) {

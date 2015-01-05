@@ -1295,21 +1295,21 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 		outStrStat << "%] ";
 	}
 	if(tcpReassemblyHttp) {
-		double thttp_cpu = tcpReassemblyHttp->getCpuUsagePerc(true);
-		if(thttp_cpu >= 0) {
-			outStrStat << "thttpCPU[" << setprecision(1) << thttp_cpu << "%] ";
+		string cpuUsagePerc = tcpReassemblyHttp->getCpuUsagePerc();
+		if(!cpuUsagePerc.empty()) {
+			outStrStat << "thttpCPU[" << cpuUsagePerc << "%] ";
 		}
 	}
 	if(tcpReassemblyWebrtc) {
-		double twebrtc_cpu = tcpReassemblyWebrtc->getCpuUsagePerc(true);
-		if(twebrtc_cpu >= 0) {
-			outStrStat << "twebrtcCPU[" << setprecision(1) << twebrtc_cpu << "%] ";
+		string cpuUsagePerc = tcpReassemblyWebrtc->getCpuUsagePerc();
+		if(!cpuUsagePerc.empty()) {
+			outStrStat << "twebrtcCPU[" << cpuUsagePerc << "%] ";
 		}
 	}
 	if(tcpReassemblySsl) {
-		double tssl_cpu = tcpReassemblySsl->getCpuUsagePerc(true);
-		if(tssl_cpu >= 0) {
-			outStrStat << "tsslCPU[" << setprecision(1) << tssl_cpu << "%] ";
+		string cpuUsagePerc = tcpReassemblySsl->getCpuUsagePerc();
+		if(!cpuUsagePerc.empty()) {
+			outStrStat << "tsslCPU[" << cpuUsagePerc << "%] ";
 		}
 	}
 	extern AsyncClose *asyncClose;
@@ -2340,6 +2340,19 @@ inline void PcapQueue_readFromInterfaceThread::moveReadit(int index, bool deferD
 		this->readit[index] = 0;
 	} else {
 		this->readit[index]++;
+	}
+}
+
+
+inline PcapQueue_readFromInterfaceThread::hpi PcapQueue_readFromInterfaceThread::POP(bool moveReadit, bool deferDestroy) {
+	return(this->dedupThread ? this->dedupThread->pop(0, moveReadit, deferDestroy) : this->pop(0, moveReadit, deferDestroy));
+}
+
+inline void PcapQueue_readFromInterfaceThread::moveREADIT(bool deferDestroy) {
+	if(this->dedupThread) {
+		this->dedupThread->moveReadit(0, deferDestroy);
+	} else {
+		this->moveReadit(0, deferDestroy);
 	}
 }
 

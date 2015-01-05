@@ -64,8 +64,8 @@ void *pcap_read_thread_func(void *arg);
 
 void readdump_libnids(pcap_t *handle);
 void readdump_libpcap(pcap_t *handle);
-inline void save_packet(Call *call, struct pcap_pkthdr *header, const u_char *packet, unsigned int saddr, int source, unsigned int daddr, int dest, int istcp, iphdr2 *header_ip, char *data, int datalen, int dataoffset, int type, 
-			int forceSip, int dlt, int sensor_id);
+void save_packet(Call *call, struct pcap_pkthdr *header, const u_char *packet, unsigned int saddr, int source, unsigned int daddr, int dest, int istcp, iphdr2 *header_ip, char *data, int datalen, int dataoffset, int type, 
+		 int forceSip, int dlt, int sensor_id);
 
 
 typedef std::map<in_addr_t, in_addr_t> nat_aliases_t; //!< 
