@@ -1685,6 +1685,9 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "mysql_timezone", NULL))) {
 		strncpy(opt_mysql_timezone, value, sizeof(opt_mysql_timezone));
 	}
+	if((value = ini.GetValue("general", "timezone", NULL))) {
+		setenv("TZ", value, 1);
+	}
 	if((value = ini.GetValue("general", "myqslhost", NULL))) {
 		printf("You have old version of config file! there were typo in myqslhost instead of mysqlhost! Fix your config! exiting...\n");
 		syslog(LOG_ERR, "You have old version of config file! there were typo in myqslhost instead of mysqlhost! Fix your config! exiting...\n");
