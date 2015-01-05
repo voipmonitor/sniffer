@@ -83,15 +83,17 @@ public:
 	}
 	TAR;
 	TAR tar;
+	int year, mon, day, hour, minute;
 
 	struct data_t {
 		char *buffer;
 		size_t len;
 		string filename;
-		int year, mon, day;
+		int year, mon, day, hour, minute;
 	};
 
 	unsigned int created_at;
+	int thread_id;
 	
 
 	Tar() {    
@@ -142,6 +144,7 @@ public:
 	ssize_t writeLzma(const void *buf, size_t len);
 #endif
 
+	void addtofilesqueue();
 
 private:
 	z_stream *zipStream;
@@ -169,12 +172,12 @@ private:
 
 class TarQueue {
 public:		 
-	TarQueue() {    
-		pthread_mutex_init(&mutexlock, NULL);
-		pthread_mutex_init(&flushlock, NULL);
-		pthread_mutex_init(&tarslock, NULL);
-		last_flushTars = 0;
-	};
+
+	#define TARQMAXTHREADS 32
+        int maxthreads;
+
+
+	TarQueue();
 	~TarQueue();
 	void lock() {pthread_mutex_lock(&mutexlock);};
 	void unlock() {pthread_mutex_unlock(&mutexlock);};
@@ -183,9 +186,29 @@ public:
 		Bucketbuffer *buffer;
 		size_t len;
 		string filename;
-		int year, mon, day;
+		int year, mon, day, hour, minute;
+		Tar *tar;
+		time_t time;
 	};
 	
+	struct tarthreads_t {
+		std::queue<data_t> queue;
+		size_t len;
+		pthread_mutex_t queuelock;
+		pthread_t thread;
+		int threadId;
+		pstat_data threadPstatData[2];
+		volatile int cpuPeak;
+	};
+
+	struct tarthreadworker_arg {
+		int i;
+		TarQueue *tq;
+	};
+
+	bool terminate;
+
+	tarthreads_t tarthreads[TARQMAXTHREADS];
 	
 	void add(string filename, unsigned int time, Bucketbuffer *buffer);
 	void flushQueue();
@@ -193,6 +216,9 @@ public:
 	int queuelen();
 	unsigned int last_flushTars;
 	void cleanTars();
+	static void *tarthreadworker(void*);
+	void preparePstatData(int threadIndex);
+	double getCpuUsagePerc(int threadIndex, bool preparePstatData);
 
 
 private:

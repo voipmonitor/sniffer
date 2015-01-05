@@ -41,6 +41,7 @@
 #include "tar.h"
 #include "tools.h"
 #include "config.h"
+#include "cleanspool.h"
 
 
 using namespace std;
@@ -60,10 +61,16 @@ extern int opt_pcap_dump_tar_lzma_rtp_level;
 extern int opt_pcap_dump_tar_compress_graph;
 extern int opt_pcap_dump_tar_gzip_graph_level;
 extern int opt_pcap_dump_tar_lzma_graph_level;
+extern int opt_pcap_dump_tar_threads;
+
+extern int opt_filesclean;
+extern int opt_nocdr;
+
+extern MySqlStore *sqlStore;
 
 
 extern int terminating; 
-extern TarQueue tarQueue;
+extern TarQueue *tarQueue;
 extern volatile unsigned int glob_last_packet_time;
 
 /* magic, version, and checksum */
@@ -276,7 +283,7 @@ int
 Tar::tar_append_buffer(Bucketbuffer *buffer, size_t size)
 {
 //	char block[T_BLOCKSIZE];
-	int copied = 0;
+	unsigned long int copied = 0;
 	for(list<char*>::iterator it = buffer->listbuffer.begin(); it != buffer->listbuffer.end(); it++) {
 /*
 		if((size - copied) < T_BLOCKSIZE) {
@@ -309,7 +316,6 @@ Tar::tar_append_buffer(Bucketbuffer *buffer, size_t size)
 		}
 */
 	}
-	printf("copied %u size %u\n", copied, size);
 	
 /*  
 	for (i = size; i > T_BLOCKSIZE; i -= T_BLOCKSIZE) {
@@ -513,6 +519,72 @@ Tar::tar_block_write(const char *buf){
 	return(T_BLOCKSIZE);
 };
 
+void Tar::addtofilesqueue() {
+
+	string column;
+	switch(tar.qtype) {
+	case 1:
+		column = "sipsize";
+		break;
+	case 2:
+		column = "rtpsize";
+		break;
+	case 3:
+		column = "graphsize";
+		break;
+	default:
+		column = "rtpsize";
+	}
+
+	if(!opt_filesclean or opt_nocdr or !isSqlDriver("mysql") or !isSetCleanspoolParameters()) return;
+
+	long long size = 0;
+	size = GetFileSizeDU(pathname.c_str());
+
+	if(size == (long long)-1) {
+		//error or file does not exists
+		char buf[4092];
+		buf[0] = '\0';
+		strerror_r(errno, buf, 4092);
+		syslog(LOG_ERR, "addtofilesqueue ERROR file[%s] - error[%d][%s]", pathname.c_str(), errno, buf);
+		return;
+	}
+
+	if(size == 0) {
+		// if the file has 0 size we still need to add it to cleaning procedure
+		size = 1;
+	}
+
+	ostringstream query;
+
+	extern int opt_id_sensor_cleanspool;
+	int id_sensor = opt_id_sensor_cleanspool == -1 ? 0 : opt_id_sensor_cleanspool;
+
+
+/* returns name of the directory in format YYYY-MM-DD */
+        char sdirname[12];
+        snprintf(sdirname, 11, "%04d%02d%02d%02d",  year, mon, day, hour);
+        sdirname[11] = 0;
+        string dirnamesqlfiles(sdirname);
+
+	query << "INSERT INTO files SET files.datehour = " << dirnamesqlfiles << ", id_sensor = " << id_sensor << ", "
+		<< column << " = " << size << " ON DUPLICATE KEY UPDATE " << column << " = " << column << " + " << size;
+
+	sqlStore->lock(STORE_PROC_ID_CLEANSPOOL);
+	sqlStore->query(query.str().c_str(), STORE_PROC_ID_CLEANSPOOL);
+
+	ostringstream fname;
+	fname << "filesindex/" << column << "/" << dirnamesqlfiles;
+	ofstream myfile(fname.str().c_str(), ios::app | ios::out);
+	if(!myfile.is_open()) {
+		syslog(LOG_ERR,"error write to [%s]", fname.str().c_str());
+	}
+	myfile << pathname << ":" << size << "\n";
+	myfile.close();    
+
+	sqlStore->unlock(STORE_PROC_ID_CLEANSPOOL);
+}
+
 Tar::~Tar() {
 	char zeroblock[T_BLOCKSIZE];
 	memset(zeroblock, 0, T_BLOCKSIZE);
@@ -534,7 +606,8 @@ Tar::~Tar() {
 	if(this->zipBuffer) {
 		delete [] this->zipBuffer;
 	}
-	if(sverb.tar) syslog(LOG_NOTICE, "tar %s deatroyd (destructor)\n", pathname.c_str());
+	addtofilesqueue();
+	if(sverb.tar) syslog(LOG_NOTICE, "tar %s destroyd (destructor)\n", pathname.c_str());
 
 }
 
@@ -554,6 +627,8 @@ TarQueue::add(string filename, unsigned int time, Bucketbuffer *buffer){
 	data.year = year;
 	data.mon = mon;
 	data.day = day;
+	data.hour = hour;
+	data.minute = minute;
 	if(type[0] == 'S') {
 		queue[1][time - time % TAR_MODULO_SECONDS].push_back(data);
 	} else if(type[0] == 'R') {
@@ -574,6 +649,15 @@ qtype2str(int qtype) {
 	else return "all";
 }
 
+string
+qtype2strC(int qtype) {
+	if(qtype == 1) return "SIP";
+	else if(qtype == 2) return "RTP";
+	else if(qtype == 3) return "GRAPH";
+	else return "ALL";
+}
+
+
 void decreaseTartimemap(unsigned int created_at){
 	// decrease tartimemap
 	pthread_mutex_lock(&tartimemaplock);
@@ -590,9 +674,9 @@ void decreaseTartimemap(unsigned int created_at){
 
 int			    
 TarQueue::write(int qtype, unsigned int time, data_t data) {
-	__sync_sub_and_fetch(&glob_tar_queued_files, 1);
 	stringstream tar_dir, tar_name;
-	tar_dir << opt_chdir << "/" << data.year << "-" << data.mon << "-" << data.day;
+	tar_dir << opt_chdir << "/" << setfill('0') << setw(4) << data.year << setw(1) << "-" << setw(2) << data.mon << setw(1) << "-" << setw(2) << data.day << setw(1) << "/" << setw(2) << data.hour << setw(1) << "/" << setw(2) << data.minute << setw(1) << "/" << setw(0) << qtype2strC(qtype);
+	
 	tar_name << tar_dir.str() << "/" << qtype2str(qtype) << "_" << time << ".tar";
 	switch(qtype) {
 	case 1:
@@ -629,45 +713,99 @@ TarQueue::write(int qtype, unsigned int time, data_t data) {
 	mkdir_r(tar_dir.str(), 0777);
 	//printf("tar_name %s\n", tar_name.str().c_str());
        
+	pthread_mutex_lock(&tarslock);
 	Tar *tar = tars[tar_name.str()];
 	if(!tar) {
 		tar = new Tar;
 		if(sverb.tar) syslog(LOG_NOTICE, "new tar %s\n", tar_name.str().c_str());
-		pthread_mutex_lock(&tarslock);
 		tars[tar_name.str()] = tar;
 		pthread_mutex_unlock(&tarslock);
 		tar->tar_open(tar_name.str(), O_WRONLY | O_CREAT | O_APPEND, 0777, TAR_GNU);
 		tar->tar.qtype = qtype;
 		tar->created_at = time;
+		tar->year = data.year;
+		tar->mon = data.mon;
+		tar->day = data.day;
+		tar->hour = data.hour;
+		tar->minute = data.minute;
+
+		// allocate it to thread with the lowest total byte len 
+		unsigned long int min = 0 - 1;
+		int winner = 0;
+		for(int i = maxthreads - 1; i >= 0; i--) {
+			if(min >= tarthreads[i].len) {
+				min = tarthreads[i].len;
+				winner = i;
+			}
+		}
+		tar->thread_id = winner;
+	} else {
 		pthread_mutex_unlock(&tarslock);
 	}
-       
-	//reset and set header
-	memset(&(tar->tar.th_buf), 0, sizeof(struct Tar::tar_header));
-	tar->th_set_type(0); //s->st_mode, 0 is regular file
-	tar->th_set_user(0); //st_uid
-	tar->th_set_group(0); //st_gid
-	tar->th_set_mode(0); //s->st_mode
-	tar->th_set_mtime(time);
-	tar->th_set_size(data.len);
-	tar->th_set_path((char*)data.filename.c_str());
-       
-	/* write header */
-	if (tar->th_write() != 0) {
-		return -1;
-	}
-
-	/* if it's a regular file, write the contents as well */
-	if(tar->tar_append_buffer(data.buffer, data.len) != 0) {
-		delete data.buffer;
-		// decrease tartimemap
-		decreaseTartimemap(tar->created_at);
-		return -1;
-	}
-	delete data.buffer;
-	decreaseTartimemap(tar->created_at);
-
+     
+	data.tar = tar;
+	data.time = time;
+	pthread_mutex_lock(&tarthreads[tar->thread_id].queuelock);
+//	printf("push id:%u\n", tar->thread_id);
+	tarthreads[tar->thread_id].queue.push(data);
+	__sync_add_and_fetch(&tarthreads[tar->thread_id].len, data.len);
+	pthread_mutex_unlock(&tarthreads[tar->thread_id].queuelock);
 	return 0;
+}
+
+void *TarQueue::tarthreadworker(void *arg) {
+
+	
+	TarQueue *this2 = ((tarthreadworker_arg*)arg)->tq;
+	int i = ((tarthreadworker_arg*)arg)->i;
+	delete (tarthreadworker_arg*)arg;
+
+	this2->tarthreads[i].threadId = get_unix_tid();
+
+	while(1) {
+		while(1) {
+			pthread_mutex_lock(&this2->tarthreads[i].queuelock);
+			if(this2->tarthreads[i].queue.empty()) { 
+				pthread_mutex_unlock(&this2->tarthreads[i].queuelock);
+				if(this2->terminate) {
+					return NULL;
+				} else {
+					break;
+				}
+			};
+			data_t data = this2->tarthreads[i].queue.front();
+			this2->tarthreads[i].queue.pop();
+			pthread_mutex_unlock(&this2->tarthreads[i].queuelock);
+			
+			Tar *tar = data.tar;
+
+			//reset and set header
+			memset(&(tar->tar.th_buf), 0, sizeof(struct Tar::tar_header));
+			tar->th_set_type(0); //s->st_mode, 0 is regular file
+			tar->th_set_user(0); //st_uid
+			tar->th_set_group(0); //st_gid
+			tar->th_set_mode(0); //s->st_mode
+			tar->th_set_mtime(data.time);
+			tar->th_set_size(data.len);
+			tar->th_set_path((char*)data.filename.c_str());
+		       
+			/* write header */
+			if (tar->th_write() != 0) {
+				continue;
+			}
+
+			/* if it's a regular file, write the contents as well */
+			tar->tar_append_buffer(data.buffer, data.len);
+			
+			__sync_sub_and_fetch(&this2->tarthreads[i].len, data.len);
+			delete data.buffer;
+			decreaseTartimemap(tar->created_at);
+			__sync_sub_and_fetch(&glob_tar_queued_files, 1);
+		}
+		// quque is empty - sleep before next run
+		usleep(100000);
+	}
+	return NULL;
 }
 
 void
@@ -677,7 +815,7 @@ TarQueue::cleanTars() {
 		// clean only each >10 seconds 
 		return;
 	}
-	if(sverb.tar) syslog(LOG_NOTICE, "cleanTars()");
+//	if(sverb.tar) syslog(LOG_NOTICE, "cleanTars()");
 
 	last_flushTars = glob_last_packet_time;
 	map<string, Tar*>::iterator tars_it;
@@ -765,6 +903,11 @@ TarQueue::queuelen() {
 }
 
 TarQueue::~TarQueue() {
+	terminate = true;
+	for(int i = 0; i < maxthreads; i++) { 
+		pthread_join(tarthreads[i].thread, NULL);
+		pthread_mutex_destroy(&tarthreads[i].queuelock);
+	}
 
 	pthread_mutex_destroy(&mutexlock);
 	pthread_mutex_destroy(&flushlock);
@@ -774,14 +917,67 @@ TarQueue::~TarQueue() {
 	for(map<string, Tar*>::iterator it = tars.begin(); it != tars.end(); it++) {
 		delete(it->second);
 	}
+
 }      
 
+TarQueue::TarQueue() {
+
+	terminate = false;
+	maxthreads = opt_pcap_dump_tar_threads;
+
+	pthread_mutex_init(&mutexlock, NULL);
+	pthread_mutex_init(&flushlock, NULL);
+	pthread_mutex_init(&tarslock, NULL);
+	last_flushTars = 0;
+	for(int i = 0; i < maxthreads; i++) {
+		tarthreadworker_arg *arg = new tarthreadworker_arg;
+		arg->i = i;
+		arg->tq = this;
+		tarthreads[i].cpuPeak = 0;
+		tarthreads[i].len = 0;
+
+		pthread_mutex_init(&tarthreads[i].queuelock, NULL);
+		pthread_create(&tarthreads[i].thread, NULL, &TarQueue::tarthreadworker, arg);
+	}
+
+	// create tarthreads
+	
+};	      
+
+void TarQueue::preparePstatData(int threadIndex) {
+	if(this->tarthreads[threadIndex].threadId) {
+		if(this->tarthreads[threadIndex].threadPstatData[0].cpu_total_time) {
+			this->tarthreads[threadIndex].threadPstatData[1] = this->tarthreads[threadIndex].threadPstatData[0];
+		}
+		pstat_get_data(this->tarthreads[threadIndex].threadId, this->tarthreads[threadIndex].threadPstatData);
+	}
+}
+
+double TarQueue::getCpuUsagePerc(int threadIndex, bool preparePstatData) {
+	if(preparePstatData) {
+		this->preparePstatData(threadIndex);
+	}
+	if(this->tarthreads[threadIndex].threadId) {
+		double ucpu_usage, scpu_usage;
+		if(this->tarthreads[threadIndex].threadPstatData[0].cpu_total_time && this->tarthreads[threadIndex].threadPstatData[1].cpu_total_time) {
+			pstat_calc_cpu_usage_pct(
+				&this->tarthreads[threadIndex].threadPstatData[0], &this->tarthreads[threadIndex].threadPstatData[1],
+				&ucpu_usage, &scpu_usage);
+			double rslt = ucpu_usage + scpu_usage;
+			if(rslt > this->tarthreads[threadIndex].cpuPeak) {
+				this->tarthreads[threadIndex].cpuPeak = rslt;
+			}
+			return(rslt);
+		}
+	}
+	return(-1);
+}
 
 
 void *TarQueueThread(void *dummy) {
 	// run each second flushQueue
 	while(!terminating) {
-		tarQueue.flushQueue();
+		tarQueue->flushQueue();
 		sleep(1);
 	}      
 	return NULL;
