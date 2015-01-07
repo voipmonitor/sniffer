@@ -262,8 +262,8 @@ int opt_generator = 0;
 int opt_generator_channels = 1;
 int opt_skipdefault = 0;
 int opt_filesclean = 1;
-int opt_enable_preprocess_packet;
-int opt_enable_process_rtp_packet;
+int opt_enable_preprocess_packet = 0;
+int opt_enable_process_rtp_packet = 2;
 unsigned int opt_preprocess_packets_qring_length = 100;
 unsigned int opt_preprocess_packets_qring_usleep = 10;
 unsigned int opt_process_rtp_packets_qring_length = 100;
@@ -470,8 +470,8 @@ int rtp_threaded = 0; // do not enable this until it will be reworked to be thre
 int num_threads = 0; // this has to be 1 for now
 unsigned int rtpthreadbuffer = 20;	// default 20MB
 unsigned int rtp_qring_length = 0;
-unsigned int rtp_qring_usleep = 10000;
-int rtp_qring_quick = 0;
+unsigned int rtp_qring_usleep = 1000;
+int rtp_qring_quick = 1;
 unsigned int gthread_num = 0;
 
 int opt_pcapdump = 0;
@@ -2026,7 +2026,8 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "enable_preprocess_packet", NULL))) {
 		opt_enable_preprocess_packet = strcmp(value, "sip") ? yesno(value) : 2;
 	}
-	if((value = ini.GetValue("general", "enable_process_rtp_packet", NULL))) {
+	if((value = ini.GetValue("general", "enable_process_rtp_packet", NULL)) ||
+	   (value = ini.GetValue("general", "preprocess_rtp_threads", NULL))) {
 		opt_enable_process_rtp_packet = atoi(value) > 1 ? min(atoi(value), MAX_PROCESS_RTP_PACKET_THREADS) : yesno(value);
 	}
 	
@@ -4857,6 +4858,7 @@ void test_alloc_speed() {
 
 #include "tools_dynamic_buffer.h"
 void test_dynamic_buffer() {
+	/*
 	DynamicBuffer *buffer = new DynamicBuffer();
 	buffer->setMinItemBufferLength(4);
 	buffer->setMaxItemBufferLength(5);
@@ -4867,6 +4869,7 @@ void test_dynamic_buffer() {
 	cout << endl;
 	cout << (char*)buffer->getConcatBuffer() << endl;
 	delete buffer;
+	*/
 }
 
 void test() {
@@ -4931,6 +4934,26 @@ void test() {
 	case 6:
 		test_dynamic_buffer();
 		break;
+		
+	case 7:
+	 
+		{
+		 
+		FILE *lz4File = fopen("/var/spool/voipmonitor_local/2014-03-21/12/00/SIP/1238412435.pcap", "rb");
+		
+		char *buff = new char[10000];
+		char *buffD = new char[10000];
+		
+		size_t size = fread(buff, 1, 10000, lz4File);
+		cout << LZ4_decompress_safe(buff, buffD, size, 10000) << endl;
+		
+		delete [] buff;
+		
+		fclose(lz4File);
+		 
+		}
+		break;
+		
 	case 10:
 		{
 		SqlDb *sqlDb = createSqlObject();

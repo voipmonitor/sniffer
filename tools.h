@@ -333,7 +333,7 @@ inline unsigned long long getTimeNS() {
     return(time.tv_sec * 1000000000ull + time.tv_nsec);
 }
 
-class FileZipHandler {
+class FileZipHandler : public CompressStream_baseEv {
 public:
 	enum eTypeFile {
 		na,
@@ -351,7 +351,7 @@ public:
 	FileZipHandler(int bufferLength = 0, int enableAsyncWrite = 0, eTypeCompress typeCompress = compress_na,
 		       bool dumpHandler = false, int time = 0,
 		       eTypeFile typeFile = na);
-	~FileZipHandler();
+	virtual ~FileZipHandler();
 	bool open(const char *fileName, int permission = 0666);
 	void close();
 	bool write(char *data, int length) {
@@ -365,29 +365,35 @@ public:
 	bool writeToFile(char *data, int length, bool force = false);
 	bool _writeToFile(char *data, int length, bool flush = false);
 	bool __writeToFile(char *data, int length);
-	bool initZip();
-	bool initLz4();
+	//bool initZip();
+	//bool initLz4();
+	void initCompress();
 	bool _open();
 	void setError(const char *error = NULL);
 	bool okHandle() {
 		extern int opt_pcap_dump_tar;
 		return(opt_pcap_dump_tar ? true : fh > 0);
 	}
+private:
+	virtual bool compress_ev(char *data, u_int32_t len, u_int32_t decompress_len);
 public:
 	string fileName;
 	int permission;
 	int fh;
-	z_stream *zipStream;
-	LZ4_stream_t *lz4Stream;
+	
+	CompressStream *compressStream;
+	
+	//z_stream *zipStream;
+	//LZ4_stream_t *lz4Stream;
 	string error;
 	int bufferLength;
 	char *buffer;
 	int useBufferLength;
-	int zipBufferLength;
-	int zipBufferLengthCompressBound;
-	char *zipBuffer;
+	//int zipBufferLength;
+	//int zipBufferLengthCompressBound;
+	//char *zipBuffer;
 	//DynamicBuffer *tarBuffer;
-	Bucketbuffer *tarBuffer;
+	ChunkBuffer *tarBuffer;
 	bool enableAsyncWrite;
 	eTypeCompress typeCompress;
 	bool dumpHandler;

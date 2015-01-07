@@ -12,6 +12,7 @@
 #endif
 
 #include "tools.h"
+#include "tools_dynamic_buffer.h"
 
 #define T_BLOCKSIZE		512
 #define T_NAMELEN	       100
@@ -40,7 +41,7 @@ using namespace std;
 #define int_to_oct(num, oct, octlen) \
 	snprintf((oct), (octlen), "%*lo ", (octlen) - 2, (unsigned long)(num))
 
-class Tar {
+class Tar : public ChunkBuffer_baseIterate{
 public:
 	/* our version of the tar header structure */
 	struct tar_header
@@ -105,14 +106,15 @@ public:
 		memset(&tar, 0, sizeof(tar));
 #endif
 	};
-	~Tar();
+	virtual ~Tar();
 
 	//tar functions 
 	int tar_init(int oflags, int mode, int options);
 	int tar_open(string, int, int, int);
 	void th_finish();
 	int th_write();
-	int tar_append_buffer(Bucketbuffer *buffer, size_t size);
+	int tar_append_buffer(ChunkBuffer *buffer, size_t size);
+	virtual void chunkbuffer_iterate_ev(char *data, u_int32_t len, u_int32_t pos);
 	int gziplevel;
 	int lzmalevel;
 
@@ -130,7 +132,7 @@ public:
 	void th_set_size(int fsize){
 		int_to_oct_nonull(fsize, tar.th_buf.size, 12);
 	};
-	int tar_block_write(const char *buf);
+	int tar_block_write(const char *buf, u_int32_t len);
 
 	void int_to_oct_nonull(int num, char *oct, size_t octlen);
 	int th_crc_calc();
@@ -183,7 +185,7 @@ public:
 	void unlock() {pthread_mutex_unlock(&mutexlock);};
 	       
 	struct data_t {
-		Bucketbuffer *buffer;
+		ChunkBuffer *buffer;
 		size_t len;
 		string filename;
 		int year, mon, day, hour, minute;
@@ -210,7 +212,7 @@ public:
 
 	tarthreads_t tarthreads[TARQMAXTHREADS];
 	
-	void add(string filename, unsigned int time, Bucketbuffer *buffer);
+	void add(string filename, unsigned int time, ChunkBuffer *buffer);
 	void flushQueue();
 	int write(int, unsigned int, data_t);
 	int queuelen();
