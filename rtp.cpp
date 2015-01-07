@@ -442,7 +442,7 @@ RTP::jitterbuffer(struct ast_channel *channel, int savePayload) {
 	}
 
 	struct iphdr2 *header_ip = (struct iphdr2 *)(data - sizeof(struct iphdr2) - sizeof(udphdr2));
-	int mylen = MIN(len, ntohs(header_ip->tot_len) - header_ip->ihl * 4 - sizeof(udphdr2));
+	int mylen = MIN((unsigned int)len, ntohs(header_ip->tot_len) - header_ip->ihl * 4 - sizeof(udphdr2));
 
 
 	if(savePayload or (codec == PAYLOAD_G729 or codec == PAYLOAD_G723)) {
