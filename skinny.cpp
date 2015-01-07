@@ -102,7 +102,7 @@ extern unsigned int opt_skinny_ignore_rtpip;
 /* Skinny debugging only available if asterisk configured with --enable-dev-mode */
 #define AST_DEVMODE 1
 #ifdef AST_DEVMODE
-static int skinnydebug = 1;
+static int skinnydebug = 0;
 char dbgcli_buf[256];
 char dbgreg_buf[256];
 char dbgsub_buf[256];
@@ -1466,7 +1466,7 @@ void *handle_skinny2(pcap_pkthdr *header, const u_char *packet, unsigned int sad
 		sprintf(callid, "%u", ref);
 		if ( ! (call = calltable->find_by_call_id(callid, strlen(callid)))){
 			// packet does not belongs to any call yet 
-			if(state == SKINNY_OFFHOOK) {
+			if(state == SKINNY_RINGIN or state == SKINNY_OFFHOOK) {
 				SKINNY_DEBUG(DEBUG_PACKET, 3, "New SKINNY %s\n", callid);
 				call = new_skinny_channel(SKINNY_NEW, data, datalen, header, callid, saddr, daddr, source, dest, callid, strlen(callid),
 							  handle, dlt, sensor_id);
