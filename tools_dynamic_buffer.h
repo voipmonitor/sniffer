@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <zlib.h>
 #include <lz4.h>
+#include <snappy-c.h>
 
 
 using namespace std;
@@ -148,7 +149,8 @@ public:
 	enum eTypeCompress {
 		compress_na,
 		zip,
-		lz4
+		lz4,
+		snappy
 	};
 public:
 	CompressStream(eTypeCompress typeCompress = zip, u_int32_t compressBufferLength = 0);

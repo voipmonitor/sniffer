@@ -2993,7 +2993,7 @@ rtpcheck:
 	if((htons(*(unsigned int*)data) & 0xC000) == 0x8000) {
 	if(processRtpPacket[0]) {
 		ProcessRtpPacket *_processRtpPacket = processRtpPacket[1] ?
-						       processRtpPacket[dest / 2 % opt_enable_process_rtp_packet] :
+						       processRtpPacket[min(source, dest) / 2 % opt_enable_process_rtp_packet] :
 						       processRtpPacket[0];
 		_processRtpPacket->push(saddr, source, daddr, dest, 
 					data, datalen, dataoffset,

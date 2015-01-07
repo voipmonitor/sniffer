@@ -899,6 +899,8 @@ TarQueue::TarQueue() {
 
 		pthread_mutex_init(&tarthreads[i].queuelock, NULL);
 		pthread_create(&tarthreads[i].thread, NULL, &TarQueue::tarthreadworker, arg);
+		
+		memset(this->tarthreads[i].threadPstatData, 0, sizeof(this->tarthreads[i].threadPstatData));
 	}
 
 	// create tarthreads
