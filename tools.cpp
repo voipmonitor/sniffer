@@ -2252,29 +2252,12 @@ bool FileZipHandler::writeToBuffer(char *data, int length) {
 	if(this->useBufferLength && this->useBufferLength + length > this->bufferLength) {
 		flushBuffer();
 	}
-	if(opt_pcap_dump_tar) {
-		int start_part = 0;
-		while(start_part < length) {
-			if(start_part) {
-				flushBuffer();
-			}
-			int length_part = length - start_part;
-			if(length_part > this->bufferLength - this->useBufferLength) {
-				length_part = this->bufferLength - this->useBufferLength;
-			}
-			memcpy(this->buffer + this->useBufferLength, data + start_part, length_part);
-			this->useBufferLength += length_part;
-			start_part += length_part;
-		}
+	if(length <= this->bufferLength) {
+		memcpy(this->buffer + this->useBufferLength, data, length);
+		this->useBufferLength += length;
 		return(true);
 	} else {
-		if(length <= this->bufferLength) {
-			memcpy(this->buffer + this->useBufferLength, data, length);
-			this->useBufferLength += length;
-			return(true);
-		} else {
-			return(this->writeToFile(data, length));
-		}
+		return(this->writeToFile(data, length));
 	}
 }
 
@@ -2301,7 +2284,7 @@ bool FileZipHandler::_writeToFile(char *data, int length, bool flush) {
 			this->tarBuffer = new ChunkBuffer(typeFile == pcap_sip ? 8 * 1024 : 
 							  typeFile == pcap_rtp ? 32 * 1024 : 
 							  typeFile == graph_rtp ? 16 * 1024 : 8 * 1024);
-			this->tarBuffer->setTypeCompress(CompressStream::lz4);
+			this->tarBuffer->setTypeCompress(CompressStream::snappy);
 		}
 		this->tarBuffer->add(data, length);
 		return(true);

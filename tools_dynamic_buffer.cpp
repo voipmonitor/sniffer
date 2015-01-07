@@ -101,6 +101,12 @@ void CompressStream::initCompress() {
 			this->compressBuffer = new char[this->compressBufferBoundLength];
 		}
 		break;
+	case snappy:
+		if(this->compressBufferLength) {
+			this->compressBufferBoundLength = snappy_max_compressed_length(this->compressBufferLength);
+			this->compressBuffer = new char[this->compressBufferBoundLength];
+		}
+		break;
 	}
 }
 
@@ -115,6 +121,8 @@ void CompressStream::initDecompress() {
 			break;
 		}
 		this->lz4StreamDecode = LZ4_createStreamDecode();
+		break;
+	case snappy:
 		break;
 	}
 }
@@ -185,6 +193,8 @@ bool CompressStream::compress(char *data, u_int32_t len, bool flush, CompressStr
 		this->compress_len += len;
 		break;
 	case lz4:
+		/*
+		{
 		if(!this->lz4Stream) {
 			this->initCompress();
 		}
@@ -193,8 +203,44 @@ bool CompressStream::compress(char *data, u_int32_t len, bool flush, CompressStr
 		}
 		u_int32_t pos = 0;
 		while(pos < len) {
+		 
+			#include "/home/jumbox/Plocha/lz4/lz4-read-only/examples/test_data_1"
+			}};
+			#include "/home/jumbox/Plocha/lz4/lz4-read-only/examples/test_data_2"
+			};
+			static int _i;
+			static LZ4_stream_t *_lz4Stream;
+			static LZ4_stream_t *_lz4Stream2;
+			if(!_i) {
+				_lz4Stream = LZ4_createStream();
+				_lz4Stream2 = LZ4_createStream();
+			}
+			char *_data = (char*)testData[_i];
+			int _len = testDataLength[_i];
+			++_i;
+			
+			u_int32_t _inputLen = min(this->compressBufferLength, _len - pos);
 			u_int32_t inputLen = min(this->compressBufferLength, len - pos);
-			u_int32_t have = LZ4_compress_continue(this->lz4Stream, data + pos, this->compressBuffer, inputLen);
+			
+			cout << inputLen << " / " << _inputLen << " / " << pos << endl;
+			extern string GetDataMD5(u_char *data, u_int32_t datalen);
+			cout << GetDataMD5((unsigned char*)_data, inputLen) << endl;
+			cout << GetDataMD5((unsigned char*)data, inputLen) << endl;
+
+			char *__data = new char[inputLen + 100];
+			memcpy(__data, data, inputLen);
+			u_int32_t have = LZ4_compress_continue(_lz4Stream2, _data + pos, this->compressBuffer, inputLen);
+			u_int32_t _have = LZ4_compress_continue(_lz4Stream, _data + pos, this->compressBuffer, inputLen);
+			
+			have = LZ4_compress(data, this->compressBuffer, inputLen);
+			
+			cout << have << " / " << _have << endl;
+			if(memcmp(__data, data, inputLen)) {
+				cout << "diff buffer" << endl;
+			}
+			cout << GetDataMD5((unsigned char*)_data, inputLen) << endl;
+			cout << GetDataMD5((unsigned char*)data, inputLen) << endl;
+			
 			if(have > 0) {
 				if(!baseEv->compress_ev(this->compressBuffer, have, inputLen)) {
 					this->setError("lz4 compress_ev failed");
@@ -205,6 +251,17 @@ bool CompressStream::compress(char *data, u_int32_t len, bool flush, CompressStr
 			}
 			pos += this->compressBufferLength;
 		}
+		this->compress_len += len;
+		}
+		*/
+		break;
+	case snappy:
+		if(!this->compressBuffer) {
+			this->createCompressBuffer(len);
+		}
+		size_t have = this->compressBufferLength;
+		snappy_compress(data, len, this->compressBuffer, &have);
+		baseEv->compress_ev(this->compressBuffer, have, len);
 		this->compress_len += len;
 		break;
 	}
@@ -236,13 +293,15 @@ bool CompressStream::decompress(char *data, u_int32_t len, u_int32_t decompress_
 		this->setError("zip decompress is temporary not supported");
 		break;
 	case lz4:
+		/*
 		if(!this->lz4StreamDecode) {
 			this->initDecompress();
 		}
 		if(!this->decompressBuffer || this->decompressBufferLength < decompress_len) {
 			this->createDecompressBuffer(decompress_len);
 		}
-		if(LZ4_decompress_safe_continue(this->lz4StreamDecode, data, this->decompressBuffer, len, this->decompressBufferLength) > 0) {
+		//if(LZ4_decompress_safe_continue(this->lz4StreamDecode, data, this->decompressBuffer, len, this->decompressBufferLength) > 0) {
+		if(LZ4_decompress_fast(data, this->decompressBuffer, decompress_len)) {
 			if(!baseEv->decompress_ev(this->decompressBuffer, decompress_len)) {
 				this->setError("lz4 decompress_ev failed");
 				return(false);
@@ -251,6 +310,15 @@ bool CompressStream::decompress(char *data, u_int32_t len, u_int32_t decompress_
 			this->setError("lz4 decompress failed");
 			return(false);
 		}
+		*/
+		break;
+	case snappy:
+		if(!this->decompressBuffer || this->decompressBufferLength < decompress_len) {
+			this->createDecompressBuffer(decompress_len);
+		}
+		size_t have = this->decompressBufferLength;
+		snappy_uncompress(data, len, this->decompressBuffer, &have);
+		baseEv->decompress_ev(this->decompressBuffer, decompress_len);
 		break;
 	}
 	return(true);
@@ -277,6 +345,12 @@ void CompressStream::createCompressBuffer(u_int32_t dataLen) {
 			this->compressBuffer = new char[this->compressBufferBoundLength];
 		}
 		break;
+	case snappy:
+		this->compressBufferLength = snappy_max_compressed_length(dataLen);
+		if(this->compressBufferLength) {
+			this->compressBuffer = new char[this->compressBufferLength];
+		}
+		break;
 	}
 }
 
@@ -289,12 +363,8 @@ void CompressStream::createDecompressBuffer(u_int32_t dataLen) {
 	case compress_na:
 		break;
 	case zip:
-		this->decompressBufferLength = dataLen;
-		if(this->decompressBufferLength) {
-			this->decompressBuffer = new char[this->decompressBufferLength];
-		}
-		break;
 	case lz4:
+	case snappy:
 		this->decompressBufferLength = dataLen;
 		if(this->decompressBufferLength) {
 			this->decompressBuffer = new char[this->decompressBufferLength];
@@ -324,6 +394,7 @@ void ChunkBuffer::setTypeCompress(CompressStream::eTypeCompress typeCompress, u_
 	switch(typeCompress) {
 	case CompressStream::zip:
 	case CompressStream::lz4:
+	case CompressStream::snappy:
 		this->compressStream = new CompressStream(typeCompress, compressBufferLength);
 		break;
 	default:
@@ -340,25 +411,43 @@ void ChunkBuffer::setZipLevel(int zipLevel) {
 #include <stdio.h>
 
 void ChunkBuffer::add(char *data, u_int32_t datalen, bool flush, u_int32_t decompress_len, bool directAdd) {
-	/*
-	if(!directAdd) {
-	 
-		FILE *debugOut = fopen("/home/jumbox/Plocha/testdata", "at");
-		fprintf(debugOut, "%u\n", datalen);
-		for(u_int32_t i = 0; i < datalen; i++) {
-			fprintf(debugOut, "%u,", (int)(unsigned char)data[i]);
-		}
-		fprintf(debugOut, "\n");
-		fclose(debugOut);
-		
-	 
-		cout << "add data " << datalen << endl;
-		for(u_int32_t i = 0; i < datalen; i++) {
+	
+	if(directAdd) {
+		/*
+		cout << "add compress data " << datalen << endl;
+		for(u_int32_t i = 0; i < min(datalen, 20u); i++) {
 			cout << (int)(unsigned char)data[i] << ",";
 		}
 		cout << endl;
+		*/
+	} else {
+		/*
+		cout << "add source data " << datalen << endl;
+		for(u_int32_t i = 0; i < min(datalen, 20u); i++) {
+			cout << (int)(unsigned char)data[i] << ",";
+		}
+		cout << endl;
+		*/
+	
+		/*
+		static int pass = 0;
+	 
+		FILE *debugOut = fopen("/home/jumbox/Plocha/lz4/lz4-read-only/examples/test_data_1", pass ? "at" : "wt");
+		fprintf(debugOut, pass ? "\n},{\n" : "unsigned char testData[50][10000] = { { \n");
+		for(u_int32_t i = 0; i < datalen; i++) {
+			fprintf(debugOut, "%u,", (int)(unsigned char)data[i]);
+		}
+		fclose(debugOut);
+		
+		debugOut = fopen("/home/jumbox/Plocha/lz4/lz4-read-only/examples/test_data_2", pass ? "at" : "wt");
+		fprintf(debugOut, pass ? "," : "int testDataLength[50] = { \n");
+		fprintf(debugOut, "%u", datalen);
+		fclose(debugOut);
+		
+		++pass;
+		*/
 	}
-	*/
+	
 	if(!datalen) {
 		return;
 	}
@@ -366,6 +455,7 @@ void ChunkBuffer::add(char *data, u_int32_t datalen, bool flush, u_int32_t decom
 	   (!this->compressStream && !this->chunk_fix_len)) {
 		eChunk chunk;
 		chunk.chunk = new char[datalen];
+		memset(chunk.chunk, 0, datalen);
 		memcpy(chunk.chunk, data, datalen);
 		chunk.len = datalen;
 		chunk.decompress_len = decompress_len;
@@ -397,15 +487,24 @@ bool ChunkBuffer::compress_ev(char *data, u_int32_t len, u_int32_t decompress_le
 }
 
 bool ChunkBuffer::decompress_ev(char *data, u_int32_t len) {
+ 
+	/*
+	extern string GetDataMD5(u_char *data, u_int32_t datalen);
+ 
+	cout << GetDataMD5((u_char*)data, len) << endl;
+	*/
 	decompress_chunkbufferIterateEv->chunkbuffer_iterate_ev(data, len, this->decompress_pos);
 	this->decompress_pos += len;
+
 	/*
 	cout << "decompress ev " << len << " " << this->decompress_pos << " " << endl;
-	for(u_int32_t i = 0; i < len; i++) {
+	for(u_int32_t i = 0; i < min(len, 10u); i++) {
 		cout << (int)(unsigned char)data[i] << ",";
 	}
 	cout << endl;
+	cout << GetDataMD5((u_char*)data, len) << endl;
 	*/
+
 	return(true);
 }
 
