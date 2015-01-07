@@ -2121,8 +2121,9 @@ FileZipHandler::FileZipHandler(int bufferLength, int enableAsyncWrite, eTypeComp
 	}
 	this->permission = 0;
 	this->fh = 0;
-	this->zipStream = NULL;
-	this->lz4Stream = NULL;
+	//this->zipStream = NULL;
+	//this->lz4Stream = NULL;
+	this->compressStream = NULL;
 	this->bufferLength = opt_pcap_dump_tar ?
 			      (bufferLength ? bufferLength : DEFAULT_BUFFER_LENGTH) :
 			      bufferLength;
@@ -2132,9 +2133,9 @@ FileZipHandler::FileZipHandler(int bufferLength, int enableAsyncWrite, eTypeComp
 		this->buffer = NULL;
 	}
 	this->useBufferLength = 0;
-	this->zipBufferLength = 0;
-	this->zipBufferLengthCompressBound = 0;
-	this->zipBuffer = NULL;
+	//this->zipBufferLength = 0;
+	//this->zipBufferLengthCompressBound = 0;
+	//this->zipBuffer = NULL;
 	//this->tarBuffer = new DynamicBufferTar();
 	this->tarBuffer = NULL;
 /*
@@ -2157,9 +2158,11 @@ FileZipHandler::~FileZipHandler() {
 	if(this->buffer) {
 		delete [] this->buffer;
 	}
+	/*
 	if(this->zipBuffer) {
 		delete [] this->zipBuffer;
 	}
+	*/
 	if(this->tarBuffer) {
 		delete this->tarBuffer;
 
@@ -2177,12 +2180,17 @@ FileZipHandler::~FileZipHandler() {
 		}
 
 	}
+	/*
 	if(this->zipStream) {
 		deflateEnd(this->zipStream);
 		delete this->zipStream;
 	}
 	if(this->lz4Stream) {
 		LZ4_freeStream(this->lz4Stream);
+	}
+	*/
+	if(this->compressStream) {
+		delete this->compressStream;
 	}
 }
 
@@ -2287,6 +2295,18 @@ bool FileZipHandler::_writeToFile(char *data, int length, bool flush) {
 	if(!this->error.empty()) {
 		return(false);
 	}
+	
+	if(opt_pcap_dump_tar) {
+		if(!this->tarBuffer) {
+			this->tarBuffer = new ChunkBuffer(typeFile == pcap_sip ? 8 * 1024 : 
+							  typeFile == pcap_rtp ? 32 * 1024 : 
+							  typeFile == graph_rtp ? 16 * 1024 : 8 * 1024);
+			this->tarBuffer->setTypeCompress(CompressStream::lz4);
+		}
+		this->tarBuffer->add(data, length);
+		return(true);
+	}
+	
 	switch(this->typeCompress) {
 	case compress_na:
 		{
@@ -2301,6 +2321,12 @@ bool FileZipHandler::_writeToFile(char *data, int length, bool flush) {
 		}
 		break;
 	case zip:
+	case lz4: 
+		if(!this->compressStream) {
+			this->initCompress();
+		}
+		this->compressStream->compress(data, length, flush, this);
+		/*
 		if(!this->zipStream && !this->initZip()) {
 			return(false);
 		}
@@ -2330,7 +2356,7 @@ bool FileZipHandler::_writeToFile(char *data, int length, bool flush) {
 		}
 		int pos = 0;
 		while(pos < length) {
-			int have = LZ4_compress_continue(this->lz4Stream, data + pos, this->zipBuffer, this->zipBufferLength);
+			int have = LZ4_compress_continue(this->lz4Stream, data + pos, this->zipBuffer, min(this->zipBufferLength, length - pos));
 			if(have > 0) {
 				if(this->__writeToFile(this->zipBuffer, have) <= 0) {
 					this->setError();
@@ -2345,6 +2371,7 @@ bool FileZipHandler::_writeToFile(char *data, int length, bool flush) {
 		}
 		}
 		return(true);
+		*/
 	case compress_default:
 		return(false);
 	}
@@ -2352,30 +2379,24 @@ bool FileZipHandler::_writeToFile(char *data, int length, bool flush) {
 }
 
 bool FileZipHandler::__writeToFile(char *data, int length) {
-	if(opt_pcap_dump_tar) {
-//		this->tarBuffer->add((u_char*)data, length);
-		if(!this->tarBuffer) this->tarBuffer = new Bucketbuffer(typeFile == pcap_sip ? 8*1024 : (typeFile == pcap_rtp ? 32 * 1024 : (typeFile == graph_rtp ? 16 * 1024 : 8*1024)));
-		this->tarBuffer->add(data, length);
-		return(true);
-	} else {
-		if(!this->okHandle()) {
-			if(!this->error.empty() || !this->_open()) {
-				return(false);
-			}
-		}
-		if(::write(this->fh, data, length) == length) {
-			return(true);
-		} else {
-			bool oldError = !error.empty();
-			this->setError();
-			if(!oldError) {
-				syslog(LOG_NOTICE, "error write to file %s - %s", fileName.c_str(), error.c_str());
-			}
+	if(!this->okHandle()) {
+		if(!this->error.empty() || !this->_open()) {
 			return(false);
 		}
 	}
+	if(::write(this->fh, data, length) == length) {
+		return(true);
+	} else {
+		bool oldError = !error.empty();
+		this->setError();
+		if(!oldError) {
+			syslog(LOG_NOTICE, "error write to file %s - %s", fileName.c_str(), error.c_str());
+		}
+		return(false);
+	}
 }
 
+/*
 bool FileZipHandler::initZip() {
 	if(this->typeCompress == zip && !this->zipStream) {
 		this->zipStream =  new z_stream;
@@ -2402,6 +2423,15 @@ bool FileZipHandler::initLz4() {
 		this->zipBuffer = new char[this->zipBufferLengthCompressBound];
 	}
 	return(true);
+}
+*/
+
+void FileZipHandler::initCompress() {
+	if((this->typeCompress == zip ||
+	    this->typeCompress == lz4) && 
+	   !this->compressStream) {
+		this->compressStream =  new CompressStream(this->typeCompress == zip ? CompressStream::zip : CompressStream::lz4);
+	}
 }
 
 bool FileZipHandler::_open() {
@@ -2440,6 +2470,14 @@ void FileZipHandler::setError(const char *error) {
 	} else if(errno) {
 		this->error = strerror(errno);
 	}
+}
+
+bool FileZipHandler::compress_ev(char *data, u_int32_t len, u_int32_t decompress_len) {
+	if(this->__writeToFile(data, len) <= 0) {
+		this->setError();
+		return(false);
+	}
+	return(true);
 }
 
 u_int64_t FileZipHandler::scounter = 0;

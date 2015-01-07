@@ -241,13 +241,13 @@ Tar::tar_open(string pathname, int oflags, int mode, int options)
 			newpathname << this->pathname;
 			newpathname << "." << i;
 			if(file_exists(newpathname.str())) {
+				++i;
 				continue;
 			} else {
 				rename(pathname.c_str(), newpathname.str().c_str());
 				if(sverb.tar) syslog(LOG_NOTICE, "tar: renaming %s -> %s", pathname.c_str(), newpathname.str().c_str());
 				break;
 			}
-			i++;
 		}
 	}
 	tar.fd = open((char*)this->pathname.c_str(), oflags, mode);
@@ -264,7 +264,7 @@ Tar::th_write()
 {      
 	int i;
 	th_finish();
-	i = tar_block_write((const char*)&(tar.th_buf));
+	i = tar_block_write((const char*)&(tar.th_buf), T_BLOCKSIZE);
 	if (i != T_BLOCKSIZE)
 	{	       
 //		if (i != -1)    
@@ -280,61 +280,22 @@ Tar::th_write()
 
 /* add file contents to a tarchive */
 int
-Tar::tar_append_buffer(Bucketbuffer *buffer, size_t size)
+Tar::tar_append_buffer(ChunkBuffer *buffer, size_t size)
 {
-//	char block[T_BLOCKSIZE];
-	unsigned long int copied = 0;
-	for(list<char*>::iterator it = buffer->listbuffer.begin(); it != buffer->listbuffer.end(); it++) {
-/*
-		if((size - copied) < T_BLOCKSIZE) {
-			// write last block 
-			memset(buffer->buffer + (size - copied), 0, T_BLOCKSIZE - (size - copied));
-			if (tar_block_write(buffer->buffer) == -1)
-				return -1;
-		}
-*/
-		int i;
-		for(i = 0; ((i < buffer->bucketlen / T_BLOCKSIZE) and (size - copied > 0)); i++) {
-			if((size - copied) < T_BLOCKSIZE) {
-				memset(*it + i * T_BLOCKSIZE + (size - copied), 0, T_BLOCKSIZE - (size - copied));
-				if (tar_block_write(*it + i * T_BLOCKSIZE) == -1) {
-					return -1;
-				}
-				copied += T_BLOCKSIZE;
-				break;
-			}
-			if (tar_block_write(*it + i * T_BLOCKSIZE) == -1)
-				return -1;
-			copied += T_BLOCKSIZE;
-		}
-/*
-		if((size - copied) > 0 and (size - copied) <= T_BLOCKSIZE) {
-			// write last block 
-			memset(*it + (i+1)*T_BLOCKSIZE + (size - copied), 0, T_BLOCKSIZE - (size - copied));
-			if (tar_block_write(*it + (i+1)*T_BLOCKSIZE) == -1)
-				return -1;
-		}
-*/
-	}
-	
-/*  
-	for (i = size; i > T_BLOCKSIZE; i -= T_BLOCKSIZE) {
-		if (tar_block_write(tmp) == -1)
-			return -1;
-		tmp += T_BLOCKSIZE;
-	}	      
-       
-	if (i > 0) {
-		memcpy(block, tmp, i);
-		memset(&(block[i]), 0, T_BLOCKSIZE - i);
-		if (tar_block_write(block) == -1)
-			return -1;
-	}	      
-*/
-       
+	buffer->chunkIterate(this);
 	return 0;
 }
 
+void 
+Tar::chunkbuffer_iterate_ev(char *data, u_int32_t len, u_int32_t pos) {
+	if(data) {
+		tar_block_write(data, len);
+	} else if(pos % T_BLOCKSIZE) {
+		char zeroblock[T_BLOCKSIZE];
+		memset(zeroblock, 0, T_BLOCKSIZE - pos % T_BLOCKSIZE);
+		tar_block_write(zeroblock, T_BLOCKSIZE - pos % T_BLOCKSIZE);
+	}
+}
 
 int    
 Tar::initZip() {
@@ -474,7 +435,7 @@ Tar::writeLzma(const void *buf, size_t len) {
 #endif
 
 int
-Tar::tar_block_write(const char *buf){
+Tar::tar_block_write(const char *buf, u_int32_t len){
 	int zip = false;
 	int lzma = false;
 	switch(tar.qtype) {
@@ -508,15 +469,15 @@ Tar::tar_block_write(const char *buf){
 	}
 	
 	if(zip) {
-		writeZip((char *)(buf), T_BLOCKSIZE);
+		writeZip((char *)(buf), len);
 	} else if(lzma){
-		writeLzma((char *)(buf), T_BLOCKSIZE);
+		writeLzma((char *)(buf), len);
 	} else {
-		::write(tar.fd, (char *)(buf), T_BLOCKSIZE);
+		::write(tar.fd, (char *)(buf), len);
 	}
 	
 	
-	return(T_BLOCKSIZE);
+	return(len);
 };
 
 void Tar::addtofilesqueue() {
@@ -588,8 +549,8 @@ void Tar::addtofilesqueue() {
 Tar::~Tar() {
 	char zeroblock[T_BLOCKSIZE];
 	memset(zeroblock, 0, T_BLOCKSIZE);
-	tar_block_write(zeroblock);
-	tar_block_write(zeroblock);
+	tar_block_write(zeroblock, T_BLOCKSIZE);
+	tar_block_write(zeroblock, T_BLOCKSIZE);
 	if(this->zipStream) {
 		flushZip();
 		deflateEnd(this->zipStream);
@@ -612,11 +573,11 @@ Tar::~Tar() {
 }
 
 void			   
-TarQueue::add(string filename, unsigned int time, Bucketbuffer *buffer){
+TarQueue::add(string filename, unsigned int time, ChunkBuffer *buffer){
 	__sync_add_and_fetch(&glob_tar_queued_files, 1);
 	data_t data;
 	data.buffer = buffer;
-	data.len = buffer->len;
+	data.len = buffer->getLen();
 	lock();
 	unsigned int year, mon, day, hour, minute;
 	char type[12];

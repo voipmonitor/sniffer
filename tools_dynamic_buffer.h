@@ -7,9 +7,14 @@
 #include <iostream>
 #include <sys/types.h>
 #include <algorithm>
+#include <zlib.h>
+#include <lz4.h>
+
 
 using namespace std;
 
+
+/* not tested - obsolete ?
 class DynamicBuffer {
 public:
 	class DynamicBufferItem {
@@ -129,19 +134,101 @@ class DynamicBufferTar : public DynamicBuffer {
 public:
 	virtual void write(const char *fileName, int time);
 };
+*/
 
 
-class Bucketbuffer {
-public: 
-	list<char*> listbuffer;
-	char *buffer;
-	int len;       
-	int bucketlen;	 
-		       
-	Bucketbuffer();
-	Bucketbuffer(int bucketlen);
-	~Bucketbuffer();
-	void add(char *buffer, int len);
+class CompressStream_baseEv {
+public:
+	virtual bool compress_ev(char *data, u_int32_t len, u_int32_t decompress_len) { return(true); }
+	virtual bool decompress_ev(char *data, u_int32_t len) { return(true); }
+};
+
+class CompressStream {
+public:
+	enum eTypeCompress {
+		compress_na,
+		zip,
+		lz4
+	};
+public:
+	CompressStream(eTypeCompress typeCompress = zip, u_int32_t compressBufferLength = 0);
+	~CompressStream();
+	void setZipLevel(int zipLevel);
+	void initCompress();
+	void initDecompress();
+	void termCompress();
+	void termDecompress();
+	bool compress(char *data, u_int32_t len, bool flush, CompressStream_baseEv *baseEv);
+	bool decompress(char *data, u_int32_t len, u_int32_t decompress_len, CompressStream_baseEv *baseEv);
+	void setError(const char *errorString) {
+		if(errorString && *errorString) {
+			this->errorString = errorString;
+		}
+	}
+	bool isOk() {
+		return(errorString.empty());
+	}
+	bool isError() {
+		return(!errorString.empty());
+	}
+	string getErrorString() {
+		return(errorString);
+	}
+private:
+	void createCompressBuffer(u_int32_t dataLen);
+	void createDecompressBuffer(u_int32_t dataLen);
+private:
+	eTypeCompress typeCompress;
+	char *compressBuffer;
+	u_int32_t compressBufferLength;
+	u_int32_t compressBufferBoundLength;
+	char *decompressBuffer;
+	u_int32_t decompressBufferLength;
+	z_stream *zipStream;
+	LZ4_stream_t *lz4Stream;
+	LZ4_streamDecode_t *lz4StreamDecode;
+	string errorString;
+	int zipLevel;
+	u_int32_t compress_len;
+};
+
+class ChunkBuffer_baseIterate {
+public:
+	virtual void chunkbuffer_iterate_ev(char *data, u_int32_t len, u_int32_t pos) {}
+};
+
+class ChunkBuffer : public CompressStream_baseEv {
+public:
+	struct eChunk {
+		eChunk() {
+			len = 0;
+			decompress_len = 0;
+		}
+		char *chunk;
+		u_int32_t len;
+		u_int32_t decompress_len;
+	};
+public:
+	ChunkBuffer(u_int32_t chunk_fix_len = 0);
+	virtual ~ChunkBuffer();
+	void setTypeCompress(CompressStream::eTypeCompress typeCompress, u_int32_t compressBufferLength = 0);
+	void setZipLevel(int zipLevel);
+	void add(char *data, u_int32_t len, bool flush = false, u_int32_t decompress_len = 0, bool directAdd = false);
+	u_int32_t getLen() {
+		return(len);
+	}
+	virtual bool compress_ev(char *data, u_int32_t len, u_int32_t decompress_len);
+	virtual bool decompress_ev(char *data, u_int32_t len);
+	void chunkIterate(ChunkBuffer_baseIterate *chunkbufferIterateEv);
+private:
+	list<eChunk> chunkBuffer;
+	char *lastChunk;
+	u_int32_t len;       
+	u_int32_t chunk_fix_len;
+	CompressStream *compressStream;
+	u_int32_t iterate_index;
+	ChunkBuffer_baseIterate *decompress_chunkbufferIterateEv;
+	u_int32_t decompress_pos;
 };      
 
 
