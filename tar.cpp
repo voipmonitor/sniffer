@@ -280,7 +280,7 @@ Tar::th_write()
 int
 Tar::tar_append_buffer(ChunkBuffer *buffer, size_t size)
 {
-	buffer->chunkIterate(this);
+	buffer->chunkIterate(this, true);
 	return 0;
 }
 

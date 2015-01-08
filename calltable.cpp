@@ -826,8 +826,7 @@ read:
 		char graphFilePath_spool_relative[1024];
 		char graphFilePath[1024];
 		snprintf(graphFilePath_spool_relative, 1023, "%s/%s/%s.%d.graph%s", dirname().c_str(), opt_newdir ? "GRAPH" : "", get_fbasename_safe(), ssrc_n, 
-			 opt_gzipGRAPH == FileZipHandler::zip ? ".gz" :
-			 opt_gzipGRAPH == FileZipHandler::lz4 ? ".lz4" : "");
+			 opt_gzipGRAPH == FileZipHandler::gzip ? ".gz" : "");
 		graphFilePath_spool_relative[1023] = 0;
 		if(opt_cachedir[0] != '\0') {
 			snprintf(graphFilePath, 1023, "%s/%s", opt_cachedir, graphFilePath_spool_relative);
