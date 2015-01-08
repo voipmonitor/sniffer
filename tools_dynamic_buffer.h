@@ -149,6 +149,7 @@ public:
 	enum eTypeCompress {
 		compress_na,
 		zip,
+		gzip,
 		lz4,
 		snappy
 	};
@@ -161,11 +162,14 @@ public:
 	void termCompress();
 	void termDecompress();
 	bool compress(char *data, u_int32_t len, bool flush, CompressStream_baseEv *baseEv);
-	bool decompress(char *data, u_int32_t len, u_int32_t decompress_len, CompressStream_baseEv *baseEv);
+	bool decompress(char *data, u_int32_t len, u_int32_t decompress_len, bool flush, CompressStream_baseEv *baseEv);
 	void setError(const char *errorString) {
 		if(errorString && *errorString) {
 			this->errorString = errorString;
 		}
+	}
+	void setError(string errorString) {
+		setError(errorString.c_str());
 	}
 	bool isOk() {
 		return(errorString.empty());
@@ -187,11 +191,13 @@ private:
 	char *decompressBuffer;
 	u_int32_t decompressBufferLength;
 	z_stream *zipStream;
+	z_stream *zipStreamDecompress;
 	LZ4_stream_t *lz4Stream;
 	LZ4_streamDecode_t *lz4StreamDecode;
 	string errorString;
 	int zipLevel;
-	u_int32_t compress_len;
+	u_int32_t processed_len;
+friend class ChunkBuffer;
 };
 
 class ChunkBuffer_baseIterate {
@@ -201,6 +207,12 @@ public:
 
 class ChunkBuffer : public CompressStream_baseEv {
 public:
+	enum eAddMethod {
+		add_na,
+		add_fill_fix_len,
+		add_simple,
+		add_compress
+	};
 	struct eChunk {
 		eChunk() {
 			len = 0;
@@ -217,16 +229,17 @@ public:
 	void setZipLevel(int zipLevel);
 	void add(char *data, u_int32_t len, bool flush = false, u_int32_t decompress_len = 0, bool directAdd = false);
 	u_int32_t getLen() {
-		return(len);
+		return(this->compressStream ? compress_orig_data_len : len);
 	}
 	virtual bool compress_ev(char *data, u_int32_t len, u_int32_t decompress_len);
 	virtual bool decompress_ev(char *data, u_int32_t len);
-	void chunkIterate(ChunkBuffer_baseIterate *chunkbufferIterateEv);
+	void chunkIterate(ChunkBuffer_baseIterate *chunkbufferIterateEv, bool freeChunks = false);
 private:
 	list<eChunk> chunkBuffer;
-	char *lastChunk;
-	u_int32_t len;       
+	list<eChunk>::iterator lastChunk;
+	u_int32_t len;
 	u_int32_t chunk_fix_len;
+	u_int32_t compress_orig_data_len;
 	CompressStream *compressStream;
 	u_int32_t iterate_index;
 	ChunkBuffer_baseIterate *decompress_chunkbufferIterateEv;

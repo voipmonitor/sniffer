@@ -55,10 +55,11 @@ CompressStream::CompressStream(eTypeCompress typeCompress, u_int32_t compressBuf
 	this->decompressBufferLength = 0;
 	this->decompressBuffer = NULL;
 	this->zipStream = NULL;
+	this->zipStreamDecompress = NULL;
 	this->lz4Stream = NULL;
 	this->lz4StreamDecode = NULL;
 	this->zipLevel = Z_DEFAULT_COMPRESSION;
-	this->compress_len = 0;
+	this->processed_len = 0;
 }
 
 CompressStream::~CompressStream() {
@@ -75,6 +76,7 @@ void CompressStream::initCompress() {
 	case compress_na:
 		break;
 	case zip:
+	case gzip:
 		if(this->zipStream) {
 			break;
 		}
@@ -82,13 +84,16 @@ void CompressStream::initCompress() {
 		this->zipStream->zalloc = Z_NULL;
 		this->zipStream->zfree = Z_NULL;
 		this->zipStream->opaque = Z_NULL;
-		if(deflateInit2(this->zipStream, this->zipLevel, Z_DEFLATED, MAX_WBITS + 16, 8, Z_DEFAULT_STRATEGY) != Z_OK) {
+		if((this->typeCompress == zip ?
+		     deflateInit(this->zipStream, this->zipLevel) :
+		     deflateInit2(this->zipStream, this->zipLevel, Z_DEFLATED, MAX_WBITS + 16, 8, Z_DEFAULT_STRATEGY)) != Z_OK) {
 			deflateEnd(this->zipStream);
 			this->setError("zip initialize failed");
 		} else {
-			if(this->compressBufferLength) {
-				this->compressBuffer = new char[this->compressBufferLength];
+			if(!this->compressBufferLength) {
+				this->compressBufferLength = 8 * 1024;
 			}
+			this->compressBuffer = new char[this->compressBufferLength];
 		}
 		break;
 	case lz4:
@@ -115,6 +120,24 @@ void CompressStream::initDecompress() {
 	case compress_na:
 		break;
 	case zip:
+		if(this->zipStreamDecompress) {
+			break;
+		}
+		this->zipStreamDecompress =  new z_stream;
+		this->zipStreamDecompress->zalloc = Z_NULL;
+		this->zipStreamDecompress->zfree = Z_NULL;
+		this->zipStreamDecompress->opaque = Z_NULL;
+		this->zipStreamDecompress->avail_in = 0;
+		this->zipStreamDecompress->next_in = Z_NULL;
+		if(inflateInit(this->zipStreamDecompress) != Z_OK) {
+			inflateEnd(this->zipStreamDecompress);
+			this->setError("unzip initialize failed");
+		} else {
+			if(!this->decompressBufferLength) {
+				this->decompressBufferLength = 8 * 1024;
+			}
+			this->decompressBuffer = new char[this->decompressBufferLength];
+		}
 		break;
 	case lz4:
 		if(this->lz4StreamDecode) {
@@ -124,13 +147,21 @@ void CompressStream::initDecompress() {
 		break;
 	case snappy:
 		break;
+	case gzip:
+		break;
 	}
 }
 
 void CompressStream::termCompress() {
 	if(this->zipStream) {
+		deflateEnd(this->zipStream);
 		delete this->zipStream;
 		this->zipStream = NULL;
+	}
+	if(this->zipStreamDecompress) {
+		inflateEnd(this->zipStreamDecompress);
+		delete this->zipStreamDecompress;
+		this->zipStreamDecompress = NULL;
 	}
 	if(this->lz4Stream) {
 		LZ4_freeStream(this->lz4Stream);
@@ -157,7 +188,7 @@ bool CompressStream::compress(char *data, u_int32_t len, bool flush, CompressStr
 	if(this->isError()) {
 		return(false);
 	}
-	if(flush ? !this->compress_len : !len) {
+	if(flush ? !this->processed_len : !len) {
 		return(true);
 	}
 	switch(this->typeCompress) {
@@ -167,30 +198,36 @@ bool CompressStream::compress(char *data, u_int32_t len, bool flush, CompressStr
 			return(false);
 		}
 		break;
-	case zip:
+	case zip: 
+	case gzip: {
 		if(!this->zipStream) {
 			this->initCompress();
 		}
 		if(!this->compressBuffer) {
-			this->createCompressBuffer(len);
+			this->createCompressBuffer(this->compressBufferLength);
 		}
 		this->zipStream->avail_in = len;
 		this->zipStream->next_in = (unsigned char*)data;
 		do {
 			this->zipStream->avail_out = this->compressBufferLength;
 			this->zipStream->next_out = (unsigned char*)this->compressBuffer;
-			if(deflate(this->zipStream, flush ? Z_FINISH : Z_NO_FLUSH) != Z_STREAM_ERROR) {
+			int deflateRslt = deflate(this->zipStream, flush ? Z_FINISH : Z_NO_FLUSH);
+			if(deflateRslt == Z_OK || deflateRslt == Z_STREAM_END) {
 				int have = this->compressBufferLength - this->zipStream->avail_out;
 				if(!baseEv->compress_ev(this->compressBuffer, have, 0)) {
 					this->setError("zip compress_ev failed");
 					return(false);
 				}
 			} else {
-				this->setError("zip compress failed");
+				this->setError(string("zip compress failed") + 
+					       (this->zipStream->msg ?
+						 string(" ") + this->zipStream->msg :
+						 ""));
 				return(false);
 			}
 		} while(this->zipStream->avail_out == 0);
-		this->compress_len += len;
+		this->processed_len += len;
+		}
 		break;
 	case lz4:
 		/*
@@ -255,20 +292,34 @@ bool CompressStream::compress(char *data, u_int32_t len, bool flush, CompressStr
 		}
 		*/
 		break;
-	case snappy:
+	case snappy: {
 		if(!this->compressBuffer) {
 			this->createCompressBuffer(len);
 		}
-		size_t have = this->compressBufferLength;
-		snappy_compress(data, len, this->compressBuffer, &have);
-		baseEv->compress_ev(this->compressBuffer, have, len);
-		this->compress_len += len;
+		size_t compressLength = this->compressBufferLength;
+		snappy_status snappyRslt = snappy_compress(data, len, this->compressBuffer, &compressLength);
+		switch(snappyRslt) {
+		case SNAPPY_OK:
+			baseEv->compress_ev(this->compressBuffer, compressLength, len);
+			this->processed_len += len;
+			break;
+		case SNAPPY_INVALID_INPUT:
+			this->setError("snappy compress failed - invalid input");
+			return(false);
+		case SNAPPY_BUFFER_TOO_SMALL:
+			this->setError("snappy compress failed - buffer is too small");
+			return(false);
+		default:
+			this->setError("snappy compress failed -  unknown error");
+			return(false);
+		}
+		}
 		break;
 	}
 	return(true);
 }
 
-bool CompressStream::decompress(char *data, u_int32_t len, u_int32_t decompress_len, CompressStream_baseEv *baseEv) {
+bool CompressStream::decompress(char *data, u_int32_t len, u_int32_t decompress_len, bool flush, CompressStream_baseEv *baseEv) {
 	/*
 	cout << "decompress data " << len << " " << decompress_len << endl;
 	for(u_int32_t i = 0; i < len; i++) {
@@ -290,7 +341,32 @@ bool CompressStream::decompress(char *data, u_int32_t len, u_int32_t decompress_
 		}
 		break;
 	case zip:
-		this->setError("zip decompress is temporary not supported");
+		if(!this->zipStreamDecompress) {
+			this->initDecompress();
+		}
+		if(!this->decompressBuffer) {
+			this->createDecompressBuffer(this->decompressBufferLength);
+		}
+		this->zipStreamDecompress->avail_in = len;
+		this->zipStreamDecompress->next_in = (unsigned char*)data;
+		do {
+			this->zipStreamDecompress->avail_out = this->decompressBufferLength;
+			this->zipStreamDecompress->next_out = (unsigned char*)this->decompressBuffer;
+			int inflateRslt = inflate(this->zipStreamDecompress, Z_NO_FLUSH);
+			if(inflateRslt == Z_OK || inflateRslt == Z_STREAM_END) {
+				int have = this->decompressBufferLength - this->zipStreamDecompress->avail_out;
+				if(!baseEv->decompress_ev(this->decompressBuffer, have)) {
+					this->setError("zip decompress_ev failed");
+					return(false);
+				}
+			} else {
+				this->setError(string("zip decompress failed") + 
+					       (this->zipStreamDecompress->msg ?
+						 string(" ") + this->zipStreamDecompress->msg :
+						 ""));
+				return(false);
+			}
+		} while(this->zipStreamDecompress->avail_out == 0);
 		break;
 	case lz4:
 		/*
@@ -312,13 +388,30 @@ bool CompressStream::decompress(char *data, u_int32_t len, u_int32_t decompress_
 		}
 		*/
 		break;
-	case snappy:
+	case snappy: {
 		if(!this->decompressBuffer || this->decompressBufferLength < decompress_len) {
 			this->createDecompressBuffer(decompress_len);
 		}
 		size_t have = this->decompressBufferLength;
-		snappy_uncompress(data, len, this->decompressBuffer, &have);
-		baseEv->decompress_ev(this->decompressBuffer, decompress_len);
+		snappy_status snappyRslt = snappy_uncompress(data, len, this->decompressBuffer, &have);
+		
+		switch(snappyRslt) {
+		case SNAPPY_OK:
+			baseEv->decompress_ev(this->decompressBuffer, decompress_len);
+			break;
+		case SNAPPY_INVALID_INPUT:
+			this->setError("snappy decompress failed - invalid input");
+			return(false);
+		case SNAPPY_BUFFER_TOO_SMALL:
+			this->setError("snappy decompress failed - buffer is too small");
+			return(false);
+		default:
+			this->setError("snappy decompress failed - unknown error");
+			return(false);
+		}
+		}
+		break;
+	case gzip:
 		break;
 	}
 	return(true);
@@ -333,6 +426,7 @@ void CompressStream::createCompressBuffer(u_int32_t dataLen) {
 	case compress_na:
 		break;
 	case zip:
+	case gzip:
 		this->compressBufferLength = dataLen;
 		if(this->compressBufferLength) {
 			this->compressBuffer = new char[this->compressBufferLength];
@@ -370,20 +464,24 @@ void CompressStream::createDecompressBuffer(u_int32_t dataLen) {
 			this->decompressBuffer = new char[this->decompressBufferLength];
 		}
 		break;
+	case gzip:
+		break;
 	}
 }
 
 ChunkBuffer::ChunkBuffer(u_int32_t chunk_fix_len) {
-	this->lastChunk = NULL;;
 	this->len = 0;
 	this->chunk_fix_len = chunk_fix_len;
+	this->compress_orig_data_len = 0;
 	this->compressStream = NULL;
 }
 
 ChunkBuffer::~ChunkBuffer() {
 	list<eChunk>::iterator it = chunkBuffer.begin();
 	for(it = chunkBuffer.begin(); it != chunkBuffer.end(); it++) {
-		delete [] it->chunk;
+		if(it->chunk) {
+			delete [] it->chunk;
+		}
 	}
 	if(this->compressStream) {
 		delete this->compressStream;
@@ -411,6 +509,9 @@ void ChunkBuffer::setZipLevel(int zipLevel) {
 #include <stdio.h>
 
 void ChunkBuffer::add(char *data, u_int32_t datalen, bool flush, u_int32_t decompress_len, bool directAdd) {
+	if(!datalen) {
+		return;
+	}
 	
 	if(directAdd) {
 		/*
@@ -447,12 +548,24 @@ void ChunkBuffer::add(char *data, u_int32_t datalen, bool flush, u_int32_t decom
 		++pass;
 		*/
 	}
-	
-	if(!datalen) {
-		return;
+	eAddMethod addMethod = add_na;
+	if(directAdd) {
+		if(this->chunk_fix_len && this->compressStream->typeCompress == CompressStream::zip) {
+			addMethod = add_fill_fix_len;
+		} else {
+			addMethod = add_simple;
+		}
+	} else {
+		if(this->compressStream) {
+			addMethod = add_compress;
+		} else if(this->chunk_fix_len) {
+			addMethod = add_fill_fix_len;
+		} else {
+			addMethod = add_simple;
+		}
 	}
-	if(directAdd ||
-	   (!this->compressStream && !this->chunk_fix_len)) {
+	switch(addMethod) {
+	case add_simple: {
 		eChunk chunk;
 		chunk.chunk = new char[datalen];
 		memset(chunk.chunk, 0, datalen);
@@ -460,24 +573,32 @@ void ChunkBuffer::add(char *data, u_int32_t datalen, bool flush, u_int32_t decom
 		chunk.len = datalen;
 		chunk.decompress_len = decompress_len;
 		this->chunkBuffer.push_back(chunk);
-	} else if(this->compressStream) {
-		this->compressStream->compress(data, datalen, flush, this);
 		this->len += datalen;
-	} else if(this->chunk_fix_len) {
+		}
+		break;
+	case add_fill_fix_len: {
 		u_int32_t copied = 0;
 		do {
-			if(!this->lastChunk ||
-			   !(this->len % this->chunk_fix_len)) {
-				this->lastChunk = new char[this->chunk_fix_len];
+			if(!(this->len % this->chunk_fix_len)) {
 				eChunk chunk;
-				chunk.chunk = this->lastChunk;
+				chunk.chunk = new char[this->chunk_fix_len];
 				this->chunkBuffer.push_back(chunk);
+				this->lastChunk = --this->chunkBuffer.end();
 			}
-			int whattocopy = MIN(this->chunk_fix_len - len % this->chunk_fix_len, datalen - copied);
-			memcpy(this->lastChunk + this->len % this->chunk_fix_len, data + copied, whattocopy);
+			int whattocopy = MIN(this->chunk_fix_len - this->len % this->chunk_fix_len, datalen - copied);
+			memcpy(this->lastChunk->chunk + this->len % this->chunk_fix_len, data + copied, whattocopy);
 			copied += whattocopy;
 			this->len += whattocopy;
+			this->lastChunk->len += whattocopy;
 		} while(datalen > copied);
+		}
+		break;
+	case add_compress:
+		this->compressStream->compress(data, datalen, flush, this);
+		this->compress_orig_data_len += datalen;
+		break;
+	case add_na:
+		break;
 	}
 }
 
@@ -490,31 +611,38 @@ bool ChunkBuffer::decompress_ev(char *data, u_int32_t len) {
  
 	/*
 	extern string GetDataMD5(u_char *data, u_int32_t datalen);
- 
 	cout << GetDataMD5((u_char*)data, len) << endl;
 	*/
 	decompress_chunkbufferIterateEv->chunkbuffer_iterate_ev(data, len, this->decompress_pos);
 	this->decompress_pos += len;
-
 	/*
 	cout << "decompress ev " << len << " " << this->decompress_pos << " " << endl;
 	for(u_int32_t i = 0; i < min(len, 10u); i++) {
 		cout << (int)(unsigned char)data[i] << ",";
 	}
 	cout << endl;
+	*/
+	/*
 	cout << GetDataMD5((u_char*)data, len) << endl;
 	*/
 
 	return(true);
 }
 
-void ChunkBuffer::chunkIterate(ChunkBuffer_baseIterate *chunkbufferIterateEv) {
+void ChunkBuffer::chunkIterate(ChunkBuffer_baseIterate *chunkbufferIterateEv, bool freeChunks) {
 	if(this->compressStream) {
 		this->decompress_chunkbufferIterateEv = chunkbufferIterateEv;
 		this->decompress_pos = 0;
 		list<eChunk>::iterator it = chunkBuffer.begin();
+		size_t size = chunkBuffer.size();
+		size_t counter = 0;
 		for(it = chunkBuffer.begin(); it != chunkBuffer.end(); it++) {
-			this->compressStream->decompress(it->chunk, it->len, it->decompress_len, this);
+			++counter;
+			this->compressStream->decompress(it->chunk, it->len, it->decompress_len, counter == size, this);
+			if(freeChunks) {
+				delete it->chunk;
+				it->chunk = NULL;
+			}
 		}
 		chunkbufferIterateEv->chunkbuffer_iterate_ev(NULL, 0 , this->decompress_pos);
 		this->compressStream->termDecompress();
@@ -522,11 +650,12 @@ void ChunkBuffer::chunkIterate(ChunkBuffer_baseIterate *chunkbufferIterateEv) {
 		u_int32_t pos = 0;
 		list<eChunk>::iterator it = chunkBuffer.begin();
 		for(it = chunkBuffer.begin(); it != chunkBuffer.end(); it++) {
-			u_int32_t len = this->chunk_fix_len ?
-					 (pos + this->chunk_fix_len > this->len ? this->len - pos : this->chunk_fix_len) :
-					 it->len;
-			chunkbufferIterateEv->chunkbuffer_iterate_ev(it->chunk, len, pos);
-			pos += len;
+			chunkbufferIterateEv->chunkbuffer_iterate_ev(it->chunk, it->len, pos);
+			if(freeChunks) {
+				delete it->chunk;
+				it->chunk = NULL;
+			}
+			pos += it->len;
 		}
 		chunkbufferIterateEv->chunkbuffer_iterate_ev(NULL, 0, pos);
 	}

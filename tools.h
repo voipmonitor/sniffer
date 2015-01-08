@@ -344,8 +344,7 @@ public:
 	enum eTypeCompress {
 		compress_na,
 		compress_default,
-		zip,
-		lz4
+		gzip
 	};
 public:
 	FileZipHandler(int bufferLength = 0, int enableAsyncWrite = 0, eTypeCompress typeCompress = compress_na,

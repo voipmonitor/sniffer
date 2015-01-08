@@ -2284,9 +2284,9 @@ bool FileZipHandler::_writeToFile(char *data, int length, bool flush) {
 			this->tarBuffer = new ChunkBuffer(typeFile == pcap_sip ? 8 * 1024 : 
 							  typeFile == pcap_rtp ? 32 * 1024 : 
 							  typeFile == graph_rtp ? 16 * 1024 : 8 * 1024);
-			this->tarBuffer->setTypeCompress(CompressStream::snappy);
+			this->tarBuffer->setTypeCompress(CompressStream::zip);
 		}
-		this->tarBuffer->add(data, length);
+		this->tarBuffer->add(data, length, flush);
 		return(true);
 	}
 	
@@ -2303,58 +2303,12 @@ bool FileZipHandler::_writeToFile(char *data, int length, bool flush) {
 		}
 		}
 		break;
-	case zip:
-	case lz4: 
+	case gzip:
 		if(!this->compressStream) {
 			this->initCompress();
 		}
 		this->compressStream->compress(data, length, flush, this);
-		/*
-		if(!this->zipStream && !this->initZip()) {
-			return(false);
-		}
-		this->zipStream->avail_in = length;
-		this->zipStream->next_in = (unsigned char*)data;
-		do {
-			this->zipStream->avail_out = this->zipBufferLength;
-			this->zipStream->next_out = (unsigned char*)this->zipBuffer;
-			if(deflate(this->zipStream, flush ? Z_FINISH : Z_NO_FLUSH) != Z_STREAM_ERROR) {
-				int have = this->bufferLength - this->zipStream->avail_out;
-				if(this->__writeToFile(this->zipBuffer, have) <= 0) {
-					this->setError();
-					return(false);
-				} else {
-					this->size += have;
-				}
-			} else {
-				this->setError("zip deflate failed");
-				return(false);
-			}
-		} while(this->zipStream->avail_out == 0);
-		return(true);
-	case lz4:
-		{
-		if(!this->lz4Stream && !this->initLz4()) {
-			return(false);
-		}
-		int pos = 0;
-		while(pos < length) {
-			int have = LZ4_compress_continue(this->lz4Stream, data + pos, this->zipBuffer, min(this->zipBufferLength, length - pos));
-			if(have > 0) {
-				if(this->__writeToFile(this->zipBuffer, have) <= 0) {
-					this->setError();
-					return(false);
-				} else {
-					this->size += have;
-				}
-			} else {
-				break;
-			}
-			pos += this->zipBufferLength;
-		}
-		}
-		return(true);
-		*/
+		break;
 	case compress_default:
 		return(false);
 	}
@@ -2379,41 +2333,11 @@ bool FileZipHandler::__writeToFile(char *data, int length) {
 	}
 }
 
-/*
-bool FileZipHandler::initZip() {
-	if(this->typeCompress == zip && !this->zipStream) {
-		this->zipStream =  new z_stream;
-		this->zipStream->zalloc = Z_NULL;
-		this->zipStream->zfree = Z_NULL;
-		this->zipStream->opaque = Z_NULL;
-		if(deflateInit2(this->zipStream, opt_pcap_dump_ziplevel, Z_DEFLATED, MAX_WBITS + 16, 8, Z_DEFAULT_STRATEGY) != Z_OK) {
-			deflateEnd(this->zipStream);
-			this->setError("zip initialize failed");
-			return(false);
-		} else {
-			this->zipBufferLength = bufferLength ? bufferLength : DEFAULT_BUFFER_ZIP_LENGTH;
-			this->zipBuffer = new char[this->zipBufferLength];
-		}
-	}
-	return(true);
-}
-
-bool FileZipHandler::initLz4() {
-	if(this->typeCompress == lz4 && !this->lz4Stream) {
-		this->lz4Stream = LZ4_createStream();
-		this->zipBufferLength = bufferLength ? bufferLength : DEFAULT_BUFFER_LZ4_LENGTH;
-		this->zipBufferLengthCompressBound = LZ4_compressBound(this->zipBufferLength);
-		this->zipBuffer = new char[this->zipBufferLengthCompressBound];
-	}
-	return(true);
-}
-*/
-
 void FileZipHandler::initCompress() {
-	if((this->typeCompress == zip ||
-	    this->typeCompress == lz4) && 
+	if(this->typeCompress == gzip && 
 	   !this->compressStream) {
-		this->compressStream =  new CompressStream(this->typeCompress == zip ? CompressStream::zip : CompressStream::lz4);
+		this->compressStream =  new CompressStream(CompressStream::gzip);
+		this->compressStream->setZipLevel(opt_pcap_dump_ziplevel);
 	}
 }
 

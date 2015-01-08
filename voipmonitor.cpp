@@ -320,7 +320,7 @@ int opt_last_rtp_from_end = 1;
 int opt_pcap_dump_bufflength = 8194;
 int opt_pcap_dump_asyncwrite = 1;
 int opt_pcap_dump_asyncwrite_limit_new_thread = 80;
-FileZipHandler::eTypeCompress opt_pcap_dump_zip = FileZipHandler::zip;
+FileZipHandler::eTypeCompress opt_pcap_dump_zip = FileZipHandler::gzip;
 int opt_pcap_dump_ziplevel = Z_DEFAULT_COMPRESSION;
 int opt_pcap_dump_writethreads = 1;
 int opt_pcap_dump_writethreads_max = 32;
@@ -1615,7 +1615,7 @@ int eval_config(string inistr) {
 			break;
 		case 'g':
 			opt_saveGRAPH = 1;
-//gzip is disabled			opt_gzipGRAPH = FileZipHandler::zip;
+//gzip is disabled			opt_gzipGRAPH = FileZipHandler::gzip;
 			break;
 		}
 	}
@@ -2185,8 +2185,7 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "pcap_dump_zip", NULL))) {
 		strlwr((char*)value);
-		opt_pcap_dump_zip = !strcmp(value, "lz4") ? FileZipHandler::lz4 :
-				    !strcmp(value, "zip") || yesno(value) ? FileZipHandler::zip : FileZipHandler::compress_na;
+		opt_pcap_dump_zip = !strcmp(value, "zip") || yesno(value) ? FileZipHandler::gzip : FileZipHandler::compress_na;
 	}
 	if((value = ini.GetValue("general", "pcap_dump_ziplevel", NULL))) {
 		opt_pcap_dump_ziplevel = atoi(value);
@@ -2975,7 +2974,7 @@ int main(int argc, char *argv[]) {
 				opt_norecord_header = 1;
 				break;
 			case '1':
-				opt_gzipGRAPH = FileZipHandler::zip;
+				opt_gzipGRAPH = FileZipHandler::gzip;
 				break;
 			case '2':
 				opt_gzipPCAP = 1;
@@ -3128,7 +3127,7 @@ int main(int argc, char *argv[]) {
 			case 'G':
 				opt_saveGRAPH = 1;
 				if(optarg && optarg[0] == 'g') {
-					opt_gzipGRAPH = FileZipHandler::zip;
+					opt_gzipGRAPH = FileZipHandler::gzip;
 				}
 				break;
 			case 'X':
@@ -4852,22 +4851,6 @@ void test_alloc_speed() {
 	}
 }
 
-#include "tools_dynamic_buffer.h"
-void test_dynamic_buffer() {
-	/*
-	DynamicBuffer *buffer = new DynamicBuffer();
-	buffer->setMinItemBufferLength(4);
-	buffer->setMaxItemBufferLength(5);
-	buffer->add((u_char*)"123456789", 9);
-	buffer->add((u_char*)"abcdefghi", 9);
-	cout << buffer->getSize() << endl;
-	buffer->cout(true);
-	cout << endl;
-	cout << (char*)buffer->getConcatBuffer() << endl;
-	delete buffer;
-	*/
-}
-
 void test() {
  
 	switch(opt_test) {
@@ -4927,29 +4910,6 @@ void test() {
 	case 5:
 		test_alloc_speed();
 		break;
-	case 6:
-		test_dynamic_buffer();
-		break;
-		
-	case 7:
-	 
-		{
-		 
-		FILE *lz4File = fopen("/var/spool/voipmonitor_local/2014-03-21/12/00/SIP/1238412435.pcap", "rb");
-		
-		char *buff = new char[10000];
-		char *buffD = new char[10000];
-		
-		size_t size = fread(buff, 1, 10000, lz4File);
-		cout << LZ4_decompress_safe(buff, buffD, size, 10000) << endl;
-		
-		delete [] buff;
-		
-		fclose(lz4File);
-		 
-		}
-		break;
-		
 	case 10:
 		{
 		SqlDb *sqlDb = createSqlObject();

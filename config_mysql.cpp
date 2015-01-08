@@ -457,7 +457,7 @@ config_load_mysql() {
 				break;
 			case 'g':
 				opt_saveGRAPH = 1;
-				opt_gzipGRAPH = FileZipHandler::zip;
+				opt_gzipGRAPH = FileZipHandler::gzip;
 				break;
 			}      
 		}
