@@ -92,8 +92,6 @@ Tar::th_finish()
 void
 Tar::th_set_path(char *pathname)
 {
-	char suffix[2] = "";
-	
 #ifdef DEBUG
 	printf("in th_set_path(th, pathname=\"%s\")\n", pathname);
 #endif  
@@ -103,7 +101,7 @@ Tar::th_set_path(char *pathname)
 	tar.th_buf.gnu_longname = NULL;
 	
 	/* classic tar format */
-	snprintf(tar.th_buf.name, 100, "%s%s", pathname, suffix);
+	snprintf(tar.th_buf.name, 100, "%s", pathname);
 	       
 #ifdef DEBUG   
 	puts("returning from th_set_path()...");
