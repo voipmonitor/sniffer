@@ -2450,10 +2450,6 @@ void set_context_config() {
 	if(rtp_qring_quick == 0 && opt_enable_process_rtp_packet > 1) {
 		rtp_qring_quick = 1;
 	}
-	
-	if(opt_pcap_dump_tar) {
-		opt_pcap_dump_writethreads_max = 1;
-	}
 }
 
 int load_config(char *fname) {
