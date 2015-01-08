@@ -336,6 +336,12 @@ int opt_pcap_dump_tar_lzma_rtp_level = 1;
 int opt_pcap_dump_tar_compress_graph = 0;
 int opt_pcap_dump_tar_gzip_graph_level = Z_DEFAULT_COMPRESSION;
 int opt_pcap_dump_tar_lzma_graph_level = 1;
+CompressStream::eTypeCompress opt_pcap_dump_tar_internalcompress_sip = CompressStream::compress_na;
+CompressStream::eTypeCompress opt_pcap_dump_tar_internalcompress_rtp = CompressStream::compress_na;
+CompressStream::eTypeCompress opt_pcap_dump_tar_internalcompress_graph = CompressStream::compress_na;
+int opt_pcap_dump_tar_internal_gzip_sip_level = Z_DEFAULT_COMPRESSION;
+int opt_pcap_dump_tar_internal_gzip_rtp_level = Z_DEFAULT_COMPRESSION;
+int opt_pcap_dump_tar_internal_gzip_graph_level = Z_DEFAULT_COMPRESSION;
 int opt_defer_create_spooldir = 1;
 
 int opt_sdp_multiplication = 3;
@@ -2265,6 +2271,24 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "tar_lzma_graph_level", NULL))) {
 		opt_pcap_dump_tar_lzma_graph_level = atoi(value);
+	}
+	if((value = ini.GetValue("general", "tar_internalcompress_sip", NULL))) {
+		opt_pcap_dump_tar_internalcompress_sip = CompressStream::convTypeCompress(value);
+	}
+	if((value = ini.GetValue("general", "tar_internalcompress_rtp", NULL))) {
+		opt_pcap_dump_tar_internalcompress_rtp = CompressStream::convTypeCompress(value);
+	}
+	if((value = ini.GetValue("general", "tar_internalcompress_graph", NULL))) {
+		opt_pcap_dump_tar_internalcompress_graph = CompressStream::convTypeCompress(value);
+	}
+	if((value = ini.GetValue("general", "tar_internal_gzip_sip_level", NULL))) {
+		opt_pcap_dump_tar_internal_gzip_sip_level = atoi(value);
+	}
+	if((value = ini.GetValue("general", "tar_internal_gzip_rtp_level", NULL))) {
+		opt_pcap_dump_tar_internal_gzip_rtp_level = atoi(value);
+	}
+	if((value = ini.GetValue("general", "tar_internal_gzip_graph_level", NULL))) {
+		opt_pcap_dump_tar_internal_gzip_graph_level = atoi(value);
 	}
 	if((value = ini.GetValue("general", "defer_create_spooldir", NULL))) {
 		opt_defer_create_spooldir = yesno(value);

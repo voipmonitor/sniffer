@@ -2284,7 +2284,34 @@ bool FileZipHandler::_writeToFile(char *data, int length, bool flush) {
 			this->tarBuffer = new ChunkBuffer(typeFile == pcap_sip ? 8 * 1024 : 
 							  typeFile == pcap_rtp ? 32 * 1024 : 
 							  typeFile == graph_rtp ? 16 * 1024 : 8 * 1024);
-			this->tarBuffer->setTypeCompress(CompressStream::zip);
+			extern CompressStream::eTypeCompress opt_pcap_dump_tar_internalcompress_sip;
+			extern CompressStream::eTypeCompress opt_pcap_dump_tar_internalcompress_rtp;
+			extern CompressStream::eTypeCompress opt_pcap_dump_tar_internalcompress_graph;
+			extern int opt_pcap_dump_tar_internal_gzip_sip_level;
+			extern int opt_pcap_dump_tar_internal_gzip_rtp_level;
+			extern int opt_pcap_dump_tar_internal_gzip_graph_level;
+			switch(typeFile) {
+			case pcap_sip:
+				if(opt_pcap_dump_tar_internalcompress_sip != CompressStream::compress_na) {
+					this->tarBuffer->setTypeCompress(opt_pcap_dump_tar_internalcompress_sip, 8 * 1024, this->bufferLength);
+					this->tarBuffer->setZipLevel(opt_pcap_dump_tar_internal_gzip_sip_level);
+				}
+				break;
+			case pcap_rtp:
+				if(opt_pcap_dump_tar_internalcompress_rtp != CompressStream::compress_na) {
+					this->tarBuffer->setTypeCompress(opt_pcap_dump_tar_internalcompress_rtp, 8 * 1024, this->bufferLength);
+					this->tarBuffer->setZipLevel(opt_pcap_dump_tar_internal_gzip_rtp_level);
+				}
+				break;
+			case graph_rtp:
+				if(opt_pcap_dump_tar_internalcompress_graph != CompressStream::compress_na) {
+					this->tarBuffer->setTypeCompress(opt_pcap_dump_tar_internalcompress_graph, 8 * 1024, this->bufferLength);
+					this->tarBuffer->setZipLevel(opt_pcap_dump_tar_internal_gzip_graph_level);
+				}
+				break;
+			case na:
+				break;
+			}
 		}
 		this->tarBuffer->add(data, length, flush);
 		return(true);
@@ -2336,7 +2363,7 @@ bool FileZipHandler::__writeToFile(char *data, int length) {
 void FileZipHandler::initCompress() {
 	if(this->typeCompress == gzip && 
 	   !this->compressStream) {
-		this->compressStream =  new CompressStream(CompressStream::gzip);
+		this->compressStream =  new CompressStream(CompressStream::gzip, 8 * 1024, 0);
 		this->compressStream->setZipLevel(opt_pcap_dump_ziplevel);
 	}
 }

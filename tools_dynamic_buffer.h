@@ -151,14 +151,15 @@ public:
 		zip,
 		gzip,
 		lz4,
+		lz4_stream,
 		snappy
 	};
 public:
-	CompressStream(eTypeCompress typeCompress = zip, u_int32_t compressBufferLength = 0);
+	CompressStream(eTypeCompress typeCompress, u_int32_t compressBufferLength, u_int32_t maxDataLength);
 	~CompressStream();
 	void setZipLevel(int zipLevel);
 	void initCompress();
-	void initDecompress();
+	void initDecompress(u_int32_t dataLen);
 	void termCompress();
 	void termDecompress();
 	bool compress(char *data, u_int32_t len, bool flush, CompressStream_baseEv *baseEv);
@@ -180,9 +181,10 @@ public:
 	string getErrorString() {
 		return(errorString);
 	}
+	static eTypeCompress convTypeCompress(const char *typeCompress);
 private:
-	void createCompressBuffer(u_int32_t dataLen);
-	void createDecompressBuffer(u_int32_t dataLen);
+	void createCompressBuffer();
+	void createDecompressBuffer(u_int32_t bufferLen);
 private:
 	eTypeCompress typeCompress;
 	char *compressBuffer;
@@ -190,6 +192,7 @@ private:
 	u_int32_t compressBufferBoundLength;
 	char *decompressBuffer;
 	u_int32_t decompressBufferLength;
+	u_int32_t maxDataLength;
 	z_stream *zipStream;
 	z_stream *zipStreamDecompress;
 	LZ4_stream_t *lz4Stream;
@@ -225,7 +228,7 @@ public:
 public:
 	ChunkBuffer(u_int32_t chunk_fix_len = 0);
 	virtual ~ChunkBuffer();
-	void setTypeCompress(CompressStream::eTypeCompress typeCompress, u_int32_t compressBufferLength = 0);
+	void setTypeCompress(CompressStream::eTypeCompress typeCompress, u_int32_t compressBufferLength, u_int32_t maxDataLength);
 	void setZipLevel(int zipLevel);
 	void add(char *data, u_int32_t len, bool flush = false, u_int32_t decompress_len = 0, bool directAdd = false);
 	u_int32_t getLen() {
