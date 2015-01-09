@@ -214,16 +214,23 @@ public:
 		add_na,
 		add_fill_fix_len,
 		add_simple,
+		add_fill_chunks,
 		add_compress
 	};
-	struct eChunk {
+	struct eChunkLen {
+		eChunkLen() {
+			len = 0;
+			decompress_len = 0;
+		}
+		u_int32_t len;
+		u_int32_t decompress_len;
+	};
+	struct eChunk : eChunkLen {
 		eChunk() {
 			len = 0;
 			decompress_len = 0;
 		}
 		char *chunk;
-		u_int32_t len;
-		u_int32_t decompress_len;
 	};
 public:
 	ChunkBuffer(u_int32_t chunk_fix_len = 0);
@@ -239,10 +246,10 @@ public:
 	void chunkIterate(ChunkBuffer_baseIterate *chunkbufferIterateEv, bool freeChunks = false);
 private:
 	list<eChunk> chunkBuffer;
-	list<eChunk>::iterator lastChunk;
 	u_int32_t len;
 	u_int32_t chunk_fix_len;
 	u_int32_t compress_orig_data_len;
+	eChunk *lastChunk;
 	CompressStream *compressStream;
 	u_int32_t iterate_index;
 	ChunkBuffer_baseIterate *decompress_chunkbufferIterateEv;

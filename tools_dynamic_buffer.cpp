@@ -1,3 +1,4 @@
+#include "voipmonitor.h"
 #include "tools.h"
 
 #include "tools_dynamic_buffer.h"
@@ -189,7 +190,7 @@ bool CompressStream::compress(char *data, u_int32_t len, bool flush, CompressStr
 	if(this->isError()) {
 		return(false);
 	}
-	if(flush ? !this->processed_len : !len) {
+	if(!(len || (flush && this->processed_len))) {
 		return(true);
 	}
 	switch(this->typeCompress) {
@@ -298,13 +299,13 @@ bool CompressStream::compress(char *data, u_int32_t len, bool flush, CompressStr
 }
 
 bool CompressStream::decompress(char *data, u_int32_t len, u_int32_t decompress_len, bool flush, CompressStream_baseEv *baseEv) {
-	/*
-	cout << "decompress data " << len << " " << decompress_len << endl;
-	for(u_int32_t i = 0; i < len; i++) {
-		cout << (int)(unsigned char)data[i] << ",";
+	if(sverb.chunk_buffer) {
+		cout << "decompress data " << len << " " << decompress_len << endl;
+		for(u_int32_t i = 0; i < min(len, 20u); i++) {
+			cout << (int)(unsigned char)data[i] << ",";
+		}
+		cout << endl;
 	}
-	cout << endl;
-	*/
 	if(this->isError()) {
 		return(false);
 	}
@@ -482,6 +483,7 @@ ChunkBuffer::ChunkBuffer(u_int32_t chunk_fix_len) {
 	this->len = 0;
 	this->chunk_fix_len = chunk_fix_len;
 	this->compress_orig_data_len = 0;
+	this->lastChunk = NULL;
 	this->compressStream = NULL;
 }
 
@@ -522,25 +524,29 @@ void ChunkBuffer::add(char *data, u_int32_t datalen, bool flush, u_int32_t decom
 	if(!datalen) {
 		return;
 	}
-	/*
-	if(directAdd) {
-		cout << "add compress data " << datalen << endl;
-		for(u_int32_t i = 0; i < min(datalen, 20u); i++) {
-			cout << (int)(unsigned char)data[i] << ",";
+	if(sverb.chunk_buffer) {
+		if(directAdd) {
+			cout << "add compress data " << datalen << endl;
+			for(u_int32_t i = 0; i < min(datalen, 20u); i++) {
+				cout << (int)(unsigned char)data[i] << ",";
+			}
+			cout << endl;
+		} else {
+			cout << "add source data " << datalen << endl;
+			for(u_int32_t i = 0; i < min(datalen, 20u); i++) {
+				cout << (int)(unsigned char)data[i] << ",";
+			}
+			cout << endl;
 		}
-		cout << endl;
-	} else {
-		cout << "add source data " << datalen << endl;
-		for(u_int32_t i = 0; i < min(datalen, 20u); i++) {
-			cout << (int)(unsigned char)data[i] << ",";
-		}
-		cout << endl;
 	}
-	*/
 	eAddMethod addMethod = add_na;
 	if(directAdd) {
-		if(this->chunk_fix_len && this->compressStream->typeCompress == CompressStream::zip) {
-			addMethod = add_fill_fix_len;
+		if(this->chunk_fix_len) {
+			if(this->compressStream->typeCompress == CompressStream::zip) {
+				addMethod = add_fill_fix_len;
+			} else {
+				addMethod = add_fill_chunks;
+			}
 		} else {
 			addMethod = add_simple;
 		}
@@ -557,12 +563,45 @@ void ChunkBuffer::add(char *data, u_int32_t datalen, bool flush, u_int32_t decom
 	case add_simple: {
 		eChunk chunk;
 		chunk.chunk = new char[datalen];
-		memset(chunk.chunk, 0, datalen);
 		memcpy(chunk.chunk, data, datalen);
 		chunk.len = datalen;
 		chunk.decompress_len = decompress_len;
 		this->chunkBuffer.push_back(chunk);
 		this->len += datalen;
+		}
+		break;
+	case add_fill_chunks: {
+		for(int i = 0; i < 2; i++) {
+			char *_data;
+			u_int32_t _len;
+			eChunkLen chunkLen;
+			if(i == 0) {
+				chunkLen.len = datalen;
+				chunkLen.decompress_len = decompress_len;
+				_data = (char*)&chunkLen;
+				_len = sizeof(chunkLen);
+			} else {
+				_data = data;
+				_len = datalen;
+			}
+			u_int32_t pos = 0;
+			while(pos < _len) {
+				if(!this->lastChunk ||
+				   this->lastChunk->len == this->chunk_fix_len) {
+					eChunk chunk;
+					chunk.chunk = new char[this->chunk_fix_len];
+					chunk.len = 0;
+					chunk.decompress_len = (u_int32_t)-1;
+					this->chunkBuffer.push_back(chunk);
+					this->lastChunk = &(*(--this->chunkBuffer.end()));
+				}
+				u_int32_t copied = min(_len - pos, this->chunk_fix_len - this->lastChunk->len);
+				memcpy(this->lastChunk->chunk + this->lastChunk->len, _data + pos, copied);
+				this->lastChunk->len += copied;
+				this->len += copied;
+				pos +=copied;
+			}
+		}
 		}
 		break;
 	case add_fill_fix_len: {
@@ -572,7 +611,7 @@ void ChunkBuffer::add(char *data, u_int32_t datalen, bool flush, u_int32_t decom
 				eChunk chunk;
 				chunk.chunk = new char[this->chunk_fix_len];
 				this->chunkBuffer.push_back(chunk);
-				this->lastChunk = --this->chunkBuffer.end();
+				this->lastChunk = &(*(--this->chunkBuffer.end()));
 			}
 			int whattocopy = MIN(this->chunk_fix_len - this->len % this->chunk_fix_len, datalen - copied);
 			memcpy(this->lastChunk->chunk + this->len % this->chunk_fix_len, data + copied, whattocopy);
@@ -599,13 +638,13 @@ bool ChunkBuffer::compress_ev(char *data, u_int32_t len, u_int32_t decompress_le
 bool ChunkBuffer::decompress_ev(char *data, u_int32_t len) {
  	decompress_chunkbufferIterateEv->chunkbuffer_iterate_ev(data, len, this->decompress_pos);
 	this->decompress_pos += len;
-	/*
-	cout << "decompress ev " << len << " " << this->decompress_pos << " " << endl;
-	for(u_int32_t i = 0; i < min(len, 10u); i++) {
-		cout << (int)(unsigned char)data[i] << ",";
+	if(sverb.chunk_buffer) {
+		cout << "decompress ev " << len << " " << this->decompress_pos << " " << endl;
+		for(u_int32_t i = 0; i < min(len, 10u); i++) {
+			cout << (int)(unsigned char)data[i] << ",";
+		}
+		cout << endl;
 	}
-	cout << endl;
-	*/
 	return(true);
 }
 
@@ -616,9 +655,78 @@ void ChunkBuffer::chunkIterate(ChunkBuffer_baseIterate *chunkbufferIterateEv, bo
 		list<eChunk>::iterator it = chunkBuffer.begin();
 		size_t size = chunkBuffer.size();
 		size_t counter = 0;
+		char *completeBuffer = NULL;
+		u_int32_t completeBufferLen = 0;
+		u_int32_t completeBufferPos = 0;
+		u_int32_t completeBufferCounter = 0;
+		eChunkLen completeBufferChunkLen;
+		eChunkLen completeBufferChunkLenBuff;
+		u_int32_t allPos;
 		for(it = chunkBuffer.begin(); it != chunkBuffer.end(); it++) {
 			++counter;
-			this->compressStream->decompress(it->chunk, it->len, it->decompress_len, counter == size, this);
+			if(it->decompress_len == (u_int32_t)-1) {
+				u_int32_t chunkPos = 0;
+				while(chunkPos < it->len) {
+					if(!completeBufferCounter) {
+						completeBufferChunkLen = *(eChunkLen*)it->chunk;
+						++completeBufferCounter;
+						completeBufferLen = completeBufferChunkLen.len;
+						completeBufferPos = 0;
+						chunkPos += sizeof(eChunkLen);
+						allPos += sizeof(eChunkLen);
+					}
+					if(!completeBufferPos) {
+						if(completeBufferLen <= it->len - chunkPos) {
+							if(completeBufferCounter % 2) {
+								this->compressStream->decompress(it->chunk + chunkPos, completeBufferChunkLen.len, completeBufferChunkLen.decompress_len, 
+												 allPos + completeBufferChunkLen.len == this->len, this);
+								completeBufferLen = sizeof(eChunkLen);
+								chunkPos += completeBufferChunkLen.len;
+								allPos += completeBufferChunkLen.len;
+							} else {
+								completeBufferChunkLen = *(eChunkLen*)(it->chunk + chunkPos);
+								completeBufferLen = completeBufferChunkLen.len;
+								chunkPos += sizeof(eChunkLen);
+								allPos += sizeof(eChunkLen);
+							}
+							++completeBufferCounter;
+							completeBufferPos = 0;
+						} else {
+							completeBuffer = completeBufferCounter % 2 ?
+									  new char[completeBufferLen] :
+									  (char*)&completeBufferChunkLenBuff;
+							u_int32_t copied = it->len - chunkPos;
+							memcpy(completeBuffer, it->chunk + chunkPos, copied);
+							completeBufferPos += copied;
+							chunkPos += copied;
+							allPos += copied;
+						}
+					} else {
+						u_int32_t copied = min(it->len - chunkPos, completeBufferLen - completeBufferPos);
+						memcpy(completeBuffer + completeBufferPos, it->chunk + chunkPos, copied);
+						completeBufferPos += copied;
+						chunkPos += copied;
+						allPos += copied;
+						if(completeBufferPos == completeBufferLen) {
+							 if(completeBufferCounter % 2) {
+								this->compressStream->decompress(completeBuffer, completeBufferChunkLen.len, completeBufferChunkLen.decompress_len, 
+												 allPos == this->len, this);
+								completeBufferLen = sizeof(eChunkLen);
+							} else {
+								completeBufferChunkLen = *(eChunkLen*)completeBuffer;
+								completeBufferLen = completeBufferChunkLen.len;
+							}
+							++completeBufferCounter;
+							completeBufferPos = 0;
+							if(completeBuffer != (char*)&completeBufferChunkLenBuff) {
+								delete [] completeBuffer;
+							}
+						}
+					}
+				}
+			} else {
+				this->compressStream->decompress(it->chunk, it->len, it->decompress_len, counter == size, this);
+			}
 			if(freeChunks) {
 				delete it->chunk;
 				it->chunk = NULL;

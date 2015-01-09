@@ -158,6 +158,7 @@ struct sVerbose {
 	int tcp_debug_port;
 	int test_rtp_performance;
 	int tar;
+	int chunk_buffer;
 };
 
 #ifndef GLOBAL_DECLARATION
