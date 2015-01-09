@@ -327,7 +327,7 @@ ssl_packet_from_server(SslDecryptSessionC *ssl, packet_info *pinfo)
 void
 ssl_session_init(SslDecryptSession* ssl_session)
 {
-	if(debug) printf("ssl_session_init: initializing ptr %p size %" "u\n",
+	if(debug) printf("ssl_session_init: initializing ptr %p size %lu" "u\n",
 					 (void *)ssl_session, sizeof(SslDecryptSession));
 	
 	/* data_len is the part that is meaningful, not the allocated length */

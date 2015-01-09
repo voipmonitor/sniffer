@@ -328,14 +328,11 @@ int opt_pcap_dump_asyncwrite_maxsize = 100; //MB
 int opt_pcap_dump_tar = 0;
 int opt_pcap_dump_tar_threads = 4;
 int opt_pcap_dump_tar_compress_sip = 0; //0 off, 1 gzip, 2 lzma
-int opt_pcap_dump_tar_gzip_sip_level = Z_DEFAULT_COMPRESSION;
-int opt_pcap_dump_tar_lzma_sip_level = 0;
+int opt_pcap_dump_tar_sip_level = 1;
 int opt_pcap_dump_tar_compress_rtp = 0;
-int opt_pcap_dump_tar_gzip_rtp_level = Z_DEFAULT_COMPRESSION;
-int opt_pcap_dump_tar_lzma_rtp_level = 1;
+int opt_pcap_dump_tar_rtp_level = 1;
 int opt_pcap_dump_tar_compress_graph = 0;
-int opt_pcap_dump_tar_gzip_graph_level = Z_DEFAULT_COMPRESSION;
-int opt_pcap_dump_tar_lzma_graph_level = 1;
+int opt_pcap_dump_tar_graph_level = 1;
 CompressStream::eTypeCompress opt_pcap_dump_tar_internalcompress_sip = CompressStream::compress_na;
 CompressStream::eTypeCompress opt_pcap_dump_tar_internalcompress_rtp = CompressStream::compress_na;
 CompressStream::eTypeCompress opt_pcap_dump_tar_internalcompress_graph = CompressStream::compress_na;
@@ -2254,23 +2251,14 @@ int eval_config(string inistr) {
 			break;
 		}
 	}
-	if((value = ini.GetValue("general", "tar_gzip_sip_level", NULL))) {
-		opt_pcap_dump_tar_gzip_sip_level = atoi(value);
+	if((value = ini.GetValue("general", "tar_sip_level", NULL))) {
+		opt_pcap_dump_tar_sip_level = atoi(value);
 	}
-	if((value = ini.GetValue("general", "tar_gzip_rtp_level", NULL))) {
-		opt_pcap_dump_tar_gzip_rtp_level = atoi(value);
+	if((value = ini.GetValue("general", "tar_rtp_level", NULL))) {
+		opt_pcap_dump_tar_rtp_level = atoi(value);
 	}
-	if((value = ini.GetValue("general", "tar_gzip_graph_level", NULL))) {
-		opt_pcap_dump_tar_gzip_graph_level = atoi(value);
-	}
-	if((value = ini.GetValue("general", "tar_lzma_sip_level", NULL))) {
-		opt_pcap_dump_tar_lzma_sip_level = atoi(value);
-	}
-	if((value = ini.GetValue("general", "tar_lzma_rtp_level", NULL))) {
-		opt_pcap_dump_tar_lzma_rtp_level = atoi(value);
-	}
-	if((value = ini.GetValue("general", "tar_lzma_graph_level", NULL))) {
-		opt_pcap_dump_tar_lzma_graph_level = atoi(value);
+	if((value = ini.GetValue("general", "tar_graph_level", NULL))) {
+		opt_pcap_dump_tar_graph_level = atoi(value);
 	}
 	if((value = ini.GetValue("general", "tar_internalcompress_sip", NULL))) {
 		opt_pcap_dump_tar_internalcompress_sip = CompressStream::convTypeCompress(value);
@@ -2281,13 +2269,13 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "tar_internalcompress_graph", NULL))) {
 		opt_pcap_dump_tar_internalcompress_graph = CompressStream::convTypeCompress(value);
 	}
-	if((value = ini.GetValue("general", "tar_internal_gzip_sip_level", NULL))) {
+	if((value = ini.GetValue("general", "tar_internal_sip_level", NULL))) {
 		opt_pcap_dump_tar_internal_gzip_sip_level = atoi(value);
 	}
-	if((value = ini.GetValue("general", "tar_internal_gzip_rtp_level", NULL))) {
+	if((value = ini.GetValue("general", "tar_internal_rtp_level", NULL))) {
 		opt_pcap_dump_tar_internal_gzip_rtp_level = atoi(value);
 	}
-	if((value = ini.GetValue("general", "tar_internal_gzip_graph_level", NULL))) {
+	if((value = ini.GetValue("general", "tar_internal_graph_level", NULL))) {
 		opt_pcap_dump_tar_internal_gzip_graph_level = atoi(value);
 	}
 	if((value = ini.GetValue("general", "defer_create_spooldir", NULL))) {
