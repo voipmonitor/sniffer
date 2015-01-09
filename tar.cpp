@@ -53,14 +53,11 @@ extern char opt_chdir[1024];
 volatile unsigned int glob_tar_queued_files;
 
 extern int opt_pcap_dump_tar_compress_sip; //0 off, 1 gzip, 2 lzma
-extern int opt_pcap_dump_tar_gzip_sip_level;
-extern int opt_pcap_dump_tar_lzma_sip_level;
+extern int opt_pcap_dump_tar_sip_level;
 extern int opt_pcap_dump_tar_compress_rtp;
-extern int opt_pcap_dump_tar_gzip_rtp_level;
-extern int opt_pcap_dump_tar_lzma_rtp_level;
+extern int opt_pcap_dump_tar_rtp_level;
 extern int opt_pcap_dump_tar_compress_graph;
-extern int opt_pcap_dump_tar_gzip_graph_level;
-extern int opt_pcap_dump_tar_lzma_graph_level;
+extern int opt_pcap_dump_tar_graph_level;
 extern int opt_pcap_dump_tar_threads;
 
 extern int opt_filesclean;
@@ -443,28 +440,28 @@ Tar::tar_block_write(const char *buf, u_int32_t len){
 	switch(tar.qtype) {
 	case 1:
 		if(opt_pcap_dump_tar_compress_sip == 1) {
-			gziplevel = opt_pcap_dump_tar_gzip_sip_level;
+			gziplevel = opt_pcap_dump_tar_sip_level;
 			zip = true;
 		} else if(opt_pcap_dump_tar_compress_sip == 2) {
-			lzmalevel = opt_pcap_dump_tar_lzma_sip_level;
+			lzmalevel = opt_pcap_dump_tar_sip_level;
 			lzma = true;
 		}
 		break;
 	case 2:
 		if(opt_pcap_dump_tar_compress_rtp == 1) {
-			gziplevel = opt_pcap_dump_tar_gzip_rtp_level;
+			gziplevel = opt_pcap_dump_tar_rtp_level;
 			zip = true;
 		} else if(opt_pcap_dump_tar_compress_rtp == 2) {
-			lzmalevel = opt_pcap_dump_tar_lzma_rtp_level;
+			lzmalevel = opt_pcap_dump_tar_rtp_level;
 			lzma = true;
 		}
 		break;
 	case 3:
 		if(opt_pcap_dump_tar_compress_graph == 1) {
-			gziplevel = opt_pcap_dump_tar_gzip_graph_level;
+			gziplevel = opt_pcap_dump_tar_graph_level;
 			zip = true;
 		} else if(opt_pcap_dump_tar_compress_graph == 2) {
-			lzmalevel = opt_pcap_dump_tar_lzma_graph_level;
+			lzmalevel = opt_pcap_dump_tar_graph_level;
 			lzma = true;
 		}
 		break;
