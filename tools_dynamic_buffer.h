@@ -232,18 +232,59 @@ public:
 		}
 		char *chunk;
 	};
+	struct sChunkIterateCompleteBufferInfo {
+		sChunkIterateCompleteBufferInfo() {
+			init();
+		}
+		void init() {
+			buffer = NULL;
+			bufferLen = 0;
+			bufferPos = 0;
+			counter = 0;
+			allPos = 0;
+			chunkPos = 0;
+		}
+		void addPos(u_int32_t add) {
+			allPos += add;
+			chunkPos += add;
+		}
+		char *buffer;
+		u_int32_t bufferLen;
+		u_int32_t bufferPos;
+		u_int32_t counter;
+		eChunkLen chunkLen;
+		eChunkLen chunkLenBuff;
+		u_int32_t allPos;
+		u_int32_t chunkPos;
+	};
 public:
 	ChunkBuffer(u_int32_t chunk_fix_len = 0);
 	virtual ~ChunkBuffer();
 	void setTypeCompress(CompressStream::eTypeCompress typeCompress, u_int32_t compressBufferLength, u_int32_t maxDataLength);
 	void setZipLevel(int zipLevel);
+	void setName(const char *name);
+	string getName() {
+		return(this->name ? this->name : "");
+	}
 	void add(char *data, u_int32_t len, bool flush = false, u_int32_t decompress_len = 0, bool directAdd = false);
+	void close() {
+		this->closed = true;
+	}
+	bool isClosed() {
+		return(closed);
+	}
 	u_int32_t getLen() {
 		return(this->compressStream ? compress_orig_data_len : len);
 	}
+	u_int32_t getChunkIterateProceedLen() {
+		return(this->chunkIterateProceedLen);
+	}
+	u_int32_t getChunkIterateLenForProceed() {
+		return((this->compressStream ? compress_orig_data_len : len) - this->chunkIterateProceedLen);
+	}
 	virtual bool compress_ev(char *data, u_int32_t len, u_int32_t decompress_len);
 	virtual bool decompress_ev(char *data, u_int32_t len);
-	void chunkIterate(ChunkBuffer_baseIterate *chunkbufferIterateEv, bool freeChunks = false);
+	void chunkIterate(ChunkBuffer_baseIterate *chunkbufferIterateEv, bool freeChunks = false, bool enableContinue = false, u_int32_t limitLength = 0);
 private:
 	list<eChunk> chunkBuffer;
 	u_int32_t len;
@@ -254,6 +295,10 @@ private:
 	u_int32_t iterate_index;
 	ChunkBuffer_baseIterate *decompress_chunkbufferIterateEv;
 	u_int32_t decompress_pos;
+	sChunkIterateCompleteBufferInfo chunkIterateCompleteBufferInfo;
+	u_int32_t chunkIterateProceedLen;
+	bool closed;
+	char *name;
 };      
 
 
