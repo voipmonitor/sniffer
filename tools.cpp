@@ -2225,23 +2225,7 @@ bool FileZipHandler::flushBuffer(bool force) {
 void FileZipHandler::flushTarBuffer() {
 	if(!this->tarBuffer)
 		return;
-/*
-	if(this->tarBuffer->isEmpty()) {
-		return;
-	}
-*/
-	/*
-	cout << "DATA " 
-	     << this->fileName << " "
-	     << sqlDateTimeString(this->time) << " " 
-	     << this->tarBuffer->getSize() << " " 
-	     << endl;
-	*/
-/*
-	this->tarBuffer->write(this->fileName.c_str(), this->time);
-	this->tarBuffer->free();
-*/
-	tarQueue->add(this->fileName, this->time, this->tarBuffer);
+	this->tarBuffer->close();
 	this->tarBuffer = NULL;
 }
 
@@ -2312,6 +2296,8 @@ bool FileZipHandler::_writeToFile(char *data, int length, bool flush) {
 			case na:
 				break;
 			}
+			this->tarBuffer->setName(this->fileName.c_str());
+			tarQueue->add(this->fileName, this->time, this->tarBuffer);
 		}
 		this->tarBuffer->add(data, length, flush);
 		return(true);

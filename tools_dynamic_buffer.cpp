@@ -485,6 +485,9 @@ ChunkBuffer::ChunkBuffer(u_int32_t chunk_fix_len) {
 	this->compress_orig_data_len = 0;
 	this->lastChunk = NULL;
 	this->compressStream = NULL;
+	this->chunkIterateProceedLen = 0;
+	this->closed = false;
+	this->name = NULL;
 }
 
 ChunkBuffer::~ChunkBuffer() {
@@ -496,6 +499,9 @@ ChunkBuffer::~ChunkBuffer() {
 	}
 	if(this->compressStream) {
 		delete this->compressStream;
+	}
+	if(this->name) {
+		delete this->name;
 	}
 }
 
@@ -516,6 +522,18 @@ void ChunkBuffer::setZipLevel(int zipLevel) {
 	if(this->compressStream) {
 		this->compressStream->setZipLevel(zipLevel);
 	}
+}
+
+void ChunkBuffer::setName(const char *name) {
+	if(this->name) {
+		delete this->name;
+		this->name = NULL;
+	}
+	if(!name || !*name) {
+		return;
+	}
+	this->name = new char[strlen(name) + 1];
+	strcpy(this->name, name);
 }
 
 #include <stdio.h>
@@ -640,7 +658,7 @@ bool ChunkBuffer::decompress_ev(char *data, u_int32_t len) {
 	this->decompress_pos += len;
 	if(sverb.chunk_buffer) {
 		cout << "decompress ev " << len << " " << this->decompress_pos << " " << endl;
-		for(u_int32_t i = 0; i < min(len, 10u); i++) {
+		for(u_int32_t i = 0; i < min(len, 20u); i++) {
 			cout << (int)(unsigned char)data[i] << ",";
 		}
 		cout << endl;
@@ -648,88 +666,115 @@ bool ChunkBuffer::decompress_ev(char *data, u_int32_t len) {
 	return(true);
 }
 
-void ChunkBuffer::chunkIterate(ChunkBuffer_baseIterate *chunkbufferIterateEv, bool freeChunks) {
+void ChunkBuffer::chunkIterate(ChunkBuffer_baseIterate *chunkbufferIterateEv, bool freeChunks, bool enableContinue, u_int32_t limitLength) {
+	if(!enableContinue) {
+		this->chunkIterateProceedLen = 0;
+	}
+	u_int32_t chunkIterateProceedLen_start = this->chunkIterateProceedLen;
 	if(this->compressStream) {
 		this->decompress_chunkbufferIterateEv = chunkbufferIterateEv;
 		this->decompress_pos = 0;
 		list<eChunk>::iterator it = chunkBuffer.begin();
-		size_t size = chunkBuffer.size();
-		size_t counter = 0;
-		char *completeBuffer = NULL;
-		u_int32_t completeBufferLen = 0;
-		u_int32_t completeBufferPos = 0;
-		u_int32_t completeBufferCounter = 0;
-		eChunkLen completeBufferChunkLen;
-		eChunkLen completeBufferChunkLenBuff;
-		u_int32_t allPos;
+		size_t sizeChunkBuffer = chunkBuffer.size();
+		size_t counterIterator = 0;
+		if(!enableContinue) {
+			this->chunkIterateCompleteBufferInfo.init();
+		}
 		for(it = chunkBuffer.begin(); it != chunkBuffer.end(); it++) {
-			++counter;
+			++counterIterator;
+			if(!it->chunk) {
+				continue;
+			}
 			if(it->decompress_len == (u_int32_t)-1) {
-				u_int32_t chunkPos = 0;
-				while(chunkPos < it->len) {
-					if(!completeBufferCounter) {
-						completeBufferChunkLen = *(eChunkLen*)it->chunk;
-						++completeBufferCounter;
-						completeBufferLen = completeBufferChunkLen.len;
-						completeBufferPos = 0;
-						chunkPos += sizeof(eChunkLen);
-						allPos += sizeof(eChunkLen);
+				while(this->chunkIterateCompleteBufferInfo.chunkPos < it->len) {
+					if(!this->chunkIterateCompleteBufferInfo.counter) {
+						this->chunkIterateCompleteBufferInfo.chunkLen = *(eChunkLen*)it->chunk;
+						++this->chunkIterateCompleteBufferInfo.counter;
+						this->chunkIterateCompleteBufferInfo.bufferLen = this->chunkIterateCompleteBufferInfo.chunkLen.len;
+						this->chunkIterateCompleteBufferInfo.bufferPos = 0;
+						this->chunkIterateCompleteBufferInfo.addPos(sizeof(eChunkLen));
 					}
-					if(!completeBufferPos) {
-						if(completeBufferLen <= it->len - chunkPos) {
-							if(completeBufferCounter % 2) {
-								this->compressStream->decompress(it->chunk + chunkPos, completeBufferChunkLen.len, completeBufferChunkLen.decompress_len, 
-												 allPos + completeBufferChunkLen.len == this->len, this);
-								completeBufferLen = sizeof(eChunkLen);
-								chunkPos += completeBufferChunkLen.len;
-								allPos += completeBufferChunkLen.len;
+					if(!this->chunkIterateCompleteBufferInfo.bufferPos) {
+						if(this->chunkIterateCompleteBufferInfo.bufferLen <= it->len - this->chunkIterateCompleteBufferInfo.chunkPos) {
+							if(this->chunkIterateCompleteBufferInfo.counter % 2) {
+								this->compressStream->decompress(it->chunk + this->chunkIterateCompleteBufferInfo.chunkPos, 
+												 this->chunkIterateCompleteBufferInfo.chunkLen.len, 
+												 this->chunkIterateCompleteBufferInfo.chunkLen.decompress_len, 
+												 this->closed && counterIterator == sizeChunkBuffer &&
+												  this->chunkIterateCompleteBufferInfo.allPos + this->chunkIterateCompleteBufferInfo.chunkLen.len == this->len, 
+												 this);
+								this->chunkIterateProceedLen += this->chunkIterateCompleteBufferInfo.chunkLen.decompress_len;
+								this->chunkIterateCompleteBufferInfo.bufferLen = sizeof(eChunkLen);
+								this->chunkIterateCompleteBufferInfo.addPos(this->chunkIterateCompleteBufferInfo.chunkLen.len);
 							} else {
-								completeBufferChunkLen = *(eChunkLen*)(it->chunk + chunkPos);
-								completeBufferLen = completeBufferChunkLen.len;
-								chunkPos += sizeof(eChunkLen);
-								allPos += sizeof(eChunkLen);
+								this->chunkIterateCompleteBufferInfo.chunkLen = *(eChunkLen*)(it->chunk + this->chunkIterateCompleteBufferInfo.chunkPos);
+								this->chunkIterateCompleteBufferInfo.bufferLen = this->chunkIterateCompleteBufferInfo.chunkLen.len;
+								this->chunkIterateCompleteBufferInfo.addPos(sizeof(eChunkLen));
 							}
-							++completeBufferCounter;
-							completeBufferPos = 0;
+							++this->chunkIterateCompleteBufferInfo.counter;
+							this->chunkIterateCompleteBufferInfo.bufferPos = 0;
 						} else {
-							completeBuffer = completeBufferCounter % 2 ?
-									  new char[completeBufferLen] :
-									  (char*)&completeBufferChunkLenBuff;
-							u_int32_t copied = it->len - chunkPos;
-							memcpy(completeBuffer, it->chunk + chunkPos, copied);
-							completeBufferPos += copied;
-							chunkPos += copied;
-							allPos += copied;
+							this->chunkIterateCompleteBufferInfo.buffer = 
+								this->chunkIterateCompleteBufferInfo.counter % 2 ?
+								 new char[this->chunkIterateCompleteBufferInfo.bufferLen] :
+								 (char*)&(this->chunkIterateCompleteBufferInfo.chunkLenBuff);
+							u_int32_t copied = it->len - this->chunkIterateCompleteBufferInfo.chunkPos;
+							memcpy(this->chunkIterateCompleteBufferInfo.buffer, 
+							       it->chunk + this->chunkIterateCompleteBufferInfo.chunkPos, 
+							       copied);
+							this->chunkIterateCompleteBufferInfo.bufferPos += copied;
+							this->chunkIterateCompleteBufferInfo.addPos(copied);
 						}
 					} else {
-						u_int32_t copied = min(it->len - chunkPos, completeBufferLen - completeBufferPos);
-						memcpy(completeBuffer + completeBufferPos, it->chunk + chunkPos, copied);
-						completeBufferPos += copied;
-						chunkPos += copied;
-						allPos += copied;
-						if(completeBufferPos == completeBufferLen) {
-							 if(completeBufferCounter % 2) {
-								this->compressStream->decompress(completeBuffer, completeBufferChunkLen.len, completeBufferChunkLen.decompress_len, 
-												 allPos == this->len, this);
-								completeBufferLen = sizeof(eChunkLen);
+						u_int32_t copied = min(it->len - this->chunkIterateCompleteBufferInfo.chunkPos, 
+								       this->chunkIterateCompleteBufferInfo.bufferLen - this->chunkIterateCompleteBufferInfo.bufferPos);
+						memcpy(this->chunkIterateCompleteBufferInfo.buffer + this->chunkIterateCompleteBufferInfo.bufferPos, 
+						       it->chunk + this->chunkIterateCompleteBufferInfo.chunkPos, 
+						       copied);
+						this->chunkIterateCompleteBufferInfo.bufferPos += copied;
+						this->chunkIterateCompleteBufferInfo.addPos(copied);
+						if(this->chunkIterateCompleteBufferInfo.bufferPos == this->chunkIterateCompleteBufferInfo.bufferLen) {
+							 if(this->chunkIterateCompleteBufferInfo.counter % 2) {
+								this->compressStream->decompress(this->chunkIterateCompleteBufferInfo.buffer, 
+												 this->chunkIterateCompleteBufferInfo.chunkLen.len, 
+												 this->chunkIterateCompleteBufferInfo.chunkLen.decompress_len, 
+												 this->closed && counterIterator == sizeChunkBuffer &&
+												  this->chunkIterateCompleteBufferInfo.allPos == this->len, 
+												 this);
+								this->chunkIterateProceedLen += this->chunkIterateCompleteBufferInfo.chunkLen.decompress_len;
+								this->chunkIterateCompleteBufferInfo.bufferLen = sizeof(eChunkLen);
 							} else {
-								completeBufferChunkLen = *(eChunkLen*)completeBuffer;
-								completeBufferLen = completeBufferChunkLen.len;
+								this->chunkIterateCompleteBufferInfo.chunkLen = *(eChunkLen*)this->chunkIterateCompleteBufferInfo.buffer;
+								this->chunkIterateCompleteBufferInfo.bufferLen = this->chunkIterateCompleteBufferInfo.chunkLen.len;
 							}
-							++completeBufferCounter;
-							completeBufferPos = 0;
-							if(completeBuffer != (char*)&completeBufferChunkLenBuff) {
-								delete [] completeBuffer;
+							++this->chunkIterateCompleteBufferInfo.counter;
+							this->chunkIterateCompleteBufferInfo.bufferPos = 0;
+							if(this->chunkIterateCompleteBufferInfo.buffer != (char*)&(this->chunkIterateCompleteBufferInfo.chunkLenBuff)) {
+								delete [] this->chunkIterateCompleteBufferInfo.buffer;
 							}
 						}
+					}
+					if(limitLength && 
+					   this->chunkIterateProceedLen - chunkIterateProceedLen_start >= limitLength) {
+						break;
+					}
+				}
+				if(this->chunkIterateCompleteBufferInfo.chunkPos >= it->len && it->len == this->chunk_fix_len) {
+					this->chunkIterateCompleteBufferInfo.chunkPos = 0;
+					if(freeChunks) {
+						delete it->chunk;
+						it->chunk = NULL;
 					}
 				}
 			} else {
-				this->compressStream->decompress(it->chunk, it->len, it->decompress_len, counter == size, this);
-			}
-			if(freeChunks) {
-				delete it->chunk;
-				it->chunk = NULL;
+				this->compressStream->decompress(it->chunk, it->len, it->decompress_len, 
+								 this->closed && counterIterator == sizeChunkBuffer, 
+								 this);
+				this->chunkIterateProceedLen += it->decompress_len;
+				if(freeChunks) {
+					delete it->chunk;
+					it->chunk = NULL;
+				}
 			}
 		}
 		chunkbufferIterateEv->chunkbuffer_iterate_ev(NULL, 0 , this->decompress_pos);
@@ -738,7 +783,11 @@ void ChunkBuffer::chunkIterate(ChunkBuffer_baseIterate *chunkbufferIterateEv, bo
 		u_int32_t pos = 0;
 		list<eChunk>::iterator it = chunkBuffer.begin();
 		for(it = chunkBuffer.begin(); it != chunkBuffer.end(); it++) {
+			if(!it->chunk) {
+				continue;
+			}
 			chunkbufferIterateEv->chunkbuffer_iterate_ev(it->chunk, it->len, pos);
+			this->chunkIterateProceedLen += it->len;
 			if(freeChunks) {
 				delete it->chunk;
 				it->chunk = NULL;

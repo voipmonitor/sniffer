@@ -87,7 +87,7 @@ Tar::th_finish()
 
 /* encode file path */
 void
-Tar::th_set_path(char *pathname)
+Tar::th_set_path(char *pathname, bool partSuffix)
 {
 #ifdef DEBUG
 	printf("in th_set_path(th, pathname=\"%s\")\n", pathname);
@@ -98,7 +98,11 @@ Tar::th_set_path(char *pathname)
 	tar.th_buf.gnu_longname = NULL;
 	
 	/* classic tar format */
+	++partCounter;
 	snprintf(tar.th_buf.name, 100, "%s", pathname);
+	if(partSuffix) {
+		snprintf(tar.th_buf.name + strlen(tar.th_buf.name), 100 - strlen(tar.th_buf.name), "_%i", partCounter);
+	}
 	       
 #ifdef DEBUG   
 	puts("returning from th_set_path()...");
@@ -275,9 +279,9 @@ Tar::th_write()
 
 /* add file contents to a tarchive */
 int
-Tar::tar_append_buffer(ChunkBuffer *buffer, size_t size)
+Tar::tar_append_buffer(ChunkBuffer *buffer, size_t lenForProceed)
 {
-	buffer->chunkIterate(this, true);
+	buffer->chunkIterate(this, true, true, lenForProceed);
 	return 0;
 }
 
@@ -572,7 +576,6 @@ TarQueue::add(string filename, unsigned int time, ChunkBuffer *buffer){
 	__sync_add_and_fetch(&glob_tar_queued_files, 1);
 	data_t data;
 	data.buffer = buffer;
-	data.len = buffer->getLen();
 	lock();
 	unsigned int year, mon, day, hour, minute;
 	char type[12];
@@ -689,8 +692,9 @@ TarQueue::write(int qtype, unsigned int time, data_t data) {
 		unsigned long int min = 0 - 1;
 		int winner = 0;
 		for(int i = maxthreads - 1; i >= 0; i--) {
-			if(min >= tarthreads[i].len) {
-				min = tarthreads[i].len;
+			size_t _len = tarthreads[i].getLen();
+			if(min >= _len) {
+				min = _len;
 				winner = i;
 			}
 		}
@@ -703,8 +707,7 @@ TarQueue::write(int qtype, unsigned int time, data_t data) {
 	data.time = time;
 	pthread_mutex_lock(&tarthreads[tar->thread_id].queuelock);
 //	printf("push id:%u\n", tar->thread_id);
-	tarthreads[tar->thread_id].queue.push(data);
-	__sync_add_and_fetch(&tarthreads[tar->thread_id].len, data.len);
+	tarthreads[tar->thread_id].queue.push_back(data);
 	pthread_mutex_unlock(&tarthreads[tar->thread_id].queuelock);
 	return 0;
 }
@@ -713,49 +716,75 @@ void *TarQueue::tarthreadworker(void *arg) {
 
 	
 	TarQueue *this2 = ((tarthreadworker_arg*)arg)->tq;
-	int i = ((tarthreadworker_arg*)arg)->i;
+	tarthreads_t *tarthread = &this2->tarthreads[((tarthreadworker_arg*)arg)->i];
 	delete (tarthreadworker_arg*)arg;
 
-	this2->tarthreads[i].threadId = get_unix_tid();
+	tarthread->threadId = get_unix_tid();
 
 	while(1) {
 		while(1) {
-			pthread_mutex_lock(&this2->tarthreads[i].queuelock);
-			if(this2->tarthreads[i].queue.empty()) { 
-				pthread_mutex_unlock(&this2->tarthreads[i].queuelock);
+			data_t data;
+			bool findData = false;
+			bool isClosed = false;
+			size_t lenForProceed = 0;
+			pthread_mutex_lock(&tarthread->queuelock);
+			if(tarthread->queue.empty()) { 
 				if(this2->terminate) {
+					pthread_mutex_unlock(&tarthread->queuelock);
 					return NULL;
-				} else {
-					break;
 				}
-			};
-			data_t data = this2->tarthreads[i].queue.front();
-			this2->tarthreads[i].queue.pop();
-			pthread_mutex_unlock(&this2->tarthreads[i].queuelock);
-			
-			Tar *tar = data.tar;
-
-			//reset and set header
-			memset(&(tar->tar.th_buf), 0, sizeof(struct Tar::tar_header));
-			tar->th_set_type(0); //s->st_mode, 0 is regular file
-			tar->th_set_user(0); //st_uid
-			tar->th_set_group(0); //st_gid
-			tar->th_set_mode(0); //s->st_mode
-			tar->th_set_mtime(data.time);
-			tar->th_set_size(data.len);
-			tar->th_set_path((char*)data.filename.c_str());
-		       
-			/* write header */
-			if (tar->th_write() != 0) {
-				continue;
+			} else {
+				list<data_t>::iterator it;
+				for(it = tarthread->queue.begin(); it != tarthread->queue.end(); it++) {
+					isClosed = it->buffer->isClosed();
+					lenForProceed = it->buffer->getChunkIterateLenForProceed();
+					if(isClosed ||
+					   lenForProceed > 128 * 1024) {
+						data = *it;
+						findData = true;
+						if(isClosed) {
+							tarthread->queue.erase(it);
+						}
+						break;
+					}
+				}
 			}
-
-			/* if it's a regular file, write the contents as well */
-			tar->tar_append_buffer(data.buffer, data.len);
+			pthread_mutex_unlock(&tarthread->queuelock);
+			if(!findData) {
+				break;
+			}
 			
-			__sync_sub_and_fetch(&this2->tarthreads[i].len, data.len);
-			delete data.buffer;
-			decreaseTartimemap(tar->created_at);
+			if(lenForProceed) {
+				Tar *tar = data.tar;
+
+				//reset and set header
+				memset(&(tar->tar.th_buf), 0, sizeof(struct Tar::tar_header));
+				tar->th_set_type(0); //s->st_mode, 0 is regular file
+				tar->th_set_user(0); //st_uid
+				tar->th_set_group(0); //st_gid
+				tar->th_set_mode(0); //s->st_mode
+				tar->th_set_mtime(data.time);
+				tar->th_set_size(lenForProceed);
+				tar->th_set_path((char*)data.filename.c_str(), !isClosed);
+			       
+				// write header
+				if (tar->th_write() != 0) {
+					continue;
+				}
+
+				// if it's a regular file, write the contents as well
+				tar->tar_append_buffer(data.buffer, lenForProceed);
+				
+				if(sverb.chunk_buffer) {
+					cout << " *** " << data.buffer->getName() << " " << lenForProceed << endl;
+				}
+				 
+				decreaseTartimemap(tar->created_at);
+			}
+			
+			if(data.buffer->isClosed()) {
+				delete data.buffer;
+			}
 			__sync_sub_and_fetch(&glob_tar_queued_files, 1);
 		}
 		// quque is empty - sleep before next run
@@ -818,7 +847,7 @@ TarQueue::flushQueue() {
 				vector<data_t>::iterator itv;
 				size_t sum = 0;
 				for(itv = it->second.begin(); itv != it->second.end(); itv++) {
-					sum += itv->len;
+					sum += itv->buffer->getLen();
 				}       
 				if(sum > maxlen) {
 					maxlen = sum;
@@ -890,7 +919,6 @@ TarQueue::TarQueue() {
 		arg->i = i;
 		arg->tq = this;
 		tarthreads[i].cpuPeak = 0;
-		tarthreads[i].len = 0;
 
 		pthread_mutex_init(&tarthreads[i].queuelock, NULL);
 		pthread_create(&tarthreads[i].thread, NULL, &TarQueue::tarthreadworker, arg);

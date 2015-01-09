@@ -88,7 +88,6 @@ public:
 
 	struct data_t {
 		char *buffer;
-		size_t len;
 		string filename;
 		int year, mon, day, hour, minute;
 	};
@@ -101,6 +100,7 @@ public:
 		this->zipStream = NULL;
 		this->zipBufferLength = 4*8192;
 		this->zipBuffer = new char[this->zipBufferLength];
+		this->partCounter = 0;
 #ifdef HAVE_LIBLZMA
 		this->lzmaStream = NULL;
 		memset(&tar, 0, sizeof(tar));
@@ -113,13 +113,13 @@ public:
 	int tar_open(string, int, int, int);
 	void th_finish();
 	int th_write();
-	int tar_append_buffer(ChunkBuffer *buffer, size_t size);
+	int tar_append_buffer(ChunkBuffer *buffer, size_t lenForProceed = 0);
 	virtual void chunkbuffer_iterate_ev(char *data, u_int32_t len, u_int32_t pos);
 	int gziplevel;
 	int lzmalevel;
 
 	void th_set_type(mode_t mode);
-	void th_set_path(char *pathname);
+	void th_set_path(char *pathname, bool partSuffix = false);
 	void th_set_link(char *linkname);
 	void th_set_device(dev_t device);
 	void th_set_user(uid_t uid);
@@ -152,6 +152,7 @@ private:
 	z_stream *zipStream;
 	int zipBufferLength;
 	char *zipBuffer;
+	int partCounter;
 
 #ifdef HAVE_LIBLZMA
 	lzma_stream *lzmaStream;// = LZMA_STREAM_INIT; /* alloc and init lzma_stream struct */
@@ -186,7 +187,6 @@ public:
 	       
 	struct data_t {
 		ChunkBuffer *buffer;
-		size_t len;
 		string filename;
 		int year, mon, day, hour, minute;
 		Tar *tar;
@@ -194,8 +194,18 @@ public:
 	};
 	
 	struct tarthreads_t {
-		std::queue<data_t> queue;
-		size_t len;
+		std::list<data_t> queue;
+		size_t getLen() {
+			size_t size = 0;
+			pthread_mutex_lock(&queuelock);
+			std::list<data_t>::iterator it = queue.begin();
+			while(it != queue.end()) {
+				size += it->buffer->getLen();
+				++it;
+			}
+			pthread_mutex_unlock(&queuelock);
+			return(size);
+		}
 		pthread_mutex_t queuelock;
 		pthread_t thread;
 		int threadId;
@@ -229,7 +239,6 @@ private:
 	pthread_mutex_t flushlock;
 	pthread_mutex_t tarslock;
 	map<string, Tar*> tars; //queue for all, sip, rtp, graph
-	map<string, Tar*>::iterator tars_it; //queue for all, sip, rtp, graph
 };
 
 void *TarQueueThread(void *dummy);
