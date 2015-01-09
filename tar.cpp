@@ -787,8 +787,8 @@ void *TarQueue::tarthreadworker(void *arg) {
 			
 			if(data.buffer->isClosed()) {
 				delete data.buffer;
+				__sync_sub_and_fetch(&glob_tar_queued_files, 1);
 			}
-			__sync_sub_and_fetch(&glob_tar_queued_files, 1);
 		}
 		// quque is empty - sleep before next run
 		usleep(100000);
