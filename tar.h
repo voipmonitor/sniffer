@@ -86,12 +86,6 @@ public:
 	TAR tar;
 	int year, mon, day, hour, minute;
 
-	struct data_t {
-		char *buffer;
-		string filename;
-		int year, mon, day, hour, minute;
-	};
-
 	unsigned int created_at;
 	int thread_id;
 	

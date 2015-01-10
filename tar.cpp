@@ -754,9 +754,8 @@ void *TarQueue::tarthreadworker(void *arg) {
 				break;
 			}
 			
+			Tar *tar = data.tar;
 			if(lenForProceed) {
-				Tar *tar = data.tar;
-
 				//reset and set header
 				memset(&(tar->tar.th_buf), 0, sizeof(struct Tar::tar_header));
 				tar->th_set_type(0); //s->st_mode, 0 is regular file
@@ -778,12 +777,11 @@ void *TarQueue::tarthreadworker(void *arg) {
 				if(sverb.chunk_buffer) {
 					cout << " *** " << data.buffer->getName() << " " << lenForProceed << endl;
 				}
-				 
-				decreaseTartimemap(tar->created_at);
 			}
 			
 			if(data.buffer->isClosed()) {
 				delete data.buffer;
+				decreaseTartimemap(tar->created_at);
 				__sync_sub_and_fetch(&glob_tar_queued_files, 1);
 			}
 		}
