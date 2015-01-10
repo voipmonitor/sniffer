@@ -714,7 +714,8 @@ TarQueue::write(int qtype, unsigned int time, data_t data) {
 
 void *TarQueue::tarthreadworker(void *arg) {
 
-	
+	u_int32_t tarChunk_kB = 128;
+ 
 	TarQueue *this2 = ((tarthreadworker_arg*)arg)->tq;
 	tarthreads_t *tarthread = &this2->tarthreads[((tarthreadworker_arg*)arg)->i];
 	delete (tarthreadworker_arg*)arg;
@@ -738,8 +739,11 @@ void *TarQueue::tarthreadworker(void *arg) {
 				for(it = tarthread->queue.begin(); it != tarthread->queue.end(); it++) {
 					isClosed = it->buffer->isClosed();
 					lenForProceed = it->buffer->getChunkIterateLenForProceed();
+					if(!isClosed && lenForProceed > tarChunk_kB * 1024) {
+						 lenForProceed = it->buffer->getChunkIterateSafeLimitLength(lenForProceed);
+					}
 					if(isClosed ||
-					   lenForProceed > 128 * 1024) {
+					   lenForProceed > tarChunk_kB * 1024) {
 						data = *it;
 						findData = true;
 						if(isClosed) {

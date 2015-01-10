@@ -754,7 +754,8 @@ void ChunkBuffer::chunkIterate(ChunkBuffer_baseIterate *chunkbufferIterateEv, bo
 							}
 						}
 					}
-					if(limitLength && 
+					if(this->chunkIterateCompleteBufferInfo.counter % 2 &&
+					   limitLength && 
 					   this->chunkIterateProceedLen - chunkIterateProceedLen_start >= limitLength) {
 						break;
 					}
@@ -775,14 +776,26 @@ void ChunkBuffer::chunkIterate(ChunkBuffer_baseIterate *chunkbufferIterateEv, bo
 					delete it->chunk;
 					it->chunk = NULL;
 				}
+				if(limitLength && 
+				   this->chunkIterateProceedLen - chunkIterateProceedLen_start >= limitLength) {
+					break;
+				}
+				if(!this->closed && counterIterator >= sizeChunkBuffer + 1) {
+					break;
+				}
 			}
 		}
 		chunkbufferIterateEv->chunkbuffer_iterate_ev(NULL, 0 , this->decompress_pos);
-		this->compressStream->termDecompress();
+		if(!enableContinue) {
+			this->compressStream->termDecompress();
+		}
 	} else {
 		u_int32_t pos = 0;
 		list<eChunk>::iterator it = chunkBuffer.begin();
+		size_t sizeChunkBuffer = chunkBuffer.size();
+		size_t counterIterator = 0;
 		for(it = chunkBuffer.begin(); it != chunkBuffer.end(); it++) {
+			++counterIterator;
 			if(!it->chunk) {
 				continue;
 			}
@@ -793,7 +806,59 @@ void ChunkBuffer::chunkIterate(ChunkBuffer_baseIterate *chunkbufferIterateEv, bo
 				it->chunk = NULL;
 			}
 			pos += it->len;
+			if(limitLength && 
+			   this->chunkIterateProceedLen - chunkIterateProceedLen_start >= limitLength) {
+				break;
+			}
+			if(!this->closed && counterIterator >= sizeChunkBuffer - 1) {
+				break;
+			}
 		}
 		chunkbufferIterateEv->chunkbuffer_iterate_ev(NULL, 0, pos);
 	}
+}
+
+u_int32_t ChunkBuffer::getChunkIterateSafeLimitLength(u_int32_t limitLength) {
+	u_int32_t safeLimitLength = 0;
+	u_int32_t chunkIterateProceedLen_start = this->chunkIterateProceedLen;
+	if(this->compressStream) {
+		list<eChunk>::iterator it = chunkBuffer.begin();
+		size_t sizeChunkBuffer = chunkBuffer.size();
+		size_t counterIterator = 0;
+		for(it = chunkBuffer.begin(); it != chunkBuffer.end(); it++) {
+			++counterIterator;
+			if(!it->chunk) {
+				continue;
+			}
+			if(it->decompress_len == (u_int32_t)-1) {
+				return(limitLength);
+			} else {
+				if(safeLimitLength + it->decompress_len >= limitLength) {
+					break;
+				}
+				if(!this->closed && counterIterator >= sizeChunkBuffer + 1) {
+					break;
+				}
+				safeLimitLength += it->decompress_len;
+			}
+		}
+	} else {
+		list<eChunk>::iterator it = chunkBuffer.begin();
+		size_t sizeChunkBuffer = chunkBuffer.size();
+		size_t counterIterator = 0;
+		for(it = chunkBuffer.begin(); it != chunkBuffer.end(); it++) {
+			++counterIterator;
+			if(!it->chunk) {
+				continue;
+			}
+			if(safeLimitLength + it->len >= limitLength) {
+				break;
+			}
+			if(!this->closed && counterIterator >= sizeChunkBuffer - 1) {
+				break;
+			}
+			safeLimitLength += it->len;
+		}
+	}
+	return(safeLimitLength);
 }

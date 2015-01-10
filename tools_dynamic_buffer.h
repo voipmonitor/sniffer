@@ -285,6 +285,7 @@ public:
 	virtual bool compress_ev(char *data, u_int32_t len, u_int32_t decompress_len);
 	virtual bool decompress_ev(char *data, u_int32_t len);
 	void chunkIterate(ChunkBuffer_baseIterate *chunkbufferIterateEv, bool freeChunks = false, bool enableContinue = false, u_int32_t limitLength = 0);
+	u_int32_t getChunkIterateSafeLimitLength(u_int32_t limitLength);
 private:
 	list<eChunk> chunkBuffer;
 	u_int32_t len;
