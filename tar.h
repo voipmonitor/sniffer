@@ -94,7 +94,6 @@ public:
 		this->zipStream = NULL;
 		this->zipBufferLength = 4*8192;
 		this->zipBuffer = new char[this->zipBufferLength];
-		this->partCounter = 0;
 #ifdef HAVE_LIBLZMA
 		this->lzmaStream = NULL;
 		memset(&tar, 0, sizeof(tar));
@@ -146,7 +145,7 @@ private:
 	z_stream *zipStream;
 	int zipBufferLength;
 	char *zipBuffer;
-	int partCounter;
+	map<string, u_int32_t> partCounter;
 
 #ifdef HAVE_LIBLZMA
 	lzma_stream *lzmaStream;// = LZMA_STREAM_INIT; /* alloc and init lzma_stream struct */

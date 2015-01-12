@@ -98,10 +98,10 @@ Tar::th_set_path(char *pathname, bool partSuffix)
 	tar.th_buf.gnu_longname = NULL;
 	
 	/* classic tar format */
-	++partCounter;
+	++partCounter[pathname];
 	snprintf(tar.th_buf.name, 100, "%s", pathname);
 	if(partSuffix) {
-		snprintf(tar.th_buf.name + strlen(tar.th_buf.name), 100 - strlen(tar.th_buf.name), "_%i", partCounter);
+		snprintf(tar.th_buf.name + strlen(tar.th_buf.name), 100 - strlen(tar.th_buf.name), "_%i", partCounter[pathname]);
 	}
 	       
 #ifdef DEBUG   
