@@ -636,7 +636,7 @@ TarQueue::write(int qtype, unsigned int time, data_t data) {
 	stringstream tar_dir, tar_name;
 	tar_dir << opt_chdir << "/" << setfill('0') << setw(4) << data.year << setw(1) << "-" << setw(2) << data.mon << setw(1) << "-" << setw(2) << data.day << setw(1) << "/" << setw(2) << data.hour << setw(1) << "/" << setw(2) << data.minute << setw(1) << "/" << setw(0) << qtype2strC(qtype);
 	
-	tar_name << tar_dir.str() << "/" << qtype2str(qtype) << "_" << time << ".tar";
+	tar_name << tar_dir.str() << "/" << qtype2str(qtype) << "_" << setfill('0') << setw(4) << data.year << setw(1) << "-" << setw(2) << data.mon << setw(1) << "-" << setw(2) << data.day << setw(1) << "-" << setw(2) << data.hour << setw(1) << "-" << setw(2) << data.minute << ".tar";
 	switch(qtype) {
 	case 1:
 		switch(opt_pcap_dump_tar_compress_sip) {

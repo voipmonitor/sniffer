@@ -2461,6 +2461,11 @@ void set_context_config() {
 	if(rtp_qring_quick == 0 && opt_enable_process_rtp_packet > 1) {
 		rtp_qring_quick = 1;
 	}
+	
+	if(opt_read_from_file) {
+		opt_enable_preprocess_packet = 0;
+		opt_enable_process_rtp_packet = 0;
+	}
 }
 
 int load_config(char *fname) {
@@ -3075,6 +3080,8 @@ int main(int argc, char *argv[]) {
 					opt_scanpcapdir[0] = '\0';
 					//opt_cachedir[0] = '\0';
 					opt_pcap_queue = 0;
+					opt_enable_preprocess_packet = 0;
+					opt_enable_process_rtp_packet = 0;
 				}
 				break;
 			case 'c':
