@@ -85,6 +85,7 @@ public:
 	TAR;
 	TAR tar;
 	int year, mon, day, hour, minute;
+	volatile int writing;
 
 	unsigned int created_at;
 	int thread_id;
@@ -99,6 +100,7 @@ public:
 		memset(&tar, 0, sizeof(tar));
 #endif
 		this->partCounter = 0;
+		this->writing = 0;
 	};
 	virtual ~Tar();
 

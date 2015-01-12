@@ -260,7 +260,7 @@ Tar::tar_open(string pathname, int oflags, int mode, int options)
 /* write a header block */
 int
 Tar::th_write()
-{      
+{
 	int i;
 	th_finish();
 	i = tar_block_write((const char*)&(tar.th_buf), T_BLOCKSIZE);
@@ -770,6 +770,7 @@ void *TarQueue::tarthreadworker(void *arg) {
 			}
 			
 			Tar *tar = data.tar;
+			tar->writing = 1;
 			if(lenForProceed) {
 				//reset and set header
 				memset(&(tar->tar.th_buf), 0, sizeof(struct Tar::tar_header));
@@ -783,7 +784,7 @@ void *TarQueue::tarthreadworker(void *arg) {
 			       
 				// write header
 				if (tar->th_write() != 0) {
-					continue;
+					goto end;
 				}
 
 				// if it's a regular file, write the contents as well
@@ -793,6 +794,8 @@ void *TarQueue::tarthreadworker(void *arg) {
 					cout << " *** " << data.buffer->getName() << " " << lenForProceed << endl;
 				}
 			}
+end:
+			tar->writing = 0;
 			
 			if(isClosed) {
 				delete data.buffer;
@@ -827,6 +830,9 @@ TarQueue::cleanTars() {
 		if((tartimemap.find(tar->created_at) == tartimemap.end()) and (lpt > (tar->created_at + TAR_MODULO_SECONDS + 10))) {  // +10 seconds more in new period to be sure nothing is in buffers
 			// there are no calls in this start time - clean it
 			pthread_mutex_unlock(&tartimemaplock);
+			if(tars_it->second->writing) {
+				syslog(LOG_NOTICE, "fatal error! trying to close tar %s in the middle of writing data", tars_it->second->pathname.c_str());
+			}
 			if(sverb.tar) syslog(LOG_NOTICE, "destroying tar %s - (no calls in mem)\n", tars_it->second->pathname.c_str());
 			delete tars_it->second;
 			tars.erase(tars_it++);
