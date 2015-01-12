@@ -101,7 +101,7 @@ Tar::th_set_path(char *pathname, bool partSuffix)
 	++partCounter/*[pathname]*/;
 	snprintf(tar.th_buf.name, 100, "%s", pathname);
 	if(partSuffix) {
-		snprintf(tar.th_buf.name + strlen(tar.th_buf.name), 100 - strlen(tar.th_buf.name), "_%i", partCounter/*[pathname]*/);
+		snprintf(tar.th_buf.name + strlen(tar.th_buf.name), 100 - strlen(tar.th_buf.name), "_%u", partCounter/*[pathname]*/);
 	}
 	       
 #ifdef DEBUG   
