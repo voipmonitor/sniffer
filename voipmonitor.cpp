@@ -3052,6 +3052,8 @@ int main(int argc, char *argv[]) {
 						else if(verbparams[i] == "fraud")			sverb.fraud = 1;
 						else if(verbparams[i] == "disable_bt_sighandler")	sverb.disable_bt_sighandler = 1;
 						else if(verbparams[i] == "tar")				sverb.tar = 1;
+						else if(verbparams[i].substr(0, 13) == "chunk_buffer=")
+													sverb.chunk_buffer = atoi(verbparams[i].c_str() + 13);
 						else if(verbparams[i] == "chunk_buffer")		sverb.chunk_buffer = 1;
 						else if(verbparams[i].substr(0, 15) == "tcp_debug_port=")
 													sverb.tcp_debug_port = atoi(verbparams[i].c_str() + 15);
@@ -4620,10 +4622,17 @@ int main(int argc, char *argv[]) {
 		}
 		delete asyncClose;
 	}
-
+	
 	if(opt_pcap_dump_tar) {
+		if(sverb.chunk_buffer > 1) { 
+			cout << "start destroy tar queue" << endl << flush;
+		}
 		tarQueue->flushQueue();
+		sleep(2);
 		delete tarQueue;
+		if(sverb.chunk_buffer > 1) { 
+			cout << "end destroy tar queue" << endl << flush;
+		}
 	}
 
 

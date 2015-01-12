@@ -178,6 +178,9 @@ public:
 	bool isError() {
 		return(!errorString.empty());
 	}
+	void clearError() {
+		errorString = "";
+	}
 	string getErrorString() {
 		return(errorString);
 	}
@@ -243,6 +246,7 @@ public:
 			counter = 0;
 			allPos = 0;
 			chunkPos = 0;
+			chunkIndex = 0;
 		}
 		void addPos(u_int32_t add) {
 			allPos += add;
@@ -256,6 +260,7 @@ public:
 		eChunkLen chunkLenBuff;
 		u_int32_t allPos;
 		u_int32_t chunkPos;
+		u_int32_t chunkIndex;
 	};
 public:
 	ChunkBuffer(u_int32_t chunk_fix_len = 0);
@@ -273,6 +278,9 @@ public:
 	bool isClosed() {
 		return(closed);
 	}
+	bool isDecompressError() {
+		return(decompressError);
+	}
 	u_int32_t getLen() {
 		return(this->compressStream ? compress_orig_data_len : len);
 	}
@@ -286,20 +294,35 @@ public:
 	virtual bool decompress_ev(char *data, u_int32_t len);
 	void chunkIterate(ChunkBuffer_baseIterate *chunkbufferIterateEv, bool freeChunks = false, bool enableContinue = false, u_int32_t limitLength = 0);
 	u_int32_t getChunkIterateSafeLimitLength(u_int32_t limitLength);
+	void lock_chunkBuffer() {
+		while(__sync_lock_test_and_set(&this->_sync_chunkBuffer, 1));
+	}
+	void unlock_chunkBuffer() {
+		__sync_lock_release(&this->_sync_chunkBuffer);
+	}
+	void lock_compress() {
+		while(__sync_lock_test_and_set(&this->_sync_compress, 1));
+	}
+	void unlock_compress() {
+		__sync_lock_release(&this->_sync_compress);
+	}
 private:
 	list<eChunk> chunkBuffer;
-	u_int32_t len;
+	volatile u_int32_t len;
 	u_int32_t chunk_fix_len;
-	u_int32_t compress_orig_data_len;
+	volatile u_int32_t compress_orig_data_len;
 	eChunk *lastChunk;
 	CompressStream *compressStream;
 	u_int32_t iterate_index;
 	ChunkBuffer_baseIterate *decompress_chunkbufferIterateEv;
 	u_int32_t decompress_pos;
 	sChunkIterateCompleteBufferInfo chunkIterateCompleteBufferInfo;
-	u_int32_t chunkIterateProceedLen;
+	volatile u_int32_t chunkIterateProceedLen;
 	bool closed;
+	bool decompressError;
 	char *name;
+	volatile int _sync_chunkBuffer;
+	volatile int _sync_compress;
 };      
 
 

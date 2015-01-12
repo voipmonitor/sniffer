@@ -1324,17 +1324,23 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 	}
 	if(opt_pcap_dump_tar) {
 		outStr << "tarQ[" << glob_tar_queued_files << "] ";
-
 		extern TarQueue *tarQueue;
-		outStr << "tarCPU[";
+		bool okPercTarCpu = false;
 		for(int i = 0; i < tarQueue->maxthreads; i++) {
-			if(i) {
-				outStr << '|';
-			}
 			double tar_cpu = tarQueue->getCpuUsagePerc(i, true);
-			outStr << setprecision(1) << tar_cpu;
+			if(tar_cpu > 0) {
+				if(okPercTarCpu) {
+					outStr << '|';
+				} else {
+					outStr << "tarCPU[";
+					okPercTarCpu = true;
+				}
+				outStr << setprecision(1) << tar_cpu;
+			}
 		}
-		outStr << "%] ";
+		if(okPercTarCpu) {
+			outStr << "%] ";
+		}
 	}
 	ostringstream outStrStat;
 	outStrStat << fixed;
@@ -2884,7 +2890,8 @@ void* PcapQueue_readFromInterface::threadFunction(void *arg, unsigned int arg2) 
 						++sumBlocksCounterIn[0];
 						blockStore[blockStoreIndex] = NULL;
 						sleep(sverb.test_rtp_performance ? 120 :
-						      opt_enable_ssl ? 10 : 1);
+						      opt_enable_ssl ? 10 :
+						      sverb.chunk_buffer ? 20 : 1);
 						calltable->cleanup(0);
 						extern AsyncClose *asyncClose;
 						asyncClose->processAll();

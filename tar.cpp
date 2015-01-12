@@ -736,7 +736,15 @@ void *TarQueue::tarthreadworker(void *arg) {
 				}
 			} else {
 				list<data_t>::iterator it;
-				for(it = tarthread->queue.begin(); it != tarthread->queue.end(); it++) {
+				for(it = tarthread->queue.begin(); it != tarthread->queue.end(); ) {
+					if(!it->buffer) {
+						it++;
+						continue;
+					}
+					if(it->buffer->isDecompressError()) {
+						tarthread->queue.erase(it++);
+						continue;
+					}
 					isClosed = it->buffer->isClosed();
 					lenForProceed = it->buffer->getChunkIterateLenForProceed();
 					if(!isClosed && lenForProceed > tarChunk_kB * 1024) {
@@ -751,6 +759,7 @@ void *TarQueue::tarthreadworker(void *arg) {
 						}
 						break;
 					}
+					it++;
 				}
 			}
 			pthread_mutex_unlock(&tarthread->queuelock);
@@ -783,7 +792,7 @@ void *TarQueue::tarthreadworker(void *arg) {
 				}
 			}
 			
-			if(data.buffer->isClosed()) {
+			if(isClosed) {
 				delete data.buffer;
 				decreaseTartimemap(tar->created_at);
 				__sync_sub_and_fetch(&glob_tar_queued_files, 1);
@@ -890,6 +899,9 @@ TarQueue::queuelen() {
 }
 
 TarQueue::~TarQueue() {
+	if(sverb.chunk_buffer > 1) { 
+		cout << "destroy tar queue" << endl;
+	}
 	terminate = true;
 	for(int i = 0; i < maxthreads; i++) { 
 		pthread_join(tarthreads[i].thread, NULL);

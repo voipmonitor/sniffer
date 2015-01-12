@@ -194,7 +194,9 @@ public:
 			pthread_mutex_lock(&queuelock);
 			std::list<data_t>::iterator it = queue.begin();
 			while(it != queue.end()) {
-				size += it->buffer->getLen();
+				if(it->buffer) {
+					size += it->buffer->getLen();
+				}
 				++it;
 			}
 			pthread_mutex_unlock(&queuelock);
