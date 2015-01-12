@@ -17,7 +17,9 @@
 #include <unistd.h>
 #include <iostream>
 #include <zlib.h>
+#ifdef HAVE_LIBLZ4
 #include <lz4.h>
+#endif //HAVE_LIBLZ4
 #include <pcap.h>
 #include <netdb.h>
 #include <map>
