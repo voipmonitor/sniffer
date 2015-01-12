@@ -2095,9 +2095,6 @@ void JsonExport::add(const char *name, u_int64_t content) {
 // pcap_dump_open with set buffer
 
 #define DEFAULT_BUFFER_LENGTH		8192
-#define DEFAULT_BUFFER_ZIP_LENGTH	8192
-#define DEFAULT_BUFFER_LZ4_LENGTH	8192
-#define TAR_BUFFER_INC_LENGTH		5000
 
 FileZipHandler::FileZipHandler(int bufferLength, int enableAsyncWrite, eTypeCompress typeCompress,
 			       bool dumpHandler, int time,
@@ -2121,8 +2118,6 @@ FileZipHandler::FileZipHandler(int bufferLength, int enableAsyncWrite, eTypeComp
 	}
 	this->permission = 0;
 	this->fh = 0;
-	//this->zipStream = NULL;
-	//this->lz4Stream = NULL;
 	this->compressStream = NULL;
 	this->bufferLength = opt_pcap_dump_tar ?
 			      (bufferLength ? bufferLength : DEFAULT_BUFFER_LENGTH) :
@@ -2133,16 +2128,7 @@ FileZipHandler::FileZipHandler(int bufferLength, int enableAsyncWrite, eTypeComp
 		this->buffer = NULL;
 	}
 	this->useBufferLength = 0;
-	//this->zipBufferLength = 0;
-	//this->zipBufferLengthCompressBound = 0;
-	//this->zipBuffer = NULL;
-	//this->tarBuffer = new DynamicBufferTar();
 	this->tarBuffer = NULL;
-/*
-	this->tarBuffer->setMinItemBufferLength(typeFile == pcap_sip ? 10000 :
-						typeFile == pcap_rtp ? 50000 :
-						typeFile == graph_rtp ? 5000 : 5000);
-*/
 	this->enableAsyncWrite = enableAsyncWrite && !opt_read_from_file;
 	this->typeCompress = typeCompress;
 	this->dumpHandler = dumpHandler;
@@ -2158,11 +2144,6 @@ FileZipHandler::~FileZipHandler() {
 	if(this->buffer) {
 		delete [] this->buffer;
 	}
-	/*
-	if(this->zipBuffer) {
-		delete [] this->zipBuffer;
-	}
-	*/
 	if(this->tarBuffer) {
 		delete this->tarBuffer;
 
@@ -2180,15 +2161,6 @@ FileZipHandler::~FileZipHandler() {
 		}
 
 	}
-	/*
-	if(this->zipStream) {
-		deflateEnd(this->zipStream);
-		delete this->zipStream;
-	}
-	if(this->lz4Stream) {
-		LZ4_freeStream(this->lz4Stream);
-	}
-	*/
 	if(this->compressStream) {
 		delete this->compressStream;
 	}

@@ -62,8 +62,10 @@ CompressStream::CompressStream(eTypeCompress typeCompress, u_int32_t compressBuf
 	this->maxDataLength = maxDataLength;
 	this->zipStream = NULL;
 	this->zipStreamDecompress = NULL;
+	#ifdef HAVE_LIBLZ4
 	this->lz4Stream = NULL;
 	this->lz4StreamDecode = NULL;
+	#endif //HAVE_LIBLZ4
 	this->zipLevel = Z_DEFAULT_COMPRESSION;
 	this->processed_len = 0;
 }
@@ -105,10 +107,12 @@ void CompressStream::initCompress() {
 		}
 		break;
 	case lz4_stream:
+		#ifdef HAVE_LIBLZ4
 		if(!this->lz4Stream) {
 			this->lz4Stream = LZ4_createStream();
 			createCompressBuffer();
 		}
+		#endif //HAVE_LIBLZ4
 		break;
 	case snappy:
 		if(!this->compressBuffer) {
@@ -142,10 +146,12 @@ void CompressStream::initDecompress(u_int32_t dataLen) {
 		createDecompressBuffer(dataLen);
 		break;
 	case lz4_stream:
+		#ifdef HAVE_LIBLZ4
 		if(!this->lz4StreamDecode) {
 			this->lz4StreamDecode = LZ4_createStreamDecode();
 		}
 		createDecompressBuffer(dataLen);
+		#endif //HAVE_LIBLZ4
 		break;
 	case snappy:
 		createDecompressBuffer(dataLen);
@@ -167,10 +173,12 @@ void CompressStream::termCompress() {
 		delete this->zipStreamDecompress;
 		this->zipStreamDecompress = NULL;
 	}
+	#ifdef ifdef HAVE_LIBLZ4
 	if(this->lz4Stream) {
 		LZ4_freeStream(this->lz4Stream);
 		this->lz4Stream = NULL;
 	}
+	#endif //ifdef HAVE_LIBLZ4
 	if(this->compressBuffer) {
 		delete [] this->compressBuffer;
 		this->compressBuffer = NULL;
@@ -178,10 +186,12 @@ void CompressStream::termCompress() {
 }
 
 void CompressStream::termDecompress() {
+	#ifdef HAVE_LIBLZ4
 	if(this->lz4StreamDecode) {
 		LZ4_freeStreamDecode(this->lz4StreamDecode);
 		this->lz4StreamDecode = NULL;
 	}
+	#endif //HAVE_LIBLZ4
 	if(this->decompressBuffer) {
 		delete [] this->decompressBuffer;
 		this->decompressBuffer = NULL;
@@ -231,6 +241,7 @@ bool CompressStream::compress(char *data, u_int32_t len, bool flush, CompressStr
 		}
 		break;
 	case lz4: {
+		#ifdef HAVE_LIBLZ4
 		if(!this->compressBuffer) {
 			this->initCompress();
 		}
@@ -246,9 +257,11 @@ bool CompressStream::compress(char *data, u_int32_t len, bool flush, CompressStr
 			this->setError("lz4 compress failed");
 			return(false);
 		}
+		#endif //HAVE_LIBLZ4
 		}
 		break;
 	case lz4_stream: {
+		#ifdef HAVE_LIBLZ4
 		if(!this->lz4Stream) {
 			this->initCompress();
 		}
@@ -267,6 +280,7 @@ bool CompressStream::compress(char *data, u_int32_t len, bool flush, CompressStr
 			pos += this->compressBufferLength;
 		}
 		this->processed_len += len;
+		#endif //HAVE_LIBLZ4
 		}
 		break;
 	case snappy: {
@@ -347,6 +361,7 @@ bool CompressStream::decompress(char *data, u_int32_t len, u_int32_t decompress_
 		} while(this->zipStreamDecompress->avail_out == 0);
 		break;
 	case lz4:
+		#ifdef HAVE_LIBLZ4
 		if(!this->decompressBuffer || !this->maxDataLength) {
 			this->initDecompress(decompress_len);
 		}
@@ -359,8 +374,10 @@ bool CompressStream::decompress(char *data, u_int32_t len, u_int32_t decompress_
 			this->setError("lz4 decompress failed");
 			return(false);
 		}
+		#endif //HAVE_LIBLZ4
 		break;
 	case lz4_stream:
+		#ifdef HAVE_LIBLZ4
 		if(!this->lz4StreamDecode) {
 			this->initDecompress(decompress_len);
 		}
@@ -376,6 +393,7 @@ bool CompressStream::decompress(char *data, u_int32_t len, u_int32_t decompress_
 			this->setError("lz4 decompress failed");
 			return(false);
 		}
+		#endif //HAVE_LIBLZ4
 		break;
 	case snappy: {
 		if(!this->decompressBuffer || !this->maxDataLength) {
@@ -422,11 +440,13 @@ void CompressStream::createCompressBuffer() {
 		break;
 	case lz4:
 	case lz4_stream:
+		#ifdef HAVE_LIBLZ4
 		if(this->maxDataLength) {
 			this->compressBufferLength = this->maxDataLength;
 		}
 		this->compressBufferBoundLength = LZ4_compressBound(this->compressBufferLength);
 		this->compressBuffer = new char[this->compressBufferBoundLength];
+		#endif //HAVE_LIBLZ4
 		break;
 	case snappy:
 		if(this->maxDataLength) {

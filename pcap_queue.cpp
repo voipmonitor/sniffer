@@ -15,7 +15,9 @@
 #include <vector>
 
 #include <snappy-c.h>
+#ifdef HAVE_LIBLZ4
 #include <lz4.h>
+#endif //HAVE_LIBLZ4
 
 #include "pcap_queue_block.h"
 #include "pcap_queue.h"
@@ -406,7 +408,9 @@ bool pcap_block_store::compress() {
 	}
 	switch(opt_pcap_queue_compress_method) {
 	case lz4:
+		#ifdef HAVE_LIBLZ4
 		return(this->compress_lz4());
+		#endif //HAVE_LIBLZ4
 	case snappy:
 	default:
 		return(this->compress_snappy());
@@ -447,6 +451,7 @@ bool pcap_block_store::compress_snappy() {
 }
 
 bool pcap_block_store::compress_lz4() {
+	#ifdef HAVE_LIBLZ4
 	size_t lz4BuffSize = LZ4_compressBound(this->size);
 	u_char *lz4Buff = new u_char[lz4BuffSize];
 	if(!lz4Buff) {
@@ -467,6 +472,7 @@ bool pcap_block_store::compress_lz4() {
 		syslog(LOG_ERR, "packetbuffer: lz4_compress: error");
 	}
 	delete [] lz4Buff; 
+	#endif //HAVE_LIBLZ4
 	return(false);
 }
 
@@ -476,7 +482,9 @@ bool pcap_block_store::uncompress(compress_method method) {
 	}
 	switch(method == compress_method_default ? opt_pcap_queue_compress_method : method) {
 	case lz4:
+		#ifdef HAVE_LIBLZ4
 		return(this->uncompress_lz4());
+		#endif //HAVE_LIBLZ4
 	case snappy:
 	default:
 		return(this->uncompress_snappy());
@@ -514,6 +522,7 @@ bool pcap_block_store::uncompress_snappy() {
 
 
 bool pcap_block_store::uncompress_lz4() {
+	#ifdef HAVE_LIBLZ4
 	if(!this->size_compress) {
 		return(true);
 	}
@@ -528,6 +537,7 @@ bool pcap_block_store::uncompress_lz4() {
 		syslog(LOG_ERR, "packetbuffer: lz4_uncompress: error");
 	}
 	delete [] lz4Buff;
+	#endif //HAVE_LIBLZ4
 	return(false);
 }
 

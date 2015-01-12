@@ -8,7 +8,9 @@
 #include <sys/types.h>
 #include <algorithm>
 #include <zlib.h>
+#ifdef HAVE_LIBLZ4
 #include <lz4.h>
+#endif //HAVE_LIBLZ4
 #include <snappy-c.h>
 
 
@@ -198,8 +200,10 @@ private:
 	u_int32_t maxDataLength;
 	z_stream *zipStream;
 	z_stream *zipStreamDecompress;
+	#ifdef HAVE_LIBLZ4
 	LZ4_stream_t *lz4Stream;
 	LZ4_streamDecode_t *lz4StreamDecode;
+	#endif //HAVE_LIBLZ4
 	string errorString;
 	int zipLevel;
 	u_int32_t processed_len;
