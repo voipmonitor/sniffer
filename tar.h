@@ -98,6 +98,7 @@ public:
 		this->lzmaStream = NULL;
 		memset(&tar, 0, sizeof(tar));
 #endif
+		this->partCounter = 0;
 	};
 	virtual ~Tar();
 
@@ -145,7 +146,8 @@ private:
 	z_stream *zipStream;
 	int zipBufferLength;
 	char *zipBuffer;
-	map<string, u_int32_t> partCounter;
+	//map<string, u_int32_t> partCounter;
+	u_int32_t partCounter;
 
 #ifdef HAVE_LIBLZMA
 	lzma_stream *lzmaStream;// = LZMA_STREAM_INIT; /* alloc and init lzma_stream struct */
