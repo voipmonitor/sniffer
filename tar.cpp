@@ -470,7 +470,9 @@ Tar::tar_block_write(const char *buf, u_int32_t len){
 	if(zip) {
 		writeZip((char *)(buf), len);
 	} else if(lzma){
+		#ifdef HAVE_LIBLZMA
 		writeLzma((char *)(buf), len);
+		#endif //HAVE_LIBLZMA
 	} else {
 		::write(tar.fd, (char *)(buf), len);
 	}
