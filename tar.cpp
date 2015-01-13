@@ -750,6 +750,7 @@ void *TarQueue::tarthreadworker(void *arg) {
 			bool findData = false;
 			bool isClosed = false;
 			size_t lenForProceed = 0;
+			size_t lenForProceedSafe = 0;
 			pthread_mutex_lock(&tarthread->queuelock);
 			if(tarthread->queue.empty()) { 
 				if(this2->terminate) {
@@ -769,11 +770,12 @@ void *TarQueue::tarthreadworker(void *arg) {
 					}
 					isClosed = it->buffer->isClosed();
 					lenForProceed = it->buffer->getChunkIterateLenForProceed();
-					if(!isClosed && lenForProceed > tarChunk_kB * 1024) {
-						 lenForProceed = it->buffer->getChunkIterateSafeLimitLength(lenForProceed);
+					lenForProceedSafe = lenForProceed;
+					if(!isClosed && lenForProceedSafe > tarChunk_kB * 1024) {
+						 lenForProceedSafe = it->buffer->getChunkIterateSafeLimitLength(lenForProceedSafe);
 					}
 					if(isClosed ||
-					   lenForProceed > tarChunk_kB * 1024) {
+					   lenForProceedSafe > tarChunk_kB * 1024) {
 						data = *it;
 						findData = true;
 						if(isClosed) {
@@ -783,6 +785,19 @@ void *TarQueue::tarthreadworker(void *arg) {
 					}
 					it++;
 				}
+				if(isClosed) {
+					if(lenForProceed > lenForProceedSafe) {
+						syslog(LOG_ERR, "ERROR - attempt to close chunkbuffer before proceed all data");
+					}
+					while(it != tarthread->queue.end()) {
+						if(it->tar == data.tar) {
+							syslog(LOG_ERR, "ERROR - attempt to call decreaseTartimemap before proceed all items in queue");
+							tarthread->queue.erase(it++);
+						} else {
+							it++;
+						}
+					}
+				}
 			}
 			pthread_mutex_unlock(&tarthread->queuelock);
 			if(!findData) {
@@ -791,7 +806,7 @@ void *TarQueue::tarthreadworker(void *arg) {
 			
 			Tar *tar = data.tar;
 			tar->writing = 1;
-			if(lenForProceed) {
+			if(lenForProceedSafe) {
 				//reset and set header
 				memset(&(tar->tar.th_buf), 0, sizeof(struct Tar::tar_header));
 				tar->th_set_type(0); //s->st_mode, 0 is regular file
@@ -799,7 +814,7 @@ void *TarQueue::tarthreadworker(void *arg) {
 				tar->th_set_group(0); //st_gid
 				tar->th_set_mode(0); //s->st_mode
 				tar->th_set_mtime(data.time);
-				tar->th_set_size(lenForProceed);
+				tar->th_set_size(lenForProceedSafe);
 				tar->th_set_path((char*)data.filename.c_str(), !isClosed);
 			       
 				// write header
@@ -808,10 +823,10 @@ void *TarQueue::tarthreadworker(void *arg) {
 				}
 
 				// if it's a regular file, write the contents as well
-				tar->tar_append_buffer(data.buffer, lenForProceed);
+				tar->tar_append_buffer(data.buffer, lenForProceedSafe);
 				
 				if(sverb.chunk_buffer) {
-					cout << " *** " << data.buffer->getName() << " " << lenForProceed << endl;
+					cout << " *** " << data.buffer->getName() << " " << lenForProceedSafe << endl;
 				}
 			}
 end:
