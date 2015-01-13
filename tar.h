@@ -98,7 +98,8 @@ public:
 		this->lzmaStream = NULL;
 		memset(&tar, 0, sizeof(tar));
 #endif
-		this->partCounter = 0;
+		partCounterSize = 0;
+		closedPartCounter = 0;
 	};
 	virtual ~Tar();
 
@@ -141,13 +142,21 @@ public:
 #endif
 
 	void addtofilesqueue();
+	
+	bool allPartsClosed() {
+		return(closedPartCounter && partCounterSize == closedPartCounter);
+	}
+	void incClosedPartCounter() {
+		++closedPartCounter;
+	}
 
 private:
 	z_stream *zipStream;
 	int zipBufferLength;
 	char *zipBuffer;
-	//map<string, u_int32_t> partCounter;
-	u_int32_t partCounter;
+	map<string, u_int32_t> partCounter;
+	volatile u_int32_t partCounterSize;
+	volatile u_int32_t closedPartCounter;
 
 #ifdef HAVE_LIBLZMA
 	lzma_stream *lzmaStream;// = LZMA_STREAM_INIT; /* alloc and init lzma_stream struct */
@@ -239,6 +248,9 @@ private:
 };
 
 void *TarQueueThread(void *dummy);
+
+void decreaseTartimemap(unsigned int time);
+void increaseTartimemap(unsigned int time);
 
 
 #endif

@@ -98,10 +98,17 @@ Tar::th_set_path(char *pathname, bool partSuffix)
 	tar.th_buf.gnu_longname = NULL;
 	
 	/* classic tar format */
-	++partCounter/*[pathname]*/;
+	
+	map<string, u_int32_t>::iterator it = partCounter.find(pathname);
+	if(it == partCounter.end()) {
+		partCounter[pathname] = 1;
+		++partCounterSize;
+	} else {
+		++partCounter[pathname];
+	}
 	snprintf(tar.th_buf.name, 100, "%s", pathname);
 	if(partSuffix) {
-		snprintf(tar.th_buf.name + strlen(tar.th_buf.name), 100 - strlen(tar.th_buf.name), "_%u", partCounter/*[pathname]*/);
+		snprintf(tar.th_buf.name + strlen(tar.th_buf.name), 100 - strlen(tar.th_buf.name), "_%u", partCounter[pathname]);
 	}
 	       
 #ifdef DEBUG   
@@ -619,11 +626,10 @@ qtype2strC(int qtype) {
 }
 
 
-void decreaseTartimemap(unsigned int created_at){
+void decreaseTartimemap(unsigned int time){
 	// decrease tartimemap
 	pthread_mutex_lock(&tartimemaplock);
-	map<unsigned int, int>::iterator tartimemap_it;
-	tartimemap_it = tartimemap.find(created_at);
+	map<unsigned int, int>::iterator tartimemap_it = tartimemap.find(time - time % TAR_MODULO_SECONDS);
 	if(tartimemap_it != tartimemap.end()) {
 		tartimemap_it->second--;
 		if(tartimemap_it->second == 0){
@@ -632,6 +638,19 @@ void decreaseTartimemap(unsigned int created_at){
 	}
 	pthread_mutex_unlock(&tartimemaplock);
 }
+
+
+void increaseTartimemap(unsigned int time){
+	pthread_mutex_lock(&tartimemaplock);
+	map<unsigned int, int>::iterator tartimemap_it = tartimemap.find(time - time % TAR_MODULO_SECONDS);
+	if(tartimemap_it != tartimemap.end()) {
+		tartimemap_it->second++;
+	} else {
+		tartimemap[time - time % TAR_MODULO_SECONDS] = 1;
+	}
+	pthread_mutex_unlock(&tartimemaplock);
+}
+
 
 int			    
 TarQueue::write(int qtype, unsigned int time, data_t data) {
@@ -797,6 +816,7 @@ void *TarQueue::tarthreadworker(void *arg) {
 			if(isClosed) {
 				delete data.buffer;
 				decreaseTartimemap(tar->created_at);
+				tar->incClosedPartCounter();
 				__sync_sub_and_fetch(&glob_tar_queued_files, 1);
 			}
 		}
@@ -824,7 +844,8 @@ TarQueue::cleanTars() {
 		pthread_mutex_lock(&tartimemaplock);
 		unsigned int lpt = glob_last_packet_time;
 		// find the tar in tartimemap 
-		if((tartimemap.find(tar->created_at) == tartimemap.end()) and (lpt > (tar->created_at + TAR_MODULO_SECONDS + 10))) {  // +10 seconds more in new period to be sure nothing is in buffers
+		if((tartimemap.find(tar->created_at) == tartimemap.end()) and (lpt > (tar->created_at + TAR_MODULO_SECONDS + 10)) && // +10 seconds more in new period to be sure nothing is in buffers
+		   tar->allPartsClosed()) {
 			// there are no calls in this start time - clean it
 			pthread_mutex_unlock(&tartimemaplock);
 			if(sverb.tar) syslog(LOG_NOTICE, "destroying tar %s - (no calls in mem)\n", tars_it->second->pathname.c_str());

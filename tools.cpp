@@ -61,10 +61,7 @@ extern int opt_read_from_file;
 extern int opt_pcap_dump_tar;
 extern char opt_chdir[1024];
 
-extern pthread_mutex_t tartimemaplock;
 extern int opt_pcap_dump_tar;
-extern map<unsigned int, int> tartimemap;
-extern pthread_mutex_t tartimemaplock;
 
 
 static char b2a[256];
@@ -2099,19 +2096,6 @@ void JsonExport::add(const char *name, u_int64_t content) {
 FileZipHandler::FileZipHandler(int bufferLength, int enableAsyncWrite, eTypeCompress typeCompress,
 			       bool dumpHandler, int time,
 			       eTypeFile typeFile) {
-
-
-	if(opt_pcap_dump_tar){
-		pthread_mutex_lock(&tartimemaplock);
-		map<unsigned int, int>::iterator tartimemap_it = tartimemap.find(time - time % TAR_MODULO_SECONDS);
-		if(tartimemap_it != tartimemap.end()) {
-			tartimemap_it->second++;
-		} else {
-			tartimemap[time - time % TAR_MODULO_SECONDS] = 1;
-		}
-		pthread_mutex_unlock(&tartimemaplock);
-	}
-
 	if(bufferLength <= 0) {
 		enableAsyncWrite = 0;
 		typeCompress = compress_na;
@@ -2146,20 +2130,6 @@ FileZipHandler::~FileZipHandler() {
 	}
 	if(this->tarBuffer) {
 		delete this->tarBuffer;
-
-		if(opt_pcap_dump_tar){
-			pthread_mutex_lock(&tartimemaplock);
-			map<unsigned int, int>::iterator tartimemap_it;
-			tartimemap_it = tartimemap.find(time - time % TAR_MODULO_SECONDS);
-			if(tartimemap_it != tartimemap.end()) {
-				tartimemap_it->second--;
-				if(tartimemap_it->second == 0){
-					tartimemap.erase(tartimemap_it);
-				}
-			}
-			pthread_mutex_unlock(&tartimemaplock);
-		}
-
 	}
 	if(this->compressStream) {
 		delete this->compressStream;
@@ -2237,6 +2207,7 @@ bool FileZipHandler::_writeToFile(char *data, int length, bool flush) {
 	
 	if(opt_pcap_dump_tar) {
 		if(!this->tarBuffer) {
+			increaseTartimemap(this->time);
 			this->tarBuffer = new ChunkBuffer(typeFile == pcap_sip ? 8 * 1024 : 
 							  typeFile == pcap_rtp ? 32 * 1024 : 
 							  typeFile == graph_rtp ? 16 * 1024 : 8 * 1024);
