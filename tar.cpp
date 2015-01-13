@@ -779,16 +779,14 @@ void *TarQueue::tarthreadworker(void *arg) {
 						data = *it;
 						findData = true;
 						if(isClosed) {
-							tarthread->queue.erase(it);
+							tarthread->queue.erase(it++);
 						}
 						break;
 					}
 					it++;
 				}
-				if(isClosed) {
-					if(lenForProceed > lenForProceedSafe) {
-						syslog(LOG_ERR, "ERROR - attempt to close chunkbuffer before proceed all data");
-					}
+				if(isClosed && 
+				   (!lenForProceed || lenForProceed > lenForProceedSafe)) {
 					while(it != tarthread->queue.end()) {
 						if(it->tar == data.tar) {
 							syslog(LOG_ERR, "ERROR - attempt to call decreaseTartimemap before proceed all items in queue");
@@ -832,7 +830,8 @@ void *TarQueue::tarthreadworker(void *arg) {
 end:
 			tar->writing = 0;
 			
-			if(isClosed) {
+			if(isClosed && 
+			   (!lenForProceed || lenForProceed > lenForProceedSafe)) {
 				delete data.buffer;
 				decreaseTartimemap(tar->created_at);
 				tar->incClosedPartCounter();
