@@ -85,6 +85,7 @@ public:
 	TAR;
 	TAR tar;
 	int year, mon, day, hour, minute;
+	volatile int writing;
 
 	unsigned int created_at;
 	int thread_id;
@@ -100,6 +101,7 @@ public:
 #endif
 		partCounterSize = 0;
 		closedPartCounter = 0;
+		this->writing = 0;
 	};
 	virtual ~Tar();
 
