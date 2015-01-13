@@ -778,23 +778,13 @@ void *TarQueue::tarthreadworker(void *arg) {
 					   lenForProceedSafe > tarChunk_kB * 1024) {
 						data = *it;
 						findData = true;
-						if(isClosed) {
-							tarthread->queue.erase(it++);
-						}
 						break;
 					}
 					it++;
 				}
 				if(isClosed && 
 				   (!lenForProceed || lenForProceed > lenForProceedSafe)) {
-					while(it != tarthread->queue.end()) {
-						if(it->tar == data.tar) {
-							syslog(LOG_ERR, "ERROR - attempt to call decreaseTartimemap before proceed all items in queue");
-							tarthread->queue.erase(it++);
-						} else {
-							it++;
-						}
-					}
+					tarthread->queue.erase(it++);
 				}
 			}
 			pthread_mutex_unlock(&tarthread->queuelock);
