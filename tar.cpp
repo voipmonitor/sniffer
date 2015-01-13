@@ -70,6 +70,10 @@ extern int terminating;
 extern TarQueue *tarQueue;
 extern volatile unsigned int glob_last_packet_time;
 
+
+map<void*, unsigned int> okTarPointers;
+
+
 /* magic, version, and checksum */
 void
 Tar::th_finish()
@@ -698,7 +702,9 @@ TarQueue::write(int qtype, unsigned int time, data_t data) {
 	Tar *tar = tars[tar_name.str()];
 	if(!tar) {
 		tar = new Tar;
+		okTarPointers[tar] = glob_last_packet_time;
 		if(sverb.tar) syslog(LOG_NOTICE, "new tar %s\n", tar_name.str().c_str());
+		if(sverb.tar) syslog(LOG_NOTICE, "add tar pointer %lx\n", tar);
 		tars[tar_name.str()] = tar;
 		pthread_mutex_unlock(&tarslock);
 		tar->tar_open(tar_name.str(), O_WRONLY | O_CREAT | O_APPEND, 0777, TAR_GNU);
@@ -765,6 +771,11 @@ void *TarQueue::tarthreadworker(void *arg) {
 						continue;
 					}
 					if(it->buffer->isDecompressError()) {
+						tarthread->queue.erase(it++);
+						continue;
+					}
+					if(okTarPointers.find(it->tar) == okTarPointers.end()) {
+						if(sverb.tar) syslog(LOG_ERR, "BAD TAR POINTER %lx\n", it->tar);
 						tarthread->queue.erase(it++);
 						continue;
 					}
@@ -860,6 +871,10 @@ TarQueue::cleanTars() {
 				syslog(LOG_NOTICE, "fatal error! trying to close tar %s in the middle of writing data", tars_it->second->pathname.c_str());
 			}
 			if(sverb.tar) syslog(LOG_NOTICE, "destroying tar %s / %lx - (no calls in mem)\n", tars_it->second->pathname.c_str(), tar);
+			if(okTarPointers.find(tars_it->second) != okTarPointers.end()) {
+				if(sverb.tar) syslog(LOG_NOTICE, "delete tar pointer %lx\n", tars_it->second);
+				okTarPointers.erase(tars_it->second);
+			}
 			delete tars_it->second;
 			tars.erase(tars_it++);
 		} else {
