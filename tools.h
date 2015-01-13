@@ -381,20 +381,13 @@ public:
 	string fileName;
 	int permission;
 	int fh;
-	
 	CompressStream *compressStream;
-	
-	//z_stream *zipStream;
-	//LZ4_stream_t *lz4Stream;
 	string error;
 	int bufferLength;
 	char *buffer;
 	int useBufferLength;
-	//int zipBufferLength;
-	//int zipBufferLengthCompressBound;
-	//char *zipBuffer;
-	//DynamicBuffer *tarBuffer;
 	ChunkBuffer *tarBuffer;
+	bool tarBufferCreated;
 	bool enableAsyncWrite;
 	eTypeCompress typeCompress;
 	bool dumpHandler;

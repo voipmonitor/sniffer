@@ -2096,6 +2096,9 @@ void JsonExport::add(const char *name, u_int64_t content) {
 FileZipHandler::FileZipHandler(int bufferLength, int enableAsyncWrite, eTypeCompress typeCompress,
 			       bool dumpHandler, int time,
 			       eTypeFile typeFile) {
+	if(opt_pcap_dump_tar) {
+		increaseTartimemap(time);
+	}
 	if(bufferLength <= 0) {
 		enableAsyncWrite = 0;
 		typeCompress = compress_na;
@@ -2113,6 +2116,7 @@ FileZipHandler::FileZipHandler(int bufferLength, int enableAsyncWrite, eTypeComp
 	}
 	this->useBufferLength = 0;
 	this->tarBuffer = NULL;
+	this->tarBufferCreated = false;
 	this->enableAsyncWrite = enableAsyncWrite && !opt_read_from_file;
 	this->typeCompress = typeCompress;
 	this->dumpHandler = dumpHandler;
@@ -2133,6 +2137,9 @@ FileZipHandler::~FileZipHandler() {
 	}
 	if(this->compressStream) {
 		delete this->compressStream;
+	}
+	if(!this->tarBufferCreated && opt_pcap_dump_tar) {
+		decreaseTartimemap(this->time);
 	}
 }
 
@@ -2207,7 +2214,7 @@ bool FileZipHandler::_writeToFile(char *data, int length, bool flush) {
 	
 	if(opt_pcap_dump_tar) {
 		if(!this->tarBuffer) {
-			increaseTartimemap(this->time);
+			this->tarBufferCreated = true;
 			this->tarBuffer = new ChunkBuffer(typeFile == pcap_sip ? 8 * 1024 : 
 							  typeFile == pcap_rtp ? 32 * 1024 : 
 							  typeFile == graph_rtp ? 16 * 1024 : 8 * 1024);

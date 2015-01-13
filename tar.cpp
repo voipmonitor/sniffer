@@ -775,6 +775,7 @@ void *TarQueue::tarthreadworker(void *arg) {
 						continue;
 					}
 					if(okTarPointers.find(it->tar) == okTarPointers.end()) {
+						data = *it; // only for debugging
 						if(sverb.tar) syslog(LOG_ERR, "BAD TAR POINTER %lx\n", it->tar);
 						tarthread->queue.erase(it++);
 						continue;
