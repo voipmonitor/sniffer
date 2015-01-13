@@ -150,13 +150,13 @@ bool existsColumnCalldateInCdrNext = true;
 bool existsColumnCalldateInCdrRtp = true;
 bool existsColumnCalldateInCdrDtmf = true;
 
-
 /* constructor */
 Call::Call(char *call_id, unsigned long call_id_len, time_t time) :
  tmprtp(-1),
  pcap(PcapDumper::na, this),
  pcapSip(PcapDumper::sip, this),
  pcapRtp(PcapDumper::rtp, this) {
+	increaseTartimemap(time);
 	isfax = 0;
 	seenudptl = 0;
 	last_callercodec = -1;
@@ -474,6 +474,7 @@ Call::~Call(){
 	pthread_mutex_destroy(&buflock);
 	pthread_mutex_unlock(&listening_worker_run_lock);
 	pthread_mutex_destroy(&listening_worker_run_lock);
+	decreaseTartimemap(this->first_packet_time);
 }
 
 void
