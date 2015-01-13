@@ -99,6 +99,8 @@ Tar::th_set_path(char *pathname, bool partSuffix)
 	
 	/* classic tar format */
 	
+	snprintf(tar.th_buf.name, 100, "%s", pathname);
+	
 	map<string, u_int32_t>::iterator it = partCounter.find(pathname);
 	if(it == partCounter.end()) {
 		partCounter[pathname] = 1;
@@ -106,7 +108,6 @@ Tar::th_set_path(char *pathname, bool partSuffix)
 	} else {
 		++partCounter[pathname];
 	}
-	snprintf(tar.th_buf.name, 100, "%s", pathname);
 	if(partSuffix) {
 		snprintf(tar.th_buf.name + strlen(tar.th_buf.name), 100 - strlen(tar.th_buf.name), "_%u", partCounter[pathname]);
 	}
@@ -854,7 +855,7 @@ TarQueue::cleanTars() {
 			if(tars_it->second->writing) {
 				syslog(LOG_NOTICE, "fatal error! trying to close tar %s in the middle of writing data", tars_it->second->pathname.c_str());
 			}
-			if(sverb.tar) syslog(LOG_NOTICE, "destroying tar %s - (no calls in mem)\n", tars_it->second->pathname.c_str());
+			if(sverb.tar) syslog(LOG_NOTICE, "destroying tar %s / %lx - (no calls in mem)\n", tars_it->second->pathname.c_str(), tar);
 			delete tars_it->second;
 			tars.erase(tars_it++);
 		} else {
