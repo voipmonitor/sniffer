@@ -2154,6 +2154,21 @@ bool FileZipHandler::open(const char *fileName, int permission) {
 		if(sverb.tar > 2) {
 			syslog(LOG_NOTICE, "tartimemap increase: %s %i %i", 
 			       fileName, this->time, this->time - this->time % TAR_MODULO_SECONDS);
+			
+			unsigned int year, mon, day, hour, minute;
+			char type[12];
+			char fbasename[2*1024];
+			sscanf(fileName, "%u-%u-%u/%u/%u/%[^/]/%s", &year, &mon, &day, &hour, &minute, type, fbasename);
+			
+			char dateTimeString[20];
+			sprintf(dateTimeString, "%4i-%02i-%02i %02i:%02i:00",
+				year, mon, day, hour, minute);
+			if(dateTimeString != sqlDateTimeString(this->time - this->time % TAR_MODULO_SECONDS)) {
+				syslog(LOG_ERR, "BAD FileZipHandler time: %s %s %s",
+				       fileName,
+				       dateTimeString, sqlDateTimeString(this->time).c_str()); 
+			}
+			
 		}
 	}
 	this->fileName = fileName;
