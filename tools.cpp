@@ -2231,8 +2231,11 @@ bool FileZipHandler::_writeToFile(char *data, int length, bool flush) {
 							  typeFile == pcap_sip ? 8 * 1024 : 
 							  typeFile == pcap_rtp ? 32 * 1024 : 
 							  typeFile == graph_rtp ? 16 * 1024 : 8 * 1024);
-			syslog(LOG_NOTICE, "chunkbufer create: %s %lx", 
-			       this->fileName.c_str(), (long)this->tarBuffer);
+			if(sverb.tar > 2) {
+				syslog(LOG_NOTICE, "chunkbufer create: %s %lx %i %i", 
+				       this->fileName.c_str(), (long)this->tarBuffer,
+				       this->time, this->time % TAR_MODULO_SECONDS);
+			}
 			extern CompressStream::eTypeCompress opt_pcap_dump_tar_internalcompress_sip;
 			extern CompressStream::eTypeCompress opt_pcap_dump_tar_internalcompress_rtp;
 			extern CompressStream::eTypeCompress opt_pcap_dump_tar_internalcompress_graph;

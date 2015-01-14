@@ -518,8 +518,9 @@ ChunkBuffer::ChunkBuffer(int time, u_int32_t chunk_fix_len) {
 
 ChunkBuffer::~ChunkBuffer() {
 	if(sverb.tar > 2) {
-		syslog(LOG_NOTICE, "chunkbufer destroy: %s %lx", 
-		       this->getName().c_str(), (long)this);
+		syslog(LOG_NOTICE, "chunkbufer destroy: %s %lx %i %i", 
+		       this->getName().c_str(), (long)this,
+		       this->time, this->time % TAR_MODULO_SECONDS);
 	}
 	list<eChunk>::iterator it = chunkBuffer.begin();
 	for(it = chunkBuffer.begin(); it != chunkBuffer.end(); it++) {

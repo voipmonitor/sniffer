@@ -846,10 +846,15 @@ end:
 			
 			if(isClosed && 
 			   (!lenForProceed || lenForProceed > lenForProceedSafe)) {
-				decreaseTartimemap(tar->created_at);
+				decreaseTartimemap(data.buffer->getTime());
 				if(sverb.tar > 2) {
-					syslog(LOG_NOTICE, "tartimemap decrease1: %s %i %i", 
-					       data.buffer->getName().c_str(), tar->created_at, tar->created_at - tar->created_at % TAR_MODULO_SECONDS);
+					syslog(LOG_NOTICE, "tartimemap decrease1: %s %i %i %i %i", 
+					       data.buffer->getName().c_str(), 
+					       tar->created_at, tar->created_at - tar->created_at % TAR_MODULO_SECONDS,
+					       data.buffer->getTime(), data.buffer->getTime() - data.buffer->getTime() % TAR_MODULO_SECONDS);
+					if(tar->created_at != (unsigned)(data.buffer->getTime() - data.buffer->getTime() % TAR_MODULO_SECONDS)) {
+						syslog(LOG_ERR, "BAD TAR created_at");
+					}
 				}
 				delete data.buffer;
 				tar->incClosedPartCounter();
