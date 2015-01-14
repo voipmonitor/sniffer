@@ -2164,9 +2164,9 @@ bool FileZipHandler::open(const char *fileName, int permission) {
 			sprintf(dateTimeString, "%4i-%02i-%02i %02i:%02i:00",
 				year, mon, day, hour, minute);
 			if(dateTimeString != sqlDateTimeString(this->time - this->time % TAR_MODULO_SECONDS)) {
-				syslog(LOG_ERR, "BAD FileZipHandler time: %s %s %s",
+				syslog(LOG_ERR, "BAD FileZipHandler time: %s %s %s %s",
 				       fileName,
-				       dateTimeString, sqlDateTimeString(this->time).c_str()); 
+				       dateTimeString, sqlDateTimeString(this->time).c_str(), sqlDateTimeString(this->time - this->time % TAR_MODULO_SECONDS).c_str()); 
 			}
 			
 		}
