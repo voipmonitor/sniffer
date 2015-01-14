@@ -776,7 +776,7 @@ void *TarQueue::tarthreadworker(void *arg) {
 					}
 					if(okTarPointers.find(it->tar) == okTarPointers.end()) {
 						data = *it; // only for debugging
-						if(sverb.tar) syslog(LOG_ERR, "BAD TAR POINTER %lx\n", it->tar);
+						if(sverb.tar > 1) syslog(LOG_ERR, "BAD TAR POINTER %lx %s %s\n", it->tar, data.buffer->getName().c_str(), data.tar->pathname.c_str());
 						tarthread->queue.erase(it++);
 						continue;
 					}
@@ -876,7 +876,9 @@ TarQueue::cleanTars() {
 				if(sverb.tar) syslog(LOG_NOTICE, "delete tar pointer %lx\n", tars_it->second);
 				okTarPointers.erase(tars_it->second);
 			}
-			delete tars_it->second;
+			if(sverb.tar <= 1) {
+				delete tars_it->second;
+			}
 			tars.erase(tars_it++);
 		} else {
 			pthread_mutex_unlock(&tartimemaplock);

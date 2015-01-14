@@ -3056,6 +3056,8 @@ int main(int argc, char *argv[]) {
 						else if(verbparams[i] == "skinny")			sverb.skinny = 1;
 						else if(verbparams[i] == "fraud")			sverb.fraud = 1;
 						else if(verbparams[i] == "disable_bt_sighandler")	sverb.disable_bt_sighandler = 1;
+						else if(verbparams[i].substr(0, 4) == "tar=")
+													sverb.tar = atoi(verbparams[i].c_str() + 4);
 						else if(verbparams[i] == "tar")				sverb.tar = 1;
 						else if(verbparams[i].substr(0, 13) == "chunk_buffer=")
 													sverb.chunk_buffer = atoi(verbparams[i].c_str() + 13);
