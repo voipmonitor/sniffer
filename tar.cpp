@@ -637,6 +637,10 @@ void decreaseTartimemap(unsigned int time){
 	map<unsigned int, int>::iterator tartimemap_it = tartimemap.find(time - time % TAR_MODULO_SECONDS);
 	if(tartimemap_it != tartimemap.end()) {
 		tartimemap_it->second--;
+		if(sverb.tar > 2) {
+			syslog(LOG_NOTICE, "tartimemap decrease to: %i %i %i", 
+			       time, time - time % TAR_MODULO_SECONDS, tartimemap_it->second);
+		}
 		if(tartimemap_it->second == 0){
 			tartimemap.erase(tartimemap_it);
 		}
@@ -650,8 +654,16 @@ void increaseTartimemap(unsigned int time){
 	map<unsigned int, int>::iterator tartimemap_it = tartimemap.find(time - time % TAR_MODULO_SECONDS);
 	if(tartimemap_it != tartimemap.end()) {
 		tartimemap_it->second++;
+		if(sverb.tar > 2) {
+			syslog(LOG_NOTICE, "tartimemap increase to: %i %i %i", 
+			       time, time - time % TAR_MODULO_SECONDS, tartimemap_it->second);
+		}
 	} else {
 		tartimemap[time - time % TAR_MODULO_SECONDS] = 1;
+		if(sverb.tar > 2) {
+			syslog(LOG_NOTICE, "tartimemap increase set: %i %i %i", 
+			       time, time - time % TAR_MODULO_SECONDS, 1);
+		}
 	}
 	pthread_mutex_unlock(&tartimemaplock);
 }
@@ -704,7 +716,7 @@ TarQueue::write(int qtype, unsigned int time, data_t data) {
 		tar = new Tar;
 		okTarPointers[tar] = glob_last_packet_time;
 		if(sverb.tar) syslog(LOG_NOTICE, "new tar %s\n", tar_name.str().c_str());
-		if(sverb.tar) syslog(LOG_NOTICE, "add tar pointer %lx\n", tar);
+		if(sverb.tar) syslog(LOG_NOTICE, "add tar pointer %lx\n", (long)tar);
 		tars[tar_name.str()] = tar;
 		pthread_mutex_unlock(&tarslock);
 		tar->tar_open(tar_name.str(), O_WRONLY | O_CREAT | O_APPEND, 0777, TAR_GNU);
@@ -776,7 +788,7 @@ void *TarQueue::tarthreadworker(void *arg) {
 					}
 					if(okTarPointers.find(it->tar) == okTarPointers.end()) {
 						data = *it; // only for debugging
-						if(sverb.tar > 1) syslog(LOG_ERR, "BAD TAR POINTER %lx %s %s\n", it->tar, data.buffer->getName().c_str(), data.tar->pathname.c_str());
+						if(sverb.tar > 1) syslog(LOG_ERR, "BAD TAR POINTER %lx %s %s\n", (long)it->tar, data.buffer->getName().c_str(), data.tar->pathname.c_str());
 						tarthread->queue.erase(it++);
 						continue;
 					}
@@ -834,8 +846,12 @@ end:
 			
 			if(isClosed && 
 			   (!lenForProceed || lenForProceed > lenForProceedSafe)) {
-				delete data.buffer;
 				decreaseTartimemap(tar->created_at);
+				if(sverb.tar > 2) {
+					syslog(LOG_NOTICE, "tartimemap decrease1: %s %i %i", 
+					       data.buffer->getName().c_str(), tar->created_at, tar->created_at - tar->created_at % TAR_MODULO_SECONDS);
+				}
+				delete data.buffer;
 				tar->incClosedPartCounter();
 				__sync_sub_and_fetch(&glob_tar_queued_files, 1);
 			}
@@ -871,9 +887,9 @@ TarQueue::cleanTars() {
 			if(tars_it->second->writing) {
 				syslog(LOG_NOTICE, "fatal error! trying to close tar %s in the middle of writing data", tars_it->second->pathname.c_str());
 			}
-			if(sverb.tar) syslog(LOG_NOTICE, "destroying tar %s / %lx - (no calls in mem)\n", tars_it->second->pathname.c_str(), tar);
+			if(sverb.tar) syslog(LOG_NOTICE, "destroying tar %s / %lx - (no calls in mem)\n", tars_it->second->pathname.c_str(), (long)tar);
 			if(okTarPointers.find(tars_it->second) != okTarPointers.end()) {
-				if(sverb.tar) syslog(LOG_NOTICE, "delete tar pointer %lx\n", tars_it->second);
+				if(sverb.tar) syslog(LOG_NOTICE, "delete tar pointer %lx\n", (long)tars_it->second);
 				okTarPointers.erase(tars_it->second);
 			}
 			if(sverb.tar <= 1) {

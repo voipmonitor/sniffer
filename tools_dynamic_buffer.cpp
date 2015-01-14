@@ -173,7 +173,7 @@ void CompressStream::termCompress() {
 		delete this->zipStreamDecompress;
 		this->zipStreamDecompress = NULL;
 	}
-	#ifdef ifdef HAVE_LIBLZ4
+	#ifdef HAVE_LIBLZ4
 	if(this->lz4Stream) {
 		LZ4_freeStream(this->lz4Stream);
 		this->lz4Stream = NULL;
@@ -516,6 +516,10 @@ ChunkBuffer::ChunkBuffer(u_int32_t chunk_fix_len) {
 }
 
 ChunkBuffer::~ChunkBuffer() {
+	if(sverb.tar > 2) {
+		syslog(LOG_NOTICE, "chunkbufer destroy: %s %lx", 
+		       this->getName().c_str(), (long)this);
+	}
 	list<eChunk>::iterator it = chunkBuffer.begin();
 	for(it = chunkBuffer.begin(); it != chunkBuffer.end(); it++) {
 		if(it->chunk) {

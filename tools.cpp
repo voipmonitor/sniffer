@@ -2096,9 +2096,6 @@ void JsonExport::add(const char *name, u_int64_t content) {
 FileZipHandler::FileZipHandler(int bufferLength, int enableAsyncWrite, eTypeCompress typeCompress,
 			       bool dumpHandler, int time,
 			       eTypeFile typeFile) {
-	if(opt_pcap_dump_tar) {
-		increaseTartimemap(time);
-	}
 	if(bufferLength <= 0) {
 		enableAsyncWrite = 0;
 		typeCompress = compress_na;
@@ -2140,12 +2137,24 @@ FileZipHandler::~FileZipHandler() {
 	}
 	if(!this->tarBufferCreated && opt_pcap_dump_tar) {
 		decreaseTartimemap(this->time);
+		if(sverb.tar > 2) {
+			syslog(LOG_NOTICE, "tartimemap decrease2: %s %i %i", 
+			       this->fileName.c_str(), this->time, this->time - this->time % TAR_MODULO_SECONDS);
+		}
 	}
 }
 
 bool FileZipHandler::open(const char *fileName, int permission) {
-	if(opt_pcap_dump_tar && sverb.tar > 2 && this->typeFile == pcap_sip) {
-		syslog(LOG_NOTICE, "FileZipHandler open: %s %i", fileName, this->time);
+	if(opt_pcap_dump_tar) {
+		if(sverb.tar > 2) {
+			syslog(LOG_NOTICE, "FileZipHandler open: %s %i %i %s", 
+			       fileName, this->time, this->time - this->time % TAR_MODULO_SECONDS, sqlDateTimeString(this->time).c_str());
+		}
+		increaseTartimemap(time);
+		if(sverb.tar > 2) {
+			syslog(LOG_NOTICE, "tartimemap increase: %s %i %i", 
+			       fileName, this->time, this->time - this->time % TAR_MODULO_SECONDS);
+		}
 	}
 	this->fileName = fileName;
 	this->permission = permission;
@@ -2221,6 +2230,8 @@ bool FileZipHandler::_writeToFile(char *data, int length, bool flush) {
 			this->tarBuffer = new ChunkBuffer(typeFile == pcap_sip ? 8 * 1024 : 
 							  typeFile == pcap_rtp ? 32 * 1024 : 
 							  typeFile == graph_rtp ? 16 * 1024 : 8 * 1024);
+			syslog(LOG_NOTICE, "chunkbufer create: %s %lx", 
+			       this->fileName.c_str(), (long)this->tarBuffer);
 			extern CompressStream::eTypeCompress opt_pcap_dump_tar_internalcompress_sip;
 			extern CompressStream::eTypeCompress opt_pcap_dump_tar_internalcompress_rtp;
 			extern CompressStream::eTypeCompress opt_pcap_dump_tar_internalcompress_graph;
