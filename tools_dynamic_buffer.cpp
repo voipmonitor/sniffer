@@ -501,7 +501,8 @@ CompressStream::eTypeCompress CompressStream::convTypeCompress(const char *typeC
 	return(CompressStream::compress_na);
 }
 
-ChunkBuffer::ChunkBuffer(u_int32_t chunk_fix_len) {
+ChunkBuffer::ChunkBuffer(int time, u_int32_t chunk_fix_len) {
+	this->time = time;
 	this->len = 0;
 	this->chunk_fix_len = chunk_fix_len;
 	this->compress_orig_data_len = 0;

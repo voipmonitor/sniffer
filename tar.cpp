@@ -944,7 +944,9 @@ TarQueue::flushQueue() {
 			
 			vector<data_t>::iterator itv;
 			for(itv = winner.begin(); itv != winner.end(); itv++) {
-				this->write(winner_qtype, winnertime, *itv);
+				unsigned int time = itv->buffer->getTime();
+				time -= time % TAR_MODULO_SECONDS;
+				this->write(winner_qtype, time, *itv);
 			}
 			cleanTars();
 			continue;

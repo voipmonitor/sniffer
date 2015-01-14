@@ -2227,7 +2227,8 @@ bool FileZipHandler::_writeToFile(char *data, int length, bool flush) {
 	if(opt_pcap_dump_tar) {
 		if(!this->tarBuffer) {
 			this->tarBufferCreated = true;
-			this->tarBuffer = new ChunkBuffer(typeFile == pcap_sip ? 8 * 1024 : 
+			this->tarBuffer = new ChunkBuffer(this->time, 
+							  typeFile == pcap_sip ? 8 * 1024 : 
 							  typeFile == pcap_rtp ? 32 * 1024 : 
 							  typeFile == graph_rtp ? 16 * 1024 : 8 * 1024);
 			syslog(LOG_NOTICE, "chunkbufer create: %s %lx", 

@@ -267,10 +267,13 @@ public:
 		u_int32_t chunkIndex;
 	};
 public:
-	ChunkBuffer(u_int32_t chunk_fix_len = 0);
+	ChunkBuffer(int time, u_int32_t chunk_fix_len = 0);
 	virtual ~ChunkBuffer();
 	void setTypeCompress(CompressStream::eTypeCompress typeCompress, u_int32_t compressBufferLength, u_int32_t maxDataLength);
 	void setZipLevel(int zipLevel);
+	int getTime() {
+		return(time);
+	}
 	void setName(const char *name);
 	string getName() {
 		return(this->name ? this->name : "");
@@ -311,6 +314,7 @@ public:
 		__sync_lock_release(&this->_sync_compress);
 	}
 private:
+	int time;
 	list<eChunk> chunkBuffer;
 	volatile u_int32_t len;
 	u_int32_t chunk_fix_len;
