@@ -2144,6 +2144,9 @@ FileZipHandler::~FileZipHandler() {
 }
 
 bool FileZipHandler::open(const char *fileName, int permission) {
+	if(opt_pcap_dump_tar && sverb.tar > 2 && this->typeFile == pcap_sip) {
+		syslog(LOG_NOTICE, "FileZipHandler open: %s %i", fileName, this->time);
+	}
 	this->fileName = fileName;
 	this->permission = permission;
 	return(true);
