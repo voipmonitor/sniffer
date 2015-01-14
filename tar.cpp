@@ -853,7 +853,9 @@ end:
 					       tar->created_at, tar->created_at - tar->created_at % TAR_MODULO_SECONDS,
 					       data.buffer->getTime(), data.buffer->getTime() - data.buffer->getTime() % TAR_MODULO_SECONDS);
 					if(tar->created_at != (unsigned)(data.buffer->getTime() - data.buffer->getTime() % TAR_MODULO_SECONDS)) {
-						syslog(LOG_ERR, "BAD TAR created_at");
+						syslog(LOG_ERR, "BAD TAR created_at - tar: %s %lx %i %i chunkbuffer: %s %lx %i %i",
+						       tar->pathname.c_str(), (long)tar, tar->created_at, tar->created_at - tar->created_at % TAR_MODULO_SECONDS,
+						       data.buffer->getName().c_str(), (long)data.buffer, data.buffer->getTime(), data.buffer->getTime() - data.buffer->getTime() % TAR_MODULO_SECONDS);
 					}
 				}
 				delete data.buffer;
