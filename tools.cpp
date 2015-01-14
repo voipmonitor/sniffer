@@ -844,8 +844,7 @@ time_t stringToTime(const char *timeStr) {
 	sscanf(timeStr, "%d-%d-%d %d:%d:%d", &year, &month, &day, &hour, &min, &sec);
 	time_t now;
 	time(&now);
-	struct tm dateTime;
-	dateTime = *localtime(&now);
+	struct tm dateTime = localtime_r(&now);
 	dateTime.tm_year = year - 1900;
 	dateTime.tm_mon = month - 1;  
 	dateTime.tm_mday = day;
@@ -861,9 +860,7 @@ struct tm getDateTime(u_int64_t us) {
 }
 
 struct tm getDateTime(time_t time) {
-	struct tm dateTime;
-	dateTime = *localtime(&time);
-	return(dateTime);
+	return(localtime_r(&time));
 }
 
 struct tm getDateTime(const char *timeStr) {
@@ -875,8 +872,7 @@ unsigned int getNumberOfDayToNow(const char *date) {
 	sscanf(date, "%d-%d-%d", &year, &month, &day);
 	time_t now;
 	time(&now);
-	struct tm dateTime;
-	dateTime = *localtime(&now);
+	struct tm dateTime = localtime_r(&now);
 	dateTime.tm_year = year - 1900;
 	dateTime.tm_mon = month - 1;  
 	dateTime.tm_mday = day;
@@ -889,11 +885,11 @@ unsigned int getNumberOfDayToNow(const char *date) {
 
 string getActDateTimeF(bool useT_symbol) {
 	time_t actTime = time(NULL);
-	struct tm *actTimeInfo = localtime(&actTime);
+	struct tm actTimeInfo = localtime_r(&actTime);
 	char dateTimeF[20];
 	strftime(dateTimeF, 20, 
 		 useT_symbol ? "%Y-%m-%dT%T" : "%Y-%m-%d %T", 
-		 actTimeInfo);
+		 &actTimeInfo);
 	return(dateTimeF);
 }
 

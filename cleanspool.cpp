@@ -1483,9 +1483,9 @@ bool check_exists_act_records_in_files() {
 	time_t maxCdrTime = stringToTime(row["max_calldate"].c_str());
 	for(int i = 0; i < 12; i++) {
 		time_t checkTime = maxCdrTime - i * 60 * 60;
-		struct tm *checkTimeInfo = localtime(&checkTime);
+		struct tm checkTimeInfo = localtime_r(&checkTime);
 		char datehour[20];
-		strftime(datehour, 20, "%Y%m%d%H", checkTimeInfo);
+		strftime(datehour, 20, "%Y%m%d%H", &checkTimeInfo);
 		sqlDbCleanspool->query(string("select * from files where datehour ='") + datehour + "'" +
 				       " and id_sensor = " + id_sensor_str);
 		if(sqlDbCleanspool->fetchRow()) {
@@ -1512,9 +1512,9 @@ bool check_exists_act_files_in_filesindex() {
 	time_t maxCdrTime = stringToTime(row["max_calldate"].c_str());
 	for(int i = 0; i < 12; i++) {
 		time_t checkTime = maxCdrTime - i * 60 * 60;
-		struct tm *checkTimeInfo = localtime(&checkTime);
+		struct tm checkTimeInfo = localtime_r(&checkTime);
 		char date[20];
-		strftime(date, 20, "%Y%m%d", checkTimeInfo);
+		strftime(date, 20, "%Y%m%d", &checkTimeInfo);
 		for(int j = 0; j < 24; j++) {
 			char datehour[20];
 			strcpy(datehour, date);
@@ -1830,8 +1830,7 @@ void *clean_spooldir(void *dummy) {
 			   opt_cleanspool_enable_run_hour_to >= 0) {
 				time_t now;
 				time(&now);
-				struct tm dateTime;
-				dateTime = *localtime(&now);
+				struct tm dateTime = localtime_r(&now);
 				if(opt_cleanspool_enable_run_hour_to >= opt_cleanspool_enable_run_hour_from) {
 					if(dateTime.tm_hour >= opt_cleanspool_enable_run_hour_from &&
 					   dateTime.tm_hour <= opt_cleanspool_enable_run_hour_to) {

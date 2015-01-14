@@ -502,11 +502,11 @@ Call::closeRawFiles() {
 string
 Call::dirname() {
 	char sdirname[18];
-	struct tm *t = localtime((const time_t*)(&first_packet_time));
+	struct tm t = localtime_r((const time_t*)(&first_packet_time));
 	if(opt_newdir) {
-		snprintf(sdirname, 17, "%04d-%02d-%02d/%02d/%02d",  t->tm_year + 1900, t->tm_mon + 1, t->tm_mday, t->tm_hour, t->tm_min);
+		snprintf(sdirname, 17, "%04d-%02d-%02d/%02d/%02d",  t.tm_year + 1900, t.tm_mon + 1, t.tm_mday, t.tm_hour, t.tm_min);
 	} else {
-		snprintf(sdirname, 17, "%04d-%02d-%02d",  t->tm_year + 1900, t->tm_mon + 1, t->tm_mday);
+		snprintf(sdirname, 17, "%04d-%02d-%02d",  t.tm_year + 1900, t.tm_mon + 1, t.tm_mday);
 	}
 	sdirname[17] = 0;
 	string s(sdirname);
@@ -517,8 +517,8 @@ Call::dirname() {
 string
 Call::dirnamesqlfiles() {
 	char sdirname[12];
-	struct tm *t = localtime((const time_t*)(&first_packet_time));
-	snprintf(sdirname, 11, "%04d%02d%02d%02d",  t->tm_year + 1900, t->tm_mon + 1, t->tm_mday, t->tm_hour);
+	struct tm t = localtime_r((const time_t*)(&first_packet_time));
+	snprintf(sdirname, 11, "%04d%02d%02d%02d",  t.tm_year + 1900, t.tm_mon + 1, t.tm_mday, t.tm_hour);
 	sdirname[11] = 0;
 	string s(sdirname);
 	return s;

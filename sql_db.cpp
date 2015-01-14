@@ -1555,16 +1555,16 @@ SqlDb *createSqlObject() {
 }
 
 string sqlDateTimeString(time_t unixTime) {
-	struct tm * localTime = localtime(&unixTime);
+	struct tm localTime = localtime_r(&unixTime);
 	char dateTimeBuffer[50];
-	strftime(dateTimeBuffer, sizeof(dateTimeBuffer), "%Y-%m-%d %H:%M:%S", localTime);
+	strftime(dateTimeBuffer, sizeof(dateTimeBuffer), "%Y-%m-%d %H:%M:%S", &localTime);
 	return string(dateTimeBuffer);
 }
 
 string sqlDateString(time_t unixTime) {
-	struct tm * localTime = localtime(&unixTime);
+	struct tm localTime = localtime_r(&unixTime);
 	char dateBuffer[50];
-	strftime(dateBuffer, sizeof(dateBuffer), "%Y-%m-%d", localTime);
+	strftime(dateBuffer, sizeof(dateBuffer), "%Y-%m-%d", &localTime);
 	return string(dateBuffer);
 }
 
@@ -1969,11 +1969,11 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 		if(opt_create_old_partitions > 0) {
 			act_time -= opt_create_old_partitions * 24 * 60 * 60;
 		}
-		struct tm *actTime = localtime(&act_time);
-		strftime(partDayName, sizeof(partDayName), "p%y%m%d", actTime);
+		struct tm actTime = localtime_r(&act_time);
+		strftime(partDayName, sizeof(partDayName), "p%y%m%d", &actTime);
 		time_t next_day_time = act_time + 24 * 60 * 60;
-		struct tm *nextDayTime = localtime(&next_day_time);
-		strftime(limitDay, sizeof(partDayName), "%Y-%m-%d", nextDayTime);
+		struct tm nextDayTime = localtime_r(&next_day_time);
+		strftime(limitDay, sizeof(partDayName), "%Y-%m-%d", &nextDayTime);
 	}
 	
 	this->query("show tables like 'cdr'");
@@ -4356,9 +4356,9 @@ void dropMysqlPartitionsCdr() {
 		if(opt_cleandatabase_cdr > 0) {
 			time_t act_time = time(NULL);
 			time_t prev_day_time = act_time - opt_cleandatabase_cdr * 24 * 60 * 60;
-			struct tm *prevDayTime = localtime(&prev_day_time);
+			struct tm prevDayTime = localtime_r(&prev_day_time);
 			char limitPartName[20] = "";
-			strftime(limitPartName, sizeof(limitPartName), "p%y%m%d", prevDayTime);
+			strftime(limitPartName, sizeof(limitPartName), "p%y%m%d", &prevDayTime);
 			vector<string> partitions;
 			if(counterDropPartitions == 0) {
 				if(cloud_host[0]) {
@@ -4396,9 +4396,9 @@ void dropMysqlPartitionsCdr() {
 		if(opt_enable_http_enum_tables && opt_cleandatabase_http_enum > 0) {
 			time_t act_time = time(NULL);
 			time_t prev_day_time = act_time - opt_cleandatabase_http_enum * 24 * 60 * 60;
-			struct tm *prevDayTime = localtime(&prev_day_time);
+			struct tm prevDayTime = localtime_r(&prev_day_time);
 			char limitPartName[20] = "";
-			strftime(limitPartName, sizeof(limitPartName), "p%y%m%d", prevDayTime);
+			strftime(limitPartName, sizeof(limitPartName), "p%y%m%d", &prevDayTime);
 			vector<string> partitions_http;
 			vector<string> partitions_enum;
 			if(counterDropPartitions == 0) {
@@ -4429,9 +4429,9 @@ void dropMysqlPartitionsCdr() {
 		if(opt_enable_webrtc_table && opt_cleandatabase_webrtc > 0) {
 			time_t act_time = time(NULL);
 			time_t prev_day_time = act_time - opt_cleandatabase_webrtc * 24 * 60 * 60;
-			struct tm *prevDayTime = localtime(&prev_day_time);
+			struct tm prevDayTime = localtime_r(&prev_day_time);
 			char limitPartName[20] = "";
-			strftime(limitPartName, sizeof(limitPartName), "p%y%m%d", prevDayTime);
+			strftime(limitPartName, sizeof(limitPartName), "p%y%m%d", &prevDayTime);
 			vector<string> partitions;
 			if(counterDropPartitions == 0) {
 				sqlDb->query(string("select partition_name from information_schema.partitions where table_schema='") + 
@@ -4451,9 +4451,9 @@ void dropMysqlPartitionsCdr() {
 		if(opt_cleandatabase_register_state > 0) {
 			time_t act_time = time(NULL);
 			time_t prev_day_time = act_time - opt_cleandatabase_register_state * 24 * 60 * 60;
-			struct tm *prevDayTime = localtime(&prev_day_time);
+			struct tm prevDayTime = localtime_r(&prev_day_time);
 			char limitPartName[20] = "";
-			strftime(limitPartName, sizeof(limitPartName), "p%y%m%d", prevDayTime);
+			strftime(limitPartName, sizeof(limitPartName), "p%y%m%d", &prevDayTime);
 			vector<string> partitions;
 			if(counterDropPartitions == 0) {
 				if(cloud_host[0]) {
@@ -4486,9 +4486,9 @@ void dropMysqlPartitionsCdr() {
 		if(opt_cleandatabase_register_failed > 0) {
 			time_t act_time = time(NULL);
 			time_t prev_day_time = act_time - opt_cleandatabase_register_failed * 24 * 60 * 60;
-			struct tm *prevDayTime = localtime(&prev_day_time);
+			struct tm prevDayTime = localtime_r(&prev_day_time);
 			char limitPartName[20] = "";
-			strftime(limitPartName, sizeof(limitPartName), "p%y%m%d", prevDayTime);
+			strftime(limitPartName, sizeof(limitPartName), "p%y%m%d", &prevDayTime);
 			vector<string> partitions;
 			if(counterDropPartitions == 0) {
 				if(cloud_host[0]) {

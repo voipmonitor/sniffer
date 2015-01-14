@@ -1638,4 +1638,10 @@ __inline__ unsigned long long rdtsc(void)
 }
 #endif
 
+inline struct tm localtime_r(const time_t *timep) {
+	struct tm rslt;
+	localtime_r(timep, &rslt);
+	return(rslt);
+}
+
 #endif
