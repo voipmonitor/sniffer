@@ -727,6 +727,16 @@ TarQueue::write(int qtype, unsigned int time, data_t data) {
 		tar->day = data.day;
 		tar->hour = data.hour;
 		tar->minute = data.minute;
+		
+		if(sverb.tar > 2) {
+			char dateTimeString[20];
+			sprintf(dateTimeString, "%4i-%02i-%02i %02i:%02i:00",
+				data.year, data.mon, data.day, data.hour, data.minute);
+			if(dateTimeString != sqlDateTimeString(tar->created_at)) {
+				syslog(LOG_ERR, "BAD TAR set created_at: %s %lx %s %s",
+				       tar->pathname.c_str(), (long)tar, dateTimeString, sqlDateTimeString(tar->created_at).c_str()); 
+			}
+		}
 
 		// allocate it to thread with the lowest total byte len 
 		unsigned long int min = 0 - 1;
