@@ -130,6 +130,7 @@ public:
 		int_to_oct_nonull(fsize, tar.th_buf.size, 12);
 	};
 	int tar_block_write(const char *buf, u_int32_t len);
+	void tar_close();
 
 	void int_to_oct_nonull(int num, char *oct, size_t octlen);
 	int th_crc_calc();

@@ -493,6 +493,31 @@ Tar::tar_block_write(const char *buf, u_int32_t len){
 	return(len);
 };
 
+void Tar::tar_close() {
+	char zeroblock[T_BLOCKSIZE];
+	memset(zeroblock, 0, T_BLOCKSIZE);
+	tar_block_write(zeroblock, T_BLOCKSIZE);
+	tar_block_write(zeroblock, T_BLOCKSIZE);
+	if(this->zipStream) {
+		flushZip();
+		deflateEnd(this->zipStream);
+		delete this->zipStream;
+	}
+#if HAVE_LIBLZMA
+	if(this->lzmaStream) {
+		flushLzma();
+		lzma_end(this->lzmaStream);
+		delete this->lzmaStream;
+		this->lzmaStream = NULL;
+	}
+#endif
+	if(this->zipBuffer) {
+		delete [] this->zipBuffer;
+	}
+	addtofilesqueue();
+	if(sverb.tar) syslog(LOG_NOTICE, "tar %s destroyd (destructor)\n", pathname.c_str());
+}
+
 void Tar::addtofilesqueue() {
 
 	string column;
@@ -560,29 +585,7 @@ void Tar::addtofilesqueue() {
 }
 
 Tar::~Tar() {
-	char zeroblock[T_BLOCKSIZE];
-	memset(zeroblock, 0, T_BLOCKSIZE);
-	tar_block_write(zeroblock, T_BLOCKSIZE);
-	tar_block_write(zeroblock, T_BLOCKSIZE);
-	if(this->zipStream) {
-		flushZip();
-		deflateEnd(this->zipStream);
-		delete this->zipStream;
-	}
-#if HAVE_LIBLZMA
-	if(this->lzmaStream) {
-		flushLzma();
-		lzma_end(this->lzmaStream);
-		delete this->lzmaStream;
-		this->lzmaStream = NULL;
-	}
-#endif
-	if(this->zipBuffer) {
-		delete [] this->zipBuffer;
-	}
-	addtofilesqueue();
-	if(sverb.tar) syslog(LOG_NOTICE, "tar %s destroyd (destructor)\n", pathname.c_str());
-
+	tar_close();
 }
 
 void			   
@@ -912,6 +915,8 @@ TarQueue::cleanTars() {
 			}
 			if(sverb.tar <= 1) {
 				delete tars_it->second;
+			} else {
+				tars_it->second->tar_close();
 			}
 			tars.erase(tars_it++);
 		} else {
