@@ -808,7 +808,11 @@ void *TarQueue::tarthreadworker(void *arg) {
 					lock_okTarPointers();
 					if(okTarPointers.find(it->tar) == okTarPointers.end()) {
 						data = *it; // only for debugging
-						syslog(LOG_ERR, "BAD TAR POINTER %lx %s %s\n", (long)it->tar, data.buffer->getName().c_str(), data.tar->pathname.c_str());
+						if(sverb.tar > 1) {
+							syslog(LOG_ERR, "BAD TAR POINTER %lx %s %s\n", (long)it->tar, data.buffer->getName().c_str(), data.tar->pathname.c_str());
+						} else {
+							syslog(LOG_ERR, "BAD TAR POINTER %lx %s\n", (long)it->tar, data.buffer->getName().c_str());
+						}
 						tarthread->queue.erase(it++);
 						unlock_okTarPointers();
 						continue;
