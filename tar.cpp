@@ -72,6 +72,9 @@ extern volatile unsigned int glob_last_packet_time;
 
 
 map<void*, unsigned int> okTarPointers;
+volatile int _sync_okTarPointers;
+inline void lock_okTarPointers() { while(__sync_lock_test_and_set(&_sync_okTarPointers, 1)); }
+inline void unlock_okTarPointers() { __sync_lock_release(&_sync_okTarPointers); }
 
 
 /* magic, version, and checksum */
@@ -717,7 +720,9 @@ TarQueue::write(int qtype, unsigned int time, data_t data) {
 	Tar *tar = tars[tar_name.str()];
 	if(!tar) {
 		tar = new Tar;
+		lock_okTarPointers();
 		okTarPointers[tar] = glob_last_packet_time;
+		unlock_okTarPointers();
 		if(sverb.tar) syslog(LOG_NOTICE, "new tar %s\n", tar_name.str().c_str());
 		if(sverb.tar) syslog(LOG_NOTICE, "add tar pointer %lx\n", (long)tar);
 		tars[tar_name.str()] = tar;
@@ -800,12 +805,15 @@ void *TarQueue::tarthreadworker(void *arg) {
 						tarthread->queue.erase(it++);
 						continue;
 					}
+					lock_okTarPointers();
 					if(okTarPointers.find(it->tar) == okTarPointers.end()) {
 						data = *it; // only for debugging
-						if(sverb.tar > 1) syslog(LOG_ERR, "BAD TAR POINTER %lx %s %s\n", (long)it->tar, data.buffer->getName().c_str(), data.tar->pathname.c_str());
+						syslog(LOG_ERR, "BAD TAR POINTER %lx %s %s\n", (long)it->tar, data.buffer->getName().c_str(), data.tar->pathname.c_str());
 						tarthread->queue.erase(it++);
+						unlock_okTarPointers();
 						continue;
 					}
+					unlock_okTarPointers();
 					isClosed = it->buffer->isClosed();
 					lenForProceed = it->buffer->getChunkIterateLenForProceed();
 					lenForProceedSafe = lenForProceed;
@@ -909,6 +917,7 @@ TarQueue::cleanTars() {
 				syslog(LOG_NOTICE, "fatal error! trying to close tar %s in the middle of writing data", tars_it->second->pathname.c_str());
 			}
 			if(sverb.tar) syslog(LOG_NOTICE, "destroying tar %s / %lx - (no calls in mem)\n", tars_it->second->pathname.c_str(), (long)tar);
+			lock_okTarPointers();
 			if(okTarPointers.find(tars_it->second) != okTarPointers.end()) {
 				if(sverb.tar) syslog(LOG_NOTICE, "delete tar pointer %lx\n", (long)tars_it->second);
 				okTarPointers.erase(tars_it->second);
@@ -918,6 +927,7 @@ TarQueue::cleanTars() {
 			} else {
 				tars_it->second->tar_close();
 			}
+			unlock_okTarPointers();
 			tars.erase(tars_it++);
 		} else {
 			pthread_mutex_unlock(&tartimemaplock);
