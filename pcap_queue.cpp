@@ -164,7 +164,7 @@ int opt_pcap_queue					= 1;
 	size_t opt_pcap_queue_block_max_size   			= 1024 * 1024;
 	u_int opt_pcap_queue_file_store_max_time_ms		= 2000;
 	size_t opt_pcap_queue_file_store_max_size		= 200 * 1024 * 1024;
-	uint64_t opt_pcap_queue_store_queue_max_memory_size	= 1024 * 1024 * 1024;
+	uint64_t opt_pcap_queue_store_queue_max_memory_size	= 200 * 1024 * 1024; //default is 200MB
 	uint64_t opt_pcap_queue_store_queue_max_disk_size	= 0;
 	uint64_t opt_pcap_queue_bypass_max_size			= 256 * 1024 * 1024;
 #endif
