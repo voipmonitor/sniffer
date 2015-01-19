@@ -3070,6 +3070,13 @@ int main(int argc, char *argv[]) {
 													sverb.tcp_debug_port = atoi(verbparams[i].c_str() + 15);
 						else if(verbparams[i].substr(0, 21) == "test_rtp_performance=")
 													sverb.test_rtp_performance = atoi(verbparams[i].c_str() + 21);
+
+						else if(verbparams[i].substr(0, 5) == "ssrc=")          sverb.ssrc = strtol(verbparams[i].c_str() + 5, NULL, 16);
+						else if(verbparams[i] == "jitter")				sverb.jitter = 1;
+						else if(verbparams[i] == "jitter_na")				opt_jitterbuffer_adapt = 0;
+						else if(verbparams[i] == "jitter_nf1")				opt_jitterbuffer_f1 = 0;
+						else if(verbparams[i] == "jitter_nf2")				opt_jitterbuffer_f2 = 0;
+
 					}
 				} }
 				break;

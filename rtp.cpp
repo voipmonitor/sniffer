@@ -708,7 +708,7 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 
 	Call *owner = (Call*)call_owner;
 
-//	if(getSSRC() != 0xc3f5c945) return;
+	if(sverb.ssrc and getSSRC() != sverb.ssrc) return;
 
 	if(getVersion() != 2) {
 		return;
@@ -1504,7 +1504,7 @@ void burstr_calculate(struct ast_channel *chan, u_int32_t received, double *burs
 	for(int i = 0; i <= 500; i++) {
 		lost += i * chan->loss[i];
 		bursts += chan->loss[i];
-		if(verbosity > 4 and chan->loss[i] > 0) printf("loss[%d]: %d\t", i, chan->loss[i]);
+		if((verbosity > 4 or sverb.jitter) and chan->loss[i] > 0) printf("bc loss[%d]: %d\t", i, chan->loss[i]);
 	}
 
 	if(lost < 5) {
@@ -1513,11 +1513,14 @@ void burstr_calculate(struct ast_channel *chan, u_int32_t received, double *burs
 		return;
 	}
 
-	if(verbosity > 4) printf("\n");
+	if(verbosity > 4 or sverb.jitter) printf("\n");
 	if(received > 0 && bursts > 0) {
 		*burstr = (double)((double)lost / (double)bursts) / (double)(1.0 / ( 1.0 - (double)lost / (double)received ));
+		if(sverb.jitter) printf("*burstr[%f] = (lost[%u] / bursts[%u]) / (1 / ( 1 - lost[%u] / received[%u]\n", *burstr, lost, bursts, lost, received);
 		if(*burstr < 0) {
 			*burstr = - *burstr;
+		} else if(*burstr < 1) {
+			*burstr = 1;
 		}
 	} else {
 		*burstr = 0;
@@ -1528,6 +1531,7 @@ void burstr_calculate(struct ast_channel *chan, u_int32_t received, double *burs
 	} else {
 		*lossr = 0;
 	}
+	if(sverb.jitter) printf("burstr: %f lossr: %f\n", *burstr, *lossr);
 }
 
 /* for debug purpose */
