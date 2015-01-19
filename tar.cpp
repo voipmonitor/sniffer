@@ -850,7 +850,7 @@ void *TarQueue::tarthreadworker(void *arg) {
 				tar->th_set_type(0); //s->st_mode, 0 is regular file
 				tar->th_set_user(0); //st_uid
 				tar->th_set_group(0); //st_gid
-				tar->th_set_mode(0); //s->st_mode
+				tar->th_set_mode(0444); //s->st_mode
 				tar->th_set_mtime(data.time);
 				tar->th_set_size(lenForProceedSafe);
 				tar->th_set_path((char*)data.filename.c_str(), !isClosed);

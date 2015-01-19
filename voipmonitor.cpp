@@ -2398,10 +2398,6 @@ int eval_config(string inistr) {
 	
 	set_context_config();
 
-	if(opt_pcap_dump_tar) {
-		FileZipHandler::eTypeCompress opt_pcap_dump_zip = FileZipHandler::compress_na;
-	}
-
 	return 0;
 }
 
@@ -2469,6 +2465,10 @@ void set_context_config() {
 	if(opt_read_from_file) {
 		opt_enable_preprocess_packet = 0;
 		opt_enable_process_rtp_packet = 0;
+	}
+	
+	if(opt_pcap_dump_tar) {
+		opt_pcap_dump_zip = FileZipHandler::compress_na;
 	}
 }
 

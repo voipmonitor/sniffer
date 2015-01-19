@@ -2561,18 +2561,20 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void *arg, unsigned int 
 				packet = _packet;
 				this->prevThreads[0]->moveReadit();
 			}
-			res = this->pcapProcess(&header, &packet, &destroy,
-						true, false, false, false);
-			if(res == -1) {
-				break;
-			} else if(res == 0) {
-				if(destroy) {
-					if(header != _header) delete header;
-					if(packet != _packet) delete [] packet;
+			if(opt_udpfrag) {
+				res = this->pcapProcess(&header, &packet, &destroy,
+							true, false, false, false);
+				if(res == -1) {
+					break;
+				} else if(res == 0) {
+					if(destroy) {
+						if(header != _header) delete header;
+						if(packet != _packet) delete [] packet;
+					}
+					delete _header;
+					delete [] _packet;
+					continue;
 				}
-				delete _header;
-				delete [] _packet;
-				continue;
 			}
 			this->push(header, packet, 0, NULL, this->indexDefragQring, this->push_counter);
 			++this->push_counter;
