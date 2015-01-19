@@ -325,13 +325,13 @@ int opt_pcap_dump_ziplevel = Z_DEFAULT_COMPRESSION;
 int opt_pcap_dump_writethreads = 1;
 int opt_pcap_dump_writethreads_max = 32;
 int opt_pcap_dump_asyncwrite_maxsize = 100; //MB
-int opt_pcap_dump_tar = 0;
+int opt_pcap_dump_tar = 1;
 int opt_pcap_dump_tar_threads = 4;
-int opt_pcap_dump_tar_compress_sip = 0; //0 off, 1 gzip, 2 lzma
-int opt_pcap_dump_tar_sip_level = 1;
-int opt_pcap_dump_tar_compress_rtp = 0;
+int opt_pcap_dump_tar_compress_sip = 1; //0 off, 1 gzip, 2 lzma
+int opt_pcap_dump_tar_sip_level = 6;
+int opt_pcap_dump_tar_compress_rtp = 1;
 int opt_pcap_dump_tar_rtp_level = 1;
-int opt_pcap_dump_tar_compress_graph = 0;
+int opt_pcap_dump_tar_compress_graph = 1;
 int opt_pcap_dump_tar_graph_level = 1;
 CompressStream::eTypeCompress opt_pcap_dump_tar_internalcompress_sip = CompressStream::compress_na;
 CompressStream::eTypeCompress opt_pcap_dump_tar_internalcompress_rtp = CompressStream::compress_na;
@@ -2397,6 +2397,10 @@ int eval_config(string inistr) {
 	*/
 	
 	set_context_config();
+
+	if(opt_pcap_dump_tar) {
+		FileZipHandler::eTypeCompress opt_pcap_dump_zip = FileZipHandler::compress_na;
+	}
 
 	return 0;
 }
