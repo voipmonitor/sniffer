@@ -2399,7 +2399,7 @@ int eval_config(string inistr) {
 	set_context_config();
 
 	if(opt_pcap_dump_tar) {
-		FileZipHandler::eTypeCompress opt_pcap_dump_zip = FileZipHandler::compress_na;
+		opt_pcap_dump_zip = FileZipHandler::compress_na;
 	}
 
 	return 0;
