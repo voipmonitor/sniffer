@@ -117,6 +117,7 @@ void CompressStream::initCompress() {
 			}
 		}
 		break;
+#ifdef HAVE_LIBLZMA
 	case lzma:
 		if(!this->lzmaStream) {
 			this->lzmaStream = new lzma_stream;
@@ -132,6 +133,7 @@ void CompressStream::initCompress() {
 			}
 		}
 		break;
+#endif
 	case lz4:
 		if(!this->compressBuffer) {
 			createCompressBuffer();
@@ -176,6 +178,7 @@ void CompressStream::initDecompress(u_int32_t dataLen) {
 			}
 		}
 		break;
+#ifdef HAVE_LIBLZMA 
 	case lzma:
 		if(!this->lzmaStreamDecompress) {
 			this->lzmaStreamDecompress = new lzma_stream;
@@ -190,6 +193,7 @@ void CompressStream::initDecompress(u_int32_t dataLen) {
 			}
 		}
 		break;
+#endif
 	case lz4:
 		createDecompressBuffer(dataLen);
 		break;
@@ -299,6 +303,7 @@ bool CompressStream::compress(char *data, u_int32_t len, bool flush, CompressStr
 		this->processed_len += len;
 		}
 		break;
+#ifdef HAVE_LIBLZMA
 	case lzma: {
 		if(!this->lzmaStream) {
 			this->initCompress();
@@ -323,6 +328,7 @@ bool CompressStream::compress(char *data, u_int32_t len, bool flush, CompressStr
 		this->processed_len += len;
 		}
 		break;
+#endif
 	case lz4: {
 		#ifdef HAVE_LIBLZ4
 		if(!this->compressBuffer) {
@@ -444,6 +450,7 @@ bool CompressStream::decompress(char *data, u_int32_t len, u_int32_t decompress_
 			}
 		} while(this->zipStreamDecompress->avail_out == 0);
 		break;
+#ifdef HAVE_LIBLZMA
 	case lzma:
 		if(!this->lzmaStreamDecompress) {
 			this->initDecompress(0);
@@ -466,6 +473,7 @@ bool CompressStream::decompress(char *data, u_int32_t len, u_int32_t decompress_
 			}
 		} while(this->lzmaStreamDecompress->avail_out == 0);
 		break;
+#endif
 	case lz4:
 		#ifdef HAVE_LIBLZ4
 		if(!this->decompressBuffer || !this->maxDataLength) {

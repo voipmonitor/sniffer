@@ -155,7 +155,9 @@ public:
 		compress_na,
 		zip,
 		gzip,
+#ifdef HAVE_LIBLZMA
 		lzma,
+#endif
 		lz4,
 		lz4_stream,
 		snappy
