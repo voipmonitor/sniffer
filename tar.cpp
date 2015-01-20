@@ -894,9 +894,6 @@ TarQueue::write(int qtype, unsigned int time, data_t data) {
 }
 
 void *TarQueue::tarthreadworker(void *arg) {
-
-	u_int32_t tarChunk_kB = 128;
- 
 	TarQueue *this2 = ((tarthreadworker_arg*)arg)->tq;
 	tarthreads_t *tarthread = &this2->tarthreads[((tarthreadworker_arg*)arg)->i];
 	delete (tarthreadworker_arg*)arg;
@@ -913,7 +910,7 @@ void *TarQueue::tarthreadworker(void *arg) {
 					return NULL;
 				}
 			} else {
-				Tar *maxTar = tarthread->getTarWithMaxLen(true, false);
+				Tar *maxTar = tarthread->getTarWithMaxLen(2, false);
 				if(!maxTar) {
 					maxTar = tarthread->getTarWithMaxLen(false, false);
 				}
@@ -951,11 +948,11 @@ void *TarQueue::tarthreadworker(void *arg) {
 					bool isClosed = data.buffer->isClosed();
 					size_t lenForProceed = data.buffer->getChunkIterateLenForProceed();
 					size_t lenForProceedSafe = lenForProceed;
-					if(!isClosed && lenForProceedSafe > tarChunk_kB * 1024) {
+					if(!isClosed && lenForProceedSafe > TAR_CHUNK_KB * 1024) {
 						 lenForProceedSafe = data.buffer->getChunkIterateSafeLimitLength(lenForProceedSafe);
 					}
 					if(isClosed ||
-					   lenForProceedSafe > tarChunk_kB * 1024) {
+					   lenForProceedSafe > TAR_CHUNK_KB * 1024) {
 						doProcessData = true;
 						tarthread->qunlock();
 						tarthread->processData(&data, isClosed, lenForProceed, lenForProceedSafe);

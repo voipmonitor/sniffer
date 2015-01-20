@@ -35,6 +35,8 @@
 /* this is obsolete - it's here for backwards-compatibility only */
 #define TAR_IGNORE_MAGIC	0
 
+#define TAR_CHUNK_KB	128
+
 using namespace std;
 
 /* integer to NULL-terminated string-octal conversion */
@@ -273,14 +275,26 @@ public:
 	};
 	
 	struct tarthreads_tq : public std::vector<data_t> {
-		size_t getLen(bool forProceed = false) {
+		size_t getLen(int forProceed = false) {
 			size_t size = 0;
 			std::vector<data_t>::iterator it = this->begin();
 			while(it != this->end()) {
 				if(it->buffer) {
-					size += forProceed ? 
-						 it->buffer->getChunkIterateLenForProceed() :
-						 it->buffer->getLen();
+					size_t size_i = forProceed ? 
+							 it->buffer->getChunkIterateLenForProceed() :
+							 it->buffer->getLen();
+					if(forProceed == 2) {
+						if(it->buffer->isClosed()) {
+							if(!size_i) {
+								size_i = 1000;
+							}
+						} else {
+							if(size_i < TAR_CHUNK_KB * 1024) {
+								size_i = 0;
+							}
+						}
+					}
+					size += size_i;
 				}
 				++it;
 			}
@@ -294,7 +308,7 @@ public:
 		int threadId;
 		pstat_data threadPstatData[2];
 		volatile int cpuPeak;
-		size_t getLen(bool forProceed = false, bool lock = true) {
+		size_t getLen(int forProceed = false, bool lock = true) {
 			if(lock) qlock();
 			size_t size = 0;
 			std::map<Tar*, tarthreads_tq>::iterator it = queue.begin();
@@ -305,7 +319,7 @@ public:
 			if(lock) qunlock();
 			return(size);
 		}
-		Tar *getTarWithMaxLen(bool forProceed = false, bool lock = true) {
+		Tar *getTarWithMaxLen(int forProceed = false, bool lock = true) {
 			if(lock) qlock();
 			size_t maxSize = 0;
 			Tar *maxTar = NULL;
