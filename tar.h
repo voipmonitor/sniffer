@@ -272,26 +272,62 @@ public:
 		time_t time;
 	};
 	
-	struct tarthreads_t {
-		std::list<data_t> queue;
-		size_t getLen() {
+	struct tarthreads_tq : public std::vector<data_t> {
+		size_t getLen(bool forProceed = false) {
 			size_t size = 0;
-			pthread_mutex_lock(&queuelock);
-			std::list<data_t>::iterator it = queue.begin();
-			while(it != queue.end()) {
+			std::vector<data_t>::iterator it = this->begin();
+			while(it != this->end()) {
 				if(it->buffer) {
-					size += it->buffer->getLen();
+					size += forProceed ? 
+						 it->buffer->getChunkIterateLenForProceed() :
+						 it->buffer->getLen();
 				}
 				++it;
 			}
-			pthread_mutex_unlock(&queuelock);
 			return(size);
 		}
+	};
+	struct tarthreads_t {
+		std::map<Tar*, tarthreads_tq> queue;
 		pthread_mutex_t queuelock;
 		pthread_t thread;
 		int threadId;
 		pstat_data threadPstatData[2];
 		volatile int cpuPeak;
+		size_t getLen(bool forProceed = false, bool lock = true) {
+			if(lock) qlock();
+			size_t size = 0;
+			std::map<Tar*, tarthreads_tq>::iterator it = queue.begin();
+			while(it != queue.end()) {
+				size += it->second.getLen(forProceed);
+				++it;
+			}
+			if(lock) qunlock();
+			return(size);
+		}
+		Tar *getTarWithMaxLen(bool forProceed = false, bool lock = true) {
+			if(lock) qlock();
+			size_t maxSize = 0;
+			Tar *maxTar = NULL;
+			std::map<Tar*, tarthreads_tq>::iterator it = queue.begin();
+			while(it != queue.end()) {
+				size_t size = it->second.getLen(forProceed);
+				if(size > maxSize) {
+					maxSize = size;
+					maxTar = it->first;
+				}
+				++it;
+			}
+			if(lock) qunlock();
+			return(maxTar);
+		}
+		void qlock() {
+			pthread_mutex_lock(&queuelock);
+		}
+		void qunlock() {
+			pthread_mutex_unlock(&queuelock);
+		}
+		void processData(data_t *data, bool isClosed, size_t lenForProceed, size_t lenForProceedSafe);
 	};
 
 	struct tarthreadworker_arg {

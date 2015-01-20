@@ -62,6 +62,7 @@ extern int opt_pcap_dump_tar_threads;
 
 extern int opt_filesclean;
 extern int opt_nocdr;
+extern int verbosity;
 
 extern MySqlStore *sqlStore;
 
@@ -871,10 +872,10 @@ TarQueue::write(int qtype, unsigned int time, data_t data) {
      
 	data.tar = tar;
 	data.time = time;
-	pthread_mutex_lock(&tarthreads[tar->thread_id].queuelock);
+	tarthreads[tar->thread_id].qlock();
 //	printf("push id:%u\n", tar->thread_id);
-	tarthreads[tar->thread_id].queue.push_back(data);
-	pthread_mutex_unlock(&tarthreads[tar->thread_id].queuelock);
+	tarthreads[tar->thread_id].queue[tar].push_back(data);
+	tarthreads[tar->thread_id].qunlock();
 	return 0;
 }
 
@@ -890,116 +891,129 @@ void *TarQueue::tarthreadworker(void *arg) {
 
 	while(1) {
 		while(1) {
-			data_t data;
-			bool findData = false;
-			bool isClosed = false;
-			size_t lenForProceed = 0;
-			size_t lenForProceedSafe = 0;
-			pthread_mutex_lock(&tarthread->queuelock);
+			bool doProcessData = false;
+			tarthread->qlock();
 			if(tarthread->queue.empty()) { 
 				if(this2->terminate) {
-					pthread_mutex_unlock(&tarthread->queuelock);
+					tarthread->qunlock();
 					return NULL;
 				}
 			} else {
-				list<data_t>::iterator it;
-				for(it = tarthread->queue.begin(); it != tarthread->queue.end(); ) {
-					if(!it->buffer) {
-						it++;
+				Tar *maxTar = tarthread->getTarWithMaxLen(true, false);
+				if(!maxTar) {
+					maxTar = tarthread->getTarWithMaxLen(false, false);
+				}
+				if(!maxTar) {
+					tarthread->qunlock();
+					break;
+				}
+				size_t length_list = tarthread->queue[maxTar].size();
+				for(size_t index_list = 0; index_list < length_list; ++index_list) {
+					data_t data = tarthread->queue[maxTar][index_list];
+					if(!data.buffer) {
 						continue;
 					}
-					if(it->buffer->isDecompressError()) {
-						tarthread->queue.erase(it++);
+					if(data.buffer->isDecompressError()) {
+						if(verbosity) {
+							syslog(LOG_NOTICE, "tar: DECOMPRESS ERROR");
+						}
+						tarthread->queue[maxTar].erase(tarthread->queue[maxTar].begin() + index_list);
+						--length_list;
+						--index_list;
 						continue;
 					}
 					lock_okTarPointers();
-					if(okTarPointers.find(it->tar) == okTarPointers.end()) {
-						data = *it; // only for debugging
-						if(sverb.tar > 1) {
-							syslog(LOG_ERR, "BAD TAR POINTER %lx %s %s\n", (long)it->tar, data.buffer->getName().c_str(), data.tar->pathname.c_str());
-						} else {
-							syslog(LOG_ERR, "BAD TAR POINTER %lx %s\n", (long)it->tar, data.buffer->getName().c_str());
+					if(okTarPointers.find(data.tar) == okTarPointers.end()) {
+						if(verbosity) {
+							syslog(LOG_NOTICE, "tar: BAD TAR");
 						}
-						tarthread->queue.erase(it++);
+						tarthread->queue[maxTar].erase(tarthread->queue[maxTar].begin() + index_list);
+						--length_list;
+						--index_list;
 						unlock_okTarPointers();
 						continue;
 					}
 					unlock_okTarPointers();
-					isClosed = it->buffer->isClosed();
-					lenForProceed = it->buffer->getChunkIterateLenForProceed();
-					lenForProceedSafe = lenForProceed;
+					bool isClosed = data.buffer->isClosed();
+					size_t lenForProceed = data.buffer->getChunkIterateLenForProceed();
+					size_t lenForProceedSafe = lenForProceed;
 					if(!isClosed && lenForProceedSafe > tarChunk_kB * 1024) {
-						 lenForProceedSafe = it->buffer->getChunkIterateSafeLimitLength(lenForProceedSafe);
+						 lenForProceedSafe = data.buffer->getChunkIterateSafeLimitLength(lenForProceedSafe);
 					}
 					if(isClosed ||
 					   lenForProceedSafe > tarChunk_kB * 1024) {
-						data = *it;
-						findData = true;
-						break;
+						doProcessData = true;
+						tarthread->qunlock();
+						tarthread->processData(&data, isClosed, lenForProceed, lenForProceedSafe);
+						tarthread->qlock();
+						if(isClosed && 
+						   (!lenForProceed || lenForProceed > lenForProceedSafe)) {
+							tarthread->queue[maxTar].erase(tarthread->queue[maxTar].begin() + index_list);
+							--length_list;
+							--index_list;
+						}
 					}
-					it++;
 				}
-				if(isClosed && 
-				   (!lenForProceed || lenForProceed > lenForProceedSafe)) {
-					tarthread->queue.erase(it++);
+				if(!tarthread->queue[maxTar].size()) {
+					tarthread->queue.erase(maxTar);
 				}
 			}
-			pthread_mutex_unlock(&tarthread->queuelock);
-			if(!findData) {
+			tarthread->qunlock();
+			if(!doProcessData) {
 				break;
-			}
-			
-			Tar *tar = data.tar;
-			tar->writing = 1;
-			if(lenForProceedSafe) {
-				//reset and set header
-				memset(&(tar->tar.th_buf), 0, sizeof(struct Tar::tar_header));
-				tar->th_set_type(0); //s->st_mode, 0 is regular file
-				tar->th_set_user(0); //st_uid
-				tar->th_set_group(0); //st_gid
-				tar->th_set_mode(0444); //s->st_mode
-				tar->th_set_mtime(data.time);
-				tar->th_set_size(lenForProceedSafe);
-				tar->th_set_path((char*)data.filename.c_str(), !isClosed);
-			       
-				// write header
-				if (tar->th_write() != 0) {
-					goto end;
-				}
-
-				// if it's a regular file, write the contents as well
-				tar->tar_append_buffer(data.buffer, lenForProceedSafe);
-				
-				if(sverb.chunk_buffer) {
-					cout << " *** " << data.buffer->getName() << " " << lenForProceedSafe << endl;
-				}
-			}
-end:
-			tar->writing = 0;
-			
-			if(isClosed && 
-			   (!lenForProceed || lenForProceed > lenForProceedSafe)) {
-				decreaseTartimemap(data.buffer->getTime());
-				if(sverb.tar > 2) {
-					syslog(LOG_NOTICE, "tartimemap decrease1: %s %i %i %i %i", 
-					       data.buffer->getName().c_str(), 
-					       tar->created_at, tar->created_at - tar->created_at % TAR_MODULO_SECONDS,
-					       data.buffer->getTime(), data.buffer->getTime() - data.buffer->getTime() % TAR_MODULO_SECONDS);
-					if(tar->created_at != (unsigned)(data.buffer->getTime() - data.buffer->getTime() % TAR_MODULO_SECONDS)) {
-						syslog(LOG_ERR, "BAD TAR created_at - tar: %s %lx %i %i chunkbuffer: %s %lx %i %i",
-						       tar->pathname.c_str(), (long)tar, tar->created_at, tar->created_at - tar->created_at % TAR_MODULO_SECONDS,
-						       data.buffer->getName().c_str(), (long)data.buffer, data.buffer->getTime(), data.buffer->getTime() - data.buffer->getTime() % TAR_MODULO_SECONDS);
-					}
-				}
-				delete data.buffer;
-				tar->incClosedPartCounter();
-				__sync_sub_and_fetch(&glob_tar_queued_files, 1);
 			}
 		}
 		// quque is empty - sleep before next run
 		usleep(100000);
 	}
 	return NULL;
+}
+
+void
+TarQueue::tarthreads_t::processData(data_t *data, bool isClosed, size_t lenForProceed, size_t lenForProceedSafe) {
+	Tar *tar = data->tar;
+	tar->writing = 1;
+	if(lenForProceedSafe) {
+		//reset and set header
+		memset(&(tar->tar.th_buf), 0, sizeof(struct Tar::tar_header));
+		tar->th_set_type(0); //s->st_mode, 0 is regular file
+		tar->th_set_user(0); //st_uid
+		tar->th_set_group(0); //st_gid
+		tar->th_set_mode(0444); //s->st_mode
+		tar->th_set_mtime(data->time);
+		tar->th_set_size(lenForProceedSafe);
+		tar->th_set_path((char*)data->filename.c_str(), !isClosed);
+	       
+		// write header
+		if (tar->th_write() == 0) {
+			// if it's a regular file, write the contents as well
+			tar->tar_append_buffer(data->buffer, lenForProceedSafe);
+			
+			if(sverb.chunk_buffer) {
+				cout << " *** " << data->buffer->getName() << " " << lenForProceedSafe << endl;
+			}
+		}
+	}
+	tar->writing = 0;
+	
+	if(isClosed && 
+	   (!lenForProceed || lenForProceed > lenForProceedSafe)) {
+		decreaseTartimemap(data->buffer->getTime());
+		if(sverb.tar > 2) {
+			syslog(LOG_NOTICE, "tartimemap decrease1: %s %i %i %i %i", 
+			       data->buffer->getName().c_str(), 
+			       tar->created_at, tar->created_at - tar->created_at % TAR_MODULO_SECONDS,
+			       data->buffer->getTime(), data->buffer->getTime() - data->buffer->getTime() % TAR_MODULO_SECONDS);
+			if(tar->created_at != (unsigned)(data->buffer->getTime() - data->buffer->getTime() % TAR_MODULO_SECONDS)) {
+				syslog(LOG_ERR, "BAD TAR created_at - tar: %s %lx %i %i chunkbuffer: %s %lx %i %i",
+				       tar->pathname.c_str(), (long)tar, tar->created_at, tar->created_at - tar->created_at % TAR_MODULO_SECONDS,
+				       data->buffer->getName().c_str(), (long)data->buffer, data->buffer->getTime(), data->buffer->getTime() - data->buffer->getTime() % TAR_MODULO_SECONDS);
+			}
+		}
+		delete data->buffer;
+		tar->incClosedPartCounter();
+		__sync_sub_and_fetch(&glob_tar_queued_files, 1);
+	}
 }
 
 void
