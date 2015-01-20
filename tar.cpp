@@ -248,7 +248,7 @@ Tar::tar_open(string pathname, int oflags, int mode, int options)
 	if ((options & TAR_NOOVERWRITE) && (oflags & O_CREAT))
 		oflags |= O_EXCL;
 
-	if(file_exists(pathname)) {
+	if((oflags & O_CREAT) && file_exists(pathname)) {
 		int i = 1;
 		while(i < 100) {
 			stringstream newpathname;
@@ -308,6 +308,105 @@ Tar::chunkbuffer_iterate_ev(char *data, u_int32_t len, u_int32_t pos) {
 		char zeroblock[T_BLOCKSIZE];
 		memset(zeroblock, 0, T_BLOCKSIZE - pos % T_BLOCKSIZE);
 		tar_block_write(zeroblock, T_BLOCKSIZE - pos % T_BLOCKSIZE);
+	}
+}
+
+void
+Tar::tar_read(const char *filename, const char *endFilename) {
+	this->readData.null();
+	this->readData.filename = filename;
+	this->readData.endFilename = endFilename;
+	this->readData.init();
+	CompressStream *compressStream = new CompressStream(reg_match(this->pathname.c_str(), "tar\\.gz") ?
+							     CompressStream::gzip :
+							    reg_match(this->pathname.c_str(), "tar\\.xz") ?
+							     CompressStream::lzma :
+							     CompressStream::compress_na,
+							    T_BLOCKSIZE, 0);
+	size_t read_position = 0;
+	size_t read_size;
+	char *read_buffer = new char[T_BLOCKSIZE];
+	while(!this->readData.end && !this->readData.error && (read_size = read(tar.fd, read_buffer, T_BLOCKSIZE)) > 0) {
+		read_position += read_size;
+		compressStream->decompress(read_buffer, read_size, 0, false, this);
+	}
+	delete [] read_buffer;
+	delete compressStream;
+	this->readData.term();
+}
+
+void 
+Tar::tar_read_send_parameters(int client, void *sshchannel) {
+	this->readData.send_parameters_client = client;
+	this->readData.send_parameters_sshchannel = sshchannel;
+}
+
+bool 
+Tar::decompress_ev(char *data, u_int32_t len) {
+	if(len < T_BLOCKSIZE ||
+	   this->readData.bufferLength ||
+	   this->readData.position % T_BLOCKSIZE) {
+		memcpy(this->readData.buffer + this->readData.bufferLength, data, len);
+		this->readData.bufferLength += len;
+		if(this->readData.bufferLength >= T_BLOCKSIZE) {
+			this->tar_read_block_ev(this->readData.buffer, this->readData.bufferLength);
+			if(this->readData.bufferLength >= T_BLOCKSIZE) {
+				memcpy(this->readData.buffer, this->readData.buffer + T_BLOCKSIZE, this->readData.bufferLength - T_BLOCKSIZE);
+			}
+			this->readData.bufferLength -= T_BLOCKSIZE;
+		}
+	} else {
+		this->tar_read_block_ev(data, T_BLOCKSIZE);
+	}
+	this->readData.position += len;
+	return(true);
+}
+
+void 
+Tar::tar_read_block_ev(char *data, u_int32_t len) {
+	if(this->readData.position &&
+	   this->readData.fileSize < this->readData.fileHeader.get_size()) {
+		size_t len = this->readData.fileSize + T_BLOCKSIZE > this->readData.fileHeader.get_size() ? 
+			      this->readData.fileHeader.get_size() % T_BLOCKSIZE :
+			      T_BLOCKSIZE;
+		this->tar_read_file_ev(this->readData.fileHeader, data, this->readData.fileSize, len);
+		this->readData.fileSize += len;
+	} else {
+		if(this->readData.position) {
+			this->tar_read_file_ev(this->readData.fileHeader, NULL, this->readData.fileSize, 0);
+			this->readData.nullFileHeader();
+		}
+		memcpy(&this->readData.fileHeader, data, min((unsigned long)len, sizeof(this->readData.fileHeader)));
+		this->readData.fileSize = 0;
+	}
+}
+
+extern int _sendvm(int socket, void *channel, const char *buf, size_t len, int mode);
+void 
+Tar::tar_read_file_ev(tar_header fileHeader, char *data, u_int32_t pos, u_int32_t len) {
+	if(!reg_match(fileHeader.name, this->readData.filename.c_str())) {
+		return;
+	}
+	if(len) {
+		if(this->readData.send_parameters_client) {
+			if(_sendvm(this->readData.send_parameters_client, this->readData.send_parameters_sshchannel, data, len, 0) == -1) {
+				this->readData.error = true;
+			}
+		}
+	}
+	if(*fileHeader.name && !len) {
+	 
+		cout << fileHeader.name << endl;
+		
+		if(!this->readData.endFilename.empty()) {
+			if(fileHeader.name == this->readData.endFilename) {
+				this->readData.end = true;
+			}
+		} else if(!this->readData.filename.empty()) {
+			if(fileHeader.name == this->readData.filename) {
+				this->readData.end = true;
+			}
+		}
 	}
 }
 
@@ -506,7 +605,7 @@ void Tar::tar_close() {
 		deflateEnd(this->zipStream);
 		delete this->zipStream;
 	}
-#if HAVE_LIBLZMA
+#ifdef HAVE_LIBLZMA
 	if(this->lzmaStream) {
 		flushLzma();
 		lzma_end(this->lzmaStream);

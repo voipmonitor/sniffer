@@ -77,6 +77,7 @@
 #include "fraud.h"
 #include "rrd.h"
 #include "heap_safe.h"
+#include "tar.h"
 
 #if defined(QUEUE_MUTEX) || defined(QUEUE_NONBLOCK)
 extern "C" {
@@ -2221,6 +2222,11 @@ int eval_config(string inistr) {
 		case 'L':
 			opt_pcap_dump_tar_compress_sip = 2; // lzma
 			break;
+		case '0':
+		case 'n':
+		case 'N':
+			opt_pcap_dump_tar_compress_sip = 0; // na
+			break;
 		}
 	}
 	if((value = ini.GetValue("general", "tar_compress_rtp", NULL))) {
@@ -2235,6 +2241,11 @@ int eval_config(string inistr) {
 		case 'L':
 			opt_pcap_dump_tar_compress_rtp = 2; // lzma
 			break;
+		case '0':
+		case 'n':
+		case 'N':
+			opt_pcap_dump_tar_compress_rtp = 0; // na
+			break;
 		}
 	}
 	if((value = ini.GetValue("general", "tar_compress_graph", NULL))) {
@@ -2248,6 +2259,11 @@ int eval_config(string inistr) {
 		case 'l':
 		case 'L':
 			opt_pcap_dump_tar_compress_graph = 2; // lzma
+			break;
+		case '0':
+		case 'n':
+		case 'N':
+			opt_pcap_dump_tar_compress_graph = 0; // na
 			break;
 		}
 	}
@@ -4886,6 +4902,12 @@ void test_alloc_speed() {
 	}
 }
 
+void test_untar() {
+	Tar tar;
+	tar.tar_open("/var/spool/voipmonitor_local/2015-01-20/10/11/RTP/rtp_2015-01-20-10-11.tar.xz", O_RDONLY);
+	tar.tar_read("387627576.pcap.*", "387627576.pcap");
+}
+
 void test() {
  
 	switch(opt_test) {
@@ -4944,6 +4966,9 @@ void test() {
 	} break;
 	case 5:
 		test_alloc_speed();
+		break;
+	case 6:
+		test_untar();
 		break;
 	case 10:
 		{

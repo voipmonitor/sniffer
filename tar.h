@@ -41,7 +41,7 @@ using namespace std;
 #define int_to_oct(num, oct, octlen) \
 	snprintf((oct), (octlen), "%*lo ", (octlen) - 2, (unsigned long)(num))
 
-class Tar : public ChunkBuffer_baseIterate{
+class Tar : public ChunkBuffer_baseIterate, public CompressStream_baseEv{
 public:
 	/* our version of the tar header structure */
 	struct tar_header
@@ -65,6 +65,14 @@ public:
 		char padding[12];
 		char *gnu_longname;
 		char *gnu_longlink;
+		
+		u_int32_t get_size() {
+			char *size_pointer = size;
+			while(*size_pointer == ' ') {
+				++size_pointer;
+			}
+			return(octal_decimal((u_int32_t)atol(size_pointer)));
+		}
 	};
 	typedef int (*openfunc_t)(const char *, int, ...);
 	typedef int (*closefunc_t)(int);
@@ -107,11 +115,16 @@ public:
 
 	//tar functions 
 	int tar_init(int oflags, int mode, int options);
-	int tar_open(string, int, int, int);
+	int tar_open(string pathname, int oflags, int mode = 0, int options = 0);
 	void th_finish();
 	int th_write();
 	int tar_append_buffer(ChunkBuffer *buffer, size_t lenForProceed = 0);
 	virtual void chunkbuffer_iterate_ev(char *data, u_int32_t len, u_int32_t pos);
+	void tar_read(const char *filename, const char *endFilename = NULL);
+	void tar_read_send_parameters(int client, void *sshchannel);
+	virtual bool decompress_ev(char *data, u_int32_t len);
+	void tar_read_block_ev(char *data, u_int32_t len);
+	void tar_read_file_ev(tar_header fileHeader, char *data, u_int32_t pos, u_int32_t len);
 	int gziplevel;
 	int lzmalevel;
 
@@ -152,6 +165,13 @@ public:
 	void incClosedPartCounter() {
 		++closedPartCounter;
 	}
+	
+	bool isReadError() {
+		return(readData.error);
+	}
+	bool isReadEnd() {
+		return(readData.end);
+	}
 
 private:
 	z_stream *zipStream;
@@ -160,6 +180,45 @@ private:
 	map<string, u_int32_t> partCounter;
 	volatile u_int32_t partCounterSize;
 	volatile u_int32_t closedPartCounter;
+	
+	struct sReadData {
+		sReadData() {
+			send_parameters_client = 0;
+			send_parameters_sshchannel = 0;
+			null();
+		}
+		void null() {
+			end = false;
+			error = false;
+			filename = "";
+			endFilename = "";
+			position = 0;
+			buffer = NULL;
+			bufferLength = 0;
+			fileSize = 0;
+			nullFileHeader();
+		}
+		void nullFileHeader() {
+			memset(&fileHeader, 0, sizeof(fileHeader));
+		}
+		void init() {
+			buffer = new char[T_BLOCKSIZE * 2];
+		}
+		void term() {
+			delete [] buffer;
+		}
+		bool end;
+		bool error;
+		string filename;
+		string endFilename;
+		size_t position;
+		char *buffer;
+		size_t bufferLength;
+		tar_header fileHeader;
+		size_t fileSize;
+		int send_parameters_client;
+		void *send_parameters_sshchannel;
+	} readData;
 
 #ifdef HAVE_LIBLZMA
 	lzma_stream *lzmaStream;// = LZMA_STREAM_INIT; /* alloc and init lzma_stream struct */

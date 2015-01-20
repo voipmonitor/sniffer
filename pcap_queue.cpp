@@ -30,6 +30,7 @@
 #include "rrd.h"
 #include "cleanspool.h"
 #include "ssldata.h"
+#include "tar.h"
 
 
 #define TEST_DEBUG_PARAMS 0

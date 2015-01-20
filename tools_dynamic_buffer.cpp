@@ -62,11 +62,16 @@ CompressStream::CompressStream(eTypeCompress typeCompress, u_int32_t compressBuf
 	this->maxDataLength = maxDataLength;
 	this->zipStream = NULL;
 	this->zipStreamDecompress = NULL;
+	#ifdef HAVE_LIBLZMA
+	this->lzmaStream = NULL;
+	this->lzmaStreamDecompress = NULL;
+	#endif //HAVE_LIBLZMA
 	#ifdef HAVE_LIBLZ4
 	this->lz4Stream = NULL;
 	this->lz4StreamDecode = NULL;
 	#endif //HAVE_LIBLZ4
 	this->zipLevel = Z_DEFAULT_COMPRESSION;
+	this->lzmaLevel = 6;
 	this->processed_len = 0;
 }
 
@@ -77,6 +82,10 @@ CompressStream::~CompressStream() {
 
 void CompressStream::setZipLevel(int zipLevel) {
 	this->zipLevel = zipLevel;
+}
+
+void CompressStream::setLzmaLevel(int lzmaLevel) {
+	this->lzmaLevel = lzmaLevel;
 }
 
 void CompressStream::initCompress() {
@@ -97,6 +106,21 @@ void CompressStream::initCompress() {
 			} else {
 				deflateEnd(this->zipStream);
 				this->setError("zip initialize failed");
+				break;
+			}
+		}
+		break;
+	case lzma:
+		if(!this->lzmaStream) {
+			this->lzmaStream = new lzma_stream;
+			*this->lzmaStream = LZMA_STREAM_INIT; 
+			int ret = lzma_easy_encoder(this->lzmaStream, this->lzmaLevel, LZMA_CHECK_CRC64);
+			if(ret == LZMA_OK) {
+				createCompressBuffer();
+			} else {
+				char error[1024];
+				snprintf(error, sizeof(error), "lzma_easy_encoder error: %d", (int) ret);
+				this->setError(error);
 				break;
 			}
 		}
@@ -127,6 +151,7 @@ void CompressStream::initDecompress(u_int32_t dataLen) {
 	case compress_na:
 		break;
 	case zip:
+	case gzip:
 		if(!this->zipStreamDecompress) {
 			this->zipStreamDecompress =  new z_stream;
 			this->zipStreamDecompress->zalloc = Z_NULL;
@@ -134,11 +159,27 @@ void CompressStream::initDecompress(u_int32_t dataLen) {
 			this->zipStreamDecompress->opaque = Z_NULL;
 			this->zipStreamDecompress->avail_in = 0;
 			this->zipStreamDecompress->next_in = Z_NULL;
-			if(inflateInit(this->zipStreamDecompress) == Z_OK) {
+			if((this->typeCompress == zip ?
+			     inflateInit(this->zipStreamDecompress) :
+			     inflateInit2(this->zipStreamDecompress, MAX_WBITS + 16)) == Z_OK) {
 				createDecompressBuffer(this->decompressBufferLength);
 			} else {
 				inflateEnd(this->zipStreamDecompress);
 				this->setError("unzip initialize failed");
+			}
+		}
+		break;
+	case lzma:
+		if(!this->lzmaStreamDecompress) {
+			this->lzmaStreamDecompress = new lzma_stream;
+			*this->lzmaStreamDecompress = LZMA_STREAM_INIT; 
+			int ret = lzma_stream_decoder(this->lzmaStreamDecompress, UINT64_MAX, LZMA_CONCATENATED);
+			if(ret == LZMA_OK) {
+				createDecompressBuffer(this->decompressBufferLength);
+			} else {
+				char error[1024];
+				snprintf(error, sizeof(error), "lzma_stream_decoder error: %d", (int) ret);
+				this->setError(error);
 			}
 		}
 		break;
@@ -156,9 +197,6 @@ void CompressStream::initDecompress(u_int32_t dataLen) {
 	case snappy:
 		createDecompressBuffer(dataLen);
 		break;
-	case gzip:
-		//not supported
-		break;
 	}
 }
 
@@ -168,11 +206,13 @@ void CompressStream::termCompress() {
 		delete this->zipStream;
 		this->zipStream = NULL;
 	}
-	if(this->zipStreamDecompress) {
-		inflateEnd(this->zipStreamDecompress);
-		delete this->zipStreamDecompress;
-		this->zipStreamDecompress = NULL;
+	#ifdef HAVE_LIBLZMA
+	if(this->lzmaStream) {
+		lzma_end(this->lzmaStream);
+		delete this->lzmaStream;
+		this->lzmaStream = NULL;
 	}
+	#endif //ifdef HAVE_LIBLZMA
 	#ifdef HAVE_LIBLZ4
 	if(this->lz4Stream) {
 		LZ4_freeStream(this->lz4Stream);
@@ -186,6 +226,18 @@ void CompressStream::termCompress() {
 }
 
 void CompressStream::termDecompress() {
+	if(this->zipStreamDecompress) {
+		inflateEnd(this->zipStreamDecompress);
+		delete this->zipStreamDecompress;
+		this->zipStreamDecompress = NULL;
+	}
+	#ifdef HAVE_LIBLZMA
+	if(this->lzmaStreamDecompress) {
+		lzma_end(this->lzmaStreamDecompress);
+		delete this->lzmaStreamDecompress;
+		this->lzmaStreamDecompress = NULL;
+	}
+	#endif //ifdef HAVE_LIBLZMA
 	#ifdef HAVE_LIBLZ4
 	if(this->lz4StreamDecode) {
 		LZ4_freeStreamDecode(this->lz4StreamDecode);
@@ -237,6 +289,30 @@ bool CompressStream::compress(char *data, u_int32_t len, bool flush, CompressStr
 				return(false);
 			}
 		} while(this->zipStream->avail_out == 0);
+		this->processed_len += len;
+		}
+		break;
+	case lzma: {
+		if(!this->lzmaStream) {
+			this->initCompress();
+		}
+		this->lzmaStream->avail_in = len;
+		this->lzmaStream->next_in = (unsigned char*)data;
+		do {
+			this->lzmaStream->avail_out = this->compressBufferLength;
+			this->lzmaStream->next_out = (unsigned char*)this->compressBuffer;
+			int rslt = lzma_code(this->lzmaStream, flush ? LZMA_FINISH : LZMA_RUN);
+			if(rslt == LZMA_OK || rslt == LZMA_STREAM_END) {
+				int have = this->compressBufferLength - this->zipStream->avail_out;
+				if(!baseEv->compress_ev(this->compressBuffer, have, 0)) {
+					this->setError("lzma compress_ev failed");
+					return(false);
+				}
+			} else {
+				this->setError("lzma compress failed");
+				return(false);
+			}
+		} while(this->lzmaStream->avail_out == 0);
 		this->processed_len += len;
 		}
 		break;
@@ -336,6 +412,7 @@ bool CompressStream::decompress(char *data, u_int32_t len, u_int32_t decompress_
 		}
 		break;
 	case zip:
+	case gzip:
 		if(!this->zipStreamDecompress) {
 			this->initDecompress(0);
 		}
@@ -359,6 +436,28 @@ bool CompressStream::decompress(char *data, u_int32_t len, u_int32_t decompress_
 				return(false);
 			}
 		} while(this->zipStreamDecompress->avail_out == 0);
+		break;
+	case lzma:
+		if(!this->lzmaStreamDecompress) {
+			this->initDecompress(0);
+		}
+		this->lzmaStreamDecompress->avail_in = len;
+		this->lzmaStreamDecompress->next_in = (unsigned char*)data;
+		do {
+			this->lzmaStreamDecompress->avail_out = this->decompressBufferLength;
+			this->lzmaStreamDecompress->next_out = (unsigned char*)this->decompressBuffer;
+			int rslt = lzma_code(this->lzmaStreamDecompress, flush ? LZMA_FINISH : LZMA_RUN);
+			if(rslt == LZMA_OK || rslt == LZMA_STREAM_END) {
+				int have = this->decompressBufferLength - this->lzmaStreamDecompress->avail_out;
+				if(!baseEv->decompress_ev(this->decompressBuffer, have)) {
+					this->setError("lzma decompress_ev failed");
+					return(false);
+				}
+			} else {
+				this->setError("lzma decompress failed");
+				return(false);
+			}
+		} while(this->lzmaStreamDecompress->avail_out == 0);
 		break;
 	case lz4:
 		#ifdef HAVE_LIBLZ4
@@ -420,9 +519,6 @@ bool CompressStream::decompress(char *data, u_int32_t len, u_int32_t decompress_
 		}
 		}
 		break;
-	case gzip:
-		//not supported
-		break;
 	}
 	return(true);
 }
@@ -436,6 +532,7 @@ void CompressStream::createCompressBuffer() {
 		break;
 	case zip:
 	case gzip:
+	case lzma:
 		this->compressBuffer = new char[this->compressBufferLength];
 		break;
 	case lz4:
@@ -471,6 +568,8 @@ void CompressStream::createDecompressBuffer(u_int32_t bufferLen) {
 	case compress_na:
 		break;
 	case zip:
+	case gzip:
+	case lzma:
 		this->decompressBuffer = new char[this->decompressBufferLength];
 		break;	
 	case lz4:
@@ -478,9 +577,6 @@ void CompressStream::createDecompressBuffer(u_int32_t bufferLen) {
 	case snappy:
 		this->decompressBufferLength = max(this->maxDataLength, bufferLen);
 		this->decompressBuffer = new char[this->decompressBufferLength];
-		break;
-	case gzip:
-		//not supported
 		break;
 	}
 }

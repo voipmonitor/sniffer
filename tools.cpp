@@ -29,6 +29,7 @@
 #include <iomanip>
 #include <openssl/sha.h>
 #include <fcntl.h>
+#include <math.h>
 
 #include "voipmonitor.h"
 
@@ -2975,4 +2976,17 @@ char *base64_encode(const unsigned char *data, size_t input_length, size_t *outp
 		encoded_data[*output_length - 1 - i] = '=';
 	encoded_data[*output_length] = 0;
 	return encoded_data;
+}
+
+u_int32_t octal_decimal(u_int32_t n) {
+	u_int32_t decimal = 0, 
+		  i = 0, 
+		  rem;
+	while(n != 0) {
+		rem = n % 10;
+		n /= 10;
+		decimal += rem * pow(8, i);
+		++i;
+	}
+	return decimal;
 }

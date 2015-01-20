@@ -8,6 +8,9 @@
 #include <sys/types.h>
 #include <algorithm>
 #include <zlib.h>
+#ifdef HAVE_LIBLZMA
+#include <lzma.h>
+#endif //HAVE_LIBLZMA
 #ifdef HAVE_LIBLZ4
 #include <lz4.h>
 #endif //HAVE_LIBLZ4
@@ -152,6 +155,7 @@ public:
 		compress_na,
 		zip,
 		gzip,
+		lzma,
 		lz4,
 		lz4_stream,
 		snappy
@@ -160,6 +164,7 @@ public:
 	CompressStream(eTypeCompress typeCompress, u_int32_t compressBufferLength, u_int32_t maxDataLength);
 	~CompressStream();
 	void setZipLevel(int zipLevel);
+	void setLzmaLevel(int lzmaLevel);
 	void initCompress();
 	void initDecompress(u_int32_t dataLen);
 	void termCompress();
@@ -200,12 +205,17 @@ private:
 	u_int32_t maxDataLength;
 	z_stream *zipStream;
 	z_stream *zipStreamDecompress;
+	#ifdef HAVE_LIBLZMA
+	lzma_stream *lzmaStream;
+	lzma_stream *lzmaStreamDecompress;
+	#endif //HAVE_LIBLZMA
 	#ifdef HAVE_LIBLZ4
 	LZ4_stream_t *lz4Stream;
 	LZ4_streamDecode_t *lz4StreamDecode;
 	#endif //HAVE_LIBLZ4
 	string errorString;
 	int zipLevel;
+	int lzmaLevel;
 	u_int32_t processed_len;
 friend class ChunkBuffer;
 };

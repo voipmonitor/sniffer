@@ -26,7 +26,6 @@
 
 #include "pstat.h"
 #include "tools_dynamic_buffer.h"
-#include "tar.h"
 
 using namespace std;
 
@@ -1643,5 +1642,7 @@ inline struct tm localtime_r(const time_t *timep) {
 	localtime_r(timep, &rslt);
 	return(rslt);
 }
+
+u_int32_t octal_decimal(u_int32_t n);
 
 #endif

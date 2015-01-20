@@ -41,6 +41,7 @@
 #include "manager.h"
 #include "fraud.h"
 #include "rrd.h"
+#include "tar.h"
 
 //#define BUFSIZE 1024
 //define BUFSIZE 20480
@@ -91,6 +92,48 @@ ManagerClientThreads ClientThreads;
 
 volatile int ssh_threads;
 volatile int ssh_threads_break; 
+
+class c_getfile_in_tar_completed {
+public:
+	c_getfile_in_tar_completed() {
+		_sync = 0;
+	}
+	void add(const char *tar, const char *file, const char *key) {
+		lock();
+		data[string(tar) + "/" + file + "/" + key] = getTimeMS();
+		unlock();
+	}
+	bool check(const char *tar, const char *file, const char *key) {
+		lock();
+		map<string, u_long>::iterator iter = data.find(string(tar) + "/" + file + "/" + key);
+		bool rslt =  iter != data.end();
+		unlock();
+		cleanup();
+		return(rslt);
+	}
+	void cleanup() {
+		lock();
+		u_long actTime = getTimeMS();
+		map<string, u_long>::iterator iter = data.begin();
+		while(iter != data.end()) {
+			if(actTime - iter->second > 10000ul) {
+				data.erase(iter++);
+			} else {
+				++iter;
+			}
+		}
+		unlock();
+	}
+	void lock() {
+		while(__sync_lock_test_and_set(&_sync, 1));
+	}
+	void unlock() {
+		__sync_lock_release(&_sync);
+	}
+private:
+	map<string, u_long> data;
+	volatile int _sync;
+} getfile_in_tar_completed;
 
 /* 
  * this function runs as thread. It reads RTP audio data from call
@@ -295,6 +338,10 @@ int sendvm(int socket, ssh_channel channel, const char *buf, size_t len, int mod
 		res = send(socket, buf, len, 0);
 	}
 	return res;
+}
+
+int _sendvm(int socket, void *channel, const char *buf, size_t len, int mode) {
+	return(sendvm(socket, (ssh_channel)channel, buf, len, mode));
 }
 
 int sendvm_from_stdout_of_command(char *command, int socket, ssh_channel channel, char *buf, size_t len, int mode) {
@@ -1181,6 +1228,42 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 		refreshFraud();
 		if ((size = sendvm(client, sshchannel, "reload ok", 9, 0)) == -1){
 			cerr << "Error sending data to client" << endl;
+			return -1;
+		}
+		return 0;
+	} else if(strstr(buf, "getfile_in_tar_check_complete") != NULL) {
+		char tar_filename[2048];
+		char filename[2048];
+		char dateTimeKey[2048];
+		
+		sscanf(buf, "getfile_in_tar_check_complete %s %s %s", tar_filename, filename, dateTimeKey);
+		
+		const char *rslt = getfile_in_tar_completed.check(tar_filename, filename, dateTimeKey) ? "OK" : "uncomplete";
+		
+		if ((size = sendvm(client, sshchannel, rslt, strlen(rslt), 0)) == -1){
+			cerr << "Error sending data to client" << endl;
+			return -1;
+		}
+		return 0;
+	} else if(strstr(buf, "getfile_in_tar") != NULL) {
+		char tar_filename[2048];
+		char filename[2048];
+		char dateTimeKey[2048];
+
+		sscanf(buf, "getfile_in_tar %s %s %s", tar_filename, filename, dateTimeKey);
+		
+		Tar tar;
+		if(!tar.tar_open(tar_filename, O_RDONLY)) {
+			tar.tar_read_send_parameters(client, sshchannel);
+			tar.tar_read((string(filename) + ".*").c_str(), filename);
+			if(tar.isReadEnd()) {
+				getfile_in_tar_completed.add(tar_filename, filename, dateTimeKey);
+			}
+		} else {
+			sprintf(buf, "error: cannot open file [%s]", tar_filename);
+			if ((size = sendvm(client, sshchannel, buf, strlen(buf), 0)) == -1){
+				cerr << "Error sending data to client" << endl;
+			}
 			return -1;
 		}
 		return 0;
