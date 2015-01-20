@@ -53,7 +53,12 @@ size_t strlcpy(char *dst, const char *src, size_t siz) attribute_deprecated;
 #define __P(p) p
 #endif
 
+#ifndef FREEBSD
 #include <alloca.h>
+#else
+#include <stdlib.h>
+#endif
+
 #include <strings.h>
 #include <string.h>
 #include <pthread.h>

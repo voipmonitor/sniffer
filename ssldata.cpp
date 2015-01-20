@@ -1,5 +1,15 @@
 #include <iomanip>
 
+#if ( defined( __FreeBSD__ ) || defined ( __NetBSD__ ) )
+# ifndef FREEBSD
+#  define FREEBSD
+# endif
+#endif
+
+#ifdef FREEBSD
+#include <sys/socket.h>
+#endif
+
 #include "ssldata.h"
 #include "sql_db.h"
 
