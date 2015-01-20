@@ -120,8 +120,7 @@ void CompressStream::initCompress() {
 	case lzma:
 		if(!this->lzmaStream) {
 			this->lzmaStream = new lzma_stream;
-			lzma_stream lzstmp = LZMA_STREAM_INIT;
-			*this->lzmaStream = lzstmp;
+			memset(this->lzmaStream, 0, sizeof(lzma_stream));
 			int ret = lzma_easy_encoder(this->lzmaStream, this->lzmaLevel, LZMA_CHECK_CRC64);
 			if(ret == LZMA_OK) {
 				createCompressBuffer();
@@ -180,8 +179,7 @@ void CompressStream::initDecompress(u_int32_t dataLen) {
 	case lzma:
 		if(!this->lzmaStreamDecompress) {
 			this->lzmaStreamDecompress = new lzma_stream;
-			lzma_stream lzstmp = LZMA_STREAM_INIT;
-			*this->lzmaStreamDecompress = lzstmp;
+			memset(this->lzmaStreamDecompress, 0, sizeof(lzma_stream));
 			int ret = lzma_stream_decoder(this->lzmaStreamDecompress, UINT64_MAX, LZMA_CONCATENATED);
 			if(ret == LZMA_OK) {
 				createDecompressBuffer(this->decompressBufferLength);
