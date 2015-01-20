@@ -1,6 +1,16 @@
 #ifndef SNIFF_INLINE_C
 #define SNIFF_INLINE_C
 
+#if ( defined( __FreeBSD__ ) || defined ( __NetBSD__ ) )
+# ifndef FREEBSD
+#  define FREEBSD
+# endif
+#endif
+
+#ifdef FREEBSD
+#include <sys/types.h>
+#endif
+
 #include <syslog.h>
 #include <net/ethernet.h>
 

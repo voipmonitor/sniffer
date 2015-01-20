@@ -1,3 +1,9 @@
+#include "voipmonitor.h"
+#ifdef FREEBSD
+#include <sys/types.h>
+#include <netinet/in.h>
+#endif
+
 #include <regex.h>
 #include <sys/time.h>
 #include <string.h>
@@ -18,8 +24,6 @@
 #include <pwd.h>
 #include <grp.h>
 
-#include "voipmonitor.h"
-
 #ifdef FREEBSD
 #include <sys/uio.h>
 #include <sys/thr.h>
@@ -31,7 +35,6 @@
 #include <iostream>
 
 #include "tools_dynamic_buffer.h"
-#include "voipmonitor.h"
 #include "calltable.h"
 #include "rtp.h"
 #include "tools.h"
@@ -71,6 +74,16 @@ extern int terminating;
 extern TarQueue *tarQueue;
 extern volatile unsigned int glob_last_packet_time;
 
+#ifdef FREEBSD
+#include "ansidecl.h"
+#include <stddef.h>
+extern PTR memcpy (PTR, const PTR, size_t);
+PTR
+mempcpy (PTR dst, const PTR src, size_t len)
+{
+       return (char *) memcpy (dst, src, len) + len;
+}
+#endif
 
 map<void*, unsigned int> okTarPointers;
 volatile int _sync_okTarPointers;
@@ -485,8 +498,9 @@ Tar::initLzma() {
 	if(!this->lzmaStream) {
 		/* initialize xz encoder */
 		//uint32_t preset = LZMA_COMPRESSION_LEVEL | (LZMA_COMPRESSION_EXTREME ? LZMA_PRESET_EXTREME : 0);
+		lzma_stream lzstmp = LZMA_STREAM_INIT;
 		lzmaStream = new lzma_stream;
-		*lzmaStream = LZMA_STREAM_INIT; 
+		*lzmaStream = lzstmp;
 
 		int ret_xz = lzma_easy_encoder (this->lzmaStream, lzmalevel, LZMA_CHECK_CRC64);
 		if (ret_xz != LZMA_OK) {

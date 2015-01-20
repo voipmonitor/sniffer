@@ -883,9 +883,9 @@ string SqlDb_mysql::escape(const char *inputString, int length) {
 
 bool SqlDb_mysql::checkLastError(string prefixError, bool sysLog, bool clearLastError) {
 	if(this->hMysql) {
-		unsigned int errno = mysql_errno(this->hMysql);
-		if(errno) {
-			this->setLastError(errno, (prefixError + ":  " + mysql_error(this->hMysql)).c_str(), sysLog);
+		unsigned int errnoMysql = mysql_errno(this->hMysql);
+		if(errnoMysql) {
+			this->setLastError(errnoMysql, (prefixError + ":  " + mysql_error(this->hMysql)).c_str(), sysLog);
 			return(true);
 		} else if(clearLastError) {
 			this->clearLastError();

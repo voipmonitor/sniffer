@@ -117,8 +117,10 @@ queue<string> listFilesDir (char * dir) {
 			stat(filename,&fileStats);
 			elem.filename = filename;           //result are pathnames
 			elem.mtime = fileStats.st_mtime;
-
-			if (fcntl(fd, F_SETLEASE, F_WRLCK) && EAGAIN == errno) {        //this test not work on tmpfs,nfs,ramfs as a workaround check mtime and actual date
+#ifndef FREEBSD
+			if (fcntl(fd, F_SETLEASE, F_WRLCK) && EAGAIN == errno)  //this test not work on tmpfs,nfs,ramfs as a workaround check mtime and actual date
+#endif
+			{
                                                                             //if used one of fs above, test only mtime of a file and given timeout (120)
 				if (!privListDir::file_mtimer(elem, 120)) {
 					//skip this file, because it is already write locked
@@ -126,7 +128,9 @@ queue<string> listFilesDir (char * dir) {
 					continue;
 				}
 			}
+#ifndef FREEBSD
 			fcntl(fd, F_SETLEASE, F_UNLCK);
+#endif
 			//add this file to list
 			close(fd);
 			tmpVec.push_back(elem);

@@ -1,8 +1,19 @@
 #ifndef HEAP_SAFE_H
 #define HEAP_SAFE_H
 
+#if ( defined( __FreeBSD__ ) || defined ( __NetBSD__ ) )
+# ifndef FREEBSD
+#  define FREEBSD
+# endif
+#endif
 
+
+#ifndef FREEBSD
 #include <alloca.h>
+#else
+#include <sys/types.h>
+#endif
+
 #include <stdlib.h>
 #include <string.h>
 #include <syslog.h>
