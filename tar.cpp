@@ -376,7 +376,7 @@ Tar::tar_read_block_ev(char *data, u_int32_t len) {
 			this->tar_read_file_ev(this->readData.fileHeader, NULL, this->readData.fileSize, 0);
 			this->readData.nullFileHeader();
 		}
-		memcpy(&this->readData.fileHeader, data, min((unsigned long)len, sizeof(this->readData.fileHeader)));
+		memcpy(&this->readData.fileHeader, data, min(len, (u_int32_t)sizeof(this->readData.fileHeader)));
 		this->readData.fileSize = 0;
 	}
 }
