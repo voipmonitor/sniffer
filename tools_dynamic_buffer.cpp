@@ -73,6 +73,8 @@ CompressStream::CompressStream(eTypeCompress typeCompress, u_int32_t compressBuf
 	this->zipLevel = Z_DEFAULT_COMPRESSION;
 	this->lzmaLevel = 6;
 	this->processed_len = 0;
+	this->sendParameter_client = 0;
+	this->sendParameter_sshchannel = NULL;
 }
 
 CompressStream::~CompressStream() {
@@ -86,6 +88,11 @@ void CompressStream::setZipLevel(int zipLevel) {
 
 void CompressStream::setLzmaLevel(int lzmaLevel) {
 	this->lzmaLevel = lzmaLevel;
+}
+
+void CompressStream::setSendParameters(int client, void *sshchannel) {
+	this->sendParameter_client = client;
+	this->sendParameter_sshchannel = sshchannel;
 }
 
 void CompressStream::initCompress() {
@@ -579,6 +586,17 @@ void CompressStream::createDecompressBuffer(u_int32_t bufferLen) {
 		this->decompressBuffer = new char[this->decompressBufferLength];
 		break;
 	}
+}
+
+extern int _sendvm(int socket, void *channel, const char *buf, size_t len, int mode);
+bool CompressStream::compress_ev(char *data, u_int32_t len, u_int32_t decompress_len) {
+	if(this->sendParameter_client) {
+		if(_sendvm(this->sendParameter_client, this->sendParameter_sshchannel, data, len, 0) == -1) {
+			this->setError("send error");
+			return(false);
+		}
+	}
+	return(true);
 }
 
 CompressStream::eTypeCompress CompressStream::convTypeCompress(const char *typeCompress) {

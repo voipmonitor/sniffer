@@ -332,13 +332,17 @@ Tar::tar_read(const char *filename, const char *endFilename) {
 	}
 	delete [] read_buffer;
 	delete compressStream;
+	if(this->readData.send_parameters_client && this->readData.compressStream) {
+		this->readData.compressStream->compress(NULL, 0, true, this->readData.compressStream);
+	}
 	this->readData.term();
 }
 
 void 
-Tar::tar_read_send_parameters(int client, void *sshchannel) {
+Tar::tar_read_send_parameters(int client, void *sshchannel, bool zip) {
 	this->readData.send_parameters_client = client;
 	this->readData.send_parameters_sshchannel = sshchannel;
+	this->readData.send_parameters_zip = zip;
 }
 
 bool 
@@ -389,15 +393,19 @@ Tar::tar_read_file_ev(tar_header fileHeader, char *data, u_int32_t pos, u_int32_
 	}
 	if(len) {
 		if(this->readData.send_parameters_client) {
-			if(_sendvm(this->readData.send_parameters_client, this->readData.send_parameters_sshchannel, data, len, 0) == -1) {
-				this->readData.error = true;
+			if(this->readData.compressStream) {
+				this->readData.compressStream->compress(data, len, false, this->readData.compressStream);
+				if(this->readData.compressStream->isError()) {
+					this->readData.error = true;
+				}
+			} else {
+				if(_sendvm(this->readData.send_parameters_client, this->readData.send_parameters_sshchannel, data, len, 0) == -1) {
+					this->readData.error = true;
+				}
 			}
 		}
 	}
 	if(*fileHeader.name && !len) {
-	 
-		cout << fileHeader.name << endl;
-		
 		if(!this->readData.endFilename.empty()) {
 			if(fileHeader.name == this->readData.endFilename) {
 				this->readData.end = true;

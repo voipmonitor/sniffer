@@ -149,7 +149,7 @@ public:
 	virtual bool decompress_ev(char *data, u_int32_t len) { return(true); }
 };
 
-class CompressStream {
+class CompressStream : public CompressStream_baseEv {
 public:
 	enum eTypeCompress {
 		compress_na,
@@ -162,9 +162,10 @@ public:
 	};
 public:
 	CompressStream(eTypeCompress typeCompress, u_int32_t compressBufferLength, u_int32_t maxDataLength);
-	~CompressStream();
+	virtual ~CompressStream();
 	void setZipLevel(int zipLevel);
 	void setLzmaLevel(int lzmaLevel);
+	void setSendParameters(int client, void *sshchannel);
 	void initCompress();
 	void initDecompress(u_int32_t dataLen);
 	void termCompress();
@@ -195,6 +196,7 @@ public:
 private:
 	void createCompressBuffer();
 	void createDecompressBuffer(u_int32_t bufferLen);
+	bool compress_ev(char *data, u_int32_t len, u_int32_t decompress_len);
 private:
 	eTypeCompress typeCompress;
 	char *compressBuffer;
@@ -217,6 +219,8 @@ private:
 	int zipLevel;
 	int lzmaLevel;
 	u_int32_t processed_len;
+	int sendParameter_client;
+	void *sendParameter_sshchannel;
 friend class ChunkBuffer;
 };
 

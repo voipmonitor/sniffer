@@ -1231,6 +1231,12 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 			return -1;
 		}
 		return 0;
+	} else if(strstr(buf, "getfile_is_zip_support") != NULL) {
+		if ((size = sendvm(client, sshchannel, "OK", 2, 0)) == -1){
+			cerr << "Error sending data to client" << endl;
+			return -1;
+		}
+		return 0;
 	} else if(strstr(buf, "getfile_in_tar_check_complete") != NULL) {
 		char tar_filename[2048];
 		char filename[2048];
@@ -1246,15 +1252,17 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 		}
 		return 0;
 	} else if(strstr(buf, "getfile_in_tar") != NULL) {
+		bool zip = strstr(buf, "getfile_in_tar_zip");
+	 
 		char tar_filename[2048];
 		char filename[2048];
 		char dateTimeKey[2048];
 
-		sscanf(buf, "getfile_in_tar %s %s %s", tar_filename, filename, dateTimeKey);
+		sscanf(buf, zip ? "getfile_in_tar_zip %s %s %s" : "getfile_in_tar %s %s %s", tar_filename, filename, dateTimeKey);
 		
 		Tar tar;
 		if(!tar.tar_open(tar_filename, O_RDONLY)) {
-			tar.tar_read_send_parameters(client, sshchannel);
+			tar.tar_read_send_parameters(client, sshchannel, zip);
 			tar.tar_read((string(filename) + ".*").c_str(), filename);
 			if(tar.isReadEnd()) {
 				getfile_in_tar_completed.add(tar_filename, filename, dateTimeKey);
@@ -1268,12 +1276,14 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 		}
 		return 0;
 	} else if(strstr(buf, "getfile") != NULL) {
+		bool zip = strstr(buf, "getfile_zip");
+		
 		char filename[2048];
 		char rbuf[4096];
 		int fd;
 		ssize_t nread;
 
-		sscanf(buf, "getfile %s", filename);
+		sscanf(buf, zip ? "getfile_zip %s" : "getfile %s", filename);
 
 		fd = open(filename, O_RDONLY);
 		if(fd < 0) {
@@ -1283,11 +1293,36 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 			}
 			return -1;
 		}
+		CompressStream *compressStream = NULL;
+		if(zip) {
+			compressStream = new CompressStream(CompressStream::gzip, 1024, 0);
+			compressStream->setSendParameters(client, sshchannel);
+		}
+		size_t read_size = 0;
 		while(nread = read(fd, rbuf, sizeof rbuf), nread > 0) {
-			if ((size = sendvm(client, sshchannel, rbuf, nread, 0)) == -1){
-				close(fd);
-				return -1;
+			if(!read_size && compressStream &&
+			   (unsigned char)rbuf[0] == 0x1f &&
+			   (nread == 1 || (unsigned char)rbuf[1] == 0x8b)) {
+				delete compressStream;
+				compressStream = NULL;
 			}
+			read_size += nread;
+			if(compressStream) {
+				compressStream->compress(rbuf, nread, false, compressStream);
+				if(compressStream->isError()) {
+					close(fd);
+					return -1;
+				}
+			} else {
+				if ((size = sendvm(client, sshchannel, rbuf, nread, 0)) == -1){
+					close(fd);
+					return -1;
+				}
+			}
+		}
+		if(compressStream) {
+			compressStream->compress(rbuf, 0, true, compressStream);
+			delete compressStream;
 		}
 		close(fd);
 		return 0;

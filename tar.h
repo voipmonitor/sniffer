@@ -121,7 +121,7 @@ public:
 	int tar_append_buffer(ChunkBuffer *buffer, size_t lenForProceed = 0);
 	virtual void chunkbuffer_iterate_ev(char *data, u_int32_t len, u_int32_t pos);
 	void tar_read(const char *filename, const char *endFilename = NULL);
-	void tar_read_send_parameters(int client, void *sshchannel);
+	void tar_read_send_parameters(int client, void *sshchannel, bool zip);
 	virtual bool decompress_ev(char *data, u_int32_t len);
 	void tar_read_block_ev(char *data, u_int32_t len);
 	void tar_read_file_ev(tar_header fileHeader, char *data, u_int32_t pos, u_int32_t len);
@@ -185,6 +185,7 @@ private:
 		sReadData() {
 			send_parameters_client = 0;
 			send_parameters_sshchannel = 0;
+			send_parameters_zip = false;
 			null();
 		}
 		void null() {
@@ -196,6 +197,7 @@ private:
 			buffer = NULL;
 			bufferLength = 0;
 			fileSize = 0;
+			compressStream = NULL;
 			nullFileHeader();
 		}
 		void nullFileHeader() {
@@ -203,9 +205,18 @@ private:
 		}
 		void init() {
 			buffer = new char[T_BLOCKSIZE * 2];
+			if(send_parameters_zip) {
+				compressStream = new CompressStream(CompressStream::gzip, 1024, 0);
+				compressStream->setSendParameters(send_parameters_client, send_parameters_sshchannel);
+			} else {
+				compressStream = NULL;
+			}
 		}
 		void term() {
 			delete [] buffer;
+			if(compressStream) {
+				delete compressStream;
+			}
 		}
 		bool end;
 		bool error;
@@ -218,6 +229,8 @@ private:
 		size_t fileSize;
 		int send_parameters_client;
 		void *send_parameters_sshchannel;
+		bool send_parameters_zip;
+		CompressStream *compressStream;
 	} readData;
 
 #ifdef HAVE_LIBLZMA
