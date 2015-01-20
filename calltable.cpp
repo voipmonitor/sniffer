@@ -969,6 +969,10 @@ double calculate_mos_g711(double ppl, double burstr, int version) {
 	if(ppl == 0 or burstr == 0) {
 		return 4.5;
 	}
+
+	if(ppl > 0.5) {
+		return 1;
+	}
 	
 	switch(version) {
 	case 1:

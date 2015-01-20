@@ -1,6 +1,7 @@
 #include <sys/types.h>
 #include <string>
 #include "config.h"
+#include "common.h"
 
 #ifndef VOIPMONITOR_H
 #define VOIPMONITOR_H
@@ -135,30 +136,6 @@ struct tcphdr2
     u_int16_t window;
     u_int16_t check;
     u_int16_t urg_ptr;
-};
-
-struct sVerbose {
-	int process_rtp;
-	int read_rtp;
-	int check_is_caller_called;
-	int disable_threads_rtp;
-	int packet_lost;
-	int rrd_info;
-	int http;
-	int webrtc;
-	int ssl;
-	int sip_packets;
-	int set_ua;
-	int dscp;
-	int store_process_query;
-	int call_listening;
-	int skinny;
-	int fraud;
-	int disable_bt_sighandler;
-	int tcp_debug_port;
-	int test_rtp_performance;
-	int tar;
-	int chunk_buffer;
 };
 
 #ifndef GLOBAL_DECLARATION
