@@ -873,7 +873,7 @@ TarQueue::write(int qtype, unsigned int time, data_t data) {
 		unsigned long int min = 0 - 1;
 		int winner = 0;
 		for(int i = maxthreads - 1; i >= 0; i--) {
-			size_t _len = tarthreads[i].getLen();
+			size_t _len = tarthreads[i].getLen(2);
 			if(min >= _len) {
 				min = _len;
 				winner = i;
@@ -910,6 +910,7 @@ void *TarQueue::tarthreadworker(void *arg) {
 					return NULL;
 				}
 			} else {
+				/*
 				Tar *maxTar = tarthread->getTarWithMaxLen(2, false);
 				if(!maxTar) {
 					maxTar = tarthread->getTarWithMaxLen(false, false);
@@ -918,9 +919,23 @@ void *TarQueue::tarthreadworker(void *arg) {
 					tarthread->qunlock();
 					break;
 				}
-				size_t length_list = tarthread->queue[maxTar].size();
+				Tar *processTar = maxtar;
+				*/
+				
+				vector<Tar*> listTars;
+				std::map<Tar*, tarthreads_tq>::iterator it = tarthread->queue.begin();
+				while(it != tarthread->queue.end()) {
+					listTars.push_back(it->first);
+					++it;
+				}
+				size_t length_list_tars = listTars.size();
+				for(size_t index_list_tars = 0; index_list_tars < length_list_tars; ++index_list_tars) {
+				 
+				Tar *processTar = listTars[index_list_tars];
+				
+				size_t length_list = tarthread->queue[processTar].size();
 				for(size_t index_list = 0; index_list < length_list; ++index_list) {
-					data_t data = tarthread->queue[maxTar][index_list];
+					data_t data = tarthread->queue[processTar][index_list];
 					if(!data.buffer) {
 						continue;
 					}
@@ -928,7 +943,7 @@ void *TarQueue::tarthreadworker(void *arg) {
 						if(verbosity) {
 							syslog(LOG_NOTICE, "tar: DECOMPRESS ERROR");
 						}
-						tarthread->queue[maxTar].erase(tarthread->queue[maxTar].begin() + index_list);
+						tarthread->queue[processTar].erase(tarthread->queue[processTar].begin() + index_list);
 						--length_list;
 						--index_list;
 						continue;
@@ -938,7 +953,7 @@ void *TarQueue::tarthreadworker(void *arg) {
 						if(verbosity) {
 							syslog(LOG_NOTICE, "tar: BAD TAR");
 						}
-						tarthread->queue[maxTar].erase(tarthread->queue[maxTar].begin() + index_list);
+						tarthread->queue[processTar].erase(tarthread->queue[processTar].begin() + index_list);
 						--length_list;
 						--index_list;
 						unlock_okTarPointers();
@@ -959,14 +974,16 @@ void *TarQueue::tarthreadworker(void *arg) {
 						tarthread->qlock();
 						if(isClosed && 
 						   (!lenForProceed || lenForProceed > lenForProceedSafe)) {
-							tarthread->queue[maxTar].erase(tarthread->queue[maxTar].begin() + index_list);
+							tarthread->queue[processTar].erase(tarthread->queue[processTar].begin() + index_list);
 							--length_list;
 							--index_list;
 						}
 					}
 				}
-				if(!tarthread->queue[maxTar].size()) {
-					tarthread->queue.erase(maxTar);
+				if(!tarthread->queue[processTar].size()) {
+					tarthread->queue.erase(processTar);
+				}
+				
 				}
 			}
 			tarthread->qunlock();
