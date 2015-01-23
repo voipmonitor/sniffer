@@ -570,6 +570,18 @@ Tar::writeLzma(const void *buf, size_t len) {
 }      
 #endif
 
+void
+Tar::flush() {
+#ifdef HAVE_LIBLZMA
+	if(this->lzmaStream) {
+		this->flushLzma();
+	}
+#endif
+	if(this->zipStream) {
+		this->flush();
+	}
+}
+
 int
 Tar::tar_block_write(const char *buf, u_int32_t len){
 	int zip = false;
@@ -930,60 +942,64 @@ void *TarQueue::tarthreadworker(void *arg) {
 				}
 				size_t length_list_tars = listTars.size();
 				for(size_t index_list_tars = 0; index_list_tars < length_list_tars; ++index_list_tars) {
-				 
-				Tar *processTar = listTars[index_list_tars];
-				
-				size_t length_list = tarthread->queue[processTar].size();
-				for(size_t index_list = 0; index_list < length_list; ++index_list) {
-					data_t data = tarthread->queue[processTar][index_list];
-					if(!data.buffer) {
-						continue;
-					}
-					if(data.buffer->isDecompressError()) {
-						if(verbosity) {
-							syslog(LOG_NOTICE, "tar: DECOMPRESS ERROR");
+					Tar *processTar = listTars[index_list_tars];
+					bool doProcessDataTar = false;
+					size_t length_list = tarthread->queue[processTar].size();
+					for(size_t index_list = 0; index_list < length_list; ++index_list) {
+						data_t data = tarthread->queue[processTar][index_list];
+						if(!data.buffer) {
+							continue;
 						}
-						tarthread->queue[processTar].erase(tarthread->queue[processTar].begin() + index_list);
-						--length_list;
-						--index_list;
-						continue;
-					}
-					lock_okTarPointers();
-					if(okTarPointers.find(data.tar) == okTarPointers.end()) {
-						if(verbosity) {
-							syslog(LOG_NOTICE, "tar: BAD TAR");
-						}
-						tarthread->queue[processTar].erase(tarthread->queue[processTar].begin() + index_list);
-						--length_list;
-						--index_list;
-						unlock_okTarPointers();
-						continue;
-					}
-					unlock_okTarPointers();
-					bool isClosed = data.buffer->isClosed();
-					size_t lenForProceed = data.buffer->getChunkIterateLenForProceed();
-					size_t lenForProceedSafe = lenForProceed;
-					if(!isClosed && lenForProceedSafe > TAR_CHUNK_KB * 1024) {
-						 lenForProceedSafe = data.buffer->getChunkIterateSafeLimitLength(lenForProceedSafe);
-					}
-					if(isClosed ||
-					   lenForProceedSafe > TAR_CHUNK_KB * 1024) {
-						doProcessData = true;
-						tarthread->qunlock();
-						tarthread->processData(&data, isClosed, lenForProceed, lenForProceedSafe);
-						tarthread->qlock();
-						if(isClosed && 
-						   (!lenForProceed || lenForProceed > lenForProceedSafe)) {
+						if(data.buffer->isDecompressError()) {
+							if(verbosity) {
+								syslog(LOG_NOTICE, "tar: DECOMPRESS ERROR");
+							}
 							tarthread->queue[processTar].erase(tarthread->queue[processTar].begin() + index_list);
 							--length_list;
 							--index_list;
+							continue;
+						}
+						lock_okTarPointers();
+						if(okTarPointers.find(data.tar) == okTarPointers.end()) {
+							if(verbosity) {
+								syslog(LOG_NOTICE, "tar: BAD TAR");
+							}
+							tarthread->queue[processTar].erase(tarthread->queue[processTar].begin() + index_list);
+							--length_list;
+							--index_list;
+							unlock_okTarPointers();
+							continue;
+						}
+						unlock_okTarPointers();
+						bool isClosed = data.buffer->isClosed();
+						size_t lenForProceed = data.buffer->getChunkIterateLenForProceed();
+						size_t lenForProceedSafe = lenForProceed;
+						if(!isClosed && lenForProceedSafe > TAR_CHUNK_KB * 1024) {
+							 lenForProceedSafe = data.buffer->getChunkIterateSafeLimitLength(lenForProceedSafe);
+						}
+						if(isClosed ||
+						   lenForProceedSafe > TAR_CHUNK_KB * 1024) {
+							doProcessData = true;
+							doProcessDataTar = true;
+							tarthread->qunlock();
+							tarthread->processData(&data, isClosed, lenForProceed, lenForProceedSafe);
+							tarthread->qlock();
+							if(isClosed && 
+							   (!lenForProceed || lenForProceed > lenForProceedSafe)) {
+								tarthread->queue[processTar].erase(tarthread->queue[processTar].begin() + index_list);
+								--length_list;
+								--index_list;
+							}
 						}
 					}
-				}
-				if(!tarthread->queue[processTar].size()) {
-					tarthread->queue.erase(processTar);
-				}
-				
+					if(!tarthread->queue[processTar].size()) {
+						tarthread->queue.erase(processTar);
+					} else if(!doProcessDataTar) {
+						unsigned int lastAddTime = tarthread->queue[processTar].getLastAddTime();
+						if(lastAddTime && lastAddTime < glob_last_packet_time - 30) {
+							processTar->flush();
+						}
+					}
 				}
 			}
 			tarthread->qunlock();

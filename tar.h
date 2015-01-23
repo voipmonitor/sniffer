@@ -158,6 +158,7 @@ public:
 	void flushLzma();
 	ssize_t writeLzma(const void *buf, size_t len);
 #endif
+	void flush();
 
 	void addtofilesqueue();
 	
@@ -299,6 +300,20 @@ public:
 				++it;
 			}
 			return(size);
+		}
+		unsigned int getLastAddTime() {
+			unsigned int lastAddTime = 0;
+			std::vector<data_t>::iterator it = this->begin();
+			while(it != this->end()) {
+				if(it->buffer) {
+					unsigned int addTime = it->buffer->getLastAddTime();
+					if(addTime > lastAddTime) {
+						lastAddTime = addTime;
+					}
+				}
+				++it;
+			}
+			return(lastAddTime);
 		}
 	};
 	struct tarthreads_t {

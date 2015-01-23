@@ -184,8 +184,8 @@ int opt_pcap_queue_iface_qring_size 			= 5000;
 int opt_pcap_queue_dequeu_window_length			= -1;
 int opt_pcap_queue_dequeu_method			= 2;
 int opt_pcap_dispatch					= 0;
-int opt_pcap_queue_iface_dedup_separate_threads_extend__test_mode
-							= 0;
+int opt_pcap_queue_iface_dedup_separate_threads_extend__ext_mode
+							= 1;
 
 size_t _opt_pcap_queue_block_offset_inc_size		= opt_pcap_queue_block_max_size / AVG_PACKET_SIZE / 4;
 size_t _opt_pcap_queue_block_restore_buffer_inc_size	= opt_pcap_queue_block_max_size / 4;
@@ -2291,7 +2291,7 @@ PcapQueue_readFromInterfaceThread::PcapQueue_readFromInterfaceThread(const char 
 			this->qring[i] = new hpi[this->qringmax];
 			memset(this->qring[i], 0, sizeof(hpi) * this->qringmax);
 			if(typeThread == read ||
-			   (typeThread == defrag && opt_pcap_queue_iface_dedup_separate_threads_extend__test_mode) ||
+			   (typeThread == defrag && opt_pcap_queue_iface_dedup_separate_threads_extend__ext_mode) ||
 			   !opt_pcap_queue_iface_dedup_separate_threads_extend) {
 				for(uint j = 0; j < this->qringmax; j++) {
 					this->qring[i][j].header = new pcap_pkthdr;
@@ -2350,7 +2350,7 @@ PcapQueue_readFromInterfaceThread::~PcapQueue_readFromInterfaceThread() {
 	for(int i = 0; i < 2; i++) {
 		if(this->qring[i]) {
 			if(this->typeThread == read || 
-			   (this->typeThread == defrag && opt_pcap_queue_iface_dedup_separate_threads_extend__test_mode) ||
+			   (this->typeThread == defrag && opt_pcap_queue_iface_dedup_separate_threads_extend__ext_mode) ||
 			   !opt_pcap_queue_iface_dedup_separate_threads_extend) {
 				for(uint j = 0; j < this->qringmax; j++) {
 					delete this->qring[i][j].header;
@@ -2378,7 +2378,7 @@ inline void PcapQueue_readFromInterfaceThread::push(pcap_pkthdr* header,u_char* 
 		//while(__sync_lock_test_and_set(&this->_sync_qring, 1));
 	}
 	if(this->typeThread == read || 
-	   (this->typeThread == defrag && opt_pcap_queue_iface_dedup_separate_threads_extend__test_mode) ||
+	   (this->typeThread == defrag && opt_pcap_queue_iface_dedup_separate_threads_extend__ext_mode) ||
 	   !opt_pcap_queue_iface_dedup_separate_threads_extend) {
 		if(header->caplen > this->pcap_snaplen) {
 			header->caplen = this->pcap_snaplen;
@@ -2549,7 +2549,7 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void *arg, unsigned int 
 					}
 					this->push(header, packet, this->ppd.header_ip_offset, NULL);
 				} else {
-					if(!opt_pcap_queue_iface_dedup_separate_threads_extend__test_mode ||
+					if(!opt_pcap_queue_iface_dedup_separate_threads_extend__ext_mode ||
 					   this->pcapProcess(&header, &packet, &destroy,
 							     false, false, false, false) > 0) {
 						this->push(header, packet, 0, NULL);
@@ -2563,7 +2563,7 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void *arg, unsigned int 
 				usleep(100);
 				continue;
 			} else {
-				if(opt_pcap_queue_iface_dedup_separate_threads_extend__test_mode) {
+				if(opt_pcap_queue_iface_dedup_separate_threads_extend__ext_mode) {
 					_header = NULL;
 					_packet = NULL;
 					header = hpii.header;
@@ -2609,7 +2609,7 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void *arg, unsigned int 
 				usleep(100);
 				continue;
 			} else {
-				if(opt_pcap_queue_iface_dedup_separate_threads_extend__test_mode) {
+				if(opt_pcap_queue_iface_dedup_separate_threads_extend__ext_mode) {
 					_header = new pcap_pkthdr;
 					_packet = new u_char[hpii.header->caplen];
 					memcpy(_header, hpii.header, sizeof(pcap_pkthdr));

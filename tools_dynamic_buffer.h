@@ -311,6 +311,9 @@ public:
 	u_int32_t getChunkIterateLenForProceed() {
 		return((this->compressStream ? compress_orig_data_len : len) - this->chunkIterateProceedLen);
 	}
+	unsigned int getLastAddTime() {
+		return(last_add_time);
+	}
 	virtual bool compress_ev(char *data, u_int32_t len, u_int32_t decompress_len);
 	virtual bool decompress_ev(char *data, u_int32_t len);
 	void chunkIterate(ChunkBuffer_baseIterate *chunkbufferIterateEv, bool freeChunks = false, bool enableContinue = false, u_int32_t limitLength = 0);
@@ -345,6 +348,7 @@ private:
 	char *name;
 	volatile int _sync_chunkBuffer;
 	volatile int _sync_compress;
+	unsigned int last_add_time;
 };      
 
 

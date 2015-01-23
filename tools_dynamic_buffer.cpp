@@ -637,6 +637,7 @@ ChunkBuffer::ChunkBuffer(int time, u_int32_t chunk_fix_len) {
 	this->name = NULL;
 	this->_sync_chunkBuffer = 0;
 	this->_sync_compress = 0;
+	this->last_add_time = 0;
 }
 
 ChunkBuffer::~ChunkBuffer() {
@@ -811,6 +812,8 @@ void ChunkBuffer::add(char *data, u_int32_t datalen, bool flush, u_int32_t decom
 		break;
 	}
 	this->unlock_chunkBuffer();
+	extern volatile unsigned int glob_last_packet_time;
+	this->last_add_time = glob_last_packet_time;
 }
 
 bool ChunkBuffer::compress_ev(char *data, u_int32_t len, u_int32_t decompress_len) {
