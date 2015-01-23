@@ -2485,6 +2485,7 @@ void set_context_config() {
 	
 	if(opt_pcap_dump_tar) {
 		opt_pcap_dump_zip = FileZipHandler::compress_na;
+		opt_cachedir[0] = '\0';
 	}
 }
 
