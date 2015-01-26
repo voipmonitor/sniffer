@@ -905,6 +905,14 @@ TarQueue::write(int qtype, unsigned int time, data_t data) {
 	return 0;
 }
 
+#if TAR_PROF
+unsigned long long __prof_processData_sum_1 = 0;
+unsigned long long __prof_processData_sum_2 = 0;
+unsigned long long __prof_processData_sum_3 = 0;
+unsigned long long __prof_processData_sum_4 = 0;
+unsigned long long __prof_processData_sum_5 = 0;
+#endif
+
 void *TarQueue::tarthreadworker(void *arg) {
 	TarQueue *this2 = ((tarthreadworker_arg*)arg)->tq;
 	tarthreads_t *tarthread = &this2->tarthreads[((tarthreadworker_arg*)arg)->i];
@@ -941,6 +949,11 @@ void *TarQueue::tarthreadworker(void *arg) {
 				unsigned long long __prof_sum_3 = 0;
 				unsigned long long __prof_sum_4 = 0;
 				unsigned long long __prof_sum_5 = 0;
+				__prof_processData_sum_1 = 0;
+				__prof_processData_sum_2 = 0;
+				__prof_processData_sum_3 = 0;
+				__prof_processData_sum_4 = 0;
+				__prof_processData_sum_5 = 0;
 				#endif
 				
 				vector<Tar*> listTars;
@@ -1054,7 +1067,13 @@ void *TarQueue::tarthreadworker(void *arg) {
 					     << (100 * __prof_sum_2 / (__prof_end - __prof_begin)) << "% " 
 					     << (100 * __prof_sum_3 / (__prof_end - __prof_begin)) << "% " 
 					     << (100 * __prof_sum_4 / (__prof_end - __prof_begin)) << "% " 
-					     << (100 * __prof_sum_4 / (__prof_end - __prof_begin)) << "% " 
+					     << (100 * __prof_sum_5 / (__prof_end - __prof_begin)) << "% " 
+					     << " - "
+					     << (100 * __prof_processData_sum_1 / (__prof_end - __prof_begin)) << "% " 
+					     << (100 * __prof_processData_sum_2 / (__prof_end - __prof_begin)) << "% " 
+					     << (100 * __prof_processData_sum_3 / (__prof_end - __prof_begin)) << "% " 
+					     << (100 * __prof_processData_sum_4 / (__prof_end - __prof_begin)) << "% " 
+					     << (100 * __prof_processData_sum_5 / (__prof_end - __prof_begin)) << "% " 
 					     << endl;
 				}
 				#endif
@@ -1070,20 +1089,30 @@ void *TarQueue::tarthreadworker(void *arg) {
 	return NULL;
 }
 
-void
+inline void
 TarQueue::tarthreads_t::processData(data_t *data, bool isClosed, size_t lenForProceed, size_t lenForProceedSafe) {
+ 
+	#if TAR_PROF
+	unsigned long long __prof_begin = rdtsc();
+	unsigned long long __prof_i1 = __prof_begin;
+	#endif
+ 
 	Tar *tar = data->tar;
 	tar->writing = 1;
 	if(lenForProceedSafe) {
 		//reset and set header
 		memset(&(tar->tar.th_buf), 0, sizeof(struct Tar::tar_header));
 		tar->th_set_type(0); //s->st_mode, 0 is regular file
-		tar->th_set_user(0); //st_uid
+		//tar->th_set_user(0); //st_uid
 		tar->th_set_group(0); //st_gid
 		tar->th_set_mode(0444); //s->st_mode
 		tar->th_set_mtime(data->time);
 		tar->th_set_size(lenForProceedSafe);
-		tar->th_set_path((char*)data->filename.c_str(), !isClosed);
+		//tar->th_set_path((char*)data->filename.c_str(), !isClosed);
+		
+		#if TAR_PROF
+		__prof_i1 = rdtsc();
+		#endif
 	       
 		// write header
 		if (tar->th_write() == 0) {
@@ -1096,6 +1125,10 @@ TarQueue::tarthreads_t::processData(data_t *data, bool isClosed, size_t lenForPr
 		}
 	}
 	tar->writing = 0;
+	
+	#if TAR_PROF
+	unsigned long long __prof_i2 = rdtsc();
+	#endif
 	
 	if(isClosed && 
 	   (!lenForProceed || lenForProceed > lenForProceedSafe)) {
@@ -1115,6 +1148,14 @@ TarQueue::tarthreads_t::processData(data_t *data, bool isClosed, size_t lenForPr
 		tar->incClosedPartCounter();
 		__sync_sub_and_fetch(&glob_tar_queued_files, 1);
 	}
+	
+	#if TAR_PROF
+	unsigned long long __prof_end = rdtsc();
+	__prof_processData_sum_1 += __prof_end - __prof_begin;
+	__prof_processData_sum_2 += __prof_i1 - __prof_begin;
+	__prof_processData_sum_3 += __prof_i2 - __prof_i1;
+	__prof_processData_sum_4 += __prof_end - __prof_i2;
+	#endif
 }
 
 void

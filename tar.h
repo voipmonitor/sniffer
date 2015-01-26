@@ -360,7 +360,7 @@ public:
 		void qunlock() {
 			pthread_mutex_unlock(&queuelock);
 		}
-		void processData(data_t *data, bool isClosed, size_t lenForProceed, size_t lenForProceedSafe);
+		inline void processData(data_t *data, bool isClosed, size_t lenForProceed, size_t lenForProceedSafe);
 	};
 
 	struct tarthreadworker_arg {
