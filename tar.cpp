@@ -982,7 +982,7 @@ void *TarQueue::tarthreadworker(void *arg) {
 						unlock_okTarPointers();
 						unsigned int bufferLastTarTime = data.buffer->getLastTarTime();
 						if(bufferLastTarTime &&
-						   bufferLastTarTime > glob_last_packet_time - 2) {
+						   bufferLastTarTime > glob_last_packet_time - 10) {
 							continue;
 						}
 						data.buffer->setLastTarTime(glob_last_packet_time);
