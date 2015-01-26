@@ -943,12 +943,15 @@ void *TarQueue::tarthreadworker(void *arg) {
 				*/
 				
 				#if TAR_PROF
+				static unsigned counter;
+				++counter;
 				unsigned long long __prof_begin = rdtsc();
 				unsigned long long __prof_sum_1 = 0;
 				unsigned long long __prof_sum_2 = 0;
 				unsigned long long __prof_sum_3 = 0;
 				unsigned long long __prof_sum_4 = 0;
 				unsigned long long __prof_sum_5 = 0;
+				unsigned long long __prof_sum_6 = 0;
 				__prof_processData_sum_1 = 0;
 				__prof_processData_sum_2 = 0;
 				__prof_processData_sum_3 = 0;
@@ -967,9 +970,11 @@ void *TarQueue::tarthreadworker(void *arg) {
 					Tar *processTar = listTars[index_list_tars];
 					bool doProcessDataTar = false;
 					size_t length_list = tarthread->queue[processTar].size();
+					size_t count_empty = 0;
 					for(size_t index_list = 0; index_list < length_list; ++index_list) {
 						data_t data = tarthread->queue[processTar][index_list];
 						if(!data.buffer) {
+							++count_empty;
 							continue;
 						}
 						if(data.buffer->isDecompressError()) {
@@ -995,7 +1000,7 @@ void *TarQueue::tarthreadworker(void *arg) {
 						unlock_okTarPointers();
 						unsigned int bufferLastTarTime = data.buffer->getLastTarTime();
 						if(bufferLastTarTime &&
-						   bufferLastTarTime > glob_last_packet_time - 10) {
+						   bufferLastTarTime > glob_last_packet_time - 2) {
 							continue;
 						}
 						data.buffer->setLastTarTime(glob_last_packet_time);
@@ -1030,11 +1035,16 @@ void *TarQueue::tarthreadworker(void *arg) {
 							tarthread->qlock();
 							if(isClosed && 
 							   (!lenForProceed || lenForProceed > lenForProceedSafe)) {
-								tarthread->queue[processTar].erase(tarthread->queue[processTar].begin() + index_list);
-								--length_list;
-								--index_list;
+								//tarthread->queue[processTar].erase(tarthread->queue[processTar].begin() + index_list);
+								//--length_list;
+								//--index_list;
+								data.buffer = NULL;
 							}
-						} else {
+							#if TAR_PROF
+							unsigned long long __prof_i23 = rdtsc();
+							__prof_sum_6 += __prof_i23 - __prof_i22;
+							#endif
+						} else if(!(counter % 100)) {
 							tarthread->qunlock();
 							usleep(10);
 							tarthread->qlock();
@@ -1047,7 +1057,8 @@ void *TarQueue::tarthreadworker(void *arg) {
 						__prof_sum_4 += __prof_end2 - __prof_i2;
 						#endif
 					}
-					if(!tarthread->queue[processTar].size()) {
+					//if(!tarthread->queue[processTar].size()) {
+					if(!tarthread->queue[processTar].size() == count_empty) {
 						tarthread->queue.erase(processTar);
 					} else if(!doProcessDataTar) {
 						unsigned int lastAddTime = tarthread->queue[processTar].getLastAddTime();
@@ -1063,15 +1074,14 @@ void *TarQueue::tarthreadworker(void *arg) {
 				}
 				#if TAR_PROF
 				unsigned long long __prof_end = rdtsc();
-				static int counter;
-				++counter;
 				if(100 * __prof_sum_1 / (__prof_end - __prof_begin)) {
-					cout << "**** " << (++counter) << " : "
+					cout << "**** " << counter << " : "
 					     << (100 * __prof_sum_1 / (__prof_end - __prof_begin)) << "% " 
 					     << (100 * __prof_sum_2 / (__prof_end - __prof_begin)) << "% " 
 					     << (100 * __prof_sum_3 / (__prof_end - __prof_begin)) << "% " 
 					     << (100 * __prof_sum_4 / (__prof_end - __prof_begin)) << "% " 
 					     << (100 * __prof_sum_5 / (__prof_end - __prof_begin)) << "% " 
+					     << (100 * __prof_sum_6 / (__prof_end - __prof_begin)) << "% " 
 					     << " - "
 					     << (100 * __prof_processData_sum_1 / (__prof_end - __prof_begin)) << "% " 
 					     << (100 * __prof_processData_sum_2 / (__prof_end - __prof_begin)) << "% " 
@@ -1099,6 +1109,7 @@ TarQueue::tarthreads_t::processData(data_t *data, bool isClosed, size_t lenForPr
 	#if TAR_PROF
 	unsigned long long __prof_begin = rdtsc();
 	unsigned long long __prof_i1 = __prof_begin;
+	unsigned long long __prof_i2 = __prof_begin;
 	#endif
  
 	Tar *tar = data->tar;
@@ -1121,6 +1132,11 @@ TarQueue::tarthreads_t::processData(data_t *data, bool isClosed, size_t lenForPr
 		// write header
 		if (tar->th_write() == 0) {
 			// if it's a regular file, write the contents as well
+		 
+			#if TAR_PROF
+			__prof_i2 = rdtsc();
+			#endif
+		 
 			tar->tar_append_buffer(data->buffer, lenForProceedSafe);
 			
 			if(sverb.chunk_buffer) {
@@ -1131,7 +1147,7 @@ TarQueue::tarthreads_t::processData(data_t *data, bool isClosed, size_t lenForPr
 	tar->writing = 0;
 	
 	#if TAR_PROF
-	unsigned long long __prof_i2 = rdtsc();
+	unsigned long long __prof_i3 = rdtsc();
 	#endif
 	
 	if(isClosed && 
@@ -1158,7 +1174,8 @@ TarQueue::tarthreads_t::processData(data_t *data, bool isClosed, size_t lenForPr
 	__prof_processData_sum_1 += __prof_end - __prof_begin;
 	__prof_processData_sum_2 += __prof_i1 - __prof_begin;
 	__prof_processData_sum_3 += __prof_i2 - __prof_i1;
-	__prof_processData_sum_4 += __prof_end - __prof_i2;
+	__prof_processData_sum_4 += __prof_i3 - __prof_i2;
+	__prof_processData_sum_5 += __prof_end - __prof_i3;
 	#endif
 }
 
