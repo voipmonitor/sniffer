@@ -578,7 +578,7 @@ Tar::flush() {
 	}
 #endif
 	if(this->zipStream) {
-		this->flush();
+		this->flushZip();
 	}
 }
 
