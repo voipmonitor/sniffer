@@ -998,16 +998,17 @@ void *TarQueue::tarthreadworker(void *arg) {
 							continue;
 						}
 						unlock_okTarPointers();
+						bool isClosed = data.buffer->isClosed();
 						unsigned int bufferLastTarTime = data.buffer->getLastTarTime();
-						if(bufferLastTarTime &&
-						   bufferLastTarTime > glob_last_packet_time - 2) {
+						if(!isClosed &&
+						   bufferLastTarTime &&
+						   bufferLastTarTime > glob_last_packet_time - 3) {
 							continue;
 						}
 						data.buffer->setLastTarTime(glob_last_packet_time);
 						#if TAR_PROF
 						unsigned long long __prof_begin2 = rdtsc();
 						#endif
-						bool isClosed = data.buffer->isClosed();
 						size_t lenForProceed = data.buffer->getChunkIterateLenForProceed();
 						size_t lenForProceedSafe = lenForProceed;
 						#if TAR_PROF
@@ -1039,6 +1040,8 @@ void *TarQueue::tarthreadworker(void *arg) {
 								//--length_list;
 								//--index_list;
 								data.buffer = NULL;
+								tarthread->queue[processTar][index_list].buffer = NULL;
+								++count_empty;
 							}
 							#if TAR_PROF
 							unsigned long long __prof_i23 = rdtsc();
@@ -1058,7 +1061,7 @@ void *TarQueue::tarthreadworker(void *arg) {
 						#endif
 					}
 					//if(!tarthread->queue[processTar].size()) {
-					if(!tarthread->queue[processTar].size() == count_empty) {
+					if(tarthread->queue[processTar].size() == count_empty) {
 						tarthread->queue.erase(processTar);
 					} else if(!doProcessDataTar) {
 						unsigned int lastAddTime = tarthread->queue[processTar].getLastAddTime();
