@@ -1047,11 +1047,11 @@ void *TarQueue::tarthreadworker(void *arg) {
 							unsigned long long __prof_i23 = rdtsc();
 							__prof_sum_6 += __prof_i23 - __prof_i22;
 							#endif
-						} else if(!(counter % 100)) {
+						} /*else if(!(counter % 100)) {
 							tarthread->qunlock();
 							usleep(10);
 							tarthread->qlock();
-						}
+						}*/
 						#if TAR_PROF
 						unsigned long long __prof_end2 = rdtsc();
 						__prof_sum_1 += __prof_end2 - __prof_begin2;
