@@ -1034,8 +1034,13 @@ void *TarQueue::tarthreadworker(void *arg) {
 						tarthread->queue.erase(processTar);
 					} else if(!doProcessDataTar) {
 						unsigned int lastAddTime = tarthread->queue[processTar].getLastAddTime();
-						if(lastAddTime && lastAddTime < glob_last_packet_time - 30) {
+						if(lastAddTime && lastAddTime < glob_last_packet_time - 30 &&
+						   processTar->flushLastAddTime < lastAddTime) {
+							if(sverb.tar) {
+								syslog(LOG_NOTICE, "force flush %s", processTar->pathname);
+							}
 							processTar->flush();
+							processTar->flushLastAddTime = lastAddTime;
 						}
 					}
 				}

@@ -111,6 +111,7 @@ public:
 #endif
 		partCounterSize = 0;
 		closedPartCounter = 0;
+		flushLastAddTime = 0;
 		this->writing = 0;
 	};
 	virtual ~Tar();
@@ -183,6 +184,7 @@ private:
 	map<string, u_int32_t> partCounter;
 	volatile u_int32_t partCounterSize;
 	volatile u_int32_t closedPartCounter;
+	unsigned int flushLastAddTime;
 	
 	struct sReadData {
 		sReadData() {
