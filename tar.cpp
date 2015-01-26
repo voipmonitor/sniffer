@@ -1034,6 +1034,10 @@ void *TarQueue::tarthreadworker(void *arg) {
 								--length_list;
 								--index_list;
 							}
+						} else {
+							tarthread->qunlock();
+							usleep(10);
+							tarthread->qlock();
 						}
 						#if TAR_PROF
 						unsigned long long __prof_end2 = rdtsc();
