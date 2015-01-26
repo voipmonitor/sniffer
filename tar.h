@@ -255,6 +255,8 @@ private:
 
 #endif
 
+	friend class TarQueue;
+
 };
 
 class TarQueue {

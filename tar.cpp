@@ -1037,7 +1037,7 @@ void *TarQueue::tarthreadworker(void *arg) {
 						if(lastAddTime && lastAddTime < glob_last_packet_time - 30 &&
 						   processTar->flushLastAddTime < lastAddTime) {
 							if(sverb.tar) {
-								syslog(LOG_NOTICE, "force flush %s", processTar->pathname);
+								syslog(LOG_NOTICE, "force flush %s", processTar->pathname.c_str());
 							}
 							processTar->flush();
 							processTar->flushLastAddTime = lastAddTime;
