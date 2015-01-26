@@ -1057,11 +1057,11 @@ void ChunkBuffer::chunkIterate(ChunkBuffer_baseIterate *chunkbufferIterateEv, bo
 
 u_int32_t ChunkBuffer::getChunkIterateSafeLimitLength(u_int32_t limitLength) {
 	u_int32_t safeLimitLength = 0;
-	this->lock_chunkBuffer();
-	list<eChunk>::iterator it;
-	size_t sizeChunkBuffer = chunkBuffer.size();
 	size_t counterIterator = 0;
 	if(this->compressStream) {
+		this->lock_chunkBuffer();
+		list<eChunk>::iterator it;
+		size_t sizeChunkBuffer = chunkBuffer.size();
 		for(it = chunkBuffer.begin(); it != chunkBuffer.end(); it++) {
 			++counterIterator;
 			if(!it->chunk) {
@@ -1079,22 +1079,30 @@ u_int32_t ChunkBuffer::getChunkIterateSafeLimitLength(u_int32_t limitLength) {
 				}
 				safeLimitLength += it->decompress_len;
 			}
+			this->unlock_chunkBuffer();
 		}
 	} else {
-		for(it = chunkBuffer.begin(); it != chunkBuffer.end(); it++) {
-			++counterIterator;
-			if(!it->chunk) {
-				continue;
+		if(this->chunk_fix_len) {
+			return(limitLength - limitLength % this->chunk_fix_len);
+		} else {
+			this->lock_chunkBuffer();
+			list<eChunk>::iterator it;
+			size_t sizeChunkBuffer = chunkBuffer.size();
+			for(it = chunkBuffer.begin(); it != chunkBuffer.end(); it++) {
+				++counterIterator;
+				if(!it->chunk) {
+					continue;
+				}
+				if(safeLimitLength + it->len >= limitLength) {
+					break;
+				}
+				if(!this->closed && counterIterator >= sizeChunkBuffer - 1) {
+					break;
+				}
+				safeLimitLength += it->len;
 			}
-			if(safeLimitLength + it->len >= limitLength) {
-				break;
-			}
-			if(!this->closed && counterIterator >= sizeChunkBuffer - 1) {
-				break;
-			}
-			safeLimitLength += it->len;
+			this->unlock_chunkBuffer();
 		}
 	}
-	this->unlock_chunkBuffer();
 	return(safeLimitLength);
 }
