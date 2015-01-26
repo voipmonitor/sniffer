@@ -314,6 +314,12 @@ public:
 	unsigned int getLastAddTime() {
 		return(last_add_time);
 	}
+	void setLastTarTime(unsigned int time) {
+		last_tar_time = time;
+	}
+	unsigned int getLastTarTime() {
+		return(last_tar_time);
+	}
 	virtual bool compress_ev(char *data, u_int32_t len, u_int32_t decompress_len);
 	virtual bool decompress_ev(char *data, u_int32_t len);
 	void chunkIterate(ChunkBuffer_baseIterate *chunkbufferIterateEv, bool freeChunks = false, bool enableContinue = false, u_int32_t limitLength = 0);
@@ -349,6 +355,7 @@ private:
 	volatile int _sync_chunkBuffer;
 	volatile int _sync_compress;
 	unsigned int last_add_time;
+	unsigned int last_tar_time;
 };      
 
 

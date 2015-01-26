@@ -46,6 +46,7 @@
 #define SYNC_CALL_RTP true
 
 #define RTP_PROF false
+#define TAR_PROF true
 
 #define MAX_PROCESS_RTP_PACKET_THREADS 6
 

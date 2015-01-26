@@ -2980,8 +2980,8 @@ void* PcapQueue_readFromInterface::threadFunction(void *arg, unsigned int arg2) 
 							if(actTime - 1000 > this->lastTimeLogErrThread0BufferIsFull) {
 								syslog(LOG_ERR, "packetbuffer %s: THREAD0 BUFFER IS FULL", this->nameQueue.c_str());
 								this->lastTimeLogErrThread0BufferIsFull = actTime;
+								cout << "bypass buffer size " << blockStoreBypassQueue->getUseItems() << " (" << blockStoreBypassQueue->getUseSize() << ")" << endl;
 							}
-							cout << "bypass buffer size " << blockStoreBypassQueue->getUseItems() << " (" << blockStoreBypassQueue->getUseSize() << ")" << endl;
 							_syslog = false;
 							++countBypassBufferSizeExceeded;
 						}

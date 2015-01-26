@@ -934,6 +934,15 @@ void *TarQueue::tarthreadworker(void *arg) {
 				Tar *processTar = maxtar;
 				*/
 				
+				#if TAR_PROF
+				unsigned long long __prof_begin = rdtsc();
+				unsigned long long __prof_sum_1 = 0;
+				unsigned long long __prof_sum_2 = 0;
+				unsigned long long __prof_sum_3 = 0;
+				unsigned long long __prof_sum_4 = 0;
+				unsigned long long __prof_sum_5 = 0;
+				#endif
+				
 				vector<Tar*> listTars;
 				std::map<Tar*, tarthreads_tq>::iterator it = tarthread->queue.begin();
 				while(it != tarthread->queue.end()) {
@@ -971,18 +980,40 @@ void *TarQueue::tarthreadworker(void *arg) {
 							continue;
 						}
 						unlock_okTarPointers();
+						unsigned int bufferLastTarTime = data.buffer->getLastTarTime();
+						if(bufferLastTarTime &&
+						   bufferLastTarTime > glob_last_packet_time - 2) {
+							continue;
+						}
+						data.buffer->setLastTarTime(glob_last_packet_time);
+						#if TAR_PROF
+						unsigned long long __prof_begin2 = rdtsc();
+						#endif
 						bool isClosed = data.buffer->isClosed();
 						size_t lenForProceed = data.buffer->getChunkIterateLenForProceed();
 						size_t lenForProceedSafe = lenForProceed;
+						#if TAR_PROF
+						unsigned long long __prof_i1 = rdtsc();
+						#endif
 						if(!isClosed && lenForProceedSafe > TAR_CHUNK_KB * 1024) {
 							 lenForProceedSafe = data.buffer->getChunkIterateSafeLimitLength(lenForProceedSafe);
 						}
+						#if TAR_PROF
+						unsigned long long __prof_i2 = rdtsc();
+						#endif
 						if(isClosed ||
 						   lenForProceedSafe > TAR_CHUNK_KB * 1024) {
 							doProcessData = true;
 							doProcessDataTar = true;
 							tarthread->qunlock();
+							#if TAR_PROF
+							unsigned long long __prof_i21 = rdtsc();
+							#endif
 							tarthread->processData(&data, isClosed, lenForProceed, lenForProceedSafe);
+							#if TAR_PROF
+							unsigned long long __prof_i22 = rdtsc();
+							__prof_sum_5 += __prof_i22 - __prof_i21;
+							#endif
 							tarthread->qlock();
 							if(isClosed && 
 							   (!lenForProceed || lenForProceed > lenForProceedSafe)) {
@@ -991,6 +1022,13 @@ void *TarQueue::tarthreadworker(void *arg) {
 								--index_list;
 							}
 						}
+						#if TAR_PROF
+						unsigned long long __prof_end2 = rdtsc();
+						__prof_sum_1 += __prof_end2 - __prof_begin2;
+						__prof_sum_2 += __prof_i1 - __prof_begin2;
+						__prof_sum_3 += __prof_i2 - __prof_i1;
+						__prof_sum_4 += __prof_end2 - __prof_i2;
+						#endif
 					}
 					if(!tarthread->queue[processTar].size()) {
 						tarthread->queue.erase(processTar);
@@ -1001,6 +1039,20 @@ void *TarQueue::tarthreadworker(void *arg) {
 						}
 					}
 				}
+				#if TAR_PROF
+				unsigned long long __prof_end = rdtsc();
+				static int counter;
+				++counter;
+				if(100 * __prof_sum_1 / (__prof_end - __prof_begin)) {
+					cout << "**** " << (++counter) << " : "
+					     << (100 * __prof_sum_1 / (__prof_end - __prof_begin)) << "% " 
+					     << (100 * __prof_sum_2 / (__prof_end - __prof_begin)) << "% " 
+					     << (100 * __prof_sum_3 / (__prof_end - __prof_begin)) << "% " 
+					     << (100 * __prof_sum_4 / (__prof_end - __prof_begin)) << "% " 
+					     << (100 * __prof_sum_4 / (__prof_end - __prof_begin)) << "% " 
+					     << endl;
+				}
+				#endif
 			}
 			tarthread->qunlock();
 			if(!doProcessData) {

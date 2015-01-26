@@ -638,6 +638,7 @@ ChunkBuffer::ChunkBuffer(int time, u_int32_t chunk_fix_len) {
 	this->_sync_chunkBuffer = 0;
 	this->_sync_compress = 0;
 	this->last_add_time = 0;
+	this->last_tar_time = 0;
 }
 
 ChunkBuffer::~ChunkBuffer() {
