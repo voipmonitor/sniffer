@@ -122,6 +122,7 @@ Tar::th_set_path(char *pathname, bool partSuffix)
 	
 	snprintf(tar.th_buf.name, 100, "%s", pathname);
 	
+	/*
 	map<string, u_int32_t>::iterator it = partCounter.find(pathname);
 	if(it == partCounter.end()) {
 		partCounter[pathname] = 1;
@@ -129,8 +130,10 @@ Tar::th_set_path(char *pathname, bool partSuffix)
 	} else {
 		++partCounter[pathname];
 	}
+	*/
+	++partCounter;
 	if(partSuffix) {
-		snprintf(tar.th_buf.name + strlen(tar.th_buf.name), 100 - strlen(tar.th_buf.name), "_%u", partCounter[pathname]);
+		snprintf(tar.th_buf.name + strlen(tar.th_buf.name), 100 - strlen(tar.th_buf.name), "_%lu", partCounter/*[pathname]*/);
 	}
 	       
 #ifdef DEBUG   
@@ -163,11 +166,13 @@ Tar::th_set_device(dev_t device)
 void
 Tar::th_set_user(uid_t uid)
 {
+	/*  slow function getpwuid - disabled
 	struct passwd *pw;
 
 	pw = getpwuid(uid);
 	if (pw != NULL)
 		*((char *)mempcpy(tar.th_buf.uname, pw->pw_name, sizeof(tar.th_buf.uname))) = '\0';
+	*/
 
 	int_to_oct(uid, tar.th_buf.uid, 8);
 }
@@ -881,17 +886,11 @@ TarQueue::write(int qtype, unsigned int time, data_t data) {
 			}
 		}
 
-		// allocate it to thread with the lowest total byte len 
-		unsigned long int min = 0 - 1;
-		int winner = 0;
-		for(int i = maxthreads - 1; i >= 0; i--) {
-			size_t _len = tarthreads[i].getLen(2);
-			if(min >= _len) {
-				min = _len;
-				winner = i;
-			}
-		}
-		tar->thread_id = winner;
+		tar->thread_id = tarThreadCounter[qtype] % maxthreads;
+		++tarThreadCounter[qtype];
+		
+		cout << "new tar to thread " << tar->thread_id << endl;
+		
 	} else {
 		pthread_mutex_unlock(&tarslock);
 	}
@@ -916,6 +915,7 @@ unsigned long long __prof_processData_sum_5 = 0;
 void *TarQueue::tarthreadworker(void *arg) {
 	TarQueue *this2 = ((tarthreadworker_arg*)arg)->tq;
 	tarthreads_t *tarthread = &this2->tarthreads[((tarthreadworker_arg*)arg)->i];
+	tarthread->thread_id = ((tarthreadworker_arg*)arg)->i;
 	delete (tarthreadworker_arg*)arg;
 
 	tarthread->threadId = get_unix_tid();
@@ -1103,12 +1103,12 @@ TarQueue::tarthreads_t::processData(data_t *data, bool isClosed, size_t lenForPr
 		//reset and set header
 		memset(&(tar->tar.th_buf), 0, sizeof(struct Tar::tar_header));
 		tar->th_set_type(0); //s->st_mode, 0 is regular file
-		//tar->th_set_user(0); //st_uid
+		tar->th_set_user(0); //st_uid
 		tar->th_set_group(0); //st_gid
 		tar->th_set_mode(0444); //s->st_mode
 		tar->th_set_mtime(data->time);
 		tar->th_set_size(lenForProceedSafe);
-		//tar->th_set_path((char*)data->filename.c_str(), !isClosed);
+		tar->th_set_path((char*)data->filename.c_str(), !isClosed);
 		
 		#if TAR_PROF
 		__prof_i1 = rdtsc();
@@ -1145,7 +1145,7 @@ TarQueue::tarthreads_t::processData(data_t *data, bool isClosed, size_t lenForPr
 			}
 		}
 		delete data->buffer;
-		tar->incClosedPartCounter();
+		//tar->incClosedPartCounter();
 		__sync_sub_and_fetch(&glob_tar_queued_files, 1);
 	}
 	
@@ -1177,7 +1177,7 @@ TarQueue::cleanTars() {
 		unsigned int lpt = glob_last_packet_time;
 		// find the tar in tartimemap 
 		if((tartimemap.find(tar->created_at) == tartimemap.end()) and (lpt > (tar->created_at + TAR_MODULO_SECONDS + 10)) && // +10 seconds more in new period to be sure nothing is in buffers
-		   tar->allPartsClosed()) {
+		   true/*tar->allPartsClosed()*/) {
 			// there are no calls in this start time - clean it
 			pthread_mutex_unlock(&tartimemaplock);
 			if(tars_it->second->writing) {
@@ -1293,6 +1293,10 @@ TarQueue::TarQueue() {
 
 	terminate = false;
 	maxthreads = opt_pcap_dump_tar_threads;
+	
+	for(int i = 0; i < 4; i++) {
+		tarThreadCounter[i] = i;
+	}
 
 	pthread_mutex_init(&mutexlock, NULL);
 	pthread_mutex_init(&flushlock, NULL);

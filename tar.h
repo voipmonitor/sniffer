@@ -109,8 +109,9 @@ public:
 		this->lzmaStream = NULL;
 		memset(&tar, 0, sizeof(tar));
 #endif
-		partCounterSize = 0;
-		closedPartCounter = 0;
+		//partCounterSize = 0;
+		//closedPartCounter = 0;
+		partCounter = 0;
 		flushLastAddTime = 0;
 		this->writing = 0;
 	};
@@ -163,12 +164,14 @@ public:
 
 	void addtofilesqueue();
 	
+	/*
 	bool allPartsClosed() {
 		return(closedPartCounter && partCounterSize == closedPartCounter);
 	}
 	void incClosedPartCounter() {
 		++closedPartCounter;
 	}
+	*/
 	
 	bool isReadError() {
 		return(readData.error);
@@ -181,9 +184,10 @@ private:
 	z_stream *zipStream;
 	int zipBufferLength;
 	char *zipBuffer;
-	map<string, u_int32_t> partCounter;
-	volatile u_int32_t partCounterSize;
-	volatile u_int32_t closedPartCounter;
+	//map<string, u_int32_t> partCounter;
+	unsigned long partCounter;
+	//volatile u_int32_t partCounterSize;
+	//volatile u_int32_t closedPartCounter;
 	unsigned int flushLastAddTime;
 	
 	struct sReadData {
@@ -325,6 +329,7 @@ public:
 		pthread_mutex_t queuelock;
 		pthread_t thread;
 		int threadId;
+		int thread_id;
 		pstat_data threadPstatData[2];
 		volatile int cpuPeak;
 		size_t getLen(int forProceed = false, bool lock = true) {
@@ -385,6 +390,7 @@ public:
 
 private:
 	map<unsigned int, vector<data_t> > queue[4]; //queue for all, sip, rtp, graph
+	unsigned long tarThreadCounter[4];
 	pthread_mutex_t mutexlock;
 	pthread_mutex_t flushlock;
 	pthread_mutex_t tarslock;
