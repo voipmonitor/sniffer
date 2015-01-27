@@ -112,7 +112,8 @@ public:
 		//partCounterSize = 0;
 		//closedPartCounter = 0;
 		partCounter = 0;
-		flushLastAddTime = 0;
+		lastFlushTime = 0;
+		lastWriteTime = 0;
 		this->writing = 0;
 	};
 	virtual ~Tar();
@@ -188,7 +189,8 @@ private:
 	unsigned long partCounter;
 	//volatile u_int32_t partCounterSize;
 	//volatile u_int32_t closedPartCounter;
-	unsigned int flushLastAddTime;
+	unsigned int lastFlushTime;
+	unsigned int lastWriteTime;
 	
 	struct sReadData {
 		sReadData() {
@@ -325,10 +327,12 @@ public:
 		}
 	};
 	struct tarthreads_t {
-		std::map<Tar*, tarthreads_tq> queue;
+		TarQueue *tarQueue;
+		std::map<string, tarthreads_tq> queue;
 		pthread_t thread;
 		int threadId;
 		int thread_id;
+		bool threadEnd;
 		pstat_data threadPstatData[2];
 		volatile int cpuPeak;
 		unsigned int counter;
@@ -336,7 +340,7 @@ public:
 		size_t getLen(int forProceed = false, bool lock = true) {
 			if(lock) qlock();
 			size_t size = 0;
-			std::map<Tar*, tarthreads_tq>::iterator it = queue.begin();
+			std::map<string, tarthreads_tq>::iterator it = queue.begin();
 			while(it != queue.end()) {
 				size += it->second.getLen(forProceed);
 				++it;
@@ -347,18 +351,18 @@ public:
 		Tar *getTarWithMaxLen(int forProceed = false, bool lock = true) {
 			if(lock) qlock();
 			size_t maxSize = 0;
-			Tar *maxTar = NULL;
-			std::map<Tar*, tarthreads_tq>::iterator it = queue.begin();
+			string maxTarName;
+			std::map<string, tarthreads_tq>::iterator it = queue.begin();
 			while(it != queue.end()) {
 				size_t size = it->second.getLen(forProceed);
 				if(size > maxSize) {
 					maxSize = size;
-					maxTar = it->first;
+					maxTarName = it->first;
 				}
 				++it;
 			}
 			if(lock) qunlock();
-			return(maxTar);
+			return(maxTarName.empty() ? NULL : tarQueue->tars[maxTarName]);
 		}
 		void qlock() {
 			while(__sync_lock_test_and_set(&this->_sync_lock, 1));
@@ -387,7 +391,7 @@ public:
 	static void *tarthreadworker(void*);
 	void preparePstatData(int threadIndex);
 	double getCpuUsagePerc(int threadIndex, bool preparePstatData);
-
+	bool allThreadsEnds();
 
 private:
 	map<unsigned int, vector<data_t> > queue[4]; //queue for all, sip, rtp, graph
