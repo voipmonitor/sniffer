@@ -631,6 +631,7 @@ Tar::tar_block_write(const char *buf, u_int32_t len){
 		::write(tar.fd, (char *)(buf), len);
 	}
 	
+	this->lastWriteTime = glob_last_packet_time;
 	
 	return(len);
 };
@@ -1099,8 +1100,7 @@ void *TarQueue::tarthreadworker(void *arg) {
 							pthread_mutex_lock(&this2->tarslock);
 							if(this2->tars.find(processTarName) != this2->tars.end()) {
 								Tar *processTar = this2->tars[processTarName];
-								if(!processTar->lastFlushTime ||
-								   processTar->lastFlushTime < glob_last_packet_time - 30) {
+								if(processTar->lastFlushTime < processTar->lastWriteTime - 30) {
 									if(sverb.tar) {
 										syslog(LOG_NOTICE, "force flush %s", processTar->pathname.c_str());
 									}

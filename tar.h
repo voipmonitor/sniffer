@@ -113,6 +113,7 @@ public:
 		//closedPartCounter = 0;
 		partCounter = 0;
 		lastFlushTime = 0;
+		lastWriteTime = 0;
 		this->writing = 0;
 	};
 	virtual ~Tar();
@@ -189,6 +190,7 @@ private:
 	//volatile u_int32_t partCounterSize;
 	//volatile u_int32_t closedPartCounter;
 	unsigned int lastFlushTime;
+	unsigned int lastWriteTime;
 	
 	struct sReadData {
 		sReadData() {
