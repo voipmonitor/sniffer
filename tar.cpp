@@ -1070,15 +1070,28 @@ void *TarQueue::tarthreadworker(void *arg) {
 					//if(!tarthread->queue[processTar].size()) {
 					if(tarthread->queue[processTar].size() == count_empty) {
 						tarthread->queue.erase(processTar);
-					} else if(!doProcessDataTar) {
-						unsigned int lastAddTime = tarthread->queue[processTar].getLastAddTime();
-						if(lastAddTime && lastAddTime < glob_last_packet_time - 30 &&
-						   processTar->flushLastAddTime < lastAddTime) {
-							if(sverb.tar) {
-								syslog(LOG_NOTICE, "force flush %s", processTar->pathname.c_str());
+					} else {
+						if(count_empty > tarthread->queue[processTar].size() / 5) {
+							tarthread->qlock();
+							for(std::list<data_t>::iterator it = tarthread->queue[processTar].begin(); it != tarthread->queue[processTar].end();) {
+								if(!it->buffer) {
+									tarthread->queue[processTar].erase(it++);
+								} else {
+									it++;
+								}
 							}
-							processTar->flush();
-							processTar->flushLastAddTime = lastAddTime;
+							tarthread->qunlock();
+						}
+					        if(!doProcessDataTar) {
+							unsigned int lastAddTime = tarthread->queue[processTar].getLastAddTime();
+							if(lastAddTime && lastAddTime < glob_last_packet_time - 30 &&
+							   processTar->flushLastAddTime < lastAddTime) {
+								if(sverb.tar) {
+									syslog(LOG_NOTICE, "force flush %s", processTar->pathname.c_str());
+								}
+								processTar->flush();
+								processTar->flushLastAddTime = lastAddTime;
+							}
 						}
 					}
 				}
