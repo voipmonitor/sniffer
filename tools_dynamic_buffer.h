@@ -2,6 +2,7 @@
 #define TOOLS_DYNAMIC_BUFFER_H
 
 #include <list>
+#include <vector>
 #include <string.h>
 #include <string>
 #include <iostream>
@@ -238,16 +239,16 @@ public:
 		add_fill_chunks,
 		add_compress
 	};
-	struct eChunkLen {
-		eChunkLen() {
+	struct sChunkLen {
+		sChunkLen() {
 			len = 0;
 			decompress_len = 0;
 		}
 		u_int32_t len;
 		u_int32_t decompress_len;
 	};
-	struct eChunk : eChunkLen {
-		eChunk() {
+	struct sChunk : sChunkLen {
+		sChunk() {
 			len = 0;
 			decompress_len = 0;
 		}
@@ -274,8 +275,8 @@ public:
 		u_int32_t bufferLen;
 		u_int32_t bufferPos;
 		u_int32_t counter;
-		eChunkLen chunkLen;
-		eChunkLen chunkLenBuff;
+		sChunkLen chunkLen;
+		sChunkLen chunkLenBuff;
 		u_int32_t allPos;
 		u_int32_t chunkPos;
 		u_int32_t chunkIndex;
@@ -320,6 +321,12 @@ public:
 	unsigned int getLastTarTime() {
 		return(last_tar_time);
 	}
+	void copyLastAddTimeToTar() {
+		last_add_time_tar = last_add_time;
+	}
+	bool isNewLastAddTimeForTar() {
+		return(last_add_time > last_add_time_tar);
+	}
 	virtual bool compress_ev(char *data, u_int32_t len, u_int32_t decompress_len);
 	virtual bool decompress_ev(char *data, u_int32_t len);
 	void chunkIterate(ChunkBuffer_baseIterate *chunkbufferIterateEv, bool freeChunks = false, bool enableContinue = false, u_int32_t limitLength = 0);
@@ -338,23 +345,24 @@ public:
 	}
 private:
 	int time;
-	list<eChunk> chunkBuffer;
+	vector<sChunk> chunkBuffer;
 	volatile u_int32_t len;
 	u_int32_t chunk_fix_len;
 	volatile u_int32_t compress_orig_data_len;
-	eChunk *lastChunk;
+	sChunk *lastChunk;
 	CompressStream *compressStream;
 	u_int32_t iterate_index;
 	ChunkBuffer_baseIterate *decompress_chunkbufferIterateEv;
 	u_int32_t decompress_pos;
 	sChunkIterateCompleteBufferInfo chunkIterateCompleteBufferInfo;
 	volatile u_int32_t chunkIterateProceedLen;
-	bool closed;
+	volatile bool closed;
 	bool decompressError;
 	char *name;
 	volatile int _sync_chunkBuffer;
 	volatile int _sync_compress;
 	unsigned int last_add_time;
+	unsigned int last_add_time_tar;
 	unsigned int last_tar_time;
 };      
 

@@ -326,12 +326,13 @@ public:
 	};
 	struct tarthreads_t {
 		std::map<Tar*, tarthreads_tq> queue;
-		pthread_mutex_t queuelock;
 		pthread_t thread;
 		int threadId;
 		int thread_id;
 		pstat_data threadPstatData[2];
 		volatile int cpuPeak;
+		unsigned int counter;
+		volatile int _sync_lock;
 		size_t getLen(int forProceed = false, bool lock = true) {
 			if(lock) qlock();
 			size_t size = 0;
@@ -360,10 +361,10 @@ public:
 			return(maxTar);
 		}
 		void qlock() {
-			pthread_mutex_lock(&queuelock);
+			while(__sync_lock_test_and_set(&this->_sync_lock, 1));
 		}
 		void qunlock() {
-			pthread_mutex_unlock(&queuelock);
+			__sync_lock_release(&this->_sync_lock);
 		}
 		inline void processData(data_t *data, bool isClosed, size_t lenForProceed, size_t lenForProceedSafe);
 	};

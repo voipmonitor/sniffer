@@ -638,6 +638,7 @@ ChunkBuffer::ChunkBuffer(int time, u_int32_t chunk_fix_len) {
 	this->_sync_chunkBuffer = 0;
 	this->_sync_compress = 0;
 	this->last_add_time = 0;
+	this->last_add_time_tar = 0;
 	this->last_tar_time = 0;
 }
 
@@ -647,7 +648,7 @@ ChunkBuffer::~ChunkBuffer() {
 		       this->getName().c_str(), (long)this,
 		       this->time, this->time % TAR_MODULO_SECONDS);
 	}
-	list<eChunk>::iterator it = chunkBuffer.begin();
+	vector<sChunk>::iterator it = chunkBuffer.begin();
 	for(it = chunkBuffer.begin(); it != chunkBuffer.end(); it++) {
 		if(it->chunk) {
 			delete [] it->chunk;
@@ -743,7 +744,7 @@ void ChunkBuffer::add(char *data, u_int32_t datalen, bool flush, u_int32_t decom
 	this->lock_chunkBuffer();
 	switch(addMethod) {
 	case add_simple: {
-		eChunk chunk;
+		sChunk chunk;
 		chunk.chunk = new char[datalen];
 		memcpy(chunk.chunk, data, datalen);
 		chunk.len = datalen;
@@ -760,7 +761,7 @@ void ChunkBuffer::add(char *data, u_int32_t datalen, bool flush, u_int32_t decom
 		for(int i = 0; i < 2; i++) {
 			char *_data;
 			u_int32_t _len;
-			eChunkLen chunkLen;
+			sChunkLen chunkLen;
 			if(i == 0) {
 				chunkLen.len = datalen;
 				chunkLen.decompress_len = decompress_len;
@@ -774,7 +775,7 @@ void ChunkBuffer::add(char *data, u_int32_t datalen, bool flush, u_int32_t decom
 			while(pos < _len) {
 				if(!this->lastChunk ||
 				   this->lastChunk->len == this->chunk_fix_len) {
-					eChunk chunk;
+					sChunk chunk;
 					chunk.chunk = new char[this->chunk_fix_len];
 					chunk.len = 0;
 					chunk.decompress_len = (u_int32_t)-1;
@@ -795,7 +796,7 @@ void ChunkBuffer::add(char *data, u_int32_t datalen, bool flush, u_int32_t decom
 		u_int32_t copied = 0;
 		do {
 			if(!(this->len % this->chunk_fix_len)) {
-				eChunk chunk;
+				sChunk chunk;
 				chunk.chunk = new char[this->chunk_fix_len];
 				this->chunkBuffer.push_back(chunk);
 				this->lastChunk = &(*(--this->chunkBuffer.end()));
@@ -836,13 +837,6 @@ bool ChunkBuffer::decompress_ev(char *data, u_int32_t len) {
 }
 
 void ChunkBuffer::chunkIterate(ChunkBuffer_baseIterate *chunkbufferIterateEv, bool freeChunks, bool enableContinue, u_int32_t limitLength) {
-	this->lock_chunkBuffer();
-	list<eChunk> tempChunkBuffer = chunkBuffer;
-	this->unlock_chunkBuffer();
-	list<eChunk>::iterator it = tempChunkBuffer.begin();
-	size_t sizeChunkBuffer = tempChunkBuffer.size();
-	size_t counterIterator = 0;
-	size_t counterChunksForDestroy = 0;
 	if(sverb.chunk_buffer > 1) {
 		cout << "### start chunkIterate " << this->chunkIterateProceedLen << endl;
 	}
@@ -852,8 +846,15 @@ void ChunkBuffer::chunkIterate(ChunkBuffer_baseIterate *chunkbufferIterateEv, bo
 			cout << "### reset chunkIterateProceedLen" << endl;
 		}
 	}
+	size_t counterIterator = 0;
 	u_int32_t chunkIterateProceedLen_start = this->chunkIterateProceedLen;
+	size_t counterChunksForDestroy = 0;
 	if(this->compressStream) {
+		this->lock_chunkBuffer();
+		vector<sChunk> tempChunkBuffer = chunkBuffer;
+		this->unlock_chunkBuffer();
+		vector<sChunk>::iterator it = tempChunkBuffer.begin();
+		size_t sizeChunkBuffer = tempChunkBuffer.size();
 		this->decompress_chunkbufferIterateEv = chunkbufferIterateEv;
 		this->decompress_pos = 0;
 		if(!enableContinue) {
@@ -871,11 +872,11 @@ void ChunkBuffer::chunkIterate(ChunkBuffer_baseIterate *chunkbufferIterateEv, bo
 			if(it->decompress_len == (u_int32_t)-1) {
 				while(this->chunkIterateCompleteBufferInfo.chunkPos < it->len && !_break) {
 					if(!this->chunkIterateCompleteBufferInfo.counter) {
-						this->chunkIterateCompleteBufferInfo.chunkLen = *(eChunkLen*)it->chunk;
+						this->chunkIterateCompleteBufferInfo.chunkLen = *(sChunkLen*)it->chunk;
 						++this->chunkIterateCompleteBufferInfo.counter;
 						this->chunkIterateCompleteBufferInfo.bufferLen = this->chunkIterateCompleteBufferInfo.chunkLen.len;
 						this->chunkIterateCompleteBufferInfo.bufferPos = 0;
-						this->chunkIterateCompleteBufferInfo.addPos(sizeof(eChunkLen));
+						this->chunkIterateCompleteBufferInfo.addPos(sizeof(sChunkLen));
 					}
 					if(!this->chunkIterateCompleteBufferInfo.bufferPos) {
 						if(this->chunkIterateCompleteBufferInfo.bufferLen <= it->len - this->chunkIterateCompleteBufferInfo.chunkPos) {
@@ -894,15 +895,15 @@ void ChunkBuffer::chunkIterate(ChunkBuffer_baseIterate *chunkbufferIterateEv, bo
 									return;
 								}
 								this->chunkIterateProceedLen += this->chunkIterateCompleteBufferInfo.chunkLen.decompress_len;
-								this->chunkIterateCompleteBufferInfo.bufferLen = sizeof(eChunkLen);
+								this->chunkIterateCompleteBufferInfo.bufferLen = sizeof(sChunkLen);
 								this->chunkIterateCompleteBufferInfo.addPos(this->chunkIterateCompleteBufferInfo.chunkLen.len);
 								if(sverb.chunk_buffer > 1) { 
 									cout << " d1 " << this->chunkIterateProceedLen - chunkIterateProceedLen_start << endl;
 								}
 							} else {
-								this->chunkIterateCompleteBufferInfo.chunkLen = *(eChunkLen*)(it->chunk + this->chunkIterateCompleteBufferInfo.chunkPos);
+								this->chunkIterateCompleteBufferInfo.chunkLen = *(sChunkLen*)(it->chunk + this->chunkIterateCompleteBufferInfo.chunkPos);
 								this->chunkIterateCompleteBufferInfo.bufferLen = this->chunkIterateCompleteBufferInfo.chunkLen.len;
-								this->chunkIterateCompleteBufferInfo.addPos(sizeof(eChunkLen));
+								this->chunkIterateCompleteBufferInfo.addPos(sizeof(sChunkLen));
 								if(sverb.chunk_buffer > 1) { 
 									cout << "chunkLen " << this->chunkIterateCompleteBufferInfo.chunkLen.len << " / " << this->chunkIterateCompleteBufferInfo.chunkLen.decompress_len << endl;
 									cout << "chunkpos_len " << this->chunkIterateCompleteBufferInfo.chunkPos << " / " << counterIterator << endl;
@@ -951,13 +952,13 @@ void ChunkBuffer::chunkIterate(ChunkBuffer_baseIterate *chunkbufferIterateEv, bo
 									return;
 								}
 								this->chunkIterateProceedLen += this->chunkIterateCompleteBufferInfo.chunkLen.decompress_len;
-								this->chunkIterateCompleteBufferInfo.bufferLen = sizeof(eChunkLen);
+								this->chunkIterateCompleteBufferInfo.bufferLen = sizeof(sChunkLen);
 								if(sverb.chunk_buffer > 1) { 
 									cout << " d2 " << this->chunkIterateProceedLen - chunkIterateProceedLen_start << endl;
 								}
 								
 							} else {
-								this->chunkIterateCompleteBufferInfo.chunkLen = *(eChunkLen*)this->chunkIterateCompleteBufferInfo.buffer;
+								this->chunkIterateCompleteBufferInfo.chunkLen = *(sChunkLen*)this->chunkIterateCompleteBufferInfo.buffer;
 								this->chunkIterateCompleteBufferInfo.bufferLen = this->chunkIterateCompleteBufferInfo.chunkLen.len;
 								if(sverb.chunk_buffer > 1) { 
 									cout << "chunkLen " << this->chunkIterateCompleteBufferInfo.chunkLen.len << " / " << this->chunkIterateCompleteBufferInfo.chunkLen.decompress_len << endl;
@@ -1015,31 +1016,59 @@ void ChunkBuffer::chunkIterate(ChunkBuffer_baseIterate *chunkbufferIterateEv, bo
 			this->compressStream->termDecompress();
 		}
 	} else {
+		size_t sizeChunkBuffer = chunkBuffer.size();
 		u_int32_t pos = 0;
-		for(it = tempChunkBuffer.begin(); it != tempChunkBuffer.end(); it++) {
-			++counterIterator;
-			if(!it->chunk) {
-				continue;
+		if(this->closed) {
+			while(counterIterator < sizeChunkBuffer) {
+				sChunk *chunk = &chunkBuffer[counterIterator];
+				++counterIterator;
+				if(chunk->chunk) {
+					chunkbufferIterateEv->chunkbuffer_iterate_ev(chunk->chunk, chunk->len, 0);
+					this->chunkIterateProceedLen += chunk->len;
+					if(freeChunks) {
+						delete chunk->chunk;
+						chunk->chunk = NULL;
+					}
+					pos += chunk->len;
+				}
 			}
-			chunkbufferIterateEv->chunkbuffer_iterate_ev(it->chunk, it->len, pos);
-			this->chunkIterateProceedLen += it->len;
-			if(freeChunks) {
-				++counterChunksForDestroy;
+			chunkbufferIterateEv->chunkbuffer_iterate_ev(NULL, 0, pos);
+		} else {
+			this->lock_chunkBuffer();
+			bool locked = true;
+			while(counterIterator < sizeChunkBuffer) {
+				sChunk chunk = chunkBuffer[counterIterator];
+				++counterIterator;
+				if(!chunk.chunk) {
+					continue;
+				}
+				this->unlock_chunkBuffer();
+				chunkbufferIterateEv->chunkbuffer_iterate_ev(chunk.chunk, chunk.len, pos);
+				this->chunkIterateProceedLen += chunk.len;
+				if(freeChunks) {
+					++counterChunksForDestroy;
+				}
+				pos += chunk.len;
+				if(limitLength && 
+				   this->chunkIterateProceedLen - chunkIterateProceedLen_start >= limitLength) {
+					locked = false;
+					break;
+				}
+				if(!this->closed && counterIterator >= sizeChunkBuffer - 1) {
+					locked = false;
+					break;
+				}
+				this->lock_chunkBuffer();
 			}
-			pos += it->len;
-			if(limitLength && 
-			   this->chunkIterateProceedLen - chunkIterateProceedLen_start >= limitLength) {
-				break;
+			if(locked) {
+				this->unlock_chunkBuffer();
 			}
-			if(!this->closed && counterIterator >= sizeChunkBuffer - 1) {
-				break;
-			}
+			chunkbufferIterateEv->chunkbuffer_iterate_ev(NULL, 0, pos);
 		}
-		chunkbufferIterateEv->chunkbuffer_iterate_ev(NULL, 0, pos);
 	}
 	if(counterChunksForDestroy) {
 		this->lock_chunkBuffer();
-		for(it = chunkBuffer.begin(); it != chunkBuffer.end() && counterChunksForDestroy; it++) {
+		for(vector<sChunk>::iterator it = chunkBuffer.begin(); it != chunkBuffer.end() && counterChunksForDestroy; it++) {
 			if(it->chunk) {
 				delete it->chunk;
 				it->chunk = NULL;
@@ -1060,7 +1089,7 @@ u_int32_t ChunkBuffer::getChunkIterateSafeLimitLength(u_int32_t limitLength) {
 	size_t counterIterator = 0;
 	if(this->compressStream) {
 		this->lock_chunkBuffer();
-		list<eChunk>::iterator it;
+		vector<sChunk>::iterator it;
 		size_t sizeChunkBuffer = chunkBuffer.size();
 		for(it = chunkBuffer.begin(); it != chunkBuffer.end(); it++) {
 			++counterIterator;
@@ -1082,11 +1111,13 @@ u_int32_t ChunkBuffer::getChunkIterateSafeLimitLength(u_int32_t limitLength) {
 			this->unlock_chunkBuffer();
 		}
 	} else {
-		if(this->chunk_fix_len) {
-			return(limitLength - limitLength % this->chunk_fix_len);
+		if(this->closed) {
+			cout << "c" << std::flush;
+			return(limitLength - this->chunkIterateProceedLen);
 		} else {
+			cout << "o" << std::flush;
 			this->lock_chunkBuffer();
-			list<eChunk>::iterator it;
+			vector<sChunk>::iterator it;
 			size_t sizeChunkBuffer = chunkBuffer.size();
 			for(it = chunkBuffer.begin(); it != chunkBuffer.end(); it++) {
 				++counterIterator;

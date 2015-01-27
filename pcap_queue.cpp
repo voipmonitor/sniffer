@@ -2162,9 +2162,16 @@ inline int PcapQueue_readFromInterface_base::pcap_next_ex_iface(pcap_t *pcapHand
 	*/
 	if(opt_pb_read_from_file[0]) {
 		if(opt_pb_read_from_file_speed) {
+			static u_int64_t diffTime;
 			u_int64_t packetTime = (*header)->ts.tv_sec * 1000000ull + (*header)->ts.tv_usec;
 			if(this->lastPacketTimeUS) {
-				usleep((packetTime - this->lastPacketTimeUS) / opt_pb_read_from_file_speed);
+				if(packetTime > this->lastPacketTimeUS) {
+					diffTime += packetTime - this->lastPacketTimeUS;
+					if(diffTime > 5000 * (unsigned)opt_pb_read_from_file_speed) {
+						usleep(diffTime / opt_pb_read_from_file_speed / pow(1.1, opt_pb_read_from_file_speed));
+						diffTime = 0;
+					}
+				}
 			}
 			this->lastPacketTimeUS = packetTime;
 		} else {

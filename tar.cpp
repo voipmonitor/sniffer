@@ -889,7 +889,9 @@ TarQueue::write(int qtype, unsigned int time, data_t data) {
 		tar->thread_id = tarThreadCounter[qtype] % maxthreads;
 		++tarThreadCounter[qtype];
 		
-		cout << "new tar to thread " << tar->thread_id << endl;
+		if(sverb.tar) {
+			syslog(LOG_NOTICE, "tar %s to thread %i", tar->pathname.c_str(), tar->thread_id);
+		}
 		
 	} else {
 		pthread_mutex_unlock(&tarslock);
@@ -977,13 +979,17 @@ void *TarQueue::tarthreadworker(void *arg) {
 							++count_empty;
 							continue;
 						}
+						/*
 						if(data.buffer->isDecompressError()) {
 							if(verbosity) {
 								syslog(LOG_NOTICE, "tar: DECOMPRESS ERROR");
 							}
-							tarthread->queue[processTar].erase(tarthread->queue[processTar].begin() + index_list);
-							--length_list;
-							--index_list;
+							//tarthread->queue[processTar].erase(tarthread->queue[processTar].begin() + index_list);
+							//--length_list;
+							//--index_list;
+							data.buffer = NULL;
+							tarthread->queue[processTar][index_list].buffer = NULL;
+							++count_empty;
 							continue;
 						}
 						lock_okTarPointers();
@@ -991,14 +997,22 @@ void *TarQueue::tarthreadworker(void *arg) {
 							if(verbosity) {
 								syslog(LOG_NOTICE, "tar: BAD TAR");
 							}
-							tarthread->queue[processTar].erase(tarthread->queue[processTar].begin() + index_list);
-							--length_list;
-							--index_list;
+							//tarthread->queue[processTar].erase(tarthread->queue[processTar].begin() + index_list);
+							//--length_list;
+							//--index_list;
+							data.buffer = NULL;
+							tarthread->queue[processTar][index_list].buffer = NULL;
+							++count_empty;
 							unlock_okTarPointers();
 							continue;
 						}
 						unlock_okTarPointers();
+						*/
 						bool isClosed = data.buffer->isClosed();
+						if(!isClosed && !data.buffer->isNewLastAddTimeForTar()) {
+							continue;
+						}
+						data.buffer->copyLastAddTimeToTar();
 						unsigned int bufferLastTarTime = data.buffer->getLastTarTime();
 						if(!isClosed &&
 						   bufferLastTarTime &&
@@ -1047,11 +1061,11 @@ void *TarQueue::tarthreadworker(void *arg) {
 							unsigned long long __prof_i23 = rdtsc();
 							__prof_sum_6 += __prof_i23 - __prof_i22;
 							#endif
-						} /*else if(!(counter % 100)) {
+						} else if(!((tarthread->counter++) % 100)) {
 							tarthread->qunlock();
 							usleep(10);
 							tarthread->qlock();
-						}*/
+						}
 						#if TAR_PROF
 						unsigned long long __prof_end2 = rdtsc();
 						__prof_sum_1 += __prof_end2 - __prof_begin2;
@@ -1101,7 +1115,7 @@ void *TarQueue::tarthreadworker(void *arg) {
 			}
 		}
 		// quque is empty - sleep before next run
-		usleep(100000);
+		usleep(250000);
 	}
 	return NULL;
 }
@@ -1299,7 +1313,6 @@ TarQueue::~TarQueue() {
 	terminate = true;
 	for(int i = 0; i < maxthreads; i++) { 
 		pthread_join(tarthreads[i].thread, NULL);
-		pthread_mutex_destroy(&tarthreads[i].queuelock);
 	}
 
 	pthread_mutex_destroy(&mutexlock);
@@ -1331,11 +1344,10 @@ TarQueue::TarQueue() {
 		arg->i = i;
 		arg->tq = this;
 		tarthreads[i].cpuPeak = 0;
-
-		pthread_mutex_init(&tarthreads[i].queuelock, NULL);
+		tarthreads[i]._sync_lock = 0;
 		pthread_create(&tarthreads[i].thread, NULL, &TarQueue::tarthreadworker, arg);
-		
 		memset(this->tarthreads[i].threadPstatData, 0, sizeof(this->tarthreads[i].threadPstatData));
+		this->tarthreads[i].counter = 0;
 	}
 
 	// create tarthreads
