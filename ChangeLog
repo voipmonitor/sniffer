@@ -1,3 +1,8 @@
+10.1.24 27.01.2015
+==================
+- fix G729 audio decode for 10ms variant
+
+
 10.1.23 23.12.2014
 ==================
 - do not use more memory then set in packetbuffer_total_maxheap in case the sniffer is in receiver mode and remote sniffer reconnect to the receiver and sends all traffic in burst (receiver will slow down)
