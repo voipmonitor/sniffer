@@ -1139,6 +1139,7 @@ void *TarQueue::tarthreadworker(void *arg) {
 		// quque is empty - sleep before next run
 		usleep(250000);
 	}
+	tarthread->threadEnd = true;
 	return NULL;
 }
 
@@ -1221,7 +1222,8 @@ TarQueue::tarthreads_t::processData(data_t *data, bool isClosed, size_t lenForPr
 void
 TarQueue::cleanTars() {
 	// check if tar can be removed from map (check if there are still calls in memory) 
-	if((last_flushTars + 10) > glob_last_packet_time) {
+	if(!terminating &&
+	   (last_flushTars + 10) > glob_last_packet_time) {
 		// clean only each >10 seconds 
 		return;
 	}
@@ -1234,7 +1236,7 @@ TarQueue::cleanTars() {
 		// walk through all tars
 		Tar *tar = tars_it->second;
 		pthread_mutex_lock(&tartimemaplock);
-		unsigned int lpt = glob_last_packet_time;
+		unsigned int lpt = terminating ? time(NULL) : glob_last_packet_time;
 		// find the tar in tartimemap 
 		if((tartimemap.find(tar->created_at) == tartimemap.end()) and (lpt > (tar->created_at + TAR_MODULO_SECONDS + 10)) && // +10 seconds more in new period to be sure nothing is in buffers
 		   true/*tar->allPartsClosed()*/) {
@@ -1301,12 +1303,13 @@ TarQueue::flushQueue() {
 			queue[winner_qtype][winnertime].clear();
 			queue[winner_qtype].erase(winnertime);
 			unlock();
-			
-			vector<data_t>::iterator itv;
-			for(itv = winner.begin(); itv != winner.end(); itv++) {
-				unsigned int time = itv->buffer->getTime();
-				time -= time % TAR_MODULO_SECONDS;
-				this->write(winner_qtype, time, *itv);
+			if(!terminating) {
+				vector<data_t>::iterator itv;
+				for(itv = winner.begin(); itv != winner.end(); itv++) {
+					unsigned int time = itv->buffer->getTime();
+					time -= time % TAR_MODULO_SECONDS;
+					this->write(winner_qtype, time, *itv);
+				}
 			}
 			cleanTars();
 			continue;
@@ -1363,6 +1366,7 @@ TarQueue::TarQueue() {
 	last_flushTars = 0;
 	for(int i = 0; i < maxthreads; i++) {
 		tarthreads[i].tarQueue = this;
+		tarthreads[i].threadEnd = false;
 		tarthreadworker_arg *arg = new tarthreadworker_arg;
 		arg->i = i;
 		arg->tq = this;
@@ -1406,10 +1410,18 @@ double TarQueue::getCpuUsagePerc(int threadIndex, bool preparePstatData) {
 	return(-1);
 }
 
+bool TarQueue::allThreadsEnds() {
+	for(int i = 0; i < maxthreads; i++) {
+		if(!tarthreads[i].threadEnd) {
+			return(false);
+		}
+	}
+	return(true);
+}
 
 void *TarQueueThread(void *dummy) {
 	// run each second flushQueue
-	while(!terminating) {
+	while(!tarQueue->allThreadsEnds()) {
 		tarQueue->flushQueue();
 		sleep(1);
 	}      

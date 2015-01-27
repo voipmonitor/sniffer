@@ -332,6 +332,7 @@ public:
 		pthread_t thread;
 		int threadId;
 		int thread_id;
+		bool threadEnd;
 		pstat_data threadPstatData[2];
 		volatile int cpuPeak;
 		unsigned int counter;
@@ -390,7 +391,7 @@ public:
 	static void *tarthreadworker(void*);
 	void preparePstatData(int threadIndex);
 	double getCpuUsagePerc(int threadIndex, bool preparePstatData);
-
+	bool allThreadsEnds();
 
 private:
 	map<unsigned int, vector<data_t> > queue[4]; //queue for all, sip, rtp, graph
