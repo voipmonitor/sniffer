@@ -2,7 +2,6 @@
 #define TOOLS_DYNAMIC_BUFFER_H
 
 #include <list>
-#include <vector>
 #include <string.h>
 #include <string>
 #include <iostream>
@@ -345,7 +344,7 @@ public:
 	}
 private:
 	int time;
-	vector<sChunk> chunkBuffer;
+	list<sChunk> chunkBuffer;
 	volatile u_int32_t len;
 	u_int32_t chunk_fix_len;
 	volatile u_int32_t compress_orig_data_len;
