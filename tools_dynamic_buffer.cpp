@@ -855,8 +855,8 @@ void ChunkBuffer::chunkIterate(ChunkBuffer_baseIterate *chunkbufferIterateEv, bo
 			this->chunkIterateCompleteBufferInfo.init();
 		}
 		bool _break = false;
-		for(list<sChunk>::iterator it = chunkBuffer.begin(); counterIterator < sizeChunkBuffer && !_break; it++) {
-			++counterIterator;
+		for(list<sChunk>::iterator it = chunkBuffer.begin(); counterIterator < sizeChunkBuffer && !_break;) {
+			if(counterIterator++) ++it;
 			if(!it->chunk || counterIterator <= this->chunkIterateCompleteBufferInfo.chunkIndex) {
 				continue;
 			}
@@ -1011,8 +1011,8 @@ void ChunkBuffer::chunkIterate(ChunkBuffer_baseIterate *chunkbufferIterateEv, bo
 	} else {
 		u_int32_t pos = 0;
 		if(this->closed) {
-			for(list<sChunk>::iterator it = chunkBuffer.begin(); counterIterator < sizeChunkBuffer; it++) {
-				++counterIterator;
+			for(list<sChunk>::iterator it = chunkBuffer.begin(); counterIterator < sizeChunkBuffer;) {
+				if(counterIterator++) ++it;
 				if(it->chunk) {
 					chunkbufferIterateEv->chunkbuffer_iterate_ev(it->chunk, it->len, 0);
 					this->chunkIterateProceedLen += it->len;
@@ -1025,8 +1025,8 @@ void ChunkBuffer::chunkIterate(ChunkBuffer_baseIterate *chunkbufferIterateEv, bo
 			}
 			chunkbufferIterateEv->chunkbuffer_iterate_ev(NULL, 0, pos);
 		} else {
-			for(list<sChunk>::iterator it = chunkBuffer.begin(); counterIterator < sizeChunkBuffer; it++) {
-				++counterIterator;
+			for(list<sChunk>::iterator it = chunkBuffer.begin(); counterIterator < sizeChunkBuffer;) {
+				if(counterIterator++) ++it;
 				if(!it->chunk) {
 					continue;
 				}
@@ -1058,9 +1058,8 @@ u_int32_t ChunkBuffer::getChunkIterateSafeLimitLength(u_int32_t limitLength) {
 	size_t counterIterator = 0;
 	size_t sizeChunkBuffer = chunkBuffer.size();
 	if(this->compressStream) {
-		list<sChunk>::iterator it;
-		for(it = chunkBuffer.begin(); counterIterator < sizeChunkBuffer; it++) {
-			++counterIterator;
+		for(list<sChunk>::iterator it = chunkBuffer.begin(); counterIterator < sizeChunkBuffer;) {
+			if(counterIterator++) ++it;
 			if(!it->chunk) {
 				continue;
 			}
@@ -1080,9 +1079,8 @@ u_int32_t ChunkBuffer::getChunkIterateSafeLimitLength(u_int32_t limitLength) {
 		if(this->closed) {
 			return(limitLength - this->chunkIterateProceedLen);
 		} else {
-			list<sChunk>::iterator it;
-			for(it = chunkBuffer.begin(); counterIterator < sizeChunkBuffer; it++) {
-				++counterIterator;
+			for(list<sChunk>::iterator it = chunkBuffer.begin(); counterIterator < sizeChunkBuffer;) {
+				if(counterIterator++) ++it;
 				if(!it->chunk) {
 					continue;
 				}

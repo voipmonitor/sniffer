@@ -283,10 +283,10 @@ public:
 		time_t time;
 	};
 	
-	struct tarthreads_tq : public std::vector<data_t> {
+	struct tarthreads_tq : public std::list<data_t> {
 		size_t getLen(int forProceed = false) {
 			size_t size = 0;
-			std::vector<data_t>::iterator it = this->begin();
+			std::list<data_t>::iterator it = this->begin();
 			while(it != this->end()) {
 				if(it->buffer) {
 					size_t size_i = forProceed ? 
@@ -311,7 +311,7 @@ public:
 		}
 		unsigned int getLastAddTime() {
 			unsigned int lastAddTime = 0;
-			std::vector<data_t>::iterator it = this->begin();
+			std::list<data_t>::iterator it = this->begin();
 			while(it != this->end()) {
 				if(it->buffer) {
 					unsigned int addTime = it->buffer->getLastAddTime();

@@ -925,10 +925,8 @@ void *TarQueue::tarthreadworker(void *arg) {
 	while(1) {
 		while(1) {
 			bool doProcessData = false;
-			tarthread->qlock();
 			if(tarthread->queue.empty()) { 
 				if(this2->terminate) {
-					tarthread->qunlock();
 					return NULL;
 				}
 			} else {
@@ -938,7 +936,6 @@ void *TarQueue::tarthreadworker(void *arg) {
 					maxTar = tarthread->getTarWithMaxLen(false, false);
 				}
 				if(!maxTar) {
-					tarthread->qunlock();
 					break;
 				}
 				Tar *processTar = maxtar;
@@ -971,14 +968,16 @@ void *TarQueue::tarthreadworker(void *arg) {
 				for(size_t index_list_tars = 0; index_list_tars < length_list_tars; ++index_list_tars) {
 					Tar *processTar = listTars[index_list_tars];
 					bool doProcessDataTar = false;
+					size_t index_list = 0;
 					size_t length_list = tarthread->queue[processTar].size();
 					size_t count_empty = 0;
-					for(size_t index_list = 0; index_list < length_list; ++index_list) {
-						data_t data = tarthread->queue[processTar][index_list];
-						if(!data.buffer) {
+					for(std::list<data_t>::iterator it = tarthread->queue[processTar].begin(); index_list < length_list;) {
+						if(index_list++) ++it;
+						if(!it->buffer) {
 							++count_empty;
 							continue;
 						}
+						data_t data = *it;
 						/*
 						if(data.buffer->isDecompressError()) {
 							if(verbosity) {
@@ -1038,7 +1037,6 @@ void *TarQueue::tarthreadworker(void *arg) {
 						   lenForProceedSafe > TAR_CHUNK_KB * 1024) {
 							doProcessData = true;
 							doProcessDataTar = true;
-							tarthread->qunlock();
 							#if TAR_PROF
 							unsigned long long __prof_i21 = rdtsc();
 							#endif
@@ -1047,24 +1045,19 @@ void *TarQueue::tarthreadworker(void *arg) {
 							unsigned long long __prof_i22 = rdtsc();
 							__prof_sum_5 += __prof_i22 - __prof_i21;
 							#endif
-							tarthread->qlock();
 							if(isClosed && 
 							   (!lenForProceed || lenForProceed > lenForProceedSafe)) {
 								//tarthread->queue[processTar].erase(tarthread->queue[processTar].begin() + index_list);
 								//--length_list;
 								//--index_list;
 								data.buffer = NULL;
-								tarthread->queue[processTar][index_list].buffer = NULL;
+								it->buffer = NULL;
 								++count_empty;
 							}
 							#if TAR_PROF
 							unsigned long long __prof_i23 = rdtsc();
 							__prof_sum_6 += __prof_i23 - __prof_i22;
 							#endif
-						} else if(!((tarthread->counter++) % 100)) {
-							tarthread->qunlock();
-							usleep(10);
-							tarthread->qlock();
 						}
 						#if TAR_PROF
 						unsigned long long __prof_end2 = rdtsc();
@@ -1109,7 +1102,6 @@ void *TarQueue::tarthreadworker(void *arg) {
 				}
 				#endif
 			}
-			tarthread->qunlock();
 			if(!doProcessData) {
 				break;
 			}
