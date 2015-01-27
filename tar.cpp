@@ -901,7 +901,7 @@ TarQueue::write(int qtype, unsigned int time, data_t data) {
 	data.time = time;
 	tarthreads[tar->thread_id].qlock();
 //	printf("push id:%u\n", tar->thread_id);
-	tarthreads[tar->thread_id].queue[tar].push_back(data);
+	tarthreads[tar->thread_id].queue[tar_name.str()].push_back(data);
 	tarthreads[tar->thread_id].qunlock();
 	return 0;
 }
@@ -958,20 +958,22 @@ void *TarQueue::tarthreadworker(void *arg) {
 				__prof_processData_sum_5 = 0;
 				#endif
 				
-				vector<Tar*> listTars;
-				std::map<Tar*, tarthreads_tq>::iterator it = tarthread->queue.begin();
+				tarthread->qlock();
+				list<string> listTars;
+				std::map<string, tarthreads_tq>::iterator it = tarthread->queue.begin();
 				while(it != tarthread->queue.end()) {
 					listTars.push_back(it->first);
 					++it;
 				}
-				size_t length_list_tars = listTars.size();
-				for(size_t index_list_tars = 0; index_list_tars < length_list_tars; ++index_list_tars) {
-					Tar *processTar = listTars[index_list_tars];
+				tarthread->qunlock();
+				for(list<string>::iterator itTars = listTars.begin();  itTars != listTars.end(); itTars++) {
+					string processTarName = *itTars;
+					tarthreads_tq *processTarQueue = &tarthread->queue[*itTars];
 					bool doProcessDataTar = false;
 					size_t index_list = 0;
-					size_t length_list = tarthread->queue[processTar].size();
+					size_t length_list = processTarQueue->size();
 					size_t count_empty = 0;
-					for(std::list<data_t>::iterator it = tarthread->queue[processTar].begin(); index_list < length_list;) {
+					for(std::list<data_t>::iterator it = processTarQueue->begin(); index_list < length_list;) {
 						if(index_list++) ++it;
 						if(!it->buffer) {
 							++count_empty;
@@ -1067,31 +1069,46 @@ void *TarQueue::tarthreadworker(void *arg) {
 						__prof_sum_4 += __prof_end2 - __prof_i2;
 						#endif
 					}
+					bool eraseTarQueueItem = false;
 					//if(!tarthread->queue[processTar].size()) {
-					if(tarthread->queue[processTar].size() == count_empty) {
-						tarthread->queue.erase(processTar);
-					} else {
-						if(count_empty > tarthread->queue[processTar].size() / 5) {
+					if(processTarQueue->size() == count_empty) {
+						pthread_mutex_lock(&this2->tarslock);
+						if(this2->tars.find(processTarName) == this2->tars.end()) {
+							tarthread->queue.erase(processTarName);
+							eraseTarQueueItem = true;
+						}
+						pthread_mutex_unlock(&this2->tarslock);
+					}
+					if(!eraseTarQueueItem) {
+						if(count_empty > processTarQueue->size() / 5) {
 							tarthread->qlock();
-							for(std::list<data_t>::iterator it = tarthread->queue[processTar].begin(); it != tarthread->queue[processTar].end();) {
+							for(std::list<data_t>::iterator it = processTarQueue->begin(); it != processTarQueue->end();) {
 								if(!it->buffer) {
-									tarthread->queue[processTar].erase(it++);
+									processTarQueue->erase(it++);
 								} else {
 									it++;
 								}
 							}
 							tarthread->qunlock();
 						}
-					        if(!doProcessDataTar) {
-							unsigned int lastAddTime = tarthread->queue[processTar].getLastAddTime();
-							if(lastAddTime && lastAddTime < glob_last_packet_time - 30 &&
-							   processTar->flushLastAddTime < lastAddTime) {
-								if(sverb.tar) {
-									syslog(LOG_NOTICE, "force flush %s", processTar->pathname.c_str());
+					}
+					if(!doProcessDataTar) {
+						unsigned int lastAddTime = processTarQueue->getLastAddTime();
+						if(!lastAddTime || 
+						    lastAddTime < glob_last_packet_time - 30) {
+							pthread_mutex_lock(&this2->tarslock);
+							if(this2->tars.find(processTarName) != this2->tars.end()) {
+								Tar *processTar = this2->tars[processTarName];
+								if(!processTar->lastFlushTime ||
+								   processTar->lastFlushTime < glob_last_packet_time - 30) {
+									if(sverb.tar) {
+										syslog(LOG_NOTICE, "force flush %s", processTar->pathname.c_str());
+									}
+									processTar->flush();
+									processTar->lastFlushTime = glob_last_packet_time;
 								}
-								processTar->flush();
-								processTar->flushLastAddTime = lastAddTime;
 							}
+							pthread_mutex_unlock(&this2->tarslock);
 						}
 					}
 				}
@@ -1345,6 +1362,7 @@ TarQueue::TarQueue() {
 	pthread_mutex_init(&tarslock, NULL);
 	last_flushTars = 0;
 	for(int i = 0; i < maxthreads; i++) {
+		tarthreads[i].tarQueue = this;
 		tarthreadworker_arg *arg = new tarthreadworker_arg;
 		arg->i = i;
 		arg->tq = this;
