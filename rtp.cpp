@@ -747,7 +747,6 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 	}
 	
 	int curpayload = getPayload();
-//	printf("p[%d]\n", curpayload);
 
 	if((codec == -1 || (curpayload != prev_payload))) {
 		if(curpayload >= 96 && curpayload <= 127) {
@@ -833,7 +832,7 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 		lastcng = 1;
 		return;
 	}
-	if(curpayload == PAYLOAD_G729 and (payload_len <= (packetization == 10 ? 9 : 12) or payload_len == 22)) {
+	if(curpayload == PAYLOAD_G729 and (payload_len <= (packetization == 10 or packetization == 0 ? 9 : 12) or payload_len == 22)) {
 		last_seq = seq;
 		if(update_seq(seq)) {
 			update_stats();
@@ -1061,6 +1060,8 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 				// if G729 packet len is 20, packet len is 20ms. In other cases - will be added later (do not have 40ms packetizations samples right now)
 				if(payload_len == 20) {
 					packetization = 20;
+				} else if(payload_len == 10) {
+					packetization = 10;
 				} else {
 					packetization = (getTimestamp() - last_ts) / 8;
 				}
@@ -1068,7 +1069,6 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 				if(payload_len == 24) {
 					packetization = 30;
 				} else if(payload_len == 24*2) {
-					printf("pack:60\n");
 					packetization = 60;
 				} else if(payload_len == 24*3) {
 					packetization = 90;
@@ -1131,7 +1131,18 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 		/* for recording, we cannot loose any packet */
 		if(opt_saveRAW || opt_savewav_force || (owner->flags & FLAG_SAVEWAV) || (owner && (owner->audiobuffer1 || owner->audiobuffer2))) { // if recording requested 
 			if(packetization < 10) {
-				packetization = channel_record->packetization = default_packetization;
+				if(curpayload == PAYLOAD_G729) {
+					// if G729 packet len is 20, packet len is 20ms. In other cases - will be added later (do not have 40ms packetizations samples right now)
+					if(payload_len == 20) {
+						packetization = channel_record->packetization = 20;
+					} else if(payload_len == 10) {
+						packetization = channel_record->packetization = 10;
+					} else {
+						packetization = channel_record->packetization = default_packetization;
+					}
+				} else {
+					packetization = channel_record->packetization = default_packetization;
+				}
 			}
 			if(owner->flags & FLAG_RUNAMOSLQO or owner->flags & FLAG_RUNBMOSLQO) {
 				if(owner->connect_time) {
@@ -1148,6 +1159,8 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 				// if G729 packet len is 20, packet len is 20ms. In other cases - will be added later (do not have 40ms packetizations samples right now)
 				if(payload_len == 20) {
 					packetization = 20;
+				} else if(payload_len == 10) {
+					packetization = 10;
 				} else {
 					packetization = (getTimestamp() - last_ts) / 8;
 				}
@@ -1204,7 +1217,19 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 			if(opt_saveRAW || opt_savewav_force || (owner->flags & FLAG_SAVEWAV) ||
 				(owner && (owner->audiobuffer1 || owner->audiobuffer2))// if recording requested 
 			){
-				packetization = channel_record->packetization = default_packetization;
+				if(curpayload == PAYLOAD_G729) {
+					// if G729 packet len is 20, packet len is 20ms. In other cases - will be added later (do not have 40ms packetizations samples right now)
+					if(payload_len == 20) {
+						packetization = channel_record->packetization = 20;
+					} else if(payload_len == 10) {
+						packetization = channel_record->packetization = 10;
+					} else {
+						packetization = channel_record->packetization = default_packetization;
+					}
+				} else {
+					packetization = channel_record->packetization = default_packetization;
+				}
+
 				if(owner->flags & FLAG_RUNAMOSLQO or owner->flags & FLAG_RUNBMOSLQO) {
 					if(owner->connect_time) {
 						jitterbuffer(channel_record, 1);
@@ -1223,6 +1248,8 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 				// if G729 packet len is 20, packet len is 20ms. In other cases - will be added later (do not have 40ms packetizations samples right now)
 				if(payload_len == 20) {
 					curpacketization = 20;	
+				} else if(payload_len == 10) {
+					curpacketization = 10;	
 				} else {
 					curpacketization = (getTimestamp() - last_ts) / 8;
 				}
