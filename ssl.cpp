@@ -311,7 +311,7 @@ ssl_packet_from_server(SslDecryptSessionC *ssl, packet_info *pinfo)
 		ret = (ssl->srv_ptype == pinfo->ptype) && (ssl->srv_port == pinfo->srcport) && (ssl->srv_addr2 == pinfo->src2);
 	} else {
 		for(std::vector<ssl_keys_t*>::iterator it = ssl_keys.begin(); it != ssl_keys.end(); ++it) {
-			if(pinfo->srcport == (*it)->port && pinfo->src2 == (*it)->ip) {
+			if((unsigned int)pinfo->srcport == (unsigned int)(*it)->port && (unsigned int)pinfo->src2 == (unsigned int)(*it)->ip) {
 				ret = 1;
 				break;
 			}
@@ -1232,9 +1232,9 @@ ssl_dissect_hnd_cli_hello(char *data, unsigned int datalen,
 	 *
 	 */
 	guint16	 cipher_suite_length;
-	guint8	  compression_methods_length;
-	guint8	  compression_method;
-	guint16	 start_offset = offset;
+//	guint8	  compression_methods_length;
+//	guint8	  compression_method;
+//	guint16	 start_offset = offset;
 
 	/* show the client version */
 	offset += 2;
@@ -1268,6 +1268,7 @@ ssl_dissect_hnd_cli_hello(char *data, unsigned int datalen,
 			cipher_suite_length -= 2;
 		}
 	}
+#if 0
 	/* tell the user how many compression methods there are */
 	compression_methods_length = (guint8)*(data + offset);
 	offset += 1;
@@ -1283,6 +1284,7 @@ ssl_dissect_hnd_cli_hello(char *data, unsigned int datalen,
 		// no need to parse 
 		//ssl_dissect_hnd_hello_ext(data, datalen, offset, length - (offset - start_offset), TRUE, session, ssl);
 	}
+#endif
 }
 
 
@@ -3065,7 +3067,7 @@ decrypt_ssl(char *data, unsigned int datalen, unsigned int saddr, unsigned int d
 	 * frame, but not a single ssl record across multiple tcp
 	 * packets.
 	 */
-	int offset = 0;
+	unsigned int offset = 0;
 	while (offset < datalen) {
 		if(ssl_looks_like_sslv3(data, offset)) {
 			offset = dissect_ssl3_record(data, datalen, &pinfo, offset, session, is_from_server, ssl_session);
