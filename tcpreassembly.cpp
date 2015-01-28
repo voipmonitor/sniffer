@@ -2474,7 +2474,7 @@ void TcpReassembly::cleanup_simple(bool all) {
 		     << getTypeString(true) << ": "
 		     << this->links.size() << endl;
 	}
-	size_t counter;
+	size_t counter = 0;
 	u_int64_t time_correction = 0;
 	map<TcpReassemblyLink_id, TcpReassemblyLink*>::iterator iter;
 	for(iter = this->links.begin(); iter != this->links.end(); ) {
