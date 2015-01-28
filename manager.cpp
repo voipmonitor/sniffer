@@ -75,6 +75,7 @@ extern char ssh_password[256];
 extern char ssh_remote_listenhost[1024];
 extern unsigned int ssh_remote_listenport;
 extern int enable_bad_packet_order_warning;
+extern ip_port opt_pcap_queue_send_to_ip_port;
 
 using namespace std;
 
@@ -1327,6 +1328,11 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 		close(fd);
 		return 0;
 	} else if(strstr(buf, "file_exists") != NULL) {
+		if(opt_pcap_queue_send_to_ip_port) {
+			sendvm(client, sshchannel, "mirror", 6, 0);
+			return 0;
+		}
+	 
 		char filename[2048];
 		unsigned int size;
 		char outbuf[100];
