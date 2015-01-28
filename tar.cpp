@@ -580,10 +580,18 @@ Tar::flush() {
 #ifdef HAVE_LIBLZMA
 	if(this->lzmaStream) {
 		this->flushLzma();
+		lzma_end(this->lzmaStream);
+		delete this->lzmaStream;
+		this->lzmaStream = NULL;
+		this->initLzma();
 	}
 #endif
 	if(this->zipStream) {
 		this->flushZip();
+		deflateEnd(this->zipStream);
+		delete this->zipStream;
+		this->zipStream = NULL;
+		this->initZip();
 	}
 }
 
@@ -1100,7 +1108,9 @@ void *TarQueue::tarthreadworker(void *arg) {
 							pthread_mutex_lock(&this2->tarslock);
 							if(this2->tars.find(processTarName) != this2->tars.end()) {
 								Tar *processTar = this2->tars[processTarName];
-								if(processTar->lastFlushTime < processTar->lastWriteTime - 30) {
+								if(processTar->lastWriteTime &&
+								   processTar->lastWriteTime < glob_last_packet_time - 30 &&
+								   processTar->lastFlushTime < processTar->lastWriteTime - 30) {
 									if(sverb.tar) {
 										syslog(LOG_NOTICE, "force flush %s", processTar->pathname.c_str());
 									}
