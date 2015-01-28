@@ -1013,7 +1013,7 @@ double calculate_mos(double ppl, double burstr, int codec, unsigned int received
 	}
 }
 
-int convertALAW2WAV(char *fname1, char *fname3) {
+int convertALAW2WAV(char *fname1, char *fname3, int maxsamplerate) {
 	unsigned char *bitstream_buf1;
 	int16_t buf_out1;
 	unsigned char *p1;
@@ -1060,7 +1060,9 @@ int convertALAW2WAV(char *fname1, char *fname3) {
 	while(p1 < f1) {
 		buf_out1 = ALAW(*p1);
 		p1 += inFrameSize;
-		fwrite(&buf_out1, outFrameSize, 1, f_out);
+		for(int i = 0; i < maxsamplerate / 8000; i++) {
+			fwrite(&buf_out1, outFrameSize, 1, f_out);
+		}
 	}
  
 	// wav_update_header(f_out);
@@ -1073,7 +1075,7 @@ int convertALAW2WAV(char *fname1, char *fname3) {
 	return 0;
 }
  
-int convertULAW2WAV(char *fname1, char *fname3) {
+int convertULAW2WAV(char *fname1, char *fname3, int maxsamplerate) {
 	unsigned char *bitstream_buf1;
 	int16_t buf_out1;
 	unsigned char *p1;
@@ -1121,7 +1123,9 @@ int convertULAW2WAV(char *fname1, char *fname3) {
 	while(p1 < f1) {
 		buf_out1 = ULAW(*p1);
 		p1 += inFrameSize;
-		fwrite(&buf_out1, outFrameSize, 1, f_out);
+		for(int i = 0; i < maxsamplerate / 8000; i++) {
+			fwrite(&buf_out1, outFrameSize, 1, f_out);
+		}
 	}
  
 	// wav_update_header(f_out);
@@ -1337,6 +1341,20 @@ Call::convertRawToWav() {
 			syslog(LOG_ERR, "Cannot open %s\n", rawInfo);
 			return 1;
 		}
+		int maxsamplerate = 0;
+		// get max sample rate 
+		while(fgets(line, 256, pl)) {
+			char raw[1024];
+			line[strlen(line)] = '\0'; // remove '\n' which is last character
+			sscanf(line, "%d:%lu:%d:%ld:%ld", &ssrc_index, &rawiterator, &codec, &tv0.tv_sec, &tv0.tv_usec);
+			snprintf(raw, 1023, "%s/%s/%s.i%d.%d.%lu.%d.%ld.%ld.raw", dirname().c_str(), opt_newdir ? "AUDIO" : "", get_fbasename_safe(), i, ssrc_index, rawiterator, codec, tv0.tv_sec, tv0.tv_usec);
+			samplerate = 1000 * get_ticks_bycodec(codec);
+			if(maxsamplerate < samplerate) {
+				maxsamplerate = samplerate;
+			}
+		}
+		// rewind rawInfo file and process one by one
+		rewind(pl);
 		while(fgets(line, 256, pl)) {
 			char raw[1024];
 			line[strlen(line)] = '\0'; // remove '\n' which is last character
@@ -1346,12 +1364,12 @@ Call::convertRawToWav() {
 			switch(codec) {
 			case PAYLOAD_PCMA:
 				if(verbosity > 1) syslog(LOG_ERR, "Converting PCMA to WAV.\n");
-				convertALAW2WAV(raw, wav);
+				convertALAW2WAV(raw, wav, maxsamplerate);
 				samplerate = 8000;
 				break;
 			case PAYLOAD_PCMU:
 				if(verbosity > 1) syslog(LOG_ERR, "Converting PCMU to WAV.\n");
-				convertULAW2WAV(raw, wav);
+				convertULAW2WAV(raw, wav, maxsamplerate);
 				samplerate = 8000;
 				break;
 		/* following decoders are not included in free version. Please contact support@voipmonitor.org */
