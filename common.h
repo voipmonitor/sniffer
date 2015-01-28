@@ -25,5 +25,6 @@ struct sVerbose {
         int chunk_buffer;
         unsigned long int ssrc;
         int jitter;
+	int noaudiounlink;
 };      
 #endif

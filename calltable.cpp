@@ -1584,12 +1584,10 @@ Call::convertRawToWav() {
 			default:
 				syslog(LOG_ERR, "Call [%s] cannot be converted to WAV, unknown payloadtype [%d]\n", raw, codec);
 			}
-#if UNLINK_RAW
-			unlink(raw);
-#endif
+			if(!sverb.noaudiounlink) unlink(raw);
 		}
 		fclose(pl);
-		unlink(rawInfo);
+		if(!sverb.noaudiounlink) unlink(rawInfo);
 	}
 
 	if(opt_mos_lqo and adir == 1 and flags & FLAG_RUNAMOSLQO and (samplerate == 8000 or samplerate == 16000)) {
@@ -1617,8 +1615,8 @@ Call::convertRawToWav() {
 			}
 			break;
 		}
-		unlink(wav0);
-		unlink(wav1);
+		if(!sverb.noaudiounlink) unlink(wav0);
+		if(!sverb.noaudiounlink) unlink(wav1);
 	} else if(adir == 1) {
 		// there is only caller sound
 		switch(opt_audio_format) {
@@ -1629,7 +1627,7 @@ Call::convertRawToWav() {
 			ogg_mix(wav0, NULL, out, opt_saveaudio_stereo, samplerate, opt_saveaudio_oggquality, 0);
 			break;
 		}
-		unlink(wav0);
+		if(!sverb.noaudiounlink) unlink(wav0);
 	} else if(bdir == 1) {
 		// there is only called sound
 		switch(opt_audio_format) {
@@ -1640,7 +1638,7 @@ Call::convertRawToWav() {
 			ogg_mix(wav1, NULL, out, opt_saveaudio_stereo, samplerate, opt_saveaudio_oggquality, 1);
 			break;
 		}
-		unlink(wav1);
+		if(!sverb.noaudiounlink) unlink(wav1);
 	}
 	string tmp;
 	tmp.append(out);
