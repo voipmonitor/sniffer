@@ -125,6 +125,7 @@ int get_ticks_bycodec(int codec) {
 		return 32;
 		break;
 	case PAYLOAD_OPUS:
+	case PAYLOAD_OPUS8:
 		return 8;
 		break;
 	case PAYLOAD_OPUS12:

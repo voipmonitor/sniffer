@@ -3093,6 +3093,7 @@ int main(int argc, char *argv[]) {
 						else if(verbparams[i] == "jitter_na")				opt_jitterbuffer_adapt = 0;
 						else if(verbparams[i] == "jitter_nf1")				opt_jitterbuffer_f1 = 0;
 						else if(verbparams[i] == "jitter_nf2")				opt_jitterbuffer_f2 = 0;
+						else if(verbparams[i] == "noaudiounlink")				sverb.noaudiounlink = 1;
 
 					}
 				} }
