@@ -171,7 +171,7 @@ public:
 	void termCompress();
 	void termDecompress();
 	bool compress(char *data, u_int32_t len, bool flush, CompressStream_baseEv *baseEv);
-	bool decompress(char *data, u_int32_t len, u_int32_t decompress_len, bool flush, CompressStream_baseEv *baseEv);
+	bool decompress(char *data, u_int32_t len, u_int32_t decompress_len, bool flush, CompressStream_baseEv *baseEv, u_int32_t *use_len = NULL);
 	void setError(const char *errorString) {
 		if(errorString && *errorString) {
 			this->errorString = errorString;

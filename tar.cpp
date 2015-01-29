@@ -261,6 +261,7 @@ int
 Tar::tar_open(string pathname, int oflags, int mode, int options)
 {       
 	this->pathname = pathname;
+	this->open_flags = oflags;
 	if (tar_init(oflags, mode, options) == -1)
 		return -1;
 
@@ -335,19 +336,37 @@ Tar::tar_read(const char *filename, const char *endFilename) {
 	this->readData.null();
 	this->readData.filename = filename;
 	this->readData.endFilename = endFilename;
-	this->readData.init();
+	this->readData.init(T_BLOCKSIZE * 64);
 	CompressStream *compressStream = new CompressStream(reg_match(this->pathname.c_str(), "tar\\.gz") ?
 							     CompressStream::gzip :
 							    reg_match(this->pathname.c_str(), "tar\\.xz") ?
 							     CompressStream::lzma :
 							     CompressStream::compress_na,
-							    T_BLOCKSIZE, 0);
+							    this->readData.bufferBaseSize, 0);
 	size_t read_position = 0;
 	size_t read_size;
 	char *read_buffer = new char[T_BLOCKSIZE];
+	bool decompressFailed = false;
 	while(!this->readData.end && !this->readData.error && (read_size = read(tar.fd, read_buffer, T_BLOCKSIZE)) > 0) {
 		read_position += read_size;
-		compressStream->decompress(read_buffer, read_size, 0, false, this);
+		u_int32_t use_len = 0;
+		while(use_len < read_size) {
+			if(use_len) {
+				compressStream->termDecompress();
+			}
+			u_int32_t _use_len = 0;
+			if(!compressStream->decompress(read_buffer + use_len, read_size - use_len, 0, false, this, &_use_len)) {
+				decompressFailed = true;
+				break;
+			}
+			use_len += _use_len;
+			if(!use_len) {
+				break;
+			}
+		}
+		if(decompressFailed) {
+			break;
+		}
 	}
 	delete [] read_buffer;
 	delete compressStream;
@@ -366,27 +385,35 @@ Tar::tar_read_send_parameters(int client, void *sshchannel, bool zip) {
 
 bool 
 Tar::decompress_ev(char *data, u_int32_t len) {
-	if(len < T_BLOCKSIZE ||
-	   this->readData.bufferLength ||
-	   this->readData.position % T_BLOCKSIZE) {
+	if(len != T_BLOCKSIZE ||
+	   this->readData.bufferLength) {
 		memcpy(this->readData.buffer + this->readData.bufferLength, data, len);
 		this->readData.bufferLength += len;
 		if(this->readData.bufferLength >= T_BLOCKSIZE) {
-			this->tar_read_block_ev(this->readData.buffer, this->readData.bufferLength);
-			if(this->readData.bufferLength >= T_BLOCKSIZE) {
-				memcpy(this->readData.buffer, this->readData.buffer + T_BLOCKSIZE, this->readData.bufferLength - T_BLOCKSIZE);
+		 
+			for(unsigned int i = 0; i < this->readData.bufferLength / T_BLOCKSIZE; i++) {
+				this->tar_read_block_ev(this->readData.buffer + i * T_BLOCKSIZE);
+				this->readData.position += len;
 			}
-			this->readData.bufferLength -= T_BLOCKSIZE;
+			
+			if(this->readData.bufferLength % T_BLOCKSIZE) {
+				memcpy(this->readData.buffer, 
+				       this->readData.buffer + (this->readData.bufferLength - this->readData.bufferLength % T_BLOCKSIZE), 
+				       this->readData.bufferLength % T_BLOCKSIZE);
+				this->readData.bufferLength = this->readData.bufferLength % T_BLOCKSIZE;
+			} else {
+				this->readData.bufferLength = 0;
+			}
 		}
 	} else {
-		this->tar_read_block_ev(data, T_BLOCKSIZE);
+		this->tar_read_block_ev(data);
+		this->readData.position += T_BLOCKSIZE;
 	}
-	this->readData.position += len;
 	return(true);
 }
 
 void 
-Tar::tar_read_block_ev(char *data, u_int32_t len) {
+Tar::tar_read_block_ev(char *data) {
 	if(this->readData.position &&
 	   this->readData.fileSize < this->readData.fileHeader.get_size()) {
 		size_t len = this->readData.fileSize + T_BLOCKSIZE > this->readData.fileHeader.get_size() ? 
@@ -399,7 +426,13 @@ Tar::tar_read_block_ev(char *data, u_int32_t len) {
 			this->tar_read_file_ev(this->readData.fileHeader, NULL, this->readData.fileSize, 0);
 			this->readData.nullFileHeader();
 		}
-		memcpy(&this->readData.fileHeader, data, min(len, (u_int32_t)sizeof(this->readData.fileHeader)));
+		memcpy(&this->readData.fileHeader, data, min((u_int32_t)T_BLOCKSIZE, (u_int32_t)sizeof(this->readData.fileHeader)));
+		/*
+		cout << "tar_read_block_ev - header - file "
+		     << this->readData.fileHeader.name
+		     << " size "
+		     << this->readData.fileHeader.get_size() << endl;
+		*/
 		this->readData.fileSize = 0;
 	}
 }
@@ -645,28 +678,31 @@ Tar::tar_block_write(const char *buf, u_int32_t len){
 };
 
 void Tar::tar_close() {
-	char zeroblock[T_BLOCKSIZE];
-	memset(zeroblock, 0, T_BLOCKSIZE);
-	tar_block_write(zeroblock, T_BLOCKSIZE);
-	tar_block_write(zeroblock, T_BLOCKSIZE);
-	if(this->zipStream) {
-		flushZip();
-		deflateEnd(this->zipStream);
-		delete this->zipStream;
+	if(this->open_flags != O_RDONLY) {
+		char zeroblock[T_BLOCKSIZE];
+		memset(zeroblock, 0, T_BLOCKSIZE);
+		tar_block_write(zeroblock, T_BLOCKSIZE);
+		tar_block_write(zeroblock, T_BLOCKSIZE);
+		if(this->zipStream) {
+			flushZip();
+			deflateEnd(this->zipStream);
+			delete this->zipStream;
+		}
+	#ifdef HAVE_LIBLZMA
+		if(this->lzmaStream) {
+			flushLzma();
+			lzma_end(this->lzmaStream);
+			delete this->lzmaStream;
+			this->lzmaStream = NULL;
+		}
+	#endif
+		if(this->zipBuffer) {
+			delete [] this->zipBuffer;
+		}
+		addtofilesqueue();
+		if(sverb.tar) syslog(LOG_NOTICE, "tar %s destroyd (destructor)\n", pathname.c_str());
 	}
-#ifdef HAVE_LIBLZMA
-	if(this->lzmaStream) {
-		flushLzma();
-		lzma_end(this->lzmaStream);
-		delete this->lzmaStream;
-		this->lzmaStream = NULL;
-	}
-#endif
-	if(this->zipBuffer) {
-		delete [] this->zipBuffer;
-	}
-	addtofilesqueue();
-	if(sverb.tar) syslog(LOG_NOTICE, "tar %s destroyd (destructor)\n", pathname.c_str());
+	close(tar.fd);
 }
 
 void Tar::addtofilesqueue() {

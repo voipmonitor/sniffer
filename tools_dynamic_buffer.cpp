@@ -404,7 +404,7 @@ bool CompressStream::compress(char *data, u_int32_t len, bool flush, CompressStr
 	return(true);
 }
 
-bool CompressStream::decompress(char *data, u_int32_t len, u_int32_t decompress_len, bool flush, CompressStream_baseEv *baseEv) {
+bool CompressStream::decompress(char *data, u_int32_t len, u_int32_t decompress_len, bool flush, CompressStream_baseEv *baseEv, u_int32_t *use_len) {
 	if(sverb.chunk_buffer) {
 		cout << "decompress data " << len << " " << decompress_len << endl;
 		for(u_int32_t i = 0; i < min(len, (u_int32_t)max(sverb.chunk_buffer, 200)); i++) {
@@ -474,6 +474,9 @@ bool CompressStream::decompress(char *data, u_int32_t len, u_int32_t decompress_
 				return(false);
 			}
 		} while(this->zipStreamDecompress->avail_out == 0);
+		if(use_len) {
+			*use_len = len - this->zipStreamDecompress->avail_in;
+		}
 		break;
 	case lz4:
 		#ifdef HAVE_LIBLZ4
