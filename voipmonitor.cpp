@@ -2909,6 +2909,7 @@ int main(int argc, char *argv[]) {
 	    {"allsipports", 0, 0, 'y'},
 	    {"sipports", 1, 0, 'Y'},
 	    {"skinny", 0, 0, 200},
+	    {"mono", 0, 0, 201},
 /*
 	    {"maxpoolsize", 1, 0, NULL},
 	    {"maxpooldays", 1, 0, NULL},
@@ -2945,6 +2946,10 @@ int main(int argc, char *argv[]) {
 			*/
 			case 200:
 				opt_skinny = 1;
+				break;
+			case 201:
+				printf("test\n");
+				opt_saveaudio_stereo = 0;
 				break;
 			case 'x':
 				opt_ipaccount = 1;

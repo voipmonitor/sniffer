@@ -1620,9 +1620,9 @@ Call::convertRawToWav() {
 		switch(opt_audio_format) {
 		case FORMAT_WAV:
 			if(!opt_saveaudio_reversestereo) {
-				wav_mix(wav0, wav1, out, samplerate, 0);
+				wav_mix(wav0, wav1, out, samplerate, 0, opt_saveaudio_stereo);
 			} else {
-				wav_mix(wav1, wav0, out, samplerate, 0);
+				wav_mix(wav1, wav0, out, samplerate, 0, opt_saveaudio_stereo);
 			}
 			break;
 		case FORMAT_OGG:
@@ -1639,7 +1639,7 @@ Call::convertRawToWav() {
 		// there is only caller sound
 		switch(opt_audio_format) {
 		case FORMAT_WAV:
-			wav_mix(wav0, NULL, out, samplerate, 0);
+			wav_mix(wav0, NULL, out, samplerate, 0, opt_saveaudio_stereo);
 			break;
 		case FORMAT_OGG:
 			ogg_mix(wav0, NULL, out, opt_saveaudio_stereo, samplerate, opt_saveaudio_oggquality, 0);
@@ -1650,7 +1650,7 @@ Call::convertRawToWav() {
 		// there is only called sound
 		switch(opt_audio_format) {
 		case FORMAT_WAV:
-			wav_mix(wav1, NULL, out, samplerate, 1);
+			wav_mix(wav1, NULL, out, samplerate, 1, opt_saveaudio_stereo);
 			break;
 		case FORMAT_OGG:
 			ogg_mix(wav1, NULL, out, opt_saveaudio_stereo, samplerate, opt_saveaudio_oggquality, 1);
