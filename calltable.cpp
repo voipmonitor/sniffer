@@ -2056,10 +2056,13 @@ Call::saveToDb(bool enableBatchIfPossible) {
 				cdr.add(rtcp_avgjitter_mult10[i], c+"_rtcp_avgjitter_mult10");
 			}
 		}
-
 		if(seenudptl) {
-		//if(isfax) {
+			// T.38
 			cdr.add(1000, "payload");
+		} else if(isfax == 2) {
+			// T.30
+			cdr.add(1001, "payload");
+			printf("!!!!!!!!!!!!!!!!!!!!! isfax[%u]\n", isfax);
 		} else if(payload[0] >= 0 || payload[1] >= 0) {
 			cdr.add(payload[0] >= 0 ? payload[0] : payload[1], "payload");
 		}

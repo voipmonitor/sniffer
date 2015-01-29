@@ -78,6 +78,8 @@
 #include "rrd.h"
 #include "heap_safe.h"
 #include "tar.h"
+#include "codec_alaw.h"
+#include "codec_ulaw.h"
 
 #if defined(QUEUE_MUTEX) || defined(QUEUE_NONBLOCK)
 extern "C" {
@@ -181,6 +183,7 @@ int opt_saveRTP = 0;		// save RTP packets to pcap file?
 int opt_onlyRTPheader = 0;	// do not save RTP payload, only RTP header
 int opt_saveRTCP = 0;		// save RTCP packets to pcap file?
 int opt_saveudptl = 0;		// if = 1 all UDPTL packets will be saved (T.38 fax)
+int opt_faxt30detect = 0;	// if = 1 all sdp is activated (can take a lot of cpu)
 int opt_saveRAW = 0;		// save RTP packets to pcap file?
 int opt_saveWAV = 0;		// save RTP packets to pcap file?
 int opt_saveGRAPH = 0;		// save GRAPH data to *.graph file? 
@@ -2387,9 +2390,11 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "rtp_qring_quick", NULL))) {
 		rtp_qring_quick = strcmp(value, "boost") ? yesno(value) : 2;
 	}
-	
 	if((value = ini.GetValue("general", "udpfrag", NULL))) {
 		opt_udpfrag = yesno(value);
+	}
+	if((value = ini.GetValue("general", "faxdetect", NULL))) {
+		opt_faxt30detect = yesno(value);
 	}
 	
 	/*
@@ -2761,6 +2766,9 @@ PcapQueue_readFromInterface *pcapQueueI;
 PcapQueue_readFromFifo *pcapQueueQ;
 
 int main(int argc, char *argv[]) {
+
+	alaw_init();
+	ulaw_init();
  
 	for(int i = 0; i < argc; i++) {
 		extern unsigned int HeapSafeCheck;

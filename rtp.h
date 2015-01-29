@@ -9,6 +9,7 @@
 #include <fstream>
 #include <iostream>
 #include "tools.h"
+#include "dsp.h"
 
 //#include "jitterbuffer/asterisk/channel.h"
 #include "jitterbuffer/asterisk/abstract_jb.h"
@@ -247,6 +248,9 @@ public:
 		double prevjitter;
 		double avgdelay;
 	} source;
+
+	struct dsp *DSP;
+
 	source *s;
 
 	/**

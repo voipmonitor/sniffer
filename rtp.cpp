@@ -25,6 +25,11 @@ Each Call class contains two RTP classes.
 #include "calltable.h"
 #include "codecs.h"
 #include "sniff.h"
+#include "format_slinear.h"
+#include "codec_alaw.h"
+#include "codec_ulaw.h"
+#include "flags.h"
+
 #include "jitterbuffer/asterisk/channel.h"
 #include "jitterbuffer/asterisk/frame.h"
 #include "jitterbuffer/asterisk/abstract_jb.h"
@@ -289,6 +294,10 @@ RTP::~RTP() {
 
 	if(gfileRAW_buffer) {
 		free(gfileRAW_buffer);
+	}
+
+	if(DSP) {
+		dsp_free(DSP);
 	}
 }
 
@@ -1303,6 +1312,34 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 	prev_payload = curpayload;
 	prev_codec = codec;
 	prev_sid = sid;
+
+
+	// FAX T.30 detection if enabled
+	if(opt_faxt30detect and frame->frametype == AST_FRAME_VOICE and (codec == 0 or codec == 8)) {
+		int res;
+		if(!DSP) DSP = dsp_new();
+		char event_digit;
+		int event_len;
+		short int *sdata = (short int*)malloc(payload_len * 2);
+		char *payload = (char*)data + sizeof(RTPFixedHeader);
+		if(codec == 0) {
+			for(unsigned int i = 0; i < payload_len; i++) {
+				sdata[i] = ULAW((unsigned char)payload[i]);
+			}
+		} else if(codec == 8) {
+			for(unsigned int i = 0; i < payload_len; i++) {
+				sdata[i] = ALAW((unsigned char)payload[i]);
+			}
+		}
+		res = dsp_process(DSP, sdata, payload_len, &event_digit, &event_len);
+		if(res) {
+			if(owner and (event_digit == 'f' or event_digit == 'e')) {
+				//printf("dsp_process: digit[%c] len[%u]\n", event_digit, event_len);
+				owner->isfax = 2;
+				owner->flags1 |= T30FAX;
+			}
+		}
+	}
 
 	if(getMarker()) {
 		// if RTP packet is Marked, we have to reset last_ts to 0 so in next cycle it will count packetization from ground
