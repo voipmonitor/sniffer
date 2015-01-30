@@ -1138,9 +1138,12 @@ void *TarQueue::tarthreadworker(void *arg) {
 						}
 					}
 					if(!doProcessDataTar) {
-						tarthread->qlock();
-						unsigned int lastAddTime = processTarQueue->getLastAddTime();
-						tarthread->qunlock();
+						unsigned int lastAddTime = 0;
+						if(!eraseTarQueueItem) {
+							tarthread->qlock();
+							lastAddTime = processTarQueue->getLastAddTime();
+							tarthread->qunlock();
+						}
 						if(!lastAddTime || 
 						    lastAddTime < glob_last_packet_time - 30) {
 							pthread_mutex_lock(&this2->tarslock);

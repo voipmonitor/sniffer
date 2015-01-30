@@ -50,6 +50,7 @@ int dtmfdebug = 0;
 
 extern unsigned int graph_delimiter;
 extern unsigned int graph_mark;
+extern int opt_faxt30detect;
 
 using namespace std;
 
@@ -171,6 +172,7 @@ int get_ticks_bycodec(int codec) {
 /* constructor */
 RTP::RTP(int sensor_id) 
  : graph(this) {
+	DSP = NULL;
 	samplerate = 8000;
 	first = true;
 	first_packet_time = 0;
