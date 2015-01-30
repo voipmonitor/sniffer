@@ -1692,6 +1692,7 @@ void *manager_read_thread(void * arg) {
 	int size;
 	unsigned int    client;
 	client = *(unsigned int *)arg;
+	delete (unsigned int*)arg;
 
 	//cout << "New manager connect from: " << inet_ntoa((in_addr)clientInfo.sin_addr) << endl;
 	if ((size = recv(client, buf, BUFSIZE - 1, 0)) == -1) {
@@ -1734,6 +1735,7 @@ void *manager_read_thread(void * arg) {
 	} else {
 		close(client);
 	}
+
 	return 0;
 }
 
@@ -1890,7 +1892,6 @@ tryagain:
 		cerr << "Cannot create manager queue" << endl;
 		return 0;
 	}
-	unsigned int ids;
 	pthread_t threads;
 	pthread_attr_t attr;
 	fd_set rfds;
@@ -1916,12 +1917,13 @@ tryagain:
 			}
 
 			pthread_attr_init(&attr);
-			ids = client;
+			unsigned int *_ids = new unsigned int;
+			*_ids = client;
 			int rslt = pthread_create (		/* Create a child thread        */
 				       &threads,		/* Thread ID (system assigned)  */    
 				       &attr,			/* Default thread attributes    */
 				       manager_read_thread,	/* Thread routine               */
-				       &ids);			/* Arguments to be passed       */
+				       _ids);			/* Arguments to be passed       */
 			pthread_detach(threads);
 			pthread_attr_destroy(&attr);
 			if(rslt != 0) {
