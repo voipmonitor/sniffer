@@ -172,6 +172,7 @@ int get_ticks_bycodec(int codec) {
 /* constructor */
 RTP::RTP(int sensor_id) 
  : graph(this) {
+	DSP = NULL;
 	samplerate = 8000;
 	first = true;
 	first_packet_time = 0;
