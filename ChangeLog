@@ -1,4 +1,9 @@
-10.1.25 27.01.2015
+10.1.26 30.01.2015
+==================
+- if RTP changes destination port but SSRC is the same create new RTP so the GUI can see that the change happened [VS-168]
+
+
+10.1.25 30.01.2015
 ==================
 - fix TCP manager racecondition when quick connections are made which leads to communication errors (and lags in the GUI when loading charts) 
 
