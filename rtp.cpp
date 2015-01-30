@@ -965,9 +965,6 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 					prevrtp->data = data; 
 					prevrtp->len = len;
 					prevrtp->header = header;
-					prevrtp->saddr = saddr;
-					prevrtp->daddr = daddr;
-					prevrtp->dport = dport;
 					prevrtp->codec = prevrtp->prev_codec;
 					if(owner->flags & FLAG_RUNAMOSLQO or owner->flags & FLAG_RUNBMOSLQO) {
 						// MOS LQO is calculated only if the call is connected 

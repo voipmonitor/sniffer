@@ -724,6 +724,8 @@ Call::read_rtp(unsigned char* data, int datalen, int dataoffset, struct pcap_pkt
 #if RTP_BY_SRC_IP
 		   && rtp[i]->saddr == saddr
 #endif
+		   && rtp[i]->dport == dport
+
 		   ) {
 			// found 
 			if(opt_dscp) {
