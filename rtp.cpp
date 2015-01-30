@@ -50,6 +50,7 @@ int dtmfdebug = 0;
 
 extern unsigned int graph_delimiter;
 extern unsigned int graph_mark;
+extern int opt_faxt30detect;
 
 using namespace std;
 
