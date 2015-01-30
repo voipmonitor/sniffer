@@ -689,9 +689,11 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 	this->daddr =  daddr;
 	this->dport = dport;
 	this->ignore = 0;
+
+	if(sverb.ssrc and getSSRC() != sverb.ssrc) return;
 	
 	if(sverb.read_rtp) {
-		cout << "RTP - read: " 
+		cout << "RTP(" << hex << long(this) << ")" 
 		     << "ssrc:" << hex << this->ssrc << dec << " "
 		     << "seq:" << getSeqNum() << " "
 		     << "saddr/sport:" << inet_ntostring(htonl(saddr)) << " / " << sport << " "
@@ -719,8 +721,6 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 	unsigned int payload_len = get_payload_len();
 
 	Call *owner = (Call*)call_owner;
-
-	if(sverb.ssrc and getSSRC() != sverb.ssrc) return;
 
 	if(getVersion() != 2) {
 		return;
@@ -979,9 +979,6 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 					prevrtp->data = data; 
 					prevrtp->len = len;
 					prevrtp->header = header;
-					prevrtp->saddr = saddr;
-					prevrtp->daddr = daddr;
-					prevrtp->dport = dport;
 					prevrtp->codec = prevrtp->prev_codec;
 					if(owner->flags & FLAG_RUNAMOSLQO or owner->flags & FLAG_RUNBMOSLQO) {
 						// MOS LQO is calculated only if the call is connected 

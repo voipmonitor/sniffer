@@ -733,6 +733,7 @@ Call::read_rtp(unsigned char* data, int datalen, int dataoffset, struct pcap_pkt
 #if RTP_BY_SRC_IP
 		   && rtp[i]->saddr == saddr
 #endif
+		   && rtp[i]->dport == dport
 		   ) {
 			// found 
 			if(opt_dscp) {
@@ -2062,7 +2063,6 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		} else if(isfax == 2) {
 			// T.30
 			cdr.add(1001, "payload");
-			printf("!!!!!!!!!!!!!!!!!!!!! isfax[%u]\n", isfax);
 		} else if(payload[0] >= 0 || payload[1] >= 0) {
 			cdr.add(payload[0] >= 0 ? payload[0] : payload[1], "payload");
 		}

@@ -45,7 +45,7 @@
 #define ASSERT(a) assert(a)
 #endif
 
-static int debug = 0;
+static int debug = 1;
 
 /*! \brief private fixed_jb structure */
 struct fixed_jb
