@@ -75,17 +75,6 @@ extern int terminating;
 extern TarQueue *tarQueue;
 extern volatile unsigned int glob_last_packet_time;
 
-#ifdef FREEBSD
-#include "ansidecl.h"
-#include <stddef.h>
-extern PTR memcpy (PTR, const PTR, size_t);
-PTR
-mempcpy (PTR dst, const PTR src, size_t len)
-{
-       return (char *) memcpy (dst, src, len) + len;
-}
-#endif
-
 map<void*, unsigned int> okTarPointers;
 volatile int _sync_okTarPointers;
 inline void lock_okTarPointers() { while(__sync_lock_test_and_set(&_sync_okTarPointers, 1)); }
