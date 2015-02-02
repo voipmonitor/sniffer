@@ -127,7 +127,7 @@ public:
 	int th_write();
 	int tar_append_buffer(ChunkBuffer *buffer, size_t lenForProceed = 0);
 	virtual void chunkbuffer_iterate_ev(char *data, u_int32_t len, u_int32_t pos);
-	void tar_read(const char *filename, const char *endFilename = NULL, u_int32_t recordId = 0, const char *tableType = NULL);
+	void tar_read(const char *filename, const char *endFilename = NULL, u_int32_t recordId = 0, const char *tableType = NULL, const char *tarPosString = NULL);
 	void tar_read_send_parameters(int client, void *sshchannel, bool zip);
 	void tar_read_save_parameters(FILE *output_file_handle);
 	virtual bool decompress_ev(char *data, u_int32_t len);
@@ -210,8 +210,6 @@ private:
 			error = false;
 			filename = "";
 			endFilename = "";
-			recordId = 0;
-			tableType = "";
 			position = 0;
 			buffer = NULL;
 			bufferBaseSize = T_BLOCKSIZE;
@@ -244,8 +242,6 @@ private:
 		bool error;
 		string filename;
 		string endFilename;
-		u_int32_t recordId;
-		string tableType;
 		size_t position;
 		char *buffer;
 		size_t bufferBaseSize;
