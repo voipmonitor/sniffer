@@ -59,7 +59,9 @@ extern int opt_pcap_dump_asyncwrite;
 extern FileZipHandler::eTypeCompress opt_pcap_dump_zip_sip;
 extern FileZipHandler::eTypeCompress opt_pcap_dump_zip_rtp;
 extern FileZipHandler::eTypeCompress opt_pcap_dump_zip_graph;
-extern int opt_pcap_dump_ziplevel;
+extern int opt_pcap_dump_ziplevel_sip;
+extern int opt_pcap_dump_ziplevel_rtp;
+extern int opt_pcap_dump_ziplevel_graph;
 extern int opt_read_from_file;
 extern int opt_pcap_dump_tar;
 extern char opt_chdir[1024];
@@ -2299,7 +2301,9 @@ void FileZipHandler::initCompress() {
 	if(this->typeCompress == gzip && 
 	   !this->compressStream) {
 		this->compressStream =  new CompressStream(CompressStream::gzip, 8 * 1024, 0);
-		this->compressStream->setZipLevel(opt_pcap_dump_ziplevel);
+		this->compressStream->setZipLevel(typeFile == pcap_sip ? opt_pcap_dump_ziplevel_sip : 
+						  typeFile == pcap_rtp ? opt_pcap_dump_ziplevel_rtp : 
+						  typeFile == graph_rtp ? opt_pcap_dump_ziplevel_graph : Z_DEFAULT_COMPRESSION);
 	}
 }
 

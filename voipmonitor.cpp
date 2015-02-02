@@ -324,9 +324,11 @@ int opt_last_rtp_from_end = 1;
 int opt_pcap_dump_bufflength = 8194;
 int opt_pcap_dump_asyncwrite = 1;
 int opt_pcap_dump_asyncwrite_limit_new_thread = 80;
-FileZipHandler::eTypeCompress opt_pcap_dump_zip_sip = FileZipHandler::gzip;
+FileZipHandler::eTypeCompress opt_pcap_dump_zip_sip = FileZipHandler::compress_na;
 FileZipHandler::eTypeCompress opt_pcap_dump_zip_rtp = FileZipHandler::gzip;
-int opt_pcap_dump_ziplevel = Z_DEFAULT_COMPRESSION;
+int opt_pcap_dump_ziplevel_sip = Z_DEFAULT_COMPRESSION;
+int opt_pcap_dump_ziplevel_rtp = 1;
+int opt_pcap_dump_ziplevel_graph = 1;
 int opt_pcap_dump_writethreads = 1;
 int opt_pcap_dump_writethreads_max = 32;
 int opt_pcap_dump_asyncwrite_maxsize = 100; //MB
@@ -335,7 +337,7 @@ int opt_pcap_dump_tar_threads = 4;
 int opt_pcap_dump_tar_compress_sip = 1; //0 off, 1 gzip, 2 lzma
 int opt_pcap_dump_tar_sip_level = 6;
 int opt_pcap_dump_tar_sip_use_pos = 0;
-int opt_pcap_dump_tar_compress_rtp = 1;
+int opt_pcap_dump_tar_compress_rtp = 0;
 int opt_pcap_dump_tar_rtp_level = 1;
 int opt_pcap_dump_tar_rtp_use_pos = 0;
 int opt_pcap_dump_tar_compress_graph = 1;
@@ -343,7 +345,7 @@ int opt_pcap_dump_tar_graph_level = 1;
 int opt_pcap_dump_tar_graph_use_pos = 0;
 CompressStream::eTypeCompress opt_pcap_dump_tar_internalcompress_sip = CompressStream::compress_na;
 CompressStream::eTypeCompress opt_pcap_dump_tar_internalcompress_rtp = CompressStream::compress_na;
-CompressStream::eTypeCompress opt_pcap_dump_tar_internalcompress_graph = CompressStream::compress_na;
+CompressStream::eTypeCompress opt_pcap_dump_tar_internalcompress_graph = CompressStream::snappy;
 int opt_pcap_dump_tar_internal_gzip_sip_level = Z_DEFAULT_COMPRESSION;
 int opt_pcap_dump_tar_internal_gzip_rtp_level = Z_DEFAULT_COMPRESSION;
 int opt_pcap_dump_tar_internal_gzip_graph_level = Z_DEFAULT_COMPRESSION;
@@ -2243,7 +2245,18 @@ int eval_config(string inistr) {
 		opt_gzipGRAPH = !strcmp(value, "zip") || yesno(value) ? FileZipHandler::gzip : FileZipHandler::compress_na;
 	}
 	if((value = ini.GetValue("general", "pcap_dump_ziplevel", NULL))) {
-		opt_pcap_dump_ziplevel = atoi(value);
+		opt_pcap_dump_ziplevel_sip = 
+		opt_pcap_dump_ziplevel_rtp = 
+		opt_pcap_dump_ziplevel_graph = atoi(value);
+	}
+	if((value = ini.GetValue("general", "pcap_dump_ziplevel_sip", NULL))) {
+		opt_pcap_dump_ziplevel_sip = atoi(value);
+	}
+	if((value = ini.GetValue("general", "pcap_dump_ziplevel_rtp", NULL))) {
+		opt_pcap_dump_ziplevel_rtp = atoi(value);
+	}
+	if((value = ini.GetValue("general", "pcap_dump_ziplevel_graph", NULL))) {
+		opt_pcap_dump_ziplevel_graph = atoi(value);
 	}
 	if((value = ini.GetValue("general", "pcap_dump_writethreads", NULL))) {
 		opt_pcap_dump_writethreads = atoi(value);
