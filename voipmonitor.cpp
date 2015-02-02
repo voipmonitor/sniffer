@@ -623,6 +623,9 @@ extern pthread_mutex_t tartimemaplock;
 
 TarQueue *tarQueue = NULL;
 
+pthread_mutex_t pcap_stat_lock;
+int pcap_stat_force_terminating;
+
 
 #include <stdio.h>
 #include <pthread.h>
@@ -917,6 +920,7 @@ void *moving_cache( void *dummy ) {
 }
 
 /* cycle calls_queue and save it to MySQL */
+int storing_cdr_force_terminating = 0;
 void *storing_cdr( void *dummy ) {
 	Call *call;
 	time_t createPartitionAt = 0;
@@ -924,7 +928,7 @@ void *storing_cdr( void *dummy ) {
 	time_t createPartitionIpaccAt = 0;
 	time_t createPartitionBillingAgregationAt = 0;
 	time_t checkDiskFreeAt = 0;
-	while(1) {
+	while(!storing_cdr_force_terminating) {
 		if(!opt_nocdr and opt_cdr_partition and !opt_disable_partition_operations and isSqlDriver("mysql")) {
 			time_t actTime = time(NULL);
 			if(actTime - createPartitionAt > 12 * 3600) {
@@ -983,65 +987,78 @@ void *storing_cdr( void *dummy ) {
 			#endif
 			syslog(LOG_NOTICE, outStr.str().c_str());
 		}
-		while (1) {
+		
+		if(request_iptelnum_reload == 1) { reload_capture_rules(); request_iptelnum_reload = 0;};
 
-			if(request_iptelnum_reload == 1) { reload_capture_rules(); request_iptelnum_reload = 0;};
-
+		for(int pass  = 0; pass < 10; pass++) {
+		
 			calltable->lock_calls_queue();
-			if(calltable->calls_queue.size() == 0) {
+			size_t calls_queue_size = calltable->calls_queue.size();
+			size_t calls_queue_position = 0;
+			
+			while(calls_queue_position < calls_queue_size && !storing_cdr_force_terminating) {
+
+				call = calltable->calls_queue[calls_queue_position];
+				if(!call) {
+					calltable->calls_queue.pop_front();
+					--calls_queue_size;
+					continue;
+				}
+				
 				calltable->unlock_calls_queue();
+				
+				// Close SIP and SIP+RTP dump files ASAP to save file handles
+				call->getPcap()->close();
+				call->getPcapSip()->close();
+				
+				if(call->isReadyForWriteCdr()) {
+				
+					call->closeRawFiles();
+					if( (opt_savewav_force || (call->flags & FLAG_SAVEWAV)) && (call->type == INVITE || call->type == SKINNY_NEW) &&
+					    call->getAllReceivedRtpPackets()) {
+						if(verbosity > 0) printf("converting RAW file to WAV Queue[%d]\n", (int)calltable->calls_queue.size());
+						call->convertRawToWav();
+					}
+
+					regfailedcache->prunecheck(call->first_packet_time);
+					if(!opt_nocdr) {
+						if(call->type == INVITE or call->type == SKINNY_NEW) {
+							call->saveToDb(1);
+						} else if(call->type == REGISTER){
+							call->saveRegisterToDb();
+						} else if(call->type == MESSAGE){
+							call->saveMessageToDb();
+						}
+					}
+
+					/* if we delete call here directly, destructors and another cleaning functions can be
+					 * called in the middle of working with call or another structures inside main thread
+					 * so put it in deletequeue and delete it in the main thread. Another way can be locking
+					 * call structure for every case in main thread but it can slow down thinks for each 
+					 * processing packet.
+					*/
+					calltable->lock_calls_queue();
+					calltable->calls_queue[calls_queue_position] = NULL;
+					calltable->lock_calls_deletequeue();
+					calltable->calls_deletequeue.push_back(call);
+					calltable->unlock_calls_deletequeue();
+					storingCdrLastWriteAt = getActDateTimeF();
+				} else {
+					calltable->lock_calls_queue();
+				}
+				
+				++calls_queue_position;
+				
+			}
+			
+			calltable->unlock_calls_queue();
+
+			if(terminating || storing_cdr_force_terminating) {
 				break;
 			}
-			call = calltable->calls_queue.front();
-			
-			// Close SIP and SIP+RTP dump files ASAP to save file handles
-			call->getPcap()->close();
-			call->getPcapSip()->close();
-			
-			if(!call->isReadyForWriteCdr()) {
-				calltable->unlock_calls_queue();
-				usleep(100000);
-				continue;
-			}
-			
-			calltable->calls_queue.pop_front();
-			calltable->unlock_calls_queue();
-	
-			call->closeRawFiles();
-			if( (opt_savewav_force || (call->flags & FLAG_SAVEWAV)) && (call->type == INVITE || call->type == SKINNY_NEW) &&
-			    call->getAllReceivedRtpPackets()) {
-				if(verbosity > 0) printf("converting RAW file to WAV Queue[%d]\n", (int)calltable->calls_queue.size());
-				call->convertRawToWav();
-			}
-
-			regfailedcache->prunecheck(call->first_packet_time);
-			if(!opt_nocdr) {
-				if(call->type == INVITE or call->type == SKINNY_NEW) {
-					call->saveToDb(1);
-				} else if(call->type == REGISTER){
-					call->saveRegisterToDb();
-				} else if(call->type == MESSAGE){
-					call->saveMessageToDb();
-				}
-			}
-
-			/* if we delete call here directly, destructors and another cleaning functions can be
-			 * called in the middle of working with call or another structures inside main thread
-			 * so put it in deletequeue and delete it in the main thread. Another way can be locking
-			 * call structure for every case in main thread but it can slow down thinks for each 
-			 * processing packet.
-			*/
-			calltable->lock_calls_deletequeue();
-			calltable->calls_deletequeue.push_back(call);
-			calltable->unlock_calls_deletequeue();
-			storingCdrLastWriteAt = getActDateTimeF();
+		
+			usleep(100000);
 		}
-
-		if(terminating) {
-			break;
-		}
-	
-		sleep(1);
 	}
 	return NULL;
 }
@@ -2517,6 +2534,7 @@ void set_context_config() {
 	if(opt_read_from_file) {
 		opt_enable_preprocess_packet = 0;
 		opt_enable_process_rtp_packet = 0;
+		opt_pcap_dump_tar = 0;
 	}
 	
 	if(opt_pcap_dump_tar) {
@@ -3246,6 +3264,9 @@ int main(int argc, char *argv[]) {
 				break;
 		}
 	}
+	
+	set_context_config();
+	
 	if(opt_ipaccount) {
 		initIpacc();
 	}
@@ -4538,6 +4559,7 @@ int main(int argc, char *argv[]) {
 	if(!(opt_pcap_threaded && opt_pcap_queue && 
 	     !opt_pcap_queue_receive_from_ip_port &&
 	     opt_pcap_queue_send_to_ip_port)) {
+		storing_cdr_force_terminating = 1;
 		pthread_join(call_thread, NULL);
 	}
 	while(calltable->calls_queue.size() != 0) {
