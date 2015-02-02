@@ -996,7 +996,7 @@ void *storing_cdr( void *dummy ) {
 			size_t calls_queue_size = calltable->calls_queue.size();
 			size_t calls_queue_position = 0;
 			
-			while(calls_queue_position < calls_queue_size && !storing_cdr_force_terminating) {
+			while(calls_queue_position < calls_queue_size && storing_cdr_force_terminating <= 1) {
 
 				call = calltable->calls_queue[calls_queue_position];
 				if(!call) {
@@ -2535,6 +2535,7 @@ void set_context_config() {
 		opt_enable_preprocess_packet = 0;
 		opt_enable_process_rtp_packet = 0;
 		opt_pcap_dump_tar = 0;
+		opt_pcap_dump_asyncwrite = 0;
 	}
 	
 	if(opt_pcap_dump_tar) {
