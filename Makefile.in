@@ -39,8 +39,8 @@ objects = $(shell ls -1 *.cpp | sed 's/\.cpp/.o/' | tr "\n" " ") $(shell ls -1 j
 JSONLIB = $(shell pkg-config --libs @LIBJSON_NAME@)
 JSONCFLAGS = $(shell pkg-config --cflags @LIBJSON_NAME@)
 
-MYSQLLIB = $(shell PATH=$$PATH:/usr/local/mysql/bin/ mysql_config --libs)
-MYSQLINC = $(shell PATH=$$PATH:/usr/local/mysql/bin/ mysql_config --include)
+MYSQLLIB=@MYSQLLIB@
+MYSQLINC=@MYSQLINCLUDE@
 
 GLIBCFLAGS =$(shell pkg-config --cflags glib-2.0)
 GLIBLIB =$(shell pkg-config --libs glib-2.0)
