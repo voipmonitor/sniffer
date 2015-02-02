@@ -1019,7 +1019,7 @@ void PcapDumper::dump(pcap_pkthdr* header, const u_char *packet, int dlt) {
 
 void PcapDumper::close(bool updateFilesQueue) {
 	if(this->handle) {
-		if(this->_asyncwrite == 0) {
+		if((this->_asyncwrite < 0 ? opt_pcap_dump_asyncwrite : this->_asyncwrite) == 0) {
 			__pcap_dump_close(this->handle);
 			this->handle = NULL;
 			this->state = state_close;

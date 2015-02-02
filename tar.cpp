@@ -322,7 +322,7 @@ Tar::chunkbuffer_iterate_ev(char *data, u_int32_t len, u_int32_t pos) {
 }
 
 void
-Tar::tar_read(const char *filename, const char *endFilename, u_int32_t recordId, const char *tableType) {
+Tar::tar_read(const char *filename, const char *endFilename, u_int32_t recordId, const char *tableType, const char *tarPosString) {
 	if(!reg_match(this->pathname.c_str(), "tar\\.gz") &&
 	   !reg_match(this->pathname.c_str(), "tar\\.xz")) {
 		this->readData.send_parameters_zip = false;
@@ -330,8 +330,6 @@ Tar::tar_read(const char *filename, const char *endFilename, u_int32_t recordId,
 	this->readData.null();
 	this->readData.filename = filename;
 	this->readData.endFilename = endFilename;
-	this->readData.recordId = recordId;
-	this->readData.tableType = tableType;
 	this->readData.init(T_BLOCKSIZE * 64);
 	CompressStream *decompressStream = new CompressStream(reg_match(this->pathname.c_str(), "tar\\.gz") ?
 							       CompressStream::gzip :
@@ -344,25 +342,32 @@ Tar::tar_read(const char *filename, const char *endFilename, u_int32_t recordId,
 	char *read_buffer = new char[T_BLOCKSIZE];
 	bool decompressFailed = false;
 	list<u_int64_t> tarPos;
-	if(recordId && tableType && !strcmp(tableType, "cdr")) {
-		SqlDb *sqlDb = createSqlObject();
-		SqlDb_row row;
-		char queryBuff[1000];
-		sprintf(queryBuff, "SELECT calldate FROM cdr where id = %u", recordId);
-		sqlDb->query(queryBuff);
-		if(row = sqlDb->fetchRow()) {
-			sprintf(queryBuff, 
-				"SELECT pos FROM cdr_tar_part where cdr_id = %u and calldate = '%s' and type = %i", 
-				recordId, row["calldate"].c_str(),
-				strstr(this->pathname.c_str(), "/SIP/") ? 1 :
-				strstr(this->pathname.c_str(), "/RTP/") ? 2 :
-				strstr(this->pathname.c_str(), "/GRAPH/") ? 3 : 0);
+	if(tarPosString) {
+		vector<string> tarPosStr = split(tarPosString, ",");
+		for(size_t i = 0; i < tarPosStr.size(); i++) {
+			tarPos.push_back(atoll(tarPosStr[i].c_str()));
+		}
+	} else {
+		if(recordId && tableType && !strcmp(tableType, "cdr")) {
+			SqlDb *sqlDb = createSqlObject();
+			SqlDb_row row;
+			char queryBuff[1000];
+			sprintf(queryBuff, "SELECT calldate FROM cdr where id = %u", recordId);
 			sqlDb->query(queryBuff);
-			while(row = sqlDb->fetchRow()) {
-			 
-				cout << "*" << atoll(row["pos"].c_str()) << endl;
-				
-				tarPos.push_back(atoll(row["pos"].c_str()));
+			if(row = sqlDb->fetchRow()) {
+				sprintf(queryBuff, 
+					"SELECT pos FROM cdr_tar_part where cdr_id = %u and calldate = '%s' and type = %i", 
+					recordId, row["calldate"].c_str(),
+					strstr(this->pathname.c_str(), "/SIP/") ? 1 :
+					strstr(this->pathname.c_str(), "/RTP/") ? 2 :
+					strstr(this->pathname.c_str(), "/GRAPH/") ? 3 : 0);
+				sqlDb->query(queryBuff);
+				while(row = sqlDb->fetchRow()) {
+				 
+					cout << "*" << atoll(row["pos"].c_str()) << endl;
+					
+					tarPos.push_back(atoll(row["pos"].c_str()));
+				}
 			}
 		}
 	}
@@ -1554,18 +1559,16 @@ int untar_gui(const char *args) {
 	char tarFile[1024] = "";
 	char destFile[1024] = "";
 	char outputFile[1024] = "";
-	unsigned long idRec = 0;
-	char typeTable[20] = "";
+	char tarPos[100 * 1024];
 	
-	if(sscanf(args, "%s %s %lu %s %s", tarFile, destFile, &idRec, typeTable, outputFile) != 5) {
+	if(sscanf(args, "%s %s %s %s", tarFile, destFile, tarPos, outputFile) != 4) {
 		cerr << "untar: bad arguments" << endl;
 		return(1);
 	}
 	
 	cout << tarFile << endl;
 	cout << destFile << endl;
-	cout << idRec << endl;
-	cout << typeTable << endl;
+	cout << tarPos << endl;
 	cout << outputFile << endl;
 	
 	Tar tar;
@@ -1579,7 +1582,7 @@ int untar_gui(const char *args) {
 		return(1);
 	}
 	tar.tar_read_save_parameters(outputFileHandle);
-	tar.tar_read((string(destFile) + ".*").c_str(), destFile, idRec, typeTable);
+	tar.tar_read((string(destFile) + ".*").c_str(), destFile, 0, NULL, tarPos);
 	fclose(outputFileHandle);
 	
 	return(0);
