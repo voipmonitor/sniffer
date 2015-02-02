@@ -36,21 +36,22 @@ objects = $(shell ls -1 *.cpp | sed 's/\.cpp/.o/' | tr "\n" " ") $(shell ls -1 j
 
 #headers = $(shell ls -1 *.h | tr "\n" " ") $(shell ls -1 jitterbuffer/*.h | tr "\n" " ") $(shell ls -1 jitterbuffer/asterisk/*.h | tr "\n" " ")
 
-JSONLIB = $(shell pkg-config --libs json)
-JSONCFLAGS = $(shell pkg-config --cflags json)
+JSONLIB = $(shell pkg-config --libs @LIBJSON_NAME@)
+JSONCFLAGS = $(shell pkg-config --cflags @LIBJSON_NAME@)
 
-MYSQLLIB = $(shell PATH=$$PATH:/usr/local/mysql/bin/ mysql_config --libs)
-MYSQLINC = $(shell PATH=$$PATH:/usr/local/mysql/bin/ mysql_config --include)
+MYSQLLIB=@MYSQLLIB@
+MYSQLINC=@MYSQLINCLUDE@
 
 GLIBCFLAGS =$(shell pkg-config --cflags glib-2.0)
 GLIBLIB =$(shell pkg-config --libs glib-2.0)
 
+LIBLD=@LIBLD@
 LIBLZMA=@LIBLZMA@
 LIBSSH=@LIBSSH@
 LIBGNUTLS=@LIBGNUTLS@
 LIBGNUTLSSTATIC=@LIBGNUTLSSTATIC@ 
-SHARED_LIBS = -ldl -lpthread -lpcap -lz -lvorbis -lvorbisenc -logg -lodbc ${MYSQLLIB} -lrt -lsnappy -lcurl -lssl -lcrypto ${JSONLIB} ${LIBSSH} -lxml2 -lrrd ${LIBGNUTLS} @LIBTCMALLOC@ ${GLIBLIB} ${LIBLZMA}
-STATIC_LIBS = -static @LIBTCMALLOC@ -lodbc -lltdl -ldl -lrt -lz ${LIBSSH} -lcrypt -lm -lcurl -lssl -lcrypto -static-libstdc++ -static-libgcc -lpcap -lpthread ${MYSQLLIB} -lpthread -lz -lc -lvorbis -lvorbisenc -logg -lrt -lsnappy ${JSONLIB} -lrrd -lxml2 ${GLIBLIB} -lz -ldbi -llzma ${LIBGNUTLSSTATIC} 
+SHARED_LIBS = ${LIBLD} -lpthread -lpcap -lz -lvorbis -lvorbisenc -logg -lodbc ${MYSQLLIB} -lrt -lsnappy -lcurl -lssl -lcrypto ${JSONLIB} ${LIBSSH} -lxml2 -lrrd ${LIBGNUTLS} @LIBTCMALLOC@ ${GLIBLIB} ${LIBLZMA}
+STATIC_LIBS = -static @LIBTCMALLOC@ -lodbc -lltdl ${LIBLD} -lrt -lz ${LIBSSH} -lcrypt -lm -lcurl -lssl -lcrypto -static-libstdc++ -static-libgcc -lpcap -lpthread ${MYSQLLIB} -lpthread -lz -lc -lvorbis -lvorbisenc -logg -lrt -lsnappy ${JSONLIB} -lrrd -lxml2 ${GLIBLIB} -lz -ldbi -llzma ${LIBGNUTLSSTATIC} 
 INCLUDES =  -I/usr/local/include ${MYSQLINC} -I jitterbuffer/ ${JSONCFLAGS} ${GLIBCFLAGS}
 LIBS_PATH = -L/usr/local/lib/ 
 CXXFLAGS +=  -Wall -fPIC -g3 -O2 -march=$(GCCARCH) -mtune=${GCCARCH} ${INCLUDES}
@@ -58,12 +59,13 @@ CFLAGS += ${CXXFLAGS}
 LIBS = ${SHARED_LIBS} 
 LIBS2 = @LIBS2@
 
-
+shared: LDFLAGS += -Wl,--allow-multiple-definition
 shared: cleantest $(objects) 
-	${CXX} $(objects) ${CXXFLAGS} -o voipmonitor ${LIBS} ${LIBS_PATH}
+	${CXX} $(objects) ${LDFLAGS} -o voipmonitor ${LIBS} ${LIBS_PATH}
 
+static: LDFLAGS += -Wl,--allow-multiple-definition
 static: cleantest $(objects) 
-	${CXX} $(objects) ${CXXFLAGS} -o voipmonitor ${STATIC_LIBS} ${LIBS_PATH} -Wl,--allow-multiple-definition
+	${CXX} $(objects) ${LDFLAGS} -o voipmonitor ${STATIC_LIBS} ${LIBS_PATH}
 
 core2: cleantest static
 

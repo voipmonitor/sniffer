@@ -592,6 +592,12 @@ LIBGNUTLSSTATIC
 LIBGNUTLS
 LIBSSH
 LIBLZMA
+MYSQLINCLUDE
+MYSQLLIB
+MYSQLCXXFLAGS
+MYSQLCFLAGS
+LIBJSON_NAME
+LIBLD
 SET_MAKE
 INSTALL_DATA
 INSTALL_SCRIPT
@@ -647,6 +653,7 @@ SHELL'
 ac_subst_files=''
 ac_user_opts='
 enable_option_checking
+with_mysql
 '
       ac_precious_vars='build_alias
 host_alias
@@ -1263,6 +1270,11 @@ if test -n "$ac_init_help"; then
      short | recursive ) echo "Configuration of voipmonitor VERSION:";;
    esac
   cat <<\_ACEOF
+
+Optional Packages:
+  --with-PACKAGE[=ARG]    use PACKAGE [ARG=yes]
+  --without-PACKAGE       do not use PACKAGE (same as --with-PACKAGE=no)
+  --with-mysql=PATH path to mysql_config binary or mysql prefix dir
 
 Some influential environment variables:
   CXX         C++ compiler command
@@ -3033,8 +3045,8 @@ $as_echo "no" >&6; }
 fi
 
 
-LD_LIBRARY_PATH="$LD_LIBRARY_PATH:/usr/local/lib:/usr/local/mysql/lib"
-LDFLAGS="$LDFLAGS -L/usr/local/mysql/lib -L/usr/local/lib -L/usr/lib64/mysql/ -L/usr/lib/mysql/"
+LD_LIBRARY_PATH="$LD_LIBRARY_PATH:/usr/local/lib"
+LDFLAGS="$LDFLAGS -L/usr/local/lib"
 
 # Checks for libraries.
 # FIXME: Replace `main' with a function in `-lc':
@@ -3150,12 +3162,11 @@ fi
 { $as_echo "$as_me:${as_lineno-$LINENO}: result: $ac_cv_lib_dl_main" >&5
 $as_echo "$ac_cv_lib_dl_main" >&6; }
 if test "x$ac_cv_lib_dl_main" = xyes; then :
-  cat >>confdefs.h <<_ACEOF
-#define HAVE_LIBDL 1
-_ACEOF
+  LIBLD="-ldl"
 
-  LIBS="-ldl $LIBS"
-
+else
+  { $as_echo "$as_me:${as_lineno-$LINENO}: Unable to find libdl. Safe to ignore on FreeBSD as the functionality is provided by libc." >&5
+$as_echo "$as_me: Unable to find libdl. Safe to ignore on FreeBSD as the functionality is provided by libc." >&6;}
 fi
 
 # FIXME: Replace `main' with a function in `-lltdl':
@@ -3687,16 +3698,49 @@ fi
 { $as_echo "$as_me:${as_lineno-$LINENO}: result: $ac_cv_lib_json_main" >&5
 $as_echo "$ac_cv_lib_json_main" >&6; }
 if test "x$ac_cv_lib_json_main" = xyes; then :
-  cat >>confdefs.h <<_ACEOF
-#define HAVE_LIBJSON 1
-_ACEOF
-
-  LIBS="-ljson $LIBS"
-
-else
-  as_fn_error $? "Unable to find json-c library. apt-get install libjson0-dev | yum install json-c-devel (RPM from EPEL) | or compile from source: git clone https://github.com/json-c/json-c.git; cd json-c; sh autogen.sh; ./configure; make; make install;ldconfig" "$LINENO" 5
+  LIBJSON_NAME='json'
 fi
 
+{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for main in -ljson-c" >&5
+$as_echo_n "checking for main in -ljson-c... " >&6; }
+if ${ac_cv_lib_json_c_main+:} false; then :
+  $as_echo_n "(cached) " >&6
+else
+  ac_check_lib_save_LIBS=$LIBS
+LIBS="-ljson-c  $LIBS"
+cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+
+
+int
+main ()
+{
+return main ();
+  ;
+  return 0;
+}
+_ACEOF
+if ac_fn_c_try_link "$LINENO"; then :
+  ac_cv_lib_json_c_main=yes
+else
+  ac_cv_lib_json_c_main=no
+fi
+rm -f core conftest.err conftest.$ac_objext \
+    conftest$ac_exeext conftest.$ac_ext
+LIBS=$ac_check_lib_save_LIBS
+fi
+{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $ac_cv_lib_json_c_main" >&5
+$as_echo "$ac_cv_lib_json_c_main" >&6; }
+if test "x$ac_cv_lib_json_c_main" = xyes; then :
+  LIBJSON_NAME='json-c'
+fi
+
+if test "x$LIBJSON_NAME" = "x"; then
+	as_fn_error $? "Unable to find json(-c) library. apt-get install libjson0-dev | yum install json-c-devel (RPM from EPEL) | pkg install json-c | or compile from source: git clone https://github.com/json-c/json-c.git; cd json-c; sh autogen.sh; ./configure; make; make install;ldconfig" "$LINENO" 5
+else
+	LIBJSON_NAME="$LIBJSON_NAME"
+
+fi
 { $as_echo "$as_me:${as_lineno-$LINENO}: checking for main in -lrrd" >&5
 $as_echo_n "checking for main in -lrrd... " >&6; }
 if ${ac_cv_lib_rrd_main+:} false; then :
@@ -3820,45 +3864,53 @@ else
   as_fn_error $? "Unable to find xml2 library. apt-get install libxml2-dev | yum install libxml2-devel" "$LINENO" 5
 fi
 
-{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for main in -lmysqlclient" >&5
-$as_echo_n "checking for main in -lmysqlclient... " >&6; }
-if ${ac_cv_lib_mysqlclient_main+:} false; then :
-  $as_echo_n "(cached) " >&6
-else
-  ac_check_lib_save_LIBS=$LIBS
-LIBS="-lmysqlclient  $LIBS"
-cat confdefs.h - <<_ACEOF >conftest.$ac_ext
-/* end confdefs.h.  */
 
+# Check for MySQL libraries (or MariaDB)
+{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for mysql_config executable" >&5
+$as_echo_n "checking for mysql_config executable... " >&6; }
 
-int
-main ()
-{
-return main ();
-  ;
-  return 0;
-}
-_ACEOF
-if ac_fn_c_try_link "$LINENO"; then :
-  ac_cv_lib_mysqlclient_main=yes
+# Check whether --with-mysql was given.
+if test "${with_mysql+set}" = set; then :
+  withval=$with_mysql;
+	if test -x $withval -a -f $withval
+	then
+		MYSQL_CONFIG=$withval
+	elif test -x $withval/bin/mysql_config -a -f $withval/bin/mysql_config
+    then
+		MYSQL_CONFIG=$withval/bin/mysql_config
+    fi
+
 else
-  ac_cv_lib_mysqlclient_main=no
+
+	if test -x /usr/local/mysql/bin/mysql_config -a -f /usr/local/mysql/bin/mysql_config
+	then
+		MYSQL_CONFIG=/usr/local/mysql/bin/mysql_config
+	elif test -x /usr/bin/mysql_config -a -f /usr/bin/mysql_config
+	then
+		MYSQL_CONFIG=/usr/bin/mysql_config
+	elif test -x /usr/local/bin/mysql_config -a -f /usr/local/bin/mysql_config
+	then
+		MYSQL_CONFIG=/usr/local/bin/mysql_config
+	fi
+
 fi
-rm -f core conftest.err conftest.$ac_objext \
-    conftest$ac_exeext conftest.$ac_ext
-LIBS=$ac_check_lib_save_LIBS
-fi
-{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $ac_cv_lib_mysqlclient_main" >&5
-$as_echo "$ac_cv_lib_mysqlclient_main" >&6; }
-if test "x$ac_cv_lib_mysqlclient_main" = xyes; then :
-  cat >>confdefs.h <<_ACEOF
-#define HAVE_LIBMYSQLCLIENT 1
-_ACEOF
 
-  LIBS="-lmysqlclient $LIBS"
-
+if test "x$MYSQL_CONFIG" = "x"
+then
+    { $as_echo "$as_me:${as_lineno-$LINENO}: result: not found" >&5
+$as_echo "not found" >&6; }
+    exit 3
 else
-  as_fn_error $? "Unable to find libmysqlclient. apt-get install libmysqlclient-dev | yum install mysql-devel" "$LINENO" 5
+    MYSQLCFLAGS=`$MYSQL_CONFIG --cflags`
+
+    MYSQLCXXFLAGS=`$MYSQL_CONFIG --cxxflags`
+
+    MYSQLLIB=`$MYSQL_CONFIG --libs`
+
+    MYSQLINCLUDE=`$MYSQL_CONFIG --include`
+
+    { $as_echo "$as_me:${as_lineno-$LINENO}: result: $MYSQL_CONFIG" >&5
+$as_echo "$MYSQL_CONFIG" >&6; }
 fi
 
 { $as_echo "$as_me:${as_lineno-$LINENO}: checking for main in -lz" >&5
