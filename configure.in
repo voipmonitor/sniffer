@@ -46,8 +46,8 @@ AC_CHECK_LIB([vorbisenc], [main], ,AC_MSG_ERROR([Unable to find VORBISENC librar
 AC_CHECK_LIB([snappy], [main], ,AC_MSG_ERROR([Unable to find snappy library. apt-get install libsnappy-dev | or compile from source: https://snappy.googlecode.com/files/snappy-1.1.0.tar.gz]))
 AC_CHECK_LIB([curl], [main], , AC_MSG_ERROR([Unable to find curl library. apt-get libcurl4-openssl-dev | yum curl-devel]))
 AC_CHECK_LIB([ssh], [ssh_forward_accept], HAVE_LIBSSH=1, AC_MSG_NOTICE([Your libssh is old or missing - cloud feature is disabled. apt-get install libssh-dev | yum install libssh-devel | or compile from source https://red.libssh.org/projects/libssh/files]))
-AC_CHECK_LIB([json], [main], LIBJSON_NAME='json', AC_MSG_NOTICE([Unable to find json library - then you must use json-c]))
-AC_CHECK_LIB([json-c], [main], LIBJSON_NAME='json-c', AC_MSG_NOTICE([Unable to find json-c library - this is a problem if json was not found]))
+AC_CHECK_LIB([json], [main], LIBJSON_NAME='json')
+AC_CHECK_LIB([json-c], [main], LIBJSON_NAME='json-c')
 if test "x$LIBJSON_NAME" = "x"; then
 	AC_MSG_ERROR([Unable to find json(-c) library. apt-get install libjson0-dev | yum install json-c-devel (RPM from EPEL) | pkg install json-c | or compile from source: git clone https://github.com/json-c/json-c.git; cd json-c; sh autogen.sh; ./configure; make; make install;ldconfig])
 else
@@ -86,10 +86,13 @@ then
 else
     AC_SUBST([MYSQLCFLAGS],[`$MYSQL_CONFIG --cflags`])
     AC_SUBST([MYSQLCXXFLAGS],[`$MYSQL_CONFIG --cxxflags`])
-    AC_SUBST([MYSQLLIB],[`$MYSQL_CONFIG --libs`])
+    MYSQLLDFLAGS=`$MYSQL_CONFIG --libs`
+    LDFLAGS="$LDFLAGS $MYSQLLDFLAGS"
+    AC_SUBST([MYSQLLIB],[$MYSQLLDFLAGS])
     AC_SUBST([MYSQLINCLUDE],[`$MYSQL_CONFIG --include`])
     AC_MSG_RESULT($MYSQL_CONFIG)
 fi
+AC_CHECK_LIB([mysqlclient], [main], , AC_MSG_ERROR([Unable to find libmysqlclient. apt-get install libmysqlclient-dev | yum install mysql-devel | pkg install mysql56-client]))
 
 AC_CHECK_LIB([z], [main], , AC_MSG_ERROR([Unable to find libz. apt-get install zlib1g-dev | yum install zlib-devel]))
 AC_CHECK_LIB([lzma], [main], HAVE_LIBLZMA=1, AC_MSG_NOTICE([Unable to find lzma. apt-get install liblzma-dev | yum install lzma-devel]))
