@@ -74,16 +74,6 @@ extern int terminating;
 extern TarQueue *tarQueue;
 extern volatile unsigned int glob_last_packet_time;
 
-#ifdef FREEBSD
-#include "ansidecl.h"
-#include <stddef.h>
-extern PTR memcpy (PTR, const PTR, size_t);
-PTR
-mempcpy (PTR dst, const PTR src, size_t len)
-{
-       return (char *) memcpy (dst, src, len) + len;
-}
-#endif
 
 map<void*, unsigned int> okTarPointers;
 volatile int _sync_okTarPointers;
@@ -166,14 +156,6 @@ Tar::th_set_device(dev_t device)
 void
 Tar::th_set_user(uid_t uid)
 {
-	/*  slow function getpwuid - disabled
-	struct passwd *pw;
-
-	pw = getpwuid(uid);
-	if (pw != NULL)
-		*((char *)mempcpy(tar.th_buf.uname, pw->pw_name, sizeof(tar.th_buf.uname))) = '\0';
-	*/
-
 	int_to_oct(uid, tar.th_buf.uid, 8);
 }
 
@@ -182,15 +164,6 @@ Tar::th_set_user(uid_t uid)
 void
 Tar::th_set_group(gid_t gid)
 {
-
-/*
-	struct group *gr;
-
-	gr = getgrgid(gid);
-	if (gr != NULL)
-		*((char *)mempcpy(tar.th_buf.gname, gr->gr_name, sizeof(tar.th_buf.gname))) = '\0';
-*/
-
 	int_to_oct(gid, tar.th_buf.gid, 8);
 }
 
