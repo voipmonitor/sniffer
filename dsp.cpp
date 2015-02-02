@@ -603,7 +603,7 @@ static int tone_detect(struct dsp *dsp, tone_detect_state_t *s, int16_t *amp, in
 		tone_energy *= 2.0;
 		s->energy *= s->block_size;
 
-		if(dspdebug) syslog(10, "tone %d, Ew=%.2E, Et=%.2E, s/n=%10.2f\n", s->freq, tone_energy, s->energy, tone_energy / (s->energy - tone_energy));
+		//if(dspdebug) syslog(10, "tone %d, Ew=%.2E, Et=%.2E, s/n=%10.2f\n", s->freq, tone_energy, s->energy, tone_energy / (s->energy - tone_energy));
 		hit = 0;
 		if (tone_energy > s->energy * s->threshold) {
 			if(dspdebug) syslog(10, "Hit! count=%d\n", s->hit_count);
@@ -1507,8 +1507,9 @@ int dsp_process(struct dsp *dsp, short *shortdata, int len, char *event_digit, i
 				}
 			}
 
-			if (event) {
-				return event;
+			if (event == AST_FRAME_DTMF_END) {
+				if(dspdebug) syslog(LOG_DEBUG, "[%p] event[%u] digit[%c] len[%u]\n", dsp, event, *event_digit, *event_len);
+				return 5;
 			}
 		}
 	}

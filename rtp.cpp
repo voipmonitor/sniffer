@@ -51,6 +51,8 @@ int dtmfdebug = 0;
 extern unsigned int graph_delimiter;
 extern unsigned int graph_mark;
 extern int opt_faxt30detect;
+extern int opt_inbanddtmf;
+
 
 using namespace std;
 
@@ -1341,11 +1343,13 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 		}
 		res = dsp_process(DSP, sdata, payload_len, &event_digit, &event_len);
 		free(sdata);
-		if(res) {
-			if(owner and (event_digit == 'f' or event_digit == 'e')) {
+		if(res && owner) {
+			if(opt_faxt30detect and (event_digit == 'f' or event_digit == 'e')) {
 				//printf("dsp_process: digit[%c] len[%u]\n", event_digit, event_len);
 				owner->isfax = 2;
 				owner->flags1 |= T30FAX;
+			} else if(opt_inbanddtmf and res == 5) {
+				owner->handle_dtmf(event_digit, ts2double(header->ts.tv_sec, header->ts.tv_usec), saddr, daddr);
 			}
 		}
 	}

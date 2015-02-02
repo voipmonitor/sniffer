@@ -190,6 +190,7 @@ int opt_saveGRAPH = 0;		// save GRAPH data to *.graph file?
 FileZipHandler::eTypeCompress opt_gzipGRAPH = FileZipHandler::compress_na;	// compress GRAPH data ? 
 int opt_saverfc2833 = 0;
 int opt_dbdtmf = 0;
+int opt_inbanddtmf = 0;
 int opt_rtcp = 1;		// pair RTP+1 port to RTCP and save it. 
 int opt_nocdr = 0;		// do not save cdr?
 int opt_only_cdr_next = 0;
@@ -1562,6 +1563,12 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "dtmf2db", NULL))) {
 		opt_dbdtmf = yesno(value);
 	}
+	if((value = ini.GetValue("general", "inbanddtmf", NULL))) {
+		opt_inbanddtmf = yesno(value);
+	}
+	if((value = ini.GetValue("general", "dtmf2db", NULL))) {
+		opt_dbdtmf = yesno(value);
+	}
 	if((value = ini.GetValue("general", "saveudptl", NULL))) {
 		opt_saveudptl = yesno(value);
 	}
@@ -2805,6 +2812,7 @@ int main(int argc, char *argv[]) {
 
 	alaw_init();
 	ulaw_init();
+	dsp_init();
  
 	for(int i = 0; i < argc; i++) {
 		extern unsigned int HeapSafeCheck;
