@@ -324,7 +324,8 @@ int opt_last_rtp_from_end = 1;
 int opt_pcap_dump_bufflength = 8194;
 int opt_pcap_dump_asyncwrite = 1;
 int opt_pcap_dump_asyncwrite_limit_new_thread = 80;
-FileZipHandler::eTypeCompress opt_pcap_dump_zip = FileZipHandler::gzip;
+FileZipHandler::eTypeCompress opt_pcap_dump_zip_sip = FileZipHandler::gzip;
+FileZipHandler::eTypeCompress opt_pcap_dump_zip_rtp = FileZipHandler::gzip;
 int opt_pcap_dump_ziplevel = Z_DEFAULT_COMPRESSION;
 int opt_pcap_dump_writethreads = 1;
 int opt_pcap_dump_writethreads_max = 32;
@@ -333,10 +334,13 @@ int opt_pcap_dump_tar = 1;
 int opt_pcap_dump_tar_threads = 4;
 int opt_pcap_dump_tar_compress_sip = 1; //0 off, 1 gzip, 2 lzma
 int opt_pcap_dump_tar_sip_level = 6;
+int opt_pcap_dump_tar_sip_use_pos = 0;
 int opt_pcap_dump_tar_compress_rtp = 1;
 int opt_pcap_dump_tar_rtp_level = 1;
+int opt_pcap_dump_tar_rtp_use_pos = 0;
 int opt_pcap_dump_tar_compress_graph = 1;
 int opt_pcap_dump_tar_graph_level = 1;
+int opt_pcap_dump_tar_graph_use_pos = 0;
 CompressStream::eTypeCompress opt_pcap_dump_tar_internalcompress_sip = CompressStream::compress_na;
 CompressStream::eTypeCompress opt_pcap_dump_tar_internalcompress_rtp = CompressStream::compress_na;
 CompressStream::eTypeCompress opt_pcap_dump_tar_internalcompress_graph = CompressStream::compress_na;
@@ -989,6 +993,17 @@ void *storing_cdr( void *dummy ) {
 				break;
 			}
 			call = calltable->calls_queue.front();
+			
+			// Close SIP and SIP+RTP dump files ASAP to save file handles
+			call->getPcap()->close();
+			call->getPcapSip()->close();
+			
+			if(!call->isReadyForWriteCdr()) {
+				calltable->unlock_calls_queue();
+				usleep(100000);
+				continue;
+			}
+			
 			calltable->calls_queue.pop_front();
 			calltable->unlock_calls_queue();
 	
@@ -1009,9 +1024,6 @@ void *storing_cdr( void *dummy ) {
 					call->saveMessageToDb();
 				}
 			}
-			// Close SIP and SIP+RTP dump files ASAP to save file handles
-			call->getPcap()->close();
-			call->getPcapSip()->close();
 
 			/* if we delete call here directly, destructors and another cleaning functions can be
 			 * called in the middle of working with call or another structures inside main thread
@@ -1622,7 +1634,7 @@ int eval_config(string inistr) {
 			break;
 		case 'g':
 			opt_saveGRAPH = 1;
-//gzip is disabled			opt_gzipGRAPH = FileZipHandler::gzip;
+			opt_gzipGRAPH = FileZipHandler::gzip;
 			break;
 		}
 	}
@@ -2192,7 +2204,26 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "pcap_dump_zip", NULL))) {
 		strlwr((char*)value);
-		opt_pcap_dump_zip = !strcmp(value, "zip") || yesno(value) ? FileZipHandler::gzip : FileZipHandler::compress_na;
+		opt_pcap_dump_zip_sip = 
+		opt_pcap_dump_zip_rtp = !strcmp(value, "zip") || yesno(value) ? FileZipHandler::gzip : FileZipHandler::compress_na;
+	}
+	if((value = ini.GetValue("general", "pcap_dump_zip_all", NULL))) {
+		strlwr((char*)value);
+		opt_pcap_dump_zip_sip = 
+		opt_pcap_dump_zip_rtp = 
+		opt_gzipGRAPH = !strcmp(value, "zip") || yesno(value) ? FileZipHandler::gzip : FileZipHandler::compress_na;
+	}
+	if((value = ini.GetValue("general", "pcap_dump_zip_sip", NULL))) {
+		strlwr((char*)value);
+		opt_pcap_dump_zip_sip = !strcmp(value, "zip") || yesno(value) ? FileZipHandler::gzip : FileZipHandler::compress_na;
+	}
+	if((value = ini.GetValue("general", "pcap_dump_zip_rtp", NULL))) {
+		strlwr((char*)value);
+		opt_pcap_dump_zip_rtp = !strcmp(value, "zip") || yesno(value) ? FileZipHandler::gzip : FileZipHandler::compress_na;
+	}
+	if((value = ini.GetValue("general", "pcap_dump_zip_graph", NULL))) {
+		strlwr((char*)value);
+		opt_gzipGRAPH = !strcmp(value, "zip") || yesno(value) ? FileZipHandler::gzip : FileZipHandler::compress_na;
 	}
 	if((value = ini.GetValue("general", "pcap_dump_ziplevel", NULL))) {
 		opt_pcap_dump_ziplevel = atoi(value);
@@ -2489,9 +2520,13 @@ void set_context_config() {
 	}
 	
 	if(opt_pcap_dump_tar) {
-		opt_pcap_dump_zip = FileZipHandler::compress_na;
 		opt_cachedir[0] = '\0';
 	}
+	
+	opt_pcap_dump_tar_sip_use_pos = opt_pcap_dump_tar && !opt_pcap_dump_tar_compress_sip;
+	opt_pcap_dump_tar_rtp_use_pos = opt_pcap_dump_tar && !opt_pcap_dump_tar_compress_rtp;
+	opt_pcap_dump_tar_graph_use_pos = opt_pcap_dump_tar && !opt_pcap_dump_tar_compress_graph;
+
 }
 
 int load_config(char *fname) {
@@ -2757,6 +2792,7 @@ void bt_sighandler(int sig, struct sigcontext ctx)
 
 int _terminate_packetbuffer_afterTerminateSleepSec;
 int opt_test = 0;
+char *opt_untar_gui_params = NULL;
 char opt_test_str[1024];
 void *readdump_libpcap_thread_fce(void *handle);
 void test();
@@ -2918,6 +2954,7 @@ int main(int argc, char *argv[]) {
 	    {"sipports", 1, 0, 'Y'},
 	    {"skinny", 0, 0, 200},
 	    {"mono", 0, 0, 201},
+	    {"untar-gui", 1, 0, 202},
 /*
 	    {"maxpoolsize", 1, 0, NULL},
 	    {"maxpooldays", 1, 0, NULL},
@@ -2945,7 +2982,7 @@ int main(int argc, char *argv[]) {
 		//"i:r:d:v:h:b:u:p:fnU", NULL, NULL);
 		if (c == -1)
 			break;
-
+		
 		switch (c) {
 			/*
 			case 0:
@@ -2958,6 +2995,10 @@ int main(int argc, char *argv[]) {
 			case 201:
 				printf("test\n");
 				opt_saveaudio_stereo = 0;
+				break;
+			case 202:
+				opt_untar_gui_params = new char[strlen(optarg) + 1];
+				strcpy(opt_untar_gui_params, optarg);
 				break;
 			case 'x':
 				opt_ipaccount = 1;
@@ -3208,7 +3249,7 @@ int main(int argc, char *argv[]) {
 	if(opt_ipaccount) {
 		initIpacc();
 	}
-	if ((fname[0] == '\0') && (ifname[0] == '\0') && opt_scanpcapdir[0] == '\0'){
+	if ((fname[0] == '\0') && (ifname[0] == '\0') && opt_scanpcapdir[0] == '\0' && !opt_untar_gui_params){
                         /* Ruler to assist with keeping help description to max. 80 chars wide:
                                   1         2         3         4         5         6         7         8
                          12345678901234567890123456789012345678901234567890123456789012345678901234567890
@@ -3412,6 +3453,11 @@ int main(int argc, char *argv[]) {
                         */
 
 		return 1;
+	}
+
+	if(opt_untar_gui_params) {
+		chdir(opt_chdir);
+		return(untar_gui(opt_untar_gui_params));
 	}
 
 	if(opt_rrd && opt_read_from_file) {
@@ -4926,8 +4972,8 @@ void test_alloc_speed() {
 
 void test_untar() {
 	Tar tar;
-	tar.tar_open("/var/spool/voipmonitor_local/2015-01-20/10/11/RTP/rtp_2015-01-20-10-11.tar.xz", O_RDONLY);
-	tar.tar_read("387627576.pcap.*", "387627576.pcap");
+	tar.tar_open("/var/spool/voipmonitor_local/2015-01-30/19/26/SIP/sip_2015-01-30-19-26.tar", O_RDONLY);
+	tar.tar_read("1309960312.pcap.*", "1309960312.pcap", 659493, "cdr");
 }
 
 void test() {

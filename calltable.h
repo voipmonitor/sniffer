@@ -535,13 +535,38 @@ public:
 		       pcapSip.isClose() &&
 		       pcapRtp.isClose());
 	}
+	bool isGraphsClose() {
+		for(int i = 0; i < MAX_SSRC_PER_CALL; i++) {
+			if(rtp[i] && !rtp[i]->graph.isClose()) {
+				return(false);
+			}
+		}
+		return(true);
+	}
+	bool isReadyForWriteCdr() {
+		return(isPcapsClose() && isGraphsClose() &&
+		       !chunkBuffersCount);
+	}
 	
 	u_int32_t getAllReceivedRtpPackets();
+	
+	void incChunkBuffers() {
+		__sync_add_and_fetch(&chunkBuffersCount, 1);
+	}
+	void decChunkBuffers() {
+		__sync_sub_and_fetch(&chunkBuffersCount, 1);
+	}
+	
+	void addTarPos(u_int64_t pos, int type);
 private:
 	ip_port_call_info ip_port[MAX_IP_PER_CALL];
 	PcapDumper pcap;
 	PcapDumper pcapSip;
 	PcapDumper pcapRtp;
+	volatile u_int16_t chunkBuffersCount;
+	list<u_int64_t> tarPosSip;
+	list<u_int64_t> tarPosRtp;
+	list<u_int64_t> tarPosGraph;
 };
 
 typedef struct {

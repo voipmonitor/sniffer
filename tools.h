@@ -349,7 +349,7 @@ public:
 	};
 public:
 	FileZipHandler(int bufferLength = 0, int enableAsyncWrite = 0, eTypeCompress typeCompress = compress_na,
-		       bool dumpHandler = false, int time = 0,
+		       bool dumpHandler = false, class Call *call = NULL,
 		       eTypeFile typeFile = na);
 	virtual ~FileZipHandler();
 	bool open(const char *fileName, int permission = 0666);
@@ -368,6 +368,7 @@ public:
 	//bool initZip();
 	//bool initLz4();
 	void initCompress();
+	void initTarbuffer(bool useFileZipHandlerCompress = false);
 	bool _open();
 	void setError(const char *error = NULL);
 	bool okHandle() {
@@ -390,6 +391,7 @@ public:
 	bool enableAsyncWrite;
 	eTypeCompress typeCompress;
 	bool dumpHandler;
+	Call *call;
 	int time;
 	u_int64_t size;
 	u_int64_t counter;
@@ -437,6 +439,9 @@ public:
 	bool isClose() {
 		return(this->state == state_na || this->state == state_close);
 	}
+	bool isExistsContent() {
+		return(this->existsContent);
+	}
 	void setStateClose() {
 		this->state = state_close;
 	}
@@ -451,6 +456,7 @@ private:
 	bool openError;
 	int openAttempts;
 	eState state;
+	bool existsContent;
 	int dlt;
 	u_long lastTimeSyslog;
 	int _bufflength;
@@ -460,8 +466,7 @@ private:
 
 pcap_dumper_t *__pcap_dump_open(pcap_t *p, const char *fname, int linktype, string *errorString = NULL,
 				int _bufflength = -1 , int _asyncwrite = -1, FileZipHandler::eTypeCompress _typeCompress = FileZipHandler::compress_na,
-				int calltime = 0,
-				PcapDumper::eTypePcapDump type = PcapDumper::na);
+				Call *call = NULL, PcapDumper::eTypePcapDump type = PcapDumper::na);
 void __pcap_dump(u_char *user, const struct pcap_pkthdr *h, const u_char *sp);
 void __pcap_dump_close(pcap_dumper_t *p);
 void __pcap_dump_flush(pcap_dumper_t *p);
@@ -477,11 +482,18 @@ public:
 	bool isOpen() {
 		return(this->handle != NULL);
 	}
+	bool isClose() {
+		return(this->handle == NULL);
+	}
+	bool isExistsContent() {
+		return(this->existsContent);
+	}
 private:
 	string fileName;
 	string fileNameSpoolRelative;
 	class RTP *rtp;
 	FileZipHandler *handle;
+	bool existsContent;
 };
 
 #define AsyncClose_maxPcapThreads 32

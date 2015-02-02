@@ -797,6 +797,10 @@ bool SqlDb_mysql::query(string query) {
 					syslog(LOG_NOTICE, "query error - error: %s", mysql_error(this->hMysql));
 				}
 				this->checkLastError("query error in [" + query.substr(0,200) + (query.size() > 200 ? "..." : "") + "]", !sql_noerror);
+				if(!sql_noerror && verbosity > 1) {
+					cout << endl << "ERROR IN QUERY: " << endl
+					     << query << endl;
+				}
 				if(this->connecting) {
 					break;
 				} else {
@@ -1770,7 +1774,8 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 		 "cdr_next",
 		 "cdr_proxy",
 		 "cdr_rtp",
-		 "cdr_dtmf"
+		 "cdr_dtmf",
+		 "cdr_tar_part"
 	};
 
 	string compress = "";
@@ -2330,7 +2335,32 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 		(opt_cdr_partition ?
 			"" :
 			",CONSTRAINT `cdr_dtmf_ibfk_1` FOREIGN KEY (`cdr_ID`) REFERENCES `cdr` (`ID`) ON DELETE CASCADE ON UPDATE CASCADE") +
-	") ENGINE=" + (federated ? federatedConnection + "cdr_dtmf'" : "InnoDB") + " DEFAULT CHARSET=latin1" + 
+	") ENGINE=" + (federated ? federatedConnection + "cdr_dtmf'" : "InnoDB") + " DEFAULT CHARSET=latin1 " + compress +
+	(opt_cdr_partition && !federated ?
+		(opt_cdr_partition_oldver ? 
+			string(" PARTITION BY RANGE (to_days(calldate))(\
+				 PARTITION ") + partDayName + " VALUES LESS THAN (to_days('" + limitDay + "')) engine innodb)" :
+			string(" PARTITION BY RANGE COLUMNS(calldate)(\
+				 PARTITION ") + partDayName + " VALUES LESS THAN ('" + limitDay + "') engine innodb)") :
+		""));
+
+	this->query(string(
+	"CREATE TABLE IF NOT EXISTS `cdr_tar_part") + federatedSuffix + "` (\
+			`ID` int unsigned NOT NULL AUTO_INCREMENT,\
+			`cdr_ID` int unsigned NOT NULL," +
+			(opt_cdr_partition ?
+				"`calldate` datetime NOT NULL," :
+				"") + 
+			"`type` tinyint unsigned DEFAULT NULL,\
+			`pos` bigint unsigned DEFAULT NULL," +
+		(opt_cdr_partition ? 
+			"PRIMARY KEY (`ID`, `calldate`)," :
+			"PRIMARY KEY (`ID`),") +
+		"KEY (`cdr_ID`)" + 
+		(opt_cdr_partition ?
+			"" :
+			",CONSTRAINT `cdr_tar_part_ibfk_1` FOREIGN KEY (`cdr_ID`) REFERENCES `cdr` (`ID`) ON DELETE CASCADE ON UPDATE CASCADE") +
+	") ENGINE=" + (federated ? federatedConnection + "cdr_tar_part'" : "InnoDB") + " DEFAULT CHARSET=latin1 " + compress +
 	(opt_cdr_partition && !federated ?
 		(opt_cdr_partition_oldver ? 
 			string(" PARTITION BY RANGE (to_days(calldate))(\
@@ -2965,6 +2995,7 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 			    call create_partition('cdr_rtp', 'day', next_days);\
 			    call create_partition('cdr_dtmf', 'day', next_days);\
 			    call create_partition('cdr_proxy', 'day', next_days);\
+			    call create_partition('cdr_tar_part', 'day', next_days);\
 			    call create_partition('http_jj', 'day', next_days);\
 			    call create_partition('enum_jj', 'day', next_days);\
 			    call create_partition('message', 'day', next_days);\
@@ -3000,6 +3031,7 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 			    call create_partition(database_name, 'cdr_rtp', 'day', next_days);\
 			    call create_partition(database_name, 'cdr_dtmf', 'day', next_days);\
 			    call create_partition(database_name, 'cdr_proxy', 'day', next_days);\
+			    call create_partition(database_name, 'cdr_tar_part', 'day', next_days);\
 			    call create_partition(database_name, 'http_jj', 'day', next_days);\
 			    call create_partition(database_name, 'enum_jj', 'day', next_days);\
 			    call create_partition(database_name, 'webrtc', 'day', next_days);\
@@ -3240,12 +3272,15 @@ void SqlDb_mysql::checkDbMode() {
 	if(!opt_cdr_partition &&
 	   (cloud_host[0] ||
 	    this->getDbMajorVersion() * 100 + this->getDbMinorVersion() > 500)) {
-		this->query("EXPLAIN PARTITIONS SELECT * from cdr limit 1");
-		SqlDb_row row;
-		if((row = this->fetchRow())) {
-			if(row["partitions"] != "") {
-				syslog(LOG_INFO, "enable opt_cdr_partition (table cdr has partitions)");
-				opt_cdr_partition = true;
+		this->query("show tables like 'cdr'");
+		if(this->fetchRow()) {
+			this->query("EXPLAIN PARTITIONS SELECT * from cdr limit 1");
+			SqlDb_row row;
+			if((row = this->fetchRow())) {
+				if(row["partitions"] != "") {
+					syslog(LOG_INFO, "enable opt_cdr_partition (table cdr has partitions)");
+					opt_cdr_partition = true;
+				}
 			}
 		}
 	}
@@ -3291,12 +3326,15 @@ void SqlDb_mysql::checkSchema() {
 	extern bool existsColumnCalldateInCdrNext;
 	extern bool existsColumnCalldateInCdrRtp;
 	extern bool existsColumnCalldateInCdrDtmf;
+	extern bool existsColumnCalldateInCdrTarPart;
 	sql_disable_next_attempt_if_error = 1;
 	this->query("show columns from cdr_next where Field='calldate'");
 	existsColumnCalldateInCdrNext = this->fetchRow();
 	this->query("show columns from cdr_rtp where Field='calldate'");
 	existsColumnCalldateInCdrRtp = this->fetchRow();
 	this->query("show columns from cdr_dtmf where Field='calldate'");
+	existsColumnCalldateInCdrTarPart = this->fetchRow();
+	this->query("show columns from cdr_tar_part where Field='calldate'");
 	existsColumnCalldateInCdrDtmf = this->fetchRow();
 	if(!opt_cdr_partition &&
 	   (cloud_host[0] ||
@@ -3363,7 +3401,8 @@ void SqlDb_mysql::copyFromSourceTable(SqlDb_mysql *sqlDbSrc, const char *tableNa
 	bool joinCdrCalldate = string(tableName) == "cdr_next" ||
 			       string(tableName) == "cdr_rtp" ||
 			       string(tableName) == "cdr_dtmf" ||
-			       string(tableName) == "cdr_proxy";
+			       string(tableName) == "cdr_proxy" ||
+			       string(tableName) == "cdr_tar_part";
 	if(joinCdrCalldate) {
 		sqlDbSrc->query(string("show columns from ") + tableName + " where Field='calldate'");
 		if(sqlDbSrc->fetchRow()) {
@@ -3457,6 +3496,8 @@ void SqlDb_mysql::copyFromSourceTable(SqlDb_mysql *sqlDbSrc, const char *tableNa
 			this->copyFromSourceTable(sqlDbSrc, "cdr_dtmf", "cdr_id", 0, minIdInSrc, useMaxIdInSrc);
 			if(terminating) return;
 			this->copyFromSourceTable(sqlDbSrc, "cdr_proxy", "cdr_id", 0, minIdInSrc, useMaxIdInSrc);
+			if(terminating) return;
+			this->copyFromSourceTable(sqlDbSrc, "cdr_tar_part", "cdr_id", 0, minIdInSrc, useMaxIdInSrc);
 		}
 	}
 }
@@ -3521,6 +3562,7 @@ vector<string> SqlDb_mysql::getSourceTables() {
 		"cdr_rtp",
 		"cdr_dtmf",
 		"cdr_proxy",
+		"cdr_tar_part",
 		opt_enable_http_enum_tables ? "http_jj" : NULL,
 		opt_enable_http_enum_tables ? "enum_jj" : NULL,
 		opt_enable_webrtc_table ? "webrtc" : NULL,
@@ -3627,6 +3669,8 @@ void SqlDb_mysql::copyFromFederatedTable(const char *tableName, const char *id, 
 			this->copyFromFederatedTable("cdr_dtmf", "cdr_id", 0, minIdInFederated, useMaxIdInFederated);
 			if(terminating) return;
 			this->copyFromFederatedTable("cdr_proxy", "cdr_id", 0, minIdInFederated, useMaxIdInFederated);
+			if(terminating) return;
+			this->copyFromFederatedTable("cdr_tar_part", "cdr_id", 0, minIdInFederated, useMaxIdInFederated);
 		}
 	}
 }
@@ -3650,6 +3694,7 @@ vector<string> SqlDb_mysql::getFederatedTables() {
 		"cdr_rtp_fed",
 		"cdr_dtmf_fed",
 		"cdr_proxy_fed",
+		"cdr_tar_part_fed",
 		opt_enable_http_enum_tables ? "http_jj_fed" : NULL,
 		opt_enable_http_enum_tables ? "enum_jj_fed" : NULL,
 		opt_enable_webrtc_table ? "webrtc" : NULL,
@@ -3938,6 +3983,16 @@ void SqlDb_odbc::createSchema(const char *host, const char *database, const char
 			saddr bigint DEFAULT NULL);\
 	END");
 
+	this->query(
+	"IF NOT EXISTS (SELECT * FROM sys.objects WHERE name = 'cdr_tar_part') BEGIN\
+		CREATE TABLE cdr_tar_part (\
+			ID int PRIMARY KEY IDENTITY,\
+			cdr_ID int \
+				FOREIGN KEY REFERENCES cdr (ID),\
+			type tinynt NULL,\
+			pos bigint NULL);\
+	END");
+	
 	this->query(
 	"IF NOT EXISTS (SELECT * FROM sys.objects WHERE name = 'contenttype') BEGIN\
 		CREATE TABLE contenttype (\
@@ -4390,6 +4445,7 @@ void dropMysqlPartitionsCdr() {
 				sqlDb->query("ALTER TABLE cdr_next DROP PARTITION " + partitions[i]);
 				sqlDb->query("ALTER TABLE cdr_rtp DROP PARTITION " + partitions[i]);
 				sqlDb->query("ALTER TABLE cdr_dtmf DROP PARTITION " + partitions[i]);
+				sqlDb->query("ALTER TABLE cdr_tar_part DROP PARTITION " + partitions[i]);
 				sqlDb->query("ALTER TABLE cdr_proxy DROP PARTITION " + partitions[i]);
 				sqlDb->query("ALTER TABLE message DROP PARTITION " + partitions[i]);
 			}

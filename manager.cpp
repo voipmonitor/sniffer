@@ -1258,13 +1258,15 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 		char tar_filename[2048];
 		char filename[2048];
 		char dateTimeKey[2048];
+		u_int32_t recordId = 0;
+		char tableType[100] = "";
 
-		sscanf(buf, zip ? "getfile_in_tar_zip %s %s %s" : "getfile_in_tar %s %s %s", tar_filename, filename, dateTimeKey);
+		sscanf(buf, zip ? "getfile_in_tar_zip %s %s %s %u %s" : "getfile_in_tar %s %s %s %u %s", tar_filename, filename, dateTimeKey, &recordId, tableType);
 		
 		Tar tar;
 		if(!tar.tar_open(tar_filename, O_RDONLY)) {
 			tar.tar_read_send_parameters(client, sshchannel, zip);
-			tar.tar_read((string(filename) + ".*").c_str(), filename);
+			tar.tar_read((string(filename) + ".*").c_str(), filename, recordId, tableType);
 			if(tar.isReadEnd()) {
 				getfile_in_tar_completed.add(tar_filename, filename, dateTimeKey);
 			}

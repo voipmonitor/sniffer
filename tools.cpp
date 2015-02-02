@@ -56,7 +56,9 @@ extern int verbosity;
 extern int terminating;
 extern int opt_pcap_dump_bufflength;
 extern int opt_pcap_dump_asyncwrite;
-extern FileZipHandler::eTypeCompress opt_pcap_dump_zip;
+extern FileZipHandler::eTypeCompress opt_pcap_dump_zip_sip;
+extern FileZipHandler::eTypeCompress opt_pcap_dump_zip_rtp;
+extern FileZipHandler::eTypeCompress opt_pcap_dump_zip_graph;
 extern int opt_pcap_dump_ziplevel;
 extern int opt_read_from_file;
 extern int opt_pcap_dump_tar;
@@ -915,6 +917,7 @@ PcapDumper::PcapDumper(eTypePcapDump type, class Call *call) {
 	this->openError = false;
 	this->openAttempts = 0;
 	this->state = state_na;
+	this->existsContent = false;
 	this->dlt = -1;
 	this->lastTimeSyslog = 0;
 	this->_bufflength = -1;
@@ -954,8 +957,7 @@ bool PcapDumper::open(const char *fileName, const char *fileNameSpoolRelative, p
 	this->dlt = useDlt == DLT_LINUX_SLL && opt_convert_dlt_sll_to_en10 ? DLT_EN10MB : useDlt;
 	this->handle = __pcap_dump_open(_handle, fileName, this->dlt, &errorString,
 					_bufflength, _asyncwrite, _typeCompress,
-					call ? call->calltime() : 0,
-					this->type);
+					call, this->type);
 	++this->openAttempts;
 	if(!this->handle) {
 		if(this->type != rtp || !this->openError) {
@@ -998,6 +1000,7 @@ void PcapDumper::dump(pcap_pkthdr* header, const u_char *packet, int dlt) {
 	if(this->handle) {
 		if(header->caplen > 0 && header->caplen <= header->len) {
 			if(!opt_maxpcapsize_mb || this->capsize < opt_maxpcapsize_mb * 1024 * 1024) {
+				this->existsContent = true;
 				__pcap_dump((u_char*)this->handle, header, packet);
 				extern int opt_packetbuffered;
 				if(opt_packetbuffered) {
@@ -1054,6 +1057,7 @@ extern FileZipHandler::eTypeCompress opt_gzipGRAPH;
 RtpGraphSaver::RtpGraphSaver(RTP *rtp) {
 	this->rtp = rtp;
 	this->handle = NULL;
+	this->existsContent = false;
 }
 
 RtpGraphSaver::~RtpGraphSaver() {
@@ -1075,7 +1079,7 @@ bool RtpGraphSaver::open(const char *fileName, const char *fileNameSpoolRelative
 	}
 	*/
 	this->handle = new FileZipHandler(opt_pcap_dump_bufflength, opt_pcap_dump_asyncwrite, opt_gzipGRAPH,
-					  false, rtp && rtp->call_owner ? ((Call*)rtp->call_owner)->calltime() : 0,
+					  false, rtp && rtp->call_owner ? (Call*)rtp->call_owner : 0,
 					  FileZipHandler::graph_rtp);
 	if(!this->handle->open(fileName)) {
 		syslog(LOG_NOTICE, "graphsaver: error open file %s - %s", fileName, this->handle->error.c_str());
@@ -1090,6 +1094,7 @@ bool RtpGraphSaver::open(const char *fileName, const char *fileNameSpoolRelative
 
 void RtpGraphSaver::write(char *buffer, int length) {
 	if(this->isOpen()) {
+		this->existsContent = true;
 		this->handle->write(buffer, length);
 	}
 }
@@ -2095,7 +2100,7 @@ void JsonExport::add(const char *name, u_int64_t content) {
 #define DEFAULT_BUFFER_LENGTH		8192
 
 FileZipHandler::FileZipHandler(int bufferLength, int enableAsyncWrite, eTypeCompress typeCompress,
-			       bool dumpHandler, int time,
+			       bool dumpHandler, Call *call,
 			       eTypeFile typeFile) {
 	if(bufferLength <= 0) {
 		enableAsyncWrite = 0;
@@ -2118,7 +2123,8 @@ FileZipHandler::FileZipHandler(int bufferLength, int enableAsyncWrite, eTypeComp
 	this->enableAsyncWrite = enableAsyncWrite && !opt_read_from_file;
 	this->typeCompress = typeCompress;
 	this->dumpHandler = dumpHandler;
-	this->time = time;
+	this->call = call;
+	this->time = call ? call->calltime() : 0;
 	this->size = 0;
 	this->counter = ++scounter;
 	this->userData = 0;
@@ -2239,56 +2245,15 @@ bool FileZipHandler::_writeToFile(char *data, int length, bool flush) {
 	if(!this->error.empty()) {
 		return(false);
 	}
-	
-	if(opt_pcap_dump_tar) {
-		if(!this->tarBuffer) {
-			this->tarBufferCreated = true;
-			this->tarBuffer = new ChunkBuffer(this->time, 
-							  typeFile == pcap_sip ? 8 * 1024 : 
-							  typeFile == pcap_rtp ? 32 * 1024 : 
-							  typeFile == graph_rtp ? 16 * 1024 : 8 * 1024);
-			if(sverb.tar > 2) {
-				syslog(LOG_NOTICE, "chunkbufer create: %s %lx %i %i", 
-				       this->fileName.c_str(), (long)this->tarBuffer,
-				       this->time, this->time % TAR_MODULO_SECONDS);
-			}
-			extern CompressStream::eTypeCompress opt_pcap_dump_tar_internalcompress_sip;
-			extern CompressStream::eTypeCompress opt_pcap_dump_tar_internalcompress_rtp;
-			extern CompressStream::eTypeCompress opt_pcap_dump_tar_internalcompress_graph;
-			extern int opt_pcap_dump_tar_internal_gzip_sip_level;
-			extern int opt_pcap_dump_tar_internal_gzip_rtp_level;
-			extern int opt_pcap_dump_tar_internal_gzip_graph_level;
-			switch(typeFile) {
-			case pcap_sip:
-				if(opt_pcap_dump_tar_internalcompress_sip != CompressStream::compress_na) {
-					this->tarBuffer->setTypeCompress(opt_pcap_dump_tar_internalcompress_sip, 8 * 1024, this->bufferLength);
-					this->tarBuffer->setZipLevel(opt_pcap_dump_tar_internal_gzip_sip_level);
-				}
-				break;
-			case pcap_rtp:
-				if(opt_pcap_dump_tar_internalcompress_rtp != CompressStream::compress_na) {
-					this->tarBuffer->setTypeCompress(opt_pcap_dump_tar_internalcompress_rtp, 8 * 1024, this->bufferLength);
-					this->tarBuffer->setZipLevel(opt_pcap_dump_tar_internal_gzip_rtp_level);
-				}
-				break;
-			case graph_rtp:
-				if(opt_pcap_dump_tar_internalcompress_graph != CompressStream::compress_na) {
-					this->tarBuffer->setTypeCompress(opt_pcap_dump_tar_internalcompress_graph, 8 * 1024, this->bufferLength);
-					this->tarBuffer->setZipLevel(opt_pcap_dump_tar_internal_gzip_graph_level);
-				}
-				break;
-			case na:
-				break;
-			}
-			this->tarBuffer->setName(this->fileName.c_str());
-			tarQueue->add(this->fileName, this->time, this->tarBuffer);
-		}
-		this->tarBuffer->add(data, length, flush);
-		return(true);
-	}
-	
 	switch(this->typeCompress) {
 	case compress_na:
+		if(opt_pcap_dump_tar) {
+			if(!this->tarBuffer) {
+				this->initTarbuffer();
+			}
+			this->tarBuffer->add(data, length, flush);
+			return(true);
+		}
 		{
 		int rsltWrite = this->__writeToFile(data, length);
 		if(rsltWrite <= 0) {
@@ -2338,6 +2303,52 @@ void FileZipHandler::initCompress() {
 	}
 }
 
+void FileZipHandler::initTarbuffer(bool useFileZipHandlerCompress) {
+	this->tarBufferCreated = true;
+	this->tarBuffer = new ChunkBuffer(this->time, 
+					  typeFile == pcap_sip ? 8 * 1024 : 
+					  typeFile == pcap_rtp ? 32 * 1024 : 
+					  typeFile == graph_rtp ? 16 * 1024 : 8 * 1024,
+					  call, typeFile);
+	if(sverb.tar > 2) {
+		syslog(LOG_NOTICE, "chunkbufer create: %s %lx %i %i", 
+		       this->fileName.c_str(), (long)this->tarBuffer,
+		       this->time, this->time % TAR_MODULO_SECONDS);
+	}
+	if(!useFileZipHandlerCompress) {
+		extern CompressStream::eTypeCompress opt_pcap_dump_tar_internalcompress_sip;
+		extern CompressStream::eTypeCompress opt_pcap_dump_tar_internalcompress_rtp;
+		extern CompressStream::eTypeCompress opt_pcap_dump_tar_internalcompress_graph;
+		extern int opt_pcap_dump_tar_internal_gzip_sip_level;
+		extern int opt_pcap_dump_tar_internal_gzip_rtp_level;
+		extern int opt_pcap_dump_tar_internal_gzip_graph_level;
+		switch(typeFile) {
+		case pcap_sip:
+			if(opt_pcap_dump_tar_internalcompress_sip != CompressStream::compress_na) {
+				this->tarBuffer->setTypeCompress(opt_pcap_dump_tar_internalcompress_sip, 8 * 1024, this->bufferLength);
+				this->tarBuffer->setZipLevel(opt_pcap_dump_tar_internal_gzip_sip_level);
+			}
+			break;
+		case pcap_rtp:
+			if(opt_pcap_dump_tar_internalcompress_rtp != CompressStream::compress_na) {
+				this->tarBuffer->setTypeCompress(opt_pcap_dump_tar_internalcompress_rtp, 8 * 1024, this->bufferLength);
+				this->tarBuffer->setZipLevel(opt_pcap_dump_tar_internal_gzip_rtp_level);
+			}
+			break;
+		case graph_rtp:
+			if(opt_pcap_dump_tar_internalcompress_graph != CompressStream::compress_na) {
+				this->tarBuffer->setTypeCompress(opt_pcap_dump_tar_internalcompress_graph, 8 * 1024, this->bufferLength);
+				this->tarBuffer->setZipLevel(opt_pcap_dump_tar_internal_gzip_graph_level);
+			}
+			break;
+		case na:
+			break;
+		}
+	}
+	this->tarBuffer->setName(this->fileName.c_str());
+	tarQueue->add(this->fileName, this->time, this->tarBuffer);
+}
+
 bool FileZipHandler::_open() {
 	if(opt_pcap_dump_tar) {
 		return(true);
@@ -2377,6 +2388,13 @@ void FileZipHandler::setError(const char *error) {
 }
 
 bool FileZipHandler::compress_ev(char *data, u_int32_t len, u_int32_t decompress_len) {
+	if(opt_pcap_dump_tar) {
+		if(!this->tarBuffer) {
+			this->initTarbuffer(true);
+		}
+		this->tarBuffer->add(data, len, false);
+		return(true);
+	}
 	if(this->__writeToFile(data, len) <= 0) {
 		this->setError();
 		return(false);
@@ -2391,13 +2409,16 @@ u_int64_t FileZipHandler::scounter = 0;
 
 pcap_dumper_t *__pcap_dump_open(pcap_t *p, const char *fname, int linktype, string *errorString,
 				int _bufflength, int _asyncwrite, FileZipHandler::eTypeCompress _typeCompress,
-				int calltime,
-				PcapDumper::eTypePcapDump type) {
+				Call *call, PcapDumper::eTypePcapDump type) {
 	if(opt_pcap_dump_bufflength) {
 		FileZipHandler *handler = new FileZipHandler(_bufflength < 0 ? opt_pcap_dump_bufflength : _bufflength, 
 							     _asyncwrite < 0 ? opt_pcap_dump_asyncwrite : _asyncwrite, 
-							     _typeCompress == FileZipHandler::compress_default ? opt_pcap_dump_zip : _typeCompress, 
-							     true, calltime,
+							     _typeCompress == FileZipHandler::compress_default ? 
+							      (type == PcapDumper::sip ? opt_pcap_dump_zip_sip :
+							       type == PcapDumper::rtp ? opt_pcap_dump_zip_rtp :
+											 opt_pcap_dump_zip_sip) :
+							      _typeCompress, 
+							     true, call,
 							     type == PcapDumper::sip ? FileZipHandler::pcap_sip :
 							     type == PcapDumper::rtp ? FileZipHandler::pcap_rtp :
 										       FileZipHandler::na);

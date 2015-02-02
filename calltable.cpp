@@ -99,6 +99,7 @@ extern int opt_saverfc2833;
 extern int opt_dbdtmf;
 extern int opt_dscp;
 extern int opt_cdrproxy;
+extern int opt_pcap_dump_tar;
 extern struct pcap_stat pcapstat;
 extern int opt_filesclean;
 extern int opt_allow_zerossrc;
@@ -149,6 +150,12 @@ SqlDb *sqlDbSaveCall = NULL;
 bool existsColumnCalldateInCdrNext = true;
 bool existsColumnCalldateInCdrRtp = true;
 bool existsColumnCalldateInCdrDtmf = true;
+bool existsColumnCalldateInCdrTarPart = true;
+
+extern int opt_pcap_dump_tar_sip_use_pos;
+extern int opt_pcap_dump_tar_rtp_use_pos;
+extern int opt_pcap_dump_tar_graph_use_pos;
+
 
 /* constructor */
 Call::Call(char *call_id, unsigned long call_id_len, time_t time) :
@@ -286,6 +293,8 @@ Call::Call(char *call_id, unsigned long call_id_len, time_t time) :
 	
 	first_codec = -1;
 	chantype = 0;
+	
+	chunkBuffersCount = 0;
 }
 
 void
@@ -2153,6 +2162,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 				     "  delete from cdr_next where cdr_id = @exists_call_id;\n" +
 				     "  delete from cdr_rtp where cdr_id = @exists_call_id;\n" +
 				     (opt_dbdtmf ? "delete from cdr_dtmf where cdr_id = @exists_call_id\n" : "") +
+				     (opt_pcap_dump_tar ? "delete from cdr_tar_part where cdr_id = @exists_call_id\n" : "") +
 				     "  set @exists_call_id = 0;\n" +
 				     "end if;\n";
 			query_str += "if not @exists_call_id then\n";
@@ -2232,6 +2242,29 @@ Call::saveToDb(bool enableBatchIfPossible) {
 					dtmf.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
 				}
 				query_str += sqlDbSaveCall->insertQuery("cdr_dtmf", dtmf) + ";\n";
+			}
+		}
+		
+		if(opt_pcap_dump_tar) {
+			for(int i = 1; i <= 3; i++) {
+				if(!(i == 1 ? opt_pcap_dump_tar_sip_use_pos :
+				     i == 2 ? opt_pcap_dump_tar_rtp_use_pos :
+					      opt_pcap_dump_tar_graph_use_pos)) {
+					continue;
+				}
+				list<u_int64_t> *tarPos = i == 1 ? &this->tarPosSip :
+							  i == 2 ? &this->tarPosRtp :
+								   &this->tarPosGraph;
+				for(list<u_int64_t>::iterator it = tarPos->begin(); it != tarPos->end(); it++) {
+					SqlDb_row tar_part;
+					tar_part.add("_\\_'SQL'_\\_:@cdr_id", "cdr_ID");
+					tar_part.add(i, "type");
+					tar_part.add(*it, "pos");
+					if(existsColumnCalldateInCdrDtmf) {
+						tar_part.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
+					}
+					query_str += sqlDbSaveCall->insertQuery("cdr_tar_part", tar_part) + ";\n";
+				}
 			}
 		}
 		
@@ -2965,6 +2998,27 @@ Call::getAllReceivedRtpPackets() {
 		receivedPackets += rtp[i]->stats.received;
 	}
 	return(receivedPackets);
+}
+
+void 
+Call::addTarPos(u_int64_t pos, int type) {
+	switch(type) {
+	case FileZipHandler::pcap_sip:
+		if(opt_pcap_dump_tar_sip_use_pos) {
+			this->tarPosSip.push_back(pos);
+		}
+		break;
+	case FileZipHandler::pcap_rtp:
+		if(opt_pcap_dump_tar_rtp_use_pos) {
+			this->tarPosRtp.push_back(pos);
+		}
+		break;
+	case FileZipHandler::graph_rtp:
+		if(opt_pcap_dump_tar_graph_use_pos) {
+			this->tarPosGraph.push_back(pos);
+		}
+		break;
+	}
 }
 
 /* constructor */

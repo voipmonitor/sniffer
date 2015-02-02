@@ -23,6 +23,7 @@
 #include <fcntl.h>
 #include <pwd.h>
 #include <grp.h>
+#include <stdio.h>
 
 #ifdef FREEBSD
 #include <sys/uio.h>
@@ -332,44 +333,107 @@ Tar::chunkbuffer_iterate_ev(char *data, u_int32_t len, u_int32_t pos) {
 }
 
 void
-Tar::tar_read(const char *filename, const char *endFilename) {
+Tar::tar_read(const char *filename, const char *endFilename, u_int32_t recordId, const char *tableType) {
+	if(!reg_match(this->pathname.c_str(), "tar\\.gz") &&
+	   !reg_match(this->pathname.c_str(), "tar\\.xz")) {
+		this->readData.send_parameters_zip = false;
+	}
 	this->readData.null();
 	this->readData.filename = filename;
 	this->readData.endFilename = endFilename;
+	this->readData.recordId = recordId;
+	this->readData.tableType = tableType;
 	this->readData.init(T_BLOCKSIZE * 64);
-	CompressStream *compressStream = new CompressStream(reg_match(this->pathname.c_str(), "tar\\.gz") ?
-							     CompressStream::gzip :
-							    reg_match(this->pathname.c_str(), "tar\\.xz") ?
-							     CompressStream::lzma :
-							     CompressStream::compress_na,
-							    this->readData.bufferBaseSize, 0);
+	CompressStream *decompressStream = new CompressStream(reg_match(this->pathname.c_str(), "tar\\.gz") ?
+							       CompressStream::gzip :
+							      reg_match(this->pathname.c_str(), "tar\\.xz") ?
+							       CompressStream::lzma :
+							       CompressStream::compress_na,
+							      this->readData.bufferBaseSize, 0);
 	size_t read_position = 0;
 	size_t read_size;
 	char *read_buffer = new char[T_BLOCKSIZE];
 	bool decompressFailed = false;
-	while(!this->readData.end && !this->readData.error && (read_size = read(tar.fd, read_buffer, T_BLOCKSIZE)) > 0) {
-		read_position += read_size;
-		u_int32_t use_len = 0;
-		while(use_len < read_size) {
-			if(use_len) {
-				compressStream->termDecompress();
+	list<u_int64_t> tarPos;
+	if(recordId && tableType && !strcmp(tableType, "cdr")) {
+		SqlDb *sqlDb = createSqlObject();
+		SqlDb_row row;
+		char queryBuff[1000];
+		sprintf(queryBuff, "SELECT calldate FROM cdr where id = %u", recordId);
+		sqlDb->query(queryBuff);
+		if(row = sqlDb->fetchRow()) {
+			sprintf(queryBuff, 
+				"SELECT pos FROM cdr_tar_part where cdr_id = %u and calldate = '%s' and type = %i", 
+				recordId, row["calldate"].c_str(),
+				strstr(this->pathname.c_str(), "/SIP/") ? 1 :
+				strstr(this->pathname.c_str(), "/RTP/") ? 2 :
+				strstr(this->pathname.c_str(), "/GRAPH/") ? 3 : 0);
+			sqlDb->query(queryBuff);
+			while(row = sqlDb->fetchRow()) {
+			 
+				cout << "*" << atoll(row["pos"].c_str()) << endl;
+				
+				tarPos.push_back(atoll(row["pos"].c_str()));
 			}
-			u_int32_t _use_len = 0;
-			if(!compressStream->decompress(read_buffer + use_len, read_size - use_len, 0, false, this, &_use_len)) {
-				decompressFailed = true;
-				break;
+		}
+	}
+	if(tarPos.size()) {
+		for(list<u_int64_t>::iterator it = tarPos.begin(); it != tarPos.end(); it++) {
+			lseek(tar.fd, *it, SEEK_SET);
+			read_position = *it;
+			this->readData.oneFile = true;
+			this->readData.end = false;
+			this->readData.bufferLength = 0;
+			while(!this->readData.end && !this->readData.error && (read_size = read(tar.fd, read_buffer, T_BLOCKSIZE)) > 0) {
+				read_position += read_size;
+				u_int32_t use_len = 0;
+				while(use_len < read_size) {
+					if(use_len) {
+						decompressStream->termDecompress();
+					}
+					u_int32_t _use_len = 0;
+					if(!decompressStream->decompress(read_buffer + use_len, read_size - use_len, 0, false, this, &_use_len)) {
+						decompressFailed = true;
+						break;
+					}
+					use_len += _use_len;
+					if(!use_len) {
+						break;
+					}
+				}
+				if(decompressFailed) {
+					break;
+				}
 			}
-			use_len += _use_len;
-			if(!use_len) {
+			if(decompressFailed || this->readData.error) {
 				break;
 			}
 		}
-		if(decompressFailed) {
-			break;
+	} else {
+		while(!this->readData.end && !this->readData.error && (read_size = read(tar.fd, read_buffer, T_BLOCKSIZE)) > 0) {
+			read_position += read_size;
+			u_int32_t use_len = 0;
+			while(use_len < read_size) {
+				if(use_len) {
+					decompressStream->termDecompress();
+				}
+				u_int32_t _use_len = 0;
+				if(!decompressStream->decompress(read_buffer + use_len, read_size - use_len, 0, false, this, &_use_len)) {
+					decompressFailed = true;
+					break;
+				}
+				use_len += _use_len;
+				if(!use_len) {
+					break;
+				}
+			}
+			if(decompressFailed) {
+				break;
+			}
 		}
 	}
 	delete [] read_buffer;
-	delete compressStream;
+	delete decompressStream;
 	if(this->readData.send_parameters_client && this->readData.compressStream) {
 		this->readData.compressStream->compress(NULL, 0, true, this->readData.compressStream);
 	}
@@ -383,6 +447,11 @@ Tar::tar_read_send_parameters(int client, void *sshchannel, bool zip) {
 	this->readData.send_parameters_zip = zip;
 }
 
+void 
+Tar::tar_read_save_parameters(FILE *output_file_handle) {
+	this->readData.output_file_handle = output_file_handle;
+}
+
 bool 
 Tar::decompress_ev(char *data, u_int32_t len) {
 	if(len != T_BLOCKSIZE ||
@@ -390,12 +459,10 @@ Tar::decompress_ev(char *data, u_int32_t len) {
 		memcpy(this->readData.buffer + this->readData.bufferLength, data, len);
 		this->readData.bufferLength += len;
 		if(this->readData.bufferLength >= T_BLOCKSIZE) {
-		 
 			for(unsigned int i = 0; i < this->readData.bufferLength / T_BLOCKSIZE; i++) {
 				this->tar_read_block_ev(this->readData.buffer + i * T_BLOCKSIZE);
 				this->readData.position += len;
 			}
-			
 			if(this->readData.bufferLength % T_BLOCKSIZE) {
 				memcpy(this->readData.buffer, 
 				       this->readData.buffer + (this->readData.bufferLength - this->readData.bufferLength % T_BLOCKSIZE), 
@@ -414,6 +481,9 @@ Tar::decompress_ev(char *data, u_int32_t len) {
 
 void 
 Tar::tar_read_block_ev(char *data) {
+	if(this->readData.end) {
+		return;
+	}
 	if(this->readData.position &&
 	   this->readData.fileSize < this->readData.fileHeader.get_size()) {
 		size_t len = this->readData.fileSize + T_BLOCKSIZE > this->readData.fileHeader.get_size() ? 
@@ -421,18 +491,21 @@ Tar::tar_read_block_ev(char *data) {
 			      T_BLOCKSIZE;
 		this->tar_read_file_ev(this->readData.fileHeader, data, this->readData.fileSize, len);
 		this->readData.fileSize += len;
+		if(this->readData.oneFile && this->readData.fileSize >= this->readData.fileHeader.get_size()) {
+			this->readData.end = true;
+		}
 	} else {
 		if(this->readData.position) {
 			this->tar_read_file_ev(this->readData.fileHeader, NULL, this->readData.fileSize, 0);
 			this->readData.nullFileHeader();
 		}
 		memcpy(&this->readData.fileHeader, data, min((u_int32_t)T_BLOCKSIZE, (u_int32_t)sizeof(this->readData.fileHeader)));
-		/*
+		
 		cout << "tar_read_block_ev - header - file "
 		     << this->readData.fileHeader.name
 		     << " size "
 		     << this->readData.fileHeader.get_size() << endl;
-		*/
+		
 		this->readData.fileSize = 0;
 	}
 }
@@ -455,6 +528,8 @@ Tar::tar_read_file_ev(tar_header fileHeader, char *data, u_int32_t pos, u_int32_
 					this->readData.error = true;
 				}
 			}
+		} else if(this->readData.output_file_handle) {
+			fwrite(data, len, 1, this->readData.output_file_handle);
 		}
 	}
 	if(*fileHeader.name && !len) {
@@ -610,6 +685,7 @@ Tar::writeLzma(const void *buf, size_t len) {
 
 void
 Tar::flush() {
+	bool _flush = false;
 #ifdef HAVE_LIBLZMA
 	if(this->lzmaStream) {
 		this->flushLzma();
@@ -617,6 +693,7 @@ Tar::flush() {
 		delete this->lzmaStream;
 		this->lzmaStream = NULL;
 		this->initLzma();
+		_flush = true;
 	}
 #endif
 	if(this->zipStream) {
@@ -625,6 +702,10 @@ Tar::flush() {
 		delete this->zipStream;
 		this->zipStream = NULL;
 		this->initZip();
+		_flush = true;
+	}
+	if(_flush && sverb.tar) {
+		syslog(LOG_NOTICE, "force flush %s", this->pathname.c_str());
 	}
 }
 
@@ -673,6 +754,7 @@ Tar::tar_block_write(const char *buf, u_int32_t len){
 	}
 	
 	this->lastWriteTime = glob_last_packet_time;
+	this->tarLength += len;
 	
 	return(len);
 };
@@ -1152,9 +1234,6 @@ void *TarQueue::tarthreadworker(void *arg) {
 								if(processTar->lastWriteTime &&
 								   processTar->lastWriteTime < glob_last_packet_time - 30 &&
 								   processTar->lastFlushTime < processTar->lastWriteTime - 30) {
-									if(sverb.tar) {
-										syslog(LOG_NOTICE, "force flush %s", processTar->pathname.c_str());
-									}
 									processTar->flush();
 									processTar->lastFlushTime = glob_last_packet_time;
 								}
@@ -1206,6 +1285,9 @@ TarQueue::tarthreads_t::processData(data_t *data, bool isClosed, size_t lenForPr
 	Tar *tar = data->tar;
 	tar->writing = 1;
 	if(lenForProceedSafe) {
+	 
+		data->buffer->addTarPosInCall(tar->tarLength);
+	 
 		//reset and set header
 		memset(&(tar->tar.th_buf), 0, sizeof(struct Tar::tar_header));
 		tar->th_set_type(0); //s->st_mode, 0 is regular file
@@ -1479,3 +1561,38 @@ void *TarQueueThread(void *dummy) {
 	return NULL;
 }      
 
+int untar_gui(const char *args) {
+	char tarFile[1024] = "";
+	char destFile[1024] = "";
+	char outputFile[1024] = "";
+	unsigned long idRec = 0;
+	char typeTable[20] = "";
+	
+	if(sscanf(args, "%s %s %lu %s %s", tarFile, destFile, &idRec, typeTable, outputFile) != 5) {
+		cerr << "untar: bad arguments" << endl;
+		return(1);
+	}
+	
+	cout << tarFile << endl;
+	cout << destFile << endl;
+	cout << idRec << endl;
+	cout << typeTable << endl;
+	cout << outputFile << endl;
+	
+	Tar tar;
+	if(tar.tar_open(tarFile, O_RDONLY)) {
+		cerr << "untar: open file " << tarFile << " failed" << endl;
+		return(1);
+	}
+	FILE *outputFileHandle = fopen(outputFile, "wb");
+	if(!outputFileHandle) {
+		cerr << "untar: open output file " << outputFile << " failed" << endl;
+		return(1);
+	}
+	tar.tar_read_save_parameters(outputFileHandle);
+	tar.tar_read((string(destFile) + ".*").c_str(), destFile, idRec, typeTable);
+	fclose(outputFileHandle);
+	
+	return(0);
+ 
+}

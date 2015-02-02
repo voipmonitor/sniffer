@@ -2937,8 +2937,9 @@ void* PcapQueue_readFromInterface::threadFunction(void *arg, unsigned int arg2) 
 						blockStore[blockStoreIndex] = NULL;
 						sleep(sverb.test_rtp_performance ? 120 :
 						      opt_enable_ssl ? 10 :
-						      sverb.chunk_buffer ? 20 : 1);
+						      sverb.chunk_buffer ? 20 : 5);
 						calltable->cleanup(0);
+						sleep(5);
 						extern AsyncClose *asyncClose;
 						asyncClose->processAll();
 						this->pcapStat();

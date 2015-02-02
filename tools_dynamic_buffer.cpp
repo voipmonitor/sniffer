@@ -2,10 +2,16 @@
 
 #include "voipmonitor.h"
 #include "tools.h"
+#include "calltable.h"
 
 #include "tools_dynamic_buffer.h"
 
 #define MIN(x,y) ((x) < (y) ? (x) : (y))
+
+
+extern int opt_pcap_dump_tar_sip_use_pos;
+extern int opt_pcap_dump_tar_rtp_use_pos;
+extern int opt_pcap_dump_tar_graph_use_pos;
 
 
 /* not tested - obsolete ?
@@ -627,8 +633,10 @@ CompressStream::eTypeCompress CompressStream::convTypeCompress(const char *typeC
 	return(CompressStream::compress_na);
 }
 
-ChunkBuffer::ChunkBuffer(int time, u_int32_t chunk_fix_len) {
+ChunkBuffer::ChunkBuffer(int time, u_int32_t chunk_fix_len, Call *call, int typeContent) {
 	this->time = time;
+	this->call = call;
+	this->typeContent = typeContent;
 	this->len = 0;
 	this->chunk_fix_len = chunk_fix_len;
 	this->compress_orig_data_len = 0;
@@ -643,6 +651,12 @@ ChunkBuffer::ChunkBuffer(int time, u_int32_t chunk_fix_len) {
 	this->last_add_time = 0;
 	this->last_add_time_tar = 0;
 	this->last_tar_time = 0;
+	if(call &&
+	   (typeContent == FileZipHandler::pcap_sip ? opt_pcap_dump_tar_sip_use_pos :
+	    typeContent == FileZipHandler::pcap_rtp ? opt_pcap_dump_tar_rtp_use_pos :
+	    typeContent == FileZipHandler::graph_rtp ? opt_pcap_dump_tar_graph_use_pos : 0)) {
+		call->incChunkBuffers();
+	}
 }
 
 ChunkBuffer::~ChunkBuffer() {
@@ -661,6 +675,12 @@ ChunkBuffer::~ChunkBuffer() {
 	}
 	if(this->name) {
 		delete this->name;
+	}
+	if(call &&
+	   (typeContent == FileZipHandler::pcap_sip ? opt_pcap_dump_tar_sip_use_pos :
+	    typeContent == FileZipHandler::pcap_rtp ? opt_pcap_dump_tar_rtp_use_pos :
+	    typeContent == FileZipHandler::graph_rtp ? opt_pcap_dump_tar_graph_use_pos : 0)) {
+		call->decChunkBuffers();
 	}
 }
 
@@ -818,6 +838,15 @@ void ChunkBuffer::add(char *data, u_int32_t datalen, bool flush, u_int32_t decom
 	this->unlock_chunkBuffer();
 	extern volatile unsigned int glob_last_packet_time;
 	this->last_add_time = glob_last_packet_time;
+}
+
+void ChunkBuffer::close() {
+	if(sverb.tar > 2) {
+		syslog(LOG_NOTICE, "chunkbufer close: %s %lx %i %i", 
+		       this->getName().c_str(), (long)this,
+		       this->time, this->time % TAR_MODULO_SECONDS);
+	}
+	this->closed = true;
 }
 
 bool ChunkBuffer::compress_ev(char *data, u_int32_t len, u_int32_t decompress_len) {
@@ -1098,4 +1127,10 @@ u_int32_t ChunkBuffer::getChunkIterateSafeLimitLength(u_int32_t limitLength) {
 		}
 	}
 	return(safeLimitLength);
+}
+
+void ChunkBuffer::addTarPosInCall(u_int64_t pos) {
+	if(call) {
+		call->addTarPos(pos, typeContent);
+	}
 }

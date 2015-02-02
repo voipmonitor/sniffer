@@ -281,7 +281,7 @@ public:
 		u_int32_t chunkIndex;
 	};
 public:
-	ChunkBuffer(int time, u_int32_t chunk_fix_len = 0);
+	ChunkBuffer(int time, u_int32_t chunk_fix_len = 0, class Call *call = NULL, int typeCotent = 0);
 	virtual ~ChunkBuffer();
 	void setTypeCompress(CompressStream::eTypeCompress typeCompress, u_int32_t compressBufferLength, u_int32_t maxDataLength);
 	void setZipLevel(int zipLevel);
@@ -293,9 +293,7 @@ public:
 		return(this->name ? this->name : "");
 	}
 	void add(char *data, u_int32_t len, bool flush = false, u_int32_t decompress_len = 0, bool directAdd = false);
-	void close() {
-		this->closed = true;
-	}
+	void close();
 	bool isClosed() {
 		return(closed);
 	}
@@ -342,8 +340,11 @@ public:
 	void unlock_compress() {
 		__sync_lock_release(&this->_sync_compress);
 	}
+	void addTarPosInCall(u_int64_t pos);
 private:
 	int time;
+	Call *call;
+	int typeContent;
 	list<sChunk> chunkBuffer;
 	volatile u_int32_t len;
 	u_int32_t chunk_fix_len;
