@@ -68,7 +68,7 @@
 
 #define ARRAY_LEN(a) (size_t) (sizeof(a) / sizeof(0[a]))
 
-int dspdebug = 1;
+int dspdebug = 0;
 
 /*
 #include "asterisk/format_cache.h"
