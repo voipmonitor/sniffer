@@ -329,13 +329,16 @@ const unsigned int RTP::get_payload_len() {
 		* If set, the fixed header is followed by exactly one header extension.
 		*/
 		extension_hdr_t *rtpext;
-		if (payload_len < 4)
-			payload_len = 0;
-
 		// the extension, if present, is after the CSRC list.
 		rtpext = (extension_hdr_t *)((u_int8_t *)payload_data);
-		payload_data += sizeof(extension_hdr_t) + rtpext->length;
-		payload_len -= sizeof(extension_hdr_t) + rtpext->length;
+		payload_data += sizeof(extension_hdr_t) + ntohs(rtpext->length);
+		payload_len -= sizeof(extension_hdr_t) + ntohs(rtpext->length);
+
+		if (payload_len < 2) {
+			payload_data = data + sizeof(RTPFixedHeader);
+			payload_len = 0;
+		}
+
 	}
 	return payload_len;
 }
@@ -484,13 +487,16 @@ RTP::jitterbuffer(struct ast_channel *channel, int savePayload) {
 			* If set, the fixed header is followed by exactly one header extension.
 			*/
 			extension_hdr_t *rtpext;
-			if (payload_len < 4)
-				payload_len = 0;
 
 			// the extension, if present, is after the CSRC list.
 			rtpext = (extension_hdr_t *)((u_int8_t *)payload_data);
-			payload_data += sizeof(extension_hdr_t) + rtpext->length;
-			payload_len -= sizeof(extension_hdr_t) + rtpext->length;
+			payload_data += sizeof(extension_hdr_t) + ntohs(rtpext->length);
+			payload_len -= sizeof(extension_hdr_t) + ntohs(rtpext->length);
+			if (payload_len < 4) {
+				payload_data = data + sizeof(RTPFixedHeader);
+				payload_len = 0;
+			}
+			
 		}
 		frame->data = payload_data;
 		frame->datalen = payload_len > 0 ? payload_len : 0; /* ensure that datalen is never negative */
@@ -1320,17 +1326,21 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 		char event_digit;
 		int event_len;
 		short int *sdata = (short int*)malloc(payload_len * 2);
-		char *payload = (char*)data + sizeof(RTPFixedHeader);
+		if(!sdata) {
+			syslog(LOG_ERR, "sdata malloc failed [%u]\n", (unsigned int)(payload_len * 2));
+			return;
+		}
 		if(codec == 0) {
 			for(unsigned int i = 0; i < payload_len; i++) {
-				sdata[i] = ULAW((unsigned char)payload[i]);
+				sdata[i] = ULAW((unsigned char)payload_data[i]);
 			}
 		} else if(codec == 8) {
 			for(unsigned int i = 0; i < payload_len; i++) {
-				sdata[i] = ALAW((unsigned char)payload[i]);
+				sdata[i] = ALAW((unsigned char)payload_data[i]);
 			}
 		}
 		res = dsp_process(DSP, sdata, payload_len, &event_digit, &event_len);
+		free(sdata);
 		if(res) {
 			if(owner and (event_digit == 'f' or event_digit == 'e')) {
 				//printf("dsp_process: digit[%c] len[%u]\n", event_digit, event_len);
