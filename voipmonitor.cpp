@@ -189,6 +189,7 @@ int opt_saveWAV = 0;		// save RTP packets to pcap file?
 int opt_saveGRAPH = 0;		// save GRAPH data to *.graph file? 
 FileZipHandler::eTypeCompress opt_gzipGRAPH = FileZipHandler::compress_na;	// compress GRAPH data ? 
 int opt_saverfc2833 = 0;
+int opt_silencedetect = 0;
 int opt_dbdtmf = 0;
 int opt_inbanddtmf = 0;
 int opt_rtcp = 1;		// pair RTP+1 port to RTCP and save it. 
@@ -1573,6 +1574,9 @@ int eval_config(string inistr) {
 			opt_onlyRTPheader = 1;
 			break;
 		}
+	}
+	if((value = ini.GetValue("general", "silencedetect", NULL))) {
+		opt_silencedetect = yesno(value);
 	}
 	if((value = ini.GetValue("general", "saverfc2833", NULL))) {
 		opt_saverfc2833 = yesno(value);

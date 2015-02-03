@@ -295,6 +295,13 @@ Call::Call(char *call_id, unsigned long call_id_len, time_t time) :
 	chantype = 0;
 	
 	chunkBuffersCount = 0;
+
+        caller_silence = 0;
+        called_silence = 0;
+        caller_noise = 0;
+        called_noise = 0;
+	caller_lastsilence = 0;
+	called_lastsilence = 0;
 }
 
 void
@@ -484,6 +491,7 @@ Call::~Call(){
 	pthread_mutex_unlock(&listening_worker_run_lock);
 	pthread_mutex_destroy(&listening_worker_run_lock);
 	//decreaseTartimemap(this->first_packet_time);
+	printf("caller s[%u] n[%u] ls[%u]  called s[%u] n[%u] ls[%u]\n", caller_silence, caller_noise, caller_lastsilence, called_silence, called_noise, called_lastsilence);
 }
 
 void

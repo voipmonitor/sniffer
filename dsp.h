@@ -104,7 +104,7 @@ int dsp_set_call_progress_zone(struct dsp *dsp, char *zone);
 
 /*! \brief Return AST_FRAME_NULL frames when there is silence, AST_FRAME_BUSY on
    busies, and call progress, all dependent upon which features are enabled */
-int dsp_process(struct dsp *dsp, short *data, int len, char *event_digit, int *event_len);
+int dsp_process(struct dsp *dsp, short *data, int len, char *event_digit, int *event_len, int *silence, int *totalsilence, int *totalnoise);
 
 /*! \brief Return non-zero if this is silence.  Updates "totalsilence" with the total
    number of seconds of silence  */

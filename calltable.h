@@ -273,6 +273,14 @@ public:
 	
 	bool force_close;
 
+	unsigned int caller_silence;
+	unsigned int called_silence;
+	unsigned int caller_noise;
+	unsigned int called_noise;
+	unsigned int caller_lastsilence;
+	unsigned int called_lastsilence;
+	
+
 	vector<string> mergecalls;
 
 	/**
