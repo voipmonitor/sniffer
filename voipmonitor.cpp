@@ -626,8 +626,7 @@ extern pthread_mutex_t tartimemaplock;
 
 TarQueue *tarQueue = NULL;
 
-pthread_mutex_t pcap_stat_lock;
-int pcap_stat_force_terminating;
+pthread_mutex_t terminate_packetbuffer_lock;
 
 
 #include <stdio.h>
@@ -2829,7 +2828,6 @@ void bt_sighandler(int sig, struct sigcontext ctx)
 }
 #endif
 
-int _terminate_packetbuffer_afterTerminateSleepSec;
 int opt_test = 0;
 char *opt_untar_gui_params = NULL;
 char opt_test_str[1024];
@@ -2930,6 +2928,7 @@ int main(int argc, char *argv[]) {
 	pthread_mutex_init(&mysqlconnect_lock, NULL);
 	pthread_mutex_init(&vm_rrd_lock, NULL);
 	pthread_mutex_init(&tartimemaplock, NULL);
+	pthread_mutex_init(&terminate_packetbuffer_lock, NULL);
 
 	// if the system has more than one CPU enable threading
 	opt_pcap_threaded = sysconf( _SC_NPROCESSORS_ONLN ) > 1; 
@@ -4341,15 +4340,14 @@ int main(int argc, char *argv[]) {
 					uint64_t _counter = 0;
 					while(!terminating) {
 						if(_counter && (verbosityE > 0 || !(_counter % 10))) {
+							pthread_mutex_lock(&terminate_packetbuffer_lock);
 							pcapQueueR->pcapStat(verbosityE > 0 ? 1 : 10);
+							pthread_mutex_unlock(&terminate_packetbuffer_lock);
 						}
 						sleep(1);
 						++_counter;
 					}
 					
-					if(_terminate_packetbuffer_afterTerminateSleepSec) {
-						sleep(_terminate_packetbuffer_afterTerminateSleepSec);
-					}
 					terminate_packetbuffer();
 					
 				} else {
@@ -4394,7 +4392,9 @@ int main(int argc, char *argv[]) {
 					uint64_t _counter = 0;
 					while(!terminating) {
 						if(_counter && (verbosityE > 0 || !(_counter % 10))) {
+							pthread_mutex_lock(&terminate_packetbuffer_lock);
 							pcapQueueQ->pcapStat(verbosityE > 0 ? 1 : 10);
+							pthread_mutex_unlock(&terminate_packetbuffer_lock);
 							if(tcpReassemblyHttp) {
 								tcpReassemblyHttp->setDoPrintContent();
 							}
@@ -4462,9 +4462,6 @@ int main(int argc, char *argv[]) {
 						++_counter;
 					}
 					
-					if(_terminate_packetbuffer_afterTerminateSleepSec) {
-						sleep(_terminate_packetbuffer_afterTerminateSleepSec);
-					}
 					terminate_packetbuffer();
 					
 					if(opt_pb_read_from_file[0] && (opt_enable_http || opt_enable_webrtc || opt_enable_ssl)) {
@@ -4790,9 +4787,9 @@ int main(int argc, char *argv[]) {
 	thread_cleanup();
 }
 
-void terminate_packetbuffer(int afterTerminateSleepSec) {
+void terminate_packetbuffer() {
 	if(opt_pcap_threaded && opt_pcap_queue) {
-		_terminate_packetbuffer_afterTerminateSleepSec = afterTerminateSleepSec;
+		pthread_mutex_lock(&terminate_packetbuffer_lock);
 		extern bool pstat_quietly_errors;
 		pstat_quietly_errors = true;
 		if(opt_pcap_queue_receive_from_ip_port) {

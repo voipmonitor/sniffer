@@ -350,6 +350,7 @@ Tar::tar_read(const char *filename, const char *endFilename, u_int32_t recordId,
 	} else {
 		if(recordId && tableType && !strcmp(tableType, "cdr")) {
 			SqlDb *sqlDb = createSqlObject();
+			sqlDb->setMaxQueryPass(2);
 			SqlDb_row row;
 			char queryBuff[1000];
 			sprintf(queryBuff, "SELECT calldate FROM cdr where id = %u", recordId);
