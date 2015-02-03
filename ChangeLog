@@ -1,3 +1,18 @@
+10.1.26 30.01.2015
+==================
+- if RTP changes destination port but SSRC is the same create new RTP so the GUI can see that the change happened [VS-168]
+
+
+10.1.25 30.01.2015
+==================
+- fix TCP manager racecondition when quick connections are made which leads to communication errors (and lags in the GUI when loading charts) 
+
+
+10.1.24 27.01.2015
+==================
+- fix G729 audio decode for 10ms variant
+
+
 10.1.23 23.12.2014
 ==================
 - do not use more memory then set in packetbuffer_total_maxheap in case the sniffer is in receiver mode and remote sniffer reconnect to the receiver and sends all traffic in burst (receiver will slow down)
