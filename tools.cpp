@@ -59,7 +59,9 @@ extern int opt_pcap_dump_asyncwrite;
 extern FileZipHandler::eTypeCompress opt_pcap_dump_zip_sip;
 extern FileZipHandler::eTypeCompress opt_pcap_dump_zip_rtp;
 extern FileZipHandler::eTypeCompress opt_pcap_dump_zip_graph;
-extern int opt_pcap_dump_ziplevel;
+extern int opt_pcap_dump_ziplevel_sip;
+extern int opt_pcap_dump_ziplevel_rtp;
+extern int opt_pcap_dump_ziplevel_graph;
 extern int opt_read_from_file;
 extern int opt_pcap_dump_tar;
 extern char opt_chdir[1024];
@@ -1548,7 +1550,7 @@ bool RestartUpgrade::runRestart(int socket1, int socket2) {
 	}
 	close(socket1);
 	close(socket2);
-	terminate_packetbuffer(15);
+	terminate_packetbuffer();
 	sleep(2);
 
 	// set to all descriptors flag CLOEXEC so exec* will close it and will not inherit it so the next voipmonitor instance will be not blocking it
@@ -2299,7 +2301,9 @@ void FileZipHandler::initCompress() {
 	if(this->typeCompress == gzip && 
 	   !this->compressStream) {
 		this->compressStream =  new CompressStream(CompressStream::gzip, 8 * 1024, 0);
-		this->compressStream->setZipLevel(opt_pcap_dump_ziplevel);
+		this->compressStream->setZipLevel(typeFile == pcap_sip ? opt_pcap_dump_ziplevel_sip : 
+						  typeFile == pcap_rtp ? opt_pcap_dump_ziplevel_rtp : 
+						  typeFile == graph_rtp ? opt_pcap_dump_ziplevel_graph : Z_DEFAULT_COMPRESSION);
 	}
 }
 

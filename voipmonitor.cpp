@@ -326,9 +326,11 @@ int opt_last_rtp_from_end = 1;
 int opt_pcap_dump_bufflength = 8194;
 int opt_pcap_dump_asyncwrite = 1;
 int opt_pcap_dump_asyncwrite_limit_new_thread = 80;
-FileZipHandler::eTypeCompress opt_pcap_dump_zip_sip = FileZipHandler::gzip;
+FileZipHandler::eTypeCompress opt_pcap_dump_zip_sip = FileZipHandler::compress_na;
 FileZipHandler::eTypeCompress opt_pcap_dump_zip_rtp = FileZipHandler::gzip;
-int opt_pcap_dump_ziplevel = Z_DEFAULT_COMPRESSION;
+int opt_pcap_dump_ziplevel_sip = Z_DEFAULT_COMPRESSION;
+int opt_pcap_dump_ziplevel_rtp = 1;
+int opt_pcap_dump_ziplevel_graph = 1;
 int opt_pcap_dump_writethreads = 1;
 int opt_pcap_dump_writethreads_max = 32;
 int opt_pcap_dump_asyncwrite_maxsize = 100; //MB
@@ -337,7 +339,7 @@ int opt_pcap_dump_tar_threads = 4;
 int opt_pcap_dump_tar_compress_sip = 1; //0 off, 1 gzip, 2 lzma
 int opt_pcap_dump_tar_sip_level = 6;
 int opt_pcap_dump_tar_sip_use_pos = 0;
-int opt_pcap_dump_tar_compress_rtp = 1;
+int opt_pcap_dump_tar_compress_rtp = 0;
 int opt_pcap_dump_tar_rtp_level = 1;
 int opt_pcap_dump_tar_rtp_use_pos = 0;
 int opt_pcap_dump_tar_compress_graph = 1;
@@ -345,7 +347,7 @@ int opt_pcap_dump_tar_graph_level = 1;
 int opt_pcap_dump_tar_graph_use_pos = 0;
 CompressStream::eTypeCompress opt_pcap_dump_tar_internalcompress_sip = CompressStream::compress_na;
 CompressStream::eTypeCompress opt_pcap_dump_tar_internalcompress_rtp = CompressStream::compress_na;
-CompressStream::eTypeCompress opt_pcap_dump_tar_internalcompress_graph = CompressStream::compress_na;
+CompressStream::eTypeCompress opt_pcap_dump_tar_internalcompress_graph = CompressStream::snappy;
 int opt_pcap_dump_tar_internal_gzip_sip_level = Z_DEFAULT_COMPRESSION;
 int opt_pcap_dump_tar_internal_gzip_rtp_level = Z_DEFAULT_COMPRESSION;
 int opt_pcap_dump_tar_internal_gzip_graph_level = Z_DEFAULT_COMPRESSION;
@@ -625,8 +627,7 @@ extern pthread_mutex_t tartimemaplock;
 
 TarQueue *tarQueue = NULL;
 
-pthread_mutex_t pcap_stat_lock;
-int pcap_stat_force_terminating;
+pthread_mutex_t terminate_packetbuffer_lock;
 
 
 #include <stdio.h>
@@ -1001,11 +1002,6 @@ void *storing_cdr( void *dummy ) {
 			while(calls_queue_position < calls_queue_size && storing_cdr_force_terminating <= 1) {
 
 				call = calltable->calls_queue[calls_queue_position];
-				if(!call) {
-					calltable->calls_queue.pop_front();
-					--calls_queue_size;
-					continue;
-				}
 				
 				calltable->unlock_calls_queue();
 				
@@ -1040,7 +1036,8 @@ void *storing_cdr( void *dummy ) {
 					 * processing packet.
 					*/
 					calltable->lock_calls_queue();
-					calltable->calls_queue[calls_queue_position] = NULL;
+					calltable->calls_queue.erase(calltable->calls_queue.begin() + calls_queue_position);
+					--calls_queue_size;
 					calltable->lock_calls_deletequeue();
 					calltable->calls_deletequeue.push_back(call);
 					calltable->unlock_calls_deletequeue();
@@ -2254,7 +2251,18 @@ int eval_config(string inistr) {
 		opt_gzipGRAPH = !strcmp(value, "zip") || yesno(value) ? FileZipHandler::gzip : FileZipHandler::compress_na;
 	}
 	if((value = ini.GetValue("general", "pcap_dump_ziplevel", NULL))) {
-		opt_pcap_dump_ziplevel = atoi(value);
+		opt_pcap_dump_ziplevel_sip = 
+		opt_pcap_dump_ziplevel_rtp = 
+		opt_pcap_dump_ziplevel_graph = atoi(value);
+	}
+	if((value = ini.GetValue("general", "pcap_dump_ziplevel_sip", NULL))) {
+		opt_pcap_dump_ziplevel_sip = atoi(value);
+	}
+	if((value = ini.GetValue("general", "pcap_dump_ziplevel_rtp", NULL))) {
+		opt_pcap_dump_ziplevel_rtp = atoi(value);
+	}
+	if((value = ini.GetValue("general", "pcap_dump_ziplevel_graph", NULL))) {
+		opt_pcap_dump_ziplevel_graph = atoi(value);
 	}
 	if((value = ini.GetValue("general", "pcap_dump_writethreads", NULL))) {
 		opt_pcap_dump_writethreads = atoi(value);
@@ -2551,6 +2559,15 @@ void set_context_config() {
 	
 	if(opt_pcap_dump_tar) {
 		opt_cachedir[0] = '\0';
+		if(opt_pcap_dump_tar_compress_sip) {
+			opt_pcap_dump_zip_sip = FileZipHandler::compress_na;
+		}
+		if(opt_pcap_dump_tar_compress_rtp) {
+			opt_pcap_dump_zip_rtp = FileZipHandler::compress_na;
+		}
+		if(opt_pcap_dump_tar_compress_graph) {
+			opt_gzipGRAPH = FileZipHandler::compress_na;
+		}
 	}
 	
 	opt_pcap_dump_tar_sip_use_pos = opt_pcap_dump_tar && !opt_pcap_dump_tar_compress_sip;
@@ -2820,7 +2837,6 @@ void bt_sighandler(int sig, struct sigcontext ctx)
 }
 #endif
 
-int _terminate_packetbuffer_afterTerminateSleepSec;
 int opt_test = 0;
 char *opt_untar_gui_params = NULL;
 char opt_test_str[1024];
@@ -2921,6 +2937,7 @@ int main(int argc, char *argv[]) {
 	pthread_mutex_init(&mysqlconnect_lock, NULL);
 	pthread_mutex_init(&vm_rrd_lock, NULL);
 	pthread_mutex_init(&tartimemaplock, NULL);
+	pthread_mutex_init(&terminate_packetbuffer_lock, NULL);
 
 	// if the system has more than one CPU enable threading
 	opt_pcap_threaded = sysconf( _SC_NPROCESSORS_ONLN ) > 1; 
@@ -4332,15 +4349,14 @@ int main(int argc, char *argv[]) {
 					uint64_t _counter = 0;
 					while(!terminating) {
 						if(_counter && (verbosityE > 0 || !(_counter % 10))) {
+							pthread_mutex_lock(&terminate_packetbuffer_lock);
 							pcapQueueR->pcapStat(verbosityE > 0 ? 1 : 10);
+							pthread_mutex_unlock(&terminate_packetbuffer_lock);
 						}
 						sleep(1);
 						++_counter;
 					}
 					
-					if(_terminate_packetbuffer_afterTerminateSleepSec) {
-						sleep(_terminate_packetbuffer_afterTerminateSleepSec);
-					}
 					terminate_packetbuffer();
 					
 				} else {
@@ -4385,7 +4401,9 @@ int main(int argc, char *argv[]) {
 					uint64_t _counter = 0;
 					while(!terminating) {
 						if(_counter && (verbosityE > 0 || !(_counter % 10))) {
+							pthread_mutex_lock(&terminate_packetbuffer_lock);
 							pcapQueueQ->pcapStat(verbosityE > 0 ? 1 : 10);
+							pthread_mutex_unlock(&terminate_packetbuffer_lock);
 							if(tcpReassemblyHttp) {
 								tcpReassemblyHttp->setDoPrintContent();
 							}
@@ -4453,9 +4471,6 @@ int main(int argc, char *argv[]) {
 						++_counter;
 					}
 					
-					if(_terminate_packetbuffer_afterTerminateSleepSec) {
-						sleep(_terminate_packetbuffer_afterTerminateSleepSec);
-					}
 					terminate_packetbuffer();
 					
 					if(opt_pb_read_from_file[0] && (opt_enable_http || opt_enable_webrtc || opt_enable_ssl)) {
@@ -4781,9 +4796,9 @@ int main(int argc, char *argv[]) {
 	thread_cleanup();
 }
 
-void terminate_packetbuffer(int afterTerminateSleepSec) {
+void terminate_packetbuffer() {
 	if(opt_pcap_threaded && opt_pcap_queue) {
-		_terminate_packetbuffer_afterTerminateSleepSec = afterTerminateSleepSec;
+		pthread_mutex_lock(&terminate_packetbuffer_lock);
 		extern bool pstat_quietly_errors;
 		pstat_quietly_errors = true;
 		if(opt_pcap_queue_receive_from_ip_port) {

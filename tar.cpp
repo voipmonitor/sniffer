@@ -323,9 +323,12 @@ Tar::chunkbuffer_iterate_ev(char *data, u_int32_t len, u_int32_t pos) {
 
 void
 Tar::tar_read(const char *filename, const char *endFilename, u_int32_t recordId, const char *tableType, const char *tarPosString) {
+	bool enableDetectTarPos = true;
 	if(!reg_match(this->pathname.c_str(), "tar\\.gz") &&
 	   !reg_match(this->pathname.c_str(), "tar\\.xz")) {
 		this->readData.send_parameters_zip = false;
+	} else {
+		enableDetectTarPos = false;
 	}
 	this->readData.null();
 	this->readData.filename = filename;
@@ -348,8 +351,10 @@ Tar::tar_read(const char *filename, const char *endFilename, u_int32_t recordId,
 			tarPos.push_back(atoll(tarPosStr[i].c_str()));
 		}
 	} else {
-		if(recordId && tableType && !strcmp(tableType, "cdr")) {
+		if(recordId && tableType && !strcmp(tableType, "cdr") &&
+		   enableDetectTarPos) {
 			SqlDb *sqlDb = createSqlObject();
+			sqlDb->setMaxQueryPass(2);
 			SqlDb_row row;
 			char queryBuff[1000];
 			sprintf(queryBuff, "SELECT calldate FROM cdr where id = %u", recordId);
