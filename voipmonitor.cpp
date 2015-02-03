@@ -2555,6 +2555,15 @@ void set_context_config() {
 	
 	if(opt_pcap_dump_tar) {
 		opt_cachedir[0] = '\0';
+		if(opt_pcap_dump_tar_compress_sip) {
+			opt_pcap_dump_zip_sip = FileZipHandler::compress_na;
+		}
+		if(opt_pcap_dump_tar_compress_rtp) {
+			opt_pcap_dump_zip_rtp = FileZipHandler::compress_na;
+		}
+		if(opt_pcap_dump_tar_compress_graph) {
+			opt_gzipGRAPH = FileZipHandler::compress_na;
+		}
 	}
 	
 	opt_pcap_dump_tar_sip_use_pos = opt_pcap_dump_tar && !opt_pcap_dump_tar_compress_sip;
