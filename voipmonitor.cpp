@@ -1001,11 +1001,6 @@ void *storing_cdr( void *dummy ) {
 			while(calls_queue_position < calls_queue_size && storing_cdr_force_terminating <= 1) {
 
 				call = calltable->calls_queue[calls_queue_position];
-				if(!call) {
-					calltable->calls_queue.pop_front();
-					--calls_queue_size;
-					continue;
-				}
 				
 				calltable->unlock_calls_queue();
 				
@@ -1040,7 +1035,8 @@ void *storing_cdr( void *dummy ) {
 					 * processing packet.
 					*/
 					calltable->lock_calls_queue();
-					calltable->calls_queue[calls_queue_position] = NULL;
+					calltable->calls_queue.erase(calltable->calls_queue.begin() + calls_queue_position);
+					--calls_queue_size;
 					calltable->lock_calls_deletequeue();
 					calltable->calls_deletequeue.push_back(call);
 					calltable->unlock_calls_deletequeue();
