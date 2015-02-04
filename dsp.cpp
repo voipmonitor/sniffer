@@ -1445,7 +1445,7 @@ int dsp_process(struct dsp *dsp, short *shortdata, int len, char *event_digit, i
 	if ((dsp->features & DSP_FEATURE_SILENCE_SUPPRESS) || (dsp->features & DSP_FEATURE_BUSY_DETECT)) {
 		res = __dsp_silence_noise(dsp, shortdata, len, totalsilence, totalnoise, NULL);
 		*silence = res;
-		printf("silence [%u] noise [%u]\n", *totalsilence, *totalnoise);
+		if(dspdebug) syslog(1, "silence [%u] noise [%u]\n", *totalsilence, *totalnoise);
 	}
 
 	if ((dsp->features & DSP_FEATURE_SILENCE_SUPPRESS) && silence) {

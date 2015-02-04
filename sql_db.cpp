@@ -2102,6 +2102,10 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 			`rtcp_avgfr_mult10` smallint unsigned DEFAULT NULL,\
 			`rtcp_avgjitter_mult10` smallint unsigned DEFAULT NULL,\
 			`lost` mediumint unsigned DEFAULT NULL,\
+			`caller_silence` tinyint unsigned DEFAULT NULL,\
+			`called_silence` tinyint unsigned DEFAULT NULL,\
+			`caller_silence_end` smallint unsigned DEFAULT NULL,\
+			`called_silence_end` smallint unsigned DEFAULT NULL,\
 			`id_sensor` smallint unsigned DEFAULT NULL," + 
 			(get_customers_pn_query[0] ?
 				"`caller_customer_id` int DEFAULT NULL,\
@@ -2200,6 +2204,17 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 	if(!opt_last_rtp_from_end) {
 		syslog(LOG_WARNING, "!!! Your database needs to be upgraded to support new features - ALTER TABLE cdr ADD a_last_rtp_from_end SMALLINT UNSIGNED DEFAULT NULL, ADD b_last_rtp_from_end SMALLINT UNSIGNED DEFAULT NULL;");
 	}
+
+	extern int opt_silencedetect;
+	if(opt_silencedetect) {
+		this->query("show columns from cdr where Field='caller_silence'");
+		int res = this->fetchRow();
+		if(!res) {
+			syslog(LOG_WARNING, "!!! You have enabled silencedetect but the database is not yet upgraded. Run this command in your database: ALTER TABLE cdr ADD caller_silence tinyint unsigned default NULL, ADD called_silence tinyint unsigned default NULL, ADD caller_silence_end smallint default NULL, ADD called_silence_end smallint default NULL;");
+			opt_silencedetect = 0;
+		}
+	}
+
 	
 	this->query("show columns from cdr where Field='price_operator_mult100'");
 	if(!this->fetchRow()) {
@@ -3883,6 +3898,10 @@ void SqlDb_odbc::createSchema(const char *host, const char *database, const char
 			rtcp_avgfr_mult10 smallint NULL,\
 			rtcp_avgjitter_mult10 smallint NULL,\
 			lost int NULL,\
+			caller_silence tinyint NULL,\
+			called_silence tinyint NULL,\
+			caller_silence_end smallint NULL,\
+			called_silence_end smallint NULL,\
 			id_sensor smallint NULL,);\
 		CREATE INDEX calldate ON cdr (calldate);\
 		CREATE INDEX callend ON cdr (callend);\
