@@ -1818,6 +1818,7 @@ unsigned long ParsePacket::parseData(char *data, unsigned long datalen, bool doC
 	unsigned int namelength;
 	for(unsigned long i = 0; i < datalen; i++) {
 		if(!doubleEndLine && 
+		   datalen > 3 &&
 		   data[i] == '\r' && i < datalen - 3 && 
 		   data[i + 1] == '\n' && data[i + 2] == '\r' && data[i + 3] == '\n') {
 			doubleEndLine = data + i;
