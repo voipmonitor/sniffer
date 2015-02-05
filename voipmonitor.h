@@ -54,7 +54,7 @@ void reload_capture_rules();
 void set_context_config();
 void convert_filesindex();
 
-void terminate_packetbuffer(int afterTerminateSleepSec = 0);
+void terminate_packetbuffer();
 
 /* For compatibility with Linux definitions... */
 

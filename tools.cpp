@@ -1504,7 +1504,7 @@ bool RestartUpgrade::runRestart(int socket1, int socket2) {
 	}
 	close(socket1);
 	close(socket2);
-	terminate_packetbuffer(15);
+	terminate_packetbuffer();
 	sleep(2);
 
 	// set to all descriptors flag CLOEXEC so exec* will close it and will not inherit it so the next voipmonitor instance will be not blocking it
