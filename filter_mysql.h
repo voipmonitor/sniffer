@@ -31,35 +31,47 @@
 
 #define MAX_PREFIX 64
 
-class IPfilter {
+struct filter_db_row_base {
+	filter_db_row_base() {
+		direction = 0;
+		rtp = 0;
+		sip = 0;
+		reg = 0;
+		graph = 0;
+		wav = 0;
+		skip = 0;
+		mos_lqo = 0;
+		script = 0;
+		hide_message = 0;
+	}
+	int direction;
+	int rtp;
+	int sip;
+	int reg;
+	int graph;
+	int wav;
+	int skip;
+	int mos_lqo;
+	int script;
+	int hide_message;
+};
+
+class filter_base {
+protected:
+	void loadBaseDataRow(class SqlDb_row *sqlRow, filter_db_row_base *baseRow);
+	unsigned int getFlagsFromBaseData(filter_db_row_base *baseRow);
+	void setCallFlagsFromFilterFlags(unsigned int *callFlags, unsigned int filterFlags);
+};
+
+class IPfilter : public filter_base {
 private:
-	struct db_row {
+	struct db_row : filter_db_row_base {
 		db_row() {
 			ip = 0;
 			mask = 0;
-			direction = 0;
-			rtp = 0;
-			sip = 0;
-			reg = 0;
-			graph = 0;
-			wav = 0;
-			skip = 0;
-			mos_lqo = 0;
-			script = 0;
-			hide_message = 0;
 		}
 		unsigned int ip;
 		int mask;
-		int direction;
-		int rtp;
-		int sip;
-		int reg;
-		int graph;
-		int wav;
-		int skip;
-		int mos_lqo;
-		int script;
-		int hide_message;
 	};
         struct t_node {
 		unsigned int ip;
@@ -80,33 +92,13 @@ public:
 
 };
 
-class TELNUMfilter {
+class TELNUMfilter : public filter_base {
 private:
-	struct db_row {
+	struct db_row : filter_db_row_base {
 		db_row() {
 			memset(prefix, 0, sizeof(prefix));
-			direction = 0;
-			rtp = 0;
-			sip = 0;
-			reg = 0;
-			graph = 0;
-			wav = 0;
-			skip = 0;
-			mos_lqo = 0;
-			script = 0;
-			hide_message = 0;
 		}
 		char prefix[MAX_PREFIX];
-		int direction;
-		int rtp;
-		int sip;
-		int reg;
-		int graph;
-		int wav;
-		int skip;
-		int mos_lqo;
-		int script;
-		int hide_message;
 	};
 	struct t_payload {
 		char prefix[MAX_PREFIX];
@@ -131,32 +123,12 @@ public:
 	int add_call_flags(unsigned int *flags, char *telnum_src, char *telnum_dst);
 };
 
-class DOMAINfilter {
+class DOMAINfilter : public filter_base {
 private:
-	struct db_row {
+	struct db_row : filter_db_row_base{
 		db_row() {
-			direction = 0;
-			rtp = 0;
-			sip = 0;
-			reg = 0;
-			graph = 0;
-			wav = 0;
-			skip = 0;
-			mos_lqo = 0;
-			script = 0;
-			hide_message = 0;
 		}
 		std::string domain;
-		int direction;
-		int rtp;
-		int sip;
-		int reg;
-		int graph;
-		int wav;
-		int skip;
-		int mos_lqo;
-		int script;
-		int hide_message;
 	};
         struct t_node {
 		std::string domain;
@@ -173,5 +145,50 @@ public:
 	void load();
 	void dump();
 	int add_call_flags(unsigned int *flags, char *domain_src, char *domain_dst);
+};
 
+class SIP_HEADERfilter : public filter_base {
+private:
+	struct db_row : filter_db_row_base{
+		db_row() {
+		}
+		std::string header;
+		std::string content;
+		bool prefix;
+		bool regexp;
+	};
+        struct item_data {
+		int direction;
+		bool prefix;
+		bool regexp;
+		unsigned int flags;
+	};
+	struct header_data {
+		std::map<std::string, item_data> strict_prefix;
+		std::map<std::string, item_data> regexp;
+	};
+	std::map<std::string, header_data> data;
+public: 
+	SIP_HEADERfilter();
+	~SIP_HEADERfilter();
+
+	int count;
+	void load();
+	void dump();
+	int add_call_flags(class ParsePacket *parsePacket, unsigned int *flags, char *domain_src, char *domain_dst);
+	void addNodes(ParsePacket *parsePacket);
+	
+	unsigned long loadTime;
+	unsigned long getLoadTime() {
+		return(loadTime);
+	}
+private:
+	static volatile int _sync;
+public:
+	static void lock_sync() {
+		while(__sync_lock_test_and_set(&_sync, 1));
+	}
+	static void unlock_sync() {
+		__sync_lock_release(&_sync);
+	}
 };

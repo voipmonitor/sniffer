@@ -1951,7 +1951,28 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 			`remove_at` date default NULL,\
 		PRIMARY KEY (`id`)\
 	) ENGINE=InnoDB DEFAULT CHARSET=latin1;");
-	
+
+	this->query(
+	"CREATE TABLE IF NOT EXISTS `filter_sip_header` (\
+			`id` int NOT NULL AUTO_INCREMENT,\
+			`header` char(128) default NULL,\
+			`content` char(128) default NULL,\
+			`content_type` enum('strict', 'prefix', 'regexp') default NULL,\
+			`direction` tinyint DEFAULT NULL,\
+			`rtp` tinyint DEFAULT NULL,\
+			`sip` tinyint DEFAULT NULL,\
+			`register` tinyint DEFAULT NULL,\
+			`graph` tinyint DEFAULT NULL,\
+			`wav` tinyint DEFAULT NULL,\
+			`skip` tinyint DEFAULT NULL,\
+			`script` tinyint DEFAULT NULL,\
+			`mos_lqo` tinyint DEFAULT NULL,\
+			`hide_message` tinyint DEFAULT NULL,\
+			`note` text,\
+			`remove_at` date default NULL,\
+		PRIMARY KEY (`id`)\
+	) ENGINE=InnoDB DEFAULT CHARSET=latin1;");
+
 	this->query(string(
 	"CREATE TABLE IF NOT EXISTS `cdr_sip_response") + federatedSuffix + "` (\
 			`id` mediumint unsigned NOT NULL AUTO_INCREMENT,\
@@ -3727,7 +3748,8 @@ void SqlDb_odbc::createSchema(const char *host, const char *database, const char
 			skip tinyint DEFAULT '0',\
 			script tinyint DEFAULT '0',\
 			mos_lqo tinyint DEFAULT '0',\
-			note text);\
+			note text,\
+			remove_at date default NULL);\
 	END");
 
 	this->query(
@@ -3745,7 +3767,48 @@ void SqlDb_odbc::createSchema(const char *host, const char *database, const char
 			skip tinyint DEFAULT '0',\
 			script tinyint DEFAULT '0',\
 			mos_lqo tinyint DEFAULT '0',\
-			note text);\
+			note text,\
+			remove_at date default NULL);\
+	END");
+
+	this->query(
+	"IF NOT EXISTS (SELECT * FROM sys.objects WHERE name = 'filter_domain') BEGIN\
+		CREATE TABLE filter_domain (\
+			id int PRIMARY KEY IDENTITY,\
+			domain char(128) default NULL,\
+			direction tinyint default NULL,\
+			rtp tinyint default NULL,\
+			sip tinyint default NULL,\
+			register tinyint default NULL,\
+			graph tinyint default NULL,\
+			wav tinyint default NULL,\
+			skip tinyint default NULL,\
+			script tinyint default NULL,\
+			mos_lqo tinyint default NULL,\
+			hide_message tinyint default NULL,\
+			note text,\
+			remove_at date default NULL);\
+	END");
+
+	this->query(
+	"IF NOT EXISTS (SELECT * FROM sys.objects WHERE name = 'filter_sip_header') BEGIN\
+		CREATE TABLE filter_sip_header (\
+			id int PRIMARY KEY IDENTITY,\
+			header char(128) default NULL,\
+			content char(128) default NULL,\
+			content_type char(10) default NULL,\
+			direction tinyint default NULL,\
+			rtp tinyint default NULL,\
+			sip tinyint default NULL,\
+			register tinyint default NULL,\
+			graph tinyint default NULL,\
+			wav tinyint default NULL,\
+			skip tinyint default NULL,\
+			script tinyint default NULL,\
+			mos_lqo tinyint default NULL,\
+			hide_message tinyint default NULL,\
+			note text,\
+			remove_at date default NULL);\
 	END");
 
 	this->query(

@@ -19,6 +19,84 @@ bool is_number(const std::string& s) {
 	return true;
 }
 
+void filter_base::loadBaseDataRow(SqlDb_row *sqlRow, filter_db_row_base *baseRow) {
+	baseRow->direction = sqlRow->isNull("direction") ? 0 : atoi((*sqlRow)["direction"].c_str());
+	baseRow->rtp = sqlRow->isNull("rtp") ? -1 : atoi((*sqlRow)["rtp"].c_str());
+	baseRow->sip = sqlRow->isNull("sip") ? -1 : atoi((*sqlRow)["sip"].c_str());
+	baseRow->reg = sqlRow->isNull("register") ? -1 : atoi((*sqlRow)["register"].c_str());
+	baseRow->graph = sqlRow->isNull("graph") ? -1 : atoi((*sqlRow)["graph"].c_str());
+	baseRow->wav = sqlRow->isNull("wav") ? -1 : atoi((*sqlRow)["wav"].c_str());
+	baseRow->skip = sqlRow->isNull("skip") ? -1 : atoi((*sqlRow)["skip"].c_str());
+	baseRow->script = sqlRow->isNull("script") ? -1 : atoi((*sqlRow)["script"].c_str());
+	baseRow->mos_lqo = sqlRow->isNull("mos_lqo") ? -1 : atoi((*sqlRow)["mos_lqo"].c_str());
+	baseRow->hide_message = sqlRow->isNull("hide_message") ? -1 : atoi((*sqlRow)["hide_message"].c_str());
+}
+
+unsigned int filter_base::getFlagsFromBaseData(filter_db_row_base *baseRow) {
+	unsigned int flags = 0;
+	
+	if(baseRow->rtp == 1)			flags |= FLAG_RTP;
+	else if(baseRow->rtp == 0)		flags |= FLAG_NORTP;
+	
+	if(baseRow->sip == 1)			flags |= FLAG_SIP;
+	else if(baseRow->sip == 0)		flags |= FLAG_NOSIP;
+	
+	if(baseRow->reg == 1)			flags |= FLAG_REGISTER;
+	else if(baseRow->reg == 0)		flags |= FLAG_NOREGISTER;
+	
+	if(baseRow->graph == 1)			flags |= FLAG_GRAPH;
+	else if(baseRow->graph == 0)		flags |= FLAG_NOGRAPH;
+	
+	if(baseRow->wav == 1)			flags |= FLAG_WAV;
+	else if(baseRow->wav == 0)		flags |= FLAG_NOWAV;
+	
+	if(baseRow->skip == 1)			flags |= FLAG_SKIP;
+	else if(baseRow->skip == 0)		flags |= FLAG_NOSKIP;
+	
+	if(baseRow->script == 1)		flags |= FLAG_SCRIPT;
+	else if(baseRow->script == 0)		flags |= FLAG_NOSCRIPT;
+	
+	if(baseRow->mos_lqo == 1)		flags |= FLAG_AMOSLQO;
+	else if(baseRow->mos_lqo == 2)		flags |= FLAG_BMOSLQO;
+	else if(baseRow->mos_lqo == 3)		flags |= FLAG_ABMOSLQO;
+	else if(baseRow->mos_lqo == 0)		flags |= FLAG_NOMOSLQO;
+	
+	if(baseRow->hide_message == 1)		flags |= FLAG_HIDEMSG;
+	else if(baseRow->hide_message == 0)	flags |= FLAG_SHOWMSG;
+	
+	return(flags);
+}
+
+void filter_base::setCallFlagsFromFilterFlags(unsigned int *callFlags, unsigned int filterFlags) {
+	if(filterFlags & FLAG_RTP)					*callFlags |= FLAG_SAVERTP;
+	if(filterFlags & FLAG_NORTP) 					{*callFlags &= ~FLAG_SAVERTP; *callFlags &= ~FLAG_SAVERTPHEADER;}
+	
+	if(filterFlags & FLAG_SIP)					*callFlags |= FLAG_SAVESIP;
+	if(filterFlags & FLAG_NOSIP)					*callFlags &= ~FLAG_SAVESIP;
+	
+	if(filterFlags & FLAG_REGISTER)					*callFlags |= FLAG_SAVEREGISTER;
+	if(filterFlags & FLAG_NOREGISTER)				*callFlags &= ~FLAG_SAVEREGISTER;
+	
+	if(filterFlags & FLAG_WAV)					*callFlags |= FLAG_SAVEWAV;
+	if(filterFlags & FLAG_NOWAV)					*callFlags &= ~FLAG_SAVEWAV;
+	
+	if(filterFlags & FLAG_GRAPH)					*callFlags |= FLAG_SAVEGRAPH;
+	if(filterFlags & FLAG_NOGRAPH)					*callFlags &= ~FLAG_SAVEGRAPH;
+	
+	if(filterFlags & FLAG_SKIP)					*callFlags |= FLAG_SKIPCDR;
+	if(filterFlags & FLAG_NOSKIP)					*callFlags &= ~FLAG_SKIPCDR;
+	
+	if(filterFlags & FLAG_SCRIPT)					*callFlags |= FLAG_RUNSCRIPT;
+	if(filterFlags & FLAG_NOSCRIPT)					*callFlags &= ~FLAG_RUNSCRIPT;
+
+	if(filterFlags & FLAG_AMOSLQO || filterFlags & FLAG_ABMOSLQO)	{*callFlags |= FLAG_RUNAMOSLQO; *callFlags |= FLAG_SAVEWAV;}
+	if(filterFlags & FLAG_BMOSLQO || filterFlags & FLAG_ABMOSLQO)	{*callFlags |= FLAG_RUNBMOSLQO; *callFlags |= FLAG_SAVEWAV;}
+	if(filterFlags & FLAG_NOMOSLQO) 				{*callFlags &= ~FLAG_RUNAMOSLQO; *callFlags &= ~FLAG_RUNBMOSLQO;}
+	
+	if(filterFlags & FLAG_HIDEMSG)					*callFlags |= FLAG_HIDEMESSAGE;
+	if(filterFlags & FLAG_SHOWMSG)					*callFlags &= ~FLAG_HIDEMESSAGE;
+}
+
 /* IPfilter class */
 
 // constructor
@@ -48,16 +126,7 @@ IPfilter::load() {
 		db_row* filterRow = new db_row;
 		filterRow->ip = (unsigned int)strtoul(row["ip"].c_str(), NULL, 0);
 		filterRow->mask = atoi(row["mask"].c_str());
-		filterRow->direction = row.isNull("direction") ? 0 : atoi(row["direction"].c_str());
-		filterRow->rtp = row.isNull("rtp") ? -1 : atoi(row["rtp"].c_str());
-		filterRow->sip = row.isNull("sip") ? -1 : atoi(row["sip"].c_str());
-		filterRow->reg = row.isNull("register") ? -1 : atoi(row["register"].c_str());
-		filterRow->graph = row.isNull("graph") ? -1 : atoi(row["graph"].c_str());
-		filterRow->wav = row.isNull("wav") ? -1 : atoi(row["wav"].c_str());
-		filterRow->skip = row.isNull("skip") ? -1 : atoi(row["skip"].c_str());
-		filterRow->script = row.isNull("script") ? -1 : atoi(row["script"].c_str());
-		filterRow->mos_lqo = row.isNull("mos_lqo") ? -1 : atoi(row["mos_lqo"].c_str());
-		filterRow->hide_message = row.isNull("hide_message") ? -1 : atoi(row["hide_message"].c_str());
+		this->loadBaseDataRow(&row, filterRow);
 		vectDbRow.push_back(*filterRow);
 		delete filterRow;
 	}
@@ -66,33 +135,10 @@ IPfilter::load() {
 	for (size_t i = 0; i < vectDbRow.size(); ++i) {
 		node = new(t_node);
 		node->direction = vectDbRow[i].direction;
-		node->flags = 0;
+		node->flags = this->getFlagsFromBaseData(&vectDbRow[i]);
 		node->next = NULL;
 		node->ip = vectDbRow[i].ip;
 		node->mask = vectDbRow[i].mask;
-
-		if(vectDbRow[i].rtp == 1)	node->flags |= FLAG_RTP;
-		else if(vectDbRow[i].rtp == 0)	node->flags |= FLAG_NORTP;
-		if(vectDbRow[i].sip == 1)	node->flags |= FLAG_SIP;
-		else if(vectDbRow[i].sip == 0)	node->flags |= FLAG_NOSIP;
-		if(vectDbRow[i].reg == 1)	node->flags |= FLAG_REGISTER;
-		else if(vectDbRow[i].reg == 0)	node->flags |= FLAG_NOREGISTER;
-		if(vectDbRow[i].graph == 1)	node->flags |= FLAG_GRAPH;
-		else if(vectDbRow[i].graph == 0)node->flags |= FLAG_NOGRAPH;
-		if(vectDbRow[i].wav == 1)	node->flags |= FLAG_WAV;
-		else if(vectDbRow[i].wav == 0)	node->flags |= FLAG_NOWAV;
-		if(vectDbRow[i].skip == 1)	node->flags |= FLAG_SKIP;
-		else if(vectDbRow[i].skip == 0)	node->flags |= FLAG_NOSKIP;
-		if(vectDbRow[i].script == 1)	node->flags |= FLAG_SCRIPT;
-		else if(vectDbRow[i].script == 0)	node->flags |= FLAG_NOSCRIPT;
-
-		if(vectDbRow[i].mos_lqo == 1)	node->flags |= FLAG_AMOSLQO;
-		else if(vectDbRow[i].mos_lqo == 2)	node->flags |= FLAG_BMOSLQO;
-		else if(vectDbRow[i].mos_lqo == 3)	node->flags |= FLAG_ABMOSLQO;
-		else if(vectDbRow[i].mos_lqo == 0)	node->flags |= FLAG_NOMOSLQO;
-
-		if(vectDbRow[i].hide_message == 1)	node->flags |= FLAG_HIDEMSG;
-		else if(vectDbRow[i].hide_message == 0)	node->flags |= FLAG_SHOWMSG;
 
 		// add node to the first position
 		node->next = first_node;
@@ -131,73 +177,8 @@ IPfilter::add_call_flags(unsigned int *flags, unsigned int saddr, unsigned int d
 			}
 	
 			last_mask = node->mask;
-
-			if(node->flags & FLAG_SCRIPT) {
-				*flags |= FLAG_RUNSCRIPT;
-			}
-			if(node->flags & FLAG_RTP) {
-				*flags |= FLAG_SAVERTP;
-			}
-			if(node->flags & FLAG_NORTP) {
-				*flags &= ~FLAG_SAVERTP;
-				*flags &= ~FLAG_SAVERTPHEADER;
-			}
-			if(node->flags & FLAG_SIP) {
-				*flags |= FLAG_SAVESIP;
-			}
-			if(node->flags & FLAG_NOSIP) {
-				*flags &= ~FLAG_SAVESIP;
-			}
-			if(node->flags & FLAG_REGISTER) {
-				*flags |= FLAG_SAVEREGISTER;
-			}
-			if(node->flags & FLAG_NOREGISTER) {
-				*flags &= ~FLAG_SAVEREGISTER;
-			}
-			if(node->flags & FLAG_WAV) {
-				*flags |= FLAG_SAVEWAV;
-			}
-			if(node->flags & FLAG_NOWAV) {
-				*flags &= ~FLAG_SAVEWAV;
-			}
-			if(node->flags & FLAG_GRAPH) {
-				*flags |= FLAG_SAVEGRAPH;
-			}
-			if(node->flags & FLAG_NOGRAPH) {
-				*flags &= ~FLAG_SAVEGRAPH;
-			}
-			if(node->flags & FLAG_SKIP) {
-				*flags |= FLAG_SKIPCDR;
-			}
-			if(node->flags & FLAG_NOSKIP) {
-				*flags &= ~FLAG_SKIPCDR;
-			}
-			if(node->flags & FLAG_SCRIPT) {
-				*flags |= FLAG_RUNSCRIPT;
-			}
-			if(node->flags & FLAG_NOSCRIPT) {
-				*flags &= ~FLAG_RUNSCRIPT;
-			}
-
-			if(node->flags & FLAG_AMOSLQO || node->flags & FLAG_ABMOSLQO) {
-				*flags |= FLAG_RUNAMOSLQO;
-				*flags |= FLAG_SAVEWAV;
-			}
-			if(node->flags & FLAG_BMOSLQO || node->flags & FLAG_ABMOSLQO) {
-				*flags |= FLAG_RUNBMOSLQO;
-				*flags |= FLAG_SAVEWAV;
-			}
-			if(node->flags & FLAG_NOMOSLQO) {
-				*flags &= ~FLAG_RUNAMOSLQO;
-				*flags &= ~FLAG_RUNBMOSLQO;
-			}
-
-			if(node->flags & FLAG_HIDEMSG) {
-				*flags |= FLAG_HIDEMESSAGE;
-			}
-			if(node->flags & FLAG_SHOWMSG) {
-				*flags &= ~FLAG_HIDEMESSAGE;
-			}
+			
+			this->setCallFlagsFromFilterFlags(flags, node->flags);
 
 			found = 1;
 		}
@@ -291,16 +272,7 @@ TELNUMfilter::load() {
 		count++;
 		db_row* filterRow = new(db_row);
 		strncpy(filterRow->prefix, row["prefix"].c_str(), MAX_PREFIX);
-		filterRow->direction = row.isNull("direction") ? 0 : atoi(row["direction"].c_str());
-		filterRow->rtp = row.isNull("rtp") ? -1 : atoi(row["rtp"].c_str());
-		filterRow->sip = row.isNull("sip") ? -1 : atoi(row["sip"].c_str());
-		filterRow->reg = row.isNull("register") ? -1 : atoi(row["register"].c_str());
-		filterRow->graph = row.isNull("graph") ? -1 : atoi(row["graph"].c_str());
-		filterRow->wav = row.isNull("wav") ? -1 : atoi(row["wav"].c_str());
-		filterRow->skip = row.isNull("skip") ? -1 : atoi(row["skip"].c_str());
-		filterRow->script = row.isNull("script") ? -1 : atoi(row["script"].c_str());
-		filterRow->mos_lqo = row.isNull("mos_lqo") ? -1 : atoi(row["mos_lqo"].c_str());
-		filterRow->hide_message = row.isNull("hide_message") ? -1 : atoi(row["hide_message"].c_str());
+		this->loadBaseDataRow(&row, filterRow);
 		vectDbRow.push_back(*filterRow);
 		delete filterRow;
 	}
@@ -308,31 +280,8 @@ TELNUMfilter::load() {
 	for (size_t i = 0; i < vectDbRow.size(); ++i) {
 		t_payload *np = new(t_payload);
 		np->direction = vectDbRow[i].direction;
-		np->flags = 0;
+		np->flags = this->getFlagsFromBaseData(&vectDbRow[i]);;
 		strncpy(np->prefix, vectDbRow[i].prefix, MAX_PREFIX);
-
-		if(vectDbRow[i].rtp == 1)	np->flags |= FLAG_RTP;
-		else if(vectDbRow[i].rtp == 0)	np->flags |= FLAG_NORTP;
-		if(vectDbRow[i].sip == 1)	np->flags |= FLAG_SIP;
-		else if(vectDbRow[i].sip == 0)	np->flags |= FLAG_NOSIP;
-		if(vectDbRow[i].reg == 1)	np->flags |= FLAG_REGISTER;
-		else if(vectDbRow[i].reg == 0)	np->flags |= FLAG_NOREGISTER;
-		if(vectDbRow[i].graph == 1)	np->flags |= FLAG_GRAPH;
-		else if(vectDbRow[i].graph == 0)np->flags |= FLAG_NOGRAPH;
-		if(vectDbRow[i].wav == 1)	np->flags |= FLAG_WAV;
-		else if(vectDbRow[i].wav == 0)	np->flags |= FLAG_NOWAV;
-		if(vectDbRow[i].skip == 1)	np->flags |= FLAG_SKIP;
-		else if(vectDbRow[i].skip == 0)	np->flags |= FLAG_NOSKIP;
-		if(vectDbRow[i].script == 1)	np->flags |= FLAG_SCRIPT;
-		else if(vectDbRow[i].script == 0)	np->flags |= FLAG_NOSCRIPT;
-
-		if(vectDbRow[i].mos_lqo == 1)	np->flags |= FLAG_AMOSLQO;
-		else if(vectDbRow[i].mos_lqo == 2)	np->flags |= FLAG_BMOSLQO;
-		else if(vectDbRow[i].mos_lqo == 3)	np->flags |= FLAG_ABMOSLQO;
-		else if(vectDbRow[i].mos_lqo == 0)	np->flags |= FLAG_NOMOSLQO;
-		
-		if(vectDbRow[i].hide_message == 1)	np->flags |= FLAG_HIDEMSG;
-		else if(vectDbRow[i].hide_message == 0)	np->flags |= FLAG_SHOWMSG;
 
 		add_payload(np);
 	}
@@ -386,70 +335,7 @@ TELNUMfilter::add_call_flags(unsigned int *flags, char *telnum_src, char *telnum
 	}
 
         if(lastpayload) {
-		if(lastpayload->flags & FLAG_RTP) {
-			*flags |= FLAG_SAVERTP;
-		}
-		if(lastpayload->flags & FLAG_NORTP) {
-			*flags &= ~FLAG_SAVERTP;
-			*flags &= ~FLAG_SAVERTPHEADER;
-		}
-		if(lastpayload->flags & FLAG_SIP) {
-			*flags |= FLAG_SAVESIP;
-		}
-		if(lastpayload->flags & FLAG_NOSIP) {
-			*flags &= ~FLAG_SAVESIP;
-		}
-		if(lastpayload->flags & FLAG_REGISTER) {
-			*flags |= FLAG_SAVEREGISTER;
-		}
-		if(lastpayload->flags & FLAG_NOREGISTER) {
-			*flags &= ~FLAG_SAVEREGISTER;
-		}
-		if(lastpayload->flags & FLAG_WAV) {
-			*flags |= FLAG_SAVEWAV;
-		}
-		if(lastpayload->flags & FLAG_NOWAV) {
-			*flags &= ~FLAG_SAVEWAV;
-		}
-		if(lastpayload->flags & FLAG_GRAPH) {
-			*flags |= FLAG_SAVEGRAPH;
-		}
-		if(lastpayload->flags & FLAG_NOGRAPH) {
-			*flags &= ~FLAG_SAVEGRAPH;
-		}
-		if(lastpayload->flags & FLAG_SKIP) {
-			*flags |= FLAG_SKIPCDR;
-		}
-		if(lastpayload->flags & FLAG_NOSKIP) {
-			*flags &= ~FLAG_SKIPCDR;
-		}
-		if(lastpayload->flags & FLAG_SCRIPT) {
-			*flags |= FLAG_RUNSCRIPT;
-		}
-		if(lastpayload->flags & FLAG_NOSCRIPT) {
-			*flags &= ~FLAG_RUNSCRIPT;
-		}
-
-		if(lastpayload->flags & FLAG_AMOSLQO || lastpayload->flags & FLAG_ABMOSLQO) {
-			*flags |= FLAG_RUNAMOSLQO;
-			*flags |= FLAG_SAVEWAV;
-		}
-		if(lastpayload->flags & FLAG_BMOSLQO || lastpayload->flags & FLAG_ABMOSLQO) {
-			*flags |= FLAG_RUNBMOSLQO;
-			*flags |= FLAG_SAVEWAV;
-		}
-		if(lastpayload->flags & FLAG_NOMOSLQO) {
-			*flags &= ~FLAG_RUNAMOSLQO;
-			*flags &= ~FLAG_RUNBMOSLQO;
-		}
-
-		if(lastpayload->flags & FLAG_HIDEMSG) {
-			*flags |= FLAG_HIDEMESSAGE;
-		}
-		if(lastpayload->flags & FLAG_SHOWMSG) {
-			*flags &= ~FLAG_HIDEMESSAGE;
-		}
-
+		this->setCallFlagsFromFilterFlags(flags, lastpayload->flags);
 		return 1;
         }
 
@@ -499,16 +385,7 @@ DOMAINfilter::load() {
 		count++;
 		db_row* filterRow = new db_row;
 		filterRow->domain = row["domain"];
-		filterRow->direction = row.isNull("direction") ? 0 : atoi(row["direction"].c_str());
-		filterRow->rtp = row.isNull("rtp") ? -1 : atoi(row["rtp"].c_str());
-		filterRow->sip = row.isNull("sip") ? -1 : atoi(row["sip"].c_str());
-		filterRow->reg = row.isNull("register") ? -1 : atoi(row["register"].c_str());
-		filterRow->graph = row.isNull("graph") ? -1 : atoi(row["graph"].c_str());
-		filterRow->wav = row.isNull("wav") ? -1 : atoi(row["wav"].c_str());
-		filterRow->skip = row.isNull("skip") ? -1 : atoi(row["skip"].c_str());
-		filterRow->script = row.isNull("script") ? -1 : atoi(row["script"].c_str());
-		filterRow->mos_lqo = row.isNull("mos_lqo") ? -1 : atoi(row["mos_lqo"].c_str());
-		filterRow->hide_message = row.isNull("hide_message") ? -1 : atoi(row["hide_message"].c_str());
+		this->loadBaseDataRow(&row, filterRow);
 		vectDbRow.push_back(*filterRow);
 		delete filterRow;
 	}
@@ -517,32 +394,9 @@ DOMAINfilter::load() {
 	for (size_t i = 0; i < vectDbRow.size(); ++i) {
 		node = new(t_node);
 		node->direction = vectDbRow[i].direction;
-		node->flags = 0;
+		node->flags = this->getFlagsFromBaseData(&vectDbRow[i]);
 		node->next = NULL;
 		node->domain = vectDbRow[i].domain;
-
-		if(vectDbRow[i].rtp == 1)	node->flags |= FLAG_RTP;
-		else if(vectDbRow[i].rtp == 0)	node->flags |= FLAG_NORTP;
-		if(vectDbRow[i].sip == 1)	node->flags |= FLAG_SIP;
-		else if(vectDbRow[i].sip == 0)	node->flags |= FLAG_NOSIP;
-		if(vectDbRow[i].reg == 1)	node->flags |= FLAG_REGISTER;
-		else if(vectDbRow[i].reg == 0)	node->flags |= FLAG_NOREGISTER;
-		if(vectDbRow[i].graph == 1)	node->flags |= FLAG_GRAPH;
-		else if(vectDbRow[i].graph == 0)node->flags |= FLAG_NOGRAPH;
-		if(vectDbRow[i].wav == 1)	node->flags |= FLAG_WAV;
-		else if(vectDbRow[i].wav == 0)	node->flags |= FLAG_NOWAV;
-		if(vectDbRow[i].skip == 1)	node->flags |= FLAG_SKIP;
-		else if(vectDbRow[i].skip == 0)	node->flags |= FLAG_NOSKIP;
-		if(vectDbRow[i].script == 1)	node->flags |= FLAG_SCRIPT;
-		else if(vectDbRow[i].script == 0)	node->flags |= FLAG_NOSCRIPT;
-
-		if(vectDbRow[i].mos_lqo == 1)	node->flags |= FLAG_AMOSLQO;
-		else if(vectDbRow[i].mos_lqo == 2)	node->flags |= FLAG_BMOSLQO;
-		else if(vectDbRow[i].mos_lqo == 3)	node->flags |= FLAG_ABMOSLQO;
-		else if(vectDbRow[i].mos_lqo == 0)	node->flags |= FLAG_NOMOSLQO;
-		
-		if(vectDbRow[i].hide_message == 1)	node->flags |= FLAG_HIDEMSG;
-		else if(vectDbRow[i].hide_message == 0)	node->flags |= FLAG_SHOWMSG;
 
 		// add node to the first position
 		node->next = first_node;
@@ -563,74 +417,7 @@ DOMAINfilter::add_call_flags(unsigned int *flags, char *domain_src, char *domain
 
 		if(((node->direction == 0 or node->direction == 2) and (domain_dst == node->domain)) || 
 			((node->direction == 0 or node->direction == 1) and (domain_src == node->domain))) {
-
-			if(node->flags & FLAG_SCRIPT) {
-				*flags |= FLAG_RUNSCRIPT;
-			}
-			if(node->flags & FLAG_RTP) {
-				*flags |= FLAG_SAVERTP;
-			}
-			if(node->flags & FLAG_NORTP) {
-				*flags &= ~FLAG_SAVERTP;
-				*flags &= ~FLAG_SAVERTPHEADER;
-			}
-			if(node->flags & FLAG_SIP) {
-				*flags |= FLAG_SAVESIP;
-			}
-			if(node->flags & FLAG_NOSIP) {
-				*flags &= ~FLAG_SAVESIP;
-			}
-			if(node->flags & FLAG_REGISTER) {
-				*flags |= FLAG_SAVEREGISTER;
-			}
-			if(node->flags & FLAG_NOREGISTER) {
-				*flags &= ~FLAG_SAVEREGISTER;
-			}
-			if(node->flags & FLAG_WAV) {
-				*flags |= FLAG_SAVEWAV;
-			}
-			if(node->flags & FLAG_NOWAV) {
-				*flags &= ~FLAG_SAVEWAV;
-			}
-			if(node->flags & FLAG_GRAPH) {
-				*flags |= FLAG_SAVEGRAPH;
-			}
-			if(node->flags & FLAG_NOGRAPH) {
-				*flags &= ~FLAG_SAVEGRAPH;
-			}
-			if(node->flags & FLAG_SKIP) {
-				*flags |= FLAG_SKIPCDR;
-			}
-			if(node->flags & FLAG_NOSKIP) {
-				*flags &= ~FLAG_SKIPCDR;
-			}
-			if(node->flags & FLAG_SCRIPT) {
-				*flags |= FLAG_RUNSCRIPT;
-			}
-			if(node->flags & FLAG_NOSCRIPT) {
-				*flags &= ~FLAG_RUNSCRIPT;
-			}
-
-			if(node->flags & FLAG_AMOSLQO || node->flags & FLAG_ABMOSLQO) {
-				*flags |= FLAG_RUNAMOSLQO;
-				*flags |= FLAG_SAVEWAV;
-			}
-			if(node->flags & FLAG_BMOSLQO || node->flags & FLAG_ABMOSLQO) {
-				*flags |= FLAG_RUNBMOSLQO;
-				*flags |= FLAG_SAVEWAV;
-			}
-			if(node->flags & FLAG_NOMOSLQO) {
-				*flags &= ~FLAG_RUNAMOSLQO;
-				*flags &= ~FLAG_RUNBMOSLQO;
-			}
-			
-			if(node->flags & FLAG_HIDEMSG) {
-				*flags |= FLAG_HIDEMESSAGE;
-			}
-			if(node->flags & FLAG_SHOWMSG) {
-				*flags &= ~FLAG_HIDEMESSAGE;
-			}
-
+			this->setCallFlagsFromFilterFlags(flags, node->flags);
 			return 1;
 		}
 	}
@@ -645,3 +432,127 @@ DOMAINfilter::dump() {
 		printf("domain[%s] flags[%u]\n", node->domain.c_str(), node->flags);
 	}
 }
+
+/* SIP_HEADERfilter class */
+
+// constructor
+SIP_HEADERfilter::SIP_HEADERfilter() {
+	count = 0;
+	loadTime = 0;
+}
+
+// destructor
+SIP_HEADERfilter::~SIP_HEADERfilter() {
+}
+
+void
+SIP_HEADERfilter::load() {
+	vector<db_row> vectDbRow;
+	SqlDb *sqlDb = createSqlObject();
+	SqlDb_row row;
+	sqlDb->query("SELECT * FROM filter_sip_header");
+	while((row = sqlDb->fetchRow())) {
+		count++;
+		db_row* filterRow = new db_row;
+		filterRow->header = row["header"];
+		filterRow->content = row["content"];
+		filterRow->prefix = row["content_type"] == "prefix";
+		filterRow->regexp = row["content_type"] == "regexp";
+		this->loadBaseDataRow(&row, filterRow);
+		vectDbRow.push_back(*filterRow);
+		delete filterRow;
+	}
+	delete sqlDb;
+	for (size_t i = 0; i < vectDbRow.size(); ++i) {
+		item_data item;
+		item.direction = 0;
+		item.prefix = vectDbRow[i].prefix;
+		item.regexp = vectDbRow[i].regexp;
+		item.flags = this->getFlagsFromBaseData(&vectDbRow[i]);
+		if(item.regexp) {
+			data[vectDbRow[i].header].regexp[vectDbRow[i].content] = item;
+		} else {
+			data[vectDbRow[i].header].strict_prefix[vectDbRow[i].content] = item;
+		}
+		++count;
+	}
+	loadTime = getTimeMS();
+	if(sverb.capture_filter) {
+		syslog(LOG_NOTICE, "SIP_HEADERfilter::load");
+	}
+}
+
+int
+SIP_HEADERfilter::add_call_flags(ParsePacket *parsePacket, unsigned int *flags, char *domain_src, char *domain_dst) {
+	
+	if (this->count == 0) {
+		// no filters, return 
+		return 0;
+	}
+	
+	for(map<std::string, header_data>::iterator it_header = this->data.begin(); it_header != this->data.end(); it_header++) {
+		header_data *data = &it_header->second;
+		string content = parsePacket->getContentString((it_header->first + ":").c_str());
+		if(content.empty()) {
+			continue;
+		}
+		if(data->strict_prefix.size()) {
+			map<std::string, item_data>::iterator it_content = data->strict_prefix.lower_bound(content);
+			if(it_content != data->strict_prefix.end() &&
+			   it_content->first == content) {
+				this->setCallFlagsFromFilterFlags(flags, it_content->second.flags);
+				if(sverb.capture_filter) {
+					syslog(LOG_NOTICE, "SIP_HEADERfilter::add_call_flags - strict (eq) : %s",  it_content->first.c_str());
+				}
+				return 1;
+			}
+			if(it_content != data->strict_prefix.begin()) {
+				--it_content;
+			}
+			if(it_content->second.prefix &&
+			   !strncmp(it_content->first.c_str(), content.c_str(), it_content->first.length())) {
+				this->setCallFlagsFromFilterFlags(flags, it_content->second.flags);
+				if(sverb.capture_filter) {
+					syslog(LOG_NOTICE, "SIP_HEADERfilter::add_call_flags - prefix : %s",  it_content->first.c_str());
+				}
+				return 1;
+			}
+		}
+		if(data->regexp.size()) {
+			for(map<std::string, item_data>::iterator it_content = data->regexp.begin(); it_content != data->regexp.end(); it_content++) {
+				if(reg_match(content.c_str(), it_content->first.c_str())) {
+					this->setCallFlagsFromFilterFlags(flags, it_content->second.flags);
+					if(sverb.capture_filter) {
+						syslog(LOG_NOTICE, "SIP_HEADERfilter::add_call_flags - regexp : %s",  it_content->first.c_str());
+					}
+					return 1;
+				}
+			}
+		}
+	 
+	}
+	
+	return 0;
+}
+
+void 
+SIP_HEADERfilter::addNodes(ParsePacket *parsePacket) {
+	for(map<std::string, header_data>::iterator it_header = this->data.begin(); it_header != this->data.end(); it_header++) {
+		parsePacket->addNode((it_header->first + ":").c_str());
+	}
+}
+
+void
+SIP_HEADERfilter::dump() {
+	for(map<std::string, header_data>::iterator it_header = this->data.begin(); it_header != this->data.end(); it_header++) {
+		header_data *data = &it_header->second;
+		for(map<std::string, item_data>::iterator it_content = data->regexp.begin(); it_content != data->regexp.end(); it_content++) {
+			printf("header[%s] content[%s] regexp[0] prefix[%u] flags[%u]\n", it_header->first.c_str(), it_content->first.c_str(), it_content->second.prefix, it_content->second.flags);
+		}
+		for(map<std::string, item_data>::iterator it_content = data->regexp.begin(); it_content != data->regexp.end(); it_content++) {
+			printf("header[%s] content[%s] regexp[1] prefix[0] flags[%u]\n", it_header->first.c_str(), it_content->first.c_str(), it_content->second.flags);
+		}
+	}
+}
+
+volatile int SIP_HEADERfilter::_sync = 0;

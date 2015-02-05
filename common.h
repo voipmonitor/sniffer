@@ -26,5 +26,6 @@ struct sVerbose {
         unsigned long int ssrc;
         int jitter;
 	int noaudiounlink;
+	int capture_filter;
 };      
 #endif

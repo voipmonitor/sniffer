@@ -158,6 +158,9 @@ extern int telnumfilter_reload_do;
 extern DOMAINfilter *domainfilter;
 extern DOMAINfilter *domainfilter_reload;
 extern int domainfilter_reload_do;
+extern SIP_HEADERfilter *sipheaderfilter;
+extern SIP_HEADERfilter *sipheaderfilter_reload;
+extern int sipheaderfilter_reload_do;
 extern int rtp_threaded;
 extern int opt_pcap_threaded;
 extern int opt_rtpsave_threaded;
@@ -267,6 +270,7 @@ map<unsigned int, livesnifferfilter_t*> usersniffer;
 
 
 static unsigned long process_packet__last_cleanup = 0;
+static unsigned long process_packet__last_filter_reload = 0;
 static unsigned long process_packet__last_destroy_calls = 0;
 static unsigned long preprocess_packet__last_cleanup = 0;
 
@@ -1505,7 +1509,8 @@ void *rtp_read_thread_func(void *arg) {
 
 Call *new_invite_register(int sip_method, char *data, int datalen, struct pcap_pkthdr *header, char *callidstr, u_int32_t saddr, u_int32_t daddr, int source, int dest,
 			  pcap_t *handle, int dlt, int sensor_id,
-			  bool *detectUserAgent){
+			  bool *detectUserAgent,
+			  ParsePacket *parsePacket){
  
 	unsigned long gettagLimitLen = 0;
 	unsigned int flags = 0;
@@ -1614,6 +1619,7 @@ Call *new_invite_register(int sip_method, char *data, int datalen, struct pcap_p
 	ipfilter->add_call_flags(&flags, ntohl(saddr), ntohl(daddr));
 	telnumfilter->add_call_flags(&flags, tcaller, tcalled);
 	domainfilter->add_call_flags(&flags, tcaller_domain, tcalled_domain);
+	sipheaderfilter->add_call_flags(parsePacket, &flags, tcaller_domain, tcalled_domain);
 
 	if(flags & FLAG_SKIPCDR) {
 		if(verbosity > 1)
@@ -2028,6 +2034,36 @@ Call *process_packet(u_int64_t packet_number,
 	bool detectUserAgent = false;
 	bool call_cancel_lsr487 = false;
 
+	if (header->ts.tv_sec - process_packet__last_filter_reload > 1){
+		if(ipfilter_reload_do) {
+			delete ipfilter;
+			ipfilter = ipfilter_reload;
+			ipfilter_reload = NULL;
+			ipfilter_reload_do = 0; 
+		}
+		if(telnumfilter_reload_do) {
+			delete telnumfilter;
+			telnumfilter = telnumfilter_reload;
+			telnumfilter_reload = NULL;
+			telnumfilter_reload_do = 0; 
+		}
+		if(domainfilter_reload_do) {
+			delete domainfilter;
+			domainfilter = domainfilter_reload;
+			domainfilter_reload = NULL;
+			domainfilter_reload_do = 0; 
+		}
+		if(sipheaderfilter_reload_do) {
+			SIP_HEADERfilter::lock_sync();
+			delete sipheaderfilter;
+			sipheaderfilter = sipheaderfilter_reload;
+			sipheaderfilter_reload = NULL;
+			sipheaderfilter_reload_do = 0;
+			SIP_HEADERfilter::unlock_sync();
+		}
+		process_packet__last_filter_reload = header->ts.tv_sec;
+	}
+
 	*was_rtp = 0;
 	//int merged;
 	_parse_packet_process_packet = parsePacket ? &parsePacket->parse : NULL;
@@ -2273,7 +2309,8 @@ Call *process_packet(u_int64_t packet_number,
 				} else {
 					call = new_invite_register(sip_method, data, datalen, header, callidstr, saddr, daddr, source, dest,
 								   handle, dlt, sensor_id,
-								   &detectUserAgent);
+								   &detectUserAgent,
+								   parsePacket ? &parsePacket->parse : &_parse_packet_global);
 				}
 				if(call == NULL) {
 					goto endsip;
@@ -2321,7 +2358,8 @@ Call *process_packet(u_int64_t packet_number,
 					call->saveregister();
 					call = new_invite_register(sip_method, data, datalen, header, callidstr, saddr, daddr, source, dest,
 								   handle, dlt, sensor_id,
-								   &detectUserAgent);
+								   &detectUserAgent,
+								   parsePacket ? &parsePacket->parse : &_parse_packet_global);
 					if(call == NULL) {
 						goto endsip;
 					}
@@ -4381,28 +4419,6 @@ void readdump_libpcap(pcap_t *handle) {
 		
 		++packet_counter;
 
-		// check, if ipfilter should be reloaded. Reloading is done in this section to avoid mutex locking around ipfilter structure
-		if(ipfilter_reload_do) {
-			delete ipfilter;
-			ipfilter = ipfilter_reload;
-			ipfilter_reload = NULL;
-			ipfilter_reload_do = 0; 
-		}
-
-		if(telnumfilter_reload_do) {
-			delete telnumfilter;
-			telnumfilter = telnumfilter_reload;
-			telnumfilter_reload = NULL;
-			telnumfilter_reload_do = 0; 
-		}
-
-		if(domainfilter_reload_do) {
-			delete domainfilter;
-			domainfilter = domainfilter_reload;
-			domainfilter_reload = NULL;
-			domainfilter_reload_do = 0; 
-		}
-
 		if(!pcapProcess(&header, &packet, &destroy,
 				true, true, true, true,
 				&ppd, global_pcap_dlink, tmppcap, ifname)) {
@@ -5124,7 +5140,8 @@ void PreProcessPacket::sipProcess_createCall(packet_parse_s *parse_packet) {
 			parse_packet->call_created = new_invite_register(parse_packet->sip_method, _packet->data, parse_packet->sipDataLen, &_packet->header, (char*)parse_packet->callid.c_str(), 
 									 _packet->saddr, _packet->daddr, _packet->source, _packet->dest,
 									 _packet->handle, _packet->dlt, _packet->sensor_id,
-									 &parse_packet->detectUserAgent);
+									 &parse_packet->detectUserAgent,
+									 &parse_packet->parse);
 		}
 	}
 	parse_packet->_createCall = true;

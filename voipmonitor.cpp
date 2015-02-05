@@ -508,6 +508,10 @@ DOMAINfilter *domainfilter = NULL;		// DOMAIN filter based on MYSQL
 DOMAINfilter *domainfilter_reload = NULL;	// DOMAIN filter based on MYSQL for reload purpose
 int domainfilter_reload_do = 0;	// for reload in main thread
 
+SIP_HEADERfilter *sipheaderfilter = NULL;		// SIP_HEADER filter based on MYSQL 
+SIP_HEADERfilter *sipheaderfilter_reload = NULL;	// SIP_HEADER filter based on MYSQL for reload purpose
+int sipheaderfilter_reload_do = 0;	// for reload in main thread
+
 pthread_t call_thread;		// ID of worker storing CDR thread 
 //pthread_t destroy_calls_thread;
 pthread_t readdump_libpcap_thread;
@@ -627,6 +631,8 @@ extern pthread_mutex_t tartimemaplock;
 TarQueue *tarQueue = NULL;
 
 pthread_mutex_t terminate_packetbuffer_lock;
+
+extern ParsePacket _parse_packet_global;
 
 
 #include <stdio.h>
@@ -2730,6 +2736,15 @@ void reload_capture_rules() {
 	domainfilter_reload = new DOMAINfilter;
 	domainfilter_reload->load();
 	domainfilter_reload_do = 1;
+
+	if(sipheaderfilter_reload) {
+		delete sipheaderfilter_reload;
+	}
+
+	sipheaderfilter_reload = new SIP_HEADERfilter;
+	sipheaderfilter_reload->load();
+	sipheaderfilter_reload_do = 1;
+
 }
 
 #ifdef BACKTRACE
@@ -3187,12 +3202,12 @@ int main(int argc, char *argv[]) {
 													sverb.test_rtp_performance = atoi(verbparams[i].c_str() + 21);
 
 						else if(verbparams[i].substr(0, 5) == "ssrc=")          sverb.ssrc = strtol(verbparams[i].c_str() + 5, NULL, 16);
-						else if(verbparams[i] == "jitter")				sverb.jitter = 1;
-						else if(verbparams[i] == "jitter_na")				opt_jitterbuffer_adapt = 0;
-						else if(verbparams[i] == "jitter_nf1")				opt_jitterbuffer_f1 = 0;
-						else if(verbparams[i] == "jitter_nf2")				opt_jitterbuffer_f2 = 0;
-						else if(verbparams[i] == "noaudiounlink")				sverb.noaudiounlink = 1;
-
+						else if(verbparams[i] == "jitter")			sverb.jitter = 1;
+						else if(verbparams[i] == "jitter_na")			opt_jitterbuffer_adapt = 0;
+						else if(verbparams[i] == "jitter_nf1")			opt_jitterbuffer_f1 = 0;
+						else if(verbparams[i] == "jitter_nf2")			opt_jitterbuffer_f2 = 0;
+						else if(verbparams[i] == "noaudiounlink")		sverb.noaudiounlink = 1;
+						else if(verbparams[i] == "capture_filter")		sverb.capture_filter = 1;
 					}
 				} }
 				break;
@@ -3582,9 +3597,6 @@ int main(int argc, char *argv[]) {
 		}
 	}
 
-	extern ParsePacket _parse_packet_global;
-	_parse_packet_global.setStdParse();
-
 	if(!opt_nocdr && isSqlDriver("mysql") && mysql_host[0]) {
 		strcpy(mysql_host_orig, mysql_host);
 		if(!reg_match(mysql_host, "[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+")) {
@@ -3852,6 +3864,8 @@ int main(int argc, char *argv[]) {
 		ipfilter = new IPfilter;
 		telnumfilter = new TELNUMfilter;
 		domainfilter =  new DOMAINfilter;
+		sipheaderfilter =  new SIP_HEADERfilter;
+		_parse_packet_global.setStdParse();
 		test();
 		if(sqlStore) {
 			delete sqlStore;
@@ -4003,6 +4017,7 @@ int main(int argc, char *argv[]) {
 	ipfilter = new IPfilter;
 	telnumfilter = new TELNUMfilter;
 	domainfilter = new DOMAINfilter;
+	sipheaderfilter = new SIP_HEADERfilter;
 	if(!opt_nocdr &&
 	   !(opt_pcap_threaded && opt_pcap_queue && 
 	     !opt_pcap_queue_receive_from_ip_port &&
@@ -4010,10 +4025,14 @@ int main(int argc, char *argv[]) {
 		ipfilter->load();
 		telnumfilter->load();
 		domainfilter->load();
+		sipheaderfilter->load();
 	}
 //	ipfilter->dump();
 //	telnumfilter->dump();
 //	domainfilter->dump();
+//	sipheaderfilter->dump();
+
+	_parse_packet_global.setStdParse();
 
 	if(opt_ipaccount and !ipaccountportmatrix) {
 		ipaccountportmatrix = (char*)calloc(1, sizeof(char) * 65537);
@@ -4708,6 +4727,10 @@ int main(int argc, char *argv[]) {
 	if(domainfilter) {
 		delete domainfilter;
 		domainfilter = NULL;
+	}
+	if(sipheaderfilter) {
+		delete sipheaderfilter;
+		sipheaderfilter = NULL;
 	}
 	
 	if(opt_enable_fraud) {

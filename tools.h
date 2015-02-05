@@ -1168,111 +1168,36 @@ public:
 		parseDataPtr = NULL;
 		contents_count = 0;
 		sip = false;
+		root = NULL;
+		rootCheckSip = NULL;
+		timeSync_SIP_HEADERfilter = 0;
 	}
-	void setStdParse() {
-		addNode("content-length:", true);
-		addNode("l:", true);
-		addNode("INVITE ");
-		addNode("call-id:");
-		addNode("i:");
-		addNode("from:");
-		addNode("f:");
-		addNode("to:");
-		addNode("t:");
-		addNode("contact:");
-		addNode("m:");
-		addNode("remote-party-id:");
-		addNode("geoposition:");
-		addNode("user-agent:");
-		addNode("authorization:");
-		addNode("expires:");
-		addNode("x-voipmonitor-norecord:");
-		addNode("signal:");
-		addNode("signal=");
-		addNode("x-voipmonitor-custom1:");
-		addNode("content-type:");
-		addNode("c:");
-		addNode("cseq:");
-		addNode("supported:");
-		addNode("proxy-authenticate:");
-		extern int opt_update_dstnum_onanswer;
-		if(opt_update_dstnum_onanswer) {
-			addNode("via:");
+	~ParsePacket() {
+		if(root) {
+			delete root;
 		}
-		addNode("m=audio ");
-		addNode("a=rtpmap:");
-		addNode("o=");
-		addNode("c=IN IP4 ");
-		addNode("expires=");
-		addNode("username=\"");
-		addNode("realm=\"");
-		
-		extern char opt_match_header[128];
-		if(opt_match_header[0] != '\0') {
-			string findHeader = opt_match_header;
-			if(findHeader[findHeader.length() - 1] != ':') {
-				findHeader.append(":");
-			}
-			addNode(findHeader.c_str());
+		if(rootCheckSip) {
+			delete rootCheckSip;
 		}
-		
-		extern char opt_callidmerge_header[128];
-		if(opt_callidmerge_header[0] != '\0') {
-			string findHeader = opt_callidmerge_header;
-			if(findHeader[findHeader.length() - 1] != ':') {
-				findHeader.append(":");
-			}
-			addNode(findHeader.c_str());
-		}
-		
-		extern vector<dstring> opt_custom_headers_cdr;
-		extern vector<dstring> opt_custom_headers_message;
-		for(int i = 0; i < 2; i++) {
-			vector<dstring> *_customHeaders = i == 0 ? &opt_custom_headers_cdr : &opt_custom_headers_message;
-			for(size_t iCustHeaders = 0; iCustHeaders < _customHeaders->size(); iCustHeaders++) {
-				string findHeader = (*_customHeaders)[iCustHeaders][0];
-				if(findHeader[findHeader.length() - 1] != ':') {
-					findHeader.append(":");
-				}
-				addNode(findHeader.c_str());
-			}
-		}
-		
-		//RFC 3261
-		addNodeCheckSip("SIP/2.0");
-		addNodeCheckSip("INVITE");
-		addNodeCheckSip("ACK");
-		addNodeCheckSip("BYE");
-		addNodeCheckSip("CANCEL");
-		addNodeCheckSip("OPTIONS");
-		addNodeCheckSip("REGISTER");
-		//RFC 3262
-		addNodeCheckSip("PRACK");
-		addNodeCheckSip("SUBSCRIBE");
-		addNodeCheckSip("NOTIFY");
-		addNodeCheckSip("PUBLISH");
-		addNodeCheckSip("INFO");
-		addNodeCheckSip("REFER");
-		addNodeCheckSip("MESSAGE");
-		addNodeCheckSip("UPDATE");
 	}
+	void setStdParse();
 	void addNode(const char *nodeName, bool isContentLength = false) {
-		root.addNode(nodeName, isContentLength);
+		root->addNode(nodeName, isContentLength);
 	}
 	void addNodeCheckSip(const char *nodeName) {
-		rootCheckSip.addNode(nodeName);
+		rootCheckSip->addNode(nodeName);
 	}
 	ppContent *getContent(const char *nodeName, unsigned int *namelength = NULL, unsigned int namelength_limit = UINT_MAX) {
 		if(namelength) {
 			*namelength = 0;
 		}
-		return(root.getContent(nodeName, namelength, namelength_limit));
+		return(root->getContent(nodeName, namelength, namelength_limit));
 	}
 	string getContentString(const char *nodeName) {
 		while(*nodeName == '\n') {
 			 ++nodeName;
 		}
-		ppContent *content = root.getContent(nodeName, NULL);
+		ppContent *content = root->getContent(nodeName, NULL);
 		if(content && content->content && content->length > 0) {
 			return(string(content->content, content->length));
 		} else {
@@ -1283,7 +1208,7 @@ public:
 		while(*nodeName == '\n') {
 			 ++nodeName;
 		}
-		ppContent *content = root.getContent(nodeName, NULL);
+		ppContent *content = root->getContent(nodeName, NULL);
 		if(content && content->content && content->length > 0) {
 			if(dataLength) {
 				*dataLength = content->length;
@@ -1298,7 +1223,7 @@ public:
 	}
 	bool isSipContent(const char *nodeName, unsigned int namelength_limit = UINT_MAX) {
 		unsigned int namelength = 0;
-		return(rootCheckSip.getContent(nodeName, &namelength, namelength_limit));
+		return(rootCheckSip->getContent(nodeName, &namelength, namelength_limit));
 	}
 	unsigned long parseData(char *data, unsigned long datalen, bool doClear = false);
 	void clear() {
@@ -1313,7 +1238,7 @@ public:
 		sip = false;
 	}
 	void debugData() {
-		root.debugData("");
+		root->debugData("");
 	}
 	const char *getParseData() {
 		return(parseDataPtr);
@@ -1322,14 +1247,15 @@ public:
 		return(sip);
 	}
 private:
-	ppNode root;
-	ppNode rootCheckSip;
+	ppNode *root;
+	ppNode *rootCheckSip;
 	char *doubleEndLine;
 	long contentLength;
 	const char *parseDataPtr;
 	ppContent *contents[100];
 	unsigned int contents_count;
 	bool sip;
+	unsigned long timeSync_SIP_HEADERfilter;
 };
 
 class SafeAsyncQueue_base {

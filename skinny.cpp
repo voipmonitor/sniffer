@@ -65,15 +65,6 @@ extern int opt_mirrorall;
 extern int opt_mirroronly;
 extern char opt_scanpcapdir[2048];
 extern int opt_ipaccount;
-extern IPfilter *ipfilter;
-extern IPfilter *ipfilter_reload;
-extern int ipfilter_reload_do;
-extern TELNUMfilter *telnumfilter;
-extern TELNUMfilter *telnumfilter_reload;
-extern int telnumfilter_reload_do;
-extern DOMAINfilter *domainfilter;
-extern DOMAINfilter *domainfilter_reload;
-extern int domainfilter_reload_do;
 extern int rtp_threaded;
 extern int opt_pcap_threaded;
 extern int opt_rtpnosip;
@@ -98,6 +89,7 @@ extern int opt_skiprtpdata;
 extern char opt_silencedmtfseq[16];
 extern int opt_skinny;
 extern unsigned int opt_skinny_ignore_rtpip;
+extern IPfilter *ipfilter;
 
 /* Skinny debugging only available if asterisk configured with --enable-dev-mode */
 #define AST_DEVMODE 1

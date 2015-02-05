@@ -50,6 +50,7 @@
 #include "pcap_queue.h"
 #include "sql_db.h"
 #include "tar.h"
+#include "filter_mysql.h"
 
 extern char mac[32];
 extern int verbosity;
@@ -1854,7 +1855,128 @@ void ListPhoneNumber_wb::addBlack(const char *number) {
 }
 
 
+void ParsePacket::setStdParse() {
+	if(root) {
+		delete root;
+		root = NULL;
+	}
+	if(rootCheckSip) {
+		delete rootCheckSip;
+		rootCheckSip = NULL;
+	}
+	if(!root) {
+		root = new ppNode;
+	}
+	if(!rootCheckSip) {
+		rootCheckSip = new ppNode;
+	}
+	addNode("content-length:", true);
+	addNode("l:", true);
+	addNode("INVITE ");
+	addNode("call-id:");
+	addNode("i:");
+	addNode("from:");
+	addNode("f:");
+	addNode("to:");
+	addNode("t:");
+	addNode("contact:");
+	addNode("m:");
+	addNode("remote-party-id:");
+	addNode("geoposition:");
+	addNode("user-agent:");
+	addNode("authorization:");
+	addNode("expires:");
+	addNode("x-voipmonitor-norecord:");
+	addNode("signal:");
+	addNode("signal=");
+	addNode("x-voipmonitor-custom1:");
+	addNode("content-type:");
+	addNode("c:");
+	addNode("cseq:");
+	addNode("supported:");
+	addNode("proxy-authenticate:");
+	extern int opt_update_dstnum_onanswer;
+	if(opt_update_dstnum_onanswer) {
+		addNode("via:");
+	}
+	addNode("m=audio ");
+	addNode("a=rtpmap:");
+	addNode("o=");
+	addNode("c=IN IP4 ");
+	addNode("expires=");
+	addNode("username=\"");
+	addNode("realm=\"");
+	
+	extern char opt_match_header[128];
+	if(opt_match_header[0] != '\0') {
+		string findHeader = opt_match_header;
+		if(findHeader[findHeader.length() - 1] != ':') {
+			findHeader.append(":");
+		}
+		addNode(findHeader.c_str());
+	}
+	
+	extern char opt_callidmerge_header[128];
+	if(opt_callidmerge_header[0] != '\0') {
+		string findHeader = opt_callidmerge_header;
+		if(findHeader[findHeader.length() - 1] != ':') {
+			findHeader.append(":");
+		}
+		addNode(findHeader.c_str());
+	}
+	
+	extern vector<dstring> opt_custom_headers_cdr;
+	extern vector<dstring> opt_custom_headers_message;
+	for(int i = 0; i < 2; i++) {
+		vector<dstring> *_customHeaders = i == 0 ? &opt_custom_headers_cdr : &opt_custom_headers_message;
+		for(size_t iCustHeaders = 0; iCustHeaders < _customHeaders->size(); iCustHeaders++) {
+			string findHeader = (*_customHeaders)[iCustHeaders][0];
+			if(findHeader[findHeader.length() - 1] != ':') {
+				findHeader.append(":");
+			}
+			addNode(findHeader.c_str());
+		}
+	}
+	
+	//RFC 3261
+	addNodeCheckSip("SIP/2.0");
+	addNodeCheckSip("INVITE");
+	addNodeCheckSip("ACK");
+	addNodeCheckSip("BYE");
+	addNodeCheckSip("CANCEL");
+	addNodeCheckSip("OPTIONS");
+	addNodeCheckSip("REGISTER");
+	//RFC 3262
+	addNodeCheckSip("PRACK");
+	addNodeCheckSip("SUBSCRIBE");
+	addNodeCheckSip("NOTIFY");
+	addNodeCheckSip("PUBLISH");
+	addNodeCheckSip("INFO");
+	addNodeCheckSip("REFER");
+	addNodeCheckSip("MESSAGE");
+	addNodeCheckSip("UPDATE");
+	
+	extern SIP_HEADERfilter *sipheaderfilter;
+	if(sipheaderfilter) {
+		SIP_HEADERfilter::lock_sync();
+		sipheaderfilter->addNodes(this);
+		SIP_HEADERfilter::unlock_sync();
+	}
+}
+
 unsigned long ParsePacket::parseData(char *data, unsigned long datalen, bool doClear) {
+	extern SIP_HEADERfilter *sipheaderfilter;
+	extern int sipheaderfilter_reload_do;
+	if(!this->timeSync_SIP_HEADERfilter) {
+		this->timeSync_SIP_HEADERfilter = sipheaderfilter->getLoadTime();
+	} else if(!sipheaderfilter_reload_do &&
+		  sipheaderfilter->getLoadTime() > this->timeSync_SIP_HEADERfilter) {
+		this->setStdParse();
+		this->timeSync_SIP_HEADERfilter = sipheaderfilter->getLoadTime();
+		if(sverb.capture_filter) {
+			syslog(LOG_NOTICE, "SIP_HEADERfilter - reload ParsePacket::parseData after load SIP_HEADERfilter");
+		}
+	}
 	unsigned long rsltDataLen = datalen;
 	if(doClear) {
 		clear();
@@ -1864,6 +1986,7 @@ unsigned long ParsePacket::parseData(char *data, unsigned long datalen, bool doC
 	unsigned int namelength;
 	for(unsigned long i = 0; i < datalen; i++) {
 		if(!doubleEndLine && 
+		   datalen > 3 &&
 		   data[i] == '\r' && i < datalen - 3 && 
 		   data[i + 1] == '\n' && data[i + 2] == '\r' && data[i + 3] == '\n') {
 			doubleEndLine = data + i;
