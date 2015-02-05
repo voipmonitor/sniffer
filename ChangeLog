@@ -1,3 +1,10 @@
+10.1.27 05.02.2015
+==================
+- fix GRE bad ip header detection 
+- fix crash when SIP packet is very small (<3B)
+- fix crash when doing auto upgrade of the sniffer
+
+
 10.1.26 30.01.2015
 ==================
 - if RTP changes destination port but SSRC is the same create new RTP so the GUI can see that the change happened [VS-168]
