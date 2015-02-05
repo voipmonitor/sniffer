@@ -4755,6 +4755,8 @@ int main(int argc, char *argv[]) {
 	}
 	pthread_mutex_destroy(&mysqlconnect_lock);
 	pthread_mutex_destroy(&tartimemaplock);
+	pthread_mutex_destroy(&terminate_packetbuffer_lock);
+
 	extern TcpReassemblySip tcpReassemblySip;
 	tcpReassemblySip.clean();
 	ipfrag_prune(0, 1);
