@@ -123,6 +123,7 @@ extern int opt_mysqlstore_max_threads_register;
 extern int opt_mysqlstore_max_threads_http;
 extern int opt_mysqlstore_limit_queue_register;
 extern Calltable *calltable;
+extern int opt_silencedetect;
 
 volatile int calls_counter = 0;
 volatile int calls_cdr_save_counter = 0;
@@ -295,6 +296,13 @@ Call::Call(char *call_id, unsigned long call_id_len, time_t time) :
 	chantype = 0;
 	
 	chunkBuffersCount = 0;
+
+        caller_silence = 0;
+        called_silence = 0;
+        caller_noise = 0;
+        called_noise = 0;
+	caller_lastsilence = 0;
+	called_lastsilence = 0;
 }
 
 void
@@ -484,6 +492,7 @@ Call::~Call(){
 	pthread_mutex_unlock(&listening_worker_run_lock);
 	pthread_mutex_destroy(&listening_worker_run_lock);
 	//decreaseTartimemap(this->first_packet_time);
+	//printf("caller s[%u] n[%u] ls[%u]  called s[%u] n[%u] ls[%u]\n", caller_silence, caller_noise, caller_lastsilence, called_silence, called_noise, called_lastsilence);
 }
 
 void
@@ -743,6 +752,7 @@ Call::read_rtp(unsigned char* data, int datalen, int dataoffset, struct pcap_pkt
 		   && rtp[i]->saddr == saddr
 #endif
 		   && rtp[i]->dport == dport
+
 		   ) {
 			// found 
 			if(opt_dscp) {
@@ -1945,6 +1955,13 @@ Call::saveToDb(bool enableBatchIfPossible) {
 
 		cdr_ua_a.add(sqlEscapeString(a_ua), "ua");
 		cdr_ua_b.add(sqlEscapeString(b_ua), "ua");
+
+		if(opt_silencedetect) {
+			cdr.add(caller_silence * 100 / (caller_silence + caller_noise), "caller_silence");
+			cdr.add(called_silence * 100 / (called_silence + called_noise), "called_silence");
+			cdr.add(caller_lastsilence / 1000, "caller_silence_end");
+			cdr.add(called_lastsilence / 1000, "called_silence_end");
+		}
 
 		// save only two streams with the biggest received packets
 		int payload[2] = { -1, -1 };

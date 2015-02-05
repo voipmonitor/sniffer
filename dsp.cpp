@@ -1433,9 +1433,8 @@ int dsp_noise(struct dsp *dsp, short *data, int len, int *totalnoise)
 }
 
 
-int dsp_process(struct dsp *dsp, short *shortdata, int len, char *event_digit, int *event_len)
+int dsp_process(struct dsp *dsp, short *shortdata, int len, char *event_digit, int *event_len, int *silence, int *totalsilence, int *totalnoise)
 {
-	int silence;
 	int res;
 	int digit = 0, fax_digit = 0;
 
@@ -1444,7 +1443,9 @@ int dsp_process(struct dsp *dsp, short *shortdata, int len, char *event_digit, i
 
 	/* Need to run the silence detection stuff for silence suppression and busy detection */
 	if ((dsp->features & DSP_FEATURE_SILENCE_SUPPRESS) || (dsp->features & DSP_FEATURE_BUSY_DETECT)) {
-		res = __dsp_silence_noise(dsp, shortdata, len, &silence, NULL, NULL);
+		res = __dsp_silence_noise(dsp, shortdata, len, totalsilence, totalnoise, NULL);
+		*silence = res;
+		if(dspdebug) syslog(1, "silence [%u] noise [%u]\n", *totalsilence, *totalnoise);
 	}
 
 	if ((dsp->features & DSP_FEATURE_SILENCE_SUPPRESS) && silence) {

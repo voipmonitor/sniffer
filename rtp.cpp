@@ -52,6 +52,7 @@ extern unsigned int graph_delimiter;
 extern unsigned int graph_mark;
 extern int opt_faxt30detect;
 extern int opt_inbanddtmf;
+extern int opt_silencedetect;
 
 
 using namespace std;
@@ -1322,7 +1323,9 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 
 
 	// FAX T.30 detection if enabled
-	if(opt_faxt30detect and frame->frametype == AST_FRAME_VOICE and (codec == 0 or codec == 8)) {
+	if(owner and (opt_inbanddtmf or opt_faxt30detect or opt_silencedetect) 
+		and frame->frametype == AST_FRAME_VOICE and (codec == 0 or codec == 8)) {
+
 		int res;
 		if(!DSP) DSP = dsp_new();
 		char event_digit;
@@ -1341,9 +1344,29 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 				sdata[i] = ALAW((unsigned char)payload_data[i]);
 			}
 		}
-		res = dsp_process(DSP, sdata, payload_len, &event_digit, &event_len);
+		int silence0 = 0;
+		int totalsilence = 0;
+		int totalnoise = 0;
+		res = dsp_process(DSP, sdata, payload_len, &event_digit, &event_len, &silence0, &totalsilence, &totalnoise);
+		if(silence0) {
+			if(iscaller) {
+				owner->caller_lastsilence += payload_len / 8;
+				owner->caller_silence += payload_len / 8;
+			} else {
+				owner->called_lastsilence += payload_len / 8;
+				owner->called_silence += payload_len / 8;
+			}
+		} else {
+			if(iscaller) {
+				owner->caller_lastsilence = 0;
+				owner->caller_noise += payload_len / 8;
+			} else {
+				owner->called_lastsilence = 0;
+				owner->called_noise += payload_len / 8;
+			}
+		}
 		free(sdata);
-		if(res && owner) {
+		if(res) {
 			if(opt_faxt30detect and (event_digit == 'f' or event_digit == 'e')) {
 				//printf("dsp_process: digit[%c] len[%u]\n", event_digit, event_len);
 				owner->isfax = 2;
