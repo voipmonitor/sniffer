@@ -250,9 +250,9 @@ int pcapProcess(pcap_pkthdr** header, u_char** packet, bool *destroy,
 		} else if(ppd->header_ip->protocol == IPPROTO_GRE) {
 			// gre protocol
 			iphdr2 *header_ip = convertHeaderIP_GRE(ppd->header_ip);
-			ppd->header_ip_offset = (u_char*)header_ip - *packet;
 			if(header_ip) {
 				ppd->header_ip = header_ip;
+				ppd->header_ip_offset = (u_char*)header_ip - *packet;
 				nextPass = true;
 			} else {
 				if(opt_ipaccount == 0) {
