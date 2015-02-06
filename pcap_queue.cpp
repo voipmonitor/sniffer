@@ -2690,8 +2690,10 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void *arg, unsigned int 
 						delete [] _packet;
 						continue;
 					}
+					this->push(header, packet, this->ppd.header_ip_offset, NULL);
+				} else {
+					this->push(header, packet, (u_int)-1, NULL);
 				}
-				this->push(header, packet, this->ppd.header_ip_offset, NULL);
 			} else {
 				hpi hpii = this->prevThreads[0]->pop(0, false);
 				if(!hpii.packet) {
@@ -2918,7 +2920,14 @@ void* PcapQueue_readFromInterface::threadFunction(void *arg, unsigned int arg2) 
 					} else {
 						header = hpi.header;
 						packet = hpi.packet;
-						offset = hpi.offset;
+						if(hpi.offset != (u_int)-1) {
+							offset = hpi.offset;
+						} else {
+							::pcapProcess(&header, &packet, NULL,
+								      false, false, false, false,
+								      &ppd, this->readThreads[minThreadTimeIndex]->pcapLinklayerHeaderType, NULL, NULL);
+							offset = ppd.header_ip_offset;
+						}
 						destroy = false;
 						dlink = this->readThreads[minThreadTimeIndex]->pcapLinklayerHeaderType;
 						blockStoreIndex = minThreadTimeIndex;

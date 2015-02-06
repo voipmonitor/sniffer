@@ -92,7 +92,9 @@ inline
 int pcapProcess(pcap_pkthdr** header, u_char** packet, bool *destroy,
 		       bool enableDefrag, bool enableCalcMD5, bool enableDedup, bool enableDump,
 		       pcapProcessData *ppd, int pcapLinklayerHeaderType, pcap_dumper_t *pcapDumpHandle, const char *interfaceName) {
-	*destroy = false;
+	if(destroy) {
+		*destroy = false;
+	}
 	switch(pcapLinklayerHeaderType) {
 		case DLT_LINUX_SLL:
 			ppd->header_sll = (sll_header*)*packet;
@@ -132,7 +134,7 @@ int pcapProcess(pcap_pkthdr** header, u_char** packet, bool *destroy,
 			ppd->protocol = ETHERTYPE_IP;
 			break;
 		default:
-			syslog(LOG_ERR, "BAD DATALINK %s: datalink number [%d] is not supported", interfaceName, pcapLinklayerHeaderType);
+			syslog(LOG_ERR, "BAD DATALINK %s: datalink number [%d] is not supported", interfaceName ? interfaceName : "---", pcapLinklayerHeaderType);
 			return(0);
 	}
 	
@@ -144,7 +146,7 @@ int pcapProcess(pcap_pkthdr** header, u_char** packet, bool *destroy,
 		} else 
 		#endif
 		{
-			if(!strcmp(interfaceName, "lo")) {
+			if(interfaceName && !strcmp(interfaceName, "lo")) {
 				syslog(LOG_ERR, "BAD PROTOCOL (not ipv4) IN %s (dlt %d) - TRY TCPREPLAY_WORKARROUND", interfaceName, pcapLinklayerHeaderType);
 			}
 			return(0);
@@ -156,24 +158,28 @@ int pcapProcess(pcap_pkthdr** header, u_char** packet, bool *destroy,
 	extern BogusDumper *bogusDumper;
 	static u_long lastTimeLogErrBadIpHeader = 0;
 	if(ppd->header_ip->version != 4) {
-		if(bogusDumper) {
-			bogusDumper->dump(*header, *packet, pcapLinklayerHeaderType, interfaceName);
-		}
-		u_long actTime = getTimeMS(*header);
-		if(actTime - 1000 > lastTimeLogErrBadIpHeader) {
-			syslog(LOG_ERR, "BAD HEADER_IP: %s: bogus ip header version %i", interfaceName, ppd->header_ip->version);
-			lastTimeLogErrBadIpHeader = actTime;
+		if(interfaceName) {
+			if(bogusDumper) {
+				bogusDumper->dump(*header, *packet, pcapLinklayerHeaderType, interfaceName);
+			}
+			u_long actTime = getTimeMS(*header);
+			if(actTime - 1000 > lastTimeLogErrBadIpHeader) {
+				syslog(LOG_ERR, "BAD HEADER_IP: %s: bogus ip header version %i", interfaceName, ppd->header_ip->version);
+				lastTimeLogErrBadIpHeader = actTime;
+			}
 		}
 		return(0);
 	}
 	if(htons(ppd->header_ip->tot_len) + ppd->header_ip_offset > (*header)->len) {
-		if(bogusDumper) {
-			bogusDumper->dump(*header, *packet, pcapLinklayerHeaderType, interfaceName);
-		}
-		u_long actTime = getTimeMS(*header);
-		if(actTime - 1000 > lastTimeLogErrBadIpHeader) {
-			syslog(LOG_ERR, "BAD HEADER_IP: %s: bogus ip header length %i, len %i", interfaceName, htons(ppd->header_ip->tot_len), (*header)->len);
-			lastTimeLogErrBadIpHeader = actTime;
+		if(interfaceName) {
+			if(bogusDumper) {
+				bogusDumper->dump(*header, *packet, pcapLinklayerHeaderType, interfaceName);
+			}
+			u_long actTime = getTimeMS(*header);
+			if(actTime - 1000 > lastTimeLogErrBadIpHeader) {
+				syslog(LOG_ERR, "BAD HEADER_IP: %s: bogus ip header length %i, len %i", interfaceName, htons(ppd->header_ip->tot_len), (*header)->len);
+				lastTimeLogErrBadIpHeader = actTime;
+			}
 		}
 		return(0);
 	}
@@ -184,13 +190,15 @@ int pcapProcess(pcap_pkthdr** header, u_char** packet, bool *destroy,
 			int foffset = ntohs(ppd->header_ip->frag_off);
 			if ((foffset & IP_MF) || ((foffset & IP_OFFSET) > 0)) {
 				if(htons(ppd->header_ip->tot_len) + ppd->header_ip_offset > (*header)->caplen) {
-					if(bogusDumper) {
-						bogusDumper->dump(*header, *packet, pcapLinklayerHeaderType, interfaceName);
-					}
-					u_long actTime = getTimeMS(*header);
-					if(actTime - 1000 > lastTimeLogErrBadIpHeader) {
-						syslog(LOG_ERR, "BAD FRAGMENTED HEADER_IP: %s: bogus ip header length %i, caplen %i", interfaceName, htons(ppd->header_ip->tot_len), (*header)->caplen);
-						lastTimeLogErrBadIpHeader = actTime;
+					if(interfaceName) {
+						if(bogusDumper) {
+							bogusDumper->dump(*header, *packet, pcapLinklayerHeaderType, interfaceName);
+						}
+						u_long actTime = getTimeMS(*header);
+						if(actTime - 1000 > lastTimeLogErrBadIpHeader) {
+							syslog(LOG_ERR, "BAD FRAGMENTED HEADER_IP: %s: bogus ip header length %i, caplen %i", interfaceName, htons(ppd->header_ip->tot_len), (*header)->caplen);
+							lastTimeLogErrBadIpHeader = actTime;
+						}
 					}
 					return(0);
 				}
