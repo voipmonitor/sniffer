@@ -376,6 +376,7 @@ extern int opt_pcap_queue_receive_dlt;
 extern int opt_pcap_queue_iface_separate_threads;
 extern int opt_pcap_queue_iface_dedup_separate_threads;
 extern int opt_pcap_queue_iface_dedup_separate_threads_extend;
+extern int opt_pcap_queue_iface_qring_size;
 extern int opt_pcap_queue_dequeu_window_length;
 extern int opt_pcap_queue_dequeu_method;
 extern int opt_pcap_dispatch;
@@ -2119,6 +2120,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "pcap_queue_dequeu_window_length", NULL))) {
 		opt_pcap_queue_dequeu_window_length = atoi(value);
+	}
+	if((value = ini.GetValue("general", "pcap_queue_iface_qring_size", NULL))) {
+		opt_pcap_queue_iface_qring_size = atoi(value);
 	}
 	if((value = ini.GetValue("general", "pcap_queue_dequeu_method", NULL))) {
 		opt_pcap_queue_dequeu_method = atoi(value);
