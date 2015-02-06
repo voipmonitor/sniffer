@@ -13,23 +13,11 @@ inline void _heapsafe_free(void *pointerToObject) {
 }
  
 inline void * heapsafe_safe_alloc(size_t sizeOfObject) { 
-	void *pointerToObject = NULL;
-	int error = 0;
-	try { 
-		pointerToObject = _heapsafe_alloc(sizeOfObject + HEAPSAFE_SAFE_ALLOC_RESERVE * 2);
+	void *pointerToObject = _heapsafe_alloc(sizeOfObject + HEAPSAFE_SAFE_ALLOC_RESERVE * 2);
+	if(!pointerToObject) {
+		HeapSafeAllocError(_HeapSafeErrorNotEnoughMemory);
 	}
-	catch(...) { 
-		if(HeapSafeCheck & _HeapSafeErrorInAllocFce) {
-			error = _HeapSafeErrorInAllocFce;
-		}
-	}
-	if(!error && !pointerToObject) {
-		error = _HeapSafeErrorNotEnoughMemory;
-	}
-	if(error) {
-		HeapSafeAllocError(error);
-	}
-	return(pointerToObject ? (char*)pointerToObject + HEAPSAFE_SAFE_ALLOC_RESERVE : NULL);
+	return((char*)pointerToObject + HEAPSAFE_SAFE_ALLOC_RESERVE);
 }
 
 inline void * heapsafe_alloc(size_t sizeOfObject) { 
@@ -80,12 +68,7 @@ inline void heapsafe_safe_free(void *pointerToObject) {
 	if(!pointerToObject) {
 		return;
 	}
-	try {
-		_heapsafe_free((char*)pointerToObject - HEAPSAFE_SAFE_ALLOC_RESERVE);
-	}
-	catch(...) {
-		HeapSafeAllocError(_HeapSafeErrorInAllocFce);
-	}
+	_heapsafe_free((char*)pointerToObject - HEAPSAFE_SAFE_ALLOC_RESERVE);
 }
 
 inline void heapsafe_free(void *pointerToObject) {
