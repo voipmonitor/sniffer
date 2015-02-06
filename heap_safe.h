@@ -20,6 +20,7 @@
 
 
 #define HEAPSAFE_ALLOC_RESERVE			20
+#define HEAPSAFE_SAFE_ALLOC_RESERVE		10
 
 #define HEAPSAFE_BEGIN_MEMORY_CONTROL_BLOCK	"BMB"
 #define HEAPSAFE_FREED_MEMORY_CONTROL_BLOCK	"FMB"
@@ -60,6 +61,7 @@ enum eHeapSafeErrors {
 	_HeapSafeErrorAllocReserve    =  16,
 	_HeapSafeErrorFillFF          =  32,
 	_HeapSafeErrorInHeap          =  64,
+	_HeapSafeSafeReserve          = 128
 };
 
 struct sHeapSafeMemoryControlBlock {

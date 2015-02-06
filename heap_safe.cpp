@@ -12,6 +12,26 @@ inline void _heapsafe_free(void *pointerToObject) {
 	free(pointerToObject);
 }
  
+inline void * heapsafe_safe_alloc(size_t sizeOfObject) { 
+	void *pointerToObject = NULL;
+	int error = 0;
+	try { 
+		pointerToObject = _heapsafe_alloc(sizeOfObject + HEAPSAFE_SAFE_ALLOC_RESERVE * 2);
+	}
+	catch(...) { 
+		if(HeapSafeCheck & _HeapSafeErrorInAllocFce) {
+			error = _HeapSafeErrorInAllocFce;
+		}
+	}
+	if(!error && !pointerToObject) {
+		error = _HeapSafeErrorNotEnoughMemory;
+	}
+	if(error) {
+		HeapSafeAllocError(error);
+	}
+	return(pointerToObject ? (char*)pointerToObject + HEAPSAFE_SAFE_ALLOC_RESERVE : NULL);
+}
+
 inline void * heapsafe_alloc(size_t sizeOfObject) { 
 	extern unsigned int HeapSafeCheck;
 	void *pointerToObject = NULL;
@@ -54,6 +74,18 @@ inline void * heapsafe_alloc(size_t sizeOfObject) {
 	       (HeapSafeCheck & _HeapSafeErrorBeginEnd ?
 		 sizeof(sHeapSafeMemoryControlBlock) :
 		 0));
+}
+
+inline void heapsafe_safe_free(void *pointerToObject) {
+	if(!pointerToObject) {
+		return;
+	}
+	try {
+		_heapsafe_free((char*)pointerToObject - HEAPSAFE_SAFE_ALLOC_RESERVE);
+	}
+	catch(...) {
+		HeapSafeAllocError(_HeapSafeErrorInAllocFce);
+	}
 }
 
 inline void heapsafe_free(void *pointerToObject) {
@@ -110,27 +142,37 @@ inline void heapsafe_free(void *pointerToObject) {
 
 
 void * operator new(size_t sizeOfObject) { 
-	return(HeapSafeCheck ? 
-		heapsafe_alloc(sizeOfObject) :
+	return(HeapSafeCheck ?
+		(HeapSafeCheck & _HeapSafeSafeReserve ?
+		  heapsafe_safe_alloc(sizeOfObject) :
+		  heapsafe_alloc(sizeOfObject)) :
 		_heapsafe_alloc(sizeOfObject));
 }
  
 void * operator new[](size_t sizeOfObject) {
 	return(HeapSafeCheck ? 
-		heapsafe_alloc(sizeOfObject) :
+		(HeapSafeCheck & _HeapSafeSafeReserve ?
+		  heapsafe_safe_alloc(sizeOfObject) :
+		  heapsafe_alloc(sizeOfObject)) :
 		_heapsafe_alloc(sizeOfObject));
 }
  
 void operator delete(void *pointerToObject) {
 	if(HeapSafeCheck)
-	 heapsafe_free(pointerToObject);
+	 if(HeapSafeCheck & _HeapSafeSafeReserve)
+	  heapsafe_safe_free(pointerToObject);
+	 else
+	  heapsafe_free(pointerToObject);
 	else 
 	 _heapsafe_free(pointerToObject);
 }
  
 void operator delete[](void *pointerToObject) {
 	if(HeapSafeCheck)
-	 heapsafe_free(pointerToObject);
+	 if(HeapSafeCheck & _HeapSafeSafeReserve)
+	  heapsafe_safe_free(pointerToObject);
+	 else
+	  heapsafe_free(pointerToObject);
 	else 
 	 _heapsafe_free(pointerToObject);
 }

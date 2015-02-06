@@ -2870,7 +2870,9 @@ int main(int argc, char *argv[]) {
  
 	for(int i = 0; i < argc; i++) {
 		extern unsigned int HeapSafeCheck;
-		if(strstr(argv[i], "heapsafe")) {
+		if(strstr(argv[i], "heapreserve")) {
+			HeapSafeCheck = _HeapSafeSafeReserve;
+		} else if(strstr(argv[i], "heapsafe")) {
 			HeapSafeCheck = _HeapSafeErrorNotEnoughMemory |
 					_HeapSafeErrorBeginEnd |
 					_HeapSafeErrorFreed |
