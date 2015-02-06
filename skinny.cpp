@@ -76,7 +76,6 @@ extern pcap_packet *qring;
 extern volatile unsigned int readit;
 extern volatile unsigned int writeit;
 extern unsigned int qringmax;
-extern int opt_pcapdump;
 extern int opt_id_sensor;
 extern int global_pcap_dlink;
 extern int opt_udpfrag;

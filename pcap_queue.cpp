@@ -85,6 +85,7 @@ extern int opt_udpfrag;
 extern int opt_skinny;
 extern int opt_ipaccount;
 extern int opt_pcapdump;
+extern int opt_pcapdump_all;
 extern int opt_dup_check;
 extern int opt_dup_check_ipheader;
 extern int opt_mirrorip;
@@ -1974,6 +1975,7 @@ PcapQueue_readFromInterface_base::PcapQueue_readFromInterface_base(const char *i
 	this->interfaceMask = 0;
 	this->pcapHandle = NULL;
 	this->pcapDumpHandle = NULL;
+	this->pcapDumpLength = 0;
 	this->pcapLinklayerHeaderType = 0;
 	// CONFIG
 	extern int opt_promisc;
@@ -2548,6 +2550,7 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void *arg, unsigned int 
 					this->push(header, packet, this->ppd.header_ip_offset, NULL);
 				} else {
 					if(!opt_pcap_queue_iface_dedup_separate_threads_extend__ext_mode ||
+					   opt_pcapdump_all ||
 					   this->pcapProcess(&header, &packet, &destroy,
 							     false, false, false, false) > 0) {
 						this->push(header, packet, 0, NULL);
@@ -2574,9 +2577,27 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void *arg, unsigned int 
 					header = _header;
 					packet = _packet;
 				}
+				if(opt_pcapdump_all) {
+					if(this->pcapDumpHandle &&
+					   this->pcapDumpLength > opt_pcapdump_all * 1000000ull) {
+						pcap_dump_close(this->pcapDumpHandle);
+						this->pcapDumpHandle = NULL;
+						this->pcapDumpLength = 0;
+					}
+					if(!this->pcapDumpHandle) {
+						char pname[1024];
+						sprintf(pname, "%s/voipmonitordump-%s-%s.pcap", 
+							opt_chdir,
+							this->interfaceName.c_str(), 
+							sqlDateTimeString(time(NULL)).c_str());
+						this->pcapDumpHandle = pcap_dump_open(global_pcap_handle, pname);
+					}
+					pcap_dump((u_char*)this->pcapDumpHandle, header, packet);
+					this->pcapDumpLength += header->caplen;
+				}
 			}
 			this->prevThreads[0]->moveReadit();
-			if(opt_udpfrag) {
+			if(opt_udpfrag || opt_pcapdump_all) {
 				res = this->pcapProcess(&header, &packet, &destroy,
 							true, false, false, false);
 				if(res == -1) {
