@@ -491,6 +491,7 @@ int rtp_qring_quick = 1;
 unsigned int gthread_num = 0;
 
 int opt_pcapdump = 0;
+int opt_pcapdump_all = 0;
 
 int opt_callend = 1; //if true, cdr.called is saved
 char opt_chdir[1024];
@@ -1878,6 +1879,10 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "dumpallpackets", NULL))) {
 		opt_pcapdump = yesno(value);
+	}
+	if((value = ini.GetValue("general", "dumpallallpackets", NULL))) {
+		opt_pcapdump_all = atol(value) ? atol(value) : 
+				   yesno(value) ? 1000 : 0;
 	}
 	if((value = ini.GetValue("general", "jitterbuffer_f1", NULL))) {
 		switch(value[0]) {

@@ -344,6 +344,7 @@ protected:
 	bpf_u_int32 interfaceMask;
 	pcap_t *pcapHandle;
 	pcap_dumper_t *pcapDumpHandle;
+	u_int64_t pcapDumpLength;
 	int pcapLinklayerHeaderType;
 	size_t pcap_snaplen;
 	pcapProcessData ppd;

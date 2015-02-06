@@ -153,7 +153,6 @@ extern int opt_onlyRTPheader;
 extern int opt_packetbuffered;
 extern int opt_packetbuffered;    // Make .pcap files writing ‘‘packet-buffered’’
 extern int opt_packetbuffered;  // Make .pcap files writing ‘‘packet-buffered’’
-extern int opt_pcapdump;
 extern int opt_pcap_queue;
 extern int opt_pcap_queue_iface_dedup_separate_threads;
 extern int opt_pcap_queue_iface_dedup_separate_threads_extend;
