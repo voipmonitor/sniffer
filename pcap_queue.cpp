@@ -2621,18 +2621,20 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void *arg, unsigned int 
 			}
 			counter = hpii.counter;
 			this->prevThreads[0]->moveReadit(this->typeThread == md1 ? 0 : 1);
-			res = this->pcapProcess(&header, &packet, &destroy,
-						false, true, false, false);
-			if(res == -1) {
-				break;
-			} else if(res == 0) {
-				if(destroy) {
-					if(header != _header) delete header;
-					if(packet != _packet) delete [] packet;
+			if(opt_dup_check) {
+				res = this->pcapProcess(&header, &packet, &destroy,
+							false, true, false, false);
+				if(res == -1) {
+					break;
+				} else if(res == 0) {
+					if(destroy) {
+						if(header != _header) delete header;
+						if(packet != _packet) delete [] packet;
+					}
+					delete _header;
+					delete [] _packet; 
+					continue;
 				}
-				delete _header;
-				delete [] _packet; 
-				continue;
 			}
 			this->push(header, packet, 0, this->ppd.md5, 0, counter);
 			}
@@ -2674,18 +2676,20 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void *arg, unsigned int 
 				} else {
 					this->ppd.md5[0] = 0;
 				}
-				res = this->pcapProcess(&header, &packet, &destroy,
-							false, false, true, true);
-				if(res == -1) {
-					break;
-				} else if(res == 0) {
-					if(destroy) {
-						if(header != _header) delete header;
-						if(packet != _packet) delete [] packet;
+				if(opt_dup_check) {
+					res = this->pcapProcess(&header, &packet, &destroy,
+								false, false, true, true);
+					if(res == -1) {
+						break;
+					} else if(res == 0) {
+						if(destroy) {
+							if(header != _header) delete header;
+							if(packet != _packet) delete [] packet;
+						}
+						delete _header;
+						delete [] _packet;
+						continue;
 					}
-					delete _header;
-					delete [] _packet;
-					continue;
 				}
 				this->push(header, packet, this->ppd.header_ip_offset, NULL);
 			} else {
@@ -2697,17 +2701,19 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void *arg, unsigned int 
 					header = hpii.header;
 					packet = hpii.packet;
 				}
-				res = this->pcapProcess(&header, &packet, &destroy);
-				if(res == -1) {
-					this->prevThreads[0]->moveReadit();
-					break;
-				} else if(res == 0) {
-					if(destroy) {
-						delete header;
-						delete [] packet;
+				if(opt_dup_check) {
+					res = this->pcapProcess(&header, &packet, &destroy);
+					if(res == -1) {
+						this->prevThreads[0]->moveReadit();
+						break;
+					} else if(res == 0) {
+						if(destroy) {
+							delete header;
+							delete [] packet;
+						}
+						this->prevThreads[0]->moveReadit();
+						continue;
 					}
-					this->prevThreads[0]->moveReadit();
-					continue;
 				}
 				this->push(header, packet, this->ppd.header_ip_offset, NULL);
 				this->prevThreads[0]->moveReadit();
