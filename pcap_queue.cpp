@@ -2671,12 +2671,12 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void *arg, unsigned int 
 						++this->pop_counter;
 					}
 				}
-				if(hpii.md5[0]) {
-					memcpy(this->ppd.md5, hpii.md5, MD5_DIGEST_LENGTH);
-				} else {
-					this->ppd.md5[0] = 0;
-				}
 				if(opt_dup_check) {
+					if(hpii.md5[0]) {
+						memcpy(this->ppd.md5, hpii.md5, MD5_DIGEST_LENGTH);
+					} else {
+						this->ppd.md5[0] = 0;
+					}
 					res = this->pcapProcess(&header, &packet, &destroy,
 								false, false, true, true);
 					if(res == -1) {
