@@ -26,6 +26,7 @@
 
 #include "pstat.h"
 #include "tools_dynamic_buffer.h"
+#include "buffers_control.h"
 
 using namespace std;
 
@@ -749,8 +750,8 @@ public:
 	}
 	bool add(AsyncCloseItem *item, int threadIndex, int useThreadOper = 0) {
 		extern int terminating;
-		extern int opt_pcap_dump_asyncwrite_maxsize;
-		while(sizeOfDataInMemory + item->dataLength > opt_pcap_dump_asyncwrite_maxsize * 1024ull * 1024ull && !terminating) {
+		extern cBuffersControl buffersControl;
+		while(!buffersControl.check__AsyncClose__add(item->dataLength) && !terminating) {
 			usleep(1000);
 		}
 		lock(threadIndex);
@@ -778,9 +779,6 @@ public:
 	int getCountThreads() {
 		return(countPcapThreads);
 	}
-	u_int64_t getSizeOfDataInMemory() {
-		return(sizeOfDataInMemory);
-	}
 private:
 	void lock(int threadIndex) {
 		while(__sync_lock_test_and_set(&this->_sync[threadIndex], 1)) {
@@ -791,10 +789,12 @@ private:
 		__sync_lock_release(&this->_sync[threadIndex]);
 	}
 	void add_sizeOfDataInMemory(size_t size) {
-		__sync_fetch_and_add(&this->sizeOfDataInMemory, size);
+		extern cBuffersControl buffersControl;
+		buffersControl.add__AsyncClose__sizeOfDataInMemory(size);
 	}
 	void sub_sizeOfDataInMemory(size_t size) {
-		__sync_fetch_and_sub(&this->sizeOfDataInMemory, size);
+		extern cBuffersControl buffersControl;
+		buffersControl.sub__AsyncClose__sizeOfDataInMemory(size);
 	}
 private:
 	int maxPcapThreads;
@@ -806,7 +806,6 @@ private:
 	int threadId[AsyncClose_maxPcapThreads];
 	pstat_data threadPstatData[AsyncClose_maxPcapThreads][2];
 	StartThreadData startThreadData[AsyncClose_maxPcapThreads];
-	volatile uint64_t sizeOfDataInMemory;
 	volatile int removeThreadProcessed;
 	volatile uint64_t useThread[AsyncClose_maxPcapThreads];
 	volatile int activeThread[AsyncClose_maxPcapThreads];

@@ -138,7 +138,7 @@ class pcap_store_queue {
 public:
 	pcap_store_queue(const char *fileStoreFolder);
 	~pcap_store_queue();
-	bool push(pcap_block_store *blockStore, size_t addUsedSize = 0, bool deleteBlockStoreIfFail = true);
+	bool push(pcap_block_store *blockStore, bool deleteBlockStoreIfFail = true);
 	bool pop(pcap_block_store **blockStore);
 	size_t getQueueSize() {
 		return(this->queue.size());
@@ -160,17 +160,18 @@ private:
 		__sync_lock_release(&this->_sync_fileStore);
 	}
 	void add_sizeOfBlocksInMemory(size_t size) {
-		__sync_fetch_and_add(&this->sizeOfBlocksInMemory, size);
+		extern cBuffersControl buffersControl;
+		buffersControl.add__pcap_store_queue__sizeOfBlocksInMemory(size);
 	}
 	void sub_sizeOfBlocksInMemory(size_t size) {
-		__sync_fetch_and_sub(&this->sizeOfBlocksInMemory, size);
+		extern cBuffersControl buffersControl;
+		buffersControl.sub__pcap_store_queue__sizeOfBlocksInMemory(size);
 	}
 private:
 	std::string fileStoreFolder;
 	std::deque<pcap_block_store*> queue;
 	std::deque<pcap_file_store*> fileStore;
 	u_int lastFileStoreId;
-	volatile uint64_t sizeOfBlocksInMemory;
 	volatile int _sync_queue;
 	volatile int _sync_fileStore;
 	int cleanupFileStoreCounter;
@@ -227,8 +228,6 @@ protected:
 	virtual string pcapStatString_bypass_buffer(int statPeriod) { return(""); }
 	virtual unsigned long pcapStat_get_bypass_buffer_size_exeeded() { return(0); }
 	virtual string pcapStatString_memory_buffer(int statPeriod) { return(""); }
-	virtual double pcapStat_get_memory_buffer_perc() { return(0); }
-	virtual double pcapStat_get_memory_buffer_perc_trash() { return(0); }
 	virtual string pcapStatString_disk_buffer(int statPeriod) { return(""); }
 	virtual double pcapStat_get_disk_buffer_perc() { return(-1); }
 	virtual double pcapStat_get_disk_buffer_mb() { return(-1); }
@@ -593,7 +592,6 @@ protected:
 private:
 	pcap_store_queue pcapStoreQueue;
 	deque<pcap_block_store*> blockStoreTrash;
-	size_t blockStoreTrash_size;
 	u_int cleanupBlockStoreTrash_counter;
 	hostent* socketHostEnt;
 	int socketHandle;

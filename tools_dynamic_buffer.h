@@ -251,6 +251,14 @@ public:
 			len = 0;
 			decompress_len = 0;
 		}
+		void deleteChunk(ChunkBuffer *chunkBuffer) {
+			if(chunk) {
+				delete [] chunk;
+				chunk = NULL;
+				__sync_fetch_and_sub(&chunkBuffer->chunk_buffer_size, len);
+				__sync_fetch_and_sub(&ChunkBuffer::chunk_buffers_sumsize, len);
+			}
+		}
 		char *chunk;
 	};
 	struct sChunkIterateCompleteBufferInfo {
@@ -341,6 +349,9 @@ public:
 		__sync_lock_release(&this->_sync_compress);
 	}
 	void addTarPosInCall(u_int64_t pos);
+	static u_int64_t getChunkBuffersSumsize() {
+		return(chunk_buffers_sumsize);
+	}
 private:
 	int time;
 	Call *call;
@@ -364,6 +375,8 @@ private:
 	unsigned int last_add_time;
 	unsigned int last_add_time_tar;
 	unsigned int last_tar_time;
+	volatile u_int64_t chunk_buffer_size;
+static volatile u_int64_t chunk_buffers_sumsize;
 };      
 
 

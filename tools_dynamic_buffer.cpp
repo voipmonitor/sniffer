@@ -651,6 +651,7 @@ ChunkBuffer::ChunkBuffer(int time, u_int32_t chunk_fix_len, Call *call, int type
 	this->last_add_time = 0;
 	this->last_add_time_tar = 0;
 	this->last_tar_time = 0;
+	this->chunk_buffer_size = 0;
 	if(call &&
 	   (typeContent == FileZipHandler::pcap_sip ? opt_pcap_dump_tar_sip_use_pos :
 	    typeContent == FileZipHandler::pcap_rtp ? opt_pcap_dump_tar_rtp_use_pos :
@@ -666,9 +667,7 @@ ChunkBuffer::~ChunkBuffer() {
 		       this->time, this->time % TAR_MODULO_SECONDS);
 	}
 	for(list<sChunk>::iterator it = chunkBuffer.begin(); it != chunkBuffer.end(); it++) {
-		if(it->chunk) {
-			delete [] it->chunk;
-		}
+		it->deleteChunk(this);
 	}
 	if(this->compressStream) {
 		delete this->compressStream;
@@ -720,6 +719,9 @@ void ChunkBuffer::setName(const char *name) {
 void ChunkBuffer::add(char *data, u_int32_t datalen, bool flush, u_int32_t decompress_len, bool directAdd) {
 	if(!datalen) {
 		return;
+	}
+	while(this->chunk_buffer_size > 4 * 128 * 1024) {
+		usleep(100000);
 	}
 	if(sverb.chunk_buffer) {
 		if(directAdd) {
@@ -773,6 +775,8 @@ void ChunkBuffer::add(char *data, u_int32_t datalen, bool flush, u_int32_t decom
 		chunk.decompress_len = decompress_len;
 		this->chunkBuffer.push_back(chunk);
 		this->len += datalen;
+		__sync_fetch_and_add(&this->chunk_buffer_size, datalen);
+		__sync_fetch_and_add(&ChunkBuffer::chunk_buffers_sumsize, datalen);
 		}
 		break;
 	case add_fill_chunks: {
@@ -812,6 +816,8 @@ void ChunkBuffer::add(char *data, u_int32_t datalen, bool flush, u_int32_t decom
 			}
 		}
 		this->len += allcopied;
+		__sync_fetch_and_add(&this->chunk_buffer_size, allcopied);
+		__sync_fetch_and_add(&ChunkBuffer::chunk_buffers_sumsize, allcopied);
 		}
 		break;
 	case add_fill_fix_len: {
@@ -828,6 +834,8 @@ void ChunkBuffer::add(char *data, u_int32_t datalen, bool flush, u_int32_t decom
 			copied += whattocopy;
 			this->len += whattocopy;
 			this->lastChunk->len += whattocopy;
+			__sync_fetch_and_add(&this->chunk_buffer_size, whattocopy);
+			__sync_fetch_and_add(&ChunkBuffer::chunk_buffers_sumsize, whattocopy);
 		} while(datalen > copied);
 		}
 		break;
@@ -1010,8 +1018,7 @@ void ChunkBuffer::chunkIterate(ChunkBuffer_baseIterate *chunkbufferIterateEv, bo
 					++this->chunkIterateCompleteBufferInfo.chunkIndex;
 					this->chunkIterateCompleteBufferInfo.chunkPos = 0;
 					if(freeChunks) {
-						delete it->chunk;
-						it->chunk = NULL;
+						it->deleteChunk(this);
 					}
 				}
 			} else {
@@ -1024,8 +1031,7 @@ void ChunkBuffer::chunkIterate(ChunkBuffer_baseIterate *chunkbufferIterateEv, bo
 				}
 				this->chunkIterateProceedLen += it->decompress_len;
 				if(freeChunks) {
-					delete it->chunk;
-					it->chunk = NULL;
+					it->deleteChunk(this);
 				}
 				if(limitLength && 
 				   this->chunkIterateProceedLen - chunkIterateProceedLen_start >= limitLength) {
@@ -1049,8 +1055,7 @@ void ChunkBuffer::chunkIterate(ChunkBuffer_baseIterate *chunkbufferIterateEv, bo
 					chunkbufferIterateEv->chunkbuffer_iterate_ev(it->chunk, it->len, 0);
 					this->chunkIterateProceedLen += it->len;
 					if(freeChunks) {
-						delete it->chunk;
-						it->chunk = NULL;
+						it->deleteChunk(this);
 					}
 					pos += it->len;
 				}
@@ -1065,8 +1070,7 @@ void ChunkBuffer::chunkIterate(ChunkBuffer_baseIterate *chunkbufferIterateEv, bo
 				chunkbufferIterateEv->chunkbuffer_iterate_ev(it->chunk, it->len, pos);
 				this->chunkIterateProceedLen += it->len;
 				if(freeChunks) {
-					delete it->chunk;
-					it->chunk = NULL;
+					it->deleteChunk(this);
 				}
 				pos += it->len;
 				if(limitLength && 
@@ -1134,3 +1138,5 @@ void ChunkBuffer::addTarPosInCall(u_int64_t pos) {
 		call->addTarPos(pos, typeContent);
 	}
 }
+
+volatile u_int64_t ChunkBuffer::chunk_buffers_sumsize = 0;

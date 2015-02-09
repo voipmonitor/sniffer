@@ -1166,7 +1166,6 @@ AsyncClose::AsyncClose() {
 		activeThread[i] = 0;
 		cpuPeak[i] = 0;
 	}
-	sizeOfDataInMemory = 0;
 	removeThreadProcessed = 0;
 }
 
