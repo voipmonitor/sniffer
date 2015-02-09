@@ -709,6 +709,12 @@ bool TcpReassemblyLink::streamIterator::findFirstDataToDest() {
 }
 
 
+#ifdef HAVE_LIBGNUTLS
+extern void end_decrypt_ssl(unsigned int saddr, unsigned int daddr, int sport, int dport);
+#else
+void end_decrypt_ssl(unsigned int saddr, unsigned int daddr, int sport, int dport) {}
+#endif
+
 TcpReassemblyLink::~TcpReassemblyLink() {
 	this->lock_queue();
 	while(this->queue.size()) {
@@ -739,6 +745,9 @@ TcpReassemblyLink::~TcpReassemblyLink() {
 	this->unlock_queue();
 	if(this->remainData) {
 		delete remainData;
+	}
+	if(reassembly->getType() == TcpReassembly::ssl) {
+		end_decrypt_ssl(htonl(ip_src), htonl(ip_dst), port_src, port_dst);
 	}
 }
 

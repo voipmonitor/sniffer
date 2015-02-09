@@ -3014,23 +3014,41 @@ pinfohash2(packet_info *pinfo) {
 
 SslDecryptSessionC*
 find_or_create_session(packet_info *pinfo) {
-	string hash1 = pinfohash1(pinfo);
-//	printf("hash1: %x %x %x %x %x %x %x %x %x %x %x %x | src2[%u] srcport[%u] dst2[%u] dstport[%u]\n", hash1[0], hash1[1],hash1[2],hash1[3],hash1[4],hash1[5],hash1[6],hash1[7],hash1[8],hash1[9],hash1[10],hash1[11],
-//		pinfo->src2, pinfo->srcport, pinfo->dst2, pinfo->destport);
-	sessions_it = sessions.find(hash1);
-	if(sessions_it == sessions.end()) {
-		string hash2 = pinfohash2(pinfo);
-		sessions_it = sessions.find(hash2);
-		if(sessions_it == sessions.end()) {
-			SslDecryptSessionC *ssl_session = new SslDecryptSessionC;
-			session_t *s = (session_t*)malloc(sizeof(session_t));
-			s->session = ssl_session;
-			sessions[hash1] = s;
-			return s->session;
+	string hash[2];
+	for(int pass = 0; pass < 2; pass++) {
+		hash[pass] = pass ? pinfohash2(pinfo) : pinfohash1(pinfo);
+		/*printf("find_or_create_session:hash%i: %x %x %x %x %x %x %x %x %x %x %x %x | src2[%u] srcport[%u] dst2[%u] dstport[%u]\n", pass + 1, 
+		       hash[pass][0], hash[pass][1],hash[pass][2],hash[pass][3],hash[pass][4],hash[pass][5],hash[pass][6],hash[pass][7],hash[pass][8],hash[pass][9],hash[pass][10],hash[pass][11],
+		       pinfo->src2, pinfo->srcport, pinfo->dst2, pinfo->destport);*/
+		sessions_it = sessions.find(hash[pass]);
+		if(sessions_it != sessions.end()) {
+			//printf("find_or_create_session:find\n");
+			return (*sessions_it).second->session;
 		}
 	}
-	return (*sessions_it).second->session;
-	
+	//printf("find_or_create_session:create\n");
+	SslDecryptSessionC *ssl_session = new SslDecryptSessionC;
+	session_t *s = (session_t*)malloc(sizeof(session_t));
+	s->session = ssl_session;
+	sessions[hash[0]] = s;
+	return s->session;
+}
+
+void
+delete_session(packet_info *pinfo) {
+	for(int pass = 0; pass < 2; pass++) {
+		string hash = pass ? pinfohash2(pinfo) : pinfohash1(pinfo);
+		/*printf("delete_session:hash: %x %x %x %x %x %x %x %x %x %x %x %x | src2[%u] srcport[%u] dst2[%u] dstport[%u]\n", 
+		       hash[0], hash[1],hash[2],hash[3],hash[4],hash[5],hash[6],hash[7],hash[8],hash[9],hash[10],hash[11],
+		       pinfo->src2, pinfo->srcport, pinfo->dst2, pinfo->destport);*/
+		sessions_it = sessions.find(hash);
+		if(sessions_it != sessions.end()) {
+			//printf("delete_session:find\n");
+			delete sessions_it->second;
+			sessions.erase(sessions_it);
+			break;
+		}
+	}
 }
 
 vector<string>
@@ -3088,6 +3106,20 @@ decrypt_ssl(char *data, unsigned int datalen, unsigned int saddr, unsigned int d
 	}
 */
 }
+
+void end_decrypt_ssl(unsigned int saddr, unsigned int daddr, int sport, int dport) {
+	packet_info pinfo;
+	pinfo.ptype = PT_TCP;
+	pinfo.destport = dport;
+	pinfo.srcport = sport;
+	pinfo.dst2 = daddr;
+	pinfo.src2 = saddr;
+	set_address(&pinfo.dst, AT_IPv4, 4, &daddr);
+	set_address(&pinfo.src, AT_IPv4, 4, &saddr);
+	
+	delete_session(&pinfo);
+}
+
 
 void ssl_free_key(Ssl_private_key_t* key)
 {	  
