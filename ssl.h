@@ -1422,7 +1422,7 @@ public:
         ~SslDecryptSessionC() {
 		if(pre_master_secret.data) free(pre_master_secret.data);
                 if(session_ticket.data) free(session_ticket.data);
-                ssl_free_key(private_key_c);
+                if(private_key_c) ssl_free_key(private_key_c);
 
 		if(server_new and server_new->evp) {
 			ssl_cipher_cleanup(&server_new->evp);
