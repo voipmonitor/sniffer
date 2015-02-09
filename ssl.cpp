@@ -3044,7 +3044,8 @@ delete_session(packet_info *pinfo) {
 		sessions_it = sessions.find(hash);
 		if(sessions_it != sessions.end()) {
 			//printf("delete_session:find\n");
-			delete sessions_it->second;
+			delete(sessions_it->second->session);
+			free(sessions_it->second);
 			sessions.erase(sessions_it);
 			break;
 		}
