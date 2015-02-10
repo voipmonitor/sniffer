@@ -637,6 +637,8 @@ pthread_mutex_t terminate_packetbuffer_lock;
 
 extern ParsePacket _parse_packet_global;
 
+cBuffersControl buffersControl;
+
 
 #include <stdio.h>
 #include <pthread.h>
@@ -2003,7 +2005,7 @@ int eval_config(string inistr) {
 	}
 	//
 	if((value = ini.GetValue("general", "packetbuffer_total_maxheap", NULL))) {
-		opt_pcap_queue_store_queue_max_memory_size = atol(value) * 1024 *1024;
+		opt_pcap_queue_store_queue_max_memory_size = atol(value) * 1024ull *1024ull;
 	}
 	/*
 	INDIRECT VALUE
@@ -2012,7 +2014,7 @@ int eval_config(string inistr) {
 	}
 	*/
 	if((value = ini.GetValue("general", "packetbuffer_file_totalmaxsize", NULL))) {
-		opt_pcap_queue_store_queue_max_disk_size = atol(value) * 1024 *1024;
+		opt_pcap_queue_store_queue_max_disk_size = atol(value) * 1024ull *1024ull;
 	}
 	if((value = ini.GetValue("general", "packetbuffer_file_path", NULL))) {
 		opt_pcap_queue_disk_folder = value;
@@ -2479,6 +2481,10 @@ int eval_config(string inistr) {
 		opt_faxt30detect = yesno(value);
 	}
 	
+	if((value = ini.GetValue("general", "max_buffer_mem", NULL))) {
+		buffersControl.setMaxBufferMem(atol(value) * 1024 * 1024);
+	}
+	
 	/*
 	
 	packetbuffer default configuration
@@ -2514,6 +2520,11 @@ void set_context_config() {
 	#endif
 
 	if(opt_pcap_queue) {
+		// prepare for old buffer size calculate
+		if(buffersControl.getMaxBufferMem()) {
+			opt_pcap_queue_store_queue_max_memory_size = buffersControl.getMaxBufferMem() * 0.9;
+		}
+		// old buffer size calculate &&  set size opt_pcap_queue_bypass_max_size
 		if(!opt_pcap_queue_disk_folder.length() || !opt_pcap_queue_store_queue_max_disk_size) {
 			// disable disc save
 			if(opt_pcap_queue_compress) {
@@ -2535,10 +2546,21 @@ void set_context_config() {
 				opt_pcap_queue_bypass_max_size = 500 * 1024 * 1024;
 			}
 		}
+		// set old buffer size via opt_pcap_queue_bypass_max_size
 		if(opt_pcap_queue_store_queue_max_memory_size < opt_pcap_queue_bypass_max_size * 2) {
 			opt_pcap_queue_store_queue_max_memory_size = opt_pcap_queue_bypass_max_size * 2;
 		} else {
 			opt_pcap_queue_store_queue_max_memory_size -= opt_pcap_queue_bypass_max_size;
+		}
+		// set new buffer size via opt_pcap_queue_bypass_max_size
+		if(buffersControl.getMaxBufferMem()) {
+			if(buffersControl.getMaxBufferMem() < opt_pcap_queue_bypass_max_size * 2) {
+				buffersControl.setMaxBufferMem(opt_pcap_queue_bypass_max_size * 2);
+			} else {
+				buffersControl.setMaxBufferMem(buffersControl.getMaxBufferMem() - opt_pcap_queue_bypass_max_size);
+			}
+		} else {
+			buffersControl.setMaxBufferMem(opt_pcap_queue_store_queue_max_memory_size + opt_pcap_dump_asyncwrite_maxsize * 1024ull * 1024ull);
 		}
 		
 		if(opt_pcap_queue_receive_from_ip_port) {
