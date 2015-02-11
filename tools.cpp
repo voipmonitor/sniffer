@@ -924,7 +924,7 @@ PcapDumper::PcapDumper(eTypePcapDump type, class Call *call) {
 	this->dlt = -1;
 	this->lastTimeSyslog = 0;
 	this->_bufflength = -1;
-	this->_asyncwrite = -1;
+	this->_asyncwrite = type == na && !call ? 0 : -1;
 	this->_typeCompress = FileZipHandler::compress_default;
 }
 
@@ -1061,6 +1061,7 @@ RtpGraphSaver::RtpGraphSaver(RTP *rtp) {
 	this->rtp = rtp;
 	this->handle = NULL;
 	this->existsContent = false;
+	this->_asyncwrite = opt_pcap_dump_asyncwrite ? 1 : 0;
 }
 
 RtpGraphSaver::~RtpGraphSaver() {
@@ -1081,7 +1082,7 @@ bool RtpGraphSaver::open(const char *fileName, const char *fileNameSpoolRelative
 		}
 	}
 	*/
-	this->handle = new FileZipHandler(opt_pcap_dump_bufflength, opt_pcap_dump_asyncwrite, opt_gzipGRAPH,
+	this->handle = new FileZipHandler(opt_pcap_dump_bufflength, this->_asyncwrite, opt_gzipGRAPH,
 					  false, rtp && rtp->call_owner ? (Call*)rtp->call_owner : 0,
 					  FileZipHandler::graph_rtp);
 	if(!this->handle->open(fileName)) {
@@ -1104,19 +1105,24 @@ void RtpGraphSaver::write(char *buffer, int length) {
 
 void RtpGraphSaver::close(bool updateFilesQueue) {
 	if(this->isOpen()) {
-		Call *call = (Call*)this->rtp->call_owner;
-		if(call) {
-			asyncClose->add(this->handle, updateFilesQueue,
-					call,
-					this->fileNameSpoolRelative.c_str(), 
-					"graphsize", 
-					this->handle->size);
+		if(this->_asyncwrite == 0) {
+			this->handle->close();
+			this->handle = NULL;
 		} else {
-			asyncClose->add(this->handle);
-		}
-		this->handle = NULL;
-		if(updateFilesQueue && !call) {
-			syslog(LOG_ERR, "graphsaver: gfilename[%s] does not have owner", this->fileNameSpoolRelative.c_str());
+			Call *call = (Call*)this->rtp->call_owner;
+			if(call) {
+				asyncClose->add(this->handle, updateFilesQueue,
+						call,
+						this->fileNameSpoolRelative.c_str(), 
+						"graphsize", 
+						this->handle->size);
+			} else {
+				asyncClose->add(this->handle);
+			}
+			this->handle = NULL;
+			if(updateFilesQueue && !call) {
+				syslog(LOG_ERR, "graphsaver: gfilename[%s] does not have owner", this->fileNameSpoolRelative.c_str());
+			}
 		}
 	}
 }

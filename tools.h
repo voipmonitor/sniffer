@@ -415,7 +415,7 @@ public:
 		state_do_close,
 		state_close
 	};
-	PcapDumper(eTypePcapDump type, class Call *call);
+	PcapDumper(eTypePcapDump type = na, class Call *call = NULL);
 	~PcapDumper();
 	void setBuffLength(int bufflength) {
 		_bufflength = bufflength;
@@ -495,6 +495,7 @@ private:
 	class RTP *rtp;
 	FileZipHandler *handle;
 	bool existsContent;
+	int _asyncwrite;
 };
 
 #define AsyncClose_maxPcapThreads 32
