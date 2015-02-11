@@ -3862,6 +3862,9 @@ int main(int argc, char *argv[]) {
 				if(i) {
 					sqlStore->setEnableAutoDisconnect(STORE_PROC_ID_CDR_1 + i);
 				}
+				if(opt_mysql_enable_transactions_cdr) {
+					sqlStore->setEnableTransaction(STORE_PROC_ID_CDR_1 + i);
+				}
 			}
 		}
 		if(opt_mysqlstore_concat_limit_message) {
@@ -3869,6 +3872,9 @@ int main(int argc, char *argv[]) {
 				sqlStore->setConcatLimit(STORE_PROC_ID_MESSAGE_1 + i, opt_mysqlstore_concat_limit_message);
 				if(i) {
 					sqlStore->setEnableAutoDisconnect(STORE_PROC_ID_MESSAGE_1 + i);
+				}
+				if(opt_mysql_enable_transactions_message) {
+					sqlStore->setEnableTransaction(STORE_PROC_ID_MESSAGE_1 + i);
 				}
 			}
 		}
@@ -3878,6 +3884,9 @@ int main(int argc, char *argv[]) {
 				if(i) {
 					sqlStore->setEnableAutoDisconnect(STORE_PROC_ID_REGISTER_1 + i);
 				}
+				if(opt_mysql_enable_transactions_register) {
+					sqlStore->setEnableTransaction(STORE_PROC_ID_REGISTER_1 + i);
+				}
 			}
 		}
 		if(opt_mysqlstore_concat_limit_http) {
@@ -3886,6 +3895,9 @@ int main(int argc, char *argv[]) {
 				if(i) {
 					sqlStore->setEnableAutoDisconnect(STORE_PROC_ID_HTTP_1 + i);
 				}
+				if(opt_mysql_enable_transactions_http) {
+					sqlStore->setEnableTransaction(STORE_PROC_ID_HTTP_1 + i);
+				}
 			}
 		}
 		if(opt_mysqlstore_concat_limit_webrtc) {
@@ -3893,6 +3905,9 @@ int main(int argc, char *argv[]) {
 				sqlStore->setConcatLimit(STORE_PROC_ID_WEBRTC_1 + i, opt_mysqlstore_concat_limit_webrtc);
 				if(i) {
 					sqlStore->setEnableAutoDisconnect(STORE_PROC_ID_WEBRTC_1 + i);
+				}
+				if(opt_mysql_enable_transactions_webrtc) {
+					sqlStore->setEnableTransaction(STORE_PROC_ID_WEBRTC_1 + i);
 				}
 			}
 		}

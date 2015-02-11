@@ -329,6 +329,7 @@ public:
 	void setIgnoreTerminating(bool ignoreTerminating);
 	void setEnableAutoDisconnect(bool enableAutoDisconnect = true);
 	void setConcatLimit(int concatLimit);
+	void setEnableTransaction(bool enableTransaction = true);
 	int getId() {
 		return(this->id);
 	}
@@ -341,6 +342,7 @@ public:
 private:
 	int id;
 	int concatLimit;
+	bool enableTransaction;
 	pthread_t thread;
 	pthread_mutex_t lock_mutex;
 	SqlDb *sqlDb;
@@ -364,6 +366,7 @@ public:
 	void setEnableAutoDisconnect(int id, bool enableAutoDisconnect = true);
 	void setDefaultConcatLimit(int defaultConcatLimit);
 	void setConcatLimit(int id, int concatLimit);
+	void setEnableTransaction(int id, bool enableTransaction = true);
 	MySqlStore_process *find(int id);
 	MySqlStore_process *check(int id);
 	size_t getAllSize(bool lock = true);

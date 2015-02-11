@@ -1224,6 +1224,7 @@ MySqlStore_process::MySqlStore_process(int id, const char *host, const char *use
 	this->ignoreTerminating = false;
 	this->enableAutoDisconnect = false;
 	this->concatLimit = concatLimit;
+	this->enableTransaction = false;
 	this->sqlDb = new SqlDb_mysql();
 	this->sqlDb->setConnectParameters(host, user, password, database);
 	if(cloud_host && *cloud_host) {
@@ -1271,8 +1272,6 @@ void MySqlStore_process::store() {
 	char insert_funcname[20];
 	string beginTransaction = "\nDECLARE EXIT HANDLER FOR SQLEXCEPTION\nBEGIN\nROLLBACK;\nEND;\nSTART TRANSACTION;\n";
 	string endTransaction = "\nCOMMIT;\n";
-	string beginProcedure = "\nBEGIN\n" + (opt_mysql_enable_transactions ? beginTransaction : "");
-	string endProcedure = (opt_mysql_enable_transactions ? endTransaction : "") + "\nEND";
 	sprintf(insert_funcname, "__insert_%i", this->id);
 	if(opt_id_sensor > -1) {
 		sprintf(insert_funcname + strlen(insert_funcname), "S%i", opt_id_sensor);
@@ -1281,6 +1280,8 @@ void MySqlStore_process::store() {
 		int size = 0;
 		string queryqueue = "";
 		while(1) {
+			string beginProcedure = "\nBEGIN\n" + (opt_mysql_enable_transactions || this->enableTransaction ? beginTransaction : "");
+			string endProcedure = (opt_mysql_enable_transactions || this->enableTransaction ? endTransaction : "") + "\nEND";
 			this->lock();
 			if(this->query_buff.size() == 0) {
 				this->unlock();
@@ -1387,6 +1388,10 @@ void MySqlStore_process::setConcatLimit(int concatLimit) {
 	this->concatLimit = concatLimit;
 }
 
+void MySqlStore_process::setEnableTransaction(bool enableTransaction) {
+	this->enableTransaction = enableTransaction;
+}
+
 MySqlStore::MySqlStore(const char *host, const char *user, const char *password, const char *database,
 		       const char *cloud_host, const char *cloud_token) {
 	this->host = host;
@@ -1449,6 +1454,11 @@ void MySqlStore::setEnableAutoDisconnect(int id, bool enableAutoDisconnect) {
 void MySqlStore::setConcatLimit(int id, int concatLimit) {
 	MySqlStore_process* process = this->find(id);
 	process->setConcatLimit(concatLimit);
+}
+
+void MySqlStore::setEnableTransaction(int id, bool enableTransaction) {
+	MySqlStore_process* process = this->find(id);
+	process->setEnableTransaction(enableTransaction);
 }
 
 void MySqlStore::setDefaultConcatLimit(int defaultConcatLimit) {
