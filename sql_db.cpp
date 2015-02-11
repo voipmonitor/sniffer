@@ -36,6 +36,7 @@ extern int opt_dscp;
 extern int opt_enable_http_enum_tables;
 extern int opt_enable_webrtc_table;
 extern int opt_mysqlcompress;
+extern int opt_mysql_enable_transactions;
 extern pthread_mutex_t mysqlconnect_lock;      
 extern int opt_mos_lqo;
 extern int opt_read_from_file;
@@ -1268,6 +1269,10 @@ void MySqlStore_process::query(const char *query_str) {
 
 void MySqlStore_process::store() {
 	char insert_funcname[20];
+	string beginTransaction = "\nDECLARE EXIT HANDLER FOR SQLEXCEPTION\nBEGIN\nROLLBACK;\nEND;\nSTART TRANSACTION;\n";
+	string endTransaction = "\nCOMMIT;\n";
+	string beginProcedure = "\nBEGIN\n" + (opt_mysql_enable_transactions ? beginTransaction : "");
+	string endProcedure = (opt_mysql_enable_transactions ? endTransaction : "") + "\nEND";
 	sprintf(insert_funcname, "__insert_%i", this->id);
 	if(opt_id_sensor > -1) {
 		sprintf(insert_funcname + strlen(insert_funcname), "S%i", opt_id_sensor);
@@ -1282,7 +1287,7 @@ void MySqlStore_process::store() {
 				if(queryqueue != "") {
 					for(int pass = 0; pass < 2; pass ++) {
 						this->sqlDb->query(string("drop procedure if exists ") + insert_funcname);
-						if(this->sqlDb->query(string("create procedure ") + insert_funcname + "()\nbegin\n" + queryqueue + "\nend")) {
+						if(this->sqlDb->query(string("create procedure ") + insert_funcname + "()" + beginProcedure + queryqueue + endProcedure)) {
 							break;
 						} else if(this->sqlDb->getLastError() == ER_SP_ALREADY_EXISTS) {
 							this->sqlDb->query("repair table mysql.proc");
@@ -1331,7 +1336,7 @@ void MySqlStore_process::store() {
 			} else {
 				for(int pass = 0; pass < 2; pass ++) {
 					this->sqlDb->query(string("drop procedure if exists ") + insert_funcname);
-					if(this->sqlDb->query(string("create procedure ") + insert_funcname + "()\nbegin\n" + queryqueue + "\nend")) {
+					if(this->sqlDb->query(string("create procedure ") + insert_funcname + "()" + beginProcedure + queryqueue + endProcedure)) {
 						break;
 					} else if(this->sqlDb->getLastError() == ER_SP_ALREADY_EXISTS) {
 						this->sqlDb->query("repair table mysql.proc");

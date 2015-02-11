@@ -284,6 +284,7 @@ char opt_tcpreassembly_log[1024];
 int opt_allow_zerossrc = 0;
 int opt_convert_dlt_sll_to_en10 = 0;
 int opt_mysqlcompress = 1;
+int opt_mysql_enable_transactions = 0;
 int opt_cdr_ua_enable = 1;
 unsigned long long cachedirtransfered = 0;
 unsigned int opt_maxpcapsize_mb = 0;
@@ -1730,6 +1731,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "mysqlcompress", NULL))) {
 		opt_mysqlcompress = yesno(value);
+	}
+	if((value = ini.GetValue("general", "mysqltransactions", NULL))) {
+		opt_mysql_enable_transactions = yesno(value);
 	}
 	if((value = ini.GetValue("general", "mysqlhost", NULL))) {
 		strncpy(mysql_host, value, sizeof(mysql_host));
