@@ -285,6 +285,11 @@ int opt_allow_zerossrc = 0;
 int opt_convert_dlt_sll_to_en10 = 0;
 int opt_mysqlcompress = 1;
 int opt_mysql_enable_transactions = 0;
+int opt_mysql_enable_transactions_cdr = 0;
+int opt_mysql_enable_transactions_message = 0;
+int opt_mysql_enable_transactions_register = 0;
+int opt_mysql_enable_transactions_http = 0;
+int opt_mysql_enable_transactions_webrtc = 0;
 int opt_cdr_ua_enable = 1;
 unsigned long long cachedirtransfered = 0;
 unsigned int opt_maxpcapsize_mb = 0;
@@ -942,7 +947,7 @@ void *storing_cdr( void *dummy ) {
 	time_t createPartitionIpaccAt = 0;
 	time_t createPartitionBillingAgregationAt = 0;
 	time_t checkDiskFreeAt = 0;
-	while(!storing_cdr_force_terminating) {
+	while(storing_cdr_force_terminating <= 1) {
 		if(!opt_nocdr and opt_cdr_partition and !opt_disable_partition_operations and isSqlDriver("mysql")) {
 			time_t actTime = time(NULL);
 			if(actTime - createPartitionAt > 12 * 3600) {
@@ -1004,10 +1009,12 @@ void *storing_cdr( void *dummy ) {
 		
 		if(request_iptelnum_reload == 1) { reload_capture_rules(); request_iptelnum_reload = 0;};
 
+		size_t calls_queue_size = 0;
+		
 		for(int pass  = 0; pass < 10; pass++) {
 		
 			calltable->lock_calls_queue();
-			size_t calls_queue_size = calltable->calls_queue.size();
+			calls_queue_size = calltable->calls_queue.size();
 			size_t calls_queue_position = 0;
 			
 			while(calls_queue_position < calls_queue_size && storing_cdr_force_terminating <= 1) {
@@ -1063,11 +1070,16 @@ void *storing_cdr( void *dummy ) {
 			
 			calltable->unlock_calls_queue();
 
-			if(terminating || storing_cdr_force_terminating) {
+			if(storing_cdr_force_terminating == 2 ||
+			   (storing_cdr_force_terminating == 1 && !calls_queue_size)) {
 				break;
 			}
 		
 			usleep(100000);
+		}
+		
+		if(storing_cdr_force_terminating == 1 && !calls_queue_size) {
+			break;
 		}
 	}
 	return NULL;
@@ -1734,6 +1746,21 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "mysqltransactions", NULL))) {
 		opt_mysql_enable_transactions = yesno(value);
+	}
+	if((value = ini.GetValue("general", "mysqltransactions_cdr", NULL))) {
+		opt_mysql_enable_transactions_cdr = yesno(value);
+	}
+	if((value = ini.GetValue("general", "mysqltransactions_message", NULL))) {
+		opt_mysql_enable_transactions_message = yesno(value);
+	}
+	if((value = ini.GetValue("general", "mysqltransactions_register", NULL))) {
+		opt_mysql_enable_transactions_register = yesno(value);
+	}
+	if((value = ini.GetValue("general", "mysqltransactions_http", NULL))) {
+		opt_mysql_enable_transactions_http = yesno(value);
+	}
+	if((value = ini.GetValue("general", "mysqltransactions_webrtc", NULL))) {
+		opt_mysql_enable_transactions_webrtc = yesno(value);
 	}
 	if((value = ini.GetValue("general", "mysqlhost", NULL))) {
 		strncpy(mysql_host, value, sizeof(mysql_host));
@@ -4643,7 +4670,7 @@ int main(int argc, char *argv[]) {
 	if(!(opt_pcap_threaded && opt_pcap_queue && 
 	     !opt_pcap_queue_receive_from_ip_port &&
 	     opt_pcap_queue_send_to_ip_port)) {
-		storing_cdr_force_terminating = 1;
+		storing_cdr_force_terminating = opt_read_from_file || opt_pb_read_from_file[0] ? 1 : 2;
 		pthread_join(call_thread, NULL);
 	}
 	while(calltable->calls_queue.size() != 0) {
