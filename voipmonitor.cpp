@@ -1080,10 +1080,11 @@ void *storing_cdr( void *dummy ) {
 		
 		calltable->lock_calls_queue();
 		calls_queue_size = calltable->calls_queue.size();
-		calltable->unlock_calls_queue();
 		if(storing_cdr_force_terminating == 1 && !calls_queue_size) {
+			calltable->unlock_calls_queue();
 			break;
 		}
+		calltable->unlock_calls_queue();
 	}
 	return NULL;
 }
