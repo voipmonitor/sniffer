@@ -5084,6 +5084,16 @@ void test_untar() {
 	tar.tar_read("1309960312.pcap.*", "1309960312.pcap", 659493, "cdr");
 }
 
+void test_http_dumper() {
+	HttpPacketsDumper dumper;
+	dumper.setPcapName("/home/jumbox/Plocha/testhttp.pcap");
+	//dumper.setTemplatePcapName();
+	string timestamp_from = "2013-09-22 15:48:51";
+	string timestamp_to = "2013-09-24 01:48:51";
+	string ids = "1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20";
+	dumper.dumpData(timestamp_from.c_str(), timestamp_to.c_str(), ids.c_str());
+}
+
 void test() {
  
 	switch(opt_test) {
@@ -5145,6 +5155,9 @@ void test() {
 		break;
 	case 6:
 		test_untar();
+		break;
+	case 7: 
+		test_http_dumper(); 
 		break;
 	case 10:
 		{

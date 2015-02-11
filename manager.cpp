@@ -42,6 +42,7 @@
 #include "fraud.h"
 #include "rrd.h"
 #include "tar.h"
+#include "http.h"
 
 //#define BUFSIZE 1024
 //define BUFSIZE 20480
@@ -86,6 +87,7 @@ struct listening_worker_arg {
 static void updateLivesnifferfilters();
 static bool cmpCallBy_destroy_call_at(Call* a, Call* b);
 static bool cmpCallBy_first_packet_time(Call* a, Call* b);
+static int sendFile(const char *fileName, int client, ssh_channel sshchannel, bool zip);
 
 livesnifferfilter_use_siptypes_s livesnifferfilterUseSipTypes;
 
@@ -1282,53 +1284,9 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 		bool zip = strstr(buf, "getfile_zip");
 		
 		char filename[2048];
-		char rbuf[4096];
-		int fd;
-		ssize_t nread;
-
 		sscanf(buf, zip ? "getfile_zip %s" : "getfile %s", filename);
 
-		fd = open(filename, O_RDONLY);
-		if(fd < 0) {
-			sprintf(buf, "error: cannot open file [%s]", filename);
-			if ((size = sendvm(client, sshchannel, buf, strlen(buf), 0)) == -1){
-				cerr << "Error sending data to client" << endl;
-			}
-			return -1;
-		}
-		CompressStream *compressStream = NULL;
-		if(zip) {
-			compressStream = new CompressStream(CompressStream::gzip, 1024, 0);
-			compressStream->setSendParameters(client, sshchannel);
-		}
-		size_t read_size = 0;
-		while(nread = read(fd, rbuf, sizeof rbuf), nread > 0) {
-			if(!read_size && compressStream &&
-			   (unsigned char)rbuf[0] == 0x1f &&
-			   (nread == 1 || (unsigned char)rbuf[1] == 0x8b)) {
-				delete compressStream;
-				compressStream = NULL;
-			}
-			read_size += nread;
-			if(compressStream) {
-				compressStream->compress(rbuf, nread, false, compressStream);
-				if(compressStream->isError()) {
-					close(fd);
-					return -1;
-				}
-			} else {
-				if ((size = sendvm(client, sshchannel, rbuf, nread, 0)) == -1){
-					close(fd);
-					return -1;
-				}
-			}
-		}
-		if(compressStream) {
-			compressStream->compress(rbuf, 0, true, compressStream);
-			delete compressStream;
-		}
-		close(fd);
-		return 0;
+		return(sendFile(filename, client, sshchannel, zip));
 	} else if(strstr(buf, "file_exists") != NULL) {
 		if(opt_pcap_queue_send_to_ip_port) {
 			sendvm(client, sshchannel, "mirror", 6, 0);
@@ -1531,6 +1489,29 @@ getwav:
 			return 0;
 		}
 		return 0;
+	} else if(strstr(buf, "genhttppcap") != NULL) {
+		char timestamp_from[100]; 
+		char timestamp_to[100]; 
+		char ids[10000];
+		sscanf(buf, "genhttppcap %19[T0-9--: ] %19[T0-9--: ] %s", timestamp_from, timestamp_to, ids);
+		/*
+		cout << timestamp_from << endl
+		     << timestamp_to << endl
+		     << ids << endl;
+		*/
+		HttpPacketsDumper dumper;
+		dumper.setTemplatePcapName();
+		dumper.setUnlinkPcap();
+		dumper.dumpData(timestamp_from, timestamp_to, ids);
+		dumper.closePcapDumper();
+		
+		if(!dumper.getPcapName().empty() &&
+		   file_exists(dumper.getPcapName()) > 0) {
+			return(sendFile(dumper.getPcapName().c_str(), client, sshchannel, false));
+		} else {
+			sendvm(client, sshchannel, "null", 4, 0);
+			return(0);
+		}
 	} else if(strstr(buf, "quit") != NULL) {
 		return 0;
 	} else if(strstr(buf, "terminating") != NULL) {
@@ -2473,4 +2454,52 @@ int ManagerClientThreads::getCount() {
 	int count = this->clientThreads.size();
 	this->unlock_client_threads();
 	return(count);
+}
+
+int sendFile(const char *fileName, int client, ssh_channel sshchannel, bool zip) {
+	int fd = open(fileName, O_RDONLY);
+	if(fd < 0) {
+		char buf[1000];
+		sprintf(buf, "error: cannot open file [%s]", fileName);
+		if(sendvm(client, sshchannel, buf, strlen(buf), 0) == -1){
+			cerr << "Error sending data to client" << endl;
+		}
+		return -1;
+	}
+	CompressStream *compressStream = NULL;
+	if(zip) {
+		compressStream = new CompressStream(CompressStream::gzip, 1024, 0);
+		compressStream->setSendParameters(client, sshchannel);
+	}
+	ssize_t nread;
+	size_t read_size = 0;
+	char rbuf[4096];
+	while(nread = read(fd, rbuf, sizeof rbuf), nread > 0) {
+		if(!read_size && compressStream &&
+		   (unsigned char)rbuf[0] == 0x1f &&
+		   (nread == 1 || (unsigned char)rbuf[1] == 0x8b)) {
+			delete compressStream;
+			compressStream = NULL;
+		}
+		read_size += nread;
+		if(compressStream) {
+			compressStream->compress(rbuf, nread, false, compressStream);
+			if(compressStream->isError()) {
+				close(fd);
+				return -1;
+			}
+		} else {
+			if(sendvm(client, sshchannel, rbuf, nread, 0) == -1){
+				close(fd);
+				return -1;
+			}
+		}
+	}
+	if(compressStream) {
+		compressStream->compress(rbuf, 0, true, compressStream);
+		delete compressStream;
+	}
+	close(fd);
+	
+	return(0);
 }
