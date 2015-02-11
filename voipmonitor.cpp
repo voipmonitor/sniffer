@@ -1078,6 +1078,9 @@ void *storing_cdr( void *dummy ) {
 			usleep(100000);
 		}
 		
+		calltable->lock_calls_queue();
+		calls_queue_size = calltable->calls_queue.size();
+		calltable->unlock_calls_queue();
 		if(storing_cdr_force_terminating == 1 && !calls_queue_size) {
 			break;
 		}
