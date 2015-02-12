@@ -4144,6 +4144,10 @@ int main(int argc, char *argv[]) {
 	if(opt_enable_fraud) {
 		initFraud();
 	}
+	
+	if(opt_ipaccount) {
+		ipaccStartThread();
+	}
 
 	extern AsyncClose *asyncClose;
 	asyncClose = new AsyncClose;

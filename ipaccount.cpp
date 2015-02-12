@@ -113,7 +113,6 @@ Ipacc::Ipacc() {
 		qring[i].used = 0;
 	}
 	memset(this->threadPstatData, 0, sizeof(this->threadPstatData));
-	pthread_create(&this->out_thread_handle, NULL, _Ipacc_outThreadFunction, this);
 	
 	init();
 }
@@ -448,6 +447,10 @@ double Ipacc::getCpuUsagePerc(bool preparePstatData) {
 		}
 	}
 	return(-1);
+}
+
+void Ipacc::startThread() {
+	pthread_create(&this->out_thread_handle, NULL, _Ipacc_outThreadFunction, this);
 }
 
 void *Ipacc::outThreadFunction() {
@@ -1310,4 +1313,10 @@ void initIpacc() {
 
 void termIpacc() {
 	delete [] IPACC;
+}
+
+void ipaccStartThread() {
+	if(IPACC) {
+		IPACC[0].startThread();
+	}
 }

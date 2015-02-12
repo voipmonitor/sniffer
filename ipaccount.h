@@ -150,6 +150,7 @@ public:
 	}
 	void preparePstatData();
 	double getCpuUsagePerc(bool preparePstatData);
+	void startThread();
 private:
 	void *outThreadFunction();
 private:
@@ -363,5 +364,6 @@ unsigned int lengthIpaccBuffer();
 string getIpaccCpuUsagePerc();
 void initIpacc();
 void termIpacc();
+void ipaccStartThread();
 
 #endif
