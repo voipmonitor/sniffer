@@ -240,6 +240,7 @@ char opt_mirrorip_dst[20];
 int opt_printinsertid = 0;
 int opt_ipaccount = 0;
 int opt_ipacc_interval = 300;
+int opt_ipacc_only_agregation = 0;
 bool opt_ipacc_sniffer_agregate = false;
 bool opt_ipacc_agregate_only_customers_on_main_side = true;
 bool opt_ipacc_agregate_only_customers_on_any_side = true;
@@ -1993,6 +1994,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "ipaccount_interval", NULL))) {
 		opt_ipacc_interval = atoi(value);
+	}
+	if((value = ini.GetValue("general", "ipaccount_only_agregation", NULL))) {
+		opt_ipacc_only_agregation = atoi(value);
 	}
 	if((value = ini.GetValue("general", "ipaccount_sniffer_agregate", NULL))) {
 		opt_ipacc_sniffer_agregate = yesno(value);

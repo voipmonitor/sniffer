@@ -50,6 +50,7 @@ extern int verbosity;
 extern char *ipaccountportmatrix;
 
 extern int opt_ipacc_interval;
+extern int opt_ipacc_only_agregation;
 extern bool opt_ipacc_sniffer_agregate;
 extern bool opt_ipacc_agregate_only_customers_on_main_side;
 extern bool opt_ipacc_agregate_only_customers_on_any_side;
@@ -211,45 +212,47 @@ void Ipacc::save(int indexIpaccBuffer, unsigned int interval_time_limit) {
 			   !opt_ipacc_agregate_only_customers_on_any_side ||
   			   src_id_customer || dst_id_customer ||
 			   src_ip_next || dst_ip_next) {
-				if(isTypeDb("mysql")) {
-					sprintf(insertQueryBuff,
-						"insert into ipacc ("
-							"interval_time, saddr, src_id_customer, daddr, dst_id_customer, proto, port, "
-							"octects, numpackets, voip, do_agr_trigger"
-						") values ("
-							"'%s', %u, %u, %u, %u, %u, %u, %u, %u, %u, %u)",
-						sqlDateTimeString(ipacc_data->interval_time).c_str(),
-						saddr,
-						src_id_customer,
-						daddr,
-						dst_id_customer,
-						proto,
-						port,
-						ipacc_data->octects,
-						ipacc_data->numpackets,
-						ipacc_data->voippacket,
-						opt_ipacc_sniffer_agregate ? 0 : 1);
-					sqlStore->query(insertQueryBuff, 
-							STORE_PROC_ID_IPACC_1 + 
-							(opt_ipacc_sniffer_agregate ? _counter % opt_mysqlstore_max_threads_ipacc_base : 0));
-				} else {
-					SqlDb_row row;
-					row.add(sqlDateTimeString(ipacc_data->interval_time).c_str(), "interval_time");
-					row.add(saddr, "saddr");
-					if(src_id_customer) {
-						row.add(src_id_customer, "src_id_customer");
+				if(!opt_ipacc_only_agregation) {
+					if(isTypeDb("mysql")) {
+						sprintf(insertQueryBuff,
+							"insert into ipacc ("
+								"interval_time, saddr, src_id_customer, daddr, dst_id_customer, proto, port, "
+								"octects, numpackets, voip, do_agr_trigger"
+							") values ("
+								"'%s', %u, %u, %u, %u, %u, %u, %u, %u, %u, %u)",
+							sqlDateTimeString(ipacc_data->interval_time).c_str(),
+							saddr,
+							src_id_customer,
+							daddr,
+							dst_id_customer,
+							proto,
+							port,
+							ipacc_data->octects,
+							ipacc_data->numpackets,
+							ipacc_data->voippacket,
+							opt_ipacc_sniffer_agregate ? 0 : 1);
+						sqlStore->query(insertQueryBuff, 
+								STORE_PROC_ID_IPACC_1 + 
+								(opt_ipacc_sniffer_agregate ? _counter % opt_mysqlstore_max_threads_ipacc_base : 0));
+					} else {
+						SqlDb_row row;
+						row.add(sqlDateTimeString(ipacc_data->interval_time).c_str(), "interval_time");
+						row.add(saddr, "saddr");
+						if(src_id_customer) {
+							row.add(src_id_customer, "src_id_customer");
+						}
+						row.add(daddr, "daddr");
+						if(dst_id_customer) {
+							row.add(dst_id_customer, "dst_id_customer");
+						}
+						row.add(proto, "proto");
+						row.add(port, "port");
+						row.add(ipacc_data->octects, "octects");
+						row.add(ipacc_data->numpackets, "numpackets");
+						row.add(ipacc_data->voippacket, "voip");
+						row.add(opt_ipacc_sniffer_agregate ? 0 : 1, "do_agr_trigger");
+						sqlDbSave->insert("ipacc", row);
 					}
-					row.add(daddr, "daddr");
-					if(dst_id_customer) {
-						row.add(dst_id_customer, "dst_id_customer");
-					}
-					row.add(proto, "proto");
-					row.add(port, "port");
-					row.add(ipacc_data->octects, "octects");
-					row.add(ipacc_data->numpackets, "numpackets");
-					row.add(ipacc_data->voippacket, "voip");
-					row.add(opt_ipacc_sniffer_agregate ? 0 : 1, "do_agr_trigger");
-					sqlDbSave->insert("ipacc", row);
 				}
 				++_counter;
 				
