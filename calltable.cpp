@@ -2160,33 +2160,46 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		}
 		
 		extern bool opt_cdr_check_exists_callid;
-		if(opt_cdr_check_exists_callid) {
+		extern bool opt_cdr_check_duplicity_callid_in_next_pass_insert;
+		if(opt_cdr_check_exists_callid ||
+		   opt_cdr_check_duplicity_callid_in_next_pass_insert) {
 			// check if exists call-id & rtp records - begin if
-			bool existsRtp = false;
-			for(int i = 0; i < MAX_SSRC_PER_CALL; i++) {
-				if(rtp[i] and rtp[i]->s->received) {
-					existsRtp = true;
-					break;
+			if(opt_cdr_check_exists_callid) {
+				query_str += string("set @exists_call_id = coalesce(\n") +
+					     "(select cdr_ID from cdr_next\n" +
+					     " where calldate > ('" + sqlDateTimeString(calltime()) + "' - interval 1 hour) and\n" +
+					     "       calldate < ('" + sqlDateTimeString(calltime()) + "' + interval 1 hour) and\n" +
+					     "       fbasename = '" + sqlEscapeString(fbasename) + "' limit 1), 0);\n";
+				query_str += string("set @exists_rtp =\n") +
+					     "if(@exists_call_id,\n" +
+					     "   exists (select * from cdr_rtp where cdr_id = @exists_call_id),\n" +
+					     "   0);\n";
+				bool existsRtp = false;
+				for(int i = 0; i < MAX_SSRC_PER_CALL; i++) {
+					if(rtp[i] and rtp[i]->s->received) {
+						existsRtp = true;
+						break;
+					}
 				}
+				query_str += string("if @exists_call_id and not @exists_rtp and ") + (existsRtp ? "1" : "0") + " then\n" +
+					     "  delete from cdr where id = @exists_call_id;\n" +
+					     "  delete from cdr_next where cdr_id = @exists_call_id;\n" +
+					     "  delete from cdr_rtp where cdr_id = @exists_call_id;\n" +
+					     (opt_dbdtmf ? "delete from cdr_dtmf where cdr_id = @exists_call_id\n" : "") +
+					     (opt_pcap_dump_tar ? "delete from cdr_tar_part where cdr_id = @exists_call_id\n" : "") +
+					     "  set @exists_call_id = 0;\n" +
+					     "end if;\n";
+				query_str += "if not @exists_call_id then\n";
+			} else if(opt_cdr_check_duplicity_callid_in_next_pass_insert) {
+				query_str += "__NEXT_PASS_QUERY_BEGIN__";
+				query_str += string("set @exists_call_id = coalesce(\n") +
+					     "(select cdr_ID from cdr_next\n" +
+					     " where calldate > ('" + sqlDateTimeString(calltime()) + "' - interval 1 minute) and\n" +
+					     "       calldate < ('" + sqlDateTimeString(calltime()) + "' + interval 1 minute) and\n" +
+					     "       fbasename = '" + sqlEscapeString(fbasename) + "' limit 1), 0);\n";
+				query_str += "if not @exists_call_id then\n";
+				query_str += "__NEXT_PASS_QUERY_END__";
 			}
-			query_str += string("set @exists_call_id = coalesce(\n") +
-				     "(select cdr_ID from cdr_next\n" +
-				     " where calldate > ('" + sqlDateTimeString(calltime()) + "' - interval 1 hour) and\n" +
-				     "       calldate < ('" + sqlDateTimeString(calltime()) + "' + interval 1 hour) and\n" +
-				     "       fbasename = '" + sqlEscapeString(fbasename) + "'), 0);\n";
-			query_str += string("set @exists_rtp =\n") +
-				     "if(@exists_call_id,\n" +
-				     "   exists (select * from cdr_rtp where cdr_id = @exists_call_id),\n" +
-				     "   0);\n";
-			query_str += string("if @exists_call_id and not @exists_rtp and ") + (existsRtp ? "1" : "0") + " then\n" +
-				     "  delete from cdr where id = @exists_call_id;\n" +
-				     "  delete from cdr_next where cdr_id = @exists_call_id;\n" +
-				     "  delete from cdr_rtp where cdr_id = @exists_call_id;\n" +
-				     (opt_dbdtmf ? "delete from cdr_dtmf where cdr_id = @exists_call_id\n" : "") +
-				     (opt_pcap_dump_tar ? "delete from cdr_tar_part where cdr_id = @exists_call_id\n" : "") +
-				     "  set @exists_call_id = 0;\n" +
-				     "end if;\n";
-			query_str += "if not @exists_call_id then\n";
 		}
 		
 		query_str += sqlDbSaveCall->insertQuery(sql_cdr_table, cdr) + ";\n";
@@ -2293,9 +2306,16 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		
 		query_str += "end if";
 		
-		if(opt_cdr_check_exists_callid) {
+		if(opt_cdr_check_exists_callid ||
+		   opt_cdr_check_duplicity_callid_in_next_pass_insert) {
 			// check if exists call-id & rtp records - end if
-			query_str += ";\nend if";
+			if(opt_cdr_check_exists_callid) {
+				query_str += ";\nend if";
+			} else if(opt_cdr_check_duplicity_callid_in_next_pass_insert) {
+				query_str += "__NEXT_PASS_QUERY_BEGIN__";
+				query_str += ";\nend if";
+				query_str += "__NEXT_PASS_QUERY_END__";
+			}
 		}
 		
 		static unsigned int counterSqlStore = 0;

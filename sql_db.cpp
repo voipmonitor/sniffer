@@ -384,7 +384,7 @@ bool SqlDb::queryByCurl(string query) {
 	return(ok);
 }
 
-void SqlDb::prepareQuery(string *query) {
+string SqlDb::prepareQuery(string query, bool nextPass) {
 	size_t findPos;
 	if(this->getSubtypeDb() == "mssql") {
 		const char *substFce[][2] = { 
@@ -393,21 +393,33 @@ void SqlDb::prepareQuery(string *query) {
 				{ "SUBTIME", "dbo.subtime" }
 		};
 		for(unsigned int i = 0; i < sizeof(substFce)/sizeof(substFce[0]); i++) {
-			while((findPos  = query->find(substFce[i][0])) != string::npos) {
-				query->replace(findPos, strlen(substFce[i][0]), substFce[i][1]);
+			while((findPos  = query.find(substFce[i][0])) != string::npos) {
+				query.replace(findPos, strlen(substFce[i][0]), substFce[i][1]);
 			}
 		}
 	}
-	while((findPos  = query->find("_LC_[")) != string::npos) {
-		size_t findPosEnd = query->find("]", findPos);
+	while((findPos  = query.find("_LC_[")) != string::npos) {
+		size_t findPosEnd = query.find("]", findPos);
 		if(findPosEnd != string::npos) {
-			string lc = query->substr(findPos + 5, findPosEnd - findPos - 5);
+			string lc = query.substr(findPos + 5, findPosEnd - findPos - 5);
 			if(this->getSubtypeDb() == "mssql") {
 				lc = "case when " + lc + " then 1 else 0 end";
 			}
-			query->replace(findPos, findPosEnd - findPos + 1, lc);
+			query.replace(findPos, findPosEnd - findPos + 1, lc);
 		}
 	}
+	while((findPos  = query.find("__NEXT_PASS_QUERY_BEGIN__")) != string::npos) {
+		size_t findPosEnd = query.find("__NEXT_PASS_QUERY_END__", findPos);
+		if(findPosEnd != string::npos) {
+			if(nextPass) { 
+				query.erase(findPosEnd, 23);
+				query.erase(findPos, 25);
+			} else {
+				query.erase(findPos, findPosEnd - findPos + 23);
+			}
+		}
+	}
+	return(query);
 }
 
 string SqlDb::insertQuery(string table, SqlDb_row row, bool enableSqlStringInContent, bool escapeAll, bool insertIgnore) {
@@ -749,13 +761,13 @@ bool SqlDb_mysql::connected() {
 	return(isCloud() ? true : this->hMysqlConn != NULL);
 }
 
-bool SqlDb_mysql::query(string query) {
+bool SqlDb_mysql::query(string query, bool callFromStoreProcessWithFixDeadlock) {
 	if(isCloud()) {
-		this->prepareQuery(&query);
+		string preparedQuery = this->prepareQuery(query, false);
 		if(verbosity > 1) {
-			syslog(LOG_INFO, prepareQueryForPrintf(query).c_str());
+			syslog(LOG_INFO, prepareQueryForPrintf(preparedQuery).c_str());
 		}
-		return(this->queryByCurl(query));
+		return(this->queryByCurl(preparedQuery));
 	}
 	if(this->hMysqlRes) {
 		while(mysql_fetch_row(this->hMysqlRes));
@@ -776,31 +788,31 @@ bool SqlDb_mysql::query(string query) {
 			this->reconnect();
 		}
 	}
-	this->prepareQuery(&query);
-	if(verbosity > 1) {
-		syslog(LOG_INFO, prepareQueryForPrintf(query).c_str());
-	}
 	bool rslt = false;
 	this->cleanFields();
 	unsigned int attempt = 1;
 	for(unsigned int pass = 0; pass < this->maxQueryPass; pass++) {
+		string preparedQuery = this->prepareQuery(query, !callFromStoreProcessWithFixDeadlock && attempt > 1);
+		if(attempt == 1 && verbosity > 1) {
+			syslog(LOG_INFO, prepareQueryForPrintf(preparedQuery).c_str());
+		}
 		if(pass > 0) {
 			sleep(1);
-			syslog(LOG_INFO, "next attempt %u - query: %s", attempt - 1, prepareQueryForPrintf(query).c_str());
+			syslog(LOG_INFO, "next attempt %u - query: %s", attempt - 1, prepareQueryForPrintf(preparedQuery).c_str());
 		}
 		if(!this->connected()) {
 			this->connect();
 		}
 		if(this->connected()) {
-			if(mysql_query(this->hMysqlConn, query.c_str())) {
+			if(mysql_query(this->hMysqlConn, preparedQuery.c_str())) {
 				if(verbosity > 1) {
-					syslog(LOG_NOTICE, "query error - query: %s", prepareQueryForPrintf(query).c_str());
+					syslog(LOG_NOTICE, "query error - query: %s", prepareQueryForPrintf(preparedQuery).c_str());
 					syslog(LOG_NOTICE, "query error - error: %s", mysql_error(this->hMysql));
 				}
-				this->checkLastError("query error in [" + query.substr(0,200) + (query.size() > 200 ? "..." : "") + "]", !sql_noerror);
+				this->checkLastError("query error in [" + preparedQuery.substr(0,200) + (preparedQuery.size() > 200 ? "..." : "") + "]", !sql_noerror);
 				if(!sql_noerror && verbosity > 1) {
 					cout << endl << "ERROR IN QUERY: " << endl
-					     << query << endl;
+					     << preparedQuery << endl;
 				}
 				if(this->connecting) {
 					break;
@@ -811,7 +823,8 @@ bool SqlDb_mysql::query(string query) {
 						}
 					} else if(sql_noerror || sql_disable_next_attempt_if_error || this->disableNextAttemptIfError ||
 						  this->getLastError() == ER_PARSE_ERROR ||
-						  this->getLastError() == ER_NO_REFERENCED_ROW_2) {
+						  this->getLastError() == ER_NO_REFERENCED_ROW_2 ||
+						  (callFromStoreProcessWithFixDeadlock && this->getLastError() == ER_LOCK_DEADLOCK)) {
 						break;
 					} else {
 						if(pass < this->maxQueryPass - 5) {
@@ -824,7 +837,7 @@ bool SqlDb_mysql::query(string query) {
 				}
 			} else {
 				if(verbosity > 1) {
-					syslog(LOG_NOTICE, "query ok - %s", prepareQueryForPrintf(query).c_str());
+					syslog(LOG_NOTICE, "query ok - %s", prepareQueryForPrintf(preparedQuery).c_str());
 				}
 				rslt = true;
 				break;
@@ -1074,18 +1087,19 @@ bool SqlDb_odbc::connected() {
 	return(this->hConnection != NULL);
 }
 
-bool SqlDb_odbc::query(string query) {
-	this->prepareQuery(&query);
-	if(verbosity > 1) { 
-		syslog(LOG_INFO, prepareQueryForPrintf(query).c_str());
-	}
+bool SqlDb_odbc::query(string query, bool callFromStoreProcessWithFixDeadlock) {
 	SQLRETURN rslt = SQL_NULL_DATA;
 	if(this->hStatement) {
 		SQLFreeHandle(SQL_HANDLE_STMT, this->hStatement);
 		this->hStatement = NULL;
 	}
 	this->cleanFields();
+	unsigned int attempt = 1;
 	for(unsigned int pass = 0; pass < this->maxQueryPass; pass++) {
+		string preparedQuery = this->prepareQuery(query, attempt > 1);
+		if(attempt == 1 && verbosity > 1) { 
+			syslog(LOG_INFO, prepareQueryForPrintf(preparedQuery).c_str());
+		}
 		if(pass > 0) {
 			sleep(1);
 		}
@@ -1100,9 +1114,10 @@ bool SqlDb_odbc::query(string query) {
 					break;
 				}
 				this->reconnect();
+				++attempt;
 				continue;
 			}
-			rslt = SQLExecDirect(this->hStatement, (SQLCHAR*)query.c_str(), SQL_NTS);   
+			rslt = SQLExecDirect(this->hStatement, (SQLCHAR*)preparedQuery.c_str(), SQL_NTS);   
 			if(!this->okRslt(rslt) && rslt != SQL_NO_DATA) {
 				if(!sql_noerror) {
 					this->checkLastError("odbc query error", true);
@@ -1129,6 +1144,7 @@ bool SqlDb_odbc::query(string query) {
 		if(terminating) {
 			break;
 		}
+		++attempt;
 	}
 	return(this->okRslt(rslt) || rslt == SQL_NO_DATA);
 }
@@ -1225,6 +1241,7 @@ MySqlStore_process::MySqlStore_process(int id, const char *host, const char *use
 	this->enableAutoDisconnect = false;
 	this->concatLimit = concatLimit;
 	this->enableTransaction = false;
+	this->enableFixDeadlock = false;
 	this->sqlDb = new SqlDb_mysql();
 	this->sqlDb->setConnectParameters(host, user, password, database);
 	if(cloud_host && *cloud_host) {
@@ -1286,22 +1303,7 @@ void MySqlStore_process::store() {
 			if(this->query_buff.size() == 0) {
 				this->unlock();
 				if(queryqueue != "") {
-					for(int pass = 0; pass < 2; pass ++) {
-						this->sqlDb->query(string("drop procedure if exists ") + insert_funcname);
-						if(this->sqlDb->query(string("create procedure ") + insert_funcname + "()" + beginProcedure + queryqueue + endProcedure)) {
-							break;
-						} else if(this->sqlDb->getLastError() == ER_SP_ALREADY_EXISTS) {
-							this->sqlDb->query("repair table mysql.proc");
-						} else {
-							if(sverb.store_process_query) {
-								cout << "store_process_query_" << this->id << ": " << "ERROR " << this->sqlDb->getLastErrorString() << endl;
-							}
-							break;
-						}
-					}
-					if(!this->sqlDb->query(string("call ") + insert_funcname + "();") && sverb.store_process_query) {
-						cout << "store_process_query_" << this->id << ": " << "ERROR " << this->sqlDb->getLastErrorString() << endl;
-					}
+					this->_store(insert_funcname, beginProcedure, endProcedure, queryqueue);
 					queryqueue = "";
 					if(verbosity > 1) {
 						syslog(LOG_INFO, "STORE id: %i", this->id);
@@ -1335,17 +1337,7 @@ void MySqlStore_process::store() {
 			if(size < this->concatLimit && !maxAllowedPacketIsFull) {
 				size++;
 			} else {
-				for(int pass = 0; pass < 2; pass ++) {
-					this->sqlDb->query(string("drop procedure if exists ") + insert_funcname);
-					if(this->sqlDb->query(string("create procedure ") + insert_funcname + "()" + beginProcedure + queryqueue + endProcedure)) {
-						break;
-					} else if(this->sqlDb->getLastError() == ER_SP_ALREADY_EXISTS) {
-						this->sqlDb->query("repair table mysql.proc");
-					} else {
-						break;
-					}
-				}
-				this->sqlDb->query(string("call ") + insert_funcname + "();");
+				this->_store(insert_funcname, beginProcedure, endProcedure, queryqueue);
 				queryqueue = "";
 				size = 0;
 				if(verbosity > 1) {
@@ -1366,6 +1358,59 @@ void MySqlStore_process::store() {
 		sleep(1);
 	}
 	this->terminated = true;
+}
+
+void MySqlStore_process::_store(string procedureName, string beginProcedure, string endProcedure, string queryes) {
+	int maxPassComplete = this->enableFixDeadlock ? 10 : 1;
+	for(int passComplete = 0; passComplete < maxPassComplete; passComplete++) {
+		for(int passCreateProcedure = 0; passCreateProcedure < 2; passCreateProcedure ++) {
+			this->sqlDb->query(string("drop procedure if exists ") + procedureName);
+			string preparedQueryes = queryes;
+			size_t findPos;
+			while((findPos  = preparedQueryes.find("__NEXT_PASS_QUERY_BEGIN__")) != string::npos) {
+				size_t findPosEnd = preparedQueryes.find("__NEXT_PASS_QUERY_END__", findPos);
+				if(findPosEnd != string::npos) {
+					if(passComplete) { 
+						preparedQueryes.erase(findPosEnd, 23);
+						preparedQueryes.erase(findPos, 25);
+					} else {
+						preparedQueryes.erase(findPos, findPosEnd - findPos + 23);
+					}
+				}
+			}
+			if(this->sqlDb->query(string("create procedure ") + procedureName + "()" + 
+					      beginProcedure + 
+					      preparedQueryes + 
+					      endProcedure),
+					      true) {
+				break;
+			} else if(this->sqlDb->getLastError() == ER_SP_ALREADY_EXISTS) {
+				this->sqlDb->query("repair table mysql.proc");
+			} else {
+				if(sverb.store_process_query) {
+					cout << "store_process_query_" << this->id << ": " << "ERROR " << this->sqlDb->getLastErrorString() << endl;
+				}
+				break;
+			}
+		}
+		bool rsltQuery = this->sqlDb->query(string("call ") + procedureName + "();");
+		/* deadlock debugging
+		rsltQuery = false;
+		this->sqlDb->setLastError(ER_LOCK_DEADLOCK, "deadlock");
+		*/
+		if(rsltQuery) {
+			break;
+		} else if(this->sqlDb->getLastError() == ER_LOCK_DEADLOCK) {
+			if(passComplete < maxPassComplete - 1) {
+				syslog(LOG_INFO, "DEADLOCK in store %u - next attempt %u", this->id, passComplete + 1);
+			}
+		} else {
+			if(sverb.store_process_query) {
+				cout << "store_process_query_" << this->id << ": " << "ERROR " << this->sqlDb->getLastErrorString() << endl;
+			}
+			break;
+		}
+	}
 }
 
 void MySqlStore_process::lock() {
@@ -1390,6 +1435,10 @@ void MySqlStore_process::setConcatLimit(int concatLimit) {
 
 void MySqlStore_process::setEnableTransaction(bool enableTransaction) {
 	this->enableTransaction = enableTransaction;
+}
+
+void MySqlStore_process::setEnableFixDeadlock(bool enableFixDeadlock) {
+	this->enableFixDeadlock = enableFixDeadlock;
 }
 
 MySqlStore::MySqlStore(const char *host, const char *user, const char *password, const char *database,
@@ -1459,6 +1508,11 @@ void MySqlStore::setConcatLimit(int id, int concatLimit) {
 void MySqlStore::setEnableTransaction(int id, bool enableTransaction) {
 	MySqlStore_process* process = this->find(id);
 	process->setEnableTransaction(enableTransaction);
+}
+
+void MySqlStore::setEnableFixDeadlock(int id, bool enableFixDeadlock) {
+	MySqlStore_process* process = this->find(id);
+	process->setEnableFixDeadlock(enableFixDeadlock);
 }
 
 void MySqlStore::setDefaultConcatLimit(int defaultConcatLimit) {

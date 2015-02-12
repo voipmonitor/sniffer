@@ -72,9 +72,9 @@ public:
 	virtual void disconnect() = 0;
 	virtual bool connected() = 0;
 	bool reconnect();
-	virtual bool query(string query) = 0;
+	virtual bool query(string query, bool callFromStoreProcessWithFixDeadlock = false) = 0;
 	bool queryByCurl(string query);
-	virtual void prepareQuery(string *query);
+	virtual string prepareQuery(string query, bool nextPass);
 	virtual SqlDb_row fetchRow(bool assoc = false) = 0;
 	virtual string insertQuery(string table, SqlDb_row row, bool enableSqlStringInContent = false, bool escapeAll = false, bool insertIgnore = false);
 	virtual string insertQuery(string table, vector<SqlDb_row> *rows, bool enableSqlStringInContent = false, bool escapeAll = false, bool insertIgnore = false);
@@ -191,7 +191,7 @@ public:
 	bool connect(bool craeteDb = false, bool mainInit = false);
 	void disconnect();
 	bool connected();
-	bool query(string query);
+	bool query(string query, bool callFromStoreProcessWithFixDeadlock = false);
 	SqlDb_row fetchRow(bool assoc = false);
 	int getInsertId();
 	string escape(const char *inputString, int length = 0);
@@ -283,7 +283,7 @@ public:
 	bool connect(bool craeteDb = false, bool mainInit = false);
 	void disconnect();
 	bool connected();
-	bool query(string query);
+	bool query(string query, bool callFromStoreProcessWithFixDeadlock = false);
 	SqlDb_row fetchRow(bool assoc = false);
 	int getInsertId();
 	int getIndexField(string fieldName);
@@ -324,12 +324,14 @@ public:
 	void disconnect();
 	void query(const char *query_str);
 	void store();
+	void _store(string procedureName, string beginProcedure, string endProcedure, string queryes);
 	void lock();
 	void unlock();
 	void setIgnoreTerminating(bool ignoreTerminating);
 	void setEnableAutoDisconnect(bool enableAutoDisconnect = true);
 	void setConcatLimit(int concatLimit);
 	void setEnableTransaction(bool enableTransaction = true);
+	void setEnableFixDeadlock(bool enableFixDeadlock = true);
 	int getId() {
 		return(this->id);
 	}
@@ -343,6 +345,7 @@ private:
 	int id;
 	int concatLimit;
 	bool enableTransaction;
+	bool enableFixDeadlock;
 	pthread_t thread;
 	pthread_mutex_t lock_mutex;
 	SqlDb *sqlDb;
@@ -367,6 +370,7 @@ public:
 	void setDefaultConcatLimit(int defaultConcatLimit);
 	void setConcatLimit(int id, int concatLimit);
 	void setEnableTransaction(int id, bool enableTransaction = true);
+	void setEnableFixDeadlock(int id, bool enableFixDeadlock = true);
 	MySqlStore_process *find(int id);
 	MySqlStore_process *check(int id);
 	size_t getAllSize(bool lock = true);
