@@ -133,7 +133,6 @@ extern char mac[32];
 
 unsigned int last_register_clean = 0;
 
-extern CustPhoneNumberCache *custPnCache;
 extern int opt_onewaytimeout;
 extern int opt_saveaudio_reversestereo;
 
@@ -1891,17 +1890,20 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		cdr.add(whohanged ? "callee" : "caller", "whohanged");
 	}
 	
-	if(get_customers_pn_query[0] && custPnCache) {
-		cust_reseller cr;
-		cr = custPnCache->getCustomerByPhoneNumber(caller);
-		if(cr.cust_id) {
-			cdr.add(cr.cust_id, "caller_customer_id");
-			cdr.add(cr.reseller_id, "caller_reseller_id");
-		}
-		cr = custPnCache->getCustomerByPhoneNumber(called);
-		if(cr.cust_id) {
-			cdr.add(cr.cust_id, "called_customer_id");
-			cdr.add(cr.reseller_id, "called_reseller_id");
+	if(get_customers_pn_query[0]) {
+		CustPhoneNumberCache *custPnCache = getCustPnCache();
+		if(custPnCache) {
+			cust_reseller cr;
+			cr = custPnCache->getCustomerByPhoneNumber(caller);
+			if(cr.cust_id) {
+				cdr.add(cr.cust_id, "caller_customer_id");
+				cdr.add(cr.reseller_id, "caller_reseller_id");
+			}
+			cr = custPnCache->getCustomerByPhoneNumber(called);
+			if(cr.cust_id) {
+				cdr.add(cr.cust_id, "called_customer_id");
+				cdr.add(cr.reseller_id, "called_reseller_id");
+			}
 		}
 	}
 

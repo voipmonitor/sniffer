@@ -312,6 +312,7 @@ int pcapProcess(pcap_pkthdr** header, u_char** packet, bool *destroy,
 		ppd->header_udp->dest = ppd->header_tcp->dest;
 	} else {
 		//packet is not UDP and is not TCP, we are not interested, go to the next packet (but if ipaccount is enabled, do not skip IP
+		ppd->datalen = 0;
 		if(opt_ipaccount == 0 && !DEBUG_ALL_PACKETS) {
 			return(0);
 		}

@@ -4838,10 +4838,6 @@ int main(int argc, char *argv[]) {
 	if(sqlDbSaveCall) {
 		delete sqlDbSaveCall;
 	}
-	extern SqlDb *sqlDbSaveIpacc;
-	if(sqlDbSaveIpacc) {
-		delete sqlDbSaveIpacc;
-	}
 	extern SqlDb *sqlDbSaveHttp;
 	if(sqlDbSaveHttp) {
 		delete sqlDbSaveHttp;
@@ -4873,7 +4869,7 @@ int main(int argc, char *argv[]) {
 	extern TcpReassemblySip tcpReassemblySip;
 	tcpReassemblySip.clean();
 	ipfrag_prune(0, 1);
-	freeMemIpacc();
+	termIpacc();
 	delete regfailedcache;
 
 	extern AsyncClose *asyncClose;

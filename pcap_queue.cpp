@@ -1441,6 +1441,14 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 	if(last_tac_cpu < 5) {
 		asyncClose->removeThread();
 	}
+	if(opt_ipaccount) {
+		string ipaccCpu = getIpaccCpuUsagePerc();
+		if(!ipaccCpu.empty()) {
+			outStrStat << "tipaccCPU["
+				   << ipaccCpu
+				   << "] ";
+		}
+	}
 	outStrStat << "RSS/VSZ[";
 	long unsigned int rss = this->getProcRssUsage(true);
 	if(rss > 0) {
@@ -4223,6 +4231,10 @@ void PcapQueue_readFromFifo::processPacket(pcap_pkthdr_plus *header_plus, u_char
 					       this->getPcapHandle(dlt), header, packet, false,
 					       istcp, header_ip, 0,
 					       block_store, block_store_index, dlt, sensor_id);
+			if(opt_ipaccount) {
+				//todo: detect if voippacket!
+				ipaccount(header->ts.tv_sec, (iphdr2*) ((char*)(packet) + header_plus->offset), header->len - header_plus->offset, false);
+			}
 		} else {
 			int voippacket = 0;
 			int was_rtp = 0;
@@ -4253,6 +4265,8 @@ void PcapQueue_readFromFifo::processPacket(pcap_pkthdr_plus *header_plus, u_char
 				ipaccount(header->ts.tv_sec, (iphdr2*) ((char*)(packet) + header_plus->offset), header->len - header_plus->offset, voippacket);
 			}
 		}
+	} else if(opt_ipaccount) {
+		ipaccount(header->ts.tv_sec, (iphdr2*) ((char*)(packet) + header_plus->offset), header->len - header_plus->offset, false);
 	}
 }
 

@@ -116,6 +116,60 @@ struct cust_reseller {
 	string reseller_id;
 };
 
+typedef map<string, octects_t*> t_ipacc_buffer; 
+
+class Ipacc {
+public:
+	struct packet {
+		time_t timestamp;
+		unsigned int saddr;
+		unsigned int daddr;
+		int port; 
+		int proto;
+		int packetlen;
+		int voippacket;
+		volatile int used;
+	};
+public:
+	Ipacc();
+	~Ipacc();
+	inline void push(time_t timestamp, unsigned int saddr, unsigned int daddr, int port, int proto, int packetlen, int voippacket);
+	void init();
+	void term();
+	int refreshCustIpCache();
+	void save(int indexIpaccBuffer, unsigned int interval_time_limit = 0);
+	inline void add_octets(time_t timestamp, unsigned int saddr, unsigned int daddr, int port, int proto, int packetlen, int voippacket);
+	unsigned int lengthBuffer() {
+		return(ipacc_buffer[0].size() + ipacc_buffer[1].size());
+	}
+	class CustIpCache *getCustIpCache() {
+		return(custIpCache);
+	}
+	class CustPhoneNumberCache *getCustPnCache() {
+		return(custPnCache);
+	}
+	void preparePstatData();
+	double getCpuUsagePerc(bool preparePstatData);
+private:
+	void *outThreadFunction();
+private:
+	t_ipacc_buffer ipacc_buffer[2];
+	int sync_save_ipacc_buffer[2];
+	unsigned int last_flush_interval_time;
+	class CustIpCache *custIpCache;
+	class NextIpCache *nextIpCache;
+	class CustPhoneNumberCache *custPnCache;
+	SqlDb *sqlDbSave;
+	packet *qring;
+	unsigned int qringmax;
+	volatile unsigned int readit;
+	volatile unsigned int writeit;
+	pthread_t out_thread_handle;
+	int outThreadId;
+	pstat_data threadPstatData[2];
+friend inline void *_Ipacc_outThreadFunction(void *arg);
+};
+
 class IpaccAgreg {
 public:
 	struct AgregData {
@@ -302,8 +356,12 @@ private:
 	bool doFlush;
 };
 
+CustIpCache *getCustIpCache();
+CustPhoneNumberCache *getCustPnCache();
+int refreshCustIpCache();
 unsigned int lengthIpaccBuffer();
+string getIpaccCpuUsagePerc();
 void initIpacc();
-void freeMemIpacc();
+void termIpacc();
 
 #endif
