@@ -3446,7 +3446,7 @@ void *PcapQueue_readFromFifo::threadFunction(void *arg, unsigned int arg2) {
 							while(offsetBuffer < bufferLen) {
 								if(blockStore->addRestoreChunk(buffer, bufferLen, &offsetBuffer)) {
 									endBlock = true;
-									while(!this->pcapStoreQueue.push(blockStore)) {
+									while(!this->pcapStoreQueue.push(blockStore, false)) {
 										if(TERMINATING || forceStop) {
 											break;
 										} else {
