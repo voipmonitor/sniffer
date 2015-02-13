@@ -9,6 +9,8 @@
 #include <netdb.h>
 #include <mysqld_error.h>
 #include <errmsg.h>
+#include <dirent.h>
+
 #include "voipmonitor.h"
 
 #include "tools.h"
@@ -385,40 +387,7 @@ bool SqlDb::queryByCurl(string query) {
 }
 
 string SqlDb::prepareQuery(string query, bool nextPass) {
-	size_t findPos;
-	if(this->getSubtypeDb() == "mssql") {
-		const char *substFce[][2] = { 
-				{ "UNIX_TIMESTAMP", "dbo.unix_timestamp" },
-				{ "NOW", "dbo.now" },
-				{ "SUBTIME", "dbo.subtime" }
-		};
-		for(unsigned int i = 0; i < sizeof(substFce)/sizeof(substFce[0]); i++) {
-			while((findPos  = query.find(substFce[i][0])) != string::npos) {
-				query.replace(findPos, strlen(substFce[i][0]), substFce[i][1]);
-			}
-		}
-	}
-	while((findPos  = query.find("_LC_[")) != string::npos) {
-		size_t findPosEnd = query.find("]", findPos);
-		if(findPosEnd != string::npos) {
-			string lc = query.substr(findPos + 5, findPosEnd - findPos - 5);
-			if(this->getSubtypeDb() == "mssql") {
-				lc = "case when " + lc + " then 1 else 0 end";
-			}
-			query.replace(findPos, findPosEnd - findPos + 1, lc);
-		}
-	}
-	while((findPos  = query.find("__NEXT_PASS_QUERY_BEGIN__")) != string::npos) {
-		size_t findPosEnd = query.find("__NEXT_PASS_QUERY_END__", findPos);
-		if(findPosEnd != string::npos) {
-			if(nextPass) { 
-				query.erase(findPosEnd, 23);
-				query.erase(findPos, 25);
-			} else {
-				query.erase(findPos, findPosEnd - findPos + 23);
-			}
-		}
-	}
+	::prepareQuery(this->getSubtypeDb(), query, true, nextPass ? 2 : 1);
 	return(query);
 }
 
@@ -1284,17 +1253,12 @@ void MySqlStore_process::query(const char *query_str) {
 	if(!this->thread) {
 		pthread_create(&this->thread, NULL, MySqlStore_process_storing, this);
 	}
-	this->query_buff.push(query_str);
+	this->query_buff.push_back(query_str);
 }
 
 void MySqlStore_process::store() {
-	char insert_funcname[20];
 	string beginTransaction = "\nDECLARE EXIT HANDLER FOR SQLEXCEPTION\nBEGIN\nROLLBACK;\nEND;\nSTART TRANSACTION;\n";
 	string endTransaction = "\nCOMMIT;\n";
-	sprintf(insert_funcname, "__insert_%i", this->id);
-	if(opt_id_sensor > -1) {
-		sprintf(insert_funcname + strlen(insert_funcname), "S%i", opt_id_sensor);
-	}
 	while(1) {
 		int size = 0;
 		string queryqueue = "";
@@ -1305,7 +1269,7 @@ void MySqlStore_process::store() {
 			if(this->query_buff.size() == 0) {
 				this->unlock();
 				if(queryqueue != "") {
-					this->_store(insert_funcname, beginProcedure, endProcedure, queryqueue);
+					this->_store(beginProcedure, endProcedure, queryqueue);
 					queryqueue = "";
 					if(verbosity > 1) {
 						syslog(LOG_INFO, "STORE id: %i", this->id);
@@ -1319,7 +1283,7 @@ void MySqlStore_process::store() {
 				maxAllowedPacketIsFull = true;
 				this->unlock();
 			} else {
-				this->query_buff.pop();
+				this->query_buff.pop_front();
 				this->unlock();
 				queryqueue.append(query);
 				size_t query_len = query.length();
@@ -1339,7 +1303,7 @@ void MySqlStore_process::store() {
 			if(size < this->concatLimit && !maxAllowedPacketIsFull) {
 				size++;
 			} else {
-				this->_store(insert_funcname, beginProcedure, endProcedure, queryqueue);
+				this->_store(beginProcedure, endProcedure, queryqueue);
 				queryqueue = "";
 				size = 0;
 				if(verbosity > 1) {
@@ -1362,27 +1326,17 @@ void MySqlStore_process::store() {
 	this->terminated = true;
 }
 
-void MySqlStore_process::_store(string procedureName, string beginProcedure, string endProcedure, string queryes) {
+void MySqlStore_process::_store(string beginProcedure, string endProcedure, string queries) {
+	string procedureName = this->getInsertFuncName();
 	int maxPassComplete = this->enableFixDeadlock ? 10 : 1;
 	for(int passComplete = 0; passComplete < maxPassComplete; passComplete++) {
 		for(int passCreateProcedure = 0; passCreateProcedure < 2; passCreateProcedure ++) {
 			this->sqlDb->query(string("drop procedure if exists ") + procedureName);
-			string preparedQueryes = queryes;
-			size_t findPos;
-			while((findPos  = preparedQueryes.find("__NEXT_PASS_QUERY_BEGIN__")) != string::npos) {
-				size_t findPosEnd = preparedQueryes.find("__NEXT_PASS_QUERY_END__", findPos);
-				if(findPosEnd != string::npos) {
-					if(passComplete) { 
-						preparedQueryes.erase(findPosEnd, 23);
-						preparedQueryes.erase(findPos, 25);
-					} else {
-						preparedQueryes.erase(findPos, findPosEnd - findPos + 23);
-					}
-				}
-			}
+			string preparedQueries = queries;
+			::prepareQuery(this->sqlDb->getSubtypeDb(), preparedQueries, false, passComplete ? 2 : 1);
 			if(this->sqlDb->query(string("create procedure ") + procedureName + "()" + 
 					      beginProcedure + 
-					      preparedQueryes + 
+					      preparedQueries + 
 					      endProcedure),
 					      true) {
 				break;
@@ -1415,6 +1369,56 @@ void MySqlStore_process::_store(string procedureName, string beginProcedure, str
 	}
 }
 
+void MySqlStore_process::exportToFile(FILE *file, bool sqlFormat, bool cleanAfterExport) {
+	this->lock();
+	string queryqueue;
+	int concatLimit = this->concatLimit;
+	int size;
+	for(size_t index = 0; index < this->query_buff.size(); index++) {
+		string query = this->query_buff[index];
+		if(sqlFormat) {
+			::prepareQuery(this->sqlDb->getSubtypeDb(), query, true, 2);
+			queryqueue.append(query);
+			size_t query_len = query.length();
+			while(query_len && query[query_len - 1] == ' ') {
+				--query_len;
+			}
+			if(query_len && query[query_len - 1] != ';') {
+				queryqueue.append("; ");
+			}
+			++size;
+			if(size > concatLimit) {
+				this->_exportToFileSqlFormat(file, queryqueue);
+				size = 0;
+				queryqueue = "";
+			}
+		} else {
+			find_and_replace(query, "\n", "__ENDL__");
+			fprintf(file, "%i:%s\n", this->id, query.c_str());
+		}
+	}
+	if(size) {
+		this->_exportToFileSqlFormat(file, queryqueue);
+	}
+	if(cleanAfterExport) {
+		this->query_buff.clear();
+	}
+	this->unlock();
+}
+
+void MySqlStore_process::_exportToFileSqlFormat(FILE *file, string queries) {
+	string procedureName = this->getInsertFuncName() + "_export";
+	fprintf(file, "drop procedure if exists %s;\n", procedureName.c_str());
+	fputs("delimiter ;;\n", file);
+	fprintf(file, "create procedure %s()\n", procedureName.c_str());
+	fputs("begin\n", file);
+	fputs(queries.c_str(), file);
+	fputs("\nend\n"
+	      ";;\n"
+	      "delimiter ;\n", file);
+	fprintf(file, "call %s();\n", procedureName.c_str());
+}
+
 void MySqlStore_process::lock() {
 	pthread_mutex_lock(&this->lock_mutex);
 }
@@ -1443,6 +1447,15 @@ void MySqlStore_process::setEnableFixDeadlock(bool enableFixDeadlock) {
 	this->enableFixDeadlock = enableFixDeadlock;
 }
 
+string MySqlStore_process::getInsertFuncName() {
+	char insert_funcname[20];
+	sprintf(insert_funcname, "__insert_%i", this->id);
+	if(opt_id_sensor > -1) {
+		sprintf(insert_funcname + strlen(insert_funcname), "S%i", opt_id_sensor);
+	}
+	return(insert_funcname);
+}
+
 MySqlStore::MySqlStore(const char *host, const char *user, const char *password, const char *database,
 		       const char *cloud_host, const char *cloud_token) {
 	this->host = host;
@@ -1456,6 +1469,7 @@ MySqlStore::MySqlStore(const char *host, const char *user, const char *password,
 		this->cloud_token = cloud_token;
 	}
 	this->defaultConcatLimit = 400;
+	this->_sync_processes = 0;
 }
 
 MySqlStore::~MySqlStore() {
@@ -1525,14 +1539,17 @@ MySqlStore_process *MySqlStore::find(int id) {
 	if(cloud_host[0]) {
 		id = 1;
 	}
+	this->lock_processes();
 	MySqlStore_process* process = this->processes[id];
 	if(process) {
+		this->unlock_processes();
 		return(process);
 	}
 	process = new MySqlStore_process(id, this->host.c_str(), this->user.c_str(), this->password.c_str(), this->database.c_str(),
 					 this->cloud_host.c_str(), this->cloud_token.c_str(),
 					 this->defaultConcatLimit);
 	this->processes[id] = process;
+	this->unlock_processes();
 	return(process);
 }
 
@@ -1540,17 +1557,22 @@ MySqlStore_process *MySqlStore::check(int id) {
 	if(cloud_host[0]) {
 		id = 1;
 	}
+	this->lock_processes();
 	map<int, MySqlStore_process*>::iterator iter = this->processes.find(id);
 	if(iter == this->processes.end()) {
+		this->unlock_processes();
 		return(NULL);
 	} else {
-		return(iter->second);
+		MySqlStore_process* process = iter->second;
+		this->unlock_processes();
+		return(process);
 	}
 }
 
 size_t MySqlStore::getAllSize(bool lock) {
 	size_t size = 0;
 	map<int, MySqlStore_process*>::iterator iter;
+	this->lock_processes();
 	for(iter = this->processes.begin(); iter != this->processes.end(); ++iter) {
 		if(lock) {
 			iter->second->lock();
@@ -1560,6 +1582,7 @@ size_t MySqlStore::getAllSize(bool lock) {
 			iter->second->unlock();
 		}
 	}
+	this->unlock_processes();
 	return(size);
 }
 
@@ -1609,6 +1632,75 @@ int MySqlStore::getSizeVect(int id1, int id2, bool lock) {
 		}
 	}
 	return(size);
+}
+
+string MySqlStore::exportToFile(FILE *file, string fileName, bool sqlFormat, bool cleanAfterExport) {
+	bool openFile = false;
+	if(!file) {
+		if(fileName == "auto") {
+			fileName = (sqlFormat ? "export_voipmonitor_sql-" : "export_voipmonitor_queries-") + sqlDateTimeString(time(NULL));
+		}
+		file = fopen(fileName.c_str(), "wt");
+		openFile = true;
+	}
+	if(!openFile) {
+		return("exportToFile : failed open file " + fileName);
+	}
+	fputs("SET NAMES UTF8;\n", file);
+	fprintf(file, "USE %s;\n", mysql_database);
+	this->lock_processes();
+	map<int, MySqlStore_process*>::iterator iter;
+	for(iter = this->processes.begin(); iter != this->processes.end(); ++iter) {
+		iter->second->exportToFile(file, sqlFormat, cleanAfterExport);
+	}
+	this->unlock_processes();
+	if(openFile) {
+		fclose(file);
+	}
+	return(openFile ? "ok write to " + fileName : "ok write");
+}
+
+void MySqlStore::autoloadFromSqlVmExport() {
+	extern char opt_chdir[1024];
+	DIR* dirstream = opendir(opt_chdir);
+	if(!dirstream) {
+		return;
+	}
+	dirent* direntry;
+	while((direntry = readdir(dirstream))) {
+		const char *prefixSqlVmExport = "export_voipmonitor_queries-";
+		if(strncmp(direntry->d_name, prefixSqlVmExport, strlen(prefixSqlVmExport))) {
+			continue;
+		}
+		if(time(NULL) - stringToTime(direntry->d_name + strlen(prefixSqlVmExport)) < 3600) {
+			syslog(LOG_NOTICE, "recovery queries from %s", direntry->d_name);
+			FILE *file = fopen((opt_chdir + string("/") + direntry->d_name).c_str(), "rt");
+			if(!file) {
+				syslog(LOG_NOTICE, "failed open file %s", direntry->d_name);
+				continue;
+			}
+			unsigned int counter = 0;
+			unsigned int maxLengthQuery = 100000;
+			char *buffQuery = new char[maxLengthQuery];
+			while(fgets(buffQuery, maxLengthQuery, file)) {
+				int idProcess = atoi(buffQuery);
+				if(!idProcess) {
+					continue;
+				}
+				char *posSeparator = strchr(buffQuery, ':');
+				if(!posSeparator) {
+					continue;
+				}
+				string query = find_and_replace(posSeparator + 1, "__ENDL__", "\n");
+				this->query(query.c_str(), idProcess);
+				++counter;
+			}
+			delete [] buffQuery;
+			fclose(file);
+			unlink((opt_chdir + string("/") + direntry->d_name).c_str());
+			syslog(LOG_NOTICE, "success recovery %u queries", counter);
+		}
+	}
 }
 
 
@@ -1805,6 +1897,47 @@ string prepareQueryForPrintf(const char *query) {
 		}
 	}
 	return rslt;
+}
+
+void prepareQuery(string subtypeDb, string &query, bool base, int nextPassQuery) {
+	size_t findPos;
+	if(base) {
+		if(subtypeDb == "mssql") {
+			const char *substFce[][2] = { 
+					{ "UNIX_TIMESTAMP", "dbo.unix_timestamp" },
+					{ "NOW", "dbo.now" },
+					{ "SUBTIME", "dbo.subtime" }
+			};
+			for(unsigned int i = 0; i < sizeof(substFce)/sizeof(substFce[0]); i++) {
+				while((findPos  = query.find(substFce[i][0])) != string::npos) {
+					query.replace(findPos, strlen(substFce[i][0]), substFce[i][1]);
+				}
+			}
+		}
+		while((findPos  = query.find("_LC_[")) != string::npos) {
+			size_t findPosEnd = query.find("]", findPos);
+			if(findPosEnd != string::npos) {
+				string lc = query.substr(findPos + 5, findPosEnd - findPos - 5);
+				if(subtypeDb == "mssql") {
+					lc = "case when " + lc + " then 1 else 0 end";
+				}
+				query.replace(findPos, findPosEnd - findPos + 1, lc);
+			}
+		}
+	}
+	if(nextPassQuery) {
+		while((findPos  = query.find("__NEXT_PASS_QUERY_BEGIN__")) != string::npos) {
+			size_t findPosEnd = query.find("__NEXT_PASS_QUERY_END__", findPos);
+			if(findPosEnd != string::npos) {
+				if(nextPassQuery == 2) { 
+					query.erase(findPosEnd, 23);
+					query.erase(findPos, 25);
+				} else {
+					query.erase(findPos, findPosEnd - findPos + 23);
+				}
+			}
+		}
+	}
 }
 
 string prepareQueryForPrintf(string &query) {

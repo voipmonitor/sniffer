@@ -1703,6 +1703,15 @@ getwav:
 			cerr << "Error sending data to client" << endl;
 			return -1;
 		}
+	} else if(strstr(buf, "sqlexport") != NULL ||
+		  strstr(buf, "sqlvmexport") != NULL) {
+		bool sqlFormat = strstr(buf, "sqlexport") != NULL;
+		extern MySqlStore *sqlStore;
+		string rslt = sqlStore->exportToFile(NULL, "auto", sqlFormat, strstr(buf, "clean") != NULL);
+		if ((size = sendvm(client, sshchannel, rslt.c_str(), rslt.length(), 0)) == -1){
+			cerr << "Error sending data to client" << endl;
+			return -1;
+		}
 	} else {
 		if ((size = sendvm(client, sshchannel, "command not found\n", 18, 0)) == -1){
 			cerr << "Error sending data to client" << endl;

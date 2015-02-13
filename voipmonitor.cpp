@@ -405,6 +405,7 @@ bool opt_cdr_check_exists_callid = 0;
 bool opt_cdr_check_duplicity_callid_in_next_pass_insert = 0;
 int opt_create_old_partitions = 0;
 bool opt_disable_partition_operations = 0;
+bool opt_autoload_from_sqlvmexport = 0;
 vector<dstring> opt_custom_headers_cdr;
 vector<dstring> opt_custom_headers_message;
 int opt_custom_headers_last_value = 1;
@@ -1556,6 +1557,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "disable_partition_operations", NULL))) {
 		opt_disable_partition_operations = yesno(value);
+	}
+	if((value = ini.GetValue("general", "autoload_from_sqlvmexport", NULL))) {
+		opt_autoload_from_sqlvmexport = yesno(value);
 	}
 	if((value = ini.GetValue("general", "cdr_ua_enable", NULL))) {
 		opt_cdr_ua_enable = yesno(value);
@@ -3932,6 +3936,9 @@ int main(int argc, char *argv[]) {
 			for(int i = 0; i < opt_mysqlstore_max_threads_ipacc_agreg2; i++) {
 				sqlStore->setConcatLimit(STORE_PROC_ID_IPACC_AGR2_HOUR_1 + i, opt_mysqlstore_concat_limit_ipacc);
 			}
+		}
+		if(!opt_nocdr && opt_autoload_from_sqlvmexport) {
+			sqlStore->autoloadFromSqlVmExport();
 		}
 	}
 	

@@ -324,7 +324,9 @@ public:
 	void disconnect();
 	void query(const char *query_str);
 	void store();
-	void _store(string procedureName, string beginProcedure, string endProcedure, string queryes);
+	void _store(string beginProcedure, string endProcedure, string queries);
+	void exportToFile(FILE *file, bool sqlFormat, bool cleanAfterExport);
+	void _exportToFileSqlFormat(FILE *file, string queries);
 	void lock();
 	void unlock();
 	void setIgnoreTerminating(bool ignoreTerminating);
@@ -342,6 +344,8 @@ public:
 		return(this->id < other.id); 
 	}
 private:
+	string getInsertFuncName();
+private:
 	int id;
 	int concatLimit;
 	bool enableTransaction;
@@ -349,7 +353,7 @@ private:
 	pthread_t thread;
 	pthread_mutex_t lock_mutex;
 	SqlDb *sqlDb;
-	queue<string> query_buff;
+	deque<string> query_buff;
 	bool terminated;
 	bool ignoreTerminating;
 	bool enableAutoDisconnect;
@@ -377,6 +381,15 @@ public:
 	int getSize(int id, bool lock = true);
 	int getSizeMult(int n, ...);
 	int getSizeVect(int id1, int id2, bool lock = true);
+	string exportToFile(FILE *file, string filename, bool sqlFormat, bool cleanAfterExport);
+	void autoloadFromSqlVmExport();
+private:
+	void lock_processes() {
+		while(__sync_lock_test_and_set(&this->_sync_processes, 1));
+	}
+	void unlock_processes() {
+		__sync_lock_release(&this->_sync_processes);
+	}
 private:
 	map<int, MySqlStore_process*> processes;
 	string host;
@@ -386,6 +399,7 @@ private:
 	string cloud_host;
 	string cloud_token;
 	int defaultConcatLimit;
+	volatile int _sync_processes;
 };
 
 SqlDb *createSqlObject();
@@ -400,6 +414,7 @@ bool isSqlDriver(const char *sqlDriver, const char *checkSqlDriver = NULL);
 bool isTypeDb(const char *typeDb, const char *checkSqlDriver = NULL, const char *checkOdbcDriver = NULL);
 bool cmpStringIgnoreCase(const char* str1, const char* str2);
 string reverseString(const char *str);
+void prepareQuery(string subtypeDb, string &query, bool base, int nextPassQuery);
 string prepareQueryForPrintf(const char *query);
 string prepareQueryForPrintf(string &query);
 
