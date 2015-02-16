@@ -415,11 +415,11 @@ int ogg_mix(char *in1, char *in2, char *out, int stereo, int samplerate, double 
 			if(stereo) {
 				char buf[4];
 				if(swap) {
-					memcpy(buf, &zero, 2);
-					memcpy(buf + 2, p2, 2);
-				} else {
 					memcpy(buf, p2, 2);
 					memcpy(buf + 2, &zero, 2);
+				} else {
+					memcpy(buf, &zero, 2);
+					memcpy(buf + 2, p2, 2);
 				}
 				ogg_write2(&ogg, f_out, buf, 4, 0);
 			} else {
