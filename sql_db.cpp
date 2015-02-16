@@ -1337,8 +1337,8 @@ void MySqlStore_process::_store(string beginProcedure, string endProcedure, stri
 			if(this->sqlDb->query(string("create procedure ") + procedureName + "()" + 
 					      beginProcedure + 
 					      preparedQueries + 
-					      endProcedure),
-					      true) {
+					      endProcedure,
+					      this->enableFixDeadlock)) {
 				break;
 			} else if(this->sqlDb->getLastError() == ER_SP_ALREADY_EXISTS) {
 				this->sqlDb->query("repair table mysql.proc");
@@ -1359,6 +1359,7 @@ void MySqlStore_process::_store(string beginProcedure, string endProcedure, stri
 		} else if(this->sqlDb->getLastError() == ER_LOCK_DEADLOCK) {
 			if(passComplete < maxPassComplete - 1) {
 				syslog(LOG_INFO, "DEADLOCK in store %u - next attempt %u", this->id, passComplete + 1);
+				usleep(500000);
 			}
 		} else {
 			if(sverb.store_process_query) {
