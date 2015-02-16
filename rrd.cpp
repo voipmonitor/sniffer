@@ -1122,6 +1122,9 @@ int rrd_call(
 }
 
 void checkRrdVersion(bool silent) {
+	if(vm_rrd_version) {
+		return;
+	}
 	int exitCode;
 	string rsltRrdTool = pexec((char*)"rrdtool", &exitCode);
 	if(!exitCode) {
