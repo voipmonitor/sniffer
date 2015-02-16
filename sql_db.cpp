@@ -1337,8 +1337,7 @@ void MySqlStore_process::_store(string beginProcedure, string endProcedure, stri
 			if(this->sqlDb->query(string("create procedure ") + procedureName + "()" + 
 					      beginProcedure + 
 					      preparedQueries + 
-					      endProcedure,
-					      this->enableFixDeadlock)) {
+					      endProcedure)) {
 				break;
 			} else if(this->sqlDb->getLastError() == ER_SP_ALREADY_EXISTS) {
 				this->sqlDb->query("repair table mysql.proc");
@@ -1349,7 +1348,7 @@ void MySqlStore_process::_store(string beginProcedure, string endProcedure, stri
 				break;
 			}
 		}
-		bool rsltQuery = this->sqlDb->query(string("call ") + procedureName + "();");
+		bool rsltQuery = this->sqlDb->query(string("call ") + procedureName + "();", this->enableFixDeadlock);
 		/* deadlock debugging
 		rsltQuery = false;
 		this->sqlDb->setLastError(ER_LOCK_DEADLOCK, "deadlock");
