@@ -1,3 +1,8 @@
+10.1.28 16.02.2015
+==================
+- fix > 10.1.23 versions which crashed if configured as a receiver and buffers were full 
+
+
 10.1.27 05.02.2015
 ==================
 - fix GRE bad ip header detection 
