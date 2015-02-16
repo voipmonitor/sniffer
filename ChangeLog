@@ -1,3 +1,8 @@
+10.1.29 16.02.2015
+==================
+- fix audio channel swap at the end of call for OGG stereo when one of the channel is silence (all versions)
+
+
 10.1.28 16.02.2015
 ==================
 - fix > 10.1.23 versions which crashed if configured as a receiver and buffers were full 
