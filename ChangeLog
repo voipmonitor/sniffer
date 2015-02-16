@@ -1,3 +1,9 @@
+10.1.30 16.02.2015
+==================
+- do not check RRD library everytime GUI access sniffer over manager minimizing forking which can cause __lll_lock_wait_private deadlock (rare but it happened) 
+
+
+- fix audio channel swap at the end of call for OGG stereo when one of the channel is silence (all versions)
 10.1.29 16.02.2015
 ==================
 - fix audio channel swap at the end of call for OGG stereo when one of the channel is silence (all versions)
