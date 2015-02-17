@@ -1295,16 +1295,33 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 	 
 		char filename[2048];
 		unsigned int size;
-		char outbuf[100];
+		string rslt;
 
 		sscanf(buf, "file_exists %s", filename);
 		if(FileExists(filename)) {
 			size = file_exists(filename);
-			sprintf(outbuf, "%d", size);
+			char size_str[20];
+			sprintf(size_str, "%d", size);
+			rslt = size_str;
+			if(size > 0 && strstr(filename, "tar")) {
+				for(int i = 1; i <= 5; i++) {
+					char nextfilename[2048];
+					strcpy(nextfilename, filename);
+					sprintf(nextfilename + strlen(nextfilename), ".%i", i);
+					unsigned int nextsize = file_exists(nextfilename);
+					if(nextsize > 0) {
+						char nextsize_str[20];
+						sprintf(nextsize_str, "%d", nextsize);
+						rslt.append(string(";") + nextfilename + ":" + nextsize_str);
+					} else {
+						break;
+					}
+				}
+			}
 		} else {
-			strcpy(outbuf, "not_exists");
+			rslt = "not_exists";
 		}
-		sendvm(client, sshchannel, outbuf, strlen(outbuf), 0);
+		sendvm(client, sshchannel, rslt.c_str(), rslt.length(), 0);
 		return 0;
 	} else if(strstr(buf, "fileexists") != NULL) {
 		char filename[2048];
