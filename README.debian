@@ -6,13 +6,10 @@ apt-get install build-essential subversion libvorbis-dev libpcap-dev apache2 php
 cd /usr/src
 git clone git://git.code.sf.net/p/voipmonitor/git voipmonitor-git
 cd voipmonitor-git
-rm Makefile
 ./configure
 make
 (Is possible you will get a warning like this: " Warning: the use of `tmpnam' is dangerous, better use `mkstemp" just continue with the next command)
 make install
-mkdir /var/spool/voipmonitor
-mysqladmin create voipmonitor
 cp config/voipmonitor.conf /etc/
 #edit file /etc/voipmonitor.conf to your needs
 cp config/init.d/voipmonitor /etc/init.d/
