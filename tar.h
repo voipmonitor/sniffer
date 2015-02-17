@@ -339,7 +339,7 @@ public:
 	};
 	struct tarthreads_t {
 		TarQueue *tarQueue;
-		std::map<string, tarthreads_tq> queue;
+		std::map<string, tarthreads_tq> queue_data;
 		pthread_t thread;
 		int threadId;
 		int thread_id;
@@ -351,8 +351,8 @@ public:
 		size_t getLen(int forProceed = false, bool lock = true) {
 			if(lock) qlock();
 			size_t size = 0;
-			std::map<string, tarthreads_tq>::iterator it = queue.begin();
-			while(it != queue.end()) {
+			std::map<string, tarthreads_tq>::iterator it = queue_data.begin();
+			while(it != queue_data.end()) {
 				size += it->second.getLen(forProceed);
 				++it;
 			}
@@ -363,8 +363,8 @@ public:
 			if(lock) qlock();
 			size_t maxSize = 0;
 			string maxTarName;
-			std::map<string, tarthreads_tq>::iterator it = queue.begin();
-			while(it != queue.end()) {
+			std::map<string, tarthreads_tq>::iterator it = queue_data.begin();
+			while(it != queue_data.end()) {
 				size_t size = it->second.getLen(forProceed);
 				if(size > maxSize) {
 					maxSize = size;
@@ -405,7 +405,7 @@ public:
 	bool allThreadsEnds();
 
 private:
-	map<unsigned int, vector<data_t> > queue[4]; //queue for all, sip, rtp, graph
+	map<unsigned int, vector<data_t> > queue_data[4]; //queue for all, sip, rtp, graph
 	unsigned long tarThreadCounter[4];
 	pthread_mutex_t mutexlock;
 	pthread_mutex_t flushlock;
