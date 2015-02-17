@@ -1974,8 +1974,8 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			cdr.add(called_lastsilence / 1000, "called_silence_end");
 		}
 		if(opt_clippingdetect) {
-			cdr.add(caller_clipping_8k / 100, "caller_clipping_mult100");
-			cdr.add(called_clipping_8k / 100, "called_clipping_mult100");
+			cdr.add(caller_clipping_8k / 100 > 255 ? 255 : caller_clipping_8k / 100, "caller_clipping_mult100");
+			cdr.add(called_clipping_8k / 100 > 255 ? 255 : called_clipping_8k / 100, "called_clipping_mult100");
 		}
 
 		// save only two streams with the biggest received packets
