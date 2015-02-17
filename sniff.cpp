@@ -514,7 +514,9 @@ save:
    type - 1 is SIP, 2 is RTP, 3 is RTCP
 
 */
-inline void save_packet(Call *call, struct pcap_pkthdr *header, const u_char *packet, unsigned int saddr, int source, unsigned int daddr, int dest, int istcp, iphdr2 *header_ip, char *data, int datalen, int dataoffset, int type, 
+inline void save_packet(Call *call, struct pcap_pkthdr *header, const u_char *packet, 
+			unsigned int saddr, int source, unsigned int daddr, int dest, 
+			int istcp, iphdr2 *header_ip, char *data, int datalen, int dataoffset, int type, 
 			int forceSip, int dlt, int sensor_id) {
 	bool allocPacket = false;
 	bool allocHeader = false;
@@ -629,6 +631,42 @@ inline void save_packet(Call *call, struct pcap_pkthdr *header, const u_char *pa
 	}
 	if(allocHeader) {
 		delete header;
+	}
+}
+
+inline void save_sip_packet(Call *call, struct pcap_pkthdr *header, const u_char *packet, 
+			    unsigned int saddr, int source, unsigned int daddr, int dest, 
+			    int istcp, iphdr2 *header_ip, char *data, int sipDatalen, int dataoffset, int type, 
+			    int datalen, int sipOffset,
+			    int forceSip, int dlt, int sensor_id) {
+	if(istcp && 
+	   sipDatalen && (sipDatalen < (unsigned)datalen || sipOffset) &&
+	   (unsigned)datalen + sipOffset < header->caplen) {
+		bpf_u_int32  oldcaplen = header->caplen;
+		bpf_u_int32  oldlen = header->len;
+		u_int16_t oldHeaderIpLen = header_ip->tot_len;
+		unsigned long datalenWithSipOffset = datalen + sipOffset;
+		unsigned long diffLen = sipOffset + (datalen - sipDatalen);
+		unsigned long newPacketLen = oldcaplen - diffLen;
+		header->caplen -= diffLen;
+		header->len -= diffLen;
+		header_ip->tot_len = htons(ntohs(header_ip->tot_len) - diffLen);
+		u_char *newPacket = new u_char[newPacketLen];
+		memcpy(newPacket, packet, oldcaplen - datalenWithSipOffset);
+		memcpy(newPacket + (oldcaplen - datalenWithSipOffset), data, sipDatalen);
+		iphdr2 *newHeaderIp = header_ip;
+		if((u_char*)header_ip > packet && (u_char*)header_ip - packet < 100) {
+			newHeaderIp = (iphdr2*)(newPacket + ((u_char*)header_ip - packet));
+		}
+		save_packet(call, header, newPacket, saddr, source, daddr, dest, istcp, newHeaderIp, data, sipDatalen, dataoffset, TYPE_SIP, 
+			    forceSip, dlt, sensor_id);
+		delete [] newPacket;
+		header->caplen = oldcaplen;
+		header->len = oldlen;
+		header_ip->tot_len = oldHeaderIpLen;
+	} else {
+		save_packet(call, header, packet, saddr, source, daddr, dest, istcp, header_ip, data, sipDatalen, dataoffset, TYPE_SIP, 
+			    forceSip, dlt, sensor_id);
 	}
 }
 
@@ -2404,26 +2442,36 @@ Call *process_packet(u_int64_t packet_number,
 					// OK to unknown msg close the call
 					call->regstate = 3;
 				}
+				save_sip_packet(call, header, packet, 
+						saddr, source, daddr, dest, 
+						istcp, header_ip, data, sipDatalen, dataoffset, TYPE_SIP, 
+						origDatalen, sipOffset,
+						forceSip, dlt, sensor_id);
 				call->saveregister();
 				if(logPacketSipMethodCall_enable) {
 					logPacketSipMethodCall(packet_number, sip_method, lastSIPresponseNum, header, 
 						saddr, source, daddr, dest,
 						call, "update expires header from all REGISTER dialog messages (from 200 OK which can override the expire)");
 				}
-				goto endsip_save_packet;
+				goto endsip;
 			} else if(sip_method == RES401 or sip_method == RES403) {
 				call->reg401count++;
 				if(verbosity > 3) syslog(LOG_DEBUG, "REGISTER 401 Call-ID[%s] reg401count[%d]", call->call_id.c_str(), call->reg401count);
 				if(call->reg401count > 1) {
 					// registration failed
 					call->regstate = 2;
+					save_sip_packet(call, header, packet, 
+							saddr, source, daddr, dest, 
+							istcp, header_ip, data, sipDatalen, dataoffset, TYPE_SIP, 
+							origDatalen, sipOffset,
+							forceSip, dlt, sensor_id);
 					call->saveregister();
 					if(logPacketSipMethodCall_enable) {
 						logPacketSipMethodCall(packet_number, sip_method, lastSIPresponseNum, header, 
 							saddr, source, daddr, dest,
 							call, "REGISTER 401 count > 1");
 					}
-					goto endsip_save_packet;
+					goto endsip;
 				}
 			}
 			if(call->regstate && !call->regresponse) {
@@ -2435,13 +2483,18 @@ Call *process_packet(u_int64_t packet_number,
 			if(call->msgcount > 20) {
 				// too many REGISTER messages within the same callid
 				call->regstate = 4;
+				save_sip_packet(call, header, packet, 
+						saddr, source, daddr, dest, 
+						istcp, header_ip, data, sipDatalen, dataoffset, TYPE_SIP, 
+						origDatalen, sipOffset,
+						forceSip, dlt, sensor_id);
 				call->saveregister();
 				if(logPacketSipMethodCall_enable) {
 					logPacketSipMethodCall(packet_number, sip_method, lastSIPresponseNum, header, 
 						saddr, source, daddr, dest,
 						call, "too many REGISTER messages within the same callid");
 				}
-				goto endsip_save_packet;
+				goto endsip;
 			}
 		// packet is already part of call
 		// check if SIP packet belongs to the first leg 
@@ -2950,6 +3003,12 @@ notfound:
 		returnCall = call;
 		data[datalen - 1] = a;
 endsip_save_packet:
+		save_sip_packet(call, header, packet, 
+				saddr, source, daddr, dest, 
+				istcp, header_ip, data, sipDatalen, dataoffset, TYPE_SIP, 
+				origDatalen, sipOffset,
+				forceSip, dlt, sensor_id);
+endsip:
 		if(call && call->type != REGISTER && sipSendSocket && !opt_sip_send_before_packetbuffer) {
 			// send packet to socket if enabled
 			u_int16_t header_length = datalen;
@@ -2957,37 +3016,6 @@ endsip_save_packet:
 					       data, datalen);
 		}
 
-		datalen = origDatalen;
-		if(istcp && 
-		   sipDatalen && (sipDatalen < (unsigned)datalen || sipOffset) &&
-		   (unsigned)datalen + sipOffset < header->caplen) {
-			bpf_u_int32  oldcaplen = header->caplen;
-			bpf_u_int32  oldlen = header->len;
-			u_int16_t oldHeaderIpLen = header_ip->tot_len;
-			unsigned long origDatalen = datalen + sipOffset;
-			unsigned long diffLen = sipOffset + (datalen - sipDatalen);
-			unsigned long newPacketLen = oldcaplen - diffLen;
-			header->caplen -= diffLen;
-			header->len -= diffLen;
-			header_ip->tot_len = htons(ntohs(header_ip->tot_len) - diffLen);
-			u_char *newPacket = new u_char[newPacketLen];
-			memcpy(newPacket, packet, oldcaplen - origDatalen);
-			memcpy(newPacket + (oldcaplen - origDatalen), data, sipDatalen);
-			iphdr2 *newHeaderIp = header_ip;
-			if((u_char*)header_ip > packet && (u_char*)header_ip - packet < 100) {
-				newHeaderIp = (iphdr2*)(newPacket + ((u_char*)header_ip - packet));
-			}
-			save_packet(call, header, newPacket, saddr, source, daddr, dest, istcp, newHeaderIp, data, sipDatalen, dataoffset, TYPE_SIP, 
-				    forceSip, dlt, sensor_id);
-			delete [] newPacket;
-			header->caplen = oldcaplen;
-			header->len = oldlen;
-			header_ip->tot_len = oldHeaderIpLen;
-		} else {
-			save_packet(call, header, packet, saddr, source, daddr, dest, istcp, header_ip, data, sipDatalen, dataoffset, TYPE_SIP, 
-				    forceSip, dlt, sensor_id);
-		}
-endsip:
 		if(!detectUserAgent && sip_method && call) {
 			bool iscaller = 0;
 			if(call->check_is_caller_called(sip_method, saddr, daddr, &iscaller)) {
