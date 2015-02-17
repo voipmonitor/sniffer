@@ -2915,7 +2915,28 @@ Call::saveMessageToDb(bool enableBatchIfPossible) {
 		if(contenttype) {
 			cdr.add(string("_\\_'SQL'_\\_:") + "getIdOrInsertCONTENTTYPE(" + sqlEscapeStringBorder(contenttype) + ")", "id_contenttype");
 		}
+		
+		extern bool opt_message_check_duplicity_callid_in_next_pass_insert;
+		if(opt_message_check_duplicity_callid_in_next_pass_insert) {
+			// check if exists call-id - begin if
+			query_str += "__NEXT_PASS_QUERY_BEGIN__";
+			query_str += string("set @exists_call_id = coalesce(\n") +
+				     "(select ID from message\n" +
+				     " where calldate > ('" + sqlDateTimeString(calltime()) + "' - interval 1 minute) and\n" +
+				     "       calldate < ('" + sqlDateTimeString(calltime()) + "' + interval 1 minute) and\n" +
+				     "       fbasename = '" + sqlEscapeString(fbasename) + "' limit 1), 0);\n";
+			query_str += "if not @exists_call_id then\n";
+			query_str += "__NEXT_PASS_QUERY_END__";
+		}
+		
 		query_str += sqlDbSaveCall->insertQuery("message", cdr);
+		
+		if(opt_message_check_duplicity_callid_in_next_pass_insert) {
+			// check if exists call-id - end if
+			query_str += "__NEXT_PASS_QUERY_BEGIN__";
+			query_str += ";\nend if";
+			query_str += "__NEXT_PASS_QUERY_END__";
+		}
 		
 		static unsigned int counterSqlStore = 0;
 		int storeId = STORE_PROC_ID_MESSAGE_1 + 

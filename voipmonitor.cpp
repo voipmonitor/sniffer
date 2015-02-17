@@ -404,6 +404,7 @@ bool opt_cdr_sipport = 0;
 bool opt_cdr_rtpport = 0;
 bool opt_cdr_check_exists_callid = 0;
 bool opt_cdr_check_duplicity_callid_in_next_pass_insert = 0;
+bool opt_message_check_duplicity_callid_in_next_pass_insert = 0;
 int opt_create_old_partitions = 0;
 bool opt_disable_partition_operations = 0;
 bool opt_autoload_from_sqlvmexport = 0;
@@ -1548,8 +1549,15 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "cdr_check_exists_callid", NULL))) {
 		opt_cdr_check_exists_callid = yesno(value);
 	}
+	if((value = ini.GetValue("general", "check_duplicity_callid_in_next_pass_insert", NULL))) {
+		opt_cdr_check_duplicity_callid_in_next_pass_insert = 
+		opt_message_check_duplicity_callid_in_next_pass_insert = yesno(value);
+	}
 	if((value = ini.GetValue("general", "cdr_check_duplicity_callid_in_next_pass_insert", NULL))) {
 		opt_cdr_check_duplicity_callid_in_next_pass_insert = yesno(value);
+	}
+	if((value = ini.GetValue("general", "message_check_duplicity_callid_in_next_pass_insert", NULL))) {
+		opt_message_check_duplicity_callid_in_next_pass_insert = yesno(value);
 	}
 	if((value = ini.GetValue("general", "create_old_partitions", NULL))) {
 		opt_create_old_partitions = atoi(value);
@@ -3898,6 +3906,9 @@ int main(int argc, char *argv[]) {
 			}
 			if(opt_mysql_enable_transactions_message) {
 				sqlStore->setEnableTransaction(STORE_PROC_ID_MESSAGE_1 + i);
+			}
+			if(opt_message_check_duplicity_callid_in_next_pass_insert) {
+				sqlStore->setEnableFixDeadlock(STORE_PROC_ID_MESSAGE_1 + i);
 			}
 		}
 		for(int i = 0; i < opt_mysqlstore_max_threads_register; i++) {
