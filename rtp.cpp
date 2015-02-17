@@ -53,6 +53,7 @@ extern unsigned int graph_mark;
 extern int opt_faxt30detect;
 extern int opt_inbanddtmf;
 extern int opt_silencedetect;
+extern int opt_clippingdetect;
 
 
 using namespace std;
@@ -1322,8 +1323,8 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 	prev_sid = sid;
 
 
-	// FAX T.30 detection if enabled
-	if(owner and (opt_inbanddtmf or opt_faxt30detect or opt_silencedetect) 
+	// DSP processing
+	if(owner and (opt_inbanddtmf or opt_faxt30detect or opt_silencedetect or opt_clippingdetect) 
 		and frame->frametype == AST_FRAME_VOICE and (codec == 0 or codec == 8)) {
 
 		int res;
@@ -1338,43 +1339,60 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 		if(codec == 0) {
 			for(unsigned int i = 0; i < payload_len; i++) {
 				sdata[i] = ULAW((unsigned char)payload_data[i]);
+				if(opt_clippingdetect and ((abs(sdata[i])) >= 32124)) {
+					if(iscaller) {
+						owner->caller_clipping_8k++;
+					} else {
+						owner->called_clipping_8k++;
+					}
+				}
 			}
 		} else if(codec == 8) {
 			for(unsigned int i = 0; i < payload_len; i++) {
 				sdata[i] = ALAW((unsigned char)payload_data[i]);
+				if(opt_clippingdetect and ((abs(sdata[i])) >= 32256)) {
+					if(iscaller) {
+						owner->caller_clipping_8k++;
+					} else {
+						owner->called_clipping_8k++;
+					}
+				}
 			}
 		}
-		int silence0 = 0;
-		int totalsilence = 0;
-		int totalnoise = 0;
-		res = dsp_process(DSP, sdata, payload_len, &event_digit, &event_len, &silence0, &totalsilence, &totalnoise);
-		if(silence0) {
-			if(iscaller) {
-				owner->caller_lastsilence += payload_len / 8;
-				owner->caller_silence += payload_len / 8;
+		if(opt_inbanddtmf or opt_faxt30detect or opt_silencedetect) {
+			int silence0 = 0;
+			int totalsilence = 0;
+			int totalnoise = 0;
+			res = dsp_process(DSP, sdata, payload_len, &event_digit, &event_len, &silence0, &totalsilence, &totalnoise);
+			if(silence0) {
+				if(iscaller) {
+					owner->caller_lastsilence += payload_len / 8;
+					owner->caller_silence += payload_len / 8;
+				} else {
+					owner->called_lastsilence += payload_len / 8;
+					owner->called_silence += payload_len / 8;
+				}
 			} else {
-				owner->called_lastsilence += payload_len / 8;
-				owner->called_silence += payload_len / 8;
+				if(iscaller) {
+					owner->caller_lastsilence = 0;
+					owner->caller_noise += payload_len / 8;
+				} else {
+					owner->called_lastsilence = 0;
+					owner->called_noise += payload_len / 8;
+				}
 			}
-		} else {
-			if(iscaller) {
-				owner->caller_lastsilence = 0;
-				owner->caller_noise += payload_len / 8;
-			} else {
-				owner->called_lastsilence = 0;
-				owner->called_noise += payload_len / 8;
+			if(res) {
+				if(opt_faxt30detect and (event_digit == 'f' or event_digit == 'e')) {
+					//printf("dsp_process: digit[%c] len[%u]\n", event_digit, event_len);
+					owner->isfax = 2;
+					owner->flags1 |= T30FAX;
+				} else if(opt_inbanddtmf and res == 5) {
+					owner->handle_dtmf(event_digit, ts2double(header->ts.tv_sec, header->ts.tv_usec), saddr, daddr);
+				}
 			}
 		}
+
 		free(sdata);
-		if(res) {
-			if(opt_faxt30detect and (event_digit == 'f' or event_digit == 'e')) {
-				//printf("dsp_process: digit[%c] len[%u]\n", event_digit, event_len);
-				owner->isfax = 2;
-				owner->flags1 |= T30FAX;
-			} else if(opt_inbanddtmf and res == 5) {
-				owner->handle_dtmf(event_digit, ts2double(header->ts.tv_sec, header->ts.tv_usec), saddr, daddr);
-			}
-		}
 	}
 
 	if(getMarker()) {

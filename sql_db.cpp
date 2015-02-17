@@ -595,7 +595,10 @@ bool SqlDb_mysql::connect(bool createDb, bool mainInit) {
 			}
 			char tmp[1024];
 			if(createDb) {
-				this->query("SET GLOBAL innodb_file_per_table=1;");
+				if(this->getDbMajorVersion() >= 5 and 
+					!(this->getDbMajorVersion() == 5 and this->getDbMinorVersion() <= 1)) {
+					this->query("SET GLOBAL innodb_file_per_table=1;");
+				}
 				sprintf(tmp, "CREATE DATABASE IF NOT EXISTS `%s`", this->conn_database.c_str());
 				if(!this->query(tmp)) {
 					rslt = false;
@@ -1373,7 +1376,7 @@ void MySqlStore_process::exportToFile(FILE *file, bool sqlFormat, bool cleanAfte
 	this->lock();
 	string queryqueue;
 	int concatLimit = this->concatLimit;
-	int size;
+	int size = 0;
 	for(size_t index = 0; index < this->query_buff.size(); index++) {
 		string query = this->query_buff[index];
 		if(sqlFormat) {
@@ -2327,6 +2330,8 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 			`rtcp_avgfr_mult10` smallint unsigned DEFAULT NULL,\
 			`rtcp_avgjitter_mult10` smallint unsigned DEFAULT NULL,\
 			`lost` mediumint unsigned DEFAULT NULL,\
+			`caller_clipping_mult100` tinyint unsigned DEFAULT NULL,\
+			`called_clipping_mult100` tinyint unsigned DEFAULT NULL,\
 			`caller_silence` tinyint unsigned DEFAULT NULL,\
 			`called_silence` tinyint unsigned DEFAULT NULL,\
 			`caller_silence_end` smallint unsigned DEFAULT NULL,\
@@ -2437,6 +2442,15 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 		if(!res) {
 			syslog(LOG_WARNING, "!!! You have enabled silencedetect but the database is not yet upgraded. Run this command in your database: ALTER TABLE cdr ADD caller_silence tinyint unsigned default NULL, ADD called_silence tinyint unsigned default NULL, ADD caller_silence_end smallint default NULL, ADD called_silence_end smallint default NULL;");
 			opt_silencedetect = 0;
+		}
+	}
+	extern int opt_clippingdetect;
+	if(opt_clippingdetect) {
+		this->query("show columns from cdr where Field='caller_clipping_mult100'");
+		int res = this->fetchRow();
+		if(!res) {
+			syslog(LOG_WARNING, "!!! You have enabled clippingdetect but the database is not yet upgraded. Run this command in your database: ALTER TABLE cdr ADD caller_clipping_mult100 tinyint unsigned default NULL, ADD called_clipping_mult100 tinyint unsigned default NULL;");
+			opt_clippingdetect = 0;
 		}
 	}
 
@@ -4165,6 +4179,8 @@ void SqlDb_odbc::createSchema(const char *host, const char *database, const char
 			rtcp_avgfr_mult10 smallint NULL,\
 			rtcp_avgjitter_mult10 smallint NULL,\
 			lost int NULL,\
+			caller_clipping_mult100 tinyint NULL,\
+			called_clipping_mult100 tinyint NULL,\
 			caller_silence tinyint NULL,\
 			called_silence tinyint NULL,\
 			caller_silence_end smallint NULL,\
