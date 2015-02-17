@@ -1554,6 +1554,12 @@ bool RestartUpgrade::runRestart(int socket1, int socket2) {
 		}
 		return(false);
 	}
+	extern int opt_nocdr;
+	extern bool opt_autoload_from_sqlvmexport;
+	if(!opt_nocdr && opt_autoload_from_sqlvmexport) {
+		extern MySqlStore *sqlStore;
+		sqlStore->exportToFile(NULL, "auto", false, true);
+	}
 	close(socket1);
 	close(socket2);
 	terminate_packetbuffer();

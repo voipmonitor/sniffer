@@ -736,6 +736,9 @@ string SEMAPHOR_FORK_MODE_NAME() {
 #endif
 
 void terminate2() {
+	if(!opt_nocdr && opt_autoload_from_sqlvmexport) {
+		sqlStore->exportToFile(NULL, "auto", false, true);
+	}
 	terminating = 1;
 }
 
@@ -2990,11 +2993,11 @@ int main(int argc, char *argv[]) {
 	}
 */
 
-#ifdef BACKTRACE
-
 	pcapstat.ps_drop = 0;
 	pcapstat.ps_ifdrop = 0;
 
+#ifdef BACKTRACE
+	
 	if(!sverb.disable_bt_sighandler) {
 		/* Install our signal handler */
 		struct sigaction sa;
