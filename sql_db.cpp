@@ -595,7 +595,10 @@ bool SqlDb_mysql::connect(bool createDb, bool mainInit) {
 			}
 			char tmp[1024];
 			if(createDb) {
-				this->query("SET GLOBAL innodb_file_per_table=1;");
+				if(this->getDbMajorVersion() >= 5 and 
+					!(this->getDbMajorVersion() == 5 and this->getDbMinorVersion() <= 1)) {
+					this->query("SET GLOBAL innodb_file_per_table=1;");
+				}
 				sprintf(tmp, "CREATE DATABASE IF NOT EXISTS `%s`", this->conn_database.c_str());
 				if(!this->query(tmp)) {
 					rslt = false;
