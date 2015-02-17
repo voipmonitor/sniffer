@@ -330,7 +330,7 @@ public:
 		last_add_time_tar = last_add_time;
 	}
 	bool isNewLastAddTimeForTar() {
-		return(last_add_time > last_add_time_tar);
+		return(last_add_time >= last_add_time_tar);
 	}
 	virtual bool compress_ev(char *data, u_int32_t len, u_int32_t decompress_len);
 	virtual bool decompress_ev(char *data, u_int32_t len);
