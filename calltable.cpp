@@ -124,6 +124,7 @@ extern int opt_mysqlstore_max_threads_http;
 extern int opt_mysqlstore_limit_queue_register;
 extern Calltable *calltable;
 extern int opt_silencedetect;
+extern int opt_clippingdetect;
 
 volatile int calls_counter = 0;
 volatile int calls_cdr_save_counter = 0;
@@ -302,6 +303,9 @@ Call::Call(char *call_id, unsigned long call_id_len, time_t time) :
         called_noise = 0;
 	caller_lastsilence = 0;
 	called_lastsilence = 0;
+
+	caller_clipping_8k = 0;
+	called_clipping_8k = 0;
 }
 
 void
@@ -492,6 +496,7 @@ Call::~Call(){
 	pthread_mutex_destroy(&listening_worker_run_lock);
 	//decreaseTartimemap(this->first_packet_time);
 	//printf("caller s[%u] n[%u] ls[%u]  called s[%u] n[%u] ls[%u]\n", caller_silence, caller_noise, caller_lastsilence, called_silence, called_noise, called_lastsilence);
+//	printf("caller_clipping_8k [%u] [%u]\n", caller_clipping_8k, called_clipping_8k);
 }
 
 void
@@ -1967,6 +1972,10 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			}
 			cdr.add(caller_lastsilence / 1000, "caller_silence_end");
 			cdr.add(called_lastsilence / 1000, "called_silence_end");
+		}
+		if(opt_clippingdetect) {
+			cdr.add(caller_clipping_8k / 100, "caller_clipping_mult100");
+			cdr.add(called_clipping_8k / 100, "called_clipping_mult100");
 		}
 
 		// save only two streams with the biggest received packets

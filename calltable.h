@@ -279,6 +279,9 @@ public:
 	unsigned int called_noise;
 	unsigned int caller_lastsilence;
 	unsigned int called_lastsilence;
+
+	unsigned int caller_clipping_8k;
+	unsigned int called_clipping_8k;
 	
 
 	vector<string> mergecalls;
