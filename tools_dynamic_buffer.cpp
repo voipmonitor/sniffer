@@ -781,7 +781,7 @@ void ChunkBuffer::add(char *data, u_int32_t datalen, bool flush, u_int32_t decom
 		break;
 	case add_fill_chunks: {
 		if(sverb.chunk_buffer > 1) {
-			cout << "chunkpos_add " << this->lastChunk->len << " / " << this->chunkBuffer.size() << endl;
+			cout << "chunkpos_add " << (this->lastChunk ? this->lastChunk->len : 0) << " / " << this->chunkBuffer.size() << endl;
 		}
 		u_int32_t allcopied = 0;
 		for(int i = 0; i < 2; i++) {
