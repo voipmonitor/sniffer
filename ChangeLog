@@ -1,3 +1,8 @@
+10.1.31 16.02.2015
+==================
+- fix SIP REGISTER saving last packet to pcap file (200 OK or any last packet was missing) 
+
+
 10.1.30 16.02.2015
 ==================
 - do not check RRD library everytime GUI access sniffer over manager minimizing forking which can cause __lll_lock_wait_private deadlock (rare but it happened) 
