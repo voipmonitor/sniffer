@@ -411,7 +411,7 @@ bool CompressStream::compress(char *data, u_int32_t len, bool flush, CompressStr
 }
 
 bool CompressStream::decompress(char *data, u_int32_t len, u_int32_t decompress_len, bool flush, CompressStream_baseEv *baseEv, u_int32_t *use_len) {
-	if(sverb.chunk_buffer) {
+	if(sverb.chunk_buffer > 2) {
 		cout << "decompress data " << len << " " << decompress_len << endl;
 		for(u_int32_t i = 0; i < min(len, (u_int32_t)max(sverb.chunk_buffer, 200)); i++) {
 			cout << (int)(unsigned char)data[i] << ",";
@@ -723,7 +723,7 @@ void ChunkBuffer::add(char *data, u_int32_t datalen, bool flush, u_int32_t decom
 	while(this->chunk_buffer_size > 4 * 128 * 1024) {
 		usleep(100000);
 	}
-	if(sverb.chunk_buffer) {
+	if(sverb.chunk_buffer > 2) {
 		if(directAdd) {
 			cout << "add compress data " << datalen << endl;
 			for(u_int32_t i = 0; i < min(datalen, (u_int32_t)max(sverb.chunk_buffer, 200)); i++) {
@@ -865,7 +865,7 @@ bool ChunkBuffer::compress_ev(char *data, u_int32_t len, u_int32_t decompress_le
 bool ChunkBuffer::decompress_ev(char *data, u_int32_t len) {
  	decompress_chunkbufferIterateEv->chunkbuffer_iterate_ev(data, len, this->decompress_pos);
 	this->decompress_pos += len;
-	if(sverb.chunk_buffer) {
+	if(sverb.chunk_buffer > 2) {
 		cout << "decompress ev " << len << " " << this->decompress_pos << " " << endl;
 		for(u_int32_t i = 0; i < min(len, (u_int32_t)max(sverb.chunk_buffer, 200)); i++) {
 			cout << (int)(unsigned char)data[i] << ",";

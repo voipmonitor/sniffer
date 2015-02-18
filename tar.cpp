@@ -873,7 +873,8 @@ TarQueue::add(string filename, unsigned int time, ChunkBuffer *buffer){
 	data.day = day;
 	data.hour = hour;
 	data.minute = minute;
-	if(type[0] == 'S') {
+	if(type[0] == 'S' ||
+	   (type[0] == 'R' && type[1] == 'E')) {
 		queue_data[1][time - time % TAR_MODULO_SECONDS].push_back(data);
 	} else if(type[0] == 'R') {
 		queue_data[2][time - time % TAR_MODULO_SECONDS].push_back(data);
@@ -1311,7 +1312,7 @@ TarQueue::tarthreads_t::processData(data_t *data, bool isClosed, size_t lenForPr
 		 
 			tar->tar_append_buffer(data->buffer, lenForProceedSafe);
 			
-			if(sverb.chunk_buffer) {
+			if(sverb.chunk_buffer > 2) {
 				cout << " *** " << data->buffer->getName() << " " << lenForProceedSafe << endl;
 			}
 		}
