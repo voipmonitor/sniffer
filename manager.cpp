@@ -61,7 +61,6 @@ extern char opt_chdir[1024];
 extern char opt_php_path[1024];
 extern int terminating;
 extern int manager_socket_server;
-extern int terminating;
 extern int opt_nocdr;
 extern int global_livesniffer;
 extern int global_livesniffer_all;
@@ -1532,7 +1531,7 @@ getwav:
 	} else if(strstr(buf, "quit") != NULL) {
 		return 0;
 	} else if(strstr(buf, "terminating") != NULL) {
-		terminating = 1;
+		vm_terminate();
 	} else if(strstr(buf, "coutstr") != NULL) {
 		char *pointToSpaceSeparator = strchr(buf, ' ');
 		if(pointToSpaceSeparator) {

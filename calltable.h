@@ -249,6 +249,7 @@ public:
 	char rtp_timeout_exceeded;
 	char sipwithoutrtp_timeout_exceeded;
 	char oneway_timeout_exceeded;
+	char force_terminate;
 	char pcap_drop;
 	unsigned int lastsrcip;
 

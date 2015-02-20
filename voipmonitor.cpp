@@ -167,8 +167,6 @@ int debugclean = 0;
 
 extern Calltable *calltable;
 extern volatile int calls_counter;
-extern volatile int calls_cdr_save_counter;
-extern volatile int calls_message_save_counter;
 unsigned int opt_openfile_max = 65535;
 int opt_packetbuffered = 0;	// Make .pcap files writing ‘‘packet-buffered’’ 
 				// more slow method, but you can use partitialy 
@@ -526,7 +524,7 @@ SIP_HEADERfilter *sipheaderfilter = NULL;		// SIP_HEADER filter based on MYSQL
 SIP_HEADERfilter *sipheaderfilter_reload = NULL;	// SIP_HEADER filter based on MYSQL for reload purpose
 int sipheaderfilter_reload_do = 0;	// for reload in main thread
 
-pthread_t call_thread;		// ID of worker storing CDR thread 
+pthread_t storing_cdr_thread;		// ID of worker storing CDR thread 
 //pthread_t destroy_calls_thread;
 pthread_t readdump_libpcap_thread;
 pthread_t manager_thread = 0;	// ID of worker manager thread 
@@ -535,8 +533,13 @@ pthread_t manager_ssh_thread;
 pthread_t cachedir_thread;	// ID of worker cachedir thread 
 pthread_t database_backup_thread;	// ID of worker backup thread 
 pthread_t tarqueuethread;	// ID of worker manager thread 
-int terminating;		// if set to 1, worker thread will terminate
-int terminating2;		// if set to 1, worker thread will terminate
+int terminating;		// if set to 1, sniffer will terminate
+int terminating_moving_cache;	// if set to 1, worker thread will terminate
+int terminating_storing_cdr;	// if set to 1, worker thread will terminate
+int terminated_call_cleanup;
+int terminated_async;
+int terminated_tar_flush_queue;
+int terminated_tar;
 char *sipportmatrix;		// matrix of sip ports to monitor
 char *httpportmatrix;		// matrix of http ports to monitor
 char *webrtcportmatrix;		// matrix of webrtc ports to monitor
@@ -737,10 +740,7 @@ string SEMAPHOR_FORK_MODE_NAME() {
 }
 #endif
 
-void terminate2() {
-	if(!opt_nocdr && opt_autoload_from_sqlvmexport) {
-		sqlStore->exportToFile(NULL, "auto", false, true);
-	}
+void vm_terminate() {
 	terminating = 1;
 }
 
@@ -760,7 +760,7 @@ void exit_handler_fork_mode()
 void sigint_handler(int param)
 {
 	syslog(LOG_ERR, "SIGINT received, terminating\n");
-	terminate2();
+	vm_terminate();
 	#if ENABLE_SEMAPHOR_FORK_MODE
 	exit_handler_fork_mode();
 	#endif
@@ -770,7 +770,7 @@ void sigint_handler(int param)
 void sigterm_handler(int param)
 {
 	syslog(LOG_ERR, "SIGTERM received, terminating\n");
-	terminate2();
+	vm_terminate();
 	#if ENABLE_SEMAPHOR_FORK_MODE
 	exit_handler_fork_mode();
 	#endif
@@ -794,9 +794,6 @@ void *database_backup(void *dummy) {
 	}
 	SqlDb_mysql *sqlDb_mysql = dynamic_cast<SqlDb_mysql*>(sqlDb);
 	sqlStore = new MySqlStore(mysql_host, mysql_user, mysql_password, mysql_database);
-	for(int i = 1; i <= 10; i++) {
-		sqlStore->setIgnoreTerminating(i, true);
-	}
 	while(!terminating) {
 		syslog(LOG_NOTICE, "-- START BACKUP PROCESS");
 		time_t actTime = time(NULL);
@@ -836,13 +833,12 @@ void *database_backup(void *dummy) {
 			sleep(1);
 		}
 	}
+	sqlStore->setEnableTerminatingIfSqlError(0, true);
 	while(sqlStore->getAllSize()) {
 		syslog(LOG_NOTICE, "flush sqlStore");
 		sleep(1);
 	}
-	for(int i = 1; i <= 10; i++) {
-		sqlStore->setIgnoreTerminating(i, false);
-	}
+	sqlStore->setEnableTerminatingIfEmpty(0, true);
 	delete sqlDb;
 	delete sqlStore;
 	return NULL;
@@ -891,7 +887,7 @@ void *moving_cache( void *dummy ) {
 			//TODO: error handling
 			//perror ("The following error occurred");
 		}
-		if(terminating2) {
+		if(terminating_moving_cache) {
 			break;
 		} else {
 			++counter[0];
@@ -947,7 +943,6 @@ void *moving_cache( void *dummy ) {
 }
 
 /* cycle calls_queue and save it to MySQL */
-int storing_cdr_force_terminating = 0;
 void *storing_cdr( void *dummy ) {
 	Call *call;
 	time_t createPartitionAt = 0;
@@ -955,7 +950,7 @@ void *storing_cdr( void *dummy ) {
 	time_t createPartitionIpaccAt = 0;
 	time_t createPartitionBillingAgregationAt = 0;
 	time_t checkDiskFreeAt = 0;
-	while(storing_cdr_force_terminating <= 1) {
+	while(1) {
 		if(!opt_nocdr and opt_cdr_partition and !opt_disable_partition_operations and isSqlDriver("mysql")) {
 			time_t actTime = time(NULL);
 			if(actTime - createPartitionAt > 12 * 3600) {
@@ -1025,7 +1020,7 @@ void *storing_cdr( void *dummy ) {
 			calls_queue_size = calltable->calls_queue.size();
 			size_t calls_queue_position = 0;
 			
-			while(calls_queue_position < calls_queue_size && storing_cdr_force_terminating <= 1) {
+			while(calls_queue_position < calls_queue_size) {
 
 				call = calltable->calls_queue[calls_queue_position];
 				
@@ -1078,8 +1073,7 @@ void *storing_cdr( void *dummy ) {
 			
 			calltable->unlock_calls_queue();
 
-			if(storing_cdr_force_terminating == 2 ||
-			   (storing_cdr_force_terminating == 1 && !calls_queue_size)) {
+			if(terminating_storing_cdr && !calls_queue_size) {
 				break;
 			}
 		
@@ -1088,12 +1082,13 @@ void *storing_cdr( void *dummy ) {
 		
 		calltable->lock_calls_queue();
 		calls_queue_size = calltable->calls_queue.size();
-		if(storing_cdr_force_terminating == 1 && !calls_queue_size) {
+		if(terminating_storing_cdr && !calls_queue_size) {
 			calltable->unlock_calls_queue();
 			break;
 		}
 		calltable->unlock_calls_queue();
 	}
+	syslog(LOG_NOTICE, "terminated - storing cdr / message / register");
 	return NULL;
 }
 
@@ -3126,9 +3121,6 @@ int main(int argc, char *argv[]) {
 	    {0, 0, 0, 0}
 	};
 
-	terminating = 0;
-	terminating2 = 0;
-
 	umask(0000);
 
 	openlog("voipmonitor", LOG_CONS | LOG_PERROR | LOG_PID, LOG_DAEMON);
@@ -4178,9 +4170,11 @@ int main(int argc, char *argv[]) {
 		ipaccStartThread();
 	}
 
-	extern AsyncClose *asyncClose;
-	asyncClose = new AsyncClose;
-	asyncClose->startThreads(opt_pcap_dump_writethreads, opt_pcap_dump_writethreads_max);
+	if(opt_pcap_dump_asyncwrite) {
+		extern AsyncClose *asyncClose;
+		asyncClose = new AsyncClose;
+		asyncClose->startThreads(opt_pcap_dump_writethreads, opt_pcap_dump_writethreads_max);
+	}
 	
 	if(!opt_nocdr &&
 	   isSqlDriver("mysql") &&
@@ -4195,7 +4189,7 @@ int main(int argc, char *argv[]) {
 	if(!(opt_pcap_threaded && opt_pcap_queue && 
 	     !opt_pcap_queue_receive_from_ip_port &&
 	     opt_pcap_queue_send_to_ip_port)) {
-		pthread_create(&call_thread, NULL, storing_cdr, NULL);
+		pthread_create(&storing_cdr_thread, NULL, storing_cdr, NULL);
 		/*
 		pthread_create(&destroy_calls_thread, NULL, destroy_calls, NULL);
 		*/
@@ -4383,7 +4377,7 @@ int main(int argc, char *argv[]) {
 		// pre-populate the fileList with anything pre-existing in the directory
 		fileList = listFilesDir(opt_scanpcapdir);
 
-		while(1 and terminating == 0) {
+		while(terminating == 0) {
 
 			if (fileList.empty()) {
 				// queue is empty, time to wait on inotify for some work
@@ -4465,15 +4459,6 @@ int main(int argc, char *argv[]) {
 		// start reading packets
 		//readdump_libnids(handle);
 	 
-		if((opt_read_from_file || opt_pb_read_from_file[0]) && !opt_nocdr) {
-			for(int i = 0; i < opt_mysqlstore_max_threads_cdr; i++) {
-				sqlStore->setIgnoreTerminating(STORE_PROC_ID_CDR_1 + i, true);
-			}
-			for(int i = 0; i < opt_mysqlstore_max_threads_message; i++) {
-				sqlStore->setIgnoreTerminating(STORE_PROC_ID_MESSAGE_1 + i, true);
-			}
-		}
-
 		if(opt_pcap_threaded) {
 			if(opt_pcap_queue) {
 			 
@@ -4504,17 +4489,11 @@ int main(int argc, char *argv[]) {
 				} else {
 				 
 					if(opt_pb_read_from_file[0] && opt_enable_http) {
-						for(int i = 0; i < opt_mysqlstore_max_threads_http; i++) {
-							sqlStore->setIgnoreTerminating(STORE_PROC_ID_HTTP_1 + i, true);
-						}
 						if(opt_tcpreassembly_thread) {
 							tcpReassemblyHttp->setIgnoreTerminating(true);
 						}
 					}
 					if(opt_pb_read_from_file[0] && opt_enable_webrtc) {
-						for(int i = 0; i < opt_mysqlstore_max_threads_webrtc; i++) {
-							sqlStore->setIgnoreTerminating(STORE_PROC_ID_WEBRTC_1 + i, true);
-						}
 						if(opt_tcpreassembly_thread) {
 							tcpReassemblyWebrtc->setIgnoreTerminating(true);
 						}
@@ -4617,17 +4596,6 @@ int main(int argc, char *argv[]) {
 					
 					if(opt_pb_read_from_file[0] && (opt_enable_http || opt_enable_webrtc || opt_enable_ssl)) {
 						sleep(2);
-						if(opt_enable_http) {
-							for(int i = 0; i < opt_mysqlstore_max_threads_http; i++) {
-								sqlStore->setIgnoreTerminating(STORE_PROC_ID_HTTP_1 + i, false);
-							}
-						}
-						if(opt_enable_webrtc) {
-							for(int i = 0; i < opt_mysqlstore_max_threads_webrtc; i++) {
-								sqlStore->setIgnoreTerminating(STORE_PROC_ID_WEBRTC_1 + i, false);
-							}
-						}
-						sleep(2);
 					}
 					
 				}
@@ -4706,48 +4674,26 @@ int main(int argc, char *argv[]) {
 
 	Call *call;
 	calltable->cleanup(0);
-	if((opt_read_from_file || opt_pb_read_from_file[0]) && !opt_nocdr) {
-		for(int i = 0; i < 20; i++) {
-			if(calls_cdr_save_counter > 0 || calls_message_save_counter > 0) {
-				usleep(100000);
-			} else {
-				break;
-			}
-		}
-		if(opt_enable_fraud &&
-		   sqlStore->getSize(STORE_PROC_ID_FRAUD_ALERT_INFO)) {
-			sleep(2);
-		}
-		for(int i = 0; i < opt_mysqlstore_max_threads_cdr; i++) {
-			sqlStore->setIgnoreTerminating(STORE_PROC_ID_CDR_1 + i, false);
-		}
-		for(int i = 0; i < opt_mysqlstore_max_threads_message; i++) {
-			sqlStore->setIgnoreTerminating(STORE_PROC_ID_MESSAGE_1 + i, false);
-		}
-	}
+
 	terminating = 1;
-	if(!(opt_pcap_threaded && opt_pcap_queue && 
-	     !opt_pcap_queue_receive_from_ip_port &&
-	     opt_pcap_queue_send_to_ip_port)) {
-		storing_cdr_force_terminating = opt_read_from_file || opt_pb_read_from_file[0] ? 1 : 2;
-		pthread_join(call_thread, NULL);
-	}
-	while(calltable->calls_queue.size() != 0) {
-			call = calltable->calls_queue.front();
-			calltable->calls_queue.pop_front();
-			delete call;
-			calls_counter--;
-	}
-	while(calltable->calls_deletequeue.size() != 0) {
-			call = calltable->calls_deletequeue.front();
-			calltable->calls_deletequeue.pop_front();
-			call->atFinish();
-			delete call;
-			calls_counter--;
-	}
 
 	regfailedcache->prune(0);
 	
+	for(int i = 0; i < opt_enable_process_rtp_packet; i++) {
+		if(processRtpPacket[i]) {
+			processRtpPacket[i]->terminate();
+			delete processRtpPacket[i];
+		}
+	}
+	if(preProcessPacket) {
+		preProcessPacket->terminate();
+		delete preProcessPacket;
+	}
+	
+	if(sipSendSocket) {
+		delete sipSendSocket;
+	}
+
 	if(tcpReassemblyHttp) {
 		delete tcpReassemblyHttp;
 	}
@@ -4767,69 +4713,6 @@ int main(int argc, char *argv[]) {
 		delete sslData;
 	}
 	
-	for(int i = 0; i < opt_enable_process_rtp_packet; i++) {
-		if(processRtpPacket[i]) {
-			processRtpPacket[i]->terminating();
-			usleep(250000);
-			delete processRtpPacket[i];
-		}
-	}
-	if(preProcessPacket) {
-		preProcessPacket->terminating();
-		usleep(250000);
-		delete preProcessPacket;
-	}
-	
-	if(sipSendSocket) {
-		delete sipSendSocket;
-	}
-
-	/* obsolete ?
-	if(!opt_nocdr) {
-		int size = 0;
-		int msgs = 50;
-                int _counterIpacc = 0;
-		string queryqueue = "";
-		pthread_mutex_lock(&mysqlquery_lock);
-		int mysqlQuerySize = mysqlquery.size();
-		SqlDb *sqlDb = createSqlObject();
-		while(1) {
-			if(mysqlquery.size() == 0) {
-				if(queryqueue != "") {
-					// send the rest 
-					sqlDb->query("drop procedure if exists " + insert_funcname);
-					sqlDb->query("create procedure " + insert_funcname + "()\nbegin\n" + queryqueue + "\nend");
-					sqlDb->query("call " + insert_funcname + "();");
-					//sqlDb->query(queryqueue);
-					queryqueue = "";
-				}
-				break;
-			}
-			string query = mysqlquery.front();
-			mysqlquery.pop();
-			--mysqlQuerySize;
-			queryqueue.append(query + "; ");
-			if(verbosity > 0) {
-				if(query.find("ipacc ") != string::npos) {
-					++_counterIpacc;
-				}
-			}
-			if(size < msgs) {
-				size++;
-			} else {
-				sqlDb->query("drop procedure if exists " + insert_funcname);
-				sqlDb->query("create procedure " + insert_funcname + "()\nbegin\n" + queryqueue + "\nend");
-				sqlDb->query("call " + insert_funcname + "();");
-				//sqlDb->query(queryqueue);
-				queryqueue = "";
-				size = 0;
-			}
-			usleep(100);
-		}
-		delete sqlDb;
-		pthread_mutex_unlock(&mysqlquery_lock);
-	}
-	*/
 	free(sipportmatrix);
 	free(httpportmatrix);
 	free(webrtcportmatrix);
@@ -4838,10 +4721,9 @@ int main(int argc, char *argv[]) {
 	}
 
 	if(opt_cachedir[0] != '\0') {
-		terminating2 = 1;
+		terminating_moving_cache = 1;
 		pthread_join(cachedir_thread, NULL);
 	}
-	delete calltable;
 	
 	if(ipfilter) {
 		delete ipfilter;
@@ -4867,6 +4749,64 @@ int main(int argc, char *argv[]) {
 		SafeAsyncQueue_base::stopTimerThread(true);
 	}
 	
+	if(mirrorip) {
+		delete mirrorip;
+	}
+
+	if (opt_fork){
+		unlink(opt_pidfile);
+	}
+	pthread_mutex_destroy(&tartimemaplock);
+	pthread_mutex_destroy(&terminate_packetbuffer_lock);
+
+	extern TcpReassemblySip tcpReassemblySip;
+	tcpReassemblySip.clean();
+	ipfrag_prune(0, 1);
+	termIpacc();
+
+	if(opt_pcap_dump_asyncwrite) {
+		extern AsyncClose *asyncClose;
+		if(asyncClose) {
+			asyncClose->safeTerminate();
+			delete asyncClose;
+		}
+	}
+	
+	if(opt_pcap_dump_tar) {
+		if(sverb.chunk_buffer > 1) { 
+			cout << "start destroy tar queue" << endl << flush;
+		}
+		pthread_join(tarqueuethread, NULL);
+		delete tarQueue;
+		if(sverb.chunk_buffer > 1) { 
+			cout << "end destroy tar queue" << endl << flush;
+		}
+	}
+
+	if(!(opt_pcap_threaded && opt_pcap_queue && 
+	     !opt_pcap_queue_receive_from_ip_port &&
+	     opt_pcap_queue_send_to_ip_port)) {
+		terminating_storing_cdr = 1;
+		pthread_join(storing_cdr_thread, NULL);
+	}
+	while(calltable->calls_queue.size() != 0) {
+			call = calltable->calls_queue.front();
+			calltable->calls_queue.pop_front();
+			delete call;
+			calls_counter--;
+	}
+	while(calltable->calls_deletequeue.size() != 0) {
+			call = calltable->calls_deletequeue.front();
+			calltable->calls_deletequeue.pop_front();
+			call->atFinish();
+			delete call;
+			calls_counter--;
+	}
+	delete calltable;
+
+	delete regfailedcache;
+	
+	pthread_mutex_destroy(&mysqlconnect_lock);
 	extern SqlDb *sqlDbSaveCall;
 	if(sqlDbSaveCall) {
 		delete sqlDbSaveCall;
@@ -4888,47 +4828,9 @@ int main(int argc, char *argv[]) {
 		delete sqlDbCleanspool;
 	}
 	
-	if(mirrorip) {
-		delete mirrorip;
-	}
-
-	if (opt_fork){
-		unlink(opt_pidfile);
-	}
-	pthread_mutex_destroy(&mysqlconnect_lock);
-	pthread_mutex_destroy(&tartimemaplock);
-	pthread_mutex_destroy(&terminate_packetbuffer_lock);
-
-	extern TcpReassemblySip tcpReassemblySip;
-	tcpReassemblySip.clean();
-	ipfrag_prune(0, 1);
-	termIpacc();
-	delete regfailedcache;
-
-	extern AsyncClose *asyncClose;
-	if(asyncClose) {
-		if(opt_read_from_file ||
-		   opt_pb_read_from_file[0]) {
-			asyncClose->processAll();
-		}
-		delete asyncClose;
-	}
+	sqlStore->setEnableTerminatingIfEmpty(0, true);
+	sqlStore->setEnableTerminatingIfSqlError(0, true);
 	
-	if(opt_pcap_dump_tar) {
-		if(sverb.chunk_buffer > 1) { 
-			cout << "start destroy tar queue" << endl << flush;
-		}
-		tarQueue->flushQueue();
-		sleep(2);
-		delete tarQueue;
-		if(sverb.chunk_buffer > 1) { 
-			cout << "end destroy tar queue" << endl << flush;
-		}
-	}
-
-
-//	mysql_library_end();
-
 	if(sqlStore) {
 		delete sqlStore;
 	}
@@ -4951,7 +4853,7 @@ void terminate_packetbuffer() {
 			delete pcapQueueR;
 		} else {
 			pcapQueueI->terminate();
-			sleep(opt_pb_read_from_file[0] && (opt_enable_http || opt_enable_webrtc || opt_enable_ssl) ? 10 : 1);
+			sleep(1);
 			if(opt_pb_read_from_file[0] && (opt_enable_http || opt_enable_webrtc || opt_enable_ssl) && opt_tcpreassembly_thread) {
 				if(opt_enable_http) {
 					tcpReassemblyHttp->setIgnoreTerminating(false);

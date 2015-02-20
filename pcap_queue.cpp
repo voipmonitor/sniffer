@@ -2497,7 +2497,7 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void *arg, unsigned int 
 		}
 		if(!this->startCapture()) {
 			this->threadTerminated = true;
-			terminating = true;
+			vm_terminate();
 			return(NULL);
 		}
 		this->threadInitOk = 1;
@@ -2875,7 +2875,7 @@ void* PcapQueue_readFromInterface::threadFunction(void *arg, unsigned int arg2) 
 		this->threadInitOk = true;
 	} else {
 		this->threadTerminated = true;
-		terminating = 1;
+		vm_terminate();
 		return(NULL);
 	}
 	this->initStat();
@@ -2971,15 +2971,15 @@ void* PcapQueue_readFromInterface::threadFunction(void *arg, unsigned int arg2) 
 						blockStoreBypassQueue->push(blockStore[blockStoreIndex]);
 						++sumBlocksCounterIn[0];
 						blockStore[blockStoreIndex] = NULL;
-						sleep(sverb.test_rtp_performance ? 120 :
-						      opt_enable_ssl ? 10 :
-						      sverb.chunk_buffer ? 20 : 5);
-						calltable->cleanup(0);
-						sleep(5);
-						extern AsyncClose *asyncClose;
-						asyncClose->processAll();
-						this->pcapStat();
-						terminating = 1;
+						int sleepTime = sverb.test_rtp_performance ? 120 :
+								opt_enable_ssl ? 10 :
+								sverb.chunk_buffer ? 20 : 5;
+						while(sleepTime && !terminating) {
+							syslog(LOG_NOTICE, "time to terminating: %u", sleepTime);
+							sleep(1);
+							--sleepTime;
+						}
+						vm_terminate();
 					}
 					break;
 				} else if(res == 0) {
@@ -3368,7 +3368,7 @@ void *PcapQueue_readFromFifo::threadFunction(void *arg, unsigned int arg2) {
 		this->threadInitOk = true;
 	} else {
 		this->threadTerminated = true;
-		terminating = 1;
+		vm_terminate();
 		return(NULL);
 	}
 	if(this->packetServerDirection == directionRead) {
@@ -3556,7 +3556,7 @@ void *PcapQueue_readFromFifo::writeThreadFunction(void *arg, unsigned int arg2) 
 		this->writeThreadInitOk = true;
 	} else {
 		this->writeThreadTerminated = true;
-		terminating = 1;
+		vm_terminate();
 		return(NULL);
 	}
 	pcap_block_store *blockStore;

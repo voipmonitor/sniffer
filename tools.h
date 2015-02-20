@@ -775,6 +775,7 @@ public:
 			processAll(i);
 		}
 	}
+	void safeTerminate();
 	void preparePstatData(int threadIndex);
 	double getCpuUsagePerc(int threadIndex, bool preparePstatData = false);
 	int getCountThreads() {

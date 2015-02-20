@@ -44,7 +44,6 @@ extern int opt_saveWAV;
 extern int opt_packetbuffered;    // Make .pcap files writing ‘‘packet-buffered’’
 extern int opt_rtcp;              // Make .pcap files writing ‘‘packet-buffered’’
 extern int verbosity;
-extern int terminating;
 extern int opt_rtp_firstleg;
 extern int opt_sip_register;
 extern int opt_norecord_header;

@@ -125,10 +125,9 @@ extern int opt_mysqlstore_limit_queue_register;
 extern Calltable *calltable;
 extern int opt_silencedetect;
 extern int opt_clippingdetect;
+extern int terminating;
 
 volatile int calls_counter = 0;
-volatile int calls_cdr_save_counter = 0;
-volatile int calls_message_save_counter = 0;
 
 extern char mac[32];
 
@@ -280,6 +279,7 @@ Call::Call(char *call_id, unsigned long call_id_len, time_t time) :
 	rtp_timeout_exceeded = 0;
 	sipwithoutrtp_timeout_exceeded = 0;
 	oneway_timeout_exceeded = 0;
+	force_terminate = 0;
 	pcap_drop = 0;
 	
 	onCall_2XX = false;
@@ -1862,7 +1862,9 @@ Call::saveToDb(bool enableBatchIfPossible) {
 	cdr.add(lastSIPresponseNum, "lastSIPresponseNum");
 
 	int bye;
-	if(absolute_timeout_exceeded) {
+	if(force_terminate) {
+		bye = 110;
+	} else if(absolute_timeout_exceeded) {
 		bye = 102;
 	} else if(bye_timeout_exceeded) {
 		bye = 103;
@@ -3503,42 +3505,6 @@ Calltable::find_by_skinny_ipTuples(unsigned int saddr, unsigned int daddr) {
  * ic currtime = 0, save it immediatly
 */
 
-#if 0
-int
-Calltable::cleanup_old( time_t currtime ) {
-	for (call = calls_list.begin(); call != calls_list.end();) {
-		if(verbosity > 2) (*call)->dump();
-		// rtptimeout seconds of inactivity will save this call and remove from call table
-		if(currtime == 0 || ((*call)->destroy_call_at != 0 and (*call)->destroy_call_at <= currtime) || (currtime - (*call)->get_last_packet_time() > rtptimeout)) {
-			if ((*call)->get_f_pcap() != NULL){
-				pcap_dump_flush((*call)->get_f_pcap());
-				if ((*call)->get_f_pcap() != NULL) 
-					pcap_dump_close((*call)->get_f_pcap());
-				(*call)->set_f_pcap(NULL);
-			}
-			if(currtime == 0) {
-				/* we are saving calls because of terminating SIGTERM and we dont know 
-				 * if the call ends successfully or not. So we dont want to confuse monitoring
-				 * applications which reports unterminated calls so mark this call as sighup */
-				(*call)->sighup = true;
-				if(verbosity > 2)
-					syslog(LOG_NOTICE, "Set call->sighup\n");
-			}
-			// we have to close all raw files as there can be data in buffers 
-			(*call)->closeRawFiles();
-			/* move call to queue for mysql processing */
-			lock_calls_queue();
-			calls_queue.push(*call);
-			unlock_calls_queue();
-			calls_list.erase(call++);
-		} else {
-			++call;
-		}
-	}
-	return 0;
-}
-#endif
-
 int
 Calltable::cleanup( time_t currtime ) {
 	if(verbosity && verbosityE > 1) {
@@ -3558,6 +3524,7 @@ Calltable::cleanup( time_t currtime ) {
 		bool closeCall = false;
 		if(currtime == 0 || call->force_close) {
 			closeCall = true;
+			call->force_terminate = true;
 		} else {
 			if(call->destroy_call_at != 0 && call->destroy_call_at <= currtime) {
 				closeCall = true;
@@ -3612,6 +3579,10 @@ Calltable::cleanup( time_t currtime ) {
 			}
 			#endif
 			// Close RTP dump file ASAP to save file handles
+			if(currtime == 0 && terminating) {
+				call->getPcap()->close();
+				call->getPcapSip()->close();
+			}
 			call->getPcapRtp()->close();
 
 			if(currtime == 0) {
@@ -3640,6 +3611,13 @@ Calltable::cleanup( time_t currtime ) {
 		}
 	}
 	unlock_calls_listMAP();
+	
+	if(currtime == 0 && terminating) {
+		extern int terminated_call_cleanup;
+		terminated_call_cleanup = 1;
+		syslog(LOG_NOTICE, "terminated - call cleanup");
+	}
+	
 	return 0;
 }
 

@@ -106,8 +106,6 @@ volatile unsigned int glob_last_packet_time;
 
 Calltable *calltable;
 extern volatile int calls_counter;
-extern volatile int calls_cdr_save_counter;
-extern volatile int calls_message_save_counter;
 extern int opt_pcap_queue;
 extern int opt_saveSIP;	  	// save SIP packets to pcap file?
 extern int opt_saveRTP;	 	// save RTP packets to pcap file?
@@ -516,7 +514,7 @@ save:
 */
 inline void save_packet(Call *call, struct pcap_pkthdr *header, const u_char *packet, 
 			unsigned int saddr, int source, unsigned int daddr, int dest, 
-			int istcp, iphdr2 *header_ip, char *data, int datalen, int dataoffset, int type, 
+			int istcp, iphdr2 *header_ip, char *data, unsigned int datalen, unsigned int dataoffset, int type, 
 			int forceSip, int dlt, int sensor_id) {
 	bool allocPacket = false;
 	bool allocHeader = false;
@@ -541,7 +539,7 @@ inline void save_packet(Call *call, struct pcap_pkthdr *header, const u_char *pa
 	    (istcp && header->caplen > limitCapLen))) {
 		unsigned long l;
 		char *s = gettag(data, datalen, "\nContent-Length:", &l);
-		if(l && l < (unsigned long)datalen) {
+		if(l && l < datalen) {
 			long int contentLength = atol(s);
 			if(contentLength) {
 				if(istcp &&
@@ -636,11 +634,11 @@ inline void save_packet(Call *call, struct pcap_pkthdr *header, const u_char *pa
 
 inline void save_sip_packet(Call *call, struct pcap_pkthdr *header, const u_char *packet, 
 			    unsigned int saddr, int source, unsigned int daddr, int dest, 
-			    int istcp, iphdr2 *header_ip, char *data, int sipDatalen, int dataoffset, int type, 
-			    int datalen, int sipOffset,
+			    int istcp, iphdr2 *header_ip, char *data, unsigned int sipDatalen, unsigned int dataoffset, int type, 
+			    unsigned int datalen, unsigned int sipOffset,
 			    int forceSip, int dlt, int sensor_id) {
 	if(istcp && 
-	   sipDatalen && (sipDatalen < (unsigned)datalen || sipOffset) &&
+	   sipDatalen && (sipDatalen < datalen || sipOffset) &&
 	   (unsigned)datalen + sipOffset < header->caplen) {
 		bpf_u_int32  oldcaplen = header->caplen;
 		bpf_u_int32  oldlen = header->len;
@@ -1681,17 +1679,6 @@ Call *new_invite_register(int sip_method, char *data, int datalen, struct pcap_p
 	strncpy(call->fbasename, callidstr, MAX_FNAME - 1);
 	call->fbasename[MIN(strlen(callidstr), MAX_FNAME - 1)] = '\0';
 	call->msgcount++;
-	if(!opt_nocdr) {
-		switch(sip_method) {
-		case INVITE: 
-		case SKINNY_NEW:
-			++calls_cdr_save_counter;
-			break;
-		case MESSAGE:
-			++calls_message_save_counter;
-			break;
-		}
-	}
 
 	char *s;
 	unsigned long l;
@@ -4877,11 +4864,12 @@ PreProcessPacket::PreProcessPacket() {
 	memset(this->threadPstatData, 0, sizeof(this->threadPstatData));
 	this->outThreadId = 0;
 	this->_sync_push = 0;
-	this->_terminating = false;
+	this->term_preProcess = false;
 	pthread_create(&this->out_thread_handle, NULL, _PreProcessPacket_outThreadFunction, this);
 }
 
 PreProcessPacket::~PreProcessPacket() {
+	terminate();
 	for(unsigned int i = 0; i < this->qringmax; i++) {
 		delete this->qring[i];
 	}
@@ -4975,7 +4963,7 @@ void PreProcessPacket::push(u_int64_t packet_number,
 void *PreProcessPacket::outThreadFunction() {
 	this->outThreadId = get_unix_tid();
 	syslog(LOG_NOTICE, "start PreProcessPacket out thread %i", this->outThreadId);
-	while(!this->_terminating) {
+	while(!this->term_preProcess) {
 		if(this->qring[this->readit]->used == 1) {
 			int was_rtp = 0;
 			int voippacket = 0;
@@ -5033,8 +5021,9 @@ double PreProcessPacket::getCpuUsagePerc(bool preparePstatData) {
 	return(-1);
 }
 
-void PreProcessPacket::terminating() {
-	this->_terminating = true;
+void PreProcessPacket::terminate() {
+	this->term_preProcess = true;
+	pthread_join(this->out_thread_handle, NULL);
 }
 
 bool PreProcessPacket::sipProcess(packet_parse_s *parse_packet) {
@@ -5195,7 +5184,7 @@ ProcessRtpPacket::ProcessRtpPacket(int indexThread) {
 	}
 	memset(this->threadPstatData, 0, sizeof(this->threadPstatData));
 	this->outThreadId = 0;
-	this->_terminating = false;
+	this->term_processRtp = false;
 	#if RTP_PROF
 	__prof__ProcessRtpPacket_outThreadFunction_begin = 0;
 	__prof__ProcessRtpPacket_outThreadFunction = 0;
@@ -5210,6 +5199,7 @@ ProcessRtpPacket::ProcessRtpPacket(int indexThread) {
 }
 
 ProcessRtpPacket::~ProcessRtpPacket() {
+	terminate();
 	delete [] this->qring;
 }
 
@@ -5257,7 +5247,7 @@ void *ProcessRtpPacket::outThreadFunction() {
 	#endif
 	this->outThreadId = get_unix_tid();
 	syslog(LOG_NOTICE, "start ProcessRtpPacket out thread %i", this->outThreadId);
-	while(!this->_terminating) {
+	while(!this->term_processRtp) {
 		if(this->qring[this->readit].used == 1) {
 			packet_s *_packet = &this->qring[this->readit];
 			this->rtp(_packet);
@@ -5376,6 +5366,7 @@ double ProcessRtpPacket::getCpuUsagePerc(bool preparePstatData) {
 	return(-1);
 }
 
-void ProcessRtpPacket::terminating() {
-	this->_terminating = true;
+void ProcessRtpPacket::terminate() {
+	this->term_processRtp = true;
+	pthread_join(this->out_thread_handle, NULL);
 }

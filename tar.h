@@ -110,8 +110,6 @@ public:
 		this->lzmaStream = NULL;
 		memset(&tar, 0, sizeof(tar));
 #endif
-		//partCounterSize = 0;
-		//closedPartCounter = 0;
 		partCounter = 0;
 		lastFlushTime = 0;
 		lastWriteTime = 0;
@@ -165,17 +163,7 @@ public:
 	ssize_t writeLzma(const void *buf, size_t len);
 #endif
 	void flush();
-
 	void addtofilesqueue();
-	
-	/*
-	bool allPartsClosed() {
-		return(closedPartCounter && partCounterSize == closedPartCounter);
-	}
-	void incClosedPartCounter() {
-		++closedPartCounter;
-	}
-	*/
 	
 	bool isReadError() {
 		return(readData.error);
@@ -398,7 +386,7 @@ public:
 	int write(int, unsigned int, data_t);
 	int queuelen();
 	unsigned int last_flushTars;
-	void cleanTars();
+	void cleanTars(int term_pass = false);
 	static void *tarthreadworker(void*);
 	void preparePstatData(int threadIndex);
 	double getCpuUsagePerc(int threadIndex, bool preparePstatData);

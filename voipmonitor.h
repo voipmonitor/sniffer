@@ -144,4 +144,6 @@ extern
 #endif
 sVerbose sverb;
 
+void vm_terminate();
+
 #endif

@@ -31,7 +31,6 @@ extern int debugclean;
 extern int opt_id_sensor_cleanspool;
 extern char configfile[1024];
 extern int terminating;
-extern int terminating2;
 
 extern unsigned int opt_maxpoolsize;
 extern unsigned int opt_maxpooldays;
@@ -1823,7 +1822,7 @@ bool isSetCleanspoolParameters() {
 
 void *clean_spooldir(void *dummy) {
 	if(debugclean) syslog(LOG_ERR, "run clean_spooldir()");
-	while(!terminating2) {
+	while(!terminating) {
 		if(!suspendCleanspool) {
 			bool timeOk = false;
 			if(opt_cleanspool_enable_run_hour_from >= 0 &&
@@ -1851,7 +1850,7 @@ void *clean_spooldir(void *dummy) {
 				check_disk_free_run(false);
 			}
 		}
-		for(int i = 0; i < 300 && !terminating2; i++) {
+		for(int i = 0; i < 300 && !terminating; i++) {
 			sleep(1);
 		}
 	}

@@ -206,7 +206,6 @@ extern int rtp_threaded;
 extern int rtptimeout;
 extern int sql_noerror;
 extern int telnumfilter_reload_do;
-extern int terminating;
 extern int verbosity;
 extern int verbosityE;
 extern ip_port opt_pcap_queue_receive_from_ip_port;

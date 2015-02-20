@@ -1261,7 +1261,7 @@ bool FraudAlert_rc::checkOkAlert(u_int32_t ip, u_int64_t count, u_int64_t at) {
 FraudAlerts::FraudAlerts() {
 	threadPopCallInfo = 0;
 	runPopCallInfoThread = false;
-	terminatingPopCallInfoThread = false;
+	termPopCallInfoThread = false;
 	_sync_alerts = 0;
 	initPopCallInfoThread();
 }
@@ -1371,7 +1371,7 @@ void FraudAlerts::evRegisterResponse(u_int32_t ip, u_int64_t at) {
 }
 
 void FraudAlerts::stopPopCallInfoThread(bool wait) {
-	terminatingPopCallInfoThread = true;
+	termPopCallInfoThread = true;
 	while(wait && runPopCallInfoThread) {
 		usleep(1000);
 	}
@@ -1389,7 +1389,7 @@ void FraudAlerts::popCallInfoThread() {
 	runPopCallInfoThread = true;
 	sFraudCallInfo callInfo;
 	sFraudEventInfo eventInfo;
-	while(!terminating && !terminatingPopCallInfoThread) {
+	while(!terminating && !termPopCallInfoThread) {
 		bool okPop = false;
 		if(callQueue.pop(&callInfo)) {
 			lock_alerts();

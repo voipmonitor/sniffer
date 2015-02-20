@@ -72,6 +72,9 @@ extern MySqlStore *sqlStore;
 
 
 extern int terminating; 
+extern int terminated_async;
+extern int terminated_tar_flush_queue;
+extern int terminated_tar;
 extern TarQueue *tarQueue;
 extern volatile unsigned int glob_last_packet_time;
 
@@ -1050,6 +1053,7 @@ void *TarQueue::tarthreadworker(void *arg) {
 	tarthread->threadId = get_unix_tid();
 
 	while(1) {
+		int terminate_pass = terminated_tar_flush_queue;
 		while(1) {
 			bool doProcessData = false;
 			if(tarthread->queue_data.empty()) { 
@@ -1267,7 +1271,10 @@ void *TarQueue::tarthreadworker(void *arg) {
 			}
 		}
 		// quque is empty - sleep before next run
-		usleep(250000);
+		usleep(terminating ? 100000 : 250000);
+		if(terminate_pass) {
+			break;
+		}
 	}
 	tarthread->threadEnd = true;
 	return NULL;
@@ -1353,9 +1360,9 @@ TarQueue::tarthreads_t::processData(data_t *data, bool isClosed, size_t lenForPr
 }
 
 void
-TarQueue::cleanTars() {
+TarQueue::cleanTars(int terminate_pass) {
 	// check if tar can be removed from map (check if there are still calls in memory) 
-	if(!terminating &&
+	if(!terminate_pass &&
 	   (last_flushTars + 10) > glob_last_packet_time) {
 		// clean only each >10 seconds 
 		return;
@@ -1369,10 +1376,11 @@ TarQueue::cleanTars() {
 		// walk through all tars
 		Tar *tar = tars_it->second;
 		pthread_mutex_lock(&tartimemaplock);
-		unsigned int lpt = terminating ? time(NULL) : glob_last_packet_time;
+		unsigned int lpt = terminate_pass ? time(NULL) : glob_last_packet_time;
 		// find the tar in tartimemap 
-		if((tartimemap.find(tar->created_at) == tartimemap.end()) and (lpt > (tar->created_at + TAR_MODULO_SECONDS + 10)) && // +10 seconds more in new period to be sure nothing is in buffers
-		   true/*tar->allPartsClosed()*/) {
+		if((tartimemap.find(tar->created_at) == tartimemap.end()) && 
+		   (lpt > (tar->created_at + TAR_MODULO_SECONDS + 10) || // +10 seconds more in new period to be sure nothing is in buffers
+		    terminate_pass)) {
 			// there are no calls in this start time - clean it
 			pthread_mutex_unlock(&tartimemaplock);
 			if(tars_it->second->writing) {
@@ -1436,13 +1444,11 @@ TarQueue::flushQueue() {
 			queue_data[winner_qtype][winnertime].clear();
 			queue_data[winner_qtype].erase(winnertime);
 			unlock();
-			if(!terminating) {
-				vector<data_t>::iterator itv;
-				for(itv = winner.begin(); itv != winner.end(); itv++) {
-					unsigned int time = itv->buffer->getTime();
-					time -= time % TAR_MODULO_SECONDS;
-					this->write(winner_qtype, time, *itv);
-				}
+			vector<data_t>::iterator itv;
+			for(itv = winner.begin(); itv != winner.end(); itv++) {
+				unsigned int time = itv->buffer->getTime();
+				time -= time % TAR_MODULO_SECONDS;
+				this->write(winner_qtype, time, *itv);
 			}
 			cleanTars();
 			continue;
@@ -1554,9 +1560,27 @@ bool TarQueue::allThreadsEnds() {
 
 void *TarQueueThread(void *dummy) {
 	// run each second flushQueue
-	while(!tarQueue->allThreadsEnds()) {
-		tarQueue->flushQueue();
-		sleep(1);
+	while(1) {
+		if(terminated_tar_flush_queue) {
+			if(tarQueue->allThreadsEnds()) {
+				tarQueue->cleanTars(true);
+				terminated_tar = 1;
+				syslog(LOG_NOTICE, "terminated - tar");
+				break;
+			}
+		} else {
+			int do_terminated_tar_flush_queue = terminated_async;
+			tarQueue->flushQueue();
+			if(do_terminated_tar_flush_queue) {
+				 terminated_tar_flush_queue = 1;
+				 syslog(LOG_NOTICE, "terminated - tar - flush queue");
+			}
+		}
+		if(terminating) {
+			usleep(100000);
+		} else {
+			sleep(1);
+		}
 	}      
 	return NULL;
 }      

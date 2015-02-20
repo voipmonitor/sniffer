@@ -386,12 +386,12 @@ class rqueue_quick {
 public:
 	rqueue_quick(size_t length,
 		     unsigned int pushUsleep, unsigned int popUsleep,
-		     int *terminating = NULL,
+		     int *term_rqueue = NULL,
 		     bool binaryBuffer = true) {
 		this->length = length;
 		this->pushUsleep = pushUsleep;
 		this->popUsleep = popUsleep;
-		this->terminating = terminating;
+		this->term_rqueue = term_rqueue;
 		this->binaryBuffer = binaryBuffer;
 		buffer = new typeItem[this->length + 1];
 		free = new v_int[this->length + 1];
@@ -410,7 +410,7 @@ public:
 		if(useLock) lock();
 		while(free[writeit] == 0) {
 			if(waitForFree) {
-				if(terminating && *terminating) {
+				if(term_rqueue && *term_rqueue) {
 					if(useLock) unlock();
 					return(false);
 				}
@@ -438,7 +438,7 @@ public:
 		if(useLock) lock();
 		while(free[readit] == 1) {
 			if(waitForFree) {
-				if(terminating && *terminating) {
+				if(term_rqueue && *term_rqueue) {
 					if(useLock) unlock();
 					return(false);
 				}
@@ -476,7 +476,7 @@ private:
 	bool binaryBuffer;
 	unsigned int pushUsleep;
 	unsigned int popUsleep;
-	int *terminating;
+	int *term_rqueue;
 	typeItem *buffer;
 	v_int *free;
 	v_u_int32_t readit;
@@ -490,17 +490,17 @@ template<class typeItem>
 class rqueue_quick_boost {
 public:
 	rqueue_quick_boost(unsigned int pushUsleep, unsigned int popUsleep,
-			   int *terminating = NULL) {
+			   int *term_rqueue = NULL) {
 		this->pushUsleep = pushUsleep;
 		this->popUsleep = popUsleep;
-		this->terminating = terminating;
+		this->term_rqueue = term_rqueue;
 		this->_sync_lock = 0;
 	}
 	bool push(typeItem *item, bool waitForFree, bool useLock = false) {
 		if(useLock) lock();
 		while(!spsc_queue.push(*item)) {
 			if(waitForFree) {
-				if(terminating && *terminating) {
+				if(term_rqueue && *term_rqueue) {
 					if(useLock) unlock();
 					return(false);
 				}
@@ -517,7 +517,7 @@ public:
 		if(useLock) lock();
 		while(!spsc_queue.pop(*item)) {
 			if(waitForFree) {
-				if(terminating && *terminating) {
+				if(term_rqueue && *term_rqueue) {
 					if(useLock) unlock();
 					return(false);
 				}
@@ -540,7 +540,7 @@ private:
 	boost::lockfree::spsc_queue<typeItem, boost::lockfree::capacity<20000> > spsc_queue;
 	unsigned int pushUsleep;
 	unsigned int popUsleep;
-	int *terminating;
+	int *term_rqueue;
 	volatile int _sync_lock;
 };
 #else
@@ -548,10 +548,10 @@ template<class typeItem>
 class rqueue_quick_boost : public rqueue_quick<typeItem> {
 public:
 	rqueue_quick_boost(unsigned int pushUsleep, unsigned int popUsleep,
-			   int *terminating = NULL) 
+			   int *term_rqueue = NULL) 
 	 : rqueue_quick<typeItem>(20000,
 				  pushUsleep, popUsleep,
-				  terminating,
+				  term_rqueue,
 				  true) {
 	}
 };

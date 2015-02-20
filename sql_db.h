@@ -329,7 +329,9 @@ public:
 	void _exportToFileSqlFormat(FILE *file, string queries);
 	void lock();
 	void unlock();
-	void setIgnoreTerminating(bool ignoreTerminating);
+	void setEnableTerminatingDirectly(bool enableTerminatingDirectly);
+	void setEnableTerminatingIfEmpty(bool enableTerminatingIfEmpty);
+	void setEnableTerminatingIfSqlError(bool enableTerminatingIfSqlError);
 	void setEnableAutoDisconnect(bool enableAutoDisconnect = true);
 	void setConcatLimit(int concatLimit);
 	void setEnableTransaction(bool enableTransaction = true);
@@ -343,6 +345,7 @@ public:
 	bool operator < (const MySqlStore_process& other) const { 
 		return(this->id < other.id); 
 	}
+	void waitForTerminate();
 private:
 	string getInsertFuncName();
 private:
@@ -355,7 +358,9 @@ private:
 	SqlDb *sqlDb;
 	deque<string> query_buff;
 	bool terminated;
-	bool ignoreTerminating;
+	bool enableTerminatingDirectly;
+	bool enableTerminatingIfEmpty;
+	bool enableTerminatingIfSqlError;
 	bool enableAutoDisconnect;
 };
 
@@ -369,7 +374,9 @@ public:
 	void query_lock(const char *query_str, int id);
 	void lock(int id);
 	void unlock(int id);
-	void setIgnoreTerminating(int id, bool ignoreTerminating);
+	void setEnableTerminatingDirectly(int id, bool enableTerminatingDirectly);
+	void setEnableTerminatingIfEmpty(int id, bool enableTerminatingIfEmpty);
+	void setEnableTerminatingIfSqlError(int id, bool enableTerminatingIfSqlError);
 	void setEnableAutoDisconnect(int id, bool enableAutoDisconnect = true);
 	void setDefaultConcatLimit(int defaultConcatLimit);
 	void setConcatLimit(int id, int concatLimit);
@@ -400,6 +407,9 @@ private:
 	string cloud_token;
 	int defaultConcatLimit;
 	volatile int _sync_processes;
+	bool enableTerminatingDirectly;
+	bool enableTerminatingIfEmpty;
+	bool enableTerminatingIfSqlError;
 };
 
 SqlDb *createSqlObject();

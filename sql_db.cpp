@@ -43,8 +43,6 @@ extern pthread_mutex_t mysqlconnect_lock;
 extern int opt_mos_lqo;
 extern int opt_read_from_file;
 extern char opt_pb_read_from_file[256];
-extern volatile int calls_cdr_save_counter;
-extern volatile int calls_message_save_counter;
 extern int opt_enable_fraud;
 
 extern char sql_driver[256];
@@ -769,7 +767,11 @@ bool SqlDb_mysql::query(string query, bool callFromStoreProcessWithFixDeadlock) 
 			syslog(LOG_INFO, prepareQueryForPrintf(preparedQuery).c_str());
 		}
 		if(pass > 0) {
-			sleep(1);
+			if(terminating) {
+				usleep(100000);
+			} else {
+				sleep(1);
+			}
 			syslog(LOG_INFO, "next attempt %u - query: %s", attempt - 1, prepareQueryForPrintf(preparedQuery).c_str());
 		}
 		if(!this->connected()) {
@@ -815,10 +817,10 @@ bool SqlDb_mysql::query(string query, bool callFromStoreProcessWithFixDeadlock) 
 				break;
 			}
 		}
-		if(terminating) {
+		++attempt;
+		if(terminating && attempt >= 2) {
 			break;
 		}
-		++attempt;
 	}
 	return(rslt);
 }
@@ -1075,7 +1077,11 @@ bool SqlDb_odbc::query(string query, bool callFromStoreProcessWithFixDeadlock) {
 			syslog(LOG_INFO, prepareQueryForPrintf(preparedQuery).c_str());
 		}
 		if(pass > 0) {
-			sleep(1);
+			if(terminating) {
+				usleep(100000);
+			} else {
+				sleep(1);
+			}
 		}
 		if(!this->connected()) {
 			this->connect();
@@ -1115,10 +1121,10 @@ bool SqlDb_odbc::query(string query, bool callFromStoreProcessWithFixDeadlock) {
 				break;
 			}
 		}
-		if(terminating) {
+		++attempt;
+		if(terminating && attempt >= 2) {
 			break;
 		}
-		++attempt;
 	}
 	return(this->okRslt(rslt) || rslt == SQL_NO_DATA);
 }
@@ -1211,7 +1217,9 @@ MySqlStore_process::MySqlStore_process(int id, const char *host, const char *use
 				       int concatLimit) {
 	this->id = id;
 	this->terminated = false;
-	this->ignoreTerminating = false;
+	this->enableTerminatingDirectly = false;
+	this->enableTerminatingIfEmpty = false;
+	this->enableTerminatingIfSqlError = false;
 	this->enableAutoDisconnect = false;
 	this->concatLimit = concatLimit;
 	this->enableTransaction = false;
@@ -1226,12 +1234,7 @@ MySqlStore_process::MySqlStore_process(int id, const char *host, const char *use
 }
 
 MySqlStore_process::~MySqlStore_process() {
-	if(this->thread) {
-		while(!this->terminated) {
-			usleep(100000);
-		}
-		pthread_detach(this->thread);
-	}
+	this->waitForTerminate();
 	if(this->sqlDb) {
 		delete this->sqlDb;
 	}
@@ -1296,12 +1299,6 @@ void MySqlStore_process::store() {
 				if(query_len && query[query_len - 1] != ';') {
 					queryqueue.append("; ");
 				}
-				if(this->id >= STORE_PROC_ID_CDR_1 && this->id < STORE_PROC_ID_CDR_1 + 10) {
-					--calls_cdr_save_counter;
-				}
-				else if(this->id >= STORE_PROC_ID_MESSAGE_1 && this->id < STORE_PROC_ID_MESSAGE_1 + 10) {
-					--calls_message_save_counter;
-				}
 			}
 			if(size < this->concatLimit && !maxAllowedPacketIsFull) {
 				size++;
@@ -1314,19 +1311,23 @@ void MySqlStore_process::store() {
 				}
 			}
 			
-			if(!opt_read_from_file && !opt_pb_read_from_file[0] &&
-			   terminating && !this->sqlDb->connected()) {
+			if(terminating && this->sqlDb->getLastError() && this->enableTerminatingIfSqlError) {
 				break;
 			}
 		}
-		if(terminating && !this->ignoreTerminating) {
+		if(terminating && 
+		   (this->enableTerminatingDirectly ||
+		    (this->enableTerminatingIfEmpty && this->query_buff.size() == 0) ||
+		    (this->enableTerminatingIfSqlError && this->sqlDb->getLastError()))) {
 			break;
-		} else if(this->enableAutoDisconnect) {
+		}
+		if(this->enableAutoDisconnect) {
 			this->disconnect();
 		}
 		sleep(1);
 	}
 	this->terminated = true;
+	syslog(LOG_NOTICE, "terminated - sql store %u", this->id);
 }
 
 void MySqlStore_process::_store(string beginProcedure, string endProcedure, string queries) {
@@ -1430,8 +1431,16 @@ void MySqlStore_process::unlock() {
 	pthread_mutex_unlock(&this->lock_mutex);
 }
 
-void MySqlStore_process::setIgnoreTerminating(bool ignoreTerminating) {
-	this->ignoreTerminating = ignoreTerminating;
+void MySqlStore_process::setEnableTerminatingDirectly(bool enableTerminatingDirectly) {
+	this->enableTerminatingDirectly = enableTerminatingDirectly;
+}
+
+void MySqlStore_process::setEnableTerminatingIfEmpty(bool enableTerminatingIfEmpty) {
+	this->enableTerminatingIfEmpty = enableTerminatingIfEmpty;
+}
+
+void MySqlStore_process::setEnableTerminatingIfSqlError(bool enableTerminatingIfSqlError) {
+	this->enableTerminatingIfSqlError = enableTerminatingIfSqlError;
 }
 
 void MySqlStore_process::setEnableAutoDisconnect(bool enableAutoDisconnect) {
@@ -1448,6 +1457,16 @@ void MySqlStore_process::setEnableTransaction(bool enableTransaction) {
 
 void MySqlStore_process::setEnableFixDeadlock(bool enableFixDeadlock) {
 	this->enableFixDeadlock = enableFixDeadlock;
+}
+
+void MySqlStore_process::waitForTerminate() {
+	if(this->thread) {
+		while(!this->terminated) {
+			usleep(100000);
+		}
+		pthread_join(this->thread, NULL);
+		this->thread = (pthread_t)NULL;
+	}
 }
 
 string MySqlStore_process::getInsertFuncName() {
@@ -1473,10 +1492,23 @@ MySqlStore::MySqlStore(const char *host, const char *user, const char *password,
 	}
 	this->defaultConcatLimit = 400;
 	this->_sync_processes = 0;
+	this->enableTerminatingDirectly = false;
+	this->enableTerminatingIfEmpty = false;
+	this->enableTerminatingIfSqlError = false;
 }
 
 MySqlStore::~MySqlStore() {
 	map<int, MySqlStore_process*>::iterator iter;
+	for(iter = this->processes.begin(); iter != this->processes.end(); ++iter) {
+		iter->second->waitForTerminate();
+	}
+	extern bool opt_autoload_from_sqlvmexport;
+	if(opt_autoload_from_sqlvmexport &&
+	   this->getAllSize() &&
+	   !opt_read_from_file && !opt_pb_read_from_file[0]) {
+		extern MySqlStore *sqlStore;
+		sqlStore->exportToFile(NULL, "auto", false, true);
+	}
 	for(iter = this->processes.begin(); iter != this->processes.end(); ++iter) {
 		delete iter->second;
 	}
@@ -1509,9 +1541,43 @@ void MySqlStore::unlock(int id) {
 	process->unlock();
 }
 
-void MySqlStore::setIgnoreTerminating(int id, bool ignoreTerminating) {
-	MySqlStore_process* process = this->find(id);
-	process->setIgnoreTerminating(ignoreTerminating);
+void MySqlStore::setEnableTerminatingDirectly(int id, bool enableTerminatingDirectly) {
+	if(id > 0) {
+		MySqlStore_process* process = this->find(id);
+		process->setEnableTerminatingDirectly(enableTerminatingDirectly);
+	} else {
+		this->lock_processes();
+		for(map<int, MySqlStore_process*>::iterator iter = this->processes.begin(); iter != this->processes.end(); ++iter) {
+			iter->second->setEnableTerminatingDirectly(enableTerminatingDirectly);
+		}
+		this->unlock_processes();
+	}
+}
+
+void MySqlStore::setEnableTerminatingIfEmpty(int id, bool enableTerminatingIfEmpty) {
+	if(id > 0) {
+		MySqlStore_process* process = this->find(id);
+		process->setEnableTerminatingIfEmpty(enableTerminatingIfEmpty);
+	} else {
+		this->lock_processes();
+		for(map<int, MySqlStore_process*>::iterator iter = this->processes.begin(); iter != this->processes.end(); ++iter) {
+			iter->second->setEnableTerminatingIfEmpty(enableTerminatingIfEmpty);
+		}
+		this->unlock_processes();
+	}
+}
+
+void MySqlStore::setEnableTerminatingIfSqlError(int id, bool enableTerminatingIfSqlError) {
+	if(id > 0) {
+		MySqlStore_process* process = this->find(id);
+		process->setEnableTerminatingIfEmpty(enableTerminatingIfSqlError);
+	} else {
+		this->lock_processes();
+		for(map<int, MySqlStore_process*>::iterator iter = this->processes.begin(); iter != this->processes.end(); ++iter) {
+			iter->second->setEnableTerminatingIfEmpty(enableTerminatingIfSqlError);
+		}
+		this->unlock_processes();
+	}
 }
 
 void MySqlStore::setEnableAutoDisconnect(int id, bool enableAutoDisconnect) {
@@ -1551,6 +1617,9 @@ MySqlStore_process *MySqlStore::find(int id) {
 	process = new MySqlStore_process(id, this->host.c_str(), this->user.c_str(), this->password.c_str(), this->database.c_str(),
 					 this->cloud_host.c_str(), this->cloud_token.c_str(),
 					 this->defaultConcatLimit);
+	process->setEnableTerminatingDirectly(this->enableTerminatingDirectly);
+	process->setEnableTerminatingIfEmpty(this->enableTerminatingIfEmpty);
+	process->setEnableTerminatingIfSqlError(this->enableTerminatingIfSqlError);
 	this->processes[id] = process;
 	this->unlock_processes();
 	return(process);

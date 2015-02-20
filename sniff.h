@@ -64,7 +64,9 @@ void *pcap_read_thread_func(void *arg);
 
 void readdump_libnids(pcap_t *handle);
 void readdump_libpcap(pcap_t *handle);
-void save_packet(Call *call, struct pcap_pkthdr *header, const u_char *packet, unsigned int saddr, int source, unsigned int daddr, int dest, int istcp, iphdr2 *header_ip, char *data, int datalen, int dataoffset, int type, 
+void save_packet(Call *call, struct pcap_pkthdr *header, const u_char *packet, 
+		 unsigned int saddr, int source, unsigned int daddr, int dest, 
+		 int istcp, iphdr2 *header_ip, char *data, unsigned int datalen, unsigned int dataoffset, int type, 
 		 int forceSip, int dlt, int sensor_id);
 
 
@@ -404,7 +406,7 @@ public:
 		  bool disableLock = false);
 	void preparePstatData();
 	double getCpuUsagePerc(bool preparePstatData);
-	void terminating();
+	void terminate();
 private:
 	bool sipProcess(packet_parse_s *parse_packet);
 	bool sipProcess_getCallID(packet_parse_s *parse_packet);
@@ -431,7 +433,7 @@ private:
 	pstat_data threadPstatData[2];
 	int outThreadId;
 	volatile int _sync_push;
-	bool _terminating;
+	bool term_preProcess;
 friend inline void *_PreProcessPacket_outThreadFunction(void *arg);
 };
 
@@ -476,7 +478,7 @@ public:
 		  unsigned int hash_s, unsigned int hash_d);
 	void preparePstatData();
 	double getCpuUsagePerc(bool preparePstatData);
-	void terminating();
+	void terminate();
 private:
 	void *outThreadFunction();
 	void rtp(packet_s *_packet);
@@ -500,7 +502,7 @@ private:
 	volatile unsigned int writeit;
 	pthread_t out_thread_handle;
 	pstat_data threadPstatData[2];
-	bool _terminating;
+	bool term_processRtp;
 friend inline void *_ProcessRtpPacket_outThreadFunction(void *arg);
 };
  
