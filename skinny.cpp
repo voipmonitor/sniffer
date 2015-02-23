@@ -1483,7 +1483,7 @@ void *handle_skinny2(pcap_pkthdr *header, const u_char *packet, unsigned int sad
 		case SKINNY_ONHOOK:
 			strcpy(call->lastSIPresponse, "ON HOOK");
 			call->destroy_call_at = header->ts.tv_sec + 5;
-			call->hashRemove();
+			call->removeFindTables();
 			break;
 		case SKINNY_RINGOUT:
 			strcpy(call->lastSIPresponse, "RING OUT");
@@ -1698,6 +1698,7 @@ void *handle_skinny2(pcap_pkthdr *header, const u_char *packet, unsigned int sad
 		sprintf(callid, "%u", ref);
 		if ((call = calltable->find_by_call_id(callid, strlen(callid)))){
 			calltable->skinny_partyID[pid] = call;
+			call->skinny_partyid = pid;
 			save_packet(call, header, packet, saddr, source, daddr, dest, 1, NULL, data, datalen, dataoffset, TYPE_SKINNY, 
 				    false, dlt, sensor_id);
 		}

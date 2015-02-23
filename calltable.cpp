@@ -249,6 +249,7 @@ Call::Call(char *call_id, unsigned long call_id_len, time_t time) :
 	rtppcaketsinqueue_p = 0;
 	rtppcaketsinqueue_m = 0;
 	#endif
+	end_call = 0;
 	message = NULL;
 	contenttype = NULL;
 	content_length = 0;
@@ -336,6 +337,39 @@ Call::hashRemove() {
 		}
 
 	}
+}
+
+void
+Call::skinnyTablesRemove() {
+	if(opt_skinny) {
+		if(skinny_partyid) {
+			((Calltable *)calltable)->skinny_partyID.erase(skinny_partyid);
+			skinny_partyid = 0;
+		}
+		/*
+		stringstream tmp[2];
+
+		tmp[0] << this->sipcallerip << '|' << this->sipcalledip;
+		tmp[1] << this->sipcallerip << '|' << this->sipcalledip;
+		*/
+
+		for (((Calltable *)calltable)->skinny_ipTuplesIT = ((Calltable *)calltable)->skinny_ipTuples.begin(); ((Calltable *)calltable)->skinny_ipTuplesIT != ((Calltable *)calltable)->skinny_ipTuples.end();) {
+			if(((Calltable *)calltable)->skinny_ipTuplesIT->second == this) {
+				((Calltable *)calltable)->skinny_ipTuples.erase(((Calltable *)calltable)->skinny_ipTuplesIT++);
+			} else {
+				++((Calltable *)calltable)->skinny_ipTuplesIT;
+			}
+		}
+	}
+}
+
+void
+Call::removeFindTables(bool set_end_call) {
+	if(set_end_call) {
+		this->end_call = 1;
+	}
+	this->hashRemove();
+	this->skinnyTablesRemove();
 }
 
 void
@@ -444,27 +478,6 @@ Call::removeRTP() {
 
 /* destructor */
 Call::~Call(){
-	if(opt_skinny) {
-		if(skinny_partyid) {
-			((Calltable *)calltable)->skinny_partyID.erase(skinny_partyid);
-		}
-		/*
-		stringstream tmp[2];
-
-		tmp[0] << this->sipcallerip << '|' << this->sipcalledip;
-		tmp[1] << this->sipcallerip << '|' << this->sipcalledip;
-		*/
-
-		for (((Calltable *)calltable)->skinny_ipTuplesIT = ((Calltable *)calltable)->skinny_ipTuples.begin(); ((Calltable *)calltable)->skinny_ipTuplesIT != ((Calltable *)calltable)->skinny_ipTuples.end();) {
-			if(((Calltable *)calltable)->skinny_ipTuplesIT->second == this) {
-				((Calltable *)calltable)->skinny_ipTuples.erase(((Calltable *)calltable)->skinny_ipTuplesIT++);
-			} else {
-				++((Calltable *)calltable)->skinny_ipTuplesIT;
-			}
-		}
-
-	}
-
 	if(opt_callidmerge_header[0] != '\0') {
 		((Calltable*)calltable)->lock_calls_mergeMAP();
 		for(std::vector<string>::iterator it = mergecalls.begin(); it != mergecalls.end(); ++it) {
@@ -552,6 +565,10 @@ Call::dirnamesqlfiles() {
 /* add ip adress and port to this call */
 int
 Call::add_ip_port(in_addr_t sip_src_addr, in_addr_t addr, unsigned short port, char *sessid, char *ua, unsigned long ua_len, bool iscaller, int *rtpmap, bool fax) {
+	if(this->end_call) {
+		return(-1);
+	}
+ 
 	if(verbosity >= 4) {
 		struct in_addr in;
 		in.s_addr = addr;
@@ -628,6 +645,10 @@ Call::refresh_data_ip_port(in_addr_t addr, unsigned short port, bool iscaller, i
 
 void
 Call::add_ip_port_hash(in_addr_t sip_src_addr, in_addr_t addr, unsigned short port, char *sessid, char *ua, unsigned long ua_len, bool iscaller, int *rtpmap, bool fax, int allowrelation) {
+	if(this->end_call) {
+		return;
+	}
+
 	if(sessid) {
 		int sessidIndex = get_index_by_sessid(sessid, sip_src_addr);
 		if(sessidIndex >= 0) {
@@ -3165,6 +3186,10 @@ Calltable::mapAdd(in_addr_t addr, unsigned short port, Call* call, int iscaller,
 /* add node to hash. collisions are linked list of nodes*/
 void
 Calltable::hashAdd(in_addr_t addr, unsigned short port, Call* call, int iscaller, int is_rtcp, int is_fax, int allowrelation) {
+	if(call->end_call) {
+		return;
+	}
+
 	u_int32_t h;
 	hash_node *node = NULL;
 	hash_node_call *node_call = NULL;
@@ -3332,7 +3357,7 @@ Calltable::destroyCallsIfPcapsClosed() {
 		for(size_t i = 0; i < size;) {
 			Call *call = this->calls_deletequeue[i];
 			if(call->isPcapsClose()) {
-				call->hashRemove();
+				call->removeFindTables();
 				call->atFinish();
 				delete call;
 				calls_counter--;
@@ -3448,7 +3473,7 @@ Calltable::find_by_call_id(char *call_id, unsigned long call_id_len) {
 		return NULL;
 	} else {
 		unlock_calls_listMAP();
-		return (*callMAPIT).second;
+		return (*callMAPIT).second->end_call ? NULL : (*callMAPIT).second;
 	}
 	
 /*
@@ -3485,7 +3510,7 @@ Calltable::find_by_skinny_partyid(unsigned int partyid) {
 		// not found
 		return NULL;
 	} else {
-		return (*skinny_partyIDIT).second;
+		return (*skinny_partyIDIT).second->end_call ? NULL : (*skinny_partyIDIT).second;
 	}
 }
 
@@ -3503,7 +3528,7 @@ Calltable::find_by_skinny_ipTuples(unsigned int saddr, unsigned int daddr) {
 	if(skinny_ipTuplesIT == skinny_ipTuples.end()) {
 		return NULL;
 	} else {
-		return skinny_ipTuplesIT->second;
+		return skinny_ipTuplesIT->second->end_call ? NULL : skinny_ipTuplesIT->second;
 	}
 }
 
@@ -3563,7 +3588,7 @@ Calltable::cleanup( time_t currtime ) {
 			}
 		}
 		if(closeCall) {
-			call->hashRemove();
+			call->removeFindTables(true);
 			if(!(
 			     #if SYNC_CALL_RTP
 			     call->rtppcaketsinqueue == 0
@@ -3631,7 +3656,7 @@ Calltable::cleanup( time_t currtime ) {
 }
 
 void Call::saveregister() {
-	hashRemove();
+	removeFindTables();
 	this->pcap.close();
 	this->pcapSip.close();
 	/****

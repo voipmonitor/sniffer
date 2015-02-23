@@ -2787,7 +2787,7 @@ Call *process_packet(u_int64_t packet_number,
 
 					if(sip_method == RES3XX) {
 						// remove all RTP  
-						call->hashRemove();
+						call->removeFindTables();
 						call->removeRTP();
 						call->ipport_n = 0;
 					}

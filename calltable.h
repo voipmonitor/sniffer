@@ -168,6 +168,7 @@ public:
 	volatile u_int32_t rtppcaketsinqueue_p;
 	volatile u_int32_t rtppcaketsinqueue_m;
 	#endif
+	volatile int end_call;
 	unsigned int unrepliedinvite;
 	unsigned int ps_drop;
 	unsigned int ps_ifdrop;
@@ -470,6 +471,10 @@ public:
 	 *
 	*/
 	void hashRemove();
+	
+	void skinnyTablesRemove();
+	
+	void removeFindTables(bool set_end_call = false);
 
 	/**
 	 * @brief remove all RTP 
