@@ -1318,19 +1318,24 @@ Call::convertRawToWav() {
 			case PAYLOAD_ISAC32:
 				samplerate = 32000;
 				break;
+			case PAYLOAD_XOPUS8:
 			case PAYLOAD_OPUS8:
 				samplerate = 8000;
 				break;
+			case PAYLOAD_XOPUS12:
 			case PAYLOAD_OPUS12:
 				samplerate = 12000;
 				break;
+			case PAYLOAD_XOPUS16:
 			case PAYLOAD_OPUS16:
 				samplerate = 16000;
 				break;
+			case PAYLOAD_XOPUS24:
 			case PAYLOAD_OPUS24:
 				samplerate = 24000;
 				system(cmd);
 				break;
+			case PAYLOAD_XOPUS48:
 			case PAYLOAD_OPUS48:
 				samplerate = 48000;
 				system(cmd);

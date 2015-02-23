@@ -136,17 +136,23 @@ int get_ticks_bycodec(int codec) {
 		break;
 	case PAYLOAD_OPUS:
 	case PAYLOAD_OPUS8:
+	case PAYLOAD_XOPUS:
+	case PAYLOAD_XOPUS8:
 		return 8;
 		break;
+	case PAYLOAD_XOPUS12:
 	case PAYLOAD_OPUS12:
 		return 12;
 		break;
+	case PAYLOAD_XOPUS16:
 	case PAYLOAD_OPUS16:
 		return 16;
 		break;
+	case PAYLOAD_XOPUS24:
 	case PAYLOAD_OPUS24:
 		return 24;
 		break;
+	case PAYLOAD_XOPUS48:
 	case PAYLOAD_OPUS48:
 		return 48;
 		break;
@@ -407,6 +413,7 @@ RTP::jitterbuffer(struct ast_channel *channel, int savePayload) {
 	struct timeval tsdiff;
 	frame->len = packetization;
 	switch(codec) {
+		case PAYLOAD_XOPUS12:
 		case PAYLOAD_OPUS12:
 		case PAYLOAD_G722112:
 			frame->ts = getTimestamp() / 12;
@@ -414,12 +421,14 @@ RTP::jitterbuffer(struct ast_channel *channel, int savePayload) {
 			break;
 		case PAYLOAD_ISAC16:
 		case PAYLOAD_SILK16:
+		case PAYLOAD_XOPUS16:
 		case PAYLOAD_OPUS16:
 		case PAYLOAD_G722116:
 			frame->ts = getTimestamp() / 16;
 			//frame->len = packetization / 2;
 			break;
 		case PAYLOAD_SILK24:
+		case PAYLOAD_XOPUS24:
 		case PAYLOAD_OPUS24:
 		case PAYLOAD_G722124:
 			frame->ts = getTimestamp() / 24;
@@ -430,6 +439,7 @@ RTP::jitterbuffer(struct ast_channel *channel, int savePayload) {
 			frame->ts = getTimestamp() / 32;
 			//frame->len = packetization / 4;
 			break;
+		case PAYLOAD_XOPUS48:
 		case PAYLOAD_OPUS48:
 			frame->ts = getTimestamp() / 48;
 			//frame->len = packetization / 6;
@@ -934,17 +944,20 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 		switch(codec) {
 		case PAYLOAD_SILK12:
 		case PAYLOAD_OPUS12:
+		case PAYLOAD_XOPUS12:
 		case PAYLOAD_G722112:
 			samplerate = 12000;
 			break;
 		case PAYLOAD_ISAC16:
 		case PAYLOAD_SILK16:
 		case PAYLOAD_OPUS16:
+		case PAYLOAD_XOPUS16:
 		case PAYLOAD_G722116:
 			samplerate = 16000;
 			break;
 		case PAYLOAD_SILK24:
 		case PAYLOAD_OPUS24:
+		case PAYLOAD_XOPUS24:
 		case PAYLOAD_G722124:
 			samplerate = 24000;
 			break;
@@ -953,6 +966,7 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 			samplerate = 32000;
 			break;
 		case PAYLOAD_OPUS48:
+		case PAYLOAD_XOPUS48:
 		case PAYLOAD_G722148:
 			samplerate = 48000;
 			break;

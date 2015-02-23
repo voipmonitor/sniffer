@@ -1160,6 +1160,8 @@ int mimeSubtypeToInt(char *mimeSubtype) {
 	       return PAYLOAD_CLEARMODE;
        else if(strcasecmp(mimeSubtype,"OPUS") == 0)
 	       return PAYLOAD_OPUS;
+       else if(strcasecmp(mimeSubtype,"X-OPUS") == 0)
+	       return PAYLOAD_XOPUS;
        else if(strcasecmp(mimeSubtype,"AMR") == 0)
 	       return PAYLOAD_AMR;
        else if(strcasecmp(mimeSubtype,"telephone-event") == 0)
@@ -1252,6 +1254,24 @@ int get_rtpmap_from_sdp(char *sdp_text, unsigned long len, int *rtpmap){
 						break;
 					case 48000:
 						mtype = PAYLOAD_OPUS48;
+						break;
+				}
+			} else if(mtype == PAYLOAD_XOPUS) {
+				switch(rate) {
+					case 8000:
+						mtype = PAYLOAD_XOPUS8;
+						break;
+					case 12000:
+						mtype = PAYLOAD_XOPUS12;
+						break;
+					case 16000:
+						mtype = PAYLOAD_XOPUS16;
+						break;
+					case 24000:
+						mtype = PAYLOAD_XOPUS24;
+						break;
+					case 48000:
+						mtype = PAYLOAD_XOPUS48;
 						break;
 				}
 			}
