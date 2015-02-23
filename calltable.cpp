@@ -126,6 +126,8 @@ extern Calltable *calltable;
 extern int opt_silencedetect;
 extern int opt_clippingdetect;
 extern int terminating;
+extern int opt_read_from_file;
+extern char opt_pb_read_from_file[256];
 
 volatile int calls_counter = 0;
 
@@ -3524,7 +3526,9 @@ Calltable::cleanup( time_t currtime ) {
 		bool closeCall = false;
 		if(currtime == 0 || call->force_close) {
 			closeCall = true;
-			call->force_terminate = true;
+			if(!opt_read_from_file && !opt_pb_read_from_file[0]) {
+				call->force_terminate = true;
+			}
 		} else {
 			if(call->destroy_call_at != 0 && call->destroy_call_at <= currtime) {
 				closeCall = true;

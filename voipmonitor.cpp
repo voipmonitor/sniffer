@@ -2664,6 +2664,10 @@ void set_context_config() {
 		}
 	}
 	
+	if(!opt_newdir && opt_pcap_dump_tar) {
+		opt_pcap_dump_tar = 0;
+	}
+	
 	opt_pcap_dump_tar_sip_use_pos = opt_pcap_dump_tar && !opt_pcap_dump_tar_compress_sip;
 	opt_pcap_dump_tar_rtp_use_pos = opt_pcap_dump_tar && !opt_pcap_dump_tar_compress_rtp;
 	opt_pcap_dump_tar_graph_use_pos = opt_pcap_dump_tar && !opt_pcap_dump_tar_compress_graph;
@@ -3003,26 +3007,6 @@ int main(int argc, char *argv[]) {
 	pcapstat.ps_drop = 0;
 	pcapstat.ps_ifdrop = 0;
 
-#ifdef BACKTRACE
-	
-	if(!sverb.disable_bt_sighandler) {
-		/* Install our signal handler */
-		struct sigaction sa;
-
-		sa.sa_sigaction = bt_sighandler;
-		sigemptyset (&sa.sa_mask);
-		sa.sa_flags = SA_RESTART | SA_SIGINFO;
-
-		sigaction(SIGSEGV, &sa, NULL);
-		sigaction(SIGBUS, &sa, NULL);
-		sigaction(SIGILL, &sa, NULL);
-		sigaction(SIGFPE, &sa, NULL);
-		//sigaction(SIGUSR1, &sa, NULL);
-		//sigaction(SIGUSR2, &sa, NULL);
-	}
-	
-#endif
-	
 	signal(SIGPIPE, SIG_IGN);
 
 	/* parse arguments */
@@ -3396,6 +3380,26 @@ int main(int argc, char *argv[]) {
 				break;
 		}
 	}
+	
+#ifdef BACKTRACE
+	
+	if(!sverb.disable_bt_sighandler) {
+		/* Install our signal handler */
+		struct sigaction sa;
+
+		sa.sa_sigaction = bt_sighandler;
+		sigemptyset (&sa.sa_mask);
+		sa.sa_flags = SA_RESTART | SA_SIGINFO;
+
+		sigaction(SIGSEGV, &sa, NULL);
+		sigaction(SIGBUS, &sa, NULL);
+		sigaction(SIGILL, &sa, NULL);
+		sigaction(SIGFPE, &sa, NULL);
+		//sigaction(SIGUSR1, &sa, NULL);
+		//sigaction(SIGUSR2, &sa, NULL);
+	}
+	
+#endif
 	
 	set_context_config();
 	
