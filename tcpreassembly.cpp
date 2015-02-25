@@ -1399,7 +1399,8 @@ int TcpReassemblyLink::okQueue_crazy(int final, bool enableDebug) {
 								if(!iter.stream->ok(true, false, 0,
 										    true, NULL, false,
 										    iter.stream->ok_packets[0][1]) ||
-								   memcmp(iter.stream->complete_data.getData(), "HTTP/1.1 200 OK", 15)) {
+								   (iter.stream->complete_data.getData() &&
+								    memcmp(iter.stream->complete_data.getData(), "HTTP/1.1 200 OK", 15))) {
 									this->ok_streams[this->ok_streams.size() - 1]->is_ok = true;
 									this->ok_streams[this->ok_streams.size() - 1]->complete_data = dataItem;
 								}
