@@ -3283,6 +3283,8 @@ int main(int argc, char *argv[]) {
 						else if(verbparams[i] == "jitter_nf2")			opt_jitterbuffer_f2 = 0;
 						else if(verbparams[i] == "noaudiounlink")		sverb.noaudiounlink = 1;
 						else if(verbparams[i] == "capture_filter")		sverb.capture_filter = 1;
+						else if(verbparams[i].substr(0, 17) == "pcap_stat_period=")
+													sverb.pcap_stat_period = atoi(verbparams[i].c_str() + 17);
 					}
 				} }
 				break;
@@ -4478,10 +4480,11 @@ int main(int argc, char *argv[]) {
 					pcapQueueR->start();
 					
 					uint64_t _counter = 0;
+					int _pcap_stat_period = sverb.pcap_stat_period ? sverb.pcap_stat_period : 10;
 					while(!terminating) {
-						if(_counter && (verbosityE > 0 || !(_counter % 10))) {
+						if(_counter && (verbosityE > 0 || !(_counter % _pcap_stat_period))) {
 							pthread_mutex_lock(&terminate_packetbuffer_lock);
-							pcapQueueR->pcapStat(verbosityE > 0 ? 1 : 10);
+							pcapQueueR->pcapStat(verbosityE > 0 ? 1 : _pcap_stat_period);
 							pthread_mutex_unlock(&terminate_packetbuffer_lock);
 						}
 						sleep(1);
@@ -4524,10 +4527,11 @@ int main(int argc, char *argv[]) {
 					pcapQueueI->start();
 					
 					uint64_t _counter = 0;
+					int _pcap_stat_period = sverb.pcap_stat_period ? sverb.pcap_stat_period : 10;
 					while(!terminating) {
-						if(_counter && (verbosityE > 0 || !(_counter % 10))) {
+						if(_counter && (verbosityE > 0 || !(_counter % _pcap_stat_period))) {
 							pthread_mutex_lock(&terminate_packetbuffer_lock);
-							pcapQueueQ->pcapStat(verbosityE > 0 ? 1 : 10);
+							pcapQueueQ->pcapStat(verbosityE > 0 ? 1 : _pcap_stat_period);
 							pthread_mutex_unlock(&terminate_packetbuffer_lock);
 							if(tcpReassemblyHttp) {
 								tcpReassemblyHttp->setDoPrintContent();

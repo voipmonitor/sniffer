@@ -3389,8 +3389,8 @@ void *PcapQueue_readFromFifo::threadFunction(void *arg, unsigned int arg2) {
 				int socketClient;
 				sockaddr_in socketClientInfo;
 				if(this->socketAwaitConnection(&socketClient, &socketClientInfo)) {
-					syslog(LOG_NOTICE, "accept new connection from %s:%i", inet_ntoa(socketClientInfo.sin_addr), socketClientInfo.sin_port);
 					if(!TERMINATING && !forceStop) {
+						syslog(LOG_NOTICE, "accept new connection from %s:%i", inet_ntoa(socketClientInfo.sin_addr), socketClientInfo.sin_port);
 						this->createConnection(socketClient, &socketClientInfo);
 					}
 				}

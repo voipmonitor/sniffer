@@ -27,6 +27,7 @@ struct sVerbose {
 	int jitter;
 	int noaudiounlink;
 	int capture_filter;
+	int pcap_stat_period;
 };
 
 #endif
