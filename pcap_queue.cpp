@@ -3315,7 +3315,7 @@ void *PcapQueue_readFromFifo::writeThreadFunction(void *arg, unsigned int arg2) 
 			if(this->packetServerDirection == directionWrite) {
 				this->socketWritePcapBlock(blockStore);
 				this->blockStoreTrash.push_back(blockStore);
-				this->blockStoreTrash_size += blockStore->getUseSize();
+				this->addBlockStoreTrash_size(blockStore->getUseSize());
 			} else {
 				if(blockStore->size_compress && !blockStore->uncompress()) {
 					delete blockStore;
@@ -3363,7 +3363,7 @@ void *PcapQueue_readFromFifo::writeThreadFunction(void *arg, unsigned int arg2) 
 								++listBlockStore[pti.blockStore];
 								if(listBlockStore[pti.blockStore] == pti.blockStore->count) {
 									this->blockStoreTrash.push_back(pti.blockStore);
-									this->blockStoreTrash_size += pti.blockStore->getUseSize();
+									this->addBlockStoreTrash_size(pti.blockStore->getUseSize());
 									listBlockStore.erase(pti.blockStore);
 								}
 								if(first->second->empty()) {
@@ -3431,7 +3431,7 @@ void *PcapQueue_readFromFifo::writeThreadFunction(void *arg, unsigned int arg2) 
 							++actBlockInfo->count_processed;
 							if(actBlockInfo->count_processed == actBlockInfo->blockStore->count) {
 								this->blockStoreTrash.push_back(actBlockInfo->blockStore);
-								this->blockStoreTrash_size += actBlockInfo->blockStore->getUseSize();
+								this->addBlockStoreTrash_size(actBlockInfo->blockStore->getUseSize());
 								--blockInfoCount;
 								for(int i = minUtimeIndexBlockInfo; i < blockInfoCount; i++) {
 									memcpy(blockInfo + i, blockInfo + i + 1, sizeof(sBlockInfo));
@@ -3491,7 +3491,7 @@ void *PcapQueue_readFromFifo::writeThreadFunction(void *arg, unsigned int arg2) 
 						}
 					}
 					this->blockStoreTrash.push_back(blockStore);
-					this->blockStoreTrash_size += blockStore->getUseSize();
+					this->addBlockStoreTrash_size(blockStore->getUseSize());
 				}
 			}
 		} else {
@@ -4024,6 +4024,13 @@ void PcapQueue_readFromFifo::cleanupBlockStoreTrash(bool all) {
 			--i;
 		}
 	}
+}
+
+void PcapQueue_readFromFifo::addBlockStoreTrash_size(size_t size) {
+	while(pcapStoreQueue.sizeOfBlocksInMemory + blockStoreTrash_size >= opt_pcap_queue_store_queue_max_memory_size && !terminating) {
+		usleep(100000);
+	}
+	blockStoreTrash_size += size;
 }
 
 void *_PcapQueue_readFromFifo_connectionThreadFunction(void *arg) {

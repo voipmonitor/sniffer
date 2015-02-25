@@ -582,6 +582,7 @@ private:
 			   int dlt, int sensor_id);
 	void checkFreeSizeCachedir();
 	void cleanupBlockStoreTrash(bool all = false);
+	void addBlockStoreTrash_size(size_t size);
 	void lock_packetServerConnections() {
 		while(__sync_lock_test_and_set(&this->_sync_packetServerConnections, 1));
 	}
