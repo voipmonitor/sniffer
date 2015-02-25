@@ -1,4 +1,9 @@
-10.1.32 16.02.2015
+10.1.33 25.02.2015
+==================
+- fix properly: do not use more memory then set in packetbuffer_total_maxheap in case the sniffer is in receiver mode and remote sniffer reconnect to the receiver and sends all traffic in burst (receiver will slow down)
+
+
+10.1.32 25.02.2015
 ==================
 - properly detect 32/64 bit version when doing auto upgrade
 
@@ -13,7 +18,6 @@
 - do not check RRD library everytime GUI access sniffer over manager minimizing forking which can cause __lll_lock_wait_private deadlock (rare but it happened) 
 
 
-- fix audio channel swap at the end of call for OGG stereo when one of the channel is silence (all versions)
 10.1.29 16.02.2015
 ==================
 - fix audio channel swap at the end of call for OGG stereo when one of the channel is silence (all versions)
