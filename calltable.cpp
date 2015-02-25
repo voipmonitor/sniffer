@@ -1798,28 +1798,26 @@ Call::saveToDb(bool enableBatchIfPossible) {
 
 		// remove duplicates
 		list<unsigned int>::iterator iter = proxies.begin();
-		set<unsigned int> elements;
+		set<unsigned int> proxies_undup;
 		while (iter != proxies.end()) {
-			if (elements.find(*iter) != elements.end()) {
-				iter = proxies.erase(iter);
-			} else {
-				elements.insert(*iter);
-				++iter;
+			if (proxies_undup.find(*iter) == proxies_undup.end()) {
+				proxies_undup.insert(*iter);
 			}
+			++iter;
 		}
 
-		iter = proxies.begin();
-		while (iter != proxies.end()) {
-			if(*iter == sipcalledip[0]) { ++iter; continue; };
+		set<unsigned int>::iterator iter_undup = proxies_undup.begin();
+		while (iter_undup != proxies_undup.end()) {
+			if(*iter_undup == sipcalledip[0]) { ++iter_undup; continue; };
 			sqlDbSaveCall->setEnableSqlStringInContent(true);
 			SqlDb_row cdrproxy;
 			cdrproxy.add("_\\_'SQL'_\\_:@cdr_id", "cdr_ID");
 			cdrproxy.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
-			cdrproxy.add(htonl(*iter), "dst");
+			cdrproxy.add(htonl(*iter_undup), "dst");
 			query_str_cdrproxy += sqlDbSaveCall->insertQuery("cdr_proxy", cdrproxy) + ";\n";
 			sqlDbSaveCall->setEnableSqlStringInContent(false);
 
-			++iter;
+			++iter_undup;
 		}
 	}
 
