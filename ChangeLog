@@ -1,3 +1,8 @@
+10.1.32 16.02.2015
+==================
+- properly detect 32/64 bit version when doing auto upgrade
+
+
 10.1.31 16.02.2015
 ==================
 - fix SIP REGISTER saving last packet to pcap file (200 OK or any last packet was missing) 

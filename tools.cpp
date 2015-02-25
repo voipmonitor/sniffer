@@ -1250,11 +1250,11 @@ RestartUpgrade::RestartUpgrade(bool upgrade, const char *version, const char *ur
 	if(md5_64) {
 		this->md5_64 = md5_64;
 	}
-	#ifdef __x86_64__
+	if(sizeof(int *) == 8) {
 		this->_64bit = true;
-	#else
+	} else {
 		this->_64bit = false;
-	#endif
+	}
 }
 
 bool RestartUpgrade::runUpgrade() {
