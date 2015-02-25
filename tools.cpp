@@ -2259,8 +2259,9 @@ FileZipHandler::FileZipHandler(int bufferLength, int enableAsyncWrite, eTypeComp
 	}
 	this->permission = 0;
 	this->fh = 0;
+	this->tar = opt_pcap_dump_tar && call && typeFile != FileZipHandler::na;
 	this->compressStream = NULL;
-	this->bufferLength = opt_pcap_dump_tar ?
+	this->bufferLength = this->tar ?
 			      (bufferLength ? bufferLength : DEFAULT_BUFFER_LENGTH) :
 			      bufferLength;
 	if(bufferLength) {
@@ -2293,7 +2294,7 @@ FileZipHandler::~FileZipHandler() {
 	if(this->compressStream) {
 		delete this->compressStream;
 	}
-	if(!this->tarBufferCreated && opt_pcap_dump_tar) {
+	if(this->tar && !this->tarBufferCreated) {
 		decreaseTartimemap(this->time);
 		if(sverb.tar > 2) {
 			syslog(LOG_NOTICE, "tartimemap decrease2: %s %i %i", 
@@ -2303,7 +2304,7 @@ FileZipHandler::~FileZipHandler() {
 }
 
 bool FileZipHandler::open(const char *fileName, int permission) {
-	if(opt_pcap_dump_tar) {
+	if(this->tar) {
 		if(sverb.tar > 2) {
 			syslog(LOG_NOTICE, "FileZipHandler open: %s %i %i %s", 
 			       fileName, this->time, this->time - this->time % TAR_MODULO_SECONDS, sqlDateTimeString(this->time).c_str());
@@ -2335,7 +2336,7 @@ bool FileZipHandler::open(const char *fileName, int permission) {
 }
 
 void FileZipHandler::close() {
-	if(opt_pcap_dump_tar) {
+	if(this->tar) {
 		this->flushBuffer(true);
 		this->flushTarBuffer();
 	} else  {
@@ -2398,7 +2399,7 @@ bool FileZipHandler::_writeToFile(char *data, int length, bool flush) {
 	}
 	switch(this->typeCompress) {
 	case compress_na:
-		if(opt_pcap_dump_tar) {
+		if(this->tar) {
 			if(!this->tarBuffer) {
 				this->initTarbuffer();
 			}
@@ -2503,7 +2504,7 @@ void FileZipHandler::initTarbuffer(bool useFileZipHandlerCompress) {
 }
 
 bool FileZipHandler::_open() {
-	if(opt_pcap_dump_tar) {
+	if(this->tar) {
 		return(true);
 	}
 	for(int passOpen = 0; passOpen < 2; passOpen++) {
@@ -2541,7 +2542,7 @@ void FileZipHandler::setError(const char *error) {
 }
 
 bool FileZipHandler::compress_ev(char *data, u_int32_t len, u_int32_t decompress_len) {
-	if(opt_pcap_dump_tar) {
+	if(this->tar) {
 		if(!this->tarBuffer) {
 			this->initTarbuffer(true);
 		}

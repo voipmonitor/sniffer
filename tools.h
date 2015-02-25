@@ -373,8 +373,7 @@ public:
 	bool _open();
 	void setError(const char *error = NULL);
 	bool okHandle() {
-		extern int opt_pcap_dump_tar;
-		return(opt_pcap_dump_tar ? true : fh > 0);
+		return(this->tar ? true : fh > 0);
 	}
 private:
 	virtual bool compress_ev(char *data, u_int32_t len, u_int32_t decompress_len);
@@ -382,6 +381,7 @@ public:
 	string fileName;
 	int permission;
 	int fh;
+	bool tar;
 	CompressStream *compressStream;
 	string error;
 	int bufferLength;
