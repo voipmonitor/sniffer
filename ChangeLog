@@ -1,3 +1,8 @@
+10.1.34 26.02.2015
+==================
+- fix 10.1.33 second try
+
+
 10.1.33 25.02.2015
 ==================
 - fix properly: do not use more memory then set in packetbuffer_total_maxheap in case the sniffer is in receiver mode and remote sniffer reconnect to the receiver and sends all traffic in burst (receiver will slow down)
