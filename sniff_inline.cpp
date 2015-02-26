@@ -60,8 +60,10 @@ iphdr2 *convertHeaderIP_GRE(iphdr2 *header_ip) {
 	memcpy(gre, &a, 2);
 	memcpy(gre + 2, &b, 2);
 	struct gre_hdr *grehdr = (struct gre_hdr *)gre;			
-	if(grehdr->version == 0 and grehdr->protocol == 0x6558) {
-		struct ether_header *header_eth = (struct ether_header *)((char*)header_ip + sizeof(iphdr2) + 8);
+	if(grehdr->version == 0 and (grehdr->protocol == 0x6558 || grehdr->protocol == 0x88BE)) {
+		// 0x6558 - GRE          - header size 8 bytes
+		// 0x88BE - GRE & ERSPAN - headers size 8 + 8 bytes
+		struct ether_header *header_eth = (struct ether_header *)((char*)header_ip + sizeof(iphdr2) + (grehdr->protocol == 0x88BE ? 16 : 8));
 		unsigned int vlanoffset;
 		int protocol = 0;
 		if(header_eth->ether_type == 129) {
