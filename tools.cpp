@@ -67,8 +67,6 @@ extern int opt_read_from_file;
 extern int opt_pcap_dump_tar;
 extern char opt_chdir[1024];
 
-extern int opt_pcap_dump_tar;
-
 
 static char b2a[256];
 static char base64[64];

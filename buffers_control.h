@@ -35,10 +35,6 @@ public:
 		return(this->PcapQueue_readFromFifo__blockStoreTrash_size);
 	}
 	void add__PcapQueue_readFromFifo__blockStoreTrash_size(size_t size) {
-		extern int terminating;
-		while(!check__pcap_store_queue__push() && !terminating) {
-			usleep(100000);
-		}
 		__sync_fetch_and_add(&this->PcapQueue_readFromFifo__blockStoreTrash_size, size);
 	}
 	void sub__PcapQueue_readFromFifo__blockStoreTrash_size(size_t size) {
