@@ -104,12 +104,10 @@ public:
 
 	Tar() {    
 		this->zipStream = NULL;
-		this->zipBufferLength = 4*8192;
-		this->zipBuffer = new char[this->zipBufferLength];
 #ifdef HAVE_LIBLZMA
 		this->lzmaStream = NULL;
-		memset(&tar, 0, sizeof(tar));
 #endif
+		memset(&tar, 0, sizeof(tar));
 		partCounter = 0;
 		lastFlushTime = 0;
 		lastWriteTime = 0;
@@ -212,8 +210,10 @@ private:
 		void init(size_t bufferBaseSize) {
 			this->bufferBaseSize = bufferBaseSize;
 			buffer = new char[bufferBaseSize + T_BLOCKSIZE];
+			autoMemoryType(buffer);
 			if(send_parameters_zip) {
 				compressStream = new CompressStream(CompressStream::gzip, 1024, 0);
+				autoMemoryType(compressStream);
 				compressStream->setSendParameters(send_parameters_client, send_parameters_sshchannel);
 			} else {
 				compressStream = NULL;

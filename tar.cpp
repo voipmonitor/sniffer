@@ -343,9 +343,11 @@ Tar::tar_read(const char *filename, const char *endFilename, u_int32_t recordId,
 							       CompressStream::lzma :
 							       CompressStream::compress_na,
 							      this->readData.bufferBaseSize, 0);
+	autoMemoryType(decompressStream);
 	size_t read_position = 0;
 	size_t read_size;
 	char *read_buffer = new char[T_BLOCKSIZE];
+	autoMemoryType(read_buffer);
 	bool decompressFailed = false;
 	list<u_int64_t> tarPos;
 	if(tarPosString) {
@@ -551,6 +553,7 @@ int
 Tar::initZip() {
 	if(!this->zipStream) {
 		this->zipStream =  new z_stream;
+		autoMemoryType(this->zipStream);
 		this->zipStream->zalloc = Z_NULL;
 		this->zipStream->zfree = Z_NULL;
 		this->zipStream->opaque = Z_NULL;
@@ -561,6 +564,7 @@ Tar::initZip() {
 		} else {
 			this->zipBufferLength = 8192*4;
 			this->zipBuffer = new char[this->zipBufferLength];
+			autoMemoryType(this->zipBuffer);
 		}
 	}
 	return(true);
@@ -615,6 +619,7 @@ Tar::initLzma() {
 		//uint32_t preset = LZMA_COMPRESSION_LEVEL | (LZMA_COMPRESSION_EXTREME ? LZMA_PRESET_EXTREME : 0);
 		lzma_stream lzstmp = LZMA_STREAM_INIT;
 		lzmaStream = new lzma_stream;
+		autoMemoryType(lzmaStream);
 		*lzmaStream = lzstmp;
 
 		int ret_xz = lzma_easy_encoder (this->lzmaStream, lzmalevel, LZMA_CHECK_CRC64);
@@ -625,6 +630,7 @@ Tar::initLzma() {
 		if(!zipBuffer) {
 			this->zipBufferLength = 8192*4;
 			this->zipBuffer = new char[this->zipBufferLength];
+			autoMemoryType(this->zipBuffer);
 		}
 	}
 	return(true);
@@ -693,6 +699,7 @@ Tar::flush() {
 		this->flushLzma();
 		lzma_end(this->lzmaStream);
 		delete this->lzmaStream;
+		delete this->zipBuffer;
 		this->lzmaStream = NULL;
 		this->initLzma();
 		_flush = true;
@@ -702,6 +709,7 @@ Tar::flush() {
 		this->flushZip();
 		deflateEnd(this->zipStream);
 		delete this->zipStream;
+		delete this->zipBuffer;
 		this->zipStream = NULL;
 		this->initZip();
 		_flush = true;
@@ -989,6 +997,7 @@ TarQueue::write(int qtype, unsigned int time, data_t data) {
 	Tar *tar = tars[tar_name.str()];
 	if(!tar) {
 		tar = new Tar;
+		autoMemoryType(tar);
 		lock_okTarPointers();
 		okTarPointers[tar] = glob_last_packet_time;
 		unlock_okTarPointers();
@@ -1507,6 +1516,7 @@ TarQueue::TarQueue() {
 		tarthreads[i].tarQueue = this;
 		tarthreads[i].threadEnd = false;
 		tarthreadworker_arg *arg = new tarthreadworker_arg;
+		autoMemoryType(arg);
 		arg->i = i;
 		arg->tq = this;
 		tarthreads[i].cpuPeak = 0;

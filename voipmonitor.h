@@ -2,6 +2,7 @@
 #include <string>
 #include "config.h"
 #include "common.h"
+#include "heap_safe.h"
 
 #ifndef VOIPMONITOR_H
 #define VOIPMONITOR_H

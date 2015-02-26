@@ -27,6 +27,7 @@
 #include "pstat.h"
 #include "tools_dynamic_buffer.h"
 #include "buffers_control.h"
+#include "heap_safe.h"
 
 using namespace std;
 
@@ -170,9 +171,11 @@ public:
 		}
 		if(!buffer) {
 			buffer = new u_char[dataLength + capacityReserve + 1];
+			autoMemoryType(buffer);
 			bufferCapacity = dataLength + capacityReserve + 1;
 		} else if(bufferLength + dataLength > capacityReserve) {
 			u_char *bufferNew = new u_char[bufferLength + dataLength + capacityReserve + 1];
+			autoMemoryType(bufferNew);
 			memcpy(bufferNew, buffer, bufferLength);
 			delete [] buffer;
 			buffer = bufferNew;
@@ -207,6 +210,7 @@ public:
 		} else {
 			if(bufferCapacity <= bufferLength) {
 				u_char *newBuffer = new u_char[bufferLength + 1];
+				autoMemoryType(newBuffer);
 				memcpy(newBuffer, buffer, bufferLength);
 				delete [] buffer;
 				buffer = newBuffer;
@@ -556,6 +560,7 @@ public:
 				    char *data, int length) {
 			this->handle = handle;
 			this->data = new char[length];
+			autoMemoryType(this->data);
 			memcpy(this->data, data, length);
 			this->dataLength = length;
 		}
@@ -600,6 +605,7 @@ public:
 					      char *data, int length) {
 			this->handle = handle;
 			this->data = new char[length];
+			autoMemoryType(this->data);
 			memcpy(this->data, data, length);
 			this->dataLength = length;
 		}
@@ -649,7 +655,7 @@ public:
 					((FileZipHandler*)handle)->userData = minSizeIndex + 1;
 				}
 			}
-			if(add(new AsyncCloseItem_pcap(handle, updateFilesQueue, call, pcapDumper, file, column, writeBytes),
+			if(add((AsyncCloseItem_pcap*)autoMemoryType(new AsyncCloseItem_pcap(handle, updateFilesQueue, call, pcapDumper, file, column, writeBytes)),
 			       opt_pcap_dump_bufflength ?
 				((FileZipHandler*)handle)->userData - 1 :
 				0,
@@ -682,7 +688,7 @@ public:
 					((FileZipHandler*)handle)->userData = minSizeIndex + 1;
 				}
 			}
-			if(add(new AsyncWriteItem_pcap(handle, data, length),
+			if(add((AsyncWriteItem_pcap*)autoMemoryType(new AsyncWriteItem_pcap(handle, data, length)),
 			       opt_pcap_dump_bufflength ?
 				((FileZipHandler*)handle)->userData - 1 :
 				0,
@@ -714,7 +720,7 @@ public:
 				}
 				handle->userData = minSizeIndex + 1;
 			}
-			if(add(new AsyncCloseItem_fileZipHandler(handle, updateFilesQueue, call, file, column, writeBytes),
+			if(add((AsyncCloseItem_fileZipHandler*)autoMemoryType(new AsyncCloseItem_fileZipHandler(handle, updateFilesQueue, call, file, column, writeBytes)),
 			       handle->userData - 1,
 			       useThreadOper)) {
 				break;
@@ -742,7 +748,7 @@ public:
 				}
 				handle->userData = minSizeIndex + 1;
 			}
-			if(add(new AsyncWriteItem_fileZipHandler(handle, data, length),
+			if(add((AsyncWriteItem_fileZipHandler*)autoMemoryType(new AsyncWriteItem_fileZipHandler(handle, data, length)),
 			       handle->userData - 1,
 			       useThreadOper)) {
 				break;
@@ -1095,6 +1101,7 @@ public:
 				}
 				if(!nodes[nodeChar]) {
 					nodes[nodeChar] = new ppNode;
+					autoMemoryType(nodes[nodeChar]);
 				}
 				nodes[nodeChar]->addNode(nodeName + 1, isContentLength);
 			} else {
@@ -1358,6 +1365,7 @@ void SafeAsyncQueue<type_queue_item>::push(type_queue_item &item) {
 	lock_push_queue();
 	if(!push_queue) {
 		push_queue = new deque<type_queue_item>;
+		autoMemoryType(push_queue);
 	}
 	push_queue->push_back(item);
 	unlock_push_queue();

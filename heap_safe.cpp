@@ -1,7 +1,14 @@
+#include <iostream>
+#include <iomanip>
+
 #include "heap_safe.h"
 
 
 unsigned int HeapSafeCheck = 0;
+u_int64_t memoryStat[100000];
+u_int32_t memoryStatLength = 0;
+std::map<std::string, u_int32_t> memoryStatType;
+volatile int memoryStat_sync;
 
 
 inline void *_heapsafe_alloc(size_t sizeOfObject) {
@@ -52,11 +59,13 @@ inline void * heapsafe_alloc(size_t sizeOfObject) {
 		sHeapSafeMemoryControlBlock *begin = (sHeapSafeMemoryControlBlock*)pointerToObject;
 		HEAPSAFE_COPY_BEGIN_MEMORY_CONTROL_BLOCK(begin->stringInfo);
 		begin->length = sizeOfObject;
+		begin->memory_type = 0;
 		sHeapSafeMemoryControlBlock *end = (sHeapSafeMemoryControlBlock*)
 							((unsigned char*)pointerToObject + sizeOfObject + HEAPSAFE_ALLOC_RESERVE +
 							 sizeof(sHeapSafeMemoryControlBlock));
 		HEAPSAFE_COPY_END_MEMORY_CONTROL_BLOCK(end->stringInfo);
 		end->length = sizeOfObject;
+		end->memory_type = 0;
 	}
 	return((unsigned char*)pointerToObject +
 	       (HeapSafeCheck & _HeapSafeErrorBeginEnd ?
@@ -88,6 +97,9 @@ inline void heapsafe_free(void *pointerToObject) {
 				error = _HeapSafeErrorBeginEnd;
 			} else if(HeapSafeCheck & _HeapSafeErrorFillFF) {
 				memset(pointerToObject, 0xFF, beginMemoryBlock->length);
+			}
+			if(beginMemoryBlock->memory_type) {
+				__sync_fetch_and_sub(&memoryStat[beginMemoryBlock->memory_type], beginMemoryBlock->length);
 			}
 		} else if(HeapSafeCheck & _HeapSafeErrorFreed&&
 			  HEAPSAFE_CMP_FREED_MEMORY_CONTROL_BLOCK(beginMemoryBlock->stringInfo)) {
@@ -195,4 +207,18 @@ void HeapSafeMemsetError(const char *errorString, const char *file, unsigned int
 		syslog(LOG_ERR, "HEAPSAFE MEMSET ERROR: %s - %s:%d", errorString, 
 		       file ? file : "unknown source file", line);
 	}
+}
+
+void printMemoryStat() {
+	while(__sync_lock_test_and_set(&memoryStat_sync, 1));
+	std::map<std::string, u_int32_t>::iterator iter = memoryStatType.begin();
+	while(iter != memoryStatType.end()) {
+		if(memoryStat[iter->second] > 0) {
+			std::cout << std::fixed
+				  << std::left << std::setw(30) << iter->first << " : " 
+				  << std::right <<  std::setw(12) << memoryStat[iter->second] << std::endl;
+		}
+		++iter;
+	}
+	__sync_lock_release(&memoryStat_sync);
 }

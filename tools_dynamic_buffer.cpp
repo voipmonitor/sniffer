@@ -109,6 +109,7 @@ void CompressStream::initCompress() {
 #ifdef HAVE_LIBLZMA
 		if(!this->lzmaStream) {
 			this->lzmaStream = new lzma_stream;
+			autoMemoryType(this->lzmaStream);
 			memset(this->lzmaStream, 0, sizeof(lzma_stream));
 			int ret = lzma_easy_encoder(this->lzmaStream, this->lzmaLevel, LZMA_CHECK_CRC64);
 			if(ret == LZMA_OK) {
@@ -126,6 +127,7 @@ void CompressStream::initCompress() {
 	case gzip:
 		if(!this->zipStream) {
 			this->zipStream =  new z_stream;
+			autoMemoryType(this->zipStream);
 			this->zipStream->zalloc = Z_NULL;
 			this->zipStream->zfree = Z_NULL;
 			this->zipStream->opaque = Z_NULL;
@@ -169,6 +171,7 @@ void CompressStream::initDecompress(u_int32_t dataLen) {
 #ifdef HAVE_LIBLZMA 
 		if(!this->lzmaStreamDecompress) {
 			this->lzmaStreamDecompress = new lzma_stream;
+			autoMemoryType(this->lzmaStreamDecompress);
 			memset(this->lzmaStreamDecompress, 0, sizeof(lzma_stream));
 			int ret = lzma_stream_decoder(this->lzmaStreamDecompress, UINT64_MAX, LZMA_CONCATENATED);
 			if(ret == LZMA_OK) {
@@ -185,6 +188,7 @@ void CompressStream::initDecompress(u_int32_t dataLen) {
 	case gzip:
 		if(!this->zipStreamDecompress) {
 			this->zipStreamDecompress =  new z_stream;
+			autoMemoryType(this->zipStreamDecompress);
 			this->zipStreamDecompress->zalloc = Z_NULL;
 			this->zipStreamDecompress->zfree = Z_NULL;
 			this->zipStreamDecompress->opaque = Z_NULL;
@@ -559,6 +563,7 @@ void CompressStream::createCompressBuffer() {
 	case gzip:
 	case lzma:
 		this->compressBuffer = new char[this->compressBufferLength];
+		autoMemoryType(this->compressBuffer);
 		break;
 	case lz4:
 	case lz4_stream:
@@ -568,6 +573,7 @@ void CompressStream::createCompressBuffer() {
 		}
 		this->compressBufferBoundLength = LZ4_compressBound(this->compressBufferLength);
 		this->compressBuffer = new char[this->compressBufferBoundLength];
+		autoMemoryType(this->compressBuffer);
 		#endif //HAVE_LIBLZ4
 		break;
 	case snappy:
@@ -576,6 +582,7 @@ void CompressStream::createCompressBuffer() {
 		}
 		this->compressBufferBoundLength = snappy_max_compressed_length(this->compressBufferLength);
 		this->compressBuffer = new char[this->compressBufferBoundLength];
+		autoMemoryType(this->compressBuffer);
 		break;
 	}
 }
@@ -596,12 +603,14 @@ void CompressStream::createDecompressBuffer(u_int32_t bufferLen) {
 	case gzip:
 	case lzma:
 		this->decompressBuffer = new char[this->decompressBufferLength];
+		autoMemoryType(this->decompressBuffer);
 		break;	
 	case lz4:
 	case lz4_stream:
 	case snappy:
 		this->decompressBufferLength = max(this->maxDataLength, bufferLen);
 		this->decompressBuffer = new char[this->decompressBufferLength];
+		autoMemoryType(this->decompressBuffer);
 		break;
 	}
 }
@@ -690,6 +699,7 @@ void ChunkBuffer::setTypeCompress(CompressStream::eTypeCompress typeCompress, u_
 	case CompressStream::lz4_stream:
 	case CompressStream::snappy:
 		this->compressStream = new CompressStream(typeCompress, compressBufferLength, maxDataLength);
+		autoMemoryType(this->compressStream);
 		break;
 	default:
 		break;
@@ -711,6 +721,7 @@ void ChunkBuffer::setName(const char *name) {
 		return;
 	}
 	this->name = new char[strlen(name) + 1];
+	autoMemoryType(this->name);
 	strcpy(this->name, name);
 }
 
@@ -770,6 +781,7 @@ void ChunkBuffer::add(char *data, u_int32_t datalen, bool flush, u_int32_t decom
 	case add_simple: {
 		sChunk chunk;
 		chunk.chunk = new char[datalen];
+		autoMemoryType(chunk.chunk);
 		memcpy(chunk.chunk, data, datalen);
 		chunk.len = datalen;
 		chunk.decompress_len = decompress_len;
@@ -803,6 +815,7 @@ void ChunkBuffer::add(char *data, u_int32_t datalen, bool flush, u_int32_t decom
 				   this->lastChunk->len == this->chunk_fix_len) {
 					sChunk chunk;
 					chunk.chunk = new char[this->chunk_fix_len];
+					autoMemoryType(chunk.chunk);
 					chunk.len = 0;
 					chunk.decompress_len = (u_int32_t)-1;
 					this->chunkBuffer.push_back(chunk);
@@ -826,6 +839,7 @@ void ChunkBuffer::add(char *data, u_int32_t datalen, bool flush, u_int32_t decom
 			if(!(this->len % this->chunk_fix_len)) {
 				sChunk chunk;
 				chunk.chunk = new char[this->chunk_fix_len];
+				autoMemoryType(chunk.chunk);
 				this->chunkBuffer.push_back(chunk);
 				this->lastChunk = &(*(--this->chunkBuffer.end()));
 			}
@@ -948,7 +962,7 @@ void ChunkBuffer::chunkIterate(ChunkBuffer_baseIterate *chunkbufferIterateEv, bo
 						} else {
 							this->chunkIterateCompleteBufferInfo.buffer = 
 								this->chunkIterateCompleteBufferInfo.counter % 2 ?
-								 new char[this->chunkIterateCompleteBufferInfo.bufferLen] :
+								 (char*)autoMemoryType(new char[this->chunkIterateCompleteBufferInfo.bufferLen]) :
 								 (char*)&(this->chunkIterateCompleteBufferInfo.chunkLenBuff);
 							u_int32_t copied = it->len - this->chunkIterateCompleteBufferInfo.chunkPos;
 							if(sverb.chunk_buffer > 1) { 

@@ -51,7 +51,7 @@
 	(stringInfo[0] == HEAPSAFE_END_MEMORY_CONTROL_BLOCK[0] && \
 	 stringInfo[1] == HEAPSAFE_END_MEMORY_CONTROL_BLOCK[1] && \
 	 stringInfo[2] == HEAPSAFE_END_MEMORY_CONTROL_BLOCK[2])
-
+ 
 
 enum eHeapSafeErrors {
 	_HeapSafeErrorNotEnoughMemory =   1,
@@ -67,6 +67,7 @@ enum eHeapSafeErrors {
 struct sHeapSafeMemoryControlBlock {
 	char stringInfo[3];
 	u_int32_t length;
+	u_int32_t memory_type;
 };
 
 
@@ -165,5 +166,48 @@ inline void *memset_heapsafe(void *ptr, int value, size_t length,
 	return(memset_heapsafe(ptr, ptr, value, length,
 			       file, line));
 }
+
+
+#include <map>
+#include <string>
+#include <stdio.h>
+#include "common.h"
+
+inline void* setMemoryType(void *ptr, const char *memory_type1, int memory_type2 = 0) {
+	extern unsigned int HeapSafeCheck;
+	extern sVerbose sverb;
+	if(HeapSafeCheck & _HeapSafeErrorBeginEnd && sverb.memory_stat) {
+		sHeapSafeMemoryControlBlock *ptr_beginMemoryBlock = (sHeapSafeMemoryControlBlock*)((unsigned char*)ptr - sizeof(sHeapSafeMemoryControlBlock));
+		if(HEAPSAFE_CMP_BEGIN_MEMORY_CONTROL_BLOCK(ptr_beginMemoryBlock->stringInfo)) {
+			extern u_int64_t memoryStat[100000];
+			extern u_int32_t memoryStatLength;
+			extern std::map<std::string, u_int32_t> memoryStatType;
+			extern volatile int memoryStat_sync;
+			while(__sync_lock_test_and_set(&memoryStat_sync, 1));
+			std::string memory_type = memory_type1;
+			if(memory_type2) {
+				char memory_type2_str[20];
+				sprintf(memory_type2_str, " %i", memory_type2);
+				memory_type.append(memory_type2_str);
+			}
+			std::map<std::string, u_int32_t>::iterator iter = memoryStatType.find(memory_type);
+			if(iter == memoryStatType.end()) {
+				ptr_beginMemoryBlock->memory_type = ++memoryStatLength;;
+				memoryStatType[memory_type] = ptr_beginMemoryBlock->memory_type;
+			} else {
+				ptr_beginMemoryBlock->memory_type = iter->second;
+			}
+			__sync_lock_release(&memoryStat_sync);
+			__sync_fetch_and_add(&memoryStat[ptr_beginMemoryBlock->memory_type], ptr_beginMemoryBlock->length);
+		}
+	}
+	return(ptr);
+}
+
+void printMemoryStat();
+
+
+#define autoMemoryType(ptr) setMemoryType(ptr, __FILE__, __LINE__)
+
 
 #endif //HEAP_SAFE_H

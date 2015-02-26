@@ -626,6 +626,7 @@ CircularBuffer::CircularBuffer(size_t capacity)
 	, capacity_(capacity)
 {
 	data_ = new char[capacity];
+	autoMemoryType(data_);
 }
 
 CircularBuffer::~CircularBuffer()
@@ -782,6 +783,7 @@ string GetFileMD5(std::string filename) {
 	MD5_CTX ctx;
 	MD5_Init(&ctx);
 	char *fileBuffer = new char[fileSize];
+	autoMemoryType(fileBuffer);
 	fread(fileBuffer, 1, fileSize, fileHandle);
 	fclose(fileHandle);
 	MD5_Update(&ctx, fileBuffer, fileSize);
@@ -1083,6 +1085,7 @@ bool RtpGraphSaver::open(const char *fileName, const char *fileNameSpoolRelative
 	this->handle = new FileZipHandler(opt_pcap_dump_bufflength, this->_asyncwrite, opt_gzipGRAPH,
 					  false, rtp && rtp->call_owner ? (Call*)rtp->call_owner : 0,
 					  FileZipHandler::graph_rtp);
+	autoMemoryType(this->handle);
 	if(!this->handle->open(fileName)) {
 		syslog(LOG_NOTICE, "graphsaver: error open file %s - %s", fileName, this->handle->error.c_str());
 		delete this->handle;
@@ -1454,6 +1457,7 @@ bool RestartUpgrade::runUpgrade() {
 		if(fileHandle) {
 			size_t sizeOfOutputWgetBuffer = 10000;
 			char *outputStdoutErrBuffer = new char[sizeOfOutputWgetBuffer];
+			autoMemoryType(outputStdoutErrBuffer);
 			size_t readSize = fread(outputStdoutErrBuffer, 1, sizeOfOutputWgetBuffer, fileHandle);
 			if(readSize > 0) {
 				outputStdoutErrBuffer[min(readSize, sizeOfOutputWgetBuffer) - 1] = 0;
@@ -1890,9 +1894,11 @@ void ParsePacket::setStdParse() {
 	}
 	if(!root) {
 		root = new ppNode;
+		autoMemoryType(root);
 	}
 	if(!rootCheckSip) {
 		rootCheckSip = new ppNode;
+		autoMemoryType(rootCheckSip);
 	}
 	addNode("content-length:", true);
 	addNode("l:", true);
@@ -2228,6 +2234,7 @@ void JsonExport::add(const char *name, string content) {
 
 void JsonExport::add(const char *name, const char *content) {
 	JsonExportItem_template<string> *item = new JsonExportItem_template<string>;
+	autoMemoryType(item);
 	item->setTypeItem(_string);
 	item->setName(name);
 	item->setContent(string(content));
@@ -2236,6 +2243,7 @@ void JsonExport::add(const char *name, const char *content) {
 
 void JsonExport::add(const char *name, u_int64_t content) {
 	JsonExportItem_template<u_int64_t> *item = new JsonExportItem_template<u_int64_t>;
+	autoMemoryType(item);
 	item->setTypeItem(_number);
 	item->setName(name);
 	item->setContent(content);
@@ -2264,6 +2272,7 @@ FileZipHandler::FileZipHandler(int bufferLength, int enableAsyncWrite, eTypeComp
 			      bufferLength;
 	if(bufferLength) {
 		this->buffer = new char[bufferLength];
+		autoMemoryType(this->buffer);
 	} else {
 		this->buffer = NULL;
 	}
@@ -2449,6 +2458,7 @@ void FileZipHandler::initCompress() {
 	if(this->typeCompress == gzip && 
 	   !this->compressStream) {
 		this->compressStream =  new CompressStream(CompressStream::gzip, 8 * 1024, 0);
+		autoMemoryType(this->compressStream);
 		this->compressStream->setZipLevel(typeFile == pcap_sip ? opt_pcap_dump_ziplevel_sip : 
 						  typeFile == pcap_rtp ? opt_pcap_dump_ziplevel_rtp : 
 						  typeFile == graph_rtp ? opt_pcap_dump_ziplevel_graph : Z_DEFAULT_COMPRESSION);
@@ -2462,6 +2472,7 @@ void FileZipHandler::initTarbuffer(bool useFileZipHandlerCompress) {
 					  typeFile == pcap_rtp ? 32 * 1024 : 
 					  typeFile == graph_rtp ? 16 * 1024 : 8 * 1024,
 					  call, typeFile);
+	autoMemoryType(this->tarBuffer);
 	if(sverb.tar > 2) {
 		syslog(LOG_NOTICE, "chunkbufer create: %s %lx %i %i", 
 		       this->fileName.c_str(), (long)this->tarBuffer,
@@ -2574,6 +2585,7 @@ pcap_dumper_t *__pcap_dump_open(pcap_t *p, const char *fname, int linktype, stri
 							     type == PcapDumper::sip ? FileZipHandler::pcap_sip :
 							     type == PcapDumper::rtp ? FileZipHandler::pcap_rtp :
 										       FileZipHandler::na);
+		autoMemoryType(handler);
 		if(handler->open(fname)) {
 			struct pcap_file_header hdr;
 			hdr.magic = TCPDUMP_MAGIC;
@@ -2971,6 +2983,7 @@ void SocketSimpleBufferWrite::addData(void *data1, u_int32_t dataLength1,
 		}
 	}
 	SimpleBuffer *simpleBuffer = new SimpleBuffer(dataLength2);
+	autoMemoryType(simpleBuffer);
 	simpleBuffer->add(data1, dataLength1);
 	simpleBuffer->add(data2, dataLength2);
 	lock_data();
@@ -3092,6 +3105,7 @@ void BogusDumper::dump(pcap_pkthdr* header, u_char* packet, int dlt, const char 
 		dumper = dumpers[interfaceName];
 	} else {
 		dumper = new PcapDumper(PcapDumper::na, NULL);
+		autoMemoryType(dumper);
 		dumper->setEnableAsyncWrite(false);
 		dumper->setTypeCompress(FileZipHandler::compress_na);
 		string dumpFileName = path + "/bogus_" + 
@@ -3138,6 +3152,7 @@ char *base64_encode(const unsigned char *data, size_t input_length, size_t *outp
 	int mod_table[] = {0, 2, 1};
 	*output_length = 4 * ((input_length + 2) / 3);
 	char *encoded_data = new char[*output_length + 1];
+	autoMemoryType(encoded_data);
 	if(encoded_data == NULL) return NULL;
 	for(size_t i = 0, j = 0; i < input_length;) {
 	    uint32_t octet_a = i < input_length ? (unsigned char)data[i++] : 0;
