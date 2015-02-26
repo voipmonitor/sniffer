@@ -3312,21 +3312,29 @@ void *PcapQueue_readFromFifo::writeThreadFunction(void *arg, unsigned int arg2) 
 				this->checkFreeSizeCachedir();
 			}
 			++sumBlocksCounterOut[0];
-			if(this->packetServerDirection == directionWrite) {
+		}
+		if(this->packetServerDirection == directionWrite) {
+			if(blockStore) {
 				this->socketWritePcapBlock(blockStore);
 				this->blockStoreTrash.push_back(blockStore);
 				this->addBlockStoreTrash_size(blockStore->getUseSize());
-			} else {
+			}
+		} else {
+			if(blockStore) {
 				if(blockStore->size_compress && !blockStore->uncompress()) {
 					delete blockStore;
-					continue;
+					blockStore = NULL;
+				} else {
+					this->addBlockStoreTrash_size(blockStore->getUseSize());
 				}
-				if(opt_pcap_queue_dequeu_window_length > 0 &&
-				   (opt_pcap_queue_dequeu_method == 1 || opt_pcap_queue_dequeu_method == 2) &&
-				   (!TEST_PACKETS && !opt_pb_read_from_file[0])) {
-					if(opt_pcap_queue_dequeu_method == 1) {
+			}
+			if(opt_pcap_queue_dequeu_window_length > 0 &&
+			   (opt_pcap_queue_dequeu_method == 1 || opt_pcap_queue_dequeu_method == 2) &&
+			   (!TEST_PACKETS && !opt_pb_read_from_file[0])) {
+				if(opt_pcap_queue_dequeu_method == 1) {
+					u_int64_t at = getTimeUS();
+					if(blockStore) {
 						listBlockStore[blockStore] = 0;
-						u_int64_t at = getTimeUS();
 						for(size_t i = 0; i < blockStore->count; i++) {
 							sPacketTimeInfo pti;
 							pti.blockStore = blockStore;
@@ -3344,45 +3352,47 @@ void *PcapQueue_readFromFifo::writeThreadFunction(void *arg, unsigned int arg2) 
 								listPacketTimeInfo[pti.utime] = newList;
 							}
 						}
-						map<u_int64_t, list<sPacketTimeInfo>* >::iterator first = listPacketTimeInfo.begin();
-						map<u_int64_t, list<sPacketTimeInfo>* >::iterator last = listPacketTimeInfo.end();
-						--last;
-						while(listPacketTimeInfo.size() && !TERMINATING) {
-							if(last->first - first->first > (unsigned)opt_pcap_queue_dequeu_window_length * 1000 && 
-							   at - first->second->begin()->at > (unsigned)opt_pcap_queue_dequeu_window_length * 1000) {
-								sPacketTimeInfo pti = *(first->second->begin());
-								first->second->pop_front();
-								++sumPacketsCounterOut[0];
-								this->processPacket(
-									pti.header, pti.packet, 
-									pti.blockStore, pti.blockStoreIndex,
-									pti.header->dlink ? 
-										pti.header->dlink : 
-										pti.blockStore->dlink, 
-									pti.blockStore->sensor_id);
-								++listBlockStore[pti.blockStore];
-								if(listBlockStore[pti.blockStore] == pti.blockStore->count) {
-									this->blockStoreTrash.push_back(pti.blockStore);
-									this->addBlockStoreTrash_size(pti.blockStore->getUseSize());
-									listBlockStore.erase(pti.blockStore);
-								}
-								if(first->second->empty()) {
-									delete first->second;
-									listPacketTimeInfo.erase(first);
-									first = listPacketTimeInfo.begin();
-								}
-							} else {
-								break;
+					}
+					map<u_int64_t, list<sPacketTimeInfo>* >::iterator first = listPacketTimeInfo.begin();
+					map<u_int64_t, list<sPacketTimeInfo>* >::iterator last = listPacketTimeInfo.end();
+					--last;
+					while(listPacketTimeInfo.size() && !TERMINATING) {
+						if(last->first - first->first > (unsigned)opt_pcap_queue_dequeu_window_length * 1000 && 
+						   at - first->second->begin()->at > (unsigned)opt_pcap_queue_dequeu_window_length * 1000) {
+							sPacketTimeInfo pti = *(first->second->begin());
+							first->second->pop_front();
+							++sumPacketsCounterOut[0];
+							this->processPacket(
+								pti.header, pti.packet, 
+								pti.blockStore, pti.blockStoreIndex,
+								pti.header->dlink ? 
+									pti.header->dlink : 
+									pti.blockStore->dlink, 
+								pti.blockStore->sensor_id);
+							++listBlockStore[pti.blockStore];
+							if(listBlockStore[pti.blockStore] == pti.blockStore->count) {
+								this->blockStoreTrash.push_back(pti.blockStore);
+								listBlockStore.erase(pti.blockStore);
 							}
+							if(first->second->empty()) {
+								delete first->second;
+								listPacketTimeInfo.erase(first);
+								first = listPacketTimeInfo.begin();
+							}
+						} else {
+							break;
 						}
-					} else {
+					}
+				} else {
+					u_int64_t at = getTimeUS();
+					if(blockStore) {
 						blockInfo[blockInfoCount].blockStore = blockStore;
 						blockInfo[blockInfoCount].count_processed = 0;
 						blockInfo[blockInfoCount].utime_first = (*blockStore)[0].header->header_fix_size.ts_tv_sec * 1000000ull +
 											(*blockStore)[0].header->header_fix_size.ts_tv_usec;
 						blockInfo[blockInfoCount].utime_last = (*blockStore)[blockStore->count - 1].header->header_fix_size.ts_tv_sec * 1000000ull +
 										       (*blockStore)[blockStore->count - 1].header->header_fix_size.ts_tv_usec;
-						blockInfo[blockInfoCount].at = getTimeUS();
+						blockInfo[blockInfoCount].at = at;
 						if(!blockInfo_utime_first ||
 						   blockInfo[blockInfoCount].utime_first < blockInfo_utime_first) {
 							blockInfo_utime_first = blockInfo[blockInfoCount].utime_first;
@@ -3400,72 +3410,74 @@ void *PcapQueue_readFromFifo::writeThreadFunction(void *arg, unsigned int arg2) 
 							blockInfo_at_last = blockInfo[blockInfoCount].at;
 						}
 						++blockInfoCount;
-						while(blockInfoCount &&
-                                                      ((blockInfo_utime_last - blockInfo_utime_first > (unsigned)opt_pcap_queue_dequeu_window_length * 1000 &&
-                                                        blockInfo_at_last - blockInfo_at_first > (unsigned)opt_pcap_queue_dequeu_window_length * 1000) ||
-                                                       blockInfo_at_last - blockInfo_at_first > (unsigned)opt_pcap_queue_dequeu_window_length * 1000 * 4 ||
-                                                       blockInfoCount == blockInfoCountMax) &&
-						      !TERMINATING) {
-							u_int64_t minUtime = 0;
-							int minUtimeIndexBlockInfo = -1;
-							for(int i = 0; i < blockInfoCount; i++) {
-								if(!minUtime ||
-								   blockInfo[i].utime_first < minUtime) {
-									minUtime = blockInfo[i].utime_first;
-									minUtimeIndexBlockInfo = i;
-								}
-							}
-							if(minUtimeIndexBlockInfo < 0) {
-								continue;
-							}
-							sBlockInfo *actBlockInfo = &blockInfo[minUtimeIndexBlockInfo];
-							this->processPacket(
-								(*actBlockInfo->blockStore)[actBlockInfo->count_processed].header,
-								(*actBlockInfo->blockStore)[actBlockInfo->count_processed].packet,
-								actBlockInfo->blockStore,
-								actBlockInfo->count_processed,
-								(*actBlockInfo->blockStore)[actBlockInfo->count_processed].header->dlink ? 
-									(*actBlockInfo->blockStore)[actBlockInfo->count_processed].header->dlink :
-									actBlockInfo->blockStore->dlink,
-								actBlockInfo->blockStore->sensor_id);
-							++actBlockInfo->count_processed;
-							if(actBlockInfo->count_processed == actBlockInfo->blockStore->count) {
-								this->blockStoreTrash.push_back(actBlockInfo->blockStore);
-								this->addBlockStoreTrash_size(actBlockInfo->blockStore->getUseSize());
-								--blockInfoCount;
-								for(int i = minUtimeIndexBlockInfo; i < blockInfoCount; i++) {
-									memcpy(blockInfo + i, blockInfo + i + 1, sizeof(sBlockInfo));
-								}
-								blockInfo_utime_first = 0;
-								blockInfo_utime_last = 0;
-								blockInfo_at_first = 0;
-								blockInfo_at_last = 0;
-								for(int i = 0; i < blockInfoCount; i++) {
-									if(!blockInfo_utime_first ||
-									   blockInfo[i].utime_first < blockInfo_utime_first) {
-										blockInfo_utime_first = blockInfo[i].utime_first;
-									}
-									if(!blockInfo_utime_last ||
-									   blockInfo[i].utime_last > blockInfo_utime_last) {
-										blockInfo_utime_last = blockInfo[i].utime_last;
-									}
-									if(!blockInfo_at_first ||
-									   blockInfo[i].at < blockInfo_at_first) {
-										blockInfo_at_first = blockInfo[i].at;
-									}
-									if(!blockInfo_at_last ||
-									   blockInfo[i].at > blockInfo_at_last) {
-										blockInfo_at_last = blockInfo[i].at;
-									}
-								}
-							} else {
-								actBlockInfo->utime_first = (*actBlockInfo->blockStore)[actBlockInfo->count_processed].header->header_fix_size.ts_tv_sec * 1000000ull +
-											    (*actBlockInfo->blockStore)[actBlockInfo->count_processed].header->header_fix_size.ts_tv_usec;
-								blockInfo_utime_first = minUtime;
+					}
+					while(blockInfoCount &&
+					      ((blockInfo_utime_last - blockInfo_utime_first > (unsigned)opt_pcap_queue_dequeu_window_length * 1000 &&
+						blockInfo_at_last - blockInfo_at_first > (unsigned)opt_pcap_queue_dequeu_window_length * 1000) ||
+					       at - blockInfo_at_first > (unsigned)opt_pcap_queue_dequeu_window_length * 1000 * 4 ||
+					       blockStoreTrash_size > opt_pcap_queue_store_queue_max_memory_size / 2 ||
+					       blockInfoCount == blockInfoCountMax) &&
+					      !TERMINATING) {
+						u_int64_t minUtime = 0;
+						int minUtimeIndexBlockInfo = -1;
+						for(int i = 0; i < blockInfoCount; i++) {
+							if(!minUtime ||
+							   blockInfo[i].utime_first < minUtime) {
+								minUtime = blockInfo[i].utime_first;
+								minUtimeIndexBlockInfo = i;
 							}
 						}
+						if(minUtimeIndexBlockInfo < 0) {
+							continue;
+						}
+						sBlockInfo *actBlockInfo = &blockInfo[minUtimeIndexBlockInfo];
+						this->processPacket(
+							(*actBlockInfo->blockStore)[actBlockInfo->count_processed].header,
+							(*actBlockInfo->blockStore)[actBlockInfo->count_processed].packet,
+							actBlockInfo->blockStore,
+							actBlockInfo->count_processed,
+							(*actBlockInfo->blockStore)[actBlockInfo->count_processed].header->dlink ? 
+								(*actBlockInfo->blockStore)[actBlockInfo->count_processed].header->dlink :
+								actBlockInfo->blockStore->dlink,
+							actBlockInfo->blockStore->sensor_id);
+						++actBlockInfo->count_processed;
+						if(actBlockInfo->count_processed == actBlockInfo->blockStore->count) {
+							this->blockStoreTrash.push_back(actBlockInfo->blockStore);
+							--blockInfoCount;
+							for(int i = minUtimeIndexBlockInfo; i < blockInfoCount; i++) {
+								memcpy(blockInfo + i, blockInfo + i + 1, sizeof(sBlockInfo));
+							}
+							blockInfo_utime_first = 0;
+							blockInfo_utime_last = 0;
+							blockInfo_at_first = 0;
+							blockInfo_at_last = 0;
+							for(int i = 0; i < blockInfoCount; i++) {
+								if(!blockInfo_utime_first ||
+								   blockInfo[i].utime_first < blockInfo_utime_first) {
+									blockInfo_utime_first = blockInfo[i].utime_first;
+								}
+								if(!blockInfo_utime_last ||
+								   blockInfo[i].utime_last > blockInfo_utime_last) {
+									blockInfo_utime_last = blockInfo[i].utime_last;
+								}
+								if(!blockInfo_at_first ||
+								   blockInfo[i].at < blockInfo_at_first) {
+									blockInfo_at_first = blockInfo[i].at;
+								}
+								if(!blockInfo_at_last ||
+								   blockInfo[i].at > blockInfo_at_last) {
+									blockInfo_at_last = blockInfo[i].at;
+								}
+							}
+						} else {
+							actBlockInfo->utime_first = (*actBlockInfo->blockStore)[actBlockInfo->count_processed].header->header_fix_size.ts_tv_sec * 1000000ull +
+										    (*actBlockInfo->blockStore)[actBlockInfo->count_processed].header->header_fix_size.ts_tv_usec;
+							blockInfo_utime_first = minUtime;
+						}
 					}
-				} else {
+				}
+			} else {
+				if(blockStore) {
 					for(size_t i = 0; i < blockStore->count && !TERMINATING; i++) {
 						++sumPacketsCounterOut[0];
 						if(TEST_PACKETS) {
@@ -3491,10 +3503,10 @@ void *PcapQueue_readFromFifo::writeThreadFunction(void *arg, unsigned int arg2) 
 						}
 					}
 					this->blockStoreTrash.push_back(blockStore);
-					this->addBlockStoreTrash_size(blockStore->getUseSize());
 				}
 			}
-		} else {
+		}
+		if(!blockStore) {
 			usleep(1000);
 		}
 		if(!(++this->cleanupBlockStoreTrash_counter % 10)) {
@@ -4027,9 +4039,6 @@ void PcapQueue_readFromFifo::cleanupBlockStoreTrash(bool all) {
 }
 
 void PcapQueue_readFromFifo::addBlockStoreTrash_size(size_t size) {
-	while(pcapStoreQueue.sizeOfBlocksInMemory + blockStoreTrash_size >= opt_pcap_queue_store_queue_max_memory_size && !terminating) {
-		usleep(100000);
-	}
 	blockStoreTrash_size += size;
 }
 
