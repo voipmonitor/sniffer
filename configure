@@ -587,7 +587,6 @@ PACKAGE_URL=''
 ac_unique_file="voipmonitor.cpp"
 ac_subst_vars='LTLIBOBJS
 LIBOBJS
-LIBTCMALLOC
 LIBGNUTLSSTATIC
 LIBGNUTLS
 LIBSSH
@@ -4077,49 +4076,7 @@ else
 $as_echo "$as_me: Unable to find gnutls disabling SIP TLS decoder. apt-get install libgnutls-dev | yum install gnutls-devel" >&6;}
 fi
 
-{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for tc_malloc in -ltcmalloc_minimal" >&5
-$as_echo_n "checking for tc_malloc in -ltcmalloc_minimal... " >&6; }
-if ${ac_cv_lib_tcmalloc_minimal_tc_malloc+:} false; then :
-  $as_echo_n "(cached) " >&6
-else
-  ac_check_lib_save_LIBS=$LIBS
-LIBS="-ltcmalloc_minimal  $LIBS"
-cat confdefs.h - <<_ACEOF >conftest.$ac_ext
-/* end confdefs.h.  */
-
-/* Override any GCC internal prototype to avoid an error.
-   Use char because int might match the return type of a GCC
-   builtin and then its argument prototype would still apply.  */
-#ifdef __cplusplus
-extern "C"
-#endif
-char tc_malloc ();
-int
-main ()
-{
-return tc_malloc ();
-  ;
-  return 0;
-}
-_ACEOF
-if ac_fn_c_try_link "$LINENO"; then :
-  ac_cv_lib_tcmalloc_minimal_tc_malloc=yes
-else
-  ac_cv_lib_tcmalloc_minimal_tc_malloc=no
-fi
-rm -f core conftest.err conftest.$ac_objext \
-    conftest$ac_exeext conftest.$ac_ext
-LIBS=$ac_check_lib_save_LIBS
-fi
-{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $ac_cv_lib_tcmalloc_minimal_tc_malloc" >&5
-$as_echo "$ac_cv_lib_tcmalloc_minimal_tc_malloc" >&6; }
-if test "x$ac_cv_lib_tcmalloc_minimal_tc_malloc" = xyes; then :
-  HAVE_LIBTCMALLOC=1
-else
-  { $as_echo "$as_me:${as_lineno-$LINENO}: Unable to find tcmalloc_minimal library which speeds up threads by 10%. The library is optional: apt-get install libtcmalloc-minimal4 or compile from source https://code.google.com/p/gperftools/" >&5
-$as_echo "$as_me: Unable to find tcmalloc_minimal library which speeds up threads by 10%. The library is optional: apt-get install libtcmalloc-minimal4 or compile from source https://code.google.com/p/gperftools/" >&6;}
-fi
-
+#AC_CHECK_LIB([tcmalloc_minimal], [tc_malloc], HAVE_LIBTCMALLOC=1, AC_MSG_NOTICE([Unable to find tcmalloc_minimal library which speeds up threads by 10%. The library is optional: apt-get install libtcmalloc-minimal4 or compile from source https://code.google.com/p/gperftools/]))
 
 HAVE_LIBLZMA_T=no
 if test "x$HAVE_LIBLZMA" = "x1"; then
@@ -4152,15 +4109,14 @@ $as_echo "#define HAVE_LIBGNUTLS 1" >>confdefs.h
 
 	LIBGNUTLS_T=yes
 fi
-TCMALLOC_T=no
-if test "x$HAVE_LIBTCMALLOC" = "x1"; then
 
-$as_echo "#define HAVE_LIBTCMALLOC 1" >>confdefs.h
 
-	LIBTCMALLOC="-ltcmalloc_minimal"
-
-	TCMALLOC_T=yes
-fi
+#TCMALLOC_T=no
+#if test "x$HAVE_LIBTCMALLOC" = "x1"; then
+#	AC_DEFINE([HAVE_LIBTCMALLOC], [1], [Define if using libtcmalloc])
+#	AC_SUBST([LIBTCMALLOC],["-ltcmalloc_minimal"])
+#	TCMALLOC_T=yes
+#fi
 
 # Checks for header files.
 #AC_FUNC_ALLOCA
@@ -5492,7 +5448,6 @@ fi
 lzma compression enabled               : $HAVE_LIBLZMA_T
 ssh library enabled (cloud)            : $HAVE_LIBSSH_T
 gnutls library enabled (SIP TLS)       : $LIBGNUTLS_T
-tcmalloc (faster *alloc) lib found     : $TCMALLOC_T
 
 shared binary: run make
 static binary: run make static
@@ -5518,7 +5473,6 @@ $as_echo "$as_me:
 lzma compression enabled               : $HAVE_LIBLZMA_T
 ssh library enabled (cloud)            : $HAVE_LIBSSH_T
 gnutls library enabled (SIP TLS)       : $LIBGNUTLS_T
-tcmalloc (faster *alloc) lib found     : $TCMALLOC_T
 
 shared binary: run make
 static binary: run make static
