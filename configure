@@ -5448,7 +5448,6 @@ fi
 lzma compression enabled               : $HAVE_LIBLZMA_T
 ssh library enabled (cloud)            : $HAVE_LIBSSH_T
 gnutls library enabled (SIP TLS)       : $LIBGNUTLS_T
-tcmalloc (faster *alloc) lib found     : $TCMALLOC_T
 
 shared binary: run make
 static binary: run make static
@@ -5474,7 +5473,6 @@ $as_echo "$as_me:
 lzma compression enabled               : $HAVE_LIBLZMA_T
 ssh library enabled (cloud)            : $HAVE_LIBSSH_T
 gnutls library enabled (SIP TLS)       : $LIBGNUTLS_T
-tcmalloc (faster *alloc) lib found     : $TCMALLOC_T
 
 shared binary: run make
 static binary: run make static
