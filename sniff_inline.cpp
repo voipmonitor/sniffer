@@ -246,8 +246,8 @@ int pcapProcess(pcap_pkthdr** header, u_char** packet, bool *destroy,
 							header_ip_1->tot_len = htons((ntohs(ppd->header_ip->tot_len)) + sizeof(iphdr2));
 
 							if(*destroy) {
-								free(header_old);
-								free(packet_old);
+								delete header_old;
+								delete [] packet_old;
 							}
 							*destroy = true;
 						} else {

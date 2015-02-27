@@ -161,6 +161,7 @@ struct pcap_block_store {
 			this->lock_sync_packet_lock();
 			if(!this->packet_lock) {
 				this->packet_lock = new bool[this->count];
+				autoMemoryType(this->packet_lock);
 				memset(this->packet_lock, 0, this->count * sizeof(bool));
 			}
 			this->packet_lock[index] = true;

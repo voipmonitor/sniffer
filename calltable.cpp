@@ -486,7 +486,7 @@ Call::~Call(){
 		((Calltable*)calltable)->unlock_calls_mergeMAP();
 	}
 
-	if(contenttype) free(contenttype);
+	if(contenttype) delete [] contenttype;
 	for(int i = 0; i < MAX_SSRC_PER_CALL; i++) {
 		// lets check whole array as there can be holes due rtp[0] <=> rtp[1] swaps in mysql rutine
 		if(rtp[i]) {
@@ -504,7 +504,7 @@ Call::~Call(){
 	if(audiobuffer2) delete audiobuffer2;
 
 	if(this->message) {
-		free(message);
+		delete [] message;
 	}
 	pthread_mutex_destroy(&buflock);
 	pthread_mutex_unlock(&listening_worker_run_lock);

@@ -291,6 +291,7 @@ struct pcapProcessData {
 		extern int opt_dup_check;
 		if(opt_dup_check) {
 			this->prevmd5s = new unsigned char[65536 * MD5_DIGEST_LENGTH]; // 1M
+			autoMemoryType(this->prevmd5s);
 			memset(this->prevmd5s, 0, 65536 * MD5_DIGEST_LENGTH * sizeof(unsigned char));
 		}
 	}

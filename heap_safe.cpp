@@ -218,9 +218,18 @@ std::string getMemoryStat() {
 		std::map<std::string, u_int32_t>::iterator iter = memoryStatType.begin();
 		while(iter != memoryStatType.end()) {
 			if(memoryStat[iter->second] > 0) {
+				char length_str[20];
+				sprintf(length_str, "%lu", memoryStat[iter->second]);
+				std::string length;
+				while(strlen(length_str) > 3) {
+					length = std::string(length_str + strlen(length_str) - 3) + " " + length;
+					length_str[strlen(length_str) - 3] = 0;
+				}
+				length = std::string(length_str) + " " + length;
 				outStr << std::fixed
 				       << std::left << std::setw(30) << iter->first << " : " 
-				       << std::right <<  std::setw(12) << memoryStat[iter->second] << std::endl;
+				       << std::right <<  std::setw(16) << length
+				       << std::endl;
 			}
 			++iter;
 		}
