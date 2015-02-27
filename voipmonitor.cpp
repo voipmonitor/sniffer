@@ -3286,6 +3286,7 @@ int main(int argc, char *argv[]) {
 						else if(verbparams[i].substr(0, 17) == "pcap_stat_period=")
 													sverb.pcap_stat_period = atoi(verbparams[i].c_str() + 17);
 						else if(verbparams[i] == "memory_stat")			sverb.memory_stat = 1;
+						else if(verbparams[i] == "memory_stat_log")		{sverb.memory_stat = 1; sverb.memory_stat_log = 1;}
 					}
 				} }
 				break;
@@ -4534,7 +4535,7 @@ int main(int argc, char *argv[]) {
 							pthread_mutex_lock(&terminate_packetbuffer_lock);
 							pcapQueueQ->pcapStat(verbosityE > 0 ? 1 : _pcap_stat_period);
 							pthread_mutex_unlock(&terminate_packetbuffer_lock);
-							if(sverb.memory_stat) {
+							if(sverb.memory_stat_log) {
 								printMemoryStat();
 							}
 							if(tcpReassemblyHttp) {
@@ -4852,6 +4853,11 @@ int main(int argc, char *argv[]) {
 	}
 	
 	thread_cleanup();
+	
+	if(sverb.memory_stat) {
+		cout << "memory stat at end" << endl;
+		printMemoryStat();
+	}
 }
 
 void terminate_packetbuffer() {

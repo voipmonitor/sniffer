@@ -1,4 +1,5 @@
 #include <iostream>
+#include <sstream>
 #include <iomanip>
 
 #include "heap_safe.h"
@@ -209,16 +210,27 @@ void HeapSafeMemsetError(const char *errorString, const char *file, unsigned int
 	}
 }
 
-void printMemoryStat() {
-	while(__sync_lock_test_and_set(&memoryStat_sync, 1));
-	std::map<std::string, u_int32_t>::iterator iter = memoryStatType.begin();
-	while(iter != memoryStatType.end()) {
-		if(memoryStat[iter->second] > 0) {
-			std::cout << std::fixed
-				  << std::left << std::setw(30) << iter->first << " : " 
-				  << std::right <<  std::setw(12) << memoryStat[iter->second] << std::endl;
+std::string getMemoryStat() {
+	extern sVerbose sverb;
+	std::ostringstream outStr;
+	if(HeapSafeCheck & _HeapSafeErrorBeginEnd && sverb.memory_stat) {
+		while(__sync_lock_test_and_set(&memoryStat_sync, 1));
+		std::map<std::string, u_int32_t>::iterator iter = memoryStatType.begin();
+		while(iter != memoryStatType.end()) {
+			if(memoryStat[iter->second] > 0) {
+				outStr << std::fixed
+				       << std::left << std::setw(30) << iter->first << " : " 
+				       << std::right <<  std::setw(12) << memoryStat[iter->second] << std::endl;
+			}
+			++iter;
 		}
-		++iter;
+		__sync_lock_release(&memoryStat_sync);
+		return(outStr.str());
+	} else {
+		return("memory stat is not activated\n");
 	}
-	__sync_lock_release(&memoryStat_sync);
+}
+
+void printMemoryStat() {
+	std::cout << getMemoryStat();
 }

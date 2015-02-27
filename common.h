@@ -29,6 +29,7 @@ struct sVerbose {
 	int capture_filter;
 	int pcap_stat_period;
 	int memory_stat;
+	int memory_stat_log;
 };
 
 #endif

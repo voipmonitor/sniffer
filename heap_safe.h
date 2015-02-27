@@ -204,6 +204,7 @@ inline void* setMemoryType(void *ptr, const char *memory_type1, int memory_type2
 	return(ptr);
 }
 
+std::string getMemoryStat();
 void printMemoryStat();
 
 
