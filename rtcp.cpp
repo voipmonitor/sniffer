@@ -361,12 +361,13 @@ char *dump_rtcp_sdes(char *data, unsigned int datalen, int count)
 			}
 			
 			/* Allocate memory for the string then get it */
-			string = (u_int8_t*)malloc(length + 1);
+			string = new u_int8_t[length + 1];
+			autoMemoryType(string);
 			if((pkt + length) < (data + datalen)){
 				memcpy(string, pkt, length);
 				pkt += length;
 			} else {
-				free(string);
+				delete [] string;
 				break;
 			}
 			string[length] = '\0';
@@ -378,7 +379,7 @@ char *dump_rtcp_sdes(char *data, unsigned int datalen, int count)
 			}
 
 			/* Free string memory */
-			free(string);
+			delete [] string;
 			
 			/* Look for a null terminator */
 //			if (look_packet_bytes((u_int8_t *) &byte, pkt, 1) == 0)

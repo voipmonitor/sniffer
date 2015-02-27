@@ -856,6 +856,7 @@ read:
 		}
 		rtplock = 1;
 		rtp[ssrc_n] = new RTP(sensor_id);
+		autoMemoryType(rtp[ssrc_n]);
 		rtp[ssrc_n]->call_owner = this;
 		rtp[ssrc_n]->ssrc_index = ssrc_n; 
 		rtp[ssrc_n]->iscaller = iscaller; 
@@ -1094,7 +1095,8 @@ int convertALAW2WAV(char *fname1, char *fname3, int maxsamplerate) {
 	file_size1 = ftell(f_in1);
 	fseek(f_in1, 0, SEEK_SET);
  
-	bitstream_buf1 = (unsigned char *)malloc(file_size1);
+	bitstream_buf1 = new unsigned char[file_size1];
+	autoMemoryType(bitstream_buf1);
 	if(!bitstream_buf1) {
 		syslog(LOG_ERR,"Cannot malloc bitsream_buf1[%ld]", file_size1);
 		fclose(f_in1);
@@ -1114,7 +1116,7 @@ int convertALAW2WAV(char *fname1, char *fname3, int maxsamplerate) {
  
 	// wav_update_header(f_out);
  
-	free(bitstream_buf1);
+	delete [] bitstream_buf1;
  
 	fclose(f_out);
 	fclose(f_in1);
@@ -1156,7 +1158,8 @@ int convertULAW2WAV(char *fname1, char *fname3, int maxsamplerate) {
 	file_size1 = ftell(f_in1);
 	fseek(f_in1, 0, SEEK_SET);
  
-	bitstream_buf1 = (unsigned char *)malloc(file_size1);
+	bitstream_buf1 = new unsigned char[file_size1];
+	autoMemoryType(bitstream_buf1);
 	if(!bitstream_buf1) {
 		fclose(f_in1);
 		fclose(f_out);
@@ -1178,7 +1181,7 @@ int convertULAW2WAV(char *fname1, char *fname3, int maxsamplerate) {
 	// wav_update_header(f_out);
  
 	if(bitstream_buf1)
-		free(bitstream_buf1);
+		delete [] bitstream_buf1;
  
 	fclose(f_out);
 	fclose(f_in1);
@@ -1211,6 +1214,7 @@ Call::mos_lqo(char *deg, int samplerate) {
 	float mos, mos_lqo;
 
 	char *tmp = new char[out.length() + 1];
+	autoMemoryType(tmp);
 	char *a = NULL;
 
 	strcpy(tmp, out.c_str());
@@ -3171,7 +3175,8 @@ Calltable::mapAdd(in_addr_t addr, unsigned short port, Call* call, int iscaller,
 	}
 	
 	// adding to hash at first position
-	Ipportnode *node = (Ipportnode *)malloc(sizeof(Ipportnode));
+	Ipportnode *node = new Ipportnode;
+	autoMemoryType(node);
 	memset(node, 0x0, sizeof(Ipportnode));
 	node->call = call;
 	node->iscaller = iscaller;
@@ -3210,13 +3215,13 @@ Calltable::hashAdd(in_addr_t addr, unsigned short port, Call* call, int iscaller
 					// remove this call
 					if(prev) {
 						prev->next = node_call->next;
-						free(node_call);
+						delete node_call;
 						node_call = prev->next;
 						continue;
 					} else {
 						//removing first node
 						node->calls = node->calls->next;
-						free(node_call);
+						delete node_call;
 						node_call = node->calls;
 						continue;
 					}
@@ -3251,7 +3256,8 @@ Calltable::hashAdd(in_addr_t addr, unsigned short port, Call* call, int iscaller
 			}
 			if(!found) {
 				// the same ip/port is shared with some other call which is not yet in node - add it
-				hash_node_call *node_call_new = (hash_node_call*)malloc(sizeof(hash_node_call));
+				hash_node_call *node_call_new = new hash_node_call;
+				autoMemoryType(node_call_new);
 				node_call_new->next = node->calls;
 				node_call_new->call = call;
 				node_call_new->iscaller = iscaller;
@@ -3269,14 +3275,16 @@ Calltable::hashAdd(in_addr_t addr, unsigned short port, Call* call, int iscaller
 
 	// addr / port combination not found - add it to hash at first position
 
-	node_call = (hash_node_call*)malloc(sizeof(hash_node_call));
+	node_call = new hash_node_call;
+	autoMemoryType(node_call);
 	node_call->next = NULL;
 	node_call->call = call;
 	node_call->iscaller = iscaller;
 	node_call->is_rtcp = is_rtcp;
 	node_call->is_fax = is_fax;
 
-	node = (hash_node*)malloc(sizeof(hash_node));
+	node = new hash_node;
+	autoMemoryType(node);
 	memset(node, 0x0, sizeof(hash_node));
 	node->addr = addr;
 	node->port = port;
@@ -3303,11 +3311,11 @@ Calltable::hashRemove(Call *call, in_addr_t addr, unsigned short port) {
 					// call matches - remote the call from node->calls
 					if (prev_call == NULL) {
 						node->calls = node_call->next;
-						free(node_call);
+						delete node_call;
 						break; 
 					} else {
 						prev_call->next = node_call->next;
-						free(node_call);
+						delete node_call;
 						break; 
 					}
 					break;
@@ -3318,12 +3326,12 @@ Calltable::hashRemove(Call *call, in_addr_t addr, unsigned short port) {
 				// node now contains no calls so we can remove it 
 				if (prev == NULL) {
 					calls_hash[h] = node->next;
-					free(node);
+					delete node;
 					unlock_calls_hash();
 					return;
 				} else {
 					prev->next = node->next;
-					free(node);
+					delete node;
 					unlock_calls_hash();
 					return;
 				}
@@ -3341,7 +3349,7 @@ Calltable::mapRemove(in_addr_t addr, unsigned short port) {
 		ipportmapIT = ipportmap[addr].find(port);
 		if(ipportmapIT != ipportmap[addr].end()) {
 			Ipportnode *node = (*ipportmapIT).second;
-			free(node);
+			delete node;
 			ipportmap[addr].erase(ipportmapIT);
 		}
 	}
@@ -3418,6 +3426,7 @@ Calltable::add(char *call_id, unsigned long call_id_len, time_t time, u_int32_t 
 	       pcap_t *handle, int dlt, int sensorId
 ) {
 	Call *newcall = new Call(call_id, call_id_len, time);
+	autoMemoryType(newcall);
 
 	if(handle) {
 		newcall->useHandle = handle;

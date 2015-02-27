@@ -693,7 +693,7 @@ int thread_setup(void)
 {
   int i;
  
-  mutex_buf = (MUTEX_TYPE *)malloc(CRYPTO_num_locks(  ) * sizeof(MUTEX_TYPE));
+  mutex_buf = new MUTEX_TYPE[CRYPTO_num_locks()];
   if (!mutex_buf)
     return 0;
   for (i = 0;  i < CRYPTO_num_locks(  );  i++)
@@ -713,7 +713,7 @@ int thread_cleanup(void)
   CRYPTO_set_locking_callback(NULL);
   for (i = 0;  i < CRYPTO_num_locks(  );  i++)
     MUTEX_CLEANUP(mutex_buf[i]);
-  free(mutex_buf);
+  delete [] mutex_buf;
   mutex_buf = NULL;
   return 1;
 }
@@ -1314,7 +1314,8 @@ int eval_config(string inistr) {
 		// reset default port 
 		for (; i != values.end(); ++i) {
 			if(!ipaccountportmatrix) {
-				ipaccountportmatrix = (char*)calloc(1, sizeof(char) * 65537);
+				ipaccountportmatrix = new char[65537];
+				memset(ipaccountportmatrix, 0, 65537);
 			}
 			ipaccountportmatrix[atoi(i->pItem)] = 1;
 		}
@@ -3017,11 +3018,14 @@ int main(int argc, char *argv[]) {
 	opt_mirrorip_dst[0] = '\0';
 	strcpy(opt_chdir, "/var/spool/voipmonitor");
 	strcpy(opt_cachedir, "");
-	sipportmatrix = (char*)calloc(1, sizeof(char) * 65537);
+	sipportmatrix = new char[65537];
+	memset(sipportmatrix, 0, 65537);
 	// set default SIP port to 5060
 	sipportmatrix[5060] = 1;
-	httpportmatrix = (char*)calloc(1, sizeof(char) * 65537);
-	webrtcportmatrix = (char*)calloc(1, sizeof(char) * 65537);
+	httpportmatrix = new char[65537];
+	memset(httpportmatrix, 0, 65537);
+	webrtcportmatrix = new char[65537];
+	memset(webrtcportmatrix, 0, 65537);
 
 	pthread_mutex_init(&mysqlconnect_lock, NULL);
 	pthread_mutex_init(&vm_rrd_lock, NULL);
@@ -3287,6 +3291,8 @@ int main(int argc, char *argv[]) {
 													sverb.pcap_stat_period = atoi(verbparams[i].c_str() + 17);
 						else if(verbparams[i] == "memory_stat")			sverb.memory_stat = 1;
 						else if(verbparams[i] == "memory_stat_log")		{sverb.memory_stat = 1; sverb.memory_stat_log = 1;}
+						else if(verbparams[i].substr(0, 25) == "memory_stat_ignore_limit=")
+													sverb.memory_stat_ignore_limit = atoi(verbparams[i].c_str() + 25);
 					}
 				} }
 				break;
@@ -3831,7 +3837,7 @@ int main(int argc, char *argv[]) {
 
 	if(opt_generator) {
 		opt_generator_channels = 2;
-		pthread_t *genthreads = (pthread_t*)malloc(opt_generator_channels * sizeof(pthread_t));		// ID of worker storing CDR thread 
+		pthread_t *genthreads = new pthread_t[opt_generator_channels];		// ID of worker storing CDR thread 
 		for(int i = 0; i < opt_generator_channels; i++) {
 			pthread_create(&genthreads[i], NULL, gensiprtp, NULL);
 		}
@@ -4158,7 +4164,8 @@ int main(int argc, char *argv[]) {
 	_parse_packet_global.setStdParse();
 
 	if(opt_ipaccount and !ipaccountportmatrix) {
-		ipaccountportmatrix = (char*)calloc(1, sizeof(char) * 65537);
+		ipaccountportmatrix = new char[65537];
+		memset(ipaccountportmatrix, 0, 65537);
 	}
 
 	// filters are ok, we can daemonize 
@@ -4271,7 +4278,7 @@ int main(int argc, char *argv[]) {
 								 rtpthreadbuffer * 1024 * 1024 / sizeof(rtp_packet);
 				rtp_threads[i].writeit = 0;
 				rtp_threads[i].readit = 0;
-				rtp_threads[i].vmbuffer = (rtp_packet*)malloc(sizeof(rtp_packet) * (rtp_threads[i].vmbuffermax + 1));
+				rtp_threads[i].vmbuffer = new rtp_packet[rtp_threads[i].vmbuffermax + 1];
 				for(int j = 0; j < rtp_threads[i].vmbuffermax + 1; j++) {
 					rtp_threads[i].vmbuffer[j].free = 1;
 				}
@@ -4294,7 +4301,7 @@ int main(int argc, char *argv[]) {
 
 #ifdef QUEUE_NONBLOCK2
 		if(!opt_pcap_queue) {
-			pcap_qring = (pcap_packet*)malloc((size_t)((unsigned int)sizeof(pcap_packet) * (pcap_qring_max + 1)));
+			pcap_qring = new pcap_packet[pcap_qring_max + 1];
 			for(unsigned int i = 0; i < pcap_qring_max + 1; i++) {
 				pcap_qring[i].free = 1;
 			}
@@ -4666,7 +4673,7 @@ int main(int argc, char *argv[]) {
 					delete rtp_threads[i].rtpp_queue;
 				}
 			} else {
-				free(rtp_threads[i].vmbuffer);
+				delete [] rtp_threads[i].vmbuffer;
 			}
 #endif
 		}
@@ -4726,11 +4733,11 @@ int main(int argc, char *argv[]) {
 		delete sslData;
 	}
 	
-	free(sipportmatrix);
-	free(httpportmatrix);
-	free(webrtcportmatrix);
+	delete [] sipportmatrix;
+	delete [] httpportmatrix;
+	delete [] webrtcportmatrix;
 	if(opt_ipaccount) {
-		free(ipaccountportmatrix);
+		delete [] ipaccountportmatrix;
 	}
 
 	if(opt_cachedir[0] != '\0') {
@@ -4856,7 +4863,7 @@ int main(int argc, char *argv[]) {
 	
 	if(sverb.memory_stat) {
 		cout << "memory stat at end" << endl;
-		printMemoryStat();
+		printMemoryStat(true);
 	}
 }
 

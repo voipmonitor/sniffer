@@ -30,6 +30,7 @@ struct sVerbose {
 	int pcap_stat_period;
 	int memory_stat;
 	int memory_stat_log;
+	int memory_stat_ignore_limit;
 };
 
 #endif

@@ -176,7 +176,7 @@ inline void *memset_heapsafe(void *ptr, int value, size_t length,
 inline void* setMemoryType(void *ptr, const char *memory_type1, int memory_type2 = 0) {
 	extern unsigned int HeapSafeCheck;
 	extern sVerbose sverb;
-	if(HeapSafeCheck & _HeapSafeErrorBeginEnd && sverb.memory_stat) {
+	if(HeapSafeCheck & _HeapSafeErrorBeginEnd && sverb.memory_stat && ptr) {
 		sHeapSafeMemoryControlBlock *ptr_beginMemoryBlock = (sHeapSafeMemoryControlBlock*)((unsigned char*)ptr - sizeof(sHeapSafeMemoryControlBlock));
 		if(HEAPSAFE_CMP_BEGIN_MEMORY_CONTROL_BLOCK(ptr_beginMemoryBlock->stringInfo)) {
 			extern u_int64_t memoryStat[100000];
@@ -204,8 +204,8 @@ inline void* setMemoryType(void *ptr, const char *memory_type1, int memory_type2
 	return(ptr);
 }
 
-std::string getMemoryStat();
-void printMemoryStat();
+std::string getMemoryStat(bool all = false);
+void printMemoryStat(bool all = false);
 
 
 #define autoMemoryType(ptr) setMemoryType(ptr, __FILE__, __LINE__)

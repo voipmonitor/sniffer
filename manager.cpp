@@ -308,7 +308,7 @@ void *listening_worker(void *arguments) {
         vorbis_info_clear(&ogg.vi);
 */
 
-	free(args);
+	delete args;
 	return 0;
 }
 
@@ -439,13 +439,13 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 			pthread_mutex_unlock(&vm_rrd_lock);
 			return -1;
 		}
-		if ((manager_cmd_line = (char *) malloc((strlen(buf) + 1) * sizeof(char *))) == NULL) {
+		if ((manager_cmd_line = (char *)autoMemoryType(new char[strlen(buf) + 1])) == NULL) {
 			syslog(LOG_ERR, "parse_command creategraph malloc error\n");
 			pthread_mutex_unlock(&vm_rrd_lock);
 			return -1;
 		}
-		if ((manager_args = (char **) malloc((manager_argc + 1) * sizeof(char *))) == NULL) {
-			free(manager_cmd_line);
+		if ((manager_args = (char **)autoMemoryType(new char*[manager_argc + 1])) == NULL) {
+			delete [] manager_cmd_line;
 			syslog(LOG_ERR, "parse_command creategraph malloc error2\n");
 			pthread_mutex_unlock(&vm_rrd_lock);
 			return -1;
@@ -631,7 +631,8 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 		map<string, Call*>::iterator callMAPIT;
 		Call *call;
 		char outbuf[2048];
-		char *resbuf = (char*)realloc(NULL, 32 * 1024 * sizeof(char));;
+		char *resbuf = new char[32 * 1024];
+		autoMemoryType(resbuf);
 		unsigned int resbufalloc = 32 * 1024, outbuflen = 0, resbuflen = 0;
 		if(outbuf == NULL) {
 			syslog(LOG_ERR, "Cannot allocate memory\n");
@@ -708,7 +709,11 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 					    (unsigned int)call->get_last_packet_time(), 
 					    call->lastSIPresponseNum);
 			if((resbuflen + outbuflen) > resbufalloc) {
-				resbuf = (char*)realloc(resbuf, resbufalloc + 32 * 1024 * sizeof(char));
+				char *resbufnew = new char[resbufalloc + 32 * 1024];
+				autoMemoryType(resbufnew);
+				memcpy(resbufnew, resbuf, resbufalloc);
+				delete [] resbuf;
+				resbuf = resbufnew;
 				resbufalloc += 32 * 1024;
 			}
 			memcpy(resbuf + resbuflen, outbuf, outbuflen);
@@ -716,7 +721,11 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 		}
 		calltable->unlock_calls_listMAP();
 		if((resbuflen + 1) > resbufalloc) {
-			resbuf = (char*)realloc(resbuf, resbufalloc + 32 * 1024 * sizeof(char));
+			char *resbufnew = new char[resbufalloc + 32 * 1024];
+			autoMemoryType(resbufnew);
+			memcpy(resbufnew, resbuf, resbufalloc);
+			delete [] resbuf;
+			resbuf = resbufnew;
 			resbufalloc += 32 * 1024;
 		}
 		resbuf[resbuflen] = ']';
@@ -725,7 +734,7 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 			cerr << "Error sending data to client" << endl;
 			return -1;
 		}
-		free(resbuf);
+		delete [] resbuf;
 		return 0;
 	} else if(strstr(buf, "d_lc_for_destroy") != NULL) {
 		ostringstream outStr;
@@ -887,7 +896,9 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 			if(it != ipacc_live.end()) {
 				filter = it->second;
 			} else {
-				filter = (octects_live_t*)calloc(1, sizeof(octects_live_t));
+				filter = new octects_live_t;
+				autoMemoryType(filter);
+				memset(filter, 0, sizeof(octects_live_t));
 				filter->all = 1;
 				filter->fetch_timestamp = time(NULL);
 				ipacc_live[id] = filter;
@@ -898,7 +909,9 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 			return 0;
 		} else {
 			octects_live_t* filter;
-			filter = (octects_live_t*)calloc(1, sizeof(octects_live_t));
+			filter = new octects_live_t;
+			autoMemoryType(filter);
+			memset(filter, 0, sizeof(octects_live_t));
 			filter->setFilter(ipfilter.c_str());
 			filter->fetch_timestamp = time(NULL);
 			ipacc_live[id] = filter;
@@ -912,7 +925,7 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 		sscanf(buf, "stopipaccount %u", &id);
 		map<unsigned int, octects_live_t*>::iterator it = ipacc_live.find(id);
 		if(it != ipacc_live.end()) {
-			free(it->second);
+			delete it->second;
 			ipacc_live.erase(it);
 			if(verbosity > 0) {
 				cout << "STOP LIVE IPACC " << "id:" << id << endl;
@@ -948,7 +961,7 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
                 sscanf(buf, "stoplivesniffer %u", &uid);
                 map<unsigned int, livesnifferfilter_t*>::iterator usersnifferIT = usersniffer.find(uid);
                 if(usersnifferIT != usersniffer.end()) {
-                        free(usersnifferIT->second);
+                        delete usersnifferIT->second;
                         usersniffer.erase(usersnifferIT);
 			if(!usersniffer.size()) {
 				global_livesniffer = 0;
@@ -989,7 +1002,9 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 			if(usersnifferIT != usersniffer.end()) {
 				filter = usersnifferIT->second;
 			} else {
-				filter = (livesnifferfilter_t*)calloc(1, sizeof(livesnifferfilter_t));
+				filter = new livesnifferfilter_t;
+				autoMemoryType(filter);
+				memset(filter, 0, sizeof(livesnifferfilter_t));
 				usersniffer[uid] = filter;
 			}
 			updateLivesnifferfilters();
@@ -1001,7 +1016,9 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 		if(usersnifferIT != usersniffer.end()) {
 			filter = usersnifferIT->second;
 		} else {
-			filter = (livesnifferfilter_t*)calloc(1, sizeof(livesnifferfilter_t));
+			filter = new livesnifferfilter_t;
+			autoMemoryType(filter);
+			memset(filter, 0, sizeof(livesnifferfilter_t));
 			usersniffer[uid] = filter;
 		}
 
@@ -1161,10 +1178,13 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 					calltable->unlock_calls_listMAP();
 					return 0;
 				} else {
-					struct listening_worker_arg *args = (struct listening_worker_arg*)malloc(sizeof(listening_worker_arg));
+					struct listening_worker_arg *args = new listening_worker_arg;
+					autoMemoryType(args);
 					args->call = call;
 					call->audiobuffer1 = new pvt_circbuf;
+					autoMemoryType(call->audiobuffer1);
 					call->audiobuffer2 = new pvt_circbuf;
+					autoMemoryType(call->audiobuffer2);
 					circbuf_init(call->audiobuffer1, 20000);
 					circbuf_init(call->audiobuffer2, 20000);
 
@@ -1202,19 +1222,20 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 			if((long int)call == (long int)callreference) {
 				pthread_mutex_lock(&call->buflock);
 				size_t bsize = call->spybufferchar.size();
-				char *buff = (char*)malloc(sizeof(char) * bsize);
+				char *buff = new char[bsize];
+				autoMemoryType(buff);
 				for(i = 0; i < (int)bsize; i++) {
 					buff[i] = call->spybufferchar.front();
 					call->spybufferchar.pop();
 				}
 				pthread_mutex_unlock(&call->buflock);
 				if ((size = sendvm(client, sshchannel, buff, bsize, 0)) == -1){
-					free(buff);
+					delete [] buff;
 					calltable->unlock_calls_listMAP();
 					cerr << "Error sending data to client" << endl;
 					return -1;
 				}
-				free(buff);
+				delete [] buff;
 			}
 		}
 		calltable->unlock_calls_listMAP();
@@ -1684,6 +1705,7 @@ getwav:
 		return(0);
 	} else if(strstr(buf, "login_screen_popup") != NULL) {
 		*managerClientThread =  new ManagerClientThread_screen_popup(client, buf);
+		autoMemoryType(*managerClientThread);
 	} else if(strstr(buf, "ac_add_thread") != NULL) {
 		extern AsyncClose *asyncClose;
 		asyncClose->addThread();
@@ -2073,6 +2095,7 @@ tryagain:
 
 			pthread_attr_init(&attr);
 			unsigned int *_ids = new unsigned int;
+			autoMemoryType(_ids);
 			*_ids = client;
 			int rslt = pthread_create (		/* Create a child thread        */
 				       &threads,		/* Thread ID (system assigned)  */    
@@ -2207,6 +2230,7 @@ void ManagerClientThread::run() {
 	setsockopt(client, IPPROTO_TCP, TCP_NODELAY, (char *) &flag, sizeof(int));
 	int flushBuffLength = 1000;
 	char *flushBuff = new char[flushBuffLength];
+	autoMemoryType(flushBuff);
 	memset(flushBuff, '_', flushBuffLength - 1);
 	flushBuff[flushBuffLength - 1] = '\n';
 	while(true && !terminating && !disconnect) {
@@ -2502,6 +2526,7 @@ int sendFile(const char *fileName, int client, ssh_channel sshchannel, bool zip)
 	CompressStream *compressStream = NULL;
 	if(zip) {
 		compressStream = new CompressStream(CompressStream::gzip, 1024, 0);
+		autoMemoryType(compressStream);
 		compressStream->setSendParameters(client, sshchannel);
 	}
 	ssize_t nread;

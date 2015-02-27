@@ -337,7 +337,8 @@ int ogg_mix(char *in1, char *in2, char *out, int stereo, int samplerate, double 
 		fseek(f_in2, 0, SEEK_SET);
 	}
 
-	bitstream_buf1 = (char *)malloc(file_size1);
+	bitstream_buf1 = new char[file_size1];
+	autoMemoryType(bitstream_buf1);
 	if(!bitstream_buf1) {
 		if(f_in1 != NULL)
 			fclose(f_in1);
@@ -350,7 +351,8 @@ int ogg_mix(char *in1, char *in2, char *out, int stereo, int samplerate, double 
 	}
 
 	if(in2 != NULL) {
-		bitstream_buf2 = (char *)malloc(file_size2);
+		bitstream_buf2 = new char[file_size2];
+		autoMemoryType(bitstream_buf2);
 		if(!bitstream_buf2) {
 			if(f_in1 != NULL)
 				fclose(f_in1);
@@ -358,7 +360,7 @@ int ogg_mix(char *in1, char *in2, char *out, int stereo, int samplerate, double 
 				fclose(f_in2);
 			if(f_out != NULL)
 				fclose(f_out);
-			free(bitstream_buf1);
+			delete [] bitstream_buf1;
 			syslog(LOG_ERR,"Cannot malloc bitsream_buf2[%ld]", file_size1);
 			return 1;
 		}
@@ -431,9 +433,9 @@ int ogg_mix(char *in1, char *in2, char *out, int stereo, int samplerate, double 
 	}
 
 	if(bitstream_buf1)
-		free(bitstream_buf1);
+		delete [] bitstream_buf1;
 	if(bitstream_buf2)
-		free(bitstream_buf2);
+		delete [] bitstream_buf2;
 
 	ogg_close(&ogg, f_out);
 

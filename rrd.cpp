@@ -1096,11 +1096,11 @@ int rrd_call(
 	}
 //	printf ("CountArgs vratil %d\n",myargc);
 
-	if ((tmpLine = (char *) malloc((strlen(aLine) + 1) * sizeof(char *))) == NULL) {
+	if ((tmpLine = (char*)autoMemoryType(new char[strlen(aLine) + 1])) == NULL) {
 		syslog(LOG_ERR, "rrd_call malloc error\n");
 		return -1;
 	}
-	if ((myargv = (char **) malloc((myargc + 1) * sizeof(char *))) == NULL) {
+	if ((myargv = (char **)autoMemoryType(new char*[myargc + 1])) == NULL) {
 		free(tmpLine);
 		syslog(LOG_ERR, "rrd_call malloc error2\n");
 		return -1;
@@ -1111,12 +1111,12 @@ int rrd_call(
 
 	if ((myargc = vm_rrd_createArgs(tmpLine, myargv)) > 0) {
 		int result = HandleInputLine(myargc, myargv, stderr);
-		free(tmpLine);
-		free(myargv);
+		delete [] tmpLine;
+		delete [] myargv;
 		return (result);
 	} else {
-		free(tmpLine);
-		free(myargv);
+		delete [] tmpLine;
+		delete [] myargv;
 		return -1;
 	}
 }

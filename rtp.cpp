@@ -188,6 +188,7 @@ RTP::RTP(int sensor_id)
 	first_packet_time = 0;
 	first_packet_usec = 0;
 	s = new source;
+	autoMemoryType(s);
 	memset(s, 0, sizeof(source));
 	memset(&stats, 0, sizeof(stats));
 	memset(&rtcp, 0, sizeof(rtcp));
@@ -200,7 +201,9 @@ RTP::RTP(int sensor_id)
 	gfilename[0] = '\0';
 	gfileRAW = NULL;
 
-	channel_fix1 = (ast_channel*)calloc(1, sizeof(*channel_fix1));
+	channel_fix1 = new ast_channel;
+	autoMemoryType(channel_fix1);
+	memset(channel_fix1, 0, sizeof(ast_channel));
 	channel_fix1->jitter_impl = 0; // fixed
 	channel_fix1->jitter_max = 50; 
 	channel_fix1->jitter_resync_threshold = 100;
@@ -209,7 +212,9 @@ RTP::RTP(int sensor_id)
 	channel_fix1->resync = 1;
 	channel_fix1->audiobuf = NULL;
 
-	channel_fix2 = (ast_channel*)calloc(1, sizeof(*channel_fix2));
+	channel_fix2  = new ast_channel;
+	autoMemoryType(channel_fix2);
+	memset(channel_fix2, 0, sizeof(ast_channel));
 	channel_fix2->jitter_impl = 0; // fixed
 	channel_fix2->jitter_max = 200; 
 	channel_fix2->jitter_resync_threshold = 200; 
@@ -218,7 +223,9 @@ RTP::RTP(int sensor_id)
 	channel_fix2->resync = 1;
 	channel_fix2->audiobuf = NULL;
 
-	channel_adapt = (ast_channel*)calloc(1, sizeof(*channel_adapt));
+	channel_adapt = new ast_channel;
+	autoMemoryType(channel_adapt);
+	memset(channel_adapt, 0, sizeof(ast_channel));
 	channel_adapt->jitter_impl = 1; // adaptive
 	channel_adapt->jitter_max = 500; 
 	channel_adapt->jitter_resync_threshold = 500; 
@@ -227,7 +234,9 @@ RTP::RTP(int sensor_id)
 	channel_adapt->resync = 1;
 	channel_adapt->audiobuf = NULL;
 
-	channel_record = (ast_channel*)calloc(1, sizeof(*channel_record));
+	channel_record = new ast_channel;
+	autoMemoryType(channel_record);
+	memset(channel_record, 0, sizeof(ast_channel));
 	channel_record->jitter_impl = 0; // fixed
 	channel_record->jitter_max = 60; 
 	channel_record->jitter_resync_threshold = 1000; 
@@ -237,7 +246,9 @@ RTP::RTP(int sensor_id)
 	channel_record->audiobuf = NULL;
 
 	//channel->name = "SIP/fixed";
-	frame = (ast_frame*)calloc(1, sizeof(*frame));
+	frame = new ast_frame;
+	autoMemoryType(frame);
+	memset(frame, 0, sizeof(ast_frame));
 	frame->frametype = AST_FRAME_VOICE;
 	lastframetype = AST_FRAME_VOICE;
 	//frame->src = "DUMMY";
@@ -298,14 +309,14 @@ RTP::~RTP() {
 	ast_jb_destroy(channel_fix2);
 	ast_jb_destroy(channel_adapt);
 	ast_jb_destroy(channel_record);
-	free(channel_fix1);
-	free(channel_fix2);
-	free(channel_adapt);
-	free(channel_record);
-	free(frame);
+	delete channel_fix1;
+	delete channel_fix2;
+	delete channel_adapt;
+	delete channel_record;
+	delete frame;
 
 	if(gfileRAW_buffer) {
-		free(gfileRAW_buffer);
+		delete [] gfileRAW_buffer;
 	}
 
 	if(DSP) {
@@ -1031,7 +1042,8 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 				}
 			}
 			if(!gfileRAW_buffer) {
-				gfileRAW_buffer = (char*)malloc(32768 * sizeof(char));
+				gfileRAW_buffer = new char[32768];
+				autoMemoryType(gfileRAW_buffer);
 				if(gfileRAW_buffer == NULL) {
 					syslog(LOG_ERR, "Cannot allocate memory for gfileRAW_buffer - low memory this is FATAL");
 					exit(2);
@@ -1345,7 +1357,8 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 		if(!DSP) DSP = dsp_new();
 		char event_digit;
 		int event_len;
-		short int *sdata = (short int*)malloc(payload_len * 2);
+		short int *sdata = new short int[payload_len];
+		autoMemoryType(sdata);
 		if(!sdata) {
 			syslog(LOG_ERR, "sdata malloc failed [%u]\n", (unsigned int)(payload_len * 2));
 			return;
@@ -1406,7 +1419,7 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 			}
 		}
 
-		free(sdata);
+		delete [] sdata;
 	}
 
 	if(getMarker()) {

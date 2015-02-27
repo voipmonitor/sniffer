@@ -1564,26 +1564,28 @@ unsigned int dsp_get_sample_rate(const struct dsp *dsp)
 	return dsp->sample_rate;
 }
 
+extern void* setMemoryType(void *ptr, const char *memory_type1, int memory_type2 = 0);
 static struct dsp *__dsp_new(unsigned int sample_rate)
 {
-	struct dsp *dsp;
+	dsp *dsp_new = new dsp;
+	setMemoryType(dsp_new, __FILE__, __LINE__);
 
-	if ((dsp = (struct dsp*)calloc(1, sizeof(*dsp)))) {
-		dsp->threshold = DEFAULT_THRESHOLD;
-		dsp->features = DSP_FEATURE_DIGIT_DETECT | DSP_FEATURE_FAX_DETECT | DSP_FEATURE_SILENCE_SUPPRESS;
-		dsp->busycount = DSP_HISTORY;
-		dsp->digitmode = DSP_DIGITMODE_DTMF;
-		dsp->faxmode = DSP_FAXMODE_DETECT_ALL;
-		dsp->sample_rate = sample_rate;
+	if (dsp_new) {
+		dsp_new->threshold = DEFAULT_THRESHOLD;
+		dsp_new->features = DSP_FEATURE_DIGIT_DETECT | DSP_FEATURE_FAX_DETECT | DSP_FEATURE_SILENCE_SUPPRESS;
+		dsp_new->busycount = DSP_HISTORY;
+		dsp_new->digitmode = DSP_DIGITMODE_DTMF;
+		dsp_new->faxmode = DSP_FAXMODE_DETECT_ALL;
+		dsp_new->sample_rate = sample_rate;
 		/* Initialize digit detector */
-		digit_detect_init(&dsp->digit_state, dsp->digitmode & DSP_DIGITMODE_MF, dsp->sample_rate);
-		dsp->display_inband_dtmf_warning = 1;
+		digit_detect_init(&dsp_new->digit_state, dsp_new->digitmode & DSP_DIGITMODE_MF, dsp_new->sample_rate);
+		dsp_new->display_inband_dtmf_warning = 1;
 		/* Initialize initial DSP progress detect parameters */
-		dsp_prog_reset(dsp);
+		dsp_prog_reset(dsp_new);
 		/* Initialize fax detector */
-		fax_detect_init(dsp);
+		fax_detect_init(dsp_new);
 	}
-	return dsp;
+	return dsp_new;
 }
 
 struct dsp *dsp_new(void)
@@ -1606,7 +1608,7 @@ void dsp_set_features(struct dsp *dsp, int features)
 
 void dsp_free(struct dsp *dsp)
 {
-	free(dsp);
+	delete dsp;
 }
 
 void dsp_set_threshold(struct dsp *dsp, int threshold)

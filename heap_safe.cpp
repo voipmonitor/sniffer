@@ -210,14 +210,14 @@ void HeapSafeMemsetError(const char *errorString, const char *file, unsigned int
 	}
 }
 
-std::string getMemoryStat() {
+std::string getMemoryStat(bool all) {
 	extern sVerbose sverb;
 	std::ostringstream outStr;
 	if(HeapSafeCheck & _HeapSafeErrorBeginEnd && sverb.memory_stat) {
 		while(__sync_lock_test_and_set(&memoryStat_sync, 1));
 		std::map<std::string, u_int32_t>::iterator iter = memoryStatType.begin();
 		while(iter != memoryStatType.end()) {
-			if(memoryStat[iter->second] > 0) {
+			if(memoryStat[iter->second] > (!all && sverb.memory_stat_ignore_limit ? (unsigned)sverb.memory_stat_ignore_limit : 0)) {
 				char length_str[20];
 				sprintf(length_str, "%lu", memoryStat[iter->second]);
 				std::string length;
@@ -240,6 +240,6 @@ std::string getMemoryStat() {
 	}
 }
 
-void printMemoryStat() {
-	std::cout << getMemoryStat();
+void printMemoryStat(bool all) {
+	std::cout << getMemoryStat(all);
 }

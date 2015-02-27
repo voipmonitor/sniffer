@@ -1225,6 +1225,7 @@ MySqlStore_process::MySqlStore_process(int id, const char *host, const char *use
 	this->enableTransaction = false;
 	this->enableFixDeadlock = false;
 	this->sqlDb = new SqlDb_mysql();
+	autoMemoryType(this->sqlDb);
 	this->sqlDb->setConnectParameters(host, user, password, database);
 	if(cloud_host && *cloud_host) {
 		this->sqlDb->setCloudParameters(cloud_host, cloud_token);
@@ -1617,6 +1618,7 @@ MySqlStore_process *MySqlStore::find(int id) {
 	process = new MySqlStore_process(id, this->host.c_str(), this->user.c_str(), this->password.c_str(), this->database.c_str(),
 					 this->cloud_host.c_str(), this->cloud_token.c_str(),
 					 this->defaultConcatLimit);
+	autoMemoryType(process);
 	process->setEnableTerminatingDirectly(this->enableTerminatingDirectly);
 	process->setEnableTerminatingIfEmpty(this->enableTerminatingIfEmpty);
 	process->setEnableTerminatingIfSqlError(this->enableTerminatingIfSqlError);
@@ -1780,12 +1782,14 @@ SqlDb *createSqlObject() {
 	SqlDb *sqlDb = NULL;
 	if(isSqlDriver("mysql")) {
 		sqlDb = new SqlDb_mysql();
+		autoMemoryType(sqlDb);
 		sqlDb->setConnectParameters(mysql_host, mysql_user, mysql_password, mysql_database);
 		if(cloud_host[0]) {
 			sqlDb->setCloudParameters(cloud_host, cloud_token);
 		}
 	} else if(isSqlDriver("odbc")) {
 		SqlDb_odbc *sqlDb_odbc = new SqlDb_odbc();
+		autoMemoryType(sqlDb_odbc);
 		sqlDb_odbc->setOdbcVersion(SQL_OV_ODBC3);
 		sqlDb_odbc->setSubtypeDb(odbc_driver);
 		sqlDb = sqlDb_odbc;
