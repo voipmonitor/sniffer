@@ -533,8 +533,8 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 				if (sverb.rrd_info) syslog(LOG_NOTICE, "COMMAND for system pipe:%s", sendcommand);
 				if (sendvm_from_stdout_of_command(sendcommand, client, sshchannel, sendbuf, sizeof(sendbuf), 0) == -1 ){
 					cerr << "Error sending data to client 2" << endl;
-					free (manager_cmd_line);
-					free (manager_args);
+					delete [] manager_cmd_line;
+					delete [] manager_args;
 					pthread_mutex_unlock(&vm_rrd_lock);
 					return -1;
 				}
@@ -546,16 +546,16 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 				if (strlen(sendbuf)) {
 					if ((size = sendvm(client, sshchannel, sendbuf, strlen(sendbuf), 0)) == -1){
 						cerr << "Error sending data to client 3" << endl;
-						free (manager_cmd_line);
-						free (manager_args);
+						delete [] manager_cmd_line;
+						delete [] manager_args;
 						pthread_mutex_unlock(&vm_rrd_lock);
 						return -1;
 					}
 				}
 			}
 		}
-		free (manager_cmd_line);
-		free (manager_args);
+		delete [] manager_cmd_line;
+		delete [] manager_args;
 		pthread_mutex_unlock(&vm_rrd_lock);
 		return res;
 
