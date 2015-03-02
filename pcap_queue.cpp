@@ -4286,7 +4286,7 @@ void PcapQueue_readFromFifo::processPacket(pcap_pkthdr_plus *header_plus, u_char
 		return;
 	}
 	
-	if((data - (char*)packet) >= header->caplen) {
+	if((data - (char*)packet) > header->caplen) {
 		if(verbosity) {
 			static u_long lastTimeSyslog = 0;
 			u_long actTime = getTimeMS();
