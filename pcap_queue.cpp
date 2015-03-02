@@ -4189,6 +4189,18 @@ void PcapQueue_readFromFifo::processPacket(pcap_pkthdr_plus *header_plus, u_char
 	
 	pcap_pkthdr *header = header_plus->convertToStdHeader();
 	
+	if(header->caplen > header->len) {
+		if(verbosity) {
+			static u_long lastTimeSyslog = 0;
+			u_long actTime = getTimeMS();
+			if(actTime - 1000 > lastTimeSyslog) {
+				syslog(LOG_NOTICE, "warning - incorrect caplen/len (%u/%u) in processPacket", header->caplen, header->len);
+				lastTimeSyslog = actTime;
+			}
+		}
+		return;
+	}
+	
 	if(!this->_last_ts.tv_sec) {
 		this->_last_ts = header->ts;
 	} else if(this->_last_ts.tv_sec * 1000000ull + this->_last_ts.tv_usec > header->ts.tv_sec * 1000000ull + header->ts.tv_usec + 1000) {
@@ -4270,6 +4282,18 @@ void PcapQueue_readFromFifo::processPacket(pcap_pkthdr_plus *header_plus, u_char
 		// - interested only for ipaccount
 		if(opt_ipaccount) {
 			ipaccount(header->ts.tv_sec, (iphdr2*) ((char*)(packet) + header_plus->offset), header->len - header_plus->offset, false);
+		}
+		return;
+	}
+	
+	if((data - (char*)packet) >= header->caplen) {
+		if(verbosity) {
+			static u_long lastTimeSyslog = 0;
+			u_long actTime = getTimeMS();
+			if(actTime - 1000 > lastTimeSyslog) {
+				syslog(LOG_NOTICE, "warning - incorrect dataoffset/caplen (%li/%u) in processPacket", data - (char*)packet, header->caplen);
+				lastTimeSyslog = actTime;
+			}
 		}
 		return;
 	}
