@@ -349,7 +349,7 @@ struct ast_channel {
 	unsigned int last_ms;
 	int jb_reseted;
 	int packetization;
-	int loss[512];
+	unsigned short int loss[128];
 	int last_loss_state;
 	int last_loss_burst;
 	int jitter_impl;

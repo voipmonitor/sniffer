@@ -597,10 +597,10 @@ static void jb_get_and_deliver(struct ast_channel *chan, struct timeval *mynow)
 			//	&& !(chan->codec == PAYLOAD_G729 && f->datalen2 <= 12) // if g729 frame is CNG frame do not count interpolated frames
 				) {
 				
-				while(chan->last_loss_burst > 500) {
-					chan->loss[500]++;
-					if(sverb.jitter) fprintf(stdout, "\tSAVING chan->loss[500] packetization[%d]\n", chan->packetization);
-					chan->last_loss_burst -= 500;
+				while(chan->last_loss_burst > 128) {
+					chan->loss[127]++;
+					if(sverb.jitter) fprintf(stdout, "\tSAVING chan->loss[128] packetization[%d]\n", chan->packetization);
+					chan->last_loss_burst -= 128;
 				}
 				if(sverb.jitter) fprintf(stdout, "\tSAVING chan->loss[%d] packetization[%d]\n", chan->last_loss_burst, chan->packetization);
 				chan->loss[chan->last_loss_burst]++;
