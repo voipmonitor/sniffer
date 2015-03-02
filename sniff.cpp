@@ -1330,7 +1330,9 @@ void add_to_rtp_thread_queue(Call *call, unsigned char *data, int datalen, int d
 #endif
 	
 	if(opt_pcap_queue) {
-		block_store->lock_packet(block_store_index);
+		if(block_store) {
+			block_store->lock_packet(block_store_index);
+		}
 		if(params->rtpp_queue_quick ||
 		   params->rtpp_queue_quick_boost) {
 			rtp_packet_pcap_queue rtpp_pq;
@@ -1521,7 +1523,9 @@ void *rtp_read_thread_func(void *arg) {
 						       rtpp_pq.block_store && rtpp_pq.block_store->ifname[0] ? rtpp_pq.block_store->ifname : NULL);
 			}
 			rtpp_pq.call->set_last_packet_time(rtpp_pq.header.ts.tv_sec);
-			rtpp_pq.block_store->unlock_packet(rtpp_pq.block_store_index);
+			if(rtpp_pq.block_store) {
+				rtpp_pq.block_store->unlock_packet(rtpp_pq.block_store_index);
+			}
 		} else {
 			if(rtpp->is_rtcp) {
 				rtpp->call->read_rtcp((unsigned char*)rtpp->data, rtpp->datalen, rtpp->dataoffset, &rtpp->header, rtpp->saddr, rtpp->daddr, rtpp->sport, rtpp->dport, rtpp->iscaller,
