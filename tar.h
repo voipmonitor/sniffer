@@ -107,6 +107,7 @@ public:
 #ifdef HAVE_LIBLZMA
 		this->lzmaStream = NULL;
 #endif
+		this->zipBuffer = NULL;
 		memset(&tar, 0, sizeof(tar));
 		partCounter = 0;
 		lastFlushTime = 0;
