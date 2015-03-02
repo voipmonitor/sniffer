@@ -3081,6 +3081,7 @@ void SocketSimpleBufferWrite::flushData() {
 
 BogusDumper::BogusDumper(const char *path) {
 	this->path = path;
+	this->_sync = 0;
 	time = getActDateTimeF(true);
 }
 
@@ -3093,6 +3094,7 @@ BogusDumper::~BogusDumper() {
 }
 
 void BogusDumper::dump(pcap_pkthdr* header, u_char* packet, int dlt, const char *interfaceName) {
+	this->lock();
 	if(!strncmp(interfaceName, "interface", 9)) {
 		interfaceName += 9;
 	}
@@ -3122,6 +3124,7 @@ void BogusDumper::dump(pcap_pkthdr* header, u_char* packet, int dlt, const char 
 		dumper->dump(header, packet, dlt);
 		dumper->flush();
 	}
+	this->unlock();
 }
 
 
