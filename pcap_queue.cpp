@@ -4190,6 +4190,10 @@ void PcapQueue_readFromFifo::processPacket(pcap_pkthdr_plus *header_plus, u_char
 	pcap_pkthdr *header = header_plus->convertToStdHeader();
 	
 	if(header->caplen > header->len) {
+		extern BogusDumper *bogusDumper;
+		if(bogusDumper) {
+			bogusDumper->dump(header, packet, dlt, "process_packet");
+		}
 		if(verbosity) {
 			static u_long lastTimeSyslog = 0;
 			u_long actTime = getTimeMS();
@@ -4287,6 +4291,10 @@ void PcapQueue_readFromFifo::processPacket(pcap_pkthdr_plus *header_plus, u_char
 	}
 	
 	if((data - (char*)packet) > header->caplen) {
+		extern BogusDumper *bogusDumper;
+		if(bogusDumper) {
+			bogusDumper->dump(header, packet, dlt, "process_packet");
+		}
 		if(verbosity) {
 			static u_long lastTimeSyslog = 0;
 			u_long actTime = getTimeMS();

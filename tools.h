@@ -1559,9 +1559,17 @@ public:
 	~BogusDumper();
 	void dump(pcap_pkthdr* header, u_char* packet, int dlt, const char *interfaceName);
 private:
+	void lock() {
+		while(__sync_lock_test_and_set(&this->_sync, 1));
+	}
+	void unlock() {
+		__sync_lock_release(&this->_sync);
+	}
+private:
 	map<string, PcapDumper*> dumpers;
 	string path;
 	string time;
+	volatile int _sync;
 };
 
 string base64_encode(const unsigned char *data, size_t input_length);
