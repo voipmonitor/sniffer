@@ -1863,3 +1863,35 @@ void runCleanSpoolThread() {
 		pthread_create(&cleanspool_thread, NULL, clean_spooldir, NULL);
 	}
 }
+
+string getMaxSpoolDate() {
+	string path = "./";
+	dirent* de;
+	DIR* dp;
+	dp = opendir(path.empty() ? "." : path.c_str());
+	if(!dp) {
+		return("");
+	}
+	u_int32_t maxDate = 0;
+	while((de = readdir(dp)) != NULL) {
+		if(de == NULL) break;
+		if(string(de->d_name) == ".." or string(de->d_name) == ".") continue;
+		if(de->d_name[0] == '2' && strlen(de->d_name) == 10) {
+			u_int32_t date = atol(de->d_name) * 10000 +
+					 atol(de->d_name + 5) * 100 +
+					 atol(de->d_name + 8);
+			if(date > maxDate) {
+				maxDate = date;
+			}
+		}
+	}
+	closedir( dp );
+	
+	if(maxDate) {
+		char maxDate_str[20];
+		sprintf(maxDate_str, "%4i-%02i-%02i", maxDate / 10000, maxDate % 10000 / 100, maxDate % 100);
+		return(maxDate_str);
+	} else {
+		return("");
+	}
+}

@@ -4371,6 +4371,15 @@ int main(int argc, char *argv[]) {
 	if(opt_bogus_dumper_path[0]) {
 		bogusDumper = new BogusDumper(opt_bogus_dumper_path);
 	}
+	
+	if(opt_pcap_dump_tar && opt_fork) {
+		string maxSpoolDate = getMaxSpoolDate();
+		if(maxSpoolDate.length()) {
+			syslog(LOG_NOTICE, "run reindex date %s", maxSpoolDate.c_str());
+			reindex_date(maxSpoolDate);
+			syslog(LOG_NOTICE, "reindex date %s completed", maxSpoolDate.c_str());
+		}
+	}
 
 #ifndef FREEBSD
 	if(opt_scanpcapdir[0] != '\0') {
