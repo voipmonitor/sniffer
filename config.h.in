@@ -51,6 +51,9 @@
 /* Define if using libss */
 #undef HAVE_LIBSSH
 
+/* Define if using libtcmalloc */
+#undef HAVE_LIBTCMALLOC
+
 /* Define to 1 if you have the `vorbis' library (-lvorbis). */
 #undef HAVE_LIBVORBIS
 
