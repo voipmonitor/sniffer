@@ -1829,14 +1829,20 @@ void ListIP::addComb(const char *ip, ListIP *negList) {
 	}
 }
 
-void ListPhoneNumber::addComb(string &number) {
-	addComb(number.c_str());
+void ListPhoneNumber::addComb(string &number, ListPhoneNumber *negList) {
+	addComb(number.c_str(), negList);
 }
 
-void ListPhoneNumber::addComb(const char *number) {
+void ListPhoneNumber::addComb(const char *number, ListPhoneNumber *negList) {
 	vector<string>number_elems = split(number, split(",|;|\t|\r|\n", "|"), true);
 	for(size_t i = 0; i < number_elems.size(); i++) {
-		add(number_elems[i].c_str());
+		if(number_elems[i][0] == '!') {
+			if(negList) {
+				negList->add(number_elems[i].substr(1).c_str());
+			}
+		} else {
+			add(number_elems[i].c_str());
+		}
 	}
 }
 
@@ -1867,19 +1873,19 @@ ListPhoneNumber_wb::ListPhoneNumber_wb(bool autoLock)
 }
 
 void ListPhoneNumber_wb::addWhite(string &number) {
-	white.addComb(number);
+	white.addComb(number, &black);
 }
 
 void ListPhoneNumber_wb::addWhite(const char *number) {
-	white.addComb(number);
+	white.addComb(number, &black);
 }
 
 void ListPhoneNumber_wb::addBlack(string &number) {
-	black.addComb(number);
+	black.addComb(number, &white);
 }
 
 void ListPhoneNumber_wb::addBlack(const char *number) {
-	black.addComb(number);
+	black.addComb(number, &white);
 }
 
 
