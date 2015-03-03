@@ -1813,7 +1813,7 @@ string inet_ntostring(u_int32_t ip) {
 
 
 void ListIP::addComb(string &ip, ListIP *negList) {
-	addComb(ip.c_str());
+	addComb(ip.c_str(), negList);
 }
 
 void ListIP::addComb(const char *ip, ListIP *negList) {
