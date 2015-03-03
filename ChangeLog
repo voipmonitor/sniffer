@@ -1,3 +1,8 @@
+10.1.36 26.02.2015
+==================
+- negation record prefixed with "!" in fraud IP address exclude/include list was not working at all
+
+
 10.1.35 26.02.2015
 ==================
 - implement ERSPAN encapsulation
