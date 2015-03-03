@@ -48,6 +48,9 @@
 #include "fraud.h"
 #include "tar.h"
 
+#if HAVE_LIBTCMALLOC    
+#include <gperftools/malloc_extension.h>
+#endif
 
 #define MIN(x,y) ((x) < (y) ? (x) : (y))
 
@@ -3546,6 +3549,11 @@ Calltable::find_by_skinny_ipTuples(unsigned int saddr, unsigned int daddr) {
 
 int
 Calltable::cleanup( time_t currtime ) {
+
+#if HAVE_LIBTCMALLOC    
+	MallocExtension::instance()->ReleaseFreeMemory();
+#endif
+
 	if(verbosity && verbosityE > 1) {
 		syslog(LOG_NOTICE, "call Calltable::cleanup");
 	}
