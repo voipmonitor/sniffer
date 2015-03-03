@@ -409,6 +409,17 @@ private:
 	void *threadFunction(void *arg, unsigned int arg2);
 	void preparePstatData();
 	double getCpuUsagePerc(bool preparePstatData = false);
+	double getQringFillingPerc(int index) {
+		if(!qring[index]) {
+			return(-1);
+		}
+		unsigned int _readit = readit[index];
+		unsigned int _writeit = writeit[index];
+		return(_writeit >= _readit ?
+			(double)(_writeit - _readit) / qringmax * 100 :
+			(double)(qringmax - _readit + _writeit) / qringmax * 100);
+	}
+	string getQringFillingPerc();
 	void terminate();
 private:
 	pthread_t threadHandle;

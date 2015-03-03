@@ -2824,6 +2824,21 @@ double PcapQueue_readFromInterfaceThread::getCpuUsagePerc(bool preparePstatData)
 	return(-1);
 }
 
+string PcapQueue_readFromInterfaceThread::getQringFillingPerc() {
+	ostringstream outStr;
+	outStr << fixed;
+	for(int i = 0; i < 2; i++) {
+		double perc = getQringFillingPerc(i);
+		if(perc >= 0) {
+			if(outStr.str().length()) {
+				outStr << ",";
+			}
+			outStr << setprecision(0) << perc;
+		}
+	}
+	return(outStr.str());
+}
+
 void PcapQueue_readFromInterfaceThread::terminate() {
 	if(this->defragThread) {
 		this->defragThread->terminate();
@@ -3281,28 +3296,58 @@ string PcapQueue_readFromInterface::pcapStatString_cpuUsageReadThreads() {
 		double ti_cpu = this->readThreads[i]->getCpuUsagePerc(true);
 		if(ti_cpu >= 0) {
 			outStrStat << "t0i_" << this->readThreads[i]->interfaceName << "_CPU[" << setprecision(1) << ti_cpu;
+			if(sverb.qring_stat) {
+				string qringFillingPerc = this->readThreads[i]->getQringFillingPerc();
+				if(qringFillingPerc.length()) {
+					outStrStat << "r" << qringFillingPerc;
+				}
+			}
 			if(this->readThreads[i]->defragThread) {
 				double tid_cpu = this->readThreads[i]->defragThread->getCpuUsagePerc(true);
 				if(tid_cpu >= 0) {
 					outStrStat << "%/" << setprecision(1) << tid_cpu;
+					if(sverb.qring_stat) {
+						string qringFillingPerc = this->readThreads[i]->defragThread->getQringFillingPerc();
+						if(qringFillingPerc.length()) {
+							outStrStat << "r" << qringFillingPerc;
+						}
+					}
 				}
 			}
 			if(this->readThreads[i]->md1Thread) {
 				double tid_cpu = this->readThreads[i]->md1Thread->getCpuUsagePerc(true);
 				if(tid_cpu >= 0) {
 					outStrStat << "%/" << setprecision(1) << tid_cpu;
+					if(sverb.qring_stat) {
+						string qringFillingPerc = this->readThreads[i]->md1Thread->getQringFillingPerc();
+						if(qringFillingPerc.length()) {
+							outStrStat << "r" << qringFillingPerc;
+						}
+					}
 				}
 			}
 			if(this->readThreads[i]->md2Thread) {
 				double tid_cpu = this->readThreads[i]->md2Thread->getCpuUsagePerc(true);
 				if(tid_cpu >= 0) {
 					outStrStat << "%/" << setprecision(1) << tid_cpu;
+					if(sverb.qring_stat) {
+						string qringFillingPerc = this->readThreads[i]->md2Thread->getQringFillingPerc();
+						if(qringFillingPerc.length()) {
+							outStrStat << "r" << qringFillingPerc;
+						}
+					}
 				}
 			}
 			if(this->readThreads[i]->dedupThread) {
 				double tid_cpu = this->readThreads[i]->dedupThread->getCpuUsagePerc(true);
 				if(tid_cpu >= 0) {
 					outStrStat << "%/" << setprecision(1) << tid_cpu;
+					if(sverb.qring_stat) {
+						string qringFillingPerc = this->readThreads[i]->dedupThread->getQringFillingPerc();
+						if(qringFillingPerc.length()) {
+							outStrStat << "r" << qringFillingPerc;
+						}
+					}
 				}
 			}
 			outStrStat << "%] ";

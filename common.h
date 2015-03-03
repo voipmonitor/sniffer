@@ -31,6 +31,7 @@ struct sVerbose {
 	int memory_stat;
 	int memory_stat_log;
 	int memory_stat_ignore_limit;
+	int qring_stat;
 };
 
 #endif

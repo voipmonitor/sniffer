@@ -3293,6 +3293,7 @@ int main(int argc, char *argv[]) {
 						else if(verbparams[i] == "memory_stat_log")		{sverb.memory_stat = 1; sverb.memory_stat_log = 1;}
 						else if(verbparams[i].substr(0, 25) == "memory_stat_ignore_limit=")
 													sverb.memory_stat_ignore_limit = atoi(verbparams[i].c_str() + 25);
+						else if(verbparams[i] == "qring_stat")			sverb.qring_stat = 1;
 					}
 				} }
 				break;
