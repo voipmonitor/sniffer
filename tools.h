@@ -32,6 +32,23 @@
 using namespace std;
 
 
+#if defined(__i386__)
+__inline__ unsigned long long rdtsc(void)
+{
+    unsigned long long int x;
+    __asm__ volatile (".byte 0x0f, 0x31" : "=A" (x));
+    return x;
+}
+#elif defined(__x86_64__)
+__inline__ unsigned long long rdtsc(void)
+{
+    unsigned hi, lo;
+    __asm__ __volatile__ ("rdtsc" : "=a"(lo), "=d"(hi));
+    return ( (unsigned long long)lo)|( ((unsigned long long)hi)<<32 );
+}
+#endif
+
+
 struct TfileListElem {
     string filename;
     time_t mtime;
@@ -318,13 +335,45 @@ struct ip_port
 	int port;
 };
 
-inline u_long getTimeMS(pcap_pkthdr* header = NULL) {
-    if(header) {
-         return(header->ts.tv_sec * 1000ul + header->ts.tv_usec );
-    }
+inline unsigned long long _getTimeMS() {
     timespec time;
     clock_gettime(CLOCK_REALTIME, &time);
     return(time.tv_sec * 1000 + time.tv_nsec / 1000000);
+}
+
+inline u_long getTimeMS(pcap_pkthdr* header = NULL) {
+    timespec time;
+    clock_gettime(CLOCK_REALTIME, &time);
+    return(time.tv_sec * 1000 + time.tv_nsec / 1000000);
+}
+
+extern u_int64_t rdtsc_by_100ms;
+inline u_long getTimeMS_rdtsc(pcap_pkthdr* header = NULL) {
+    if(header) {
+         return(header->ts.tv_sec * 1000ul + header->ts.tv_usec );
+    }
+    static u_long last_time;
+    #if defined(__i386__) or defined(__x86_64__)
+    static u_int32_t counter = 0;
+    static u_int64_t last_rdtsc = 0;
+    ++counter;
+    if(rdtsc_by_100ms) {
+         u_int64_t act_rdtsc = rdtsc();
+         if(counter % 100 && last_rdtsc && last_time) {
+             u_int64_t diff_rdtsc = act_rdtsc - last_rdtsc;
+             if(diff_rdtsc < rdtsc_by_100ms / 10) {
+                  last_rdtsc = act_rdtsc;
+                  last_time = last_time + diff_rdtsc * 100 / rdtsc_by_100ms;
+                  return(last_time);
+             }
+         }
+         last_rdtsc = act_rdtsc;
+    }
+    #endif
+    timespec time;
+    clock_gettime(CLOCK_REALTIME, &time);
+    last_time = time.tv_sec * 1000 + time.tv_nsec / 1000000;
+    return(last_time);
 }
 
 inline unsigned long long getTimeUS() {
@@ -1574,23 +1623,6 @@ private:
 
 string base64_encode(const unsigned char *data, size_t input_length);
 char *base64_encode(const unsigned char *data, size_t input_length, size_t *output_length);
-
-
-#if defined(__i386__)
-__inline__ unsigned long long rdtsc(void)
-{
-    unsigned long long int x;
-    __asm__ volatile (".byte 0x0f, 0x31" : "=A" (x));
-    return x;
-}
-#elif defined(__x86_64__)
-__inline__ unsigned long long rdtsc(void)
-{
-    unsigned hi, lo;
-    __asm__ __volatile__ ("rdtsc" : "=a"(lo), "=d"(hi));
-    return ( (unsigned long long)lo)|( ((unsigned long long)hi)<<32 );
-}
-#endif
 
 inline struct tm localtime_r(const time_t *timep) {
 	struct tm rslt;
