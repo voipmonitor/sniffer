@@ -917,8 +917,8 @@ public:
 		listPhoneNumber.push_back(PhoneNumber(number, prefix));
 		if(autoLock) unlock();
 	}
-	void addComb(string &number);
-	void addComb(const char *number);
+	void addComb(string &number, ListPhoneNumber *negList = NULL);
+	void addComb(const char *number, ListPhoneNumber *negList = NULL);
 	bool checkNumber(const char *check_number) {
 		bool rslt =  false;
 		if(autoLock) lock();
