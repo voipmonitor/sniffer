@@ -186,6 +186,11 @@ public:
 		readFromInterface,
 		readFromFifo
 	};
+	enum eTypeThread {
+		mainThread,
+		writeThread,
+		nextThread
+	};
 	PcapQueue(eTypeQueue typeQueue, const char *nameQueue);
 	virtual ~PcapQueue();
 	void setFifoFileForRead(const char *fifoFileForRead);
@@ -237,14 +242,12 @@ protected:
 	virtual string getStatPacketDrop() { return(""); }
 	virtual string pcapStatString_cpuUsageReadThreads() { return(""); };
 	virtual void initStat_interface() {};
-	void preparePstatData(bool writeThread = false);
+	void preparePstatData(eTypeThread typeThread = mainThread);
 	void prepareProcPstatData();
-	double getCpuUsagePerc(bool writeThread = false, bool preparePstatData = false);
+	double getCpuUsagePerc(eTypeThread typeThread = mainThread, bool preparePstatData = false);
 	virtual string getCpuUsage(bool writeThread = false, bool preparePstatData = false) { return(""); }
-	long unsigned int getVsizeUsage(bool writeThread = false, bool preparePstatData = false);
-	long unsigned int getRssUsage(bool writeThread = false, bool preparePstatData = false);
-	long unsigned int getProcVsizeUsage(bool preparePstatData = false);
-	long unsigned int getProcRssUsage(bool preparePstatData = false);
+	long unsigned int getVsizeUsage(bool preparePstatData = false);
+	long unsigned int getRssUsage(bool preparePstatData = false);
 	virtual bool isMirrorSender() {
 		return(false);
 	}
@@ -270,8 +273,10 @@ protected:
 	bool threadDoTerminate;
 	int threadId;
 	int writeThreadId;
+	int nextThreadId;
 	pstat_data threadPstatData[2];
 	pstat_data writeThreadPstatData[2];
+	pstat_data nextThreadPstatData[2];
 	pstat_data procPstatData[2];
 	bool initAllReadThreadsOk;
 private:
