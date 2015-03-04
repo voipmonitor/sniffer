@@ -947,8 +947,10 @@ PcapQueue::PcapQueue(eTypeQueue typeQueue, const char *nameQueue) {
 	this->threadDoTerminate = false;
 	this->threadId = 0;
 	this->writeThreadId = 0;
+	this->nextThreadId = 0;
 	memset(this->threadPstatData, 0, sizeof(this->threadPstatData));
 	memset(this->writeThreadPstatData, 0, sizeof(this->writeThreadPstatData));
+	memset(this->nextThreadPstatData, 0, sizeof(this->nextThreadPstatData));
 	memset(this->procPstatData, 0, sizeof(this->procPstatData));
 	this->packetBuffer = NULL;
 	this->instancePcapHandle = NULL;
@@ -1369,9 +1371,14 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 	outStrStat << fixed;
 	if(this->instancePcapHandle) {
 		outStrStat << this->instancePcapHandle->pcapStatString_cpuUsageReadThreads();
-		double t0cpu = this->instancePcapHandle->getCpuUsagePerc(false, true);
+		double t0cpu = this->instancePcapHandle->getCpuUsagePerc(mainThread, true);
+		double t0cpuNextThread = this->instancePcapHandle->getCpuUsagePerc(nextThread, true);
 		if(t0cpu >= 0) {
-			outStrStat << "t0CPU[" << setprecision(1) << t0cpu << "%] ";
+			outStrStat << "t0CPU[" << setprecision(1) << t0cpu;
+			if(t0cpuNextThread >= 0) {
+				outStrStat << "/" << setprecision(1) << t0cpuNextThread;
+			}
+			outStrStat << "%] ";
 			if (opt_rrd) rrdtCPU_t0 = t0cpu;
 		}
 	}
@@ -1379,13 +1386,13 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 	if(t1cpu.length()) {
 		outStrStat << t1cpu << " ";
 	} else {
-		double t1cpu = this->getCpuUsagePerc(false, true);
+		double t1cpu = this->getCpuUsagePerc(mainThread, true);
 		if(t1cpu >= 0) {
 			outStrStat << "t1CPU[" << setprecision(1) << t1cpu << "%] ";
 			if (opt_rrd) rrdtCPU_t1 = t1cpu;
 		}
 	}
-	double t2cpu = this->getCpuUsagePerc(true, true);
+	double t2cpu = this->getCpuUsagePerc(writeThread, true);
 	if(t2cpu >= 0) {
 		outStrStat << "t2CPU[" << setprecision(1) << t2cpu;
 		if(preProcessPacket) {
@@ -1467,12 +1474,12 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 		}
 	}
 	outStrStat << "RSS/VSZ[";
-	long unsigned int rss = this->getProcRssUsage(true);
+	long unsigned int rss = this->getRssUsage(true);
 	if(rss > 0) {
 		outStrStat << setprecision(0) << (double)rss/1024/1024;
 		if (opt_rrd) rrdRSSVSZ_rss = (double)rss/1024/1024;
 	}
-	long unsigned int vsize = this->getProcVsizeUsage();
+	long unsigned int vsize = this->getVsizeUsage();
 	if(vsize > 0) {
 		if(rss > 0) {
 			outStrStat << '|';
@@ -1844,19 +1851,27 @@ double PcapQueue::pcapStat_get_speed_mb_s(int statPeriod) {
 	}
 }
 
-void PcapQueue::preparePstatData(bool writeThread) {
-	int pid = writeThread ? this->writeThreadId : this->threadId;
+void PcapQueue::preparePstatData(eTypeThread typeThread) {
+	int pid = typeThread == mainThread ? this->threadId :
+		  typeThread == writeThread ? this->writeThreadId : this->nextThreadId;
 	if(pid) {
-		if(writeThread) {
+	 
+		if(typeThread == mainThread) {
+			if(this->threadPstatData[0].cpu_total_time) {
+				this->threadPstatData[1] = this->threadPstatData[0];
+			}
+		} else if(typeThread == writeThread) {
 			if(this->writeThreadPstatData[0].cpu_total_time) {
 				this->writeThreadPstatData[1] = this->writeThreadPstatData[0];
 			}
 		} else {
-			if(this->threadPstatData[0].cpu_total_time) {
-				this->threadPstatData[1] = this->threadPstatData[0];
+			if(this->nextThreadPstatData[0].cpu_total_time) {
+				this->nextThreadPstatData[1] = this->nextThreadPstatData[0];
 			}
 		}
-		pstat_get_data(pid, writeThread ? this->writeThreadPstatData : this->threadPstatData);
+		pstat_get_data(pid, 
+			       typeThread == mainThread ? this->threadPstatData :
+			       typeThread == writeThread ? this->writeThreadPstatData : this->nextThreadPstatData);
 	}
 }
 
@@ -1864,14 +1879,22 @@ void PcapQueue::prepareProcPstatData() {
 	pstat_get_data(0, this->procPstatData);
 }
 
-double PcapQueue::getCpuUsagePerc(bool writeThread, bool preparePstatData) {
+double PcapQueue::getCpuUsagePerc(eTypeThread typeThread, bool preparePstatData) {
 	if(preparePstatData) {
-		this->preparePstatData(writeThread);
+		this->preparePstatData(typeThread);
 	}
-	int pid = writeThread ? this->writeThreadId : this->threadId;
+	int pid = typeThread == mainThread ? this->threadId :
+		  typeThread == writeThread ? this->writeThreadId : this->nextThreadId;
 	if(pid) {
 		double ucpu_usage, scpu_usage;
-		if(writeThread) {
+		if(typeThread == mainThread) {
+			if(this->threadPstatData[0].cpu_total_time && this->threadPstatData[1].cpu_total_time) {
+				pstat_calc_cpu_usage_pct(
+					&this->threadPstatData[0], &this->threadPstatData[1],
+					&ucpu_usage, &scpu_usage);
+				return(ucpu_usage + scpu_usage);
+			}
+		} else if(typeThread == writeThread) {
 			if(this->writeThreadPstatData[0].cpu_total_time && this->writeThreadPstatData[1].cpu_total_time) {
 				pstat_calc_cpu_usage_pct(
 					&this->writeThreadPstatData[0], &this->writeThreadPstatData[1],
@@ -1879,9 +1902,9 @@ double PcapQueue::getCpuUsagePerc(bool writeThread, bool preparePstatData) {
 				return(ucpu_usage + scpu_usage);
 			}
 		} else {
-			if(this->threadPstatData[0].cpu_total_time && this->threadPstatData[1].cpu_total_time) {
+			if(this->nextThreadPstatData[0].cpu_total_time && this->nextThreadPstatData[1].cpu_total_time) {
 				pstat_calc_cpu_usage_pct(
-					&this->threadPstatData[0], &this->threadPstatData[1],
+					&this->nextThreadPstatData[0], &this->nextThreadPstatData[1],
 					&ucpu_usage, &scpu_usage);
 				return(ucpu_usage + scpu_usage);
 			}
@@ -1890,36 +1913,14 @@ double PcapQueue::getCpuUsagePerc(bool writeThread, bool preparePstatData) {
 	return(-1);
 }
 
-long unsigned int PcapQueue::getVsizeUsage(bool writeThread, bool preparePstatData) {
-	if(preparePstatData) {
-		this->preparePstatData(writeThread);
-	}
-	int pid = writeThread ? this->writeThreadId : this->threadId;
-	if(pid) {
-		return(this->threadPstatData[0].vsize);
-	}
-	return(0);
-}
-
-long unsigned int PcapQueue::getRssUsage(bool writeThread, bool preparePstatData) {
-	if(preparePstatData) {
-		this->preparePstatData(writeThread);
-	}
-	int pid = writeThread ? this->writeThreadId : this->threadId;
-	if(pid) {
-		return(this->threadPstatData[0].rss);
-	}
-	return(0);
-}
-
-long unsigned int PcapQueue::getProcVsizeUsage(bool preparePstatData) {
+long unsigned int PcapQueue::getVsizeUsage(bool preparePstatData) {
 	if(preparePstatData) {
 		this->prepareProcPstatData();
 	}
 	return(this->procPstatData[0].vsize);
 }
 
-long unsigned int PcapQueue::getProcRssUsage(bool preparePstatData) {
+long unsigned int PcapQueue::getRssUsage(bool preparePstatData) {
 	if(preparePstatData) {
 		this->prepareProcPstatData();
 	}
@@ -2860,16 +2861,23 @@ inline void *_PcapQueue_readFromInterfaceThread_threadFunction(void *arg) {
 	return(((PcapQueue_readFromInterfaceThread*)arg)->threadFunction(arg, 0));
 }
 
+inline void *_PcapQueue_readFromInterfaceThread_threadDeleteFunction(void *arg) {
+	return(((PcapQueue_readFromInterface*)arg)->threadDeleteFunction(arg, 0));
+}
+
 
 PcapQueue_readFromInterface::PcapQueue_readFromInterface(const char *nameQueue)
- : PcapQueue(readFromInterface, nameQueue) {
+ : PcapQueue(readFromInterface, nameQueue),
+   deleteQueue(100000, 1000, 1000) {
 	this->fifoWritePcapDumper = NULL;
 	memset(this->readThreads, 0, sizeof(this->readThreads));
 	this->readThreadsCount = 0;
 	this->lastTimeLogErrThread0BufferIsFull = 0;
+	this->threadHandleDelete = 0;
 }
 
 PcapQueue_readFromInterface::~PcapQueue_readFromInterface() {
+	pthread_join(this->threadHandleDelete, NULL);
 	if(this->fifoWritePcapDumper) {
 		pcap_dump_close(this->fifoWritePcapDumper);
 		syslog(LOG_NOTICE, "packetbuffer terminating: pcap_dump_close fifoWritePcapDumper (%s)", interfaceName.c_str());
@@ -2904,6 +2912,7 @@ bool PcapQueue_readFromInterface::init() {
 
 bool PcapQueue_readFromInterface::initThread(void *arg, unsigned int arg2) {
 	init_hash();
+	pthread_create(&this->threadHandleDelete, NULL, _PcapQueue_readFromInterfaceThread_threadDeleteFunction, this);
 	return(this->startCapture() &&
 	       this->openFifoForWrite(arg, arg2));
 }
@@ -3101,12 +3110,20 @@ void* PcapQueue_readFromInterface::threadFunction(void *arg, unsigned int arg2) 
 				}
 			}
 			if(fetchPacketOk) {
-				if(!TEST_PACKETS && destroy) {
-					delete header;
-					delete [] packet;
-				}
 				if(this->readThreadsCount) {
-					this->readThreads[minThreadTimeIndex]->moveREADIT(opt_pcap_queue_iface_dedup_separate_threads_extend);
+					this->readThreads[minThreadTimeIndex]->moveREADIT();
+					if(opt_pcap_queue_iface_dedup_separate_threads_extend) {
+						destroy = true;
+					}
+				}
+				if(!TEST_PACKETS && destroy) {
+					if(!TERMINATING) {
+						sHeaderPacket headerPacket(header, packet);
+						this->deleteQueue.push(&headerPacket, true);
+					} else {
+						delete header;
+						delete [] packet;
+					}
 				}
 			}
 		}
@@ -3128,8 +3145,13 @@ void* PcapQueue_readFromInterface::threadFunction(void *arg, unsigned int arg2) 
 				break;
 			} else if(res == 0) {
 				if(destroy) {
-					delete header;
-					delete [] packet;
+					if(!TERMINATING) {
+						sHeaderPacket headerPacket(header, packet);
+						this->deleteQueue.push(&headerPacket, true);
+					} else {
+						delete header;
+						delete [] packet;
+					}
 				}
 				continue;
 			}
@@ -3153,6 +3175,24 @@ void* PcapQueue_readFromInterface::threadFunction(void *arg, unsigned int arg2) 
 		--this->readThreadsCount;
 	}
 	this->threadTerminated = true;
+	return(NULL);
+}
+
+void* PcapQueue_readFromInterface::threadDeleteFunction(void *arg, unsigned int arg2) {
+	this->nextThreadId = get_unix_tid();
+	sHeaderPacket headerPacket;
+	while(!TERMINATING) {
+		if(this->deleteQueue.pop(&headerPacket, false)) {
+			delete headerPacket.header;
+			delete [] headerPacket.packet;
+		} else {
+			usleep(1000);
+		}
+	}
+	while(this->deleteQueue.pop(&headerPacket, false)) {
+		delete headerPacket.header;
+		delete [] headerPacket.packet;
+	}
 	return(NULL);
 }
 

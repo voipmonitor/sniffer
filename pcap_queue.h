@@ -186,6 +186,11 @@ public:
 		readFromInterface,
 		readFromFifo
 	};
+	enum eTypeThread {
+		mainThread,
+		writeThread,
+		nextThread
+	};
 	PcapQueue(eTypeQueue typeQueue, const char *nameQueue);
 	virtual ~PcapQueue();
 	void setFifoFileForRead(const char *fifoFileForRead);
@@ -237,14 +242,12 @@ protected:
 	virtual string getStatPacketDrop() { return(""); }
 	virtual string pcapStatString_cpuUsageReadThreads() { return(""); };
 	virtual void initStat_interface() {};
-	void preparePstatData(bool writeThread = false);
+	void preparePstatData(eTypeThread typeThread = mainThread);
 	void prepareProcPstatData();
-	double getCpuUsagePerc(bool writeThread = false, bool preparePstatData = false);
+	double getCpuUsagePerc(eTypeThread typeThread = mainThread, bool preparePstatData = false);
 	virtual string getCpuUsage(bool writeThread = false, bool preparePstatData = false) { return(""); }
-	long unsigned int getVsizeUsage(bool writeThread = false, bool preparePstatData = false);
-	long unsigned int getRssUsage(bool writeThread = false, bool preparePstatData = false);
-	long unsigned int getProcVsizeUsage(bool preparePstatData = false);
-	long unsigned int getProcRssUsage(bool preparePstatData = false);
+	long unsigned int getVsizeUsage(bool preparePstatData = false);
+	long unsigned int getRssUsage(bool preparePstatData = false);
 	virtual bool isMirrorSender() {
 		return(false);
 	}
@@ -270,8 +273,10 @@ protected:
 	bool threadDoTerminate;
 	int threadId;
 	int writeThreadId;
+	int nextThreadId;
 	pstat_data threadPstatData[2];
 	pstat_data writeThreadPstatData[2];
+	pstat_data nextThreadPstatData[2];
 	pstat_data procPstatData[2];
 	bool initAllReadThreadsOk;
 private:
@@ -448,6 +453,15 @@ friend class PcapQueue_readFromInterface;
 };
 
 class PcapQueue_readFromInterface : public PcapQueue, protected PcapQueue_readFromInterface_base {
+private: 
+	struct sHeaderPacket {
+		sHeaderPacket(pcap_pkthdr *header = NULL, u_char *packet = NULL) {
+			this->header = header;
+			this->packet = packet;
+		}
+		pcap_pkthdr *header;
+		u_char *packet;
+	};
 public:
 	PcapQueue_readFromInterface(const char *nameQueue);
 	virtual ~PcapQueue_readFromInterface();
@@ -457,6 +471,7 @@ protected:
 	bool init();
 	bool initThread(void *arg, unsigned int arg2);
 	void *threadFunction(void *arg, unsigned int arg2);
+	void *threadDeleteFunction(void *arg, unsigned int arg2);
 	bool openFifoForWrite(void *arg, unsigned int arg2);
 	bool startCapture();
 	pcap_t* _getPcapHandle(int dlt) { 
@@ -476,6 +491,10 @@ protected:
 	PcapQueue_readFromInterfaceThread *readThreads[READ_THREADS_MAX];
 	int readThreadsCount;
 	u_long lastTimeLogErrThread0BufferIsFull;
+private:
+	pthread_t threadHandleDelete;
+	rqueue_quick<sHeaderPacket> deleteQueue;
+friend void *_PcapQueue_readFromInterfaceThread_threadDeleteFunction(void *arg);
 };
 
 class PcapQueue_readFromFifo : public PcapQueue {

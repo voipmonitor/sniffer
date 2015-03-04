@@ -12,6 +12,8 @@
 #include <boost/lockfree/spsc_queue.hpp>
 #endif
 
+#include "heap_safe.h"
+
 
 template<class typeItem>
 class rqueue {
@@ -26,6 +28,7 @@ public:
 		this->clearAtPop = clearAtPop;
 		if(this->length) {
 			this->buffer = new typeItem[this->length];
+			autoMemoryType(this->buffer);
 			if(this->binaryBuffer && this->clearBuff) {
 				memset(this->buffer, 0, this->length * sizeof(typeItem));
 			}
@@ -205,6 +208,7 @@ void rqueue<typeItem>::incBuffer() {
 	size_t newLength = this->length + this->inc_length;
 	syslog(LOG_NOTICE, "increase size of rqueue %s from %lu to %lu", name.c_str(), this->length, newLength);
 	typeItem *newBuffer = new typeItem[newLength];
+	autoMemoryType(newBuffer);
 	if(this->binaryBuffer) {
 		if(this->clearBuff) {
 			memset(newBuffer, 0, newLength * sizeof(typeItem));
@@ -394,7 +398,9 @@ public:
 		this->term_rqueue = term_rqueue;
 		this->binaryBuffer = binaryBuffer;
 		buffer = new typeItem[this->length + 1];
+		autoMemoryType(buffer);
 		free = new v_int[this->length + 1];
+		autoMemoryType((void*)free);
 		for(size_t i = 0; i < this->length; i++) {
 			free[i] = 1;
 		}

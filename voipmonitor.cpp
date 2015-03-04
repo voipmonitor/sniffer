@@ -653,6 +653,8 @@ extern ParsePacket _parse_packet_global;
 
 cBuffersControl buffersControl;
 
+u_int64_t rdtsc_by_100ms;
+
 
 #include <stdio.h>
 #include <pthread.h>
@@ -2988,6 +2990,13 @@ int main(int argc, char *argv[]) {
 	printf("voipmonitor version %s\n", RTPSENSOR_VERSION);
 	syslog(LOG_NOTICE, "start voipmonitor version %s", RTPSENSOR_VERSION);
 	
+	#if defined(__i386__) or  defined(__x86_64__)
+	u_int64_t _rdtsc_1 = rdtsc();
+	usleep(100000);
+	u_int64_t _rdtsc_2 = rdtsc();
+	rdtsc_by_100ms = _rdtsc_2 - _rdtsc_1;
+	#endif
+	
 	string localActTime = sqlDateTimeString(time(NULL));
 	printf("local time %s\n", localActTime.c_str());
 	syslog(LOG_NOTICE, "local time %s", localActTime.c_str());
@@ -5183,16 +5192,6 @@ void test() {
 		break;
 	case 7: 
 		test_http_dumper(); 
-		break;
-	case 8:
-		{
-		char *a;
-		a = new char[100000];
-		autoMemoryType(a);
-		printMemoryStat();
-		delete [] a;
-		printMemoryStat();
-		}
 		break;
 	case 10:
 		{
