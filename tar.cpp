@@ -277,7 +277,7 @@ Tar::tar_open(string pathname, int oflags, int mode, int options)
 			}
 		}
 	}
-	tar.fd = open((char*)this->pathname.c_str(), oflags, mode);
+	tar.fd = open((char*)this->pathname.c_str(), oflags | O_LARGEFILE, mode);
 	if (tar.fd == -1)
 	{
 		return -1;
@@ -383,7 +383,18 @@ Tar::tar_read(const char *filename, const char *endFilename, u_int32_t recordId,
 	}
 	if(tarPos.size()) {
 		for(list<u_int64_t>::iterator it = tarPos.begin(); it != tarPos.end(); it++) {
-			lseek(tar.fd, *it, SEEK_SET);
+			if(sizeof(int) == 4) {
+				int counterSeek = 0;
+				u_int64_t seekPos = *it;
+				while(seekPos) {
+					u_int64_t _seek = min((unsigned long long)seekPos, 2000000000ull);
+					lseek(tar.fd, _seek, counterSeek ? SEEK_CUR : SEEK_SET);
+					seekPos -= _seek;
+					++counterSeek;
+				}
+			} else {
+			       lseek(tar.fd, *it, SEEK_SET);
+			}
 			read_position = *it;
 			this->readData.oneFile = true;
 			this->readData.end = false;
