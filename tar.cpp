@@ -1612,7 +1612,7 @@ int untar_gui(const char *args) {
 	cout << outputFile << endl;
 	
 	Tar tar;
-	if(tar.tar_open(tarFile, O_RDONLY)) {
+	if(tar.tar_open(tarFile, O_RDONLY) == -1) {
 		cerr << "untar: open file " << tarFile << " failed" << endl;
 		return(1);
 	}
