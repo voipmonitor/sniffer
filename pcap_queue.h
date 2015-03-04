@@ -448,6 +448,15 @@ friend class PcapQueue_readFromInterface;
 };
 
 class PcapQueue_readFromInterface : public PcapQueue, protected PcapQueue_readFromInterface_base {
+private: 
+	struct sHeaderPacket {
+		sHeaderPacket(pcap_pkthdr *header = NULL, u_char *packet = NULL) {
+			this->header = header;
+			this->packet = packet;
+		}
+		pcap_pkthdr *header;
+		u_char *packet;
+	};
 public:
 	PcapQueue_readFromInterface(const char *nameQueue);
 	virtual ~PcapQueue_readFromInterface();
@@ -457,6 +466,7 @@ protected:
 	bool init();
 	bool initThread(void *arg, unsigned int arg2);
 	void *threadFunction(void *arg, unsigned int arg2);
+	void *threadDeleteFunction(void *arg, unsigned int arg2);
 	bool openFifoForWrite(void *arg, unsigned int arg2);
 	bool startCapture();
 	pcap_t* _getPcapHandle(int dlt) { 
@@ -476,6 +486,10 @@ protected:
 	PcapQueue_readFromInterfaceThread *readThreads[READ_THREADS_MAX];
 	int readThreadsCount;
 	u_long lastTimeLogErrThread0BufferIsFull;
+private:
+	pthread_t threadHandleDelete;
+	rqueue_quick<sHeaderPacket> deleteQueue;
+friend void *_PcapQueue_readFromInterfaceThread_threadDeleteFunction(void *arg);
 };
 
 class PcapQueue_readFromFifo : public PcapQueue {

@@ -2860,16 +2860,23 @@ inline void *_PcapQueue_readFromInterfaceThread_threadFunction(void *arg) {
 	return(((PcapQueue_readFromInterfaceThread*)arg)->threadFunction(arg, 0));
 }
 
+inline void *_PcapQueue_readFromInterfaceThread_threadDeleteFunction(void *arg) {
+	return(((PcapQueue_readFromInterface*)arg)->threadDeleteFunction(arg, 0));
+}
+
 
 PcapQueue_readFromInterface::PcapQueue_readFromInterface(const char *nameQueue)
- : PcapQueue(readFromInterface, nameQueue) {
+ : PcapQueue(readFromInterface, nameQueue),
+   deleteQueue(100000, 1000, 1000) {
 	this->fifoWritePcapDumper = NULL;
 	memset(this->readThreads, 0, sizeof(this->readThreads));
 	this->readThreadsCount = 0;
 	this->lastTimeLogErrThread0BufferIsFull = 0;
+	this->threadHandleDelete = 0;
 }
 
 PcapQueue_readFromInterface::~PcapQueue_readFromInterface() {
+	pthread_join(this->threadHandleDelete, NULL);
 	if(this->fifoWritePcapDumper) {
 		pcap_dump_close(this->fifoWritePcapDumper);
 		syslog(LOG_NOTICE, "packetbuffer terminating: pcap_dump_close fifoWritePcapDumper (%s)", interfaceName.c_str());
@@ -2904,6 +2911,7 @@ bool PcapQueue_readFromInterface::init() {
 
 bool PcapQueue_readFromInterface::initThread(void *arg, unsigned int arg2) {
 	init_hash();
+	pthread_create(&this->threadHandleDelete, NULL, _PcapQueue_readFromInterfaceThread_threadDeleteFunction, this);
 	return(this->startCapture() &&
 	       this->openFifoForWrite(arg, arg2));
 }
@@ -3101,12 +3109,20 @@ void* PcapQueue_readFromInterface::threadFunction(void *arg, unsigned int arg2) 
 				}
 			}
 			if(fetchPacketOk) {
-				if(!TEST_PACKETS && destroy) {
-					delete header;
-					delete [] packet;
-				}
 				if(this->readThreadsCount) {
-					this->readThreads[minThreadTimeIndex]->moveREADIT(opt_pcap_queue_iface_dedup_separate_threads_extend);
+					this->readThreads[minThreadTimeIndex]->moveREADIT();
+					if(opt_pcap_queue_iface_dedup_separate_threads_extend) {
+						destroy = true;
+					}
+				}
+				if(!TEST_PACKETS && destroy) {
+					if(!TERMINATING) {
+						sHeaderPacket headerPacket(header, packet);
+						this->deleteQueue.push(&headerPacket, true);
+					} else {
+						delete header;
+						delete [] packet;
+					}
 				}
 			}
 		}
@@ -3128,8 +3144,13 @@ void* PcapQueue_readFromInterface::threadFunction(void *arg, unsigned int arg2) 
 				break;
 			} else if(res == 0) {
 				if(destroy) {
-					delete header;
-					delete [] packet;
+					if(!TERMINATING) {
+						sHeaderPacket headerPacket(header, packet);
+						this->deleteQueue.push(&headerPacket, true);
+					} else {
+						delete header;
+						delete [] packet;
+					}
 				}
 				continue;
 			}
@@ -3153,6 +3174,23 @@ void* PcapQueue_readFromInterface::threadFunction(void *arg, unsigned int arg2) 
 		--this->readThreadsCount;
 	}
 	this->threadTerminated = true;
+	return(NULL);
+}
+
+void* PcapQueue_readFromInterface::threadDeleteFunction(void *arg, unsigned int arg2) {
+	sHeaderPacket headerPacket;
+	while(!TERMINATING) {
+		if(this->deleteQueue.pop(&headerPacket, false)) {
+			delete headerPacket.header;
+			delete [] headerPacket.packet;
+		} else {
+			usleep(1000);
+		}
+	}
+	while(this->deleteQueue.pop(&headerPacket, false)) {
+		delete headerPacket.header;
+		delete [] headerPacket.packet;
+	}
 	return(NULL);
 }
 
