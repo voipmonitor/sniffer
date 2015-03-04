@@ -3375,6 +3375,8 @@ int main(int argc, char *argv[]) {
 			case 'W':
 				opt_saveWAV = 1;
 				opt_savewav_force = 1;
+				opt_dup_check = 1;
+				opt_dup_check_ipheader = 0;
 				break;
 			case 'G':
 				opt_saveGRAPH = 1;
