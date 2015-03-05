@@ -1758,9 +1758,9 @@ getwav:
 			cerr << "Error sending data to client" << endl;
 			return -1;
 		}
-	} else if(strstr(buf, "blocktar") != NULL) {
+	} else if(buf[0] == 'b' and strstr(buf, "blocktar") != NULL) {
 		opt_blocktarwrite = 1;
-	} else if(strstr(buf, "unblocktar") != NULL) {
+	} else if(buf[0] == 'u' and strstr(buf, "unblocktar") != NULL) {
 		opt_blocktarwrite = 0;
 	} else {
 		if ((size = sendvm(client, sshchannel, "command not found\n", 18, 0)) == -1){
