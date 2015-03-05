@@ -388,12 +388,20 @@ Tar::tar_read(const char *filename, const char *endFilename, u_int32_t recordId,
 				u_int64_t seekPos = *it;
 				while(seekPos) {
 					u_int64_t _seek = min((unsigned long long)seekPos, 2000000000ull);
-					lseek(tar.fd, _seek, counterSeek ? SEEK_CUR : SEEK_SET);
+					if(lseek(tar.fd, _seek, counterSeek ? SEEK_CUR : SEEK_SET) == -1) {
+						this->readData.error = true;
+						break;
+					}
 					seekPos -= _seek;
 					++counterSeek;
 				}
 			} else {
-			       lseek(tar.fd, *it, SEEK_SET);
+				if(lseek(tar.fd, *it, SEEK_SET) == -1) {
+					this->readData.error = true;
+				}
+			}
+			if(this->readData.error) {
+				break;
 			}
 			read_position = *it;
 			this->readData.oneFile = true;
