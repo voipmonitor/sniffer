@@ -645,8 +645,7 @@ Tar::initLzma() {
 		if (ret_xz != LZMA_OK) {
 			fprintf (stderr, "lzma_easy_encoder error: %d\n", (int) ret_xz);
 			return(false);
-		}
-		if(!zipBuffer) {
+		} else {
 			this->zipBufferLength = 8192*4;
 			this->zipBuffer = new char[this->zipBufferLength];
 			autoMemoryType(this->zipBuffer);
@@ -720,6 +719,7 @@ Tar::flush() {
 		delete this->lzmaStream;
 		delete this->zipBuffer;
 		this->lzmaStream = NULL;
+		this->zipBuffer = NULL;
 		this->initLzma();
 		_flush = true;
 	}
@@ -730,6 +730,7 @@ Tar::flush() {
 		delete this->zipStream;
 		delete this->zipBuffer;
 		this->zipStream = NULL;
+		this->zipBuffer = NULL;
 		this->initZip();
 		_flush = true;
 	}
