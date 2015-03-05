@@ -69,6 +69,7 @@ extern int opt_nocdr;
 extern int verbosity;
 
 extern MySqlStore *sqlStore;
+extern int opt_blocktarwrite;
 
 
 extern int terminating; 
@@ -741,6 +742,9 @@ Tar::flush() {
 
 int
 Tar::tar_block_write(const char *buf, u_int32_t len){
+	while(opt_blocktarwrite) {
+		sleep(1);
+	}
 	int zip = false;
 	int lzma = false;
 	switch(tar.qtype) {

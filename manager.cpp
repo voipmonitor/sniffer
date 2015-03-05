@@ -77,6 +77,8 @@ extern unsigned int ssh_remote_listenport;
 extern int enable_bad_packet_order_warning;
 extern ip_port opt_pcap_queue_send_to_ip_port;
 
+int opt_blocktarwrite = 0;
+
 using namespace std;
 
 struct listening_worker_arg {
@@ -1756,6 +1758,10 @@ getwav:
 			cerr << "Error sending data to client" << endl;
 			return -1;
 		}
+	} else if(strstr(buf, "blocktar") != NULL) {
+		opt_blocktarwrite = 1;
+	} else if(strstr(buf, "unblocktar") != NULL) {
+		opt_blocktarwrite = 0;
 	} else {
 		if ((size = sendvm(client, sshchannel, "command not found\n", 18, 0)) == -1){
 			cerr << "Error sending data to client" << endl;
