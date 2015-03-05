@@ -1529,7 +1529,13 @@ void TcpReassemblyLink::complete_normal(bool final, bool lockQueue) {
 				if(reassembly->enableDestroyStreamsInComplete) {
 					TcpReassemblyStream *stream = this->ok_streams[0];
 					this->ok_streams.erase(this->ok_streams.begin());
-					this->queue.erase(this->queue.begin());
+					for(deque<TcpReassemblyStream*>::iterator iter = this->queue.begin(); iter != this->queue.end();) {
+						if(*iter == stream) {
+							iter = this->queue.erase(iter);
+						} else {
+							++iter;
+						}
+					}
 					this->queue_by_ack.erase(stream->ack);
 					if(stream->direction == TcpReassemblyStream::DIRECTION_TO_DEST) {
 						if(stream->first_seq == this->first_seq_to_dest) {
