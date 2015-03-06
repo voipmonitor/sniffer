@@ -1108,6 +1108,7 @@ void RtpGraphSaver::close(bool updateFilesQueue) {
 	if(this->isOpen()) {
 		if(this->_asyncwrite == 0) {
 			this->handle->close();
+			delete this->handle;
 			this->handle = NULL;
 		} else {
 			Call *call = (Call*)this->rtp->call_owner;
