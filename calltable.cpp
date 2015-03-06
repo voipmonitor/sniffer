@@ -1065,7 +1065,7 @@ double calculate_mos(double ppl, double burstr, int codec, unsigned int received
 	}
 }
 
-int convertALAW2WAV(char *fname1, char *fname3, int maxsamplerate) {
+int convertALAW2WAV(const char *fname1, char *fname3, int maxsamplerate) {
 	unsigned char *bitstream_buf1;
 	int16_t buf_out1;
 	unsigned char *p1;
@@ -1128,7 +1128,7 @@ int convertALAW2WAV(char *fname1, char *fname3, int maxsamplerate) {
 	return 0;
 }
  
-int convertULAW2WAV(char *fname1, char *fname3, int maxsamplerate) {
+int convertULAW2WAV(const char *fname1, char *fname3, int maxsamplerate) {
 	unsigned char *bitstream_buf1;
 	int16_t buf_out1;
 	unsigned char *p1;
@@ -1403,7 +1403,18 @@ Call::convertRawToWav() {
 		}
 		int maxsamplerate = 0;
 		// get max sample rate 
+		list<raws_t> raws;
+		struct timeval lasttv;
+		lasttv.tv_sec = 0;
+		lasttv.tv_usec = 0;
+		int iter = 0;
+		unsigned int last_ssrc_index;
+		/* 
+			read rawInfo file where there are stored raw files (rtp streams) 
+			if any of such stream has same SSRC as previous stream and it starts at the same time with 500ms tolerance that stream is eliminated (it is probably duplicate stream)
+		*/
 		while(fgets(line, 256, pl)) {
+			struct raws_t rawl;
 			char raw[1024];
 			line[strlen(line)] = '\0'; // remove '\n' which is last character
 			sscanf(line, "%d:%lu:%d:%ld:%ld", &ssrc_index, &rawiterator, &codec, &tv0.tv_sec, &tv0.tv_usec);
@@ -1412,32 +1423,53 @@ Call::convertRawToWav() {
 			if(maxsamplerate < samplerate) {
 				maxsamplerate = samplerate;
 			}
+
+			rawl.ssrc_index = ssrc_index;
+			rawl.rawiterator = rawiterator;
+			rawl.tv.tv_sec = tv0.tv_sec;
+			rawl.tv.tv_usec = tv0.tv_usec;
+			rawl.codec = codec;
+			rawl.filename = raw;
+
+			if(iter > 0) {
+				if(rtp[last_ssrc_index]->ssrc == rtp[last_ssrc_index]->ssrc and
+					ast_tvdiff_ms(lasttv, tv0) < 500) {	
+					// ignore this raw file it is duplicate 
+					//syslog(LOG_NOTICE, "ignoring duplicate stream");
+				} else {
+					raws.push_back(rawl);
+				}
+			} else {
+				raws.push_back(rawl);
+
+			}
+
+			lasttv.tv_sec = tv0.tv_sec;
+			lasttv.tv_usec = tv0.tv_usec;
+			last_ssrc_index = ssrc_index;
+			iter++;
+			
 		}
-		// rewind rawInfo file and process one by one
-		rewind(pl);
-		while(fgets(line, 256, pl)) {
-			char raw[1024];
-			line[strlen(line)] = '\0'; // remove '\n' which is last character
-			sscanf(line, "%d:%lu:%d:%ld:%ld", &ssrc_index, &rawiterator, &codec, &tv0.tv_sec, &tv0.tv_usec);
-			snprintf(raw, 1023, "%s/%s/%s.i%d.%d.%lu.%d.%ld.%ld.raw", dirname().c_str(), opt_newdir ? "AUDIO" : "", get_fbasename_safe(), i, ssrc_index, rawiterator, codec, tv0.tv_sec, tv0.tv_usec);
-			raw[1023] = 0;
-			switch(codec) {
+		fclose(pl);
+
+		for (std::list<raws_t>::const_iterator rawf = raws.begin(), end = raws.end(); rawf != end; ++rawf) {
+			switch(rawf->codec) {
 			case PAYLOAD_PCMA:
 				if(verbosity > 1) syslog(LOG_ERR, "Converting PCMA to WAV.\n");
-				convertALAW2WAV(raw, wav, maxsamplerate);
+				convertALAW2WAV(rawf->filename.c_str(), wav, maxsamplerate);
 				samplerate = 8000;
 				break;
 			case PAYLOAD_PCMU:
 				if(verbosity > 1) syslog(LOG_ERR, "Converting PCMU to WAV.\n");
-				convertULAW2WAV(raw, wav, maxsamplerate);
+				convertULAW2WAV(rawf->filename.c_str(), wav, maxsamplerate);
 				samplerate = 8000;
 				break;
 		/* following decoders are not included in free version. Please contact support@voipmonitor.org */
 			case PAYLOAD_G722:
 				if(opt_keycheck[0] != '\0') {
-					snprintf(cmd, cmd_len, "vmcodecs %s g722 \"%s\" \"%s\" 64000", opt_keycheck, raw, wav);
+					snprintf(cmd, cmd_len, "vmcodecs %s g722 \"%s\" \"%s\" 64000", opt_keycheck, rawf->filename.c_str(), wav);
 				} else {
-					snprintf(cmd, cmd_len, "voipmonitor-g722 \"%s\" \"%s\" 64000", raw, wav);
+					snprintf(cmd, cmd_len, "voipmonitor-g722 \"%s\" \"%s\" 64000", rawf->filename.c_str(), wav);
 				}
 				cmd[cmd_len] = 0;
 				samplerate = 16000;
@@ -1447,9 +1479,9 @@ Call::convertRawToWav() {
 				break;
 			case PAYLOAD_G7221:
 				if(opt_keycheck[0] != '\0') {
-					snprintf(cmd, cmd_len, "vmcodecs %s siren \"%s\" \"%s\" 16000", opt_keycheck, raw, wav);
+					snprintf(cmd, cmd_len, "vmcodecs %s siren \"%s\" \"%s\" 16000", opt_keycheck, rawf->filename.c_str(), wav);
 				} else {
-					snprintf(cmd, cmd_len, "voipmonitor-siren \"%s\" \"%s\" 16000", raw, wav);
+					snprintf(cmd, cmd_len, "voipmonitor-siren \"%s\" \"%s\" 16000", rawf->filename.c_str(), wav);
 				}
 				cmd[cmd_len] = 0;
 				samplerate = 32000;
@@ -1459,9 +1491,9 @@ Call::convertRawToWav() {
 				break;
 			case PAYLOAD_G722116:
 				if(opt_keycheck[0] != '\0') {
-					snprintf(cmd, cmd_len, "vmcodecs %s siren \"%s\" \"%s\" 16000", opt_keycheck, raw, wav);
+					snprintf(cmd, cmd_len, "vmcodecs %s siren \"%s\" \"%s\" 16000", opt_keycheck, rawf->filename.c_str(), wav);
 				} else {
-					snprintf(cmd, cmd_len, "voipmonitor-siren \"%s\" \"%s\" 16000", raw, wav);
+					snprintf(cmd, cmd_len, "voipmonitor-siren \"%s\" \"%s\" 16000", rawf->filename.c_str(), wav);
 				}
 				cmd[cmd_len] = 0;
 				samplerate = 16000;
@@ -1471,9 +1503,9 @@ Call::convertRawToWav() {
 				break;
 			case PAYLOAD_G722132:
 				if(opt_keycheck[0] != '\0') {
-					snprintf(cmd, cmd_len, "vmcodecs %s siren \"%s\" \"%s\" 32000", opt_keycheck, raw, wav);
+					snprintf(cmd, cmd_len, "vmcodecs %s siren \"%s\" \"%s\" 32000", opt_keycheck, rawf->filename.c_str(), wav);
 				} else {
-					snprintf(cmd, cmd_len, "voipmonitor-siren \"%s\" \"%s\" 32000", raw, wav);
+					snprintf(cmd, cmd_len, "voipmonitor-siren \"%s\" \"%s\" 32000", rawf->filename.c_str(), wav);
 				}
 				cmd[cmd_len] = 0;
 				samplerate = 32000;
@@ -1483,9 +1515,9 @@ Call::convertRawToWav() {
 				break;
 			case PAYLOAD_GSM:
 				if(opt_keycheck[0] != '\0') {
-					snprintf(cmd, cmd_len, "vmcodecs %s gsm \"%s\" \"%s\"", opt_keycheck, raw, wav);
+					snprintf(cmd, cmd_len, "vmcodecs %s gsm \"%s\" \"%s\"", opt_keycheck, rawf->filename.c_str(), wav);
 				} else {
-					snprintf(cmd, cmd_len, "voipmonitor-gsm \"%s\" \"%s\"", raw, wav);
+					snprintf(cmd, cmd_len, "voipmonitor-gsm \"%s\" \"%s\"", rawf->filename.c_str(), wav);
 				}
 				cmd[cmd_len] = 0;
 				if(verbosity > 1) syslog(LOG_ERR, "Converting GSM to WAV.\n");
@@ -1494,9 +1526,9 @@ Call::convertRawToWav() {
 				break;
 			case PAYLOAD_G729:
 				if(opt_keycheck[0] != '\0') {
-					snprintf(cmd, cmd_len, "vmcodecs %s g729 \"%s\" \"%s\"", opt_keycheck, raw, wav);
+					snprintf(cmd, cmd_len, "vmcodecs %s g729 \"%s\" \"%s\"", opt_keycheck, rawf->filename.c_str(), wav);
 				} else {
-					snprintf(cmd, cmd_len, "voipmonitor-g729 \"%s\" \"%s\"", raw, wav);
+					snprintf(cmd, cmd_len, "voipmonitor-g729 \"%s\" \"%s\"", rawf->filename.c_str(), wav);
 				}
 				cmd[cmd_len] = 0;
 				if(verbosity > 1) syslog(LOG_ERR, "Converting G.729 to WAV.\n");
@@ -1505,9 +1537,9 @@ Call::convertRawToWav() {
 				break;
 			case PAYLOAD_G723:
 				if(opt_keycheck[0] != '\0') {
-					snprintf(cmd, cmd_len, "vmcodecs %s g723 \"%s\" \"%s\"", opt_keycheck, raw, wav);
+					snprintf(cmd, cmd_len, "vmcodecs %s g723 \"%s\" \"%s\"", opt_keycheck, rawf->filename.c_str(), wav);
 				} else {
-					snprintf(cmd, cmd_len, "voipmonitor-g723 \"%s\" \"%s\"", raw, wav);
+					snprintf(cmd, cmd_len, "voipmonitor-g723 \"%s\" \"%s\"", rawf->filename.c_str(), wav);
 				}
 				cmd[cmd_len] = 0;
 				if(verbosity > 1) syslog(LOG_ERR, "Converting G.723 to WAV.\n");
@@ -1516,9 +1548,9 @@ Call::convertRawToWav() {
 				break;
 			case PAYLOAD_ILBC:
 				if(opt_keycheck[0] != '\0') {
-					snprintf(cmd, cmd_len, "vmcodecs %s ilbc \"%s\" \"%s\"", opt_keycheck, raw, wav);
+					snprintf(cmd, cmd_len, "vmcodecs %s ilbc \"%s\" \"%s\"", opt_keycheck, rawf->filename.c_str(), wav);
 				} else {
-					snprintf(cmd, cmd_len, "voipmonitor-ilbc \"%s\" \"%s\"", raw, wav);
+					snprintf(cmd, cmd_len, "voipmonitor-ilbc \"%s\" \"%s\"", rawf->filename.c_str(), wav);
 				}
 				cmd[cmd_len] = 0;
 				if(verbosity > 1) syslog(LOG_ERR, "Converting iLBC to WAV.\n");
@@ -1527,9 +1559,9 @@ Call::convertRawToWav() {
 				break;
 			case PAYLOAD_SPEEX:
 				if(opt_keycheck[0] != '\0') {
-					snprintf(cmd, cmd_len, "vmcodecs %s speex \"%s\" \"%s\"", opt_keycheck, raw, wav);
+					snprintf(cmd, cmd_len, "vmcodecs %s speex \"%s\" \"%s\"", opt_keycheck, rawf->filename.c_str(), wav);
 				} else {
-					snprintf(cmd, cmd_len, "voipmonitor-speex \"%s\" \"%s\"", raw, wav);
+					snprintf(cmd, cmd_len, "voipmonitor-speex \"%s\" \"%s\"", rawf->filename.c_str(), wav);
 				}
 				cmd[cmd_len] = 0;
 				if(verbosity > 1) syslog(LOG_ERR, "Converting speex to WAV.\n");
@@ -1538,9 +1570,9 @@ Call::convertRawToWav() {
 				break;
 			case PAYLOAD_SILK8:
 				if(opt_keycheck[0] != '\0') {
-					snprintf(cmd, cmd_len, "vmcodecs %s silk \"%s\" \"%s\" 8000", opt_keycheck, raw, wav);
+					snprintf(cmd, cmd_len, "vmcodecs %s silk \"%s\" \"%s\" 8000", opt_keycheck, rawf->filename.c_str(), wav);
 				} else {
-					snprintf(cmd, cmd_len, "voipmonitor-silk \"%s\" \"%s\" 8000", raw, wav);
+					snprintf(cmd, cmd_len, "voipmonitor-silk \"%s\" \"%s\" 8000", rawf->filename.c_str(), wav);
 				}
 				cmd[cmd_len] = 0;
 				samplerate = 8000;
@@ -1549,9 +1581,9 @@ Call::convertRawToWav() {
 				break;
 			case PAYLOAD_SILK12:
 				if(opt_keycheck[0] != '\0') {
-					snprintf(cmd, cmd_len, "vmcodecs %s silk \"%s\" \"%s\" 12000", opt_keycheck, raw, wav);
+					snprintf(cmd, cmd_len, "vmcodecs %s silk \"%s\" \"%s\" 12000", opt_keycheck, rawf->filename.c_str(), wav);
 				} else {
-					snprintf(cmd, cmd_len, "voipmonitor-silk \"%s\" \"%s\" 12000", raw, wav);
+					snprintf(cmd, cmd_len, "voipmonitor-silk \"%s\" \"%s\" 12000", rawf->filename.c_str(), wav);
 				}
 				cmd[cmd_len] = 0;
 				samplerate = 12000;
@@ -1560,9 +1592,9 @@ Call::convertRawToWav() {
 				break;
 			case PAYLOAD_SILK16:
 				if(opt_keycheck[0] != '\0') {
-					snprintf(cmd, cmd_len, "vmcodecs %s silk \"%s\" \"%s\" 16000", opt_keycheck, raw, wav);
+					snprintf(cmd, cmd_len, "vmcodecs %s silk \"%s\" \"%s\" 16000", opt_keycheck, rawf->filename.c_str(), wav);
 				} else {
-					snprintf(cmd, cmd_len, "voipmonitor-silk \"%s\" \"%s\" 16000", raw, wav);
+					snprintf(cmd, cmd_len, "voipmonitor-silk \"%s\" \"%s\" 16000", rawf->filename.c_str(), wav);
 				}
 				cmd[cmd_len] = 0;
 				samplerate = 16000;
@@ -1571,9 +1603,9 @@ Call::convertRawToWav() {
 				break;
 			case PAYLOAD_SILK24:
 				if(opt_keycheck[0] != '\0') {
-					snprintf(cmd, cmd_len, "vmcodecs %s silk \"%s\" \"%s\" 24000", opt_keycheck, raw, wav);
+					snprintf(cmd, cmd_len, "vmcodecs %s silk \"%s\" \"%s\" 24000", opt_keycheck, rawf->filename.c_str(), wav);
 				} else {
-					snprintf(cmd, cmd_len, "voipmonitor-silk \"%s\" \"%s\" 24000", raw, wav);
+					snprintf(cmd, cmd_len, "voipmonitor-silk \"%s\" \"%s\" 24000", rawf->filename.c_str(), wav);
 				}
 				cmd[cmd_len] = 0;
 				if(verbosity > 1) syslog(LOG_ERR, "Converting SILK16 to WAV.\n");
@@ -1582,9 +1614,9 @@ Call::convertRawToWav() {
 				break;
 			case PAYLOAD_ISAC16:
 				if(opt_keycheck[0] != '\0') {
-					snprintf(cmd, cmd_len, "vmcodecs %s isac \"%s\" \"%s\" 16000", opt_keycheck, raw, wav);
+					snprintf(cmd, cmd_len, "vmcodecs %s isac \"%s\" \"%s\" 16000", opt_keycheck, rawf->filename.c_str(), wav);
 				} else {
-					snprintf(cmd, cmd_len, "voipmonitor-isac \"%s\" \"%s\" 16000", raw, wav);
+					snprintf(cmd, cmd_len, "voipmonitor-isac \"%s\" \"%s\" 16000", rawf->filename.c_str(), wav);
 				}
 				cmd[cmd_len] = 0;
 				samplerate = 16000;
@@ -1593,9 +1625,9 @@ Call::convertRawToWav() {
 				break;
 			case PAYLOAD_ISAC32:
 				if(opt_keycheck[0] != '\0') {
-					snprintf(cmd, cmd_len, "vmcodecs %s isac \"%s\" \"%s\" 32000", opt_keycheck, raw, wav);
+					snprintf(cmd, cmd_len, "vmcodecs %s isac \"%s\" \"%s\" 32000", opt_keycheck, rawf->filename.c_str(), wav);
 				} else {
-					snprintf(cmd, cmd_len, "voipmonitor-isac \"%s\" \"%s\" 32000", raw, wav);
+					snprintf(cmd, cmd_len, "voipmonitor-isac \"%s\" \"%s\" 32000", rawf->filename.c_str(), wav);
 				}
 				cmd[cmd_len] = 0;
 				samplerate = 32000;
@@ -1604,9 +1636,9 @@ Call::convertRawToWav() {
 				break;
 			case PAYLOAD_OPUS8:
 				if(opt_keycheck[0] != '\0') {
-					snprintf(cmd, cmd_len, "vmcodecs %s opus \"%s\" \"%s\" 8000", opt_keycheck, raw, wav);
+					snprintf(cmd, cmd_len, "vmcodecs %s opus \"%s\" \"%s\" 8000", opt_keycheck, rawf->filename.c_str(), wav);
 				} else {
-					snprintf(cmd, cmd_len, "voipmonitor-opus \"%s\" \"%s\" 8000", raw, wav);
+					snprintf(cmd, cmd_len, "voipmonitor-opus \"%s\" \"%s\" 8000", rawf->filename.c_str(), wav);
 				}
 				cmd[cmd_len] = 0;
 				samplerate = 8000;
@@ -1615,9 +1647,9 @@ Call::convertRawToWav() {
 				break;
 			case PAYLOAD_OPUS12:
 				if(opt_keycheck[0] != '\0') {
-					snprintf(cmd, cmd_len, "vmcodecs %s opus \"%s\" \"%s\" 12000", opt_keycheck, raw, wav);
+					snprintf(cmd, cmd_len, "vmcodecs %s opus \"%s\" \"%s\" 12000", opt_keycheck, rawf->filename.c_str(), wav);
 				} else {
-					snprintf(cmd, cmd_len, "voipmonitor-opus \"%s\" \"%s\" 12000", raw, wav);
+					snprintf(cmd, cmd_len, "voipmonitor-opus \"%s\" \"%s\" 12000", rawf->filename.c_str(), wav);
 				}
 				cmd[cmd_len] = 0;
 				samplerate = 12000;
@@ -1626,9 +1658,9 @@ Call::convertRawToWav() {
 				break;
 			case PAYLOAD_OPUS16:
 				if(opt_keycheck[0] != '\0') {
-					snprintf(cmd, cmd_len, "vmcodecs %s opus \"%s\" \"%s\" 16000", opt_keycheck, raw, wav);
+					snprintf(cmd, cmd_len, "vmcodecs %s opus \"%s\" \"%s\" 16000", opt_keycheck, rawf->filename.c_str(), wav);
 				} else {
-					snprintf(cmd, cmd_len, "voipmonitor-opus \"%s\" \"%s\" 16000", raw, wav);
+					snprintf(cmd, cmd_len, "voipmonitor-opus \"%s\" \"%s\" 16000", rawf->filename.c_str(), wav);
 				}
 				cmd[cmd_len] = 0;
 				samplerate = 16000;
@@ -1637,9 +1669,9 @@ Call::convertRawToWav() {
 				break;
 			case PAYLOAD_OPUS24:
 				if(opt_keycheck[0] != '\0') {
-					snprintf(cmd, cmd_len, "vmcodecs %s opus \"%s\" \"%s\" 24000", opt_keycheck, raw, wav);
+					snprintf(cmd, cmd_len, "vmcodecs %s opus \"%s\" \"%s\" 24000", opt_keycheck, rawf->filename.c_str(), wav);
 				} else {
-					snprintf(cmd, cmd_len, "voipmonitor-opus \"%s\" \"%s\" 24000", raw, wav);
+					snprintf(cmd, cmd_len, "voipmonitor-opus \"%s\" \"%s\" 24000", rawf->filename.c_str(), wav);
 				}
 				cmd[cmd_len] = 0;
 				samplerate = 24000;
@@ -1648,11 +1680,11 @@ Call::convertRawToWav() {
 				break;
 			case PAYLOAD_OPUS48:
 				if(opt_keycheck[0] != '\0') {
-					snprintf(cmd, cmd_len, "vmcodecs %s opus \"%s\" \"%s\" 48000", opt_keycheck, raw, wav);
+					snprintf(cmd, cmd_len, "vmcodecs %s opus \"%s\" \"%s\" 48000", opt_keycheck, rawf->filename.c_str(), wav);
 				} else {
-					snprintf(cmd, cmd_len, "vmcodecs-opus %s a opus \"%s\" \"%s\" 48000", opt_keycheck, raw, wav);
+					snprintf(cmd, cmd_len, "vmcodecs-opus %s a opus \"%s\" \"%s\" 48000", opt_keycheck, rawf->filename.c_str(), wav);
 					cout << cmd << "\n";
-					//snprintf(cmd, cmd_len, "voipmonitor-opus \"%s\" \"%s\" 48000", raw, wav);
+					//snprintf(cmd, cmd_len, "voipmonitor-opus \"%s\" \"%s\" 48000", rawf->filename.c_str(), wav);
 				}
 				cmd[cmd_len] = 0;
 				samplerate = 48000;
@@ -1660,11 +1692,10 @@ Call::convertRawToWav() {
 				system(cmd);
 				break;
 			default:
-				syslog(LOG_ERR, "Call [%s] cannot be converted to WAV, unknown payloadtype [%d]\n", raw, codec);
+				syslog(LOG_ERR, "Call [%s] cannot be converted to WAV, unknown payloadtype [%d]\n", rawf->filename.c_str(), rawf->codec);
 			}
-			if(!sverb.noaudiounlink) unlink(raw);
+			if(!sverb.noaudiounlink) unlink(rawf->filename.c_str());
 		}
-		fclose(pl);
 		if(!sverb.noaudiounlink) unlink(rawInfo);
 	}
 

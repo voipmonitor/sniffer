@@ -103,6 +103,15 @@ struct ip_port_call_info {
 	bool fax;
 };
 
+struct raws_t {
+	int ssrc_index;
+	int rawiterator;
+	int codec;
+	struct timeval tv;
+	string filename;
+};
+
+
 
 /**
   * This class implements operations on call
