@@ -890,9 +890,14 @@ int get_sip_peername(char *data, int data_len, const char *tag, char *peername, 
 		goto fail_exit;
 	}
 	if ((r = (unsigned long)memmem(peername_tag, peername_tag_len, "sip:", 4)) == 0){
-		goto fail_exit;
+		if ((r = (unsigned long)memmem(peername_tag, peername_tag_len, "sips:", 4)) == 0){
+			goto fail_exit;
+		} else {
+			r += 5;
+		}
+	} else {
+		r += 4;
 	}
-	r += 4;
 	if ((r2 = (unsigned long)memmem((char*)r, peername_tag_len, "@", 1)) == 0){
 		goto fail_exit;
 	}
@@ -915,9 +920,15 @@ int get_sip_domain(char *data, int data_len, const char *tag, char *domain, unsi
 		goto fail_exit;
 	}
 	if ((r = (unsigned long)memmem(peername_tag, peername_tag_len, "sip:", 4)) == 0){
-		goto fail_exit;
+		if ((r = (unsigned long)memmem(peername_tag, peername_tag_len, "sips:", 4)) == 0){
+			goto fail_exit;
+		} else {
+			r += 4;
+		}
+	} else {
+		r += 4;
 	}
-	r += 4;
+	
 	if ((r = (unsigned long)memmem((char*)r, peername_tag_len, "@", 1)) == 0){
 		goto fail_exit;
 	}
