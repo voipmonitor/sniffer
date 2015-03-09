@@ -1409,6 +1409,7 @@ Call::convertRawToWav() {
 		lasttv.tv_usec = 0;
 		int iter = 0;
 		unsigned int last_ssrc_index;
+		long long last_size = 0;
 		/* 
 			read rawInfo file where there are stored raw files (rtp streams) 
 			if any of such stream has same SSRC as previous stream and it starts at the same time with 500ms tolerance that stream is eliminated (it is probably duplicate stream)
@@ -1432,10 +1433,12 @@ Call::convertRawToWav() {
 			rawl.filename = raw;
 
 			if(iter > 0) {
-				if(rtp[last_ssrc_index]->ssrc == rtp[last_ssrc_index]->ssrc and
-					ast_tvdiff_ms(lasttv, tv0) < 500) {	
+				if(rtp[ssrc_index]->ssrc == rtp[last_ssrc_index]->ssrc and
+					ast_tvdiff_ms(lasttv, tv0) < 200 and
+					last_size > 10000) {
 					// ignore this raw file it is duplicate 
-					//syslog(LOG_NOTICE, "ignoring duplicate stream");
+					if(!sverb.noaudiounlink) unlink(raw);
+					//syslog(LOG_NOTICE, "ignoring duplicate stream ssrc[%x] ssrc[%x]", rtp[last_ssrc_index]->ssrc, rtp[ssrc_index]->ssrc);
 				} else {
 					raws.push_back(rawl);
 				}
@@ -1448,6 +1451,7 @@ Call::convertRawToWav() {
 			lasttv.tv_usec = tv0.tv_usec;
 			last_ssrc_index = ssrc_index;
 			iter++;
+			last_size = GetFileSize(raw);
 			
 		}
 		fclose(pl);
