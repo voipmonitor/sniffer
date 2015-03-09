@@ -57,6 +57,9 @@ void SslData::processData(u_int32_t ip_src, u_int32_t ip_dst,
 	}
 	for(size_t i_data = 0; i_data < data->data.size(); i_data++) {
 		TcpReassemblyDataItem *dataItem = &data->data[i_data];
+		if(!dataItem->getData()) {
+			continue;
+		}
 		if(debugSave) {
 			cout << "###"
 			     << fixed
@@ -214,6 +217,9 @@ void SslData::printContentSummary() {
 
 
 bool checkOkSslData(u_char *data, u_int32_t datalen) {
+	if(!data) {
+		return(false);
+	}
 	u_int32_t offset = 0;
 	u_int32_t len;
 	while(offset < datalen &&
@@ -228,6 +234,9 @@ bool checkOkSslData(u_char *data, u_int32_t datalen) {
 }
 
 u_int32_t _checkOkSslData(u_char *data, u_int32_t datalen) {
+	if(!data) {
+		return(false);
+	}
 	SslData::SslHeader header(data, datalen);
 	return(header.length && header.length + 5 <= datalen ? header.length + 5: 0);
 }

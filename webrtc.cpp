@@ -37,6 +37,9 @@ void WebrtcData::processData(u_int32_t ip_src, u_int32_t ip_dst,
 	}
 	for(size_t i_data = 0; i_data < data->data.size(); i_data++) {
 		TcpReassemblyDataItem *dataItem = &data->data[i_data];
+		if(!dataItem->getData()) {
+			continue;
+		}
 		if(debugSave) {
 			cout << fixed
 			     << setw(15) << inet_ntostring(htonl(ip_src))
@@ -307,13 +310,16 @@ void WebrtcCache::clear() {
 
 
 bool checkOkWebrtcHttpData(u_char *data, u_int32_t datalen) {
-	return(datalen > 4 &&
+	return(data && datalen > 4 &&
 	       (!strncmp((char*)data, "POST", 4) ||
 		!strncmp((char*)data, "GET", 3) ||
 		!strncmp((char*)data, "HTTP", 4)));
 }
 
 bool checkOkWebrtcData(u_char *data, u_int32_t datalen) {
+	if(!data) {
+		return(false);
+	}
 	WebrtcData::WebrtcDecodeData webrtcDD;
 	return(webrtcDD.decode(data, datalen, true) > 0);
 }

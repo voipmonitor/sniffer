@@ -1500,13 +1500,15 @@ void TcpReassemblyLink::complete_normal(bool final, bool lockQueue) {
 				u_char *data = stream->complete_data.getData();
 				u_int32_t datalen = stream->complete_data.getDatalen();
 				timeval time = stream->complete_data.getTime();
-				if(reassembly->enableIgnorePairReqResp) {
-					reassemblyData->addData(data, datalen, time, stream->ack, (TcpReassemblyDataItem::eDirection)stream->direction);
-				} else {
-					if(direction == TcpReassemblyStream::DIRECTION_TO_DEST) {
-						reassemblyData->addRequest(data, datalen, time, stream->ack);
+				if(data) {
+					if(reassembly->enableIgnorePairReqResp) {
+						reassemblyData->addData(data, datalen, time, stream->ack, (TcpReassemblyDataItem::eDirection)stream->direction);
 					} else {
-						reassemblyData->addResponse(data, datalen, time, stream->ack);
+						if(direction == TcpReassemblyStream::DIRECTION_TO_DEST) {
+							reassemblyData->addRequest(data, datalen, time, stream->ack);
+						} else {
+							reassemblyData->addResponse(data, datalen, time, stream->ack);
+						}
 					}
 				}
 			} else {
