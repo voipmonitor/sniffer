@@ -34,6 +34,10 @@ Bugfixes
 - fix deadlock problem / duplicity in cdr
 - fix negative skinny callid, fix timout skinny channel problem, fix onhold, create skinny channel only on OFFHOOK message
 
+10.1.39 09.03.2015
+==================
+- do not include SIP MESSAGE type in active calls (listcalls in manager command) 
+
 
 10.1.38 06.03.2015
 ==================
