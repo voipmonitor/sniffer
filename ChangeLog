@@ -1,3 +1,8 @@
+10.1.39 09.03.2015
+==================
+- do not include SIP MESSAGE type in active calls (listcalls in manager command) 
+
+
 10.1.38 06.03.2015
 ==================
 - add sips: tag support which fixes empty caller number / domain when this tag was used
