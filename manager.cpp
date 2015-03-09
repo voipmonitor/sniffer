@@ -663,8 +663,8 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 		calltable->lock_calls_listMAP();
 		for (callMAPIT = calltable->calls_listMAP.begin(); callMAPIT != calltable->calls_listMAP.end(); ++callMAPIT) {
 			call = (*callMAPIT).second;
-			if(call->type == REGISTER or call->destroy_call_at > 0) {
-				// skip register and calls which are scheduled to be closed
+			if(call->type == REGISTER or call->type == MESSAGE or call->destroy_call_at > 0) {
+				// skip register or message or calls which are scheduled to be closed
 				continue;
 			}
 			/* 
