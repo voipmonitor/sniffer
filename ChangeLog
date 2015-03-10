@@ -1,3 +1,9 @@
+10.1.40 10.03.2015
+==================
+- fix RTP jitter precision 
+- link with the latest libmysqlclient 
+
+
 10.1.39 09.03.2015
 ==================
 - do not include SIP MESSAGE type in active calls (listcalls in manager command) 

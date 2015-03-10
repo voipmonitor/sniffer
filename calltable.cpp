@@ -1938,7 +1938,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			packet_loss_perc_mult1000[i] = (int)round((double)rtpab[i]->stats.lost / 
 									(rtpab[i]->stats.received + 2 + rtpab[i]->stats.lost) * 100 * 1000);
 			cdr.add(packet_loss_perc_mult1000[i], c+"_packet_loss_perc_mult1000");
-			jitter_mult10[i] = int(ceil(rtpab[i]->stats.avgjitter)) * 10; // !!!
+			jitter_mult10[i] = ceil(rtpab[i]->stats.avgjitter * 10);
 			cdr.add(jitter_mult10[i], c+"_avgjitter_mult10");
 			cdr.add(int(ceil(rtpab[i]->stats.maxjitter)), c+"_maxjitter");
 			payload[i] = rtpab[i]->first_codec;
