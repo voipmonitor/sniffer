@@ -993,7 +993,7 @@ ssl_privkey_to_sexp(struct gnutls_x509_privkey_int* priv_key)
 		if (gcry_mpi_scan(&rsa_params[i], GCRYMPI_FMT_USG, rsa_datum[i].data, rsa_datum[i].size,&tmp_size) != 0) {
 			if (debug) printf("ssl_load_key: can't convert m rsa param to int (size %d)\n", rsa_datum[i].size);
 			if(rsa_datum[i].data)
-				delete [] rsa_datum[i].data;
+				FREE(rsa_datum[i].data);
 			return NULL;
 		}
 	}
@@ -1013,14 +1013,14 @@ ssl_privkey_to_sexp(struct gnutls_x509_privkey_int* priv_key)
 		if (debug) printf("ssl_load_key: can't build rsa private key s-exp\n");
 		for (i = 0; i < RSA_PARS; i++) {
 			if(rsa_datum[i].data)
-				delete [] rsa_datum[i].data;
+				FREE(rsa_datum[i].data);
 		}
 		return NULL;
 	}  
    
 	for (i = 0; i < RSA_PARS; i++) {
 		if(rsa_datum[i].data)
-			delete [] rsa_datum[i].data;
+			FREE(rsa_datum[i].data);
 		gcry_mpi_release(rsa_params[i]);
 	}
 	return rsa_priv_key;

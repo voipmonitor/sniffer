@@ -88,6 +88,9 @@ typedef void            (*GFunc)                (gpointer       data,
 #include <glib-2.0/glib/ghash.h>
 
 
+#define FREE(pointer) free(pointer)
+
+
 using namespace std;
 
 #define HAVE_LIBGCRYPT 1
