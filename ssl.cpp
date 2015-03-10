@@ -4,7 +4,6 @@
 
 #include <stdlib.h>
 #include <stdio.h>
-#include <glib.h>
 #include <vector>
 #include <map>
 #include <string>
@@ -14,6 +13,7 @@
 #include "tools.h"
 #include "ssl.h"
 #include "ssl-test.h"
+#include "heap_safe.h"
 
 using namespace std;
 //TODO: overit ssl_decrypted_data_avail thread safe
@@ -179,11 +179,13 @@ ssl_md_cleanup(SSL_MD* md)
 /* memory allocation functions for zlib initialization */
 static void* ssl_zalloc(void* opaque, unsigned int no, unsigned int size)
 {   
-	return g_malloc0(no*size);
+	guchar *newPointer = new guchar[no*size];
+	autoMemoryType(newPointer);
+	return newPointer;
 }
 static void ssl_zfree(void* opaque, void* addr)
 {	   
-	g_free(addr);
+	delete [] ((guchar*)addr);
 }	  
 
 static SslDecompress*
@@ -194,7 +196,9 @@ ssl_create_decompressor(gint compression)
 
 	if (compression == 0) return NULL;
 	if (debug) printf("ssl_create_decompressor: compression method %d\n", compression);
-	decomp = (SslDecompress *)calloc(1, sizeof(SslDecompress));
+	decomp = new SslDecompress;
+	autoMemoryType(decomp);
+	memset(decomp, 0, sizeof(SslDecompress));
 	decomp->compression = compression;
 	switch (decomp->compression) {
 		case 1:  /* DEFLATE */
@@ -232,7 +236,7 @@ static gint fmt_seq(guint32 num, guint8* buf)
 	guint32 netnum;
 
 	memset(buf,0,8);
-	netnum=g_htonl(num);
+	netnum=htonl(num);
 	memcpy(buf+4,&netnum,4);
 	
 	return(0);				  
@@ -274,7 +278,7 @@ ssl3_check_mac(SslDecoder*decoder,int ct,guint8* data,
 
 	/* hash data length in network byte order and data*/
 	/* *((gint16* )buf) = g_htons(datalen); */
-	temp = g_htons(datalen);
+	temp = htons(datalen);
 	memcpy(buf, &temp, 2);
 	ssl_md_update(&mc,buf,2);
 	ssl_md_update(&mc,data,datalen);
@@ -468,9 +472,15 @@ ssl_data_set(StringInfo* str, const guchar* data, guint len)
 static gint
 ssl_data_realloc(StringInfo* str, guint len)
 {		   
-	str->data = (guchar *)g_realloc(str->data, len);
-	if (!str->data)
+	guchar *newdata = new guchar[len];
+	autoMemoryType(newdata);
+	if(!newdata)
 		return -1;
+	if(str->data) {
+		memcpy(newdata, str->data, str->data_len);
+		delete [] str->data;
+	}
+	str->data = newdata;
 	str->data_len = len;
 	return 0;
 }		  
@@ -547,12 +557,12 @@ tls_check_mac(SslDecoder*decoder, gint ct, gint ver, guint8* data,
 				
 	/* hash version,data length and data*/
 	/* *((gint16*)buf) = g_htons(ver); */
-	temp = g_htons(ver);
+	temp = htons(ver);
 	memcpy(buf, &temp, 2);
 	ssl_hmac_update(&hm,buf,2);
 	
 	/* *((gint16*)buf) = g_htons(datalen); */
-	temp = g_htons(datalen);
+	temp = htons(datalen);
 	memcpy(buf, &temp, 2);
 	ssl_hmac_update(&hm,buf,2);
 	ssl_hmac_update(&hm,data,datalen);	   
@@ -641,11 +651,11 @@ dtls_check_mac(SslDecoder*decoder, gint ct,int ver, guint8* data,
 	ssl_hmac_update(&hm,buf,1);
 
 	/* hash version,data length and data */
-	temp = g_htons(ver);
+	temp = htons(ver);
 	memcpy(buf, &temp, 2);
 	ssl_hmac_update(&hm,buf,2);
 
-	temp = g_htons(datalen);
+	temp = htons(datalen);
 	memcpy(buf, &temp, 2);
 	ssl_hmac_update(&hm,buf,2);
 	ssl_hmac_update(&hm,data,datalen);
@@ -961,7 +971,7 @@ ssl_privkey_to_sexp(struct gnutls_x509_privkey_int* priv_key)
 		if(debug) {
 			gchar *tmp = bytes_to_ep_str_punct(buf_keyid, (int) buf_len, ':');
 			printf( "Private key imported: KeyID %s\n", tmp);
-			free(tmp);
+			delete [] tmp;
 		}
 	}
 
@@ -983,7 +993,7 @@ ssl_privkey_to_sexp(struct gnutls_x509_privkey_int* priv_key)
 		if (gcry_mpi_scan(&rsa_params[i], GCRYMPI_FMT_USG, rsa_datum[i].data, rsa_datum[i].size,&tmp_size) != 0) {
 			if (debug) printf("ssl_load_key: can't convert m rsa param to int (size %d)\n", rsa_datum[i].size);
 			if(rsa_datum[i].data)
-				free(rsa_datum[i].data);
+				delete [] rsa_datum[i].data;
 			return NULL;
 		}
 	}
@@ -1003,14 +1013,14 @@ ssl_privkey_to_sexp(struct gnutls_x509_privkey_int* priv_key)
 		if (debug) printf("ssl_load_key: can't build rsa private key s-exp\n");
 		for (i = 0; i < RSA_PARS; i++) {
 			if(rsa_datum[i].data)
-				free(rsa_datum[i].data);
+				delete [] rsa_datum[i].data;
 		}
 		return NULL;
 	}  
    
 	for (i = 0; i < RSA_PARS; i++) {
 		if(rsa_datum[i].data)
-			free(rsa_datum[i].data);
+			delete [] rsa_datum[i].data;
 		gcry_mpi_release(rsa_params[i]);
 	}
 	return rsa_priv_key;
@@ -1029,7 +1039,9 @@ ssl_load_key(FILE* fp)
 	gint				  ret;
 	guint				 bytes;
 
-	Ssl_private_key_t *private_key = (Ssl_private_key_t *)calloc(1, sizeof(Ssl_private_key_t));
+	Ssl_private_key_t *private_key = new Ssl_private_key_t;
+	autoMemoryType(private_key);
+	memset(private_key, 0, sizeof(Ssl_private_key_t));
 
 	/* init private key data*/
 	gnutls_x509_privkey_init(&priv_key);
@@ -1037,52 +1049,53 @@ ssl_load_key(FILE* fp)
 	/* compute file size and load all file contents into a datum buffer*/
 	if (fseek(fp, 0, SEEK_END) < 0) {
 		if (debug) printf("ssl_load_key: can't fseek file\n");
-		free(private_key);
+		delete private_key;
 		return NULL;
 	}  
 	if ((size = ftell(fp)) < 0) {
 		if (debug) printf("ssl_load_key: can't ftell file\n");
-		free(private_key);
+		delete private_key;
 		return NULL;
 	}  
 	if (fseek(fp, 0, SEEK_SET) < 0) {
 		if (debug) printf("ssl_load_key: can't re-fseek file\n");
-		free(private_key);
+		delete private_key;
 		return NULL;
 	}  
-	key.data = (unsigned char *)g_malloc(size);
+	key.data = new guchar[size];
+	autoMemoryType(key.data);
 	key.size = (int)size;
 	bytes = (guint) fread(key.data, 1, key.size, fp);
 	if (bytes < key.size) {
 		if (debug) printf("ssl_load_key: can't read from file %d bytes, got %d\n",
 			key.size, bytes);
-		free(private_key);
-		free(key.data);
+		delete private_key;
+		delete [] key.data;
 		return NULL;
 	}  
    
 	/* import PEM data*/
 	if ((ret = gnutls_x509_privkey_import(priv_key, &key, GNUTLS_X509_FMT_PEM)) != GNUTLS_E_SUCCESS) {
 		if (debug) printf("ssl_load_key: can't import pem data: %s\n", gnutls_strerror(ret));
-		free(private_key);
-		free(key.data);
+		delete private_key;
+		delete [] key.data;
 		return NULL;
 	}  
    
 	if (gnutls_x509_privkey_get_pk_algorithm(priv_key) != GNUTLS_PK_RSA) {
 		if (debug) printf("ssl_load_key: private key public key algorithm isn't RSA\n");
-		free(private_key);
-		free(key.data);
+		delete private_key;
+		delete [] key.data;
 		return NULL;
 	}  
    
-	free(key.data);
+	delete [] key.data;
   
 	if(debug) printf("private_key->x509_pkey[%p] = priv_key[%p]\n", private_key->x509_pkey, priv_key);
 	private_key->x509_pkey = priv_key;
 	private_key->sexp_pkey = ssl_privkey_to_sexp(priv_key);
 	if ( !private_key->sexp_pkey ) {
-		free(private_key);
+		delete private_key;
 		return NULL;
 	}  
 	return private_key;
@@ -1181,7 +1194,7 @@ ssl_dissect_hnd_hello_common(char *data, unsigned int datalen, guint32 offset, S
 			ssl->state |= SSL_SERVER_RANDOM;
 		else
 			ssl->state |= SSL_CLIENT_RANDOM;
-		if (debug) printf("%s found %s RANDOM -> state 0x%02X\n", G_STRFUNC, from_server ? "SERVER" : "CLIENT", ssl->state);
+		if (debug) printf("%s found %s RANDOM -> state 0x%02X\n", __FUNCTION__, from_server ? "SERVER" : "CLIENT", ssl->state);
 	   
 		/* show the time */			  
 //		gmt_unix_time.secs  = tvb_get_ntohl(tvb, offset);
@@ -1332,11 +1345,11 @@ ssl_dissect_hnd_srv_hello(char *data, unsigned int datalen,
 		if(debug) printf("ssl_dissect_hnd_srv_hello ssl->session.cipher[%u]\n", ssl->session.cipher);
 	   
 		if (ssl_find_cipher(ssl->session.cipher, &ssl->cipher_suite) < 0) {
-			if (debug) printf("%s can't find cipher suite 0x%04X\n", G_STRFUNC, ssl->session.cipher);
+			if (debug) printf("%s can't find cipher suite 0x%04X\n", __FUNCTION__, ssl->session.cipher);
 		} else {			
 			/* Cipher found, save this for the delayed decoder init */
 			ssl->state |= SSL_CIPHER;
-			if (debug) printf("%s found CIPHER 0x%04X -> state 0x%02X\n", G_STRFUNC, ssl->session.cipher, ssl->state);
+			if (debug) printf("%s found CIPHER 0x%04X -> state 0x%02X\n", __FUNCTION__, ssl->session.cipher, ssl->state);
 		}				   
 	}  
 
@@ -1362,7 +1375,9 @@ static StringInfo *
 ssl_data_clone(StringInfo *str)
 {	   
 	StringInfo *cloned_str;
-	cloned_str = (StringInfo *)calloc(1, sizeof(StringInfo) + str->data_len);
+	cloned_str = (StringInfo*) new guchar[sizeof(StringInfo) + str->data_len];
+	autoMemoryType(cloned_str);
+	memset(cloned_str, 0, sizeof(StringInfo) + str->data_len);
 	cloned_str->data = (guchar *) (cloned_str + 1);
 	ssl_data_set(cloned_str, str->data, str->data_len);
 	return cloned_str;
@@ -1377,12 +1392,12 @@ ssl_save_master_key(const char *label, GHashTable *ht, StringInfo *key,
 	StringInfo *ht_key, *master_secret;
 
 	if (key->data_len == 0) {
-		if (debug) printf("%s: not saving empty %s!\n", G_STRFUNC, label);
+		if (debug) printf("%s: not saving empty %s!\n", __FUNCTION__, label);
 		return;
 	}
 
 	if (mk->data_len == 0) {
-		if (debug) printf("%s not saving empty (pre-)master secret for %s!\n", G_STRFUNC, label);
+		if (debug) printf("%s not saving empty (pre-)master secret for %s!\n", __FUNCTION__, label);
 		return;
 	}
 
@@ -1392,7 +1407,7 @@ ssl_save_master_key(const char *label, GHashTable *ht, StringInfo *key,
 	master_secret = ssl_data_clone(mk);
 	g_hash_table_insert(ht, ht_key, master_secret);
 
-	if (debug) printf("%s inserted (pre-)master secret for %s\n", G_STRFUNC, label);
+	if (debug) printf("%s inserted (pre-)master secret for %s\n", __FUNCTION__, label);
 	if (debug) ssl_print_string("stored key", ht_key);
 	if (debug) ssl_print_string("stored (pre-)master secret", master_secret);
 }
@@ -1416,9 +1431,16 @@ ssl_dissect_hnd_new_ses_ticket(char *data, unsigned int datalen, guint32 offset,
 	/* save the session ticket to cache for ssl_finalize_decryption */
 	if (ssl) {
 		if(ssl->session_ticket.data) {
-			ssl->session_ticket.data = (guchar*)realloc(ssl->session_ticket.data, ticket_len);
+			if(ticket_len > ssl->session_ticket.max_len) {
+				delete [] ssl->session_ticket.data;
+				ssl->session_ticket.data = new guchar[ticket_len];
+				autoMemoryType(ssl->session_ticket.data);
+				ssl->session_ticket.max_len = ticket_len;
+			}
 		} else {
-			ssl->session_ticket.data = (guchar*)malloc(ticket_len);
+			ssl->session_ticket.data = new guchar[ticket_len];
+			autoMemoryType(ssl->session_ticket.data);
+			ssl->session_ticket.max_len = ticket_len;
 		}
 		ssl->session_ticket.data_len = ticket_len;
 		memcpy(ssl->session_ticket.data, data + offset, MIN(datalen - offset, ticket_len));
@@ -1488,7 +1510,7 @@ ssl_private_decrypt(const guint len, guchar* data, SSL_PRIVATE_KEY* pk)
    
 	/* sanity check on out buffer */
 	if (decr_len > len) {
-		if (debug) printf("pcry_private_decrypt: decrypted data is too long ?!? (%" G_GSIZE_MODIFIER "u max %d)\n", decr_len, len);
+		if (debug) printf("pcry_private_decrypt: decrypted data is too long ?!? (%lu max %d)\n", decr_len, len);
 		decr_len = 0;
 		goto out;
 	}
@@ -1496,7 +1518,7 @@ ssl_private_decrypt(const guint len, guchar* data, SSL_PRIVATE_KEY* pk)
 	/* write plain text to newly allocated buffer */
 	rc = gcry_mpi_print(GCRYMPI_FMT_USG, data, len, &decr_len, text);
 	if (rc != 0) {
-		if (debug) printf("pcry_private_decrypt: can't print decr data to mpi (size %" G_GSIZE_MODIFIER "u):%s\n", decr_len, gcry_strerror(rc));
+		if (debug) printf("pcry_private_decrypt: can't print decr data to mpi (size %lu):%s\n", decr_len, gcry_strerror(rc));
 		decr_len = 0;
 		goto out;
 	}
@@ -1512,7 +1534,7 @@ ssl_private_decrypt(const guint len, guchar* data, SSL_PRIVATE_KEY* pk)
 		}
 	}
    
-	if (debug) printf("pcry_private_decrypt: stripping %d bytes, decr_len %" G_GSIZE_MODIFIER "u\n", rc, decr_len);
+	if (debug) printf("pcry_private_decrypt: stripping %d bytes, decr_len %lu\n", rc, decr_len);
 	decr_len -= rc;
 	memmove(data, data+rc, decr_len);
 
@@ -1535,27 +1557,27 @@ ssl_decrypt_pre_master_secret(SslDecryptSessionC *ssl_session, StringInfo* encry
 
 	if(ssl_session->cipher_suite.kex == KEX_DH) {
 		if (debug) printf("%s: session uses DH (%d) key exchange, which is "
-						 "impossible to decrypt\n", G_STRFUNC, KEX_DH);
+						 "impossible to decrypt\n", __FUNCTION__, KEX_DH);
 		return FALSE;
 	} else if(ssl_session->cipher_suite.kex != KEX_RSA) {
 		 if (debug) printf("%s key exchange %d different from KEX_RSA (%d)\n",
-						  G_STRFUNC, ssl_session->cipher_suite.kex, KEX_RSA);
+						  __FUNCTION__, ssl_session->cipher_suite.kex, KEX_RSA);
 		return FALSE;
 	}
 	   
 	/* with tls key loading will fail if not rsa type, so no need to check*/
 	ssl_print_string("pre master encrypted",encrypted_pre_master);
-	if (debug) printf("%s: RSA_private_decrypt\n", G_STRFUNC);
+	if (debug) printf("%s: RSA_private_decrypt\n", __FUNCTION__);
 	i = ssl_private_decrypt(encrypted_pre_master->data_len, encrypted_pre_master->data, pk);
 
 	if (i != 48) {
 		if (debug) printf("%s wrong pre_master_secret length (%d, expected "
-						 "%d)\n", G_STRFUNC, i, 48);
+						 "%d)\n", __FUNCTION__, i, 48);
 		return FALSE;
 	}
 
 	/* the decrypted data has been written into the pre_master key buffer */
-	if(ssl_session->pre_master_secret.data) free(ssl_session->pre_master_secret.data);
+	if(ssl_session->pre_master_secret.data) delete [] ssl_session->pre_master_secret.data;
 	ssl_session->pre_master_secret.data = encrypted_pre_master->data;
 	ssl_session->pre_master_secret.data_len=48;
 	ssl_print_string("pre master secret",&ssl_session->pre_master_secret);
@@ -1577,13 +1599,13 @@ ssl_restore_master_key(SslDecryptSessionC *ssl, const char *label,
 
 	if (key->data_len == 0) { 
 		if (debug) printf("%s can't restore %smaster secret using an empty %s\n",
-						 G_STRFUNC, is_pre_master ? "pre-" : "", label);
+						 __FUNCTION__, is_pre_master ? "pre-" : "", label);
 		return FALSE;
 	}
 
 	ms = (StringInfo *)g_hash_table_lookup(ht, key);
 	if (!ms) {
-		if (debug) printf("%s can't find %smaster secret by %s\n", G_STRFUNC,
+		if (debug) printf("%s can't find %smaster secret by %s\n", __FUNCTION__,
 						 is_pre_master ? "pre-" : "", label);
 		return FALSE;   
 	}
@@ -1595,15 +1617,17 @@ ssl_restore_master_key(SslDecryptSessionC *ssl, const char *label,
 	if (is_pre_master) {
 		/* unlike master secret, pre-master secret has a variable size (48 for
 		 * RSA, varying for PSK) and is therefore not statically allocated */
-		if(ssl->pre_master_secret.data) free(ssl->pre_master_secret.data);
-		ssl->pre_master_secret.data = (guchar*)calloc(1, ms->data_len);
+		if(ssl->pre_master_secret.data) delete [] ssl->pre_master_secret.data;
+		ssl->pre_master_secret.data = new guchar[ms->data_len];
+		autoMemoryType(ssl->pre_master_secret.data);
+		memset(ssl->pre_master_secret.data, 0, ms->data_len);
 		ssl_data_set(&ssl->pre_master_secret, ms->data, ms->data_len);
 		ssl->state |= SSL_PRE_MASTER_SECRET;
 	} else {
 		ssl_data_set(&ssl->master_secret, ms->data, ms->data_len);
 		ssl->state |= SSL_MASTER_SECRET;
 	}  
-	if (debug) printf("%s %smaster secret retrieved using %s\n", G_STRFUNC,
+	if (debug) printf("%s %smaster secret retrieved using %s\n", __FUNCTION__,
 					 is_pre_master ? "pre-" : "", label);
 	ssl_print_string(label, key);
 	ssl_print_string("(pre-)master secret", ms);
@@ -1619,10 +1643,10 @@ ssl_generate_pre_master_secret(SslDecryptSessionC *ssl_session,
 {		  
 	/* check for required session data */
 	if (debug) printf("%s: found SSL_HND_CLIENT_KEY_EXCHG, state %X\n",
-					 G_STRFUNC, ssl_session->state);
+					 __FUNCTION__, ssl_session->state);
 	if ((ssl_session->state & (SSL_CIPHER|SSL_CLIENT_RANDOM|SSL_SERVER_RANDOM|SSL_VERSION)) !=
 		(SSL_CIPHER|SSL_CLIENT_RANDOM|SSL_SERVER_RANDOM|SSL_VERSION)) {
-		if (debug) printf("%s: not enough data to generate key (required state %X)\n", G_STRFUNC,
+		if (debug) printf("%s: not enough data to generate key (required state %X)\n", __FUNCTION__,
 						 (SSL_CIPHER|SSL_CLIENT_RANDOM|SSL_SERVER_RANDOM|SSL_VERSION));
 		return FALSE;
 	}	  
@@ -1634,28 +1658,30 @@ ssl_generate_pre_master_secret(SslDecryptSessionC *ssl_session,
 		guint psk_len, pre_master_len;
 
 		if (!ssl_psk || (ssl_psk[0] == 0)) {
-			if (debug) printf("%s: can't find pre-shared-key\n", G_STRFUNC);
+			if (debug) printf("%s: can't find pre-shared-key\n", __FUNCTION__);
 			return FALSE;
 		}
 		   
 		/* convert hex string into char*/
 		if (!from_hex(&ssl_session->psk, ssl_psk, strlen(ssl_psk))) {
 			if (debug) printf("%s: ssl.psk/dtls.psk contains invalid hex\n",
-							 G_STRFUNC);
+							 __FUNCTION__);
 			return FALSE;
 		}
 
 		psk_len = ssl_session->psk.data_len;
 		if (psk_len >= (2 << 15)) {
 			if (debug) printf("%s: ssl.psk/dtls.psk must not be larger than 2^15 - 1\n",
-							 G_STRFUNC);
+							 __FUNCTION__);
 			return FALSE;
 		}
 
    
 		pre_master_len = psk_len * 2 + 4;
 
-		pre_master_secret.data = (guchar *)calloc(1, pre_master_len);
+		pre_master_secret.data = new guchar[pre_master_len];
+		autoMemoryType(pre_master_secret.data);
+		memset(pre_master_secret.data, 0, pre_master_len);
 		pre_master_secret.data_len = pre_master_len;
 		/* 2 bytes psk_len*/
 		pre_master_secret.data[0] = psk_len >> 8;
@@ -1667,10 +1693,10 @@ ssl_generate_pre_master_secret(SslDecryptSessionC *ssl_session,
 		pre_master_secret.data[psk_len + 3] = psk_len & 0xFF;
 		/* psk*/
 		memcpy(&pre_master_secret.data[psk_len + 4], ssl_session->psk.data, psk_len);
-		free(ssl_session->psk.data);
+		delete [] ssl_session->psk.data;
 		ssl_session->psk.data = NULL;
 	   
-		if(ssl_session->pre_master_secret.data) free(ssl_session->pre_master_secret.data);
+		if(ssl_session->pre_master_secret.data) delete [] ssl_session->pre_master_secret.data;
 		ssl_session->pre_master_secret.data = pre_master_secret.data;
 		ssl_session->pre_master_secret.data_len = pre_master_len;
 		/*if (debug) printf("pre master secret",&ssl->pre_master_secret);*/
@@ -1703,7 +1729,7 @@ ssl_generate_pre_master_secret(SslDecryptSessionC *ssl_session,
 			if (encrlen > length - 2)
 			{
 				if (debug) printf("%s: wrong encrypted length (%d max %d)\n",
-								 G_STRFUNC, encrlen, length);
+								 __FUNCTION__, encrlen, length);
 				return FALSE;   
 			}  
 		}  
@@ -1711,11 +1737,13 @@ ssl_generate_pre_master_secret(SslDecryptSessionC *ssl_session,
 		 * ssl keylog file below */
 		if (encrlen < 8) {
 			if (debug) printf("%s: invalid encrypted pre-master key length %d\n",
-							 G_STRFUNC, encrlen);
+							 __FUNCTION__, encrlen);
 			return FALSE;   
 		}  
 	   
-		encrypted_pre_master.data = (guchar *)calloc(1, encrlen);
+		encrypted_pre_master.data = new guchar[encrlen];
+		autoMemoryType(encrypted_pre_master.data);
+		memset(encrypted_pre_master.data, 0, encrlen);
 		encrypted_pre_master.data_len = encrlen;
 		memcpy(encrypted_pre_master.data, data + offset + skip, encrlen);
 	   
@@ -1724,7 +1752,7 @@ ssl_generate_pre_master_secret(SslDecryptSessionC *ssl_session,
 			if (ssl_decrypt_pre_master_secret(ssl_session, &encrypted_pre_master, ssl_session->private_key))
 				return TRUE;
 			   
-			if (debug) printf("%s: can't decrypt pre-master secret\n", G_STRFUNC);
+			if (debug) printf("%s: can't decrypt pre-master secret\n", __FUNCTION__);
 		}				   
 	   
 		/* try to find the pre-master secret from the encrypted one. The
@@ -1744,7 +1772,7 @@ ssl_generate_pre_master_secret(SslDecryptSessionC *ssl_session,
  * @return a pointer to the loaded key on success; NULL upon failure.
  */	
 static Ssl_private_key_t *
-ssl_load_pkcs12(FILE* fp, const gchar *cert_passwd, char** err) {
+ssl_load_pkcs12(FILE* fp, const gchar *cert_passwd, string &err) {
 			   
 	int					   i, j, ret;
 	int					   rest;
@@ -1761,11 +1789,13 @@ ssl_load_pkcs12(FILE* fp, const gchar *cert_passwd, char** err) {
 	gnutls_x509_crt_t	 ssl_cert = NULL;
 	gnutls_x509_privkey_t ssl_pkey = NULL;
 
-	Ssl_private_key_t *private_key = (Ssl_private_key_t *)g_malloc0(sizeof(Ssl_private_key_t));
-	*err = NULL;
+	Ssl_private_key_t *private_key = new Ssl_private_key_t;
+	autoMemoryType(private_key);
+	err = "";
 
 	rest = 4096;
-	data.data = (unsigned char *)g_malloc(rest);
+	data.data = new guchar[rest];
+	autoMemoryType(data.data);
 	data.size = rest;
 	p = data.data;
 	while ((len = fread(p, 1, rest, fp)) > 0) {
@@ -1773,7 +1803,11 @@ ssl_load_pkcs12(FILE* fp, const gchar *cert_passwd, char** err) {
 		rest -= (int) len;
 		if (!rest) {
 			rest = 1024;
-			data.data = (unsigned char *)g_realloc(data.data, data.size + rest);
+			guchar *newdata = new guchar[data.size + rest];
+			autoMemoryType(newdata);
+			memcpy(newdata, data.data, data.size);
+			delete [] data.data;
+			data.data = newdata;
 			p = data.data + data.size;
 			data.size += rest;
 		}
@@ -1781,40 +1815,42 @@ ssl_load_pkcs12(FILE* fp, const gchar *cert_passwd, char** err) {
 	data.size -= rest;
 	if (debug) printf("%d bytes read\n", data.size);
 	if (!feof(fp)) {			   
-		*err = g_strdup("Error during certificate reading.");
-		if (debug) printf("%s\n", *err);
-		g_free(private_key);
-		g_free(data.data);
+		err = "Error during certificate reading.";
+		if (debug) printf("%s\n", err.c_str());
+		delete private_key;
+		delete [] data.data;
 		return 0;
 	}					  
 	   
 	ret = gnutls_pkcs12_init(&ssl_p12);
 	if (ret < 0) {
-		*err = g_strdup_printf("gnutls_pkcs12_init(&st_p12) - %s", gnutls_strerror(ret));
-		if (debug) printf("%s\n", *err);
-		g_free(private_key);
-		g_free(data.data);
+		char errbuff[2048];
+		err = sprintf(errbuff, "gnutls_pkcs12_init(&st_p12) - %s", gnutls_strerror(ret));
+		if (debug) printf("%s\n", err.c_str());
+		delete private_key;
+		delete [] data.data;
 		return 0;
 	}
 
 	/* load PKCS#12 in DER or PEM format */
 	ret = gnutls_pkcs12_import(ssl_p12, &data, GNUTLS_X509_FMT_DER, 0);
 	if (ret < 0) {
-		*err = g_strdup_printf("could not load PKCS#12 in DER format: %s", gnutls_strerror(ret));
-		if (debug) printf("%s\n", *err);
-		g_free(*err);
+		char errbuff[2048];
+		err = sprintf(errbuff, "could not load PKCS#12 in DER format: %s", gnutls_strerror(ret));
+		if (debug) printf("%s\n", err.c_str());
 
 		ret = gnutls_pkcs12_import(ssl_p12, &data, GNUTLS_X509_FMT_PEM, 0);
 		if (ret < 0) {
-			*err = g_strdup_printf("could not load PKCS#12 in PEM format: %s", gnutls_strerror(ret));
-			if (debug) printf("%s\n", *err);
+			char errbuff[2048];
+			err = sprintf(errbuff, "could not load PKCS#12 in PEM format: %s", gnutls_strerror(ret));
+			if (debug) printf("%s\n", err.c_str());
 		} else {
-			*err = NULL;
+			err = "";
 		}
 	}
-	g_free(data.data);
+	delete [] data.data;
 	if (ret < 0) {
-		g_free(private_key);
+		delete private_key;
 		return 0;
 	}
 	if (debug) printf( "PKCS#12 imported\n");
@@ -1852,36 +1888,38 @@ ssl_load_pkcs12(FILE* fp, const gchar *cert_passwd, char** err) {
 
 					ret = gnutls_x509_crt_init(&ssl_cert);
 					if (ret < 0) {
-						*err = g_strdup_printf("gnutls_x509_crt_init(&ssl_cert) - %s", gnutls_strerror(ret));
-						if (debug) printf("%s\n", *err);
-						g_free(private_key);
+						char errbuff[2048];
+						err = sprintf(errbuff,  "gnutls_x509_crt_init(&ssl_cert) - %s", gnutls_strerror(ret));
+						if (debug) printf("%s\n", err.c_str());
+						delete private_key;
 						return 0;
 					}
 
 					ret = gnutls_x509_crt_import(ssl_cert, &data, GNUTLS_X509_FMT_DER);
 					if (ret < 0) {
-						*err = g_strdup_printf("gnutls_x509_crt_import(ssl_cert, &data, GNUTLS_X509_FMT_DER) - %s", gnutls_strerror(ret));
-						if (debug) printf("%s\n", *err);
-						g_free(private_key);
+						char errbuff[2048];
+						err = sprintf(errbuff, "gnutls_x509_crt_import(ssl_cert, &data, GNUTLS_X509_FMT_DER) - %s", gnutls_strerror(ret));
+						if (debug) printf("%s\n", err.c_str());
+						delete private_key;
 						return 0;
 					}
 
 					buf_len = sizeof(buf_name);
 					ret = gnutls_x509_crt_get_dn_by_oid(ssl_cert, GNUTLS_OID_X520_COMMON_NAME, 0, 0, buf_name, &buf_len);
-					if (ret < 0) { g_strlcpy(buf_name, "<ERROR>", 256); }
+					if (ret < 0) { strcpy(buf_name, "<ERROR>"); }
 					buf_len = sizeof(buf_email);
 					ret = gnutls_x509_crt_get_dn_by_oid(ssl_cert, GNUTLS_OID_PKCS9_EMAIL, 0, 0, buf_email, &buf_len);
-					if (ret < 0) { g_strlcpy(buf_email, "<ERROR>", 128); }
+					if (ret < 0) { strcpy(buf_email, "<ERROR>"); }
 
 					buf_len = sizeof(buf_keyid);
 					ret = gnutls_x509_crt_get_key_id(ssl_cert, 0, buf_keyid, &buf_len);
-					if (ret < 0) { g_strlcpy((gchar*)buf_keyid, "<ERROR>", 32); }
+					if (ret < 0) { strcpy((gchar*)buf_keyid, "<ERROR>"); }
 
 					private_key->x509_cert = ssl_cert;
 					if (debug) {
 						gchar *tmp = bytes_to_ep_str(buf_keyid, (int) buf_len);
 						printf( "Certificate imported: %s <%s>, KeyID %s\n", buf_name, buf_email, tmp);
-						free(tmp);
+						delete [] tmp;
 					}
 					break;
 
@@ -1890,32 +1928,34 @@ ssl_load_pkcs12(FILE* fp, const gchar *cert_passwd, char** err) {
 
 					ret = gnutls_x509_privkey_init(&ssl_pkey);
 					if (ret < 0) {
-						*err = g_strdup_printf("gnutls_x509_privkey_init(&ssl_pkey) - %s", gnutls_strerror(ret));
-						if (debug) printf("%s\n", *err);
-						g_free(private_key);
+						char errbuff[2048];
+						err = sprintf(errbuff, "gnutls_x509_privkey_init(&ssl_pkey) - %s", gnutls_strerror(ret));
+						if (debug) printf("%s\n", err.c_str());
+						delete private_key;
 						return 0;
 					}
 					ret = gnutls_x509_privkey_import_pkcs8(ssl_pkey, &data, GNUTLS_X509_FMT_DER, cert_passwd,
 														   (bag_type==GNUTLS_BAG_PKCS8_KEY) ? GNUTLS_PKCS_PLAIN : 0);
 					if (ret < 0) {
-						*err = g_strdup_printf("Can not decrypt private key - %s", gnutls_strerror(ret));
-						if (debug) printf("%s\n", *err);
-						g_free(private_key);
+						char errbuff[2048];
+						err = sprintf(errbuff, "Can not decrypt private key - %s", gnutls_strerror(ret));
+						if (debug) printf("%s\n", err.c_str());
+						delete private_key;
 						return 0;
 					}
 
 					if (gnutls_x509_privkey_get_pk_algorithm(ssl_pkey) != GNUTLS_PK_RSA) {
-						*err = g_strdup("ssl_load_pkcs12: private key public key algorithm isn't RSA");
-						if (debug) printf("%s\n", *err);
-						g_free(private_key);
+						err = "ssl_load_pkcs12: private key public key algorithm isn't RSA";
+						if (debug) printf("%s\n", err.c_str());
+						delete private_key;
 						return 0;
 					}
 					private_key->x509_pkey = ssl_pkey;
 					private_key->sexp_pkey = ssl_privkey_to_sexp(ssl_pkey);
 					if ( !private_key->sexp_pkey ) {
-						*err = g_strdup("ssl_load_pkcs12: could not create sexp_pkey");
-						if (debug) printf("%s\n", *err);
-						g_free(private_key);
+						err = "ssl_load_pkcs12: could not create sexp_pkey";
+						if (debug) printf("%s\n", err.c_str());
+						delete private_key;
 						return NULL;
 					}
 					break;
@@ -2044,11 +2084,10 @@ dissect_ssl3_handshake(char *data, unsigned int datalen, packet_info *pinfo,
 							}
 						}
 #if 0
-						char *err = NULL;
-						ssl->private_key = ssl_load_pkcs12(fp, "", &err)->sexp_pkey;
-						if (err) {
-							fprintf(stderr, "%s\n", err);
-							g_free(err);
+						string err;
+						ssl->private_key = ssl_load_pkcs12(fp, "", err)->sexp_pkey;
+						if (err.length()) {
+							fprintf(stderr, "%s\n", err.c_str());
 						}
 						if(fp) fclose(fp);
 #endif
@@ -2269,15 +2308,15 @@ tls_prf(StringInfo* secret, const gchar *usage,
 	success = TRUE;
    
 	ssl_print_string("PRF out",out);
-	g_free(s2.data);
+	delete [] s2.data;
 free_s1:
-	g_free(s1.data);
+	delete [] s1.data;
 free_seed:
-	g_free(seed.data);
+	delete [] seed.data;
 free_md5:
-	g_free(md5_out.data);
+	delete [] md5_out.data;
 free_sha:
-	g_free(sha_out.data);
+	delete [] sha_out.data;
 	return success;
 }  
 
@@ -2366,7 +2405,7 @@ tls12_prf(gint md, StringInfo* secret, const gchar* usage,
 		
 	if (debug) printf("tls12_prf: tls_hash(hash_alg %s secret_len %d seed_len %d )\n", gcry_md_algo_name(md), secret->data_len, label_seed.data_len);
 	tls_hash(secret, &label_seed, md, out, out_len);
-	g_free(label_seed.data);
+	delete [] label_seed.data;
 	ssl_print_string("PRF out", out);
 	return TRUE;
 }	   
@@ -2459,7 +2498,9 @@ SslDecryptSessionC::ssl_create_decoder(guint8 *mk, guint8 *sk, guint8 *iv)
 	SslDecoder *dec;
 	gint		ciph;
 
-	dec = (SslDecoder *)calloc(1, sizeof(SslDecoder));
+	dec = new SslDecoder;
+	autoMemoryType(dec);
+	memset(dec, 0, sizeof(SslDecoder));
 	/* Find the SSLeay cipher */
 	if(cipher_suite.enc != ENC_NULL) {
 		if (debug) printf("ssl_create_decoder CIPHER: %s\n", ciphers[cipher_suite.enc-0x30]);
@@ -2550,7 +2591,8 @@ ssl_generate_keyring_material(SslDecryptSessionC *ssl_session)
 	if(ssl_session->cipher_suite.block>1)
 		needed+=ssl_session->cipher_suite.block*2;
 	
-	key_block.data = (guchar *)g_malloc(needed);
+	key_block.data = new guchar[needed];
+	autoMemoryType(key_block.data);
 	if (debug) printf("ssl_generate_keyring_material sess key generation\n");
 	if (!prf(ssl_session, &ssl_session->master_secret, "key expansion",
 			&ssl_session->server_random,&ssl_session->client_random,
@@ -2720,12 +2762,12 @@ ssl_generate_keyring_material(SslDecryptSessionC *ssl_session)
 	}
 
 	if (debug) printf("ssl_generate_keyring_material: client seq %d, server seq %d\n", ssl_session->client_new->seq, ssl_session->server_new->seq);
-	g_free(key_block.data);
+	delete [] key_block.data;
 	ssl_session->state |= SSL_HAVE_SESSION_KEY;
 	return 0;
 
 fail:
-	g_free(key_block.data);
+	delete [] key_block.data;
 	return -1;
 }
 
@@ -2734,7 +2776,7 @@ fail:
 void				   
 ssl_finalize_decryption(SslDecryptSessionC *ssl, ssl_master_key_map_t *mk_map)
 {
-	if (debug) printf("%s state = 0x%02X\n", G_STRFUNC, ssl->state);
+	if (debug) printf("%s state = 0x%02X\n", __FUNCTION__, ssl->state);
 	if (ssl->state & SSL_HAVE_SESSION_KEY) {
 		if (debug) printf("  session key already available, nothing to do.\n");
 		return;
@@ -2756,7 +2798,7 @@ ssl_finalize_decryption(SslDecryptSessionC *ssl, ssl_master_key_map_t *mk_map)
 	}   
 
 	if (ssl_generate_keyring_material(ssl) < 0) {
-		if (debug) printf("%s can't generate keyring material\n", G_STRFUNC);
+		if (debug) printf("%s can't generate keyring material\n", __FUNCTION__);
 		return;
 	}
 	if(debug) printf("saving ssl_save_master_key\n");
@@ -3028,7 +3070,9 @@ find_or_create_session(packet_info *pinfo) {
 	}
 	//printf("find_or_create_session:create\n");
 	SslDecryptSessionC *ssl_session = new SslDecryptSessionC;
-	session_t *s = (session_t*)malloc(sizeof(session_t));
+	autoMemoryType(ssl_session);
+	session_t *s = new session_t;
+	autoMemoryType(s);
 	s->session = ssl_session;
 	sessions[hash[0]] = s;
 	return s->session;
@@ -3044,8 +3088,8 @@ delete_session(packet_info *pinfo) {
 		sessions_it = sessions.find(hash);
 		if(sessions_it != sessions.end()) {
 			//printf("delete_session:find\n");
-			delete(sessions_it->second->session);
-			free(sessions_it->second);
+			delete sessions_it->second->session;
+			delete sessions_it->second;
 			sessions.erase(sessions_it);
 			break;
 		}
@@ -3137,15 +3181,15 @@ void ssl_free_key(Ssl_private_key_t* key)
 		gnutls_x509_privkey_deinit(key->x509_pkey);
 	}
 
-	g_free((Ssl_private_key_t*)key);
+	delete key;
 }
 
 void
 free_sessions(map<string, session_t*> *sessions) {
 	map<string, session_t*>::iterator it;
 	for(it = sessions->begin(); it != sessions->end(); it++) {
-		delete((it->second)->session);
-		free(it->second);
+		delete (it->second)->session;
+		delete it->second;
 	}
 }
 
@@ -3155,7 +3199,7 @@ void
 ssl_private_key_free(gpointer id, gpointer key, gpointer dummy)
 {
 	if (id != NULL) {		   
-		g_free(id);
+		delete ((StringInfo*)id);
 		ssl_free_key((Ssl_private_key_t*) key);
 	}  
 }
@@ -3210,9 +3254,8 @@ ssl_hash  (gconstpointer v)
 
 void 
 free_stringinfo(void *p) {
-	StringInfo *si;
-	si = (StringInfo *)p;
-	free(si);
+	StringInfo *si = (StringInfo *)p;
+	delete si;
 }
 
 void
@@ -3276,8 +3319,8 @@ ssl_clean(){
 	}  
 
 
-	free(ssl_decrypted_data.data);
-	free(ssl_compressed_data.data);
+	delete [] ssl_decrypted_data.data;
+	delete [] ssl_compressed_data.data;
 	gnutls_global_deinit();
 	
 }

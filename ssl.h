@@ -2,7 +2,6 @@
 #ifndef SSL_H
 #define SSL_H
 
-#include <glib.h>
 #include <stdint.h>
 #include <arpa/inet.h>
 #include <string.h>
@@ -13,6 +12,81 @@
 #include <zlib.h>
 #include <string>
 #include <vector>
+
+
+/*
+// GLIB COMPATIBILITY DEBUG BEGIN
+
+#define __GLIB_H_INSIDE__
+#define __G_MEM_H__
+#define __G_TYPES_H__
+
+#define G_BEGIN_DECLS  extern "C" {
+#define G_END_DECLS    }
+
+#define GLIB_AVAILABLE_IN_ALL extern
+#define GLIB_AVAILABLE_IN_2_30 extern
+#define GLIB_AVAILABLE_IN_2_34 extern
+
+#define G_GNUC_WARN_UNUSED_RESULT __attribute__((warn_unused_result))
+#define G_GNUC_CONST __attribute__((__const__))
+
+#define TRUE true
+#define FALSE false
+
+#define MIN(a, b) ((a < b) ? (a) : (b))
+#define MAX(a, b) ((a > b) ? (a) : (b))
+
+typedef char   gchar;
+typedef short  gshort;
+typedef long   glong;
+typedef int    gint;
+typedef gint   gboolean;
+typedef unsigned char   guchar;
+typedef unsigned short  gushort;
+typedef unsigned long   gulong;
+typedef unsigned int    guint;
+typedef float   gfloat;
+typedef double  gdouble;
+typedef signed char gint8;
+typedef unsigned char guint8;
+typedef signed short gint16;
+typedef unsigned short guint16;
+typedef signed int gint32;
+typedef unsigned int guint32;
+typedef signed long gint64;
+typedef unsigned long guint64;
+typedef unsigned long gsize;
+typedef gint   gboolean;
+typedef void* gpointer;
+typedef const void *gconstpointer;
+typedef guint           (*GHashFunc)            (gconstpointer  key);
+typedef gboolean        (*GEqualFunc)           (gconstpointer  a,
+                                                 gconstpointer  b);
+typedef void            (*GDestroyNotify)       (gpointer       data);
+typedef void            (*GHFunc)               (gpointer       key,
+                                                 gpointer       value,
+                                                 gpointer       user_data);
+typedef gint            (*GCompareFunc)         (gconstpointer  a,
+                                                 gconstpointer  b);
+typedef gint            (*GCompareDataFunc)     (gconstpointer  a,
+                                                 gconstpointer  b,
+						 gpointer       user_data);
+typedef void            (*GFunc)                (gpointer       data,
+                                                 gpointer       user_data);
+#include <glib-2.0/glib/gnode.h>
+#include <glib-2.0/glib/glist.h>
+#include <glib-2.0/glib/ghash.h>
+
+// GLIB COMPATIBILITY DEBUG END
+*/
+
+
+#define __GLIB_H_INSIDE__
+#include <glib-2.0/glib/gnode.h>
+#include <glib-2.0/glib/glist.h>
+#include <glib-2.0/glib/ghash.h>
+
 
 using namespace std;
 
@@ -161,15 +235,17 @@ copy_address_shallow(address *to, const address *from) {
  * @param to [in,out] The destination address.
  * @param from [in] The source address.
  */
+/*
 #define SE_COPY_ADDRESS(to, from)	 \
 	do {							  \
 		void *SE_COPY_ADDRESS_data; \
 		copy_address_shallow((to), (from)); \
-		SE_COPY_ADDRESS_data = malloc((from)->len); \
+		SE_COPY_ADDRESS_data = new guchar[(from)->len]; \
+		autoMemoryType(SE_COPY_ADDRESS_data); \
 		memcpy(SE_COPY_ADDRESS_data, (from)->data, (from)->len); \
 		(to)->data = SE_COPY_ADDRESS_data; \
 	} while (0)
-
+*/
 
 /** Initialize an address with the given values.
  *										   
@@ -221,6 +297,7 @@ set_address(address *addr, address_type addr_type, int addr_len, const void * ad
 typedef struct _StringInfo {
 	guchar *data; /* Backing storage which may be larger than data_len */
 	guint data_len; /* Length of the meaningful part of data */
+	guint max_len;
 } StringInfo;
 
 
@@ -837,7 +914,7 @@ ssl_print_data(const gchar* name, const guchar* data, size_t len)
 		fputc('|', stdout);
 		for (j=i, k=0; k<16 && j<len; ++j, ++k) {
 			guchar c = data[j];
-			if (!g_ascii_isprint(c) || (c=='\t')) c = '.';
+			if (c < 32 || c > 126) c = '.';
 			fputc(c, stdout);
 		}
 		for (; k<16; ++k)
@@ -1128,12 +1205,13 @@ static gboolean from_hex(StringInfo* out, const char* in, gsize hex_len) {
 	if (hex_len & 1)
 		return FALSE;
 
-	out->data = (guchar *)malloc(hex_len / 2);
+	out->data = new guchar[hex_len / 2];
+	autoMemoryType(out->data);
 	for (i = 0; i < hex_len / 2; i++) {
 		int a = ws_xton(in[i*2]);
 		int b = ws_xton(in[i*2 + 1]);
 		if (a == -1 || b == -1) {
-			free(out->data);
+			delete [] out->data;
 			return FALSE;
 		}
 		out->data[i] = a << 4 | b;
@@ -1210,7 +1288,8 @@ bytes_to_ep_str(const guint8 *bd, int bd_len)
 			//REPORT_DISSECTOR_BUG("Null pointer passed to bytes_to_ep_str()");
 			return NULL;
 
-		cur=(gchar *)malloc(MAX_BYTE_STR_LEN+3+1);
+		cur = new gchar[MAX_BYTE_STR_LEN+3+1];
+		autoMemoryType(cur);
 		if (bd_len <= 0) { cur[0] = '\0'; return cur; }
 
 		if (bd_len > MAX_BYTE_STR_LEN/2) {	  /* bd_len > 24 */
@@ -1220,8 +1299,10 @@ bytes_to_ep_str(const guint8 *bd, int bd_len)
 
 		cur_ptr = bytes_to_hexstr(cur, bd, bd_len);	 /* max MAX_BYTE_STR_LEN bytes */
 
-		if (truncated)
-				cur_ptr = g_stpcpy(cur_ptr, "...");	 /* 3 bytes */
+		if (truncated) {
+				strcpy(cur_ptr, "...");	 /* 3 bytes */
+				cur_ptr += 3;
+		}
 
 		*cur_ptr = '\0';								/* 1 byte */
 		return cur;			 
@@ -1266,7 +1347,8 @@ bytes_to_ep_str_punct(const guint8 *bd, int bd_len, gchar punct)
 		if (!punct)
 			return bytes_to_ep_str(bd, bd_len);
 	   
-		cur=(gchar *)malloc(MAX_BYTE_STR_LEN+3+1);
+		cur = new gchar[MAX_BYTE_STR_LEN+3+1];
+		autoMemoryType(cur);
 		if (bd_len <= 0) { cur[0] = '\0'; return cur; }
 	   
 		if (bd_len > MAX_BYTE_STR_LEN/3) {	  /* bd_len > 16 */
@@ -1278,7 +1360,8 @@ bytes_to_ep_str_punct(const guint8 *bd, int bd_len, gchar punct)
 	   
 		if (truncated) {
 				*cur_ptr++ = punct;					 /* 1 byte */
-				cur_ptr	= g_stpcpy(cur_ptr, "...");  /* 3 bytes */
+				strcpy(cur_ptr, "...");  /* 3 bytes */
+				cur_ptr += 3;
 		}
 
 		*cur_ptr = '\0';
@@ -1302,7 +1385,8 @@ BAGTYPE(gnutls_pkcs12_bag_type_t x) {
 static gint     
 ssl_data_alloc(StringInfo* str, size_t len)
 {                       
-	str->data = (guchar *)g_malloc(len);
+	str->data = new guchar[len];
+	autoMemoryType(str->data);
 	/* the allocator can return a null pointer for a size equal to 0,
 	 * and that must be allowed */
 	if (len > 0 && !str->data)
@@ -1420,25 +1504,25 @@ public:
         }
        
         ~SslDecryptSessionC() {
-		if(pre_master_secret.data) free(pre_master_secret.data);
-                if(session_ticket.data) free(session_ticket.data);
+		if(pre_master_secret.data) delete [] pre_master_secret.data;
+                if(session_ticket.data) delete [] session_ticket.data;
                 if(private_key_c) ssl_free_key(private_key_c);
 
 		if(server_new and server_new->evp) {
 			ssl_cipher_cleanup(&server_new->evp);
-			free(server_new);
+			delete server_new;
 		}
 		if(client_new and client_new->evp) {
 			ssl_cipher_cleanup(&client_new->evp);
-			free(client_new);
+			delete client_new;
 		}
 		if(server and server->evp) {
 			ssl_cipher_cleanup(&server->evp);
-			free(server);
+			delete server;
 		}
 		if(client and client->evp) {
 			ssl_cipher_cleanup(&client->evp);
-			free(client);
+			delete client;
 		}
         }
 
