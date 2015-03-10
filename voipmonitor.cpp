@@ -4341,6 +4341,7 @@ int main(int argc, char *argv[]) {
 			tcpReassemblyHttp->setEnableHttpForceInit();
 			tcpReassemblyHttp->setEnableCrazySequence();
 			tcpReassemblyHttp->setEnableCleanupThread();
+			tcpReassemblyHttp->setEnablePacketThread();
 			httpData = new HttpData;
 			tcpReassemblyHttp->setDataCallback(httpData);
 		}

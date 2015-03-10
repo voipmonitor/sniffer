@@ -4342,31 +4342,12 @@ void PcapQueue_readFromFifo::processPacket(pcap_pkthdr_plus *header_plus, u_char
 		istcp = 0;
 	} else if (header_ip->protocol == IPPROTO_TCP) {
 		header_tcp = (tcphdr2*) ((char *) header_ip + sizeof(*header_ip));
-		if(opt_enable_http && (httpportmatrix[htons(header_tcp->source)] || httpportmatrix[htons(header_tcp->dest)])) {
-			tcpReassemblyHttp->push(header, header_ip, packet,
-						block_store, block_store_index,
-						this->getPcapHandle(dlt), dlt, sensor_id);
-			useTcpReassemblyHttp = true;
-		} else if(opt_enable_webrtc && (webrtcportmatrix[htons(header_tcp->source)] || webrtcportmatrix[htons(header_tcp->dest)])) {
-			tcpReassemblyWebrtc->push(header, header_ip, packet,
-						  block_store, block_store_index,
-						  this->getPcapHandle(dlt), dlt, sensor_id);
-			useTcpReassemblyWebrtc = true;
-		} else if(opt_enable_ssl && 
-			  (isSslIpPort(htonl(header_ip->saddr), htons(header_tcp->source)) ||
-			   isSslIpPort(htonl(header_ip->daddr), htons(header_tcp->dest)))) {
-			tcpReassemblySsl->push(header, header_ip, packet,
-					       block_store, block_store_index,
-					       this->getPcapHandle(dlt), dlt, sensor_id);
-			useTcpReassemblySsl = true;
-		} else {
-			istcp = 1;
-			// prepare packet pointers 
-			data = (char *) header_tcp + (header_tcp->doff * 4);
-			datalen = (int)(header->caplen - ((u_char*)data - packet)); 
-			header_udp->source = header_tcp->source;
-			header_udp->dest = header_tcp->dest;
-		}
+		istcp = 1;
+		// prepare packet pointers 
+		data = (char *) header_tcp + (header_tcp->doff * 4);
+		datalen = (int)(header->caplen - ((u_char*)data - packet)); 
+		header_udp->source = header_tcp->source;
+		header_udp->dest = header_tcp->dest;
 	} else {
 		//packet is not UDP and is not TCP, we are not interested, go to the next packet
 		// - interested only for ipaccount
@@ -4390,6 +4371,27 @@ void PcapQueue_readFromFifo::processPacket(pcap_pkthdr_plus *header_plus, u_char
 			}
 		}
 		return;
+	}
+
+	if(header_ip->protocol == IPPROTO_TCP) {
+		if(opt_enable_http && (httpportmatrix[htons(header_tcp->source)] || httpportmatrix[htons(header_tcp->dest)])) {
+			tcpReassemblyHttp->push(header, header_ip, packet,
+						block_store, block_store_index,
+						this->getPcapHandle(dlt), dlt, sensor_id);
+			useTcpReassemblyHttp = true;
+		} else if(opt_enable_webrtc && (webrtcportmatrix[htons(header_tcp->source)] || webrtcportmatrix[htons(header_tcp->dest)])) {
+			tcpReassemblyWebrtc->push(header, header_ip, packet,
+						  block_store, block_store_index,
+						  this->getPcapHandle(dlt), dlt, sensor_id);
+			useTcpReassemblyWebrtc = true;
+		} else if(opt_enable_ssl && 
+			  (isSslIpPort(htonl(header_ip->saddr), htons(header_tcp->source)) ||
+			   isSslIpPort(htonl(header_ip->daddr), htons(header_tcp->dest)))) {
+			tcpReassemblySsl->push(header, header_ip, packet,
+					       block_store, block_store_index,
+					       this->getPcapHandle(dlt), dlt, sensor_id);
+			useTcpReassemblySsl = true;
+		}
 	}
 
 	if(opt_mirrorip && (sipportmatrix[htons(header_udp->source)] || sipportmatrix[htons(header_udp->dest)])) {

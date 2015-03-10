@@ -2108,6 +2108,11 @@ void TcpReassembly::_push(pcap_pkthdr *header, iphdr2 *header_ip, u_char *packet
 	
 	header_tcp_pointer = (tcphdr2*)((u_char*)header_ip + sizeof(*header_ip));
 	data = (u_char*)header_tcp_pointer + (header_tcp_pointer->doff << 2);
+	
+	if((data - packet) > header->caplen) {
+		return;
+	}
+	
 	datalen = htons(header_ip->tot_len) - sizeof(*header_ip) - (header_tcp_pointer->doff << 2);
 	datacaplen = header->caplen - ((u_char*)data - packet);
 	header_tcp = *header_tcp_pointer;
@@ -2167,9 +2172,11 @@ void TcpReassembly::_push(pcap_pkthdr *header, iphdr2 *header_ip, u_char *packet
 				break;
 			}
 		}
-		this->unlock_links();
+		if(this->enableCleanupThread) {
+			this->unlock_links();
+		}
 	}
-	if(passFindLink == maxPassFindLink) {
+	if(this->enableCleanupThread && passFindLink == maxPassFindLink && sverb.http) {
 		u_long actTime = getTimeMS();
 		if(actTime - 1000 > this->lastTimeLogErrExceededMaximumAttempts) {
 			syslog(LOG_NOTICE, "tcpreassembly: exceeded the maximum number of attempts to obtain a TCP connection");
