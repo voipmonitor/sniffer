@@ -82,10 +82,10 @@ void HttpData::processData(u_int32_t ip_src, u_int32_t ip_dst,
 	if(!data->expectContinue.size() &&
 	   strcasestr(request.c_str(), "Expect: 100-continue") &&
 	   data->request.size() > i_request) {
-		request += (char*)data->request[i_request].getData();
+		request += data->request[i_request].getDataString();
 	} else {
 		request_data = &data->request[i_request];
-		request = (char*)request_data->getData();
+		request = request_data->getDataString();
 	}
 	
 	uri = this->getUri(request);
@@ -103,13 +103,13 @@ void HttpData::processData(u_int32_t ip_src, u_int32_t ip_dst,
 	response_data = NULL;
 	if(data->response.size()) {
 		response_data = &data->response[0];
-		response = (char*)response_data->getData();
+		response = response_data->getDataString();
 	}
 	if(data->expectContinue.size()) {
 		expectContinue = (char*)data->expectContinue[0].getData();
 		if(data->expectContinueResponse.size()) {
 			response_data = &data->expectContinueResponse[0];
-			response = (char*)response_data->getData();
+			response = response_data->getDataString();
 		}
 	}
 	

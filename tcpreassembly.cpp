@@ -1500,13 +1500,15 @@ void TcpReassemblyLink::complete_normal(bool final, bool lockQueue) {
 				u_char *data = stream->complete_data.getData();
 				u_int32_t datalen = stream->complete_data.getDatalen();
 				timeval time = stream->complete_data.getTime();
-				if(reassembly->enableIgnorePairReqResp) {
-					reassemblyData->addData(data, datalen, time, stream->ack, (TcpReassemblyDataItem::eDirection)stream->direction);
-				} else {
-					if(direction == TcpReassemblyStream::DIRECTION_TO_DEST) {
-						reassemblyData->addRequest(data, datalen, time, stream->ack);
+				if(data) {
+					if(reassembly->enableIgnorePairReqResp) {
+						reassemblyData->addData(data, datalen, time, stream->ack, (TcpReassemblyDataItem::eDirection)stream->direction);
 					} else {
-						reassemblyData->addResponse(data, datalen, time, stream->ack);
+						if(direction == TcpReassemblyStream::DIRECTION_TO_DEST) {
+							reassemblyData->addRequest(data, datalen, time, stream->ack);
+						} else {
+							reassemblyData->addResponse(data, datalen, time, stream->ack);
+						}
 					}
 				}
 			} else {
@@ -2106,6 +2108,11 @@ void TcpReassembly::_push(pcap_pkthdr *header, iphdr2 *header_ip, u_char *packet
 	
 	header_tcp_pointer = (tcphdr2*)((u_char*)header_ip + sizeof(*header_ip));
 	data = (u_char*)header_tcp_pointer + (header_tcp_pointer->doff << 2);
+	
+	if((data - packet) > header->caplen) {
+		return;
+	}
+	
 	datalen = htons(header_ip->tot_len) - sizeof(*header_ip) - (header_tcp_pointer->doff << 2);
 	datacaplen = header->caplen - ((u_char*)data - packet);
 	header_tcp = *header_tcp_pointer;
@@ -2165,9 +2172,11 @@ void TcpReassembly::_push(pcap_pkthdr *header, iphdr2 *header_ip, u_char *packet
 				break;
 			}
 		}
-		this->unlock_links();
+		if(this->enableCleanupThread) {
+			this->unlock_links();
+		}
 	}
-	if(passFindLink == maxPassFindLink) {
+	if(this->enableCleanupThread && passFindLink == maxPassFindLink && sverb.http) {
 		u_long actTime = getTimeMS();
 		if(actTime - 1000 > this->lastTimeLogErrExceededMaximumAttempts) {
 			syslog(LOG_NOTICE, "tcpreassembly: exceeded the maximum number of attempts to obtain a TCP connection");

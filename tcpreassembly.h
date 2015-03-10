@@ -134,6 +134,9 @@ public:
 	u_char *getData() {
 		return(this->data);
 	}
+	string getDataString() {
+		return(this->data ? (char*)this->data : "");
+	}
 	u_int32_t getDatalen() {
 		return(this->datalen);
 	}
