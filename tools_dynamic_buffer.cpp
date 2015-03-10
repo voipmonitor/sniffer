@@ -110,7 +110,7 @@ void CompressStream::initCompress() {
 		if(!this->lzmaStream) {
 			this->lzmaStream = new lzma_stream;
 			autoMemoryType(this->lzmaStream);
-			memset(this->lzmaStream, 0, sizeof(lzma_stream));
+			memset_heapsafe(this->lzmaStream, 0, sizeof(lzma_stream));
 			int ret = lzma_easy_encoder(this->lzmaStream, this->lzmaLevel, LZMA_CHECK_CRC64);
 			if(ret == LZMA_OK) {
 				createCompressBuffer();
@@ -172,7 +172,7 @@ void CompressStream::initDecompress(u_int32_t dataLen) {
 		if(!this->lzmaStreamDecompress) {
 			this->lzmaStreamDecompress = new lzma_stream;
 			autoMemoryType(this->lzmaStreamDecompress);
-			memset(this->lzmaStreamDecompress, 0, sizeof(lzma_stream));
+			memset_heapsafe(this->lzmaStreamDecompress, 0, sizeof(lzma_stream));
 			int ret = lzma_stream_decoder(this->lzmaStreamDecompress, UINT64_MAX, LZMA_CONCATENATED);
 			if(ret == LZMA_OK) {
 				createDecompressBuffer(this->decompressBufferLength);
@@ -782,7 +782,8 @@ void ChunkBuffer::add(char *data, u_int32_t datalen, bool flush, u_int32_t decom
 		sChunk chunk;
 		chunk.chunk = new char[datalen];
 		autoMemoryType(chunk.chunk);
-		memcpy(chunk.chunk, data, datalen);
+		memcpy_heapsafe(chunk.chunk, data, datalen,
+				__FILE__, __LINE__);
 		chunk.len = datalen;
 		chunk.decompress_len = decompress_len;
 		this->chunkBuffer.push_back(chunk);
@@ -822,7 +823,10 @@ void ChunkBuffer::add(char *data, u_int32_t datalen, bool flush, u_int32_t decom
 					this->lastChunk = &(*(--this->chunkBuffer.end()));
 				}
 				u_int32_t copied = min(_len - pos, this->chunk_fix_len - this->lastChunk->len);
-				memcpy(this->lastChunk->chunk + this->lastChunk->len, _data + pos, copied);
+				memcpy_heapsafe(this->lastChunk->chunk + this->lastChunk->len, this->lastChunk->chunk,
+						_data + pos, i ? _data : NULL,
+						copied,
+						__FILE__, __LINE__);
 				this->lastChunk->len += copied;
 				allcopied += copied;
 				pos +=copied;
@@ -844,7 +848,10 @@ void ChunkBuffer::add(char *data, u_int32_t datalen, bool flush, u_int32_t decom
 				this->lastChunk = &(*(--this->chunkBuffer.end()));
 			}
 			int whattocopy = MIN(this->chunk_fix_len - this->len % this->chunk_fix_len, datalen - copied);
-			memcpy(this->lastChunk->chunk + this->len % this->chunk_fix_len, data + copied, whattocopy);
+			memcpy_heapsafe(this->lastChunk->chunk + this->len % this->chunk_fix_len, this->lastChunk->chunk,
+					data + copied, data,
+					whattocopy,
+					__FILE__, __LINE__);
 			copied += whattocopy;
 			this->len += whattocopy;
 			this->lastChunk->len += whattocopy;
@@ -969,9 +976,10 @@ void ChunkBuffer::chunkIterate(ChunkBuffer_baseIterate *chunkbufferIterateEv, bo
 								cout << (this->chunkIterateCompleteBufferInfo.counter % 2 ? "chunkpos_decI " : "chunkpos_lenI ")
 								     << this->chunkIterateCompleteBufferInfo.chunkPos << " / " << this->chunkIterateCompleteBufferInfo.bufferPos << " / " << counterIterator << endl;
 							}
-							memcpy(this->chunkIterateCompleteBufferInfo.buffer, 
-							       it->chunk + this->chunkIterateCompleteBufferInfo.chunkPos, 
-							       copied);
+							memcpy_heapsafe(this->chunkIterateCompleteBufferInfo.buffer, this->chunkIterateCompleteBufferInfo.buffer,
+									it->chunk + this->chunkIterateCompleteBufferInfo.chunkPos, it->chunk,
+									copied,
+									__FILE__, __LINE__);
 							this->chunkIterateCompleteBufferInfo.bufferPos += copied;
 							this->chunkIterateCompleteBufferInfo.addPos(copied);
 						}
@@ -982,9 +990,10 @@ void ChunkBuffer::chunkIterate(ChunkBuffer_baseIterate *chunkbufferIterateEv, bo
 							cout << (this->chunkIterateCompleteBufferInfo.counter % 2 ? "chunkpos_dec2 " : "chunkpos_len2 ")
 							     << this->chunkIterateCompleteBufferInfo.chunkPos << " / " << this->chunkIterateCompleteBufferInfo.bufferPos << " / " << counterIterator << endl;
 						}
-						memcpy(this->chunkIterateCompleteBufferInfo.buffer + this->chunkIterateCompleteBufferInfo.bufferPos, 
-						       it->chunk + this->chunkIterateCompleteBufferInfo.chunkPos, 
-						       copied);
+						memcpy_heapsafe(this->chunkIterateCompleteBufferInfo.buffer + this->chunkIterateCompleteBufferInfo.bufferPos, this->chunkIterateCompleteBufferInfo.buffer,
+								it->chunk + this->chunkIterateCompleteBufferInfo.chunkPos, it->chunk,
+								copied,
+								__FILE__, __LINE__);
 						this->chunkIterateCompleteBufferInfo.bufferPos += copied;
 						this->chunkIterateCompleteBufferInfo.addPos(copied);
 						if(this->chunkIterateCompleteBufferInfo.bufferPos == this->chunkIterateCompleteBufferInfo.bufferLen) {

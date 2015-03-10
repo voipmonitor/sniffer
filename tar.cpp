@@ -481,7 +481,10 @@ bool
 Tar::decompress_ev(char *data, u_int32_t len) {
 	if(len != T_BLOCKSIZE ||
 	   this->readData.bufferLength) {
-		memcpy(this->readData.buffer + this->readData.bufferLength, data, len);
+		memcpy_heapsafe(this->readData.buffer + this->readData.bufferLength, this->readData.buffer,
+				data, data,
+				len,
+				__FILE__, __LINE__);
 		this->readData.bufferLength += len;
 		if(this->readData.bufferLength >= T_BLOCKSIZE) {
 			for(unsigned int i = 0; i < this->readData.bufferLength / T_BLOCKSIZE; i++) {
@@ -489,9 +492,10 @@ Tar::decompress_ev(char *data, u_int32_t len) {
 				this->readData.position += len;
 			}
 			if(this->readData.bufferLength % T_BLOCKSIZE) {
-				memcpy(this->readData.buffer, 
-				       this->readData.buffer + (this->readData.bufferLength - this->readData.bufferLength % T_BLOCKSIZE), 
-				       this->readData.bufferLength % T_BLOCKSIZE);
+				memcpy_heapsafe(this->readData.buffer, this->readData.buffer,
+						this->readData.buffer + (this->readData.bufferLength - this->readData.bufferLength % T_BLOCKSIZE), this->readData.buffer,
+						this->readData.bufferLength % T_BLOCKSIZE,
+						__FILE__, __LINE__);
 				this->readData.bufferLength = this->readData.bufferLength % T_BLOCKSIZE;
 			} else {
 				this->readData.bufferLength = 0;

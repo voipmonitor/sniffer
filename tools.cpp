@@ -2386,7 +2386,10 @@ bool FileZipHandler::writeToBuffer(char *data, int length) {
 		flushBuffer();
 	}
 	if(length <= this->bufferLength) {
-		memcpy(this->buffer + this->useBufferLength, data, length);
+		memcpy_heapsafe(this->buffer + this->useBufferLength, this->buffer,
+				data, NULL,
+				length,
+				__FILE__, __LINE__);
 		this->useBufferLength += length;
 		return(true);
 	} else {

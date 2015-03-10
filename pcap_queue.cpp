@@ -2685,7 +2685,6 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void *arg, unsigned int 
 			counter = hpii.counter;
 			this->prevThreads[0]->moveReadit(this->typeThread == md1 ? 0 : 1);
 			if(opt_dup_check) {
-				printf("test\n");
 				res = this->pcapProcess(&header, &packet, &destroy,
 							false, true, false, false);
 				if(res == -1) {
