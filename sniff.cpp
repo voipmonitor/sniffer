@@ -3500,7 +3500,10 @@ void process_packet__cleanup(pcap_pkthdr *header, pcap_t *handle) {
 	malloc_trim, try searching for a similar function.
 	*/
 #ifndef FREEBSD
-	malloc_trim(0);
+	extern unsigned int HeapSafeCheck;
+	if(!HeapSafeCheck) {
+		malloc_trim(0);
+	}
 #endif
 }
 
