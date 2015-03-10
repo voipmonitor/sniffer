@@ -380,6 +380,7 @@ Tar::tar_read(const char *filename, const char *endFilename, u_int32_t recordId,
 					tarPos.push_back(atoll(row["pos"].c_str()));
 				}
 			}
+			delete sqlDb;
 		}
 	}
 	if(tarPos.size()) {

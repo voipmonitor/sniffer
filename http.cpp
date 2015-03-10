@@ -513,6 +513,7 @@ void HttpPacketsDumper::dumpData(const char *timestamp_from, const char *timesta
 			atol(row["srcport"].c_str()),
 			atol(row["dstport"].c_str()));
 	}
+	delete sqlDb;
 }
 
 void HttpPacketsDumper::dumpDataItem(eReqResp reqResp, string header, string body,
