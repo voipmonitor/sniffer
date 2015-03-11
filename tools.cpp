@@ -988,7 +988,7 @@ bool PcapDumper::open(const char *fileName, const char *fileNameSpoolRelative, p
 
 bool incorrectCaplenDetected = false;
 
-void PcapDumper::dump(pcap_pkthdr* header, const u_char *packet, int dlt) {
+void PcapDumper::dump(pcap_pkthdr* header, const u_char *packet, int dlt, bool allPackets) {
 	extern int opt_convert_dlt_sll_to_en10;
 	if((dlt == DLT_LINUX_SLL && opt_convert_dlt_sll_to_en10 ? DLT_EN10MB : dlt) != this->dlt) {
 		u_long actTime = getTimeMS();
@@ -1001,7 +1001,8 @@ void PcapDumper::dump(pcap_pkthdr* header, const u_char *packet, int dlt) {
 	}
 	extern unsigned int opt_maxpcapsize_mb;
 	if(this->handle) {
-		if(header->caplen > 0 && header->caplen <= header->len) {
+		if(allPackets ||
+		   (header->caplen > 0 && header->caplen <= header->len)) {
 			if(!opt_maxpcapsize_mb || this->capsize < opt_maxpcapsize_mb * 1024 * 1024) {
 				this->existsContent = true;
 				__pcap_dump((u_char*)this->handle, header, packet);
@@ -3131,7 +3132,7 @@ void BogusDumper::dump(pcap_pkthdr* header, u_char* packet, int dlt, const char 
 		}
 	}
 	if(dumper) {
-		dumper->dump(header, packet, dlt);
+		dumper->dump(header, packet, dlt, true);
 		dumper->flush();
 	}
 	this->unlock();
