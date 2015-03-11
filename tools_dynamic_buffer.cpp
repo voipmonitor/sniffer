@@ -980,7 +980,9 @@ void ChunkBuffer::chunkIterate(ChunkBuffer_baseIterate *chunkbufferIterateEv, bo
 								cout << (this->chunkIterateCompleteBufferInfo.counter % 2 ? "chunkpos_decI " : "chunkpos_lenI ")
 								     << this->chunkIterateCompleteBufferInfo.chunkPos << " / " << this->chunkIterateCompleteBufferInfo.bufferPos << " / " << counterIterator << endl;
 							}
-							memcpy_heapsafe(this->chunkIterateCompleteBufferInfo.buffer, this->chunkIterateCompleteBufferInfo.buffer,
+							memcpy_heapsafe(this->chunkIterateCompleteBufferInfo.buffer, 
+									this->chunkIterateCompleteBufferInfo.buffer != (char*)&(this->chunkIterateCompleteBufferInfo.chunkLenBuff) ?
+										this->chunkIterateCompleteBufferInfo.buffer : NULL,
 									it->chunk + this->chunkIterateCompleteBufferInfo.chunkPos, it->chunk,
 									copied,
 									__FILE__, __LINE__);
@@ -994,7 +996,9 @@ void ChunkBuffer::chunkIterate(ChunkBuffer_baseIterate *chunkbufferIterateEv, bo
 							cout << (this->chunkIterateCompleteBufferInfo.counter % 2 ? "chunkpos_dec2 " : "chunkpos_len2 ")
 							     << this->chunkIterateCompleteBufferInfo.chunkPos << " / " << this->chunkIterateCompleteBufferInfo.bufferPos << " / " << counterIterator << endl;
 						}
-						memcpy_heapsafe(this->chunkIterateCompleteBufferInfo.buffer + this->chunkIterateCompleteBufferInfo.bufferPos, this->chunkIterateCompleteBufferInfo.buffer,
+						memcpy_heapsafe(this->chunkIterateCompleteBufferInfo.buffer + this->chunkIterateCompleteBufferInfo.bufferPos, 
+								this->chunkIterateCompleteBufferInfo.buffer != (char*)&(this->chunkIterateCompleteBufferInfo.chunkLenBuff) ?
+									this->chunkIterateCompleteBufferInfo.buffer : NULL,
 								it->chunk + this->chunkIterateCompleteBufferInfo.chunkPos, it->chunk,
 								copied,
 								__FILE__, __LINE__);
