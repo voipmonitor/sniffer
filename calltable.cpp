@@ -1408,7 +1408,7 @@ Call::convertRawToWav() {
 		lasttv.tv_sec = 0;
 		lasttv.tv_usec = 0;
 		int iter = 0;
-		unsigned int last_ssrc_index;
+		unsigned int last_ssrc_index = 0;
 		long long last_size = 0;
 		/* 
 			read rawInfo file where there are stored raw files (rtp streams) 
