@@ -3146,7 +3146,7 @@ void* PcapQueue_readFromInterface::threadFunction(void *arg, unsigned int arg2) 
 					}
 				}
 				if(!TEST_PACKETS && destroy) {
-					if(!TERMINATING) {
+					if(!TERMINATING && this->deleteThreadsCount) {
 						sHeaderPacket headerPacket(header, packet);
 						this->pushDelete(&headerPacket);
 					} else {
@@ -3174,7 +3174,7 @@ void* PcapQueue_readFromInterface::threadFunction(void *arg, unsigned int arg2) 
 				break;
 			} else if(res == 0) {
 				if(destroy) {
-					if(!TERMINATING) {
+					if(!TERMINATING && this->deleteThreadsCount) {
 						sHeaderPacket headerPacket(header, packet);
 						this->pushDelete(&headerPacket);
 					} else {

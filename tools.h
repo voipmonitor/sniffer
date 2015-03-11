@@ -489,7 +489,7 @@ public:
 	bool open(const char *fileName, int dlt) {
 		return(this->open(fileName, NULL, NULL, dlt));
 	}
-	void dump(pcap_pkthdr* header, const u_char *packet, int dlt);
+	void dump(pcap_pkthdr* header, const u_char *packet, int dlt, bool allPackets = false);
 	void close(bool updateFilesQueue = true);
 	void flush();
 	void remove();
