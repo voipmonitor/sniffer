@@ -13,6 +13,7 @@
 #include <sstream>
 #include <sys/syscall.h>
 #include <vector>
+#include <malloc.h>
 
 #include <snappy-c.h>
 #ifdef HAVE_LIBLZ4
@@ -186,6 +187,7 @@ size_t _opt_pcap_queue_block_restore_buffer_inc_size	= opt_pcap_queue_block_max_
 
 int pcap_drop_flag = 0;
 int enable_bad_packet_order_warning = 0;
+bool exists_thread_delete = 0;
 
 static pcap_block_store_queue *blockStoreBypassQueue; 
 
@@ -945,12 +947,16 @@ PcapQueue::PcapQueue(eTypeQueue typeQueue, const char *nameQueue) {
 	this->threadTerminated = false;
 	this->writeThreadTerminated = false;
 	this->threadDoTerminate = false;
-	this->threadId = 0;
+	this->mainThreadId = 0;
 	this->writeThreadId = 0;
-	this->nextThreadId = 0;
-	memset(this->threadPstatData, 0, sizeof(this->threadPstatData));
+	for(int i = 0; i < PCAP_QUEUE_NEXT_THREADS_MAX; i++) {
+		this->nextThreadsId[i] = 0;
+	}
+	memset(this->mainThreadPstatData, 0, sizeof(this->mainThreadPstatData));
 	memset(this->writeThreadPstatData, 0, sizeof(this->writeThreadPstatData));
-	memset(this->nextThreadPstatData, 0, sizeof(this->nextThreadPstatData));
+	for(int i = 0; i < PCAP_QUEUE_NEXT_THREADS_MAX; i++) {
+		memset(this->nextThreadsPstatData[i], 0, sizeof(this->nextThreadsPstatData[i]));
+	}
 	memset(this->procPstatData, 0, sizeof(this->procPstatData));
 	this->packetBuffer = NULL;
 	this->instancePcapHandle = NULL;
@@ -1372,11 +1378,16 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 	if(this->instancePcapHandle) {
 		outStrStat << this->instancePcapHandle->pcapStatString_cpuUsageReadThreads();
 		double t0cpu = this->instancePcapHandle->getCpuUsagePerc(mainThread, true);
-		double t0cpuNextThread = this->instancePcapHandle->getCpuUsagePerc(nextThread, true);
+		double t0cpuNextThreads[PCAP_QUEUE_NEXT_THREADS_MAX];
+		for(int i = 0; i < PCAP_QUEUE_NEXT_THREADS_MAX; i++) {
+			t0cpuNextThreads[i] = this->instancePcapHandle->getCpuUsagePerc((eTypeThread)(nextThread1 + i), true);
+		}
 		if(t0cpu >= 0) {
 			outStrStat << "t0CPU[" << setprecision(1) << t0cpu;
-			if(t0cpuNextThread >= 0) {
-				outStrStat << "/" << setprecision(1) << t0cpuNextThread;
+			for(int i = 0; i < PCAP_QUEUE_NEXT_THREADS_MAX; i++) {
+				if(t0cpuNextThreads[i] >= 0) {
+					outStrStat << "/" << setprecision(1) << t0cpuNextThreads[i];
+				}
 			}
 			outStrStat << "%] ";
 			if (opt_rrd) rrdtCPU_t0 = t0cpu;
@@ -1851,27 +1862,46 @@ double PcapQueue::pcapStat_get_speed_mb_s(int statPeriod) {
 	}
 }
 
+int PcapQueue::getThreadPid(eTypeThread typeThread) {
+	switch(typeThread) {
+	case mainThread:
+		return(mainThreadId);
+	case writeThread:
+		return(writeThreadId);
+	case nextThread1:
+		return(nextThreadsId[0]);
+	case nextThread2:
+		return(nextThreadsId[1]);
+	case nextThread3:
+		return(nextThreadsId[2]);
+	}
+	return(0);
+}
+
+pstat_data *PcapQueue::getThreadPstatData(eTypeThread typeThread) {
+	switch(typeThread) {
+	case mainThread:
+		return(mainThreadPstatData);
+	case writeThread:
+		return(writeThreadPstatData);
+	case nextThread1:
+		return(nextThreadsPstatData[0]);
+	case nextThread2:
+		return(nextThreadsPstatData[1]);
+	case nextThread3:
+		return(nextThreadsPstatData[2]);
+	}
+	return(NULL);
+}
+
 void PcapQueue::preparePstatData(eTypeThread typeThread) {
-	int pid = typeThread == mainThread ? this->threadId :
-		  typeThread == writeThread ? this->writeThreadId : this->nextThreadId;
-	if(pid) {
-	 
-		if(typeThread == mainThread) {
-			if(this->threadPstatData[0].cpu_total_time) {
-				this->threadPstatData[1] = this->threadPstatData[0];
-			}
-		} else if(typeThread == writeThread) {
-			if(this->writeThreadPstatData[0].cpu_total_time) {
-				this->writeThreadPstatData[1] = this->writeThreadPstatData[0];
-			}
-		} else {
-			if(this->nextThreadPstatData[0].cpu_total_time) {
-				this->nextThreadPstatData[1] = this->nextThreadPstatData[0];
-			}
+	int pid = getThreadPid(typeThread);
+	pstat_data *threadPstatData = getThreadPstatData(typeThread);
+	if(pid && threadPstatData) {
+		if(threadPstatData[0].cpu_total_time) {
+			threadPstatData[1] = threadPstatData[0];
 		}
-		pstat_get_data(pid, 
-			       typeThread == mainThread ? this->threadPstatData :
-			       typeThread == writeThread ? this->writeThreadPstatData : this->nextThreadPstatData);
+		pstat_get_data(pid, threadPstatData);
 	}
 }
 
@@ -1883,31 +1913,15 @@ double PcapQueue::getCpuUsagePerc(eTypeThread typeThread, bool preparePstatData)
 	if(preparePstatData) {
 		this->preparePstatData(typeThread);
 	}
-	int pid = typeThread == mainThread ? this->threadId :
-		  typeThread == writeThread ? this->writeThreadId : this->nextThreadId;
-	if(pid) {
+	int pid = getThreadPid(typeThread);
+	pstat_data *threadPstatData = getThreadPstatData(typeThread);
+	if(pid && threadPstatData) {
 		double ucpu_usage, scpu_usage;
-		if(typeThread == mainThread) {
-			if(this->threadPstatData[0].cpu_total_time && this->threadPstatData[1].cpu_total_time) {
-				pstat_calc_cpu_usage_pct(
-					&this->threadPstatData[0], &this->threadPstatData[1],
-					&ucpu_usage, &scpu_usage);
-				return(ucpu_usage + scpu_usage);
-			}
-		} else if(typeThread == writeThread) {
-			if(this->writeThreadPstatData[0].cpu_total_time && this->writeThreadPstatData[1].cpu_total_time) {
-				pstat_calc_cpu_usage_pct(
-					&this->writeThreadPstatData[0], &this->writeThreadPstatData[1],
-					&ucpu_usage, &scpu_usage);
-				return(ucpu_usage + scpu_usage);
-			}
-		} else {
-			if(this->nextThreadPstatData[0].cpu_total_time && this->nextThreadPstatData[1].cpu_total_time) {
-				pstat_calc_cpu_usage_pct(
-					&this->nextThreadPstatData[0], &this->nextThreadPstatData[1],
-					&ucpu_usage, &scpu_usage);
-				return(ucpu_usage + scpu_usage);
-			}
+		if(threadPstatData[0].cpu_total_time && threadPstatData[1].cpu_total_time) {
+			pstat_calc_cpu_usage_pct(
+				&threadPstatData[0], &threadPstatData[1],
+				&ucpu_usage, &scpu_usage);
+			return(ucpu_usage + scpu_usage);
 		}
 	}
 	return(-1);
@@ -2862,22 +2876,31 @@ inline void *_PcapQueue_readFromInterfaceThread_threadFunction(void *arg) {
 }
 
 inline void *_PcapQueue_readFromInterfaceThread_threadDeleteFunction(void *arg) {
-	return(((PcapQueue_readFromInterface*)arg)->threadDeleteFunction(arg, 0));
+	return(((PcapQueue_readFromInterface::sThreadDeleteData*)arg)->owner->threadDeleteFunction((PcapQueue_readFromInterface::sThreadDeleteData*)arg));
 }
 
 
 PcapQueue_readFromInterface::PcapQueue_readFromInterface(const char *nameQueue)
- : PcapQueue(readFromInterface, nameQueue),
-   deleteQueue(100000, 1000, 1000) {
+ : PcapQueue(readFromInterface, nameQueue) {
 	this->fifoWritePcapDumper = NULL;
 	memset(this->readThreads, 0, sizeof(this->readThreads));
 	this->readThreadsCount = 0;
 	this->lastTimeLogErrThread0BufferIsFull = 0;
-	this->threadHandleDelete = 0;
+	for(int i = 0; i < MAX_THREADS_DELETE; i++) {
+		this->threadsDeleteData[i] = NULL;
+	}
+	extern int opt_delete_threads;
+	this->deleteThreadsCount = opt_delete_threads;
+	this->counterPushDelete = 0;
 }
 
 PcapQueue_readFromInterface::~PcapQueue_readFromInterface() {
-	pthread_join(this->threadHandleDelete, NULL);
+	for(int i = 0; i < MAX_THREADS_DELETE; i++) {
+		if(this->threadsDeleteData[i]) {
+			pthread_join(this->threadsDeleteData[i]->threadHandle, NULL);
+			delete this->threadsDeleteData[i];
+		}
+	}
 	if(this->fifoWritePcapDumper) {
 		pcap_dump_close(this->fifoWritePcapDumper);
 		syslog(LOG_NOTICE, "packetbuffer terminating: pcap_dump_close fifoWritePcapDumper (%s)", interfaceName.c_str());
@@ -2912,16 +2935,22 @@ bool PcapQueue_readFromInterface::init() {
 
 bool PcapQueue_readFromInterface::initThread(void *arg, unsigned int arg2) {
 	init_hash();
-	pthread_create(&this->threadHandleDelete, NULL, _PcapQueue_readFromInterfaceThread_threadDeleteFunction, this);
+	for(int i = 0; i < this->deleteThreadsCount; i++) {
+		this->threadsDeleteData[i] = new sThreadDeleteData(this);
+		this->threadsDeleteData[i]->threadId = &this->nextThreadsId[i];
+		this->threadsDeleteData[i]->enableMallocTrim = i == 0;
+		this->threadsDeleteData[i]->enableLock = this->deleteThreadsCount > 1;
+		pthread_create(&this->threadsDeleteData[i]->threadHandle, NULL, _PcapQueue_readFromInterfaceThread_threadDeleteFunction, this->threadsDeleteData[i]);
+	}
 	return(this->startCapture() &&
 	       this->openFifoForWrite(arg, arg2));
 }
 
 void* PcapQueue_readFromInterface::threadFunction(void *arg, unsigned int arg2) {
-	this->threadId = get_unix_tid();
+	this->mainThreadId = get_unix_tid();
 	if(VERBOSE || DEBUG_VERBOSE) {
 		ostringstream outStr;
-		outStr << "start thread t0 (" << this->nameQueue << ") - pid: " << this->threadId << endl;
+		outStr << "start thread t0 (" << this->nameQueue << ") - pid: " << this->mainThreadId << endl;
 		if(DEBUG_VERBOSE) {
 			cout << outStr.str();
 		} else {
@@ -3119,7 +3148,7 @@ void* PcapQueue_readFromInterface::threadFunction(void *arg, unsigned int arg2) 
 				if(!TEST_PACKETS && destroy) {
 					if(!TERMINATING) {
 						sHeaderPacket headerPacket(header, packet);
-						this->deleteQueue.push(&headerPacket, true);
+						this->pushDelete(&headerPacket);
 					} else {
 						delete header;
 						delete [] packet;
@@ -3147,7 +3176,7 @@ void* PcapQueue_readFromInterface::threadFunction(void *arg, unsigned int arg2) 
 				if(destroy) {
 					if(!TERMINATING) {
 						sHeaderPacket headerPacket(header, packet);
-						this->deleteQueue.push(&headerPacket, true);
+						this->pushDelete(&headerPacket);
 					} else {
 						delete header;
 						delete [] packet;
@@ -3178,20 +3207,54 @@ void* PcapQueue_readFromInterface::threadFunction(void *arg, unsigned int arg2) 
 	return(NULL);
 }
 
-void* PcapQueue_readFromInterface::threadDeleteFunction(void *arg, unsigned int arg2) {
-	this->nextThreadId = get_unix_tid();
+void* PcapQueue_readFromInterface::threadDeleteFunction(sThreadDeleteData *threadDeleteData) {
+	exists_thread_delete = true;
+	*threadDeleteData->threadId = get_unix_tid();
 	sHeaderPacket headerPacket;
+	unsigned long actTimeS;
 	while(!TERMINATING) {
-		if(this->deleteQueue.pop(&headerPacket, false)) {
+		if(threadDeleteData->queue.pop(&headerPacket, false)) {
+			if(threadDeleteData->enableLock) {
+				this->lock_delete();
+			}
+			actTimeS = getTimeS(headerPacket.header);
 			delete headerPacket.header;
 			delete [] headerPacket.packet;
+			if(threadDeleteData->enableLock) {
+				this->unlock_delete();
+			}
 		} else {
+			actTimeS = 0;
 			usleep(1000);
 		}
+		++threadDeleteData->counter;
+		if(threadDeleteData->enableMallocTrim &&
+		   !(threadDeleteData->counter % 10000)) {
+			if(!actTimeS) {
+				actTimeS = getTimeS();
+			}
+			if(!threadDeleteData->lastMallocTrimTime ||
+			   (actTimeS - threadDeleteData->lastMallocTrimTime) > 600) {
+				if(threadDeleteData->enableLock) {
+					this->lock_delete();
+				}
+				malloc_trim(0);
+				if(threadDeleteData->enableLock) {
+					this->unlock_delete();
+				}
+				threadDeleteData->lastMallocTrimTime = actTimeS;
+			}
+		}
 	}
-	while(this->deleteQueue.pop(&headerPacket, false)) {
+	while(threadDeleteData->queue.pop(&headerPacket, false)) {
+		if(threadDeleteData->enableLock) {
+			this->lock_delete();
+		}
 		delete headerPacket.header;
 		delete [] headerPacket.packet;
+		if(threadDeleteData->enableLock) {
+			this->unlock_delete();
+		}
 	}
 	return(NULL);
 }
@@ -3404,6 +3467,8 @@ string PcapQueue_readFromInterface::getInterfaceName(bool simple) {
 	}
 }
 
+volatile int PcapQueue_readFromInterface::_sync_delete = 0;
+
 
 PcapQueue_readFromFifo::PcapQueue_readFromFifo(const char *nameQueue, const char *fileStoreFolder) 
  : PcapQueue(readFromFifo, nameQueue),
@@ -3469,7 +3534,7 @@ void *PcapQueue_readFromFifo::threadFunction(void *arg, unsigned int arg2) {
 		this->packetServerConnections[arg2]->threadId = pid;
 		this->packetServerConnections[arg2]->active = true;
 	} else {
-		this->threadId = get_unix_tid();
+		this->mainThreadId = get_unix_tid();
 	}
 	if(VERBOSE || DEBUG_VERBOSE) {
 		ostringstream outStr;

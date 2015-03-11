@@ -21,6 +21,8 @@
 
 #define READ_THREADS_MAX 20
 #define DLT_TYPES_MAX 10
+#define PCAP_QUEUE_NEXT_THREADS_MAX 3
+#define MAX_THREADS_DELETE 2
 
 class pcap_block_store_queue {
 public:
@@ -189,7 +191,9 @@ public:
 	enum eTypeThread {
 		mainThread,
 		writeThread,
-		nextThread
+		nextThread1,
+		nextThread2,
+		nextThread3
 	};
 	PcapQueue(eTypeQueue typeQueue, const char *nameQueue);
 	virtual ~PcapQueue();
@@ -242,6 +246,8 @@ protected:
 	virtual string getStatPacketDrop() { return(""); }
 	virtual string pcapStatString_cpuUsageReadThreads() { return(""); };
 	virtual void initStat_interface() {};
+	int getThreadPid(eTypeThread typeThread);
+	pstat_data *getThreadPstatData(eTypeThread typeThread);
 	void preparePstatData(eTypeThread typeThread = mainThread);
 	void prepareProcPstatData();
 	double getCpuUsagePerc(eTypeThread typeThread = mainThread, bool preparePstatData = false);
@@ -271,12 +277,12 @@ protected:
 	bool threadTerminated;
 	bool writeThreadTerminated;
 	bool threadDoTerminate;
-	int threadId;
+	int mainThreadId;
 	int writeThreadId;
-	int nextThreadId;
-	pstat_data threadPstatData[2];
+	int nextThreadsId[PCAP_QUEUE_NEXT_THREADS_MAX];
+	pstat_data mainThreadPstatData[2];
 	pstat_data writeThreadPstatData[2];
-	pstat_data nextThreadPstatData[2];
+	pstat_data nextThreadsPstatData[PCAP_QUEUE_NEXT_THREADS_MAX][2];
 	pstat_data procPstatData[2];
 	bool initAllReadThreadsOk;
 private:
@@ -462,6 +468,25 @@ private:
 		pcap_pkthdr *header;
 		u_char *packet;
 	};
+	struct sThreadDeleteData {
+		sThreadDeleteData(PcapQueue_readFromInterface *owner) : queue(100000, 1000, 1000) {
+			threadHandle = (pthread_t)NULL;
+			threadId = NULL;
+			enableMallocTrim = false;
+			enableLock = false;
+			lastMallocTrimTime = 0;
+			counter = 0;
+			this->owner = owner;
+		}
+		pthread_t threadHandle;
+		int *threadId;
+		bool enableMallocTrim;
+		bool enableLock;
+		u_int32_t lastMallocTrimTime;
+		u_int32_t counter;
+		rqueue_quick<sHeaderPacket> queue;
+		PcapQueue_readFromInterface *owner;
+	};
 public:
 	PcapQueue_readFromInterface(const char *nameQueue);
 	virtual ~PcapQueue_readFromInterface();
@@ -471,7 +496,7 @@ protected:
 	bool init();
 	bool initThread(void *arg, unsigned int arg2);
 	void *threadFunction(void *arg, unsigned int arg2);
-	void *threadDeleteFunction(void *arg, unsigned int arg2);
+	void *threadDeleteFunction(sThreadDeleteData *threadDeleteData);
 	bool openFifoForWrite(void *arg, unsigned int arg2);
 	bool startCapture();
 	pcap_t* _getPcapHandle(int dlt) { 
@@ -486,14 +511,25 @@ protected:
 	void initStat_interface();
 	string pcapStatString_cpuUsageReadThreads();
 	string getInterfaceName(bool simple = false);
+	void pushDelete(sHeaderPacket *headerPacket) {
+		threadsDeleteData[(counterPushDelete++) % deleteThreadsCount]->queue.push(headerPacket, true);
+	}
+	void lock_delete() {
+		while(__sync_lock_test_and_set(&this->_sync_delete, 1));
+	}
+	void unlock_delete() {
+		__sync_lock_release(&this->_sync_delete);
+	}
 protected:
 	pcap_dumper_t *fifoWritePcapDumper;
 	PcapQueue_readFromInterfaceThread *readThreads[READ_THREADS_MAX];
 	int readThreadsCount;
 	u_long lastTimeLogErrThread0BufferIsFull;
 private:
-	pthread_t threadHandleDelete;
-	rqueue_quick<sHeaderPacket> deleteQueue;
+	sThreadDeleteData *threadsDeleteData[MAX_THREADS_DELETE];
+	int deleteThreadsCount;
+	u_int32_t counterPushDelete;
+	static volatile int _sync_delete;
 friend void *_PcapQueue_readFromInterfaceThread_threadDeleteFunction(void *arg);
 };
 

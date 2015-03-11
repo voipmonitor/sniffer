@@ -653,6 +653,8 @@ extern ParsePacket _parse_packet_global;
 
 cBuffersControl buffersControl;
 
+int opt_delete_threads = 1;
+
 u_int64_t rdtsc_by_100ms;
 
 
@@ -2543,6 +2545,10 @@ int eval_config(string inistr) {
 	
 	if((value = ini.GetValue("general", "max_buffer_mem", NULL))) {
 		buffersControl.setMaxBufferMem(atol(value) * 1024 * 1024);
+	}
+	
+	if((value = ini.GetValue("general", "delete_threads", NULL))) {
+		opt_delete_threads = max(atoi(value), 2);
 	}
 	
 	/*

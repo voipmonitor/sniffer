@@ -335,22 +335,28 @@ struct ip_port
 	int port;
 };
 
-inline unsigned long long _getTimeMS() {
+inline u_long getTimeS(pcap_pkthdr* header = NULL) {
+    if(header) {
+         return(header->ts.tv_sec);
+    }
     timespec time;
     clock_gettime(CLOCK_REALTIME, &time);
-    return(time.tv_sec * 1000 + time.tv_nsec / 1000000);
+    return(time.tv_sec);
 }
 
 inline u_long getTimeMS(pcap_pkthdr* header = NULL) {
+    if(header) {
+         return(header->ts.tv_sec * 1000ul + header->ts.tv_usec / 1000);
+    }
     timespec time;
     clock_gettime(CLOCK_REALTIME, &time);
-    return(time.tv_sec * 1000 + time.tv_nsec / 1000000);
+    return(time.tv_sec * 1000ul + time.tv_nsec / 1000000);
 }
 
 extern u_int64_t rdtsc_by_100ms;
 inline u_long getTimeMS_rdtsc(pcap_pkthdr* header = NULL) {
     if(header) {
-         return(header->ts.tv_sec * 1000ul + header->ts.tv_usec );
+         return(header->ts.tv_sec * 1000ul + header->ts.tv_usec / 1000);
     }
     static u_long last_time;
     #if defined(__i386__) or defined(__x86_64__)
@@ -372,7 +378,7 @@ inline u_long getTimeMS_rdtsc(pcap_pkthdr* header = NULL) {
     #endif
     timespec time;
     clock_gettime(CLOCK_REALTIME, &time);
-    last_time = time.tv_sec * 1000 + time.tv_nsec / 1000000;
+    last_time = time.tv_sec * 1000ul + time.tv_nsec / 1000000;
     return(last_time);
 }
 
