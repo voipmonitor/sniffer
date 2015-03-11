@@ -357,7 +357,7 @@ private:
 	Call *call;
 	int typeContent;
 	list<sChunk> chunkBuffer;
-	volatile unsigned int chunkBuffer_size;
+	volatile unsigned int chunkBuffer_countItems;
 	volatile u_int32_t len;
 	u_int32_t chunk_fix_len;
 	volatile u_int32_t compress_orig_data_len;

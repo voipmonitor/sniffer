@@ -646,7 +646,7 @@ ChunkBuffer::ChunkBuffer(int time, u_int32_t chunk_fix_len, Call *call, int type
 	this->time = time;
 	this->call = call;
 	this->typeContent = typeContent;
-	this->chunk_buffer_size = 0;
+	this->chunkBuffer_countItems = 0;
 	this->len = 0;
 	this->chunk_fix_len = chunk_fix_len;
 	this->compress_orig_data_len = 0;
@@ -788,7 +788,7 @@ void ChunkBuffer::add(char *data, u_int32_t datalen, bool flush, u_int32_t decom
 		chunk.len = datalen;
 		chunk.decompress_len = decompress_len;
 		this->chunkBuffer.push_back(chunk);
-		++this->chunkBuffer_size;
+		++this->chunkBuffer_countItems;
 		this->len += datalen;
 		__sync_fetch_and_add(&this->chunk_buffer_size, datalen);
 		__sync_fetch_and_add(&ChunkBuffer::chunk_buffers_sumsize, datalen);
@@ -796,7 +796,7 @@ void ChunkBuffer::add(char *data, u_int32_t datalen, bool flush, u_int32_t decom
 		break;
 	case add_fill_chunks: {
 		if(sverb.chunk_buffer > 1) {
-			cout << "chunkpos_add " << (this->lastChunk ? this->lastChunk->len : 0) << " / " << this->chunkBuffer_size << endl;
+			cout << "chunkpos_add " << (this->lastChunk ? this->lastChunk->len : 0) << " / " << this->chunkBuffer_countItems << endl;
 		}
 		u_int32_t allcopied = 0;
 		for(int i = 0; i < 2; i++) {
@@ -822,7 +822,7 @@ void ChunkBuffer::add(char *data, u_int32_t datalen, bool flush, u_int32_t decom
 					chunk.len = 0;
 					chunk.decompress_len = (u_int32_t)-1;
 					this->chunkBuffer.push_back(chunk);
-					++this->chunk_buffer_size;
+					++this->chunkBuffer_countItems;
 					this->lastChunk = &(*(--this->chunkBuffer.end()));
 				}
 				u_int32_t copied = min(_len - pos, this->chunk_fix_len - this->lastChunk->len);
@@ -848,7 +848,7 @@ void ChunkBuffer::add(char *data, u_int32_t datalen, bool flush, u_int32_t decom
 				chunk.chunk = new char[this->chunk_fix_len];
 				autoMemoryType(chunk.chunk);
 				this->chunkBuffer.push_back(chunk);
-				++this->chunkBuffer_size;
+				++this->chunkBuffer_countItems;
 				this->lastChunk = &(*(--this->chunkBuffer.end()));
 			}
 			int whattocopy = MIN(this->chunk_fix_len - this->len % this->chunk_fix_len, datalen - copied);
@@ -911,7 +911,7 @@ void ChunkBuffer::chunkIterate(ChunkBuffer_baseIterate *chunkbufferIterateEv, bo
 		}
 	}
 	size_t counterIterator = 0;
-	size_t sizeChunkBuffer = chunkBuffer_size;
+	size_t sizeChunkBuffer = chunkBuffer_countItems;
 	u_int32_t chunkIterateProceedLen_start = this->chunkIterateProceedLen;
 	if(this->compressStream) {
 		this->decompress_chunkbufferIterateEv = chunkbufferIterateEv;
@@ -1119,7 +1119,7 @@ void ChunkBuffer::chunkIterate(ChunkBuffer_baseIterate *chunkbufferIterateEv, bo
 u_int32_t ChunkBuffer::getChunkIterateSafeLimitLength(u_int32_t limitLength) {
 	u_int32_t safeLimitLength = 0;
 	size_t counterIterator = 0;
-	size_t sizeChunkBuffer = chunkBuffer_size;
+	size_t sizeChunkBuffer = chunkBuffer_countItems;
 	if(this->compressStream) {
 		for(list<sChunk>::iterator it = chunkBuffer.begin(); counterIterator < sizeChunkBuffer;) {
 			if(counterIterator++) ++it;
