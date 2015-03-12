@@ -1402,8 +1402,8 @@ ssl_save_master_key(SslDecryptSessionC *ssl, const char *label, GHashTable *ht, 
 	 * so be careful in changing how it is allocated. */
 	ht_key = ssl_data_clone(key);
 	master_secret = ssl_data_clone(mk);
-	g_hash_table_insert(ht, ht_key, master_secret);
 	ssl_map_hash[ssl].push(string((char*)(ht_key->data), (unsigned int)(ht_key->data_len)));
+	g_hash_table_insert(ht, ht_key, master_secret);
 
 	if (debug) printf("%s inserted (pre-)master secret for %s\n", __FUNCTION__, label);
 	if (debug) ssl_print_string("stored key", ht_key);
