@@ -1002,7 +1002,12 @@ void *storing_cdr( void *dummy ) {
 		
 		if(verbosity > 0 && !opt_pcap_queue) { 
 			ostringstream outStr;
-			outStr << "calls[" << calls_counter << "]";
+			outStr << "calls[" << calls_counter;
+			if(sessions.size() or glob_ssl_calls) {
+				outStr << "]tls[" << glob_ssl_calls << "|" << sessions.size() << "] ";
+			} else {
+				outStr << "] ";
+			}
 			if(opt_ipaccount) {
 				outStr << " ipacc_buffer[" << lengthIpaccBuffer() << "]";
 			}
