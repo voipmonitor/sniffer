@@ -162,6 +162,9 @@ extern int opt_pcap_dump_tar_sip_use_pos;
 extern int opt_pcap_dump_tar_rtp_use_pos;
 extern int opt_pcap_dump_tar_graph_use_pos;
 
+extern unsigned int glob_ssl_calls;
+
+
 
 /* constructor */
 Call::Call(char *call_id, unsigned long call_id_len, time_t time) :
@@ -488,6 +491,10 @@ Call::~Call(){
 			((Calltable*)calltable)->calls_mergeMAP.erase(*it);
 		}
 		((Calltable*)calltable)->unlock_calls_mergeMAP();
+	}
+	
+	if(is_ssl) {
+		glob_ssl_calls--;
 	}
 
 	if(contenttype) delete [] contenttype;

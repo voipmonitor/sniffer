@@ -356,6 +356,7 @@ public:
 		int block_store_index; 
 		int dlt; 
 		int sensor_id;
+		bool is_ssl;
 	};
 	struct packet_parse_s {
 		packet_parse_s() {
@@ -397,7 +398,7 @@ public:
 public:
 	PreProcessPacket();
 	~PreProcessPacket();
-	void push(u_int64_t packet_number,
+	void push(bool is_ssl, u_int64_t packet_number,
 		  unsigned int saddr, int source, unsigned int daddr, int dest, 
 		  char *data, int datalen, int dataoffset,
 		  pcap_t *handle, pcap_pkthdr *header, const u_char *packet, bool packetDelete,

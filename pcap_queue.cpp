@@ -70,7 +70,7 @@ extern map<string, session_t*> sessions;
 
 using namespace std;
 
-extern Call *process_packet(u_int64_t packet_number,
+extern Call *process_packet(bool is_ssl, u_int64_t packet_number,
 			    unsigned int saddr, int source, unsigned int daddr, int dest, 
 			    char *data, int datalen, int dataoffset,
 			    pcap_t *handle, pcap_pkthdr *header, const u_char *packet, 
@@ -208,6 +208,7 @@ static double heapPerc = 0;
 
 extern MySqlStore *sqlStore;
 
+extern unsigned int glob_ssl_calls;
 
 #include "sniff_inline.h"
 
@@ -1125,8 +1126,8 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 		outStr << fixed;
 		if(!this->isMirrorSender()) {
 			outStr << "calls[" << calltable->calls_listMAP.size() << "][" << calls_counter;
-			if(sessions.size()) {
-				 outStr << "]tls[" << sessions.size() << "] ";
+			if(sessions.size() or glob_ssl_calls) {
+				 outStr << "]tls[" << glob_ssl_calls << "|" << sessions.size() << "] ";
 			} else {
 				 outStr << "] ";
 			}
@@ -4473,7 +4474,7 @@ void PcapQueue_readFromFifo::processPacket(pcap_pkthdr_plus *header_plus, u_char
 	if(!useTcpReassemblyHttp && !useTcpReassemblyWebrtc && !useTcpReassemblySsl && 
 	   opt_enable_http < 2 && opt_enable_webrtc < 2 && opt_enable_ssl < 2) {
 		if(preProcessPacket) {
-			preProcessPacket->push(packet_counter_all,
+			preProcessPacket->push(false, packet_counter_all,
 					       header_ip->saddr, htons(header_udp->source), header_ip->daddr, htons(header_udp->dest), 
 					       data, datalen, data - (char*)packet, 
 					       this->getPcapHandle(dlt), header, packet, false,
@@ -4490,7 +4491,7 @@ void PcapQueue_readFromFifo::processPacket(pcap_pkthdr_plus *header_plus, u_char
 				u_int64_t _counter = 0;
 				do {
 					++_counter;
-					process_packet(packet_counter_all,
+					process_packet(false, packet_counter_all,
 						       header_ip->saddr, htons(header_udp->source), header_ip->daddr, htons(header_udp->dest), 
 						       data, datalen, data - (char*)packet, 
 						       this->getPcapHandle(dlt), header, packet, 
@@ -4501,7 +4502,7 @@ void PcapQueue_readFromFifo::processPacket(pcap_pkthdr_plus *header_plus, u_char
 					}
 				} while(packet_counter_all == (u_int64_t)sverb.test_rtp_performance);
 			} else {
-				process_packet(packet_counter_all,
+				process_packet(false, packet_counter_all,
 					       header_ip->saddr, htons(header_udp->source), header_ip->daddr, htons(header_udp->dest), 
 					       data, datalen, data - (char*)packet, 
 					       this->getPcapHandle(dlt), header, packet, 

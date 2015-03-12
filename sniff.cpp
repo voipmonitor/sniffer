@@ -220,6 +220,7 @@ extern int opt_sip_send_before_packetbuffer;
 extern PreProcessPacket *preProcessPacket;
 extern ProcessRtpPacket *processRtpPacket[MAX_PROCESS_RTP_PACKET_THREADS];
 extern int opt_enable_process_rtp_packet;
+unsigned int glob_ssl_calls = 0;
 
 #ifdef QUEUE_MUTEX
 extern sem_t readpacket_thread_semaphore;
@@ -1584,7 +1585,7 @@ void *rtp_read_thread_func(void *arg) {
 	return NULL;
 }
 
-Call *new_invite_register(int sip_method, char *data, int datalen, struct pcap_pkthdr *header, char *callidstr, u_int32_t saddr, u_int32_t daddr, int source, int dest,
+Call *new_invite_register(bool is_ssl, int sip_method, char *data, int datalen, struct pcap_pkthdr *header, char *callidstr, u_int32_t saddr, u_int32_t daddr, int source, int dest,
 			  pcap_t *handle, int dlt, int sensor_id,
 			  bool *detectUserAgent,
 			  ParsePacket *parsePacket){
@@ -1706,9 +1707,13 @@ Call *new_invite_register(int sip_method, char *data, int datalen, struct pcap_p
 
 
 	static char str2[1024];
+	if(is_ssl) {
+		glob_ssl_calls++;
+	}
 	// store this call only if it starts with invite
 	Call *call = calltable->add(callidstr, min(strlen(callidstr), (size_t)MAX_FNAME), header->ts.tv_sec, saddr, source, handle, dlt, sensor_id);
 	call->chantype = CHAN_SIP;
+	call->is_ssl = is_ssl;
 	call->set_first_packet_time(header->ts.tv_sec, header->ts.tv_usec);
 	call->sipcallerip[0] = saddr;
 	call->sipcalledip[0] = daddr;
@@ -2073,7 +2078,7 @@ static int process_packet__parse_sip_method(char *data, unsigned int datalen);
 static int parse_packet__last_sip_response(char *data, unsigned int datalen, int sip_method,
 					   char *lastSIPresponse, bool *call_cancel_lsr487);
 
-Call *process_packet(u_int64_t packet_number,
+Call *process_packet(bool is_ssl, u_int64_t packet_number,
 		     unsigned int saddr, int source, unsigned int daddr, int dest, 
 		     char *data, int datalen, int dataoffset,
 		     pcap_t *handle, pcap_pkthdr *header, const u_char *packet, 
@@ -2373,7 +2378,7 @@ Call *process_packet(u_int64_t packet_number,
 					call = parsePacket->call_created;
 					detectUserAgent = parsePacket->detectUserAgent;
 				} else {
-					call = new_invite_register(sip_method, data, datalen, header, callidstr, saddr, daddr, source, dest,
+					call = new_invite_register(is_ssl, sip_method, data, datalen, header, callidstr, saddr, daddr, source, dest,
 								   handle, dlt, sensor_id,
 								   &detectUserAgent,
 								   parsePacket ? &parsePacket->parse : &_parse_packet_global);
@@ -2422,7 +2427,7 @@ Call *process_packet(u_int64_t packet_number,
 					// to much register attempts without OK or 401 responses
 					call->regstate = 4;
 					call->saveregister();
-					call = new_invite_register(sip_method, data, datalen, header, callidstr, saddr, daddr, source, dest,
+					call = new_invite_register(is_ssl, sip_method, data, datalen, header, callidstr, saddr, daddr, source, dest,
 								   handle, dlt, sensor_id,
 								   &detectUserAgent,
 								   parsePacket ? &parsePacket->parse : &_parse_packet_global);
@@ -3077,7 +3082,7 @@ endsip:
 		   sipDatalen < (unsigned)datalen - 11 &&
 		   (unsigned)datalen + sipOffset < header->caplen &&
 		   check_sip20(data + sipDatalen, datalen - sipDatalen)) {
-			process_packet(packet_number,
+			process_packet(is_ssl, packet_number,
 				       saddr, source, daddr, dest, 
 				       data + sipDatalen, datalen - sipDatalen, dataoffset,
 				       handle, header, packet, 
@@ -3945,7 +3950,7 @@ void
 libnids_udp_callback(struct tuple4 *addr, u_char *data, int len, struct ip *pkt) {
 	int was_rtp;
 	int voippacket;
-	process_packet(addr->saddr, addr->source, addr->daddr, addr->dest, 
+	process_packet(false, addr->saddr, addr->source, addr->daddr, addr->dest, 
 		       (char*)data, len, data - nids_last_pcap_data, 
 		       handle, nids_last_pcap_header, nids_last_pcap_data, 
 		       0, &was_rtp, NULL, &voippacket, 0);
@@ -4156,7 +4161,7 @@ void *pcap_read_thread_func(void *arg) {
 		int voippacket = 0;
 		if(!useTcpReassemblyHttp && !useTcpReassemblyWebrtc && !useTcpReassemblySsl &&
 		   opt_enable_http < 2 && opt_enable_webrtc < 2 && opt_enable_ssl < 2) {
-			process_packet(packet_counter,
+			process_packet(false, packet_counter,
 				       header_ip->saddr, htons(header_udp->source), header_ip->daddr, htons(header_udp->dest), 
 				       data, datalen, data - (char*)packet, 
 				       global_pcap_handle, &pp->header, packet, 
@@ -4564,7 +4569,7 @@ void readdump_libpcap(pcap_t *handle) {
 		}
 		int voippacket = 0;
 		if(!opt_mirroronly) {
-			process_packet(packet_counter,
+			process_packet(false, packet_counter,
 				       ppd.header_ip->saddr, htons(ppd.header_udp->source), ppd.header_ip->daddr, htons(ppd.header_udp->dest), 
 				       ppd.data, ppd.datalen, ppd.data - (char*)packet, 
 				       handle, header, packet, 
@@ -4866,7 +4871,7 @@ void TcpReassemblySip::complete(tcp_stream2_s *stream, u_int hash) {
 		header_ip = stream->header_ip;
 	}
 	if(preProcessPacket && opt_enable_preprocess_packet == 2) {
-		preProcessPacket->push(stream->packet_number,
+		preProcessPacket->push(false, stream->packet_number,
 				       stream->saddr, stream->source, stream->daddr, stream->dest, 
 				       (char*)newdata, newlen, stream->dataoffset,
 				       stream->handle, &header, newpacket, true,
@@ -4886,7 +4891,7 @@ void TcpReassemblySip::complete(tcp_stream2_s *stream, u_int hash) {
 	} else {
 		int tmp_was_rtp;
 		int tmp_voippacket;
-		process_packet(stream->packet_number,
+		process_packet(false, stream->packet_number,
 			       stream->saddr, stream->source, stream->daddr, stream->dest, 
 			       (char*)newdata, newlen, stream->dataoffset,
 			       stream->handle, &header, newpacket, 
@@ -4940,7 +4945,7 @@ PreProcessPacket::~PreProcessPacket() {
 	delete [] this->qring;
 }
 
-void PreProcessPacket::push(u_int64_t packet_number,
+void PreProcessPacket::push(bool is_ssl, u_int64_t packet_number,
 			    unsigned int saddr, int source, unsigned int daddr, int dest, 
 			    char *data, int datalen, int dataoffset,
 			    pcap_t *handle, pcap_pkthdr *header, const u_char *packet, bool packetDelete,
@@ -4965,6 +4970,7 @@ void PreProcessPacket::push(u_int64_t packet_number,
 	}
 	packet_parse_s *_parse_packet = this->qring[this->writeit];
 	packet_s *_packet = &_parse_packet->packet;
+	_packet->is_ssl = is_ssl;
 	_packet->packet_number = packet_number;
 	_packet->saddr = saddr;
 	_packet->source = source;
@@ -5033,7 +5039,7 @@ void *PreProcessPacket::outThreadFunction() {
 			int voippacket = 0;
 			packet_parse_s *_parse_packet = this->qring[this->readit];
 			packet_s *_packet = &_parse_packet->packet;
-			process_packet(_packet->packet_number,
+			process_packet(_packet->is_ssl, _packet->packet_number,
 				       _packet->saddr, _packet->source, _packet->daddr, _packet->dest, 
 				       _packet->data, _packet->datalen, _packet->dataoffset,
 				       _packet->handle, &_packet->header, _packet->packet, 
@@ -5218,7 +5224,7 @@ void PreProcessPacket::sipProcess_createCall(packet_parse_s *parse_packet) {
 	if(!parse_packet->call) {
 		if(parse_packet->sip_method == INVITE || parse_packet->sip_method == MESSAGE || 
 		   (opt_sip_register && parse_packet->sip_method == REGISTER)) {
-			parse_packet->call_created = new_invite_register(parse_packet->sip_method, _packet->data, parse_packet->sipDataLen, &_packet->header, (char*)parse_packet->callid.c_str(), 
+			parse_packet->call_created = new_invite_register(false, parse_packet->sip_method, _packet->data, parse_packet->sipDataLen, &_packet->header, (char*)parse_packet->callid.c_str(), 
 									 _packet->saddr, _packet->daddr, _packet->source, _packet->dest,
 									 _packet->handle, _packet->dlt, _packet->sensor_id,
 									 &parse_packet->detectUserAgent,

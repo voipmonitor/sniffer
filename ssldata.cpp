@@ -23,7 +23,7 @@ extern vector<string> decrypt_ssl(char *data, unsigned int datalen, unsigned int
 vector<string> decrypt_ssl(char *data, unsigned int datalen, unsigned int saddr, unsigned int daddr, int sport, int dport) { vector<string> nothing; return nothing;}
 #endif
 
-extern Call *process_packet(u_int64_t packet_number,
+extern Call *process_packet(bool is_tcp, u_int64_t packet_number,
 			    unsigned int saddr, int source, unsigned int daddr, int dest, 
 			    char *data, int datalen, int dataoffset,
 			    pcap_t *handle, pcap_pkthdr *header, const u_char *packet, 
@@ -160,13 +160,13 @@ void SslData::processData(u_int32_t ip_src, u_int32_t ip_dst,
 						int was_rtp = 0;
 						int voippacket = 0;
 						if(preProcessPacket) {
-							preProcessPacket->push(0, _ip_src, _port_src, _ip_dst, _port_dst, 
+							preProcessPacket->push(true, 0, _ip_src, _port_src, _ip_dst, _port_dst, 
 									       (char*)(udpPacket + ethHeaderLength + sizeof(iphdr2) + sizeof(udphdr2)), rslt_decrypt[i].size(), ethHeaderLength + sizeof(iphdr2) + sizeof(udphdr2),
 									       handle, &header, udpPacket, true, 
 									       false, (iphdr2*)(udpPacket + ethHeaderLength), 1,
 									       NULL, 0, dlt, sensor_id);
 						} else {
-							process_packet(0, _ip_src, _port_src, _ip_dst, _port_dst, 
+							process_packet(true, 0, _ip_src, _port_src, _ip_dst, _port_dst, 
 								       (char*)rslt_decrypt[i].c_str(), rslt_decrypt[i].size(), ethHeaderLength + sizeof(iphdr2) + sizeof(udphdr2),
 								       handle, &header, udpPacket, 
 								       false, &was_rtp, (iphdr2*)(udpPacket + ethHeaderLength), &voippacket, 1,

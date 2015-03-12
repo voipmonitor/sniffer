@@ -119,6 +119,7 @@ struct raws_t {
 class Call {
 public:
 	int type;			//!< type of call, INVITE or REGISTER
+	bool is_ssl;			//!< call was decrypted
 	char chantype;
 	RTP *rtp[MAX_SSRC_PER_CALL];		//!< array of RTP streams
 	volatile int rtplock;
