@@ -90,7 +90,6 @@ typedef void            (*GFunc)                (gpointer       data,
 
 #define FREE(pointer) free(pointer)
 
-
 using namespace std;
 
 #define HAVE_LIBGCRYPT 1
@@ -121,7 +120,7 @@ typedef bool gboolean;
 */
 
 void decrypt_ssl(char *data, unsigned int datalen);
-static inline void ssl_cipher_cleanup(gcry_cipher_hd_t *cipher);
+static void ssl_cipher_cleanup(gcry_cipher_hd_t *cipher);
 int debug = 0;
 void ssl_clean();
 
@@ -1372,6 +1371,7 @@ bytes_to_ep_str_punct(const guint8 *bd, int bd_len, gchar punct)
 		return cur;
 }	  
 
+#if 0
 static const char *
 BAGTYPE(gnutls_pkcs12_bag_type_t x) {
     switch (x) {    
@@ -1385,6 +1385,7 @@ BAGTYPE(gnutls_pkcs12_bag_type_t x) {
         default:                             return "<undefined>";
     }
 }
+#endif
 
 static gint     
 ssl_data_alloc(StringInfo* str, size_t len)
@@ -1555,5 +1556,12 @@ public:
 	}
 
 };
+
+struct session_t {
+        SslDecryptSessionC *session;
+        time_t created_at;
+};
+
+
 #endif
 #endif

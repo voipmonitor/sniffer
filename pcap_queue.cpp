@@ -32,6 +32,10 @@
 #include "cleanspool.h"
 #include "ssldata.h"
 #include "tar.h"
+#include "ssl.h"
+
+extern map<string, session_t*> sessions;
+
 
 
 #define TEST_DEBUG_PARAMS 0
@@ -1120,7 +1124,12 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 		double memoryBufferPerc_trash = buffersControl.getPercUsePBtrash();
 		outStr << fixed;
 		if(!this->isMirrorSender()) {
-			outStr << "calls[" << calltable->calls_listMAP.size() << "][" << calls_counter << "] ";
+			outStr << "calls[" << calltable->calls_listMAP.size() << "][" << calls_counter;
+			if(sessions.size()) {
+				 outStr << "]tls[" << sessions.size() << "] ";
+			} else {
+				 outStr << "] ";
+			}
 			if(opt_ipaccount) {
 				outStr << "ipacc_buffer[" << lengthIpaccBuffer() << "] ";
 			}

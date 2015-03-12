@@ -28,11 +28,6 @@ map<SslDecryptSessionC*, std::queue<string> > ssl_map_hash;
 map<SslDecryptSessionC*, std::queue<string> >::iterator ssl_map_hash_it;
 
 
-struct session_t {
-	SslDecryptSessionC *session;
-	time_t created_at;
-};
-
 map<string, session_t*> sessions;
 map<string, session_t*>::iterator sessions_it;
 
@@ -121,7 +116,7 @@ ssl_get_cipher_by_name(const gchar* name)
 {			  
 	return gcry_cipher_map_name(name);
 }			  
-static inline void
+static void
 ssl_cipher_cleanup(gcry_cipher_hd_t *cipher)
 {	  
 	if ((*cipher) != (gcry_cipher_hd_t)-1)
@@ -1767,6 +1762,7 @@ ssl_generate_pre_master_secret(SslDecryptSessionC *ssl_session,
 	return FALSE;
 }
 
+#if 0
 /**	
  * Load a RSA private key from a PKCS#12 file.
  * @param fp the file that contains the key data.
@@ -1970,7 +1966,7 @@ ssl_load_pkcs12(FILE* fp, const gchar *cert_passwd, string &err) {
 
 	return private_key;
 }
-
+#endif
 
 /* dissects the handshake protocol, filling the tree */
 static void
