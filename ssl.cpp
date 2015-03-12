@@ -24,6 +24,8 @@ static GHashTable		 *ssl_key_hash			 = NULL;
 static ssl_master_key_map_t	   ssl_master_key_map = {NULL, NULL, NULL};
 static ssl_common_options_t ssl_options = { NULL, NULL};
 extern map<d_u_int32_t, string> ssl_ipport;
+map<SslDecryptSessionC*, std::queue<string> > ssl_map_hash;
+map<SslDecryptSessionC*, std::queue<string> >::iterator ssl_map_hash_it;
 
 
 struct session_t {
@@ -1386,7 +1388,7 @@ ssl_data_clone(StringInfo *str)
 
 /** store a known (pre-)master secret into cache */
 static void
-ssl_save_master_key(const char *label, GHashTable *ht, StringInfo *key,
+ssl_save_master_key(SslDecryptSessionC *ssl, const char *label, GHashTable *ht, StringInfo *key,
 					StringInfo *mk)
 {
 	StringInfo *ht_key, *master_secret;
@@ -1406,6 +1408,7 @@ ssl_save_master_key(const char *label, GHashTable *ht, StringInfo *key,
 	ht_key = ssl_data_clone(key);
 	master_secret = ssl_data_clone(mk);
 	g_hash_table_insert(ht, ht_key, master_secret);
+	ssl_map_hash[ssl].push(string((char*)(ht_key->data), (unsigned int)(ht_key->data_len)));
 
 	if (debug) printf("%s inserted (pre-)master secret for %s\n", __FUNCTION__, label);
 	if (debug) ssl_print_string("stored key", ht_key);
@@ -1449,7 +1452,7 @@ ssl_dissect_hnd_new_ses_ticket(char *data, unsigned int datalen, guint32 offset,
 		 * Since the second CCS has already the session key available it will
 		 * just return. To ensure that the session ticket is mapped to a
 		 * master key (from the first CCS), save the ticket here too. */
-		ssl_save_master_key("Session Ticket", session_hash, &ssl->session_ticket, &ssl->master_secret);
+		ssl_save_master_key(ssl, "Session Ticket", session_hash, &ssl->session_ticket, &ssl->master_secret);
 	}
 }
 
@@ -2802,9 +2805,9 @@ ssl_finalize_decryption(SslDecryptSessionC *ssl, ssl_master_key_map_t *mk_map)
 		return;
 	}
 	if(debug) printf("saving ssl_save_master_key\n");
-	ssl_save_master_key("Session ID", mk_map->session,
+	ssl_save_master_key(ssl, "Session ID", mk_map->session,
 						&ssl->session_id, &ssl->master_secret);
-	ssl_save_master_key("Session Ticket", mk_map->session,
+	ssl_save_master_key(ssl, "Session Ticket", mk_map->session,
 						&ssl->session_ticket, &ssl->master_secret);
 }
 
@@ -3087,7 +3090,22 @@ delete_session(packet_info *pinfo) {
 		       pinfo->src2, pinfo->srcport, pinfo->dst2, pinfo->destport);*/
 		sessions_it = sessions.find(hash);
 		if(sessions_it != sessions.end()) {
-			//printf("delete_session:find\n");
+/*
+			ssl_map_hash_it = ssl_map_hash.find(sessions_it->second->session);
+			if(ssl_map_hash_it != ssl_map_hash.end()) {
+				while(ssl_map_hash_it->second.size()) {
+					string key = ssl_map_hash_it->second.front();
+					ssl_map_hash_it->second.pop();
+					StringInfo keys;
+					keys.data = (guchar*)malloc(key.size());
+					keys.data_len = key.size();
+					memcpy(keys.data, key.c_str(), key.size());
+					g_hash_table_remove(ssl_master_key_map.session, &keys);
+					free(keys.data);
+				}
+			}
+*/
+
 			delete sessions_it->second->session;
 			delete sessions_it->second;
 			sessions.erase(sessions_it);
@@ -3277,12 +3295,12 @@ ssl_init() {
 	if (ssl_master_key_map.crandom)
 		g_hash_table_remove_all(ssl_master_key_map.crandom);
 	else
-		ssl_master_key_map.crandom = g_hash_table_new(ssl_hash, ssl_equal);
+		ssl_master_key_map.crandom = g_hash_table_new_full(ssl_hash, ssl_equal, free_stringinfo, free_stringinfo);
 
 	if (ssl_master_key_map.pre_master)
 		g_hash_table_remove_all(ssl_master_key_map.pre_master);
 	else
-		ssl_master_key_map.pre_master = g_hash_table_new(ssl_hash, ssl_equal);
+		ssl_master_key_map.pre_master = g_hash_table_new_full(ssl_hash, ssl_equal, free_stringinfo, free_stringinfo);
 
 	ssl_data_alloc(&ssl_decrypted_data, 32);
 	ssl_data_alloc(&ssl_compressed_data, 32);
