@@ -469,7 +469,9 @@ private:
 		u_char *packet;
 	};
 	struct sThreadDeleteData {
-		sThreadDeleteData(PcapQueue_readFromInterface *owner) : queue(100000, 1000, 1000) {
+		sThreadDeleteData(PcapQueue_readFromInterface *owner) : queue(100000, 1000, 1000, 
+									      NULL, true, 
+									      __FILE__, __LINE__) {
 			threadHandle = (pthread_t)NULL;
 			threadId = NULL;
 			enableMallocTrim = false;

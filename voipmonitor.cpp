@@ -4277,12 +4277,14 @@ int main(int argc, char *argv[]) {
 				if(rtp_qring_quick == 2) {
 					rtp_threads[i].rtpp_queue_quick_boost = new rqueue_quick_boost<rtp_packet_pcap_queue>(
 											100, rtp_qring_usleep,
-											&terminating);
+											&terminating,
+											__FILE__, __LINE__);
 				} else if(rtp_qring_quick) {
 					rtp_threads[i].rtpp_queue_quick = new rqueue_quick<rtp_packet_pcap_queue>(
 										_rtp_qring_length,
 										100, rtp_qring_usleep,
-										&terminating);
+										&terminating, true,
+										__FILE__, __LINE__);
 				} else {
 					rtp_threads[i].rtpp_queue = new rqueue<rtp_packet_pcap_queue>(_rtp_qring_length / 2, _rtp_qring_length / 5, _rtp_qring_length * 1.5);
 					char rtpp_queue_name[20];

@@ -390,17 +390,18 @@ class rqueue_quick {
 public:
 	rqueue_quick(size_t length,
 		     unsigned int pushUsleep, unsigned int popUsleep,
-		     int *term_rqueue = NULL,
-		     bool binaryBuffer = true) {
+		     int *term_rqueue,
+		     bool binaryBuffer,
+		     const char *__FILE, int __LINE) {
 		this->length = length;
 		this->pushUsleep = pushUsleep;
 		this->popUsleep = popUsleep;
 		this->term_rqueue = term_rqueue;
 		this->binaryBuffer = binaryBuffer;
 		buffer = new typeItem[this->length + 1];
-		autoMemoryType(buffer);
+		setMemoryType(buffer, __FILE, __LINE);
 		free = new v_int[this->length + 1];
-		autoMemoryType((void*)free);
+		setMemoryType((void*)free, __FILE, __LINE);
 		for(size_t i = 0; i < this->length; i++) {
 			free[i] = 1;
 		}
@@ -554,11 +555,12 @@ template<class typeItem>
 class rqueue_quick_boost : public rqueue_quick<typeItem> {
 public:
 	rqueue_quick_boost(unsigned int pushUsleep, unsigned int popUsleep,
-			   int *term_rqueue = NULL) 
+			   int *term_rqueue,
+			   const char *__FILE, int __LINE) 
 	 : rqueue_quick<typeItem>(20000,
 				  pushUsleep, popUsleep,
-				  term_rqueue,
-				  true) {
+				  term_rqueue, true,
+				  __FILE, __LINE) {
 	}
 };
 #endif
