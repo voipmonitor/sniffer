@@ -123,6 +123,7 @@ typedef bool gboolean;
 void decrypt_ssl(char *data, unsigned int datalen);
 static inline void ssl_cipher_cleanup(gcry_cipher_hd_t *cipher);
 int debug = 0;
+void ssl_clean();
 
 /* other defines */
 typedef enum {

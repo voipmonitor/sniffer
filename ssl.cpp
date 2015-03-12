@@ -3090,7 +3090,6 @@ delete_session(packet_info *pinfo) {
 		       pinfo->src2, pinfo->srcport, pinfo->dst2, pinfo->destport);*/
 		sessions_it = sessions.find(hash);
 		if(sessions_it != sessions.end()) {
-/*
 			ssl_map_hash_it = ssl_map_hash.find(sessions_it->second->session);
 			if(ssl_map_hash_it != ssl_map_hash.end()) {
 				while(ssl_map_hash_it->second.size()) {
@@ -3104,8 +3103,6 @@ delete_session(packet_info *pinfo) {
 					free(keys.data);
 				}
 			}
-*/
-
 			delete sessions_it->second->session;
 			delete sessions_it->second;
 			sessions.erase(sessions_it);

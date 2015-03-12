@@ -156,6 +156,7 @@ signal_def signal_data[] =
 
 #ifdef HAVE_LIBGNUTLS
 extern void ssl_init();
+extern void ssl_clean();
 #endif
 
 using namespace std;
@@ -4886,6 +4887,10 @@ int main(int argc, char *argv[]) {
 	}
 	
 	thread_cleanup();
+
+#ifdef HAVE_LIBGNUTLS
+	ssl_clean();
+#endif
 	
 	if(sverb.memory_stat) {
 		cout << "memory stat at end" << endl;
