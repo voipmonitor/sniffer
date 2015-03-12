@@ -660,6 +660,7 @@ int opt_delete_threads = 1;
 u_int64_t rdtsc_by_100ms;
 
 extern map<string, session_t*> sessions;
+extern unsigned int glob_ssl_calls;
 
 #include <stdio.h>
 #include <pthread.h>
