@@ -22,7 +22,7 @@
 #define READ_THREADS_MAX 20
 #define DLT_TYPES_MAX 10
 #define PCAP_QUEUE_NEXT_THREADS_MAX 3
-#define MAX_THREADS_DELETE 2
+#define MAX_THREADS_DELETE 3
 
 class pcap_block_store_queue {
 public:

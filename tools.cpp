@@ -1005,7 +1005,7 @@ void PcapDumper::dump(pcap_pkthdr* header, const u_char *packet, int dlt, bool a
 		   (header->caplen > 0 && header->caplen <= header->len)) {
 			if(!opt_maxpcapsize_mb || this->capsize < opt_maxpcapsize_mb * 1024 * 1024) {
 				this->existsContent = true;
-				__pcap_dump((u_char*)this->handle, header, packet);
+				__pcap_dump((u_char*)this->handle, header, packet, allPackets);
 				extern int opt_packetbuffered;
 				if(opt_packetbuffered) {
 					this->flush();
@@ -2621,10 +2621,11 @@ pcap_dumper_t *__pcap_dump_open(pcap_t *p, const char *fname, int linktype, stri
 	}
 }
 
-void __pcap_dump(u_char *user, const struct pcap_pkthdr *h, const u_char *sp) {
+void __pcap_dump(u_char *user, const struct pcap_pkthdr *h, const u_char *sp, bool allPackets = false) {
 	if(opt_pcap_dump_bufflength) {
 		FileZipHandler *handler = (FileZipHandler*)user;
-		if(h->caplen > 0 && h->caplen <= h->len) {
+		if(allPackets ||
+		   (h->caplen > 0 && h->caplen <= h->len)) {
 			struct pcap_timeval {
 			    bpf_int32 tv_sec;		/* seconds */
 			    bpf_int32 tv_usec;		/* microseconds */

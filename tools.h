@@ -527,7 +527,7 @@ private:
 pcap_dumper_t *__pcap_dump_open(pcap_t *p, const char *fname, int linktype, string *errorString = NULL,
 				int _bufflength = -1 , int _asyncwrite = -1, FileZipHandler::eTypeCompress _typeCompress = FileZipHandler::compress_na,
 				Call *call = NULL, PcapDumper::eTypePcapDump type = PcapDumper::na);
-void __pcap_dump(u_char *user, const struct pcap_pkthdr *h, const u_char *sp);
+void __pcap_dump(u_char *user, const struct pcap_pkthdr *h, const u_char *sp, bool allPackets = false);
 void __pcap_dump_close(pcap_dumper_t *p);
 void __pcap_dump_flush(pcap_dumper_t *p);
 char *__pcap_geterr(pcap_t *p, pcap_dumper_t *pd = NULL);

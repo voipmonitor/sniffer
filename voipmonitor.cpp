@@ -2548,7 +2548,7 @@ int eval_config(string inistr) {
 	}
 	
 	if((value = ini.GetValue("general", "delete_threads", NULL))) {
-		opt_delete_threads = max(atoi(value), 2);
+		opt_delete_threads = max(atoi(value), MAX_THREADS_DELETE);
 	}
 	
 	/*
