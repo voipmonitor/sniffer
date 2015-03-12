@@ -4892,6 +4892,8 @@ int main(int argc, char *argv[]) {
 	ssl_clean();
 #endif
 	
+	_parse_packet_global.free();
+	
 	if(sverb.memory_stat) {
 		cout << "memory stat at end" << endl;
 		printMemoryStat(true);

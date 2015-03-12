@@ -3096,11 +3096,11 @@ delete_session(packet_info *pinfo) {
 					string key = ssl_map_hash_it->second.front();
 					ssl_map_hash_it->second.pop();
 					StringInfo keys;
-					keys.data = (guchar*)malloc(key.size());
+					keys.data = new guchar[key.size()];
 					keys.data_len = key.size();
 					memcpy(keys.data, key.c_str(), key.size());
 					g_hash_table_remove(ssl_master_key_map.session, &keys);
-					free(keys.data);
+					delete [] keys.data;
 				}
 			}
 			delete sessions_it->second->session;

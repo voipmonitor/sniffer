@@ -1236,12 +1236,7 @@ public:
 		timeSync_SIP_HEADERfilter = 0;
 	}
 	~ParsePacket() {
-		if(root) {
-			delete root;
-		}
-		if(rootCheckSip) {
-			delete rootCheckSip;
-		}
+		free();
 	}
 	void setStdParse();
 	void addNode(const char *nodeName, bool isContentLength = false) {
@@ -1299,6 +1294,16 @@ public:
 		contentLength = -1;
 		parseDataPtr = NULL;
 		sip = false;
+	}
+	void free() {
+		if(root) {
+			delete root;
+			root = NULL;
+		}
+		if(rootCheckSip) {
+			delete rootCheckSip;
+			rootCheckSip = NULL;
+		}
 	}
 	void debugData() {
 		root->debugData("");
