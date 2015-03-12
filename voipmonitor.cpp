@@ -80,6 +80,7 @@
 #include "tar.h"
 #include "codec_alaw.h"
 #include "codec_ulaw.h"
+#include "ssl.h"
 
 #if defined(QUEUE_MUTEX) || defined(QUEUE_NONBLOCK)
 extern "C" {
