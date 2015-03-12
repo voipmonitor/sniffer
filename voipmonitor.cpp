@@ -4389,6 +4389,8 @@ int main(int argc, char *argv[]) {
 		sslData = new SslData;
 		tcpReassemblySsl->setDataCallback(sslData);
 		tcpReassemblySsl->setLinkTimeout(opt_ssl_link_timeout);
+		
+		tcpReassemblySsl->setEnableWildLink();
 	}
 	
 	if(sipSendSocket_ip_port) {

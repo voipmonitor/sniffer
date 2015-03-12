@@ -2217,25 +2217,28 @@ void TcpReassembly::_push(pcap_pkthdr *header, iphdr2 *header_ip, u_char *packet
 				this->links[id] = link;
 			}
 		} else if(!this->enableCrazySequence && this->enableWildLink) {
-			if(ENABLE_DEBUG(type, _debug_packet)) {
-				cout << fixed
-				     << " ** NEW LINK "
-				     << getTypeString(true)
-				     << " FORCE: " 
-				     << setw(15) << inet_ntostring(htonl(header_ip->saddr)) << "/" << setw(6) << header_tcp.source
-				     << " -> " 
-				     << setw(15) << inet_ntostring(htonl(header_ip->daddr)) << "/" << setw(6) << header_tcp.dest
-				     << endl;
+			if(type != ssl || 
+			   this->check_port(header_tcp.dest, htonl(header_ip->daddr))) {
+				if(ENABLE_DEBUG(type, _debug_packet)) {
+					cout << fixed
+					     << " ** NEW LINK "
+					     << getTypeString(true)
+					     << " FORCE: " 
+					     << setw(15) << inet_ntostring(htonl(header_ip->saddr)) << "/" << setw(6) << header_tcp.source
+					     << " -> " 
+					     << setw(15) << inet_ntostring(htonl(header_ip->daddr)) << "/" << setw(6) << header_tcp.dest
+					     << endl;
+				}
+				link = new TcpReassemblyLink(this, header_ip->saddr, header_ip->daddr, header_tcp.source, header_tcp.dest,
+							     packet, header_ip,
+							     handle, dlt, sensor_id);
+				if(this->enableCleanupThread) {
+					link->lock_queue();
+				}
+				this->links[id] = link;
+				link->state = TcpReassemblyLink::STATE_SYN_FORCE_OK;
+				link->forceOk = true;
 			}
-			link = new TcpReassemblyLink(this, header_ip->saddr, header_ip->daddr, header_tcp.source, header_tcp.dest,
-						     packet, header_ip,
-						     handle, dlt, sensor_id);
-			if(this->enableCleanupThread) {
-				link->lock_queue();
-			}
-			this->links[id] = link;
-			link->state = TcpReassemblyLink::STATE_SYN_FORCE_OK;
-			link->forceOk = true;
 		} else if(this->enableCrazySequence ||
 			  (this->enableHttpForceInit &&
 			   ((datalen > 5 && !memcmp(data, "POST ", 5)) ||
