@@ -3102,6 +3102,7 @@ delete_session(packet_info *pinfo) {
 					g_hash_table_remove(ssl_master_key_map.session, &keys);
 					free(keys.data);
 				}
+				ssl_map_hash.erase(ssl_map_hash_it);
 			}
 			delete sessions_it->second->session;
 			delete sessions_it->second;
