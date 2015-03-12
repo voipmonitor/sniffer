@@ -2621,7 +2621,7 @@ pcap_dumper_t *__pcap_dump_open(pcap_t *p, const char *fname, int linktype, stri
 	}
 }
 
-void __pcap_dump(u_char *user, const struct pcap_pkthdr *h, const u_char *sp, bool allPackets = false) {
+void __pcap_dump(u_char *user, const struct pcap_pkthdr *h, const u_char *sp, bool allPackets) {
 	if(opt_pcap_dump_bufflength) {
 		FileZipHandler *handler = (FileZipHandler*)user;
 		if(allPackets ||
