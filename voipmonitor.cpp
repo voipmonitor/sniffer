@@ -4725,21 +4725,6 @@ int main(int argc, char *argv[]) {
 
 	regfailedcache->prune(0);
 	
-	for(int i = 0; i < opt_enable_process_rtp_packet; i++) {
-		if(processRtpPacket[i]) {
-			processRtpPacket[i]->terminate();
-			delete processRtpPacket[i];
-		}
-	}
-	if(preProcessPacket) {
-		preProcessPacket->terminate();
-		delete preProcessPacket;
-	}
-	
-	if(sipSendSocket) {
-		delete sipSendSocket;
-	}
-
 	if(tcpReassemblyHttp) {
 		delete tcpReassemblyHttp;
 	}
@@ -4759,6 +4744,21 @@ int main(int argc, char *argv[]) {
 		delete sslData;
 	}
 	
+	for(int i = 0; i < opt_enable_process_rtp_packet; i++) {
+		if(processRtpPacket[i]) {
+			processRtpPacket[i]->terminate();
+			delete processRtpPacket[i];
+		}
+	}
+	if(preProcessPacket) {
+		preProcessPacket->terminate();
+		delete preProcessPacket;
+	}
+	
+	if(sipSendSocket) {
+		delete sipSendSocket;
+	}
+
 	delete [] sipportmatrix;
 	delete [] httpportmatrix;
 	delete [] webrtcportmatrix;
