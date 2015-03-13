@@ -563,8 +563,10 @@ public:
 		this->handle = handle;
 		this->dlt = dlt;
 		this->sensor_id = sensor_id;
-		this->remainData = NULL;
-		this->remainDataLength = 0;
+		for(int i = 0; i < 2; i++) {
+			this->remainData[i] = NULL;
+			this->remainDataLength[i] = 0;
+		}
 	}
 	~TcpReassemblyLink();
 	bool push(TcpReassemblyStream::eDirection direction,
@@ -694,10 +696,10 @@ public:
 	}
 	void cleanup(u_int64_t act_time);
 	void printContent(int level  = 0);
-	void setRemainData(u_char *data, u_int32_t datalen);
-	void clearRemainData();
-	u_char *getRemainData();
-	u_int32_t getRemainDataLength();
+	void setRemainData(u_char *data, u_int32_t datalen, TcpReassemblyDataItem::eDirection direction);
+	void clearRemainData(TcpReassemblyDataItem::eDirection direction);
+	u_char *getRemainData(TcpReassemblyDataItem::eDirection direction);
+	u_int32_t getRemainDataLength(TcpReassemblyDataItem::eDirection direction);
 private:
 	void lock_queue() {
 		while(__sync_lock_test_and_set(&this->_sync_queue, 1));
@@ -747,8 +749,8 @@ private:
 	pcap_t *handle;
 	int dlt; 
 	int sensor_id;
-	u_char *remainData;
-	u_int32_t remainDataLength;
+	u_char *remainData[2];
+	u_int32_t remainDataLength[2];
 friend class TcpReassembly;
 friend class TcpReassemblyStream;
 };

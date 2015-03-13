@@ -743,8 +743,10 @@ TcpReassemblyLink::~TcpReassemblyLink() {
 		delete [] this->ethHeader;
 	}
 	this->unlock_queue();
-	if(this->remainData) {
-		delete remainData;
+	for(int i = 0; i < 2; i++) {
+		if(this->remainData[i]) {
+			delete [] remainData[i];
+		}
 	}
 	if(reassembly->getType() == TcpReassembly::ssl) {
 		end_decrypt_ssl(htonl(ip_src), htonl(ip_dst), port_src, port_dst);
@@ -1842,29 +1844,43 @@ void TcpReassemblyLink::createEthHeader(u_char *packet, iphdr2 *header_ip) {
 	}
 }
 
-void TcpReassemblyLink::setRemainData(u_char *data, u_int32_t datalen) {
-	this->clearRemainData();
-	if(data && datalen) {
-		this->remainData = new u_char[datalen];
-		memcpy(this->remainData, data, datalen);
-		this->remainDataLength = datalen;
+void TcpReassemblyLink::setRemainData(u_char *data, u_int32_t datalen, TcpReassemblyDataItem::eDirection direction) {
+	int index = direction == TcpReassemblyDataItem::DIRECTION_TO_DEST ? 0 :
+		    direction == TcpReassemblyDataItem::DIRECTION_TO_SOURCE ? 1 : -1;
+	if(index >= 0) {
+		this->clearRemainData(direction);
+		if(data && datalen) {
+			this->remainData[index] = new u_char[datalen];
+			memcpy(this->remainData[index], data, datalen);
+			this->remainDataLength[index] = datalen;
+		}
 	}
 }
 
-void TcpReassemblyLink::clearRemainData() {
-	if(remainData) {
-		delete [] remainData;
-		remainData = NULL;
-		remainDataLength = 0;
+void TcpReassemblyLink::clearRemainData(TcpReassemblyDataItem::eDirection direction) {
+	int index = direction == TcpReassemblyDataItem::DIRECTION_TO_DEST ? 0 :
+		    direction == TcpReassemblyDataItem::DIRECTION_TO_SOURCE ? 1 : -1;
+	for(int i = 0; i < 2; i++) {
+		if(index < 0 || index == i) {
+			if(remainData[i]) {
+				delete [] remainData[i];
+				remainData[i] = NULL;
+				remainDataLength[i] = 0;
+			}
+		}
 	}
 }
 
-u_char *TcpReassemblyLink::getRemainData() {
-	return(remainData);
+u_char *TcpReassemblyLink::getRemainData(TcpReassemblyDataItem::eDirection direction) {
+	int index = direction == TcpReassemblyDataItem::DIRECTION_TO_DEST ? 0 :
+		    direction == TcpReassemblyDataItem::DIRECTION_TO_SOURCE ? 1 : -1;
+	return(index >= 0 ? remainData[index] : NULL);
 }
 
-u_int32_t TcpReassemblyLink::getRemainDataLength() {
-	return(remainData ? remainDataLength : 0);
+u_int32_t TcpReassemblyLink::getRemainDataLength(TcpReassemblyDataItem::eDirection direction) {
+	int index = direction == TcpReassemblyDataItem::DIRECTION_TO_DEST ? 0 :
+		    direction == TcpReassemblyDataItem::DIRECTION_TO_SOURCE ? 1 : -1;
+	return(index >= 0 && remainData[index] ? remainDataLength[index] : 0);
 }
 
 

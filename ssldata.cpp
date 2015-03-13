@@ -81,11 +81,11 @@ void SslData::processData(u_int32_t ip_src, u_int32_t ip_dst,
 			u_char *ssl_data;
 			u_int32_t ssl_datalen;
 			bool alloc_ssl_data = false;
-			if(reassemblyLink->getRemainData()) {
-				ssl_datalen = reassemblyLink->getRemainDataLength() + dataItem->getDatalen();
+			if(reassemblyLink->getRemainData(dataItem->getDirection())) {
+				ssl_datalen = reassemblyLink->getRemainDataLength(dataItem->getDirection()) + dataItem->getDatalen();
 				ssl_data = new u_char[ssl_datalen];
-				memcpy(ssl_data, reassemblyLink->getRemainData(), reassemblyLink->getRemainDataLength());
-				memcpy(ssl_data + reassemblyLink->getRemainDataLength(), dataItem->getData(), dataItem->getDatalen());
+				memcpy(ssl_data, reassemblyLink->getRemainData(dataItem->getDirection()), reassemblyLink->getRemainDataLength(dataItem->getDirection()));
+				memcpy(ssl_data + reassemblyLink->getRemainDataLength(dataItem->getDirection()), dataItem->getData(), dataItem->getDatalen());
 				alloc_ssl_data = true;
 			} else {
 				ssl_data = dataItem->getData();
@@ -181,22 +181,22 @@ void SslData::processData(u_int32_t ip_src, u_int32_t ip_dst,
 			}
 			if(pass == 0) {
 				bool ok = false;
-				if(reassemblyLink->getRemainDataLength() &&
+				if(reassemblyLink->getRemainDataLength(dataItem->getDirection()) &&
 				   !ssl_data_offset &&
 				   _checkOkSslData(dataItem->getData(), dataItem->getDatalen())) {
 					// next pass with ignore remainData
-					reassemblyLink->clearRemainData();
+					reassemblyLink->clearRemainData(dataItem->getDirection());
 					if(debugSave) {
 						cout << "SKIP REMAIN DATA" << endl;
 					}
 				} else {
 					if(ssl_data_offset < ssl_datalen) {
-						reassemblyLink->setRemainData(ssl_data + ssl_data_offset, ssl_datalen - ssl_data_offset);
+						reassemblyLink->setRemainData(ssl_data + ssl_data_offset, ssl_datalen - ssl_data_offset, dataItem->getDirection());
 						if(debugSave) {
 							cout << "REMAIN DATA LENGTH: " << ssl_datalen - ssl_data_offset << endl;
 						}
 					} else {
-						reassemblyLink->clearRemainData();
+						reassemblyLink->clearRemainData(dataItem->getDirection());
 					}
 					ok = true;
 				}
