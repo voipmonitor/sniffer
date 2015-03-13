@@ -73,7 +73,7 @@ void TcpReassemblyStream::push(TcpReassemblyStream_packet packet) {
 
 int TcpReassemblyStream::ok(bool crazySequence, bool enableSimpleCmpMaxNextSeq, u_int32_t maxNextSeq,
 			    bool enableCheckCompleteContent, TcpReassemblyStream *prevHttpStream, bool enableDebug,
-			    int forceFirstSeq, bool ignorePsh) {
+			    u_int32_t forceFirstSeq, bool ignorePsh) {
 	if(this->is_ok || 
 	   (link->reassembly->getType() != TcpReassembly::http && counterTryOk > 10)) {
 		return(1);
@@ -97,6 +97,9 @@ int TcpReassemblyStream::ok(bool crazySequence, bool enableSimpleCmpMaxNextSeq, 
 					  forceFirstSeq :
 					  (crazySequence ? this->min_seq : this->first_seq));
 		iter_var = this->queue.find(seq);
+		while(iter_var != this->queue.end() && iter_var->second.isFail()) {
+			++iter_var;
+		}
 		if(iter_var == this->queue.end() && this->ok_packets.size()) {
 			u_int32_t prev_seq = this->ok_packets.back()[0];
 			map<uint32_t, TcpReassemblyStream_packet_var>::iterator temp_iter;
@@ -1235,7 +1238,7 @@ int TcpReassemblyLink::okQueue_normal(int final, bool enableDebug,
 		}
 		int rslt = this->queue[i]->ok(false, 
 					      i == size - 1 && (finOrRst || final == 2), 
-					      i == size - 1 ? 0 : this->queue[i + 1]->max_next_seq,
+					      i == size - 1 ? 0 : this->queue[i]->max_next_seq,
 					      checkCompleteContent, NULL, enableDebug,
 					      this->forceOk && i == 0 ? this->queue[0]->min_seq : 0, 
 					      ignorePsh);

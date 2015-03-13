@@ -368,6 +368,15 @@ public:
 		}
 		return(0);
 	}
+	u_int32_t isFail() {
+		map<uint32_t, TcpReassemblyStream_packet>::iterator iter;
+		for(iter = this->queue.begin(); iter != this->queue.end(); iter++) {
+			if(iter->second.state != TcpReassemblyStream_packet::FAIL) {
+				return(false);
+			}
+		}
+		return(true);
+	}
 private:
 	void unlockPackets() {
 		if(opt_tcpreassembly_pb_lock) {
@@ -439,7 +448,7 @@ public:
 	void push(TcpReassemblyStream_packet packet);
 	int ok(bool crazySequence = false, bool enableSimpleCmpMaxNextSeq = false, u_int32_t maxNextSeq = 0,
 	       bool enableCheckCompleteContent = false, TcpReassemblyStream *prevHttpStream = NULL, bool enableDebug = false,
-	       int forceFirstSeq = 0, bool ignorePsh = false);
+	       u_int32_t forceFirstSeq = 0, bool ignorePsh = false);
 	bool ok2_ec(u_int32_t nextAck, bool enableDebug = false);
 	u_char *complete(u_int32_t *datalen, timeval *time, bool check = false, bool unlockPackets = true,
 			 size_t startIndex = 0, size_t *endIndex = NULL, bool breakIfPsh = false);

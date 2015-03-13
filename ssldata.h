@@ -19,9 +19,13 @@ public:
 				length = 0;
 			}
 		}
+		bool isOk() {
+			return(content_type >= 20 && content_type <= 23 &&
+			       version == 0x301);
+		}
 		u_int8_t content_type;
 		u_int16_t version;
-		u_int32_t length;
+		u_int16_t length;
 	};
 public:
 	SslData();
@@ -41,6 +45,7 @@ private:
 
 bool checkOkSslData(u_char *data, u_int32_t datalen);
 u_int32_t _checkOkSslData(u_char *data, u_int32_t datalen);
+bool checkOkSslHeader(u_char *data, u_int32_t datalen);
 bool isSslIpPort(u_int32_t ip, u_int16_t port);
 
 

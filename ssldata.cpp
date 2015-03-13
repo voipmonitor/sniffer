@@ -95,7 +95,7 @@ void SslData::processData(u_int32_t ip_src, u_int32_t ip_dst,
 			while(ssl_data_offset < ssl_datalen &&
 			      ssl_datalen - ssl_data_offset >= 5) {
 				SslHeader header(ssl_data + ssl_data_offset, ssl_datalen - ssl_data_offset);
-				if(header.length && header.length + 5 <= ssl_datalen - ssl_data_offset) {
+				if(header.isOk() && header.length && (u_int32_t)header.length + 5 <= ssl_datalen - ssl_data_offset) {
 					if(debugSave) {
 						cout << "SSL HEADER "
 						     << "content type: " << (int)header.content_type << " / "
@@ -110,23 +110,26 @@ void SslData::processData(u_int32_t ip_src, u_int32_t ip_dst,
 					vector<string> rslt_decrypt = decrypt_ssl((char*)(ssl_data + ssl_data_offset), header.length + 5, htonl(_ip_src), htonl(_ip_dst), _port_src, _port_dst);
 					for(size_t i = 0; i < rslt_decrypt.size(); i++) {
 						if(debugSave) {
-
-                                                string out(rslt_decrypt[i], 0,100);
-                                                std::replace( out.begin(), out.end(), '\n', ' ');
-                                                std::replace( out.begin(), out.end(), '\r', ' ');
-                                                    
-                                                unsigned long s_addr = _ip_src;
-                                                unsigned long d_addr = _ip_dst;
-                                                char src[INET_ADDRSTRLEN];
-                                                char dst[INET_ADDRSTRLEN];
-                                                inet_ntop(AF_INET, &s_addr, src, INET_ADDRSTRLEN);
-                                                inet_ntop(AF_INET, &d_addr, dst, INET_ADDRSTRLEN);
-                                       
-                                               
-                                                if(out.length())
-                                                        cout << "TS: " << dataItem->getTime().tv_sec << "." << dataItem->getTime().tv_usec << " " << src << " -> " << dst << " SIP " << rslt_decrypt[i].length() << " " << out << endl;
+							string out(rslt_decrypt[i], 0,100);
+							std::replace( out.begin(), out.end(), '\n', ' ');
+							std::replace( out.begin(), out.end(), '\r', ' ');
+							    
+							unsigned long s_addr = _ip_src;
+							unsigned long d_addr = _ip_dst;
+							char src[INET_ADDRSTRLEN];
+							char dst[INET_ADDRSTRLEN];
+							inet_ntop(AF_INET, &s_addr, src, INET_ADDRSTRLEN);
+							inet_ntop(AF_INET, &d_addr, dst, INET_ADDRSTRLEN);
+					       
+						       
+							if(out.length()) {
+								cout << "TS: " << dataItem->getTime().tv_sec << "." << dataItem->getTime().tv_usec << " " << src << " -> " << dst << " SIP " << rslt_decrypt[i].length() << " " << out << endl;
+							}
 
 							cout << "DECRYPT DATA: " << rslt_decrypt[i] << endl;
+						}
+						if(sverb.ssldecode) {
+							cout << rslt_decrypt[i];
 						}
 						if(!ethHeader || !ethHeaderLength) {
 							continue;
@@ -190,7 +193,8 @@ void SslData::processData(u_int32_t ip_src, u_int32_t ip_dst,
 						cout << "SKIP REMAIN DATA" << endl;
 					}
 				} else {
-					if(ssl_data_offset < ssl_datalen) {
+					if(ssl_data_offset < ssl_datalen &&
+					   checkOkSslHeader(ssl_data + ssl_data_offset, ssl_datalen - ssl_data_offset)) {
 						reassemblyLink->setRemainData(ssl_data + ssl_data_offset, ssl_datalen - ssl_data_offset, dataItem->getDirection());
 						if(debugSave) {
 							cout << "REMAIN DATA LENGTH: " << ssl_datalen - ssl_data_offset << endl;
@@ -238,7 +242,15 @@ u_int32_t _checkOkSslData(u_char *data, u_int32_t datalen) {
 		return(false);
 	}
 	SslData::SslHeader header(data, datalen);
-	return(header.length && header.length + 5 <= datalen ? header.length + 5: 0);
+	return(header.length && (u_int32_t)header.length + 5 <= datalen ? header.length + 5 : 0);
+}
+
+bool checkOkSslHeader(u_char *data, u_int32_t datalen) {
+	if(!data || datalen < 5) {
+		return(false);
+	}
+	SslData::SslHeader header(data, datalen);
+	return(header.isOk());
 }
 
 
