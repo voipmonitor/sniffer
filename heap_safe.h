@@ -179,7 +179,8 @@ inline void* setMemoryType(void *ptr, const char *memory_type1, int memory_type2
 	if(HeapSafeCheck & _HeapSafeErrorBeginEnd && sverb.memory_stat && ptr) {
 		sHeapSafeMemoryControlBlock *ptr_beginMemoryBlock = (sHeapSafeMemoryControlBlock*)((unsigned char*)ptr - sizeof(sHeapSafeMemoryControlBlock));
 		if(HEAPSAFE_CMP_BEGIN_MEMORY_CONTROL_BLOCK(ptr_beginMemoryBlock->stringInfo)) {
-			extern u_int64_t memoryStat[100000];
+			extern volatile u_int64_t memoryStat[10000];
+			extern volatile u_int64_t memoryStatOther;
 			extern u_int32_t memoryStatLength;
 			extern std::map<std::string, u_int32_t> memoryStatType;
 			extern volatile int memoryStat_sync;
@@ -199,12 +200,14 @@ inline void* setMemoryType(void *ptr, const char *memory_type1, int memory_type2
 			}
 			__sync_lock_release(&memoryStat_sync);
 			__sync_fetch_and_add(&memoryStat[ptr_beginMemoryBlock->memory_type], ptr_beginMemoryBlock->length);
+			__sync_fetch_and_sub(&memoryStatOther, ptr_beginMemoryBlock->length);
 		}
 	}
 	return(ptr);
 }
 
 std::string getMemoryStat(bool all = false);
+std::string addThousandSeparators(u_int64_t num);
 void printMemoryStat(bool all = false);
 
 

@@ -5,8 +5,11 @@
 #include "heap_safe.h"
 
 
+extern sVerbose sverb;
+
 unsigned int HeapSafeCheck = 0;
-u_int64_t memoryStat[100000];
+volatile u_int64_t memoryStat[10000];
+volatile int64_t memoryStatOther;
 u_int32_t memoryStatLength = 0;
 std::map<std::string, u_int32_t> memoryStatType;
 volatile int memoryStat_sync;
@@ -67,6 +70,9 @@ inline void * heapsafe_alloc(size_t sizeOfObject) {
 		HEAPSAFE_COPY_END_MEMORY_CONTROL_BLOCK(end->stringInfo);
 		end->length = sizeOfObject;
 		end->memory_type = 0;
+		if(sverb.memory_stat) {
+			__sync_add_and_fetch(&memoryStatOther, sizeOfObject);
+		}
 	}
 	return((unsigned char*)pointerToObject +
 	       (HeapSafeCheck & _HeapSafeErrorBeginEnd ?
@@ -99,8 +105,12 @@ inline void heapsafe_free(void *pointerToObject) {
 			} else if(HeapSafeCheck & _HeapSafeErrorFillFF) {
 				memset(pointerToObject, 0xFF, beginMemoryBlock->length);
 			}
-			if(beginMemoryBlock->memory_type) {
-				__sync_fetch_and_sub(&memoryStat[beginMemoryBlock->memory_type], beginMemoryBlock->length);
+			if(sverb.memory_stat) {
+				if(beginMemoryBlock->memory_type) {
+					__sync_fetch_and_sub(&memoryStat[beginMemoryBlock->memory_type], beginMemoryBlock->length);
+				} else {
+					__sync_fetch_and_sub(&memoryStatOther, beginMemoryBlock->length);
+				}
 			}
 		} else if(HeapSafeCheck & _HeapSafeErrorFreed&&
 			  HEAPSAFE_CMP_FREED_MEMORY_CONTROL_BLOCK(beginMemoryBlock->stringInfo)) {
@@ -211,33 +221,42 @@ void HeapSafeMemsetError(const char *errorString, const char *file, unsigned int
 }
 
 std::string getMemoryStat(bool all) {
-	extern sVerbose sverb;
 	std::ostringstream outStr;
 	if(HeapSafeCheck & _HeapSafeErrorBeginEnd && sverb.memory_stat) {
 		while(__sync_lock_test_and_set(&memoryStat_sync, 1));
 		std::map<std::string, u_int32_t>::iterator iter = memoryStatType.begin();
 		while(iter != memoryStatType.end()) {
 			if(memoryStat[iter->second] > (!all && sverb.memory_stat_ignore_limit ? (unsigned)sverb.memory_stat_ignore_limit : 0)) {
-				char length_str[20];
-				sprintf(length_str, "%lu", memoryStat[iter->second]);
-				std::string length;
-				while(strlen(length_str) > 3) {
-					length = std::string(length_str + strlen(length_str) - 3) + " " + length;
-					length_str[strlen(length_str) - 3] = 0;
-				}
-				length = std::string(length_str) + " " + length;
 				outStr << std::fixed
 				       << std::left << std::setw(30) << iter->first << " : " 
-				       << std::right <<  std::setw(16) << length
+				       << std::right <<  std::setw(16) << addThousandSeparators(memoryStat[iter->second])
 				       << std::endl;
 			}
 			++iter;
 		}
 		__sync_lock_release(&memoryStat_sync);
+		if(memoryStatOther > (!all && sverb.memory_stat_ignore_limit ? (unsigned)sverb.memory_stat_ignore_limit : 0)) {
+			outStr << std::fixed
+			       << std::left << std::setw(30) << "other" << " : " 
+			       << std::right <<  std::setw(16) << addThousandSeparators(memoryStatOther)
+			       << std::endl;
+		}
 		return(outStr.str());
 	} else {
 		return("memory stat is not activated\n");
 	}
+}
+
+std::string addThousandSeparators(u_int64_t num) {
+	char length_str[20];
+	sprintf(length_str, "%lu", num);
+	std::string length;
+	while(strlen(length_str) > 3) {
+		length = std::string(length_str + strlen(length_str) - 3) + " " + length;
+		length_str[strlen(length_str) - 3] = 0;
+	}
+	length = std::string(length_str) + " " + length;
+	return(length);
 }
 
 void printMemoryStat(bool all) {
