@@ -98,7 +98,8 @@ inline void * heapsafe_alloc(size_t sizeOfObject) {
 						beginEx->memory_type_other = ++memoryStatOtherLength;;
 						memoryStatOtherType[sum_stack_addr] = beginEx->memory_type_other;
 						
-						char trace_string[max_use_trace_size * 100] = "";
+						char trace_string[max_use_trace_size * 100];
+						trace_string[0] = '\0';
 						
 						char **messages = backtrace_symbols(stack_addr, trace_size);
 						
