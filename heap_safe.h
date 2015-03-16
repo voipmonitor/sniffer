@@ -18,6 +18,8 @@
 #include <string.h>
 #include <syslog.h>
 
+#include "tools_inline.h"
+
 
 #define HEAPSAFE_ALLOC_RESERVE			20
 #define HEAPSAFE_SAFE_ALLOC_RESERVE		4
@@ -51,6 +53,9 @@
 	(stringInfo[0] == HEAPSAFE_END_MEMORY_CONTROL_BLOCK[0] && \
 	 stringInfo[1] == HEAPSAFE_END_MEMORY_CONTROL_BLOCK[1] && \
 	 stringInfo[2] == HEAPSAFE_END_MEMORY_CONTROL_BLOCK[2])
+
+#define MCB_STACK  HeapSafeCheck & _HeapSafeStack
+#define SIZEOF_MCB (MCB_STACK ? sizeof(sHeapSafeMemoryControlBlockEx) : sizeof(sHeapSafeMemoryControlBlock))
  
 
 enum eHeapSafeErrors {
@@ -61,13 +66,18 @@ enum eHeapSafeErrors {
 	_HeapSafeErrorAllocReserve    =  16,
 	_HeapSafeErrorFillFF          =  32,
 	_HeapSafeErrorInHeap          =  64,
-	_HeapSafeSafeReserve          = 128
+	_HeapSafeSafeReserve          = 128,
+	_HeapSafeStack                = 256
 };
 
 struct sHeapSafeMemoryControlBlock {
 	char stringInfo[3];
 	u_int32_t length;
 	u_int32_t memory_type;
+};
+
+struct sHeapSafeMemoryControlBlockEx : public sHeapSafeMemoryControlBlock {
+	u_int32_t memory_type_other;
 };
 
 
@@ -84,7 +94,7 @@ inline void *memcpy_heapsafe(void *destination, const void *destination_begin, c
 		sHeapSafeMemoryControlBlock *destination_beginMemoryBlock;
 		u_int32_t destinationLength = 0;
 		if(destination_begin) {
-			destination_beginMemoryBlock = (sHeapSafeMemoryControlBlock*)((unsigned char*)destination_begin - sizeof(sHeapSafeMemoryControlBlock));
+			destination_beginMemoryBlock = (sHeapSafeMemoryControlBlock*)((unsigned char*)destination_begin - SIZEOF_MCB);
 			if(HEAPSAFE_CMP_BEGIN_MEMORY_CONTROL_BLOCK(destination_beginMemoryBlock->stringInfo)) {
 				destinationLength = destination_beginMemoryBlock->length;
 			} else {
@@ -95,7 +105,7 @@ inline void *memcpy_heapsafe(void *destination, const void *destination_begin, c
 		sHeapSafeMemoryControlBlock *source_beginMemoryBlock;
 		u_int32_t sourceLength = 0;
 		if(source_begin) {
-			source_beginMemoryBlock = (sHeapSafeMemoryControlBlock*)((unsigned char*)source_begin - sizeof(sHeapSafeMemoryControlBlock));
+			source_beginMemoryBlock = (sHeapSafeMemoryControlBlock*)((unsigned char*)source_begin - SIZEOF_MCB);
 			if(HEAPSAFE_CMP_BEGIN_MEMORY_CONTROL_BLOCK(source_beginMemoryBlock->stringInfo)) {
 				sourceLength = source_beginMemoryBlock->length;
 			} else {
@@ -139,7 +149,7 @@ inline void *memset_heapsafe(void *ptr, void *ptr_begin, int value, size_t lengt
 		sHeapSafeMemoryControlBlock *ptr_beginMemoryBlock;
 		u_int32_t ptrLength = 0;
 		if(ptr_begin) {
-			ptr_beginMemoryBlock = (sHeapSafeMemoryControlBlock*)((unsigned char*)ptr_begin - sizeof(sHeapSafeMemoryControlBlock));
+			ptr_beginMemoryBlock = (sHeapSafeMemoryControlBlock*)((unsigned char*)ptr_begin - SIZEOF_MCB);
 			if(HEAPSAFE_CMP_BEGIN_MEMORY_CONTROL_BLOCK(ptr_beginMemoryBlock->stringInfo)) {
 				ptrLength = ptr_beginMemoryBlock->length;
 			} else {
@@ -177,20 +187,27 @@ inline void* setMemoryType(void *ptr, const char *memory_type1, int memory_type2
 	extern unsigned int HeapSafeCheck;
 	extern sVerbose sverb;
 	if(HeapSafeCheck & _HeapSafeErrorBeginEnd && sverb.memory_stat && ptr) {
-		sHeapSafeMemoryControlBlock *ptr_beginMemoryBlock = (sHeapSafeMemoryControlBlock*)((unsigned char*)ptr - sizeof(sHeapSafeMemoryControlBlock));
+		sHeapSafeMemoryControlBlock *ptr_beginMemoryBlock = (sHeapSafeMemoryControlBlock*)((unsigned char*)ptr - SIZEOF_MCB);
 		if(HEAPSAFE_CMP_BEGIN_MEMORY_CONTROL_BLOCK(ptr_beginMemoryBlock->stringInfo)) {
+			extern volatile u_int16_t threadRecursion[65536];
+			unsigned int tid = 0;
+			if(MCB_STACK) {
+				tid = get_unix_tid();
+				__sync_fetch_and_add(&threadRecursion[tid], 1);
+			}
 			extern volatile u_int64_t memoryStat[10000];
-			extern volatile u_int64_t memoryStatOther;
+			extern volatile u_int64_t memoryStatOther[10000];
+			extern volatile int64_t memoryStatOtherSum;
 			extern u_int32_t memoryStatLength;
-			extern std::map<std::string, u_int32_t> memoryStatType;
-			extern volatile int memoryStat_sync;
-			while(__sync_lock_test_and_set(&memoryStat_sync, 1));
 			std::string memory_type = memory_type1;
 			if(memory_type2) {
 				char memory_type2_str[20];
 				sprintf(memory_type2_str, " %i", memory_type2);
 				memory_type.append(memory_type2_str);
 			}
+			extern std::map<std::string, u_int32_t> memoryStatType;
+			extern volatile int memoryStat_sync;
+			while(__sync_lock_test_and_set(&memoryStat_sync, 1));
 			std::map<std::string, u_int32_t>::iterator iter = memoryStatType.find(memory_type);
 			if(iter == memoryStatType.end()) {
 				ptr_beginMemoryBlock->memory_type = ++memoryStatLength;;
@@ -200,7 +217,14 @@ inline void* setMemoryType(void *ptr, const char *memory_type1, int memory_type2
 			}
 			__sync_lock_release(&memoryStat_sync);
 			__sync_fetch_and_add(&memoryStat[ptr_beginMemoryBlock->memory_type], ptr_beginMemoryBlock->length);
-			__sync_fetch_and_sub(&memoryStatOther, ptr_beginMemoryBlock->length);
+			if(MCB_STACK && ((sHeapSafeMemoryControlBlockEx*)ptr_beginMemoryBlock)->memory_type_other) {
+				__sync_fetch_and_sub(&memoryStatOther[((sHeapSafeMemoryControlBlockEx*)ptr_beginMemoryBlock)->memory_type_other], ptr_beginMemoryBlock->length);
+			} else {
+				__sync_fetch_and_sub(&memoryStatOtherSum, ptr_beginMemoryBlock->length);
+			}
+			if(MCB_STACK) {
+				__sync_fetch_and_sub(&threadRecursion[tid], 1);
+			}
 		}
 	}
 	return(ptr);

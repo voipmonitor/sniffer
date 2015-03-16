@@ -2974,12 +2974,18 @@ PcapQueue_readFromFifo *pcapQueueQ;
 
 int main(int argc, char *argv[]) {
 
-	alaw_init();
-	ulaw_init();
-	dsp_init();
- 
+	extern unsigned int HeapSafeCheck;
+	bool memoryStatInArg = false;
+	bool memoryStatExInArg = false;
 	for(int i = 0; i < argc; i++) {
-		extern unsigned int HeapSafeCheck;
+		if(strstr(argv[i], "memory_stat")) {
+			memoryStatInArg = true;
+			if(strstr(argv[i], "memory_stat_ex")) {
+				memoryStatExInArg = true;
+			}
+		}
+	}
+	for(int i = 0; i < argc; i++) {
 		if(strstr(argv[i], "heapreserve")) {
 			HeapSafeCheck = _HeapSafeSafeReserve;
 		} else if(strstr(argv[i], "heapsafe")) {
@@ -2996,8 +3002,18 @@ int main(int argc, char *argv[]) {
 					_HeapSafeErrorAllocReserve |
 					_HeapSafeErrorFillFF;
 		}
+		if((HeapSafeCheck & _HeapSafeErrorBeginEnd) && memoryStatInArg) {
+			if(memoryStatExInArg) {
+				HeapSafeCheck |= _HeapSafeStack;
+			}
+			sverb.memory_stat = true;
+		}
 	}
 
+	alaw_init();
+	ulaw_init();
+	dsp_init();
+ 
 	if(file_exists("/etc/localtime")) {
 		setenv("TZ", "/etc/localtime", 1);
 	}
@@ -3314,8 +3330,10 @@ int main(int argc, char *argv[]) {
 						else if(verbparams[i] == "capture_filter")		sverb.capture_filter = 1;
 						else if(verbparams[i].substr(0, 17) == "pcap_stat_period=")
 													sverb.pcap_stat_period = atoi(verbparams[i].c_str() + 17);
-						else if(verbparams[i] == "memory_stat")			sverb.memory_stat = 1;
-						else if(verbparams[i] == "memory_stat_log")		{sverb.memory_stat = 1; sverb.memory_stat_log = 1;}
+						else if(verbparams[i] == "memory_stat" ||
+							verbparams[i] == "memory_stat_ex")		sverb.memory_stat = 1;
+						else if(verbparams[i] == "memory_stat_log" ||
+							verbparams[i] == "memory_stat_ex_log")		{sverb.memory_stat = 1; sverb.memory_stat_log = 1;}
 						else if(verbparams[i].substr(0, 25) == "memory_stat_ignore_limit=")
 													sverb.memory_stat_ignore_limit = atoi(verbparams[i].c_str() + 25);
 						else if(verbparams[i] == "qring_stat")			sverb.qring_stat = 1;
@@ -5153,6 +5171,7 @@ void test_http_dumper() {
 	string ids = "1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20";
 	dumper.dumpData(timestamp_from.c_str(), timestamp_to.c_str(), ids.c_str());
 }
+
 
 void test() {
  

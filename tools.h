@@ -14,7 +14,6 @@
 #include <limits.h>
 #include <list>
 #include <sys/types.h>
-#include <unistd.h>
 #include <iostream>
 #include <zlib.h>
 #ifdef HAVE_LIBLZ4
@@ -28,6 +27,8 @@
 #include "tools_dynamic_buffer.h"
 #include "buffers_control.h"
 #include "heap_safe.h"
+
+#include "tools_inline.h"
 
 using namespace std;
 
@@ -271,7 +272,6 @@ struct tm getDateTime(time_t time);
 struct tm getDateTime(const char *timeStr);
 unsigned int getNumberOfDayToNow(const char *date);
 string getActDateTimeF(bool useT_symbol = false);
-int get_unix_tid(void);
 unsigned long getUptime();
 std::string &trim(std::string &s);
 std::string trim_str(std::string s);

@@ -21,7 +21,6 @@
 #include <net/if.h>
 #include <syslog.h>
 #include <sys/ioctl.h> 
-#include <sys/syscall.h>
 #include <sys/statvfs.h>
 #include <curl/curl.h>
 #include <cerrno>
@@ -1636,29 +1635,6 @@ bool RestartUpgrade::getRestartTempScriptFileName() {
 		return(true);
 	}
 	return(false);
-}
-
-int get_unix_tid(void) {
-	 int ret = -1;
-#ifdef HAVE_PTHREAD_GETTHREADID_NP
-	ret = pthread_getthreadid_np();
-#elif defined(linux)
-	ret = syscall(SYS_gettid);
-#elif defined(__sun)
-	ret = pthread_self();
-#elif defined(__APPLE__)
-	ret = mach_thread_self();
-	mach_port_deallocate(mach_task_self(), ret);
-#elif defined(__NetBSD__)
-	ret = _lwp_self();
-#elif defined(__FreeBSD__)
-	long lwpid;
-	thr_self( &lwpid );
-	ret = lwpid;
-#elif defined(__DragonFly__)
-	ret = lwp_gettid();
-#endif
-	return ret;
 }
 
 std::string pexec(char* cmd, int *exitCode) {

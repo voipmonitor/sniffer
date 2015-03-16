@@ -1,18 +1,25 @@
 #include <iostream>
 #include <sstream>
 #include <iomanip>
+#include <malloc.h>
+#include <execinfo.h>
 
 #include "heap_safe.h"
-
+#include "tools.h"
 
 extern sVerbose sverb;
 
 unsigned int HeapSafeCheck = 0;
 volatile u_int64_t memoryStat[10000];
-volatile int64_t memoryStatOther;
+volatile u_int64_t memoryStatOther[10000];
 u_int32_t memoryStatLength = 0;
+u_int32_t memoryStatOtherLength = 0;
+volatile int64_t memoryStatOtherSum;
 std::map<std::string, u_int32_t> memoryStatType;
+std::map<u_int64_t, u_int32_t> memoryStatOtherType;
+std::map<u_int32_t, string> memoryStatOtherName;
 volatile int memoryStat_sync;
+volatile u_int16_t threadRecursion[65536];
 
 
 inline void *_heapsafe_alloc(size_t sizeOfObject) {
@@ -38,7 +45,7 @@ inline void * heapsafe_alloc(size_t sizeOfObject) {
 	try { 
 		pointerToObject = _heapsafe_alloc(sizeOfObject + HEAPSAFE_ALLOC_RESERVE +
 						  (HeapSafeCheck & _HeapSafeErrorBeginEnd ?
-						    2 * sizeof(sHeapSafeMemoryControlBlock):
+						    (SIZEOF_MCB + sizeof(sHeapSafeMemoryControlBlock)) :
 						    0));
 	}
 	catch(...) { 
@@ -50,14 +57,14 @@ inline void * heapsafe_alloc(size_t sizeOfObject) {
 		error = _HeapSafeErrorNotEnoughMemory;
 	}
 	if(error) {
-		      HeapSafeAllocError(error);
+		HeapSafeAllocError(error);
 		return(pointerToObject);
 	}
 	memset(pointerToObject,
 	       HeapSafeCheck & _HeapSafeErrorFillFF ? 0xFF : 0,
 	       sizeOfObject + HEAPSAFE_ALLOC_RESERVE +
 	       (HeapSafeCheck & _HeapSafeErrorBeginEnd ?
-                2 * sizeof(sHeapSafeMemoryControlBlock):
+                (SIZEOF_MCB + sizeof(sHeapSafeMemoryControlBlock)) :
 		0));
 	if(HeapSafeCheck & _HeapSafeErrorBeginEnd) {
 		sHeapSafeMemoryControlBlock *begin = (sHeapSafeMemoryControlBlock*)pointerToObject;
@@ -66,17 +73,68 @@ inline void * heapsafe_alloc(size_t sizeOfObject) {
 		begin->memory_type = 0;
 		sHeapSafeMemoryControlBlock *end = (sHeapSafeMemoryControlBlock*)
 							((unsigned char*)pointerToObject + sizeOfObject + HEAPSAFE_ALLOC_RESERVE +
-							 sizeof(sHeapSafeMemoryControlBlock));
+							 SIZEOF_MCB);
 		HEAPSAFE_COPY_END_MEMORY_CONTROL_BLOCK(end->stringInfo);
 		end->length = sizeOfObject;
 		end->memory_type = 0;
 		if(sverb.memory_stat) {
-			__sync_add_and_fetch(&memoryStatOther, sizeOfObject);
+			if(MCB_STACK) {
+				unsigned int tid = get_unix_tid();
+				sHeapSafeMemoryControlBlockEx *beginEx = (sHeapSafeMemoryControlBlockEx*)begin;
+				if(!threadRecursion[tid]) {
+					uint skip_top_traces = 2;
+					uint max_use_trace_size = 10;
+					uint max_trace_size = skip_top_traces + max_use_trace_size;
+					void* stack_addr[max_trace_size];
+					uint trace_size = backtrace(stack_addr, max_trace_size);
+					u_int64_t sum_stack_addr = 0;
+					for(uint i = 0; i < trace_size - skip_top_traces; i++) {
+						sum_stack_addr += (u_int64_t)stack_addr[i + skip_top_traces];
+					}
+					while(__sync_lock_test_and_set(&memoryStat_sync, 1));
+					__sync_fetch_and_add(&threadRecursion[tid], 1);
+					std::map<u_int64_t, u_int32_t>::iterator iter = memoryStatOtherType.find(sum_stack_addr);
+					if(iter == memoryStatOtherType.end()) {
+						beginEx->memory_type_other = ++memoryStatOtherLength;;
+						memoryStatOtherType[sum_stack_addr] = beginEx->memory_type_other;
+						
+						char trace_string[max_use_trace_size * 100] = "";
+						
+						char **messages = backtrace_symbols(stack_addr, trace_size);
+						
+						for(uint i = 0; i < trace_size - skip_top_traces; i++) {
+							if(i) {
+								strcat(trace_string, " / ");
+							}
+							if(strstr(messages[i + skip_top_traces], "libstdc++")) {
+								strcat(trace_string, "stdc++");
+							} else if(strstr(messages[i + skip_top_traces], "libc")) {
+								strcat(trace_string, "libc");
+							} else if(strstr(messages[i + skip_top_traces], "voipmonitor()")) {
+								sprintf(trace_string + strlen(trace_string), "%lx", (u_int64_t)stack_addr[i + skip_top_traces]);
+							} else {
+								strcat(trace_string, messages[i + skip_top_traces]);
+							}
+						}
+						memoryStatOtherName[beginEx->memory_type_other] = trace_string;
+					} else {
+						beginEx->memory_type_other = iter->second;
+					}
+					__sync_fetch_and_sub(&threadRecursion[tid], 1);
+					__sync_lock_release(&memoryStat_sync);
+					__sync_fetch_and_add(&memoryStatOther[beginEx->memory_type_other], sizeOfObject);
+				} else {
+					beginEx->memory_type_other = 0;
+					__sync_fetch_and_add(&memoryStatOtherSum, sizeOfObject);
+				}
+			} else {
+				__sync_fetch_and_add(&memoryStatOtherSum, sizeOfObject);
+			}
 		}
 	}
 	return((unsigned char*)pointerToObject +
 	       (HeapSafeCheck & _HeapSafeErrorBeginEnd ?
-		 sizeof(sHeapSafeMemoryControlBlock) :
+		 SIZEOF_MCB :
 		 0));
 }
 
@@ -96,7 +154,7 @@ inline void heapsafe_free(void *pointerToObject) {
 	bool findBeginMemoryBlock = false;
 	sHeapSafeMemoryControlBlock *beginMemoryBlock = NULL;
 	if(HeapSafeCheck & _HeapSafeErrorBeginEnd) {
-		beginMemoryBlock = (sHeapSafeMemoryControlBlock*)((unsigned char*)pointerToObject - sizeof(sHeapSafeMemoryControlBlock));
+		beginMemoryBlock = (sHeapSafeMemoryControlBlock*)((unsigned char*)pointerToObject - SIZEOF_MCB);
 		if(HEAPSAFE_CMP_BEGIN_MEMORY_CONTROL_BLOCK(beginMemoryBlock->stringInfo)) { 
 			findBeginMemoryBlock = true;
 			sHeapSafeMemoryControlBlock *end = (sHeapSafeMemoryControlBlock*)((unsigned char*)pointerToObject + beginMemoryBlock->length + HEAPSAFE_ALLOC_RESERVE);
@@ -108,8 +166,10 @@ inline void heapsafe_free(void *pointerToObject) {
 			if(sverb.memory_stat) {
 				if(beginMemoryBlock->memory_type) {
 					__sync_fetch_and_sub(&memoryStat[beginMemoryBlock->memory_type], beginMemoryBlock->length);
+				} else if(MCB_STACK && ((sHeapSafeMemoryControlBlockEx*)beginMemoryBlock)->memory_type_other) {
+					__sync_fetch_and_sub(&memoryStatOther[((sHeapSafeMemoryControlBlockEx*)beginMemoryBlock)->memory_type_other], beginMemoryBlock->length);
 				} else {
-					__sync_fetch_and_sub(&memoryStatOther, beginMemoryBlock->length);
+					__sync_fetch_and_sub(&memoryStatOtherSum, beginMemoryBlock->length);
 				}
 			}
 		} else if(HeapSafeCheck & _HeapSafeErrorFreed&&
@@ -223,24 +283,44 @@ void HeapSafeMemsetError(const char *errorString, const char *file, unsigned int
 std::string getMemoryStat(bool all) {
 	std::ostringstream outStr;
 	if(HeapSafeCheck & _HeapSafeErrorBeginEnd && sverb.memory_stat) {
+		unsigned int tid = get_unix_tid();
+		__sync_fetch_and_add(&threadRecursion[tid], 1);
 		while(__sync_lock_test_and_set(&memoryStat_sync, 1));
 		std::map<std::string, u_int32_t>::iterator iter = memoryStatType.begin();
 		while(iter != memoryStatType.end()) {
 			if(memoryStat[iter->second] > (!all && sverb.memory_stat_ignore_limit ? (unsigned)sverb.memory_stat_ignore_limit : 0)) {
 				outStr << std::fixed
 				       << std::left << std::setw(30) << iter->first << " : " 
-				       << std::right <<  std::setw(16) << addThousandSeparators(memoryStat[iter->second])
+				       << std::right << std::setw(16) << addThousandSeparators(memoryStat[iter->second])
 				       << std::endl;
 			}
 			++iter;
 		}
-		__sync_lock_release(&memoryStat_sync);
-		if(memoryStatOther > (!all && sverb.memory_stat_ignore_limit ? (unsigned)sverb.memory_stat_ignore_limit : 0)) {
-			outStr << std::fixed
-			       << std::left << std::setw(30) << "other" << " : " 
-			       << std::right <<  std::setw(16) << addThousandSeparators(memoryStatOther)
-			       << std::endl;
+		std::map<u_int64_t, u_int32_t>::iterator iterOther = memoryStatOtherType.begin();
+		while(iterOther != memoryStatOtherType.end()) {
+			if(memoryStatOther[iterOther->second] > (!all && sverb.memory_stat_ignore_limit ? (unsigned)sverb.memory_stat_ignore_limit : 0)) {
+				outStr << std::fixed
+				       << std::left << memoryStatOtherName[iterOther->second] << " : " 
+				       << std::right << addThousandSeparators(memoryStatOther[iterOther->second])
+				       << std::endl;
+			}
+			++iterOther;
 		}
+		__sync_lock_release(&memoryStat_sync);
+		if(memoryStatOtherSum > (!all && sverb.memory_stat_ignore_limit ? (unsigned)sverb.memory_stat_ignore_limit : 0)) {
+			if(MCB_STACK) {
+				outStr << std::fixed
+				       << std::left << "other" << " : " 
+				       << std::right << addThousandSeparators(memoryStatOtherSum)
+				       << std::endl;
+			} else {
+				outStr << std::fixed
+				       << std::left << std::setw(30) << "other" << " : " 
+				       << std::right << std::setw(16) << addThousandSeparators(memoryStatOtherSum)
+				       << std::endl;
+			}
+		}
+		__sync_fetch_and_sub(&threadRecursion[tid], 1);
 		return(outStr.str());
 	} else {
 		return("memory stat is not activated\n");
@@ -260,5 +340,6 @@ std::string addThousandSeparators(u_int64_t num) {
 }
 
 void printMemoryStat(bool all) {
+	malloc_trim(0);
 	std::cout << getMemoryStat(all);
 }
