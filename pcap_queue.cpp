@@ -2660,11 +2660,11 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void *arg, unsigned int 
 					this->pcapDumpLength += header->caplen;
 				}
 			}
-			this->prevThreads[0]->moveReadit();
 			if(opt_udpfrag || opt_pcapdump_all) {
 				res = this->pcapProcess(&header, &packet, &destroy,
 							true, false, false, false);
 				if(res == -1) {
+					this->prevThreads[0]->moveReadit();
 					break;
 				} else if(res == 0) {
 					if(destroy) {
@@ -2673,6 +2673,7 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void *arg, unsigned int 
 					}
 					if(_header) delete _header;
 					if(_packet) delete [] _packet;
+					this->prevThreads[0]->moveReadit();
 					continue;
 				}
 			}
@@ -2682,6 +2683,7 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void *arg, unsigned int 
 				++this->push_counter;
 			}
 			this->indexDefragQring = this->indexDefragQring ? 0 : 1;
+			this->prevThreads[0]->moveReadit();
 			}
 			break;
 		case md1:
@@ -2707,11 +2709,11 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void *arg, unsigned int 
 				}
 			}
 			counter = hpii.counter;
-			this->prevThreads[0]->moveReadit(this->typeThread == md1 ? 0 : 1);
 			if(opt_dup_check) {
 				res = this->pcapProcess(&header, &packet, &destroy,
 							false, true, false, false);
 				if(res == -1) {
+					this->prevThreads[0]->moveReadit(this->typeThread == md1 ? 0 : 1);
 					break;
 				} else if(res == 0) {
 					if(destroy) {
@@ -2720,10 +2722,12 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void *arg, unsigned int 
 					}
 					delete _header;
 					delete [] _packet; 
+					this->prevThreads[0]->moveReadit(this->typeThread == md1 ? 0 : 1);
 					continue;
 				}
 			}
 			this->push(header, packet, 0, this->ppd.md5, 0, counter);
+			this->prevThreads[0]->moveReadit(this->typeThread == md1 ? 0 : 1);
 			}
 			break;
 		case dedup: {
