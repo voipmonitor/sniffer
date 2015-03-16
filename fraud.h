@@ -537,6 +537,7 @@ protected:
 	virtual bool defChangeLocationOk() { return(false); }
 	virtual bool defDestLocation() { return(false); }
 	virtual bool defInterval() { return(false); }
+	virtual bool defOnlyConnected() { return(false); }
 	virtual bool defSuppressRepeatingAlerts() { return(false); }
 protected:
 	eFraudAlertType type;
@@ -554,6 +555,7 @@ protected:
 	u_int32_t intervalLength;
 	u_int32_t intervalLimit;
 	CheckInternational checkInternational;
+	bool onlyConnected;
 	bool suppressRepeatingAlerts;
 	int alertOncePerHours;
 friend class FraudAlerts;
@@ -761,6 +763,7 @@ protected:
 	bool defFilterIp() { return(true); }
 	bool defFilterNumber() { return(true); }
 	bool defDestLocation() { return(true); }
+	bool defOnlyConnected() { return(true); }
 	bool defSuppressRepeatingAlerts() { return(true); }
 private:
 	bool checkOkAlert(const char *src_number, const char *dst_number,

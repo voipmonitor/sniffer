@@ -452,6 +452,7 @@ FraudAlert::FraudAlert(eFraudAlertType type, unsigned int dbId) {
 	typeChangeLocation = _typeLocation_NA;
 	intervalLength = 0;
 	intervalLimit = 0;
+	onlyConnected = false;
 	suppressRepeatingAlerts = false;
 	alertOncePerHours = 0;
 }
@@ -519,6 +520,9 @@ void FraudAlert::loadAlert() {
 	if(defInterval()) {
 		intervalLength = atol(dbRow["fraud_interval_length"].c_str());
 		intervalLimit = atol(dbRow["fraud_interval_limit"].c_str());
+	}
+	if(defOnlyConnected()) {
+		onlyConnected = atoi(dbRow["only_connected"].c_str());
 	}
 	if(defSuppressRepeatingAlerts()) {
 		suppressRepeatingAlerts = atoi(dbRow["fraud_suppress_repeating_alerts"].c_str());
@@ -1070,9 +1074,7 @@ void FraudAlert_d::evCall(sFraudCallInfo *callInfo) {
 	   !this->okFilter(callInfo)) {
 		return;
 	}
-	switch(callInfo->typeCallInfo) {
-	case sFraudCallInfo::typeCallInfo_beginCall:
-		{
+	if(callInfo->typeCallInfo == (this->onlyConnected ? sFraudCallInfo::typeCallInfo_connectCall : sFraudCallInfo::typeCallInfo_beginCall)) {
 		if(this->destLocation.size() &&
 		   (countryCodes->isLocationIn(callInfo->country_code_called_number.c_str(), &this->destLocation) ||
 		    countryCodes->isLocationIn(callInfo->continent_code_called_number.c_str(), &this->destLocation, true)) &&
@@ -1085,10 +1087,6 @@ void FraudAlert_d::evCall(sFraudCallInfo *callInfo) {
 				       callInfo->continent_code_called_number.c_str());
 			this->evAlert(alertInfo);
 		}
-		}
-		break;
-	default:
-		break;
 	}
 }
 
