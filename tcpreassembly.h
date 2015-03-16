@@ -35,6 +35,7 @@ public:
 	TcpReassemblyDataItem(u_char *data, u_int32_t datalen, timeval time, u_int32_t ack = 0, eDirection direction = DIRECTION_NA) {
 		if(data && datalen) {
 			this->data = new u_char[datalen + 1];
+			autoMemoryType(this->data);
 			memcpy_heapsafe(this->data, data, datalen, 
 					__FILE__, __LINE__);
 			this->data[datalen] = 0;
@@ -50,6 +51,7 @@ public:
 	TcpReassemblyDataItem(const TcpReassemblyDataItem &dataItem) {
 		if(dataItem.data && dataItem.datalen) {
 			this->data = new u_char[dataItem.datalen + 1];
+			autoMemoryType(this->data);
 			memcpy_heapsafe(this->data, dataItem.data, dataItem.datalen, 
 					__FILE__, __LINE__);
 			this->data[dataItem.datalen] = 0;
@@ -73,6 +75,7 @@ public:
 		}
 		if(dataItem.data && dataItem.datalen) {
 			this->data = new u_char[dataItem.datalen + 1];
+			autoMemoryType(this->data);
 			memcpy_heapsafe(this->data, dataItem.data, dataItem.datalen, 
 					__FILE__, __LINE__);
 			this->data[dataItem.datalen] = 0;
@@ -93,6 +96,7 @@ public:
 		if(data && datalen) {
 			if(newAlloc) {
 				this->data = new u_char[datalen + 1];
+				autoMemoryType(this->data);
 				memcpy_heapsafe(this->data, data, datalen, 
 						__FILE__, __LINE__);
 				this->data[datalen] = 0;
@@ -254,6 +258,7 @@ public:
 		this->copyFrom(packet);
 		if(!opt_tcpreassembly_pb_lock && packet.data) {
 			this->data = new u_char[packet.datacaplen];
+			autoMemoryType(this->data);
 			memcpy_heapsafe(this->data, packet.data, packet.datacaplen, 
 					__FILE__, __LINE__);
 		}
@@ -270,6 +275,7 @@ public:
 		this->copyFrom(packet);
 		if(!opt_tcpreassembly_pb_lock && packet.data) {
 			this->data = new u_char[packet.datacaplen];
+			autoMemoryType(this->data);
 			memcpy_heapsafe(this->data, packet.data, packet.datacaplen, 
 					__FILE__, __LINE__);
 		}
@@ -286,6 +292,7 @@ public:
 		} else {
 			if(datacaplen) {
 				this->data = new u_char[datacaplen];
+				autoMemoryType(this->data);
 				memcpy_heapsafe(this->data, this->data,
 						data, block_store ? NULL : data,
 						datacaplen, 
