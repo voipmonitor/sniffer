@@ -2660,7 +2660,6 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void *arg, unsigned int 
 					this->pcapDumpLength += header->caplen;
 				}
 			}
-			this->prevThreads[0]->moveReadit();
 			if(opt_udpfrag || opt_pcapdump_all) {
 				res = this->pcapProcess(&header, &packet, &destroy,
 							true, false, false, false);
@@ -2673,6 +2672,7 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void *arg, unsigned int 
 					}
 					if(_header) delete _header;
 					if(_packet) delete [] _packet;
+					this->prevThreads[0]->moveReadit();
 					continue;
 				}
 			}
@@ -2682,6 +2682,7 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void *arg, unsigned int 
 				++this->push_counter;
 			}
 			this->indexDefragQring = this->indexDefragQring ? 0 : 1;
+			this->prevThreads[0]->moveReadit();
 			}
 			break;
 		case md1:
