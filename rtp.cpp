@@ -1334,7 +1334,7 @@ RTP::update_stats() {
 	double tsdiff2;
 	static double mx = 0;
 
-//	printf("seq[%d] lseq[%d] lost[%d], ((s->cycles[%d] + s->max_seq[%d] - (s->base_seq[%d] + 1)) - s->received[%d]);\n", seq, last_seq, lost, s->cycles, s->max_seq, s->base_seq, s->received);
+	//printf("seq[%d] lseq[%d] lost[%d], ((s->cycles[%d] + s->max_seq[%d] - (s->base_seq[%d] + 1)) - s->received[%d]);\n", seq, last_seq, lost, s->cycles, s->max_seq, s->base_seq, s->received);
 
 	Call *owner = (Call*)call_owner;
 
@@ -1361,7 +1361,7 @@ RTP::update_stats() {
 		adelay = abs(int(transit));
 		s->fdelay += transit;
 	}
-//	printf("seq[%u] adelay[%u]\n", seq, adelay);
+	//printf("seq[%u] adelay[%u]\n", seq, adelay);
 
 	/* Jitterbuffer calculation
 	 * J(1) = J(0) + (|D(0,1)| - J(0))/16 */
@@ -1369,8 +1369,10 @@ RTP::update_stats() {
 	double jitter = s->prevjitter + (double)(transit - s->prevjitter)/16. ;
 	s->prevjitter = jitter;
 
+
 	s->avgdelay = ((s->avgdelay * (long double)(s->received) - 1) + transit ) / (double)s->received;
-	stats.avgjitter = ((stats.avgjitter * ( stats.received - 1 )  + jitter )) / (double)s->received;
+	stats.avgjitter = ((stats.avgjitter * ( stats.received - 1 )  + jitter )) / (double)stats.received;
+	//printf("jitter[%f] avg[%llf] [%u] [%u]\n", jitter, stats.avgjitter, stats.received, s->received);
 	if(stats.maxjitter < jitter) stats.maxjitter = jitter;
 	s->lastTimeRec = header->ts;
 	s->lastTimeRecJ = header->ts;
