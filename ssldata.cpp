@@ -84,6 +84,7 @@ void SslData::processData(u_int32_t ip_src, u_int32_t ip_dst,
 			if(reassemblyLink->getRemainData(dataItem->getDirection())) {
 				ssl_datalen = reassemblyLink->getRemainDataLength(dataItem->getDirection()) + dataItem->getDatalen();
 				ssl_data = new u_char[ssl_datalen];
+				autoMemoryType(ssl_data);
 				memcpy(ssl_data, reassemblyLink->getRemainData(dataItem->getDirection()), reassemblyLink->getRemainDataLength(dataItem->getDirection()));
 				memcpy(ssl_data + reassemblyLink->getRemainDataLength(dataItem->getDirection()), dataItem->getData(), dataItem->getDatalen());
 				alloc_ssl_data = true;
@@ -136,6 +137,7 @@ void SslData::processData(u_int32_t ip_src, u_int32_t ip_dst,
 						}
 						u_int32_t udpPacketLength = ethHeaderLength + sizeof(iphdr2) + sizeof(udphdr2) + rslt_decrypt[i].size();
 						u_char *udpPacket = new u_char[udpPacketLength];
+						autoMemoryType(udpPacket);
 						memcpy(udpPacket, ethHeader, ethHeaderLength);
 						iphdr2 iphdr;
 						memset(&iphdr, 0, sizeof(iphdr2));

@@ -83,47 +83,46 @@ inline void * heapsafe_alloc(size_t sizeOfObject) {
 				sHeapSafeMemoryControlBlockEx *beginEx = (sHeapSafeMemoryControlBlockEx*)begin;
 				if(!threadRecursion[tid]) {
 					uint skip_top_traces = 2;
-					uint max_use_trace_size = 10;
+					uint max_use_trace_size = 5;
 					uint max_trace_size = skip_top_traces + max_use_trace_size;
 					void* stack_addr[max_trace_size];
 					uint trace_size = backtrace(stack_addr, max_trace_size);
-					u_int64_t sum_stack_addr = 0;
-					for(uint i = 0; i < trace_size - skip_top_traces; i++) {
-						sum_stack_addr += (u_int64_t)stack_addr[i + skip_top_traces];
-					}
-					while(__sync_lock_test_and_set(&memoryStat_sync, 1));
-					__sync_fetch_and_add(&threadRecursion[tid], 1);
-					std::map<u_int64_t, u_int32_t>::iterator iter = memoryStatOtherType.find(sum_stack_addr);
-					if(iter == memoryStatOtherType.end()) {
-						beginEx->memory_type_other = ++memoryStatOtherLength;;
-						memoryStatOtherType[sum_stack_addr] = beginEx->memory_type_other;
-						
-						char trace_string[max_use_trace_size * 100];
-						trace_string[0] = '\0';
-						
-						char **messages = backtrace_symbols(stack_addr, trace_size);
-						
+					if(trace_size) {
+						u_int64_t sum_stack_addr = 0;
 						for(uint i = 0; i < trace_size - skip_top_traces; i++) {
-							if(i) {
-								strcat(trace_string, " / ");
-							}
-							if(strstr(messages[i + skip_top_traces], "libstdc++")) {
-								strcat(trace_string, "stdc++");
-							} else if(strstr(messages[i + skip_top_traces], "libc")) {
-								strcat(trace_string, "libc");
-							} else if(strstr(messages[i + skip_top_traces], "voipmonitor()")) {
-								sprintf(trace_string + strlen(trace_string), "%lx", (u_int64_t)stack_addr[i + skip_top_traces]);
-							} else {
-								strcat(trace_string, messages[i + skip_top_traces]);
-							}
+							sum_stack_addr += (u_int64_t)stack_addr[i + skip_top_traces];
 						}
-						memoryStatOtherName[beginEx->memory_type_other] = trace_string;
-					} else {
-						beginEx->memory_type_other = iter->second;
+						while(__sync_lock_test_and_set(&memoryStat_sync, 1));
+						__sync_fetch_and_add(&threadRecursion[tid], 1);
+						std::map<u_int64_t, u_int32_t>::iterator iter = memoryStatOtherType.find(sum_stack_addr);
+						if(iter == memoryStatOtherType.end()) {
+							beginEx->memory_type_other = ++memoryStatOtherLength;;
+							memoryStatOtherType[sum_stack_addr] = beginEx->memory_type_other;
+							char trace_string[max_use_trace_size * 100];
+							trace_string[0] = '\0';
+							char **messages = backtrace_symbols(stack_addr, trace_size);
+							for(uint i = 0; i < trace_size - skip_top_traces; i++) {
+								if(i) {
+									strcat(trace_string, " / ");
+								}
+								if(strstr(messages[i + skip_top_traces], "libstdc++")) {
+									strcat(trace_string, "stdc++");
+								} else if(strstr(messages[i + skip_top_traces], "libc")) {
+									strcat(trace_string, "libc");
+								} else if(strstr(messages[i + skip_top_traces], "voipmonitor()")) {
+									sprintf(trace_string + strlen(trace_string), "%lx", (u_int64_t)stack_addr[i + skip_top_traces]);
+								} else {
+									strcat(trace_string, messages[i + skip_top_traces]);
+								}
+							}
+							memoryStatOtherName[beginEx->memory_type_other] = trace_string;
+						} else {
+							beginEx->memory_type_other = iter->second;
+						}
+						__sync_fetch_and_sub(&threadRecursion[tid], 1);
+						__sync_lock_release(&memoryStat_sync);
+						__sync_fetch_and_add(&memoryStatOther[beginEx->memory_type_other], sizeOfObject);
 					}
-					__sync_fetch_and_sub(&threadRecursion[tid], 1);
-					__sync_lock_release(&memoryStat_sync);
-					__sync_fetch_and_add(&memoryStatOther[beginEx->memory_type_other], sizeOfObject);
 				} else {
 					beginEx->memory_type_other = 0;
 					__sync_fetch_and_add(&memoryStatOtherSum, sizeOfObject);
