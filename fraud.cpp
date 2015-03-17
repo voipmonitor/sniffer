@@ -918,9 +918,7 @@ void FraudAlert_chc::evCall(sFraudCallInfo *callInfo) {
 	   !this->okFilter(callInfo)) {
 		return;
 	}
-	switch(callInfo->typeCallInfo) {
-	case sFraudCallInfo::typeCallInfo_beginCall:
-		{
+	if(callInfo->typeCallInfo == (this->onlyConnected ? sFraudCallInfo::typeCallInfo_connectCall : sFraudCallInfo::typeCallInfo_beginCall)) {
 		if(isLocalIP(callInfo->caller_ip) ||
 		   (this->changeLocationOk.size() &&
 		    (countryCodes->isLocationIn(callInfo->country_code_caller_ip.c_str(), &this->changeLocationOk) ||
@@ -956,11 +954,7 @@ void FraudAlert_chc::evCall(sFraudCallInfo *callInfo) {
 					       oldContinent.c_str());
 				this->evAlert(alertInfo);
 			}
-		} 
 		}
-		break;
-	default:
-		break;
 	}
 }
 

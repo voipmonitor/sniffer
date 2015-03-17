@@ -716,6 +716,7 @@ protected:
 	bool defFilterNumber() { return(true); }
 	bool defTypeChangeLocation() { return(true); }
 	bool defChangeLocationOk() { return(true); }
+	bool defOnlyConnected() { return(true); }
 };
 
 class FraudAlert_chcr : public FraudAlert {
