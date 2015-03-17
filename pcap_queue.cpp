@@ -2593,6 +2593,11 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void *arg, unsigned int 
 				res = this->pcap_dispatch(this->pcapHandle);
 			} else */{
 				res = this->pcap_next_ex_iface(this->pcapHandle, &header, &packet);
+				u_char *packet_pcap = packet;
+				unsigned int ip_tot_len = 0;
+				if(header->caplen >= 14 + sizeof(iphdr2)) {
+					ip_tot_len = ((iphdr2*)(packet + 14))->tot_len;
+				}
 				if(res == -1) {
 					break;
 				} else if(res == 0) {
@@ -2616,6 +2621,14 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void *arg, unsigned int 
 					   this->pcapProcess(&header, &packet, &destroy,
 							     false, false, false, false) > 0) {
 						this->push(header, packet, 0, NULL);
+					}
+				}
+				if(ip_tot_len && ip_tot_len != ((iphdr2*)(packet_pcap + 14))->tot_len) {
+					static u_long lastTimeLogErrBuggyKernel = 0;
+					u_long actTime = getTimeMS(header);
+					if(actTime - 1000 > lastTimeLogErrBuggyKernel) {
+						syslog(LOG_ERR, "SUSPICIOUS CHANGE PACKET CONTENT: buggy kernel - contact support@voipmonitor.org");
+						lastTimeLogErrBuggyKernel = actTime;
 					}
 				}
 			}
@@ -3026,6 +3039,8 @@ void* PcapQueue_readFromInterface::threadFunction(void *arg, unsigned int arg2) 
 			bool fetchPacketOk = false;
 			int minThreadTimeIndex = -1;
 			int blockStoreIndex = 0;
+			u_char *packet_pcap = NULL;
+			unsigned int ip_tot_len = 0;
 			if(this->readThreadsCount) {
 				if(this->readThreadsCount == 1) {
 					 minThreadTimeIndex = 0;
@@ -3067,6 +3082,10 @@ void* PcapQueue_readFromInterface::threadFunction(void *arg, unsigned int arg2) 
 				}
 			} else {
 				res = this->pcap_next_ex_iface(this->pcapHandle, &header, &packet);
+				packet_pcap = packet;
+				if(header->caplen >= 14 + sizeof(iphdr2)) {
+					ip_tot_len = ((iphdr2*)(packet + 14))->tot_len;
+				}
 				if(res == -1) {
 					if(opt_pb_read_from_file[0]) {
 						blockStoreBypassQueue->push(blockStore[blockStoreIndex]);
@@ -3102,6 +3121,14 @@ void* PcapQueue_readFromInterface::threadFunction(void *arg, unsigned int arg2) 
 						continue;
 					}
 					offset = this->ppd.header_ip_offset;
+					if(ip_tot_len && ip_tot_len != ((iphdr2*)(packet_pcap + 14))->tot_len) {
+						static u_long lastTimeLogErrBuggyKernel = 0;
+						u_long actTime = getTimeMS(header);
+						if(actTime - 1000 > lastTimeLogErrBuggyKernel) {
+							syslog(LOG_ERR, "SUSPICIOUS CHANGE PACKET CONTENT: buggy kernel - contact support@voipmonitor.org");
+							lastTimeLogErrBuggyKernel = actTime;
+						}
+					}
 				}
 				++sumPacketsCounterIn[0];
 				if(TEST_PACKETS) {
