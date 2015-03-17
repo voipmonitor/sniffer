@@ -1,3 +1,7 @@
+10.1.41 17.03.2015
+==================
+- fix false high RTP jitter average value
+
 10.1.40 10.03.2015
 ==================
 - fix RTP jitter precision 
