@@ -866,8 +866,7 @@ read:
 			usleep(100);
 		}
 		rtplock = 1;
-		rtp[ssrc_n] = new RTP(sensor_id);
-		autoMemoryType(rtp[ssrc_n]);
+		rtp[ssrc_n] = new FILE_LINE RTP(sensor_id);
 		rtp[ssrc_n]->call_owner = this;
 		rtp[ssrc_n]->ssrc_index = ssrc_n; 
 		rtp[ssrc_n]->iscaller = iscaller; 
@@ -1106,8 +1105,7 @@ int convertALAW2WAV(const char *fname1, char *fname3, int maxsamplerate) {
 	file_size1 = ftell(f_in1);
 	fseek(f_in1, 0, SEEK_SET);
  
-	bitstream_buf1 = new unsigned char[file_size1];
-	autoMemoryType(bitstream_buf1);
+	bitstream_buf1 = new FILE_LINE unsigned char[file_size1];
 	if(!bitstream_buf1) {
 		syslog(LOG_ERR,"Cannot malloc bitsream_buf1[%ld]", file_size1);
 		fclose(f_in1);
@@ -1169,8 +1167,7 @@ int convertULAW2WAV(const char *fname1, char *fname3, int maxsamplerate) {
 	file_size1 = ftell(f_in1);
 	fseek(f_in1, 0, SEEK_SET);
  
-	bitstream_buf1 = new unsigned char[file_size1];
-	autoMemoryType(bitstream_buf1);
+	bitstream_buf1 = new FILE_LINE unsigned char[file_size1];
 	if(!bitstream_buf1) {
 		fclose(f_in1);
 		fclose(f_out);
@@ -1224,8 +1221,7 @@ Call::mos_lqo(char *deg, int samplerate) {
 	}
 	float mos, mos_lqo;
 
-	char *tmp = new char[out.length() + 1];
-	autoMemoryType(tmp);
+	char *tmp = new FILE_LINE char[out.length() + 1];
 	char *a = NULL;
 
 	strcpy(tmp, out.c_str());
@@ -3221,8 +3217,7 @@ Calltable::mapAdd(in_addr_t addr, unsigned short port, Call* call, int iscaller,
 	}
 	
 	// adding to hash at first position
-	Ipportnode *node = new Ipportnode;
-	autoMemoryType(node);
+	Ipportnode *node = new FILE_LINE  Ipportnode;
 	memset(node, 0x0, sizeof(Ipportnode));
 	node->call = call;
 	node->iscaller = iscaller;
@@ -3302,8 +3297,7 @@ Calltable::hashAdd(in_addr_t addr, unsigned short port, Call* call, int iscaller
 			}
 			if(!found) {
 				// the same ip/port is shared with some other call which is not yet in node - add it
-				hash_node_call *node_call_new = new hash_node_call;
-				autoMemoryType(node_call_new);
+				hash_node_call *node_call_new = new FILE_LINE  hash_node_call;
 				node_call_new->next = node->calls;
 				node_call_new->call = call;
 				node_call_new->iscaller = iscaller;
@@ -3321,16 +3315,14 @@ Calltable::hashAdd(in_addr_t addr, unsigned short port, Call* call, int iscaller
 
 	// addr / port combination not found - add it to hash at first position
 
-	node_call = new hash_node_call;
-	autoMemoryType(node_call);
+	node_call = new FILE_LINE hash_node_call;
 	node_call->next = NULL;
 	node_call->call = call;
 	node_call->iscaller = iscaller;
 	node_call->is_rtcp = is_rtcp;
 	node_call->is_fax = is_fax;
 
-	node = new hash_node;
-	autoMemoryType(node);
+	node = new FILE_LINE hash_node;
 	memset(node, 0x0, sizeof(hash_node));
 	node->addr = addr;
 	node->port = port;
@@ -3471,8 +3463,7 @@ Call*
 Calltable::add(char *call_id, unsigned long call_id_len, time_t time, u_int32_t saddr, unsigned short port,
 	       pcap_t *handle, int dlt, int sensorId
 ) {
-	Call *newcall = new Call(call_id, call_id_len, time);
-	autoMemoryType(newcall);
+	Call *newcall = new FILE_LINE Call(call_id, call_id_len, time);
 
 	if(handle) {
 		newcall->useHandle = handle;

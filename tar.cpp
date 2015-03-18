@@ -338,17 +338,15 @@ Tar::tar_read(const char *filename, const char *endFilename, u_int32_t recordId,
 	this->readData.filename = filename;
 	this->readData.endFilename = endFilename;
 	this->readData.init(T_BLOCKSIZE * 64);
-	CompressStream *decompressStream = new CompressStream(reg_match(this->pathname.c_str(), "tar\\.gz") ?
-							       CompressStream::gzip :
-							      reg_match(this->pathname.c_str(), "tar\\.xz") ?
-							       CompressStream::lzma :
-							       CompressStream::compress_na,
-							      this->readData.bufferBaseSize, 0);
-	autoMemoryType(decompressStream);
+	CompressStream *decompressStream = new FILE_LINE CompressStream(reg_match(this->pathname.c_str(), "tar\\.gz") ?
+									 CompressStream::gzip :
+									reg_match(this->pathname.c_str(), "tar\\.xz") ?
+									 CompressStream::lzma :
+									 CompressStream::compress_na,
+									this->readData.bufferBaseSize, 0);
 	size_t read_position = 0;
 	size_t read_size;
-	char *read_buffer = new char[T_BLOCKSIZE];
-	autoMemoryType(read_buffer);
+	char *read_buffer = new FILE_LINE char[T_BLOCKSIZE];
 	bool decompressFailed = false;
 	list<u_int64_t> tarPos;
 	if(tarPosString) {
@@ -577,8 +575,7 @@ Tar::tar_read_file_ev(tar_header fileHeader, char *data, u_int32_t pos, u_int32_
 int    
 Tar::initZip() {
 	if(!this->zipStream) {
-		this->zipStream =  new z_stream;
-		autoMemoryType(this->zipStream);
+		this->zipStream =  new FILE_LINE z_stream;
 		this->zipStream->zalloc = Z_NULL;
 		this->zipStream->zfree = Z_NULL;
 		this->zipStream->opaque = Z_NULL;
@@ -588,8 +585,7 @@ Tar::initZip() {
 			return(false);
 		} else {
 			this->zipBufferLength = 8192*4;
-			this->zipBuffer = new char[this->zipBufferLength];
-			autoMemoryType(this->zipBuffer);
+			this->zipBuffer = new FILE_LINE char[this->zipBufferLength];
 		}
 	}
 	return(true);
@@ -643,8 +639,7 @@ Tar::initLzma() {
 		/* initialize xz encoder */
 		//uint32_t preset = LZMA_COMPRESSION_LEVEL | (LZMA_COMPRESSION_EXTREME ? LZMA_PRESET_EXTREME : 0);
 		lzma_stream lzstmp = LZMA_STREAM_INIT;
-		lzmaStream = new lzma_stream;
-		autoMemoryType(lzmaStream);
+		lzmaStream = new FILE_LINE lzma_stream;
 		*lzmaStream = lzstmp;
 
 		int ret_xz = lzma_easy_encoder (this->lzmaStream, lzmalevel, LZMA_CHECK_CRC64);
@@ -653,8 +648,7 @@ Tar::initLzma() {
 			return(false);
 		} else {
 			this->zipBufferLength = 8192*4;
-			this->zipBuffer = new char[this->zipBufferLength];
-			autoMemoryType(this->zipBuffer);
+			this->zipBuffer = new FILE_LINE char[this->zipBufferLength];
 		}
 	}
 	return(true);
@@ -1025,8 +1019,7 @@ TarQueue::write(int qtype, unsigned int time, data_t data) {
 	pthread_mutex_lock(&tarslock);
 	Tar *tar = tars[tar_name.str()];
 	if(!tar) {
-		tar = new Tar;
-		autoMemoryType(tar);
+		tar = new FILE_LINE Tar;
 		lock_okTarPointers();
 		okTarPointers[tar] = glob_last_packet_time;
 		unlock_okTarPointers();
@@ -1544,8 +1537,7 @@ TarQueue::TarQueue() {
 	for(int i = 0; i < maxthreads; i++) {
 		tarthreads[i].tarQueue = this;
 		tarthreads[i].threadEnd = false;
-		tarthreadworker_arg *arg = new tarthreadworker_arg;
-		autoMemoryType(arg);
+		tarthreadworker_arg *arg = new FILE_LINE tarthreadworker_arg;
 		arg->i = i;
 		arg->tq = this;
 		tarthreads[i].cpuPeak = 0;

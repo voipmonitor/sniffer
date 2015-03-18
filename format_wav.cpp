@@ -175,8 +175,7 @@ int wav_mix(char *in1, char *in2, char *out, int samplerate, int swap, int stere
 		fseek(f_in2, 0, SEEK_SET);
 	}
 
-	bitstream_buf1 = new char[file_size1];
-	autoMemoryType(bitstream_buf1);
+	bitstream_buf1 = new FILE_LINE char[file_size1];
 	if(!bitstream_buf1) {
 		if(f_in1 != NULL)
 			fclose(f_in1);
@@ -189,8 +188,7 @@ int wav_mix(char *in1, char *in2, char *out, int samplerate, int swap, int stere
 	}
 
 	if(in2 != NULL) {
-		bitstream_buf2 = new char[file_size2];
-		autoMemoryType(bitstream_buf2);
+		bitstream_buf2 = new FILE_LINE char[file_size2];
 		if(!bitstream_buf2) {
 			fclose(f_in1);
 			fclose(f_in2);

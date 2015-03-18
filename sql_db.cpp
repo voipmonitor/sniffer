@@ -10,6 +10,7 @@
 #include <mysqld_error.h>
 #include <errmsg.h>
 #include <dirent.h>
+#include <math.h>
 
 #include "voipmonitor.h"
 
@@ -1224,8 +1225,7 @@ MySqlStore_process::MySqlStore_process(int id, const char *host, const char *use
 	this->concatLimit = concatLimit;
 	this->enableTransaction = false;
 	this->enableFixDeadlock = false;
-	this->sqlDb = new SqlDb_mysql();
-	autoMemoryType(this->sqlDb);
+	this->sqlDb = new FILE_LINE SqlDb_mysql();
 	this->sqlDb->setConnectParameters(host, user, password, database);
 	if(cloud_host && *cloud_host) {
 		this->sqlDb->setCloudParameters(cloud_host, cloud_token);
@@ -1615,10 +1615,9 @@ MySqlStore_process *MySqlStore::find(int id) {
 		this->unlock_processes();
 		return(process);
 	}
-	process = new MySqlStore_process(id, this->host.c_str(), this->user.c_str(), this->password.c_str(), this->database.c_str(),
-					 this->cloud_host.c_str(), this->cloud_token.c_str(),
-					 this->defaultConcatLimit);
-	autoMemoryType(process);
+	process = new FILE_LINE MySqlStore_process(id, this->host.c_str(), this->user.c_str(), this->password.c_str(), this->database.c_str(),
+						   this->cloud_host.c_str(), this->cloud_token.c_str(),
+						   this->defaultConcatLimit);
 	process->setEnableTerminatingDirectly(this->enableTerminatingDirectly);
 	process->setEnableTerminatingIfEmpty(this->enableTerminatingIfEmpty);
 	process->setEnableTerminatingIfSqlError(this->enableTerminatingIfSqlError);
@@ -1781,15 +1780,13 @@ void MySqlStore::autoloadFromSqlVmExport() {
 SqlDb *createSqlObject() {
 	SqlDb *sqlDb = NULL;
 	if(isSqlDriver("mysql")) {
-		sqlDb = new SqlDb_mysql();
-		autoMemoryType(sqlDb);
+		sqlDb = new FILE_LINE SqlDb_mysql();
 		sqlDb->setConnectParameters(mysql_host, mysql_user, mysql_password, mysql_database);
 		if(cloud_host[0]) {
 			sqlDb->setCloudParameters(cloud_host, cloud_token);
 		}
 	} else if(isSqlDriver("odbc")) {
-		SqlDb_odbc *sqlDb_odbc = new SqlDb_odbc();
-		autoMemoryType(sqlDb_odbc);
+		SqlDb_odbc *sqlDb_odbc = new FILE_LINE SqlDb_odbc();
 		sqlDb_odbc->setOdbcVersion(SQL_OV_ODBC3);
 		sqlDb_odbc->setSubtypeDb(odbc_driver);
 		sqlDb = sqlDb_odbc;
@@ -2286,6 +2283,25 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 	this->query("show tables like 'cdr'");
 	int createdCdrTable = !this->fetchRow();
 	
+	bool existsExtPrecisionBilling = false;
+	for(int i = 0; i < 2 && !existsExtPrecisionBilling; i++) {
+		string table = string("billing") + (i ? "_rule" : "");
+		this->query("show tables like '" + table + "'");
+		if(this->fetchRow()) {
+			this->query("select * from " + table);
+			SqlDb_row row;
+			while(row = this->fetchRow()) {
+				for(int j = 0; j < 2 && !existsExtPrecisionBilling; j++) {
+					double price = atof(row[i ? (j ? "price_peak" : "price") :
+								    (j ? "default_price_peak" : "default_price")].c_str());
+					if(fabs(round(price * 100) - price * 100) >= 0.1) {
+						existsExtPrecisionBilling = true;
+					}
+				}
+			}
+		}
+	}
+	
 	this->query(string(
 	"CREATE TABLE IF NOT EXISTS `cdr") + federatedSuffix + "` (\
 			`ID` int unsigned NOT NULL AUTO_INCREMENT,\
@@ -2416,10 +2432,15 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 				`called_customer_id` int DEFAULT NULL,\
 				`called_reseller_id` char(10) DEFAULT NULL," :
 				"") +
-		       "`price_operator_mult100` int unsigned DEFAULT NULL,\
-			`price_operator_currency_id` tinyint unsigned DEFAULT NULL,\
-			`price_customer_mult100` int unsigned DEFAULT NULL,\
-			`price_customer_currency_id` tinyint unsigned DEFAULT NULL," + 
+			(existsExtPrecisionBilling ?
+				"`price_operator_mult1000000` bigint unsigned DEFAULT NULL,\
+				 `price_operator_currency_id` tinyint unsigned DEFAULT NULL,\
+				 `price_customer_mult1000000` bigint unsigned DEFAULT NULL,\
+				 `price_customer_currency_id` tinyint unsigned DEFAULT NULL," :
+				"`price_operator_mult100` int unsigned DEFAULT NULL,\
+				 `price_operator_currency_id` tinyint unsigned DEFAULT NULL,\
+				 `price_customer_mult100` int unsigned DEFAULT NULL,\
+				 `price_customer_currency_id` tinyint unsigned DEFAULT NULL,") + 
 		(opt_cdr_partition ? 
 			"PRIMARY KEY (`ID`, `calldate`)," :
 			"PRIMARY KEY (`ID`),") + 
@@ -2527,17 +2548,26 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 		}
 	}
 
-	
 	this->query("show columns from cdr where Field='price_operator_mult100'");
 	if(!this->fetchRow()) {
 		this->query("show tables like 'billing'");
 		if(this->fetchRow()) {
-			syslog(LOG_WARNING, "!!! You need to alter cdr database table and add new columns to support billing feature. "
+			syslog(LOG_WARNING, (string(
+					    "!!! You need to alter cdr database table and add new columns to support billing feature. "
 					    "This operation can take hours based on ammount of data, CPU and I/O speed of your server. "
 					    "The alter table will prevent the database to insert new rows and will probably block other operations. "
 					    "It is recommended to alter the table in non working hours. "
 					    "Login to the mysql voipmonitor database (mysql -uroot voipmonitor) and run on the CLI> "
-					    "ALTER TABLE cdr ADD COLUMN price_operator_mult100 INT UNSIGNED, ADD COLUMN price_operator_currency_id TINYINT UNSIGNED, ADD COLUMN price_customer_mult100 INT UNSIGNED, ADD COLUMN price_customer_currency_id TINYINT UNSIGNED;");
+					    "ALTER TABLE cdr ") +
+					    (existsExtPrecisionBilling ?
+						"ADD COLUMN price_operator_mult100 INT UNSIGNED, "
+						"ADD COLUMN price_operator_currency_id TINYINT UNSIGNED, "
+						"ADD COLUMN price_customer_mult100 INT UNSIGNED, "
+						"ADD COLUMN price_customer_currency_id TINYINT UNSIGNED;" :
+						"ADD COLUMN price_operator_mult1000000 BIGINT UNSIGNED, "
+						"ADD COLUMN price_operator_currency_id TINYINT UNSIGNED, "
+						"ADD COLUMN price_customer_mult1000000 BIGINT UNSIGNED, "
+						"ADD COLUMN price_customer_currency_id TINYINT UNSIGNED;")).c_str());
 		}
 	}
 
