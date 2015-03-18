@@ -900,7 +900,7 @@ SqlDb_odbc_bindBufferItem::SqlDb_odbc_bindBufferItem(SQLUSMALLINT colNumber, str
 	this->fieldName = fieldName;
 	this->dataType = dataType;
 	this->columnSize = columnSize;
-	this->buffer = new char[this->columnSize + 100]; // 100 - reserve for convert binary to text
+	this->buffer = new FILE_LINE char[this->columnSize + 100]; // 100 - reserve for convert binary to text
 	memset(this->buffer, 0, this->columnSize + 100);
 	if(hStatement) {
 		this->bindCol(hStatement);
@@ -927,7 +927,7 @@ char* SqlDb_odbc_bindBufferItem::getBuffer() {
 
 
 void SqlDb_odbc_bindBuffer::addItem(SQLUSMALLINT colNumber, string fieldName, SQLSMALLINT dataType, SQLULEN columnSize, SQLHSTMT hStatement) {
-	this->push_back(new SqlDb_odbc_bindBufferItem(colNumber, fieldName, dataType, columnSize, hStatement));
+	this->push_back(new FILE_LINE SqlDb_odbc_bindBufferItem(colNumber, fieldName, dataType, columnSize, hStatement));
 }
 
 void SqlDb_odbc_bindBuffer::bindCols(SQLHSTMT hStatement) {
@@ -1754,7 +1754,7 @@ void MySqlStore::autoloadFromSqlVmExport() {
 			}
 			unsigned int counter = 0;
 			unsigned int maxLengthQuery = 100000;
-			char *buffQuery = new char[maxLengthQuery];
+			char *buffQuery = new FILE_LINE char[maxLengthQuery];
 			while(fgets(buffQuery, maxLengthQuery, file)) {
 				int idProcess = atoi(buffQuery);
 				if(!idProcess) {
@@ -1822,7 +1822,7 @@ string sqlEscapeString(const char *inputStr, int length, const char *typeDb, Sql
 	if(isTypeDb("mysql", sqlDbMysql ? sqlDbMysql->getTypeDb().c_str() : typeDb) && !cloud_host[0]) {
 		bool okEscape = false;
 		int sizeBuffer = length * 2 + 10;
-		char *buffer = new char[sizeBuffer];
+		char *buffer = new FILE_LINE char[sizeBuffer];
 		if(sqlDbMysql && sqlDbMysql->getH_Mysql()) {
 			if(mysql_real_escape_string(sqlDbMysql->getH_Mysql(), buffer, inputStr, length) >= 0) {
 				okEscape = true;

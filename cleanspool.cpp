@@ -1163,10 +1163,10 @@ long long reindex_date_hour(string date, int h, bool readOnly, map<string, long 
 	ofstream *graphfile = NULL;
 	ofstream *audiofile = NULL;
 	if(!readOnly) {
-		sipfile = new ofstream((string("filesindex/sipsize/") + ymdh).c_str(), ios::trunc | ios::out);
-		rtpfile = new ofstream((string("filesindex/rtpsize/") + ymdh).c_str(), ios::trunc | ios::out);
-		graphfile = new ofstream((string("filesindex/graphsize/") + ymdh).c_str(), ios::trunc | ios::out);
-		audiofile = new ofstream((string("filesindex/audiosize/") + ymdh).c_str(), ios::trunc | ios::out);
+		sipfile = new FILE_LINE ofstream((string("filesindex/sipsize/") + ymdh).c_str(), ios::trunc | ios::out);
+		rtpfile = new FILE_LINE ofstream((string("filesindex/rtpsize/") + ymdh).c_str(), ios::trunc | ios::out);
+		graphfile = new FILE_LINE ofstream((string("filesindex/graphsize/") + ymdh).c_str(), ios::trunc | ios::out);
+		audiofile = new FILE_LINE ofstream((string("filesindex/audiosize/") + ymdh).c_str(), ios::trunc | ios::out);
 	}
 
 	long long sipsize = 0;

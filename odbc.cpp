@@ -154,7 +154,7 @@ void Odbc::setLastErrorString(const char *errorString) {
 		this->lastErrorString = NULL;
 	}
 	if(errorString) {
-		this->lastErrorString =  new char[strlen(errorString)+1];
+		this->lastErrorString =  new FILE_LINE char[strlen(errorString)+1];
 		strcpy(this->lastErrorString, errorString);
 	}
 }

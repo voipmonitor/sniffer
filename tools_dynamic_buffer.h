@@ -29,7 +29,7 @@ public:
 			this->owner = owner;
 			this->buffer_length = this->getBufferLength(length);
 			if(this->buffer_length) {
-				this->buffer = new u_char[this->buffer_length];
+				this->buffer = new FILE_LINE u_char[this->buffer_length];
 			} else {
 				this->buffer = NULL;
 			}
@@ -42,7 +42,7 @@ public:
 			}
 			if(!this->buffer) {
 				this->buffer_length = this->getBufferLength(length - offset);
-				this->buffer = new u_char[this->buffer_length];
+				this->buffer = new FILE_LINE u_char[this->buffer_length];
 			}
 			if(this->length < this->buffer_length) {
 				if(length - offset <= this->buffer_length - this->length) {
@@ -56,7 +56,7 @@ public:
 				}
 			}
 			if(!this->next) {
-				this->next = new DynamicBufferItem(this->owner, length - offset);
+				this->next = new FILE_LINE DynamicBufferItem(this->owner, length - offset);
 			}
 			return(this->next->add(buffer, length, offset));
 		}
@@ -92,7 +92,7 @@ public:
 			return;
 		}
 		if(!this->first) {
-			this->first = new DynamicBufferItem(this, length);
+			this->first = new FILE_LINE DynamicBufferItem(this, length);
 			this->last = this->first;
 		}
 		this->last = this->last->add(buffer, length);

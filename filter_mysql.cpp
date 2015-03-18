@@ -123,7 +123,7 @@ IPfilter::load() {
 	sqlDb->query("SELECT * FROM filter_ip");
 	while((row = sqlDb->fetchRow())) {
 		count++;
-		db_row* filterRow = new db_row;
+		db_row* filterRow = new FILE_LINE db_row;
 		filterRow->ip = (unsigned int)strtoul(row["ip"].c_str(), NULL, 0);
 		filterRow->mask = atoi(row["mask"].c_str());
 		this->loadBaseDataRow(&row, filterRow);
@@ -383,7 +383,7 @@ DOMAINfilter::load() {
 	sqlDb->query("SELECT * FROM filter_domain");
 	while((row = sqlDb->fetchRow())) {
 		count++;
-		db_row* filterRow = new db_row;
+		db_row* filterRow = new FILE_LINE db_row;
 		filterRow->domain = row["domain"];
 		this->loadBaseDataRow(&row, filterRow);
 		vectDbRow.push_back(*filterRow);
@@ -453,7 +453,7 @@ SIP_HEADERfilter::load() {
 	sqlDb->query("SELECT * FROM filter_sip_header");
 	while((row = sqlDb->fetchRow())) {
 		count++;
-		db_row* filterRow = new db_row;
+		db_row* filterRow = new FILE_LINE db_row;
 		filterRow->header = row["header"];
 		filterRow->content = row["content"];
 		filterRow->prefix = row["content_type"] == "prefix";

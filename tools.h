@@ -798,7 +798,7 @@ public:
 				}
 				handle->userData = minSizeIndex + 1;
 			}
-			if(add(new AsyncWriteItem_fileZipHandler(handle, data, length),
+			if(add(new FILE_LINE AsyncWriteItem_fileZipHandler(handle, data, length),
 			       handle->userData - 1,
 			       useThreadOper)) {
 				break;

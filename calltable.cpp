@@ -3217,7 +3217,7 @@ Calltable::mapAdd(in_addr_t addr, unsigned short port, Call* call, int iscaller,
 	}
 	
 	// adding to hash at first position
-	Ipportnode *node = new FILE_LINE  Ipportnode;
+	Ipportnode *node = new FILE_LINE Ipportnode;
 	memset(node, 0x0, sizeof(Ipportnode));
 	node->call = call;
 	node->iscaller = iscaller;
@@ -3297,7 +3297,7 @@ Calltable::hashAdd(in_addr_t addr, unsigned short port, Call* call, int iscaller
 			}
 			if(!found) {
 				// the same ip/port is shared with some other call which is not yet in node - add it
-				hash_node_call *node_call_new = new FILE_LINE  hash_node_call;
+				hash_node_call *node_call_new = new FILE_LINE hash_node_call;
 				node_call_new->next = node->calls;
 				node_call_new->call = call;
 				node_call_new->iscaller = iscaller;

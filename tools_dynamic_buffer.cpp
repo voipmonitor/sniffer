@@ -32,7 +32,7 @@ u_char *DynamicBuffer::getConcatBuffer() {
 	if(!size) {
 		return(NULL);
 	}
-	u_char *concatBuffer = new u_char[size + 1];
+	u_char *concatBuffer = new FILE_LINE u_char[size + 1];
 	u_int32_t length = 0;
 	DynamicBufferItem *iter = this->first;
 	while(iter) {

@@ -85,7 +85,7 @@ config_load_mysql() {
 		{
 		vector<string>ports = split(row["ipaccountport"].c_str(), split(",|;|\t|\r|\n", "|"), true);
 		if(ports.size() and !ipaccountportmatrix) {
-			ipaccountportmatrix = new char[65537];
+			ipaccountportmatrix = new FILE_LINE char[65537];
 			memset(ipaccountportmatrix, 0, 65537);
 			ipaccountportmatrix[5060] = 0;
 		}

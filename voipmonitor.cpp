@@ -701,7 +701,7 @@ int thread_setup(void)
 {
   int i;
  
-  mutex_buf = new MUTEX_TYPE[CRYPTO_num_locks()];
+  mutex_buf = new FILE_LINE MUTEX_TYPE[CRYPTO_num_locks()];
   if (!mutex_buf)
     return 0;
   for (i = 0;  i < CRYPTO_num_locks(  );  i++)
@@ -801,7 +801,7 @@ void *database_backup(void *dummy) {
 		return NULL;
 	}
 	SqlDb_mysql *sqlDb_mysql = dynamic_cast<SqlDb_mysql*>(sqlDb);
-	sqlStore = new MySqlStore(mysql_host, mysql_user, mysql_password, mysql_database);
+	sqlStore = new FILE_LINE MySqlStore(mysql_host, mysql_user, mysql_password, mysql_database);
 	while(!terminating) {
 		syslog(LOG_NOTICE, "-- START BACKUP PROCESS");
 		time_t actTime = time(NULL);
@@ -823,7 +823,7 @@ void *database_backup(void *dummy) {
 				sqlDb_mysql->copyFromFederatedTables();
 			}
 		} else {
-			SqlDb *sqlDbSrc = new SqlDb_mysql();
+			SqlDb *sqlDbSrc = new FILE_LINE SqlDb_mysql();
 			sqlDbSrc->setConnectParameters(opt_database_backup_from_mysql_host, 
 						       opt_database_backup_from_mysql_user,
 						       opt_database_backup_from_mysql_password,
@@ -1327,7 +1327,7 @@ int eval_config(string inistr) {
 		// reset default port 
 		for (; i != values.end(); ++i) {
 			if(!ipaccountportmatrix) {
-				ipaccountportmatrix = new char[65537];
+				ipaccountportmatrix = new FILE_LINE char[65537];
 				memset(ipaccountportmatrix, 0, 65537);
 			}
 			ipaccountportmatrix[atoi(i->pItem)] = 1;
@@ -2769,7 +2769,7 @@ int load_config(char *fname) {
 					fclose(fp);
 					return 0;
 				}
-				char * pData = new char[lSize + 10];	//adding "[general]\n" on top
+				char * pData = new FILE_LINE char[lSize + 10];	//adding "[general]\n" on top
 				if (!pData) {
 					fclose(fp);
 					printf("ERROR\n");
@@ -2831,7 +2831,7 @@ void reload_capture_rules() {
 		delete ipfilter_reload;
 	}
 
-	ipfilter_reload = new IPfilter;
+	ipfilter_reload = new FILE_LINE IPfilter;
 	ipfilter_reload->load();
 	ipfilter_reload_do = 1;
 
@@ -2839,7 +2839,7 @@ void reload_capture_rules() {
 		delete telnumfilter_reload;
 	}
 
-	telnumfilter_reload = new TELNUMfilter;
+	telnumfilter_reload = new FILE_LINE TELNUMfilter;
 	telnumfilter_reload->load();
 	telnumfilter_reload_do = 1;
 
@@ -2847,7 +2847,7 @@ void reload_capture_rules() {
 		delete domainfilter_reload;
 	}
 
-	domainfilter_reload = new DOMAINfilter;
+	domainfilter_reload = new FILE_LINE DOMAINfilter;
 	domainfilter_reload->load();
 	domainfilter_reload_do = 1;
 
@@ -2855,7 +2855,7 @@ void reload_capture_rules() {
 		delete sipheaderfilter_reload;
 	}
 
-	sipheaderfilter_reload = new SIP_HEADERfilter;
+	sipheaderfilter_reload = new FILE_LINE SIP_HEADERfilter;
 	sipheaderfilter_reload->load();
 	sipheaderfilter_reload_do = 1;
 
@@ -3034,7 +3034,7 @@ int main(int argc, char *argv[]) {
  
 	time(&startTime);
 
-	regfailedcache = new regcache;
+	regfailedcache = new FILE_LINE regcache;
 
 	base64_init();
 
@@ -3058,13 +3058,13 @@ int main(int argc, char *argv[]) {
 	opt_mirrorip_dst[0] = '\0';
 	strcpy(opt_chdir, "/var/spool/voipmonitor");
 	strcpy(opt_cachedir, "");
-	sipportmatrix = new char[65537];
+	sipportmatrix = new FILE_LINE char[65537];
 	memset(sipportmatrix, 0, 65537);
 	// set default SIP port to 5060
 	sipportmatrix[5060] = 1;
-	httpportmatrix = new char[65537];
+	httpportmatrix = new FILE_LINE char[65537];
 	memset(httpportmatrix, 0, 65537);
-	webrtcportmatrix = new char[65537];
+	webrtcportmatrix = new FILE_LINE char[65537];
 	memset(webrtcportmatrix, 0, 65537);
 
 	pthread_mutex_init(&mysqlconnect_lock, NULL);
@@ -3175,7 +3175,7 @@ int main(int argc, char *argv[]) {
 				opt_saveaudio_stereo = 0;
 				break;
 			case 202:
-				opt_untar_gui_params = new char[strlen(optarg) + 1];
+				opt_untar_gui_params = new FILE_LINE char[strlen(optarg) + 1];
 				strcpy(opt_untar_gui_params, optarg);
 				break;
 			case 'x':
@@ -3881,7 +3881,7 @@ int main(int argc, char *argv[]) {
 
 	if(opt_generator) {
 		opt_generator_channels = 2;
-		pthread_t *genthreads = new pthread_t[opt_generator_channels];		// ID of worker storing CDR thread 
+		pthread_t *genthreads = new FILE_LINE pthread_t[opt_generator_channels];		// ID of worker storing CDR thread 
 		for(int i = 0; i < opt_generator_channels; i++) {
 			pthread_create(&genthreads[i], NULL, gensiprtp, NULL);
 		}
@@ -3918,7 +3918,7 @@ int main(int argc, char *argv[]) {
 		delete sqlDb;
 	}
 	if(isSqlDriver("mysql")) {
-		sqlStore = new MySqlStore(mysql_host, mysql_user, mysql_password, mysql_database, cloud_host, cloud_token);	
+		sqlStore = new FILE_LINE MySqlStore(mysql_host, mysql_user, mysql_password, mysql_database, cloud_host, cloud_token);	
 		if(!opt_nocdr) {
 			sqlStore->connect(STORE_PROC_ID_CDR_1);
 			sqlStore->connect(STORE_PROC_ID_MESSAGE_1);
@@ -4026,7 +4026,7 @@ int main(int argc, char *argv[]) {
 		return(0);
 	}
 
-	calltable = new Calltable;
+	calltable = new FILE_LINE Calltable;
 	
 	// preparing pcap reading and pcap filters 
 	
@@ -4034,10 +4034,10 @@ int main(int argc, char *argv[]) {
 	char errbuf[PCAP_ERRBUF_SIZE];	// Returns error text and is only set when the pcap_lookupnet subroutine fails.
 	
 	if(opt_test) {
-		ipfilter = new IPfilter;
-		telnumfilter = new TELNUMfilter;
-		domainfilter =  new DOMAINfilter;
-		sipheaderfilter =  new SIP_HEADERfilter;
+		ipfilter = new FILE_LINE IPfilter;
+		telnumfilter = new FILE_LINE TELNUMfilter;
+		domainfilter =  new FILE_LINE DOMAINfilter;
+		sipheaderfilter =  new FILE_LINE SIP_HEADERfilter;
 		_parse_packet_global.setStdParse();
 		test();
 		if(sqlStore) {
@@ -4140,7 +4140,7 @@ int main(int argc, char *argv[]) {
 					opt_mirrorip = 0;
 				} else {
 					syslog(LOG_NOTICE, "Starting SIP mirroring [%s]->[%s]", opt_mirrorip_src, opt_mirrorip_dst);
-					mirrorip = new MirrorIP(opt_mirrorip_src, opt_mirrorip_dst);
+					mirrorip = new FILE_LINE MirrorIP(opt_mirrorip_src, opt_mirrorip_dst);
 				}
 			}
 
@@ -4187,10 +4187,10 @@ int main(int argc, char *argv[]) {
 	if (setrlimit(RLIMIT_CORE, &rlp) < 0)
 		fprintf(stderr, "setrlimit: %s\nWarning: core dumps may be truncated or non-existant\n", strerror(errno));
 
-	ipfilter = new IPfilter;
-	telnumfilter = new TELNUMfilter;
-	domainfilter = new DOMAINfilter;
-	sipheaderfilter = new SIP_HEADERfilter;
+	ipfilter = new FILE_LINE IPfilter;
+	telnumfilter = new FILE_LINE TELNUMfilter;
+	domainfilter = new FILE_LINE DOMAINfilter;
+	sipheaderfilter = new FILE_LINE SIP_HEADERfilter;
 	if(!opt_nocdr &&
 	   !(opt_pcap_threaded && opt_pcap_queue && 
 	     !opt_pcap_queue_receive_from_ip_port &&
@@ -4208,7 +4208,7 @@ int main(int argc, char *argv[]) {
 	_parse_packet_global.setStdParse();
 
 	if(opt_ipaccount and !ipaccountportmatrix) {
-		ipaccountportmatrix = new char[65537];
+		ipaccountportmatrix = new FILE_LINE char[65537];
 		memset(ipaccountportmatrix, 0, 65537);
 	}
 
@@ -4218,7 +4218,7 @@ int main(int argc, char *argv[]) {
 	}
 
 	if(opt_pcap_dump_tar) {
-		tarQueue = new TarQueue;
+		tarQueue = new FILE_LINE TarQueue;
 	}
 	
 	if(opt_enable_fraud) {
@@ -4231,7 +4231,7 @@ int main(int argc, char *argv[]) {
 
 	if(opt_pcap_dump_asyncwrite) {
 		extern AsyncClose *asyncClose;
-		asyncClose = new AsyncClose;
+		asyncClose = new FILE_LINE AsyncClose;
 		asyncClose->startThreads(opt_pcap_dump_writethreads, opt_pcap_dump_writethreads_max);
 	}
 	
@@ -4284,7 +4284,7 @@ int main(int argc, char *argv[]) {
 	   !(opt_pcap_threaded && opt_pcap_queue && 
 	     !opt_pcap_queue_receive_from_ip_port &&
 	     opt_pcap_queue_send_to_ip_port)) {
-		rtp_threads = new rtp_read_thread[num_threads];
+		rtp_threads = new FILE_LINE rtp_read_thread[num_threads];
 		for(int i = 0; i < num_threads; i++) {
 #ifdef QUEUE_MUTEX
 			pthread_mutex_init(&(rtp_threads[i].qlock), NULL);
@@ -4302,18 +4302,18 @@ int main(int argc, char *argv[]) {
 								rtp_qring_length :
 								rtpthreadbuffer * 1024 * 1024 / sizeof(rtp_packet_pcap_queue);
 				if(rtp_qring_quick == 2) {
-					rtp_threads[i].rtpp_queue_quick_boost = new rqueue_quick_boost<rtp_packet_pcap_queue>(
+					rtp_threads[i].rtpp_queue_quick_boost = new FILE_LINE rqueue_quick_boost<rtp_packet_pcap_queue>(
 											100, rtp_qring_usleep,
 											&terminating,
 											__FILE__, __LINE__);
 				} else if(rtp_qring_quick) {
-					rtp_threads[i].rtpp_queue_quick = new rqueue_quick<rtp_packet_pcap_queue>(
+					rtp_threads[i].rtpp_queue_quick = new FILE_LINE rqueue_quick<rtp_packet_pcap_queue>(
 										_rtp_qring_length,
 										100, rtp_qring_usleep,
 										&terminating, true,
 										__FILE__, __LINE__);
 				} else {
-					rtp_threads[i].rtpp_queue = new rqueue<rtp_packet_pcap_queue>(_rtp_qring_length / 2, _rtp_qring_length / 5, _rtp_qring_length * 1.5);
+					rtp_threads[i].rtpp_queue = new FILE_LINE rqueue<rtp_packet_pcap_queue>(_rtp_qring_length / 2, _rtp_qring_length / 5, _rtp_qring_length * 1.5);
 					char rtpp_queue_name[20];
 					sprintf(rtpp_queue_name, "rtp thread %i", i + 1);
 					rtp_threads[i].rtpp_queue->setName(rtpp_queue_name);
@@ -4324,7 +4324,7 @@ int main(int argc, char *argv[]) {
 								 rtpthreadbuffer * 1024 * 1024 / sizeof(rtp_packet);
 				rtp_threads[i].writeit = 0;
 				rtp_threads[i].readit = 0;
-				rtp_threads[i].vmbuffer = new rtp_packet[rtp_threads[i].vmbuffermax + 1];
+				rtp_threads[i].vmbuffer = new FILE_LINE rtp_packet[rtp_threads[i].vmbuffermax + 1];
 				for(int j = 0; j < rtp_threads[i].vmbuffermax + 1; j++) {
 					rtp_threads[i].vmbuffer[j].free = 1;
 				}
@@ -4347,7 +4347,7 @@ int main(int argc, char *argv[]) {
 
 #ifdef QUEUE_NONBLOCK2
 		if(!opt_pcap_queue) {
-			pcap_qring = new pcap_packet[pcap_qring_max + 1];
+			pcap_qring = new FILE_LINE pcap_packet[pcap_qring_max + 1];
 			for(unsigned int i = 0; i < pcap_qring_max + 1; i++) {
 				pcap_qring[i].free = 1;
 			}
@@ -4357,11 +4357,11 @@ int main(int argc, char *argv[]) {
 	}
 	
 	if(opt_enable_preprocess_packet || opt_enable_ssl) {
-		preProcessPacket = new PreProcessPacket();
+		preProcessPacket = new FILE_LINE PreProcessPacket();
 	}
 	if(opt_enable_process_rtp_packet) {
 		for(int i = 0; i < opt_enable_process_rtp_packet; i++) {
-			processRtpPacket[i] = new ProcessRtpPacket(i);
+			processRtpPacket[i] = new FILE_LINE ProcessRtpPacket(i);
 		}
 	}
 
@@ -4373,12 +4373,12 @@ int main(int argc, char *argv[]) {
 			}
 		}
 		if(setHttpPorts) {
-			tcpReassemblyHttp = new TcpReassembly(TcpReassembly::http);
+			tcpReassemblyHttp = new FILE_LINE TcpReassembly(TcpReassembly::http);
 			tcpReassemblyHttp->setEnableHttpForceInit();
 			tcpReassemblyHttp->setEnableCrazySequence();
 			tcpReassemblyHttp->setEnableCleanupThread();
 			tcpReassemblyHttp->setEnablePacketThread();
-			httpData = new HttpData;
+			httpData = new FILE_LINE HttpData;
 			tcpReassemblyHttp->setDataCallback(httpData);
 		}
 	}
@@ -4390,22 +4390,22 @@ int main(int argc, char *argv[]) {
 			}
 		}
 		if(setWebrtcPorts) {
-			tcpReassemblyWebrtc = new TcpReassembly(TcpReassembly::webrtc);
+			tcpReassemblyWebrtc = new FILE_LINE TcpReassembly(TcpReassembly::webrtc);
 			tcpReassemblyWebrtc->setEnableIgnorePairReqResp();
 			tcpReassemblyWebrtc->setEnableWildLink();
 			tcpReassemblyWebrtc->setEnableDestroyStreamsInComplete();
 			tcpReassemblyWebrtc->setEnableAllCompleteAfterZerodataAck();
 			tcpReassemblyWebrtc->setEnablePacketThread();
-			webrtcData = new WebrtcData;
+			webrtcData = new FILE_LINE WebrtcData;
 			tcpReassemblyWebrtc->setDataCallback(webrtcData);
 		}
 	}
 	if(opt_enable_ssl && ssl_ipport.size()) {
-		tcpReassemblySsl = new TcpReassembly(TcpReassembly::ssl);
+		tcpReassemblySsl = new FILE_LINE TcpReassembly(TcpReassembly::ssl);
 		tcpReassemblySsl->setEnableIgnorePairReqResp();
 		tcpReassemblySsl->setEnableDestroyStreamsInComplete();
 		tcpReassemblySsl->setEnableAllCompleteAfterZerodataAck();
-		sslData = new SslData;
+		sslData = new FILE_LINE SslData;
 		tcpReassemblySsl->setDataCallback(sslData);
 		tcpReassemblySsl->setLinkTimeout(opt_ssl_link_timeout);
 		if(opt_pb_read_from_file[0]) {
@@ -4414,12 +4414,12 @@ int main(int argc, char *argv[]) {
 	}
 	
 	if(sipSendSocket_ip_port) {
-		sipSendSocket = new SocketSimpleBufferWrite("send sip", sipSendSocket_ip_port);
+		sipSendSocket = new FILE_LINE SocketSimpleBufferWrite("send sip", sipSendSocket_ip_port);
 		sipSendSocket->startWriteThread();
 	}
 	
 	if(opt_bogus_dumper_path[0]) {
-		bogusDumper = new BogusDumper(opt_bogus_dumper_path);
+		bogusDumper = new FILE_LINE BogusDumper(opt_bogus_dumper_path);
 	}
 	
 	if(opt_pcap_dump_tar && opt_fork) {
@@ -4540,7 +4540,7 @@ int main(int argc, char *argv[]) {
 				
 				if(opt_pcap_queue_receive_from_ip_port) {
 					
-					pcapQueueR = new PcapQueue_readFromFifo("receive", opt_pcap_queue_disk_folder.c_str());
+					pcapQueueR = new FILE_LINE PcapQueue_readFromFifo("receive", opt_pcap_queue_disk_folder.c_str());
 					pcapQueueR->setEnableAutoTerminate(false);
 					pcapQueueR->setPacketServer(opt_pcap_queue_receive_from_ip_port, PcapQueue_readFromFifo::directionRead);
 					pcapQueueStatInterface = pcapQueueR;
@@ -4579,11 +4579,11 @@ int main(int argc, char *argv[]) {
 						}
 					}
 				
-					pcapQueueI = new PcapQueue_readFromInterface("interface");
+					pcapQueueI = new FILE_LINE PcapQueue_readFromInterface("interface");
 					pcapQueueI->setInterfaceName(ifname);
 					pcapQueueI->setEnableAutoTerminate(false);
 					
-					pcapQueueQ = new PcapQueue_readFromFifo("queue", opt_pcap_queue_disk_folder.c_str());
+					pcapQueueQ = new FILE_LINE PcapQueue_readFromFifo("queue", opt_pcap_queue_disk_folder.c_str());
 					pcapQueueQ->setInstancePcapHandle(pcapQueueI);
 					pcapQueueQ->setEnableAutoTerminate(false);
 					if(opt_pcap_queue_send_to_ip_port) {
@@ -5002,9 +5002,9 @@ struct XX {
 };
 
 void test_search_country_by_number() {
-	CheckInternational *ci = new CheckInternational();
+	CheckInternational *ci = new FILE_LINE CheckInternational();
 	ci->setInternationalMinLength(9);
-	CountryPrefixes *cp = new CountryPrefixes();
+	CountryPrefixes *cp = new FILE_LINE CountryPrefixes();
 	cp->load();
 	vector<string> countries;
 	cout << cp->getCountry("00039123456789", &countries, ci) << endl;
@@ -5017,7 +5017,7 @@ void test_search_country_by_number() {
 }
 
 void test_geoip() {
-	GeoIP_country *ipc = new GeoIP_country();
+	GeoIP_country *ipc = new FILE_LINE GeoIP_country();
 	ipc->load();
 	in_addr ips;
 	inet_aton("152.251.11.109", &ips);
@@ -5038,7 +5038,7 @@ void test_filebuffer() {
 		
 		setbuf(file[i], NULL);
 		
-		fbuffer[i] = new char[bufferLength];
+		fbuffer[i] = new FILE_LINE char[bufferLength];
 		
 	}
 	
@@ -5145,9 +5145,9 @@ void test_escape() {
 void test_alloc_speed() {
 	uint32_t ii = 1000000;
 	for(int p = 0; p < 10; p++) {
-		char **pointers = new char*[ii];
+		char **pointers = new FILE_LINE char*[ii];
 		for(u_int32_t i = 0; i < ii; i++) {
-			pointers[i] = new char[1000];
+			pointers[i] = new FILE_LINE char[1000];
 		}
 		for(u_int32_t i = 0; i < ii; i++) {
 			delete [] pointers[i];
@@ -5244,7 +5244,7 @@ void test() {
 			delete sqlDb;
 		}
 		SqlDb_mysql *sqlDb_mysql = dynamic_cast<SqlDb_mysql*>(sqlDb);
-		SqlDb *sqlDbSrc = new SqlDb_mysql();
+		SqlDb *sqlDbSrc = new FILE_LINE SqlDb_mysql();
 		sqlDbSrc->setConnectParameters(opt_database_backup_from_mysql_host, 
 					       opt_database_backup_from_mysql_user,
 					       opt_database_backup_from_mysql_password,
@@ -5395,13 +5395,13 @@ void test() {
 	PcapQueue_readFromFifo *pcapQueue2;
 	
 	if(opt_test == 1 || opt_test == 3) {
-		pcapQueue0 = new PcapQueue_readFromInterface("thread0");
+		pcapQueue0 = new FILE_LINE PcapQueue_readFromInterface("thread0");
 		pcapQueue0->setInterfaceName(ifname);
 		//pcapQueue0->setFifoFileForWrite("/tmp/vm_fifo0");
 		//pcapQueue0->setFifoWriteHandle(pipeFh[1]);
 		pcapQueue0->setEnableAutoTerminate(false);
 		
-		pcapQueue1 = new PcapQueue_readFromFifo("thread1", "/__test");
+		pcapQueue1 = new FILE_LINE PcapQueue_readFromFifo("thread1", "/__test");
 		//pcapQueue1->setFifoFileForRead("/tmp/vm_fifo0");
 		pcapQueue1->setInstancePcapHandle(pcapQueue0);
 		//pcapQueue1->setFifoReadHandle(pipeFh[0]);
@@ -5412,7 +5412,7 @@ void test() {
 		pcapQueue1->start();
 	}
 	if(opt_test == 2 || opt_test == 3) {
-		pcapQueue2 = new PcapQueue_readFromFifo("server", "/__test/2");
+		pcapQueue2 = new FILE_LINE PcapQueue_readFromFifo("server", "/__test/2");
 		pcapQueue2->setEnableAutoTerminate(false);
 		pcapQueue2->setPacketServer("127.0.0.1", port, PcapQueue_readFromFifo::directionRead);
 		
@@ -5518,7 +5518,7 @@ void test() {
 	*/
 	
 	/*
-	CustIpCache *custIpCache = new CustIpCache;
+	CustIpCache *custIpCache = new FILE_LINE CustIpCache;
 	custIpCache->setConnectParams(
 		get_customer_by_ip_sql_driver, 
 		get_customer_by_ip_odbc_dsn, 
@@ -5548,11 +5548,11 @@ void test() {
 	*/
 	
 	/*
-	ipfilter = new IPfilter;
+	ipfilter = new FILE_LINE IPfilter;
 	ipfilter->load();
 	ipfilter->dump();
 
-	telnumfilter = new TELNUMfilter;
+	telnumfilter = new FILE_LINE TELNUMfilter;
 	telnumfilter->load();
 	telnumfilter->dump();
 	*/

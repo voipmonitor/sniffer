@@ -2930,7 +2930,7 @@ bool PcapQueue_readFromInterface::init() {
 bool PcapQueue_readFromInterface::initThread(void *arg, unsigned int arg2) {
 	init_hash();
 	for(int i = 0; i < this->deleteThreadsCount; i++) {
-		this->threadsDeleteData[i] = new sThreadDeleteData(this);
+		this->threadsDeleteData[i] = new FILE_LINE sThreadDeleteData(this);
 		this->threadsDeleteData[i]->threadId = &this->nextThreadsId[i];
 		this->threadsDeleteData[i]->enableMallocTrim = i == 0;
 		this->threadsDeleteData[i]->enableLock = this->deleteThreadsCount > 1;

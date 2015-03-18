@@ -572,7 +572,7 @@ void HttpPacketsDumper::dumpDataItem(eReqResp reqResp, string header, string bod
 		links[link_id].seq[linkDirectionIndex] += dataLength;
 		
 		u_int32_t packetLen = sizeof(eth_header) + sizeof(ip_header) + sizeof(tcp_header) + dataLength;
-		u_char *packet = new u_char[packetLen];
+		u_char *packet = new FILE_LINE u_char[packetLen];
 		
 		memcpy(packet, 
 		       &eth_header, sizeof(eth_header));
@@ -607,7 +607,7 @@ string HttpPacketsDumper::getPcapName() {
 
 void HttpPacketsDumper::openPcapDumper() {
 	if(!this->pcapDumper && !this->pcapName.empty()) {
-		this->pcapDumper = new PcapDumper();
+		this->pcapDumper = new FILE_LINE PcapDumper();
 		this->pcapDumper->open(this->pcapName.c_str(), DLT_EN10MB);
 		this->selfOpenPcapDumper = true;
 	}

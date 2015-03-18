@@ -187,11 +187,11 @@ void GeoIP_country::load() {
 
 CacheNumber_location::CacheNumber_location() {
 	if(!countryCodes) {
-		countryCodes = new CountryCodes();
+		countryCodes = new FILE_LINE CountryCodes();
 		countryCodes->load();
 	}
 	if(!geoIP_country) {
-		geoIP_country = new GeoIP_country();
+		geoIP_country = new FILE_LINE GeoIP_country();
 		geoIP_country->load();
 	}
 	sqlDb = createSqlObject();
@@ -1486,19 +1486,19 @@ void initFraud() {
 		return;
 	}
 	if(!countryCodes) {
-		countryCodes = new CountryCodes();
+		countryCodes = new FILE_LINE CountryCodes();
 		countryCodes->load();
 	}
 	if(!countryPrefixes) {
-		countryPrefixes = new CountryPrefixes();
+		countryPrefixes = new FILE_LINE CountryPrefixes();
 		countryPrefixes->load();
 	}
 	if(!geoIP_country) {
-		geoIP_country = new GeoIP_country();
+		geoIP_country = new FILE_LINE GeoIP_country();
 		geoIP_country->load();
 	}
 	if(!cacheNumber_location) {
-		cacheNumber_location = new CacheNumber_location();
+		cacheNumber_location = new FILE_LINE CacheNumber_location();
 	}
 	if(fraudAlerts) {
 		return;

@@ -1408,7 +1408,7 @@ bool RestartUpgrade::runUpgrade() {
 			FILE *fileHandle = fopen(outputStdoutErr, "r");
 			if(fileHandle) {
 				size_t sizeOfOutputWgetBuffer = 10000;
-				char *outputStdoutErrBuffer = new char[sizeOfOutputWgetBuffer];
+				char *outputStdoutErrBuffer = new FILE_LINE char[sizeOfOutputWgetBuffer];
 				size_t readSize = fread(outputStdoutErrBuffer, 1, sizeOfOutputWgetBuffer, fileHandle);
 				if(readSize > 0) {
 					outputStdoutErrBuffer[min(readSize, sizeOfOutputWgetBuffer) - 1] = 0;
