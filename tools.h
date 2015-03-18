@@ -188,12 +188,10 @@ public:
 			return;
 		}
 		if(!buffer) {
-			buffer = new u_char[dataLength + capacityReserve + 1];
-			autoMemoryType(buffer);
+			buffer = new FILE_LINE u_char[dataLength + capacityReserve + 1];
 			bufferCapacity = dataLength + capacityReserve + 1;
 		} else if(bufferLength + dataLength > capacityReserve) {
-			u_char *bufferNew = new u_char[bufferLength + dataLength + capacityReserve + 1];
-			autoMemoryType(bufferNew);
+			u_char *bufferNew = new FILE_LINE u_char[bufferLength + dataLength + capacityReserve + 1];
 			memcpy(bufferNew, buffer, bufferLength);
 			delete [] buffer;
 			buffer = bufferNew;
@@ -227,8 +225,7 @@ public:
 			return((char*)"");
 		} else {
 			if(bufferCapacity <= bufferLength) {
-				u_char *newBuffer = new u_char[bufferLength + 1];
-				autoMemoryType(newBuffer);
+				u_char *newBuffer = new FILE_LINE u_char[bufferLength + 1];
 				memcpy(newBuffer, buffer, bufferLength);
 				delete [] buffer;
 				buffer = newBuffer;
@@ -614,8 +611,7 @@ public:
 		AsyncWriteItem_pcap(pcap_dumper_t *handle,
 				    char *data, int length) {
 			this->handle = handle;
-			this->data = new char[length];
-			autoMemoryType(this->data);
+			this->data = new FILE_LINE char[length];
 			memcpy(this->data, data, length);
 			this->dataLength = length;
 		}
@@ -659,8 +655,7 @@ public:
 		AsyncWriteItem_fileZipHandler(FileZipHandler *handle,
 					      char *data, int length) {
 			this->handle = handle;
-			this->data = new char[length];
-			autoMemoryType(this->data);
+			this->data = new FILE_LINE char[length];
 			memcpy(this->data, data, length);
 			this->dataLength = length;
 		}
@@ -710,7 +705,7 @@ public:
 					((FileZipHandler*)handle)->userData = minSizeIndex + 1;
 				}
 			}
-			if(add((AsyncCloseItem_pcap*)autoMemoryType(new AsyncCloseItem_pcap(handle, updateFilesQueue, call, pcapDumper, file, column, writeBytes)),
+			if(add(new FILE_LINE AsyncCloseItem_pcap(handle, updateFilesQueue, call, pcapDumper, file, column, writeBytes),
 			       opt_pcap_dump_bufflength ?
 				((FileZipHandler*)handle)->userData - 1 :
 				0,
@@ -743,7 +738,7 @@ public:
 					((FileZipHandler*)handle)->userData = minSizeIndex + 1;
 				}
 			}
-			if(add((AsyncWriteItem_pcap*)autoMemoryType(new AsyncWriteItem_pcap(handle, data, length)),
+			if(add(new FILE_LINE AsyncWriteItem_pcap(handle, data, length),
 			       opt_pcap_dump_bufflength ?
 				((FileZipHandler*)handle)->userData - 1 :
 				0,
@@ -775,7 +770,7 @@ public:
 				}
 				handle->userData = minSizeIndex + 1;
 			}
-			if(add((AsyncCloseItem_fileZipHandler*)autoMemoryType(new AsyncCloseItem_fileZipHandler(handle, updateFilesQueue, call, file, column, writeBytes)),
+			if(add(new FILE_LINE AsyncCloseItem_fileZipHandler(handle, updateFilesQueue, call, file, column, writeBytes),
 			       handle->userData - 1,
 			       useThreadOper)) {
 				break;
@@ -803,7 +798,7 @@ public:
 				}
 				handle->userData = minSizeIndex + 1;
 			}
-			if(add((AsyncWriteItem_fileZipHandler*)autoMemoryType(new AsyncWriteItem_fileZipHandler(handle, data, length)),
+			if(add(new AsyncWriteItem_fileZipHandler(handle, data, length),
 			       handle->userData - 1,
 			       useThreadOper)) {
 				break;
@@ -1155,8 +1150,7 @@ public:
 					nodeChar -= 'A' - 'a';
 				}
 				if(!nodes[nodeChar]) {
-					nodes[nodeChar] = new ppNode;
-					autoMemoryType(nodes[nodeChar]);
+					nodes[nodeChar] = new FILE_LINE ppNode;
 				}
 				nodes[nodeChar]->addNode(nodeName + 1, isContentLength);
 			} else {
@@ -1424,8 +1418,7 @@ template<class type_queue_item>
 void SafeAsyncQueue<type_queue_item>::push(type_queue_item &item) {
 	lock_push_queue();
 	if(!push_queue) {
-		push_queue = new deque<type_queue_item>;
-		autoMemoryType(push_queue);
+		push_queue = new FILE_LINE deque<type_queue_item>;
 	}
 	push_queue->push_back(item);
 	unlock_push_queue();

@@ -1564,11 +1564,10 @@ unsigned int dsp_get_sample_rate(const struct dsp *dsp)
 	return dsp->sample_rate;
 }
 
-extern void* setMemoryType(void *ptr, const char *memory_type1, int memory_type2 = 0);
+void * operator new(size_t sizeOfObject, const char *memory_type1, int memory_type2 = 0);
 static struct dsp *__dsp_new(unsigned int sample_rate)
 {
-	dsp *dsp_new = new dsp;
-	setMemoryType(dsp_new, __FILE__, __LINE__);
+	dsp *dsp_new = new (__FILE__, __LINE__) dsp;
 
 	if (dsp_new) {
 		dsp_new->threshold = DEFAULT_THRESHOLD;

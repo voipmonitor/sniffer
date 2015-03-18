@@ -210,11 +210,9 @@ private:
 		}
 		void init(size_t bufferBaseSize) {
 			this->bufferBaseSize = bufferBaseSize;
-			buffer = new char[bufferBaseSize + T_BLOCKSIZE];
-			autoMemoryType(buffer);
+			buffer = new FILE_LINE char[bufferBaseSize + T_BLOCKSIZE];
 			if(send_parameters_zip) {
-				compressStream = new CompressStream(CompressStream::gzip, 1024, 0);
-				autoMemoryType(compressStream);
+				compressStream = new FILE_LINE CompressStream(CompressStream::gzip, 1024, 0);
 				compressStream->setSendParameters(send_parameters_client, send_parameters_sshchannel);
 			} else {
 				compressStream = NULL;

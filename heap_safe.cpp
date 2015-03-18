@@ -6,6 +6,7 @@
 
 #include "heap_safe.h"
 #include "tools.h"
+#include "common.h"
 
 extern sVerbose sverb;
 
@@ -20,6 +21,8 @@ std::map<u_int64_t, u_int32_t> memoryStatOtherType;
 std::map<u_int32_t, string> memoryStatOtherName;
 volatile int memoryStat_sync;
 volatile u_int16_t threadRecursion[65536];
+void* threadStack[65536][10];
+u_int16_t threadStackSize[65536];
 
 
 inline void *_heapsafe_alloc(size_t sizeOfObject) {
@@ -38,7 +41,7 @@ inline void * heapsafe_safe_alloc(size_t sizeOfObject) {
 	return((char*)pointerToObject + HEAPSAFE_SAFE_ALLOC_RESERVE);
 }
 
-inline void * heapsafe_alloc(size_t sizeOfObject) { 
+inline void * heapsafe_alloc(size_t sizeOfObject, const char *memory_type1 = NULL, int memory_type2 = 0) { 
 	extern unsigned int HeapSafeCheck;
 	void *pointerToObject = NULL;
 	int error = 0;
@@ -78,50 +81,124 @@ inline void * heapsafe_alloc(size_t sizeOfObject) {
 		end->length = sizeOfObject;
 		end->memory_type = 0;
 		if(sverb.memory_stat) {
-			if(MCB_STACK) {
+			if(memory_type1) {
+				std::string memory_type = memory_type1;
+				if(memory_type2) {
+					char memory_type2_str[20];
+					sprintf(memory_type2_str, " %i", memory_type2);
+					memory_type.append(memory_type2_str);
+				}
+				while(__sync_lock_test_and_set(&memoryStat_sync, 1));
+				std::map<std::string, u_int32_t>::iterator iter = memoryStatType.find(memory_type);
+				if(iter == memoryStatType.end()) {
+					begin->memory_type = ++memoryStatLength;
+					unsigned int tid = 0;
+					if(MCB_STACK) {
+						tid = get_unix_tid();
+						__sync_fetch_and_add(&threadRecursion[tid], 1);
+					}
+					memoryStatType[memory_type] = begin->memory_type;
+					if(tid) {
+						__sync_fetch_and_sub(&threadRecursion[tid], 1);
+					}
+				} else {
+					begin->memory_type = iter->second;
+				}
+				__sync_lock_release(&memoryStat_sync);
+				__sync_fetch_and_add(&memoryStat[begin->memory_type], sizeOfObject);
+			} else if(MCB_STACK) {
 				unsigned int tid = get_unix_tid();
 				sHeapSafeMemoryControlBlockEx *beginEx = (sHeapSafeMemoryControlBlockEx*)begin;
 				if(!threadRecursion[tid]) {
-					uint skip_top_traces = 2;
-					uint max_use_trace_size = 5;
-					uint max_trace_size = skip_top_traces + max_use_trace_size;
-					void* stack_addr[max_trace_size];
-					uint trace_size = backtrace(stack_addr, max_trace_size);
-					if(trace_size) {
+					if(threadStackSize[tid]) {
+						uint use_trace_size = min(10, (int)threadStackSize[tid]);
 						u_int64_t sum_stack_addr = 0;
-						for(uint i = 0; i < trace_size - skip_top_traces; i++) {
-							sum_stack_addr += (u_int64_t)stack_addr[i + skip_top_traces];
+						for(uint i = 0; i < use_trace_size; i++) {
+							sum_stack_addr += (u_int64_t)threadStack[tid][i];
 						}
 						while(__sync_lock_test_and_set(&memoryStat_sync, 1));
-						__sync_fetch_and_add(&threadRecursion[tid], 1);
 						std::map<u_int64_t, u_int32_t>::iterator iter = memoryStatOtherType.find(sum_stack_addr);
 						if(iter == memoryStatOtherType.end()) {
+							__sync_fetch_and_add(&threadRecursion[tid], 1);
 							beginEx->memory_type_other = ++memoryStatOtherLength;;
 							memoryStatOtherType[sum_stack_addr] = beginEx->memory_type_other;
-							char trace_string[max_use_trace_size * 100];
+							__sync_lock_release(&memoryStat_sync);
+							char trace_string[use_trace_size * 100];
 							trace_string[0] = '\0';
-							char **messages = backtrace_symbols(stack_addr, trace_size);
-							for(uint i = 0; i < trace_size - skip_top_traces; i++) {
+							/*
+							char **messages = backtrace_symbols(threadStack[tid], use_trace_size);
+							for(uint i = 0; i < use_trace_size; i++) {
 								if(i) {
 									strcat(trace_string, " / ");
 								}
-								if(strstr(messages[i + skip_top_traces], "libstdc++")) {
+								if(strstr(messages[i], "libstdc++")) {
 									strcat(trace_string, "stdc++");
-								} else if(strstr(messages[i + skip_top_traces], "libc")) {
+								} else if(strstr(messages[i], "libc")) {
 									strcat(trace_string, "libc");
-								} else if(strstr(messages[i + skip_top_traces], "voipmonitor()")) {
-									sprintf(trace_string + strlen(trace_string), "%lx", (u_int64_t)stack_addr[i + skip_top_traces]);
+								} else if(strstr(messages[i], "voipmonitor()")) {
+									sprintf(trace_string + strlen(trace_string), "%lx", (u_int64_t)threadStack[tid][i]);
 								} else {
-									strcat(trace_string, messages[i + skip_top_traces]);
+									strcat(trace_string, messages[i]);
 								}
 							}
+							*/
+							for(uint i = 0; i < use_trace_size; i++) {
+								if(i) {
+									strcat(trace_string, " / ");
+								}
+								sprintf(trace_string + strlen(trace_string), "%lx", (u_int64_t)threadStack[tid][i]);
+							}
+							while(__sync_lock_test_and_set(&memoryStat_sync, 1));
 							memoryStatOtherName[beginEx->memory_type_other] = trace_string;
+							__sync_lock_release(&memoryStat_sync);
+							__sync_fetch_and_sub(&threadRecursion[tid], 1);
 						} else {
+							__sync_lock_release(&memoryStat_sync);
 							beginEx->memory_type_other = iter->second;
 						}
-						__sync_fetch_and_sub(&threadRecursion[tid], 1);
-						__sync_lock_release(&memoryStat_sync);
 						__sync_fetch_and_add(&memoryStatOther[beginEx->memory_type_other], sizeOfObject);
+					} else {
+						uint skip_top_traces = 2;
+						uint max_use_trace_size = 8;
+						uint max_trace_size = skip_top_traces + max_use_trace_size;
+						void* stack_addr[max_trace_size];
+						uint trace_size = backtrace(stack_addr, max_trace_size);
+						if(trace_size) {
+							u_int64_t sum_stack_addr = 0;
+							for(uint i = 0; i < trace_size - skip_top_traces; i++) {
+								sum_stack_addr += (u_int64_t)stack_addr[i + skip_top_traces];
+							}
+							while(__sync_lock_test_and_set(&memoryStat_sync, 1));
+							std::map<u_int64_t, u_int32_t>::iterator iter = memoryStatOtherType.find(sum_stack_addr);
+							if(iter == memoryStatOtherType.end()) {
+								__sync_fetch_and_add(&threadRecursion[tid], 1);
+								beginEx->memory_type_other = ++memoryStatOtherLength;;
+								memoryStatOtherType[sum_stack_addr] = beginEx->memory_type_other;
+								char trace_string[max_use_trace_size * 100];
+								trace_string[0] = '\0';
+								char **messages = backtrace_symbols(stack_addr, trace_size);
+								for(uint i = 0; i < trace_size - skip_top_traces; i++) {
+									if(i) {
+										strcat(trace_string, " / ");
+									}
+									if(strstr(messages[i + skip_top_traces], "libstdc++")) {
+										strcat(trace_string, "stdc++");
+									} else if(strstr(messages[i + skip_top_traces], "libc")) {
+										strcat(trace_string, "libc");
+									} else if(strstr(messages[i + skip_top_traces], "voipmonitor()")) {
+										sprintf(trace_string + strlen(trace_string), "%lx", (u_int64_t)stack_addr[i + skip_top_traces]);
+									} else {
+										strcat(trace_string, messages[i + skip_top_traces]);
+									}
+								}
+								memoryStatOtherName[beginEx->memory_type_other] = trace_string;
+								__sync_fetch_and_sub(&threadRecursion[tid], 1);
+							} else {
+								beginEx->memory_type_other = iter->second;
+							}
+							__sync_lock_release(&memoryStat_sync);
+							__sync_fetch_and_add(&memoryStatOther[beginEx->memory_type_other], sizeOfObject);
+						}
 					}
 				} else {
 					beginEx->memory_type_other = 0;
@@ -220,6 +297,22 @@ void * operator new[](size_t sizeOfObject) {
 		(HeapSafeCheck & _HeapSafeSafeReserve ?
 		  heapsafe_safe_alloc(sizeOfObject) :
 		  heapsafe_alloc(sizeOfObject)) :
+		_heapsafe_alloc(sizeOfObject));
+}
+
+void * operator new(size_t sizeOfObject, const char *memory_type1, int memory_type2) { 
+	return(HeapSafeCheck ?
+		(HeapSafeCheck & _HeapSafeSafeReserve ?
+		  heapsafe_safe_alloc(sizeOfObject) :
+		  heapsafe_alloc(sizeOfObject, memory_type1, memory_type2)) :
+		_heapsafe_alloc(sizeOfObject));
+}
+ 
+void * operator new[](size_t sizeOfObject, const char *memory_type1, int memory_type2) {
+	return(HeapSafeCheck ? 
+		(HeapSafeCheck & _HeapSafeSafeReserve ?
+		  heapsafe_safe_alloc(sizeOfObject) :
+		  heapsafe_alloc(sizeOfObject, memory_type1, memory_type2)) :
 		_heapsafe_alloc(sizeOfObject));
 }
  

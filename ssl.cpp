@@ -176,9 +176,7 @@ ssl_md_cleanup(SSL_MD* md)
 /* memory allocation functions for zlib initialization */
 static void* ssl_zalloc(void* opaque, unsigned int no, unsigned int size)
 {   
-	guchar *newPointer = new guchar[no*size];
-	autoMemoryType(newPointer);
-	return newPointer;
+	return(new FILE_LINE guchar[no*size]);
 }
 static void ssl_zfree(void* opaque, void* addr)
 {	   
@@ -193,8 +191,7 @@ ssl_create_decompressor(gint compression)
 
 	if (compression == 0) return NULL;
 	if (debug) printf("ssl_create_decompressor: compression method %d\n", compression);
-	decomp = new SslDecompress;
-	autoMemoryType(decomp);
+	decomp = new FILE_LINE SslDecompress;
 	memset(decomp, 0, sizeof(SslDecompress));
 	decomp->compression = compression;
 	switch (decomp->compression) {
@@ -469,8 +466,7 @@ ssl_data_set(StringInfo* str, const guchar* data, guint len)
 static gint
 ssl_data_realloc(StringInfo* str, guint len)
 {		   
-	guchar *newdata = new guchar[len];
-	autoMemoryType(newdata);
+	guchar *newdata = new FILE_LINE guchar[len];
 	if(!newdata)
 		return -1;
 	if(str->data) {
@@ -1036,8 +1032,7 @@ ssl_load_key(FILE* fp)
 	gint				  ret;
 	guint				 bytes;
 
-	Ssl_private_key_t *private_key = new Ssl_private_key_t;
-	autoMemoryType(private_key);
+	Ssl_private_key_t *private_key = new FILE_LINE Ssl_private_key_t;
 	memset(private_key, 0, sizeof(Ssl_private_key_t));
 
 	/* init private key data*/
@@ -1059,8 +1054,7 @@ ssl_load_key(FILE* fp)
 		delete private_key;
 		return NULL;
 	}  
-	key.data = new guchar[size];
-	autoMemoryType(key.data);
+	key.data = new FILE_LINE guchar[size];
 	key.size = (int)size;
 	bytes = (guint) fread(key.data, 1, key.size, fp);
 	if (bytes < key.size) {
@@ -1372,8 +1366,7 @@ static StringInfo *
 ssl_data_clone(StringInfo *str)
 {	   
 	StringInfo *cloned_str;
-	cloned_str = (StringInfo*) new guchar[sizeof(StringInfo) + str->data_len];
-	autoMemoryType(cloned_str);
+	cloned_str = (StringInfo*) new FILE_LINE guchar[sizeof(StringInfo) + str->data_len];
 	memset(cloned_str, 0, sizeof(StringInfo) + str->data_len);
 	cloned_str->data = (guchar *) (cloned_str + 1);
 	ssl_data_set(cloned_str, str->data, str->data_len);
@@ -1431,13 +1424,11 @@ ssl_dissect_hnd_new_ses_ticket(char *data, unsigned int datalen, guint32 offset,
 		if(ssl->session_ticket.data) {
 			if(ticket_len > ssl->session_ticket.max_len) {
 				delete [] ssl->session_ticket.data;
-				ssl->session_ticket.data = new guchar[ticket_len];
-				autoMemoryType(ssl->session_ticket.data);
+				ssl->session_ticket.data = new FILE_LINE guchar[ticket_len];
 				ssl->session_ticket.max_len = ticket_len;
 			}
 		} else {
-			ssl->session_ticket.data = new guchar[ticket_len];
-			autoMemoryType(ssl->session_ticket.data);
+			ssl->session_ticket.data = new FILE_LINE guchar[ticket_len];
 			ssl->session_ticket.max_len = ticket_len;
 		}
 		ssl->session_ticket.data_len = ticket_len;
@@ -1616,8 +1607,7 @@ ssl_restore_master_key(SslDecryptSessionC *ssl, const char *label,
 		/* unlike master secret, pre-master secret has a variable size (48 for
 		 * RSA, varying for PSK) and is therefore not statically allocated */
 		if(ssl->pre_master_secret.data) delete [] ssl->pre_master_secret.data;
-		ssl->pre_master_secret.data = new guchar[ms->data_len];
-		autoMemoryType(ssl->pre_master_secret.data);
+		ssl->pre_master_secret.data = new FILE_LINE guchar[ms->data_len];
 		memset(ssl->pre_master_secret.data, 0, ms->data_len);
 		ssl_data_set(&ssl->pre_master_secret, ms->data, ms->data_len);
 		ssl->state |= SSL_PRE_MASTER_SECRET;
@@ -1677,8 +1667,7 @@ ssl_generate_pre_master_secret(SslDecryptSessionC *ssl_session,
    
 		pre_master_len = psk_len * 2 + 4;
 
-		pre_master_secret.data = new guchar[pre_master_len];
-		autoMemoryType(pre_master_secret.data);
+		pre_master_secret.data = new FILE_LINE guchar[pre_master_len];
 		memset(pre_master_secret.data, 0, pre_master_len);
 		pre_master_secret.data_len = pre_master_len;
 		/* 2 bytes psk_len*/
@@ -1739,8 +1728,7 @@ ssl_generate_pre_master_secret(SslDecryptSessionC *ssl_session,
 			return FALSE;   
 		}  
 	   
-		encrypted_pre_master.data = new guchar[encrlen];
-		autoMemoryType(encrypted_pre_master.data);
+		encrypted_pre_master.data = new FILE_LINE guchar[encrlen];
 		memset(encrypted_pre_master.data, 0, encrlen);
 		encrypted_pre_master.data_len = encrlen;
 		memcpy(encrypted_pre_master.data, data + offset + skip, encrlen);
@@ -1788,13 +1776,11 @@ ssl_load_pkcs12(FILE* fp, const gchar *cert_passwd, string &err) {
 	gnutls_x509_crt_t	 ssl_cert = NULL;
 	gnutls_x509_privkey_t ssl_pkey = NULL;
 
-	Ssl_private_key_t *private_key = new Ssl_private_key_t;
-	autoMemoryType(private_key);
+	Ssl_private_key_t *private_key = new FILE_LINE Ssl_private_key_t;
 	err = "";
 
 	rest = 4096;
-	data.data = new guchar[rest];
-	autoMemoryType(data.data);
+	data.data = new FILE_LINE guchar[rest];
 	data.size = rest;
 	p = data.data;
 	while ((len = fread(p, 1, rest, fp)) > 0) {
@@ -1802,8 +1788,7 @@ ssl_load_pkcs12(FILE* fp, const gchar *cert_passwd, string &err) {
 		rest -= (int) len;
 		if (!rest) {
 			rest = 1024;
-			guchar *newdata = new guchar[data.size + rest];
-			autoMemoryType(newdata);
+			guchar *newdata = new FILE_LINE guchar[data.size + rest];
 			memcpy(newdata, data.data, data.size);
 			delete [] data.data;
 			data.data = newdata;
@@ -2497,8 +2482,7 @@ SslDecryptSessionC::ssl_create_decoder(guint8 *mk, guint8 *sk, guint8 *iv)
 	SslDecoder *dec;
 	gint		ciph;
 
-	dec = new SslDecoder;
-	autoMemoryType(dec);
+	dec = new FILE_LINE SslDecoder;
 	memset(dec, 0, sizeof(SslDecoder));
 	/* Find the SSLeay cipher */
 	if(cipher_suite.enc != ENC_NULL) {
@@ -2590,8 +2574,7 @@ ssl_generate_keyring_material(SslDecryptSessionC *ssl_session)
 	if(ssl_session->cipher_suite.block>1)
 		needed+=ssl_session->cipher_suite.block*2;
 	
-	key_block.data = new guchar[needed];
-	autoMemoryType(key_block.data);
+	key_block.data = new FILE_LINE guchar[needed];
 	if (debug) printf("ssl_generate_keyring_material sess key generation\n");
 	if (!prf(ssl_session, &ssl_session->master_secret, "key expansion",
 			&ssl_session->server_random,&ssl_session->client_random,
@@ -3068,10 +3051,8 @@ find_or_create_session(packet_info *pinfo) {
 		}
 	}
 	//printf("find_or_create_session:create\n");
-	SslDecryptSessionC *ssl_session = new SslDecryptSessionC;
-	autoMemoryType(ssl_session);
-	session_t *s = new session_t;
-	autoMemoryType(s);
+	SslDecryptSessionC *ssl_session = new FILE_LINE SslDecryptSessionC;
+	session_t *s = new FILE_LINE session_t;
 	s->session = ssl_session;
 	sessions[hash[0]] = s;
 	return s->session;

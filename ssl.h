@@ -243,8 +243,7 @@ copy_address_shallow(address *to, const address *from) {
 	do {							  \
 		void *SE_COPY_ADDRESS_data; \
 		copy_address_shallow((to), (from)); \
-		SE_COPY_ADDRESS_data = new guchar[(from)->len]; \
-		autoMemoryType(SE_COPY_ADDRESS_data); \
+		SE_COPY_ADDRESS_data = new FILE_LINE guchar[(from)->len]; \
 		memcpy(SE_COPY_ADDRESS_data, (from)->data, (from)->len); \
 		(to)->data = SE_COPY_ADDRESS_data; \
 	} while (0)
@@ -1208,8 +1207,7 @@ static gboolean from_hex(StringInfo* out, const char* in, gsize hex_len) {
 	if (hex_len & 1)
 		return FALSE;
 
-	out->data = new guchar[hex_len / 2];
-	autoMemoryType(out->data);
+	out->data = new FILE_LINE guchar[hex_len / 2];
 	for (i = 0; i < hex_len / 2; i++) {
 		int a = ws_xton(in[i*2]);
 		int b = ws_xton(in[i*2 + 1]);
@@ -1291,8 +1289,7 @@ bytes_to_ep_str(const guint8 *bd, int bd_len)
 			//REPORT_DISSECTOR_BUG("Null pointer passed to bytes_to_ep_str()");
 			return NULL;
 
-		cur = new gchar[MAX_BYTE_STR_LEN+3+1];
-		autoMemoryType(cur);
+		cur = new FILE_LINE gchar[MAX_BYTE_STR_LEN+3+1];
 		if (bd_len <= 0) { cur[0] = '\0'; return cur; }
 
 		if (bd_len > MAX_BYTE_STR_LEN/2) {	  /* bd_len > 24 */
@@ -1350,8 +1347,7 @@ bytes_to_ep_str_punct(const guint8 *bd, int bd_len, gchar punct)
 		if (!punct)
 			return bytes_to_ep_str(bd, bd_len);
 	   
-		cur = new gchar[MAX_BYTE_STR_LEN+3+1];
-		autoMemoryType(cur);
+		cur = new FILE_LINE gchar[MAX_BYTE_STR_LEN+3+1];
 		if (bd_len <= 0) { cur[0] = '\0'; return cur; }
 	   
 		if (bd_len > MAX_BYTE_STR_LEN/3) {	  /* bd_len > 16 */
@@ -1390,8 +1386,7 @@ BAGTYPE(gnutls_pkcs12_bag_type_t x) {
 static gint     
 ssl_data_alloc(StringInfo* str, size_t len)
 {                       
-	str->data = new guchar[len];
-	autoMemoryType(str->data);
+	str->data = new FILE_LINE guchar[len];
 	/* the allocator can return a null pointer for a size equal to 0,
 	 * and that must be allowed */
 	if (len > 0 && !str->data)

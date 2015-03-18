@@ -5172,7 +5172,6 @@ void test_http_dumper() {
 	dumper.dumpData(timestamp_from.c_str(), timestamp_to.c_str(), ids.c_str());
 }
 
-
 void test() {
  
 	switch(opt_test) {
@@ -5592,4 +5591,34 @@ void test() {
 	*/
 	
 	//exit(0);
+}
+
+
+extern "C"{
+void __cyg_profile_func_enter(void *this_fn, void *call_site) __attribute__((no_instrument_function));
+void __cyg_profile_func_enter(void *this_fn, void *call_site) {
+	extern unsigned int HeapSafeCheck;
+	if(!(HeapSafeCheck & _HeapSafeStack) ||
+	   this_fn == syscall || this_fn == get_unix_tid) {
+		return;
+	}
+	unsigned tid = get_unix_tid();
+	extern void* threadStack[65536][10];
+	extern u_int16_t threadStackSize[65536];
+	if(threadStackSize[tid] < 10) {
+		threadStack[tid][threadStackSize[tid]] = this_fn;
+	}
+	++threadStackSize[tid];
+}
+void __cyg_profile_func_exit(void *this_fn, void *call_site) __attribute__((no_instrument_function));
+void __cyg_profile_func_exit(void *this_fn, void *call_site) {
+	extern unsigned int HeapSafeCheck;
+	if(!(HeapSafeCheck & _HeapSafeStack) ||
+	   this_fn == syscall || this_fn == get_unix_tid) {
+		return;
+	}
+	unsigned tid = get_unix_tid();
+	extern u_int16_t threadStackSize[65536];
+	--threadStackSize[tid];
+}
 }

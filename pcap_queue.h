@@ -301,8 +301,7 @@ struct pcapProcessData {
 		memset(this, 0, sizeof(pcapProcessData) - sizeof(ipfrag_data_s));
 		extern int opt_dup_check;
 		if(opt_dup_check) {
-			this->prevmd5s = new unsigned char[65536 * MD5_DIGEST_LENGTH]; // 1M
-			autoMemoryType(this->prevmd5s);
+			this->prevmd5s = new FILE_LINE unsigned char[65536 * MD5_DIGEST_LENGTH]; // 1M
 			memset(this->prevmd5s, 0, 65536 * MD5_DIGEST_LENGTH * sizeof(unsigned char));
 		}
 	}

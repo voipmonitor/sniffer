@@ -178,64 +178,15 @@ inline void *memset_heapsafe(void *ptr, int value, size_t length,
 }
 
 
-#include <map>
-#include <string>
-#include <stdio.h>
-#include "common.h"
-
-inline void* setMemoryType(void *ptr, const char *memory_type1, int memory_type2 = 0) {
-	extern unsigned int HeapSafeCheck;
-	extern sVerbose sverb;
-	if(HeapSafeCheck & _HeapSafeErrorBeginEnd && sverb.memory_stat && ptr) {
-		sHeapSafeMemoryControlBlock *ptr_beginMemoryBlock = (sHeapSafeMemoryControlBlock*)((unsigned char*)ptr - SIZEOF_MCB);
-		if(HEAPSAFE_CMP_BEGIN_MEMORY_CONTROL_BLOCK(ptr_beginMemoryBlock->stringInfo)) {
-			extern volatile u_int16_t threadRecursion[65536];
-			unsigned int tid = 0;
-			if(MCB_STACK) {
-				tid = get_unix_tid();
-				__sync_fetch_and_add(&threadRecursion[tid], 1);
-			}
-			extern volatile u_int64_t memoryStat[10000];
-			extern volatile u_int64_t memoryStatOther[10000];
-			extern volatile int64_t memoryStatOtherSum;
-			extern u_int32_t memoryStatLength;
-			std::string memory_type = memory_type1;
-			if(memory_type2) {
-				char memory_type2_str[20];
-				sprintf(memory_type2_str, " %i", memory_type2);
-				memory_type.append(memory_type2_str);
-			}
-			extern std::map<std::string, u_int32_t> memoryStatType;
-			extern volatile int memoryStat_sync;
-			while(__sync_lock_test_and_set(&memoryStat_sync, 1));
-			std::map<std::string, u_int32_t>::iterator iter = memoryStatType.find(memory_type);
-			if(iter == memoryStatType.end()) {
-				ptr_beginMemoryBlock->memory_type = ++memoryStatLength;;
-				memoryStatType[memory_type] = ptr_beginMemoryBlock->memory_type;
-			} else {
-				ptr_beginMemoryBlock->memory_type = iter->second;
-			}
-			__sync_lock_release(&memoryStat_sync);
-			__sync_fetch_and_add(&memoryStat[ptr_beginMemoryBlock->memory_type], ptr_beginMemoryBlock->length);
-			if(MCB_STACK && ((sHeapSafeMemoryControlBlockEx*)ptr_beginMemoryBlock)->memory_type_other) {
-				__sync_fetch_and_sub(&memoryStatOther[((sHeapSafeMemoryControlBlockEx*)ptr_beginMemoryBlock)->memory_type_other], ptr_beginMemoryBlock->length);
-			} else {
-				__sync_fetch_and_sub(&memoryStatOtherSum, ptr_beginMemoryBlock->length);
-			}
-			if(MCB_STACK) {
-				__sync_fetch_and_sub(&threadRecursion[tid], 1);
-			}
-		}
-	}
-	return(ptr);
-}
-
 std::string getMemoryStat(bool all = false);
 std::string addThousandSeparators(u_int64_t num);
 void printMemoryStat(bool all = false);
 
+void * operator new(size_t sizeOfObject, const char *memory_type1, int memory_type2 = 0);
+void * operator new[](size_t sizeOfObject, const char *memory_type1, int memory_type2 = 0);
 
-#define autoMemoryType(ptr) setMemoryType(ptr, __FILE__, __LINE__)
+
+#define FILE_LINE (__FILE__, __LINE__)
 
 
 #endif //HEAP_SAFE_H

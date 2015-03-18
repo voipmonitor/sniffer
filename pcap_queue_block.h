@@ -160,8 +160,7 @@ struct pcap_block_store {
 		if((opt_enable_http || opt_enable_webrtc || opt_enable_ssl) && opt_tcpreassembly_pb_lock) {
 			this->lock_sync_packet_lock();
 			if(!this->packet_lock) {
-				this->packet_lock = new bool[this->count];
-				autoMemoryType(this->packet_lock);
+				this->packet_lock = new FILE_LINE bool[this->count];
 				memset(this->packet_lock, 0, this->count * sizeof(bool));
 			}
 			this->packet_lock[index] = true;

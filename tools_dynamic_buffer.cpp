@@ -108,8 +108,7 @@ void CompressStream::initCompress() {
 	case lzma:
 #ifdef HAVE_LIBLZMA
 		if(!this->lzmaStream) {
-			this->lzmaStream = new lzma_stream;
-			autoMemoryType(this->lzmaStream);
+			this->lzmaStream = new FILE_LINE lzma_stream;
 			memset_heapsafe(this->lzmaStream, 0, sizeof(lzma_stream));
 			int ret = lzma_easy_encoder(this->lzmaStream, this->lzmaLevel, LZMA_CHECK_CRC64);
 			if(ret == LZMA_OK) {
@@ -126,8 +125,7 @@ void CompressStream::initCompress() {
 	case zip:
 	case gzip:
 		if(!this->zipStream) {
-			this->zipStream =  new z_stream;
-			autoMemoryType(this->zipStream);
+			this->zipStream =  new FILE_LINE z_stream;
 			this->zipStream->zalloc = Z_NULL;
 			this->zipStream->zfree = Z_NULL;
 			this->zipStream->opaque = Z_NULL;
@@ -170,8 +168,7 @@ void CompressStream::initDecompress(u_int32_t dataLen) {
 	case lzma:
 #ifdef HAVE_LIBLZMA 
 		if(!this->lzmaStreamDecompress) {
-			this->lzmaStreamDecompress = new lzma_stream;
-			autoMemoryType(this->lzmaStreamDecompress);
+			this->lzmaStreamDecompress = new FILE_LINE lzma_stream;
 			memset_heapsafe(this->lzmaStreamDecompress, 0, sizeof(lzma_stream));
 			int ret = lzma_stream_decoder(this->lzmaStreamDecompress, UINT64_MAX, LZMA_CONCATENATED);
 			if(ret == LZMA_OK) {
@@ -187,8 +184,7 @@ void CompressStream::initDecompress(u_int32_t dataLen) {
 	case zip:
 	case gzip:
 		if(!this->zipStreamDecompress) {
-			this->zipStreamDecompress =  new z_stream;
-			autoMemoryType(this->zipStreamDecompress);
+			this->zipStreamDecompress =  new FILE_LINE z_stream;
 			this->zipStreamDecompress->zalloc = Z_NULL;
 			this->zipStreamDecompress->zfree = Z_NULL;
 			this->zipStreamDecompress->opaque = Z_NULL;
@@ -562,8 +558,7 @@ void CompressStream::createCompressBuffer() {
 	case zip:
 	case gzip:
 	case lzma:
-		this->compressBuffer = new char[this->compressBufferLength];
-		autoMemoryType(this->compressBuffer);
+		this->compressBuffer = new FILE_LINE char[this->compressBufferLength];
 		break;
 	case lz4:
 	case lz4_stream:
@@ -572,8 +567,7 @@ void CompressStream::createCompressBuffer() {
 			this->compressBufferLength = this->maxDataLength;
 		}
 		this->compressBufferBoundLength = LZ4_compressBound(this->compressBufferLength);
-		this->compressBuffer = new char[this->compressBufferBoundLength];
-		autoMemoryType(this->compressBuffer);
+		this->compressBuffer = new FILE_LINE char[this->compressBufferBoundLength];
 		#endif //HAVE_LIBLZ4
 		break;
 	case snappy:
@@ -581,8 +575,7 @@ void CompressStream::createCompressBuffer() {
 			this->compressBufferLength = this->maxDataLength;
 		}
 		this->compressBufferBoundLength = snappy_max_compressed_length(this->compressBufferLength);
-		this->compressBuffer = new char[this->compressBufferBoundLength];
-		autoMemoryType(this->compressBuffer);
+		this->compressBuffer = new FILE_LINE char[this->compressBufferBoundLength];
 		break;
 	}
 }
@@ -602,15 +595,13 @@ void CompressStream::createDecompressBuffer(u_int32_t bufferLen) {
 	case zip:
 	case gzip:
 	case lzma:
-		this->decompressBuffer = new char[this->decompressBufferLength];
-		autoMemoryType(this->decompressBuffer);
+		this->decompressBuffer = new FILE_LINE char[this->decompressBufferLength];
 		break;	
 	case lz4:
 	case lz4_stream:
 	case snappy:
 		this->decompressBufferLength = max(this->maxDataLength, bufferLen);
-		this->decompressBuffer = new char[this->decompressBufferLength];
-		autoMemoryType(this->decompressBuffer);
+		this->decompressBuffer = new FILE_LINE char[this->decompressBufferLength];
 		break;
 	}
 }
@@ -699,8 +690,7 @@ void ChunkBuffer::setTypeCompress(CompressStream::eTypeCompress typeCompress, u_
 	case CompressStream::lz4:
 	case CompressStream::lz4_stream:
 	case CompressStream::snappy:
-		this->compressStream = new CompressStream(typeCompress, compressBufferLength, maxDataLength);
-		autoMemoryType(this->compressStream);
+		this->compressStream = new FILE_LINE CompressStream(typeCompress, compressBufferLength, maxDataLength);
 		break;
 	default:
 		break;
@@ -721,8 +711,7 @@ void ChunkBuffer::setName(const char *name) {
 	if(!name || !*name) {
 		return;
 	}
-	this->name = new char[strlen(name) + 1];
-	autoMemoryType(this->name);
+	this->name = new FILE_LINE char[strlen(name) + 1];
 	strcpy(this->name, name);
 }
 
@@ -781,8 +770,7 @@ void ChunkBuffer::add(char *data, u_int32_t datalen, bool flush, u_int32_t decom
 	switch(addMethod) {
 	case add_simple: {
 		sChunk chunk;
-		chunk.chunk = new char[datalen];
-		autoMemoryType(chunk.chunk);
+		chunk.chunk = new FILE_LINE char[datalen];
 		memcpy_heapsafe(chunk.chunk, data, datalen,
 				__FILE__, __LINE__);
 		chunk.len = datalen;
@@ -817,8 +805,7 @@ void ChunkBuffer::add(char *data, u_int32_t datalen, bool flush, u_int32_t decom
 				if(!this->lastChunk ||
 				   this->lastChunk->len == this->chunk_fix_len) {
 					sChunk chunk;
-					chunk.chunk = new char[this->chunk_fix_len];
-					autoMemoryType(chunk.chunk);
+					chunk.chunk = new FILE_LINE char[this->chunk_fix_len];
 					chunk.len = 0;
 					chunk.decompress_len = (u_int32_t)-1;
 					this->chunkBuffer.push_back(chunk);
@@ -845,8 +832,7 @@ void ChunkBuffer::add(char *data, u_int32_t datalen, bool flush, u_int32_t decom
 		do {
 			if(!(this->len % this->chunk_fix_len)) {
 				sChunk chunk;
-				chunk.chunk = new char[this->chunk_fix_len];
-				autoMemoryType(chunk.chunk);
+				chunk.chunk = new FILE_LINE char[this->chunk_fix_len];
 				this->chunkBuffer.push_back(chunk);
 				++this->chunkBuffer_countItems;
 				this->lastChunk = &(*(--this->chunkBuffer.end()));
@@ -973,7 +959,7 @@ void ChunkBuffer::chunkIterate(ChunkBuffer_baseIterate *chunkbufferIterateEv, bo
 						} else {
 							this->chunkIterateCompleteBufferInfo.buffer = 
 								this->chunkIterateCompleteBufferInfo.counter % 2 ?
-								 (char*)autoMemoryType(new char[this->chunkIterateCompleteBufferInfo.bufferLen]) :
+								 new FILE_LINE char[this->chunkIterateCompleteBufferInfo.bufferLen] :
 								 (char*)&(this->chunkIterateCompleteBufferInfo.chunkLenBuff);
 							u_int32_t copied = it->len - this->chunkIterateCompleteBufferInfo.chunkPos;
 							if(sverb.chunk_buffer > 1) { 

@@ -522,14 +522,12 @@ inline void save_packet(Call *call, struct pcap_pkthdr *header, const u_char *pa
 	if(ENABLE_CONVERT_DLT_SLL_TO_EN10(dlt)) {
 		const u_char *packet_orig = packet;
 		pcap_pkthdr *header_orig = header;
-		packet = (const u_char*) new u_char[header_orig->caplen];
-		autoMemoryType((u_char*)packet);
+		packet = (const u_char*) new FILE_LINE u_char[header_orig->caplen];
 		memcpy((u_char*)packet, (u_char*)packet_orig, 14);
 		memset((u_char*)packet, 0, 6);
 		((ether_header*)packet)->ether_type = ((sll_header*)packet_orig)->sll_protocol;
 		memcpy((u_char*)packet + 14, (u_char*)packet_orig + 16, header_orig->caplen - 16);
-		header = new pcap_pkthdr;
-		autoMemoryType(header);
+		header = new FILE_LINE pcap_pkthdr;
 		memcpy(header, header_orig, sizeof(pcap_pkthdr));
 		header->caplen -= 2;
 		header->len -= 2;
@@ -571,8 +569,7 @@ inline void save_packet(Call *call, struct pcap_pkthdr *header, const u_char *pa
 					char *endHeaderSepPos = (char*)memmem(data, datalen, "\r\n\r\n", 4);
 					if(endHeaderSepPos) {
 						const u_char *packet_orig = packet;
-						packet = (const u_char*) new u_char[header->caplen];
-						autoMemoryType((u_char*)packet);
+						packet = (const u_char*) new FILE_LINE u_char[header->caplen];
 						memcpy((u_char*)packet, packet_orig, header->caplen);
 						u_char *message = (u_char*)packet + dataoffset + (endHeaderSepPos - data) + 4;
 						memset((u_char*)message, 'x', min(contentLength, (long int)(header->caplen - (message - packet))));
@@ -653,8 +650,7 @@ inline void save_sip_packet(Call *call, struct pcap_pkthdr *header, const u_char
 		header->caplen -= diffLen;
 		header->len -= diffLen;
 		header_ip->tot_len = htons(ntohs(header_ip->tot_len) - diffLen);
-		u_char *newPacket = new u_char[newPacketLen];
-		autoMemoryType(newPacket);
+		u_char *newPacket = new FILE_LINE u_char[newPacketLen];
 		memcpy(newPacket, packet, oldcaplen - datalenWithSipOffset);
 		memcpy(newPacket + (oldcaplen - datalenWithSipOffset), data, sipDatalen);
 		iphdr2 *newHeaderIp = header_ip;
@@ -1324,10 +1320,8 @@ void add_to_rtp_thread_queue(Call *call, unsigned char *data, int datalen, int d
 	rtp_read_thread *params = &(rtp_threads[call->thread_num]);
 
 #if defined(QUEUE_MUTEX) || defined(QUEUE_NONBLOCK)
-	rtp_packet *rtpp = new rtp_packet;
-	autoMemoryType(rtpp);
-	rtpp->data = new unsigned char[datalen];
-	autoMemoryType(rtpp->data);
+	rtp_packet *rtpp = new FILE_LINE rtp_packet;
+	rtpp->data = new FILE_LINE unsigned char[datalen];
 #endif
 
 #ifdef QUEUE_NONBLOCK2
@@ -2671,15 +2665,13 @@ Call *process_packet(bool is_ssl, u_int64_t packet_number,
 							if(call->message) {
 								delete [] call->message;
 							}
-							call->message = new char[end - tmp + 1];
-							autoMemoryType(call->message);
+							call->message = new FILE_LINE char[end - tmp + 1];
 							data[datalen - 1] = a;
 							memcpy(call->message, tmp, end - tmp);
 							call->message[end - tmp] = '\0';
 						}
 					} else if(!call->message) {
-						call->message = new char[1];
-						autoMemoryType(call->message);
+						call->message = new FILE_LINE char[1];
 						call->message[0] = '\0';
 					}
 					data[datalen - 1] = a;
@@ -2948,8 +2940,7 @@ Call *process_packet(bool is_ssl, u_int64_t packet_number,
 			*sl = t;
 			
 			if(call->contenttype) delete [] call->contenttype;
-			call->contenttype = new char[l + 1];
-			autoMemoryType(call->contenttype);
+			call->contenttype = new FILE_LINE char[l + 1];
 			memcpy(call->contenttype, s, l);
 			call->contenttype[l] = '\0';
 			
@@ -2981,14 +2972,12 @@ Call *process_packet(bool is_ssl, u_int64_t packet_number,
 				if(end - tmp > contentlen) {
 					end = tmp + MIN(end - tmp, contentlen);
 				}
-				call->message = new char[end - tmp + 1];
-				autoMemoryType(call->message);
+				call->message = new FILE_LINE char[end - tmp + 1];
 				data[datalen - 1] = a;
 				memcpy(call->message, tmp, end - tmp);
 				call->message[end - tmp] = '\0';
 			} else {
-				call->message = new char[1];
-				autoMemoryType(call->message);
+				call->message = new FILE_LINE char[1];
 				call->message[0] = '\0';
 			}
 			//printf("msg: contentlen[%d] datalen[%d] len[%d] [%s]\n", contentlen, datalen, strlen(call->message), call->message);
@@ -4212,11 +4201,9 @@ inline int ipfrag_dequeue(ip_frag_queue_t *queue, struct pcap_pkthdr **header, u
 
 	// prepare newpacket structure and header structure
 	u_int32_t totallen = queue->begin()->second->totallen + queue->begin()->second->firstheaderlen;
-	u_char *newpacket = new u_char[totallen];
-	autoMemoryType(newpacket);
+	u_char *newpacket = new FILE_LINE u_char[totallen];
 	*packet = newpacket;
-	struct pcap_pkthdr *newheader = new pcap_pkthdr; // copy header
-	autoMemoryType(newheader);
+	struct pcap_pkthdr *newheader = new FILE_LINE pcap_pkthdr; // copy header
 	memcpy(newheader, *header, sizeof(struct pcap_pkthdr));
 	newheader->len = newheader->caplen = totallen;
 	*header = newheader;
@@ -4287,8 +4274,7 @@ int ipfrag_add(ip_frag_queue_t *queue, struct pcap_pkthdr *header, const u_char 
 		// this offset number is not yet in the queue - add packet to queue which automatically sort it into right position
 
 		// create node
-		ip_frag_s *node = new ip_frag_s;
-		autoMemoryType(node);
+		ip_frag_s *node = new FILE_LINE ip_frag_s;
 
 		if(queue->size()) {
 			// update totallen for the first node 
@@ -4310,16 +4296,14 @@ int ipfrag_add(ip_frag_queue_t *queue, struct pcap_pkthdr *header, const u_char 
 		node->header.caplen = len;
 		node->len = len;
 		// copy packet
-		node->packet = new u_char[len];
-		autoMemoryType(node->packet);
+		node->packet = new FILE_LINE u_char[len];
 		memcpy(node->packet, packet, len);
 		node->offset = offset_d;
 
 		// if it is first packet, copy first header at the beginning (which is typically ethernet header)
 		if((offset & IP_OFFSET) == 0) {
 			node->firstheaderlen = (char*)packet - (char*)(*origpacket);
-			node->firstheader = new char[node->firstheaderlen];
-			autoMemoryType(node->firstheader);
+			node->firstheader = new FILE_LINE char[node->firstheaderlen];
 			memcpy(node->firstheader, *origpacket, node->firstheaderlen);
 		} else {
 			node->firstheader = NULL;
@@ -4388,8 +4372,7 @@ int handle_defrag(iphdr2 *header_ip, struct pcap_pkthdr **header, u_char **packe
 	ip_frag_queue_t *queue = ipfrag_data->ip_frag_stream[header_ip2.saddr][header_ip2.id];
 	if(!queue) {
 		// queue does not exists yet - create it and assign to map 
-		queue = new ip_frag_queue_t;
-		autoMemoryType(queue);
+		queue = new FILE_LINE ip_frag_queue_t;
 		ipfrag_data->ip_frag_stream[header_ip2.saddr][header_ip2.id] = queue;
 	}
 	int res = ipfrag_add(queue, *header, (u_char*)header_ip, ntohs(header_ip2.tot_len), header, packet);
@@ -4507,10 +4490,8 @@ void readdump_libpcap(pcap_t *handle) {
 		if(opt_pcap_threaded) {
 			//add packet to queue
 #if defined(QUEUE_MUTEX) || defined(QUEUE_NONBLOCK)
-			pcap_packet *pp = new pcap_packet;
-			autoMemoryType(pp);
-			pp->packet = new u_char[header->caplen];
-			autoMemoryType(pp->packet);
+			pcap_packet *pp = new FILE_LINE pcap_packet;
+			pp->packet = new FILE_LINE u_char[header->caplen];
 			pp->offset = ppd.header_ip_offset;
 			memcpy(&pp->header, header, sizeof(struct pcap_pkthdr));
 			memcpy(pp->packet, packet, header->caplen);
@@ -4524,7 +4505,7 @@ void readdump_libpcap(pcap_t *handle) {
 			if(header->caplen > MAXPACKETLENQRING) {
 				//allocate special structure 
 				//syslog(LOG_ERR, "error: packet is to large [%d]b for QRING[%d]b", header->caplen, MAXPACKETLENQRING);
-				pcap_qring[pcap_writeit % pcap_qring_max].packet2 = (u_char*)autoMemoryType(new u_char[header->caplen]);
+				pcap_qring[pcap_writeit % pcap_qring_max].packet2 = new FILE_LINE u_char[header->caplen];
 				memcpy(pcap_qring[pcap_writeit % pcap_qring_max].packet2, packet, header->caplen);
 			} else {
 				pcap_qring[pcap_writeit % pcap_qring_max].packet2 = NULL;
@@ -4788,8 +4769,7 @@ TcpReassemblySip::tcp_stream2_s *TcpReassemblySip::addPacket(
 		int dlt, int sensor_id) {
 	tcp_stream2_s *lastStreamItem = stream ? getLastStreamItem(stream) : NULL;
 	
-	tcp_stream2_s *newStreamItem = new tcp_stream2_s;
-	autoMemoryType(newStreamItem);
+	tcp_stream2_s *newStreamItem = new FILE_LINE tcp_stream2_s;
 	newStreamItem->next = NULL;
 	newStreamItem->ts = header.ts.tv_sec;
 	newStreamItem->hash = hash;
@@ -4806,8 +4786,7 @@ TcpReassemblySip::tcp_stream2_s *TcpReassemblySip::addPacket(
 	}
 
 	//copy data 
-	newStreamItem->data = new char[datalen];
-	autoMemoryType(newStreamItem->data);
+	newStreamItem->data = new FILE_LINE char[datalen];
 	memcpy(newStreamItem->data, data, datalen);
 	newStreamItem->datalen = datalen;
 
@@ -4815,8 +4794,7 @@ TcpReassemblySip::tcp_stream2_s *TcpReassemblySip::addPacket(
 	newStreamItem->header = header;
 
 	//copy packet
-	newStreamItem->packet = new u_char[header.caplen];
-	autoMemoryType(newStreamItem->packet);
+	newStreamItem->packet = new FILE_LINE u_char[header.caplen];
 	memcpy(newStreamItem->packet, packet, header.caplen);
 	
 	newStreamItem->header_ip = (iphdr2*)(newStreamItem->packet + ((u_char*)header_ip - packet));
@@ -4847,8 +4825,7 @@ void TcpReassemblySip::complete(tcp_stream2_s *stream, u_int hash) {
 	u_char *newpacket;
 	bool allocNewpacket = false;
 	if(diffLen) {
-		newdata = new u_char[newlen];
-		autoMemoryType(newdata);
+		newdata = new FILE_LINE u_char[newlen];
 		int len = 0;
 		for(tcp_stream2_s *tmpstream = stream; tmpstream; tmpstream = tmpstream->next) {
 			memcpy(newdata + len, tmpstream->data, tmpstream->datalen);
@@ -4856,8 +4833,7 @@ void TcpReassemblySip::complete(tcp_stream2_s *stream, u_int hash) {
 		}
 		header.caplen += diffLen;
 		header.len += diffLen;
-		newpacket = new u_char[header.caplen];
-		autoMemoryType(newpacket);
+		newpacket = new FILE_LINE u_char[header.caplen];
 		allocNewpacket = true;
 		memcpy(newpacket, stream->packet, stream->header.caplen - stream->datalen);
 		memcpy(newpacket + (stream->header.caplen - stream->datalen), newdata, newlen);
@@ -4922,11 +4898,9 @@ PreProcessPacket::PreProcessPacket() {
 	this->qringmax = opt_preprocess_packets_qring_length;
 	this->readit = 0;
 	this->writeit = 0;
-	this->qring = new packet_parse_s*[this->qringmax];
-	autoMemoryType(this->qring);
+	this->qring = new FILE_LINE packet_parse_s*[this->qringmax];
 	for(unsigned int i = 0; i < this->qringmax; i++) {
-		this->qring[i] = new packet_parse_s;
-		autoMemoryType(this->qring[i]);
+		this->qring[i] = new FILE_LINE packet_parse_s;
 		this->qring[i]->used = 0;
 		this->qring[i]->parse.setStdParse();
 	}
@@ -5248,8 +5222,7 @@ ProcessRtpPacket::ProcessRtpPacket(int indexThread) {
 	this->qringmax = opt_process_rtp_packets_qring_length;
 	this->readit = 0;
 	this->writeit = 0;
-	this->qring = new packet_s[this->qringmax];
-	autoMemoryType(this->qring);
+	this->qring = new FILE_LINE packet_s[this->qringmax];
 	for(unsigned int i = 0; i < this->qringmax; i++) {
 		this->qring[i].used = 0;
 	}

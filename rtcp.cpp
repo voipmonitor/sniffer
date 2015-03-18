@@ -361,8 +361,7 @@ char *dump_rtcp_sdes(char *data, unsigned int datalen, int count)
 			}
 			
 			/* Allocate memory for the string then get it */
-			string = new u_int8_t[length + 1];
-			autoMemoryType(string);
+			string = new FILE_LINE u_int8_t[length + 1];
 			if((pkt + length) < (data + datalen)){
 				memcpy(string, pkt, length);
 				pkt += length;
