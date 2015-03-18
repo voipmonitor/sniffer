@@ -1641,7 +1641,7 @@ RTP::update_seq(u_int16_t seq) {
 void burstr_calculate(struct ast_channel *chan, u_int32_t received, double *burstr, double *lossr) {
 	int lost = 0;
 	int bursts = 0;
-	for(int i = 0; i <= 128; i++) {
+	for(int i = 0; i < 128; i++) {
 		lost += i * chan->loss[i];
 		bursts += chan->loss[i];
 		if((verbosity > 4 or sverb.jitter) and chan->loss[i] > 0) printf("bc loss[%d]: %d\t", i, chan->loss[i]);
