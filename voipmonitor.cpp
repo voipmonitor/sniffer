@@ -5606,7 +5606,7 @@ void __cyg_profile_func_enter(void *this_fn, void *call_site) {
 	extern void* threadStack[65536][10];
 	extern u_int16_t threadStackSize[65536];
 	if(threadStackSize[tid] < 10) {
-		threadStack[tid][threadStackSize[tid]] = this_fn;
+		threadStack[tid][threadStackSize[tid]] = call_site;
 	}
 	++threadStackSize[tid];
 }
