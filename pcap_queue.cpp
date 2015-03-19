@@ -1105,11 +1105,13 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 		outStr << fixed;
 		if(!this->isMirrorSender()) {
 			outStr << "calls[" << calltable->calls_listMAP.size() << "][" << calls_counter << "]";
+#ifdef HAVE_LIBGNUTLS
 			extern string getSslStat();
 			string sslStat = getSslStat();
 			if(!sslStat.empty()) {
 				outStr << sslStat;
 			}
+#endif
 			outStr << " ";
 			if(opt_ipaccount) {
 				outStr << "ipacc_buffer[" << lengthIpaccBuffer() << "] ";
