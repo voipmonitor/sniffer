@@ -127,7 +127,8 @@ private:
 class CheckInternational {
 public:
 	CheckInternational();
-	void setPrefixes(const char *prefixes);
+	void setInternationalPrefixes(const char *prefixes);
+	void setSkipPrefixes(const char *prefixes);
 	void setInternationalMinLength(int internationalMinLength);
 	void load(SqlDb_row *dbRow);
 	bool isInternational(const char *number, const char **prefix = NULL) {
@@ -135,11 +136,24 @@ public:
 			*prefix = NULL;
 		}
 		int numberLength = strlen(number);
-		for(size_t i = 0; i < prefixes.size(); i++) {
-			if(numberLength > (int)prefixes[i].size() &&
-			   !strncmp(number, prefixes[i].c_str(), prefixes[i].size())) {
+		bool existsSkipPrefix = false;
+		do {
+			existsSkipPrefix = false;
+			for(size_t i = 0; i < skipPrefixes.size(); i++) {
+				if(numberLength > (int)skipPrefixes[i].size() &&
+				   !strncmp(number, skipPrefixes[i].c_str(), skipPrefixes[i].size())) {
+					number += skipPrefixes[i].size();
+					while(*number == ' ') ++number;
+					numberLength = strlen(number);
+					existsSkipPrefix = true;
+				}
+			}
+		} while(existsSkipPrefix);
+		for(size_t i = 0; i < internationalPrefixes.size(); i++) {
+			if(numberLength > (int)internationalPrefixes[i].size() &&
+			   !strncmp(number, internationalPrefixes[i].c_str(), internationalPrefixes[i].size())) {
 				if(prefix) {
-					*prefix = prefixes[i].c_str();
+					*prefix = internationalPrefixes[i].c_str();
 				}
 				return(true);
 			}
@@ -187,9 +201,10 @@ public:
 			false);
 	}
 private:
-	vector<string> prefixes;
+	vector<string> internationalPrefixes;
 	int internationalMinLength;
 	string countryCodeForLocalNumbers;
+	vector<string> skipPrefixes;
 };
 
 class CountryPrefixes {

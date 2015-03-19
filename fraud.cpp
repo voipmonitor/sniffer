@@ -123,12 +123,16 @@ bool CountryCodes::isLocationIn(const char *location, vector<string> *in, bool c
 
 
 CheckInternational::CheckInternational() {
-	prefixes = split("+, 00", ",", true);
+	internationalPrefixes = split("+, 00", ",", true);
 	internationalMinLength = 0;
 }
 
-void CheckInternational::setPrefixes(const char *prefixes) {
-	this->prefixes = split(prefixes, ",", true);
+void CheckInternational::setInternationalPrefixes(const char *prefixes) {
+	this->internationalPrefixes = split(prefixes, ",", true);
+}
+
+void CheckInternational::setSkipPrefixes(const char *prefixes) {
+	this->skipPrefixes = split(prefixes, ",", true);
 }
 
 void CheckInternational::setInternationalMinLength(int internationalMinLength) {
@@ -138,10 +142,14 @@ void CheckInternational::setInternationalMinLength(int internationalMinLength) {
 void CheckInternational::load(SqlDb_row *dbRow) {
 	string _prefixes = (*dbRow)["international_prefixes"];
 	if(!_prefixes.empty()) {
-		prefixes = split(_prefixes.c_str(), split(",|;", "|"), true);
+		internationalPrefixes = split(_prefixes.c_str(), split(",|;", "|"), true);
 	}
 	internationalMinLength = atoi((*dbRow)["international_number_min_length"].c_str());
 	countryCodeForLocalNumbers = (*dbRow)["country_code_for_local_numbers"];
+	_prefixes = (*dbRow)["skip_prefixes"];
+	if(!_prefixes.empty()) {
+		skipPrefixes = split(_prefixes.c_str(), split(",|;", "|"), true);
+	}
 }
 
 
