@@ -2270,8 +2270,8 @@ Call::saveToDb(bool enableBatchIfPossible) {
 					     "  delete from cdr where id = @exists_call_id;\n" +
 					     "  delete from cdr_next where cdr_id = @exists_call_id;\n" +
 					     "  delete from cdr_rtp where cdr_id = @exists_call_id;\n" +
-					     (opt_dbdtmf ? "delete from cdr_dtmf where cdr_id = @exists_call_id\n" : "") +
-					     (opt_pcap_dump_tar ? "delete from cdr_tar_part where cdr_id = @exists_call_id\n" : "") +
+					     (opt_dbdtmf ? "  delete from cdr_dtmf where cdr_id = @exists_call_id;\n" : "") +
+					     (opt_pcap_dump_tar ? "  delete from cdr_tar_part where cdr_id = @exists_call_id;\n" : "") +
 					     "  set @exists_call_id = 0;\n" +
 					     "end if;\n";
 				query_str += "if not @exists_call_id then\n";
