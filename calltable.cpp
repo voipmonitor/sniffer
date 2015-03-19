@@ -1437,11 +1437,11 @@ Call::convertRawToWav() {
 
 			if(iter > 0) {
 				if(rtp[ssrc_index]->ssrc == rtp[last_ssrc_index]->ssrc and
-					ast_tvdiff_ms(lasttv, tv0) < 200 and
+					abs(ast_tvdiff_ms(tv0, lasttv)) < 200 and
 					last_size > 10000) {
 					// ignore this raw file it is duplicate 
 					if(!sverb.noaudiounlink) unlink(raw);
-					//syslog(LOG_NOTICE, "ignoring duplicate stream ssrc[%x] ssrc[%x]", rtp[last_ssrc_index]->ssrc, rtp[ssrc_index]->ssrc);
+					//syslog(LOG_NOTICE, "ignoring duplicate stream [%s] ssrc[%x] ssrc[%x] ast_tvdiff_ms(lasttv, tv0)=[%d]", raw, rtp[last_ssrc_index]->ssrc, rtp[ssrc_index]->ssrc, ast_tvdiff_ms(lasttv, tv0));
 				} else {
 					raws.push_back(rawl);
 				}
