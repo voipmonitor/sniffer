@@ -3390,4 +3390,16 @@ void test_ssl() {
 	delete devo;
 
 }
+
+
+string getSslStat() {
+	extern unsigned int glob_ssl_calls;
+	ostringstream outStr;
+	if(sessions.size() or glob_ssl_calls) {
+		outStr << "tls[" << glob_ssl_calls << "|" << sessions.size() << "]";
+	}
+	return(outStr.str());
+}
+
+
 #endif

@@ -80,7 +80,6 @@
 #include "tar.h"
 #include "codec_alaw.h"
 #include "codec_ulaw.h"
-#include "ssl.h"
 
 #if defined(QUEUE_MUTEX) || defined(QUEUE_NONBLOCK)
 extern "C" {
@@ -659,9 +658,6 @@ int opt_delete_threads = 1;
 
 u_int64_t rdtsc_by_100ms;
 
-extern map<string, session_t*> sessions;
-extern unsigned int glob_ssl_calls;
-
 #include <stdio.h>
 #include <pthread.h>
 #include <openssl/err.h>
@@ -1005,11 +1001,11 @@ void *storing_cdr( void *dummy ) {
 		
 		if(verbosity > 0 && !opt_pcap_queue) { 
 			ostringstream outStr;
-			outStr << "calls[" << calls_counter;
-			if(sessions.size() or glob_ssl_calls) {
-				outStr << "]tls[" << glob_ssl_calls << "|" << sessions.size() << "] ";
-			} else {
-				outStr << "] ";
+			outStr << "calls[" << calls_counter << "]";
+			extern string getSslStat();
+			string sslStat = getSslStat();
+			if(!sslStat.empty()) {
+				outStr << sslStat;
 			}
 			if(opt_ipaccount) {
 				outStr << " ipacc_buffer[" << lengthIpaccBuffer() << "]";
