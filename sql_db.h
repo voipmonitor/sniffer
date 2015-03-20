@@ -227,12 +227,12 @@ public:
 	int multi_off();
 	int getDbMajorVersion();
 	int getDbMinorVersion(int minorLevel  = 0);
-	bool createRoutine(string routine, string routineName, string routineParamsAndReturn, eRoutineType routineType);
-	bool createFunction(string routine, string routineName, string routineParamsAndReturn) {
-		return(this->createRoutine(routine, routineName, routineParamsAndReturn, function));
+	bool createRoutine(string routine, string routineName, string routineParamsAndReturn, eRoutineType routineType, bool abortIfFailed = false);
+	bool createFunction(string routine, string routineName, string routineParamsAndReturn, bool abortIfFailed = false) {
+		return(this->createRoutine(routine, routineName, routineParamsAndReturn, function, abortIfFailed));
 	}
-	bool createProcedure(string routine, string routineName, string routineParamsAndReturn) {
-		return(this->createRoutine(routine, routineName, routineParamsAndReturn, procedure));
+	bool createProcedure(string routine, string routineName, string routineParamsAndReturn, bool abortIfFailed = false) {
+		return(this->createRoutine(routine, routineName, routineParamsAndReturn, procedure, abortIfFailed));
 	}
 	MYSQL *getH_Mysql() {
 		return(this->hMysql);

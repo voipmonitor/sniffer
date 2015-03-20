@@ -661,7 +661,7 @@ int SqlDb_mysql::getDbMinorVersion(int minorLevel) {
 	return(pointToVersion ? atoi(pointToVersion) : 0);
 }
 
-bool SqlDb_mysql::createRoutine(string routine, string routineName, string routineParamsAndReturn, eRoutineType routineType) {
+bool SqlDb_mysql::createRoutine(string routine, string routineName, string routineParamsAndReturn, eRoutineType routineType, bool abortIfFailed) {
 	bool missing = false;
 	bool diff = false;
 	if(this->isCloud()) {
@@ -698,8 +698,16 @@ bool SqlDb_mysql::createRoutine(string routine, string routineName, string routi
 		syslog(LOG_NOTICE, "create %s %s", (routineType == procedure ? "procedure" : "function"), routineName.c_str());
 		this->query(string("drop ") + (routineType == procedure ? "PROCEDURE" : "FUNCTION") +
 			    " if exists " + routineName);
-		return(this->query(string("create ") + (routineType == procedure ? "PROCEDURE" : "FUNCTION") + " " +
-				   routineName + routineParamsAndReturn + " " + routine));
+		bool rslt = this->query(string("create ") + (routineType == procedure ? "PROCEDURE" : "FUNCTION") + " " +
+					routineName + routineParamsAndReturn + " " + routine);
+		if(!rslt && abortIfFailed) {
+			string abortString = 
+				string("create routine ") + routineName + " failed\n" +
+				"tip: SET GLOBAL log_bin_trust_function_creators = 1  or put it in my.cnf configuration or grant SUPER privileges to your voipmonitor mysql user.";
+			syslog(LOG_ERR, abortString.c_str());
+			abort();
+		}
+		return(rslt);
 	} else {
 		return(true);
 	}
@@ -3273,7 +3281,7 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 			    execute stmt;\
 			    deallocate prepare stmt;\
 			 end",
-			"create_partition", "(table_name char(100), type_part char(10), next_days int)");
+			"create_partition", "(table_name char(100), type_part char(10), next_days int)", true);
 		} else {
 			this->createProcedure(string(
 			"begin\
@@ -3340,7 +3348,7 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 			       end if;\
 			    end if;\
 			 end",
-			"create_partition", "(database_name char(100), table_name char(100), type_part char(10), next_days int)");
+			"create_partition", "(database_name char(100), table_name char(100), type_part char(10), next_days int)", true);
 		}
 	}
 	if(opt_cdr_partition && !opt_disable_partition_operations) {
@@ -3359,7 +3367,7 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 			    call create_partition('register_state', 'day', next_days);\
 			    call create_partition('register_failed', 'day', next_days);\
 			 end",
-			"create_partitions_cdr", "(next_days int)");
+			"create_partitions_cdr", "(next_days int)", true);
 			if(opt_create_old_partitions > 0 && createdCdrTable) {
 				for(int i = opt_create_old_partitions - 1; i > 0; i--) {
 					char i_str[10];
@@ -3396,7 +3404,7 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 			    call create_partition(database_name, 'register_state', 'day', next_days);\
 			    call create_partition(database_name, 'register_failed', 'day', next_days);\
 			 end",
-			"create_partitions_cdr", "(database_name char(100), next_days int)");
+			"create_partitions_cdr", "(database_name char(100), next_days int)", true);
 			if(opt_create_old_partitions > 0 && createdCdrTable) {
 				for(int i = opt_create_old_partitions - 1; i > 0; i--) {
 					char i_str[10];
@@ -3429,7 +3437,7 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 			    call create_partition('ipacc_agr2_hour', 'day', next_days);\
 			    call create_partition('ipacc_agr_day', 'month', next_days);\
 			 end",
-			"create_partitions_ipacc", "(next_days int)");
+			"create_partitions_ipacc", "(next_days int)", true);
 			this->query(
 			"call create_partitions_ipacc(0);");
 			this->query(
@@ -3451,7 +3459,7 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 			    call create_partition(database_name, 'ipacc_agr2_hour', 'day', next_days);\
 			    call create_partition(database_name, 'ipacc_agr_day', 'month', next_days);\
 			 end",
-			"create_partitions_ipacc", "(database_name char(100), next_days int)");
+			"create_partitions_ipacc", "(database_name char(100), next_days int)", true);
 			this->query(string(
 			"call `") + mysql_database + "`.create_partitions_ipacc('" + mysql_database + "', 0);");
 			this->query(string(
@@ -3478,7 +3486,7 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 					RETURN LAST_INSERT_ID(); \
 				END IF; \
 			END",
-			"getIdOrInsertUA", "(val VARCHAR(255) CHARACTER SET latin1) RETURNS INT DETERMINISTIC");
+			"getIdOrInsertUA", "(val VARCHAR(255) CHARACTER SET latin1) RETURNS INT DETERMINISTIC", true);
 
 	this->createFunction( // double space after begin for invocation rebuild function if change parameter - createRoutine compare only body
 			"BEGIN  \
@@ -3491,7 +3499,7 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 					RETURN LAST_INSERT_ID(); \
 				END IF; \
 			END",
-			"getIdOrInsertSIPRES", "(val VARCHAR(255) CHARACTER SET latin1) RETURNS INT DETERMINISTIC");
+			"getIdOrInsertSIPRES", "(val VARCHAR(255) CHARACTER SET latin1) RETURNS INT DETERMINISTIC", true);
 
 	this->createFunction( // double space after begin for invocation rebuild function if change parameter - createRoutine compare only body
 			"BEGIN  \
@@ -3504,7 +3512,7 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 					RETURN LAST_INSERT_ID(); \
 				END IF; \
 			END",
-			"getIdOrInsertCONTENTTYPE", "(val VARCHAR(255) CHARACTER SET utf8) RETURNS INT DETERMINISTIC");
+			"getIdOrInsertCONTENTTYPE", "(val VARCHAR(255) CHARACTER SET utf8) RETURNS INT DETERMINISTIC", true);
 
 	this->createProcedure(
 			"BEGIN \
@@ -3613,7 +3621,7 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 			  IN register_expires INT, \
 			  IN cdr_ua VARCHAR(255), \
 			  IN fname BIGINT, \
-			  IN id_sensor INT)");
+			  IN id_sensor INT)", true);
 
 	//END SQL SCRIPTS
 	}
