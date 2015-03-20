@@ -1002,11 +1002,13 @@ void *storing_cdr( void *dummy ) {
 		if(verbosity > 0 && !opt_pcap_queue) { 
 			ostringstream outStr;
 			outStr << "calls[" << calls_counter << "]";
+#ifdef HAVE_LIBGNUTLS
 			extern string getSslStat();
 			string sslStat = getSslStat();
 			if(!sslStat.empty()) {
 				outStr << sslStat;
 			}
+#endif
 			if(opt_ipaccount) {
 				outStr << " ipacc_buffer[" << lengthIpaccBuffer() << "]";
 			}
