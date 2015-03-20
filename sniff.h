@@ -324,9 +324,37 @@ private:
 		return(stream);
 	}
 	bool isCompleteStream(tcp_stream2_s *stream) {
-		tcp_stream2_s *lastStreamItem = getLastStreamItem(stream);
-		return(lastStreamItem->datalen >= 2 && 
-		       lastStreamItem->data[lastStreamItem->datalen - 2] == 0x0d && lastStreamItem->data[lastStreamItem->datalen - 1] == 0x0a);
+		bool streamOneItems = false;
+		tcp_stream2_s *lastStreamItem = NULL;
+		if(stream->next) {
+			lastStreamItem = getLastStreamItem(stream);
+		} else {
+			lastStreamItem = stream;
+			streamOneItems = true;
+		}
+		if(lastStreamItem->datalen >= 2 && 
+		   lastStreamItem->data[lastStreamItem->datalen - 2] == 0x0d && lastStreamItem->data[lastStreamItem->datalen - 1] == 0x0a) {
+			return(true);
+		}
+		if(streamOneItems) {
+			char *endHeaderSepPos = (char*)memmem(stream->data, stream->datalen, "\r\n\r\n", 4);
+			if(endHeaderSepPos) {
+				*endHeaderSepPos = 0;
+				char *contentLengthPos = strcasestr(stream->data, "Content-Length: ");
+				bool okLength = false;
+				if(contentLengthPos) {
+					unsigned int contentLength = atol(contentLengthPos + 16);
+					if((endHeaderSepPos - stream->data) + 4 + contentLength == stream->datalen) {
+						okLength = true;
+					}
+				}
+				*endHeaderSepPos = '\r';
+				if(okLength) {
+					return(true);
+				}
+			}
+		}
+		return(false);
 	}
 private:
 	tcp_stream2_s *tcp_streams_hashed[MAX_TCPSTREAMS];
