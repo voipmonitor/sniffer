@@ -1746,6 +1746,13 @@ getwav:
 			cerr << "Error sending data to client" << endl;
 			return -1;
 		}
+	} else if(strstr(buf, "jemalloc_stat") != NULL) {
+		string jeMallocStat();
+		string rsltMemoryStat = jeMallocStat();
+		if ((size = sendvm(client, sshchannel, rsltMemoryStat.c_str(), rsltMemoryStat.length(), 0)) == -1){
+			cerr << "Error sending data to client" << endl;
+			return -1;
+		}
 	} else if(buf[0] == 'b' and strstr(buf, "blocktar") != NULL) {
 		opt_blocktarwrite = 1;
 	} else if(buf[0] == 'u' and strstr(buf, "unblocktar") != NULL) {

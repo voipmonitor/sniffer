@@ -21,6 +21,9 @@
 #include <time.h>
 #include <signal.h>
 #include <iomanip>
+#ifdef HAVE_LIBJEMALLOC
+#include <jemalloc/jemalloc.h>
+#endif //HAVE_LIBJEMALLOC
 
 #ifdef FREEBSD
 #include <sys/endian.h>
@@ -5624,4 +5627,37 @@ void __cyg_profile_func_exit(void *this_fn, void *call_site) {
 	extern u_int16_t threadStackSize[65536];
 	--threadStackSize[tid];
 }
+}
+
+
+string jeMallocStat() {
+	string rslt;
+#ifdef HAVE_LIBJEMALLOC
+	char tempFileName[L_tmpnam+1];
+	tmpnam(tempFileName);
+	char *tempFileNamePointer = tempFileName;
+	mallctl("prof.dump", NULL, NULL, &tempFileNamePointer, sizeof(char*));
+	FILE *jeout = fopen(tempFileName, "rt");
+	if(jeout) {
+		char *buff = new char[10000];
+		while(fgets(buff, 10000, jeout)) {
+			if(reg_match(buff, "MAPPED_LIBRARIES")) {
+				break;
+			}
+			if(reg_match(buff, "^[0-9]+: [0-9]+")) {
+				char *pointerToSizeSeparator = strchr(buff, ':');
+				if(pointerToSizeSeparator &&
+				   atoll(buff) * atoll(pointerToSizeSeparator + 2) > sverb.memory_stat_ignore_limit) {
+					rslt += buff;
+				}
+			}
+		}
+		delete [] buff;
+		fclose(jeout);
+	}
+	unlink(tempFileName);
+#else
+	rslt = "voipmonitor build without library jemalloc\n";
+#endif //HAVE_LIBJEMALLOC
+	return(rslt);
 }
