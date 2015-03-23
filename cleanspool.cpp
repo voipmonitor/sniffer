@@ -51,6 +51,9 @@ extern int opt_autocleanspoolminpercent;
 extern int opt_autocleanmingb;
 extern int opt_cleanspool_enable_run_hour_from;
 extern int opt_cleanspool_enable_run_hour_to;
+extern bool opt_autocleanspoolminpercent_configset;
+extern bool opt_autocleanmingb_configset;
+
 
 extern MySqlStore *sqlStore;
 
@@ -1420,7 +1423,9 @@ void check_disk_free_run(bool enableRunCleanSpoolThread) {
 	double freeSpacePercent = (double)GetFreeDiskSpace(opt_chdir, true) / 100;
 	double freeSpaceGB = (double)GetFreeDiskSpace(opt_chdir) / (1024 * 1024 * 1024);
 	double totalSpaceGB = (double)GetTotalDiskSpace(opt_chdir) / (1024 * 1024 * 1024);
-	if(freeSpacePercent < opt_autocleanspoolminpercent && freeSpaceGB < opt_autocleanmingb) {
+	if((freeSpacePercent < opt_autocleanspoolminpercent && freeSpaceGB < opt_autocleanmingb) ||
+	   (opt_autocleanspoolminpercent_configset && freeSpacePercent < opt_autocleanspoolminpercent) ||
+	   (opt_autocleanmingb_configset && freeSpaceGB < opt_autocleanmingb)) {
 		syslog(LOG_NOTICE, "low spool disk space - executing filesindex");
 		convert_filesindex();
 		freeSpacePercent = (double)GetFreeDiskSpace(opt_chdir, true) / 100;

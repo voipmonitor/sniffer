@@ -297,7 +297,9 @@ unsigned int opt_maxpoolaudiodays = 0;
 int opt_maxpool_clean_obsolete = 0;
 int opt_autocleanspool = 1;
 int opt_autocleanspoolminpercent = 1;
+bool opt_autocleanspoolminpercent_configset = false;
 int opt_autocleanmingb = 5;
+bool opt_autocleanmingb_configset = false;
 int opt_cleanspool_enable_run_hour_from = -1;
 int opt_cleanspool_enable_run_hour_to = -1;
 int opt_mysqlloadconfig = 1;
@@ -1293,9 +1295,12 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "autocleanspoolminpercent", NULL))) {
 		opt_autocleanspoolminpercent = atoi(value);
+		opt_autocleanspoolminpercent_configset = true;
 	}
-	if((value = ini.GetValue("general", "autocleanmingb", NULL))) {
+	if((value = ini.GetValue("general", "autocleanmingb", NULL)) ||
+	   (value = ini.GetValue("general", "autocleanspoolmingb", NULL))) {
 		opt_autocleanmingb = atoi(value);
+		opt_autocleanmingb_configset = true;
 	}
 	if((value = ini.GetValue("general", "cleanspool_enable_fromto", NULL))) {
 		string fromTo = reg_replace(value, "([0-9]+)[- ]*([0-9]+)", "$1-$2");

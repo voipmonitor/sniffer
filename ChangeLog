@@ -1,3 +1,8 @@
+10.1.44 20.03.2015
+==================
+- fix autocleanspoolminpercent and autocleanmingb which did not worked when autocleanmingb was set differently than default 
+
+
 10.1.43 20.03.2015
 ==================
 - enhance SIP TCP reassembler which now detects complete SIP packet sooner and fixes ignoring some packets where there is no TCP ack to them [VS-205]
