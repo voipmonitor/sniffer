@@ -97,6 +97,12 @@ int TcpReassemblyStream::ok(bool crazySequence, bool enableSimpleCmpMaxNextSeq, 
 					  forceFirstSeq :
 					  (crazySequence ? this->min_seq : this->first_seq));
 		iter_var = this->queue.find(seq);
+		if(!this->ok_packets.size() &&
+		   iter_var == this->queue.end() && seq && seq == this->first_seq &&
+		   this->min_seq && this->min_seq != this->first_seq) {
+			seq = this->min_seq;
+			iter_var = this->queue.find(seq);
+		}
 		while(iter_var != this->queue.end() && iter_var->second.isFail()) {
 			++iter_var;
 		}

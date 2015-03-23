@@ -193,8 +193,7 @@ void SslData::processData(u_int32_t ip_src, u_int32_t ip_dst,
 						cout << "SKIP REMAIN DATA" << endl;
 					}
 				} else {
-					if(ssl_data_offset < ssl_datalen &&
-					   checkOkSslHeader(ssl_data + ssl_data_offset, ssl_datalen - ssl_data_offset)) {
+					if(ssl_data_offset < ssl_datalen) {
 						reassemblyLink->setRemainData(ssl_data + ssl_data_offset, ssl_datalen - ssl_data_offset, dataItem->getDirection());
 						if(debugSave) {
 							cout << "REMAIN DATA LENGTH: " << ssl_datalen - ssl_data_offset << endl;
