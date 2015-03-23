@@ -2556,7 +2556,7 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 		}
 	}
 
-	this->query("show columns from cdr where Field='price_operator_mult100'");
+	this->query("show columns from cdr where Field='price_operator_mult100' or Field='price_operator_mult1000000'");
 	if(!this->fetchRow()) {
 		this->query("show tables like 'billing'");
 		if(this->fetchRow()) {
