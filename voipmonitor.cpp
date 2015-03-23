@@ -5644,10 +5644,14 @@ string jeMallocStat() {
 			if(reg_match(buff, "MAPPED_LIBRARIES")) {
 				break;
 			}
-			if(reg_match(buff, "^[0-9]+: [0-9]+")) {
-				char *pointerToSizeSeparator = strchr(buff, ':');
-				if(pointerToSizeSeparator &&
-				   atoll(buff) * atoll(pointerToSizeSeparator + 2) > sverb.memory_stat_ignore_limit) {
+			if(*buff) {
+				if(reg_match(buff, "^[0-9]+: [0-9]+")) {
+					char *pointerToSizeSeparator = strchr(buff, ':');
+					if(pointerToSizeSeparator &&
+					   atoll(buff) * atoll(pointerToSizeSeparator + 2) > sverb.memory_stat_ignore_limit) {
+						rslt += buff;
+					}
+				} else {
 					rslt += buff;
 				}
 			}
