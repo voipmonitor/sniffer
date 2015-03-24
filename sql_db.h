@@ -322,6 +322,7 @@ public:
 	~MySqlStore_process();
 	void connect();
 	void disconnect();
+	bool connected();
 	void query(const char *query_str);
 	void store();
 	void _store(string beginProcedure, string endProcedure, string queries);
@@ -362,6 +363,7 @@ private:
 	bool enableTerminatingIfEmpty;
 	bool enableTerminatingIfSqlError;
 	bool enableAutoDisconnect;
+	u_long lastQueryTime;
 };
 
 class MySqlStore {

@@ -1747,8 +1747,8 @@ getwav:
 			return -1;
 		}
 	} else if(strstr(buf, "jemalloc_stat") != NULL) {
-		string jeMallocStat();
-		string rsltMemoryStat = jeMallocStat();
+		string jeMallocStat(bool full);
+		string rsltMemoryStat = jeMallocStat(strstr(buf, "full"));
 		if ((size = sendvm(client, sshchannel, rsltMemoryStat.c_str(), rsltMemoryStat.length(), 0)) == -1){
 			cerr << "Error sending data to client" << endl;
 			return -1;

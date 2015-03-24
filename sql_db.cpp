@@ -1233,6 +1233,7 @@ MySqlStore_process::MySqlStore_process(int id, const char *host, const char *use
 	this->concatLimit = concatLimit;
 	this->enableTransaction = false;
 	this->enableFixDeadlock = false;
+	this->lastQueryTime = 0;
 	this->sqlDb = new FILE_LINE SqlDb_mysql();
 	this->sqlDb->setConnectParameters(host, user, password, database);
 	if(cloud_host && *cloud_host) {
@@ -1261,6 +1262,10 @@ void MySqlStore_process::disconnect() {
 	}
 }
 
+bool MySqlStore_process::connected() {
+	return(this->sqlDb->connected());
+}
+
 void MySqlStore_process::query(const char *query_str) {
 	if(sverb.store_process_query) {
 		cout << "store_process_query_" << this->id << ": " << query_str << endl;
@@ -1285,6 +1290,7 @@ void MySqlStore_process::store() {
 				this->unlock();
 				if(queryqueue != "") {
 					this->_store(beginProcedure, endProcedure, queryqueue);
+					lastQueryTime = getTimeS();
 					queryqueue = "";
 					if(verbosity > 1) {
 						syslog(LOG_INFO, "STORE id: %i", this->id);
@@ -1313,6 +1319,7 @@ void MySqlStore_process::store() {
 				size++;
 			} else {
 				this->_store(beginProcedure, endProcedure, queryqueue);
+				lastQueryTime = getTimeS();
 				queryqueue = "";
 				size = 0;
 				if(verbosity > 1) {
@@ -1330,7 +1337,8 @@ void MySqlStore_process::store() {
 		    (this->enableTerminatingIfSqlError && this->sqlDb->getLastError()))) {
 			break;
 		}
-		if(this->enableAutoDisconnect) {
+		if(this->enableAutoDisconnect && this->connected() &&
+		   getTimeS() - lastQueryTime > 600) {
 			this->disconnect();
 		}
 		sleep(1);

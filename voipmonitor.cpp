@@ -1,3 +1,5 @@
+#define HAVE_LIBJEMALLOC
+
 /* Martin Vit support@voipmonitor.org
  * This program is free software, distributed under the terms of
  * the GNU General Public License Version 2.
@@ -5630,7 +5632,7 @@ void __cyg_profile_func_exit(void *this_fn, void *call_site) {
 }
 
 
-string jeMallocStat() {
+string jeMallocStat(bool full) {
 	string rslt;
 #ifdef HAVE_LIBJEMALLOC
 	char tempFileName[L_tmpnam+1];
@@ -5641,18 +5643,22 @@ string jeMallocStat() {
 	if(jeout) {
 		char *buff = new char[10000];
 		while(fgets(buff, 10000, jeout)) {
-			if(reg_match(buff, "MAPPED_LIBRARIES")) {
-				break;
-			}
-			if(*buff) {
-				if(reg_match(buff, "^[0-9]+: [0-9]+")) {
-					char *pointerToSizeSeparator = strchr(buff, ':');
-					if(pointerToSizeSeparator &&
-					   atoll(buff) * atoll(pointerToSizeSeparator + 2) > sverb.memory_stat_ignore_limit) {
+			if(full) {
+				rslt += buff;
+			} else {
+				if(reg_match(buff, "MAPPED_LIBRARIES")) {
+					break;
+				}
+				if(*buff) {
+					if(reg_match(buff, "^[0-9]+: [0-9]+")) {
+						char *pointerToSizeSeparator = strchr(buff, ':');
+						if(pointerToSizeSeparator &&
+						   atoll(buff) * atoll(pointerToSizeSeparator + 2) > sverb.memory_stat_ignore_limit) {
+							rslt += buff;
+						}
+					} else {
 						rslt += buff;
 					}
-				} else {
-					rslt += buff;
 				}
 			}
 		}
