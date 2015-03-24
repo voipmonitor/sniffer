@@ -624,7 +624,7 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 					    "\"%s\", "
 					    "\"%s\", "
 					    "\"%s\", "
-					    "\"%d\", "
+					    "\"%s\", "
 					    "\"%d\", "
 					    "\"%d\", "
 					    "\"%u\", "
@@ -640,7 +640,7 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 					    call->caller_domain,
 					    call->called, 
 					    call->called_domain,
-					    call->calltime(), 
+					    sqlDateTimeString(call->calltime()).c_str(), 
 					    call->duration(), 
 					    call->connect_duration(), 
 					    htonl(call->sipcallerip[0]), 

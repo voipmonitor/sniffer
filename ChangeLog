@@ -1,3 +1,8 @@
+10.1.45 24.03.2015
+==================
+- use string-time-format for calldate in active calls which fixes timezone offset in GUI 
+
+
 10.1.44 20.03.2015
 ==================
 - fix autocleanspoolminpercent and autocleanmingb which did not worked when autocleanmingb was set differently than default 
