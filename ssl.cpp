@@ -3300,9 +3300,15 @@ ssl_init() {
 
 void
 ssl_clean(){
-	g_hash_table_destroy(ssl_master_key_map.session);
-	g_hash_table_destroy(ssl_master_key_map.crandom);
-	g_hash_table_destroy(ssl_master_key_map.pre_master);
+	if(ssl_master_key_map.session) {
+		g_hash_table_destroy(ssl_master_key_map.session);
+	}
+	if(ssl_master_key_map.crandom) {
+		g_hash_table_destroy(ssl_master_key_map.crandom);
+	}
+	if(ssl_master_key_map.pre_master) {
+		g_hash_table_destroy(ssl_master_key_map.pre_master);
+	}
 //	g_hash_table_destroy(ssl_key_hash);
 
 	free_sessions(&sessions);
