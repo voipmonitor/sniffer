@@ -1,3 +1,8 @@
+10.1.46 24.03.2015
+==================
+- fix racecondition leading to crash in rare cases (all versions) 
+
+
 10.1.45 24.03.2015
 ==================
 - use string-time-format for calldate in active calls which fixes timezone offset in GUI 
