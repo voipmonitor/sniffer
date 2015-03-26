@@ -191,6 +191,7 @@ Call::Call(char *call_id, unsigned long call_id_len, time_t time) :
 	seenbye = false;
 	seenbyeandok = false;
 	seenRES2XX = false;
+	seenRES2XX_no_BYE = false;
 	seenRES18X = false;
 	caller[0] = '\0';
 	caller_domain[0] = '\0';
@@ -207,7 +208,6 @@ Call::Call(char *call_id, unsigned long call_id_len, time_t time) :
 	cancelcseq[0] = '\0';
 	sighup = false;
 	progress_time = 0;
-	set_progress_time_via_2XX_or18X = false;
 	first_rtp_time = 0;
 	connect_time = 0;
 	a_ua[0] = '\0';
@@ -1946,9 +1946,12 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		bye = 105;
 	} else if(oneway) {
 		bye = 101;
+	} else if(pcap_drop) {
+		bye = 100;
+	} else if(!seenRES2XX_no_BYE && !seenRES18X && seenbye) {
+		bye = 106;
 	} else {
-		bye = pcap_drop ? 100 :
-		      (seeninviteok ? (seenbye ? (seenbyeandok ? 3 : 2) : 1) : 0);
+		bye = seeninviteok ? (seenbye ? (seenbyeandok ? 3 : 2) : 1) : 0;
 	}
 	cdr.add(bye, "bye");
 

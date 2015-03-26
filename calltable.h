@@ -149,6 +149,7 @@ public:
 	bool seenbye;			//!< true if we see SIP BYE within the Call
 	bool seenbyeandok;		//!< true if we see SIP OK TO BYE OR TO CANEL within the Call
 	bool seenRES2XX;
+	bool seenRES2XX_no_BYE;
 	bool seenRES18X;
 	bool sighup;			//!< true if call is saving during sighup
 	string dirname();		//!< name of the directory to store files for the Call
@@ -189,7 +190,6 @@ public:
 	float b_mos_lqo;
 
 	time_t progress_time;		//!< time in seconds of 18X response
-	bool set_progress_time_via_2XX_or18X;
 	time_t first_rtp_time;		//!< time in seconds of first RTP packet
 	time_t connect_time;		//!< time in seconds of 200 OK
 	time_t last_packet_time;	
