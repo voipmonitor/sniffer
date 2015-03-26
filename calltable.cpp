@@ -464,11 +464,9 @@ Call::_addtocachequeue(string file) {
 
 void
 Call::removeRTP() {
-	while(rtplock) {
-		//wait until the lock is released
+	while(__sync_lock_test_and_set(&rtplock, 1)) {
 		usleep(100);
 	}
-	rtplock = 1;
 	closeRawFiles();
 	ssrc_n = 0;
 	for(int i = 0; i < MAX_SSRC_PER_CALL; i++) {
@@ -478,9 +476,13 @@ Call::removeRTP() {
 			rtp[i] = NULL;
 		}
 	}
+	for(int i = 0; i < 2; i++) {
+		rtp_cur[i] = NULL;
+		rtp_prev[i] = NULL;
+	}
 	lastcallerrtp = NULL;
 	lastcalledrtp = NULL;
-	rtplock = 0;
+	__sync_lock_release(&rtplock);
 }
 
 /* destructor */
@@ -861,11 +863,9 @@ read:
 				lastcalledrtp->jt_tail(header);
 			}
 		}
-		while(rtplock) {
-			//wait until the lock is released
+		while(__sync_lock_test_and_set(&rtplock, 1)) {
 			usleep(100);
 		}
-		rtplock = 1;
 		rtp[ssrc_n] = new FILE_LINE RTP(sensor_id);
 		rtp[ssrc_n]->call_owner = this;
 		rtp[ssrc_n]->ssrc_index = ssrc_n; 
@@ -940,8 +940,8 @@ read:
 		} else {
 			lastcalledrtp = rtp[ssrc_n];
 		}
-		rtplock = 0;
 		ssrc_n++;
+		__sync_lock_release(&rtplock);
 	}
 	
 end:
