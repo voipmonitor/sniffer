@@ -3080,7 +3080,7 @@ endsip:
 	}
 
 rtpcheck:
-	if(datalen > 2 && (htons(*(unsigned int*)data) & 0xC000) == 0x8000) {
+	if(datalen > 2/* && (htons(*(unsigned int*)data) & 0xC000) == 0x8000*/) { // disable condition - failure for udptl (fax)
 	if(processRtpPacket[0]) {
 		ProcessRtpPacket *_processRtpPacket = processRtpPacket[1] ?
 						       processRtpPacket[min(source, dest) / 2 % opt_enable_process_rtp_packet] :
@@ -4985,7 +4985,7 @@ void PreProcessPacket::push(bool is_ssl, u_int64_t packet_number,
 		}
 		_parse_packet->hash[0] = 0;
 		_parse_packet->hash[1] = 0;
-	} else if(datalen > 2 && (htons(*(unsigned int*)data) & 0xC000) == 0x8000) {
+	} else if(datalen > 2/* && (htons(*(unsigned int*)data) & 0xC000) == 0x8000*/) { // disable condition - failure for udptl (fax)
 		_parse_packet->hash[0] = tuplehash(saddr, source);
 		_parse_packet->hash[1] = tuplehash(daddr, dest);
 	}
