@@ -2671,6 +2671,7 @@ void set_context_config() {
 	if(opt_read_from_file) {
 		opt_enable_preprocess_packet = 0;
 		opt_enable_process_rtp_packet = 0;
+		opt_enable_ssl = 0;
 		opt_pcap_dump_tar = 0;
 		opt_pcap_dump_asyncwrite = 0;
 	}
@@ -4364,10 +4365,12 @@ int main(int argc, char *argv[]) {
 #endif 
 	}
 	
-	if(opt_enable_preprocess_packet || opt_enable_ssl) {
+	if((opt_enable_preprocess_packet || opt_enable_ssl) &&
+	   !opt_read_from_file) {
 		preProcessPacket = new FILE_LINE PreProcessPacket();
 	}
-	if(opt_enable_process_rtp_packet) {
+	if(opt_enable_process_rtp_packet &&
+	   !opt_read_from_file) {
 		for(int i = 0; i < opt_enable_process_rtp_packet; i++) {
 			processRtpPacket[i] = new FILE_LINE ProcessRtpPacket(i);
 		}

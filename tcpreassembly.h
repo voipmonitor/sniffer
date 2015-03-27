@@ -553,6 +553,7 @@ public:
 		this->fin_to_dest = false;
 		this->fin_to_source = false;
 		this->_sync_queue = 0;
+		this->_erase = 0;
 		//this->created_at = getTimeMS();
 		//this->last_packet_at = 0;
 		this->created_at_from_header = 0;
@@ -581,8 +582,7 @@ public:
 	bool push(TcpReassemblyStream::eDirection direction,
 		  timeval time, tcphdr2 header_tcp, 
 		  u_char *data, u_int32_t datalen, u_int32_t datacaplen,
-		  pcap_block_store *block_store, int block_store_index,
-		  bool lockQueue = true) {
+		  pcap_block_store *block_store, int block_store_index) {
 		if(datalen) {
 			this->exists_data = true;
 		}
@@ -590,28 +590,24 @@ public:
 			return(this->push_crazy(
 				direction, time, header_tcp, 
 				data, datalen, datacaplen,
-				block_store, block_store_index,
-				lockQueue));
+				block_store, block_store_index));
 		} else {
 			return(this->push_normal(
 				direction, time, header_tcp, 
 				data, datalen, datacaplen,
-				block_store, block_store_index,
-				lockQueue));
+				block_store, block_store_index));
 		}
 	}
 	bool push_normal(
 		  TcpReassemblyStream::eDirection direction,
 		  timeval time, tcphdr2 header_tcp, 
 		  u_char *data, u_int32_t datalen, u_int32_t datacaplen,
-		  pcap_block_store *block_store, int block_store_index,
-		  bool lockQueue);
+		  pcap_block_store *block_store, int block_store_index);
 	bool push_crazy(
 		  TcpReassemblyStream::eDirection direction,
 		  timeval time, tcphdr2 header_tcp, 
 		  u_char *data, u_int32_t datalen, u_int32_t datacaplen,
-		  pcap_block_store *block_store, int block_store_index,
-		  bool lockQueue);
+		  pcap_block_store *block_store, int block_store_index);
 	int okQueue(int final = 0, bool enableDebug = false, 
 		    bool checkCompleteContent = false, bool ignorePsh = false) {
 		if(this->state == STATE_CRAZY) {
@@ -623,15 +619,15 @@ public:
 	int okQueue_normal(int final = 0, bool enableDebug = false, 
 			   bool checkCompleteContent = false, bool ignorePsh = false);
 	int okQueue_crazy(int final = 0, bool enableDebug = false);
-	void complete(bool final = false, bool eraseCompletedStreams = false, bool lockQueue = true) {
+	void complete(bool final = false, bool eraseCompletedStreams = false) {
 		if(this->state == STATE_CRAZY) {
-			this->complete_crazy(final, eraseCompletedStreams, lockQueue);
+			this->complete_crazy(final, eraseCompletedStreams);
 		} else {
-			this->complete_normal(final, lockQueue);
+			this->complete_normal(final);
 		}
 	}
-	void complete_normal(bool final = false, bool lockQueue = true);
-	void complete_crazy(bool final = false, bool eraseCompletedStreams = false, bool lockQueue = true);
+	void complete_normal(bool final = false);
+	void complete_crazy(bool final = false, bool eraseCompletedStreams = false);
 	streamIterator createIterator();
 	TcpReassemblyStream *findStreamBySeq(u_int32_t seq) {
 		for(size_t i = 0; i < this->queue.size(); i++) {
@@ -717,11 +713,10 @@ private:
 		__sync_lock_release(&this->_sync_queue);
 	}
 	void pushpacket(TcpReassemblyStream::eDirection direction,
-		        TcpReassemblyStream_packet packet,
-			bool lockQueue = true);
+		        TcpReassemblyStream_packet packet);
 	void setLastSeq(TcpReassemblyStream::eDirection direction, 
 			u_int32_t lastSeq);
-	void switchDirection(bool lockQueue = true);
+	void switchDirection();
 	void createEthHeader(u_char *packet, iphdr2 *header_ip);
 private:
 	TcpReassembly *reassembly;
@@ -741,6 +736,7 @@ private:
 	map<uint32_t, TcpReassemblyStream*> queue_nul_by_ack;
 	deque<TcpReassemblyStream*> queue;
 	volatile int _sync_queue;
+	volatile int _erase;
 	//u_int64_t created_at;
 	//u_int64_t last_packet_at;
 	u_int64_t created_at_from_header;

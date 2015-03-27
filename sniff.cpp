@@ -2209,7 +2209,7 @@ Call *process_packet(bool is_ssl, u_int64_t packet_number,
 				if(!issip or (l <= 0 || l > 1023)) {
 					// no Call-ID found in packet
 					if(istcp == 1 && header_ip) {
-						if(!preProcessPacket) {
+						if(!(preProcessPacket && opt_enable_preprocess_packet == 2)) {
 							tcpReassemblySip.processPacket(
 								packet_number,
 								saddr, source, daddr, dest, data, origDatalen, dataoffset,
@@ -2225,7 +2225,7 @@ Call *process_packet(bool is_ssl, u_int64_t packet_number,
 						return NULL;
 					} else {
 						// it is not TCP and callid not found
-						if(!preProcessPacket && logPacketSipMethodCall_enable) {
+						if(!(preProcessPacket && opt_enable_preprocess_packet == 2) && logPacketSipMethodCall_enable) {
 							logPacketSipMethodCall(packet_number, sip_method, lastSIPresponseNum, header, 
 								saddr, source, daddr, dest,
 								call, "it is not TCP and callid not found");
@@ -2239,7 +2239,7 @@ Call *process_packet(bool is_ssl, u_int64_t packet_number,
 
 			// Call-ID is present
 			if(istcp == 1 && datalen >= 2) {
-				if(!preProcessPacket) {
+				if(!(preProcessPacket && opt_enable_preprocess_packet == 2)) {
 					tcpReassemblySip.processPacket(
 						packet_number,
 						saddr, source, daddr, dest, data, origDatalen, dataoffset,
@@ -3080,7 +3080,7 @@ endsip:
 	}
 
 rtpcheck:
-	if(datalen > 2 && (htons(*(unsigned int*)data) & 0xC000) == 0x8000) {
+	if(datalen > 2/* && (htons(*(unsigned int*)data) & 0xC000) == 0x8000*/) { // disable condition - failure for udptl (fax)
 	if(processRtpPacket[0]) {
 		ProcessRtpPacket *_processRtpPacket = processRtpPacket[1] ?
 						       processRtpPacket[min(source, dest) / 2 % opt_enable_process_rtp_packet] :
@@ -3478,7 +3478,7 @@ void process_packet__cleanup(pcap_pkthdr *header, pcap_t *handle) {
 	}
 	process_packet__last_cleanup = header->ts.tv_sec;
 
-	if(!preProcessPacket) {
+	if(!(preProcessPacket && opt_enable_preprocess_packet == 2)) {
 		// clean tcp_streams_list
 		tcpReassemblySip.clean(header->ts.tv_sec);
 	}
@@ -4985,7 +4985,7 @@ void PreProcessPacket::push(bool is_ssl, u_int64_t packet_number,
 		}
 		_parse_packet->hash[0] = 0;
 		_parse_packet->hash[1] = 0;
-	} else if(datalen > 2 && (htons(*(unsigned int*)data) & 0xC000) == 0x8000) {
+	} else if(datalen > 2/* && (htons(*(unsigned int*)data) & 0xC000) == 0x8000*/) { // disable condition - failure for udptl (fax)
 		_parse_packet->hash[0] = tuplehash(saddr, source);
 		_parse_packet->hash[1] = tuplehash(daddr, dest);
 	}
@@ -5204,11 +5204,6 @@ void PreProcessPacket::sipProcess_createCall(packet_parse_s *parse_packet) {
 	}
 	parse_packet->_createCall = true;
 }
-
-
-
-
-
 
 inline void *_ProcessRtpPacket_outThreadFunction(void *arg) {
 	return(((ProcessRtpPacket*)arg)->outThreadFunction());
