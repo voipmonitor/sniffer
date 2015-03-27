@@ -3752,6 +3752,7 @@ int main(int argc, char *argv[]) {
 		}
 	}
 
+/* resolve is disabled since 27.3.2015 
 	if(!opt_nocdr && isSqlDriver("mysql") && mysql_host[0]) {
 		strcpy(mysql_host_orig, mysql_host);
 		if(!reg_match(mysql_host, "[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+")) {
@@ -3765,6 +3766,7 @@ int main(int argc, char *argv[]) {
 			syslog(LOG_NOTICE, "mysql host [%s] resolved to [%s]", mysql_host_orig, mysql_host);
 		}
 	}
+*/
 	
 	if(opt_fork || !opt_nocdr) {
 		const char *hostnames[] = {
