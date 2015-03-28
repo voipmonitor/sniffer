@@ -564,7 +564,6 @@ public:
 		this->link_is_ok = 0;
 		this->completed_offset = 0;
 		this->direction_confirm = 0;
-		this->cleanup_state = 0;
 		this->ethHeader = NULL;
 		this->ethHeaderLength = 0;
 		if(packet && header_ip) {
@@ -748,7 +747,6 @@ private:
 	size_t completed_offset;
 	int direction_confirm;
 	vector<TcpReassemblyStream*> ok_streams;
-	volatile int cleanup_state;
 	u_char *ethHeader;
 	u_int32_t ethHeaderLength;
 	pcap_t *handle;

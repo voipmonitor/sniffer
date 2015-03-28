@@ -2339,6 +2339,7 @@ void TcpReassembly::cleanup(bool all) {
 	if(all && ENABLE_DEBUG(type, _debug_cleanup)) {
 		cout << "cleanup all " << getTypeString() << endl;
 	}
+	list<TcpReassemblyLink*> links;
 	map<TcpReassemblyLink_id, TcpReassemblyLink*>::iterator iter;
 	this->lock_links();
 	if(all && opt_pb_read_from_file[0] && ENABLE_DEBUG(type, _debug_cleanup)) {
@@ -2347,23 +2348,18 @@ void TcpReassembly::cleanup(bool all) {
 		     << this->links.size() << endl;
 	}
 	for(iter = this->links.begin(); iter != this->links.end(); iter++) {
-		iter->second->cleanup_state = iter->second->_erase ? 0 : 1;
+		if(!iter->second->_erase) {
+			links.push_back(iter->second);
+		}
 	}
 	this->unlock_links();
 	
-	while(true) {
-	 
+	list<TcpReassemblyLink*>::iterator iter_links;
+	for(iter_links = links.begin(); iter_links != links.end(); iter_links++) {
+		TcpReassemblyLink *link = *iter_links;
 		u_int64_t act_time = this->act_time_from_header + getTimeMS() - this->last_time;
-	 
-		TcpReassemblyLink *link = NULL;
-		this->lock_links();
-		for(iter = this->links.begin(); iter != this->links.end(); iter++) {
-			if(iter->second->cleanup_state == 1) {
-				link = iter->second;
-				link->cleanup_state = 2;
-				break;
-			}
-		}
+		link->lock_queue();
+		
 		if(type == http  &&
 		   link && link->queue_by_ack.size() > 500) {
 			if(this->isActiveLog() || ENABLE_DEBUG(type, _debug_cleanup)) {
@@ -2386,18 +2382,11 @@ void TcpReassembly::cleanup(bool all) {
 				}
 				this->addLog(outStr.str().c_str());
 			}
-			delete link;
-			this->links.erase(iter);
-			this->unlock_links();
+			link->_erase = true;
+			link->unlock_queue();
 			continue;
 		}
-		if(link) {
-			link->lock_queue();
-		}
-		this->unlock_links();
-		if(!link) {
-			break;
-		}
+		
 		if(act_time > link->last_packet_at_from_header + (linkTimeout/20) * 1000) {
 			link->cleanup(act_time);
 		}
@@ -2472,8 +2461,6 @@ void TcpReassembly::cleanup(bool all) {
 			link->_erase = 1;
 		}
 		link->unlock_queue();
-		
-		usleep(100);
 	}
 	
 	if(this->doPrintContent) {
