@@ -1873,6 +1873,7 @@ TcpReassembly::TcpReassembly(eType type) {
 	this->act_time_from_header = 0;
 	this->last_time = 0;
 	this->last_cleanup_call_time_from_header = 0;
+	this->last_erase_links_time = 0;
 	this->doPrintContent = false;
 	this->cleanupThreadHandle = 0;
 	this->packetThreadHandle = 0;
@@ -1902,6 +1903,11 @@ TcpReassembly::~TcpReassembly() {
 		} else {
 			this->cleanup_simple(true);
 		}
+	}
+	map<TcpReassemblyLink_id, TcpReassemblyLink*>::iterator iter;
+	for(iter = this->links.begin(); iter != this->links.end();) {
+		delete iter->second;
+		this->links.erase(iter++);
 	}
 	if(this->log) {
 		this->addLog((string(" -- stop ") + sqlDateTimeString(getTimeMS()/1000)).c_str());
@@ -1975,10 +1981,13 @@ string TcpReassembly::getCpuUsagePerc() {
 	ostringstream outStr;
 	double tPacketCpu = -1;
 	double tCleanupCpu = -1;
+	outStr << fixed;
+	bool existsPerc = false;
 	if(this->enablePacketThread) {
 		tPacketCpu = this->getPacketCpuUsagePerc(true);
 		if(tPacketCpu >= 0) {
 			outStr << setprecision(1) << tPacketCpu;
+			existsPerc = true;
 		}
 	}
 	if(this->enableCleanupThread) {
@@ -1988,7 +1997,18 @@ string TcpReassembly::getCpuUsagePerc() {
 				outStr << '|';
 			}
 			outStr << setprecision(1) << tCleanupCpu;
+			existsPerc = true;
 		}
+	}
+	if(existsPerc) {
+		outStr << '%';
+	}
+	size_t links_size = links.size();
+	if(links_size) {
+		if(existsPerc) {
+			outStr << '|';
+		}
+		outStr << links.size() << 'l';
 	}
 	return(outStr.str());
 }
@@ -2132,6 +2152,17 @@ void TcpReassembly::_push(pcap_pkthdr *header, iphdr2 *header_ip, u_char *packet
 	TcpReassemblyLink_id idr(header_ip->daddr, header_ip->saddr, header_tcp.dest, header_tcp.source);
 	if(this->enableCleanupThread) {
 		this->lock_links();
+	}
+	if(this->last_time > this->last_erase_links_time + 5000) {
+		for(iter = this->links.begin(); iter != this->links.end();) {
+			if(iter->second->_erase) {
+				delete iter->second;
+				this->links.erase(iter++);
+			} else {
+				iter++;
+			}
+		}
+		this->last_erase_links_time = this->last_time;
 	}
 	iter = this->links.find(id);
 	if(iter != this->links.end()) {
@@ -2316,7 +2347,7 @@ void TcpReassembly::cleanup(bool all) {
 		     << this->links.size() << endl;
 	}
 	for(iter = this->links.begin(); iter != this->links.end(); iter++) {
-		iter->second->cleanup_state = !iter->second->_erase;
+		iter->second->cleanup_state = iter->second->_erase ? 0 : 1;
 	}
 	this->unlock_links();
 	
@@ -2367,12 +2398,14 @@ void TcpReassembly::cleanup(bool all) {
 		if(!link) {
 			break;
 		}
-		link->cleanup(act_time);
+		if(act_time > link->last_packet_at_from_header + (linkTimeout/20) * 1000) {
+			link->cleanup(act_time);
+		}
 		bool final = link->last_packet_at_from_header &&
 			     act_time > link->last_packet_at_from_header + linkTimeout * 1000;
 		if((all || final ||
 		    (link->last_packet_at_from_header &&
-		     act_time > link->last_packet_at_from_header + 5 * 1000 &&
+		     act_time > link->last_packet_at_from_header + (linkTimeout/20) * 1000 &&
 		     link->last_packet_at_from_header > link->last_packet_process_cleanup_at)) &&
 		   (link->link_is_ok < 2 || this->enableCleanupThread)) {
 		 
@@ -2439,6 +2472,8 @@ void TcpReassembly::cleanup(bool all) {
 			link->_erase = 1;
 		}
 		link->unlock_queue();
+		
+		usleep(100);
 	}
 	
 	if(this->doPrintContent) {

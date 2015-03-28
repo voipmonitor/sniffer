@@ -1420,7 +1420,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 	if(tcpReassemblyHttp) {
 		string cpuUsagePerc = tcpReassemblyHttp->getCpuUsagePerc();
 		if(!cpuUsagePerc.empty()) {
-			outStrStat << "thttpCPU[" << cpuUsagePerc << "%] ";
+			outStrStat << "thttpCPU[" << cpuUsagePerc << "] ";
 		}
 	}
 	if(tcpReassemblyWebrtc) {

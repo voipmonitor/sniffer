@@ -21,9 +21,6 @@
 #include <time.h>
 #include <signal.h>
 #include <iomanip>
-#ifdef HAVE_LIBJEMALLOC
-#include <jemalloc/jemalloc.h>
-#endif //HAVE_LIBJEMALLOC
 
 #ifdef FREEBSD
 #include <sys/endian.h>
@@ -5632,6 +5629,12 @@ void __cyg_profile_func_exit(void *this_fn, void *call_site) {
 }
 }
 
+
+//#define HAVE_LIBJEMALLOC
+
+#ifdef HAVE_LIBJEMALLOC
+#include <jemalloc/jemalloc.h>
+#endif //HAVE_LIBJEMALLOC
 
 string jeMallocStat(bool full) {
 	string rslt;

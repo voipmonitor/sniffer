@@ -707,7 +707,7 @@ public:
 	u_int32_t getRemainDataLength(TcpReassemblyDataItem::eDirection direction);
 private:
 	void lock_queue() {
-		while(__sync_lock_test_and_set(&this->_sync_queue, 1));
+		while(__sync_lock_test_and_set(&this->_sync_queue, 1)) usleep(100);
 	}
 	void unlock_queue() {
 		__sync_lock_release(&this->_sync_queue);
@@ -900,7 +900,7 @@ private:
 	void *cleanupThreadFunction(void *);
 	void *packetThreadFunction(void *);
 	void lock_links() {
-		while(__sync_lock_test_and_set(&this->_sync_links, 1));
+		while(__sync_lock_test_and_set(&this->_sync_links, 1)) usleep(100);
 	}
 	void unlock_links() {
 		__sync_lock_release(&this->_sync_links);
@@ -921,6 +921,7 @@ private:
 	u_int64_t act_time_from_header;
 	u_int64_t last_time;
 	u_int64_t last_cleanup_call_time_from_header;
+	u_int64_t last_erase_links_time;
 	bool doPrintContent;
 	pthread_t cleanupThreadHandle;
 	pthread_t packetThreadHandle;
