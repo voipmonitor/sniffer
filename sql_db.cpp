@@ -508,7 +508,11 @@ bool SqlDb_mysql::connect(bool createDb, bool mainInit) {
 	if(this->hMysql) {
 		my_bool reconnect = 1;
 		mysql_options(this->hMysql, MYSQL_OPT_RECONNECT, &reconnect);
-		if(this->conn_server_ip.empty()) {
+		static unsigned int lastmysqlresolve = 0;
+		struct timeval s;
+		gettimeofday (&s, 0);	
+		if(this->conn_server_ip.empty() and ((lastmysqlresolve + 300) < s.tv_sec)) {
+			lastmysqlresolve = s.tv_sec;
 			if(reg_match(this->conn_server.c_str(), "[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+")) {
 				this->conn_server_ip = this->conn_server;
 			} else {
