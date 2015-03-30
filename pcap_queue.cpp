@@ -1426,13 +1426,13 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 	if(tcpReassemblyWebrtc) {
 		string cpuUsagePerc = tcpReassemblyWebrtc->getCpuUsagePerc();
 		if(!cpuUsagePerc.empty()) {
-			outStrStat << "twebrtcCPU[" << cpuUsagePerc << "%] ";
+			outStrStat << "twebrtcCPU[" << cpuUsagePerc << "] ";
 		}
 	}
 	if(tcpReassemblySsl) {
 		string cpuUsagePerc = tcpReassemblySsl->getCpuUsagePerc();
 		if(!cpuUsagePerc.empty()) {
-			outStrStat << "tsslCPU[" << cpuUsagePerc << "%] ";
+			outStrStat << "tsslCPU[" << cpuUsagePerc << "] ";
 		}
 	}
 	extern AsyncClose *asyncClose;
