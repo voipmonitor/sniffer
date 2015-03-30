@@ -1944,7 +1944,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		bye = 104;
 	} else if(oneway_timeout_exceeded) {
 		bye = 105;
-	} else if(oneway) {
+	} else if(oneway && chantype != CHAN_SKINNY) {
 		bye = 101;
 	} else if(pcap_drop) {
 		bye = 100;
