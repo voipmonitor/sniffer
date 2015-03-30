@@ -238,6 +238,7 @@ SqlDb::SqlDb() {
 	this->cloud_data_index = 0;
 	this->maxAllowedPacket = 1024*1024;
 	this->lastError = 0;
+	this->lastmysqlresolve = 0;
 }
 
 SqlDb::~SqlDb() {
@@ -508,7 +509,6 @@ bool SqlDb_mysql::connect(bool createDb, bool mainInit) {
 	if(this->hMysql) {
 		my_bool reconnect = 1;
 		mysql_options(this->hMysql, MYSQL_OPT_RECONNECT, &reconnect);
-		static unsigned int lastmysqlresolve = 0;
 		struct timeval s;
 		gettimeofday (&s, 0);	
 		if(this->conn_server_ip.empty() and ((lastmysqlresolve + 300) < s.tv_sec)) {
