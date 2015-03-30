@@ -1352,6 +1352,10 @@ void MySqlStore_process::store() {
 }
 
 void MySqlStore_process::_store(string beginProcedure, string endProcedure, string queries) {
+	extern int opt_nocdr;
+	if(opt_nocdr) {
+		return;
+	}
 	string procedureName = this->getInsertFuncName();
 	int maxPassComplete = this->enableFixDeadlock ? 10 : 1;
 	for(int passComplete = 0; passComplete < maxPassComplete; passComplete++) {
@@ -1839,6 +1843,7 @@ string sqlEscapeString(const char *inputStr, int length, const char *typeDb, Sql
 	if(!length) {
 		length = strlen(inputStr);
 	}
+	/* disabled - use only offline varint - online variant can cause problems in connect to db
 	if(isTypeDb("mysql", sqlDbMysql ? sqlDbMysql->getTypeDb().c_str() : typeDb) && !cloud_host[0]) {
 		bool okEscape = false;
 		int sizeBuffer = length * 2 + 10;
@@ -1863,6 +1868,7 @@ string sqlEscapeString(const char *inputStr, int length, const char *typeDb, Sql
 			return(rslt);
 		}
 	}
+	*/
 	return _sqlEscapeString(inputStr, length, sqlDbMysql ? sqlDbMysql->getTypeDb().c_str() : typeDb);
 }
 

@@ -1766,6 +1766,7 @@ void TcpReassemblyLink::complete_crazy(bool final, bool eraseCompletedStreams) {
 			if(eraseCompletedStreams) {
 				while(this->ok_streams.size() && this->ok_streams[0]->completed_finally) {
 					this->ok_streams[0]->is_ok = false;
+					this->ok_streams[0]->clearCompleteData();
 					this->ok_streams.erase(this->ok_streams.begin());
 				}
 			}

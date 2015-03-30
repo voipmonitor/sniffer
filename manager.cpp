@@ -16,6 +16,7 @@
 #include <vorbis/codec.h>
 #include <vorbis/vorbisenc.h>
 #include <pcap.h>
+#include <malloc.h>
 
 #ifdef HAVE_LIBSSH
 #include <libssh/libssh.h>
@@ -1757,6 +1758,8 @@ getwav:
 		opt_blocktarwrite = 1;
 	} else if(buf[0] == 'u' and strstr(buf, "unblocktar") != NULL) {
 		opt_blocktarwrite = 0;
+	} else if(strstr(buf, "malloc_trim") != NULL) {
+		malloc_trim(0);
 	} else {
 		if ((size = sendvm(client, sshchannel, "command not found\n", 18, 0)) == -1){
 			cerr << "Error sending data to client" << endl;
