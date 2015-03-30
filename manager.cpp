@@ -68,6 +68,7 @@ extern int global_livesniffer_all;
 extern map<unsigned int, octects_live_t*> ipacc_live;
 
 extern map<unsigned int, livesnifferfilter_t*> usersniffer;
+extern volatile int usersniffer_sync;
 
 extern char ssh_host[1024];
 extern int ssh_port;
@@ -957,6 +958,7 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 ///////////////////////////////////////////////////////////////
         } else if(strstr(buf, "stoplivesniffer")) {
                 sscanf(buf, "stoplivesniffer %u", &uid);
+		while(__sync_lock_test_and_set(&usersniffer_sync, 1));
                 map<unsigned int, livesnifferfilter_t*>::iterator usersnifferIT = usersniffer.find(uid);
                 if(usersnifferIT != usersniffer.end()) {
                         delete usersnifferIT->second;
@@ -970,15 +972,18 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 				 syslog(LOG_NOTICE, "stop livesniffer - uid: %u", uid);
 			}
                 }
+                __sync_lock_release(&usersniffer_sync);
                 return 0;
 	} else if(strstr(buf, "getlivesniffer") != NULL) {
 		sscanf(buf, "getlivesniffer %u", &uid);
+		while(__sync_lock_test_and_set(&usersniffer_sync, 1));
 		map<unsigned int, livesnifferfilter_t*>::iterator usersnifferIT = usersniffer.find(uid);
 		if(usersnifferIT != usersniffer.end()) {
 			snprintf(sendbuf, BUFSIZE, "%d", 1);
 		} else {
 			snprintf(sendbuf, BUFSIZE, "%d", 0);
 		}
+		__sync_lock_release(&usersniffer_sync);
 		if ((size = sendvm(client, sshchannel, sendbuf, strlen(sendbuf), 0)) == -1){
 			cerr << "Error sending data to client" << endl;
 			return -1;
@@ -992,6 +997,8 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 		if(verbosity > 0) {
 			syslog(LOG_NOTICE, "set livesniffer - uid: %u search: %s value: %s", uid, search, value);
 		}
+		
+		while(__sync_lock_test_and_set(&usersniffer_sync, 1));
 
 		if(memmem(search, sizeof(search), "all", 3)) {
 			global_livesniffer = 1;
@@ -1005,6 +1012,7 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 				usersniffer[uid] = filter;
 			}
 			updateLivesnifferfilters();
+			__sync_lock_release(&usersniffer_sync);
 			return 0;
 		}
 
@@ -1017,7 +1025,7 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 			memset(filter, 0, sizeof(livesnifferfilter_t));
 			usersniffer[uid] = filter;
 		}
-
+		
 		if(strstr(search, "srcaddr")) {
 			int i = 0;
 			//reset filters 
@@ -1138,6 +1146,9 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 			}
 			updateLivesnifferfilters();
 		}
+		
+		__sync_lock_release(&usersniffer_sync);
+		
 		if ((size = sendvm(client, sshchannel, "ok", 2, 0)) == -1){
 			cerr << "Error sending data to client" << endl;
 			return -1;

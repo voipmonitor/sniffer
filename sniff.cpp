@@ -261,6 +261,7 @@ u_int64_t counter_all_packets;
 extern struct queue_state *qs_readpacket_thread_queue;
 
 map<unsigned int, livesnifferfilter_t*> usersniffer;
+volatile int usersniffer_sync;
 
 #define ENABLE_CONVERT_DLT_SLL_TO_EN10(dlt)	(dlt == DLT_LINUX_SLL && opt_convert_dlt_sll_to_en10 && global_pcap_handle_dead_EN10MB)
 
@@ -386,32 +387,7 @@ inline void save_live_packet(Call *call, struct pcap_pkthdr *header, const u_cha
 		return;
 	}
 
-	/*
-	map<unsigned int, livesnifferfilter_t*>::iterator usersnifferIT;
-	for(usersnifferIT = usersniffer.begin(); usersnifferIT != usersniffer.end(); usersnifferIT++) {
-		livesnifferfilter_t *filter = usersnifferIT->second;
-		if(filter->all) {
-			 goto save;
-		}
-		for(int i = 0; i < MAXLIVEFILTERS; i++) {
-			if(filter->lv_saddr[i] == saddr) goto save;
-			if(filter->lv_daddr[i] == daddr) goto save;
-			if(filter->lv_bothaddr[i] == daddr or filter->lv_bothaddr[i] == saddr) goto save;
-			if(call and filter->lv_srcnum[i][0] != '\0' and memmem(call->caller, strlen(call->caller), filter->lv_srcnum[i], strlen(filter->lv_srcnum[i]))) goto save;
-			if(call and filter->lv_dstnum[i][0] != '\0' and memmem(call->caller, strlen(call->caller), filter->lv_dstnum[i], strlen(filter->lv_dstnum[i]))) goto save;
-			if(call and filter->lv_bothnum[i][0] != '\0' and (
-				memmem(call->caller, strlen(call->caller), filter->lv_bothnum[i], strlen(filter->lv_bothnum[i])) or
-				memmem(call->called, strlen(call->called), filter->lv_bothnum[i], strlen(filter->lv_bothnum[i])))
-			)  goto save;
-		}
-		continue;
-save:
-		save_packet_sql(call, header, packet, saddr, source, daddr, dest, istcp, data, datalen, usersnifferIT->first);
-	}
-
-	// nothing matches
-	return;
-	*/
+	while(__sync_lock_test_and_set(&usersniffer_sync, 1));
 	
 	map<unsigned int, livesnifferfilter_t*>::iterator usersnifferIT;
 	
@@ -506,6 +482,8 @@ save:
 					dlt, sensor_id);
 		}
 	}
+	
+	__sync_lock_release(&usersniffer_sync);
 }
 
 /*
