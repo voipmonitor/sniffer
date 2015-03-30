@@ -152,6 +152,7 @@ public:
 	bool isCloud() {
 		return(!cloud_host.empty());
 	}
+	unsigned int lastmysqlresolve;
 protected:
 	string conn_server;
 	string conn_server_ip;
