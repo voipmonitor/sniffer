@@ -1,3 +1,8 @@
+10.1.47 30.03.2015
+==================
+- fix racecondition when doing live sniffing 
+
+
 10.1.46 24.03.2015
 ==================
 - fix racecondition leading to crash in rare cases (all versions) 
