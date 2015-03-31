@@ -528,6 +528,7 @@ SIP_HEADERfilter *sipheaderfilter_reload = NULL;	// SIP_HEADER filter based on M
 int sipheaderfilter_reload_do = 0;	// for reload in main thread
 
 pthread_t storing_cdr_thread;		// ID of worker storing CDR thread 
+pthread_t scanpcapdir_thread;
 //pthread_t destroy_calls_thread;
 pthread_t readdump_libpcap_thread;
 pthread_t manager_thread = 0;	// ID of worker manager thread 
@@ -591,6 +592,7 @@ MySqlStore *sqlStore = NULL;
 
 char mac[32] = "";
 
+PcapQueue_readFromInterface *pcapQueueInterface;
 PcapQueue *pcapQueueStatInterface;
 
 PreProcessPacket *preProcessPacket;
@@ -1103,6 +1105,85 @@ void *storing_cdr( void *dummy ) {
 	}
 	syslog(LOG_NOTICE, "terminated - storing cdr / message / register");
 	return NULL;
+}
+
+void *scanpcapdir( void *dummy ) {
+ 
+#ifndef FREEBSD
+ 
+	while(!pcapQueueInterface && !terminating) {
+		usleep(100000);
+	}
+	if(terminating) {
+		return(NULL);
+	}
+	sleep(1);
+	
+	char filename[1024];
+	struct inotify_event *event;
+	char buff[4096];
+	int i=0, fd, wd, len=0;
+	queue<string> fileList;
+
+	fd = inotify_init();
+	//checking for error
+	if(fd < 0) perror( "inotify_init" );
+	wd = inotify_add_watch(fd, opt_scanpcapdir, opt_scanpcapmethod);
+
+	// pre-populate the fileList with anything pre-existing in the directory
+	fileList = listFilesDir(opt_scanpcapdir);
+
+	while(terminating == 0) {
+
+		if (fileList.empty()) {
+			// queue is empty, time to wait on inotify for some work
+			i = 0;
+			len = read(fd, buff, 4096);
+
+			if (len==4096) {
+				syslog(LOG_NOTICE, "Warning: inotify events filled whole buffer.");
+			}
+
+			while (( i < len ) and terminating==0) {
+				event = (struct inotify_event *) &buff[i];
+				i += sizeof(struct inotify_event) + event->len;
+				if (event->mask & opt_scanpcapmethod) { // this will prevent opening files which is still open for writes
+					// add filename to end of queue
+					snprintf(filename, sizeof(filename), "%s/%s", opt_scanpcapdir, event->name);
+					fileList.push(filename);
+				}
+			}
+			if (fileList.empty()) {
+				continue;
+			}
+		}
+		// grab the next file in line to be processed
+		strncpy(filename, fileList.front().c_str(), sizeof(filename));
+		fileList.pop();
+
+		//printf("File [%s]\n", filename);
+		if(!file_exists(filename)) {
+			continue;
+		}
+		
+		syslog(LOG_NOTICE, "scanpcapdir: %s", filename);
+		
+		if(!pcapQueueInterface->openPcap(filename)) {
+			abort();
+		}
+		while(terminating == 0 && !pcapQueueInterface->isPcapEnd()) {
+			usleep(10000);
+		}
+		
+		if(!terminating) {
+			unlink(filename);
+		}
+	}
+	inotify_rm_watch(fd, wd);
+
+#endif
+
+	return(NULL);
 }
 
 /*
@@ -2589,11 +2670,7 @@ int eval_config(string inistr) {
 }
 
 void set_context_config() {
-	#ifdef QUEUE_NONBLOCK2
-		if(opt_scanpcapdir[0] != '\0') {
-			opt_pcap_queue = 0;
-		}
-	#else
+	#ifndef QUEUE_NONBLOCK2
 		opt_pcap_queue = 0;
 	#endif
 
@@ -2650,7 +2727,7 @@ void set_context_config() {
 		}
 	}
 	
-	if(!opt_pcap_split || opt_scanpcapdir[0] != '\0') {
+	if(!opt_pcap_split) {
 		opt_rtpsave_threaded = 0;
 	}
 	
@@ -3347,10 +3424,12 @@ int main(int argc, char *argv[]) {
 			case 'r':
 				if(!strncmp(optarg, "pb:", 3)) {
 					strcpy(opt_pb_read_from_file, optarg + 3);
+					opt_scanpcapdir[0] = '\0';
 				} else if(!strncmp(optarg, "pbs", 3) &&
 					  strchr(optarg, ':')) {
 					opt_pb_read_from_file_speed = atoi(optarg + 3);
 					strcpy(opt_pb_read_from_file, strchr(optarg, ':') + 1);
+					opt_scanpcapdir[0] = '\0';
 				} else {
 					strcpy(fname, optarg);
 					opt_read_from_file = 1;
@@ -4439,263 +4518,170 @@ int main(int argc, char *argv[]) {
 		}
 	}
 
-#ifndef FREEBSD
-	if(opt_scanpcapdir[0] != '\0') {
-		// scan directory opt_scanpcapdir (typically /dev/shm/voipmonitor
-		char filename[1024];
-		char filter_exp[2048] = "";		// The filter expression
-		struct bpf_program fp;		// The compiled filter 
-		pcap_t *scanhandle = NULL;		// pcap handler
-		struct inotify_event *event;
-		char buff[4096];
-		int i=0, fd, wd, len=0;
-		queue<string> fileList;
-
-		fd = inotify_init();
-		/*checking for error*/
-		if(fd < 0) perror( "inotify_init" );
-		wd = inotify_add_watch(fd, opt_scanpcapdir, opt_scanpcapmethod);
-
-		// pre-populate the fileList with anything pre-existing in the directory
-		fileList = listFilesDir(opt_scanpcapdir);
-
-		while(terminating == 0) {
-
-			if (fileList.empty()) {
-				// queue is empty, time to wait on inotify for some work
-				i = 0;
-				len = read(fd, buff, 4096);
-
-				if (len==4096) {
-					syslog(LOG_NOTICE, "Warning: inotify events filled whole buffer.");
-				}
-
-				while (( i < len ) and terminating==0) {
-					event = (struct inotify_event *) &buff[i];
-					i += sizeof(struct inotify_event) + event->len;
-					if (event->mask & opt_scanpcapmethod) { // this will prevent opening files which is still open for writes
-						// add filename to end of queue
-						snprintf(filename, sizeof(filename), "%s/%s", opt_scanpcapdir, event->name);
-						fileList.push(filename);
+	if(opt_pcap_threaded) {
+		if(opt_pcap_queue) {
+		 
+			PcapQueue_init();
+			
+			if(opt_pcap_queue_receive_from_ip_port) {
+				
+				pcapQueueR = new FILE_LINE PcapQueue_readFromFifo("receive", opt_pcap_queue_disk_folder.c_str());
+				pcapQueueR->setEnableAutoTerminate(false);
+				pcapQueueR->setPacketServer(opt_pcap_queue_receive_from_ip_port, PcapQueue_readFromFifo::directionRead);
+				
+				pcapQueueR->start();
+				pcapQueueStatInterface = pcapQueueR;
+				
+				uint64_t _counter = 0;
+				int _pcap_stat_period = sverb.pcap_stat_period ? sverb.pcap_stat_period : 10;
+				while(!terminating) {
+					if(_counter && (verbosityE > 0 || !(_counter % _pcap_stat_period))) {
+						pthread_mutex_lock(&terminate_packetbuffer_lock);
+						pcapQueueR->pcapStat(verbosityE > 0 ? 1 : _pcap_stat_period);
+						pthread_mutex_unlock(&terminate_packetbuffer_lock);
 					}
+					sleep(1);
+					++_counter;
 				}
-				if (fileList.empty()) {
-					continue;
-				}
-			}
-			// grab the next file in line to be processed
-			strncpy(filename, fileList.front().c_str(), sizeof(filename));
-			fileList.pop();
-
-			int close = 1;
-			//printf("File [%s]\n", filename);
-			if(!file_exists(filename)) {
-				continue;
-			}
-			// if reading file
-			//printf("Reading file: %s\n", filename);
-			mask = PCAP_NETMASK_UNKNOWN;
-			scanhandle = pcap_open_offline(filename, errbuf);
-			if(!global_pcap_handle) {
-				// keep the first handle as global handle and do not change it because it is not threadsafe to close/open it while the other parts are using it
-				global_pcap_handle = scanhandle;
-				close = 0;
+				
+				terminate_packetbuffer();
+				
 			} else {
-				close = 1;
-			}
-			if(scanhandle == NULL) {
-				syslog(LOG_ERR, "Couldn't open pcap file '%s': %s\n", filename, errbuf);
-				continue;
-			}
-			if(*user_filter != '\0') {
-				snprintf(filter_exp, sizeof(filter_exp), "%s", user_filter);
-
-				// Compile and apply the filter
-				if (pcap_compile(scanhandle, &fp, filter_exp, 0, mask) == -1) {
-					syslog(LOG_ERR, "Couldn't parse filter %s: %s\n", filter_exp, pcap_geterr(scanhandle));
-					inotify_rm_watch(fd, wd);
-					return(2);
-				}
-				if (pcap_setfilter(scanhandle, &fp) == -1) {
-					syslog(LOG_ERR, "Couldn't install filter %s: %s\n", filter_exp, pcap_geterr(scanhandle));
-					inotify_rm_watch(fd, wd);
-					return(2);
-				}
-			}
-			readdump_libpcap(scanhandle);
-			unlink(filename);
-			if(*user_filter != '\0') {
-				pcap_freecode(&fp);
-			}
-			if(close) {
-				pcap_close(scanhandle);
-			}
-			//readend = 1;
-		}
-		inotify_rm_watch(fd, wd);
-		if(global_pcap_handle) pcap_close(global_pcap_handle);
-	} else {
-#else 
-	{
-#endif
-		// start reading packets
-		//readdump_libnids(handle);
-	 
-		if(opt_pcap_threaded) {
-			if(opt_pcap_queue) {
 			 
-				PcapQueue_init();
+				if(opt_pb_read_from_file[0] && opt_enable_http) {
+					if(opt_tcpreassembly_thread) {
+						tcpReassemblyHttp->setIgnoreTerminating(true);
+					}
+				}
+				if(opt_pb_read_from_file[0] && opt_enable_webrtc) {
+					if(opt_tcpreassembly_thread) {
+						tcpReassemblyWebrtc->setIgnoreTerminating(true);
+					}
+				}
+				if(opt_pb_read_from_file[0] && opt_enable_ssl) {
+					if(opt_tcpreassembly_thread) {
+						tcpReassemblySsl->setIgnoreTerminating(true);
+					}
+				}
+			
+				pcapQueueI = new FILE_LINE PcapQueue_readFromInterface("interface");
+				pcapQueueI->setInterfaceName(ifname);
+				pcapQueueI->setEnableAutoTerminate(false);
 				
-				if(opt_pcap_queue_receive_from_ip_port) {
-					
-					pcapQueueR = new FILE_LINE PcapQueue_readFromFifo("receive", opt_pcap_queue_disk_folder.c_str());
-					pcapQueueR->setEnableAutoTerminate(false);
-					pcapQueueR->setPacketServer(opt_pcap_queue_receive_from_ip_port, PcapQueue_readFromFifo::directionRead);
-					pcapQueueStatInterface = pcapQueueR;
-					
-					pcapQueueR->start();
-					
-					uint64_t _counter = 0;
-					int _pcap_stat_period = sverb.pcap_stat_period ? sverb.pcap_stat_period : 10;
-					while(!terminating) {
-						if(_counter && (verbosityE > 0 || !(_counter % _pcap_stat_period))) {
-							pthread_mutex_lock(&terminate_packetbuffer_lock);
-							pcapQueueR->pcapStat(verbosityE > 0 ? 1 : _pcap_stat_period);
-							pthread_mutex_unlock(&terminate_packetbuffer_lock);
-						}
-						sleep(1);
-						++_counter;
-					}
-					
-					terminate_packetbuffer();
-					
-				} else {
-				 
-					if(opt_pb_read_from_file[0] && opt_enable_http) {
-						if(opt_tcpreassembly_thread) {
-							tcpReassemblyHttp->setIgnoreTerminating(true);
-						}
-					}
-					if(opt_pb_read_from_file[0] && opt_enable_webrtc) {
-						if(opt_tcpreassembly_thread) {
-							tcpReassemblyWebrtc->setIgnoreTerminating(true);
-						}
-					}
-					if(opt_pb_read_from_file[0] && opt_enable_ssl) {
-						if(opt_tcpreassembly_thread) {
-							tcpReassemblySsl->setIgnoreTerminating(true);
-						}
-					}
-				
-					pcapQueueI = new FILE_LINE PcapQueue_readFromInterface("interface");
-					pcapQueueI->setInterfaceName(ifname);
-					pcapQueueI->setEnableAutoTerminate(false);
-					
-					pcapQueueQ = new FILE_LINE PcapQueue_readFromFifo("queue", opt_pcap_queue_disk_folder.c_str());
-					pcapQueueQ->setInstancePcapHandle(pcapQueueI);
-					pcapQueueQ->setEnableAutoTerminate(false);
-					if(opt_pcap_queue_send_to_ip_port) {
-						pcapQueueQ->setPacketServer(opt_pcap_queue_send_to_ip_port, PcapQueue_readFromFifo::directionWrite);
-					}
-					pcapQueueStatInterface = pcapQueueQ;
-					
-					pcapQueueQ->start();
-					pcapQueueI->start();
-					
-					uint64_t _counter = 0;
-					int _pcap_stat_period = sverb.pcap_stat_period ? sverb.pcap_stat_period : 10;
-					while(!terminating) {
-						if(_counter && (verbosityE > 0 || !(_counter % _pcap_stat_period))) {
-							pthread_mutex_lock(&terminate_packetbuffer_lock);
-							pcapQueueQ->pcapStat(verbosityE > 0 ? 1 : _pcap_stat_period);
-							pthread_mutex_unlock(&terminate_packetbuffer_lock);
-							if(sverb.memory_stat_log) {
-								printMemoryStat();
-							}
-							if(tcpReassemblyHttp) {
-								tcpReassemblyHttp->setDoPrintContent();
-							}
-							if(tcpReassemblyWebrtc) {
-								tcpReassemblyWebrtc->setDoPrintContent();
-							}
-							#if RTP_PROF
-							for(int i = 0; i < opt_enable_process_rtp_packet; i++) if(processRtpPacket[i]) {
-								unsigned long long ___prof__ProcessRtpPacket_outThreadFunction = processRtpPacket[i]->__prof__ProcessRtpPacket_outThreadFunction;
-								unsigned long long ___prof__ProcessRtpPacket_outThreadFunction__usleep = processRtpPacket[i]->__prof__ProcessRtpPacket_outThreadFunction__usleep;
-								unsigned long long ___prof__ProcessRtpPacket_rtp = processRtpPacket[i]->__prof__ProcessRtpPacket_rtp;
-								unsigned long long ___prof__ProcessRtpPacket_rtp__hashfind = processRtpPacket[i]->__prof__ProcessRtpPacket_rtp__hashfind;
-								unsigned long long ___prof__ProcessRtpPacket_rtp__fill_call_array = processRtpPacket[i]->__prof__ProcessRtpPacket_rtp__fill_call_array;
-								unsigned long long ___prof__process_packet__rtp = processRtpPacket[i]->__prof__process_packet__rtp;
-								unsigned long long ___prof__add_to_rtp_thread_queue = processRtpPacket[i]->__prof__add_to_rtp_thread_queue;
-								unsigned long long ___prof__ProcessRtpPacket_outThreadFunction2 = ___prof__ProcessRtpPacket_outThreadFunction - ___prof__ProcessRtpPacket_outThreadFunction__usleep;
-								cout << fixed
-								     << "RTP PROF - " << (processRtpPacket[i]->indexThread + 1) << "/" << processRtpPacket[i]->outThreadId
-										<< endl
-								     << left << setw(50) << "ProcessRtpPacket::outThreadFunction"
-								     << right << setw(15) << ___prof__ProcessRtpPacket_outThreadFunction
-										<< endl
-								     << left << setw(50) << "ProcessRtpPacket::outThreadFunction / usleep"
-								     << right << setw(15) << ___prof__ProcessRtpPacket_outThreadFunction__usleep
-										<< endl
-								     << left << setw(50) << "ProcessRtpPacket::outThreadFunction / process time"
-								     << right << setw(15) << ___prof__ProcessRtpPacket_outThreadFunction2
-										<< endl
-								     << left << setw(50) << "   ProcessRtpPacket::rtp"
-								     << right << setw(15) << ___prof__ProcessRtpPacket_rtp
-								     << setw(15) << setprecision(5) 
-									<< ((double)___prof__ProcessRtpPacket_rtp / ___prof__ProcessRtpPacket_outThreadFunction2) * 100 << "%"
-										<< endl
-								     << left << setw(50) << "      ProcessRtpPacket::rtp / hashfind"
-								     << right << setw(15) << ___prof__ProcessRtpPacket_rtp__hashfind
-								     << setw(15) << setprecision(5) 
-									<< ((double)___prof__ProcessRtpPacket_rtp__hashfind / ___prof__ProcessRtpPacket_outThreadFunction2) * 100 << "%"
-										<< endl
-								     << left << setw(50) << "      ProcessRtpPacket::rtp / fill call array"
-								     << right << setw(15) << ___prof__ProcessRtpPacket_rtp__fill_call_array
-								     << setw(15) << setprecision(5) 
-									<< ((double)___prof__ProcessRtpPacket_rtp__fill_call_array / ___prof__ProcessRtpPacket_outThreadFunction2) * 100 << "%"
-										<< endl
-								     << left << setw(50) << "      process_packet__rtp"
-								     << right << setw(15) << ___prof__process_packet__rtp
-								     << setw(15) << setprecision(5) 
-									<< ((double)___prof__process_packet__rtp / ___prof__ProcessRtpPacket_outThreadFunction2) * 100 << "%"
-										<< endl
-								     << left << setw(50) << "         add_to_rtp_thread_queue"
-								     << right << setw(15) << ___prof__add_to_rtp_thread_queue
-								     << setw(15) << setprecision(5) 
-									<< ((double)___prof__add_to_rtp_thread_queue / ___prof__ProcessRtpPacket_outThreadFunction2) * 100 << "%"
-										<< endl;
-								processRtpPacket[i]->__prof__ProcessRtpPacket_outThreadFunction_begin = rdtsc();
-								processRtpPacket[i]->__prof__ProcessRtpPacket_outThreadFunction__usleep = 0;
-								processRtpPacket[i]->__prof__ProcessRtpPacket_rtp = 0;
-								processRtpPacket[i]->__prof__ProcessRtpPacket_rtp__hashfind = 0;
-								processRtpPacket[i]->__prof__ProcessRtpPacket_rtp__fill_call_array = 0;
-								processRtpPacket[i]->__prof__process_packet__rtp = 0;
-								processRtpPacket[i]->__prof__add_to_rtp_thread_queue = 0;
-							}
-							#endif
-						}
-						sleep(1);
-						++_counter;
-					}
-					
-					terminate_packetbuffer();
-					
-					if(opt_pb_read_from_file[0] && (opt_enable_http || opt_enable_webrtc || opt_enable_ssl)) {
-						sleep(2);
-					}
-					
+				pcapQueueQ = new FILE_LINE PcapQueue_readFromFifo("queue", opt_pcap_queue_disk_folder.c_str());
+				pcapQueueQ->setInstancePcapHandle(pcapQueueI);
+				pcapQueueQ->setEnableAutoTerminate(false);
+				if(opt_pcap_queue_send_to_ip_port) {
+					pcapQueueQ->setPacketServer(opt_pcap_queue_send_to_ip_port, PcapQueue_readFromFifo::directionWrite);
 				}
 				
-				PcapQueue_term();
+				pcapQueueQ->start();
+				pcapQueueI->start();
+				pcapQueueInterface = pcapQueueI;
+				pcapQueueStatInterface = pcapQueueQ;
 				
-			} else {
-				pthread_create(&readdump_libpcap_thread, NULL, readdump_libpcap_thread_fce, global_pcap_handle);
-				pthread_join(readdump_libpcap_thread, NULL);
+				if(opt_scanpcapdir[0] != '\0') {
+					pthread_create(&scanpcapdir_thread, NULL, scanpcapdir, NULL);
+				}
+				
+				uint64_t _counter = 0;
+				int _pcap_stat_period = sverb.pcap_stat_period ? sverb.pcap_stat_period : 10;
+				while(!terminating) {
+					if(_counter && (verbosityE > 0 || !(_counter % _pcap_stat_period))) {
+						pthread_mutex_lock(&terminate_packetbuffer_lock);
+						pcapQueueQ->pcapStat(verbosityE > 0 ? 1 : _pcap_stat_period);
+						pthread_mutex_unlock(&terminate_packetbuffer_lock);
+						if(sverb.memory_stat_log) {
+							printMemoryStat();
+						}
+						if(tcpReassemblyHttp) {
+							tcpReassemblyHttp->setDoPrintContent();
+						}
+						if(tcpReassemblyWebrtc) {
+							tcpReassemblyWebrtc->setDoPrintContent();
+						}
+						#if RTP_PROF
+						for(int i = 0; i < opt_enable_process_rtp_packet; i++) if(processRtpPacket[i]) {
+							unsigned long long ___prof__ProcessRtpPacket_outThreadFunction = processRtpPacket[i]->__prof__ProcessRtpPacket_outThreadFunction;
+							unsigned long long ___prof__ProcessRtpPacket_outThreadFunction__usleep = processRtpPacket[i]->__prof__ProcessRtpPacket_outThreadFunction__usleep;
+							unsigned long long ___prof__ProcessRtpPacket_rtp = processRtpPacket[i]->__prof__ProcessRtpPacket_rtp;
+							unsigned long long ___prof__ProcessRtpPacket_rtp__hashfind = processRtpPacket[i]->__prof__ProcessRtpPacket_rtp__hashfind;
+							unsigned long long ___prof__ProcessRtpPacket_rtp__fill_call_array = processRtpPacket[i]->__prof__ProcessRtpPacket_rtp__fill_call_array;
+							unsigned long long ___prof__process_packet__rtp = processRtpPacket[i]->__prof__process_packet__rtp;
+							unsigned long long ___prof__add_to_rtp_thread_queue = processRtpPacket[i]->__prof__add_to_rtp_thread_queue;
+							unsigned long long ___prof__ProcessRtpPacket_outThreadFunction2 = ___prof__ProcessRtpPacket_outThreadFunction - ___prof__ProcessRtpPacket_outThreadFunction__usleep;
+							cout << fixed
+							     << "RTP PROF - " << (processRtpPacket[i]->indexThread + 1) << "/" << processRtpPacket[i]->outThreadId
+									<< endl
+							     << left << setw(50) << "ProcessRtpPacket::outThreadFunction"
+							     << right << setw(15) << ___prof__ProcessRtpPacket_outThreadFunction
+									<< endl
+							     << left << setw(50) << "ProcessRtpPacket::outThreadFunction / usleep"
+							     << right << setw(15) << ___prof__ProcessRtpPacket_outThreadFunction__usleep
+									<< endl
+							     << left << setw(50) << "ProcessRtpPacket::outThreadFunction / process time"
+							     << right << setw(15) << ___prof__ProcessRtpPacket_outThreadFunction2
+									<< endl
+							     << left << setw(50) << "   ProcessRtpPacket::rtp"
+							     << right << setw(15) << ___prof__ProcessRtpPacket_rtp
+							     << setw(15) << setprecision(5) 
+								<< ((double)___prof__ProcessRtpPacket_rtp / ___prof__ProcessRtpPacket_outThreadFunction2) * 100 << "%"
+									<< endl
+							     << left << setw(50) << "      ProcessRtpPacket::rtp / hashfind"
+							     << right << setw(15) << ___prof__ProcessRtpPacket_rtp__hashfind
+							     << setw(15) << setprecision(5) 
+								<< ((double)___prof__ProcessRtpPacket_rtp__hashfind / ___prof__ProcessRtpPacket_outThreadFunction2) * 100 << "%"
+									<< endl
+							     << left << setw(50) << "      ProcessRtpPacket::rtp / fill call array"
+							     << right << setw(15) << ___prof__ProcessRtpPacket_rtp__fill_call_array
+							     << setw(15) << setprecision(5) 
+								<< ((double)___prof__ProcessRtpPacket_rtp__fill_call_array / ___prof__ProcessRtpPacket_outThreadFunction2) * 100 << "%"
+									<< endl
+							     << left << setw(50) << "      process_packet__rtp"
+							     << right << setw(15) << ___prof__process_packet__rtp
+							     << setw(15) << setprecision(5) 
+								<< ((double)___prof__process_packet__rtp / ___prof__ProcessRtpPacket_outThreadFunction2) * 100 << "%"
+									<< endl
+							     << left << setw(50) << "         add_to_rtp_thread_queue"
+							     << right << setw(15) << ___prof__add_to_rtp_thread_queue
+							     << setw(15) << setprecision(5) 
+								<< ((double)___prof__add_to_rtp_thread_queue / ___prof__ProcessRtpPacket_outThreadFunction2) * 100 << "%"
+									<< endl;
+							processRtpPacket[i]->__prof__ProcessRtpPacket_outThreadFunction_begin = rdtsc();
+							processRtpPacket[i]->__prof__ProcessRtpPacket_outThreadFunction__usleep = 0;
+							processRtpPacket[i]->__prof__ProcessRtpPacket_rtp = 0;
+							processRtpPacket[i]->__prof__ProcessRtpPacket_rtp__hashfind = 0;
+							processRtpPacket[i]->__prof__ProcessRtpPacket_rtp__fill_call_array = 0;
+							processRtpPacket[i]->__prof__process_packet__rtp = 0;
+							processRtpPacket[i]->__prof__add_to_rtp_thread_queue = 0;
+						}
+						#endif
+					}
+					sleep(1);
+					++_counter;
+				}
+				
+				if(opt_scanpcapdir[0] != '\0') {
+					//pthread_join(scanpcapdir_thread, NULL); // failed - stop at: scanpcapdir::'len = read(fd, buff, 4096);'
+					sleep(2);
+				}
+				
+				terminate_packetbuffer();
+				
+				if(opt_pb_read_from_file[0] && (opt_enable_http || opt_enable_webrtc || opt_enable_ssl)) {
+					sleep(2);
+				}
+				
 			}
+			
+			PcapQueue_term();
+			
 		} else {
-			readdump_libpcap(global_pcap_handle);
+			pthread_create(&readdump_libpcap_thread, NULL, readdump_libpcap_thread_fce, global_pcap_handle);
+			pthread_join(readdump_libpcap_thread, NULL);
 		}
+	} else {
+		readdump_libpcap(global_pcap_handle);
 	}
 
 	readend = 1;
@@ -4747,14 +4733,11 @@ int main(int argc, char *argv[]) {
 		delete [] rtp_threads;
 	}
 
-	// close handler
-	if(opt_scanpcapdir[0] == '\0') {
-		if(!opt_pcap_queue) {
-			pcap_close(global_pcap_handle);
-		}
-		if(global_pcap_handle_dead_EN10MB) {
-			pcap_close(global_pcap_handle_dead_EN10MB);
-		}
+	if(!opt_pcap_queue && global_pcap_handle) {
+		pcap_close(global_pcap_handle);
+	}
+	if(global_pcap_handle_dead_EN10MB) {
+		pcap_close(global_pcap_handle_dead_EN10MB);
 	}
 	
 	// flush all queues

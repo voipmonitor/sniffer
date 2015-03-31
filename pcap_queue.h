@@ -353,6 +353,10 @@ protected:
 	bpf_u_int32 interfaceNet;
 	bpf_u_int32 interfaceMask;
 	pcap_t *pcapHandle;
+	queue<pcap_t*> pcapHandlesLapsed;
+	bool pcapEnd;
+	bpf_program filterData;
+	bool filterDataUse;
 	pcap_dumper_t *pcapDumpHandle;
 	u_int64_t pcapDumpLength;
 	int pcapLinklayerHeaderType;
@@ -493,6 +497,10 @@ public:
 	virtual ~PcapQueue_readFromInterface();
 	void setInterfaceName(const char *interfaceName);
 	void terminate();
+	bool openPcap(const char *filename);
+	bool isPcapEnd() {
+		return(this->pcapEnd);
+	}
 protected:
 	bool init();
 	bool initThread(void *arg, unsigned int arg2);

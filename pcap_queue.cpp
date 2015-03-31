@@ -122,6 +122,7 @@ extern TcpReassembly *tcpReassemblyWebrtc;
 extern TcpReassembly *tcpReassemblySsl;
 extern char opt_pb_read_from_file[256];
 extern int opt_pb_read_from_file_speed;
+extern char opt_scanpcapdir[2048];
 extern int global_pcap_dlink;
 extern char opt_cachedir[1024];
 extern unsigned long long cachedirtransfered;
@@ -764,6 +765,14 @@ pcap_store_queue::~pcap_store_queue() {
 }
 
 bool pcap_store_queue::push(pcap_block_store *blockStore, bool deleteBlockStoreIfFail) {
+	if(opt_scanpcapdir[0]) {
+		while(!terminating && buffersControl.getPercUsePB() > 20) {
+			usleep(100);
+		}
+		if(terminating) {
+			return(false);
+		}
+	}
 	bool saveToFileStore = false;
 	bool locked_fileStore = false;
 	if(opt_pcap_queue_store_queue_max_disk_size &&
@@ -1695,7 +1704,7 @@ int PcapQueue::pcap_next_ex_queue(pcap_t *pcapHandle, pcap_pkthdr** header, u_ch
 		}
 		return(0);
 	} else if(res == -2) {
-		if(VERBOSE) {
+		if(VERBOSE && opt_pb_read_from_file[0]) {
 			syslog(LOG_NOTICE,"packetbuffer %s: end of pcap file, exiting", this->nameQueue.c_str());
 		}
 		return(-1);
@@ -2007,6 +2016,9 @@ PcapQueue_readFromInterface_base::PcapQueue_readFromInterface_base(const char *i
 	this->interfaceNet = 0;
 	this->interfaceMask = 0;
 	this->pcapHandle = NULL;
+	this->pcapEnd = false;
+	memset(&this->filterData, 0, sizeof(this->filterData));
+	this->filterDataUse = false;
 	this->pcapDumpHandle = NULL;
 	this->pcapDumpLength = 0;
 	this->pcapLinklayerHeaderType = 0;
@@ -2156,6 +2168,11 @@ failed:
 }
 
 inline int PcapQueue_readFromInterface_base::pcap_next_ex_iface(pcap_t *pcapHandle, pcap_pkthdr** header, u_char** packet) {
+	if(!pcapHandle) {
+		*header = NULL;
+		*packet = NULL;
+		return(0);
+	}
 	int res = ::pcap_next_ex(pcapHandle, header, (const u_char**)packet);
 	if(!packet && res != -2) {
 		if(VERBOSE) {
@@ -2168,7 +2185,7 @@ inline int PcapQueue_readFromInterface_base::pcap_next_ex_iface(pcap_t *pcapHand
 		}
 		return(0);
 	} else if(res == -2) {
-		if(VERBOSE) {
+		if(VERBOSE && opt_pb_read_from_file[0]) {
 			syslog(LOG_NOTICE,"packetbuffer - %s: end of pcap file, exiting", this->getInterfaceName().c_str());
 		}
 		return(-1);
@@ -2913,7 +2930,9 @@ void PcapQueue_readFromInterface::terminate() {
 }
 
 bool PcapQueue_readFromInterface::init() {
-	if(opt_pb_read_from_file[0] || !opt_pcap_queue_iface_separate_threads) {
+	if(opt_pb_read_from_file[0] || 
+	   opt_scanpcapdir[0] ||
+	   !opt_pcap_queue_iface_separate_threads) {
 		return(true);
 	}
 	vector<string> interfaces = split(this->interfaceName.c_str(), ",", true);
@@ -3045,14 +3064,18 @@ void* PcapQueue_readFromInterface::threadFunction(void *arg, unsigned int arg2) 
 						fetchPacketOk = true;
 					}
 				}
+			} else if(opt_scanpcapdir[0] && this->pcapEnd) {
+				usleep(10000);
 			} else {
 				res = this->pcap_next_ex_iface(this->pcapHandle, &header, &packet);
 				packet_pcap = packet;
-				if(header->caplen >= 14 + sizeof(iphdr2)) {
+				if(packet && header->caplen >= 14 + sizeof(iphdr2)) {
 					ip_tot_len = ((iphdr2*)(packet + 14))->tot_len;
 				}
 				if(res == -1) {
-					if(opt_pb_read_from_file[0]) {
+					if(opt_scanpcapdir[0]) {
+						this->pcapEnd = true;
+					} else if(opt_pb_read_from_file[0]) {
 						blockStoreBypassQueue->push(blockStore[blockStoreIndex]);
 						++sumBlocksCounterIn[0];
 						blockStore[blockStoreIndex] = NULL;
@@ -3065,8 +3088,8 @@ void* PcapQueue_readFromInterface::threadFunction(void *arg, unsigned int arg2) 
 							--sleepTime;
 						}
 						vm_terminate();
+						break;
 					}
-					break;
 				} else if(res == 0) {
 					usleep(100);
 				} else {
@@ -3112,19 +3135,23 @@ void* PcapQueue_readFromInterface::threadFunction(void *arg, unsigned int arg2) 
 				if(fetchPacketOk && i == blockStoreIndex ? blockStore[i]->full : blockStore[i]->isFull_checkTimout()) {
 					bool _syslog = true;
 					while((blockStoreBypassQueueSize = blockStoreBypassQueue->getUseSize()) > opt_pcap_queue_bypass_max_size) {
-						if(_syslog) {
-							u_long actTime = getTimeMS();
-							if(actTime - 1000 > this->lastTimeLogErrThread0BufferIsFull) {
-								syslog(LOG_ERR, "packetbuffer %s: THREAD0 BUFFER IS FULL", this->nameQueue.c_str());
-								this->lastTimeLogErrThread0BufferIsFull = actTime;
-								cout << "bypass buffer size " << blockStoreBypassQueue->getUseItems() << " (" << blockStoreBypassQueue->getUseSize() << ")" << endl;
+						if(opt_scanpcapdir[0]) {
+							usleep(100);
+						} else {
+							if(_syslog) {
+								u_long actTime = getTimeMS();
+								if(actTime - 1000 > this->lastTimeLogErrThread0BufferIsFull) {
+									syslog(LOG_ERR, "packetbuffer %s: THREAD0 BUFFER IS FULL", this->nameQueue.c_str());
+									this->lastTimeLogErrThread0BufferIsFull = actTime;
+									cout << "bypass buffer size " << blockStoreBypassQueue->getUseItems() << " (" << blockStoreBypassQueue->getUseSize() << ")" << endl;
+								}
+								_syslog = false;
+								++countBypassBufferSizeExceeded;
 							}
-							_syslog = false;
-							++countBypassBufferSizeExceeded;
+							usleep(100);
+							maxBypassBufferSize = 0;
+							maxBypassBufferItems = 0;
 						}
-						usleep(100);
-						maxBypassBufferSize = 0;
-						maxBypassBufferItems = 0;
 					}
 					if(blockStoreBypassQueueSize > maxBypassBufferSize) {
 						maxBypassBufferSize = blockStoreBypassQueueSize;
@@ -3292,7 +3319,13 @@ bool PcapQueue_readFromInterface::startCapture() {
 		return(true);
 	}
 	char errbuf[PCAP_ERRBUF_SIZE];
-	if(opt_pb_read_from_file[0]) {
+	if(opt_scanpcapdir[0]) {
+		this->pcapHandle = NULL;
+		this->pcapLinklayerHeaderType = 0;
+		global_pcap_handle = this->pcapHandle;
+		global_pcap_dlink = this->pcapLinklayerHeaderType;
+		return(true);
+	} else if(opt_pb_read_from_file[0]) {
 		this->pcapHandle = pcap_open_offline_zip(opt_pb_read_from_file, errbuf);
 		if(!this->pcapHandle) {
 			syslog(LOG_ERR, "pcap_open_offline %s failed: %s", opt_pb_read_from_file, errbuf); 
@@ -3304,6 +3337,46 @@ bool PcapQueue_readFromInterface::startCapture() {
 		return(true);
 	}
 	return(this->PcapQueue_readFromInterface_base::startCapture());
+}
+
+bool PcapQueue_readFromInterface::openPcap(const char *filename) {
+	while(this->pcapHandlesLapsed.size() > 3) {
+		pcap_close(this->pcapHandlesLapsed.front());
+		this->pcapHandlesLapsed.pop();
+	}
+	char errbuf[PCAP_ERRBUF_SIZE];
+	pcap_t *pcapHandle = pcap_open_offline_zip(filename, errbuf);
+	if(!pcapHandle) {
+		syslog(LOG_ERR, "pcap_open_offline %s failed: %s", filename, errbuf); 
+		return(false);
+	}
+	int pcapLinklayerHeaderType = pcap_datalink(pcapHandle);
+	if(*user_filter != '\0') {
+		if(this->filterDataUse) {
+			pcap_freecode(&this->filterData);
+			this->filterDataUse = false;
+		}
+		char filter_exp[2048] = "";
+		snprintf(filter_exp, sizeof(filter_exp), "%s", user_filter);
+		if (pcap_compile(pcapHandle, &this->filterData, filter_exp, 0, PCAP_NETMASK_UNKNOWN) == -1) {
+			syslog(LOG_NOTICE, "packetbuffer - %s: can not parse filter %s: %s", filename, filter_exp, pcap_geterr(pcapHandle));
+			return(false);
+		}
+		if (pcap_setfilter(pcapHandle, &this->filterData) == -1) {
+			syslog(LOG_NOTICE, "packetbuffer - %s: can not install filter %s: %s", filename, filter_exp, pcap_geterr(pcapHandle));
+			return(false);
+		}
+		this->filterDataUse = true;
+	}
+	if(this->pcapHandle) {
+		this->pcapHandlesLapsed.push(this->pcapHandle);
+	}
+	global_pcap_dlink = pcapLinklayerHeaderType;
+	global_pcap_handle = pcapHandle;
+	this->pcapLinklayerHeaderType = pcapLinklayerHeaderType;
+	this->pcapHandle = pcapHandle;
+	this->pcapEnd = false;
+	return(true);
 }
 
 string PcapQueue_readFromInterface::pcapStatString_bypass_buffer(int statPeriod) {
@@ -3465,7 +3538,9 @@ string PcapQueue_readFromInterface::pcapStatString_cpuUsageReadThreads() {
 }
 
 string PcapQueue_readFromInterface::getInterfaceName(bool simple) {
-	if(opt_pb_read_from_file[0]) {
+	if(opt_scanpcapdir[0]) {
+		return(string("dir ") + opt_scanpcapdir);
+	} else if(opt_pb_read_from_file[0]) {
 		return(string("file ") + opt_pb_read_from_file);
 	} else {
 		return(this->PcapQueue_readFromInterface_base::getInterfaceName(simple));
