@@ -3094,6 +3094,10 @@ void* PcapQueue_readFromInterface::threadFunction(void *arg, unsigned int arg2) 
 					usleep(100);
 				} else {
 					fetchPacketOk = true;
+					if(opt_scanpcapdir[0] &&
+					   !blockStore[blockStoreIndex]->dlink && blockStore[blockStoreIndex]->dlink != this->pcapLinklayerHeaderType) {
+						blockStore[blockStoreIndex]->dlink = this->pcapLinklayerHeaderType;
+					}
 				}
 			}
 			if(fetchPacketOk) {
