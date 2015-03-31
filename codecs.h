@@ -37,6 +37,66 @@
 #define PAYLOAD_XOPUS48 342
 #define PAYLOAD_TELEVENT 400
 
+const char *codec2text(int codec) {
+	switch(codec) {
+	case PAYLOAD_PCMU:
+		return "G.711 ulaw";
+	case PAYLOAD_GSM:
+		return "GSM";
+	case PAYLOAD_G723:
+		return "G.723";
+	case PAYLOAD_PCMA:
+		return "G.711 alaw";
+	case PAYLOAD_G722:
+		return "G.722";
+	case PAYLOAD_G729:
+		return "G.729";
+	case PAYLOAD_ILBC:
+		return "iLBC";
+	case PAYLOAD_SPEEX:
+		return "speex";
+	case PAYLOAD_CLEARMODE:
+		return "clearmode";
+	case PAYLOAD_SILK:
+	case PAYLOAD_SILK8:
+	case PAYLOAD_SILK12:
+	case PAYLOAD_SILK16:
+	case PAYLOAD_SILK24:
+		return "SILK";
+	case PAYLOAD_ISAC:
+	case PAYLOAD_ISAC16:
+	case PAYLOAD_ISAC32:
+		return "iSAC";
+	case PAYLOAD_OPUS:
+	case PAYLOAD_OPUS8:
+	case PAYLOAD_OPUS12:
+	case PAYLOAD_OPUS16:
+	case PAYLOAD_OPUS24:
+	case PAYLOAD_OPUS48:
+		return "OPUS";
+	case PAYLOAD_AMR:
+		return "amr";
+	case PAYLOAD_G72218:
+	case PAYLOAD_G722112:
+	case PAYLOAD_G722116:
+	case PAYLOAD_G722124:
+	case PAYLOAD_G722132:
+	case PAYLOAD_G722148:
+		return "G.722.1";
+	case PAYLOAD_XOPUS:
+	case PAYLOAD_XOPUS8:
+	case PAYLOAD_XOPUS12:
+	case PAYLOAD_XOPUS16:
+	case PAYLOAD_XOPUS24:
+	case PAYLOAD_XOPUS48:
+		return "XOPUS";
+	case PAYLOAD_TELEVENT:
+		return "TELEPHONE EVENT";
+	default:
+		return "UNKNOWN CODEC NUMBER";
+	}
+}
+
 #define USE_ILBC_ENHANCER	0
 #define ILBC_MS			30
 /* #define ILBC_MS                      20 */

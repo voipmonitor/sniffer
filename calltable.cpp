@@ -1699,7 +1699,7 @@ Call::convertRawToWav() {
 				system(cmd);
 				break;
 			default:
-				syslog(LOG_ERR, "Call [%s] cannot be converted to WAV, unknown payloadtype [%d]\n", rawf->filename.c_str(), rawf->codec);
+				syslog(LOG_ERR, "Call [%s] cannot be converted to WAV because the codec [%s] is not supported.\n", rawf->filename.c_str(), codec2text(rawf->codec));
 			}
 			if(!sverb.noaudiounlink) unlink(rawf->filename.c_str());
 		}
