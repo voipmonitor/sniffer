@@ -180,6 +180,17 @@ public:
 		bufferCapacity = 0;
 		this->capacityReserve = capacityReserve;
 	}
+	SimpleBuffer(const SimpleBuffer &other) {
+		this->bufferLength = other.bufferLength;
+		this->bufferCapacity = other.bufferCapacity;
+		this->capacityReserve = other.capacityReserve;
+		if(this->bufferLength) {
+			this->buffer = new FILE_LINE u_char[this->bufferLength];
+			memcpy(this->buffer, other.buffer, this->bufferLength);
+		} else { 
+			this->buffer = NULL;
+		}
+	}
 	~SimpleBuffer() {
 		destroy();
 	}
@@ -212,13 +223,26 @@ public:
 	void destroy() {
 		if(buffer) {
 			delete [] buffer;
-			buffer = 0;
+			buffer = NULL;
 		}
 		bufferLength = 0;
 		bufferCapacity = 0;
 	}
 	bool empty() {
 		return(bufferLength == 0);
+	}
+	SimpleBuffer& operator = (const SimpleBuffer &other) {
+		destroy();
+		this->bufferLength = other.bufferLength;
+		this->bufferCapacity = other.bufferCapacity;
+		this->capacityReserve = other.capacityReserve;
+		if(this->bufferLength) {
+			this->buffer = new FILE_LINE u_char[this->bufferLength];
+			memcpy(this->buffer, other.buffer, this->bufferLength);
+		} else { 
+			this->buffer = NULL;
+		}
+		return(*this);
 	}
 	operator char*() {
 		if(bufferLength == 0) {
@@ -270,8 +294,8 @@ struct tm getDateTime(const char *timeStr);
 unsigned int getNumberOfDayToNow(const char *date);
 string getActDateTimeF(bool useT_symbol = false);
 unsigned long getUptime();
-std::string &trim(std::string &s);
-std::string trim_str(std::string s);
+std::string &trim(std::string &s, const char *trimChars = NULL);
+std::string trim_str(std::string s, const char *trimChars = NULL);
 std::vector<std::string> &split(const std::string &s, char delim, std::vector<std::string> &elems);
 std::vector<std::string> split(const std::string &s, char delim);
 std::vector<std::string> split(const char *s, const char *delim, bool enableTrim = false);
@@ -1635,5 +1659,8 @@ inline struct tm localtime_r(const time_t *timep) {
 }
 
 u_int32_t octal_decimal(u_int32_t n);
+
+bool vm_pexec(const char *cmdLine, SimpleBuffer *out, SimpleBuffer *err = NULL, unsigned timeout_sec = 10, unsigned timout_select_sec = 1);
+std::vector<std::string> parse_cmd_line(const char *cmdLine);
 
 #endif

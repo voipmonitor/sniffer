@@ -1650,13 +1650,16 @@ std::string pexec(char* cmd, int *exitCode) {
 }
 
 
-std::string &trim(std::string &s) {
+std::string &trim(std::string &s, const char *trimChars) {
 	if(!s.length()) {
 		 return(s);
 	}
+	if(!trimChars) {
+		trimChars = "\r\n\t ";
+	}
 	size_t length = s.length();
 	size_t trimCharsLeft = 0;
-	while(trimCharsLeft < length && strchr("\r\n\t ", s[trimCharsLeft])) {
+	while(trimCharsLeft < length && strchr(trimChars, s[trimCharsLeft])) {
 		++trimCharsLeft;
 	}
 	if(trimCharsLeft) {
@@ -1664,7 +1667,7 @@ std::string &trim(std::string &s) {
 		length = s.length();
 	}
 	size_t trimCharsRight = 0;
-	while(trimCharsRight < length && strchr("\r\n\t ", s[length - trimCharsRight - 1])) {
+	while(trimCharsRight < length && strchr(trimChars, s[length - trimCharsRight - 1])) {
 		++trimCharsRight;
 	}
 	if(trimCharsRight) {
@@ -1673,8 +1676,8 @@ std::string &trim(std::string &s) {
 	return(s);
 }
 
-std::string trim_str(std::string s) {
-	return(trim(s));
+std::string trim_str(std::string s, const char *trimChars) {
+	return(trim(s, trimChars));
 }
 
 std::vector<std::string> &split(const std::string &s, char delim, std::vector<std::string> &elems) {
@@ -3157,4 +3160,145 @@ u_int32_t octal_decimal(u_int32_t n) {
 		++i;
 	}
 	return decimal;
+}
+
+bool vm_pexec(const char *cmdLine, SimpleBuffer *out, SimpleBuffer *err, unsigned timeout_sec, unsigned timout_select_sec) {
+	std::vector<std::string> parseCmdLine = parse_cmd_line(cmdLine);
+	char *exec_args[100];
+	unsigned i = 0;
+	for(i = 0; i < min(sizeof(exec_args) / sizeof(exec_args[0]) - 2, parseCmdLine.size()); i++) {
+		parseCmdLine[i] = trim(parseCmdLine[i], " '\"");
+		exec_args[i] = (char*)parseCmdLine[i].c_str();
+	}
+	exec_args[i] = NULL;
+	int pipe_stdout[2];
+	int pipe_stderr[2];
+	pipe(pipe_stdout);
+	pipe(pipe_stderr);
+	int fork_rslt = fork();
+	if(fork_rslt == 0) {
+		close(pipe_stdout[0]);
+		close(pipe_stderr[0]);
+		dup2(pipe_stdout[1], 1);
+		dup2(pipe_stderr[1], 2);
+		close(pipe_stdout[1]);
+		close(pipe_stderr[1]);
+		if(execvp(exec_args[0], exec_args) == -1) {
+			char errmessage[1000];
+			sprintf(errmessage, "exec failed: %s", exec_args[0]);
+			write(2, errmessage, strlen(errmessage));
+			kill(getpid(), SIGKILL);
+		}
+	} else if(fork_rslt > 0) {
+		u_long start_time = getTimeMS();
+		SimpleBuffer bufferStdout;
+		SimpleBuffer bufferStderr;
+		close(pipe_stdout[1]);
+		close(pipe_stderr[1]);
+		while(true) {
+			fd_set readfds;
+			FD_ZERO(&readfds);
+			FD_SET(pipe_stdout[0], &readfds);
+			FD_SET(pipe_stderr[0], &readfds);
+			timeval *timeout = NULL;
+			timeval _timeout;
+			if(timout_select_sec) {
+				_timeout.tv_sec = timout_select_sec;
+				_timeout.tv_usec = 0;
+				timeout = &_timeout;
+			}
+			if(select(max(pipe_stdout[0], pipe_stderr[0]) + 1, &readfds, NULL, NULL, timeout) == -1) {
+				break;
+			}
+			char buffer[1024];
+			unsigned readStdoutLength = 0;
+			unsigned readStderrLength = 0;
+			if(FD_ISSET(pipe_stdout[0], &readfds)) {
+				if((readStdoutLength = read(pipe_stdout[0], buffer, sizeof(buffer))) > 0) {
+					bufferStdout.add(buffer, readStdoutLength);
+				}
+			}
+			if(FD_ISSET(pipe_stderr[0], &readfds)) {
+				if((readStderrLength = read(pipe_stderr[0], buffer, sizeof(buffer))) > 0) {
+					bufferStderr.add(buffer, readStderrLength);
+				}
+			}
+			if(readStderrLength) {
+				if(bufferStderr.size() && reg_match((char*)bufferStderr, "^exec failed")) {
+					break;
+				}
+			} else if(!readStdoutLength) {
+				bool isChildPidExit(unsigned pid);
+				if(isChildPidExit(fork_rslt)) {
+					break;
+				} else {
+					usleep(10000);
+				}
+			}
+			if(timeout_sec && (getTimeMS() - start_time) > timeout_sec * 1000) {
+				kill(fork_rslt, 9);
+				break;
+			}
+		}
+		close(pipe_stdout[0]);
+		close(pipe_stderr[0]);
+		if(out) {
+			if(reg_match((char*)bufferStdout, "PID([0-9]+)\n")) {
+				char *pointerToPidSeparator = strchr((char*)bufferStdout, '\n');
+				out->clear();
+				out->add(pointerToPidSeparator + 1, bufferStdout.size() - ((u_char*)pointerToPidSeparator - bufferStdout.data() + 1));
+			} else {
+				*out = bufferStdout;
+			}
+		}
+		if(err) {
+			*err = bufferStderr;
+		}
+		return(!(bufferStderr.size() && reg_match((char*)bufferStderr, "^exec failed")));
+	} else {
+		return(false);
+	}
+	return(true);
+}
+
+std::vector<std::string> parse_cmd_line(const char *cmdLine) {
+	const char *cmdLinePointer = cmdLine;
+	string param;
+	char paramBracket = 0;
+	std::vector<std::string> parse;
+	while(*cmdLinePointer) {
+		if(paramBracket && *cmdLinePointer == paramBracket) {
+			paramBracket = 0;
+			++cmdLinePointer;
+		} else if(*cmdLinePointer == ' ' && !paramBracket) {
+			if(param.length()) {
+				parse.push_back(param);
+			}
+			param = "";
+			paramBracket = 0;
+			++cmdLinePointer;
+			while(*cmdLinePointer == ' ') {
+				++cmdLinePointer;
+			}
+		} else {
+			if(!paramBracket && (*cmdLinePointer == '\'' || *cmdLinePointer == '"')) {
+				paramBracket = *cmdLinePointer;
+			} else {
+				char appString[2];
+				appString[0] = *cmdLinePointer;
+				appString[1] = 0;
+				param.append(appString);
+			}
+			++cmdLinePointer;
+		}
+	}
+	if(param.length()) {
+		parse.push_back(param);
+	}
+	for(unsigned i = 0; i < parse.size(); i++) {
+		if(parse[i][0] == '"' && parse[i][parse[i].length() - 1] == '"') {
+			parse[i] = parse[i].substr(1, parse[i].length() - 2);
+		}
+	}
+	return(parse);
 }

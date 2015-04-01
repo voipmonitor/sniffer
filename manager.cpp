@@ -351,11 +351,25 @@ int _sendvm(int socket, void *channel, const char *buf, size_t len, int mode) {
 }
 
 int sendvm_from_stdout_of_command(char *command, int socket, ssh_channel channel, char *buf, size_t len, int mode) {
+	SimpleBuffer out;
+	if(vm_pexec(command, &out) && out.size()) {
+		if(sendvm(socket, channel, (const char*)out.data(), out.size(), 0) == -1) {
+			if (verbosity > 0) syslog(LOG_NOTICE, "sendvm_from_stdout_of_command: sending data problem");
+			return -1;
+		}
+	}
+	return 0;
+	
+	/* obsolete
+ 
 //using pipe for reading from stdout of given command;
     int retch;
     long total = 0;
 
     FILE *inpipe;
+    
+    cout << command << endl;
+    
     inpipe = popen(command, "r");
 
     if (!inpipe) {
@@ -363,17 +377,15 @@ int sendvm_from_stdout_of_command(char *command, int socket, ssh_channel channel
         return -1;
     }
 
-/*
-    while (retch = fread(buf, sizeof(char), len, inpipe) > 0) {
-		total += retch;
-		syslog(LOG_ERR, "CTU: buflen:%d nacetl jsem %li create command",buflen, total);
-
-		if (sendvm(socket, channel, buf, retch, 0) == -1) {
-			if (verbosity > 1) syslog(LOG_NOTICE, "Pipe RET %li bytes, problem sending using sendvm", total);
-			return -1;
-		}
-    }
-*/
+//     while (retch = fread(buf, sizeof(char), len, inpipe) > 0) {
+// 		total += retch;
+// 		syslog(LOG_ERR, "CTU: buflen:%d nacetl jsem %li create command",buflen, total);
+// 
+// 		if (sendvm(socket, channel, buf, retch, 0) == -1) {
+// 			if (verbosity > 1) syslog(LOG_NOTICE, "Pipe RET %li bytes, problem sending using sendvm", total);
+// 			return -1;
+// 		}
+//     }
 
 	int filler = 0;		//'offset' buf pointer
 	retch = 0;
@@ -402,6 +414,7 @@ int sendvm_from_stdout_of_command(char *command, int socket, ssh_channel channel
 	if (verbosity > 1) syslog(LOG_NOTICE, "sendvm_from_stdout_of_command: Read total %li chars.", total);
     pclose(inpipe);
     return 0; 
+	*/
 }
 
 int parse_command(char *buf, int size, int client, int eof, const char *buf_long, ManagerClientThread **managerClientThread = NULL, ssh_channel sshchannel = NULL) {

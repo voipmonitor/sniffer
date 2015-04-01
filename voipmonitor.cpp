@@ -21,6 +21,7 @@
 #include <time.h>
 #include <signal.h>
 #include <iomanip>
+#include <sys/wait.h>
 
 #ifdef FREEBSD
 #include <sys/endian.h>
@@ -782,6 +783,29 @@ void sigterm_handler(int param)
 	#if ENABLE_SEMAPHOR_FORK_MODE
 	exit_handler_fork_mode();
 	#endif
+}
+
+#define childPidsExit_max 10
+volatile unsigned childPidsExit_count;
+volatile pid_t childPidsExit[childPidsExit_max];
+void sigchld_handler(int param)
+{
+	pid_t childpid;
+	int status;
+	while((childpid = waitpid(-1, &status, WNOHANG)) > 0) {
+		for(unsigned i = 0; i < childPidsExit_max - 1; i++) {
+			childPidsExit[i] = childPidsExit[i + 1];
+		}
+		childPidsExit[childPidsExit_max - 1] = childpid;
+	}
+}
+bool isChildPidExit(unsigned pid) {
+	for(unsigned i = 0; i < childPidsExit_max; i++) {
+		if((unsigned)childPidsExit[i] == pid) {
+			return(true);
+		}
+	}
+	return(false);
 }
 
 void *database_backup(void *dummy) {
@@ -3749,6 +3773,10 @@ int main(int argc, char *argv[]) {
 		return 1;
 	}
 
+	signal(SIGINT,sigint_handler);
+	signal(SIGTERM,sigterm_handler);
+	signal(SIGCHLD,sigchld_handler);
+
 	if(opt_untar_gui_params) {
 		chdir(opt_chdir);
 		return(untar_gui(opt_untar_gui_params));
@@ -4095,9 +4123,6 @@ int main(int argc, char *argv[]) {
 		}
 	}
 	
-	signal(SIGINT,sigint_handler);
-	signal(SIGTERM,sigterm_handler);
-
 	if(!opt_test &&
 	   opt_database_backup_from_date[0] != '\0' &&
 	   opt_database_backup_from_mysql_host[0] != '\0' &&
@@ -5163,6 +5188,17 @@ void test_http_dumper() {
 	dumper.dumpData(timestamp_from.c_str(), timestamp_to.c_str(), ids.c_str());
 }
 
+void test_pexec() {
+	const char *cmdLine = "rrdtool graph - -w 582 -h 232 -a PNG --start \"now-3606s\" --end \"now-6s\" --font DEFAULT:0:Courier --title \"CPU usage\" --watermark \"`date`\" --disable-rrdtool-tag --vertical-label \"percent[%]\" --lower-limit 0 --units-exponent 0 --full-size-mode -c BACK#e9e9e9 -c SHADEA#e9e9e9 -c SHADEB#e9e9e9 DEF:t0=/var/spool/voipmonitor_local/rrd/db-tCPU.rrd:tCPU-t0:MAX DEF:t1=/var/spool/voipmonitor_local/rrd/db-tCPU.rrd:tCPU-t1:MAX DEF:t2=/var/spool/voipmonitor_local/rrd/db-tCPU.rrd:tCPU-t2:MAX LINE1:t0#0000FF:\"t0 CPU Usage %\\l\" COMMENT:\"\\u\" GPRINT:t0:LAST:\"Cur\\: %5.2lf\" GPRINT:t0:AVERAGE:\"Avg\\: %5.2lf\" GPRINT:t0:MAX:\"Max\\: %5.2lf\" GPRINT:t0:MIN:\"Min\\: %5.2lf\\r\" LINE1:t1#00FF00:\"t1 CPU Usage %\\l\" COMMENT:\"\\u\" GPRINT:t1:LAST:\"Cur\\: %5.2lf\" GPRINT:t1:AVERAGE:\"Avg\\: %5.2lf\" GPRINT:t1:MAX:\"Max\\: %5.2lf\" GPRINT:t1:MIN:\"Min\\: %5.2lf\\r\" LINE1:t2#FF0000:\"t2 CPU Usage %\\l\" COMMENT:\"\\u\" GPRINT:t2:LAST:\"Cur\\: %5.2lf\" GPRINT:t2:AVERAGE:\"Avg\\: %5.2lf\" GPRINT:t2:MAX:\"Max\\: %5.2lf\" GPRINT:t2:MIN:\"Min\\: %5.2lf\\r\"";
+	SimpleBuffer out;
+	SimpleBuffer err;
+	cout << "vm_pexec rslt:" << vm_pexec(cmdLine, &out, &err) << endl;
+	cout << "OUT SIZE:" << out.size() << endl;
+	cout << "OUT:" << (char*)out << endl;
+	cout << "ERR SIZE:" << err.size() << endl;
+	cout << "ERR:" << (char*)err << endl;
+}
+
 void test() {
  
 	switch(opt_test) {
@@ -5227,6 +5263,9 @@ void test() {
 		break;
 	case 7: 
 		test_http_dumper(); 
+		break;
+	case 8: 
+		test_pexec();
 		break;
 	case 10:
 		{
