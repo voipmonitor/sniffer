@@ -1,3 +1,8 @@
+10.1.48 01.04.2015
+==================
+- fix storing sip proxy column when there are in-dialog INVITEs 
+
+
 10.1.47 30.03.2015
 ==================
 - fix racecondition when doing live sniffing 

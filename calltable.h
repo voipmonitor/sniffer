@@ -198,6 +198,8 @@ public:
 	u_int32_t sipcallerip[MAX_SIPCALLERDIP];	//!< SIP signalling source IP address
 	u_int32_t sipcalledip[MAX_SIPCALLERDIP];	//!< SIP signalling destination IP address
 	u_int32_t lastsipcallerip;		
+	
+	list<d_u_int32_t> invite_sdaddr;
 
 	u_int16_t sipcallerport;
 	u_int16_t sipcalledport;
