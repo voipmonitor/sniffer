@@ -2806,6 +2806,24 @@ Call *process_packet(bool is_ssl, u_int64_t packet_number,
 		if(call->lastsrcip != saddr) { call->oneway = 0; };
 
 		if(sip_method == INVITE) {
+		 
+			bool existInviteSdaddr = false;
+			bool reverseInviteSdaddr = false;
+			for(list<d_u_int32_t>::iterator iter = call->invite_sdaddr.begin(); iter != call->invite_sdaddr.end(); iter++) {
+				if(saddr == (*iter)[0] && daddr == (*iter)[1]) {
+					existInviteSdaddr = true;
+				} else if(daddr == (*iter)[0] && saddr == (*iter)[1]) {
+					reverseInviteSdaddr = true;
+				}
+			}
+			if(reverseInviteSdaddr) {
+				returnCall = call;
+				goto endsip_save_packet;
+			}
+			if(!existInviteSdaddr) {
+				call->invite_sdaddr.push_back(d_u_int32_t(saddr, daddr));
+			}
+		 
 			if(opt_update_dstnum_onanswer) {
 				char branch[100];
 				if(!get_sip_branch(data, datalen, "via:", branch, sizeof(branch)) &&
