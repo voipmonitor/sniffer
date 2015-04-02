@@ -468,7 +468,7 @@ FraudAlert::FraudAlert(eFraudAlertType type, unsigned int dbId) {
 FraudAlert::~FraudAlert() {
 }
 
-void FraudAlert::loadAlert() {
+bool FraudAlert::loadAlert() {
 	SqlDb *sqlDb = createSqlObject();
 	char dbIdStr[10];
 	sprintf(dbIdStr, "%u", dbId);
@@ -493,6 +493,10 @@ void FraudAlert::loadAlert() {
 		 from alerts\
 		 where id = ") + dbIdStr);
 	dbRow = sqlDb->fetchRow();
+	if(!dbRow) {
+		delete sqlDb;
+		return(false);
+	}
 	descr = dbRow["descr"];
 	if(defFilterIp()) {
 		ipFilter.addWhite(dbRow["fraud_whitelist_ip"].c_str());
@@ -540,6 +544,7 @@ void FraudAlert::loadAlert() {
 	}
 	checkInternational.load(&dbRow);
 	delete sqlDb;
+	return(true);
 }
 
 void FraudAlert::loadFraudDef() {
@@ -1304,8 +1309,7 @@ void FraudAlerts::loadAlerts() {
 			alert = new FraudAlert_rc(dbId);
 			break;
 		}
-		if(alert) {
-			alert->loadAlert();
+		if(alert && alert->loadAlert()) {
 			alerts.push_back(alert);
 		}
 	}
