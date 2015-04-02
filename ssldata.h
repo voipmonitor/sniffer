@@ -21,7 +21,7 @@ public:
 		}
 		bool isOk() {
 			return(content_type >= 20 && content_type <= 23 &&
-			       version == 0x301);
+			       version >= 0x300 && version <= 0x303);
 		}
 		u_int8_t content_type;
 		u_int16_t version;
