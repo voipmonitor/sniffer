@@ -1,3 +1,8 @@
+10.1.49 02.04.2015
+==================
+- do not crash if some mysql tables are missing or some rows disappears during sniffer reload. 
+
+
 10.1.48 01.04.2015
 ==================
 - fix storing sip proxy column when there are in-dialog INVITEs 

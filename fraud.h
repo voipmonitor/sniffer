@@ -524,7 +524,7 @@ public:
 	};
 	FraudAlert(eFraudAlertType type, unsigned int dbId);
 	virtual ~FraudAlert();
-	void loadAlert();
+	bool loadAlert();
 	void loadFraudDef();
 	eFraudAlertType getType() {
 		return(type);
