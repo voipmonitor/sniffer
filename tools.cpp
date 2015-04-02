@@ -29,6 +29,7 @@
 #include <openssl/sha.h>
 #include <fcntl.h>
 #include <math.h>
+#include <signal.h>
 
 #include "voipmonitor.h"
 
