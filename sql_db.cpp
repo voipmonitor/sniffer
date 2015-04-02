@@ -72,7 +72,7 @@ bool exists_column_message_content_length = false;
 
 string SqlDb_row::operator [] (const char *fieldName) {
 	int indexField = this->getIndexField(fieldName);
-	if(indexField >= 0 && indexField < row.size()) {
+	if(indexField >= 0 && (unsigned)indexField < row.size()) {
 		return(row[indexField].content);
 	}
 	return("");

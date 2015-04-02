@@ -285,35 +285,51 @@ inline void heapsafe_free(void *pointerToObject) {
 
 
 void * operator new(size_t sizeOfObject) { 
-	return(HeapSafeCheck ?
-		(HeapSafeCheck & _HeapSafeSafeReserve ?
-		  heapsafe_safe_alloc(sizeOfObject) :
-		  heapsafe_alloc(sizeOfObject)) :
-		_heapsafe_alloc(sizeOfObject));
+	void *newPointer = HeapSafeCheck ?
+			    (HeapSafeCheck & _HeapSafeSafeReserve ?
+			      heapsafe_safe_alloc(sizeOfObject) :
+			      heapsafe_alloc(sizeOfObject)) :
+			    _heapsafe_alloc(sizeOfObject);
+	if(!newPointer) {
+		syslog(LOG_ERR, "allocation (operator new) failed - size %lu", sizeOfObject);
+	}
+	return(newPointer);
 }
  
 void * operator new[](size_t sizeOfObject) {
-	return(HeapSafeCheck ? 
-		(HeapSafeCheck & _HeapSafeSafeReserve ?
-		  heapsafe_safe_alloc(sizeOfObject) :
-		  heapsafe_alloc(sizeOfObject)) :
-		_heapsafe_alloc(sizeOfObject));
+	void *newPointer = HeapSafeCheck ? 
+			    (HeapSafeCheck & _HeapSafeSafeReserve ?
+			      heapsafe_safe_alloc(sizeOfObject) :
+			      heapsafe_alloc(sizeOfObject)) :
+			    _heapsafe_alloc(sizeOfObject);
+	if(!newPointer) {
+		syslog(LOG_ERR, "allocation (operator new[]) failed - size %lu", sizeOfObject);
+	}
+	return(newPointer);
 }
 
 void * operator new(size_t sizeOfObject, const char *memory_type1, int memory_type2) { 
-	return(HeapSafeCheck ?
-		(HeapSafeCheck & _HeapSafeSafeReserve ?
-		  heapsafe_safe_alloc(sizeOfObject) :
-		  heapsafe_alloc(sizeOfObject, memory_type1, memory_type2)) :
-		_heapsafe_alloc(sizeOfObject));
+	void *newPointer = HeapSafeCheck ?
+			    (HeapSafeCheck & _HeapSafeSafeReserve ?
+			      heapsafe_safe_alloc(sizeOfObject) :
+			      heapsafe_alloc(sizeOfObject, memory_type1, memory_type2)) :
+			    _heapsafe_alloc(sizeOfObject);
+	if(!newPointer) {
+		syslog(LOG_ERR, "allocation (operator new) failed - size %lu, %s, %i", sizeOfObject, memory_type1 ? memory_type1 : "", memory_type2);
+	}
+	return(newPointer);
 }
  
 void * operator new[](size_t sizeOfObject, const char *memory_type1, int memory_type2) {
-	return(HeapSafeCheck ? 
-		(HeapSafeCheck & _HeapSafeSafeReserve ?
-		  heapsafe_safe_alloc(sizeOfObject) :
-		  heapsafe_alloc(sizeOfObject, memory_type1, memory_type2)) :
-		_heapsafe_alloc(sizeOfObject));
+	void *newPointer = HeapSafeCheck ? 
+			    (HeapSafeCheck & _HeapSafeSafeReserve ?
+			      heapsafe_safe_alloc(sizeOfObject) :
+			      heapsafe_alloc(sizeOfObject, memory_type1, memory_type2)) :
+			    _heapsafe_alloc(sizeOfObject);
+	if(!newPointer) {
+		syslog(LOG_ERR, "allocation (operator new[]) failed - size %lu, %s, %i", sizeOfObject, memory_type1 ? memory_type1 : "", memory_type2);
+	}
+	return(newPointer);
 }
  
 void operator delete(void *pointerToObject) {
