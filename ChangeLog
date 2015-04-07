@@ -6,10 +6,10 @@ New features
 - SIP TLS decryption support (see ssl = yes in voipmonitor.conf)
 - concatenate pcap files into single tar files (enabled by default) lowering IOPS by factor 10x and more allowing to store thousands of simultaneous calls on single 7.2k RPM or network storage. More details in voipmonitor.conf tar=yes
 - implement signal digital processing for G711 alaw/ulaw:
-   inband dtmf decoder (option inbanddtmf in voipmonitor.conf)
-   silence detector - counts time when caller or called stream is silence and number of seconds from last silence to end of call (option silencedetect in voipmonitor.conf)
-   FAX CED/CNG tones detection marks call as FAX and GUI can try to convert T30 into tiff/PDF (option faxdetect)
-   clipping detection - values are stored into new cdr columns cdr.caller/d_clipping_mult100. (optino clippingdetect in voipmonitor.conf
+- inband dtmf decoder (option inbanddtmf in voipmonitor.conf)
+- silence detector - counts time when caller or called stream is silence and number of seconds from last silence to end of call (option silencedetect in voipmonitor.conf)
+- FAX CED/CNG tones detection marks call as FAX and GUI can try to convert T30 into tiff/PDF (option faxdetect)
+- clipping detection - values are stored into new cdr columns cdr.caller/d_clipping_mult100. (optino clippingdetect in voipmonitor.conf
 - dumpallallpackets option dumps all capture traffic into files (split by size (MB) or by 1GB if 'yes')
 - add capture rules based on custom headers [VG-508]
 - FreeBSD compatibility
