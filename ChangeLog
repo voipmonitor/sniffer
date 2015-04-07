@@ -34,6 +34,56 @@ Bugfixes
 - fix deadlock problem / duplicity in cdr
 - fix negative skinny callid, fix timout skinny channel problem, fix onhold, create skinny channel only on OFFHOOK message
 
+10.1.49 02.04.2015
+==================
+- do not crash if some mysql tables are missing or some rows disappears during sniffer reload. 
+
+
+10.1.48 01.04.2015
+==================
+- fix storing sip proxy column when there are in-dialog INVITEs 
+
+
+10.1.47 30.03.2015
+==================
+- fix racecondition when doing live sniffing 
+
+
+10.1.46 24.03.2015
+==================
+- fix racecondition leading to crash in rare cases (all versions) 
+
+
+10.1.45 24.03.2015
+==================
+- use string-time-format for calldate in active calls which fixes timezone offset in GUI 
+
+
+10.1.44 20.03.2015
+==================
+- fix autocleanspoolminpercent and autocleanmingb which did not worked when autocleanmingb was set differently than default 
+
+
+10.1.43 20.03.2015
+==================
+- enhance SIP TCP reassembler which now detects complete SIP packet sooner and fixes ignoring some packets where there is no TCP ack to them [VS-205]
+
+
+10.1.42 19.03.2015
+==================
+- implement prefix trim in fraud option
+
+
+10.1.41 17.03.2015
+==================
+- fix false high RTP jitter average value
+- implement fraud change country / destination only for connected calls
+
+10.1.40 10.03.2015
+==================
+- fix RTP jitter precision 
+- link with the latest libmysqlclient 
+
 10.1.39 09.03.2015
 ==================
 - do not include SIP MESSAGE type in active calls (listcalls in manager command) 
