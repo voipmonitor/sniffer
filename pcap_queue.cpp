@@ -4619,10 +4619,6 @@ void PcapQueue_readFromFifo::cleanupBlockStoreTrash(bool all) {
 	}
 }
 
-void PcapQueue_readFromFifo::addBlockStoreTrash_size(size_t size) {
-	blockStoreTrash_size += size;
-}
-
 void *_PcapQueue_readFromFifo_connectionThreadFunction(void *arg) {
 	PcapQueue_readFromFifo::sPacketServerConnection *connection = (PcapQueue_readFromFifo::sPacketServerConnection*)arg;
 	return(connection->parent->threadFunction(connection->parent, connection->id));
