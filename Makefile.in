@@ -24,182 +24,94 @@ ifeq "$(GCCVERSION)" "4.1"
   GCCARCH = core2
 endif
 
+core2cust: GCCARCH = core2
+core2: GCCARCH = core2
+clean: GCCARCH = core2
+Makefile.deps: GCCARCH = core2
+
+
 version = $(shell grep RTPSENSOR_VERSION voipmonitor.h | cut -d" " -f 3 | tr -d "\"")
 
-objects = config_mysql.o regcache.o codec_alaw.o codec_ulaw.o format_slinear.o format_wav.o format_ogg.o calltable.o rtp.o voipmonitor.o sniff.o jitterbuffer/astmm.o jitterbuffer/utils.o jitterbuffer/fixedjitterbuf.o jitterbuffer/jitterbuf.o jitterbuffer/abstract_jb.o jitterbuffer/frame.o manager.o tools.o filter_mysql.o hash.o mos_g729.o odbc.o rtcp.o pcap_queue.o sql_db.o md5.o mirrorip.o ipaccount.o skinny.o pstat.o generator.o tcpreassembly.o http.o cleanspool.o fraud.o rrd.o webrtc.o
+objects = $(shell ls -1 *.cpp | sed 's/\.cpp/.o/' | tr "\n" " ") $(shell ls -1 jitterbuffer/*.c | sed 's/\.c/.o/' | tr "\n" " ") 
 
-headers = $(shell ls -1 *.h | tr "\n" " ") sniff_inline.cpp
+#headers = $(shell ls -1 *.h | tr "\n" " ") $(shell ls -1 jitterbuffer/*.h | tr "\n" " ") $(shell ls -1 jitterbuffer/asterisk/*.h | tr "\n" " ")
 
-#args = -g3 -Wall  -march=$(GCCARCH)
-#args = -O2 -Wall -march=$(GCCARCH)
-#CFLAGS+=-I /usr/local/include/mysql++/ -I /usr/include/mysql++/ -I /usr/include/mysql/ -g3 -Wall -I jitterbuffer/  -L/usr/local/lib/ -fPIC
+JSONLIB = $(shell pkg-config --libs @LIBJSON_NAME@)
+JSONCFLAGS = $(shell pkg-config --cflags @LIBJSON_NAME@)
 
-#LDFLAGS := $(LDFLAGS) -static -static-libgcc
+MYSQLLIB=@MYSQLLIB@
+MYSQLINC=@MYSQLINCLUDE@
 
-shared: LIBS=-lpthread -lpcap -lz -lvorbis -lvorbisenc -logg -lodbc -lmysqlclient -lrt -lsnappy -lcurl -lssl -lcrypto -ljson -lssh -lssh_threads -lxml2 -lrrd
-shared: CFLAGS+= -DQUEUE_NONBLOCK2 -I/usr/local/include -I/usr/include/mysql/ -I/usr/local/mysql/include -Wall -I jitterbuffer/ -L/usr/local/lib/mysql -L/usr/local/mysql/lib -L/usr/lib/mysql -L/usr/local/lib/ -L/usr/lib64/mysql -fPIC -g3 -O2 
-shared: args = -g3 -Wall  -march=$(GCCARCH) -mtune=${GCCARCH} -O2 
+GLIBCFLAGS =$(shell pkg-config --cflags glib-2.0)
+GLIBLIB =$(shell pkg-config --libs glib-2.0)
 
-static: LIBS=-static -L/usr/local/mysql/lib -L/usr/local/lib/ -L/usr/lib/mysql -L/usr/lib64/mysql -L/usr/lib/mysql -lodbc -lltdl -ldl -lrt -lz -lssh -lssh_threads -lcrypt -lm -lcurl -lssl -lcrypto -static-libstdc++ -static-libgcc -lpcap -L/usr/lib/mysql -lpthread -lmysqlclient -lpthread -lz -lc -lvorbis -lvorbisenc -logg -lrt -lsnappy -ljson -lrrd -lxml2 -lglib-2.0 -lz
-static: CFLAGS+= -DQUEUE_NONBLOCK2 -I/usr/local/include -I/usr/local/mysql/include/ -I/usr/include/mysql/ -Wall -I jitterbuffer/  -L/usr/local/lib/ -fPIC -O2
-static: args = -O2 -Wall  -march=$(GCCARCH) -mtune=${GCCARCH} 
+LIBLD=@LIBLD@
+LIBLZMA=@LIBLZMA@
+LIBSSH=@LIBSSH@
+LIBGNUTLS=@LIBGNUTLS@
+LIBGNUTLSSTATIC=@LIBGNUTLSSTATIC@ 
+SHARED_LIBS = ${LIBLD} -lpthread -lpcap -lz -lvorbis -lvorbisenc -logg -lodbc ${MYSQLLIB} -lrt -lsnappy -lcurl -lssl -lcrypto ${JSONLIB} ${LIBSSH} -lxml2 -lrrd ${LIBGNUTLS} @LIBTCMALLOC@ ${GLIBLIB} ${LIBLZMA}
+STATIC_LIBS = -static @LIBTCMALLOC@ -lodbc -lltdl ${LIBLD} -lrt -lz ${LIBSSH} -lcrypt -lm -lcurl -lssl -lcrypto -static-libstdc++ -static-libgcc -lpcap -lpthread ${MYSQLLIB} -lpthread -lz -lc -lvorbis -lvorbisenc -logg -lrt -lsnappy ${JSONLIB} -lrrd -lxml2 ${GLIBLIB} -lz -ldbi -llzma ${LIBGNUTLSSTATIC} 
+INCLUDES =  -I/usr/local/include ${MYSQLINC} -I jitterbuffer/ ${JSONCFLAGS} ${GLIBCFLAGS}
+LIBS_PATH = -L/usr/local/lib/ 
+CXXFLAGS +=  -Wall -fPIC -g3 -O2 -march=$(GCCARCH) -mtune=${GCCARCH} ${INCLUDES}
+CFLAGS += ${CXXFLAGS}
+LIBS = ${SHARED_LIBS} 
+LIBS2 = @LIBS2@
 
-staticlibc: LIBS=-static -L/opt/libc/lib/ -L/usr/local/mysql/lib -L/usr/lib/mysql -L/usr/lib64/mysql -L/usr/lib/mysql -lc_nonshared -lodbc -lltdl -ldl -lrt -lz -lssh -lssh_threads -lcurl -lcrypt -lm -lssl -lcrypto -static-libstdc++ -static-libgcc -lpcap -L/usr/lib/mysql -lpthread -lmysqlclient -lpthread -lz -lc -lvorbis -lvorbisenc -logg -lrt -lsnappy -ljson  -lrrd -lxml2 -lglib-2.0 -lz
-staticlibc: CFLAGS+= -DQUEUE_NONBLOCK2 -I/opt/libc/include -L/opt/libc/lib/ -I/usr/local/include -I /usr/local/mysql/include -I /usr/include/mysql/ -Wall -I jitterbuffer/  -L/usr/local/lib/ -fPIC -O2
-staticlibc: args = -O2 -Wall  -march=$(GCCARCH) -mtune=${GCCARCH}
+shared: LDFLAGS += -Wl,--allow-multiple-definition
+shared: cleantest $(objects) 
+	${CXX} $(objects) ${LDFLAGS} -o voipmonitor ${LIBS} ${LIBS_PATH}
 
-armv5shared: LIBS=-lpthread -lpcap -lz -lcurl -lssl -lcrypto -lvorbis -lvorbisenc -logg -lodbc -lmysqlclient -lrt -lsnappy -ljson -lssh -lssh_threads
-armv5shared: CFLAGS+= -DQUEUE_NONBLOCK2 -DPACKED -I /usr/local/mysql/include -I /usr/include/mysql/ -g3 -Wall -I jitterbuffer/  -L/usr/local/lib/ -L/usr/local/mysql/lib -L/usr/lib64/mysql -fPIC
-armv5shared: args = -g3 -Wall  
+static: LDFLAGS += -Wl,--allow-multiple-definition
+static: cleantest $(objects) 
+	${CXX} $(objects) ${LDFLAGS} -o voipmonitor ${STATIC_LIBS} ${LIBS_PATH}
 
-armv5static: LIBS=-static -L /usr/local/mysql/lib -L/usr/lib/mysql -lodbc -lltdl -ldl -lrt -lz -lcrypt -lm -lssh -lssh_threads -lcurl -lssl -lcrypto -static-libstdc++ -static-libgcc -lpcap -L/usr/lib/mysql -L/usr/lib64/mysql/ -lmysqlclient -lpthread -lz -lc -lvorbis -lvorbisenc -logg -lrt -lsnappy -ljson  -lrrd -lxml2 -lglib-2.0 -lz
-armv5static: CFLAGS+= -DQUEUE_NONBLOCK2 -DPACKED -I /usrl/local/mysql/include -I /usr/include/mysql/ -g3 -Wall -I jitterbuffer/  -L/usr/local/lib/ -L/usr/lib64/mysql -fPIC
-armv5static: args = -g3 -Wall 
+core2: cleantest static
 
-core2: LIBS=-static -L/usr/local/lib -L/usr/local/mysql/lib -L/usr/lib/mysql -L/usr/lib64/mysql -L/usr/lib/mysql -lodbc -lltdl -ldl -lrt -lz -lssh -lssh_threads -lcrypt -lm -lcurl -lssl -lcrypto -static-libstdc++ -static-libgcc -lpcap -L/usr/lib/mysql -lpthread -lmysqlclient -lpthread -lz -lc -lvorbis -lvorbisenc -logg -lrt -lsnappy -ljson  -lrrd -lxml2 -lglib-2.0 -lz -ldbi -llzma -ldl
-core2: CFLAGS+= -DQUEUE_NONBLOCK2 -I /usr/local/mysql/include -I /usr/include/mysql/ -Wall -I jitterbuffer/  -L/usr/local/lib/ -fPIC -O2 -g3
-core2: args = -O2 -Wall  -march=core2 -mtune=core2 -g3
+armv5shared: CXXFLAGS+= -DPACKED 
+armv5shared: CFLAGS+= -DPACKED 
+armv5shared: cleantest shared
+
+armv5static: CXXFLAGS+= -DPACKED 
+armv5static: CFLAGS+= -DPACKED 
+armv5static: cleantest static
 
 core2cust: LDFLAGS = -nostartfiles -static -Wl,--allow-multiple-definition
 core2cust: GLIBCDIR = /opt/libc/lib
 core2cust: STARTFILES = $(GLIBCDIR)/crt1.o $(GLIBCDIR)/crti.o $(shell gcc --print-file-name=crtbegin.o)
 core2cust: ENDFILES = $(shell gcc --print-file-name=crtend.o) $(GLIBCDIR)/crtn.o
 core2cust: LIBGROUP = -Wl,--start-group $(GLIBCDIR)/libc.a -lgcc -lgcc_eh -Wl,--end-group
-core2cust: LIBS = -L/opt/libc/lib -L/usr/local/mysql/lib -L/usr/lib/mysql -L/usr/lib64/mysql -L/usr/lib/mysql -L/usr/local/lib -lodbc -lltdl -ldl -lrt -lz -lssh -lssh_threads -lcrypt -lm -lcurl -lssl -lcrypto -static-libstdc++ -static-libgcc -lpcap -L/usr/lib/mysql -lmysqlclient -lpthread -lz -lc -lvorbis -lvorbisenc -logg -lrt -lsnappy -ljson -lrrd -lxml2 -lglib-2.0 -lz
-core2cust: CFLAGS+= -DQUEUE_NONBLOCK2 -I /opt/libc/include -I /usr/local/mysql/include/ -I /usr/include/mysql/ -Wall -I jitterbuffer/  -L/usr/local/lib/ -fPIC -O2 -g3
-core2cust: args = -O2 -Wall  -march=core2 -mtune=core2 -g3
-
-core2debug: LIBS=-static -L/usr/lib/mysql -L/usr/lib64/mysql -L/usr/lib/mysql -lodbc -lltdl -ldl -lrt -lz -lcrypt -lm -lssh -lssh_threads -lcurl -lssl -lcrypto -static-libstdc++ -static-libgcc -lpcap -L/usr/lib/mysql -lpthread -lmysqlclient -lpthread -lz -lc -lvorbis -lvorbisenc -logg -lrt -lsnappy -ljson  -lrrd -lxml2 -lglib-2.0 -lz
-core2debug: CFLAGS+= -DQUEUE_NONBLOCK2 -I /usr/include/mysql/ -Wall -I jitterbuffer/  -L/usr/local/lib/ -fPIC -O2 -g3
-core2debug: args = -O2 -Wall  -march=core2 -mtune=core2 -g3
-
-shared: cleantest $(objects) 
-	g++ $(objects) ${CFLAGS} -o voipmonitor ${LIBS}
-
-static: cleantest $(objects)
-	g++ $(objects) ${CFLAGS} -o voipmonitor ${LIBS}
-
-core2: cleantest $(objects)
-	g++ $(objects) ${CFLAGS} -o voipmonitor ${LIBS}
-
+core2cust: CXXFLAGS += -I /opt/libc/include 
+core2cust: CFLAGS += ${CXXFLAGS}
 core2cust: cleantest $(objects)
-	g++ $(LDFLAGS) -o voipmonitor $(STARTFILES) ${objects} $(LIBGROUP) $(ENDFILES) ${LIBS}
+	${CXX} $(LDFLAGS) -o voipmonitor $(STARTFILES) ${objects} $(LIBGROUP) $(ENDFILES) -L/opt/libc/lib ${STATIC_LIBS} ${LIBS_PATH}
 
-core2debug: cleantest $(objects)
-	g++ $(objects) ${CFLAGS} -o voipmonitor ${LIBS}
+DEPENDSC:=${shell find . -type f -name '*.c' -print}
+DEPENDSCPP:=${shell find . -type f -name '*.cpp' -print}
 
-staticlibc: cleantest $(objects)
-	g++ $(objects) ${CFLAGS} -o voipmonitor ${LIBS}
+-include Makefile.deps
 
-armv5shared: cleantest $(objects)
-	g++ $(objects) ${CFLAGS} -o voipmonitor ${LIBS}
-
-armv5static: cleantest $(objects)
-	g++ $(objects) ${CFLAGS} -o voipmonitor ${LIBS}
+Makefile.deps:
+	cp /dev/null Makefile.deps
+	for F in $(DEPENDSC); do \
+	 D=`dirname $$F | sed "s/^\.\///"`; \
+	 echo -n "$$D/" >> Makefile.deps; \
+	 $(CC) $(CFLAGS) -MM -MG $$F \
+	 >> Makefile.deps; \
+	done
+	for F in $(DEPENDSCPP); do \
+	 D=`dirname $$F | sed "s/^\.\///"`; \
+	 echo -n "$$D/" >> Makefile.deps; \
+	 $(CXX) $(CXXFLAGS) -MM -MG $$F \
+	 >> Makefile.deps; \
+	done
 
 cleantest:
 	@cmp -s .cleancount .lastclean || $(MAKE) clean
 
-rrd.o : rrd.cpp rrd.h ${headers}
-	g++ -c rrd.cpp $(args) ${CFLAGS}
-
-codec_alaw.o : codec_alaw.cpp codec_alaw.h ${headers}
-	g++ -c codec_alaw.cpp $(args) ${CFLAGS}
-
-codec_ulaw.o : codec_ulaw.cpp codec_ulaw.h ${headers}
-	g++ -c codec_ulaw.cpp $(args) ${CFLAGS}
-
-format_slinear.o : format_slinear.cpp format_slinear.h ${headers}
-	g++ -c format_slinear.cpp $(args) ${CFLAGS}
-
-format_wav.o : format_wav.cpp format_wav.h ${headers}
-	g++ -c format_wav.cpp $(args) ${CFLAGS}
-
-format_ogg.o : format_ogg.cpp format_ogg.h ${headers}
-	g++ -c format_ogg.cpp $(args) ${CFLAGS}
-
-calltable.o : calltable.cpp calltable.h ${headers}
-	g++ -c calltable.cpp $(args) ${CFLAGS}
-
-rtp.o : rtp.cpp rtp.h ${headers}
-	g++ -c rtp.cpp $(args) ${CFLAGS}
-
-rtcp.o : rtcp.cpp rtcp.h ${headers}
-	g++ -c rtcp.cpp $(args) ${CFLAGS}
-
-voipmonitor.o : voipmonitor.cpp voipmonitor.h ${headers}
-	g++ -c voipmonitor.cpp $(args) ${CFLAGS}
-
-sniff.o : sniff.cpp sniff.h ${headers}
-	g++ -c sniff.cpp $(args) ${CFLAGS}
-
-manager.o : manager.cpp manager.h ${headers}
-	g++ -c manager.cpp $(args) ${CFLAGS}
-
-tools.o : tools.cpp tools.h ${headers}
-	g++ -c tools.cpp $(args) ${CFLAGS}
-
-filter_mysql.o : filter_mysql.cpp filter_mysql.h ${headers}
-	g++ -c filter_mysql.cpp $(args) ${CFLAGS}
-
-hash.o : hash.cpp hash.h ${headers}
-	g++ -c hash.cpp $(args) ${CFLAGS}
-
-mos_g729.o : mos_g729.cpp mos_g729.h ${headers}
-	g++ -c mos_g729.cpp $(args) ${CFLAGS}
-
-pcap_queue.o : pcap_queue.cpp pcap_queue.h ${headers}
-	g++ -c pcap_queue.cpp $(args) ${CFLAGS}
-
-sql_db.o : sql_db.cpp sql_db.h ${headers}
-	g++ -c sql_db.cpp $(args) ${CFLAGS}
-
-md5.o : md5.cpp md5.h ${headers}
-	g++ -c md5.cpp $(args) ${CFLAGS}
-
-mirrorip.o : mirrorip.cpp mirrorip.h ${headers}
-	g++ -c mirrorip.cpp $(args) ${CFLAGS}
-
-ipaccount.o : ipaccount.cpp ipaccount.h ${headers}
-	g++ -c ipaccount.cpp $(args) ${CFLAGS}
-
-skinny.o : skinny.cpp skinny.h ${headers}
-	g++ -c skinny.cpp $(args) ${CFLAGS}
-
-http.o : http.cpp http.h ${headers}
-	g++ -c http.cpp $(args) ${CFLAGS}
-
-tcpreassembly.o : tcpreassembly.cpp tcpreassembly.h ${headers}
-	g++ -c tcpreassembly.cpp $(args) ${CFLAGS}
-
-cleanspool.o : cleanspool.cpp cleanspool.h ${headers}
-	g++ -c cleanspool.cpp $(args) ${CFLAGS}
-	
-pstat.o : pstat.cpp pstat.h
-	g++ -c pstat.cpp $(args) ${CFLAGS}
-
-odbc.o : odbc.cpp odbc.h
-	g++ -c odbc.cpp $(args) ${CFLAGS}
-
-generator.o : generator.cpp generator.h
-	g++ -c generator.cpp $(args) ${CFLAGS}
-
-regcache.o : regcache.cpp regcache.h
-	g++ -c regcache.cpp $(args) ${CFLAGS}
-
-sql_mysql.o : sql_mysql.cpp sql_mysql.h
-	g++ -c sql_mysql.cpp $(args) ${CFLAGS}
-
-config_mysql.o : config_mysql.cpp config_mysql.h
-	g++ -c config_mysql.cpp $(args) ${CFLAGS}
-
-fraud.o : fraud.cpp fraud.h
-	g++ -c fraud.cpp $(args) ${CFLAGS}
-
-webrtc.o : webrtc.cpp webrtc.h
-	g++ -c webrtc.cpp $(args) ${CFLAGS}
-
 clean :
+	rm -f Makefile.deps
 	rm -f $(objects) voipmonitor
 	cp -f .cleancount .lastclean
 
@@ -219,7 +131,7 @@ targz64: core2
 	tar -czf voipmonitor-amd64-${version}-static.tar.gz voipmonitor-amd64-${version}-static
 	rm -rf voipmonitor-amd64-${version}-static
 
-targz64debug: core2debug
+targz64debug: core2
 	rm -rf voipmonitor-amd64-${version}-static*
 	mkdir -p voipmonitor-amd64-${version}-static/usr/local/sbin
 	cp voipmonitor voipmonitor-amd64-${version}-static/usr/local/sbin/

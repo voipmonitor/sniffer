@@ -349,7 +349,7 @@ struct ast_channel {
 	unsigned int last_ms;
 	int jb_reseted;
 	int packetization;
-	int loss[1024];
+	unsigned short int loss[128];
 	int last_loss_state;
 	int last_loss_burst;
 	int jitter_impl;
@@ -1258,19 +1258,6 @@ static inline int ast_fdisset(struct pollfd *pfds, int fd, int max, int *start)
 		}
 	return 0;
 }
-
-#ifndef HAVE_TIMERSUB
-static inline void timersub(struct timeval *tvend, struct timeval *tvstart, struct timeval *tvdiff)
-{
-	tvdiff->tv_sec = tvend->tv_sec - tvstart->tv_sec;
-	tvdiff->tv_usec = tvend->tv_usec - tvstart->tv_usec;
-	if (tvdiff->tv_usec < 0) {
-		tvdiff->tv_sec --;
-		tvdiff->tv_usec += 1000000;
-	}
-
-}
-#endif
 
 /*! \brief Waits for activity on a group of channels 
  * \param nfds the maximum number of file descriptors in the sets

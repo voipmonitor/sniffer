@@ -72,9 +72,9 @@ public:
 	virtual void disconnect() = 0;
 	virtual bool connected() = 0;
 	bool reconnect();
-	virtual bool query(string query) = 0;
+	virtual bool query(string query, bool callFromStoreProcessWithFixDeadlock = false) = 0;
 	bool queryByCurl(string query);
-	virtual void prepareQuery(string *query);
+	virtual string prepareQuery(string query, bool nextPass);
 	virtual SqlDb_row fetchRow(bool assoc = false) = 0;
 	virtual string insertQuery(string table, SqlDb_row row, bool enableSqlStringInContent = false, bool escapeAll = false, bool insertIgnore = false);
 	virtual string insertQuery(string table, vector<SqlDb_row> *rows, bool enableSqlStringInContent = false, bool escapeAll = false, bool insertIgnore = false);
@@ -152,6 +152,7 @@ public:
 	bool isCloud() {
 		return(!cloud_host.empty());
 	}
+	unsigned int lastmysqlresolve;
 protected:
 	string conn_server;
 	string conn_server_ip;
@@ -191,7 +192,7 @@ public:
 	bool connect(bool craeteDb = false, bool mainInit = false);
 	void disconnect();
 	bool connected();
-	bool query(string query);
+	bool query(string query, bool callFromStoreProcessWithFixDeadlock = false);
 	SqlDb_row fetchRow(bool assoc = false);
 	int getInsertId();
 	string escape(const char *inputString, int length = 0);
@@ -227,12 +228,12 @@ public:
 	int multi_off();
 	int getDbMajorVersion();
 	int getDbMinorVersion(int minorLevel  = 0);
-	bool createRoutine(string routine, string routineName, string routineParamsAndReturn, eRoutineType routineType);
-	bool createFunction(string routine, string routineName, string routineParamsAndReturn) {
-		return(this->createRoutine(routine, routineName, routineParamsAndReturn, function));
+	bool createRoutine(string routine, string routineName, string routineParamsAndReturn, eRoutineType routineType, bool abortIfFailed = false);
+	bool createFunction(string routine, string routineName, string routineParamsAndReturn, bool abortIfFailed = false) {
+		return(this->createRoutine(routine, routineName, routineParamsAndReturn, function, abortIfFailed));
 	}
-	bool createProcedure(string routine, string routineName, string routineParamsAndReturn) {
-		return(this->createRoutine(routine, routineName, routineParamsAndReturn, procedure));
+	bool createProcedure(string routine, string routineName, string routineParamsAndReturn, bool abortIfFailed = false) {
+		return(this->createRoutine(routine, routineName, routineParamsAndReturn, procedure, abortIfFailed));
 	}
 	MYSQL *getH_Mysql() {
 		return(this->hMysql);
@@ -283,7 +284,7 @@ public:
 	bool connect(bool craeteDb = false, bool mainInit = false);
 	void disconnect();
 	bool connected();
-	bool query(string query);
+	bool query(string query, bool callFromStoreProcessWithFixDeadlock = false);
 	SqlDb_row fetchRow(bool assoc = false);
 	int getInsertId();
 	int getIndexField(string fieldName);
@@ -322,13 +323,21 @@ public:
 	~MySqlStore_process();
 	void connect();
 	void disconnect();
+	bool connected();
 	void query(const char *query_str);
 	void store();
+	void _store(string beginProcedure, string endProcedure, string queries);
+	void exportToFile(FILE *file, bool sqlFormat, bool cleanAfterExport);
+	void _exportToFileSqlFormat(FILE *file, string queries);
 	void lock();
 	void unlock();
-	void setIgnoreTerminating(bool ignoreTerminating);
+	void setEnableTerminatingDirectly(bool enableTerminatingDirectly);
+	void setEnableTerminatingIfEmpty(bool enableTerminatingIfEmpty);
+	void setEnableTerminatingIfSqlError(bool enableTerminatingIfSqlError);
 	void setEnableAutoDisconnect(bool enableAutoDisconnect = true);
 	void setConcatLimit(int concatLimit);
+	void setEnableTransaction(bool enableTransaction = true);
+	void setEnableFixDeadlock(bool enableFixDeadlock = true);
 	int getId() {
 		return(this->id);
 	}
@@ -338,16 +347,24 @@ public:
 	bool operator < (const MySqlStore_process& other) const { 
 		return(this->id < other.id); 
 	}
+	void waitForTerminate();
+private:
+	string getInsertFuncName();
 private:
 	int id;
 	int concatLimit;
+	bool enableTransaction;
+	bool enableFixDeadlock;
 	pthread_t thread;
 	pthread_mutex_t lock_mutex;
 	SqlDb *sqlDb;
-	queue<string> query_buff;
+	deque<string> query_buff;
 	bool terminated;
-	bool ignoreTerminating;
+	bool enableTerminatingDirectly;
+	bool enableTerminatingIfEmpty;
+	bool enableTerminatingIfSqlError;
 	bool enableAutoDisconnect;
+	u_long lastQueryTime;
 };
 
 class MySqlStore {
@@ -360,16 +377,29 @@ public:
 	void query_lock(const char *query_str, int id);
 	void lock(int id);
 	void unlock(int id);
-	void setIgnoreTerminating(int id, bool ignoreTerminating);
+	void setEnableTerminatingDirectly(int id, bool enableTerminatingDirectly);
+	void setEnableTerminatingIfEmpty(int id, bool enableTerminatingIfEmpty);
+	void setEnableTerminatingIfSqlError(int id, bool enableTerminatingIfSqlError);
 	void setEnableAutoDisconnect(int id, bool enableAutoDisconnect = true);
 	void setDefaultConcatLimit(int defaultConcatLimit);
 	void setConcatLimit(int id, int concatLimit);
+	void setEnableTransaction(int id, bool enableTransaction = true);
+	void setEnableFixDeadlock(int id, bool enableFixDeadlock = true);
 	MySqlStore_process *find(int id);
 	MySqlStore_process *check(int id);
 	size_t getAllSize(bool lock = true);
 	int getSize(int id, bool lock = true);
 	int getSizeMult(int n, ...);
 	int getSizeVect(int id1, int id2, bool lock = true);
+	string exportToFile(FILE *file, string filename, bool sqlFormat, bool cleanAfterExport);
+	void autoloadFromSqlVmExport();
+private:
+	void lock_processes() {
+		while(__sync_lock_test_and_set(&this->_sync_processes, 1));
+	}
+	void unlock_processes() {
+		__sync_lock_release(&this->_sync_processes);
+	}
 private:
 	map<int, MySqlStore_process*> processes;
 	string host;
@@ -379,6 +409,10 @@ private:
 	string cloud_host;
 	string cloud_token;
 	int defaultConcatLimit;
+	volatile int _sync_processes;
+	bool enableTerminatingDirectly;
+	bool enableTerminatingIfEmpty;
+	bool enableTerminatingIfSqlError;
 };
 
 SqlDb *createSqlObject();
@@ -393,6 +427,7 @@ bool isSqlDriver(const char *sqlDriver, const char *checkSqlDriver = NULL);
 bool isTypeDb(const char *typeDb, const char *checkSqlDriver = NULL, const char *checkOdbcDriver = NULL);
 bool cmpStringIgnoreCase(const char* str1, const char* str2);
 string reverseString(const char *str);
+void prepareQuery(string subtypeDb, string &query, bool base, int nextPassQuery);
 string prepareQueryForPrintf(const char *query);
 string prepareQueryForPrintf(string &query);
 

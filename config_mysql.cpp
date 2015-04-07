@@ -85,7 +85,8 @@ config_load_mysql() {
 		{
 		vector<string>ports = split(row["ipaccountport"].c_str(), split(",|;|\t|\r|\n", "|"), true);
 		if(ports.size() and !ipaccountportmatrix) {
-			ipaccountportmatrix = (char*)calloc(1, sizeof(char) * 65537);
+			ipaccountportmatrix = new FILE_LINE char[65537];
+			memset(ipaccountportmatrix, 0, 65537);
 			ipaccountportmatrix[5060] = 0;
 		}
 		for(size_t i = 0; i < ports.size(); i++) {
@@ -402,7 +403,7 @@ config_load_mysql() {
 		}
 
 		if(row["vmbuffer"] != "") {
-			qringmax = (unsigned int)((unsigned int)MIN(atoi(row["vmbuffer"].c_str()), 4000) * 1024 * 1024 / (unsigned int)sizeof(pcap_packet));
+			pcap_qring_max = (unsigned int)((unsigned int)MIN(atoi(row["vmbuffer"].c_str()), 4000) * 1024 * 1024 / (unsigned int)sizeof(pcap_packet));
 		}
 
 		if(row["matchheader"] != "") {
@@ -457,7 +458,7 @@ config_load_mysql() {
 				break;
 			case 'g':
 				opt_saveGRAPH = 1;
-				opt_gzipGRAPH = 1;
+				opt_gzipGRAPH = FileZipHandler::gzip;
 				break;
 			}      
 		}
@@ -579,6 +580,9 @@ config_load_mysql() {
 		if(row["packetbuffer_compress"] != "") {
 			opt_pcap_queue_compress = atoi(row["packetbuffer_compress"].c_str());
 		}
+		if(row["packetbuffer_compress_method"] != "") {
+			opt_pcap_queue_compress_method = (pcap_block_store::compress_method)atoi(row["packetbuffer_compress_method"].c_str());
+		}
 
 		if(row["mirror_destination_ip"] != "" and row["mirror_destination_port"] != "") {
 			opt_pcap_queue_send_to_ip_port.set_ip(row["mirror_destination_ip"]);
@@ -656,13 +660,13 @@ config_load_mysql() {
 			opt_mos_lqo = atoi(row["mos_lqo"].c_str());
 		}
 		if(row["mos_lqo_bin"] != "") {
-			opt_mos_lqo_bin = row["mos_lqo_bin"];
+			strncpy(opt_mos_lqo_bin, row["mos_lqo_bin"].c_str(), sizeof(opt_mos_lqo_bin));
 		}
 		if(row["mos_lqo_ref"] != "") {
-			opt_mos_lqo_ref = atoi(row["mos_lqo_ref"].c_str());
+			strncpy(opt_mos_lqo_ref, row["mos_lqo_bin"].c_str(), sizeof(opt_mos_lqo_ref));
 		}
 		if(row["mos_lqo_ref16"] != "") {
-			opt_mos_lqo_ref = row["mos_lqo_ref"];
+			strncpy(opt_mos_lqo_ref16, row["mos_lqo_bin"].c_str(), sizeof(opt_mos_lqo_ref16));
 		}
 		if(row["php_path"] != "") {
 			row["php_path"].copy(opt_php_path, sizeof(opt_php_path), 0);

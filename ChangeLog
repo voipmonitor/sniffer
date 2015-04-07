@@ -1,3 +1,39 @@
+11.0 09.03.2015
+===============
+
+New features
+============
+- SIP TLS decryption support (see ssl = yes in voipmonitor.conf)
+- concatenate pcap files into single tar files (enabled by default) lowering IOPS by factor 10x and more allowing to store thousands of simultaneous calls on single 7.2k RPM or network storage. More details in voipmonitor.conf tar=yes
+- implement signal digital processing for G711 alaw/ulaw:
+   inband dtmf decoder (option inbanddtmf in voipmonitor.conf)
+   silence detector - counts time when caller or called stream is silence and number of seconds from last silence to end of call (option silencedetect in voipmonitor.conf)
+   FAX CED/CNG tones detection marks call as FAX and GUI can try to convert T30 into tiff/PDF (option faxdetect)
+   clipping detection - values are stored into new cdr columns cdr.caller/d_clipping_mult100. (optino clippingdetect in voipmonitor.conf
+- dumpallallpackets option dumps all capture traffic into files (split by size (MB) or by 1GB if 'yes')
+- add capture rules based on custom headers [VG-508]
+- FreeBSD compatibility
+- add support for ALAW/ULAW mono (default was always stereo)
+- support different samplerate within one call (only for alaw/ulaw and one other codecs)
+- possibility to disable udp defragmentation with option udpfrag
+- add option to dump queued SQL queries and load them on next restart (manager command sqlvmexport and sqlexport)
+- add support for x-opus codec in SDP
+
+Optimizations
+=============
+- split SIP / RTP processing to more threads allowing processing >1.5Gbit (10 000 simultaneous calls) on single server without special drivers. Enabled by default.
+- signifficantly lower memory consumption when processing RTP
+- SET GLOBAL innodb_file_per_table=1 when creating database (only for mysql >=5.1)
+- unify memory buffers option into single option max_buffer_mem which is 2000MB by default now.
+- redesign configure / Makefile and do not require libssh for ordinary build (it is used only for cloud)
+- speedup sniffer terminating
+
+Bugfixes
+========
+- add check valid packet length and data offset to packetbufer::processPacket
+- fix deadlock problem / duplicity in cdr
+- fix negative skinny callid, fix timout skinny channel problem, fix onhold, create skinny channel only on OFFHOOK message
+
 10.1.49 02.04.2015
 ==================
 - do not crash if some mysql tables are missing or some rows disappears during sniffer reload. 

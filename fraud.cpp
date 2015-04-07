@@ -195,11 +195,11 @@ void GeoIP_country::load() {
 
 CacheNumber_location::CacheNumber_location() {
 	if(!countryCodes) {
-		countryCodes = new CountryCodes();
+		countryCodes = new FILE_LINE CountryCodes();
 		countryCodes->load();
 	}
 	if(!geoIP_country) {
-		geoIP_country = new GeoIP_country();
+		geoIP_country = new FILE_LINE GeoIP_country();
 		geoIP_country->load();
 	}
 	sqlDb = createSqlObject();
@@ -1266,7 +1266,7 @@ bool FraudAlert_rc::checkOkAlert(u_int32_t ip, u_int64_t count, u_int64_t at) {
 FraudAlerts::FraudAlerts() {
 	threadPopCallInfo = 0;
 	runPopCallInfoThread = false;
-	terminatingPopCallInfoThread = false;
+	termPopCallInfoThread = false;
 	_sync_alerts = 0;
 	initPopCallInfoThread();
 }
@@ -1375,7 +1375,7 @@ void FraudAlerts::evRegisterResponse(u_int32_t ip, u_int64_t at) {
 }
 
 void FraudAlerts::stopPopCallInfoThread(bool wait) {
-	terminatingPopCallInfoThread = true;
+	termPopCallInfoThread = true;
 	while(wait && runPopCallInfoThread) {
 		usleep(1000);
 	}
@@ -1391,9 +1391,10 @@ void FraudAlerts::initPopCallInfoThread() {
 
 void FraudAlerts::popCallInfoThread() {
 	runPopCallInfoThread = true;
-	while(!terminating || !terminatingPopCallInfoThread) {
+	sFraudCallInfo callInfo;
+	sFraudEventInfo eventInfo;
+	while(!terminating && !termPopCallInfoThread) {
 		bool okPop = false;
-		sFraudCallInfo callInfo;
 		if(callQueue.pop(&callInfo)) {
 			lock_alerts();
 			vector<FraudAlert*>::iterator iter;
@@ -1404,7 +1405,6 @@ void FraudAlerts::popCallInfoThread() {
 			unlock_alerts();
 			okPop = true;
 		}
-		sFraudEventInfo eventInfo;
 		if(eventQueue.pop(&eventInfo)) {
 			lock_alerts();
 			vector<FraudAlert*>::iterator iter;
@@ -1498,19 +1498,19 @@ void initFraud() {
 		return;
 	}
 	if(!countryCodes) {
-		countryCodes = new CountryCodes();
+		countryCodes = new FILE_LINE CountryCodes();
 		countryCodes->load();
 	}
 	if(!countryPrefixes) {
-		countryPrefixes = new CountryPrefixes();
+		countryPrefixes = new FILE_LINE CountryPrefixes();
 		countryPrefixes->load();
 	}
 	if(!geoIP_country) {
-		geoIP_country = new GeoIP_country();
+		geoIP_country = new FILE_LINE GeoIP_country();
 		geoIP_country->load();
 	}
 	if(!cacheNumber_location) {
-		cacheNumber_location = new CacheNumber_location();
+		cacheNumber_location = new FILE_LINE CacheNumber_location();
 	}
 	if(fraudAlerts) {
 		return;

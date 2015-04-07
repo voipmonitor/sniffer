@@ -898,7 +898,7 @@ private:
 	SafeAsyncQueue<sFraudEventInfo> eventQueue;
 	pthread_t threadPopCallInfo;
 	bool runPopCallInfoThread;
-	bool terminatingPopCallInfoThread;
+	bool termPopCallInfoThread;
 	volatile int _sync_alerts;
 friend void *_FraudAlerts_popCallInfoThread(void *arg);
 };

@@ -88,48 +88,6 @@ void ast_console_toggle_mute(int fd, int silent);
 
 #define _A_ __FILE__, __LINE__, __PRETTY_FUNCTION__
 
-#ifdef LOG_DEBUG
-#undef LOG_DEBUG
-#endif
-#define __LOG_DEBUG    0
-#define LOG_DEBUG      __LOG_DEBUG, _A_
-
-#ifdef LOG_EVENT
-#undef LOG_EVENT
-#endif
-#define __LOG_EVENT    1
-#define LOG_EVENT      __LOG_EVENT, _A_
-
-#ifdef LOG_NOTICE
-#undef LOG_NOTICE
-#endif
-#define __LOG_NOTICE   2
-#define LOG_NOTICE     __LOG_NOTICE, _A_
-
-#ifdef LOG_WARNING
-#undef LOG_WARNING
-#endif
-#define __LOG_WARNING  3
-#define LOG_WARNING    __LOG_WARNING, _A_
-
-#ifdef LOG_ERROR
-#undef LOG_ERROR
-#endif
-#define __LOG_ERROR    4
-#define LOG_ERROR      __LOG_ERROR, _A_
-
-#ifdef LOG_VERBOSE
-#undef LOG_VERBOSE
-#endif
-#define __LOG_VERBOSE  5
-#define LOG_VERBOSE    __LOG_VERBOSE, _A_
-
-#ifdef LOG_DTMF
-#undef LOG_DTMF
-#endif
-#define __LOG_DTMF  6
-#define LOG_DTMF    __LOG_DTMF, _A_
-
 #if defined(__cplusplus) || defined(c_plusplus)
 }
 #endif

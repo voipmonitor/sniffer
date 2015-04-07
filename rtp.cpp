@@ -25,6 +25,11 @@ Each Call class contains two RTP classes.
 #include "calltable.h"
 #include "codecs.h"
 #include "sniff.h"
+#include "format_slinear.h"
+#include "codec_alaw.h"
+#include "codec_ulaw.h"
+#include "flags.h"
+
 #include "jitterbuffer/asterisk/channel.h"
 #include "jitterbuffer/asterisk/frame.h"
 #include "jitterbuffer/asterisk/abstract_jb.h"
@@ -34,7 +39,7 @@ extern int verbosity;
 extern int opt_saveRAW;                //save RTP payload RAW data?
 extern int opt_saveWAV;                //save RTP payload RAW data?
 extern int opt_saveGRAPH;	//save GRAPH data?
-extern int opt_gzipGRAPH;	//save gzip GRAPH data?
+extern FileZipHandler::eTypeCompress opt_gzipGRAPH;	//save gzip GRAPH data?
 extern int opt_jitterbuffer_f1;            // turns off/on jitterbuffer simulator to compute MOS score mos_f1
 extern int opt_jitterbuffer_f2;            // turns off/on jitterbuffer simulator to compute MOS score mos_f2
 extern int opt_jitterbuffer_adapt;         // turns off/on jitterbuffer simulator to compute MOS score mos_adapt
@@ -45,6 +50,11 @@ int dtmfdebug = 0;
 
 extern unsigned int graph_delimiter;
 extern unsigned int graph_mark;
+extern int opt_faxt30detect;
+extern int opt_inbanddtmf;
+extern int opt_silencedetect;
+extern int opt_clippingdetect;
+
 
 using namespace std;
 
@@ -125,17 +135,24 @@ int get_ticks_bycodec(int codec) {
 		return 32;
 		break;
 	case PAYLOAD_OPUS:
+	case PAYLOAD_OPUS8:
+	case PAYLOAD_XOPUS:
+	case PAYLOAD_XOPUS8:
 		return 8;
 		break;
+	case PAYLOAD_XOPUS12:
 	case PAYLOAD_OPUS12:
 		return 12;
 		break;
+	case PAYLOAD_XOPUS16:
 	case PAYLOAD_OPUS16:
 		return 16;
 		break;
+	case PAYLOAD_XOPUS24:
 	case PAYLOAD_OPUS24:
 		return 24;
 		break;
+	case PAYLOAD_XOPUS48:
 	case PAYLOAD_OPUS48:
 		return 48;
 		break;
@@ -165,11 +182,12 @@ int get_ticks_bycodec(int codec) {
 /* constructor */
 RTP::RTP(int sensor_id) 
  : graph(this) {
+	DSP = NULL;
 	samplerate = 8000;
 	first = true;
 	first_packet_time = 0;
 	first_packet_usec = 0;
-	s = new source;
+	s = new FILE_LINE source;
 	memset(s, 0, sizeof(source));
 	memset(&stats, 0, sizeof(stats));
 	memset(&rtcp, 0, sizeof(rtcp));
@@ -182,7 +200,8 @@ RTP::RTP(int sensor_id)
 	gfilename[0] = '\0';
 	gfileRAW = NULL;
 
-	channel_fix1 = (ast_channel*)calloc(1, sizeof(*channel_fix1));
+	channel_fix1 = new FILE_LINE ast_channel;
+	memset(channel_fix1, 0, sizeof(ast_channel));
 	channel_fix1->jitter_impl = 0; // fixed
 	channel_fix1->jitter_max = 50; 
 	channel_fix1->jitter_resync_threshold = 100;
@@ -191,7 +210,8 @@ RTP::RTP(int sensor_id)
 	channel_fix1->resync = 1;
 	channel_fix1->audiobuf = NULL;
 
-	channel_fix2 = (ast_channel*)calloc(1, sizeof(*channel_fix2));
+	channel_fix2  = new FILE_LINE ast_channel;
+	memset(channel_fix2, 0, sizeof(ast_channel));
 	channel_fix2->jitter_impl = 0; // fixed
 	channel_fix2->jitter_max = 200; 
 	channel_fix2->jitter_resync_threshold = 200; 
@@ -200,7 +220,8 @@ RTP::RTP(int sensor_id)
 	channel_fix2->resync = 1;
 	channel_fix2->audiobuf = NULL;
 
-	channel_adapt = (ast_channel*)calloc(1, sizeof(*channel_adapt));
+	channel_adapt = new FILE_LINE ast_channel;
+	memset(channel_adapt, 0, sizeof(ast_channel));
 	channel_adapt->jitter_impl = 1; // adaptive
 	channel_adapt->jitter_max = 500; 
 	channel_adapt->jitter_resync_threshold = 500; 
@@ -209,7 +230,8 @@ RTP::RTP(int sensor_id)
 	channel_adapt->resync = 1;
 	channel_adapt->audiobuf = NULL;
 
-	channel_record = (ast_channel*)calloc(1, sizeof(*channel_record));
+	channel_record = new FILE_LINE ast_channel;
+	memset(channel_record, 0, sizeof(ast_channel));
 	channel_record->jitter_impl = 0; // fixed
 	channel_record->jitter_max = 60; 
 	channel_record->jitter_resync_threshold = 1000; 
@@ -219,7 +241,8 @@ RTP::RTP(int sensor_id)
 	channel_record->audiobuf = NULL;
 
 	//channel->name = "SIP/fixed";
-	frame = (ast_frame*)calloc(1, sizeof(*frame));
+	frame = new FILE_LINE ast_frame;
+	memset(frame, 0, sizeof(ast_frame));
 	frame->frametype = AST_FRAME_VOICE;
 	lastframetype = AST_FRAME_VOICE;
 	//frame->src = "DUMMY";
@@ -280,14 +303,18 @@ RTP::~RTP() {
 	ast_jb_destroy(channel_fix2);
 	ast_jb_destroy(channel_adapt);
 	ast_jb_destroy(channel_record);
-	free(channel_fix1);
-	free(channel_fix2);
-	free(channel_adapt);
-	free(channel_record);
-	free(frame);
+	delete channel_fix1;
+	delete channel_fix2;
+	delete channel_adapt;
+	delete channel_record;
+	delete frame;
 
 	if(gfileRAW_buffer) {
-		free(gfileRAW_buffer);
+		delete [] gfileRAW_buffer;
+	}
+
+	if(DSP) {
+		dsp_free(DSP);
 	}
 }
 
@@ -317,13 +344,16 @@ const unsigned int RTP::get_payload_len() {
 		* If set, the fixed header is followed by exactly one header extension.
 		*/
 		extension_hdr_t *rtpext;
-		if (payload_len < 4)
-			payload_len = 0;
-
 		// the extension, if present, is after the CSRC list.
 		rtpext = (extension_hdr_t *)((u_int8_t *)payload_data);
-		payload_data += sizeof(extension_hdr_t) + rtpext->length;
-		payload_len -= sizeof(extension_hdr_t) + rtpext->length;
+		payload_data += sizeof(extension_hdr_t) + ntohs(rtpext->length);
+		payload_len -= sizeof(extension_hdr_t) + ntohs(rtpext->length);
+
+		if (payload_len < 2) {
+			payload_data = data + sizeof(RTPFixedHeader);
+			payload_len = 0;
+		}
+
 	}
 	return payload_len;
 }
@@ -388,6 +418,7 @@ RTP::jitterbuffer(struct ast_channel *channel, int savePayload) {
 	struct timeval tsdiff;
 	frame->len = packetization;
 	switch(codec) {
+		case PAYLOAD_XOPUS12:
 		case PAYLOAD_OPUS12:
 		case PAYLOAD_G722112:
 			frame->ts = getTimestamp() / 12;
@@ -395,12 +426,14 @@ RTP::jitterbuffer(struct ast_channel *channel, int savePayload) {
 			break;
 		case PAYLOAD_ISAC16:
 		case PAYLOAD_SILK16:
+		case PAYLOAD_XOPUS16:
 		case PAYLOAD_OPUS16:
 		case PAYLOAD_G722116:
 			frame->ts = getTimestamp() / 16;
 			//frame->len = packetization / 2;
 			break;
 		case PAYLOAD_SILK24:
+		case PAYLOAD_XOPUS24:
 		case PAYLOAD_OPUS24:
 		case PAYLOAD_G722124:
 			frame->ts = getTimestamp() / 24;
@@ -411,6 +444,7 @@ RTP::jitterbuffer(struct ast_channel *channel, int savePayload) {
 			frame->ts = getTimestamp() / 32;
 			//frame->len = packetization / 4;
 			break;
+		case PAYLOAD_XOPUS48:
 		case PAYLOAD_OPUS48:
 			frame->ts = getTimestamp() / 48;
 			//frame->len = packetization / 6;
@@ -442,7 +476,7 @@ RTP::jitterbuffer(struct ast_channel *channel, int savePayload) {
 	}
 
 	struct iphdr2 *header_ip = (struct iphdr2 *)(data - sizeof(struct iphdr2) - sizeof(udphdr2));
-	int mylen = MIN(len, ntohs(header_ip->tot_len) - header_ip->ihl * 4 - sizeof(udphdr2));
+	int mylen = MIN((unsigned int)len, ntohs(header_ip->tot_len) - header_ip->ihl * 4 - sizeof(udphdr2));
 
 
 	if(savePayload or (codec == PAYLOAD_G729 or codec == PAYLOAD_G723)) {
@@ -472,13 +506,16 @@ RTP::jitterbuffer(struct ast_channel *channel, int savePayload) {
 			* If set, the fixed header is followed by exactly one header extension.
 			*/
 			extension_hdr_t *rtpext;
-			if (payload_len < 4)
-				payload_len = 0;
 
 			// the extension, if present, is after the CSRC list.
 			rtpext = (extension_hdr_t *)((u_int8_t *)payload_data);
-			payload_data += sizeof(extension_hdr_t) + rtpext->length;
-			payload_len -= sizeof(extension_hdr_t) + rtpext->length;
+			payload_data += sizeof(extension_hdr_t) + ntohs(rtpext->length);
+			payload_len -= sizeof(extension_hdr_t) + ntohs(rtpext->length);
+			if (payload_len < 4) {
+				payload_data = data + sizeof(RTPFixedHeader);
+				payload_len = 0;
+			}
+			
 		}
 		frame->data = payload_data;
 		frame->datalen = payload_len > 0 ? payload_len : 0; /* ensure that datalen is never negative */
@@ -677,14 +714,18 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 	this->daddr =  daddr;
 	this->dport = dport;
 	this->ignore = 0;
+
+	if(sverb.ssrc and getSSRC() != sverb.ssrc) return;
 	
 	if(sverb.read_rtp) {
-		cout << "RTP - read: " 
+		cout << "RTP(" << hex << long(this) << ")" 
 		     << "ssrc:" << hex << this->ssrc << dec << " "
 		     << "seq:" << getSeqNum() << " "
 		     << "saddr/sport:" << inet_ntostring(htonl(saddr)) << " / " << sport << " "
 		     << "daddr/dport:" << inet_ntostring(htonl(daddr)) << " / " << dport << " "
-		     << (this->iscaller ? "caller" : "called") << endl;
+		     << (this->iscaller ? "caller" : "called") 
+		     << " packets received: " << this->stats.received
+		     << endl;
 	}
 	
 	if(this->sensor_id >= 0 && this->sensor_id != sensor_id) {
@@ -705,8 +746,6 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 	unsigned int payload_len = get_payload_len();
 
 	Call *owner = (Call*)call_owner;
-
-//	if(getSSRC() != 0xc3f5c945) return;
 
 	if(getVersion() != 2) {
 		return;
@@ -910,17 +949,20 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 		switch(codec) {
 		case PAYLOAD_SILK12:
 		case PAYLOAD_OPUS12:
+		case PAYLOAD_XOPUS12:
 		case PAYLOAD_G722112:
 			samplerate = 12000;
 			break;
 		case PAYLOAD_ISAC16:
 		case PAYLOAD_SILK16:
 		case PAYLOAD_OPUS16:
+		case PAYLOAD_XOPUS16:
 		case PAYLOAD_G722116:
 			samplerate = 16000;
 			break;
 		case PAYLOAD_SILK24:
 		case PAYLOAD_OPUS24:
+		case PAYLOAD_XOPUS24:
 		case PAYLOAD_G722124:
 			samplerate = 24000;
 			break;
@@ -929,6 +971,7 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 			samplerate = 32000;
 			break;
 		case PAYLOAD_OPUS48:
+		case PAYLOAD_XOPUS48:
 		case PAYLOAD_G722148:
 			samplerate = 48000;
 			break;
@@ -993,7 +1036,7 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 				}
 			}
 			if(!gfileRAW_buffer) {
-				gfileRAW_buffer = (char*)malloc(32768 * sizeof(char));
+				gfileRAW_buffer = new FILE_LINE char[32768];
 				if(gfileRAW_buffer == NULL) {
 					syslog(LOG_ERR, "Cannot allocate memory for gfileRAW_buffer - low memory this is FATAL");
 					exit(2);
@@ -1298,6 +1341,79 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 	prev_codec = codec;
 	prev_sid = sid;
 
+
+	// DSP processing
+	if(owner and (opt_inbanddtmf or opt_faxt30detect or opt_silencedetect or opt_clippingdetect) 
+		and frame->frametype == AST_FRAME_VOICE and (codec == 0 or codec == 8)) {
+
+		int res;
+		if(!DSP) DSP = dsp_new();
+		char event_digit;
+		int event_len;
+		short int *sdata = new FILE_LINE short int[payload_len];
+		if(!sdata) {
+			syslog(LOG_ERR, "sdata malloc failed [%u]\n", (unsigned int)(payload_len * 2));
+			return;
+		}
+		if(codec == 0) {
+			for(unsigned int i = 0; i < payload_len; i++) {
+				sdata[i] = ULAW((unsigned char)payload_data[i]);
+				if(opt_clippingdetect and ((abs(sdata[i])) >= 32124)) {
+					if(iscaller) {
+						owner->caller_clipping_8k++;
+					} else {
+						owner->called_clipping_8k++;
+					}
+				}
+			}
+		} else if(codec == 8) {
+			for(unsigned int i = 0; i < payload_len; i++) {
+				sdata[i] = ALAW((unsigned char)payload_data[i]);
+				if(opt_clippingdetect and ((abs(sdata[i])) >= 32256)) {
+					if(iscaller) {
+						owner->caller_clipping_8k++;
+					} else {
+						owner->called_clipping_8k++;
+					}
+				}
+			}
+		}
+		if(opt_inbanddtmf or opt_faxt30detect or opt_silencedetect) {
+			int silence0 = 0;
+			int totalsilence = 0;
+			int totalnoise = 0;
+			res = dsp_process(DSP, sdata, payload_len, &event_digit, &event_len, &silence0, &totalsilence, &totalnoise);
+			if(silence0) {
+				if(iscaller) {
+					owner->caller_lastsilence += payload_len / 8;
+					owner->caller_silence += payload_len / 8;
+				} else {
+					owner->called_lastsilence += payload_len / 8;
+					owner->called_silence += payload_len / 8;
+				}
+			} else {
+				if(iscaller) {
+					owner->caller_lastsilence = 0;
+					owner->caller_noise += payload_len / 8;
+				} else {
+					owner->called_lastsilence = 0;
+					owner->called_noise += payload_len / 8;
+				}
+			}
+			if(res) {
+				if(opt_faxt30detect and (event_digit == 'f' or event_digit == 'e')) {
+					//printf("dsp_process: digit[%c] len[%u]\n", event_digit, event_len);
+					owner->isfax = 2;
+					owner->flags1 |= T30FAX;
+				} else if(opt_inbanddtmf and res == 5) {
+					owner->handle_dtmf(event_digit, ts2double(header->ts.tv_sec, header->ts.tv_usec), saddr, daddr);
+				}
+			}
+		}
+
+		delete [] sdata;
+	}
+
 	if(getMarker()) {
 		// if RTP packet is Marked, we have to reset last_ts to 0 so in next cycle it will count packetization from ground
 		last_ts = 0;
@@ -1525,10 +1641,10 @@ RTP::update_seq(u_int16_t seq) {
 void burstr_calculate(struct ast_channel *chan, u_int32_t received, double *burstr, double *lossr) {
 	int lost = 0;
 	int bursts = 0;
-	for(int i = 0; i <= 500; i++) {
+	for(int i = 0; i < 128; i++) {
 		lost += i * chan->loss[i];
 		bursts += chan->loss[i];
-		if(verbosity > 4 and chan->loss[i] > 0) printf("loss[%d]: %d\t", i, chan->loss[i]);
+		if((verbosity > 4 or sverb.jitter) and chan->loss[i] > 0) printf("bc loss[%d]: %d\t", i, chan->loss[i]);
 	}
 
 	if(lost < 5) {
@@ -1537,11 +1653,14 @@ void burstr_calculate(struct ast_channel *chan, u_int32_t received, double *burs
 		return;
 	}
 
-	if(verbosity > 4) printf("\n");
+	if(verbosity > 4 or sverb.jitter) printf("\n");
 	if(received > 0 && bursts > 0) {
 		*burstr = (double)((double)lost / (double)bursts) / (double)(1.0 / ( 1.0 - (double)lost / (double)received ));
+		if(sverb.jitter) printf("*burstr[%f] = (lost[%u] / bursts[%u]) / (1 / ( 1 - lost[%u] / received[%u]\n", *burstr, lost, bursts, lost, received);
 		if(*burstr < 0) {
 			*burstr = - *burstr;
+		} else if(*burstr < 1) {
+			*burstr = 1;
 		}
 	} else {
 		*burstr = 0;
@@ -1552,6 +1671,7 @@ void burstr_calculate(struct ast_channel *chan, u_int32_t received, double *burs
 	} else {
 		*lossr = 0;
 	}
+	if(sverb.jitter) printf("burstr: %f lossr: %f\n", *burstr, *lossr);
 }
 
 /* for debug purpose */

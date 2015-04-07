@@ -10,6 +10,7 @@
 #include "sniff.h"
 #include "pcap_queue_block.h"
 #include "pstat.h"
+#include "heap_safe.h"
 
 
 extern int opt_tcpreassembly_pb_lock;
@@ -33,8 +34,9 @@ public:
 	}
 	TcpReassemblyDataItem(u_char *data, u_int32_t datalen, timeval time, u_int32_t ack = 0, eDirection direction = DIRECTION_NA) {
 		if(data && datalen) {
-			this->data = new u_char[datalen + 1];
-			memcpy(this->data, data, datalen);
+			this->data = new FILE_LINE u_char[datalen + 1];
+			memcpy_heapsafe(this->data, data, datalen, 
+					__FILE__, __LINE__);
 			this->data[datalen] = 0;
 			this->datalen = datalen;
 		} else {
@@ -47,8 +49,9 @@ public:
 	}
 	TcpReassemblyDataItem(const TcpReassemblyDataItem &dataItem) {
 		if(dataItem.data && dataItem.datalen) {
-			this->data = new u_char[dataItem.datalen + 1];
-			memcpy(this->data, dataItem.data, dataItem.datalen);
+			this->data = new FILE_LINE u_char[dataItem.datalen + 1];
+			memcpy_heapsafe(this->data, dataItem.data, dataItem.datalen, 
+					__FILE__, __LINE__);
 			this->data[dataItem.datalen] = 0;
 			this->datalen = dataItem.datalen;
 		} else {
@@ -69,8 +72,9 @@ public:
 			delete [] this->data;
 		}
 		if(dataItem.data && dataItem.datalen) {
-			this->data = new u_char[dataItem.datalen + 1];
-			memcpy(this->data, dataItem.data, dataItem.datalen);
+			this->data = new FILE_LINE u_char[dataItem.datalen + 1];
+			memcpy_heapsafe(this->data, dataItem.data, dataItem.datalen, 
+					__FILE__, __LINE__);
 			this->data[dataItem.datalen] = 0;
 			this->datalen = dataItem.datalen;
 		} else {
@@ -88,8 +92,9 @@ public:
 		}
 		if(data && datalen) {
 			if(newAlloc) {
-				this->data = new u_char[datalen + 1];
-				memcpy(this->data, data, datalen);
+				this->data = new FILE_LINE u_char[datalen + 1];
+				memcpy_heapsafe(this->data, data, datalen, 
+						__FILE__, __LINE__);
 				this->data[datalen] = 0;
 			} else {
 				this->data = data;
@@ -128,6 +133,9 @@ public:
 	}
 	u_char *getData() {
 		return(this->data);
+	}
+	string getDataString() {
+		return(this->data ? (char*)this->data : "");
 	}
 	u_int32_t getDatalen() {
 		return(this->datalen);
@@ -187,6 +195,9 @@ public:
 	virtual void processData(u_int32_t ip_src, u_int32_t ip_dst,
 				 u_int16_t port_src, u_int16_t port_dst,
 				 TcpReassemblyData *data,
+				 u_char *ethHeader, u_int32_t ethHeaderLength,
+				 pcap_t *handle, int dlt, int sensor_id,
+				 class TcpReassemblyLink *reassemblyLink,
 				 bool debugSave) = 0;
 	virtual void printContentSummary() {}
 };
@@ -242,8 +253,9 @@ public:
 	TcpReassemblyStream_packet(const TcpReassemblyStream_packet &packet) {
 		this->copyFrom(packet);
 		if(!opt_tcpreassembly_pb_lock && packet.data) {
-			this->data = new u_char[packet.datacaplen];
-			memcpy(this->data, packet.data, packet.datacaplen);
+			this->data = new FILE_LINE u_char[packet.datacaplen];
+			memcpy_heapsafe(this->data, packet.data, packet.datacaplen, 
+					__FILE__, __LINE__);
 		}
 	}
 	~TcpReassemblyStream_packet() {
@@ -257,8 +269,9 @@ public:
 		}
 		this->copyFrom(packet);
 		if(!opt_tcpreassembly_pb_lock && packet.data) {
-			this->data = new u_char[packet.datacaplen];
-			memcpy(this->data, packet.data, packet.datacaplen);
+			this->data = new FILE_LINE u_char[packet.datacaplen];
+			memcpy_heapsafe(this->data, packet.data, packet.datacaplen, 
+					__FILE__, __LINE__);
 		}
 		return(*this);
 	}
@@ -272,8 +285,11 @@ public:
 			this->data = data;
 		} else {
 			if(datacaplen) {
-				this->data = new u_char[datacaplen];
-				memcpy(this->data, data, datacaplen);
+				this->data = new FILE_LINE u_char[datacaplen];
+				memcpy_heapsafe(this->data, this->data,
+						data, block_store ? NULL : data,
+						datacaplen, 
+						__FILE__, __LINE__);
 			} else {
 				this->data = NULL;
 			}
@@ -352,6 +368,15 @@ public:
 		}
 		return(0);
 	}
+	u_int32_t isFail() {
+		map<uint32_t, TcpReassemblyStream_packet>::iterator iter;
+		for(iter = this->queue.begin(); iter != this->queue.end(); iter++) {
+			if(iter->second.state != TcpReassemblyStream_packet::FAIL) {
+				return(false);
+			}
+		}
+		return(true);
+	}
 private:
 	void unlockPackets() {
 		if(opt_tcpreassembly_pb_lock) {
@@ -418,11 +443,12 @@ public:
 		_force_wait_for_next_psh = false;
 		last_packet_at_from_header = 0;
 		this->link = link;
+		counterTryOk = 0;
 	}
 	void push(TcpReassemblyStream_packet packet);
 	int ok(bool crazySequence = false, bool enableSimpleCmpMaxNextSeq = false, u_int32_t maxNextSeq = 0,
 	       bool enableCheckCompleteContent = false, TcpReassemblyStream *prevHttpStream = NULL, bool enableDebug = false,
-	       int forceFirstSeq = 0);
+	       u_int32_t forceFirstSeq = 0, bool ignorePsh = false);
 	bool ok2_ec(u_int32_t nextAck, bool enableDebug = false);
 	u_char *complete(u_int32_t *datalen, timeval *time, bool check = false, bool unlockPackets = true,
 			 size_t startIndex = 0, size_t *endIndex = NULL, bool breakIfPsh = false);
@@ -455,7 +481,6 @@ private:
 	bool completed_finally;
 	bool exists_data;
 	TcpReassemblyDataItem complete_data;
-	vector<TcpReassemblyDataItem> complete_data_vector;
 	eHttpType http_type;
 	u_int32_t http_header_length;
 	u_int32_t http_content_length;
@@ -470,6 +495,7 @@ private:
 	bool _force_wait_for_next_psh;
 	u_int64_t last_packet_at_from_header;
 	TcpReassemblyLink *link;
+	int counterTryOk;
 friend class TcpReassemblyLink;
 };
 
@@ -511,7 +537,9 @@ public:
 	};
 	TcpReassemblyLink(class TcpReassembly *reassembly,
 			  u_int32_t ip_src = 0, u_int32_t ip_dst = 0, 
-			  u_int16_t port_src = 0, u_int16_t port_dst = 0) {
+			  u_int16_t port_src = 0, u_int16_t port_dst = 0,
+			  u_char *packet = NULL, iphdr2 *header_ip = NULL,
+			  pcap_t *handle = NULL, int dlt = 0, int sensor_id = 0) {
 		this->reassembly = reassembly;
 		this->ip_src = ip_src;
 		this->ip_dst = ip_dst;
@@ -525,6 +553,7 @@ public:
 		this->fin_to_dest = false;
 		this->fin_to_source = false;
 		this->_sync_queue = 0;
+		this->_erase = 0;
 		//this->created_at = getTimeMS();
 		//this->last_packet_at = 0;
 		this->created_at_from_header = 0;
@@ -535,14 +564,24 @@ public:
 		this->link_is_ok = 0;
 		this->completed_offset = 0;
 		this->direction_confirm = 0;
-		this->cleanup_state = 0;
+		this->ethHeader = NULL;
+		this->ethHeaderLength = 0;
+		if(packet && header_ip) {
+			this->createEthHeader(packet, header_ip);
+		}
+		this->handle = handle;
+		this->dlt = dlt;
+		this->sensor_id = sensor_id;
+		for(int i = 0; i < 2; i++) {
+			this->remainData[i] = NULL;
+			this->remainDataLength[i] = 0;
+		}
 	}
 	~TcpReassemblyLink();
 	bool push(TcpReassemblyStream::eDirection direction,
 		  timeval time, tcphdr2 header_tcp, 
 		  u_char *data, u_int32_t datalen, u_int32_t datacaplen,
-		  pcap_block_store *block_store, int block_store_index,
-		  bool lockQueue = true) {
+		  pcap_block_store *block_store, int block_store_index) {
 		if(datalen) {
 			this->exists_data = true;
 		}
@@ -550,46 +589,44 @@ public:
 			return(this->push_crazy(
 				direction, time, header_tcp, 
 				data, datalen, datacaplen,
-				block_store, block_store_index,
-				lockQueue));
+				block_store, block_store_index));
 		} else {
 			return(this->push_normal(
 				direction, time, header_tcp, 
 				data, datalen, datacaplen,
-				block_store, block_store_index,
-				lockQueue));
+				block_store, block_store_index));
 		}
 	}
 	bool push_normal(
 		  TcpReassemblyStream::eDirection direction,
 		  timeval time, tcphdr2 header_tcp, 
 		  u_char *data, u_int32_t datalen, u_int32_t datacaplen,
-		  pcap_block_store *block_store, int block_store_index,
-		  bool lockQueue);
+		  pcap_block_store *block_store, int block_store_index);
 	bool push_crazy(
 		  TcpReassemblyStream::eDirection direction,
 		  timeval time, tcphdr2 header_tcp, 
 		  u_char *data, u_int32_t datalen, u_int32_t datacaplen,
-		  pcap_block_store *block_store, int block_store_index,
-		  bool lockQueue);
-	int okQueue(int final = 0, bool enableDebug = false) {
+		  pcap_block_store *block_store, int block_store_index);
+	int okQueue(int final = 0, bool enableDebug = false, 
+		    bool checkCompleteContent = false, bool ignorePsh = false) {
 		if(this->state == STATE_CRAZY) {
 			return(this->okQueue_crazy(final, enableDebug));
 		} else {
-			return(this->okQueue_normal(final, enableDebug));
+			return(this->okQueue_normal(final, enableDebug, checkCompleteContent, ignorePsh));
 		}
 	}
-	int okQueue_normal(int final = 0, bool enableDebug = false);
+	int okQueue_normal(int final = 0, bool enableDebug = false, 
+			   bool checkCompleteContent = false, bool ignorePsh = false);
 	int okQueue_crazy(int final = 0, bool enableDebug = false);
-	void complete(bool final = false, bool eraseCompletedStreams = false, bool lockQueue = true) {
+	void complete(bool final = false, bool eraseCompletedStreams = false) {
 		if(this->state == STATE_CRAZY) {
-			this->complete_crazy(final, eraseCompletedStreams, lockQueue);
+			this->complete_crazy(final, eraseCompletedStreams);
 		} else {
-			this->complete_normal(final, lockQueue);
+			this->complete_normal(final);
 		}
 	}
-	void complete_normal(bool final = false, bool lockQueue = true);
-	void complete_crazy(bool final = false, bool eraseCompletedStreams = false, bool lockQueue = true);
+	void complete_normal(bool final = false);
+	void complete_crazy(bool final = false, bool eraseCompletedStreams = false);
 	streamIterator createIterator();
 	TcpReassemblyStream *findStreamBySeq(u_int32_t seq) {
 		for(size_t i = 0; i < this->queue.size(); i++) {
@@ -663,19 +700,23 @@ public:
 	}
 	void cleanup(u_int64_t act_time);
 	void printContent(int level  = 0);
+	void setRemainData(u_char *data, u_int32_t datalen, TcpReassemblyDataItem::eDirection direction);
+	void clearRemainData(TcpReassemblyDataItem::eDirection direction);
+	u_char *getRemainData(TcpReassemblyDataItem::eDirection direction);
+	u_int32_t getRemainDataLength(TcpReassemblyDataItem::eDirection direction);
 private:
 	void lock_queue() {
-		while(__sync_lock_test_and_set(&this->_sync_queue, 1));
+		while(__sync_lock_test_and_set(&this->_sync_queue, 1)) usleep(100);
 	}
 	void unlock_queue() {
 		__sync_lock_release(&this->_sync_queue);
 	}
 	void pushpacket(TcpReassemblyStream::eDirection direction,
-		        TcpReassemblyStream_packet packet,
-			bool lockQueue = true);
+		        TcpReassemblyStream_packet packet);
 	void setLastSeq(TcpReassemblyStream::eDirection direction, 
 			u_int32_t lastSeq);
-	void switchDirection(bool lockQueue = true);
+	void switchDirection();
+	void createEthHeader(u_char *packet, iphdr2 *header_ip);
 private:
 	TcpReassembly *reassembly;
 	u_int32_t ip_src;
@@ -694,6 +735,7 @@ private:
 	map<uint32_t, TcpReassemblyStream*> queue_nul_by_ack;
 	deque<TcpReassemblyStream*> queue;
 	volatile int _sync_queue;
+	volatile int _erase;
 	//u_int64_t created_at;
 	//u_int64_t last_packet_at;
 	u_int64_t created_at_from_header;
@@ -705,7 +747,13 @@ private:
 	size_t completed_offset;
 	int direction_confirm;
 	vector<TcpReassemblyStream*> ok_streams;
-	volatile int cleanup_state;
+	u_char *ethHeader;
+	u_int32_t ethHeaderLength;
+	pcap_t *handle;
+	int dlt; 
+	int sensor_id;
+	u_char *remainData[2];
+	u_int32_t remainDataLength[2];
 friend class TcpReassembly;
 friend class TcpReassemblyStream;
 };
@@ -714,22 +762,52 @@ class TcpReassembly {
 public:
 	enum eType {
 		http,
-		webrtc
+		webrtc,
+		ssl
+	};
+	struct sPacket {
+		pcap_pkthdr header; 
+		iphdr2 *header_ip; 
+		u_char *packet;
+		pcap_block_store *block_store; 
+		int block_store_index;
+		pcap_t *handle; 
+		int dlt; 
+		int sensor_id;
 	};
 public:
 	TcpReassembly(eType type);
 	~TcpReassembly();
 	void push(pcap_pkthdr *header, iphdr2 *header_ip, u_char *packet,
-		  pcap_block_store *block_store = NULL, int block_store_index = 0);
+		  pcap_block_store *block_store = NULL, int block_store_index = 0,
+		  pcap_t *handle = NULL, int dlt = 0, int sensor_id = 0);
 	void cleanup(bool all = false);
+	void cleanup_simple(bool all = false);
 	void setEnableHttpForceInit(bool enableHttpForceInit = true) {
 		this->enableHttpForceInit = enableHttpForceInit;
 	}
 	void setEnableCrazySequence(bool enableCrazySequence = true) {
 		this->enableCrazySequence = enableCrazySequence;
 	}
+	void setEnableWildLink(bool enableWildLink = true) {
+		this->enableWildLink = enableWildLink;
+	}
 	void setEnableIgnorePairReqResp(bool enableIgnorePairReqResp = true) {
 		this->enableIgnorePairReqResp = enableIgnorePairReqResp;
+	}
+	void setEnableDestroyStreamsInComplete(bool enableDestroyStreamsInComplete = true) {
+		this->enableDestroyStreamsInComplete = enableDestroyStreamsInComplete;
+	}
+	void setEnableAllCompleteAfterZerodataAck(bool enableAllCompleteAfterZerodataAck = true) {
+		this->enableAllCompleteAfterZerodataAck = enableAllCompleteAfterZerodataAck;
+	}
+	void setEnableCleanupThread(bool enableCleanupThread = true) {
+		this->enableCleanupThread = enableCleanupThread;
+		this->createCleanupThread();
+	}
+	void setEnablePacketThread(bool enablePacketThread = true) {
+		this->enablePacketThread = enablePacketThread;
+		this->createPacketThread();
 	}
 	void setDataCallback(TcpReassemblyProcessData *dataCallback) {
 		this->dataCallback = dataCallback;
@@ -747,47 +825,80 @@ public:
 	bool isActiveLog() {
 		return(this->log != NULL);
 	}
-	void preparePstatData();
-	double getCpuUsagePerc(bool preparePstatData = false);
-	bool check_ip(u_int32_t ipl) {
-		extern vector<u_int32_t> httpip;
-		extern vector<d_u_int32_t> httpnet;
-		extern vector<u_int32_t> webrtcip;
-		extern vector<d_u_int32_t> webrtcnet;
-		vector<u_int32_t> *_ip = (type == http ? &httpip : &webrtcip);
-		vector<d_u_int32_t> *_net  = (type == http ? &httpnet : &webrtcnet);
-		if(!_ip->size() && !_net->size()) {
-			return(true);
-		}
-		if(_ip->size()) {
-			vector<u_int32_t>::iterator findHttpIp;
-			findHttpIp = std::lower_bound(_ip->begin(), _ip->end(), ipl);
-			if(findHttpIp != _ip->end() && ((*findHttpIp) & ipl) == (*findHttpIp)) {
+	void prepareCleanupPstatData();
+	double getCleanupCpuUsagePerc(bool preparePstatData = false);
+	void preparePacketPstatData();
+	double getPacketCpuUsagePerc(bool preparePstatData = false);
+	string getCpuUsagePerc();
+	bool check_ip(u_int32_t ip, u_int16_t port = 0) {
+		if(type == http || type == webrtc) {
+			extern vector<u_int32_t> httpip;
+			extern vector<d_u_int32_t> httpnet;
+			extern vector<u_int32_t> webrtcip;
+			extern vector<d_u_int32_t> webrtcnet;
+			vector<u_int32_t> *_ip = (type == http ? &httpip : &webrtcip);
+			vector<d_u_int32_t> *_net  = (type == http ? &httpnet : &webrtcnet);
+			if(!_ip->size() && !_net->size()) {
 				return(true);
 			}
-		}
-		if(_net->size()) {
-			for(size_t i = 0; i < _net->size(); i++) {
-				if((*_net)[i][0] == ipl >> (32 - (*_net)[i][1]) << (32 - (*_net)[i][1])) {
+			if(_ip->size()) {
+				vector<u_int32_t>::iterator iterIp;
+				iterIp = std::lower_bound(_ip->begin(), _ip->end(), ip);
+				if(iterIp != _ip->end() && ((*iterIp) & ip) == (*iterIp)) {
 					return(true);
 				}
 			}
+			if(_net->size()) {
+				for(size_t i = 0; i < _net->size(); i++) {
+					if((*_net)[i][0] == ip >> (32 - (*_net)[i][1]) << (32 - (*_net)[i][1])) {
+						return(true);
+					}
+				}
+			}
+		} else if(type == ssl) {
+			extern map<d_u_int32_t, string> ssl_ipport;
+			map<d_u_int32_t, string>::iterator iter = ssl_ipport.find(d_u_int32_t(ip, port));
+			return(iter != ssl_ipport.end());
 		}
 		return(false);
 	}
-	bool check_port(u_int16_t port) {
-		extern char *httpportmatrix;
-		extern char *webrtcportmatrix;
-		return(type == http ? httpportmatrix[port] : webrtcportmatrix[port]);
+	bool check_port(u_int16_t port, u_int32_t ip = 0) {
+		if(type == http || type == webrtc) {
+			extern char *httpportmatrix;
+			extern char *webrtcportmatrix;
+			return(type == http ? httpportmatrix[port] : webrtcportmatrix[port]);
+		} else if(type == ssl) {
+			extern map<d_u_int32_t, string> ssl_ipport;
+			map<d_u_int32_t, string>::iterator iter = ssl_ipport.find(d_u_int32_t(ip, port));
+			return(iter != ssl_ipport.end());
+		}
+		return(false);
 	}
 	eType getType() {
 		return(type);
 	}
+	string getTypeString(bool upper = false) {
+		string str = type == http ? "http" :
+			     type == webrtc ? "webrtc" : 
+			     type == ssl ? "ssl" : "";
+		if(upper) {
+			std::transform(str.begin(), str.end(), str.begin(), ::toupper);
+		}
+		return(str);
+	}
+	void setLinkTimeout(u_int32_t linkTimeout) {
+		this->linkTimeout = linkTimeout;
+	}
 private:
-	void createThread();
-	void *threadFunction(void *);
+	void _push(pcap_pkthdr *header, iphdr2 *header_ip, u_char *packet,
+		   pcap_block_store *block_store, int block_store_index,
+		   pcap_t *handle, int dlt, int sensor_id);
+	void createCleanupThread();
+	void createPacketThread();
+	void *cleanupThreadFunction(void *);
+	void *packetThreadFunction(void *);
 	void lock_links() {
-		while(__sync_lock_test_and_set(&this->_sync_links, 1));
+		while(__sync_lock_test_and_set(&this->_sync_links, 1)) usleep(100);
 	}
 	void unlock_links() {
 		__sync_lock_release(&this->_sync_links);
@@ -798,20 +909,34 @@ private:
 	volatile int _sync_links;
 	bool enableHttpForceInit;
 	bool enableCrazySequence;
+	bool enableWildLink;
 	bool enableIgnorePairReqResp;
+	bool enableDestroyStreamsInComplete;
+	bool enableAllCompleteAfterZerodataAck;
+	bool enableCleanupThread;
+	bool enablePacketThread;
 	TcpReassemblyProcessData *dataCallback;
 	u_int64_t act_time_from_header;
 	u_int64_t last_time;
+	u_int64_t last_cleanup_call_time_from_header;
+	u_int64_t last_erase_links_time;
 	bool doPrintContent;
-	pthread_t threadHandle;
-	int threadId;
+	pthread_t cleanupThreadHandle;
+	pthread_t packetThreadHandle;
+	int cleanupThreadId;
+	int packetThreadId;
 	bool terminated;
 	bool ignoreTerminating;
 	FILE *log;
-	pstat_data threadPstatData[2];
+	pstat_data cleanupThreadPstatData[2];
+	pstat_data packetThreadPstatData[2];
 	u_long lastTimeLogErrExceededMaximumAttempts;
+	u_long _cleanupCounter;
+	u_int32_t linkTimeout;
+	SafeAsyncQueue<sPacket> packetQueue;
 friend class TcpReassemblyLink;
-friend void *_TcpReassembly_threadFunction(void* arg);
+friend void *_TcpReassembly_cleanupThreadFunction(void* arg);
+friend void *_TcpReassembly_packetThreadFunction(void* arg);
 };
 
 #endif

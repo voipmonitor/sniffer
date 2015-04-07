@@ -1,10 +1,13 @@
 #include <sys/types.h>
 #include <string>
+#include "config.h"
+#include "common.h"
+#include "heap_safe.h"
 
 #ifndef VOIPMONITOR_H
 #define VOIPMONITOR_H
 
-#define RTPSENSOR_VERSION "10.1.49"
+#define RTPSENSOR_VERSION "11.0"
 #define NAT
 
 #define FORMAT_WAV	1
@@ -37,6 +40,18 @@
 
 #define SNIFFER_INLINE_FUNCTIONS true
 #define TCPREPLAY_WORKARROUND false
+
+#define QUEUE_NONBLOCK2 1
+
+#define SYNC_PCAP_BLOCK_STORE true
+#define SYNC_CALL_RTP true
+
+#define RTP_PROF false
+#define TAR_PROF false
+
+#define MAX_PROCESS_RTP_PACKET_THREADS 6
+
+#define TAR_MODULO_SECONDS 60
 
 
 /* choose what method wil be used to synchronize threads. NONBLOCK is the fastest. Do not enable both at once */
@@ -125,28 +140,11 @@ struct tcphdr2
     u_int16_t urg_ptr;
 };
 
-struct sVerbose {
-	int process_rtp;
-	int read_rtp;
-	int check_is_caller_called;
-	int disable_threads_rtp;
-	int packet_lost;
-	int rrd_info;
-	int http;
-	int webrtc;
-	int sip_packets;
-	int set_ua;
-	int dscp;
-	int store_process_query;
-	int call_listening;
-	int skinny;
-	int fraud;
-	int disable_bt_sighandler;
-};
-
 #ifndef GLOBAL_DECLARATION
 extern 
 #endif
 sVerbose sverb;
+
+void vm_terminate();
 
 #endif

@@ -1,6 +1,7 @@
 #ifndef TOOLS_H
 #define TOOLS_H
 
+#include <pthread.h>
 #include <string>
 #include <vector>
 #include <queue>
@@ -13,16 +14,41 @@
 #include <limits.h>
 #include <list>
 #include <sys/types.h>
-#include <unistd.h>
 #include <iostream>
 #include <zlib.h>
+#ifdef HAVE_LIBLZ4
+#include <lz4.h>
+#endif //HAVE_LIBLZ4
 #include <pcap.h>
 #include <netdb.h>
 #include <map>
 
 #include "pstat.h"
+#include "tools_dynamic_buffer.h"
+#include "buffers_control.h"
+#include "heap_safe.h"
+
+#include "tools_inline.h"
 
 using namespace std;
+
+
+#if defined(__i386__)
+__inline__ unsigned long long rdtsc(void)
+{
+    unsigned long long int x;
+    __asm__ volatile (".byte 0x0f, 0x31" : "=A" (x));
+    return x;
+}
+#elif defined(__x86_64__)
+__inline__ unsigned long long rdtsc(void)
+{
+    unsigned hi, lo;
+    __asm__ __volatile__ ("rdtsc" : "=a"(lo), "=d"(hi));
+    return ( (unsigned long long)lo)|( ((unsigned long long)hi)<<32 );
+}
+#endif
+
 
 struct TfileListElem {
     string filename;
@@ -59,6 +85,14 @@ struct d_u_int32_t
 	}
 	u_int32_t operator [] (int indexVal) {
 		return(val[indexVal]);
+	}
+	bool operator == (const d_u_int32_t& other) const { 
+		return(this->val[0] == other.val[0] &&
+		       this->val[1] == other.val[1]); 
+	}
+	bool operator < (const d_u_int32_t& other) const { 
+		return(this->val[0] < other.val[0] ||
+		       (this->val[0] == other.val[0] && this->val[1] < other.val[1])); 
 	}
 	u_int32_t val[2];
 };
@@ -127,6 +161,7 @@ vector<string> explode(const string&, const char&);
 int getUpdDifTime(struct timeval *before);
 int getDifTime(struct timeval *before);
 int msleep(long msec);
+int file_exists (string filename);
 int file_exists (char * fileName);
 int file_exists (const char * fileName);
 void set_mac();
@@ -145,6 +180,17 @@ public:
 		bufferCapacity = 0;
 		this->capacityReserve = capacityReserve;
 	}
+	SimpleBuffer(const SimpleBuffer &other) {
+		this->bufferLength = other.bufferLength;
+		this->bufferCapacity = other.bufferCapacity;
+		this->capacityReserve = other.capacityReserve;
+		if(this->bufferLength) {
+			this->buffer = new FILE_LINE u_char[this->bufferLength];
+			memcpy(this->buffer, other.buffer, this->bufferLength);
+		} else { 
+			this->buffer = NULL;
+		}
+	}
 	~SimpleBuffer() {
 		destroy();
 	}
@@ -153,10 +199,10 @@ public:
 			return;
 		}
 		if(!buffer) {
-			buffer = new u_char[dataLength + capacityReserve + 1];
+			buffer = new FILE_LINE u_char[dataLength + capacityReserve + 1];
 			bufferCapacity = dataLength + capacityReserve + 1;
 		} else if(bufferLength + dataLength > capacityReserve) {
-			u_char *bufferNew = new u_char[bufferLength + dataLength + capacityReserve + 1];
+			u_char *bufferNew = new FILE_LINE u_char[bufferLength + dataLength + capacityReserve + 1];
 			memcpy(bufferNew, buffer, bufferLength);
 			delete [] buffer;
 			buffer = bufferNew;
@@ -177,7 +223,7 @@ public:
 	void destroy() {
 		if(buffer) {
 			delete [] buffer;
-			buffer = 0;
+			buffer = NULL;
 		}
 		bufferLength = 0;
 		bufferCapacity = 0;
@@ -185,12 +231,25 @@ public:
 	bool empty() {
 		return(bufferLength == 0);
 	}
+	SimpleBuffer& operator = (const SimpleBuffer &other) {
+		destroy();
+		this->bufferLength = other.bufferLength;
+		this->bufferCapacity = other.bufferCapacity;
+		this->capacityReserve = other.capacityReserve;
+		if(this->bufferLength) {
+			this->buffer = new FILE_LINE u_char[this->bufferLength];
+			memcpy(this->buffer, other.buffer, this->bufferLength);
+		} else { 
+			this->buffer = NULL;
+		}
+		return(*this);
+	}
 	operator char*() {
 		if(bufferLength == 0) {
 			return((char*)"");
 		} else {
 			if(bufferCapacity <= bufferLength) {
-				u_char *newBuffer = new u_char[bufferLength + 1];
+				u_char *newBuffer = new FILE_LINE u_char[bufferLength + 1];
 				memcpy(newBuffer, buffer, bufferLength);
 				delete [] buffer;
 				buffer = newBuffer;
@@ -220,6 +279,9 @@ long long GetTotalDiskSpace(const char* absoluteFilePath);
 string GetStringMD5(std::string str);
 string GetFileMD5(std::string filename);
 string GetDataMD5(u_char *data, u_int32_t datalen);
+string GetDataMD5(u_char *data, u_int32_t datalen,
+		  u_char *data2, u_int32_t data2len,
+		  u_char *data3 = NULL, u_int32_t data3len = 0);
 string GetStringSHA256(std::string str);
 bool DirExists(char *strFilename);
 bool FileExists(char *strFilename);
@@ -231,10 +293,9 @@ struct tm getDateTime(time_t time);
 struct tm getDateTime(const char *timeStr);
 unsigned int getNumberOfDayToNow(const char *date);
 string getActDateTimeF(bool useT_symbol = false);
-int get_unix_tid(void);
 unsigned long getUptime();
-std::string &trim(std::string &s);
-std::string trim_str(std::string s);
+std::string &trim(std::string &s, const char *trimChars = NULL);
+std::string trim_str(std::string s, const char *trimChars = NULL);
 std::vector<std::string> &split(const std::string &s, char delim, std::vector<std::string> &elems);
 std::vector<std::string> split(const std::string &s, char delim);
 std::vector<std::string> split(const char *s, const char *delim, bool enableTrim = false);
@@ -247,6 +308,7 @@ int base64decode(unsigned char *dst, const char *src, int max);
 void find_and_replace(string &source, const string find, string replace);
 string find_and_replace(const char *source, const char *find, const char *replace);
 bool isLocalIP(u_int32_t ip);
+char *strlwr(char *string, u_int32_t maxLength = 0);
 
 class CircularBuffer
 {
@@ -294,13 +356,51 @@ struct ip_port
 	int port;
 };
 
-inline u_long getTimeMS(pcap_pkthdr* header = NULL) {
+inline u_long getTimeS(pcap_pkthdr* header = NULL) {
     if(header) {
-         return(header->ts.tv_sec * 1000ul + header->ts.tv_usec );
+         return(header->ts.tv_sec);
     }
     timespec time;
     clock_gettime(CLOCK_REALTIME, &time);
-    return(time.tv_sec * 1000 + time.tv_nsec / 1000000);
+    return(time.tv_sec);
+}
+
+inline u_long getTimeMS(pcap_pkthdr* header = NULL) {
+    if(header) {
+         return(header->ts.tv_sec * 1000ul + header->ts.tv_usec / 1000);
+    }
+    timespec time;
+    clock_gettime(CLOCK_REALTIME, &time);
+    return(time.tv_sec * 1000ul + time.tv_nsec / 1000000);
+}
+
+extern u_int64_t rdtsc_by_100ms;
+inline u_long getTimeMS_rdtsc(pcap_pkthdr* header = NULL) {
+    if(header) {
+         return(header->ts.tv_sec * 1000ul + header->ts.tv_usec / 1000);
+    }
+    static u_long last_time;
+    #if defined(__i386__) or defined(__x86_64__)
+    static u_int32_t counter = 0;
+    static u_int64_t last_rdtsc = 0;
+    ++counter;
+    if(rdtsc_by_100ms) {
+         u_int64_t act_rdtsc = rdtsc();
+         if(counter % 100 && last_rdtsc && last_time) {
+             u_int64_t diff_rdtsc = act_rdtsc - last_rdtsc;
+             if(diff_rdtsc < rdtsc_by_100ms / 10) {
+                  last_rdtsc = act_rdtsc;
+                  last_time = last_time + diff_rdtsc * 100 / rdtsc_by_100ms;
+                  return(last_time);
+             }
+         }
+         last_rdtsc = act_rdtsc;
+    }
+    #endif
+    timespec time;
+    clock_gettime(CLOCK_REALTIME, &time);
+    last_time = time.tv_sec * 1000ul + time.tv_nsec / 1000000;
+    return(last_time);
 }
 
 inline unsigned long long getTimeUS() {
@@ -315,11 +415,24 @@ inline unsigned long long getTimeNS() {
     return(time.tv_sec * 1000000000ull + time.tv_nsec);
 }
 
-class FileZipHandler {
+class FileZipHandler : public CompressStream_baseEv {
 public:
-	FileZipHandler(int bufferLength = 0, int enableAsyncWrite = 0, int enableZip = 0,
-		       bool dumpHandler = false);
-	~FileZipHandler();
+	enum eTypeFile {
+		na,
+		pcap_sip,
+		pcap_rtp,
+		graph_rtp
+	};
+	enum eTypeCompress {
+		compress_na,
+		compress_default,
+		gzip
+	};
+public:
+	FileZipHandler(int bufferLength = 0, int enableAsyncWrite = 0, eTypeCompress typeCompress = compress_na,
+		       bool dumpHandler = false, class Call *call = NULL,
+		       eTypeFile typeFile = na);
+	virtual ~FileZipHandler();
 	bool open(const char *fileName, int permission = 0666);
 	void close();
 	bool write(char *data, int length) {
@@ -328,41 +441,45 @@ public:
 			this->writeToFile(data, length));
 	}
 	bool flushBuffer(bool force = false);
+	void flushTarBuffer();
 	bool writeToBuffer(char *data, int length);
 	bool writeToFile(char *data, int length, bool force = false);
 	bool _writeToFile(char *data, int length, bool flush = false);
 	bool __writeToFile(char *data, int length);
-	bool initZip();
+	//bool initZip();
+	//bool initLz4();
+	void initCompress();
+	void initTarbuffer(bool useFileZipHandlerCompress = false);
 	bool _open();
 	void setError(const char *error = NULL);
 	bool okHandle() {
-		return(fh > 0);
+		return(this->tar ? true : fh > 0);
 	}
+private:
+	virtual bool compress_ev(char *data, u_int32_t len, u_int32_t decompress_len);
 public:
 	string fileName;
 	int permission;
 	int fh;
-	z_stream *zipStream;
+	bool tar;
+	CompressStream *compressStream;
 	string error;
 	int bufferLength;
 	char *buffer;
-	char *zipBuffer;
 	int useBufferLength;
+	ChunkBuffer *tarBuffer;
+	bool tarBufferCreated;
 	bool enableAsyncWrite;
-	bool enableZip;
+	eTypeCompress typeCompress;
 	bool dumpHandler;
+	Call *call;
+	int time;
 	u_int64_t size;
 	u_int64_t counter;
 	static u_int64_t scounter;
 	u_int32_t userData;
+	eTypeFile typeFile;
 };
-
-pcap_dumper_t *__pcap_dump_open(pcap_t *p, const char *fname, int linktype, string *errorString = NULL,
-				int _bufflength = -1 , int _asyncwrite = -1, int _zip = -1);
-void __pcap_dump(u_char *user, const struct pcap_pkthdr *h, const u_char *sp);
-void __pcap_dump_close(pcap_dumper_t *p);
-void __pcap_dump_flush(pcap_dumper_t *p);
-char *__pcap_geterr(pcap_t *p, pcap_dumper_t *pd = NULL);
 
 class PcapDumper {
 public:
@@ -378,7 +495,7 @@ public:
 		state_do_close,
 		state_close
 	};
-	PcapDumper(eTypePcapDump type, class Call *call);
+	PcapDumper(eTypePcapDump type = na, class Call *call = NULL);
 	~PcapDumper();
 	void setBuffLength(int bufflength) {
 		_bufflength = bufflength;
@@ -386,14 +503,14 @@ public:
 	void setEnableAsyncWrite(int asyncwrite) {
 		_asyncwrite = asyncwrite;
 	}
-	void setEnableZip(int zip) {
-		_zip = zip;
+	void setTypeCompress(FileZipHandler::eTypeCompress typeCompress) {
+		_typeCompress = typeCompress;
 	}
 	bool open(const char *fileName, const char *fileNameSpoolRelative, pcap_t *useHandle, int useDlt);
 	bool open(const char *fileName, int dlt) {
 		return(this->open(fileName, NULL, NULL, dlt));
 	}
-	void dump(pcap_pkthdr* header, const u_char *packet, int dlt);
+	void dump(pcap_pkthdr* header, const u_char *packet, int dlt, bool allPackets = false);
 	void close(bool updateFilesQueue = true);
 	void flush();
 	void remove();
@@ -402,6 +519,9 @@ public:
 	}
 	bool isClose() {
 		return(this->state == state_na || this->state == state_close);
+	}
+	bool isExistsContent() {
+		return(this->existsContent);
 	}
 	void setStateClose() {
 		this->state = state_close;
@@ -417,12 +537,21 @@ private:
 	bool openError;
 	int openAttempts;
 	eState state;
+	bool existsContent;
 	int dlt;
 	u_long lastTimeSyslog;
 	int _bufflength;
 	int _asyncwrite;
-	int _zip;
+	FileZipHandler::eTypeCompress _typeCompress;
 };
+
+pcap_dumper_t *__pcap_dump_open(pcap_t *p, const char *fname, int linktype, string *errorString = NULL,
+				int _bufflength = -1 , int _asyncwrite = -1, FileZipHandler::eTypeCompress _typeCompress = FileZipHandler::compress_na,
+				Call *call = NULL, PcapDumper::eTypePcapDump type = PcapDumper::na);
+void __pcap_dump(u_char *user, const struct pcap_pkthdr *h, const u_char *sp, bool allPackets = false);
+void __pcap_dump_close(pcap_dumper_t *p);
+void __pcap_dump_flush(pcap_dumper_t *p);
+char *__pcap_geterr(pcap_t *p, pcap_dumper_t *pd = NULL);
 
 class RtpGraphSaver {
 public:
@@ -434,11 +563,19 @@ public:
 	bool isOpen() {
 		return(this->handle != NULL);
 	}
+	bool isClose() {
+		return(this->handle == NULL);
+	}
+	bool isExistsContent() {
+		return(this->existsContent);
+	}
 private:
 	string fileName;
 	string fileNameSpoolRelative;
 	class RTP *rtp;
 	FileZipHandler *handle;
+	bool existsContent;
+	int _asyncwrite;
 };
 
 #define AsyncClose_maxPcapThreads 32
@@ -498,7 +635,7 @@ public:
 		AsyncWriteItem_pcap(pcap_dumper_t *handle,
 				    char *data, int length) {
 			this->handle = handle;
-			this->data = new char[length];
+			this->data = new FILE_LINE char[length];
 			memcpy(this->data, data, length);
 			this->dataLength = length;
 		}
@@ -542,7 +679,7 @@ public:
 		AsyncWriteItem_fileZipHandler(FileZipHandler *handle,
 					      char *data, int length) {
 			this->handle = handle;
-			this->data = new char[length];
+			this->data = new FILE_LINE char[length];
 			memcpy(this->data, data, length);
 			this->dataLength = length;
 		}
@@ -592,7 +729,7 @@ public:
 					((FileZipHandler*)handle)->userData = minSizeIndex + 1;
 				}
 			}
-			if(add(new AsyncCloseItem_pcap(handle, updateFilesQueue, call, pcapDumper, file, column, writeBytes),
+			if(add(new FILE_LINE AsyncCloseItem_pcap(handle, updateFilesQueue, call, pcapDumper, file, column, writeBytes),
 			       opt_pcap_dump_bufflength ?
 				((FileZipHandler*)handle)->userData - 1 :
 				0,
@@ -625,7 +762,7 @@ public:
 					((FileZipHandler*)handle)->userData = minSizeIndex + 1;
 				}
 			}
-			if(add(new AsyncWriteItem_pcap(handle, data, length),
+			if(add(new FILE_LINE AsyncWriteItem_pcap(handle, data, length),
 			       opt_pcap_dump_bufflength ?
 				((FileZipHandler*)handle)->userData - 1 :
 				0,
@@ -657,7 +794,7 @@ public:
 				}
 				handle->userData = minSizeIndex + 1;
 			}
-			if(add(new AsyncCloseItem_fileZipHandler(handle, updateFilesQueue, call, file, column, writeBytes),
+			if(add(new FILE_LINE AsyncCloseItem_fileZipHandler(handle, updateFilesQueue, call, file, column, writeBytes),
 			       handle->userData - 1,
 			       useThreadOper)) {
 				break;
@@ -685,7 +822,7 @@ public:
 				}
 				handle->userData = minSizeIndex + 1;
 			}
-			if(add(new AsyncWriteItem_fileZipHandler(handle, data, length),
+			if(add(new FILE_LINE AsyncWriteItem_fileZipHandler(handle, data, length),
 			       handle->userData - 1,
 			       useThreadOper)) {
 				break;
@@ -694,8 +831,8 @@ public:
 	}
 	bool add(AsyncCloseItem *item, int threadIndex, int useThreadOper = 0) {
 		extern int terminating;
-		extern int opt_pcap_dump_asyncwrite_maxsize;
-		while(sizeOfDataInMemory + item->dataLength > opt_pcap_dump_asyncwrite_maxsize * 1024ull * 1024ull && !terminating) {
+		extern cBuffersControl buffersControl;
+		while(!buffersControl.check__AsyncClose__add(item->dataLength) && !terminating) {
 			usleep(1000);
 		}
 		lock(threadIndex);
@@ -718,13 +855,11 @@ public:
 			processAll(i);
 		}
 	}
+	void safeTerminate();
 	void preparePstatData(int threadIndex);
 	double getCpuUsagePerc(int threadIndex, bool preparePstatData = false);
 	int getCountThreads() {
 		return(countPcapThreads);
-	}
-	u_int64_t getSizeOfDataInMemory() {
-		return(sizeOfDataInMemory);
 	}
 private:
 	void lock(int threadIndex) {
@@ -736,10 +871,12 @@ private:
 		__sync_lock_release(&this->_sync[threadIndex]);
 	}
 	void add_sizeOfDataInMemory(size_t size) {
-		__sync_fetch_and_add(&this->sizeOfDataInMemory, size);
+		extern cBuffersControl buffersControl;
+		buffersControl.add__AsyncClose__sizeOfDataInMemory(size);
 	}
 	void sub_sizeOfDataInMemory(size_t size) {
-		__sync_fetch_and_sub(&this->sizeOfDataInMemory, size);
+		extern cBuffersControl buffersControl;
+		buffersControl.sub__AsyncClose__sizeOfDataInMemory(size);
 	}
 private:
 	int maxPcapThreads;
@@ -751,7 +888,6 @@ private:
 	int threadId[AsyncClose_maxPcapThreads];
 	pstat_data threadPstatData[AsyncClose_maxPcapThreads][2];
 	StartThreadData startThreadData[AsyncClose_maxPcapThreads];
-	volatile uint64_t sizeOfDataInMemory;
 	volatile int removeThreadProcessed;
 	volatile uint64_t useThread[AsyncClose_maxPcapThreads];
 	volatile int activeThread[AsyncClose_maxPcapThreads];
@@ -1038,7 +1174,7 @@ public:
 					nodeChar -= 'A' - 'a';
 				}
 				if(!nodes[nodeChar]) {
-					nodes[nodeChar] = new ppNode;
+					nodes[nodeChar] = new FILE_LINE ppNode;
 				}
 				nodes[nodeChar]->addNode(nodeName + 1, isContentLength);
 			} else {
@@ -1113,111 +1249,31 @@ public:
 		parseDataPtr = NULL;
 		contents_count = 0;
 		sip = false;
+		root = NULL;
+		rootCheckSip = NULL;
+		timeSync_SIP_HEADERfilter = 0;
 	}
-	void setStdParse() {
-		addNode("content-length:", true);
-		addNode("l:", true);
-		addNode("INVITE ");
-		addNode("call-id:");
-		addNode("i:");
-		addNode("from:");
-		addNode("f:");
-		addNode("to:");
-		addNode("t:");
-		addNode("contact:");
-		addNode("m:");
-		addNode("remote-party-id:");
-		addNode("geoposition:");
-		addNode("user-agent:");
-		addNode("authorization:");
-		addNode("expires:");
-		addNode("x-voipmonitor-norecord:");
-		addNode("signal:");
-		addNode("signal=");
-		addNode("x-voipmonitor-custom1:");
-		addNode("content-type:");
-		addNode("c:");
-		addNode("cseq:");
-		addNode("supported:");
-		addNode("proxy-authenticate:");
-		extern int opt_update_dstnum_onanswer;
-		if(opt_update_dstnum_onanswer) {
-			addNode("via:");
-		}
-		addNode("m=audio ");
-		addNode("a=rtpmap:");
-		addNode("o=");
-		addNode("c=IN IP4 ");
-		addNode("expires=");
-		addNode("username=\"");
-		addNode("realm=\"");
-		
-		extern char opt_match_header[128];
-		if(opt_match_header[0] != '\0') {
-			string findHeader = opt_match_header;
-			if(findHeader[findHeader.length() - 1] != ':') {
-				findHeader.append(":");
-			}
-			addNode(findHeader.c_str());
-		}
-		
-		extern char opt_callidmerge_header[128];
-		if(opt_callidmerge_header[0] != '\0') {
-			string findHeader = opt_callidmerge_header;
-			if(findHeader[findHeader.length() - 1] != ':') {
-				findHeader.append(":");
-			}
-			addNode(findHeader.c_str());
-		}
-		
-		extern vector<dstring> opt_custom_headers_cdr;
-		extern vector<dstring> opt_custom_headers_message;
-		for(int i = 0; i < 2; i++) {
-			vector<dstring> *_customHeaders = i == 0 ? &opt_custom_headers_cdr : &opt_custom_headers_message;
-			for(size_t iCustHeaders = 0; iCustHeaders < _customHeaders->size(); iCustHeaders++) {
-				string findHeader = (*_customHeaders)[iCustHeaders][0];
-				if(findHeader[findHeader.length() - 1] != ':') {
-					findHeader.append(":");
-				}
-				addNode(findHeader.c_str());
-			}
-		}
-		
-		//RFC 3261
-		addNodeCheckSip("SIP/2.0");
-		addNodeCheckSip("INVITE");
-		addNodeCheckSip("ACK");
-		addNodeCheckSip("BYE");
-		addNodeCheckSip("CANCEL");
-		addNodeCheckSip("OPTIONS");
-		addNodeCheckSip("REGISTER");
-		//RFC 3262
-		addNodeCheckSip("PRACK");
-		addNodeCheckSip("SUBSCRIBE");
-		addNodeCheckSip("NOTIFY");
-		addNodeCheckSip("PUBLISH");
-		addNodeCheckSip("INFO");
-		addNodeCheckSip("REFER");
-		addNodeCheckSip("MESSAGE");
-		addNodeCheckSip("UPDATE");
+	~ParsePacket() {
+		free();
 	}
+	void setStdParse();
 	void addNode(const char *nodeName, bool isContentLength = false) {
-		root.addNode(nodeName, isContentLength);
+		root->addNode(nodeName, isContentLength);
 	}
 	void addNodeCheckSip(const char *nodeName) {
-		rootCheckSip.addNode(nodeName);
+		rootCheckSip->addNode(nodeName);
 	}
 	ppContent *getContent(const char *nodeName, unsigned int *namelength = NULL, unsigned int namelength_limit = UINT_MAX) {
 		if(namelength) {
 			*namelength = 0;
 		}
-		return(root.getContent(nodeName, namelength, namelength_limit));
+		return(root->getContent(nodeName, namelength, namelength_limit));
 	}
 	string getContentString(const char *nodeName) {
 		while(*nodeName == '\n') {
 			 ++nodeName;
 		}
-		ppContent *content = root.getContent(nodeName, NULL);
+		ppContent *content = root->getContent(nodeName, NULL);
 		if(content && content->content && content->length > 0) {
 			return(string(content->content, content->length));
 		} else {
@@ -1228,7 +1284,7 @@ public:
 		while(*nodeName == '\n') {
 			 ++nodeName;
 		}
-		ppContent *content = root.getContent(nodeName, NULL);
+		ppContent *content = root->getContent(nodeName, NULL);
 		if(content && content->content && content->length > 0) {
 			if(dataLength) {
 				*dataLength = content->length;
@@ -1243,7 +1299,7 @@ public:
 	}
 	bool isSipContent(const char *nodeName, unsigned int namelength_limit = UINT_MAX) {
 		unsigned int namelength = 0;
-		return(rootCheckSip.getContent(nodeName, &namelength, namelength_limit));
+		return(rootCheckSip->getContent(nodeName, &namelength, namelength_limit));
 	}
 	unsigned long parseData(char *data, unsigned long datalen, bool doClear = false);
 	void clear() {
@@ -1257,8 +1313,18 @@ public:
 		parseDataPtr = NULL;
 		sip = false;
 	}
+	void free() {
+		if(root) {
+			delete root;
+			root = NULL;
+		}
+		if(rootCheckSip) {
+			delete rootCheckSip;
+			rootCheckSip = NULL;
+		}
+	}
 	void debugData() {
-		root.debugData("");
+		root->debugData("");
 	}
 	const char *getParseData() {
 		return(parseDataPtr);
@@ -1267,14 +1333,15 @@ public:
 		return(sip);
 	}
 private:
-	ppNode root;
-	ppNode rootCheckSip;
+	ppNode *root;
+	ppNode *rootCheckSip;
 	char *doubleEndLine;
 	long contentLength;
 	const char *parseDataPtr;
 	ppContent *contents[100];
 	unsigned int contents_count;
 	bool sip;
+	unsigned long timeSync_SIP_HEADERfilter;
 };
 
 class SafeAsyncQueue_base {
@@ -1375,7 +1442,7 @@ template<class type_queue_item>
 void SafeAsyncQueue<type_queue_item>::push(type_queue_item &item) {
 	lock_push_queue();
 	if(!push_queue) {
-		push_queue = new deque<type_queue_item>;
+		push_queue = new FILE_LINE deque<type_queue_item>;
 	}
 	push_queue->push_back(item);
 	unlock_push_queue();
@@ -1569,12 +1636,31 @@ public:
 	~BogusDumper();
 	void dump(pcap_pkthdr* header, u_char* packet, int dlt, const char *interfaceName);
 private:
+	void lock() {
+		while(__sync_lock_test_and_set(&this->_sync, 1));
+	}
+	void unlock() {
+		__sync_lock_release(&this->_sync);
+	}
+private:
 	map<string, PcapDumper*> dumpers;
 	string path;
 	string time;
+	volatile int _sync;
 };
 
 string base64_encode(const unsigned char *data, size_t input_length);
 char *base64_encode(const unsigned char *data, size_t input_length, size_t *output_length);
+
+inline struct tm localtime_r(const time_t *timep) {
+	struct tm rslt;
+	localtime_r(timep, &rslt);
+	return(rslt);
+}
+
+u_int32_t octal_decimal(u_int32_t n);
+
+bool vm_pexec(const char *cmdLine, SimpleBuffer *out, SimpleBuffer *err = NULL, unsigned timeout_sec = 10, unsigned timout_select_sec = 1);
+std::vector<std::string> parse_cmd_line(const char *cmdLine);
 
 #endif

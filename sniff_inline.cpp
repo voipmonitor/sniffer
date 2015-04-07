@@ -1,3 +1,16 @@
+#ifndef SNIFF_INLINE_C
+#define SNIFF_INLINE_C
+
+#if ( defined( __FreeBSD__ ) || defined ( __NetBSD__ ) )
+# ifndef FREEBSD
+#  define FREEBSD
+# endif
+#endif
+
+#ifdef FREEBSD
+#include <sys/types.h>
+#endif
+
 #include <syslog.h>
 #include <net/ethernet.h>
 
@@ -17,6 +30,9 @@
 #ifndef MIN
 #define MIN(x,y) ((x) < (y) ? (x) : (y))
 #endif
+
+
+extern bool isSslIpPort(u_int32_t ip, u_int16_t port);
 
 
 extern int opt_udpfrag;
@@ -78,7 +94,9 @@ inline
 int pcapProcess(pcap_pkthdr** header, u_char** packet, bool *destroy,
 		       bool enableDefrag, bool enableCalcMD5, bool enableDedup, bool enableDump,
 		       pcapProcessData *ppd, int pcapLinklayerHeaderType, pcap_dumper_t *pcapDumpHandle, const char *interfaceName) {
-	*destroy = false;
+	if(destroy) {
+		*destroy = false;
+	}
 	switch(pcapLinklayerHeaderType) {
 		case DLT_LINUX_SLL:
 			ppd->header_sll = (sll_header*)*packet;
@@ -118,7 +136,7 @@ int pcapProcess(pcap_pkthdr** header, u_char** packet, bool *destroy,
 			ppd->protocol = ETHERTYPE_IP;
 			break;
 		default:
-			syslog(LOG_ERR, "BAD DATALINK %s: datalink number [%d] is not supported", interfaceName, pcapLinklayerHeaderType);
+			syslog(LOG_ERR, "BAD DATALINK %s: datalink number [%d] is not supported", interfaceName ? interfaceName : "---", pcapLinklayerHeaderType);
 			return(0);
 	}
 	
@@ -130,7 +148,9 @@ int pcapProcess(pcap_pkthdr** header, u_char** packet, bool *destroy,
 		} else 
 		#endif
 		{
-			// not ipv4 
+			if(interfaceName && !strcmp(interfaceName, "lo")) {
+				syslog(LOG_ERR, "BAD PROTOCOL (not ipv4) IN %s (dlt %d) - TRY TCPREPLAY_WORKARROUND", interfaceName, pcapLinklayerHeaderType);
+			}
 			return(0);
 		}
 	}
@@ -140,24 +160,28 @@ int pcapProcess(pcap_pkthdr** header, u_char** packet, bool *destroy,
 	extern BogusDumper *bogusDumper;
 	static u_long lastTimeLogErrBadIpHeader = 0;
 	if(ppd->header_ip->version != 4) {
-		if(bogusDumper) {
-			bogusDumper->dump(*header, *packet, pcapLinklayerHeaderType, interfaceName);
-		}
-		u_long actTime = getTimeMS(*header);
-		if(actTime - 1000 > lastTimeLogErrBadIpHeader) {
-			syslog(LOG_ERR, "BAD HEADER_IP: %s: bogus ip header version %i", interfaceName, ppd->header_ip->version);
-			lastTimeLogErrBadIpHeader = actTime;
+		if(interfaceName) {
+			if(bogusDumper) {
+				bogusDumper->dump(*header, *packet, pcapLinklayerHeaderType, interfaceName);
+			}
+			u_long actTime = getTimeMS(*header);
+			if(actTime - 1000 > lastTimeLogErrBadIpHeader) {
+				syslog(LOG_ERR, "BAD HEADER_IP: %s: bogus ip header version %i", interfaceName, ppd->header_ip->version);
+				lastTimeLogErrBadIpHeader = actTime;
+			}
 		}
 		return(0);
 	}
 	if(htons(ppd->header_ip->tot_len) + ppd->header_ip_offset > (*header)->len) {
-		if(bogusDumper) {
-			bogusDumper->dump(*header, *packet, pcapLinklayerHeaderType, interfaceName);
-		}
-		u_long actTime = getTimeMS(*header);
-		if(actTime - 1000 > lastTimeLogErrBadIpHeader) {
-			syslog(LOG_ERR, "BAD HEADER_IP: %s: bogus ip header length %i, len %i", interfaceName, htons(ppd->header_ip->tot_len), (*header)->len);
-			lastTimeLogErrBadIpHeader = actTime;
+		if(interfaceName) {
+			if(bogusDumper) {
+				bogusDumper->dump(*header, *packet, pcapLinklayerHeaderType, interfaceName);
+			}
+			u_long actTime = getTimeMS(*header);
+			if(actTime - 1000 > lastTimeLogErrBadIpHeader) {
+				syslog(LOG_ERR, "BAD HEADER_IP: %s: bogus ip header length %i, len %i", interfaceName, htons(ppd->header_ip->tot_len), (*header)->len);
+				lastTimeLogErrBadIpHeader = actTime;
+			}
 		}
 		return(0);
 	}
@@ -168,13 +192,15 @@ int pcapProcess(pcap_pkthdr** header, u_char** packet, bool *destroy,
 			int foffset = ntohs(ppd->header_ip->frag_off);
 			if ((foffset & IP_MF) || ((foffset & IP_OFFSET) > 0)) {
 				if(htons(ppd->header_ip->tot_len) + ppd->header_ip_offset > (*header)->caplen) {
-					if(bogusDumper) {
-						bogusDumper->dump(*header, *packet, pcapLinklayerHeaderType, interfaceName);
-					}
-					u_long actTime = getTimeMS(*header);
-					if(actTime - 1000 > lastTimeLogErrBadIpHeader) {
-						syslog(LOG_ERR, "BAD FRAGMENTED HEADER_IP: %s: bogus ip header length %i, caplen %i", interfaceName, htons(ppd->header_ip->tot_len), (*header)->caplen);
-						lastTimeLogErrBadIpHeader = actTime;
+					if(interfaceName) {
+						if(bogusDumper) {
+							bogusDumper->dump(*header, *packet, pcapLinklayerHeaderType, interfaceName);
+						}
+						u_long actTime = getTimeMS(*header);
+						if(actTime - 1000 > lastTimeLogErrBadIpHeader) {
+							syslog(LOG_ERR, "BAD FRAGMENTED HEADER_IP: %s: bogus ip header length %i, caplen %i", interfaceName, htons(ppd->header_ip->tot_len), (*header)->caplen);
+							lastTimeLogErrBadIpHeader = actTime;
+						}
 					}
 					return(0);
 				}
@@ -220,8 +246,8 @@ int pcapProcess(pcap_pkthdr** header, u_char** packet, bool *destroy,
 							header_ip_1->tot_len = htons((ntohs(ppd->header_ip->tot_len)) + sizeof(iphdr2));
 
 							if(*destroy) {
-								free(header_old);
-								free(packet_old);
+								delete header_old;
+								delete [] packet_old;
 							}
 							*destroy = true;
 						} else {
@@ -274,6 +300,9 @@ int pcapProcess(pcap_pkthdr** header, u_char** packet, bool *destroy,
 		      (tcpReassemblyHttp->check_ip(htonl(ppd->header_ip->saddr)) || tcpReassemblyHttp->check_ip(htonl(ppd->header_ip->daddr)))) &&
 		    !(opt_enable_webrtc && (webrtcportmatrix[htons(ppd->header_tcp->source)] || webrtcportmatrix[htons(ppd->header_tcp->dest)]) &&
 		      (tcpReassemblyWebrtc->check_ip(htonl(ppd->header_ip->saddr)) || tcpReassemblyWebrtc->check_ip(htonl(ppd->header_ip->daddr)))) &&
+		    !(opt_enable_ssl && 
+		      (isSslIpPort(htonl(ppd->header_ip->saddr), htons(ppd->header_tcp->source)) ||
+		       isSslIpPort(htonl(ppd->header_ip->daddr), htons(ppd->header_tcp->dest)))) &&
 		    !(opt_skinny && (htons(ppd->header_tcp->source) == 2000 || htons(ppd->header_tcp->dest) == 2000))) {
 			// not interested in TCP packet other than SIP port
 			if(opt_ipaccount == 0 && !DEBUG_ALL_PACKETS) {
@@ -285,6 +314,7 @@ int pcapProcess(pcap_pkthdr** header, u_char** packet, bool *destroy,
 		ppd->header_udp->dest = ppd->header_tcp->dest;
 	} else {
 		//packet is not UDP and is not TCP, we are not interested, go to the next packet (but if ipaccount is enabled, do not skip IP
+		ppd->datalen = 0;
 		if(opt_ipaccount == 0 && !DEBUG_ALL_PACKETS) {
 			return(0);
 		}
@@ -298,7 +328,8 @@ int pcapProcess(pcap_pkthdr** header, u_char** packet, bool *destroy,
 		/* check for duplicate packets (md5 is expensive operation - enable only if you really need it */
 		if(ppd->datalen > 0 && opt_dup_check && ppd->prevmd5s != NULL && (ppd->traillen < ppd->datalen) &&
 		   !(ppd->istcp && opt_enable_http && (httpportmatrix[htons(ppd->header_tcp->source)] || httpportmatrix[htons(ppd->header_tcp->dest)])) &&
-		   !(ppd->istcp && opt_enable_webrtc && (webrtcportmatrix[htons(ppd->header_tcp->source)] || webrtcportmatrix[htons(ppd->header_tcp->dest)]))) {
+		   !(ppd->istcp && opt_enable_webrtc && (webrtcportmatrix[htons(ppd->header_tcp->source)] || webrtcportmatrix[htons(ppd->header_tcp->dest)])) &&
+		   !(ppd->istcp && opt_enable_ssl && (isSslIpPort(htonl(ppd->header_ip->saddr), htons(ppd->header_tcp->source)) || isSslIpPort(htonl(ppd->header_ip->daddr), htons(ppd->header_tcp->dest))))) {
 			if(enableCalcMD5) {
 				MD5_Init(&ppd->ctx);
 				if(opt_dup_check_ipheader) {
@@ -330,3 +361,5 @@ int pcapProcess(pcap_pkthdr** header, u_char** packet, bool *destroy,
 	
 	return(1);
 }
+
+#endif

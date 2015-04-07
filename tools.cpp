@@ -21,14 +21,14 @@
 #include <net/if.h>
 #include <syslog.h>
 #include <sys/ioctl.h> 
-#include <sys/syscall.h>
 #include <sys/statvfs.h>
 #include <curl/curl.h>
 #include <cerrno>
-#include <json/json.h>
+#include <json.h>
 #include <iomanip>
 #include <openssl/sha.h>
 #include <fcntl.h>
+#include <math.h>
 
 #include "voipmonitor.h"
 
@@ -48,22 +48,32 @@
 #include "md5.h"
 #include "pcap_queue.h"
 #include "sql_db.h"
+#include "tar.h"
+#include "filter_mysql.h"
 
 extern char mac[32];
 extern int verbosity;
 extern int terminating;
 extern int opt_pcap_dump_bufflength;
 extern int opt_pcap_dump_asyncwrite;
-extern int opt_pcap_dump_zip;
-extern int opt_pcap_dump_ziplevel;
+extern FileZipHandler::eTypeCompress opt_pcap_dump_zip_sip;
+extern FileZipHandler::eTypeCompress opt_pcap_dump_zip_rtp;
+extern FileZipHandler::eTypeCompress opt_pcap_dump_zip_graph;
+extern int opt_pcap_dump_ziplevel_sip;
+extern int opt_pcap_dump_ziplevel_rtp;
+extern int opt_pcap_dump_ziplevel_graph;
 extern int opt_read_from_file;
+extern int opt_pcap_dump_tar;
+extern char opt_chdir[1024];
+
 
 static char b2a[256];
 static char base64[64];
 
+extern TarQueue *tarQueue;
 using namespace std;
 
-AsyncClose asyncClose;
+AsyncClose *asyncClose;
 
 //Sort files in given directory using mtime from oldest (files not already openned for write).
 queue<string> listFilesDir (char * dir) {
@@ -109,8 +119,10 @@ queue<string> listFilesDir (char * dir) {
 			stat(filename,&fileStats);
 			elem.filename = filename;           //result are pathnames
 			elem.mtime = fileStats.st_mtime;
-
-			if (fcntl(fd, F_SETLEASE, F_WRLCK) && EAGAIN == errno) {        //this test not work on tmpfs,nfs,ramfs as a workaround check mtime and actual date
+#ifndef FREEBSD
+			if (fcntl(fd, F_SETLEASE, F_WRLCK) && EAGAIN == errno)  //this test not work on tmpfs,nfs,ramfs as a workaround check mtime and actual date
+#endif
+			{
                                                                             //if used one of fs above, test only mtime of a file and given timeout (120)
 				if (!privListDir::file_mtimer(elem, 120)) {
 					//skip this file, because it is already write locked
@@ -118,7 +130,9 @@ queue<string> listFilesDir (char * dir) {
 					continue;
 				}
 			}
+#ifndef FREEBSD
 			fcntl(fd, F_SETLEASE, F_UNLCK);
+#endif
 			//add this file to list
 			close(fd);
 			tmpVec.push_back(elem);
@@ -174,6 +188,16 @@ int msleep(long msec)
 	tv.tv_sec=(int)((float)msec/1000000);
 	tv.tv_usec=msec-tv.tv_sec*1000000;
 	return select(0,0,0,0,&tv);
+}
+
+int file_exists (string fileName)
+{
+	struct stat buf;
+	/* File found */
+	if (stat(fileName.c_str(), &buf) == 0) {
+		return buf.st_size;
+	}
+	return 0;
 }
 
 int file_exists (char * fileName)
@@ -600,7 +624,7 @@ CircularBuffer::CircularBuffer(size_t capacity)
 	, size_(0)
 	, capacity_(capacity)
 {
-	data_ = new char[capacity];
+	data_ = new FILE_LINE char[capacity];
 }
 
 CircularBuffer::~CircularBuffer()
@@ -756,7 +780,7 @@ string GetFileMD5(std::string filename) {
 	}
 	MD5_CTX ctx;
 	MD5_Init(&ctx);
-	char *fileBuffer = new char[fileSize];
+	char *fileBuffer = new FILE_LINE char[fileSize];
 	fread(fileBuffer, 1, fileSize, fileHandle);
 	fclose(fileHandle);
 	MD5_Update(&ctx, fileBuffer, fileSize);
@@ -770,6 +794,23 @@ string GetDataMD5(u_char *data, u_int32_t datalen) {
 	MD5_CTX ctx;
 	MD5_Init(&ctx);
 	MD5_Update(&ctx, data, datalen);
+	unsigned char _md5[MD5_DIGEST_LENGTH];
+	MD5_Final(_md5, &ctx);
+	return(MD5_String(_md5));
+}
+
+string GetDataMD5(u_char *data, u_int32_t datalen,
+		  u_char *data2, u_int32_t data2len,
+		  u_char *data3, u_int32_t data3len) {
+	MD5_CTX ctx;
+	MD5_Init(&ctx);
+	MD5_Update(&ctx, data, datalen);
+	if(data2 && data2len) {
+		MD5_Update(&ctx, data2, data2len);
+	}
+	if(data3 && data3len) {
+		MD5_Update(&ctx, data3, data3len);
+	}
 	unsigned char _md5[MD5_DIGEST_LENGTH];
 	MD5_Final(_md5, &ctx);
 	return(MD5_String(_md5));
@@ -810,8 +851,7 @@ time_t stringToTime(const char *timeStr) {
 	sscanf(timeStr, "%d-%d-%d %d:%d:%d", &year, &month, &day, &hour, &min, &sec);
 	time_t now;
 	time(&now);
-	struct tm dateTime;
-	dateTime = *localtime(&now);
+	struct tm dateTime = localtime_r(&now);
 	dateTime.tm_year = year - 1900;
 	dateTime.tm_mon = month - 1;  
 	dateTime.tm_mday = day;
@@ -827,9 +867,7 @@ struct tm getDateTime(u_int64_t us) {
 }
 
 struct tm getDateTime(time_t time) {
-	struct tm dateTime;
-	dateTime = *localtime(&time);
-	return(dateTime);
+	return(localtime_r(&time));
 }
 
 struct tm getDateTime(const char *timeStr) {
@@ -841,8 +879,7 @@ unsigned int getNumberOfDayToNow(const char *date) {
 	sscanf(date, "%d-%d-%d", &year, &month, &day);
 	time_t now;
 	time(&now);
-	struct tm dateTime;
-	dateTime = *localtime(&now);
+	struct tm dateTime = localtime_r(&now);
 	dateTime.tm_year = year - 1900;
 	dateTime.tm_mon = month - 1;  
 	dateTime.tm_mday = day;
@@ -855,11 +892,11 @@ unsigned int getNumberOfDayToNow(const char *date) {
 
 string getActDateTimeF(bool useT_symbol) {
 	time_t actTime = time(NULL);
-	struct tm *actTimeInfo = localtime(&actTime);
+	struct tm actTimeInfo = localtime_r(&actTime);
 	char dateTimeF[20];
 	strftime(dateTimeF, 20, 
 		 useT_symbol ? "%Y-%m-%dT%T" : "%Y-%m-%d %T", 
-		 actTimeInfo);
+		 &actTimeInfo);
 	return(dateTimeF);
 }
 
@@ -880,11 +917,12 @@ PcapDumper::PcapDumper(eTypePcapDump type, class Call *call) {
 	this->openError = false;
 	this->openAttempts = 0;
 	this->state = state_na;
+	this->existsContent = false;
 	this->dlt = -1;
 	this->lastTimeSyslog = 0;
 	this->_bufflength = -1;
-	this->_asyncwrite = -1;
-	this->_zip = -1;
+	this->_asyncwrite = type == na && !call ? 0 : -1;
+	this->_typeCompress = FileZipHandler::compress_default;
 }
 
 PcapDumper::~PcapDumper() {
@@ -918,7 +956,8 @@ bool PcapDumper::open(const char *fileName, const char *fileNameSpoolRelative, p
 	string errorString;
 	this->dlt = useDlt == DLT_LINUX_SLL && opt_convert_dlt_sll_to_en10 ? DLT_EN10MB : useDlt;
 	this->handle = __pcap_dump_open(_handle, fileName, this->dlt, &errorString,
-					_bufflength, _asyncwrite, _zip);
+					_bufflength, _asyncwrite, _typeCompress,
+					call, this->type);
 	++this->openAttempts;
 	if(!this->handle) {
 		if(this->type != rtp || !this->openError) {
@@ -946,7 +985,7 @@ bool PcapDumper::open(const char *fileName, const char *fileNameSpoolRelative, p
 
 bool incorrectCaplenDetected = false;
 
-void PcapDumper::dump(pcap_pkthdr* header, const u_char *packet, int dlt) {
+void PcapDumper::dump(pcap_pkthdr* header, const u_char *packet, int dlt, bool allPackets) {
 	extern int opt_convert_dlt_sll_to_en10;
 	if((dlt == DLT_LINUX_SLL && opt_convert_dlt_sll_to_en10 ? DLT_EN10MB : dlt) != this->dlt) {
 		u_long actTime = getTimeMS();
@@ -959,9 +998,11 @@ void PcapDumper::dump(pcap_pkthdr* header, const u_char *packet, int dlt) {
 	}
 	extern unsigned int opt_maxpcapsize_mb;
 	if(this->handle) {
-		if(header->caplen > 0 && header->caplen <= header->len) {
+		if(allPackets ||
+		   (header->caplen > 0 && header->caplen <= header->len)) {
 			if(!opt_maxpcapsize_mb || this->capsize < opt_maxpcapsize_mb * 1024 * 1024) {
-				__pcap_dump((u_char*)this->handle, header, packet);
+				this->existsContent = true;
+				__pcap_dump((u_char*)this->handle, header, packet, allPackets);
 				extern int opt_packetbuffered;
 				if(opt_packetbuffered) {
 					this->flush();
@@ -979,20 +1020,20 @@ void PcapDumper::dump(pcap_pkthdr* header, const u_char *packet, int dlt) {
 
 void PcapDumper::close(bool updateFilesQueue) {
 	if(this->handle) {
-		if(this->_asyncwrite == 0) {
+		if((this->_asyncwrite < 0 ? opt_pcap_dump_asyncwrite : this->_asyncwrite) == 0) {
 			__pcap_dump_close(this->handle);
 			this->handle = NULL;
 			this->state = state_close;
 		} else {
 			if(this->call) {
-				asyncClose.add(this->handle, updateFilesQueue,
-					       this->call, this,
-					       this->fileNameSpoolRelative.c_str(), 
-					       type == rtp ? "rtpsize" : 
-					       this->call->type == REGISTER ? "regsize" : "sipsize",
-					       0/*this->capsize + PCAP_DUMPER_HEADER_SIZE ignore size counter - header->capsize can contain -1*/);
+				asyncClose->add(this->handle, updateFilesQueue,
+						this->call, this,
+						this->fileNameSpoolRelative.c_str(), 
+						type == rtp ? "rtpsize" : 
+						this->call->type == REGISTER ? "regsize" : "sipsize",
+						0/*this->capsize + PCAP_DUMPER_HEADER_SIZE ignore size counter - header->capsize can contain -1*/);
 			} else {
-				asyncClose.add(this->handle);
+				asyncClose->add(this->handle);
 			}
 			this->handle = NULL;
 			this->state = state_do_close;
@@ -1012,11 +1053,13 @@ void PcapDumper::remove() {
 }
 
 
-extern int opt_gzipGRAPH;
+extern FileZipHandler::eTypeCompress opt_gzipGRAPH;
 
 RtpGraphSaver::RtpGraphSaver(RTP *rtp) {
 	this->rtp = rtp;
 	this->handle = NULL;
+	this->existsContent = false;
+	this->_asyncwrite = opt_pcap_dump_asyncwrite ? 1 : 0;
 }
 
 RtpGraphSaver::~RtpGraphSaver() {
@@ -1037,7 +1080,9 @@ bool RtpGraphSaver::open(const char *fileName, const char *fileNameSpoolRelative
 		}
 	}
 	*/
-	this->handle = new FileZipHandler(opt_pcap_dump_bufflength, opt_pcap_dump_asyncwrite, opt_gzipGRAPH);
+	this->handle = new FILE_LINE FileZipHandler(opt_pcap_dump_bufflength, this->_asyncwrite, opt_gzipGRAPH,
+						    false, rtp && rtp->call_owner ? (Call*)rtp->call_owner : 0,
+						    FileZipHandler::graph_rtp);
 	if(!this->handle->open(fileName)) {
 		syslog(LOG_NOTICE, "graphsaver: error open file %s - %s", fileName, this->handle->error.c_str());
 		delete this->handle;
@@ -1051,25 +1096,32 @@ bool RtpGraphSaver::open(const char *fileName, const char *fileNameSpoolRelative
 
 void RtpGraphSaver::write(char *buffer, int length) {
 	if(this->isOpen()) {
+		this->existsContent = true;
 		this->handle->write(buffer, length);
 	}
 }
 
 void RtpGraphSaver::close(bool updateFilesQueue) {
 	if(this->isOpen()) {
-		Call *call = (Call*)this->rtp->call_owner;
-		if(call) {
-			asyncClose.add(this->handle, updateFilesQueue,
-				       call,
-				       this->fileNameSpoolRelative.c_str(), 
-				       "graphsize", 
-				       this->handle->size);
+		if(this->_asyncwrite == 0) {
+			this->handle->close();
+			delete this->handle;
+			this->handle = NULL;
 		} else {
-			asyncClose.add(this->handle);
-		}
-		this->handle = NULL;
-		if(updateFilesQueue && !call) {
-			syslog(LOG_ERR, "graphsaver: gfilename[%s] does not have owner", this->fileNameSpoolRelative.c_str());
+			Call *call = (Call*)this->rtp->call_owner;
+			if(call) {
+				asyncClose->add(this->handle, updateFilesQueue,
+						call,
+						this->fileNameSpoolRelative.c_str(), 
+						"graphsize", 
+						this->handle->size);
+			} else {
+				asyncClose->add(this->handle);
+			}
+			this->handle = NULL;
+			if(updateFilesQueue && !call) {
+				syslog(LOG_ERR, "graphsaver: gfilename[%s] does not have owner", this->fileNameSpoolRelative.c_str());
+			}
 		}
 	}
 }
@@ -1119,7 +1171,6 @@ AsyncClose::AsyncClose() {
 		activeThread[i] = 0;
 		cpuPeak[i] = 0;
 	}
-	sizeOfDataInMemory = 0;
 	removeThreadProcessed = 0;
 }
 
@@ -1173,6 +1224,7 @@ void AsyncClose::removeThread() {
 }
 
 void AsyncClose::processTask(int threadIndex) {
+	extern int terminated_call_cleanup;
 	this->threadId[threadIndex] = get_unix_tid();
 	do {
 		processAll(threadIndex);
@@ -1187,7 +1239,7 @@ void AsyncClose::processTask(int threadIndex) {
 			unlock(threadIndex);
 		}
 		usleep(10000);
-	} while(!terminating);
+	} while(!terminated_call_cleanup);
 }
 
 void AsyncClose::processAll(int threadIndex) {
@@ -1205,6 +1257,20 @@ void AsyncClose::processAll(int threadIndex) {
 			break;
 		}
 	}
+}
+
+void AsyncClose::safeTerminate() {
+	extern int terminated_call_cleanup;
+	while(!terminated_call_cleanup) {
+		usleep(100000);
+	}
+	for(int i = 0; i < getCountThreads(); i++) {
+		pthread_join(this->thread[i], NULL);
+	}
+	processAll();
+	extern int terminated_async;
+	terminated_async = 1;
+	syslog(LOG_NOTICE, "terminated - async");
 }
 
 void AsyncClose::preparePstatData(int threadIndex) {
@@ -1342,7 +1408,7 @@ bool RestartUpgrade::runUpgrade() {
 			FILE *fileHandle = fopen(outputStdoutErr, "r");
 			if(fileHandle) {
 				size_t sizeOfOutputWgetBuffer = 10000;
-				char *outputStdoutErrBuffer = new char[sizeOfOutputWgetBuffer];
+				char *outputStdoutErrBuffer = new FILE_LINE char[sizeOfOutputWgetBuffer];
 				size_t readSize = fread(outputStdoutErrBuffer, 1, sizeOfOutputWgetBuffer, fileHandle);
 				if(readSize > 0) {
 					outputStdoutErrBuffer[min(readSize, sizeOfOutputWgetBuffer) - 1] = 0;
@@ -1388,7 +1454,7 @@ bool RestartUpgrade::runUpgrade() {
 		FILE *fileHandle = fopen(outputStdoutErr, "r");
 		if(fileHandle) {
 			size_t sizeOfOutputWgetBuffer = 10000;
-			char *outputStdoutErrBuffer = new char[sizeOfOutputWgetBuffer];
+			char *outputStdoutErrBuffer = new FILE_LINE char[sizeOfOutputWgetBuffer];
 			size_t readSize = fread(outputStdoutErrBuffer, 1, sizeOfOutputWgetBuffer, fileHandle);
 			if(readSize > 0) {
 				outputStdoutErrBuffer[min(readSize, sizeOfOutputWgetBuffer) - 1] = 0;
@@ -1502,6 +1568,12 @@ bool RestartUpgrade::runRestart(int socket1, int socket2) {
 		}
 		return(false);
 	}
+	extern int opt_nocdr;
+	extern bool opt_autoload_from_sqlvmexport;
+	if(!opt_nocdr && opt_autoload_from_sqlvmexport) {
+		extern MySqlStore *sqlStore;
+		sqlStore->exportToFile(NULL, "auto", false, true);
+	}
 	close(socket1);
 	close(socket2);
 	terminate_packetbuffer();
@@ -1561,29 +1633,6 @@ bool RestartUpgrade::getRestartTempScriptFileName() {
 	return(false);
 }
 
-int get_unix_tid(void) {
-	 int ret = -1;
-#ifdef HAVE_PTHREAD_GETTHREADID_NP
-	ret = pthread_getthreadid_np();
-#elif defined(linux)
-	ret = syscall(SYS_gettid);
-#elif defined(__sun)
-	ret = pthread_self();
-#elif defined(__APPLE__)
-	ret = mach_thread_self();
-	mach_port_deallocate(mach_task_self(), ret);
-#elif defined(__NetBSD__)
-	ret = _lwp_self();
-#elif defined(__FreeBSD__)
-	long lwpid;
-	thr_self( &lwpid );
-	ret = lwpid;
-#elif defined(__DragonFly__)
-	ret = lwp_gettid();
-#endif
-	return ret;
-}
-
 std::string pexec(char* cmd, int *exitCode) {
 	FILE* pipe = popen(cmd, "r");
 	if (!pipe) return "ERROR";
@@ -1601,13 +1650,16 @@ std::string pexec(char* cmd, int *exitCode) {
 }
 
 
-std::string &trim(std::string &s) {
+std::string &trim(std::string &s, const char *trimChars) {
 	if(!s.length()) {
 		 return(s);
 	}
+	if(!trimChars) {
+		trimChars = "\r\n\t ";
+	}
 	size_t length = s.length();
 	size_t trimCharsLeft = 0;
-	while(trimCharsLeft < length && strchr("\r\n\t ", s[trimCharsLeft])) {
+	while(trimCharsLeft < length && strchr(trimChars, s[trimCharsLeft])) {
 		++trimCharsLeft;
 	}
 	if(trimCharsLeft) {
@@ -1615,7 +1667,7 @@ std::string &trim(std::string &s) {
 		length = s.length();
 	}
 	size_t trimCharsRight = 0;
-	while(trimCharsRight < length && strchr("\r\n\t ", s[length - trimCharsRight - 1])) {
+	while(trimCharsRight < length && strchr(trimChars, s[length - trimCharsRight - 1])) {
 		++trimCharsRight;
 	}
 	if(trimCharsRight) {
@@ -1624,8 +1676,8 @@ std::string &trim(std::string &s) {
 	return(s);
 }
 
-std::string trim_str(std::string s) {
-	return(trim(s));
+std::string trim_str(std::string s, const char *trimChars) {
+	return(trim(s, trimChars));
 }
 
 std::vector<std::string> &split(const std::string &s, char delim, std::vector<std::string> &elems) {
@@ -1814,7 +1866,128 @@ void ListPhoneNumber_wb::addBlack(const char *number) {
 }
 
 
+void ParsePacket::setStdParse() {
+	if(root) {
+		delete root;
+		root = NULL;
+	}
+	if(rootCheckSip) {
+		delete rootCheckSip;
+		rootCheckSip = NULL;
+	}
+	if(!root) {
+		root = new FILE_LINE ppNode;
+	}
+	if(!rootCheckSip) {
+		rootCheckSip = new FILE_LINE ppNode;
+	}
+	addNode("content-length:", true);
+	addNode("l:", true);
+	addNode("INVITE ");
+	addNode("call-id:");
+	addNode("i:");
+	addNode("from:");
+	addNode("f:");
+	addNode("to:");
+	addNode("t:");
+	addNode("contact:");
+	addNode("m:");
+	addNode("remote-party-id:");
+	addNode("geoposition:");
+	addNode("user-agent:");
+	addNode("authorization:");
+	addNode("expires:");
+	addNode("x-voipmonitor-norecord:");
+	addNode("signal:");
+	addNode("signal=");
+	addNode("x-voipmonitor-custom1:");
+	addNode("content-type:");
+	addNode("c:");
+	addNode("cseq:");
+	addNode("supported:");
+	addNode("proxy-authenticate:");
+	extern int opt_update_dstnum_onanswer;
+	if(opt_update_dstnum_onanswer) {
+		addNode("via:");
+	}
+	addNode("m=audio ");
+	addNode("a=rtpmap:");
+	addNode("o=");
+	addNode("c=IN IP4 ");
+	addNode("expires=");
+	addNode("username=\"");
+	addNode("realm=\"");
+	
+	extern char opt_match_header[128];
+	if(opt_match_header[0] != '\0') {
+		string findHeader = opt_match_header;
+		if(findHeader[findHeader.length() - 1] != ':') {
+			findHeader.append(":");
+		}
+		addNode(findHeader.c_str());
+	}
+	
+	extern char opt_callidmerge_header[128];
+	if(opt_callidmerge_header[0] != '\0') {
+		string findHeader = opt_callidmerge_header;
+		if(findHeader[findHeader.length() - 1] != ':') {
+			findHeader.append(":");
+		}
+		addNode(findHeader.c_str());
+	}
+	
+	extern vector<dstring> opt_custom_headers_cdr;
+	extern vector<dstring> opt_custom_headers_message;
+	for(int i = 0; i < 2; i++) {
+		vector<dstring> *_customHeaders = i == 0 ? &opt_custom_headers_cdr : &opt_custom_headers_message;
+		for(size_t iCustHeaders = 0; iCustHeaders < _customHeaders->size(); iCustHeaders++) {
+			string findHeader = (*_customHeaders)[iCustHeaders][0];
+			if(findHeader[findHeader.length() - 1] != ':') {
+				findHeader.append(":");
+			}
+			addNode(findHeader.c_str());
+		}
+	}
+	
+	//RFC 3261
+	addNodeCheckSip("SIP/2.0");
+	addNodeCheckSip("INVITE");
+	addNodeCheckSip("ACK");
+	addNodeCheckSip("BYE");
+	addNodeCheckSip("CANCEL");
+	addNodeCheckSip("OPTIONS");
+	addNodeCheckSip("REGISTER");
+	//RFC 3262
+	addNodeCheckSip("PRACK");
+	addNodeCheckSip("SUBSCRIBE");
+	addNodeCheckSip("NOTIFY");
+	addNodeCheckSip("PUBLISH");
+	addNodeCheckSip("INFO");
+	addNodeCheckSip("REFER");
+	addNodeCheckSip("MESSAGE");
+	addNodeCheckSip("UPDATE");
+	
+	extern SIP_HEADERfilter *sipheaderfilter;
+	if(sipheaderfilter) {
+		SIP_HEADERfilter::lock_sync();
+		sipheaderfilter->addNodes(this);
+		SIP_HEADERfilter::unlock_sync();
+	}
+}
+
 unsigned long ParsePacket::parseData(char *data, unsigned long datalen, bool doClear) {
+	extern SIP_HEADERfilter *sipheaderfilter;
+	extern int sipheaderfilter_reload_do;
+	if(!this->timeSync_SIP_HEADERfilter) {
+		this->timeSync_SIP_HEADERfilter = sipheaderfilter->getLoadTime();
+	} else if(!sipheaderfilter_reload_do &&
+		  sipheaderfilter->getLoadTime() > this->timeSync_SIP_HEADERfilter) {
+		this->setStdParse();
+		this->timeSync_SIP_HEADERfilter = sipheaderfilter->getLoadTime();
+		if(sverb.capture_filter) {
+			syslog(LOG_NOTICE, "SIP_HEADERfilter - reload ParsePacket::parseData after load SIP_HEADERfilter");
+		}
+	}
 	unsigned long rsltDataLen = datalen;
 	if(doClear) {
 		clear();
@@ -2041,7 +2214,7 @@ void JsonExport::add(const char *name, string content) {
 }
 
 void JsonExport::add(const char *name, const char *content) {
-	JsonExportItem_template<string> *item = new JsonExportItem_template<string>;
+	JsonExportItem_template<string> *item = new FILE_LINE JsonExportItem_template<string>;
 	item->setTypeItem(_string);
 	item->setName(name);
 	item->setContent(string(content));
@@ -2049,7 +2222,7 @@ void JsonExport::add(const char *name, const char *content) {
 }
 
 void JsonExport::add(const char *name, u_int64_t content) {
-	JsonExportItem_template<u_int64_t> *item = new JsonExportItem_template<u_int64_t>;
+	JsonExportItem_template<u_int64_t> *item = new FILE_LINE JsonExportItem_template<u_int64_t>;
 	item->setTypeItem(_number);
 	item->setName(name);
 	item->setContent(content);
@@ -2060,29 +2233,39 @@ void JsonExport::add(const char *name, u_int64_t content) {
 //------------------------------------------------------------------------------
 // pcap_dump_open with set buffer
 
-FileZipHandler::FileZipHandler(int bufferLength, int enableAsyncWrite, int enableZip,
-			       bool dumpHandler) {
+#define DEFAULT_BUFFER_LENGTH		8192
+
+FileZipHandler::FileZipHandler(int bufferLength, int enableAsyncWrite, eTypeCompress typeCompress,
+			       bool dumpHandler, Call *call,
+			       eTypeFile typeFile) {
 	if(bufferLength <= 0) {
 		enableAsyncWrite = 0;
-		enableZip = 0;
+		typeCompress = compress_na;
 	}
 	this->permission = 0;
 	this->fh = 0;
-	this->zipStream = NULL;
-	this->bufferLength = bufferLength;
+	this->tar = opt_pcap_dump_tar && call && typeFile != FileZipHandler::na;
+	this->compressStream = NULL;
+	this->bufferLength = this->tar ?
+			      (bufferLength ? bufferLength : DEFAULT_BUFFER_LENGTH) :
+			      bufferLength;
 	if(bufferLength) {
-		this->buffer = new char[bufferLength];
+		this->buffer = new FILE_LINE char[bufferLength];
 	} else {
 		this->buffer = NULL;
 	}
-	this->zipBuffer = NULL;
 	this->useBufferLength = 0;
+	this->tarBuffer = NULL;
+	this->tarBufferCreated = false;
 	this->enableAsyncWrite = enableAsyncWrite && !opt_read_from_file;
-	this->enableZip = enableZip;
+	this->typeCompress = typeCompress;
 	this->dumpHandler = dumpHandler;
+	this->call = call;
+	this->time = call ? call->calltime() : 0;
 	this->size = 0;
 	this->counter = ++scounter;
 	this->userData = 0;
+	this->typeFile = typeFile;
 }
 
 FileZipHandler::~FileZipHandler() {
@@ -2090,26 +2273,63 @@ FileZipHandler::~FileZipHandler() {
 	if(this->buffer) {
 		delete [] this->buffer;
 	}
-	if(this->zipBuffer) {
-		delete [] this->zipBuffer;
+	if(this->tarBuffer) {
+		delete this->tarBuffer;
 	}
-	if(this->zipStream) {
-		deflateEnd(this->zipStream);
-		delete this->zipStream;
+	if(this->compressStream) {
+		delete this->compressStream;
+	}
+	if(this->tar && !this->tarBufferCreated) {
+		decreaseTartimemap(this->time);
+		if(sverb.tar > 2) {
+			syslog(LOG_NOTICE, "tartimemap decrease2: %s %i %i", 
+			       this->fileName.c_str(), this->time, this->time - this->time % TAR_MODULO_SECONDS);
+		}
 	}
 }
 
 bool FileZipHandler::open(const char *fileName, int permission) {
+	if(this->tar) {
+		if(sverb.tar > 2) {
+			syslog(LOG_NOTICE, "FileZipHandler open: %s %i %i %s", 
+			       fileName, this->time, this->time - this->time % TAR_MODULO_SECONDS, sqlDateTimeString(this->time).c_str());
+		}
+		increaseTartimemap(time);
+		if(sverb.tar > 2) {
+			syslog(LOG_NOTICE, "tartimemap increase: %s %i %i", 
+			       fileName, this->time, this->time - this->time % TAR_MODULO_SECONDS);
+			
+			unsigned int year, mon, day, hour, minute;
+			char type[12];
+			char fbasename[2*1024];
+			sscanf(fileName, "%u-%u-%u/%u/%u/%[^/]/%s", &year, &mon, &day, &hour, &minute, type, fbasename);
+			
+			char dateTimeString[20];
+			sprintf(dateTimeString, "%4i-%02i-%02i %02i:%02i:00",
+				year, mon, day, hour, minute);
+			if(dateTimeString != sqlDateTimeString(this->time - this->time % TAR_MODULO_SECONDS)) {
+				syslog(LOG_ERR, "BAD FileZipHandler time: %s %s %s %s",
+				       fileName,
+				       dateTimeString, sqlDateTimeString(this->time).c_str(), sqlDateTimeString(this->time - this->time % TAR_MODULO_SECONDS).c_str()); 
+			}
+			
+		}
+	}
 	this->fileName = fileName;
 	this->permission = permission;
 	return(true);
 }
 
 void FileZipHandler::close() {
-	this->flushBuffer(true);
-	if(this->okHandle()) {
-		::close(this->fh);
-		this->fh = 0;
+	if(this->tar) {
+		this->flushBuffer(true);
+		this->flushTarBuffer();
+	} else  {
+		this->flushBuffer(true);
+		if(this->okHandle()) {
+			::close(this->fh);
+			this->fh = 0;
+		}
 	}
 }
 
@@ -2122,6 +2342,13 @@ bool FileZipHandler::flushBuffer(bool force) {
 	return(rsltWrite);
 }
 
+void FileZipHandler::flushTarBuffer() {
+	if(!this->tarBuffer)
+		return;
+	this->tarBuffer->close();
+	this->tarBuffer = NULL;
+}
+
 bool FileZipHandler::writeToBuffer(char *data, int length) {
 	if(!this->buffer) {
 		return(false);
@@ -2130,7 +2357,10 @@ bool FileZipHandler::writeToBuffer(char *data, int length) {
 		flushBuffer();
 	}
 	if(length <= this->bufferLength) {
-		memcpy(this->buffer + this->useBufferLength, data, length);
+		memcpy_heapsafe(this->buffer + this->useBufferLength, this->buffer,
+				data, NULL,
+				length,
+				__FILE__, __LINE__);
 		this->useBufferLength += length;
 		return(true);
 	} else {
@@ -2141,9 +2371,9 @@ bool FileZipHandler::writeToBuffer(char *data, int length) {
 bool FileZipHandler::writeToFile(char *data, int length, bool force) {
 	if(enableAsyncWrite && !force) {
 		if(dumpHandler) {
-			asyncClose.addWrite((pcap_dumper_t*)this, data, length);
+			asyncClose->addWrite((pcap_dumper_t*)this, data, length);
 		} else {
-			asyncClose.addWrite(this, data, length);
+			asyncClose->addWrite(this, data, length);
 		}
 		return(true);
 	} else {
@@ -2155,30 +2385,16 @@ bool FileZipHandler::_writeToFile(char *data, int length, bool flush) {
 	if(!this->error.empty()) {
 		return(false);
 	}
-	if(this->enableZip) {
-		if(!this->zipStream && !this->initZip()) {
-			return(false);
-		}
-		this->zipStream->avail_in = length;
-		this->zipStream->next_in = (unsigned char*)data;
-		do {
-			this->zipStream->avail_out = this->bufferLength;
-			this->zipStream->next_out = (unsigned char*)this->zipBuffer;
-			if(deflate(this->zipStream, flush ? Z_FINISH : Z_NO_FLUSH) != Z_STREAM_ERROR) {
-				int have = this->bufferLength - this->zipStream->avail_out;
-				if(this->__writeToFile(this->zipBuffer, have) <= 0) {
-					this->setError();
-					return(false);
-				} else {
-					this->size += length;
-				}
-			} else {
-				this->setError("zip deflate failed");
-				return(false);
+	switch(this->typeCompress) {
+	case compress_na:
+		if(this->tar) {
+			if(!this->tarBuffer) {
+				this->initTarbuffer();
 			}
-		} while(this->zipStream->avail_out == 0);
-		return(true);
-	} else {
+			this->tarBuffer->add(data, length, flush);
+			return(true);
+		}
+		{
 		int rsltWrite = this->__writeToFile(data, length);
 		if(rsltWrite <= 0) {
 			this->setError();
@@ -2187,7 +2403,18 @@ bool FileZipHandler::_writeToFile(char *data, int length, bool flush) {
 			this->size += length;
 			return(true);
 		}
+		}
+		break;
+	case gzip:
+		if(!this->compressStream) {
+			this->initCompress();
+		}
+		this->compressStream->compress(data, length, flush, this);
+		break;
+	case compress_default:
+		return(false);
 	}
+	return(false);
 }
 
 bool FileZipHandler::__writeToFile(char *data, int length) {
@@ -2208,24 +2435,66 @@ bool FileZipHandler::__writeToFile(char *data, int length) {
 	}
 }
 
-bool FileZipHandler::initZip() {
-	if(this->enableZip && !this->zipStream) {
-		this->zipStream =  new z_stream;
-		this->zipStream->zalloc = Z_NULL;
-		this->zipStream->zfree = Z_NULL;
-		this->zipStream->opaque = Z_NULL;
-		if(deflateInit2(this->zipStream, opt_pcap_dump_ziplevel, Z_DEFLATED, MAX_WBITS + 16, 8, Z_DEFAULT_STRATEGY) != Z_OK) {
-			deflateEnd(this->zipStream);
-			this->setError("zip initialize failed");
-			return(false);
-		} else {
-			this->zipBuffer = new char[bufferLength ? bufferLength : 8192];
+void FileZipHandler::initCompress() {
+	if(this->typeCompress == gzip && 
+	   !this->compressStream) {
+		this->compressStream =  new FILE_LINE CompressStream(CompressStream::gzip, 8 * 1024, 0);
+		this->compressStream->setZipLevel(typeFile == pcap_sip ? opt_pcap_dump_ziplevel_sip : 
+						  typeFile == pcap_rtp ? opt_pcap_dump_ziplevel_rtp : 
+						  typeFile == graph_rtp ? opt_pcap_dump_ziplevel_graph : Z_DEFAULT_COMPRESSION);
+	}
+}
+
+void FileZipHandler::initTarbuffer(bool useFileZipHandlerCompress) {
+	this->tarBufferCreated = true;
+	this->tarBuffer = new FILE_LINE ChunkBuffer(this->time, 
+						    typeFile == pcap_sip ? 8 * 1024 : 
+						    typeFile == pcap_rtp ? 32 * 1024 : 
+						    typeFile == graph_rtp ? 16 * 1024 : 8 * 1024,
+						    call, typeFile);
+	if(sverb.tar > 2) {
+		syslog(LOG_NOTICE, "chunkbufer create: %s %lx %i %i", 
+		       this->fileName.c_str(), (long)this->tarBuffer,
+		       this->time, this->time % TAR_MODULO_SECONDS);
+	}
+	if(!useFileZipHandlerCompress) {
+		extern CompressStream::eTypeCompress opt_pcap_dump_tar_internalcompress_sip;
+		extern CompressStream::eTypeCompress opt_pcap_dump_tar_internalcompress_rtp;
+		extern CompressStream::eTypeCompress opt_pcap_dump_tar_internalcompress_graph;
+		extern int opt_pcap_dump_tar_internal_gzip_sip_level;
+		extern int opt_pcap_dump_tar_internal_gzip_rtp_level;
+		extern int opt_pcap_dump_tar_internal_gzip_graph_level;
+		switch(typeFile) {
+		case pcap_sip:
+			if(opt_pcap_dump_tar_internalcompress_sip != CompressStream::compress_na) {
+				this->tarBuffer->setTypeCompress(opt_pcap_dump_tar_internalcompress_sip, 8 * 1024, this->bufferLength);
+				this->tarBuffer->setZipLevel(opt_pcap_dump_tar_internal_gzip_sip_level);
+			}
+			break;
+		case pcap_rtp:
+			if(opt_pcap_dump_tar_internalcompress_rtp != CompressStream::compress_na) {
+				this->tarBuffer->setTypeCompress(opt_pcap_dump_tar_internalcompress_rtp, 8 * 1024, this->bufferLength);
+				this->tarBuffer->setZipLevel(opt_pcap_dump_tar_internal_gzip_rtp_level);
+			}
+			break;
+		case graph_rtp:
+			if(opt_pcap_dump_tar_internalcompress_graph != CompressStream::compress_na) {
+				this->tarBuffer->setTypeCompress(opt_pcap_dump_tar_internalcompress_graph, 8 * 1024, this->bufferLength);
+				this->tarBuffer->setZipLevel(opt_pcap_dump_tar_internal_gzip_graph_level);
+			}
+			break;
+		case na:
+			break;
 		}
 	}
-	return(true);
+	this->tarBuffer->setName(this->fileName.c_str());
+	tarQueue->add(this->fileName, this->time, this->tarBuffer);
 }
 
 bool FileZipHandler::_open() {
+	if(this->tar) {
+		return(true);
+	}
 	for(int passOpen = 0; passOpen < 2; passOpen++) {
 		if(passOpen == 1) {
 			char *pointToLastDirSeparator = strrchr((char*)fileName.c_str(), '/');
@@ -2260,18 +2529,41 @@ void FileZipHandler::setError(const char *error) {
 	}
 }
 
+bool FileZipHandler::compress_ev(char *data, u_int32_t len, u_int32_t decompress_len) {
+	if(this->tar) {
+		if(!this->tarBuffer) {
+			this->initTarbuffer(true);
+		}
+		this->tarBuffer->add(data, len, false);
+		return(true);
+	}
+	if(this->__writeToFile(data, len) <= 0) {
+		this->setError();
+		return(false);
+	}
+	return(true);
+}
+
 u_int64_t FileZipHandler::scounter = 0;
 
 #define TCPDUMP_MAGIC		0xa1b2c3d4
 #define NSEC_TCPDUMP_MAGIC	0xa1b23c4d
 
 pcap_dumper_t *__pcap_dump_open(pcap_t *p, const char *fname, int linktype, string *errorString,
-				int _bufflength, int _asyncwrite, int _zip) {
+				int _bufflength, int _asyncwrite, FileZipHandler::eTypeCompress _typeCompress,
+				Call *call, PcapDumper::eTypePcapDump type) {
 	if(opt_pcap_dump_bufflength) {
-		FileZipHandler *handler = new FileZipHandler(_bufflength < 0 ? opt_pcap_dump_bufflength : _bufflength, 
-							     _asyncwrite < 0 ? opt_pcap_dump_asyncwrite : _asyncwrite, 
-							     _zip < 0 ? opt_pcap_dump_zip : _zip, 
-							     true);
+		FileZipHandler *handler = new FILE_LINE FileZipHandler(_bufflength < 0 ? opt_pcap_dump_bufflength : _bufflength, 
+								       _asyncwrite < 0 ? opt_pcap_dump_asyncwrite : _asyncwrite, 
+								       _typeCompress == FileZipHandler::compress_default ? 
+									(type == PcapDumper::sip ? opt_pcap_dump_zip_sip :
+									 type == PcapDumper::rtp ? opt_pcap_dump_zip_rtp :
+												   opt_pcap_dump_zip_sip) :
+									_typeCompress, 
+								       true, call,
+								       type == PcapDumper::sip ? FileZipHandler::pcap_sip :
+								       type == PcapDumper::rtp ? FileZipHandler::pcap_rtp :
+												 FileZipHandler::na);
 		if(handler->open(fname)) {
 			struct pcap_file_header hdr;
 			hdr.magic = TCPDUMP_MAGIC;
@@ -2296,10 +2588,11 @@ pcap_dumper_t *__pcap_dump_open(pcap_t *p, const char *fname, int linktype, stri
 	}
 }
 
-void __pcap_dump(u_char *user, const struct pcap_pkthdr *h, const u_char *sp) {
+void __pcap_dump(u_char *user, const struct pcap_pkthdr *h, const u_char *sp, bool allPackets) {
 	if(opt_pcap_dump_bufflength) {
 		FileZipHandler *handler = (FileZipHandler*)user;
-		if(h->caplen > 0 && h->caplen <= h->len) {
+		if(allPackets ||
+		   (h->caplen > 0 && h->caplen <= h->len)) {
 			struct pcap_timeval {
 			    bpf_int32 tv_sec;		/* seconds */
 			    bpf_int32 tv_usec;		/* microseconds */
@@ -2441,6 +2734,19 @@ bool isLocalIP(u_int32_t ip) {
 		}
 	}
 	return(false);
+}
+
+char *strlwr(char *string, u_int32_t maxLength) {
+	char *string_pos = string;
+	u_int32_t length = 0;
+	while((!maxLength || length < maxLength) && *string_pos) {
+		if(isupper(*string_pos)) {
+			*string_pos = tolower(*string_pos);
+		}
+		string_pos++;
+		++length;
+	}
+	return(string);
 }
 
 AutoDeleteAtExit GlobalAutoDeleteAtExit;
@@ -2655,7 +2961,7 @@ void SocketSimpleBufferWrite::addData(void *data1, u_int32_t dataLength1,
 			lastTimeSyslogFullData = actTime;
 		}
 	}
-	SimpleBuffer *simpleBuffer = new SimpleBuffer(dataLength2);
+	SimpleBuffer *simpleBuffer = new FILE_LINE SimpleBuffer(dataLength2);
 	simpleBuffer->add(data1, dataLength1);
 	simpleBuffer->add(data2, dataLength2);
 	lock_data();
@@ -2753,6 +3059,7 @@ void SocketSimpleBufferWrite::flushData() {
 
 BogusDumper::BogusDumper(const char *path) {
 	this->path = path;
+	this->_sync = 0;
 	time = getActDateTimeF(true);
 }
 
@@ -2765,6 +3072,7 @@ BogusDumper::~BogusDumper() {
 }
 
 void BogusDumper::dump(pcap_pkthdr* header, u_char* packet, int dlt, const char *interfaceName) {
+	this->lock();
 	if(!strncmp(interfaceName, "interface", 9)) {
 		interfaceName += 9;
 	}
@@ -2776,9 +3084,9 @@ void BogusDumper::dump(pcap_pkthdr* header, u_char* packet, int dlt, const char 
 	if(iter != dumpers.end()) {
 		dumper = dumpers[interfaceName];
 	} else {
-		dumper = new PcapDumper(PcapDumper::na, NULL);
+		dumper = new FILE_LINE PcapDumper(PcapDumper::na, NULL);
 		dumper->setEnableAsyncWrite(false);
-		dumper->setEnableZip(false);
+		dumper->setTypeCompress(FileZipHandler::compress_na);
 		string dumpFileName = path + "/bogus_" + 
 				      find_and_replace(find_and_replace(interfaceName, " ", "").c_str(), "/", "|") + 
 				      "_" + time + ".pcap";
@@ -2790,9 +3098,10 @@ void BogusDumper::dump(pcap_pkthdr* header, u_char* packet, int dlt, const char 
 		}
 	}
 	if(dumper) {
-		dumper->dump(header, packet, dlt);
+		dumper->dump(header, packet, dlt, true);
 		dumper->flush();
 	}
+	this->unlock();
 }
 
 
@@ -2822,7 +3131,7 @@ char *base64_encode(const unsigned char *data, size_t input_length, size_t *outp
 				 '4', '5', '6', '7', '8', '9', '+', '/'};
 	int mod_table[] = {0, 2, 1};
 	*output_length = 4 * ((input_length + 2) / 3);
-	char *encoded_data = new char[*output_length + 1];
+	char *encoded_data = new FILE_LINE char[*output_length + 1];
 	if(encoded_data == NULL) return NULL;
 	for(size_t i = 0, j = 0; i < input_length;) {
 	    uint32_t octet_a = i < input_length ? (unsigned char)data[i++] : 0;
@@ -2838,4 +3147,158 @@ char *base64_encode(const unsigned char *data, size_t input_length, size_t *outp
 		encoded_data[*output_length - 1 - i] = '=';
 	encoded_data[*output_length] = 0;
 	return encoded_data;
+}
+
+u_int32_t octal_decimal(u_int32_t n) {
+	u_int32_t decimal = 0, 
+		  i = 0, 
+		  rem;
+	while(n != 0) {
+		rem = n % 10;
+		n /= 10;
+		decimal += rem * pow(8, i);
+		++i;
+	}
+	return decimal;
+}
+
+bool vm_pexec(const char *cmdLine, SimpleBuffer *out, SimpleBuffer *err, unsigned timeout_sec, unsigned timout_select_sec) {
+	std::vector<std::string> parseCmdLine = parse_cmd_line(cmdLine);
+	char *exec_args[100];
+	unsigned i = 0;
+	for(i = 0; i < min(sizeof(exec_args) / sizeof(exec_args[0]) - 2, parseCmdLine.size()); i++) {
+		parseCmdLine[i] = trim(parseCmdLine[i], " '\"");
+		exec_args[i] = (char*)parseCmdLine[i].c_str();
+	}
+	exec_args[i] = NULL;
+	int pipe_stdout[2];
+	int pipe_stderr[2];
+	pipe(pipe_stdout);
+	pipe(pipe_stderr);
+	int fork_rslt = fork();
+	if(fork_rslt == 0) {
+		close(pipe_stdout[0]);
+		close(pipe_stderr[0]);
+		dup2(pipe_stdout[1], 1);
+		dup2(pipe_stderr[1], 2);
+		close(pipe_stdout[1]);
+		close(pipe_stderr[1]);
+		if(execvp(exec_args[0], exec_args) == -1) {
+			char errmessage[1000];
+			sprintf(errmessage, "exec failed: %s", exec_args[0]);
+			write(2, errmessage, strlen(errmessage));
+			kill(getpid(), SIGKILL);
+		}
+	} else if(fork_rslt > 0) {
+		u_long start_time = getTimeMS();
+		SimpleBuffer bufferStdout;
+		SimpleBuffer bufferStderr;
+		close(pipe_stdout[1]);
+		close(pipe_stderr[1]);
+		while(true) {
+			fd_set readfds;
+			FD_ZERO(&readfds);
+			FD_SET(pipe_stdout[0], &readfds);
+			FD_SET(pipe_stderr[0], &readfds);
+			timeval *timeout = NULL;
+			timeval _timeout;
+			if(timout_select_sec) {
+				_timeout.tv_sec = timout_select_sec;
+				_timeout.tv_usec = 0;
+				timeout = &_timeout;
+			}
+			if(select(max(pipe_stdout[0], pipe_stderr[0]) + 1, &readfds, NULL, NULL, timeout) == -1) {
+				break;
+			}
+			char buffer[1024];
+			unsigned readStdoutLength = 0;
+			unsigned readStderrLength = 0;
+			if(FD_ISSET(pipe_stdout[0], &readfds)) {
+				if((readStdoutLength = read(pipe_stdout[0], buffer, sizeof(buffer))) > 0) {
+					bufferStdout.add(buffer, readStdoutLength);
+				}
+			}
+			if(FD_ISSET(pipe_stderr[0], &readfds)) {
+				if((readStderrLength = read(pipe_stderr[0], buffer, sizeof(buffer))) > 0) {
+					bufferStderr.add(buffer, readStderrLength);
+				}
+			}
+			if(readStderrLength) {
+				if(bufferStderr.size() && reg_match((char*)bufferStderr, "^exec failed")) {
+					break;
+				}
+			} else if(!readStdoutLength) {
+				bool isChildPidExit(unsigned pid);
+				if(isChildPidExit(fork_rslt)) {
+					break;
+				} else {
+					usleep(10000);
+				}
+			}
+			if(timeout_sec && (getTimeMS() - start_time) > timeout_sec * 1000) {
+				kill(fork_rslt, 9);
+				break;
+			}
+		}
+		close(pipe_stdout[0]);
+		close(pipe_stderr[0]);
+		if(out) {
+			if(reg_match((char*)bufferStdout, "PID([0-9]+)\n")) {
+				char *pointerToPidSeparator = strchr((char*)bufferStdout, '\n');
+				out->clear();
+				out->add(pointerToPidSeparator + 1, bufferStdout.size() - ((u_char*)pointerToPidSeparator - bufferStdout.data() + 1));
+			} else {
+				*out = bufferStdout;
+			}
+		}
+		if(err) {
+			*err = bufferStderr;
+		}
+		return(!(bufferStderr.size() && reg_match((char*)bufferStderr, "^exec failed")));
+	} else {
+		return(false);
+	}
+	return(true);
+}
+
+std::vector<std::string> parse_cmd_line(const char *cmdLine) {
+	const char *cmdLinePointer = cmdLine;
+	string param;
+	char paramBracket = 0;
+	std::vector<std::string> parse;
+	while(*cmdLinePointer) {
+		if(paramBracket && *cmdLinePointer == paramBracket) {
+			paramBracket = 0;
+			++cmdLinePointer;
+		} else if(*cmdLinePointer == ' ' && !paramBracket) {
+			if(param.length()) {
+				parse.push_back(param);
+			}
+			param = "";
+			paramBracket = 0;
+			++cmdLinePointer;
+			while(*cmdLinePointer == ' ') {
+				++cmdLinePointer;
+			}
+		} else {
+			if(!paramBracket && (*cmdLinePointer == '\'' || *cmdLinePointer == '"')) {
+				paramBracket = *cmdLinePointer;
+			} else {
+				char appString[2];
+				appString[0] = *cmdLinePointer;
+				appString[1] = 0;
+				param.append(appString);
+			}
+			++cmdLinePointer;
+		}
+	}
+	if(param.length()) {
+		parse.push_back(param);
+	}
+	for(unsigned i = 0; i < parse.size(); i++) {
+		if(parse[i][0] == '"' && parse[i][parse[i].length() - 1] == '"') {
+			parse[i] = parse[i].substr(1, parse[i].length() - 2);
+		}
+	}
+	return(parse);
 }

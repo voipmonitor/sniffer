@@ -28,9 +28,9 @@ void rrd_vm_create_graph_tCPU_command(char *filename, char *fromatstyle, char *t
 
 
 	if (dstfile == NULL) 
-		cmdCreate << "`which rrdtool` graph - ";						//graph to stdout instead of file
+		cmdCreate << "rrdtool graph - ";						//graph to stdout instead of file
 	else
-		cmdCreate << "`which rrdtool` graph \"" << dstfile << "\" ";
+		cmdCreate << "rrdtool graph \"" << dstfile << "\" ";
 	cmdCreate << "-w " << resx << " -h " << resy << " -a PNG ";
 	cmdCreate << "--start \"" << fromatstyle << "\" --end \"" << toatstyle << "\" ";
 	cmdCreate << "--font DEFAULT:0:Courier ";
@@ -92,9 +92,9 @@ void rrd_vm_create_graph_heap_command(char *filename, char *fromatstyle, char *t
     std::ostringstream cmdCreate;
 
 	if (dstfile == NULL) 
-		cmdCreate << "`which rrdtool` graph - ";						//graph to stdout instead of file
+		cmdCreate << "rrdtool graph - ";						//graph to stdout instead of file
 	else
-		cmdCreate << "`which rrdtool` graph " << dstfile << " ";
+		cmdCreate << "rrdtool graph " << dstfile << " ";
 	cmdCreate << "-w " << resx << " -h " << resy << " -a PNG ";
 	cmdCreate << "--start \"" << fromatstyle << "\" --end \"" << toatstyle << "\" ";
 	cmdCreate << "--font DEFAULT:0:Courier ";
@@ -144,9 +144,9 @@ void rrd_vm_create_graph_drop_command(char *filename, char *fromatstyle, char *t
     std::ostringstream cmdCreate;
 
 	if (dstfile == NULL) 
-		cmdCreate << "`which rrdtool` graph - ";						//graph to stdout instead of file
+		cmdCreate << "rrdtool graph - ";						//graph to stdout instead of file
 	else
-		cmdCreate << "`which rrdtool` graph " << dstfile << " ";
+		cmdCreate << "rrdtool graph " << dstfile << " ";
 	cmdCreate << "-w " << resx << " -h " << resy << " -a PNG ";
 	cmdCreate << "--start \"" << fromatstyle << "\" --end \"" << toatstyle << "\" ";
 	cmdCreate << "--font DEFAULT:0:Courier ";
@@ -196,9 +196,9 @@ void rrd_vm_create_graph_calls_command(char *filename, char *fromatstyle, char *
     std::ostringstream cmdCreate;
 
 	if (dstfile == NULL) 
-		cmdCreate << "`which rrdtool` graph - ";						//graph to stdout instead of file
+		cmdCreate << "rrdtool graph - ";						//graph to stdout instead of file
 	else
-		cmdCreate << "`which rrdtool` graph " << dstfile << " ";
+		cmdCreate << "rrdtool graph " << dstfile << " ";
 	cmdCreate << "-w " << resx << " -h " << resy << " -a PNG ";
 	cmdCreate << "--start \"" << fromatstyle << "\" --end \"" << toatstyle << "\" ";
 	cmdCreate << "--font DEFAULT:0:Courier ";
@@ -242,9 +242,9 @@ void rrd_vm_create_graph_tacCPU_command(char *filename, char *fromatstyle, char 
     std::ostringstream cmdCreate;
 
 	if (dstfile == NULL) 
-		cmdCreate << "`which rrdtool` graph - ";						//graph to stdout instead of file
+		cmdCreate << "rrdtool graph - ";						//graph to stdout instead of file
 	else
-		cmdCreate << "`which rrdtool` graph " << dstfile << " ";
+		cmdCreate << "rrdtool graph " << dstfile << " ";
 	cmdCreate << "-w " << resx << " -h " << resy << " -a PNG ";
 	cmdCreate << "--start \"" << fromatstyle << "\" --end \"" << toatstyle << "\" ";
 	cmdCreate << "--font DEFAULT:0:Courier ";
@@ -282,9 +282,9 @@ void rrd_vm_create_graph_RSSVSZ_command(char *filename, char *fromatstyle, char 
     std::ostringstream cmdCreate;
 
 	if (dstfile == NULL) 
-		cmdCreate << "`which rrdtool` graph - ";						//graph to stdout instead of file
+		cmdCreate << "rrdtool graph - ";						//graph to stdout instead of file
 	else
-		cmdCreate << "`which rrdtool` graph " << dstfile << " ";
+		cmdCreate << "rrdtool graph " << dstfile << " ";
 	cmdCreate << "-w " << resx << " -h " << resy << " -a PNG ";
 	cmdCreate << "--start \"" << fromatstyle << "\" --end \"" << toatstyle << "\" ";
 	cmdCreate << "--font DEFAULT:0:Courier ";
@@ -338,9 +338,9 @@ void rrd_vm_create_graph_speed_command(char *filename, char *fromatstyle, char *
     std::ostringstream cmdCreate;
 
 	if (dstfile == NULL) 
-		cmdCreate << "`which rrdtool` graph - ";						//graph to stdout instead of file
+		cmdCreate << "rrdtool graph - ";						//graph to stdout instead of file
 	else
-		cmdCreate << "`which rrdtool` graph " << dstfile << " ";
+		cmdCreate << "rrdtool graph " << dstfile << " ";
 	cmdCreate << "-w " << resx << " -h " << resy << " -a PNG ";
 	cmdCreate << "--start \"" << fromatstyle << "\" --end \"" << toatstyle << "\" ";
 	cmdCreate << "--font DEFAULT:0:Courier ";
@@ -378,9 +378,9 @@ void rrd_vm_create_graph_SQLq_command(char *filename, char *fromatstyle, char *t
     std::ostringstream cmdCreate;
 
 	if (dstfile == NULL) 
-		cmdCreate << "`which rrdtool` graph - ";						//graph to stdout instead of file
+		cmdCreate << "rrdtool graph - ";						//graph to stdout instead of file
 	else
-		cmdCreate << "`which rrdtool` graph " << dstfile << " ";
+		cmdCreate << "rrdtool graph " << dstfile << " ";
 	cmdCreate << "-w " << resx << " -h " << resy << " -a PNG ";
 	cmdCreate << "--start \"" << fromatstyle << "\" --end \"" << toatstyle << "\" ";
 	cmdCreate << "--font DEFAULT:0:Courier ";
@@ -467,9 +467,9 @@ void rrd_vm_create_graph_PS_command (char *filename, char *fromatstyle, char *to
     std::ostringstream cmdCreate;
 	
 	if (dstfile == NULL) 
-		cmdCreate << "`which rrdtool` graph - ";						//graph to stdout instead of file
+		cmdCreate << "rrdtool graph - ";						//graph to stdout instead of file
 	else
-		cmdCreate << "`which rrdtool` graph " << dstfile << " ";
+		cmdCreate << "rrdtool graph " << dstfile << " ";
 	cmdCreate << "-w " << resx << " -h " << resy << " -a PNG ";
 	cmdCreate << "--start \"" << fromatstyle << "\" --end \"" << toatstyle << "\" ";
 	cmdCreate << "--font DEFAULT:0:Courier ";
@@ -1096,11 +1096,11 @@ int rrd_call(
 	}
 //	printf ("CountArgs vratil %d\n",myargc);
 
-	if ((tmpLine = (char *) malloc((strlen(aLine) + 1) * sizeof(char *))) == NULL) {
+	if ((tmpLine = new FILE_LINE char[strlen(aLine) + 1]) == NULL) {
 		syslog(LOG_ERR, "rrd_call malloc error\n");
 		return -1;
 	}
-	if ((myargv = (char **) malloc((myargc + 1) * sizeof(char *))) == NULL) {
+	if ((myargv = new FILE_LINE char*[myargc + 1]) == NULL) {
 		free(tmpLine);
 		syslog(LOG_ERR, "rrd_call malloc error2\n");
 		return -1;
@@ -1111,12 +1111,12 @@ int rrd_call(
 
 	if ((myargc = vm_rrd_createArgs(tmpLine, myargv)) > 0) {
 		int result = HandleInputLine(myargc, myargv, stderr);
-		free(tmpLine);
-		free(myargv);
+		delete [] tmpLine;
+		delete [] myargv;
 		return (result);
 	} else {
-		free(tmpLine);
-		free(myargv);
+		delete [] tmpLine;
+		delete [] myargv;
 		return -1;
 	}
 }
@@ -1125,10 +1125,9 @@ void checkRrdVersion(bool silent) {
 	if(vm_rrd_version) {
 		return;
 	}
-	int exitCode;
-	string rsltRrdTool = pexec((char*)"rrdtool", &exitCode);
-	if(!exitCode) {
-		string versionString = reg_replace(rsltRrdTool.c_str(), "([0-9]+)\\.([0-9]+)\\.?([0-9]*)", "$1-$2-$3");
+	SimpleBuffer out;
+	if(vm_pexec((char*)"rrdtool", &out) && out.size()) {
+		string versionString = reg_replace((char*)out, "([0-9]+)\\.([0-9]+)\\.?([0-9]*)", "$1-$2-$3");
 		if(!versionString.empty()) {
 			int version[3] = { 0, 0, 0 };
 			sscanf((char*)versionString.c_str(), "%i-%i-%i", &version[0], &version[1], &version[2]);

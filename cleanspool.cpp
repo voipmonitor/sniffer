@@ -31,7 +31,6 @@ extern int debugclean;
 extern int opt_id_sensor_cleanspool;
 extern char configfile[1024];
 extern int terminating;
-extern int terminating2;
 
 extern unsigned int opt_maxpoolsize;
 extern unsigned int opt_maxpooldays;
@@ -1167,10 +1166,10 @@ long long reindex_date_hour(string date, int h, bool readOnly, map<string, long 
 	ofstream *graphfile = NULL;
 	ofstream *audiofile = NULL;
 	if(!readOnly) {
-		sipfile = new ofstream((string("filesindex/sipsize/") + ymdh).c_str(), ios::trunc | ios::out);
-		rtpfile = new ofstream((string("filesindex/rtpsize/") + ymdh).c_str(), ios::trunc | ios::out);
-		graphfile = new ofstream((string("filesindex/graphsize/") + ymdh).c_str(), ios::trunc | ios::out);
-		audiofile = new ofstream((string("filesindex/audiosize/") + ymdh).c_str(), ios::trunc | ios::out);
+		sipfile = new FILE_LINE ofstream((string("filesindex/sipsize/") + ymdh).c_str(), ios::trunc | ios::out);
+		rtpfile = new FILE_LINE ofstream((string("filesindex/rtpsize/") + ymdh).c_str(), ios::trunc | ios::out);
+		graphfile = new FILE_LINE ofstream((string("filesindex/graphsize/") + ymdh).c_str(), ios::trunc | ios::out);
+		audiofile = new FILE_LINE ofstream((string("filesindex/audiosize/") + ymdh).c_str(), ios::trunc | ios::out);
 	}
 
 	long long sipsize = 0;
@@ -1488,9 +1487,9 @@ bool check_exists_act_records_in_files() {
 	time_t maxCdrTime = stringToTime(row["max_calldate"].c_str());
 	for(int i = 0; i < 12; i++) {
 		time_t checkTime = maxCdrTime - i * 60 * 60;
-		struct tm *checkTimeInfo = localtime(&checkTime);
+		struct tm checkTimeInfo = localtime_r(&checkTime);
 		char datehour[20];
-		strftime(datehour, 20, "%Y%m%d%H", checkTimeInfo);
+		strftime(datehour, 20, "%Y%m%d%H", &checkTimeInfo);
 		sqlDbCleanspool->query(string("select * from files where datehour ='") + datehour + "'" +
 				       " and id_sensor = " + id_sensor_str);
 		if(sqlDbCleanspool->fetchRow()) {
@@ -1517,9 +1516,9 @@ bool check_exists_act_files_in_filesindex() {
 	time_t maxCdrTime = stringToTime(row["max_calldate"].c_str());
 	for(int i = 0; i < 12; i++) {
 		time_t checkTime = maxCdrTime - i * 60 * 60;
-		struct tm *checkTimeInfo = localtime(&checkTime);
+		struct tm checkTimeInfo = localtime_r(&checkTime);
 		char date[20];
-		strftime(date, 20, "%Y%m%d", checkTimeInfo);
+		strftime(date, 20, "%Y%m%d", &checkTimeInfo);
 		for(int j = 0; j < 24; j++) {
 			char datehour[20];
 			strcpy(datehour, date);
@@ -1828,15 +1827,14 @@ bool isSetCleanspoolParameters() {
 
 void *clean_spooldir(void *dummy) {
 	if(debugclean) syslog(LOG_ERR, "run clean_spooldir()");
-	while(!terminating2) {
+	while(!terminating) {
 		if(!suspendCleanspool) {
 			bool timeOk = false;
 			if(opt_cleanspool_enable_run_hour_from >= 0 &&
 			   opt_cleanspool_enable_run_hour_to >= 0) {
 				time_t now;
 				time(&now);
-				struct tm dateTime;
-				dateTime = *localtime(&now);
+				struct tm dateTime = localtime_r(&now);
 				if(opt_cleanspool_enable_run_hour_to >= opt_cleanspool_enable_run_hour_from) {
 					if(dateTime.tm_hour >= opt_cleanspool_enable_run_hour_from &&
 					   dateTime.tm_hour <= opt_cleanspool_enable_run_hour_to) {
@@ -1857,7 +1855,7 @@ void *clean_spooldir(void *dummy) {
 				check_disk_free_run(false);
 			}
 		}
-		for(int i = 0; i < 300 && !terminating2; i++) {
+		for(int i = 0; i < 300 && !terminating; i++) {
 			sleep(1);
 		}
 	}
@@ -1868,5 +1866,37 @@ void runCleanSpoolThread() {
 	if(!cleanspool_thread) {
 		if(debugclean) syslog(LOG_ERR, "pthread_create(clean_spooldir)");
 		pthread_create(&cleanspool_thread, NULL, clean_spooldir, NULL);
+	}
+}
+
+string getMaxSpoolDate() {
+	string path = "./";
+	dirent* de;
+	DIR* dp;
+	dp = opendir(path.empty() ? "." : path.c_str());
+	if(!dp) {
+		return("");
+	}
+	u_int32_t maxDate = 0;
+	while((de = readdir(dp)) != NULL) {
+		if(de == NULL) break;
+		if(string(de->d_name) == ".." or string(de->d_name) == ".") continue;
+		if(de->d_name[0] == '2' && strlen(de->d_name) == 10) {
+			u_int32_t date = atol(de->d_name) * 10000 +
+					 atol(de->d_name + 5) * 100 +
+					 atol(de->d_name + 8);
+			if(date > maxDate) {
+				maxDate = date;
+			}
+		}
+	}
+	closedir( dp );
+	
+	if(maxDate) {
+		char maxDate_str[20];
+		sprintf(maxDate_str, "%4i-%02i-%02i", maxDate / 10000, maxDate % 10000 / 100, maxDate % 100);
+		return(maxDate_str);
+	} else {
+		return("");
 	}
 }

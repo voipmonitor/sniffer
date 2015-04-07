@@ -21,6 +21,8 @@
 
 #define READ_THREADS_MAX 20
 #define DLT_TYPES_MAX 10
+#define PCAP_QUEUE_NEXT_THREADS_MAX 3
+#define MAX_THREADS_DELETE 3
 
 class pcap_block_store_queue {
 public:
@@ -138,7 +140,7 @@ class pcap_store_queue {
 public:
 	pcap_store_queue(const char *fileStoreFolder);
 	~pcap_store_queue();
-	bool push(pcap_block_store *blockStore, size_t addUsedSize = 0, bool deleteBlockStoreIfFail = true);
+	bool push(pcap_block_store *blockStore, bool deleteBlockStoreIfFail = true);
 	bool pop(pcap_block_store **blockStore);
 	size_t getQueueSize() {
 		return(this->queue.size());
@@ -160,17 +162,18 @@ private:
 		__sync_lock_release(&this->_sync_fileStore);
 	}
 	void add_sizeOfBlocksInMemory(size_t size) {
-		__sync_fetch_and_add(&this->sizeOfBlocksInMemory, size);
+		extern cBuffersControl buffersControl;
+		buffersControl.add__pcap_store_queue__sizeOfBlocksInMemory(size);
 	}
 	void sub_sizeOfBlocksInMemory(size_t size) {
-		__sync_fetch_and_sub(&this->sizeOfBlocksInMemory, size);
+		extern cBuffersControl buffersControl;
+		buffersControl.sub__pcap_store_queue__sizeOfBlocksInMemory(size);
 	}
 private:
 	std::string fileStoreFolder;
 	std::deque<pcap_block_store*> queue;
 	std::deque<pcap_file_store*> fileStore;
 	u_int lastFileStoreId;
-	volatile uint64_t sizeOfBlocksInMemory;
 	volatile int _sync_queue;
 	volatile int _sync_fileStore;
 	int cleanupFileStoreCounter;
@@ -184,6 +187,13 @@ public:
 	enum eTypeQueue {
 		readFromInterface,
 		readFromFifo
+	};
+	enum eTypeThread {
+		mainThread,
+		writeThread,
+		nextThread1,
+		nextThread2,
+		nextThread3
 	};
 	PcapQueue(eTypeQueue typeQueue, const char *nameQueue);
 	virtual ~PcapQueue();
@@ -227,8 +237,6 @@ protected:
 	virtual string pcapStatString_bypass_buffer(int statPeriod) { return(""); }
 	virtual unsigned long pcapStat_get_bypass_buffer_size_exeeded() { return(0); }
 	virtual string pcapStatString_memory_buffer(int statPeriod) { return(""); }
-	virtual double pcapStat_get_memory_buffer_perc() { return(0); }
-	virtual double pcapStat_get_memory_buffer_perc_trash() { return(0); }
 	virtual string pcapStatString_disk_buffer(int statPeriod) { return(""); }
 	virtual double pcapStat_get_disk_buffer_perc() { return(-1); }
 	virtual double pcapStat_get_disk_buffer_mb() { return(-1); }
@@ -238,14 +246,14 @@ protected:
 	virtual string getStatPacketDrop() { return(""); }
 	virtual string pcapStatString_cpuUsageReadThreads() { return(""); };
 	virtual void initStat_interface() {};
-	void preparePstatData(bool writeThread = false);
+	int getThreadPid(eTypeThread typeThread);
+	pstat_data *getThreadPstatData(eTypeThread typeThread);
+	void preparePstatData(eTypeThread typeThread = mainThread);
 	void prepareProcPstatData();
-	double getCpuUsagePerc(bool writeThread = false, bool preparePstatData = false);
+	double getCpuUsagePerc(eTypeThread typeThread = mainThread, bool preparePstatData = false);
 	virtual string getCpuUsage(bool writeThread = false, bool preparePstatData = false) { return(""); }
-	long unsigned int getVsizeUsage(bool writeThread = false, bool preparePstatData = false);
-	long unsigned int getRssUsage(bool writeThread = false, bool preparePstatData = false);
-	long unsigned int getProcVsizeUsage(bool preparePstatData = false);
-	long unsigned int getProcRssUsage(bool preparePstatData = false);
+	long unsigned int getVsizeUsage(bool preparePstatData = false);
+	long unsigned int getRssUsage(bool preparePstatData = false);
 	virtual bool isMirrorSender() {
 		return(false);
 	}
@@ -269,10 +277,12 @@ protected:
 	bool threadTerminated;
 	bool writeThreadTerminated;
 	bool threadDoTerminate;
-	int threadId;
+	int mainThreadId;
 	int writeThreadId;
-	pstat_data threadPstatData[2];
+	int nextThreadsId[PCAP_QUEUE_NEXT_THREADS_MAX];
+	pstat_data mainThreadPstatData[2];
 	pstat_data writeThreadPstatData[2];
+	pstat_data nextThreadsPstatData[PCAP_QUEUE_NEXT_THREADS_MAX][2];
 	pstat_data procPstatData[2];
 	bool initAllReadThreadsOk;
 private:
@@ -291,12 +301,13 @@ struct pcapProcessData {
 		memset(this, 0, sizeof(pcapProcessData) - sizeof(ipfrag_data_s));
 		extern int opt_dup_check;
 		if(opt_dup_check) {
-			this->prevmd5s = (unsigned char *)calloc(65536, MD5_DIGEST_LENGTH); // 1M
+			this->prevmd5s = new FILE_LINE unsigned char[65536 * MD5_DIGEST_LENGTH]; // 1M
+			memset(this->prevmd5s, 0, 65536 * MD5_DIGEST_LENGTH * sizeof(unsigned char));
 		}
 	}
 	~pcapProcessData() {
 		if(this->prevmd5s) {
-			free(this->prevmd5s);
+			delete [] this->prevmd5s;
 		}
 		ipfrag_prune(0, 1, &ipfrag_data);
 	}
@@ -328,6 +339,7 @@ public:
 protected:
 	virtual bool startCapture();
 	inline int pcap_next_ex_iface(pcap_t *pcapHandle, pcap_pkthdr** header, u_char** packet);
+	inline int pcap_dispatch(pcap_t *pcapHandle);
 	inline int pcapProcess(pcap_pkthdr** header, u_char** packet, bool *destroy, 
 			       bool enableDefrag = true, bool enableCalcMD5 = true, bool enableDedup = true, bool enableDump = true);
 	virtual string pcapStatString_interface(int statPeriod);
@@ -341,7 +353,12 @@ protected:
 	bpf_u_int32 interfaceNet;
 	bpf_u_int32 interfaceMask;
 	pcap_t *pcapHandle;
+	queue<pcap_t*> pcapHandlesLapsed;
+	bool pcapEnd;
+	bpf_program filterData;
+	bool filterDataUse;
 	pcap_dumper_t *pcapDumpHandle;
+	u_int64_t pcapDumpLength;
 	int pcapLinklayerHeaderType;
 	size_t pcap_snaplen;
 	pcapProcessData ppd;
@@ -381,16 +398,8 @@ protected:
 	inline void push(pcap_pkthdr* header,u_char* packet, u_int offset, uint16_t *md5, int index = 0, uint32_t counter = 0);
 	inline hpi pop(int index = 0, bool moveReadit = true, bool deferDestroy = false);
         inline void moveReadit(int index = 0, bool deferDestroy = false);
-	inline hpi POP(bool moveReadit = true, bool deferDestroy = false) {
-		return(this->dedupThread ? this->dedupThread->pop(0, moveReadit, deferDestroy) : this->pop(0, moveReadit, deferDestroy));
-	}
-	inline void moveREADIT(bool deferDestroy = false) {
-		if(this->dedupThread) {
-			this->dedupThread->moveReadit(0, deferDestroy);
-		} else {
-			this->moveReadit(0, deferDestroy);
-		}
-	}
+	inline hpi POP(bool moveReadit = true, bool deferDestroy = false);
+	inline void moveREADIT(bool deferDestroy = false);
 	u_int64_t getTime_usec(int index = 0) {
 		if(this->qring[index][this->readit[index] % this->qringmax].used <= 0) {
 			return(0);
@@ -414,6 +423,17 @@ private:
 	void *threadFunction(void *arg, unsigned int arg2);
 	void preparePstatData();
 	double getCpuUsagePerc(bool preparePstatData = false);
+	double getQringFillingPerc(int index) {
+		if(!qring[index]) {
+			return(-1);
+		}
+		unsigned int _readit = readit[index];
+		unsigned int _writeit = writeit[index];
+		return(_writeit >= _readit ?
+			(double)(_writeit - _readit) / qringmax * 100 :
+			(double)(qringmax - _readit + _writeit) / qringmax * 100);
+	}
+	string getQringFillingPerc();
 	void terminate();
 private:
 	pthread_t threadHandle;
@@ -442,15 +462,50 @@ friend class PcapQueue_readFromInterface;
 };
 
 class PcapQueue_readFromInterface : public PcapQueue, protected PcapQueue_readFromInterface_base {
+private: 
+	struct sHeaderPacket {
+		sHeaderPacket(pcap_pkthdr *header = NULL, u_char *packet = NULL) {
+			this->header = header;
+			this->packet = packet;
+		}
+		pcap_pkthdr *header;
+		u_char *packet;
+	};
+	struct sThreadDeleteData {
+		sThreadDeleteData(PcapQueue_readFromInterface *owner) : queue(100000, 1000, 1000, 
+									      NULL, true, 
+									      __FILE__, __LINE__) {
+			threadHandle = (pthread_t)NULL;
+			threadId = NULL;
+			enableMallocTrim = false;
+			enableLock = false;
+			lastMallocTrimTime = 0;
+			counter = 0;
+			this->owner = owner;
+		}
+		pthread_t threadHandle;
+		int *threadId;
+		bool enableMallocTrim;
+		bool enableLock;
+		u_int32_t lastMallocTrimTime;
+		u_int32_t counter;
+		rqueue_quick<sHeaderPacket> queue;
+		PcapQueue_readFromInterface *owner;
+	};
 public:
 	PcapQueue_readFromInterface(const char *nameQueue);
 	virtual ~PcapQueue_readFromInterface();
 	void setInterfaceName(const char *interfaceName);
 	void terminate();
+	bool openPcap(const char *filename);
+	bool isPcapEnd() {
+		return(this->pcapEnd);
+	}
 protected:
 	bool init();
 	bool initThread(void *arg, unsigned int arg2);
 	void *threadFunction(void *arg, unsigned int arg2);
+	void *threadDeleteFunction(sThreadDeleteData *threadDeleteData);
 	bool openFifoForWrite(void *arg, unsigned int arg2);
 	bool startCapture();
 	pcap_t* _getPcapHandle(int dlt) { 
@@ -465,11 +520,26 @@ protected:
 	void initStat_interface();
 	string pcapStatString_cpuUsageReadThreads();
 	string getInterfaceName(bool simple = false);
+	void pushDelete(sHeaderPacket *headerPacket) {
+		threadsDeleteData[(counterPushDelete++) % deleteThreadsCount]->queue.push(headerPacket, true);
+	}
+	void lock_delete() {
+		while(__sync_lock_test_and_set(&this->_sync_delete, 1));
+	}
+	void unlock_delete() {
+		__sync_lock_release(&this->_sync_delete);
+	}
 protected:
 	pcap_dumper_t *fifoWritePcapDumper;
 	PcapQueue_readFromInterfaceThread *readThreads[READ_THREADS_MAX];
 	int readThreadsCount;
 	u_long lastTimeLogErrThread0BufferIsFull;
+private:
+	sThreadDeleteData *threadsDeleteData[MAX_THREADS_DELETE];
+	int deleteThreadsCount;
+	u_int32_t counterPushDelete;
+	static volatile int _sync_delete;
+friend void *_PcapQueue_readFromInterfaceThread_threadDeleteFunction(void *arg);
 };
 
 class PcapQueue_readFromFifo : public PcapQueue {
@@ -599,7 +669,6 @@ protected:
 private:
 	pcap_store_queue pcapStoreQueue;
 	deque<pcap_block_store*> blockStoreTrash;
-	size_t blockStoreTrash_size;
 	u_int cleanupBlockStoreTrash_counter;
 	hostent* socketHostEnt;
 	int socketHandle;
@@ -609,6 +678,10 @@ private:
 	timeval _last_ts;
 friend void *_PcapQueue_readFromFifo_connectionThreadFunction(void *arg);
 };
+
+
+void PcapQueue_init();
+void PcapQueue_term();
 
 
 #endif

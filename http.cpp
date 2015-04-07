@@ -1,8 +1,10 @@
 #include <iostream>
 #include <sstream>
+#include <net/ethernet.h>
 
 #include "http.h"
 #include "sql_db.h"
+#include "voipmonitor.h"
 
 
 using namespace std;
@@ -25,6 +27,9 @@ HttpData::~HttpData() {
 void HttpData::processData(u_int32_t ip_src, u_int32_t ip_dst,
 			   u_int16_t port_src, u_int16_t port_dst,
 			   TcpReassemblyData *data,
+			   u_char *ethHeader, u_int32_t ethHeaderLength,
+			   pcap_t *handle, int dlt, int sensor_id,
+			   TcpReassemblyLink *reassemblyLink,
 			   bool debugSave) {
  
 	++this->counterProcessData;
@@ -77,10 +82,10 @@ void HttpData::processData(u_int32_t ip_src, u_int32_t ip_dst,
 	if(!data->expectContinue.size() &&
 	   strcasestr(request.c_str(), "Expect: 100-continue") &&
 	   data->request.size() > i_request) {
-		request += (char*)data->request[i_request].getData();
+		request += data->request[i_request].getDataString();
 	} else {
 		request_data = &data->request[i_request];
-		request = (char*)request_data->getData();
+		request = request_data->getDataString();
 	}
 	
 	uri = this->getUri(request);
@@ -98,13 +103,13 @@ void HttpData::processData(u_int32_t ip_src, u_int32_t ip_dst,
 	response_data = NULL;
 	if(data->response.size()) {
 		response_data = &data->response[0];
-		response = (char*)response_data->getData();
+		response = response_data->getDataString();
 	}
 	if(data->expectContinue.size()) {
 		expectContinue = (char*)data->expectContinue[0].getData();
 		if(data->expectContinueResponse.size()) {
 			response_data = &data->expectContinueResponse[0];
-			response = (char*)response_data->getData();
+			response = response_data->getDataString();
 		}
 	}
 	
@@ -448,3 +453,172 @@ void HttpCache::cleanup(bool force) {
 void HttpCache::clear() {
 	this->cache.clear();
 }
+
+
+
+
+HttpPacketsDumper::HttpPacketsDumper() {
+	this->pcapDumper = NULL;
+	this->unlinkPcap = false;
+	this->selfOpenPcapDumper = false;
+}
+
+HttpPacketsDumper::~HttpPacketsDumper() {
+	if(this->pcapDumper) {
+		this->closePcapDumper();
+	}
+	if(this->unlinkPcap) {
+		unlink(this->pcapName.c_str());
+	}
+}
+
+void HttpPacketsDumper::setPcapName(const char *pcapName) {
+	if(pcapName) {
+		this->pcapName = pcapName;
+	}
+}
+
+void HttpPacketsDumper::setTemplatePcapName() {
+	char tempFileName[L_tmpnam+1];
+	tmpnam(tempFileName);
+	this->pcapName = tempFileName;
+}
+
+void HttpPacketsDumper::setPcapDumper(PcapDumper *pcapDumper) {
+	this->pcapDumper = pcapDumper;
+}
+
+void HttpPacketsDumper::dumpData(const char *timestamp_from, const char *timestamp_to, const char *ids) {
+	SqlDb *sqlDb = createSqlObject();
+	SqlDb_row row;
+	sqlDb->query(string("") +
+		"select http_jj.*, \
+			unix_timestamp(http_jj.timestamp) as sec \
+		 from http_jj \
+		 where timestamp >= '" + timestamp_from + "' and \
+		       timestamp <= '" + timestamp_to + "' and \
+		       id in (" + ids + ") \
+		 order by sec, usec");
+	while((row = sqlDb->fetchRow())) {
+		timeval time;
+		time.tv_sec = atoll(row["sec"].c_str());
+		time.tv_usec = atoll(row["usec"].c_str());
+		this->dumpDataItem(
+			row.isNull("master_id") ? HttpPacketsDumper::request : HttpPacketsDumper::response,
+			row["http"].c_str(),
+			row["body"].c_str(),
+			time,
+			atoll(row["srcip"].c_str()),
+			atoll(row["dstip"].c_str()),
+			atol(row["srcport"].c_str()),
+			atol(row["dstport"].c_str()));
+	}
+	delete sqlDb;
+}
+
+void HttpPacketsDumper::dumpDataItem(eReqResp reqResp, string header, string body,
+				     timeval time,
+				     u_int32_t ip_src, u_int32_t ip_dst,
+				     u_int16_t port_src, u_int16_t port_dst) {
+	if(!this->pcapDumper) {
+		this->openPcapDumper();
+	}
+	
+	HttpLink_id link_id = HttpLink_id(ip_src, ip_dst, port_src, port_dst);
+	if(links.find(link_id) == links.end()) {
+		links[link_id] = HttpLink(ip_src, ip_dst, port_src, port_dst);
+	}
+	
+	int linkDirectionIndex = ip_src == links[link_id].ip1 && port_src == links[link_id].port1 ? 0 : 1;
+	int linkDirectionNegIndex = linkDirectionIndex ? 0 : 1;
+	
+	string data = header + "\r\n\r\n" + body;
+	
+	ether_header eth_header;
+	iphdr2 ip_header;
+	tcphdr2 tcp_header;
+	
+	u_int32_t maxDataLengthInPacket = 0xFFFFul - (sizeof(eth_header) + sizeof(ip_header) + sizeof(tcp_header));
+	u_int32_t dataOffset = 0;
+	
+	while(dataOffset < data.length()) {
+	 
+		u_int32_t dataLength = min((unsigned)data.length() - dataOffset, maxDataLengthInPacket);
+		bool lastPart = data.length() - dataOffset <= maxDataLengthInPacket;
+	
+		memset(&eth_header, 0, sizeof(eth_header));
+		memset(&ip_header, 0, sizeof(ip_header));
+		memset(&tcp_header, 0, sizeof(tcp_header));
+		
+		eth_header.ether_type = htons(ETHERTYPE_IP);
+		
+		ip_header.version = 4;
+		ip_header.ihl = 5;
+		ip_header.protocol = IPPROTO_TCP;
+		ip_header.saddr = htonl(ip_src);
+		ip_header.daddr = htonl(ip_dst);
+		ip_header.tot_len = htons(sizeof(ip_header) + sizeof(tcp_header) + dataLength);
+		ip_header.ttl = 50;
+		
+		tcp_header.source = htons(port_src);
+		tcp_header.dest = htons(port_dst);
+		tcp_header.doff = 5;
+		tcp_header.window = 0xFFFF;
+		tcp_header.seq = htonl(links[link_id].seq[linkDirectionIndex]);
+		tcp_header.ack_seq = htonl(links[link_id].seq[linkDirectionNegIndex]);
+		tcp_header.psh = lastPart;
+		tcp_header.ack = 1;
+		
+		links[link_id].seq[linkDirectionIndex] += dataLength;
+		
+		u_int32_t packetLen = sizeof(eth_header) + sizeof(ip_header) + sizeof(tcp_header) + dataLength;
+		u_char *packet = new FILE_LINE u_char[packetLen];
+		
+		memcpy(packet, 
+		       &eth_header, sizeof(eth_header));
+		memcpy(packet + sizeof(eth_header), 
+		       &ip_header, sizeof(ip_header));
+		memcpy(packet + sizeof(eth_header) + sizeof(ip_header), 
+		       &tcp_header, sizeof(tcp_header));
+		memcpy(packet + sizeof(eth_header) + sizeof(ip_header) + sizeof(tcp_header), 
+		       data.c_str() + dataOffset, dataLength);
+		
+		pcap_pkthdr pcap_header;
+		memset(&pcap_header, 0, sizeof(pcap_header));
+		pcap_header.ts = time;
+		pcap_header.caplen = packetLen;
+		pcap_header.len = packetLen; 
+		
+		this->pcapDumper->dump(&pcap_header, packet, DLT_EN10MB);
+		
+		delete [] packet;
+		
+		dataOffset += dataLength;
+	}
+}
+
+void HttpPacketsDumper::setUnlinkPcap() {
+	this->unlinkPcap = true;
+}
+
+string HttpPacketsDumper::getPcapName() {
+	return(this->pcapName);
+}
+
+void HttpPacketsDumper::openPcapDumper() {
+	if(!this->pcapDumper && !this->pcapName.empty()) {
+		this->pcapDumper = new FILE_LINE PcapDumper();
+		this->pcapDumper->open(this->pcapName.c_str(), DLT_EN10MB);
+		this->selfOpenPcapDumper = true;
+	}
+}
+
+void HttpPacketsDumper::closePcapDumper(bool force) {
+	if((force || this->selfOpenPcapDumper) &&
+	   this->pcapDumper) {
+		this->pcapDumper->close();
+		delete this->pcapDumper;
+		this->pcapDumper = NULL;
+	}
+}
+

@@ -46,6 +46,11 @@
 #include "cleanspool.h"
 #include "regcache.h"
 #include "fraud.h"
+#include "tar.h"
+
+#if HAVE_LIBTCMALLOC    
+#include <gperftools/malloc_extension.h>
+#endif
 
 
 #define MIN(x,y) ((x) < (y) ? (x) : (y))
@@ -62,7 +67,7 @@ extern int opt_rtcp;
 extern int opt_saveRAW;                // save RTP payload RAW data?
 extern int opt_saveWAV;                // save RTP payload RAW data?
 extern int opt_saveGRAPH;	// save GRAPH data to graph file? 
-extern int opt_gzipGRAPH;	// compress GRAPH data to graph file? 
+extern FileZipHandler::eTypeCompress opt_gzipGRAPH;	// compress GRAPH data to graph file? 
 extern int opt_audio_format;	// define format for audio writing (if -W option)
 extern int opt_mos_g729;
 extern int opt_nocdr;
@@ -98,6 +103,7 @@ extern int opt_saverfc2833;
 extern int opt_dbdtmf;
 extern int opt_dscp;
 extern int opt_cdrproxy;
+extern int opt_pcap_dump_tar;
 extern struct pcap_stat pcapstat;
 extern int opt_filesclean;
 extern int opt_allow_zerossrc;
@@ -105,9 +111,9 @@ extern int opt_cdr_ua_enable;
 extern unsigned int graph_delimiter;
 extern unsigned int graph_version;
 extern int opt_mosmin_f2;
-extern string opt_mos_lqo_bin;
-extern string opt_mos_lqo_ref;
-extern string opt_mos_lqo_ref16;
+extern char opt_mos_lqo_bin[1024];
+extern char opt_mos_lqo_ref[1024];
+extern char opt_mos_lqo_ref16[1024];
 extern int opt_mos_lqo;
 extern regcache *regfailedcache;
 extern MySqlStore *sqlStore;
@@ -121,16 +127,18 @@ extern int opt_mysqlstore_max_threads_register;
 extern int opt_mysqlstore_max_threads_http;
 extern int opt_mysqlstore_limit_queue_register;
 extern Calltable *calltable;
+extern int opt_silencedetect;
+extern int opt_clippingdetect;
+extern int terminating;
+extern int opt_read_from_file;
+extern char opt_pb_read_from_file[256];
 
 volatile int calls_counter = 0;
-volatile int calls_cdr_save_counter = 0;
-volatile int calls_message_save_counter = 0;
 
 extern char mac[32];
 
 unsigned int last_register_clean = 0;
 
-extern CustPhoneNumberCache *custPnCache;
 extern int opt_onewaytimeout;
 extern int opt_saveaudio_reversestereo;
 
@@ -148,6 +156,14 @@ SqlDb *sqlDbSaveCall = NULL;
 bool existsColumnCalldateInCdrNext = true;
 bool existsColumnCalldateInCdrRtp = true;
 bool existsColumnCalldateInCdrDtmf = true;
+bool existsColumnCalldateInCdrTarPart = true;
+
+extern int opt_pcap_dump_tar_sip_use_pos;
+extern int opt_pcap_dump_tar_rtp_use_pos;
+extern int opt_pcap_dump_tar_graph_use_pos;
+
+extern unsigned int glob_ssl_calls;
+
 
 
 /* constructor */
@@ -156,6 +172,7 @@ Call::Call(char *call_id, unsigned long call_id_len, time_t time) :
  pcap(PcapDumper::na, this),
  pcapSip(PcapDumper::sip, this),
  pcapRtp(PcapDumper::rtp, this) {
+	//increaseTartimemap(time);
 	isfax = 0;
 	seenudptl = 0;
 	last_callercodec = -1;
@@ -174,6 +191,7 @@ Call::Call(char *call_id, unsigned long call_id_len, time_t time) :
 	seenbye = false;
 	seenbyeandok = false;
 	seenRES2XX = false;
+	seenRES2XX_no_BYE = false;
 	seenRES18X = false;
 	caller[0] = '\0';
 	caller_domain[0] = '\0';
@@ -190,7 +208,6 @@ Call::Call(char *call_id, unsigned long call_id_len, time_t time) :
 	cancelcseq[0] = '\0';
 	sighup = false;
 	progress_time = 0;
-	set_progress_time_via_2XX_or18X = false;
 	first_rtp_time = 0;
 	connect_time = 0;
 	a_ua[0] = '\0';
@@ -233,7 +250,13 @@ Call::Call(char *call_id, unsigned long call_id_len, time_t time) :
 	dtmfflag2 = 0;
 	silencerecording = 0;
 	flags1 = 0;
+	#if SYNC_CALL_RTP
 	rtppcaketsinqueue = 0;
+	#else
+	rtppcaketsinqueue_p = 0;
+	rtppcaketsinqueue_m = 0;
+	#endif
+	end_call = 0;
 	message = NULL;
 	contenttype = NULL;
 	content_length = 0;
@@ -266,6 +289,7 @@ Call::Call(char *call_id, unsigned long call_id_len, time_t time) :
 	rtp_timeout_exceeded = 0;
 	sipwithoutrtp_timeout_exceeded = 0;
 	oneway_timeout_exceeded = 0;
+	force_terminate = 0;
 	pcap_drop = 0;
 	
 	onCall_2XX = false;
@@ -280,6 +304,18 @@ Call::Call(char *call_id, unsigned long call_id_len, time_t time) :
 	
 	first_codec = -1;
 	chantype = 0;
+	
+	chunkBuffersCount = 0;
+
+        caller_silence = 0;
+        called_silence = 0;
+        caller_noise = 0;
+        called_noise = 0;
+	caller_lastsilence = 0;
+	called_lastsilence = 0;
+
+	caller_clipping_8k = 0;
+	called_clipping_8k = 0;
 }
 
 void
@@ -308,6 +344,39 @@ Call::hashRemove() {
 		}
 
 	}
+}
+
+void
+Call::skinnyTablesRemove() {
+	if(opt_skinny) {
+		if(skinny_partyid) {
+			((Calltable *)calltable)->skinny_partyID.erase(skinny_partyid);
+			skinny_partyid = 0;
+		}
+		/*
+		stringstream tmp[2];
+
+		tmp[0] << this->sipcallerip << '|' << this->sipcalledip;
+		tmp[1] << this->sipcallerip << '|' << this->sipcalledip;
+		*/
+
+		for (((Calltable *)calltable)->skinny_ipTuplesIT = ((Calltable *)calltable)->skinny_ipTuples.begin(); ((Calltable *)calltable)->skinny_ipTuplesIT != ((Calltable *)calltable)->skinny_ipTuples.end();) {
+			if(((Calltable *)calltable)->skinny_ipTuplesIT->second == this) {
+				((Calltable *)calltable)->skinny_ipTuples.erase(((Calltable *)calltable)->skinny_ipTuplesIT++);
+			} else {
+				++((Calltable *)calltable)->skinny_ipTuplesIT;
+			}
+		}
+	}
+}
+
+void
+Call::removeFindTables(bool set_end_call) {
+	if(set_end_call) {
+		this->end_call = 1;
+	}
+	this->hashRemove();
+	this->skinnyTablesRemove();
 }
 
 void
@@ -418,27 +487,6 @@ Call::removeRTP() {
 
 /* destructor */
 Call::~Call(){
-	if(opt_skinny) {
-		if(skinny_partyid) {
-			((Calltable *)calltable)->skinny_partyID.erase(skinny_partyid);
-		}
-		/*
-		stringstream tmp[2];
-
-		tmp[0] << this->sipcallerip << '|' << this->sipcalledip;
-		tmp[1] << this->sipcallerip << '|' << this->sipcalledip;
-		*/
-
-		for (((Calltable *)calltable)->skinny_ipTuplesIT = ((Calltable *)calltable)->skinny_ipTuples.begin(); ((Calltable *)calltable)->skinny_ipTuplesIT != ((Calltable *)calltable)->skinny_ipTuples.end();) {
-			if(((Calltable *)calltable)->skinny_ipTuplesIT->second == this) {
-				((Calltable *)calltable)->skinny_ipTuples.erase(((Calltable *)calltable)->skinny_ipTuplesIT++);
-			} else {
-				++((Calltable *)calltable)->skinny_ipTuplesIT;
-			}
-		}
-
-	}
-
 	if(opt_callidmerge_header[0] != '\0') {
 		((Calltable*)calltable)->lock_calls_mergeMAP();
 		for(std::vector<string>::iterator it = mergecalls.begin(); it != mergecalls.end(); ++it) {
@@ -446,8 +494,12 @@ Call::~Call(){
 		}
 		((Calltable*)calltable)->unlock_calls_mergeMAP();
 	}
+	
+	if(is_ssl) {
+		glob_ssl_calls--;
+	}
 
-	if(contenttype) free(contenttype);
+	if(contenttype) delete [] contenttype;
 	for(int i = 0; i < MAX_SSRC_PER_CALL; i++) {
 		// lets check whole array as there can be holes due rtp[0] <=> rtp[1] swaps in mysql rutine
 		if(rtp[i]) {
@@ -465,11 +517,14 @@ Call::~Call(){
 	if(audiobuffer2) delete audiobuffer2;
 
 	if(this->message) {
-		free(message);
+		delete [] message;
 	}
 	pthread_mutex_destroy(&buflock);
 	pthread_mutex_unlock(&listening_worker_run_lock);
 	pthread_mutex_destroy(&listening_worker_run_lock);
+	//decreaseTartimemap(this->first_packet_time);
+	//printf("caller s[%u] n[%u] ls[%u]  called s[%u] n[%u] ls[%u]\n", caller_silence, caller_noise, caller_lastsilence, called_silence, called_noise, called_lastsilence);
+//	printf("caller_clipping_8k [%u] [%u]\n", caller_clipping_8k, called_clipping_8k);
 }
 
 void
@@ -497,11 +552,11 @@ Call::closeRawFiles() {
 string
 Call::dirname() {
 	char sdirname[18];
-	struct tm *t = localtime((const time_t*)(&first_packet_time));
+	struct tm t = localtime_r((const time_t*)(&first_packet_time));
 	if(opt_newdir) {
-		snprintf(sdirname, 17, "%04d-%02d-%02d/%02d/%02d",  t->tm_year + 1900, t->tm_mon + 1, t->tm_mday, t->tm_hour, t->tm_min);
+		snprintf(sdirname, 17, "%04d-%02d-%02d/%02d/%02d",  t.tm_year + 1900, t.tm_mon + 1, t.tm_mday, t.tm_hour, t.tm_min);
 	} else {
-		snprintf(sdirname, 17, "%04d-%02d-%02d",  t->tm_year + 1900, t->tm_mon + 1, t->tm_mday);
+		snprintf(sdirname, 17, "%04d-%02d-%02d",  t.tm_year + 1900, t.tm_mon + 1, t.tm_mday);
 	}
 	sdirname[17] = 0;
 	string s(sdirname);
@@ -512,8 +567,8 @@ Call::dirname() {
 string
 Call::dirnamesqlfiles() {
 	char sdirname[12];
-	struct tm *t = localtime((const time_t*)(&first_packet_time));
-	snprintf(sdirname, 11, "%04d%02d%02d%02d",  t->tm_year + 1900, t->tm_mon + 1, t->tm_mday, t->tm_hour);
+	struct tm t = localtime_r((const time_t*)(&first_packet_time));
+	snprintf(sdirname, 11, "%04d%02d%02d%02d",  t.tm_year + 1900, t.tm_mon + 1, t.tm_mday, t.tm_hour);
 	sdirname[11] = 0;
 	string s(sdirname);
 	return s;
@@ -523,6 +578,10 @@ Call::dirnamesqlfiles() {
 /* add ip adress and port to this call */
 int
 Call::add_ip_port(in_addr_t sip_src_addr, in_addr_t addr, unsigned short port, char *sessid, char *ua, unsigned long ua_len, bool iscaller, int *rtpmap, bool fax) {
+	if(this->end_call) {
+		return(-1);
+	}
+ 
 	if(verbosity >= 4) {
 		struct in_addr in;
 		in.s_addr = addr;
@@ -582,12 +641,14 @@ Call::refresh_data_ip_port(in_addr_t addr, unsigned short port, bool iscaller, i
 			forcemark[iscaller] = true;
 			if(fax && !this->ip_port[i].fax) {
 				this->ip_port[i].fax = fax;
-				hash_node_call *calls = calltable->hashfind_by_ip_port(addr, port);
+				calltable->lock_calls_hash();
+				hash_node_call *calls = calltable->hashfind_by_ip_port(addr, port, 0, false);
 				if(calls) {
 					for(hash_node_call *node_call = calls; node_call != NULL; node_call = node_call->next) {
 						node_call->is_fax = fax;
 					}
 				}
+				calltable->unlock_calls_hash();
 			}
 			return true;
 		}
@@ -597,6 +658,10 @@ Call::refresh_data_ip_port(in_addr_t addr, unsigned short port, bool iscaller, i
 
 void
 Call::add_ip_port_hash(in_addr_t sip_src_addr, in_addr_t addr, unsigned short port, char *sessid, char *ua, unsigned long ua_len, bool iscaller, int *rtpmap, bool fax, int allowrelation) {
+	if(this->end_call) {
+		return;
+	}
+
 	if(sessid) {
 		int sessidIndex = get_index_by_sessid(sessid, sip_src_addr);
 		if(sessidIndex >= 0) {
@@ -686,7 +751,7 @@ Call::read_rtcp(unsigned char* data, int datalen, int dataoffset, struct pcap_pk
 
 	if(enable_save_packet && opt_rtpsave_threaded) {
 		save_packet(this, header, packet, saddr, sport, daddr, dport, istcp, NULL, (char*)data, datalen, dataoffset, TYPE_RTP, 
-			    dlt, sensor_id);
+			    false, dlt, sensor_id);
 	}
 }
 
@@ -799,11 +864,9 @@ read:
 			}
 		}
 		while(__sync_lock_test_and_set(&rtplock, 1)) {
-			//wait until the lock is released
 			usleep(100);
 		}
-		rtplock = 1;
-		rtp[ssrc_n] = new RTP(sensor_id);
+		rtp[ssrc_n] = new FILE_LINE RTP(sensor_id);
 		rtp[ssrc_n]->call_owner = this;
 		rtp[ssrc_n]->ssrc_index = ssrc_n; 
 		rtp[ssrc_n]->iscaller = iscaller; 
@@ -821,7 +884,8 @@ read:
 
 		char graphFilePath_spool_relative[1024];
 		char graphFilePath[1024];
-		snprintf(graphFilePath_spool_relative, 1023, "%s/%s/%s.%d.graph%s", dirname().c_str(), opt_newdir ? "GRAPH" : "", get_fbasename_safe(), ssrc_n, opt_gzipGRAPH ? ".gz" : "");
+		snprintf(graphFilePath_spool_relative, 1023, "%s/%s/%s.%d.graph%s", dirname().c_str(), opt_newdir ? "GRAPH" : "", get_fbasename_safe(), ssrc_n, 
+			 opt_gzipGRAPH == FileZipHandler::gzip ? ".gz" : "");
 		graphFilePath_spool_relative[1023] = 0;
 		if(opt_cachedir[0] != '\0') {
 			snprintf(graphFilePath, 1023, "%s/%s", opt_cachedir, graphFilePath_spool_relative);
@@ -888,12 +952,12 @@ end:
 				unsigned int tmp_u32 = header->caplen;
 				header->caplen = header->caplen - (datalen - RTP_FIXED_HEADERLEN);
 				save_packet(this, header, packet, saddr, sport, daddr, dport, istcp, NULL, (char*)data, datalen, dataoffset, TYPE_RTP, 
-					    dlt, sensor_id);
+					    false, dlt, sensor_id);
 				header->caplen = tmp_u32;
 			}
 		} else {
 			save_packet(this, header, packet, saddr, sport, daddr, dport, istcp, NULL, (char*)data, datalen, dataoffset, TYPE_RTP, 
-				    dlt, sensor_id);
+				    false, dlt, sensor_id);
 		}
 	}
 }
@@ -963,6 +1027,10 @@ double calculate_mos_g711(double ppl, double burstr, int version) {
 	if(ppl == 0 or burstr == 0) {
 		return 4.5;
 	}
+
+	if(ppl > 0.5) {
+		return 1;
+	}
 	
 	switch(version) {
 	case 1:
@@ -1003,7 +1071,7 @@ double calculate_mos(double ppl, double burstr, int codec, unsigned int received
 	}
 }
 
-int convertALAW2WAV(char *fname1, char *fname3) {
+int convertALAW2WAV(const char *fname1, char *fname3, int maxsamplerate) {
 	unsigned char *bitstream_buf1;
 	int16_t buf_out1;
 	unsigned char *p1;
@@ -1037,7 +1105,7 @@ int convertALAW2WAV(char *fname1, char *fname3) {
 	file_size1 = ftell(f_in1);
 	fseek(f_in1, 0, SEEK_SET);
  
-	bitstream_buf1 = (unsigned char *)malloc(file_size1);
+	bitstream_buf1 = new FILE_LINE unsigned char[file_size1];
 	if(!bitstream_buf1) {
 		syslog(LOG_ERR,"Cannot malloc bitsream_buf1[%ld]", file_size1);
 		fclose(f_in1);
@@ -1050,12 +1118,14 @@ int convertALAW2WAV(char *fname1, char *fname3) {
 	while(p1 < f1) {
 		buf_out1 = ALAW(*p1);
 		p1 += inFrameSize;
-		fwrite(&buf_out1, outFrameSize, 1, f_out);
+		for(int i = 0; i < maxsamplerate / 8000; i++) {
+			fwrite(&buf_out1, outFrameSize, 1, f_out);
+		}
 	}
  
 	// wav_update_header(f_out);
  
-	free(bitstream_buf1);
+	delete [] bitstream_buf1;
  
 	fclose(f_out);
 	fclose(f_in1);
@@ -1063,7 +1133,7 @@ int convertALAW2WAV(char *fname1, char *fname3) {
 	return 0;
 }
  
-int convertULAW2WAV(char *fname1, char *fname3) {
+int convertULAW2WAV(const char *fname1, char *fname3, int maxsamplerate) {
 	unsigned char *bitstream_buf1;
 	int16_t buf_out1;
 	unsigned char *p1;
@@ -1097,7 +1167,7 @@ int convertULAW2WAV(char *fname1, char *fname3) {
 	file_size1 = ftell(f_in1);
 	fseek(f_in1, 0, SEEK_SET);
  
-	bitstream_buf1 = (unsigned char *)malloc(file_size1);
+	bitstream_buf1 = new FILE_LINE unsigned char[file_size1];
 	if(!bitstream_buf1) {
 		fclose(f_in1);
 		fclose(f_out);
@@ -1111,13 +1181,15 @@ int convertULAW2WAV(char *fname1, char *fname3) {
 	while(p1 < f1) {
 		buf_out1 = ULAW(*p1);
 		p1 += inFrameSize;
-		fwrite(&buf_out1, outFrameSize, 1, f_out);
+		for(int i = 0; i < maxsamplerate / 8000; i++) {
+			fwrite(&buf_out1, outFrameSize, 1, f_out);
+		}
 	}
  
 	// wav_update_header(f_out);
  
 	if(bitstream_buf1)
-		free(bitstream_buf1);
+		delete [] bitstream_buf1;
  
 	fclose(f_out);
 	fclose(f_in1);
@@ -1130,10 +1202,10 @@ Call::mos_lqo(char *deg, int samplerate) {
 	char buf[4092];
 	switch(samplerate) {
 	case 8000:
-		snprintf(buf, 4091, "PATH=/bin:/sbin:/usr/bin:/usr/sbin:/usr/local/sbin:/usr/local/bin %s +%d %s %s", opt_mos_lqo_bin.c_str(), samplerate, opt_mos_lqo_ref.c_str(), deg);
+		snprintf(buf, 4091, "PATH=/bin:/sbin:/usr/bin:/usr/sbin:/usr/local/sbin:/usr/local/bin %s +%d %s %s", opt_mos_lqo_bin, samplerate, opt_mos_lqo_ref, deg);
 		break;
 	case 16000:
-		snprintf(buf, 4091, "PATH=/bin:/sbin:/usr/bin:/usr/sbin:/usr/local/sbin:/usr/local/bin %s +%d %s %s", opt_mos_lqo_bin.c_str(), samplerate, opt_mos_lqo_ref16.c_str(), deg);
+		snprintf(buf, 4091, "PATH=/bin:/sbin:/usr/bin:/usr/sbin:/usr/local/sbin:/usr/local/bin %s +%d %s %s", opt_mos_lqo_bin, samplerate, opt_mos_lqo_ref16, deg);
 		break;
 	default:
 		if(verbosity > 0) syslog(LOG_INFO, "MOS_LQO unsupported samplerate:[%d] only 8000 and 16000 are supported\n", samplerate);
@@ -1149,7 +1221,7 @@ Call::mos_lqo(char *deg, int samplerate) {
 	}
 	float mos, mos_lqo;
 
-	char *tmp = new char[out.length() + 1];
+	char *tmp = new FILE_LINE char[out.length() + 1];
 	char *a = NULL;
 
 	strcpy(tmp, out.c_str());
@@ -1280,19 +1352,24 @@ Call::convertRawToWav() {
 			case PAYLOAD_ISAC32:
 				samplerate = 32000;
 				break;
+			case PAYLOAD_XOPUS8:
 			case PAYLOAD_OPUS8:
 				samplerate = 8000;
 				break;
+			case PAYLOAD_XOPUS12:
 			case PAYLOAD_OPUS12:
 				samplerate = 12000;
 				break;
+			case PAYLOAD_XOPUS16:
 			case PAYLOAD_OPUS16:
 				samplerate = 16000;
 				break;
+			case PAYLOAD_XOPUS24:
 			case PAYLOAD_OPUS24:
 				samplerate = 24000;
 				system(cmd);
 				break;
+			case PAYLOAD_XOPUS48:
 			case PAYLOAD_OPUS48:
 				samplerate = 48000;
 				system(cmd);
@@ -1327,29 +1404,79 @@ Call::convertRawToWav() {
 			syslog(LOG_ERR, "Cannot open %s\n", rawInfo);
 			return 1;
 		}
+		int maxsamplerate = 0;
+		// get max sample rate 
+		list<raws_t> raws;
+		struct timeval lasttv;
+		lasttv.tv_sec = 0;
+		lasttv.tv_usec = 0;
+		int iter = 0;
+		unsigned int last_ssrc_index = 0;
+		long long last_size = 0;
+		/* 
+			read rawInfo file where there are stored raw files (rtp streams) 
+			if any of such stream has same SSRC as previous stream and it starts at the same time with 500ms tolerance that stream is eliminated (it is probably duplicate stream)
+		*/
 		while(fgets(line, 256, pl)) {
+			struct raws_t rawl;
 			char raw[1024];
 			line[strlen(line)] = '\0'; // remove '\n' which is last character
 			sscanf(line, "%d:%lu:%d:%ld:%ld", &ssrc_index, &rawiterator, &codec, &tv0.tv_sec, &tv0.tv_usec);
 			snprintf(raw, 1023, "%s/%s/%s.i%d.%d.%lu.%d.%ld.%ld.raw", dirname().c_str(), opt_newdir ? "AUDIO" : "", get_fbasename_safe(), i, ssrc_index, rawiterator, codec, tv0.tv_sec, tv0.tv_usec);
-			raw[1023] = 0;
-			switch(codec) {
+			samplerate = 1000 * get_ticks_bycodec(codec);
+			if(maxsamplerate < samplerate) {
+				maxsamplerate = samplerate;
+			}
+
+			rawl.ssrc_index = ssrc_index;
+			rawl.rawiterator = rawiterator;
+			rawl.tv.tv_sec = tv0.tv_sec;
+			rawl.tv.tv_usec = tv0.tv_usec;
+			rawl.codec = codec;
+			rawl.filename = raw;
+
+			if(iter > 0) {
+				if(rtp[ssrc_index]->ssrc == rtp[last_ssrc_index]->ssrc and
+					abs(ast_tvdiff_ms(tv0, lasttv)) < 200 and
+					last_size > 10000) {
+					// ignore this raw file it is duplicate 
+					if(!sverb.noaudiounlink) unlink(raw);
+					//syslog(LOG_NOTICE, "ignoring duplicate stream [%s] ssrc[%x] ssrc[%x] ast_tvdiff_ms(lasttv, tv0)=[%d]", raw, rtp[last_ssrc_index]->ssrc, rtp[ssrc_index]->ssrc, ast_tvdiff_ms(lasttv, tv0));
+				} else {
+					raws.push_back(rawl);
+				}
+			} else {
+				raws.push_back(rawl);
+
+			}
+
+			lasttv.tv_sec = tv0.tv_sec;
+			lasttv.tv_usec = tv0.tv_usec;
+			last_ssrc_index = ssrc_index;
+			iter++;
+			last_size = GetFileSize(raw);
+			
+		}
+		fclose(pl);
+
+		for (std::list<raws_t>::const_iterator rawf = raws.begin(), end = raws.end(); rawf != end; ++rawf) {
+			switch(rawf->codec) {
 			case PAYLOAD_PCMA:
 				if(verbosity > 1) syslog(LOG_ERR, "Converting PCMA to WAV.\n");
-				convertALAW2WAV(raw, wav);
+				convertALAW2WAV(rawf->filename.c_str(), wav, maxsamplerate);
 				samplerate = 8000;
 				break;
 			case PAYLOAD_PCMU:
 				if(verbosity > 1) syslog(LOG_ERR, "Converting PCMU to WAV.\n");
-				convertULAW2WAV(raw, wav);
+				convertULAW2WAV(rawf->filename.c_str(), wav, maxsamplerate);
 				samplerate = 8000;
 				break;
 		/* following decoders are not included in free version. Please contact support@voipmonitor.org */
 			case PAYLOAD_G722:
 				if(opt_keycheck[0] != '\0') {
-					snprintf(cmd, cmd_len, "vmcodecs %s g722 \"%s\" \"%s\" 64000", opt_keycheck, raw, wav);
+					snprintf(cmd, cmd_len, "vmcodecs %s g722 \"%s\" \"%s\" 64000", opt_keycheck, rawf->filename.c_str(), wav);
 				} else {
-					snprintf(cmd, cmd_len, "voipmonitor-g722 \"%s\" \"%s\" 64000", raw, wav);
+					snprintf(cmd, cmd_len, "voipmonitor-g722 \"%s\" \"%s\" 64000", rawf->filename.c_str(), wav);
 				}
 				cmd[cmd_len] = 0;
 				samplerate = 16000;
@@ -1359,9 +1486,9 @@ Call::convertRawToWav() {
 				break;
 			case PAYLOAD_G7221:
 				if(opt_keycheck[0] != '\0') {
-					snprintf(cmd, cmd_len, "vmcodecs %s siren \"%s\" \"%s\" 16000", opt_keycheck, raw, wav);
+					snprintf(cmd, cmd_len, "vmcodecs %s siren \"%s\" \"%s\" 16000", opt_keycheck, rawf->filename.c_str(), wav);
 				} else {
-					snprintf(cmd, cmd_len, "voipmonitor-siren \"%s\" \"%s\" 16000", raw, wav);
+					snprintf(cmd, cmd_len, "voipmonitor-siren \"%s\" \"%s\" 16000", rawf->filename.c_str(), wav);
 				}
 				cmd[cmd_len] = 0;
 				samplerate = 32000;
@@ -1371,9 +1498,9 @@ Call::convertRawToWav() {
 				break;
 			case PAYLOAD_G722116:
 				if(opt_keycheck[0] != '\0') {
-					snprintf(cmd, cmd_len, "vmcodecs %s siren \"%s\" \"%s\" 16000", opt_keycheck, raw, wav);
+					snprintf(cmd, cmd_len, "vmcodecs %s siren \"%s\" \"%s\" 16000", opt_keycheck, rawf->filename.c_str(), wav);
 				} else {
-					snprintf(cmd, cmd_len, "voipmonitor-siren \"%s\" \"%s\" 16000", raw, wav);
+					snprintf(cmd, cmd_len, "voipmonitor-siren \"%s\" \"%s\" 16000", rawf->filename.c_str(), wav);
 				}
 				cmd[cmd_len] = 0;
 				samplerate = 16000;
@@ -1383,9 +1510,9 @@ Call::convertRawToWav() {
 				break;
 			case PAYLOAD_G722132:
 				if(opt_keycheck[0] != '\0') {
-					snprintf(cmd, cmd_len, "vmcodecs %s siren \"%s\" \"%s\" 32000", opt_keycheck, raw, wav);
+					snprintf(cmd, cmd_len, "vmcodecs %s siren \"%s\" \"%s\" 32000", opt_keycheck, rawf->filename.c_str(), wav);
 				} else {
-					snprintf(cmd, cmd_len, "voipmonitor-siren \"%s\" \"%s\" 32000", raw, wav);
+					snprintf(cmd, cmd_len, "voipmonitor-siren \"%s\" \"%s\" 32000", rawf->filename.c_str(), wav);
 				}
 				cmd[cmd_len] = 0;
 				samplerate = 32000;
@@ -1395,9 +1522,9 @@ Call::convertRawToWav() {
 				break;
 			case PAYLOAD_GSM:
 				if(opt_keycheck[0] != '\0') {
-					snprintf(cmd, cmd_len, "vmcodecs %s gsm \"%s\" \"%s\"", opt_keycheck, raw, wav);
+					snprintf(cmd, cmd_len, "vmcodecs %s gsm \"%s\" \"%s\"", opt_keycheck, rawf->filename.c_str(), wav);
 				} else {
-					snprintf(cmd, cmd_len, "voipmonitor-gsm \"%s\" \"%s\"", raw, wav);
+					snprintf(cmd, cmd_len, "voipmonitor-gsm \"%s\" \"%s\"", rawf->filename.c_str(), wav);
 				}
 				cmd[cmd_len] = 0;
 				if(verbosity > 1) syslog(LOG_ERR, "Converting GSM to WAV.\n");
@@ -1406,9 +1533,9 @@ Call::convertRawToWav() {
 				break;
 			case PAYLOAD_G729:
 				if(opt_keycheck[0] != '\0') {
-					snprintf(cmd, cmd_len, "vmcodecs %s g729 \"%s\" \"%s\"", opt_keycheck, raw, wav);
+					snprintf(cmd, cmd_len, "vmcodecs %s g729 \"%s\" \"%s\"", opt_keycheck, rawf->filename.c_str(), wav);
 				} else {
-					snprintf(cmd, cmd_len, "voipmonitor-g729 \"%s\" \"%s\"", raw, wav);
+					snprintf(cmd, cmd_len, "voipmonitor-g729 \"%s\" \"%s\"", rawf->filename.c_str(), wav);
 				}
 				cmd[cmd_len] = 0;
 				if(verbosity > 1) syslog(LOG_ERR, "Converting G.729 to WAV.\n");
@@ -1417,9 +1544,9 @@ Call::convertRawToWav() {
 				break;
 			case PAYLOAD_G723:
 				if(opt_keycheck[0] != '\0') {
-					snprintf(cmd, cmd_len, "vmcodecs %s g723 \"%s\" \"%s\"", opt_keycheck, raw, wav);
+					snprintf(cmd, cmd_len, "vmcodecs %s g723 \"%s\" \"%s\"", opt_keycheck, rawf->filename.c_str(), wav);
 				} else {
-					snprintf(cmd, cmd_len, "voipmonitor-g723 \"%s\" \"%s\"", raw, wav);
+					snprintf(cmd, cmd_len, "voipmonitor-g723 \"%s\" \"%s\"", rawf->filename.c_str(), wav);
 				}
 				cmd[cmd_len] = 0;
 				if(verbosity > 1) syslog(LOG_ERR, "Converting G.723 to WAV.\n");
@@ -1428,9 +1555,9 @@ Call::convertRawToWav() {
 				break;
 			case PAYLOAD_ILBC:
 				if(opt_keycheck[0] != '\0') {
-					snprintf(cmd, cmd_len, "vmcodecs %s ilbc \"%s\" \"%s\"", opt_keycheck, raw, wav);
+					snprintf(cmd, cmd_len, "vmcodecs %s ilbc \"%s\" \"%s\"", opt_keycheck, rawf->filename.c_str(), wav);
 				} else {
-					snprintf(cmd, cmd_len, "voipmonitor-ilbc \"%s\" \"%s\"", raw, wav);
+					snprintf(cmd, cmd_len, "voipmonitor-ilbc \"%s\" \"%s\"", rawf->filename.c_str(), wav);
 				}
 				cmd[cmd_len] = 0;
 				if(verbosity > 1) syslog(LOG_ERR, "Converting iLBC to WAV.\n");
@@ -1439,9 +1566,9 @@ Call::convertRawToWav() {
 				break;
 			case PAYLOAD_SPEEX:
 				if(opt_keycheck[0] != '\0') {
-					snprintf(cmd, cmd_len, "vmcodecs %s speex \"%s\" \"%s\"", opt_keycheck, raw, wav);
+					snprintf(cmd, cmd_len, "vmcodecs %s speex \"%s\" \"%s\"", opt_keycheck, rawf->filename.c_str(), wav);
 				} else {
-					snprintf(cmd, cmd_len, "voipmonitor-speex \"%s\" \"%s\"", raw, wav);
+					snprintf(cmd, cmd_len, "voipmonitor-speex \"%s\" \"%s\"", rawf->filename.c_str(), wav);
 				}
 				cmd[cmd_len] = 0;
 				if(verbosity > 1) syslog(LOG_ERR, "Converting speex to WAV.\n");
@@ -1450,9 +1577,9 @@ Call::convertRawToWav() {
 				break;
 			case PAYLOAD_SILK8:
 				if(opt_keycheck[0] != '\0') {
-					snprintf(cmd, cmd_len, "vmcodecs %s silk \"%s\" \"%s\" 8000", opt_keycheck, raw, wav);
+					snprintf(cmd, cmd_len, "vmcodecs %s silk \"%s\" \"%s\" 8000", opt_keycheck, rawf->filename.c_str(), wav);
 				} else {
-					snprintf(cmd, cmd_len, "voipmonitor-silk \"%s\" \"%s\" 8000", raw, wav);
+					snprintf(cmd, cmd_len, "voipmonitor-silk \"%s\" \"%s\" 8000", rawf->filename.c_str(), wav);
 				}
 				cmd[cmd_len] = 0;
 				samplerate = 8000;
@@ -1461,9 +1588,9 @@ Call::convertRawToWav() {
 				break;
 			case PAYLOAD_SILK12:
 				if(opt_keycheck[0] != '\0') {
-					snprintf(cmd, cmd_len, "vmcodecs %s silk \"%s\" \"%s\" 12000", opt_keycheck, raw, wav);
+					snprintf(cmd, cmd_len, "vmcodecs %s silk \"%s\" \"%s\" 12000", opt_keycheck, rawf->filename.c_str(), wav);
 				} else {
-					snprintf(cmd, cmd_len, "voipmonitor-silk \"%s\" \"%s\" 12000", raw, wav);
+					snprintf(cmd, cmd_len, "voipmonitor-silk \"%s\" \"%s\" 12000", rawf->filename.c_str(), wav);
 				}
 				cmd[cmd_len] = 0;
 				samplerate = 12000;
@@ -1472,9 +1599,9 @@ Call::convertRawToWav() {
 				break;
 			case PAYLOAD_SILK16:
 				if(opt_keycheck[0] != '\0') {
-					snprintf(cmd, cmd_len, "vmcodecs %s silk \"%s\" \"%s\" 16000", opt_keycheck, raw, wav);
+					snprintf(cmd, cmd_len, "vmcodecs %s silk \"%s\" \"%s\" 16000", opt_keycheck, rawf->filename.c_str(), wav);
 				} else {
-					snprintf(cmd, cmd_len, "voipmonitor-silk \"%s\" \"%s\" 16000", raw, wav);
+					snprintf(cmd, cmd_len, "voipmonitor-silk \"%s\" \"%s\" 16000", rawf->filename.c_str(), wav);
 				}
 				cmd[cmd_len] = 0;
 				samplerate = 16000;
@@ -1483,9 +1610,9 @@ Call::convertRawToWav() {
 				break;
 			case PAYLOAD_SILK24:
 				if(opt_keycheck[0] != '\0') {
-					snprintf(cmd, cmd_len, "vmcodecs %s silk \"%s\" \"%s\" 24000", opt_keycheck, raw, wav);
+					snprintf(cmd, cmd_len, "vmcodecs %s silk \"%s\" \"%s\" 24000", opt_keycheck, rawf->filename.c_str(), wav);
 				} else {
-					snprintf(cmd, cmd_len, "voipmonitor-silk \"%s\" \"%s\" 24000", raw, wav);
+					snprintf(cmd, cmd_len, "voipmonitor-silk \"%s\" \"%s\" 24000", rawf->filename.c_str(), wav);
 				}
 				cmd[cmd_len] = 0;
 				if(verbosity > 1) syslog(LOG_ERR, "Converting SILK16 to WAV.\n");
@@ -1494,9 +1621,9 @@ Call::convertRawToWav() {
 				break;
 			case PAYLOAD_ISAC16:
 				if(opt_keycheck[0] != '\0') {
-					snprintf(cmd, cmd_len, "vmcodecs %s isac \"%s\" \"%s\" 16000", opt_keycheck, raw, wav);
+					snprintf(cmd, cmd_len, "vmcodecs %s isac \"%s\" \"%s\" 16000", opt_keycheck, rawf->filename.c_str(), wav);
 				} else {
-					snprintf(cmd, cmd_len, "voipmonitor-isac \"%s\" \"%s\" 16000", raw, wav);
+					snprintf(cmd, cmd_len, "voipmonitor-isac \"%s\" \"%s\" 16000", rawf->filename.c_str(), wav);
 				}
 				cmd[cmd_len] = 0;
 				samplerate = 16000;
@@ -1505,9 +1632,9 @@ Call::convertRawToWav() {
 				break;
 			case PAYLOAD_ISAC32:
 				if(opt_keycheck[0] != '\0') {
-					snprintf(cmd, cmd_len, "vmcodecs %s isac \"%s\" \"%s\" 32000", opt_keycheck, raw, wav);
+					snprintf(cmd, cmd_len, "vmcodecs %s isac \"%s\" \"%s\" 32000", opt_keycheck, rawf->filename.c_str(), wav);
 				} else {
-					snprintf(cmd, cmd_len, "voipmonitor-isac \"%s\" \"%s\" 32000", raw, wav);
+					snprintf(cmd, cmd_len, "voipmonitor-isac \"%s\" \"%s\" 32000", rawf->filename.c_str(), wav);
 				}
 				cmd[cmd_len] = 0;
 				samplerate = 32000;
@@ -1516,9 +1643,9 @@ Call::convertRawToWav() {
 				break;
 			case PAYLOAD_OPUS8:
 				if(opt_keycheck[0] != '\0') {
-					snprintf(cmd, cmd_len, "vmcodecs %s opus \"%s\" \"%s\" 8000", opt_keycheck, raw, wav);
+					snprintf(cmd, cmd_len, "vmcodecs %s opus \"%s\" \"%s\" 8000", opt_keycheck, rawf->filename.c_str(), wav);
 				} else {
-					snprintf(cmd, cmd_len, "voipmonitor-opus \"%s\" \"%s\" 8000", raw, wav);
+					snprintf(cmd, cmd_len, "voipmonitor-opus \"%s\" \"%s\" 8000", rawf->filename.c_str(), wav);
 				}
 				cmd[cmd_len] = 0;
 				samplerate = 8000;
@@ -1527,9 +1654,9 @@ Call::convertRawToWav() {
 				break;
 			case PAYLOAD_OPUS12:
 				if(opt_keycheck[0] != '\0') {
-					snprintf(cmd, cmd_len, "vmcodecs %s opus \"%s\" \"%s\" 12000", opt_keycheck, raw, wav);
+					snprintf(cmd, cmd_len, "vmcodecs %s opus \"%s\" \"%s\" 12000", opt_keycheck, rawf->filename.c_str(), wav);
 				} else {
-					snprintf(cmd, cmd_len, "voipmonitor-opus \"%s\" \"%s\" 12000", raw, wav);
+					snprintf(cmd, cmd_len, "voipmonitor-opus \"%s\" \"%s\" 12000", rawf->filename.c_str(), wav);
 				}
 				cmd[cmd_len] = 0;
 				samplerate = 12000;
@@ -1538,9 +1665,9 @@ Call::convertRawToWav() {
 				break;
 			case PAYLOAD_OPUS16:
 				if(opt_keycheck[0] != '\0') {
-					snprintf(cmd, cmd_len, "vmcodecs %s opus \"%s\" \"%s\" 16000", opt_keycheck, raw, wav);
+					snprintf(cmd, cmd_len, "vmcodecs %s opus \"%s\" \"%s\" 16000", opt_keycheck, rawf->filename.c_str(), wav);
 				} else {
-					snprintf(cmd, cmd_len, "voipmonitor-opus \"%s\" \"%s\" 16000", raw, wav);
+					snprintf(cmd, cmd_len, "voipmonitor-opus \"%s\" \"%s\" 16000", rawf->filename.c_str(), wav);
 				}
 				cmd[cmd_len] = 0;
 				samplerate = 16000;
@@ -1549,9 +1676,9 @@ Call::convertRawToWav() {
 				break;
 			case PAYLOAD_OPUS24:
 				if(opt_keycheck[0] != '\0') {
-					snprintf(cmd, cmd_len, "vmcodecs %s opus \"%s\" \"%s\" 24000", opt_keycheck, raw, wav);
+					snprintf(cmd, cmd_len, "vmcodecs %s opus \"%s\" \"%s\" 24000", opt_keycheck, rawf->filename.c_str(), wav);
 				} else {
-					snprintf(cmd, cmd_len, "voipmonitor-opus \"%s\" \"%s\" 24000", raw, wav);
+					snprintf(cmd, cmd_len, "voipmonitor-opus \"%s\" \"%s\" 24000", rawf->filename.c_str(), wav);
 				}
 				cmd[cmd_len] = 0;
 				samplerate = 24000;
@@ -1560,11 +1687,11 @@ Call::convertRawToWav() {
 				break;
 			case PAYLOAD_OPUS48:
 				if(opt_keycheck[0] != '\0') {
-					snprintf(cmd, cmd_len, "vmcodecs %s opus \"%s\" \"%s\" 48000", opt_keycheck, raw, wav);
+					snprintf(cmd, cmd_len, "vmcodecs %s opus \"%s\" \"%s\" 48000", opt_keycheck, rawf->filename.c_str(), wav);
 				} else {
-					snprintf(cmd, cmd_len, "vmcodecs-opus %s a opus \"%s\" \"%s\" 48000", opt_keycheck, raw, wav);
+					snprintf(cmd, cmd_len, "vmcodecs-opus %s a opus \"%s\" \"%s\" 48000", opt_keycheck, rawf->filename.c_str(), wav);
 					cout << cmd << "\n";
-					//snprintf(cmd, cmd_len, "voipmonitor-opus \"%s\" \"%s\" 48000", raw, wav);
+					//snprintf(cmd, cmd_len, "voipmonitor-opus \"%s\" \"%s\" 48000", rawf->filename.c_str(), wav);
 				}
 				cmd[cmd_len] = 0;
 				samplerate = 48000;
@@ -1572,14 +1699,11 @@ Call::convertRawToWav() {
 				system(cmd);
 				break;
 			default:
-				syslog(LOG_ERR, "Call [%s] cannot be converted to WAV, unknown payloadtype [%d]\n", raw, codec);
+				syslog(LOG_ERR, "Call [%s] cannot be converted to WAV because the codec [%s] is not supported.\n", rawf->filename.c_str(), codec2text(rawf->codec));
 			}
-#if UNLINK_RAW
-			unlink(raw);
-#endif
+			if(!sverb.noaudiounlink) unlink(rawf->filename.c_str());
 		}
-		fclose(pl);
-		unlink(rawInfo);
+		if(!sverb.noaudiounlink) unlink(rawInfo);
 	}
 
 	if(opt_mos_lqo and adir == 1 and flags & FLAG_RUNAMOSLQO and (samplerate == 8000 or samplerate == 16000)) {
@@ -1594,9 +1718,9 @@ Call::convertRawToWav() {
 		switch(opt_audio_format) {
 		case FORMAT_WAV:
 			if(!opt_saveaudio_reversestereo) {
-				wav_mix(wav0, wav1, out, samplerate, 0);
+				wav_mix(wav0, wav1, out, samplerate, 0, opt_saveaudio_stereo);
 			} else {
-				wav_mix(wav1, wav0, out, samplerate, 0);
+				wav_mix(wav1, wav0, out, samplerate, 0, opt_saveaudio_stereo);
 			}
 			break;
 		case FORMAT_OGG:
@@ -1607,30 +1731,30 @@ Call::convertRawToWav() {
 			}
 			break;
 		}
-		unlink(wav0);
-		unlink(wav1);
+		if(!sverb.noaudiounlink) unlink(wav0);
+		if(!sverb.noaudiounlink) unlink(wav1);
 	} else if(adir == 1) {
 		// there is only caller sound
 		switch(opt_audio_format) {
 		case FORMAT_WAV:
-			wav_mix(wav0, NULL, out, samplerate, 0);
+			wav_mix(wav0, NULL, out, samplerate, 0, opt_saveaudio_stereo);
 			break;
 		case FORMAT_OGG:
 			ogg_mix(wav0, NULL, out, opt_saveaudio_stereo, samplerate, opt_saveaudio_oggquality, 0);
 			break;
 		}
-		unlink(wav0);
+		if(!sverb.noaudiounlink) unlink(wav0);
 	} else if(bdir == 1) {
 		// there is only called sound
 		switch(opt_audio_format) {
 		case FORMAT_WAV:
-			wav_mix(wav1, NULL, out, samplerate, 1);
+			wav_mix(wav1, NULL, out, samplerate, 1, opt_saveaudio_stereo);
 			break;
 		case FORMAT_OGG:
 			ogg_mix(wav1, NULL, out, opt_saveaudio_stereo, samplerate, opt_saveaudio_oggquality, 1);
 			break;
 		}
-		unlink(wav1);
+		if(!sverb.noaudiounlink) unlink(wav1);
 	}
 	string tmp;
 	tmp.append(out);
@@ -1720,28 +1844,26 @@ Call::saveToDb(bool enableBatchIfPossible) {
 
 		// remove duplicates
 		list<unsigned int>::iterator iter = proxies.begin();
-		set<unsigned int> elements;
+		set<unsigned int> proxies_undup;
 		while (iter != proxies.end()) {
-			if (elements.find(*iter) != elements.end()) {
-				iter = proxies.erase(iter);
-			} else {
-				elements.insert(*iter);
-				++iter;
+			if (proxies_undup.find(*iter) == proxies_undup.end()) {
+				proxies_undup.insert(*iter);
 			}
+			++iter;
 		}
 
-		iter = proxies.begin();
-		while (iter != proxies.end()) {
-			if(*iter == sipcalledip[0]) { ++iter; continue; };
+		set<unsigned int>::iterator iter_undup = proxies_undup.begin();
+		while (iter_undup != proxies_undup.end()) {
+			if(*iter_undup == sipcalledip[0]) { ++iter_undup; continue; };
 			sqlDbSaveCall->setEnableSqlStringInContent(true);
 			SqlDb_row cdrproxy;
 			cdrproxy.add("_\\_'SQL'_\\_:@cdr_id", "cdr_ID");
 			cdrproxy.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
-			cdrproxy.add(htonl(*iter), "dst");
+			cdrproxy.add(htonl(*iter_undup), "dst");
 			query_str_cdrproxy += sqlDbSaveCall->insertQuery("cdr_proxy", cdrproxy) + ";\n";
 			sqlDbSaveCall->setEnableSqlStringInContent(false);
 
-			++iter;
+			++iter_undup;
 		}
 	}
 
@@ -1812,7 +1934,9 @@ Call::saveToDb(bool enableBatchIfPossible) {
 	cdr.add(lastSIPresponseNum, "lastSIPresponseNum");
 
 	int bye;
-	if(absolute_timeout_exceeded) {
+	if(force_terminate) {
+		bye = 110;
+	} else if(absolute_timeout_exceeded) {
 		bye = 102;
 	} else if(bye_timeout_exceeded) {
 		bye = 103;
@@ -1820,11 +1944,14 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		bye = 104;
 	} else if(oneway_timeout_exceeded) {
 		bye = 105;
-	} else if(oneway) {
+	} else if(oneway && chantype != CHAN_SKINNY) {
 		bye = 101;
+	} else if(pcap_drop) {
+		bye = 100;
+	} else if(!seenRES2XX_no_BYE && !seenRES18X && seenbye) {
+		bye = 106;
 	} else {
-		bye = pcap_drop ? 100 :
-		      (seeninviteok ? (seenbye ? (seenbyeandok ? 3 : 2) : 1) : 0);
+		bye = seeninviteok ? (seenbye ? (seenbyeandok ? 3 : 2) : 1) : 0;
 	}
 	cdr.add(bye, "bye");
 
@@ -1845,17 +1972,20 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		cdr.add(whohanged ? "callee" : "caller", "whohanged");
 	}
 	
-	if(get_customers_pn_query[0] && custPnCache) {
-		cust_reseller cr;
-		cr = custPnCache->getCustomerByPhoneNumber(caller);
-		if(cr.cust_id) {
-			cdr.add(cr.cust_id, "caller_customer_id");
-			cdr.add(cr.reseller_id, "caller_reseller_id");
-		}
-		cr = custPnCache->getCustomerByPhoneNumber(called);
-		if(cr.cust_id) {
-			cdr.add(cr.cust_id, "called_customer_id");
-			cdr.add(cr.reseller_id, "called_reseller_id");
+	if(get_customers_pn_query[0]) {
+		CustPhoneNumberCache *custPnCache = getCustPnCache();
+		if(custPnCache) {
+			cust_reseller cr;
+			cr = custPnCache->getCustomerByPhoneNumber(caller);
+			if(cr.cust_id) {
+				cdr.add(cr.cust_id, "caller_customer_id");
+				cdr.add(cr.reseller_id, "caller_reseller_id");
+			}
+			cr = custPnCache->getCustomerByPhoneNumber(called);
+			if(cr.cust_id) {
+				cdr.add(cr.cust_id, "called_customer_id");
+				cdr.add(cr.reseller_id, "called_reseller_id");
+			}
 		}
 	}
 
@@ -1909,6 +2039,21 @@ Call::saveToDb(bool enableBatchIfPossible) {
 
 		cdr_ua_a.add(sqlEscapeString(a_ua), "ua");
 		cdr_ua_b.add(sqlEscapeString(b_ua), "ua");
+
+		if(opt_silencedetect) {
+			if(caller_silence > 0 or caller_silence > 0) {
+				cdr.add(caller_silence * 100 / (caller_silence + caller_noise), "caller_silence");
+			}
+			if(called_silence > 0 or called_noise > 0) {
+				cdr.add(called_silence * 100 / (called_silence + called_noise), "called_silence");
+			}
+			cdr.add(caller_lastsilence / 1000, "caller_silence_end");
+			cdr.add(called_lastsilence / 1000, "called_silence_end");
+		}
+		if(opt_clippingdetect) {
+			cdr.add(caller_clipping_8k / 100 > 255 ? 255 : caller_clipping_8k / 100, "caller_clipping_mult100");
+			cdr.add(called_clipping_8k / 100 > 255 ? 255 : called_clipping_8k / 100, "called_clipping_mult100");
+		}
 
 		// save only two streams with the biggest received packets
 		int payload[2] = { -1, -1 };
@@ -2030,10 +2175,12 @@ Call::saveToDb(bool enableBatchIfPossible) {
 				cdr.add(rtcp_avgjitter_mult10[i], c+"_rtcp_avgjitter_mult10");
 			}
 		}
-
 		if(seenudptl) {
-		//if(isfax) {
+			// T.38
 			cdr.add(1000, "payload");
+		} else if(isfax == 2) {
+			// T.30
+			cdr.add(1001, "payload");
 		} else if(payload[0] >= 0 || payload[1] >= 0) {
 			cdr.add(payload[0] >= 0 ? payload[0] : payload[1], "payload");
 		}
@@ -2101,32 +2248,46 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		}
 		
 		extern bool opt_cdr_check_exists_callid;
-		if(opt_cdr_check_exists_callid) {
+		extern bool opt_cdr_check_duplicity_callid_in_next_pass_insert;
+		if(opt_cdr_check_exists_callid ||
+		   opt_cdr_check_duplicity_callid_in_next_pass_insert) {
 			// check if exists call-id & rtp records - begin if
-			bool existsRtp = false;
-			for(int i = 0; i < MAX_SSRC_PER_CALL; i++) {
-				if(rtp[i] and rtp[i]->s->received) {
-					existsRtp = true;
-					break;
+			if(opt_cdr_check_exists_callid) {
+				query_str += string("set @exists_call_id = coalesce(\n") +
+					     "(select cdr_ID from cdr_next\n" +
+					     " where calldate > ('" + sqlDateTimeString(calltime()) + "' - interval 1 hour) and\n" +
+					     "       calldate < ('" + sqlDateTimeString(calltime()) + "' + interval 1 hour) and\n" +
+					     "       fbasename = '" + sqlEscapeString(fbasename) + "' limit 1), 0);\n";
+				query_str += string("set @exists_rtp =\n") +
+					     "if(@exists_call_id,\n" +
+					     "   exists (select * from cdr_rtp where cdr_id = @exists_call_id),\n" +
+					     "   0);\n";
+				bool existsRtp = false;
+				for(int i = 0; i < MAX_SSRC_PER_CALL; i++) {
+					if(rtp[i] and rtp[i]->s->received) {
+						existsRtp = true;
+						break;
+					}
 				}
+				query_str += string("if @exists_call_id and not @exists_rtp and ") + (existsRtp ? "1" : "0") + " then\n" +
+					     "  delete from cdr where id = @exists_call_id;\n" +
+					     "  delete from cdr_next where cdr_id = @exists_call_id;\n" +
+					     "  delete from cdr_rtp where cdr_id = @exists_call_id;\n" +
+					     (opt_dbdtmf ? "  delete from cdr_dtmf where cdr_id = @exists_call_id;\n" : "") +
+					     (opt_pcap_dump_tar ? "  delete from cdr_tar_part where cdr_id = @exists_call_id;\n" : "") +
+					     "  set @exists_call_id = 0;\n" +
+					     "end if;\n";
+				query_str += "if not @exists_call_id then\n";
+			} else if(opt_cdr_check_duplicity_callid_in_next_pass_insert) {
+				query_str += "__NEXT_PASS_QUERY_BEGIN__";
+				query_str += string("set @exists_call_id = coalesce(\n") +
+					     "(select cdr_ID from cdr_next\n" +
+					     " where calldate > ('" + sqlDateTimeString(calltime()) + "' - interval 1 minute) and\n" +
+					     "       calldate < ('" + sqlDateTimeString(calltime()) + "' + interval 1 minute) and\n" +
+					     "       fbasename = '" + sqlEscapeString(fbasename) + "' limit 1), 0);\n";
+				query_str += "if not @exists_call_id then\n";
+				query_str += "__NEXT_PASS_QUERY_END__";
 			}
-			query_str += string("set @exists_call_id = coalesce(\n") +
-				     "(select cdr_ID from cdr_next\n" +
-				     " where calldate > ('" + sqlDateTimeString(calltime()) + "' - interval 1 hour) and\n" +
-				     "       calldate < ('" + sqlDateTimeString(calltime()) + "' + interval 1 hour) and\n" +
-				     "       fbasename = '" + sqlEscapeString(fbasename) + "'), 0);\n";
-			query_str += string("set @exists_rtp =\n") +
-				     "if(@exists_call_id,\n" +
-				     "   exists (select * from cdr_rtp where cdr_id = @exists_call_id),\n" +
-				     "   0);\n";
-			query_str += string("if @exists_call_id and not @exists_rtp and ") + (existsRtp ? "1" : "0") + " then\n" +
-				     "  delete from cdr where id = @exists_call_id;\n" +
-				     "  delete from cdr_next where cdr_id = @exists_call_id;\n" +
-				     "  delete from cdr_rtp where cdr_id = @exists_call_id;\n" +
-				     (opt_dbdtmf ? "delete from cdr_dtmf where cdr_id = @exists_call_id\n" : "") +
-				     "  set @exists_call_id = 0;\n" +
-				     "end if;\n";
-			query_str += "if not @exists_call_id then\n";
 		}
 		
 		query_str += sqlDbSaveCall->insertQuery(sql_cdr_table, cdr) + ";\n";
@@ -2206,13 +2367,43 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			}
 		}
 		
+		if(opt_pcap_dump_tar) {
+			for(int i = 1; i <= 3; i++) {
+				if(!(i == 1 ? opt_pcap_dump_tar_sip_use_pos :
+				     i == 2 ? opt_pcap_dump_tar_rtp_use_pos :
+					      opt_pcap_dump_tar_graph_use_pos)) {
+					continue;
+				}
+				list<u_int64_t> *tarPos = i == 1 ? &this->tarPosSip :
+							  i == 2 ? &this->tarPosRtp :
+								   &this->tarPosGraph;
+				for(list<u_int64_t>::iterator it = tarPos->begin(); it != tarPos->end(); it++) {
+					SqlDb_row tar_part;
+					tar_part.add("_\\_'SQL'_\\_:@cdr_id", "cdr_ID");
+					tar_part.add(i, "type");
+					tar_part.add(*it, "pos");
+					if(existsColumnCalldateInCdrDtmf) {
+						tar_part.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
+					}
+					query_str += sqlDbSaveCall->insertQuery("cdr_tar_part", tar_part) + ";\n";
+				}
+			}
+		}
+		
 		sqlDbSaveCall->setEnableSqlStringInContent(false);
 		
 		query_str += "end if";
 		
-		if(opt_cdr_check_exists_callid) {
+		if(opt_cdr_check_exists_callid ||
+		   opt_cdr_check_duplicity_callid_in_next_pass_insert) {
 			// check if exists call-id & rtp records - end if
-			query_str += ";\nend if";
+			if(opt_cdr_check_exists_callid) {
+				query_str += ";\nend if";
+			} else if(opt_cdr_check_duplicity_callid_in_next_pass_insert) {
+				query_str += "__NEXT_PASS_QUERY_BEGIN__";
+				query_str += ";\nend if";
+				query_str += "__NEXT_PASS_QUERY_END__";
+			}
 		}
 		
 		static unsigned int counterSqlStore = 0;
@@ -2801,7 +2992,28 @@ Call::saveMessageToDb(bool enableBatchIfPossible) {
 		if(contenttype) {
 			cdr.add(string("_\\_'SQL'_\\_:") + "getIdOrInsertCONTENTTYPE(" + sqlEscapeStringBorder(contenttype) + ")", "id_contenttype");
 		}
+		
+		extern bool opt_message_check_duplicity_callid_in_next_pass_insert;
+		if(opt_message_check_duplicity_callid_in_next_pass_insert) {
+			// check if exists call-id - begin if
+			query_str += "__NEXT_PASS_QUERY_BEGIN__";
+			query_str += string("set @exists_call_id = coalesce(\n") +
+				     "(select ID from message\n" +
+				     " where calldate > ('" + sqlDateTimeString(calltime()) + "' - interval 1 minute) and\n" +
+				     "       calldate < ('" + sqlDateTimeString(calltime()) + "' + interval 1 minute) and\n" +
+				     "       fbasename = '" + sqlEscapeString(fbasename) + "' limit 1), 0);\n";
+			query_str += "if not @exists_call_id then\n";
+			query_str += "__NEXT_PASS_QUERY_END__";
+		}
+		
 		query_str += sqlDbSaveCall->insertQuery("message", cdr);
+		
+		if(opt_message_check_duplicity_callid_in_next_pass_insert) {
+			// check if exists call-id - end if
+			query_str += "__NEXT_PASS_QUERY_BEGIN__";
+			query_str += ";\nend if";
+			query_str += "__NEXT_PASS_QUERY_END__";
+		}
 		
 		static unsigned int counterSqlStore = 0;
 		int storeId = STORE_PROC_ID_MESSAGE_1 + 
@@ -2938,6 +3150,27 @@ Call::getAllReceivedRtpPackets() {
 	return(receivedPackets);
 }
 
+void 
+Call::addTarPos(u_int64_t pos, int type) {
+	switch(type) {
+	case FileZipHandler::pcap_sip:
+		if(opt_pcap_dump_tar_sip_use_pos) {
+			this->tarPosSip.push_back(pos);
+		}
+		break;
+	case FileZipHandler::pcap_rtp:
+		if(opt_pcap_dump_tar_rtp_use_pos) {
+			this->tarPosRtp.push_back(pos);
+		}
+		break;
+	case FileZipHandler::graph_rtp:
+		if(opt_pcap_dump_tar_graph_use_pos) {
+			this->tarPosGraph.push_back(pos);
+		}
+		break;
+	}
+}
+
 /* constructor */
 Calltable::Calltable() {
 	pthread_mutex_init(&qlock, NULL);
@@ -2948,6 +3181,7 @@ Calltable::Calltable() {
 	pthread_mutex_init(&calls_mergeMAPlock, NULL);
 
 	memset(calls_hash, 0x0, sizeof(calls_hash));
+	_sync_lock_calls_hash = 0;
 };
 
 /* destructor */
@@ -2986,7 +3220,7 @@ Calltable::mapAdd(in_addr_t addr, unsigned short port, Call* call, int iscaller,
 	}
 	
 	// adding to hash at first position
-	Ipportnode *node = (Ipportnode *)malloc(sizeof(Ipportnode));
+	Ipportnode *node = new FILE_LINE Ipportnode;
 	memset(node, 0x0, sizeof(Ipportnode));
 	node->call = call;
 	node->iscaller = iscaller;
@@ -2999,13 +3233,17 @@ Calltable::mapAdd(in_addr_t addr, unsigned short port, Call* call, int iscaller,
 /* add node to hash. collisions are linked list of nodes*/
 void
 Calltable::hashAdd(in_addr_t addr, unsigned short port, Call* call, int iscaller, int is_rtcp, int is_fax, int allowrelation) {
+	if(call->end_call) {
+		return;
+	}
+
 	u_int32_t h;
 	hash_node *node = NULL;
 	hash_node_call *node_call = NULL;
 
 	h = tuplehash(addr, port);
 	//allowrelation = 1;
-
+	lock_calls_hash();
 	// check if there is not already call in hash 
 	for (node = (hash_node *)calls_hash[h]; node != NULL; node = node->next) {
 		if ((node->addr == addr) && (node->port == port)) {
@@ -3021,13 +3259,13 @@ Calltable::hashAdd(in_addr_t addr, unsigned short port, Call* call, int iscaller
 					// remove this call
 					if(prev) {
 						prev->next = node_call->next;
-						free(node_call);
+						delete node_call;
 						node_call = prev->next;
 						continue;
 					} else {
 						//removing first node
 						node->calls = node->calls->next;
-						free(node_call);
+						delete node_call;
 						node_call = node->calls;
 						continue;
 					}
@@ -3057,11 +3295,12 @@ Calltable::hashAdd(in_addr_t addr, unsigned short port, Call* call, int iscaller
 					*/
 					lastcall = call;
 				}
+				unlock_calls_hash();
 				return;
 			}
 			if(!found) {
 				// the same ip/port is shared with some other call which is not yet in node - add it
-				hash_node_call *node_call_new = (hash_node_call*)malloc(sizeof(hash_node_call));
+				hash_node_call *node_call_new = new FILE_LINE hash_node_call;
 				node_call_new->next = node->calls;
 				node_call_new->call = call;
 				node_call_new->iscaller = iscaller;
@@ -3072,26 +3311,28 @@ Calltable::hashAdd(in_addr_t addr, unsigned short port, Call* call, int iscaller
 				node->calls = node_call_new;
 				
 			}
+			unlock_calls_hash();
 			return;
 		}
 	}
 
 	// addr / port combination not found - add it to hash at first position
 
-	node_call = (hash_node_call*)malloc(sizeof(hash_node_call));
+	node_call = new FILE_LINE hash_node_call;
 	node_call->next = NULL;
 	node_call->call = call;
 	node_call->iscaller = iscaller;
 	node_call->is_rtcp = is_rtcp;
 	node_call->is_fax = is_fax;
 
-	node = (hash_node*)malloc(sizeof(hash_node));
+	node = new FILE_LINE hash_node;
 	memset(node, 0x0, sizeof(hash_node));
 	node->addr = addr;
 	node->port = port;
 	node->next = (hash_node *)calls_hash[h];
 	node->calls = node_call;
 	calls_hash[h] = node;
+	unlock_calls_hash();
 }
 
 /* remove node from hash */
@@ -3102,6 +3343,7 @@ Calltable::hashRemove(Call *call, in_addr_t addr, unsigned short port) {
 	int h;
 
 	h = tuplehash(addr, port);
+	lock_calls_hash();
 	for (node = (hash_node *)calls_hash[h]; node != NULL; node = node->next) {
 		if (node->addr == addr && node->port == port) {
 			for (node_call = (hash_node_call *)node->calls; node_call != NULL; node_call = node_call->next) {
@@ -3110,11 +3352,11 @@ Calltable::hashRemove(Call *call, in_addr_t addr, unsigned short port) {
 					// call matches - remote the call from node->calls
 					if (prev_call == NULL) {
 						node->calls = node_call->next;
-						free(node_call);
+						delete node_call;
 						break; 
 					} else {
 						prev_call->next = node_call->next;
-						free(node_call);
+						delete node_call;
 						break; 
 					}
 					break;
@@ -3125,17 +3367,20 @@ Calltable::hashRemove(Call *call, in_addr_t addr, unsigned short port) {
 				// node now contains no calls so we can remove it 
 				if (prev == NULL) {
 					calls_hash[h] = node->next;
-					free(node);
+					delete node;
+					unlock_calls_hash();
 					return;
 				} else {
 					prev->next = node->next;
-					free(node);
+					delete node;
+					unlock_calls_hash();
 					return;
 				}
 			}
 		}
 		prev = node;
 	}
+	unlock_calls_hash();
 }
 
 /* remove node from hash */
@@ -3145,7 +3390,7 @@ Calltable::mapRemove(in_addr_t addr, unsigned short port) {
 		ipportmapIT = ipportmap[addr].find(port);
 		if(ipportmapIT != ipportmap[addr].end()) {
 			Ipportnode *node = (*ipportmapIT).second;
-			free(node);
+			delete node;
 			ipportmap[addr].erase(ipportmapIT);
 		}
 	}
@@ -3159,7 +3404,7 @@ Calltable::destroyCallsIfPcapsClosed() {
 		for(size_t i = 0; i < size;) {
 			Call *call = this->calls_deletequeue[i];
 			if(call->isPcapsClose()) {
-				call->hashRemove();
+				call->removeFindTables();
 				call->atFinish();
 				delete call;
 				calls_counter--;
@@ -3193,28 +3438,36 @@ Calltable::mapfind_by_ip_port(in_addr_t addr, unsigned short port, int *iscaller
 
 /* find call in hash */
 hash_node_call*
-Calltable::hashfind_by_ip_port(in_addr_t addr, unsigned short port) {
+Calltable::hashfind_by_ip_port(in_addr_t addr, unsigned short port, unsigned int hash, bool lock) {
 	hash_node *node = NULL;
 	u_int32_t h;
 
-	h = tuplehash(addr, port);
+	h = hash ? hash : tuplehash(addr, port);
+	if(lock) {
+		lock_calls_hash();
+	}
+	hash_node_call *rslt = NULL;
 	for (node = (hash_node *)calls_hash[h]; node != NULL; node = node->next) {
 		if ((node->addr == addr) && (node->port == port)) {
-			return node->calls;
+			rslt = node->calls;
 //			*iscaller = node->iscaller;
 //			*is_rtcp = node->is_rtcp;
 //			*is_fax = node->is_fax;
 //			return node->call;
 		}
 	}
-	return NULL;
+	if(lock) {
+		unlock_calls_hash();
+	}
+	return rslt;
 }
 
 Call*
 Calltable::add(char *call_id, unsigned long call_id_len, time_t time, u_int32_t saddr, unsigned short port,
 	       pcap_t *handle, int dlt, int sensorId
 ) {
-	Call *newcall = new Call(call_id, call_id_len, time);
+	Call *newcall = new FILE_LINE Call(call_id, call_id_len, time);
+
 	if(handle) {
 		newcall->useHandle = handle;
 	}
@@ -3267,7 +3520,7 @@ Calltable::find_by_call_id(char *call_id, unsigned long call_id_len) {
 		return NULL;
 	} else {
 		unlock_calls_listMAP();
-		return (*callMAPIT).second;
+		return (*callMAPIT).second->end_call ? NULL : (*callMAPIT).second;
 	}
 	
 /*
@@ -3304,7 +3557,7 @@ Calltable::find_by_skinny_partyid(unsigned int partyid) {
 		// not found
 		return NULL;
 	} else {
-		return (*skinny_partyIDIT).second;
+		return (*skinny_partyIDIT).second->end_call ? NULL : (*skinny_partyIDIT).second;
 	}
 }
 
@@ -3322,7 +3575,7 @@ Calltable::find_by_skinny_ipTuples(unsigned int saddr, unsigned int daddr) {
 	if(skinny_ipTuplesIT == skinny_ipTuples.end()) {
 		return NULL;
 	} else {
-		return skinny_ipTuplesIT->second;
+		return skinny_ipTuplesIT->second->end_call ? NULL : skinny_ipTuplesIT->second;
 	}
 }
 
@@ -3331,44 +3584,13 @@ Calltable::find_by_skinny_ipTuples(unsigned int saddr, unsigned int daddr) {
  * ic currtime = 0, save it immediatly
 */
 
-#if 0
-int
-Calltable::cleanup_old( time_t currtime ) {
-	for (call = calls_list.begin(); call != calls_list.end();) {
-		if(verbosity > 2) (*call)->dump();
-		// rtptimeout seconds of inactivity will save this call and remove from call table
-		if(currtime == 0 || ((*call)->destroy_call_at != 0 and (*call)->destroy_call_at <= currtime) || (currtime - (*call)->get_last_packet_time() > rtptimeout)) {
-			if ((*call)->get_f_pcap() != NULL){
-				pcap_dump_flush((*call)->get_f_pcap());
-				if ((*call)->get_f_pcap() != NULL) 
-					pcap_dump_close((*call)->get_f_pcap());
-				(*call)->set_f_pcap(NULL);
-			}
-			if(currtime == 0) {
-				/* we are saving calls because of terminating SIGTERM and we dont know 
-				 * if the call ends successfully or not. So we dont want to confuse monitoring
-				 * applications which reports unterminated calls so mark this call as sighup */
-				(*call)->sighup = true;
-				if(verbosity > 2)
-					syslog(LOG_NOTICE, "Set call->sighup\n");
-			}
-			// we have to close all raw files as there can be data in buffers 
-			(*call)->closeRawFiles();
-			/* move call to queue for mysql processing */
-			lock_calls_queue();
-			calls_queue.push(*call);
-			unlock_calls_queue();
-			calls_list.erase(call++);
-		} else {
-			++call;
-		}
-	}
-	return 0;
-}
-#endif
-
 int
 Calltable::cleanup( time_t currtime ) {
+
+#if HAVE_LIBTCMALLOC    
+	MallocExtension::instance()->ReleaseFreeMemory();
+#endif
+
 	if(verbosity && verbosityE > 1) {
 		syslog(LOG_NOTICE, "call Calltable::cleanup");
 	}
@@ -3386,7 +3608,10 @@ Calltable::cleanup( time_t currtime ) {
 		bool closeCall = false;
 		if(currtime == 0 || call->force_close) {
 			closeCall = true;
-		} else if(call->rtppcaketsinqueue == 0) {
+			if(!opt_read_from_file && !opt_pb_read_from_file[0]) {
+				call->force_terminate = true;
+			}
+		} else {
 			if(call->destroy_call_at != 0 && call->destroy_call_at <= currtime) {
 				closeCall = true;
 			} else if(call->destroy_call_at_bye != 0 && call->destroy_call_at_bye <= currtime) {
@@ -3415,14 +3640,35 @@ Calltable::cleanup( time_t currtime ) {
 			}
 		}
 		if(closeCall) {
+			call->removeFindTables(true);
+			if(!(
+			     #if SYNC_CALL_RTP
+			     call->rtppcaketsinqueue == 0
+			     #else
+			     call->rtppcaketsinqueue_p == call->rtppcaketsinqueue_m
+			     #endif 
+			     )) {
+				closeCall = false;
+			}
+		}
+		if(closeCall) {
 			if(verbosity && verbosityE > 1) {
 				syslog(LOG_NOTICE, "Calltable::cleanup - callid %s", call->call_id.c_str());
 			}
+			#if SYNC_CALL_RTP
 			if(currtime == 0 && call->rtppcaketsinqueue) {
 				syslog(LOG_WARNING, "force destroy call (rtppcaketsinqueue > 0)");
 			}
-			call->hashRemove();
+			#else
+			if(currtime == 0 && call->rtppcaketsinqueue_p != call->rtppcaketsinqueue_m) {
+				syslog(LOG_WARNING, "force destroy call (rtppcaketsinqueue_p != rtppcaketsinqueue_m)");
+			}
+			#endif
 			// Close RTP dump file ASAP to save file handles
+			if(currtime == 0 && terminating) {
+				call->getPcap()->close();
+				call->getPcapSip()->close();
+			}
 			call->getPcapRtp()->close();
 
 			if(currtime == 0) {
@@ -3451,11 +3697,18 @@ Calltable::cleanup( time_t currtime ) {
 		}
 	}
 	unlock_calls_listMAP();
+	
+	if(currtime == 0 && terminating) {
+		extern int terminated_call_cleanup;
+		terminated_call_cleanup = 1;
+		syslog(LOG_NOTICE, "terminated - call cleanup");
+	}
+	
 	return 0;
 }
 
 void Call::saveregister() {
-	hashRemove();
+	removeFindTables();
 	this->pcap.close();
 	this->pcapSip.close();
 	/****

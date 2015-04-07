@@ -2,7 +2,7 @@
 # Process this file with autoconf to produce a configure script.
 
 AC_PREREQ([2.67])
-AC_INIT([FULL-PACKAGE-NAME], [VERSION], [BUG-REPORT-ADDRESS])
+AC_INIT([voipmonitor], [VERSION], [support@voipmonitor.org])
 AC_CONFIG_SRCDIR([voipmonitor.cpp])
 AC_CONFIG_HEADERS([config.h])
 
@@ -12,8 +12,8 @@ AC_PROG_CC
 AC_PROG_INSTALL
 AC_PROG_MAKE_SET
 
-LD_LIBRARY_PATH="$LD_LIBRARY_PATH:/usr/local/lib:/usr/local/mysql/lib"
-LDFLAGS="$LDFLAGS -L/usr/local/mysql/lib -L/usr/local/lib -L/usr/lib64/mysql/ -L/usr/lib/mysql/"
+LD_LIBRARY_PATH="$LD_LIBRARY_PATH:/usr/local/lib"
+LDFLAGS="$LDFLAGS -L/usr/local/lib"
 
 # Checks for libraries.
 # FIXME: Replace `main' with a function in `-lc':
@@ -21,7 +21,7 @@ AC_CHECK_LIB([c], [main])
 # FIXME: Replace `main' with a function in `-lcrypt':
 AC_CHECK_LIB([crypt], [main])
 # FIXME: Replace `main' with a function in `-ldl':
-AC_CHECK_LIB([dl], [main])
+AC_CHECK_LIB([dl], [main], AC_SUBST([LIBLD],["-ldl"]), AC_MSG_NOTICE([Unable to find libdl. Safe to ignore on FreeBSD as the functionality is provided by libc.]))
 # FIXME: Replace `main' with a function in `-lltdl':
 AC_CHECK_LIB([ltdl], [main])
 # FIXME: Replace `main' with a function in `-lm':
@@ -45,43 +45,116 @@ AC_CHECK_LIB([vorbisenc], [main], ,AC_MSG_ERROR([Unable to find VORBISENC librar
 # FIXME: Replace `main' with a function in `-lz':
 AC_CHECK_LIB([snappy], [main], ,AC_MSG_ERROR([Unable to find snappy library. apt-get install libsnappy-dev | or compile from source: https://snappy.googlecode.com/files/snappy-1.1.0.tar.gz]))
 AC_CHECK_LIB([curl], [main], , AC_MSG_ERROR([Unable to find curl library. apt-get libcurl4-openssl-dev | yum curl-devel]))
-AC_CHECK_LIB([ssh], [main], , AC_MSG_ERROR([Unable to find libssh library. apt-get install libssh-dev | yum install libssh-devel | or compile from source https://red.libssh.org/projects/libssh/files ]))
-AC_CHECK_LIB([ssh], [ssh_forward_accept], , AC_MSG_ERROR([Your libssh is old. Compile from source https://red.libssh.org/projects/libssh/files (current linux distributions have old library) ]))
-AC_CHECK_LIB([json], [main], , AC_MSG_ERROR([Unable to find json-c library. apt-get install libjson0-dev | yum install json-c-devel (RPM from EPEL) | or compile from source: git clone https://github.com/json-c/json-c.git; cd json-c; sh autogen.sh; ./configure; make; make install;ldconfig]))
+AC_CHECK_LIB([ssh], [ssh_forward_accept], HAVE_LIBSSH=1, AC_MSG_NOTICE([Your libssh is old or missing - cloud feature is disabled. apt-get install libssh-dev | yum install libssh-devel | or compile from source https://red.libssh.org/projects/libssh/files]))
+AC_CHECK_LIB([json], [main], LIBJSON_NAME='json')
+AC_CHECK_LIB([json-c], [main], LIBJSON_NAME='json-c')
+if test "x$LIBJSON_NAME" = "x"; then
+	AC_MSG_ERROR([Unable to find json(-c) library. apt-get install libjson0-dev | yum install json-c-devel (RPM from EPEL) | pkg install json-c | or compile from source: git clone https://github.com/json-c/json-c.git; cd json-c; sh autogen.sh; ./configure; make; make install;ldconfig])
+else
+	AC_SUBST([LIBJSON_NAME],["$LIBJSON_NAME"])
+fi
 AC_CHECK_LIB([rrd], [main], , AC_MSG_ERROR([Unable to find librrd library. apt-get install librrd-dev | yum install rrdtool-devel | or compile from source http://oss.oetiker.ch/rrdtool/doc/librrd.en.html]))
 AC_CHECK_LIB([glib-2.0], [main], , AC_MSG_ERROR([Unable to find libglib library. apt-get install  libglib2.0-dev | yum install glib2-devel]))
 AC_CHECK_LIB([xml2], [main], , AC_MSG_ERROR([Unable to find xml2 library. apt-get install libxml2-dev | yum install libxml2-devel]))
-AC_CHECK_LIB([mysqlclient], [main], , AC_MSG_ERROR([Unable to find libmysqlclient. apt-get install lbmysqlclient-dev | yum install mysql-devel]))
+
+# Check for MySQL libraries (or MariaDB)
+AC_MSG_CHECKING(for mysql_config executable)
+AC_ARG_WITH(mysql, [  --with-mysql=PATH path to mysql_config binary or mysql prefix dir], [
+	if test -x $withval -a -f $withval
+	then
+		MYSQL_CONFIG=$withval
+	elif test -x $withval/bin/mysql_config -a -f $withval/bin/mysql_config
+    then
+		MYSQL_CONFIG=$withval/bin/mysql_config
+    fi
+], [
+	if test -x /usr/local/mysql/bin/mysql_config -a -f /usr/local/mysql/bin/mysql_config
+	then
+		MYSQL_CONFIG=/usr/local/mysql/bin/mysql_config
+	elif test -x /usr/bin/mysql_config -a -f /usr/bin/mysql_config
+	then
+		MYSQL_CONFIG=/usr/bin/mysql_config
+	elif test -x /usr/local/bin/mysql_config -a -f /usr/local/bin/mysql_config
+	then
+		MYSQL_CONFIG=/usr/local/bin/mysql_config
+	fi
+])
+if test "x$MYSQL_CONFIG" = "x"
+then
+    AC_MSG_RESULT(not found)
+    exit 3
+else
+    AC_SUBST([MYSQLCFLAGS],[`$MYSQL_CONFIG --cflags`])
+    AC_SUBST([MYSQLCXXFLAGS],[`$MYSQL_CONFIG --cxxflags`])
+    MYSQLLDFLAGS=`$MYSQL_CONFIG --libs`
+    LDFLAGS="$LDFLAGS $MYSQLLDFLAGS"
+    AC_SUBST([MYSQLLIB],[$MYSQLLDFLAGS])
+    AC_SUBST([MYSQLINCLUDE],[`$MYSQL_CONFIG --include`])
+    AC_MSG_RESULT($MYSQL_CONFIG)
+fi
+AC_CHECK_LIB([mysqlclient], [main], , AC_MSG_ERROR([Unable to find libmysqlclient. apt-get install libmysqlclient-dev | yum install mysql-devel | pkg install mysql56-client]))
+
 AC_CHECK_LIB([z], [main], , AC_MSG_ERROR([Unable to find libz. apt-get install zlib1g-dev | yum install zlib-devel]))
+AC_CHECK_LIB([lzma], [main], HAVE_LIBLZMA=1, AC_MSG_NOTICE([Unable to find lzma. apt-get install liblzma-dev | yum install lzma-devel]))
+AC_CHECK_LIB([gnutls], [gnutls_init], HAVE_LIBGNUTLS=1, AC_MSG_NOTICE([Unable to find gnutls disabling SIP TLS decoder. apt-get install libgnutls-dev | yum install gnutls-devel]))
+#AC_CHECK_LIB([tcmalloc_minimal], [tc_malloc], HAVE_LIBTCMALLOC=1, AC_MSG_NOTICE([Unable to find tcmalloc_minimal library which speeds up threads by 10%. The library is optional: apt-get install libtcmalloc-minimal4 or compile from source https://code.google.com/p/gperftools/]))
+
+HAVE_LIBLZMA_T=no
+if test "x$HAVE_LIBLZMA" = "x1"; then 
+	AC_DEFINE([HAVE_LIBLZMA], [1], [Define if using liblzma])
+	AC_SUBST([LIBLZMA],["-llzma"])
+	HAVE_LIBLZMA_T=yes
+fi
+
+HAVE_LIBSSH_T=no
+if test "x$HAVE_LIBSSH" = "x1"; then 
+	AC_DEFINE([HAVE_LIBSSH], [1], [Define if using libss])
+	AC_SUBST([LIBSSH],["-lssh -lssh_threads"])
+	HAVE_LIBSSH_T=yes
+fi
+
+LIBGNUTLS_T=no
+if test "x$HAVE_LIBGNUTLS" = "x1"; then 
+	AC_DEFINE([HAVE_LIBGNUTLS], [1], [Define if using gnutls])
+	AC_SUBST([LIBGNUTLS],["-lgcrypt -lgnutls"])
+	AC_SUBST([LIBGNUTLSSTATIC],["-lgcrypt -lgnutls -lnettle -lhogweed -lgmp -lgpg-error -lpthread "])
+	LIBGNUTLS_T=yes
+fi
+TCMALLOC_T=no
+if test "x$HAVE_LIBTCMALLOC" = "x1"; then 
+	AC_DEFINE([HAVE_LIBTCMALLOC], [1], [Define if using libtcmalloc])
+	AC_SUBST([LIBTCMALLOC],["-ltcmalloc_minimal"])
+	TCMALLOC_T=yes
+fi
 
 # Checks for header files.
-AC_FUNC_ALLOCA
-AC_CHECK_HEADERS([arpa/inet.h fcntl.h inttypes.h limits.h locale.h malloc.h netdb.h netinet/in.h stddef.h stdint.h stdlib.h string.h strings.h sys/param.h sys/socket.h sys/time.h syslog.h unistd.h wchar.h])
+#AC_FUNC_ALLOCA
+#AC_CHECK_HEADERS([arpa/inet.h fcntl.h inttypes.h limits.h locale.h malloc.h netdb.h netinet/in.h stddef.h stdint.h stdlib.h string.h strings.h sys/param.h sys/socket.h sys/time.h syslog.h unistd.h wchar.h])
 
 # Checks for typedefs, structures, and compiler characteristics.
-AC_HEADER_STDBOOL
-AC_C_INLINE
-AC_TYPE_INT16_T
-AC_TYPE_INT32_T
-AC_TYPE_INT64_T
-AC_TYPE_MODE_T
-AC_TYPE_OFF_T
-AC_TYPE_PID_T
-AC_TYPE_SIZE_T
-AC_TYPE_UINT16_T
-AC_TYPE_UINT32_T
-AC_TYPE_UINT64_T
-AC_TYPE_UINT8_T
+#AC_HEADER_STDBOOL
+#AC_C_INLINE
+#AC_TYPE_INT16_T
+#AC_TYPE_INT32_T
+#AC_TYPE_INT64_T
+#AC_TYPE_MODE_T
+#AC_TYPE_OFF_T
+#AC_TYPE_PID_T
+#AC_TYPE_SIZE_T
+#AC_TYPE_UINT16_T
+#AC_TYPE_UINT32_T
+#AC_TYPE_UINT64_T
+#AC_TYPE_UINT8_T
 
 # Checks for library functions.
-AC_FUNC_ERROR_AT_LINE
-AC_FUNC_FORK
-AC_FUNC_FSEEKO
-AC_FUNC_MALLOC
-AC_FUNC_REALLOC
-AC_FUNC_STRNLEN
-AC_FUNC_STRTOD
-AC_CHECK_FUNCS([gethostbyname gettimeofday inet_ntoa memmove memset mkdir mkfifo pow select setenv setlocale socket sqrt strcasecmp strchr strdup strerror strncasecmp strndup strstr strtol])
+#AC_FUNC_ERROR_AT_LINE
+#AC_FUNC_FORK
+#AC_FUNC_FSEEKO
+#AC_FUNC_MALLOC
+#AC_FUNC_REALLOC
+#AC_FUNC_STRNLEN
+#AC_FUNC_STRTOD
+#AC_CHECK_FUNCS([gethostbyname gettimeofday inet_ntoa memmove memset mkdir mkfifo pow select setenv setlocale socket sqrt strcasecmp strchr strdup strerror strncasecmp strndup strstr strtol])
 
 AC_CONFIG_FILES([Makefile
                  simpleini/Makefile])
@@ -89,12 +162,31 @@ AC_CONFIG_FILES([Makefile
 
 AC_OUTPUT
 
+
 AC_MSG_NOTICE([
+
+##############################################################
+                                                            
+ __     __   ___ ____                        _ _             
+ \ \   / /__|_ _|  _ \ _ __ ___   ___  _ __ (_) |_ ___  _ __ 
+  \ \ / / _ \| || |_) | '_ ` _ \ / _ \| '_ \| | __/ _ \| '__|
+   \ V / (_) | ||  __/| | | | | | (_) | | | | | || (_) | |   
+    \_/ \___/___|_|   |_| |_| |_|\___/|_| |_|_|\__\___/|_|   
+                                                             
+ 
+                                                             
+
+lzma compression enabled               : $HAVE_LIBLZMA_T
+ssh library enabled (cloud)            : $HAVE_LIBSSH_T
+gnutls library enabled (SIP TLS)       : $LIBGNUTLS_T
+tcmalloc (faster *alloc) lib found     : $TCMALLOC_T
 
 shared binary: run make 
 static binary: run make static
 
 check README.*
+
+#############################################################
 
 ])
 

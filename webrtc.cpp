@@ -24,6 +24,9 @@ WebrtcData::~WebrtcData() {
 void WebrtcData::processData(u_int32_t ip_src, u_int32_t ip_dst,
 			     u_int16_t port_src, u_int16_t port_dst,
 			     TcpReassemblyData *data,
+			     u_char *ethHeader, u_int32_t ethHeaderLength,
+			     pcap_t *handle, int dlt, int sensor_id,
+			     TcpReassemblyLink *reassemblyLink,
 			     bool debugSave) {
 	++this->counterProcessData;
 	if(debugSave) {
@@ -34,6 +37,9 @@ void WebrtcData::processData(u_int32_t ip_src, u_int32_t ip_dst,
 	}
 	for(size_t i_data = 0; i_data < data->data.size(); i_data++) {
 		TcpReassemblyDataItem *dataItem = &data->data[i_data];
+		if(!dataItem->getData()) {
+			continue;
+		}
 		if(debugSave) {
 			cout << fixed
 			     << setw(15) << inet_ntostring(htonl(ip_src))
@@ -121,7 +127,9 @@ void WebrtcData::processData(u_int32_t ip_src, u_int32_t ip_dst,
 		   (webrtcDD.type == "req" || webrtcDD.type == "rsp") &&
 		   ((webrtcDD.method == "login" && !webrtcDD.deviceId.empty()) || 
 		    (webrtcDD.method == "msg" && !webrtcDD.commCorrelationId.empty()))) {
-			string data_md5 = GetDataMD5(webrtcDD.data, webrtcDD.payload_length);
+			uint32_t ip_ports[4] = { ip_src, ip_dst, port_src, port_dst };
+			string data_md5 = GetDataMD5(webrtcDD.data, webrtcDD.payload_length,
+						     (u_char*)ip_ports, sizeof(ip_ports));
 			u_int32_t _ip_src = dataItem->getDirection() == TcpReassemblyDataItem::DIRECTION_TO_DEST ? ip_src : ip_dst;
 			u_int32_t _ip_dst = dataItem->getDirection() == TcpReassemblyDataItem::DIRECTION_TO_DEST ? ip_dst : ip_src;
 			u_int16_t _port_src = dataItem->getDirection() == TcpReassemblyDataItem::DIRECTION_TO_DEST ? port_src : port_dst;
@@ -226,8 +234,11 @@ unsigned int WebrtcData::WebrtcDecodeData::decode(u_char *data, unsigned int dat
 	}
 	if(payload_length && !checkOkOnly) {
 		u_int32_t dataLength = payload_length / 4 * 4 + (payload_length % 4 ? 4 : 0);
-		this->data = new u_char[dataLength + 1];
-		memcpy(this->data, data + headerLength, payload_length);
+		this->data = new FILE_LINE u_char[dataLength + 1];
+		memcpy_heapsafe(this->data, this->data,
+				data + headerLength, data,
+				payload_length,
+				__FILE__, __LINE__);
 		if(masking_key) {
 			for(u_int32_t i = 0; i < dataLength; i += 4) {
 				*(u_int32_t*)(this->data + i) = htonl(htonl(*(u_int32_t*)(this->data + i)) ^ masking_key);
@@ -299,13 +310,16 @@ void WebrtcCache::clear() {
 
 
 bool checkOkWebrtcHttpData(u_char *data, u_int32_t datalen) {
-	return(datalen > 4 &&
+	return(data && datalen > 4 &&
 	       (!strncmp((char*)data, "POST", 4) ||
 		!strncmp((char*)data, "GET", 3) ||
 		!strncmp((char*)data, "HTTP", 4)));
 }
 
 bool checkOkWebrtcData(u_char *data, u_int32_t datalen) {
+	if(!data) {
+		return(false);
+	}
 	WebrtcData::WebrtcDecodeData webrtcDD;
 	return(webrtcDD.decode(data, datalen, true) > 0);
 }

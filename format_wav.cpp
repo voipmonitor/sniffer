@@ -3,14 +3,14 @@
 #include "tools.h"
 
 // sample rate 8000, 12000, 16000, 24000
-int wav_write_header(FILE *f, int samplerate)
+int wav_write_header(FILE *f, int samplerate, int stereo)
 {
 	unsigned int hz=htoll(samplerate);
-	unsigned int bhz = htoll(samplerate*2*2); // 2 bytes per sample and 2 channels
+	unsigned int bhz = htoll(samplerate*2*(stereo ? 2 : 1)); // 2 bytes per sample and 2 channels
 	unsigned int hs = htoll(16);	// 16bit
 	unsigned short fmt = htols(1);
-	unsigned short chans = htols(2);
-	unsigned short bysam = htols(2*2);
+	unsigned short chans = htols((stereo ? 2 : 1));
+	unsigned short bysam = htols(2*(stereo ? 2 : 1));
 	unsigned short bisam = htols(16);
 	unsigned int size = htoll(0);
 	/* Write a wav header, ignoring sizes which will be filled in later */
@@ -107,7 +107,7 @@ int wav_update_header(FILE *f)
 	return 0;
 }
 
-int wav_mix(char *in1, char *in2, char *out, int samplerate, int swap) {
+int wav_mix(char *in1, char *in2, char *out, int samplerate, int swap, int stereo) {
 	FILE *f_in1 = NULL;
 	FILE *f_in2 = NULL;
 	FILE *f_out = NULL;
@@ -163,7 +163,7 @@ int wav_mix(char *in1, char *in2, char *out, int samplerate, int swap) {
 	char f_out_buffer[32768];
 	setvbuf(f_out, f_out_buffer, _IOFBF, 32768);
 
-	wav_write_header(f_out, samplerate);
+	wav_write_header(f_out, samplerate, stereo);
 
 	fseek(f_in1, 0, SEEK_END);
 	file_size1 = ftell(f_in1);
@@ -175,7 +175,7 @@ int wav_mix(char *in1, char *in2, char *out, int samplerate, int swap) {
 		fseek(f_in2, 0, SEEK_SET);
 	}
 
-	bitstream_buf1 = (char *)malloc(file_size1);
+	bitstream_buf1 = new FILE_LINE char[file_size1];
 	if(!bitstream_buf1) {
 		if(f_in1 != NULL)
 			fclose(f_in1);
@@ -188,12 +188,12 @@ int wav_mix(char *in1, char *in2, char *out, int samplerate, int swap) {
 	}
 
 	if(in2 != NULL) {
-		bitstream_buf2 = (char *)malloc(file_size2);
+		bitstream_buf2 = new FILE_LINE char[file_size2];
 		if(!bitstream_buf2) {
 			fclose(f_in1);
 			fclose(f_in2);
 			fclose(f_out);
-			free(bitstream_buf1);
+			delete [] bitstream_buf1;
 			syslog(LOG_ERR,"Cannot malloc bitsream_buf2[%ld]", file_size1);
 			return 1;
 		}
@@ -212,38 +212,45 @@ int wav_mix(char *in1, char *in2, char *out, int samplerate, int swap) {
 
 	while(p1 < f1 || p2 < f2 ) {
 		if(p1 < f1 && p2 < f2) {
-			/* mono */
-			/*
-			slinear_saturated_add((short int*)p1, (short int*)p2);
-			fwrite(p1, 2, 1, f_out);
-			p1 += 2;
-			p2 += 2;
-			*/
+			if(stereo) {
 			/* stereo */
-			if(swap) {
-				fwrite(p2, 2, 1, f_out);
-				fwrite(p1, 2, 1, f_out);
+				if(swap) {
+					fwrite(p2, 2, 1, f_out);
+					fwrite(p1, 2, 1, f_out);
+				} else {
+					fwrite(p1, 2, 1, f_out);
+					fwrite(p2, 2, 1, f_out);
+				}
 			} else {
+			/* mono */
+				slinear_saturated_add((short int*)p1, (short int*)p2);
 				fwrite(p1, 2, 1, f_out);
-				fwrite(p2, 2, 1, f_out);
 			}
 			p1 += 2;
 			p2 += 2;
 		} else if ( p1 < f1 ) {
 			if(swap) {
-				fwrite(&zero, 2, 1, f_out);
+				if(stereo) {
+					fwrite(&zero, 2, 1, f_out);
+				}
 				fwrite(p1, 2, 1, f_out);
 			} else {
 				fwrite(p1, 2, 1, f_out);
-				fwrite(&zero, 2, 1, f_out);
+				if(stereo) {
+					fwrite(&zero, 2, 1, f_out);
+				}
 			}
 			p1 += 2;
 		} else if ( p2 < f2 ) {
 			if(swap) {
 				fwrite(p2, 2, 1, f_out);
-				fwrite(&zero, 2, 1, f_out);
+				if(stereo) {
+					fwrite(&zero, 2, 1, f_out);
+				}
 			} else {
-				fwrite(&zero, 2, 1, f_out);
+				if(stereo) {
+					fwrite(&zero, 2, 1, f_out);
+				}
 				fwrite(p2, 2, 1, f_out);
 			}
 			p2 += 2;
@@ -252,9 +259,9 @@ int wav_mix(char *in1, char *in2, char *out, int samplerate, int swap) {
 
 	wav_update_header(f_out);
 	if(bitstream_buf1)
-		free(bitstream_buf1);
+		delete [] bitstream_buf1;
 	if(bitstream_buf2)
-		free(bitstream_buf2);
+		delete [] bitstream_buf2;
 	fclose(f_out);
 	fclose(f_in1);
 	if(f_in2) fclose(f_in2);

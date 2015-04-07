@@ -4,20 +4,30 @@
 #include <stdlib.h>
 #include <string.h>
 #include <iostream>
+#include <unistd.h>
+#include <syslog.h>
+#include <string>
+
+#ifdef HAVE_LIBBOOST
+#include <boost/lockfree/spsc_queue.hpp>
+#endif
+
+#include "heap_safe.h"
 
 
 template<class typeItem>
 class rqueue {
 public:
-	rqueue(size_t length = 100, size_t inc_length = 100, bool binaryBuffer = false, 
+	rqueue(size_t length = 100, size_t inc_length = 100, size_t limit_length = 0, bool binaryBuffer = false, 
 	       bool clearBuff = false,bool clearAtPop = false) {
 		this->length = length;
 		this->inc_length = inc_length;
+		this->limit_length = limit_length;
 		this->binaryBuffer = binaryBuffer;
 		this->clearBuff = clearBuff;
 		this->clearAtPop = clearAtPop;
 		if(this->length) {
-			this->buffer = new typeItem[this->length];
+			this->buffer = new FILE_LINE typeItem[this->length];
 			if(this->binaryBuffer && this->clearBuff) {
 				memset(this->buffer, 0, this->length * sizeof(typeItem));
 			}
@@ -40,7 +50,8 @@ public:
 			this->buffer[(this->startIndex + this->countItems) % this->length] = item;
 			++this->countItems;
 		} else {
-			if(this->inc_length) {
+			if(this->inc_length && 
+			   (!this->limit_length || (this->length + this->inc_length) < this->limit_length)) {
 				this->incBuffer();
 				this->buffer[(this->startIndex + this->countItems) % this->length] = item;
 				++this->countItems;
@@ -58,7 +69,8 @@ public:
 		if(lock) {
 			this->lock();
 		}
-		if(this->countItems >= this->length && this->inc_length) {
+		if(this->countItems >= this->length && this->inc_length && 
+		   (!this->limit_length || (this->length + this->inc_length) < this->limit_length)) {
 			this->incBuffer();
 		}
 		if(this->countItems < this->length) {
@@ -83,7 +95,8 @@ public:
 			item = &this->buffer[(this->startIndex + this->countItems) % this->length];
 			++this->countItems;
 		} else {
-			if(this->inc_length) {
+			if(this->inc_length && 
+			   (!this->limit_length || (this->length + this->inc_length) < this->limit_length)) {
 				this->incBuffer();
 				item = &this->buffer[(this->startIndex + this->countItems) % this->length];
 				++this->countItems;
@@ -171,23 +184,29 @@ public:
 	}
 	void _test();
 	void _testPerf(bool useRqueue);
+	void setName(const char *name) {
+		this->name = name;
+	}
 private:
 	typeItem *buffer;
 	size_t length;
 	size_t inc_length;
+	size_t limit_length;
 	bool binaryBuffer;
 	bool clearBuff;
 	bool clearAtPop;
 	size_t startIndex;
 	size_t countItems;
 	volatile int _sync_lock;
+	std::string name;
 };
 
 
 template <class typeItem>
 void rqueue<typeItem>::incBuffer() {
 	size_t newLength = this->length + this->inc_length;
-	typeItem *newBuffer = new typeItem[newLength];
+	syslog(LOG_NOTICE, "increase size of rqueue %s from %lu to %lu", name.c_str(), this->length, newLength);
+	typeItem *newBuffer = new FILE_LINE typeItem[newLength];
 	if(this->binaryBuffer) {
 		if(this->clearBuff) {
 			memset(newBuffer, 0, newLength * sizeof(typeItem));
@@ -358,6 +377,189 @@ void rqueue<typeItem>::_testPerf(bool useRqueue) {
 		}
 	}
 }
+
+
+
+typedef volatile int v_int;
+typedef volatile u_int32_t v_u_int32_t;
+
+template<class typeItem>
+class rqueue_quick {
+public:
+	rqueue_quick(size_t length,
+		     unsigned int pushUsleep, unsigned int popUsleep,
+		     int *term_rqueue,
+		     bool binaryBuffer,
+		     const char *__FILE, int __LINE) {
+		this->length = length;
+		this->pushUsleep = pushUsleep;
+		this->popUsleep = popUsleep;
+		this->term_rqueue = term_rqueue;
+		this->binaryBuffer = binaryBuffer;
+		buffer = new FILE_LINE typeItem[this->length + 1];
+		free = new FILE_LINE v_int[this->length + 1];
+		for(size_t i = 0; i < this->length; i++) {
+			free[i] = 1;
+		}
+		readit = 0;
+		writeit = 0;
+		_sync_lock = 0;
+	}
+	~rqueue_quick() {
+		delete [] buffer;
+		delete [] free;
+	}
+	bool push(typeItem *item, bool waitForFree, bool useLock = false) {
+		if(useLock) lock();
+		while(free[writeit] == 0) {
+			if(waitForFree) {
+				if(term_rqueue && *term_rqueue) {
+					if(useLock) unlock();
+					return(false);
+				}
+				usleep(pushUsleep);
+			} else {
+				if(useLock) unlock();
+				return(false);
+			}
+		}
+		if(binaryBuffer) {
+			memcpy(&buffer[writeit], item, sizeof(typeItem));
+		} else {
+			buffer[writeit] = *item;
+		}
+		free[writeit] = 0;
+		if((writeit + 1) == length) {
+			writeit = 0;
+		} else {
+			writeit++;
+		}
+		if(useLock) unlock();
+		return(true);
+	}
+	bool pop(typeItem *item, bool waitForFree, bool useLock = false) {
+		if(useLock) lock();
+		while(free[readit] == 1) {
+			if(waitForFree) {
+				if(term_rqueue && *term_rqueue) {
+					if(useLock) unlock();
+					return(false);
+				}
+				usleep(popUsleep);
+			} else {
+				if(useLock) unlock();
+				return(false);
+			}
+		}
+		if(binaryBuffer) {
+			memcpy(item, &buffer[readit], sizeof(typeItem));
+		} else {
+			*item = buffer[readit];
+		}
+		free[readit] = 1;
+		if((readit + 1) == length) {
+			readit = 0;
+		} else {
+			readit++;
+		}
+		if(useLock) unlock();
+		return(true);
+	}
+	void lock() {
+		while(__sync_lock_test_and_set(&this->_sync_lock, 1));
+	}
+	void unlock() {
+		__sync_lock_release(&this->_sync_lock);
+	}
+	size_t size() {
+		return(writeit >= readit ? writeit - readit : writeit + length - readit);
+	}
+private:
+	size_t length;
+	bool binaryBuffer;
+	unsigned int pushUsleep;
+	unsigned int popUsleep;
+	int *term_rqueue;
+	typeItem *buffer;
+	v_int *free;
+	v_u_int32_t readit;
+	v_u_int32_t writeit;
+	volatile int _sync_lock;
+};
+
+
+#ifdef HAVE_LIBBOOST
+template<class typeItem>
+class rqueue_quick_boost {
+public:
+	rqueue_quick_boost(unsigned int pushUsleep, unsigned int popUsleep,
+			   int *term_rqueue = NULL) {
+		this->pushUsleep = pushUsleep;
+		this->popUsleep = popUsleep;
+		this->term_rqueue = term_rqueue;
+		this->_sync_lock = 0;
+	}
+	bool push(typeItem *item, bool waitForFree, bool useLock = false) {
+		if(useLock) lock();
+		while(!spsc_queue.push(*item)) {
+			if(waitForFree) {
+				if(term_rqueue && *term_rqueue) {
+					if(useLock) unlock();
+					return(false);
+				}
+				usleep(pushUsleep);
+			} else {
+				if(useLock) unlock();
+				return(false);
+			}
+		}
+		if(useLock) unlock();
+		return(true);
+	}
+	bool pop(typeItem *item, bool waitForFree, bool useLock = false) {
+		if(useLock) lock();
+		while(!spsc_queue.pop(*item)) {
+			if(waitForFree) {
+				if(term_rqueue && *term_rqueue) {
+					if(useLock) unlock();
+					return(false);
+				}
+				usleep(popUsleep);
+			} else {
+				if(useLock) unlock();
+				return(false);
+			}
+		}
+		if(useLock) unlock();
+		return(true);
+	}
+	void lock() {
+		while(__sync_lock_test_and_set(&this->_sync_lock, 1));
+	}
+	void unlock() {
+		__sync_lock_release(&this->_sync_lock);
+	}
+private:
+	boost::lockfree::spsc_queue<typeItem, boost::lockfree::capacity<20000> > spsc_queue;
+	unsigned int pushUsleep;
+	unsigned int popUsleep;
+	int *term_rqueue;
+	volatile int _sync_lock;
+};
+#else
+template<class typeItem>
+class rqueue_quick_boost : public rqueue_quick<typeItem> {
+public:
+	rqueue_quick_boost(unsigned int pushUsleep, unsigned int popUsleep,
+			   int *term_rqueue,
+			   const char *__FILE, int __LINE) 
+	 : rqueue_quick<typeItem>(20000,
+				  pushUsleep, popUsleep,
+				  term_rqueue, true,
+				  __FILE, __LINE) {
+	}
+};
+#endif
 
 
 #endif

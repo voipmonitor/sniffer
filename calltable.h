@@ -24,6 +24,7 @@
 #include "jitterbuffer/asterisk/circbuf.h"
 #include "rtp.h"
 #include "tools.h"
+#include "voipmonitor.h"
 
 #define MAX_IP_PER_CALL 40	//!< total maxumum of SDP sessions for one call-id
 #define MAX_SSRC_PER_CALL 40	//!< total maxumum of SDP sessions for one call-id
@@ -102,6 +103,15 @@ struct ip_port_call_info {
 	bool fax;
 };
 
+struct raws_t {
+	int ssrc_index;
+	int rawiterator;
+	int codec;
+	struct timeval tv;
+	string filename;
+};
+
+
 
 /**
   * This class implements operations on call
@@ -109,6 +119,7 @@ struct ip_port_call_info {
 class Call {
 public:
 	int type;			//!< type of call, INVITE or REGISTER
+	bool is_ssl;			//!< call was decrypted
 	char chantype;
 	RTP *rtp[MAX_SSRC_PER_CALL];		//!< array of RTP streams
 	volatile int rtplock;
@@ -138,6 +149,7 @@ public:
 	bool seenbye;			//!< true if we see SIP BYE within the Call
 	bool seenbyeandok;		//!< true if we see SIP OK TO BYE OR TO CANEL within the Call
 	bool seenRES2XX;
+	bool seenRES2XX_no_BYE;
 	bool seenRES18X;
 	bool sighup;			//!< true if call is saving during sighup
 	string dirname();		//!< name of the directory to store files for the Call
@@ -161,7 +173,13 @@ public:
 	int regstate;
 	bool regresponse;
 	unsigned long long flags1;	//!< bit flags used to store max 64 flags 
+	#if SYNC_CALL_RTP
 	volatile unsigned int rtppcaketsinqueue;
+	#else
+	volatile u_int32_t rtppcaketsinqueue_p;
+	volatile u_int32_t rtppcaketsinqueue_m;
+	#endif
+	volatile int end_call;
 	unsigned int unrepliedinvite;
 	unsigned int ps_drop;
 	unsigned int ps_ifdrop;
@@ -172,7 +190,6 @@ public:
 	float b_mos_lqo;
 
 	time_t progress_time;		//!< time in seconds of 18X response
-	bool set_progress_time_via_2XX_or18X;
 	time_t first_rtp_time;		//!< time in seconds of first RTP packet
 	time_t connect_time;		//!< time in seconds of 200 OK
 	time_t last_packet_time;	
@@ -245,6 +262,7 @@ public:
 	char rtp_timeout_exceeded;
 	char sipwithoutrtp_timeout_exceeded;
 	char oneway_timeout_exceeded;
+	char force_terminate;
 	char pcap_drop;
 	unsigned int lastsrcip;
 
@@ -268,6 +286,17 @@ public:
 	pcap_t *useHandle;
 	
 	bool force_close;
+
+	unsigned int caller_silence;
+	unsigned int called_silence;
+	unsigned int caller_noise;
+	unsigned int called_noise;
+	unsigned int caller_lastsilence;
+	unsigned int called_lastsilence;
+
+	unsigned int caller_clipping_8k;
+	unsigned int called_clipping_8k;
+	
 
 	vector<string> mergecalls;
 
@@ -454,6 +483,10 @@ public:
 	 *
 	*/
 	void hashRemove();
+	
+	void skinnyTablesRemove();
+	
+	void removeFindTables(bool set_end_call = false);
 
 	/**
 	 * @brief remove all RTP 
@@ -531,13 +564,38 @@ public:
 		       pcapSip.isClose() &&
 		       pcapRtp.isClose());
 	}
+	bool isGraphsClose() {
+		for(int i = 0; i < MAX_SSRC_PER_CALL; i++) {
+			if(rtp[i] && !rtp[i]->graph.isClose()) {
+				return(false);
+			}
+		}
+		return(true);
+	}
+	bool isReadyForWriteCdr() {
+		return(isPcapsClose() && isGraphsClose() &&
+		       !chunkBuffersCount);
+	}
 	
 	u_int32_t getAllReceivedRtpPackets();
+	
+	void incChunkBuffers() {
+		__sync_add_and_fetch(&chunkBuffersCount, 1);
+	}
+	void decChunkBuffers() {
+		__sync_sub_and_fetch(&chunkBuffersCount, 1);
+	}
+	
+	void addTarPos(u_int64_t pos, int type);
 private:
 	ip_port_call_info ip_port[MAX_IP_PER_CALL];
 	PcapDumper pcap;
 	PcapDumper pcapSip;
 	PcapDumper pcapRtp;
+	volatile u_int16_t chunkBuffersCount;
+	list<u_int64_t> tarPosSip;
+	list<u_int64_t> tarPosRtp;
+	list<u_int64_t> tarPosGraph;
 };
 
 typedef struct {
@@ -674,7 +732,7 @@ public:
 	 * @brief find call
 	 *
 	*/
-	hash_node_call *hashfind_by_ip_port(in_addr_t addr, unsigned short port);
+	hash_node_call *hashfind_by_ip_port(in_addr_t addr, unsigned short port, unsigned int hash = 0, bool lock = true);
 
 	/**
 	 * @brief remove call from hash
@@ -701,6 +759,13 @@ public:
 	void mapRemove(in_addr_t addr, unsigned short port);
 	
 	void destroyCallsIfPcapsClosed();
+	
+	void lock_calls_hash() {
+		while(__sync_lock_test_and_set(&this->_sync_lock_calls_hash, 1));
+	}
+	void unlock_calls_hash() {
+		__sync_lock_release(&this->_sync_lock_calls_hash);
+	}
 private:
 	pthread_mutex_t qlock;		//!< mutex locking calls_queue
 	pthread_mutex_t qdellock;	//!< mutex locking calls_deletequeue
@@ -710,19 +775,22 @@ private:
 //	pthread_mutexattr_t   calls_listMAPlock_attr;
 
 	void *calls_hash[MAXNODE];
-
-	unsigned int tuplehash(u_int32_t addr, u_int16_t port) {
-		unsigned int key;
-
-		key = (unsigned int)(addr * port);
-		key += ~(key << 15);
-		key ^=  (key >> 10);
-		key +=  (key << 3);
-		key ^=  (key >> 6);
-		key += ~(key << 11);
-		key ^=  (key >> 16);
-		return key % MAXNODE;
-	}
+	volatile int _sync_lock_calls_hash;
 };
+
+
+inline unsigned int tuplehash(u_int32_t addr, u_int16_t port) {
+	unsigned int key;
+
+	key = (unsigned int)(addr * port);
+	key += ~(key << 15);
+	key ^=  (key >> 10);
+	key +=  (key << 3);
+	key ^=  (key >> 6);
+	key += ~(key << 11);
+	key ^=  (key >> 16);
+	return key % MAXNODE;
+}
+
 
 #endif

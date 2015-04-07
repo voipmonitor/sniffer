@@ -46,6 +46,9 @@
 #include "fixedjitterbuf.h"
 #include "jitterbuf.h"
 #include "../codecs.h"
+#include "../common.h"
+
+extern struct sVerbose sverb;
 
 /*! \brief On and Off plc*/
 extern int opt_disableplc ;
@@ -157,8 +160,6 @@ enum {
 	JB_IMPL_NOFRAME
 };
 
-static int debug = 0;
-
 /* Translations between impl and abstract return codes */
 static int fixed_to_abstract_code[] =
 	{JB_IMPL_OK, JB_IMPL_DROP, JB_IMPL_INTERP, JB_IMPL_NOFRAME};
@@ -171,12 +172,12 @@ static char *jb_get_actions[] = {"Delivered", "Dropped", "Interpolated", "No"};
 /*! \brief Macros for the frame log files */
 #define printf(...) do { \
 	if (jb->logfile) { \
-		if(debug) fprintf(jb->logfile, __VA_ARGS__); \
+		if(sverb.jitter) fprintf(jb->logfile, __VA_ARGS__); \
 		fflush(jb->logfile); \
 	} \
 } while (0)
 
-//#define if(debug) fprintf(...) if (debug) { if(debug) fprintf(__VA_ARGS__); }
+//#define if(sverb.jitter) fprintf(...) if (sverb.jitter) { if(sverb.jitter) fprintf(__VA_ARGS__); }
 
 
 /* Internal utility functions */
@@ -275,9 +276,9 @@ int ast_jb_put(struct ast_channel *chan, struct ast_frame *f, struct timeval *my
 
 	if (f->frametype != AST_FRAME_VOICE) {
 		if (f->frametype == AST_FRAME_DTMF && ast_test_flag(jb, JB_CREATED)) {
-			if(debug) fprintf(stdout, "JB_PUT {now=%ld}: Received DTMF frame.\n", now);
+			if(sverb.jitter) fprintf(stdout, "JB_PUT[%p] {now=%ld}: Received DTMF frame.\n", jb, now);
                         /* this is causing drops if RAW data is recording. deactivate it. Hope it will not cause problems (tested on previously recorded DTMF pcap patterns and it is the same)
-			//if(debug) fprintf(stdout, "JB_PUT {now=%ld}: Received DTMF frame. Force resynching jb...\n", now);
+			//if(sverb.jitter) fprintf(stdout, "JB_PUT {now=%ld}: Received DTMF frame. Force resynching jb...\n", now);
 			if(ast_test_flag(jb, JB_CREATED)) {
 				jbimpl->force_resync(jbobj);
 			}
@@ -287,7 +288,7 @@ int ast_jb_put(struct ast_channel *chan, struct ast_frame *f, struct timeval *my
 	}
 
 	if (chan->resync && f->marker) {
-		if(debug) fprintf(stdout, "JB_PUT {now=%ld}: marker bit set, Force resynching jb...\n", now);
+		if(sverb.jitter) fprintf(stdout, "JB_PUT[%p] {now=%ld}: marker bit set, Force resynching jb...\n", jb, now);
 		if(ast_test_flag(jb, JB_CREATED)) {
 			jbimpl->force_resync(jbobj);
 		}
@@ -296,7 +297,7 @@ int ast_jb_put(struct ast_channel *chan, struct ast_frame *f, struct timeval *my
 	/* We consider an enabled jitterbuffer should receive frames with valid timing info. */
 
 	if (f->len < 2 || f->ts < 0) {
-		if(debug) fprintf(stdout, "recieved frame with invalid timing info: "
+		if(sverb.jitter) fprintf(stdout, "recieved frame with invalid timing info: "
 			"has_timing_info=%d, len=%ld, ts=%ld, src=%s\n",
 			ast_test_flag(f, AST_FRFLAG_HAS_TIMING_INFO), f->len, f->ts, f->src);
 		return -1;
@@ -304,7 +305,7 @@ int ast_jb_put(struct ast_channel *chan, struct ast_frame *f, struct timeval *my
 	frr = ast_frdup(f);
 
 	if (!frr) {
-		if(debug) fprintf(stdout, "Failed to isolate frame for the jitterbuffer on channel\n");
+		if(sverb.jitter) fprintf(stdout, "Failed to isolate frame for the jitterbuffer on channel\n");
 		return -1;
 	}
 
@@ -322,7 +323,7 @@ int ast_jb_put(struct ast_channel *chan, struct ast_frame *f, struct timeval *my
 		//fprintf(stdout, "mynow [%u][%u], tb [%u][%u] tvdiff[%u] seq[%u]\n", mynow->tv_sec, mynow->tv_usec, jb->timebase.tv_sec, jb->timebase.tv_usec, ast_tvdiff_ms(*mynow, jb->timebase), frr->seqno);
 		now = get_now(jb, NULL, mynow);
 		if (jbimpl->put(jbobj, frr, now) != JB_IMPL_OK) {
-			if(debug) fprintf(stdout, "JB_PUT {now=%ld}: Dropped frame with ts=%ld and len=%ld and seq=%d\n", now, frr->ts, frr->len, frr->seqno);
+			if(sverb.jitter) fprintf(stdout, "JB_PUT[%p] {now=%ld}: Dropped frame with ts=%ld and len=%ld and seq=%d\n", jb, now, frr->ts, frr->len, frr->seqno);
 			ast_frfree(frr);
 			/*return -1;*/
 			/* TODO: Check this fix - should return 0 here, because the dropped frame shouldn't 
@@ -332,7 +333,7 @@ int ast_jb_put(struct ast_channel *chan, struct ast_frame *f, struct timeval *my
 
 		jb->next = jbimpl->next(jbobj);
 
-		if(debug) fprintf(stdout, "JB_PUT {now=%ld}: Queued frame with ts=%ld and len=%ld and seq=%d\n", now, frr->ts, frr->len, frr->seqno);
+		if(sverb.jitter) fprintf(stdout, "JB_PUT[%p] {now=%ld}: Queued frame with ts=%ld and len=%ld and seq=%d\n", jb, now, frr->ts, frr->len, frr->seqno);
 
 		return 0;
 	}
@@ -539,7 +540,7 @@ static void jb_get_and_deliver(struct ast_channel *chan, struct timeval *mynow)
 	jb->next = jbimpl->next(jbobj);
 	if (now < jb->next) {
 		// here we are buffering frames 
-		if(debug) fprintf(stdout, "\tJB_GET {now=%ld}: now < next=%ld (still buffering)\n", now, jb->next);
+		if(sverb.jitter) fprintf(stdout, "\tJB_GET[%p] {now=%ld}: now < next=%ld (still buffering)\n", jb, now, jb->next);
 		save_empty_frame(chan);
 		return;
 	}
@@ -585,7 +586,7 @@ static void jb_get_and_deliver(struct ast_channel *chan, struct timeval *mynow)
 				memcpy(chan->lastbuf, f->data, f->datalen);
 				chan->lastbuflen = f->datalen;
 			}
-			if(debug) fprintf(stdout, "\tJB_GET {now=%ld}: %s frame with ts=%ld and len=%ld and seq=%d\n", now, jb_get_actions[res], f->ts, f->len, f->seqno);
+			if(sverb.jitter) fprintf(stdout, "\tJB_GET[%p] {now=%ld}: %s frame with ts=%ld and len=%ld and seq=%d\n", jb, now, jb_get_actions[res], f->ts, f->len, f->seqno);
 			/* if frame is marked do not put previous interpolated frames to statistics 
 			 * also if there is no seqno gaps between frames and time differs 
 			 * and also if there was dtmf last time
@@ -596,12 +597,12 @@ static void jb_get_and_deliver(struct ast_channel *chan, struct timeval *mynow)
 			//	&& !(chan->codec == PAYLOAD_G729 && f->datalen2 <= 12) // if g729 frame is CNG frame do not count interpolated frames
 				) {
 				
-				while(chan->last_loss_burst > 500) {
-					chan->loss[500]++;
-					if(debug) fprintf(stdout, "\tSAVING chan->loss[500] packetization[%d]\n", chan->packetization);
-					chan->last_loss_burst -= 500;
+				while(chan->last_loss_burst > 128) {
+					chan->loss[127]++;
+					if(sverb.jitter) fprintf(stdout, "\tSAVING chan->loss[128] packetization[%d]\n", chan->packetization);
+					chan->last_loss_burst -= 128;
 				}
-				if(debug) fprintf(stdout, "\tSAVING chan->loss[%d] packetization[%d]\n", chan->last_loss_burst, chan->packetization);
+				if(sverb.jitter) fprintf(stdout, "\tSAVING chan->loss[%d] packetization[%d]\n", chan->last_loss_burst, chan->packetization);
 				chan->loss[chan->last_loss_burst]++;
 			}
 			chan->last_loss_burst = 0;
@@ -611,7 +612,7 @@ static void jb_get_and_deliver(struct ast_channel *chan, struct timeval *mynow)
 			break;
 		case JB_IMPL_DROP:
 			save_empty_frame(chan);
-			if(debug) fprintf(stdout, "\tJB_GET {now=%ld}: %s frame with ts=%ld and len=%ld seq=%d\n", now, jb_get_actions[res], f->ts, f->len, f->seqno);
+			if(sverb.jitter) fprintf(stdout, "\tJB_GET[%p] {now=%ld}: %s frame with ts=%ld and len=%ld seq=%d\n", jb, now, jb_get_actions[res], f->ts, f->len, f->seqno);
 			ast_frfree(f);
 			chan->last_loss_burst++;
 			break;
@@ -619,18 +620,18 @@ static void jb_get_and_deliver(struct ast_channel *chan, struct timeval *mynow)
 			/* interpolate a frame */
 			/* deliver the interpolated frame */
 			save_empty_frame(chan);
-			if(debug) fprintf(stdout, "\tJB_GET {now=%ld}: Interpolated frame with len=%d\n", now, interpolation_len);
+			if(sverb.jitter) fprintf(stdout, "\tJB_GET[%p] {now=%ld}: Interpolated frame with len=%d\n", jb, now, interpolation_len);
 			// if marker bit, reset counter
 			chan->last_loss_burst++;
 			break;
 		case JB_IMPL_NOFRAME:
 			save_empty_frame(chan);
-			if(debug) fprintf(stdout, "JB_IMPL_NOFRAME is retuned from the %s jb when now=%ld >= next=%ld, jbnext=%ld!\n", jbimpl->name, now, jb->next, jbimpl->next(jbobj));
-			if(debug) fprintf(stdout, "\tJB_GET {now=%ld}: No frame for now!?\n", now);
+			if(sverb.jitter) fprintf(stdout, "JB_IMPL_NOFRAME is retuned from the %s jb when now=%ld >= next=%ld, jbnext=%ld!\n", jbimpl->name, now, jb->next, jbimpl->next(jbobj));
+			if(sverb.jitter) fprintf(stdout, "\tJB_GET[%p] {now=%ld}: No frame for now!?\n", jb, now);
 			chan->last_loss_burst++;
 			return;
 		default:
-			if(debug) fprintf(stdout, "This should never happen!\n");
+			if(sverb.jitter) fprintf(stdout, "This should never happen!\n");
 			ast_assert("JB type unknown" == NULL);
 			break;
 		}
@@ -651,7 +652,7 @@ static int create_jb(struct ast_channel *chan, struct ast_frame *frr, struct tim
 
 	jbobj = jb->jbobj = jbimpl->create(jbconf, jbconf->resync_threshold, chan);
 	if (!jbobj) {
-		if(debug) fprintf(stdout, "Failed to create jitterbuffer on channel\n");
+		if(sverb.jitter) fprintf(stdout, "Failed to create jitterbuffer on channel\n");
 		return -1;
 	}
 
@@ -661,7 +662,7 @@ static int create_jb(struct ast_channel *chan, struct ast_frame *frr, struct tim
 	/* The result of putting the first frame should not differ from OK. However, its possible
 	   some implementations (i.e. adaptive's when resynch_threshold is specified) to drop it. */
 	if (res != JB_IMPL_OK) {
-		if(debug) fprintf(stdout, "Failed to put first frame in the jitterbuffer on channel\n");
+		if(sverb.jitter) fprintf(stdout, "Failed to put first frame in the jitterbuffer on channel\n");
 		/*
 		jbimpl->destroy(jbobj);
 		return -1;
@@ -676,16 +677,16 @@ static int create_jb(struct ast_channel *chan, struct ast_frame *frr, struct tim
 	
 	if (ast_test_flag(jbconf, AST_JB_LOG)) {
 		if (res == JB_IMPL_OK) {
-			if(debug) fprintf(stdout, "JB_PUT_FIRST {now=%ld}: Queued frame with ts=%ld and len=%ld\n",
+			if(sverb.jitter) fprintf(stdout, "JB_PUT_FIRST {now=%ld}: Queued frame with ts=%ld and len=%ld\n",
 				now, frr->ts, frr->len);
 		} else {
-			if(debug) fprintf(stdout, "JB_PUT_FIRST {now=%ld}: Dropped frame with ts=%ld and len=%ld seq=%d\n",
+			if(sverb.jitter) fprintf(stdout, "JB_PUT_FIRST {now=%ld}: Dropped frame with ts=%ld and len=%ld seq=%d\n",
 				now, frr->ts, frr->len, frr->seqno);
 		}
 	}
 
 	//if (option_verbose > 2) 
-		if(debug) fprintf(stdout, "%s jitterbuffer created on channel\n", jbimpl->name);
+		if(sverb.jitter) fprintf(stdout, "%s jitterbuffer[%p] created on channel\n", jbimpl->name, jb);
 	
 	/* Free the frame if it has not been queued in the jb */
 	if (res != JB_IMPL_OK)
@@ -725,7 +726,7 @@ void ast_jb_destroy(struct ast_channel *chan)
 		
 		ast_clear_flag(jb, JB_CREATED);
 
-			if(debug) fprintf(stdout, "%s jitterbuffer destroyed on channel\n", jbimpl->name);
+			if(sverb.jitter) fprintf(stdout, "%s jitterbuffer destroyed on channel\n", jbimpl->name);
 	}
 	ast_clear_flag(jb, JB_TIMEBASE_INITIALIZED);
 }
