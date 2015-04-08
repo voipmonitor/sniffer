@@ -1568,6 +1568,7 @@ void * operator new(size_t sizeOfObject, const char *memory_type1, int memory_ty
 static struct dsp *__dsp_new(unsigned int sample_rate)
 {
 	dsp *dsp_new = new (__FILE__, __LINE__) dsp;
+	memset(dsp_new, 0, sizeof(dsp));
 
 	if (dsp_new) {
 		dsp_new->threshold = DEFAULT_THRESHOLD;

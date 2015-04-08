@@ -1,4 +1,9 @@
-11.0 09.03.2015
+11.0.1 18.04.2015
+=================
+- fix crash when new DSP is enabled (fax, silence, etc..) 
+
+
+11.0 17.04.2015
 ===============
 
 New features
