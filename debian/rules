@@ -1,0 +1,12 @@
+#!/usr/bin/make -f
+
+# Uncomment this to turn on verbose mode.
+#export DH_VERBOSE=1
+
+%:
+	dh $@ 
+
+override_dh_auto_install:
+	install -D voipmonitor $$(pwd)/debian/voipmonitor-sniffer/usr/sbin/voipmonitor
+	install -D config/voipmonitor.conf $$(pwd)/debian/voipmonitor-sniffer/etc/voipmonitor.conf
+	cp config/init.d/voipmonitor debian/voipmonitor-sniffer.init

@@ -1,0 +1,15 @@
+Source: voipmonitor-sniffer
+Section: unknown
+Priority: extra
+Maintainer: Martin Vit <support@voipmonitor.org>
+Build-Depends: debhelper (>= 8.0.0), autotools-dev, libmysqlclient-dev, libvorbis-dev, libpcap-dev, libsnappy-dev, libssl-dev, unixodbc-dev, librrd-dev, libjson0-dev, libsnappy-dev, libpcap-dev, libvorbis-dev, libcurl4-openssl-dev
+Standards-Version: 3.9.2
+Homepage: http://www.voipmonitor.org/
+Vcs-Git: git@github.com:voipmonitor/sniffer.git
+Vcs-Browser: https://github.com/voipmonitor/sniffer/
+
+Package: voipmonitor-sniffer
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends} rrdtool
+Description: VoIPmonitor is open source network packet sniffer for SIP RTP RTCP and SKINNY(SCCP) VoIP protocols.
+  VoIPmonitor is open source network packet sniffer with commercial frontend for SIP RTP RTCP and SKINNY(SCCP) VoIP protocols running on linux. VoIPmonitor is designed to analyze quality of VoIP call based on network parameters - delay variation and packet loss according to ITU-T G.107 E-model which predicts quality on MOS scale. Calls with all relevant statistics are saved to MySQL or ODBC database. 
