@@ -1,0 +1,11 @@
+# Voipmonitor configuration file
+
+# Change this to 'yes' to run this package after editing the configuration file
+RUN="no"
+
+# Default arguments passed into voipmonitor
+#ARGS="-v 1"
+
+# Configuration file
+#CONFIGFILE=/etc/voipmonitor.conf
+
