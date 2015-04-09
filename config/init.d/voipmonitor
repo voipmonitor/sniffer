@@ -18,12 +18,27 @@
 # on debian, run update-rc.d voipmonitor defaults 
 
 ulimit -c unlimited
+
+BASE=$(basename $0)
+
 PATH=/sbin:/bin:/usr/sbin:/usr/bin:/usr/local/sbin:/usr/local/bin
 TERM="linux";
-# uncomment and change interface if you do not have voipmonitor.conf 
+
+# uncomment and change interface if you do not have voipmonitor.conf
 ARGS="-v 1"
 PIDFILE=/var/run/voipmonitorinitscript.pid
 CONFIGFILE=/etc/voipmonitor.conf
+
+RUN="yes"
+
+if [ -f /etc/default/$BASE ]; then
+        . /etc/default/$BASE
+fi
+
+if [ "$RUN" != "yes" ];then
+        echo "Voipmonitor not yet configured. Edit /etc/default/$BASE first."
+        exit 0
+fi
 
 case "$1" in
   start)
