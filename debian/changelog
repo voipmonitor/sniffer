@@ -2,4 +2,4 @@ voipmonitor-sniffer (11.0.1-1) unstable; urgency=low
 
   * Initial release of debian packaging
 
- -- Andy Brezinsky <andy.brezinsky@corvisa.com>  Tue, 07 Apr 2015 18:13:54 -0500
+ -- Martin Vit <martin@voipmonitor.org> Tue, 07 Apr 2015 18:13:54 -0500
