@@ -1663,4 +1663,6 @@ u_int32_t octal_decimal(u_int32_t n);
 bool vm_pexec(const char *cmdLine, SimpleBuffer *out, SimpleBuffer *err = NULL, unsigned timeout_sec = 10, unsigned timout_select_sec = 1);
 std::vector<std::string> parse_cmd_line(const char *cmdLine);
 
+u_int64_t getTotalMemory();
+
 #endif

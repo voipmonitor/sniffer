@@ -1,6 +1,7 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/socket.h>
+#include <sys/sysinfo.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <dirent.h>
@@ -3302,4 +3303,10 @@ std::vector<std::string> parse_cmd_line(const char *cmdLine) {
 		}
 	}
 	return(parse);
+}
+
+u_int64_t getTotalMemory() {
+	struct sysinfo sysInfo;
+	sysinfo(&sysInfo);
+	return(sysInfo.totalram);
 }
