@@ -4,6 +4,7 @@
 class cBuffersControl {
 public:
 	cBuffersControl() {
+		max_buffer_mem = 0;
 		pcap_store_queue__sizeOfBlocksInMemory = 0;
 		PcapQueue_readFromFifo__blockStoreTrash_size = 0;
 		AsyncClose__sizeOfDataInMemory = 0;

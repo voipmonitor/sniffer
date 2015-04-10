@@ -2699,47 +2699,57 @@ void set_context_config() {
 	#endif
 
 	if(opt_pcap_queue) {
-		// prepare for old buffer size calculate
-		if(buffersControl.getMaxBufferMem()) {
-			opt_pcap_queue_store_queue_max_memory_size = buffersControl.getMaxBufferMem() * 0.9;
-		}
-		// old buffer size calculate &&  set size opt_pcap_queue_bypass_max_size
-		if(!opt_pcap_queue_disk_folder.length() || !opt_pcap_queue_store_queue_max_disk_size) {
-			// disable disc save
-			if(opt_pcap_queue_compress) {
-				// enable compress - maximum thread0 buffer = 100MB, minimum = 50MB
-				opt_pcap_queue_bypass_max_size = opt_pcap_queue_store_queue_max_memory_size / 8;
-				if(opt_pcap_queue_bypass_max_size > 100 * 1024 * 1024) {
-					opt_pcap_queue_bypass_max_size = 100 * 1024 * 1024;
-				} else if(opt_pcap_queue_bypass_max_size < 50 * 1024 * 1024) {
+		bool bufferControlSet = buffersControl.getMaxBufferMem() > 0;
+		for(int pass = 0; pass < (bufferControlSet ? 1 : 2); pass++) {
+			if(pass == 1) {
+				u_int64_t totalMemory = getTotalMemory();
+				if(buffersControl.getMaxBufferMem() > totalMemory / 2) {
+					buffersControl.setMaxBufferMem(totalMemory / 2);
+					syslog(LOG_NOTICE, "set buffer memory limit to %lu", totalMemory / 2);
+				}
+			}
+			// prepare for old buffer size calculate
+			if(buffersControl.getMaxBufferMem()) {
+				opt_pcap_queue_store_queue_max_memory_size = buffersControl.getMaxBufferMem() * 0.9;
+			}
+			// old buffer size calculate &&  set size opt_pcap_queue_bypass_max_size
+			if(!opt_pcap_queue_disk_folder.length() || !opt_pcap_queue_store_queue_max_disk_size) {
+				// disable disc save
+				if(opt_pcap_queue_compress) {
+					// enable compress - maximum thread0 buffer = 100MB, minimum = 50MB
+					opt_pcap_queue_bypass_max_size = opt_pcap_queue_store_queue_max_memory_size / 8;
+					if(opt_pcap_queue_bypass_max_size > 100 * 1024 * 1024) {
+						opt_pcap_queue_bypass_max_size = 100 * 1024 * 1024;
+					} else if(opt_pcap_queue_bypass_max_size < 50 * 1024 * 1024) {
+						opt_pcap_queue_bypass_max_size = 50 * 1024 * 1024;
+					}
+				} else {
+					// disable compress - thread0 buffer = 50MB
 					opt_pcap_queue_bypass_max_size = 50 * 1024 * 1024;
 				}
 			} else {
-				// disable compress - thread0 buffer = 50MB
-				opt_pcap_queue_bypass_max_size = 50 * 1024 * 1024;
+				// disable disc save - maximum thread0 buffer = 500MB
+				opt_pcap_queue_bypass_max_size = opt_pcap_queue_store_queue_max_memory_size / 4;
+				if(opt_pcap_queue_bypass_max_size > 500 * 1024 * 1024) {
+					opt_pcap_queue_bypass_max_size = 500 * 1024 * 1024;
+				}
 			}
-		} else {
-			// disable disc save - maximum thread0 buffer = 500MB
-			opt_pcap_queue_bypass_max_size = opt_pcap_queue_store_queue_max_memory_size / 4;
-			if(opt_pcap_queue_bypass_max_size > 500 * 1024 * 1024) {
-				opt_pcap_queue_bypass_max_size = 500 * 1024 * 1024;
-			}
-		}
-		// set old buffer size via opt_pcap_queue_bypass_max_size
-		if(opt_pcap_queue_store_queue_max_memory_size < opt_pcap_queue_bypass_max_size * 2) {
-			opt_pcap_queue_store_queue_max_memory_size = opt_pcap_queue_bypass_max_size * 2;
-		} else {
-			opt_pcap_queue_store_queue_max_memory_size -= opt_pcap_queue_bypass_max_size;
-		}
-		// set new buffer size via opt_pcap_queue_bypass_max_size
-		if(buffersControl.getMaxBufferMem()) {
-			if(buffersControl.getMaxBufferMem() < opt_pcap_queue_bypass_max_size * 2) {
-				buffersControl.setMaxBufferMem(opt_pcap_queue_bypass_max_size * 2);
+			// set old buffer size via opt_pcap_queue_bypass_max_size
+			if(opt_pcap_queue_store_queue_max_memory_size < opt_pcap_queue_bypass_max_size * 2) {
+				opt_pcap_queue_store_queue_max_memory_size = opt_pcap_queue_bypass_max_size * 2;
 			} else {
-				buffersControl.setMaxBufferMem(buffersControl.getMaxBufferMem() - opt_pcap_queue_bypass_max_size);
+				opt_pcap_queue_store_queue_max_memory_size -= opt_pcap_queue_bypass_max_size;
 			}
-		} else {
-			buffersControl.setMaxBufferMem(opt_pcap_queue_store_queue_max_memory_size + opt_pcap_dump_asyncwrite_maxsize * 1024ull * 1024ull);
+			// set new buffer size via opt_pcap_queue_bypass_max_size
+			if(buffersControl.getMaxBufferMem()) {
+				if(buffersControl.getMaxBufferMem() < opt_pcap_queue_bypass_max_size * 2) {
+					buffersControl.setMaxBufferMem(opt_pcap_queue_bypass_max_size * 2);
+				} else {
+					buffersControl.setMaxBufferMem(buffersControl.getMaxBufferMem() - opt_pcap_queue_bypass_max_size);
+				}
+			} else {
+				buffersControl.setMaxBufferMem(opt_pcap_queue_store_queue_max_memory_size + opt_pcap_dump_asyncwrite_maxsize * 1024ull * 1024ull);
+			}
 		}
 		
 		if(opt_pcap_queue_receive_from_ip_port) {
