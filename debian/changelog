@@ -1,0 +1,5 @@
+voipmonitor-sniffer (11.0.1-1) unstable; urgency=low
+
+  * Initial release of debian packaging
+
+ -- Martin Vit <martin@voipmonitor.org> Tue, 07 Apr 2015 18:13:54 -0500
