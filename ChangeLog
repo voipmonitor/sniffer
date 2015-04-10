@@ -1,3 +1,8 @@
+11.0.3 10.04.2015
+=================
+- do not allow to set memory buffers higher than available memory to prevent swap to death. 
+
+
 11.0.2 10.04.2015
 =================
 - fix buffer freeze leading to MEMORY IS FULL 
