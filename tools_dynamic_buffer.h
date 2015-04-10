@@ -349,6 +349,9 @@ public:
 		__sync_lock_release(&this->_sync_compress);
 	}
 	void addTarPosInCall(u_int64_t pos);
+	bool isFull() {
+		return(this->chunk_buffer_size > 4 * 128 * 1024);
+	}
 	static u_int64_t getChunkBuffersSumsize() {
 		return(chunk_buffers_sumsize);
 	}
