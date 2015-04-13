@@ -551,9 +551,9 @@ pcap_block_store_queue::pcap_block_store_queue() {
 
 pcap_block_store_queue::~pcap_block_store_queue() {
 	this->lock_queue();
-	while(this->queue.size()) {
-		delete this->queue.front();
-		this->queue.pop_front();
+	while(this->queueBlock.size()) {
+		delete this->queueBlock.front();
+		this->queueBlock.pop_front();
 	}
 	this->unlock_queue();
 }
@@ -757,10 +757,10 @@ pcap_store_queue::~pcap_store_queue() {
 		this->fileStore.pop_front();
 	}
 	pcap_block_store *blockStore;
-	while(this->queue.size()) {
-		blockStore = this->queue.front();
+	while(this->queueStore.size()) {
+		blockStore = this->queueStore.front();
 		delete blockStore;
-		this->queue.pop_front();
+		this->queueStore.pop_front();
 	}
 }
 
@@ -845,7 +845,7 @@ bool pcap_store_queue::push(pcap_block_store *blockStore, bool deleteBlockStoreI
 		}
 	}
 	this->lock_queue();
-	this->queue.push_back(blockStore);
+	this->queueStore.push_back(blockStore);
 	this->unlock_queue();
 	return(true);
 }
@@ -853,9 +853,9 @@ bool pcap_store_queue::push(pcap_block_store *blockStore, bool deleteBlockStoreI
 bool pcap_store_queue::pop(pcap_block_store **blockStore) {
 	*blockStore = NULL;
 	this->lock_queue();
-	if(this->queue.size()) {
-		*blockStore = this->queue.front();
-		this->queue.pop_front();
+	if(this->queueStore.size()) {
+		*blockStore = this->queueStore.front();
+		this->queueStore.pop_front();
 	}
 	this->unlock_queue();
 	if(*blockStore) {
@@ -3249,7 +3249,7 @@ void* PcapQueue_readFromInterface::threadDeleteFunction(sThreadDeleteData *threa
 	sHeaderPacket headerPacket;
 	unsigned long actTimeS;
 	while(!TERMINATING) {
-		if(threadDeleteData->queue.pop(&headerPacket, false)) {
+		if(threadDeleteData->queuePackets.pop(&headerPacket, false)) {
 			if(threadDeleteData->enableLock) {
 				this->lock_delete();
 			}
@@ -3282,7 +3282,7 @@ void* PcapQueue_readFromInterface::threadDeleteFunction(sThreadDeleteData *threa
 			}
 		}
 	}
-	while(threadDeleteData->queue.pop(&headerPacket, false)) {
+	while(threadDeleteData->queuePackets.pop(&headerPacket, false)) {
 		if(threadDeleteData->enableLock) {
 			this->lock_delete();
 		}

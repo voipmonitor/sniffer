@@ -1,3 +1,8 @@
+11.0.4 13.04.2015
+=================
+- fix memory corruption when checking RRD version on start and for every RRD graph load. Upgrade to 11.0.4 is adviced for all 11 versions. 
+
+
 11.0.3 10.04.2015
 =================
 - do not allow to set memory buffers higher than available memory to prevent swap to death. 

@@ -185,7 +185,7 @@ public:
 		this->bufferCapacity = other.bufferCapacity;
 		this->capacityReserve = other.capacityReserve;
 		if(this->bufferLength) {
-			this->buffer = new FILE_LINE u_char[this->bufferLength];
+			this->buffer = new FILE_LINE u_char[this->bufferCapacity];
 			memcpy(this->buffer, other.buffer, this->bufferLength);
 		} else { 
 			this->buffer = NULL;
@@ -201,7 +201,7 @@ public:
 		if(!buffer) {
 			buffer = new FILE_LINE u_char[dataLength + capacityReserve + 1];
 			bufferCapacity = dataLength + capacityReserve + 1;
-		} else if(bufferLength + dataLength > capacityReserve) {
+		} else if(bufferLength + dataLength + 1 > capacityReserve) {
 			u_char *bufferNew = new FILE_LINE u_char[bufferLength + dataLength + capacityReserve + 1];
 			memcpy(bufferNew, buffer, bufferLength);
 			delete [] buffer;
@@ -237,7 +237,7 @@ public:
 		this->bufferCapacity = other.bufferCapacity;
 		this->capacityReserve = other.capacityReserve;
 		if(this->bufferLength) {
-			this->buffer = new FILE_LINE u_char[this->bufferLength];
+			this->buffer = new FILE_LINE u_char[this->bufferCapacity];
 			memcpy(this->buffer, other.buffer, this->bufferLength);
 		} else { 
 			this->buffer = NULL;
@@ -253,7 +253,7 @@ public:
 				memcpy(newBuffer, buffer, bufferLength);
 				delete [] buffer;
 				buffer = newBuffer;
-				++bufferCapacity;
+				bufferCapacity = bufferLength + 1;
 			}
 			buffer[bufferLength] = 0;
 			return((char*)buffer);
@@ -1402,7 +1402,7 @@ private:
 private:
 	deque<type_queue_item> *push_queue;
 	deque<type_queue_item> *pop_queue;
-	deque<deque<type_queue_item>*> queue;
+	deque<deque<type_queue_item>*> queueItems;
 	int shiftIntervalMult10S;
 	unsigned long long lastShiftTimerCounter;
 	volatile int _sync_queue;
@@ -1426,9 +1426,9 @@ SafeAsyncQueue<type_queue_item>::~SafeAsyncQueue() {
 	lock_queue();
 	lock_push_queue();
 	lock_pop_queue();
-	while(queue.size()) {
-		delete queue.front();
-		queue.pop_front();
+	while(queueItems.size()) {
+		delete queueItems.front();
+		queueItems.pop_front();
 	}
 	if(push_queue) {
 		delete push_queue;
@@ -1458,9 +1458,9 @@ bool SafeAsyncQueue<type_queue_item>::pop(type_queue_item *item, bool remove) {
 			pop_queue = NULL;
 		}
 		lock_queue();
-		if(queue.size()) {
-			pop_queue = queue.front();
-			queue.pop_front();
+		if(queueItems.size()) {
+			pop_queue = queueItems.front();
+			queueItems.pop_front();
 		}
 		unlock_queue();
 	}
@@ -1495,7 +1495,7 @@ void SafeAsyncQueue<type_queue_item>::shiftPush() {
 		push_queue = NULL;
 		unlock_push_queue();
 		lock_queue();
-		queue.push_back(_push_queue);
+		queueItems.push_back(_push_queue);
 		unlock_queue();
 	}
 }

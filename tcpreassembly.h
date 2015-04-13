@@ -351,7 +351,7 @@ public:
 	~TcpReassemblyStream_packet_var() {
 		if(opt_tcpreassembly_pb_lock) {
 			map<uint32_t, TcpReassemblyStream_packet>::iterator iter;
-			for(iter = this->queue.begin(); iter != this->queue.end(); iter++) {
+			for(iter = this->queuePackets.begin(); iter != this->queuePackets.end(); iter++) {
 				iter->second.unlock_packet();
 			}
 		}
@@ -359,7 +359,7 @@ public:
 	void push(TcpReassemblyStream_packet packet);
 	u_int32_t getNextSeqCheck() {
 		map<uint32_t, TcpReassemblyStream_packet>::iterator iter;
-		for(iter = this->queue.begin(); iter != this->queue.end(); iter++) {
+		for(iter = this->queuePackets.begin(); iter != this->queuePackets.end(); iter++) {
 			if(iter->second.datalen &&
 			   (iter->second.state == TcpReassemblyStream_packet::NA ||
 			    iter->second.state == TcpReassemblyStream_packet::CHECK)) {
@@ -370,7 +370,7 @@ public:
 	}
 	u_int32_t isFail() {
 		map<uint32_t, TcpReassemblyStream_packet>::iterator iter;
-		for(iter = this->queue.begin(); iter != this->queue.end(); iter++) {
+		for(iter = this->queuePackets.begin(); iter != this->queuePackets.end(); iter++) {
 			if(iter->second.state != TcpReassemblyStream_packet::FAIL) {
 				return(false);
 			}
@@ -381,19 +381,19 @@ private:
 	void unlockPackets() {
 		if(opt_tcpreassembly_pb_lock) {
 			map<uint32_t, TcpReassemblyStream_packet>::iterator iter;
-			for(iter = this->queue.begin(); iter != this->queue.end(); iter++) {
+			for(iter = this->queuePackets.begin(); iter != this->queuePackets.end(); iter++) {
 				iter->second.unlock_packet();
 			}
 		}
 	}
 	void cleanState() {
 		map<uint32_t, TcpReassemblyStream_packet>::iterator iter;
-		for(iter = this->queue.begin(); iter != this->queue.end(); iter++) {
+		for(iter = this->queuePackets.begin(); iter != this->queuePackets.end(); iter++) {
 			iter->second.cleanState();
 		}
 	}
 private:
-	map<uint32_t, TcpReassemblyStream_packet> queue;
+	map<uint32_t, TcpReassemblyStream_packet> queuePackets;
 friend class TcpReassemblyStream;
 friend class TcpReassemblyLink;
 };
@@ -462,7 +462,7 @@ private:
 	bool checkContentIsHttpRequest();
 	void cleanPacketsState() {
 		map<uint32_t, TcpReassemblyStream_packet_var>::iterator iter;
-		for(iter = this->queue.begin(); iter != this->queue.end(); iter++) {
+		for(iter = this->queuePacketVars.begin(); iter != this->queuePacketVars.end(); iter++) {
 			iter->second.cleanState();
 		}
 		this->ok_packets.clear();
@@ -475,7 +475,7 @@ private:
 	u_int32_t last_seq;
 	u_int32_t min_seq;
 	u_int32_t max_next_seq;
-	map<uint32_t, TcpReassemblyStream_packet_var> queue;
+	map<uint32_t, TcpReassemblyStream_packet_var> queuePacketVars;
 	deque<d_u_int32_t> ok_packets;
 	bool is_ok;
 	bool completed_finally;
@@ -629,11 +629,11 @@ public:
 	void complete_crazy(bool final = false, bool eraseCompletedStreams = false);
 	streamIterator createIterator();
 	TcpReassemblyStream *findStreamBySeq(u_int32_t seq) {
-		for(size_t i = 0; i < this->queue.size(); i++) {
+		for(size_t i = 0; i < this->queueStreams.size(); i++) {
 			map<uint32_t, TcpReassemblyStream_packet_var>::iterator iter;
-			iter = this->queue[i]->queue.find(seq);
-			if(iter != this->queue[i]->queue.end()) {
-				return(this->queue[i]);
+			iter = this->queueStreams[i]->queuePacketVars.find(seq);
+			if(iter != this->queueStreams[i]->queuePacketVars.end()) {
+				return(this->queueStreams[i]);
 			}
 		}
 		return(NULL);
@@ -733,7 +733,7 @@ private:
 	map<uint32_t, TcpReassemblyStream*> queue_by_ack;
 	map<uint32_t, TcpReassemblyStream*> queue_flags_by_ack;
 	map<uint32_t, TcpReassemblyStream*> queue_nul_by_ack;
-	deque<TcpReassemblyStream*> queue;
+	deque<TcpReassemblyStream*> queueStreams;
 	volatile int _sync_queue;
 	volatile int _erase;
 	//u_int64_t created_at;
