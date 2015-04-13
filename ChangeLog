@@ -1,3 +1,8 @@
+11.0.5 13.04.2015
+=================
+- fix time issue in default I/O (tar=yes) leading to MEMORY FULL 
+
+
 11.0.4 13.04.2015
 =================
 - fix memory corruption when checking RRD version on start and for every RRD graph load. Upgrade to 11.0.4 is adviced for all 11 versions. 
