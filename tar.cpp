@@ -1172,14 +1172,16 @@ void *TarQueue::tarthreadworker(void *arg) {
 						unlock_okTarPointers();
 						*/
 						bool isClosed = data.buffer->isClosed();
-						if(!isClosed && !data.buffer->isNewLastAddTimeForTar() && !data.buffer->isFull()) {
+						if(!isClosed && 
+						   !data.buffer->isNewLastAddTimeForTar() && 
+						   !data.buffer->isFull()) {
 							continue;
 						}
 						data.buffer->copyLastAddTimeToTar();
 						unsigned int bufferLastTarTime = data.buffer->getLastTarTime();
 						if(!isClosed &&
-						   bufferLastTarTime &&
-						   bufferLastTarTime > glob_last_packet_time - 3) {
+						   bufferLastTarTime && bufferLastTarTime > glob_last_packet_time - 3 && 
+						   !data.buffer->isFull()) {
 							continue;
 						}
 						data.buffer->setLastTarTime(glob_last_packet_time);
