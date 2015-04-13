@@ -185,7 +185,7 @@ public:
 		this->bufferCapacity = other.bufferCapacity;
 		this->capacityReserve = other.capacityReserve;
 		if(this->bufferLength) {
-			this->buffer = new FILE_LINE u_char[this->bufferLength];
+			this->buffer = new FILE_LINE u_char[this->bufferCapacity];
 			memcpy(this->buffer, other.buffer, this->bufferLength);
 		} else { 
 			this->buffer = NULL;
@@ -201,7 +201,7 @@ public:
 		if(!buffer) {
 			buffer = new FILE_LINE u_char[dataLength + capacityReserve + 1];
 			bufferCapacity = dataLength + capacityReserve + 1;
-		} else if(bufferLength + dataLength > capacityReserve) {
+		} else if(bufferLength + dataLength + 1 > capacityReserve) {
 			u_char *bufferNew = new FILE_LINE u_char[bufferLength + dataLength + capacityReserve + 1];
 			memcpy(bufferNew, buffer, bufferLength);
 			delete [] buffer;
@@ -237,7 +237,7 @@ public:
 		this->bufferCapacity = other.bufferCapacity;
 		this->capacityReserve = other.capacityReserve;
 		if(this->bufferLength) {
-			this->buffer = new FILE_LINE u_char[this->bufferLength];
+			this->buffer = new FILE_LINE u_char[this->bufferCapacity];
 			memcpy(this->buffer, other.buffer, this->bufferLength);
 		} else { 
 			this->buffer = NULL;
@@ -253,7 +253,7 @@ public:
 				memcpy(newBuffer, buffer, bufferLength);
 				delete [] buffer;
 				buffer = newBuffer;
-				++bufferCapacity;
+				bufferCapacity = bufferLength + 1;
 			}
 			buffer[bufferLength] = 0;
 			return((char*)buffer);
