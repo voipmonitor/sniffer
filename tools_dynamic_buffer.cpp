@@ -721,10 +721,6 @@ void ChunkBuffer::add(char *data, u_int32_t datalen, bool flush, u_int32_t decom
 	if(!datalen) {
 		return;
 	}
-	extern int terminating;
-	while(this->isFull() && !terminating) {
-		usleep(100000);
-	}
 	if(sverb.chunk_buffer > 2) {
 		if(directAdd) {
 			cout << "add compress data " << datalen << endl;

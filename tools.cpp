@@ -1250,10 +1250,15 @@ void AsyncClose::processAll(int threadIndex) {
 		if(q[threadIndex].size()) {
 			AsyncCloseItem *item = q[threadIndex].front();
 			q[threadIndex].pop();
-			sub_sizeOfDataInMemory(item->dataLength);
-			unlock(threadIndex);
-			item->process();
-			delete item;
+			if(terminating || item->process_ready()) {
+				sub_sizeOfDataInMemory(item->dataLength);
+				unlock(threadIndex);
+				item->process();
+				delete item;
+			} else {
+				q[threadIndex].push(item);
+				unlock(threadIndex);
+			}
 		} else {
 			unlock(threadIndex);
 			break;
@@ -2417,6 +2422,14 @@ bool FileZipHandler::_writeToFile(char *data, int length, bool flush) {
 		return(false);
 	}
 	return(false);
+}
+
+bool FileZipHandler::_writeReady() {
+	if(this->tarBuffer) {
+		return(!this->tarBuffer->isFull());
+	} else {
+		return(true);
+	}
 }
 
 bool FileZipHandler::__writeToFile(char *data, int length) {
