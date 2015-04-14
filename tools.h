@@ -445,6 +445,7 @@ public:
 	bool writeToBuffer(char *data, int length);
 	bool writeToFile(char *data, int length, bool force = false);
 	bool _writeToFile(char *data, int length, bool flush = false);
+	bool _writeReady();
 	bool __writeToFile(char *data, int length);
 	//bool initZip();
 	//bool initLz4();
@@ -588,6 +589,7 @@ public:
 			       const char *column = NULL, long long writeBytes = 0);
 		virtual ~AsyncCloseItem() {}
 		virtual void process() = 0;
+		virtual bool process_ready() = 0;
 		virtual void processClose() {}
 	protected:
 		void addtofilesqueue();
@@ -623,6 +625,9 @@ public:
 				pcapDumper->setStateClose();
 			}
 		}
+		bool process_ready() {
+			return(true);
+		}
 		void processClose() {
 			__pcap_dump_close(handle);
 		}
@@ -645,6 +650,9 @@ public:
 		void process() {
 			((FileZipHandler*)handle)->_writeToFile(data, dataLength);
 		}
+		bool process_ready() {
+			return(((FileZipHandler*)handle)->_writeReady());
+		}
 	private:
 		pcap_dumper_t *handle;
 		char *data;
@@ -665,6 +673,9 @@ public:
 			if(this->updateFilesQueue) {
 				this->addtofilesqueue();
 			}
+		}
+		bool process_ready() {
+			return(true);
 		}
 		void processClose() {
 			handle->close();
@@ -688,6 +699,9 @@ public:
 		}
 		void process() {
 			handle->_writeToFile(data, dataLength);
+		}
+		bool process_ready() {
+			return(handle->_writeReady());
 		}
 	private:
 		FileZipHandler *handle;
