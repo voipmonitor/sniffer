@@ -113,6 +113,8 @@ public:
 		lastFlushTime = 0;
 		lastWriteTime = 0;
 		tarLength = 0;
+		writeCounter = 0;
+		writeCounterFlush = 0;
 		this->writing = 0;
 	};
 	virtual ~Tar();
@@ -182,6 +184,8 @@ private:
 	unsigned int lastFlushTime;
 	unsigned int lastWriteTime;
 	u_int64_t tarLength;
+	volatile u_int32_t writeCounter;
+	volatile u_int32_t writeCounterFlush;
 	
 	struct sReadData {
 		sReadData() {
