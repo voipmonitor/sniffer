@@ -1218,6 +1218,9 @@ int TcpReassemblyLink::okQueue_normal(int final, bool enableDebug,
 	int countDataStream = 0;
 	this->ok_streams.clear();
 	size_t size = this->queueStreams.size();
+	if(!size) {
+		return(-1);
+	}
 	bool finOrRst = this->fin_to_dest || this->fin_to_source || this->rst;
 	int countIter = 0;
 	for(size_t i = 0; i < (finOrRst || final == 2 ? size : size - 1); i++) {
