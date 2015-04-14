@@ -1594,6 +1594,8 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "rtpthreads", NULL))) {
 		num_threads = atoi(value);
+		if(num_threads <= 0) num_threads = sysconf( _SC_NPROCESSORS_ONLN ) - 1;
+		if(num_threads <= 0) num_threads = 1;
 	}
 	if((value = ini.GetValue("general", "rtptimeout", NULL))) {
 		rtptimeout = atoi(value);
@@ -3191,6 +3193,7 @@ int main(int argc, char *argv[]) {
 	opt_pcap_threaded = sysconf( _SC_NPROCESSORS_ONLN ) > 1; 
 	opt_pcap_threaded = 1; // TODO: this must be enabled for now. 
 	num_threads = sysconf( _SC_NPROCESSORS_ONLN ) - 1;
+	if(num_threads <= 0) num_threads = 1;
 	set_mac();
 
 	thread_setup();
@@ -3319,6 +3322,8 @@ int main(int argc, char *argv[]) {
 				break;
 			case 'e':
 				num_threads = atoi(optarg);
+				if(num_threads <= 0) num_threads = sysconf( _SC_NPROCESSORS_ONLN ) - 1;
+				if(num_threads <= 0) num_threads = 1;
 				break;
 			case 'E':
 				rtpthreadbuffer = atoi(optarg);
