@@ -445,7 +445,13 @@ public:
 	bool writeToBuffer(char *data, int length);
 	bool writeToFile(char *data, int length, bool force = false);
 	bool _writeToFile(char *data, int length, bool flush = false);
-	bool _writeReady();
+	bool _writeReady() {
+		if(tarBuffer) {
+			return(!tarBuffer->isFull());
+		} else {
+			return(true);
+		}
+	}
 	bool __writeToFile(char *data, int length);
 	//bool initZip();
 	//bool initLz4();
@@ -591,6 +597,7 @@ public:
 		virtual void process() = 0;
 		virtual bool process_ready() = 0;
 		virtual void processClose() {}
+		virtual FileZipHandler *getHandler() = 0;
 	protected:
 		void addtofilesqueue();
 	protected:
@@ -631,6 +638,9 @@ public:
 		void processClose() {
 			__pcap_dump_close(handle);
 		}
+		FileZipHandler *getHandler() {
+			return((FileZipHandler*)handle);
+		}
 	private:
 		pcap_dumper_t *handle;
 		bool updateFilesQueue;
@@ -652,6 +662,9 @@ public:
 		}
 		bool process_ready() {
 			return(((FileZipHandler*)handle)->_writeReady());
+		}
+		FileZipHandler *getHandler() {
+			return((FileZipHandler*)handle);
 		}
 	private:
 		pcap_dumper_t *handle;
@@ -681,6 +694,9 @@ public:
 			handle->close();
 			delete handle;
 		}
+		FileZipHandler *getHandler() {
+			return(handle);
+		}
 	private:
 		FileZipHandler *handle;
 		bool updateFilesQueue;
@@ -702,6 +718,9 @@ public:
 		}
 		bool process_ready() {
 			return(handle->_writeReady());
+		}
+		FileZipHandler *getHandler() {
+			return(handle);
 		}
 	private:
 		FileZipHandler *handle;
@@ -857,7 +876,7 @@ public:
 		if(useThreadOper) {
 			useThread[threadIndex] += useThreadOper;
 		}
-		q[threadIndex].push(item);
+		q[threadIndex].push_back(item);
 		add_sizeOfDataInMemory(item->dataLength);
 		unlock(threadIndex);
 		return(true);
@@ -896,7 +915,7 @@ private:
 	int maxPcapThreads;
 	int minPcapThreads;
 	volatile int countPcapThreads;
-	queue<AsyncCloseItem*> q[AsyncClose_maxPcapThreads];
+	deque<AsyncCloseItem*> q[AsyncClose_maxPcapThreads];
 	pthread_t thread[AsyncClose_maxPcapThreads];
 	volatile int _sync[AsyncClose_maxPcapThreads];
 	int threadId[AsyncClose_maxPcapThreads];
