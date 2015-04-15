@@ -1,3 +1,9 @@
+11.0.8 14.04.2015
+=================
+- fix critical bug in 11.0.6 and 11.0.7 which can lead to corrupted pcap files in rare case. 
+- show md5 and error number when auto upgrade fails 
+
+
 11.0.7 14.04.2015
 =================
 - fix critical bug leading to crash when the sniffer is configured as a receiver and have multiple senders or if sniffing on multiple interfaces (eth1,eth2)
