@@ -1218,7 +1218,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 							}
 						}
 						outStr << sizeSQLq;
-						if (opt_rrd) rrdSQLq_C += sizeSQLq;
+						if (opt_rrd) rrdSQLq_C += sizeSQLq / 100;
 					}
 				}
 				for(int i = 0; i < opt_mysqlstore_max_threads_message; i++) {
@@ -1233,7 +1233,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 							}
 						}
 						outStr << sizeSQLq;
-						if (opt_rrd) rrdSQLq_M += sizeSQLq;
+						if (opt_rrd) rrdSQLq_M += sizeSQLq / 100;
 					}
 				}
 				for(int i = 0; i < opt_mysqlstore_max_threads_register; i++) {
@@ -1248,7 +1248,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 							}
 						}
 						outStr << sizeSQLq;
-						if (opt_rrd) rrdSQLq_R += sizeSQLq;
+						if (opt_rrd) rrdSQLq_R += sizeSQLq / 100;
 					}
 				}
 				sizeSQLq = sqlStore->getSize(STORE_PROC_ID_SAVE_PACKET_SQL);
@@ -1258,6 +1258,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 				sizeSQLq = sqlStore->getSize(STORE_PROC_ID_CLEANSPOOL);
 				if(sizeSQLq >= 0) {
 					outStr << " Cl:" << sizeSQLq;
+					if (opt_rrd) rrdSQLq_Cl += sizeSQLq / 100;
 				}
 				for(int i = 0; i < opt_mysqlstore_max_threads_http; i++) {
 					sizeSQLq = sqlStore->getSize(STORE_PROC_ID_HTTP_1 + i);
@@ -1268,7 +1269,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 							outStr << " H:";
 						}
 						outStr << sizeSQLq;
-						if (opt_rrd) rrdSQLq_H += sizeSQLq;
+						if (opt_rrd) rrdSQLq_H += sizeSQLq / 100;
 					}
 				}
 				if(opt_ipaccount) {
@@ -1590,7 +1591,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 			vm_rrd_create_rrdheap(filename);
 			sprintf(filename, "%s/rrd/2db-PS.rrd", opt_chdir);
 			vm_rrd_create_rrdPS(filename);
-			sprintf(filename, "%s/rrd/db-SQLq.rrd", opt_chdir);
+			sprintf(filename, "%s/rrd/2db-SQLq.rrd", opt_chdir);
 			vm_rrd_create_rrdSQLq(filename);
 			sprintf(filename, "%s/rrd/db-tCPU.rrd", opt_chdir);
 			vm_rrd_create_rrdtCPU(filename);
@@ -1629,7 +1630,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 			cmdUpdate <<  ":" << rrdPS_SM;
 			cmdUpdate <<  ":" << rrdPS_R;
 			cmdUpdate <<  ":" << rrdPS_A;
-			sprintf(filename, "%s/rrd/db-PS.rrd", opt_chdir);
+			sprintf(filename, "%s/rrd/2db-PS.rrd", opt_chdir);
 			vm_rrd_update(filename, cmdUpdate.str().c_str());
 
 			//update rrdSQLq;
@@ -1639,7 +1640,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 			cmdUpdate <<  ":" << rrdSQLq_R;
 			cmdUpdate <<  ":" << rrdSQLq_Cl;
 			cmdUpdate <<  ":" << rrdSQLq_H;
-			sprintf(filename, "%s/rrd/db-SQLq.rrd", opt_chdir);
+			sprintf(filename, "%s/rrd/2db-SQLq.rrd", opt_chdir);
 			vm_rrd_update(filename, cmdUpdate.str().c_str());
 
 			//update rrdtCPU;

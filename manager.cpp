@@ -516,7 +516,7 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 				sprintf(filename, "%s/rrd/2db-PS.rrd", opt_chdir);
 				rrd_vm_create_graph_PS_command(filename, fromat, toat, color, resx, resy, slope, icon, dstfile, sendcommand, sizeof(sendcommand));
 			} else if (!strncmp(manager_args[1], "SQLq", 5)) {
-				sprintf(filename, "%s/rrd/db-SQLq.rrd", opt_chdir);
+				sprintf(filename, "%s/rrd/2db-SQLq.rrd", opt_chdir);
 				rrd_vm_create_graph_SQLq_command(filename, fromat, toat, color, resx, resy, slope, icon, dstfile, sendcommand, sizeof(sendcommand));
 			} else if (!strncmp(manager_args[1], "tCPU", 5)) {
 				sprintf(filename, "%s/rrd/db-tCPU.rrd", opt_chdir);
