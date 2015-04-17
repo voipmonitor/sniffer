@@ -1951,7 +1951,7 @@ void perror_syslog(const char *msg) {
 	syslog(LOG_ERR, "%s:%s\n", msg, buf);
 }
 
-#ifdef HAVE_SSH
+#ifdef HAVE_LIBSSH
 void *manager_ssh_(void) {
 	ssh_session session;
 	int rc;
@@ -2053,7 +2053,7 @@ ssh_disconnect:
 }
 #endif
 
-#ifdef HAVE_SSH
+#ifdef HAVE_LIBSSH
 void *manager_ssh(void *arg) {
 	ssh_threads_set_callbacks(ssh_threads_get_pthread());
 	ssh_init();
