@@ -1484,7 +1484,7 @@ bool RestartUpgrade::runUpgrade() {
 	}
 	int unzipRslt = system(unzipCommand.c_str());
 	if(verbosity > 0) {
-		syslog(LOG_NOTICE, "unzip rslt: %i; errno: %i", unzipRslt, errno);
+		syslog(LOG_NOTICE, "unzip rslt: %i", unzipRslt);
 	}
 	if(unzipRslt != 0) {
 		FILE *fileHandle = fopen(outputStdoutErr, "r");
