@@ -1483,6 +1483,9 @@ bool RestartUpgrade::runUpgrade() {
 		syslog(LOG_NOTICE, "try unzip command: '%s'", unzipCommand.c_str());
 	}
 	int unzipRslt = system(unzipCommand.c_str());
+	if(verbosity > 0) {
+		syslog(LOG_NOTICE, "unzip rslt: %i", unzipRslt);
+	}
 	if(unzipRslt != 0) {
 		FILE *fileHandle = fopen(outputStdoutErr, "r");
 		if(fileHandle) {
