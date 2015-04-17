@@ -255,6 +255,8 @@ ipfrag_data_s ipfrag_data;
 
 u_int64_t counter_calls;
 u_int64_t counter_sip_packets[2];
+u_int64_t counter_sip_register_packets;
+u_int64_t counter_sip_message_packets;
 u_int64_t counter_rtp_packets;
 u_int64_t counter_all_packets;
 
@@ -2254,9 +2256,13 @@ Call *process_packet(bool is_ssl, u_int64_t packet_number,
 			      process_packet__parse_sip_method(data, datalen);
 		switch(sip_method) {
 		case REGISTER:
+			counter_sip_register_packets++;
 			if(opt_enable_fraud) {
 				fraudRegister(saddr, header->ts);
 			}
+			break;
+		case MESSAGE:
+			counter_sip_message_packets++;
 			break;
 		case OPTIONS:
 			if(livesnifferfilterUseSipTypes.u_options) {

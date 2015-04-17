@@ -957,6 +957,8 @@ PcapQueue::PcapQueue(eTypeQueue typeQueue, const char *nameQueue) {
 	this->counter_calls_old = 0;
 	this->counter_sip_packets_old[0] = 0;
 	this->counter_sip_packets_old[1] = 0;
+	this->counter_sip_register_packets_old = 0;
+	this->counter_sip_message_packets_old = 0;
 	this->counter_rtp_packets_old = 0;
 	this->counter_all_packets_old = 0;
 }
@@ -1036,6 +1038,8 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 	int64_t rrdPS_C = 0;
 	uint64_t rrdPS_S0 = 0;
 	uint64_t rrdPS_S1 = 0;
+	uint64_t rrdPS_SR = 0;
+	uint64_t rrdPS_SM = 0;
 	uint64_t rrdPS_R = 0;
 	uint64_t rrdPS_A = 0;
 	int rrdSQLq_C = 0;
@@ -1128,6 +1132,8 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 			if (opt_rrd) rrdcallscounter = calltable->calls_listMAP.size();
 			extern u_int64_t counter_calls;
 			extern u_int64_t counter_sip_packets[2];
+			extern u_int64_t counter_sip_register_packets;
+			extern u_int64_t counter_sip_message_packets;
 			extern u_int64_t counter_rtp_packets;
 			extern u_int64_t counter_all_packets;
 			if(this->counter_calls_old ||
@@ -1156,6 +1162,21 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 				} else {
 					outStr << "-";
 				}
+				outStr << " SR:";
+				if(this->counter_sip_register_packets_old) {
+					outStr << (counter_sip_register_packets - this->counter_sip_register_packets_old) / statPeriod;
+					if (opt_rrd) rrdPS_SR = (counter_sip_register_packets - this->counter_sip_register_packets_old) / statPeriod;
+				} else {
+					outStr << "-";
+				}
+				outStr << " SM:";
+				if(this->counter_sip_message_packets_old) {
+					outStr << (counter_sip_message_packets - this->counter_sip_message_packets_old) / statPeriod;
+					if (opt_rrd) rrdPS_SM = (counter_sip_message_packets - this->counter_sip_message_packets_old) / statPeriod;
+				} else {
+					outStr << "-";
+				}
+
 				outStr << " R:";
 				if(this->counter_rtp_packets_old) {
 					outStr << (counter_rtp_packets - this->counter_rtp_packets_old) / statPeriod;
@@ -1175,6 +1196,8 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 			this->counter_calls_old = counter_calls;
 			this->counter_sip_packets_old[0] = counter_sip_packets[0];
 			this->counter_sip_packets_old[1] = counter_sip_packets[1];
+			this->counter_sip_register_packets_old = counter_sip_register_packets;
+			this->counter_sip_message_packets_old = counter_sip_message_packets;
 			this->counter_rtp_packets_old = counter_rtp_packets;
 			this->counter_all_packets_old = counter_all_packets;
 			outStr << "SQLq[";
@@ -1565,7 +1588,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 			vm_rrd_create_rrddrop(filename);
 			sprintf(filename, "%s/rrd/db-heap.rrd", opt_chdir);
 			vm_rrd_create_rrdheap(filename);
-			sprintf(filename, "%s/rrd/db-PS.rrd", opt_chdir);
+			sprintf(filename, "%s/rrd/2db-PS.rrd", opt_chdir);
 			vm_rrd_create_rrdPS(filename);
 			sprintf(filename, "%s/rrd/db-SQLq.rrd", opt_chdir);
 			vm_rrd_create_rrdSQLq(filename);
@@ -1602,6 +1625,8 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 			cmdUpdate << "N:" << rrdPS_C;
 			cmdUpdate <<  ":" << rrdPS_S0;
 			cmdUpdate <<  ":" << rrdPS_S1;
+			cmdUpdate <<  ":" << rrdPS_SR;
+			cmdUpdate <<  ":" << rrdPS_SM;
 			cmdUpdate <<  ":" << rrdPS_R;
 			cmdUpdate <<  ":" << rrdPS_A;
 			sprintf(filename, "%s/rrd/db-PS.rrd", opt_chdir);
