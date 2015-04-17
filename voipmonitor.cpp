@@ -4398,7 +4398,7 @@ int main(int argc, char *argv[]) {
 		pthread_create(&tarqueuethread, NULL, TarQueueThread, NULL);
 	}
 
-#ifdef HAVE_SSH
+#ifdef HAVE_LIBSSH
 	if(ssh_host[0] != '\0') {
 		pthread_create(&manager_ssh_thread, NULL, manager_ssh, NULL);
 	}
