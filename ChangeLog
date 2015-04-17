@@ -1,3 +1,8 @@
+11.0.9 17.04.2015
+=================
+- fix cloud mode connection
+
+
 11.0.8 14.04.2015
 =================
 - fix critical bug in 11.0.6 and 11.0.7 which can lead to corrupted pcap files in rare case. 
