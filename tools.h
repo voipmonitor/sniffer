@@ -300,8 +300,8 @@ std::vector<std::string> &split(const std::string &s, char delim, std::vector<st
 std::vector<std::string> split(const std::string &s, char delim);
 std::vector<std::string> split(const char *s, const char *delim, bool enableTrim = false);
 std::vector<std::string> split(const char *s, std::vector<std::string> delim, bool enableTrim = false);
-int reg_match(const char *string, const char *pattern);
-string reg_replace(const char *string, const char *pattern, const char *replace);
+int reg_match(const char *string, const char *pattern, const char *file = NULL, int line = 0);
+string reg_replace(const char *string, const char *pattern, const char *replace, const char *file = NULL, int line = 0);
 string inet_ntostring(u_int32_t ip);
 void base64_init(void);
 int base64decode(unsigned char *dst, const char *src, int max);
@@ -1285,6 +1285,8 @@ public:
 		root = NULL;
 		rootCheckSip = NULL;
 		timeSync_SIP_HEADERfilter = 0;
+		timeSync_custom_headers_cdr = 0;
+		timeSync_custom_headers_message = 0;
 	}
 	~ParsePacket() {
 		free();
@@ -1375,6 +1377,8 @@ private:
 	unsigned int contents_count;
 	bool sip;
 	unsigned long timeSync_SIP_HEADERfilter;
+	unsigned long timeSync_custom_headers_cdr;
+	unsigned long timeSync_custom_headers_message;
 };
 
 class SafeAsyncQueue_base {

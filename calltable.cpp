@@ -132,6 +132,9 @@ extern int opt_clippingdetect;
 extern int terminating;
 extern int opt_read_from_file;
 extern char opt_pb_read_from_file[256];
+extern CustomHeaders *custom_headers_cdr;
+extern CustomHeaders *custom_headers_message;
+extern int opt_custom_headers_last_value;
 
 volatile int calls_counter = 0;
 
@@ -163,7 +166,7 @@ extern int opt_pcap_dump_tar_rtp_use_pos;
 extern int opt_pcap_dump_tar_graph_use_pos;
 
 extern unsigned int glob_ssl_calls;
-
+extern bool opt_cdr_partition;
 
 
 /* constructor */
@@ -1816,6 +1819,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 
 	SqlDb_row cdr,
 			cdr_next,
+			cdr_next_ch[CDR_NEXT_MAX],
 			/*
 			cdr_phone_number_caller,
 			cdr_phone_number_called,
@@ -1827,6 +1831,12 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			cdr_ua_a,
 			cdr_ua_b,	
 			cdr_proxy;
+	char _cdr_next_ch_name[CDR_NEXT_MAX][100];
+	char *cdr_next_ch_name[CDR_NEXT_MAX];
+	for(unsigned i = 0; i < CDR_NEXT_MAX; i++) {
+		_cdr_next_ch_name[i][0] = 0;
+		cdr_next_ch_name[i] = _cdr_next_ch_name[i];
+	}
 	unsigned int /*
 			caller_id = 0,
 			called_id = 0,
@@ -1961,11 +1971,17 @@ Call::saveToDb(bool enableBatchIfPossible) {
 	if(strlen(custom_header1)) {
 		cdr_next.add(sqlEscapeString(custom_header1), "custom_header1");
 	}
+	/* obsolete
 	for(map<string, string>::iterator iCustHeadersIter = custom_headers.begin(); iCustHeadersIter != custom_headers.end(); iCustHeadersIter++) {
 		cdr_next.add(sqlEscapeString(iCustHeadersIter->second), iCustHeadersIter->first);
 	}
+	*/
 	if(existsColumnCalldateInCdrNext) {
 		cdr_next.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
+	}
+	
+	if(custom_headers_cdr) {
+		custom_headers_cdr->prepareSaveRows_cdr(this, &cdr_next, cdr_next_ch, cdr_next_ch_name);
 	}
 
 	if(whohanged == 0 || whohanged == 1) {
@@ -2271,8 +2287,11 @@ Call::saveToDb(bool enableBatchIfPossible) {
 				}
 				query_str += string("if @exists_call_id and not @exists_rtp and ") + (existsRtp ? "1" : "0") + " then\n" +
 					     "  delete from cdr where id = @exists_call_id;\n" +
-					     "  delete from cdr_next where cdr_id = @exists_call_id;\n" +
-					     "  delete from cdr_rtp where cdr_id = @exists_call_id;\n" +
+					     "  delete from cdr_next where cdr_id = @exists_call_id;\n";
+				if(custom_headers_cdr) {
+					query_str += custom_headers_cdr->getDeleteQuery("@exists_call_id", "  ", ";\n");
+				}
+				query_str += string("  delete from cdr_rtp where cdr_id = @exists_call_id;\n") +
 					     (opt_dbdtmf ? "  delete from cdr_dtmf where cdr_id = @exists_call_id;\n" : "") +
 					     (opt_pcap_dump_tar ? "  delete from cdr_tar_part where cdr_id = @exists_call_id;\n" : "") +
 					     "  set @exists_call_id = 0;\n" +
@@ -2297,6 +2316,21 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		
 		cdr_next.add("_\\_'SQL'_\\_:@cdr_id", "cdr_ID");
 		query_str += sqlDbSaveCall->insertQuery(sql_cdr_next_table, cdr_next) + ";\n";
+
+		bool existsNextCh = false;
+		for(unsigned i = 0; i < CDR_NEXT_MAX; i++) {
+			if(cdr_next_ch_name[i][0]) {
+				cdr_next_ch[i].add("_\\_'SQL'_\\_:@cdr_id", "cdr_ID");
+				query_str += sqlDbSaveCall->insertQuery(cdr_next_ch_name[i], cdr_next_ch[i]) + ";\n";
+				existsNextCh = true;
+			}
+		}
+		if(existsNextCh) {
+			string queryForSaveUseInfo = custom_headers_cdr->getQueryForSaveUseInfo(this);
+			if(!queryForSaveUseInfo.empty()) {
+				query_str += queryForSaveUseInfo + ";\n";
+			}
+		}
 		
 		if(sql_cdr_table_last30d[0] ||
 		   sql_cdr_table_last7d[0] ||
@@ -2390,8 +2424,6 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			}
 		}
 		
-		sqlDbSaveCall->setEnableSqlStringInContent(false);
-		
 		query_str += "end if";
 		
 		if(opt_cdr_check_exists_callid ||
@@ -2414,6 +2446,9 @@ Call::saveToDb(bool enableBatchIfPossible) {
 				0);
 		++counterSqlStore;
 		sqlStore->query_lock(query_str.c_str(), storeId);
+		
+		sqlDbSaveCall->setEnableSqlStringInContent(false);
+		
 		//cout << endl << endl << query_str << endl << endl << endl;
 		return(0);
 	}
@@ -2540,6 +2575,14 @@ Call::saveToDb(bool enableBatchIfPossible) {
 
 		cdr_next.add(cdrID, "cdr_ID");
 		sqlDbSaveCall->insert(sql_cdr_next_table, cdr_next);
+		
+		for(unsigned i = 0; i < CDR_NEXT_MAX; i++) {
+			if(cdr_next_ch_name[i][0]) {
+				cdr_next_ch[i].add(cdrID, "cdr_ID");
+				sqlDbSaveCall->insert(cdr_next_ch_name[i], cdr_next_ch[i]);
+			}
+		}
+		
 		if(sql_cdr_table_last30d[0] ||
 		   sql_cdr_table_last7d[0] ||
 		   sql_cdr_table_last1d[0]) {
@@ -2926,10 +2969,18 @@ Call::saveMessageToDb(bool enableBatchIfPossible) {
 	}
 
 	SqlDb_row cdr,
+			msg_next_ch[CDR_NEXT_MAX],
 			m_contenttype,
 			cdr_sip_response,
 			cdr_ua_a,
 			cdr_ua_b;
+	char _msg_next_ch_name[CDR_NEXT_MAX][100];
+	char *msg_next_ch_name[CDR_NEXT_MAX];
+	for(unsigned i = 0; i < CDR_NEXT_MAX; i++) {
+		_msg_next_ch_name[i][0] = 0;
+		msg_next_ch_name[i] = _msg_next_ch_name[i];
+	}
+
 	if(useSensorId > -1) {
 		cdr.add(useSensorId, "id_sensor");
 	}
@@ -2972,10 +3023,15 @@ Call::saveMessageToDb(bool enableBatchIfPossible) {
 		cdr_next.add(sqlEscapeString(custom_header1), "custom_header1");
 	}
 */
+	/* obsolete
 	for(map<string, string>::iterator iCustHeadersIter = custom_headers.begin(); iCustHeadersIter != custom_headers.end(); iCustHeadersIter++) {
 		cdr.add(sqlEscapeString(iCustHeadersIter->second), iCustHeadersIter->first);
 	}
+	*/
 
+	if(custom_headers_message) {
+		custom_headers_message->prepareSaveRows_message(this, &cdr, msg_next_ch, msg_next_ch_name);
+	}
 
 	if(enableBatchIfPossible && isSqlDriver("mysql")) {
 		string query_str;
@@ -3007,6 +3063,28 @@ Call::saveMessageToDb(bool enableBatchIfPossible) {
 		}
 		
 		query_str += sqlDbSaveCall->insertQuery("message", cdr);
+
+		bool existsNextCh = false;
+		for(unsigned i = 0; i < CDR_NEXT_MAX; i++) {
+			if(msg_next_ch_name[i][0]) {
+				existsNextCh = true;
+			}
+		}
+		if(existsNextCh) {
+			query_str += string(";\n") + "if row_count() > 0 then\n";
+			query_str += "set @msg_id = last_insert_id();\n";
+			for(unsigned i = 0; i < CDR_NEXT_MAX; i++) {
+				if(msg_next_ch_name[i][0]) {
+					msg_next_ch[i].add("_\\_'SQL'_\\_:@msg_id", "message_ID");
+					query_str += sqlDbSaveCall->insertQuery(msg_next_ch_name[i], msg_next_ch[i]) + ";\n";
+				}
+			}
+			string queryForSaveUseInfo = custom_headers_message->getQueryForSaveUseInfo(this);
+			if(!queryForSaveUseInfo.empty()) {
+				query_str += queryForSaveUseInfo + ";\n";
+			}
+			query_str += "end if";
+		}
 		
 		if(opt_message_check_duplicity_callid_in_next_pass_insert) {
 			// check if exists call-id - end if
@@ -3023,6 +3101,9 @@ Call::saveMessageToDb(bool enableBatchIfPossible) {
 				0);
 		++counterSqlStore;
 		sqlStore->query_lock(query_str.c_str(), storeId);
+		
+		sqlDbSaveCall->setEnableSqlStringInContent(false);
+		
 		//cout << endl << endl << query_str << endl << endl << endl;
 		return(0);
 	}
@@ -3048,6 +3129,13 @@ Call::saveMessageToDb(bool enableBatchIfPossible) {
 	cdr.add(b_ua_id, "b_ua_id", true);
 
 	int cdrID = sqlDbSaveCall->insert("message", cdr);
+
+	for(unsigned i = 0; i < CDR_NEXT_MAX; i++) {
+		if(msg_next_ch_name[i][0]) {
+			msg_next_ch[i].add(cdrID, "message_ID");
+			sqlDbSaveCall->insert(msg_next_ch_name[i], msg_next_ch[i]);
+		}
+	}
 
 	return(cdrID <= 0);
 
@@ -4026,4 +4114,285 @@ Call::check_is_caller_called(int sip_method, unsigned int saddr, unsigned int da
 	}
 	return(*iscaller || _iscalled);
 	*/
+}
+
+
+CustomHeaders::CustomHeaders(eType type) {
+	this->type = type;
+	this->configTable = type == cdr ? "cdr_custom_headers" : "message_custom_headers";
+	this->nextTablePrefix = type == cdr ? "cdr_next_" : "message_next_";
+	this->fixedTable = type == cdr ? "cdr_next" : "message";
+	this->loadTime = 0;
+	this->lastTimeSaveUseInfo = 0;
+	this->_sync_custom_headers = 0;
+	this->load();
+}
+
+void CustomHeaders::load(bool lock) {
+	if(lock) lock_custom_headers();
+	custom_headers.clear();
+	allNextTables.clear();
+	SqlDb *sqlDb = createSqlObject();
+	sqlDb->query("show tables like '" + this->configTable + "'");
+	if(sqlDb->fetchRow()) {
+		sqlDb->query("show columns from " + this->configTable + " where Field='state'");
+		if(sqlDb->fetchRow()) {
+			sqlDb->query("SELECT * FROM " + this->configTable + " \
+				      where state is null or state='active'");
+			list<sCustomHeaderDataPlus> customHeaderData;
+			SqlDb_row row;
+			while((row = sqlDb->fetchRow())) {
+				sCustomHeaderDataPlus ch_data;
+				ch_data.type = row.getIndexField("type") < 0 || row.isNull("type") ? "fixed" : row["type"];
+				ch_data.header = row["header_field"];
+				ch_data.leftBorder = row["left_border"];
+				ch_data.rightBorder = row["right_border"];
+				ch_data.regularExpression = row["regular_expression"];
+				ch_data.dynamic_table = atoi(row["dynamic_table"].c_str());
+				ch_data.dynamic_column = atoi(row["dynamic_column"].c_str());
+				customHeaderData.push_back(ch_data);
+			}
+			for(list<sCustomHeaderDataPlus>::iterator iter = customHeaderData.begin(); iter != customHeaderData.end(); iter++) {
+				if(iter->type == "fixed") {
+					sqlDb->query("show columns from " + this->fixedTable + " where Field='custom_header__" + iter->header + "'");
+					if(sqlDb->fetchRow()) {
+						custom_headers[0][custom_headers[0].size()] = *iter;
+					}
+				} else {
+					custom_headers[iter->dynamic_table][iter->dynamic_column] = *iter;
+				}
+			}
+			map<int, map<int, sCustomHeaderData> >::iterator iter;
+			for(iter = custom_headers.begin(); iter != custom_headers.end();) {
+				if(iter->first) {
+					char nextTable[100];
+					sprintf(nextTable, "%s%i", this->nextTablePrefix.c_str(), iter->first);
+					sqlDb->query("show tables like '" + string(nextTable) + "'");
+					if(!sqlDb->fetchRow()) {
+						custom_headers.erase(iter++);
+						continue;
+					}
+					allNextTables.push_back(nextTable);
+				}
+				iter++;
+			}
+		}
+	}
+	delete sqlDb;
+	extern vector<dstring> opt_custom_headers_cdr;
+	extern vector<dstring> opt_custom_headers_message;
+	vector<dstring> *_customHeaders = type == cdr ? &opt_custom_headers_cdr : &opt_custom_headers_message;
+	for(vector<dstring>::iterator iter = _customHeaders->begin(); iter != _customHeaders->end(); iter++) {
+		sCustomHeaderData ch_data;
+		ch_data.header = (*iter)[0];
+		bool exists =  false;
+		for(unsigned i = 0; i < custom_headers[0].size(); i++) {
+			if(custom_headers[0][i].header == ch_data.header) {
+				exists = true;
+				break;
+			}
+		}
+		if(!exists) {
+			custom_headers[0][custom_headers[0].size()] = ch_data;
+		}
+	}
+	loadTime = getTimeMS();
+	if(lock) unlock_custom_headers();
+}
+
+void CustomHeaders::clear(bool lock) {
+	if(lock) lock_custom_headers();
+	custom_headers.clear();
+	allNextTables.clear();
+	if(lock) unlock_custom_headers();
+}
+
+void CustomHeaders::refresh() {
+	lock_custom_headers();
+	clear(false);
+	load(false);
+	unlock_custom_headers();
+}
+
+void CustomHeaders::addToStdParse(ParsePacket *parsePacket) {
+	lock_custom_headers();
+	map<int, map<int, sCustomHeaderData> >::iterator iter;
+	for(iter = custom_headers.begin(); iter != custom_headers.end(); iter++) {
+		map<int, sCustomHeaderData>::iterator iter2;
+		for(iter2 = iter->second.begin(); iter2 != iter->second.end(); iter2++) {
+			string findHeader = iter2->second.header;
+			if(findHeader[findHeader.length() - 1] != ':' &&
+			   findHeader[findHeader.length() - 1] != '=') {
+				findHeader.append(":");
+			}
+			parsePacket->addNode(findHeader.c_str());
+		}
+	}
+	unlock_custom_headers();
+}
+
+extern char * gettag(const void *ptr, unsigned long len, const char *tag, unsigned long *gettaglen, unsigned long *limitLen = NULL,
+		     ParsePacket *parsePacket = NULL);
+void CustomHeaders::parse(Call *call, char *data, int datalen) {
+	lock_custom_headers();
+	unsigned long gettagLimitLen = 0;
+	map<int, map<int, sCustomHeaderData> >::iterator iter;
+	for(iter = custom_headers.begin(); iter != custom_headers.end(); iter++) {
+		map<int, sCustomHeaderData>::iterator iter2;
+		for(iter2 = iter->second.begin(); iter2 != iter->second.end(); iter2++) {
+			string findHeader = iter2->second.header;
+			if(findHeader[findHeader.length() - 1] != ':' &&
+			   findHeader[findHeader.length() - 1] != '=') {
+				findHeader.append(":");
+			}
+			unsigned long l;
+			char *s = gettag(data, datalen, findHeader.c_str(), &l, &gettagLimitLen);
+			if(l) {
+				char customHeaderContent[256];
+				memcpy(customHeaderContent, s, min(l, 255lu));
+				customHeaderContent[min(l, 255lu)] = '\0';
+				char *customHeaderBegin = customHeaderContent;
+				if(!iter2->second.leftBorder.empty()) {
+					customHeaderBegin = strcasestr(customHeaderBegin, iter2->second.leftBorder.c_str());
+					if(customHeaderBegin) {
+						customHeaderBegin += iter2->second.leftBorder.length();
+					} else {
+						continue;
+					}
+				}
+				if(!iter2->second.rightBorder.empty()) {
+					char *customHeaderEnd = strcasestr(customHeaderBegin, iter2->second.rightBorder.c_str());
+					if(customHeaderEnd) {
+						*customHeaderEnd = 0;
+					} else {
+						continue;
+					}
+				}
+				if(!iter2->second.regularExpression.empty()) {
+					string customHeader = reg_replace(customHeaderBegin, iter2->second.regularExpression.c_str(), "$1");
+					if(customHeader.empty()) {
+						continue;
+					} else {
+						dstring content(iter2->second.header, customHeader);
+						this->setCustomHeaderContent(call, iter->first, iter2->first, &content);
+					}
+				} else {
+					dstring content(iter2->second.header, customHeaderBegin);
+					this->setCustomHeaderContent(call, iter->first, iter2->first, &content);
+				}
+			}
+		}
+	}
+	unlock_custom_headers();
+}
+
+void CustomHeaders::setCustomHeaderContent(Call *call, int pos1, int pos2, dstring *content) {
+	bool exists = false;
+	if(!opt_custom_headers_last_value) {
+		map<int, map<int, dstring> >::iterator iter = call->custom_headers.find(pos1);
+		if(iter != call->custom_headers.end()) {
+			map<int, dstring>::iterator iter2 = iter->second.find(pos2);
+			if(iter2 != iter->second.end()) {
+				exists = true;
+			}
+		}
+	}
+	if(!exists || opt_custom_headers_last_value) {
+		call->custom_headers[pos1][pos2] = *content;
+	}
+}
+
+void CustomHeaders::prepareSaveRows_cdr(Call *call, SqlDb_row *cdr_next, SqlDb_row cdr_next_ch[], char *cdr_next_ch_name[]) {
+	map<int, map<int, dstring> >::iterator iter;
+	for(iter = call->custom_headers.begin(); iter != call->custom_headers.end(); iter++) {
+		if(iter->first > CDR_NEXT_MAX) {
+			break;
+		}
+		map<int, dstring>::iterator iter2;
+		for(iter2 = iter->second.begin(); iter2 != iter->second.end(); iter2++) {
+			if(iter2->second[1].empty()) {
+				continue;
+			}
+			if(!iter->first) {
+				cdr_next->add(sqlEscapeString(iter2->second[1]), "custom_header__" + iter2->second[0]);
+			} else {
+				if(!cdr_next_ch_name[iter->first - 1][0]) {
+					sprintf(cdr_next_ch_name[iter->first - 1], "%s%i", this->nextTablePrefix.c_str(), iter->first);
+					if(opt_cdr_partition) {
+						cdr_next_ch[iter->first - 1].add(sqlEscapeString(sqlDateTimeString(call->calltime()).c_str()), "calldate");
+					}
+				}
+				char fieldName[20];
+				sprintf(fieldName, "custom_header_%i", iter2->first);
+				cdr_next_ch[iter->first - 1].add(sqlEscapeString(iter2->second[1]), fieldName);
+			}
+		}
+	}
+}
+
+void CustomHeaders::prepareSaveRows_message(Call *call, class SqlDb_row *message, class SqlDb_row message_next_ch[], char *message_next_ch_name[]) {
+	this->prepareSaveRows_cdr(call, message, message_next_ch, message_next_ch_name);
+}
+
+string CustomHeaders::getDeleteQuery(const char *id, const char *prefix, const char *suffix) {
+	string deleteQuery;
+	list<string>::iterator iter;
+	for(iter = allNextTables.begin(); iter != allNextTables.end(); iter++) {
+		 deleteQuery += string(prefix ? prefix : "") + 
+				"delete from " + *iter + 
+				(this->type == cdr ? " where cdr_id = " : " where message_id = ") + id + 
+				(suffix ? suffix : "");
+	}
+	return(deleteQuery);
+}
+
+void CustomHeaders::createMysqlPartitions(SqlDb *sqlDb) {
+	list<string>::iterator iter;
+	for(iter = allNextTables.begin(); iter != allNextTables.end(); iter++) {
+	 	if(sqlDb->isCloud()) {
+			sqlDb->setMaxQueryPass(1);
+			sqlDb->query(
+				"call create_partition('" + *iter + "', 'day', 0);");
+			sqlDb->query(
+				"call create_partition('" + *iter + "', 'day', 1);");
+		} else {
+			extern char mysql_database[256];
+			sqlDb->query(
+				string("call `") + mysql_database + "`.create_partition('" + mysql_database + "', '" + *iter + "', 'day', 0);");
+			sqlDb->query(
+				string("call `") + mysql_database + "`.create_partition('" + mysql_database + "', '" + *iter + "', 'day', 1);");
+		}
+	}
+}
+
+string CustomHeaders::getQueryForSaveUseInfo(Call* call) {
+	string query = "";
+	if((unsigned)call->calltime() > this->lastTimeSaveUseInfo + 60) {
+		map<int, map<int, dstring> >::iterator iter;
+		for(iter = call->custom_headers.begin(); iter != call->custom_headers.end(); iter++) {
+			if(iter->first > CDR_NEXT_MAX) {
+				break;
+			}
+			if(iter->first) {
+				map<int, dstring>::iterator iter2;
+				for(iter2 = iter->second.begin(); iter2 != iter->second.end(); iter2++) {
+					if(!iter2->second[1].empty()) {
+						if(!query.empty()) {
+							query += ";";
+						}
+						char queryBuff[200];
+						sprintf(queryBuff, 
+							"update %s set use_at = '%s' where dynamic_table=%i and dynamic_column=%i",
+							this->configTable.c_str(),
+							sqlDateTimeString(call->calltime()).c_str(),
+							iter->first,
+							iter2->first);
+						query += queryBuff;
+					}
+				}
+			}
+		}
+		this->lastTimeSaveUseInfo = call->calltime();
+	}
+	return(query);
 }

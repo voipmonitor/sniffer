@@ -248,12 +248,12 @@ unsigned int WebrtcData::WebrtcDecodeData::decode(u_char *data, unsigned int dat
 			this->data[i] = 0;
 		}
 		if(opcode == opcode_textData) {
-			this->method = reg_replace((char*)this->data, "\"method\":\"([^\"]+)\"", "$1");
-			this->type = reg_replace((char*)this->data, "\"type\":\"([^\"]+)\"", "$1");
-			this->deviceId = reg_replace((char*)this->data, "\"deviceId\":\"([^\"]+)\"", "$1");
-			this->commCorrelationId = reg_replace((char*)this->data, "\"Comm-Correlation-ID\":\"([^\"]+)\"", "$1");
+			this->method = reg_replace((char*)this->data, "\"method\":\"([^\"]+)\"", "$1", __FILE__, __LINE__);
+			this->type = reg_replace((char*)this->data, "\"type\":\"([^\"]+)\"", "$1", __FILE__, __LINE__);
+			this->deviceId = reg_replace((char*)this->data, "\"deviceId\":\"([^\"]+)\"", "$1", __FILE__, __LINE__);
+			this->commCorrelationId = reg_replace((char*)this->data, "\"Comm-Correlation-ID\":\"([^\"]+)\"", "$1", __FILE__, __LINE__);
 			if(this->commCorrelationId.empty()) {
-				this->commCorrelationId = reg_replace((char*)this->data, "\"comm-correlation-id\":\"([^\"]+)\"", "$1");
+				this->commCorrelationId = reg_replace((char*)this->data, "\"comm-correlation-id\":\"([^\"]+)\"", "$1", __FILE__, __LINE__);
 			}
 		}
 	}

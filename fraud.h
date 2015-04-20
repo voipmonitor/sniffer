@@ -869,8 +869,8 @@ class FraudAlerts {
 public:
 	FraudAlerts();
 	~FraudAlerts();
-	void loadAlerts();
-	void clear();
+	void loadAlerts(bool lock = true);
+	void clear(bool lock = true);
 	void beginCall(Call *call, u_int64_t at);
 	void connectCall(Call *call, u_int64_t at);
 	void seenByeCall(Call *call, u_int64_t at);

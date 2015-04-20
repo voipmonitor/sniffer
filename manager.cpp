@@ -80,6 +80,7 @@ extern int enable_bad_packet_order_warning;
 extern ip_port opt_pcap_queue_send_to_ip_port;
 
 int opt_blocktarwrite = 0;
+int opt_blockasyncprocess = 0;
 int opt_blockprocesspacket = 0;
 
 using namespace std;
@@ -513,10 +514,10 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 
 			char sendcommand[2048];			//buffer for send command string;
 			if (!strncmp(manager_args[1], "PS",3 )) {
-				sprintf(filename, "%s/rrd/db-PS.rrd", opt_chdir);
+				sprintf(filename, "%s/rrd/2db-PS.rrd", opt_chdir);
 				rrd_vm_create_graph_PS_command(filename, fromat, toat, color, resx, resy, slope, icon, dstfile, sendcommand, sizeof(sendcommand));
 			} else if (!strncmp(manager_args[1], "SQLq", 5)) {
-				sprintf(filename, "%s/rrd/db-SQLq.rrd", opt_chdir);
+				sprintf(filename, "%s/rrd/2db-SQLq.rrd", opt_chdir);
 				rrd_vm_create_graph_SQLq_command(filename, fromat, toat, color, resx, resy, slope, icon, dstfile, sendcommand, sizeof(sendcommand));
 			} else if (!strncmp(manager_args[1], "tCPU", 5)) {
 				sprintf(filename, "%s/rrd/db-tCPU.rrd", opt_chdir);
@@ -1271,6 +1272,20 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 			return -1;
 		}
 		return 0;
+	} else if(strstr(buf, "custom_headers_refresh") != NULL) {
+		extern CustomHeaders *custom_headers_cdr;
+		extern CustomHeaders *custom_headers_message;
+		if(custom_headers_cdr) {
+			custom_headers_cdr->refresh();
+		}
+		if(custom_headers_message) {
+			custom_headers_message->refresh();
+		}
+		if ((size = sendvm(client, sshchannel, "reload ok", 9, 0)) == -1){
+			cerr << "Error sending data to client" << endl;
+			return -1;
+		}
+		return 0;
 	} else if(strstr(buf, "getfile_is_zip_support") != NULL) {
 		if ((size = sendvm(client, sshchannel, "OK", 2, 0)) == -1){
 			cerr << "Error sending data to client" << endl;
@@ -1783,6 +1798,10 @@ getwav:
 		opt_blocktarwrite = 1;
 	} else if(buf[0] == 'u' and strstr(buf, "unblocktar") != NULL) {
 		opt_blocktarwrite = 0;
+	} else if(buf[0] == 'b' and strstr(buf, "blockasync") != NULL) {
+		opt_blockasyncprocess = 1;
+	} else if(buf[0] == 'u' and strstr(buf, "unblockasync") != NULL) {
+		opt_blockasyncprocess = 0;
 	} else if(buf[0] == 'b' and strstr(buf, "blockprocesspacket") != NULL) {
 		opt_blockprocesspacket = 1;
 	} else if(buf[0] == 'u' and strstr(buf, "unblockprocesspacket") != NULL) {
@@ -2311,10 +2330,10 @@ void ManagerClientThread_screen_popup::onCall(int sipResponseNum, const char *ca
 	struct in_addr _in;
 	_in.s_addr = sipSaddr;
 	cout << "** - src ip : " << inet_ntoa(_in) << endl;
-	cout << "** - reg_match : " << reg_match(calledNum, this->dest_number.empty() ? this->username.c_str() : this->dest_number.c_str()) << endl;
+	cout << "** - reg_match : " << reg_match(calledNum, this->dest_number.empty() ? this->username.c_str() : this->dest_number.c_str(), __FILE__, __LINE__) << endl;
 	cout << "** - check ip : " << this->src_ip.checkIP(htonl(sipSaddr)) << endl;
 	*/
-	if(!(reg_match(calledNum, this->dest_number.empty() ? this->username.c_str() : this->dest_number.c_str()) &&
+	if(!(reg_match(calledNum, this->dest_number.empty() ? this->username.c_str() : this->dest_number.c_str(), __FILE__, __LINE__) &&
 	     (this->non_numeric_caller_id ||
 	      this->isNumericId(calledNum)) &&
 	     this->src_ip.checkIP(htonl(sipSaddr)))) {
@@ -2323,7 +2342,7 @@ void ManagerClientThread_screen_popup::onCall(int sipResponseNum, const char *ca
 	if(this->regex_check_calling_number.size()) {
 		bool callerNumOk = false;
 		for(size_t i = 0; i < this->regex_check_calling_number.size(); i++) {
-			if(reg_match(callerNum, this->regex_check_calling_number[i].c_str())) {
+			if(reg_match(callerNum, this->regex_check_calling_number[i].c_str(), __FILE__, __LINE__)) {
 				callerNumOk = true;
 				break;
 			}
@@ -2344,7 +2363,8 @@ void ManagerClientThread_screen_popup::onCall(int sipResponseNum, const char *ca
 	for(size_t i = 0; i < this->regex_replace_calling_number.size(); i++) {
 		string temp = reg_replace(callerNumStr.c_str(), 
 					  this->regex_replace_calling_number[i].pattern.c_str(), 
-					  this->regex_replace_calling_number[i].replace.c_str());
+					  this->regex_replace_calling_number[i].replace.c_str(),
+					  __FILE__, __LINE__);
 		if(!temp.empty()) {
 			callerNumStr = temp;
 		}

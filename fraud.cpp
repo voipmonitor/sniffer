@@ -1275,8 +1275,8 @@ FraudAlerts::~FraudAlerts() {
 	clear();
 }
 
-void FraudAlerts::loadAlerts() {
-	lock_alerts();
+void FraudAlerts::loadAlerts(bool lock) {
+	if(lock) lock_alerts();
 	SqlDb *sqlDb = createSqlObject();
 	sqlDb->query("select id, alert_type, descr from alerts\
 		      where alert_type > 20 and\
@@ -1314,16 +1314,16 @@ void FraudAlerts::loadAlerts() {
 		}
 	}
 	delete sqlDb;
-	unlock_alerts();
+	if(lock) unlock_alerts();
 }
 
-void FraudAlerts::clear() {
-	lock_alerts();
+void FraudAlerts::clear(bool lock) {
+	if(lock) lock_alerts();
 	for(size_t i = 0; i < alerts.size(); i++) {
 		delete alerts[i];
 	}
 	alerts.clear();
-	unlock_alerts();
+	if(lock) unlock_alerts();
 }
 
 void FraudAlerts::beginCall(Call *call, u_int64_t at) {
@@ -1480,8 +1480,10 @@ void FraudAlerts::completeCallInfo_country_code(sFraudCallInfo *callInfo, CheckI
 }
 
 void FraudAlerts::refresh() {
-	clear();
-	loadAlerts();
+	lock_alerts();
+	clear(false);
+	loadAlerts(false);
+	unlock_alerts();
 }
 
 

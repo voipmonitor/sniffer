@@ -328,8 +328,8 @@ Tar::chunkbuffer_iterate_ev(char *data, u_int32_t len, u_int32_t pos) {
 void
 Tar::tar_read(const char *filename, const char *endFilename, u_int32_t recordId, const char *tableType, const char *tarPosString) {
 	bool enableDetectTarPos = true;
-	if(!reg_match(this->pathname.c_str(), "tar\\.gz") &&
-	   !reg_match(this->pathname.c_str(), "tar\\.xz")) {
+	if(!reg_match(this->pathname.c_str(), "tar\\.gz", __FILE__, __LINE__) &&
+	   !reg_match(this->pathname.c_str(), "tar\\.xz", __FILE__, __LINE__)) {
 		this->readData.send_parameters_zip = false;
 	} else {
 		enableDetectTarPos = false;
@@ -338,9 +338,9 @@ Tar::tar_read(const char *filename, const char *endFilename, u_int32_t recordId,
 	this->readData.filename = filename;
 	this->readData.endFilename = endFilename;
 	this->readData.init(T_BLOCKSIZE * 64);
-	CompressStream *decompressStream = new FILE_LINE CompressStream(reg_match(this->pathname.c_str(), "tar\\.gz") ?
+	CompressStream *decompressStream = new FILE_LINE CompressStream(reg_match(this->pathname.c_str(), "tar\\.gz", __FILE__, __LINE__) ?
 									 CompressStream::gzip :
-									reg_match(this->pathname.c_str(), "tar\\.xz") ?
+									reg_match(this->pathname.c_str(), "tar\\.xz", __FILE__, __LINE__) ?
 									 CompressStream::lzma :
 									 CompressStream::compress_na,
 									this->readData.bufferBaseSize, 0);
@@ -540,7 +540,7 @@ Tar::tar_read_block_ev(char *data) {
 extern int _sendvm(int socket, void *channel, const char *buf, size_t len, int mode);
 void 
 Tar::tar_read_file_ev(tar_header fileHeader, char *data, u_int32_t pos, u_int32_t len) {
-	if(!reg_match(fileHeader.name, this->readData.filename.c_str())) {
+	if(!reg_match(fileHeader.name, this->readData.filename.c_str(), __FILE__, __LINE__)) {
 		return;
 	}
 	if(len) {

@@ -1778,11 +1778,15 @@ std::vector<std::string> split(const char *s, std::vector<std::string> delim, bo
 }
 
 
-int reg_match(const char *string, const char *pattern) {
+int reg_match(const char *string, const char *pattern, const char *file, int line) {
 	int status;
 	regex_t re;
 	if(regcomp(&re, pattern, REG_EXTENDED | REG_NOSUB) != 0) {
-		syslog(LOG_ERR, "regcomp %s error", pattern);
+		if(file) {
+			syslog(LOG_ERR, "regcomp %s error in reg_match - call from %s : %i", pattern, file, line);
+		} else {
+			syslog(LOG_ERR, "regcomp %s error in reg_match", pattern);
+		}
 		return(0);
 	}
 	status = regexec(&re, string, (size_t)0, NULL, 0);
@@ -1790,11 +1794,15 @@ int reg_match(const char *string, const char *pattern) {
 	return(status == 0);
 }
 
-string reg_replace(const char *str, const char *pattern, const char *replace) {
+string reg_replace(const char *str, const char *pattern, const char *replace, const char *file, int line) {
 	int status;
 	regex_t re;
 	if(regcomp(&re, pattern, REG_EXTENDED) != 0) {
-		syslog(LOG_ERR, "regcomp %s error", pattern);
+		if(file) {
+			syslog(LOG_ERR, "regcomp %s error in reg_replace - call from %s : %i", pattern, file, line);
+		} else {
+			syslog(LOG_ERR, "regcomp %s error in reg_match", pattern);
+		}
 		return("");
 	}
 	int match_max = 20;
@@ -1911,6 +1919,7 @@ void ListPhoneNumber_wb::addBlack(const char *number) {
 
 
 void ParsePacket::setStdParse() {
+	clear();
 	if(root) {
 		delete root;
 		root = NULL;
@@ -1980,6 +1989,18 @@ void ParsePacket::setStdParse() {
 		addNode(findHeader.c_str());
 	}
 	
+	extern CustomHeaders *custom_headers_cdr;
+	extern CustomHeaders *custom_headers_message;
+	if(custom_headers_cdr) {
+		custom_headers_cdr->addToStdParse(this);
+		this->timeSync_custom_headers_cdr = custom_headers_cdr->getLoadTime();
+	}
+	if(custom_headers_message) {
+		custom_headers_message->addToStdParse(this);
+		this->timeSync_custom_headers_message = custom_headers_message->getLoadTime();
+	}
+	
+	/* obsolete
 	extern vector<dstring> opt_custom_headers_cdr;
 	extern vector<dstring> opt_custom_headers_message;
 	for(int i = 0; i < 2; i++) {
@@ -1992,6 +2013,7 @@ void ParsePacket::setStdParse() {
 			addNode(findHeader.c_str());
 		}
 	}
+	*/
 	
 	//RFC 3261
 	addNodeCheckSip("SIP/2.0");
@@ -2016,20 +2038,33 @@ void ParsePacket::setStdParse() {
 		SIP_HEADERfilter::lock_sync();
 		sipheaderfilter->addNodes(this);
 		SIP_HEADERfilter::unlock_sync();
+		this->timeSync_SIP_HEADERfilter = sipheaderfilter->getLoadTime();
 	}
 }
 
 unsigned long ParsePacket::parseData(char *data, unsigned long datalen, bool doClear) {
 	extern SIP_HEADERfilter *sipheaderfilter;
 	extern int sipheaderfilter_reload_do;
+	extern CustomHeaders *custom_headers_cdr;
+	extern CustomHeaders *custom_headers_message;
 	if(!this->timeSync_SIP_HEADERfilter) {
 		this->timeSync_SIP_HEADERfilter = sipheaderfilter->getLoadTime();
-	} else if(!sipheaderfilter_reload_do &&
-		  sipheaderfilter->getLoadTime() > this->timeSync_SIP_HEADERfilter) {
+	} else if((!sipheaderfilter_reload_do &&
+		   sipheaderfilter->getLoadTime() > this->timeSync_SIP_HEADERfilter) ||
+		  (custom_headers_cdr && custom_headers_cdr->getLoadTime() > this->timeSync_custom_headers_cdr) ||
+		  (custom_headers_message && custom_headers_message->getLoadTime() > this->timeSync_custom_headers_message)) {
 		this->setStdParse();
-		this->timeSync_SIP_HEADERfilter = sipheaderfilter->getLoadTime();
-		if(sverb.capture_filter) {
-			syslog(LOG_NOTICE, "SIP_HEADERfilter - reload ParsePacket::parseData after load SIP_HEADERfilter");
+		if(sipheaderfilter->getLoadTime() > this->timeSync_SIP_HEADERfilter) {
+			this->timeSync_SIP_HEADERfilter = sipheaderfilter->getLoadTime();
+			if(sverb.capture_filter) {
+				syslog(LOG_NOTICE, "SIP_HEADERfilter - reload ParsePacket::parseData after load SIP_HEADERfilter");
+			}
+		}
+		if(custom_headers_cdr && custom_headers_cdr->getLoadTime() > this->timeSync_custom_headers_cdr) {
+			 this->timeSync_custom_headers_cdr = custom_headers_cdr->getLoadTime();
+		}
+		if(custom_headers_message && custom_headers_message->getLoadTime() > this->timeSync_custom_headers_message) {
+			 this->timeSync_custom_headers_message = custom_headers_message->getLoadTime();
 		}
 	}
 	unsigned long rsltDataLen = datalen;
@@ -3268,7 +3303,7 @@ bool vm_pexec(const char *cmdLine, SimpleBuffer *out, SimpleBuffer *err, unsigne
 				}
 			}
 			if(readStderrLength) {
-				if(bufferStderr.size() && reg_match((char*)bufferStderr, "^exec failed")) {
+				if(bufferStderr.size() && reg_match((char*)bufferStderr, "^exec failed", __FILE__, __LINE__)) {
 					break;
 				}
 			} else if(!readStdoutLength) {
@@ -3287,7 +3322,7 @@ bool vm_pexec(const char *cmdLine, SimpleBuffer *out, SimpleBuffer *err, unsigne
 		close(pipe_stdout[0]);
 		close(pipe_stderr[0]);
 		if(out) {
-			if(reg_match((char*)bufferStdout, "PID([0-9]+)\n")) {
+			if(reg_match((char*)bufferStdout, "PID([0-9]+)\n", __FILE__, __LINE__)) {
 				char *pointerToPidSeparator = strchr((char*)bufferStdout, '\n');
 				out->clear();
 				out->add(pointerToPidSeparator + 1, bufferStdout.size() - ((u_char*)pointerToPidSeparator - bufferStdout.data() + 1));
@@ -3298,7 +3333,7 @@ bool vm_pexec(const char *cmdLine, SimpleBuffer *out, SimpleBuffer *err, unsigne
 		if(err) {
 			*err = bufferStderr;
 		}
-		return(!(bufferStderr.size() && reg_match((char*)bufferStderr, "^exec failed")));
+		return(!(bufferStderr.size() && reg_match((char*)bufferStderr, "^exec failed", __FILE__, __LINE__)));
 	} else {
 		return(false);
 	}

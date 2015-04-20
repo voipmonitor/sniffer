@@ -412,6 +412,8 @@ bool opt_disable_partition_operations = 0;
 bool opt_autoload_from_sqlvmexport = 0;
 vector<dstring> opt_custom_headers_cdr;
 vector<dstring> opt_custom_headers_message;
+CustomHeaders *custom_headers_cdr;
+CustomHeaders *custom_headers_message;
 int opt_custom_headers_last_value = 1;
 
 char configfile[1024] = "";	// config file name
@@ -1561,7 +1563,7 @@ int eval_config(string inistr) {
 		opt_autocleanmingb_configset = true;
 	}
 	if((value = ini.GetValue("general", "cleanspool_enable_fromto", NULL))) {
-		string fromTo = reg_replace(value, "([0-9]+)[- ]*([0-9]+)", "$1-$2");
+		string fromTo = reg_replace(value, "([0-9]+)[- ]*([0-9]+)", "$1-$2", __FILE__, __LINE__);
 		if(fromTo.empty()) {
 			int h = atoi(value);
 			if(h >= 0 && h < 24) {
@@ -4311,6 +4313,9 @@ int main(int argc, char *argv[]) {
 	rlp.rlim_max = RLIM_INFINITY;
 	if (setrlimit(RLIMIT_CORE, &rlp) < 0)
 		fprintf(stderr, "setrlimit: %s\nWarning: core dumps may be truncated or non-existant\n", strerror(errno));
+	
+	custom_headers_cdr =  new CustomHeaders(CustomHeaders::cdr);
+	custom_headers_message =  new CustomHeaders(CustomHeaders::message);
 
 	ipfilter = new FILE_LINE IPfilter;
 	telnumfilter = new FILE_LINE TELNUMfilter;
@@ -4943,6 +4948,13 @@ int main(int argc, char *argv[]) {
 	
 	if(sqlStore) {
 		delete sqlStore;
+	}
+	
+	if(custom_headers_cdr) {
+		delete custom_headers_cdr;
+	}
+	if(custom_headers_message) {
+		delete custom_headers_message;
 	}
 	
 	if(opt_bogus_dumper_path[0]) {
@@ -5689,11 +5701,11 @@ string jeMallocStat(bool full) {
 			if(full) {
 				rslt += buff;
 			} else {
-				if(reg_match(buff, "MAPPED_LIBRARIES")) {
+				if(reg_match(buff, "MAPPED_LIBRARIES", __FILE__, __LINE__)) {
 					break;
 				}
 				if(*buff) {
-					if(reg_match(buff, "^[0-9]+: [0-9]+")) {
+					if(reg_match(buff, "^[0-9]+: [0-9]+", __FILE__, __LINE__)) {
 						char *pointerToSizeSeparator = strchr(buff, ':');
 						if(pointerToSizeSeparator &&
 						   atoll(buff) * atoll(pointerToSizeSeparator + 2) > sverb.memory_stat_ignore_limit) {
