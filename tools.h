@@ -185,7 +185,7 @@ public:
 		this->bufferCapacity = other.bufferCapacity;
 		this->capacityReserve = other.capacityReserve;
 		if(this->bufferLength) {
-			this->buffer = new FILE_LINE u_char[this->bufferLength];
+			this->buffer = new FILE_LINE u_char[this->bufferCapacity];
 			memcpy(this->buffer, other.buffer, this->bufferLength);
 		} else { 
 			this->buffer = NULL;
@@ -201,7 +201,7 @@ public:
 		if(!buffer) {
 			buffer = new FILE_LINE u_char[dataLength + capacityReserve + 1];
 			bufferCapacity = dataLength + capacityReserve + 1;
-		} else if(bufferLength + dataLength > capacityReserve) {
+		} else if(bufferLength + dataLength + 1 > capacityReserve) {
 			u_char *bufferNew = new FILE_LINE u_char[bufferLength + dataLength + capacityReserve + 1];
 			memcpy(bufferNew, buffer, bufferLength);
 			delete [] buffer;
@@ -237,7 +237,7 @@ public:
 		this->bufferCapacity = other.bufferCapacity;
 		this->capacityReserve = other.capacityReserve;
 		if(this->bufferLength) {
-			this->buffer = new FILE_LINE u_char[this->bufferLength];
+			this->buffer = new FILE_LINE u_char[this->bufferCapacity];
 			memcpy(this->buffer, other.buffer, this->bufferLength);
 		} else { 
 			this->buffer = NULL;
@@ -253,7 +253,7 @@ public:
 				memcpy(newBuffer, buffer, bufferLength);
 				delete [] buffer;
 				buffer = newBuffer;
-				++bufferCapacity;
+				bufferCapacity = bufferLength + 1;
 			}
 			buffer[bufferLength] = 0;
 			return((char*)buffer);
@@ -445,6 +445,13 @@ public:
 	bool writeToBuffer(char *data, int length);
 	bool writeToFile(char *data, int length, bool force = false);
 	bool _writeToFile(char *data, int length, bool flush = false);
+	bool _writeReady() {
+		if(tarBuffer) {
+			return(!tarBuffer->isFull());
+		} else {
+			return(true);
+		}
+	}
 	bool __writeToFile(char *data, int length);
 	//bool initZip();
 	//bool initLz4();
@@ -588,7 +595,9 @@ public:
 			       const char *column = NULL, long long writeBytes = 0);
 		virtual ~AsyncCloseItem() {}
 		virtual void process() = 0;
+		virtual bool process_ready() = 0;
 		virtual void processClose() {}
+		virtual FileZipHandler *getHandler() = 0;
 	protected:
 		void addtofilesqueue();
 	protected:
@@ -623,8 +632,14 @@ public:
 				pcapDumper->setStateClose();
 			}
 		}
+		bool process_ready() {
+			return(true);
+		}
 		void processClose() {
 			__pcap_dump_close(handle);
+		}
+		FileZipHandler *getHandler() {
+			return((FileZipHandler*)handle);
 		}
 	private:
 		pcap_dumper_t *handle;
@@ -644,6 +659,12 @@ public:
 		}
 		void process() {
 			((FileZipHandler*)handle)->_writeToFile(data, dataLength);
+		}
+		bool process_ready() {
+			return(((FileZipHandler*)handle)->_writeReady());
+		}
+		FileZipHandler *getHandler() {
+			return((FileZipHandler*)handle);
 		}
 	private:
 		pcap_dumper_t *handle;
@@ -666,9 +687,15 @@ public:
 				this->addtofilesqueue();
 			}
 		}
+		bool process_ready() {
+			return(true);
+		}
 		void processClose() {
 			handle->close();
 			delete handle;
+		}
+		FileZipHandler *getHandler() {
+			return(handle);
 		}
 	private:
 		FileZipHandler *handle;
@@ -688,6 +715,12 @@ public:
 		}
 		void process() {
 			handle->_writeToFile(data, dataLength);
+		}
+		bool process_ready() {
+			return(handle->_writeReady());
+		}
+		FileZipHandler *getHandler() {
+			return(handle);
 		}
 	private:
 		FileZipHandler *handle;
@@ -843,7 +876,7 @@ public:
 		if(useThreadOper) {
 			useThread[threadIndex] += useThreadOper;
 		}
-		q[threadIndex].push(item);
+		q[threadIndex].push_back(item);
 		add_sizeOfDataInMemory(item->dataLength);
 		unlock(threadIndex);
 		return(true);
@@ -882,7 +915,7 @@ private:
 	int maxPcapThreads;
 	int minPcapThreads;
 	volatile int countPcapThreads;
-	queue<AsyncCloseItem*> q[AsyncClose_maxPcapThreads];
+	deque<AsyncCloseItem*> q[AsyncClose_maxPcapThreads];
 	pthread_t thread[AsyncClose_maxPcapThreads];
 	volatile int _sync[AsyncClose_maxPcapThreads];
 	int threadId[AsyncClose_maxPcapThreads];
@@ -1406,7 +1439,7 @@ private:
 private:
 	deque<type_queue_item> *push_queue;
 	deque<type_queue_item> *pop_queue;
-	deque<deque<type_queue_item>*> queue;
+	deque<deque<type_queue_item>*> queueItems;
 	int shiftIntervalMult10S;
 	unsigned long long lastShiftTimerCounter;
 	volatile int _sync_queue;
@@ -1430,9 +1463,9 @@ SafeAsyncQueue<type_queue_item>::~SafeAsyncQueue() {
 	lock_queue();
 	lock_push_queue();
 	lock_pop_queue();
-	while(queue.size()) {
-		delete queue.front();
-		queue.pop_front();
+	while(queueItems.size()) {
+		delete queueItems.front();
+		queueItems.pop_front();
 	}
 	if(push_queue) {
 		delete push_queue;
@@ -1462,9 +1495,9 @@ bool SafeAsyncQueue<type_queue_item>::pop(type_queue_item *item, bool remove) {
 			pop_queue = NULL;
 		}
 		lock_queue();
-		if(queue.size()) {
-			pop_queue = queue.front();
-			queue.pop_front();
+		if(queueItems.size()) {
+			pop_queue = queueItems.front();
+			queueItems.pop_front();
 		}
 		unlock_queue();
 	}
@@ -1499,7 +1532,7 @@ void SafeAsyncQueue<type_queue_item>::shiftPush() {
 		push_queue = NULL;
 		unlock_push_queue();
 		lock_queue();
-		queue.push_back(_push_queue);
+		queueItems.push_back(_push_queue);
 		unlock_queue();
 	}
 }
@@ -1666,5 +1699,7 @@ u_int32_t octal_decimal(u_int32_t n);
 
 bool vm_pexec(const char *cmdLine, SimpleBuffer *out, SimpleBuffer *err = NULL, unsigned timeout_sec = 10, unsigned timout_select_sec = 1);
 std::vector<std::string> parse_cmd_line(const char *cmdLine);
+
+u_int64_t getTotalMemory();
 
 #endif

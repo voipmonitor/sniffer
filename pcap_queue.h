@@ -30,17 +30,17 @@ public:
 	~pcap_block_store_queue();
 	void push(pcap_block_store* blockStore) {
 		this->lock_queue();
-		this->queue.push_back(blockStore);
+		this->queueBlock.push_back(blockStore);
 		this->add_sizeOfBlocks(blockStore->getUseSize());
 		this->unlock_queue();
 	}
 	pcap_block_store* pop(bool removeFromFront = true, size_t blockSize = 0) {
 		pcap_block_store* blockStore = NULL;
 		this->lock_queue();
-		if(this->queue.size()) {
-			blockStore = this->queue.front();
+		if(this->queueBlock.size()) {
+			blockStore = this->queueBlock.front();
 			if(removeFromFront) {
-				this->queue.pop_front();
+				this->queueBlock.pop_front();
 			}
 		}
 		if(blockStore && removeFromFront) {
@@ -71,7 +71,7 @@ private:
 		__sync_fetch_and_sub(&this->countOfBlocks, 1);
 	}
 private:
-	std::deque<pcap_block_store*> queue;
+	std::deque<pcap_block_store*> queueBlock;
 	volatile size_t countOfBlocks;
 	volatile size_t sizeOfBlocks;
 	volatile int _sync_queue;
@@ -143,7 +143,7 @@ public:
 	bool push(pcap_block_store *blockStore, bool deleteBlockStoreIfFail = true);
 	bool pop(pcap_block_store **blockStore);
 	size_t getQueueSize() {
-		return(this->queue.size());
+		return(this->queueStore.size());
 	}
 private:
 	pcap_file_store *findFileStoreById(u_int id);
@@ -171,7 +171,7 @@ private:
 	}
 private:
 	std::string fileStoreFolder;
-	std::deque<pcap_block_store*> queue;
+	std::deque<pcap_block_store*> queueStore;
 	std::deque<pcap_file_store*> fileStore;
 	u_int lastFileStoreId;
 	volatile int _sync_queue;
@@ -290,8 +290,11 @@ private:
 	PcapQueue *instancePcapHandle;
 	u_int64_t counter_calls_old;
 	u_int64_t counter_sip_packets_old[2];
+	u_int64_t counter_sip_register_packets_old;
+	u_int64_t counter_sip_message_packets_old;
 	u_int64_t counter_rtp_packets_old;
 	u_int64_t counter_all_packets_old;
+
 friend void *_PcapQueue_threadFunction(void *arg);
 friend void *_PcapQueue_writeThreadFunction(void *arg);
 };
@@ -472,9 +475,9 @@ private:
 		u_char *packet;
 	};
 	struct sThreadDeleteData {
-		sThreadDeleteData(PcapQueue_readFromInterface *owner) : queue(100000, 1000, 1000, 
-									      NULL, true, 
-									      __FILE__, __LINE__) {
+		sThreadDeleteData(PcapQueue_readFromInterface *owner) : queuePackets(100000, 1000, 1000, 
+										     NULL, true, 
+										     __FILE__, __LINE__) {
 			threadHandle = (pthread_t)NULL;
 			threadId = NULL;
 			enableMallocTrim = false;
@@ -489,7 +492,7 @@ private:
 		bool enableLock;
 		u_int32_t lastMallocTrimTime;
 		u_int32_t counter;
-		rqueue_quick<sHeaderPacket> queue;
+		rqueue_quick<sHeaderPacket> queuePackets;
 		PcapQueue_readFromInterface *owner;
 	};
 public:
@@ -521,7 +524,7 @@ protected:
 	string pcapStatString_cpuUsageReadThreads();
 	string getInterfaceName(bool simple = false);
 	void pushDelete(sHeaderPacket *headerPacket) {
-		threadsDeleteData[(counterPushDelete++) % deleteThreadsCount]->queue.push(headerPacket, true);
+		threadsDeleteData[(counterPushDelete++) % deleteThreadsCount]->queuePackets.push(headerPacket, true);
 	}
 	void lock_delete() {
 		while(__sync_lock_test_and_set(&this->_sync_delete, 1));

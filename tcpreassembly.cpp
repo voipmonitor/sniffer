@@ -48,10 +48,10 @@ bool TcpReassemblyData::isFill() {
 
 void TcpReassemblyStream_packet_var::push(TcpReassemblyStream_packet packet) {
 	map<uint32_t, TcpReassemblyStream_packet>::iterator iter;
-	iter = this->queue.find(packet.next_seq);
-	if(iter == this->queue.end()) {
-		this->queue[packet.next_seq];
-		this->queue[packet.next_seq] = packet;
+	iter = this->queuePackets.find(packet.next_seq);
+	if(iter == this->queuePackets.end()) {
+		this->queuePackets[packet.next_seq];
+		this->queuePackets[packet.next_seq] = packet;
 		if(opt_tcpreassembly_pb_lock) {
 			packet.lock_packet();
 		}
@@ -60,11 +60,11 @@ void TcpReassemblyStream_packet_var::push(TcpReassemblyStream_packet packet) {
 
 void TcpReassemblyStream::push(TcpReassemblyStream_packet packet) {
 	map<uint32_t, TcpReassemblyStream_packet_var>::iterator iter;
-	iter = this->queue.find(packet.header_tcp.seq);
+	iter = this->queuePacketVars.find(packet.header_tcp.seq);
 	if(debug_seq && packet.header_tcp.seq == debug_seq) {
 		cout << " -- XXX DEBUG SEQ XXX" << endl;
 	}
-	this->queue[packet.header_tcp.seq].push(packet);
+	this->queuePacketVars[packet.header_tcp.seq].push(packet);
 	if(PACKET_DATALEN(packet.datalen, packet.datacaplen)) {
 		exists_data = true;
 	}
@@ -80,7 +80,7 @@ int TcpReassemblyStream::ok(bool crazySequence, bool enableSimpleCmpMaxNextSeq, 
 	}
 	++counterTryOk;
 	this->cleanPacketsState();
-	if(!this->queue.begin()->second.getNextSeqCheck()) {
+	if(!this->queuePacketVars.begin()->second.getNextSeqCheck()) {
 		if(enableDebug) {
 			cout << " --- reassembly failed ack: " << this->ack << " " 
 			     << "(getNextSeqCheck return 0)";
@@ -96,27 +96,27 @@ int TcpReassemblyStream::ok(bool crazySequence, bool enableSimpleCmpMaxNextSeq, 
 					(forceFirstSeq ?
 					  forceFirstSeq :
 					  (crazySequence ? this->min_seq : this->first_seq));
-		iter_var = this->queue.find(seq);
+		iter_var = this->queuePacketVars.find(seq);
 		if(!this->ok_packets.size() &&
-		   iter_var == this->queue.end() && seq && seq == this->first_seq &&
+		   iter_var == this->queuePacketVars.end() && seq && seq == this->first_seq &&
 		   this->min_seq && this->min_seq != this->first_seq) {
 			seq = this->min_seq;
-			iter_var = this->queue.find(seq);
+			iter_var = this->queuePacketVars.find(seq);
 		}
-		while(iter_var != this->queue.end() && iter_var->second.isFail()) {
+		while(iter_var != this->queuePacketVars.end() && iter_var->second.isFail()) {
 			++iter_var;
 		}
-		if(iter_var == this->queue.end() && this->ok_packets.size()) {
+		if(iter_var == this->queuePacketVars.end() && this->ok_packets.size()) {
 			u_int32_t prev_seq = this->ok_packets.back()[0];
 			map<uint32_t, TcpReassemblyStream_packet_var>::iterator temp_iter;
-			for(temp_iter = this->queue.begin(); temp_iter != this->queue.end(); temp_iter++) {
+			for(temp_iter = this->queuePacketVars.begin(); temp_iter != this->queuePacketVars.end(); temp_iter++) {
 				if(temp_iter->first > prev_seq && temp_iter->first < seq) {
 					iter_var = temp_iter;
 					break;
 				}
 			}
 		}
-		if(iter_var == this->queue.end()) {
+		if(iter_var == this->queuePacketVars.end()) {
 			if(!this->ok_packets.size()) {
 				if(_counter) {
 					if(enableDebug) {
@@ -132,7 +132,7 @@ int TcpReassemblyStream::ok(bool crazySequence, bool enableSimpleCmpMaxNextSeq, 
 					return(1);
 				}
 			} else {
-				this->queue[this->ok_packets.back()[0]].queue[this->ok_packets.back()[1]].state = TcpReassemblyStream_packet::FAIL;
+				this->queuePacketVars[this->ok_packets.back()[0]].queuePackets[this->ok_packets.back()[1]].state = TcpReassemblyStream_packet::FAIL;
 				this->ok_packets.pop_back();
 				if(enableDebug) {
 					cout << "<";
@@ -187,19 +187,19 @@ int TcpReassemblyStream::ok(bool crazySequence, bool enableSimpleCmpMaxNextSeq, 
 						break;
 					}
 				}
-				this->queue[this->ok_packets.back()[0]].queue[this->ok_packets.back()[1]].state = TcpReassemblyStream_packet::CHECK;
+				this->queuePacketVars[this->ok_packets.back()[0]].queuePackets[this->ok_packets.back()[1]].state = TcpReassemblyStream_packet::CHECK;
 				if(enableDebug) {
 					cout << "-(" << this->ack << ")";
 				}
 				if(waitForPsh ?
-				    this->queue[this->ok_packets.back()[0]].queue[this->ok_packets.back()[1]].header_tcp.psh :
+				    this->queuePacketVars[this->ok_packets.back()[0]].queuePackets[this->ok_packets.back()[1]].header_tcp.psh :
 				    ((maxNextSeq && next_seq == maxNextSeq) ||
 				     (maxNextSeq && next_seq == maxNextSeq - 1) ||
 				     (this->last_seq && next_seq == this->last_seq) ||
 				     (this->last_seq && next_seq == this->last_seq - 1) ||
 				     (enableSimpleCmpMaxNextSeq && next_seq == this->max_next_seq) ||
 				     (!crazySequence && next_seq == this->max_next_seq && next_seq == this->getLastSeqFromNextStream()))) {
-					if(!this->queue[this->ok_packets.back()[0]].queue[this->ok_packets.back()[1]].header_tcp.psh && 
+					if(!this->queuePacketVars[this->ok_packets.back()[0]].queuePackets[this->ok_packets.back()[1]].header_tcp.psh && 
 					   !ignorePsh) {
 						waitForPsh = true;
 					} else {
@@ -224,7 +224,7 @@ int TcpReassemblyStream::ok(bool crazySequence, bool enableSimpleCmpMaxNextSeq, 
 					     << "  ";
 				}
 			} else if(this->ok_packets.size()) {
-				this->queue[this->ok_packets.back()[0]].queue[this->ok_packets.back()[1]].state = TcpReassemblyStream_packet::FAIL;
+				this->queuePacketVars[this->ok_packets.back()[0]].queuePackets[this->ok_packets.back()[1]].state = TcpReassemblyStream_packet::FAIL;
 				this->ok_packets.pop_back();
 				if(enableDebug) {
 					cout << "<";
@@ -302,7 +302,7 @@ u_char *TcpReassemblyStream::complete(u_int32_t *datalen, timeval *time, bool ch
 	u_int32_t lastNextSeq = 0;
 	size_t i;
 	for(i = startIndex; i < this->ok_packets.size(); i++) {
-		TcpReassemblyStream_packet packet = this->queue[this->ok_packets[i][0]].queue[this->ok_packets[i][1]];
+		TcpReassemblyStream_packet packet = this->queuePacketVars[this->ok_packets[i][0]].queuePackets[this->ok_packets[i][1]];
 		if(PACKET_DATALEN(packet.datalen, packet.datacaplen)) {
 			if(lastNextSeq > this->ok_packets[i][0]) {
 				*datalen -= lastNextSeq - this->ok_packets[i][0];
@@ -457,8 +457,8 @@ void TcpReassemblyStream::clearCompleteData() {
 void TcpReassemblyStream::unlockPackets() {
 	if(opt_tcpreassembly_pb_lock) {
 		map<uint32_t, TcpReassemblyStream_packet_var>::iterator iter;
-		for(iter = this->queue.begin(); iter != this->queue.end(); iter++) {
-			this->queue[iter->first].unlockPackets();
+		for(iter = this->queuePacketVars.begin(); iter != this->queuePacketVars.end(); iter++) {
+			this->queuePacketVars[iter->first].unlockPackets();
 		}
 	}
 }
@@ -466,12 +466,12 @@ void TcpReassemblyStream::unlockPackets() {
 void TcpReassemblyStream::printContent(int level) {
 	map<uint32_t, TcpReassemblyStream_packet_var>::iterator iter;
 	int counter = 0;
-	for(iter = this->queue.begin(); iter != this->queue.end(); iter++) {
+	for(iter = this->queuePacketVars.begin(); iter != this->queuePacketVars.end(); iter++) {
 		cout << fixed 
 		     << setw(level * 5) << ""
 		     << setw(3) << (++counter) << "   " 
 		     << "ack: " << iter->first
-		     << " items: " << iter->second.queue.size()
+		     << " items: " << iter->second.queuePackets.size()
 		     << endl;
 	}
 }
@@ -725,9 +725,9 @@ void end_decrypt_ssl(unsigned int saddr, unsigned int daddr, int sport, int dpor
 #endif
 
 TcpReassemblyLink::~TcpReassemblyLink() {
-	while(this->queue.size()) {
-		TcpReassemblyStream *stream = this->queue.front();
-		this->queue.pop_front();
+	while(this->queueStreams.size()) {
+		TcpReassemblyStream *stream = this->queueStreams.front();
+		this->queueStreams.pop_front();
 		this->queue_by_ack.erase(stream->ack);
 		if(ENABLE_DEBUG(reassembly->getType(), _debug_packet)) {
 			cout << " destroy (" << stream->ack << ")" << endl;
@@ -874,7 +874,7 @@ bool TcpReassemblyLink::push_normal(
 	}
 	if(!reassembly->enableCleanupThread) {
 		bool final = this->state == STATE_RESET || this->state == STATE_CLOSE;
-		if(this->queue.size()) {
+		if(this->queueStreams.size()) {
 			if(ENABLE_DEBUG(reassembly->getType(), _debug_check_ok)) {
 				cout << " ";
 			}
@@ -886,7 +886,7 @@ bool TcpReassemblyLink::push_normal(
 			if(ENABLE_DEBUG(reassembly->getType(), _debug_rslt)) {
 				cout << " -- RSLT: ";
 				if(countDataStream == 0) {
-					if(!this->queue.size()) {
+					if(!this->queueStreams.size()) {
 						cout << "EMPTY";
 					} else {
 						cout << "ERROR ";
@@ -1043,7 +1043,7 @@ void TcpReassemblyLink::pushpacket(TcpReassemblyStream::eDirection direction,
 	iter = this->queue_by_ack.find(packet.header_tcp.ack_seq);
 	if(iter == this->queue_by_ack.end() || !iter->second) {
 		TcpReassemblyStream *prevStreamByLastAck = NULL;
-		if(this->queue.size()) {
+		if(this->queueStreams.size()) {
 			prevStreamByLastAck = this->queue_by_ack[this->last_ack];
 		}
 		stream = new FILE_LINE TcpReassemblyStream(this);
@@ -1064,7 +1064,7 @@ void TcpReassemblyLink::pushpacket(TcpReassemblyStream::eDirection direction,
 					 packet.header_tcp.ack_seq);
 		}
 		this->queue_by_ack[stream->ack] = stream;
-		this->queue.push_back(stream);
+		this->queueStreams.push_back(stream);
 		if(ENABLE_DEBUG(reassembly->getType(), _debug_packet)) {
 			cout << " -- NEW STREAM (" << stream->ack << ")"
 			     << " - first_seq: " << stream->first_seq
@@ -1124,7 +1124,7 @@ void TcpReassemblyLink::cleanup(u_int64_t act_time) {
 	
 	if(reassembly->type == TcpReassembly::http) {
 		for(iter = this->queue_by_ack.begin(); iter != this->queue_by_ack.end(); ) {
-			if(iter->second->queue.size() > 500) {
+			if(iter->second->queuePacketVars.size() > 500) {
 				if(this->reassembly->isActiveLog() || ENABLE_DEBUG(reassembly->getType(), _debug_cleanup)) {
 					in_addr ip;
 					ip.s_addr = this->ip_src;
@@ -1136,7 +1136,7 @@ void TcpReassemblyLink::cleanup(u_int64_t act_time) {
 					       << "cleanup " 
 					       << reassembly->getTypeString()
 					       << " - remove ack " << iter->first 
-					       << " (too much seq - " << iter->second->queue.size() << ") "
+					       << " (too much seq - " << iter->second->queuePacketVars.size() << ") "
 					       << setw(15) << ip_src << "/" << setw(6) << this->port_src
 					       << " -> " 
 					       << setw(15) << ip_dst << "/" << setw(6) << this->port_dst;
@@ -1153,12 +1153,12 @@ void TcpReassemblyLink::cleanup(u_int64_t act_time) {
 		}
 	}
 	if(!reassembly->enableCrazySequence) {
-		while(this->queue.size() && this->queue[0]->completed_finally) {
+		while(this->queueStreams.size() && this->queueStreams[0]->completed_finally) {
 			if(ENABLE_DEBUG(reassembly->getType(), _debug_cleanup)) {
 				cout << fixed 
 				     << "cleanup " 
 				     << reassembly->getTypeString()
-				     << " - remove ack " << this->queue[0]->ack 
+				     << " - remove ack " << this->queueStreams[0]->ack 
 				     << setw(15) << inet_ntostring(htonl(this->ip_src)) << "/" << setw(6) << this->port_src
 				     << " -> " 
 				     << setw(15) << inet_ntostring(htonl(this->ip_dst)) << "/" << setw(6) << this->port_dst
@@ -1171,12 +1171,12 @@ void TcpReassemblyLink::cleanup(u_int64_t act_time) {
 			     << endl;
 			*/
 			
-			iter = this->queue_by_ack.find(this->queue[0]->ack);
+			iter = this->queue_by_ack.find(this->queueStreams[0]->ack);
 			if(iter != this->queue_by_ack.end()) {
 				this->queue_by_ack.erase(iter);
 			}
-			delete this->queue[0];
-			this->queue.erase(this->queue.begin());
+			delete this->queueStreams[0];
+			this->queueStreams.erase(this->queueStreams.begin());
 		}
 	}
 }
@@ -1184,18 +1184,18 @@ void TcpReassemblyLink::cleanup(u_int64_t act_time) {
 void TcpReassemblyLink::setLastSeq(TcpReassemblyStream::eDirection direction, 
 				   u_int32_t lastSeq) {
 	int index = -1;
-	for(int i = this->queue.size() - 1; i >=0; i--) {
-		if(this->queue[i]->direction == direction &&
-		   this->queue[i]->max_next_seq == lastSeq) {
+	for(int i = this->queueStreams.size() - 1; i >=0; i--) {
+		if(this->queueStreams[i]->direction == direction &&
+		   this->queueStreams[i]->max_next_seq == lastSeq) {
 			index = i;
 		}
 	}
 	if(index < 0) {
 		return;
 	}
-	this->queue[index]->last_seq = lastSeq;
+	this->queueStreams[index]->last_seq = lastSeq;
 	if(ENABLE_DEBUG(reassembly->getType(), _debug_packet)) {
-		cout << " -- set last seq: " << lastSeq << " for ack: " << this->queue[index]->ack << endl; 
+		cout << " -- set last seq: " << lastSeq << " for ack: " << this->queueStreams[index]->ack << endl; 
 	}
 }
 
@@ -1203,21 +1203,24 @@ int TcpReassemblyLink::okQueue_normal(int final, bool enableDebug,
 				      bool checkCompleteContent, bool ignorePsh) {
 	if(enableDebug) {
 		cout << "call okQueue_normal - port: " << this->port_src 
-		     << " / size: " << this->queue.size()
+		     << " / size: " << this->queueStreams.size()
 		     << (final == 2 ? " FINAL" : "")
 		     << endl;
-		if(!this->queue.size()) {
+		if(!this->queueStreams.size()) {
 			cout << "empty" << endl;
 			return(0);
 		} else {
-			for(size_t i = 0; i < this->queue.size(); i++) {
-				cout << " - ack : " << this->queue[i]->ack << endl;
+			for(size_t i = 0; i < this->queueStreams.size(); i++) {
+				cout << " - ack : " << this->queueStreams[i]->ack << endl;
 			}
 		}
 	}
 	int countDataStream = 0;
 	this->ok_streams.clear();
-	size_t size = this->queue.size();
+	size_t size = this->queueStreams.size();
+	if(!size) {
+		return(-1);
+	}
 	bool finOrRst = this->fin_to_dest || this->fin_to_source || this->rst;
 	int countIter = 0;
 	for(size_t i = 0; i < (finOrRst || final == 2 ? size : size - 1); i++) {
@@ -1225,12 +1228,12 @@ int TcpReassemblyLink::okQueue_normal(int final, bool enableDebug,
 		if(enableDebug) {
 			cout << "|";
 		}
-		int rslt = this->queue[i]->ok(false, 
-					      i == size - 1 && (finOrRst || final == 2), 
-					      i == size - 1 ? 0 : this->queue[i]->max_next_seq,
-					      checkCompleteContent, NULL, enableDebug,
-					      this->forceOk && i == 0 ? this->queue[0]->min_seq : 0, 
-					      ignorePsh);
+		int rslt = this->queueStreams[i]->ok(false, 
+						     i == size - 1 && (finOrRst || final == 2), 
+						     i == size - 1 ? 0 : this->queueStreams[i]->max_next_seq,
+						     checkCompleteContent, NULL, enableDebug,
+						     this->forceOk && i == 0 ? this->queueStreams[0]->min_seq : 0, 
+						     ignorePsh);
 		if(rslt <= 0) {
 			if(i == 0 && this->forceOk) {
 				// skip bad first stream
@@ -1238,7 +1241,7 @@ int TcpReassemblyLink::okQueue_normal(int final, bool enableDebug,
 				break;
 			}
 		} else {
-			this->ok_streams.push_back(this->queue[i]);
+			this->ok_streams.push_back(this->queueStreams[i]);
 			++countDataStream;
 		}
 	}
@@ -1522,9 +1525,9 @@ void TcpReassemblyLink::complete_normal(bool final) {
 				if(reassembly->enableDestroyStreamsInComplete) {
 					TcpReassemblyStream *stream = this->ok_streams[0];
 					this->ok_streams.erase(this->ok_streams.begin());
-					for(deque<TcpReassemblyStream*>::iterator iter = this->queue.begin(); iter != this->queue.end();) {
+					for(deque<TcpReassemblyStream*>::iterator iter = this->queueStreams.begin(); iter != this->queueStreams.end();) {
 						if(*iter == stream) {
-							iter = this->queue.erase(iter);
+							iter = this->queueStreams.erase(iter);
 						} else {
 							++iter;
 						}
@@ -2430,7 +2433,7 @@ void TcpReassembly::cleanup(bool all) {
 						cout << "RSLT: ONLY REQUEST (" << countDataStream << ")";
 					} else {
 						if(countDataStream == 0) {
-							if(!link->queue.size()) {
+							if(!link->queueStreams.size()) {
 								cout << "EMPTY";
 							} else {
 								cout << "ERROR";
@@ -2496,7 +2499,7 @@ void TcpReassembly::cleanup_simple(bool all) {
 		TcpReassemblyLink *link = iter->second;
 		bool final = link->last_packet_at_from_header &&
 			     act_time > link->last_packet_at_from_header + linkTimeout * 1000;
-		if(link->queue.size() &&
+		if(link->queueStreams.size() &&
 		   (all || final ||
 		    (link->last_packet_at_from_header &&
 		     act_time > link->last_packet_at_from_header + 5 * 1000 &&
@@ -2509,7 +2512,7 @@ void TcpReassembly::cleanup_simple(bool all) {
 			if(ENABLE_DEBUG(this->getType(), _debug_rslt)) {
 				cout << " -- RSLT: ";
 				if(countDataStream == 0) {
-					if(!link->queue.size()) {
+					if(!link->queueStreams.size()) {
 						cout << "EMPTY";
 					} else {
 						cout << "ERROR ";

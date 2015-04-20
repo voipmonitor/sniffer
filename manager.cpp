@@ -81,6 +81,7 @@ extern ip_port opt_pcap_queue_send_to_ip_port;
 
 int opt_blocktarwrite = 0;
 int opt_blockasyncprocess = 0;
+int opt_blockprocesspacket = 0;
 
 using namespace std;
 
@@ -513,10 +514,10 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 
 			char sendcommand[2048];			//buffer for send command string;
 			if (!strncmp(manager_args[1], "PS",3 )) {
-				sprintf(filename, "%s/rrd/db-PS.rrd", opt_chdir);
+				sprintf(filename, "%s/rrd/2db-PS.rrd", opt_chdir);
 				rrd_vm_create_graph_PS_command(filename, fromat, toat, color, resx, resy, slope, icon, dstfile, sendcommand, sizeof(sendcommand));
 			} else if (!strncmp(manager_args[1], "SQLq", 5)) {
-				sprintf(filename, "%s/rrd/db-SQLq.rrd", opt_chdir);
+				sprintf(filename, "%s/rrd/2db-SQLq.rrd", opt_chdir);
 				rrd_vm_create_graph_SQLq_command(filename, fromat, toat, color, resx, resy, slope, icon, dstfile, sendcommand, sizeof(sendcommand));
 			} else if (!strncmp(manager_args[1], "tCPU", 5)) {
 				sprintf(filename, "%s/rrd/db-tCPU.rrd", opt_chdir);
@@ -1801,6 +1802,10 @@ getwav:
 		opt_blockasyncprocess = 1;
 	} else if(buf[0] == 'u' and strstr(buf, "unblockasync") != NULL) {
 		opt_blockasyncprocess = 0;
+	} else if(buf[0] == 'b' and strstr(buf, "blockprocesspacket") != NULL) {
+		opt_blockprocesspacket = 1;
+	} else if(buf[0] == 'u' and strstr(buf, "unblockprocesspacket") != NULL) {
+		opt_blockprocesspacket = 0;
 	} else if(strstr(buf, "malloc_trim") != NULL) {
 		malloc_trim(0);
 	} else {
@@ -1965,7 +1970,7 @@ void perror_syslog(const char *msg) {
 	syslog(LOG_ERR, "%s:%s\n", msg, buf);
 }
 
-#ifdef HAVE_SSH
+#ifdef HAVE_LIBSSH
 void *manager_ssh_(void) {
 	ssh_session session;
 	int rc;
@@ -2067,7 +2072,7 @@ ssh_disconnect:
 }
 #endif
 
-#ifdef HAVE_SSH
+#ifdef HAVE_LIBSSH
 void *manager_ssh(void *arg) {
 	ssh_threads_set_callbacks(ssh_threads_get_pthread());
 	ssh_init();

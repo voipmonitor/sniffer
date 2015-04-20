@@ -1,6 +1,7 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/socket.h>
+#include <sys/sysinfo.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <dirent.h>
@@ -1181,7 +1182,7 @@ AsyncClose::~AsyncClose() {
 			AsyncCloseItem *item = q[i].front();
 			item->processClose();
 			delete item;
-			q[i].pop();
+			q[i].pop_front();
 		}
 	}
 }
@@ -1248,15 +1249,42 @@ void AsyncClose::processAll(int threadIndex) {
 		lock(threadIndex);
 		if(q[threadIndex].size()) {
 			AsyncCloseItem *item = q[threadIndex].front();
-			q[threadIndex].pop();
-			sub_sizeOfDataInMemory(item->dataLength);
-			unlock(threadIndex);
-			item->process();
-			extern int opt_blockasyncprocess;
-			if(opt_blockasyncprocess) {
-				sleep(1);
+			if(terminating || item->process_ready()) {
+				q[threadIndex].pop_front();
+				sub_sizeOfDataInMemory(item->dataLength);
+				unlock(threadIndex);
+				item->process();
+				delete item;
+			} else {
+				AsyncCloseItem *readyItem = NULL;
+				FileZipHandler *readyHandler = NULL;
+				deque<AsyncCloseItem*>::iterator iter;
+				for(iter = q[threadIndex].begin(); iter != q[threadIndex].end(); iter++) {
+					if((*iter)->process_ready() && (*iter)->getHandler() != item->getHandler()) {
+						readyHandler = (*iter)->getHandler();
+						break;
+					}
+				}
+				if(readyHandler) {
+					for(iter = q[threadIndex].begin(); iter != q[threadIndex].end();) {
+						if((*iter)->getHandler() == readyHandler) {
+							readyItem = *iter;
+							q[threadIndex].erase(iter++);
+							sub_sizeOfDataInMemory(readyItem->dataLength);
+							break;
+						} else {
+							iter++;
+						}
+					}
+				}
+				unlock(threadIndex);
+				if(readyItem) {
+					readyItem->process();
+					delete readyItem;
+				} else {
+					usleep(100000);
+				}
 			}
-			delete item;
 		} else {
 			unlock(threadIndex);
 			break;
@@ -1454,22 +1482,23 @@ bool RestartUpgrade::runUpgrade() {
 	if(verbosity > 0) {
 		syslog(LOG_NOTICE, "try unzip command: '%s'", unzipCommand.c_str());
 	}
-	if(system(unzipCommand.c_str()) != 0) {
-		this->errorString = "failed run gunzip";
+	int unzipRslt = system(unzipCommand.c_str());
+	if(verbosity > 0) {
+		syslog(LOG_NOTICE, "unzip rslt: %i", unzipRslt);
+	}
+	if(unzipRslt != 0) {
 		FILE *fileHandle = fopen(outputStdoutErr, "r");
 		if(fileHandle) {
 			size_t sizeOfOutputWgetBuffer = 10000;
 			char *outputStdoutErrBuffer = new FILE_LINE char[sizeOfOutputWgetBuffer];
 			size_t readSize = fread(outputStdoutErrBuffer, 1, sizeOfOutputWgetBuffer, fileHandle);
 			if(readSize > 0) {
-				outputStdoutErrBuffer[min(readSize, sizeOfOutputWgetBuffer) - 1] = 0;
-				this->errorString += ": " + string(outputStdoutErrBuffer);
+				outputStdoutErrBuffer[min(readSize, sizeOfOutputWgetBuffer - 1)] = 0;
+				this->errorString = "failed run gunzip: " + string(outputStdoutErrBuffer);
 			}
 			fclose(fileHandle);
-			char sizeInfo[200];
-			sprintf(sizeInfo, "size of file %s: %lli", binaryGzFilepathName.c_str(), binaryGzFilepathNameSize);
-			this->errorString += string("\n") + sizeInfo;
 		}
+		unlink(outputStdoutErr);
 		if(verbosity > 1) {
 			FILE *f = fopen(binaryGzFilepathName.c_str(), "rt");
 			char buff[10000];
@@ -1477,15 +1506,20 @@ bool RestartUpgrade::runUpgrade() {
 				cout << buff << endl;
 			}
 		}
-		unlink(outputStdoutErr);
-		if(verbosity < 2) {
-			rmdir_r(this->upgradeTempFileName.c_str());
+		if(!this->errorString.empty()) {
+			char sizeInfo[200];
+			sprintf(sizeInfo, "size of file %s: %lli", binaryGzFilepathName.c_str(), binaryGzFilepathNameSize);
+			this->errorString += string("\n") + sizeInfo;
+			if(verbosity < 2) {
+				rmdir_r(this->upgradeTempFileName.c_str());
+			}
+			if(verbosity > 0) {
+				syslog(LOG_ERR, "upgrade failed - %s", this->errorString.c_str());
+			}
+			return(false);
 		}
-		if(verbosity > 0) {
-			syslog(LOG_ERR, "upgrade failed - %s", this->errorString.c_str());
-		}
-		return(false);
 	} else {
+		unlink(outputStdoutErr);
 		if(verbosity > 0) {
 			syslog(LOG_NOTICE, "unzip finished");
 		}
@@ -1493,6 +1527,11 @@ bool RestartUpgrade::runUpgrade() {
 	string md5 = GetFileMD5(binaryFilepathName);
 	if((this->_64bit ? md5_64 : md5_32) != md5) {
 		this->errorString = "failed download - bad md5: " + md5 + " <> " + (this->_64bit ? md5_64 : md5_32);
+		if(unzipRslt) {
+			char unzipRsltInfo[200];
+			sprintf(unzipRsltInfo, "\nunzip rslt: %i", unzipRslt);
+			this->errorString += unzipRsltInfo;
+		}
 		rmdir_r(this->upgradeTempFileName.c_str());
 		if(verbosity > 0) {
 			syslog(LOG_ERR, "upgrade failed - %s", this->errorString.c_str());
@@ -3341,4 +3380,10 @@ std::vector<std::string> parse_cmd_line(const char *cmdLine) {
 		}
 	}
 	return(parse);
+}
+
+u_int64_t getTotalMemory() {
+	struct sysinfo sysInfo;
+	sysinfo(&sysInfo);
+	return(sysInfo.totalram);
 }

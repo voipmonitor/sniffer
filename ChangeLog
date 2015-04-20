@@ -1,3 +1,45 @@
+11.0.9 17.04.2015
+=================
+- fix cloud mode connection
+
+
+11.0.8 14.04.2015
+=================
+- fix critical bug in 11.0.6 and 11.0.7 which can lead to corrupted pcap files in rare case. 
+- show md5 and error number when auto upgrade fails 
+
+
+11.0.7 14.04.2015
+=================
+- fix critical bug leading to crash when the sniffer is configured as a receiver and have multiple senders or if sniffing on multiple interfaces (eth1,eth2)
+
+
+11.0.6 14.04.2015
+=================
+- if configuration option rtpthreads was 0 or empty rtp threads was completely disabled leading to crash. Force to set it to >= 1
+- enhance buffer handling when I/O blocks writes
+
+
+11.0.5 13.04.2015
+=================
+- fix time issue in default I/O (tar=yes) leading to MEMORY FULL 
+
+
+11.0.4 13.04.2015
+=================
+- fix memory corruption when checking RRD version on start and for every RRD graph load. Upgrade to 11.0.4 is adviced for all 11 versions. 
+
+
+11.0.3 10.04.2015
+=================
+- do not allow to set memory buffers higher than available memory to prevent swap to death. 
+
+
+11.0.2 10.04.2015
+=================
+- fix buffer freeze leading to MEMORY IS FULL 
+
+
 11.0.1 08.04.2015
 =================
 - fix crash when new DSP is enabled (fax, silence, etc..) 

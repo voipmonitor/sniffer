@@ -551,9 +551,9 @@ pcap_block_store_queue::pcap_block_store_queue() {
 
 pcap_block_store_queue::~pcap_block_store_queue() {
 	this->lock_queue();
-	while(this->queue.size()) {
-		delete this->queue.front();
-		this->queue.pop_front();
+	while(this->queueBlock.size()) {
+		delete this->queueBlock.front();
+		this->queueBlock.pop_front();
 	}
 	this->unlock_queue();
 }
@@ -757,10 +757,10 @@ pcap_store_queue::~pcap_store_queue() {
 		this->fileStore.pop_front();
 	}
 	pcap_block_store *blockStore;
-	while(this->queue.size()) {
-		blockStore = this->queue.front();
+	while(this->queueStore.size()) {
+		blockStore = this->queueStore.front();
 		delete blockStore;
-		this->queue.pop_front();
+		this->queueStore.pop_front();
 	}
 }
 
@@ -845,7 +845,7 @@ bool pcap_store_queue::push(pcap_block_store *blockStore, bool deleteBlockStoreI
 		}
 	}
 	this->lock_queue();
-	this->queue.push_back(blockStore);
+	this->queueStore.push_back(blockStore);
 	this->unlock_queue();
 	return(true);
 }
@@ -853,9 +853,9 @@ bool pcap_store_queue::push(pcap_block_store *blockStore, bool deleteBlockStoreI
 bool pcap_store_queue::pop(pcap_block_store **blockStore) {
 	*blockStore = NULL;
 	this->lock_queue();
-	if(this->queue.size()) {
-		*blockStore = this->queue.front();
-		this->queue.pop_front();
+	if(this->queueStore.size()) {
+		*blockStore = this->queueStore.front();
+		this->queueStore.pop_front();
 	}
 	this->unlock_queue();
 	if(*blockStore) {
@@ -957,6 +957,8 @@ PcapQueue::PcapQueue(eTypeQueue typeQueue, const char *nameQueue) {
 	this->counter_calls_old = 0;
 	this->counter_sip_packets_old[0] = 0;
 	this->counter_sip_packets_old[1] = 0;
+	this->counter_sip_register_packets_old = 0;
+	this->counter_sip_message_packets_old = 0;
 	this->counter_rtp_packets_old = 0;
 	this->counter_all_packets_old = 0;
 }
@@ -1036,6 +1038,8 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 	int64_t rrdPS_C = 0;
 	uint64_t rrdPS_S0 = 0;
 	uint64_t rrdPS_S1 = 0;
+	uint64_t rrdPS_SR = 0;
+	uint64_t rrdPS_SM = 0;
 	uint64_t rrdPS_R = 0;
 	uint64_t rrdPS_A = 0;
 	int rrdSQLq_C = 0;
@@ -1128,6 +1132,8 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 			if (opt_rrd) rrdcallscounter = calltable->calls_listMAP.size();
 			extern u_int64_t counter_calls;
 			extern u_int64_t counter_sip_packets[2];
+			extern u_int64_t counter_sip_register_packets;
+			extern u_int64_t counter_sip_message_packets;
 			extern u_int64_t counter_rtp_packets;
 			extern u_int64_t counter_all_packets;
 			if(this->counter_calls_old ||
@@ -1156,6 +1162,21 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 				} else {
 					outStr << "-";
 				}
+				outStr << " SR:";
+				if(this->counter_sip_register_packets_old) {
+					outStr << (counter_sip_register_packets - this->counter_sip_register_packets_old) / statPeriod;
+					if (opt_rrd) rrdPS_SR = (counter_sip_register_packets - this->counter_sip_register_packets_old) / statPeriod;
+				} else {
+					outStr << "-";
+				}
+				outStr << " SM:";
+				if(this->counter_sip_message_packets_old) {
+					outStr << (counter_sip_message_packets - this->counter_sip_message_packets_old) / statPeriod;
+					if (opt_rrd) rrdPS_SM = (counter_sip_message_packets - this->counter_sip_message_packets_old) / statPeriod;
+				} else {
+					outStr << "-";
+				}
+
 				outStr << " R:";
 				if(this->counter_rtp_packets_old) {
 					outStr << (counter_rtp_packets - this->counter_rtp_packets_old) / statPeriod;
@@ -1175,6 +1196,8 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 			this->counter_calls_old = counter_calls;
 			this->counter_sip_packets_old[0] = counter_sip_packets[0];
 			this->counter_sip_packets_old[1] = counter_sip_packets[1];
+			this->counter_sip_register_packets_old = counter_sip_register_packets;
+			this->counter_sip_message_packets_old = counter_sip_message_packets;
 			this->counter_rtp_packets_old = counter_rtp_packets;
 			this->counter_all_packets_old = counter_all_packets;
 			outStr << "SQLq[";
@@ -1195,7 +1218,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 							}
 						}
 						outStr << sizeSQLq;
-						if (opt_rrd) rrdSQLq_C += sizeSQLq;
+						if (opt_rrd) rrdSQLq_C += sizeSQLq / 100;
 					}
 				}
 				for(int i = 0; i < opt_mysqlstore_max_threads_message; i++) {
@@ -1210,7 +1233,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 							}
 						}
 						outStr << sizeSQLq;
-						if (opt_rrd) rrdSQLq_M += sizeSQLq;
+						if (opt_rrd) rrdSQLq_M += sizeSQLq / 100;
 					}
 				}
 				for(int i = 0; i < opt_mysqlstore_max_threads_register; i++) {
@@ -1225,7 +1248,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 							}
 						}
 						outStr << sizeSQLq;
-						if (opt_rrd) rrdSQLq_R += sizeSQLq;
+						if (opt_rrd) rrdSQLq_R += sizeSQLq / 100;
 					}
 				}
 				sizeSQLq = sqlStore->getSize(STORE_PROC_ID_SAVE_PACKET_SQL);
@@ -1235,6 +1258,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 				sizeSQLq = sqlStore->getSize(STORE_PROC_ID_CLEANSPOOL);
 				if(sizeSQLq >= 0) {
 					outStr << " Cl:" << sizeSQLq;
+					if (opt_rrd) rrdSQLq_Cl += sizeSQLq / 100;
 				}
 				for(int i = 0; i < opt_mysqlstore_max_threads_http; i++) {
 					sizeSQLq = sqlStore->getSize(STORE_PROC_ID_HTTP_1 + i);
@@ -1245,7 +1269,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 							outStr << " H:";
 						}
 						outStr << sizeSQLq;
-						if (opt_rrd) rrdSQLq_H += sizeSQLq;
+						if (opt_rrd) rrdSQLq_H += sizeSQLq / 100;
 					}
 				}
 				if(opt_ipaccount) {
@@ -1565,9 +1589,9 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 			vm_rrd_create_rrddrop(filename);
 			sprintf(filename, "%s/rrd/db-heap.rrd", opt_chdir);
 			vm_rrd_create_rrdheap(filename);
-			sprintf(filename, "%s/rrd/db-PS.rrd", opt_chdir);
+			sprintf(filename, "%s/rrd/2db-PS.rrd", opt_chdir);
 			vm_rrd_create_rrdPS(filename);
-			sprintf(filename, "%s/rrd/db-SQLq.rrd", opt_chdir);
+			sprintf(filename, "%s/rrd/2db-SQLq.rrd", opt_chdir);
 			vm_rrd_create_rrdSQLq(filename);
 			sprintf(filename, "%s/rrd/db-tCPU.rrd", opt_chdir);
 			vm_rrd_create_rrdtCPU(filename);
@@ -1602,9 +1626,11 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 			cmdUpdate << "N:" << rrdPS_C;
 			cmdUpdate <<  ":" << rrdPS_S0;
 			cmdUpdate <<  ":" << rrdPS_S1;
+			cmdUpdate <<  ":" << rrdPS_SR;
+			cmdUpdate <<  ":" << rrdPS_SM;
 			cmdUpdate <<  ":" << rrdPS_R;
 			cmdUpdate <<  ":" << rrdPS_A;
-			sprintf(filename, "%s/rrd/db-PS.rrd", opt_chdir);
+			sprintf(filename, "%s/rrd/2db-PS.rrd", opt_chdir);
 			vm_rrd_update(filename, cmdUpdate.str().c_str());
 
 			//update rrdSQLq;
@@ -1614,7 +1640,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 			cmdUpdate <<  ":" << rrdSQLq_R;
 			cmdUpdate <<  ":" << rrdSQLq_Cl;
 			cmdUpdate <<  ":" << rrdSQLq_H;
-			sprintf(filename, "%s/rrd/db-SQLq.rrd", opt_chdir);
+			sprintf(filename, "%s/rrd/2db-SQLq.rrd", opt_chdir);
 			vm_rrd_update(filename, cmdUpdate.str().c_str());
 
 			//update rrdtCPU;
@@ -3249,7 +3275,7 @@ void* PcapQueue_readFromInterface::threadDeleteFunction(sThreadDeleteData *threa
 	sHeaderPacket headerPacket;
 	unsigned long actTimeS;
 	while(!TERMINATING) {
-		if(threadDeleteData->queue.pop(&headerPacket, false)) {
+		if(threadDeleteData->queuePackets.pop(&headerPacket, false)) {
 			if(threadDeleteData->enableLock) {
 				this->lock_delete();
 			}
@@ -3282,7 +3308,7 @@ void* PcapQueue_readFromInterface::threadDeleteFunction(sThreadDeleteData *threa
 			}
 		}
 	}
-	while(threadDeleteData->queue.pop(&headerPacket, false)) {
+	while(threadDeleteData->queuePackets.pop(&headerPacket, false)) {
 		if(threadDeleteData->enableLock) {
 			this->lock_delete();
 		}
@@ -4410,6 +4436,11 @@ void PcapQueue_readFromFifo::processPacket(pcap_pkthdr_plus *header_plus, u_char
 	bool useTcpReassemblyWebrtc = false;
 	bool useTcpReassemblySsl = false;
 	static u_int64_t packet_counter_all;
+	
+	extern int opt_blockprocesspacket;
+	if(opt_blockprocesspacket) {
+		return;
+	}
 	
 	++packet_counter_all;
 	

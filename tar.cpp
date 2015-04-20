@@ -593,6 +593,9 @@ Tar::initZip() {
        
 void 
 Tar::flushZip() {
+	if(!writeCounter || writeCounterFlush >= writeCounter) {
+		return;
+	}
 	do {
 		this->zipStream->avail_out = this->zipBufferLength;
 		this->zipStream->next_out = (unsigned char*)this->zipBuffer;
@@ -604,6 +607,7 @@ Tar::flushZip() {
 			};
 		}
 	} while(this->zipStream->avail_out == 0);
+	writeCounterFlush = writeCounter;
 }	
 
 ssize_t
@@ -612,6 +616,7 @@ Tar::writeZip(const void *buf, size_t len) {
 	if(!this->initZip()) {
 		return(false);
 	}      
+	++writeCounter;
 	this->zipStream->avail_in = len;
 	this->zipStream->next_in = (unsigned char*)buf;
 	do {
@@ -656,6 +661,9 @@ Tar::initLzma() {
 
 void 
 Tar::flushLzma() {
+	if(!writeCounter || writeCounterFlush >= writeCounter) {
+		return;
+	}
 	int ret_xz;
 //	this->lzmaStream->next_in = NULL;
 //	this->lzmaStream->avail_in = 0;
@@ -677,6 +685,7 @@ Tar::flushLzma() {
 			break;
 		};
 	} while(1);
+	writeCounterFlush = writeCounter;
 }	
 
 ssize_t
@@ -685,6 +694,7 @@ Tar::writeLzma(const void *buf, size_t len) {
 	if(!this->initLzma()) {
 		return(false);
 	}
+	++writeCounter;
 	this->lzmaStream->next_in = (const uint8_t*)buf;
 	this->lzmaStream->avail_in = len;
 	do {
@@ -1172,14 +1182,16 @@ void *TarQueue::tarthreadworker(void *arg) {
 						unlock_okTarPointers();
 						*/
 						bool isClosed = data.buffer->isClosed();
-						if(!isClosed && !data.buffer->isNewLastAddTimeForTar() && !data.buffer->isFull()) {
+						if(!isClosed && 
+						   !data.buffer->isNewLastAddTimeForTar() && 
+						   !data.buffer->isFull()) {
 							continue;
 						}
 						data.buffer->copyLastAddTimeToTar();
 						unsigned int bufferLastTarTime = data.buffer->getLastTarTime();
 						if(!isClosed &&
-						   bufferLastTarTime &&
-						   bufferLastTarTime > glob_last_packet_time - 3) {
+						   bufferLastTarTime && bufferLastTarTime > glob_last_packet_time - 3 && 
+						   !data.buffer->isFull()) {
 							continue;
 						}
 						data.buffer->setLastTarTime(glob_last_packet_time);
