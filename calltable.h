@@ -810,6 +810,11 @@ public:
 		string rightBorder;
 		string regularExpression;
 	};
+	struct sCustomHeaderDataPlus : public sCustomHeaderData {
+		string type;
+		int dynamic_table;
+		int dynamic_column;
+	};
 public:
 	CustomHeaders(eType type);
 	void load(bool lock = true);
@@ -843,6 +848,7 @@ private:
 	eType type;
 	string configTable;
 	string nextTablePrefix;
+	string fixedTable;
 	map<int, map<int, sCustomHeaderData> > custom_headers;
 	list<string> allNextTables;
 	unsigned loadTime;

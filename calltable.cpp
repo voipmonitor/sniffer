@@ -4121,6 +4121,7 @@ CustomHeaders::CustomHeaders(eType type) {
 	this->type = type;
 	this->configTable = type == cdr ? "cdr_custom_headers" : "message_custom_headers";
 	this->nextTablePrefix = type == cdr ? "cdr_next_" : "message_next_";
+	this->fixedTable = type == cdr ? "cdr_next" : "message";
 	this->loadTime = 0;
 	this->lastTimeSaveUseInfo = 0;
 	this->_sync_custom_headers = 0;
@@ -4138,17 +4139,27 @@ void CustomHeaders::load(bool lock) {
 		if(sqlDb->fetchRow()) {
 			sqlDb->query("SELECT * FROM " + this->configTable + " \
 				      where state is null or state='active'");
+			list<sCustomHeaderDataPlus> customHeaderData;
 			SqlDb_row row;
 			while((row = sqlDb->fetchRow())) {
-				sCustomHeaderData ch_data;
+				sCustomHeaderDataPlus ch_data;
+				ch_data.type = row.getIndexField("type") < 0 || row.isNull("type") ? "fixed" : row["type"];
 				ch_data.header = row["header_field"];
 				ch_data.leftBorder = row["left_border"];
 				ch_data.rightBorder = row["right_border"];
 				ch_data.regularExpression = row["regular_expression"];
-				if(row.getIndexField("type") < 0 || row.isNull("type") || row["type"] == "fix") {
-					custom_headers[0][custom_headers[0].size()] = ch_data;
+				ch_data.dynamic_table = atoi(row["dynamic_table"].c_str());
+				ch_data.dynamic_column = atoi(row["dynamic_column"].c_str());
+				customHeaderData.push_back(ch_data);
+			}
+			for(list<sCustomHeaderDataPlus>::iterator iter = customHeaderData.begin(); iter != customHeaderData.end(); iter++) {
+				if(iter->type == "fixed") {
+					sqlDb->query("show columns from " + this->fixedTable + " where Field='custom_header__" + iter->header + "'");
+					if(sqlDb->fetchRow()) {
+						custom_headers[0][custom_headers[0].size()] = *iter;
+					}
 				} else {
-					custom_headers[atoi(row["dynamic_table"].c_str())][atoi(row["dynamic_column"].c_str())] = ch_data;
+					custom_headers[iter->dynamic_table][iter->dynamic_column] = *iter;
 				}
 			}
 			map<int, map<int, sCustomHeaderData> >::iterator iter;
