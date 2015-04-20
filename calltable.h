@@ -72,6 +72,8 @@
 #define CHAN_SIP	1
 #define CHAN_SKINNY	2
 
+#define CDR_NEXT_MAX 10
+
 typedef struct {
 	double ts;
 	char dtmf;
@@ -272,8 +274,11 @@ public:
 	int ipport_n;				//!< last index of addr and port array 
 
 	string geoposition;
-	
+
+	/* obsolete
 	map<string, string> custom_headers;
+	*/
+	map<int, map<int, dstring> > custom_headers;
 
 	list<unsigned int> proxies;
 	
@@ -791,6 +796,59 @@ inline unsigned int tuplehash(u_int32_t addr, u_int16_t port) {
 	key ^=  (key >> 16);
 	return key % MAXNODE;
 }
+
+
+class CustomHeaders {
+public:
+	enum eType {
+		cdr,
+		message
+	};
+	struct sCustomHeaderData {
+		string header;
+		string leftBorder;
+		string rightBorder;
+		string regularExpression;
+	};
+public:
+	CustomHeaders(eType type);
+	void load(bool lock = true);
+	void clear(bool lock = true);
+	void refresh();
+	void addToStdParse(ParsePacket *parsePacket);
+	void parse(Call *call, char *data, int datalen);
+	void setCustomHeaderContent(Call *call, int pos1, int pos2, dstring *content);
+	void prepareSaveRows_cdr(Call *call, class SqlDb_row *cdr_next, class SqlDb_row cdr_next_ch[], char *cdr_next_ch_name[]);
+	void prepareSaveRows_message(Call *call, class SqlDb_row *message, class SqlDb_row message_next_ch[], char *message_next_ch_name[]);
+	string getDeleteQuery(const char *id, const char *prefix, const char *suffix);
+	list<string> getAllNextTables() {
+		return(allNextTables);
+	}
+	list<string> *getAllNextTablesPointer() {
+		return(&allNextTables);
+	}
+	void createMysqlPartitions(class SqlDb *sqlDb);
+	unsigned long getLoadTime() {
+		return(loadTime);
+	}
+	string getQueryForSaveUseInfo(Call *call);
+private:
+	void lock_custom_headers() {
+		while(__sync_lock_test_and_set(&this->_sync_custom_headers, 1));
+	}
+	void unlock_custom_headers() {
+		__sync_lock_release(&this->_sync_custom_headers);
+	}
+private:
+	eType type;
+	string configTable;
+	string nextTablePrefix;
+	map<int, map<int, sCustomHeaderData> > custom_headers;
+	list<string> allNextTables;
+	unsigned loadTime;
+	unsigned lastTimeSaveUseInfo;
+	volatile int _sync_custom_headers;
+};
 
 
 #endif

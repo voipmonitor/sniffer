@@ -520,7 +520,7 @@ SIP_HEADERfilter::add_call_flags(ParsePacket *parsePacket, unsigned int *flags, 
 		}
 		if(data->regexp.size()) {
 			for(map<std::string, item_data>::iterator it_content = data->regexp.begin(); it_content != data->regexp.end(); it_content++) {
-				if(reg_match(content.c_str(), it_content->first.c_str())) {
+				if(reg_match(content.c_str(), it_content->first.c_str(), __FILE__, __LINE__)) {
 					this->setCallFlagsFromFilterFlags(flags, it_content->second.flags);
 					if(sverb.capture_filter) {
 						syslog(LOG_NOTICE, "SIP_HEADERfilter::add_call_flags - regexp : %s",  it_content->first.c_str());

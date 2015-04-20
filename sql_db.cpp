@@ -18,6 +18,7 @@
 
 #include "sql_db.h"
 #include "fraud.h"
+#include "calltable.h"
 
 
 extern int verbosity;
@@ -63,6 +64,9 @@ extern char odbc_driver[256];
 
 extern char cloud_host[256];
 extern char cloud_token[256];
+
+extern CustomHeaders *custom_headers_cdr;
+extern CustomHeaders *custom_headers_message;
 
 int sql_noerror = 0;
 int sql_disable_next_attempt_if_error = 0;
@@ -513,7 +517,7 @@ bool SqlDb_mysql::connect(bool createDb, bool mainInit) {
 		gettimeofday (&s, 0);	
 		if(this->conn_server_ip.empty() and ((lastmysqlresolve + 300) < s.tv_sec)) {
 			lastmysqlresolve = s.tv_sec;
-			if(reg_match(this->conn_server.c_str(), "[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+")) {
+			if(reg_match(this->conn_server.c_str(), "[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+", __FILE__, __LINE__)) {
 				this->conn_server_ip = this->conn_server;
 			} else {
 				hostent *conn_server_record = gethostbyname(this->conn_server.c_str());
@@ -4773,6 +4777,12 @@ void createMysqlPartitionsCdr() {
 			string("call `") + mysql_database + "`.create_partitions_cdr('" + mysql_database + "', 0);");
 		sqlDb->query(
 			string("call `") + mysql_database + "`.create_partitions_cdr('" + mysql_database + "', 1);");
+	}
+	if(custom_headers_cdr) {
+		custom_headers_cdr->createMysqlPartitions(sqlDb);
+	}
+	if(custom_headers_message) {
+		custom_headers_message->createMysqlPartitions(sqlDb);
 	}
 	delete sqlDb;
 	syslog(LOG_NOTICE, "create cdr partitions - end");

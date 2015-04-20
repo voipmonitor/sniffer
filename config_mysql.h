@@ -257,8 +257,6 @@ extern unsigned int opt_maxpoolsipsize;
 extern unsigned int opt_maxpoolsize;
 extern unsigned int pcap_qring_max;
 extern unsigned long long cachedirtransfered;
-extern vector<dstring> opt_custom_headers_cdr;
-extern vector<dstring> opt_custom_headers_message;
 extern vector<string> opt_national_prefix;
 extern volatile unsigned int pcap_readit;
 extern volatile unsigned int pcap_writeit;

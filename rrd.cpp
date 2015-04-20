@@ -1127,7 +1127,7 @@ void checkRrdVersion(bool silent) {
 	}
 	SimpleBuffer out;
 	if(vm_pexec((char*)"rrdtool", &out) && out.size()) {
-		string versionString = reg_replace((char*)out, "([0-9]+)\\.([0-9]+)\\.?([0-9]*)", "$1-$2-$3");
+		string versionString = reg_replace((char*)out, "([0-9]+)\\.([0-9]+)\\.?([0-9]*)", "$1-$2-$3", __FILE__, __LINE__);
 		if(!versionString.empty()) {
 			int version[3] = { 0, 0, 0 };
 			sscanf((char*)versionString.c_str(), "%i-%i-%i", &version[0], &version[1], &version[2]);

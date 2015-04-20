@@ -358,11 +358,6 @@ config_load_mysql() {
 				custom_header.erase(std::find_if(custom_header.rbegin(), custom_header.rend(), std::not1(std::ptr_fun<int, int>(std::isspace))).base(), custom_header.end());
 				string custom_header_field = "custom_header__" + custom_header;
 				std::replace(custom_header_field.begin(), custom_header_field.end(), ' ', '_');
-				if(i == 0) {
-					opt_custom_headers_cdr.push_back(dstring(custom_header, custom_header_field));
-				} else {
-					opt_custom_headers_message.push_back(dstring(custom_header, custom_header_field));
-				}
 				pos = posSep ? posSep + 1 : NULL;
 			}
 		}

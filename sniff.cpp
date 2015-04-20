@@ -195,9 +195,6 @@ extern char opt_silencedmtfseq[16];
 extern int opt_skinny;
 extern int opt_read_from_file;
 extern int opt_saverfc2833;
-extern vector<dstring> opt_custom_headers_cdr;
-extern vector<dstring> opt_custom_headers_message;
-extern int opt_custom_headers_last_value;
 extern livesnifferfilter_use_siptypes_s livesnifferfilterUseSipTypes;
 extern int opt_skipdefault;
 extern TcpReassembly *tcpReassemblyHttp;
@@ -220,14 +217,16 @@ extern int opt_sip_send_before_packetbuffer;
 extern PreProcessPacket *preProcessPacket;
 extern ProcessRtpPacket *processRtpPacket[MAX_PROCESS_RTP_PACKET_THREADS];
 extern int opt_enable_process_rtp_packet;
+extern CustomHeaders *custom_headers_cdr;
+extern CustomHeaders *custom_headers_message;
 unsigned int glob_ssl_calls = 0;
 
 #ifdef QUEUE_MUTEX
 extern sem_t readpacket_thread_semaphore;
 #endif
 
-static char * gettag(const void *ptr, unsigned long len, const char *tag, unsigned long *gettaglen, unsigned long *limitLen = NULL,
-		     ParsePacket *parsePacket = NULL);
+char * gettag(const void *ptr, unsigned long len, const char *tag, unsigned long *gettaglen, unsigned long *limitLen = NULL,
+	      ParsePacket *parsePacket = NULL);
 static void logPacketSipMethodCall(u_int64_t packet_number, int sip_method, int lastSIPresponseNum, pcap_pkthdr *header, 
 				   unsigned int saddr, int source, unsigned int daddr, int dest,
 				   Call *call, const char *descr = NULL);
@@ -3412,6 +3411,9 @@ rtpcheck:
 }
 
 void process_packet__parse_custom_headers(Call *call, char *data, int datalen) {
+	/* obsolete
+	extern vector<dstring> opt_custom_headers_cdr;
+	extern vector<dstring> opt_custom_headers_message;
 	vector<dstring> *_customHeaders = call->type == MESSAGE ? &opt_custom_headers_message : &opt_custom_headers_cdr;
 	size_t iCustHeaders;
 	unsigned long gettagLimitLen = 0;
@@ -3432,6 +3434,11 @@ void process_packet__parse_custom_headers(Call *call, char *data, int datalen) {
 			customHeaderContent[min(l, 255lu)] = '\0';
 			call->custom_headers[(*_customHeaders)[iCustHeaders][1]] = customHeaderContent;
 		}
+	}
+	*/
+	CustomHeaders *customHeaders = call->type == MESSAGE ? custom_headers_message : custom_headers_cdr;
+	if(customHeaders) {
+		 customHeaders->parse(call, data, datalen);
 	}
 }
 
