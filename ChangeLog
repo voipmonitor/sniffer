@@ -1,3 +1,10 @@
+11.1 20.04.2015
+================
+- implement dynamic sql tables for custom headers which are now controlled via database - no alter table on cdr* are required and adding / deleteing is now intsant. Upgrade to the GUI 10.X is required to use them. Backward compatibility with old custom_headers option is retained.
+- Added packets counter for SIP type REGISTER and SIP type MESSAGE to RRD charts [VG-428]
+- fix fraud refresh locking racecondition (not reported yet) 
+
+
 11.0.9 17.04.2015
 =================
 - fix cloud mode connection
