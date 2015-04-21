@@ -4178,24 +4178,29 @@ void CustomHeaders::load(bool lock) {
 			}
 		}
 	}
-	delete sqlDb;
 	extern vector<dstring> opt_custom_headers_cdr;
 	extern vector<dstring> opt_custom_headers_message;
 	vector<dstring> *_customHeaders = type == cdr ? &opt_custom_headers_cdr : &opt_custom_headers_message;
 	for(vector<dstring>::iterator iter = _customHeaders->begin(); iter != _customHeaders->end(); iter++) {
-		sCustomHeaderData ch_data;
-		ch_data.header = (*iter)[0];
-		bool exists =  false;
-		for(unsigned i = 0; i < custom_headers[0].size(); i++) {
-			if(custom_headers[0][i].header == ch_data.header) {
-				exists = true;
-				break;
+		sqlDb->query("SELECT * FROM " + this->configTable + " \
+			      where header_field = '" + (*iter)[0] + "'");
+		SqlDb_row row = sqlDb->fetchRow();
+		if(!row || row.getIndexField("state") < 0 || row["state"] != "delete") {
+			sCustomHeaderData ch_data;
+			ch_data.header = (*iter)[0];
+			bool exists =  false;
+			for(unsigned i = 0; i < custom_headers[0].size(); i++) {
+				if(custom_headers[0][i].header == ch_data.header) {
+					exists = true;
+					break;
+				}
+			}
+			if(!exists) {
+				custom_headers[0][custom_headers[0].size()] = ch_data;
 			}
 		}
-		if(!exists) {
-			custom_headers[0][custom_headers[0].size()] = ch_data;
-		}
 	}
+	delete sqlDb;
 	loadTime = getTimeMS();
 	if(lock) unlock_custom_headers();
 }
