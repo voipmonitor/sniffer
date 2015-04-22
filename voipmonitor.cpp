@@ -5226,6 +5226,34 @@ void test_pexec() {
 	cout << "ERR:" << (char*)err << endl;
 }
 
+bool save_packet(const char *binaryPacketFile, const char *rsltPcapFile, int length) {
+	FILE *file = fopen(binaryPacketFile, "rb");
+	u_char packet[1000];
+	if(file) {
+		fread(packet, 1, 214, file);
+		fclose(file);
+	} else {
+		cerr << "failed open file: " << binaryPacketFile << endl;
+		return(false);
+	}
+	pcap_pkthdr header;
+	memset(&header, 0, sizeof(header));
+	header.caplen = length;
+	header.len = length;
+	PcapDumper *dumper = new FILE_LINE PcapDumper(PcapDumper::na, NULL);
+	dumper->setEnableAsyncWrite(false);
+	dumper->setTypeCompress(FileZipHandler::compress_na);
+	if(dumper->open(rsltPcapFile, 1)) {
+		dumper->dump(&header, packet, 1, true);
+	} else {
+		cerr << "failed write file: " << rsltPcapFile << endl;
+		delete dumper;
+		return(false);
+	}
+	delete dumper;
+	return(true);
+}
+
 void test() {
  
 	switch(opt_test) {
@@ -5294,6 +5322,20 @@ void test() {
 	case 8: 
 		test_pexec();
 		break;
+	case 9: {
+		vector<string> param;
+		char *pointToSepOptTest = strchr(opt_test_str, '/');
+		if(pointToSepOptTest) {
+			param = split(pointToSepOptTest + 1, ',');
+		}
+		if(param.size() < 3) {
+			cout << "missing parameters" << endl
+			     << "example: -X9/packet.bin,packet.pcap,214" << endl
+			     << "description: -X9/binary source,output pcap file,length" << endl;
+		} else {
+			save_packet(param[0].c_str(), param[1].c_str(), atoi(param[2].c_str()));
+		}
+	} break;
 	case 10:
 		{
 		SqlDb *sqlDb = createSqlObject();
