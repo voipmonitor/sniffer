@@ -318,7 +318,7 @@ RTP::~RTP() {
 	}
 }
 
-const unsigned int RTP::get_payload_len() {
+const int RTP::get_payload_len() {
 	payload_data = data + sizeof(RTPFixedHeader);
 	payload_len = len - sizeof(RTPFixedHeader);
 	if(getPadding()) {
@@ -330,7 +330,7 @@ const unsigned int RTP::get_payload_len() {
 		* algorithms with fixed block sizes or for carrying several RTP
 		* packets in a lower-layer protocol data unit.
 		*/
-		payload_len -= ((u_int8_t *)data)[payload_len - 1];
+		payload_len -= ((u_int8_t *)data)[len - 1];
 	}
 	if(getCC() > 0) {
 		/*
@@ -731,7 +731,7 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 	if(this->sensor_id >= 0 && this->sensor_id != sensor_id) {
 		u_long actTime = getTimeMS();
 		if(actTime - 1000 > lastTimeSyslog) {
-			syslog(5 /*LOG_NOTICE*/, "warning - packet from sensor (%i) in RTP created for sensor (%i)",
+			syslog(LOG_NOTICE, "warning - packet from sensor (%i) in RTP created for sensor (%i)",
 			       sensor_id, this->sensor_id);
 			lastTimeSyslog = actTime;
 		}
@@ -743,9 +743,24 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 		this->first_packet_usec = header->ts.tv_usec;
 	}
 
-	unsigned int payload_len = get_payload_len();
-
 	Call *owner = (Call*)call_owner;
+
+	int payload_len = get_payload_len();
+	if(payload_len < 0) {
+		if(owner) {
+			if(!owner->error_negative_payload_length) {
+				syslog(LOG_NOTICE, "warning - negative payload_len in call %s", owner->fbasename);
+				owner->error_negative_payload_length = true;
+			}
+		} else {
+			u_long actTime = getTimeMS();
+			if(actTime - 1000 > lastTimeSyslog) {
+				syslog(LOG_NOTICE, "warning - negative payload_len");
+				lastTimeSyslog = actTime;
+			}
+		}
+		return;
+	}
 
 	if(getVersion() != 2) {
 		return;
@@ -765,7 +780,7 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 		     header->ts.tv_usec < this->_last_ts.tv_usec))) {
 			u_long actTime = getTimeMS();
 			if(actTime - 1000 > lastTimeSyslog) {
-				syslog(5 /*LOG_NOTICE*/, "warning - bad packet order (%llu us) in RTP::read (seq/lastseq: %u/%u, ifname/lastifname: %s/%s, sensor/lastsenspor: %i/%i)- packet ignored",
+				syslog(LOG_NOTICE, "warning - bad packet order (%llu us) in RTP::read (seq/lastseq: %u/%u, ifname/lastifname: %s/%s, sensor/lastsenspor: %i/%i)- packet ignored",
 				       this->_last_ts.tv_sec * 1000000ull + this->_last_ts.tv_usec - header->ts.tv_sec * 1000000ull - header->ts.tv_usec,
 				       seq, last_seq,
 				       ifname && ifname[0] ? ifname : "--", this->_last_ifname[0] ? this->_last_ifname : "--",
@@ -1356,7 +1371,7 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 			return;
 		}
 		if(codec == 0) {
-			for(unsigned int i = 0; i < payload_len; i++) {
+			for(int i = 0; i < payload_len; i++) {
 				sdata[i] = ULAW((unsigned char)payload_data[i]);
 				if(opt_clippingdetect and ((abs(sdata[i])) >= 32124)) {
 					if(iscaller) {
@@ -1367,7 +1382,7 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 				}
 			}
 		} else if(codec == 8) {
-			for(unsigned int i = 0; i < payload_len; i++) {
+			for(int i = 0; i < payload_len; i++) {
 				sdata[i] = ALAW((unsigned char)payload_data[i]);
 				if(opt_clippingdetect and ((abs(sdata[i])) >= 32256)) {
 					if(iscaller) {

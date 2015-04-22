@@ -319,6 +319,9 @@ Call::Call(char *call_id, unsigned long call_id_len, time_t time) :
 
 	caller_clipping_8k = 0;
 	called_clipping_8k = 0;
+	
+	error_negative_payload_length = false;
+	use_removeRtp = false;
 }
 
 void
@@ -486,6 +489,7 @@ Call::removeRTP() {
 	lastcallerrtp = NULL;
 	lastcalledrtp = NULL;
 	__sync_lock_release(&rtplock);
+	use_removeRtp = true;
 }
 
 /* destructor */
@@ -1439,9 +1443,13 @@ Call::convertRawToWav() {
 			rawl.filename = raw;
 
 			if(iter > 0) {
-				if(rtp[ssrc_index]->ssrc == rtp[last_ssrc_index]->ssrc and
-					abs(ast_tvdiff_ms(tv0, lasttv)) < 200 and
-					last_size > 10000) {
+				if(ssrc_index >= ssrc_n) {
+					syslog(LOG_NOTICE, "ignoring rtp stream - bad ssrc_index[%i] ssrc_n[%i]; call [%s] stream[%s] ssrc[%x] ssrc[%x]", 
+					       ssrc_index, ssrc_n, fbasename, raw, rtp[last_ssrc_index]->ssrc, rtp[ssrc_index]->ssrc);
+					if(!sverb.noaudiounlink) unlink(raw);
+				} else if(rtp[ssrc_index]->ssrc == rtp[last_ssrc_index]->ssrc and
+					  abs(ast_tvdiff_ms(tv0, lasttv)) < 200 and
+					  last_size > 10000) {
 					// ignore this raw file it is duplicate 
 					if(!sverb.noaudiounlink) unlink(raw);
 					//syslog(LOG_NOTICE, "ignoring duplicate stream [%s] ssrc[%x] ssrc[%x] ast_tvdiff_ms(lasttv, tv0)=[%d]", raw, rtp[last_ssrc_index]->ssrc, rtp[ssrc_index]->ssrc, ast_tvdiff_ms(lasttv, tv0));
@@ -4178,24 +4186,29 @@ void CustomHeaders::load(bool lock) {
 			}
 		}
 	}
-	delete sqlDb;
 	extern vector<dstring> opt_custom_headers_cdr;
 	extern vector<dstring> opt_custom_headers_message;
 	vector<dstring> *_customHeaders = type == cdr ? &opt_custom_headers_cdr : &opt_custom_headers_message;
 	for(vector<dstring>::iterator iter = _customHeaders->begin(); iter != _customHeaders->end(); iter++) {
-		sCustomHeaderData ch_data;
-		ch_data.header = (*iter)[0];
-		bool exists =  false;
-		for(unsigned i = 0; i < custom_headers[0].size(); i++) {
-			if(custom_headers[0][i].header == ch_data.header) {
-				exists = true;
-				break;
+		sqlDb->query("SELECT * FROM " + this->configTable + " \
+			      where header_field = '" + (*iter)[0] + "'");
+		SqlDb_row row = sqlDb->fetchRow();
+		if(!row || row.getIndexField("state") < 0 || row["state"] != "delete") {
+			sCustomHeaderData ch_data;
+			ch_data.header = (*iter)[0];
+			bool exists =  false;
+			for(unsigned i = 0; i < custom_headers[0].size(); i++) {
+				if(custom_headers[0][i].header == ch_data.header) {
+					exists = true;
+					break;
+				}
+			}
+			if(!exists) {
+				custom_headers[0][custom_headers[0].size()] = ch_data;
 			}
 		}
-		if(!exists) {
-			custom_headers[0][custom_headers[0].size()] = ch_data;
-		}
 	}
+	delete sqlDb;
 	loadTime = getTimeMS();
 	if(lock) unlock_custom_headers();
 }

@@ -408,7 +408,7 @@ public:
 	 *
 	 * @return number of bytes of payload
 	*/
-	const unsigned int get_payload_len();
+	const int get_payload_len();
 
 	 /**
 
