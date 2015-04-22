@@ -457,7 +457,7 @@ Tar::tar_read(const char *filename, const char *endFilename, u_int32_t recordId,
 	}
 	delete [] read_buffer;
 	delete decompressStream;
-	if(this->readData.send_parameters_client && this->readData.compressStream) {
+	if((this->readData.send_parameters_client || this->readData.send_parameters_sshchannel) && this->readData.compressStream) {
 		this->readData.compressStream->compress(NULL, 0, true, this->readData.compressStream);
 	}
 	this->readData.term();
@@ -544,7 +544,7 @@ Tar::tar_read_file_ev(tar_header fileHeader, char *data, u_int32_t pos, u_int32_
 		return;
 	}
 	if(len) {
-		if(this->readData.send_parameters_client) {
+		if(this->readData.send_parameters_client || this->readData.send_parameters_sshchannel) {
 			if(this->readData.compressStream) {
 				this->readData.compressStream->compress(data, len, false, this->readData.compressStream);
 				if(this->readData.compressStream->isError()) {
