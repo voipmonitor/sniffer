@@ -350,7 +350,7 @@ void ast_jb_get_and_deliver(struct ast_channel *c0, struct timeval *mynow)
 		if(mynow->tv_sec < c0->jb.timebase.tv_sec ||
 		   (mynow->tv_sec == c0->jb.timebase.tv_sec &&
 		    mynow->tv_usec < c0->jb.timebase.tv_usec)) {
-			syslog(5 /*LOG_NOTICE*/, "warning - mynow < c0->jb.timebase in ast_jb_get_and_deliver - ignored");
+			syslog(LOG_NOTICE, "warning - mynow < c0->jb.timebase in ast_jb_get_and_deliver - ignored");
 		} else {
 			jb_get_and_deliver(c0, mynow);
 		}

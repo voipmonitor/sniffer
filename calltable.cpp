@@ -319,6 +319,9 @@ Call::Call(char *call_id, unsigned long call_id_len, time_t time) :
 
 	caller_clipping_8k = 0;
 	called_clipping_8k = 0;
+	
+	error_negative_payload_length = false;
+	use_removeRtp = false;
 }
 
 void
@@ -486,6 +489,7 @@ Call::removeRTP() {
 	lastcallerrtp = NULL;
 	lastcalledrtp = NULL;
 	__sync_lock_release(&rtplock);
+	use_removeRtp = true;
 }
 
 /* destructor */
@@ -1439,9 +1443,13 @@ Call::convertRawToWav() {
 			rawl.filename = raw;
 
 			if(iter > 0) {
-				if(rtp[ssrc_index]->ssrc == rtp[last_ssrc_index]->ssrc and
-					abs(ast_tvdiff_ms(tv0, lasttv)) < 200 and
-					last_size > 10000) {
+				if(ssrc_index >= ssrc_n) {
+					syslog(LOG_NOTICE, "ignoring rtp stream - bad ssrc_index[%i] ssrc_n[%i]; call [%s] stream[%s] ssrc[%x] ssrc[%x]", 
+					       ssrc_index, ssrc_n, fbasename, raw, rtp[last_ssrc_index]->ssrc, rtp[ssrc_index]->ssrc);
+					if(!sverb.noaudiounlink) unlink(raw);
+				} else if(rtp[ssrc_index]->ssrc == rtp[last_ssrc_index]->ssrc and
+					  abs(ast_tvdiff_ms(tv0, lasttv)) < 200 and
+					  last_size > 10000) {
 					// ignore this raw file it is duplicate 
 					if(!sverb.noaudiounlink) unlink(raw);
 					//syslog(LOG_NOTICE, "ignoring duplicate stream [%s] ssrc[%x] ssrc[%x] ast_tvdiff_ms(lasttv, tv0)=[%d]", raw, rtp[last_ssrc_index]->ssrc, rtp[ssrc_index]->ssrc, ast_tvdiff_ms(lasttv, tv0));

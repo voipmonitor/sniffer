@@ -601,6 +601,9 @@ private:
 	list<u_int64_t> tarPosSip;
 	list<u_int64_t> tarPosRtp;
 	list<u_int64_t> tarPosGraph;
+public:
+	bool error_negative_payload_length;
+	bool use_removeRtp;
 };
 
 typedef struct {
