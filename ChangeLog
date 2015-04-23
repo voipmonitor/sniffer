@@ -1,3 +1,8 @@
+11.1.2 22.04.2015
+=================
+- do not connect to the database when sniffer is set to send packets to master sniffer (mirror_destination_ip) fix all => 11.X
+
+
 11.1.1 22.04.2015
 =================
 - fix rare crash when audio recording is enabled during sniffing 
