@@ -165,7 +165,7 @@ int opt_pcap_queue					= 1;
 	uint64_t opt_pcap_queue_store_queue_max_disk_size	= 0;
 	uint64_t opt_pcap_queue_bypass_max_size			= 256 * 1024 * 1024;
 #endif
-bool opt_pcap_queue_compress				= true;
+int opt_pcap_queue_compress				= -1;
 pcap_block_store::compress_method opt_pcap_queue_compress_method 
 							= pcap_block_store::snappy;
 string opt_pcap_queue_disk_folder;

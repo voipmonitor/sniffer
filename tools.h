@@ -934,6 +934,7 @@ public:
 	bool createRestartScript();
 	bool checkReadyRestart();
 	bool runRestart(int socket1, int socket2);
+	bool runGitUpgrade(const char *cmd);
 	bool isOk();
 	string getErrorString();
 	string getRsltString();
@@ -1697,7 +1698,7 @@ inline struct tm localtime_r(const time_t *timep) {
 
 u_int32_t octal_decimal(u_int32_t n);
 
-bool vm_pexec(const char *cmdLine, SimpleBuffer *out, SimpleBuffer *err = NULL, unsigned timeout_sec = 10, unsigned timout_select_sec = 1);
+bool vm_pexec(const char *cmdLine, SimpleBuffer *out, SimpleBuffer *err = NULL, int *exitCode = NULL, unsigned timeout_sec = 10, unsigned timout_select_sec = 1);
 std::vector<std::string> parse_cmd_line(const char *cmdLine);
 
 u_int64_t getTotalMemory();

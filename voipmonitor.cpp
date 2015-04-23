@@ -377,7 +377,7 @@ extern size_t opt_pcap_queue_file_store_max_size;
 extern uint64_t opt_pcap_queue_store_queue_max_memory_size;
 extern uint64_t opt_pcap_queue_store_queue_max_disk_size;
 extern uint64_t opt_pcap_queue_bypass_max_size;
-extern bool opt_pcap_queue_compress;
+extern int opt_pcap_queue_compress;
 extern pcap_block_store::compress_method opt_pcap_queue_compress_method;
 extern string opt_pcap_queue_disk_folder;
 extern ip_port opt_pcap_queue_send_to_ip_port;
@@ -665,6 +665,9 @@ int opt_delete_threads = 1;
 
 u_int64_t rdtsc_by_100ms;
 
+char opt_git_folder[1024];
+bool opt_upgrade_by_git;
+
 #include <stdio.h>
 #include <pthread.h>
 #include <openssl/err.h>
@@ -788,26 +791,40 @@ void sigterm_handler(int param)
 }
 
 #define childPidsExit_max 10
+struct sPidInfo { 
+	sPidInfo(pid_t pid = 0, int exitCode = 0) { this->pid = pid, this->exitCode = exitCode; }
+	volatile pid_t pid; volatile int exitCode; 
+};
 volatile unsigned childPidsExit_count;
-volatile pid_t childPidsExit[childPidsExit_max];
+sPidInfo childPidsExit[childPidsExit_max];
 void sigchld_handler(int param)
 {
 	pid_t childpid;
 	int status;
 	while((childpid = waitpid(-1, &status, WNOHANG)) > 0) {
 		for(unsigned i = 0; i < childPidsExit_max - 1; i++) {
-			childPidsExit[i] = childPidsExit[i + 1];
+			childPidsExit[i].exitCode = childPidsExit[i + 1].exitCode;
+			childPidsExit[i].pid = childPidsExit[i + 1].pid;
 		}
-		childPidsExit[childPidsExit_max - 1] = childpid;
+		childPidsExit[childPidsExit_max - 1].exitCode = WEXITSTATUS(status);
+		childPidsExit[childPidsExit_max - 1].pid = childpid;
 	}
 }
 bool isChildPidExit(unsigned pid) {
 	for(unsigned i = 0; i < childPidsExit_max; i++) {
-		if((unsigned)childPidsExit[i] == pid) {
+		if((unsigned)childPidsExit[i].pid == pid) {
 			return(true);
 		}
 	}
 	return(false);
+}
+int getChildPidExitCode(unsigned pid) {
+	for(unsigned i = 0; i < childPidsExit_max; i++) {
+		if((unsigned)childPidsExit[i].pid == pid) {
+			return(childPidsExit[i].exitCode);
+		}
+	}
+	return(-1);
 }
 
 void *database_backup(void *dummy) {
@@ -2672,6 +2689,13 @@ int eval_config(string inistr) {
 		opt_delete_threads = min(atoi(value), MAX_THREADS_DELETE);
 	}
 	
+	if((value = ini.GetValue("general", "git_folder", NULL))) {
+		strncpy(opt_git_folder, value, sizeof(opt_git_folder));
+	}
+	if((value = ini.GetValue("general", "upgrade_by_git", NULL))) {
+		opt_upgrade_by_git = yesno(value);
+	}
+	
 	/*
 	
 	packetbuffer default configuration
@@ -2763,6 +2787,10 @@ void set_context_config() {
 		if(!strcmp(ifname, "lo")) {
 			opt_pcap_queue_dequeu_method = 0;
 		}
+	}
+	
+	if(opt_pcap_queue_compress == -1) {
+		opt_pcap_queue_compress = opt_pcap_queue_receive_from_ip_port || opt_pcap_queue_send_to_ip_port;
 	}
 	
 	if(!opt_pcap_split) {
@@ -5217,23 +5245,28 @@ void test_http_dumper() {
 
 void test_pexec() {
 	const char *cmdLine = "rrdtool graph - -w 582 -h 232 -a PNG --start \"now-3606s\" --end \"now-6s\" --font DEFAULT:0:Courier --title \"CPU usage\" --watermark \"`date`\" --disable-rrdtool-tag --vertical-label \"percent[%]\" --lower-limit 0 --units-exponent 0 --full-size-mode -c BACK#e9e9e9 -c SHADEA#e9e9e9 -c SHADEB#e9e9e9 DEF:t0=/var/spool/voipmonitor_local/rrd/db-tCPU.rrd:tCPU-t0:MAX DEF:t1=/var/spool/voipmonitor_local/rrd/db-tCPU.rrd:tCPU-t1:MAX DEF:t2=/var/spool/voipmonitor_local/rrd/db-tCPU.rrd:tCPU-t2:MAX LINE1:t0#0000FF:\"t0 CPU Usage %\\l\" COMMENT:\"\\u\" GPRINT:t0:LAST:\"Cur\\: %5.2lf\" GPRINT:t0:AVERAGE:\"Avg\\: %5.2lf\" GPRINT:t0:MAX:\"Max\\: %5.2lf\" GPRINT:t0:MIN:\"Min\\: %5.2lf\\r\" LINE1:t1#00FF00:\"t1 CPU Usage %\\l\" COMMENT:\"\\u\" GPRINT:t1:LAST:\"Cur\\: %5.2lf\" GPRINT:t1:AVERAGE:\"Avg\\: %5.2lf\" GPRINT:t1:MAX:\"Max\\: %5.2lf\" GPRINT:t1:MIN:\"Min\\: %5.2lf\\r\" LINE1:t2#FF0000:\"t2 CPU Usage %\\l\" COMMENT:\"\\u\" GPRINT:t2:LAST:\"Cur\\: %5.2lf\" GPRINT:t2:AVERAGE:\"Avg\\: %5.2lf\" GPRINT:t2:MAX:\"Max\\: %5.2lf\" GPRINT:t2:MIN:\"Min\\: %5.2lf\\r\"";
+	//cmdLine = "sh -c 'cd /;make;'";
+	
 	SimpleBuffer out;
 	SimpleBuffer err;
-	cout << "vm_pexec rslt:" << vm_pexec(cmdLine, &out, &err) << endl;
+	int exitCode;
+	cout << "vm_pexec rslt:" << vm_pexec(cmdLine, &out, &err, &exitCode) << endl;
 	cout << "OUT SIZE:" << out.size() << endl;
 	cout << "OUT:" << (char*)out << endl;
 	cout << "ERR SIZE:" << err.size() << endl;
 	cout << "ERR:" << (char*)err << endl;
+	cout << "exit code:" << exitCode << endl;
 }
 
 bool save_packet(const char *binaryPacketFile, const char *rsltPcapFile, int length) {
 	FILE *file = fopen(binaryPacketFile, "rb");
-	u_char packet[1000];
+	u_char *packet = new u_char[length];
 	if(file) {
-		fread(packet, 1, 214, file);
+		fread(packet, length, 1, file);
 		fclose(file);
 	} else {
 		cerr << "failed open file: " << binaryPacketFile << endl;
+		delete [] packet;
 		return(false);
 	}
 	pcap_pkthdr header;
@@ -5243,15 +5276,17 @@ bool save_packet(const char *binaryPacketFile, const char *rsltPcapFile, int len
 	PcapDumper *dumper = new FILE_LINE PcapDumper(PcapDumper::na, NULL);
 	dumper->setEnableAsyncWrite(false);
 	dumper->setTypeCompress(FileZipHandler::compress_na);
+	bool rslt;
 	if(dumper->open(rsltPcapFile, 1)) {
 		dumper->dump(&header, packet, 1, true);
+		rslt = true;
 	} else {
 		cerr << "failed write file: " << rsltPcapFile << endl;
-		delete dumper;
-		return(false);
+		rslt = false;
 	}
 	delete dumper;
-	return(true);
+	delete [] packet;
+	return(rslt);
 }
 
 void test() {

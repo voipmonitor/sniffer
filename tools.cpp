@@ -1645,6 +1645,63 @@ bool RestartUpgrade::runRestart(int socket1, int socket2) {
 	}
 }
 
+bool RestartUpgrade::runGitUpgrade(const char *cmd) {
+	syslog(LOG_NOTICE, "call runGitUpgrade command %s", cmd);
+	extern char opt_git_folder[1024];
+	extern bool opt_upgrade_by_git;
+	SimpleBuffer out;
+	SimpleBuffer err;
+	int exitCode;
+	string pexecCmd = string("sh -c 'cd \"") + opt_git_folder + "\";";
+	if(!opt_upgrade_by_git) {
+		this->errorString = "not enable upgrade by git";
+		return(false);
+	}
+	if(cmd == string("check_git_directory")) {
+		if(!file_exists(opt_git_folder)) {
+			this->errorString = string("not exists git directory ") + opt_git_folder;
+			syslog(LOG_NOTICE, "runGitUpgrade command %s FAILED: %s", cmd, this->errorString.c_str());
+			return(false);
+		}
+		if(!file_exists(string(opt_git_folder) + "/.git")) {
+			this->errorString = string("missing .git folder in ") + opt_git_folder;
+			syslog(LOG_NOTICE, "runGitUpgrade command %s FAILED: %s", cmd, this->errorString.c_str());
+			return(false);
+		}
+		syslog(LOG_NOTICE, "runGitUpgrade command %s OK", cmd);
+		return(true);
+	} else if(cmd == string("git_pull") ||
+		  cmd == string("configure") ||
+		  cmd == string("make_clean") ||
+		  cmd == string("make") ||
+		  cmd == string("install")) {
+		if(cmd == string("git_pull")) {
+			pexecCmd += "git pull";
+		} else if(cmd == string("configure")) {
+			pexecCmd += "./configure";
+		} else if(cmd == string("make_clean")) {
+			pexecCmd += "make clean";
+		} else if(cmd == string("make")) {
+			pexecCmd += "make -j4";
+		} else if(cmd == string("install")) {
+			pexecCmd += "make install";
+		}
+		pexecCmd += ";'";
+		vm_pexec(pexecCmd.c_str(), &out, &err, &exitCode, 600, 600);
+		if(exitCode == 0) {
+			syslog(LOG_NOTICE, "runGitUpgrade command %s OK", cmd);
+			return(true);
+		} else {
+			this->errorString = string(out) + "\n" + string(err);
+			syslog(LOG_NOTICE, "runGitUpgrade command %s FAILED: %s", cmd, this->errorString.c_str());
+			return(false);
+		}
+	}
+	this->errorString = string("unknown command ") + cmd;
+	syslog(LOG_NOTICE, "runGitUpgrade command %s FAILED: %s", cmd, this->errorString.c_str());
+	return(false);
+}
+
 bool RestartUpgrade::isOk() {
 	return(!this->errorString.length());
 }
@@ -3241,7 +3298,11 @@ u_int32_t octal_decimal(u_int32_t n) {
 	return decimal;
 }
 
-bool vm_pexec(const char *cmdLine, SimpleBuffer *out, SimpleBuffer *err, unsigned timeout_sec, unsigned timout_select_sec) {
+bool vm_pexec(const char *cmdLine, SimpleBuffer *out, SimpleBuffer *err,
+	      int *exitCode, unsigned timeout_sec, unsigned timout_select_sec) {
+	if(exitCode) {
+		*exitCode = -1;
+	}
 	std::vector<std::string> parseCmdLine = parse_cmd_line(cmdLine);
 	char *exec_args[100];
 	unsigned i = 0;
@@ -3308,7 +3369,11 @@ bool vm_pexec(const char *cmdLine, SimpleBuffer *out, SimpleBuffer *err, unsigne
 				}
 			} else if(!readStdoutLength) {
 				bool isChildPidExit(unsigned pid);
+				int getChildPidExitCode(unsigned pid);
 				if(isChildPidExit(fork_rslt)) {
+					if(exitCode) {
+						*exitCode = getChildPidExitCode(fork_rslt);
+					}
 					break;
 				} else {
 					usleep(10000);

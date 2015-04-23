@@ -1697,10 +1697,28 @@ getwav:
 			restart.runRestart(client, manager_socket_server);
 		}
 		return 0;
+	} else if(strstr(buf, "gitUpgrade") != NULL) {
+		char cmd[100];
+		sscanf(buf, "gitUpgrade %s", cmd);
+		RestartUpgrade upgrade;
+		bool rslt = upgrade.runGitUpgrade(cmd);
+		string rsltString;
+		if(rslt) {
+			rsltString = "OK";
+		} else {
+			rsltString = upgrade.getErrorString();
+		}
+		rsltString.append("\n");
+		if ((size = sendvm(client, sshchannel, rsltString.c_str(), rsltString.length(), 0)) == -1){
+			cerr << "Error sending data to client" << endl;
+			return -1;
+		}
+		return 0;
 	} else if(strstr(buf, "sniffer_stat") != NULL) {
 		extern vm_atomic<string> storingCdrLastWriteAt;
 		extern vm_atomic<string> pbStatString;
 		extern vm_atomic<u_long> pbCountPacketDrop;
+		extern bool opt_upgrade_by_git;
 		ostringstream outStrStat;
 		extern int vm_rrd_version;
 		checkRrdVersion(true);
@@ -1710,7 +1728,8 @@ getwav:
 			   << "\"storingCdrLastWriteAt\": \"" << storingCdrLastWriteAt << "\","
 			   << "\"pbStatString\": \"" << pbStatString << "\","
 			   << "\"pbCountPacketDrop\": \"" << pbCountPacketDrop << "\","
-			   << "\"uptime\": \"" << getUptime() << "\""
+			   << "\"uptime\": \"" << getUptime() << "\","
+			   << "\"upgrade_by_git\": \"" << opt_upgrade_by_git << "\""
 			   << "}";
 		outStrStat << endl;
 		string outStrStatStr = outStrStat.str();
