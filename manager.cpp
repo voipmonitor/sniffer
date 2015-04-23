@@ -1635,46 +1635,51 @@ getwav:
 		string md5_64;
 		string rsltForSend;
 		if(strstr(buf, "upgrade") != NULL) {
-			upgrade = true;
-			string command = buf;
-			size_t pos = command.find("to: [");
-			if(pos != string::npos) {
-				size_t posEnd = command.find("]", pos);
-				if(posEnd != string::npos) {
-					version = command.substr(pos + 5, posEnd - pos - 5);
-				}
-			}
-			if(pos != string::npos) {
-				pos = command.find("url: [", pos);
+			extern bool opt_upgrade_by_git;
+			if(opt_upgrade_by_git) {
+				rsltForSend = "upgrade from official binary source disabled - upgrade by git!";
+			} else {
+				upgrade = true;
+				string command = buf;
+				size_t pos = command.find("to: [");
 				if(pos != string::npos) {
 					size_t posEnd = command.find("]", pos);
 					if(posEnd != string::npos) {
-						url = command.substr(pos + 6, posEnd - pos - 6);
+						version = command.substr(pos + 5, posEnd - pos - 5);
 					}
 				}
-			}
-			if(pos != string::npos) {
-				pos = command.find("md5: [", pos);
 				if(pos != string::npos) {
-					size_t posEnd = command.find("]", pos);
-					if(posEnd != string::npos) {
-						md5_32 = command.substr(pos + 6, posEnd - pos - 6);
-					}
-					pos = command.find(" / [", pos);
+					pos = command.find("url: [", pos);
 					if(pos != string::npos) {
 						size_t posEnd = command.find("]", pos);
 						if(posEnd != string::npos) {
-							md5_64 = command.substr(pos + 4, posEnd - pos - 4);
+							url = command.substr(pos + 6, posEnd - pos - 6);
 						}
 					}
 				}
-			}
-			if(!version.length()) {
-				rsltForSend = "missing version in command line";
-			} else if(!url.length()) {
-				rsltForSend = "missing url in command line";
-			} else if(!md5_32.length() || !md5_64.length()) {
-				rsltForSend = "missing md5 in command line";
+				if(pos != string::npos) {
+					pos = command.find("md5: [", pos);
+					if(pos != string::npos) {
+						size_t posEnd = command.find("]", pos);
+						if(posEnd != string::npos) {
+							md5_32 = command.substr(pos + 6, posEnd - pos - 6);
+						}
+						pos = command.find(" / [", pos);
+						if(pos != string::npos) {
+							size_t posEnd = command.find("]", pos);
+							if(posEnd != string::npos) {
+								md5_64 = command.substr(pos + 4, posEnd - pos - 4);
+							}
+						}
+					}
+				}
+				if(!version.length()) {
+					rsltForSend = "missing version in command line";
+				} else if(!url.length()) {
+					rsltForSend = "missing url in command line";
+				} else if(!md5_32.length() || !md5_64.length()) {
+					rsltForSend = "missing md5 in command line";
+				}
 			}
 		}
 		bool ok = false;
