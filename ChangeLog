@@ -1,3 +1,15 @@
+11.1.2 22.04.2015
+=================
+- do not connect to the database when sniffer is set to send packets to master sniffer (mirror_destination_ip) fix all => 11.X
+
+
+11.1.1 22.04.2015
+=================
+- fix rare crash when audio recording is enabled during sniffing 
+- fix crash if RTP packet with padding bit set and incorrect padding length in packet and log such case (it can crash only when saveaudio was enabled or any capture rule activated audio recording) 
+- fix support for download pcap in cloud mode
+
+
 11.1 20.04.2015
 ================
 - implement dynamic sql tables for custom headers which are now controlled via database - no alter table on cdr* are required and adding / deleteing is now intsant. Upgrade to the GUI 10.X is required to use them. Backward compatibility with old custom_headers option is retained.
