@@ -2333,7 +2333,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 				existsNextCh = true;
 			}
 		}
-		if(existsNextCh) {
+		if(existsNextCh && custom_headers_cdr) {
 			string queryForSaveUseInfo = custom_headers_cdr->getQueryForSaveUseInfo(this);
 			if(!queryForSaveUseInfo.empty()) {
 				query_str += queryForSaveUseInfo + ";\n";
@@ -3087,9 +3087,11 @@ Call::saveMessageToDb(bool enableBatchIfPossible) {
 					query_str += sqlDbSaveCall->insertQuery(msg_next_ch_name[i], msg_next_ch[i]) + ";\n";
 				}
 			}
-			string queryForSaveUseInfo = custom_headers_message->getQueryForSaveUseInfo(this);
-			if(!queryForSaveUseInfo.empty()) {
-				query_str += queryForSaveUseInfo + ";\n";
+			if(custom_headers_message) {
+				string queryForSaveUseInfo = custom_headers_message->getQueryForSaveUseInfo(this);
+				if(!queryForSaveUseInfo.empty()) {
+					query_str += queryForSaveUseInfo + ";\n";
+				}
 			}
 			query_str += "end if";
 		}
