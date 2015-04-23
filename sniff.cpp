@@ -3548,6 +3548,10 @@ int process_packet__parse_sip_method(char *data, unsigned int datalen) {
 			if(verbosity > 2) 
 				 syslog(LOG_NOTICE,"SIP msg: 2XX\n");
 			sip_method = RES2XX;
+			if((data[12] == 'A' or if(data[12]) == 'a') and datalen > 23 and !(memmem(data, 23, "SIP/2.0 200 Auth failed", 23) == 0)) {
+				// simulate 4XX response when auth failed received
+				sip_method = RES4XX;
+			}
 			break;
 		case '1':
 			if ((datalen > 9) && data[9] == '8') {
