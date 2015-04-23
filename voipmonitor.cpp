@@ -4313,9 +4313,11 @@ int main(int argc, char *argv[]) {
 	rlp.rlim_max = RLIM_INFINITY;
 	if (setrlimit(RLIMIT_CORE, &rlp) < 0)
 		fprintf(stderr, "setrlimit: %s\nWarning: core dumps may be truncated or non-existant\n", strerror(errno));
-	
-	custom_headers_cdr =  new CustomHeaders(CustomHeaders::cdr);
-	custom_headers_message =  new CustomHeaders(CustomHeaders::message);
+
+	if(!opt_nocdr) {
+		custom_headers_cdr = new CustomHeaders(CustomHeaders::cdr);
+		custom_headers_message = new CustomHeaders(CustomHeaders::message);
+	}
 
 	ipfilter = new FILE_LINE IPfilter;
 	telnumfilter = new FILE_LINE TELNUMfilter;
