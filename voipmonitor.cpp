@@ -1146,7 +1146,9 @@ void *storing_cdr( void *dummy ) {
 		}
 		calltable->unlock_calls_queue();
 	}
-	syslog(LOG_NOTICE, "terminated - storing cdr / message / register");
+	if(verbosity || !opt_read_from_file) {
+		syslog(LOG_NOTICE, "terminated - storing cdr / message / register");
+	}
 	return NULL;
 }
 
@@ -1659,7 +1661,9 @@ int eval_config(string inistr) {
 		opt_mos_g729 = yesno(value);
 	}
 	if((value = ini.GetValue("general", "nocdr", NULL))) {
-		opt_nocdr = yesno(value);
+		if(!opt_nocdr) {
+			opt_nocdr = yesno(value);
+		}
 	}
 	if((value = ini.GetValue("general", "only_cdr_next", NULL))) {
 		opt_only_cdr_next = yesno(value);
