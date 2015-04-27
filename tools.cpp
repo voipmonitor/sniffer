@@ -2003,6 +2003,7 @@ void ParsePacket::setStdParse() {
 	addNode("contact:");
 	addNode("m:");
 	addNode("remote-party-id:");
+	addNode("P-Preferred-Identity:");
 	addNode("geoposition:");
 	addNode("user-agent:");
 	addNode("authorization:");
