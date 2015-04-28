@@ -679,7 +679,7 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 		calltable->lock_calls_listMAP();
 		for (callMAPIT = calltable->calls_listMAP.begin(); callMAPIT != calltable->calls_listMAP.end(); ++callMAPIT) {
 			call = (*callMAPIT).second;
-			if(call->type == REGISTER or call->type == MESSAGE or call->destroy_call_at > 0) {
+			if(call->type == REGISTER or call->type == MESSAGE or call->destroy_call_at > 0 or call->destroy_call_at_bye > 0) {
 				// skip register or message or calls which are scheduled to be closed
 				continue;
 			}
@@ -1635,46 +1635,51 @@ getwav:
 		string md5_64;
 		string rsltForSend;
 		if(strstr(buf, "upgrade") != NULL) {
-			upgrade = true;
-			string command = buf;
-			size_t pos = command.find("to: [");
-			if(pos != string::npos) {
-				size_t posEnd = command.find("]", pos);
-				if(posEnd != string::npos) {
-					version = command.substr(pos + 5, posEnd - pos - 5);
-				}
-			}
-			if(pos != string::npos) {
-				pos = command.find("url: [", pos);
+			extern bool opt_upgrade_by_git;
+			if(opt_upgrade_by_git) {
+				rsltForSend = "upgrade from official binary source disabled - upgrade by git!";
+			} else {
+				upgrade = true;
+				string command = buf;
+				size_t pos = command.find("to: [");
 				if(pos != string::npos) {
 					size_t posEnd = command.find("]", pos);
 					if(posEnd != string::npos) {
-						url = command.substr(pos + 6, posEnd - pos - 6);
+						version = command.substr(pos + 5, posEnd - pos - 5);
 					}
 				}
-			}
-			if(pos != string::npos) {
-				pos = command.find("md5: [", pos);
 				if(pos != string::npos) {
-					size_t posEnd = command.find("]", pos);
-					if(posEnd != string::npos) {
-						md5_32 = command.substr(pos + 6, posEnd - pos - 6);
-					}
-					pos = command.find(" / [", pos);
+					pos = command.find("url: [", pos);
 					if(pos != string::npos) {
 						size_t posEnd = command.find("]", pos);
 						if(posEnd != string::npos) {
-							md5_64 = command.substr(pos + 4, posEnd - pos - 4);
+							url = command.substr(pos + 6, posEnd - pos - 6);
 						}
 					}
 				}
-			}
-			if(!version.length()) {
-				rsltForSend = "missing version in command line";
-			} else if(!url.length()) {
-				rsltForSend = "missing url in command line";
-			} else if(!md5_32.length() || !md5_64.length()) {
-				rsltForSend = "missing md5 in command line";
+				if(pos != string::npos) {
+					pos = command.find("md5: [", pos);
+					if(pos != string::npos) {
+						size_t posEnd = command.find("]", pos);
+						if(posEnd != string::npos) {
+							md5_32 = command.substr(pos + 6, posEnd - pos - 6);
+						}
+						pos = command.find(" / [", pos);
+						if(pos != string::npos) {
+							size_t posEnd = command.find("]", pos);
+							if(posEnd != string::npos) {
+								md5_64 = command.substr(pos + 4, posEnd - pos - 4);
+							}
+						}
+					}
+				}
+				if(!version.length()) {
+					rsltForSend = "missing version in command line";
+				} else if(!url.length()) {
+					rsltForSend = "missing url in command line";
+				} else if(!md5_32.length() || !md5_64.length()) {
+					rsltForSend = "missing md5 in command line";
+				}
 			}
 		}
 		bool ok = false;
@@ -1697,10 +1702,28 @@ getwav:
 			restart.runRestart(client, manager_socket_server);
 		}
 		return 0;
+	} else if(strstr(buf, "gitUpgrade") != NULL) {
+		char cmd[100];
+		sscanf(buf, "gitUpgrade %s", cmd);
+		RestartUpgrade upgrade;
+		bool rslt = upgrade.runGitUpgrade(cmd);
+		string rsltString;
+		if(rslt) {
+			rsltString = "OK";
+		} else {
+			rsltString = upgrade.getErrorString();
+		}
+		rsltString.append("\n");
+		if ((size = sendvm(client, sshchannel, rsltString.c_str(), rsltString.length(), 0)) == -1){
+			cerr << "Error sending data to client" << endl;
+			return -1;
+		}
+		return 0;
 	} else if(strstr(buf, "sniffer_stat") != NULL) {
 		extern vm_atomic<string> storingCdrLastWriteAt;
 		extern vm_atomic<string> pbStatString;
 		extern vm_atomic<u_long> pbCountPacketDrop;
+		extern bool opt_upgrade_by_git;
 		ostringstream outStrStat;
 		extern int vm_rrd_version;
 		checkRrdVersion(true);
@@ -1710,7 +1733,8 @@ getwav:
 			   << "\"storingCdrLastWriteAt\": \"" << storingCdrLastWriteAt << "\","
 			   << "\"pbStatString\": \"" << pbStatString << "\","
 			   << "\"pbCountPacketDrop\": \"" << pbCountPacketDrop << "\","
-			   << "\"uptime\": \"" << getUptime() << "\""
+			   << "\"uptime\": \"" << getUptime() << "\","
+			   << "\"upgrade_by_git\": \"" << opt_upgrade_by_git << "\""
 			   << "}";
 		outStrStat << endl;
 		string outStrStatStr = outStrStat.str();

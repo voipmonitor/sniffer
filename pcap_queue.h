@@ -214,7 +214,7 @@ public:
 	void initStat();
 	void getThreadCpuUsage(bool writeThread = false);
 protected:
-	bool createThread();
+	virtual bool createThread();
 	virtual bool createMainThread();
 	virtual bool createWriteThread();
 	inline int pcap_next_ex_queue(pcap_t* pcapHandle, pcap_pkthdr** header, u_char** packet);
@@ -273,6 +273,7 @@ protected:
 	int fifoReadHandle;
 	int fifoWriteHandle;
 	bool threadInitOk;
+	bool threadInitFailed;
 	bool writeThreadInitOk;
 	bool threadTerminated;
 	bool writeThreadTerminated;
@@ -284,7 +285,7 @@ protected:
 	pstat_data writeThreadPstatData[2];
 	pstat_data nextThreadsPstatData[PCAP_QUEUE_NEXT_THREADS_MAX][2];
 	pstat_data procPstatData[2];
-	bool initAllReadThreadsOk;
+	bool initAllReadThreadsFinished;
 private:
 	u_char* packetBuffer;
 	PcapQueue *instancePcapHandle;
@@ -442,6 +443,7 @@ private:
 	pthread_t threadHandle;
 	int threadId;
 	int threadInitOk;
+	bool threadInitFailed;
 	hpi *qring[2];
 	unsigned int qringmax;
 	volatile unsigned int readit[2];
@@ -601,6 +603,8 @@ public:
 		return(this->pcapStoreQueue.getQueueSize());
 	}
 protected:
+	bool createThread();
+	bool createSocketServerThread();
 	bool initThread(void *arg, unsigned int arg2);
 	void *threadFunction(void *arg, unsigned int arg2);
 	void *writeThreadFunction(void *arg, unsigned int arg2);
@@ -668,6 +672,7 @@ protected:
 	pcap_t *pcapDeadHandles[DLT_TYPES_MAX];
 	int pcapDeadHandles_dlt[DLT_TYPES_MAX];
 	int pcapDeadHandles_count;
+	pthread_t socketServerThreadHandle;
 private:
 	pcap_store_queue pcapStoreQueue;
 	deque<pcap_block_store*> blockStoreTrash;
@@ -678,6 +683,7 @@ private:
 	volatile int _sync_packetServerConnections;
 	u_long lastCheckFreeSizeCachedir_timeMS;
 	timeval _last_ts;
+friend void *_PcapQueue_readFromFifo_socketServerThreadFunction(void *arg);
 friend void *_PcapQueue_readFromFifo_connectionThreadFunction(void *arg);
 };
 
