@@ -4143,8 +4143,10 @@ void CustomHeaders::load(bool lock) {
 	custom_headers.clear();
 	allNextTables.clear();
 	SqlDb *sqlDb = createSqlObject();
+	bool existsConfigTable = false;
 	sqlDb->query("show tables like '" + this->configTable + "'");
 	if(sqlDb->fetchRow()) {
+		existsConfigTable = true;
 		sqlDb->query("show columns from " + this->configTable + " where Field='state'");
 		if(sqlDb->fetchRow()) {
 			sqlDb->query("SELECT * FROM " + this->configTable + " \
@@ -4192,10 +4194,14 @@ void CustomHeaders::load(bool lock) {
 	extern vector<dstring> opt_custom_headers_message;
 	vector<dstring> *_customHeaders = type == cdr ? &opt_custom_headers_cdr : &opt_custom_headers_message;
 	for(vector<dstring>::iterator iter = _customHeaders->begin(); iter != _customHeaders->end(); iter++) {
-		sqlDb->query("SELECT * FROM " + this->configTable + " \
-			      where header_field = '" + (*iter)[0] + "'");
-		SqlDb_row row = sqlDb->fetchRow();
-		if(!row || row.getIndexField("state") < 0 || row["state"] != "delete") {
+		SqlDb_row row;
+		if(existsConfigTable) {
+			sqlDb->query("SELECT * FROM " + this->configTable + " \
+				      where header_field = '" + (*iter)[0] + "'");
+			row = sqlDb->fetchRow();
+		}
+		if(!existsConfigTable ||
+		   !row || row.getIndexField("state") < 0 || row["state"] != "delete") {
 			sCustomHeaderData ch_data;
 			ch_data.header = (*iter)[0];
 			bool exists =  false;
