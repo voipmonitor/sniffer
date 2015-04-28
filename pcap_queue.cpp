@@ -141,6 +141,7 @@ vm_atomic<u_long> pbCountPacketDrop;
 void *_PcapQueue_threadFunction(void *arg);
 void *_PcapQueue_writeThreadFunction(void *arg);
 void *_PcapQueue_readFromInterfaceThread_threadFunction(void *arg);
+void *_PcapQueue_readFromFifo_socketServerThreadFunction(void *arg);
 void *_PcapQueue_readFromFifo_connectionThreadFunction(void *arg);
 
 static bool __config_BYPASS_FIFO			= true;
@@ -936,6 +937,7 @@ PcapQueue::PcapQueue(eTypeQueue typeQueue, const char *nameQueue) {
 	this->fifoReadHandle = -1;
 	this->fifoWriteHandle = -1;
 	this->threadInitOk = false;
+	this->threadInitFailed = false;
 	this->writeThreadInitOk = false;
 	this->threadTerminated = false;
 	this->writeThreadTerminated = false;
@@ -953,7 +955,7 @@ PcapQueue::PcapQueue(eTypeQueue typeQueue, const char *nameQueue) {
 	memset(this->procPstatData, 0, sizeof(this->procPstatData));
 	this->packetBuffer = NULL;
 	this->instancePcapHandle = NULL;
-	this->initAllReadThreadsOk = false;
+	this->initAllReadThreadsFinished = false;
 	this->counter_calls_old = 0;
 	this->counter_sip_packets_old[0] = 0;
 	this->counter_sip_packets_old[1] = 0;
@@ -1062,7 +1064,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 	}
 
 	if(this->instancePcapHandle &&
-	   !this->instancePcapHandle->initAllReadThreadsOk) {
+	   !this->instancePcapHandle->initAllReadThreadsFinished) {
 		return;
 	}
 	ostringstream outStr;
@@ -1935,6 +1937,9 @@ void PcapQueue::prepareProcPstatData() {
 }
 
 double PcapQueue::getCpuUsagePerc(eTypeThread typeThread, bool preparePstatData) {
+	if(this->threadInitFailed) {
+		return(-1);
+	}
 	if(preparePstatData) {
 		this->preparePstatData(typeThread);
 	}
@@ -2361,6 +2366,7 @@ PcapQueue_readFromInterfaceThread::PcapQueue_readFromInterfaceThread(const char 
 	this->threadHandle = 0;
 	this->threadId = 0;
 	this->threadInitOk = 0;
+	this->threadInitFailed = false;
 	this->qringmax = opt_pcap_queue_iface_qring_size;
 	for(int i = 0; i < 2; i++) {
 		if(i == 0 || typeThread == defrag) {
@@ -2564,7 +2570,27 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void *arg, unsigned int 
 		}
 		if(!this->startCapture()) {
 			this->threadTerminated = true;
-			vm_terminate();
+			this->threadInitFailed = true;
+			this->threadDoTerminate = true;
+			if(this->dedupThread) {
+				this->dedupThread->threadInitFailed = true;
+				this->dedupThread->threadDoTerminate = true;
+			}
+			if(this->defragThread) {
+				this->defragThread->threadInitFailed = true;
+				this->defragThread->threadDoTerminate = true;
+			}
+			if(this->md1Thread) {
+				this->md1Thread->threadInitFailed = true;
+				this->md1Thread->threadDoTerminate = true;
+			}
+			if(this->md2Thread) {
+				this->md2Thread->threadInitFailed = true;
+				this->md2Thread->threadDoTerminate = true;
+			}
+			if(!opt_pcap_queue_receive_from_ip_port) {
+				vm_terminate();
+			}
 			return(NULL);
 		}
 		this->threadInitOk = 1;
@@ -2999,7 +3025,12 @@ void* PcapQueue_readFromInterface::threadFunction(void *arg, unsigned int arg2) 
 		this->threadInitOk = true;
 	} else {
 		this->threadTerminated = true;
-		vm_terminate();
+		this->threadInitFailed = true;
+		if(opt_pcap_queue_receive_from_ip_port) {
+			this->initAllReadThreadsFinished = true;
+		} else {
+			vm_terminate();
+		}
 		return(NULL);
 	}
 	this->initStat();
@@ -3018,7 +3049,8 @@ void* PcapQueue_readFromInterface::threadFunction(void *arg, unsigned int arg2) 
 			}
 			bool allInit_1 = true;
 			for(int i = 0; i < this->readThreadsCount; i++) {
-				if(this->readThreads[i]->threadInitOk == 0) {
+				if(this->readThreads[i]->threadInitOk == 0 &&
+				   !this->readThreads[i]->threadInitFailed) {
 					allInit_1 = false;
 					break;
 				}
@@ -3029,10 +3061,12 @@ void* PcapQueue_readFromInterface::threadFunction(void *arg, unsigned int arg2) 
 			usleep(50000);
 		}
 		for(int i = 0; i < this->readThreadsCount; i++) {
-			this->readThreads[i]->threadInitOk = 2;
+			if(this->readThreads[i]->threadInitOk) {
+				this->readThreads[i]->threadInitOk = 2;
+			}
 		}
 	}
-	this->initAllReadThreadsOk = true;
+	this->initAllReadThreadsFinished = true;
 	
 	if(__config_BYPASS_FIFO) {
 		int blockStoreCount = this->readThreadsCount ? this->readThreadsCount : 1;
@@ -3504,6 +3538,9 @@ string PcapQueue_readFromInterface::pcapStatString_cpuUsageReadThreads() {
 	ostringstream outStrStat;
 	outStrStat << fixed;
 	for(int i = 0; i < this->readThreadsCount; i++) {
+		if(this->readThreads[i]->threadInitFailed) {
+			continue;
+		}
 		double ti_cpu = this->readThreads[i]->getCpuUsagePerc(true);
 		if(ti_cpu >= 0) {
 			outStrStat << "t0i_" << this->readThreads[i]->interfaceName << "_CPU[" << setprecision(1) << ti_cpu;
@@ -3590,6 +3627,7 @@ PcapQueue_readFromFifo::PcapQueue_readFromFifo(const char *nameQueue, const char
 		this->pcapDeadHandles_dlt[i] = 0;
 	}
 	this->pcapDeadHandles_count = 0;
+	this->socketServerThreadHandle = 0;
 	this->cleanupBlockStoreTrash_counter = 0;
 	this->socketHostEnt = NULL;
 	this->socketHandle = 0;
@@ -3630,6 +3668,19 @@ void PcapQueue_readFromFifo::setPacketServer(ip_port ipPort, ePacketServerDirect
 	this->packetServerDirection = direction;
 }
 
+bool PcapQueue_readFromFifo::createThread() {
+	PcapQueue::createThread();
+	if(this->packetServerDirection == directionRead) {
+		this->createSocketServerThread();
+	}
+	return(true);
+}
+
+bool PcapQueue_readFromFifo::createSocketServerThread() {
+	pthread_create(&this->socketServerThreadHandle, NULL, _PcapQueue_readFromFifo_socketServerThreadFunction, this);
+	return(true);
+}
+
 bool PcapQueue_readFromFifo::initThread(void *arg, unsigned int arg2) {
 	if(this->packetServerDirection == directionRead &&
 	   !this->openPcapDeadHandle(0)) {
@@ -3641,8 +3692,12 @@ bool PcapQueue_readFromFifo::initThread(void *arg, unsigned int arg2) {
 void *PcapQueue_readFromFifo::threadFunction(void *arg, unsigned int arg2) {
 	int pid = get_unix_tid();
 	if(this->packetServerDirection == directionRead && arg2) {
-		this->packetServerConnections[arg2]->threadId = pid;
-		this->packetServerConnections[arg2]->active = true;
+		if(arg2 == (unsigned int)-1) {
+			this->nextThreadsId[0] = get_unix_tid();
+		} else {
+			this->packetServerConnections[arg2]->threadId = pid;
+			this->packetServerConnections[arg2]->active = true;
+		}
 	} else {
 		this->mainThreadId = get_unix_tid();
 	}
@@ -3650,7 +3705,11 @@ void *PcapQueue_readFromFifo::threadFunction(void *arg, unsigned int arg2) {
 		ostringstream outStr;
 		outStr << "start thread t1 (" << this->nameQueue;
 		if(this->packetServerDirection == directionRead && arg2) {
-			outStr << " " << this->packetServerConnections[arg2]->socketClientIP << ":" << this->packetServerConnections[arg2]->socketClientInfo.sin_port;
+			if(arg2 == (unsigned int)-1) {
+				outStr << " socket server";
+			} else {
+				outStr << " " << this->packetServerConnections[arg2]->socketClientIP << ":" << this->packetServerConnections[arg2]->socketClientInfo.sin_port;
+			}
 		}
 		outStr << ") - pid: " << pid << endl;
 		if(DEBUG_VERBOSE) {
@@ -3666,7 +3725,7 @@ void *PcapQueue_readFromFifo::threadFunction(void *arg, unsigned int arg2) {
 		vm_terminate();
 		return(NULL);
 	}
-	if(this->packetServerDirection == directionRead) {
+	if(this->packetServerDirection == directionRead && arg2) {
 		pcap_block_store *blockStore = new FILE_LINE pcap_block_store;
 		size_t bufferSize = 1000;
 		u_char *buffer = new FILE_LINE u_char[bufferSize * 2];
@@ -3680,7 +3739,7 @@ void *PcapQueue_readFromFifo::threadFunction(void *arg, unsigned int arg2) {
 		int _countTestSync = 0;
 		bool forceStop = false;
 		while(!TERMINATING && !forceStop) {
-			if(!arg2) {
+			if(arg2 == (unsigned int)-1) {
 				int socketClient;
 				sockaddr_in socketClientInfo;
 				if(this->socketAwaitConnection(&socketClient, &socketClientInfo)) {
@@ -4650,10 +4709,14 @@ void PcapQueue_readFromFifo::cleanupBlockStoreTrash(bool all) {
 	}
 }
 
+void *_PcapQueue_readFromFifo_socketServerThreadFunction(void *arg) {
+	PcapQueue_readFromFifo *pcapQueue = (PcapQueue_readFromFifo*)arg;
+	return(pcapQueue->threadFunction(pcapQueue, (unsigned int)-1));
+}
+
 void *_PcapQueue_readFromFifo_connectionThreadFunction(void *arg) {
 	PcapQueue_readFromFifo::sPacketServerConnection *connection = (PcapQueue_readFromFifo::sPacketServerConnection*)arg;
 	return(connection->parent->threadFunction(connection->parent, connection->id));
-	
 }
 
 

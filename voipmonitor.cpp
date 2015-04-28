@@ -3624,7 +3624,7 @@ int main(int argc, char *argv[]) {
 	if(opt_ipaccount) {
 		initIpacc();
 	}
-	if ((fname[0] == '\0') && (ifname[0] == '\0') && opt_scanpcapdir[0] == '\0' && !opt_untar_gui_params){
+	if ((fname[0] == '\0') && (ifname[0] == '\0') && opt_scanpcapdir[0] == '\0' && !opt_untar_gui_params && !opt_pcap_queue_receive_from_ip_port){
                         /* Ruler to assist with keeping help description to max. 80 chars wide:
                                   1         2         3         4         5         6         7         8
                          12345678901234567890123456789012345678901234567890123456789012345678901234567890
@@ -4216,7 +4216,7 @@ int main(int argc, char *argv[]) {
 
 	// check if sniffer will be reading pcap files from dir and if not if it reads from eth interface or read only one file
 	if(opt_scanpcapdir[0] == '\0') {
-		if (fname[0] == '\0' && ifname[0] != '\0'){
+		if (fname[0] == '\0' && (ifname[0] != '\0' || opt_pcap_queue_receive_from_ip_port)) {
 			if(!opt_pcap_queue) {
 				bpf_u_int32 net;
 
@@ -4610,155 +4610,137 @@ int main(int argc, char *argv[]) {
 		 
 			PcapQueue_init();
 			
-			if(opt_pcap_queue_receive_from_ip_port) {
-				
-				pcapQueueR = new FILE_LINE PcapQueue_readFromFifo("receive", opt_pcap_queue_disk_folder.c_str());
-				pcapQueueR->setEnableAutoTerminate(false);
-				pcapQueueR->setPacketServer(opt_pcap_queue_receive_from_ip_port, PcapQueue_readFromFifo::directionRead);
-				
-				pcapQueueR->start();
-				pcapQueueStatInterface = pcapQueueR;
-				
-				uint64_t _counter = 0;
-				int _pcap_stat_period = sverb.pcap_stat_period ? sverb.pcap_stat_period : 10;
-				while(!terminating) {
-					if(_counter && (verbosityE > 0 || !(_counter % _pcap_stat_period))) {
-						pthread_mutex_lock(&terminate_packetbuffer_lock);
-						pcapQueueR->pcapStat(verbosityE > 0 ? 1 : _pcap_stat_period);
-						pthread_mutex_unlock(&terminate_packetbuffer_lock);
-					}
-					sleep(1);
-					++_counter;
+			if(opt_pb_read_from_file[0] && opt_enable_http) {
+				if(opt_tcpreassembly_thread) {
+					tcpReassemblyHttp->setIgnoreTerminating(true);
 				}
-				
-				terminate_packetbuffer();
-				
-			} else {
-			 
-				if(opt_pb_read_from_file[0] && opt_enable_http) {
-					if(opt_tcpreassembly_thread) {
-						tcpReassemblyHttp->setIgnoreTerminating(true);
-					}
+			}
+			if(opt_pb_read_from_file[0] && opt_enable_webrtc) {
+				if(opt_tcpreassembly_thread) {
+					tcpReassemblyWebrtc->setIgnoreTerminating(true);
 				}
-				if(opt_pb_read_from_file[0] && opt_enable_webrtc) {
-					if(opt_tcpreassembly_thread) {
-						tcpReassemblyWebrtc->setIgnoreTerminating(true);
-					}
+			}
+			if(opt_pb_read_from_file[0] && opt_enable_ssl) {
+				if(opt_tcpreassembly_thread) {
+					tcpReassemblySsl->setIgnoreTerminating(true);
 				}
-				if(opt_pb_read_from_file[0] && opt_enable_ssl) {
-					if(opt_tcpreassembly_thread) {
-						tcpReassemblySsl->setIgnoreTerminating(true);
-					}
-				}
-			
+			}
+		
+			if(ifname[0]) {
 				pcapQueueI = new FILE_LINE PcapQueue_readFromInterface("interface");
 				pcapQueueI->setInterfaceName(ifname);
 				pcapQueueI->setEnableAutoTerminate(false);
-				
-				pcapQueueQ = new FILE_LINE PcapQueue_readFromFifo("queue", opt_pcap_queue_disk_folder.c_str());
+			}
+			
+			pcapQueueQ = new FILE_LINE PcapQueue_readFromFifo("queue", opt_pcap_queue_disk_folder.c_str());
+			if(pcapQueueI) {
 				pcapQueueQ->setInstancePcapHandle(pcapQueueI);
-				pcapQueueQ->setEnableAutoTerminate(false);
-				if(opt_pcap_queue_send_to_ip_port) {
-					pcapQueueQ->setPacketServer(opt_pcap_queue_send_to_ip_port, PcapQueue_readFromFifo::directionWrite);
-				}
-				
-				pcapQueueQ->start();
+			}
+			pcapQueueQ->setEnableAutoTerminate(false);
+			
+			if(opt_pcap_queue_receive_from_ip_port) {
+				pcapQueueQ->setPacketServer(opt_pcap_queue_receive_from_ip_port, PcapQueue_readFromFifo::directionRead);
+			} else if(opt_pcap_queue_send_to_ip_port) {
+				pcapQueueQ->setPacketServer(opt_pcap_queue_send_to_ip_port, PcapQueue_readFromFifo::directionWrite);
+			}
+			
+			pcapQueueQ->start();
+			if(pcapQueueI) {
 				pcapQueueI->start();
 				pcapQueueInterface = pcapQueueI;
-				pcapQueueStatInterface = pcapQueueQ;
-				
-				if(opt_scanpcapdir[0] != '\0') {
-					pthread_create(&scanpcapdir_thread, NULL, scanpcapdir, NULL);
-				}
-				
-				uint64_t _counter = 0;
-				int _pcap_stat_period = sverb.pcap_stat_period ? sverb.pcap_stat_period : 10;
-				while(!terminating) {
-					if(_counter && (verbosityE > 0 || !(_counter % _pcap_stat_period))) {
-						pthread_mutex_lock(&terminate_packetbuffer_lock);
-						pcapQueueQ->pcapStat(verbosityE > 0 ? 1 : _pcap_stat_period);
-						pthread_mutex_unlock(&terminate_packetbuffer_lock);
-						if(sverb.memory_stat_log) {
-							printMemoryStat();
-						}
-						if(tcpReassemblyHttp) {
-							tcpReassemblyHttp->setDoPrintContent();
-						}
-						if(tcpReassemblyWebrtc) {
-							tcpReassemblyWebrtc->setDoPrintContent();
-						}
-						#if RTP_PROF
-						for(int i = 0; i < opt_enable_process_rtp_packet; i++) if(processRtpPacket[i]) {
-							unsigned long long ___prof__ProcessRtpPacket_outThreadFunction = processRtpPacket[i]->__prof__ProcessRtpPacket_outThreadFunction;
-							unsigned long long ___prof__ProcessRtpPacket_outThreadFunction__usleep = processRtpPacket[i]->__prof__ProcessRtpPacket_outThreadFunction__usleep;
-							unsigned long long ___prof__ProcessRtpPacket_rtp = processRtpPacket[i]->__prof__ProcessRtpPacket_rtp;
-							unsigned long long ___prof__ProcessRtpPacket_rtp__hashfind = processRtpPacket[i]->__prof__ProcessRtpPacket_rtp__hashfind;
-							unsigned long long ___prof__ProcessRtpPacket_rtp__fill_call_array = processRtpPacket[i]->__prof__ProcessRtpPacket_rtp__fill_call_array;
-							unsigned long long ___prof__process_packet__rtp = processRtpPacket[i]->__prof__process_packet__rtp;
-							unsigned long long ___prof__add_to_rtp_thread_queue = processRtpPacket[i]->__prof__add_to_rtp_thread_queue;
-							unsigned long long ___prof__ProcessRtpPacket_outThreadFunction2 = ___prof__ProcessRtpPacket_outThreadFunction - ___prof__ProcessRtpPacket_outThreadFunction__usleep;
-							cout << fixed
-							     << "RTP PROF - " << (processRtpPacket[i]->indexThread + 1) << "/" << processRtpPacket[i]->outThreadId
-									<< endl
-							     << left << setw(50) << "ProcessRtpPacket::outThreadFunction"
-							     << right << setw(15) << ___prof__ProcessRtpPacket_outThreadFunction
-									<< endl
-							     << left << setw(50) << "ProcessRtpPacket::outThreadFunction / usleep"
-							     << right << setw(15) << ___prof__ProcessRtpPacket_outThreadFunction__usleep
-									<< endl
-							     << left << setw(50) << "ProcessRtpPacket::outThreadFunction / process time"
-							     << right << setw(15) << ___prof__ProcessRtpPacket_outThreadFunction2
-									<< endl
-							     << left << setw(50) << "   ProcessRtpPacket::rtp"
-							     << right << setw(15) << ___prof__ProcessRtpPacket_rtp
-							     << setw(15) << setprecision(5) 
-								<< ((double)___prof__ProcessRtpPacket_rtp / ___prof__ProcessRtpPacket_outThreadFunction2) * 100 << "%"
-									<< endl
-							     << left << setw(50) << "      ProcessRtpPacket::rtp / hashfind"
-							     << right << setw(15) << ___prof__ProcessRtpPacket_rtp__hashfind
-							     << setw(15) << setprecision(5) 
-								<< ((double)___prof__ProcessRtpPacket_rtp__hashfind / ___prof__ProcessRtpPacket_outThreadFunction2) * 100 << "%"
-									<< endl
-							     << left << setw(50) << "      ProcessRtpPacket::rtp / fill call array"
-							     << right << setw(15) << ___prof__ProcessRtpPacket_rtp__fill_call_array
-							     << setw(15) << setprecision(5) 
-								<< ((double)___prof__ProcessRtpPacket_rtp__fill_call_array / ___prof__ProcessRtpPacket_outThreadFunction2) * 100 << "%"
-									<< endl
-							     << left << setw(50) << "      process_packet__rtp"
-							     << right << setw(15) << ___prof__process_packet__rtp
-							     << setw(15) << setprecision(5) 
-								<< ((double)___prof__process_packet__rtp / ___prof__ProcessRtpPacket_outThreadFunction2) * 100 << "%"
-									<< endl
-							     << left << setw(50) << "         add_to_rtp_thread_queue"
-							     << right << setw(15) << ___prof__add_to_rtp_thread_queue
-							     << setw(15) << setprecision(5) 
-								<< ((double)___prof__add_to_rtp_thread_queue / ___prof__ProcessRtpPacket_outThreadFunction2) * 100 << "%"
-									<< endl;
-							processRtpPacket[i]->__prof__ProcessRtpPacket_outThreadFunction_begin = rdtsc();
-							processRtpPacket[i]->__prof__ProcessRtpPacket_outThreadFunction__usleep = 0;
-							processRtpPacket[i]->__prof__ProcessRtpPacket_rtp = 0;
-							processRtpPacket[i]->__prof__ProcessRtpPacket_rtp__hashfind = 0;
-							processRtpPacket[i]->__prof__ProcessRtpPacket_rtp__fill_call_array = 0;
-							processRtpPacket[i]->__prof__process_packet__rtp = 0;
-							processRtpPacket[i]->__prof__add_to_rtp_thread_queue = 0;
-						}
-						#endif
+			}
+			pcapQueueStatInterface = pcapQueueQ;
+			
+			if(opt_scanpcapdir[0] != '\0') {
+				pthread_create(&scanpcapdir_thread, NULL, scanpcapdir, NULL);
+			}
+			
+			uint64_t _counter = 0;
+			int _pcap_stat_period = sverb.pcap_stat_period ? sverb.pcap_stat_period : 10;
+			while(!terminating) {
+				if(_counter && (verbosityE > 0 || !(_counter % _pcap_stat_period))) {
+					pthread_mutex_lock(&terminate_packetbuffer_lock);
+					pcapQueueQ->pcapStat(verbosityE > 0 ? 1 : _pcap_stat_period);
+					pthread_mutex_unlock(&terminate_packetbuffer_lock);
+					if(sverb.memory_stat_log) {
+						printMemoryStat();
 					}
-					sleep(1);
-					++_counter;
+					if(tcpReassemblyHttp) {
+						tcpReassemblyHttp->setDoPrintContent();
+					}
+					if(tcpReassemblyWebrtc) {
+						tcpReassemblyWebrtc->setDoPrintContent();
+					}
+					#if RTP_PROF
+					for(int i = 0; i < opt_enable_process_rtp_packet; i++) if(processRtpPacket[i]) {
+						unsigned long long ___prof__ProcessRtpPacket_outThreadFunction = processRtpPacket[i]->__prof__ProcessRtpPacket_outThreadFunction;
+						unsigned long long ___prof__ProcessRtpPacket_outThreadFunction__usleep = processRtpPacket[i]->__prof__ProcessRtpPacket_outThreadFunction__usleep;
+						unsigned long long ___prof__ProcessRtpPacket_rtp = processRtpPacket[i]->__prof__ProcessRtpPacket_rtp;
+						unsigned long long ___prof__ProcessRtpPacket_rtp__hashfind = processRtpPacket[i]->__prof__ProcessRtpPacket_rtp__hashfind;
+						unsigned long long ___prof__ProcessRtpPacket_rtp__fill_call_array = processRtpPacket[i]->__prof__ProcessRtpPacket_rtp__fill_call_array;
+						unsigned long long ___prof__process_packet__rtp = processRtpPacket[i]->__prof__process_packet__rtp;
+						unsigned long long ___prof__add_to_rtp_thread_queue = processRtpPacket[i]->__prof__add_to_rtp_thread_queue;
+						unsigned long long ___prof__ProcessRtpPacket_outThreadFunction2 = ___prof__ProcessRtpPacket_outThreadFunction - ___prof__ProcessRtpPacket_outThreadFunction__usleep;
+						cout << fixed
+						     << "RTP PROF - " << (processRtpPacket[i]->indexThread + 1) << "/" << processRtpPacket[i]->outThreadId
+								<< endl
+						     << left << setw(50) << "ProcessRtpPacket::outThreadFunction"
+						     << right << setw(15) << ___prof__ProcessRtpPacket_outThreadFunction
+								<< endl
+						     << left << setw(50) << "ProcessRtpPacket::outThreadFunction / usleep"
+						     << right << setw(15) << ___prof__ProcessRtpPacket_outThreadFunction__usleep
+								<< endl
+						     << left << setw(50) << "ProcessRtpPacket::outThreadFunction / process time"
+						     << right << setw(15) << ___prof__ProcessRtpPacket_outThreadFunction2
+								<< endl
+						     << left << setw(50) << "   ProcessRtpPacket::rtp"
+						     << right << setw(15) << ___prof__ProcessRtpPacket_rtp
+						     << setw(15) << setprecision(5) 
+							<< ((double)___prof__ProcessRtpPacket_rtp / ___prof__ProcessRtpPacket_outThreadFunction2) * 100 << "%"
+								<< endl
+						     << left << setw(50) << "      ProcessRtpPacket::rtp / hashfind"
+						     << right << setw(15) << ___prof__ProcessRtpPacket_rtp__hashfind
+						     << setw(15) << setprecision(5) 
+							<< ((double)___prof__ProcessRtpPacket_rtp__hashfind / ___prof__ProcessRtpPacket_outThreadFunction2) * 100 << "%"
+								<< endl
+						     << left << setw(50) << "      ProcessRtpPacket::rtp / fill call array"
+						     << right << setw(15) << ___prof__ProcessRtpPacket_rtp__fill_call_array
+						     << setw(15) << setprecision(5) 
+							<< ((double)___prof__ProcessRtpPacket_rtp__fill_call_array / ___prof__ProcessRtpPacket_outThreadFunction2) * 100 << "%"
+								<< endl
+						     << left << setw(50) << "      process_packet__rtp"
+						     << right << setw(15) << ___prof__process_packet__rtp
+						     << setw(15) << setprecision(5) 
+							<< ((double)___prof__process_packet__rtp / ___prof__ProcessRtpPacket_outThreadFunction2) * 100 << "%"
+								<< endl
+						     << left << setw(50) << "         add_to_rtp_thread_queue"
+						     << right << setw(15) << ___prof__add_to_rtp_thread_queue
+						     << setw(15) << setprecision(5) 
+							<< ((double)___prof__add_to_rtp_thread_queue / ___prof__ProcessRtpPacket_outThreadFunction2) * 100 << "%"
+								<< endl;
+						processRtpPacket[i]->__prof__ProcessRtpPacket_outThreadFunction_begin = rdtsc();
+						processRtpPacket[i]->__prof__ProcessRtpPacket_outThreadFunction__usleep = 0;
+						processRtpPacket[i]->__prof__ProcessRtpPacket_rtp = 0;
+						processRtpPacket[i]->__prof__ProcessRtpPacket_rtp__hashfind = 0;
+						processRtpPacket[i]->__prof__ProcessRtpPacket_rtp__fill_call_array = 0;
+						processRtpPacket[i]->__prof__process_packet__rtp = 0;
+						processRtpPacket[i]->__prof__add_to_rtp_thread_queue = 0;
+					}
+					#endif
 				}
-				
-				if(opt_scanpcapdir[0] != '\0') {
-					//pthread_join(scanpcapdir_thread, NULL); // failed - stop at: scanpcapdir::'len = read(fd, buff, 4096);'
-					sleep(2);
-				}
-				
-				terminate_packetbuffer();
-				
-				if(opt_pb_read_from_file[0] && (opt_enable_http || opt_enable_webrtc || opt_enable_ssl)) {
-					sleep(2);
-				}
-				
+				sleep(1);
+				++_counter;
+			}
+			
+			if(opt_scanpcapdir[0] != '\0') {
+				//pthread_join(scanpcapdir_thread, NULL); // failed - stop at: scanpcapdir::'len = read(fd, buff, 4096);'
+				sleep(2);
+			}
+			
+			terminate_packetbuffer();
+			
+			if(opt_pb_read_from_file[0] && (opt_enable_http || opt_enable_webrtc || opt_enable_ssl)) {
+				sleep(2);
 			}
 			
 			PcapQueue_term();
@@ -5022,48 +5004,47 @@ void terminate_packetbuffer() {
 		pthread_mutex_lock(&terminate_packetbuffer_lock);
 		extern bool pstat_quietly_errors;
 		pstat_quietly_errors = true;
-		if(opt_pcap_queue_receive_from_ip_port) {
-			pcapQueueR->terminate();
-			sleep(1);
-			delete pcapQueueR;
-		} else {
+		
+		if(pcapQueueI) {
 			pcapQueueI->terminate();
-			sleep(1);
-			if(opt_pb_read_from_file[0] && (opt_enable_http || opt_enable_webrtc || opt_enable_ssl) && opt_tcpreassembly_thread) {
-				if(opt_enable_http) {
-					tcpReassemblyHttp->setIgnoreTerminating(false);
-				}
-				if(opt_enable_webrtc) {
-					tcpReassemblyWebrtc->setIgnoreTerminating(false);
-				}
-				if(opt_enable_ssl) {
-					tcpReassemblySsl->setIgnoreTerminating(false);
-				}
-				sleep(2);
-			}
-			pcapQueueQ->terminate();
-			sleep(1);
-			
-			if(tcpReassemblyHttp) {
-				delete tcpReassemblyHttp;
-				tcpReassemblyHttp = NULL;
-			}
-			if(httpData) {
-				delete httpData;
-				httpData = NULL;
-			}
-			if(tcpReassemblyWebrtc) {
-				delete tcpReassemblyWebrtc;
-				tcpReassemblyWebrtc = NULL;
-			}
-			if(webrtcData) {
-				delete webrtcData;
-				webrtcData = NULL;
-			}
-			
-			delete pcapQueueI;
-			delete pcapQueueQ;
 		}
+		sleep(1);
+		if(opt_pb_read_from_file[0] && (opt_enable_http || opt_enable_webrtc || opt_enable_ssl) && opt_tcpreassembly_thread) {
+			if(opt_enable_http) {
+				tcpReassemblyHttp->setIgnoreTerminating(false);
+			}
+			if(opt_enable_webrtc) {
+				tcpReassemblyWebrtc->setIgnoreTerminating(false);
+			}
+			if(opt_enable_ssl) {
+				tcpReassemblySsl->setIgnoreTerminating(false);
+			}
+			sleep(2);
+		}
+		pcapQueueQ->terminate();
+		sleep(1);
+		
+		if(tcpReassemblyHttp) {
+			delete tcpReassemblyHttp;
+			tcpReassemblyHttp = NULL;
+		}
+		if(httpData) {
+			delete httpData;
+			httpData = NULL;
+		}
+		if(tcpReassemblyWebrtc) {
+			delete tcpReassemblyWebrtc;
+			tcpReassemblyWebrtc = NULL;
+		}
+		if(webrtcData) {
+			delete webrtcData;
+			webrtcData = NULL;
+		}
+		
+		if(pcapQueueI) {
+			delete pcapQueueI;
+		}
+		delete pcapQueueQ;
 	}
 }
 
