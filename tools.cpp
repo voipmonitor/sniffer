@@ -2003,7 +2003,14 @@ void ParsePacket::setStdParse() {
 	addNode("contact:");
 	addNode("m:");
 	addNode("remote-party-id:");
-	addNode("P-Preferred-Identity:");
+	extern int opt_passertedidentity;
+    if(opt_passertedidentity) {
+		addNode("P-Asserted-Identity:");
+    }
+	extern int opt_ppreferredidentity;
+    if(opt_ppreferredidentity) {
+		addNode("P-Preferred-Identity:");
+    }
 	addNode("geoposition:");
 	addNode("user-agent:");
 	addNode("authorization:");
