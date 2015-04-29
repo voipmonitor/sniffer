@@ -564,7 +564,6 @@ uint8_t opt_sdp_reverse_ipport = 0;
 volatile unsigned int pcap_readit = 0;
 volatile unsigned int pcap_writeit = 0;
 int global_livesniffer = 0;
-int global_livesniffer_all = 0;
 unsigned int pcap_qring_max = 12500;
 unsigned int pcap_qring_usleep = 10000;
 #if defined(QUEUE_MUTEX) || defined(QUEUE_NONBLOCK) || defined(QUEUE_NONBLOCK2)

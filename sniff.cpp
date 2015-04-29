@@ -186,7 +186,6 @@ extern MySqlStore *sqlStore;
 int global_pcap_dlink;
 extern int opt_udpfrag;
 extern int global_livesniffer;
-extern int global_livesniffer_all;
 extern int opt_pcap_split;
 extern int opt_newdir;
 extern int opt_callslimit;
@@ -376,19 +375,13 @@ int get_sip_peername(char *data, int data_len, const char *tag, char *peername, 
 
 inline void save_live_packet(Call *call, struct pcap_pkthdr *header, const u_char *packet, unsigned int saddr, int source, unsigned int daddr, int dest, int istcp, char *data, int datalen, unsigned char sip_type, 
 			     int dlt, int sensor_id) {
-	if(!global_livesniffer && !global_livesniffer_all) {
+	if(!global_livesniffer) {
 		return;
 	}
 	
 	// check saddr and daddr filters
 	daddr = htonl(daddr);
 	saddr = htonl(saddr);
-
-	if(global_livesniffer_all) {
-		save_packet_sql(call, header, packet, saddr, source, daddr, dest, istcp, data, datalen, 0, 
-				dlt, sensor_id);
-		return;
-	}
 
 	while(__sync_lock_test_and_set(&usersniffer_sync, 1));
 	

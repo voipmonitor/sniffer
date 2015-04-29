@@ -91,7 +91,6 @@ extern char user_filter[10*2048];
 extern int debugclean;
 extern int get_customer_by_ip_flush_period;
 extern int global_livesniffer;
-extern int global_livesniffer_all;
 extern int ipfilter_reload_do;
 extern int manager_socket_server;
 extern int num_threads;

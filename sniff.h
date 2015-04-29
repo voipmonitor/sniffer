@@ -222,6 +222,7 @@ typedef struct livesnifferfilter_s {
         time_t created_at;
 	state_s state;
 	void updateState();
+	string getStringState();
 } livesnifferfilter_t;
 
 struct livesnifferfilter_use_siptypes_s {
