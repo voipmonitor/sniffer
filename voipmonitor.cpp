@@ -176,6 +176,7 @@ int opt_packetbuffered = 0;	// Make .pcap files writing ‘‘packet-buffered’
 	
 int opt_disableplc = 0 ;	// On or Off packet loss concealment			
 int opt_rrd = 1;
+int opt_passertedidentity = 0;	//Rewrite caller? If sip invite contain P-Asserted-Identity, caller num/name is overwritten by its values.
 int opt_ppreferredidentity = 0;	//Rewrite caller? If sip invite contain P-Preferred-Identity, caller num/name is overwritten by its values.
 int opt_remotepartyid = 0;	    //Rewrite caller? If sip invite contain header Remote-Party-ID, caller num/name is overwritten by its values.
 int opt_remotepartypriority = 0;//Defines rewrite caller order. If both headers are set/found and activated ( P-Preferred-Identity,Remote-Party-ID ), rewrite caller primary from Remote-Party-ID header (if set to 1). 
@@ -1519,6 +1520,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "ppreferredidentity", NULL))) {
 		opt_ppreferredidentity = yesno(value);
+	}
+	if((value = ini.GetValue("general", "passertedidentity", NULL))) {
+		opt_passertedidentity = yesno(value);
 	}
 	if((value = ini.GetValue("general", "cleandatabase_cdr", NULL))) {
 		opt_cleandatabase_cdr = atoi(value);

@@ -1,3 +1,8 @@
+11.2.1 28.04.2015
+=================
+- fix mysql errors when creating new database / tables (on empty db) 
+
+
 11.2 28.04.2015
 ================
 - sniffer can now receive traffic from remote sniffers and sniff on local interfaces at the same time (if mirror_bind_ip is set) 
