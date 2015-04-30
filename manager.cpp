@@ -974,7 +974,7 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 		while(__sync_lock_test_and_set(&usersniffer_sync, 1));
 		string jsonResult = "[";
 		map<unsigned int, livesnifferfilter_t*>::iterator usersnifferIT;
-		int counter;
+		int counter = 0;
 		for(usersnifferIT = usersniffer.begin(); usersnifferIT != usersniffer.end(); usersnifferIT++) {
 			if(counter) {
 				jsonResult += ",";
