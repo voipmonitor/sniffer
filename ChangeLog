@@ -1,3 +1,9 @@
+11.2.2 04.05.2015
+=================
+- fix memory leak in tcpreassembly (clean empty links_ 
+- fix memory leak for IP fragmented packets (in threading mode 4)
+
+
 11.2.1 28.04.2015
 =================
 - fix mysql errors when creating new database / tables (on empty db) 

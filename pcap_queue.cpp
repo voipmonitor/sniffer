@@ -2864,12 +2864,14 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void *arg, unsigned int 
 			break;
 		}
 		if(destroy) {
-			if(opt_pcap_queue_iface_dedup_separate_threads_extend) {
-				if(_header) delete _header;
-				if(_packet) delete [] _packet;
-			} else {
+			if(!opt_pcap_queue_iface_dedup_separate_threads_extend ||
+			   (typeThread == defrag && 
+			    opt_pcap_queue_iface_dedup_separate_threads_extend__ext_mode)) {
 				delete header;
 				delete [] packet;
+			} else {
+				if(_header) delete _header;
+				if(_packet) delete [] _packet;
 			}
 		}
 	}

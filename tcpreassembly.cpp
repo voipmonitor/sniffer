@@ -869,8 +869,11 @@ bool TcpReassemblyLink::push_normal(
 					runCompleteAfterZerodataAck = true;
 				}
 			}
+			this->last_packet_at_from_header = time.tv_sec * 1000 + time.tv_usec / 1000;
 		}
 		rslt = true;
+	} else {
+		this->last_packet_at_from_header = time.tv_sec * 1000 + time.tv_usec / 1000;
 	}
 	if(!reassembly->enableCleanupThread) {
 		bool final = this->state == STATE_RESET || this->state == STATE_CLOSE;
