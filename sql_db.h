@@ -11,6 +11,8 @@
 #include <sqlext.h>
 #include <sqltypes.h>
 
+#include "tools.h"
+
 
 using namespace std;
 
@@ -368,13 +370,110 @@ private:
 };
 
 class MySqlStore {
+private:
+	class QFile {
+	public:
+		QFile(const char *filename = NULL) {
+			if(filename) {
+				this->filename = filename;
+			}
+			file = NULL;
+			createAt = filename ? getTimeMS() : 0;
+			_sync = 0;
+		}
+		bool open(const char *filename = NULL, u_long createAt = 0) {
+			if(filename) {
+				this->filename = filename;
+				this->createAt = createAt ? createAt : getTimeMS();
+			}
+			if(!this->filename.length()) {
+				return(false);
+			}
+			file = fopen(this->filename.c_str(), "wt");
+			return(file != NULL);
+		}
+		void close(bool clear = false) {
+			if(file) {
+				fclose(file);
+				file = NULL;
+			}
+			if(clear) {
+				filename = "";
+				createAt = 0;
+			}
+		}
+		bool isEmpty() {
+			return(filename.empty());
+		}
+		bool isExceedPeriod(int period, u_long time = 0) {
+			if(!time) {
+				time = getTimeMS();
+			}
+			return(time - createAt > (unsigned)period * 1000);
+		}
+		void lock() {
+			while(__sync_lock_test_and_set(&_sync, 1));
+		}
+		void unlock() {
+			__sync_lock_release(&_sync);
+		}
+		string filename;
+		FILE *file;
+		u_long createAt;
+		volatile int _sync;
+	};
+	struct QFileConfig {
+		QFileConfig() {
+			enable = false;
+			period = 10;
+		}
+		bool enable;
+		string directory;
+		int period;
+	};
+	struct LoadFromQFilesThreadData {
+		LoadFromQFilesThreadData() {
+			id = 0;
+			maxStoreThreads = 1;
+			storeConcatLimit = 0;
+			thread = 0;
+			useStoreThreads = 1;
+		}
+		int id;
+		string name;
+		int maxStoreThreads;
+		int storeConcatLimit;
+		pthread_t thread;
+		int useStoreThreads;
+	};
+	struct LoadFromQFilesThreadInfo {
+		MySqlStore *store;
+		int id;
+	};
 public:
 	MySqlStore(const char *host, const char *user, const char *password, const char *database, 
 		   const char *cloud_host = NULL, const char *cloud_token = NULL);
 	~MySqlStore();
+	void queryToFiles(bool enable = true, const char *directory = NULL, int period = 0);
+	void loadFromQFiles(bool enable = true, const char *directory = NULL, int period = 0);
 	void connect(int id);
 	void query(const char *query_str, int id);
 	void query_lock(const char *query_str, int id);
+	// qfiles
+	void query_to_file(const char *query_str, int id);
+	QFile getQFile(int id);
+	void unlockQFile(int id);
+	bool checkQFilePeriod(int id);
+	string getQFilename(int idc, u_long actTime);
+	int convIdForQFile(int id);
+	void closeAllQFiles();
+	void addLoadFromQFile(int id, const char *name, 
+			      int maxStoreThreads = 0, int storeConcatLimit = 0);
+	string getMinQFile(int id);
+	int getCountQFiles(int id);
+	bool loadFromQFile(const char *filename, int id);
+	string getLoadFromQFilesStat();
+	//
 	void lock(int id);
 	void unlock(int id);
 	void setEnableTerminatingDirectly(int id, bool enableTerminatingDirectly);
@@ -394,11 +493,19 @@ public:
 	string exportToFile(FILE *file, string filename, bool sqlFormat, bool cleanAfterExport);
 	void autoloadFromSqlVmExport();
 private:
+	static void *threadQFilesCheckPeriod(void *arg);
+	static void *threadLoadFromQFiles(void *arg);
 	void lock_processes() {
 		while(__sync_lock_test_and_set(&this->_sync_processes, 1));
 	}
 	void unlock_processes() {
 		__sync_lock_release(&this->_sync_processes);
+	}
+	void lock_qfiles() {
+		while(__sync_lock_test_and_set(&this->_sync_qfiles, 1));
+	}
+	void unlock_qfiles() {
+		__sync_lock_release(&this->_sync_qfiles);
 	}
 private:
 	map<int, MySqlStore_process*> processes;
@@ -413,6 +520,12 @@ private:
 	bool enableTerminatingDirectly;
 	bool enableTerminatingIfEmpty;
 	bool enableTerminatingIfSqlError;
+	QFileConfig qfileConfig;
+	QFileConfig loadFromQFileConfig;
+	map<int, QFile> qfiles;
+	volatile int _sync_qfiles;
+	pthread_t qfilesCheckperiodThread;
+	map<int, LoadFromQFilesThreadData> loadFromQFilesThreadData;
 };
 
 SqlDb *createSqlObject();
