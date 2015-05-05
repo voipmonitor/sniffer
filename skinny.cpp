@@ -79,7 +79,6 @@ extern int opt_id_sensor;
 extern int global_pcap_dlink;
 extern int opt_udpfrag;
 extern int global_livesniffer;
-extern int global_livesniffer_all;
 extern int opt_pcap_split;
 extern int opt_newdir;
 extern int opt_callslimit;

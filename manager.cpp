@@ -64,7 +64,6 @@ extern int terminating;
 extern int manager_socket_server;
 extern int opt_nocdr;
 extern int global_livesniffer;
-extern int global_livesniffer_all;
 extern map<unsigned int, octects_live_t*> ipacc_live;
 
 extern map<unsigned int, livesnifferfilter_t*> usersniffer;
@@ -971,6 +970,28 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 		}
 		return 0;
 ///////////////////////////////////////////////////////////////
+	} else if(strstr(buf, "getactivesniffers")) {
+		while(__sync_lock_test_and_set(&usersniffer_sync, 1));
+		string jsonResult = "[";
+		map<unsigned int, livesnifferfilter_t*>::iterator usersnifferIT;
+		int counter = 0;
+		for(usersnifferIT = usersniffer.begin(); usersnifferIT != usersniffer.end(); usersnifferIT++) {
+			if(counter) {
+				jsonResult += ",";
+			}
+			char uid_str[10];
+			sprintf(uid_str, "%i", usersnifferIT->first);
+			jsonResult += "{\"uid\": \"" + string(uid_str) + "\"," +
+					"\"state\":\"" + usersnifferIT->second->getStringState() + "\"}";
+			++counter;
+		}
+		jsonResult += "]";
+		__sync_lock_release(&usersniffer_sync);
+		if((size = sendvm(client, sshchannel, jsonResult.c_str(), jsonResult.length(), 0)) == -1) {
+			cerr << "Error sending data to client" << endl;
+			return -1;
+		}
+		return 0;
         } else if(strstr(buf, "stoplivesniffer")) {
                 sscanf(buf, "stoplivesniffer %u", &uid);
 		while(__sync_lock_test_and_set(&usersniffer_sync, 1));
@@ -980,7 +1001,6 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
                         usersniffer.erase(usersnifferIT);
 			if(!usersniffer.size()) {
 				global_livesniffer = 0;
-				//global_livesniffer_all = 0;
 			}
 			updateLivesnifferfilters();
 			if(verbosity > 0) {
@@ -1007,7 +1027,6 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 		char search[1024] = "";
 		char value[1024] = "";
 
-		global_livesniffer_all = 0;
 		sscanf(buf, "livefilter set %u %s %[^\n\r]", &uid, search, value);
 		if(verbosity > 0) {
 			syslog(LOG_NOTICE, "set livesniffer - uid: %u search: %s value: %s", uid, search, value);
@@ -1727,6 +1746,9 @@ getwav:
 		ostringstream outStrStat;
 		extern int vm_rrd_version;
 		checkRrdVersion(true);
+		while(__sync_lock_test_and_set(&usersniffer_sync, 1));
+		size_t countLiveSniffers = usersniffer.size();
+		__sync_lock_release(&usersniffer_sync);
 		outStrStat << "{"
 			   << "\"version\": \"" << RTPSENSOR_VERSION << "\","
 			   << "\"rrd_version\": \"" << vm_rrd_version << "\","
@@ -1734,6 +1756,7 @@ getwav:
 			   << "\"pbStatString\": \"" << pbStatString << "\","
 			   << "\"pbCountPacketDrop\": \"" << pbCountPacketDrop << "\","
 			   << "\"uptime\": \"" << getUptime() << "\","
+			   << "\"count_live_sniffers\": \"" << countLiveSniffers << "\","
 			   << "\"upgrade_by_git\": \"" << opt_upgrade_by_git << "\""
 			   << "}";
 		outStrStat << endl;
@@ -2224,6 +2247,88 @@ void livesnifferfilter_s::updateState() {
 	new_state.all_num = new_state.all_srcnum && new_state.all_dstnum && new_state.all_bothnum;
 	new_state.all_all = new_state.all_addr && new_state.all_num && new_state.all_siptypes;
 	this->state = new_state;
+}
+
+string livesnifferfilter_s::getStringState() {
+	ostringstream outStr;
+	outStr << "sip type: ";
+	if(this->state.all_siptypes) {
+		outStr << "all";
+	} else {
+		int counter = 0;
+		for(int i = 0; i < MAXLIVEFILTERS; i++) {
+			if(this->lv_siptypes[i]) {
+				if(counter) {
+					outStr << ",";
+				}
+				outStr << (this->lv_siptypes[i] == INVITE ? 'I' :
+					   this->lv_siptypes[i] == REGISTER ? 'R' :
+					   this->lv_siptypes[i] == OPTIONS ? 'O' :
+					   this->lv_siptypes[i] == SUBSCRIBE ? 'S' :
+					   this->lv_siptypes[i] == MESSAGE ? 'M' :
+									     '-');
+				++counter;
+			}
+		}
+	}
+	outStr << " ;   ";
+	for(int pass = 1; pass <= 3; pass++) {
+		if(!(pass == 1 ? this->state.all_saddr :
+		     pass == 2 ? this->state.all_daddr :
+				 this->state.all_bothaddr)) {
+			unsigned int *addr = pass == 1 ? this->lv_saddr :
+					     pass == 2 ? this->lv_daddr :
+							 this->lv_bothaddr;
+			int counter = 0;
+			for(int i = 0; i < MAXLIVEFILTERS; i++) {
+				if(addr[i]) {
+					if(counter) {
+						outStr << ", ";
+					} else {
+						outStr << (pass == 1 ? "source address" :
+							   pass == 2 ? "dest. address" :
+							   pass == 3 ? "address" : 
+								       "")
+						       << ": ";
+					}
+					outStr << inet_ntostring(addr[i]);
+					++counter;
+				}
+			}
+			if(counter) {
+				outStr << " ;   ";
+			}
+		}
+	}
+	for(int pass = 1; pass <= 3; pass++) {
+		if(!(pass == 1 ? this->state.all_srcnum :
+		     pass == 2 ? this->state.all_dstnum :
+				 this->state.all_bothnum)) {
+			char (*num)[MAXLIVEFILTERSCHARS] = pass == 1 ? this->lv_srcnum :
+							   pass == 2 ? this->lv_dstnum :
+								       this->lv_bothnum;
+			int counter = 0;
+			for(int i = 0; i < MAXLIVEFILTERS; i++) {
+				if(num[i][0]) {
+					if(counter) {
+						outStr << ", ";
+					} else {
+						outStr << (pass == 1 ? "source number" :
+							   pass == 2 ? "dest. number" :
+							   pass == 3 ? "number" : 
+								       "")
+						       << ": ";
+					}
+					outStr << num[i];
+					++counter;
+				}
+			}
+			if(counter) {
+				outStr << " ;   ";
+			}
+		}
+	}
+	return(outStr.str());
 }
 
 void updateLivesnifferfilters() {
