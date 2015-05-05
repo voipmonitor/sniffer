@@ -594,6 +594,7 @@ struct queue_state *qs_readpacket_thread_queue = NULL;
 nat_aliases_t nat_aliases;	// net_aliases[local_ip] = extern_ip
 
 MySqlStore *sqlStore = NULL;
+MySqlStore *loadFromQFiles = NULL;
 
 char mac[32] = "";
 
@@ -669,6 +670,14 @@ u_int64_t rdtsc_by_100ms;
 
 char opt_git_folder[1024];
 bool opt_upgrade_by_git;
+
+bool opt_save_query_to_files;
+char opt_save_query_to_files_directory[1024];
+int opt_save_query_to_files_period;
+
+int opt_load_query_from_files;
+char opt_load_query_from_files_directory[1024];
+int opt_load_query_from_files_period;
 
 #include <stdio.h>
 #include <pthread.h>
@@ -2711,6 +2720,26 @@ int eval_config(string inistr) {
 		opt_upgrade_by_git = yesno(value);
 	}
 	
+	if((value = ini.GetValue("general", "save_query_to_files", NULL))) {
+		opt_save_query_to_files = yesno(value);
+	}
+	if((value = ini.GetValue("general", "save_query_to_files_directory", NULL))) {
+		strncpy(opt_save_query_to_files_directory, value, sizeof(opt_save_query_to_files_directory));
+	}
+	if((value = ini.GetValue("general", "save_query_to_files_period", NULL))) {
+		opt_save_query_to_files_period = atoi(value);
+	}
+	
+	if((value = ini.GetValue("general", "load_query_from_files", NULL))) {
+		opt_load_query_from_files = !strcmp(value, "only") ? 2 : yesno(value);
+	}
+	if((value = ini.GetValue("general", "load_query_from_files_directory", NULL))) {
+		strncpy(opt_load_query_from_files_directory, value, sizeof(opt_load_query_from_files_directory));
+	}
+	if((value = ini.GetValue("general", "load_query_from_files_period", NULL))) {
+		opt_load_query_from_files_period = atoi(value);
+	}
+	
 	/*
 	
 	packetbuffer default configuration
@@ -3502,6 +3531,7 @@ int main(int argc, char *argv[]) {
 						else if(verbparams[i].substr(0, 25) == "memory_stat_ignore_limit=")
 													sverb.memory_stat_ignore_limit = atoi(verbparams[i].c_str() + 25);
 						else if(verbparams[i] == "qring_stat")			sverb.qring_stat = 1;
+						else if(verbparams[i] == "qfiles")			sverb.qfiles = 1;
 					}
 				} }
 				break;
@@ -4091,95 +4121,120 @@ int main(int argc, char *argv[]) {
 		delete sqlDb;
 	}
 	if(isSqlDriver("mysql")) {
-		sqlStore = new FILE_LINE MySqlStore(mysql_host, mysql_user, mysql_password, mysql_database, cloud_host, cloud_token);	
-		if(!opt_nocdr) {
-			sqlStore->connect(STORE_PROC_ID_CDR_1);
-			sqlStore->connect(STORE_PROC_ID_MESSAGE_1);
-		}
-		if(opt_mysqlloadconfig && 
-		   !opt_nocdr &&
-		   !(opt_pcap_threaded && opt_pcap_queue && 
-		     !opt_pcap_queue_receive_from_ip_port &&
-		     opt_pcap_queue_send_to_ip_port)) {
-			config_load_mysql();
-		}
-		if(opt_mysqlstore_concat_limit) {
-			 sqlStore->setDefaultConcatLimit(opt_mysqlstore_concat_limit);
-		}
-		for(int i = 0; i < opt_mysqlstore_max_threads_cdr; i++) {
-			if(opt_mysqlstore_concat_limit_cdr) {
-				sqlStore->setConcatLimit(STORE_PROC_ID_CDR_1 + i, opt_mysqlstore_concat_limit_cdr);
-			}
-			if(i) {
-				sqlStore->setEnableAutoDisconnect(STORE_PROC_ID_CDR_1 + i);
-			}
-			if(opt_mysql_enable_transactions_cdr) {
-				sqlStore->setEnableTransaction(STORE_PROC_ID_CDR_1 + i);
-			}
-			if(opt_cdr_check_duplicity_callid_in_next_pass_insert) {
-				sqlStore->setEnableFixDeadlock(STORE_PROC_ID_CDR_1 + i);
+		if(opt_load_query_from_files != 2) {
+			sqlStore = new FILE_LINE MySqlStore(mysql_host, mysql_user, mysql_password, mysql_database, cloud_host, cloud_token);
+			if(opt_save_query_to_files) {
+				sqlStore->queryToFiles(opt_save_query_to_files, opt_save_query_to_files_directory, opt_save_query_to_files_period);
 			}
 		}
-		for(int i = 0; i < opt_mysqlstore_max_threads_message; i++) {
-			if(opt_mysqlstore_concat_limit_message) {
-				sqlStore->setConcatLimit(STORE_PROC_ID_MESSAGE_1 + i, opt_mysqlstore_concat_limit_message);
-			}
-			if(i) {
-				sqlStore->setEnableAutoDisconnect(STORE_PROC_ID_MESSAGE_1 + i);
-			}
-			if(opt_mysql_enable_transactions_message) {
-				sqlStore->setEnableTransaction(STORE_PROC_ID_MESSAGE_1 + i);
-			}
-			if(opt_message_check_duplicity_callid_in_next_pass_insert) {
-				sqlStore->setEnableFixDeadlock(STORE_PROC_ID_MESSAGE_1 + i);
-			}
-		}
-		for(int i = 0; i < opt_mysqlstore_max_threads_register; i++) {
-			if(opt_mysqlstore_concat_limit_register) {
-				sqlStore->setConcatLimit(STORE_PROC_ID_REGISTER_1 + i, opt_mysqlstore_concat_limit_register);
-			}
-			if(i) {
-				sqlStore->setEnableAutoDisconnect(STORE_PROC_ID_REGISTER_1 + i);
-			}
-			if(opt_mysql_enable_transactions_register) {
-				sqlStore->setEnableTransaction(STORE_PROC_ID_REGISTER_1 + i);
+		if(opt_load_query_from_files) {
+			loadFromQFiles = new FILE_LINE MySqlStore(mysql_host, mysql_user, mysql_password, mysql_database);
+			loadFromQFiles->loadFromQFiles(opt_load_query_from_files, opt_load_query_from_files_directory, opt_load_query_from_files_period);
+			loadFromQFiles->addLoadFromQFile(10, "cdr");
+			loadFromQFiles->addLoadFromQFile(20, "message");
+			loadFromQFiles->addLoadFromQFile(40, "cleanspool");
+			loadFromQFiles->addLoadFromQFile(50, "register");
+			loadFromQFiles->addLoadFromQFile(60, "save_packet_sql");
+			loadFromQFiles->addLoadFromQFile(70, "http");
+			loadFromQFiles->addLoadFromQFile(80, "webrtc");
+			loadFromQFiles->addLoadFromQFile(91, "cache_numbers");
+			loadFromQFiles->addLoadFromQFile(92, "fraud_alert_info");
+			if(opt_ipaccount) {
+				loadFromQFiles->addLoadFromQFile(100, "ipacc");
+				loadFromQFiles->addLoadFromQFile(110, "ipacc_agreg");
+				loadFromQFiles->addLoadFromQFile(120, "ipacc_agreg2");
 			}
 		}
-		for(int i = 0; i < opt_mysqlstore_max_threads_http; i++) {
-			if(opt_mysqlstore_concat_limit_http) {
-				sqlStore->setConcatLimit(STORE_PROC_ID_HTTP_1 + i, opt_mysqlstore_concat_limit_http);
+		if(opt_load_query_from_files != 2) {
+			if(!opt_nocdr) {
+				sqlStore->connect(STORE_PROC_ID_CDR_1);
+				sqlStore->connect(STORE_PROC_ID_MESSAGE_1);
 			}
-			if(i) {
-				sqlStore->setEnableAutoDisconnect(STORE_PROC_ID_HTTP_1 + i);
+			if(opt_mysqlloadconfig && 
+			   !opt_nocdr &&
+			   !(opt_pcap_threaded && opt_pcap_queue && 
+			     !opt_pcap_queue_receive_from_ip_port &&
+			     opt_pcap_queue_send_to_ip_port)) {
+				config_load_mysql();
 			}
-			if(opt_mysql_enable_transactions_http) {
-				sqlStore->setEnableTransaction(STORE_PROC_ID_HTTP_1 + i);
+			if(opt_mysqlstore_concat_limit) {
+				 sqlStore->setDefaultConcatLimit(opt_mysqlstore_concat_limit);
 			}
-		}
-		for(int i = 0; i < opt_mysqlstore_max_threads_webrtc; i++) {
-			if(opt_mysqlstore_concat_limit_webrtc) {
-				sqlStore->setConcatLimit(STORE_PROC_ID_WEBRTC_1 + i, opt_mysqlstore_concat_limit_webrtc);
+			for(int i = 0; i < opt_mysqlstore_max_threads_cdr; i++) {
+				if(opt_mysqlstore_concat_limit_cdr) {
+					sqlStore->setConcatLimit(STORE_PROC_ID_CDR_1 + i, opt_mysqlstore_concat_limit_cdr);
+				}
+				if(i) {
+					sqlStore->setEnableAutoDisconnect(STORE_PROC_ID_CDR_1 + i);
+				}
+				if(opt_mysql_enable_transactions_cdr) {
+					sqlStore->setEnableTransaction(STORE_PROC_ID_CDR_1 + i);
+				}
+				if(opt_cdr_check_duplicity_callid_in_next_pass_insert) {
+					sqlStore->setEnableFixDeadlock(STORE_PROC_ID_CDR_1 + i);
+				}
 			}
-			if(i) {
-				sqlStore->setEnableAutoDisconnect(STORE_PROC_ID_WEBRTC_1 + i);
+			for(int i = 0; i < opt_mysqlstore_max_threads_message; i++) {
+				if(opt_mysqlstore_concat_limit_message) {
+					sqlStore->setConcatLimit(STORE_PROC_ID_MESSAGE_1 + i, opt_mysqlstore_concat_limit_message);
+				}
+				if(i) {
+					sqlStore->setEnableAutoDisconnect(STORE_PROC_ID_MESSAGE_1 + i);
+				}
+				if(opt_mysql_enable_transactions_message) {
+					sqlStore->setEnableTransaction(STORE_PROC_ID_MESSAGE_1 + i);
+				}
+				if(opt_message_check_duplicity_callid_in_next_pass_insert) {
+					sqlStore->setEnableFixDeadlock(STORE_PROC_ID_MESSAGE_1 + i);
+				}
 			}
-			if(opt_mysql_enable_transactions_webrtc) {
-				sqlStore->setEnableTransaction(STORE_PROC_ID_WEBRTC_1 + i);
+			for(int i = 0; i < opt_mysqlstore_max_threads_register; i++) {
+				if(opt_mysqlstore_concat_limit_register) {
+					sqlStore->setConcatLimit(STORE_PROC_ID_REGISTER_1 + i, opt_mysqlstore_concat_limit_register);
+				}
+				if(i) {
+					sqlStore->setEnableAutoDisconnect(STORE_PROC_ID_REGISTER_1 + i);
+				}
+				if(opt_mysql_enable_transactions_register) {
+					sqlStore->setEnableTransaction(STORE_PROC_ID_REGISTER_1 + i);
+				}
 			}
-		}
-		if(opt_mysqlstore_concat_limit_ipacc) {
-			for(int i = 0; i < opt_mysqlstore_max_threads_ipacc_base; i++) {
-				sqlStore->setConcatLimit(STORE_PROC_ID_IPACC_1 + i, opt_mysqlstore_concat_limit_ipacc);
+			for(int i = 0; i < opt_mysqlstore_max_threads_http; i++) {
+				if(opt_mysqlstore_concat_limit_http) {
+					sqlStore->setConcatLimit(STORE_PROC_ID_HTTP_1 + i, opt_mysqlstore_concat_limit_http);
+				}
+				if(i) {
+					sqlStore->setEnableAutoDisconnect(STORE_PROC_ID_HTTP_1 + i);
+				}
+				if(opt_mysql_enable_transactions_http) {
+					sqlStore->setEnableTransaction(STORE_PROC_ID_HTTP_1 + i);
+				}
 			}
-			for(int i = STORE_PROC_ID_IPACC_AGR_INTERVAL; i <= STORE_PROC_ID_IPACC_AGR_DAY; i++) {
-				sqlStore->setConcatLimit(i, opt_mysqlstore_concat_limit_ipacc);
+			for(int i = 0; i < opt_mysqlstore_max_threads_webrtc; i++) {
+				if(opt_mysqlstore_concat_limit_webrtc) {
+					sqlStore->setConcatLimit(STORE_PROC_ID_WEBRTC_1 + i, opt_mysqlstore_concat_limit_webrtc);
+				}
+				if(i) {
+					sqlStore->setEnableAutoDisconnect(STORE_PROC_ID_WEBRTC_1 + i);
+				}
+				if(opt_mysql_enable_transactions_webrtc) {
+					sqlStore->setEnableTransaction(STORE_PROC_ID_WEBRTC_1 + i);
+				}
 			}
-			for(int i = 0; i < opt_mysqlstore_max_threads_ipacc_agreg2; i++) {
-				sqlStore->setConcatLimit(STORE_PROC_ID_IPACC_AGR2_HOUR_1 + i, opt_mysqlstore_concat_limit_ipacc);
+			if(opt_mysqlstore_concat_limit_ipacc) {
+				for(int i = 0; i < opt_mysqlstore_max_threads_ipacc_base; i++) {
+					sqlStore->setConcatLimit(STORE_PROC_ID_IPACC_1 + i, opt_mysqlstore_concat_limit_ipacc);
+				}
+				for(int i = STORE_PROC_ID_IPACC_AGR_INTERVAL; i <= STORE_PROC_ID_IPACC_AGR_DAY; i++) {
+					sqlStore->setConcatLimit(i, opt_mysqlstore_concat_limit_ipacc);
+				}
+				for(int i = 0; i < opt_mysqlstore_max_threads_ipacc_agreg2; i++) {
+					sqlStore->setConcatLimit(STORE_PROC_ID_IPACC_AGR2_HOUR_1 + i, opt_mysqlstore_concat_limit_ipacc);
+				}
 			}
-		}
-		if(!opt_nocdr && opt_autoload_from_sqlvmexport) {
-			sqlStore->autoloadFromSqlVmExport();
+			if(!opt_nocdr && opt_autoload_from_sqlvmexport) {
+				sqlStore->autoloadFromSqlVmExport();
+			}
 		}
 	}
 	
@@ -4188,11 +4243,22 @@ int main(int argc, char *argv[]) {
 	   opt_database_backup_from_mysql_host[0] != '\0' &&
 	   opt_database_backup_from_mysql_database[0] != '\0' &&
 	   opt_database_backup_from_mysql_user[0] != '\0') {
-		if (opt_fork){
+		if (opt_fork) {
 			daemonize();
 		}
 		pthread_create(&database_backup_thread, NULL, database_backup, NULL);
 		pthread_join(database_backup_thread, NULL);
+		return(0);
+	}
+	
+	if(opt_load_query_from_files == 2) {
+		if (opt_fork) {
+			daemonize();
+		}
+		while(!terminating) {
+			sleep(1);
+		}
+		delete loadFromQFiles;
 		return(0);
 	}
 
@@ -4975,6 +5041,9 @@ int main(int argc, char *argv[]) {
 	
 	if(sqlStore) {
 		delete sqlStore;
+	}
+	if(loadFromQFiles) {
+		delete loadFromQFiles;
 	}
 	
 	if(custom_headers_cdr) {
