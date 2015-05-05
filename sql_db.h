@@ -10,6 +10,7 @@
 #include <sql.h>
 #include <sqlext.h>
 #include <sqltypes.h>
+#include <sys/file.h>
 
 #include "tools.h"
 
@@ -389,18 +390,20 @@ private:
 			if(!this->filename.length()) {
 				return(false);
 			}
-			file = fopen(this->filename.c_str(), "wt");
+			file = fopen(this->filename.c_str(), "wxt");
+			if(file) {
+				flock(fileno(file), LOCK_EX);
+			}
 			return(file != NULL);
 		}
-		void close(bool clear = false) {
+		void close() {
 			if(file) {
+				flock(fileno(file), LOCK_UN);
 				fclose(file);
 				file = NULL;
 			}
-			if(clear) {
-				filename = "";
-				createAt = 0;
-			}
+			filename = "";
+			createAt = 0;
 		}
 		bool isEmpty() {
 			return(filename.empty());
@@ -467,6 +470,7 @@ public:
 	string getQFilename(int idc, u_long actTime);
 	int convIdForQFile(int id);
 	void closeAllQFiles();
+	bool existFilenameInQFiles(const char *filename);
 	void addLoadFromQFile(int id, const char *name, 
 			      int maxStoreThreads = 0, int storeConcatLimit = 0);
 	string getMinQFile(int id);

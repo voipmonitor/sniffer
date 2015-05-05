@@ -3532,6 +3532,7 @@ int main(int argc, char *argv[]) {
 													sverb.memory_stat_ignore_limit = atoi(verbparams[i].c_str() + 25);
 						else if(verbparams[i] == "qring_stat")			sverb.qring_stat = 1;
 						else if(verbparams[i] == "qfiles")			sverb.qfiles = 1;
+						else if(verbparams[i] == "query_error")			sverb.query_error = 1;
 					}
 				} }
 				break;
@@ -4255,8 +4256,13 @@ int main(int argc, char *argv[]) {
 		if (opt_fork) {
 			daemonize();
 		}
+		unsigned int counter;
 		while(!terminating) {
 			sleep(1);
+			if(!(++counter % 10) && verbosity) {
+				string stat = loadFromQFiles->getLoadFromQFilesStat();
+				syslog(LOG_NOTICE, "SQLf: [%s]", stat.c_str());
+			}
 		}
 		delete loadFromQFiles;
 		return(0);

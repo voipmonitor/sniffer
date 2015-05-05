@@ -34,6 +34,7 @@ struct sVerbose {
 	int memory_stat_ignore_limit;
 	int qring_stat;
 	int qfiles;
+	int query_error;
 };
 
 #endif

@@ -803,7 +803,7 @@ bool SqlDb_mysql::query(string query, bool callFromStoreProcessWithFixDeadlock) 
 					syslog(LOG_NOTICE, "query error - error: %s", mysql_error(this->hMysql));
 				}
 				this->checkLastError("query error in [" + preparedQuery.substr(0,200) + (preparedQuery.size() > 200 ? "..." : "") + "]", !sql_noerror);
-				if(!sql_noerror && verbosity > 1) {
+				if(!sql_noerror && (verbosity > 1 || sverb.query_error)) {
 					cout << endl << "ERROR IN QUERY: " << endl
 					     << preparedQuery << endl;
 				}
@@ -1649,7 +1649,10 @@ MySqlStore::QFile MySqlStore::getQFile(int id) {
 	checkQFilePeriod(id);
 	if(qfiles[idc].isEmpty()) {
 		u_long actTime = getTimeMS();
-		qfiles[idc].open(getQFilename(idc, actTime).c_str(), actTime);
+		string qfilename = getQFilename(idc, actTime);
+		if(!qfiles[idc].open(qfilename.c_str(), actTime)) {
+			syslog(LOG_ERR, "failed create file %s in function MySqlStore::getQFile", qfilename.c_str());
+		}
 	}
 	QFile qfile = qfiles[idc];
 	unlock_qfiles();
@@ -1672,7 +1675,7 @@ bool MySqlStore::checkQFilePeriod(int id) {
 			cout << "*** CLOSE QFILE FROM FUNCTION checkQFilePeriod " << qfiles[idc].filename 
 			     << " - time: " << sqlDateTimeString(time(NULL)) << endl;
 		}
-		qfiles[idc].close(true);
+		qfiles[idc].close();
 		rslt = true;
 	}
 	return(rslt);
@@ -1692,6 +1695,19 @@ int MySqlStore::convIdForQFile(int id) {
 	return(id < STORE_PROC_ID_CACHE_NUMBERS_LOCATIONS  || id >= STORE_PROC_ID_IPACC_1 ? 
 		(id / 10) * 10 :
 		id);
+}
+
+bool MySqlStore::existFilenameInQFiles(const char *filename) {
+	bool exists = false;
+	lock_qfiles();
+	for(map<int, QFile>::iterator iter = qfiles.begin(); iter != qfiles.end(); iter++) {
+		if(filename == iter->second.filename) {
+			exists = true;
+			break;
+		}
+	}
+	unlock_qfiles();
+	return(exists);
 }
 
 void MySqlStore::closeAllQFiles() {
@@ -2112,7 +2128,7 @@ void *MySqlStore::threadQFilesCheckPeriod(void *arg) {
 					cout << "*** CLOSE FROM THREAD QFilesCheckPeriod " << iter->second.filename
 					     << " - time: " << sqlDateTimeString(time(NULL)) << endl;
 				}
-				iter->second.close(true);
+				iter->second.close();
 			}
 			iter->second.unlock();
 		}
@@ -2136,7 +2152,8 @@ void *MySqlStore::threadLoadFromQFiles(void *arg) {
 				usleep(100000);
 			}
 			if(!terminating) {
-				if(!me->loadFromQFile(minFile.c_str(), id)) {
+				if(me->existFilenameInQFiles(minFile.c_str()) ||
+				   !me->loadFromQFile(minFile.c_str(), id)) {
 					usleep(250000);
 				}
 			}
