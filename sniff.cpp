@@ -1579,16 +1579,17 @@ Call *new_invite_register(bool is_ssl, int sip_method, char *data, int datalen, 
 
 	//caller and called number has to be checked before flags due to skip filter
 	char tcaller[1024] = "", tcalled[1024] = "";
-    if (opt_ppreferredidentity || opt_remotepartyid || opt_passertedidentity) {
-        if (opt_remotepartypriority && opt_remotepartyid) {
+
+	if (opt_ppreferredidentity || opt_remotepartyid || opt_passertedidentity) {
+		if (opt_remotepartypriority && opt_remotepartyid) {
 			//Caller number is taken from headers (in this order) Remote-Party-ID,P-Asserted-Identity,P-Preferred-Identity,From,F
-            if(!get_sip_peername(data,datalen,"\nRemote-Party-ID:", tcaller, sizeof(tcaller)) &&
-              tcaller[0] != '\0') {
-                caller_useRemotePartyID = true;
-            } else {
-                if(opt_passertedidentity && !get_sip_peername(data,datalen,"\nP-Assserted-Identity:", tcaller, sizeof(tcaller)) &&
-                  tcaller[0] != '\0') {
-                    caller_usePAssertedIdentity = true;
+			if(!get_sip_peername(data,datalen,"\nRemote-Party-ID:", tcaller, sizeof(tcaller)) &&
+			  tcaller[0] != '\0') {
+				caller_useRemotePartyID = true;
+			} else {
+				if(opt_passertedidentity && !get_sip_peername(data,datalen,"\nP-Assserted-Identity:", tcaller, sizeof(tcaller)) &&
+				  tcaller[0] != '\0') {
+					caller_usePAssertedIdentity = true;
 				} else {
 					if(opt_ppreferredidentity && !get_sip_peername(data,datalen,"\nP-Preferred-Identity:", tcaller, sizeof(tcaller)) &&
 					  tcaller[0] != '\0') {
@@ -1602,9 +1603,8 @@ Call *new_invite_register(bool is_ssl, int sip_method, char *data, int datalen, 
 					}
 				}
 			}
-        } else {
+		} else {
 			//Caller number is taken from headers (in this order) P-Asserted-Identity, P-Preferred-Identity, Remote-Party-ID,From, F
-			syslog(LOG_NOTICE, "callslimit[%d] > calls[%d] ignoring call\n", opt_callslimit, calls_counter);
 			if(opt_passertedidentity && !get_sip_peername(data,datalen,"\nP-Asserted-Identity:", tcaller, sizeof(tcaller)) &&
 			  tcaller[0] != '\0') {
 				caller_usePAssertedIdentity = true;
@@ -1626,7 +1626,7 @@ Call *new_invite_register(bool is_ssl, int sip_method, char *data, int datalen, 
 				}
 			}
 		}
-    } else {
+	} else {
 		//Caller is taken from header From , F
 		caller_useFrom =  true;
 		if(get_sip_peername(data,datalen,"\nFrom:", tcaller, sizeof(tcaller)) ||
