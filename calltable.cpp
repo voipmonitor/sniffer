@@ -1443,9 +1443,13 @@ Call::convertRawToWav() {
 			rawl.filename = raw;
 
 			if(iter > 0) {
-				if(ssrc_index >= ssrc_n) {
-					syslog(LOG_NOTICE, "ignoring rtp stream - bad ssrc_index[%i] ssrc_n[%i]; call [%s] stream[%s] ssrc[%x] ssrc[%x]", 
-					       ssrc_index, ssrc_n, fbasename, raw, rtp[last_ssrc_index]->ssrc, rtp[ssrc_index]->ssrc);
+				if(ssrc_index >= ssrc_n ||
+				   last_ssrc_index >= (unsigned)ssrc_n) {
+					syslog(LOG_NOTICE, "ignoring rtp stream - bad ssrc_index[%i] or last_ssrc_index[%i] ssrc_n[%i]; call [%s] stream[%s] ssrc[%x] ssrc/last[%x]", 
+					       ssrc_index, last_ssrc_index, 
+					       ssrc_n, fbasename, raw, 
+					       ssrc_index >= ssrc_n ? 0 : rtp[ssrc_index]->ssrc,
+					       last_ssrc_index >= (unsigned)ssrc_n ? 0 : rtp[last_ssrc_index]->ssrc);
 					if(!sverb.noaudiounlink) unlink(raw);
 				} else if(rtp[ssrc_index]->ssrc == rtp[last_ssrc_index]->ssrc and
 					  abs(ast_tvdiff_ms(tv0, lasttv)) < 200 and
