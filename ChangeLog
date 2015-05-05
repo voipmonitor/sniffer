@@ -1,3 +1,17 @@
+11.3 05.05.2015
+===============
+- fix empty caller name in database for >= 11.2.1 
+- fix duration of calls in active calls if there were no packets during the call (ie missing RTP) 
+- fix rare crash when audio recording is enabled during sniffing (it was not fixed properly in 11.1.1) 
+- add support for list of active live sniffing so GUI can close all active sniffers (if someone forget to close it)  [VG-189]
+- add new options passertedidentity, ppreferredidentity and remotepartypriority (parsing callerid name/num from P-[asserted|preffered]-identity instead of From header (check voipmonitor.conf) 
+
+
+11.2.2 04.05.2015
+=================
+- fix memory leak in tcpreassembly (clean empty links_
+- fix memory leak for IP fragmented packets (in threading mode 4)
+
 11.2.1 28.04.2015
 =================
 - fix mysql errors when creating new database / tables (on empty db) 
