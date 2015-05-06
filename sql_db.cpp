@@ -11,6 +11,11 @@
 #include <errmsg.h>
 #include <dirent.h>
 #include <math.h>
+#include <signal.h>
+
+#ifndef FREEBSD
+#include <sys/inotify.h>
+#endif
 
 #include "voipmonitor.h"
 
@@ -1244,6 +1249,7 @@ MySqlStore_process::MySqlStore_process(int id, const char *host, const char *use
 	this->enableTransaction = false;
 	this->enableFixDeadlock = false;
 	this->lastQueryTime = 0;
+	this->queryCounter = 0;
 	this->sqlDb = new FILE_LINE SqlDb_mysql();
 	this->sqlDb->setConnectParameters(host, user, password, database);
 	if(cloud_host && *cloud_host) {
@@ -1280,10 +1286,12 @@ void MySqlStore_process::query(const char *query_str) {
 	if(sverb.store_process_query) {
 		cout << "store_process_query_" << this->id << ": " << query_str << endl;
 	}
-	if(!this->thread) {
+	if(!this->thread ||
+	   (!(queryCounter % 100) && pthread_kill(this->thread, SIGCONT))) {
 		pthread_create(&this->thread, NULL, MySqlStore_process_storing, this);
 	}
 	this->query_buff.push_back(query_str);
+	++queryCounter;
 }
 
 void MySqlStore_process::store() {
@@ -1529,6 +1537,7 @@ MySqlStore::MySqlStore(const char *host, const char *user, const char *password,
 	this->enableTerminatingIfSqlError = false;
 	this->_sync_qfiles = 0;
 	this->qfilesCheckperiodThread = 0;
+	this->qfilesINotifyThread = 0;
 }
 
 MySqlStore::~MySqlStore() {
@@ -1584,23 +1593,6 @@ void MySqlStore::loadFromQFiles(bool enable, const char *directory, int period) 
 	}
 }
 
-string MySqlStore::getLoadFromQFilesStat() {
-	ostringstream outStr;
-	outStr << fixed;
-	int counter = 0;
-	for(map<int, LoadFromQFilesThreadData>::iterator iter = loadFromQFilesThreadData.begin(); iter != loadFromQFilesThreadData.end(); iter++) {
-		int countQFiles = getCountQFiles(iter->second.id);
-		if(countQFiles > 0) {
-			if(counter) {
-				outStr << ", ";
-			}
-			outStr << iter->second.name << ": " << countQFiles;
-			++counter;
-		}
-	}
-	return(outStr.str());
-}
-
 void MySqlStore::connect(int id) {
 	if(qfileConfig.enable) {
 		return;
@@ -1650,7 +1642,12 @@ MySqlStore::QFile MySqlStore::getQFile(int id) {
 	if(qfiles[idc].isEmpty()) {
 		u_long actTime = getTimeMS();
 		string qfilename = getQFilename(idc, actTime);
-		if(!qfiles[idc].open(qfilename.c_str(), actTime)) {
+		if(qfiles[idc].open(qfilename.c_str(), actTime)) {
+			if(sverb.qfiles) {
+				cout << "*** OPEN QFILE " << qfiles[idc].filename 
+				     << " - time: " << sqlDateTimeString(time(NULL)) << endl;
+			}
+		} else {
 			syslog(LOG_ERR, "failed create file %s in function MySqlStore::getQFile", qfilename.c_str());
 		}
 	}
@@ -1713,11 +1710,32 @@ bool MySqlStore::existFilenameInQFiles(const char *filename) {
 void MySqlStore::closeAllQFiles() {
 	lock_qfiles();
 	for(map<int, QFile>::iterator iter = qfiles.begin(); iter != qfiles.end(); iter++) {
-		iter->second.lock();
-		iter->second.close();
-		iter->second.unlock();
+		if(iter->second.file) {
+			iter->second.lock();
+			if(sverb.qfiles) {
+				cout << "*** CLOSE QFILE FROM FUNCTION MySqlStore::closeAllQFiles " << iter->second.filename
+				     << " - time: " << sqlDateTimeString(time(NULL)) << endl;
+			}
+			iter->second.close();
+			iter->second.unlock();
+		}
 	}
 	unlock_qfiles();
+}
+
+void MySqlStore::enableInotifyForLoadFromQFile(bool enableINotify) {
+#ifndef FREEBSD
+	loadFromQFileConfig.inotify = enableINotify;
+	if(loadFromQFileConfig.enable && loadFromQFileConfig.inotify) {
+		pthread_create(&this->qfilesINotifyThread, NULL, this->threadINotifyQFiles, this);
+	}
+#endif
+}
+
+void MySqlStore::setInotifyReadyForLoadFromQFile(bool iNotifyReady) {
+	if(loadFromQFileConfig.enable && loadFromQFileConfig.inotify) {
+		loadFromQFileConfig.inotify_ready = iNotifyReady;
+	}
 }
 
 void MySqlStore::addLoadFromQFile(int id, const char *name, 
@@ -1735,33 +1753,68 @@ void MySqlStore::addLoadFromQFile(int id, const char *name,
 	pthread_create(&loadFromQFilesThreadData[id].thread, NULL, this->threadLoadFromQFiles, threadInfo);
 }
 
-string MySqlStore::getMinQFile(int id) {
+bool MySqlStore::fillQFiles(int id) {
 	extern char opt_chdir[1024];
 	DIR* dp = opendir(loadFromQFileConfig.directory.empty() ? opt_chdir : loadFromQFileConfig.directory.c_str());
 	if(!dp) {
-		return("");
+		return(false);
 	}
-	u_long minTime = 0;
-	string minTimeFileName;
 	char prefix[10];
 	sprintf(prefix, "%s-%i-", QFILE_PREFIX, id);
 	dirent* de;
 	while((de = readdir(dp)) != NULL) {
 		if(strncmp(de->d_name, prefix, strlen(prefix))) continue;
-		u_long time = atoll(de->d_name + strlen(prefix));
-		if(!minTime || time < minTime) {
-			minTime = time;
-			minTimeFileName = de->d_name;
+		QFileData qfileData = parseQFilename(de->d_name);
+		if(qfileData.id) {
+			loadFromQFilesThreadData[qfileData.id].addFile(qfileData.time, de->d_name);
 		}
 	}
 	closedir(dp);
-	if(minTime &&
-	   (getTimeMS() - minTime) > (unsigned)loadFromQFileConfig.period * 2 * 1000) {
-		return((loadFromQFileConfig.directory.empty() ? string(opt_chdir) : loadFromQFileConfig.directory) +
-		       "/" + minTimeFileName);
+	return(true);
+}
+
+string MySqlStore::getMinQFile(int id) {
+	extern char opt_chdir[1024];
+	if(loadFromQFileConfig.inotify) {
+		string qfilename;
+		loadFromQFilesThreadData[id].lock();
+		map<u_long, string>::iterator iter = loadFromQFilesThreadData[id].qfiles.begin();
+		if(iter != loadFromQFilesThreadData[id].qfiles.end() &&
+		   (getTimeMS() - iter->first) > (unsigned)loadFromQFileConfig.period * 2 * 1000) {
+			qfilename = iter->second;
+			loadFromQFilesThreadData[id].qfiles.erase(iter);
+		}
+		loadFromQFilesThreadData[id].unlock();
+		if(!qfilename.empty()) {
+			return((loadFromQFileConfig.directory.empty() ? string(opt_chdir) : loadFromQFileConfig.directory) +
+			       "/" + qfilename);
+		}
 	} else {
-		return("");
+		DIR* dp = opendir(loadFromQFileConfig.directory.empty() ? opt_chdir : loadFromQFileConfig.directory.c_str());
+		if(!dp) {
+			return("");
+		}
+		u_long minTime = 0;
+		string minTimeFileName;
+		char prefix[10];
+		sprintf(prefix, "%s-%i-", QFILE_PREFIX, id);
+		dirent* de;
+		while((de = readdir(dp)) != NULL) {
+			if(strncmp(de->d_name, prefix, strlen(prefix))) continue;
+			u_long time = atoll(de->d_name + strlen(prefix));
+			if(!minTime || time < minTime) {
+				minTime = time;
+				minTimeFileName = de->d_name;
+			}
+		}
+		closedir(dp);
+		if(minTime &&
+		   (getTimeMS() - minTime) > (unsigned)loadFromQFileConfig.period * 2 * 1000) {
+			return((loadFromQFileConfig.directory.empty() ? string(opt_chdir) : loadFromQFileConfig.directory) +
+			       "/" + minTimeFileName);
+		}
 	}
+	return("");
 }
 
 int MySqlStore::getCountQFiles(int id) {
@@ -1842,6 +1895,51 @@ bool MySqlStore::loadFromQFile(const char *filename, int id) {
 		     << " - time: " << sqlDateTimeString(time(NULL)) << endl;
 	}
 	return(true);
+}
+
+void MySqlStore::addFileFromINotify(const char *filename) {
+	while(!loadFromQFileConfig.inotify_ready) {
+		usleep(100000);
+	}
+	QFileData qfileData = parseQFilename(filename);
+	if(qfileData.id) {
+		if(sverb.qfiles) {
+			cout << "*** INOTIFY QFILE " << filename 
+			     << " - time: " << sqlDateTimeString(time(NULL)) << endl;
+		}
+		loadFromQFilesThreadData[qfileData.id].addFile(qfileData.time, qfileData.filename.c_str());
+	}
+}
+
+MySqlStore::QFileData MySqlStore::parseQFilename(const char *filename) {
+	QFileData qfileData;
+	if(!strncmp(filename, QFILE_PREFIX, strlen(QFILE_PREFIX))) {
+		int id;
+		u_long time;
+		if(sscanf(filename + strlen(QFILE_PREFIX) , "-%i-%lu", &id, &time) == 2) {
+			qfileData.filename = filename;
+			qfileData.id = id;
+			qfileData.time = time;;
+		}
+	}
+	return(qfileData);
+}
+
+string MySqlStore::getLoadFromQFilesStat() {
+	ostringstream outStr;
+	outStr << fixed;
+	int counter = 0;
+	for(map<int, LoadFromQFilesThreadData>::iterator iter = loadFromQFilesThreadData.begin(); iter != loadFromQFilesThreadData.end(); iter++) {
+		int countQFiles = getCountQFiles(iter->second.id);
+		if(countQFiles > 0) {
+			if(counter) {
+				outStr << ", ";
+			}
+			outStr << iter->second.name << ": " << countQFiles;
+			++counter;
+		}
+	}
+	return(outStr.str());
 }
 
 void MySqlStore::lock(int id) {
@@ -2143,6 +2241,9 @@ void *MySqlStore::threadLoadFromQFiles(void *arg) {
 	int id = threadInfo->id;
 	MySqlStore *me = threadInfo->store;
 	delete threadInfo;
+	if(me->loadFromQFileConfig.inotify) {
+		me->fillQFiles(id);
+	}
 	while(!terminating) {
 		string minFile = me->getMinQFile(id);
 		if(minFile.empty()) {
@@ -2159,6 +2260,46 @@ void *MySqlStore::threadLoadFromQFiles(void *arg) {
 			}
 		}
 	}
+	return(NULL);
+}
+
+void *MySqlStore::threadINotifyQFiles(void *arg) {
+#ifndef FREEBSD
+	MySqlStore *me = (MySqlStore*)arg;
+	int inotifyDescriptor = inotify_init();
+	if(inotifyDescriptor < 0) {
+		syslog(LOG_ERR, "inotify init failed");
+		me->loadFromQFileConfig.inotify = false;
+		return(NULL);
+	}
+	extern char opt_chdir[1024];
+	const char *directory = me->loadFromQFileConfig.directory.empty() ? opt_chdir : me->loadFromQFileConfig.directory.c_str();
+	int watchDescriptor = inotify_add_watch(inotifyDescriptor, directory, IN_CLOSE_WRITE);
+	if(watchDescriptor < 0) {
+		syslog(LOG_ERR, "inotify watch %s failed", directory);
+		close(inotifyDescriptor);
+		me->loadFromQFileConfig.inotify = false;
+		return(NULL);
+	}
+	unsigned watchBuffMaxLen = 1024 * 20;
+	char *watchBuff =  new char[watchBuffMaxLen];
+	while(!terminating) {
+		ssize_t watchBuffLen = read(inotifyDescriptor, watchBuff, watchBuffMaxLen);
+		if(watchBuffLen == watchBuffMaxLen) {
+			syslog(LOG_NOTICE, "qfiles inotify events filled whole buffer");
+		}
+		unsigned i = 0;
+		while(i < watchBuffLen && !terminating) {
+			inotify_event *event = (inotify_event*)(watchBuff + i);
+			i += sizeof(inotify_event) + event->len;
+			if(event->mask & IN_CLOSE_WRITE) {
+				me->addFileFromINotify(event->name);
+			}
+		}
+	}
+	delete [] watchBuff;
+	inotify_rm_watch(inotifyDescriptor, watchDescriptor);
+#endif
 	return(NULL);
 }
 

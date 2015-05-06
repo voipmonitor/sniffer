@@ -678,6 +678,7 @@ int opt_save_query_to_files_period;
 int opt_load_query_from_files;
 char opt_load_query_from_files_directory[1024];
 int opt_load_query_from_files_period;
+bool opt_load_query_from_files_inotify;
 
 #include <stdio.h>
 #include <pthread.h>
@@ -2739,6 +2740,9 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "load_query_from_files_period", NULL))) {
 		opt_load_query_from_files_period = atoi(value);
 	}
+	if((value = ini.GetValue("general", "load_query_from_files_inotify", NULL))) {
+		opt_load_query_from_files_inotify = yesno(value);
+	}
 	
 	/*
 	
@@ -4131,6 +4135,9 @@ int main(int argc, char *argv[]) {
 		if(opt_load_query_from_files) {
 			loadFromQFiles = new FILE_LINE MySqlStore(mysql_host, mysql_user, mysql_password, mysql_database);
 			loadFromQFiles->loadFromQFiles(opt_load_query_from_files, opt_load_query_from_files_directory, opt_load_query_from_files_period);
+			if(opt_load_query_from_files_inotify) {
+				loadFromQFiles->enableInotifyForLoadFromQFile();
+			}
 			loadFromQFiles->addLoadFromQFile(10, "cdr");
 			loadFromQFiles->addLoadFromQFile(20, "message");
 			loadFromQFiles->addLoadFromQFile(40, "cleanspool");
@@ -4140,6 +4147,9 @@ int main(int argc, char *argv[]) {
 			loadFromQFiles->addLoadFromQFile(80, "webrtc");
 			loadFromQFiles->addLoadFromQFile(91, "cache_numbers");
 			loadFromQFiles->addLoadFromQFile(92, "fraud_alert_info");
+			if(opt_load_query_from_files_inotify) {
+				loadFromQFiles->setInotifyReadyForLoadFromQFile();
+			}
 			if(opt_ipaccount) {
 				loadFromQFiles->addLoadFromQFile(100, "ipacc");
 				loadFromQFiles->addLoadFromQFile(110, "ipacc_agreg");

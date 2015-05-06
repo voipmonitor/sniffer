@@ -2852,19 +2852,17 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void *arg, unsigned int 
 					header = hpii.header;
 					packet = hpii.packet;
 				}
-				if(opt_dup_check) {
-					res = this->pcapProcess(&header, &packet, &destroy);
-					if(res == -1) {
-						this->prevThreads[0]->moveReadit();
-						break;
-					} else if(res == 0) {
-						if(destroy) {
-							delete header;
-							delete [] packet;
-						}
-						this->prevThreads[0]->moveReadit();
-						continue;
+				res = this->pcapProcess(&header, &packet, &destroy);
+				if(res == -1) {
+					this->prevThreads[0]->moveReadit();
+					break;
+				} else if(res == 0) {
+					if(destroy) {
+						delete header;
+						delete [] packet;
 					}
+					this->prevThreads[0]->moveReadit();
+					continue;
 				}
 				this->push(header, packet, this->ppd.header_ip_offset, NULL);
 				this->prevThreads[0]->moveReadit();
