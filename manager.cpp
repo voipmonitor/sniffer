@@ -1854,7 +1854,7 @@ getwav:
 		opt_blockprocesspacket = 1;
 	} else if(buf[0] == 'u' and strstr(buf, "unblockprocesspacket") != NULL) {
 		opt_blockprocesspacket = 0;
-	} else if(buf[0] == 'b' and strstr(buf, "blockfile") != NULL) {
+	} else if(buf[0] == 'b' and strstr(buf, "blockqfile") != NULL) {
 		opt_blockqfile = 1;
 	} else if(buf[0] == 'u' and strstr(buf, "unblockqfile") != NULL) {
 		opt_blockqfile = 0;
