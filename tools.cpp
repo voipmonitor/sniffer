@@ -2460,6 +2460,12 @@ bool FileZipHandler::open(const char *fileName, int permission) {
 		}
 	}
 	this->fileName = fileName;
+	extern int opt_spooldir_by_sensor;
+	if(opt_spooldir_by_sensor && this->call && this->call->useSensorId > 0) {
+		char sensorIdStr[10];
+		sprintf(sensorIdStr, "%i/", this->call->useSensorId);
+		this->fileName = sensorIdStr + this->fileName;
+	}
 	this->permission = permission;
 	return(true);
 }

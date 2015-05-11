@@ -488,12 +488,10 @@ public:
 	void query_lock(const char *query_str, int id);
 	// qfiles
 	void query_to_file(const char *query_str, int id);
-	QFile getQFile(int id);
-	void unlockQFile(int id);
-	bool checkQFilePeriod(int id);
 	string getQFilename(int idc, u_long actTime);
 	int convIdForQFile(int id);
 	void closeAllQFiles();
+	void clearAllQFiles();
 	bool existFilenameInQFiles(const char *filename);
 	void enableInotifyForLoadFromQFile(bool enableINotify = true);
 	void setInotifyReadyForLoadFromQFile(bool iNotifyReady = true);
@@ -556,7 +554,7 @@ private:
 	bool enableTerminatingIfSqlError;
 	QFileConfig qfileConfig;
 	QFileConfig loadFromQFileConfig;
-	map<int, QFile> qfiles;
+	map<int, QFile*> qfiles;
 	volatile int _sync_qfiles;
 	pthread_t qfilesCheckperiodThread;
 	map<int, LoadFromQFilesThreadData> loadFromQFilesThreadData;

@@ -254,6 +254,7 @@ int opt_cdronlyanswered = 0;
 int opt_cdronlyrtp = 0;
 int opt_pcap_split = 1;
 int opt_newdir = 1;
+int opt_spooldir_by_sensor = 0;
 char opt_clientmanager[1024] = "";
 int opt_clientmanagerport = 9999;
 int opt_callslimit = 0;
@@ -1890,6 +1891,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "spooldiroldschema", NULL))) {
 		opt_newdir = !yesno(value);
+	}
+	if((value = ini.GetValue("general", "spooldir_by_sensor", NULL))) {
+		opt_spooldir_by_sensor = yesno(value);
 	}
 	if((value = ini.GetValue("general", "pcapsplit", NULL))) {
 		opt_pcap_split = yesno(value);
