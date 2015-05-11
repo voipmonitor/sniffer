@@ -2866,6 +2866,8 @@ void set_context_config() {
 		opt_enable_ssl = 0;
 		opt_pcap_dump_tar = 0;
 		opt_pcap_dump_asyncwrite = 0;
+		opt_save_query_to_files = false;
+		opt_load_query_from_files = 0;
 	}
 	
 	if(opt_pcap_dump_tar) {
