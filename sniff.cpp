@@ -2327,6 +2327,15 @@ Call *process_packet(bool is_ssl, u_int64_t packet_number,
 			}
 #endif 
 			++counter_sip_packets[1];
+			
+			if(sverb.dump_sip) {
+				char *dump_data = new FILE_LINE char[datalen + 1];
+				memcpy(dump_data, data, datalen);
+				dump_data[datalen] = 0;
+				cout << counter_sip_packets[1] << endl
+				     << dump_data << endl;
+				delete [] dump_data;
+			}
 		}
 
 		sip_method = parsePacket && parsePacket->_getSipMethod ?
