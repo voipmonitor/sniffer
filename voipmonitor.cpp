@@ -518,21 +518,21 @@ char opt_cachedir[1024];
 
 int opt_upgrade_try_http_if_https_fail = 0;
 
-IPfilter *ipfilter = NULL;		// IP filter based on MYSQL 
-IPfilter *ipfilter_reload = NULL;	// IP filter based on MYSQL for reload purpose
-int ipfilter_reload_do = 0;	// for reload in main thread
+IPfilter *ipfilter = NULL;				// IP filter based on MYSQL 
+IPfilter *ipfilter_reload = NULL;			// IP filter based on MYSQL for reload purpose
+volatile int ipfilter_reload_do = 0;			// for reload in main thread
 
-TELNUMfilter *telnumfilter = NULL;		// TELNUM filter based on MYSQL 
-TELNUMfilter *telnumfilter_reload = NULL;	// TELNUM filter based on MYSQL for reload purpose
-int telnumfilter_reload_do = 0;	// for reload in main thread
+TELNUMfilter *telnumfilter = NULL;			// TELNUM filter based on MYSQL 
+TELNUMfilter *telnumfilter_reload = NULL;		// TELNUM filter based on MYSQL for reload purpose
+volatile int telnumfilter_reload_do = 0;		// for reload in main thread
 
-DOMAINfilter *domainfilter = NULL;		// DOMAIN filter based on MYSQL 
-DOMAINfilter *domainfilter_reload = NULL;	// DOMAIN filter based on MYSQL for reload purpose
-int domainfilter_reload_do = 0;	// for reload in main thread
+DOMAINfilter *domainfilter = NULL;			// DOMAIN filter based on MYSQL 
+DOMAINfilter *domainfilter_reload = NULL;		// DOMAIN filter based on MYSQL for reload purpose
+volatile int domainfilter_reload_do = 0;		// for reload in main thread
 
 SIP_HEADERfilter *sipheaderfilter = NULL;		// SIP_HEADER filter based on MYSQL 
 SIP_HEADERfilter *sipheaderfilter_reload = NULL;	// SIP_HEADER filter based on MYSQL for reload purpose
-int sipheaderfilter_reload_do = 0;	// for reload in main thread
+volatile int sipheaderfilter_reload_do = 0;		// for reload in main thread
 
 pthread_t storing_cdr_thread;		// ID of worker storing CDR thread 
 pthread_t scanpcapdir_thread;
@@ -3028,37 +3028,45 @@ void reload_config() {
 
 void reload_capture_rules() {
 
+	ipfilter_reload_do = 0;
+	IPfilter::lock_sync();
 	if(ipfilter_reload) {
 		delete ipfilter_reload;
 	}
-
 	ipfilter_reload = new FILE_LINE IPfilter;
 	ipfilter_reload->load();
 	ipfilter_reload_do = 1;
+	IPfilter::unlock_sync();
 
+	telnumfilter_reload_do = 0;
+	TELNUMfilter::lock_sync();
 	if(telnumfilter_reload) {
 		delete telnumfilter_reload;
 	}
-
 	telnumfilter_reload = new FILE_LINE TELNUMfilter;
 	telnumfilter_reload->load();
 	telnumfilter_reload_do = 1;
+	TELNUMfilter::unlock_sync();
 
+	domainfilter_reload_do = 0;
+	DOMAINfilter::lock_sync();
 	if(domainfilter_reload) {
 		delete domainfilter_reload;
 	}
-
 	domainfilter_reload = new FILE_LINE DOMAINfilter;
 	domainfilter_reload->load();
 	domainfilter_reload_do = 1;
+	DOMAINfilter::unlock_sync();
 
+	sipheaderfilter_reload_do = 0;
+	SIP_HEADERfilter::lock_sync();
 	if(sipheaderfilter_reload) {
 		delete sipheaderfilter_reload;
 	}
-
 	sipheaderfilter_reload = new FILE_LINE SIP_HEADERfilter;
 	sipheaderfilter_reload->load();
 	sipheaderfilter_reload_do = 1;
+	SIP_HEADERfilter::unlock_sync();
 
 }
 

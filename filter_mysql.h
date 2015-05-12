@@ -90,6 +90,15 @@ public:
         void dump();
 	int add_call_flags(unsigned int *flags, unsigned int saddr, unsigned int daddr);
 
+private:
+	static volatile int _sync;
+public:
+	static void lock_sync() {
+		while(__sync_lock_test_and_set(&_sync, 1));
+	}
+	static void unlock_sync() {
+		__sync_lock_release(&_sync);
+	}
 };
 
 class TELNUMfilter : public filter_base {
@@ -121,6 +130,15 @@ public:
         void dump(t_node_tel *node = NULL);
 	void add_payload(t_payload *payload);
 	int add_call_flags(unsigned int *flags, char *telnum_src, char *telnum_dst);
+private:
+	static volatile int _sync;
+public:
+	static void lock_sync() {
+		while(__sync_lock_test_and_set(&_sync, 1));
+	}
+	static void unlock_sync() {
+		__sync_lock_release(&_sync);
+	}
 };
 
 class DOMAINfilter : public filter_base {
@@ -145,6 +163,15 @@ public:
 	void load();
 	void dump();
 	int add_call_flags(unsigned int *flags, char *domain_src, char *domain_dst);
+private:
+	static volatile int _sync;
+public:
+	static void lock_sync() {
+		while(__sync_lock_test_and_set(&_sync, 1));
+	}
+	static void unlock_sync() {
+		__sync_lock_release(&_sync);
+	}
 };
 
 class SIP_HEADERfilter : public filter_base {
@@ -177,14 +204,13 @@ public:
 	void dump();
 	int add_call_flags(class ParsePacket *parsePacket, unsigned int *flags, char *domain_src, char *domain_dst);
 	void addNodes(ParsePacket *parsePacket);
-	
-	unsigned long loadTime;
-	unsigned long getLoadTime() {
-		return(loadTime);
-	}
 private:
+	static volatile unsigned long loadTime;
 	static volatile int _sync;
 public:
+	static unsigned long getLoadTime() {
+		return(loadTime);
+	}
 	static void lock_sync() {
 		while(__sync_lock_test_and_set(&_sync, 1));
 	}

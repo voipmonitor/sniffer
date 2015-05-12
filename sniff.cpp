@@ -149,16 +149,16 @@ extern int opt_ipaccount;
 extern int opt_cdrproxy;
 extern IPfilter *ipfilter;
 extern IPfilter *ipfilter_reload;
-extern int ipfilter_reload_do;
+extern volatile int ipfilter_reload_do;
 extern TELNUMfilter *telnumfilter;
 extern TELNUMfilter *telnumfilter_reload;
-extern int telnumfilter_reload_do;
+extern volatile int telnumfilter_reload_do;
 extern DOMAINfilter *domainfilter;
 extern DOMAINfilter *domainfilter_reload;
-extern int domainfilter_reload_do;
+extern volatile int domainfilter_reload_do;
 extern SIP_HEADERfilter *sipheaderfilter;
 extern SIP_HEADERfilter *sipheaderfilter_reload;
-extern int sipheaderfilter_reload_do;
+extern volatile int sipheaderfilter_reload_do;
 extern int rtp_threaded;
 extern int opt_pcap_threaded;
 extern int opt_rtpsave_threaded;
@@ -2153,22 +2153,28 @@ Call *process_packet(bool is_ssl, u_int64_t packet_number,
 
 	if (header->ts.tv_sec - process_packet__last_filter_reload > 1){
 		if(ipfilter_reload_do) {
+			IPfilter::lock_sync();
 			delete ipfilter;
 			ipfilter = ipfilter_reload;
 			ipfilter_reload = NULL;
 			ipfilter_reload_do = 0; 
+			IPfilter::unlock_sync();
 		}
 		if(telnumfilter_reload_do) {
+			TELNUMfilter::lock_sync();
 			delete telnumfilter;
 			telnumfilter = telnumfilter_reload;
 			telnumfilter_reload = NULL;
 			telnumfilter_reload_do = 0; 
+			TELNUMfilter::unlock_sync();
 		}
 		if(domainfilter_reload_do) {
+			DOMAINfilter::lock_sync();
 			delete domainfilter;
 			domainfilter = domainfilter_reload;
 			domainfilter_reload = NULL;
 			domainfilter_reload_do = 0; 
+			DOMAINfilter::unlock_sync();
 		}
 		if(sipheaderfilter_reload_do) {
 			SIP_HEADERfilter::lock_sync();

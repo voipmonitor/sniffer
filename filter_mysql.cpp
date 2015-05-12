@@ -195,6 +195,8 @@ IPfilter::dump() {
 	}
 }
 
+volatile int IPfilter::_sync = 0;
+
 /* TELNUMfilter class */
 
 // constructor
@@ -357,6 +359,8 @@ TELNUMfilter::dump(t_node_tel *node) {
 	}
 }
 
+volatile int TELNUMfilter::_sync = 0;
+
 /* DOMAINfilter class */
 
 // constructor
@@ -432,6 +436,8 @@ DOMAINfilter::dump() {
 		printf("domain[%s] flags[%u]\n", node->domain.c_str(), node->flags);
 	}
 }
+
+volatile int DOMAINfilter::_sync = 0;
 
 /* SIP_HEADERfilter class */
 
@@ -555,4 +561,5 @@ SIP_HEADERfilter::dump() {
 	}
 }
 
+volatile unsigned long SIP_HEADERfilter::loadTime = 0;
 volatile int SIP_HEADERfilter::_sync = 0;
