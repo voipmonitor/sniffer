@@ -1,3 +1,11 @@
+11.4 13.05.2015
+===============
+- implement SQL file cache - new option query_cache (if enabled) stores every SQL query to file first so it does not consumes all memory when mysql server is unrecheable and CDR in queues will also survive sniffer restart / crash. 
+- add new option spooldir_by_sensor which separates spooldir by id "/var/spool/voipmonitor/id/date/..." [VS-263]
+- fix race in manager command reload
+- fix threading mode 3 if dedup was disabled 
+
+
 11.3 05.05.2015
 ===============
 - fix empty caller name in database for >= 11.2.1 
