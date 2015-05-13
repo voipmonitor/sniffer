@@ -567,7 +567,7 @@ inline void save_packet(Call *call, struct pcap_pkthdr *header, const u_char *pa
 		case TYPE_SIP:
 			if(call->getPcapSip()->isOpen()){
 				call->set_last_packet_time(header->ts.tv_sec);
-				call->getPcapSip()->dump(header, packet, dlt);
+				call->getPcapSip()->dump(header, packet, dlt, false, (u_char*)data, datalen, saddr, daddr, source, dest);
 			}
 			break;
 		case TYPE_RTP:
@@ -596,7 +596,11 @@ inline void save_packet(Call *call, struct pcap_pkthdr *header, const u_char *pa
 	} else {
 		if (call->getPcap()->isOpen()){
 			call->set_last_packet_time(header->ts.tv_sec);
-			call->getPcap()->dump(header, packet, dlt);
+			if(type == TYPE_SKINNY || type == TYPE_SIP) {
+				call->getPcap()->dump(header, packet, dlt, false, (u_char*)data, datalen, saddr, daddr, source, dest);
+			} else {
+				call->getPcap()->dump(header, packet, dlt);
+			}
 		}
 	}
 	

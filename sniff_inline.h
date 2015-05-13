@@ -9,6 +9,11 @@ inline
 #endif
 iphdr2 *convertHeaderIP_GRE(iphdr2 *header_ip);
 
+#if SNIFFER_INLINE_FUNCTIONS
+inline
+#endif
+bool parseEtherHeader(int pcapLinklayerHeaderType, u_char* packet,
+		      sll_header *&header_sll, ether_header *&header_eth, u_int &header_ip_offset, int &protocol);
 
 #if SNIFFER_INLINE_FUNCTIONS
 inline

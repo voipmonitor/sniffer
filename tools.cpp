@@ -52,6 +52,7 @@
 #include "sql_db.h"
 #include "tar.h"
 #include "filter_mysql.h"
+#include "sniff_inline.h"
 
 extern char mac[32];
 extern int verbosity;
@@ -987,7 +988,9 @@ bool PcapDumper::open(const char *fileName, const char *fileNameSpoolRelative, p
 
 bool incorrectCaplenDetected = false;
 
-void PcapDumper::dump(pcap_pkthdr* header, const u_char *packet, int dlt, bool allPackets) {
+void PcapDumper::dump(pcap_pkthdr* header, const u_char *packet, int dlt, bool allPackets,
+		      u_char *data, unsigned int datalen,
+		      unsigned int saddr, unsigned int daddr, int source, int dest) {
 	extern int opt_convert_dlt_sll_to_en10;
 	if((dlt == DLT_LINUX_SLL && opt_convert_dlt_sll_to_en10 ? DLT_EN10MB : dlt) != this->dlt) {
 		u_long actTime = getTimeMS();
@@ -1004,6 +1007,26 @@ void PcapDumper::dump(pcap_pkthdr* header, const u_char *packet, int dlt, bool a
 		   (header->caplen > 0 && header->caplen <= header->len)) {
 			if(!opt_maxpcapsize_mb || this->capsize < opt_maxpcapsize_mb * 1024 * 1024) {
 				this->existsContent = true;
+				extern bool opt_virtualudppacket;
+				bool use_virtualudppacket = false;
+				if(opt_virtualudppacket && data && datalen) {
+					sll_header *header_sll = NULL;
+					ether_header *header_eth = NULL;
+					u_int header_ip_offset = 0;
+					int protocol = 0;
+					if(parseEtherHeader(dlt, (u_char*)packet, header_sll, header_eth, header_ip_offset, protocol) &&
+					   header_ip_offset + sizeof(iphdr2) + sizeof(udphdr2) + datalen != header->caplen) {
+						pcap_pkthdr *_header;
+						u_char *_packet;
+						createSimpleUdpDataPacket(header_ip_offset,  &_header, &_packet,
+									  (u_char*)packet, data, datalen,
+									  saddr, daddr, source, dest,
+									  header->ts.tv_sec, header->ts.tv_usec);
+						header = _header;
+						packet = _packet;
+						use_virtualudppacket = true;
+					}
+				}
 				__pcap_dump((u_char*)this->handle, header, packet, allPackets);
 				extern int opt_packetbuffered;
 				if(opt_packetbuffered) {
@@ -1011,6 +1034,10 @@ void PcapDumper::dump(pcap_pkthdr* header, const u_char *packet, int dlt, bool a
 				}
 				this->capsize += header->caplen + PCAP_DUMPER_PACKET_HEADER_SIZE;
 				this->size += header->len + PCAP_DUMPER_PACKET_HEADER_SIZE;
+				if(use_virtualudppacket) {
+					delete [] packet;
+					delete header;
+				}
 			}
 		} else {
 			syslog(LOG_NOTICE, "pcapdumper: incorrect caplen/len (%u/%u) in %s", header->caplen, header->len, fileName.c_str());
@@ -2804,6 +2831,38 @@ char *__pcap_geterr(pcap_t *p, pcap_dumper_t *pd) {
 	} else {
 		return(pcap_geterr(p));
 	}
+}
+
+void createSimpleUdpDataPacket(u_int ether_header_length, pcap_pkthdr **header, u_char **packet,
+			       u_char *source_packet, u_char *data, unsigned int datalen,
+			       unsigned int saddr, unsigned int daddr, int source, int dest,
+			       u_int32_t time_sec, u_int32_t time_usec) {
+	u_int32_t packet_length = ether_header_length + sizeof(iphdr2) + sizeof(udphdr2) + datalen;
+	*packet = new FILE_LINE u_char[packet_length];
+	memcpy(*packet, source_packet, ether_header_length);
+	iphdr2 iphdr;
+	memset(&iphdr, 0, sizeof(iphdr2));
+	iphdr.version = 4;
+	iphdr.ihl = 5;
+	iphdr.protocol = IPPROTO_UDP;
+	iphdr.saddr = saddr;
+	iphdr.daddr = daddr;
+	iphdr.tot_len = htons(sizeof(iphdr2) + sizeof(udphdr2) + datalen);
+	iphdr.ttl = 50;
+	memcpy(*packet + ether_header_length, &iphdr, sizeof(iphdr2));
+	udphdr2 udphdr;
+	memset(&udphdr, 0, sizeof(udphdr2));
+	udphdr.source = htons(source);
+	udphdr.dest = htons(dest);
+	udphdr.len = htons(sizeof(udphdr2) + datalen);
+	memcpy(*packet + ether_header_length + sizeof(iphdr2), &udphdr, sizeof(udphdr2));
+	memcpy(*packet + ether_header_length + sizeof(iphdr2) + sizeof(udphdr2), data, datalen);
+	*header = new FILE_LINE pcap_pkthdr;
+	memset(*header, 0, sizeof(pcap_pkthdr));
+	(*header)->ts.tv_sec = time_sec;
+	(*header)->ts.tv_usec = time_usec;
+	(*header)->caplen = packet_length;
+	(*header)->len = packet_length;
 }
 
 void base64_init(void)

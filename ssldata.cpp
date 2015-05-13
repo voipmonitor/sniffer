@@ -134,48 +134,29 @@ void SslData::processData(u_int32_t ip_src, u_int32_t ip_dst,
 						if(!ethHeader || !ethHeaderLength) {
 							continue;
 						}
-						u_int32_t udpPacketLength = ethHeaderLength + sizeof(iphdr2) + sizeof(udphdr2) + rslt_decrypt[i].size();
-						u_char *udpPacket = new FILE_LINE u_char[udpPacketLength];
-						memcpy(udpPacket, ethHeader, ethHeaderLength);
-						iphdr2 iphdr;
-						memset(&iphdr, 0, sizeof(iphdr2));
-						iphdr.version = 4;
-						iphdr.ihl = 5;
-						iphdr.protocol = IPPROTO_UDP;
-						iphdr.saddr = _ip_src;
-						iphdr.daddr = _ip_dst;
-						iphdr.tot_len = htons(sizeof(iphdr2) + sizeof(udphdr2) + rslt_decrypt[i].size());
-						iphdr.ttl = 50;
-						memcpy(udpPacket + ethHeaderLength, &iphdr, sizeof(iphdr2));
-						udphdr2 udphdr;
-						memset(&udphdr, 0, sizeof(udphdr2));
-						udphdr.source = htons(_port_src);
-						udphdr.dest = htons(_port_dst);
-						udphdr.len = htons(sizeof(udphdr2) + rslt_decrypt[i].size());
-						memcpy(udpPacket + ethHeaderLength + sizeof(iphdr2), &udphdr, sizeof(udphdr2));
-						memcpy(udpPacket + ethHeaderLength + sizeof(iphdr2) + sizeof(udphdr2), rslt_decrypt[i].c_str(), rslt_decrypt[i].size());
-						pcap_pkthdr header;
-						memset(&header, 0, sizeof(pcap_pkthdr));
-						header.ts.tv_sec = dataItem->getTime().tv_sec;
-						header.ts.tv_usec = dataItem->getTime().tv_usec;
-						header.caplen = udpPacketLength;
-						header.len = udpPacketLength;
+						pcap_pkthdr *udpHeader;
+						u_char *udpPacket;
+						createSimpleUdpDataPacket(ethHeaderLength, &udpHeader,  &udpPacket,
+									  ethHeader, (u_char*)rslt_decrypt[i].c_str(), rslt_decrypt[i].size(),
+									  _ip_src, _ip_dst, _port_src, _port_dst,
+									  dataItem->getTime().tv_sec, dataItem->getTime().tv_usec);
 						int was_rtp = 0;
 						int voippacket = 0;
 						if(preProcessPacket) {
 							preProcessPacket->push(true, 0, _ip_src, _port_src, _ip_dst, _port_dst, 
 									       (char*)(udpPacket + ethHeaderLength + sizeof(iphdr2) + sizeof(udphdr2)), rslt_decrypt[i].size(), ethHeaderLength + sizeof(iphdr2) + sizeof(udphdr2),
-									       handle, &header, udpPacket, true, 
+									       handle, udpHeader, udpPacket, true, 
 									       false, (iphdr2*)(udpPacket + ethHeaderLength), 1,
 									       NULL, 0, dlt, sensor_id);
 						} else {
 							process_packet(true, 0, _ip_src, _port_src, _ip_dst, _port_dst, 
 								       (char*)rslt_decrypt[i].c_str(), rslt_decrypt[i].size(), ethHeaderLength + sizeof(iphdr2) + sizeof(udphdr2),
-								       handle, &header, udpPacket, 
+								       handle, udpHeader, udpPacket, 
 								       false, &was_rtp, (iphdr2*)(udpPacket + ethHeaderLength), &voippacket, 1,
 								       NULL, 0, dlt, sensor_id);
 							delete [] udpPacket;
 						}
+						delete udpHeader;
 					}
 					ssl_data_offset += header.length + 5;
 				} else {
