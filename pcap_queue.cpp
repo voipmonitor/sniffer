@@ -1203,12 +1203,13 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 			this->counter_sip_message_packets_old = counter_sip_message_packets;
 			this->counter_rtp_packets_old = counter_rtp_packets;
 			this->counter_all_packets_old = counter_all_packets;
+			extern bool opt_save_query_to_files;
 			if(loadFromQFiles) {
 				string stat = loadFromQFiles->getLoadFromQFilesStat();
 				if(!stat.empty()) {
 					outStr << "SQLf[" << stat << "] ";
 				}
-			} else {
+			} else if(!opt_save_query_to_files) {
 				outStr << "SQLq[";
 				if(cloud_host[0]) {
 					int sizeSQLq = sqlStore->getSize(1);
@@ -2851,19 +2852,17 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void *arg, unsigned int 
 					header = hpii.header;
 					packet = hpii.packet;
 				}
-				if(opt_dup_check) {
-					res = this->pcapProcess(&header, &packet, &destroy);
-					if(res == -1) {
-						this->prevThreads[0]->moveReadit();
-						break;
-					} else if(res == 0) {
-						if(destroy) {
-							delete header;
-							delete [] packet;
-						}
-						this->prevThreads[0]->moveReadit();
-						continue;
+				res = this->pcapProcess(&header, &packet, &destroy);
+				if(res == -1) {
+					this->prevThreads[0]->moveReadit();
+					break;
+				} else if(res == 0) {
+					if(destroy) {
+						delete header;
+						delete [] packet;
 					}
+					this->prevThreads[0]->moveReadit();
+					continue;
 				}
 				this->push(header, packet, this->ppd.header_ip_offset, NULL);
 				this->prevThreads[0]->moveReadit();

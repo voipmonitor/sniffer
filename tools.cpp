@@ -2108,27 +2108,37 @@ void ParsePacket::setStdParse() {
 }
 
 unsigned long ParsePacket::parseData(char *data, unsigned long datalen, bool doClear) {
-	extern SIP_HEADERfilter *sipheaderfilter;
-	extern int sipheaderfilter_reload_do;
 	extern CustomHeaders *custom_headers_cdr;
 	extern CustomHeaders *custom_headers_message;
 	if(!this->timeSync_SIP_HEADERfilter) {
-		this->timeSync_SIP_HEADERfilter = sipheaderfilter->getLoadTime();
-	} else if((!sipheaderfilter_reload_do &&
-		   sipheaderfilter->getLoadTime() > this->timeSync_SIP_HEADERfilter) ||
-		  (custom_headers_cdr && custom_headers_cdr->getLoadTime() > this->timeSync_custom_headers_cdr) ||
-		  (custom_headers_message && custom_headers_message->getLoadTime() > this->timeSync_custom_headers_message)) {
+		this->timeSync_SIP_HEADERfilter = SIP_HEADERfilter::getLoadTime();
+	}
+	bool reload_for_sipheaderfilter = false;
+	bool reload_for_custom_headers_cdr = false;
+	bool reload_for_custom_headers_message = false;
+	if(SIP_HEADERfilter::getLoadTime() > this->timeSync_SIP_HEADERfilter) {
+		reload_for_sipheaderfilter = true;
+	}
+	if(custom_headers_cdr && custom_headers_cdr->getLoadTime() > this->timeSync_custom_headers_cdr) {
+		reload_for_custom_headers_cdr = true;
+	}
+	if(custom_headers_message && custom_headers_message->getLoadTime() > this->timeSync_custom_headers_message) {
+		reload_for_custom_headers_message = true;
+	}
+	if(reload_for_sipheaderfilter ||
+	   reload_for_custom_headers_cdr ||
+	   reload_for_custom_headers_message) {
 		this->setStdParse();
-		if(sipheaderfilter->getLoadTime() > this->timeSync_SIP_HEADERfilter) {
-			this->timeSync_SIP_HEADERfilter = sipheaderfilter->getLoadTime();
+		if(reload_for_sipheaderfilter) {
+			this->timeSync_SIP_HEADERfilter = SIP_HEADERfilter::getLoadTime();
 			if(sverb.capture_filter) {
 				syslog(LOG_NOTICE, "SIP_HEADERfilter - reload ParsePacket::parseData after load SIP_HEADERfilter");
 			}
 		}
-		if(custom_headers_cdr && custom_headers_cdr->getLoadTime() > this->timeSync_custom_headers_cdr) {
+		if(reload_for_custom_headers_cdr) {
 			 this->timeSync_custom_headers_cdr = custom_headers_cdr->getLoadTime();
 		}
-		if(custom_headers_message && custom_headers_message->getLoadTime() > this->timeSync_custom_headers_message) {
+		if(reload_for_custom_headers_message) {
 			 this->timeSync_custom_headers_message = custom_headers_message->getLoadTime();
 		}
 	}
@@ -2460,6 +2470,12 @@ bool FileZipHandler::open(const char *fileName, int permission) {
 		}
 	}
 	this->fileName = fileName;
+	extern int opt_spooldir_by_sensor;
+	if(opt_spooldir_by_sensor && this->call && this->call->useSensorId > 0) {
+		char sensorIdStr[10];
+		sprintf(sensorIdStr, "%i/", this->call->useSensorId);
+		this->fileName = sensorIdStr + this->fileName;
+	}
 	this->permission = permission;
 	return(true);
 }

@@ -254,6 +254,7 @@ int opt_cdronlyanswered = 0;
 int opt_cdronlyrtp = 0;
 int opt_pcap_split = 1;
 int opt_newdir = 1;
+int opt_spooldir_by_sensor = 0;
 char opt_clientmanager[1024] = "";
 int opt_clientmanagerport = 9999;
 int opt_callslimit = 0;
@@ -517,21 +518,21 @@ char opt_cachedir[1024];
 
 int opt_upgrade_try_http_if_https_fail = 0;
 
-IPfilter *ipfilter = NULL;		// IP filter based on MYSQL 
-IPfilter *ipfilter_reload = NULL;	// IP filter based on MYSQL for reload purpose
-int ipfilter_reload_do = 0;	// for reload in main thread
+IPfilter *ipfilter = NULL;				// IP filter based on MYSQL 
+IPfilter *ipfilter_reload = NULL;			// IP filter based on MYSQL for reload purpose
+volatile int ipfilter_reload_do = 0;			// for reload in main thread
 
-TELNUMfilter *telnumfilter = NULL;		// TELNUM filter based on MYSQL 
-TELNUMfilter *telnumfilter_reload = NULL;	// TELNUM filter based on MYSQL for reload purpose
-int telnumfilter_reload_do = 0;	// for reload in main thread
+TELNUMfilter *telnumfilter = NULL;			// TELNUM filter based on MYSQL 
+TELNUMfilter *telnumfilter_reload = NULL;		// TELNUM filter based on MYSQL for reload purpose
+volatile int telnumfilter_reload_do = 0;		// for reload in main thread
 
-DOMAINfilter *domainfilter = NULL;		// DOMAIN filter based on MYSQL 
-DOMAINfilter *domainfilter_reload = NULL;	// DOMAIN filter based on MYSQL for reload purpose
-int domainfilter_reload_do = 0;	// for reload in main thread
+DOMAINfilter *domainfilter = NULL;			// DOMAIN filter based on MYSQL 
+DOMAINfilter *domainfilter_reload = NULL;		// DOMAIN filter based on MYSQL for reload purpose
+volatile int domainfilter_reload_do = 0;		// for reload in main thread
 
 SIP_HEADERfilter *sipheaderfilter = NULL;		// SIP_HEADER filter based on MYSQL 
 SIP_HEADERfilter *sipheaderfilter_reload = NULL;	// SIP_HEADER filter based on MYSQL for reload purpose
-int sipheaderfilter_reload_do = 0;	// for reload in main thread
+volatile int sipheaderfilter_reload_do = 0;		// for reload in main thread
 
 pthread_t storing_cdr_thread;		// ID of worker storing CDR thread 
 pthread_t scanpcapdir_thread;
@@ -678,6 +679,7 @@ int opt_save_query_to_files_period;
 int opt_load_query_from_files;
 char opt_load_query_from_files_directory[1024];
 int opt_load_query_from_files_period;
+bool opt_load_query_from_files_inotify;
 
 #include <stdio.h>
 #include <pthread.h>
@@ -1890,6 +1892,9 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "spooldiroldschema", NULL))) {
 		opt_newdir = !yesno(value);
 	}
+	if((value = ini.GetValue("general", "spooldir_by_sensor", NULL))) {
+		opt_spooldir_by_sensor = yesno(value);
+	}
 	if((value = ini.GetValue("general", "pcapsplit", NULL))) {
 		opt_pcap_split = yesno(value);
 	}
@@ -2720,6 +2725,12 @@ int eval_config(string inistr) {
 		opt_upgrade_by_git = yesno(value);
 	}
 	
+	if((value = ini.GetValue("general", "query_cache", NULL)) && yesno(value)) {
+		opt_save_query_to_files = true;
+		opt_load_query_from_files = 1;
+		opt_load_query_from_files_inotify = true;
+	}
+	
 	if((value = ini.GetValue("general", "save_query_to_files", NULL))) {
 		opt_save_query_to_files = yesno(value);
 	}
@@ -2738,6 +2749,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "load_query_from_files_period", NULL))) {
 		opt_load_query_from_files_period = atoi(value);
+	}
+	if((value = ini.GetValue("general", "load_query_from_files_inotify", NULL))) {
+		opt_load_query_from_files_inotify = yesno(value);
 	}
 	
 	/*
@@ -2858,6 +2872,8 @@ void set_context_config() {
 		opt_enable_ssl = 0;
 		opt_pcap_dump_tar = 0;
 		opt_pcap_dump_asyncwrite = 0;
+		opt_save_query_to_files = false;
+		opt_load_query_from_files = 0;
 	}
 	
 	if(opt_pcap_dump_tar) {
@@ -3018,37 +3034,45 @@ void reload_config() {
 
 void reload_capture_rules() {
 
+	ipfilter_reload_do = 0;
+	IPfilter::lock_sync();
 	if(ipfilter_reload) {
 		delete ipfilter_reload;
 	}
-
 	ipfilter_reload = new FILE_LINE IPfilter;
 	ipfilter_reload->load();
 	ipfilter_reload_do = 1;
+	IPfilter::unlock_sync();
 
+	telnumfilter_reload_do = 0;
+	TELNUMfilter::lock_sync();
 	if(telnumfilter_reload) {
 		delete telnumfilter_reload;
 	}
-
 	telnumfilter_reload = new FILE_LINE TELNUMfilter;
 	telnumfilter_reload->load();
 	telnumfilter_reload_do = 1;
+	TELNUMfilter::unlock_sync();
 
+	domainfilter_reload_do = 0;
+	DOMAINfilter::lock_sync();
 	if(domainfilter_reload) {
 		delete domainfilter_reload;
 	}
-
 	domainfilter_reload = new FILE_LINE DOMAINfilter;
 	domainfilter_reload->load();
 	domainfilter_reload_do = 1;
+	DOMAINfilter::unlock_sync();
 
+	sipheaderfilter_reload_do = 0;
+	SIP_HEADERfilter::lock_sync();
 	if(sipheaderfilter_reload) {
 		delete sipheaderfilter_reload;
 	}
-
 	sipheaderfilter_reload = new FILE_LINE SIP_HEADERfilter;
 	sipheaderfilter_reload->load();
 	sipheaderfilter_reload_do = 1;
+	SIP_HEADERfilter::unlock_sync();
 
 }
 
@@ -3532,6 +3556,8 @@ int main(int argc, char *argv[]) {
 													sverb.memory_stat_ignore_limit = atoi(verbparams[i].c_str() + 25);
 						else if(verbparams[i] == "qring_stat")			sverb.qring_stat = 1;
 						else if(verbparams[i] == "qfiles")			sverb.qfiles = 1;
+						else if(verbparams[i] == "query_error")			sverb.query_error = 1;
+						else if(verbparams[i] == "dump_sip")			sverb.dump_sip = 1;
 					}
 				} }
 				break;
@@ -4130,6 +4156,9 @@ int main(int argc, char *argv[]) {
 		if(opt_load_query_from_files) {
 			loadFromQFiles = new FILE_LINE MySqlStore(mysql_host, mysql_user, mysql_password, mysql_database);
 			loadFromQFiles->loadFromQFiles(opt_load_query_from_files, opt_load_query_from_files_directory, opt_load_query_from_files_period);
+			if(opt_load_query_from_files_inotify) {
+				loadFromQFiles->enableInotifyForLoadFromQFile();
+			}
 			loadFromQFiles->addLoadFromQFile(10, "cdr");
 			loadFromQFiles->addLoadFromQFile(20, "message");
 			loadFromQFiles->addLoadFromQFile(40, "cleanspool");
@@ -4139,6 +4168,9 @@ int main(int argc, char *argv[]) {
 			loadFromQFiles->addLoadFromQFile(80, "webrtc");
 			loadFromQFiles->addLoadFromQFile(91, "cache_numbers");
 			loadFromQFiles->addLoadFromQFile(92, "fraud_alert_info");
+			if(opt_load_query_from_files_inotify) {
+				loadFromQFiles->setInotifyReadyForLoadFromQFile();
+			}
 			if(opt_ipaccount) {
 				loadFromQFiles->addLoadFromQFile(100, "ipacc");
 				loadFromQFiles->addLoadFromQFile(110, "ipacc_agreg");
@@ -4255,8 +4287,13 @@ int main(int argc, char *argv[]) {
 		if (opt_fork) {
 			daemonize();
 		}
+		unsigned int counter;
 		while(!terminating) {
 			sleep(1);
+			if(!(++counter % 10) && verbosity) {
+				string stat = loadFromQFiles->getLoadFromQFilesStat();
+				syslog(LOG_NOTICE, "SQLf: [%s]", stat.c_str());
+			}
 		}
 		delete loadFromQFiles;
 		return(0);
