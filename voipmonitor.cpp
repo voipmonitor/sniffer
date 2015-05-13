@@ -2725,6 +2725,12 @@ int eval_config(string inistr) {
 		opt_upgrade_by_git = yesno(value);
 	}
 	
+	if((value = ini.GetValue("general", "query_cache", NULL)) && yesno(value)) {
+		opt_save_query_to_files = true;
+		opt_load_query_from_files = 1;
+		opt_load_query_from_files_inotify = true;
+	}
+	
 	if((value = ini.GetValue("general", "save_query_to_files", NULL))) {
 		opt_save_query_to_files = yesno(value);
 	}
