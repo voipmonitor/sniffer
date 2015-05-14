@@ -333,6 +333,9 @@ Tar::tar_read(const char *filename, const char *endFilename, u_int32_t recordId,
 		this->readData.send_parameters_zip = false;
 	} else {
 		enableDetectTarPos = false;
+		if(flushTar(this->pathname.c_str())) {
+			syslog(LOG_NOTICE, "flush %s in tar_read", this->pathname.c_str());
+		}
 	}
 	this->readData.null();
 	this->readData.filename = filename;
@@ -349,7 +352,7 @@ Tar::tar_read(const char *filename, const char *endFilename, u_int32_t recordId,
 	char *read_buffer = new FILE_LINE char[T_BLOCKSIZE];
 	bool decompressFailed = false;
 	list<u_int64_t> tarPos;
-	if(tarPosString) {
+	if(tarPosString && *tarPosString) {
 		vector<string> tarPosStr = split(tarPosString, ",");
 		for(size_t i = 0; i < tarPosStr.size(); i++) {
 			tarPos.push_back(atoll(tarPosStr[i].c_str()));
@@ -372,9 +375,7 @@ Tar::tar_read(const char *filename, const char *endFilename, u_int32_t recordId,
 					strstr(this->pathname.c_str(), "/GRAPH/") ? 3 : 0);
 				sqlDb->query(queryBuff);
 				while(row = sqlDb->fetchRow()) {
-				 
-					cout << "*" << atoll(row["pos"].c_str()) << endl;
-					
+					cout << "fetch tar position: " << atoll(row["pos"].c_str()) << endl;
 					tarPos.push_back(atoll(row["pos"].c_str()));
 				}
 			}
@@ -721,6 +722,7 @@ Tar::writeLzma(const void *buf, size_t len) {
 
 void
 Tar::flush() {
+	tarlock();
 	bool _flush = false;
 #ifdef HAVE_LIBLZMA
 	if(this->lzmaStream) {
@@ -747,6 +749,7 @@ Tar::flush() {
 	if(_flush && sverb.tar) {
 		syslog(LOG_NOTICE, "force flush %s", this->pathname.c_str());
 	}
+	tarunlock();
 }
 
 int
@@ -1354,6 +1357,7 @@ TarQueue::tarthreads_t::processData(data_t *data, bool isClosed, size_t lenForPr
 	#endif
  
 	Tar *tar = data->tar;
+	tar->tarlock();
 	tar->writing = 1;
 	if(lenForProceedSafe) {
 	 
@@ -1389,6 +1393,7 @@ TarQueue::tarthreads_t::processData(data_t *data, bool isClosed, size_t lenForPr
 		}
 	}
 	tar->writing = 0;
+	tar->tarunlock();
 	
 	#if TAR_PROF
 	unsigned long long __prof_i3 = rdtsc();
@@ -1622,6 +1627,22 @@ bool TarQueue::allThreadsEnds() {
 	return(true);
 }
 
+bool TarQueue::flushTar(const char *tarName) {
+	bool rslt = false;
+	map<string, Tar*>::iterator tars_it;
+	pthread_mutex_lock(&tarslock);
+	for(tars_it = tars.begin(); tars_it != tars.end(); tars_it++) {
+		Tar *tar = tars_it->second;
+		if(tar->pathname.find(tarName) != string::npos) {
+			tar->flush();
+			tar->lastFlushTime = glob_last_packet_time;
+			rslt = true;
+		}
+	}
+	pthread_mutex_unlock(&tarslock);
+	return(rslt);
+}
+
 void *TarQueueThread(void *dummy) {
 	// run each second flushQueue
 	while(1) {
@@ -1681,4 +1702,11 @@ int untar_gui(const char *args) {
 	
 	return(0);
  
+}
+
+bool flushTar(const char *tarName) {
+	if(!tarQueue) {
+		return(false);
+	}
+	return(tarQueue->flushTar(tarName));
 }
