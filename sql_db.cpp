@@ -1579,7 +1579,10 @@ void MySqlStore::queryToFiles(bool enable, const char *directory, int period) {
 	if(period) {
 		qfileConfig.period = period;
 	}
-	if(enable) {
+}
+
+void MySqlStore::queryToFiles_start() {
+	if(qfileConfig.enable) {
 		pthread_create(&this->qfilesCheckperiodThread, NULL, this->threadQFilesCheckPeriod, this);
 	}
 }
@@ -1591,6 +1594,32 @@ void MySqlStore::loadFromQFiles(bool enable, const char *directory, int period) 
 	}
 	if(period) {
 		loadFromQFileConfig.period = period;
+	}
+}
+
+void MySqlStore::loadFromQFiles_start() {
+	if(loadFromQFileConfig.enable) {
+		extern bool opt_load_query_from_files_inotify;
+		if(opt_load_query_from_files_inotify) {
+			this->enableInotifyForLoadFromQFile();
+		}
+		this->addLoadFromQFile(10, "cdr");
+		this->addLoadFromQFile(20, "message");
+		this->addLoadFromQFile(40, "cleanspool");
+		this->addLoadFromQFile(50, "register");
+		this->addLoadFromQFile(60, "save_packet_sql");
+		this->addLoadFromQFile(70, "http");
+		this->addLoadFromQFile(80, "webrtc");
+		this->addLoadFromQFile(91, "cache_numbers");
+		this->addLoadFromQFile(92, "fraud_alert_info");
+		if(opt_load_query_from_files_inotify) {
+			this->setInotifyReadyForLoadFromQFile();
+		}
+		if(opt_ipaccount) {
+			this->addLoadFromQFile(100, "ipacc");
+			this->addLoadFromQFile(110, "ipacc_agreg");
+			this->addLoadFromQFile(120, "ipacc_agreg2");
+		}
 	}
 }
 

@@ -483,6 +483,8 @@ public:
 	~MySqlStore();
 	void queryToFiles(bool enable = true, const char *directory = NULL, int period = 0);
 	void loadFromQFiles(bool enable = true, const char *directory = NULL, int period = 0);
+	void queryToFiles_start();
+	void loadFromQFiles_start();
 	void connect(int id);
 	void query(const char *query_str, int id);
 	void query_lock(const char *query_str, int id);

@@ -4161,26 +4161,6 @@ int main(int argc, char *argv[]) {
 		if(opt_load_query_from_files) {
 			loadFromQFiles = new FILE_LINE MySqlStore(mysql_host, mysql_user, mysql_password, mysql_database);
 			loadFromQFiles->loadFromQFiles(opt_load_query_from_files, opt_load_query_from_files_directory, opt_load_query_from_files_period);
-			if(opt_load_query_from_files_inotify) {
-				loadFromQFiles->enableInotifyForLoadFromQFile();
-			}
-			loadFromQFiles->addLoadFromQFile(10, "cdr");
-			loadFromQFiles->addLoadFromQFile(20, "message");
-			loadFromQFiles->addLoadFromQFile(40, "cleanspool");
-			loadFromQFiles->addLoadFromQFile(50, "register");
-			loadFromQFiles->addLoadFromQFile(60, "save_packet_sql");
-			loadFromQFiles->addLoadFromQFile(70, "http");
-			loadFromQFiles->addLoadFromQFile(80, "webrtc");
-			loadFromQFiles->addLoadFromQFile(91, "cache_numbers");
-			loadFromQFiles->addLoadFromQFile(92, "fraud_alert_info");
-			if(opt_load_query_from_files_inotify) {
-				loadFromQFiles->setInotifyReadyForLoadFromQFile();
-			}
-			if(opt_ipaccount) {
-				loadFromQFiles->addLoadFromQFile(100, "ipacc");
-				loadFromQFiles->addLoadFromQFile(110, "ipacc_agreg");
-				loadFromQFiles->addLoadFromQFile(120, "ipacc_agreg2");
-			}
 		}
 		if(opt_load_query_from_files != 2) {
 			if(!opt_nocdr) {
@@ -4292,6 +4272,7 @@ int main(int argc, char *argv[]) {
 		if (opt_fork) {
 			daemonize();
 		}
+		loadFromQFiles->loadFromQFiles_start();
 		unsigned int counter;
 		while(!terminating) {
 			sleep(1);
@@ -4498,6 +4479,13 @@ int main(int argc, char *argv[]) {
 	// filters are ok, we can daemonize 
 	if (opt_fork && !opt_read_from_file){
 		daemonize();
+	}
+	
+	if(opt_save_query_to_files) {
+		sqlStore->queryToFiles_start();
+	}
+	if(opt_load_query_from_files) {
+		loadFromQFiles->loadFromQFiles_start();
 	}
 
 	if(opt_pcap_dump_tar) {
