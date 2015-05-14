@@ -814,6 +814,7 @@ Call::read_rtp(unsigned char* data, int datalen, int dataoffset, struct pcap_pkt
 				*record = 1;
 			}
 			// check if codec did not changed but ignore payload 13 and 19 which is CNG and 101 which is DTMF
+			int oldcodec = rtp[i]->codec;
 			if(curpayload == 13 or curpayload == 19 or rtp[i]->codec == PAYLOAD_TELEVENT or rtp[i]->payload2 == curpayload) {
 				goto read;
 			} else {
@@ -822,8 +823,8 @@ Call::read_rtp(unsigned char* data, int datalen, int dataoffset, struct pcap_pkt
 					for(int j = 0; j < MAX_RTPMAP; j++) {
 						if(rtp[i]->rtpmap[j] != 0 && curpayload == rtp[i]->rtpmap[j] / 1000) {
 							rtp[i]->codec = rtp[i]->rtpmap[j] - curpayload * 1000;
-						}      
-					}      
+						}
+					}
 				} else {
 					rtp[i]->codec = curpayload;
 				}
@@ -836,8 +837,9 @@ read:
 						lastcalledrtp = rtp[i];
 					}
 					goto end;
-				} else {
+				} else if(oldcodec != rtp[i]->codec){
 					//codec changed and it is not DTMF, reset ssrc so the stream will not match and new one is used
+					printf("mchange [%d] [%d]\n", rtp[i]->codec, curpayload);
 					rtp[i]->ssrc2 = 0;
 				}
 			}
@@ -1714,7 +1716,7 @@ Call::convertRawToWav() {
 				system(cmd);
 				break;
 			default:
-				syslog(LOG_ERR, "Call [%s] cannot be converted to WAV because the codec [%s] is not supported.\n", rawf->filename.c_str(), codec2text(rawf->codec));
+				syslog(LOG_ERR, "Call [%s] cannot be converted to WAV because the codec [%s][%d] is not supported.\n", rawf->filename.c_str(), codec2text(rawf->codec), rawf->codec);
 			}
 			if(!sverb.noaudiounlink) unlink(rawf->filename.c_str());
 		}

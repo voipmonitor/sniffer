@@ -817,6 +817,10 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 		} else {
 			codec = curpayload;
 		}
+		if(codec == -1) {
+			// codec cannot be determinad - ignore it
+			return;
+		}
 	}
 
 	/* in case there was packet loss we must predict lastTimeStamp to not add nonexistant delays */
@@ -1137,33 +1141,25 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 
 #if 1
 		// new way of getting packetization from packet datalen 
-		if(curpayload == PAYLOAD_PCMU or curpayload == PAYLOAD_PCMA) {
+		if(curpayload == PAYLOAD_PCMU or curpayload == PAYLOAD_PCMA or curpayload == PAYLOAD_GSM or curpayload == PAYLOAD_G722) {
+
+			int apacketization = 0;
+			switch(curpayload) {
+			case PAYLOAD_PCMU:
+			case PAYLOAD_PCMA:
+				apacketization = payload_len / 8;
+				break;
+			case PAYLOAD_GSM:
+				apacketization = payload_len / 33 * 20;
+				break;
+			case PAYLOAD_G722:
+				apacketization = payload_len / 8;
+				break;
+			}
 
 			channel_fix1->packetization = default_packetization = 
 				channel_fix2->packetization = channel_adapt->packetization = 
-				channel_record->packetization = packetization = payload_len / 8;
-
-			if(packetization >= 10) {
-				if(verbosity > 3) printf("packetization:[%d] ssrc[%x]\n", packetization, getSSRC());
-
-				packetization_iterator = 10; // this will cause that packetization is estimated as final
-
-				if(opt_jitterbuffer_f1)
-					jitterbuffer(channel_fix1, 0);
-				if(opt_jitterbuffer_f2)
-					jitterbuffer(channel_fix2, 0);
-				if(opt_jitterbuffer_adapt)
-					jitterbuffer(channel_adapt, 0);
-			} 
-
-		} 
-
-		// new way of getting packetization from packet datalen 
-		if(curpayload == PAYLOAD_GSM) {
-
-			channel_fix1->packetization = default_packetization = 
-				channel_fix2->packetization = channel_adapt->packetization = 
-				channel_record->packetization = packetization = payload_len / 33 * 20;
+				channel_record->packetization = packetization = apacketization;
 
 			if(packetization >= 10) {
 				if(verbosity > 3) printf("packetization:[%d] ssrc[%x]\n", packetization, getSSRC());
@@ -1314,7 +1310,7 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 				} else if(payload_len == 24*3) {
 					curpacketization = 90;
 				}
-			} else if(curpayload == PAYLOAD_PCMU or curpayload == PAYLOAD_PCMA) {
+			} else if(curpayload == PAYLOAD_PCMU or curpayload == PAYLOAD_PCMA or curpayload == PAYLOAD_G722) {
 				if((payload_len / 8) >= 20) {
 					// do not change packetization to 10ms frames. Case g711_20_10_sync.pcap
 					curpacketization = payload_len / 8;

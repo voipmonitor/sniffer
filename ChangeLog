@@ -1,3 +1,10 @@
+11.5 14.05.2015
+===============
+- new command to flush tar file via manager command (speeds up pcap download from GUI) 
+- new option virtualudppacket (default off) for saving sip packets as simple udp 
+- fix typo in .conf file sipwithoutrtptimout -> sipwithoutrtptimeout
+
+
 11.4 13.05.2015
 ===============
 - implement SQL file cache - new option query_cache (if enabled) stores every SQL query to file first so it does not consumes all memory when mysql server is unrecheable and CDR in queues will also survive sniffer restart / crash. 
@@ -19,6 +26,7 @@
 =================
 - fix memory leak in tcpreassembly (clean empty links_
 - fix memory leak for IP fragmented packets (in threading mode 4)
+
 
 11.2.1 28.04.2015
 =================
