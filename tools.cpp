@@ -990,7 +990,8 @@ bool incorrectCaplenDetected = false;
 
 void PcapDumper::dump(pcap_pkthdr* header, const u_char *packet, int dlt, bool allPackets,
 		      u_char *data, unsigned int datalen,
-		      unsigned int saddr, unsigned int daddr, int source, int dest) {
+		      unsigned int saddr, unsigned int daddr, int source, int dest,
+		      bool istcp) {
 	extern int opt_convert_dlt_sll_to_en10;
 	if((dlt == DLT_LINUX_SLL && opt_convert_dlt_sll_to_en10 ? DLT_EN10MB : dlt) != this->dlt) {
 		u_long actTime = getTimeMS();
@@ -1015,7 +1016,7 @@ void PcapDumper::dump(pcap_pkthdr* header, const u_char *packet, int dlt, bool a
 					u_int header_ip_offset = 0;
 					int protocol = 0;
 					if(parseEtherHeader(dlt, (u_char*)packet, header_sll, header_eth, header_ip_offset, protocol) &&
-					   header_ip_offset + sizeof(iphdr2) + sizeof(udphdr2) + datalen != header->caplen) {
+					   header_ip_offset + sizeof(iphdr2) + (istcp ? sizeof(tcphdr2) : sizeof(udphdr2)) + datalen != header->caplen) {
 						pcap_pkthdr *_header;
 						u_char *_packet;
 						createSimpleUdpDataPacket(header_ip_offset,  &_header, &_packet,

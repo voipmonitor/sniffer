@@ -568,7 +568,7 @@ inline void save_packet(Call *call, struct pcap_pkthdr *header, const u_char *pa
 			if(call->getPcapSip()->isOpen()){
 				call->set_last_packet_time(header->ts.tv_sec);
 				if(type == TYPE_SIP) {
-					call->getPcapSip()->dump(header, packet, dlt, false, (u_char*)data, datalen, saddr, daddr, source, dest);
+					call->getPcapSip()->dump(header, packet, dlt, false, (u_char*)data, datalen, saddr, daddr, source, dest, istcp);
 				} else {
 					call->getPcapSip()->dump(header, packet, dlt);
 				}
@@ -601,7 +601,7 @@ inline void save_packet(Call *call, struct pcap_pkthdr *header, const u_char *pa
 		if (call->getPcap()->isOpen()){
 			call->set_last_packet_time(header->ts.tv_sec);
 			if(type == TYPE_SIP) {
-				call->getPcap()->dump(header, packet, dlt, false, (u_char*)data, datalen, saddr, daddr, source, dest);
+				call->getPcap()->dump(header, packet, dlt, false, (u_char*)data, datalen, saddr, daddr, source, dest, istcp);
 			} else {
 				call->getPcap()->dump(header, packet, dlt);
 			}

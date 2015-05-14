@@ -519,7 +519,8 @@ public:
 	}
 	void dump(pcap_pkthdr* header, const u_char *packet, int dlt, bool allPackets = false, 
 		  u_char *data = NULL, unsigned int datalen = 0,
-		  unsigned int saddr = 0, unsigned int daddr = 0, int source = 0, int dest = 0);
+		  unsigned int saddr = 0, unsigned int daddr = 0, int source = 0, int dest = 0,
+		  bool istcp = false);
 	void close(bool updateFilesQueue = true);
 	void flush();
 	void remove();
