@@ -1334,13 +1334,15 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 		char dateTimeKey[2048];
 		u_int32_t recordId = 0;
 		char tableType[100] = "";
+		char *tarPosI = new char[100000];
+		*tarPosI = 0;
 
-		sscanf(buf, zip ? "getfile_in_tar_zip %s %s %s %u %s" : "getfile_in_tar %s %s %s %u %s", tar_filename, filename, dateTimeKey, &recordId, tableType);
+		sscanf(buf, zip ? "getfile_in_tar_zip %s %s %s %u %s %s" : "getfile_in_tar %s %s %s %u %s %s", tar_filename, filename, dateTimeKey, &recordId, tableType, tarPosI);
 		
 		Tar tar;
 		if(!tar.tar_open(tar_filename, O_RDONLY)) {
 			tar.tar_read_send_parameters(client, sshchannel, zip);
-			tar.tar_read((string(filename) + ".*").c_str(), filename, recordId, tableType);
+			tar.tar_read((string(filename) + ".*").c_str(), filename, recordId, tableType, tarPosI);
 			if(tar.isReadEnd()) {
 				getfile_in_tar_completed.add(tar_filename, filename, dateTimeKey);
 			}
@@ -1349,8 +1351,10 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 			if ((size = sendvm(client, sshchannel, buf, strlen(buf), 0)) == -1){
 				cerr << "Error sending data to client" << endl;
 			}
+			delete [] tarPosI;
 			return -1;
 		}
+		delete [] tarPosI;
 		return 0;
 	} else if(strstr(buf, "getfile") != NULL) {
 		bool zip = strstr(buf, "getfile_zip");
@@ -1403,6 +1407,12 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 		size = file_exists(filename);
 		sprintf(buf, "%d", size);
 		sendvm(client, sshchannel, buf, strlen(buf), 0);
+		return 0;
+	} else if(strstr(buf, "flush_tar") != NULL) {
+		char filename[2048];
+		sscanf(buf, "flush_tar %s", filename);
+		flushTar(filename);
+		sendvm(client, sshchannel, "OK", 2, 0);
 		return 0;
 	} else if(strstr(buf, "genwav") != NULL) {
 		char filename[2048];

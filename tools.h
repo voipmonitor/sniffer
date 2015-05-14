@@ -517,7 +517,9 @@ public:
 	bool open(const char *fileName, int dlt) {
 		return(this->open(fileName, NULL, NULL, dlt));
 	}
-	void dump(pcap_pkthdr* header, const u_char *packet, int dlt, bool allPackets = false);
+	void dump(pcap_pkthdr* header, const u_char *packet, int dlt, bool allPackets = false, 
+		  u_char *data = NULL, unsigned int datalen = 0,
+		  unsigned int saddr = 0, unsigned int daddr = 0, int source = 0, int dest = 0);
 	void close(bool updateFilesQueue = true);
 	void flush();
 	void remove();
@@ -559,6 +561,10 @@ void __pcap_dump(u_char *user, const struct pcap_pkthdr *h, const u_char *sp, bo
 void __pcap_dump_close(pcap_dumper_t *p);
 void __pcap_dump_flush(pcap_dumper_t *p);
 char *__pcap_geterr(pcap_t *p, pcap_dumper_t *pd = NULL);
+void createSimpleUdpDataPacket(u_int header_ip_offset, pcap_pkthdr **header, u_char **packet,
+			       u_char *source_packet, u_char *data, unsigned int datalen,
+			       unsigned int saddr, unsigned int daddr, int source, int dest,
+			       u_int32_t time_sec, u_int32_t time_usec);
 
 class RtpGraphSaver {
 public:

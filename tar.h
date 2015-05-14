@@ -116,6 +116,7 @@ public:
 		writeCounter = 0;
 		writeCounterFlush = 0;
 		this->writing = 0;
+		this->_sync_lock = 0;
 	};
 	virtual ~Tar();
 
@@ -173,6 +174,12 @@ public:
 		return(readData.end);
 	}
 
+	void tarlock() {
+		while(__sync_lock_test_and_set(&this->_sync_lock, 1));
+	}
+	void tarunlock() {
+		__sync_lock_release(&this->_sync_lock);
+	}
 private:
 	z_stream *zipStream;
 	int zipBufferLength;
@@ -262,6 +269,8 @@ private:
 	#define LZMA_RET_ERROR_COMPRESSION   4
 
 #endif
+
+	volatile int _sync_lock;
 
 	friend class TarQueue;
 
@@ -394,6 +403,7 @@ public:
 	void preparePstatData(int threadIndex);
 	double getCpuUsagePerc(int threadIndex, bool preparePstatData);
 	bool allThreadsEnds();
+	bool flushTar(const char *tarName);
 
 private:
 	map<unsigned int, vector<data_t> > queue_data[4]; //queue for all, sip, rtp, graph
@@ -410,6 +420,6 @@ void decreaseTartimemap(unsigned int time);
 void increaseTartimemap(unsigned int time);
 
 int untar_gui(const char *args);
-
+bool flushTar(const char *tarName);
 
 #endif

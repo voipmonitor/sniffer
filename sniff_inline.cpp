@@ -91,53 +91,66 @@ iphdr2 *convertHeaderIP_GRE(iphdr2 *header_ip) {
 #if SNIFFER_INLINE_FUNCTIONS
 inline 
 #endif
+bool parseEtherHeader(int pcapLinklayerHeaderType, u_char* packet,
+		      sll_header *&header_sll, ether_header *&header_eth, u_int &header_ip_offset, int &protocol) {
+	switch(pcapLinklayerHeaderType) {
+		case DLT_LINUX_SLL:
+			header_sll = (sll_header*)packet;
+			if(header_sll->sll_protocol == 129) {
+				// VLAN tag
+				protocol = htons(*(u_int16_t*)(packet + sizeof(sll_header) + 2));
+				header_ip_offset = 4;
+			} else {
+				header_ip_offset = 0;
+				protocol = htons(header_sll->sll_protocol);
+			}
+			header_ip_offset += sizeof(sll_header);
+			break;
+		case DLT_EN10MB:
+			header_eth = (ether_header*)packet;
+			if(header_eth->ether_type == 129) {
+				// VLAN tag
+				header_ip_offset = 4;
+				//XXX: this is very ugly hack, please do it right! (it will work for "08 00" which is IPV4 but not for others! (find vlan_header or something)
+				protocol = htons(*(u_int16_t*)(packet + sizeof(ether_header) + 2));
+			} else {
+				header_ip_offset = 0;
+				protocol = htons(header_eth->ether_type);
+			}
+			header_ip_offset += sizeof(ether_header);
+			break;
+		case DLT_RAW:
+			header_ip_offset = 0;
+			protocol = ETHERTYPE_IP;
+			break;
+		case DLT_IEEE802_11_RADIO:
+			header_ip_offset = 52;
+			protocol = ETHERTYPE_IP;
+			break;
+		case DLT_NULL:
+			header_ip_offset = 4;
+			protocol = ETHERTYPE_IP;
+			break;
+		default:
+			return(false);
+	}
+	return(true);
+}
+
+#if SNIFFER_INLINE_FUNCTIONS
+inline 
+#endif
 int pcapProcess(pcap_pkthdr** header, u_char** packet, bool *destroy,
-		       bool enableDefrag, bool enableCalcMD5, bool enableDedup, bool enableDump,
-		       pcapProcessData *ppd, int pcapLinklayerHeaderType, pcap_dumper_t *pcapDumpHandle, const char *interfaceName) {
+		bool enableDefrag, bool enableCalcMD5, bool enableDedup, bool enableDump,
+		pcapProcessData *ppd, int pcapLinklayerHeaderType, pcap_dumper_t *pcapDumpHandle, const char *interfaceName) {
 	if(destroy) {
 		*destroy = false;
 	}
-	switch(pcapLinklayerHeaderType) {
-		case DLT_LINUX_SLL:
-			ppd->header_sll = (sll_header*)*packet;
-			if(ppd->header_sll->sll_protocol == 129) {
-				// VLAN tag
-				ppd->protocol = htons(*(u_int16_t*)(*packet + sizeof(sll_header) + 2));
-				ppd->header_ip_offset = 4;
-			} else {
-				ppd->header_ip_offset = 0;
-				ppd->protocol = htons(ppd->header_sll->sll_protocol);
-			}
-			ppd->header_ip_offset += sizeof(sll_header);
-			break;
-		case DLT_EN10MB:
-			ppd->header_eth = (ether_header *)*packet;
-			if(ppd->header_eth->ether_type == 129) {
-				// VLAN tag
-				ppd->header_ip_offset = 4;
-				//XXX: this is very ugly hack, please do it right! (it will work for "08 00" which is IPV4 but not for others! (find vlan_header or something)
-				ppd->protocol = htons(*(u_int16_t*)(*packet + sizeof(ether_header) + 2));
-			} else {
-				ppd->header_ip_offset = 0;
-				ppd->protocol = htons(ppd->header_eth->ether_type);
-			}
-			ppd->header_ip_offset += sizeof(ether_header);
-			break;
-		case DLT_RAW:
-			ppd->header_ip_offset = 0;
-			ppd->protocol = ETHERTYPE_IP;
-			break;
-		case DLT_IEEE802_11_RADIO:
-			ppd->header_ip_offset = 52;
-			ppd->protocol = ETHERTYPE_IP;
-			break;
-		case DLT_NULL:
-			ppd->header_ip_offset = 4;
-			ppd->protocol = ETHERTYPE_IP;
-			break;
-		default:
-			syslog(LOG_ERR, "BAD DATALINK %s: datalink number [%d] is not supported", interfaceName ? interfaceName : "---", pcapLinklayerHeaderType);
-			return(0);
+	
+	if(!parseEtherHeader(pcapLinklayerHeaderType, *packet,
+			     ppd->header_sll, ppd->header_eth, ppd->header_ip_offset, ppd->protocol)) {
+		syslog(LOG_ERR, "BAD DATALINK %s: datalink number [%d] is not supported", interfaceName ? interfaceName : "---", pcapLinklayerHeaderType);
+		return(0);
 	}
 	
 	if(ppd->protocol != ETHERTYPE_IP) {

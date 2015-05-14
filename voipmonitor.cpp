@@ -681,6 +681,8 @@ char opt_load_query_from_files_directory[1024];
 int opt_load_query_from_files_period;
 bool opt_load_query_from_files_inotify;
 
+bool opt_virtualudppacket = false;
+
 #include <stdio.h>
 #include <pthread.h>
 #include <openssl/err.h>
@@ -2754,8 +2756,11 @@ int eval_config(string inistr) {
 		opt_load_query_from_files_inotify = yesno(value);
 	}
 	
-	/*
+	if((value = ini.GetValue("general", "virtualudppacket", NULL))) {
+		opt_virtualudppacket = yesno(value);
+	}
 	
+	/*
 	packetbuffer default configuration
 	
 	packetbuffer_enable		= no
