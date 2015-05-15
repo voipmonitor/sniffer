@@ -1581,6 +1581,15 @@ void MySqlStore::queryToFiles(bool enable, const char *directory, int period) {
 	}
 }
 
+void MySqlStore::queryToFilesTerminate() {
+	if(qfileConfig.enable) {
+		qfileConfig.terminate = true;
+		usleep(250000);
+		closeAllQFiles();
+		clearAllQFiles();
+	}
+}
+
 void MySqlStore::queryToFiles_start() {
 	if(qfileConfig.enable) {
 		pthread_create(&this->qfilesCheckperiodThread, NULL, this->threadQFilesCheckPeriod, this);
@@ -1652,6 +1661,9 @@ void MySqlStore::query_lock(const char *query_str, int id) {
 }
 
 void MySqlStore::query_to_file(const char *query_str, int id) {
+	if(qfileConfig.terminate) {
+		return;
+	}
 	int idc = convIdForQFile(id);
 	QFile *qfile;
 	lock_qfiles();
@@ -1687,8 +1699,9 @@ void MySqlStore::query_to_file(const char *query_str, int id) {
 		string query = query_str;
 		query = find_and_replace(query_str, "__ENDL__", "__endl__");
 		query = find_and_replace(query_str, "\n", "__ENDL__");
+		unsigned int query_length = query.length();
 		query.append("\n");
-		fprintf(qfile->file, "%i:", id);
+		fprintf(qfile->file, "%i/%u:", id, query_length);
 		fputs(query.c_str(), qfile->file);
 	}
 	qfile->unlock();
@@ -1879,12 +1892,22 @@ bool MySqlStore::loadFromQFile(const char *filename, int id) {
 	unsigned int maxLengthQuery = 1000000;
 	char *buffQuery = new FILE_LINE char[maxLengthQuery];
 	while(fgets(buffQuery, maxLengthQuery, file)) {
-		int idQueryProcess = atoi(buffQuery);
-		if(!idQueryProcess) {
+		unsigned int readLength = strlen(buffQuery);
+		if(buffQuery[readLength - 1] == '\n') {
+			buffQuery[readLength - 1] = 0;
+		}
+		int idQueryProcess;
+		unsigned int queryLength;
+		char *posSeparator = strchr(buffQuery, ':');
+		if(!posSeparator ||
+		   sscanf(buffQuery, "%i/%u:", &idQueryProcess, &queryLength) != 2 ||
+		   !idQueryProcess ||
+		   !queryLength) {
+			syslog(LOG_ERR, "bad string in qfile %s: %s", filename, buffQuery);
 			continue;
 		}
-		char *posSeparator = strchr(buffQuery, ':');
-		if(!posSeparator) {
+		if(queryLength != strlen(posSeparator + 1)) {
+			syslog(LOG_ERR, "bad query length in qfile %s: %s", filename, buffQuery);
 			continue;
 		}
 		string query = find_and_replace(posSeparator + 1, "__ENDL__", "\n");

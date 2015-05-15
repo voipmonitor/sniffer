@@ -2901,7 +2901,10 @@ void set_context_config() {
 	opt_pcap_dump_tar_sip_use_pos = opt_pcap_dump_tar && !opt_pcap_dump_tar_compress_sip;
 	opt_pcap_dump_tar_rtp_use_pos = opt_pcap_dump_tar && !opt_pcap_dump_tar_compress_rtp;
 	opt_pcap_dump_tar_graph_use_pos = opt_pcap_dump_tar && !opt_pcap_dump_tar_compress_graph;
-
+	
+	if(opt_save_query_to_files || opt_load_query_from_files) {
+		opt_autoload_from_sqlvmexport = false;
+	}
 }
 
 int load_config(char *fname) {

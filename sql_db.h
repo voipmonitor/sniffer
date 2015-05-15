@@ -429,11 +429,13 @@ private:
 	struct QFileConfig {
 		QFileConfig() {
 			enable = false;
+			terminate = false;
 			period = 10;
 			inotify = false;
 			inotify_ready = false;
 		}
 		bool enable;
+		bool terminate;
 		string directory;
 		int period;
 		bool inotify;
@@ -482,6 +484,7 @@ public:
 		   const char *cloud_host = NULL, const char *cloud_token = NULL);
 	~MySqlStore();
 	void queryToFiles(bool enable = true, const char *directory = NULL, int period = 0);
+	void queryToFilesTerminate();
 	void loadFromQFiles(bool enable = true, const char *directory = NULL, int period = 0);
 	void queryToFiles_start();
 	void loadFromQFiles_start();
