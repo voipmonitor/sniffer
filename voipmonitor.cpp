@@ -266,6 +266,7 @@ unsigned int opt_skinny_ignore_rtpip = 0;
 int opt_read_from_file = 0;
 char opt_pb_read_from_file[256] = "";
 int opt_pb_read_from_file_speed = 0;
+int opt_pb_read_from_file_acttime = 0;
 int opt_dscp = 0;
 int opt_cdrproxy = 1;
 int opt_enable_http_enum_tables = 0;
@@ -3573,10 +3574,20 @@ int main(int argc, char *argv[]) {
 				if(!strncmp(optarg, "pb:", 3)) {
 					strcpy(opt_pb_read_from_file, optarg + 3);
 					opt_scanpcapdir[0] = '\0';
+				} else if(!strncmp(optarg, "pba:", 4)) {
+					strcpy(opt_pb_read_from_file, optarg + 4);
+					opt_pb_read_from_file_acttime = true;
+					opt_scanpcapdir[0] = '\0';
 				} else if(!strncmp(optarg, "pbs", 3) &&
 					  strchr(optarg, ':')) {
 					opt_pb_read_from_file_speed = atoi(optarg + 3);
 					strcpy(opt_pb_read_from_file, strchr(optarg, ':') + 1);
+					opt_scanpcapdir[0] = '\0';
+				} else if(!strncmp(optarg, "pbsa", 4) &&
+					  strchr(optarg, ':')) {
+					opt_pb_read_from_file_speed = atoi(optarg + 4);
+					strcpy(opt_pb_read_from_file, strchr(optarg, ':') + 1);
+					opt_pb_read_from_file_acttime = true;
 					opt_scanpcapdir[0] = '\0';
 				} else {
 					strcpy(fname, optarg);

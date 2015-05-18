@@ -122,6 +122,7 @@ extern TcpReassembly *tcpReassemblyWebrtc;
 extern TcpReassembly *tcpReassemblySsl;
 extern char opt_pb_read_from_file[256];
 extern int opt_pb_read_from_file_speed;
+extern int opt_pb_read_from_file_acttime;
 extern char opt_scanpcapdir[2048];
 extern int global_pcap_dlink;
 extern char opt_cachedir[1024];
@@ -2244,6 +2245,16 @@ inline int PcapQueue_readFromInterface_base::pcap_next_ex_iface(pcap_t *pcapHand
 	}
 	*/
 	if(opt_pb_read_from_file[0]) {
+		if(opt_pb_read_from_file_acttime) {
+			static u_int64_t diffTime;
+			u_int64_t packetTime = (*header)->ts.tv_sec * 1000000ull + (*header)->ts.tv_usec;
+			if(!diffTime) {
+				diffTime = getTimeUS() - packetTime;
+			}
+			packetTime += diffTime;
+			(*header)->ts.tv_sec = packetTime / 1000000ull;
+			(*header)->ts.tv_usec = packetTime % 1000000ull;
+		}
 		if(opt_pb_read_from_file_speed) {
 			static u_int64_t diffTime;
 			u_int64_t packetTime = (*header)->ts.tv_sec * 1000000ull + (*header)->ts.tv_usec;
