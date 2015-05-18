@@ -1,3 +1,8 @@
+11.5.2 18.05.2015
+=================
+- fix sql cache threads which did not start processing sql cache in daemon mode
+
+
 11.5.1 14.05.2015
 =================
 - modify virtualudppacket option: do not transform simple tcp packets to udp 
