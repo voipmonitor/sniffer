@@ -2877,7 +2877,7 @@ Call *process_packet(bool is_ssl, u_int64_t packet_number,
 			// if the call ends with some of SIP [456]XX response code, we can shorten timeout when the call will be closed 
 //			if((call->saddr == saddr || call->saddr == daddr || merged) &&
 			if (sip_method == RES3XX || sip_method == RES4XX || sip_method == RES5XX || sip_method == RES6XX || sip_method == RES401 || sip_method == RES403) {
-				if(lastSIPresponseNum != 401 && lastSIPresponseNum != 407 && lastSIPresponseNum != 501 && lastSIPresponseNum != 481) {
+				if(lastSIPresponseNum != 401 && lastSIPresponseNum != 407 && lastSIPresponseNum != 501 && lastSIPresponseNum != 481 && lastSIPresponseNum != 491) {
 					// save packet 
 					call->destroy_call_at = header->ts.tv_sec + 5;
 
@@ -2896,8 +2896,10 @@ Call *process_packet(bool is_ssl, u_int64_t packet_number,
 					returnCall = call;
 					goto endsip_save_packet;
 				} else if(lastSIPresponseNum == 481) {
-					//481 CallLeg/Transaction doesnt exist
+					//481 CallLeg/Transaction doesnt exist - set timeout to 180 seconds
 					call->destroy_call_at = header->ts.tv_sec + 180;
+				} else if(lastSIPresponseNum == 491) {
+					// do not set timeout for 491
 				} else if(!call->destroy_call_at) {
 					call->destroy_call_at = header->ts.tv_sec + 60;
 				}
