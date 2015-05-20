@@ -431,6 +431,7 @@ char sql_cdr_table_last1d[256] = "";
 char sql_cdr_next_table[256] = "cdr_next";
 char sql_cdr_ua_table[256] = "cdr_ua";
 char sql_cdr_sip_response_table[256] = "cdr_sip_response";
+char sql_cdr_reason_table[256] = "cdr_reason";
 
 char mysql_host[256] = "127.0.0.1";
 char mysql_host_orig[256] = "";
@@ -3571,23 +3572,19 @@ int main(int argc, char *argv[]) {
 				} }
 				break;
 			case 'r':
-				if(!strncmp(optarg, "pb:", 3)) {
-					strcpy(opt_pb_read_from_file, optarg + 3);
+				if(!strncmp(optarg, "pb:", 3) ||
+				   !strncmp(optarg, "pba:", 4)) {
+					bool acttime = !strncmp(optarg, "pba:", 4);
+					strcpy(opt_pb_read_from_file, optarg + (acttime ? 4 : 3));
+					opt_pb_read_from_file_acttime = acttime;
 					opt_scanpcapdir[0] = '\0';
-				} else if(!strncmp(optarg, "pba:", 4)) {
-					strcpy(opt_pb_read_from_file, optarg + 4);
-					opt_pb_read_from_file_acttime = true;
-					opt_scanpcapdir[0] = '\0';
-				} else if(!strncmp(optarg, "pbs", 3) &&
+				} else if((!strncmp(optarg, "pbs", 3) ||
+					   !strncmp(optarg, "pbsa", 4)) &&
 					  strchr(optarg, ':')) {
-					opt_pb_read_from_file_speed = atoi(optarg + 3);
+					bool acttime = !strncmp(optarg, "pbsa", 4);
+					opt_pb_read_from_file_speed = atoi(optarg + (acttime ? 4 : 3));
 					strcpy(opt_pb_read_from_file, strchr(optarg, ':') + 1);
-					opt_scanpcapdir[0] = '\0';
-				} else if(!strncmp(optarg, "pbsa", 4) &&
-					  strchr(optarg, ':')) {
-					opt_pb_read_from_file_speed = atoi(optarg + 4);
-					strcpy(opt_pb_read_from_file, strchr(optarg, ':') + 1);
-					opt_pb_read_from_file_acttime = true;
+					opt_pb_read_from_file_acttime = acttime;
 					opt_scanpcapdir[0] = '\0';
 				} else {
 					strcpy(fname, optarg);

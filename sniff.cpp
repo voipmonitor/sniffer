@@ -2658,6 +2658,44 @@ Call *process_packet(bool is_ssl, u_int64_t packet_number,
 				strncpy(call->lastSIPresponse, lastSIPresponse, 128);
 				call->lastSIPresponseNum = lastSIPresponseNum;
 			}
+			if(lastSIPresponseNum != 0 && lastSIPresponse[0] != '\0') {
+				call->SIPresponse.push_back(Call::sSipResponse(lastSIPresponse, lastSIPresponseNum));
+			}
+			
+			extern bool exists_columns_cdr_reason;
+			if(exists_columns_cdr_reason) {
+				char *reason = gettag(data, datalen, "reason:", &l);
+				if(l && l < (unsigned)datalen) {
+					char oldEndChar = data[l];
+					data[l] = 0;
+					char *pointerToCause = strcasestr(reason, ";cause=");
+					if(pointerToCause && (pointerToCause - reason) < 10) {
+						char *pointerToText = strcasestr(pointerToCause, ";text=\"");
+						if(pointerToText && (pointerToText - pointerToCause - 7) < 5) {
+							char type[10];
+							memcpy(type, reason, pointerToCause - reason);
+							type[pointerToCause - reason] = 0;
+							int cause = atoi(pointerToCause + 7);
+							char text[1024];
+							unsigned int lengthText = min(l - (pointerToText - reason + 7), sizeof(text) - 1);
+							memcpy(text, pointerToText + 7, lengthText);
+							text[lengthText] = 0;
+							if(lengthText > 0 && text[lengthText - 1] == '"') {
+								--lengthText;
+								text[lengthText] = 0;
+							}
+							if(!strcasecmp(type, "SIP")) {
+								call->reason_sip_cause = cause;
+								call->reason_sip_text = text;
+							} else if(!strcasecmp(type, "Q.850")) {
+								call->reason_q850_cause = cause;
+								call->reason_q850_text = text;
+							}
+						}
+					}
+					data[l] = oldEndChar;
+				}
+			}
 
 			// check if it is BYE or OK(RES2XX)
 			if(sip_method == INVITE) {

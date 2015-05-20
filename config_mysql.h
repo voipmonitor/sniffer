@@ -17,9 +17,6 @@
 #include "voipmonitor.h"
 #include "sql_db.h"
 
-extern bool existsColumnCalldateInCdrDtmf;
-extern bool existsColumnCalldateInCdrNext;
-extern bool existsColumnCalldateInCdrRtp;
 extern bool opt_cdr_partition;
 extern bool opt_disable_partition_operations;
 extern bool opt_ipacc_agregate_only_customers_on_any_side;

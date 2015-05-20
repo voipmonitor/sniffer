@@ -83,7 +83,7 @@ public:
 	virtual string insertQuery(string table, vector<SqlDb_row> *rows, bool enableSqlStringInContent = false, bool escapeAll = false, bool insertIgnore = false);
 	virtual int insert(string table, SqlDb_row row);
 	virtual int insert(string table, vector<SqlDb_row> *rows);
-	virtual int getIdOrInsert(string table, string idField, string uniqueField, SqlDb_row row);
+	virtual int getIdOrInsert(string table, string idField, string uniqueField, SqlDb_row row, const char *uniqueField2 = NULL);
 	virtual int getInsertId() = 0;
 	virtual int getIndexField(string fieldName);
 	virtual string escape(const char *inputString, int length = 0) = 0;

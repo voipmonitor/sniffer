@@ -595,16 +595,16 @@ bool FraudAlert::okFilter(sFraudEventInfo *eventInfo) {
 }
 
 void FraudAlert::evAlert(FraudAlertInfo *alertInfo) {
-	/*
-	cout << "FRAUD ALERT INFO: " 
-	     << alertInfo->getAlertTypeString() << " // "
-	     << alertInfo->getAlertDescr() << " // "
-	     << alertInfo->getString() 
-	     << endl
-	     << alertInfo->getJson()
-	     << endl
-	     << flush;
-	*/     
+	if(sverb.fraud) {
+		cout << "FRAUD ALERT INFO: " 
+		     << alertInfo->getAlertTypeString() << " // "
+		     << alertInfo->getAlertDescr() << " // "
+		     << alertInfo->getString() 
+		     << endl
+		     << alertInfo->getJson()
+		     << endl
+		     << flush;
+	}
 	if(!sqlDbFraud) {
 		sqlDbFraud = createSqlObject();
 	}

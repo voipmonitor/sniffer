@@ -80,6 +80,7 @@ extern char sql_cdr_table_last1d[256];
 extern char sql_cdr_next_table[256];
 extern char sql_cdr_ua_table[256];
 extern char sql_cdr_sip_response_table[256];
+extern char sql_cdr_reason_table[256];
 extern int opt_callend;
 extern int opt_id_sensor;
 extern int opt_id_sensor_cleanspool;
@@ -159,6 +160,7 @@ SqlDb *sqlDbSaveCall = NULL;
 bool existsColumnCalldateInCdrNext = true;
 bool existsColumnCalldateInCdrRtp = true;
 bool existsColumnCalldateInCdrDtmf = true;
+bool existsColumnCalldateInCdrSipresp = true;
 bool existsColumnCalldateInCdrTarPart = true;
 
 extern int opt_pcap_dump_tar_sip_use_pos;
@@ -224,6 +226,8 @@ Call::Call(char *call_id, unsigned long call_id_len, time_t time) :
 	lastSIPresponseNum = 0;
 	new_invite_after_lsr487 = false;
 	cancel_lsr487 = false;
+	reason_sip_cause = 0;
+	reason_q850_cause = 0;
 	msgcount = 0;
 	regcount = 0;
 	reg401count = 0;
@@ -839,7 +843,7 @@ read:
 					goto end;
 				} else if(oldcodec != rtp[i]->codec){
 					//codec changed and it is not DTMF, reset ssrc so the stream will not match and new one is used
-					printf("mchange [%d] [%d]\n", rtp[i]->codec, curpayload);
+					//printf("mchange [%d] [%d]\n", rtp[i]->codec, curpayload);
 					rtp[i]->ssrc2 = 0;
 				}
 			}
@@ -1790,6 +1794,8 @@ size_t write_data(char *ptr, size_t size, size_t nmemb, void *userdata) {
 /* TODO: implement failover -> write INSERT into file */
 int
 Call::saveToDb(bool enableBatchIfPossible) {
+ 
+	extern bool exists_columns_cdr_reason;
 
 	if(!sqlDbSaveCall) {
 		sqlDbSaveCall = createSqlObject();
@@ -1842,6 +1848,8 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			cdr_domain_called,
 			*/
 			cdr_sip_response,
+			cdr_reason_sip,
+			cdr_reason_q850,
 			cdr_ua_a,
 			cdr_ua_b,	
 			cdr_proxy;
@@ -1859,6 +1867,8 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			called_domain_id = 0,
 			*/
 			lastSIPresponse_id = 0,
+			reason_sip_id = 0,
+			reason_q850_id = 0,
 			a_ua_id = 0,
 			b_ua_id = 0;
 
@@ -1891,6 +1901,21 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		}
 	}
 
+	list<sSipResponse> SIPresponseUnique;
+	for(list<sSipResponse>::iterator iterSipresp = SIPresponse.begin(); iterSipresp != SIPresponse.end(); iterSipresp++) {
+		bool existsInUnique = false;
+		for(list<sSipResponse>::iterator iterSiprespUnique = SIPresponseUnique.begin(); iterSiprespUnique != SIPresponseUnique.end(); iterSiprespUnique++) {
+			if(iterSiprespUnique->SIPresponseNum == iterSipresp->SIPresponseNum &&
+			   iterSiprespUnique->SIPresponse == iterSipresp->SIPresponse) {
+				existsInUnique = true;
+				break;
+			}
+		}
+		if(!existsInUnique) {
+			SIPresponseUnique.push_back(*iterSipresp);
+		}
+	}
+
 	if(useSensorId > -1) {
 		cdr.add(useSensorId, "id_sensor");
 	}
@@ -1915,6 +1940,16 @@ Call::saveToDb(bool enableBatchIfPossible) {
 	*/
 	
 	cdr_sip_response.add(sqlEscapeString(lastSIPresponse), "lastSIPresponse");
+	if(exists_columns_cdr_reason) {
+		if(reason_sip_text.length()) {
+			cdr_reason_sip.add(1, "type");
+			cdr_reason_sip.add(sqlEscapeString(reason_sip_text.c_str()), "reason");
+		}
+		if(reason_q850_text.length()) {
+			cdr_reason_q850.add(2, "type");
+			cdr_reason_q850.add(sqlEscapeString(reason_q850_text.c_str()), "reason");
+		}
+	}
 
 	unsigned int dscp_a = caller_sipdscp,
 		     dscp_b = called_sipdscp,
@@ -1956,6 +1991,14 @@ Call::saveToDb(bool enableBatchIfPossible) {
 	}
 	cdr.add(sighup ? 1 : 0, "sighup");
 	cdr.add(lastSIPresponseNum, "lastSIPresponseNum");
+	if(exists_columns_cdr_reason) {
+		if(reason_sip_cause) {
+			cdr.add(reason_sip_cause, "reason_sip_cause");
+		}
+		if(reason_q850_cause) {
+			cdr.add(reason_q850_cause, "reason_q850_cause");
+		}
+	}
 
 	int bye;
 	if(force_terminate) {
@@ -2268,6 +2311,14 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		sqlDbSaveCall->setEnableSqlStringInContent(true);
 		
 		cdr.add(string("_\\_'SQL'_\\_:") + "getIdOrInsertSIPRES(" + sqlEscapeStringBorder(lastSIPresponse) + ")", "lastSIPresponse_id");
+		if(exists_columns_cdr_reason) {
+			if(reason_sip_text.length()) {
+				cdr.add(string("_\\_'SQL'_\\_:") + "getIdOrInsertREASON(1," + sqlEscapeStringBorder(reason_sip_text.c_str()) + ")", "reason_sip_text_id");
+			}
+			if(reason_q850_text.length()) {
+				cdr.add(string("_\\_'SQL'_\\_:") + "getIdOrInsertREASON(2," + sqlEscapeStringBorder(reason_q850_text.c_str()) + ")", "reason_q850_text_id");
+			}
+		}
 		if(opt_cdr_ua_enable) {
 			if(a_ua) {
 				cdr.add(string("_\\_'SQL'_\\_:") + "getIdOrInsertUA(" + sqlEscapeStringBorder(a_ua) + ")", "a_ua_id");
@@ -2307,6 +2358,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 				}
 				query_str += string("  delete from cdr_rtp where cdr_id = @exists_call_id;\n") +
 					     (opt_dbdtmf ? "  delete from cdr_dtmf where cdr_id = @exists_call_id;\n" : "") +
+					     "  delete from cdr_sipresp where cdr_id = @exists_call_id;\n" +
 					     (opt_pcap_dump_tar ? "  delete from cdr_tar_part where cdr_id = @exists_call_id;\n" : "") +
 					     "  set @exists_call_id = 0;\n" +
 					     "end if;\n";
@@ -2415,6 +2467,17 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			}
 		}
 		
+		for(list<sSipResponse>::iterator iterSiprespUnique = SIPresponseUnique.begin(); iterSiprespUnique != SIPresponseUnique.end(); iterSiprespUnique++) {
+			SqlDb_row sipresp;
+			sipresp.add("_\\_'SQL'_\\_:@cdr_id", "cdr_ID");
+			sipresp.add(string("_\\_'SQL'_\\_:") + "getIdOrInsertSIPRES(" + sqlEscapeStringBorder(iterSiprespUnique->SIPresponse.c_str()) + ")", "SIPresponse_id");
+			sipresp.add(iterSiprespUnique->SIPresponseNum, "SIPresponseNum");
+			if(existsColumnCalldateInCdrSipresp) {
+				sipresp.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
+			}
+			query_str += sqlDbSaveCall->insertQuery("cdr_sipresp", sipresp) + ";\n";
+		}
+		
 		if(opt_pcap_dump_tar) {
 			for(int i = 1; i <= 3; i++) {
 				if(!(i == 1 ? opt_pcap_dump_tar_sip_use_pos :
@@ -2475,6 +2538,14 @@ Call::saveToDb(bool enableBatchIfPossible) {
 	called_domain_id = sqlDb->getIdOrInsert("cdr_domain", "id", "domain", cdr_domain_called);
 	*/
 	lastSIPresponse_id = sqlDbSaveCall->getIdOrInsert(sql_cdr_sip_response_table, "id", "lastSIPresponse", cdr_sip_response);
+	if(exists_columns_cdr_reason) {
+		if(reason_sip_text.length()) {
+			reason_sip_id = sqlDbSaveCall->getIdOrInsert(sql_cdr_reason_table, "id", "reason", cdr_reason_sip, "type");
+		}
+		if(reason_q850_text.length()) {
+			reason_q850_id = sqlDbSaveCall->getIdOrInsert(sql_cdr_reason_table, "id", "reason", cdr_reason_q850, "type");
+		}
+	}
 	if(cdr_ua_a) {
 		a_ua_id = sqlDbSaveCall->getIdOrInsert(sql_cdr_ua_table, "id", "ua", cdr_ua_a);
 	}
@@ -2491,6 +2562,8 @@ Call::saveToDb(bool enableBatchIfPossible) {
 	*/
 	
 	cdr.add(lastSIPresponse_id, "lastSIPresponse_id", true);
+	cdr.add(reason_sip_id, "reason_sip_text_id", true);
+	cdr.add(reason_q850_id, "reason_q850_text_id", true);
 	cdr.add(a_ua_id, "a_ua_id", true);
 	cdr.add(b_ua_id, "b_ua_id", true);
 	
@@ -2581,6 +2654,17 @@ Call::saveToDb(bool enableBatchIfPossible) {
 				}
 				sqlDbSaveCall->insert("cdr_dtmf", dtmf);
 			}
+		}
+		
+		for(list<sSipResponse>::iterator iterSiprespUnique = SIPresponseUnique.begin(); iterSiprespUnique != SIPresponseUnique.end(); iterSiprespUnique++) {
+			SqlDb_row sipresp;
+			sipresp.add(cdrID, "cdr_ID");
+			sipresp.add(string("_\\_'SQL'_\\_:") + "getIdOrInsertSIPRES(" + sqlEscapeStringBorder(iterSiprespUnique->SIPresponse.c_str()) + ")", "SIPresponse_id");
+			sipresp.add(iterSiprespUnique->SIPresponseNum, "SIPresponseNum");
+			if(existsColumnCalldateInCdrSipresp) {
+				sipresp.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
+			}
+			sqlDbSaveCall->insertQuery("cdr_sipresp", sipresp);
 		}
 
 		if(opt_printinsertid) {
