@@ -79,6 +79,7 @@ int sql_noerror = 0;
 int sql_disable_next_attempt_if_error = 0;
 bool opt_cdr_partition_oldver = false;
 bool exists_column_message_content_length = false;
+bool exists_columns_cdr_reason = false;
 
 
 string SqlDb_row::operator [] (const char *fieldName) {
@@ -445,10 +446,14 @@ int SqlDb::insert(string table, vector<SqlDb_row> *rows) {
 	return(-1);
 }
 
-int SqlDb::getIdOrInsert(string table, string idField, string uniqueField, SqlDb_row row) {
+int SqlDb::getIdOrInsert(string table, string idField, string uniqueField, SqlDb_row row, const char *uniqueField2) {
 	string query = 
 		"SELECT * FROM " + table + " WHERE " + uniqueField + " = " + 
 		this->getContentBorder() + row[uniqueField] + this->getContentBorder();
+	if(uniqueField2) {
+		query = query + " AND " + uniqueField2 + " = " +
+		this->getContentBorder() + row[uniqueField2] + this->getContentBorder();
+	}
 	if(this->query(query)) {
 		SqlDb_row rsltRow = this->fetchRow();
 		if(rsltRow) {
@@ -2639,6 +2644,7 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 		 "cdr_proxy",
 		 "cdr_rtp",
 		 "cdr_dtmf",
+		 "cdr_sipresp",
 		 "cdr_tar_part"
 	};
 
@@ -2846,6 +2852,15 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 	) ENGINE=" + (federated ? federatedConnection + "cdr_sip_response'" : "InnoDB") + " DEFAULT CHARSET=latin1;");
 
 	this->query(string(
+	"CREATE TABLE IF NOT EXISTS `cdr_reason") + federatedSuffix + "` (\
+			`id` mediumint unsigned NOT NULL AUTO_INCREMENT,\
+			`type` tinyint DEFAULT NULL,\
+			`reason` varchar(255) DEFAULT NULL,\
+		PRIMARY KEY (`id`),\
+		UNIQUE KEY `type_reason` (`type`, `reason`)\
+	) ENGINE=" + (federated ? federatedConnection + "cdr_reason'" : "InnoDB") + " DEFAULT CHARSET=latin1;");
+	
+	this->query(string(
 	"CREATE TABLE IF NOT EXISTS `cdr_ua") + federatedSuffix + "` (\
 			`id` int unsigned NOT NULL AUTO_INCREMENT,\
 			`ua` varchar(512) DEFAULT NULL,\
@@ -2914,6 +2929,10 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 			`bye` tinyint unsigned DEFAULT NULL,\
 			`lastSIPresponse_id` mediumint unsigned DEFAULT NULL,\
 			`lastSIPresponseNum` smallint unsigned DEFAULT NULL,\
+			`reason_sip_cause` smallint unsigned DEFAULT NULL,\
+			`reason_sip_text_id` mediumint unsigned DEFAULT NULL,\
+			`reason_q850_cause` smallint unsigned DEFAULT NULL,\
+			`reason_q850_text_id` mediumint unsigned DEFAULT NULL,\
 			`sighup` tinyint DEFAULT NULL,\
 			`dscp` int unsigned DEFAULT NULL,\
 			`a_index` tinyint DEFAULT NULL,\
@@ -3063,6 +3082,8 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 		KEY `a_rtcp_avgjitter_mult10` (`a_rtcp_avgjitter_mult10`),\
 		KEY `b_rtcp_avgjitter_mult10` (`b_rtcp_avgjitter_mult10`),\
 		KEY `lastSIPresponse_id` (`lastSIPresponse_id`),\
+		KEY `reason_sip_text_id` (`reason_sip_text_id`),\
+		KEY `reason_q850_text_id` (`reason_q850_text_id`),\
 		KEY `payload` (`payload`),\
 		KEY `id_sensor` (`id_sensor`)" + 
 		(get_customers_pn_query[0] ?
@@ -3075,7 +3096,10 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 			"" :
 			",CONSTRAINT `cdr_ibfk_1` FOREIGN KEY (`lastSIPresponse_id`) REFERENCES `cdr_sip_response` (`id`) ON UPDATE CASCADE,\
 			CONSTRAINT `cdr_ibfk_2` FOREIGN KEY (`a_ua_id`) REFERENCES `cdr_ua` (`id`) ON UPDATE CASCADE,\
-			CONSTRAINT `cdr_ibfk_3` FOREIGN KEY (`b_ua_id`) REFERENCES `cdr_ua` (`id`) ON UPDATE CASCADE") +
+			CONSTRAINT `cdr_ibfk_3` FOREIGN KEY (`b_ua_id`) REFERENCES `cdr_ua` (`id`) ON UPDATE CASCADE,\
+			CONSTRAINT `cdr_ibfk_4` FOREIGN KEY (`reason_sip_text_id`) REFERENCES `cdr_reason` (`id`) ON UPDATE CASCADE,\
+			CONSTRAINT `cdr_ibfk_5` FOREIGN KEY (`reason_q850_text_id`) REFERENCES `cdr_reason` (`id`) ON UPDATE CASCADE"
+		) +
 	") ENGINE=" + (federated ? federatedConnection + "cdr'" : "InnoDB") + " DEFAULT CHARSET=latin1 " + compress +  
 	(opt_cdr_partition && !federated ?
 		(opt_cdr_partition_oldver ? 
@@ -3156,6 +3180,36 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 						"ADD COLUMN price_customer_mult1000000 BIGINT UNSIGNED, "
 						"ADD COLUMN price_customer_currency_id TINYINT UNSIGNED;")).c_str());
 		}
+	}
+	
+	const char *cdrReasonColumns[] = {
+		"reason_sip_cause",
+		"reason_sip_text_id",
+		"reason_q850_cause",
+		"reason_q850_text_id"
+	};
+	bool missing_column_cdr_reason = false;
+	for(unsigned int i = 0; i < sizeof(cdrReasonColumns) / sizeof(cdrReasonColumns[0]); i++) {
+		this->query(string("show columns from cdr where Field='") + cdrReasonColumns[i] + "'");
+		if(!this->fetchRow()) {
+			missing_column_cdr_reason = true;
+		}
+	}
+	if(missing_column_cdr_reason) {
+		syslog(LOG_WARNING, "!!! You need to alter cdr database table and add new columns to support SIP header 'reason'. "
+				    "This operation can take hours based on ammount of data, CPU and I/O speed of your server. "
+				    "The alter table will prevent the database to insert new rows and will probably block other operations. "
+				    "It is recommended to alter the table in non working hours. "
+				    "Login to the mysql voipmonitor database (mysql -uroot voipmonitor) and run on the CLI> "
+				    "ALTER TABLE cdr "
+				    "ADD COLUMN reason_sip_cause smallint unsigned DEFAULT NULL, "
+				    "ADD COLUMN reason_sip_text_id mediumint unsigned DEFAULT NULL, "
+				    "ADD COLUMN reason_q850_cause smallint unsigned DEFAULT NULL, "
+				    "ADD COLUMN reason_q850_text_id mediumint unsigned DEFAULT NULL, "
+				    "ADD KEY reason_sip_text_id (reason_sip_text_id), "
+				    "ADD KEY reason_q850_text_id (reason_q850_text_id);");
+	} else {
+		exists_columns_cdr_reason = true;
 	}
 
 	string cdrNextCustomFields;
@@ -3280,6 +3334,31 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 			"" :
 			",CONSTRAINT `cdr_dtmf_ibfk_1` FOREIGN KEY (`cdr_ID`) REFERENCES `cdr` (`ID`) ON DELETE CASCADE ON UPDATE CASCADE") +
 	") ENGINE=" + (federated ? federatedConnection + "cdr_dtmf'" : "InnoDB") + " DEFAULT CHARSET=latin1 " + compress +
+	(opt_cdr_partition && !federated ?
+		(opt_cdr_partition_oldver ? 
+			string(" PARTITION BY RANGE (to_days(calldate))(\
+				 PARTITION ") + partDayName + " VALUES LESS THAN (to_days('" + limitDay + "')) engine innodb)" :
+			string(" PARTITION BY RANGE COLUMNS(calldate)(\
+				 PARTITION ") + partDayName + " VALUES LESS THAN ('" + limitDay + "') engine innodb)") :
+		""));
+
+	this->query(string(
+	"CREATE TABLE IF NOT EXISTS `cdr_sipresp") + federatedSuffix + "` (\
+			`ID` int unsigned NOT NULL AUTO_INCREMENT,\
+			`cdr_ID` int unsigned NOT NULL," +
+			(opt_cdr_partition ?
+				"`calldate` datetime NOT NULL," :
+				"") + 
+			"`SIPresponse_id` mediumint unsigned DEFAULT NULL,\
+			`SIPresponseNum` smallint unsigned DEFAULT NULL," +
+		(opt_cdr_partition ? 
+			"PRIMARY KEY (`ID`, `calldate`)," :
+			"PRIMARY KEY (`ID`),") +
+		"KEY (`cdr_ID`)" + 
+		(opt_cdr_partition ?
+			"" :
+			",CONSTRAINT `cdr_sipresp_ibfk_1` FOREIGN KEY (`cdr_ID`) REFERENCES `cdr` (`ID`) ON DELETE CASCADE ON UPDATE CASCADE") +
+	") ENGINE=" + (federated ? federatedConnection + "cdr_sipresp'" : "InnoDB") + " DEFAULT CHARSET=latin1 " + compress +
 	(opt_cdr_partition && !federated ?
 		(opt_cdr_partition_oldver ? 
 			string(" PARTITION BY RANGE (to_days(calldate))(\
@@ -3938,6 +4017,7 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 			    call create_partition('cdr_next', 'day', next_days);\
 			    call create_partition('cdr_rtp', 'day', next_days);\
 			    call create_partition('cdr_dtmf', 'day', next_days);\
+			    call create_partition('cdr_sipresp', 'day', next_days);\
 			    call create_partition('cdr_proxy', 'day', next_days);\
 			    call create_partition('cdr_tar_part', 'day', next_days);\
 			    call create_partition('http_jj', 'day', next_days);\
@@ -3974,6 +4054,7 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 			    call create_partition(database_name, 'cdr_next', 'day', next_days);\
 			    call create_partition(database_name, 'cdr_rtp', 'day', next_days);\
 			    call create_partition(database_name, 'cdr_dtmf', 'day', next_days);\
+			    call create_partition(database_name, 'cdr_sipresp', 'day', next_days);\
 			    call create_partition(database_name, 'cdr_proxy', 'day', next_days);\
 			    call create_partition(database_name, 'cdr_tar_part', 'day', next_days);\
 			    call create_partition(database_name, 'http_jj', 'day', next_days);\
@@ -4080,6 +4161,19 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 			END",
 			"getIdOrInsertSIPRES", "(val VARCHAR(255) CHARACTER SET latin1) RETURNS INT DETERMINISTIC", true);
 
+	this->createFunction(
+			"BEGIN \
+				DECLARE _ID INT; \
+				SET _ID = (SELECT id FROM cdr_reason WHERE type = type_input and reason = val); \
+				IF ( _ID ) THEN \
+					RETURN _ID; \
+				ELSE  \
+					INSERT INTO cdr_reason SET type = type_input, reason = val; \
+					RETURN LAST_INSERT_ID(); \
+				END IF; \
+			END",
+			"getIdOrInsertREASON", "(type_input tinyint, val VARCHAR(255) CHARACTER SET latin1) RETURNS INT DETERMINISTIC", true);
+	
 	this->createFunction( // double space after begin for invocation rebuild function if change parameter - createRoutine compare only body
 			"BEGIN  \
 				DECLARE _ID INT; \
@@ -4270,6 +4364,7 @@ void SqlDb_mysql::checkSchema() {
 	extern bool existsColumnCalldateInCdrNext;
 	extern bool existsColumnCalldateInCdrRtp;
 	extern bool existsColumnCalldateInCdrDtmf;
+	extern bool existsColumnCalldateInCdrSipresp;
 	extern bool existsColumnCalldateInCdrTarPart;
 	sql_disable_next_attempt_if_error = 1;
 	this->query("show columns from cdr_next where Field='calldate'");
@@ -4277,9 +4372,11 @@ void SqlDb_mysql::checkSchema() {
 	this->query("show columns from cdr_rtp where Field='calldate'");
 	existsColumnCalldateInCdrRtp = this->fetchRow();
 	this->query("show columns from cdr_dtmf where Field='calldate'");
-	existsColumnCalldateInCdrTarPart = this->fetchRow();
-	this->query("show columns from cdr_tar_part where Field='calldate'");
 	existsColumnCalldateInCdrDtmf = this->fetchRow();
+	this->query("show columns from cdr_sipresp where Field='calldate'");
+	existsColumnCalldateInCdrSipresp = this->fetchRow();
+	this->query("show columns from cdr_tar_part where Field='calldate'");
+	existsColumnCalldateInCdrTarPart = this->fetchRow();
 	if(!opt_cdr_partition &&
 	   (cloud_host[0] ||
 	    this->getDbMajorVersion() * 100 + this->getDbMinorVersion() > 500)) {
@@ -4314,6 +4411,8 @@ void SqlDb_mysql::copyFromSourceTables(SqlDb_mysql *sqlDbSrc) {
 	unsigned long maxDiffId = 100000;
 	this->copyFromSourceTable(sqlDbSrc, "cdr_sip_response");
 	if(terminating) return;
+	this->copyFromSourceTable(sqlDbSrc, "cdr_reason");
+	if(terminating) return;
 	this->copyFromSourceTable(sqlDbSrc, "cdr_ua");
 	if(terminating) return;
 	this->copyFromSourceTable(sqlDbSrc, "contenttype");
@@ -4345,6 +4444,7 @@ void SqlDb_mysql::copyFromSourceTable(SqlDb_mysql *sqlDbSrc, const char *tableNa
 	bool joinCdrCalldate = string(tableName) == "cdr_next" ||
 			       string(tableName) == "cdr_rtp" ||
 			       string(tableName) == "cdr_dtmf" ||
+			       string(tableName) == "cdr_sipresp" ||
 			       string(tableName) == "cdr_proxy" ||
 			       string(tableName) == "cdr_tar_part";
 	if(joinCdrCalldate) {
@@ -4439,6 +4539,8 @@ void SqlDb_mysql::copyFromSourceTable(SqlDb_mysql *sqlDbSrc, const char *tableNa
 			if(terminating) return;
 			this->copyFromSourceTable(sqlDbSrc, "cdr_dtmf", "cdr_id", 0, minIdInSrc, useMaxIdInSrc);
 			if(terminating) return;
+			this->copyFromSourceTable(sqlDbSrc, "cdr_sipresp", "cdr_id", 0, minIdInSrc, useMaxIdInSrc);
+			if(terminating) return;
 			this->copyFromSourceTable(sqlDbSrc, "cdr_proxy", "cdr_id", 0, minIdInSrc, useMaxIdInSrc);
 			if(terminating) return;
 			this->copyFromSourceTable(sqlDbSrc, "cdr_tar_part", "cdr_id", 0, minIdInSrc, useMaxIdInSrc);
@@ -4499,12 +4601,14 @@ void SqlDb_mysql::copyFromSourceGuiTable(SqlDb_mysql *sqlDbSrc, const char *tabl
 vector<string> SqlDb_mysql::getSourceTables() {
 	const char *sourceTables[] = {
 		"cdr_sip_response",
+		"cdr_reason",
 		"cdr_ua",
 		"contenttype",
 		"cdr",
 		"cdr_next",
 		"cdr_rtp",
 		"cdr_dtmf",
+		"cdr_sipresp",
 		"cdr_proxy",
 		"cdr_tar_part",
 		opt_enable_http_enum_tables ? "http_jj" : NULL,
@@ -4541,6 +4645,8 @@ bool SqlDb_mysql::checkFederatedTables() {
 void SqlDb_mysql::copyFromFederatedTables() {
 	unsigned long maxDiffId = 10000;
 	this->copyFromFederatedTable("cdr_sip_response");
+	if(terminating) return;
+	this->copyFromFederatedTable("cdr_reason");
 	if(terminating) return;
 	this->copyFromFederatedTable("cdr_ua");
 	if(terminating) return;
@@ -4612,6 +4718,8 @@ void SqlDb_mysql::copyFromFederatedTable(const char *tableName, const char *id, 
 			if(terminating) return;
 			this->copyFromFederatedTable("cdr_dtmf", "cdr_id", 0, minIdInFederated, useMaxIdInFederated);
 			if(terminating) return;
+			this->copyFromFederatedTable("cdr_sipresp", "cdr_id", 0, minIdInFederated, useMaxIdInFederated);
+			if(terminating) return;
 			this->copyFromFederatedTable("cdr_proxy", "cdr_id", 0, minIdInFederated, useMaxIdInFederated);
 			if(terminating) return;
 			this->copyFromFederatedTable("cdr_tar_part", "cdr_id", 0, minIdInFederated, useMaxIdInFederated);
@@ -4631,12 +4739,14 @@ void SqlDb_mysql::dropFederatedTables() {
 vector<string> SqlDb_mysql::getFederatedTables() {
 	const char *federatedTables[] = {
 		"cdr_sip_response_fed",
+		"cdr_reason_fed",
 		"cdr_ua_fed",
 		"contenttype_fed",
 		"cdr_fed",
 		"cdr_next_fed",
 		"cdr_rtp_fed",
 		"cdr_dtmf_fed",
+		"cdr_sipresp_fed",
 		"cdr_proxy_fed",
 		"cdr_tar_part_fed",
 		opt_enable_http_enum_tables ? "http_jj_fed" : NULL,
@@ -4775,6 +4885,12 @@ void SqlDb_odbc::createSchema(const char *host, const char *database, const char
 			lastSIPresponse_id mediumint NULL\
 				FOREIGN KEY REFERENCES cdr_sip_response (id),\
 			lastSIPresponseNum smallint NULL,\
+			reason_sip_cause smallint NULL,\
+			reason_sip_text_id mediumint NULL,\
+				FOREIGN KEY REFERENCES cdr_reason (id),\
+			reason_q850_cause smallint NULL,\
+			reason_q850_text_id mediumint NULL,\
+				FOREIGN KEY REFERENCES cdr_reason (id),\
 			dscp bigint NULL,\
 			sighup tinyint NULL,\
 			a_index tinyint NULL,\
@@ -4908,6 +5024,8 @@ void SqlDb_odbc::createSchema(const char *host, const char *database, const char
 		CREATE INDEX a_rtcp_avgjitter_mult10 ON cdr (a_rtcp_avgjitter_mult10);\
 		CREATE INDEX b_rtcp_avgjitter_mult10 ON cdr (b_rtcp_avgjitter_mult10);\
 		CREATE INDEX lastSIPresponse_id ON cdr (lastSIPresponse_id);\
+		CREATE INDEX reason_sip_text_id ON cdr (reason_sip_text_id);\
+		CREATE INDEX reason_q850_text_id ON cdr (reason_q850_text_id);\
 		CREATE INDEX payload ON cdr (payload);\
 		CREATE INDEX id_sensor ON cdr (id_sensor);\
 	END");
@@ -4973,6 +5091,16 @@ void SqlDb_odbc::createSchema(const char *host, const char *database, const char
 			dtmf char NULL,\
 			daddr bigint DEFAULT NULL,\
 			saddr bigint DEFAULT NULL);\
+	END");
+	
+	this->query(
+	"IF NOT EXISTS (SELECT * FROM sys.objects WHERE name = 'cdr_sipresp') BEGIN\
+		CREATE TABLE cdr_sipresp (\
+			ID int PRIMARY KEY IDENTITY,\
+			cdr_ID int \
+				FOREIGN KEY REFERENCES cdr (ID),\
+			SIPresponse_id mediumint DEFAULT NULL,\
+			SIPresponseNum smallint DEFAULT NULL,);\
 	END");
 
 	this->query(
@@ -5443,6 +5571,7 @@ void dropMysqlPartitionsCdr() {
 				sqlDb->query("ALTER TABLE cdr_next DROP PARTITION " + partitions[i]);
 				sqlDb->query("ALTER TABLE cdr_rtp DROP PARTITION " + partitions[i]);
 				sqlDb->query("ALTER TABLE cdr_dtmf DROP PARTITION " + partitions[i]);
+				sqlDb->query("ALTER TABLE cdr_sipresp DROP PARTITION " + partitions[i]);
 				sqlDb->query("ALTER TABLE cdr_tar_part DROP PARTITION " + partitions[i]);
 				sqlDb->query("ALTER TABLE cdr_proxy DROP PARTITION " + partitions[i]);
 				sqlDb->query("ALTER TABLE message DROP PARTITION " + partitions[i]);

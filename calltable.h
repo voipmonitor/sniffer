@@ -120,6 +120,17 @@ struct raws_t {
 */
 class Call {
 public:
+	struct sSipResponse {
+		sSipResponse(const char *SIPresponse = NULL, int SIPresponseNum = 0) {
+			if(SIPresponse) {
+				this->SIPresponse = SIPresponse;
+			}
+			this->SIPresponseNum = SIPresponseNum;
+		}
+		string SIPresponse;
+		int SIPresponseNum;
+	};
+public:
 	int type;			//!< type of call, INVITE or REGISTER
 	bool is_ssl;			//!< call was decrypted
 	char chantype;
@@ -225,8 +236,14 @@ public:
 
 	char lastSIPresponse[128];
 	int lastSIPresponseNum;
+	list<sSipResponse> SIPresponse;
 	bool new_invite_after_lsr487;
 	bool cancel_lsr487;
+	
+	int reason_sip_cause;
+	string reason_sip_text;
+	int reason_q850_cause;
+	string reason_q850_text;
 
 	string sip_pcapfilename;
 	string rtp_pcapfilename;

@@ -2059,6 +2059,10 @@ void ParsePacket::setStdParse() {
 	if(opt_update_dstnum_onanswer) {
 		addNode("via:");
 	}
+	extern int exists_columns_cdr_reason;
+	if(exists_columns_cdr_reason) {
+		addNode("reason:");
+	}
 	addNode("m=audio ");
 	addNode("a=rtpmap:");
 	addNode("o=");
