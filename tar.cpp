@@ -1629,11 +1629,12 @@ bool TarQueue::allThreadsEnds() {
 
 bool TarQueue::flushTar(const char *tarName) {
 	bool rslt = false;
+	string tarNameStr = find_and_replace(tarName, "//", "/");
 	map<string, Tar*>::iterator tars_it;
 	pthread_mutex_lock(&tarslock);
 	for(tars_it = tars.begin(); tars_it != tars.end(); tars_it++) {
 		Tar *tar = tars_it->second;
-		if(tar->pathname.find(tarName) != string::npos) {
+		if(tar->pathname.find(tarNameStr) != string::npos) {
 			tar->flush();
 			tar->lastFlushTime = glob_last_packet_time;
 			rslt = true;
