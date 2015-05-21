@@ -25,7 +25,6 @@ int vm_rrd_version;
 void rrd_vm_create_graph_tCPU_command(char *filename, char *fromatstyle, char *toatstyle, char *color, int resx, int resy, short slope, short icon, char *dstfile, char *buffer, int maxsize) {
     std::ostringstream cmdCreate;
 
-
 	if (dstfile == NULL) 
 		cmdCreate << "rrdtool graph - ";						//graph to stdout instead of file
 	else
@@ -330,9 +329,6 @@ void rrd_vm_create_graph_RSSVSZ_command(char *filename, char *fromatstyle, char 
 	buffer[length]='\0';
 }
 
-
-
-
 void rrd_vm_create_graph_speed_command(char *filename, char *fromatstyle, char *toatstyle, char *color, int resx, int resy, short slope, short icon, char *dstfile, char *buffer, int maxsize) {
     std::ostringstream cmdCreate;
 
@@ -404,8 +400,6 @@ void rrd_vm_create_graph_SQLq_command(char *filename, char *fromatstyle, char *t
 	cmdCreate << "CDEF:SQLqRM=SQLqR,100,* ";
 	cmdCreate << "CDEF:SQLqClM=SQLqCl,100,* ";
 	cmdCreate << "CDEF:SQLqHM=SQLqH,100,* ";
-
-
 	if (vm_rrd_version < 10403) {
 		cmdCreate << "LINE1:SQLqCM#0000FF:\"CDR queue\\t\\t\" ";
 		cmdCreate << "GPRINT:SQLqCM:LAST:\"Cur\\: %5.0lf\" ";
@@ -468,10 +462,9 @@ void rrd_vm_create_graph_SQLq_command(char *filename, char *fromatstyle, char *t
 	buffer[length]='\0';
 }
 
-
 void rrd_vm_create_graph_PS_command (char *filename, char *fromatstyle, char *toatstyle, char *color, int resx, int resy, short slope, short icon, char *dstfile, char *buffer, int maxsize) {
     std::ostringstream cmdCreate;
-	
+
 	if (dstfile == NULL) 
 		cmdCreate << "rrdtool graph - ";						//graph to stdout instead of file
 	else
@@ -577,9 +570,260 @@ void rrd_vm_create_graph_PS_command (char *filename, char *fromatstyle, char *to
 		cmdCreate << "GPRINT:PSA:MAX:\"Max\\: %5.0lf\" ";
 		cmdCreate << "GPRINT:PSA:MIN:\"Min\\: %5.0lf\\r\" ";
 	}
-//	std::string str ("Test string...");
 	std::size_t length = cmdCreate.str().copy(buffer, maxsize, 0);
-	buffer[length]='\0';	
+	buffer[length]='\0';
+}
+
+void rrd_vm_create_graph_PSC_command (char *filename, char *fromatstyle, char *toatstyle, char *color, int resx, int resy, short slope, short icon, char *dstfile, char *buffer, int maxsize) {
+    std::ostringstream cmdCreate;
+
+	if (dstfile == NULL)
+		cmdCreate << "rrdtool graph - ";						//graph to stdout instead of file
+	else
+		cmdCreate << "rrdtool graph " << dstfile << " ";
+	cmdCreate << "-w " << resx << " -h " << resy << " -a PNG ";
+	cmdCreate << "--start \"" << fromatstyle << "\" --end \"" << toatstyle << "\" ";
+	cmdCreate << "--font DEFAULT:0:Courier ";
+	cmdCreate << "--title \"Calls counter\" ";
+	cmdCreate << "--watermark \"`date`\" ";
+	if (vm_rrd_version >= 10400) { cmdCreate << "--disable-rrdtool-tag "; }
+	cmdCreate << "--vertical-label \"number of packets\" ";
+	cmdCreate << "--lower-limit 0 ";
+//	cmdCreate << "--x-grid MINUTE:10:HOUR:1:MINUTE:120:0:%R ";
+	cmdCreate << "--units-exponent 0 ";
+	if (vm_rrd_version >= 10400) { cmdCreate << "--full-size-mode "; }
+	if (slope) cmdCreate << "--slope-mode ";
+	if (icon) cmdCreate << "--only-graph ";
+	if (color != NULL) cmdCreate << "-c BACK#" << color << " -c SHADEA#" << color << " -c SHADEB#" << color << " ";
+	cmdCreate << "DEF:PSC=" << filename << ":PS-C:MAX ";
+	if (vm_rrd_version < 10403) {
+		cmdCreate << "LINE1:PSC#0000FF:\"calls/second\\t\\t\\t\" ";
+		cmdCreate << "GPRINT:PSC:LAST:\"Cur\\: %5.0lf\" ";
+		cmdCreate << "GPRINT:PSC:AVERAGE:\"Avg\\: %5.2lf\" ";
+		cmdCreate << "GPRINT:PSC:MAX:\"Max\\: %5.0lf\" ";
+		cmdCreate << "GPRINT:PSC:MIN:\"Min\\: %5.0lf\\l\" ";
+	} else {
+		cmdCreate << "LINE1:PSC#0000FF:\"calls/second\\l\" ";
+		cmdCreate << "COMMENT:\"\\u\" ";
+		cmdCreate << "GPRINT:PSC:LAST:\"Cur\\: %5.0lf\" ";
+		cmdCreate << "GPRINT:PSC:AVERAGE:\"Avg\\: %5.2lf\" ";
+		cmdCreate << "GPRINT:PSC:MAX:\"Max\\: %5.0lf\" ";
+		cmdCreate << "GPRINT:PSC:MIN:\"Min\\: %5.0lf\\r\" ";
+	}
+	std::size_t length = cmdCreate.str().copy(buffer, maxsize, 0);
+	buffer[length]='\0';
+}
+
+void rrd_vm_create_graph_PSS_command (char *filename, char *fromatstyle, char *toatstyle, char *color, int resx, int resy, short slope, short icon, char *dstfile, char *buffer, int maxsize) {
+    std::ostringstream cmdCreate;
+
+	if (dstfile == NULL)
+		cmdCreate << "rrdtool graph - ";						//graph to stdout instead of file
+	else
+		cmdCreate << "rrdtool graph " << dstfile << " ";
+	cmdCreate << "-w " << resx << " -h " << resy << " -a PNG ";
+	cmdCreate << "--start \"" << fromatstyle << "\" --end \"" << toatstyle << "\" ";
+	cmdCreate << "--font DEFAULT:0:Courier ";
+	cmdCreate << "--title \"SIP packets counter\" ";
+	cmdCreate << "--watermark \"`date`\" ";
+	if (vm_rrd_version >= 10400) { cmdCreate << "--disable-rrdtool-tag "; }
+	cmdCreate << "--vertical-label \"number of packets\" ";
+	cmdCreate << "--lower-limit 0 ";
+//	cmdCreate << "--x-grid MINUTE:10:HOUR:1:MINUTE:120:0:%R ";
+	cmdCreate << "--units-exponent 0 ";
+	if (vm_rrd_version >= 10400) { cmdCreate << "--full-size-mode "; }
+	if (slope) cmdCreate << "--slope-mode ";
+	if (icon) cmdCreate << "--only-graph ";
+	if (color != NULL) cmdCreate << "-c BACK#" << color << " -c SHADEA#" << color << " -c SHADEB#" << color << " ";
+	cmdCreate << "DEF:PSS0=" << filename << ":PS-S0:MAX ";
+	cmdCreate << "DEF:PSS1=" << filename << ":PS-S1:MAX ";
+	if (vm_rrd_version < 10403) {
+		cmdCreate << "LINE1:PSS0#00FF00:\"valid SIP packets/second\\t\" ";
+		cmdCreate << "GPRINT:PSS0:LAST:\"Cur\\: %5.0lf\" ";
+		cmdCreate << "GPRINT:PSS0:AVERAGE:\"Avg\\: %5.2lf\" ";
+		cmdCreate << "GPRINT:PSS0:MAX:\"Max\\: %5.0lf\" ";
+		cmdCreate << "GPRINT:PSS0:MIN:\"Min\\: %5.0lf\\l\" ";
+		cmdCreate << "LINE1:PSS1#FF0000:\"SIP packets/second\\t\\t\" ";
+		cmdCreate << "GPRINT:PSS1:LAST:\"Cur\\: %5.0lf\" ";
+		cmdCreate << "GPRINT:PSS1:AVERAGE:\"Avg\\: %5.2lf\" ";
+		cmdCreate << "GPRINT:PSS1:MAX:\"Max\\: %5.0lf\" ";
+		cmdCreate << "GPRINT:PSS1:MIN:\"Min\\: %5.0lf\\l\" ";
+	} else {
+		cmdCreate << "LINE1:PSS0#00FF00:\"valid SIP packets/second\\l\" ";
+		cmdCreate << "COMMENT:\"\\u\" ";
+		cmdCreate << "GPRINT:PSS0:LAST:\"Cur\\: %5.0lf\" ";
+		cmdCreate << "GPRINT:PSS0:AVERAGE:\"Avg\\: %5.2lf\" ";
+		cmdCreate << "GPRINT:PSS0:MAX:\"Max\\: %5.0lf\" ";
+		cmdCreate << "GPRINT:PSS0:MIN:\"Min\\: %5.0lf\\r\" ";
+		cmdCreate << "LINE1:PSS1#FF0000:\"SIP packets/second\\l\" ";
+		cmdCreate << "COMMENT:\"\\u\" ";
+		cmdCreate << "GPRINT:PSS1:LAST:\"Cur\\: %5.0lf\" ";
+		cmdCreate << "GPRINT:PSS1:AVERAGE:\"Avg\\: %5.2lf\" ";
+		cmdCreate << "GPRINT:PSS1:MAX:\"Max\\: %5.0lf\" ";
+		cmdCreate << "GPRINT:PSS1:MIN:\"Min\\: %5.0lf\\r\" ";
+	}
+	std::size_t length = cmdCreate.str().copy(buffer, maxsize, 0);
+	buffer[length]='\0';
+}
+
+void rrd_vm_create_graph_PSSR_command (char *filename, char *fromatstyle, char *toatstyle, char *color, int resx, int resy, short slope, short icon, char *dstfile, char *buffer, int maxsize) {
+    std::ostringstream cmdCreate;
+
+	if (dstfile == NULL)
+		cmdCreate << "rrdtool graph - ";						//graph to stdout instead of file
+	else
+		cmdCreate << "rrdtool graph " << dstfile << " ";
+	cmdCreate << "-w " << resx << " -h " << resy << " -a PNG ";
+	cmdCreate << "--start \"" << fromatstyle << "\" --end \"" << toatstyle << "\" ";
+	cmdCreate << "--font DEFAULT:0:Courier ";
+	cmdCreate << "--title \"SIP register packets counter\" ";
+	cmdCreate << "--watermark \"`date`\" ";
+	if (vm_rrd_version >= 10400) { cmdCreate << "--disable-rrdtool-tag "; }
+	cmdCreate << "--vertical-label \"number of packets\" ";
+	cmdCreate << "--lower-limit 0 ";
+//	cmdCreate << "--x-grid MINUTE:10:HOUR:1:MINUTE:120:0:%R ";
+	cmdCreate << "--units-exponent 0 ";
+	if (vm_rrd_version >= 10400) { cmdCreate << "--full-size-mode "; }
+	if (slope) cmdCreate << "--slope-mode ";
+	if (icon) cmdCreate << "--only-graph ";
+	if (color != NULL) cmdCreate << "-c BACK#" << color << " -c SHADEA#" << color << " -c SHADEB#" << color << " ";
+	cmdCreate << "DEF:PSSR=" << filename << ":PS-SR:MAX ";
+	if (vm_rrd_version < 10403) {
+			cmdCreate << "LINE1:PSSR#FF00FF:\"SIP REG packets/second\\t\" ";
+		cmdCreate << "GPRINT:PSSR:LAST:\"Cur\\: %5.0lf\" ";
+		cmdCreate << "GPRINT:PSSR:AVERAGE:\"Avg\\: %5.2lf\" ";
+		cmdCreate << "GPRINT:PSSR:MAX:\"Max\\: %5.0lf\" ";
+		cmdCreate << "GPRINT:PSSR:MIN:\"Min\\: %5.0lf\\l\" ";
+			} else {
+		cmdCreate << "LINE1:PSSR#FF00FF:\"SIP REG packets/second\\l\" ";
+		cmdCreate << "COMMENT:\"\\u\" ";
+		cmdCreate << "GPRINT:PSSR:LAST:\"Cur\\: %5.0lf\" ";
+		cmdCreate << "GPRINT:PSSR:AVERAGE:\"Avg\\: %5.2lf\" ";
+		cmdCreate << "GPRINT:PSSR:MAX:\"Max\\: %5.0lf\" ";
+		cmdCreate << "GPRINT:PSSR:MIN:\"Min\\: %5.0lf\\r\" ";
+	}
+	std::size_t length = cmdCreate.str().copy(buffer, maxsize, 0);
+	buffer[length]='\0';
+}
+
+void rrd_vm_create_graph_PSSM_command (char *filename, char *fromatstyle, char *toatstyle, char *color, int resx, int resy, short slope, short icon, char *dstfile, char *buffer, int maxsize) {
+    std::ostringstream cmdCreate;
+
+	if (dstfile == NULL)
+		cmdCreate << "rrdtool graph - ";						//graph to stdout instead of file
+	else
+		cmdCreate << "rrdtool graph " << dstfile << " ";
+	cmdCreate << "-w " << resx << " -h " << resy << " -a PNG ";
+	cmdCreate << "--start \"" << fromatstyle << "\" --end \"" << toatstyle << "\" ";
+	cmdCreate << "--font DEFAULT:0:Courier ";
+	cmdCreate << "--title \"SIP message packets counter\" ";
+	cmdCreate << "--watermark \"`date`\" ";
+	if (vm_rrd_version >= 10400) { cmdCreate << "--disable-rrdtool-tag "; }
+	cmdCreate << "--vertical-label \"number of packets\" ";
+	cmdCreate << "--lower-limit 0 ";
+//	cmdCreate << "--x-grid MINUTE:10:HOUR:1:MINUTE:120:0:%R ";
+	cmdCreate << "--units-exponent 0 ";
+	if (vm_rrd_version >= 10400) { cmdCreate << "--full-size-mode "; }
+	if (slope) cmdCreate << "--slope-mode ";
+	if (icon) cmdCreate << "--only-graph ";
+	if (color != NULL) cmdCreate << "-c BACK#" << color << " -c SHADEA#" << color << " -c SHADEB#" << color << " ";
+	cmdCreate << "DEF:PSSM=" << filename << ":PS-SM:MAX ";
+	if (vm_rrd_version < 10403) {
+		cmdCreate << "LINE1:PSSM#FFFF00:\"SIP MES packets/second\\t\\t\" ";
+		cmdCreate << "GPRINT:PSSM:LAST:\"Cur\\: %5.0lf\" ";
+		cmdCreate << "GPRINT:PSSM:AVERAGE:\"Avg\\: %5.2lf\" ";
+		cmdCreate << "GPRINT:PSSM:MAX:\"Max\\: %5.0lf\" ";
+		cmdCreate << "GPRINT:PSSM:MIN:\"Min\\: %5.0lf\\l\" ";
+	} else {
+		cmdCreate << "LINE1:PSSM#FFFF00:\"SIP MES packets/second\\l\" ";
+		cmdCreate << "COMMENT:\"\\u\" ";
+		cmdCreate << "GPRINT:PSSM:LAST:\"Cur\\: %5.0lf\" ";
+		cmdCreate << "GPRINT:PSSM:AVERAGE:\"Avg\\: %5.2lf\" ";
+		cmdCreate << "GPRINT:PSSM:MAX:\"Max\\: %5.0lf\" ";
+		cmdCreate << "GPRINT:PSSM:MIN:\"Min\\: %5.0lf\\r\" ";
+	}
+	std::size_t length = cmdCreate.str().copy(buffer, maxsize, 0);
+	buffer[length]='\0';
+}
+
+void rrd_vm_create_graph_PSR_command (char *filename, char *fromatstyle, char *toatstyle, char *color, int resx, int resy, short slope, short icon, char *dstfile, char *buffer, int maxsize) {
+    std::ostringstream cmdCreate;
+
+	if (dstfile == NULL)
+		cmdCreate << "rrdtool graph - ";						//graph to stdout instead of file
+	else
+		cmdCreate << "rrdtool graph " << dstfile << " ";
+	cmdCreate << "-w " << resx << " -h " << resy << " -a PNG ";
+	cmdCreate << "--start \"" << fromatstyle << "\" --end \"" << toatstyle << "\" ";
+	cmdCreate << "--font DEFAULT:0:Courier ";
+	cmdCreate << "--title \"RTP Packets Counter\" ";
+	cmdCreate << "--watermark \"`date`\" ";
+	if (vm_rrd_version >= 10400) { cmdCreate << "--disable-rrdtool-tag "; }
+	cmdCreate << "--vertical-label \"number of packets\" ";
+	cmdCreate << "--lower-limit 0 ";
+//	cmdCreate << "--x-grid MINUTE:10:HOUR:1:MINUTE:120:0:%R ";
+	cmdCreate << "--units-exponent 0 ";
+	if (vm_rrd_version >= 10400) { cmdCreate << "--full-size-mode "; }
+	if (slope) cmdCreate << "--slope-mode ";
+	if (icon) cmdCreate << "--only-graph ";
+	if (color != NULL) cmdCreate << "-c BACK#" << color << " -c SHADEA#" << color << " -c SHADEB#" << color << " ";
+	cmdCreate << "DEF:PSR=" << filename << ":PS-R:MAX ";
+	if (vm_rrd_version < 10403) {
+		cmdCreate << "LINE1:PSR#00FFFF:\"RTP packets/second\\t\\t\" ";
+		cmdCreate << "GPRINT:PSR:LAST:\"Cur\\: %5.0lf\" ";
+		cmdCreate << "GPRINT:PSR:AVERAGE:\"Avg\\: %5.2lf\" ";
+		cmdCreate << "GPRINT:PSR:MAX:\"Max\\: %5.0lf\" ";
+		cmdCreate << "GPRINT:PSR:MIN:\"Min\\: %5.0lf\\l\" ";
+	} else {
+		cmdCreate << "LINE1:PSR#00FFFF:\"RTP packets/second\\l\" ";
+		cmdCreate << "COMMENT:\"\\u\" ";
+		cmdCreate << "GPRINT:PSR:LAST:\"Cur\\: %5.0lf\" ";
+		cmdCreate << "GPRINT:PSR:AVERAGE:\"Avg\\: %5.2lf\" ";
+		cmdCreate << "GPRINT:PSR:MAX:\"Max\\: %5.0lf\" ";
+		cmdCreate << "GPRINT:PSR:MIN:\"Min\\: %5.0lf\\r\" ";
+	}
+	std::size_t length = cmdCreate.str().copy(buffer, maxsize, 0);
+	buffer[length]='\0';
+}
+
+void rrd_vm_create_graph_PSA_command (char *filename, char *fromatstyle, char *toatstyle, char *color, int resx, int resy, short slope, short icon, char *dstfile, char *buffer, int maxsize) {
+    std::ostringstream cmdCreate;
+
+	if (dstfile == NULL)
+		cmdCreate << "rrdtool graph - ";						//graph to stdout instead of file
+	else
+		cmdCreate << "rrdtool graph " << dstfile << " ";
+	cmdCreate << "-w " << resx << " -h " << resy << " -a PNG ";
+	cmdCreate << "--start \"" << fromatstyle << "\" --end \"" << toatstyle << "\" ";
+	cmdCreate << "--font DEFAULT:0:Courier ";
+	cmdCreate << "--title \"ALL Packets Counter\" ";
+	cmdCreate << "--watermark \"`date`\" ";
+	if (vm_rrd_version >= 10400) { cmdCreate << "--disable-rrdtool-tag "; }
+	cmdCreate << "--vertical-label \"number of packets\" ";
+	cmdCreate << "--lower-limit 0 ";
+//	cmdCreate << "--x-grid MINUTE:10:HOUR:1:MINUTE:120:0:%R ";
+	cmdCreate << "--units-exponent 0 ";
+	if (vm_rrd_version >= 10400) { cmdCreate << "--full-size-mode "; }
+	if (slope) cmdCreate << "--slope-mode ";
+	if (icon) cmdCreate << "--only-graph ";
+	if (color != NULL) cmdCreate << "-c BACK#" << color << " -c SHADEA#" << color << " -c SHADEB#" << color << " ";
+	cmdCreate << "DEF:PSA=" << filename << ":PS-A:MAX ";
+	if (vm_rrd_version < 10403) {
+		cmdCreate << "LINE1:PSA#999966:\"all packets/second\\t\\t\" ";
+		cmdCreate << "GPRINT:PSA:LAST:\"Cur\\: %5.0lf\" ";
+		cmdCreate << "GPRINT:PSA:AVERAGE:\"Avg\\: %5.2lf\" ";
+		cmdCreate << "GPRINT:PSA:MAX:\"Max\\: %5.0lf\" ";
+		cmdCreate << "GPRINT:PSA:MIN:\"Min\\: %5.0lf\\l\" ";
+	} else {
+		cmdCreate << "LINE1:PSA#999966:\"all packets/second\\l\" ";
+		cmdCreate << "COMMENT:\"\\u\" ";
+		cmdCreate << "GPRINT:PSA:LAST:\"Cur\\: %5.0lf\" ";
+		cmdCreate << "GPRINT:PSA:AVERAGE:\"Avg\\: %5.2lf\" ";
+		cmdCreate << "GPRINT:PSA:MAX:\"Max\\: %5.0lf\" ";
+		cmdCreate << "GPRINT:PSA:MIN:\"Min\\: %5.0lf\\r\" ";
+	}
+	std::size_t length = cmdCreate.str().copy(buffer, maxsize, 0);
+	buffer[length]='\0';
 }
 
 int vm_rrd_create_rrddrop(const char *filename) {
