@@ -231,6 +231,7 @@ struct livesnifferfilter_use_siptypes_s {
 	bool u_options;
 	bool u_subscribe;
 	bool u_message;
+	bool u_notify;
 };
 
 struct gre_hdr {

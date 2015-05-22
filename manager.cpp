@@ -1197,6 +1197,7 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 							 value[i] == 'O' ? OPTIONS :
 							 value[i] == 'S' ? SUBSCRIBE :
 							 value[i] == 'M' ? MESSAGE :
+							 value[i] == 'N' ? NOTIFY :
 									   0;
 			}
 			updateLivesnifferfilters();
@@ -2301,7 +2302,7 @@ string livesnifferfilter_s::getStringState() {
 					   this->lv_siptypes[i] == OPTIONS ? 'O' :
 					   this->lv_siptypes[i] == SUBSCRIBE ? 'S' :
 					   this->lv_siptypes[i] == MESSAGE ? 'M' :
-									     '-');
+					   this->lv_siptypes[i] == NOTIFY ? 'N' : '-');
 				++counter;
 			}
 		}
@@ -2380,6 +2381,7 @@ void updateLivesnifferfilters() {
 				new_livesnifferfilterUseSipTypes.u_options = true;
 				new_livesnifferfilterUseSipTypes.u_subscribe = true;
 				new_livesnifferfilterUseSipTypes.u_message = true;
+				new_livesnifferfilterUseSipTypes.u_notify = true;
 			} else {
 				for(int i = 0; i < MAXLIVEFILTERS; i++) {
 					if(usersnifferIT->second->lv_siptypes[i]) {
@@ -2399,6 +2401,9 @@ void updateLivesnifferfilters() {
 						case MESSAGE:
 							new_livesnifferfilterUseSipTypes.u_message = true;
 							break;
+						case NOTIFY:
+							new_livesnifferfilterUseSipTypes.u_notify = true;
+							break;
 						}
 					}
 				}
@@ -2415,6 +2420,7 @@ void updateLivesnifferfilters() {
 	if(livesnifferfilterUseSipTypes.u_options) cout << "OPTIONS" << endl;
 	if(livesnifferfilterUseSipTypes.u_subscribe) cout << "SUBSCRIBE" << endl;
 	if(livesnifferfilterUseSipTypes.u_message) cout << "MESSAGE" << endl;
+	if(livesnifferfilterUseSipTypes.u_notify) cout << "NOTIFY" << endl;
 	*/
 }
 

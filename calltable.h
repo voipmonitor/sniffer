@@ -52,6 +52,7 @@
 #define INFO 14
 #define SUBSCRIBE 15
 #define OPTIONS 16
+#define NOTIFY 17
 #define SKINNY_NEW 100
 #define SKINNY_NEW 100
 

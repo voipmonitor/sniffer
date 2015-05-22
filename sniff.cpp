@@ -2371,6 +2371,12 @@ Call *process_packet(bool is_ssl, u_int64_t packet_number,
 						 dlt, sensor_id);
 			}
 			break;
+		case NOTIFY:
+			if(livesnifferfilterUseSipTypes.u_notify) {
+				save_live_packet(NULL, header, packet, saddr, source, daddr, dest, istcp, data, datalen, NOTIFY, 
+						 dlt, sensor_id);
+			}
+			break;
 		}
 		
 		if(parsePacket && parsePacket->_getLastSipResponse) {
@@ -2470,6 +2476,9 @@ Call *process_packet(bool is_ssl, u_int64_t packet_number,
 								 dlt, sensor_id);
 					} else if(livesnifferfilterUseSipTypes.u_options && memmem(s, l, "OPTIONS", 7)) {
 						save_live_packet(NULL, header, packet, saddr, source, daddr, dest, istcp, data, datalen, OPTIONS, 
+								 dlt, sensor_id);
+					} else if(livesnifferfilterUseSipTypes.u_notify && memmem(s, l, "NOTIFY", 6)) {
+						save_live_packet(NULL, header, packet, saddr, source, daddr, dest, istcp, data, datalen, NOTIFY, 
 								 dlt, sensor_id);
 					}
 				}
@@ -3678,6 +3687,10 @@ int process_packet__parse_sip_method(char *data, unsigned int datalen) {
 		if(verbosity > 2) 
 			 syslog(LOG_NOTICE,"SIP msg: SUBSCRIBE\n");
 		sip_method = SUBSCRIBE;
+	} else if ((datalen > 5) && data[0] == 'N' && !(memmem(data, 6, "NOTIFY", 6) == 0)) {
+		if(verbosity > 2) 
+			 syslog(LOG_NOTICE,"SIP msg: NOTIFY\n");
+		sip_method = NOTIFY;
 	} else if( (datalen > 8) && data[0] == 'S' && data[1] == 'I' && !(memmem(data, 8, "SIP/2.0 ", 8) == 0)){
 		switch(data[8]) {
 		case '2':
@@ -4747,7 +4760,8 @@ void logPacketSipMethodCall(u_int64_t packet_number, int sip_method, int lastSIP
 		"MESSAGE",	// 13
 		"INFO",		// 14
 		"SUBSCRIBE",	// 15
-		"OPTIONS"	// 16
+		"OPTIONS",	// 16
+		"NOTIFY"	// 17
 	};
 	
 	ostringstream outStr;
