@@ -511,9 +511,29 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 
 			//limits check discarding graph's legend and axis/grid
 			if ((resx < 400) or (resy < 200)) icon = 1;
+			//Possible graph types: #PS,PSC,PSS,PSSM,PSSR,PSR,PSA,SQLq,tCPU,drop,speed,heap,calls,tacCPU,RSSVSSZ
+
 
 			char sendcommand[2048];			//buffer for send command string;
-			if (!strncmp(manager_args[1], "PS",3 )) {
+			if (!strncmp(manager_args[1], "PSA",4 )) {
+				sprintf(filename, "%s/rrd/2db-PS.rrd", opt_chdir);
+				rrd_vm_create_graph_PSA_command(filename, fromat, toat, color, resx, resy, slope, icon, dstfile, sendcommand, sizeof(sendcommand));
+			} else if (!strncmp(manager_args[1], "PSR", 4)) {
+				sprintf(filename, "%s/rrd/2db-PS.rrd", opt_chdir);
+				rrd_vm_create_graph_PSR_command(filename, fromat, toat, color, resx, resy, slope, icon, dstfile, sendcommand, sizeof(sendcommand));
+			} else if (!strncmp(manager_args[1], "PSSR", 5)) {
+				sprintf(filename, "%s/rrd/2db-PS.rrd", opt_chdir);
+				rrd_vm_create_graph_PSSR_command(filename, fromat, toat, color, resx, resy, slope, icon, dstfile, sendcommand, sizeof(sendcommand));
+			} else if (!strncmp(manager_args[1], "PSSM", 5)) {
+				sprintf(filename, "%s/rrd/2db-PS.rrd", opt_chdir);
+				rrd_vm_create_graph_PSSM_command(filename, fromat, toat, color, resx, resy, slope, icon, dstfile, sendcommand, sizeof(sendcommand));
+			} else if (!strncmp(manager_args[1], "PSS", 4)) {
+				sprintf(filename, "%s/rrd/2db-PS.rrd", opt_chdir);
+				rrd_vm_create_graph_PSS_command(filename, fromat, toat, color, resx, resy, slope, icon, dstfile, sendcommand, sizeof(sendcommand));
+			} else if (!strncmp(manager_args[1], "PSC", 4)) {
+				sprintf(filename, "%s/rrd/2db-PS.rrd", opt_chdir);
+				rrd_vm_create_graph_PSC_command(filename, fromat, toat, color, resx, resy, slope, icon, dstfile, sendcommand, sizeof(sendcommand));
+			} else if (!strncmp(manager_args[1], "PS", 3)) {
 				sprintf(filename, "%s/rrd/2db-PS.rrd", opt_chdir);
 				rrd_vm_create_graph_PS_command(filename, fromat, toat, color, resx, resy, slope, icon, dstfile, sendcommand, sizeof(sendcommand));
 			} else if (!strncmp(manager_args[1], "SQLq", 5)) {
@@ -541,10 +561,10 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 				sprintf(filename, "%s/rrd/db-RSSVSZ.rrd", opt_chdir);
 				rrd_vm_create_graph_RSSVSZ_command(filename, fromat, toat, color, resx, resy, slope, icon, dstfile, sendcommand, sizeof(sendcommand));
 			} else {
-				snprintf(sendbuf, BUFSIZE, "Error: Graph type %s isn't known\n\tGraph types: PS SQLq tCPU drop speed heap calls tacCPU RSSVSZ\n", manager_args[1]);	
+				snprintf(sendbuf, BUFSIZE, "Error: Graph type %s isn't known\n\tGraph types: PS PSC PSS PSSM PSSR PSR PSA SQLq tCPU drop speed heap calls tacCPU RSSVSZ\n", manager_args[1]);	
 				if (verbosity > 0) {
 					syslog(LOG_NOTICE, "creategraph Error: Unrecognized graph type %s", manager_args[1]);
-					syslog(LOG_NOTICE, "    Graph types: PS SQLq tCPU drop speed heap calls tacCPU RSSVSZ");
+					syslog(LOG_NOTICE, "    Graph types: PS PSC PSS PSSM PSSR PSR PSA SQLq tCPU drop speed heap calls tacCPU RSSVSZ");
 				}
 				res = -1;
 			}
@@ -1177,6 +1197,7 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 							 value[i] == 'O' ? OPTIONS :
 							 value[i] == 'S' ? SUBSCRIBE :
 							 value[i] == 'M' ? MESSAGE :
+							 value[i] == 'N' ? NOTIFY :
 									   0;
 			}
 			updateLivesnifferfilters();
@@ -2281,7 +2302,7 @@ string livesnifferfilter_s::getStringState() {
 					   this->lv_siptypes[i] == OPTIONS ? 'O' :
 					   this->lv_siptypes[i] == SUBSCRIBE ? 'S' :
 					   this->lv_siptypes[i] == MESSAGE ? 'M' :
-									     '-');
+					   this->lv_siptypes[i] == NOTIFY ? 'N' : '-');
 				++counter;
 			}
 		}
@@ -2360,6 +2381,7 @@ void updateLivesnifferfilters() {
 				new_livesnifferfilterUseSipTypes.u_options = true;
 				new_livesnifferfilterUseSipTypes.u_subscribe = true;
 				new_livesnifferfilterUseSipTypes.u_message = true;
+				new_livesnifferfilterUseSipTypes.u_notify = true;
 			} else {
 				for(int i = 0; i < MAXLIVEFILTERS; i++) {
 					if(usersnifferIT->second->lv_siptypes[i]) {
@@ -2379,6 +2401,9 @@ void updateLivesnifferfilters() {
 						case MESSAGE:
 							new_livesnifferfilterUseSipTypes.u_message = true;
 							break;
+						case NOTIFY:
+							new_livesnifferfilterUseSipTypes.u_notify = true;
+							break;
 						}
 					}
 				}
@@ -2395,6 +2420,7 @@ void updateLivesnifferfilters() {
 	if(livesnifferfilterUseSipTypes.u_options) cout << "OPTIONS" << endl;
 	if(livesnifferfilterUseSipTypes.u_subscribe) cout << "SUBSCRIBE" << endl;
 	if(livesnifferfilterUseSipTypes.u_message) cout << "MESSAGE" << endl;
+	if(livesnifferfilterUseSipTypes.u_notify) cout << "NOTIFY" << endl;
 	*/
 }
 
