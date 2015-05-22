@@ -2686,7 +2686,7 @@ Call *process_packet(bool is_ssl, u_int64_t packet_number,
 							type[pointerToCause - reason] = 0;
 							int cause = atoi(pointerToCause + 7);
 							char text[1024];
-							unsigned int lengthText = min(l - (pointerToText - reason + 7), sizeof(text) - 1);
+							unsigned int lengthText = MIN(l - (pointerToText - reason + 7), sizeof(text) - 1);
 							memcpy(text, pointerToText + 7, lengthText);
 							text[lengthText] = 0;
 							if(lengthText > 0 && text[lengthText - 1] == '"') {
