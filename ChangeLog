@@ -1,3 +1,8 @@
+11.6.1 25.05.2015
+=================
+- support more skinny header versions (fixes bug where there are no caller/called informations in calls) 
+
+
 11.6 22.05.2015
 ===============
 - Store all SIP responses into new SQL table so it can be searched for all error statuses [VS-10]
