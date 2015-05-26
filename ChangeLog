@@ -1,3 +1,17 @@
+11.6.1 25.05.2015
+=================
+- support more skinny header versions (fixes bug where there are no caller/called informations in calls) 
+
+
+11.6 22.05.2015
+===============
+- Store all SIP responses into new SQL table so it can be searched for all error statuses [VS-10]
+- Implement SIP/Q.850 reason codes (in BYE). ALTER table on cdr is needed - see sql commands when starting sniffer [VS-45]
+- fix force flush tar if name contains double slash (//)
+- Added new RRD graph types for packet counters (PSR-RTP count, PSSM-SIP message count, PSSR-SIP register count, PSC-calls count, PSA-all packets counter, PSS-all SIP packets). [VG-428]
+- Added support for NOTIFY message in live sniffer [VS-55]
+
+
 11.5.4 19.05.2015
 =================
 - do not close call after 60 seconds when 491 request pending received
