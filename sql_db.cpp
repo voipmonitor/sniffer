@@ -3025,8 +3025,8 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 			`rtcp_avgfr_mult10` smallint unsigned DEFAULT NULL,\
 			`rtcp_avgjitter_mult10` smallint unsigned DEFAULT NULL,\
 			`lost` mediumint unsigned DEFAULT NULL,\
-			`caller_clipping_mult100` tinyint unsigned DEFAULT NULL,\
-			`called_clipping_mult100` tinyint unsigned DEFAULT NULL,\
+			`caller_clipping_div3` smallint unsigned DEFAULT NULL,\
+			`called_clipping_div3` smallint unsigned DEFAULT NULL,\
 			`caller_silence` tinyint unsigned DEFAULT NULL,\
 			`called_silence` tinyint unsigned DEFAULT NULL,\
 			`caller_silence_end` smallint unsigned DEFAULT NULL,\
@@ -3151,10 +3151,10 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 	}
 	extern int opt_clippingdetect;
 	if(opt_clippingdetect) {
-		this->query("show columns from cdr where Field='caller_clipping_mult100'");
+		this->query("show columns from cdr where Field='caller_clipping_div3'");
 		int res = this->fetchRow();
 		if(!res) {
-			syslog(LOG_WARNING, "!!! You have enabled clippingdetect but the database is not yet upgraded. Run this command in your database: ALTER TABLE cdr ADD caller_clipping_mult100 tinyint unsigned default NULL, ADD called_clipping_mult100 tinyint unsigned default NULL;");
+			syslog(LOG_WARNING, "!!! You have enabled clippingdetect but the database is not yet upgraded. Run this command in your database: ALTER TABLE cdr ADD caller_clipping_div3 smallint unsigned default NULL, ADD called_clipping_div3 smallint unsigned default NULL;");
 			opt_clippingdetect = 0;
 		}
 	}
@@ -4985,8 +4985,8 @@ void SqlDb_odbc::createSchema(const char *host, const char *database, const char
 			rtcp_avgfr_mult10 smallint NULL,\
 			rtcp_avgjitter_mult10 smallint NULL,\
 			lost int NULL,\
-			caller_clipping_mult100 tinyint NULL,\
-			called_clipping_mult100 tinyint NULL,\
+			caller_clipping_div3 smallint NULL,\
+			called_clipping_div3 smallint NULL,\
 			caller_silence tinyint NULL,\
 			called_silence tinyint NULL,\
 			caller_silence_end smallint NULL,\

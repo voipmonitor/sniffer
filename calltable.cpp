@@ -535,7 +535,7 @@ Call::~Call(){
 	pthread_mutex_destroy(&listening_worker_run_lock);
 	//decreaseTartimemap(this->first_packet_time);
 	//printf("caller s[%u] n[%u] ls[%u]  called s[%u] n[%u] ls[%u]\n", caller_silence, caller_noise, caller_lastsilence, called_silence, called_noise, called_lastsilence);
-//	printf("caller_clipping_8k [%u] [%u]\n", caller_clipping_8k, called_clipping_8k);
+	//printf("caller_clipping_8k [%u] [%u]\n", caller_clipping_8k, called_clipping_8k);
 }
 
 void
@@ -2124,8 +2124,12 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			cdr.add(called_lastsilence / 1000, "called_silence_end");
 		}
 		if(opt_clippingdetect) {
-			cdr.add(caller_clipping_8k / 100 > 255 ? 255 : caller_clipping_8k / 100, "caller_clipping_mult100");
-			cdr.add(called_clipping_8k / 100 > 255 ? 255 : called_clipping_8k / 100, "called_clipping_mult100");
+			if(caller_clipping_8k) {
+				cdr.add(MIN(USHRT_MAX, round(caller_clipping_8k / 3)), "caller_clipping_div3");
+			}
+			if(called_clipping_8k) {
+				cdr.add(MIN(USHRT_MAX, round(called_clipping_8k / 3)), "called_clipping_div3");
+			}
 		}
 
 		// save only two streams with the biggest received packets
