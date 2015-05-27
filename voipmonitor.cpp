@@ -3568,6 +3568,7 @@ int main(int argc, char *argv[]) {
 						else if(verbparams[i] == "qfiles")			sverb.qfiles = 1;
 						else if(verbparams[i] == "query_error")			sverb.query_error = 1;
 						else if(verbparams[i] == "dump_sip")			sverb.dump_sip = 1;
+						else if(verbparams[i] == "manager")			sverb.manager = 1;
 					}
 				} }
 				break;

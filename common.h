@@ -36,6 +36,7 @@ struct sVerbose {
 	int qfiles;
 	int query_error;
 	int dump_sip;
+	int manager;
 };
 
 #endif

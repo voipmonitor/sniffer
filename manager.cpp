@@ -420,6 +420,15 @@ int sendvm_from_stdout_of_command(char *command, int socket, ssh_channel channel
 }
 
 int parse_command(char *buf, int size, int client, int eof, const char *buf_long, ManagerClientThread **managerClientThread = NULL, ssh_channel sshchannel = NULL) {
+ 
+	char *pointerToEndSeparator = strstr(buf, "\r\n");
+	if(pointerToEndSeparator) {
+		*pointerToEndSeparator = 0;
+	}
+	if(sverb.manager) {
+		cout << "manager command: " << buf << "|END" << endl;
+	}
+ 
 	char sendbuf[BUFSIZE];
 	u_int32_t uid = 0;
 
@@ -2137,6 +2146,7 @@ void *manager_ssh_(void) {
 					++it1;
 					continue;
 				}
+				buf[len] = '\0';
 				parse_command(buf, len, 0, 0, NULL, NULL, channel);
 				ssh_channel_send_eof(channel);
 				ssh_channel_free(channel);
