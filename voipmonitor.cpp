@@ -496,6 +496,7 @@ char user_filter[1024*20] = "";
 char ifname[1024];	// Specifies the name of the network device to use for 
 			// the network lookup, for example, eth0
 char opt_scanpcapdir[2048] = "";	// Specifies the name of the network device to use for 
+bool opt_scanpcapdir_disable_inotify = false;
 #ifndef FREEBSD
 uint32_t opt_scanpcapmethod = IN_CLOSE_WRITE; // Specifies how to watch for new files in opt_scanpcapdir
 #endif
@@ -1208,10 +1209,12 @@ void *scanpcapdir( void *dummy ) {
 	int i=0, fd, wd, len=0;
 	queue<string> fileList;
 
-	fd = inotify_init();
-	//checking for error
-	if(fd < 0) perror( "inotify_init" );
-	wd = inotify_add_watch(fd, opt_scanpcapdir, opt_scanpcapmethod);
+	if(opt_scanpcapdir_disable_inotify == false) {
+		fd = inotify_init();
+		//checking for error
+		if(fd < 0) perror( "inotify_init" );
+		wd = inotify_add_watch(fd, opt_scanpcapdir, opt_scanpcapmethod);
+	}
 
 	// pre-populate the fileList with anything pre-existing in the directory
 	fileList = listFilesDir(opt_scanpcapdir);
@@ -1220,23 +1223,28 @@ void *scanpcapdir( void *dummy ) {
 
 		if (fileList.empty()) {
 			// queue is empty, time to wait on inotify for some work
-			i = 0;
-			len = read(fd, buff, 4096);
+			if(opt_scanpcapdir_disable_inotify == false) {
+				i = 0;
+				len = read(fd, buff, 4096);
 
-			if (len==4096) {
-				syslog(LOG_NOTICE, "Warning: inotify events filled whole buffer.");
-			}
-
-			while (( i < len ) and terminating==0) {
-				event = (struct inotify_event *) &buff[i];
-				i += sizeof(struct inotify_event) + event->len;
-				if (event->mask & opt_scanpcapmethod) { // this will prevent opening files which is still open for writes
-					// add filename to end of queue
-					snprintf(filename, sizeof(filename), "%s/%s", opt_scanpcapdir, event->name);
-					fileList.push(filename);
+				if (len==4096) {
+					syslog(LOG_NOTICE, "Warning: inotify events filled whole buffer.");
 				}
+
+				while (( i < len ) and terminating==0) {
+					event = (struct inotify_event *) &buff[i];
+					i += sizeof(struct inotify_event) + event->len;
+					if (event->mask & opt_scanpcapmethod) { // this will prevent opening files which is still open for writes
+						// add filename to end of queue
+						snprintf(filename, sizeof(filename), "%s/%s", opt_scanpcapdir, event->name);
+						fileList.push(filename);
+					}
+				}
+			} else {
+				fileList = listFilesDir(opt_scanpcapdir);
 			}
 			if (fileList.empty()) {
+				usleep(10000);
 				continue;
 			}
 		}
@@ -1249,7 +1257,9 @@ void *scanpcapdir( void *dummy ) {
 			continue;
 		}
 		
-		syslog(LOG_NOTICE, "scanpcapdir: %s", filename);
+		if(verbosity > 1 || sverb.scanpcapdir) {
+			syslog(LOG_NOTICE, "scanpcapdir: %s", filename);
+		}
 		
 		if(!pcapQueueInterface->openPcap(filename)) {
 			abort();
@@ -1262,7 +1272,10 @@ void *scanpcapdir( void *dummy ) {
 			unlink(filename);
 		}
 	}
-	inotify_rm_watch(fd, wd);
+	
+	if(opt_scanpcapdir_disable_inotify == false) {
+		inotify_rm_watch(fd, wd);
+	}
 
 #endif
 
@@ -1925,6 +1938,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "scanpcapdir", NULL))) {
 		strncpy(opt_scanpcapdir, value, sizeof(opt_scanpcapdir));
+	}
+	if((value = ini.GetValue("general", "scanpcapdir_disable_inotify", NULL))) {
+		      opt_scanpcapdir_disable_inotify = yesno(value);
 	}
 #ifndef FREEBSD
 	if((value = ini.GetValue("general", "scanpcapmethod", NULL))) {
@@ -3597,6 +3613,7 @@ int main(int argc, char *argv[]) {
 						else if(verbparams[i] == "query_error")			sverb.query_error = 1;
 						else if(verbparams[i] == "dump_sip")			sverb.dump_sip = 1;
 						else if(verbparams[i] == "manager")			sverb.manager = 1;
+						else if(verbparams[i] == "scanpcapdir")			sverb.scanpcapdir = 1;
 					}
 				} }
 				break;

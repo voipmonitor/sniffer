@@ -820,7 +820,8 @@ bool SqlDb_mysql::query(string query, bool callFromStoreProcessWithFixDeadlock) 
 				if(this->connecting) {
 					break;
 				} else {
-					if(this->getLastError() == CR_SERVER_GONE_ERROR) {
+					if(this->getLastError() == CR_SERVER_GONE_ERROR ||
+					   this->getLastError() == ER_NO_PARTITION_FOR_GIVEN_VALUE) {
 						if(pass < this->maxQueryPass - 1) {
 							this->reconnect();
 						}
@@ -830,6 +831,9 @@ bool SqlDb_mysql::query(string query, bool callFromStoreProcessWithFixDeadlock) 
 						  (callFromStoreProcessWithFixDeadlock && this->getLastError() == ER_LOCK_DEADLOCK)) {
 						break;
 					} else {
+					 
+						
+					 
 						if(pass < this->maxQueryPass - 5) {
 							pass = this->maxQueryPass - 5;
 						}

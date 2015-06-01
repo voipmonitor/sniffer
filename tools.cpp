@@ -82,9 +82,7 @@ AsyncClose *asyncClose;
 queue<string> listFilesDir (char * dir) {
 	struct privListDir {          //sort by mtime asc. function
 		static bool files_sorter_asc(TfileListElem const& lhs, TfileListElem const& rhs) {
-			if (lhs.mtime != rhs.mtime)
-				return lhs.mtime < rhs.mtime;
-			return 1;
+			return lhs.mtime < rhs.mtime;
 		}
 		static bool file_mtimer(TfileListElem elem, int timeout) {
 			time_t  actualTS;

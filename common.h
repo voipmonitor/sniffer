@@ -37,6 +37,7 @@ struct sVerbose {
 	int query_error;
 	int dump_sip;
 	int manager;
+	int scanpcapdir;
 };
 
 #endif
