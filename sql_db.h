@@ -445,10 +445,9 @@ private:
 	struct LoadFromQFilesThreadData {
 		LoadFromQFilesThreadData() {
 			id = 0;
-			maxStoreThreads = 1;
+			storeThreads = 1;
 			storeConcatLimit = 0;
 			thread = 0;
-			useStoreThreads = 1;
 			_sync = 0;
 		}
 		void addFile(u_long time, const char *file) {
@@ -464,10 +463,9 @@ private:
 		}
 		int id;
 		string name;
-		int maxStoreThreads;
+		int storeThreads;
 		int storeConcatLimit;
 		pthread_t thread;
-		int useStoreThreads;
 		map<u_long, string> qfiles;
 		volatile int _sync;
 	};
@@ -502,7 +500,7 @@ public:
 	void enableInotifyForLoadFromQFile(bool enableINotify = true);
 	void setInotifyReadyForLoadFromQFile(bool iNotifyReady = true);
 	void addLoadFromQFile(int id, const char *name, 
-			      int maxStoreThreads = 0, int storeConcatLimit = 0);
+			      int storeThreads = 0, int storeConcatLimit = 0);
 	bool fillQFiles(int id);
 	string getMinQFile(int id);
 	int getCountQFiles(int id);

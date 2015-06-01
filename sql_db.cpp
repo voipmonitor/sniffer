@@ -1621,22 +1621,35 @@ void MySqlStore::loadFromQFiles_start() {
 		if(opt_load_query_from_files_inotify) {
 			this->enableInotifyForLoadFromQFile();
 		}
-		this->addLoadFromQFile(10, "cdr");
-		this->addLoadFromQFile(20, "message");
+		extern int opt_mysqlstore_concat_limit_cdr;
+		extern int opt_mysqlstore_concat_limit_message;
+		extern int opt_mysqlstore_concat_limit_register;
+		extern int opt_mysqlstore_concat_limit_http;
+		extern int opt_mysqlstore_concat_limit_webrtc;
+		extern int opt_mysqlstore_concat_limit_ipacc;
+		extern int opt_mysqlstore_max_threads_cdr;
+		extern int opt_mysqlstore_max_threads_message;
+		extern int opt_mysqlstore_max_threads_register;
+		extern int opt_mysqlstore_max_threads_http;
+		extern int opt_mysqlstore_max_threads_webrtc;
+		extern int opt_mysqlstore_max_threads_ipacc_base;
+		extern int opt_mysqlstore_max_threads_ipacc_agreg2;
+		this->addLoadFromQFile(10, "cdr", opt_mysqlstore_max_threads_cdr, opt_mysqlstore_concat_limit_cdr);
+		this->addLoadFromQFile(20, "message", opt_mysqlstore_max_threads_message, opt_mysqlstore_concat_limit_message);
 		this->addLoadFromQFile(40, "cleanspool");
-		this->addLoadFromQFile(50, "register");
+		this->addLoadFromQFile(50, "register", opt_mysqlstore_max_threads_register, opt_mysqlstore_concat_limit_register);
 		this->addLoadFromQFile(60, "save_packet_sql");
-		this->addLoadFromQFile(70, "http");
-		this->addLoadFromQFile(80, "webrtc");
+		this->addLoadFromQFile(70, "http", opt_mysqlstore_max_threads_http, opt_mysqlstore_concat_limit_http);
+		this->addLoadFromQFile(80, "webrtc", opt_mysqlstore_max_threads_webrtc, opt_mysqlstore_concat_limit_webrtc);
 		this->addLoadFromQFile(91, "cache_numbers");
 		this->addLoadFromQFile(92, "fraud_alert_info");
 		if(opt_load_query_from_files_inotify) {
 			this->setInotifyReadyForLoadFromQFile();
 		}
 		if(opt_ipaccount) {
-			this->addLoadFromQFile(100, "ipacc");
-			this->addLoadFromQFile(110, "ipacc_agreg");
-			this->addLoadFromQFile(120, "ipacc_agreg2");
+			this->addLoadFromQFile(100, "ipacc", opt_mysqlstore_max_threads_ipacc_base, opt_mysqlstore_concat_limit_ipacc);
+			this->addLoadFromQFile(110, "ipacc_agreg", opt_mysqlstore_max_threads_ipacc_agreg2, opt_mysqlstore_concat_limit_ipacc);
+			this->addLoadFromQFile(120, "ipacc_agreg2", opt_mysqlstore_max_threads_ipacc_agreg2, opt_mysqlstore_concat_limit_ipacc);
 		}
 	}
 }
@@ -1791,12 +1804,11 @@ void MySqlStore::setInotifyReadyForLoadFromQFile(bool iNotifyReady) {
 }
 
 void MySqlStore::addLoadFromQFile(int id, const char *name, 
-				  int maxStoreThreads, int storeConcatLimit) {
+				  int storeThreads, int storeConcatLimit) {
 	LoadFromQFilesThreadData threadData;
 	threadData.id = id;
 	threadData.name = name;
-	threadData.maxStoreThreads = maxStoreThreads ? maxStoreThreads : 
-				     ((id % 10 == 0) ? 10 : 1);
+	threadData.storeThreads = storeThreads > 0 ? storeThreads : 1;
 	threadData.storeConcatLimit = storeConcatLimit;
 	loadFromQFilesThreadData[id] = threadData;
 	LoadFromQFilesThreadInfo *threadInfo = new FILE_LINE LoadFromQFilesThreadInfo;
@@ -1921,18 +1933,7 @@ bool MySqlStore::loadFromQFile(const char *filename, int id) {
 		}
 		string query = find_and_replace(posSeparator + 1, "__ENDL__", "\n");
 		int queryThreadId = id;
-		if(loadFromQFilesThreadData[id].maxStoreThreads > 1) {
-			if(getSize(id) > 500) {
-				if(loadFromQFilesThreadData[id].useStoreThreads < loadFromQFilesThreadData[id].maxStoreThreads) {
-					++loadFromQFilesThreadData[id].useStoreThreads;
-				}
-			} else {
-				if(loadFromQFilesThreadData[id].useStoreThreads > 1) {
-					--loadFromQFilesThreadData[id].useStoreThreads;
-				}
-			}
-			queryThreadId = id + (counter % loadFromQFilesThreadData[id].useStoreThreads);
-		}
+		queryThreadId = id + (counter % loadFromQFilesThreadData[id].storeThreads);
 		if(!check(queryThreadId)) {
 			setEnableTerminatingIfEmpty(queryThreadId, true);
 			setEnableTerminatingIfSqlError(queryThreadId, true);
@@ -1940,6 +1941,9 @@ bool MySqlStore::loadFromQFile(const char *filename, int id) {
 				setConcatLimit(queryThreadId, loadFromQFilesThreadData[id].storeConcatLimit);
 			}
 		}
+		/*if(sverb.qfiles) {
+			cout << " ** send query id: " << id << " to thread: " << queryThreadId << " / " << getSize(queryThreadId) << endl;
+		}*/
 		query_lock(query.c_str(), queryThreadId);
 		++counter;
 	}
@@ -2316,7 +2320,7 @@ void *MySqlStore::threadLoadFromQFiles(void *arg) {
 		if(minFile.empty()) {
 			usleep(250000);
 		} else {
-			while(me->getSize(id) > 0 && !terminating) {
+			while(me->getSizeVect(id, id + me->loadFromQFilesThreadData[id].storeThreads - 1) > 0 && !terminating) {
 				usleep(100000);
 			}
 			if(!terminating) {
