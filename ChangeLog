@@ -1,3 +1,9 @@
+11.6.2 25.05.2015
+=================
+- add support for silence detector & clipping for GUI 10.20
+- fix cloud commands communication
+
+
 11.6.1 25.05.2015
 =================
 - support more skinny header versions (fixes bug where there are no caller/called informations in calls) 
