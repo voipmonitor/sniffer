@@ -4316,6 +4316,7 @@ void CustomHeaders::load(SqlDb *sqlDb, bool lock) {
 			}
 		}
 	}
+	this->createMysqlPartitions(sqlDb);
 	if(_createSqlObject) {
 		delete sqlDb;
 	}
