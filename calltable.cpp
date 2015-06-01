@@ -4232,11 +4232,15 @@ CustomHeaders::CustomHeaders(eType type) {
 	this->load();
 }
 
-void CustomHeaders::load(bool lock) {
+void CustomHeaders::load(SqlDb *sqlDb, bool lock) {
 	if(lock) lock_custom_headers();
 	custom_headers.clear();
 	allNextTables.clear();
-	SqlDb *sqlDb = createSqlObject();
+	bool _createSqlObject = false;
+	if(!sqlDb) {
+		sqlDb = createSqlObject();
+		_createSqlObject = true;
+	}
 	bool existsConfigTable = false;
 	sqlDb->query("show tables like '" + this->configTable + "'");
 	if(sqlDb->fetchRow()) {
@@ -4260,8 +4264,10 @@ void CustomHeaders::load(bool lock) {
 			}
 			for(list<sCustomHeaderDataPlus>::iterator iter = customHeaderData.begin(); iter != customHeaderData.end(); iter++) {
 				if(iter->type == "fixed") {
-					sqlDb->query("show columns from " + this->fixedTable + " where Field='custom_header__" + iter->header + "'");
-					if(sqlDb->fetchRow()) {
+					if(_createSqlObject) {
+						sqlDb->query("show columns from " + this->fixedTable + " where Field='custom_header__" + iter->header + "'");
+					}
+					if(!_createSqlObject || sqlDb->fetchRow()) {
 						custom_headers[0][custom_headers[0].size()] = *iter;
 					}
 				} else {
@@ -4310,7 +4316,9 @@ void CustomHeaders::load(bool lock) {
 			}
 		}
 	}
-	delete sqlDb;
+	if(_createSqlObject) {
+		delete sqlDb;
+	}
 	loadTime = getTimeMS();
 	if(lock) unlock_custom_headers();
 }
@@ -4322,10 +4330,10 @@ void CustomHeaders::clear(bool lock) {
 	if(lock) unlock_custom_headers();
 }
 
-void CustomHeaders::refresh() {
+void CustomHeaders::refresh(SqlDb *sqlDb) {
 	lock_custom_headers();
 	clear(false);
-	load(false);
+	load(sqlDb, false);
 	unlock_custom_headers();
 }
 
@@ -4510,4 +4518,100 @@ string CustomHeaders::getQueryForSaveUseInfo(Call* call) {
 		this->lastTimeSaveUseInfo = call->calltime();
 	}
 	return(query);
+}
+
+void CustomHeaders::createTablesIfNotExists(SqlDb *sqlDb) {
+	list<string> tables = getAllNextTables();
+	for(list<string>::iterator it = tables.begin(); it != tables.end(); it++) {
+		createTableIfNotExists(it->c_str(), sqlDb);
+	}
+}
+
+void CustomHeaders::createTableIfNotExists(const char *tableName, SqlDb *sqlDb) {
+	bool _createSqlObject = false;
+	if(!sqlDb) {
+		sqlDb = createSqlObject();
+		_createSqlObject = true;
+	}
+	
+	sqlDb->query(string("show tables like '") + tableName + "'");
+	if(sqlDb->fetchRow()) {
+		if(_createSqlObject) {
+			delete sqlDb;
+		}
+		return;
+	}
+	
+	extern bool opt_cdr_partition;
+	extern bool opt_cdr_partition_oldver;
+	extern int opt_mysqlcompress;
+	
+	char partDayName[20] = "";
+	char limitDay[20] = "";
+	if(opt_cdr_partition) {
+		time_t act_time = time(NULL);
+		struct tm actTime = localtime_r(&act_time);
+		strftime(partDayName, sizeof(partDayName), "p%y%m%d", &actTime);
+		time_t next_day_time = act_time + 24 * 60 * 60;
+		struct tm nextDayTime = localtime_r(&next_day_time);
+		strftime(limitDay, sizeof(partDayName), "%Y-%m-%d", &nextDayTime);
+	}
+	string compress = "";
+	if(opt_mysqlcompress) {
+		compress = "ROW_FORMAT=COMPRESSED";
+	}
+	
+	string idColumn = type == cdr ? "cdr_ID" : "message_ID";
+	
+	sqlDb->query(string(
+	"CREATE TABLE IF NOT EXISTS `") + tableName + "` (\
+			`" + idColumn + "` int unsigned NOT NULL," +
+			(opt_cdr_partition ?
+				"`calldate` datetime NOT NULL," :
+				"") + 
+			"`custom_header_1` varchar(255) DEFAULT NULL,\
+			`custom_header_2` varchar(255) DEFAULT NULL,\
+			`custom_header_3` varchar(255) DEFAULT NULL,\
+			`custom_header_4` varchar(255) DEFAULT NULL,\
+			`custom_header_5` varchar(255) DEFAULT NULL,\
+			`custom_header_6` varchar(255) DEFAULT NULL,\
+			`custom_header_7` varchar(255) DEFAULT NULL,\
+			`custom_header_8` varchar(255) DEFAULT NULL,\
+			`custom_header_9` varchar(255) DEFAULT NULL,\
+			`custom_header_10` varchar(255) DEFAULT NULL," +
+		(opt_cdr_partition ? 
+			"PRIMARY KEY (`" + idColumn + "`, `calldate`)" :
+			"PRIMARY KEY (`" + idColumn + "`)") +
+		(opt_cdr_partition ?
+			"" :
+			(string(",CONSTRAINT `") + tableName + "_ibfk_1` FOREIGN KEY (`" + idColumn + "`) REFERENCES `cdr` (`ID`) ON DELETE CASCADE ON UPDATE CASCADE").c_str()) +
+	") ENGINE=InnoDB DEFAULT CHARSET=latin1 " + compress +  
+	(opt_cdr_partition ?
+		(opt_cdr_partition_oldver ? 
+			string(" PARTITION BY RANGE (to_days(calldate))(\
+				 PARTITION ") + partDayName + " VALUES LESS THAN (to_days('" + limitDay + "')) engine innodb)" :
+			string(" PARTITION BY RANGE COLUMNS(calldate)(\
+				 PARTITION ") + partDayName + " VALUES LESS THAN ('" + limitDay + "') engine innodb)") :
+		""));
+	
+	if(_createSqlObject) {
+		delete sqlDb;
+	}
+}
+
+void CustomHeaders::createColumnsForFixedHeaders(SqlDb *sqlDb) {
+	bool _createSqlObject = false;
+	if(!sqlDb) {
+		sqlDb = createSqlObject();
+		_createSqlObject = true;
+	}
+	for(unsigned i = 0; i < custom_headers[0].size(); i++) {
+		sqlDb->query("show columns from " + this->fixedTable + " where Field='custom_header__" + custom_headers[0][i].header + "'");
+		if(!sqlDb->fetchRow()) {
+			sqlDb->query(string("ALTER TABLE `") + this->fixedTable + "` ADD COLUMN `custom_header__" + custom_headers[0][i].header + "` VARCHAR(255);");
+		}
+	}
+	if(_createSqlObject) {
+		delete sqlDb;
+	}
 }

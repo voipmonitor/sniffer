@@ -301,6 +301,7 @@ int opt_cdr_ua_enable = 1;
 unsigned long long cachedirtransfered = 0;
 unsigned int opt_maxpcapsize_mb = 0;
 int opt_mosmin_f2 = 1;
+bool opt_database_backup = false;
 char opt_database_backup_from_date[20];
 char opt_database_backup_from_mysql_host[256] = "";
 char opt_database_backup_from_mysql_database[256] = "";
@@ -308,7 +309,6 @@ char opt_database_backup_from_mysql_user[256] = "";
 char opt_database_backup_from_mysql_password[256] = "";
 int opt_database_backup_pause = 300;
 int opt_database_backup_insert_threads = 1;
-int opt_database_backup_use_federated = 0;
 char opt_mos_lqo_bin[1024] = "pesq";
 char opt_mos_lqo_ref[1024] = "/usr/local/share/voipmonitor/audio/mos_lqe_original.wav";
 char opt_mos_lqo_ref16[1024] = "/usr/local/share/voipmonitor/audio/mos_lqe_original_16khz.wav";
@@ -685,6 +685,9 @@ bool opt_load_query_from_files_inotify;
 
 bool opt_virtualudppacket = false;
 
+int opt_test = 0;
+
+
 #include <stdio.h>
 #include <pthread.h>
 #include <openssl/err.h>
@@ -862,41 +865,59 @@ void *database_backup(void *dummy) {
 	}
 	SqlDb_mysql *sqlDb_mysql = dynamic_cast<SqlDb_mysql*>(sqlDb);
 	sqlStore = new FILE_LINE MySqlStore(mysql_host, mysql_user, mysql_password, mysql_database);
+	bool callCreateSchema = false;
 	while(!terminating) {
 		syslog(LOG_NOTICE, "-- START BACKUP PROCESS");
-		time_t actTime = time(NULL);
-		if(actTime - createPartitionAt > 12 * 3600) {
-			createMysqlPartitionsCdr();
-			createPartitionAt = actTime;
-		}
-		if(actTime - dropPartitionAt > 12 * 3600) {
-			dropMysqlPartitionsCdr();
-			dropPartitionAt = actTime;
-		}
-		if(opt_database_backup_use_federated) {
-			sqlDb_mysql->dropFederatedTables();
-			sqlDb->createSchema(opt_database_backup_from_mysql_host, 
-					    opt_database_backup_from_mysql_database,
-					    opt_database_backup_from_mysql_user,
-					    opt_database_backup_from_mysql_password);
-			if(sqlDb_mysql->checkFederatedTables()) {
-				sqlDb_mysql->copyFromFederatedTables();
-			}
-		} else {
-			SqlDb *sqlDbSrc = new FILE_LINE SqlDb_mysql();
-			sqlDbSrc->setConnectParameters(opt_database_backup_from_mysql_host, 
-						       opt_database_backup_from_mysql_user,
-						       opt_database_backup_from_mysql_password,
-						       opt_database_backup_from_mysql_database);
-			if(sqlDbSrc->connect()) {
-				SqlDb_mysql *sqlDbSrc_mysql = dynamic_cast<SqlDb_mysql*>(sqlDbSrc);
-				if(sqlDbSrc_mysql->checkSourceTables()) {
-					sqlDb_mysql->copyFromSourceTables(sqlDbSrc_mysql);
+		
+		SqlDb *sqlDbSrc = new FILE_LINE SqlDb_mysql();
+		sqlDbSrc->setConnectParameters(opt_database_backup_from_mysql_host, 
+					       opt_database_backup_from_mysql_user,
+					       opt_database_backup_from_mysql_password,
+					       opt_database_backup_from_mysql_database);
+		if(sqlDbSrc->connect()) {
+			SqlDb_mysql *sqlDbSrc_mysql = dynamic_cast<SqlDb_mysql*>(sqlDbSrc);
+			if(sqlDbSrc_mysql->checkSourceTables()) {
+			 
+				if(!callCreateSchema) {
+					sqlDb->createSchema(sqlDbSrc_mysql);
+					sqlDb->checkSchema();
+					callCreateSchema = true;
 				}
+				
+				sqlDb_mysql->copyFromSourceTablesMinor(sqlDbSrc_mysql);
+			
+				if(custom_headers_cdr) {
+					custom_headers_cdr->refresh(sqlDbSrc);
+					custom_headers_cdr->createColumnsForFixedHeaders(sqlDb);
+					custom_headers_cdr->createTablesIfNotExists(sqlDb);
+				}
+				if(custom_headers_message) {
+					custom_headers_message->refresh(sqlDbSrc);
+					custom_headers_message->createColumnsForFixedHeaders(sqlDb);
+					custom_headers_message->createTablesIfNotExists(sqlDb);
+				}
+			
+				time_t actTime = time(NULL);
+				if(actTime - createPartitionAt > 12 * 3600) {
+					createMysqlPartitionsCdr();
+					createPartitionAt = actTime;
+				}
+				if(actTime - dropPartitionAt > 12 * 3600) {
+					dropMysqlPartitionsCdr();
+					dropPartitionAt = actTime;
+				}
+			 
+				sqlDb_mysql->copyFromSourceTablesMain(sqlDbSrc_mysql);
 			}
-			delete sqlDbSrc;
 		}
+		delete sqlDbSrc;
+		
 		syslog(LOG_NOTICE, "-- END BACKUP PROCESS");
+		
+		if(sverb.memory_stat_log) {
+			printMemoryStat();
+		}
+		
 		for(int i = 0; i < opt_database_backup_pause && !terminating; i++) {
 			sleep(1);
 		}
@@ -2907,6 +2928,14 @@ void set_context_config() {
 	if(opt_save_query_to_files || opt_load_query_from_files) {
 		opt_autoload_from_sqlvmexport = false;
 	}
+	
+	if(!opt_test &&
+	   opt_database_backup_from_date[0] != '\0' &&
+	   opt_database_backup_from_mysql_host[0] != '\0' &&
+	   opt_database_backup_from_mysql_database[0] != '\0' &&
+	   opt_database_backup_from_mysql_user[0] != '\0') {
+		opt_database_backup = true;
+	}
 }
 
 int load_config(char *fname) {
@@ -3187,7 +3216,6 @@ void bt_sighandler(int sig, struct sigcontext ctx)
 }
 #endif
 
-int opt_test = 0;
 char *opt_untar_gui_params = NULL;
 char opt_test_str[1024];
 void *readdump_libpcap_thread_fce(void *handle);
@@ -4155,14 +4183,29 @@ int main(int argc, char *argv[]) {
 				sql_noerror = 0;
 			}
 			sqlDb->checkDbMode();
-			sqlDb->createSchema();
-			sqlDb->checkSchema();
+			if(!opt_database_backup) {
+				sqlDb->createSchema();
+				sqlDb->checkSchema();
+			}
 		} else {
 			syslog(LOG_ERR, "Can't connect to MySQL server - exit!");
 			return 1;
 		}
 		delete sqlDb;
 	}
+	
+	if(opt_database_backup) {
+		if (opt_fork) {
+			daemonize();
+		}
+		sqlStore = new FILE_LINE MySqlStore(mysql_host, mysql_user, mysql_password, mysql_database, cloud_host, cloud_token);
+		custom_headers_cdr = new CustomHeaders(CustomHeaders::cdr);
+		custom_headers_message = new CustomHeaders(CustomHeaders::message);
+		pthread_create(&database_backup_thread, NULL, database_backup, NULL);
+		pthread_join(database_backup_thread, NULL);
+		return(0);
+	}
+	
 	if(isSqlDriver("mysql")) {
 		if(opt_load_query_from_files != 2) {
 			sqlStore = new FILE_LINE MySqlStore(mysql_host, mysql_user, mysql_password, mysql_database, cloud_host, cloud_token);
@@ -4265,19 +4308,6 @@ int main(int argc, char *argv[]) {
 				sqlStore->autoloadFromSqlVmExport();
 			}
 		}
-	}
-	
-	if(!opt_test &&
-	   opt_database_backup_from_date[0] != '\0' &&
-	   opt_database_backup_from_mysql_host[0] != '\0' &&
-	   opt_database_backup_from_mysql_database[0] != '\0' &&
-	   opt_database_backup_from_mysql_user[0] != '\0') {
-		if (opt_fork) {
-			daemonize();
-		}
-		pthread_create(&database_backup_thread, NULL, database_backup, NULL);
-		pthread_join(database_backup_thread, NULL);
-		return(0);
 	}
 	
 	if(opt_load_query_from_files == 2) {
@@ -5530,23 +5560,6 @@ void test() {
 		#endif
 		}
 		break;
-	case 97:
-		{
-		SqlDb *sqlDb = createSqlObject();
-		SqlDb_mysql *sqlDb_mysql = dynamic_cast<SqlDb_mysql*>(sqlDb);
-		
-		sqlDb_mysql->dropFederatedTables();
-		sqlDb->createSchema("127.0.0.1", "voipmonitor", "root");
-		
-		
-		if(sqlDb_mysql->checkFederatedTables()) {
-			sqlDb_mysql->copyFromFederatedTables();
-		}
-		
-		//sqlDb_mysql->dropFederatedTables();
-		
-		}
-		return;
 	case 98:
 		{
 		RestartUpgrade restart(true, 

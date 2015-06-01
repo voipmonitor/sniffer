@@ -2610,34 +2610,8 @@ string prepareQueryForPrintf(string &query) {
 }
 
 
-void SqlDb_mysql::createSchema(const char *host, const char *database, const char *user, const char *password) {
+void SqlDb_mysql::createSchema(SqlDb *sourceDb) {
  
-	bool federated = host && database && user;
-	string federatedSuffix =federated ? "_fed" : "";
-	string federatedConnection = federated ? 
-					"FEDERATED CONNECTION=" +
-					string("'mysql://") + 
-					user + 
-					(password ? string(":") + password : "") + 
-					"@" + host +
-					"/" + database + "/" :
-					"";
-
-	if(federated) {
-		bool okFederated = false;
-		this->query("show engines");
-		SqlDb_row row;
-		while(row = this->fetchRow()) {
-			if(row["Engine"] == "FEDERATED" && row["Support"] == "YES") {
-				okFederated = true;
-			}
-		}
-		if(!okFederated) {
-			syslog(LOG_ERR, "federated engine disabled");
-			return;
-		}
-	}
-  
 	const char *cdrMainTables[] = {
 		 "cdr",
 		 "cdr_next",
@@ -2654,11 +2628,10 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 		compress = "ROW_FORMAT=COMPRESSED";
 	}
 
-	syslog(LOG_DEBUG, federated ? "created federated tables" :  "creating and upgrading MySQL schema...");
+	syslog(LOG_DEBUG, "creating and upgrading MySQL schema...");
 	sql_disable_next_attempt_if_error = 1;
 	this->multi_off();
 
-	if(!federated) {
 #if 1
 	this->query(
 	"CREATE TABLE IF NOT EXISTS `sensor_conf` (\
@@ -2801,7 +2774,6 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 			`remove_at` date default NULL,\
 		PRIMARY KEY (`id`)\
 	) ENGINE=InnoDB DEFAULT CHARSET=latin1;");
-	}
 
 	this->query(
 	"CREATE TABLE IF NOT EXISTS `filter_domain` (\
@@ -2843,34 +2815,34 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 		PRIMARY KEY (`id`)\
 	) ENGINE=InnoDB DEFAULT CHARSET=latin1;");
 
-	this->query(string(
-	"CREATE TABLE IF NOT EXISTS `cdr_sip_response") + federatedSuffix + "` (\
+	this->query(
+	"CREATE TABLE IF NOT EXISTS `cdr_sip_response` (\
 			`id` mediumint unsigned NOT NULL AUTO_INCREMENT,\
 			`lastSIPresponse` varchar(255) DEFAULT NULL,\
 		PRIMARY KEY (`id`),\
 		UNIQUE KEY `lastSIPresponse` (`lastSIPresponse`)\
-	) ENGINE=" + (federated ? federatedConnection + "cdr_sip_response'" : "InnoDB") + " DEFAULT CHARSET=latin1;");
+	) ENGINE=InnoDB DEFAULT CHARSET=latin1;");
 
-	this->query(string(
-	"CREATE TABLE IF NOT EXISTS `cdr_reason") + federatedSuffix + "` (\
+	this->query(
+	"CREATE TABLE IF NOT EXISTS `cdr_reason` (\
 			`id` mediumint unsigned NOT NULL AUTO_INCREMENT,\
 			`type` tinyint DEFAULT NULL,\
 			`reason` varchar(255) DEFAULT NULL,\
 		PRIMARY KEY (`id`),\
 		UNIQUE KEY `type_reason` (`type`, `reason`)\
-	) ENGINE=" + (federated ? federatedConnection + "cdr_reason'" : "InnoDB") + " DEFAULT CHARSET=latin1;");
+	) ENGINE=InnoDB DEFAULT CHARSET=latin1;");
 	
 	this->query(string(
-	"CREATE TABLE IF NOT EXISTS `cdr_ua") + federatedSuffix + "` (\
+	"CREATE TABLE IF NOT EXISTS `cdr_ua` (\
 			`id` int unsigned NOT NULL AUTO_INCREMENT,\
 			`ua` varchar(512) DEFAULT NULL,\
 		PRIMARY KEY (`id`),\
 		UNIQUE KEY `ua` (`ua`)\
-	) ENGINE=" + (federated ? federatedConnection + "cdr_ua'" : "InnoDB") + " DEFAULT CHARSET=latin1 " + compress + ";");
+	) ENGINE=InnoDB DEFAULT CHARSET=latin1 ") + compress + ";");
 
 	char partDayName[20] = "";
 	char limitDay[20] = "";
-	if(opt_cdr_partition && !federated) {
+	if(opt_cdr_partition) {
 		time_t act_time = time(NULL);
 		if(opt_create_old_partitions > 0) {
 			act_time -= opt_create_old_partitions * 24 * 60 * 60;
@@ -2886,18 +2858,25 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 	int createdCdrTable = !this->fetchRow();
 	
 	bool existsExtPrecisionBilling = false;
-	for(int i = 0; i < 2 && !existsExtPrecisionBilling; i++) {
-		string table = string("billing") + (i ? "_rule" : "");
-		this->query("show tables like '" + table + "'");
-		if(this->fetchRow()) {
-			this->query("select * from " + table);
-			SqlDb_row row;
-			while(row = this->fetchRow()) {
-				for(int j = 0; j < 2 && !existsExtPrecisionBilling; j++) {
-					double price = atof(row[i ? (j ? "price_peak" : "price") :
-								    (j ? "default_price_peak" : "default_price")].c_str());
-					if(fabs(round(price * 100) - price * 100) >= 0.1) {
-						existsExtPrecisionBilling = true;
+	if(sourceDb) {
+		sourceDb->query("show columns from cdr where Field='price_customer_mult1000000'");
+		if(sourceDb->fetchRow()) {
+			existsExtPrecisionBilling = true;
+		}
+	} else {
+		for(int i = 0; i < 2 && !existsExtPrecisionBilling; i++) {
+			string table = string("billing") + (i ? "_rule" : "");
+			this->query("show tables like '" + table + "'");
+			if(this->fetchRow()) {
+				this->query("select * from " + table);
+				SqlDb_row row;
+				while(row = this->fetchRow()) {
+					for(int j = 0; j < 2 && !existsExtPrecisionBilling; j++) {
+						double price = atof(row[i ? (j ? "price_peak" : "price") :
+									    (j ? "default_price_peak" : "default_price")].c_str());
+						if(fabs(round(price * 100) - price * 100) >= 0.1) {
+							existsExtPrecisionBilling = true;
+						}
 					}
 				}
 			}
@@ -2905,7 +2884,7 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 	}
 	
 	this->query(string(
-	"CREATE TABLE IF NOT EXISTS `cdr") + federatedSuffix + "` (\
+	"CREATE TABLE IF NOT EXISTS `cdr` (\
 			`ID` int unsigned NOT NULL AUTO_INCREMENT,\
 			`calldate` datetime NOT NULL,\
 			`callend` datetime NOT NULL,\
@@ -3031,7 +3010,7 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 			`called_silence` tinyint unsigned DEFAULT NULL,\
 			`caller_silence_end` smallint unsigned DEFAULT NULL,\
 			`called_silence_end` smallint unsigned DEFAULT NULL,\
-			`id_sensor` smallint unsigned DEFAULT NULL," + 
+			`id_sensor` smallint unsigned DEFAULT NULL,") + 
 			(get_customers_pn_query[0] ?
 				"`caller_customer_id` int DEFAULT NULL,\
 				`caller_reseller_id` char(10) DEFAULT NULL,\
@@ -3100,8 +3079,8 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 			CONSTRAINT `cdr_ibfk_4` FOREIGN KEY (`reason_sip_text_id`) REFERENCES `cdr_reason` (`id`) ON UPDATE CASCADE,\
 			CONSTRAINT `cdr_ibfk_5` FOREIGN KEY (`reason_q850_text_id`) REFERENCES `cdr_reason` (`id`) ON UPDATE CASCADE"
 		) +
-	") ENGINE=" + (federated ? federatedConnection + "cdr'" : "InnoDB") + " DEFAULT CHARSET=latin1 " + compress +  
-	(opt_cdr_partition && !federated ?
+	") ENGINE=InnoDB DEFAULT CHARSET=latin1 " + compress +  
+	(opt_cdr_partition ?
 		(opt_cdr_partition_oldver ? 
 			string(" PARTITION BY RANGE (to_days(calldate))(\
 				 PARTITION ") + partDayName + " VALUES LESS THAN (to_days('" + limitDay + "')) engine innodb)" :
@@ -3109,7 +3088,7 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 				 PARTITION ") + partDayName + " VALUES LESS THAN ('" + limitDay + "') engine innodb)") :
 		""));
 	
-	if(opt_cdr_partition && !federated) {
+	if(opt_cdr_partition) {
 		bool okExplainPartition = false;
 		bool existPartition = false;
 		for(uint i = 0; i < sizeof(cdrMainTables)/sizeof(cdrMainTables[0]); i++) {
@@ -3129,7 +3108,7 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 		}
 	}
 
-	if(!federated && !opt_cdr_sipport) {
+	if(!opt_cdr_sipport) {
 		this->query("show columns from cdr where Field='sipcallerport'");
 		opt_cdr_sipport = this->fetchRow();
 	}
@@ -3212,15 +3191,9 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 		exists_columns_cdr_reason = true;
 	}
 
-	string cdrNextCustomFields;
-	if(federated) {
-		for(size_t iCustHeaders = 0; iCustHeaders < opt_custom_headers_cdr.size(); iCustHeaders++) {
-			cdrNextCustomFields += "`" + opt_custom_headers_cdr[iCustHeaders][1] + "` VARCHAR(255)" + ",";
-		}
-	}
 	this->query(string(
-	"CREATE TABLE IF NOT EXISTS `cdr_next") + federatedSuffix + "` (\
-			`cdr_ID` int unsigned NOT NULL," +
+	"CREATE TABLE IF NOT EXISTS `cdr_next` (\
+			`cdr_ID` int unsigned NOT NULL,") +
 			(opt_cdr_partition ?
 				"`calldate` datetime NOT NULL," :
 				"") + 
@@ -3228,7 +3201,6 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 			`fbasename` varchar(255) DEFAULT NULL,\
 			`match_header` VARCHAR(128) DEFAULT NULL,\
 			`GeoPosition` varchar(255) DEFAULT NULL," +
-			cdrNextCustomFields +
 		(opt_cdr_partition ? 
 			"PRIMARY KEY (`cdr_ID`, `calldate`)," :
 			"PRIMARY KEY (`cdr_ID`),") +
@@ -3236,15 +3208,14 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 		(opt_cdr_partition ?
 			"" :
 			",CONSTRAINT `cdr_next_ibfk_1` FOREIGN KEY (`cdr_ID`) REFERENCES `cdr` (`ID`) ON DELETE CASCADE ON UPDATE CASCADE") +
-	") ENGINE=" + (federated ? federatedConnection + "cdr_next'" : "InnoDB") + " DEFAULT CHARSET=latin1 " + compress +  
-	(opt_cdr_partition && !federated ?
+	") ENGINE=InnoDB DEFAULT CHARSET=latin1 " + compress +  
+	(opt_cdr_partition ?
 		(opt_cdr_partition_oldver ? 
 			string(" PARTITION BY RANGE (to_days(calldate))(\
 				 PARTITION ") + partDayName + " VALUES LESS THAN (to_days('" + limitDay + "')) engine innodb)" :
 			string(" PARTITION BY RANGE COLUMNS(calldate)(\
 				 PARTITION ") + partDayName + " VALUES LESS THAN ('" + limitDay + "') engine innodb)") :
 		""));
-	if(!federated) {
 	sql_noerror = 1;
 	for(size_t iCustHeaders = 0; iCustHeaders < opt_custom_headers_cdr.size(); iCustHeaders++) {
 		this->query(string(
@@ -3252,15 +3223,14 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 			ADD COLUMN `") + opt_custom_headers_cdr[iCustHeaders][1] + "` VARCHAR(255);");
 	}
 	sql_noerror = 0;
-	}
 
 	this->query(string(
-	"CREATE TABLE IF NOT EXISTS `cdr_proxy") + federatedSuffix + "` (\
+	"CREATE TABLE IF NOT EXISTS `cdr_proxy` (\
 			`ID` int unsigned NOT NULL AUTO_INCREMENT,\
 			`cdr_ID` int unsigned NOT NULL,\
 			`calldate` datetime NOT NULL,\
 			`src` int unsigned DEFAULT NULL,\
-			`dst` varchar(255) DEFAULT NULL," +
+			`dst` varchar(255) DEFAULT NULL,") +
 		(opt_cdr_partition ? 
 			"PRIMARY KEY (`ID`, `calldate`)," :
 			"PRIMARY KEY (`ID`),") +
@@ -3270,8 +3240,8 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 		(opt_cdr_partition ?
 			"" :
 			",CONSTRAINT `cdr_proxy_ibfk_1` FOREIGN KEY (`cdr_ID`) REFERENCES `cdr` (`ID`) ON DELETE CASCADE ON UPDATE CASCADE") +
-	") ENGINE=" + (federated ? federatedConnection + "cdr_proxy'" : "InnoDB") + " DEFAULT CHARSET=latin1 " + compress  + 
-	(opt_cdr_partition && !federated ?
+	") ENGINE=InnoDB DEFAULT CHARSET=latin1 " + compress  + 
+	(opt_cdr_partition ?
 		(opt_cdr_partition_oldver ? 
 			string(" PARTITION BY RANGE (to_days(calldate))(\
 				 PARTITION ") + partDayName + " VALUES LESS THAN (to_days('" + limitDay + "')) engine innodb)" :
@@ -3280,9 +3250,9 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 	""));
 
 	this->query(string(
-	"CREATE TABLE IF NOT EXISTS `cdr_rtp") + federatedSuffix + "` (\
+	"CREATE TABLE IF NOT EXISTS `cdr_rtp` (\
 			`ID` int unsigned NOT NULL AUTO_INCREMENT,\
-			`cdr_ID` int unsigned NOT NULL," +
+			`cdr_ID` int unsigned NOT NULL,") +
 			(opt_cdr_partition ?
 				"`calldate` datetime NOT NULL," :
 				"") + 
@@ -3301,8 +3271,8 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 		(opt_cdr_partition ?
 			"" :
 			",CONSTRAINT `cdr_rtp_ibfk_1` FOREIGN KEY (`cdr_ID`) REFERENCES `cdr` (`ID`) ON DELETE CASCADE ON UPDATE CASCADE") +
-	") ENGINE=" + (federated ? federatedConnection + "cdr_rtp'" : "InnoDB") + " DEFAULT CHARSET=latin1 " + compress +  
-	(opt_cdr_partition && !federated ?
+	") ENGINE=InnoDB DEFAULT CHARSET=latin1 " + compress +  
+	(opt_cdr_partition ?
 		(opt_cdr_partition_oldver ? 
 			string(" PARTITION BY RANGE (to_days(calldate))(\
 				 PARTITION ") + partDayName + " VALUES LESS THAN (to_days('" + limitDay + "')) engine innodb)" :
@@ -3310,15 +3280,15 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 				 PARTITION ") + partDayName + " VALUES LESS THAN ('" + limitDay + "') engine innodb)") :
 		""));
 
-	if(!federated && !opt_cdr_rtpport) {
+	if(!opt_cdr_rtpport) {
 		this->query("show columns from cdr_rtp where Field='dport'");
 		opt_cdr_rtpport = this->fetchRow();
 	}
 
 	this->query(string(
-	"CREATE TABLE IF NOT EXISTS `cdr_dtmf") + federatedSuffix + "` (\
+	"CREATE TABLE IF NOT EXISTS `cdr_dtmf` (\
 			`ID` int unsigned NOT NULL AUTO_INCREMENT,\
-			`cdr_ID` int unsigned NOT NULL," +
+			`cdr_ID` int unsigned NOT NULL,") +
 			(opt_cdr_partition ?
 				"`calldate` datetime NOT NULL," :
 				"") + 
@@ -3333,8 +3303,8 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 		(opt_cdr_partition ?
 			"" :
 			",CONSTRAINT `cdr_dtmf_ibfk_1` FOREIGN KEY (`cdr_ID`) REFERENCES `cdr` (`ID`) ON DELETE CASCADE ON UPDATE CASCADE") +
-	") ENGINE=" + (federated ? federatedConnection + "cdr_dtmf'" : "InnoDB") + " DEFAULT CHARSET=latin1 " + compress +
-	(opt_cdr_partition && !federated ?
+	") ENGINE=InnoDB DEFAULT CHARSET=latin1 " + compress +
+	(opt_cdr_partition ?
 		(opt_cdr_partition_oldver ? 
 			string(" PARTITION BY RANGE (to_days(calldate))(\
 				 PARTITION ") + partDayName + " VALUES LESS THAN (to_days('" + limitDay + "')) engine innodb)" :
@@ -3343,9 +3313,9 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 		""));
 
 	this->query(string(
-	"CREATE TABLE IF NOT EXISTS `cdr_sipresp") + federatedSuffix + "` (\
+	"CREATE TABLE IF NOT EXISTS `cdr_sipresp` (\
 			`ID` int unsigned NOT NULL AUTO_INCREMENT,\
-			`cdr_ID` int unsigned NOT NULL," +
+			`cdr_ID` int unsigned NOT NULL,") +
 			(opt_cdr_partition ?
 				"`calldate` datetime NOT NULL," :
 				"") + 
@@ -3358,8 +3328,8 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 		(opt_cdr_partition ?
 			"" :
 			",CONSTRAINT `cdr_sipresp_ibfk_1` FOREIGN KEY (`cdr_ID`) REFERENCES `cdr` (`ID`) ON DELETE CASCADE ON UPDATE CASCADE") +
-	") ENGINE=" + (federated ? federatedConnection + "cdr_sipresp'" : "InnoDB") + " DEFAULT CHARSET=latin1 " + compress +
-	(opt_cdr_partition && !federated ?
+	") ENGINE=InnoDB DEFAULT CHARSET=latin1 " + compress +
+	(opt_cdr_partition ?
 		(opt_cdr_partition_oldver ? 
 			string(" PARTITION BY RANGE (to_days(calldate))(\
 				 PARTITION ") + partDayName + " VALUES LESS THAN (to_days('" + limitDay + "')) engine innodb)" :
@@ -3368,9 +3338,9 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 		""));
 
 	this->query(string(
-	"CREATE TABLE IF NOT EXISTS `cdr_tar_part") + federatedSuffix + "` (\
+	"CREATE TABLE IF NOT EXISTS `cdr_tar_part` (\
 			`ID` int unsigned NOT NULL AUTO_INCREMENT,\
-			`cdr_ID` int unsigned NOT NULL," +
+			`cdr_ID` int unsigned NOT NULL,") +
 			(opt_cdr_partition ?
 				"`calldate` datetime NOT NULL," :
 				"") + 
@@ -3383,8 +3353,8 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 		(opt_cdr_partition ?
 			"" :
 			",CONSTRAINT `cdr_tar_part_ibfk_1` FOREIGN KEY (`cdr_ID`) REFERENCES `cdr` (`ID`) ON DELETE CASCADE ON UPDATE CASCADE") +
-	") ENGINE=" + (federated ? federatedConnection + "cdr_tar_part'" : "InnoDB") + " DEFAULT CHARSET=latin1 " + compress +
-	(opt_cdr_partition && !federated ?
+	") ENGINE=InnoDB DEFAULT CHARSET=latin1 " + compress +
+	(opt_cdr_partition ?
 		(opt_cdr_partition_oldver ? 
 			string(" PARTITION BY RANGE (to_days(calldate))(\
 				 PARTITION ") + partDayName + " VALUES LESS THAN (to_days('" + limitDay + "')) engine innodb)" :
@@ -3393,21 +3363,15 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 		""));
 
 	this->query(string(
-	"CREATE TABLE IF NOT EXISTS `contenttype") + federatedSuffix + "` (\
+	"CREATE TABLE IF NOT EXISTS `contenttype` (\
 			`id` int unsigned NOT NULL AUTO_INCREMENT,\
 			`contenttype` varchar(255) DEFAULT NULL,\
 		PRIMARY KEY (`id`),\
 		KEY `contenttype` (`contenttype`)\
-	) ENGINE=" + (federated ? federatedConnection + "contenttype'" : "InnoDB") + " DEFAULT CHARSET=utf8 " + compress + ";");
+	) ENGINE=InnoDB DEFAULT CHARSET=utf8 ") + compress + ";");
 
-	string messageNextCustomFields;
-	if(federated) {
-		for(size_t iCustHeaders = 0; iCustHeaders < opt_custom_headers_message.size(); iCustHeaders++) {
-			messageNextCustomFields += "`" + opt_custom_headers_message[iCustHeaders][1] + "` VARCHAR(255)" + ",";
-		}
-	}
 	this->query(string(
-	"CREATE TABLE IF NOT EXISTS `message") + federatedSuffix + "` (\
+	"CREATE TABLE IF NOT EXISTS `message` (\
 			`ID` int unsigned NOT NULL AUTO_INCREMENT,\
 			`id_contenttype` int unsigned NOT NULL,\
 			`calldate` datetime NOT NULL,\
@@ -3429,8 +3393,7 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 			`b_ua_id` int unsigned DEFAULT NULL,\
 			`fbasename` varchar(255) DEFAULT NULL,\
 			`message` MEDIUMTEXT CHARACTER SET utf8,\
-			`content_length` MEDIUMINT DEFAULT NULL," +
-			messageNextCustomFields +
+			`content_length` MEDIUMINT DEFAULT NULL,") +
 		(opt_cdr_partition ? 
 			"PRIMARY KEY (`ID`, `calldate`)," :
 			"PRIMARY KEY (`ID`),") + 
@@ -3458,15 +3421,14 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 			CONSTRAINT `messages_ibfk_2` FOREIGN KEY (`a_ua_id`) REFERENCES `cdr_ua` (`id`) ON UPDATE CASCADE,\
 			CONSTRAINT `messages_ibfk_3` FOREIGN KEY (`b_ua_id`) REFERENCES `cdr_ua` (`id`) ON UPDATE CASCADE,\
 			CONSTRAINT `messages_ibfk_4` FOREIGN KEY (`id_contenttype`) REFERENCES `contenttype` (`id`) ON UPDATE CASCADE") +
-	") ENGINE=" + (federated ? federatedConnection + "message'" : "InnoDB") + " DEFAULT CHARSET=latin1 " + compress + 
-	(opt_cdr_partition && !federated ?
+	") ENGINE=InnoDB DEFAULT CHARSET=latin1 " + compress + 
+	(opt_cdr_partition ?
 		(opt_cdr_partition_oldver ? 
 			string(" PARTITION BY RANGE (to_days(calldate))(\
 				 PARTITION ") + partDayName + " VALUES LESS THAN (to_days('" + limitDay + "')) engine innodb)" :
 			string(" PARTITION BY RANGE COLUMNS(calldate)(\
 				 PARTITION ") + partDayName + " VALUES LESS THAN ('" + limitDay + "') engine innodb)") :
 		""));
-	if(!federated) {
 	sql_noerror = 1;
 	for(size_t iCustHeaders = 0; iCustHeaders < opt_custom_headers_message.size(); iCustHeaders++) {
 		this->query(string(
@@ -3474,14 +3436,10 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 			ADD COLUMN `") + opt_custom_headers_message[iCustHeaders][1] + "` VARCHAR(255);");
 	}
 	sql_noerror = 0;
-	}
 
-	if(!federated) {
-		this->query("show columns from message where Field='content_length'");
-		exists_column_message_content_length = this->fetchRow();
-	}
+	this->query("show columns from message where Field='content_length'");
+	exists_column_message_content_length = this->fetchRow();
 
-	if(!federated) {
 	this->query(
 	"CREATE TABLE IF NOT EXISTS `register` (\
 			`ID` int unsigned NOT NULL AUTO_INCREMENT,\
@@ -3510,10 +3468,9 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 		KEY `from_num` (`from_num`),\
 		KEY `digestusername` (`digestusername`)\
 	) ENGINE=MEMORY DEFAULT CHARSET=latin1 " + compress + ";");
-	}
 
 	this->query(string(
-	"CREATE TABLE IF NOT EXISTS `register_state") + federatedSuffix + "` (\
+	"CREATE TABLE IF NOT EXISTS `register_state` (\
 			`ID` int unsigned NOT NULL AUTO_INCREMENT,\
 			`id_sensor` int unsigned NOT NULL,\
 			`fname` BIGINT NULL default NULL,\
@@ -3528,15 +3485,15 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 			`expires` mediumint NULL DEFAULT NULL,\
 			`state` tinyint unsigned NULL DEFAULT NULL,\
 			`ua_id` int unsigned DEFAULT NULL,\
-			`to_domain` varchar(255) NULL DEFAULT NULL," +
+			`to_domain` varchar(255) NULL DEFAULT NULL,") +
 		(opt_cdr_partition ? 
 			"PRIMARY KEY (`ID`, `created_at`)," :
 			"PRIMARY KEY (`ID`),") +
 		"KEY `created_at` (`created_at`),\
 		KEY `sipcallerip` (`sipcallerip`),\
 		KEY `sipcalledip` (`sipcalledip`)\
-	) ENGINE=" + (federated ? federatedConnection + "register_state'" : "InnoDB") + " DEFAULT CHARSET=latin1 " + compress +  
-	(opt_cdr_partition && !federated ?
+	) ENGINE=InnoDB DEFAULT CHARSET=latin1 " + compress +  
+	(opt_cdr_partition ?
 		(opt_cdr_partition_oldver ? 
 			string(" PARTITION BY RANGE (to_days(created_at))(\
 				 PARTITION ") + partDayName + " VALUES LESS THAN (to_days('" + limitDay + "')) engine innodb)" :
@@ -3545,7 +3502,7 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 	""));
 
 	this->query(string(
-	"CREATE TABLE IF NOT EXISTS `register_failed") + federatedSuffix + "` (\
+	"CREATE TABLE IF NOT EXISTS `register_failed` (\
 			`ID` int unsigned NOT NULL AUTO_INCREMENT,\
 			`id_sensor` int unsigned NOT NULL,\
 			`fname` BIGINT NULL default NULL,\
@@ -3559,15 +3516,15 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 			`contact_domain` varchar(255) NULL DEFAULT NULL,\
 			`digestusername` varchar(255) NULL DEFAULT NULL,\
 			`ua_id` int unsigned DEFAULT NULL,\
-			`to_domain` varchar(255) NULL DEFAULT NULL," +
+			`to_domain` varchar(255) NULL DEFAULT NULL,") +
 		(opt_cdr_partition ? 
 			"PRIMARY KEY (`ID`, `created_at`)," :
 			"PRIMARY KEY (`ID`),") +
 		"KEY `created_at` (`created_at`),\
 		KEY `sipcallerip` (`sipcallerip`),\
 		KEY `sipcalledip` (`sipcalledip`)\
-	) ENGINE=" + (federated ? federatedConnection + "register_failed'" : "InnoDB") + " DEFAULT CHARSET=latin1 " + compress +  
-	(opt_cdr_partition && !federated ?
+	) ENGINE=InnoDB DEFAULT CHARSET=latin1 " + compress +  
+	(opt_cdr_partition ?
 		(opt_cdr_partition_oldver ? 
 			string(" PARTITION BY RANGE (to_days(created_at))(\
 				 PARTITION ") + partDayName + " VALUES LESS THAN (to_days('" + limitDay + "')) engine innodb)" :
@@ -3575,7 +3532,6 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 				 PARTITION ") + partDayName + " VALUES LESS THAN ('" + limitDay + "') engine innodb)") :
 	""));
 
-	if(!federated) {
 	this->query("CREATE TABLE IF NOT EXISTS `sensors` (\
 			`id_sensor` int unsigned NOT NULL,\
 			`host` varchar(255) NULL DEFAULT NULL,\
@@ -3638,11 +3594,10 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 			`regsize` bigint unsigned DEFAULT 0,\
 		PRIMARY KEY (`datehour`, `id_sensor`)\
 	) ENGINE=InnoDB DEFAULT CHARSET=latin1;");
-	}
 	
 	if(opt_enable_http_enum_tables) {
 		this->query(string(
-		"CREATE TABLE IF NOT EXISTS `http_jj") + federatedSuffix + "` (\
+		"CREATE TABLE IF NOT EXISTS `http_jj` (\
 			`id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,\
 			`master_id` BIGINT UNSIGNED,\
 			`timestamp` DATETIME NOT NULL,\
@@ -3658,7 +3613,7 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 			`callid` VARCHAR( 255 ) NOT NULL,\
 			`sessid` VARCHAR( 255 ) NOT NULL,\
 			`external_transaction_id` varchar( 255 ) NOT NULL,\
-			`id_sensor` smallint DEFAULT NULL," +
+			`id_sensor` smallint DEFAULT NULL,") +
 		(opt_cdr_partition ? 
 			"PRIMARY KEY (`id`, `timestamp`)," :
 			"PRIMARY KEY (`id`),") + 
@@ -3671,8 +3626,8 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 			"CONSTRAINT fk__http_jj__master_id\
 				FOREIGN KEY (`master_id`) REFERENCES `http_jj` (`id`)\
 				ON DELETE CASCADE ON UPDATE CASCADE") +
-		") ENGINE = " + (federated ? federatedConnection + "http_jj'" : "InnoDB") + " " + compress +
-		(opt_cdr_partition && !federated ?
+		") ENGINE=InnoDB " + compress +
+		(opt_cdr_partition ?
 			(opt_cdr_partition_oldver ? 
 				string(" PARTITION BY RANGE (to_days(timestamp))(\
 					PARTITION ") + partDayName + " VALUES LESS THAN (to_days('" + limitDay + "')) engine innodb)" :
@@ -3681,7 +3636,7 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 			""));
 		
 		this->query(string(
-		"CREATE TABLE IF NOT EXISTS `enum_jj") + federatedSuffix + "` (\
+		"CREATE TABLE IF NOT EXISTS `enum_jj` (\
 			`id` INT UNSIGNED NOT NULL AUTO_INCREMENT,\
 			`dnsid` INT UNSIGNED NOT NULL,\
 			`timestamp` DATETIME NOT NULL,\
@@ -3693,7 +3648,7 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 			`queryname` VARCHAR(255) NOT NULL,\
 			`responsename` VARCHAR(255) NOT NULL,\
 			`data` BLOB NOT NULL,\
-			`id_sensor` smallint DEFAULT NULL," +
+			`id_sensor` smallint DEFAULT NULL,") +
 		(opt_cdr_partition ? 
 			"PRIMARY KEY (`id`, `timestamp`)," :
 			"PRIMARY KEY (`id`),") + 
@@ -3701,8 +3656,8 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 		KEY `dnsid` (`dnsid`),\
 		KEY `queryname` (`queryname`),\
 		KEY `responsename` (`responsename`)\
-		) ENGINE = " + (federated ? federatedConnection + "enum_jj'" : "InnoDB") + " " + compress +
-		(opt_cdr_partition && !federated ?
+		) ENGINE=InnoDB " + compress +
+		(opt_cdr_partition ?
 			(opt_cdr_partition_oldver ? 
 				string(" PARTITION BY RANGE (to_days(timestamp))(\
 					PARTITION ") + partDayName + " VALUES LESS THAN (to_days('" + limitDay + "')) engine innodb)" :
@@ -3713,7 +3668,7 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 
 	if(opt_enable_webrtc_table) {
 		this->query(string(
-		"CREATE TABLE IF NOT EXISTS `webrtc") + federatedSuffix + "` (\
+		"CREATE TABLE IF NOT EXISTS `webrtc` (\
 			`id` INT UNSIGNED NOT NULL AUTO_INCREMENT,\
 			`timestamp` DATETIME NOT NULL,\
 			`usec` INT UNSIGNED NOT NULL,\
@@ -3725,14 +3680,14 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 			`method` VARCHAR(32) DEFAULT NULL,\
 			`body` TEXT CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,\
 			`external_transaction_id` VARCHAR( 255 ) NOT NULL,\
-			`id_sensor` smallint DEFAULT NULL," +
+			`id_sensor` smallint DEFAULT NULL,") +
 		(opt_cdr_partition ? 
 			"PRIMARY KEY (`id`, `timestamp`)," :
 			"PRIMARY KEY (`id`),") + 
 		"KEY `timestamp` (`timestamp`),\
 		KEY `external_transaction_id` (`external_transaction_id`)\
-		) ENGINE = " + (federated ? federatedConnection + "http_jj'" : "InnoDB") + " " + compress +
-		(opt_cdr_partition && !federated ?
+		) ENGINE=InnoDB " + compress +
+		(opt_cdr_partition ?
 			(opt_cdr_partition_oldver ? 
 				string(" PARTITION BY RANGE (to_days(timestamp))(\
 					PARTITION ") + partDayName + " VALUES LESS THAN (to_days('" + limitDay + "')) engine innodb)" :
@@ -3759,7 +3714,6 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 	this->createTable("fraud_alert_info");
 	}
 	
-	if(!federated) {
 	//BEGIN ALTER TABLES
 	char alter_funcname[20];
 	sprintf(alter_funcname, "__alter");
@@ -4297,7 +4251,6 @@ void SqlDb_mysql::createSchema(const char *host, const char *database, const cha
 			  IN id_sensor INT)", true);
 
 	//END SQL SCRIPTS
-	}
 
 	//this->multi_on();
 	sql_disable_next_attempt_if_error = 0;
@@ -4407,33 +4360,21 @@ bool SqlDb_mysql::checkSourceTables() {
 	return(ok);
 }
 
-void SqlDb_mysql::copyFromSourceTables(SqlDb_mysql *sqlDbSrc) {
-	unsigned long maxDiffId = 100000;
-	this->copyFromSourceTable(sqlDbSrc, "cdr_sip_response");
-	if(terminating) return;
-	this->copyFromSourceTable(sqlDbSrc, "cdr_reason");
-	if(terminating) return;
-	this->copyFromSourceTable(sqlDbSrc, "cdr_ua");
-	if(terminating) return;
-	this->copyFromSourceTable(sqlDbSrc, "contenttype");
-	if(terminating) return;
-	this->copyFromSourceTable(sqlDbSrc, "cdr", NULL, maxDiffId);
-	if(terminating) return;
-	if(opt_enable_http_enum_tables) {
-		this->copyFromSourceTable(sqlDbSrc, "http_jj", NULL, maxDiffId);
+void SqlDb_mysql::copyFromSourceTablesMinor(SqlDb_mysql *sqlDbSrc) {
+	vector<string> tablesMinor = getSourceTables(tt_minor);
+	for(vector<string>::iterator it = tablesMinor.begin(); it != tablesMinor.end(); it++) {
 		if(terminating) return;
-		this->copyFromSourceTable(sqlDbSrc, "enum_jj", NULL, maxDiffId);
-		if(terminating) return;
+		this->copyFromSourceTable(sqlDbSrc, it->c_str());
 	}
-	if(opt_enable_webrtc_table) {
-		this->copyFromSourceTable(sqlDbSrc, "webrtc", NULL, maxDiffId);
+}
+
+void SqlDb_mysql::copyFromSourceTablesMain(SqlDb_mysql *sqlDbSrc) {
+	vector<string> tablesMain = getSourceTables(tt_main);
+	for(vector<string>::iterator it = tablesMain.begin(); it != tablesMain.end(); it++) {
+		unsigned long maxDiffId = 100000;
 		if(terminating) return;
+		this->copyFromSourceTable(sqlDbSrc, it->c_str(), NULL, maxDiffId);
 	}
-	this->copyFromSourceTable(sqlDbSrc, "message", NULL, maxDiffId);
-	if(terminating) return;
-	this->copyFromSourceTable(sqlDbSrc, "register_state", NULL, maxDiffId);
-	if(terminating) return;
-	this->copyFromSourceTable(sqlDbSrc, "register_failed", NULL, maxDiffId);
 }
 
 void SqlDb_mysql::copyFromSourceTable(SqlDb_mysql *sqlDbSrc, const char *tableName, const char *id, unsigned long maxDiffId, 
@@ -4442,15 +4383,23 @@ void SqlDb_mysql::copyFromSourceTable(SqlDb_mysql *sqlDbSrc, const char *tableNa
 		id = "id";
 	}
 	bool joinCdrCalldate = string(tableName) == "cdr_next" ||
+			       reg_match(tableName, "cdr_next_") ||
 			       string(tableName) == "cdr_rtp" ||
 			       string(tableName) == "cdr_dtmf" ||
 			       string(tableName) == "cdr_sipresp" ||
 			       string(tableName) == "cdr_proxy" ||
 			       string(tableName) == "cdr_tar_part";
+	bool joinMessageCalldate = reg_match(tableName, "message_next_");
 	if(joinCdrCalldate) {
 		sqlDbSrc->query(string("show columns from ") + tableName + " where Field='calldate'");
 		if(sqlDbSrc->fetchRow()) {
 			joinCdrCalldate = false;
+		}
+	}
+	if(joinMessageCalldate) {
+		sqlDbSrc->query(string("show columns from ") + tableName + " where Field='calldate'");
+		if(sqlDbSrc->fetchRow()) {
+			joinMessageCalldate = false;
 		}
 	}
 	sqlDbSrc->query(string("select max(") + id + ") as max_id from " + tableName);
@@ -4481,9 +4430,15 @@ void SqlDb_mysql::copyFromSourceTable(SqlDb_mysql *sqlDbSrc, const char *tableNa
 		if(joinCdrCalldate) {
 			queryStr << ",cdr.calldate";
 		}
+		if(joinMessageCalldate) {
+			queryStr << ",message.calldate";
+		}
 		queryStr << " from " << tableName;
 		if(joinCdrCalldate) {
 			queryStr << " join cdr on (cdr.id = " << tableName << ".cdr_id)";
+		}
+		if(joinMessageCalldate) {
+			queryStr << " join message on (message.id = " << tableName << ".message_id)";
 		}
 		queryStr << " where "
 			 << id << " >= " << max(minIdInSrc, maxIdInDst + 1);
@@ -4534,6 +4489,13 @@ void SqlDb_mysql::copyFromSourceTable(SqlDb_mysql *sqlDbSrc, const char *tableNa
 		if(string(tableName) == "cdr") {
 			if(terminating) return;
 			this->copyFromSourceTable(sqlDbSrc, "cdr_next", "cdr_id", 0, minIdInSrc, useMaxIdInSrc);
+			if(custom_headers_cdr) {
+				list<string> nextTables = custom_headers_cdr->getAllNextTables();
+				for(list<string>::iterator it = nextTables.begin(); it != nextTables.end(); it++) {
+					if(terminating) return;
+					this->copyFromSourceTable(sqlDbSrc, it->c_str(), "cdr_id", 0, minIdInSrc, useMaxIdInSrc);
+				}
+			}
 			if(terminating) return;
 			this->copyFromSourceTable(sqlDbSrc, "cdr_rtp", "cdr_id", 0, minIdInSrc, useMaxIdInSrc);
 			if(terminating) return;
@@ -4545,21 +4507,46 @@ void SqlDb_mysql::copyFromSourceTable(SqlDb_mysql *sqlDbSrc, const char *tableNa
 			if(terminating) return;
 			this->copyFromSourceTable(sqlDbSrc, "cdr_tar_part", "cdr_id", 0, minIdInSrc, useMaxIdInSrc);
 		}
+		if(string(tableName) == "message") {
+			if(custom_headers_message) {
+				list<string> nextTables = custom_headers_message->getAllNextTables();
+				for(list<string>::iterator it = nextTables.begin(); it != nextTables.end(); it++) {
+					if(terminating) return;
+					this->copyFromSourceTable(sqlDbSrc, it->c_str(), "message_id", 0, minIdInSrc, useMaxIdInSrc);
+				}
+			}
+		}
 	}
 }
 
 void SqlDb_mysql::copyFromSourceGuiTables(SqlDb_mysql *sqlDbSrc) {
 	vector<string> mainSourceTables = getSourceTables();
+	const char *excludeTables[] = {
+		"cdr_ua*",
+		"cdr_next_*",
+		"message_next_*",
+		"http_jj",
+		"enum_jj",
+		"webrtc",
+		"register",
+		"livepacket*",
+		"alerts_cdr",
+		"alerts_sended",
+		"alerts_message",
+		"daily_reports_cdr",
+		"daily_reports_message",
+		"daily_reports_sended",
+		"billing_agregation*",
+		"audit_log",
+		"file_cache",
+		"hostname_cache",
+		"ipacc*",
+		"geoip*"
+	};
 	sqlDbSrc->query("show tables");
 	SqlDb_row row;
 	while(row = sqlDbSrc->fetchRow()) {
 		string tableName = row[0];
-		if((tableName == "http_jj" || tableName == "enum_jj") && !opt_enable_http_enum_tables) {
-			continue;
-		}
-		if(tableName == "webrtc" && !opt_enable_webrtc_table) {
-			continue;
-		}
 		bool isMainSourceTable = false;
 		for(size_t i = 0; i < mainSourceTables.size(); i++) {
 			if(tableName == mainSourceTables[i]) {
@@ -4567,9 +4554,21 @@ void SqlDb_mysql::copyFromSourceGuiTables(SqlDb_mysql *sqlDbSrc) {
 				break;
 			}
 		}
-		if(isMainSourceTable ||
-		   tableName == "register" ||
-		   tableName.find("livepacket") != string::npos) {
+		if(isMainSourceTable) {
+			continue;
+		}
+		bool isExcludeTable = false;
+		for(unsigned i = 0; i < sizeof(excludeTables) / sizeof(excludeTables[0]); i++) {
+			string excludeTableName = excludeTables[i];
+			unsigned excludeTableNameLength = excludeTableName.length();
+			if(excludeTableName[excludeTableNameLength - 1] == '*' ?
+			    tableName.find(excludeTableName.substr(0, excludeTableNameLength - 1)) != string::npos :
+			    tableName == excludeTableName) {
+				isExcludeTable = true;
+				break;
+			}
+		}
+		if(isExcludeTable) {
 			continue;
 		}
 		cout << tableName << endl;
@@ -4598,173 +4597,50 @@ void SqlDb_mysql::copyFromSourceGuiTable(SqlDb_mysql *sqlDbSrc, const char *tabl
 	system(cmdCopyTable.c_str());
 }
 
-vector<string> SqlDb_mysql::getSourceTables() {
-	const char *sourceTables[] = {
-		"cdr_sip_response",
-		"cdr_reason",
-		"cdr_ua",
-		"contenttype",
-		"cdr",
-		"cdr_next",
-		"cdr_rtp",
-		"cdr_dtmf",
-		"cdr_sipresp",
-		"cdr_proxy",
-		"cdr_tar_part",
-		opt_enable_http_enum_tables ? "http_jj" : NULL,
-		opt_enable_http_enum_tables ? "enum_jj" : NULL,
-		opt_enable_webrtc_table ? "webrtc" : NULL,
-		"message",
-		"register_failed",
-		"register_state"
-	};
-	vector<string> rsltTables;
-	for(size_t i = 0; i < sizeof(sourceTables) / sizeof(sourceTables[0]); i++) {
-		if(sourceTables[i]) {
-			rsltTables.push_back(sourceTables[i]);
+vector<string> SqlDb_mysql::getSourceTables(int typeTables) {
+	vector<string> tables;
+	if(typeTables & tt_minor) {
+		tables.push_back("cdr_sip_response");
+		tables.push_back("cdr_reason");
+		tables.push_back("cdr_ua");
+		tables.push_back("contenttype");
+	}
+	if(typeTables & tt_main) {
+		tables.push_back("cdr");
+		if(typeTables & tt_child) {
+			tables.push_back("cdr_next");
+			if(custom_headers_cdr) {
+				list<string> nextTables = custom_headers_cdr->getAllNextTables();
+				for(list<string>::iterator it = nextTables.begin(); it != nextTables.end(); it++) {
+					tables.push_back(it->c_str());
+				}
+			}
+			tables.push_back("cdr_rtp");
+			tables.push_back("cdr_dtmf");
+			tables.push_back("cdr_sipresp");
+			tables.push_back("cdr_proxy");
+			tables.push_back("cdr_tar_part");
 		}
-	}
-	return(rsltTables);
-}
-
-bool SqlDb_mysql::checkFederatedTables() {
-	bool ok = true;
-	vector<string> federatedTables = this->getFederatedTables();
-	sql_disable_next_attempt_if_error = 1;
-	for(size_t i = 0; i < federatedTables.size(); i++) {
-		if(!this->query("select * from " + federatedTables[i] + " limit 1")) {
-			ok = false;
-		} else {
-			while(this->fetchRow());
+		if(opt_enable_http_enum_tables) tables.push_back("http_jj");
+		if(opt_enable_http_enum_tables) tables.push_back("enum_jj");
+		if(opt_enable_webrtc_table) tables.push_back("webrtc");
+		tables.push_back("message");
+		if(typeTables & tt_child) {
+			if(custom_headers_message) {
+				list<string> nextTables = custom_headers_message->getAllNextTables();
+				for(list<string>::iterator it = nextTables.begin(); it != nextTables.end(); it++) {
+					tables.push_back(it->c_str());
+				}
+			}
 		}
+		tables.push_back("register_failed");
+		tables.push_back("register_state");
 	}
-	sql_disable_next_attempt_if_error = 0;
-	return(ok);
-}
-
-void SqlDb_mysql::copyFromFederatedTables() {
-	unsigned long maxDiffId = 10000;
-	this->copyFromFederatedTable("cdr_sip_response");
-	if(terminating) return;
-	this->copyFromFederatedTable("cdr_reason");
-	if(terminating) return;
-	this->copyFromFederatedTable("cdr_ua");
-	if(terminating) return;
-	this->copyFromFederatedTable("contenttype");
-	if(terminating) return;
-	this->copyFromFederatedTable("cdr", NULL, maxDiffId);
-	if(terminating) return;
-	if(opt_enable_http_enum_tables) {
-		this->copyFromFederatedTable("http_jj", NULL, maxDiffId);
-		if(terminating) return;
-		this->copyFromFederatedTable("enum_jj", NULL, maxDiffId);
-		if(terminating) return;
-	}
-	if(opt_enable_webrtc_table) {
-		this->copyFromFederatedTable("webrtc", NULL, maxDiffId);
-		if(terminating) return;
-	}
-	this->copyFromFederatedTable("message", NULL, maxDiffId);
-	if(terminating) return;
-	this->copyFromFederatedTable("register_state", NULL, maxDiffId);
-	if(terminating) return;
-	this->copyFromFederatedTable("register_failed", NULL, maxDiffId);
-}
-
-void SqlDb_mysql::copyFromFederatedTable(const char *tableName, const char *id, unsigned long maxDiffId, 
-					 unsigned long minIdInFederated, unsigned long useMaxIdInFederated) {
-	if(!id) {
-		id = "id";
-	}
-	string tableNameFederated = string(tableName) + "_fed";
-	this->query(string("select max(") + id + ") as max_id from " + tableNameFederated);
-	unsigned long maxIdInFederated = atoll(this->fetchRow()["max_id"].c_str());
-	extern char opt_database_backup_from_date[20];
-	if(opt_database_backup_from_date[0] &&
-	   (string(tableName) == "cdr" ||
-	    string(tableName) == "http_jj" ||
-	    string(tableName) == "enum_jj" ||
-	    string(tableName) == "message" ||
-	    string(tableName) == "register_state" ||
-	    string(tableName) == "register_failed")) {
-		string timeColumn = (string(tableName) == "cdr" || string(tableName) == "message") ? "calldate" : 
-				    (string(tableName) == "http_jj" || string(tableName) == "enum_jj") ? "timestamp" : "created_at";
-		this->query(string("select min(") + id + ") as min_id from " + tableNameFederated + 
-			    " where " + timeColumn + " > '" + opt_database_backup_from_date + "'");
-		minIdInFederated = atoll(this->fetchRow()["min_id"].c_str());
-	}
-	this->query(string("select max(") + id + ") as max_id from " + string(tableName));
-	unsigned long maxIdInDst = atoll(this->fetchRow()["max_id"].c_str());
-	if(maxIdInFederated > maxIdInDst) {
-		if(!useMaxIdInFederated && maxDiffId) {
-			useMaxIdInFederated = min(max(minIdInFederated - 1, maxIdInDst) + maxDiffId, maxIdInFederated);
-		}
-		stringstream queryStr;
-		queryStr << "insert into " << tableName
-			 << " select * from " << tableNameFederated
-			 << " where "
-			 << id << " >= " << max(minIdInFederated, maxIdInDst + 1);
-		if(useMaxIdInFederated) {
-			queryStr << " and " << id << " <= " << useMaxIdInFederated;
-		}
-		queryStr << " order by " << id;
-		syslog(LOG_NOTICE, ("copy query: " + queryStr.str()).c_str());
-		this->query(queryStr.str());
-		if(string(tableName) == "cdr") {
-			if(terminating) return;
-			this->copyFromFederatedTable("cdr_next", "cdr_id", 0, minIdInFederated, useMaxIdInFederated);
-			if(terminating) return;
-			this->copyFromFederatedTable("cdr_rtp", "cdr_id", 0, minIdInFederated, useMaxIdInFederated);
-			if(terminating) return;
-			this->copyFromFederatedTable("cdr_dtmf", "cdr_id", 0, minIdInFederated, useMaxIdInFederated);
-			if(terminating) return;
-			this->copyFromFederatedTable("cdr_sipresp", "cdr_id", 0, minIdInFederated, useMaxIdInFederated);
-			if(terminating) return;
-			this->copyFromFederatedTable("cdr_proxy", "cdr_id", 0, minIdInFederated, useMaxIdInFederated);
-			if(terminating) return;
-			this->copyFromFederatedTable("cdr_tar_part", "cdr_id", 0, minIdInFederated, useMaxIdInFederated);
-		}
-	}
-}
-
-void SqlDb_mysql::dropFederatedTables() {
-	vector<string> federatedTables = this->getFederatedTables();
-	sql_disable_next_attempt_if_error = 1;
-	for(size_t i = 0; i < federatedTables.size(); i++) {
-		this->query("drop table if exists " + federatedTables[i]);
-	}
-	sql_disable_next_attempt_if_error = 0;
-}
-
-vector<string> SqlDb_mysql::getFederatedTables() {
-	const char *federatedTables[] = {
-		"cdr_sip_response_fed",
-		"cdr_reason_fed",
-		"cdr_ua_fed",
-		"contenttype_fed",
-		"cdr_fed",
-		"cdr_next_fed",
-		"cdr_rtp_fed",
-		"cdr_dtmf_fed",
-		"cdr_sipresp_fed",
-		"cdr_proxy_fed",
-		"cdr_tar_part_fed",
-		opt_enable_http_enum_tables ? "http_jj_fed" : NULL,
-		opt_enable_http_enum_tables ? "enum_jj_fed" : NULL,
-		opt_enable_webrtc_table ? "webrtc" : NULL,
-		"message_fed",
-		"register_failed_fed",
-		"register_state_fed"
-	};
-	vector<string> rsltTables;
-	for(size_t i = 0; i < sizeof(federatedTables) / sizeof(federatedTables[0]); i++) {
-		rsltTables.push_back(federatedTables[i]);
-	}
-	return(rsltTables);
+	return(tables);
 }
 
 
-void SqlDb_odbc::createSchema(const char *host, const char *database, const char *user, const char *password) {
+void SqlDb_odbc::createSchema(SqlDb *sourceDb) {
 	
 	this->query(
 	"IF NOT EXISTS (SELECT * FROM sys.objects WHERE name = 'filter_ip') BEGIN\

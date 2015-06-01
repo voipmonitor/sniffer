@@ -842,9 +842,9 @@ public:
 	};
 public:
 	CustomHeaders(eType type);
-	void load(bool lock = true);
+	void load(class SqlDb *sqlDb = NULL, bool lock = true);
 	void clear(bool lock = true);
-	void refresh();
+	void refresh(SqlDb *sqlDb = NULL);
 	void addToStdParse(ParsePacket *parsePacket);
 	void parse(Call *call, char *data, int datalen);
 	void setCustomHeaderContent(Call *call, int pos1, int pos2, dstring *content);
@@ -862,6 +862,9 @@ public:
 		return(loadTime);
 	}
 	string getQueryForSaveUseInfo(Call *call);
+	void createTablesIfNotExists(SqlDb *sqlDb);
+	void createTableIfNotExists(const char *tableName, SqlDb *sqlDb = NULL);
+	void createColumnsForFixedHeaders(SqlDb *sqlDb = NULL);
 private:
 	void lock_custom_headers() {
 		while(__sync_lock_test_and_set(&this->_sync_custom_headers, 1));

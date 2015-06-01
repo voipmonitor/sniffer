@@ -131,7 +131,7 @@ public:
 	}
 	virtual void cleanFields();
 	virtual void clean() = 0;
-	virtual void createSchema(const char *host = NULL, const char *database = NULL, const char *user = NULL, const char *password = NULL) = 0;
+	virtual void createSchema(SqlDb *sourceDb = NULL) = 0;
 	virtual void createTable(const char *tableName) = 0;
 	virtual void checkDbMode() = 0;
 	virtual void checkSchema() = 0;
@@ -189,6 +189,12 @@ public:
 		procedure,
 		function
 	};
+	enum eTypeTables {
+		tt_minor = 1,
+		tt_main  = 2,
+		tt_child = 4,
+		tt_all   = 7
+	};
 public:
 	SqlDb_mysql();
 	~SqlDb_mysql();
@@ -204,23 +210,18 @@ public:
 	}
 	bool checkLastError(string prefixError, bool sysLog = false,bool clearLastError = false);
 	void clean();
-	void createSchema(const char *host = NULL, const char *database = NULL, const char *user = NULL, const char *password = NULL);
+	void createSchema(SqlDb *sourceDb = NULL);
 	void createTable(const char *tableName);
 	void checkDbMode();
 	void checkSchema();
 	bool checkSourceTables();
-	void copyFromSourceTables(SqlDb_mysql *sqlDbSrc);
+	void copyFromSourceTablesMinor(SqlDb_mysql *sqlDbSrc);
+	void copyFromSourceTablesMain(SqlDb_mysql *sqlDbSrc);
 	void copyFromSourceTable(SqlDb_mysql *sqlDbSrc, const char *tableName, const char *id = NULL, unsigned long maxDiffId = 0, 
 				 unsigned long minIdInSrc = 1, unsigned long useMaxIdInSrc = 0);
 	void copyFromSourceGuiTables(SqlDb_mysql *sqlDbSrc);
 	void copyFromSourceGuiTable(SqlDb_mysql *sqlDbSrc, const char *tableName);
-	vector<string> getSourceTables();
-	bool checkFederatedTables();
-	void copyFromFederatedTables();
-	void copyFromFederatedTable(const char *tableName, const char *id = NULL, unsigned long maxDiffId = 0, 
-				    unsigned long minIdInFederated = 1, unsigned long useMaxIdInFederated = 0);
-	void dropFederatedTables();
-	vector<string> getFederatedTables();
+	vector<string> getSourceTables(int typeTables = tt_all);
 	string getTypeDb() {
 		return("mysql");
 	}
@@ -295,7 +296,7 @@ public:
 	bool checkLastError(string prefixError, bool sysLog = false,bool clearLastError = false);
 	void cleanFields();
 	void clean();
-	void createSchema(const char *host = NULL, const char *database = NULL, const char *user = NULL, const char *password = NULL);
+	void createSchema(SqlDb *sourceDb = NULL);
 	void createTable(const char *tableName);
 	void checkDbMode();
 	void checkSchema();
