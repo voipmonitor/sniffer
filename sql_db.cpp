@@ -651,7 +651,7 @@ bool SqlDb_mysql::connect(bool createDb, bool mainInit) {
 			this->connecting = false;
 			return(rslt);
 		} else {
-			this->checkLastError("connect error", true);
+			this->checkLastError("connect error (" + this->conn_server + ")", true);
 		}
 	} else {
 		this->setLastErrorString("mysql_init failed - insufficient memory ?", true);
@@ -1069,7 +1069,7 @@ bool SqlDb_odbc::connect(bool createDb, bool mainInit) {
 				  (SQLCHAR*)this->conn_user.c_str(), SQL_NTS,
 				  (SQLCHAR*)this->conn_password.c_str(), SQL_NTS);
 		if(!this->okRslt(rslt)) {
-			this->checkLastError("odbc: connect error", true);
+			this->checkLastError("odbc: connect error (" + this->conn_server + ")", true);
 			this->disconnect();
 			this->connecting = false;
 			return(false);
