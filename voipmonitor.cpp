@@ -307,6 +307,7 @@ char opt_database_backup_from_mysql_host[256] = "";
 char opt_database_backup_from_mysql_database[256] = "";
 char opt_database_backup_from_mysql_user[256] = "";
 char opt_database_backup_from_mysql_password[256] = "";
+u_int16_t opt_database_backup_from_mysql_port = 0;
 int opt_database_backup_pause = 300;
 int opt_database_backup_insert_threads = 1;
 char opt_mos_lqo_bin[1024] = "pesq";
@@ -874,7 +875,8 @@ void *database_backup(void *dummy) {
 		sqlDbSrc->setConnectParameters(opt_database_backup_from_mysql_host, 
 					       opt_database_backup_from_mysql_user,
 					       opt_database_backup_from_mysql_password,
-					       opt_database_backup_from_mysql_database);
+					       opt_database_backup_from_mysql_database,
+					       opt_database_backup_from_mysql_port);
 		if(sqlDbSrc->connect()) {
 			SqlDb_mysql *sqlDbSrc_mysql = dynamic_cast<SqlDb_mysql*>(sqlDbSrc);
 			if(sqlDbSrc_mysql->checkSourceTables()) {
@@ -2060,6 +2062,9 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "database_backup_from_mysqlpassword", NULL))) {
 		strncpy(opt_database_backup_from_mysql_password, value, sizeof(opt_database_backup_from_mysql_password));
 	}
+	if((value = ini.GetValue("general", "database_backup_from_mysqlport", NULL))) {
+		opt_database_backup_from_mysql_port = atol(value);
+	}
 	if((value = ini.GetValue("general", "database_backup_pause", NULL))) {
 		opt_database_backup_pause = atoi(value);
 	}
@@ -2945,13 +2950,11 @@ void set_context_config() {
 		opt_autoload_from_sqlvmexport = false;
 	}
 	
-	if(!opt_test &&
-	   opt_database_backup_from_date[0] != '\0' &&
-	   opt_database_backup_from_mysql_host[0] != '\0' &&
-	   opt_database_backup_from_mysql_database[0] != '\0' &&
-	   opt_database_backup_from_mysql_user[0] != '\0') {
-		opt_database_backup = true;
-	}
+	opt_database_backup = !opt_test &&
+			      opt_database_backup_from_date[0] != '\0' &&
+			      opt_database_backup_from_mysql_host[0] != '\0' &&
+			      opt_database_backup_from_mysql_database[0] != '\0' &&
+			      opt_database_backup_from_mysql_user[0] != '\0';
 }
 
 int load_config(char *fname) {
@@ -3742,7 +3745,7 @@ int main(int argc, char *argv[]) {
 	
 	set_context_config();
 	
-	if(opt_ipaccount) {
+	if(opt_ipaccount && !opt_test) {
 		initIpacc();
 	}
 	if ((fname[0] == '\0') && (ifname[0] == '\0') && opt_scanpcapdir[0] == '\0' && !opt_untar_gui_params && !opt_pcap_queue_receive_from_ip_port){
@@ -5538,7 +5541,8 @@ void test() {
 		sqlDbSrc->setConnectParameters(opt_database_backup_from_mysql_host, 
 					       opt_database_backup_from_mysql_user,
 					       opt_database_backup_from_mysql_password,
-					       opt_database_backup_from_mysql_database);
+					       opt_database_backup_from_mysql_database,
+					       opt_database_backup_from_mysql_port);
 		if(sqlDbSrc->connect()) {
 			SqlDb_mysql *sqlDbSrc_mysql = dynamic_cast<SqlDb_mysql*>(sqlDbSrc);
 			sqlDb_mysql->copyFromSourceGuiTables(sqlDbSrc_mysql);

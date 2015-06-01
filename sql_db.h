@@ -68,7 +68,7 @@ class SqlDb {
 public:
 	SqlDb();
 	virtual ~SqlDb();
-	void setConnectParameters(string server, string user, string password, string database = "", bool showversion = true);
+	void setConnectParameters(string server, string user, string password, string database = "", u_int16_t port = 0, bool showversion = true);
 	void setCloudParameters(string cloud_host, string cloud_token);
 	void setLoginTimeout(ulong loginTimeout);
 	virtual bool connect(bool craeteDb = false, bool mainInit = false) = 0;
@@ -162,6 +162,7 @@ protected:
 	string conn_user;
 	string conn_password;
 	string conn_database;
+	u_int16_t conn_port;
 	string cloud_host;
 	string cloud_redirect;
 	string cloud_token;

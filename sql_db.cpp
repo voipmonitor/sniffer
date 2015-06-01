@@ -241,6 +241,7 @@ string SqlDb_row::keyvalList(string separator) {
 
 SqlDb::SqlDb() {
 	this->clearLastError();
+	this->conn_port = 0;
 	this->maxQueryPass = UINT_MAX;
 	this->loginTimeout = (ulong)NULL;
 	this->enableSqlStringInContent = false;
@@ -256,11 +257,12 @@ SqlDb::SqlDb() {
 SqlDb::~SqlDb() {
 }
 
-void SqlDb::setConnectParameters(string server, string user, string password, string database, bool showversion) {
+void SqlDb::setConnectParameters(string server, string user, string password, string database, u_int16_t port, bool showversion) {
 	this->conn_server = server;
 	this->conn_user = user;
 	this->conn_password = password;
 	this->conn_database = database;
+	this->conn_port = port;
 	this->conn_showversion = showversion;
 }
 
@@ -557,7 +559,8 @@ bool SqlDb_mysql::connect(bool createDb, bool mainInit) {
 			this->hMysqlConn = mysql_real_connect(
 						this->hMysql,
 						this->conn_server_ip.c_str(), this->conn_user.c_str(), this->conn_password.c_str(), NULL,
-						opt_mysql_port, NULL, CLIENT_MULTI_RESULTS);
+						this->conn_port ? this->conn_port : opt_mysql_port,
+						NULL, CLIENT_MULTI_RESULTS);
 			if(!this->hMysqlConn) {
 				break;
 			}
@@ -4588,9 +4591,14 @@ void SqlDb_mysql::copyFromSourceGuiTable(SqlDb_mysql *sqlDbSrc, const char *tabl
 	this->query("set FOREIGN_KEY_CHECKS=0");
 	this->query(string("drop table if exists ") + tableName);
 	this->query("set FOREIGN_KEY_CHECKS=1");
+	char conn_port_str[10] = "";
+	if(sqlDbSrc->conn_port) {
+		sprintf(conn_port_str, "%u", sqlDbSrc->conn_port);
+	}
 	string cmdCopyTable = 
 		string("mysqldump --opt") +
 		" -h" + sqlDbSrc->conn_server +
+		(sqlDbSrc->conn_port ? " --port " + string(conn_port_str) : "") +
 		" -u" + sqlDbSrc->conn_user +
 		(sqlDbSrc->conn_password.length() ? " -p" + sqlDbSrc->conn_password : "") +
 		" " + sqlDbSrc->conn_database + 
