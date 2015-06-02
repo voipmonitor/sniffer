@@ -487,6 +487,7 @@ char get_radius_ip_host[256];
 char get_radius_ip_db[256];
 char get_radius_ip_user[256];
 char get_radius_ip_password[256];
+bool get_radius_ip_disable_secure_auth = false;
 char get_radius_ip_query[1024];
 char get_radius_ip_query_where[1024];
 int get_customer_by_ip_flush_period = 1;
@@ -2138,6 +2139,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "get_radius_ip_password", NULL))) {
 		strncpy(get_radius_ip_password, value, sizeof(get_radius_ip_password));
+	}
+	if((value = ini.GetValue("general", "get_radius_ip_disable_secure_auth", NULL))) {
+		get_radius_ip_disable_secure_auth = yesno(value);
 	}
 	if((value = ini.GetValue("general", "get_radius_ip_query", NULL))) {
 		strncpy(get_radius_ip_query, value, sizeof(get_radius_ip_query));

@@ -73,6 +73,7 @@ extern char get_radius_ip_host[256];
 extern char get_radius_ip_db[256];
 extern char get_radius_ip_user[256];
 extern char get_radius_ip_password[256];
+extern bool get_radius_ip_disable_secure_auth;
 extern char get_radius_ip_query[1024];
 extern char get_radius_ip_query_where[1024];
 extern int get_customer_by_ip_flush_period;
@@ -363,7 +364,8 @@ void Ipacc::init() {
 			get_radius_ip_host,
 			get_radius_ip_db,
 			get_radius_ip_user,
-			get_radius_ip_password);
+			get_radius_ip_password,
+			get_radius_ip_disable_secure_auth);
 		custIpCache->setQueryes(
 			get_customer_by_ip_query, 
 			get_customers_ip_query);
@@ -834,6 +836,7 @@ void IpaccAgreg::save(unsigned int time_interval) {
 CustIpCache::CustIpCache() {
 	this->sqlDb = NULL;
 	this->sqlDbRadius = NULL;
+	this->radiusDisableSecureAuth = false;
 	this->flushCounter = 0;
 	this->doFlushVect = false;
 }
@@ -855,12 +858,13 @@ void CustIpCache::setConnectParams(const char *sqlDriver, const char *odbcDsn, c
 	if(odbcDriver) 		this->odbcDriver = odbcDriver;
 }
 
-void CustIpCache::setConnectParamsRadius(const char *radiusSqlDriver, const char *radiusHost, const char *radiusDb,const char *radiusUser, const char *radiusPassword) {
+void CustIpCache::setConnectParamsRadius(const char *radiusSqlDriver, const char *radiusHost, const char *radiusDb,const char *radiusUser, const char *radiusPassword, bool radiusDisableSecureAuth) {
 	if(radiusSqlDriver)	this->radiusSqlDriver = radiusSqlDriver;
 	if(radiusHost)		this->radiusHost = radiusHost;
 	if(radiusDb)		this->radiusDb = radiusDb;
 	if(radiusUser)		this->radiusUser = radiusUser;
 	if(radiusPassword)	this->radiusPassword = radiusPassword;
+	this->radiusDisableSecureAuth = radiusDisableSecureAuth;
 }
 
 void CustIpCache::setQueryes(const char *getIp, const char *fetchAllIp) {
@@ -889,6 +893,9 @@ int CustIpCache::connect() {
 		SqlDb_mysql *sqlDb_mysql = new FILE_LINE SqlDb_mysql();
 		this->sqlDbRadius = sqlDb_mysql;
 		this->sqlDbRadius->setConnectParameters(this->radiusHost, this->radiusUser, this->radiusPassword, this->radiusDb);
+		if(this->radiusDisableSecureAuth) {
+			this->sqlDbRadius->setDisableSecureAuth();
+		}
 	}
 	return(this->sqlDb->connect() && 
 	       (this->sqlDbRadius ? this->sqlDbRadius->connect() : true));

@@ -263,7 +263,7 @@ public:
 	CustIpCache();
 	~CustIpCache();
 	void setConnectParams(const char *sqlDriver, const char *odbcDsn, const char *odbcUser, const char *odbcPassword, const char *odbcDriver);
-	void setConnectParamsRadius(const char *radiusSqlDriver, const char *radiusHost, const char *radiusDb,const char *radiusUser, const char *radiusPassword);
+	void setConnectParamsRadius(const char *radiusSqlDriver, const char *radiusHost, const char *radiusDb,const char *radiusUser, const char *radiusPassword, bool radiusDisableSecureAuth);
 	void setQueryes(const char *getIp, const char *fetchAllIp);
 	void setQueryesRadius(const char *fetchAllRadiusNames, const char *fetchAllRadiusIp, const char *fetchAllRadiusIpWhere);
 	int connect();
@@ -299,6 +299,7 @@ private:
 	string radiusDb;
 	string radiusUser;
 	string radiusPassword;
+	bool radiusDisableSecureAuth;
 	string query_getIp;
 	string query_fetchAllIp;
 	string query_fetchAllRadiusNames;

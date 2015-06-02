@@ -242,6 +242,7 @@ string SqlDb_row::keyvalList(string separator) {
 SqlDb::SqlDb() {
 	this->clearLastError();
 	this->conn_port = 0;
+	this->conn_disable_secure_auth = false;
 	this->maxQueryPass = UINT_MAX;
 	this->loginTimeout = (ulong)NULL;
 	this->enableSqlStringInContent = false;
@@ -273,6 +274,10 @@ void SqlDb::setCloudParameters(string cloud_host, string cloud_token) {
 
 void SqlDb::setLoginTimeout(ulong loginTimeout) {
 	this->loginTimeout = loginTimeout;
+}
+
+void SqlDb::setDisableSecureAuth(bool disableSecureAuth) {
+	this->conn_disable_secure_auth = disableSecureAuth;
 }
 
 bool SqlDb::reconnect() {
@@ -556,6 +561,10 @@ bool SqlDb_mysql::connect(bool createDb, bool mainInit) {
 				mysql_close(this->hMysqlConn);
 			}
 			this->hMysql = mysql_init(NULL);
+			if(this->conn_disable_secure_auth) {
+				int arg = 0;
+				mysql_options(this->hMysql, MYSQL_SECURE_AUTH, &arg);
+			}
 			this->hMysqlConn = mysql_real_connect(
 						this->hMysql,
 						this->conn_server_ip.c_str(), this->conn_user.c_str(), this->conn_password.c_str(), NULL,
