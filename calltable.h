@@ -39,24 +39,25 @@
 #define INVITE 1
 #define BYE 2
 #define CANCEL 3
-#define RES2XX 4
-#define RES3XX 5
-#define RES401 6
-#define RES403 7
-#define RES4XX 8
-#define RES5XX 9
-#define RES6XX 10
-#define RES18X 11
-#define REGISTER 12
-#define MESSAGE 13
-#define INFO 14
-#define SUBSCRIBE 15
-#define OPTIONS 16
-#define NOTIFY 17
-#define SKINNY_NEW 100
+#define RES2XX 200
+#define RES3XX 300
+#define RES401 401
+#define RES403 403
+#define RES404 404
+#define RES4XX 400
+#define RES5XX 500
+#define RES6XX 600
+#define RES18X 180
+#define REGISTER 4
+#define MESSAGE 5
+#define INFO 6
+#define SUBSCRIBE 7
+#define OPTIONS 8
+#define NOTIFY 9
 #define SKINNY_NEW 100
 
-#define IS_SIP_RESXXX(sip_method) (sip_method == RES2XX || sip_method == RES3XX || sip_method == RES401 || sip_method == RES403 || sip_method == RES4XX || sip_method == RES5XX || sip_method == RES6XX || sip_method == RES18X)
+#define IS_SIP_RES4XX(sip_method) (sip_method == RES401 || sip_method == RES403 || sip_method == RES404 || sip_method == RES4XX)
+#define IS_SIP_RESXXX(sip_method) (sip_method == RES2XX || sip_method == RES3XX || IS_SIP_RES4XX(sip_method) || sip_method == RES5XX || sip_method == RES6XX || sip_method == RES18X)
 
 #define FLAG_SAVERTP		(1 << 0)
 #define FLAG_SAVESIP		(1 << 1)

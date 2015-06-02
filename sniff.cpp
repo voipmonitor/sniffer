@@ -2569,10 +2569,13 @@ Call *process_packet(bool is_ssl, u_int64_t packet_number,
 						call, "update expires header from all REGISTER dialog messages (from 200 OK which can override the expire)");
 				}
 				goto endsip;
-			} else if(sip_method == RES401 or sip_method == RES403) {
-				call->reg401count++;
-				if(verbosity > 3) syslog(LOG_DEBUG, "REGISTER 401 Call-ID[%s] reg401count[%d]", call->call_id.c_str(), call->reg401count);
-				if(call->reg401count > 1) {
+			} else if(sip_method == RES401 or sip_method == RES403 or sip_method == RES404) {
+				if(sip_method == RES401) {
+					call->reg401count++;
+					if(verbosity > 3) syslog(LOG_DEBUG, "REGISTER 401 Call-ID[%s] reg401count[%d]", call->call_id.c_str(), call->reg401count);
+				}
+				if((sip_method == RES401 && call->reg401count > 1) || 
+				   sip_method == RES403 || sip_method == RES404) {
 					// registration failed
 					call->regstate = 2;
 					save_sip_packet(call, header, packet, 
@@ -2584,7 +2587,10 @@ Call *process_packet(bool is_ssl, u_int64_t packet_number,
 					if(logPacketSipMethodCall_enable) {
 						logPacketSipMethodCall(packet_number, sip_method, lastSIPresponseNum, header, 
 							saddr, source, daddr, dest,
-							call, "REGISTER 401 count > 1");
+							call, 
+							sip_method == RES401 ? "REGISTER 401 count > 1" :
+							sip_method == RES403 ? "REGISTER 403" :
+							sip_method == RES404 ? "REGISTER 404" : "");
 					}
 					goto endsip;
 				}
@@ -2923,7 +2929,7 @@ Call *process_packet(bool is_ssl, u_int64_t packet_number,
 
 			// if the call ends with some of SIP [456]XX response code, we can shorten timeout when the call will be closed 
 //			if((call->saddr == saddr || call->saddr == daddr || merged) &&
-			if (sip_method == RES3XX || sip_method == RES4XX || sip_method == RES5XX || sip_method == RES6XX || sip_method == RES401 || sip_method == RES403) {
+			if (sip_method == RES3XX || IS_SIP_RES4XX(sip_method) || sip_method == RES5XX || sip_method == RES6XX) {
 				if(lastSIPresponseNum != 401 && lastSIPresponseNum != 407 && lastSIPresponseNum != 501 && lastSIPresponseNum != 481 && lastSIPresponseNum != 491) {
 					// save packet 
 					call->destroy_call_at = header->ts.tv_sec + 5;
@@ -3723,6 +3729,10 @@ int process_packet__parse_sip_method(char *data, unsigned int datalen) {
 				if(verbosity > 2) 
 					 syslog(LOG_NOTICE,"SIP msg: 403\n");
 				sip_method = RES403;
+			} else if ((datalen > 10) && data[9] == '0' && data[10] == '4') {
+				if(verbosity > 2) 
+					 syslog(LOG_NOTICE,"SIP msg: 404\n");
+				sip_method = RES404;
 			} else {
 				if(verbosity > 2) 
 					 syslog(LOG_NOTICE,"SIP msg: 4XX\n");
@@ -4744,25 +4754,26 @@ void logPacketSipMethodCall(u_int64_t packet_number, int sip_method, int lastSIP
 		return;
 	}
 	
-	const char *sipMethodStr[] = {
-		"INVITE",	// 1
-		"BYE",		// 2
-		"CANCEL",	// 3
-		"RES2XX",	// 4
-		"RES3XX",	// 5
-		"RES401",	// 6
-		"RES403",	// 7
-		"RES4XX",	// 8
-		"RES5XX",	// 9
-		"RES6XX",	// 10
-		"RES18X",	// 11
-		"REGISTER",	// 12
-		"MESSAGE",	// 13
-		"INFO",		// 14
-		"SUBSCRIBE",	// 15
-		"OPTIONS",	// 16
-		"NOTIFY"	// 17
-	};
+	map<unsigned, string> sipMethods;
+	sipMethods[INVITE] = "INVITE";
+	sipMethods[BYE] = "BYE";
+	sipMethods[CANCEL] = "CANCEL";
+	sipMethods[RES2XX] = "RES2XX";
+	sipMethods[RES3XX] = "RES3XX";
+	sipMethods[RES401] = "RES401";
+	sipMethods[RES403] = "RES403";
+	sipMethods[RES404] = "RES404";
+	sipMethods[RES4XX] = "RES4XX";
+	sipMethods[RES5XX] = "RES5XX";
+	sipMethods[RES6XX] = "RES6XX";
+	sipMethods[RES18X] = "RES18X";
+	sipMethods[REGISTER] = "REGISTER";
+	sipMethods[MESSAGE] = "MESSAGE";
+	sipMethods[INFO] = "INFO";
+	sipMethods[SUBSCRIBE] = "SUBSCRIBE";
+	sipMethods[OPTIONS] = "OPTIONS";
+	sipMethods[NOTIFY] = "NOTIFY";
+	sipMethods[SKINNY_NEW] = "SKINNY_NEW";
 	
 	ostringstream outStr;
 
@@ -4797,8 +4808,8 @@ void logPacketSipMethodCall(u_int64_t packet_number, int sip_method, int lastSIP
 	outStr << endl << "    "
 	       << "sip method: "
 	       << setw(10);
-	if(sip_method > 0 && (unsigned)sip_method <= sizeof(sipMethodStr)/sizeof(sipMethodStr[0]))
-		outStr << sipMethodStr[sip_method - 1];
+	if(sip_method > 0 && sipMethods.find(sip_method) != sipMethods.end())
+		outStr << sipMethods[sip_method];
 	else
 		outStr << sip_method;
 	outStr << "  ";

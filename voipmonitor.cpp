@@ -5066,7 +5066,6 @@ int main(int argc, char *argv[]) {
 	extern TcpReassemblySip tcpReassemblySip;
 	tcpReassemblySip.clean();
 	ipfrag_prune(0, 1);
-	termIpacc();
 
 	if(opt_pcap_dump_asyncwrite) {
 		extern AsyncClose *asyncClose;
@@ -5148,6 +5147,8 @@ int main(int argc, char *argv[]) {
 	if(custom_headers_message) {
 		delete custom_headers_message;
 	}
+	
+	termIpacc();
 	
 	if(opt_bogus_dumper_path[0]) {
 		delete bogusDumper;

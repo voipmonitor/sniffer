@@ -2708,7 +2708,8 @@ Call::saveToDb(bool enableBatchIfPossible) {
 int
 Call::saveRegisterToDb(bool enableBatchIfPossible) {
  
-	if(this->msgcount <= 1 or this->lastSIPresponseNum == 401 or this->lastSIPresponseNum == 403) {
+	if(this->msgcount <= 1 or 
+	   this->lastSIPresponseNum == 401 or this->lastSIPresponseNum == 403 or this->lastSIPresponseNum == 404) {
 		this->regstate = 2;
 	}
 	
