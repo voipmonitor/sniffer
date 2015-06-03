@@ -1,3 +1,14 @@
+11.6.3 02.06.2015
+=================
+- treat REGISTER with 404 as failed REGISTER 
+- add suport into backup mode for new custom headers tables 
+- fix compare files_sorter_asc in function listFilesDir which fixes loading many files in scanpcapdir mode 
+- add option scanpcapdir_disable_inotify which disables inotify in scanpcapdir mode (scanpcapdir_disable_inotify = yes)
+- if table is missing partitions do not discard CDR after 5th unsuccesfull insert but keep it until there is partition
+- fix multithreading in sql queue store mode (which is by default off) 
+- fix custom header partition creation in rare case 
+
+
 11.6.2 25.05.2015
 =================
 - add support for silence detector & clipping for GUI 10.20
