@@ -1,3 +1,8 @@
+11.6.4 03.06.2015
+=================
+- fix threading mode 4 & defrag - do not discard ip in ip packets 
+
+
 11.6.3 02.06.2015
 =================
 - treat REGISTER with 404 as failed REGISTER 
