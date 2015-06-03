@@ -3541,3 +3541,11 @@ u_int64_t getTotalMemory() {
 	sysinfo(&sysInfo);
 	return(sysInfo.totalram);
 }
+
+string ascii_str(string str) {
+	size_t last = 0;
+	while(last < str.length() && str[last] >= ' ' && str[last] <= 127) {
+		++last;
+	}
+	return(str.substr(0, last));
+}

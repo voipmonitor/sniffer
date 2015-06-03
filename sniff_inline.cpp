@@ -215,14 +215,17 @@ int pcapProcess(pcap_pkthdr** header, u_char** packet, bool *destroy,
 							lastTimeLogErrBadIpHeader = actTime;
 						}
 					}
+					//cout << "pcapProcess exit 001" << endl;
 					return(0);
 				}
 				// packet is fragmented
 				if(handle_defrag(ppd->header_ip, header, packet, 0, &ppd->ipfrag_data)) {
 					// packets are reassembled
+					//cout << "*** packets are reassembled in pcapProcess" << endl;
 					ppd->header_ip = (iphdr2*)(*packet + ppd->header_ip_offset);
 					*destroy = true;
 				} else {
+					//cout << "pcapProcess exit 002" << endl;
 					return(0);
 				}
 			}
@@ -264,6 +267,7 @@ int pcapProcess(pcap_pkthdr** header, u_char** packet, bool *destroy,
 							}
 							*destroy = true;
 						} else {
+							//cout << "pcapProcess exit 003" << endl;
 							return(0);
 						}
 					}
@@ -279,12 +283,13 @@ int pcapProcess(pcap_pkthdr** header, u_char** packet, bool *destroy,
 				nextPass = true;
 			} else {
 				if(opt_ipaccount == 0) {
+					//cout << "pcapProcess exit 004" << endl;
 					return(0);
 				}
 			}
 		}
 	} while(nextPass);
-                                               
+	
 	if(enableDefrag) {
 		// if IP defrag is enabled, run each 10 seconds cleaning 
 		if(opt_udpfrag && (ppd->ipfrag_lastprune + 10) < (*header)->ts.tv_sec) {
@@ -293,6 +298,8 @@ int pcapProcess(pcap_pkthdr** header, u_char** packet, bool *destroy,
 			//TODO it would be good to still pass fragmented packets even it does not contain the last semant, the ipgrad_prune just wipes all unfinished frags
 		}
 	}
+	
+	bool enableReturnZeroInCheckData = !opt_udpfrag || enableDefrag || enableCalcMD5 || enableDedup || enableDump;
 
 	ppd->header_udp = &ppd->header_udp_tmp;
 	if (ppd->header_ip->protocol == IPPROTO_UDP) {
@@ -318,7 +325,8 @@ int pcapProcess(pcap_pkthdr** header, u_char** packet, bool *destroy,
 		       isSslIpPort(htonl(ppd->header_ip->daddr), htons(ppd->header_tcp->dest)))) &&
 		    !(opt_skinny && (htons(ppd->header_tcp->source) == 2000 || htons(ppd->header_tcp->dest) == 2000))) {
 			// not interested in TCP packet other than SIP port
-			if(opt_ipaccount == 0 && !DEBUG_ALL_PACKETS) {
+			if(opt_ipaccount == 0 && !DEBUG_ALL_PACKETS && enableReturnZeroInCheckData) {
+				//cout << "pcapProcess exit 005" << endl;
 				return(0);
 			}
 		}
@@ -328,12 +336,14 @@ int pcapProcess(pcap_pkthdr** header, u_char** packet, bool *destroy,
 	} else {
 		//packet is not UDP and is not TCP, we are not interested, go to the next packet (but if ipaccount is enabled, do not skip IP
 		ppd->datalen = 0;
-		if(opt_ipaccount == 0 && !DEBUG_ALL_PACKETS) {
+		if(opt_ipaccount == 0 && !DEBUG_ALL_PACKETS && enableReturnZeroInCheckData) {
+			//cout << "pcapProcess exit 006 / protocol: " << (int)ppd->header_ip->protocol << endl;
 			return(0);
 		}
 	}
 
-	if(ppd->datalen < 0) {
+	if(ppd->datalen < 0 && enableReturnZeroInCheckData) {
+		//cout << "pcapProcess exit 007" << endl;
 		return(0);
 	}
 

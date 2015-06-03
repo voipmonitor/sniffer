@@ -3182,6 +3182,13 @@ void* PcapQueue_readFromInterface::threadFunction(void *arg, unsigned int arg2) 
 			}
 			if(fetchPacketOk) {
 				if(!TEST_PACKETS && !this->readThreadsCount) {
+				 
+					/*static int _c = 0;
+					++_c;
+					this->pcapProcess(&header, &packet, &destroy,
+							  false, false, false, false);
+					cout << "-- " << _c << " " << ascii_str(string(ppd.data ? ppd.data : "").substr(0,40)) << endl;*/
+				 
 					res = this->pcapProcess(&header, &packet, &destroy);
 					if(res == -1) {
 						break;

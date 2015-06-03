@@ -1710,4 +1710,6 @@ std::vector<std::string> parse_cmd_line(const char *cmdLine);
 
 u_int64_t getTotalMemory();
 
+string ascii_str(string str);
+
 #endif
