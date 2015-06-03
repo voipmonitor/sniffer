@@ -1,3 +1,8 @@
+11.6.6 03.06.2015
+=================
+- fix SKINNY protocol where some times recording was missing when there was >15 seconds delay between call setup and answer from phone (which is valid) 
+
+
 11.6.5 03.06.2015
 =================
 - fix crash when SIP RURI is too long 

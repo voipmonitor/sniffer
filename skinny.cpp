@@ -1460,6 +1460,8 @@ void *handle_skinny2(pcap_pkthdr *header, const u_char *packet, unsigned int sad
 				call = new_skinny_channel(SKINNY_NEW, data, datalen, header, callid, saddr, daddr, source, dest, callid, strlen(callid),
 							  handle, dlt, sensor_id);
 				if(!call) return NULL;
+				call->oneway = 0;       // do not treat skinny as one-way 
+	
 				if(state == SKINNY_OFFHOOK) {
 					call->sipcallerip[0] = daddr;
 					call->sipcalledip[0] = saddr;
