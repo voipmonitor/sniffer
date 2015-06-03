@@ -1678,7 +1678,7 @@ Call *new_invite_register(bool is_ssl, int sip_method, char *data, int datalen, 
 		char tcalled_invite[1024] = "";
 		if(!get_sip_peername(data,datalen,"INVITE ", tcalled_invite, sizeof(tcalled_invite)) &&
 		   tcalled_invite[0] != '\0') {
-			strcpy(tcalled, tcalled_invite);
+			strncpy(tcalled, tcalled_invite, sizeof(tcalled));
 		}
 	}
 	
@@ -1715,7 +1715,7 @@ Call *new_invite_register(bool is_ssl, int sip_method, char *data, int datalen, 
 		char tcalled_domain_invite[256] = "";
 		get_sip_domain(data,datalen,"INVITE ", tcalled_domain_invite, sizeof(tcalled_domain_invite));
 		if(tcalled_domain_invite[0] != '\0') {
-			strcpy(tcalled_domain, tcalled_domain_invite);
+			strncpy(tcalled_domain, tcalled_domain_invite, sizeof(tcalled_domain));
 		}
 	}
 
@@ -2266,7 +2266,7 @@ Call *process_packet(bool is_ssl, u_int64_t packet_number,
 		}
 
 		if(parsePacket && parsePacket->_getCallID_reassembly) {
-			strcpy(callidstr, parsePacket->callid.c_str());
+			strncpy(callidstr, parsePacket->callid.c_str(), sizeof(callidstr));
 		} else {
 			s = gettag(data, datalen, "\nCall-ID:", &l, &gettagLimitLen);
 			if(!issip or (l <= 0 || l > 1023)) {
@@ -2732,7 +2732,7 @@ Call *process_packet(bool is_ssl, u_int64_t packet_number,
 						char called[1024] = "";
 						if(!get_sip_peername(data,datalen,"INVITE ", called, sizeof(called)) &&
 						   called[0] != '\0') {
-							strcpy(call->called, called);
+							strncpy(call->called, called, sizeof(call->called));
 						}
 					}
 				}
