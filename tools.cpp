@@ -2994,7 +2994,7 @@ pcap_t* pcap_open_offline_zip(const char *filename, char *errbuff) {
 		if(!unzip.empty()) {
 			return(pcap_open_offline(unzip.c_str(), errbuff));
 		} else {
-			strcpy(errbuff, error.c_str());
+			strncpy(errbuff, error.c_str(), PCAP_ERRBUF_SIZE);
 			return(NULL);
 		}
 	} else {
