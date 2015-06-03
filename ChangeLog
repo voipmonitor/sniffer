@@ -1,3 +1,8 @@
+11.6.5 03.06.2015
+=================
+- fix crash when SIP RURI is too long 
+
+
 11.6.4 03.06.2015
 =================
 - fix threading mode 4 & defrag - do not discard ip in ip packets 
