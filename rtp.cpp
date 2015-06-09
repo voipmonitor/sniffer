@@ -729,12 +729,13 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 	}
 	
 	if(this->sensor_id >= 0 && this->sensor_id != sensor_id) {
+/*
 		u_long actTime = getTimeMS();
 		if(actTime - 1000 > lastTimeSyslog) {
-			syslog(LOG_NOTICE, "warning - packet from sensor (%i) in RTP created for sensor (%i)",
-			       sensor_id, this->sensor_id);
+			syslog(LOG_NOTICE, "warning - packet from sensor (%i) in RTP created for sensor (%i)", sensor_id, this->sensor_id);
 			lastTimeSyslog = actTime;
 		}
+*/
 		return;
 	}
 	
