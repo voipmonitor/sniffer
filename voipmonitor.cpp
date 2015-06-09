@@ -81,6 +81,7 @@
 #include "tar.h"
 #include "codec_alaw.h"
 #include "codec_ulaw.h"
+#include "send_call_info.h"
 
 #if defined(QUEUE_MUTEX) || defined(QUEUE_NONBLOCK)
 extern "C" {
@@ -4561,6 +4562,7 @@ int main(int argc, char *argv[]) {
 	if(opt_enable_fraud) {
 		initFraud();
 	}
+	initSendCallInfo();
 	
 	if(opt_ipaccount) {
 		ipaccStartThread();
@@ -5049,6 +5051,7 @@ int main(int argc, char *argv[]) {
 	if(opt_enable_fraud) {
 		termFraud();
 	}
+	termSendCallInfo();
 	if(SafeAsyncQueue_base::isRunTimerThread()) {
 		SafeAsyncQueue_base::stopTimerThread(true);
 	}

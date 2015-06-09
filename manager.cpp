@@ -44,6 +44,7 @@
 #include "rrd.h"
 #include "tar.h"
 #include "http.h"
+#include "send_call_info.h"
 
 //#define BUFSIZE 1024
 //define BUFSIZE 20480
@@ -1317,6 +1318,13 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 		return 0;
 	} else if(strstr(buf, "fraud_refresh") != NULL) {
 		refreshFraud();
+		if ((size = sendvm(client, sshchannel, "reload ok", 9, 0)) == -1){
+			cerr << "Error sending data to client" << endl;
+			return -1;
+		}
+		return 0;
+	} else if(strstr(buf, "send_call_info_refresh") != NULL) {
+		refreshSendCallInfo();
 		if ((size = sendvm(client, sshchannel, "reload ok", 9, 0)) == -1){
 			cerr << "Error sending data to client" << endl;
 			return -1;

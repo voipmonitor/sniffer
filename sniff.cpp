@@ -72,6 +72,7 @@ and insert them into Call class.
 #include "regcache.h"
 #include "manager.h"
 #include "fraud.h"
+#include "send_call_info.h"
 
 extern MirrorIP *mirrorip;
 
@@ -2912,6 +2913,7 @@ Call *process_packet(bool is_ssl, u_int64_t packet_number,
 				if(!call->onCall_2XX) {
 					ClientThreads.onCall(lastSIPresponseNum, call->callername, call->caller, call->called,
 							     call->sipcallerip[0], call->sipcalledip[0]);
+					sendCallInfoEvCall(call, sSciInfo::sci_200, header->ts);
 					call->onCall_2XX = true;
 				}
 
@@ -2923,6 +2925,7 @@ Call *process_packet(bool is_ssl, u_int64_t packet_number,
 				if(!call->onCall_18X) {
 					ClientThreads.onCall(lastSIPresponseNum, call->callername, call->caller, call->called,
 							     call->sipcallerip[0], call->sipcalledip[0]);
+					sendCallInfoEvCall(call, sSciInfo::sci_18X, header->ts);
 					call->onCall_18X = true;
 				}
 			}
