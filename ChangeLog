@@ -1,3 +1,12 @@
+11.6.7 10.06.2015
+=================
+- stop spamming syslog with: warning - packet from sensor (%i) in RTP created for sensor
+- add support for send call info to url [VS-228]
+- fix crash on arm7 ubuntu libc
+- disable bt_sighandler
+- modify rqueue - add prevent by lock between push and pop in waitForFree mode
+
+
 11.6.6 03.06.2015
 =================
 - fix SKINNY protocol where some times recording was missing when there was >15 seconds delay between call setup and answer from phone (which is valid) 
