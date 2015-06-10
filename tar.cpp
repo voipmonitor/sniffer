@@ -91,7 +91,9 @@ Tar::th_finish()
 {
 	int i, sum = 0;
 
-	strncpy(tar.th_buf.magic, "ustar  ", 8);
+	strncpy(tar.th_buf.magic, "ustar", 6);
+	strncpy(tar.th_buf.version, "  ", 2);
+//	strncpy(tar.th_buf.magic, "ustar  ", 8);
 
 	for (i = 0; i < T_BLOCKSIZE; i++)
 		sum += ((char *)(&(tar.th_buf)))[i];
