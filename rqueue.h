@@ -417,7 +417,9 @@ public:
 					if(useLock) unlock();
 					return(false);
 				}
+				if(useLock) unlock();
 				usleep(pushUsleep);
+				if(useLock) lock();
 			} else {
 				if(useLock) unlock();
 				return(false);

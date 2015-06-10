@@ -3589,7 +3589,7 @@ int main(int argc, char *argv[]) {
 						else if(verbparams[i] == "call_listening")		sverb.call_listening = 1;
 						else if(verbparams[i] == "skinny")			sverb.skinny = 1;
 						else if(verbparams[i] == "fraud")			sverb.fraud = 1;
-						else if(verbparams[i] == "disable_bt_sighandler")	sverb.disable_bt_sighandler = 1;
+						else if(verbparams[i] == "enable_bt_sighandler")	sverb.enable_bt_sighandler = 1;
 						else if(verbparams[i].substr(0, 4) == "tar=")
 													sverb.tar = atoi(verbparams[i].c_str() + 4);
 						else if(verbparams[i] == "tar")				sverb.tar = 1;
@@ -3730,7 +3730,7 @@ int main(int argc, char *argv[]) {
 	
 #ifdef BACKTRACE
 	
-	if(!sverb.disable_bt_sighandler) {
+	if(sverb.enable_bt_sighandler) {
 		/* Install our signal handler */
 		struct sigaction sa;
 

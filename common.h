@@ -19,7 +19,7 @@ struct sVerbose {
 	int call_listening;
 	int skinny;
 	int fraud;
-	int disable_bt_sighandler;
+	int enable_bt_sighandler;
 	int tcp_debug_port;
 	int test_rtp_performance;
 	int tar;
