@@ -157,6 +157,9 @@ public:
 		return(!cloud_host.empty());
 	}
 	unsigned int lastmysqlresolve;
+	static void addDelayQuery(u_int32_t delay_ms);
+	static u_int32_t getAvgDelayQuery();
+	static void resetDelayQuery();
 protected:
 	string conn_server;
 	string conn_server_ip;
@@ -183,6 +186,8 @@ protected:
 private:
 	unsigned int lastError;
 	string lastErrorString;
+	static volatile u_int64_t delayQuery_sum_ms;
+	static volatile u_int32_t delayQuery_count;
 friend class MySqlStore_process;
 };
 

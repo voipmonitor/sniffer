@@ -510,6 +510,25 @@ void SqlDb::cleanFields() {
 	this->fields.clear();
 }
 
+void SqlDb::addDelayQuery(u_int32_t delay_ms) {
+	delayQuery_sum_ms += delay_ms;
+	++delayQuery_count;
+}
+
+u_int32_t SqlDb::getAvgDelayQuery() {
+	u_int64_t _delayQuery_sum_ms = delayQuery_sum_ms;
+	u_int32_t _delayQuery_count = delayQuery_count;
+	return(_delayQuery_count ? _delayQuery_sum_ms / _delayQuery_count : 0);
+}
+
+void SqlDb::resetDelayQuery() {
+	delayQuery_sum_ms = 0;
+	delayQuery_count = 0;
+}
+
+volatile u_int64_t SqlDb::delayQuery_sum_ms = 0;
+volatile u_int32_t SqlDb::delayQuery_count = 0;
+
 
 SqlDb_mysql::SqlDb_mysql() {
 	this->hMysql = NULL;
@@ -780,6 +799,7 @@ bool SqlDb_mysql::query(string query, bool callFromStoreProcessWithFixDeadlock) 
 		}
 		return(this->queryByCurl(preparedQuery));
 	}
+	u_int32_t startTimeMS = getTimeMS();
 	if(this->hMysqlRes) {
 		while(mysql_fetch_row(this->hMysqlRes));
 		mysql_free_result(this->hMysqlRes);
@@ -843,9 +863,6 @@ bool SqlDb_mysql::query(string query, bool callFromStoreProcessWithFixDeadlock) 
 						  (callFromStoreProcessWithFixDeadlock && this->getLastError() == ER_LOCK_DEADLOCK)) {
 						break;
 					} else {
-					 
-						
-					 
 						if(pass < this->maxQueryPass - 5) {
 							pass = this->maxQueryPass - 5;
 						}
@@ -867,6 +884,7 @@ bool SqlDb_mysql::query(string query, bool callFromStoreProcessWithFixDeadlock) 
 			break;
 		}
 	}
+	SqlDb::addDelayQuery(getTimeMS() - startTimeMS);
 	return(rslt);
 }
 
