@@ -2838,7 +2838,7 @@ void set_context_config() {
 		opt_pcap_queue = 0;
 	#endif
 
-	if(opt_pcap_queue) {
+	if(opt_pcap_queue && !opt_read_from_file) {
 		bool bufferControlSet = buffersControl.getMaxBufferMem() > 0;
 		for(int pass = 0; pass < (bufferControlSet ? 1 : 2); pass++) {
 			if(pass == 1) {
