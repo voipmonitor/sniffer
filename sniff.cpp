@@ -2686,13 +2686,13 @@ Call *process_packet(bool is_ssl, u_int64_t packet_number,
 					data[l] = 0;
 					char *pointerToCause = strcasestr(reason, ";cause=");
 					if(pointerToCause && (pointerToCause - reason) < 10) {
+						char type[10];
+						memcpy(type, reason, pointerToCause - reason);
+						type[pointerToCause - reason] = 0;
+						int cause = atoi(pointerToCause + 7);
+						char text[1024];
 						char *pointerToText = strcasestr(pointerToCause, ";text=\"");
 						if(pointerToText && (pointerToText - pointerToCause - 7) < 5) {
-							char type[10];
-							memcpy(type, reason, pointerToCause - reason);
-							type[pointerToCause - reason] = 0;
-							int cause = atoi(pointerToCause + 7);
-							char text[1024];
 							unsigned int lengthText = MIN(l - (pointerToText - reason + 7), sizeof(text) - 1);
 							memcpy(text, pointerToText + 7, lengthText);
 							text[lengthText] = 0;
@@ -2700,13 +2700,15 @@ Call *process_packet(bool is_ssl, u_int64_t packet_number,
 								--lengthText;
 								text[lengthText] = 0;
 							}
-							if(!strcasecmp(type, "SIP")) {
-								call->reason_sip_cause = cause;
-								call->reason_sip_text = text;
-							} else if(!strcasecmp(type, "Q.850")) {
-								call->reason_q850_cause = cause;
-								call->reason_q850_text = text;
-							}
+						} else {
+							sprintf(text, "%i (text missing)", cause);
+						}
+						if(!strcasecmp(type, "SIP")) {
+							call->reason_sip_cause = cause;
+							call->reason_sip_text = text;
+						} else if(!strcasecmp(type, "Q.850")) {
+							call->reason_q850_cause = cause;
+							call->reason_q850_text = text;
 						}
 					}
 					data[l] = oldEndChar;
