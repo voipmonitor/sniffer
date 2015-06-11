@@ -1,3 +1,9 @@
+11.6.8 11.06.2015
+=================
+- print average SQL query delay in syslog which helps to see if there is network problem between sniffer and SQL server [VS-239]
+- fix save Q.850 reason if there is no text part which in that case whole Q.850 reason was ignored
+
+
 11.6.7 10.06.2015
 =================
 - stop spamming syslog with: warning - packet from sensor (%i) in RTP created for sensor
