@@ -1036,6 +1036,55 @@ void *moving_cache( void *dummy ) {
 	return NULL;
 }
 
+class sCreatePartitions {
+public:
+	sCreatePartitions() {
+		init();
+	}
+	void init() {
+		createCdr = false;
+		dropCdr = false;
+		createIpacc = false;
+		createBilling = false;
+	}
+	bool isSet() {
+		return(createCdr || dropCdr || createIpacc || createBilling);
+	}
+	void createPartitions(bool inThread = false) {
+		if(isSet()) {
+			if(inThread) {
+				pthread_t thread;
+				pthread_create(&thread, NULL, _createPartitions, this);
+			} else {
+				_createPartitions(this);
+			}
+		}
+	}
+	static void *_createPartitions(void *arg);
+public:
+	bool createCdr;
+	bool dropCdr;
+	bool createIpacc;
+	bool createBilling;
+} createPartitions;
+
+void *sCreatePartitions::_createPartitions(void *arg) {
+	sCreatePartitions *createPartitions = (sCreatePartitions*)arg;
+	if(createPartitions->createCdr) {
+		createMysqlPartitionsCdr();
+	}
+	if(createPartitions->dropCdr) {
+		dropMysqlPartitionsCdr();
+	}
+	if(createPartitions->createIpacc) {
+		createMysqlPartitionsIpacc();
+	}
+	if(createPartitions->createBilling) {
+		createMysqlPartitionsBillingAgregation();
+	}
+	return(NULL);
+}
+
 /* cycle calls_queue and save it to MySQL */
 void *storing_cdr( void *dummy ) {
 	Call *call;
@@ -1044,34 +1093,39 @@ void *storing_cdr( void *dummy ) {
 	time_t createPartitionIpaccAt = 0;
 	time_t createPartitionBillingAgregationAt = 0;
 	time_t checkDiskFreeAt = 0;
+	bool firstIter = true;
 	while(1) {
+	 
+		createPartitions.init();
 		if(!opt_nocdr and opt_cdr_partition and !opt_disable_partition_operations and isSqlDriver("mysql")) {
 			time_t actTime = time(NULL);
 			if(actTime - createPartitionAt > 12 * 3600) {
-				createMysqlPartitionsCdr();
+				createPartitions.createCdr = true;
 				createPartitionAt = actTime;
 			}
 			if(actTime - dropPartitionAt > 12 * 3600) {
-				dropMysqlPartitionsCdr();
+				createPartitions.dropCdr = true;
 				dropPartitionAt = actTime;
 			}
 		}
-		
 		if(!opt_nocdr and opt_ipaccount and !opt_disable_partition_operations and isSqlDriver("mysql")) {
 			time_t actTime = time(NULL);
 			if(actTime - createPartitionIpaccAt > 12 * 3600) {
-				createMysqlPartitionsIpacc();
+				createPartitions.createIpacc = true;
 				createPartitionIpaccAt = actTime;
 			}
 		}
-		
 		if(!opt_nocdr and !opt_disable_partition_operations and isSqlDriver("mysql")) {
 			time_t actTime = time(NULL);
 			if(actTime - createPartitionBillingAgregationAt > 12 * 3600) {
-				createMysqlPartitionsBillingAgregation();
+				createPartitions.createBilling = true;
 				createPartitionBillingAgregationAt = actTime;
 			}
 		}
+		if(createPartitions.isSet()) {
+			createPartitions.createPartitions(!firstIter);
+		}
+		firstIter = false;
 		
 		if(opt_autocleanspool &&
 		   isSqlDriver("mysql") &&
