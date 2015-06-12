@@ -4,7 +4,7 @@
 int vm_rrd_create_rrdheap(const char *filename);
 int vm_rrd_create_rrddrop(const char *filename);
 int vm_rrd_create_rrdPS(const char *filename);
-int vm_rrd_create_rrdSQLq(const char *filename);
+int vm_rrd_create_rrdSQL(const char *filename);
 int vm_rrd_create_rrdtCPU(const char *filename);
 int vm_rrd_create_rrdtacCPU(const char *filename);
 int vm_rrd_create_rrdRSSVSZ(const char *filename);
@@ -26,6 +26,7 @@ void rrd_vm_create_graph_PSSM_command(char *filename, char *fromatstyle, char *t
 void rrd_vm_create_graph_PSR_command(char *filename, char *fromatstyle, char *toatstyle, char *color, int resx, int resy, short slope, short icon, char *dstfile, char *buffer, int maxsize);
 void rrd_vm_create_graph_PSA_command(char *filename, char *fromatstyle, char *toatstyle, char *color, int resx, int resy, short slope, short icon, char *dstfile, char *buffer, int maxsize);
 void rrd_vm_create_graph_SQLq_command(char *filename, char *fromatstyle, char *toatstyle, char *color, int resx, int resy, short slope, short icon, char *dstfile, char *buffer, int maxsize);
+void rrd_vm_create_graph_SQLf_command(char *filename, char *fromatstyle, char *toatstyle, char *color, int resx, int resy, short slope, short icon, char *dstfile, char *buffer, int maxsize);
 void rrd_vm_create_graph_tCPU_command(char *filename, char *fromatstyle, char *toatstyle, char *color, int resx, int resy, short slope, short icon, char *dstfile, char *buffer, int maxsize);
 void rrd_vm_create_graph_drop_command(char *filename, char *fromatstyle, char *toatstyle, char *color, int resx, int resy, short slope, short icon, char *dstfile, char *buffer, int maxsize);
 void rrd_vm_create_graph_heap_command(char *filename, char *fromatstyle, char *toatstyle, char *color, int resx, int resy, short slope, short icon, char *dstfile, char *buffer, int maxsize);
