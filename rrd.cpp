@@ -369,6 +369,45 @@ void rrd_vm_create_graph_speed_command(char *filename, char *fromatstyle, char *
 	buffer[length]='\0';
 }
 
+void rrd_vm_create_graph_SQLf_command(char *filename, char *fromatstyle, char *toatstyle, char *color, int resx, int resy, short slope, short icon, char *dstfile, char *buffer, int maxsize) {
+    std::ostringstream cmdCreate;
+
+	if (dstfile == NULL) 
+		cmdCreate << "rrdtool graph - ";						//graph to stdout instead of file
+	else
+		cmdCreate << "rrdtool graph " << dstfile << " ";
+	cmdCreate << "-w " << resx << " -h " << resy << " -a PNG ";
+	cmdCreate << "--start \"" << fromatstyle << "\" --end \"" << toatstyle << "\" ";
+	cmdCreate << "--font DEFAULT:0:Courier ";
+	cmdCreate << "--title \"SQL cache files\" ";
+	cmdCreate << "--watermark \"`date`\" ";
+	if (vm_rrd_version >= 10400) { cmdCreate << "--disable-rrdtool-tag "; }
+	cmdCreate << "--vertical-label \"ms\" ";
+	cmdCreate << "--lower-limit 0 ";
+	//cmdCreate << "--x-grid MINUTE:10:HOUR:1:MINUTE:120:0:%R ";
+	cmdCreate << "--units-exponent 0 ";
+	if (vm_rrd_version >= 10400) { cmdCreate << "--full-size-mode "; }
+	if (slope) cmdCreate << "--slope-mode ";
+	if (icon) cmdCreate << "--only-graph ";
+	if (color != NULL) cmdCreate << "-c BACK#" << color << " -c SHADEA#" << color << " -c SHADEB#" << color << " ";
+	cmdCreate << "DEF:SQLfD=" << filename << ":SQLf-D:MAX ";
+	if (vm_rrd_version < 10403) {
+		cmdCreate << "LINE1:SQLfD#0000FF:\"SQL delay in ms\\t\\t\" ";
+		cmdCreate << "GPRINT:SQLfD:LAST:\"Cur\\: %5.0lf\" ";
+		cmdCreate << "GPRINT:SQLfD:AVERAGE:\"Avg\\: %5.2lf\" ";
+		cmdCreate << "GPRINT:SQLfD:MAX:\"Max\\: %5.0lf\" ";
+		cmdCreate << "GPRINT:SQLfD:MIN:\"Min\\: %5.0lf\\l\" ";
+	} else {
+		cmdCreate << "LINE1:SQLfD#0000FF:\"SQL delay in ms\\l\" ";
+		cmdCreate << "COMMENT:\"\\u\" ";
+		cmdCreate << "GPRINT:SQLfD:LAST:\"Cur\\: %5.0lf\" ";
+		cmdCreate << "GPRINT:SQLfD:AVERAGE:\"Avg\\: %5.2lf\" ";
+		cmdCreate << "GPRINT:SQLfD:MAX:\"Max\\: %5.0lf\" ";
+		cmdCreate << "GPRINT:SQLfD:MIN:\"Min\\: %5.0lf\\r\" ";
+	}
+	std::size_t length = cmdCreate.str().copy(buffer, maxsize, 0);
+	buffer[length]='\0';
+}
 void rrd_vm_create_graph_SQLq_command(char *filename, char *fromatstyle, char *toatstyle, char *color, int resx, int resy, short slope, short icon, char *dstfile, char *buffer, int maxsize) {
     std::ostringstream cmdCreate;
 
@@ -395,7 +434,7 @@ void rrd_vm_create_graph_SQLq_command(char *filename, char *fromatstyle, char *t
 	cmdCreate << "DEF:SQLqR=" << filename << ":SQLq-R:MAX ";
 	cmdCreate << "DEF:SQLqCl=" << filename << ":SQLq-Cl:MAX ";
 	cmdCreate << "DEF:SQLqH=" << filename << ":SQLq-H:MAX ";
-	cmdCreate << "CDEF:SQLqCM=SQLqC,100,* ";
+	cmdCreate << "CDEF:SQLqCM=SQLqC,1,* ";			//multiplication of calls disabled (not needed)
 	cmdCreate << "CDEF:SQLqMM=SQLqM,100,* ";
 	cmdCreate << "CDEF:SQLqRM=SQLqR,100,* ";
 	cmdCreate << "CDEF:SQLqClM=SQLqCl,100,* ";
@@ -901,11 +940,12 @@ int vm_rrd_create_rrdPS(const char *filename) {
 	return (res);
 }
 
-int vm_rrd_create_rrdSQLq(const char *filename) {
+int vm_rrd_create_rrdSQL(const char *filename) {
     std::ostringstream cmdCreate;
 
     cmdCreate << "create " << filename << " ";
     cmdCreate << "--start N --step 10 ";
+    cmdCreate << "DS:SQLf-D:GAUGE:20:0:100000 ";
     cmdCreate << "DS:SQLq-C:GAUGE:20:0:100000 ";
     cmdCreate << "DS:SQLq-M:GAUGE:20:0:100000 ";
     cmdCreate << "DS:SQLq-R:GAUGE:20:0:100000 ";
