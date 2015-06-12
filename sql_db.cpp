@@ -863,7 +863,8 @@ bool SqlDb_mysql::query(string query, bool callFromStoreProcessWithFixDeadlock) 
 						  (callFromStoreProcessWithFixDeadlock && this->getLastError() == ER_LOCK_DEADLOCK)) {
 						break;
 					} else {
-						if(pass < this->maxQueryPass - 5) {
+						extern int opt_load_query_from_files;
+						if(!opt_load_query_from_files && pass < this->maxQueryPass - 5) {
 							pass = this->maxQueryPass - 5;
 						}
 						if(pass < this->maxQueryPass - 1) {
