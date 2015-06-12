@@ -1050,7 +1050,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 	uint64_t rrdPS_R = 0;
 	uint64_t rrdPS_A = 0;
 //rrd SQL file db-SQL.rrd
-	signed int rrdSQLf_D = -1;
+	signed int rrdSQLf_D = 0;	//here is zero alowed
 	signed int rrdSQLq_C = -1;
 	signed int rrdSQLq_M = -1;
 	signed int rrdSQLq_R = -1;
@@ -1689,7 +1689,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 
 			//update rrdSQL;
 			cmdUpdate.str(std::string());
-			if (rrdSQLf_D < 0) cmdUpdate << "N:U";
+			if (rrdSQLf_D < 0) cmdUpdate << "N:0";
 			 else cmdUpdate << "N:" << rrdSQLf_D;
 			if (rrdSQLq_C < 0) cmdUpdate <<  ":U";
 			 else cmdUpdate <<  ":" << rrdSQLq_C;
