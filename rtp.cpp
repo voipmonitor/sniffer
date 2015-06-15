@@ -746,6 +746,11 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 
 	Call *owner = (Call*)call_owner;
 
+	if(owner and owner->destroy_call_at_bye) {
+		// do not process RTP if call is hangedup to prevent false negative statistics
+		return;
+	}
+
 	int payload_len = get_payload_len();
 	if(payload_len < 0) {
 		if(owner) {
