@@ -648,8 +648,9 @@ Call::refresh_data_ip_port(in_addr_t addr, unsigned short port, bool iscaller, i
 		if(this->ip_port[i].addr == addr && this->ip_port[i].port == port) {
 			// reinit rtpmap
 			memcpy(this->rtpmap[RTPMAP_BY_CALLERD ? iscaller : i], rtpmap, MAX_RTPMAP * sizeof(int));
-			// force mark bit for reinvite 
+			// force mark bit for reinvite for both direction
 			forcemark[iscaller] = true;
+			forcemark[!iscaller] = true;
 			if(fax && !this->ip_port[i].fax) {
 				this->ip_port[i].fax = fax;
 				calltable->lock_calls_hash();

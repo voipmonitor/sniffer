@@ -1,3 +1,8 @@
+11.7.1 15.06.2015
+=================
+- reset jitter/loss statistics for both direction which fixes some more false negative RTP stats
+
+
 11.7 15.06.2015
 ===============
 - do not process RTP if call is hangedup to prevent false negative statistics
