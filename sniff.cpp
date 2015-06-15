@@ -2977,10 +2977,6 @@ Call *process_packet(bool is_ssl, u_int64_t packet_number,
 					reverseInviteSdaddr = true;
 				}
 			}
-			if(reverseInviteSdaddr) {
-				returnCall = call;
-				goto endsip_save_packet;
-			}
 			if(!existInviteSdaddr) {
 				call->invite_sdaddr.push_back(d_u_int32_t(saddr, daddr));
 			}
@@ -2997,7 +2993,7 @@ Call *process_packet(bool is_ssl, u_int64_t packet_number,
 				}
 			}
 			ipfilter->add_call_flags(&(call->flags), ntohl(saddr), ntohl(daddr));
-			if(opt_cdrproxy) {
+			if(opt_cdrproxy && !reverseInviteSdaddr) {
 				if(call->sipcalledip[0] != daddr and call->sipcallerip[0] != daddr and call->lastsipcallerip != saddr) {
 					if(daddr != 0) {
 						// daddr is already set, store previous daddr as sipproxy
