@@ -791,7 +791,7 @@ bool SqlDb_mysql::connected() {
 	return(isCloud() ? true : this->hMysqlConn != NULL);
 }
 
-bool SqlDb_mysql::query(string query, bool callFromStoreProcessWithFixDeadlock) {
+bool SqlDb_mysql::query(string query, bool callFromStoreProcessWithFixDeadlock, const char *dropProcQuery) {
 	if(isCloud()) {
 		string preparedQuery = this->prepareQuery(query, false);
 		if(verbosity > 1) {
@@ -863,6 +863,32 @@ bool SqlDb_mysql::query(string query, bool callFromStoreProcessWithFixDeadlock) 
 						  (callFromStoreProcessWithFixDeadlock && this->getLastError() == ER_LOCK_DEADLOCK)) {
 						break;
 					} else {
+						if(this->getLastError() == ER_SP_ALREADY_EXISTS) {
+							if(!mysql_query(this->hMysqlConn, "repair table mysql.proc")) {
+								syslog(LOG_NOTICE, "success call 'repair table mysql.proc'");
+								MYSQL_RES *res = mysql_use_result(this->hMysqlConn);
+								if(res) {
+									while(mysql_fetch_row(res));
+									mysql_free_result(res);
+								}
+							} else {
+								syslog(LOG_NOTICE, "failed call 'repair table mysql.proc' with error: %s", mysql_error(this->hMysqlConn));
+							}
+							if(dropProcQuery) {
+								if(!mysql_query(this->hMysqlConn, dropProcQuery)) {
+									MYSQL_RES *res = mysql_use_result(this->hMysqlConn);
+									if(res) {
+										while(mysql_fetch_row(res));
+										mysql_free_result(res);
+									}
+									syslog(LOG_NOTICE, "success call '%s'", dropProcQuery);
+									++attempt;
+									continue;
+								} else  {
+									syslog(LOG_NOTICE, "failed call '%s' with error: %s", dropProcQuery, mysql_error(this->hMysqlConn));
+								}
+							}
+						}
 						extern int opt_load_query_from_files;
 						if(!opt_load_query_from_files && pass < this->maxQueryPass - 5) {
 							pass = this->maxQueryPass - 5;
@@ -1127,7 +1153,7 @@ bool SqlDb_odbc::connected() {
 	return(this->hConnection != NULL);
 }
 
-bool SqlDb_odbc::query(string query, bool callFromStoreProcessWithFixDeadlock) {
+bool SqlDb_odbc::query(string query, bool callFromStoreProcessWithFixDeadlock, const char *dropProcQuery) {
 	SQLRETURN rslt = SQL_NULL_DATA;
 	if(this->hStatement) {
 		SQLFreeHandle(SQL_HANDLE_STMT, this->hStatement);
@@ -1413,22 +1439,18 @@ void MySqlStore_process::_store(string beginProcedure, string endProcedure, stri
 	string procedureName = this->getInsertFuncName();
 	int maxPassComplete = this->enableFixDeadlock ? 10 : 1;
 	for(int passComplete = 0; passComplete < maxPassComplete; passComplete++) {
-		for(int passCreateProcedure = 0; passCreateProcedure < 2; passCreateProcedure ++) {
-			this->sqlDb->query(string("drop procedure if exists ") + procedureName);
-			string preparedQueries = queries;
-			::prepareQuery(this->sqlDb->getSubtypeDb(), preparedQueries, false, passComplete ? 2 : 1);
-			if(this->sqlDb->query(string("create procedure ") + procedureName + "()" + 
-					      beginProcedure + 
-					      preparedQueries + 
-					      endProcedure)) {
-				break;
-			} else if(this->sqlDb->getLastError() == ER_SP_ALREADY_EXISTS) {
-				this->sqlDb->query("repair table mysql.proc");
-			} else {
-				if(sverb.store_process_query) {
-					cout << "store_process_query_" << this->id << ": " << "ERROR " << this->sqlDb->getLastErrorString() << endl;
-				}
-				break;
+		string dropProcQuery = string("drop procedure if exists ") + procedureName;
+		this->sqlDb->query(dropProcQuery.c_str());
+		string preparedQueries = queries;
+		::prepareQuery(this->sqlDb->getSubtypeDb(), preparedQueries, false, passComplete ? 2 : 1);
+		if(!this->sqlDb->query(string("create procedure ") + procedureName + "()" + 
+				       beginProcedure + 
+				       preparedQueries + 
+				       endProcedure,
+				       false,
+				       dropProcQuery.c_str())) {
+			if(sverb.store_process_query) {
+				cout << "store_process_query_" << this->id << ": " << "ERROR " << this->sqlDb->getLastErrorString() << endl;
 			}
 		}
 		bool rsltQuery = this->sqlDb->query(string("call ") + procedureName + "();", this->enableFixDeadlock);

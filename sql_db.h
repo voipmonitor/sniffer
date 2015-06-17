@@ -76,7 +76,7 @@ public:
 	virtual void disconnect() = 0;
 	virtual bool connected() = 0;
 	bool reconnect();
-	virtual bool query(string query, bool callFromStoreProcessWithFixDeadlock = false) = 0;
+	virtual bool query(string query, bool callFromStoreProcessWithFixDeadlock = false, const char *dropProcQuery = NULL) = 0;
 	bool queryByCurl(string query);
 	virtual string prepareQuery(string query, bool nextPass);
 	virtual SqlDb_row fetchRow(bool assoc = false) = 0;
@@ -209,7 +209,7 @@ public:
 	bool connect(bool craeteDb = false, bool mainInit = false);
 	void disconnect();
 	bool connected();
-	bool query(string query, bool callFromStoreProcessWithFixDeadlock = false);
+	bool query(string query, bool callFromStoreProcessWithFixDeadlock = false, const char *dropProcQuery = NULL);
 	SqlDb_row fetchRow(bool assoc = false);
 	int getInsertId();
 	string escape(const char *inputString, int length = 0);
@@ -296,7 +296,7 @@ public:
 	bool connect(bool craeteDb = false, bool mainInit = false);
 	void disconnect();
 	bool connected();
-	bool query(string query, bool callFromStoreProcessWithFixDeadlock = false);
+	bool query(string query, bool callFromStoreProcessWithFixDeadlock = false, const char *dropProcQuery = NULL);
 	SqlDb_row fetchRow(bool assoc = false);
 	int getInsertId();
 	int getIndexField(string fieldName);
