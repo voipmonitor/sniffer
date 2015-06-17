@@ -5114,9 +5114,6 @@ int main(int argc, char *argv[]) {
 		delete mirrorip;
 	}
 
-	if (opt_fork){
-		unlink(opt_pidfile);
-	}
 	pthread_mutex_destroy(&tartimemaplock);
 	pthread_mutex_destroy(&terminate_packetbuffer_lock);
 
@@ -5222,6 +5219,9 @@ int main(int argc, char *argv[]) {
 	if(sverb.memory_stat) {
 		cout << "memory stat at end" << endl;
 		printMemoryStat(true);
+	}
+	if (opt_fork){
+		unlink(opt_pidfile);
 	}
 }
 

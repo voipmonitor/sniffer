@@ -58,30 +58,26 @@ case "$1" in
 	fi
 	;;
   stop)
-    if [ -f $PIDFILE ]; then
-        PID=`cat $PIDFILE`
-        NAME=`ps -o comm= $PID`
-        if [ "$NAME" = "voipmonitor" ]; then
-            echo -n "Sending kill signal to voipmonitor and waiting to terminate."
-            kill $PID
-            while true ; do
-                THREADS=`ps -p $PID -L`
-                RESULT=$?
-                echo -n "."
-                sleep 1
-                if [ $RESULT -gt 0 ]; then
-                    echo  " terminated."
-                    break 2
-                fi
-            done
-        else
-            echo "voipmonitor is not running";
-            rm $PIDFILE
-        fi
-    else
-        echo "voipmonitor is not running";
-    fi
-    ;;
+  	if [ -f $PIDFILE ]; then
+		PID=`cat $PIDFILE`
+		NAME=`ps -o comm= $PID`
+		if [ "$NAME" = "voipmonitor" ]; then
+			echo -n "Sending kill signal to voipmonitor and waiting to terminate."
+			kill $PID
+			while [ -f $PIDFILE ]
+			do
+				sleep 1
+				echo -n .
+			done
+			echo  " terminated."
+		else
+			echo "voipmonitor is not running";
+			rm $PIDFILE
+		fi
+	else
+		echo "voipmonitor is not running";
+	fi
+	;;
   force-stop)
   	if [ -f $PIDFILE ]; then
 		PID=`cat $PIDFILE`
