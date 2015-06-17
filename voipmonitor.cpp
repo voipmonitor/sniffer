@@ -1264,7 +1264,7 @@ void *scanpcapdir( void *dummy ) {
 	char filename[1024];
 	struct inotify_event *event;
 	char buff[4096];
-	int i=0, fd, wd, len=0;
+	int i = 0, fd = 0, wd = 0, len = 0;
 	queue<string> fileList;
 
 	if(opt_scanpcapdir_disable_inotify == false) {

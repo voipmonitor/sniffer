@@ -1,3 +1,18 @@
+11.7.1 15.06.2015
+=================
+- reset jitter/loss statistics for both direction which fixes some more false negative RTP stats
+
+
+11.7 15.06.2015
+===============
+- do not process RTP if call is hangedup to prevent false negative statistics
+- fix skipping RE-INVITE SDP parsing from called which affects false negative RTP statistics
+- Added rrd graph for SQL delay [VS-239]
+- Fix -nan is showed instead of 0 value in SQLq RRD graph and in RRD db-files.
+- move craete and drop partitions to separate thread which workarounds problem with blocking calls due to long operation on cleaning / creating partitions [VS-277]
+- when SQL query cache is enabled repeat query with error indefinitely
+
+
 11.6.8 11.06.2015
 =================
 - print average SQL query delay in syslog which helps to see if there is network problem between sniffer and SQL server [VS-239]
