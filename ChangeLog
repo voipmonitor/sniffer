@@ -1,3 +1,8 @@
+11.7.2 17.06.2015
+=================
+- if sql queue is enabled and myslq.proc is corrupted do not loose CDR
+
+
 11.7.1 15.06.2015
 =================
 - reset jitter/loss statistics for both direction which fixes some more false negative RTP stats
