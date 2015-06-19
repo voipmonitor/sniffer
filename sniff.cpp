@@ -201,7 +201,7 @@ extern TcpReassembly *tcpReassemblyHttp;
 extern TcpReassembly *tcpReassemblyWebrtc;
 extern TcpReassembly *tcpReassemblySsl;
 extern char ifname[1024];
-extern uint8_t opt_sdp_reverse_ipport;
+extern int opt_sdp_reverse_ipport;
 extern int opt_fork;
 extern regcache *regfailedcache;
 extern ManagerClientThreads ClientThreads;

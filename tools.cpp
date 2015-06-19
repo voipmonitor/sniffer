@@ -3549,3 +3549,10 @@ string ascii_str(string str) {
 	}
 	return(str.substr(0, last));
 }
+
+int yesno(const char *arg) {
+	if(arg[0] == 'y' or arg[0] == 'Y' or arg[0] == '1') 
+		return 1;
+	else
+		return 0;
+}

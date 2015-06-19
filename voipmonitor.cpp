@@ -308,7 +308,7 @@ char opt_database_backup_from_mysql_host[256] = "";
 char opt_database_backup_from_mysql_database[256] = "";
 char opt_database_backup_from_mysql_user[256] = "";
 char opt_database_backup_from_mysql_password[256] = "";
-u_int16_t opt_database_backup_from_mysql_port = 0;
+unsigned int opt_database_backup_from_mysql_port = 0;
 int opt_database_backup_pause = 300;
 int opt_database_backup_insert_threads = 1;
 char opt_mos_lqo_bin[1024] = "pesq";
@@ -415,6 +415,7 @@ bool opt_cdr_check_exists_callid = 0;
 bool opt_cdr_check_duplicity_callid_in_next_pass_insert = 0;
 bool opt_message_check_duplicity_callid_in_next_pass_insert = 0;
 int opt_create_old_partitions = 0;
+char opt_create_old_partitions_from[20];
 bool opt_disable_partition_operations = 0;
 bool opt_autoload_from_sqlvmexport = 0;
 vector<dstring> opt_custom_headers_cdr;
@@ -443,6 +444,7 @@ char mysql_user[256] = "root";
 char mysql_password[256] = "";
 int opt_mysql_port = 0; // 0 menas use standard port 
 char opt_mysql_timezone[256] = "";
+char opt_timezone[256] = "";
 int opt_skiprtpdata = 0;
 
 char opt_match_header[128] = "";
@@ -567,7 +569,7 @@ vector<d_u_int32_t> httpnet;
 vector<u_int32_t> webrtcip;
 vector<d_u_int32_t> webrtcnet;
 
-uint8_t opt_sdp_reverse_ipport = 0;
+int opt_sdp_reverse_ipport = 0;
 
 volatile unsigned int pcap_readit = 0;
 volatile unsigned int pcap_writeit = 0;
@@ -1412,15 +1414,12 @@ void daemonizeOutput(string error) {
 	pthread_mutex_unlock(&daemonizeErrorTempFileLock);
 }
 
-int yesno(const char *arg) {
-	if(arg[0] == 'y' or arg[0] == 'Y' or arg[0] == '1') 
-		return 1;
-	else
-		return 0;
-}
-
-
 int eval_config(string inistr) {
+ 
+	if(opt_test == 11) {
+		return(0);
+	}
+ 
 	CSimpleIniA ini;
 	ini.SetUnicode();
 	ini.SetMultiKey(true);
@@ -5510,6 +5509,8 @@ bool save_packet(const char *binaryPacketFile, const char *rsltPcapFile, int len
 	return(rslt);
 }
 
+#include "config_param.h"
+
 void test() {
  
 	switch(opt_test) {
@@ -5655,9 +5656,21 @@ void test() {
 		}
 		return;
 	case 99:
+		{
 		char *pointToSepOptTest = strchr(opt_test_str, '/');
 		check_spooldir_filesindex(NULL, pointToSepOptTest ? pointToSepOptTest + 1 : NULL);
+		}
 		return;
+		
+	case 11: 
+		{
+		cConfig config;
+		config.addConfigItems();
+		config.loadFromConfigFile(configfile);
+		cout << "***" << endl;
+		cout << config.getContentConfig(true); 
+		}
+		break;
 	}
  
 	/*
@@ -6007,4 +6020,545 @@ string jeMallocStat(bool full) {
 	rslt = "voipmonitor build without library jemalloc\n";
 #endif //HAVE_LIBJEMALLOC
 	return(rslt);
+}
+
+
+void cConfig::addConfigItems() {
+	addConfigItem(new cConfigItem_ports("sipport", sipportmatrix));
+	addConfigItem(new cConfigItem_ports("httpport", httpportmatrix));
+	addConfigItem(new cConfigItem_ports("webrtcport", webrtcportmatrix));
+	addConfigItem(new cConfigItem_ip_port_str_map("ssl_ipport", &ssl_ipport));
+	addConfigItem(new cConfigItem_hosts("httpip", &httpip, &httpnet));
+	addConfigItem(new cConfigItem_hosts("webrtcip", &webrtcip, &webrtcnet));
+	addConfigItem(new cConfigItem_ports("ipaccountport", ipaccountportmatrix));
+	addConfigItem(new cConfigItem_nat_aliases("natalias", &nat_aliases));
+	addConfigItem(new cConfigItem_string("interface", ifname, sizeof(ifname)));
+	addConfigItem(new cConfigItem_integer("cleandatabase", &opt_cleandatabase_cdr));
+	addConfigItem(new cConfigItem_yesno("plcdisable", &opt_disableplc));
+	addConfigItem(new cConfigItem_yesno("rrd", &opt_rrd));
+	addConfigItem(new cConfigItem_yesno("remotepartypriority", &opt_remotepartypriority));
+	addConfigItem(new cConfigItem_yesno("remotepartyid", &opt_remotepartyid));
+	addConfigItem(new cConfigItem_yesno("ppreferredidentity", &opt_ppreferredidentity));
+	addConfigItem(new cConfigItem_yesno("passertedidentity", &opt_passertedidentity));
+	addConfigItem(new cConfigItem_integer("cleandatabase_cdr", &opt_cleandatabase_cdr));
+	addConfigItem(new cConfigItem_integer("cleandatabase_http_enum", &opt_cleandatabase_http_enum));
+	addConfigItem(new cConfigItem_integer("cleandatabase_webrtc", &opt_cleandatabase_webrtc));
+	addConfigItem(new cConfigItem_integer("cleandatabase_register_state", &opt_cleandatabase_register_state));
+	addConfigItem(new cConfigItem_integer("cleandatabase_register_failed", &opt_cleandatabase_register_failed));
+	addConfigItem(new cConfigItem_integer("cleanspool_interval", &opt_cleanspool_interval));
+	addConfigItem(new cConfigItem_integer("cleanspool_size", &opt_cleanspool_sizeMB));
+	addConfigItem(new cConfigItem_integer("maxpoolsize", &opt_maxpoolsize));
+	addConfigItem(new cConfigItem_integer("maxpooldays", &opt_maxpooldays));
+	addConfigItem(new cConfigItem_integer("maxpoolsipsize", &opt_maxpoolsipsize));
+	addConfigItem(new cConfigItem_integer("maxpoolsipdays", &opt_maxpoolsipdays));
+	addConfigItem(new cConfigItem_integer("maxpoolrtpsize", &opt_maxpoolrtpsize));
+	addConfigItem(new cConfigItem_integer("maxpoolrtpdays", &opt_maxpoolrtpdays));
+	addConfigItem(new cConfigItem_integer("maxpoolgraphsize", &opt_maxpoolgraphsize));
+	addConfigItem(new cConfigItem_integer("maxpoolgraphdays", &opt_maxpoolgraphdays));
+	addConfigItem(new cConfigItem_integer("maxpoolaudiosize", &opt_maxpoolaudiosize));
+	addConfigItem(new cConfigItem_integer("maxpoolaudiodays", &opt_maxpoolaudiodays));
+	addConfigItem(new cConfigItem_yesno("maxpool_clean_obsolete", &opt_maxpool_clean_obsolete));
+	addConfigItem(new cConfigItem_yesno("autocleanspool", &opt_autocleanspool));
+	addConfigItem(new cConfigItem_integer("autocleanspoolminpercent", &opt_autocleanspoolminpercent));
+	addConfigItem((new cConfigItem_integer("autocleanmingb", &opt_autocleanmingb))
+		->addAlias("autocleanspoolmingb"));
+	addConfigItem(new cConfigItem_hour_interval("cleanspool_enable_fromto", &opt_cleanspool_enable_run_hour_from, &opt_cleanspool_enable_run_hour_to));
+	addConfigItem(new cConfigItem_integer("id_sensor", &opt_id_sensor));
+	addConfigItem(new cConfigItem_string("pcapcommand", pcapcommand, sizeof(pcapcommand)));
+	addConfigItem(new cConfigItem_string("filtercommand", filtercommand, sizeof(filtercommand)));
+	addConfigItem((new cConfigItem_integer("ringbuffer", &opt_ringbuffer))
+		->setMaximum(2000));
+	addConfigItem((new cConfigItem_integer("rtpthreads", &num_threads))
+		->setIfZeroOrNegative(max(sysconf(_SC_NPROCESSORS_ONLN) - 1, 1l)));
+	addConfigItem(new cConfigItem_integer("rtptimeout", &rtptimeout));
+	addConfigItem(new cConfigItem_integer("sipwithoutrtptimeout", &sipwithoutrtptimeout));
+	addConfigItem(new cConfigItem_integer("absolute_timeout", &absolute_timeout));
+	addConfigItem(new cConfigItem_integer("rtpthread-buffer",  &rtpthreadbuffer));
+	addConfigItem(new cConfigItem_yesno("rtp-firstleg", &opt_rtp_firstleg));
+	addConfigItem(new cConfigItem_yesno("rtp-check-timestamp", &opt_rtp_check_timestamp));
+	addConfigItem(new cConfigItem_yesno("allow-zerossrc", &opt_allow_zerossrc));
+	addConfigItem(new cConfigItem_yesno("sip-register", &opt_sip_register));
+	addConfigItem(new cConfigItem_integer("sip-register-timeout", &opt_register_timeout));
+	addConfigItem(new cConfigItem_yesno("deduplicate", &opt_dup_check));
+	addConfigItem(new cConfigItem_yesno("deduplicate_ipheader", &opt_dup_check_ipheader));
+	addConfigItem(new cConfigItem_yesno("dscp", &opt_dscp));
+	addConfigItem(new cConfigItem_yesno("cdrproxy", &opt_cdrproxy));
+	addConfigItem(new cConfigItem_yesno("mos_g729", &opt_mos_g729));
+	addConfigItem((new cConfigItem_yesno("nocdr", &opt_nocdr))
+		->setOnlyIfParamIsNo());
+	addConfigItem(new cConfigItem_yesno("only_cdr_next", &opt_only_cdr_next));
+	addConfigItem(new cConfigItem_yesno("skipdefault", &opt_skipdefault));
+	addConfigItem(new cConfigItem_yesno("skinny", &opt_skinny));
+	addConfigItem((new cConfigItem_integer("skinny_ignore_rtpip", &opt_skinny_ignore_rtpip))
+		->setIp());
+	addConfigItem(new cConfigItem_yesno("cdr_partition", &opt_cdr_partition));
+	addConfigItem(new cConfigItem_yesno("cdr_sipport", &opt_cdr_sipport));
+	addConfigItem(new cConfigItem_yesno("cdr_rtpport", &opt_cdr_rtpport));
+	addConfigItem(new cConfigItem_yesno("cdr_check_exists_callid", &opt_cdr_check_exists_callid));
+	addConfigItem(new cConfigItem_yesno("check_duplicity_callid_in_next_pass_insert", &opt_cdr_check_duplicity_callid_in_next_pass_insert));
+	addConfigItem(new cConfigItem_yesno("cdr_check_duplicity_callid_in_next_pass_insert", &opt_cdr_check_duplicity_callid_in_next_pass_insert));
+	addConfigItem(new cConfigItem_yesno("message_check_duplicity_callid_in_next_pass_insert", &opt_message_check_duplicity_callid_in_next_pass_insert));
+	addConfigItem(new cConfigItem_integer("create_old_partitions", &opt_create_old_partitions));
+	addConfigItem(new cConfigItem_string("create_old_partitions_from", opt_create_old_partitions_from, sizeof(opt_create_old_partitions_from)));
+	addConfigItem(new cConfigItem_string("database_backup_from_date", opt_database_backup_from_date, sizeof(opt_database_backup_from_date)));
+	addConfigItem(new cConfigItem_yesno("disable_partition_operations", &opt_disable_partition_operations));
+	addConfigItem(new cConfigItem_yesno("autoload_from_sqlvmexport", &opt_autoload_from_sqlvmexport));
+	addConfigItem(new cConfigItem_yesno("cdr_ua_enable", &opt_cdr_ua_enable));
+	addConfigItem((new cConfigItem_custom_headers("custom_headers_cdr", &opt_custom_headers_cdr))
+		->addAlias("custom_headers"));
+	addConfigItem(new cConfigItem_custom_headers("custom_headers_message", &opt_custom_headers_message));
+	addConfigItem(new cConfigItem_yesno("custom_headers_last_value", &opt_custom_headers_last_value));
+	addConfigItem(new cConfigItem_yesno("savesip", &opt_saveSIP));
+	addConfigItem((new cConfigItem_yesno("savertp"))
+		->addValue("h", -1));
+	addConfigItem(new cConfigItem_yesno("silencedetect", &opt_silencedetect));
+	addConfigItem(new cConfigItem_yesno("clippingdetect", &opt_clippingdetect));
+	addConfigItem(new cConfigItem_yesno("saverfc2833", &opt_saverfc2833));
+	addConfigItem(new cConfigItem_yesno("dtmf2db", &opt_dbdtmf));
+	addConfigItem(new cConfigItem_yesno("inbanddtmf", &opt_inbanddtmf));
+	addConfigItem(new cConfigItem_yesno("dtmf2db", &opt_dbdtmf));
+	addConfigItem(new cConfigItem_yesno("saveudptl", &opt_saveudptl));
+	addConfigItem(new cConfigItem_yesno("savertp-threaded", &opt_rtpsave_threaded));
+	addConfigItem(new cConfigItem_yesno("norecord-header", &opt_norecord_header));
+	addConfigItem(new cConfigItem_yesno("norecord-dtmf", &opt_norecord_dtmf));
+	addConfigItem((new cConfigItem_integer("vmbuffer", &pcap_qring_max))
+		->setMaximum(4000)
+		->setMultiple(1024.0 * 1024 / (unsigned int)sizeof(pcap_packet)));
+	addConfigItem((new cConfigItem_string("matchheader", opt_match_header, sizeof(opt_match_header)))
+		->setPrefix("\n")
+		->addAlias("match_header"));
+	addConfigItem((new cConfigItem_string("callidmerge_header", opt_callidmerge_header, sizeof(opt_callidmerge_header)))
+		->setPrefix("\n"));
+	addConfigItem(new cConfigItem_string("callidmerge_secret", opt_callidmerge_secret, sizeof(opt_callidmerge_secret)));
+	addConfigItem(new cConfigItem_integer("domainport", &opt_domainport));
+	addConfigItem(new cConfigItem_integer("managerport", &opt_manager_port));
+	addConfigItem(new cConfigItem_string("managerip", opt_manager_ip, sizeof(opt_manager_ip)));
+	addConfigItem(new cConfigItem_yesno("manager_nonblock_mode", &opt_manager_nonblock_mode));
+	addConfigItem(new cConfigItem_string("managerclient", opt_clientmanager, sizeof(opt_clientmanager)));
+	addConfigItem(new cConfigItem_integer("managerclientport", &opt_clientmanagerport));
+	addConfigItem(new cConfigItem_yesno("savertcp", &opt_saveRTCP));
+	addConfigItem((new cConfigItem_yesno("saveaudio"))
+		->addValues("w:1|o:2"));
+	addConfigItem((new cConfigItem_yesno("savegraph"))
+		->addValues("p:1|g:2"));
+	addConfigItem(new cConfigItem_string("filter", user_filter, sizeof(user_filter)));
+	addConfigItem(new cConfigItem_string("cachedir", opt_cachedir, sizeof(opt_cachedir)));
+	addConfigItem(new cConfigItem_string("spooldir", opt_chdir, sizeof(opt_chdir)));
+	addConfigItem((new cConfigItem_yesno("spooldiroldschema", &opt_newdir))
+		->setNeg());
+	addConfigItem(new cConfigItem_yesno("spooldir_by_sensor", &opt_spooldir_by_sensor));
+	addConfigItem(new cConfigItem_yesno("pcapsplit", &opt_pcap_split));
+	addConfigItem(new cConfigItem_string("scanpcapdir", opt_scanpcapdir, sizeof(opt_scanpcapdir)));
+	addConfigItem(new cConfigItem_yesno("scanpcapdir_disable_inotify", &opt_scanpcapdir_disable_inotify));
+	addConfigItem(new cConfigItem_string("scanpcapmethod"));
+	addConfigItem(new cConfigItem_yesno("promisc", &opt_promisc));
+	addConfigItem(new cConfigItem_string("sqldriver", sql_driver, sizeof(sql_driver)));
+	addConfigItem(new cConfigItem_string("sqlcdrtable", sql_cdr_table, sizeof(sql_cdr_table)));
+	addConfigItem(new cConfigItem_string("sqlcdrtable_last30d", sql_cdr_table_last30d, sizeof(sql_cdr_table_last30d)));
+	addConfigItem(new cConfigItem_string("sqlcdrtable_last7d", sql_cdr_table_last7d, sizeof(sql_cdr_table_last1d)));
+	addConfigItem(new cConfigItem_string("sqlcdrtable_last1d", sql_cdr_table_last7d, sizeof(sql_cdr_table_last1d)));
+	addConfigItem((new cConfigItem_string("sqlcdrnexttable", sql_cdr_next_table, sizeof(sql_cdr_next_table)))
+		->addAlias("sqlcdr_next_table"));
+	addConfigItem((new cConfigItem_string("sqlcdruatable", sql_cdr_ua_table, sizeof(sql_cdr_ua_table)))
+		->addAlias("sqlcdr_ua_table"));
+	addConfigItem((new cConfigItem_string("sqlcdrsipresptable", sql_cdr_sip_response_table, sizeof(sql_cdr_sip_response_table)))
+		->addAlias("sqlcdr_sipresp_table"));
+	addConfigItem(new cConfigItem_yesno("mysqlcompress", &opt_mysqlcompress));
+	addConfigItem(new cConfigItem_yesno("mysqltransactions", &opt_mysql_enable_transactions));
+	addConfigItem(new cConfigItem_yesno("mysqltransactions_cdr", &opt_mysql_enable_transactions_cdr));
+	addConfigItem(new cConfigItem_yesno("mysqltransactions_message", &opt_mysql_enable_transactions_message));
+	addConfigItem(new cConfigItem_yesno("mysqltransactions_register", &opt_mysql_enable_transactions_register));
+	addConfigItem(new cConfigItem_yesno("mysqltransactions_http", &opt_mysql_enable_transactions_http));
+	addConfigItem(new cConfigItem_yesno("mysqltransactions_webrtc", &opt_mysql_enable_transactions_webrtc));
+	addConfigItem(new cConfigItem_string("mysqlhost", mysql_host, sizeof(mysql_host)));
+	addConfigItem(new cConfigItem_integer("mysqlport",  &opt_mysql_port));
+	addConfigItem(new cConfigItem_string("mysql_timezone", opt_mysql_timezone, sizeof(opt_mysql_timezone)));
+	addConfigItem(new cConfigItem_string("timezone", opt_timezone, sizeof(opt_timezone)));
+	addConfigItem(new cConfigItem_string("myqslhost", mysql_host, sizeof(mysql_host)));
+	addConfigItem(new cConfigItem_string("mysqldb", mysql_database, sizeof(mysql_database)));
+	addConfigItem(new cConfigItem_string("mysqltable", mysql_table, sizeof(mysql_table)));
+	addConfigItem(new cConfigItem_string("mysqlusername", mysql_user, sizeof(mysql_user)));
+	addConfigItem(new cConfigItem_string("mysqlpassword", mysql_password, sizeof(mysql_password)));
+	addConfigItem(new cConfigItem_string("odbcdsn", odbc_dsn, sizeof(odbc_dsn)));
+	addConfigItem(new cConfigItem_string("odbcuser", odbc_user, sizeof(odbc_user)));
+	addConfigItem(new cConfigItem_string("odbcpass", odbc_password, sizeof(odbc_password)));
+	addConfigItem(new cConfigItem_string("odbcdriver", odbc_driver, sizeof(odbc_driver)));
+	addConfigItem(new cConfigItem_string("cloud_host", cloud_host, sizeof(cloud_host)));
+	addConfigItem(new cConfigItem_string("cloud_url", cloud_url, sizeof(cloud_url)));
+	addConfigItem(new cConfigItem_string("cloud_token", cloud_token, sizeof(cloud_token)));
+	addConfigItem(new cConfigItem_string("database_backup_from_mysqlhost", opt_database_backup_from_mysql_host, sizeof(opt_database_backup_from_mysql_host)));
+	addConfigItem(new cConfigItem_string("database_backup_from_mysqldb", opt_database_backup_from_mysql_database, sizeof(opt_database_backup_from_mysql_database)));
+	addConfigItem(new cConfigItem_string("database_backup_from_mysqlusername", opt_database_backup_from_mysql_user, sizeof(opt_database_backup_from_mysql_user)));
+	addConfigItem(new cConfigItem_string("database_backup_from_mysqlpassword", opt_database_backup_from_mysql_password, sizeof(opt_database_backup_from_mysql_password)));
+	addConfigItem(new cConfigItem_integer("database_backup_from_mysqlport", &opt_database_backup_from_mysql_port));
+	addConfigItem(new cConfigItem_integer("database_backup_pause", &opt_database_backup_pause));
+	addConfigItem(new cConfigItem_integer("database_backup_insert_threads", &opt_database_backup_insert_threads));
+	addConfigItem(new cConfigItem_string("get_customer_by_ip_sql_driver", get_customer_by_ip_sql_driver, sizeof(get_customer_by_ip_sql_driver)));
+	addConfigItem(new cConfigItem_string("get_customer_by_ip_odbc_dsn", get_customer_by_ip_odbc_dsn, sizeof(get_customer_by_ip_odbc_dsn)));
+	addConfigItem(new cConfigItem_string("get_customer_by_ip_odbc_user", get_customer_by_ip_odbc_user, sizeof(get_customer_by_ip_odbc_user)));
+	addConfigItem(new cConfigItem_string("get_customer_by_ip_odbc_password", get_customer_by_ip_odbc_password, sizeof(get_customer_by_ip_odbc_password)));
+	addConfigItem(new cConfigItem_string("get_customer_by_ip_odbc_driver", get_customer_by_ip_odbc_driver, sizeof(get_customer_by_ip_odbc_driver)));
+	addConfigItem(new cConfigItem_string("get_customer_by_ip_query", get_customer_by_ip_query, sizeof(get_customer_by_ip_query)));
+	addConfigItem(new cConfigItem_string("get_customers_ip_query", get_customers_ip_query, sizeof(get_customers_ip_query)));
+	addConfigItem(new cConfigItem_string("get_customers_radius_name_query", get_customers_radius_name_query, sizeof(get_customers_radius_name_query)));
+	addConfigItem(new cConfigItem_string("get_customer_by_pn_sql_driver", get_customer_by_pn_sql_driver, sizeof(get_customer_by_pn_sql_driver)));
+	addConfigItem(new cConfigItem_string("get_customer_by_pn_odbc_dsn", get_customer_by_pn_odbc_dsn, sizeof(get_customer_by_pn_odbc_dsn)));
+	addConfigItem(new cConfigItem_string("get_customer_by_pn_odbc_user", get_customer_by_pn_odbc_user, sizeof(get_customer_by_pn_odbc_user)));
+	addConfigItem(new cConfigItem_string("get_customer_by_pn_odbc_password", get_customer_by_pn_odbc_password, sizeof(get_customer_by_pn_odbc_password)));
+	addConfigItem(new cConfigItem_string("get_customer_by_pn_odbc_driver", get_customer_by_pn_odbc_driver, sizeof(get_customer_by_pn_odbc_driver)));
+	addConfigItem(new cConfigItem_string("get_customers_pn_query", get_customers_pn_query, sizeof(get_customers_pn_query)));
+	addConfigItem((new cConfigItem_string("national_prefix", &opt_national_prefix))
+		->setExplodeSeparator(";"));
+	addConfigItem(new cConfigItem_string("get_radius_ip_driver", get_radius_ip_driver, sizeof(get_radius_ip_driver)));
+	addConfigItem(new cConfigItem_string("get_radius_ip_host", get_radius_ip_host, sizeof(get_radius_ip_host)));
+	addConfigItem(new cConfigItem_string("get_radius_ip_db", get_radius_ip_db, sizeof(get_radius_ip_db)));
+	addConfigItem(new cConfigItem_string("get_radius_ip_user", get_radius_ip_user, sizeof(get_radius_ip_user)));
+	addConfigItem(new cConfigItem_string("get_radius_ip_password", get_radius_ip_password, sizeof(get_radius_ip_password)));
+	addConfigItem(new cConfigItem_yesno("get_radius_ip_disable_secure_auth", &get_radius_ip_disable_secure_auth));
+	addConfigItem(new cConfigItem_string("get_radius_ip_query", get_radius_ip_query, sizeof(get_radius_ip_query)));
+	addConfigItem(new cConfigItem_string("get_radius_ip_query_where", get_radius_ip_query_where, sizeof(get_radius_ip_query_where)));
+	addConfigItem(new cConfigItem_integer("get_customer_by_ip_flush_period", &get_customer_by_ip_flush_period));
+	addConfigItem(new cConfigItem_yesno("sipoverlap", &opt_sipoverlap));
+	addConfigItem(new cConfigItem_yesno("dumpallpackets", &opt_pcapdump));
+	addConfigItem((new cConfigItem_integer("dumpallallpackets", &opt_pcapdump_all))
+		->setYes(1000));
+	addConfigItem(new cConfigItem_yesno("jitterbuffer_f1", &opt_jitterbuffer_f1));
+	addConfigItem(new cConfigItem_yesno("jitterbuffer_f2", &opt_jitterbuffer_f2));
+	addConfigItem(new cConfigItem_yesno("jitterbuffer_adapt", &opt_jitterbuffer_adapt));
+	addConfigItem(new cConfigItem_yesno("sqlcallend", &opt_callend));
+	addConfigItem(new cConfigItem_integer("destination_number_mode", &opt_destination_number_mode));
+	addConfigItem(new cConfigItem_yesno("update_dstnum_onanswer", &opt_update_dstnum_onanswer));
+	addConfigItem(new cConfigItem_yesno("mirrorip", &opt_mirrorip));
+	addConfigItem(new cConfigItem_yesno("mirrorall", &opt_mirrorall));
+	addConfigItem(new cConfigItem_yesno("mirroronly", &opt_mirroronly));
+	addConfigItem(new cConfigItem_string("mirroripsrc", opt_mirrorip_src, sizeof(opt_mirrorip_src)));
+	addConfigItem(new cConfigItem_string("mirroripdst", opt_mirrorip_dst, sizeof(opt_mirrorip_dst)));
+	addConfigItem(new cConfigItem_yesno("printinsertid", &opt_printinsertid));
+	addConfigItem(new cConfigItem_yesno("ipaccount", &opt_ipaccount));
+	addConfigItem(new cConfigItem_integer("ipaccount_interval", &opt_ipacc_interval));
+	addConfigItem(new cConfigItem_integer("ipaccount_only_agregation", &opt_ipacc_only_agregation));
+	addConfigItem(new cConfigItem_yesno("ipaccount_sniffer_agregate", &opt_ipacc_sniffer_agregate));
+	addConfigItem(new cConfigItem_yesno("ipaccount_agregate_only_customers_on_main_side", &opt_ipacc_agregate_only_customers_on_main_side));
+	addConfigItem(new cConfigItem_yesno("ipaccount_agregate_only_customers_on_any_side", &opt_ipacc_agregate_only_customers_on_any_side));
+	addConfigItem(new cConfigItem_yesno("cdronlyanswered", &opt_cdronlyanswered));
+	addConfigItem(new cConfigItem_yesno("cdronlyrtp", &opt_cdronlyrtp));
+	addConfigItem(new cConfigItem_integer("callslimit", &opt_callslimit));
+	addConfigItem(new cConfigItem_string("pauserecordingdtmf", opt_silencedmtfseq, sizeof(opt_silencedmtfseq)));
+	addConfigItem(new cConfigItem_string("keycheck", opt_keycheck, sizeof(opt_keycheck)));
+	addConfigItem(new cConfigItem_string("convertchar", opt_convert_char, sizeof(opt_convert_char)));
+	addConfigItem(new cConfigItem_integer("openfile_max", &opt_openfile_max));
+	addConfigItem((new cConfigItem_yesno("enable_http_enum_tables", &opt_enable_http_enum_tables))
+		->addAlias("enable_lua_tables"));
+	addConfigItem(new cConfigItem_yesno("enable_webrtc_table", &opt_enable_webrtc_table));
+	addConfigItem(new cConfigItem_yesno("packetbuffer_enable", &opt_pcap_queue));
+	addConfigItem((new cConfigItem_integer("packetbuffer_block_maxsize", &opt_pcap_queue_block_max_size))
+		->setMultiple(1024));
+	addConfigItem(new cConfigItem_integer("packetbuffer_block_maxtime", &opt_pcap_queue_block_max_time_ms));
+	addConfigItem((new cConfigItem_integer("packetbuffer_total_maxheap", &opt_pcap_queue_store_queue_max_memory_size))
+		->setMultiple(1024 * 1024));
+	addConfigItem((new cConfigItem_integer("packetbuffer_file_totalmaxsize", &opt_pcap_queue_store_queue_max_disk_size))
+		->setMultiple(1024 * 1024));
+	addConfigItem(new cConfigItem_string("packetbuffer_file_path", &opt_pcap_queue_disk_folder));
+	addConfigItem(new cConfigItem_yesno("packetbuffer_compress", &opt_pcap_queue_compress));
+	addConfigItem((new cConfigItem_integer("packetbuffer_compress_method"))
+		->addValues("snappy:1|lz4:2"));
+	addConfigItem(new cConfigItem_ip_port("mirror_destination", &opt_pcap_queue_send_to_ip_port));
+	addConfigItem(new cConfigItem_string("mirror_destination_ip"));
+	addConfigItem(new cConfigItem_integer("mirror_destination_port"));
+	addConfigItem(new cConfigItem_ip_port("mirror_bind", &opt_pcap_queue_receive_from_ip_port));
+	addConfigItem(new cConfigItem_string("mirror_bind_ip"));
+	addConfigItem(new cConfigItem_integer("mirror_bind_port"));
+	addConfigItem(new cConfigItem_integer("mirror_bind_dlt", &opt_pcap_queue_receive_dlt));
+	addConfigItem((new cConfigItem_yesno("enable_preprocess_packet", &opt_enable_preprocess_packet))
+		->addValue("sip", 2));
+	addConfigItem((new cConfigItem_integer("enable_process_rtp_packet", &opt_enable_process_rtp_packet))
+		->setMaximum(MAX_PROCESS_RTP_PACKET_THREADS)
+		->addValues("y:1|yes:1")
+		->addAlias("preprocess_rtp_threads"));
+	addConfigItem((new cConfigItem_yesno("http", &opt_enable_http))
+		->addValue("only", 2)
+		->addAlias("tcpreassembly"));
+	addConfigItem((new cConfigItem_yesno("webrtc", &opt_enable_webrtc))
+		->addValue("only", 2));
+	addConfigItem((new cConfigItem_yesno("ssl", &opt_enable_ssl))
+		->addValue("only", 2));
+	addConfigItem(new cConfigItem_integer("ssl_link_timeout", &opt_ssl_link_timeout));
+	addConfigItem(new cConfigItem_string("tcpreassembly_log", opt_tcpreassembly_log, sizeof(opt_tcpreassembly_log)));
+	addConfigItem(new cConfigItem_yesno("convert_dlt_sll2en10", &opt_convert_dlt_sll_to_en10));
+	addConfigItem(new cConfigItem_integer("threading_mod"));
+	addConfigItem(new cConfigItem_integer("pcap_queue_dequeu_window_length", &opt_pcap_queue_dequeu_window_length));
+	addConfigItem(new cConfigItem_integer("pcap_queue_iface_qring_size", &opt_pcap_queue_iface_qring_size));
+	addConfigItem(new cConfigItem_integer("pcap_queue_dequeu_method", &opt_pcap_queue_dequeu_method));
+	addConfigItem(new cConfigItem_yesno("pcap_dispatch", &opt_pcap_dispatch));
+	addConfigItem(new cConfigItem_integer("maxpcapsize", &opt_maxpcapsize_mb));
+	addConfigItem(new cConfigItem_yesno("upgrade_try_http_if_https_fail", &opt_upgrade_try_http_if_https_fail));
+	addConfigItem(new cConfigItem_yesno("sdp_reverse_ipport", &opt_sdp_reverse_ipport));
+	addConfigItem(new cConfigItem_yesno("mos_lqo", &opt_mos_lqo));
+	addConfigItem(new cConfigItem_string("mos_lqo_bin", opt_mos_lqo_bin, sizeof(opt_mos_lqo_bin)));
+	addConfigItem(new cConfigItem_string("mos_lqo_ref", opt_mos_lqo_ref, sizeof(opt_mos_lqo_ref)));
+	addConfigItem(new cConfigItem_string("mos_lqo_ref16", opt_mos_lqo_ref16, sizeof(opt_mos_lqo_ref16)));
+	addConfigItem(new cConfigItem_string("php_path", opt_php_path, sizeof(opt_php_path)));
+	addConfigItem(new cConfigItem_integer("onewaytimeout", &opt_onewaytimeout));
+	addConfigItem(new cConfigItem_yesno("saveaudio_stereo", &opt_saveaudio_stereo));
+	addConfigItem(new cConfigItem_yesno("saveaudio_reversestereo", &opt_saveaudio_reversestereo));
+	addConfigItem(new cConfigItem_float("ogg_quality", &opt_saveaudio_oggquality));
+	addConfigItem(new cConfigItem_yesno("mysqlloadconfig", &opt_mysqlloadconfig));
+	addConfigItem(new cConfigItem_integer("mysqlstore_concat_limit", &opt_mysqlstore_concat_limit));
+	addConfigItem(new cConfigItem_integer("mysqlstore_concat_limit_cdr", &opt_mysqlstore_concat_limit_cdr));
+	addConfigItem(new cConfigItem_integer("mysqlstore_concat_limit_message", &opt_mysqlstore_concat_limit_message));
+	addConfigItem(new cConfigItem_integer("mysqlstore_concat_limit_register", &opt_mysqlstore_concat_limit_register));
+	addConfigItem(new cConfigItem_integer("mysqlstore_concat_limit_http", &opt_mysqlstore_concat_limit_http));
+	addConfigItem(new cConfigItem_integer("mysqlstore_concat_limit_webrtc", &opt_mysqlstore_concat_limit_webrtc));
+	addConfigItem(new cConfigItem_integer("mysqlstore_concat_limit_ipacc", &opt_mysqlstore_concat_limit_ipacc));
+	addConfigItem((new cConfigItem_integer("mysqlstore_max_threads_cdr", &opt_mysqlstore_max_threads_cdr))
+		->setMaximum(9)->setMinimum(1));
+	addConfigItem((new cConfigItem_integer("mysqlstore_max_threads_message", &opt_mysqlstore_max_threads_message))
+		->setMaximum(9)->setMinimum(1));
+	addConfigItem((new cConfigItem_integer("mysqlstore_max_threads_register", &opt_mysqlstore_max_threads_register))
+		->setMaximum(9)->setMinimum(1));
+	addConfigItem((new cConfigItem_integer("mysqlstore_max_threads_http", &opt_mysqlstore_max_threads_http))
+		->setMaximum(9)->setMinimum(1));
+	addConfigItem((new cConfigItem_integer("mysqlstore_max_threads_webrtc", &opt_mysqlstore_max_threads_webrtc))
+		->setMaximum(9)->setMinimum(1));
+	addConfigItem((new cConfigItem_integer("mysqlstore_max_threads_ipacc_base", &opt_mysqlstore_max_threads_ipacc_base))
+		->setMaximum(9)->setMinimum(1));
+	addConfigItem((new cConfigItem_integer("mysqlstore_max_threads_ipacc_agreg2", &opt_mysqlstore_max_threads_ipacc_agreg2))
+		->setMaximum(9)->setMinimum(1));
+	addConfigItem(new cConfigItem_integer("mysqlstore_limit_queue_register", &opt_mysqlstore_limit_queue_register));
+	addConfigItem(new cConfigItem_string("curlproxy", opt_curlproxy, sizeof(opt_curlproxy)));
+	addConfigItem(new cConfigItem_yesno("enable_fraud", &opt_enable_fraud));
+	addConfigItem(new cConfigItem_string("local_country_code", opt_local_country_code, sizeof(opt_local_country_code)));
+	addConfigItem(new cConfigItem_integer("pcap_dump_bufflength", &opt_pcap_dump_bufflength));
+	addConfigItem(new cConfigItem_yesno("pcap_dump_asyncwrite", &opt_pcap_dump_asyncwrite));
+	addConfigItem(new cConfigItem_integer("pcap_dump_asyncwrite_limit_new_thread", &opt_pcap_dump_asyncwrite_limit_new_thread));
+	addConfigItem(new cConfigItem_type_compress("pcap_dump_zip", &opt_pcap_dump_zip_sip));
+	addConfigItem(new cConfigItem_type_compress("pcap_dump_zip_all", &opt_pcap_dump_zip_sip));
+	addConfigItem(new cConfigItem_type_compress("pcap_dump_zip_sip", &opt_pcap_dump_zip_sip));
+	addConfigItem(new cConfigItem_type_compress("pcap_dump_zip_rtp", &opt_pcap_dump_zip_rtp));
+	addConfigItem(new cConfigItem_type_compress("pcap_dump_zip_graph", &opt_gzipGRAPH));
+	addConfigItem(new cConfigItem_integer("pcap_dump_ziplevel", &opt_pcap_dump_ziplevel_sip));
+	addConfigItem(new cConfigItem_integer("pcap_dump_ziplevel_sip", &opt_pcap_dump_ziplevel_sip));
+	addConfigItem(new cConfigItem_integer("pcap_dump_ziplevel_rtp", &opt_pcap_dump_ziplevel_rtp));
+	addConfigItem(new cConfigItem_integer("pcap_dump_ziplevel_graph", &opt_pcap_dump_ziplevel_graph));
+	addConfigItem(new cConfigItem_integer("pcap_dump_writethreads", &opt_pcap_dump_writethreads));
+	addConfigItem(new cConfigItem_integer("pcap_dump_writethreads_max", &opt_pcap_dump_writethreads_max));
+	addConfigItem((new cConfigItem_integer("pcap_dump_asyncwrite_maxsize", &opt_pcap_dump_asyncwrite_maxsize))
+		->addAlias("pcap_dump_asyncbuffer"));
+	addConfigItem(new cConfigItem_yesno("tar", &opt_pcap_dump_tar));
+	addConfigItem(new cConfigItem_integer("tar_maxthreads", &opt_pcap_dump_tar_threads));
+	addConfigItem((new cConfigItem_integer("tar_compress_sip", &opt_pcap_dump_tar_compress_sip))
+		->addValues("z:1|g:1|l:2|0:0|n:0"));
+	addConfigItem((new cConfigItem_integer("tar_compress_rtp", &opt_pcap_dump_tar_compress_rtp))
+		->addValues("z:1|g:1|l:2|0:0|n:0"));
+	addConfigItem((new cConfigItem_integer("tar_compress_graph", &opt_pcap_dump_tar_compress_graph))
+		->addValues("z:1|g:1|l:2|0:0|n:0"));
+	addConfigItem(new cConfigItem_integer("tar_sip_level", &opt_pcap_dump_tar_sip_level));
+	addConfigItem(new cConfigItem_integer("tar_rtp_level", &opt_pcap_dump_tar_rtp_level));
+	addConfigItem(new cConfigItem_integer("tar_graph_level", &opt_pcap_dump_tar_graph_level));
+	addConfigItem(new cConfigItem_type_compress("tar_internalcompress_sip", &opt_pcap_dump_tar_internalcompress_sip));
+	addConfigItem(new cConfigItem_type_compress("tar_internalcompress_rtp", &opt_pcap_dump_tar_internalcompress_rtp));
+	addConfigItem(new cConfigItem_type_compress("tar_internalcompress_graph", &opt_pcap_dump_tar_internalcompress_graph));
+	addConfigItem(new cConfigItem_integer("tar_internal_sip_level", &opt_pcap_dump_tar_internal_gzip_sip_level));
+	addConfigItem(new cConfigItem_integer("tar_internal_rtp_level", &opt_pcap_dump_tar_internal_gzip_rtp_level));
+	addConfigItem(new cConfigItem_integer("tar_internal_graph_level", &opt_pcap_dump_tar_internal_gzip_graph_level));
+	addConfigItem(new cConfigItem_yesno("defer_create_spooldir", &opt_defer_create_spooldir));
+	addConfigItem(new cConfigItem_ip_port("sip_send", &sipSendSocket_ip_port));
+	addConfigItem(new cConfigItem_string("sip_send_ip"));
+	addConfigItem(new cConfigItem_integer("sip_send_port"));
+	addConfigItem(new cConfigItem_yesno("sip_send_before_packetbuffer", &opt_sip_send_before_packetbuffer));
+	addConfigItem(new cConfigItem_string("manager_sshhost", ssh_host, sizeof(ssh_host)));
+	addConfigItem(new cConfigItem_integer("manager_sshport", &ssh_port));
+	addConfigItem(new cConfigItem_string("manager_sshusername", ssh_username, sizeof(ssh_username)));
+	addConfigItem(new cConfigItem_string("manager_sshpassword", ssh_password, sizeof(ssh_password)));
+	addConfigItem(new cConfigItem_string("manager_sshremoteip", ssh_remote_listenhost, sizeof(ssh_remote_listenhost)));
+	addConfigItem(new cConfigItem_integer("manager_sshremoteport", &ssh_remote_listenport));
+	addConfigItem(new cConfigItem_integer("sdp_multiplication", &opt_sdp_multiplication));
+	addConfigItem(new cConfigItem_yesno("enable_jitterbuffer_asserts", &opt_enable_jitterbuffer_asserts));
+	addConfigItem(new cConfigItem_yesno("hide_message_content", &opt_hide_message_content));
+	addConfigItem(new cConfigItem_string("hide_message_content_secret", opt_hide_message_content_secret, sizeof(opt_hide_message_content_secret)));
+	addConfigItem(new cConfigItem_string("bogus_dumper_path", opt_bogus_dumper_path, sizeof(opt_bogus_dumper_path)));
+	addConfigItem(new cConfigItem_string("syslog_string", opt_syslog_string, sizeof(opt_syslog_string)));
+	addConfigItem(new cConfigItem_integer("preprocess_packets_qring_length", &opt_preprocess_packets_qring_length));
+	addConfigItem(new cConfigItem_integer("preprocess_packets_qring_usleep", &opt_preprocess_packets_qring_usleep));
+	addConfigItem(new cConfigItem_integer("process_rtp_packets_qring_length", &opt_process_rtp_packets_qring_length));
+	addConfigItem(new cConfigItem_integer("process_rtp_packets_qring_usleep", &opt_process_rtp_packets_qring_usleep));
+	addConfigItem(new cConfigItem_integer("pcap_qring_length", &pcap_qring_max));
+	addConfigItem(new cConfigItem_integer("pcap_qring_usleep", &pcap_qring_usleep));
+	addConfigItem(new cConfigItem_integer("rtp_qring_length", &rtp_qring_length));
+	addConfigItem(new cConfigItem_integer("rtp_qring_usleep", &rtp_qring_usleep));
+	addConfigItem((new cConfigItem_yesno("rtp_qring_quick", &rtp_qring_quick))
+		->addValue("boost", 2));
+	addConfigItem(new cConfigItem_yesno("udpfrag", &opt_udpfrag));
+	addConfigItem(new cConfigItem_yesno("faxdetect", &opt_faxt30detect));
+	addConfigItem(new cConfigItem_integer("max_buffer_mem"));
+	addConfigItem((new cConfigItem_integer("delete_threads", &opt_delete_threads))
+		->setMaximum(MAX_THREADS_DELETE));
+	addConfigItem(new cConfigItem_string("git_folder", opt_git_folder, sizeof(opt_git_folder)));
+	addConfigItem(new cConfigItem_yesno("upgrade_by_git", &opt_upgrade_by_git));
+	addConfigItem(new cConfigItem_yesno("query_cache"));
+	addConfigItem(new cConfigItem_yesno("save_query_to_files", &opt_save_query_to_files));
+	addConfigItem(new cConfigItem_string("save_query_to_files_directory", opt_save_query_to_files_directory, sizeof(opt_save_query_to_files_directory)));
+	addConfigItem(new cConfigItem_integer("save_query_to_files_period", &opt_save_query_to_files_period));
+	addConfigItem((new cConfigItem_yesno("load_query_from_files", &opt_load_query_from_files))
+		->addValue("only", 2));
+	addConfigItem(new cConfigItem_string("load_query_from_files_directory", opt_load_query_from_files_directory, sizeof(opt_load_query_from_files_directory)));
+	addConfigItem(new cConfigItem_integer("load_query_from_files_period", &opt_load_query_from_files_period));
+	addConfigItem(new cConfigItem_yesno("load_query_from_files_inotify", &opt_load_query_from_files_inotify));
+	addConfigItem(new cConfigItem_yesno("virtualudppacket", &opt_virtualudppacket));
+}
+
+void cConfig::evSetConfigItem(cConfigItem *configItem) {
+	if(configItem->config_name == "ssl_ipport") {
+		#ifdef HAVE_LIBGNUTLS
+			ssl_init();
+		#endif
+	}
+	if(configItem->config_name == "cleandatabase") {
+		opt_cleandatabase_http_enum = opt_cleandatabase_cdr;
+		opt_cleandatabase_webrtc = opt_cleandatabase_cdr;
+		opt_cleandatabase_register_state = opt_cleandatabase_cdr;
+		opt_cleandatabase_register_failed = opt_cleandatabase_cdr;
+	}
+	if(configItem->config_name == "cleandatabase_cdr") {
+		opt_cleandatabase_http_enum = opt_cleandatabase_cdr;
+		opt_cleandatabase_webrtc = opt_cleandatabase_cdr;
+	}
+	if(configItem->config_name == "autocleanspoolminpercent") {
+		opt_autocleanspoolminpercent_configset = true;
+	}
+	if(configItem->config_name == "autocleanmingb") {
+		opt_autocleanmingb_configset = true;
+	}
+	if(configItem->config_name == "id_sensor") {
+		opt_id_sensor_cleanspool = opt_id_sensor;
+	}
+	if(configItem->config_name == "check_duplicity_callid_in_next_pass_insert") {
+		opt_message_check_duplicity_callid_in_next_pass_insert = opt_cdr_check_duplicity_callid_in_next_pass_insert;
+	}
+	if(configItem->config_name == "create_old_partitions_from") {
+		opt_create_old_partitions = getNumberOfDayToNow(opt_create_old_partitions_from);
+	}
+	if(configItem->config_name == "database_backup_from_date") {
+		opt_create_old_partitions = getNumberOfDayToNow(opt_database_backup_from_date);
+	}
+	if(configItem->config_name == "cachedir") {
+		mkdir_r(opt_cachedir, 0777);
+	}
+	if(configItem->config_name == "spooldir") {
+		mkdir_r(opt_chdir, 0777);
+	}
+	if(configItem->config_name == "timezone") {
+		setenv("TZ", opt_timezone, 1);
+	}
+	if(configItem->config_name == "myqslhost") {
+		printf("You have old version of config file! there were typo in myqslhost instead of mysqlhost! Fix your config! exiting...\n");
+		syslog(LOG_ERR, "You have old version of config file! there were typo in myqslhost instead of mysqlhost! Fix your config! exiting...\n");
+		exit(1);
+	}
+	if(configItem->config_name == "pcap_dump_ziplevel") {
+		opt_pcap_dump_ziplevel_rtp = opt_pcap_dump_ziplevel_sip;
+		opt_pcap_dump_ziplevel_graph = opt_pcap_dump_ziplevel_sip;
+	}
+	if(configItem->config_name == "savertp") {
+		switch(((cConfigItem_integer*)configItem)->getValue()) {
+		case 1:
+			opt_saveRTP = 1;
+			break;
+		case -1:
+			opt_onlyRTPheader = 1;
+			break;
+		}
+	}
+	if(configItem->config_name == "saveaudio") {
+		switch(((cConfigItem_integer*)configItem)->getValue()) {
+		case 1:
+			opt_saveWAV = 1;
+			opt_audio_format = FORMAT_WAV;
+			break;
+		case 2:
+			opt_saveWAV = 1;
+			opt_audio_format = FORMAT_OGG;
+			break;
+		}
+	}
+	if(configItem->config_name == "savegraph") {
+		switch(((cConfigItem_integer*)configItem)->getValue()) {
+		case 1:
+			opt_saveGRAPH = 1;
+			break;
+		case 2:
+			opt_saveGRAPH = 1;
+			opt_gzipGRAPH = FileZipHandler::gzip;
+			break;
+		}
+	}
+	if(configItem->config_name == "scanpcapmethod") {
+		opt_scanpcapmethod = (((cConfigItem_string*)configItem)->getValue()[0] == 'r') ? IN_MOVED_TO : IN_CLOSE_WRITE;
+	}
+	if(configItem->config_name == "packetbuffer_compress_method") {
+		switch(((cConfigItem_integer*)configItem)->getValue()) {
+		case 0:
+			opt_pcap_queue_compress_method = pcap_block_store::compress_method_default;
+		case 1:
+			opt_pcap_queue_compress_method = pcap_block_store::snappy;
+			break;
+		case 2:
+			opt_pcap_queue_compress_method = pcap_block_store::lz4;
+			break;
+		}
+	}
+	if(configItem->config_name == "mirror_destination" || configItem->config_name == "mirror_destination_ip") {
+		opt_nocdr = 1;
+	}
+	if(configItem->config_name == "mirror_destination_ip") {
+		opt_pcap_queue_send_to_ip_port.set_ip(((cConfigItem_string*)configItem)->getValue());
+	}
+	if(configItem->config_name == "mirror_destination_port") {
+		opt_pcap_queue_send_to_ip_port.set_port(((cConfigItem_integer*)configItem)->getValue());
+	}
+	if(configItem->config_name == "mirror_bind_ip") {
+		opt_pcap_queue_receive_from_ip_port.set_ip(((cConfigItem_string*)configItem)->getValue());
+	}
+	if(configItem->config_name == "mirror_bind_port") {
+		opt_pcap_queue_receive_from_ip_port.set_port(((cConfigItem_integer*)configItem)->getValue());
+	}
+	if(configItem->config_name == "threading_mod") {
+		switch(((cConfigItem_integer*)configItem)->getValue()) {
+		case 2:
+			opt_pcap_queue_iface_separate_threads = 1;
+			break;
+		case 3:
+			opt_pcap_queue_iface_separate_threads = 1;
+			opt_pcap_queue_iface_dedup_separate_threads = 1;
+			break;
+		case 4:
+			opt_pcap_queue_iface_separate_threads = 1;
+			opt_pcap_queue_iface_dedup_separate_threads = 1;
+			opt_pcap_queue_iface_dedup_separate_threads_extend = 1;
+			break;
+		}
+	}
+	if(configItem->config_name == "pcap_dump_zip") {
+		opt_pcap_dump_zip_rtp = opt_pcap_dump_zip_sip;
+	}
+	if(configItem->config_name == "pcap_dump_zip_all") {
+		opt_pcap_dump_zip_rtp = opt_pcap_dump_zip_sip;
+		opt_gzipGRAPH = opt_pcap_dump_zip_sip;
+	}
+	if(configItem->config_name == "sip_send_ip") {
+		sipSendSocket_ip_port.set_ip(((cConfigItem_string*)configItem)->getValue());
+	}
+	if(configItem->config_name == "sip_send_port") {
+		sipSendSocket_ip_port.set_port(((cConfigItem_integer*)configItem)->getValue());
+	}
+	if(configItem->config_name == "max_buffer_mem") {
+		buffersControl.setMaxBufferMem(((cConfigItem_integer*)configItem)->getValue() * 1024 * 1024);
+	}
+	if(configItem->config_name == "query_cache") {
+		if(((cConfigItem_yesno*)configItem)->getValue()) {
+			opt_save_query_to_files = true;
+			opt_load_query_from_files = 1;
+			opt_load_query_from_files_inotify = true;
+		}
+	}
 }
