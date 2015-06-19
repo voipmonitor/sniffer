@@ -28,7 +28,7 @@ endif
 
 core2cust: GCCARCH = core2
 core2: GCCARCH = core2
-armv6k: GCCARCH = amrv6k
+armv6k: GCCARCH = armv6k
 clean: GCCARCH = core2
 #Makefile.deps: GCCARCH = core2
 
