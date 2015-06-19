@@ -120,7 +120,7 @@ clean :
 	rm -f $(objects) voipmonitor
 	cp -f .cleancount .lastclean
 
-targzarm: armv6k
+targzarmv6k: armv6k
 	rm -rf voipmonitor-armv6k-${version}-static*
 	mkdir -p voipmonitor-armv6k-${version}-static/usr/local/sbin
 	cp voipmonitor voipmonitor-armv6k-${version}-static/usr/local/sbin/
