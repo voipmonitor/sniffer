@@ -1911,6 +1911,9 @@ getwav:
 		opt_blockqfile = 0;
 	} else if(strstr(buf, "malloc_trim") != NULL) {
 		malloc_trim(0);
+	} else if(strstr(buf, "memcrash_test_1") != NULL) {
+		char *test = new char[10];
+		test[10] = 1;
 	} else {
 		if ((size = sendvm(client, sshchannel, "command not found\n", 18, 0)) == -1){
 			cerr << "Error sending data to client" << endl;

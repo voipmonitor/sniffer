@@ -28,7 +28,7 @@ void cConfigItem::setConfigFileSection(const char *config_file_section) {
 cConfigItem *cConfigItem::addValue(const char *str, int value) {
 	string _str = str;
 	std::transform(_str.begin(), _str.end(), _str.begin(), ::tolower);
-	mapValues[str] = value;
+	mapValues.push_back(sMapValue(str, value));
 	return(this);
 }
 
@@ -71,21 +71,24 @@ vector<string> cConfigItem::getValuesFromConfigFile(CSimpleIniA *ini) {
 }
 
 bool cConfigItem::getValueFromMapValues(const char *str_value, int *rslt_value) {
+	*rslt_value = 0;
 	if(mapValues.size()) {
 		string _str_value = str_value;
 		std::transform(_str_value.begin(), _str_value.end(), _str_value.begin(), ::tolower);
-		if(mapValues.find(_str_value) != mapValues.end()) {
-			*rslt_value = mapValues[_str_value];
-			return(true);
+		for(list<sMapValue>::iterator iter = mapValues.begin(); iter != mapValues.end(); iter++) {
+			if(!strncmp(_str_value.c_str(), iter->str.c_str(), iter->str.length())) {
+				*rslt_value = iter->value;
+				return(true);
+			}
 		}
 	}
 	return(false);
 }
 
 string cConfigItem::getStringFromMapValues(int value) {
-	for(map<string, int>::iterator iter = mapValues.begin(); iter != mapValues.end(); iter++) {
-		if(iter->second == value) {
-			return(iter->first);
+	for(list<sMapValue>::iterator iter = mapValues.begin(); iter != mapValues.end(); iter++) {
+		if(iter->value == value) {
+			return(iter->str);
 		}
 	}
 	return("");

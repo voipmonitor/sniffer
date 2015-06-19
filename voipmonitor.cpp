@@ -3303,7 +3303,6 @@ PcapQueue_readFromInterface *pcapQueueI;
 PcapQueue_readFromFifo *pcapQueueQ;
 
 int main(int argc, char *argv[]) {
-
 	extern unsigned int HeapSafeCheck;
 	bool memoryStatInArg = false;
 	bool memoryStatExInArg = false;
@@ -6110,7 +6109,7 @@ void cConfig::addConfigItems() {
 	addConfigItem(new cConfigItem_yesno("custom_headers_last_value", &opt_custom_headers_last_value));
 	addConfigItem(new cConfigItem_yesno("savesip", &opt_saveSIP));
 	addConfigItem((new cConfigItem_yesno("savertp"))
-		->addValue("h", -1));
+		->addValues("header:-1|h:-1"));
 	addConfigItem(new cConfigItem_yesno("silencedetect", &opt_silencedetect));
 	addConfigItem(new cConfigItem_yesno("clippingdetect", &opt_clippingdetect));
 	addConfigItem(new cConfigItem_yesno("saverfc2833", &opt_saverfc2833));
@@ -6138,9 +6137,9 @@ void cConfig::addConfigItems() {
 	addConfigItem(new cConfigItem_integer("managerclientport", &opt_clientmanagerport));
 	addConfigItem(new cConfigItem_yesno("savertcp", &opt_saveRTCP));
 	addConfigItem((new cConfigItem_yesno("saveaudio"))
-		->addValues("w:1|o:2"));
+		->addValues("yes:1|wav:1|w:1|ogg:2|o:2"));
 	addConfigItem((new cConfigItem_yesno("savegraph"))
-		->addValues("p:1|g:2"));
+		->addValues("yes:1|plain:1|p:1|gzip:2|g:2"));
 	addConfigItem(new cConfigItem_string("filter", user_filter, sizeof(user_filter)));
 	addConfigItem(new cConfigItem_string("cachedir", opt_cachedir, sizeof(opt_cachedir)));
 	addConfigItem(new cConfigItem_string("spooldir", opt_chdir, sizeof(opt_chdir)));
@@ -6261,7 +6260,7 @@ void cConfig::addConfigItems() {
 	addConfigItem(new cConfigItem_string("packetbuffer_file_path", &opt_pcap_queue_disk_folder));
 	addConfigItem(new cConfigItem_yesno("packetbuffer_compress", &opt_pcap_queue_compress));
 	addConfigItem((new cConfigItem_integer("packetbuffer_compress_method"))
-		->addValues("snappy:1|lz4:2"));
+		->addValues("snappy:1|s:1|lz4:2|l:2"));
 	addConfigItem(new cConfigItem_ip_port("mirror_destination", &opt_pcap_queue_send_to_ip_port));
 	addConfigItem(new cConfigItem_string("mirror_destination_ip"));
 	addConfigItem(new cConfigItem_integer("mirror_destination_port"));
@@ -6273,7 +6272,7 @@ void cConfig::addConfigItems() {
 		->addValue("sip", 2));
 	addConfigItem((new cConfigItem_integer("enable_process_rtp_packet", &opt_enable_process_rtp_packet))
 		->setMaximum(MAX_PROCESS_RTP_PACKET_THREADS)
-		->addValues("y:1|yes:1")
+		->addValues("yes:1|y:1")
 		->addAlias("preprocess_rtp_threads"));
 	addConfigItem((new cConfigItem_yesno("http", &opt_enable_http))
 		->addValue("only", 2)
@@ -6347,11 +6346,11 @@ void cConfig::addConfigItems() {
 	addConfigItem(new cConfigItem_yesno("tar", &opt_pcap_dump_tar));
 	addConfigItem(new cConfigItem_integer("tar_maxthreads", &opt_pcap_dump_tar_threads));
 	addConfigItem((new cConfigItem_integer("tar_compress_sip", &opt_pcap_dump_tar_compress_sip))
-		->addValues("z:1|g:1|l:2|0:0|n:0"));
+		->addValues("zip:1|z:1|gzip:1|g:1|lz4:2|l:2|no:0|n:0|0:0"));
 	addConfigItem((new cConfigItem_integer("tar_compress_rtp", &opt_pcap_dump_tar_compress_rtp))
-		->addValues("z:1|g:1|l:2|0:0|n:0"));
+		->addValues("zip:1|z:1|gzip:1|g:1|lz4:2|l:2|no:0|n:0|0:0"));
 	addConfigItem((new cConfigItem_integer("tar_compress_graph", &opt_pcap_dump_tar_compress_graph))
-		->addValues("z:1|g:1|l:2|0:0|n:0"));
+		->addValues("zip:1|z:1|gzip:1|g:1|lz4:2|l:2|no:0|n:0|0:0"));
 	addConfigItem(new cConfigItem_integer("tar_sip_level", &opt_pcap_dump_tar_sip_level));
 	addConfigItem(new cConfigItem_integer("tar_rtp_level", &opt_pcap_dump_tar_rtp_level));
 	addConfigItem(new cConfigItem_integer("tar_graph_level", &opt_pcap_dump_tar_graph_level));

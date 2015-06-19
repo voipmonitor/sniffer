@@ -16,12 +16,13 @@ using namespace std;
 
 class cConfigItem {
 public:
-	enum eTypeConfigItem {
-		tci_yesno,
-		tci_integer,
-		tci_string,
-		tci_portlist,
-		tci_custom
+	struct sMapValue {
+		sMapValue(string str, int value) {
+			this->str = str;
+			this->value = value;
+		}
+		string str;
+		int value;
 	};
 public:
 	cConfigItem(const char *name);
@@ -49,7 +50,7 @@ protected:
 	list<string> config_name_alias;
 	string config_file_section;
 	class cConfig *config;
-	map<string, int> mapValues;
+	list<sMapValue> mapValues;
 	bool set;
 friend class cConfig;
 };
