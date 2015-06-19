@@ -232,7 +232,7 @@ extern u_int opt_pcap_queue_file_store_max_time_ms;
 extern uint64_t opt_pcap_queue_bypass_max_size;
 extern uint64_t opt_pcap_queue_store_queue_max_disk_size;
 extern uint64_t opt_pcap_queue_store_queue_max_memory_size;
-extern uint8_t opt_sdp_reverse_ipport;
+extern int opt_sdp_reverse_ipport;
 extern vm_atomic<u_long> pbCountPacketDrop;
 extern unsigned int duplicate_counter;
 extern unsigned int graph_delimiter;

@@ -326,6 +326,8 @@ Call::Call(char *call_id, unsigned long call_id_len, time_t time) :
 	
 	error_negative_payload_length = false;
 	use_removeRtp = false;
+	
+	is_ssl = false;
 }
 
 void
