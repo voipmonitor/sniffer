@@ -1,33 +1,36 @@
 ##### CPU variants #####
 GCCARCH = $(shell uname -m)
+MTUNE =
 
 ifeq ($(GCCARCH),amd64)
   GCCARCH = core2
+  MTUNE = -mtune=core2
 endif
 
 ifeq ($(GCCARCH),i386)
   GCCARCH = core2
+  MTUNE = -mtune=core2
 endif
 
 ifeq ($(GCCARCH),x86_64)
   GCCARCH = core2
+  MTUNE = -mtune=core2
 endif
 
 ifeq ($(findstring arm,$(GCCARCH)),arm)
   GCCARCH = armv6k
 endif
 
-GCCARCH = native
-
-GCCVERSION = $(shell gcc --version | grep ^gcc | sed 's/^.* //g' | cut -f1,2 -d.)
-ifeq "$(GCCVERSION)" "4.1"
-  GCCARCH = core2
-endif
+#GCCVERSION = $(shell gcc --version | grep ^gcc | sed 's/^.* //g' | cut -f1,2 -d.)  
+#ifeq "$(GCCVERSION)" "4.1"
+#  GCCARCH = core2
+#endif
 
 core2cust: GCCARCH = core2
 core2: GCCARCH = core2
+armv6k: GCCARCH = amrv6k
 clean: GCCARCH = core2
-Makefile.deps: GCCARCH = core2
+#Makefile.deps: GCCARCH = core2
 
 
 version = $(shell grep RTPSENSOR_VERSION voipmonitor.h | cut -d" " -f 3 | tr -d "\"")
@@ -68,6 +71,8 @@ static: cleantest $(objects)
 	${CXX} $(objects) ${LDFLAGS} -o voipmonitor ${STATIC_LIBS} ${LIBS_PATH}
 
 core2: cleantest static
+
+armv6k: cleantest static
 
 armv5shared: CXXFLAGS+= -DPACKED 
 armv5shared: CFLAGS+= -DPACKED 
@@ -114,6 +119,22 @@ clean :
 	rm -f Makefile.deps
 	rm -f $(objects) voipmonitor
 	cp -f .cleancount .lastclean
+
+targzarm: armv6k
+	rm -rf voipmonitor-armv6k-${version}-static*
+	mkdir -p voipmonitor-armv6k-${version}-static/usr/local/sbin
+	cp voipmonitor voipmonitor-armv6k-${version}-static/usr/local/sbin/
+	chmod +x voipmonitor-armv6k-${version}-static/usr/local/sbin/voipmonitor
+	mkdir -p voipmonitor-armv6k-${version}-static/usr/local/share/voipmonitor/audio
+	cp samples/audio/* voipmonitor-armv6k-${version}-static/usr/local/share/voipmonitor/audio/
+	mkdir -p voipmonitor-armv6k-${version}-static/etc/init.d
+	cp config/voipmonitor.conf voipmonitor-armv6k-${version}-static/etc/
+	cp config/init.d/voipmonitor voipmonitor-armv6k-${version}-static/etc/init.d/
+	chmod +x voipmonitor-armv6k-${version}-static/etc/init.d/voipmonitor 
+	cp scripts/install-script.sh voipmonitor-armv6k-${version}-static/
+	chmod +x voipmonitor-armv6k-${version}-static/install-script.sh
+	tar -czf voipmonitor-armv6k-${version}-static.tar.gz voipmonitor-armv6k-${version}-static
+	rm -rf voipmonitor-armv6k-${version}-static
 
 targz64: core2
 	rm -rf voipmonitor-amd64-${version}-static*
