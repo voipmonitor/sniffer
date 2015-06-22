@@ -1,3 +1,8 @@
+11.7.4 19.06.2015
+=================
+- fix race condition leading to crash in case there is SIP 3XX redirection and RTP packets for that call is still in RTP queue
+
+
 11.7.3 19.06.2015
 =================
 - remove PID file as the latest operation to fix killing voipmonitor with init.d/voipmonitor
