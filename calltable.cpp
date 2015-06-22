@@ -479,6 +479,11 @@ Call::removeRTP() {
 	while(__sync_lock_test_and_set(&rtplock, 1)) {
 		usleep(100);
 	}
+	#if SYNC_CALL_RTP
+	while(this->rtppcaketsinqueue > 0) {
+		usleep(100);
+	}
+	#endif
 	closeRawFiles();
 	ssrc_n = 0;
 	for(int i = 0; i < MAX_SSRC_PER_CALL; i++) {
