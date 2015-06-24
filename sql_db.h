@@ -54,11 +54,14 @@ public:
 	void add(double content,  string fieldName, bool null = false);
 	void add(u_int64_t content,  string fieldName, bool null = false);
 	int getIndexField(string fieldName);
+	string getNameField(int indexField);
 	bool isEmpty();
 	bool isNull(string fieldName);
 	string implodeFields(string separator = ",", string border = "");
 	string implodeContent(string separator = ",", string border = "'", bool enableSqlString = false, bool escapeAll = false);
+	string implodeFieldContent(string separator = ",", string fieldBorder = "`", string contentBorder = "'", bool enableSqlString = false, bool escapeAll = false);
 	string keyvalList(string separator);
+	size_t getCountFields();
 private:
 	SqlDb *sqlDb;
 	vector<SqlDb_rowField> row;
@@ -82,11 +85,14 @@ public:
 	virtual SqlDb_row fetchRow(bool assoc = false) = 0;
 	virtual string insertQuery(string table, SqlDb_row row, bool enableSqlStringInContent = false, bool escapeAll = false, bool insertIgnore = false);
 	virtual string insertQuery(string table, vector<SqlDb_row> *rows, bool enableSqlStringInContent = false, bool escapeAll = false, bool insertIgnore = false);
+	virtual string updateQuery(string table, SqlDb_row row, const char *whereCond, bool enableSqlStringInContent = false, bool escapeAll = false);
 	virtual int insert(string table, SqlDb_row row);
 	virtual int insert(string table, vector<SqlDb_row> *rows);
+	virtual bool update(string table, SqlDb_row row, const char *whereCond);
 	virtual int getIdOrInsert(string table, string idField, string uniqueField, SqlDb_row row, const char *uniqueField2 = NULL);
 	virtual int getInsertId() = 0;
 	virtual int getIndexField(string fieldName);
+	virtual string getNameField(int indexField);
 	virtual string escape(const char *inputString, int length = 0) = 0;
 	virtual string getFieldBorder() {
 		return("");
@@ -153,6 +159,8 @@ public:
 	void setEnableSqlStringInContent(bool enableSqlStringInContent);
 	void setDisableNextAttemptIfError();
 	void setEnableNextAttemptIfError();
+	void setDisableLogError();
+	void setEnableLogError();
 	bool isCloud() {
 		return(!cloud_host.empty());
 	}
@@ -177,6 +185,7 @@ protected:
 	vector<string> fields;
 	bool enableSqlStringInContent;
 	bool disableNextAttemptIfError;
+	bool disableLogError;
 	bool connecting;
 	vector<string> cloud_data_columns;
 	vector<vector<string> > cloud_data;

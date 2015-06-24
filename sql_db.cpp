@@ -188,6 +188,18 @@ int SqlDb_row::getIndexField(string fieldName) {
 	return(-1);
 }
 
+string SqlDb_row::getNameField(int indexField) {
+	if((unsigned)indexField < row.size()) {
+		if(!row[indexField].fieldName.empty()) {
+			return(row[indexField].fieldName);
+		}
+		if(this->sqlDb) {
+			return(this->sqlDb->getNameField(indexField));
+		}
+	}
+	return("");
+}
+
 bool SqlDb_row::isEmpty() {
 	return(!row.size());
 }
@@ -226,6 +238,25 @@ string SqlDb_row::implodeContent(string separator, string border, bool enableSql
 	return(rslt);
 }
 
+string SqlDb_row::implodeFieldContent(string separator, string fieldBorder, string contentBorder, bool enableSqlString, bool escapeAll) {
+	string rslt;
+	for(size_t i = 0; i < this->row.size(); i++) {
+		if(i) { rslt += separator; }
+		rslt += fieldBorder + /*'`' +*/ this->row[i].fieldName + /*'`' +*/ fieldBorder;
+		rslt += " = ";
+		if(this->row[i].null) {
+			rslt += "NULL";
+		} else if(enableSqlString && this->row[i].content.substr(0, 12) == "_\\_'SQL'_\\_:") {
+			rslt += this->row[i].content.substr(12);
+		} else {
+			rslt += contentBorder + 
+				(escapeAll ? sqlEscapeString(this->row[i].content) : this->row[i].content) + 
+				contentBorder;
+		}
+	}
+	return(rslt);
+}
+
 string SqlDb_row::keyvalList(string separator) {
 	string rslt;
 	for(size_t i = 0; i < this->row.size(); i++) {
@@ -238,6 +269,10 @@ string SqlDb_row::keyvalList(string separator) {
 	return(rslt);
 }
 
+size_t SqlDb_row::getCountFields() {
+	return(row.size());
+}
+
 
 SqlDb::SqlDb() {
 	this->clearLastError();
@@ -247,6 +282,7 @@ SqlDb::SqlDb() {
 	this->loginTimeout = (ulong)NULL;
 	this->enableSqlStringInContent = false;
 	this->disableNextAttemptIfError = false;
+	this->disableLogError = false;
 	this->connecting = false;
 	this->cloud_data_rows = 0;
 	this->cloud_data_index = 0;
@@ -352,11 +388,12 @@ bool SqlDb::queryByCurl(string query) {
 						} else {
 							errorString = result;
 						}
-						if(!sql_noerror) {
+						if(!sql_noerror && !this->disableLogError) {
 							setLastError(errorCode, errorString.c_str(), true);
 						}
 						if(tryNext) {
-							if(sql_noerror || sql_disable_next_attempt_if_error || this->disableNextAttemptIfError ||
+							if(sql_noerror || sql_disable_next_attempt_if_error || 
+							   this->disableLogError || this->disableNextAttemptIfError ||
 							   errorCode == ER_PARSE_ERROR) {
 								break;
 							} else if(errorCode != CR_SERVER_GONE_ERROR &&
@@ -434,6 +471,15 @@ string SqlDb::insertQuery(string table, vector<SqlDb_row> *rows, bool enableSqlS
 	return(query);
 }
 
+string SqlDb::updateQuery(string table, SqlDb_row row, const char *whereCond, bool enableSqlStringInContent, bool escapeAll) {
+	string query = 
+		string("UPDATE ") + table + row.implodeFieldContent(this->getFieldSeparator(), this->getFieldBorder(), this->getContentBorder(), enableSqlStringInContent || this->enableSqlStringInContent, escapeAll);
+	if(whereCond) {
+		query += string(" WHERE ") + whereCond;
+	}
+	return(query);
+}
+
 int SqlDb::insert(string table, SqlDb_row row) {
 	string query = this->insertQuery(table, row);
 	if(this->query(query)) {
@@ -451,6 +497,11 @@ int SqlDb::insert(string table, vector<SqlDb_row> *rows) {
 		return(this->getInsertId());
 	}
 	return(-1);
+}
+
+bool SqlDb::update(string table, SqlDb_row row, const char *whereCond) {
+	string query = this->updateQuery(table, row, whereCond);
+	return(this->query(query));
 }
 
 int SqlDb::getIdOrInsert(string table, string idField, string uniqueField, SqlDb_row row, const char *uniqueField2) {
@@ -487,6 +538,19 @@ int SqlDb::getIndexField(string fieldName) {
 	return(-1);
 }
 
+string SqlDb::getNameField(int indexField) {
+	if(isCloud()) {
+		if((unsigned)indexField < this->cloud_data_columns.size()) {
+			return(this->cloud_data_columns[indexField]);
+		}
+	} else {
+		if((unsigned)indexField < this->fields.size()) {
+			return(this->fields[indexField]);
+		}
+	}
+	return("");
+}
+
 void SqlDb::setLastErrorString(string lastErrorString, bool sysLog) {
 	this->lastErrorString = lastErrorString;
 	if(sysLog && lastErrorString != "") {
@@ -504,6 +568,14 @@ void SqlDb::setDisableNextAttemptIfError() {
 
 void SqlDb::setEnableNextAttemptIfError() {
 	this->disableNextAttemptIfError = false;
+}
+
+void SqlDb::setDisableLogError() {
+	this->disableLogError = true;
+}
+
+void SqlDb::setEnableLogError() {
+	this->disableLogError = false;
 }
 
 void SqlDb::cleanFields() {
@@ -844,8 +916,8 @@ bool SqlDb_mysql::query(string query, bool callFromStoreProcessWithFixDeadlock, 
 					syslog(LOG_NOTICE, "query error - query: %s", prepareQueryForPrintf(preparedQuery).c_str());
 					syslog(LOG_NOTICE, "query error - error: %s", mysql_error(this->hMysql));
 				}
-				this->checkLastError("query error in [" + preparedQuery.substr(0,200) + (preparedQuery.size() > 200 ? "..." : "") + "]", !sql_noerror);
-				if(!sql_noerror && (verbosity > 1 || sverb.query_error)) {
+				this->checkLastError("query error in [" + preparedQuery.substr(0,200) + (preparedQuery.size() > 200 ? "..." : "") + "]", !sql_noerror && !this->disableLogError);
+				if(!sql_noerror && !this->disableLogError && (verbosity > 1 || sverb.query_error)) {
 					cout << endl << "ERROR IN QUERY: " << endl
 					     << preparedQuery << endl;
 				}
@@ -857,7 +929,8 @@ bool SqlDb_mysql::query(string query, bool callFromStoreProcessWithFixDeadlock, 
 						if(pass < this->maxQueryPass - 1) {
 							this->reconnect();
 						}
-					} else if(sql_noerror || sql_disable_next_attempt_if_error || this->disableNextAttemptIfError ||
+					} else if(sql_noerror || sql_disable_next_attempt_if_error || 
+						  this->disableLogError || this->disableNextAttemptIfError ||
 						  this->getLastError() == ER_PARSE_ERROR ||
 						  this->getLastError() == ER_NO_REFERENCED_ROW_2 ||
 						  (callFromStoreProcessWithFixDeadlock && this->getLastError() == ER_LOCK_DEADLOCK)) {
@@ -1189,10 +1262,11 @@ bool SqlDb_odbc::query(string query, bool callFromStoreProcessWithFixDeadlock, c
 			}
 			rslt = SQLExecDirect(this->hStatement, (SQLCHAR*)preparedQuery.c_str(), SQL_NTS);   
 			if(!this->okRslt(rslt) && rslt != SQL_NO_DATA) {
-				if(!sql_noerror) {
+				if(!sql_noerror && !this->disableLogError) {
 					this->checkLastError("odbc query error", true);
 				}
-				if(sql_noerror || sql_disable_next_attempt_if_error || this->disableNextAttemptIfError) {
+				if(sql_noerror || sql_disable_next_attempt_if_error || 
+				   this->disableLogError || this->disableNextAttemptIfError) {
 					break;
 				}
 				else if(rslt == SQL_ERROR || rslt == SQL_INVALID_HANDLE) {
@@ -2794,6 +2868,12 @@ void SqlDb_mysql::createSchema(SqlDb *sourceDb) {
 			`sip-register-timeout` tinyint DEFAULT 5,\
 		PRIMARY KEY (`id`)\
 	) ENGINE=InnoDB DEFAULT CHARSET=latin1;");
+	this->query(
+	"CREATE TABLE IF NOT EXISTS `sensor_config` (\
+			`id` int NOT NULL AUTO_INCREMENT,\
+			`id_sensor` int unsigned DEFAULT NULL,\
+		PRIMARY KEY (`id`)\
+	) ENGINE=InnoDB DEFAULT CHARSET=latin1;");
 #endif
 
 	this->query(
@@ -3503,7 +3583,7 @@ void SqlDb_mysql::createSchema(SqlDb *sourceDb) {
 
 	this->query(
 	"CREATE TABLE IF NOT EXISTS `register` (\
-			`ID` int unsigned NOT NULL AUTO_INCREMENT,\
+			`ID` bigint unsigned NOT NULL AUTO_INCREMENT,\
 			`id_sensor` int unsigned NOT NULL,\
 			`fname` BIGINT NULL default NULL,\
 			`calldate` datetime NOT NULL,\
@@ -5476,6 +5556,7 @@ void dropMysqlPartitionsCdr() {
 	   opt_cleandatabase_register_failed > 0) {
 		syslog(LOG_NOTICE, "drop old partitions - begin");
 		SqlDb *sqlDb = createSqlObject();
+		sqlDb->setDisableLogError();
 		sqlDb->setDisableNextAttemptIfError();
 		if(opt_cleandatabase_cdr > 0) {
 			time_t act_time = time(NULL);

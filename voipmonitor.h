@@ -64,9 +64,10 @@
 
 using namespace std;
 
-void reload_config();
+void reload_config(const char *jsonConfig = NULL);
+void hot_restart();
+void hot_restart_with_json_config(const char *jsonConfig);
 void reload_capture_rules();
-void set_context_config();
 void convert_filesindex();
 
 void terminate_packetbuffer();

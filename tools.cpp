@@ -2057,7 +2057,7 @@ void ParsePacket::setStdParse() {
 	if(opt_update_dstnum_onanswer) {
 		addNode("via:");
 	}
-	extern int exists_columns_cdr_reason;
+	extern bool exists_columns_cdr_reason;
 	if(exists_columns_cdr_reason) {
 		addNode("reason:");
 	}
@@ -2416,6 +2416,17 @@ void JsonExport::add(const char *name, u_int64_t content) {
 	items.push_back(item);
 }
 
+void JsonExport::addJson(const char *name, const string &content) {
+	this->addJson(name, content.c_str());
+}
+
+void JsonExport::addJson(const char *name, const char *content) {
+	JsonExportItem_template<string> *item = new FILE_LINE JsonExportItem_template<string>;
+	item->setTypeItem(_json);
+	item->setName(name);
+	item->setContent(string(content));
+	items.push_back(item);
+}
 
 //------------------------------------------------------------------------------
 // pcap_dump_open with set buffer
@@ -3134,6 +3145,24 @@ string url_encode(const string &value) {
 		}
 		else {
 			escaped << '%' << setw(2) << ((int) c) << setw(0);
+		}
+	}
+	return escaped.str();
+}
+
+string json_encode(const string &value) {
+	ostringstream escaped;
+	for (string::const_iterator i = value.begin(), n = value.end(); i != n; ++i) {
+		switch (*i) {
+			case '\\':	escaped << "\\\\"; break;
+			case '"':	escaped << "\\\""; break;
+			case '/':	escaped << "\\/"; break;
+			case '\b':	escaped << "\\b"; break;
+			case '\f':	escaped << "\\f"; break;
+			case '\n':	escaped << "\\n"; break;
+			case '\r':	escaped << "\\r"; break;
+			case '\t':	escaped << "\\t"; break;
+			default:	escaped << *i; break;
 		}
 	}
 	return escaped.str();

@@ -28,6 +28,8 @@ public:
 	cConfigItem(const char *name);
 	virtual ~cConfigItem() {}
 	cConfigItem *addAlias(const char *name_alias);
+	cConfigItem *setDefaultValueStr(const char *defaultValueStr);
+	cConfigItem *setNaDefaultValueStr();
 	void setConfigFileSection(const char *config_file_section);
 	cConfigItem *addValue(const char *str, int value);
 	cConfigItem *addValues(const char *str_values);
@@ -45,6 +47,12 @@ protected:
 	virtual void initOther() {}
 	virtual void initVirtParam() {}
 	virtual void initBeforeSet() {}
+	virtual string getTypeName() = 0;
+	virtual list<sMapValue> getMenuItems();
+	void addItemToMenuItems(list<sMapValue> *menu, sMapValue menuItem);
+	string getJson();
+	void setDefaultValue();
+	void clearToDefaultValue();
 protected:
 	string config_name;
 	list<string> config_name_alias;
@@ -52,6 +60,8 @@ protected:
 	class cConfig *config;
 	list<sMapValue> mapValues;
 	bool set;
+	string defaultValueStr;
+	bool naDefaultValueStr;
 friend class cConfig;
 };
 
@@ -59,6 +69,14 @@ class cConfigItem_yesno : public cConfigItem {
 public:
 	cConfigItem_yesno(const char *name, bool *param);
 	cConfigItem_yesno(const char *name, int *param = NULL);
+	cConfigItem_yesno *disableYes() {
+		disable_yes = true;
+		return(this);
+	}
+	cConfigItem_yesno *disableNo() {
+		disable_no = true;
+		return(this);
+	}
 	cConfigItem_yesno *setNeg() {
 		neg = true;
 		return(this);
@@ -77,16 +95,24 @@ protected:
 		param_int = NULL;
 	}
 	void initOther() {
+		disable_yes = false;
+		disable_no =  false;
 		onlyIfParamIsNo = false;
 		neg = false;
 	}
 	void initVirtParam() {
 		param_virt = 0;
 	}
+	string getTypeName() {
+		return("yesno");
+	}
+	list<sMapValue> getMenuItems();
 protected:
 	bool *param_bool;
 	int *param_int;
 	int param_virt;
+	bool disable_yes;
+	bool disable_no;
 	bool neg;
 	bool onlyIfParamIsNo;
 };
@@ -143,6 +169,9 @@ protected:
 	void initVirtParam() {
 		param_virt = 0;
 	}
+	string getTypeName() {
+		return(ip ? "ip" : "integer");
+	}
 protected:
 	int *param_int;
 	unsigned int *param_uint;
@@ -169,6 +198,9 @@ protected:
 	void initParamPointers() {
 		param_float = NULL;
 		param_double = NULL;
+	}
+	string getTypeName() {
+		return("float");
 	}
 protected:
 	float *param_float;
@@ -201,10 +233,13 @@ protected:
 	}
 	void initOther() {
 		prefix = "";
-		explodeSeparator = "";
+		explodeSeparator = ";";
 	}
 	void initVirtParam() {
 		param_virt = "";
+	}
+	string getTypeName() {
+		return(param_vect_str ? "string_list" : "string");
 	}
 protected:
 	string *param_str;
@@ -227,6 +262,9 @@ protected:
 		param_from = NULL;
 		param_to = NULL;
 	}
+	string getTypeName() {
+		return("hour_interval");
+	}
 protected:
 	int *param_from;
 	int *param_to;
@@ -244,6 +282,9 @@ protected:
 	void initParamPointers() {
 		param_port_matrix = NULL;
 	}
+	string getTypeName() {
+		return("ports");
+	}
 protected:
 	char *param_port_matrix;
 };
@@ -260,6 +301,9 @@ protected:
 		param_adresses = NULL;
 		param_nets = NULL;
 	}
+	string getTypeName() {
+		return("hosts");
+	}
 protected:
 	vector<u_int32_t> *param_adresses;
 	vector<d_u_int32_t> *param_nets;
@@ -268,12 +312,16 @@ protected:
 class cConfigItem_ip_port : public cConfigItem {
 public:
 	cConfigItem_ip_port(const char* name, ip_port *param);
+	ip_port getValue();
 	string getValueStr(bool configFile = false);
 protected:
 	bool setParamFromConfigFile(CSimpleIniA *ini);
 	bool setParamFromValueStr(string value_str);
 	void initParamPointers() {
 		param_ip_port = NULL;
+	}
+	string getTypeName() {
+		return("ip_port");
 	}
 protected:
 	ip_port *param_ip_port;
@@ -290,6 +338,9 @@ protected:
 	void initParamPointers() {
 		param_ip_port_string_map = NULL;
 	}
+	string getTypeName() {
+		return("ip_port_str_list");
+	}
 protected:
 	map<d_u_int32_t, string> *param_ip_port_string_map;
 };
@@ -305,6 +356,9 @@ protected:
 	void initParamPointers() {
 		param_nat_aliases = NULL;
 	}
+	string getTypeName() {
+		return("nat_aliases_list");
+	}
 protected:
 	nat_aliases_t *param_nat_aliases;
 };
@@ -318,6 +372,9 @@ protected:
 	bool setParamFromValueStr(string value_str);
 	void initParamPointers() {
 		param_custom_headers = NULL;
+	}
+	string getTypeName() {
+		return("custom_headers_list");
 	}
 protected:
 	vector<dstring> *param_custom_headers;
@@ -335,6 +392,9 @@ protected:
 		param_type_compress_cs = NULL;
 		param_type_compress_fzh = NULL;
 	}
+	string getTypeName() {
+		return(param_type_compress_cs ? "type_compress_stream" : "type_compress_fileziphandle");
+	}
 protected:
 	CompressStream::eTypeCompress *param_type_compress_cs;
 	FileZipHandler::eTypeCompress *param_type_compress_fzh;
@@ -351,8 +411,14 @@ public:
 	bool loadFromConfigFile(const char *filename, string *error = NULL);
 	void evSetConfigItem(cConfigItem *configItem);
 	string getContentConfig(bool configFile = false);
+	string getJson(bool onlyIfSet = false);
+	void setFromJson(const char *jsonStr, bool onlyIfSet = false);
+	void setFromMysql();
+	void putToMysql();
+	void setDefaultValues();
+	void clearToDefaultValues();
 private:
-	void loadFromConfigFileError(const char *errorString, const char *filename, string *error);
+	void loadFromConfigFileError(const char *errorString, const char *filename, string *error = NULL);
 private:
 	list<string> config_list;
 	map<string, cConfigItem*> config_map;

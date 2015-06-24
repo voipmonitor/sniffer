@@ -1568,7 +1568,8 @@ class JsonExport {
 public:
 	enum eTypeItem {
 		_number,
-		_string
+		_string,
+		_json
 	};
 	class JsonExportItem {
 	public:
@@ -1613,6 +1614,8 @@ public:
 	void add(const char *name, string content);
 	void add(const char *name, const char *content);
 	void add(const char *name, u_int64_t content);
+	void addJson(const char *name, const string &content);
+	void addJson(const char *name, const char *content);
 private:
 	vector<JsonExportItem*> items;
 };
@@ -1633,6 +1636,7 @@ int __gunzip(FILE *zip, FILE *unzip);
 bool isGunzip(const char *zipFilename);
 
 string url_encode(const string &value);
+string json_encode(const string &value);
 
 class SocketSimpleBufferWrite {
 public:

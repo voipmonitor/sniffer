@@ -45,6 +45,7 @@
 #include "tar.h"
 #include "http.h"
 #include "send_call_info.h"
+#include "config_param.h"
 
 //#define BUFSIZE 1024
 //define BUFSIZE 20480
@@ -78,6 +79,9 @@ extern char ssh_remote_listenhost[1024];
 extern unsigned int ssh_remote_listenport;
 extern int enable_bad_packet_order_warning;
 extern ip_port opt_pcap_queue_send_to_ip_port;
+
+extern cConfig CONFIG;
+extern bool useNewCONFIG;
 
 int opt_blocktarwrite = 0;
 int opt_blockasyncprocess = 0;
@@ -1315,6 +1319,33 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 	} else if(strstr(buf, "reload") != NULL) {
 		reload_config();
 		if ((size = sendvm(client, sshchannel, "reload ok", 9, 0)) == -1){
+			cerr << "Error sending data to client" << endl;
+			return -1;
+		}
+		return 0;
+	} else if(strstr(buf, "hot_restart") != NULL) {
+		hot_restart();
+		if ((size = sendvm(client, sshchannel, "hot restart ok", 9, 0)) == -1){
+			cerr << "Error sending data to client" << endl;
+			return -1;
+		}
+		return 0;
+	} else if(strstr(buf, "get_json_config") != NULL) {
+		string rslt = useNewCONFIG ? CONFIG.getJson() : "not supported";
+		if ((size = sendvm(client, sshchannel, rslt.c_str(), rslt.length(), 0)) == -1){
+			cerr << "Error sending data to client" << endl;
+			return -1;
+		}
+		return 0;
+	} else if(strstr(buf, "set_json_config ") != NULL) {
+		string rslt;
+		if(useNewCONFIG) {
+			hot_restart_with_json_config(buf + 16);
+			rslt = "ok";
+		} else {
+			rslt = "not supported";
+		}
+		if ((size = sendvm(client, sshchannel, rslt.c_str(), rslt.length(), 0)) == -1){
 			cerr << "Error sending data to client" << endl;
 			return -1;
 		}

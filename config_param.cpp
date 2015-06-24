@@ -5,6 +5,7 @@
 
 #include "config_param.h"
 #include "voipmonitor.h"
+#include "sql_db.h"
 
 
 extern int verbosity;
@@ -14,10 +15,21 @@ cConfigItem::cConfigItem(const char *name) {
 	config_name = name;
 	config_file_section = "general";
 	set = false;
+	naDefaultValueStr = false;
 }
 
 cConfigItem *cConfigItem::addAlias(const char *name_alias) {
 	config_name_alias.push_back(name_alias);
+	return(this);
+}
+
+cConfigItem *cConfigItem::setDefaultValueStr(const char *defaultValueStr) {
+	this->defaultValueStr = defaultValueStr;
+	return(this);
+}
+
+cConfigItem *cConfigItem::setNaDefaultValueStr() {
+	naDefaultValueStr = false;
 	return(this);
 }
 
@@ -98,6 +110,58 @@ void cConfigItem::init() {
 	initParamPointers();
 	initOther();
 	initVirtParam();
+}
+
+list<cConfigItem::sMapValue> cConfigItem::getMenuItems() {
+	list<sMapValue> menu;
+	for(list<sMapValue>::iterator iter = mapValues.begin(); iter != mapValues.end(); iter++) {
+		addItemToMenuItems(&menu, *iter);
+	}
+	return(menu);
+}
+
+void cConfigItem::addItemToMenuItems(list<sMapValue> *menu, sMapValue menuItem) {
+	for(list<sMapValue>::iterator iter = menu->begin(); iter != menu->end(); iter++) {
+		if(iter->value == menuItem.value) {
+			return;
+		}
+	}
+	menu->push_back(menuItem);
+}
+
+string cConfigItem::getJson() {
+	JsonExport json;
+	json.add("name", config_name);
+	json.add("type", getTypeName());
+	json.add("set", set);
+	json.add("value", json_encode(getValueStr()));
+	list<sMapValue> menuItems = getMenuItems();
+	if(menuItems.size()) {
+		ostringstream outStr;
+		int counter = 0;
+		for(list<sMapValue>::iterator iter = menuItems.begin(); iter != menuItems.end(); iter++) {
+			if(counter) {
+				outStr << ';';
+			}
+			outStr << iter->str << ':' << iter->value;
+			++counter;
+		}
+		json.add("menu", json_encode(outStr.str()));
+	}
+	return(json.getJson());
+}
+
+void cConfigItem::setDefaultValue() {
+	if(defaultValueStr.empty() && !naDefaultValueStr) {
+		 defaultValueStr = getValueStr();
+	}
+}
+
+void cConfigItem::clearToDefaultValue() {
+	if(!defaultValueStr.empty() && !naDefaultValueStr) {
+		 setParamFromValueStr(defaultValueStr);
+	}
+	set = false;
 }
 
 cConfigItem_yesno::cConfigItem_yesno(const char *name, bool *param) 
@@ -183,6 +247,26 @@ bool cConfigItem_yesno::setParamFromValueStr(string value_str) {
 		}
 	}
 	return(ok > 0);
+}
+
+list<cConfigItem::sMapValue> cConfigItem_yesno::getMenuItems() {
+	list<sMapValue> menu;
+	menu = cConfigItem::getMenuItems();
+	bool existsNumYes = false, existsNumNo = false;
+	for(list<sMapValue>::iterator iter = menu.begin(); iter != menu.end(); iter++) {
+		if(iter->value == 1) {
+			existsNumYes = true;
+		} else if(iter->value == 0) {
+			existsNumNo = true;
+		}
+	}
+	if(!existsNumYes && !disable_yes) {
+		menu.push_front(sMapValue("yes", 1));
+	}
+	if(!existsNumNo && !disable_no) {
+		menu.push_back(sMapValue("no", 0));
+	}
+	return(menu);
 }
 
 cConfigItem_integer::cConfigItem_integer(const char *name, int *param)
@@ -725,8 +809,12 @@ cConfigItem_ip_port::cConfigItem_ip_port(const char* name, ip_port *param)
 	param_ip_port = param;
 }
 
+ip_port cConfigItem_ip_port::getValue() {
+	return(*param_ip_port);
+}
+
 string cConfigItem_ip_port::getValueStr(bool configFile) {
-	if(!param_ip_port) {
+	if(!param_ip_port || !*param_ip_port) {
 		return("");
 	}
 	ostringstream outStr;
@@ -751,8 +839,8 @@ bool cConfigItem_ip_port::setParamFromValueStr(string value_str) {
 		if(*value && port) {
 			param_ip_port->set_ip(trim_str(value));
 			param_ip_port->set_port(port);
+			return(true);
 		}
-		return(true);
 	}
 	return(false);
 }
@@ -1034,6 +1122,9 @@ void cConfig::addConfigItem(cConfigItem *configItem) {
 }
 
 bool cConfig::loadFromConfigFileOrDirectory(const char *filename) {
+	if(!FileExists((char*)filename)) {
+		return(false);
+	}
 	if(DirExists((char*)filename)) {
 		DIR *dir = opendir(filename);
 		if(dir != NULL) {
@@ -1051,7 +1142,7 @@ bool cConfig::loadFromConfigFileOrDirectory(const char *filename) {
 				}
 			}
 		} else {
-			syslog(LOG_ERR, "Cannot access directory file %s!", filename);
+			loadFromConfigFileError("Cannot access directory file %s!", filename);
 			return(false);
 		}
 	} else {
@@ -1138,8 +1229,8 @@ bool cConfig::loadFromConfigFile(const char *filename, string *error) {
 
 void cConfig::loadFromConfigFileError(const char *errorString, const char *filename, string *error) {
 	char error_buff[1024];
-	printf("ERROR\n");
 	snprintf(error_buff, sizeof(error_buff), errorString, filename);
+	printf("ERROR: %s\n", error_buff);
 	if(error) *error = error_buff;
 	syslog(LOG_ERR, error_buff);
 }
@@ -1158,4 +1249,134 @@ string cConfig::getContentConfig(bool configFile) {
 		}
 	}
 	return(outStr.str());
+}
+
+string cConfig::getJson(bool onlyIfSet) {
+	JsonExport json;
+	for(list<string>::iterator iter = config_list.begin(); iter != config_list.end(); iter++) {
+		map<string, cConfigItem*>::iterator iter_map = config_map.find(*iter);
+		if(iter_map != config_map.end()) {
+			if(!onlyIfSet || iter_map->second->set) {
+				json.addJson(iter->c_str(), iter_map->second->getJson());
+			}
+		}
+	}
+	return(json.getJson());
+}
+
+void cConfig::setFromJson(const char *jsonStr, bool onlyIfSet) {
+	JsonItem jsonData;
+	jsonData.parse(jsonStr);
+	for(size_t i = 0; i < jsonData.getLocalCount(); i++) {
+		JsonItem *item = jsonData.getLocalItem(i);
+		string config_name = item->getLocalName();
+		string value = item->getValue("value");
+		int set = atoi(item->getValue("set").c_str());
+		if(!onlyIfSet || set) {
+			map<string, cConfigItem*>::iterator iter_map = config_map.find(config_name);
+			if(iter_map != config_map.end()) {
+				if(iter_map->second->setParamFromValueStr(value)) {
+					iter_map->second->set = true;
+					evSetConfigItem(iter_map->second);
+				}
+			}
+		}
+	}
+}
+
+void cConfig::setFromMysql() {
+	SqlDb *sqlDb = createSqlObject();
+	ostringstream q;
+	q << "SELECT * FROM sensor_config WHERE id_sensor ";
+	extern int opt_id_sensor;
+	if(opt_id_sensor) {
+		q << "= " << opt_id_sensor;
+	} else {
+		q << "IS NULL";
+	}
+	sqlDb->query(q.str());
+	SqlDb_row row = sqlDb->fetchRow();
+	if(row) {
+		for(size_t i = 0; i < row.getCountFields(); i++) {
+			string column = row.getNameField(i);
+			if(column != "id" && column != "id_sensor" && !row.isNull(column)) {
+				map<string, cConfigItem*>::iterator iter_map = config_map.find(column);
+				if(iter_map != config_map.end()) {
+					if(iter_map->second->setParamFromValueStr(row[column])) {
+						iter_map->second->set = true;
+						evSetConfigItem(iter_map->second);
+					}
+				}
+			}
+		}
+	}
+	delete sqlDb;
+}
+
+void cConfig::putToMysql() {
+	SqlDb *sqlDb = createSqlObject();
+	list<string> sensor_config_columns;
+	sqlDb->query("show columns from sensor_config");
+	SqlDb_row row;
+	while(row = sqlDb->fetchRow()) {
+		sensor_config_columns.push_back(row[0]);
+	}
+	ostringstream q;
+	q << "SELECT * FROM sensor_config WHERE id_sensor ";
+	extern int opt_id_sensor;
+	if(opt_id_sensor) {
+		q << "= " << opt_id_sensor;
+	} else {
+		q << "IS NULL";
+	}
+	sqlDb->query(q.str());
+	SqlDb_row row_get = sqlDb->fetchRow();
+	SqlDb_row row_save;
+	if(row_get) {
+		for(size_t i = 0; i < row_get.getCountFields(); i++) {
+			string column = row_get.getNameField(i);
+			if(column != "id" && column != "id_sensor" && !row_get.isNull(column)) {
+				row_save.add((const char*)NULL, column);
+			}
+		}
+	}
+	for(list<string>::iterator iter = config_list.begin(); iter != config_list.end(); iter++) {
+		map<string, cConfigItem*>::iterator iter_map = config_map.find(*iter);
+		if(iter_map != config_map.end()) {
+			if(iter_map->second->set) {
+				bool columnExists = false;
+				for(list<string>::iterator iter_column = sensor_config_columns.begin(); iter_column != sensor_config_columns.end(); iter_column++) {
+					if(*iter_column == *iter) {
+						columnExists = true;
+						break;
+					}
+				}
+				if(!columnExists) {
+					sqlDb->query("alter table sensor_config add column `" + *iter + "` text");
+				}
+				row_save.add(iter_map->second->getValueStr(), *iter);
+			}
+		}
+	}
+	if(row_get) {
+		char id_cond[20];
+		sprintf(id_cond, "ID = %i", atoi(row_get["id"].c_str()));
+		sqlDb->update("sensor_config", row_save, id_cond);
+	} else {
+		sqlDb->insert("sensor_config", row_save);
+	}
+	delete sqlDb;
+}
+
+void cConfig::setDefaultValues() {
+	for(map<string, cConfigItem*>::iterator iter = config_map.begin(); iter != config_map.end(); iter++) {
+		iter->second->setDefaultValue();
+	}
+}
+
+void cConfig::clearToDefaultValues() {
+	for(map<string, cConfigItem*>::iterator iter = config_map.begin(); iter != config_map.end(); iter++) {
+		iter->second->clearToDefaultValue();
+		evSetConfigItem(iter->second);
+	}
 }
