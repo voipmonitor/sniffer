@@ -2495,6 +2495,7 @@ Call *process_packet(bool is_ssl, u_int64_t packet_number,
 			if(call->lastsrcip != saddr) { call->oneway = 0; };
 			call->lastSIPresponseNum = lastSIPresponseNum;
 			call->msgcount++;
+			bool goto_endsip = false;
 			if(sip_method == REGISTER) {
 				call->regcount++;
 				if(verbosity > 3) syslog(LOG_DEBUG, "REGISTER Call-ID[%s] regcount[%d]", call->call_id.c_str(), call->regcount);
@@ -2569,7 +2570,7 @@ Call *process_packet(bool is_ssl, u_int64_t packet_number,
 						saddr, source, daddr, dest,
 						call, "update expires header from all REGISTER dialog messages (from 200 OK which can override the expire)");
 				}
-				goto endsip;
+				goto_endsip = true;
 			} else if(sip_method == RES401 or sip_method == RES403 or sip_method == RES404) {
 				if(sip_method == RES401) {
 					call->reg401count++;
@@ -2593,7 +2594,7 @@ Call *process_packet(bool is_ssl, u_int64_t packet_number,
 							sip_method == RES403 ? "REGISTER 403" :
 							sip_method == RES404 ? "REGISTER 404" : "");
 					}
-					goto endsip;
+					goto_endsip = true;
 				}
 			}
 			if(call->regstate && !call->regresponse) {
@@ -2601,6 +2602,9 @@ Call *process_packet(bool is_ssl, u_int64_t packet_number,
 					fraudRegisterResponse(call->sipcallerip[0], call->first_packet_time * 1000000ull + call->first_packet_usec);
 				}
 				call->regresponse = true;
+			}
+			if(goto_endsip) {
+				goto endsip;
 			}
 			if(call->msgcount > 20) {
 				// too many REGISTER messages within the same callid
