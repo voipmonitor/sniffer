@@ -3503,7 +3503,7 @@ void SqlDb_mysql::createSchema(SqlDb *sourceDb) {
 
 	this->query(
 	"CREATE TABLE IF NOT EXISTS `register` (\
-			`ID` int unsigned NOT NULL AUTO_INCREMENT,\
+			`ID` bigint unsigned NOT NULL AUTO_INCREMENT,\
 			`id_sensor` int unsigned NOT NULL,\
 			`fname` BIGINT NULL default NULL,\
 			`calldate` datetime NOT NULL,\
