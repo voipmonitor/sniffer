@@ -266,5 +266,5 @@ extern uint32_t opt_scanpcapmethod;  // Specifies how to watch for new files in 
 extern char opt_convert_char[64];
 extern unsigned int opt_openfile_max;
 
-void config_load_mysql();
+void config_load_mysql(bool checkConnect = false);
 

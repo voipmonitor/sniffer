@@ -14,8 +14,15 @@
 using namespace std;
 
 void
-config_load_mysql() {
+config_load_mysql(bool checkConnect) {
 	SqlDb *sqlDb = createSqlObject();
+	if(checkConnect) {
+		sqlDb->setSilentConnect();
+		if(!sqlDb->connect()) {
+			delete sqlDb;
+			return;
+		}
+	}
 	SqlDb_row row;
 	stringstream q;
 	if(opt_id_sensor) {

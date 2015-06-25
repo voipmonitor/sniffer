@@ -283,6 +283,7 @@ SqlDb::SqlDb() {
 	this->enableSqlStringInContent = false;
 	this->disableNextAttemptIfError = false;
 	this->disableLogError = false;
+	this->silentConnect = false;
 	this->connecting = false;
 	this->cloud_data_rows = 0;
 	this->cloud_data_index = 0;
@@ -473,7 +474,7 @@ string SqlDb::insertQuery(string table, vector<SqlDb_row> *rows, bool enableSqlS
 
 string SqlDb::updateQuery(string table, SqlDb_row row, const char *whereCond, bool enableSqlStringInContent, bool escapeAll) {
 	string query = 
-		string("UPDATE ") + table + row.implodeFieldContent(this->getFieldSeparator(), this->getFieldBorder(), this->getContentBorder(), enableSqlStringInContent || this->enableSqlStringInContent, escapeAll);
+		string("UPDATE ") + table + " set " + row.implodeFieldContent(this->getFieldSeparator(), this->getFieldBorder(), this->getContentBorder(), enableSqlStringInContent || this->enableSqlStringInContent, escapeAll);
 	if(whereCond) {
 		query += string(" WHERE ") + whereCond;
 	}
@@ -576,6 +577,10 @@ void SqlDb::setDisableLogError() {
 
 void SqlDb::setEnableLogError() {
 	this->disableLogError = false;
+}
+
+void SqlDb::setSilentConnect() {
+	this->silentConnect = true;;
 }
 
 void SqlDb::cleanFields() {
@@ -751,7 +756,9 @@ bool SqlDb_mysql::connect(bool createDb, bool mainInit) {
 			this->connecting = false;
 			return(rslt);
 		} else {
-			this->checkLastError("connect error (" + this->conn_server + ")", true);
+			if(!this->silentConnect) {
+				this->checkLastError("connect error (" + this->conn_server + ")", true);
+			}
 		}
 	} else {
 		this->setLastErrorString("mysql_init failed - insufficient memory ?", true);

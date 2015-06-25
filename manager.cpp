@@ -1840,7 +1840,8 @@ getwav:
 			   << "\"pbCountPacketDrop\": \"" << pbCountPacketDrop << "\","
 			   << "\"uptime\": \"" << getUptime() << "\","
 			   << "\"count_live_sniffers\": \"" << countLiveSniffers << "\","
-			   << "\"upgrade_by_git\": \"" << opt_upgrade_by_git << "\""
+			   << "\"upgrade_by_git\": \"" << opt_upgrade_by_git << "\","
+			   << "\"use_new_config\": \"" << useNewCONFIG << "\""
 			   << "}";
 		outStrStat << endl;
 		string outStrStatStr = outStrStat.str();

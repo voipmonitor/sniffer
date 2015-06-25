@@ -161,6 +161,7 @@ public:
 	void setEnableNextAttemptIfError();
 	void setDisableLogError();
 	void setEnableLogError();
+	void setSilentConnect();
 	bool isCloud() {
 		return(!cloud_host.empty());
 	}
@@ -186,6 +187,7 @@ protected:
 	bool enableSqlStringInContent;
 	bool disableNextAttemptIfError;
 	bool disableLogError;
+	bool silentConnect;
 	bool connecting;
 	vector<string> cloud_data_columns;
 	vector<vector<string> > cloud_data;

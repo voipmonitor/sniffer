@@ -718,7 +718,7 @@ bool useNewCONFIG = 0;
 
 
 static void parse_command_line_arguments(int argc, char *argv[]);
-static void get_command_line_arguments(int only = 0);
+static void get_command_line_arguments();
 static void set_context_config();
 static bool check_complete_parameters();
  
@@ -1730,11 +1730,10 @@ int main(int argc, char *argv[]) {
 	openlog("voipmonitor", LOG_CONS | LOG_PERROR | LOG_PID, LOG_DAEMON);
 	
 	parse_command_line_arguments(argc, argv);
-	get_command_line_arguments(203);
+	get_command_line_arguments();
 	if(useNewCONFIG) {
 		CONFIG.addConfigItems();
 	}
-	get_command_line_arguments('7');
 	if(configfile[0]) {
 		if(useNewCONFIG) {
 			CONFIG.loadFromConfigFileOrDirectory(configfile);
@@ -1745,12 +1744,11 @@ int main(int argc, char *argv[]) {
 			load_config((char*)"/etc/voipmonitor/conf.d/");
 		}
 	}
-	get_command_line_arguments('c');
-	if(!opt_nocdr && isSqlDriver("mysql") && opt_mysqlloadconfig) {
+	if(!opt_nocdr && !opt_untar_gui_params && isSqlDriver("mysql") && opt_mysqlloadconfig) {
 		if(useNewCONFIG) {
-			CONFIG.setFromMysql();
+			CONFIG.setFromMysql(true);
 		} else {
-			config_load_mysql();
+			config_load_mysql(true);
 		}
 	}
 	get_command_line_arguments();
@@ -3898,8 +3896,7 @@ void cConfig::addConfigItems() {
 	addConfigItem(new cConfigItem_yesno("dscp", &opt_dscp));
 	addConfigItem(new cConfigItem_yesno("cdrproxy", &opt_cdrproxy));
 	addConfigItem(new cConfigItem_yesno("mos_g729", &opt_mos_g729));
-	addConfigItem((new cConfigItem_yesno("nocdr", &opt_nocdr))
-		->setOnlyIfParamIsNo());
+	addConfigItem(new cConfigItem_yesno("nocdr", &opt_nocdr));
 	addConfigItem(new cConfigItem_yesno("only_cdr_next", &opt_only_cdr_next));
 	addConfigItem(new cConfigItem_yesno("skipdefault", &opt_skipdefault));
 	addConfigItem(new cConfigItem_yesno("skinny", &opt_skinny));
@@ -4085,14 +4082,18 @@ void cConfig::addConfigItems() {
 		->setDefaultValueStr("no"));
 	addConfigItem(new cConfigItem_ip_port("mirror_destination", &opt_pcap_queue_send_to_ip_port));
 	addConfigItem((new cConfigItem_string("mirror_destination_ip"))
-		->setNaDefaultValueStr());
+		->setNaDefaultValueStr()
+		->setMinor());
 	addConfigItem((new cConfigItem_integer("mirror_destination_port"))
-		->setNaDefaultValueStr());
+		->setNaDefaultValueStr()
+		->setMinor());
 	addConfigItem(new cConfigItem_ip_port("mirror_bind", &opt_pcap_queue_receive_from_ip_port));
 	addConfigItem((new cConfigItem_string("mirror_bind_ip"))
-		->setNaDefaultValueStr());
+		->setNaDefaultValueStr()
+		->setMinor());
 	addConfigItem((new cConfigItem_integer("mirror_bind_port"))
-		->setNaDefaultValueStr());
+		->setNaDefaultValueStr()
+		->setMinor());
 	addConfigItem(new cConfigItem_integer("mirror_bind_dlt", &opt_pcap_queue_receive_dlt));
 	addConfigItem((new cConfigItem_yesno("enable_preprocess_packet", &opt_enable_preprocess_packet))
 		->addValue("sip", 2));
@@ -4190,9 +4191,11 @@ void cConfig::addConfigItems() {
 	addConfigItem(new cConfigItem_yesno("defer_create_spooldir", &opt_defer_create_spooldir));
 	addConfigItem(new cConfigItem_ip_port("sip_send", &sipSendSocket_ip_port));
 	addConfigItem((new cConfigItem_string("sip_send_ip"))
-		->setNaDefaultValueStr());
+		->setNaDefaultValueStr()
+		->setMinor());
 	addConfigItem((new cConfigItem_integer("sip_send_port"))
-		->setNaDefaultValueStr());
+		->setNaDefaultValueStr()
+		->setMinor());
 	addConfigItem(new cConfigItem_yesno("sip_send_before_packetbuffer", &opt_sip_send_before_packetbuffer));
 	addConfigItem(new cConfigItem_string("manager_sshhost", ssh_host, sizeof(ssh_host)));
 	addConfigItem(new cConfigItem_integer("manager_sshport", &ssh_port));
@@ -4490,11 +4493,9 @@ void parse_command_line_arguments(int argc, char *argv[]) {
 	}
 }
 
-void get_command_line_arguments(int only) {
+void get_command_line_arguments() {
 	for(map<int, string>::iterator iter = command_line_data.begin(); iter != command_line_data.end(); iter++) {
 		int c = iter->first;
-		if (only && only != c)
-			continue;
 		char *optarg = NULL;
 		if(iter->second.length()) {
 			optarg = new FILE_LINE char[iter->second.length() + 10];

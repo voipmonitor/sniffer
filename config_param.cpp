@@ -16,6 +16,7 @@ cConfigItem::cConfigItem(const char *name) {
 	config_file_section = "general";
 	set = false;
 	naDefaultValueStr = false;
+	minor = false;
 }
 
 cConfigItem *cConfigItem::addAlias(const char *name_alias) {
@@ -29,7 +30,12 @@ cConfigItem *cConfigItem::setDefaultValueStr(const char *defaultValueStr) {
 }
 
 cConfigItem *cConfigItem::setNaDefaultValueStr() {
-	naDefaultValueStr = false;
+	naDefaultValueStr = true;
+	return(this);
+}
+
+cConfigItem *cConfigItem::setMinor() {
+	minor = true;
 	return(this);
 }
 
@@ -135,6 +141,8 @@ string cConfigItem::getJson() {
 	json.add("type", getTypeName());
 	json.add("set", set);
 	json.add("value", json_encode(getValueStr()));
+	json.add("default", json_encode(defaultValueStr));
+	json.add("minor", minor);
 	list<sMapValue> menuItems = getMenuItems();
 	if(menuItems.size()) {
 		ostringstream outStr;
@@ -228,20 +236,16 @@ bool cConfigItem_yesno::setParamFromValueStr(string value_str) {
 			return(ok > 0);
 		}
 		if(param_bool) {
-			if(!(onlyIfParamIsNo && *param_bool)) {
-				*param_bool = yesno(value);
-				if(neg) {
-					*param_bool = !*param_bool;
-				}
+			*param_bool = yesno(value);
+			if(neg) {
+				*param_bool = !*param_bool;
 			}
 			++ok;
 		}
 		if(param_int) {
-			if(!(onlyIfParamIsNo && *param_int)) {
-				*param_int = yesno(value);
-				if(neg) {
-					*param_int = !*param_int;
-				}
+			*param_int = yesno(value);
+			if(neg) {
+				*param_int = !*param_int;
 			}
 			++ok;
 		}
@@ -599,10 +603,17 @@ bool cConfigItem_string::setParamFromValueStr(string value_str) {
 			++ok;
 		}
 		if(param_vect_str && !explodeSeparator.empty()) {
+			initBeforeSet();
 			*param_vect_str = split(value, explodeSeparator.c_str());
 		}
 	}
 	return(ok > 0);
+}
+
+void cConfigItem_string::initBeforeSet() {
+	if(param_vect_str) {
+		param_vect_str->clear();
+	}
 }
 
 cConfigItem_hour_interval::cConfigItem_hour_interval(const char *name, int *from, int *to)
@@ -803,6 +814,15 @@ bool cConfigItem_hosts::setParamFromValuesStr(vector<string> list_values_str) {
 	return(ok > 0);
 }
 
+void cConfigItem_hosts::initBeforeSet() {
+	if(param_nets) {
+		param_nets->clear();
+	}
+	if(param_adresses) {
+		param_adresses->clear();
+	}
+}
+
 cConfigItem_ip_port::cConfigItem_ip_port(const char* name, ip_port *param)
  : cConfigItem(name) {
 	init();
@@ -920,6 +940,12 @@ bool cConfigItem_ip_port_str_map::setParamFromValuesStr(vector<string> list_valu
 	return(ok > 0);
 }
 
+void cConfigItem_ip_port_str_map::initBeforeSet() {
+	if(param_ip_port_string_map) {
+		param_ip_port_string_map->clear();
+	}
+}
+
 cConfigItem_nat_aliases::cConfigItem_nat_aliases(const char* name, nat_aliases_t *nat_aliases)
  : cConfigItem(name) {
 	init();
@@ -993,6 +1019,12 @@ bool cConfigItem_nat_aliases::setParamFromValuesStr(vector<string> list_values_s
 	return(ok > 0);
 }
 
+void cConfigItem_nat_aliases::initBeforeSet() {
+	if(param_nat_aliases) {
+		param_nat_aliases->clear();
+	}
+}
+
 cConfigItem_custom_headers::cConfigItem_custom_headers(const char* name, vector<dstring> *custom_headers)
  : cConfigItem(name) {
 	init();
@@ -1025,6 +1057,7 @@ bool cConfigItem_custom_headers::setParamFromValueStr(string value_str) {
 		return(false);
 	}
 	int ok = 0;
+	initBeforeSet();
 	const char *value = value_str.c_str();
 	char *pos = (char*)value;
 	while(pos && *pos) {
@@ -1042,6 +1075,12 @@ bool cConfigItem_custom_headers::setParamFromValueStr(string value_str) {
 		pos = posSep ? posSep + 1 : NULL;
 	}
 	return(ok > 0);
+}
+
+void cConfigItem_custom_headers::initBeforeSet() {
+	if(param_custom_headers) {
+		param_custom_headers->clear();
+	}
 }
 
 cConfigItem_type_compress::cConfigItem_type_compress(const char* name, CompressStream::eTypeCompress *type_compress)
@@ -1253,11 +1292,15 @@ string cConfig::getContentConfig(bool configFile) {
 
 string cConfig::getJson(bool onlyIfSet) {
 	JsonExport json;
+	int counter = 1;
 	for(list<string>::iterator iter = config_list.begin(); iter != config_list.end(); iter++) {
 		map<string, cConfigItem*>::iterator iter_map = config_map.find(*iter);
 		if(iter_map != config_map.end()) {
 			if(!onlyIfSet || iter_map->second->set) {
-				json.addJson(iter->c_str(), iter_map->second->getJson());
+				char counter_str_with_name[100];
+				snprintf(counter_str_with_name, sizeof(counter_str_with_name), "%03i:%s", counter, iter->c_str());
+				json.addJson(counter_str_with_name, iter_map->second->getJson());
+				++counter;
 			}
 		}
 	}
@@ -1269,7 +1312,7 @@ void cConfig::setFromJson(const char *jsonStr, bool onlyIfSet) {
 	jsonData.parse(jsonStr);
 	for(size_t i = 0; i < jsonData.getLocalCount(); i++) {
 		JsonItem *item = jsonData.getLocalItem(i);
-		string config_name = item->getLocalName();
+		string config_name = item->getValue("name");
 		string value = item->getValue("value");
 		int set = atoi(item->getValue("set").c_str());
 		if(!onlyIfSet || set) {
@@ -1284,8 +1327,15 @@ void cConfig::setFromJson(const char *jsonStr, bool onlyIfSet) {
 	}
 }
 
-void cConfig::setFromMysql() {
+void cConfig::setFromMysql(bool checkConnect) {
 	SqlDb *sqlDb = createSqlObject();
+	if(checkConnect) {
+		sqlDb->setSilentConnect();
+		if(!sqlDb->connect()) {
+			delete sqlDb;
+			return;
+		}
+	}
 	ostringstream q;
 	q << "SELECT * FROM sensor_config WHERE id_sensor ";
 	extern int opt_id_sensor;

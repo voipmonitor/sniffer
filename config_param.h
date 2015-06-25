@@ -30,6 +30,7 @@ public:
 	cConfigItem *addAlias(const char *name_alias);
 	cConfigItem *setDefaultValueStr(const char *defaultValueStr);
 	cConfigItem *setNaDefaultValueStr();
+	cConfigItem *setMinor();
 	void setConfigFileSection(const char *config_file_section);
 	cConfigItem *addValue(const char *str, int value);
 	cConfigItem *addValues(const char *str_values);
@@ -62,6 +63,7 @@ protected:
 	bool set;
 	string defaultValueStr;
 	bool naDefaultValueStr;
+	bool minor;
 friend class cConfig;
 };
 
@@ -81,10 +83,6 @@ public:
 		neg = true;
 		return(this);
 	}
-	cConfigItem_yesno *setOnlyIfParamIsNo() {
-		onlyIfParamIsNo = true;
-		return(this);
-	}
 	int getValue();
 	string getValueStr(bool configFile = false);
 protected:
@@ -97,7 +95,6 @@ protected:
 	void initOther() {
 		disable_yes = false;
 		disable_no =  false;
-		onlyIfParamIsNo = false;
 		neg = false;
 	}
 	void initVirtParam() {
@@ -114,7 +111,6 @@ protected:
 	bool disable_yes;
 	bool disable_no;
 	bool neg;
-	bool onlyIfParamIsNo;
 };
 
 class cConfigItem_integer : public cConfigItem {
@@ -225,6 +221,7 @@ public:
 protected:
 	bool setParamFromConfigFile(CSimpleIniA *ini);
 	bool setParamFromValueStr(string value_str);
+	void initBeforeSet();
 	void initParamPointers() {
 		param_str = NULL;
 		param_strchar = NULL;
@@ -297,6 +294,7 @@ protected:
 	bool setParamFromConfigFile(CSimpleIniA *ini);
 	bool setParamFromValueStr(string value_str);
 	bool setParamFromValuesStr(vector<string> list_value_str);
+	void initBeforeSet();
 	void initParamPointers() {
 		param_adresses = NULL;
 		param_nets = NULL;
@@ -335,6 +333,7 @@ protected:
 	bool setParamFromConfigFile(CSimpleIniA *ini);
 	bool setParamFromValueStr(string value_str);
 	bool setParamFromValuesStr(vector<string> list_value_str);
+	void initBeforeSet();
 	void initParamPointers() {
 		param_ip_port_string_map = NULL;
 	}
@@ -353,6 +352,7 @@ protected:
 	bool setParamFromConfigFile(CSimpleIniA *ini);
 	bool setParamFromValueStr(string value_str);
 	bool setParamFromValuesStr(vector<string> list_value_str);
+	void initBeforeSet();
 	void initParamPointers() {
 		param_nat_aliases = NULL;
 	}
@@ -370,6 +370,7 @@ public:
 protected:
 	bool setParamFromConfigFile(CSimpleIniA *ini);
 	bool setParamFromValueStr(string value_str);
+	void initBeforeSet();
 	void initParamPointers() {
 		param_custom_headers = NULL;
 	}
@@ -413,7 +414,7 @@ public:
 	string getContentConfig(bool configFile = false);
 	string getJson(bool onlyIfSet = false);
 	void setFromJson(const char *jsonStr, bool onlyIfSet = false);
-	void setFromMysql();
+	void setFromMysql(bool checkConnect = false);
 	void putToMysql();
 	void setDefaultValues();
 	void clearToDefaultValues();
