@@ -2196,6 +2196,7 @@ unsigned long ParsePacket::parseData(char *data, unsigned long datalen, bool doC
 				}
 			} else {
 				rsltDataLen = doubleEndLine + 4 - data;
+				break;
 			}
 			i += 2;
 		} else if(i == 0 || data[i - 1] == '\n') {

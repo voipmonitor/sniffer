@@ -2133,6 +2133,11 @@ static int process_packet__parse_sip_method(char *data, unsigned int datalen);
 static int parse_packet__last_sip_response(char *data, unsigned int datalen, int sip_method,
 					   char *lastSIPresponse, bool *call_cancel_lsr487);
 
+u_char *_process_packet_packet;
+pcap_pkthdr *_process_packet_header;
+char *_process_packet_data;
+int _process_packet_datalen;
+
 Call *process_packet(bool is_ssl, u_int64_t packet_number,
 		     unsigned int saddr, int source, unsigned int daddr, int dest, 
 		     char *data, int datalen, int dataoffset,
@@ -2141,7 +2146,27 @@ Call *process_packet(bool is_ssl, u_int64_t packet_number,
 		     pcap_block_store *block_store, int block_store_index, int dlt, int sensor_id, 
 		     bool mainProcess = true, int sipOffset = 0,
 		     PreProcessPacket::packet_parse_s *parsePacket = NULL) {
+ 
+	_process_packet_packet = (u_char*)packet;
+	_process_packet_header = header;
+	_process_packet_data = data;
+	_process_packet_datalen = datalen;
 
+	/*
+	char *dd = (char*)"";
+	int dd_len = strlen(dd);
+	int difflen = datalen - dd_len;
+	datalen = dd_len;
+	header->caplen -= difflen;
+	header->len = header->caplen;
+	u_char *packet_new = new u_char[header->caplen];
+	memcpy(packet_new, packet, dataoffset);
+	memcpy(packet_new + dataoffset, dd, dd_len);
+	packet = packet_new;
+	data = (char*)(packet + dataoffset);
+	istcp = 2;
+	*/
+	
 	glob_last_packet_time = header->ts.tv_sec;
 	Call *call = NULL;
 	int iscaller;
@@ -3223,15 +3248,29 @@ endsip:
 		datalen = origDatalen;
 		if(istcp &&
 		   sipDatalen < (unsigned)datalen - 11 &&
-		   (unsigned)datalen + sipOffset < header->caplen &&
-		   check_sip20(data + sipDatalen, datalen - sipDatalen)) {
-			process_packet(is_ssl, packet_number,
-				       saddr, source, daddr, dest, 
-				       data + sipDatalen, datalen - sipDatalen, dataoffset,
-				       handle, header, packet, 
-				       istcp, was_rtp, header_ip, voippacket, forceSip,
-				       block_store, block_store_index, dlt, sensor_id, 
-				       false, sipOffset + sipDatalen);
+		   (unsigned)datalen + sipOffset < header->caplen) {
+			unsigned long skipSipOffset = 0;
+			if(check_sip20(data + sipDatalen, datalen - sipDatalen)) {
+				skipSipOffset = sipDatalen;
+			} else {
+				char *pointToDoubleEndLine = (char*)memmem(data + sipDatalen, datalen - sipDatalen, "\r\n\r\n", 4);
+				if(pointToDoubleEndLine) {
+					unsigned long offsetAfterDoubleEndLine = pointToDoubleEndLine - data + 4;
+					if(offsetAfterDoubleEndLine < (unsigned)datalen - 11 &&
+					   check_sip20(data + offsetAfterDoubleEndLine, datalen - offsetAfterDoubleEndLine)) {
+						skipSipOffset = offsetAfterDoubleEndLine;
+					}
+				}
+			}
+			if(skipSipOffset) {
+				process_packet(is_ssl, packet_number,
+					       saddr, source, daddr, dest, 
+					       data + skipSipOffset, datalen - skipSipOffset, dataoffset,
+					       handle, header, packet, 
+					       istcp, was_rtp, header_ip, voippacket, forceSip,
+					       block_store, block_store_index, dlt, sensor_id, 
+					       false, sipOffset + skipSipOffset);
+			}
 		}
 		return returnCall;
 	}
