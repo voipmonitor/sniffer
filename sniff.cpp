@@ -5183,6 +5183,7 @@ void PreProcessPacket::push(bool is_ssl, u_int64_t packet_number,
 void *PreProcessPacket::outThreadFunction() {
 	this->outThreadId = get_unix_tid();
 	syslog(LOG_NOTICE, "start PreProcessPacket out thread %i", this->outThreadId);
+	unsigned usleepCounter = 0;
 	while(!this->term_preProcess) {
 		if(this->qring[this->readit]->used == 1) {
 			int was_rtp = 0;
@@ -5209,8 +5210,12 @@ void *PreProcessPacket::outThreadFunction() {
 			} else {
 				this->readit++;
 			}
+			usleepCounter = 0;
 		} else {
-			usleep(opt_preprocess_packets_qring_usleep);
+			usleep(opt_preprocess_packets_qring_usleep * 
+			       (usleepCounter > 1000 ? 20 :
+				usleepCounter > 100 ? 5 : 1));
+			++usleepCounter;
 		}
 	}
 	return(NULL);
@@ -5462,6 +5467,7 @@ void *ProcessRtpPacket::outThreadFunction() {
 	#endif
 	this->outThreadId = get_unix_tid();
 	syslog(LOG_NOTICE, "start ProcessRtpPacket out thread %i", this->outThreadId);
+	unsigned usleepCounter = 0;
 	while(!this->term_processRtp) {
 		if(this->qring[this->readit].used == 1) {
 			packet_s *_packet = &this->qring[this->readit];
@@ -5475,14 +5481,18 @@ void *ProcessRtpPacket::outThreadFunction() {
 			} else {
 				this->readit++;
 			}
+			usleepCounter = 0;
 		} else {
 			#if RTP_PROF
 			unsigned long long __prof_begin2 = rdtsc();
 			#endif
-			usleep(opt_process_rtp_packets_qring_usleep);
+			usleep(opt_process_rtp_packets_qring_usleep * 
+			       (usleepCounter > 1000 ? 20 :
+				usleepCounter > 100 ? 5 : 1));
 			#if RTP_PROF
 			__prof__ProcessRtpPacket_outThreadFunction__usleep += rdtsc() - __prof_begin2;
 			#endif
+			++usleepCounter;
 		}
 		#if RTP_PROF
 		__prof__ProcessRtpPacket_outThreadFunction = rdtsc() - __prof__ProcessRtpPacket_outThreadFunction_begin;
