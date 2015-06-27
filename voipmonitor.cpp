@@ -4099,7 +4099,7 @@ void cConfig::addConfigItems() {
 		->addValue("sip", 2));
 	addConfigItem((new cConfigItem_integer("enable_process_rtp_packet", &opt_enable_process_rtp_packet))
 		->setMaximum(MAX_PROCESS_RTP_PACKET_THREADS)
-		->addValues("yes:1|y:1")
+		->addValues("yes:1|y:1|no:0|n:0")
 		->addAlias("preprocess_rtp_threads"));
 	addConfigItem((new cConfigItem_yesno("http", &opt_enable_http))
 		->addValue("only", 2)
@@ -4637,6 +4637,7 @@ void get_command_line_arguments() {
 					} else {
 						if(verbparams[i] == "process_rtp")			sverb.process_rtp = 1;
 						else if(verbparams[i] == "read_rtp")			sverb.read_rtp = 1;
+						else if(verbparams[i] == "rtp_set_base_seq")		sverb.rtp_set_base_seq = 1;
 						else if(verbparams[i] == "check_is_caller_called")	sverb.check_is_caller_called = 1;
 						else if(verbparams[i] == "disable_threads_rtp")		sverb.disable_threads_rtp = 1;
 						else if(verbparams[i] == "packet_lost")			sverb.packet_lost = 1;
@@ -4885,6 +4886,8 @@ void set_context_config() {
 	if(opt_read_from_file) {
 		opt_enable_preprocess_packet = 0;
 		opt_enable_process_rtp_packet = 0;
+		opt_enable_http = 0;
+		opt_enable_webrtc = 0;
 		opt_enable_ssl = 0;
 		opt_pcap_dump_tar = 0;
 		opt_pcap_dump_asyncwrite = 0;

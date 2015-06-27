@@ -287,6 +287,7 @@ Call::Call(char *call_id, unsigned long call_id_len, time_t time) :
 		syslog(LOG_NOTICE, "CREATE CALL %s", this->call_id.c_str());
 	}
 	forcemark[0] = forcemark[1] = 0;
+	_forcemark_lock = 0;
 	a_mos_lqo = -1;
 	b_mos_lqo = -1;
 	oneway = 1;
@@ -656,8 +657,16 @@ Call::refresh_data_ip_port(in_addr_t addr, unsigned short port, bool iscaller, i
 			// reinit rtpmap
 			memcpy(this->rtpmap[RTPMAP_BY_CALLERD ? iscaller : i], rtpmap, MAX_RTPMAP * sizeof(int));
 			// force mark bit for reinvite for both direction
-			forcemark[iscaller] = true;
-			forcemark[!iscaller] = true;
+			extern pcap_pkthdr *_process_packet_header;
+			u_int64_t _forcemark_time = _process_packet_header->ts.tv_sec * 1000000ull + _process_packet_header->ts.tv_usec;
+			forcemark_lock();
+			for(int j = 0; j < 2; j++) {
+				forcemark_time[j].push(_forcemark_time);
+				/*
+				cout << "add forcemark " << _forcemark_time << " forcemarks size " << forcemark_time[j].size() << endl;
+				*/
+			}
+			forcemark_unlock();
 			if(fax && !this->ip_port[i].fax) {
 				this->ip_port[i].fax = fax;
 				calltable->lock_calls_hash();
@@ -2100,7 +2109,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		// find first caller and first called
 		RTP *rtpab[2] = {NULL, NULL};
 		for(int k = 0; k < ssrc_n; k++) {
-			if(sverb.process_rtp) {
+			if(sverb.process_rtp || sverb.read_rtp) {
 				cout << "RTP - final stream: " 
 				     << hex << rtp[indexes[k]]->ssrc << dec << " : "
 				     << inet_ntostring(htonl(rtp[indexes[k]]->saddr)) << " -> "

@@ -54,6 +54,7 @@ extern int opt_faxt30detect;
 extern int opt_inbanddtmf;
 extern int opt_silencedetect;
 extern int opt_clippingdetect;
+extern char opt_pb_read_from_file[256];
 
 
 using namespace std;
@@ -718,13 +719,16 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 	if(sverb.ssrc and getSSRC() != sverb.ssrc) return;
 	
 	if(sverb.read_rtp) {
-		cout << "RTP(" << hex << long(this) << ")" 
-		     << "ssrc:" << hex << this->ssrc << dec << " "
-		     << "seq:" << getSeqNum() << " "
-		     << "saddr/sport:" << inet_ntostring(htonl(saddr)) << " / " << sport << " "
-		     << "daddr/dport:" << inet_ntostring(htonl(daddr)) << " / " << dport << " "
-		     << (this->iscaller ? "caller" : "called") 
-		     << " packets received: " << this->stats.received
+		extern u_int64_t read_rtp_counter;
+		++read_rtp_counter;
+		cout << "RTP - read -"
+		     << " ssrc: " << hex << this->ssrc << dec << " "
+		     << " src: " << inet_ntostring(htonl(saddr)) << " : " << sport
+		     << " dst: " << inet_ntostring(htonl(daddr)) << " : " << dport
+		     << " seq: " << getSeqNum() << " "
+		     << " iscaller: " << (iscaller ? "caller" : "called") 
+		     << " packets_received: " << this->stats.received
+		     << " counter: " << read_rtp_counter
 		     << endl;
 	}
 	
@@ -746,9 +750,31 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 
 	Call *owner = (Call*)call_owner;
 
-	if(owner and owner->destroy_call_at_bye) {
+	if(owner and owner->destroy_call_at_bye && !opt_pb_read_from_file[0]) {
 		// do not process RTP if call is hangedup to prevent false negative statistics
 		return;
+	}
+
+	if(owner) {
+		owner->forcemark_lock();
+		for(int i = 0; i < 2; i++) {
+			size_t _forcemark_size = owner->forcemark_time[i].size();
+			if(_forcemark_size) {
+				u_int64_t _forcemark_time = owner->forcemark_time[i].front();
+				u_int64_t _header_time = header->ts.tv_sec  * 1000000ull + header->ts.tv_usec;
+				if(_forcemark_time < _header_time) {
+					/*
+					cout << "set forcemark " << _forcemark_time 
+					     << " header time " << _header_time 
+					     << " forcemarks size " << _forcemark_size
+					     << endl;
+					*/
+					owner->forcemark[i] = 1;
+					owner->forcemark_time[i].pop();
+				}
+			}
+		}
+		owner->forcemark_unlock();
 	}
 
 	int payload_len = get_payload_len();
@@ -864,6 +890,13 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 		s->cycles = s->cycles - s->base_seq + s->max_seq;
 		s->base_seq = seq;
 		s->max_seq = seq;
+		if(sverb.rtp_set_base_seq) {
+			cout << "RTP - packet_lost - set base_seq #1" 
+			     << " ssrc: " << hex << this->ssrc << dec << " "
+			     << " src: " << inet_ntostring(htonl(saddr)) << " : " << sport
+			     << " dst: " << inet_ntostring(htonl(daddr)) << " : " << dport
+			     << endl;
+		}
 	}
 
 	if(lastframetype == AST_FRAME_DTMF and codec != PAYLOAD_TELEVENT) {
@@ -967,6 +1000,13 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 		s->cycles = s->cycles - s->base_seq + s->max_seq;
 		s->base_seq = seq;
 		s->max_seq = seq;
+		if(sverb.rtp_set_base_seq) {
+			cout << "RTP - packet_lost - set base_seq #2" 
+			     << " ssrc: " << hex << this->ssrc << dec << " "
+			     << " src: " << inet_ntostring(htonl(saddr)) << " : " << sport
+			     << " dst: " << inet_ntostring(htonl(daddr)) << " : " << dport
+			     << endl;
+		}
 	}
 
 	// codec changed 
@@ -1519,11 +1559,12 @@ RTP::update_stats() {
 		
 	if((lost > stats.last_lost) > 0) {
 		if(sverb.packet_lost) {
-			cout << "RTP - packet_lost: " 
-			     << "ssrc:" << hex << this->ssrc << dec << " "
-			     << "saddr:" << inet_ntostring(htonl(this->saddr)) << " " 
-			     << "daddr/dport:" << inet_ntostring(htonl(this->daddr)) << " / " << this->dport << " " 
-			     << "lost:" << (lost - stats.last_lost) << endl;
+			cout << "RTP - packet_lost -" 
+			     << " ssrc: " << hex << this->ssrc << dec << " "
+			     << " src: " << inet_ntostring(htonl(saddr))
+			     << " dst: " << inet_ntostring(htonl(daddr)) << " : " << dport
+			     << " seq: " << getSeqNum() << " "
+			     << " lost: " << (lost - stats.last_lost) << endl;
 		}
 		stats.lost += lost - stats.last_lost;
 		if((lost - stats.last_lost) < 10)

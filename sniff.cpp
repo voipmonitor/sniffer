@@ -261,6 +261,8 @@ u_int64_t counter_sip_register_packets;
 u_int64_t counter_sip_message_packets;
 u_int64_t counter_rtp_packets;
 u_int64_t counter_all_packets;
+u_int64_t process_rtp_counter;
+u_int64_t read_rtp_counter;
 
 extern struct queue_state *qs_readpacket_thread_queue;
 
@@ -3298,8 +3300,13 @@ rtpcheck:
 			is_fax = node_call->is_fax;
 			
 			if(sverb.process_rtp) {
-				cout << "RTP - process_packet (daddr, dest): " << inet_ntostring(htonl(daddr)) << " / " << dest
-				     << " " << (iscaller ? "caller" : "called") 
+				++process_rtp_counter;
+				cout << "RTP - process_packet -"
+				     << " src: " << inet_ntostring(htonl(saddr)) << " : " << source
+				     << " dst: " << inet_ntostring(htonl(daddr)) << " : " << dest
+				     << " iscaller: " << (iscaller ? "caller" : "called") 
+				     << " counter: " << process_rtp_counter
+				     << " #1"
 				     << endl;
 			}
 
@@ -3416,8 +3423,13 @@ rtpcheck:
 			is_fax = node_call->is_fax;
 
 			if(sverb.process_rtp) {
-				cout << "RTP - process_packet (saddr, source): " << inet_ntostring(htonl(saddr)) << " / " << source
-				     << " " << (iscaller ? "caller" : "called") 
+				++process_rtp_counter;
+				cout << "RTP - process_packet -"
+				     << " src: " << inet_ntostring(htonl(saddr)) << " : " << source
+				     << " dst: " << inet_ntostring(htonl(daddr)) << " : " << dest
+				     << " iscaller: " << (iscaller ? "caller" : "called") 
+				     << " counter: " << process_rtp_counter
+				     << " #2"
 				     << endl;
 			}
 			
@@ -3867,15 +3879,14 @@ Call *process_packet__rtp(ProcessRtpPacket::rtp_call_info *call_info,size_t call
 		is_fax = call_info[call_info_index].is_fax;
 		
 		if(sverb.process_rtp) {
-			if(find_by_dest) {
-				cout << "RTP - process_packet (daddr, dest): " << inet_ntostring(htonl(daddr)) << " / " << dest
-				     << " " << (iscaller ? "caller" : "called") 
-				     << endl;
-			} else {
-				cout << "RTP - process_packet (saddr, source): " << inet_ntostring(htonl(saddr)) << " / " << source
-				     << " " << (iscaller ? "caller" : "called") 
-				     << endl;
-			}
+			++process_rtp_counter;
+			cout << "RTP - process_packet -"
+			     << (find_by_dest ? " src: " : " SRC: ") << inet_ntostring(htonl(saddr)) << " : " << source
+			     << (find_by_dest ? " DST: " : " dst: ") << inet_ntostring(htonl(daddr)) << " : " << dest
+			     << " iscaller: " << (iscaller ? "caller" : "called") 
+			     << " find_by_dest: " << find_by_dest
+			     << " counter: " << process_rtp_counter
+			     << endl;
 		}
 		
 		if(!find_by_dest) {

@@ -199,6 +199,8 @@ public:
 	unsigned int ps_drop;
 	unsigned int ps_ifdrop;
 	char forcemark[2];
+	queue<u_int64_t> forcemark_time[2];
+	volatile int _forcemark_lock;
 	int first_codec;
 
 	float a_mos_lqo;
@@ -615,6 +617,14 @@ public:
 	}
 	
 	void addTarPos(u_int64_t pos, int type);
+	
+	void forcemark_lock() {
+		while(__sync_lock_test_and_set(&this->_forcemark_lock, 1));
+	}
+	void forcemark_unlock() {
+		__sync_lock_release(&this->_forcemark_lock);
+	}
+
 private:
 	ip_port_call_info ip_port[MAX_IP_PER_CALL];
 	PcapDumper pcap;

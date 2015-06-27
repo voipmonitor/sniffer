@@ -1112,7 +1112,7 @@ string cConfigItem_type_compress::getValueStr(bool configFile) {
 	}
 	if(param_type_compress_fzh) {
 		if(*param_type_compress_fzh == FileZipHandler::gzip) {
-			return("yes");
+			return("zip");
 		} else {
 			return("no");
 		}
