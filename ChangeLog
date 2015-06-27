@@ -1,3 +1,10 @@
+11.7.6 25.06.2015
+=================
+- fix crash when parsing SIP packet which does not have Content-Length and there are garbage data after \r\n\r\n (in this case SIP packet will stop on \r\n\r\n)
+- fix high load on some virtualizations (15% CPU when idle) - optimize calling usleep 
+- fix parsing multiple sip packets in one packet 
+
+
 11.7.5 25.06.2015
 =================
 - use bigint for ID in create table `register`
