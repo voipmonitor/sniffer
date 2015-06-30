@@ -1921,6 +1921,6 @@ bool check_datehour(const char *datehour) {
 	u_int64_t datehour_i = atoll(datehour);
 	return(datehour_i / 1000000 > 2000 &&
 	       datehour_i / 10000 % 100 >= 1 && datehour_i / 10000 % 100 <= 12 && 
-	       datehour_i / 100 % 100 >= 1 && datehour_i / 10000 % 100 <= 31 && 
+	       datehour_i / 100 % 100 >= 1 && datehour_i / 100 % 100 <= 31 && 
 	       datehour_i % 100 < 60);
 }
