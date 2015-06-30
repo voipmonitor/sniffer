@@ -105,6 +105,10 @@ void unlinkfileslist(string fname, string callFrom) {
 }
 
 void unlink_dirs(string datehour, int all, int sip, int rtp, int graph, int audio, int reg, string callFrom) {
+	if(!check_datehour(datehour.c_str())) {
+		return;
+	}
+ 
 	if(suspendCleanspool) {
 		return;
 	}
@@ -254,6 +258,15 @@ void clean_maxpoolsize() {
 		SqlDb_row row = sqlDbCleanspool->fetchRow();
 		if(!row) {
 			break;
+		}
+		
+		if(!check_datehour(row["datehour"].c_str())) {
+			q.str( std::string() );
+			q.clear();
+			q << "DELETE FROM files WHERE datehour = " << row["datehour"] << " AND id_sensor = " << (opt_id_sensor_cleanspool > 0 ? opt_id_sensor_cleanspool : 0);
+			if(debugclean) cout << q.str() << "\n";
+			sqlDbCleanspool->query(q.str());
+			continue;
 		}
 
 		ostringstream fname;
@@ -1899,4 +1912,15 @@ string getMaxSpoolDate() {
 	} else {
 		return("");
 	}
+}
+
+bool check_datehour(const char *datehour) {
+	if(!datehour || strlen(datehour) != 10) {
+		return(false);
+	}
+	u_int64_t datehour_i = atoll(datehour);
+	return(datehour_i / 1000000 > 2000 &&
+	       datehour_i / 10000 % 100 >= 1 && datehour_i / 10000 % 100 <= 12 && 
+	       datehour_i / 100 % 100 >= 1 && datehour_i / 10000 % 100 <= 31 && 
+	       datehour_i % 100 < 60);
 }

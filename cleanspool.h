@@ -15,6 +15,7 @@ void clean_obsolete_dirs(const char *path = NULL);
 bool isSetCleanspoolParameters();
 void runCleanSpoolThread();
 string getMaxSpoolDate();
+bool check_datehour(const char *datehour);
 
 #endif
 

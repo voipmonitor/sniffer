@@ -401,7 +401,8 @@ void
 Call::_addtofilesqueue(string file, string column, string dirnamesqlfiles, long long writeBytes) {
 
 	if(!opt_filesclean or opt_nocdr or file == "" or !isSqlDriver("mysql") or
-	   !isSetCleanspoolParameters()) return;
+	   !isSetCleanspoolParameters() or
+	   !check_datehour(dirnamesqlfiles.c_str())) return;
 
 	bool fileExists = file_exists((char*)file.c_str());
 	bool fileCacheExists = false;
