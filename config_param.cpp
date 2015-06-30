@@ -14,6 +14,7 @@ extern int verbosity;
 cConfigItem::cConfigItem(const char *name) {
 	config_name = name;
 	config_file_section = "general";
+	level = levelNormal;
 	set = false;
 	naDefaultValueStr = false;
 	minor = false;
@@ -58,6 +59,21 @@ cConfigItem *cConfigItem::addValues(const char *str_values) {
 			addValue(str_values_v2[0].c_str(), atoi(str_values_v2[1].c_str()));
 		}
 	}
+	return(this);
+}
+
+cConfigItem *cConfigItem::setSubtype(const char *subtype) {
+	this->subtype = subtype ? subtype : "";
+	return(this);
+}
+
+cConfigItem *cConfigItem::setDescription(const char *description) {
+	this->description = description ? description : "";
+	return(this);
+}
+
+cConfigItem *cConfigItem::setHelp(const char *help) {
+	this->help = help ? help : "";
 	return(this);
 }
 
@@ -139,9 +155,20 @@ string cConfigItem::getJson() {
 	JsonExport json;
 	json.add("name", config_name);
 	json.add("type", getTypeName());
+	if(subtype.length()) {
+		json.add("subtype", subtype);
+	}
+	if(description.length()) {
+		json.add("description", description);
+	}
+	if(help.length()) {
+		json.add("help", help);
+	}
 	json.add("set", set);
 	json.add("value", json_encode(getValueStr()));
 	json.add("default", json_encode(defaultValueStr));
+	json.add("group", group_name);
+	json.add("level", level);
 	json.add("minor", minor);
 	list<sMapValue> menuItems = getMenuItems();
 	if(menuItems.size()) {
@@ -1146,6 +1173,7 @@ bool cConfigItem_type_compress::setParamFromValueStr(string value_str) {
 
 
 cConfig::cConfig() {
+	defaultLevel = cConfigItem::levelNormal;
 }
 
 cConfig::~cConfig() {
@@ -1156,8 +1184,31 @@ cConfig::~cConfig() {
 
 void cConfig::addConfigItem(cConfigItem *configItem) {
 	configItem->config = this;
+	configItem->level = defaultLevel;
+	configItem->group_name = defaultGroup;
 	config_map[configItem->config_name] = configItem;
 	config_list.push_back(configItem->config_name);
+}
+
+void cConfig::group(const char *groupName) {
+	defaultGroup = groupName ? groupName : "default";
+	normal();
+}
+
+void cConfig::normal() {
+	defaultLevel = cConfigItem::levelNormal;
+}
+
+void cConfig::advanced() {
+	defaultLevel = cConfigItem::levelAdvanced;
+}
+
+void cConfig::expert() {
+	defaultLevel = cConfigItem::levelExpert;
+}
+
+void cConfig::obsolete() {
+	defaultLevel = cConfigItem::levelObsolete;
 }
 
 bool cConfig::loadFromConfigFileOrDirectory(const char *filename) {
@@ -1339,7 +1390,7 @@ void cConfig::setFromMysql(bool checkConnect) {
 	ostringstream q;
 	q << "SELECT * FROM sensor_config WHERE id_sensor ";
 	extern int opt_id_sensor;
-	if(opt_id_sensor) {
+	if(opt_id_sensor > 0) {
 		q << "= " << opt_id_sensor;
 	} else {
 		q << "IS NULL";
@@ -1374,7 +1425,7 @@ void cConfig::putToMysql() {
 	ostringstream q;
 	q << "SELECT * FROM sensor_config WHERE id_sensor ";
 	extern int opt_id_sensor;
-	if(opt_id_sensor) {
+	if(opt_id_sensor > 0) {
 		q << "= " << opt_id_sensor;
 	} else {
 		q << "IS NULL";

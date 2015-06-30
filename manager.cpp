@@ -1325,7 +1325,7 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 		return 0;
 	} else if(strstr(buf, "hot_restart") != NULL) {
 		hot_restart();
-		if ((size = sendvm(client, sshchannel, "hot restart ok", 9, 0)) == -1){
+		if ((size = sendvm(client, sshchannel, "hot restart ok", 14, 0)) == -1){
 			cerr << "Error sending data to client" << endl;
 			return -1;
 		}
@@ -1340,7 +1340,7 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 	} else if(strstr(buf, "set_json_config ") != NULL) {
 		string rslt;
 		if(useNewCONFIG) {
-			hot_restart_with_json_config(buf + 16);
+			hot_restart_with_json_config(buf_long + 16);
 			rslt = "ok";
 		} else {
 			rslt = "not supported";

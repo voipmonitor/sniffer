@@ -24,6 +24,12 @@ public:
 		string str;
 		int value;
 	};
+	enum eTypeLevel {
+		levelNormal,
+		levelAdvanced,
+		levelExpert,
+		levelObsolete
+	};
 public:
 	cConfigItem(const char *name);
 	virtual ~cConfigItem() {}
@@ -34,6 +40,9 @@ public:
 	void setConfigFileSection(const char *config_file_section);
 	cConfigItem *addValue(const char *str, int value);
 	cConfigItem *addValues(const char *str_values);
+	cConfigItem *setSubtype(const char *subtype);
+	cConfigItem *setDescription(const char *description);
+	cConfigItem *setHelp(const char *help);
 	virtual string getValueStr(bool configFile = false) { return(""); }
 protected:
 	virtual bool setParamFromConfigFile(CSimpleIniA *ini) = 0;
@@ -58,6 +67,11 @@ protected:
 	string config_name;
 	list<string> config_name_alias;
 	string config_file_section;
+	eTypeLevel level;
+	string group_name;
+	string subtype;
+	string description;
+	string help;
 	class cConfig *config;
 	list<sMapValue> mapValues;
 	bool set;
@@ -408,6 +422,11 @@ public:
 	~cConfig();
 	void addConfigItems();
 	void addConfigItem(cConfigItem *configItem);
+	void group(const char *groupName);
+	void normal();
+	void advanced();
+	void expert();
+	void obsolete();
 	bool loadFromConfigFileOrDirectory(const char *filename);
 	bool loadFromConfigFile(const char *filename, string *error = NULL);
 	void evSetConfigItem(cConfigItem *configItem);
@@ -423,6 +442,8 @@ private:
 private:
 	list<string> config_list;
 	map<string, cConfigItem*> config_map;
+	cConfigItem::eTypeLevel defaultLevel;
+	string defaultGroup;
 };
 
 
