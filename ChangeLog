@@ -1,3 +1,8 @@
+11.7.7 29.06.2015
+=================
+fix low MOS score and false packet loss for calls with re-INVITE 
+
+
 11.7.6 25.06.2015
 =================
 - fix crash when parsing SIP packet which does not have Content-Length and there are garbage data after \r\n\r\n (in this case SIP packet will stop on \r\n\r\n)
