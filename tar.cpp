@@ -911,18 +911,20 @@ TarQueue::add(string filename, unsigned int time, ChunkBuffer *buffer){
 	data_t data;
 	data.buffer = buffer;
 	lock();
-	unsigned int sensorId, year, mon, day, hour, minute;
+	unsigned int year, mon, day, hour, minute;
 	char type[12];
 	char fbasename[2*1024];
+	char sensorName[1024];
 	extern int opt_spooldir_by_sensor;
-	if(!opt_spooldir_by_sensor ||
-	   sscanf(filename.c_str(), "%u/%u-%u-%u/%u/%u/%[^/]/%s", &sensorId, &year, &mon, &day, &hour, &minute, type, fbasename) != 8) {
+	extern int opt_spooldir_by_sensorname;
+	if((!opt_spooldir_by_sensor && !opt_spooldir_by_sensorname) ||
+	   sscanf(filename.c_str(), "%[^/]/%u-%u-%u/%u/%u/%[^/]/%s", sensorName, &year, &mon, &day, &hour, &minute, type, fbasename) != 8) {
 		sscanf(filename.c_str(), "%u-%u-%u/%u/%u/%[^/]/%s", &year, &mon, &day, &hour, &minute, type, fbasename);
-		sensorId = 0;
+		sensorName[0] = 0;
 	}
 //      printf("%s: %u-%u-%u/%u/%u/%s/%s\n", filename.c_str(), year, mon, day, hour, minute, type, fbasename);
 	data.filename = fbasename;
-	data.sensorId = sensorId;
+	data.sensorName = sensorName;
 	data.year = year;
 	data.mon = mon;
 	data.day = day;
@@ -1000,8 +1002,8 @@ int
 TarQueue::write(int qtype, unsigned int time, data_t data) {
 	stringstream tar_dir, tar_name;
 	tar_dir << opt_chdir << "/";
-	if(data.sensorId) {
-		tar_dir << data.sensorId << "/";
+	if(!data.sensorName.empty()) {
+		tar_dir << data.sensorName << "/";
 	}
 	tar_dir << setfill('0') 
 		<< setw(4) << data.year << setw(1) << "-" << setw(2) << data.mon << setw(1) << "-" << setw(2) << data.day << setw(1) << "/" 
@@ -1010,8 +1012,8 @@ TarQueue::write(int qtype, unsigned int time, data_t data) {
 		<< setw(0) << qtype2strC(qtype);
 	tar_name << tar_dir.str() << "/"
 		 << qtype2str(qtype) << "_";
-	if(data.sensorId) {
-		tar_name << data.sensorId << "_";
+	if(!data.sensorName.empty()) {
+		tar_name << data.sensorName << "_";
 	}
 	tar_name << setfill('0') 
 		 << setw(4) << data.year << setw(1) << "-" << setw(2) << data.mon << setw(1) << "-" << setw(2) << data.day << setw(1) << "-" 
@@ -1065,7 +1067,7 @@ TarQueue::write(int qtype, unsigned int time, data_t data) {
 		tar->tar_open(tar_name.str(), O_WRONLY | O_CREAT | O_APPEND, 0777, TAR_GNU);
 		tar->tar.qtype = qtype;
 		tar->created_at = time;
-		tar->sensorId = data.sensorId;
+		tar->sensorName = data.sensorName;
 		tar->year = data.year;
 		tar->mon = data.mon;
 		tar->day = data.day;

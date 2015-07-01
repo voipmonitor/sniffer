@@ -1717,4 +1717,31 @@ u_int64_t getTotalMemory();
 string ascii_str(string str);
 int yesno(const char *arg);
 
+class SensorsMap {
+public:
+	struct sSensorName {
+		string name;
+		string name_file;
+	};
+public:
+	SensorsMap();
+	void fillSensors(class SqlDb *sqlDb = NULL);
+	string getSensorName(int sensorId, bool file = false);
+	string getSensorNameFile(int sensorId) {
+		return(getSensorName(sensorId, true));
+	}
+private:
+	void lock() {
+		while(__sync_lock_test_and_set(&this->_sync, 1));
+	}
+	void unlock() {
+		__sync_lock_release(&this->_sync);
+	}
+private:
+	map<int, sSensorName> sensors;
+	volatile int _sync;
+};
+
+void prepare_string_to_filename(char *str, unsigned int str_length = 0);
+
 #endif

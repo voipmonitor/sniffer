@@ -3267,14 +3267,7 @@ Call::saveMessageToDb(bool enableBatchIfPossible) {
 char *
 Call::get_fbasename_safe() {
 	strncpy(fbasename_safe, fbasename, MAX_FNAME * sizeof(char));
-	for(unsigned int i = 0; i < strlen(fbasename_safe) && i < MAX_FNAME; i++) {
-		if(strchr(opt_convert_char, fbasename[i]) || 
-		   !(fbasename[i] == ':' || fbasename[i] == '-' || fbasename[i] == '.' || fbasename[i] == '@' || 
-		   isalnum(fbasename[i])) ) {
-
-			fbasename_safe[i] = '_';
-		}
-	}
+	prepare_string_to_filename(fbasename_safe);
 	return fbasename_safe;
 }
 

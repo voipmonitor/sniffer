@@ -257,6 +257,7 @@ int opt_cdronlyrtp = 0;
 int opt_pcap_split = 1;
 int opt_newdir = 1;
 int opt_spooldir_by_sensor = 0;
+int opt_spooldir_by_sensorname = 0;
 char opt_clientmanager[1024] = "";
 int opt_clientmanagerport = 9999;
 int opt_callslimit = 0;
@@ -704,6 +705,8 @@ map<int, string> command_line_data;
 cConfig CONFIG;
 bool useNewCONFIG = 0;
 bool printConfigStruct = false;
+
+SensorsMap sensorsMap;
 
 
 #include <stdio.h>
@@ -2049,6 +2052,7 @@ int main(int argc, char *argv[]) {
 				sqlDb->createSchema();
 				sqlDb->checkSchema();
 			}
+			sensorsMap.fillSensors();
 		} else {
 			syslog(LOG_ERR, "Can't connect to MySQL server - exit!");
 			return 1;
@@ -3860,7 +3864,10 @@ void cConfig::addConfigItems() {
 			->setSubtype("readonly")
 			->setDescription("sensor ID")
 			->setHelp("ID sensor - test help text"));
-		addConfigItem(new cConfigItem_yesno("spooldir_by_sensor", &opt_spooldir_by_sensor));
+			advanced();
+			addConfigItem(new cConfigItem_yesno("spooldir_by_sensor", &opt_spooldir_by_sensor));
+				expert();
+				addConfigItem(new cConfigItem_yesno("spooldir_by_sensorname", &opt_spooldir_by_sensorname));
 	// SQL
 	group("sql");
 				expert();
@@ -5854,6 +5861,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "spooldir_by_sensor", NULL))) {
 		opt_spooldir_by_sensor = yesno(value);
+	}
+	if((value = ini.GetValue("general", "spooldir_by_sensorname", NULL))) {
+		opt_spooldir_by_sensorname = yesno(value);
 	}
 	if((value = ini.GetValue("general", "pcapsplit", NULL))) {
 		opt_pcap_split = yesno(value);

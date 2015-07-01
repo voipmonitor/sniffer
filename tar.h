@@ -95,7 +95,8 @@ public:
 	}
 	TAR;
 	TAR tar;
-	int sensorId, year, mon, day, hour, minute;
+	string sensorName;
+	int year, mon, day, hour, minute;
 	volatile int writing;
 
 	unsigned int created_at;
@@ -291,7 +292,8 @@ public:
 	struct data_t {
 		ChunkBuffer *buffer;
 		string filename;
-		int sensorId, year, mon, day, hour, minute;
+		string sensorName;
+		int year, mon, day, hour, minute;
 		Tar *tar;
 		time_t time;
 	};

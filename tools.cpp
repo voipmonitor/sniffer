@@ -2516,10 +2516,17 @@ bool FileZipHandler::open(const char *fileName, int permission) {
 	}
 	this->fileName = fileName;
 	extern int opt_spooldir_by_sensor;
-	if(opt_spooldir_by_sensor && this->call && this->call->useSensorId > 0) {
-		char sensorIdStr[10];
-		sprintf(sensorIdStr, "%i/", this->call->useSensorId);
-		this->fileName = sensorIdStr + this->fileName;
+	extern int opt_spooldir_by_sensorname;
+	if((opt_spooldir_by_sensor || opt_spooldir_by_sensorname) && 
+	   this->call && (this->call->useSensorId > 0 || opt_spooldir_by_sensorname)) {
+		if(opt_spooldir_by_sensorname) {
+			extern SensorsMap sensorsMap;
+			this->fileName = sensorsMap.getSensorNameFile(this->call->useSensorId) + "/" + this->fileName;
+		} else if(opt_spooldir_by_sensor) {
+			char sensorIdStr[10];
+			sprintf(sensorIdStr, "%i/", this->call->useSensorId);
+			this->fileName = sensorIdStr + this->fileName;
+		}
 	}
 	this->permission = permission;
 	return(true);
@@ -3585,4 +3592,68 @@ int yesno(const char *arg) {
 		return 1;
 	else
 		return 0;
+}
+
+SensorsMap::SensorsMap() {
+	_sync = 0;
+}
+
+void SensorsMap::fillSensors(SqlDb *sqlDb) {
+	bool _createSqlObject = false;
+	if(!sqlDb) {
+		sqlDb = createSqlObject();
+		sqlDb->setSilentConnect();
+		if(!sqlDb->connect()) {
+			delete sqlDb;
+			return;
+		}
+		_createSqlObject = true;
+	}
+	sqlDb->query("select id_sensor, name from sensors");
+	SqlDb_row row;
+	lock();
+	sensors.clear();
+	while(row = sqlDb->fetchRow()) {
+		int idSensor = atoi(row["id_sensor"].c_str());
+		sSensorName name;
+		name.name = row["name"];
+		name.name_file = name.name;
+		prepare_string_to_filename((char*)name.name_file.c_str(), name.name_file.length());
+		sensors[idSensor] = name;
+	}
+	unlock();
+	if(_createSqlObject) {
+		delete sqlDb;
+	}
+}
+
+string SensorsMap::getSensorName(int sensorId, bool file) {
+	if(sensorId <= 0) {
+		return("local");
+	}
+	string sensorName;
+	lock();
+	if(sensors.find(sensorId) != sensors.end()) {
+		sensorName = file ? sensors[sensorId].name_file : sensors[sensorId].name;
+	} else {
+		char sensorName_str[10];
+		snprintf(sensorName_str, sizeof(sensorName_str), "%i", sensorId);
+		sensorName = sensorName_str;
+	}
+	unlock();
+	return(sensorName);
+}
+
+void prepare_string_to_filename(char *str, unsigned int str_length) {
+	extern char opt_convert_char[256];
+	if(!str_length) {
+		str_length = strlen(str);
+	}
+	for(unsigned int i = 0; i < str_length; i++) {
+		if(strchr(opt_convert_char, str[i]) || 
+		   !(str[i] == ':' || str[i] == '-' || str[i] == '.' || str[i] == '@' || 
+		     isalnum(str[i]))) {
+			str[i] = '_';
+		}
+	}
 }
