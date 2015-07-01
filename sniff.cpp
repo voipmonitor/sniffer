@@ -1648,20 +1648,25 @@ Call *new_invite_register(bool is_ssl, int sip_method, char *data, int datalen, 
 
 	if (caller_useFrom && !strcasecmp(tcaller, "anonymous")) {
 		//if caller is anonymous
-		if (opt_remotepartypriority && !get_sip_peername(data,datalen,"\nRemote-Party-ID:", tcaller, sizeof(tcaller)) &&
-		  tcaller[0] != '\0') {
+		char tcaller2[1024];
+		if(opt_remotepartypriority && !get_sip_peername(data,datalen,"\nRemote-Party-ID:", tcaller2, sizeof(tcaller2)) &&
+		   tcaller2[0] != '\0') {
+			strncpy(tcaller, tcaller2, sizeof(tcaller));
 			anonymous_useRemotePartyID = true;
 		} else {
-			if(opt_passertedidentity && !get_sip_peername(data,datalen,"\nP-Asserted-Identity:", tcaller, sizeof(tcaller)) &&
-			  tcaller[0] != '\0') {
+			if(opt_passertedidentity && !get_sip_peername(data,datalen,"\nP-Asserted-Identity:", tcaller2, sizeof(tcaller2)) &&
+			   tcaller2[0] != '\0') {
+				strncpy(tcaller, tcaller2, sizeof(tcaller));
 				anonymous_usePAssertedIdentity = true;
 			} else {
-				if(opt_ppreferredidentity && !get_sip_peername(data,datalen,"\nP-Preferred-Identity:", tcaller, sizeof(tcaller)) &&
-				  tcaller[0] != '\0') {
+				if(opt_ppreferredidentity && !get_sip_peername(data,datalen,"\nP-Preferred-Identity:", tcaller2, sizeof(tcaller2)) &&
+				   tcaller2[0] != '\0') {
+					strncpy(tcaller, tcaller2, sizeof(tcaller));
 					anonymous_usePPreferredIdentity = true;
 				} else {
-					if (!opt_remotepartypriority && !get_sip_peername(data,datalen,"\nRemote-Party-ID:", tcaller, sizeof(tcaller)) &&
-					  tcaller[0] != '\0') {
+					if(!opt_remotepartypriority && !get_sip_peername(data,datalen,"\nRemote-Party-ID:", tcaller2, sizeof(tcaller2)) &&
+					   tcaller2[0] != '\0') {
+						strncpy(tcaller, tcaller2, sizeof(tcaller));
 						anonymous_useRemotePartyID = true;
 					} else {
 						anonymous_useFrom = true;
