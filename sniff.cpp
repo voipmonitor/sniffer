@@ -3002,7 +3002,7 @@ Call *process_packet(bool is_ssl, u_int64_t packet_number,
 
 		if(call->lastsrcip != saddr) { call->oneway = 0; };
 
-		if(sip_method == INVITE) {
+		if(sip_method == INVITE || sip_method == MESSAGE) {
 		 
 			bool existInviteSdaddr = false;
 			bool reverseInviteSdaddr = false;
@@ -3022,7 +3022,7 @@ Call *process_packet(bool is_ssl, u_int64_t packet_number,
 				if(!get_sip_branch(data, datalen, "via:", branch, sizeof(branch)) &&
 				   branch[0] != '\0') {
 					char called_invite[1024] = "";
-					if(!get_sip_peername(data,datalen,"INVITE ", called_invite, sizeof(called_invite)) &&
+					if(!get_sip_peername(data,datalen,sip_method == MESSAGE ? "MESSAGE " : "INVITE ", called_invite, sizeof(called_invite)) &&
 					   called_invite[0] != '\0') {
 						call->called_invite_branch_map[branch] = called_invite;
 					}

@@ -2023,6 +2023,7 @@ void ParsePacket::setStdParse() {
 	addNode("content-length:", true);
 	addNode("l:", true);
 	addNode("INVITE ");
+	addNode("MESSAGE ");
 	addNode("call-id:");
 	addNode("i:");
 	addNode("from:");
