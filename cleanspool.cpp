@@ -60,6 +60,8 @@ SqlDb *sqlDbCleanspool = NULL;
 pthread_t cleanspool_thread = 0;
 bool suspendCleanspool = false;
 
+static unsigned int opt_maxpoolsize_reduk = 0;
+
 
 void unlinkfileslist(string fname, string callFrom) {
 	if(suspendCleanspool) {
@@ -247,9 +249,16 @@ void clean_maxpoolsize() {
 	uint64_t total = sipsize + rtpsize + graphsize + audiosize + regsize;
 
 	total /= 1024 * 1024;
-	if(debugclean) cout << q.str() << "\n";
-	if(debugclean) cout << "total[" << total << "] = " << sipsize << " + " << rtpsize << " + " << graphsize << " + " << audiosize << " + " << regsize << " opt_maxpoolsize[" << opt_maxpoolsize << "]\n";
-	while(total > opt_maxpoolsize) {
+	if(debugclean) {
+		cout << q.str() << "\n";
+		cout << "total[" << total << "] = " << sipsize << " + " << rtpsize << " + " << graphsize << " + " << audiosize << " + " << regsize 
+		     << " opt_maxpoolsize[" << opt_maxpoolsize;
+		if(opt_maxpoolsize_reduk) {
+			cout << " / reduk: " << opt_maxpoolsize_reduk;
+		}
+		cout << "]\n";
+	}
+	while(total > (opt_maxpoolsize_reduk ? opt_maxpoolsize_reduk : opt_maxpoolsize)) {
 		// walk all rows ordered by datehour and delete everything 
 		stringstream q;
 		q << "SELECT datehour FROM files WHERE id_sensor = " << (opt_id_sensor_cleanspool > 0 ? opt_id_sensor_cleanspool : 0) << " ORDER BY datehour LIMIT 1";
@@ -1432,6 +1441,7 @@ void reindex_date_hour_start_syslog(string date, string hour) {
 }
 
 void check_disk_free_run(bool enableRunCleanSpoolThread) {
+	bool reduk_maxpoolsize = false;
 	double freeSpacePercent = (double)GetFreeDiskSpace(opt_chdir, true) / 100;
 	double freeSpaceGB = (double)GetFreeDiskSpace(opt_chdir) / (1024 * 1024 * 1024);
 	double totalSpaceGB = (double)GetTotalDiskSpace(opt_chdir) / (1024 * 1024 * 1024);
@@ -1450,14 +1460,18 @@ void check_disk_free_run(bool enableRunCleanSpoolThread) {
 			SqlDb_row row = sqlDb->fetchRow();
 			if(row) {
 				double usedSizeGB = atol(row["sum_size"].c_str()) / (1024 * 1024 * 1024);
-				opt_maxpoolsize = (usedSizeGB + freeSpaceGB - min(totalSpaceGB * opt_autocleanspoolminpercent / 100, (double)opt_autocleanmingb)) * 1024;
-				syslog(LOG_NOTICE, "low spool disk space - maxpoolsize set to new value: %u MB", opt_maxpoolsize);
+				opt_maxpoolsize_reduk = (usedSizeGB + freeSpaceGB - min(totalSpaceGB * opt_autocleanspoolminpercent / 100, (double)opt_autocleanmingb)) * 1024;
+				syslog(LOG_NOTICE, "low spool disk space - maxpoolsize set to new value: %u MB", opt_maxpoolsize_reduk);
 				if(enableRunCleanSpoolThread) {
 					runCleanSpoolThread();
 				}
+				reduk_maxpoolsize = true;
 			}
 			delete sqlDb;
 		}
+	}
+	if(!reduk_maxpoolsize) {
+		opt_maxpoolsize_reduk = 0;
 	}
 }
 
