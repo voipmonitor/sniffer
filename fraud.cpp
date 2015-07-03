@@ -482,6 +482,14 @@ bool FraudAlert::loadAlert() {
 		  from alerts_groups ag\
 		  join cb_number_groups g on (g.id=ag.number_group_id)\
 		  where ag.type = 'number_blacklist' and ag.alerts_id = alerts.id) as fraud_blacklist_number_g,\
+		 (select group_concat(number) \
+		  from alerts_groups ag\
+		  join cb_number_groups g on (g.id=ag.number_group_id)\
+		  where ag.type = 'number_whitelist_2' and ag.alerts_id = alerts.id) as fraud_whitelist_number_2_g,\
+		 (select group_concat(number)\
+		  from alerts_groups ag\
+		  join cb_number_groups g on (g.id=ag.number_group_id)\
+		  where ag.type = 'number_blacklist_2' and ag.alerts_id = alerts.id) as fraud_blacklist_number_2_g,\
 		 (select group_concat(ip)\
 		  from alerts_groups ag\
 		  join cb_ip_groups g on (g.id=ag.ip_group_id)\
@@ -489,7 +497,15 @@ bool FraudAlert::loadAlert() {
 		 (select group_concat(ip)\
 		  from alerts_groups ag\
 		  join cb_ip_groups g on (g.id=ag.ip_group_id)\
-		  where ag.type = 'ip_blacklist' and ag.alerts_id = alerts.id) as fraud_blacklist_ip_g\
+		  where ag.type = 'ip_blacklist' and ag.alerts_id = alerts.id) as fraud_blacklist_ip_g,\
+		 (select group_concat(ip)\
+		  from alerts_groups ag\
+		  join cb_ip_groups g on (g.id=ag.ip_group_id)\
+		  where ag.type = 'ip_whitelist_2' and ag.alerts_id = alerts.id) as fraud_whitelist_ip_2_g,\
+		 (select group_concat(ip)\
+		  from alerts_groups ag\
+		  join cb_ip_groups g on (g.id=ag.ip_group_id)\
+		  where ag.type = 'ip_blacklist_2' and ag.alerts_id = alerts.id) as fraud_blacklist_ip_2_g\
 		 from alerts\
 		 where id = ") + dbIdStr);
 	dbRow = sqlDb->fetchRow();
@@ -504,11 +520,23 @@ bool FraudAlert::loadAlert() {
 		ipFilter.addBlack(dbRow["fraud_blacklist_ip"].c_str());
 		ipFilter.addBlack(dbRow["fraud_blacklist_ip_g"].c_str());
 	}
+	if(defFilterIp2()) {
+		ipFilter2.addWhite(dbRow["fraud_whitelist_ip_2"].c_str());
+		ipFilter2.addWhite(dbRow["fraud_whitelist_ip_2_g"].c_str());
+		ipFilter2.addBlack(dbRow["fraud_blacklist_ip_2"].c_str());
+		ipFilter2.addBlack(dbRow["fraud_blacklist_ip_2_g"].c_str());
+	}
 	if(defFilterNumber()) {
 		phoneNumberFilter.addWhite(dbRow["fraud_whitelist_number"].c_str());
 		phoneNumberFilter.addWhite(dbRow["fraud_whitelist_number_g"].c_str());
 		phoneNumberFilter.addBlack(dbRow["fraud_blacklist_number"].c_str());
 		phoneNumberFilter.addBlack(dbRow["fraud_blacklist_number_g"].c_str());
+	}
+	if(defFilterNumber2()) {
+		phoneNumberFilter2.addWhite(dbRow["fraud_whitelist_number_2"].c_str());
+		phoneNumberFilter2.addWhite(dbRow["fraud_whitelist_number_2_g"].c_str());
+		phoneNumberFilter2.addBlack(dbRow["fraud_blacklist_number_2"].c_str());
+		phoneNumberFilter2.addBlack(dbRow["fraud_blacklist_number_2_g"].c_str());
 	}
 	if(defFraudDef()) {
 		loadFraudDef();
@@ -581,7 +609,13 @@ bool FraudAlert::okFilter(sFraudCallInfo *callInfo) {
 	if(this->defFilterIp() && !this->ipFilter.checkIP(callInfo->caller_ip)) {
 		return(false);
 	}
+	if(this->defFilterIp2() && !this->ipFilter2.checkIP(callInfo->called_ip)) {
+		return(false);
+	}
 	if(this->defFilterNumber() && !this->phoneNumberFilter.checkNumber(callInfo->caller_number.c_str())) {
+		return(false);
+	}
+	if(this->defFilterNumber2() && !this->phoneNumberFilter2.checkNumber(callInfo->called_number.c_str())) {
 		return(false);
 	}
 	return(true);

@@ -545,7 +545,9 @@ protected:
 	virtual void loadAlertVirt(SqlDb_row *row) {}
 	virtual void addFraudDef(SqlDb_row *row) {}
 	virtual bool defFilterIp() { return(false); }
+	virtual bool defFilterIp2() { return(false); }
 	virtual bool defFilterNumber() { return(false); }
+	virtual bool defFilterNumber2() { return(false); }
 	virtual bool defFraudDef() { return(false); }
 	virtual bool defConcuretCallsLimit() { return(false); }
 	virtual bool defTypeChangeLocation() { return(false); }
@@ -560,7 +562,9 @@ protected:
 	SqlDb_row dbRow;
 	string descr;
 	ListIP_wb ipFilter;
+	ListIP_wb ipFilter2;
 	ListPhoneNumber_wb phoneNumberFilter;
+	ListPhoneNumber_wb phoneNumberFilter2;
 	unsigned int concurentCallsLimitLocal;
 	unsigned int concurentCallsLimitInternational;
 	unsigned int concurentCallsLimitBoth;
@@ -695,7 +699,9 @@ public:
 protected:
 	void addFraudDef(SqlDb_row *row);
 	bool defFilterIp() { return(true); }
+	bool defFilterIp2() { return(true); }
 	bool defFilterNumber() { return(true); }
+	bool defFilterNumber2() { return(true); }
 	bool defFraudDef() { return(true); }
 	bool defConcuretCallsLimit() { return(true); }
 	bool defSuppressRepeatingAlerts() { return(true); }
