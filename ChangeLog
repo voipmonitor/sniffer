@@ -1,6 +1,16 @@
+11.8 04.07.2015
+===============
+- fix bug in cleanspool which can lead to crash (all versions) 
+- add new option spooldir_by_sensorname [VS-282]
+- fix issue with string 'set buffer memory limit to ...'
+- cocncurent calls fraud - add support for new filtrers - called numbers and destination ip addresses [VG-598]
+- restore value opt_maxpoolsize if enough space is in spool again [VS-284]
+- update destination address in process SIP MESSAGE (apply method for invite to message) [VG-615]
+
+
 11.7.7 29.06.2015
 =================
-fix low MOS score and false packet loss for calls with re-INVITE 
+- fix low MOS score and false packet loss for calls with re-INVITE 
 
 
 11.7.6 25.06.2015
