@@ -520,7 +520,7 @@ inline void save_packet(Call *call, struct pcap_pkthdr *header, const u_char *pa
 		char *s = gettag(data, datalen, "\nContent-Length:", &l);
 		if(l && l < datalen) {
 			long int contentLength = atol(s);
-			if(contentLength) {
+			if(contentLength > 0) {
 				if(istcp &&
 				   header->caplen > limitCapLen &&
 				   (u_char*)header_ip > packet && 
@@ -5158,7 +5158,8 @@ void PreProcessPacket::push(bool is_ssl, u_int64_t packet_number,
 			    pcap_block_store *block_store, int block_store_index, int dlt, int sensor_id,
 			    bool disableLock) {
  
-	if (header->ts.tv_sec - preprocess_packet__last_cleanup > 10){
+	if(opt_enable_preprocess_packet == 2 &&
+	   header->ts.tv_sec - preprocess_packet__last_cleanup > 10){
 		// clean tcp_streams_list
 		tcpReassemblySip.clean(header->ts.tv_sec);
 		preprocess_packet__last_cleanup = header->ts.tv_sec;
