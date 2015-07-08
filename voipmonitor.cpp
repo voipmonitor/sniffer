@@ -420,6 +420,7 @@ bool opt_message_check_duplicity_callid_in_next_pass_insert = 0;
 int opt_create_old_partitions = 0;
 char opt_create_old_partitions_from[20];
 bool opt_disable_partition_operations = 0;
+bool opt_partition_operations_in_thread = 1;
 bool opt_autoload_from_sqlvmexport = 0;
 vector<dstring> opt_custom_headers_cdr;
 vector<dstring> opt_custom_headers_message;
@@ -1145,7 +1146,7 @@ void *storing_cdr( void *dummy ) {
 			}
 		}
 		if(createPartitions.isSet()) {
-			createPartitions.createPartitions(!firstIter);
+			createPartitions.createPartitions(!firstIter && opt_partition_operations_in_thread);
 		}
 		firstIter = false;
 		
@@ -3902,6 +3903,7 @@ void cConfig::addConfigItems() {
 			advanced();
 			addConfigItem(new cConfigItem_yesno("mysqlloadconfig", &opt_mysqlloadconfig));
 			addConfigItem(new cConfigItem_yesno("disable_partition_operations", &opt_disable_partition_operations));
+			addConfigItem(new cConfigItem_yesno("partition_operations_in_thread", &opt_partition_operations_in_thread));
 			addConfigItem(new cConfigItem_yesno("hide_message_content", &opt_hide_message_content));
 			addConfigItem(new cConfigItem_string("hide_message_content_secret", opt_hide_message_content_secret, sizeof(opt_hide_message_content_secret)));
 				expert();
@@ -5700,6 +5702,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "disable_partition_operations", NULL))) {
 		opt_disable_partition_operations = yesno(value);
+	}
+	if((value = ini.GetValue("general", "partition_operations_in_thread", NULL))) {
+		opt_partition_operations_in_thread = yesno(value);
 	}
 	if((value = ini.GetValue("general", "autoload_from_sqlvmexport", NULL))) {
 		opt_autoload_from_sqlvmexport = yesno(value);
