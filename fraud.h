@@ -18,6 +18,7 @@
 #define fraud_alert_d 24
 #define fraud_alert_spc 25
 #define fraud_alert_rc 26
+#define fraud_alert_seq 27
 
 extern timeval t;
 class TimePeriod {
@@ -494,7 +495,6 @@ public:
 	string getAlertTypeString();
 	string getAlertDescr();
 	unsigned int getAlertDbId();
-	virtual string getString() { return(""); }
 	virtual string getJson() { return("{}"); }
 protected:
 	void setAlertJsonBase(JsonExport *json);
@@ -510,7 +510,8 @@ public:
 		_chcr =	fraud_alert_chcr,
 		_d =	fraud_alert_d,
 		_spc =	fraud_alert_spc,
-		_rc =	fraud_alert_rc
+		_rc =	fraud_alert_rc,
+		_seq =	fraud_alert_seq
 	};
 	enum eTypeLocation {
 		_typeLocation_NA,
@@ -681,7 +682,6 @@ public:
 		 const char *timeperiod_name,
 		 u_int32_t ip, const char *ip_location_code,
 		 unsigned int concurentCalls);
-	string getString();
 	string getJson();
 private:
 	FraudAlert::eLocalInternational localInternational;
@@ -718,7 +718,6 @@ public:
 		 const char *location_code,
 		 u_int32_t ip_old,
 		 const char *location_code_old);
-	string getString();
 	string getJson();
 private:
 	string number;
@@ -757,7 +756,6 @@ public:
 		 const char *dst_number,
 		 const char *country_code, 
 		 const char *continent_code);
-	string getString();
 	string getJson();
 private:
 	string src_number;
@@ -799,7 +797,6 @@ public:
 	FraudAlertInfo_spc(FraudAlert *alert);
 	void set(unsigned int ip, 
 		 unsigned int count);
-	string getString();
 	string getJson();
 private:
 	unsigned int ip;
@@ -808,12 +805,6 @@ private:
 
 class FraudAlert_spc : public FraudAlert {
 private:
-	struct sCountItem {
-		sCountItem(u_int64_t count = 0) {
-			this->count = count;
-		}
-		u_int64_t count;
-	};
 	struct sAlertInfo {
 		sAlertInfo(u_int64_t count = 0, u_int64_t at = 0) {
 			this->count = count;
@@ -832,19 +823,13 @@ protected:
 private:
 	bool checkOkAlert(u_int32_t ip, u_int64_t count, u_int64_t at);
 private:
-	map<u_int32_t, sCountItem> count;
+	map<u_int32_t, u_int64_t> count;
 	u_int64_t start_interval;
 	map<u_int32_t, sAlertInfo> alerts;
 };
 
 class FraudAlert_rc : public FraudAlert {
 private:
-	struct sCountItem {
-		sCountItem(u_int64_t count = 0) {
-			this->count = count;
-		}
-		u_int64_t count;
-	};
 	struct sAlertInfo {
 		sAlertInfo(u_int64_t count = 0, u_int64_t at = 0) {
 			this->count = count;
@@ -865,9 +850,64 @@ private:
 	bool checkOkAlert(u_int32_t ip, u_int64_t count, u_int64_t at);
 private:
 	bool withResponse;
-	map<u_int32_t, sCountItem> count;
+	map<u_int32_t, u_int64_t> count;
 	u_int64_t start_interval;
 	map<u_int32_t, sAlertInfo> alerts;
+};
+
+class FraudAlertInfo_seq : public FraudAlertInfo {
+public:
+	FraudAlertInfo_seq(FraudAlert *alert);
+	void set(unsigned int ip,
+		 const char *number,
+		 unsigned int count,
+		 const char *country_code_ip,
+		 const char *country_code_number);
+	string getJson();
+private:
+	unsigned int ip;
+	string number;
+	unsigned int count;
+	string country_code_ip;
+	string country_code_number;
+};
+
+class FraudAlert_seq : public FraudAlert {
+private:
+	struct sIpNumber {
+		sIpNumber(u_int32_t ip = 0, const char *number = NULL) {
+			this->ip = ip;
+			this->number = number ? number : "";
+		}
+		bool operator < (const sIpNumber& other) const { 
+			return(this->ip != other.ip ? this->ip < other.ip :
+			       this->number < other.number); 
+		}
+		u_int32_t ip;
+		string number;
+	};
+	struct sAlertInfo {
+		sAlertInfo(u_int64_t count = 0, u_int64_t at = 0) {
+			this->count = count;
+			this->at = at;
+		}
+		u_int64_t count;
+		u_int64_t at;
+	};
+public:
+	FraudAlert_seq(unsigned int dbId);
+	void evCall(sFraudCallInfo *callInfo);
+protected:
+	bool defFilterIp() { return(true); }
+	bool defFilterNumber() { return(true); }
+	bool defInterval() { return(true); }
+	bool defSuppressRepeatingAlerts() { return(true); }
+private:
+	bool checkOkAlert(sIpNumber ipNumber, u_int64_t count, u_int64_t at);
+private:
+	map<sIpNumber, u_int64_t> count;
+	u_int64_t start_interval;
+	map<sIpNumber, sAlertInfo> alerts;
 };
 
 
