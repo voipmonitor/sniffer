@@ -1,3 +1,9 @@
+11.8.1 04.07.2015
+=================
+- fix crash if SIP Content-Length is negative 
+- fix race leading to crash when ssl decryption is enabled (duplicate call tcpReassemblySip.clean)
+
+
 11.8 04.07.2015
 ===============
 - fix bug in cleanspool which can lead to crash (all versions) 
