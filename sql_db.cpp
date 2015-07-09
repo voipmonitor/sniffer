@@ -3682,6 +3682,7 @@ void SqlDb_mysql::createSchema(SqlDb *sourceDb) {
 
 	this->query("CREATE TABLE IF NOT EXISTS `sensors` (\
 			`id_sensor` int unsigned NOT NULL,\
+			`name` varchar(256) NULL DEFAULT NULL,\
 			`host` varchar(255) NULL DEFAULT NULL,\
 			`port` int NULL DEFAULT NULL,\
 		PRIMARY KEY (`id_sensor`)\
