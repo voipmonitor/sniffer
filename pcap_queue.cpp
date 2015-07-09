@@ -210,6 +210,8 @@ extern MySqlStore *loadFromQFiles;
 
 extern unsigned int glob_ssl_calls;
 
+bool packetbuffer_memory_is_full = false;
+
 #include "sniff_inline.h"
 
 
@@ -842,9 +844,11 @@ bool pcap_store_queue::push(pcap_block_store *blockStore, bool deleteBlockStoreI
 			if(deleteBlockStoreIfFail) {
 				delete blockStore;
 			}
+			packetbuffer_memory_is_full = true;
 			return(false);
 		} else {
 			this->add_sizeOfBlocksInMemory(blockStore->getUseSize());
+			packetbuffer_memory_is_full = false;
 		}
 	}
 	this->lock_queue();

@@ -1826,6 +1826,7 @@ getwav:
 		extern vm_atomic<string> pbStatString;
 		extern vm_atomic<u_long> pbCountPacketDrop;
 		extern bool opt_upgrade_by_git;
+		extern bool packetbuffer_memory_is_full;
 		ostringstream outStrStat;
 		extern int vm_rrd_version;
 		checkRrdVersion(true);
@@ -1839,6 +1840,7 @@ getwav:
 			   << "\"pbStatString\": \"" << pbStatString << "\","
 			   << "\"pbCountPacketDrop\": \"" << pbCountPacketDrop << "\","
 			   << "\"uptime\": \"" << getUptime() << "\","
+			   << "\"memory_is_full\": \"" << packetbuffer_memory_is_full << "\","
 			   << "\"count_live_sniffers\": \"" << countLiveSniffers << "\","
 			   << "\"upgrade_by_git\": \"" << opt_upgrade_by_git << "\","
 			   << "\"use_new_config\": \"" << useNewCONFIG << "\""
