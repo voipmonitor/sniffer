@@ -226,6 +226,7 @@ int opt_savewav_force = 0;	// if = 1 WAV will be generated no matter on filter r
 int opt_sipoverlap = 1;		
 int opt_id_sensor = -1;		
 int opt_id_sensor_cleanspool = -1;		
+char opt_name_sensor[256] = "";
 int readend = 0;
 int opt_dup_check = 0;
 int opt_dup_check_ipheader = 1;
@@ -3865,6 +3866,7 @@ void cConfig::addConfigItems() {
 			->setSubtype("readonly")
 			->setDescription("sensor ID")
 			->setHelp("ID sensor - test help text"));
+		addConfigItem(new cConfigItem_string("name_sensor", opt_name_sensor, sizeof(opt_name_sensor)));
 			advanced();
 			addConfigItem(new cConfigItem_yesno("spooldir_by_sensor", &opt_spooldir_by_sensor));
 				expert();
@@ -5604,6 +5606,9 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "id_sensor", NULL))) {
 		opt_id_sensor = atoi(value);
 		opt_id_sensor_cleanspool = opt_id_sensor;
+	}
+	if((value = ini.GetValue("general", "name_sensor", NULL))) {
+		strncpy(opt_name_sensor, value, sizeof(opt_name_sensor));
 	}
 	if((value = ini.GetValue("general", "pcapcommand", NULL))) {
 		strncpy(pcapcommand, value, sizeof(pcapcommand));

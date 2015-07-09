@@ -98,6 +98,7 @@ extern int opt_enable_ssl;
 extern int opt_tcpreassembly_pb_lock;
 extern int opt_fork;
 extern int opt_id_sensor;
+extern char opt_name_sensor[256];
 extern int opt_mysqlstore_max_threads_cdr;
 extern int opt_mysqlstore_max_threads_message;
 extern int opt_mysqlstore_max_threads_register;
@@ -3842,6 +3843,30 @@ void *PcapQueue_readFromFifo::threadFunction(void *arg, unsigned int arg2) {
 					if(readLen) {
 						bufferLen += readLen;
 						if(syncBeginBlock) {
+							char *pointToSensorIdName = (char*)memmem(buffer, bufferLen, "sensor_id_name: ", 16);
+							if(pointToSensorIdName) {
+								pointToSensorIdName += 16;
+								int sensorId;
+								string sensorName;
+								unsigned int offset = 0;
+								bool separator = 0;
+								while((unsigned)(pointToSensorIdName - (char*)buffer + offset) < bufferLen  && 
+								      pointToSensorIdName[offset]) {
+									if(offset == 0) {
+										sensorId = atoi(pointToSensorIdName + offset);
+									} else if(separator) {
+										sensorName = sensorName + pointToSensorIdName[offset];
+									} else if(pointToSensorIdName[offset] == ':') {
+										separator = true;
+									}
+									++offset;
+								}
+								if(sensorName.length()) {
+									extern SensorsMap sensorsMap;
+									sensorsMap.setSensorName(sensorId, sensorName.c_str());
+									syslog(LOG_NOTICE, "detect sensor name: %s for sensor id: %i", sensorName.c_str(), sensorId);
+								}
+							}
 							u_char *pointToBeginBlock = (u_char*)memmem(buffer, bufferLen, PCAP_BLOCK_STORE_HEADER_STRING, PCAP_BLOCK_STORE_HEADER_STRING_LEN);
 							if(pointToBeginBlock) {
 								if(pointToBeginBlock > buffer) {
@@ -4451,6 +4476,11 @@ bool PcapQueue_readFromFifo::socketConnect() {
 	}
 	if(DEBUG_VERBOSE) {
 		cout << this->nameQueue << " - socketConnect: " << this->packetServerIpPort.get_ip() << " : OK" << endl;
+	}
+	if(opt_name_sensor[0]) {
+		char dataSensorIdName[1024];
+		snprintf(dataSensorIdName, sizeof(dataSensorIdName), "sensor_id_name: %i:%s", opt_id_sensor, opt_name_sensor);
+		socketWrite((u_char*)dataSensorIdName, strlen(dataSensorIdName) + 1);
 	}
 	return(true);
 }

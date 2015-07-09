@@ -1726,6 +1726,7 @@ public:
 public:
 	SensorsMap();
 	void fillSensors(class SqlDb *sqlDb = NULL);
+	void setSensorName(int sensorId, const char *sensorName);
 	string getSensorName(int sensorId, bool file = false);
 	string getSensorNameFile(int sensorId) {
 		return(getSensorName(sensorId, true));

@@ -3618,7 +3618,7 @@ void SensorsMap::fillSensors(SqlDb *sqlDb) {
 		int idSensor = atoi(row["id_sensor"].c_str());
 		sSensorName name;
 		name.name = row["name"];
-		name.name_file = name.name;
+		name.name_file = row["name"];
 		prepare_string_to_filename((char*)name.name_file.c_str(), name.name_file.length());
 		sensors[idSensor] = name;
 	}
@@ -3628,9 +3628,24 @@ void SensorsMap::fillSensors(SqlDb *sqlDb) {
 	}
 }
 
+void SensorsMap::setSensorName(int sensorId, const char *sensorName) {
+	lock();
+	sSensorName name;
+	name.name = sensorName;
+	name.name_file = sensorName;
+	prepare_string_to_filename((char*)name.name_file.c_str(), name.name_file.length());
+	sensors[sensorId] = name;
+	unlock();
+}
+
 string SensorsMap::getSensorName(int sensorId, bool file) {
+	extern int opt_id_sensor;
+	extern char opt_name_sensor[256];
+	if(sensorId == opt_id_sensor && opt_name_sensor[0]) {
+		return(opt_name_sensor);
+	}
 	if(sensorId <= 0) {
-		return("local");
+		return(opt_name_sensor[0] ? opt_name_sensor : "local");
 	}
 	string sensorName;
 	lock();
