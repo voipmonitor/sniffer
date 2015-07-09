@@ -4527,7 +4527,7 @@ void cConfig::evSetConfigItem(cConfigItem *configItem) {
 		sipSendSocket_ip_port.set_port(((cConfigItem_integer*)configItem)->getValue());
 	}
 	if(configItem->config_name == "max_buffer_mem") {
-		buffersControl.setMaxBufferMem(((cConfigItem_integer*)configItem)->getValue() * 1024 * 1024);
+		buffersControl.setMaxBufferMem(((cConfigItem_integer*)configItem)->getValue() * 1024 * 1024, true);
 	}
 	if(configItem->config_name == "query_cache") {
 		if(((cConfigItem_yesno*)configItem)->getValue()) {
@@ -4932,13 +4932,23 @@ void set_context_config() {
 	#endif
 
 	if(opt_pcap_queue && !opt_read_from_file && !opt_untar_gui_params && command_line_data.size()) {
-		bool bufferControlSet = buffersControl.getMaxBufferMem() > 0;
-		for(int pass = 0; pass < (bufferControlSet ? 1 : 2); pass++) {
-			if(pass == 1) {
+		// restore orig values
+		buffersControl.restoreMaxBufferMemFromOrig();
+		static u_int64_t opt_pcap_queue_store_queue_max_memory_size_orig = 0;
+		if(!opt_pcap_queue_store_queue_max_memory_size_orig) {
+			opt_pcap_queue_store_queue_max_memory_size_orig = opt_pcap_queue_store_queue_max_memory_size;
+		} else {
+			opt_pcap_queue_store_queue_max_memory_size = opt_pcap_queue_store_queue_max_memory_size_orig;
+		}
+		//
+		for(int pass = 0; pass < (buffersControl.isSetOrig() ? 1 : 2); pass++) {
+			if(buffersControl.getMaxBufferMem()) {
 				u_int64_t totalMemory = getTotalMemory();
 				if(buffersControl.getMaxBufferMem() > totalMemory / 2) {
 					buffersControl.setMaxBufferMem(totalMemory / 2);
 					syslog(LOG_NOTICE, "set buffer memory limit to %lu", totalMemory / 2);
+				} else if(pass) {
+					break;
 				}
 			}
 			// prepare for old buffer size calculate
@@ -6695,7 +6705,7 @@ int eval_config(string inistr) {
 	}
 	
 	if((value = ini.GetValue("general", "max_buffer_mem", NULL))) {
-		buffersControl.setMaxBufferMem(atol(value) * 1024 * 1024);
+		buffersControl.setMaxBufferMem(atol(value) * 1024 * 1024, true);
 	}
 	
 	if((value = ini.GetValue("general", "delete_threads", NULL))) {

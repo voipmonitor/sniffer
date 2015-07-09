@@ -5,15 +5,25 @@ class cBuffersControl {
 public:
 	cBuffersControl() {
 		max_buffer_mem = 0;
+		max_buffer_mem_orig = 0;
 		pcap_store_queue__sizeOfBlocksInMemory = 0;
 		PcapQueue_readFromFifo__blockStoreTrash_size = 0;
 		AsyncClose__sizeOfDataInMemory = 0;
 	}
-	void setMaxBufferMem(u_int64_t max_buffer_mem) {
+	void setMaxBufferMem(u_int64_t max_buffer_mem, bool orig = false) {
 		this->max_buffer_mem = max_buffer_mem;
+		if(orig) {
+			this->max_buffer_mem_orig = max_buffer_mem;
+		}
 	}
 	u_int64_t getMaxBufferMem() {
 		return(this->max_buffer_mem);
+	}
+	void restoreMaxBufferMemFromOrig() {
+		this->max_buffer_mem = this->max_buffer_mem_orig;
+	}
+	bool isSetOrig() {
+		return(this->max_buffer_mem_orig > 0);
 	}
 	//pcap_store_queue::sizeOfBlocksInMemory
 	void set__pcap_store_queue__sizeOfBlocksInMemory(volatile u_int64_t *sizeOfBlocksInMemory) {
@@ -60,8 +70,9 @@ public:
 		       pcap_store_queue__sizeOfBlocksInMemory + PcapQueue_readFromFifo__blockStoreTrash_size < max_buffer_mem * 0.9);
 	}
 	bool check__AsyncClose__add(size_t add) {
-		return(check() &&
-		       AsyncClose__sizeOfDataInMemory + add < max_buffer_mem * 0.9);
+		return((check() &&
+		        AsyncClose__sizeOfDataInMemory + add < max_buffer_mem * 0.9) ||
+		       AsyncClose__sizeOfDataInMemory + add < max_buffer_mem * 0.1);
 	}
 	bool check(size_t add = 0) {
 		return(pcap_store_queue__sizeOfBlocksInMemory + 
@@ -82,6 +93,7 @@ public:
 	}
 private:
 	u_int64_t max_buffer_mem;
+	u_int64_t max_buffer_mem_orig;
 	volatile u_int64_t pcap_store_queue__sizeOfBlocksInMemory;
 	volatile u_int64_t PcapQueue_readFromFifo__blockStoreTrash_size;
 	volatile u_int64_t AsyncClose__sizeOfDataInMemory;
