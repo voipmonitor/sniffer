@@ -958,6 +958,7 @@ private:
 	string restartTempScriptFileName;
 	string errorString;
 	bool _64bit;
+	bool _arm;
 };
 
 std::string pexec(char*, int *exitCode = NULL);

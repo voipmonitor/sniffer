@@ -1375,11 +1375,16 @@ RestartUpgrade::RestartUpgrade(bool upgrade, const char *version, const char *ur
 	if(md5_64) {
 		this->md5_64 = md5_64;
 	}
-	if(sizeof(int *) == 8) {
-		this->_64bit = true;
-	} else {
-		this->_64bit = false;
-	}
+	#if defined(__arm__)
+		this->_arm = true;
+	#else
+		this->_arm = false;
+		if(sizeof(int *) == 8) {
+			this->_64bit = true;
+		} else {
+			this->_64bit = false;
+		}
+	#endif
 }
 
 bool RestartUpgrade::runUpgrade() {
@@ -1436,7 +1441,8 @@ bool RestartUpgrade::runUpgrade() {
 	for(int pass = 0; pass < (opt_upgrade_try_http_if_https_fail ? 2 : 1); pass++) {
 		string error;
 		string _url = (pass == 1 ? urlHttp : url) + 
-			      "/voipmonitor.gz." + (this->_64bit ? "64" : "32");
+			      "/voipmonitor.gz." + (this->_arm ? "armv6k" :
+						    this->_64bit ? "64" : "32");
 		if(verbosity > 0) {
 			syslog(LOG_NOTICE, "try download file: '%s'", _url.c_str());
 		}
@@ -1454,37 +1460,6 @@ bool RestartUpgrade::runUpgrade() {
 				return(false);
 			}
 		}
-		/* obsolete
-		string wgetCommand = string("wget --no-cache ") + 
-				     (pass == 0 ? "--no-check-certificate " : "") +
-				     (pass == 1 ? urlHttp : url) + 
-				     "/voipmonitor.gz." + (this->_64bit ? "64" : "32") + 
-				     " -O " + binaryGzFilepathName +
-				     " >" + outputStdoutErr + " 2>&1";
-		syslog(LOG_NOTICE, wgetCommand.c_str());
-		if(system(wgetCommand.c_str()) != 0) {
-			this->errorString = "failed run wget";
-			FILE *fileHandle = fopen(outputStdoutErr, "r");
-			if(fileHandle) {
-				size_t sizeOfOutputWgetBuffer = 10000;
-				char *outputStdoutErrBuffer = new FILE_LINE char[sizeOfOutputWgetBuffer];
-				size_t readSize = fread(outputStdoutErrBuffer, 1, sizeOfOutputWgetBuffer, fileHandle);
-				if(readSize > 0) {
-					outputStdoutErrBuffer[min(readSize, sizeOfOutputWgetBuffer) - 1] = 0;
-					this->errorString += ": " + string(outputStdoutErrBuffer);
-				}
-				fclose(fileHandle);
-			}
-			unlink(outputStdoutErr);
-			if(pass || !opt_upgrade_try_http_if_https_fail) {
-				rmdir_r(this->upgradeTempFileName.c_str());
-				return(false);
-			}
-		} else {
-			this->errorString = "";
-			break;
-		}
-		*/
 	}
 	if(!FileExists((char*)binaryGzFilepathName.c_str())) {
 		this->errorString = "failed download - missing destination file";
@@ -1550,19 +1525,21 @@ bool RestartUpgrade::runUpgrade() {
 			syslog(LOG_NOTICE, "unzip finished");
 		}
 	}
-	string md5 = GetFileMD5(binaryFilepathName);
-	if((this->_64bit ? md5_64 : md5_32) != md5) {
-		this->errorString = "failed download - bad md5: " + md5 + " <> " + (this->_64bit ? md5_64 : md5_32);
-		if(unzipRslt) {
-			char unzipRsltInfo[200];
-			sprintf(unzipRsltInfo, "\nunzip rslt: %i", unzipRslt);
-			this->errorString += unzipRsltInfo;
+	if(!this->_arm) {
+		string md5 = GetFileMD5(binaryFilepathName);
+		if((this->_64bit ? md5_64 : md5_32) != md5) {
+			this->errorString = "failed download - bad md5: " + md5 + " <> " + (this->_64bit ? md5_64 : md5_32);
+			if(unzipRslt) {
+				char unzipRsltInfo[200];
+				sprintf(unzipRsltInfo, "\nunzip rslt: %i", unzipRslt);
+				this->errorString += unzipRsltInfo;
+			}
+			rmdir_r(this->upgradeTempFileName.c_str());
+			if(verbosity > 0) {
+				syslog(LOG_ERR, "upgrade failed - %s", this->errorString.c_str());
+			}
+			return(false);
 		}
-		rmdir_r(this->upgradeTempFileName.c_str());
-		if(verbosity > 0) {
-			syslog(LOG_ERR, "upgrade failed - %s", this->errorString.c_str());
-		}
-		return(false);
 	}
 	unlink("/usr/local/sbin/voipmonitor");
 	if(!copy_file(binaryFilepathName.c_str(), "/usr/local/sbin/voipmonitor", true)) {
