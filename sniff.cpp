@@ -222,6 +222,7 @@ extern ProcessRtpPacket *processRtpPacket[MAX_PROCESS_RTP_PACKET_THREADS];
 extern int opt_enable_process_rtp_packet;
 extern CustomHeaders *custom_headers_cdr;
 extern CustomHeaders *custom_headers_message;
+extern int opt_save_sip_history;
 unsigned int glob_ssl_calls = 0;
 
 #ifdef QUEUE_MUTEX
@@ -3222,6 +3223,30 @@ endsip_save_packet:
 				origDatalen, sipOffset,
 				forceSip, dlt, sensor_id);
 endsip:
+		if(opt_save_sip_history &&
+		   call && (sip_method || lastSIPresponseNum)) {
+			int spaceIndex = 0;
+			for(int i = 0; i < min(datalen, 20); i++) {
+				if(data[i] == ' ') {
+					spaceIndex = i;
+					break;
+				}
+			}
+			char request[20];
+			if(spaceIndex && spaceIndex < 20) {
+				strncpy(request, data, spaceIndex);
+				request[spaceIndex] = 0;
+			} else {
+				request[0] = 0;
+			}
+			if(request[0] || lastSIPresponseNum) {
+				call->SIPhistory.push_back(Call::sSipHistory(
+					header->ts.tv_sec * 1000000ull + header->ts.tv_usec,
+					request,
+					lastSIPresponse, lastSIPresponseNum));
+			}
+		}
+		
 		if(call && call->type != REGISTER && sipSendSocket && !opt_sip_send_before_packetbuffer) {
 			// send packet to socket if enabled
 			u_int16_t header_length = datalen;

@@ -80,6 +80,7 @@ extern char sql_cdr_table_last1d[256];
 extern char sql_cdr_next_table[256];
 extern char sql_cdr_ua_table[256];
 extern char sql_cdr_sip_response_table[256];
+extern char sql_cdr_sip_request_table[256];
 extern char sql_cdr_reason_table[256];
 extern int opt_callend;
 extern int opt_id_sensor;
@@ -136,6 +137,7 @@ extern char opt_pb_read_from_file[256];
 extern CustomHeaders *custom_headers_cdr;
 extern CustomHeaders *custom_headers_message;
 extern int opt_custom_headers_last_value;
+extern int opt_save_sip_history;
 
 volatile int calls_counter = 0;
 
@@ -161,6 +163,7 @@ bool existsColumnCalldateInCdrNext = true;
 bool existsColumnCalldateInCdrRtp = true;
 bool existsColumnCalldateInCdrDtmf = true;
 bool existsColumnCalldateInCdrSipresp = true;
+bool existsColumnCalldateInCdrSiphistory = true;
 bool existsColumnCalldateInCdrTarPart = true;
 
 extern int opt_pcap_dump_tar_sip_use_pos;
@@ -2500,6 +2503,25 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			query_str += sqlDbSaveCall->insertQuery("cdr_sipresp", sipresp) + ";\n";
 		}
 		
+		if(opt_save_sip_history) {
+			for(list<sSipHistory>::iterator iterSiphistory = SIPhistory.begin(); iterSiphistory != SIPhistory.end(); iterSiphistory++) {
+				SqlDb_row siphist;
+				siphist.add("_\\_'SQL'_\\_:@cdr_id", "cdr_ID");
+				siphist.add((u_int64_t)(iterSiphistory->time - (first_packet_time * 1000000ull + first_packet_usec)), "time");
+				if(iterSiphistory->SIPrequest.length()) {
+					 siphist.add(string("_\\_'SQL'_\\_:") + "getIdOrInsertSIPREQUEST(" + sqlEscapeStringBorder(iterSiphistory->SIPrequest.c_str()) + ")", "SIPrequest_id");
+				}
+				if(iterSiphistory->SIPresponseNum && iterSiphistory->SIPresponse.length()) {
+					 siphist.add(iterSiphistory->SIPresponseNum, "SIPresponseNum");
+					 siphist.add(string("_\\_'SQL'_\\_:") + "getIdOrInsertSIPRES(" + sqlEscapeStringBorder(iterSiphistory->SIPresponse.c_str()) + ")", "SIPresponse_id");
+				}
+				if(existsColumnCalldateInCdrSiphistory) {
+					siphist.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
+				}
+				query_str += sqlDbSaveCall->insertQuery("cdr_siphistory", siphist) + ";\n";
+			}
+		}
+		
 		if(opt_pcap_dump_tar) {
 			for(int i = 1; i <= 3; i++) {
 				if(!(i == 1 ? opt_pcap_dump_tar_sip_use_pos :
@@ -2681,14 +2703,39 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		for(list<sSipResponse>::iterator iterSiprespUnique = SIPresponseUnique.begin(); iterSiprespUnique != SIPresponseUnique.end(); iterSiprespUnique++) {
 			SqlDb_row sipresp;
 			sipresp.add(cdrID, "cdr_ID");
-			sipresp.add(string("_\\_'SQL'_\\_:") + "getIdOrInsertSIPRES(" + sqlEscapeStringBorder(iterSiprespUnique->SIPresponse.c_str()) + ")", "SIPresponse_id");
+			SqlDb_row _resp;
+			_resp.add(iterSiprespUnique->SIPresponse, "lastSIPresponse");
+			sipresp.add(sqlDbSaveCall->getIdOrInsert(sql_cdr_sip_response_table, "id", "lastSIPresponse", _resp), "SIPresponse_id");
 			sipresp.add(iterSiprespUnique->SIPresponseNum, "SIPresponseNum");
 			if(existsColumnCalldateInCdrSipresp) {
 				sipresp.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
 			}
-			sqlDbSaveCall->insertQuery("cdr_sipresp", sipresp);
+			sqlDbSaveCall->insert("cdr_sipresp", sipresp);
 		}
 
+		if(opt_save_sip_history) {
+			for(list<sSipHistory>::iterator iterSiphistory = SIPhistory.begin(); iterSiphistory != SIPhistory.end(); iterSiphistory++) {
+				SqlDb_row siphist;
+				siphist.add(cdrID, "cdr_ID");
+				siphist.add((u_int64_t)(iterSiphistory->time - (first_packet_time * 1000000ull + first_packet_usec)), "time");
+				if(iterSiphistory->SIPrequest.length()) {
+					 SqlDb_row _req;
+					 _req.add(iterSiphistory->SIPrequest, "request");
+					 siphist.add(sqlDbSaveCall->getIdOrInsert(sql_cdr_sip_request_table, "id", "request", _req), "SIPrequest_id");
+				}
+				if(iterSiphistory->SIPresponseNum && iterSiphistory->SIPresponse.length()) {
+					 siphist.add(iterSiphistory->SIPresponseNum, "SIPresponseNum");
+					 SqlDb_row _resp;
+					 _resp.add(iterSiphistory->SIPresponse, "lastSIPresponse");
+					 siphist.add(sqlDbSaveCall->getIdOrInsert(sql_cdr_sip_response_table, "id", "request", _resp), "SIPresponse_id");
+				}
+				if(existsColumnCalldateInCdrSiphistory) {
+					siphist.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
+				}
+				sqlDbSaveCall->insert("cdr_siphistory", siphist);
+			}
+		}
+		
 		if(opt_printinsertid) {
 			printf("CDRID:%d\n", cdrID);
 		}

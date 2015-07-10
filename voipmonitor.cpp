@@ -375,6 +375,7 @@ int opt_pcap_dump_tar_internal_gzip_graph_level = Z_DEFAULT_COMPRESSION;
 int opt_defer_create_spooldir = 1;
 
 int opt_sdp_multiplication = 3;
+int opt_save_sip_history = 0;
 
 char opt_php_path[1024];
 
@@ -439,6 +440,7 @@ char sql_cdr_table_last1d[256] = "";
 char sql_cdr_next_table[256] = "cdr_next";
 char sql_cdr_ua_table[256] = "cdr_ua";
 char sql_cdr_sip_response_table[256] = "cdr_sip_response";
+char sql_cdr_sip_request_table[256] = "cdr_sip_request";
 char sql_cdr_reason_table[256] = "cdr_reason";
 
 char mysql_host[256] = "127.0.0.1";
@@ -4322,6 +4324,7 @@ void cConfig::addConfigItems() {
 			addConfigItem(new cConfigItem_string("git_folder", opt_git_folder, sizeof(opt_git_folder)));
 			addConfigItem(new cConfigItem_string("timezone", opt_timezone, sizeof(opt_timezone)));
 			addConfigItem(new cConfigItem_integer("sdp_multiplication", &opt_sdp_multiplication));
+			addConfigItem(new cConfigItem_integer("save_sip_history", &opt_save_sip_history));
 				expert();
 				addConfigItem(new cConfigItem_string("convertchar", opt_convert_char, sizeof(opt_convert_char)));
 				addConfigItem(new cConfigItem_string("cachedir", opt_cachedir, sizeof(opt_cachedir)));
@@ -6652,6 +6655,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "sdp_multiplication", NULL))) {
 		opt_sdp_multiplication = atoi(value);
+	}
+	if((value = ini.GetValue("general", "save_sip_history", NULL))) {
+		opt_save_sip_history = atoi(value);
 	}
 	
 	if((value = ini.GetValue("general", "enable_jitterbuffer_asserts", NULL))) {

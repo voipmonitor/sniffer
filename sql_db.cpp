@@ -53,6 +53,7 @@ extern int opt_mos_lqo;
 extern int opt_read_from_file;
 extern char opt_pb_read_from_file[256];
 extern int opt_enable_fraud;
+extern int opt_save_sip_history;
 
 extern char sql_driver[256];
 
@@ -2761,6 +2762,7 @@ void SqlDb_mysql::createSchema(SqlDb *sourceDb) {
 		 "cdr_rtp",
 		 "cdr_dtmf",
 		 "cdr_sipresp",
+		 "cdr_siphistory",
 		 "cdr_tar_part"
 	};
 
@@ -2971,6 +2973,16 @@ void SqlDb_mysql::createSchema(SqlDb *sourceDb) {
 		UNIQUE KEY `lastSIPresponse` (`lastSIPresponse`)\
 	) ENGINE=InnoDB DEFAULT CHARSET=latin1;");
 
+	if(opt_save_sip_history) {
+		this->query(
+		"CREATE TABLE IF NOT EXISTS `cdr_sip_request` (\
+				`id` mediumint unsigned NOT NULL AUTO_INCREMENT,\
+				`request` varchar(255) DEFAULT NULL,\
+			PRIMARY KEY (`id`),\
+			UNIQUE KEY `request` (`request`)\
+		) ENGINE=InnoDB DEFAULT CHARSET=latin1;");
+	}
+	
 	this->query(
 	"CREATE TABLE IF NOT EXISTS `cdr_reason` (\
 			`id` mediumint unsigned NOT NULL AUTO_INCREMENT,\
@@ -3484,6 +3496,35 @@ void SqlDb_mysql::createSchema(SqlDb *sourceDb) {
 			string(" PARTITION BY RANGE COLUMNS(calldate)(\
 				 PARTITION ") + partDayName + " VALUES LESS THAN ('" + limitDay + "') engine innodb)") :
 		""));
+
+	if(opt_save_sip_history) {
+		this->query(string(
+		"CREATE TABLE IF NOT EXISTS `cdr_siphistory` (\
+				`ID` int unsigned NOT NULL AUTO_INCREMENT,\
+				`cdr_ID` int unsigned NOT NULL,") +
+				(opt_cdr_partition ?
+					"`calldate` datetime NOT NULL," :
+					"") + 
+				"`time` bigint unsigned DEFAULT NULL,\
+				`SIPrequest_id` mediumint unsigned DEFAULT NULL,\
+				`SIPresponse_id` mediumint unsigned DEFAULT NULL,\
+				`SIPresponseNum` smallint unsigned DEFAULT NULL," +
+			(opt_cdr_partition ? 
+				"PRIMARY KEY (`ID`, `calldate`)," :
+				"PRIMARY KEY (`ID`),") +
+			"KEY (`cdr_ID`)" + 
+			(opt_cdr_partition ?
+				"" :
+				",CONSTRAINT `cdr_siphistory_ibfk_1` FOREIGN KEY (`cdr_ID`) REFERENCES `cdr` (`ID`) ON DELETE CASCADE ON UPDATE CASCADE") +
+		") ENGINE=InnoDB DEFAULT CHARSET=latin1 " + compress +
+		(opt_cdr_partition ?
+			(opt_cdr_partition_oldver ? 
+				string(" PARTITION BY RANGE (to_days(calldate))(\
+					 PARTITION ") + partDayName + " VALUES LESS THAN (to_days('" + limitDay + "')) engine innodb)" :
+				string(" PARTITION BY RANGE COLUMNS(calldate)(\
+					 PARTITION ") + partDayName + " VALUES LESS THAN ('" + limitDay + "') engine innodb)") :
+			""));
+	}
 
 	this->query(string(
 	"CREATE TABLE IF NOT EXISTS `cdr_tar_part` (\
@@ -4114,14 +4155,15 @@ void SqlDb_mysql::createSchema(SqlDb *sourceDb) {
 	}
 	if(opt_cdr_partition && !opt_disable_partition_operations) {
 		if(!cloud_host.empty()) {
-			this->createProcedure(
+			this->createProcedure(string(
 			"begin\
 			    call create_partition('cdr', 'day', next_days);\
 			    call create_partition('cdr_next', 'day', next_days);\
 			    call create_partition('cdr_rtp', 'day', next_days);\
 			    call create_partition('cdr_dtmf', 'day', next_days);\
-			    call create_partition('cdr_sipresp', 'day', next_days);\
-			    call create_partition('cdr_proxy', 'day', next_days);\
+			    call create_partition('cdr_sipresp', 'day', next_days);") + 
+			    (opt_save_sip_history ? "call create_partition('cdr_siphistory', 'day', next_days);" : "") +
+			   "call create_partition('cdr_proxy', 'day', next_days);\
 			    call create_partition('cdr_tar_part', 'day', next_days);\
 			    call create_partition('http_jj', 'day', next_days);\
 			    call create_partition('enum_jj', 'day', next_days);\
@@ -4151,14 +4193,15 @@ void SqlDb_mysql::createSchema(SqlDb *sourceDb) {
 			    call create_partitions_cdr(1);\
 			 end");
 		} else {
-			this->createProcedure(
+			this->createProcedure(string(
 			"begin\
 			    call create_partition(database_name, 'cdr', 'day', next_days);\
 			    call create_partition(database_name, 'cdr_next', 'day', next_days);\
 			    call create_partition(database_name, 'cdr_rtp', 'day', next_days);\
 			    call create_partition(database_name, 'cdr_dtmf', 'day', next_days);\
-			    call create_partition(database_name, 'cdr_sipresp', 'day', next_days);\
-			    call create_partition(database_name, 'cdr_proxy', 'day', next_days);\
+			    call create_partition(database_name, 'cdr_sipresp', 'day', next_days);") +
+			    (opt_save_sip_history ? "call create_partition(database_name, 'cdr_siphistory', 'day', next_days);" : "") + 
+			   "call create_partition(database_name, 'cdr_proxy', 'day', next_days);\
 			    call create_partition(database_name, 'cdr_tar_part', 'day', next_days);\
 			    call create_partition(database_name, 'http_jj', 'day', next_days);\
 			    call create_partition(database_name, 'enum_jj', 'day', next_days);\
@@ -4264,6 +4307,21 @@ void SqlDb_mysql::createSchema(SqlDb *sourceDb) {
 			END",
 			"getIdOrInsertSIPRES", "(val VARCHAR(255) CHARACTER SET latin1) RETURNS INT DETERMINISTIC", true);
 
+	if(opt_save_sip_history) {
+		this->createFunction( // double space after begin for invocation rebuild function if change parameter - createRoutine compare only body
+				"BEGIN  \
+					DECLARE _ID INT; \
+					SET _ID = (SELECT id FROM cdr_sip_request WHERE request = val); \
+					IF ( _ID ) THEN \
+						RETURN _ID; \
+					ELSE  \
+						INSERT INTO cdr_sip_request SET request = val; \
+						RETURN LAST_INSERT_ID(); \
+					END IF; \
+				END",
+				"getIdOrInsertSIPREQUEST", "(val VARCHAR(255) CHARACTER SET latin1) RETURNS INT DETERMINISTIC", true);
+	}
+	
 	this->createFunction(
 			"BEGIN \
 				DECLARE _ID INT; \
@@ -4467,6 +4525,7 @@ void SqlDb_mysql::checkSchema() {
 	extern bool existsColumnCalldateInCdrRtp;
 	extern bool existsColumnCalldateInCdrDtmf;
 	extern bool existsColumnCalldateInCdrSipresp;
+	extern bool existsColumnCalldateInCdrSiphistory;
 	extern bool existsColumnCalldateInCdrTarPart;
 	sql_disable_next_attempt_if_error = 1;
 	this->query("show columns from cdr_next where Field='calldate'");
@@ -4477,6 +4536,10 @@ void SqlDb_mysql::checkSchema() {
 	existsColumnCalldateInCdrDtmf = this->fetchRow();
 	this->query("show columns from cdr_sipresp where Field='calldate'");
 	existsColumnCalldateInCdrSipresp = this->fetchRow();
+	if(opt_save_sip_history) {
+		this->query("show columns from cdr_siphistory where Field='calldate'");
+		existsColumnCalldateInCdrSiphistory = this->fetchRow();
+	}
 	this->query("show columns from cdr_tar_part where Field='calldate'");
 	existsColumnCalldateInCdrTarPart = this->fetchRow();
 	if(!opt_cdr_partition &&
@@ -4536,6 +4599,7 @@ void SqlDb_mysql::copyFromSourceTable(SqlDb_mysql *sqlDbSrc, const char *tableNa
 			       string(tableName) == "cdr_rtp" ||
 			       string(tableName) == "cdr_dtmf" ||
 			       string(tableName) == "cdr_sipresp" ||
+			       string(tableName) == "cdr_siphistory" ||
 			       string(tableName) == "cdr_proxy" ||
 			       string(tableName) == "cdr_tar_part";
 	bool joinMessageCalldate = reg_match(tableName, "message_next_");
@@ -4652,6 +4716,10 @@ void SqlDb_mysql::copyFromSourceTable(SqlDb_mysql *sqlDbSrc, const char *tableNa
 			if(terminating) return;
 			this->copyFromSourceTable(sqlDbSrc, "cdr_sipresp", "cdr_id", 0, minIdInSrc, useMaxIdInSrc);
 			if(terminating) return;
+			if(opt_save_sip_history) {
+				this->copyFromSourceTable(sqlDbSrc, "cdr_siphistory", "cdr_id", 0, minIdInSrc, useMaxIdInSrc);
+				if(terminating) return;
+			}
 			this->copyFromSourceTable(sqlDbSrc, "cdr_proxy", "cdr_id", 0, minIdInSrc, useMaxIdInSrc);
 			if(terminating) return;
 			this->copyFromSourceTable(sqlDbSrc, "cdr_tar_part", "cdr_id", 0, minIdInSrc, useMaxIdInSrc);
@@ -4755,6 +4823,9 @@ vector<string> SqlDb_mysql::getSourceTables(int typeTables) {
 	vector<string> tables;
 	if(typeTables & tt_minor) {
 		tables.push_back("cdr_sip_response");
+		if(opt_save_sip_history) {
+			tables.push_back("cdr_sip_request");
+		}
 		tables.push_back("cdr_reason");
 		tables.push_back("cdr_ua");
 		tables.push_back("contenttype");
@@ -4772,6 +4843,7 @@ vector<string> SqlDb_mysql::getSourceTables(int typeTables) {
 			tables.push_back("cdr_rtp");
 			tables.push_back("cdr_dtmf");
 			tables.push_back("cdr_sipresp");
+			tables.push_back("cdr_siphistory");
 			tables.push_back("cdr_proxy");
 			tables.push_back("cdr_tar_part");
 		}
@@ -4882,6 +4954,16 @@ void SqlDb_odbc::createSchema(SqlDb *sourceDb) {
 		CREATE UNIQUE INDEX lastSIPresponse ON cdr_sip_response (lastSIPresponse);\
 	END");
 
+	if(opt_save_sip_history) {
+		this->query(
+		"IF NOT EXISTS (SELECT * FROM sys.objects WHERE name = 'cdr_sip_request') BEGIN\
+			CREATE TABLE cdr_sip_request (\
+				id mediumint PRIMARY KEY IDENTITY,\
+				request varchar(255) NULL);\
+			CREATE UNIQUE INDEX request ON cdr_sip_request (request);\
+		END");
+	}
+	
 	this->query(
 	"IF NOT EXISTS (SELECT * FROM sys.objects WHERE name = 'cdr_ua') BEGIN\
 		CREATE TABLE cdr_ua (\
@@ -5132,6 +5214,20 @@ void SqlDb_odbc::createSchema(SqlDb *sourceDb) {
 			SIPresponse_id mediumint DEFAULT NULL,\
 			SIPresponseNum smallint DEFAULT NULL,);\
 	END");
+
+	if(opt_save_sip_history) {
+		this->query(
+		"IF NOT EXISTS (SELECT * FROM sys.objects WHERE name = 'cdr_siphistory') BEGIN\
+			CREATE TABLE cdr_siphistory (\
+				ID int PRIMARY KEY IDENTITY,\
+				cdr_ID int \
+					FOREIGN KEY REFERENCES cdr (ID),\
+				time bigint unsigned DEFAULT NULL,\
+				SIPrequest_id mediumint DEFAULT NULL,\
+				SIPresponse_id mediumint DEFAULT NULL,\
+				SIPresponseNum smallint DEFAULT NULL,);\
+		END");
+	}
 
 	this->query(
 	"IF NOT EXISTS (SELECT * FROM sys.objects WHERE name = 'cdr_tar_part') BEGIN\
@@ -5603,6 +5699,9 @@ void dropMysqlPartitionsCdr() {
 				sqlDb->query("ALTER TABLE cdr_rtp DROP PARTITION " + partitions[i]);
 				sqlDb->query("ALTER TABLE cdr_dtmf DROP PARTITION " + partitions[i]);
 				sqlDb->query("ALTER TABLE cdr_sipresp DROP PARTITION " + partitions[i]);
+				if(opt_save_sip_history) {
+					sqlDb->query("ALTER TABLE cdr_siphistory DROP PARTITION " + partitions[i]);
+				}
 				sqlDb->query("ALTER TABLE cdr_tar_part DROP PARTITION " + partitions[i]);
 				sqlDb->query("ALTER TABLE cdr_proxy DROP PARTITION " + partitions[i]);
 				sqlDb->query("ALTER TABLE message DROP PARTITION " + partitions[i]);

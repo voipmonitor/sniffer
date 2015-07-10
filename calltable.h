@@ -132,6 +132,24 @@ public:
 		string SIPresponse;
 		int SIPresponseNum;
 	};
+	struct sSipHistory {
+		sSipHistory(u_int64_t time = 0,
+			    const char *SIPrequest = NULL,
+			    const char *SIPresponse = NULL, int SIPresponseNum = 0) {
+			this->time = time;
+			if(SIPrequest) {
+				this->SIPrequest = SIPrequest;
+			}
+			if(SIPresponse) {
+				this->SIPresponse = SIPresponse;
+			}
+			this->SIPresponseNum = SIPresponseNum;
+		}
+		u_int64_t time;
+		string SIPrequest;
+		string SIPresponse;
+		int SIPresponseNum;
+	};
 public:
 	int type;			//!< type of call, INVITE or REGISTER
 	bool is_ssl;			//!< call was decrypted
@@ -241,6 +259,7 @@ public:
 	char lastSIPresponse[128];
 	int lastSIPresponseNum;
 	list<sSipResponse> SIPresponse;
+	list<sSipHistory> SIPhistory;
 	bool new_invite_after_lsr487;
 	bool cancel_lsr487;
 	
