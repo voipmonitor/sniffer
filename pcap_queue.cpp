@@ -3846,12 +3846,20 @@ void *PcapQueue_readFromFifo::threadFunction(void *arg, unsigned int arg2) {
 							char *pointToSensorIdName = (char*)memmem(buffer, bufferLen, "sensor_id_name: ", 16);
 							if(pointToSensorIdName) {
 								pointToSensorIdName += 16;
-								int sensorId;
+								int sensorId = 0;
 								string sensorName;
 								unsigned int offset = 0;
 								bool separator = 0;
-								while((unsigned)(pointToSensorIdName - (char*)buffer + offset) < bufferLen  && 
-								      pointToSensorIdName[offset]) {
+								bool nullTerm = false;
+								while((unsigned)(pointToSensorIdName - (char*)buffer + offset) < bufferLen &&
+								      (pointToSensorIdName[offset] == 0 ||
+								       (pointToSensorIdName[offset] >= ' ' && pointToSensorIdName[offset] < 128))) {
+									if(pointToSensorIdName[offset] == 0) {
+										if(separator) {
+											nullTerm = true;
+										}
+										break;
+									}
 									if(offset == 0) {
 										sensorId = atoi(pointToSensorIdName + offset);
 									} else if(separator) {
@@ -3861,10 +3869,10 @@ void *PcapQueue_readFromFifo::threadFunction(void *arg, unsigned int arg2) {
 									}
 									++offset;
 								}
-								if(sensorName.length()) {
+								if(sensorId > 0 && sensorName.length() && nullTerm) {
 									extern SensorsMap sensorsMap;
 									sensorsMap.setSensorName(sensorId, sensorName.c_str());
-									syslog(LOG_NOTICE, "detect sensor name: %s for sensor id: %i", sensorName.c_str(), sensorId);
+									syslog(LOG_NOTICE, "detect sensor name: '%s' for sensor id: %i", sensorName.c_str(), sensorId);
 								}
 							}
 							u_char *pointToBeginBlock = (u_char*)memmem(buffer, bufferLen, PCAP_BLOCK_STORE_HEADER_STRING, PCAP_BLOCK_STORE_HEADER_STRING_LEN);
