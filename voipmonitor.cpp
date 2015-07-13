@@ -568,6 +568,7 @@ int terminated_tar_flush_queue;
 int terminated_tar;
 int hot_restarting;
 string hot_restarting_json_config;
+vm_atomic<string> terminating_error;
 char *sipportmatrix;		// matrix of sip ports to monitor
 char *httpportmatrix;		// matrix of http ports to monitor
 char *webrtcportmatrix;		// matrix of webrtc ports to monitor
@@ -806,6 +807,11 @@ string SEMAPHOR_FORK_MODE_NAME() {
 #endif
 
 void vm_terminate() {
+	terminating = 1;
+}
+
+void vm_terminate_error(const char *terminate_error) {
+	terminating_error = terminate_error;
 	terminating = 1;
 }
 
@@ -1811,6 +1817,7 @@ int main(int argc, char *argv[]) {
 		reload_config(hot_restarting_json_config.c_str());
 		hot_restarting = 0;
 		hot_restarting_json_config = "";
+		terminating_error = "";
 	}
 	
 	// init
@@ -2764,25 +2771,6 @@ int main(int argc, char *argv[]) {
 
 	readend = 1;
 
-	//wait for manager to properly terminate 
-	if(opt_manager_port && manager_thread > 0) {
-		int res;
-		res = shutdown(manager_socket_server, SHUT_RDWR);	// break accept syscall in manager thread
-		if(res == -1) {
-			// if shutdown failed it can happen when reding very short pcap file and the bind socket was not created in manager
-			usleep(10000); 
-			res = shutdown(manager_socket_server, SHUT_RDWR);	// break accept syscall in manager thread
-		}
-		struct timespec ts;
-		ts.tv_sec = 1;
-		ts.tv_nsec = 0;
-		// wait for thread max 1 sec
-#ifndef FREEBSD	
-		//TODO: solve it for freebsd
-		pthread_timedjoin_np(manager_thread, NULL, &ts);
-#endif
-	}
-
 #ifdef QUEUE_NONBLOCK2
 	if(opt_pcap_threaded && !opt_pcap_queue) {
 		pthread_join(pcap_read_thread, NULL);
@@ -3019,10 +3007,52 @@ int main(int argc, char *argv[]) {
 
 	_parse_packet_global.clear();
 	
-	if(!hot_restarting) {
-		break;
+	bool _break = false;
+	
+	if(useNewCONFIG) {
+		string _terminating_error = terminating_error;
+		if(!hot_restarting && _terminating_error.empty()) {
+			_break = true;
+		}
+		if(!_terminating_error.empty()) {
+			terminating = 0;
+			while(!terminating) {
+				syslog(LOG_NOTICE, "%s - wait for terminating or hot restarting", _terminating_error.c_str());
+				for(int i = 0; i < 10 && !terminating; i++) {
+					sleep(1);
+				}
+			}
+			if(!hot_restarting) {
+				_break = true;
+			}
+		}
+	} else {
+		_break = true;
 	}
 	
+	//wait for manager to properly terminate 
+	if(opt_manager_port && manager_thread > 0) {
+		int res;
+		res = shutdown(manager_socket_server, SHUT_RDWR);	// break accept syscall in manager thread
+		if(res == -1) {
+			// if shutdown failed it can happen when reding very short pcap file and the bind socket was not created in manager
+			usleep(10000); 
+			res = shutdown(manager_socket_server, SHUT_RDWR);	// break accept syscall in manager thread
+		}
+		struct timespec ts;
+		ts.tv_sec = 1;
+		ts.tv_nsec = 0;
+		// wait for thread max 1 sec
+#ifndef FREEBSD	
+		//TODO: solve it for freebsd
+		pthread_timedjoin_np(manager_thread, NULL, &ts);
+#endif
+	}
+	
+	if(_break) {
+		break;
+	}
+
 	}
 	// END RELOAD LOOP
 	
@@ -5076,14 +5106,15 @@ void set_context_config() {
 		opt_defer_create_spooldir = false;
 	}
 	
-	if(!opt_pcap_queue_iface_separate_threads && strchr(ifname, ',')) {
+	vector<string> ifnamev = split(ifname, split(",|;| |\t|\r|\n", "|"), true);
+	if(!opt_pcap_queue_iface_separate_threads && ifnamev.size() > 1) {
 		opt_pcap_queue_iface_separate_threads = 1;
 	}
 	
 	if(opt_pcap_queue_dequeu_window_length < 0) {
 		if(opt_pcap_queue_receive_from_ip_port) {
 			 opt_pcap_queue_dequeu_window_length = 2000;
-		} else if(strchr(ifname, ',')) {
+		} else if(ifnamev.size() > 1) {
 			 opt_pcap_queue_dequeu_window_length = 1000;
 		}
 	}

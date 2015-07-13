@@ -147,5 +147,6 @@ extern
 sVerbose sverb;
 
 void vm_terminate();
+void vm_terminate_error(const char *terminate_error);
 
 #endif

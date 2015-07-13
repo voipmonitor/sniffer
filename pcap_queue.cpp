@@ -1848,7 +1848,7 @@ bool PcapQueue::writePcapToFifo(pcap_pkthdr_plus *header, u_char *packet) {
 	return(true);
 }
 
-bool PcapQueue::initThread(void *arg, unsigned int arg2) {
+bool PcapQueue::initThread(void *arg, unsigned int arg2, string *error) {
 	return(this->openFifoForRead(arg, arg2) &&
 	       (this->enableWriteThread || this->openFifoForWrite(arg, arg2)));
 }
@@ -2146,13 +2146,15 @@ PcapQueue_readFromInterface_base::~PcapQueue_readFromInterface_base() {
 	}
 }
 
-bool PcapQueue_readFromInterface_base::startCapture() {
+bool PcapQueue_readFromInterface_base::startCapture(string *error) {
+	*error = "";
 	static volatile int _sync_start_capture = 0;
 	long unsigned int rssBeforeActivate, rssAfterActivate;
 	while(__sync_lock_test_and_set(&_sync_start_capture, 1)) {
 		usleep(100);
 	}
 	char errbuf[PCAP_ERRBUF_SIZE];
+	char errorstr[2048];
 	if(VERBOSE) {
 		syslog(LOG_NOTICE, "packetbuffer - %s: capturing", this->getInterfaceName().c_str());
 	}
@@ -2160,30 +2162,30 @@ bool PcapQueue_readFromInterface_base::startCapture() {
 		this->interfaceMask = PCAP_NETMASK_UNKNOWN;
 	}
 	if((this->pcapHandle = pcap_create(this->interfaceName.c_str(), errbuf)) == NULL) {
-		syslog(LOG_ERR, "packetbuffer - %s: pcap_create failed: %s", this->getInterfaceName().c_str(), errbuf); 
+		sprintf(errorstr, "packetbuffer - %s: pcap_create failed: %s", this->getInterfaceName().c_str(), errbuf); 
 		goto failed;
 	}
 	global_pcap_handle = this->pcapHandle;
 	int status;
 	if((status = pcap_set_snaplen(this->pcapHandle, this->pcap_snaplen)) != 0) {
-		syslog(LOG_ERR, "packetbuffer - %s: pcap_snaplen failed", this->getInterfaceName().c_str()); 
+		sprintf(errorstr, "packetbuffer - %s: pcap_snaplen failed", this->getInterfaceName().c_str()); 
 		goto failed;
 	}
 	if((status = pcap_set_promisc(this->pcapHandle, this->pcap_promisc)) != 0) {
-		syslog(LOG_ERR, "packetbuffer - %s: pcap_set_promisc failed", this->getInterfaceName().c_str()); 
+		sprintf(errorstr, "packetbuffer - %s: pcap_set_promisc failed", this->getInterfaceName().c_str()); 
 		goto failed;
 	}
 	if((status = pcap_set_timeout(this->pcapHandle, this->pcap_timeout)) != 0) {
-		syslog(LOG_ERR, "packetbuffer - %s: pcap_set_timeout failed", this->getInterfaceName().c_str()); 
+		sprintf(errorstr, "packetbuffer - %s: pcap_set_timeout failed", this->getInterfaceName().c_str()); 
 		goto failed;
 	}
 	if((status = pcap_set_buffer_size(this->pcapHandle, this->pcap_buffer_size)) != 0) {
-		syslog(LOG_ERR, "packetbuffer - %s: pcap_set_buffer_size failed", this->getInterfaceName().c_str()); 
+		sprintf(errorstr, "packetbuffer - %s: pcap_set_buffer_size failed", this->getInterfaceName().c_str()); 
 		goto failed;
 	}
 	rssBeforeActivate = getRss() / 1024 / 1024;
 	if((status = pcap_activate(this->pcapHandle)) != 0) {
-		syslog(LOG_ERR, "packetbuffer - %s: libpcap error: %s", this->getInterfaceName().c_str(), pcap_geterr(this->pcapHandle)); 
+		sprintf(errorstr, "packetbuffer - %s: libpcap error: %s", this->getInterfaceName().c_str(), pcap_geterr(this->pcapHandle)); 
 		if(opt_fork) {
 			ostringstream outStr;
 			outStr << this->getInterfaceName() << ": libpcap error: " << pcap_geterr(this->pcapHandle);
@@ -2225,7 +2227,7 @@ bool PcapQueue_readFromInterface_base::startCapture() {
 		// Compile and apply the filter
 		struct bpf_program fp;
 		if (pcap_compile(this->pcapHandle, &fp, filter_exp, 0, this->interfaceMask) == -1) {
-			syslog(LOG_NOTICE, "packetbuffer - %s: can not parse filter %s: %s", this->getInterfaceName().c_str(), filter_exp, pcap_geterr(this->pcapHandle));
+			sprintf(errorstr, "packetbuffer - %s: can not parse filter %s: %s", this->getInterfaceName().c_str(), filter_exp, pcap_geterr(this->pcapHandle));
 			if(opt_fork) {
 				ostringstream outStr;
 				outStr << this->getInterfaceName() << ": can not parse filter " << filter_exp << ": " << pcap_geterr(this->pcapHandle);
@@ -2234,7 +2236,7 @@ bool PcapQueue_readFromInterface_base::startCapture() {
 			goto failed;
 		}
 		if (pcap_setfilter(this->pcapHandle, &fp) == -1) {
-			syslog(LOG_NOTICE, "packetbuffer - %s: can not install filter %s: %s", this->getInterfaceName().c_str(), filter_exp, pcap_geterr(this->pcapHandle));
+			sprintf(errorstr, "packetbuffer - %s: can not install filter %s: %s", this->getInterfaceName().c_str(), filter_exp, pcap_geterr(this->pcapHandle));
 			if(opt_fork) {
 				ostringstream outStr;
 				outStr << this->getInterfaceName() << ": can not install filter " << filter_exp << ": " << pcap_geterr(this->pcapHandle);
@@ -2245,7 +2247,7 @@ bool PcapQueue_readFromInterface_base::startCapture() {
 	}
 	this->pcapLinklayerHeaderType = pcap_datalink(this->pcapHandle);
 	if(!this->pcapLinklayerHeaderType) {
-		syslog(LOG_ERR, "packetbuffer - %s: pcap_datalink failed", this->getInterfaceName().c_str()); 
+		sprintf(errorstr, "packetbuffer - %s: pcap_datalink failed", this->getInterfaceName().c_str()); 
 		goto failed;
 	}
 	global_pcap_dlink = this->pcapLinklayerHeaderType;
@@ -2259,6 +2261,8 @@ bool PcapQueue_readFromInterface_base::startCapture() {
 	return(true);
 failed:
 	__sync_lock_release(&_sync_start_capture);
+	syslog(LOG_ERR, errorstr);
+	*error = errorstr;
 	return(false);
 }
 
@@ -2642,7 +2646,8 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void *arg, unsigned int 
 				this->dedupThread = new FILE_LINE PcapQueue_readFromInterfaceThread(this->interfaceName.c_str(), dedup, this, this);
 			}
 		}
-		if(!this->startCapture()) {
+		string error;
+		if(!this->startCapture(&error)) {
 			this->threadTerminated = true;
 			this->threadInitFailed = true;
 			this->threadDoTerminate = true;
@@ -2663,7 +2668,7 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void *arg, unsigned int 
 				this->md2Thread->threadDoTerminate = true;
 			}
 			if(!opt_pcap_queue_receive_from_ip_port) {
-				vm_terminate();
+				vm_terminate_error(error.c_str());
 			}
 			return(NULL);
 		}
@@ -3061,7 +3066,7 @@ bool PcapQueue_readFromInterface::init() {
 	   !opt_pcap_queue_iface_separate_threads) {
 		return(true);
 	}
-	vector<string> interfaces = split(this->interfaceName.c_str(), ",", true);
+	vector<string> interfaces = split(this->interfaceName.c_str(), split(",|;| |\t|\r|\n", "|"), true);
 	for(size_t i = 0; i < interfaces.size(); i++) {
 		if(this->readThreadsCount < READ_THREADS_MAX - 1) {
 			this->readThreads[this->readThreadsCount] = new FILE_LINE PcapQueue_readFromInterfaceThread(interfaces[i].c_str());
@@ -3071,7 +3076,7 @@ bool PcapQueue_readFromInterface::init() {
 	return(this->readThreadsCount > 0);
 }
 
-bool PcapQueue_readFromInterface::initThread(void *arg, unsigned int arg2) {
+bool PcapQueue_readFromInterface::initThread(void *arg, unsigned int arg2, string *error) {
 	init_hash();
 	for(int i = 0; i < this->deleteThreadsCount; i++) {
 		this->threadsDeleteData[i] = new FILE_LINE sThreadDeleteData(this);
@@ -3080,7 +3085,7 @@ bool PcapQueue_readFromInterface::initThread(void *arg, unsigned int arg2) {
 		this->threadsDeleteData[i]->enableLock = this->deleteThreadsCount > 1;
 		pthread_create(&this->threadsDeleteData[i]->threadHandle, NULL, _PcapQueue_readFromInterfaceThread_threadDeleteFunction, this->threadsDeleteData[i]);
 	}
-	return(this->startCapture() &&
+	return(this->startCapture(error) &&
 	       this->openFifoForWrite(arg, arg2));
 }
 
@@ -3095,7 +3100,8 @@ void* PcapQueue_readFromInterface::threadFunction(void *arg, unsigned int arg2) 
 			syslog(LOG_NOTICE, outStr.str().c_str());
 		}
 	}
-	if(this->initThread(arg, arg2)) {
+	string error;
+	if(this->initThread(arg, arg2, &error)) {
 		this->threadInitOk = true;
 	} else {
 		this->threadTerminated = true;
@@ -3103,7 +3109,7 @@ void* PcapQueue_readFromInterface::threadFunction(void *arg, unsigned int arg2) 
 		if(opt_pcap_queue_receive_from_ip_port) {
 			this->initAllReadThreadsFinished = true;
 		} else {
-			vm_terminate();
+			vm_terminate_error(error.c_str());
 		}
 		return(NULL);
 	}
@@ -3459,7 +3465,8 @@ bool PcapQueue_readFromInterface::openFifoForWrite(void *arg, unsigned int arg2)
 	}
 }
 
-bool PcapQueue_readFromInterface::startCapture() {
+bool PcapQueue_readFromInterface::startCapture(string *error) {
+	*error = "";
 	if(this->readThreadsCount) {
 		return(true);
 	}
@@ -3473,7 +3480,10 @@ bool PcapQueue_readFromInterface::startCapture() {
 	} else if(opt_pb_read_from_file[0]) {
 		this->pcapHandle = pcap_open_offline_zip(opt_pb_read_from_file, errbuf);
 		if(!this->pcapHandle) {
-			syslog(LOG_ERR, "pcap_open_offline %s failed: %s", opt_pb_read_from_file, errbuf); 
+			char errorstr[2048];
+			sprintf(errorstr, "pcap_open_offline %s failed: %s", opt_pb_read_from_file, errbuf); 
+			syslog(LOG_ERR, errorstr);
+			*error = errorstr;
 			return(false);
 		}
 		this->pcapLinklayerHeaderType = pcap_datalink(this->pcapHandle);
@@ -3481,7 +3491,7 @@ bool PcapQueue_readFromInterface::startCapture() {
 		global_pcap_dlink = this->pcapLinklayerHeaderType;
 		return(true);
 	}
-	return(this->PcapQueue_readFromInterface_base::startCapture());
+	return(this->PcapQueue_readFromInterface_base::startCapture(error));
 }
 
 bool PcapQueue_readFromInterface::openPcap(const char *filename) {
@@ -3762,12 +3772,12 @@ bool PcapQueue_readFromFifo::createSocketServerThread() {
 	return(true);
 }
 
-bool PcapQueue_readFromFifo::initThread(void *arg, unsigned int arg2) {
+bool PcapQueue_readFromFifo::initThread(void *arg, unsigned int arg2, string *error) {
 	if(this->packetServerDirection == directionRead &&
 	   !this->openPcapDeadHandle(0)) {
 		return(false);
 	}
-	return(PcapQueue::initThread(arg, arg2));
+	return(PcapQueue::initThread(arg, arg2, error));
 }
 
 void *PcapQueue_readFromFifo::threadFunction(void *arg, unsigned int arg2) {
@@ -3799,11 +3809,12 @@ void *PcapQueue_readFromFifo::threadFunction(void *arg, unsigned int arg2) {
 			syslog(LOG_NOTICE, outStr.str().c_str());
 		}
 	}
-	if(this->initThread(arg, arg2)) {
+	string error;
+	if(this->initThread(arg, arg2, &error)) {
 		this->threadInitOk = true;
 	} else {
 		this->threadTerminated = true;
-		vm_terminate();
+		vm_terminate_error(error.c_str());
 		return(NULL);
 	}
 	if(this->packetServerDirection == directionRead && arg2) {
@@ -4023,7 +4034,7 @@ void *PcapQueue_readFromFifo::writeThreadFunction(void *arg, unsigned int arg2) 
 		this->writeThreadInitOk = true;
 	} else {
 		this->writeThreadTerminated = true;
-		vm_terminate();
+		vm_terminate_error("packetbuffer initializing failed");
 		return(NULL);
 	}
 	pcap_block_store *blockStore;

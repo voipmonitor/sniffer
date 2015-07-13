@@ -221,7 +221,7 @@ protected:
 	inline int readPcapFromFifo(pcap_pkthdr_plus *header, u_char **packet, bool usePacketBuffer = false);
 	bool writePcapToFifo(pcap_pkthdr_plus *header, u_char *packet);
 	virtual bool init() { return(true); };
-	virtual bool initThread(void *arg, unsigned int arg2);
+	virtual bool initThread(void *arg, unsigned int arg2, string *error);
 	virtual bool initWriteThread(void *arg, unsigned int arg2);
 	virtual void *threadFunction(void *arg, unsigned int arg2) = 0;
 	virtual void *writeThreadFunction(void *arg, unsigned int arg2) { return(NULL); }
@@ -341,7 +341,7 @@ public:
 	virtual ~PcapQueue_readFromInterface_base();
 	void setInterfaceName(const char *interfaceName);
 protected:
-	virtual bool startCapture();
+	virtual bool startCapture(string *error);
 	inline int pcap_next_ex_iface(pcap_t *pcapHandle, pcap_pkthdr** header, u_char** packet);
 	inline int pcap_dispatch(pcap_t *pcapHandle);
 	inline int pcapProcess(pcap_pkthdr** header, u_char** packet, bool *destroy, 
@@ -508,11 +508,11 @@ public:
 	}
 protected:
 	bool init();
-	bool initThread(void *arg, unsigned int arg2);
+	bool initThread(void *arg, unsigned int arg2, string *error);
 	void *threadFunction(void *arg, unsigned int arg2);
 	void *threadDeleteFunction(sThreadDeleteData *threadDeleteData);
 	bool openFifoForWrite(void *arg, unsigned int arg2);
-	bool startCapture();
+	bool startCapture(string *error);
 	pcap_t* _getPcapHandle(int dlt) { 
 		return(this->pcapHandle);
 	}
@@ -605,7 +605,7 @@ public:
 protected:
 	bool createThread();
 	bool createSocketServerThread();
-	bool initThread(void *arg, unsigned int arg2);
+	bool initThread(void *arg, unsigned int arg2, string *error);
 	void *threadFunction(void *arg, unsigned int arg2);
 	void *writeThreadFunction(void *arg, unsigned int arg2);
 	bool openFifoForRead(void *arg, unsigned int arg2);
