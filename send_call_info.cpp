@@ -6,7 +6,17 @@ extern int terminating;
 extern int opt_nocdr;
 
 SendCallInfo *sendCallInfo = NULL;
+volatile int _sendCallInfo_ready = 0;
+volatile int _sendCallInfo_lock = 0;
 int sendCallInfoDebug = 1;
+
+
+static void sendCallInfo_lock() {
+	while(__sync_lock_test_and_set(&_sendCallInfo_lock, 1));
+}
+static void sendCallInfo_unlock() {
+	__sync_lock_release(&_sendCallInfo_lock);
+}
 
 
 SendCallInfoItem::SendCallInfoItem(unsigned int dbId) {
@@ -212,14 +222,21 @@ void initSendCallInfo() {
 	if(sendCallInfo) {
 		return;
 	}
+	sendCallInfo_lock();
 	sendCallInfo = new SendCallInfo();
 	sendCallInfo->load();
+	sendCallInfo_unlock();
+	_sendCallInfo_ready = 1;
 }
 
 void termSendCallInfo() {
 	if(sendCallInfo) {
+		_sendCallInfo_ready = 0;
+		sendCallInfo_lock();
+		sendCallInfo->stopPopCallInfoThread(true);
 		delete sendCallInfo;
 		sendCallInfo = NULL;
+		sendCallInfo_unlock();
 	}
 }
 
@@ -227,8 +244,7 @@ void refreshSendCallInfo() {
 	if(isExistsSendCallInfo()) {
 		if(!sendCallInfo) {
 			initSendCallInfo();
-		}
-		if(sendCallInfo) {
+		} else {
 			sendCallInfo->refresh();
 		}
 	} else {
@@ -239,8 +255,10 @@ void refreshSendCallInfo() {
 }
 
 void sendCallInfoEvCall(Call *call, sSciInfo::eTypeSci typeSci, struct timeval tv) {
-	if(sendCallInfo) {
+	if(sendCallInfo && _sendCallInfo_ready) {
+		sendCallInfo_lock();
 		sendCallInfo->evCall(call, typeSci, tv.tv_sec * 1000000ull + tv.tv_usec);
+		sendCallInfo_unlock();
 	}
 }
 

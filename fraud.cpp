@@ -12,6 +12,8 @@ extern MySqlStore *sqlStore;
 extern char cloud_host[256];
 
 FraudAlerts *fraudAlerts = NULL;
+volatile int _fraudAlerts_ready = 0;
+volatile int _fraudAlerts_lock = 0;
 int fraudDebug = 1;
 
 CountryCodes *countryCodes = NULL;
@@ -20,6 +22,14 @@ GeoIP_country *geoIP_country = NULL;
 CacheNumber_location *cacheNumber_location = NULL;
 
 SqlDb *sqlDbFraud = NULL;
+
+
+static void fraudAlerts_lock() {
+	while(__sync_lock_test_and_set(&_fraudAlerts_lock, 1));
+}
+static void fraudAlerts_unlock() {
+	__sync_lock_release(&_fraudAlerts_lock);
+}
 
 
 TimePeriod::TimePeriod(SqlDb_row *dbRow) {
@@ -1587,15 +1597,21 @@ void initFraud() {
 	if(fraudAlerts) {
 		return;
 	}
+	fraudAlerts_lock();
 	fraudAlerts = new FraudAlerts();
 	fraudAlerts->loadAlerts();
+	fraudAlerts_unlock();
+	_fraudAlerts_ready = 1;
 }
 
 void termFraud() {
 	if(fraudAlerts) {
+		_fraudAlerts_ready = 0;
+		fraudAlerts_lock();
 		fraudAlerts->stopPopCallInfoThread(true);
 		delete fraudAlerts;
 		fraudAlerts = NULL;
+		fraudAlerts_unlock();
 	}
 	if(countryCodes) {
 		delete countryCodes;
@@ -1666,8 +1682,7 @@ void refreshFraud() {
 		if(isExistsFraudAlerts()) {
 			if(!fraudAlerts) {
 				initFraud();
-			}
-			if(fraudAlerts) {
+			} else {
 				fraudAlerts->refresh();
 			}
 		} else {
@@ -1679,44 +1694,58 @@ void refreshFraud() {
 }
 
 void fraudBeginCall(Call *call, timeval tv) {
-	if(fraudAlerts) {
+	if(fraudAlerts && _fraudAlerts_ready) {
+		fraudAlerts_lock();
 		fraudAlerts->beginCall(call, tv.tv_sec * 1000000ull + tv.tv_usec);
+		fraudAlerts_unlock();
 	}
 }
 
 void fraudConnectCall(Call *call, timeval tv) {
-	if(fraudAlerts) {
+	if(fraudAlerts && _fraudAlerts_ready) {
+		fraudAlerts_lock();
 		fraudAlerts->connectCall(call, tv.tv_sec * 1000000ull + tv.tv_usec);
+		fraudAlerts_unlock();
 	}
 }
 
 void fraudSeenByeCall(Call *call, timeval tv) {
-	if(fraudAlerts) {
+	if(fraudAlerts && _fraudAlerts_ready) {
+		fraudAlerts_lock();
 		fraudAlerts->seenByeCall(call, tv.tv_sec * 1000000ull + tv.tv_usec);
+		fraudAlerts_unlock();
 	}
 }
 
 void fraudEndCall(Call *call, timeval tv) {
-	if(fraudAlerts) {
+	if(fraudAlerts && _fraudAlerts_ready) {
+		fraudAlerts_lock();
 		fraudAlerts->endCall(call, tv.tv_sec * 1000000ull + tv.tv_usec);
+		fraudAlerts_unlock();
 	}
 }
 
 void fraudSipPacket(u_int32_t ip, timeval tv) {
-	if(fraudAlerts) {
+	if(fraudAlerts && _fraudAlerts_ready) {
+		fraudAlerts_lock();
 		fraudAlerts->evSipPacket(ip, tv.tv_sec * 1000000ull + tv.tv_usec);
+		fraudAlerts_unlock();
 	}
 }
 
 void fraudRegister(u_int32_t ip, timeval tv) {
-	if(fraudAlerts) {
+	if(fraudAlerts && _fraudAlerts_ready) {
+		fraudAlerts_lock();
 		fraudAlerts->evRegister(ip, tv.tv_sec * 1000000ull + tv.tv_usec);
+		fraudAlerts_unlock();
 	}
 }
 
 void fraudRegisterResponse(u_int32_t ip, u_int64_t at) {
-	if(fraudAlerts) {
+	if(fraudAlerts && _fraudAlerts_ready) {
+		fraudAlerts_lock();
 		fraudAlerts->evRegisterResponse(ip, at);
+		fraudAlerts_unlock();
 	}
 }
 
