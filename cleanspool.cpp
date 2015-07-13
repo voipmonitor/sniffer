@@ -30,7 +30,6 @@ extern char opt_chdir[1024];
 extern int debugclean;
 extern int opt_id_sensor_cleanspool;
 extern char configfile[1024];
-extern int terminating;
 
 extern unsigned int opt_maxpoolsize;
 extern unsigned int opt_maxpooldays;
@@ -1086,7 +1085,7 @@ void convert_filesindex() {
 	mkdir_r("filesindex/graphsize", 0777);
 	mkdir_r("filesindex/audiosize", 0777);
 	mkdir_r("filesindex/regsize", 0777);
-	while(!terminating) {
+	while(!is_terminating()) {
 		errno = 0;
 		de = readdir( dp );
 		if(de == NULL) break;
@@ -1110,7 +1109,7 @@ void check_filesindex() {
 	}
 	SqlDb *sqlDb = createSqlObject();
 	syslog(LOG_NOTICE, "check indexes start");
-	while(!terminating) {
+	while(!is_terminating()) {
 		errno = 0;
 		de = readdir( dp );
 		if(de == NULL) break;
@@ -1126,10 +1125,10 @@ void check_filesindex() {
 
 long long reindex_date(string date) {
 	long long sumDaySize = 0;
-	for(int h = 0; h < 24 && !terminating; h++) {
+	for(int h = 0; h < 24 && !is_terminating(); h++) {
 		sumDaySize += reindex_date_hour(date, h);
 	}
-	if(!sumDaySize && !terminating) {
+	if(!sumDaySize && !is_terminating()) {
 		rmdir(date.c_str());
 	}
 	return(sumDaySize);
@@ -1138,7 +1137,7 @@ long long reindex_date(string date) {
 void check_index_date(string date, SqlDb *sqlDb) {
 	char id_sensor_str[10];
 	sprintf(id_sensor_str, "%i", opt_id_sensor_cleanspool > 0 ? opt_id_sensor_cleanspool : 0);
-	for(int h = 0; h < 24 && !terminating; h++) {
+	for(int h = 0; h < 24 && !is_terminating(); h++) {
 		char hour[8];
 		sprintf(hour, "%02d", h);
 		string ymdh = string(date.substr(0,4)) + date.substr(5,2) + date.substr(8,2) + hour;
@@ -1854,7 +1853,7 @@ bool isSetCleanspoolParameters() {
 
 void *clean_spooldir(void *dummy) {
 	if(debugclean) syslog(LOG_ERR, "run clean_spooldir()");
-	while(!terminating) {
+	while(!is_terminating()) {
 		if(!suspendCleanspool) {
 			bool timeOk = false;
 			if(opt_cleanspool_enable_run_hour_from >= 0 &&
@@ -1882,7 +1881,7 @@ void *clean_spooldir(void *dummy) {
 				check_disk_free_run(false);
 			}
 		}
-		for(int i = 0; i < 300 && !terminating; i++) {
+		for(int i = 0; i < 300 && !is_terminating(); i++) {
 			sleep(1);
 		}
 	}

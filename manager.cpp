@@ -62,7 +62,6 @@ extern char mac[32];
 extern int verbosity;
 extern char opt_chdir[1024];
 extern char opt_php_path[1024];
-extern int terminating;
 extern int manager_socket_server;
 extern int opt_nocdr;
 extern int global_livesniffer;
@@ -2220,7 +2219,7 @@ void *manager_ssh(void *arg) {
 	ssh_threads_set_callbacks(ssh_threads_get_pthread());
 	ssh_init();
 //	ssh_set_log_level(SSH_LOG_WARNING | SSH_LOG_PROTOCOL | SSH_LOG_PACKET | SSH_LOG_FUNCTIONS);
-	while(1 && terminating == 0) {
+	while(!is_terminating_without_error()) {
 		syslog(LOG_NOTICE, "Starting reverse SSH connection service\n");
 		manager_ssh_();
 		syslog(LOG_NOTICE, "SSH service stopped.\n");
@@ -2268,7 +2267,7 @@ tryagain:
 	pthread_attr_t attr;
 	fd_set rfds;
 	struct timeval tv;
-	while(terminating == 0) {
+	while(!is_terminating_without_error()) {
 		FD_ZERO(&rfds);
 		FD_SET(manager_socket_server, &rfds);
 		tv.tv_sec = 10;
@@ -2277,7 +2276,7 @@ tryagain:
 		   select(manager_socket_server + 1, &rfds, (fd_set *) 0, (fd_set *) 0, &tv) > 0) {
 			addrlen = sizeof(clientInfo);
 			int client = accept(manager_socket_server, (sockaddr*)&clientInfo, &addrlen);
-			if(terminating == 1) {
+			if(is_terminating_without_error()) {
 				close(client);
 				close(manager_socket_server);
 				return 0;
@@ -2513,7 +2512,7 @@ void ManagerClientThread::run() {
 	char *flushBuff = new FILE_LINE char[flushBuffLength];
 	memset(flushBuff, '_', flushBuffLength - 1);
 	flushBuff[flushBuffLength - 1] = '\n';
-	while(true && !terminating && !disconnect) {
+	while(true && !is_terminating_without_error() && !disconnect) {
 		string rsltString;
 		this->lock_responses();
 		if(this->responses.size()) {

@@ -118,7 +118,6 @@ extern int opt_packetbuffered;	  // Make .pcap files writing ‘‘packet-buffer
 extern int opt_rtcp;		  // Make .pcap files writing ‘‘packet-buffered’’
 extern int verbosity;
 extern int verbosityE;
-extern int terminating;
 extern int opt_rtp_firstleg;
 extern int opt_sip_register;
 extern int opt_norecord_header;
@@ -1292,7 +1291,7 @@ void add_to_rtp_thread_queue(Call *call, unsigned char *data, int datalen, int d
 	unsigned long long __prof_begin = rdtsc();
 	#endif
  
-	if(terminating) {
+	if(is_terminating()) {
 		return;
 	}
 	
@@ -1460,7 +1459,7 @@ void *rtp_read_thread_func(void *arg) {
 #ifdef QUEUE_NONBLOCK
 		if(queue_dequeue(params->pqueue, (void **)&rtpp) != 1) {
 			// queue is empty
-			if(terminating || readend) {
+			if(is_terminating() || readend) {
 				return NULL;
 			}
 			usleep(rtp_qring_usleep);
@@ -1472,17 +1471,17 @@ void *rtp_read_thread_func(void *arg) {
 		if(opt_pcap_queue) {
 			if(params->rtpp_queue_quick) {
 				if(!params->rtpp_queue_quick->pop(&rtpp_pq, true) &&
-				   terminating) {
+				   is_terminating()) {
 					return(NULL);
 				}
 			} else if(params->rtpp_queue_quick_boost) {
 				if(!params->rtpp_queue_quick_boost->pop(&rtpp_pq, true) &&
-				   terminating) {
+				   is_terminating()) {
 					return(NULL);
 				}
 			} else {
 				if(!params->rtpp_queue->pop(&rtpp_pq, true)) {
-					if(terminating || readend) {
+					if(is_terminating() || readend) {
 						return NULL;
 					}
 					// no packet to read, wait and try again
@@ -1493,7 +1492,7 @@ void *rtp_read_thread_func(void *arg) {
 		} else {
 		
 			if(params->vmbuffer[params->readit % params->vmbuffermax].free == 1) {
-				if(terminating || readend) {
+				if(is_terminating() || readend) {
 					return NULL;
 				}
 				// no packet to read, wait and try again
@@ -4223,7 +4222,7 @@ void readdump_libnids(pcap_t *handle) {
 	nids_register_udp((void*)libnids_udp_callback);
 
 	/* read packets from libpcap in a loop */
-	while (!terminating) {
+	while (!is_terminating()) {
 		res = pcap_next_ex(handle, &header, &packet);
 
 		if(!packet and res != -2) {
@@ -4293,7 +4292,7 @@ void *pcap_read_thread_func(void *arg) {
 #ifdef QUEUE_NONBLOCK
 		if((res = queue_dequeue(qs_readpacket_thread_queue, (void **)&pp)) != 1) {
 			// queue is empty
-			if(terminating || readend) {
+			if(is_terminating() || readend) {
 				//printf("packets: [%u]\n", packets);
 				return NULL;
 			}
@@ -4305,7 +4304,7 @@ void *pcap_read_thread_func(void *arg) {
 #ifdef QUEUE_NONBLOCK2
 		if(pcap_qring[pcap_readit % pcap_qring_max].free == 1) {
 			// no packet to read 
-			if(terminating || readend) {
+			if(is_terminating() || readend) {
 				//printf("packets: [%u]\n", packets);
 				return NULL;
 			}
@@ -4701,7 +4700,7 @@ void readdump_libpcap(pcap_t *handle) {
 		tmppcap = pcap_dump_open(handle, pname);
 	}
 
-	while (!terminating) {
+	while (!is_terminating()) {
 		destroy = 0;
 		int res = pcap_next_ex(handle, &headerpcap, &packetpcap);
 		packet = (u_char *)packetpcap;

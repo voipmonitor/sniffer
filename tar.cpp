@@ -71,8 +71,6 @@ extern int verbosity;
 extern MySqlStore *sqlStore;
 extern int opt_blocktarwrite;
 
-
-extern int terminating; 
 extern int terminated_async;
 extern int terminated_tar_flush_queue;
 extern int terminated_tar;
@@ -1342,7 +1340,7 @@ void *TarQueue::tarthreadworker(void *arg) {
 			}
 		}
 		// quque is empty - sleep before next run
-		usleep(terminating ? 100000 : 250000);
+		usleep(is_terminating() ? 100000 : 250000);
 		if(terminate_pass) {
 			break;
 		}
@@ -1666,7 +1664,7 @@ void *TarQueueThread(void *dummy) {
 				 syslog(LOG_NOTICE, "terminated - tar - flush queue");
 			}
 		}
-		if(terminating) {
+		if(is_terminating()) {
 			usleep(100000);
 		} else {
 			sleep(1);

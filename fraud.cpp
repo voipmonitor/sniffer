@@ -6,7 +6,6 @@
 
 
 extern int opt_enable_fraud;
-extern int terminating;
 extern int opt_nocdr;
 extern MySqlStore *sqlStore;
 extern char cloud_host[256];
@@ -1473,7 +1472,7 @@ void FraudAlerts::popCallInfoThread() {
 	runPopCallInfoThread = true;
 	sFraudCallInfo callInfo;
 	sFraudEventInfo eventInfo;
-	while(!terminating && !termPopCallInfoThread) {
+	while(!is_terminating() && !termPopCallInfoThread) {
 		bool okPop = false;
 		if(callQueue.pop(&callInfo)) {
 			lock_alerts();

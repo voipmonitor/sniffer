@@ -31,7 +31,6 @@
 extern int verbosity;
 extern int opt_mysql_port;
 extern char opt_match_header[128];
-extern int terminating;
 extern int opt_ipaccount;
 extern int opt_id_sensor;
 extern bool opt_cdr_partition;
@@ -908,7 +907,7 @@ bool SqlDb_mysql::query(string query, bool callFromStoreProcessWithFixDeadlock, 
 			syslog(LOG_INFO, prepareQueryForPrintf(preparedQuery).c_str());
 		}
 		if(pass > 0) {
-			if(terminating) {
+			if(is_terminating()) {
 				usleep(100000);
 			} else {
 				sleep(1);
@@ -988,7 +987,7 @@ bool SqlDb_mysql::query(string query, bool callFromStoreProcessWithFixDeadlock, 
 			}
 		}
 		++attempt;
-		if(terminating && attempt >= 2) {
+		if(is_terminating() && attempt >= 2) {
 			break;
 		}
 	}
@@ -1248,7 +1247,7 @@ bool SqlDb_odbc::query(string query, bool callFromStoreProcessWithFixDeadlock, c
 			syslog(LOG_INFO, prepareQueryForPrintf(preparedQuery).c_str());
 		}
 		if(pass > 0) {
-			if(terminating) {
+			if(is_terminating()) {
 				usleep(100000);
 			} else {
 				sleep(1);
@@ -1261,7 +1260,7 @@ bool SqlDb_odbc::query(string query, bool callFromStoreProcessWithFixDeadlock, c
 			rslt = SQLAllocHandle(SQL_HANDLE_STMT, hConnection, &hStatement);
 			if(!this->okRslt(rslt)) {
 				this->checkLastError("odbc: error in allocate statement handle", true);
-				if(terminating) {
+				if(is_terminating()) {
 					break;
 				}
 				this->reconnect();
@@ -1294,7 +1293,7 @@ bool SqlDb_odbc::query(string query, bool callFromStoreProcessWithFixDeadlock, c
 			}
 		}
 		++attempt;
-		if(terminating && attempt >= 2) {
+		if(is_terminating() && attempt >= 2) {
 			break;
 		}
 	}
@@ -1493,11 +1492,11 @@ void MySqlStore_process::store() {
 				}
 			}
 			
-			if(terminating && this->sqlDb->getLastError() && this->enableTerminatingIfSqlError) {
+			if(is_terminating() && this->sqlDb->getLastError() && this->enableTerminatingIfSqlError) {
 				break;
 			}
 		}
-		if(terminating && 
+		if(is_terminating() && 
 		   (this->enableTerminatingDirectly ||
 		    (this->enableTerminatingIfEmpty && this->query_buff.size() == 0) ||
 		    (this->enableTerminatingIfSqlError && this->sqlDb->getLastError()))) {
@@ -2417,7 +2416,7 @@ void MySqlStore::autoloadFromSqlVmExport() {
 
 void *MySqlStore::threadQFilesCheckPeriod(void *arg) {
 	MySqlStore *me = (MySqlStore*)arg;
-	while(!terminating) {
+	while(!is_terminating()) {
 		me->lock_qfiles();
 		for(map<int, QFile*>::iterator iter = me->qfiles.begin(); iter != me->qfiles.end(); iter++) {
 			iter->second->lock();
@@ -2445,7 +2444,7 @@ void *MySqlStore::threadLoadFromQFiles(void *arg) {
 	if(me->loadFromQFileConfig.inotify) {
 		me->fillQFiles(id);
 	}
-	while(!terminating) {
+	while(!is_terminating()) {
 		extern int opt_blockqfile;
 		if(opt_blockqfile) {
 			sleep(1);
@@ -2455,10 +2454,10 @@ void *MySqlStore::threadLoadFromQFiles(void *arg) {
 		if(minFile.empty()) {
 			usleep(250000);
 		} else {
-			while(me->getSizeVect(id, id + me->loadFromQFilesThreadData[id].storeThreads - 1) > 0 && !terminating) {
+			while(me->getSizeVect(id, id + me->loadFromQFilesThreadData[id].storeThreads - 1) > 0 && !is_terminating()) {
 				usleep(100000);
 			}
-			if(!terminating) {
+			if(!is_terminating()) {
 				if(me->existFilenameInQFiles(minFile.c_str()) ||
 				   !me->loadFromQFile(minFile.c_str(), id)) {
 					usleep(250000);
@@ -2489,13 +2488,13 @@ void *MySqlStore::threadINotifyQFiles(void *arg) {
 	}
 	unsigned watchBuffMaxLen = 1024 * 20;
 	char *watchBuff =  new FILE_LINE char[watchBuffMaxLen];
-	while(!terminating) {
+	while(!is_terminating()) {
 		ssize_t watchBuffLen = read(inotifyDescriptor, watchBuff, watchBuffMaxLen);
 		if(watchBuffLen == watchBuffMaxLen) {
 			syslog(LOG_NOTICE, "qfiles inotify events filled whole buffer");
 		}
 		unsigned i = 0;
-		while(i < watchBuffLen && !terminating) {
+		while(i < watchBuffLen && !is_terminating()) {
 			inotify_event *event = (inotify_event*)(watchBuff + i);
 			i += sizeof(inotify_event) + event->len;
 			if(event->mask & IN_CLOSE_WRITE) {
@@ -4575,7 +4574,7 @@ bool SqlDb_mysql::checkSourceTables() {
 void SqlDb_mysql::copyFromSourceTablesMinor(SqlDb_mysql *sqlDbSrc) {
 	vector<string> tablesMinor = getSourceTables(tt_minor);
 	for(vector<string>::iterator it = tablesMinor.begin(); it != tablesMinor.end(); it++) {
-		if(terminating) return;
+		if(is_terminating()) return;
 		this->copyFromSourceTable(sqlDbSrc, it->c_str());
 	}
 }
@@ -4584,7 +4583,7 @@ void SqlDb_mysql::copyFromSourceTablesMain(SqlDb_mysql *sqlDbSrc) {
 	vector<string> tablesMain = getSourceTables(tt_main);
 	for(vector<string>::iterator it = tablesMain.begin(); it != tablesMain.end(); it++) {
 		unsigned long maxDiffId = 100000;
-		if(terminating) return;
+		if(is_terminating()) return;
 		this->copyFromSourceTable(sqlDbSrc, it->c_str(), NULL, maxDiffId);
 	}
 }
@@ -4673,7 +4672,7 @@ void SqlDb_mysql::copyFromSourceTable(SqlDb_mysql *sqlDbSrc, const char *tableNa
 			unsigned int counterInsert = 0;
 			extern int opt_database_backup_insert_threads;
 			unsigned int insertThreads = opt_database_backup_insert_threads > 1 ? opt_database_backup_insert_threads : 1;
-			while(!terminating && (row = sqlDbSrc->fetchRow(true))) {
+			while(!is_terminating() && (row = sqlDbSrc->fetchRow(true))) {
 				if(maxDiffId) {
 					useMaxIdInSrc = atoll(row[id].c_str());
 				}
@@ -4686,11 +4685,11 @@ void SqlDb_mysql::copyFromSourceTable(SqlDb_mysql *sqlDbSrc, const char *tableNa
 								1);
 					rows.clear();
 				}
-				while(!terminating && sqlStore->getAllSize() > 1000) {
+				while(!is_terminating() && sqlStore->getAllSize() > 1000) {
 					usleep(100000);
 				}
 			}
-			if(!terminating && rows.size()) {
+			if(!is_terminating() && rows.size()) {
 				string insertQuery = this->insertQuery(tableName, &rows, false, true, true);
 				sqlStore->query(insertQuery.c_str(), 
 						insertThreads > 1 ?
@@ -4700,35 +4699,35 @@ void SqlDb_mysql::copyFromSourceTable(SqlDb_mysql *sqlDbSrc, const char *tableNa
 			}
 		}
 		if(string(tableName) == "cdr") {
-			if(terminating) return;
+			if(is_terminating()) return;
 			this->copyFromSourceTable(sqlDbSrc, "cdr_next", "cdr_id", 0, minIdInSrc, useMaxIdInSrc);
 			if(custom_headers_cdr) {
 				list<string> nextTables = custom_headers_cdr->getAllNextTables();
 				for(list<string>::iterator it = nextTables.begin(); it != nextTables.end(); it++) {
-					if(terminating) return;
+					if(is_terminating()) return;
 					this->copyFromSourceTable(sqlDbSrc, it->c_str(), "cdr_id", 0, minIdInSrc, useMaxIdInSrc);
 				}
 			}
-			if(terminating) return;
+			if(is_terminating()) return;
 			this->copyFromSourceTable(sqlDbSrc, "cdr_rtp", "cdr_id", 0, minIdInSrc, useMaxIdInSrc);
-			if(terminating) return;
+			if(is_terminating()) return;
 			this->copyFromSourceTable(sqlDbSrc, "cdr_dtmf", "cdr_id", 0, minIdInSrc, useMaxIdInSrc);
-			if(terminating) return;
+			if(is_terminating()) return;
 			this->copyFromSourceTable(sqlDbSrc, "cdr_sipresp", "cdr_id", 0, minIdInSrc, useMaxIdInSrc);
-			if(terminating) return;
+			if(is_terminating()) return;
 			if(opt_save_sip_history) {
 				this->copyFromSourceTable(sqlDbSrc, "cdr_siphistory", "cdr_id", 0, minIdInSrc, useMaxIdInSrc);
-				if(terminating) return;
+				if(is_terminating()) return;
 			}
 			this->copyFromSourceTable(sqlDbSrc, "cdr_proxy", "cdr_id", 0, minIdInSrc, useMaxIdInSrc);
-			if(terminating) return;
+			if(is_terminating()) return;
 			this->copyFromSourceTable(sqlDbSrc, "cdr_tar_part", "cdr_id", 0, minIdInSrc, useMaxIdInSrc);
 		}
 		if(string(tableName) == "message") {
 			if(custom_headers_message) {
 				list<string> nextTables = custom_headers_message->getAllNextTables();
 				for(list<string>::iterator it = nextTables.begin(); it != nextTables.end(); it++) {
-					if(terminating) return;
+					if(is_terminating()) return;
 					this->copyFromSourceTable(sqlDbSrc, it->c_str(), "message_id", 0, minIdInSrc, useMaxIdInSrc);
 				}
 			}

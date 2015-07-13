@@ -807,12 +807,18 @@ string SEMAPHOR_FORK_MODE_NAME() {
 #endif
 
 void vm_terminate() {
-	terminating = 1;
+	set_terminating();
 }
 
 void vm_terminate_error(const char *terminate_error) {
 	terminating_error = terminate_error;
-	terminating = 1;
+	set_terminating();
+}
+
+bool is_terminating_without_error() {
+	string _terminate_error = terminating_error;
+	return(is_terminating() &&
+	       (!useNewCONFIG || _terminate_error.empty()));
 }
 
 #if ENABLE_SEMAPHOR_FORK_MODE
@@ -903,7 +909,7 @@ void *database_backup(void *dummy) {
 	SqlDb_mysql *sqlDb_mysql = dynamic_cast<SqlDb_mysql*>(sqlDb);
 	sqlStore = new FILE_LINE MySqlStore(mysql_host, mysql_user, mysql_password, mysql_database);
 	bool callCreateSchema = false;
-	while(!terminating) {
+	while(!is_terminating()) {
 		syslog(LOG_NOTICE, "-- START BACKUP PROCESS");
 		
 		SqlDb *sqlDbSrc = new FILE_LINE SqlDb_mysql();
@@ -956,7 +962,7 @@ void *database_backup(void *dummy) {
 			printMemoryStat();
 		}
 		
-		for(int i = 0; i < opt_database_backup_pause && !terminating; i++) {
+		for(int i = 0; i < opt_database_backup_pause && !is_terminating(); i++) {
 			sleep(1);
 		}
 	}
@@ -1285,10 +1291,10 @@ void *scanpcapdir( void *dummy ) {
  
 #ifndef FREEBSD
  
-	while(!pcapQueueInterface && !terminating) {
+	while(!pcapQueueInterface && !is_terminating()) {
 		usleep(100000);
 	}
-	if(terminating) {
+	if(is_terminating()) {
 		return(NULL);
 	}
 	sleep(1);
@@ -1309,7 +1315,7 @@ void *scanpcapdir( void *dummy ) {
 	// pre-populate the fileList with anything pre-existing in the directory
 	fileList = listFilesDir(opt_scanpcapdir);
 
-	while(terminating == 0) {
+	while(!is_terminating()) {
 
 		if (fileList.empty()) {
 			// queue is empty, time to wait on inotify for some work
@@ -1321,7 +1327,7 @@ void *scanpcapdir( void *dummy ) {
 					syslog(LOG_NOTICE, "Warning: inotify events filled whole buffer.");
 				}
 
-				while (( i < len ) and terminating==0) {
+				while (( i < len ) and !is_terminating()) {
 					event = (struct inotify_event *) &buff[i];
 					i += sizeof(struct inotify_event) + event->len;
 					if (event->mask & opt_scanpcapmethod) { // this will prevent opening files which is still open for writes
@@ -1354,11 +1360,11 @@ void *scanpcapdir( void *dummy ) {
 		if(!pcapQueueInterface->openPcap(filename)) {
 			abort();
 		}
-		while(terminating == 0 && !pcapQueueInterface->isPcapEnd()) {
+		while(!is_terminating() && !pcapQueueInterface->isPcapEnd()) {
 			usleep(10000);
 		}
 		
-		if(!terminating) {
+		if(!is_terminating()) {
 			unlink(filename);
 		}
 	}
@@ -1377,7 +1383,7 @@ void *destroy_calls( void *dummy ) {
 	while(1) {
 		calltable->destroyCallsIfPcapsClosed();
 		
-		if(terminating) {
+		if(is_terminating()) {
 			break;
 		}
 	
@@ -1473,13 +1479,13 @@ void reload_config(const char *jsonConfig) {
 
 void hot_restart() {
 	hot_restarting = 1;
-	terminating = 1;
+	set_terminating();
 }
 
 void hot_restart_with_json_config(const char *jsonConfig) {
 	hot_restarting = 1;
 	hot_restarting_json_config = jsonConfig;
-	terminating = 1;
+	set_terminating();
 }
 
 void reload_capture_rules() {
@@ -1628,7 +1634,7 @@ void bt_sighandler(int sig, struct sigcontext ctx)
 #endif
 
 void resetTerminating() {
-	terminating = 0;
+	clear_terminating();
 	terminating_moving_cache = 0;
 	terminating_storing_cdr = 0;
 	terminated_call_cleanup = 0;
@@ -2187,7 +2193,7 @@ int main(int argc, char *argv[]) {
 		}
 		loadFromQFiles->loadFromQFiles_start();
 		unsigned int counter;
-		while(!terminating) {
+		while(!is_terminating()) {
 			sleep(1);
 			if(!(++counter % 10) && verbosity) {
 				string stat = loadFromQFiles->getLoadFromQFilesStat();
@@ -2673,7 +2679,7 @@ int main(int argc, char *argv[]) {
 			
 			uint64_t _counter = 0;
 			int _pcap_stat_period = sverb.pcap_stat_period ? sverb.pcap_stat_period : 10;
-			while(!terminating) {
+			while(!is_terminating()) {
 				if(_counter && (verbosityE > 0 || !(_counter % _pcap_stat_period))) {
 					pthread_mutex_lock(&terminate_packetbuffer_lock);
 					pcapQueueQ->pcapStat(verbosityE > 0 ? 1 : _pcap_stat_period);
@@ -2812,7 +2818,7 @@ int main(int argc, char *argv[]) {
 	Call *call;
 	calltable->cleanup(0);
 
-	terminating = 1;
+	set_terminating();
 
 	regfailedcache->prune(0);
 	
@@ -3015,10 +3021,10 @@ int main(int argc, char *argv[]) {
 			_break = true;
 		}
 		if(!_terminating_error.empty()) {
-			terminating = 0;
-			while(!terminating) {
+			clear_terminating();
+			while(!is_terminating()) {
 				syslog(LOG_NOTICE, "%s - wait for terminating or hot restarting", _terminating_error.c_str());
-				for(int i = 0; i < 10 && !terminating; i++) {
+				for(int i = 0; i < 10 && !is_terminating(); i++) {
 					sleep(1);
 				}
 			}
@@ -3026,6 +3032,7 @@ int main(int argc, char *argv[]) {
 				_break = true;
 			}
 		}
+		terminating_error = "";
 	} else {
 		_break = true;
 	}
@@ -3468,7 +3475,7 @@ void test() {
 	case 95:
 		chdir(opt_chdir);
 		check_filesindex();
-		terminating = 1;
+		set_terminating();
 		break;
 	case 96:
 		{
@@ -3629,7 +3636,7 @@ void test() {
 		pcapQueue2->start();
 	}
 	
-	while(!terminating) {
+	while(!is_terminating()) {
 		if(opt_test == 1 || opt_test == 3) {
 			pcapQueue1->pcapStat();
 		}
@@ -3698,7 +3705,7 @@ void test() {
 	sqlStore->query("insert into _test set test = 4", i);
 	sqlStore->unlock(i);
 	}
-	terminating = true;
+	set_terminating();
 	//sleep(2);
 	*/
 	

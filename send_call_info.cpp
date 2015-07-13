@@ -2,7 +2,6 @@
 #include "calltable.h"
 
 
-extern int terminating;
 extern int opt_nocdr;
 
 SendCallInfo *sendCallInfo = NULL;
@@ -186,7 +185,7 @@ void SendCallInfo::initPopCallInfoThread() {
 void SendCallInfo::popCallInfoThread() {
 	runPopCallInfoThread = true;
 	sSciInfo sci;
-	while(!terminating && !termPopCallInfoThread) {
+	while(!is_terminating() && !termPopCallInfoThread) {
 		bool okPop = false;
 		if(sciQueue.pop(&sci)) {
 			lock();

@@ -87,7 +87,6 @@ extern char mysql_user[256];
 extern char mysql_password[256];
 
 extern MySqlStore *sqlStore;
-extern int terminating;
 
 typedef map<unsigned int, octects_live_t*> t_ipacc_live;
 t_ipacc_live ipacc_live;
@@ -461,7 +460,7 @@ void Ipacc::startThread() {
 void *Ipacc::outThreadFunction() {
 	this->outThreadId = get_unix_tid();
 	syslog(LOG_NOTICE, "start Ipacc out thread %i", this->outThreadId);
-	while(!terminating) {
+	while(!is_terminating()) {
 		if(this->qring[this->readit].used == 1) {
 			packet *_packet = &this->qring[this->readit];
 			add_octets(_packet->timestamp, _packet->saddr, _packet->daddr, _packet->port, _packet->proto, _packet->packetlen, _packet->voippacket);

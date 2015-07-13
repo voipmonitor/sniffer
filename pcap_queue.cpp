@@ -58,7 +58,7 @@
 #define DEBUG_ALL_PACKETS	(DEBUG_VERBOSE && false)
 #define TEST_PACKETS 		(DEBUG_VERBOSE && false)
 #define VERBOSE_TEST_PACKETS	(TEST_PACKETS && false)
-#define TERMINATING 		((terminating && this->enableAutoTerminate) || this->threadDoTerminate)
+#define TERMINATING 		((is_terminating() && this->enableAutoTerminate) || this->threadDoTerminate)
 
 #define MAX_TCPSTREAMS 1024
 #define FILE_BUFFER_SIZE 1000000
@@ -79,7 +79,6 @@ void daemonizeOutput(string error);
 
 extern int verbosity;
 extern int verbosityE;
-extern int terminating;
 extern int opt_rrd;
 extern char opt_chdir[1024];
 extern int opt_udpfrag;
@@ -772,10 +771,10 @@ pcap_store_queue::~pcap_store_queue() {
 
 bool pcap_store_queue::push(pcap_block_store *blockStore, bool deleteBlockStoreIfFail) {
 	if(opt_scanpcapdir[0]) {
-		while(!terminating && buffersControl.getPercUsePB() > 20) {
+		while(!is_terminating() && buffersControl.getPercUsePB() > 20) {
 			usleep(100);
 		}
-		if(terminating) {
+		if(is_terminating()) {
 			return(false);
 		}
 	}
@@ -2674,7 +2673,7 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void *arg, unsigned int 
 		}
 		this->threadInitOk = 1;
 		while(this->threadInitOk != 2) {
-			if(terminating) {
+			if(is_terminating()) {
 				return(NULL);
 			}
 			usleep(1000);
@@ -2694,7 +2693,7 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void *arg, unsigned int 
 		}
 	} else {
 		while(this->readThread->threadInitOk != 2) {
-			if(terminating) {
+			if(is_terminating()) {
 				return(NULL);
 			}
 			usleep(1000);
@@ -2703,7 +2702,7 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void *arg, unsigned int 
 	pcap_pkthdr *header = NULL, *_header = NULL;
 	u_char *packet = NULL, *_packet = NULL;
 	int res;
-	while(!(terminating || this->threadDoTerminate)) {
+	while(!(is_terminating() || this->threadDoTerminate)) {
 		bool destroy = false;
 		switch(this->typeThread) {
 		case read:
@@ -3124,7 +3123,7 @@ void* PcapQueue_readFromInterface::threadFunction(void *arg, unsigned int arg2) 
 
 	if(this->readThreadsCount) {
 		while(true) {
-			if(terminating) {
+			if(is_terminating()) {
 				return(NULL);
 			}
 			bool allInit_1 = true;
@@ -3222,7 +3221,7 @@ void* PcapQueue_readFromInterface::threadFunction(void *arg, unsigned int arg2) 
 						int sleepTime = sverb.test_rtp_performance ? 120 :
 								opt_enable_ssl ? 10 :
 								sverb.chunk_buffer ? 20 : 5;
-						while(sleepTime && !terminating) {
+						while(sleepTime && !is_terminating()) {
 							syslog(LOG_NOTICE, "time to terminating: %u", sleepTime);
 							sleep(1);
 							--sleepTime;

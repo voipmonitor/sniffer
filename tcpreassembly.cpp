@@ -21,7 +21,6 @@ using namespace std;
 
 extern char opt_tcpreassembly_log[1024];
 extern char opt_pb_read_from_file[256];
-extern int terminating;
 extern int verbosity;
 
 #define ENABLE_DEBUG(type, subEnable) ((type == TcpReassembly::http ? sverb.http : \
@@ -2040,11 +2039,11 @@ void* TcpReassembly::cleanupThreadFunction(void*) {
 		       << " - pid: " << this->cleanupThreadId << endl;
 		syslog(LOG_NOTICE, outStr.str().c_str());
 	}
-	while(!terminating || this->ignoreTerminating) {
-		for(int i = 0; i < 10 && (!terminating || this->ignoreTerminating); i++) {
+	while(!is_terminating() || this->ignoreTerminating) {
+		for(int i = 0; i < 10 && (!is_terminating() || this->ignoreTerminating); i++) {
 			sleep(1);
 		}
-		if(!terminating || this->ignoreTerminating) {
+		if(!is_terminating() || this->ignoreTerminating) {
 			this->cleanup();
 		}
 	}
@@ -2060,7 +2059,7 @@ void* TcpReassembly::packetThreadFunction(void*) {
 		syslog(LOG_NOTICE, outStr.str().c_str());
 	}
 	sPacket packet;
-	while(!terminating || this->ignoreTerminating) {
+	while(!is_terminating() || this->ignoreTerminating) {
 		if(packetQueue.pop(&packet)) {
 			packet.block_store->unlock_packet(packet.block_store_index);
 			this->_push(&packet.header, packet.header_ip, packet.packet,

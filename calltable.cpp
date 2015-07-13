@@ -131,7 +131,6 @@ extern int opt_mysqlstore_limit_queue_register;
 extern Calltable *calltable;
 extern int opt_silencedetect;
 extern int opt_clippingdetect;
-extern int terminating;
 extern int opt_read_from_file;
 extern char opt_pb_read_from_file[256];
 extern CustomHeaders *custom_headers_cdr;
@@ -3916,7 +3915,7 @@ Calltable::cleanup( time_t currtime ) {
 			}
 			#endif
 			// Close RTP dump file ASAP to save file handles
-			if(currtime == 0 && terminating) {
+			if(currtime == 0 && is_terminating()) {
 				call->getPcap()->close();
 				call->getPcapSip()->close();
 			}
@@ -3949,7 +3948,7 @@ Calltable::cleanup( time_t currtime ) {
 	}
 	unlock_calls_listMAP();
 	
-	if(currtime == 0 && terminating) {
+	if(currtime == 0 && is_terminating()) {
 		extern int terminated_call_cleanup;
 		terminated_call_cleanup = 1;
 		syslog(LOG_NOTICE, "terminated - call cleanup");

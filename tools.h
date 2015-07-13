@@ -27,6 +27,7 @@
 #include "tools_dynamic_buffer.h"
 #include "buffers_control.h"
 #include "heap_safe.h"
+#include "voipmonitor.h"
 
 #include "tools_inline.h"
 
@@ -870,9 +871,8 @@ public:
 		}
 	}
 	bool add(AsyncCloseItem *item, int threadIndex, int useThreadOper = 0) {
-		extern int terminating;
 		extern cBuffersControl buffersControl;
-		while(!buffersControl.check__AsyncClose__add(item->dataLength) && !terminating) {
+		while(!buffersControl.check__AsyncClose__add(item->dataLength) && !is_terminating()) {
 			usleep(1000);
 		}
 		lock(threadIndex);

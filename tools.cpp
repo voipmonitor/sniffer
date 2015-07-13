@@ -56,7 +56,6 @@
 
 extern char mac[32];
 extern int verbosity;
-extern int terminating;
 extern int opt_pcap_dump_bufflength;
 extern int opt_pcap_dump_asyncwrite;
 extern FileZipHandler::eTypeCompress opt_pcap_dump_zip_sip;
@@ -1275,7 +1274,7 @@ void AsyncClose::processAll(int threadIndex) {
 		lock(threadIndex);
 		if(q[threadIndex].size()) {
 			AsyncCloseItem *item = q[threadIndex].front();
-			if(terminating || item->process_ready()) {
+			if(is_terminating() || item->process_ready()) {
 				q[threadIndex].pop_front();
 				sub_sizeOfDataInMemory(item->dataLength);
 				unlock(threadIndex);
@@ -3212,7 +3211,7 @@ void SocketSimpleBufferWrite::addData(void *data1, u_int32_t dataLength1,
 
 void SocketSimpleBufferWrite::write() {
 	socketConnect();
-	while(!terminating && writeThreadHandle) {
+	while(!is_terminating() && writeThreadHandle) {
 		SimpleBuffer *simpleBuffer = NULL;
 		lock_data();
 		if(data.size()) {
@@ -3254,7 +3253,7 @@ bool SocketSimpleBufferWrite::socketConnect() {
 	addr.sin_family = AF_INET;
 	addr.sin_port = htons(ipPort.get_port());
 	addr.sin_addr.s_addr = *(long*)socketHostEnt->h_addr_list[0];
-	while(connect(socketHandle, (struct sockaddr *)&addr, sizeof(addr)) == -1 && !terminating) {
+	while(connect(socketHandle, (struct sockaddr *)&addr, sizeof(addr)) == -1 && !is_terminating()) {
 		syslog(LOG_NOTICE, "socketwrite %s: failed to connect to server [%s] error:[%s] - trying again", name.c_str(), inet_ntoa(*(struct in_addr *)socketHostEnt->h_addr_list[0]), strerror(errno));
 		sleep(1);
 	}
@@ -3274,7 +3273,7 @@ bool SocketSimpleBufferWrite::socketWrite(void *data, u_int32_t dataLength) {
 		socketConnect();
 	}
 	size_t dataLengthWrited = 0;
-	while(dataLengthWrited < dataLength && !terminating) {
+	while(dataLengthWrited < dataLength && !is_terminating()) {
 		ssize_t _dataLengthWrited = send(socketHandle, (u_char*)data + dataLengthWrited, dataLength - dataLengthWrited, 0);
 		if(_dataLengthWrited == -1) {
 			socketConnect();

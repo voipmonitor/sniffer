@@ -148,5 +148,18 @@ sVerbose sverb;
 
 void vm_terminate();
 void vm_terminate_error(const char *terminate_error);
+void set_terminating() {
+	extern int terminating;
+	terminating = 1;
+}
+void clear_terminating() {
+	extern int terminating;
+	terminating = 0;
+}
+bool is_terminating() {
+	extern int terminating;
+	return(terminating);
+}
+bool is_terminating_without_error();
 
 #endif
