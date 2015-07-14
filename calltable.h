@@ -143,10 +143,10 @@ public:
 			    const char *SIPrequest = NULL,
 			    const char *SIPresponse = NULL, int SIPresponseNum = 0) {
 			this->time = time;
-			if(SIPrequest) {
+			if(SIPrequest && SIPrequest[0]) {
 				this->SIPrequest = SIPrequest;
 			}
-			if(SIPresponse) {
+			if(SIPresponse && SIPresponse[0]) {
 				this->SIPresponse = SIPresponse;
 			}
 			this->SIPresponseNum = SIPresponseNum;
@@ -931,6 +931,10 @@ private:
 	unsigned lastTimeSaveUseInfo;
 	volatile int _sync_custom_headers;
 };
+
+
+int sip_request_name_to_int(const char *requestName, bool withResponse = false);
+const char *sip_request_int_to_name(int requestCode, bool withResponse = false);
 
 
 #endif

@@ -136,7 +136,7 @@ extern char opt_pb_read_from_file[256];
 extern CustomHeaders *custom_headers_cdr;
 extern CustomHeaders *custom_headers_message;
 extern int opt_custom_headers_last_value;
-extern int opt_save_sip_history;
+extern bool _save_sip_history;
 
 volatile int calls_counter = 0;
 
@@ -2502,7 +2502,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			query_str += sqlDbSaveCall->insertQuery("cdr_sipresp", sipresp) + ";\n";
 		}
 		
-		if(opt_save_sip_history) {
+		if(_save_sip_history) {
 			for(list<sSipHistory>::iterator iterSiphistory = SIPhistory.begin(); iterSiphistory != SIPhistory.end(); iterSiphistory++) {
 				SqlDb_row siphist;
 				siphist.add("_\\_'SQL'_\\_:@cdr_id", "cdr_ID");
@@ -2712,7 +2712,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			sqlDbSaveCall->insert("cdr_sipresp", sipresp);
 		}
 
-		if(opt_save_sip_history) {
+		if(_save_sip_history) {
 			for(list<sSipHistory>::iterator iterSiphistory = SIPhistory.begin(); iterSiphistory != SIPhistory.end(); iterSiphistory++) {
 				SqlDb_row siphist;
 				siphist.add(cdrID, "cdr_ID");
@@ -4673,4 +4673,66 @@ void CustomHeaders::createColumnsForFixedHeaders(SqlDb *sqlDb) {
 	if(_createSqlObject) {
 		delete sqlDb;
 	}
+}
+
+
+struct sRequestNameCode {
+	const char *name;
+	int code;
+	bool response;
+} requestNameCode[] = {
+	{ "INVITE", INVITE, 0 },
+	{ "BYE", BYE, 0 },
+	{ "CANCEL", CANCEL, 0 },
+	{ "RES10X" , RES10X, 1 },
+	{ "RES18X", RES18X, 1 },
+	{ "RES2XX", RES2XX, 1 },
+	{ "RES3XX", RES3XX, 1 },
+	{ "RES401", RES401, 1 },
+	{ "RES403", RES403, 1 },
+	{ "RES404", RES404, 1 },
+	{ "RES4XX", RES4XX, 1 },
+	{ "RES5XX", RES5XX, 1 },
+	{ "RES6XX", RES6XX, 1 },
+	{ "REGISTER", REGISTER, 0 },
+	{ "MESSAGE", MESSAGE, 0 },
+	{ "INFO", INFO, 0 },
+	{ "SUBSCRIBE", SUBSCRIBE, 0 },
+	{ "OPTIONS", OPTIONS, 0 },
+	{ "NOTIFY", NOTIFY, 0 },
+	{ "ACK", ACK, 0 },
+	{ "PRACK", PRACK, 0 },
+	{ "PUBLISH", PUBLISH, 0 },
+	{ "REFER" , REFER, 0 },
+	{ "UPDATE", UPDATE, 0 }
+};
+
+int sip_request_name_to_int(const char *requestName, bool withResponse) {
+	if(!requestName || !requestName[0]) {
+		return(0);
+	}
+	for(size_t i = 0; i < sizeof(requestNameCode) / sizeof(requestNameCode[0]); i++) {
+		if(!withResponse && requestNameCode[i].response) {
+			continue;
+		}
+		if(requestName[0] == requestNameCode[i].name[0] && !strcmp(requestName, requestNameCode[i].name)) {
+			return(requestNameCode[i].code);
+		}
+	}
+	return(0);
+}
+
+const char *sip_request_int_to_name(int requestCode, bool withResponse) {
+	if(!requestCode) {
+		return(NULL);
+	}
+	for(size_t i = 0; i < sizeof(requestNameCode) / sizeof(requestNameCode[0]); i++) {
+		if(!withResponse && requestNameCode[i].response) {
+			continue;
+		}
+		if(requestCode == requestNameCode[i].code) {
+			return(requestNameCode[i].name);
+		}
+	}
+	return(NULL);
 }

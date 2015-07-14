@@ -221,8 +221,10 @@ extern ProcessRtpPacket *processRtpPacket[MAX_PROCESS_RTP_PACKET_THREADS];
 extern int opt_enable_process_rtp_packet;
 extern CustomHeaders *custom_headers_cdr;
 extern CustomHeaders *custom_headers_message;
-extern int opt_save_sip_history;
-extern int absolute_timeout;
+extern bool _save_sip_history;
+extern bool _save_sip_history_request_types[1000];
+extern bool _save_sip_history_all_requests;
+extern bool _save_sip_history_all_responses;extern int absolute_timeout;
 unsigned int glob_ssl_calls = 0;
 
 #ifdef QUEUE_MUTEX
@@ -3220,27 +3222,40 @@ endsip_save_packet:
 				origDatalen, sipOffset,
 				forceSip, dlt, sensor_id);
 endsip:
-		if(opt_save_sip_history &&
-		   call && (sip_method || lastSIPresponseNum)) {
-			int spaceIndex = 0;
-			for(int i = 0; i < min(datalen, 20); i++) {
-				if(data[i] == ' ') {
-					spaceIndex = i;
-					break;
+		if(_save_sip_history && call) {
+			bool save_request = IS_SIP_RESXXX(sip_method) ?
+					     lastSIPresponseNum && _save_sip_history_all_responses :
+					     sip_method && (_save_sip_history_all_requests || _save_sip_history_request_types[sip_method]);
+			bool save_response = lastSIPresponseNum && _save_sip_history_all_responses;
+			if(save_request || save_response) {
+				char _request[20] = "";
+				char *_lastSIPresponse = NULL;
+				int _lastSIPresponseNum = 0;
+				if(save_request) {
+					int spaceIndex = 0;
+					for(int i = 0; i < min(datalen, 20); i++) {
+						if(data[i] == ' ') {
+							spaceIndex = i;
+							break;
+						}
+					}
+					if(spaceIndex && spaceIndex < 20) {
+						strncpy(_request, data, spaceIndex);
+						_request[spaceIndex] = 0;
+					}
 				}
-			}
-			char request[20];
-			if(spaceIndex && spaceIndex < 20) {
-				strncpy(request, data, spaceIndex);
-				request[spaceIndex] = 0;
-			} else {
-				request[0] = 0;
-			}
-			if(request[0] || lastSIPresponseNum) {
-				call->SIPhistory.push_back(Call::sSipHistory(
-					header->ts.tv_sec * 1000000ull + header->ts.tv_usec,
-					request,
-					lastSIPresponse, lastSIPresponseNum));
+				if(save_response) {
+					_lastSIPresponse = lastSIPresponse;
+					_lastSIPresponseNum = lastSIPresponseNum;
+				}
+				if(_request[0] || 
+				   (_lastSIPresponse && _lastSIPresponse[0]) || 
+				   _lastSIPresponseNum) {
+					call->SIPhistory.push_back(Call::sSipHistory(
+						header->ts.tv_sec * 1000000ull + header->ts.tv_usec,
+						_request,
+						_lastSIPresponse, _lastSIPresponseNum));
+				}
 			}
 		}
 		
@@ -4858,33 +4873,6 @@ void logPacketSipMethodCall(u_int64_t packet_number, int sip_method, int lastSIP
 		return;
 	}
 	
-	map<unsigned, string> sipMethods;
-	sipMethods[INVITE] = "INVITE";
-	sipMethods[BYE] = "BYE";
-	sipMethods[CANCEL] = "CANCEL";
-	sipMethods[RES10X] = "RES10X";
-	sipMethods[RES18X] = "RES18X";
-	sipMethods[RES2XX] = "RES2XX";
-	sipMethods[RES3XX] = "RES3XX";
-	sipMethods[RES401] = "RES401";
-	sipMethods[RES403] = "RES403";
-	sipMethods[RES404] = "RES404";
-	sipMethods[RES4XX] = "RES4XX";
-	sipMethods[RES5XX] = "RES5XX";
-	sipMethods[RES6XX] = "RES6XX";
-	sipMethods[REGISTER] = "REGISTER";
-	sipMethods[MESSAGE] = "MESSAGE";
-	sipMethods[INFO] = "INFO";
-	sipMethods[SUBSCRIBE] = "SUBSCRIBE";
-	sipMethods[OPTIONS] = "OPTIONS";
-	sipMethods[NOTIFY] = "NOTIFY";
-	sipMethods[ACK] = "ACK";
-	sipMethods[PRACK] = "PRACK";
-	sipMethods[PUBLISH] = "PUBLISH";
-	sipMethods[REFER] = "REFER";
-	sipMethods[UPDATE] = "UPDATE";
-	sipMethods[SKINNY_NEW] = "SKINNY_NEW";
-	
 	ostringstream outStr;
 
 	outStr << "--- ";
@@ -4918,8 +4906,9 @@ void logPacketSipMethodCall(u_int64_t packet_number, int sip_method, int lastSIP
 	outStr << endl << "    "
 	       << "sip method: "
 	       << setw(10);
-	if(sip_method > 0 && sipMethods.find(sip_method) != sipMethods.end())
-		outStr << sipMethods[sip_method];
+	const char *sip_method_str = sip_request_int_to_name(sip_method, true);
+	if(sip_method_str)
+		outStr << sip_method_str;
 	else
 		outStr << sip_method;
 	outStr << "  ";
