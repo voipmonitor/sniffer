@@ -95,7 +95,7 @@ void SslData::processData(u_int32_t ip_src, u_int32_t ip_dst,
 			while(ssl_data_offset < ssl_datalen &&
 			      ssl_datalen - ssl_data_offset >= 5) {
 				SslHeader header(ssl_data + ssl_data_offset, ssl_datalen - ssl_data_offset);
-				if(header.isOk() && header.length && (u_int32_t)header.length + 5 <= ssl_datalen - ssl_data_offset) {
+				if(header.isOk() && header.length && (u_int32_t)header.length + header.getDataOffsetLength() <= ssl_datalen - ssl_data_offset) {
 					if(debugSave) {
 						cout << "SSL HEADER "
 						     << "content type: " << (int)header.content_type << " / "
@@ -107,7 +107,7 @@ void SslData::processData(u_int32_t ip_src, u_int32_t ip_dst,
 					u_int32_t _ip_dst = dataItem->getDirection() == TcpReassemblyDataItem::DIRECTION_TO_DEST ? ip_dst : ip_src;
 					u_int16_t _port_src = dataItem->getDirection() == TcpReassemblyDataItem::DIRECTION_TO_DEST ? port_src : port_dst;
 					u_int16_t _port_dst = dataItem->getDirection() == TcpReassemblyDataItem::DIRECTION_TO_DEST ? port_dst : port_src;
-					vector<string> rslt_decrypt = decrypt_ssl((char*)(ssl_data + ssl_data_offset), header.length + 5, htonl(_ip_src), htonl(_ip_dst), _port_src, _port_dst);
+					vector<string> rslt_decrypt = decrypt_ssl((char*)(ssl_data + ssl_data_offset), header.length + header.getDataOffsetLength(), htonl(_ip_src), htonl(_ip_dst), _port_src, _port_dst);
 					for(size_t i = 0; i < rslt_decrypt.size(); i++) {
 						if(debugSave) {
 							string out(rslt_decrypt[i], 0,100);
@@ -158,7 +158,7 @@ void SslData::processData(u_int32_t ip_src, u_int32_t ip_dst,
 						}
 						delete udpHeader;
 					}
-					ssl_data_offset += header.length + 5;
+					ssl_data_offset += header.length + header.getDataOffsetLength();
 				} else {
 					break;
 				}
@@ -222,7 +222,7 @@ u_int32_t _checkOkSslData(u_char *data, u_int32_t datalen) {
 		return(false);
 	}
 	SslData::SslHeader header(data, datalen);
-	return(header.length && (u_int32_t)header.length + 5 <= datalen ? header.length + 5 : 0);
+	return(header.length && (u_int32_t)header.length + header.getDataOffsetLength() <= datalen ? header.length + header.getDataOffsetLength() : 0);
 }
 
 bool checkOkSslHeader(u_char *data, u_int32_t datalen) {

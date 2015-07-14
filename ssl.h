@@ -121,7 +121,6 @@ typedef bool gboolean;
 
 void decrypt_ssl(char *data, unsigned int datalen);
 static void ssl_cipher_cleanup(gcry_cipher_hd_t *cipher);
-int debug = 0;
 void ssl_clean();
 
 /* other defines */
@@ -901,29 +900,7 @@ static SslCipherSuite cipher_suites[]={
 };
 
 
-void   
-ssl_print_data(const gchar* name, const guchar* data, size_t len)
-{	  
-	if(!debug) return;
-	size_t i, j, k;
-	fprintf(stdout,"%s[%d]:\n",name, (int) len);
-	for (i=0; i<len; i+=16) {
-		fprintf(stdout,"| ");
-		for (j=i, k=0; k<16 && j<len; ++j, ++k)
-			fprintf(stdout,"%.2x ",data[j]);
-		for (; k<16; ++k)
-			fprintf(stdout,"   ");
-		fputc('|', stdout);
-		for (j=i, k=0; k<16 && j<len; ++j, ++k) {
-			guchar c = data[j];
-			if (c < 32 || c > 126) c = '.';
-			fputc(c, stdout);
-		}
-		for (; k<16; ++k)
-			fputc(' ', stdout);
-		fprintf(stdout,"|\n");
-	}  
-}	  
+void ssl_print_data(const gchar* name, const guchar* data, size_t len);
 
 void
 ssl_print_string(const gchar* name, const StringInfo* data)
