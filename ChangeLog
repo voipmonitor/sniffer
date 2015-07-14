@@ -1,3 +1,13 @@
+11.9 14.07.2015
+===============
+- add sequential fraud alert [VG-557]
+- fix issue with buffer configuration which can be too low and can cause MEMORY FULL deadlock. 
+- report MEMORY FULL via manager command to catch that state via GUI
+- implement name_sensor configuration option which overrides ID when spooldir_by_sensorname is enabled 
+- fix crash when send call over HTTP is enabled and disabled 
+- store also BYE to mysql sip history
+
+
 11.8.1 04.07.2015
 =================
 - fix crash if SIP Content-Length is negative 
