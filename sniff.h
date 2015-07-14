@@ -394,6 +394,7 @@ public:
 		}
 		void init() {
 			sip_method = -1;
+			sip_response = false;
 			lastSIPresponseNum = -1;
 			call_cancel_lsr487 = false;
 			call = NULL;
@@ -411,6 +412,7 @@ public:
 		bool isSip;
 		string callid;
 		int sip_method;
+		bool sip_response;
 		int lastSIPresponseNum;
 		string lastSIPresponse;
 		bool call_cancel_lsr487;
