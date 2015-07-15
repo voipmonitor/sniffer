@@ -13,6 +13,7 @@ struct sVerbose {
 	int webrtc;
 	int ssl;
 	int ssldecode;
+	int ssldecode_debug;
 	int sip_packets;
 	int set_ua;
 	int dscp;

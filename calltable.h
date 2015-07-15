@@ -39,6 +39,8 @@
 #define INVITE 1
 #define BYE 2
 #define CANCEL 3
+#define RES10X 100
+#define RES18X 180
 #define RES2XX 200
 #define RES3XX 300
 #define RES401 401
@@ -47,17 +49,21 @@
 #define RES4XX 400
 #define RES5XX 500
 #define RES6XX 600
-#define RES18X 180
 #define REGISTER 4
 #define MESSAGE 5
 #define INFO 6
 #define SUBSCRIBE 7
 #define OPTIONS 8
 #define NOTIFY 9
+#define ACK 10
+#define PRACK 11
+#define PUBLISH 12
+#define REFER 13
+#define UPDATE 14
 #define SKINNY_NEW 100
 
 #define IS_SIP_RES4XX(sip_method) (sip_method == RES401 || sip_method == RES403 || sip_method == RES404 || sip_method == RES4XX)
-#define IS_SIP_RESXXX(sip_method) (sip_method == RES2XX || sip_method == RES3XX || IS_SIP_RES4XX(sip_method) || sip_method == RES5XX || sip_method == RES6XX || sip_method == RES18X)
+#define IS_SIP_RESXXX(sip_method) (sip_method == RES10X || sip_method == RES18X || sip_method == RES2XX || sip_method == RES3XX || IS_SIP_RES4XX(sip_method) || sip_method == RES5XX || sip_method == RES6XX)
 
 #define FLAG_SAVERTP		(1 << 0)
 #define FLAG_SAVESIP		(1 << 1)
@@ -137,10 +143,10 @@ public:
 			    const char *SIPrequest = NULL,
 			    const char *SIPresponse = NULL, int SIPresponseNum = 0) {
 			this->time = time;
-			if(SIPrequest) {
+			if(SIPrequest && SIPrequest[0]) {
 				this->SIPrequest = SIPrequest;
 			}
-			if(SIPresponse) {
+			if(SIPresponse && SIPresponse[0]) {
 				this->SIPresponse = SIPresponse;
 			}
 			this->SIPresponseNum = SIPresponseNum;
@@ -643,6 +649,18 @@ public:
 	void forcemark_unlock() {
 		__sync_lock_release(&this->_forcemark_lock);
 	}
+	
+	void shift_destroy_call_at(pcap_pkthdr *header, int lastSIPresponseNum = 0) {
+		if(this->destroy_call_at > 0) {
+			time_t new_destroy_call_at = 
+				this->seenbye ?
+					header->ts.tv_sec + 60 :
+					header->ts.tv_sec + (lastSIPresponseNum == 487 || this->lastSIPresponseNum == 487 ? 15 : 5);
+			if(new_destroy_call_at > this->destroy_call_at) {
+				this->destroy_call_at = new_destroy_call_at;
+			}
+		}
+	}
 
 private:
 	ip_port_call_info ip_port[MAX_IP_PER_CALL];
@@ -913,6 +931,10 @@ private:
 	unsigned lastTimeSaveUseInfo;
 	volatile int _sync_custom_headers;
 };
+
+
+int sip_request_name_to_int(const char *requestName, bool withResponse = false);
+const char *sip_request_int_to_name(int requestCode, bool withResponse = false);
 
 
 #endif

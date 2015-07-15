@@ -41,6 +41,10 @@ struct ssl_keys_t {
 };
 std::vector<ssl_keys_t*> ssl_keys;
 
+
+#define debug (sverb.ssldecode_debug)
+
+
 string
 find_ssl_keys(unsigned int ip1, int port1, unsigned int ip2, int port2) {
 	for(std::vector<ssl_keys_t*>::iterator it = ssl_keys.begin(); it != ssl_keys.end(); ++it) {
@@ -3406,6 +3410,31 @@ string getSslStat() {
 	}
 	return(outStr.str());
 }
+
+
+void   
+ssl_print_data(const gchar* name, const guchar* data, size_t len)
+{	  
+	if(!debug) return;
+	size_t i, j, k;
+	fprintf(stdout,"%s[%d]:\n",name, (int) len);
+	for (i=0; i<len; i+=16) {
+		fprintf(stdout,"| ");
+		for (j=i, k=0; k<16 && j<len; ++j, ++k)
+			fprintf(stdout,"%.2x ",data[j]);
+		for (; k<16; ++k)
+			fprintf(stdout,"   ");
+		fputc('|', stdout);
+		for (j=i, k=0; k<16 && j<len; ++j, ++k) {
+			guchar c = data[j];
+			if (c < 32 || c > 126) c = '.';
+			fputc(c, stdout);
+		}
+		for (; k<16; ++k)
+			fputc(' ', stdout);
+		fprintf(stdout,"|\n");
+	}  
+}	  
 
 
 #endif

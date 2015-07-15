@@ -375,7 +375,11 @@ int opt_pcap_dump_tar_internal_gzip_graph_level = Z_DEFAULT_COMPRESSION;
 int opt_defer_create_spooldir = 1;
 
 int opt_sdp_multiplication = 3;
-int opt_save_sip_history = 0;
+string opt_save_sip_history = "bye";
+bool _save_sip_history;
+bool _save_sip_history_request_types[1000];
+bool _save_sip_history_all_requests;
+bool _save_sip_history_all_responses;
 
 char opt_php_path[1024];
 
@@ -4361,7 +4365,7 @@ void cConfig::addConfigItems() {
 			addConfigItem(new cConfigItem_string("git_folder", opt_git_folder, sizeof(opt_git_folder)));
 			addConfigItem(new cConfigItem_string("timezone", opt_timezone, sizeof(opt_timezone)));
 			addConfigItem(new cConfigItem_integer("sdp_multiplication", &opt_sdp_multiplication));
-			addConfigItem(new cConfigItem_integer("save_sip_history", &opt_save_sip_history));
+			addConfigItem(new cConfigItem_string("save_sip_history", &opt_save_sip_history));
 				expert();
 				addConfigItem(new cConfigItem_string("convertchar", opt_convert_char, sizeof(opt_convert_char)));
 				addConfigItem(new cConfigItem_string("cachedir", opt_cachedir, sizeof(opt_cachedir)));
@@ -4818,6 +4822,7 @@ void get_command_line_arguments() {
 						else if(verbparams[i] == "webrtc")			sverb.webrtc = 1;
 						else if(verbparams[i] == "ssl")				sverb.ssl = 1;
 						else if(verbparams[i] == "ssldecode")			sverb.ssldecode = 1;
+						else if(verbparams[i] == "ssldecode_debug")		sverb.ssldecode_debug = 1;
 						else if(verbparams[i] == "sip_packets")			sverb.sip_packets = 1;
 						else if(verbparams[i] == "set_ua")			sverb.set_ua = 1;
 						else if(verbparams[i] == "dscp")			sverb.dscp = 1;
@@ -5123,6 +5128,35 @@ void set_context_config() {
 			 opt_pcap_queue_dequeu_window_length = 2000;
 		} else if(ifnamev.size() > 1) {
 			 opt_pcap_queue_dequeu_window_length = 1000;
+		}
+	}
+	
+	_save_sip_history = false;
+	memset(_save_sip_history_request_types, 0, sizeof(_save_sip_history_request_types));
+	_save_sip_history_all_requests = false;
+	_save_sip_history_all_responses = false;
+	if(!opt_save_sip_history.empty()) {
+		vector<string> opt_save_sip_history_vector = split(opt_save_sip_history.c_str(), split(",|;", '|'), true);
+		for(size_t i = 0; i < opt_save_sip_history_vector.size(); i++) {
+			string item = opt_save_sip_history_vector[i];
+			std::transform(item.begin(), item.end(),item.begin(), ::toupper);
+			if(item == "ALL") {
+				_save_sip_history_all_requests = true;
+				_save_sip_history_all_responses = true;
+				_save_sip_history = true;
+			} else if(item == "REQUESTS") {
+				_save_sip_history_all_requests = true;
+				_save_sip_history = true;
+			} else if(item == "RESPONSES") {
+				_save_sip_history_all_responses = true;
+				_save_sip_history = true;
+			} else {
+				int requestCode = sip_request_name_to_int(item.c_str());
+				if(requestCode) {
+					_save_sip_history_request_types[requestCode] = true;
+					_save_sip_history = true;
+				}
+			}
 		}
 	}
 }
@@ -6695,7 +6729,7 @@ int eval_config(string inistr) {
 		opt_sdp_multiplication = atoi(value);
 	}
 	if((value = ini.GetValue("general", "save_sip_history", NULL))) {
-		opt_save_sip_history = atoi(value);
+		opt_save_sip_history = value;
 	}
 	
 	if((value = ini.GetValue("general", "enable_jitterbuffer_asserts", NULL))) {

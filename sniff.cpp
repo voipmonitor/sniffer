@@ -221,7 +221,10 @@ extern ProcessRtpPacket *processRtpPacket[MAX_PROCESS_RTP_PACKET_THREADS];
 extern int opt_enable_process_rtp_packet;
 extern CustomHeaders *custom_headers_cdr;
 extern CustomHeaders *custom_headers_message;
-extern int opt_save_sip_history;
+extern bool _save_sip_history;
+extern bool _save_sip_history_request_types[1000];
+extern bool _save_sip_history_all_requests;
+extern bool _save_sip_history_all_responses;extern int absolute_timeout;
 unsigned int glob_ssl_calls = 0;
 
 #ifdef QUEUE_MUTEX
@@ -2136,8 +2139,8 @@ void process_sdp(Call *call, int sip_method, unsigned int saddr, int source, uns
 
 static void process_packet__parse_custom_headers(Call *call, char *data, int datalen);
 static void process_packet__cleanup(pcap_pkthdr *header, pcap_t *handle);
-static int process_packet__parse_sip_method(char *data, unsigned int datalen);
-static int parse_packet__last_sip_response(char *data, unsigned int datalen, int sip_method,
+static int process_packet__parse_sip_method(char *data, unsigned int datalen, bool *sip_response);
+static int parse_packet__last_sip_response(char *data, unsigned int datalen, int sip_method, bool sip_response,
 					   char *lastSIPresponse, bool *call_cancel_lsr487);
 
 u_char *_process_packet_packet;
@@ -2183,6 +2186,7 @@ Call *process_packet(bool is_ssl, u_int64_t packet_number,
 	unsigned long l;
 	char callidstr[1024],str2[1024];
 	int sip_method = 0;
+	bool sip_response = false;
 	char lastSIPresponse[128];
 	int lastSIPresponseNum = 0;
 	unsigned int tmp_u32 = 0;
@@ -2379,9 +2383,12 @@ Call *process_packet(bool is_ssl, u_int64_t packet_number,
 			}
 		}
 
-		sip_method = parsePacket && parsePacket->_getSipMethod ?
-			      parsePacket->sip_method :
-			      process_packet__parse_sip_method(data, datalen);
+		if(parsePacket && parsePacket->_getSipMethod) {
+			sip_method = parsePacket->sip_method;
+			sip_response = parsePacket->sip_response;
+		} else {
+			sip_method = process_packet__parse_sip_method(data, datalen, &sip_response);
+		}
 		switch(sip_method) {
 		case REGISTER:
 			counter_sip_register_packets++;
@@ -2418,7 +2425,7 @@ Call *process_packet(bool is_ssl, u_int64_t packet_number,
 			lastSIPresponse[sizeof(lastSIPresponse) - 1] = 0;
 			call_cancel_lsr487 = parsePacket->call_cancel_lsr487;
 		} else {
-			lastSIPresponseNum = parse_packet__last_sip_response(data, datalen, sip_method,
+			lastSIPresponseNum = parse_packet__last_sip_response(data, datalen, sip_method, sip_response,
 									     lastSIPresponse, &call_cancel_lsr487);
 		}
 
@@ -2687,13 +2694,7 @@ Call *process_packet(bool is_ssl, u_int64_t packet_number,
 			}
 
 			// we have packet, extend pending destroy requests
-			if(call->destroy_call_at > 0) {
-				if(call->seenbye) {
-					call->destroy_call_at = header->ts.tv_sec + 60;
-				} else {
-					call->destroy_call_at = header->ts.tv_sec + (lastSIPresponseNum == 487 || call->lastSIPresponseNum == 487 ? 15 : 5);
-				}
-			}
+			call->shift_destroy_call_at(header, lastSIPresponseNum);
 
 			call->set_last_packet_time(header->ts.tv_sec);
 			// save lastSIPresponseNum but only if previouse was not 487 (CANCEL) and call was not answered 
@@ -2966,6 +2967,7 @@ Call *process_packet(bool is_ssl, u_int64_t packet_number,
 					sendCallInfoEvCall(call, sSciInfo::sci_18X, header->ts);
 					call->onCall_18X = true;
 				}
+				call->destroy_call_at = header->ts.tv_sec + absolute_timeout;
 			}
 
 			// if the call ends with some of SIP [456]XX response code, we can shorten timeout when the call will be closed 
@@ -2973,7 +2975,7 @@ Call *process_packet(bool is_ssl, u_int64_t packet_number,
 			if (sip_method == RES3XX || IS_SIP_RES4XX(sip_method) || sip_method == RES5XX || sip_method == RES6XX) {
 				if(lastSIPresponseNum != 401 && lastSIPresponseNum != 407 && lastSIPresponseNum != 501 && lastSIPresponseNum != 481 && lastSIPresponseNum != 491) {
 					// save packet 
-					call->destroy_call_at = header->ts.tv_sec + 5;
+					call->destroy_call_at = header->ts.tv_sec + (sip_method == RES3XX ? 300 : 5);
 
 					if(sip_method == RES3XX) {
 						// remove all RTP  
@@ -3097,9 +3099,7 @@ Call *process_packet(bool is_ssl, u_int64_t packet_number,
 		process_packet__parse_custom_headers(call, data, datalen);
 		
 		// we have packet, extend pending destroy requests
-		if(call->destroy_call_at > 0 && header->ts.tv_sec + 5 > call->destroy_call_at) {
-			call->destroy_call_at = header->ts.tv_sec + 5; 
-		}
+		call->shift_destroy_call_at(header, lastSIPresponseNum);
 
 		// SDP examination
 		s = gettag(data,datalen,"\nContent-Type:",&l,&gettagLimitLen);
@@ -3222,27 +3222,40 @@ endsip_save_packet:
 				origDatalen, sipOffset,
 				forceSip, dlt, sensor_id);
 endsip:
-		if(opt_save_sip_history &&
-		   call && (sip_method || lastSIPresponseNum)) {
-			int spaceIndex = 0;
-			for(int i = 0; i < min(datalen, 20); i++) {
-				if(data[i] == ' ') {
-					spaceIndex = i;
-					break;
+		if(_save_sip_history && call) {
+			bool save_request = IS_SIP_RESXXX(sip_method) ?
+					     lastSIPresponseNum && _save_sip_history_all_responses :
+					     sip_method && (_save_sip_history_all_requests || _save_sip_history_request_types[sip_method]);
+			bool save_response = lastSIPresponseNum && _save_sip_history_all_responses;
+			if(save_request || save_response) {
+				char _request[20] = "";
+				char *_lastSIPresponse = NULL;
+				int _lastSIPresponseNum = 0;
+				if(save_request) {
+					int spaceIndex = 0;
+					for(int i = 0; i < min(datalen, 20); i++) {
+						if(data[i] == ' ') {
+							spaceIndex = i;
+							break;
+						}
+					}
+					if(spaceIndex && spaceIndex < 20) {
+						strncpy(_request, data, spaceIndex);
+						_request[spaceIndex] = 0;
+					}
 				}
-			}
-			char request[20];
-			if(spaceIndex && spaceIndex < 20) {
-				strncpy(request, data, spaceIndex);
-				request[spaceIndex] = 0;
-			} else {
-				request[0] = 0;
-			}
-			if(request[0] || lastSIPresponseNum) {
-				call->SIPhistory.push_back(Call::sSipHistory(
-					header->ts.tv_sec * 1000000ull + header->ts.tv_usec,
-					request,
-					lastSIPresponse, lastSIPresponseNum));
+				if(save_response) {
+					_lastSIPresponse = lastSIPresponse;
+					_lastSIPresponseNum = lastSIPresponseNum;
+				}
+				if(_request[0] || 
+				   (_lastSIPresponse && _lastSIPresponse[0]) || 
+				   _lastSIPresponseNum) {
+					call->SIPhistory.push_back(Call::sSipHistory(
+						header->ts.tv_sec * 1000000ull + header->ts.tv_usec,
+						_request,
+						_lastSIPresponse, _lastSIPresponseNum));
+				}
 			}
 		}
 		
@@ -3352,9 +3365,7 @@ rtpcheck:
 			*voippacket = 1;
 
 			// we have packet, extend pending destroy requests
-			if(call->destroy_call_at > 0 && header->ts.tv_sec + 5 > call->destroy_call_at) {
-				call->destroy_call_at = header->ts.tv_sec + 5; 
-			}
+			call->shift_destroy_call_at(header, lastSIPresponseNum);
 
 			int can_thread = !sverb.disable_threads_rtp;
 			if(header->caplen > MAXPACKETLENQRING) {
@@ -3475,9 +3486,7 @@ rtpcheck:
 			*voippacket = 1;
 
 			// we have packet, extend pending destroy requests
-			if(call->destroy_call_at > 0 && header->ts.tv_sec + 5 > call->destroy_call_at) {
-				call->destroy_call_at = header->ts.tv_sec + 5; 
-			}
+			call->shift_destroy_call_at(header, lastSIPresponseNum);
 
 			int can_thread = !sverb.disable_threads_rtp;
 			if(header->caplen > MAXPACKETLENQRING) {
@@ -3743,14 +3752,15 @@ void process_packet__cleanup(pcap_pkthdr *header, pcap_t *handle) {
 #endif
 }
 
-int process_packet__parse_sip_method(char *data, unsigned int datalen) {
+int process_packet__parse_sip_method(char *data, unsigned int datalen, bool *sip_response) {
 	int sip_method = 0;
+	*sip_response =  false;
 	// parse SIP method 
 	if ((datalen > 5) && data[0] == 'I' && !(memmem(data, 6, "INVITE", 6) == 0)) {
 		if(verbosity > 2) 
 			 syslog(LOG_NOTICE,"SIP msg: INVITE\n");
 		sip_method = INVITE;
-	} else if ((datalen > 7) && data[0] == 'R' && !(memmem(data, 8, "REGISTER", 8) == 0)) {
+	} else if ((datalen > 7) && data[0] == 'R' && data[2] == 'G' && !(memmem(data, 8, "REGISTER", 8) == 0)) {
 		if(verbosity > 2) 
 			 syslog(LOG_NOTICE,"SIP msg: REGISTER\n");
 		sip_method = REGISTER;
@@ -3782,7 +3792,28 @@ int process_packet__parse_sip_method(char *data, unsigned int datalen) {
 		if(verbosity > 2) 
 			 syslog(LOG_NOTICE,"SIP msg: NOTIFY\n");
 		sip_method = NOTIFY;
+	} else if ((datalen > 2) && data[0] == 'A' && !(memmem(data, 3, "ACK", 3) == 0)) {
+		if(verbosity > 2) 
+			 syslog(LOG_NOTICE,"SIP msg: ACK\n");
+		sip_method = ACK;
+	} else if ((datalen > 4) && data[0] == 'P' && data[1] == 'R' && !(memmem(data, 5, "PRACK", 5) == 0)) {
+		if(verbosity > 2) 
+			 syslog(LOG_NOTICE,"SIP msg: PRACK\n");
+		sip_method = PRACK;
+	} else if ((datalen > 6) && data[0] == 'P' && data[1] == 'U' && !(memmem(data, 7, "PUBLISH", 7) == 0)) {
+		if(verbosity > 2) 
+			 syslog(LOG_NOTICE,"SIP msg: PUBLISH\n");
+		sip_method = PUBLISH;
+	} else if ((datalen > 4) && data[0] == 'R' && data[2] == 'F' && !(memmem(data, 5, "REFER", 5) == 0)) {
+		if(verbosity > 2) 
+			 syslog(LOG_NOTICE,"SIP msg: REFER\n");
+		sip_method = REFER;
+	} else if ((datalen > 5) && data[0] == 'U' && !(memmem(data, 6, "UPDATE", 6) == 0)) {
+		if(verbosity > 2) 
+			 syslog(LOG_NOTICE,"SIP msg: UPDATE\n");
+		sip_method = UPDATE;
 	} else if( (datalen > 8) && data[0] == 'S' && data[1] == 'I' && !(memmem(data, 8, "SIP/2.0 ", 8) == 0)){
+		*sip_response = true;
 		switch(data[8]) {
 		case '2':
 			if(verbosity > 2) 
@@ -3794,10 +3825,16 @@ int process_packet__parse_sip_method(char *data, unsigned int datalen) {
 			}
 			break;
 		case '1':
-			if ((datalen > 9) && data[9] == '8') {
-				if(verbosity > 2) 
-					 syslog(LOG_NOTICE,"SIP msg: 18X\n");
-				sip_method = RES18X;
+			if(datalen > 9) {
+				if(data[9] == '0') {
+					if(verbosity > 2) 
+						 syslog(LOG_NOTICE,"SIP msg: 10X\n");
+					sip_method = RES10X;
+				} else if(data[9] == '8') {
+					if(verbosity > 2) 
+						 syslog(LOG_NOTICE,"SIP msg: 18X\n");
+					sip_method = RES18X;
+				}
 			}
 			break;
 		case '3':
@@ -3844,12 +3881,12 @@ int process_packet__parse_sip_method(char *data, unsigned int datalen) {
 	return(sip_method);
 }
 
-int parse_packet__last_sip_response(char *data, unsigned int datalen, int sip_method,
+int parse_packet__last_sip_response(char *data, unsigned int datalen, int sip_method, bool sip_response,
 				    char *lastSIPresponse, bool *call_cancel_lsr487) {
 	strcpy(lastSIPresponse, "NO RESPONSE");
 	*call_cancel_lsr487 = false;
 	int lastSIPresponseNum = 0;
-	if(sip_method > 0 && sip_method != INVITE && sip_method != REGISTER && sip_method != MESSAGE && sip_method != CANCEL && sip_method != BYE) {
+	if(IS_SIP_RESXXX(sip_method) || sip_response) {
 		char a = data[datalen - 1];
 		data[datalen - 1] = 0;
 		char *tmp = strstr(data, "\r");
@@ -3938,9 +3975,7 @@ Call *process_packet__rtp(ProcessRtpPacket::rtp_call_info *call_info,size_t call
 		}
 
 		// we have packet, extend pending destroy requests
-		if(call->destroy_call_at > 0 && header->ts.tv_sec + 5 > call->destroy_call_at) {
-			call->destroy_call_at = header->ts.tv_sec + 5; 
-		}
+		call->shift_destroy_call_at(header);
 
 		int can_thread = !sverb.disable_threads_rtp;
 		if(can_thread && header->caplen > MAXPACKETLENQRING) {
@@ -4838,27 +4873,6 @@ void logPacketSipMethodCall(u_int64_t packet_number, int sip_method, int lastSIP
 		return;
 	}
 	
-	map<unsigned, string> sipMethods;
-	sipMethods[INVITE] = "INVITE";
-	sipMethods[BYE] = "BYE";
-	sipMethods[CANCEL] = "CANCEL";
-	sipMethods[RES2XX] = "RES2XX";
-	sipMethods[RES3XX] = "RES3XX";
-	sipMethods[RES401] = "RES401";
-	sipMethods[RES403] = "RES403";
-	sipMethods[RES404] = "RES404";
-	sipMethods[RES4XX] = "RES4XX";
-	sipMethods[RES5XX] = "RES5XX";
-	sipMethods[RES6XX] = "RES6XX";
-	sipMethods[RES18X] = "RES18X";
-	sipMethods[REGISTER] = "REGISTER";
-	sipMethods[MESSAGE] = "MESSAGE";
-	sipMethods[INFO] = "INFO";
-	sipMethods[SUBSCRIBE] = "SUBSCRIBE";
-	sipMethods[OPTIONS] = "OPTIONS";
-	sipMethods[NOTIFY] = "NOTIFY";
-	sipMethods[SKINNY_NEW] = "SKINNY_NEW";
-	
 	ostringstream outStr;
 
 	outStr << "--- ";
@@ -4892,8 +4906,9 @@ void logPacketSipMethodCall(u_int64_t packet_number, int sip_method, int lastSIP
 	outStr << endl << "    "
 	       << "sip method: "
 	       << setw(10);
-	if(sip_method > 0 && sipMethods.find(sip_method) != sipMethods.end())
-		outStr << sipMethods[sip_method];
+	const char *sip_method_str = sip_request_int_to_name(sip_method, true);
+	if(sip_method_str)
+		outStr << sip_method_str;
 	else
 		outStr << sip_method;
 	outStr << "  ";
@@ -5414,14 +5429,14 @@ bool PreProcessPacket::sipProcess_reassembly(packet_parse_s *parse_packet) {
 
 void PreProcessPacket::sipProcess_getSipMethod(packet_parse_s *parse_packet) {
 	packet_s *_packet = &parse_packet->packet;
-	parse_packet->sip_method = process_packet__parse_sip_method(_packet->data, parse_packet->sipDataLen);
+	parse_packet->sip_method = process_packet__parse_sip_method(_packet->data, parse_packet->sipDataLen, &parse_packet->sip_response);
 	parse_packet->_getSipMethod = true;
 }
 
 void PreProcessPacket::sipProcess_getLastSipResponse(packet_parse_s *parse_packet) {
 	char lastSIPresponse[1024];
 	packet_s *_packet = &parse_packet->packet;
-	parse_packet->lastSIPresponseNum = parse_packet__last_sip_response(_packet->data, parse_packet->sipDataLen, parse_packet->sip_method,
+	parse_packet->lastSIPresponseNum = parse_packet__last_sip_response(_packet->data, parse_packet->sipDataLen, parse_packet->sip_method, parse_packet->sip_response,
 									   lastSIPresponse, &parse_packet->call_cancel_lsr487);
 	parse_packet->lastSIPresponse = lastSIPresponse;
 	parse_packet->_getLastSipResponse = true;
