@@ -2967,7 +2967,8 @@ Call *process_packet(bool is_ssl, u_int64_t packet_number,
 					sendCallInfoEvCall(call, sSciInfo::sci_18X, header->ts);
 					call->onCall_18X = true;
 				}
-				call->destroy_call_at = header->ts.tv_sec + absolute_timeout;
+				call->destroy_call_at = 0;
+				call->destroy_call_at_bye = 0;
 			}
 
 			// if the call ends with some of SIP [456]XX response code, we can shorten timeout when the call will be closed 
