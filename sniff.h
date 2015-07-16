@@ -23,12 +23,6 @@
 #define MAXPACKETLENQRING 1600
 #define RTP_FIXED_HEADERLEN 12
 
-#ifdef QUEUE_NONBLOCK
-extern "C" {
-#include "liblfds.6/inc/liblfds.h"
-}
-#endif
-
 #define IP_DF           0x4000          /* Flag: "Don't Fragment"       */
 #define IP_MF           0x2000          /* Flag: "More Fragments"       */
 #define IP_OFFSET       0x1FFF          /* "Fragment Offset" part       */
@@ -60,7 +54,6 @@ struct iphdr2 {
 #endif
 
 void *rtp_read_thread_func(void *arg);
-void *pcap_read_thread_func(void *arg);
 
 void readdump_libnids(pcap_t *handle);
 void readdump_libpcap(pcap_t *handle);
@@ -92,12 +85,7 @@ struct udphdr2 {
 
 typedef struct {
 	Call *call;
-#if defined(QUEUE_MUTEX) || defined(QUEUE_NONBLOCK)
-	unsigned char *data;
-#endif
-#ifdef QUEUE_NONBLOCK2
 	unsigned char data[MAXPACKETLENQRING];
-#endif
 	int datalen;
 	int dataoffset;
 	u_int32_t saddr;
@@ -137,55 +125,18 @@ typedef struct {
 	int block_store_index;
 } rtp_packet_pcap_queue;
 
-#ifdef QUEUE_NONBLOCK2
-extern int opt_pcap_queue;
-#endif
-
 struct rtp_read_thread {
 	rtp_read_thread()  {
-		#ifdef QUEUE_NONBLOCK
-			this->pqueue = NULL;
-		#endif
-		#ifdef QUEUE_NONBLOCK2
-			this->vmbuffer = NULL;
-			this->vmbuffermax = 0;
-			this->readit = 0;
-			this->writeit = 0;
-			this->rtpp_queue = NULL;
-			this->rtpp_queue_quick = NULL;
-			this->rtpp_queue_quick_boost = NULL;
-		#endif
+		this->rtpp_queue = NULL;
+		this->rtpp_queue_quick = NULL;
+		this->rtpp_queue_quick_boost = NULL;
 	}
 	pthread_t thread;	       // ID of worker storing CDR thread 
-#ifdef QUEUE_MUTEX
-	queue<rtp_packet*> pqueue;
-	pthread_mutex_t qlock;
-	sem_t semaphore;
-#endif
-#ifdef QUEUE_NONBLOCK
-	struct queue_state *pqueue;
-#endif
-#ifdef QUEUE_NONBLOCK2
-	rtp_packet *vmbuffer;
-	int vmbuffermax;
-	volatile int readit;
-	volatile int writeit;
 	rqueue<rtp_packet_pcap_queue> *rtpp_queue;
 	rqueue_quick<rtp_packet_pcap_queue> *rtpp_queue_quick;
 	rqueue_quick_boost<rtp_packet_pcap_queue> *rtpp_queue_quick_boost;
-#endif
 };
 
-#if defined(QUEUE_MUTEX) || defined(QUEUE_NONBLOCK)
-typedef struct {
-	struct pcap_pkthdr header;
-	u_char *packet;
-	int offset;
-} pcap_packet;
-#endif
-
-
-#if defined(QUEUE_NONBLOCK2)
 typedef struct {
 	struct pcap_pkthdr header;
 	u_char packet[MAXPACKETLENQRING];
@@ -193,7 +144,6 @@ typedef struct {
 	int offset;
 	volatile char free;
 } pcap_packet;
-#endif
 
 #define MAXLIVEFILTERS 10
 #define MAXLIVEFILTERSCHARS 32

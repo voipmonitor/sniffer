@@ -831,11 +831,11 @@ bool SqlDb_mysql::createRoutine(string routine, string routineName, string routi
 		bool rslt = this->query(string("create ") + (routineType == procedure ? "PROCEDURE" : "FUNCTION") + " " +
 					routineName + routineParamsAndReturn + " " + routine);
 		if(!rslt && abortIfFailed) {
-			string abortString = 
+			string errorString = 
 				string("create routine ") + routineName + " failed\n" +
 				"tip: SET GLOBAL log_bin_trust_function_creators = 1  or put it in my.cnf configuration or grant SUPER privileges to your voipmonitor mysql user.";
-			syslog(LOG_ERR, abortString.c_str());
-			abort();
+			syslog(LOG_ERR, errorString.c_str());
+			vm_terminate_error(errorString.c_str());
 		}
 		return(rslt);
 	} else {
@@ -2752,7 +2752,7 @@ string prepareQueryForPrintf(string &query) {
 }
 
 
-void SqlDb_mysql::createSchema(SqlDb *sourceDb) {
+bool SqlDb_mysql::createSchema(SqlDb *sourceDb) {
  
 	const char *cdrMainTables[] = {
 		 "cdr",
@@ -2775,6 +2775,7 @@ void SqlDb_mysql::createSchema(SqlDb *sourceDb) {
 	sql_disable_next_attempt_if_error = 1;
 	this->multi_off();
 
+	/* obsolete
 #if 1
 	this->query(
 	"CREATE TABLE IF NOT EXISTS `sensor_conf` (\
@@ -2883,7 +2884,21 @@ void SqlDb_mysql::createSchema(SqlDb *sourceDb) {
 		PRIMARY KEY (`id`)\
 	) ENGINE=InnoDB DEFAULT CHARSET=latin1;");
 #endif
-
+	*/
+	
+	bool okTableFilterIp = false;
+	this->query("show tables like 'filter_ip'");
+	if(this->fetchRow()) {
+		if(this->query("select * from filter_ip")) {
+			okTableFilterIp = true;
+		} else {
+			if(this->getLastError() == ER_NO_DB_ERROR ||
+			   this->getLastError() == ER_DBACCESS_DENIED_ERROR) {
+				return(false);
+			}
+		}
+	}
+	
 	this->query(
 	"CREATE TABLE IF NOT EXISTS `filter_ip` (\
 			`id` int NOT NULL AUTO_INCREMENT,\
@@ -2903,6 +2918,10 @@ void SqlDb_mysql::createSchema(SqlDb *sourceDb) {
 			`remove_at` date default NULL,\
 		PRIMARY KEY (`id`)\
 	) ENGINE=InnoDB DEFAULT CHARSET=latin1;");
+	
+	if(!okTableFilterIp && this->getLastError()) {
+		return(false);
+	}
 
 	this->query(
 	"CREATE TABLE IF NOT EXISTS `filter_telnum` (\
@@ -4462,6 +4481,8 @@ void SqlDb_mysql::createSchema(SqlDb *sourceDb) {
 	sql_disable_next_attempt_if_error = 0;
 
 	syslog(LOG_DEBUG, "done");
+	
+	return(true);
 }
 
 void SqlDb_mysql::checkDbMode() {
@@ -4865,7 +4886,7 @@ vector<string> SqlDb_mysql::getSourceTables(int typeTables) {
 }
 
 
-void SqlDb_odbc::createSchema(SqlDb *sourceDb) {
+bool SqlDb_odbc::createSchema(SqlDb *sourceDb) {
 	
 	this->query(
 	"IF NOT EXISTS (SELECT * FROM sys.objects WHERE name = 'filter_ip') BEGIN\
@@ -5562,6 +5583,8 @@ void SqlDb_odbc::createSchema(SqlDb *sourceDb) {
 			BEGIN\
 				RETURN DATEADD(SECOND, -DATEDIFF(second, 0, @time2), @time1)\
 			END");
+	
+	return(true);
 }
 
 void SqlDb_odbc::createTable(const char *tableName) {

@@ -76,12 +76,6 @@ and insert them into Call class.
 
 extern MirrorIP *mirrorip;
 
-#if defined(QUEUE_MUTEX) || defined(QUEUE_NONBLOCK) 
-extern "C" {
-#include "liblfds.6/inc/liblfds.h"
-}
-#endif
-
 #define MAXLIVEFILTERS 10
 
 using namespace std;
@@ -107,7 +101,6 @@ volatile unsigned int glob_last_packet_time;
 
 Calltable *calltable;
 extern volatile int calls_counter;
-extern int opt_pcap_queue;
 extern int opt_saveSIP;	  	// save SIP packets to pcap file?
 extern int opt_saveRTP;	 	// save RTP packets to pcap file?
 extern int opt_saveRTCP;	// save RTCP packets to pcap file?
@@ -160,18 +153,12 @@ extern SIP_HEADERfilter *sipheaderfilter;
 extern SIP_HEADERfilter *sipheaderfilter_reload;
 extern volatile int sipheaderfilter_reload_do;
 extern int rtp_threaded;
-extern int opt_pcap_threaded;
 extern int opt_rtpsave_threaded;
 extern int opt_rtpnosip;
 extern char opt_cachedir[1024];
 extern int opt_savewav_force;
 extern int opt_saveudptl;
 extern nat_aliases_t nat_aliases;
-extern pcap_packet *pcap_qring;
-extern volatile unsigned int pcap_readit;
-extern volatile unsigned int pcap_writeit;
-extern unsigned int pcap_qring_max;
-extern unsigned int pcap_qring_usleep;
 extern int opt_enable_preprocess_packet;
 extern unsigned int opt_preprocess_packets_qring_length;
 extern unsigned int opt_preprocess_packets_qring_usleep;
@@ -226,10 +213,6 @@ extern bool _save_sip_history_request_types[1000];
 extern bool _save_sip_history_all_requests;
 extern bool _save_sip_history_all_responses;extern int absolute_timeout;
 unsigned int glob_ssl_calls = 0;
-
-#ifdef QUEUE_MUTEX
-extern sem_t readpacket_thread_semaphore;
-#endif
 
 char * gettag(const void *ptr, unsigned long len, const char *tag, unsigned long *gettaglen, unsigned long *limitLen = NULL,
 	      ParsePacket *parsePacket = NULL);
@@ -1308,133 +1291,61 @@ void add_to_rtp_thread_queue(Call *call, unsigned char *data, int datalen, int d
 	
 	rtp_read_thread *params = &(rtp_threads[call->thread_num]);
 
-#if defined(QUEUE_MUTEX) || defined(QUEUE_NONBLOCK)
-	rtp_packet *rtpp = new FILE_LINE rtp_packet;
-	rtpp->data = new FILE_LINE unsigned char[datalen];
-#endif
-
-#ifdef QUEUE_NONBLOCK2
-	rtp_packet *rtpp;
-	if(!opt_pcap_queue) {
-		rtpp = &(params->vmbuffer[params->writeit % params->vmbuffermax]);
-		while(params->vmbuffer[params->writeit % params->vmbuffermax].free == 0) {
-			// no room left, loop until there is room
-			usleep(100);
-		}
+	if(block_store) {
+		block_store->lock_packet(block_store_index);
 	}
-#endif
-	
-	if(opt_pcap_queue) {
-		if(block_store) {
-			block_store->lock_packet(block_store_index);
-		}
-		if(params->rtpp_queue_quick ||
-		   params->rtpp_queue_quick_boost) {
-			rtp_packet_pcap_queue rtpp_pq;
-			rtpp_pq.call = call;
-			rtpp_pq.saddr = saddr;
-			rtpp_pq.daddr = daddr;
-			rtpp_pq.sport = sport;
-			rtpp_pq.dport = dport;
-			rtpp_pq.iscaller = iscaller;
-			rtpp_pq.is_rtcp = is_rtcp;
-			rtpp_pq.save_packet = enable_save_packet;
-			rtpp_pq.packet = packet;
-			rtpp_pq.istcp = istcp;
-			rtpp_pq.dlt = dlt;
-			rtpp_pq.sensor_id = sensor_id;
-			rtpp_pq.data = data;
-			rtpp_pq.datalen = datalen;
-			rtpp_pq.dataoffset = dataoffset;
-			rtpp_pq.header = *header;
-			rtpp_pq.block_store = block_store;
-			rtpp_pq.block_store_index =block_store_index;
-			if(params->rtpp_queue_quick) {
-				params->rtpp_queue_quick->push(&rtpp_pq, true, opt_enable_process_rtp_packet > 1);
-			} else {
-				params->rtpp_queue_quick_boost->push(&rtpp_pq, true, opt_enable_process_rtp_packet > 1);
-			}
+	if(params->rtpp_queue_quick ||
+	   params->rtpp_queue_quick_boost) {
+		rtp_packet_pcap_queue rtpp_pq;
+		rtpp_pq.call = call;
+		rtpp_pq.saddr = saddr;
+		rtpp_pq.daddr = daddr;
+		rtpp_pq.sport = sport;
+		rtpp_pq.dport = dport;
+		rtpp_pq.iscaller = iscaller;
+		rtpp_pq.is_rtcp = is_rtcp;
+		rtpp_pq.save_packet = enable_save_packet;
+		rtpp_pq.packet = packet;
+		rtpp_pq.istcp = istcp;
+		rtpp_pq.dlt = dlt;
+		rtpp_pq.sensor_id = sensor_id;
+		rtpp_pq.data = data;
+		rtpp_pq.datalen = datalen;
+		rtpp_pq.dataoffset = dataoffset;
+		rtpp_pq.header = *header;
+		rtpp_pq.block_store = block_store;
+		rtpp_pq.block_store_index =block_store_index;
+		if(params->rtpp_queue_quick) {
+			params->rtpp_queue_quick->push(&rtpp_pq, true, opt_enable_process_rtp_packet > 1);
 		} else {
-			params->rtpp_queue->lock();
-			rtp_packet_pcap_queue *rtpp_pq;
-			while((rtpp_pq = params->rtpp_queue->push_get_pointer()) == NULL) {
-				usleep(10);
-			}
-			rtpp_pq->call = call;
-			rtpp_pq->saddr = saddr;
-			rtpp_pq->daddr = daddr;
-			rtpp_pq->sport = sport;
-			rtpp_pq->dport = dport;
-			rtpp_pq->iscaller = iscaller;
-			rtpp_pq->is_rtcp = is_rtcp;
-			rtpp_pq->save_packet = enable_save_packet;
-			rtpp_pq->packet = packet;
-			rtpp_pq->istcp = istcp;
-			rtpp_pq->dlt = dlt;
-			rtpp_pq->sensor_id = sensor_id;
-			rtpp_pq->data = data;
-			rtpp_pq->datalen = datalen;
-			rtpp_pq->dataoffset = dataoffset;
-			rtpp_pq->header = *header;
-			rtpp_pq->block_store = block_store;
-			rtpp_pq->block_store_index =block_store_index;
-			params->rtpp_queue->unlock();
+			params->rtpp_queue_quick_boost->push(&rtpp_pq, true, opt_enable_process_rtp_packet > 1);
 		}
 	} else {
-		rtpp->call = call;
-		rtpp->datalen = datalen;
-		rtpp->dataoffset = dataoffset;
-		rtpp->saddr = saddr;
-		rtpp->daddr = daddr;
-		rtpp->sport = sport;
-		rtpp->dport = dport;
-		rtpp->iscaller = iscaller;
-		rtpp->is_rtcp = is_rtcp;
-		rtpp->save_packet = enable_save_packet;
-		rtpp->packet = packet;
-		rtpp->istcp = istcp;
-		rtpp->dlt = dlt;
-		rtpp->sensor_id = sensor_id;
-
-		memcpy(&rtpp->header, header, sizeof(struct pcap_pkthdr));
-		memcpy(&rtpp->header_ip, (struct iphdr2*)(data - sizeof(struct iphdr2) - sizeof(udphdr2)), sizeof(struct iphdr2));
-		if(datalen > MAXPACKETLENQRING) {
-			syslog(LOG_ERR, "error: packet is to large [%d]b for RTP QRING[%d]b", header->caplen, MAXPACKETLENQRING);
-			return;
+		params->rtpp_queue->lock();
+		rtp_packet_pcap_queue *rtpp_pq;
+		while((rtpp_pq = params->rtpp_queue->push_get_pointer()) == NULL) {
+			usleep(10);
 		}
-		if(opt_skiprtpdata) {
-			memcpy(rtpp->data, data, MIN((unsigned int)datalen, sizeof(RTPFixedHeader)));
-		} else {
-			memcpy(rtpp->data, data, datalen);
-		}
+		rtpp_pq->call = call;
+		rtpp_pq->saddr = saddr;
+		rtpp_pq->daddr = daddr;
+		rtpp_pq->sport = sport;
+		rtpp_pq->dport = dport;
+		rtpp_pq->iscaller = iscaller;
+		rtpp_pq->is_rtcp = is_rtcp;
+		rtpp_pq->save_packet = enable_save_packet;
+		rtpp_pq->packet = packet;
+		rtpp_pq->istcp = istcp;
+		rtpp_pq->dlt = dlt;
+		rtpp_pq->sensor_id = sensor_id;
+		rtpp_pq->data = data;
+		rtpp_pq->datalen = datalen;
+		rtpp_pq->dataoffset = dataoffset;
+		rtpp_pq->header = *header;
+		rtpp_pq->block_store = block_store;
+		rtpp_pq->block_store_index =block_store_index;
+		params->rtpp_queue->unlock();
 	}
-
-#ifdef QUEUE_NONBLOCK2
-	if(!opt_pcap_queue) {
-		params->vmbuffer[params->writeit % params->vmbuffermax].free = 0;
-		if((params->writeit + 1) == params->vmbuffermax) {
-			params->writeit = 0;
-		} else {
-			params->writeit++;
-		}
-	}
-#endif
-
-#ifdef QUEUE_MUTEX
-	pthread_mutex_lock(&(threads[call->thread_num].qlock));
-	threads[call->thread_num].pqueue.push(rtpp);
-	pthread_mutex_unlock(&(threads[call->thread_num].qlock));
-	sem_post(&threads[call->thread_num].semaphore);
-#endif
-
-#ifdef QUEUE_NONBLOCK
-	if(queue_enqueue(threads[call->thread_num].pqueue, (void*)rtpp) == 0) {
-		// enqueue failed, try to raise queue
-		if(queue_guaranteed_enqueue(threads[call->thread_num].pqueue, (void*)rtpp) == 0) {
-			syslog(LOG_ERR, "error: add_to_rtp_thread_queue cannot allocate memory");
-		}
-	}
-#endif
 
 	#if RTP_PROF
 	if(preSyncRtp) {
@@ -1445,123 +1356,50 @@ void add_to_rtp_thread_queue(Call *call, unsigned char *data, int datalen, int d
 
 
 void *rtp_read_thread_func(void *arg) {
-	rtp_packet *rtpp = NULL;
 	rtp_packet_pcap_queue rtpp_pq;
 	rtp_read_thread *params = (rtp_read_thread*)arg;
 	while(1) {
 
-#ifdef QUEUE_MUTEX
-		sem_wait(&params->semaphore);
-
-		pthread_mutex_lock(&(params->qlock));
-		rtpp = params->pqueue.front();
-		params->pqueue.pop();
-		pthread_mutex_unlock(&(params->qlock));
-#endif
-		
-#ifdef QUEUE_NONBLOCK
-		if(queue_dequeue(params->pqueue, (void **)&rtpp) != 1) {
-			// queue is empty
-			if(is_terminating() || readend) {
-				return NULL;
+		if(params->rtpp_queue_quick) {
+			if(!params->rtpp_queue_quick->pop(&rtpp_pq, true) &&
+			   is_terminating()) {
+				return(NULL);
 			}
-			usleep(rtp_qring_usleep);
-			continue;
-		};
-#endif 
-
-#ifdef QUEUE_NONBLOCK2
-		if(opt_pcap_queue) {
-			if(params->rtpp_queue_quick) {
-				if(!params->rtpp_queue_quick->pop(&rtpp_pq, true) &&
-				   is_terminating()) {
-					return(NULL);
-				}
-			} else if(params->rtpp_queue_quick_boost) {
-				if(!params->rtpp_queue_quick_boost->pop(&rtpp_pq, true) &&
-				   is_terminating()) {
-					return(NULL);
-				}
-			} else {
-				if(!params->rtpp_queue->pop(&rtpp_pq, true)) {
-					if(is_terminating() || readend) {
-						return NULL;
-					}
-					// no packet to read, wait and try again
-					usleep(rtp_qring_usleep);
-					continue;
-				}
+		} else if(params->rtpp_queue_quick_boost) {
+			if(!params->rtpp_queue_quick_boost->pop(&rtpp_pq, true) &&
+			   is_terminating()) {
+				return(NULL);
 			}
 		} else {
-		
-			if(params->vmbuffer[params->readit % params->vmbuffermax].free == 1) {
+			if(!params->rtpp_queue->pop(&rtpp_pq, true)) {
 				if(is_terminating() || readend) {
 					return NULL;
 				}
 				// no packet to read, wait and try again
 				usleep(rtp_qring_usleep);
 				continue;
-			} else {
-				rtpp = &(params->vmbuffer[params->readit % params->vmbuffermax]);
 			}
 		}
-#endif
 
-		if(opt_pcap_queue) {
-			if(rtpp_pq.is_rtcp) {
-				rtpp_pq.call->read_rtcp(rtpp_pq.data, rtpp_pq.datalen, rtpp_pq.dataoffset, &rtpp_pq.header, rtpp_pq.saddr, rtpp_pq.daddr, rtpp_pq.sport, rtpp_pq.dport, rtpp_pq.iscaller,
-							rtpp_pq.save_packet, rtpp_pq.packet, rtpp_pq.istcp, rtpp_pq.dlt, rtpp_pq.sensor_id);
-			}  else {
-				int monitor;
-				rtpp_pq.call->read_rtp(rtpp_pq.data, rtpp_pq.datalen, rtpp_pq.dataoffset, &rtpp_pq.header, NULL, rtpp_pq.saddr, rtpp_pq.daddr, rtpp_pq.sport, rtpp_pq.dport, rtpp_pq.iscaller, &monitor,
-						       rtpp_pq.save_packet, rtpp_pq.packet, rtpp_pq.istcp, rtpp_pq.dlt, rtpp_pq.sensor_id,
-						       rtpp_pq.block_store && rtpp_pq.block_store->ifname[0] ? rtpp_pq.block_store->ifname : NULL);
-			}
-			rtpp_pq.call->set_last_packet_time(rtpp_pq.header.ts.tv_sec);
-			if(rtpp_pq.block_store) {
-				rtpp_pq.block_store->unlock_packet(rtpp_pq.block_store_index);
-			}
-		} else {
-			if(rtpp->is_rtcp) {
-				rtpp->call->read_rtcp((unsigned char*)rtpp->data, rtpp->datalen, rtpp->dataoffset, &rtpp->header, rtpp->saddr, rtpp->daddr, rtpp->sport, rtpp->dport, rtpp->iscaller,
-						      rtpp->save_packet, rtpp->packet, rtpp->istcp, rtpp->dlt, rtpp->sensor_id);
-			}  else {
-				int monitor;
-				rtpp->call->read_rtp(rtpp->data, rtpp->datalen, rtpp->dataoffset, &rtpp->header, &rtpp->header_ip, rtpp->saddr, rtpp->daddr, rtpp->sport, rtpp->dport, rtpp->iscaller, &monitor,
-						     rtpp->save_packet, rtpp->packet, rtpp->istcp, rtpp->dlt, rtpp->sensor_id);
-			}
-			rtpp->call->set_last_packet_time(rtpp->header.ts.tv_sec);
+		if(rtpp_pq.is_rtcp) {
+			rtpp_pq.call->read_rtcp(rtpp_pq.data, rtpp_pq.datalen, rtpp_pq.dataoffset, &rtpp_pq.header, rtpp_pq.saddr, rtpp_pq.daddr, rtpp_pq.sport, rtpp_pq.dport, rtpp_pq.iscaller,
+						rtpp_pq.save_packet, rtpp_pq.packet, rtpp_pq.istcp, rtpp_pq.dlt, rtpp_pq.sensor_id);
+		}  else {
+			int monitor;
+			rtpp_pq.call->read_rtp(rtpp_pq.data, rtpp_pq.datalen, rtpp_pq.dataoffset, &rtpp_pq.header, NULL, rtpp_pq.saddr, rtpp_pq.daddr, rtpp_pq.sport, rtpp_pq.dport, rtpp_pq.iscaller, &monitor,
+					       rtpp_pq.save_packet, rtpp_pq.packet, rtpp_pq.istcp, rtpp_pq.dlt, rtpp_pq.sensor_id,
+					       rtpp_pq.block_store && rtpp_pq.block_store->ifname[0] ? rtpp_pq.block_store->ifname : NULL);
+		}
+		rtpp_pq.call->set_last_packet_time(rtpp_pq.header.ts.tv_sec);
+		if(rtpp_pq.block_store) {
+			rtpp_pq.block_store->unlock_packet(rtpp_pq.block_store_index);
 		}
 
-#if defined(QUEUE_MUTEX) || defined(QUEUE_NONBLOCK)
-		delete [] rtpp->data;
-		delete rtpp;
-#endif
-
-#ifdef QUEUE_NONBLOCK2
-		if(!opt_pcap_queue) {
-			params->vmbuffer[params->readit % params->vmbuffermax].free = 1;
-			if((params->readit + 1) == params->vmbuffermax) {
-				params->readit = 0;
-			} else {
-				params->readit++;
-			}
-		}
-#endif
-
-		if(opt_pcap_queue) {
-			#if SYNC_CALL_RTP
-			__sync_sub_and_fetch(&rtpp_pq.call->rtppcaketsinqueue, 1);
-			#else
-			++rtpp_pq.call->rtppcaketsinqueue_m;
-			#endif
-		} else {
-			#if SYNC_CALL_RTP
-			__sync_sub_and_fetch(&rtpp->call->rtppcaketsinqueue, 1);
-			#else
-			++rtpp->call->rtppcaketsinqueue_m;
-			#endif
-		}
+		#if SYNC_CALL_RTP
+		__sync_sub_and_fetch(&rtpp_pq.call->rtppcaketsinqueue, 1);
+		#else
+		++rtpp_pq.call->rtppcaketsinqueue_m;
+		#endif
 
 	}
 	
@@ -2967,7 +2805,8 @@ Call *process_packet(bool is_ssl, u_int64_t packet_number,
 					sendCallInfoEvCall(call, sSciInfo::sci_18X, header->ts);
 					call->onCall_18X = true;
 				}
-				call->destroy_call_at = header->ts.tv_sec + absolute_timeout;
+				call->destroy_call_at = 0;
+				call->destroy_call_at_bye = 0;
 			}
 
 			// if the call ends with some of SIP [456]XX response code, we can shorten timeout when the call will be closed 
@@ -3694,13 +3533,8 @@ void process_packet__parse_custom_headers(Call *call, char *data, int datalen) {
 }
 
 void process_packet__cleanup(pcap_pkthdr *header, pcap_t *handle) {
-	static int pcapstatres = 0;
-	static unsigned int lostpacket = 0;
-	static unsigned int lostpacketif = 0;
- 
-	//if(verbosity > 0) syslog(LOG_NOTICE, "Active calls [%d] calls in sql queue [%d] calls in delete queue [%d]\n", (int)calltable->calls_listMAP.size(), (int)calltable->calls_queue.size(), (int)calltable->calls_deletequeue.size());
 
-	if(verbosity > 0 && !opt_pcap_queue) {
+	if(verbosity > 0 && is_read_from_file_simple()) {
 		if(opt_dup_check) {
 			syslog(LOG_NOTICE, "Active calls [%d] calls in sql queue [%d] skipped dupe pkts [%u]\n", 
 				(int)calltable->calls_listMAP.size(), (int)calltable->calls_queue.size(), duplicate_counter);
@@ -3714,22 +3548,6 @@ void process_packet__cleanup(pcap_pkthdr *header, pcap_t *handle) {
 		calltable->cleanup(header->ts.tv_sec);
 	}
 	
-	/* also do every 10 seconds pcap statistics */
-	if(!opt_pcap_queue) {
-		pcap_drop_flag = 0;
-		pcapstatres = pcap_stats(handle, &pcapstat);
-		if (pcapstatres == 0 && (lostpacket < pcapstat.ps_drop || lostpacketif < pcapstat.ps_ifdrop)) {
-			if(pcapstatresCount) {
-				syslog(LOG_ERR, "warning: libpcap or interface dropped packets! rx:%u pcapdrop:%u ifdrop:%u increase --ring-buffer (kernel >= 2.6.31 and libpcap >= 1.0.0)\n", pcapstat.ps_recv, pcapstat.ps_drop, pcapstat.ps_ifdrop);
-			} else {
-				// do not show first error, it is normal on startup. 
-				pcapstatresCount++;
-			}
-			lostpacket = pcapstat.ps_drop;
-			lostpacketif = pcapstat.ps_ifdrop;
-			pcap_drop_flag = 1;
-		}
-	}
 	process_packet__last_cleanup = header->ts.tv_sec;
 
 	if(!(preProcessPacket && opt_enable_preprocess_packet == 2)) {
@@ -4288,192 +4106,6 @@ void readdump_libnids(pcap_t *handle) {
 }
 #endif
 
-void *pcap_read_thread_func(void *arg) {
-	pcap_packet *pp;
-	struct iphdr2 *header_ip;
-	struct udphdr2 *header_udp;
-	struct udphdr2 header_udp_tmp;
-	struct tcphdr2 *header_tcp;
-	char *data;
-	int datalen;
-	int istcp = 0;
-	int was_rtp;
-	unsigned int packets = 0;
-	bool useTcpReassemblyHttp;
-	bool useTcpReassemblyWebrtc;
-	bool useTcpReassemblySsl;
-	u_int64_t packet_counter = 0;
-
-#if defined(QUEUE_MUTEX) || defined(QUEUE_NONBLOCK)
-	int res = 0;
-#endif
-
-	while(1) {
-	 
-		++packet_counter;
-
-#ifdef QUEUE_MUTEX
-		int res = sem_wait(&readpacket_thread_semaphore);
-		if(res != 0) {
-			printf("Error pcap_read_thread_func sem_wait returns != 0\n");
-		}
-
-		pthread_mutex_lock(&readpacket_thread_queue_lock);
-		pp = readpacket_thread_queue.front();
-		readpacket_thread_queue.pop();
-		pthread_mutex_unlock(&readpacket_thread_queue_lock);
-#endif
-
-#ifdef QUEUE_NONBLOCK
-		if((res = queue_dequeue(qs_readpacket_thread_queue, (void **)&pp)) != 1) {
-			// queue is empty
-			if(is_terminating() || readend) {
-				//printf("packets: [%u]\n", packets);
-				return NULL;
-			}
-			usleep(qringusleep);
-			continue;
-		};
-#endif
-
-#ifdef QUEUE_NONBLOCK2
-		if(pcap_qring[pcap_readit % pcap_qring_max].free == 1) {
-			// no packet to read 
-			if(is_terminating() || readend) {
-				//printf("packets: [%u]\n", packets);
-				return NULL;
-			}
-			usleep(pcap_qring_usleep);
-			continue;
-		} else {
-			pp = &(pcap_qring[pcap_readit % pcap_qring_max]);
-		}
-#endif
-		packets++;
-
-		int destroypp = 0;
-		u_char *packet = pp->packet2 ? pp->packet2 : pp->packet;
-		if(pp->packet2) {
-			destroypp = 1;
-		}
-
-		header_ip = (struct iphdr2 *) ((char*)packet + pp->offset);
-
-		bool nextPass;
-		do {
-			nextPass = false;
-			if(header_ip->protocol == IPPROTO_IPIP) {
-				// ip in ip protocol
-				header_ip = (struct iphdr2 *) ((char*)header_ip + sizeof(iphdr2));
-			} else if(header_ip->protocol == IPPROTO_GRE) {
-				// gre protocol 
-				header_ip = convertHeaderIP_GRE(header_ip);
-				if(header_ip) {
-					nextPass = true;
-				}
-			}
-		} while(nextPass);
-		if(!header_ip) {
-			continue;
-		}
-
-		header_udp = &header_udp_tmp;
-		useTcpReassemblyHttp = false;
-		useTcpReassemblyWebrtc = false;
-		useTcpReassemblySsl = false;
-		if (header_ip->protocol == IPPROTO_UDP) {
-			// prepare packet pointers 
-			header_udp = (struct udphdr2 *) ((char *) header_ip + sizeof(*header_ip));
-			data = (char *) header_udp + sizeof(*header_udp);
-			datalen = (int)(pp->header.caplen - ((char*)data - (char*)packet)); 
-			istcp = 0;
-		} else if (header_ip->protocol == IPPROTO_TCP) {
-			header_tcp = (struct tcphdr2 *) ((char *) header_ip + sizeof(*header_ip));
-			// dokončit nezbytné paměťové operace pro udržení obsahu paketu !!!!
-			// zatím reassemblování v módu bez pb zakázáno
-			/*
-			if(opt_enable_http && (httpportmatrix[htons(header_tcp->source)] || httpportmatrix[htons(header_tcp->dest)])) {
-				tcpReassembly->push(&pp->header, header_ip, packet);
-				useTcpReassemblyHttp = true;
-			} else if(opt_enable_webrtc && (webrtcportmatrix[htons(header_tcp->source)] || webrtcportmatrix[htons(header_tcp->dest)])) {
-				tcpReassemblyWebrtc->push(&pp->header, header_ip, packet);
-				useTcpReassemblyWebrtc = true;
-			} els if(opt_enable_ssl && 
-				 (isSslIpPort(htonl(header_ip->saddr), htons(header_tcp->source)) ||
-				  isSslIpPort(htonl(header_ip->daddr), htons(header_tcp->dest)))) {
-				tcpReassemblySsl->push(&pp->header, header_ip, packet);
-				useTcpReassemblySsl = true;
-			} else*/{
-				istcp = 1;
-				// prepare packet pointers 
-				data = (char *) header_tcp + (header_tcp->doff * 4);
-				datalen = (int)(pp->header.caplen - ((char*)data - (char*)packet)); 
-				header_udp->source = header_tcp->source;
-				header_udp->dest = header_tcp->dest;
-			}
-		} else {
-			//packet is not UDP and is not TCP, we are not interested, go to the next packet
-			// - interested only for ipaccount
-			if(opt_ipaccount) {
-				ipaccount(pp->header.ts.tv_sec, (struct iphdr2 *) ((char*)(packet) + pp->offset), pp->header.len - pp->offset, false);
-			}
-#ifdef QUEUE_NONBLOCK2
-			if(destroypp) {
-				delete [] pp->packet2;
-				pp->packet2 = NULL;
-			}
-			pcap_qring[pcap_readit % pcap_qring_max].free = 1;
-			if((pcap_readit + 1) == pcap_qring_max) {
-				pcap_readit = 0;
-			} else {
-				pcap_readit++;
-			}
-#endif
-			continue;
-		}
-
-		if(opt_mirrorip && (sipportmatrix[htons(header_udp->source)] || sipportmatrix[htons(header_udp->dest)])) {
-			mirrorip->send((char *)header_ip, (int)(pp->header.caplen - ((char*)header_ip - (char*)packet)));
-		}
-		int voippacket = 0;
-		if(!useTcpReassemblyHttp && !useTcpReassemblyWebrtc && !useTcpReassemblySsl &&
-		   opt_enable_http < 2 && opt_enable_webrtc < 2 && opt_enable_ssl < 2) {
-			process_packet(false, packet_counter,
-				       header_ip->saddr, htons(header_udp->source), header_ip->daddr, htons(header_udp->dest), 
-				       data, datalen, data - (char*)packet, 
-				       global_pcap_handle, &pp->header, packet, 
-				       istcp, &was_rtp, header_ip, &voippacket, 0,
-				       NULL, 0, global_pcap_dlink, opt_id_sensor);
-		}
-
-		// if packet was VoIP add it to ipaccount
-		if(opt_ipaccount) {
-			ipaccount(pp->header.ts.tv_sec, (struct iphdr2 *) ((char*)(packet) + pp->offset), pp->header.len - pp->offset, voippacket);
-		}
-
-#ifdef QUEUE_NONBLOCK2
-		if(destroypp) {
-			delete [] pp->packet2;
-			pp->packet2 = NULL;
-		}
-		pcap_qring[pcap_readit % pcap_qring_max].free = 1;
-		if((pcap_readit + 1) == pcap_qring_max) {
-			pcap_readit = 0;
-		} else {
-			pcap_readit++;
-		}
-#endif
-
-#if defined(QUEUE_MUTEX) || defined(QUEUE_NONBLOCK)
-		delete [] pp->packet;
-		delete pp;
-#endif
-	}
-	//printf("packets: [%u]\n", packets);
-
-	return NULL;
-}
-
 /*
 
 defragment packets from queue and allocates memory for new header and packet which is returned 
@@ -4772,64 +4404,6 @@ void readdump_libpcap(pcap_t *handle) {
 				delete header; 
 				delete [] packet; 
 			}
-			continue;
-		}
-
-		if(opt_pcap_threaded) {
-			//add packet to queue
-#if defined(QUEUE_MUTEX) || defined(QUEUE_NONBLOCK)
-			pcap_packet *pp = new FILE_LINE pcap_packet;
-			pp->packet = new FILE_LINE u_char[header->caplen];
-			pp->offset = ppd.header_ip_offset;
-			memcpy(&pp->header, header, sizeof(struct pcap_pkthdr));
-			memcpy(pp->packet, packet, header->caplen);
-#endif
-
-#ifdef QUEUE_NONBLOCK2
-			while(pcap_qring[pcap_writeit % pcap_qring_max].free == 0) {
-				// no room left, loop until there is room
-				usleep(100);
-			}
-			if(header->caplen > MAXPACKETLENQRING) {
-				//allocate special structure 
-				//syslog(LOG_ERR, "error: packet is to large [%d]b for QRING[%d]b", header->caplen, MAXPACKETLENQRING);
-				pcap_qring[pcap_writeit % pcap_qring_max].packet2 = new FILE_LINE u_char[header->caplen];
-				memcpy(pcap_qring[pcap_writeit % pcap_qring_max].packet2, packet, header->caplen);
-			} else {
-				pcap_qring[pcap_writeit % pcap_qring_max].packet2 = NULL;
-				memcpy(&pcap_qring[pcap_writeit % pcap_qring_max].packet, packet, header->caplen);
-			}
-			memcpy(&pcap_qring[pcap_writeit % pcap_qring_max].header, header, sizeof(struct pcap_pkthdr));
-			pcap_qring[pcap_writeit % pcap_qring_max].offset = ppd.header_ip_offset;
-			pcap_qring[pcap_writeit % pcap_qring_max].free = 0;
-			if((pcap_writeit + 1) == pcap_qring_max) {
-				pcap_writeit = 0;
-			} else {
-				pcap_writeit++;
-			}
-#endif
-
-			if(header->caplen > header->caplen) {
-				syslog(LOG_ERR, "error: header->caplen > header->caplen FIX!");
-			}
-
-#ifdef QUEUE_MUTEX
-			pthread_mutex_lock(&readpacket_thread_queue_lock);
-			readpacket_thread_queue.push(pp);
-			pthread_mutex_unlock(&readpacket_thread_queue_lock);
-#endif
-
-#ifdef QUEUE_NONBLOCK
-			if(queue_enqueue(qs_readpacket_thread_queue, (void*)pp) == 0) {
-				// enqueue failed, try to raise queue
-				if(queue_guaranteed_enqueue(qs_readpacket_thread_queue, (void*)pp) == 0) {
-					syslog(LOG_ERR, "error: readpacket_queue cannot allocate memory");
-				}
-			}
-#endif 
-
-			//sem_post(&readpacket_thread_semaphore);
-			if(destroy) { delete header; delete [] packet;};
 			continue;
 		}
 

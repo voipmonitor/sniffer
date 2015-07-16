@@ -1,3 +1,5 @@
+/* obsolete
+
 #include <syslog.h>
 #include <string.h>
 #include <math.h>
@@ -680,33 +682,22 @@ config_load_mysql(bool checkConnect) {
 			opt_saveaudio_reversestereo = atoi(row["saveaudio_reversestereo"].c_str());
 		}
 
-		/*
-		
-		packetbuffer default configuration
-		
-		packetbuffer_enable	     = no
-		packetbuffer_block_maxsize      = 500   #kB
-		packetbuffer_block_maxtime      = 500   #ms
-		packetbuffer_total_maxheap      = 500   #MB
-		packetbuffer_thread_maxheap     = 500   #MB
-		packetbuffer_file_totalmaxsize  = 20000 #MB
-		packetbuffer_file_path	  = /var/spool/voipmonitor/packetbuffer
-		packetbuffer_file_maxfilesize   = 1000  #MB
-		packetbuffer_file_maxtime       = 5000  #ms
-		packetbuffer_compress	   = yes
-		#mirror_destination_ip	  =
-		#mirror_destination_port	=
-		#mirror_source_ip	       =
-		#mirror_source_port	     =
-		*/
-
-#ifdef QUEUE_NONBLOCK2
-		if(opt_scanpcapdir[0] != '\0') {
-			opt_pcap_queue = 0;
-		}
-#else   
-		opt_pcap_queue = 0;
-#endif
+// 		packetbuffer default configuration
+// 		
+// 		packetbuffer_enable	     = no
+// 		packetbuffer_block_maxsize      = 500   #kB
+// 		packetbuffer_block_maxtime      = 500   #ms
+// 		packetbuffer_total_maxheap      = 500   #MB
+// 		packetbuffer_thread_maxheap     = 500   #MB
+// 		packetbuffer_file_totalmaxsize  = 20000 #MB
+// 		packetbuffer_file_path	  = /var/spool/voipmonitor/packetbuffer
+// 		packetbuffer_file_maxfilesize   = 1000  #MB
+// 		packetbuffer_file_maxtime       = 5000  #ms
+// 		packetbuffer_compress	   = yes
+// 		#mirror_destination_ip	  =
+// 		#mirror_destination_port	=
+// 		#mirror_source_ip	       =
+// 		#mirror_source_port	     =
 
 		if(opt_pcap_queue) {
 			if(!opt_pcap_queue_disk_folder.length() || !opt_pcap_queue_store_queue_max_disk_size) {
@@ -740,3 +731,5 @@ config_load_mysql(bool checkConnect) {
 	}
 	delete sqlDb;
 }
+
+*/
