@@ -682,6 +682,7 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 			return -1;
 		}
 	} else if(strstr(buf, "listcalls") != NULL) {
+		if(calltable) {
 		//list<Call*>::iterator call;
 		map<string, Call*>::iterator callMAPIT;
 		Call *call;
@@ -787,6 +788,7 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 			return -1;
 		}
 		delete [] resbuf;
+		}
 		return 0;
 	} else if(strstr(buf, "d_lc_for_destroy") != NULL) {
 		ostringstream outStr;

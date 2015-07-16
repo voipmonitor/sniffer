@@ -65,7 +65,6 @@ extern int opt_mirroronly;
 extern char opt_scanpcapdir[2048];
 extern int opt_ipaccount;
 extern int rtp_threaded;
-extern int opt_pcap_threaded;
 extern int opt_rtpnosip;
 extern char opt_cachedir[1024];
 extern int opt_savewav_force;

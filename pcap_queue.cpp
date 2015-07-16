@@ -149,7 +149,6 @@ static bool __config_BYPASS_FIFO			= true;
 static bool __config_USE_PCAP_FOR_FIFO			= false;
 static bool __config_ENABLE_TOGETHER_READ_WRITE_FILE	= false;
 
-int opt_pcap_queue					= 1;
 #if TEST_DEBUG_PARAMS > 0
 	u_int opt_pcap_queue_block_max_time_ms 			= 500;
 	size_t opt_pcap_queue_block_max_size   			= OPT_PCAP_BLOCK_STORE_MAX_ITEMS * AVG_PACKET_SIZE;

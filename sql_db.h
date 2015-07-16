@@ -138,7 +138,7 @@ public:
 	}
 	virtual void cleanFields();
 	virtual void clean() = 0;
-	virtual void createSchema(SqlDb *sourceDb = NULL) = 0;
+	virtual bool createSchema(SqlDb *sourceDb = NULL) = 0;
 	virtual void createTable(const char *tableName) = 0;
 	virtual void checkDbMode() = 0;
 	virtual void checkSchema() = 0;
@@ -229,7 +229,7 @@ public:
 	}
 	bool checkLastError(string prefixError, bool sysLog = false,bool clearLastError = false);
 	void clean();
-	void createSchema(SqlDb *sourceDb = NULL);
+	bool createSchema(SqlDb *sourceDb = NULL);
 	void createTable(const char *tableName);
 	void checkDbMode();
 	void checkSchema();
@@ -315,7 +315,7 @@ public:
 	bool checkLastError(string prefixError, bool sysLog = false,bool clearLastError = false);
 	void cleanFields();
 	void clean();
-	void createSchema(SqlDb *sourceDb = NULL);
+	bool createSchema(SqlDb *sourceDb = NULL);
 	void createTable(const char *tableName);
 	void checkDbMode();
 	void checkSchema();

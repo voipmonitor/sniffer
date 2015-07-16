@@ -74,7 +74,6 @@
 #include "ip_frag.h"
 #include "cleanspool.h"
 #include "regcache.h"
-#include "config_mysql.h"
 #include "fraud.h"
 #include "rrd.h"
 #include "heap_safe.h"
@@ -83,12 +82,6 @@
 #include "codec_ulaw.h"
 #include "send_call_info.h"
 #include "config_param.h"
-
-#if defined(QUEUE_MUTEX) || defined(QUEUE_NONBLOCK)
-extern "C" {
-#include "liblfds.6/inc/liblfds.h"
-}
-#endif
 
 #ifndef FREEBSD
 #define BACKTRACE 1
@@ -217,7 +210,6 @@ int opt_audio_format = FORMAT_WAV;	// define format for audio writing (if -W opt
 int opt_manager_port = 5029;	// manager api TCP port
 char opt_manager_ip[32] = "127.0.0.1";	// manager api listen IP address
 int opt_manager_nonblock_mode = 0;
-int opt_pcap_threaded = 0;	// run reading packets from pcap in one thread and process packets in another thread via queue
 int opt_rtpsave_threaded = 1;
 int opt_norecord_header = 0;	// if = 1 SIP call with X-VoipMonitor-norecord header will be not saved although global configuration says to record. 
 int opt_rtpnosip = 0;		// if = 1 RTP stream will be saved into calls regardless on SIP signalizatoin (handy if you need extract RTP without SIP)
@@ -385,7 +377,6 @@ char opt_php_path[1024];
 
 struct pcap_stat pcapstat;
 
-extern int opt_pcap_queue;
 extern u_int opt_pcap_queue_block_max_time_ms;
 extern size_t opt_pcap_queue_block_max_size;
 extern u_int opt_pcap_queue_file_store_max_time_ms;
@@ -556,7 +547,6 @@ volatile int sipheaderfilter_reload_do = 0;		// for reload in main thread
 pthread_t storing_cdr_thread;		// ID of worker storing CDR thread 
 pthread_t scanpcapdir_thread;
 //pthread_t destroy_calls_thread;
-pthread_t readdump_libpcap_thread;
 pthread_t manager_thread = 0;	// ID of worker manager thread 
 pthread_t manager_client_thread;	// ID of worker manager thread 
 pthread_t manager_ssh_thread;	
@@ -588,11 +578,6 @@ int opt_sdp_reverse_ipport = 0;
 volatile unsigned int pcap_readit = 0;
 volatile unsigned int pcap_writeit = 0;
 int global_livesniffer = 0;
-unsigned int pcap_qring_max = 12500;
-unsigned int pcap_qring_usleep = 10000;
-#if defined(QUEUE_MUTEX) || defined(QUEUE_NONBLOCK) || defined(QUEUE_NONBLOCK2)
-pcap_packet *pcap_qring;
-#endif
 
 pcap_t *global_pcap_handle = NULL;		// pcap handler 
 pcap_t *global_pcap_handle_dead_EN10MB = NULL;
@@ -605,14 +590,6 @@ pthread_mutex_t mysqlconnect_lock;
 pthread_mutex_t vm_rrd_lock;
 
 pthread_t pcap_read_thread;
-#ifdef QUEUE_MUTEX
-pthread_mutex_t readpacket_thread_queue_lock;
-sem_t readpacket_thread_semaphore;
-#endif
-
-#ifdef QUEUE_NONBLOCK
-struct queue_state *qs_readpacket_thread_queue = NULL;
-#endif
 
 nat_aliases_t nat_aliases;	// net_aliases[local_ip] = extern_ip
 
@@ -1170,10 +1147,7 @@ void *storing_cdr( void *dummy ) {
 		firstIter = false;
 		
 		if(opt_autocleanspool &&
-		   isSqlDriver("mysql") &&
-		   !(opt_pcap_queue && 
-		     !opt_pcap_queue_receive_from_ip_port &&
-		     opt_pcap_queue_send_to_ip_port)) {
+		   is_enable_cleanspool()) {
 			time_t actTime = time(NULL);
 			if(!checkDiskFreeAt) {
 				checkDiskFreeAt = actTime;
@@ -1183,32 +1157,13 @@ void *storing_cdr( void *dummy ) {
 			}
 		}
 		
-		if(request_iptelnum_reload == 1) { reload_capture_rules(); request_iptelnum_reload = 0;};
+		if(request_iptelnum_reload == 1) { reload_capture_rules(); request_iptelnum_reload = 0;}
 		
-		if(verbosity > 0 && !opt_pcap_queue) { 
+		if(verbosity > 0 && is_read_from_file_simple()) { 
 			ostringstream outStr;
 			outStr << "calls[" << calls_counter << "]";
-#ifdef HAVE_LIBGNUTLS
-			extern string getSslStat();
-			string sslStat = getSslStat();
-			if(!sslStat.empty()) {
-				outStr << sslStat;
-			}
-#endif
-			if(opt_ipaccount) {
-				outStr << " ipacc_buffer[" << lengthIpaccBuffer() << "]";
-			}
-			#ifdef QUEUE_NONBLOCK2
-			if(!opt_pcap_queue) {
-				outStr << " qring[" << (pcap_writeit >= pcap_readit ? pcap_writeit - pcap_readit : pcap_writeit + pcap_qring_max - pcap_readit)
-				       << " (w" << pcap_writeit << ",r" << pcap_readit << ")]";
-			}
-			#endif
-			syslog(LOG_NOTICE, outStr.str().c_str());
 		}
 		
-		if(request_iptelnum_reload == 1) { reload_capture_rules(); request_iptelnum_reload = 0;};
-
 		size_t calls_queue_size = 0;
 		
 		for(int pass  = 0; pass < 10; pass++) {
@@ -1285,7 +1240,7 @@ void *storing_cdr( void *dummy ) {
 		}
 		calltable->unlock_calls_queue();
 	}
-	if(verbosity || !opt_read_from_file) {
+	if(verbosity && !opt_nocdr) {
 		syslog(LOG_NOTICE, "terminated - storing cdr / message / register");
 	}
 	return NULL;
@@ -1469,8 +1424,6 @@ void reload_config(const char *jsonConfig) {
 	if(!opt_nocdr && isSqlDriver("mysql") && opt_mysqlloadconfig) {
 		if(useNewCONFIG) {
 			CONFIG.setFromMysql();
-		} else {
-			config_load_mysql();
 		}
 	}
 	if(useNewCONFIG && jsonConfig) {
@@ -1648,12 +1601,15 @@ void resetTerminating() {
 }
 
 
-void *readdump_libpcap_thread_fce(void *handle);
 void test();
 
 PcapQueue_readFromFifo *pcapQueueR;
 PcapQueue_readFromInterface *pcapQueueI;
 PcapQueue_readFromFifo *pcapQueueQ;
+
+int main_init_read();
+void main_term_read();
+void main_init_sqlstore();
 
 int main(int argc, char *argv[]) {
 	extern unsigned int HeapSafeCheck;
@@ -1743,8 +1699,6 @@ int main(int argc, char *argv[]) {
 	pthread_mutex_init(&terminate_packetbuffer_lock, NULL);
 
 	// if the system has more than one CPU enable threading
-	opt_pcap_threaded = sysconf( _SC_NPROCESSORS_ONLN ) > 1; 
-	opt_pcap_threaded = 1; // TODO: this must be enabled for now. 
 	num_threads = sysconf( _SC_NPROCESSORS_ONLN ) - 1;
 	if(num_threads <= 0) num_threads = 1;
 	set_mac();
@@ -1773,8 +1727,6 @@ int main(int argc, char *argv[]) {
 	   isSqlDriver("mysql") && opt_mysqlloadconfig) {
 		if(useNewCONFIG) {
 			CONFIG.setFromMysql(true);
-		} else {
-			config_load_mysql(true);
 		}
 	}
 	get_command_line_arguments();
@@ -1845,11 +1797,7 @@ int main(int argc, char *argv[]) {
 	thread_setup();
 	// end init
 
-	if(opt_ipaccount && !opt_test) {
-		initIpacc();
-	}
-
-	if(opt_rrd && opt_read_from_file) {
+	if(opt_rrd && is_read_from_file()) {
 		//disable update of rrd statistics when reading packets from file
 		opt_rrd = 0;
 	}
@@ -1940,7 +1888,7 @@ int main(int argc, char *argv[]) {
 		}
 	}
 
-	if(opt_fork && !opt_read_from_file && reloadLoopCounter == 0) {
+	if(opt_fork && !is_read_from_file() && reloadLoopCounter == 0) {
 		#if ENABLE_SEMAPHOR_FORK_MODE
 		for(int pass = 0; pass < 2; pass ++) {
 			globalSemaphore = sem_open(SEMAPHOR_FORK_MODE_NAME().c_str(), O_CREAT | O_EXCL);
@@ -2037,6 +1985,8 @@ int main(int argc, char *argv[]) {
 			return 1;
 		}
 		#endif
+		
+		daemonize();
 	}
 
 	if(opt_generator) {
@@ -2050,19 +2000,28 @@ int main(int argc, char *argv[]) {
 		return 0;
 	}
 
+	// start manager thread 	
+	if(opt_manager_port > 0) {
+		pthread_create(&manager_thread, NULL, manager_server, NULL);
+		// start reversed manager thread
+		if(opt_clientmanager[0] != '\0') {
+			pthread_create(&manager_client_thread, NULL, manager_client, NULL);
+		}
+	};
+
 	cout << "SQL DRIVER: " << sql_driver << endl;
 	if(!opt_nocdr &&
-	   !(opt_pcap_threaded && opt_pcap_queue && 
-	     !opt_pcap_queue_receive_from_ip_port &&
-	     opt_pcap_queue_send_to_ip_port)) {
+	   !is_sender()) {
+		bool connectError = false;
 		SqlDb *sqlDb = createSqlObject();
+		bool rsltConnect = false;
 		for(int pass = 0; pass < 2; pass++) {
-			if(sqlDb->connect(true, true)) {
+			if((rsltConnect = sqlDb->connect(true, true))) {
 				break;
 			}
 			sleep(1);
 		}
-		if(sqlDb->connected()) {
+		if(rsltConnect && sqlDb->connected()) {
 			if(isSqlDriver("mysql")) {
 				sql_noerror = 1;
 				sqlDb->query("repair table mysql.proc");
@@ -2070,284 +2029,194 @@ int main(int argc, char *argv[]) {
 			}
 			sqlDb->checkDbMode();
 			if(!opt_database_backup) {
-				sqlDb->createSchema();
-				sqlDb->checkSchema();
+				if(sqlDb->createSchema()) {
+					sqlDb->checkSchema();
+				} else {
+					connectError = true;
+				}
 			}
 			sensorsMap.fillSensors();
 		} else {
-			syslog(LOG_ERR, "Can't connect to MySQL server - exit!");
-			return 1;
+			connectError = true;
+		}
+		if(connectError) {
+			string error = sqlDb->getLastErrorString();
+			if(useNewCONFIG && !is_read_from_file()) {
+				vm_terminate_error(error.c_str());
+			} else {
+				syslog(LOG_ERR, (error + " - exit!").c_str());
+				return 1;
+			}
 		}
 		delete sqlDb;
 	}
 	
-	if(opt_database_backup) {
-		if (opt_fork) {
-			daemonize();
+	if(!is_terminating()) {
+	
+		if(opt_test) {
+			ipfilter = new FILE_LINE IPfilter;
+			telnumfilter = new FILE_LINE TELNUMfilter;
+			domainfilter =  new FILE_LINE DOMAINfilter;
+			sipheaderfilter =  new FILE_LINE SIP_HEADERfilter;
+			_parse_packet_global.setStdParse();
+			test();
+			if(sqlStore) {
+				delete sqlStore;
+			}
+			return(0);
 		}
-		sqlStore = new FILE_LINE MySqlStore(mysql_host, mysql_user, mysql_password, mysql_database, cloud_host, cloud_token);
-		custom_headers_cdr = new CustomHeaders(CustomHeaders::cdr);
-		custom_headers_message = new CustomHeaders(CustomHeaders::message);
-		pthread_create(&database_backup_thread, NULL, database_backup, NULL);
-		pthread_join(database_backup_thread, NULL);
-		return(0);
-		// reload loop not supported
+		
+		if(!opt_database_backup && opt_load_query_from_files != 2) {
+			main_init_sqlstore();
+			int rslt_main_init_read = main_init_read();
+			if(rslt_main_init_read) {
+				return(rslt_main_init_read);
+			}
+			main_term_read();
+		} else {
+			if(opt_database_backup) {
+				sqlStore = new FILE_LINE MySqlStore(mysql_host, mysql_user, mysql_password, mysql_database, cloud_host, cloud_token);
+				custom_headers_cdr = new CustomHeaders(CustomHeaders::cdr);
+				custom_headers_message = new CustomHeaders(CustomHeaders::message);
+				pthread_create(&database_backup_thread, NULL, database_backup, NULL);
+				pthread_join(database_backup_thread, NULL);
+			} else if(opt_load_query_from_files == 2) {
+				main_init_sqlstore();
+				loadFromQFiles->loadFromQFiles_start();
+				unsigned int counter;
+				while(!is_terminating()) {
+					sleep(1);
+					if(!(++counter % 10) && verbosity) {
+						string stat = loadFromQFiles->getLoadFromQFilesStat();
+						syslog(LOG_NOTICE, "SQLf: [%s]", stat.c_str());
+					}
+				}
+			}
+			if(sqlStore) {
+				delete sqlStore;
+				sqlStore = NULL;
+			}
+			if(loadFromQFiles) {
+				delete loadFromQFiles;
+				loadFromQFiles = NULL;
+			}
+			if(custom_headers_cdr) {
+				delete custom_headers_cdr;
+				custom_headers_cdr = NULL;
+			}
+			if(custom_headers_message) {
+				delete custom_headers_message;
+				custom_headers_message = NULL;
+			}
+		}
+	
 	}
 	
-	if(isSqlDriver("mysql")) {
-		if(opt_load_query_from_files != 2) {
-			sqlStore = new FILE_LINE MySqlStore(mysql_host, mysql_user, mysql_password, mysql_database, cloud_host, cloud_token);
-			if(opt_save_query_to_files) {
-				sqlStore->queryToFiles(opt_save_query_to_files, opt_save_query_to_files_directory, opt_save_query_to_files_period);
+	bool _break = false;
+	
+	if(useNewCONFIG && !is_read_from_file()) {
+		string _terminating_error = terminating_error;
+		if(!hot_restarting && _terminating_error.empty()) {
+			_break = true;
+		}
+		if(!_terminating_error.empty()) {
+			clear_terminating();
+			while(!is_terminating()) {
+				syslog(LOG_NOTICE, "%s - wait for terminating or hot restarting", _terminating_error.c_str());
+				for(int i = 0; i < 10 && !is_terminating(); i++) {
+					sleep(1);
+				}
+			}
+			if(!hot_restarting) {
+				_break = true;
 			}
 		}
-		if(opt_load_query_from_files) {
-			loadFromQFiles = new FILE_LINE MySqlStore(mysql_host, mysql_user, mysql_password, mysql_database);
-			loadFromQFiles->loadFromQFiles(opt_load_query_from_files, opt_load_query_from_files_directory, opt_load_query_from_files_period);
-		}
-		if(opt_load_query_from_files != 2) {
-			if(!opt_nocdr) {
-				sqlStore->connect(STORE_PROC_ID_CDR_1);
-				sqlStore->connect(STORE_PROC_ID_MESSAGE_1);
-			}
-			if(opt_mysqlstore_concat_limit) {
-				 sqlStore->setDefaultConcatLimit(opt_mysqlstore_concat_limit);
-			}
-			for(int i = 0; i < opt_mysqlstore_max_threads_cdr; i++) {
-				if(opt_mysqlstore_concat_limit_cdr) {
-					sqlStore->setConcatLimit(STORE_PROC_ID_CDR_1 + i, opt_mysqlstore_concat_limit_cdr);
-				}
-				if(i) {
-					sqlStore->setEnableAutoDisconnect(STORE_PROC_ID_CDR_1 + i);
-				}
-				if(opt_mysql_enable_transactions_cdr) {
-					sqlStore->setEnableTransaction(STORE_PROC_ID_CDR_1 + i);
-				}
-				if(opt_cdr_check_duplicity_callid_in_next_pass_insert) {
-					sqlStore->setEnableFixDeadlock(STORE_PROC_ID_CDR_1 + i);
-				}
-			}
-			for(int i = 0; i < opt_mysqlstore_max_threads_message; i++) {
-				if(opt_mysqlstore_concat_limit_message) {
-					sqlStore->setConcatLimit(STORE_PROC_ID_MESSAGE_1 + i, opt_mysqlstore_concat_limit_message);
-				}
-				if(i) {
-					sqlStore->setEnableAutoDisconnect(STORE_PROC_ID_MESSAGE_1 + i);
-				}
-				if(opt_mysql_enable_transactions_message) {
-					sqlStore->setEnableTransaction(STORE_PROC_ID_MESSAGE_1 + i);
-				}
-				if(opt_message_check_duplicity_callid_in_next_pass_insert) {
-					sqlStore->setEnableFixDeadlock(STORE_PROC_ID_MESSAGE_1 + i);
-				}
-			}
-			for(int i = 0; i < opt_mysqlstore_max_threads_register; i++) {
-				if(opt_mysqlstore_concat_limit_register) {
-					sqlStore->setConcatLimit(STORE_PROC_ID_REGISTER_1 + i, opt_mysqlstore_concat_limit_register);
-				}
-				if(i) {
-					sqlStore->setEnableAutoDisconnect(STORE_PROC_ID_REGISTER_1 + i);
-				}
-				if(opt_mysql_enable_transactions_register) {
-					sqlStore->setEnableTransaction(STORE_PROC_ID_REGISTER_1 + i);
-				}
-			}
-			for(int i = 0; i < opt_mysqlstore_max_threads_http; i++) {
-				if(opt_mysqlstore_concat_limit_http) {
-					sqlStore->setConcatLimit(STORE_PROC_ID_HTTP_1 + i, opt_mysqlstore_concat_limit_http);
-				}
-				if(i) {
-					sqlStore->setEnableAutoDisconnect(STORE_PROC_ID_HTTP_1 + i);
-				}
-				if(opt_mysql_enable_transactions_http) {
-					sqlStore->setEnableTransaction(STORE_PROC_ID_HTTP_1 + i);
-				}
-			}
-			for(int i = 0; i < opt_mysqlstore_max_threads_webrtc; i++) {
-				if(opt_mysqlstore_concat_limit_webrtc) {
-					sqlStore->setConcatLimit(STORE_PROC_ID_WEBRTC_1 + i, opt_mysqlstore_concat_limit_webrtc);
-				}
-				if(i) {
-					sqlStore->setEnableAutoDisconnect(STORE_PROC_ID_WEBRTC_1 + i);
-				}
-				if(opt_mysql_enable_transactions_webrtc) {
-					sqlStore->setEnableTransaction(STORE_PROC_ID_WEBRTC_1 + i);
-				}
-			}
-			if(opt_mysqlstore_concat_limit_ipacc) {
-				for(int i = 0; i < opt_mysqlstore_max_threads_ipacc_base; i++) {
-					sqlStore->setConcatLimit(STORE_PROC_ID_IPACC_1 + i, opt_mysqlstore_concat_limit_ipacc);
-				}
-				for(int i = STORE_PROC_ID_IPACC_AGR_INTERVAL; i <= STORE_PROC_ID_IPACC_AGR_DAY; i++) {
-					sqlStore->setConcatLimit(i, opt_mysqlstore_concat_limit_ipacc);
-				}
-				for(int i = 0; i < opt_mysqlstore_max_threads_ipacc_agreg2; i++) {
-					sqlStore->setConcatLimit(STORE_PROC_ID_IPACC_AGR2_HOUR_1 + i, opt_mysqlstore_concat_limit_ipacc);
-				}
-			}
-			if(!opt_nocdr && opt_autoload_from_sqlvmexport) {
-				sqlStore->autoloadFromSqlVmExport();
-			}
-		}
+		terminating_error = "";
+	} else {
+		_break = true;
 	}
 	
-	if(opt_load_query_from_files == 2) {
-		if (opt_fork) {
-			daemonize();
+	//wait for manager to properly terminate 
+	if(opt_manager_port && manager_thread > 0) {
+		int res;
+		res = shutdown(manager_socket_server, SHUT_RDWR);	// break accept syscall in manager thread
+		if(res == -1) {
+			// if shutdown failed it can happen when reding very short pcap file and the bind socket was not created in manager
+			usleep(10000); 
+			res = shutdown(manager_socket_server, SHUT_RDWR);	// break accept syscall in manager thread
 		}
-		loadFromQFiles->loadFromQFiles_start();
-		unsigned int counter;
-		while(!is_terminating()) {
-			sleep(1);
-			if(!(++counter % 10) && verbosity) {
-				string stat = loadFromQFiles->getLoadFromQFilesStat();
-				syslog(LOG_NOTICE, "SQLf: [%s]", stat.c_str());
-			}
-		}
-		delete loadFromQFiles;
-		return(0);
-		// reaload loop not supported
+		struct timespec ts;
+		ts.tv_sec = 1;
+		ts.tv_nsec = 0;
+		// wait for thread max 1 sec
+#ifndef FREEBSD	
+		//TODO: solve it for freebsd
+		pthread_timedjoin_np(manager_thread, NULL, &ts);
+#endif
+	}
+	
+	if(_break) {
+		break;
 	}
 
-	calltable = new FILE_LINE Calltable;
-	
-	// preparing pcap reading and pcap filters 
-	
-	bpf_u_int32 mask;		// Holds the subnet mask associated with device.
-	char errbuf[PCAP_ERRBUF_SIZE];	// Returns error text and is only set when the pcap_lookupnet subroutine fails.
-	
-	if(opt_test) {
-		ipfilter = new FILE_LINE IPfilter;
-		telnumfilter = new FILE_LINE TELNUMfilter;
-		domainfilter =  new FILE_LINE DOMAINfilter;
-		sipheaderfilter =  new FILE_LINE SIP_HEADERfilter;
-		_parse_packet_global.setStdParse();
-		test();
-		if(sqlStore) {
-			delete sqlStore;
-		}
-		return(0);
-		// test - reaload loop not supported
 	}
+	// END RELOAD LOOP
+	
+	_parse_packet_global.free();
+	
+	delete [] sipportmatrix;
+	delete [] httpportmatrix;
+	delete [] webrtcportmatrix;
+	
+	delete regfailedcache;
+	
+#ifdef HAVE_LIBGNUTLS
+	ssl_clean();
+#endif
+	
+	if(sverb.memory_stat) {
+		cout << "memory stat at end" << endl;
+		printMemoryStat(true);
+	}
+	if (opt_fork){
+		unlink(opt_pidfile);
+	}
+	
+	return(0);
+}
+
+int main_init_read() {
+	calltable = new FILE_LINE Calltable;
 	
 	rtp_threaded = num_threads > 0;
 
 	// check if sniffer will be reading pcap files from dir and if not if it reads from eth interface or read only one file
-	if(opt_scanpcapdir[0] == '\0') {
-		if (opt_read_from_file_fname[0] == '\0' && (ifname[0] != '\0' || opt_pcap_queue_receive_from_ip_port)) {
-			if(!opt_pcap_queue) {
-				bpf_u_int32 net;
-
-				printf("Capturing on interface: %s\n", ifname);
-				// Find the properties for interface 
-				if (pcap_lookupnet(ifname, &net, &mask, errbuf) == -1) {
-					// if not available, use default
-					mask = PCAP_NETMASK_UNKNOWN;
-				}
-				/*
-				global_pcap_handle = pcap_open_live(ifname, 1600, opt_promisc, 1000, errbuf);
-				if (global_pcap_handle == NULL) {
-					fprintf(stderr, "Couldn't open inteface '%s': %s\n", ifname, errbuf);
-					return(2);
-				}
-				*/
-
-				/* to set own pcap_set_buffer_size it must be this way and not useing pcap_lookupnet */
-
-				int status = 0;
-				if((global_pcap_handle = pcap_create(ifname, errbuf)) == NULL) {
-					fprintf(stderr, "pcap_create failed on iface '%s': %s\n", ifname, errbuf);
-					return(2);
-				}
-				if((status = pcap_set_snaplen(global_pcap_handle, 3200)) != 0) {
-					fprintf(stderr, "error pcap_set_snaplen\n");
-					return(2);
-				}
-				if((status = pcap_set_promisc(global_pcap_handle, opt_promisc)) != 0) {
-					fprintf(stderr, "error pcap_set_promisc\n");
-					return(2);
-				}
-				if((status = pcap_set_timeout(global_pcap_handle, 1000)) != 0) {
-					fprintf(stderr, "error pcap_set_timeout\n");
-					return(2);
-				}
-
-				/* this is not possible for libpcap older than 1.0.0 so now voipmonitor requires libpcap > 1.0.0
-					set ring buffer size to 5M to prevent packet drops whan CPU goes high or on very high traffic 
-					- default is 2MB for libpcap > 1.0.0
-					- for libpcap < 1.0.0 it is controled by /proc/sys/net/core/rmem_default which is very low 
-				*/
-				if((status = pcap_set_buffer_size(global_pcap_handle, opt_ringbuffer * 1024 * 1024)) != 0) {
-					fprintf(stderr, "error pcap_set_buffer_size\n");
-					return(2);
-				}
-
-				if((status = pcap_activate(global_pcap_handle)) != 0) {
-					fprintf(stderr, "libpcap error: [%s]\n", pcap_geterr(global_pcap_handle));
-					return(2);
-				}
-			}
-			if(opt_convert_dlt_sll_to_en10) {
-				global_pcap_handle_dead_EN10MB = pcap_open_dead(DLT_EN10MB, 65535);
-			}
-		} else {
-			// if reading file
-			rtp_threaded = 0;
-			opt_mirrorip = 0; // disable mirroring packets when reading pcap files from file
+	if(is_read_from_file_simple()) {
+		// if reading file
+		rtp_threaded = 0;
+		opt_mirrorip = 0; // disable mirroring packets when reading pcap files from file
 //			opt_cachedir[0] = '\0'; //disabling cache if reading from file 
-			opt_pcap_threaded = 0; //disable threading because it is useless while reading packets from file
-			//opt_cleanspool_interval = 0; // disable cleaning spooldir when reading from file 
-			opt_maxpoolsize = 0;
-			opt_maxpooldays = 0;
-			opt_maxpoolsipsize = 0;
-			opt_maxpoolsipdays = 0;
-			opt_maxpoolrtpsize = 0;
-			opt_maxpoolrtpdays = 0;
-			opt_maxpoolgraphsize = 0;
-			opt_maxpoolgraphdays = 0;
-			opt_maxpoolaudiosize = 0;
-			opt_maxpoolaudiodays = 0;
-			
-			opt_manager_port = 0; // disable cleaning spooldir when reading from file 
-			printf("Reading file: %s\n", opt_read_from_file_fname);
-			mask = PCAP_NETMASK_UNKNOWN;
-			global_pcap_handle = pcap_open_offline_zip(opt_read_from_file_fname, errbuf);
-			if(global_pcap_handle == NULL) {
-				fprintf(stderr, "Couldn't open pcap file '%s': %s\n", opt_read_from_file_fname, errbuf);
-				return(2);
-			}
-		}
+		//opt_cleanspool_interval = 0; // disable cleaning spooldir when reading from file 
+		opt_maxpoolsize = 0;
+		opt_maxpooldays = 0;
+		opt_maxpoolsipsize = 0;
+		opt_maxpoolsipdays = 0;
+		opt_maxpoolrtpsize = 0;
+		opt_maxpoolrtpdays = 0;
+		opt_maxpoolgraphsize = 0;
+		opt_maxpoolgraphdays = 0;
+		opt_maxpoolaudiosize = 0;
+		opt_maxpoolaudiodays = 0;
 		
-		if(!opt_pcap_queue) {
-			if(opt_mirrorip) {
-				if(opt_mirrorip_dst[0] == '\0') {
-					syslog(LOG_ERR, "Mirroring SIP packets disabled because mirroripdst was not set");
-					opt_mirrorip = 0;
-				} else {
-					syslog(LOG_NOTICE, "Starting SIP mirroring [%s]->[%s]", opt_mirrorip_src, opt_mirrorip_dst);
-					mirrorip = new FILE_LINE MirrorIP(opt_mirrorip_src, opt_mirrorip_dst);
-				}
-			}
-
-			char filter_exp[2048] = "";		// The filter expression
-			struct bpf_program fp;		// The compiled filter 
-
-			if(*user_filter != '\0') {
-				snprintf(filter_exp, sizeof(filter_exp), "%s", user_filter);
-
-				// Compile and apply the filter
-				if (pcap_compile(global_pcap_handle, &fp, filter_exp, 0, mask) == -1) {
-					fprintf(stderr, "Couldn't parse filter %s: %s\n", filter_exp, pcap_geterr(global_pcap_handle));
-					return(2);
-				}
-				if (pcap_setfilter(global_pcap_handle, &fp) == -1) {
-					fprintf(stderr, "Couldn't install filter %s: %s\n", filter_exp, pcap_geterr(global_pcap_handle));
-					return(2);
-				}
-			}
+		opt_manager_port = 0; // disable cleaning spooldir when reading from file 
+		printf("Reading file: %s\n", opt_read_from_file_fname);
+		char errbuf[PCAP_ERRBUF_SIZE];
+		global_pcap_handle = pcap_open_offline_zip(opt_read_from_file_fname, errbuf);
+		if(global_pcap_handle == NULL) {
+			fprintf(stderr, "Couldn't open pcap file '%s': %s\n", opt_read_from_file_fname, errbuf);
+			return(2);
 		}
 	}
-	//opt_pcap_threaded = 0; //disable threading because it is useless while reading packets from file
 	
 	chdir(opt_chdir);
 
@@ -2382,9 +2251,7 @@ int main(int argc, char *argv[]) {
 	domainfilter = new FILE_LINE DOMAINfilter;
 	sipheaderfilter = new FILE_LINE SIP_HEADERfilter;
 	if(!opt_nocdr &&
-	   !(opt_pcap_threaded && opt_pcap_queue && 
-	     !opt_pcap_queue_receive_from_ip_port &&
-	     opt_pcap_queue_send_to_ip_port)) {
+	   !is_sender()) {
 		ipfilter->load();
 		telnumfilter->load();
 		domainfilter->load();
@@ -2397,16 +2264,15 @@ int main(int argc, char *argv[]) {
 
 	_parse_packet_global.setStdParse();
 
+	if(opt_ipaccount && !opt_test) {
+		initIpacc();
+	}
+	
 	if(opt_ipaccount and !ipaccountportmatrix) {
 		ipaccountportmatrix = new FILE_LINE char[65537];
 		memset(ipaccountportmatrix, 0, 65537);
 	}
 
-	// filters are ok, we can daemonize 
-	if (opt_fork && !opt_read_from_file && reloadLoopCounter == 0) {
-		daemonize();
-	}
-	
 	if(opt_save_query_to_files) {
 		sqlStore->queryToFiles_start();
 	}
@@ -2433,19 +2299,13 @@ int main(int argc, char *argv[]) {
 		asyncClose->startThreads(opt_pcap_dump_writethreads, opt_pcap_dump_writethreads_max);
 	}
 	
-	if(!opt_nocdr &&
-	   isSqlDriver("mysql") &&
-	   !(opt_pcap_queue && 
-	     !opt_pcap_queue_receive_from_ip_port &&
-	     opt_pcap_queue_send_to_ip_port) &&
+	if(is_enable_cleanspool() &&
 	   isSetCleanspoolParameters()) {
 		runCleanSpoolThread();
 	}
 	
 	// start thread processing queued cdr and sql queue - supressed if run as sender
-	if(!(opt_pcap_threaded && opt_pcap_queue && 
-	     !opt_pcap_queue_receive_from_ip_port &&
-	     opt_pcap_queue_send_to_ip_port)) {
+	if(!is_sender()) {
 		pthread_create(&storing_cdr_thread, NULL, storing_cdr, NULL);
 		/*
 		pthread_create(&destroy_calls_thread, NULL, destroy_calls, NULL);
@@ -2456,15 +2316,6 @@ int main(int argc, char *argv[]) {
 		mv_r(opt_cachedir, opt_chdir);
 		pthread_create(&cachedir_thread, NULL, moving_cache, NULL);
 	}
-
-	// start manager thread 	
-	if(opt_manager_port > 0) {
-		pthread_create(&manager_thread, NULL, manager_server, NULL);
-		// start reversed manager thread
-		if(opt_clientmanager[0] != '\0') {
-			pthread_create(&manager_client_thread, NULL, manager_client, NULL);
-		}
-	};
 
 	// start tar dumper
 	if(opt_pcap_dump_tar) {
@@ -2478,88 +2329,39 @@ int main(int argc, char *argv[]) {
 #endif
 
 	// start reading threads
-	if(rtp_threaded &&
-	   !(opt_pcap_threaded && opt_pcap_queue && 
-	     !opt_pcap_queue_receive_from_ip_port &&
-	     opt_pcap_queue_send_to_ip_port)) {
+	if(is_enable_rtp_threads()) {
 		rtp_threads = new FILE_LINE rtp_read_thread[num_threads];
 		for(int i = 0; i < num_threads; i++) {
-#ifdef QUEUE_MUTEX
-			pthread_mutex_init(&(rtp_threads[i].qlock), NULL);
-			sem_init(&(rtp_threads[i].semaphore), 0, 0);
-#endif
-
-#ifdef QUEUE_NONBLOCK
-			rtp_threads[i].pqueue = NULL;
-			queue_new(&(rtp_threads[i].pqueue), 10000);
-#endif
-
-#ifdef QUEUE_NONBLOCK2
-			if(opt_pcap_queue) {
-				size_t _rtp_qring_length = rtp_qring_length ? 
-								rtp_qring_length :
-								rtpthreadbuffer * 1024 * 1024 / sizeof(rtp_packet_pcap_queue);
-				if(rtp_qring_quick == 2) {
-					rtp_threads[i].rtpp_queue_quick_boost = new FILE_LINE rqueue_quick_boost<rtp_packet_pcap_queue>(
-											100, rtp_qring_usleep,
-											&terminating,
-											__FILE__, __LINE__);
-				} else if(rtp_qring_quick) {
-					rtp_threads[i].rtpp_queue_quick = new FILE_LINE rqueue_quick<rtp_packet_pcap_queue>(
-										_rtp_qring_length,
+			size_t _rtp_qring_length = rtp_qring_length ? 
+							rtp_qring_length :
+							rtpthreadbuffer * 1024 * 1024 / sizeof(rtp_packet_pcap_queue);
+			if(rtp_qring_quick == 2) {
+				rtp_threads[i].rtpp_queue_quick_boost = new FILE_LINE rqueue_quick_boost<rtp_packet_pcap_queue>(
 										100, rtp_qring_usleep,
-										&terminating, true,
+										&terminating,
 										__FILE__, __LINE__);
-				} else {
-					rtp_threads[i].rtpp_queue = new FILE_LINE rqueue<rtp_packet_pcap_queue>(_rtp_qring_length / 2, _rtp_qring_length / 5, _rtp_qring_length * 1.5);
-					char rtpp_queue_name[20];
-					sprintf(rtpp_queue_name, "rtp thread %i", i + 1);
-					rtp_threads[i].rtpp_queue->setName(rtpp_queue_name);
-				}
+			} else if(rtp_qring_quick) {
+				rtp_threads[i].rtpp_queue_quick = new FILE_LINE rqueue_quick<rtp_packet_pcap_queue>(
+									_rtp_qring_length,
+									100, rtp_qring_usleep,
+									&terminating, true,
+									__FILE__, __LINE__);
 			} else {
-				rtp_threads[i].vmbuffermax = rtp_qring_length ?
-								 rtp_qring_length :
-								 rtpthreadbuffer * 1024 * 1024 / sizeof(rtp_packet);
-				rtp_threads[i].writeit = 0;
-				rtp_threads[i].readit = 0;
-				rtp_threads[i].vmbuffer = new FILE_LINE rtp_packet[rtp_threads[i].vmbuffermax + 1];
-				for(int j = 0; j < rtp_threads[i].vmbuffermax + 1; j++) {
-					rtp_threads[i].vmbuffer[j].free = 1;
-				}
+				rtp_threads[i].rtpp_queue = new FILE_LINE rqueue<rtp_packet_pcap_queue>(_rtp_qring_length / 2, _rtp_qring_length / 5, _rtp_qring_length * 1.5);
+				char rtpp_queue_name[20];
+				sprintf(rtpp_queue_name, "rtp thread %i", i + 1);
+				rtp_threads[i].rtpp_queue->setName(rtpp_queue_name);
 			}
-#endif
-
 			pthread_create(&(rtp_threads[i].thread), NULL, rtp_read_thread_func, (void*)&rtp_threads[i]);
 		}
 	}
-	if(opt_pcap_threaded) {
-#ifdef QUEUE_MUTEX
-		pthread_mutex_init(&readpacket_thread_queue_lock, NULL);
-		sem_init(&readpacket_thread_semaphore, 0, 0);
-#endif
-
-#ifdef QUEUE_NONBLOCK
-		queue_new(&qs_readpacket_thread_queue, 100000);
-		pthread_create(&pcap_read_thread, NULL, pcap_read_thread_func, NULL);
-#endif
-
-#ifdef QUEUE_NONBLOCK2
-		if(!opt_pcap_queue) {
-			pcap_qring = new FILE_LINE pcap_packet[pcap_qring_max + 1];
-			for(unsigned int i = 0; i < pcap_qring_max + 1; i++) {
-				pcap_qring[i].free = 1;
-			}
-			pthread_create(&pcap_read_thread, NULL, pcap_read_thread_func, NULL);
-		}
-#endif 
-	}
 	
 	if((opt_enable_preprocess_packet || opt_enable_ssl) &&
-	   !opt_read_from_file) {
+	   !is_read_from_file_simple()) {
 		preProcessPacket = new FILE_LINE PreProcessPacket();
 	}
 	if(opt_enable_process_rtp_packet &&
-	   !opt_read_from_file) {
+	   !is_read_from_file_simple()) {
 		for(int i = 0; i < opt_enable_process_rtp_packet; i++) {
 			processRtpPacket[i] = new FILE_LINE ProcessRtpPacket(i);
 		}
@@ -2608,7 +2410,7 @@ int main(int argc, char *argv[]) {
 		sslData = new FILE_LINE SslData;
 		tcpReassemblySsl->setDataCallback(sslData);
 		tcpReassemblySsl->setLinkTimeout(opt_ssl_link_timeout);
-		if(opt_pb_read_from_file[0]) {
+		if(is_read_from_file_by_pb()) {
 			tcpReassemblySsl->setEnableWildLink();
 		}
 	}
@@ -2630,187 +2432,171 @@ int main(int argc, char *argv[]) {
 			syslog(LOG_NOTICE, "reindex date %s completed", maxSpoolDate.c_str());
 		}
 	}
+	
+	readend = 0;
 
-	if(opt_pcap_threaded) {
-		if(opt_pcap_queue) {
-		 
-			PcapQueue_init();
-			
-			if(opt_pb_read_from_file[0] && opt_enable_http) {
-				if(opt_tcpreassembly_thread) {
-					tcpReassemblyHttp->setIgnoreTerminating(true);
-				}
-			}
-			if(opt_pb_read_from_file[0] && opt_enable_webrtc) {
-				if(opt_tcpreassembly_thread) {
-					tcpReassemblyWebrtc->setIgnoreTerminating(true);
-				}
-			}
-			if(opt_pb_read_from_file[0] && opt_enable_ssl) {
-				if(opt_tcpreassembly_thread) {
-					tcpReassemblySsl->setIgnoreTerminating(true);
-				}
-			}
+	if(is_enable_packetbuffer()) {
+		PcapQueue_init();
 		
-			if(ifname[0]) {
-				pcapQueueI = new FILE_LINE PcapQueue_readFromInterface("interface");
-				pcapQueueI->setInterfaceName(ifname);
-				pcapQueueI->setEnableAutoTerminate(false);
+		if(is_read_from_file_by_pb() && opt_enable_http) {
+			if(opt_tcpreassembly_thread) {
+				tcpReassemblyHttp->setIgnoreTerminating(true);
 			}
-			
-			pcapQueueQ = new FILE_LINE PcapQueue_readFromFifo("queue", opt_pcap_queue_disk_folder.c_str());
-			if(pcapQueueI) {
-				pcapQueueQ->setInstancePcapHandle(pcapQueueI);
-			}
-			pcapQueueQ->setEnableAutoTerminate(false);
-			
-			if(opt_pcap_queue_receive_from_ip_port) {
-				pcapQueueQ->setPacketServer(opt_pcap_queue_receive_from_ip_port, PcapQueue_readFromFifo::directionRead);
-			} else if(opt_pcap_queue_send_to_ip_port) {
-				pcapQueueQ->setPacketServer(opt_pcap_queue_send_to_ip_port, PcapQueue_readFromFifo::directionWrite);
-			}
-			
-			pcapQueueQ->start();
-			if(pcapQueueI) {
-				pcapQueueI->start();
-				pcapQueueInterface = pcapQueueI;
-			}
-			pcapQueueStatInterface = pcapQueueQ;
-			
-			if(opt_scanpcapdir[0] != '\0') {
-				pthread_create(&scanpcapdir_thread, NULL, scanpcapdir, NULL);
-			}
-			
-			uint64_t _counter = 0;
-			int _pcap_stat_period = sverb.pcap_stat_period ? sverb.pcap_stat_period : 10;
-			while(!is_terminating()) {
-				if(_counter && (verbosityE > 0 || !(_counter % _pcap_stat_period))) {
-					pthread_mutex_lock(&terminate_packetbuffer_lock);
-					pcapQueueQ->pcapStat(verbosityE > 0 ? 1 : _pcap_stat_period);
-					pthread_mutex_unlock(&terminate_packetbuffer_lock);
-					if(sverb.memory_stat_log) {
-						printMemoryStat();
-					}
-					if(tcpReassemblyHttp) {
-						tcpReassemblyHttp->setDoPrintContent();
-					}
-					if(tcpReassemblyWebrtc) {
-						tcpReassemblyWebrtc->setDoPrintContent();
-					}
-					#if RTP_PROF
-					for(int i = 0; i < opt_enable_process_rtp_packet; i++) if(processRtpPacket[i]) {
-						unsigned long long ___prof__ProcessRtpPacket_outThreadFunction = processRtpPacket[i]->__prof__ProcessRtpPacket_outThreadFunction;
-						unsigned long long ___prof__ProcessRtpPacket_outThreadFunction__usleep = processRtpPacket[i]->__prof__ProcessRtpPacket_outThreadFunction__usleep;
-						unsigned long long ___prof__ProcessRtpPacket_rtp = processRtpPacket[i]->__prof__ProcessRtpPacket_rtp;
-						unsigned long long ___prof__ProcessRtpPacket_rtp__hashfind = processRtpPacket[i]->__prof__ProcessRtpPacket_rtp__hashfind;
-						unsigned long long ___prof__ProcessRtpPacket_rtp__fill_call_array = processRtpPacket[i]->__prof__ProcessRtpPacket_rtp__fill_call_array;
-						unsigned long long ___prof__process_packet__rtp = processRtpPacket[i]->__prof__process_packet__rtp;
-						unsigned long long ___prof__add_to_rtp_thread_queue = processRtpPacket[i]->__prof__add_to_rtp_thread_queue;
-						unsigned long long ___prof__ProcessRtpPacket_outThreadFunction2 = ___prof__ProcessRtpPacket_outThreadFunction - ___prof__ProcessRtpPacket_outThreadFunction__usleep;
-						cout << fixed
-						     << "RTP PROF - " << (processRtpPacket[i]->indexThread + 1) << "/" << processRtpPacket[i]->outThreadId
-								<< endl
-						     << left << setw(50) << "ProcessRtpPacket::outThreadFunction"
-						     << right << setw(15) << ___prof__ProcessRtpPacket_outThreadFunction
-								<< endl
-						     << left << setw(50) << "ProcessRtpPacket::outThreadFunction / usleep"
-						     << right << setw(15) << ___prof__ProcessRtpPacket_outThreadFunction__usleep
-								<< endl
-						     << left << setw(50) << "ProcessRtpPacket::outThreadFunction / process time"
-						     << right << setw(15) << ___prof__ProcessRtpPacket_outThreadFunction2
-								<< endl
-						     << left << setw(50) << "   ProcessRtpPacket::rtp"
-						     << right << setw(15) << ___prof__ProcessRtpPacket_rtp
-						     << setw(15) << setprecision(5) 
-							<< ((double)___prof__ProcessRtpPacket_rtp / ___prof__ProcessRtpPacket_outThreadFunction2) * 100 << "%"
-								<< endl
-						     << left << setw(50) << "      ProcessRtpPacket::rtp / hashfind"
-						     << right << setw(15) << ___prof__ProcessRtpPacket_rtp__hashfind
-						     << setw(15) << setprecision(5) 
-							<< ((double)___prof__ProcessRtpPacket_rtp__hashfind / ___prof__ProcessRtpPacket_outThreadFunction2) * 100 << "%"
-								<< endl
-						     << left << setw(50) << "      ProcessRtpPacket::rtp / fill call array"
-						     << right << setw(15) << ___prof__ProcessRtpPacket_rtp__fill_call_array
-						     << setw(15) << setprecision(5) 
-							<< ((double)___prof__ProcessRtpPacket_rtp__fill_call_array / ___prof__ProcessRtpPacket_outThreadFunction2) * 100 << "%"
-								<< endl
-						     << left << setw(50) << "      process_packet__rtp"
-						     << right << setw(15) << ___prof__process_packet__rtp
-						     << setw(15) << setprecision(5) 
-							<< ((double)___prof__process_packet__rtp / ___prof__ProcessRtpPacket_outThreadFunction2) * 100 << "%"
-								<< endl
-						     << left << setw(50) << "         add_to_rtp_thread_queue"
-						     << right << setw(15) << ___prof__add_to_rtp_thread_queue
-						     << setw(15) << setprecision(5) 
-							<< ((double)___prof__add_to_rtp_thread_queue / ___prof__ProcessRtpPacket_outThreadFunction2) * 100 << "%"
-								<< endl;
-						processRtpPacket[i]->__prof__ProcessRtpPacket_outThreadFunction_begin = rdtsc();
-						processRtpPacket[i]->__prof__ProcessRtpPacket_outThreadFunction__usleep = 0;
-						processRtpPacket[i]->__prof__ProcessRtpPacket_rtp = 0;
-						processRtpPacket[i]->__prof__ProcessRtpPacket_rtp__hashfind = 0;
-						processRtpPacket[i]->__prof__ProcessRtpPacket_rtp__fill_call_array = 0;
-						processRtpPacket[i]->__prof__process_packet__rtp = 0;
-						processRtpPacket[i]->__prof__add_to_rtp_thread_queue = 0;
-					}
-					#endif
-				}
-				sleep(1);
-				++_counter;
-			}
-			
-			if(opt_scanpcapdir[0] != '\0') {
-				//pthread_join(scanpcapdir_thread, NULL); // failed - stop at: scanpcapdir::'len = read(fd, buff, 4096);'
-				sleep(2);
-			}
-			
-			terminate_packetbuffer();
-			
-			if(opt_pb_read_from_file[0] && (opt_enable_http || opt_enable_webrtc || opt_enable_ssl)) {
-				sleep(2);
-			}
-			
-			PcapQueue_term();
-			
-		} else {
-			pthread_create(&readdump_libpcap_thread, NULL, readdump_libpcap_thread_fce, global_pcap_handle);
-			pthread_join(readdump_libpcap_thread, NULL);
 		}
+		if(is_read_from_file_by_pb() && opt_enable_webrtc) {
+			if(opt_tcpreassembly_thread) {
+				tcpReassemblyWebrtc->setIgnoreTerminating(true);
+			}
+		}
+		if(is_read_from_file_by_pb() && opt_enable_ssl) {
+			if(opt_tcpreassembly_thread) {
+				tcpReassemblySsl->setIgnoreTerminating(true);
+			}
+		}
+	
+		if(ifname[0] || is_read_from_file_by_pb()) {
+			pcapQueueI = new FILE_LINE PcapQueue_readFromInterface("interface");
+			pcapQueueI->setInterfaceName(ifname);
+			pcapQueueI->setEnableAutoTerminate(false);
+		}
+		
+		pcapQueueQ = new FILE_LINE PcapQueue_readFromFifo("queue", opt_pcap_queue_disk_folder.c_str());
+		if(pcapQueueI) {
+			pcapQueueQ->setInstancePcapHandle(pcapQueueI);
+		}
+		pcapQueueQ->setEnableAutoTerminate(false);
+		
+		if(opt_pcap_queue_receive_from_ip_port) {
+			pcapQueueQ->setPacketServer(opt_pcap_queue_receive_from_ip_port, PcapQueue_readFromFifo::directionRead);
+		} else if(opt_pcap_queue_send_to_ip_port) {
+			pcapQueueQ->setPacketServer(opt_pcap_queue_send_to_ip_port, PcapQueue_readFromFifo::directionWrite);
+		}
+		
+		pcapQueueQ->start();
+		if(pcapQueueI) {
+			pcapQueueI->start();
+			pcapQueueInterface = pcapQueueI;
+		}
+		pcapQueueStatInterface = pcapQueueQ;
+		
+		if(opt_scanpcapdir[0] != '\0') {
+			pthread_create(&scanpcapdir_thread, NULL, scanpcapdir, NULL);
+		}
+		
+		uint64_t _counter = 0;
+		int _pcap_stat_period = sverb.pcap_stat_period ? sverb.pcap_stat_period : 10;
+		while(!is_terminating()) {
+			if(_counter && (verbosityE > 0 || !(_counter % _pcap_stat_period))) {
+				pthread_mutex_lock(&terminate_packetbuffer_lock);
+				pcapQueueQ->pcapStat(verbosityE > 0 ? 1 : _pcap_stat_period);
+				pthread_mutex_unlock(&terminate_packetbuffer_lock);
+				if(sverb.memory_stat_log) {
+					printMemoryStat();
+				}
+				if(tcpReassemblyHttp) {
+					tcpReassemblyHttp->setDoPrintContent();
+				}
+				if(tcpReassemblyWebrtc) {
+					tcpReassemblyWebrtc->setDoPrintContent();
+				}
+				#if RTP_PROF
+				for(int i = 0; i < opt_enable_process_rtp_packet; i++) if(processRtpPacket[i]) {
+					unsigned long long ___prof__ProcessRtpPacket_outThreadFunction = processRtpPacket[i]->__prof__ProcessRtpPacket_outThreadFunction;
+					unsigned long long ___prof__ProcessRtpPacket_outThreadFunction__usleep = processRtpPacket[i]->__prof__ProcessRtpPacket_outThreadFunction__usleep;
+					unsigned long long ___prof__ProcessRtpPacket_rtp = processRtpPacket[i]->__prof__ProcessRtpPacket_rtp;
+					unsigned long long ___prof__ProcessRtpPacket_rtp__hashfind = processRtpPacket[i]->__prof__ProcessRtpPacket_rtp__hashfind;
+					unsigned long long ___prof__ProcessRtpPacket_rtp__fill_call_array = processRtpPacket[i]->__prof__ProcessRtpPacket_rtp__fill_call_array;
+					unsigned long long ___prof__process_packet__rtp = processRtpPacket[i]->__prof__process_packet__rtp;
+					unsigned long long ___prof__add_to_rtp_thread_queue = processRtpPacket[i]->__prof__add_to_rtp_thread_queue;
+					unsigned long long ___prof__ProcessRtpPacket_outThreadFunction2 = ___prof__ProcessRtpPacket_outThreadFunction - ___prof__ProcessRtpPacket_outThreadFunction__usleep;
+					cout << fixed
+					     << "RTP PROF - " << (processRtpPacket[i]->indexThread + 1) << "/" << processRtpPacket[i]->outThreadId
+							<< endl
+					     << left << setw(50) << "ProcessRtpPacket::outThreadFunction"
+					     << right << setw(15) << ___prof__ProcessRtpPacket_outThreadFunction
+							<< endl
+					     << left << setw(50) << "ProcessRtpPacket::outThreadFunction / usleep"
+					     << right << setw(15) << ___prof__ProcessRtpPacket_outThreadFunction__usleep
+							<< endl
+					     << left << setw(50) << "ProcessRtpPacket::outThreadFunction / process time"
+					     << right << setw(15) << ___prof__ProcessRtpPacket_outThreadFunction2
+							<< endl
+					     << left << setw(50) << "   ProcessRtpPacket::rtp"
+					     << right << setw(15) << ___prof__ProcessRtpPacket_rtp
+					     << setw(15) << setprecision(5) 
+						<< ((double)___prof__ProcessRtpPacket_rtp / ___prof__ProcessRtpPacket_outThreadFunction2) * 100 << "%"
+							<< endl
+					     << left << setw(50) << "      ProcessRtpPacket::rtp / hashfind"
+					     << right << setw(15) << ___prof__ProcessRtpPacket_rtp__hashfind
+					     << setw(15) << setprecision(5) 
+						<< ((double)___prof__ProcessRtpPacket_rtp__hashfind / ___prof__ProcessRtpPacket_outThreadFunction2) * 100 << "%"
+							<< endl
+					     << left << setw(50) << "      ProcessRtpPacket::rtp / fill call array"
+					     << right << setw(15) << ___prof__ProcessRtpPacket_rtp__fill_call_array
+					     << setw(15) << setprecision(5) 
+						<< ((double)___prof__ProcessRtpPacket_rtp__fill_call_array / ___prof__ProcessRtpPacket_outThreadFunction2) * 100 << "%"
+							<< endl
+					     << left << setw(50) << "      process_packet__rtp"
+					     << right << setw(15) << ___prof__process_packet__rtp
+					     << setw(15) << setprecision(5) 
+						<< ((double)___prof__process_packet__rtp / ___prof__ProcessRtpPacket_outThreadFunction2) * 100 << "%"
+							<< endl
+					     << left << setw(50) << "         add_to_rtp_thread_queue"
+					     << right << setw(15) << ___prof__add_to_rtp_thread_queue
+					     << setw(15) << setprecision(5) 
+						<< ((double)___prof__add_to_rtp_thread_queue / ___prof__ProcessRtpPacket_outThreadFunction2) * 100 << "%"
+							<< endl;
+					processRtpPacket[i]->__prof__ProcessRtpPacket_outThreadFunction_begin = rdtsc();
+					processRtpPacket[i]->__prof__ProcessRtpPacket_outThreadFunction__usleep = 0;
+					processRtpPacket[i]->__prof__ProcessRtpPacket_rtp = 0;
+					processRtpPacket[i]->__prof__ProcessRtpPacket_rtp__hashfind = 0;
+					processRtpPacket[i]->__prof__ProcessRtpPacket_rtp__fill_call_array = 0;
+					processRtpPacket[i]->__prof__process_packet__rtp = 0;
+					processRtpPacket[i]->__prof__add_to_rtp_thread_queue = 0;
+				}
+				#endif
+			}
+			sleep(1);
+			++_counter;
+		}
+		
+		if(opt_scanpcapdir[0] != '\0') {
+			//pthread_join(scanpcapdir_thread, NULL); // failed - stop at: scanpcapdir::'len = read(fd, buff, 4096);'
+			sleep(2);
+		}
+		
+		terminate_packetbuffer();
+		
+		if(is_read_from_file_by_pb() && (opt_enable_http || opt_enable_webrtc || opt_enable_ssl)) {
+			sleep(2);
+		}
+		
+		PcapQueue_term();
 	} else {
 		readdump_libpcap(global_pcap_handle);
 	}
+	
+	return(0);
+}
 
+void main_term_read() {
 	readend = 1;
 
-#ifdef QUEUE_NONBLOCK2
-	if(opt_pcap_threaded && !opt_pcap_queue) {
-		pthread_join(pcap_read_thread, NULL);
-	}
-#endif
-
 	// wait for RTP threads
-	if(rtp_threaded &&
-	   !(opt_pcap_threaded && opt_pcap_queue && 
-	     !opt_pcap_queue_receive_from_ip_port &&
-	     opt_pcap_queue_send_to_ip_port)) {
+	if(rtp_threads) {
 		for(int i = 0; i < num_threads; i++) {
 			pthread_join((rtp_threads[i].thread), NULL);
-#ifdef QUEUE_NONBLOCK2
-			if(opt_pcap_queue) {
-				if(rtp_threads[i].rtpp_queue_quick) {
-					delete rtp_threads[i].rtpp_queue_quick;
-				} else {
-					delete rtp_threads[i].rtpp_queue;
-				}
+			if(rtp_threads[i].rtpp_queue_quick) {
+				delete rtp_threads[i].rtpp_queue_quick;
 			} else {
-				delete [] rtp_threads[i].vmbuffer;
+				delete rtp_threads[i].rtpp_queue;
 			}
-#endif
 		}
 		delete [] rtp_threads;
 		rtp_threads = NULL;
 	}
 
-	if(!opt_pcap_queue && global_pcap_handle) {
+	if(is_read_from_file_simple() && global_pcap_handle) {
 		pcap_close(global_pcap_handle);
 	}
 	if(global_pcap_handle_dead_EN10MB) {
@@ -2936,9 +2722,7 @@ int main(int argc, char *argv[]) {
 		}
 	}
 
-	if(!(opt_pcap_threaded && opt_pcap_queue && 
-	     !opt_pcap_queue_receive_from_ip_port &&
-	     opt_pcap_queue_send_to_ip_port)) {
+	if(storing_cdr_thread) {
 		terminating_storing_cdr = 1;
 		pthread_join(storing_cdr_thread, NULL);
 	}
@@ -3016,80 +2800,109 @@ int main(int argc, char *argv[]) {
 	thread_cleanup();
 
 	_parse_packet_global.clear();
-	
-	bool _break = false;
-	
-	if(useNewCONFIG) {
-		string _terminating_error = terminating_error;
-		if(!hot_restarting && _terminating_error.empty()) {
-			_break = true;
+}
+
+void main_init_sqlstore() {
+	if(isSqlDriver("mysql")) {
+		if(opt_load_query_from_files != 2) {
+			sqlStore = new FILE_LINE MySqlStore(mysql_host, mysql_user, mysql_password, mysql_database, cloud_host, cloud_token);
+			if(opt_save_query_to_files) {
+				sqlStore->queryToFiles(opt_save_query_to_files, opt_save_query_to_files_directory, opt_save_query_to_files_period);
+			}
 		}
-		if(!_terminating_error.empty()) {
-			clear_terminating();
-			while(!is_terminating()) {
-				syslog(LOG_NOTICE, "%s - wait for terminating or hot restarting", _terminating_error.c_str());
-				for(int i = 0; i < 10 && !is_terminating(); i++) {
-					sleep(1);
+		if(opt_load_query_from_files) {
+			loadFromQFiles = new FILE_LINE MySqlStore(mysql_host, mysql_user, mysql_password, mysql_database);
+			loadFromQFiles->loadFromQFiles(opt_load_query_from_files, opt_load_query_from_files_directory, opt_load_query_from_files_period);
+		}
+		if(opt_load_query_from_files != 2) {
+			if(!opt_nocdr) {
+				sqlStore->connect(STORE_PROC_ID_CDR_1);
+				sqlStore->connect(STORE_PROC_ID_MESSAGE_1);
+			}
+			if(opt_mysqlstore_concat_limit) {
+				 sqlStore->setDefaultConcatLimit(opt_mysqlstore_concat_limit);
+			}
+			for(int i = 0; i < opt_mysqlstore_max_threads_cdr; i++) {
+				if(opt_mysqlstore_concat_limit_cdr) {
+					sqlStore->setConcatLimit(STORE_PROC_ID_CDR_1 + i, opt_mysqlstore_concat_limit_cdr);
+				}
+				if(i) {
+					sqlStore->setEnableAutoDisconnect(STORE_PROC_ID_CDR_1 + i);
+				}
+				if(opt_mysql_enable_transactions_cdr) {
+					sqlStore->setEnableTransaction(STORE_PROC_ID_CDR_1 + i);
+				}
+				if(opt_cdr_check_duplicity_callid_in_next_pass_insert) {
+					sqlStore->setEnableFixDeadlock(STORE_PROC_ID_CDR_1 + i);
 				}
 			}
-			if(!hot_restarting) {
-				_break = true;
+			for(int i = 0; i < opt_mysqlstore_max_threads_message; i++) {
+				if(opt_mysqlstore_concat_limit_message) {
+					sqlStore->setConcatLimit(STORE_PROC_ID_MESSAGE_1 + i, opt_mysqlstore_concat_limit_message);
+				}
+				if(i) {
+					sqlStore->setEnableAutoDisconnect(STORE_PROC_ID_MESSAGE_1 + i);
+				}
+				if(opt_mysql_enable_transactions_message) {
+					sqlStore->setEnableTransaction(STORE_PROC_ID_MESSAGE_1 + i);
+				}
+				if(opt_message_check_duplicity_callid_in_next_pass_insert) {
+					sqlStore->setEnableFixDeadlock(STORE_PROC_ID_MESSAGE_1 + i);
+				}
+			}
+			for(int i = 0; i < opt_mysqlstore_max_threads_register; i++) {
+				if(opt_mysqlstore_concat_limit_register) {
+					sqlStore->setConcatLimit(STORE_PROC_ID_REGISTER_1 + i, opt_mysqlstore_concat_limit_register);
+				}
+				if(i) {
+					sqlStore->setEnableAutoDisconnect(STORE_PROC_ID_REGISTER_1 + i);
+				}
+				if(opt_mysql_enable_transactions_register) {
+					sqlStore->setEnableTransaction(STORE_PROC_ID_REGISTER_1 + i);
+				}
+			}
+			for(int i = 0; i < opt_mysqlstore_max_threads_http; i++) {
+				if(opt_mysqlstore_concat_limit_http) {
+					sqlStore->setConcatLimit(STORE_PROC_ID_HTTP_1 + i, opt_mysqlstore_concat_limit_http);
+				}
+				if(i) {
+					sqlStore->setEnableAutoDisconnect(STORE_PROC_ID_HTTP_1 + i);
+				}
+				if(opt_mysql_enable_transactions_http) {
+					sqlStore->setEnableTransaction(STORE_PROC_ID_HTTP_1 + i);
+				}
+			}
+			for(int i = 0; i < opt_mysqlstore_max_threads_webrtc; i++) {
+				if(opt_mysqlstore_concat_limit_webrtc) {
+					sqlStore->setConcatLimit(STORE_PROC_ID_WEBRTC_1 + i, opt_mysqlstore_concat_limit_webrtc);
+				}
+				if(i) {
+					sqlStore->setEnableAutoDisconnect(STORE_PROC_ID_WEBRTC_1 + i);
+				}
+				if(opt_mysql_enable_transactions_webrtc) {
+					sqlStore->setEnableTransaction(STORE_PROC_ID_WEBRTC_1 + i);
+				}
+			}
+			if(opt_mysqlstore_concat_limit_ipacc) {
+				for(int i = 0; i < opt_mysqlstore_max_threads_ipacc_base; i++) {
+					sqlStore->setConcatLimit(STORE_PROC_ID_IPACC_1 + i, opt_mysqlstore_concat_limit_ipacc);
+				}
+				for(int i = STORE_PROC_ID_IPACC_AGR_INTERVAL; i <= STORE_PROC_ID_IPACC_AGR_DAY; i++) {
+					sqlStore->setConcatLimit(i, opt_mysqlstore_concat_limit_ipacc);
+				}
+				for(int i = 0; i < opt_mysqlstore_max_threads_ipacc_agreg2; i++) {
+					sqlStore->setConcatLimit(STORE_PROC_ID_IPACC_AGR2_HOUR_1 + i, opt_mysqlstore_concat_limit_ipacc);
+				}
+			}
+			if(!opt_nocdr && opt_autoload_from_sqlvmexport) {
+				sqlStore->autoloadFromSqlVmExport();
 			}
 		}
-		terminating_error = "";
-	} else {
-		_break = true;
-	}
-	
-	//wait for manager to properly terminate 
-	if(opt_manager_port && manager_thread > 0) {
-		int res;
-		res = shutdown(manager_socket_server, SHUT_RDWR);	// break accept syscall in manager thread
-		if(res == -1) {
-			// if shutdown failed it can happen when reding very short pcap file and the bind socket was not created in manager
-			usleep(10000); 
-			res = shutdown(manager_socket_server, SHUT_RDWR);	// break accept syscall in manager thread
-		}
-		struct timespec ts;
-		ts.tv_sec = 1;
-		ts.tv_nsec = 0;
-		// wait for thread max 1 sec
-#ifndef FREEBSD	
-		//TODO: solve it for freebsd
-		pthread_timedjoin_np(manager_thread, NULL, &ts);
-#endif
-	}
-	
-	if(_break) {
-		break;
-	}
-
-	}
-	// END RELOAD LOOP
-	
-	_parse_packet_global.free();
-	
-	delete [] sipportmatrix;
-	delete [] httpportmatrix;
-	delete [] webrtcportmatrix;
-	
-	delete regfailedcache;
-	
-#ifdef HAVE_LIBGNUTLS
-	ssl_clean();
-#endif
-	
-	if(sverb.memory_stat) {
-		cout << "memory stat at end" << endl;
-		printMemoryStat(true);
-	}
-	if (opt_fork){
-		unlink(opt_pidfile);
 	}
 }
 
 void terminate_packetbuffer() {
-	if(opt_pcap_threaded && opt_pcap_queue) {
+	if(is_enable_packetbuffer()) {
 		pthread_mutex_lock(&terminate_packetbuffer_lock);
 		extern bool pstat_quietly_errors;
 		pstat_quietly_errors = true;
@@ -3098,7 +2911,7 @@ void terminate_packetbuffer() {
 			pcapQueueI->terminate();
 		}
 		sleep(1);
-		if(opt_pb_read_from_file[0] && (opt_enable_http || opt_enable_webrtc || opt_enable_ssl) && opt_tcpreassembly_thread) {
+		if(is_read_from_file_by_pb() && (opt_enable_http || opt_enable_webrtc || opt_enable_ssl) && opt_tcpreassembly_thread) {
 			if(opt_enable_http) {
 				tcpReassemblyHttp->setIgnoreTerminating(false);
 			}
@@ -3135,11 +2948,6 @@ void terminate_packetbuffer() {
 		}
 		delete pcapQueueQ;
 	}
-}
-
-void *readdump_libpcap_thread_fce(void *handle) {
-	readdump_libpcap((pcap_t*)handle);
-	return(NULL);
 }
 
 
@@ -4043,8 +3851,6 @@ void cConfig::addConfigItems() {
 				addConfigItem(new cConfigItem_integer("preprocess_packets_qring_usleep", &opt_preprocess_packets_qring_usleep));
 				addConfigItem(new cConfigItem_integer("process_rtp_packets_qring_length", &opt_process_rtp_packets_qring_length));
 				addConfigItem(new cConfigItem_integer("process_rtp_packets_qring_usleep", &opt_process_rtp_packets_qring_usleep));
-				addConfigItem(new cConfigItem_integer("pcap_qring_length", &pcap_qring_max));
-				addConfigItem(new cConfigItem_integer("pcap_qring_usleep", &pcap_qring_usleep));
 				addConfigItem(new cConfigItem_integer("rtp_qring_length", &rtp_qring_length));
 				addConfigItem(new cConfigItem_integer("rtp_qring_usleep", &rtp_qring_usleep));
 				addConfigItem((new cConfigItem_yesno("rtp_qring_quick", &rtp_qring_quick))
@@ -4152,7 +3958,6 @@ void cConfig::addConfigItems() {
 		addConfigItem((new cConfigItem_integer("max_buffer_mem"))
 			->setNaDefaultValueStr());
 			advanced();
-			addConfigItem(new cConfigItem_yesno("packetbuffer_enable", &opt_pcap_queue));
 			addConfigItem(new cConfigItem_yesno("packetbuffer_compress", &opt_pcap_queue_compress));
 			addConfigItem(new cConfigItem_integer("pcap_queue_dequeu_window_length", &opt_pcap_queue_dequeu_window_length));
 				expert();
@@ -4176,9 +3981,6 @@ void cConfig::addConfigItems() {
 				addConfigItem(new cConfigItem_yesno("savertp-threaded", &opt_rtpsave_threaded));
 					obsolete();
 					addConfigItem(new cConfigItem_yesno("pcap_dispatch", &opt_pcap_dispatch));
-					addConfigItem((new cConfigItem_integer("vmbuffer", &pcap_qring_max))
-						->setMaximum(4000)
-						->setMultiple(1024.0 * 1024 / (unsigned int)sizeof(pcap_packet)));
 	// JITTERBUFFER
 	group("jitterbuffer");
 			advanced();
@@ -4729,9 +4531,6 @@ void get_command_line_arguments() {
 			case 'E':
 				rtpthreadbuffer = atoi(optarg);
 				break;
-			case 'T':
-				pcap_qring_max = (unsigned int)((unsigned int)MIN(atoi(optarg), 4000) * 1024 * 1024 / (unsigned int)sizeof(pcap_packet));
-				break;
 			case 's':
 				opt_id_sensor = atoi(optarg);
 				break;
@@ -4886,7 +4685,6 @@ void get_command_line_arguments() {
 					opt_read_from_file = 1;
 					opt_scanpcapdir[0] = '\0';
 					//opt_cachedir[0] = '\0';
-					opt_pcap_queue = 0;
 					opt_enable_preprocess_packet = 0;
 					opt_enable_process_rtp_packet = 0;
 				}
@@ -4974,11 +4772,9 @@ void get_command_line_arguments() {
 }
 
 void set_context_config() {
-	#ifndef QUEUE_NONBLOCK2
-		opt_pcap_queue = 0;
-	#endif
 
-	if(opt_pcap_queue && !opt_read_from_file && !opt_untar_gui_params && command_line_data.size()) {
+	if(!is_read_from_file_simple() && 
+	   !opt_untar_gui_params && command_line_data.size()) {
 		// restore orig values
 		buffersControl.restoreMaxBufferMemFromOrig();
 		static u_int64_t opt_pcap_queue_store_queue_max_memory_size_orig = 0;
@@ -5162,8 +4958,8 @@ void set_context_config() {
 }
 
 bool check_complete_parameters() {
-	if (opt_read_from_file_fname[0] == '\0' && ifname[0] == '\0' && opt_scanpcapdir[0] == '\0' && 
-	    !opt_untar_gui_params && !printConfigStruct && !opt_pcap_queue_receive_from_ip_port &&
+	if (!is_read_from_file() && ifname[0] == '\0' && opt_scanpcapdir[0] == '\0' && 
+	    !opt_untar_gui_params && !printConfigStruct && !is_receiver() &&
 	    !opt_test){
                         /* Ruler to assist with keeping help description to max. 80 chars wide:
                                   1         2         3         4         5         6         7         8
@@ -5876,9 +5672,6 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "norecord-dtmf", NULL))) {
 		opt_norecord_dtmf = yesno(value);
 	}
-	if((value = ini.GetValue("general", "vmbuffer", NULL))) {
-		pcap_qring_max = (unsigned int)((unsigned int)MIN(atoi(value), 4000) * 1024 * 1024 / (unsigned int)sizeof(pcap_packet));
-	}
 	if((value = ini.GetValue("general", "matchheader", NULL))) {
 		snprintf(opt_match_header, sizeof(opt_match_header), "\n%s:", value);
 	}
@@ -6296,9 +6089,6 @@ int eval_config(string inistr) {
 		opt_enable_webrtc_table = yesno(value);
 	}
 
-	if((value = ini.GetValue("general", "packetbuffer_enable", NULL))) {
-		opt_pcap_queue = yesno(value);
-	}
 	//EXPERT VALUES
 	if((value = ini.GetValue("general", "packetbuffer_block_maxsize", NULL))) {
 		opt_pcap_queue_block_max_size = atol(value) * 1024;
@@ -6764,13 +6554,6 @@ int eval_config(string inistr) {
 		opt_process_rtp_packets_qring_usleep = atol(value);
 	}
 
-	if((value = ini.GetValue("general", "pcap_qring_length", NULL))) {
-		pcap_qring_max = atol(value);
-	}
-	if((value = ini.GetValue("general", "pcap_qring_usleep", NULL))) {
-		pcap_qring_usleep = atol(value);
-	}
-	
 	if((value = ini.GetValue("general", "rtp_qring_length", NULL))) {
 		rtp_qring_length = atol(value);
 	}
@@ -6984,4 +6767,44 @@ int load_config(char *fname) {
 		}
 	}
 	return res;
+}
+
+
+bool is_read_from_file() {
+       return(is_read_from_file_simple() ||
+	      is_read_from_file_by_pb());
+}
+
+bool is_read_from_file_simple() {
+       return(opt_read_from_file);
+}
+
+bool is_read_from_file_by_pb() {
+       return(opt_pb_read_from_file[0]);
+}
+
+bool is_enable_packetbuffer() {
+	return(!is_read_from_file_simple());
+}
+
+bool is_enable_rtp_threads() {
+	return(is_enable_packetbuffer() &&
+	       rtp_threaded &&
+	       !is_sender());
+}
+
+bool is_enable_cleanspool() {
+	return(!opt_nocdr &&
+	       isSqlDriver("mysql") &&
+	       !is_read_from_file() &&
+	       !is_sender());
+}
+
+bool is_receiver() {
+	return(opt_pcap_queue_receive_from_ip_port);
+}
+
+bool is_sender() {
+	return(!opt_pcap_queue_receive_from_ip_port &&
+	       opt_pcap_queue_send_to_ip_port);
 }

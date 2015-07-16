@@ -41,8 +41,6 @@
 #define SNIFFER_INLINE_FUNCTIONS true
 #define TCPREPLAY_WORKARROUND false
 
-#define QUEUE_NONBLOCK2 1
-
 #define SYNC_PCAP_BLOCK_STORE true
 #define SYNC_CALL_RTP true
 
@@ -56,8 +54,6 @@
 
 /* choose what method wil be used to synchronize threads. NONBLOCK is the fastest. Do not enable both at once */
 // this is now defined in Makefile 
-//#define QUEUE_NONBLOCK 
-//#define QUEUE_MUTEX 
 
 /* if you want to see all new calls in syslog enable DEBUG_INVITE */
 //#define DEBUG_INVITE
@@ -161,5 +157,14 @@ bool is_terminating() {
 	return(terminating);
 }
 bool is_terminating_without_error();
+
+bool is_read_from_file();
+bool is_read_from_file_simple();
+bool is_read_from_file_by_pb();
+bool is_enable_packetbuffer();
+bool is_enable_rtp_threads();
+bool is_enable_cleanspool();
+bool is_receiver();
+bool is_sender();
 
 #endif

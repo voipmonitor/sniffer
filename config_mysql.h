@@ -1,3 +1,5 @@
+/* obsolete
+
 #include <cstdlib>
 #include <iostream>
 #include <string>
@@ -154,7 +156,6 @@ extern int opt_pcap_queue_iface_dedup_separate_threads_extend;
 extern int opt_pcap_queue_iface_separate_threads;
 extern int opt_pcap_queue_receive_dlt;
 extern int opt_pcap_split;
-extern int opt_pcap_threaded;
 extern int opt_printinsertid;
 extern int opt_promisc;
 extern int opt_read_from_file;
@@ -268,3 +269,4 @@ extern unsigned int opt_openfile_max;
 
 void config_load_mysql(bool checkConnect = false);
 
+*/
