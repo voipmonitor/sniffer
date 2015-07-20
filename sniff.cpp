@@ -4443,7 +4443,8 @@ void logPacketSipMethodCall(u_int64_t packet_number, int sip_method, int lastSIP
 		firstPacketTime = header->ts;
 	}
  
-	if(!opt_read_from_file && descr && strstr(descr, "we are not interested")) {
+	if(!sip_method ||
+	   (!opt_read_from_file && descr && strstr(descr, "we are not interested"))) {
 		return;
 	}
 	

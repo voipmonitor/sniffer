@@ -653,6 +653,8 @@ public:
 	void shift_destroy_call_at(pcap_pkthdr *header, int lastSIPresponseNum = 0) {
 		if(this->destroy_call_at > 0) {
 			time_t new_destroy_call_at = 
+				this->seenbyeandok ?
+					header->ts.tv_sec + 5 :
 				this->seenbye ?
 					header->ts.tv_sec + 60 :
 					header->ts.tv_sec + (lastSIPresponseNum == 487 || this->lastSIPresponseNum == 487 ? 15 : 5);
