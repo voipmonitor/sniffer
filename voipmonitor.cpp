@@ -4256,7 +4256,9 @@ void cConfig::evSetConfigItem(cConfigItem *configItem) {
 		mkdir_r(opt_chdir, 0777);
 	}
 	if(configItem->config_name == "timezone") {
-		setenv("TZ", opt_timezone, 1);
+		if(opt_timezone[0]) {
+			setenv("TZ", opt_timezone, 1);
+		}
 	}
 	if(configItem->config_name == "pcap_dump_ziplevel") {
 		opt_pcap_dump_ziplevel_rtp = opt_pcap_dump_ziplevel_sip;
