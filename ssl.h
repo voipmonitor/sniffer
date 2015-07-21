@@ -295,6 +295,36 @@ set_address(address *addr, address_type addr_type, int addr_len, const void * ad
 #define SSL_VER_PCT					   6
 #define SSL_VER_TLSv1DOT2				 7
 
+#define SSL2_HND_ERROR                 0x00
+#define SSL2_HND_CLIENT_HELLO          0x01
+#define SSL2_HND_CLIENT_MASTER_KEY     0x02
+#define SSL2_HND_CLIENT_FINISHED       0x03
+#define SSL2_HND_SERVER_HELLO          0x04
+#define SSL2_HND_SERVER_VERIFY         0x05
+#define SSL2_HND_SERVER_FINISHED       0x06
+#define SSL2_HND_REQUEST_CERTIFICATE   0x07
+#define SSL2_HND_CLIENT_CERTIFICATE    0x08
+
+#define PCT_VERSION_1                  0x8001
+
+#define PCT_MSG_CLIENT_HELLO           0x01
+#define PCT_MSG_SERVER_HELLO           0x02
+#define PCT_MSG_CLIENT_MASTER_KEY      0x03
+#define PCT_MSG_SERVER_VERIFY          0x04
+#define PCT_MSG_ERROR                  0x05
+
+#define PCT_CH_OFFSET_V1               0xa
+
+#define PCT_CIPHER_DES                 0x01
+#define PCT_CIPHER_IDEA                0x02
+#define PCT_CIPHER_RC2                 0x03
+#define PCT_CIPHER_RC4                 0x04
+#define PCT_CIPHER_DES_112             0x05
+#define PCT_CIPHER_DES_168             0x06
+
+#define SSLV2_MAX_SESSION_ID_LENGTH_IN_BYTES 16
+
+
 typedef struct _StringInfo {
 	guchar *data; /* Backing storage which may be larger than data_len */
 	guint data_len; /* Length of the meaningful part of data */

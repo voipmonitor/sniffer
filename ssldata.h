@@ -18,6 +18,14 @@ public:
 					header_version = 1;
 				}
 			}
+			if(!header_version && datalen >= 5 && (data[0] & 0x80) == 0x80) {
+				length = htons(*(u_int16_t*)(data)) & 0x0FFF;
+				content_type = *(u_int8_t*)(data + 2);
+				version = htons(*(u_int16_t*)(data + 3));
+				if(isOkV2()) {
+					header_version = 2;
+				}
+			}
 			if(!header_version) {
 				content_type = 0;
 				version = 0;
@@ -25,17 +33,22 @@ public:
 			}
 		}
 		bool isOk() {
-			return(header_version == 1 ? isOkV1() : false);
+			return(header_version == 1 ? isOkV1() :
+			       header_version == 2 ? isOkV2() : false);
 		}
 		bool isOkV1() {
 			return(content_type >= 20 && content_type <= 23 &&
 			       isOkVersion());
 		}
+		bool isOkV2() {
+			return(isOkVersion());
+		}
 		bool isOkVersion() {
 			return(version >= 0x300 && version <= 0x303);
 		}
 		unsigned getDataOffsetLength() {
-			return(header_version == 1 ? 5 : 0);
+			return(header_version == 1 ? 5 :
+			       header_version == 2 ? 2 : 0);
 		}
 		u_int8_t content_type;
 		u_int16_t version;

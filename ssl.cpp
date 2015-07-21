@@ -377,6 +377,49 @@ ssl_is_valid_content_type(uint8_t type)
 	return false;
 }
 
+						
+/* this applies a heuristic to determine whether
+ * or not the data beginning at offset looks like a
+ * valid sslv2 record.  this isn't really possible,
+ * but we'll try to do a reasonable job anyway.
+ */
+static gint
+ssl_looks_like_sslv2(char *data, const guint32 offset)
+{   
+	/* here's the current approach:
+	 *
+	 * we only try to catch unencrypted handshake messages, so we can
+	 * assume that there is not padding.  This means that the
+	 * first byte must be >= 0x80 and there must be a valid sslv2
+	 * msg_type in the third byte
+	 */ 
+		
+	/* get the first byte; must have high bit set */
+	guint8 byte;
+	byte = (guint8)*(data + offset);	  
+		
+	if (byte < 0x80)
+	{   
+		return 0;
+	}   
+		
+	/* get the supposed msg_type byte; since we only care about
+	 * unencrypted handshake messages (we can't tell the type for
+	 * encrypted messages), we just check against that list
+	 */		 
+	byte = (guint8)*(data + offset + 2);	  
+	switch (byte) {
+	case SSL2_HND_ERROR:
+	case SSL2_HND_CLIENT_HELLO:
+	case SSL2_HND_CLIENT_MASTER_KEY:
+	case SSL2_HND_SERVER_HELLO:
+	case PCT_MSG_CLIENT_MASTER_KEY:
+	case PCT_MSG_ERROR:
+		return 1;
+	}		   
+	return 0;   
+}	   
+
 
 /* this applies a heuristic to determine whether
  * or not the data beginning at offset looks like a
@@ -2794,6 +2837,447 @@ ssl_finalize_decryption(SslDecryptSessionC *ssl, ssl_master_key_map_t *mk_map)
 						&ssl->session_ticket, &ssl->master_secret);
 }
 
+const value_string ssl_versions[] = {
+    { 0xfefd, "DTLS 1.2" },
+    { 0xfeff, "DTLS 1.0" },
+    { 0x0100, "DTLS 1.0 (OpenSSL pre 0.9.8f)" },
+    { 0x0303, "TLS 1.2" },
+    { 0x0302, "TLS 1.1" },
+    { 0x0301, "TLS 1.0" },
+    { 0x0300, "SSL 3.0" },
+    { 0x0002, "SSL 2.0" },
+    { 0x00, NULL }
+};
+
+static gint
+ssl_is_valid_ssl_version(const guint16 version)
+{
+	const gchar *version_str;
+		
+	version_str = try_val_to_str(version, ssl_versions);
+	return version_str != NULL;
+}		
+
+
+
+
+/* applies a heuristic to determine whether
+ * or not the data beginning at offset looks
+ * like a valid, unencrypted v2 handshake message.
+ * since it isn't possible to completely tell random
+ * data apart from a valid message without state,
+ * we try to help the odds.	 
+ */
+static gint
+ssl_looks_like_valid_v2_handshake(char *data, const guint32 offset, const guint32 record_length)
+{
+	/* first byte should be a msg_type.
+	 *
+	 *   - we know we only see client_hello, client_master_key,
+	 *	 and server_hello in the clear, so check to see if
+	 *	 msg_type is one of those (this gives us a 3 in 2^8
+	 *	 chance of saying yes with random payload)
+	 *
+	 *   - for those three types that we know about, do some
+	 *	 further validation to reduce the chance of an error
+	 */
+	guint8  msg_type;
+	guint16 version;
+	guint32 sum;
+	gint	ret = 0;
+
+	/* fetch the msg_type */
+	msg_type = (guint8)*(data + offset);
+
+	switch (msg_type) {
+	case SSL2_HND_CLIENT_HELLO:
+		/* version follows msg byte, so verify that this is valid */
+		version = pntoh16(data + offset + 1);
+		ret = ssl_is_valid_ssl_version(version);
+		break;
+		
+	case SSL2_HND_SERVER_HELLO:
+		/* version is three bytes after msg_type */
+		version = pntoh16(data + offset + 3);
+		ret = ssl_is_valid_ssl_version(version);
+		break;
+		
+	case SSL2_HND_CLIENT_MASTER_KEY:
+		/* sum of clear_key_length, encrypted_key_length, and key_arg_length
+		 * must be less than record length
+		 */
+		sum  = pntoh16(data + offset + 4); /* clear_key_length */
+		sum += pntoh16(data + offset + 6); /* encrypted_key_length */
+		sum += pntoh16(data + offset + 8); /* key_arg_length */
+		if (sum <= record_length) {
+			ret = 1;
+		}   
+		break;
+		
+	default:
+		break;
+	}   
+	
+	return ret;
+}   
+
+/* applies a heuristic to determine whether
+ * or not the data beginning at offset looks
+ * like a valid, unencrypted pct handshake message.
+ * since it isn't possible to completely tell random
+ * data apart from a valid message without state,
+ * we try to help the odds.
+ */
+static gint
+ssl_looks_like_valid_pct_handshake(char *data, const guint32 offset, const guint32 record_length)
+{
+	/* first byte should be a msg_type.
+	 *
+	 *   - we know we only see client_hello, client_master_key,
+	 *	 and server_hello in the clear, so check to see if
+	 *	 msg_type is one of those (this gives us a 3 in 2^8
+	 *	 chance of saying yes with random payload)
+	 *
+	 *   - for those three types that we know about, do some
+	 *	 further validation to reduce the chance of an error
+	 */
+	guint8  msg_type;
+	guint16 version;
+	guint32 sum;
+	gint	ret = 0;
+
+	/* fetch the msg_type */
+	msg_type = (guint8)*(data + offset);
+
+	switch (msg_type) {
+	case PCT_MSG_CLIENT_HELLO:
+		/* version follows msg byte, so verify that this is valid */
+		version = pntoh16(data + offset + 1);
+		ret = (version == PCT_VERSION_1);
+		break;
+		
+	case PCT_MSG_SERVER_HELLO:
+		/* version is one byte after msg_type */
+		version = pntoh16(data + offset + 2);
+		ret = (version == PCT_VERSION_1);
+		break;
+		
+	case PCT_MSG_CLIENT_MASTER_KEY:
+		/* sum of various length fields must be less than record length */
+		sum  = pntoh16(data + offset +  6); /* clear_key_length */
+		sum += pntoh16(data + offset +  8); /* encrypted_key_length */
+		sum += pntoh16(data + offset + 10); /* key_arg_length */
+		sum += pntoh16(data + offset + 12); /* verify_prelude_length */
+		sum += pntoh16(data + offset + 14); /* client_cert_length */
+		sum += pntoh16(data + offset + 16); /* response_length */
+		if (sum <= record_length) {
+			ret = 1;
+		}   
+		break;
+		
+	case PCT_MSG_SERVER_VERIFY:
+		/* record is 36 bytes longer than response_length */
+		sum = pntoh16(data + offset + 34); /* response_length */
+		if ((sum + 36) == record_length) {
+			ret = 1;
+		}   
+		break;
+		
+	default:
+		break;
+	}   
+	
+	return ret;
+}   
+
+
+/*********************************************************************
+ *                                           
+ * SSL version 2 Dissectors
+ *          
+ *********************************************************************/
+
+static void
+dissect_ssl2_hnd_client_hello(char *data, packet_info *pinfo, guint32 offset, SslDecryptSessionC *ssl)
+{
+	/* struct {
+	 *	uint8 msg_type;
+	 *	 Version version;
+	 *	 uint16 cipher_spec_length;
+	 *	 uint16 session_id_length;
+	 *	 uint16 challenge_length;
+	 *	 V2CipherSpec cipher_specs[V2ClientHello.cipher_spec_length];
+	 *	 opaque session_id[V2ClientHello.session_id_length];
+	 *	 Random challenge;
+	 * } V2ClientHello;
+	 *
+	 * Note: when we get here, offset's already pointing at Version
+	 *
+	 */
+	guint16 version;
+	guint16 cipher_spec_length;
+	guint16 session_id_length;
+	guint16 challenge_length;
+
+	version = pntoh16(data + offset);
+	if (!ssl_is_valid_ssl_version(version))
+	{
+		if(debug) printf("dissect_ssl2_hnd_client_hello: invalid version; probably encrypted data\n");
+		return;
+	}
+
+	if (ssl) {
+		ssl->ssl_set_server(&pinfo->dst, pinfo->ptype, pinfo->destport);
+
+		offset += 2;
+
+		cipher_spec_length = pntoh16(data + offset);
+		offset += 2;
+
+		session_id_length = pntoh16(data + offset);
+		if (session_id_length > SSLV2_MAX_SESSION_ID_LENGTH_IN_BYTES) {
+			if(debug) printf("Invalid session ID length: %d. Session ID length (%u) must be less than %u.", session_id_length, session_id_length, SSLV2_MAX_SESSION_ID_LENGTH_IN_BYTES);
+			return;
+		}
+		offset += 2;
+
+		challenge_length = pntoh16(data + offset);
+		offset += 2;
+
+		/* iterate through the cipher specs, showing them */
+		while (cipher_spec_length > 0)
+		{
+			offset += 3;		/* length of one cipher spec */
+			cipher_spec_length -= 3;
+		}
+
+		/* if there's a session id, show it */
+		if (session_id_length > 0)
+		{
+			/* PAOLO: get session id and reset session state for key [re]negotiation */
+			if (ssl)
+			{
+				memcpy(&ssl->session_id.data, data + offset, session_id_length);
+				ssl->session_id.data_len = session_id_length;
+				ssl->state &= ~(SSL_HAVE_SESSION_KEY|SSL_MASTER_SECRET|SSL_PRE_MASTER_SECRET|SSL_CIPHER|SSL_SERVER_RANDOM);
+			}
+			offset += session_id_length;
+		}
+
+		/* if there's a challenge, show it */
+		if (challenge_length > 0)
+		{
+			if (ssl)
+			{
+				/* PAOLO: get client random data; we get at most 32 bytes from
+				 challenge */
+				gint max;
+				max = challenge_length > 32 ? 32 : challenge_length;
+
+				if(debug) printf("client random len: %d padded to 32\n", challenge_length);
+
+				/* client random is padded with zero and 'right' aligned */
+				memset(ssl->client_random.data, 0, 32 - max);
+				memcpy(&ssl->client_random.data[32 - max], data + offset, max);
+				ssl->client_random.data_len = 32;
+				ssl->state |= SSL_CLIENT_RANDOM;
+				if(debug) printf("dissect_ssl2_hnd_client_hello found CLIENT RANDOM -> state 0x%02X\n", ssl->state);
+			}
+		}
+	}
+}
+
+const value_string pct_msg_types[] = {
+    { PCT_MSG_CLIENT_HELLO,         "Client Hello" },
+    { PCT_MSG_SERVER_HELLO,         "Server Hello" },
+    { PCT_MSG_CLIENT_MASTER_KEY,    "Client Master Key" },
+    { PCT_MSG_SERVER_VERIFY,        "Server Verify" },
+    { PCT_MSG_ERROR,                "Error" },
+    { 0x00, NULL }
+};
+
+const value_string ssl_20_msg_types[] = {
+    { SSL2_HND_ERROR,               "Error" },
+    { SSL2_HND_CLIENT_HELLO,        "Client Hello" },
+    { SSL2_HND_CLIENT_MASTER_KEY,   "Client Master Key" },
+    { SSL2_HND_CLIENT_FINISHED,     "Client Finished" },
+    { SSL2_HND_SERVER_HELLO,        "Server Hello" },
+    { SSL2_HND_SERVER_VERIFY,       "Server Verify" },
+    { SSL2_HND_SERVER_FINISHED,     "Server Finished" },
+    { SSL2_HND_REQUEST_CERTIFICATE, "Request Certificate" },
+    { SSL2_HND_CLIENT_CERTIFICATE,  "Client Certificate" },
+    { 0x00, NULL }
+};  
+            
+/* record layer dissector */
+static gint
+dissect_ssl2_record(char *data, unsigned int datalen, packet_info *pinfo,
+					guint32 offset,
+					SslSession *session, gint is_from_server,
+					SslDecryptSessionC *ssl)
+{											
+	guint32	  initial_offset;			 
+	guint8	   byte;					   
+	guint8	   record_length_length;	   
+	guint32	  record_length;
+	guint8	   msg_type;
+	const gchar *msg_type_str;
+	guint32	  available_bytes;			
+											 
+	initial_offset  = offset;
+	record_length   = 0;
+	msg_type_str	= NULL;
+				
+	/* pull first byte; if high bit is unset, then record
+	 * length is three bytes due to padding; otherwise
+	 * record length is two bytes
+	 */		 
+	byte = (guint8)*(data + offset);
+	record_length_length = (byte & 0x80) ? 2 : 3;
+				
+	available_bytes = datalen - offset;
+								   
+	/*  
+	 * Is the record header split across segment boundaries?
+	 */		 
+	if (available_bytes < record_length_length) {
+		/* Not enough bytes available. Stop here. */
+		return offset + available_bytes;
+	}
+
+	/* parse out the record length */
+	switch (record_length_length) {
+	case 2:					 /* two-byte record length */
+		record_length = (byte & 0x7f) << 8;
+		byte = (guint8)*(data + offset + 1);
+		record_length += byte;
+		break;
+	case 3:					 /* three-byte record length */
+		record_length = (byte & 0x3f) << 8;
+		byte = (guint8)*(data + offset + 1);
+		record_length += byte;
+		byte = (guint8)*(data + offset + 2);
+	}
+	/*  
+	 * Is the record split across segment boundaries?
+	 */
+	if (available_bytes < (record_length_length + record_length)) {
+		/* Not enough bytes available. Stop here. */
+		return offset + available_bytes;
+	}
+	offset += record_length_length;
+
+	/* pull the msg_type so we can bail if it's unknown */
+	msg_type = (guint8)*(data + initial_offset + record_length_length);
+
+	/* if we get a server_hello or later handshake in v2, then set
+	 * this to sslv2
+	 */
+	if (session->version == SSL_VER_UNKNOWN)
+	{
+		if (ssl_looks_like_valid_pct_handshake(data, (initial_offset + record_length_length), record_length)) {
+			session->version = SSL_VER_PCT;
+			/*ssl_set_conv_version(pinfo, ssl->session.version);*/
+		}
+		else if (msg_type >= 2 && msg_type <= 8)
+		{
+			session->version = SSL_VER_SSLv2;
+			/*ssl_set_conv_version(pinfo, ssl->session.version);*/
+		}
+	}
+
+	/* if we get here, but don't have a version set for the
+	 * conversation, then set a version for just this frame
+	 * (e.g., on a client hello)
+	 */
+//	col_set_str(pinfo->cinfo, COL_PROTOCOL,
+//					(session->version == SSL_VER_PCT) ? "PCT" : "SSLv2");
+
+	/* see if the msg_type is valid; if not the payload is
+	 * probably encrypted, so note that fact and bail
+	 */
+	msg_type_str = try_val_to_str(msg_type, (session->version == SSL_VER_PCT) ? pct_msg_types : ssl_20_msg_types);
+
+	if (!msg_type_str
+		|| ((session->version != SSL_VER_PCT) &&
+			!ssl_looks_like_valid_v2_handshake(data, initial_offset + record_length_length, record_length))
+		|| ((session->version == SSL_VER_PCT) &&
+			!ssl_looks_like_valid_pct_handshake(data, initial_offset + record_length_length, record_length)))
+	{
+		//col_append_str(pinfo->cinfo, COL_INFO, "Encrypted Data");
+		return initial_offset + record_length_length + record_length;
+	} else {
+		if(debug) printf("%s Record Layer: %s", (session->version == SSL_VER_PCT) ? "PCT" : "SSLv2", msg_type_str);
+	}
+
+
+	/*
+	 * dissect the record data
+	 */
+
+	/* jump forward to the start of the record data */
+	offset = initial_offset + record_length_length;
+
+	offset += 1;				   /* move past msg_type byte */
+
+	if (session->version != SSL_VER_PCT)
+	{   
+		/* dissect the message (only handle client hello right now) */
+		switch (msg_type) {
+		case SSL2_HND_CLIENT_HELLO:
+			dissect_ssl2_hnd_client_hello(data, pinfo, offset, ssl);
+			break;
+
+		case SSL2_HND_CLIENT_MASTER_KEY:
+			//dissect_ssl2_hnd_client_master_key(tvb, ssl_record_tree, offset);
+			break;		  
+							
+		case SSL2_HND_SERVER_HELLO:
+			//dissect_ssl2_hnd_server_hello(tvb, ssl_record_tree, offset, pinfo);
+			break;
+
+		case SSL2_HND_ERROR:
+		case SSL2_HND_CLIENT_FINISHED:
+		case SSL2_HND_SERVER_VERIFY:
+		case SSL2_HND_SERVER_FINISHED:
+		case SSL2_HND_REQUEST_CERTIFICATE:
+		case SSL2_HND_CLIENT_CERTIFICATE:
+			/* unimplemented */
+			break;
+
+		default:					/* unknown */
+			break;
+		}
+	}
+	else
+	{
+		/* dissect the message */
+		switch (msg_type) {
+		case PCT_MSG_CLIENT_HELLO:
+			//dissect_pct_msg_client_hello(tvb, ssl_record_tree, offset);
+			break;
+		case PCT_MSG_SERVER_HELLO:
+			//dissect_pct_msg_server_hello(tvb, ssl_record_tree, offset, pinfo);
+			break;
+		case PCT_MSG_CLIENT_MASTER_KEY:
+			//dissect_pct_msg_client_master_key(tvb, ssl_record_tree, offset);
+			break;
+		case PCT_MSG_SERVER_VERIFY:
+			//dissect_pct_msg_server_verify(tvb, ssl_record_tree, offset);
+			break;
+		case PCT_MSG_ERROR:
+			//dissect_pct_msg_error(tvb, ssl_record_tree, offset);
+			break;
+
+		default:					/* unknown */
+			break;
+		}
+	}
+	return (initial_offset + record_length_length + record_length);
+}
+
+
+
 static gint
 dissect_ssl3_record(char *data, unsigned int datalen, packet_info *pinfo,
 					guint32 offset,
@@ -3131,7 +3615,10 @@ decrypt_ssl(char *data, unsigned int datalen, unsigned int saddr, unsigned int d
 	 */
 	unsigned int offset = 0;
 	while (offset < datalen) {
-		if(ssl_looks_like_sslv3(data, offset)) {
+		if(ssl_looks_like_sslv2(data, offset)) {
+			offset = dissect_ssl2_record(data, datalen, &pinfo, offset, session, is_from_server, ssl_session);
+			if(debug) printf("it is sslv2 off:%u\n", offset);
+		} else if(ssl_looks_like_sslv3(data, offset)) {
 			offset = dissect_ssl3_record(data, datalen, &pinfo, offset, session, is_from_server, ssl_session);
 			if(debug) printf("it is sslv3 off:%u\n", offset);
 		} else {
