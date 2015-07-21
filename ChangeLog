@@ -1,3 +1,9 @@
+11.9.2 16.07.2015
+=================
+- Fix ssl / tls decoding for clients who sends ssl version 2.0 CLIENT HELLO instead of SSL 3 or TLS
+- Fix cleanspool safe to not wipe more data than it should 
+
+
 11.9.1 16.07.2015
 =================
 - fix 11.9 active calls in GUI which did not reported all ringing calls (with 18X) until calls were picked up
