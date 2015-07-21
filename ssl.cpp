@@ -1586,6 +1586,9 @@ out:
 static gboolean
 ssl_decrypt_pre_master_secret(SslDecryptSessionC *ssl_session, StringInfo* encrypted_pre_master, SSL_PRIVATE_KEY *pk)
 {			  
+
+	if(debug) printf("entering ssl_decrypt_pre_master_secret\n");
+
 	gint i;
 		   
 	if (!encrypted_pre_master)
@@ -1782,8 +1785,9 @@ ssl_generate_pre_master_secret(SslDecryptSessionC *ssl_session,
 	   
 		if (ssl_session->private_key) {
 			/* try to decrypt encrypted pre-master with RSA key */
-			if (ssl_decrypt_pre_master_secret(ssl_session, &encrypted_pre_master, ssl_session->private_key))
+			if (ssl_decrypt_pre_master_secret(ssl_session, &encrypted_pre_master, ssl_session->private_key)) {
 				return TRUE;
+			}
 			   
 			if (debug) printf("%s: can't decrypt pre-master secret\n", __FUNCTION__);
 		}				   
@@ -1791,8 +1795,9 @@ ssl_generate_pre_master_secret(SslDecryptSessionC *ssl_session,
 		/* try to find the pre-master secret from the encrypted one. The
 		 * ssl key logfile stores only the first 8 bytes, so truncate it */
 		encrypted_pre_master.data_len = 8;
-		if (ssl_restore_master_key(ssl_session, "Encrypted pre-master secret", TRUE, mk_map->pre_master, &encrypted_pre_master))
+		if (ssl_restore_master_key(ssl_session, "Encrypted pre-master secret", TRUE, mk_map->pre_master, &encrypted_pre_master)) {
 			return TRUE;
+		}
 	}	  
 	return FALSE;
 }
@@ -1982,8 +1987,8 @@ ssl_load_pkcs12(FILE* fp, const gchar *cert_passwd, string &err) {
 						return 0;
 					}
 					private_key->x509_pkey = ssl_pkey;
-					private_key->sexp_pkey = ssl_privkey_to_sexp(ssl_pkey);
-					if ( !private_key->sexp_pkey ) {
+					7rivate_key->sexp_pkey = ssl_privkey_to_sexp(ssl_pkey);
+					if ( !7rivate_key->sexp_pkey ) {
 						err = "ssl_load_pkcs12: could not create sexp_pkey";
 						if (debug) printf("%s\n", err.c_str());
 						delete private_key;
@@ -3226,6 +3231,29 @@ dissect_ssl2_record(char *data, unsigned int datalen, packet_info *pinfo,
 		switch (msg_type) {
 		case SSL2_HND_CLIENT_HELLO:
 			dissect_ssl2_hnd_client_hello(data, pinfo, offset, ssl);
+			if (ssl) {
+				/* ClientHello is first packet so set direction and try to
+				 * find a private key matching the server port */
+				ssl->ssl_set_server(&pinfo->dst, pinfo->ptype, pinfo->destport);
+				if(!ssl->private_key_c) {
+					//FILE *fp = fopen("/root/vox.key", "r");
+					string filename = find_ssl_keys(pinfo->src2, pinfo->srcport, pinfo->dst2, pinfo->destport);
+					if(debug) printf("Key file:%s\n", filename.c_str());
+					if(filename != "") {
+						FILE *fp = fopen(filename.c_str(), "r");
+						if(fp) {
+							ssl->private_key_c = ssl_load_key(fp);
+							if(ssl->private_key_c) {
+								ssl->private_key = ssl->private_key_c->sexp_pkey;
+							}
+							fclose(fp);
+						} else {
+							//TODO: syslog
+						}
+					}
+				}
+				//ssl_find_private_key(ssl, ssl_key_hash, pinfo);
+			}
 			break;
 
 		case SSL2_HND_CLIENT_MASTER_KEY:
