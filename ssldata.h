@@ -41,7 +41,8 @@ public:
 			       isOkVersion());
 		}
 		bool isOkV2() {
-			return(isOkVersion());
+			return(content_type <= 5 &&
+			       isOkVersion());
 		}
 		bool isOkVersion() {
 			return(version >= 0x300 && version <= 0x303);
