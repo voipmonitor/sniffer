@@ -2773,6 +2773,7 @@ void main_term_read() {
 	sqlStore->setEnableTerminatingIfSqlError(0, true);
 	
 	if(sqlStore) {
+		regfailedcache->prune(0);
 		delete sqlStore;
 		sqlStore = NULL;
 	}
