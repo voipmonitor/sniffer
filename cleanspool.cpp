@@ -1454,12 +1454,15 @@ void check_disk_free_run(bool enableRunCleanSpoolThread) {
 		if(freeSpacePercent < opt_autocleanspoolminpercent) {
 			SqlDb *sqlDb = createSqlObject();
 			stringstream q;
-			q << "SELECT SUM(sipsize + rtpsize + graphsize + audiosize) as sum_size FROM files WHERE id_sensor = " << (opt_id_sensor_cleanspool > 0 ? opt_id_sensor_cleanspool : 0);
+			q << "SELECT SUM(coalesce(sipsize,0) + coalesce(rtpsize,0) + coalesce(graphsize,0) + coalesce(audiosize,0)) as sum_size FROM files WHERE id_sensor = " << (opt_id_sensor_cleanspool > 0 ? opt_id_sensor_cleanspool : 0);
 			sqlDb->query(q.str());
 			SqlDb_row row = sqlDb->fetchRow();
 			if(row) {
 				double usedSizeGB = atol(row["sum_size"].c_str()) / (1024 * 1024 * 1024);
 				opt_maxpoolsize_reduk = (usedSizeGB + freeSpaceGB - min(totalSpaceGB * opt_autocleanspoolminpercent / 100, (double)opt_autocleanmingb)) * 1024;
+				if(opt_maxpoolsize_reduk < opt_maxpoolsize * 0.8) {
+					opt_maxpoolsize_reduk = opt_maxpoolsize * 0.8;
+				}
 				syslog(LOG_NOTICE, "low spool disk space - maxpoolsize set to new value: %u MB", opt_maxpoolsize_reduk);
 				if(enableRunCleanSpoolThread) {
 					runCleanSpoolThread();
