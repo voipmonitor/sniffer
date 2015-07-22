@@ -1,3 +1,10 @@
+11.9.3 22.07.2015
+=================
+- use hour and day filter from alerts in fraud [VG-647]
+- fix crash at exit - add call regfailedcache->prune(0) before delete sqlStore
+- set limit conten_type byte for ssl v2 (
+
+
 11.9.2 16.07.2015
 =================
 - Fix ssl / tls decoding for clients who sends ssl version 2.0 CLIENT HELLO instead of SSL 3 or TLS
