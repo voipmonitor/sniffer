@@ -541,6 +541,19 @@ public:
 	virtual void evEvent(sFraudEventInfo *eventInfo) {}
 	virtual bool okFilter(sFraudCallInfo *callInfo);
 	virtual bool okFilter(sFraudEventInfo *eventInfo);
+	virtual bool okDayHour(sFraudCallInfo *callInfo) {
+		if(!callInfo->at_last) {
+			return(true);
+		}
+		return(this->okDayHour(callInfo->at_last / 1000000ull));
+	}
+	virtual bool okDayHour(sFraudEventInfo *eventInfo) {
+		if(!eventInfo->at) {
+			return(true);
+		}
+		return(this->okDayHour(eventInfo->at / 1000000ull));
+	}
+	virtual bool okDayHour(time_t at);
 	virtual void evAlert(FraudAlertInfo *alertInfo);
 protected:
 	virtual void loadAlertVirt(SqlDb_row *row) {}
@@ -578,6 +591,10 @@ protected:
 	bool onlyConnected;
 	bool suppressRepeatingAlerts;
 	int alertOncePerHours;
+	int hour_from;
+	int hour_to;
+	bool day_of_week[7];
+	bool day_of_week_set;
 friend class FraudAlerts;
 friend class FraudAlert_rcc_base;
 };

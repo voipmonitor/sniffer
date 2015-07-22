@@ -472,6 +472,12 @@ FraudAlert::FraudAlert(eFraudAlertType type, unsigned int dbId) {
 	onlyConnected = false;
 	suppressRepeatingAlerts = false;
 	alertOncePerHours = 0;
+	hour_from = -1;
+	hour_to = -1;
+	for(int i = 0; i < 7; i++) {
+		day_of_week[i] = false;
+	}
+	day_of_week_set = false;
 }
 
 FraudAlert::~FraudAlert() {
@@ -580,6 +586,38 @@ bool FraudAlert::loadAlert() {
 		}
 	}
 	checkInternational.load(&dbRow);
+	hour_from = -1;
+	hour_to = -1;
+	for(int i = 0; i < 7; i++) {
+		day_of_week[i] = false;
+	}
+	day_of_week_set = false;
+	if(!dbRow.isNull("at_hour_of_day_from")) {
+		int _hour_from = atoi(dbRow["at_hour_of_day_from"].c_str());
+		if(_hour_from >= 0 && _hour_from <= 23) {
+			hour_from = _hour_from;
+		}
+	}
+	if(!dbRow.isNull("at_hour_of_day_to")) {
+		int _hour_to = atoi(dbRow["at_hour_of_day_to"].c_str());
+		if(_hour_to >= 0 && _hour_to <= 23) {
+			hour_to = _hour_to;
+		}
+	}
+	if(hour_from >= 0 || hour_to >= 0) {
+		if(hour_from < 0) hour_from = 0;
+		if(hour_to < 0) hour_to = 23;
+	}
+	if(!dbRow.isNull("at_day_of_week")) {
+		vector<string> dw = split(dbRow["at_day_of_week"].c_str(), ",", true);
+		for(size_t i = 0; i < dw.size(); i++) {
+			int day = atoi(dw[i].c_str());
+			if(day >= 1 and day <= 7) {
+				day_of_week[day - 1] = true;
+				day_of_week_set = true;
+			}
+		}
+	}
 	delete sqlDb;
 	return(true);
 }
@@ -634,6 +672,30 @@ bool FraudAlert::okFilter(sFraudCallInfo *callInfo) {
 bool FraudAlert::okFilter(sFraudEventInfo *eventInfo) {
 	if(this->defFilterIp() && !this->ipFilter.checkIP(eventInfo->src_ip)) {
 		return(false);
+	}
+	return(true);
+}
+
+bool FraudAlert::okDayHour(time_t at) {
+	if((hour_from >= 0 && hour_to >= 0) ||
+	   day_of_week_set) {
+		tm attm = localtime_r(&at);
+		if(hour_from >= 0 && hour_to >= 0) {
+			if(hour_from <= hour_to) {
+				if(attm.tm_hour < hour_from || attm.tm_hour > hour_to) {
+					return(false);
+				}
+			} else {
+				if(attm.tm_hour < hour_from && attm.tm_hour > hour_to) {
+					return(false);
+				}
+			}
+		}
+		if(day_of_week_set) {
+			if(!day_of_week[attm.tm_wday]) {
+				return(false);
+			}
+		}
 	}
 	return(true);
 }
@@ -884,7 +946,8 @@ FraudAlert_rcc::~FraudAlert_rcc() {
 
 void FraudAlert_rcc::evCall(sFraudCallInfo *callInfo) {
 	if(callInfo->call_type == REGISTER ||
-	   !this->okFilter(callInfo)) {
+	   !this->okFilter(callInfo) ||
+	   !this->okDayHour(callInfo)) {
 		return;
 	}
 	this->evCall_rcc(callInfo, this, false);
@@ -940,7 +1003,8 @@ FraudAlert_chc::FraudAlert_chc(unsigned int dbId)
 
 void FraudAlert_chc::evCall(sFraudCallInfo *callInfo) {
 	if(callInfo->call_type == REGISTER ||
-	   !this->okFilter(callInfo)) {
+	   !this->okFilter(callInfo) ||
+	   !this->okDayHour(callInfo)) {
 		return;
 	}
 	if(callInfo->typeCallInfo == (this->onlyConnected ? sFraudCallInfo::typeCallInfo_connectCall : sFraudCallInfo::typeCallInfo_beginCall)) {
@@ -989,7 +1053,8 @@ FraudAlert_chcr::FraudAlert_chcr(unsigned int dbId)
 
 void FraudAlert_chcr::evCall(sFraudCallInfo *callInfo) {
 	if(callInfo->call_type != REGISTER ||
-	   !this->okFilter(callInfo)) {
+	   !this->okFilter(callInfo) ||
+	   !this->okDayHour(callInfo)) {
 		return;
 	}
 	switch(callInfo->typeCallInfo) {
@@ -1074,7 +1139,8 @@ FraudAlert_d::FraudAlert_d(unsigned int dbId)
 
 void FraudAlert_d::evCall(sFraudCallInfo *callInfo) {
 	if(callInfo->call_type == REGISTER ||
-	   !this->okFilter(callInfo)) {
+	   !this->okFilter(callInfo) ||
+	   !this->okDayHour(callInfo)) {
 		return;
 	}
 	if(callInfo->typeCallInfo == (this->onlyConnected ? sFraudCallInfo::typeCallInfo_connectCall : sFraudCallInfo::typeCallInfo_beginCall)) {
@@ -1144,7 +1210,8 @@ FraudAlert_spc::FraudAlert_spc(unsigned int dbId)
 
 void FraudAlert_spc::evEvent(sFraudEventInfo *eventInfo) {
 	if(eventInfo->typeEventInfo == sFraudEventInfo::typeEventInfo_sipPacket &&
-	   this->okFilter(eventInfo)) {
+	   this->okFilter(eventInfo) &&
+	   this->okDayHour(eventInfo)) {
 		map<u_int32_t, u_int64_t>::iterator iter = count.find(eventInfo->src_ip);
 		if(iter == count.end()) {
 			count[eventInfo->src_ip] = 1;
@@ -1199,7 +1266,8 @@ void FraudAlert_rc::evEvent(sFraudEventInfo *eventInfo) {
 	if((withResponse ?
 	     eventInfo->typeEventInfo == sFraudEventInfo::typeEventInfo_registerResponse :
 	     eventInfo->typeEventInfo == sFraudEventInfo::typeEventInfo_register) &&
-	   this->okFilter(eventInfo)) {
+	   this->okFilter(eventInfo) &&
+	   this->okDayHour(eventInfo)) {
 		map<u_int32_t, u_int64_t>::iterator iter = count.find(eventInfo->src_ip);
 		if(iter == count.end()) {
 			count[eventInfo->src_ip] = 1;
@@ -1289,7 +1357,8 @@ FraudAlert_seq::FraudAlert_seq(unsigned int dbId)
 void FraudAlert_seq::evCall(sFraudCallInfo *callInfo) {
 	if(callInfo->call_type != REGISTER &&
 	   callInfo->typeCallInfo == sFraudCallInfo::typeCallInfo_connectCall &&
-	   this->okFilter(callInfo)) {
+	   this->okFilter(callInfo) &&
+	   this->okDayHour(callInfo)) {
 		sIpNumber ipNumber(callInfo->caller_ip, callInfo->called_number.c_str());
 		map<sIpNumber, u_int64_t>::iterator iter = count.find(ipNumber);
 		if(iter == count.end()) {
