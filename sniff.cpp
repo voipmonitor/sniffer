@@ -1385,8 +1385,7 @@ void *rtp_read_thread_func(void *arg) {
 			rtpp_pq.call->read_rtcp(rtpp_pq.data, rtpp_pq.datalen, rtpp_pq.dataoffset, &rtpp_pq.header, rtpp_pq.saddr, rtpp_pq.daddr, rtpp_pq.sport, rtpp_pq.dport, rtpp_pq.iscaller,
 						rtpp_pq.save_packet, rtpp_pq.packet, rtpp_pq.istcp, rtpp_pq.dlt, rtpp_pq.sensor_id);
 		}  else {
-			int monitor;
-			rtpp_pq.call->read_rtp(rtpp_pq.data, rtpp_pq.datalen, rtpp_pq.dataoffset, &rtpp_pq.header, NULL, rtpp_pq.saddr, rtpp_pq.daddr, rtpp_pq.sport, rtpp_pq.dport, rtpp_pq.iscaller, &monitor,
+			rtpp_pq.call->read_rtp(rtpp_pq.data, rtpp_pq.datalen, rtpp_pq.dataoffset, &rtpp_pq.header, NULL, rtpp_pq.saddr, rtpp_pq.daddr, rtpp_pq.sport, rtpp_pq.dport, rtpp_pq.iscaller,
 					       rtpp_pq.save_packet, rtpp_pq.packet, rtpp_pq.istcp, rtpp_pq.dlt, rtpp_pq.sensor_id,
 					       rtpp_pq.block_store && rtpp_pq.block_store->ifname[0] ? rtpp_pq.block_store->ifname : NULL);
 		}
@@ -2027,8 +2026,6 @@ Call *process_packet(bool is_ssl, u_int64_t packet_number,
 	bool sip_response = false;
 	char lastSIPresponse[128];
 	int lastSIPresponseNum = 0;
-	unsigned int tmp_u32 = 0;
-	int record = 0;
 	unsigned long gettagLimitLen = 0;
 	hash_node_call *calls, *node_call;
 	bool detectUserAgent = false;
@@ -3226,64 +3223,25 @@ rtpcheck:
 								false);
 				} else {
 					call->read_rtcp((unsigned char*) data, datalen, dataoffset, header, saddr, daddr, source, dest, iscaller,
-							false, packet, istcp, dlt, sensor_id);
-				}
-				if((!rtp_threaded || !opt_rtpsave_threaded) &&
-				   (opt_saveRTP || opt_saveRTCP)) {
-					save_packet(call, header, packet, saddr, source, daddr, dest, istcp, header_ip, data, datalen, dataoffset, TYPE_RTP, 
-						    forceSip, dlt, sensor_id);
-				}
-				if(logPacketSipMethodCall_enable) {
-					logPacketSipMethodCall(packet_number, sip_method, lastSIPresponseNum, header, 
-						saddr, source, daddr, dest,
-						call);
+							opt_saveRTP || opt_saveRTCP, 
+							packet, istcp, dlt, sensor_id);
 				}
 				return call;
 			}
 
+			*was_rtp = 1;
 			if(rtp_threaded && can_thread) {
-				if(!((call->flags & FLAG_SAVERTP) || (call->isfax && opt_saveudptl)) && opt_saverfc2833) {
-					// if RTP is NOT saving but we still wants to save DTMF (rfc2833) and becuase RTP is going to be 
-					// queued and processed later in async queue we must decode if the RTP packet is DTMF here 
-					call->tmprtp.fill((unsigned char*)data, datalen, header, saddr, daddr, source, dest); //TODO: datalen can be shortned to only RTP header len
-					record = call->tmprtp.getPayload() == 101 ? 1 : 0;
-				}
 				add_to_rtp_thread_queue(call, (unsigned char*) data, datalen, dataoffset, header, saddr, daddr, source, dest, iscaller, is_rtcp,
 							block_store, block_store_index, 
-							(call->flags & FLAG_SAVERTPHEADER) || (call->flags & FLAG_SAVERTP) || (call->isfax && opt_saveudptl) || record, 
+							(call->flags & FLAG_SAVERTPHEADER) || (call->flags & FLAG_SAVERTP) || (call->isfax && opt_saveudptl) || opt_saverfc2833, 
 							packet, istcp, dlt, sensor_id,
 							false);
-				*was_rtp = 1;
-				if(is_rtcp) {
-					if(logPacketSipMethodCall_enable) {
-						logPacketSipMethodCall(packet_number, sip_method, lastSIPresponseNum, header, 
-							saddr, source, daddr, dest,
-							call);
-					}
-					return call;
-				}
 			} else {
-				call->read_rtp((unsigned char*) data, datalen, dataoffset, header, NULL, saddr, daddr, source, dest, iscaller, &record,
-					       false, packet, istcp, dlt, sensor_id,
+				call->read_rtp((unsigned char*) data, datalen, dataoffset, header, NULL, saddr, daddr, source, dest, iscaller,
+					       (call->flags & FLAG_SAVERTPHEADER) || (call->flags & FLAG_SAVERTP) || (call->isfax && opt_saveudptl) || opt_saverfc2833,
+					       packet, istcp, dlt, sensor_id,
 					       block_store && block_store->ifname[0] ? block_store->ifname : NULL);
 				call->set_last_packet_time(header->ts.tv_sec);
-			}
-			if((!rtp_threaded || !opt_rtpsave_threaded) &&
-			   ((call->flags & FLAG_SAVERTPHEADER) || (call->flags & FLAG_SAVERTP) || (call->isfax && opt_saveudptl) || record)) {
-				if((call->silencerecording || (opt_onlyRTPheader && !(call->flags & FLAG_SAVERTP))) && !call->isfax) {
-					if(datalen >= RTP_FIXED_HEADERLEN &&
-					   header->caplen > (unsigned)(datalen - RTP_FIXED_HEADERLEN)) {
-						tmp_u32 = header->caplen;
-						header->caplen = header->caplen - (datalen - RTP_FIXED_HEADERLEN);
-						save_packet(call, header, packet, saddr, source, daddr, dest, istcp, header_ip, data, datalen, dataoffset, TYPE_RTP, 
-							    forceSip, dlt, sensor_id);
-						header->caplen = tmp_u32;
-					}
-				} else {
-					save_packet(call, header, packet, saddr, source, daddr, dest, istcp, header_ip, data, datalen, dataoffset, TYPE_RTP, 
-						    forceSip, dlt, sensor_id);
-				}
-
 			}
 		}
 	} else if ((calls = calltable->hashfind_by_ip_port(saddr, source, parsePacket ? parsePacket->hash[0] : 0))){
@@ -3347,56 +3305,26 @@ rtpcheck:
 								false);
 				} else {
 					call->read_rtcp((unsigned char*) data, datalen, dataoffset, header, saddr, daddr, source, dest, !iscaller,
-							false, packet, istcp, dlt, sensor_id);
-				}
-				if((!rtp_threaded || !opt_rtpsave_threaded) &&
-				   (opt_saveRTP || opt_saveRTCP)) {
-					save_packet(call, header, packet, saddr, source, daddr, dest, istcp, header_ip, data, datalen, dataoffset, TYPE_RTP, 
-						    forceSip, dlt, sensor_id);
-				}
-				if(logPacketSipMethodCall_enable) {
-					logPacketSipMethodCall(packet_number, sip_method, lastSIPresponseNum, header, 
-						saddr, source, daddr, dest,
-						call);
+							opt_saveRTP || opt_saveRTCP,
+							packet, istcp, dlt, sensor_id);
 				}
 				return call;
 			}
 
 			// as we are searching by source address and find some call, revert iscaller 
+			*was_rtp = 1;
 			if(rtp_threaded && can_thread) {
-				if(!((call->flags & FLAG_SAVERTP) || (call->isfax && opt_saveudptl)) && opt_saverfc2833) {
-					// if RTP is NOT saving but we still wants to save DTMF (rfc2833) and becuase RTP is going to be 
-					// queued and processed later in async queue we must decode if the RTP packet is DTMF here 
-					call->tmprtp.fill((unsigned char*)data, datalen, header, saddr, daddr, source, dest); //TODO: datalen can be shortned to only RTP header len
-					record = call->tmprtp.getPayload() == 101 ? 1 : 0;
-				}
 				add_to_rtp_thread_queue(call, (unsigned char*) data, datalen, dataoffset, header, saddr, daddr, source, dest, !iscaller, is_rtcp,
 							block_store, block_store_index, 
-							(call->flags & FLAG_SAVERTP) || (call->isfax && opt_saveudptl) || record, 
+							(call->flags & FLAG_SAVERTPHEADER) || (call->flags & FLAG_SAVERTP) || (call->isfax && opt_saveudptl) || opt_saverfc2833, 
 							packet, istcp, dlt, sensor_id,
 							false);
-				*was_rtp = 1;
 			} else {
-				call->read_rtp((unsigned char*) data, datalen, dataoffset, header, NULL, saddr, daddr, source, dest, !iscaller, &record,
-					       false, packet, istcp, dlt, sensor_id,
+				call->read_rtp((unsigned char*) data, datalen, dataoffset, header, NULL, saddr, daddr, source, dest, !iscaller,
+					       (call->flags & FLAG_SAVERTPHEADER) || (call->flags & FLAG_SAVERTP) || (call->isfax && opt_saveudptl) || opt_saverfc2833, 
+					       packet, istcp, dlt, sensor_id,
 					       block_store && block_store->ifname[0] ? block_store->ifname : NULL);
 				call->set_last_packet_time(header->ts.tv_sec);
-			}
-			if((!rtp_threaded || !opt_rtpsave_threaded) &&
-			   ((call->flags & FLAG_SAVERTP) || (call->isfax && opt_saveudptl) || record)) {
-				if((call->silencerecording || (opt_onlyRTPheader && !(call->flags & FLAG_SAVERTP))) && !call->isfax) {
-					if(datalen >= RTP_FIXED_HEADERLEN &&
-					   header->caplen > (unsigned)(datalen - RTP_FIXED_HEADERLEN)) {
-						tmp_u32 = header->caplen;
-						header->caplen = header->caplen - (datalen - RTP_FIXED_HEADERLEN);
-						save_packet(call, header, packet, saddr, source, daddr, dest, istcp, header_ip, data, datalen, dataoffset, TYPE_RTP, 
-							    forceSip, dlt, sensor_id);
-						header->caplen = tmp_u32;
-					}
-				} else {
-					save_packet(call, header, packet, saddr, source, daddr, dest, istcp, header_ip, data, datalen, dataoffset, TYPE_RTP, 
-						    forceSip, dlt, sensor_id);
-				}
 			}
 		}
 
@@ -3753,7 +3681,6 @@ Call *process_packet__rtp(ProcessRtpPacket::rtp_call_info *call_info,size_t call
 	bool iscaller;
 	bool is_rtcp;
 	bool is_fax;
-	int record = 0;
 	Call *rsltCall = NULL;
 	size_t call_info_index;
 	for(call_info_index = 0; call_info_index < call_info_length; call_info_index++) {
@@ -3821,59 +3748,29 @@ Call *process_packet__rtp(ProcessRtpPacket::rtp_call_info *call_info,size_t call
 				call_info[call_info_index].use_sync = true;
 			} else {
 				call->read_rtcp((unsigned char*) data, datalen, dataoffset, header, saddr, daddr, source, dest, iscaller,
-						false, packet, istcp, dlt, sensor_id);
-			}
-			if((!rtp_threaded || !opt_rtpsave_threaded) &&
-			   (opt_saveRTP || opt_saveRTCP)) {
-				save_packet(call, header, packet, saddr, source, daddr, dest, istcp, header_ip, data, datalen, dataoffset, TYPE_RTP, 
-					    false, dlt, sensor_id);
+						opt_saveRTP || opt_saveRTCP, 
+						packet, istcp, dlt, sensor_id);
 			}
 			rsltCall = call;
 			break;
 		}
 
+		if(was_rtp) {
+			*was_rtp = 1;
+		}
 		if(rtp_threaded && can_thread) {
-			if(!((call->flags & FLAG_SAVERTP) || (call->isfax && opt_saveudptl)) && opt_saverfc2833) {
-				// if RTP is NOT saving but we still wants to save DTMF (rfc2833) and becuase RTP is going to be 
-				// queued and processed later in async queue we must decode if the RTP packet is DTMF here 
-				call->tmprtp.fill((unsigned char*)data, datalen, header, saddr, daddr, source, dest); //TODO: datalen can be shortned to only RTP header len
-				record = call->tmprtp.getPayload() == 101 ? 1 : 0;
-			}
 			add_to_rtp_thread_queue(call, (unsigned char*) data, datalen, dataoffset, header, saddr, daddr, source, dest, iscaller, is_rtcp,
 						block_store, block_store_index, 
-						(call->flags & FLAG_SAVERTPHEADER) || (call->flags & FLAG_SAVERTP) || (call->isfax && opt_saveudptl) || record, 
+						(call->flags & FLAG_SAVERTPHEADER) || (call->flags & FLAG_SAVERTP) || (call->isfax && opt_saveudptl) || opt_saverfc2833, 
 						packet, istcp, dlt, sensor_id,
 						preSyncRtp);
 			call_info[call_info_index].use_sync = true;
-			if(was_rtp) {
-				*was_rtp = 1;
-			}
-			if(is_rtcp) {
-				rsltCall = call;
-				break;
-			}
 		} else {
-			call->read_rtp((unsigned char*) data, datalen, dataoffset, header, NULL, saddr, daddr, source, dest, iscaller, &record,
-				       false, packet, istcp, dlt, sensor_id,
+			call->read_rtp((unsigned char*) data, datalen, dataoffset, header, NULL, saddr, daddr, source, dest, iscaller,
+				       (call->flags & FLAG_SAVERTPHEADER) || (call->flags & FLAG_SAVERTP) || (call->isfax && opt_saveudptl) || opt_saverfc2833, 
+				       packet, istcp, dlt, sensor_id,
 				       block_store && block_store->ifname[0] ? block_store->ifname : NULL);
 			call->set_last_packet_time(header->ts.tv_sec);
-		}
-		if((!rtp_threaded || !opt_rtpsave_threaded) &&
-		   ((call->flags & FLAG_SAVERTPHEADER) || (call->flags & FLAG_SAVERTP) || (call->isfax && opt_saveudptl) || record)) {
-			if((call->silencerecording || (opt_onlyRTPheader && !(call->flags & FLAG_SAVERTP))) && !call->isfax) {
-				if(datalen >= RTP_FIXED_HEADERLEN &&
-				   header->caplen > (unsigned)(datalen - RTP_FIXED_HEADERLEN)) {
-					unsigned int tmp_u32 = header->caplen;
-					header->caplen = header->caplen - (datalen - RTP_FIXED_HEADERLEN);
-					save_packet(call, header, packet, saddr, source, daddr, dest, istcp, header_ip, data, datalen, dataoffset, TYPE_RTP, 
-						    false, dlt, sensor_id);
-					header->caplen = tmp_u32;
-				}
-			} else {
-				save_packet(call, header, packet, saddr, source, daddr, dest, istcp, header_ip, data, datalen, dataoffset, TYPE_RTP, 
-					    false, dlt, sensor_id);
-			}
-
 		}
 	}
 	if(preSyncRtp) {

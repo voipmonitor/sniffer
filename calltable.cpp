@@ -788,10 +788,10 @@ Call::read_rtcp(unsigned char* data, int datalen, int dataoffset, struct pcap_pk
 
 /* analyze rtp packet */
 void
-Call::read_rtp(unsigned char* data, int datalen, int dataoffset, struct pcap_pkthdr *header, struct iphdr2 *header_ip, u_int32_t saddr, u_int32_t daddr, unsigned short sport, unsigned short dport, int iscaller, int *record,
+Call::read_rtp(unsigned char* data, int datalen, int dataoffset, struct pcap_pkthdr *header, struct iphdr2 *header_ip, u_int32_t saddr, u_int32_t daddr, unsigned short sport, unsigned short dport, int iscaller,
 	       char enable_save_packet, const u_char *packet, char istcp, int dlt, int sensor_id, char *ifname) {
 
-	*record = 0;
+	bool record_dtmf = 0;
 
 	if(first_rtp_time == 0) {
 		first_rtp_time = header->ts.tv_sec;
@@ -800,6 +800,12 @@ Call::read_rtp(unsigned char* data, int datalen, int dataoffset, struct pcap_pkt
 	//RTP tmprtp; moved to Call structure to avoid creating and destroying class which is not neccessary
 	tmprtp.fill(data, datalen, header, saddr, daddr, sport, dport);
 	int curpayload = tmprtp.getPayload();
+	
+	// chekc if packet is DTMF and saverfc2833 is enabled 
+	if(opt_saverfc2833 and curpayload == 101) {
+		record_dtmf = 1;
+	}
+	
 	unsigned int curSSRC = tmprtp.getSSRC();
 
 	if((!opt_allow_zerossrc and curSSRC == 0) || tmprtp.getVersion() != 2) {
@@ -833,10 +839,6 @@ Call::read_rtp(unsigned char* data, int datalen, int dataoffset, struct pcap_pkt
 				}
 			}
 			
-			// chekc if packet is DTMF and saverfc2833 is enabled 
-			if(opt_saverfc2833 and rtp[i]->codec == PAYLOAD_TELEVENT) {
-				*record = 1;
-			}
 			// check if codec did not changed but ignore payload 13 and 19 which is CNG and 101 which is DTMF
 			int oldcodec = rtp[i]->codec;
 			if(curpayload == 13 or curpayload == 19 or rtp[i]->codec == PAYLOAD_TELEVENT or rtp[i]->payload2 == curpayload) {
@@ -979,7 +981,7 @@ read:
 	
 end:
 	if(enable_save_packet && opt_rtpsave_threaded) {
-		if((this->silencerecording || (opt_onlyRTPheader && !(this->flags & FLAG_SAVERTP))) && !this->isfax) {
+		if((this->silencerecording || (opt_onlyRTPheader && !(this->flags & FLAG_SAVERTP))) && !this->isfax && !record_dtmf) {
 			if(datalen >= RTP_FIXED_HEADERLEN &&
 			   header->caplen > (unsigned)(datalen - RTP_FIXED_HEADERLEN)) {
 				unsigned int tmp_u32 = header->caplen;
