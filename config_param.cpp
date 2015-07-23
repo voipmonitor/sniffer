@@ -1387,6 +1387,8 @@ void cConfig::setFromMysql(bool checkConnect) {
 			return;
 		}
 	}
+	sqlDb->setMaxQueryPass(1);
+	sqlDb->setDisableLogError();
 	ostringstream q;
 	q << "SELECT * FROM sensor_config WHERE id_sensor ";
 	extern int opt_id_sensor;
@@ -1395,17 +1397,18 @@ void cConfig::setFromMysql(bool checkConnect) {
 	} else {
 		q << "IS NULL";
 	}
-	sqlDb->query(q.str());
-	SqlDb_row row = sqlDb->fetchRow();
-	if(row) {
-		for(size_t i = 0; i < row.getCountFields(); i++) {
-			string column = row.getNameField(i);
-			if(column != "id" && column != "id_sensor" && !row.isNull(column)) {
-				map<string, cConfigItem*>::iterator iter_map = config_map.find(column);
-				if(iter_map != config_map.end()) {
-					if(iter_map->second->setParamFromValueStr(row[column])) {
-						iter_map->second->set = true;
-						evSetConfigItem(iter_map->second);
+	if(sqlDb->query(q.str())) {
+		SqlDb_row row = sqlDb->fetchRow();
+		if(row) {
+			for(size_t i = 0; i < row.getCountFields(); i++) {
+				string column = row.getNameField(i);
+				if(column != "id" && column != "id_sensor" && !row.isNull(column)) {
+					map<string, cConfigItem*>::iterator iter_map = config_map.find(column);
+					if(iter_map != config_map.end()) {
+						if(iter_map->second->setParamFromValueStr(row[column])) {
+							iter_map->second->set = true;
+							evSetConfigItem(iter_map->second);
+						}
 					}
 				}
 			}

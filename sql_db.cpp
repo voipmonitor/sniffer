@@ -2877,14 +2877,15 @@ bool SqlDb_mysql::createSchema(SqlDb *sourceDb) {
 			`sip-register-timeout` tinyint DEFAULT 5,\
 		PRIMARY KEY (`id`)\
 	) ENGINE=InnoDB DEFAULT CHARSET=latin1;");
+#endif
+	*/
+	
 	this->query(
 	"CREATE TABLE IF NOT EXISTS `sensor_config` (\
 			`id` int NOT NULL AUTO_INCREMENT,\
 			`id_sensor` int unsigned DEFAULT NULL,\
 		PRIMARY KEY (`id`)\
 	) ENGINE=InnoDB DEFAULT CHARSET=latin1;");
-#endif
-	*/
 	
 	bool okTableFilterIp = false;
 	this->query("show tables like 'filter_ip'");
