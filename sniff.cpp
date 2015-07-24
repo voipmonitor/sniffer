@@ -477,7 +477,7 @@ inline void save_live_packet(Call *call, struct pcap_pkthdr *header, const u_cha
    type - 1 is SIP, 2 is RTP, 3 is RTCP
 
 */
-inline void save_packet(Call *call, struct pcap_pkthdr *header, const u_char *packet, 
+void save_packet(Call *call, struct pcap_pkthdr *header, const u_char *packet, 
 			unsigned int saddr, int source, unsigned int daddr, int dest, 
 			int istcp, iphdr2 *header_ip, char *data, unsigned int datalen, unsigned int dataoffset, int type, 
 			int forceSip, int dlt, int sensor_id) {
