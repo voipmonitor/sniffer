@@ -1,3 +1,8 @@
+11.9.4 24.07.2015
+=================
+- fix saverfc2833=yes option in case savertp=no or savertp=header - DTMF were still truncated despite the saverfc2833 was enabled.  
+
+
 11.9.3 22.07.2015
 =================
 - use hour and day filter from alerts in fraud [VG-647]
