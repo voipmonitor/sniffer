@@ -2195,8 +2195,11 @@ Call *process_packet(bool is_ssl, u_int64_t packet_number,
 		}
 		
 		if(issip) {
-			if(opt_enable_fraud) {
-				fraudSipPacket(saddr, header->ts);
+			if(opt_enable_fraud && isFraudReady()) {
+				char *ua = NULL;
+				unsigned long ua_len = 0;
+				ua = gettag(data, datalen, "\nUser-Agent:", &ua_len);
+				fraudSipPacket(saddr, header->ts, ua, ua_len);
 			}
 #if 0
 //this block was moved at the end so it will mirror only relevant SIP belonging to real calls 
@@ -2227,8 +2230,11 @@ Call *process_packet(bool is_ssl, u_int64_t packet_number,
 		switch(sip_method) {
 		case REGISTER:
 			counter_sip_register_packets++;
-			if(opt_enable_fraud) {
-				fraudRegister(saddr, header->ts);
+			if(opt_enable_fraud && isFraudReady()) {
+				char *ua = NULL;
+				unsigned long ua_len = 0;
+				ua = gettag(data, datalen, "\nUser-Agent:", &ua_len);
+				fraudRegister(saddr, header->ts, ua, ua_len);
 			}
 			break;
 		case MESSAGE:
@@ -2473,7 +2479,8 @@ Call *process_packet(bool is_ssl, u_int64_t packet_number,
 			}
 			if(call->regstate && !call->regresponse) {
 				if(opt_enable_fraud) {
-					fraudRegisterResponse(call->sipcallerip[0], call->first_packet_time * 1000000ull + call->first_packet_usec);
+					fraudRegisterResponse(call->sipcallerip[0], call->first_packet_time * 1000000ull + call->first_packet_usec,
+							      call->a_ua[0] ? call->a_ua : call->b_ua[0] ? call->b_ua : NULL, -1);
 				}
 				call->regresponse = true;
 			}

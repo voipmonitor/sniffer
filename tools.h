@@ -1029,6 +1029,50 @@ public:
 	uint lengthPrefix;
 };
 
+class UA {
+public:
+	UA(const char *ua) {
+		this->ua = ua;
+		if(this->ua.length() && this->ua[0] == '%') {
+			this->ua = this->ua.substr(1);
+			this->boundLeft = false;
+		} else {
+			this->boundLeft = true;
+		}
+		if(this->ua.length() && this->ua[this->ua.length() - 1] == '%') {
+			this->ua = this->ua.substr(0, this->ua.length() - 1);
+			this->boundRight = false;
+		} else {
+			this->boundRight = true;
+		}
+		this->ua_length = this->ua.length();
+	}
+	bool checkUA(const char *ua) {
+		if(!this->ua_length) {
+			return(false);
+		}
+		if(this->boundLeft && this->boundRight) {
+			return(!strcasecmp(ua, this->ua.c_str()));
+		} else if(this->boundLeft) {
+			return(!strncasecmp(ua, this->ua.c_str(), this->ua_length));
+		} else if(this->boundRight) {
+			uint length = strlen(ua);
+			if(length >= this->ua_length) {
+				return(!strcasecmp(ua + length - this->ua_length, this->ua.c_str()));
+			} else {
+				return(false);
+			}
+		} else {
+			return(strcasestr(ua, this->ua.c_str()));
+		}
+	}
+public:
+	std::string ua;
+	uint ua_length;
+	bool boundLeft;
+	bool boundRight;
+};
+
 class ListIP {
 public:
 	ListIP(bool autoLock = true) {
@@ -1129,6 +1173,51 @@ private:
 	volatile int _sync;
 };
 
+class ListUA {
+public:
+	ListUA(bool autoLock = true) {
+		this->autoLock = autoLock;
+		_sync = 0;
+	}
+	void add(const char *ua) {
+		if(autoLock) lock();
+		listUA.push_back(UA(ua));
+		if(autoLock) unlock();
+	}
+	void addComb(string &ua, ListUA *negList = NULL);
+	void addComb(const char *ua, ListUA *negList = NULL);
+	bool checkUA(const char *check_ua) {
+		bool rslt =  false;
+		if(autoLock) lock();
+		for(size_t i = 0; i < listUA.size(); i++) {
+			if(listUA[i].checkUA(check_ua)) {
+				rslt = true;
+				break;
+			}
+		}
+		if(autoLock) unlock();
+		return(rslt);
+	}
+	void clear() {
+		if(autoLock) lock();
+		listUA.clear();
+		if(autoLock) unlock();
+	}
+	size_t size() {
+		return(listUA.size());
+	}
+	void lock() {
+		while(__sync_lock_test_and_set(&this->_sync, 1));
+	}
+	void unlock() {
+		__sync_lock_release(&this->_sync);
+	}
+private:
+	std::vector<UA> listUA;
+	bool autoLock;
+	volatile int _sync;
+};
+
 class ListIP_wb {
 public:
 	ListIP_wb(bool autoLock = true);
@@ -1164,6 +1253,22 @@ public:
 private:
 	ListPhoneNumber white;
 	ListPhoneNumber black;
+};
+
+class ListUA_wb {
+public:
+	ListUA_wb(bool autoLock = true);
+	void addWhite(string &ua);
+	void addWhite(const char *ua);
+	void addBlack(string &ua);
+	void addBlack(const char *ua);
+	bool checkUA(const char *check_ua) {
+		return((!white.size() || white.checkUA(check_ua)) &&
+		       !black.checkUA(check_ua));
+	}
+private:
+	ListUA white;
+	ListUA black;
 };
 
 class ParsePacket {

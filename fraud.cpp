@@ -520,7 +520,11 @@ bool FraudAlert::loadAlert() {
 		 (select group_concat(ip)\
 		  from alerts_groups ag\
 		  join cb_ip_groups g on (g.id=ag.ip_group_id)\
-		  where ag.type = 'ip_blacklist_2' and ag.alerts_id = alerts.id) as fraud_blacklist_ip_2_g\
+		  where ag.type = 'ip_blacklist_2' and ag.alerts_id = alerts.id) as fraud_blacklist_ip_2_g,\
+		 (select group_concat(ua)\
+		  from alerts_groups ag\
+		  join cb_ua_groups g on (g.id=ag.ua_group_id)\
+		  where ag.type = 'ua_whitelist' and ag.alerts_id = alerts.id) as fraud_whitelist_ua_g\
 		 from alerts\
 		 where id = ") + dbIdStr);
 	dbRow = sqlDb->fetchRow();
@@ -552,6 +556,10 @@ bool FraudAlert::loadAlert() {
 		phoneNumberFilter2.addWhite(dbRow["fraud_whitelist_number_2_g"].c_str());
 		phoneNumberFilter2.addBlack(dbRow["fraud_blacklist_number_2"].c_str());
 		phoneNumberFilter2.addBlack(dbRow["fraud_blacklist_number_2_g"].c_str());
+	}
+	if(defFilterUA()) {
+		uaFilter.addWhite(dbRow["fraud_whitelist_ua"].c_str());
+		uaFilter.addWhite(dbRow["fraud_whitelist_ua_g"].c_str());
 	}
 	if(defFraudDef()) {
 		loadFraudDef();
@@ -671,6 +679,9 @@ bool FraudAlert::okFilter(sFraudCallInfo *callInfo) {
 
 bool FraudAlert::okFilter(sFraudEventInfo *eventInfo) {
 	if(this->defFilterIp() && !this->ipFilter.checkIP(eventInfo->src_ip)) {
+		return(false);
+	}
+	if(this->defFilterUA() && !this->uaFilter.checkUA(eventInfo->ua.c_str())) {
 		return(false);
 	}
 	return(true);
@@ -1498,27 +1509,36 @@ void FraudAlerts::endCall(Call *call, u_int64_t at) {
 	callQueue.push(callInfo);
 }
 
-void FraudAlerts::evSipPacket(u_int32_t ip, u_int64_t at) {
+void FraudAlerts::evSipPacket(u_int32_t ip, u_int64_t at, const char *ua, int ua_len) {
 	sFraudEventInfo eventInfo;
 	eventInfo.typeEventInfo = sFraudEventInfo::typeEventInfo_sipPacket;
 	eventInfo.src_ip = htonl(ip);
 	eventInfo.at = at;
+	if(ua && ua_len) {
+		eventInfo.ua = ua_len == -1 ? ua : string(ua, ua_len);
+	}
 	eventQueue.push(eventInfo);
 }
 
-void FraudAlerts::evRegister(u_int32_t ip, u_int64_t at) {
+void FraudAlerts::evRegister(u_int32_t ip, u_int64_t at, const char *ua, int ua_len) {
 	sFraudEventInfo eventInfo;
 	eventInfo.typeEventInfo = sFraudEventInfo::typeEventInfo_register;
 	eventInfo.src_ip = htonl(ip);
 	eventInfo.at = at;
+	if(ua && ua_len) {
+		eventInfo.ua = ua_len == -1 ? ua : string(ua, ua_len);
+	}
 	eventQueue.push(eventInfo);
 }
 
-void FraudAlerts::evRegisterResponse(u_int32_t ip, u_int64_t at) {
+void FraudAlerts::evRegisterResponse(u_int32_t ip, u_int64_t at, const char *ua, int ua_len) {
 	sFraudEventInfo eventInfo;
 	eventInfo.typeEventInfo = sFraudEventInfo::typeEventInfo_registerResponse;
 	eventInfo.src_ip = htonl(ip);
 	eventInfo.at = at;
+	if(ua && ua_len) {
+		eventInfo.ua = ua_len == -1 ? ua : string(ua, ua_len);
+	}
 	eventQueue.push(eventInfo);
 }
 
@@ -1762,7 +1782,7 @@ void refreshFraud() {
 }
 
 void fraudBeginCall(Call *call, timeval tv) {
-	if(fraudAlerts && _fraudAlerts_ready) {
+	if(isFraudReady()) {
 		fraudAlerts_lock();
 		fraudAlerts->beginCall(call, tv.tv_sec * 1000000ull + tv.tv_usec);
 		fraudAlerts_unlock();
@@ -1770,7 +1790,7 @@ void fraudBeginCall(Call *call, timeval tv) {
 }
 
 void fraudConnectCall(Call *call, timeval tv) {
-	if(fraudAlerts && _fraudAlerts_ready) {
+	if(isFraudReady()) {
 		fraudAlerts_lock();
 		fraudAlerts->connectCall(call, tv.tv_sec * 1000000ull + tv.tv_usec);
 		fraudAlerts_unlock();
@@ -1778,7 +1798,7 @@ void fraudConnectCall(Call *call, timeval tv) {
 }
 
 void fraudSeenByeCall(Call *call, timeval tv) {
-	if(fraudAlerts && _fraudAlerts_ready) {
+	if(isFraudReady()) {
 		fraudAlerts_lock();
 		fraudAlerts->seenByeCall(call, tv.tv_sec * 1000000ull + tv.tv_usec);
 		fraudAlerts_unlock();
@@ -1786,33 +1806,33 @@ void fraudSeenByeCall(Call *call, timeval tv) {
 }
 
 void fraudEndCall(Call *call, timeval tv) {
-	if(fraudAlerts && _fraudAlerts_ready) {
+	if(isFraudReady()) {
 		fraudAlerts_lock();
 		fraudAlerts->endCall(call, tv.tv_sec * 1000000ull + tv.tv_usec);
 		fraudAlerts_unlock();
 	}
 }
 
-void fraudSipPacket(u_int32_t ip, timeval tv) {
-	if(fraudAlerts && _fraudAlerts_ready) {
+void fraudSipPacket(u_int32_t ip, timeval tv, const char *ua, int ua_len) {
+	if(isFraudReady()) {
 		fraudAlerts_lock();
-		fraudAlerts->evSipPacket(ip, tv.tv_sec * 1000000ull + tv.tv_usec);
+		fraudAlerts->evSipPacket(ip, tv.tv_sec * 1000000ull + tv.tv_usec, ua, ua_len);
 		fraudAlerts_unlock();
 	}
 }
 
-void fraudRegister(u_int32_t ip, timeval tv) {
-	if(fraudAlerts && _fraudAlerts_ready) {
+void fraudRegister(u_int32_t ip, timeval tv, const char *ua, int ua_len) {
+	if(isFraudReady()) {
 		fraudAlerts_lock();
-		fraudAlerts->evRegister(ip, tv.tv_sec * 1000000ull + tv.tv_usec);
+		fraudAlerts->evRegister(ip, tv.tv_sec * 1000000ull + tv.tv_usec, ua, ua_len);
 		fraudAlerts_unlock();
 	}
 }
 
-void fraudRegisterResponse(u_int32_t ip, u_int64_t at) {
-	if(fraudAlerts && _fraudAlerts_ready) {
+void fraudRegisterResponse(u_int32_t ip, u_int64_t at, const char *ua, int ua_len) {
+	if(isFraudReady()) {
 		fraudAlerts_lock();
-		fraudAlerts->evRegisterResponse(ip, at);
+		fraudAlerts->evRegisterResponse(ip, at, ua, ua_len);
 		fraudAlerts_unlock();
 	}
 }

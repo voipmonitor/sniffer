@@ -486,6 +486,7 @@ struct sFraudEventInfo {
 	eTypeEventInfo typeEventInfo;
 	u_int32_t src_ip;
 	u_int64_t at;
+	string ua;
 };
 
 class FraudAlertInfo {
@@ -562,6 +563,7 @@ protected:
 	virtual bool defFilterIp2() { return(false); }
 	virtual bool defFilterNumber() { return(false); }
 	virtual bool defFilterNumber2() { return(false); }
+	virtual bool defFilterUA() { return(false); }
 	virtual bool defFraudDef() { return(false); }
 	virtual bool defConcuretCallsLimit() { return(false); }
 	virtual bool defTypeChangeLocation() { return(false); }
@@ -579,6 +581,7 @@ protected:
 	ListIP_wb ipFilter2;
 	ListPhoneNumber_wb phoneNumberFilter;
 	ListPhoneNumber_wb phoneNumberFilter2;
+	ListUA_wb uaFilter;
 	unsigned int concurentCallsLimitLocal;
 	unsigned int concurentCallsLimitInternational;
 	unsigned int concurentCallsLimitBoth;
@@ -835,6 +838,7 @@ public:
 	void evEvent(sFraudEventInfo *eventInfo);
 protected:
 	bool defFilterIp() { return(true); }
+	bool defFilterUA() { return(true); }
 	bool defInterval() { return(true); }
 	bool defSuppressRepeatingAlerts() { return(true); }
 private:
@@ -860,6 +864,7 @@ public:
 	void evEvent(sFraudEventInfo *eventInfo);
 protected:
 	bool defFilterIp() { return(true); }
+	bool defFilterUA() { return(true); }
 	bool defInterval() { return(true); }
 	bool defSuppressRepeatingAlerts() { return(true); }
 private:
@@ -938,9 +943,9 @@ public:
 	void connectCall(Call *call, u_int64_t at);
 	void seenByeCall(Call *call, u_int64_t at);
 	void endCall(Call *call, u_int64_t at);
-	void evSipPacket(u_int32_t ip, u_int64_t at);
-	void evRegister(u_int32_t ip, u_int64_t at);
-	void evRegisterResponse(u_int32_t ip, u_int64_t at);
+	void evSipPacket(u_int32_t ip, u_int64_t at, const char *ua, int ua_len);
+	void evRegister(u_int32_t ip, u_int64_t at, const char *ua, int ua_len);
+	void evRegisterResponse(u_int32_t ip, u_int64_t at, const char *ua, int ua_len);
 	void stopPopCallInfoThread(bool wait = false);
 	void refresh();
 private:
@@ -975,10 +980,16 @@ void fraudBeginCall(Call *call, struct timeval tv);
 void fraudConnectCall(Call *call, struct timeval tv);
 void fraudSeenByeCall(Call *call, struct timeval tv);
 void fraudEndCall(Call *call, struct timeval tv);
-void fraudSipPacket(u_int32_t ip, timeval tv);
-void fraudRegister(u_int32_t ip, timeval tv);
-void fraudRegisterResponse(u_int32_t ip, u_int64_t at);
+void fraudSipPacket(u_int32_t ip, timeval tv, const char *ua, int ua_len);
+void fraudRegister(u_int32_t ip, timeval tv, const char *ua, int ua_len);
+void fraudRegisterResponse(u_int32_t ip, u_int64_t at, const char *ua, int ua_len);
 bool isExistsFraudAlerts();
+
+bool isFraudReady() {
+	extern FraudAlerts *fraudAlerts;
+        extern volatile int _fraudAlerts_ready;
+	return(fraudAlerts && _fraudAlerts_ready);
+}
 
 
 #endif

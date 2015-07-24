@@ -1843,7 +1843,7 @@ std::vector<std::string> split(const char *s, std::vector<std::string> delim, bo
 int reg_match(const char *string, const char *pattern, const char *file, int line) {
 	int status;
 	regex_t re;
-	if(regcomp(&re, pattern, REG_EXTENDED | REG_NOSUB) != 0) {
+	if(regcomp(&re, pattern, REG_EXTENDED | REG_NOSUB | REG_ICASE) != 0) {
 		if(file) {
 			syslog(LOG_ERR, "regcomp %s error in reg_match - call from %s : %i", pattern, file, line);
 		} else {
@@ -1859,7 +1859,7 @@ int reg_match(const char *string, const char *pattern, const char *file, int lin
 string reg_replace(const char *str, const char *pattern, const char *replace, const char *file, int line) {
 	int status;
 	regex_t re;
-	if(regcomp(&re, pattern, REG_EXTENDED) != 0) {
+	if(regcomp(&re, pattern, REG_EXTENDED | REG_ICASE) != 0) {
 		if(file) {
 			syslog(LOG_ERR, "regcomp %s error in reg_replace - call from %s : %i", pattern, file, line);
 		} else {
@@ -1937,6 +1937,23 @@ void ListPhoneNumber::addComb(const char *number, ListPhoneNumber *negList) {
 	}
 }
 
+void ListUA::addComb(string &ua, ListUA *negList) {
+	addComb(ua.c_str(), negList);
+}
+
+void ListUA::addComb(const char *ua, ListUA *negList) {
+	vector<string>ua_elems = split(ua, split(",|;|\t|\r|\n", "|"), true);
+	for(size_t i = 0; i < ua_elems.size(); i++) {
+		if(ua_elems[i][0] == '!') {
+			if(negList) {
+				negList->add(ua_elems[i].substr(1).c_str());
+			}
+		} else {
+			add(ua_elems[i].c_str());
+		}
+	}
+}
+
 ListIP_wb::ListIP_wb(bool autoLock)
  : white(autoLock),
    black(autoLock) {
@@ -1977,6 +1994,27 @@ void ListPhoneNumber_wb::addBlack(string &number) {
 
 void ListPhoneNumber_wb::addBlack(const char *number) {
 	black.addComb(number, &white);
+}
+
+ListUA_wb::ListUA_wb(bool autoLock)
+ : white(autoLock),
+   black(autoLock) {
+}
+
+void ListUA_wb::addWhite(string &ua) {
+	white.addComb(ua, &black);
+}
+
+void ListUA_wb::addWhite(const char *ua) {
+	white.addComb(ua, &black);
+}
+
+void ListUA_wb::addBlack(string &ua) {
+	black.addComb(ua, &white);
+}
+
+void ListUA_wb::addBlack(const char *ua) {
+	black.addComb(ua, &white);
 }
 
 
