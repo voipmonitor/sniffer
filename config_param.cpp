@@ -222,7 +222,7 @@ int cConfigItem_yesno::getValue() {
 }
 
 string cConfigItem_yesno::getValueStr(bool configFile) {
-	int val;
+	int val = 0;
 	if(param_bool) {
 		val = *param_bool;
 	}
@@ -341,7 +341,7 @@ int64_t cConfigItem_integer::getValue() {
 }
 
 string cConfigItem_integer::getValueStr(bool configFile) {
-	int64_t val;
+	int64_t val = 0;
 	if(param_int) {
 		val = *param_int;
 	}

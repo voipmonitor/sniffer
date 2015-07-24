@@ -2083,7 +2083,7 @@ int main(int argc, char *argv[]) {
 			} else if(opt_load_query_from_files == 2) {
 				main_init_sqlstore();
 				loadFromQFiles->loadFromQFiles_start();
-				unsigned int counter;
+				unsigned int counter = 0;
 				while(!is_terminating()) {
 					sleep(1);
 					if(!(++counter % 10) && verbosity) {
