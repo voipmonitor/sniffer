@@ -481,10 +481,12 @@ struct sFraudEventInfo {
 	sFraudEventInfo() {
 		typeEventInfo = (eTypeEventInfo)0;
 		src_ip = 0;
+		sip_method = 0;
 		at = 0;
 	}
 	eTypeEventInfo typeEventInfo;
 	u_int32_t src_ip;
+	unsigned sip_method;
 	u_int64_t at;
 	string ua;
 };
@@ -816,15 +818,27 @@ class FraudAlertInfo_spc : public FraudAlertInfo {
 public:
 	FraudAlertInfo_spc(FraudAlert *alert);
 	void set(unsigned int ip, 
-		 unsigned int count);
+		 unsigned int count,
+		 unsigned int count_invite = 0,
+		 unsigned int count_message = 0,
+		 unsigned int count_register = 0);
 	string getJson();
 private:
 	unsigned int ip;
 	unsigned int count;
+	unsigned int count_invite;
+	unsigned int count_message;
+	unsigned int count_register;
 };
 
 class FraudAlert_spc : public FraudAlert {
 private:
+	struct sCounts {
+		u_int64_t count;
+		u_int64_t count_invite;
+		u_int64_t count_message;
+		u_int64_t count_register;
+	};
 	struct sAlertInfo {
 		sAlertInfo(u_int64_t count = 0, u_int64_t at = 0) {
 			this->count = count;
@@ -844,7 +858,7 @@ protected:
 private:
 	bool checkOkAlert(u_int32_t ip, u_int64_t count, u_int64_t at);
 private:
-	map<u_int32_t, u_int64_t> count;
+	map<u_int32_t, sCounts> count;
 	u_int64_t start_interval;
 	map<u_int32_t, sAlertInfo> alerts;
 };
@@ -943,7 +957,7 @@ public:
 	void connectCall(Call *call, u_int64_t at);
 	void seenByeCall(Call *call, u_int64_t at);
 	void endCall(Call *call, u_int64_t at);
-	void evSipPacket(u_int32_t ip, u_int64_t at, const char *ua, int ua_len);
+	void evSipPacket(u_int32_t ip, unsigned sip_method, u_int64_t at, const char *ua, int ua_len);
 	void evRegister(u_int32_t ip, u_int64_t at, const char *ua, int ua_len);
 	void evRegisterResponse(u_int32_t ip, u_int64_t at, const char *ua, int ua_len);
 	void stopPopCallInfoThread(bool wait = false);
@@ -980,7 +994,7 @@ void fraudBeginCall(Call *call, struct timeval tv);
 void fraudConnectCall(Call *call, struct timeval tv);
 void fraudSeenByeCall(Call *call, struct timeval tv);
 void fraudEndCall(Call *call, struct timeval tv);
-void fraudSipPacket(u_int32_t ip, timeval tv, const char *ua, int ua_len);
+void fraudSipPacket(u_int32_t ip, unsigned sip_method, timeval tv, const char *ua, int ua_len);
 void fraudRegister(u_int32_t ip, timeval tv, const char *ua, int ua_len);
 void fraudRegisterResponse(u_int32_t ip, u_int64_t at, const char *ua, int ua_len);
 bool isExistsFraudAlerts();

@@ -2194,12 +2194,19 @@ Call *process_packet(bool is_ssl, u_int64_t packet_number,
 			}
 		}
 		
+		if(parsePacket && parsePacket->_getSipMethod) {
+			sip_method = parsePacket->sip_method;
+			sip_response = parsePacket->sip_response;
+		} else {
+			sip_method = process_packet__parse_sip_method(data, datalen, &sip_response);
+		}
+		
 		if(issip) {
 			if(opt_enable_fraud && isFraudReady()) {
 				char *ua = NULL;
 				unsigned long ua_len = 0;
 				ua = gettag(data, datalen, "\nUser-Agent:", &ua_len);
-				fraudSipPacket(saddr, header->ts, ua, ua_len);
+				fraudSipPacket(saddr, sip_method, header->ts, ua, ua_len);
 			}
 #if 0
 //this block was moved at the end so it will mirror only relevant SIP belonging to real calls 
@@ -2221,12 +2228,6 @@ Call *process_packet(bool is_ssl, u_int64_t packet_number,
 			}
 		}
 
-		if(parsePacket && parsePacket->_getSipMethod) {
-			sip_method = parsePacket->sip_method;
-			sip_response = parsePacket->sip_response;
-		} else {
-			sip_method = process_packet__parse_sip_method(data, datalen, &sip_response);
-		}
 		switch(sip_method) {
 		case REGISTER:
 			counter_sip_register_packets++;

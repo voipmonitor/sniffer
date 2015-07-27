@@ -1196,9 +1196,15 @@ FraudAlertInfo_spc::FraudAlertInfo_spc(FraudAlert *alert)
 }
 
 void FraudAlertInfo_spc::set(unsigned int ip, 
-			     unsigned int count) {
+			     unsigned int count,
+			     unsigned int count_invite,
+			     unsigned int count_message,
+			     unsigned int count_register) {
 	this->ip = ip;
 	this->count = count;
+	this->count_invite = count_invite;
+	this->count_message = count_message;
+	this->count_register = count_register;
 }
 
 string FraudAlertInfo_spc::getJson() {
@@ -1206,6 +1212,9 @@ string FraudAlertInfo_spc::getJson() {
 	this->setAlertJsonBase(&json);
 	json.add("ip", inet_ntostring(ip));
 	json.add("count", count);
+	json.add("count_invite", count_invite);
+	json.add("count_message", count_message);
+	json.add("count_register", count_register);
 	string country_code = geoIP_country->getCountry(ip);
 	if(!country_code.empty()) {
 		json.add("country_code", country_code);
@@ -1223,23 +1232,37 @@ void FraudAlert_spc::evEvent(sFraudEventInfo *eventInfo) {
 	if(eventInfo->typeEventInfo == sFraudEventInfo::typeEventInfo_sipPacket &&
 	   this->okFilter(eventInfo) &&
 	   this->okDayHour(eventInfo)) {
-		map<u_int32_t, u_int64_t>::iterator iter = count.find(eventInfo->src_ip);
+		map<u_int32_t, sCounts>::iterator iter = count.find(eventInfo->src_ip);
 		if(iter == count.end()) {
-			count[eventInfo->src_ip] = 1;
+			count[eventInfo->src_ip].count = 1;
 		} else {
-			++count[eventInfo->src_ip];
+			++count[eventInfo->src_ip].count;
+		}
+		switch(eventInfo->sip_method) {
+		case INVITE:
+			++count[eventInfo->src_ip].count_invite;
+			break;
+		case MESSAGE:
+			++count[eventInfo->src_ip].count_message;
+			break;
+		case REGISTER:
+			++count[eventInfo->src_ip].count_register;
+			break;
 		}
 	}
 	if(!start_interval) {
 		start_interval = eventInfo->at;
 	} else if(eventInfo->at - start_interval > intervalLength * 1000000ull) {
-		map<u_int32_t, u_int64_t>::iterator iter;
+		map<u_int32_t, sCounts>::iterator iter;
 		for(iter = count.begin(); iter != count.end(); iter++) {
-			if(iter->second >= intervalLimit &&
-			   this->checkOkAlert(iter->first, iter->second, eventInfo->at)) {
+			if(iter->second.count >= intervalLimit &&
+			   this->checkOkAlert(iter->first, iter->second.count, eventInfo->at)) {
 				FraudAlertInfo_spc *alertInfo = new FraudAlertInfo_spc(this);
 				alertInfo->set(iter->first,
-					       iter->second);
+					       iter->second.count,
+					       iter->second.count_invite,
+					       iter->second.count_message,
+					       iter->second.count_register);
 				this->evAlert(alertInfo);
 			}
 		}
@@ -1509,10 +1532,11 @@ void FraudAlerts::endCall(Call *call, u_int64_t at) {
 	callQueue.push(callInfo);
 }
 
-void FraudAlerts::evSipPacket(u_int32_t ip, u_int64_t at, const char *ua, int ua_len) {
+void FraudAlerts::evSipPacket(u_int32_t ip, unsigned sip_method, u_int64_t at, const char *ua, int ua_len) {
 	sFraudEventInfo eventInfo;
 	eventInfo.typeEventInfo = sFraudEventInfo::typeEventInfo_sipPacket;
 	eventInfo.src_ip = htonl(ip);
+	eventInfo.sip_method = sip_method;
 	eventInfo.at = at;
 	if(ua && ua_len) {
 		eventInfo.ua = ua_len == -1 ? ua : string(ua, ua_len);
@@ -1813,10 +1837,10 @@ void fraudEndCall(Call *call, timeval tv) {
 	}
 }
 
-void fraudSipPacket(u_int32_t ip, timeval tv, const char *ua, int ua_len) {
+void fraudSipPacket(u_int32_t ip, unsigned sip_method, timeval tv, const char *ua, int ua_len) {
 	if(isFraudReady()) {
 		fraudAlerts_lock();
-		fraudAlerts->evSipPacket(ip, tv.tv_sec * 1000000ull + tv.tv_usec, ua, ua_len);
+		fraudAlerts->evSipPacket(ip, sip_method, tv.tv_sec * 1000000ull + tv.tv_usec, ua, ua_len);
 		fraudAlerts_unlock();
 	}
 }
