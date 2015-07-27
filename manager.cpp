@@ -550,31 +550,31 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 				sprintf(filename, "%s/rrd/2db-PS.rrd", opt_chdir);
 				rrd_vm_create_graph_PS_command(filename, fromat, toat, color, resx, resy, slope, icon, dstfile, sendcommand, sizeof(sendcommand));
 			} else if (!strncmp(manager_args[1], "SQLq", 5)) {
-				sprintf(filename, "%s/rrd/db-SQL.rrd", opt_chdir);
+				sprintf(filename, "%s/rrd/2db-SQL.rrd", opt_chdir);
 				rrd_vm_create_graph_SQLq_command(filename, fromat, toat, color, resx, resy, slope, icon, dstfile, sendcommand, sizeof(sendcommand));
 			} else if (!strncmp(manager_args[1], "SQLf", 5)) {
-				sprintf(filename, "%s/rrd/db-SQL.rrd", opt_chdir);
+				sprintf(filename, "%s/rrd/2db-SQL.rrd", opt_chdir);
 				rrd_vm_create_graph_SQLf_command(filename, fromat, toat, color, resx, resy, slope, icon, dstfile, sendcommand, sizeof(sendcommand));
 			} else if (!strncmp(manager_args[1], "tCPU", 5)) {
-				sprintf(filename, "%s/rrd/db-tCPU.rrd", opt_chdir);
+				sprintf(filename, "%s/rrd/2db-tCPU.rrd", opt_chdir);
 				rrd_vm_create_graph_tCPU_command(filename, fromat, toat, color, resx, resy, slope, icon, dstfile, sendcommand, sizeof(sendcommand));
 			} else if (!strncmp(manager_args[1], "drop", 5)) {
-				sprintf(filename, "%s/rrd/db-drop.rrd", opt_chdir);
+				sprintf(filename, "%s/rrd/2db-drop.rrd", opt_chdir);
 				rrd_vm_create_graph_drop_command(filename, fromat, toat, color, resx, resy, slope, icon, dstfile, sendcommand, sizeof(sendcommand));
 			} else if (!strncmp(manager_args[1], "speed", 5)) {
-				sprintf(filename, "%s/rrd/db-speedmbs.rrd", opt_chdir);
+				sprintf(filename, "%s/rrd/2db-speedmbs.rrd", opt_chdir);
 				rrd_vm_create_graph_speed_command(filename, fromat, toat, color, resx, resy, slope, icon, dstfile, sendcommand, sizeof(sendcommand));
 			} else if (!strncmp(manager_args[1], "heap", 5)) {
-				sprintf(filename, "%s/rrd/db-heap.rrd", opt_chdir);
+				sprintf(filename, "%s/rrd/2db-heap.rrd", opt_chdir);
 				rrd_vm_create_graph_heap_command(filename, fromat, toat, color, resx, resy, slope, icon, dstfile, sendcommand, sizeof(sendcommand));
 			} else if (!strncmp(manager_args[1], "calls", 6)) {
-				sprintf(filename, "%s/rrd/db-callscounter.rrd", opt_chdir);
+				sprintf(filename, "%s/rrd/2db-callscounter.rrd", opt_chdir);
 				rrd_vm_create_graph_calls_command(filename, fromat, toat, color, resx ,resy, slope, icon, dstfile, sendcommand, sizeof(sendcommand));
 			} else if (!strncmp(manager_args[1], "tacCPU", 7)) {
-				sprintf(filename, "%s/rrd/db-tacCPU.rrd", opt_chdir);
+				sprintf(filename, "%s/rrd/2db-tacCPU.rrd", opt_chdir);
 				rrd_vm_create_graph_tacCPU_command(filename, fromat, toat, color, resx, resy, slope, icon, dstfile, sendcommand, sizeof(sendcommand));
 			} else if (!strncmp(manager_args[1], "RSSVSZ", 7)) {
-				sprintf(filename, "%s/rrd/db-RSSVSZ.rrd", opt_chdir);
+				sprintf(filename, "%s/rrd/2db-RSSVSZ.rrd", opt_chdir);
 				rrd_vm_create_graph_RSSVSZ_command(filename, fromat, toat, color, resx, resy, slope, icon, dstfile, sendcommand, sizeof(sendcommand));
 			} else {
 				snprintf(sendbuf, BUFSIZE, "Error: Graph type %s isn't known\n\tGraph types: PS PSC PSS PSSM PSSR PSR PSA SQLq SQLf tCPU drop speed heap calls tacCPU RSSVSZ\n", manager_args[1]);	

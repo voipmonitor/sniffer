@@ -1064,8 +1064,8 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 	double rrdtCPU_t1 = 0.0;
 	double rrdtCPU_t2 = 0.0;
 //rrd tacCPU consumption file db-tacCPU.rrd
-	int rrdtacCPU_nmt = 0;        //number of threads
-	double rrdtacCPU_lastt = 0.0; //last thread load
+	double rrdtacCPU_zip = 0.0;     //number of threads
+	double rrdtacCPU_tar = 0.0;	//last thread load
 //rrd mem consumption file db-RSSVSZ.rrd
 	double rrdRSSVSZ_rss = 0;
 	double rrdRSSVSZ_vsize = 0;
@@ -1449,6 +1449,9 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 					okPercTarCpu = true;
 				}
 				outStr << setprecision(1) << tar_cpu;
+				if (opt_rrd) {
+					rrdtacCPU_tar += tar_cpu;
+				}
 			}
 		}
 		if(okPercTarCpu) {
@@ -1544,12 +1547,11 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 				outStrStat << '|';
 			}
 			outStrStat << setprecision(1) << v_tac_cpu[i];
+			if (opt_rrd) {
+				rrdtacCPU_zip += v_tac_cpu[i];
+			}
 		}
 		outStrStat << "%] ";
-		if (opt_rrd) {
-			rrdtacCPU_nmt = v_tac_cpu.size();
-			rrdtacCPU_lastt = last_tac_cpu;
-		}
 	}
 	extern int opt_pcap_dump_asyncwrite_limit_new_thread;
 	if(last_tac_cpu > opt_pcap_dump_asyncwrite_limit_new_thread) {
@@ -1642,23 +1644,23 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 			char filename[1000];
 			sprintf(filename, "%s/rrd/" ,opt_chdir);
 			mkdir_r(filename, 0777);
-			sprintf(filename, "%s/rrd/db-drop.rrd", opt_chdir);
+			sprintf(filename, "%s/rrd/2db-drop.rrd", opt_chdir);
 			vm_rrd_create_rrddrop(filename);
-			sprintf(filename, "%s/rrd/db-heap.rrd", opt_chdir);
+			sprintf(filename, "%s/rrd/2db-heap.rrd", opt_chdir);
 			vm_rrd_create_rrdheap(filename);
 			sprintf(filename, "%s/rrd/2db-PS.rrd", opt_chdir);
 			vm_rrd_create_rrdPS(filename);
-			sprintf(filename, "%s/rrd/db-SQL.rrd", opt_chdir);
+			sprintf(filename, "%s/rrd/2db-SQL.rrd", opt_chdir);
 			vm_rrd_create_rrdSQL(filename);
-			sprintf(filename, "%s/rrd/db-tCPU.rrd", opt_chdir);
+			sprintf(filename, "%s/rrd/2db-tCPU.rrd", opt_chdir);
 			vm_rrd_create_rrdtCPU(filename);
-			sprintf(filename, "%s/rrd/db-tacCPU.rrd", opt_chdir);
+			sprintf(filename, "%s/rrd/2db-tacCPU.rrd", opt_chdir);
 			vm_rrd_create_rrdtacCPU(filename);
-			sprintf(filename, "%s/rrd/db-RSSVSZ.rrd", opt_chdir);
+			sprintf(filename, "%s/rrd/2db-RSSVSZ.rrd", opt_chdir);
 			vm_rrd_create_rrdRSSVSZ(filename);
-			sprintf(filename, "%s/rrd/db-speedmbs.rrd", opt_chdir);
+			sprintf(filename, "%s/rrd/2db-speedmbs.rrd", opt_chdir);
 			vm_rrd_create_rrdspeedmbs(filename);
-			sprintf(filename, "%s/rrd/db-callscounter.rrd", opt_chdir);
+			sprintf(filename, "%s/rrd/2db-callscounter.rrd", opt_chdir);
 			vm_rrd_create_rrdcallscounter(filename);
 			opt_rrd ++;
 		} else {
@@ -1668,14 +1670,14 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 			//update rrddrop
 			cmdUpdate << "N:" << rrddrop_exceeded;
 			cmdUpdate <<  ":" << rrddrop_packets;
-			sprintf(filename, "%s/rrd/db-drop.rrd", opt_chdir);
+			sprintf(filename, "%s/rrd/2db-drop.rrd", opt_chdir);
 			vm_rrd_update(filename, cmdUpdate.str().c_str());
 
 			//update rrdheap;
 			cmdUpdate.str(std::string());
 			cmdUpdate << "N:" << rrdheap_buffer;
 			cmdUpdate <<  ":" << rrdheap_ratio;
-			sprintf(filename, "%s/rrd/db-heap.rrd", opt_chdir);
+			sprintf(filename, "%s/rrd/2db-heap.rrd", opt_chdir);
 			vm_rrd_update(filename, cmdUpdate.str().c_str());
 
 			//update rrdPS;
@@ -1704,7 +1706,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 			 else cmdUpdate <<  ":" << rrdSQLq_Cl;
 			if (rrdSQLq_H < 0) cmdUpdate <<  ":U";
 			 else cmdUpdate <<  ":" << rrdSQLq_H;
-			sprintf(filename, "%s/rrd/db-SQL.rrd", opt_chdir);
+			sprintf(filename, "%s/rrd/2db-SQL.rrd", opt_chdir);
 			vm_rrd_update(filename, cmdUpdate.str().c_str());
 
 			//update rrdtCPU;
@@ -1712,32 +1714,33 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 			cmdUpdate << "N:" << rrdtCPU_t0;
 			cmdUpdate <<  ":" << rrdtCPU_t1;
 			cmdUpdate <<  ":" << rrdtCPU_t2;
-			sprintf(filename, "%s/rrd/db-tCPU.rrd", opt_chdir);
+			sprintf(filename, "%s/rrd/2db-tCPU.rrd", opt_chdir);
 			vm_rrd_update(filename, cmdUpdate.str().c_str());
 
 			//update rrdtacCPU;
 			cmdUpdate.str(std::string());
-			cmdUpdate << "N:" << ((double) (rrdtacCPU_nmt) + (double)((double) rrdtacCPU_lastt / 150.0));
-			sprintf(filename, "%s/rrd/db-tacCPU.rrd", opt_chdir);
+			cmdUpdate << "N:" << rrdtacCPU_zip;
+			cmdUpdate <<  ":" << rrdtacCPU_tar;
+			sprintf(filename, "%s/rrd/2db-tacCPU.rrd", opt_chdir);
 			vm_rrd_update(filename, cmdUpdate.str().c_str());
 
 			//update rrdRSSVSZ;
 			cmdUpdate.str(std::string());
 			cmdUpdate << "N:" << rrdRSSVSZ_rss;
 			cmdUpdate <<  ":" << rrdRSSVSZ_vsize;
-			sprintf(filename, "%s/rrd/db-RSSVSZ.rrd", opt_chdir);
+			sprintf(filename, "%s/rrd/2db-RSSVSZ.rrd", opt_chdir);
 			vm_rrd_update(filename, cmdUpdate.str().c_str());
 
 			//update rrdspeedmbs;
 			cmdUpdate.str(std::string());
 			cmdUpdate << "N:" << rrdspeedmbs;
-			sprintf(filename, "%s/rrd/db-speedmbs.rrd", opt_chdir);
+			sprintf(filename, "%s/rrd/2db-speedmbs.rrd", opt_chdir);
 			vm_rrd_update(filename, cmdUpdate.str().c_str());
 
 			//update rrdcallscounter;
 			cmdUpdate.str(std::string());
 			cmdUpdate << "N:" << rrdcallscounter;
-			sprintf(filename, "%s/rrd/db-callscounter.rrd", opt_chdir);
+			sprintf(filename, "%s/rrd/2db-callscounter.rrd", opt_chdir);
 			vm_rrd_update(filename, cmdUpdate.str().c_str());
 		}
 	}
