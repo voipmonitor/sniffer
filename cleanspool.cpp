@@ -1408,6 +1408,10 @@ long long reindex_date_hour(string date, int h, bool readOnly, map<string, long 
 		rtpfile->close();
 		graphfile->close();
 		audiofile->close();
+		delete sipfile;
+		delete rtpfile;
+		delete graphfile;
+		delete audiofile;
 		if(sipsize == 0) {
 			unlink((string("filesindex/sipsize/") + ymdh).c_str());
 		}
