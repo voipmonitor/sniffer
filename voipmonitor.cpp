@@ -4302,6 +4302,7 @@ void cConfig::evSetConfigItem(cConfigItem *configItem) {
 		case 0:
 			opt_saveGRAPH = 0;
 			opt_gzipGRAPH = FileZipHandler::compress_na;
+			break;
 		case 1:
 			opt_saveGRAPH = 1;
 			opt_gzipGRAPH = FileZipHandler::compress_na;
