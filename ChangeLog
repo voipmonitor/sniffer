@@ -1,3 +1,10 @@
+11.10 30.07.2015
+================
+- fix memory leak when doing reindex files - all versions (around 40MB per reindex)
+- fraud SIP flood rule can now count SIP request distribution
+- fraud SIP REGISTER can now filter user agent 
+
+
 11.9.4 24.07.2015
 =================
 - fix saverfc2833=yes option in case savertp=no or savertp=header - DTMF were still truncated despite the saverfc2833 was enabled.  
