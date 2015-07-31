@@ -4270,6 +4270,7 @@ void cConfig::evSetConfigItem(cConfigItem *configItem) {
 		case 0:
 			opt_saveRTP = 0;
 			opt_onlyRTPheader = 0;
+			break;
 		case 1:
 			opt_saveRTP = 1;
 			opt_onlyRTPheader = 0;

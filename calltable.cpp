@@ -137,6 +137,7 @@ extern CustomHeaders *custom_headers_cdr;
 extern CustomHeaders *custom_headers_message;
 extern int opt_custom_headers_last_value;
 extern bool _save_sip_history;
+extern int opt_saveudptl;
 
 volatile int calls_counter = 0;
 
@@ -981,7 +982,7 @@ read:
 	
 end:
 	if(enable_save_packet && opt_rtpsave_threaded) {
-		if((this->silencerecording || (opt_onlyRTPheader && !(this->flags & FLAG_SAVERTP))) && !this->isfax && !record_dtmf) {
+		if((this->silencerecording || (this->flags & FLAG_SAVERTPHEADER)) && !this->isfax && !record_dtmf) {
 			if(datalen >= RTP_FIXED_HEADERLEN &&
 			   header->caplen > (unsigned)(datalen - RTP_FIXED_HEADERLEN)) {
 				unsigned int tmp_u32 = header->caplen;
@@ -990,7 +991,7 @@ end:
 					    false, dlt, sensor_id);
 				header->caplen = tmp_u32;
 			}
-		} else {
+		} else if((this->flags & FLAG_SAVERTP) || this->isfax || record_dtmf) {
 			save_packet(this, header, packet, saddr, sport, daddr, dport, istcp, NULL, (char*)data, datalen, dataoffset, TYPE_RTP, 
 				    false, dlt, sensor_id);
 		}
