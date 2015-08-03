@@ -1,3 +1,8 @@
+11.10.1 03.08.2015
+==================
+- fix configuration option savertp = no which was still recording RTP (fixes >= 11.9.4) 
+
+
 11.10 30.07.2015
 ================
 - fix memory leak when doing reindex files - all versions (around 40MB per reindex)
