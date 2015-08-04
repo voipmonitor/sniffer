@@ -4034,6 +4034,42 @@ else
 $as_echo "$as_me: Unable to find lzma. apt-get install liblzma-dev | yum install lzma-devel" >&6;}
 fi
 
+{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for main in -llzo2" >&5
+$as_echo_n "checking for main in -llzo2... " >&6; }
+if ${ac_cv_lib_lzo2_main+:} false; then :
+  $as_echo_n "(cached) " >&6
+else
+  ac_check_lib_save_LIBS=$LIBS
+LIBS="-llzo2  $LIBS"
+cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+
+
+int
+main ()
+{
+return main ();
+  ;
+  return 0;
+}
+_ACEOF
+if ac_fn_c_try_link "$LINENO"; then :
+  ac_cv_lib_lzo2_main=yes
+else
+  ac_cv_lib_lzo2_main=no
+fi
+rm -f core conftest.err conftest.$ac_objext \
+    conftest$ac_exeext conftest.$ac_ext
+LIBS=$ac_check_lib_save_LIBS
+fi
+{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $ac_cv_lib_lzo2_main" >&5
+$as_echo "$ac_cv_lib_lzo2_main" >&6; }
+if test "x$ac_cv_lib_lzo2_main" = xyes; then :
+  HAVE_LIBLZO=1
+else
+  as_fn_error $? "Unable to find lzo. apt-get install liblzo2-dev | yum install lzo-devel" "$LINENO" 5
+fi
+
 { $as_echo "$as_me:${as_lineno-$LINENO}: checking for gnutls_init in -lgnutls" >&5
 $as_echo_n "checking for gnutls_init in -lgnutls... " >&6; }
 if ${ac_cv_lib_gnutls_gnutls_init+:} false; then :

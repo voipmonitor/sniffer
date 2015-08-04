@@ -863,8 +863,9 @@ CompressStream::eTypeCompress CompressStream::convTypeCompress(const char *typeC
 	#ifdef HAVE_LIBLZMA
 	else if(!strcmp(_compress_method, "lzma")) {
 		return(CompressStream::lzma);
+	}
 	#endif //HAVE_LIBLZMA
-	} else if(!strcmp(_compress_method, "snappy")) {
+	else if(!strcmp(_compress_method, "snappy")) {
 		return(CompressStream::snappy);
 	} 
 	#ifdef HAVE_LIBLZO
