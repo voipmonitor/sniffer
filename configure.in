@@ -107,6 +107,13 @@ if test "x$HAVE_LIBLZMA" = "x1"; then
 	HAVE_LIBLZMA_T=yes
 fi
 
+HAVE_LIBLZO_T=no
+if test "x$HAVE_LIBLZO" = "x1"; then 
+	AC_DEFINE([HAVE_LIBLZO], [1], [Define if using liblzo])
+	AC_SUBST([LIBLZO],["-llzo2"])
+	HAVE_LIBLZO_T=yes
+fi
+
 HAVE_LIBSSH_T=no
 if test "x$HAVE_LIBSSH" = "x1"; then 
 	AC_DEFINE([HAVE_LIBSSH], [1], [Define if using libss])

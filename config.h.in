@@ -21,6 +21,9 @@
 /* Define if using liblzma */
 #undef HAVE_LIBLZMA
 
+/* Define if using liblzo */
+#undef HAVE_LIBLZO
+
 /* Define to 1 if you have the `m' library (-lm). */
 #undef HAVE_LIBM
 

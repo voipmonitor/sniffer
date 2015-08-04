@@ -591,6 +591,7 @@ LIBTCMALLOC
 LIBGNUTLSSTATIC
 LIBGNUTLS
 LIBSSH
+LIBLZO
 LIBLZMA
 MYSQLINCLUDE
 MYSQLLIB
@@ -4123,6 +4124,16 @@ $as_echo "#define HAVE_LIBLZMA 1" >>confdefs.h
 	LIBLZMA="-llzma"
 
 	HAVE_LIBLZMA_T=yes
+fi
+
+HAVE_LIBLZO_T=no
+if test "x$HAVE_LIBLZO" = "x1"; then
+
+$as_echo "#define HAVE_LIBLZO 1" >>confdefs.h
+
+	LIBLZO="-llzo2"
+
+	HAVE_LIBLZO_T=yes
 fi
 
 HAVE_LIBSSH_T=no
