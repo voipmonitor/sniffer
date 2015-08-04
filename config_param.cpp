@@ -1124,25 +1124,10 @@ cConfigItem_type_compress::cConfigItem_type_compress(const char* name, FileZipHa
 
 string cConfigItem_type_compress::getValueStr(bool configFile) {
 	if(param_type_compress_cs) {
-		switch(*param_type_compress_cs) {
-		case CompressStream::zip:
-			return("zip");
-		case CompressStream::snappy:
-			return("snappy");
-		case CompressStream::lz4:
-			return("lz4");
-		case CompressStream::lz4_stream:
-			return("lz4_stream");
-		default:
-			return("no");
-		}
+		return(CompressStream::convTypeCompress(*param_type_compress_cs));
 	}
 	if(param_type_compress_fzh) {
-		if(*param_type_compress_fzh == FileZipHandler::gzip) {
-			return("zip");
-		} else {
-			return("no");
-		}
+		return(FileZipHandler::convTypeCompress(*param_type_compress_fzh));
 	}
 	return("");
 }

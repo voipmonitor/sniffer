@@ -458,8 +458,8 @@ Tar::tar_read(const char *filename, const char *endFilename, u_int32_t recordId,
 	}
 	delete [] read_buffer;
 	delete decompressStream;
-	if((this->readData.send_parameters_client || this->readData.send_parameters_sshchannel) && this->readData.compressStream) {
-		this->readData.compressStream->compress(NULL, 0, true, this->readData.compressStream);
+	if(this->readData.compressStreamToGzip) {
+		this->readData.compressStreamToGzip->compress(NULL, 0, true, &this->readData);
 	}
 	this->readData.term();
 }
@@ -545,19 +545,19 @@ Tar::tar_read_file_ev(tar_header fileHeader, char *data, u_int32_t pos, u_int32_
 		return;
 	}
 	if(len) {
-		if(this->readData.send_parameters_client || this->readData.send_parameters_sshchannel) {
-			if(this->readData.compressStream) {
-				this->readData.compressStream->compress(data, len, false, this->readData.compressStream);
-				if(this->readData.compressStream->isError()) {
-					this->readData.error = true;
-				}
-			} else {
-				if(_sendvm(this->readData.send_parameters_client, this->readData.send_parameters_sshchannel, data, len, 0) == -1) {
-					this->readData.error = true;
-				}
-			}
-		} else if(this->readData.output_file_handle) {
-			fwrite(data, len, 1, this->readData.output_file_handle);
+		if(!this->readData.decompressStreamFromLzo) {
+			this->readData.decompressStreamFromLzo = new CompressStream(CompressStream::compress_auto, 0, 0);
+			this->readData.decompressStreamFromLzo->enableAutoPrefixFile();
+			this->readData.decompressStreamFromLzo->enableForceStream();
+		}
+		if(!this->readData.compressStreamToGzip) {
+			this->readData.compressStreamToGzip = new CompressStream(this->readData.send_parameters_zip ? CompressStream::gzip : CompressStream::compress_na, 0, 0);
+		}
+		if(this->readData.decompressStreamFromLzo->isError() ||
+		   this->readData.compressStreamToGzip->isError()) {
+			this->readData.error = true;
+		} else {
+			this->readData.decompressStreamFromLzo->decompress(data, len, 0, false, &this->readData);
 		}
 	}
 	if(*fileHeader.name && !len) {
@@ -901,6 +901,23 @@ void Tar::addtofilesqueue() {
 
 Tar::~Tar() {
 	tar_close();
+}
+
+bool Tar::ReadData::decompress_ev(char *data, u_int32_t len) {
+	this->compressStreamToGzip->compress(data, len, false, this);
+	return(true);
+}
+
+bool Tar::ReadData::compress_ev(char *data, u_int32_t len, u_int32_t decompress_len, bool format_data) {
+	if(this->output_file_handle) {
+		fwrite(data, len, 1, this->output_file_handle);
+	} else if(this->send_parameters_client || this->send_parameters_sshchannel) {
+		if(_sendvm(this->send_parameters_client, this->send_parameters_sshchannel, data, len, 0) == -1) {
+			this->compressStreamToGzip->setError("send error");
+			return(false);
+		}
+	}
+	return(true);
 }
 
 void			   

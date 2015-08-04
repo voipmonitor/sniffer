@@ -14,6 +14,9 @@
 #ifdef HAVE_LIBLZ4
 #include <lz4.h>
 #endif //HAVE_LIBLZ4
+#ifdef HAVE_LIBLZO
+#include <lzo/lzo1x.h>
+#endif //HAVE_LIBLZO
 #include <snappy-c.h>
 
 
@@ -145,7 +148,7 @@ public:
 
 class CompressStream_baseEv {
 public:
-	virtual bool compress_ev(char *data, u_int32_t len, u_int32_t decompress_len) { return(true); }
+	virtual bool compress_ev(char *data, u_int32_t len, u_int32_t decompress_len, bool format_data = false) { return(true); }
 	virtual bool decompress_ev(char *data, u_int32_t len) { return(true); }
 };
 
@@ -156,15 +159,23 @@ public:
 		zip,
 		gzip,
 		lzma,
+		snappy,
+		lzo,
 		lz4,
 		lz4_stream,
-		snappy
+		compress_auto
+	};
+	struct sChunkSizeInfo {
+		u_int32_t size;
+		u_int32_t compress_size;
 	};
 public:
 	CompressStream(eTypeCompress typeCompress, u_int32_t compressBufferLength, u_int32_t maxDataLength);
 	virtual ~CompressStream();
 	void setZipLevel(int zipLevel);
 	void setLzmaLevel(int lzmaLevel);
+	void enableAutoPrefixFile();
+	void enableForceStream();
 	void setSendParameters(int client, void *sshchannel);
 	void initCompress();
 	void initDecompress(u_int32_t dataLen);
@@ -172,6 +183,12 @@ public:
 	void termDecompress();
 	bool compress(char *data, u_int32_t len, bool flush, CompressStream_baseEv *baseEv);
 	bool decompress(char *data, u_int32_t len, u_int32_t decompress_len, bool flush, CompressStream_baseEv *baseEv, u_int32_t *use_len = NULL);
+	bool isNativeStream() {
+		return(typeCompress == compress_na ||
+		       typeCompress == zip ||
+		       typeCompress == gzip ||
+		       typeCompress == lzma);
+	}
 	void setError(const char *errorString) {
 		if(errorString && *errorString) {
 			this->errorString = errorString;
@@ -193,10 +210,10 @@ public:
 		return(errorString);
 	}
 	static eTypeCompress convTypeCompress(const char *typeCompress);
+	static const char *convTypeCompress(eTypeCompress typeCompress);
 private:
 	void createCompressBuffer();
 	void createDecompressBuffer(u_int32_t bufferLen);
-	bool compress_ev(char *data, u_int32_t len, u_int32_t decompress_len);
 private:
 	eTypeCompress typeCompress;
 	char *compressBuffer;
@@ -215,9 +232,17 @@ private:
 	LZ4_stream_t *lz4Stream;
 	LZ4_streamDecode_t *lz4StreamDecode;
 	#endif //HAVE_LIBLZ4
+	#ifdef HAVE_LIBLZO
+	u_char *lzoWrkmem;
+	u_char *lzoWrkmemDecompress;
+	class SimpleBuffer *lzoDecompressData;
+	#endif //HAVE_LIBLZO
+	class SimpleBuffer *snappyDecompressData;
 	string errorString;
 	int zipLevel;
 	int lzmaLevel;
+	bool autoPrefixFile;
+	bool forceStream;
 	u_int32_t processed_len;
 	int sendParameter_client;
 	void *sendParameter_sshchannel;
@@ -332,7 +357,7 @@ public:
 	bool isNewLastAddTimeForTar() {
 		return(last_add_time >= last_add_time_tar);
 	}
-	virtual bool compress_ev(char *data, u_int32_t len, u_int32_t decompress_len);
+	virtual bool compress_ev(char *data, u_int32_t len, u_int32_t decompress_len, bool format_data = false);
 	virtual bool decompress_ev(char *data, u_int32_t len);
 	void chunkIterate(ChunkBuffer_baseIterate *chunkbufferIterateEv, bool freeChunks = false, bool enableContinue = false, u_int32_t limitLength = 0);
 	u_int32_t getChunkIterateSafeLimitLength(u_int32_t limitLength);

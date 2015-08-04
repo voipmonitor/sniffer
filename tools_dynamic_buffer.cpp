@@ -76,8 +76,16 @@ CompressStream::CompressStream(eTypeCompress typeCompress, u_int32_t compressBuf
 	this->lz4Stream = NULL;
 	this->lz4StreamDecode = NULL;
 	#endif //HAVE_LIBLZ4
+	#ifdef HAVE_LIBLZO
+	this->lzoWrkmem = NULL;
+	this->lzoWrkmemDecompress = NULL;
+	this->lzoDecompressData = NULL;
+	#endif //HAVE_LIBLZO
+	this->snappyDecompressData = NULL;
 	this->zipLevel = Z_DEFAULT_COMPRESSION;
 	this->lzmaLevel = 6;
+	this->autoPrefixFile = false;
+	this->forceStream = false;
 	this->processed_len = 0;
 	this->sendParameter_client = 0;
 	this->sendParameter_sshchannel = NULL;
@@ -96,6 +104,14 @@ void CompressStream::setLzmaLevel(int lzmaLevel) {
 	this->lzmaLevel = lzmaLevel;
 }
 
+void CompressStream::enableAutoPrefixFile() {
+	this->autoPrefixFile = true;
+}
+
+void CompressStream::enableForceStream() {
+	this->forceStream = true;
+}
+
 void CompressStream::setSendParameters(int client, void *sshchannel) {
 	this->sendParameter_client = client;
 	this->sendParameter_sshchannel = sshchannel;
@@ -105,23 +121,6 @@ void CompressStream::initCompress() {
 	switch(this->typeCompress) {
 	case compress_na:
 		break;
-	case lzma:
-#ifdef HAVE_LIBLZMA
-		if(!this->lzmaStream) {
-			this->lzmaStream = new FILE_LINE lzma_stream;
-			memset_heapsafe(this->lzmaStream, 0, sizeof(lzma_stream));
-			int ret = lzma_easy_encoder(this->lzmaStream, this->lzmaLevel, LZMA_CHECK_CRC64);
-			if(ret == LZMA_OK) {
-				createCompressBuffer();
-			} else {
-				char error[1024];
-				snprintf(error, sizeof(error), "lzma_easy_encoder error: %d", (int) ret);
-				this->setError(error);
-				break;
-			}
-		}
-		break;
-#endif
 	case zip:
 	case gzip:
 		if(!this->zipStream) {
@@ -140,6 +139,36 @@ void CompressStream::initCompress() {
 			}
 		}
 		break;
+	case lzma:
+#ifdef HAVE_LIBLZMA
+		if(!this->lzmaStream) {
+			this->lzmaStream = new FILE_LINE lzma_stream;
+			memset_heapsafe(this->lzmaStream, 0, sizeof(lzma_stream));
+			int ret = lzma_easy_encoder(this->lzmaStream, this->lzmaLevel, LZMA_CHECK_CRC64);
+			if(ret == LZMA_OK) {
+				createCompressBuffer();
+			} else {
+				char error[1024];
+				snprintf(error, sizeof(error), "lzma_easy_encoder error: %d", (int) ret);
+				this->setError(error);
+				break;
+			}
+		}
+		break;
+#endif
+	case snappy:
+		if(!this->compressBuffer) {
+			createCompressBuffer();
+		}
+		break;
+	case lzo:
+		#ifdef HAVE_LIBLZO
+		if(!this->lzoWrkmem) {
+			this->lzoWrkmem = new FILE_LINE u_char[LZO1X_1_MEM_COMPRESS];
+			createCompressBuffer();
+		}
+		#endif //HAVE_LIBLZO
+		break;
 	case lz4:
 		if(!this->compressBuffer) {
 			createCompressBuffer();
@@ -153,10 +182,7 @@ void CompressStream::initCompress() {
 		}
 		#endif //HAVE_LIBLZ4
 		break;
-	case snappy:
-		if(!this->compressBuffer) {
-			createCompressBuffer();
-		}
+	case compress_auto:
 		break;
 	}
 }
@@ -165,22 +191,6 @@ void CompressStream::initDecompress(u_int32_t dataLen) {
 	switch(this->typeCompress) {
 	case compress_na:
 		break;
-	case lzma:
-#ifdef HAVE_LIBLZMA 
-		if(!this->lzmaStreamDecompress) {
-			this->lzmaStreamDecompress = new FILE_LINE lzma_stream;
-			memset_heapsafe(this->lzmaStreamDecompress, 0, sizeof(lzma_stream));
-			int ret = lzma_stream_decoder(this->lzmaStreamDecompress, UINT64_MAX, LZMA_CONCATENATED);
-			if(ret == LZMA_OK) {
-				createDecompressBuffer(this->decompressBufferLength);
-			} else {
-				char error[1024];
-				snprintf(error, sizeof(error), "lzma_stream_decoder error: %d", (int) ret);
-				this->setError(error);
-			}
-		}
-		break;
-#endif
 	case zip:
 	case gzip:
 		if(!this->zipStreamDecompress) {
@@ -200,6 +210,39 @@ void CompressStream::initDecompress(u_int32_t dataLen) {
 			}
 		}
 		break;
+	case lzma:
+#ifdef HAVE_LIBLZMA 
+		if(!this->lzmaStreamDecompress) {
+			this->lzmaStreamDecompress = new FILE_LINE lzma_stream;
+			memset_heapsafe(this->lzmaStreamDecompress, 0, sizeof(lzma_stream));
+			int ret = lzma_stream_decoder(this->lzmaStreamDecompress, UINT64_MAX, LZMA_CONCATENATED);
+			if(ret == LZMA_OK) {
+				createDecompressBuffer(this->decompressBufferLength);
+			} else {
+				char error[1024];
+				snprintf(error, sizeof(error), "lzma_stream_decoder error: %d", (int) ret);
+				this->setError(error);
+			}
+		}
+		break;
+#endif
+	case snappy:
+		if(!this->snappyDecompressData && this->forceStream) {
+			this->snappyDecompressData = new FILE_LINE SimpleBuffer();
+		}
+		createDecompressBuffer(dataLen);
+		break;
+	case lzo:
+		#ifdef HAVE_LIBLZO
+		if(!this->lzoWrkmemDecompress) {
+			this->lzoWrkmemDecompress = new FILE_LINE u_char[LZO1X_1_MEM_COMPRESS];
+		}
+		if(!this->lzoDecompressData && this->forceStream) {
+			this->lzoDecompressData = new FILE_LINE SimpleBuffer();
+		}
+		createDecompressBuffer(dataLen);
+		#endif //HAVE_LIBLZO
+		break;
 	case lz4:
 		createDecompressBuffer(dataLen);
 		break;
@@ -211,8 +254,7 @@ void CompressStream::initDecompress(u_int32_t dataLen) {
 		createDecompressBuffer(dataLen);
 		#endif //HAVE_LIBLZ4
 		break;
-	case snappy:
-		createDecompressBuffer(dataLen);
+	case compress_auto:
 		break;
 	}
 }
@@ -230,6 +272,12 @@ void CompressStream::termCompress() {
 		this->lzmaStream = NULL;
 	}
 	#endif //ifdef HAVE_LIBLZMA
+	#ifdef HAVE_LIBLZO
+	if(this->lzoWrkmem) {
+		delete [] this->lzoWrkmem;
+		this->lzoWrkmem = NULL;
+	}
+	#endif //ifdef HAVE_LIBLZO
 	#ifdef HAVE_LIBLZ4
 	if(this->lz4Stream) {
 		LZ4_freeStream(this->lz4Stream);
@@ -255,6 +303,20 @@ void CompressStream::termDecompress() {
 		this->lzmaStreamDecompress = NULL;
 	}
 	#endif //ifdef HAVE_LIBLZMA
+	if(this->snappyDecompressData) {
+		delete this->snappyDecompressData;
+		this->snappyDecompressData = NULL;
+	}
+	#ifdef HAVE_LIBLZO
+	if(this->lzoDecompressData) {
+		delete this->lzoDecompressData;
+		this->lzoDecompressData = NULL;
+	}
+	if(this->lzoWrkmemDecompress) {
+		delete [] this->lzoWrkmemDecompress;
+		this->lzoWrkmemDecompress = NULL;
+	}
+	#endif //HAVE_LIBLZO
 	#ifdef HAVE_LIBLZ4
 	if(this->lz4StreamDecode) {
 		LZ4_freeStreamDecode(this->lz4StreamDecode);
@@ -281,33 +343,6 @@ bool CompressStream::compress(char *data, u_int32_t len, bool flush, CompressStr
 			return(false);
 		}
 		break;
-	case lzma:
-#ifdef HAVE_LIBLZMA
-		{
-		if(!this->lzmaStream) {
-			this->initCompress();
-		}
-		this->lzmaStream->avail_in = len;
-		this->lzmaStream->next_in = (unsigned char*)data;
-		do {
-			this->lzmaStream->avail_out = this->compressBufferLength;
-			this->lzmaStream->next_out = (unsigned char*)this->compressBuffer;
-			int rslt = lzma_code(this->lzmaStream, flush ? LZMA_FINISH : LZMA_RUN);
-			if(rslt == LZMA_OK || rslt == LZMA_STREAM_END) {
-				int have = this->compressBufferLength - this->zipStream->avail_out;
-				if(!baseEv->compress_ev(this->compressBuffer, have, 0)) {
-					this->setError("lzma compress_ev failed");
-					return(false);
-				}
-			} else {
-				this->setError("lzma compress failed");
-				return(false);
-			}
-		} while(this->lzmaStream->avail_out == 0);
-		this->processed_len += len;
-		}
-		break;
-#endif
 	case zip: 
 	case gzip: {
 		if(!this->zipStream) {
@@ -334,6 +369,121 @@ bool CompressStream::compress(char *data, u_int32_t len, bool flush, CompressStr
 			}
 		} while(this->zipStream->avail_out == 0);
 		this->processed_len += len;
+		}
+		break;
+	case lzma:
+		{
+		#ifdef HAVE_LIBLZMA
+		if(!this->lzmaStream) {
+			this->initCompress();
+		}
+		this->lzmaStream->avail_in = len;
+		this->lzmaStream->next_in = (unsigned char*)data;
+		do {
+			this->lzmaStream->avail_out = this->compressBufferLength;
+			this->lzmaStream->next_out = (unsigned char*)this->compressBuffer;
+			int rslt = lzma_code(this->lzmaStream, flush ? LZMA_FINISH : LZMA_RUN);
+			if(rslt == LZMA_OK || rslt == LZMA_STREAM_END) {
+				int have = this->compressBufferLength - this->zipStream->avail_out;
+				if(!baseEv->compress_ev(this->compressBuffer, have, 0)) {
+					this->setError("lzma compress_ev failed");
+					return(false);
+				}
+			} else {
+				this->setError("lzma compress failed");
+				return(false);
+			}
+		} while(this->lzmaStream->avail_out == 0);
+		this->processed_len += len;
+		#endif
+		}
+		break;
+	case snappy: {
+		if(!this->compressBuffer) {
+			this->initCompress();
+		}
+		size_t chunk_offset = 0;
+		while(chunk_offset < len) {
+			size_t chunk_len = min((size_t)this->compressBufferLength, (size_t)(len - chunk_offset));
+			size_t compressLength = this->compressBufferBoundLength;
+			snappy_status snappyRslt = snappy_compress(data + chunk_offset, chunk_len, this->compressBuffer, &compressLength);
+			switch(snappyRslt) {
+			case SNAPPY_OK:
+				if(!this->processed_len && this->autoPrefixFile) {
+					if(!baseEv->compress_ev((char*)"SNA", 3, 0, true)) {
+						this->setError("snappy compress_ev failed");
+						return(false);
+					}
+				}
+				if(this->forceStream) {
+					sChunkSizeInfo sizeInfo;
+					sizeInfo.compress_size = compressLength;
+					sizeInfo.size = len;
+					if(!baseEv->compress_ev((char*)&sizeInfo, sizeof(sizeInfo), 0, true)) {
+						this->setError("snappy compress_ev failed");
+						return(false);
+					}
+				}
+				if(baseEv->compress_ev(this->compressBuffer, compressLength, len)) {
+					this->processed_len += len;
+				} else {
+					this->setError("snappy compress_ev failed");
+					return(false);
+				}
+				break;
+			case SNAPPY_INVALID_INPUT:
+				this->setError("snappy compress failed - invalid input");
+				return(false);
+			case SNAPPY_BUFFER_TOO_SMALL:
+				this->setError("snappy compress failed - buffer is too small");
+				return(false);
+			default:
+				this->setError("snappy compress failed -  unknown error");
+				return(false);
+			}
+			chunk_offset += chunk_len;
+		}
+		}
+		break;
+	case lzo: {
+		#ifdef HAVE_LIBLZO
+		if(!this->compressBuffer) {
+			this->initCompress();
+		}
+		size_t chunk_offset = 0;
+		while(chunk_offset < len) {
+			size_t chunk_len = min((size_t)this->compressBufferLength, (size_t)(len - chunk_offset));
+			lzo_uint compressLength = this->compressBufferBoundLength;
+			int lzoRslt = lzo1x_1_compress((const u_char*)data + chunk_offset, chunk_len, (u_char*)this->compressBuffer, &compressLength, this->lzoWrkmem);
+			if(lzoRslt == LZO_E_OK) {
+				if(!this->processed_len && this->autoPrefixFile) {
+					if(!baseEv->compress_ev((char*)"LZO", 3, 0, true)) {
+						this->setError("snappy compress_ev failed");
+						return(false);
+					}
+				}
+				if(this->forceStream) {
+					sChunkSizeInfo sizeInfo;
+					sizeInfo.compress_size = compressLength;
+					sizeInfo.size = len;
+					if(!baseEv->compress_ev((char*)&sizeInfo, sizeof(sizeInfo), 0, true)) {
+						this->setError("lzo compress_ev failed");
+						return(false);
+					}
+				}
+				if(baseEv->compress_ev(this->compressBuffer, compressLength, len)) {
+					this->processed_len += len;
+				} else {
+					this->setError("lzo compress_ev failed");
+					return(false);
+				}
+			} else {
+				this->setError("lzo compress failed");
+				return(false);
+			}
+			chunk_offset += chunk_len;
+		}
+		#endif //HAVE_LIBLZO
 		}
 		break;
 	case lz4: {
@@ -379,32 +529,7 @@ bool CompressStream::compress(char *data, u_int32_t len, bool flush, CompressStr
 		#endif //HAVE_LIBLZ4
 		}
 		break;
-	case snappy: {
-		if(!this->compressBuffer) {
-			this->initCompress();
-		}
-		size_t compressLength = this->compressBufferBoundLength;
-		snappy_status snappyRslt = snappy_compress(data, len, this->compressBuffer, &compressLength);
-		switch(snappyRslt) {
-		case SNAPPY_OK:
-			if(baseEv->compress_ev(this->compressBuffer, compressLength, len)) {
-				this->processed_len += len;
-			} else {
-				this->setError("snappy compress_ev failed");
-				return(false);
-			}
-			break;
-		case SNAPPY_INVALID_INPUT:
-			this->setError("snappy compress failed - invalid input");
-			return(false);
-		case SNAPPY_BUFFER_TOO_SMALL:
-			this->setError("snappy compress failed - buffer is too small");
-			return(false);
-		default:
-			this->setError("snappy compress failed -  unknown error");
-			return(false);
-		}
-		}
+	case compress_auto:
 		break;
 	}
 	return(true);
@@ -424,6 +549,19 @@ bool CompressStream::decompress(char *data, u_int32_t len, u_int32_t decompress_
 	if(!len) {
 		return(true);
 	}
+	if(this->typeCompress == compress_auto && this->autoPrefixFile) {
+		if(len >= 3 && !memcmp(data, "SNA", 3)) {
+			this->typeCompress = snappy;
+			data += 3;
+			len -= 3;
+		} else if(len >= 3 && !memcmp(data, "LZO", 3)) {
+			this->typeCompress = lzo;
+			data += 3;
+			len -= 3;
+		} else {
+			this->typeCompress = compress_na;
+		}
+	}
 	switch(this->typeCompress) {
 	case compress_na:
 		if(!baseEv->decompress_ev(data, len)) {
@@ -431,30 +569,6 @@ bool CompressStream::decompress(char *data, u_int32_t len, u_int32_t decompress_
 			return(false);
 		}
 		break;
-	case lzma:
-#ifdef HAVE_LIBLZMA
-		if(!this->lzmaStreamDecompress) {
-			this->initDecompress(0);
-		}
-		this->lzmaStreamDecompress->avail_in = len;
-		this->lzmaStreamDecompress->next_in = (unsigned char*)data;
-		do {
-			this->lzmaStreamDecompress->avail_out = this->decompressBufferLength;
-			this->lzmaStreamDecompress->next_out = (unsigned char*)this->decompressBuffer;
-			int rslt = lzma_code(this->lzmaStreamDecompress, flush ? LZMA_FINISH : LZMA_RUN);
-			if(rslt == LZMA_OK || rslt == LZMA_STREAM_END) {
-				int have = this->decompressBufferLength - this->lzmaStreamDecompress->avail_out;
-				if(!baseEv->decompress_ev(this->decompressBuffer, have)) {
-					this->setError("lzma decompress_ev failed");
-					return(false);
-				}
-			} else {
-				this->setError("lzma decompress failed");
-				return(false);
-			}
-		} while(this->lzmaStreamDecompress->avail_out == 0);
-		break;
-#endif
 	case zip:
 	case gzip:
 		if(!this->zipStreamDecompress) {
@@ -484,9 +598,138 @@ bool CompressStream::decompress(char *data, u_int32_t len, u_int32_t decompress_
 			*use_len = len - this->zipStreamDecompress->avail_in;
 		}
 		break;
+	case lzma:
+		#ifdef HAVE_LIBLZMA
+		if(!this->lzmaStreamDecompress) {
+			this->initDecompress(0);
+		}
+		this->lzmaStreamDecompress->avail_in = len;
+		this->lzmaStreamDecompress->next_in = (unsigned char*)data;
+		do {
+			this->lzmaStreamDecompress->avail_out = this->decompressBufferLength;
+			this->lzmaStreamDecompress->next_out = (unsigned char*)this->decompressBuffer;
+			int rslt = lzma_code(this->lzmaStreamDecompress, flush ? LZMA_FINISH : LZMA_RUN);
+			if(rslt == LZMA_OK || rslt == LZMA_STREAM_END) {
+				int have = this->decompressBufferLength - this->lzmaStreamDecompress->avail_out;
+				if(!baseEv->decompress_ev(this->decompressBuffer, have)) {
+					this->setError("lzma decompress_ev failed");
+					return(false);
+				}
+			} else {
+				this->setError("lzma decompress failed");
+				return(false);
+			}
+		} while(this->lzmaStreamDecompress->avail_out == 0);
+		if(use_len) {
+			*use_len = len - this->lzmaStreamDecompress->avail_in;
+		}
+		#endif
+		break;
+	case snappy: {
+		if(this->forceStream) {
+			this->initDecompress(0);
+			this->snappyDecompressData->add(data, len);
+		} else {
+			this->initDecompress(decompress_len);
+		}
+		while(!this->forceStream ||
+		      (this->snappyDecompressData->size() > sizeof(sChunkSizeInfo) &&
+		       (sizeof(sChunkSizeInfo) + ((sChunkSizeInfo*)this->snappyDecompressData->data())->compress_size) <= this->snappyDecompressData->size())) {
+			size_t decompressLength;
+			if(this->forceStream) {
+				this->initDecompress(((sChunkSizeInfo*)this->snappyDecompressData->data())->size);
+				decompressLength = ((sChunkSizeInfo*)this->snappyDecompressData->data())->size;
+			} else {
+				decompressLength = decompress_len;
+			}
+			snappy_status snappyRslt = snappy_uncompress(this->forceStream ?
+								      (const char*)(this->snappyDecompressData->data() + sizeof(sChunkSizeInfo)) :
+								      data, 
+								     this->forceStream ? 
+								      ((sChunkSizeInfo*)this->snappyDecompressData->data())->compress_size : 
+								      len, 
+								     this->decompressBuffer, 
+								     &decompressLength);
+			if(snappyRslt == SNAPPY_OK && 
+			   decompressLength == (this->forceStream ?
+						 ((sChunkSizeInfo*)this->snappyDecompressData->data())->size :
+						 decompress_len)) {
+				if(!baseEv->decompress_ev(this->decompressBuffer, decompressLength)) {
+					this->setError("snappy decompress_ev failed");
+					return(false);
+				}
+			} else {
+				switch(snappyRslt) {
+				case SNAPPY_INVALID_INPUT:
+					this->setError("snappy decompress failed - invalid input");
+					return(false);
+				case SNAPPY_BUFFER_TOO_SMALL:
+					this->setError("snappy decompress failed - buffer is too small");
+					return(false);
+				default:
+					this->setError("snappy decompress failed - unknown error");
+					return(false);
+				}
+			}
+			if(this->snappyDecompressData) {
+				this->snappyDecompressData->removeDataFromLeft(sizeof(sChunkSizeInfo) + ((sChunkSizeInfo*)this->snappyDecompressData->data())->compress_size);
+			} else {
+				break;
+			}
+		}
+		}
+		break;
+	case lzo: {
+		#ifdef HAVE_LIBLZO
+		if(this->forceStream) {
+			this->initDecompress(0);
+			this->lzoDecompressData->add(data, len);
+		} else {
+			this->initDecompress(decompress_len);
+		}
+		while(!this->forceStream ||
+		      (this->lzoDecompressData->size() > sizeof(sChunkSizeInfo) &&
+		       (sizeof(sChunkSizeInfo) + ((sChunkSizeInfo*)this->lzoDecompressData->data())->compress_size) <= this->lzoDecompressData->size())) {
+			lzo_uint decompressLength;
+			if(this->forceStream) {
+				this->initDecompress(((sChunkSizeInfo*)this->lzoDecompressData->data())->size);
+				decompressLength = ((sChunkSizeInfo*)this->lzoDecompressData->data())->size;
+			} else {
+				decompressLength = decompress_len;
+			}
+			int lzoRslt = lzo1x_decompress_safe(this->forceStream ?
+							     this->lzoDecompressData->data() + sizeof(sChunkSizeInfo) :
+							     (u_char*)data, 
+							    this->forceStream ?
+							     ((sChunkSizeInfo*)this->lzoDecompressData->data())->compress_size :
+							     len, 
+							    (u_char*)this->decompressBuffer, 
+							    &decompressLength, 
+							    this->lzoWrkmemDecompress);
+			if(lzoRslt == LZO_E_OK && 
+			   decompressLength == (this->forceStream ?
+						 ((sChunkSizeInfo*)this->lzoDecompressData->data())->size :
+						 decompress_len)) {
+				if(!baseEv->decompress_ev(this->decompressBuffer, decompressLength)) {
+					this->setError("lzo decompress_ev failed");
+					return(false);
+				}
+			} else {
+				this->setError("lzo decompress failed");
+				return(false);
+			}
+			if(this->lzoDecompressData) {
+				this->lzoDecompressData->removeDataFromLeft(sizeof(sChunkSizeInfo) + ((sChunkSizeInfo*)this->lzoDecompressData->data())->compress_size);
+			} else {
+				break;
+			}
+		}
+		#endif //HAVE_LIBLZO
+		}
+		break;
 	case lz4:
 		#ifdef HAVE_LIBLZ4
-		if(!this->decompressBuffer || !this->maxDataLength) {
+		if(!this->decompressBuffer) {
 			this->initDecompress(decompress_len);
 		}
 		if(LZ4_decompress_fast(data, this->decompressBuffer, decompress_len)) {
@@ -505,7 +748,7 @@ bool CompressStream::decompress(char *data, u_int32_t len, u_int32_t decompress_
 		if(!this->lz4StreamDecode) {
 			this->initDecompress(decompress_len);
 		}
-		if(!this->decompressBuffer || !this->maxDataLength) {
+		if(!this->decompressBuffer) {
 			this->createDecompressBuffer(decompress_len);
 		}
 		if(LZ4_decompress_safe_continue(this->lz4StreamDecode, data, this->decompressBuffer, len, this->decompressBufferLength) > 0) {
@@ -519,30 +762,7 @@ bool CompressStream::decompress(char *data, u_int32_t len, u_int32_t decompress_
 		}
 		#endif //HAVE_LIBLZ4
 		break;
-	case snappy: {
-		if(!this->decompressBuffer || !this->maxDataLength) {
-			this->initDecompress(decompress_len);
-		}
-		size_t decompressLength = this->decompressBufferLength;
-		snappy_status snappyRslt = snappy_uncompress(data, len, this->decompressBuffer, &decompressLength);
-		switch(snappyRslt) {
-		case SNAPPY_OK:
-			if(!baseEv->decompress_ev(this->decompressBuffer, decompress_len)) {
-				this->setError("snappy decompress_ev failed");
-				return(false);
-			}
-			break;
-		case SNAPPY_INVALID_INPUT:
-			this->setError("snappy decompress failed - invalid input");
-			return(false);
-		case SNAPPY_BUFFER_TOO_SMALL:
-			this->setError("snappy decompress failed - buffer is too small");
-			return(false);
-		default:
-			this->setError("snappy decompress failed - unknown error");
-			return(false);
-		}
-		}
+	case compress_auto:
 		break;
 	}
 	return(true);
@@ -558,31 +778,47 @@ void CompressStream::createCompressBuffer() {
 	case zip:
 	case gzip:
 	case lzma:
+		if(!this->compressBufferLength) {
+			this->compressBufferLength = 8 * 1024;
+		}
 		this->compressBuffer = new FILE_LINE char[this->compressBufferLength];
 		break;
+	case snappy:
+	case lzo:
 	case lz4:
 	case lz4_stream:
-		#ifdef HAVE_LIBLZ4
-		if(this->maxDataLength) {
+		if(this->maxDataLength > this->compressBufferLength) {
 			this->compressBufferLength = this->maxDataLength;
 		}
-		this->compressBufferBoundLength = LZ4_compressBound(this->compressBufferLength);
+		if(!this->compressBufferLength) {
+			this->compressBufferLength = 8 * 1024;
+		}
+		switch(this->typeCompress) {
+		case snappy:
+			this->compressBufferBoundLength = snappy_max_compressed_length(this->compressBufferLength);
+			break;
+		case lzo:
+			this->compressBufferBoundLength = this->compressBufferLength + this->compressBufferLength/16 + 64 + 3;
+			break;
+		case lz4:
+		case lz4_stream:
+			#ifdef HAVE_LIBLZ4
+			this->compressBufferBoundLength = LZ4_compressBound(this->compressBufferLength);
+			#endif //HAVE_LIBLZ4
+			break;
+		default:
+			break;
+		}
 		this->compressBuffer = new FILE_LINE char[this->compressBufferBoundLength];
-		#endif //HAVE_LIBLZ4
 		break;
-	case snappy:
-		if(this->maxDataLength) {
-			this->compressBufferLength = this->maxDataLength;
-		}
-		this->compressBufferBoundLength = snappy_max_compressed_length(this->compressBufferLength);
-		this->compressBuffer = new FILE_LINE char[this->compressBufferBoundLength];
+	case compress_auto:
 		break;
 	}
 }
 
 void CompressStream::createDecompressBuffer(u_int32_t bufferLen) {
 	if(this->decompressBuffer) {
-		if(this->decompressBufferLength >= bufferLen) {
+		if(this->decompressBufferLength >= max(this->maxDataLength, bufferLen)) {
 			return;
 		} else {
 			delete [] this->decompressBuffer;
@@ -595,42 +831,81 @@ void CompressStream::createDecompressBuffer(u_int32_t bufferLen) {
 	case zip:
 	case gzip:
 	case lzma:
+		if(!this->decompressBufferLength) {
+			this->decompressBufferLength = 8 * 1024;
+		}
 		this->decompressBuffer = new FILE_LINE char[this->decompressBufferLength];
 		break;	
+	case snappy:
+	case lzo:
 	case lz4:
 	case lz4_stream:
-	case snappy:
-		this->decompressBufferLength = max(this->maxDataLength, bufferLen);
-		this->decompressBuffer = new FILE_LINE char[this->decompressBufferLength];
+		if(max(this->maxDataLength, bufferLen) > this->decompressBufferLength) {
+			this->decompressBufferLength = max(this->maxDataLength, bufferLen);
+		}
+		if(this->decompressBufferLength) {
+			this->decompressBuffer = new FILE_LINE char[this->decompressBufferLength];
+		}
+		break;
+	case compress_auto:
 		break;
 	}
-}
-
-extern int _sendvm(int socket, void *channel, const char *buf, size_t len, int mode);
-bool CompressStream::compress_ev(char *data, u_int32_t len, u_int32_t decompress_len) {
-	if(this->sendParameter_client || this->sendParameter_sshchannel) {
-		if(_sendvm(this->sendParameter_client, this->sendParameter_sshchannel, data, len, 0) == -1) {
-			this->setError("send error");
-			return(false);
-		}
-	}
-	return(true);
 }
 
 CompressStream::eTypeCompress CompressStream::convTypeCompress(const char *typeCompress) {
 	char _compress_method[10];
 	strncpy(_compress_method, typeCompress, sizeof(_compress_method));
 	strlwr(_compress_method, sizeof(_compress_method));
-	if(!strcmp(_compress_method, "zip")) {
+	if(!strcmp(_compress_method, "zip") ||
+	   !strcmp(_compress_method, "gzip")) {
 		return(CompressStream::zip);
+	} 
+	#ifdef HAVE_LIBLZMA
+	else if(!strcmp(_compress_method, "lzma")) {
+		return(CompressStream::lzma);
+	#endif //HAVE_LIBLZMA
 	} else if(!strcmp(_compress_method, "snappy")) {
 		return(CompressStream::snappy);
-	} else if(!strcmp(_compress_method, "lz4")) {
+	} 
+	#ifdef HAVE_LIBLZO
+	else if(!strcmp(_compress_method, "lzo")) {
+		return(CompressStream::lzo);
+	} 
+	#endif //HAVE_LIBLZO
+	#ifdef HAVE_LIBLZ4
+	else if(!strcmp(_compress_method, "lz4")) {
 		return(CompressStream::lz4);
 	} else if(!strcmp(_compress_method, "lz4_stream")) {
 		return(CompressStream::lz4_stream);
 	}
+	#endif //HAVE_LIBLZ4
 	return(CompressStream::compress_na);
+}
+
+const char *CompressStream::convTypeCompress(eTypeCompress typeCompress) {
+	switch(typeCompress) {
+	case zip:
+		return("zip");
+	#ifdef HAVE_LIBLZMA
+	case lzma:
+		return("zip");
+	#endif //HAVE_LIBLZMA
+	case snappy:
+		return("snappy");
+	#ifdef HAVE_LIBLZO
+	case lzo:
+		return("lzo");
+	#endif //HAVE_LIBLZO
+	#ifdef HAVE_LIBLZ4
+	case lz4:
+		return("lz4");
+	case lz4_stream:
+		return("lz4_stream");
+	#endif //HAVE_LIBLZ4
+	default:
+		return("no");
+	}
+	return("no");
 }
 
 ChunkBuffer::ChunkBuffer(int time, u_int32_t chunk_fix_len, Call *call, int typeContent) {
@@ -685,15 +960,8 @@ ChunkBuffer::~ChunkBuffer() {
 }
 
 void ChunkBuffer::setTypeCompress(CompressStream::eTypeCompress typeCompress, u_int32_t compressBufferLength, u_int32_t maxDataLength) {
-	switch(typeCompress) {
-	case CompressStream::zip:
-	case CompressStream::lz4:
-	case CompressStream::lz4_stream:
-	case CompressStream::snappy:
+	if(typeCompress > CompressStream::compress_na) {
 		this->compressStream = new FILE_LINE CompressStream(typeCompress, compressBufferLength, maxDataLength);
-		break;
-	default:
-		break;
 	}
 }
 
@@ -739,7 +1007,7 @@ void ChunkBuffer::add(char *data, u_int32_t datalen, bool flush, u_int32_t decom
 	eAddMethod addMethod = add_na;
 	if(directAdd) {
 		if(this->chunk_fix_len) {
-			if(this->compressStream->typeCompress == CompressStream::zip) {
+			if(this->compressStream->isNativeStream()) {
 				addMethod = add_fill_fix_len;
 			} else {
 				addMethod = add_fill_chunks;
@@ -865,7 +1133,7 @@ void ChunkBuffer::close() {
 	this->closed = true;
 }
 
-bool ChunkBuffer::compress_ev(char *data, u_int32_t len, u_int32_t decompress_len) {
+bool ChunkBuffer::compress_ev(char *data, u_int32_t len, u_int32_t decompress_len, bool format_data) {
 	this->add(data, len, false, decompress_len, true);
 	return(true);
 }

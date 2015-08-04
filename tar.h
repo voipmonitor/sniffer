@@ -43,7 +43,7 @@ using namespace std;
 #define int_to_oct(num, oct, octlen) \
 	snprintf((oct), (octlen), "%*lo ", (octlen) - 2, (unsigned long)(num))
 
-class Tar : public ChunkBuffer_baseIterate, public CompressStream_baseEv{
+class Tar : public ChunkBuffer_baseIterate, public CompressStream_baseEv {
 public:
 	/* our version of the tar header structure */
 	struct tar_header
@@ -195,8 +195,9 @@ private:
 	volatile u_int32_t writeCounter;
 	volatile u_int32_t writeCounterFlush;
 	
-	struct sReadData {
-		sReadData() {
+	class ReadData : public CompressStream_baseEv {
+	public:
+		ReadData() {
 			send_parameters_client = 0;
 			send_parameters_sshchannel = 0;
 			send_parameters_zip = false;
@@ -214,7 +215,8 @@ private:
 			bufferBaseSize = T_BLOCKSIZE;
 			bufferLength = 0;
 			fileSize = 0;
-			compressStream = NULL;
+			decompressStreamFromLzo = NULL;
+			compressStreamToGzip = NULL;
 			nullFileHeader();
 		}
 		void nullFileHeader() {
@@ -223,19 +225,18 @@ private:
 		void init(size_t bufferBaseSize) {
 			this->bufferBaseSize = bufferBaseSize;
 			buffer = new FILE_LINE char[bufferBaseSize + T_BLOCKSIZE];
-			if(send_parameters_zip) {
-				compressStream = new FILE_LINE CompressStream(CompressStream::gzip, 1024, 0);
-				compressStream->setSendParameters(send_parameters_client, send_parameters_sshchannel);
-			} else {
-				compressStream = NULL;
-			}
 		}
 		void term() {
 			delete [] buffer;
-			if(compressStream) {
-				delete compressStream;
+			if(decompressStreamFromLzo) {
+				delete decompressStreamFromLzo;
+			}
+			if(compressStreamToGzip) {
+				delete compressStreamToGzip;
 			}
 		}
+		bool decompress_ev(char *data, u_int32_t len);
+		bool compress_ev(char *data, u_int32_t len, u_int32_t decompress_len, bool format_data = false);
 		bool oneFile;
 		bool end;
 		bool error;
@@ -251,7 +252,8 @@ private:
 		void *send_parameters_sshchannel;
 		bool send_parameters_zip;
 		FILE *output_file_handle;
-		CompressStream *compressStream;
+		CompressStream *decompressStreamFromLzo;
+		CompressStream *compressStreamToGzip;
 	} readData;
 
 #ifdef HAVE_LIBLZMA

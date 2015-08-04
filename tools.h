@@ -232,6 +232,20 @@ public:
 	bool empty() {
 		return(bufferLength == 0);
 	}
+	bool removeDataFromLeft(u_int32_t removeSize) {
+		if(removeSize > bufferLength) {
+			return(false);
+		} else if(removeSize == bufferLength) {
+			destroy();
+		} else {
+			u_char *bufferNew = new u_char[bufferCapacity];
+			bufferLength -= removeSize;
+			memcpy(bufferNew, buffer + removeSize, bufferLength);
+			delete [] buffer;
+			buffer = bufferNew;
+		}
+		return(true);
+	}
 	SimpleBuffer& operator = (const SimpleBuffer &other) {
 		destroy();
 		this->bufferLength = other.bufferLength;
@@ -427,7 +441,9 @@ public:
 	enum eTypeCompress {
 		compress_na,
 		compress_default,
-		gzip
+		gzip,
+		snappy,
+		lzo
 	};
 public:
 	FileZipHandler(int bufferLength = 0, int enableAsyncWrite = 0, eTypeCompress typeCompress = compress_na,
@@ -463,8 +479,10 @@ public:
 	bool okHandle() {
 		return(this->tar ? true : fh > 0);
 	}
+	static eTypeCompress convTypeCompress(const char *typeCompress);
+	static const char *convTypeCompress(eTypeCompress typeCompress);
 private:
-	virtual bool compress_ev(char *data, u_int32_t len, u_int32_t decompress_len);
+	virtual bool compress_ev(char *data, u_int32_t len, u_int32_t decompress_len, bool format_data = false);
 public:
 	string fileName;
 	int permission;

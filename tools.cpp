@@ -2633,6 +2633,8 @@ bool FileZipHandler::_writeToFile(char *data, int length, bool flush) {
 		}
 		break;
 	case gzip:
+	case snappy:
+	case lzo:
 		if(!this->compressStream) {
 			this->initCompress();
 		}
@@ -2663,13 +2665,15 @@ bool FileZipHandler::__writeToFile(char *data, int length) {
 }
 
 void FileZipHandler::initCompress() {
-	if(this->typeCompress == gzip && 
-	   !this->compressStream) {
-		this->compressStream =  new FILE_LINE CompressStream(CompressStream::gzip, 8 * 1024, 0);
-		this->compressStream->setZipLevel(typeFile == pcap_sip ? opt_pcap_dump_ziplevel_sip : 
-						  typeFile == pcap_rtp ? opt_pcap_dump_ziplevel_rtp : 
-						  typeFile == graph_rtp ? opt_pcap_dump_ziplevel_graph : Z_DEFAULT_COMPRESSION);
-	}
+	this->compressStream =  new FILE_LINE CompressStream(this->typeCompress == gzip ? CompressStream::gzip :
+							     this->typeCompress == snappy ? CompressStream::snappy :
+							     this->typeCompress == lzo ? CompressStream::lzo : CompressStream::compress_na,
+							     8 * 1024, 0);
+	this->compressStream->setZipLevel(typeFile == pcap_sip ? opt_pcap_dump_ziplevel_sip : 
+					  typeFile == pcap_rtp ? opt_pcap_dump_ziplevel_rtp : 
+					  typeFile == graph_rtp ? opt_pcap_dump_ziplevel_graph : Z_DEFAULT_COMPRESSION);
+	this->compressStream->enableAutoPrefixFile();
+	this->compressStream->enableForceStream();
 }
 
 void FileZipHandler::initTarbuffer(bool useFileZipHandlerCompress) {
@@ -2756,7 +2760,42 @@ void FileZipHandler::setError(const char *error) {
 	}
 }
 
-bool FileZipHandler::compress_ev(char *data, u_int32_t len, u_int32_t decompress_len) {
+FileZipHandler::eTypeCompress FileZipHandler::convTypeCompress(const char *typeCompress) {
+	char _compress_method[10];
+	strncpy(_compress_method, typeCompress, sizeof(_compress_method));
+	strlwr(_compress_method, sizeof(_compress_method));
+	if(yesno(_compress_method) ||
+	   !strcmp(_compress_method, "zip") ||
+	   !strcmp(_compress_method, "gzip")) {
+		return(FileZipHandler::gzip);
+	} else if(!strcmp(_compress_method, "snappy")) {
+		return(FileZipHandler::snappy);
+	} 
+	#ifdef HAVE_LIBLZO
+	else if(!strcmp(_compress_method, "lzo")) {
+		return(FileZipHandler::lzo);
+	}
+	#endif //HAVE_LIBLZO
+	return(FileZipHandler::compress_na);
+}
+
+const char *FileZipHandler::convTypeCompress(eTypeCompress typeCompress) {
+	switch(typeCompress) {
+	case gzip:
+		return("zip");
+	case snappy:
+		return("snappy");
+	#ifdef HAVE_LIBLZO
+	case lzo:
+		return("lzo");
+	#endif //HAVE_LIBLZO
+	default:
+		return("no");
+	}
+	return("no");
+}
+
+bool FileZipHandler::compress_ev(char *data, u_int32_t len, u_int32_t decompress_len, bool format_data) {
 	if(this->tar) {
 		if(!this->tarBuffer) {
 			this->initTarbuffer(true);

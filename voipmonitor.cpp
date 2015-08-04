@@ -3128,7 +3128,7 @@ void test_untar() {
 
 void test_http_dumper() {
 	HttpPacketsDumper dumper;
-	dumper.setPcapName("/home/jumbox/Plocha/testhttp.pcap");
+	dumper.setPcapName("/tmp/testhttp.pcap");
 	//dumper.setTemplatePcapName();
 	string timestamp_from = "2013-09-22 15:48:51";
 	string timestamp_to = "2013-09-24 01:48:51";
@@ -3182,9 +3182,87 @@ bool save_packet(const char *binaryPacketFile, const char *rsltPcapFile, int len
 	return(rslt);
 }
 
+class cTestCompress : public CompressStream {
+public:
+	cTestCompress(CompressStream::eTypeCompress typeCompress)
+	 : CompressStream(typeCompress, 1024 * 8, 0) {
+	}
+	bool compress_ev(char *data, u_int32_t len, u_int32_t decompress_len, bool format_data = false) {
+		fwrite(data, 1, len, fileO);
+		return(true);
+	}
+	bool decompress_ev(char *data, u_int32_t len) { 
+		fwrite(data, 1, len, fileO);
+		return(true); 
+	}
+	void testCompress() {
+		fileI = fopen("/tmp/tc1.pcap", "rb");
+		if(!fileI) {
+			return;
+		}
+		fileO = fopen("/tmp/tc1_c.pcap", "wb");
+		if(!fileO) {
+			return;
+		}
+		char buff[5000];
+		size_t readSize;
+		while((readSize = fread(buff, 1, sizeof(buff), fileI))) {
+			this->compress(buff, readSize, false, this);
+		}
+		fclose(fileI);
+		fclose(fileO);
+	}
+	void testDecompress() {
+		fileI = fopen("/tmp/tc1_c.pcap", "rb");
+		if(!fileI) {
+			return;
+		}
+		fileO = fopen("/tmp/tc1_d.pcap", "wb");
+		if(!fileO) {
+			return;
+		}
+		char buff[5000];
+		size_t readSize;
+		while((readSize = fread(buff, 1, sizeof(buff), fileI))) {
+			this->decompress(buff, readSize, readSize * 10, false, this);
+		}
+		fclose(fileI);
+		fclose(fileO);
+	}
+private:
+	FILE *fileI;
+	FILE *fileO;
+};
+
 void test() {
  
 	switch(opt_test) {
+	 
+	case 21 : {
+		for(int pass = 0; pass < 1000; pass++) {
+		cTestCompress *testCompress = new cTestCompress(CompressStream::lzo);
+		testCompress->testCompress();
+		//testCompress->testDecompress();
+		delete testCompress;
+		}
+	} break;
+	case 22 : {
+		for(int pass = 0; pass < 1000; pass++) {
+		cTestCompress *testCompress = new cTestCompress(CompressStream::snappy);
+		testCompress->testCompress();
+		//testCompress->testDecompress();
+		delete testCompress;
+		}
+	} break;
+	case 23 : {
+		for(int pass = 0; pass < 1000; pass++) {
+		cTestCompress *testCompress = new cTestCompress(CompressStream::gzip);
+		testCompress->setZipLevel(1);
+		testCompress->testCompress();
+		//testCompress->testDecompress();
+		delete testCompress;
+		}
+	} break;
 	 
 	case 1: {
 		//test_search_country_by_number();
@@ -6345,25 +6423,25 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "pcap_dump_zip", NULL))) {
 		strlwr((char*)value);
 		opt_pcap_dump_zip_sip = 
-		opt_pcap_dump_zip_rtp = !strcmp(value, "zip") || yesno(value) ? FileZipHandler::gzip : FileZipHandler::compress_na;
+		opt_pcap_dump_zip_rtp = FileZipHandler::convTypeCompress(value);
 	}
 	if((value = ini.GetValue("general", "pcap_dump_zip_all", NULL))) {
 		strlwr((char*)value);
 		opt_pcap_dump_zip_sip = 
 		opt_pcap_dump_zip_rtp = 
-		opt_gzipGRAPH = !strcmp(value, "zip") || yesno(value) ? FileZipHandler::gzip : FileZipHandler::compress_na;
+		opt_gzipGRAPH = FileZipHandler::convTypeCompress(value);
 	}
 	if((value = ini.GetValue("general", "pcap_dump_zip_sip", NULL))) {
 		strlwr((char*)value);
-		opt_pcap_dump_zip_sip = !strcmp(value, "zip") || yesno(value) ? FileZipHandler::gzip : FileZipHandler::compress_na;
+		opt_pcap_dump_zip_sip = FileZipHandler::convTypeCompress(value);
 	}
 	if((value = ini.GetValue("general", "pcap_dump_zip_rtp", NULL))) {
 		strlwr((char*)value);
-		opt_pcap_dump_zip_rtp = !strcmp(value, "zip") || yesno(value) ? FileZipHandler::gzip : FileZipHandler::compress_na;
+		opt_pcap_dump_zip_rtp = FileZipHandler::convTypeCompress(value);
 	}
 	if((value = ini.GetValue("general", "pcap_dump_zip_graph", NULL))) {
 		strlwr((char*)value);
-		opt_gzipGRAPH = !strcmp(value, "zip") || yesno(value) ? FileZipHandler::gzip : FileZipHandler::compress_na;
+		opt_gzipGRAPH = FileZipHandler::convTypeCompress(value);
 	}
 	if((value = ini.GetValue("general", "pcap_dump_ziplevel", NULL))) {
 		opt_pcap_dump_ziplevel_sip = 
