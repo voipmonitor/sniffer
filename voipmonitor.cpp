@@ -4246,7 +4246,8 @@ void cConfig::addConfigItems() {
 			addConfigItem(new cConfigItem_string("git_folder", opt_git_folder, sizeof(opt_git_folder)));
 			addConfigItem(new cConfigItem_string("timezone", opt_timezone, sizeof(opt_timezone)));
 			addConfigItem(new cConfigItem_integer("sdp_multiplication", &opt_sdp_multiplication));
-			addConfigItem(new cConfigItem_string("save_sip_history", &opt_save_sip_history));
+			addConfigItem((new cConfigItem_string("save_sip_history", &opt_save_sip_history))
+				->addStringItems("invite|bye|cancel|register|message|info|subscribe|options|notify|ack|prack|publish|refer|update|REQUESTS|RESPONSES|ALL"));
 				expert();
 				addConfigItem(new cConfigItem_string("convertchar", opt_convert_char, sizeof(opt_convert_char)));
 				addConfigItem(new cConfigItem_string("cachedir", opt_cachedir, sizeof(opt_cachedir)));

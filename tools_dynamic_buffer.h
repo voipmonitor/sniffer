@@ -211,6 +211,7 @@ public:
 	}
 	static eTypeCompress convTypeCompress(const char *typeCompress);
 	static const char *convTypeCompress(eTypeCompress typeCompress);
+	static string getConfigMenuString();
 private:
 	void createCompressBuffer();
 	void createDecompressBuffer(u_int32_t bufferLen);

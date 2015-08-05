@@ -481,6 +481,7 @@ public:
 	}
 	static eTypeCompress convTypeCompress(const char *typeCompress);
 	static const char *convTypeCompress(eTypeCompress typeCompress);
+	static string getConfigMenuString();
 private:
 	virtual bool compress_ev(char *data, u_int32_t len, u_int32_t decompress_len, bool format_data = false);
 public:

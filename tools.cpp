@@ -2798,6 +2798,15 @@ const char *FileZipHandler::convTypeCompress(eTypeCompress typeCompress) {
 	return("no");
 }
 
+string FileZipHandler::getConfigMenuString() {
+	ostringstream outStr;
+	outStr << convTypeCompress(gzip) << ':' << gzip << '|'
+	       << convTypeCompress(snappy) << ':' << snappy << '|'
+	       << convTypeCompress(lzo) << ':' << lzo << '|'
+	       << "no:0";
+	return(outStr.str());
+}
+
 bool FileZipHandler::compress_ev(char *data, u_int32_t len, u_int32_t decompress_len, bool format_data) {
 	if(this->tar) {
 		if(!this->tarBuffer) {

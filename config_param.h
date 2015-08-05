@@ -40,6 +40,8 @@ public:
 	void setConfigFileSection(const char *config_file_section);
 	cConfigItem *addValue(const char *str, int value);
 	cConfigItem *addValues(const char *str_values);
+	cConfigItem *addStringItem(const char *str);
+	cConfigItem *addStringItems(const char *str_values);
 	cConfigItem *setSubtype(const char *subtype);
 	cConfigItem *setDescription(const char *description);
 	cConfigItem *setHelp(const char *help);
@@ -395,24 +397,10 @@ protected:
 	vector<dstring> *param_custom_headers;
 };
 
-class cConfigItem_type_compress : public cConfigItem {
+class cConfigItem_type_compress : public cConfigItem_yesno {
 public:
 	cConfigItem_type_compress(const char* name, CompressStream::eTypeCompress *type_compress);
 	cConfigItem_type_compress(const char* name, FileZipHandler::eTypeCompress *type_compress);
-	string getValueStr(bool configFile = false);
-protected:
-	bool setParamFromConfigFile(CSimpleIniA *ini);
-	bool setParamFromValueStr(string value_str);
-	void initParamPointers() {
-		param_type_compress_cs = NULL;
-		param_type_compress_fzh = NULL;
-	}
-	string getTypeName() {
-		return(param_type_compress_cs ? "type_compress_stream" : "type_compress_fileziphandle");
-	}
-protected:
-	CompressStream::eTypeCompress *param_type_compress_cs;
-	FileZipHandler::eTypeCompress *param_type_compress_fzh;
 };
 
 

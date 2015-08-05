@@ -2,6 +2,7 @@
 #include <syslog.h>
 #include <dirent.h>
 #include <iomanip>
+#include <limits.h>
 
 #include "config_param.h"
 #include "voipmonitor.h"
@@ -58,6 +59,19 @@ cConfigItem *cConfigItem::addValues(const char *str_values) {
 		if(str_values_v2.size() == 2) {
 			addValue(str_values_v2[0].c_str(), atoi(str_values_v2[1].c_str()));
 		}
+	}
+	return(this);
+}
+
+cConfigItem *cConfigItem::addStringItem(const char *str) {
+	mapValues.push_back(sMapValue(str, INT_MIN));
+	return(this);
+}
+
+cConfigItem *cConfigItem::addStringItems(const char *str_values) {
+	vector<string> str_values_v = split(str_values, "|");
+	for(vector<string>::iterator it = str_values_v.begin(); it != str_values_v.end(); it++) {
+		addStringItem(it->c_str());
 	}
 	return(this);
 }
@@ -144,7 +158,9 @@ list<cConfigItem::sMapValue> cConfigItem::getMenuItems() {
 
 void cConfigItem::addItemToMenuItems(list<sMapValue> *menu, sMapValue menuItem) {
 	for(list<sMapValue>::iterator iter = menu->begin(); iter != menu->end(); iter++) {
-		if(iter->value == menuItem.value) {
+		if(iter->value == INT_MIN ?
+		    iter->str == menuItem.str :
+		    iter->value == menuItem.value) {
 			return;
 		}
 	}
@@ -178,7 +194,10 @@ string cConfigItem::getJson() {
 			if(counter) {
 				outStr << ';';
 			}
-			outStr << iter->str << ':' << iter->value;
+			outStr << iter->str;
+			if(iter->value != INT_MIN) {
+				outStr << ':' << iter->value;
+			}
 			++counter;
 		}
 		json.add("menu", json_encode(outStr.str()));
@@ -1111,51 +1130,16 @@ void cConfigItem_custom_headers::initBeforeSet() {
 }
 
 cConfigItem_type_compress::cConfigItem_type_compress(const char* name, CompressStream::eTypeCompress *type_compress)
- : cConfigItem(name) {
+ : cConfigItem_yesno(name, (int*)type_compress) {
 	init();
-	param_type_compress_cs = type_compress;
+	addValues(CompressStream::getConfigMenuString().c_str());
 }
 
 cConfigItem_type_compress::cConfigItem_type_compress(const char* name, FileZipHandler::eTypeCompress *type_compress)
- : cConfigItem(name) {
+ : cConfigItem_yesno(name, (int*)type_compress) {
 	init();
-	param_type_compress_fzh = type_compress;
+	addValues(FileZipHandler::getConfigMenuString().c_str());
 }
-
-string cConfigItem_type_compress::getValueStr(bool configFile) {
-	if(param_type_compress_cs) {
-		return(CompressStream::convTypeCompress(*param_type_compress_cs));
-	}
-	if(param_type_compress_fzh) {
-		return(FileZipHandler::convTypeCompress(*param_type_compress_fzh));
-	}
-	return("");
-}
-
-bool cConfigItem_type_compress::setParamFromConfigFile(CSimpleIniA *ini) {
-	return(setParamFromValueStr(getValueFromConfigFile(ini)));
-}
-
-bool cConfigItem_type_compress::setParamFromValueStr(string value_str) {
-	if(value_str.empty()) {
-		return(false);
-	}
-	int ok = 0;
-	const char *value = value_str.c_str();
-	if(value) {
-		strlwr((char*)value);
-		if(param_type_compress_cs) {
-			*param_type_compress_cs = CompressStream::convTypeCompress(value);
-			++ok;
-		}
-		if(param_type_compress_fzh) {
-			*param_type_compress_fzh = !strcmp(value, "zip") || yesno(value) ? FileZipHandler::gzip : FileZipHandler::compress_na;
-			++ok;
-		}
-	}
-	return(ok > 0);
-}
-
 
 cConfig::cConfig() {
 	defaultLevel = cConfigItem::levelNormal;

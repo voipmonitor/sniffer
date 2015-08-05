@@ -889,7 +889,7 @@ const char *CompressStream::convTypeCompress(eTypeCompress typeCompress) {
 		return("zip");
 	#ifdef HAVE_LIBLZMA
 	case lzma:
-		return("zip");
+		return("lzma");
 	#endif //HAVE_LIBLZMA
 	case snappy:
 		return("snappy");
@@ -907,6 +907,16 @@ const char *CompressStream::convTypeCompress(eTypeCompress typeCompress) {
 		return("no");
 	}
 	return("no");
+}
+
+string CompressStream::getConfigMenuString() {
+	ostringstream outStr;
+	outStr << convTypeCompress(zip) << ':' << zip << '|'
+	       << convTypeCompress(lzma) << ':' << lzma << '|'
+	       << convTypeCompress(snappy) << ':' << snappy << '|'
+	       << convTypeCompress(lzo) << ':' << lzo << '|'
+	       << "no:0";
+	return(outStr.str());
 }
 
 ChunkBuffer::ChunkBuffer(int time, u_int32_t chunk_fix_len, Call *call, int typeContent) {
