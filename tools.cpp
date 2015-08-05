@@ -2668,7 +2668,10 @@ void FileZipHandler::initCompress() {
 	this->compressStream =  new FILE_LINE CompressStream(this->typeCompress == gzip ? CompressStream::gzip :
 							     this->typeCompress == snappy ? CompressStream::snappy :
 							     this->typeCompress == lzo ? CompressStream::lzo : CompressStream::compress_na,
-							     8 * 1024, 0);
+							     this->typeCompress == snappy || this->typeCompress == lzo ?
+							      this->bufferLength :
+							      8 * 1024, 
+							     0);
 	this->compressStream->setZipLevel(typeFile == pcap_sip ? opt_pcap_dump_ziplevel_sip : 
 					  typeFile == pcap_rtp ? opt_pcap_dump_ziplevel_rtp : 
 					  typeFile == graph_rtp ? opt_pcap_dump_ziplevel_graph : Z_DEFAULT_COMPRESSION);
