@@ -3076,16 +3076,10 @@ endsip:
 				char *_lastSIPresponse = NULL;
 				int _lastSIPresponseNum = 0;
 				if(save_request) {
-					int spaceIndex = 0;
-					for(int i = 0; i < min(datalen, 20); i++) {
-						if(data[i] == ' ') {
-							spaceIndex = i;
-							break;
-						}
-					}
-					if(spaceIndex && spaceIndex < 20) {
-						strncpy(_request, data, spaceIndex);
-						_request[spaceIndex] = 0;
+					const char *sip_request_name = sip_request_int_to_name(sip_method, false);
+					if(sip_request_name) {
+						strncpy(_request, sip_request_name, sizeof(_request) - 1);
+						_request[sizeof(_request) - 1] = 0;
 					}
 				}
 				if(save_response) {
