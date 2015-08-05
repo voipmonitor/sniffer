@@ -127,7 +127,12 @@ Tar::th_set_path(char *pathname, bool partSuffix)
 	*/
 	++partCounter;
 	if(partSuffix) {
-		snprintf(tar.th_buf.name + strlen(tar.th_buf.name), 100 - strlen(tar.th_buf.name), "_%lu", partCounter/*[pathname]*/);
+		char suffix[20];
+		snprintf(suffix, sizeof(suffix), "#%lu", partCounter);
+		if(strlen(tar.th_buf.name) + strlen(suffix) > 100 - 1) {
+			tar.th_buf.name[100 - 1 - strlen(suffix)] = 0;
+		}
+		strcat(tar.th_buf.name, suffix);
 	}
 	       
 #ifdef DEBUG   
@@ -541,7 +546,15 @@ Tar::tar_read_block_ev(char *data) {
 extern int _sendvm(int socket, void *channel, const char *buf, size_t len, int mode);
 void 
 Tar::tar_read_file_ev(tar_header fileHeader, char *data, u_int32_t pos, u_int32_t len) {
-	if(!reg_match(fileHeader.name, this->readData.filename.c_str(), __FILE__, __LINE__)) {
+	int cmpLengthNameInTar = strlen(fileHeader.name);
+	if(reg_match(fileHeader.name, "#[0-9]+$", __FILE__, __LINE__) ||
+	   reg_match(fileHeader.name, "_[0-9]{1,6}$", __FILE__, __LINE__)) {
+		while(isdigit(fileHeader.name[cmpLengthNameInTar - 1])) {
+			--cmpLengthNameInTar;
+		}
+		--cmpLengthNameInTar;
+	}
+	if(strncmp(fileHeader.name, this->readData.filename.c_str(), cmpLengthNameInTar)) {
 		return;
 	}
 	if(len) {
