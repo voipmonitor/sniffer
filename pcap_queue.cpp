@@ -3723,6 +3723,7 @@ PcapQueue_readFromFifo::PcapQueue_readFromFifo(const char *nameQueue, const char
 	this->cleanupBlockStoreTrash_counter = 0;
 	this->socketHostEnt = NULL;
 	this->socketHandle = 0;
+	this->badTimeCounter = 0;
 	this->_sync_packetServerConnections = 0;
 	this->lastCheckFreeSizeCachedir_timeMS = 0;
 	this->_last_ts.tv_sec = 0;
@@ -3842,6 +3843,11 @@ void *PcapQueue_readFromFifo::threadFunction(void *arg, unsigned int arg2) {
 					}
 				}
 			} else {
+				int sensorId = 0;
+				string sensorName;
+				string sensorTime;
+				bool detectSensorName = false;
+				bool detectSensorTime = false;
 				bufferLen = 0;
 				offsetBufferSyncRead = 0;
 				while(!TERMINATING && !forceStop) {
@@ -3858,8 +3864,6 @@ void *PcapQueue_readFromFifo::threadFunction(void *arg, unsigned int arg2) {
 							char *pointToSensorIdName = (char*)memmem(buffer, bufferLen, "sensor_id_name: ", 16);
 							if(pointToSensorIdName) {
 								pointToSensorIdName += 16;
-								int sensorId = 0;
-								string sensorName;
 								unsigned int offset = 0;
 								bool separator = 0;
 								bool nullTerm = false;
@@ -3884,7 +3888,46 @@ void *PcapQueue_readFromFifo::threadFunction(void *arg, unsigned int arg2) {
 								if(sensorId > 0 && sensorName.length() && nullTerm) {
 									extern SensorsMap sensorsMap;
 									sensorsMap.setSensorName(sensorId, sensorName.c_str());
-									syslog(LOG_NOTICE, "detect sensor name: '%s' for sensor id: %i", sensorName.c_str(), sensorId);
+									if(!detectSensorName) {
+										syslog(LOG_NOTICE, "detect sensor name: '%s' for sensor id: %i", sensorName.c_str(), sensorId);
+									}
+									detectSensorName = true;
+								}
+							}
+							char *pointToSensorTime = (char*)memmem(buffer, bufferLen, "sensor_time: ", 13);
+							if(pointToSensorTime) {
+								pointToSensorTime += 13;
+								unsigned int offset = 0;
+								bool nullTerm = false;
+								while((unsigned)(pointToSensorTime - (char*)buffer + offset) < bufferLen &&
+								      (pointToSensorTime[offset] == 0 ||
+								       (pointToSensorTime[offset] >= ' ' && pointToSensorTime[offset] < 128))) {
+									if(pointToSensorTime[offset] == 0) {
+										nullTerm = true;
+										break;
+									}
+									sensorTime = sensorTime + pointToSensorTime[offset];
+									++offset;
+								}
+								if(sensorTime.length() && nullTerm) {
+									if(!detectSensorTime) {
+										syslog(LOG_NOTICE, "detect sensor time: %s for sensor id: %i", sensorTime.c_str(), sensorId);
+										time_t actualTimeSec = time(NULL);
+										time_t sensorTimeSec = stringToTime(sensorTime.c_str());
+										if(abs(actualTimeSec % 3600 - sensorTimeSec % 3600) > 1) {
+											syslog(LOG_ERR, "different time between receiver (%s) and sensor %i (%s) - sensor disconnect",
+											       sqlDateTimeString(actualTimeSec).c_str(),
+											       sensorId,
+											       sensorTime.c_str());
+											string message = "bad time";
+											send(this->packetServerConnections[arg2]->socketClient, message.c_str(), message.length(), 0);
+											close(this->packetServerConnections[arg2]->socketClient);
+											this->packetServerConnections[arg2]->active = false;
+											forceStop = true;
+											break;
+										}
+									}
+									detectSensorTime = true;
 								}
 							}
 							u_char *pointToBeginBlock = (u_char*)memmem(buffer, bufferLen, PCAP_BLOCK_STORE_HEADER_STRING, PCAP_BLOCK_STORE_HEADER_STRING_LEN);
@@ -4497,10 +4540,25 @@ bool PcapQueue_readFromFifo::socketConnect() {
 	if(DEBUG_VERBOSE) {
 		cout << this->nameQueue << " - socketConnect: " << this->packetServerIpPort.get_ip() << " : OK" << endl;
 	}
-	if(opt_name_sensor[0]) {
-		char dataSensorIdName[1024];
-		snprintf(dataSensorIdName, sizeof(dataSensorIdName), "sensor_id_name: %i:%s", opt_id_sensor, opt_name_sensor);
-		socketWrite((u_char*)dataSensorIdName, strlen(dataSensorIdName) + 1);
+	char dataSensorIdName[1024];
+	snprintf(dataSensorIdName, sizeof(dataSensorIdName), "sensor_id_name: %i:%s", opt_id_sensor, opt_name_sensor);
+	socketWrite((u_char*)dataSensorIdName, strlen(dataSensorIdName) + 1);
+	char dataTime[40];
+	snprintf(dataTime, sizeof(dataTime), "sensor_time: %s", sqlDateTimeString(time(NULL)).c_str());
+	socketWrite((u_char*)dataTime, strlen(dataTime) + 1);
+	char recv_data[100] = "";
+	size_t recv_data_len = recv(this->socketHandle, recv_data, sizeof(recv_data), 0);
+	if(recv_data_len && memmem(recv_data, recv_data_len,  "bad time", 8)) {
+		++this->badTimeCounter;
+		string error = "different time between receiver and sender";
+		if(this->badTimeCounter > 4) {
+			syslog(LOG_ERR, "%s - terminating", error.c_str());
+			vm_terminate_error("bad time");
+		} else {
+			syslog(LOG_ERR, "%s - check %i", error.c_str(), this->badTimeCounter);
+		}
+	} else {
+		this->badTimeCounter = 0;
 	}
 	return(true);
 }

@@ -679,6 +679,7 @@ private:
 	u_int cleanupBlockStoreTrash_counter;
 	hostent* socketHostEnt;
 	int socketHandle;
+	int badTimeCounter;
 	map<unsigned int, sPacketServerConnection*> packetServerConnections;
 	volatile int _sync_packetServerConnections;
 	u_long lastCheckFreeSizeCachedir_timeMS;
