@@ -1,3 +1,11 @@
+11.10.2 06.08.2015
+==================
+- fix storing requests to table cdr_sip_history
+- fix storing pcap if sip.Call-ID is too long in case tar=yes is enabled (which is by default enabled) - all versions 
+- do not allow sniffer sender (mirrorer) to connect in case the time difference is > 1 second between sender and receiver which fixes call timeouts [VS-923]
+- set cdr.bye also for call states: zombie_timeout_exceeded and sipwithoutrtp_timeout_exceeded 
+
+
 11.10.1 03.08.2015
 ==================
 - fix configuration option savertp = no which was still recording RTP (fixes >= 11.9.4) 
