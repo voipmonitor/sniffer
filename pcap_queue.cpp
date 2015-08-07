@@ -3911,7 +3911,7 @@ void *PcapQueue_readFromFifo::threadFunction(void *arg, unsigned int arg2) {
 								}
 								if(sensorTime.length() && nullTerm) {
 									if(!detectSensorTime) {
-										syslog(LOG_NOTICE, "detect sensor time: %s for sensor id: %i", sensorTime.c_str(), sensorId);
+										syslog(LOG_NOTICE, "reported sensor time: %s for sensor id: %i", sensorTime.c_str(), sensorId);
 										time_t actualTimeSec = time(NULL);
 										time_t sensorTimeSec = stringToTime(sensorTime.c_str());
 										if(abs(actualTimeSec % 3600 - sensorTimeSec % 3600) > 1) {
