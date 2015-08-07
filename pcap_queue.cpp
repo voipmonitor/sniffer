@@ -3925,6 +3925,9 @@ void *PcapQueue_readFromFifo::threadFunction(void *arg, unsigned int arg2) {
 											this->packetServerConnections[arg2]->active = false;
 											forceStop = true;
 											break;
+										} else {
+											string message = "ok";
+											send(this->packetServerConnections[arg2]->socketClient, message.c_str(), message.length(), 0);
 										}
 									}
 									detectSensorTime = true;
@@ -4546,16 +4549,26 @@ bool PcapQueue_readFromFifo::socketConnect() {
 	char dataTime[40];
 	snprintf(dataTime, sizeof(dataTime), "sensor_time: %s", sqlDateTimeString(time(NULL)).c_str());
 	socketWrite((u_char*)dataTime, strlen(dataTime) + 1);
-	char recv_data[100] = "";
-	size_t recv_data_len = recv(this->socketHandle, recv_data, sizeof(recv_data), 0);
-	if(recv_data_len && memmem(recv_data, recv_data_len,  "bad time", 8)) {
-		++this->badTimeCounter;
-		string error = "different time between receiver and sender";
-		if(this->badTimeCounter > 4) {
-			syslog(LOG_ERR, "%s - terminating", error.c_str());
-			vm_terminate_error("bad time");
+	fd_set rfds;
+	FD_ZERO(&rfds);
+	FD_SET(this->socketHandle, &rfds);
+	struct timeval tv;
+	tv.tv_sec = 4;
+	tv.tv_usec = 0;
+	if(select(this->socketHandle + 1, &rfds, (fd_set *) 0, (fd_set *) 0, &tv) > 0) {
+		char recv_data[100] = "";
+		size_t recv_data_len = recv(this->socketHandle, recv_data, sizeof(recv_data), 0);
+		if(recv_data_len && memmem(recv_data, recv_data_len,  "bad time", 8)) {
+			++this->badTimeCounter;
+			string error = "different time between receiver and sender";
+			if(this->badTimeCounter > 4) {
+				syslog(LOG_ERR, "%s - terminating", error.c_str());
+				vm_terminate_error("bad time");
+			} else {
+				syslog(LOG_ERR, "%s - check %i", error.c_str(), this->badTimeCounter);
+			}
 		} else {
-			syslog(LOG_ERR, "%s - check %i", error.c_str(), this->badTimeCounter);
+			this->badTimeCounter = 0;
 		}
 	} else {
 		this->badTimeCounter = 0;
