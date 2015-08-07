@@ -3547,7 +3547,7 @@ bool SqlDb_mysql::createSchema(SqlDb *sourceDb) {
 
 	this->query(string(
 	"CREATE TABLE IF NOT EXISTS `cdr_tar_part` (\
-			`ID` int unsigned NOT NULL AUTO_INCREMENT,\
+			`ID` bigint unsigned NOT NULL AUTO_INCREMENT,\
 			`cdr_ID` int unsigned NOT NULL,") +
 			(opt_cdr_partition ?
 				"`calldate` datetime NOT NULL," :
@@ -5253,7 +5253,7 @@ bool SqlDb_odbc::createSchema(SqlDb *sourceDb) {
 	this->query(
 	"IF NOT EXISTS (SELECT * FROM sys.objects WHERE name = 'cdr_tar_part') BEGIN\
 		CREATE TABLE cdr_tar_part (\
-			ID int PRIMARY KEY IDENTITY,\
+			ID bigint PRIMARY KEY IDENTITY,\
 			cdr_ID int \
 				FOREIGN KEY REFERENCES cdr (ID),\
 			type tinynt NULL,\
