@@ -340,7 +340,12 @@ int opt_pcap_dump_bufflength = 8192;
 int opt_pcap_dump_asyncwrite = 1;
 int opt_pcap_dump_asyncwrite_limit_new_thread = 80;
 FileZipHandler::eTypeCompress opt_pcap_dump_zip_sip = FileZipHandler::compress_na;
-FileZipHandler::eTypeCompress opt_pcap_dump_zip_rtp = FileZipHandler::gzip;
+FileZipHandler::eTypeCompress opt_pcap_dump_zip_rtp = 
+	#ifdef HAVE_LIBLZO
+		FileZipHandler::lzo;
+	#else
+		FileZipHandler::gzip;
+	#endif //HAVE_LIBLZO
 int opt_pcap_dump_ziplevel_sip = Z_DEFAULT_COMPRESSION;
 int opt_pcap_dump_ziplevel_rtp = 1;
 int opt_pcap_dump_ziplevel_graph = 1;
