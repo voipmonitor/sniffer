@@ -68,7 +68,7 @@ unsigned int filter_base::getFlagsFromBaseData(filter_db_row_base *baseRow) {
 }
 
 void filter_base::setCallFlagsFromFilterFlags(unsigned int *callFlags, unsigned int filterFlags) {
-	if(filterFlags & FLAG_RTP)					*callFlags |= FLAG_SAVERTP;
+	if(filterFlags & FLAG_RTP)					{*callFlags |= FLAG_SAVERTP; *callFlags &= ~FLAG_SAVERTPHEADER;}
 	if(filterFlags & FLAG_NORTP) 					{*callFlags &= ~FLAG_SAVERTP; *callFlags &= ~FLAG_SAVERTPHEADER;}
 	
 	if(filterFlags & FLAG_SIP)					*callFlags |= FLAG_SAVESIP;
