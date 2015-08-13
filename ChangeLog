@@ -1,3 +1,10 @@
+11.11.1 13.08.2015
+==================
+- fix capture rules in case savertp = header and capture rule is set to save full RTP (it was still saving only rtp headers)
+- retrieve audio from remote sniffer in case there is audio wav/ogg generated and not convert it from pcap 
+- fix issue with name_sensor option (duplicated string) 
+
+
 11.11 11.08.2015
 ================
 - implement LZO compression algorithm and use it by default for RTP compression which is 8x faster then default gzip but about 10% less efficient. To enable gzip back set pcap_dump_zip_rtp = gzip
