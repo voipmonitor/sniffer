@@ -3861,56 +3861,57 @@ void *PcapQueue_readFromFifo::threadFunction(void *arg, unsigned int arg2) {
 					if(readLen) {
 						bufferLen += readLen;
 						if(syncBeginBlock) {
-							char *pointToSensorIdName = (char*)memmem(buffer, bufferLen, "sensor_id_name: ", 16);
-							if(pointToSensorIdName) {
-								pointToSensorIdName += 16;
-								unsigned int offset = 0;
-								bool separator = 0;
-								bool nullTerm = false;
-								while((unsigned)(pointToSensorIdName - (char*)buffer + offset) < bufferLen &&
-								      (pointToSensorIdName[offset] == 0 ||
-								       (pointToSensorIdName[offset] >= ' ' && pointToSensorIdName[offset] < 128))) {
-									if(pointToSensorIdName[offset] == 0) {
-										if(separator) {
-											nullTerm = true;
+							if(!detectSensorName) {
+								char *pointToSensorIdName = (char*)memmem(buffer, bufferLen, "sensor_id_name: ", 16);
+								if(pointToSensorIdName) {
+									pointToSensorIdName += 16;
+									unsigned int offset = 0;
+									bool separator = 0;
+									bool nullTerm = false;
+									sensorName = "";
+									while((unsigned)(pointToSensorIdName - (char*)buffer + offset) < bufferLen &&
+									      (pointToSensorIdName[offset] == 0 ||
+									       (pointToSensorIdName[offset] >= ' ' && pointToSensorIdName[offset] < 128))) {
+										if(pointToSensorIdName[offset] == 0) {
+											if(separator) {
+												nullTerm = true;
+											}
+											break;
 										}
-										break;
+										if(offset == 0) {
+											sensorId = atoi(pointToSensorIdName + offset);
+										} else if(separator) {
+											sensorName = sensorName + pointToSensorIdName[offset];
+										} else if(pointToSensorIdName[offset] == ':') {
+											separator = true;
+										}
+										++offset;
 									}
-									if(offset == 0) {
-										sensorId = atoi(pointToSensorIdName + offset);
-									} else if(separator) {
-										sensorName = sensorName + pointToSensorIdName[offset];
-									} else if(pointToSensorIdName[offset] == ':') {
-										separator = true;
-									}
-									++offset;
-								}
-								if(sensorId > 0 && sensorName.length() && nullTerm) {
-									extern SensorsMap sensorsMap;
-									sensorsMap.setSensorName(sensorId, sensorName.c_str());
-									if(!detectSensorName) {
+									if(sensorId > 0 && sensorName.length() && nullTerm) {
+										extern SensorsMap sensorsMap;
+										sensorsMap.setSensorName(sensorId, sensorName.c_str());
 										syslog(LOG_NOTICE, "detect sensor name: '%s' for sensor id: %i", sensorName.c_str(), sensorId);
+										detectSensorName = true;
 									}
-									detectSensorName = true;
 								}
 							}
-							char *pointToSensorTime = (char*)memmem(buffer, bufferLen, "sensor_time: ", 13);
-							if(pointToSensorTime) {
-								pointToSensorTime += 13;
-								unsigned int offset = 0;
-								bool nullTerm = false;
-								while((unsigned)(pointToSensorTime - (char*)buffer + offset) < bufferLen &&
-								      (pointToSensorTime[offset] == 0 ||
-								       (pointToSensorTime[offset] >= ' ' && pointToSensorTime[offset] < 128))) {
-									if(pointToSensorTime[offset] == 0) {
-										nullTerm = true;
-										break;
+							if(!detectSensorTime) {
+								char *pointToSensorTime = (char*)memmem(buffer, bufferLen, "sensor_time: ", 13);
+								if(pointToSensorTime) {
+									pointToSensorTime += 13;
+									unsigned int offset = 0;
+									bool nullTerm = false;
+									while((unsigned)(pointToSensorTime - (char*)buffer + offset) < bufferLen &&
+									      (pointToSensorTime[offset] == 0 ||
+									       (pointToSensorTime[offset] >= ' ' && pointToSensorTime[offset] < 128))) {
+										if(pointToSensorTime[offset] == 0) {
+											nullTerm = true;
+											break;
+										}
+										sensorTime = sensorTime + pointToSensorTime[offset];
+										++offset;
 									}
-									sensorTime = sensorTime + pointToSensorTime[offset];
-									++offset;
-								}
-								if(sensorTime.length() && nullTerm) {
-									if(!detectSensorTime) {
+									if(sensorTime.length() && nullTerm) {
 										syslog(LOG_NOTICE, "reported sensor time: %s for sensor id: %i", sensorTime.c_str(), sensorId);
 										time_t actualTimeSec = time(NULL);
 										time_t sensorTimeSec = stringToTime(sensorTime.c_str());
@@ -3929,8 +3930,8 @@ void *PcapQueue_readFromFifo::threadFunction(void *arg, unsigned int arg2) {
 											string message = "ok";
 											send(this->packetServerConnections[arg2]->socketClient, message.c_str(), message.length(), 0);
 										}
+										detectSensorTime = true;
 									}
-									detectSensorTime = true;
 								}
 							}
 							u_char *pointToBeginBlock = (u_char*)memmem(buffer, bufferLen, PCAP_BLOCK_STORE_HEADER_STRING, PCAP_BLOCK_STORE_HEADER_STRING_LEN);
@@ -4558,7 +4559,8 @@ bool PcapQueue_readFromFifo::socketConnect() {
 	if(select(this->socketHandle + 1, &rfds, (fd_set *) 0, (fd_set *) 0, &tv) > 0) {
 		char recv_data[100] = "";
 		size_t recv_data_len = recv(this->socketHandle, recv_data, sizeof(recv_data), 0);
-		if(recv_data_len && memmem(recv_data, recv_data_len,  "bad time", 8)) {
+		if(recv_data_len > 0 && recv_data_len <= sizeof(recv_data) && 
+		   memmem(recv_data, recv_data_len,  "bad time", 8)) {
 			++this->badTimeCounter;
 			string error = "different time between receiver and sender";
 			if(this->badTimeCounter > 4) {
