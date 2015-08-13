@@ -19,6 +19,9 @@ cConfigItem::cConfigItem(const char *name) {
 	set = false;
 	naDefaultValueStr = false;
 	minor = false;
+	minorGroupIfNotSet = false;
+	readOnly = false;
+	alwaysShow = false;
 }
 
 cConfigItem *cConfigItem::addAlias(const char *name_alias) {
@@ -38,6 +41,26 @@ cConfigItem *cConfigItem::setNaDefaultValueStr() {
 
 cConfigItem *cConfigItem::setMinor() {
 	minor = true;
+	return(this);
+}
+
+cConfigItem *cConfigItem::setMinorGroupIfNotSet() {
+	minorGroupIfNotSet = true;
+	return(this);
+}
+
+cConfigItem *cConfigItem::setReadOnly() {
+	readOnly = true;
+	return(this);
+}
+
+cConfigItem *cConfigItem::setAlwaysShow() {
+	alwaysShow = true;
+	return(this);
+}
+
+cConfigItem *cConfigItem::setDisableIf(const char *disableIf) {
+	this->disableIf = disableIf;
 	return(this);
 }
 
@@ -184,8 +207,33 @@ string cConfigItem::getJson() {
 	json.add("value", json_encode(getValueStr()));
 	json.add("default", json_encode(defaultValueStr));
 	json.add("group", group_name);
+	json.add("subgroup", subgroup_name);
 	json.add("level", level);
 	json.add("minor", minor);
+	json.add("minor_group_if_not_set", minorGroupIfNotSet);
+	json.add("read_only", readOnly);
+	if(!disableIf.empty()) {
+		json.add("disable_if", disableIf);
+	}
+	json.add("always_show", alwaysShow);
+	cConfigItem_integer *dc_integer = dynamic_cast<cConfigItem_integer*>(this);
+	if(dc_integer) {
+		if(dc_integer->getMaximum()) {
+			json.add("maximum", dc_integer->getMaximum());
+		}
+		if(dc_integer->getMinimum()) {
+			json.add("minimum", dc_integer->getMinimum());
+		}
+		if(dc_integer->isMenuValue()) {
+			json.add("menu_value", true);
+		}
+		if(dc_integer->isOnlyMenu()) {
+			json.add("only_menu", true);
+		}
+	}
+	if(dynamic_cast<cConfigItem_string*>(this) && dynamic_cast<cConfigItem_string*>(this)->isPassword()) {
+		json.add("password", true);
+	}
 	list<sMapValue> menuItems = getMenuItems();
 	if(menuItems.size()) {
 		ostringstream outStr;
@@ -373,9 +421,11 @@ string cConfigItem_integer::getValueStr(bool configFile) {
 	if(param_uint64) {
 		val = *param_uint64;
 	}
-	string str = getStringFromMapValues(val);
-	if(!str.empty()) {
-		return(str);
+	if(!menuValue) {
+		string str = getStringFromMapValues(val);
+		if(!str.empty()) {
+			return(str);
+		}
 	}
 	if(multiple) {
 		val /= multiple;
@@ -1143,6 +1193,8 @@ cConfigItem_type_compress::cConfigItem_type_compress(const char* name, FileZipHa
 
 cConfig::cConfig() {
 	defaultLevel = cConfigItem::levelNormal;
+	defaultMinor = false;
+	defaultMinorGroupIfNotSet = false;
 }
 
 cConfig::~cConfig() {
@@ -1152,15 +1204,34 @@ cConfig::~cConfig() {
 }
 
 void cConfig::addConfigItem(cConfigItem *configItem) {
+	if(config_map.find(configItem->config_name) != config_map.end()) {
+		cout << "warning: duplicity config item: " << configItem->config_name << endl;
+	}
 	configItem->config = this;
 	configItem->level = defaultLevel;
 	configItem->group_name = defaultGroup;
+	configItem->subgroup_name = defaultSubgroup;
+	if(defaultMinor) {
+		configItem->minor = defaultMinor;
+	}
+	if(defaultMinorGroupIfNotSet) {
+		configItem->minorGroupIfNotSet = defaultMinorGroupIfNotSet;
+	}
+	if(!defaultDisableIf.empty()) {
+		configItem->disableIf = defaultDisableIf;
+	}
 	config_map[configItem->config_name] = configItem;
 	config_list.push_back(configItem->config_name);
 }
 
 void cConfig::group(const char *groupName) {
-	defaultGroup = groupName ? groupName : "default";
+	defaultGroup = groupName ? groupName : "";
+	defaultSubgroup = "";
+	normal();
+}
+
+void cConfig::subgroup(const char *subgroupName) {
+	defaultSubgroup = subgroupName ? subgroupName : "";
 	normal();
 }
 
@@ -1178,6 +1249,30 @@ void cConfig::expert() {
 
 void cConfig::obsolete() {
 	defaultLevel = cConfigItem::levelObsolete;
+}
+
+void cConfig::minorBegin() {
+	defaultMinor = true;
+}
+
+void cConfig::minorEnd() {
+	defaultMinor = false;
+}
+
+void cConfig::minorGroupIfNotSetBegin() {
+	defaultMinorGroupIfNotSet = true;
+}
+
+void cConfig::minorGroupIfNotSetEnd() {
+	defaultMinorGroupIfNotSet = true;
+}
+
+void cConfig::setDisableIfBegin(string disableIf) {
+	defaultDisableIf = disableIf;
+}
+
+void cConfig::setDisableIfEnd() {
+	defaultDisableIf = "";
 }
 
 bool cConfig::loadFromConfigFileOrDirectory(const char *filename) {
@@ -1451,5 +1546,19 @@ void cConfig::clearToDefaultValues() {
 	for(map<string, cConfigItem*>::iterator iter = config_map.begin(); iter != config_map.end(); iter++) {
 		iter->second->clearToDefaultValue();
 		evSetConfigItem(iter->second);
+	}
+}
+
+void cConfig::setDescription(const char *itemName, const char *description) {
+	map<string, cConfigItem*>::iterator iter = config_map.find(itemName);
+	if(iter != config_map.end()) {
+		iter->second->setDescription(description);
+	}
+}
+
+void cConfig::setHelp(const char *itemName, const char *help) {
+	map<string, cConfigItem*>::iterator iter = config_map.find(itemName);
+	if(iter != config_map.end()) {
+		iter->second->setHelp(help);
 	}
 }

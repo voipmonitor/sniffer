@@ -167,4 +167,15 @@ bool is_enable_cleanspool();
 bool is_receiver();
 bool is_sender();
 
+enum eSnifferMode {
+	snifferMode_na,
+	snifferMode_read_from_interface,
+	snifferMode_read_from_files,
+	snifferMode_sender
+};
+
+#define snifferMode_read_from_interface_str string("1")
+#define snifferMode_read_from_files_str string("2")
+#define snifferMode_sender_str string("3")
+
 #endif

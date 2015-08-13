@@ -37,6 +37,10 @@ public:
 	cConfigItem *setDefaultValueStr(const char *defaultValueStr);
 	cConfigItem *setNaDefaultValueStr();
 	cConfigItem *setMinor();
+	cConfigItem *setMinorGroupIfNotSet();
+	cConfigItem *setReadOnly();
+	cConfigItem *setDisableIf(const char *disableIf);
+	cConfigItem *setAlwaysShow();
 	void setConfigFileSection(const char *config_file_section);
 	cConfigItem *addValue(const char *str, int value);
 	cConfigItem *addValues(const char *str_values);
@@ -71,6 +75,7 @@ protected:
 	string config_file_section;
 	eTypeLevel level;
 	string group_name;
+	string subgroup_name;
 	string subtype;
 	string description;
 	string help;
@@ -80,6 +85,10 @@ protected:
 	string defaultValueStr;
 	bool naDefaultValueStr;
 	bool minor;
+	bool minorGroupIfNotSet;
+	bool readOnly;
+	string disableIf;
+	bool alwaysShow;
 friend class cConfig;
 };
 
@@ -159,8 +168,28 @@ public:
 		this->yesValue = yesValue;
 		return(this);
 	}
+	cConfigItem_integer *setMenuValue() {
+		this->menuValue = true;
+		return(this);
+	}
+	cConfigItem_integer *setOnlyMenu() {
+		this->onlyMenu = true;
+		return(this);
+	}
 	int64_t getValue();
 	string getValueStr(bool configFile = false);
+	int getMaximum() {
+		return(maximum);
+	}
+	int getMinimum() {
+		return(minimum);
+	}
+	bool isMenuValue() {
+		return(menuValue);
+	}
+	bool isOnlyMenu() {
+		return(onlyMenu);
+	}
 protected:
 	bool setParamFromConfigFile(CSimpleIniA *ini);
 	bool setParamFromValueStr(string value_str);
@@ -177,6 +206,8 @@ protected:
 		ifZeroOrNegative = 0;
 		multiple = 0;
 		yesValue = 0;
+		menuValue = false;
+		onlyMenu = false;
 	}
 	void initVirtParam() {
 		param_virt = 0;
@@ -196,6 +227,8 @@ protected:
 	int ifZeroOrNegative;
 	double multiple;
 	int yesValue;
+	bool menuValue;
+	bool onlyMenu;
 };
 
 class cConfigItem_float : public cConfigItem {
@@ -232,8 +265,15 @@ public:
 		this->explodeSeparator = explodeSeparator;
 		return(this);
 	}
+	cConfigItem_string *setPassword() {
+		this->password = true;
+		return(this);
+	}
 	string getValue();
 	string getValueStr(bool configFile = false);
+	bool isPassword() {
+	       return(password);
+	}
 protected:
 	bool setParamFromConfigFile(CSimpleIniA *ini);
 	bool setParamFromValueStr(string value_str);
@@ -247,6 +287,7 @@ protected:
 	void initOther() {
 		prefix = "";
 		explodeSeparator = ";";
+		password = false;
 	}
 	void initVirtParam() {
 		param_virt = "";
@@ -262,6 +303,7 @@ protected:
 	vector<string> *param_vect_str;
 	string prefix;
 	string explodeSeparator;
+	bool password;
 };
 
 class cConfigItem_hour_interval : public cConfigItem {
@@ -399,8 +441,8 @@ protected:
 
 class cConfigItem_type_compress : public cConfigItem_yesno {
 public:
-	cConfigItem_type_compress(const char* name, CompressStream::eTypeCompress *type_compress);
-	cConfigItem_type_compress(const char* name, FileZipHandler::eTypeCompress *type_compress);
+	cConfigItem_type_compress(const char* name, CompressStream::eTypeCompress *type_compress = NULL);
+	cConfigItem_type_compress(const char* name, FileZipHandler::eTypeCompress *type_compress = NULL);
 };
 
 
@@ -411,10 +453,17 @@ public:
 	void addConfigItems();
 	void addConfigItem(cConfigItem *configItem);
 	void group(const char *groupName);
+	void subgroup(const char *subgroupName);
 	void normal();
 	void advanced();
 	void expert();
 	void obsolete();
+	void minorBegin();
+	void minorEnd();
+	void minorGroupIfNotSetBegin();
+	void minorGroupIfNotSetEnd();
+	void setDisableIfBegin(string disableIf);
+	void setDisableIfEnd();
 	bool loadFromConfigFileOrDirectory(const char *filename);
 	bool loadFromConfigFile(const char *filename, string *error = NULL);
 	void evSetConfigItem(cConfigItem *configItem);
@@ -425,6 +474,8 @@ public:
 	void putToMysql();
 	void setDefaultValues();
 	void clearToDefaultValues();
+	void setDescription(const char *itemName, const char *description);
+	void setHelp(const char *itemName, const char *help);
 private:
 	void loadFromConfigFileError(const char *errorString, const char *filename, string *error = NULL);
 private:
@@ -432,6 +483,10 @@ private:
 	map<string, cConfigItem*> config_map;
 	cConfigItem::eTypeLevel defaultLevel;
 	string defaultGroup;
+	string defaultSubgroup;
+	bool defaultMinor;
+	bool defaultMinorGroupIfNotSet;
+	string defaultDisableIf;
 };
 
 
