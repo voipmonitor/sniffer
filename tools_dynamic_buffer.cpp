@@ -852,6 +852,17 @@ void CompressStream::createDecompressBuffer(u_int32_t bufferLen) {
 	}
 }
 
+extern int _sendvm(int socket, void *channel, const char *buf, size_t len, int mode);
+bool CompressStream::compress_ev(char *data, u_int32_t len, u_int32_t decompress_len, bool format_data) {
+	if(this->sendParameter_client) {
+		if(_sendvm(this->sendParameter_client, this->sendParameter_sshchannel, data, len, 0) == -1) {
+			this->setError("send error");
+			return(false);
+		}
+	}
+	return(true);
+}
+
 CompressStream::eTypeCompress CompressStream::convTypeCompress(const char *typeCompress) {
 	char _compress_method[10];
 	strncpy(_compress_method, typeCompress, sizeof(_compress_method));

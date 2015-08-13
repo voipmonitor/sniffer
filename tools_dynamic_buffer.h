@@ -215,6 +215,7 @@ public:
 private:
 	void createCompressBuffer();
 	void createDecompressBuffer(u_int32_t bufferLen);
+	bool compress_ev(char *data, u_int32_t len, u_int32_t decompress_len, bool format_data = false);
 private:
 	eTypeCompress typeCompress;
 	char *compressBuffer;
