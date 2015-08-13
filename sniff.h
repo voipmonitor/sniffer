@@ -488,6 +488,16 @@ private:
 	bool term_processRtp;
 friend inline void *_ProcessRtpPacket_outThreadFunction(void *arg);
 };
- 
+
+
+#define enable_save_sip(call)		(call->flags & FLAG_SAVESIP)
+#define enable_save_register(call)	(call->flags & FLAG_SAVEREGISTER)
+#define enable_save_rtp(call)		((call->flags & (FLAG_SAVERTP | FLAG_SAVERTPHEADER)) || (call->isfax && opt_saveudptl) || opt_saverfc2833)
+#define enable_save_sip_rtp(call)	(enable_save_sip(call) || enable_save_rtp(call))
+#define enable_save_packet(call)	(enable_save_sip(call) || enable_save_register(call) || enable_save_rtp(call))
+#define enable_save_audio(call)		((call->flags & FLAG_SAVEWAV) || opt_savewav_force)
+#define enable_save_sip_rtp_audio(call)	(enable_save_sip_rtp(call) || enable_save_audio(call))
+#define enable_save_any(call)		(enable_save_packet(call) || enable_save_audio(call))
+
 
 #endif

@@ -85,6 +85,7 @@ extern int opt_skiprtpdata;
 extern char opt_silencedmtfseq[16];
 extern int opt_skinny;
 extern unsigned int opt_skinny_ignore_rtpip;
+extern int opt_saverfc2833;
 extern IPfilter *ipfilter;
 
 /* Skinny debugging only available if asterisk configured with --enable-dev-mode */
@@ -1266,7 +1267,7 @@ Call *new_skinny_channel(int state, char *data, int datalen, struct pcap_pkthdr 
 	}
 	calltable->skinny_ipTuples[tmp.str()] = call;
 
-	if(call->flags & (FLAG_SAVESIP | FLAG_SAVERTP | FLAG_SAVEWAV) || opt_savewav_force) {
+	if(enable_save_sip_rtp_audio(call)) {
 		extern int opt_defer_create_spooldir;
 		if(!opt_defer_create_spooldir) {
 			static string lastdir;
@@ -1325,7 +1326,7 @@ Call *new_skinny_channel(int state, char *data, int datalen, struct pcap_pkthdr 
                 ****/
                 if(opt_newdir and opt_pcap_split) {
                         //SKINNY
-			if(call->flags & (FLAG_SAVESIP)) {
+			if(enable_save_sip(call)) {
 				char pcapFilePath_spool_relative[1024];
 				snprintf(pcapFilePath_spool_relative, 1023, "%s/%s/%s.pcap", call->dirname().c_str(), opt_newdir ? "SKINNY" : "", call->get_fbasename_safe());
 				pcapFilePath_spool_relative[1023] = 0;
@@ -1343,7 +1344,7 @@ Call *new_skinny_channel(int state, char *data, int datalen, struct pcap_pkthdr 
 				}
 			}
                         //RTP
-			if(call->flags & (FLAG_SAVERTP)) {
+			if(enable_save_rtp(call)) {
 				char pcapFilePath_spool_relative[1024];
 				snprintf(pcapFilePath_spool_relative, 1023, "%s/%s/%s.pcap", call->dirname().c_str(), opt_newdir ? "RTP" : "", call->get_fbasename_safe());
 				pcapFilePath_spool_relative[1023] = 0;
@@ -1361,7 +1362,7 @@ Call *new_skinny_channel(int state, char *data, int datalen, struct pcap_pkthdr 
 				}
 			}
                 } else {
-			if(call->flags & (FLAG_SAVESIP | FLAG_SAVERTP)) {
+			if(enable_save_sip_rtp(call)) {
 				char pcapFilePath_spool_relative[1024];
 				snprintf(pcapFilePath_spool_relative, 1023, "%s/%s/%s.pcap", call->dirname().c_str(), opt_newdir ? "ALL" : "", call->get_fbasename_safe());
 				pcapFilePath_spool_relative[1023] = 0;

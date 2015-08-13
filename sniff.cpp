@@ -219,6 +219,7 @@ char * gettag(const void *ptr, unsigned long len, const char *tag, unsigned long
 static void logPacketSipMethodCall(u_int64_t packet_number, int sip_method, int lastSIPresponseNum, pcap_pkthdr *header, 
 				   unsigned int saddr, int source, unsigned int daddr, int dest,
 				   Call *call, const char *descr = NULL);
+
 #define logPacketSipMethodCall_enable ((opt_read_from_file && verbosity > 2) || verbosityE > 1 || sverb.sip_packets)
 
 typedef struct pcap_hdr_s {
@@ -1753,8 +1754,8 @@ Call *new_invite_register(bool is_ssl, int sip_method, char *data, int datalen, 
 	}
 
 	// opening dump file
-	if((call->type == REGISTER && (call->flags & FLAG_SAVEREGISTER)) || 
-		(call->type != REGISTER && (call->flags & (FLAG_SAVESIP | FLAG_SAVERTP | FLAG_SAVEWAV) || opt_savewav_force))) {
+	if((call->type == REGISTER && enable_save_register(call)) || 
+	   (call->type != REGISTER && enable_save_sip_rtp_audio(call))) {
 		extern int opt_defer_create_spooldir;
 		if(!opt_defer_create_spooldir) {
 			static string lastdir;
@@ -1806,7 +1807,7 @@ Call *new_invite_register(bool is_ssl, int sip_method, char *data, int datalen, 
 		}
 	}
 
-	if(call->type == REGISTER && (call->flags & FLAG_SAVEREGISTER)) {
+	if(call->type == REGISTER && enable_save_register(call)) {
 		/****
 		call->set_f_pcap(NULL);
 		call->set_fsip_pcap(NULL);
@@ -1838,8 +1839,7 @@ Call *new_invite_register(bool is_ssl, int sip_method, char *data, int datalen, 
 				}
 			}
 		}
-	} else if((call->type != REGISTER && (call->flags & (FLAG_SAVESIP | FLAG_SAVERTP))) || 
-		(call->isfax && opt_saveudptl)) {
+	} else if(call->type != REGISTER && enable_save_sip_rtp(call)) {
 		// open one pcap for all packets or open SIP and RTP separatly
 		/****
 		call->set_f_pcap(NULL);
@@ -3235,12 +3235,12 @@ rtpcheck:
 			if(rtp_threaded && can_thread) {
 				add_to_rtp_thread_queue(call, (unsigned char*) data, datalen, dataoffset, header, saddr, daddr, source, dest, iscaller, is_rtcp,
 							block_store, block_store_index, 
-							(call->flags & FLAG_SAVERTPHEADER) || (call->flags & FLAG_SAVERTP) || (call->isfax && opt_saveudptl) || opt_saverfc2833, 
+							enable_save_rtp(call), 
 							packet, istcp, dlt, sensor_id,
 							false);
 			} else {
 				call->read_rtp((unsigned char*) data, datalen, dataoffset, header, NULL, saddr, daddr, source, dest, iscaller,
-					       (call->flags & FLAG_SAVERTPHEADER) || (call->flags & FLAG_SAVERTP) || (call->isfax && opt_saveudptl) || opt_saverfc2833,
+					       enable_save_rtp(call),
 					       packet, istcp, dlt, sensor_id,
 					       block_store && block_store->ifname[0] ? block_store->ifname : NULL);
 				call->set_last_packet_time(header->ts.tv_sec);
@@ -3318,12 +3318,12 @@ rtpcheck:
 			if(rtp_threaded && can_thread) {
 				add_to_rtp_thread_queue(call, (unsigned char*) data, datalen, dataoffset, header, saddr, daddr, source, dest, !iscaller, is_rtcp,
 							block_store, block_store_index, 
-							(call->flags & FLAG_SAVERTPHEADER) || (call->flags & FLAG_SAVERTP) || (call->isfax && opt_saveudptl) || opt_saverfc2833, 
+							enable_save_rtp(call), 
 							packet, istcp, dlt, sensor_id,
 							false);
 			} else {
 				call->read_rtp((unsigned char*) data, datalen, dataoffset, header, NULL, saddr, daddr, source, dest, !iscaller,
-					       (call->flags & FLAG_SAVERTPHEADER) || (call->flags & FLAG_SAVERTP) || (call->isfax && opt_saveudptl) || opt_saverfc2833, 
+					       enable_save_rtp(call), 
 					       packet, istcp, dlt, sensor_id,
 					       block_store && block_store->ifname[0] ? block_store->ifname : NULL);
 				call->set_last_packet_time(header->ts.tv_sec);
@@ -3373,10 +3373,10 @@ rtpcheck:
 #endif
 
 			// opening dump file
-			if((call->flags & (FLAG_SAVESIP | FLAG_SAVEREGISTER | FLAG_SAVERTP | FLAG_SAVEWAV) || opt_savewav_force ) || (call->isfax && opt_saveudptl)) {
+			if(enable_save_any(call)) {
 				mkdir_r(call->dirname().c_str(), 0777);
 			}
-			if((call->flags & (FLAG_SAVESIP | FLAG_SAVEREGISTER | FLAG_SAVERTP)) || (call->isfax && opt_saveudptl)) {
+			if(enable_save_packet(call)) {
 				char pcapFilePath_spool_relative[1024];
 				snprintf(pcapFilePath_spool_relative , 1023, "%s/%s.pcap", call->dirname().c_str(), call->get_fbasename_safe());
 				pcapFilePath_spool_relative[1023] = 0;
@@ -3763,13 +3763,13 @@ Call *process_packet__rtp(ProcessRtpPacket::rtp_call_info *call_info,size_t call
 		if(rtp_threaded && can_thread) {
 			add_to_rtp_thread_queue(call, (unsigned char*) data, datalen, dataoffset, header, saddr, daddr, source, dest, iscaller, is_rtcp,
 						block_store, block_store_index, 
-						(call->flags & FLAG_SAVERTPHEADER) || (call->flags & FLAG_SAVERTP) || (call->isfax && opt_saveudptl) || opt_saverfc2833, 
+						enable_save_rtp(call), 
 						packet, istcp, dlt, sensor_id,
 						preSyncRtp);
 			call_info[call_info_index].use_sync = true;
 		} else {
 			call->read_rtp((unsigned char*) data, datalen, dataoffset, header, NULL, saddr, daddr, source, dest, iscaller,
-				       (call->flags & FLAG_SAVERTPHEADER) || (call->flags & FLAG_SAVERTP) || (call->isfax && opt_saveudptl) || opt_saverfc2833, 
+				       enable_save_rtp(call), 
 				       packet, istcp, dlt, sensor_id,
 				       block_store && block_store->ifname[0] ? block_store->ifname : NULL);
 			call->set_last_packet_time(header->ts.tv_sec);
@@ -3835,10 +3835,10 @@ Call *process_packet__rtp_nosip(unsigned int saddr, int source, unsigned int dad
 #endif
 
 	// opening dump file
-	if((call->flags & (FLAG_SAVESIP | FLAG_SAVEREGISTER | FLAG_SAVERTP | FLAG_SAVEWAV) || opt_savewav_force ) || (call->isfax && opt_saveudptl)) {
+	if(enable_save_any(call)) {
 		mkdir_r(call->dirname().c_str(), 0777);
 	}
-	if((call->flags & (FLAG_SAVESIP | FLAG_SAVEREGISTER | FLAG_SAVERTP)) || (call->isfax && opt_saveudptl)) {
+	if(enable_save_packet(call)) {
 		char pcapFilePath_spool_relative[1024];
 		snprintf(pcapFilePath_spool_relative , 1023, "%s/%s.pcap", call->dirname().c_str(), call->get_fbasename_safe());
 		pcapFilePath_spool_relative[1023] = 0;
