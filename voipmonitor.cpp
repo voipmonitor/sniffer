@@ -3144,8 +3144,11 @@ void test_alloc_speed_malloc() {
 }
 
 #ifdef HAVE_LIBTCMALLOC
+#if HAVE_LIBTCMALLOC
+extern "C" {
 void* tc_malloc(size_t size);
 void tc_free(void*);
+}
 void test_alloc_speed_tc() {
 	extern unsigned int HeapSafeCheck;
 	uint32_t ii = 1000000;
@@ -3161,6 +3164,7 @@ void test_alloc_speed_tc() {
 		delete pointers;
 	}
 }
+#endif
 #endif
 
 void test_untar() {
