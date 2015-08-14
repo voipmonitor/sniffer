@@ -3,6 +3,7 @@
 - fix capture rules in case savertp = header and capture rule is set to save full RTP (it was still saving only rtp headers)
 - retrieve audio from remote sniffer in case there is audio wav/ogg generated and not convert it from pcap 
 - fix issue with name_sensor option (duplicated string) 
+- fix crash in sender mirrorer when receiver disconnects
 
 
 11.11 11.08.2015
