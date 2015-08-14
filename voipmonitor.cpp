@@ -3127,6 +3127,42 @@ void test_alloc_speed() {
 	}
 }
 
+void test_alloc_speed_malloc() {
+	extern unsigned int HeapSafeCheck;
+	uint32_t ii = 1000000;
+	cout << "HeapSafeCheck: " << HeapSafeCheck << endl;
+	for(int p = 0; p < 10; p++) {
+		char **pointers = new FILE_LINE char*[ii];
+		for(u_int32_t i = 0; i < ii; i++) {
+			pointers[i] = (char*)malloc(1000);
+		}
+		for(u_int32_t i = 0; i < ii; i++) {
+			free(pointers[i]);
+		}
+		delete pointers;
+	}
+}
+
+#ifdef HAVE_LIBTCMALLOC
+void* tc_malloc(size_t size);
+void tc_free(void*);
+void test_alloc_speed_tc() {
+	extern unsigned int HeapSafeCheck;
+	uint32_t ii = 1000000;
+	cout << "HeapSafeCheck: " << HeapSafeCheck << endl;
+	for(int p = 0; p < 10; p++) {
+		char **pointers = new FILE_LINE char*[ii];
+		for(u_int32_t i = 0; i < ii; i++) {
+			pointers[i] = (char*)tc_malloc(1000);
+		}
+		for(u_int32_t i = 0; i < ii; i++) {
+			tc_free(pointers[i]);
+		}
+		delete pointers;
+	}
+}
+#endif
+
 void test_untar() {
 	Tar tar;
 	tar.tar_open("/var/spool/voipmonitor_local/2015-01-30/19/26/SIP/sip_2015-01-30-19-26.tar", O_RDONLY);
@@ -3353,8 +3389,18 @@ void test() {
 		cout << astr2 << endl;
 		
 	} break;
-	case 5:
+	case 51:
 		test_alloc_speed();
+		break;
+	case 52:
+		test_alloc_speed_malloc();
+		break;
+	case 53:
+		#ifdef HAVE_LIBTCMALLOC
+		test_alloc_speed_tc();
+		#else
+		cout << "tcmalloc not exists" << endl;
+		#endif
 		break;
 	case 6:
 		test_untar();
