@@ -1,3 +1,8 @@
+11.11.2 14.08.2015
+==================
+- fix cloud sniffer DNS possible crash on timeout in curl library
+
+
 11.11.1 13.08.2015
 ==================
 - fix capture rules in case savertp = header and capture rule is set to save full RTP (it was still saving only rtp headers)
