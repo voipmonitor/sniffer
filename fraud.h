@@ -999,7 +999,7 @@ void fraudRegister(u_int32_t ip, timeval tv, const char *ua, int ua_len);
 void fraudRegisterResponse(u_int32_t ip, u_int64_t at, const char *ua, int ua_len);
 bool isExistsFraudAlerts();
 
-bool isFraudReady() {
+inline bool isFraudReady() {
 	extern FraudAlerts *fraudAlerts;
         extern volatile int _fraudAlerts_ready;
 	return(fraudAlerts && _fraudAlerts_ready);

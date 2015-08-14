@@ -144,15 +144,15 @@ sVerbose sverb;
 
 void vm_terminate();
 void vm_terminate_error(const char *terminate_error);
-void set_terminating() {
+inline void set_terminating() {
 	extern int terminating;
 	terminating = 1;
 }
-void clear_terminating() {
+inline void clear_terminating() {
 	extern int terminating;
 	terminating = 0;
 }
-bool is_terminating() {
+inline bool is_terminating() {
 	extern int terminating;
 	return(terminating);
 }

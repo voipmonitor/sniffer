@@ -3112,7 +3112,9 @@ void test_escape() {
 }
 
 void test_alloc_speed() {
+	extern unsigned int HeapSafeCheck;
 	uint32_t ii = 1000000;
+	cout << "HeapSafeCheck: " << HeapSafeCheck << endl;
 	for(int p = 0; p < 10; p++) {
 		char **pointers = new FILE_LINE char*[ii];
 		for(u_int32_t i = 0; i < ii; i++) {
@@ -3267,6 +3269,36 @@ void test() {
 		//testCompress->testDecompress();
 		delete testCompress;
 		}
+	} break;
+	
+	case 31: {
+	 
+		if(opt_callidmerge_secret[0] != '\0') {
+			// header is encoded - decode it 
+		 
+			char *s2 = new char[1024];
+			strcpy(s2, opt_test_str + 2);
+			int l2 = strlen(s2);
+			unsigned char buf[1024];
+		 
+			char c;
+			c = s2[l2];
+			s2[l2] = '\0';
+			int enclen = base64decode(buf, (const char*)s2, l2);
+			static int keysize = strlen(opt_callidmerge_secret);
+			s2[l2] = c;
+			for(int i = 0; i < enclen; i++) {
+				buf[i] = buf[i] ^ opt_callidmerge_secret[i % keysize];
+			}
+			// s2 is now decrypted call-id
+			s2 = (char*)buf;
+			l2 = enclen;
+			cout << string(s2, l2) << endl;
+			
+		} else {
+			cout << "missing callidmerge_secret" << endl;
+		}
+		
 	} break;
 	 
 	case 1: {
@@ -3861,7 +3893,7 @@ void cConfig::addConfigItems() {
 				addConfigItem(new cConfigItem_yesno("mysqltransactions_http", &opt_mysql_enable_transactions_http));
 				addConfigItem(new cConfigItem_yesno("mysqltransactions_webrtc", &opt_mysql_enable_transactions_webrtc));
 		subgroup("cleaning");
-			addConfigItem(new cConfigItem_integer("cleandatabase", &opt_cleandatabase_cdr));
+			addConfigItem(new cConfigItem_integer("cleandatabase"));
 			addConfigItem(new cConfigItem_integer("cleandatabase_cdr", &opt_cleandatabase_cdr));
 			addConfigItem(new cConfigItem_integer("cleandatabase_http_enum", &opt_cleandatabase_http_enum));
 			addConfigItem(new cConfigItem_integer("cleandatabase_webrtc", &opt_cleandatabase_webrtc));
@@ -4377,13 +4409,14 @@ void cConfig::evSetConfigItem(cConfigItem *configItem) {
 		#endif
 	}
 	if(configItem->config_name == "cleandatabase") {
-		opt_cleandatabase_http_enum = opt_cleandatabase_cdr;
-		opt_cleandatabase_webrtc = opt_cleandatabase_cdr;
-		opt_cleandatabase_register_state = opt_cleandatabase_cdr;
-		opt_cleandatabase_register_failed = opt_cleandatabase_cdr;
+		opt_cleandatabase_cdr =
+		opt_cleandatabase_http_enum =
+		opt_cleandatabase_webrtc =
+		opt_cleandatabase_register_state =
+		opt_cleandatabase_register_failed = configItem->getValueInt();
 	}
 	if(configItem->config_name == "cleandatabase_cdr") {
-		opt_cleandatabase_http_enum = opt_cleandatabase_cdr;
+		opt_cleandatabase_http_enum =
 		opt_cleandatabase_webrtc = opt_cleandatabase_cdr;
 	}
 	if(configItem->config_name == "autocleanspoolminpercent") {
@@ -4416,11 +4449,12 @@ void cConfig::evSetConfigItem(cConfigItem *configItem) {
 		}
 	}
 	if(configItem->config_name == "pcap_dump_ziplevel") {
-		opt_pcap_dump_ziplevel_rtp = opt_pcap_dump_ziplevel_sip;
-		opt_pcap_dump_ziplevel_graph = opt_pcap_dump_ziplevel_sip;
+		opt_pcap_dump_ziplevel_sip =
+		opt_pcap_dump_ziplevel_rtp =
+		opt_pcap_dump_ziplevel_graph = configItem->getValueInt();
 	}
 	if(configItem->config_name == "savertp") {
-		switch(((cConfigItem_integer*)configItem)->getValue()) {
+		switch(configItem->getValueInt()) {
 		case 0:
 			opt_saveRTP = 0;
 			opt_onlyRTPheader = 0;
@@ -4436,7 +4470,7 @@ void cConfig::evSetConfigItem(cConfigItem *configItem) {
 		}
 	}
 	if(configItem->config_name == "saveaudio") {
-		switch(((cConfigItem_integer*)configItem)->getValue()) {
+		switch(configItem->getValueInt()) {
 		case 0:
 			opt_saveWAV = 0;
 			opt_audio_format = 0;
@@ -4452,7 +4486,7 @@ void cConfig::evSetConfigItem(cConfigItem *configItem) {
 		}
 	}
 	if(configItem->config_name == "savegraph") {
-		switch(((cConfigItem_integer*)configItem)->getValue()) {
+		switch(configItem->getValueInt()) {
 		case 0:
 			opt_saveGRAPH = 0;
 			opt_gzipGRAPH = FileZipHandler::compress_na;
@@ -4468,10 +4502,10 @@ void cConfig::evSetConfigItem(cConfigItem *configItem) {
 		}
 	}
 	if(configItem->config_name == "scanpcapmethod") {
-		opt_scanpcapmethod = (((cConfigItem_string*)configItem)->getValue()[0] == 'r') ? IN_MOVED_TO : IN_CLOSE_WRITE;
+		opt_scanpcapmethod = !configItem->getValueStr().empty() && configItem->getValueStr()[0] == 'r' ? IN_MOVED_TO : IN_CLOSE_WRITE;
 	}
 	if(configItem->config_name == "packetbuffer_compress_method") {
-		switch(((cConfigItem_integer*)configItem)->getValue()) {
+		switch(configItem->getValueInt()) {
 		case 0:
 			opt_pcap_queue_compress_method = pcap_block_store::compress_method_default;
 			break;
@@ -4484,25 +4518,25 @@ void cConfig::evSetConfigItem(cConfigItem *configItem) {
 		}
 	}
 	if((configItem->config_name == "mirror_destination" && ((cConfigItem_ip_port*)configItem)->getValue()) || 
-	   (configItem->config_name == "mirror_destination_ip" && !((cConfigItem_string*)configItem)->getValue().empty())) {
+	   (configItem->config_name == "mirror_destination_ip" && !configItem->getValueStr().empty())) {
 		opt_nocdr = 1;
 	}
 	if(configItem->config_name == "mirror_destination_ip") {
-		opt_pcap_queue_send_to_ip_port.set_ip(((cConfigItem_string*)configItem)->getValue());
+		opt_pcap_queue_send_to_ip_port.set_ip(configItem->getValueStr());
 	}
 	if(configItem->config_name == "mirror_destination_port") {
-		opt_pcap_queue_send_to_ip_port.set_port(((cConfigItem_integer*)configItem)->getValue());
+		opt_pcap_queue_send_to_ip_port.set_port(configItem->getValueInt());
 	}
 	if(configItem->config_name == "mirror_bind_ip") {
-		opt_pcap_queue_receive_from_ip_port.set_ip(((cConfigItem_string*)configItem)->getValue());
+		opt_pcap_queue_receive_from_ip_port.set_ip(configItem->getValueStr());
 	}
 	if(configItem->config_name == "mirror_bind_port") {
-		opt_pcap_queue_receive_from_ip_port.set_port(((cConfigItem_integer*)configItem)->getValue());
+		opt_pcap_queue_receive_from_ip_port.set_port(configItem->getValueInt());
 	}
 	if(configItem->config_name == "threading_mod") {
 		opt_pcap_queue_iface_dedup_separate_threads = 0;
 		opt_pcap_queue_iface_dedup_separate_threads_extend = 0;
-		switch(((cConfigItem_integer*)configItem)->getValue()) {
+		switch(configItem->getValueInt()) {
 		case 1:
 			opt_pcap_queue_iface_separate_threads = 0;
 			break;
@@ -4521,23 +4555,25 @@ void cConfig::evSetConfigItem(cConfigItem *configItem) {
 		}
 	}
 	if(configItem->config_name == "pcap_dump_zip") {
-		opt_pcap_dump_zip_rtp = opt_pcap_dump_zip_sip;
+		opt_pcap_dump_zip_sip = 
+		opt_pcap_dump_zip_rtp = (FileZipHandler::eTypeCompress)configItem->getValueInt();
 	}
 	if(configItem->config_name == "pcap_dump_zip_all") {
-		opt_pcap_dump_zip_rtp = opt_pcap_dump_zip_sip;
-		opt_gzipGRAPH = opt_pcap_dump_zip_sip;
+		opt_pcap_dump_zip_sip =
+		opt_pcap_dump_zip_rtp = 
+		opt_gzipGRAPH = (FileZipHandler::eTypeCompress)configItem->getValueInt();;
 	}
 	if(configItem->config_name == "sip_send_ip") {
-		sipSendSocket_ip_port.set_ip(((cConfigItem_string*)configItem)->getValue());
+		sipSendSocket_ip_port.set_ip(configItem->getValueStr());
 	}
 	if(configItem->config_name == "sip_send_port") {
-		sipSendSocket_ip_port.set_port(((cConfigItem_integer*)configItem)->getValue());
+		sipSendSocket_ip_port.set_port(configItem->getValueInt());
 	}
 	if(configItem->config_name == "max_buffer_mem") {
-		buffersControl.setMaxBufferMem(((cConfigItem_integer*)configItem)->getValue() * 1024 * 1024, true);
+		buffersControl.setMaxBufferMem(configItem->getValueInt() * 1024 * 1024, true);
 	}
 	if(configItem->config_name == "query_cache") {
-		if(((cConfigItem_yesno*)configItem)->getValue()) {
+		if(configItem->getValueInt()) {
 			opt_save_query_to_files = true;
 			opt_load_query_from_files = 1;
 			opt_load_query_from_files_inotify = true;
@@ -5527,11 +5563,11 @@ int eval_config(string inistr) {
 		strncpy(ifname, value, sizeof(ifname));
 	}
 	if((value = ini.GetValue("general", "cleandatabase", NULL))) {
-		opt_cleandatabase_cdr = atoi(value);
-		opt_cleandatabase_http_enum = opt_cleandatabase_cdr;
-		opt_cleandatabase_webrtc = opt_cleandatabase_cdr;
-		opt_cleandatabase_register_state = opt_cleandatabase_cdr;
-		opt_cleandatabase_register_failed = opt_cleandatabase_cdr;
+		opt_cleandatabase_cdr =
+		opt_cleandatabase_http_enum =
+		opt_cleandatabase_webrtc =
+		opt_cleandatabase_register_state =
+		opt_cleandatabase_register_failed = atoi(value);
 	}
 	if((value = ini.GetValue("general", "plcdisable", NULL))) {
 		opt_disableplc = yesno(value);
@@ -5552,9 +5588,9 @@ int eval_config(string inistr) {
 		opt_passertedidentity = yesno(value);
 	}
 	if((value = ini.GetValue("general", "cleandatabase_cdr", NULL))) {
-		opt_cleandatabase_cdr = atoi(value);
-		opt_cleandatabase_http_enum = opt_cleandatabase_cdr;
-		opt_cleandatabase_webrtc = opt_cleandatabase_cdr;
+		opt_cleandatabase_cdr =
+		opt_cleandatabase_http_enum =
+		opt_cleandatabase_webrtc = atoi(value);
 	}
 	if((value = ini.GetValue("general", "cleandatabase_http_enum", NULL))) {
 		opt_cleandatabase_http_enum = atoi(value);

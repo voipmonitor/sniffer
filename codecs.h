@@ -37,7 +37,7 @@
 #define PAYLOAD_XOPUS48 342
 #define PAYLOAD_TELEVENT 400
 
-const char *codec2text(int codec) {
+inline const char *codec2text(int codec) {
 	switch(codec) {
 	case PAYLOAD_PCMU:
 		return "G.711 ulaw";

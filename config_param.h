@@ -50,6 +50,7 @@ public:
 	cConfigItem *setDescription(const char *description);
 	cConfigItem *setHelp(const char *help);
 	virtual string getValueStr(bool configFile = false) { return(""); }
+	virtual int64_t getValueInt() { return(0); }
 protected:
 	virtual bool setParamFromConfigFile(CSimpleIniA *ini) = 0;
 	virtual bool setParamFromValueStr(string value_str) = 0;
@@ -110,6 +111,7 @@ public:
 	}
 	int getValue();
 	string getValueStr(bool configFile = false);
+	int64_t getValueInt() { return(getValue()); }
 protected:
 	bool setParamFromConfigFile(CSimpleIniA *ini);
 	bool setParamFromValueStr(string value_str);
@@ -178,6 +180,7 @@ public:
 	}
 	int64_t getValue();
 	string getValueStr(bool configFile = false);
+	int64_t getValueInt() { return(getValue()); }
 	int getMaximum() {
 		return(maximum);
 	}
