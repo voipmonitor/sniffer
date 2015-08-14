@@ -488,6 +488,9 @@ bool get_url_file(const char *url, const char *toFile, string *error) {
 			curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, false);
 			curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, false);
 			curl_easy_setopt(curl, CURLOPT_SSLVERSION, 3);
+			curl_easy_setopt(curl, CURLOPT_DNS_USE_GLOBAL_CACHE, 1);
+			curl_easy_setopt(curl, CURLOPT_DNS_CACHE_TIMEOUT, -1);
+			curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1);
 			char *urlPathSeparator = (char*)strchr(url + 8, '/');
 			string path = urlPathSeparator ? urlPathSeparator : "/";
 			string host = urlPathSeparator ? string(url).substr(0, urlPathSeparator - url) : url;
@@ -517,9 +520,6 @@ bool get_url_file(const char *url, const char *toFile, string *error) {
 			if(opt_curlproxy[0]) {
 				curl_easy_setopt(curl, CURLOPT_PROXY, opt_curlproxy);
 			}
-			curl_easy_setopt(curl, CURLOPT_DNS_USE_GLOBAL_CACHE, 1);
-			curl_easy_setopt(curl, CURLOPT_DNS_CACHE_TIMEOUT, -1);
-			curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1);
 			if(curl_easy_perform(curl) == CURLE_OK) {
 				rslt = true;
 			} else {
@@ -560,6 +560,9 @@ bool get_url_response(const char *url, SimpleBuffer *response, vector<dstring> *
 		curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, false);
 		curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, false);
 		curl_easy_setopt(curl, CURLOPT_SSLVERSION, 3);
+		curl_easy_setopt(curl, CURLOPT_DNS_USE_GLOBAL_CACHE, 1);
+		curl_easy_setopt(curl, CURLOPT_DNS_CACHE_TIMEOUT, -1);
+		curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1);
 		char *urlPathSeparator = (char*)strchr(url + 8, '/');
 		string path = urlPathSeparator ? urlPathSeparator : "/";
 		string host = urlPathSeparator ? string(url).substr(0, urlPathSeparator - url) : url;
