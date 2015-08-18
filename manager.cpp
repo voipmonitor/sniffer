@@ -423,7 +423,8 @@ int sendvm_from_stdout_of_command(char *command, int socket, ssh_channel channel
 	*/
 }
 
-int parse_command(char *buf, int size, int client, int eof, const char *buf_long, ManagerClientThread **managerClientThread = NULL, ssh_channel sshchannel = NULL) {
+int parse_command(char *buf, int size, int client, int eof, ManagerClientThread **managerClientThread = NULL, ssh_channel sshchannel = NULL) {
+	char buf_output[1024];
  
 	char *pointerToEndSeparator = strstr(buf, "\r\n");
 	if(pointerToEndSeparator) {
@@ -936,9 +937,6 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 	} else if(strstr(buf, "ipaccountfilter set") != NULL) {
 		
 		string ipfilter;
-		if(buf_long) {
-			buf = (char*)buf_long;
-		}
 		u_int32_t id = atol(buf + strlen("ipaccountfilter set "));
 		char *pointToSeparatorBefereIpfilter = strchr(buf + strlen("ipaccountfilter set "), ' ');
 		if(pointToSeparatorBefereIpfilter) {
@@ -1341,7 +1339,7 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 	} else if(strstr(buf, "set_json_config ") != NULL) {
 		string rslt;
 		if(useNewCONFIG) {
-			hot_restart_with_json_config(buf_long + 16);
+			hot_restart_with_json_config(buf + 16);
 			rslt = "ok";
 		} else {
 			rslt = "not supported";
@@ -1410,7 +1408,7 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 		char *tarPosI = new char[100000];
 		*tarPosI = 0;
 
-		sscanf(buf_long, zip ? "getfile_in_tar_zip %s %s %s %u %s %s" : "getfile_in_tar %s %s %s %u %s %s", tar_filename, filename, dateTimeKey, &recordId, tableType, tarPosI);
+		sscanf(buf, zip ? "getfile_in_tar_zip %s %s %s %u %s %s" : "getfile_in_tar %s %s %s %u %s %s", tar_filename, filename, dateTimeKey, &recordId, tableType, tarPosI);
 		
 		Tar tar;
 		if(!tar.tar_open(tar_filename, O_RDONLY)) {
@@ -1420,8 +1418,8 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 				getfile_in_tar_completed.add(tar_filename, filename, dateTimeKey);
 			}
 		} else {
-			sprintf(buf, "error: cannot open file [%s]", tar_filename);
-			if ((size = sendvm(client, sshchannel, buf, strlen(buf), 0)) == -1){
+			snprintf(buf_output, sizeof(buf_output), "error: cannot open file [%s]", tar_filename);
+			if ((size = sendvm(client, sshchannel, buf_output, strlen(buf_output), 0)) == -1){
 				cerr << "Error sending data to client" << endl;
 			}
 			delete [] tarPosI;
@@ -1478,8 +1476,8 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 
 		sscanf(buf, "fileexists %s", filename);
 		size = file_exists(filename);
-		sprintf(buf, "%d", size);
-		sendvm(client, sshchannel, buf, strlen(buf), 0);
+		snprintf(buf_output, sizeof(buf_output), "%d", size);
+		sendvm(client, sshchannel, buf_output, strlen(buf_output), 0);
 		return 0;
 	} else if(strstr(buf, "flush_tar") != NULL) {
 		char filename[2048];
@@ -1503,8 +1501,8 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 getwav2:
 		size = file_exists(wavfile);
 		if(size) {
-			sprintf(buf, "%d", size);
-			sendvm(client, sshchannel, buf, strlen(buf), 0);
+			snprintf(buf_output, sizeof(buf_output), "%d", size);
+			sendvm(client, sshchannel, buf_output, strlen(buf_output), 0);
 			return 0;
 		}
 		if(secondrun > 0) {
@@ -1545,8 +1543,8 @@ getwav:
 		if(size) {
 			fd = open(wavfile, O_RDONLY);
 			if(fd < 0) {
-				sprintf(buf, "error: cannot open file [%s]", wavfile);
-				if ((res = sendvm(client, sshchannel, buf, strlen(buf), 0)) == -1){
+				snprintf(buf_output, sizeof(buf_output), "error: cannot open file [%s]", wavfile);
+				if ((res = sendvm(client, sshchannel, buf_output, strlen(buf_output), 0)) == -1){
 					cerr << "Error sending data to client" << endl;
 				}
 				return -1;
@@ -1603,8 +1601,8 @@ getwav:
 		if(size) {
 			fd = open(tsharkfile, O_RDONLY);
 			if(fd < 0) {
-				sprintf(buf, "error: cannot open file [%s]", tsharkfile);
-				if ((res = sendvm(client, sshchannel, buf, strlen(buf), 0)) == -1){
+				snprintf(buf_output, sizeof(buf_output), "error: cannot open file [%s]", tsharkfile);
+				if ((res = sendvm(client, sshchannel, buf_output, strlen(buf_output), 0)) == -1){
 					cerr << "Error sending data to client" << endl;
 				}
 				return -1;
@@ -1642,7 +1640,10 @@ getwav:
 		if(size) {
 			fd = open(tsharkfile, O_RDONLY);
 			if(fd < 0) {
-				sprintf(buf, "error: cannot open file [%s]", filename);
+				snprintf(buf_output, sizeof(buf_output), "error: cannot open file [%s]", filename);
+				if ((res = sendvm(client, sshchannel, buf_output, strlen(buf_output), 0)) == -1){
+					cerr << "Error sending data to client" << endl;
+				}
 				return -1;
 			}
 			while(nread = read(fd, rbuf, sizeof rbuf), nread > 0) {
@@ -2024,7 +2025,7 @@ connect:
 		buf[size] = '\0';
 //		if(verbosity > 0) syslog(LOG_NOTICE, "recv[%s]\n", buf);
 		//res = parse_command(buf, size, client, 1, buf_long.c_str());
-		res = parse_command(buf, size, client, 1, NULL);
+		res = parse_command(buf, size, client, 1);
 	
 #if 0	
 		//cout << "New manager connect from: " << inet_ntoa((in_addr)clientInfo.sin_addr) << endl;
@@ -2091,7 +2092,7 @@ void *manager_read_thread(void * arg) {
 		}
 	}
 	ManagerClientThread *managerClientThread = NULL;
-	parse_command(buf, size, client, 0, buf_long.c_str(), &managerClientThread);
+	parse_command((char*)buf_long.c_str(), size, client, 0, &managerClientThread);
 	if(managerClientThread) {
 		if(managerClientThread->parseCommand()) {
 			ClientThreads.add(managerClientThread);
@@ -2198,7 +2199,7 @@ void *manager_ssh_(void) {
 					continue;
 				}
 				buf[len] = '\0';
-				parse_command(buf, len, 0, 0, NULL, NULL, channel);
+				parse_command(buf, len, 0, 0, NULL, channel);
 				ssh_channel_send_eof(channel);
 				ssh_channel_free(channel);
 				ssh_chans.erase(it1++);
