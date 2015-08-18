@@ -3750,6 +3750,9 @@ PcapQueue_readFromFifo::~PcapQueue_readFromFifo() {
 	}
 	if(this->socketHandle) {
 		this->socketClose();
+		if(this->packetServerDirection == directionRead && this->mainThreadId) {
+			pthread_join(this->socketServerThreadHandle, NULL);
+		}
 		syslog(LOG_NOTICE, "packetbuffer terminating (%s): socketClose", nameQueue.c_str());
 	}
 	this->cleanupBlockStoreTrash(true);
@@ -4608,7 +4611,15 @@ bool PcapQueue_readFromFifo::socketAwaitConnection(int *socketClient, sockaddr_i
 	*socketClient = -1;
 	socklen_t addrlen = sizeof(sockaddr_in);
 	while(*socketClient < 0 && !TERMINATING) {
-		*socketClient = accept(this->socketHandle, (sockaddr*)socketClientInfo, &addrlen);
+		fd_set rfds;
+		FD_ZERO(&rfds);
+		FD_SET(this->socketHandle, &rfds);
+		struct timeval tv;
+		tv.tv_sec = 1;
+		tv.tv_usec = 0;
+		if(select(this->socketHandle + 1, &rfds, (fd_set *) 0, (fd_set *) 0, &tv) > 0) {
+			*socketClient = accept(this->socketHandle, (sockaddr*)socketClientInfo, &addrlen);
+		}
 		usleep(100000);
 	}
 	return(*socketClient >= 0);
