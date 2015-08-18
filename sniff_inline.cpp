@@ -65,12 +65,15 @@ iphdr2 *convertHeaderIP_GRE(iphdr2 *header_ip) {
 		// 0x88BE - GRE & ERSPAN - headers size 8 + 8 bytes
 		struct ether_header *header_eth = (struct ether_header *)((char*)header_ip + sizeof(iphdr2) + (grehdr->protocol == 0x88BE ? 16 : 8));
 		unsigned int vlanoffset;
-		int protocol = 0;
+		u_int16_t protocol = 0;
 		if(header_eth->ether_type == 129) {
 			// VLAN tag
-			vlanoffset = 4;
+			vlanoffset = 0;
+			do {
+				protocol = *(u_int16_t*)((char*)header_eth + sizeof(ether_header) + vlanoffset + 2);
+				vlanoffset += 4;
+			} while(protocol == 129);
 			//XXX: this is very ugly hack, please do it right! (it will work for "08 00" which is IPV4 but not for others! (find vlan_header or something)
-			protocol = *((char*)header_eth + 2);
 		} else {
 			vlanoffset = 0;
 			protocol = header_eth->ether_type;
@@ -110,9 +113,14 @@ bool parseEtherHeader(int pcapLinklayerHeaderType, u_char* packet,
 			header_eth = (ether_header*)packet;
 			if(header_eth->ether_type == 129) {
 				// VLAN tag
-				header_ip_offset = 4;
+				header_ip_offset = 0;
+				u_int16_t _protocol;
+				do {
+					_protocol = *(u_int16_t*)(packet + sizeof(ether_header) + header_ip_offset + 2);
+					header_ip_offset += 4;
+				} while(_protocol == 129);
+				protocol = htons(_protocol);
 				//XXX: this is very ugly hack, please do it right! (it will work for "08 00" which is IPV4 but not for others! (find vlan_header or something)
-				protocol = htons(*(u_int16_t*)(packet + sizeof(ether_header) + 2));
 			} else {
 				header_ip_offset = 0;
 				protocol = htons(header_eth->ether_type);
