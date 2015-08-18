@@ -100,6 +100,7 @@ extern int opt_norecord_dtmf;
 extern char opt_silencedmtfseq[16];
 extern bool opt_cdr_sipport;
 extern bool opt_cdr_rtpport;
+extern bool opt_cdr_rtpsrcport;
 extern char get_customers_pn_query[1024];
 extern int opt_saverfc2833;
 extern int opt_dbdtmf;
@@ -2462,6 +2463,9 @@ Call::saveToDb(bool enableBatchIfPossible) {
 				rtps.add(rtp[i]->first_codec, "payload");
 				rtps.add(htonl(rtp[i]->saddr), "saddr");
 				rtps.add(htonl(rtp[i]->daddr), "daddr");
+				if(opt_cdr_rtpsrcport ) {
+					rtps.add(rtp[i]->sport, "sport");
+				}
 				if(opt_cdr_rtpport) {
 					rtps.add(rtp[i]->dport, "dport");
 				}
@@ -2670,6 +2674,9 @@ Call::saveToDb(bool enableBatchIfPossible) {
 				rtps.add(rtp[i]->first_codec, "payload");
 				rtps.add(htonl(rtp[i]->saddr), "saddr");
 				rtps.add(htonl(rtp[i]->daddr), "daddr");
+				if(opt_cdr_rtpsrcport) {
+					rtps.add(rtp[i]->sport, "sport");
+				}
 				if(opt_cdr_rtpport) {
 					rtps.add(rtp[i]->dport, "dport");
 				}

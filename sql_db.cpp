@@ -37,6 +37,7 @@ extern bool opt_cdr_partition;
 extern bool opt_cdr_sipport;
 extern bool opt_last_rtp_from_end;
 extern bool opt_cdr_rtpport;
+extern bool opt_cdr_rtpsrcport;
 extern int opt_create_old_partitions;
 extern bool opt_disable_partition_operations;
 extern vector<dstring> opt_custom_headers_cdr;
@@ -3463,6 +3464,10 @@ bool SqlDb_mysql::createSchema(SqlDb *sourceDb) {
 		this->query("show columns from cdr_rtp where Field='dport'");
 		opt_cdr_rtpport = this->fetchRow();
 	}
+	if(!opt_cdr_rtpsrcport) {
+		this->query("show columns from cdr_rtp where Field='sport'");
+		opt_cdr_rtpsrcport = this->fetchRow();
+	}
 
 	this->query(string(
 	"CREATE TABLE IF NOT EXISTS `cdr_dtmf` (\
@@ -4023,9 +4028,18 @@ bool SqlDb_mysql::createSchema(SqlDb *sourceDb) {
 				ADD `b_mos_lqo_mult10` tinyint unsigned DEFAULT NULL;" << endl;
 	}
 
-	if(opt_cdr_rtpport) {
+	if(opt_cdr_rtpsrcport) {
 		outStrAlter << "ALTER TABLE cdr_rtp\
+				ADD `sport` smallint unsigned DEFAULT NULL AFTER `daddr`;" << endl;
+	}
+	if(opt_cdr_rtpport) {
+		if(opt_cdr_rtpsrcport) {
+			outStrAlter << "ALTER TABLE cdr_rtp\
+				ADD `dport` smallint unsigned DEFAULT NULL AFTER `sport`;" << endl;
+		} else {
+			outStrAlter << "ALTER TABLE cdr_rtp\
 				ADD `dport` smallint unsigned DEFAULT NULL AFTER `daddr`;" << endl;
+		}
 	}
 
 
