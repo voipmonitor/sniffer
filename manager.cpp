@@ -1410,7 +1410,7 @@ int parse_command(char *buf, int size, int client, int eof, const char *buf_long
 		char *tarPosI = new char[100000];
 		*tarPosI = 0;
 
-		sscanf(buf, zip ? "getfile_in_tar_zip %s %s %s %u %s %s" : "getfile_in_tar %s %s %s %u %s %s", tar_filename, filename, dateTimeKey, &recordId, tableType, tarPosI);
+		sscanf(buf_long, zip ? "getfile_in_tar_zip %s %s %s %u %s %s" : "getfile_in_tar %s %s %s %u %s %s", tar_filename, filename, dateTimeKey, &recordId, tableType, tarPosI);
 		
 		Tar tar;
 		if(!tar.tar_open(tar_filename, O_RDONLY)) {
@@ -2071,7 +2071,7 @@ void *manager_read_thread(void * arg) {
 		buf[size] = '\0';
 		buf_long = buf;
 		////cout << "DATA: " << buf << endl;
-		if(size == BUFSIZE - 1 && !strstr(buf, "\r\n\r\n")) {
+		if(!strstr(buf, "\r\n\r\n")) {
 			char buf_next[BUFSIZE];
 			////cout << "NEXT_RECV start" << endl;
 			while((size = recv(client, buf_next, BUFSIZE - 1, 0)) > 0) {
