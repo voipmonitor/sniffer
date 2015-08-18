@@ -2562,8 +2562,8 @@ Call *process_packet(bool is_ssl, u_int64_t packet_number,
 			if(exists_columns_cdr_reason) {
 				char *reason = gettag(data, datalen, "reason:", &l);
 				if(l && l < (unsigned)datalen) {
-					char oldEndChar = data[l];
-					data[l] = 0;
+					char oldEndChar = reason[l];
+					reason[l] = 0;
 					char *pointerToCause = strcasestr(reason, ";cause=");
 					if(pointerToCause && (pointerToCause - reason) < 10) {
 						char type[10];
@@ -2591,7 +2591,7 @@ Call *process_packet(bool is_ssl, u_int64_t packet_number,
 							call->reason_q850_text = text;
 						}
 					}
-					data[l] = oldEndChar;
+					reason[l] = oldEndChar;
 				}
 			}
 
