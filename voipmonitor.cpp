@@ -1432,7 +1432,7 @@ void reload_config(const char *jsonConfig) {
 		}
 	}
 	if(useNewCONFIG && jsonConfig) {
-		CONFIG.setFromJson(jsonConfig, true);
+		CONFIG.setFromJson(jsonConfig);
 	}
 	get_command_line_arguments();
 	set_context_config();
@@ -4440,7 +4440,7 @@ void cConfig::addConfigItems() {
 	setDefaultValues();
 	
 	const char *descriptionsHelpTable[][3] = {
-		{ "id_sensor", "sensor ID", "ID sensor - test help text" }
+		{ "sqldriver", "SQL driver", "SQL driver - test help text" }
 	};
 	for(unsigned i = 0; i < sizeof(descriptionsHelpTable) / sizeof(descriptionsHelpTable[0]); i++) {
 		if(descriptionsHelpTable[i][1]) {

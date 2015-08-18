@@ -17,6 +17,7 @@ cConfigItem::cConfigItem(const char *name) {
 	config_file_section = "general";
 	level = levelNormal;
 	set = false;
+	defaultValueStr_set = false;
 	naDefaultValueStr = false;
 	minor = false;
 	minorGroupIfNotSet = false;
@@ -31,6 +32,7 @@ cConfigItem *cConfigItem::addAlias(const char *name_alias) {
 
 cConfigItem *cConfigItem::setDefaultValueStr(const char *defaultValueStr) {
 	this->defaultValueStr = defaultValueStr;
+	this->defaultValueStr_set = true;
 	return(this);
 }
 
@@ -254,13 +256,14 @@ string cConfigItem::getJson() {
 }
 
 void cConfigItem::setDefaultValue() {
-	if(defaultValueStr.empty() && !naDefaultValueStr) {
+	if(!defaultValueStr_set && !naDefaultValueStr) {
 		 defaultValueStr = getValueStr();
+		 defaultValueStr_set = true;
 	}
 }
 
 void cConfigItem::clearToDefaultValue() {
-	if(!defaultValueStr.empty() && !naDefaultValueStr) {
+	if(defaultValueStr_set && !naDefaultValueStr) {
 		 setParamFromValueStr(defaultValueStr);
 	}
 	set = false;
@@ -1433,8 +1436,13 @@ void cConfig::setFromJson(const char *jsonStr, bool onlyIfSet) {
 		if(!onlyIfSet || set) {
 			map<string, cConfigItem*>::iterator iter_map = config_map.find(config_name);
 			if(iter_map != config_map.end()) {
-				if(iter_map->second->setParamFromValueStr(value)) {
-					iter_map->second->set = true;
+				if(set) {
+					if(iter_map->second->setParamFromValueStr(value)) {
+						iter_map->second->set = true;
+						evSetConfigItem(iter_map->second);
+					}
+				} else {
+					iter_map->second->clearToDefaultValue();
 					evSetConfigItem(iter_map->second);
 				}
 			}
@@ -1466,11 +1474,16 @@ void cConfig::setFromMysql(bool checkConnect) {
 		if(row) {
 			for(size_t i = 0; i < row.getCountFields(); i++) {
 				string column = row.getNameField(i);
-				if(column != "id" && column != "id_sensor" && !row.isNull(column)) {
+				if(column != "id" && column != "id_sensor") {
 					map<string, cConfigItem*>::iterator iter_map = config_map.find(column);
 					if(iter_map != config_map.end()) {
-						if(iter_map->second->setParamFromValueStr(row[column])) {
-							iter_map->second->set = true;
+						if(!row.isNull(column)) {
+							if(iter_map->second->setParamFromValueStr(row[column])) {
+								iter_map->second->set = true;
+								evSetConfigItem(iter_map->second);
+							}
+						} else {
+							iter_map->second->clearToDefaultValue();
 							evSetConfigItem(iter_map->second);
 						}
 					}
@@ -1500,29 +1513,25 @@ void cConfig::putToMysql() {
 	sqlDb->query(q.str());
 	SqlDb_row row_get = sqlDb->fetchRow();
 	SqlDb_row row_save;
-	if(row_get) {
-		for(size_t i = 0; i < row_get.getCountFields(); i++) {
-			string column = row_get.getNameField(i);
-			if(column != "id" && column != "id_sensor" && !row_get.isNull(column)) {
-				row_save.add((const char*)NULL, column);
-			}
-		}
-	}
 	for(list<string>::iterator iter = config_list.begin(); iter != config_list.end(); iter++) {
 		map<string, cConfigItem*>::iterator iter_map = config_map.find(*iter);
 		if(iter_map != config_map.end()) {
-			if(iter_map->second->set) {
-				bool columnExists = false;
-				for(list<string>::iterator iter_column = sensor_config_columns.begin(); iter_column != sensor_config_columns.end(); iter_column++) {
-					if(*iter_column == *iter) {
-						columnExists = true;
-						break;
-					}
+			bool columnExists = false;
+			for(list<string>::iterator iter_column = sensor_config_columns.begin(); iter_column != sensor_config_columns.end(); iter_column++) {
+				if(*iter_column == *iter) {
+					columnExists = true;
+					break;
 				}
+			}
+			if(iter_map->second->set) {
 				if(!columnExists) {
 					sqlDb->query("alter table sensor_config add column `" + *iter + "` text");
 				}
 				row_save.add(iter_map->second->getValueStr(), *iter);
+			} else {
+				if(columnExists) {
+					row_save.add((const char*)NULL, *iter);
+				}
 			}
 		}
 	}

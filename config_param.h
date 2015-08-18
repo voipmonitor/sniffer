@@ -84,6 +84,7 @@ protected:
 	list<sMapValue> mapValues;
 	bool set;
 	string defaultValueStr;
+	bool defaultValueStr_set;
 	bool naDefaultValueStr;
 	bool minor;
 	bool minorGroupIfNotSet;
