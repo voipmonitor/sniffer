@@ -195,6 +195,7 @@ RTP::RTP(int sensor_id)
 	nintervals = 1;
 	saddr = 0;
 	daddr = 0;
+	sport = 0;
 	dport = 0;
 	ssrc = 0;
 	ssrc2 = 0;
@@ -714,6 +715,7 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 	this->saddr =  saddr;
 	this->daddr =  daddr;
 	this->dport = dport;
+	this->sport = sport;
 	this->ignore = 0;
 
 	if(sverb.ssrc and getSSRC() != sverb.ssrc) return;
@@ -1494,6 +1496,7 @@ RTP::fill(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 	this->header = header;
 	this->saddr = saddr;
 	this->daddr = daddr;
+	this->sport = sport;
 	this->dport = dport;
 }
 

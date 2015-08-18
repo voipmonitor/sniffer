@@ -416,6 +416,7 @@ int opt_mos_lqo = 0;
 bool opt_cdr_partition = 1;
 bool opt_cdr_sipport = 0;
 bool opt_cdr_rtpport = 0;
+bool opt_cdr_rtpsrcport  = 0;
 bool opt_cdr_check_exists_callid = 0;
 bool opt_cdr_check_duplicity_callid_in_next_pass_insert = 0;
 bool opt_message_check_duplicity_callid_in_next_pass_insert = 0;
@@ -4221,6 +4222,7 @@ void cConfig::addConfigItems() {
 		subgroup("main");
 			addConfigItem(new cConfigItem_integer("rtptimeout", &rtptimeout));
 			addConfigItem(new cConfigItem_yesno("cdr_rtpport", &opt_cdr_rtpport));
+			addConfigItem(new cConfigItem_yesno("cdr_rtpsrcport ", &opt_cdr_rtpsrcport ));
 			addConfigItem(new cConfigItem_integer("sipwithoutrtptimeout", &sipwithoutrtptimeout));
 			addConfigItem(new cConfigItem_yesno("allow-zerossrc", &opt_allow_zerossrc));
 			addConfigItem(new cConfigItem_yesno("rtp-check-timestamp", &opt_rtp_check_timestamp));
@@ -5814,6 +5816,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "cdr_rtpport", NULL))) {
 		opt_cdr_rtpport = yesno(value);
+	}
+	if((value = ini.GetValue("general", "cdr_rtpsrcport", NULL))) {
+		opt_cdr_rtpsrcport  = yesno(value);
 	}
 	if((value = ini.GetValue("general", "cdr_check_exists_callid", NULL))) {
 		opt_cdr_check_exists_callid = yesno(value);

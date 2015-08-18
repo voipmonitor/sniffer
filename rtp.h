@@ -152,6 +152,7 @@ public:
 	u_int32_t ssrc2;	//!< ssrc of this RTP class
 	u_int32_t saddr;	//!< last source IP adress 
 	u_int32_t daddr;	//!< last source IP adress 
+	u_int16_t sport;
 	u_int16_t dport;
 	RtpGraphSaver graph;
 	FILE *gfileRAW;	 //!< file for storing RTP payload in RAW format
