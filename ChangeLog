@@ -1,6 +1,7 @@
 11.11.5 19.08.2015
 ==================
 - fix broken active calls in 11.11.4 (use select on descriptor) 
+- fix q850 reason string logic 
 
 
 11.11.4 18.08.2015
