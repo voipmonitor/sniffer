@@ -2561,7 +2561,7 @@ Call *process_packet(bool is_ssl, u_int64_t packet_number,
 			extern bool exists_columns_cdr_reason;
 			if(exists_columns_cdr_reason) {
 				char *reason = gettag(data, datalen, "reason:", &l);
-				if(l && l < (unsigned)datalen) {
+				if(l && (l + (reason - data)) < (unsigned)datalen) {
 					char oldEndChar = reason[l];
 					reason[l] = 0;
 					char *pointerToCause = strcasestr(reason, ";cause=");
