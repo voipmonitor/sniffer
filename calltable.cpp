@@ -2342,7 +2342,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		
 		sqlDbSaveCall->setEnableSqlStringInContent(true);
 		
-		query_str += string("set @lSresp_id = ") + "getIdOrInsertSIPRES(" + sqlEscapeStringBorder(lastSIPresponse) + ")" + ");\n";
+		query_str += string("set @lSresp_id = ") + "getIdOrInsertSIPRES(" + sqlEscapeStringBorder(lastSIPresponse) + ");\n";
 		cdr.add("_\\_'SQL'_\\_:@lSresp_id", "lastSIPresponse_id");
 		//cdr.add(string("_\\_'SQL'_\\_:") + "getIdOrInsertSIPRES(" + sqlEscapeStringBorder(lastSIPresponse) + ")", "lastSIPresponse_id");
 		if(exists_columns_cdr_reason) {
