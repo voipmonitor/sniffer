@@ -1,3 +1,12 @@
+11.11.4 14.08.2015
+==================
+- fix support for multiple vlan tag in packets [VG-672]
+- fix issue with long manager command for getfile_in_tar (fixes retrieving long RTP files from remote sniffers)
+- fix receiver mode terminating 
+- add cdr_rtpsrcport configuration option
+- fix random crash when q850 reason is enabled (which is when mysql columns were added) 
+
+
 11.11.3 14.08.2015
 ==================
 - reenable tcmalloc allocation library if present (speedups sniffer)
