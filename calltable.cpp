@@ -2511,16 +2511,19 @@ Call::saveToDb(bool enableBatchIfPossible) {
 				query_str += sqlDbSaveCall->insertQuery("cdr_dtmf", dtmf) + ";\n";
 			}
 		}
-		
-		for(list<sSipResponse>::iterator iterSiprespUnique = SIPresponseUnique.begin(); iterSiprespUnique != SIPresponseUnique.end(); iterSiprespUnique++) {
-			SqlDb_row sipresp;
-			sipresp.add("_\\_'SQL'_\\_:@cdr_id", "cdr_ID");
-			sipresp.add(string("_\\_'SQL'_\\_:") + "getIdOrInsertSIPRES(" + sqlEscapeStringBorder(iterSiprespUnique->SIPresponse.c_str()) + ")", "SIPresponse_id");
-			sipresp.add(iterSiprespUnique->SIPresponseNum, "SIPresponseNum");
-			if(existsColumnCalldateInCdrSipresp) {
-				sipresp.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
+
+		extern bool opt_cdr_sipresp;	
+		if(opt_cdr_sipresp) {	
+			for(list<sSipResponse>::iterator iterSiprespUnique = SIPresponseUnique.begin(); iterSiprespUnique != SIPresponseUnique.end(); iterSiprespUnique++) {
+				SqlDb_row sipresp;
+				sipresp.add("_\\_'SQL'_\\_:@cdr_id", "cdr_ID");
+				sipresp.add(string("_\\_'SQL'_\\_:") + "getIdOrInsertSIPRES(" + sqlEscapeStringBorder(iterSiprespUnique->SIPresponse.c_str()) + ")", "SIPresponse_id");
+				sipresp.add(iterSiprespUnique->SIPresponseNum, "SIPresponseNum");
+				if(existsColumnCalldateInCdrSipresp) {
+					sipresp.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
+				}
+				query_str += sqlDbSaveCall->insertQuery("cdr_sipresp", sipresp) + ";\n";
 			}
-			query_str += sqlDbSaveCall->insertQuery("cdr_sipresp", sipresp) + ";\n";
 		}
 		
 		if(_save_sip_history) {
