@@ -2075,12 +2075,23 @@ void *manager_read_thread(void * arg) {
 		if(!strstr(buf, "\r\n\r\n")) {
 			char buf_next[BUFSIZE];
 			////cout << "NEXT_RECV start" << endl;
-			while((size = recv(client, buf_next, BUFSIZE - 1, 0)) > 0) {
-				buf_next[size] = '\0';
-				buf_long += buf_next;
-				////cout << "NEXT DATA: " << buf_next << endl;
-				////cout << "NEXT_RECV read" << endl;
-				if(buf_long.find("\r\n\r\n") != string::npos) {
+			while(true) {
+				fd_set rfds;
+				struct timeval tv;
+				FD_ZERO(&rfds);
+				FD_SET(client, &rfds);
+				tv.tv_sec = 0;
+				tv.tv_usec = 250000;
+				if(select(client + 1, &rfds, (fd_set *) 0, (fd_set *) 0, &tv) > 0 &&
+				   (size = recv(client, buf_next, BUFSIZE - 1, 0)) > 0) {
+					buf_next[size] = '\0';
+					buf_long += buf_next;
+					////cout << "NEXT DATA: " << buf_next << endl;
+					////cout << "NEXT_RECV read" << endl;
+					if(buf_long.find("\r\n\r\n") != string::npos) {
+						break;
+					}
+				} else {
 					break;
 				}
 			}
