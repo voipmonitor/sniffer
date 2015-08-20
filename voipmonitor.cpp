@@ -185,7 +185,7 @@ int opt_faxt30detect = 0;	// if = 1 all sdp is activated (can take a lot of cpu)
 int opt_saveRAW = 0;		// save RTP packets to pcap file?
 int opt_saveWAV = 0;		// save RTP packets to pcap file?
 int opt_saveGRAPH = 0;		// save GRAPH data to *.graph file? 
-FileZipHandler::eTypeCompress opt_gzipGRAPH = FileZipHandler::compress_na;	// compress GRAPH data ? 
+FileZipHandler::eTypeCompress opt_gzipGRAPH = FileZipHandler::lzo;
 int opt_saverfc2833 = 0;
 int opt_silencedetect = 0;
 int opt_clippingdetect = 0;
@@ -276,7 +276,7 @@ int opt_enable_preprocess_packet = 0;
 int opt_enable_process_rtp_packet = 2;
 unsigned int opt_preprocess_packets_qring_length = 100;
 unsigned int opt_preprocess_packets_qring_usleep = 10;
-unsigned int opt_process_rtp_packets_qring_length = 100;
+unsigned int opt_process_rtp_packets_qring_length = 500;
 unsigned int opt_process_rtp_packets_qring_usleep = 10;
 int opt_enable_http = 0;
 int opt_enable_webrtc = 0;
@@ -360,7 +360,7 @@ int opt_pcap_dump_tar_sip_use_pos = 0;
 int opt_pcap_dump_tar_compress_rtp = 0;
 int opt_pcap_dump_tar_rtp_level = 1;
 int opt_pcap_dump_tar_rtp_use_pos = 0;
-int opt_pcap_dump_tar_compress_graph = 1;
+int opt_pcap_dump_tar_compress_graph = 0;
 int opt_pcap_dump_tar_graph_level = 1;
 int opt_pcap_dump_tar_graph_use_pos = 0;
 CompressStream::eTypeCompress opt_pcap_dump_tar_internalcompress_sip = CompressStream::compress_na;
@@ -608,7 +608,8 @@ PcapQueue_readFromInterface *pcapQueueInterface;
 PcapQueue *pcapQueueStatInterface;
 
 PreProcessPacket *preProcessPacket;
-ProcessRtpPacket *processRtpPacket[MAX_PROCESS_RTP_PACKET_THREADS];
+ProcessRtpPacket *processRtpPacketHash;
+ProcessRtpPacket *processRtpPacketDistribute[MAX_PROCESS_RTP_PACKET_THREADS];
 
 TcpReassembly *tcpReassemblyHttp;
 TcpReassembly *tcpReassemblyWebrtc;
@@ -2368,8 +2369,9 @@ int main_init_read() {
 	}
 	if(opt_enable_process_rtp_packet &&
 	   !is_read_from_file_simple()) {
+		processRtpPacketHash = new FILE_LINE ProcessRtpPacket(ProcessRtpPacket::hash, 0);
 		for(int i = 0; i < opt_enable_process_rtp_packet; i++) {
-			processRtpPacket[i] = new FILE_LINE ProcessRtpPacket(i);
+			processRtpPacketDistribute[i] = new FILE_LINE ProcessRtpPacket(ProcessRtpPacket::distribute, i);
 		}
 	}
 
@@ -2641,11 +2643,19 @@ void main_term_read() {
 		sslData = NULL;
 	}
 	
-	for(int i = 0; i < opt_enable_process_rtp_packet; i++) {
-		if(processRtpPacket[i]) {
-			processRtpPacket[i]->terminate();
-			delete processRtpPacket[i];
-			processRtpPacket[i] = NULL;
+	if(opt_enable_process_rtp_packet &&
+	   !is_read_from_file_simple()) {
+		if(processRtpPacketHash) {
+			processRtpPacketHash->terminate();
+			delete processRtpPacketHash;
+			processRtpPacketHash = NULL;
+		}
+		for(int i = 0; i < opt_enable_process_rtp_packet; i++) {
+			if(processRtpPacketDistribute[i]) {
+				processRtpPacketDistribute[i]->terminate();
+				delete processRtpPacketDistribute[i];
+				processRtpPacketDistribute[i] = NULL;
+			}
 		}
 	}
 	if(preProcessPacket) {
@@ -5125,6 +5135,18 @@ void set_context_config() {
 		opt_enable_webrtc = 0;
 		opt_enable_ssl = 0;
 		opt_pcap_dump_tar = 0;
+		if(opt_pcap_dump_zip_sip == FileZipHandler::compress_default ||
+		   opt_pcap_dump_zip_sip == FileZipHandler::lzo) {
+			opt_pcap_dump_zip_sip = FileZipHandler::gzip;
+		}
+		if(opt_pcap_dump_zip_rtp == FileZipHandler::compress_default ||
+		   opt_pcap_dump_zip_rtp == FileZipHandler::lzo) {
+			opt_pcap_dump_zip_rtp = FileZipHandler::gzip;
+		}
+		if(opt_gzipGRAPH == FileZipHandler::compress_default ||
+		   opt_gzipGRAPH == FileZipHandler::lzo) {
+			opt_gzipGRAPH = FileZipHandler::gzip;
+		}
 		opt_pcap_dump_asyncwrite = 0;
 		opt_save_query_to_files = false;
 		opt_load_query_from_files = 0;

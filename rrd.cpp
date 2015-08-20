@@ -1451,7 +1451,8 @@ int rrd_call(
 }
 
 void checkRrdVersion(bool silent) {
-	if(vm_rrd_version) {
+	extern int opt_rrd;
+	if(vm_rrd_version || !opt_rrd) {
 		return;
 	}
 	SimpleBuffer out;

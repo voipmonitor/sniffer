@@ -204,7 +204,8 @@ extern char cloud_host[256];
 extern SocketSimpleBufferWrite *sipSendSocket;
 extern int opt_sip_send_before_packetbuffer;
 extern PreProcessPacket *preProcessPacket;
-extern ProcessRtpPacket *processRtpPacket[MAX_PROCESS_RTP_PACKET_THREADS];
+extern ProcessRtpPacket *processRtpPacketHash;
+extern ProcessRtpPacket *processRtpPacketDistribute[MAX_PROCESS_RTP_PACKET_THREADS];
 extern int opt_enable_process_rtp_packet;
 extern CustomHeaders *custom_headers_cdr;
 extern CustomHeaders *custom_headers_message;
@@ -1270,6 +1271,7 @@ int get_rtpmap_from_sdp(char *sdp_text, unsigned long len, int *rtpmap){
 	 return 0;
 }
 
+inline
 void add_to_rtp_thread_queue(Call *call, unsigned char *data, int datalen, int dataoffset, struct pcap_pkthdr *header,  u_int32_t saddr, u_int32_t daddr, unsigned short sport, unsigned short dport, int iscaller, int is_rtcp,
 			     pcap_block_store *block_store, int block_store_index, 
 			     int enable_save_packet, const u_char *packet, char istcp, int dlt, int sensor_id,
@@ -3159,10 +3161,17 @@ endsip:
 
 rtpcheck:
 	if(datalen > 2/* && (htons(*(unsigned int*)data) & 0xC000) == 0x8000*/) { // disable condition - failure for udptl (fax)
-	if(processRtpPacket[0]) {
-		ProcessRtpPacket *_processRtpPacket = processRtpPacket[1] ?
-						       processRtpPacket[min(source, dest) / 2 % opt_enable_process_rtp_packet] :
-						       processRtpPacket[0];
+	if(processRtpPacketHash) {
+		processRtpPacketHash->push(saddr, source, daddr, dest, 
+					   data, datalen, dataoffset,
+					   handle, header, packet, istcp, header_ip,
+					   block_store, block_store_index, dlt, sensor_id,
+					   parsePacket ? parsePacket->hash[0] : tuplehash(saddr, source),
+					   parsePacket ? parsePacket->hash[1] : tuplehash(daddr, dest));
+	} else if(processRtpPacketDistribute[0]) {
+		ProcessRtpPacket *_processRtpPacket = processRtpPacketDistribute[1] ?
+						       processRtpPacketDistribute[min(source, dest) / 2 % opt_enable_process_rtp_packet] :
+						       processRtpPacketDistribute[0];
 		_processRtpPacket->push(saddr, source, daddr, dest, 
 					data, datalen, dataoffset,
 					handle, header, packet, istcp, header_ip,
@@ -4962,9 +4971,15 @@ inline void *_ProcessRtpPacket_outThreadFunction(void *arg) {
 	return(((ProcessRtpPacket*)arg)->outThreadFunction());
 }
 
-ProcessRtpPacket::ProcessRtpPacket(int indexThread) {
+inline void *_ProcessRtpPacket_nextThreadFunction(void *arg) {
+	return(((ProcessRtpPacket*)arg)->nextThreadFunction());
+}
+
+ProcessRtpPacket::ProcessRtpPacket(eType type, int indexThread) {
+	this->type = type;
 	this->indexThread = indexThread;
 	this->qringmax = opt_process_rtp_packets_qring_length;
+	this->hash_blob_limit = min(opt_process_rtp_packets_qring_length / 5, 1000u);
 	this->readit = 0;
 	this->writeit = 0;
 	this->qring = new FILE_LINE packet_s[this->qringmax];
@@ -4973,7 +4988,9 @@ ProcessRtpPacket::ProcessRtpPacket(int indexThread) {
 	}
 	memset(this->threadPstatData, 0, sizeof(this->threadPstatData));
 	this->outThreadId = 0;
+	this->nextThreadId = 0;
 	this->term_processRtp = false;
+	this->hash_buffer_next_thread_process = 0;
 	#if RTP_PROF
 	__prof__ProcessRtpPacket_outThreadFunction_begin = 0;
 	__prof__ProcessRtpPacket_outThreadFunction = 0;
@@ -4985,6 +5002,11 @@ ProcessRtpPacket::ProcessRtpPacket(int indexThread) {
 	__prof__add_to_rtp_thread_queue = 0;
 	#endif
 	pthread_create(&this->out_thread_handle, NULL, _ProcessRtpPacket_outThreadFunction, this);
+	if(type == hash) {
+		pthread_create(&this->next_thread_handle, NULL, _ProcessRtpPacket_nextThreadFunction, this);
+	} else {
+		this->next_thread_handle = 0;
+	}
 }
 
 ProcessRtpPacket::~ProcessRtpPacket() {
@@ -5022,6 +5044,21 @@ void ProcessRtpPacket::push(unsigned int saddr, int source, unsigned int daddr, 
 	_packet->sensor_id = sensor_id;
 	_packet->hash_s = hash_s;
 	_packet->hash_d = hash_d;
+	_packet->call_info_length = -1;
+	_packet->used = 1;
+	if((this->writeit + 1) == this->qringmax) {
+		this->writeit = 0;
+	} else {
+		this->writeit++;
+	}
+}
+
+void ProcessRtpPacket::push(packet_s *packet) {
+	while(this->qring[this->writeit].used != 0) {
+		usleep(10);
+	}
+	packet_s *_packet = &this->qring[this->writeit];
+	memcpy(_packet, packet, (char*)&_packet->used - (char*)_packet);
 	_packet->used = 1;
 	if((this->writeit + 1) == this->qringmax) {
 		this->writeit = 0;
@@ -5035,22 +5072,32 @@ void *ProcessRtpPacket::outThreadFunction() {
 	__prof__ProcessRtpPacket_outThreadFunction_begin = rdtsc();
 	#endif
 	this->outThreadId = get_unix_tid();
-	syslog(LOG_NOTICE, "start ProcessRtpPacket out thread %i", this->outThreadId);
+	syslog(LOG_NOTICE, "start ProcessRtpPacket %s out thread %i", this->type == hash ? "hash" : "distribute", this->outThreadId);
 	unsigned usleepCounter = 0;
 	while(!this->term_processRtp) {
 		if(this->qring[this->readit].used == 1) {
-			packet_s *_packet = &this->qring[this->readit];
-			this->rtp(_packet);
-			if(_packet->block_store) {
-				_packet->block_store->unlock_packet(_packet->block_store_index);
-			}
-			_packet->used = 0;
-			if((this->readit + 1) == this->qringmax) {
-				this->readit = 0;
+			if(type == hash) {
+				if(qring_size() > hash_blob_limit ||
+				   usleepCounter * opt_process_rtp_packets_qring_usleep > 50000) {
+					this->rtp(NULL);
+					usleepCounter = 0;
+				} else {
+					usleep(opt_process_rtp_packets_qring_usleep * 
+					       (usleepCounter > 1000 ? 20 :
+						usleepCounter > 100 ? 5 : 1));
+					++usleepCounter;
+				}
 			} else {
-				this->readit++;
+				packet_s *_packet = &this->qring[this->readit];
+				this->rtp(_packet);
+				_packet->used = 0;
+				if((this->readit + 1) == this->qringmax) {
+					this->readit = 0;
+				} else {
+					this->readit++;
+				}
+				usleepCounter = 0;
 			}
-			usleepCounter = 0;
 		} else {
 			#if RTP_PROF
 			unsigned long long __prof_begin2 = rdtsc();
@@ -5070,64 +5117,88 @@ void *ProcessRtpPacket::outThreadFunction() {
 	return(NULL);
 }
 
+void *ProcessRtpPacket::nextThreadFunction() {
+	this->nextThreadId = get_unix_tid();
+	syslog(LOG_NOTICE, "start ProcessRtpPacket %s next thread %i", this->type == hash ? "hash" : "distribute", this->outThreadId);
+	unsigned usleepCounter = 0;
+	while(!this->term_processRtp) {
+		if(this->hash_buffer_next_thread_process) {
+			for(unsigned int i = hash_blob_size / 2; i < hash_blob_size; i++) {
+				this->find_hash(qring_item(i), false);
+			}
+			this->hash_buffer_next_thread_process = 0;
+			usleepCounter = 0;
+		} else {
+			usleep(opt_process_rtp_packets_qring_usleep * 
+			       (usleepCounter > 1000 ? 20 :
+				usleepCounter > 100 ? 5 : 1));
+			++usleepCounter;
+		}
+	}
+	return(NULL);
+}
+
 void ProcessRtpPacket::rtp(packet_s *_packet) {
 	#if RTP_PROF
 	unsigned long long __prof_begin = rdtsc();
 	#endif
-	hash_node_call *calls = NULL;;
-	bool find_by_dest = false;
-	calltable->lock_calls_hash();
-	#if RTP_PROF
-	unsigned long long __prof_begin2 = rdtsc();
-	#endif
-	if((calls = calltable->hashfind_by_ip_port(_packet->daddr, _packet->dest, _packet->hash_d, false))) {
-		find_by_dest = true;
-	} else {
-		calls = calltable->hashfind_by_ip_port(_packet->saddr, _packet->source, _packet->hash_s, false);
-	}
-	#if RTP_PROF
-	__prof__ProcessRtpPacket_rtp__hashfind += rdtsc() - __prof_begin2;
-	#endif
-	rtp_call_info call_info[20];
-	#if RTP_PROF
-	unsigned long long __prof_begin3 = rdtsc();
-	#endif
-	size_t call_info_length = 0;
-	if(calls) {
-		hash_node_call *node_call;
-		for (node_call = (hash_node_call *)calls; node_call != NULL; node_call = node_call->next) {
-			call_info[call_info_length].call = node_call->call;
-			call_info[call_info_length].iscaller = node_call->iscaller;
-			call_info[call_info_length].is_rtcp = node_call->is_rtcp;
-			call_info[call_info_length].is_fax = node_call->is_fax;
-			call_info[call_info_length].use_sync = false;
-			#if SYNC_CALL_RTP
-			__sync_add_and_fetch(&node_call->call->rtppcaketsinqueue, 1);
-			#else
-			++node_call->call->rtppcaketsinqueue_p;
-			#endif
-			++call_info_length;
+	if(type == hash) {
+		hash_blob_size = min(qring_size(), (size_t)hash_blob_limit);
+		for(unsigned int i = 0; i < hash_blob_size; i++) {
+			if(!qring_item(i)->used) {
+				if(i) {
+					hash_blob_size = i;
+					break;
+				} else {
+					return;
+				}
+			}
 		}
-	}
-	#if RTP_PROF
-	__prof__ProcessRtpPacket_rtp__fill_call_array += rdtsc() - __prof_begin3;
-	#endif
-	calltable->unlock_calls_hash();
-	if(call_info_length) {
-		process_packet__rtp(call_info, call_info_length,
-				    _packet->saddr, _packet->source, _packet->daddr, _packet->dest, 
-				    _packet->data, _packet->datalen, _packet->dataoffset,
-				    &_packet->header, _packet->packet, _packet->istcp, _packet->header_ip,
-				    _packet->block_store, _packet->block_store_index, _packet->dlt, _packet->sensor_id,
-				    NULL, NULL,
-				    find_by_dest, indexThread + 1);
+		calltable->lock_calls_hash();
+		this->hash_buffer_next_thread_process = 1;
+		for(unsigned int i = 0; i < hash_blob_size / 2; i++) {
+			this->find_hash(qring_item(i), false);
+		}
+		while(this->hash_buffer_next_thread_process) {
+			usleep(20);
+		}
+		calltable->unlock_calls_hash();
+		for(unsigned int i = 0; i < hash_blob_size; i++) {
+			_packet = &this->qring[this->readit];
+			ProcessRtpPacket *_processRtpPacket = processRtpPacketDistribute[1] ?
+							       processRtpPacketDistribute[min(_packet->source, _packet->dest) / 2 % opt_enable_process_rtp_packet] :
+							       processRtpPacketDistribute[0];
+			_processRtpPacket->push(_packet);
+			_packet->used = 0;
+			if((this->readit + 1) == this->qringmax) {
+				this->readit = 0;
+			} else {
+				this->readit++;
+			}
+		}
 	} else {
-		if(opt_rtpnosip) {
-			process_packet__rtp_nosip(_packet->saddr, _packet->source, _packet->daddr, _packet->dest, 
-						  _packet->data, _packet->datalen, _packet->dataoffset,
-						  &_packet->header, _packet->packet, _packet->istcp, _packet->header_ip,
-						  _packet->block_store, _packet->block_store_index, _packet->dlt, _packet->sensor_id,
-						  _packet->handle);
+		if(_packet->call_info_length < 0) {
+			this->find_hash(_packet);
+		}
+		if(_packet->call_info_length) {
+			process_packet__rtp(_packet->call_info, _packet->call_info_length,
+					    _packet->saddr, _packet->source, _packet->daddr, _packet->dest, 
+					    _packet->data, _packet->datalen, _packet->dataoffset,
+					    &_packet->header, _packet->packet, _packet->istcp, _packet->header_ip,
+					    _packet->block_store, _packet->block_store_index, _packet->dlt, _packet->sensor_id,
+					    NULL, NULL,
+					    _packet->call_info_find_by_dest, indexThread + 1);
+		} else {
+			if(opt_rtpnosip) {
+				process_packet__rtp_nosip(_packet->saddr, _packet->source, _packet->daddr, _packet->dest, 
+							  _packet->data, _packet->datalen, _packet->dataoffset,
+							  &_packet->header, _packet->packet, _packet->istcp, _packet->header_ip,
+							  _packet->block_store, _packet->block_store_index, _packet->dlt, _packet->sensor_id,
+							  _packet->handle);
+			}
+		}
+		if(_packet->block_store) {
+			_packet->block_store->unlock_packet(_packet->block_store_index);
 		}
 	}
 	#if RTP_PROF
@@ -5135,24 +5206,58 @@ void ProcessRtpPacket::rtp(packet_s *_packet) {
 	#endif
 }
 
-void ProcessRtpPacket::preparePstatData() {
-	if(this->outThreadId) {
-		if(this->threadPstatData[0].cpu_total_time) {
-			this->threadPstatData[1] = this->threadPstatData[0];
+void ProcessRtpPacket::find_hash(packet_s *_packet, bool lock) {
+	_packet->call_info_length = 0;
+	hash_node_call *calls = NULL;;
+	_packet->call_info_find_by_dest = false;
+	if(lock) {
+		calltable->lock_calls_hash();
+	}
+	if((calls = calltable->hashfind_by_ip_port(_packet->daddr, _packet->dest, _packet->hash_d, false))) {
+		_packet->call_info_find_by_dest = true;
+	} else {
+		calls = calltable->hashfind_by_ip_port(_packet->saddr, _packet->source, _packet->hash_s, false);
+	}
+	_packet->call_info_length = 0;
+	if(calls) {
+		hash_node_call *node_call;
+		for (node_call = (hash_node_call *)calls; node_call != NULL; node_call = node_call->next) {
+			_packet->call_info[_packet->call_info_length].call = node_call->call;
+			_packet->call_info[_packet->call_info_length].iscaller = node_call->iscaller;
+			_packet->call_info[_packet->call_info_length].is_rtcp = node_call->is_rtcp;
+			_packet->call_info[_packet->call_info_length].is_fax = node_call->is_fax;
+			_packet->call_info[_packet->call_info_length].use_sync = false;
+			#if SYNC_CALL_RTP
+			__sync_add_and_fetch(&node_call->call->rtppcaketsinqueue, 1);
+			#else
+			++node_call->call->rtppcaketsinqueue_p;
+			#endif
+			++_packet->call_info_length;
 		}
-		pstat_get_data(this->outThreadId, this->threadPstatData);
+	}
+	if(lock) {
+		calltable->unlock_calls_hash();
 	}
 }
 
-double ProcessRtpPacket::getCpuUsagePerc(bool preparePstatData) {
-	if(preparePstatData) {
-		this->preparePstatData();
+void ProcessRtpPacket::preparePstatData(bool nextThread) {
+	if(nextThread ? this->nextThreadId : this->outThreadId) {
+		if(this->threadPstatData[nextThread ? 1 : 0][0].cpu_total_time) {
+			this->threadPstatData[nextThread ? 1 : 0][1] = this->threadPstatData[nextThread ? 1 : 0][0];
+		}
+		pstat_get_data(nextThread ? this->nextThreadId : this->outThreadId, this->threadPstatData[nextThread ? 1 : 0]);
 	}
-	if(this->outThreadId) {
+}
+
+double ProcessRtpPacket::getCpuUsagePerc(bool preparePstatData, bool nextThread) {
+	if(preparePstatData) {
+		this->preparePstatData(nextThread);
+	}
+	if(nextThread ? this->nextThreadId : this->outThreadId) {
 		double ucpu_usage, scpu_usage;
-		if(this->threadPstatData[0].cpu_total_time && this->threadPstatData[1].cpu_total_time) {
+		if(this->threadPstatData[nextThread ? 1 : 0][0].cpu_total_time && this->threadPstatData[nextThread ? 1 : 0][1].cpu_total_time) {
 			pstat_calc_cpu_usage_pct(
-				&this->threadPstatData[0], &this->threadPstatData[1],
+				&this->threadPstatData[nextThread ? 1 : 0][0], &this->threadPstatData[nextThread ? 1 : 0][1],
 				&ucpu_usage, &scpu_usage);
 			return(ucpu_usage + scpu_usage);
 		}
@@ -5163,4 +5268,7 @@ double ProcessRtpPacket::getCpuUsagePerc(bool preparePstatData) {
 void ProcessRtpPacket::terminate() {
 	this->term_processRtp = true;
 	pthread_join(this->out_thread_handle, NULL);
+	if(this->next_thread_handle) {
+		pthread_join(this->next_thread_handle, NULL);
+	}
 }

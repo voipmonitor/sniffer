@@ -1184,13 +1184,11 @@ void cConfigItem_custom_headers::initBeforeSet() {
 
 cConfigItem_type_compress::cConfigItem_type_compress(const char* name, CompressStream::eTypeCompress *type_compress)
  : cConfigItem_yesno(name, (int*)type_compress) {
-	init();
 	addValues(CompressStream::getConfigMenuString().c_str());
 }
 
 cConfigItem_type_compress::cConfigItem_type_compress(const char* name, FileZipHandler::eTypeCompress *type_compress)
  : cConfigItem_yesno(name, (int*)type_compress) {
-	init();
 	addValues(FileZipHandler::getConfigMenuString().c_str());
 }
 

@@ -423,6 +423,18 @@ friend inline void *_PreProcessPacket_outThreadFunction(void *arg);
 
 class ProcessRtpPacket {
 public:
+	enum eType {
+		hash,
+		distribute
+	};
+public:
+	struct rtp_call_info {
+		Call *call;
+		bool iscaller;
+		bool is_rtcp;
+		bool is_fax;
+		bool use_sync;
+	};
 	struct packet_s {
 		unsigned int saddr;
 		int source; 
@@ -442,29 +454,45 @@ public:
 		int sensor_id;
 		unsigned int hash_s;
 		unsigned int hash_d;
+		rtp_call_info call_info[20];
+		int call_info_length;
+		bool call_info_find_by_dest;
 		volatile int used;
 	};
-	struct rtp_call_info {
-		Call *call;
-		bool iscaller;
-		bool is_rtcp;
-		bool is_fax;
-		bool use_sync;
-	};
 public:
-	ProcessRtpPacket(int indexThread);
+	ProcessRtpPacket(eType type, int indexThread);
 	~ProcessRtpPacket();
 	void push(unsigned int saddr, int source, unsigned int daddr, int dest, 
 		  char *data, int datalen, int dataoffset,
 		  pcap_t *handle, pcap_pkthdr *header, const u_char *packet, int istcp, struct iphdr2 *header_ip,
 		  pcap_block_store *block_store, int block_store_index, int dlt, int sensor_id,
 		  unsigned int hash_s, unsigned int hash_d);
-	void preparePstatData();
-	double getCpuUsagePerc(bool preparePstatData);
+	void push(packet_s *_packet);
+	void preparePstatData(bool nextThread = false);
+	double getCpuUsagePerc(bool preparePstatData, bool nextThread = false);
 	void terminate();
 private:
 	void *outThreadFunction();
+	void *nextThreadFunction();
 	void rtp(packet_s *_packet);
+	void find_hash(packet_s *_packet, bool lock = true);
+	packet_s *qring_item(size_t index) {
+		index += this->readit;
+		if(index >= qringmax) {
+			index -= qringmax;
+		}
+		return(&qring[index]);
+	}
+	size_t qring_size() {
+		unsigned int _writeit = writeit;
+		unsigned int _readit = readit;
+		return(_writeit > _readit ?
+			_writeit - _readit: 
+		       _writeit < _readit ?
+			_writeit - 1 + qringmax - _readit :
+			(qring[_readit].used ? qringmax : 0));
+	}
+	
 public:
 	#if RTP_PROF
 	volatile unsigned long long __prof__ProcessRtpPacket_outThreadFunction_begin;
@@ -476,17 +504,24 @@ public:
 	volatile unsigned long long __prof__process_packet__rtp;
 	volatile unsigned long long __prof__add_to_rtp_thread_queue;
 	#endif
+	eType type;
 	int indexThread;
 	int outThreadId;
+	int nextThreadId;
 private:
 	packet_s *qring;
 	unsigned int qringmax;
+	unsigned int hash_blob_limit;
 	volatile unsigned int readit;
 	volatile unsigned int writeit;
 	pthread_t out_thread_handle;
-	pstat_data threadPstatData[2];
+	pthread_t next_thread_handle;
+	pstat_data threadPstatData[2][2];
 	bool term_processRtp;
+	volatile int hash_buffer_next_thread_process;
+	volatile unsigned int hash_blob_size;
 friend inline void *_ProcessRtpPacket_outThreadFunction(void *arg);
+friend inline void *_ProcessRtpPacket_nextThreadFunction(void *arg);
 };
 
 

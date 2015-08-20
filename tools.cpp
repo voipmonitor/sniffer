@@ -2483,6 +2483,9 @@ FileZipHandler::FileZipHandler(int bufferLength, int enableAsyncWrite, eTypeComp
 	this->counter = ++scounter;
 	this->userData = 0;
 	this->typeFile = typeFile;
+	if(typeCompress == compress_default) {
+		this->setTypeCompressDefault();
+	}
 }
 
 FileZipHandler::~FileZipHandler() {
@@ -2635,6 +2638,8 @@ bool FileZipHandler::_writeToFile(char *data, int length, bool flush) {
 		}
 		}
 		break;
+	case compress_default:
+		this->setTypeCompressDefault();
 	case gzip:
 	case snappy:
 	case lzo:
@@ -2643,8 +2648,6 @@ bool FileZipHandler::_writeToFile(char *data, int length, bool flush) {
 		}
 		this->compressStream->compress(data, length, flush, this);
 		break;
-	case compress_default:
-		return(false);
 	}
 	return(false);
 }
@@ -2770,9 +2773,10 @@ FileZipHandler::eTypeCompress FileZipHandler::convTypeCompress(const char *typeC
 	char _compress_method[10];
 	strncpy(_compress_method, typeCompress, sizeof(_compress_method));
 	strlwr(_compress_method, sizeof(_compress_method));
-	if(yesno(_compress_method) ||
-	   !strcmp(_compress_method, "zip") ||
-	   !strcmp(_compress_method, "gzip")) {
+	if(yesno(_compress_method)) {
+		return(FileZipHandler::compress_default);
+	} else if(!strcmp(_compress_method, "zip") ||
+		  !strcmp(_compress_method, "gzip")) {
 		return(FileZipHandler::gzip);
 	} else if(!strcmp(_compress_method, "snappy")) {
 		return(FileZipHandler::snappy);
@@ -2795,6 +2799,8 @@ const char *FileZipHandler::convTypeCompress(eTypeCompress typeCompress) {
 	case lzo:
 		return("lzo");
 	#endif //HAVE_LIBLZO
+	case compress_default:
+		return("yes");
 	default:
 		return("no");
 	}
@@ -2803,11 +2809,28 @@ const char *FileZipHandler::convTypeCompress(eTypeCompress typeCompress) {
 
 string FileZipHandler::getConfigMenuString() {
 	ostringstream outStr;
-	outStr << convTypeCompress(gzip) << ':' << gzip << '|'
+	outStr << convTypeCompress(compress_default) << ':' << compress_default << '|'
+	       << convTypeCompress(gzip) << ':' << gzip << '|'
 	       << convTypeCompress(snappy) << ':' << snappy << '|'
 	       << convTypeCompress(lzo) << ':' << lzo << '|'
 	       << "no:0";
 	return(outStr.str());
+}
+
+void FileZipHandler::setTypeCompressDefault() {
+	if(typeCompress == compress_default) {
+		switch(typeFile) {
+		case pcap_sip:
+			typeCompress = gzip;
+			break;
+		case pcap_rtp:
+		case graph_rtp:
+			typeCompress = lzo;
+			break;
+		default:
+			typeCompress = gzip;
+		}
+	}
 }
 
 bool FileZipHandler::compress_ev(char *data, u_int32_t len, u_int32_t decompress_len, bool format_data) {
