@@ -1505,6 +1505,10 @@ void
 RTP::update_stats() {
 	
 	int lost = int((s->cycles + s->max_seq - (s->base_seq + 1)) - s->received);
+	if(lost < 0) {
+		s->cycles += lost * -1;
+		lost = 0;
+	}
 	int adelay = 0;
 	struct timeval tsdiff;	
 	double tsdiff2;
@@ -1537,6 +1541,27 @@ RTP::update_stats() {
 		adelay = abs(int(transit));
 		s->fdelay += transit;
 	}
+
+	if((lost - stats.last_lost) > 200 and (abs((int)tsdiff2) < 1000)) {
+		// it cannot be loss because difference is < 1000ms and loss is too big. It is probably sequence reset without mark bit 
+		//printf("lost[%d] last_lost[%d] tsdiff2[%f] seq[%lu] rec[%lu] max_seq[%lu] base_seq[%lu] cyc[%lu]\n", lost, stats.last_lost, tsdiff2, seq, s->received, s->max_seq, s->base_seq, s->cycles);
+		lost = 0;
+
+		s->lastTimeStamp = getTimestamp() - samplerate / 1000 * packetization;
+		struct timeval tmp = ast_tvadd(header->ts, ast_samp2tv(packetization, 1000));
+		memcpy(&s->lastTimeRec, &tmp, sizeof(struct timeval));
+		s->cycles = s->cycles - s->base_seq + s->max_seq;
+		s->base_seq = seq;
+		s->max_seq = seq;
+		if(sverb.rtp_set_base_seq) {
+			cout << "RTP - packet_lost - set base_seq #1" 
+			     << " ssrc: " << hex << this->ssrc << dec << " "
+			     << " src: " << inet_ntostring(htonl(saddr)) << " : " << sport
+			     << " dst: " << inet_ntostring(htonl(daddr)) << " : " << dport
+			     << endl;
+		}
+	}
+
 	//printf("seq[%u] adelay[%u]\n", seq, adelay);
 
 	/* Jitterbuffer calculation
@@ -1567,7 +1592,9 @@ RTP::update_stats() {
 			     << " src: " << inet_ntostring(htonl(saddr))
 			     << " dst: " << inet_ntostring(htonl(daddr)) << " : " << dport
 			     << " seq: " << getSeqNum() << " "
-			     << " lost: " << (lost - stats.last_lost) << endl;
+			     << " lost - last_lost: " << (lost - stats.last_lost) << " " 
+			     << " lost: " << lost << " "
+			     << " last_lost: " << stats.last_lost << endl;
 		}
 		stats.lost += lost - stats.last_lost;
 		if((lost - stats.last_lost) < 10)

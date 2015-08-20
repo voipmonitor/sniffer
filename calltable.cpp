@@ -2342,21 +2342,31 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		
 		sqlDbSaveCall->setEnableSqlStringInContent(true);
 		
-		cdr.add(string("_\\_'SQL'_\\_:") + "getIdOrInsertSIPRES(" + sqlEscapeStringBorder(lastSIPresponse) + ")", "lastSIPresponse_id");
+		query_str += string("set @lSresp_id = ") + "getIdOrInsertSIPRES(" + sqlEscapeStringBorder(lastSIPresponse) + ");\n";
+		cdr.add("_\\_'SQL'_\\_:@lSresp_id", "lastSIPresponse_id");
+		//cdr.add(string("_\\_'SQL'_\\_:") + "getIdOrInsertSIPRES(" + sqlEscapeStringBorder(lastSIPresponse) + ")", "lastSIPresponse_id");
 		if(exists_columns_cdr_reason) {
 			if(reason_sip_text.length()) {
-				cdr.add(string("_\\_'SQL'_\\_:") + "getIdOrInsertREASON(1," + sqlEscapeStringBorder(reason_sip_text.c_str()) + ")", "reason_sip_text_id");
+				query_str += string("set @r_sip_tid = ") + "getIdOrInsertREASON(1," + sqlEscapeStringBorder(reason_sip_text.c_str()) + ");\n";
+				cdr.add("_\\_'SQL'_\\_:@r_sip_tid", "reason_sip_text_id");
+				//cdr.add(string("_\\_'SQL'_\\_:") + "getIdOrInsertREASON(1," + sqlEscapeStringBorder(reason_sip_text.c_str()) + ")", "reason_sip_text_id");
 			}
 			if(reason_q850_text.length()) {
-				cdr.add(string("_\\_'SQL'_\\_:") + "getIdOrInsertREASON(2," + sqlEscapeStringBorder(reason_q850_text.c_str()) + ")", "reason_q850_text_id");
+				query_str += string("set @r_q850_tid = ") + "getIdOrInsertREASON(1," + sqlEscapeStringBorder(reason_q850_text.c_str()) + ");\n";
+				cdr.add("_\\_'SQL'_\\_:@r_q850_tid", "reason_q850_text_id");
+				//cdr.add(string("_\\_'SQL'_\\_:") + "getIdOrInsertREASON(2," + sqlEscapeStringBorder(reason_q850_text.c_str()) + ")", "reason_q850_text_id");
 			}
 		}
 		if(opt_cdr_ua_enable) {
 			if(a_ua) {
-				cdr.add(string("_\\_'SQL'_\\_:") + "getIdOrInsertUA(" + sqlEscapeStringBorder(a_ua) + ")", "a_ua_id");
+				query_str += string("set @uaA_id = ") +  "getIdOrInsertUA(" + sqlEscapeStringBorder(a_ua) + ");\n";
+				cdr.add("_\\_'SQL'_\\_:@uaA_id", "a_ua_id");
+				//cdr.add(string("_\\_'SQL'_\\_:") + "getIdOrInsertUA(" + sqlEscapeStringBorder(a_ua) + ")", "a_ua_id");
 			}
 			if(b_ua) {
-				cdr.add(string("_\\_'SQL'_\\_:") + "getIdOrInsertUA(" + sqlEscapeStringBorder(b_ua) + ")", "b_ua_id");
+				query_str += string("set @uaB_id = ") +  "getIdOrInsertUA(" + sqlEscapeStringBorder(b_ua) + ");\n";
+				cdr.add("_\\_'SQL'_\\_:@uaB_id", "b_ua_id");
+				//cdr.add(string("_\\_'SQL'_\\_:") + "getIdOrInsertUA(" + sqlEscapeStringBorder(b_ua) + ")", "b_ua_id");
 			}
 		}
 		
@@ -2501,16 +2511,19 @@ Call::saveToDb(bool enableBatchIfPossible) {
 				query_str += sqlDbSaveCall->insertQuery("cdr_dtmf", dtmf) + ";\n";
 			}
 		}
-		
-		for(list<sSipResponse>::iterator iterSiprespUnique = SIPresponseUnique.begin(); iterSiprespUnique != SIPresponseUnique.end(); iterSiprespUnique++) {
-			SqlDb_row sipresp;
-			sipresp.add("_\\_'SQL'_\\_:@cdr_id", "cdr_ID");
-			sipresp.add(string("_\\_'SQL'_\\_:") + "getIdOrInsertSIPRES(" + sqlEscapeStringBorder(iterSiprespUnique->SIPresponse.c_str()) + ")", "SIPresponse_id");
-			sipresp.add(iterSiprespUnique->SIPresponseNum, "SIPresponseNum");
-			if(existsColumnCalldateInCdrSipresp) {
-				sipresp.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
+
+		extern bool opt_cdr_sipresp;	
+		if(opt_cdr_sipresp) {	
+			for(list<sSipResponse>::iterator iterSiprespUnique = SIPresponseUnique.begin(); iterSiprespUnique != SIPresponseUnique.end(); iterSiprespUnique++) {
+				SqlDb_row sipresp;
+				sipresp.add("_\\_'SQL'_\\_:@cdr_id", "cdr_ID");
+				sipresp.add(string("_\\_'SQL'_\\_:") + "getIdOrInsertSIPRES(" + sqlEscapeStringBorder(iterSiprespUnique->SIPresponse.c_str()) + ")", "SIPresponse_id");
+				sipresp.add(iterSiprespUnique->SIPresponseNum, "SIPresponseNum");
+				if(existsColumnCalldateInCdrSipresp) {
+					sipresp.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
+				}
+				query_str += sqlDbSaveCall->insertQuery("cdr_sipresp", sipresp) + ";\n";
 			}
-			query_str += sqlDbSaveCall->insertQuery("cdr_sipresp", sipresp) + ";\n";
 		}
 		
 		if(_save_sip_history) {
@@ -3083,15 +3096,15 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 
 			sqlDbSaveCall->setEnableSqlStringInContent(true);
 
-			reg.add(string("_\\_'SQL'_\\_:") + "getIdOrInsertUA(" + sqlEscapeStringBorder(a_ua) + ")", "ua_id");
-
-//			reg.add(sqlDbSaveCall->getIdOrInsert(sql_cdr_ua_table, "id", "ua", cdr_ua), "ua_id");
+			//reg.add(string("_\\_'SQL'_\\_:") + "getIdOrInsertUA(" + sqlEscapeStringBorder(a_ua) + ")", "ua_id");
+			reg.add("_\\_'SQL'_\\_:@ua_id", "ua_id");
 
 			reg.add(fname, "fname");
 			if(useSensorId > -1) {
 				reg.add(useSensorId, "id_sensor");
 			}
-			string q3 = sqlDbSaveCall->insertQuery("register_failed", reg);
+			string q3 = string("set @ua_id = ") +  "getIdOrInsertUA(" + sqlEscapeStringBorder(a_ua) + ");\n";
+			q3 += sqlDbSaveCall->insertQuery("register_failed", reg);
 
 			string query = "SET @mcounter = (" + q1 + ");";
 			query += "IF @mcounter IS NOT NULL THEN " + q2 + "; ELSE " + q3 + "; END IF";
@@ -3221,13 +3234,19 @@ Call::saveMessageToDb(bool enableBatchIfPossible) {
 		
 		cdr.add(string("_\\_'SQL'_\\_:") + "getIdOrInsertSIPRES(" + sqlEscapeStringBorder(lastSIPresponse) + ")", "lastSIPresponse_id");
 		if(a_ua) {
-			cdr.add(string("_\\_'SQL'_\\_:") + "getIdOrInsertUA(" + sqlEscapeStringBorder(a_ua) + ")", "a_ua_id");
+			query_str += string("set @uaA_id = ") +  "getIdOrInsertUA(" + sqlEscapeStringBorder(a_ua) + ");\n";
+			cdr.add("_\\_'SQL'_\\_:@uaA_id", "a_ua_id");
+			//cdr.add(string("_\\_'SQL'_\\_:") + "getIdOrInsertUA(" + sqlEscapeStringBorder(a_ua) + ")", "a_ua_id");
 		}
 		if(b_ua) {
-			cdr.add(string("_\\_'SQL'_\\_:") + "getIdOrInsertUA(" + sqlEscapeStringBorder(b_ua) + ")", "b_ua_id");
+			query_str += string("set @uaB_id = ") +  "getIdOrInsertUA(" + sqlEscapeStringBorder(b_ua) + ");\n";
+			cdr.add("_\\_'SQL'_\\_:@uaB_id", "b_ua_id");
+			//cdr.add(string("_\\_'SQL'_\\_:") + "getIdOrInsertUA(" + sqlEscapeStringBorder(b_ua) + ")", "b_ua_id");
 		}
 		if(contenttype) {
-			cdr.add(string("_\\_'SQL'_\\_:") + "getIdOrInsertCONTENTTYPE(" + sqlEscapeStringBorder(contenttype) + ")", "id_contenttype");
+			query_str += string("set @cntt_id = ") +  "getIdOrInsertCONTENTTYPE(" + sqlEscapeStringBorder(contenttype) + ");\n";
+			cdr.add("_\\_'SQL'_\\_:@cntt_id", "id_contenttype");
+			//cdr.add(string("_\\_'SQL'_\\_:") + "getIdOrInsertCONTENTTYPE(" + sqlEscapeStringBorder(contenttype) + ")", "id_contenttype");
 		}
 		
 		extern bool opt_message_check_duplicity_callid_in_next_pass_insert;

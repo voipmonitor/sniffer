@@ -377,6 +377,7 @@ bool _save_sip_history;
 bool _save_sip_history_request_types[1000];
 bool _save_sip_history_all_requests;
 bool _save_sip_history_all_responses;
+bool opt_cdr_sipresp = false;
 
 char opt_php_path[1024];
 
