@@ -1,3 +1,12 @@
+12.0 20.08.2015
+===============
+- make LZO compression default for rtp storing (8x faster)
+- reduce locking in t2CPU threads by 1000x which allows now to sniff over 1.1M packets (2 Gbit traffic)
+- do not report packet loss if there is sequence and timestamp change without mark bit 
+- fix MySQL issue 'Deadlock found when trying to get lock; try restarting transaction' by rearranging query order
+- disable storing cdr_sipresp (every SIP response in database) which was too much for database to handle (reduces SQLq growing) 
+
+
 11.11.5 19.08.2015
 ==================
 - fix broken active calls in 11.11.4 (use select on descriptor) 
