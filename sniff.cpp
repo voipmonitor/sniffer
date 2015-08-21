@@ -5120,6 +5120,7 @@ void *ProcessRtpPacket::outThreadFunction() {
 void *ProcessRtpPacket::nextThreadFunction() {
 	this->nextThreadId = get_unix_tid();
 	syslog(LOG_NOTICE, "start ProcessRtpPacket %s next thread %i", this->type == hash ? "hash" : "distribute", this->outThreadId);
+	int usleepUseconds = 20;
 	unsigned usleepCounter = 0;
 	while(!this->term_processRtp) {
 		if(this->hash_buffer_next_thread_process) {
@@ -5129,7 +5130,7 @@ void *ProcessRtpPacket::nextThreadFunction() {
 			this->hash_buffer_next_thread_process = 0;
 			usleepCounter = 0;
 		} else {
-			usleep(opt_process_rtp_packets_qring_usleep * 
+			usleep(usleepUseconds * 
 			       (usleepCounter > 1000 ? 20 :
 				usleepCounter > 100 ? 5 : 1));
 			++usleepCounter;
