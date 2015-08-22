@@ -4043,8 +4043,10 @@ bool SqlDb_mysql::createSchema(SqlDb *sourceDb) {
 	}
 
 
+	/* obsolete
 	//9.4
 	outStrAlter << "ALTER TABLE sensor_conf ADD `sip-register-timeout` tinyint DEFAULT 5;" << endl;
+	*/
 
 	//
 	outStrAlter << "ALTER TABLE filter_ip\

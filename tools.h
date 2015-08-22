@@ -364,6 +364,10 @@ struct ip_port
 	int get_port() {
 		return(port);
 	}
+	void clear() {
+		ip = "";
+		port = 0;
+	}
 	operator int() {
 		return(ip.length() && port);
 	}

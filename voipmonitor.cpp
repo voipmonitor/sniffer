@@ -2009,7 +2009,7 @@ int main(int argc, char *argv[]) {
 	}
 
 	// start manager thread 	
-	if(opt_manager_port > 0) {
+	if(opt_manager_port > 0 && !is_read_from_file()) {
 		pthread_create(&manager_thread, NULL, manager_server, NULL);
 		// start reversed manager thread
 		if(opt_clientmanager[0] != '\0') {
@@ -5151,6 +5151,12 @@ void set_context_config() {
 		opt_pcap_dump_asyncwrite = 0;
 		opt_save_query_to_files = false;
 		opt_load_query_from_files = 0;
+	}
+	
+	if(is_read_from_file()) {
+		if(is_receiver()) {
+			opt_pcap_queue_receive_from_ip_port.clear();
+		}
 	}
 	
 	if(opt_pcap_dump_tar) {
