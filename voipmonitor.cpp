@@ -372,7 +372,7 @@ int opt_pcap_dump_tar_internal_gzip_graph_level = Z_DEFAULT_COMPRESSION;
 int opt_defer_create_spooldir = 1;
 
 int opt_sdp_multiplication = 3;
-string opt_save_sip_history = "bye";
+string opt_save_sip_history;
 bool _save_sip_history;
 bool _save_sip_history_request_types[1000];
 bool _save_sip_history_all_requests;
@@ -1615,6 +1615,7 @@ PcapQueue_readFromFifo *pcapQueueR;
 PcapQueue_readFromInterface *pcapQueueI;
 PcapQueue_readFromFifo *pcapQueueQ;
 
+void set_global_vars();
 int main_init_read();
 void main_term_read();
 void main_init_sqlstore();
@@ -1655,6 +1656,8 @@ int main(int argc, char *argv[]) {
 			sverb.memory_stat = true;
 		}
 	}
+	
+	set_global_vars();
 
 	if(file_exists("/etc/localtime")) {
 		setenv("TZ", "/etc/localtime", 1);
@@ -2193,6 +2196,10 @@ int main(int argc, char *argv[]) {
 	return(0);
 }
 
+void set_global_vars() {
+	opt_save_sip_history = "bye";
+}
+
 int main_init_read() {
 	calltable = new FILE_LINE Calltable;
 	
@@ -2472,6 +2479,7 @@ int main_init_read() {
 		pcapQueueQ = new FILE_LINE PcapQueue_readFromFifo("queue", opt_pcap_queue_disk_folder.c_str());
 		if(pcapQueueI) {
 			pcapQueueQ->setInstancePcapHandle(pcapQueueI);
+			pcapQueueI->setInstancePcapFifo(pcapQueueQ);
 		}
 		pcapQueueQ->setEnableAutoTerminate(false);
 		
@@ -2670,7 +2678,7 @@ void main_term_read() {
 		sipSendSocket = NULL;
 	}
 
-	if(opt_ipaccount) {
+	if(ipaccountportmatrix) {
 		delete [] ipaccountportmatrix;
 		ipaccountportmatrix = NULL;
 	}
@@ -6411,10 +6419,8 @@ int eval_config(string inistr) {
 		strlwr(_opt_pcap_queue_compress_method, sizeof(_opt_pcap_queue_compress_method));
 		if(!strcmp(_opt_pcap_queue_compress_method, "snappy")) {
 			opt_pcap_queue_compress_method = pcap_block_store::snappy;
-			opt_pcap_queue_compress = true;
 		} else if(!strcmp(_opt_pcap_queue_compress_method, "lz4")) {
 			opt_pcap_queue_compress_method = pcap_block_store::lz4;
-			opt_pcap_queue_compress = true;
 		}
 	}
 	if((value = ini.GetValue("general", "mirror_destination_ip", NULL)) &&

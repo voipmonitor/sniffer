@@ -181,6 +181,13 @@ public:
 		bufferCapacity = 0;
 		this->capacityReserve = capacityReserve;
 	}
+	SimpleBuffer(void *data, u_int32_t dataLength, u_int32_t capacityReserve = 0) {
+		buffer = NULL;
+		bufferLength = 0;
+		bufferCapacity = 0;
+		this->capacityReserve = capacityReserve;
+		add(data, dataLength);
+	}
 	SimpleBuffer(const SimpleBuffer &other) {
 		this->bufferLength = other.bufferLength;
 		this->bufferCapacity = other.bufferCapacity;

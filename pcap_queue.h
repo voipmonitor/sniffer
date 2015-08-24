@@ -201,13 +201,15 @@ public:
 	void setFifoFileForWrite(const char *fifoFileForWrite);
 	void setFifoReadHandle(int fifoReadHandle);
 	void setFifoWriteHandle(int fifoWriteHandle);
-	void setEnableWriteThread();
+	void setEnableMainThread(bool enable = true);
+	void setEnableWriteThread(bool enable = true);
 	void setEnableAutoTerminate(bool enableAutoTerminate);
 	bool start();
 	virtual void terminate();
 	bool isInitOk();
 	bool isTerminated();
 	void setInstancePcapHandle(PcapQueue *pcapQueue);
+	void setInstancePcapFifo(class PcapQueue_readFromFifo *pcapQueue);
 	inline pcap_t* getPcapHandle(int dlt);
 	void pcapStat(int statPeriod = 1, bool statCalls = true);
 	string pcapDropCountStat();
@@ -268,6 +270,7 @@ protected:
 	pthread_t writeThreadHandle;
 	std::string fifoFileForRead;
 	std::string fifoFileForWrite;
+	bool enableMainThread;
 	bool enableWriteThread;
 	bool enableAutoTerminate;
 	int fifoReadHandle;
@@ -286,6 +289,8 @@ protected:
 	pstat_data nextThreadsPstatData[PCAP_QUEUE_NEXT_THREADS_MAX][2];
 	pstat_data procPstatData[2];
 	bool initAllReadThreadsFinished;
+protected:
+	class PcapQueue_readFromFifo *instancePcapFifo;
 private:
 	u_char* packetBuffer;
 	PcapQueue *instancePcapHandle;
@@ -295,7 +300,6 @@ private:
 	u_int64_t counter_sip_message_packets_old;
 	u_int64_t counter_rtp_packets_old;
 	u_int64_t counter_all_packets_old;
-
 friend void *_PcapQueue_threadFunction(void *arg);
 friend void *_PcapQueue_writeThreadFunction(void *arg);
 };
@@ -602,6 +606,7 @@ public:
 	size_t getQueueSize() {
 		return(this->pcapStoreQueue.getQueueSize());
 	}
+	inline void addBlockStoreToPcapStoreQueue(pcap_block_store *blockStore);
 protected:
 	bool createThread();
 	bool createSocketServerThread();

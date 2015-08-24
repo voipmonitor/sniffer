@@ -456,8 +456,12 @@ bool CompressStream::compress(char *data, u_int32_t len, bool flush, CompressStr
 			lzo_uint compressLength = this->compressBufferBoundLength;
 			int lzoRslt = lzo1x_1_compress((const u_char*)data + chunk_offset, chunk_len, (u_char*)this->compressBuffer, &compressLength, this->lzoWrkmem);
 			if(lzoRslt == LZO_E_OK) {
+				extern unsigned int HeapSafeCheck;
 				if(!this->processed_len && this->autoPrefixFile) {
-					if(!baseEv->compress_ev((char*)"LZO", 3, 0, true)) {
+					if(!baseEv->compress_ev(HeapSafeCheck & _HeapSafeErrorBeginEnd ? 
+								 (char*)SimpleBuffer((char*)"LZO", 3).data() : 
+								 (char*)"LZO", 
+								3, 0, true)) {
 						this->setError("snappy compress_ev failed");
 						return(false);
 					}
@@ -466,7 +470,10 @@ bool CompressStream::compress(char *data, u_int32_t len, bool flush, CompressStr
 					sChunkSizeInfo sizeInfo;
 					sizeInfo.compress_size = compressLength;
 					sizeInfo.size = len;
-					if(!baseEv->compress_ev((char*)&sizeInfo, sizeof(sizeInfo), 0, true)) {
+					if(!baseEv->compress_ev(HeapSafeCheck & _HeapSafeErrorBeginEnd ? 
+								 (char*)SimpleBuffer(&sizeInfo, sizeof(sizeInfo)).data() :
+								 (char*)&sizeInfo, 
+								sizeof(sizeInfo), 0, true)) {
 						this->setError("lzo compress_ev failed");
 						return(false);
 					}

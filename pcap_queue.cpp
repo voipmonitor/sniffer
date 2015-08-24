@@ -32,6 +32,7 @@
 #include "cleanspool.h"
 #include "ssldata.h"
 #include "tar.h"
+#include "voipmonitor.h"
 
 
 #define TEST_DEBUG_PARAMS 0
@@ -938,6 +939,7 @@ PcapQueue::PcapQueue(eTypeQueue typeQueue, const char *nameQueue) {
 	this->nameQueue = nameQueue;
 	this->threadHandle = 0;
 	this->writeThreadHandle = 0;
+	this->enableMainThread = true;
 	this->enableWriteThread = false;
 	this->enableAutoTerminate = true;
 	this->fifoReadHandle = -1;
@@ -961,6 +963,7 @@ PcapQueue::PcapQueue(eTypeQueue typeQueue, const char *nameQueue) {
 	memset(this->procPstatData, 0, sizeof(this->procPstatData));
 	this->packetBuffer = NULL;
 	this->instancePcapHandle = NULL;
+	this->instancePcapFifo = NULL;
 	this->initAllReadThreadsFinished = false;
 	this->counter_calls_old = 0;
 	this->counter_sip_packets_old[0] = 0;
@@ -1001,8 +1004,12 @@ void PcapQueue::setFifoWriteHandle(int fifoWriteHandle) {
 	this->fifoWriteHandle = fifoWriteHandle;
 }
 
-void PcapQueue::setEnableWriteThread() {
-	this->enableWriteThread = true;
+void PcapQueue::setEnableMainThread(bool enable) {
+	this->enableMainThread = enable;
+}
+
+void PcapQueue::setEnableWriteThread(bool enable) {
+	this->enableWriteThread = enable;
 }
 
 void PcapQueue::setEnableAutoTerminate(bool enableAutoTerminate) {
@@ -1023,17 +1030,21 @@ void PcapQueue::terminate() {
 }
 
 bool PcapQueue::isInitOk() {
-	return(this->threadInitOk &&
+	return((!this->enableMainThread || this->threadInitOk) &&
 	       (!this->enableWriteThread || this->writeThreadInitOk));
 }
 
 bool PcapQueue::isTerminated() {
-	return(this->threadTerminated &&
+	return((!this->enableMainThread || this->threadTerminated) &&
 	       (!this->enableWriteThread || this->writeThreadTerminated));
 }
 
 void PcapQueue::setInstancePcapHandle(PcapQueue *pcapQueue) {
 	this->instancePcapHandle = pcapQueue;
+}
+
+void PcapQueue::setInstancePcapFifo(PcapQueue_readFromFifo *pcapQueue) {
+	this->instancePcapFifo = pcapQueue;
 }
 
 void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
@@ -1776,7 +1787,9 @@ pcap_t* PcapQueue::getPcapHandle(int dlt) {
 }
 
 bool PcapQueue::createThread() {
-	this->createMainThread();
+	if(this->enableMainThread) {
+		this->createMainThread();
+	}
 	if(this->enableWriteThread) {
 		this->createWriteThread();
 	}
@@ -1859,8 +1872,8 @@ bool PcapQueue::writePcapToFifo(pcap_pkthdr_plus *header, u_char *packet) {
 }
 
 bool PcapQueue::initThread(void *arg, unsigned int arg2, string *error) {
-	return(this->openFifoForRead(arg, arg2) &&
-	       (this->enableWriteThread || this->openFifoForWrite(arg, arg2)));
+	return((!this->enableMainThread || this->openFifoForRead(arg, arg2)) &&
+	       (!this->enableWriteThread || this->openFifoForWrite(arg, arg2)));
 }
 
 bool PcapQueue::initWriteThread(void *arg, unsigned int arg2) {
@@ -1966,9 +1979,9 @@ double PcapQueue::pcapStat_get_speed_mb_s(int statPeriod) {
 int PcapQueue::getThreadPid(eTypeThread typeThread) {
 	switch(typeThread) {
 	case mainThread:
-		return(mainThreadId);
+		return(threadTerminated ? 0 : mainThreadId);
 	case writeThread:
-		return(writeThreadId);
+		return(writeThreadTerminated ? 0 : writeThreadId);
 	case nextThread1:
 		return(nextThreadsId[0]);
 	case nextThread2:
@@ -3227,7 +3240,11 @@ void* PcapQueue_readFromInterface::threadFunction(void *arg, unsigned int arg2) 
 					if(opt_scanpcapdir[0]) {
 						this->pcapEnd = true;
 					} else if(opt_pb_read_from_file[0]) {
-						blockStoreBypassQueue->push(blockStore[blockStoreIndex]);
+						if(!opt_pcap_queue_compress && this->instancePcapFifo) {
+							this->instancePcapFifo->addBlockStoreToPcapStoreQueue(blockStore[blockStoreIndex]);
+						} else {
+							blockStoreBypassQueue->push(blockStore[blockStoreIndex]);
+						}
 						++sumBlocksCounterIn[0];
 						blockStore[blockStoreIndex] = NULL;
 						int sleepTime = sverb.test_rtp_performance ? 120 :
@@ -3295,31 +3312,35 @@ void* PcapQueue_readFromInterface::threadFunction(void *arg, unsigned int arg2) 
 			}
 			for(int i = 0; i < blockStoreCount; i++) {
 				if(fetchPacketOk && i == blockStoreIndex ? blockStore[i]->full : blockStore[i]->isFull_checkTimout()) {
-					bool _syslog = true;
-					while((blockStoreBypassQueueSize = blockStoreBypassQueue->getUseSize()) > opt_pcap_queue_bypass_max_size) {
-						if(opt_scanpcapdir[0]) {
-							usleep(100);
-						} else {
-							if(_syslog) {
-								u_long actTime = getTimeMS();
-								if(actTime - 1000 > this->lastTimeLogErrThread0BufferIsFull) {
-									syslog(LOG_ERR, "packetbuffer %s: THREAD0 BUFFER IS FULL", this->nameQueue.c_str());
-									this->lastTimeLogErrThread0BufferIsFull = actTime;
-									cout << "bypass buffer size " << blockStoreBypassQueue->getUseItems() << " (" << blockStoreBypassQueue->getUseSize() << ")" << endl;
+					if(!opt_pcap_queue_compress && this->instancePcapFifo) {
+						this->instancePcapFifo->addBlockStoreToPcapStoreQueue(blockStore[i]);
+					} else {
+						bool _syslog = true;
+						while((blockStoreBypassQueueSize = blockStoreBypassQueue->getUseSize()) > opt_pcap_queue_bypass_max_size) {
+							if(opt_scanpcapdir[0]) {
+								usleep(100);
+							} else {
+								if(_syslog) {
+									u_long actTime = getTimeMS();
+									if(actTime - 1000 > this->lastTimeLogErrThread0BufferIsFull) {
+										syslog(LOG_ERR, "packetbuffer %s: THREAD0 BUFFER IS FULL", this->nameQueue.c_str());
+										this->lastTimeLogErrThread0BufferIsFull = actTime;
+										cout << "bypass buffer size " << blockStoreBypassQueue->getUseItems() << " (" << blockStoreBypassQueue->getUseSize() << ")" << endl;
+									}
+									_syslog = false;
+									++countBypassBufferSizeExceeded;
 								}
-								_syslog = false;
-								++countBypassBufferSizeExceeded;
+								usleep(100);
+								maxBypassBufferSize = 0;
+								maxBypassBufferItems = 0;
 							}
-							usleep(100);
-							maxBypassBufferSize = 0;
-							maxBypassBufferItems = 0;
 						}
+						if(blockStoreBypassQueueSize > maxBypassBufferSize) {
+							maxBypassBufferSize = blockStoreBypassQueueSize;
+							maxBypassBufferItems = blockStoreBypassQueue->getUseItems();
+						}
+						blockStoreBypassQueue->push(blockStore[i]);
 					}
-					if(blockStoreBypassQueueSize > maxBypassBufferSize) {
-						maxBypassBufferSize = blockStoreBypassQueueSize;
-						maxBypassBufferItems = blockStoreBypassQueue->getUseItems();
-					}
-					blockStoreBypassQueue->push(blockStore[i]);
 					++sumBlocksCounterIn[0];
 					blockStore[i] = new FILE_LINE pcap_block_store;
 					strncpy(blockStore[i]->ifname, 
@@ -3738,6 +3759,7 @@ PcapQueue_readFromFifo::PcapQueue_readFromFifo(const char *nameQueue, const char
 	this->lastCheckFreeSizeCachedir_timeMS = 0;
 	this->_last_ts.tv_sec = 0;
 	this->_last_ts.tv_usec = 0;
+	this->setEnableMainThread(opt_pcap_queue_compress || is_receiver());
 	this->setEnableWriteThread();
 }
 
@@ -3772,6 +3794,20 @@ PcapQueue_readFromFifo::~PcapQueue_readFromFifo() {
 void PcapQueue_readFromFifo::setPacketServer(ip_port ipPort, ePacketServerDirection direction) {
 	this->packetServerIpPort = ipPort;
 	this->packetServerDirection = direction;
+	if(direction == directionRead) {
+		this->setEnableMainThread();
+	}
+}
+
+inline void PcapQueue_readFromFifo::addBlockStoreToPcapStoreQueue(pcap_block_store *blockStore) {
+	while(!TERMINATING) {
+		if(this->pcapStoreQueue.push(blockStore, false)) {
+			sumPacketsSize[0] += blockStore->size;
+			break;
+		} else {
+			usleep(100);
+		}
+	}
 }
 
 bool PcapQueue_readFromFifo::createThread() {
@@ -4023,23 +4059,25 @@ void *PcapQueue_readFromFifo::threadFunction(void *arg, unsigned int arg2) {
 		delete blockStore;
 		
 	} else if(__config_BYPASS_FIFO) {
-		pcap_block_store *blockStore;
-		while(!TERMINATING) {
-			blockStore = blockStoreBypassQueue->pop(false);
-			if(!blockStore) {
-				usleep(1000);
-				continue;
-			}
-			size_t blockSize = blockStore->size;
-			if(blockStore->compress()) {
-				if(this->pcapStoreQueue.push(blockStore, false)) {
-					sumPacketsSize[0] += blockSize;
-					blockStoreBypassQueue->pop(true, blockSize);
-				} else {
+		if(opt_pcap_queue_compress) {
+			pcap_block_store *blockStore;
+			while(!TERMINATING) {
+				blockStore = blockStoreBypassQueue->pop(false);
+				if(!blockStore) {
 					usleep(1000);
+					continue;
 				}
-			} else {
-				blockStoreBypassQueue->pop(true, blockSize);
+				size_t blockSize = blockStore->size;
+				if(blockStore->compress()) {
+					if(this->pcapStoreQueue.push(blockStore, false)) {
+						sumPacketsSize[0] += blockSize;
+						blockStoreBypassQueue->pop(true, blockSize);
+					} else {
+						usleep(1000);
+					}
+				} else {
+					blockStoreBypassQueue->pop(true, blockSize);
+				}
 			}
 		}
 	} else {
