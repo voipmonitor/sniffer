@@ -154,6 +154,8 @@ public:
 	u_int32_t daddr;	//!< last source IP adress 
 	u_int16_t sport;
 	u_int16_t dport;
+	u_int16_t avg_ptime;
+	u_int32_t avg_ptime_count;
 	RtpGraphSaver graph;
 	FILE *gfileRAW;	 //!< file for storing RTP payload in RAW format
 	char *gfileRAW_buffer;

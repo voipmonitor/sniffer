@@ -1,3 +1,13 @@
+12.1 25.08.2015
+===============
+- store detected RTP ptime (packetization) into the database (a_rtp_ptime, b_rtp_ptime) 
+- allow to specify ogg audio format in capture rules and allow to select savertp header in capture rules 
+- do not use T1 thread and inter thread compression (t1CPU) which now allows to utilize full heap instead of only low inter-thread ringbuffer in case T2CPU is blocked due to CPU spikes. 
+- remove alter for obsolete table sensor_conf
+- having lzo library is now mandatory 
+- disable manager and receiver if reading from file (-r) 
+
+
 12.0 20.08.2015
 ===============
 - make LZO compression default for rtp storing (8x faster)

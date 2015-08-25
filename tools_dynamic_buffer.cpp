@@ -76,11 +76,9 @@ CompressStream::CompressStream(eTypeCompress typeCompress, u_int32_t compressBuf
 	this->lz4Stream = NULL;
 	this->lz4StreamDecode = NULL;
 	#endif //HAVE_LIBLZ4
-	#ifdef HAVE_LIBLZO
 	this->lzoWrkmem = NULL;
 	this->lzoWrkmemDecompress = NULL;
 	this->lzoDecompressData = NULL;
-	#endif //HAVE_LIBLZO
 	this->snappyDecompressData = NULL;
 	this->zipLevel = Z_DEFAULT_COMPRESSION;
 	this->lzmaLevel = 6;
@@ -162,12 +160,10 @@ void CompressStream::initCompress() {
 		}
 		break;
 	case lzo:
-		#ifdef HAVE_LIBLZO
 		if(!this->lzoWrkmem) {
 			this->lzoWrkmem = new FILE_LINE u_char[LZO1X_1_MEM_COMPRESS];
 			createCompressBuffer();
 		}
-		#endif //HAVE_LIBLZO
 		break;
 	case lz4:
 		if(!this->compressBuffer) {
@@ -233,7 +229,6 @@ void CompressStream::initDecompress(u_int32_t dataLen) {
 		createDecompressBuffer(dataLen);
 		break;
 	case lzo:
-		#ifdef HAVE_LIBLZO
 		if(!this->lzoWrkmemDecompress) {
 			this->lzoWrkmemDecompress = new FILE_LINE u_char[LZO1X_1_MEM_COMPRESS];
 		}
@@ -241,7 +236,6 @@ void CompressStream::initDecompress(u_int32_t dataLen) {
 			this->lzoDecompressData = new FILE_LINE SimpleBuffer();
 		}
 		createDecompressBuffer(dataLen);
-		#endif //HAVE_LIBLZO
 		break;
 	case lz4:
 		createDecompressBuffer(dataLen);
@@ -272,12 +266,10 @@ void CompressStream::termCompress() {
 		this->lzmaStream = NULL;
 	}
 	#endif //ifdef HAVE_LIBLZMA
-	#ifdef HAVE_LIBLZO
 	if(this->lzoWrkmem) {
 		delete [] this->lzoWrkmem;
 		this->lzoWrkmem = NULL;
 	}
-	#endif //ifdef HAVE_LIBLZO
 	#ifdef HAVE_LIBLZ4
 	if(this->lz4Stream) {
 		LZ4_freeStream(this->lz4Stream);
@@ -307,7 +299,6 @@ void CompressStream::termDecompress() {
 		delete this->snappyDecompressData;
 		this->snappyDecompressData = NULL;
 	}
-	#ifdef HAVE_LIBLZO
 	if(this->lzoDecompressData) {
 		delete this->lzoDecompressData;
 		this->lzoDecompressData = NULL;
@@ -316,7 +307,6 @@ void CompressStream::termDecompress() {
 		delete [] this->lzoWrkmemDecompress;
 		this->lzoWrkmemDecompress = NULL;
 	}
-	#endif //HAVE_LIBLZO
 	#ifdef HAVE_LIBLZ4
 	if(this->lz4StreamDecode) {
 		LZ4_freeStreamDecode(this->lz4StreamDecode);
@@ -446,7 +436,6 @@ bool CompressStream::compress(char *data, u_int32_t len, bool flush, CompressStr
 		}
 		break;
 	case lzo: {
-		#ifdef HAVE_LIBLZO
 		if(!this->compressBuffer) {
 			this->initCompress();
 		}
@@ -490,7 +479,6 @@ bool CompressStream::compress(char *data, u_int32_t len, bool flush, CompressStr
 			}
 			chunk_offset += chunk_len;
 		}
-		#endif //HAVE_LIBLZO
 		}
 		break;
 	case lz4: {
@@ -687,7 +675,6 @@ bool CompressStream::decompress(char *data, u_int32_t len, u_int32_t decompress_
 		}
 		break;
 	case lzo: {
-		#ifdef HAVE_LIBLZO
 		if(this->forceStream) {
 			this->initDecompress(0);
 			this->lzoDecompressData->add(data, len);
@@ -731,7 +718,6 @@ bool CompressStream::decompress(char *data, u_int32_t len, u_int32_t decompress_
 				break;
 			}
 		}
-		#endif //HAVE_LIBLZO
 		}
 		break;
 	case lz4:
@@ -886,11 +872,9 @@ CompressStream::eTypeCompress CompressStream::convTypeCompress(const char *typeC
 	else if(!strcmp(_compress_method, "snappy")) {
 		return(CompressStream::snappy);
 	} 
-	#ifdef HAVE_LIBLZO
 	else if(!strcmp(_compress_method, "lzo")) {
 		return(CompressStream::lzo);
 	} 
-	#endif //HAVE_LIBLZO
 	#ifdef HAVE_LIBLZ4
 	else if(!strcmp(_compress_method, "lz4")) {
 		return(CompressStream::lz4);
@@ -911,10 +895,8 @@ const char *CompressStream::convTypeCompress(eTypeCompress typeCompress) {
 	#endif //HAVE_LIBLZMA
 	case snappy:
 		return("snappy");
-	#ifdef HAVE_LIBLZO
 	case lzo:
 		return("lzo");
-	#endif //HAVE_LIBLZO
 	#ifdef HAVE_LIBLZ4
 	case lz4:
 		return("lz4");
