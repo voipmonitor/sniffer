@@ -4620,7 +4620,7 @@ void SqlDb_mysql::copyFromSourceTablesMinor(SqlDb_mysql *sqlDbSrc) {
 void SqlDb_mysql::copyFromSourceTablesMain(SqlDb_mysql *sqlDbSrc) {
 	vector<string> tablesMain = getSourceTables(tt_main);
 	for(vector<string>::iterator it = tablesMain.begin(); it != tablesMain.end(); it++) {
-		unsigned long maxDiffId = 100000;
+		unsigned long maxDiffId = 10000;
 		if(is_terminating()) return;
 		this->copyFromSourceTable(sqlDbSrc, it->c_str(), NULL, maxDiffId);
 	}
@@ -4738,35 +4738,35 @@ void SqlDb_mysql::copyFromSourceTable(SqlDb_mysql *sqlDbSrc, const char *tableNa
 		}
 		if(string(tableName) == "cdr") {
 			if(is_terminating()) return;
-			this->copyFromSourceTable(sqlDbSrc, "cdr_next", "cdr_id", 0, minIdInSrc, useMaxIdInSrc);
+			this->copyFromSourceTable(sqlDbSrc, "cdr_next", "cdr_id", maxDiffId*10, minIdInSrc, useMaxIdInSrc);
 			if(custom_headers_cdr) {
 				list<string> nextTables = custom_headers_cdr->getAllNextTables();
 				for(list<string>::iterator it = nextTables.begin(); it != nextTables.end(); it++) {
 					if(is_terminating()) return;
-					this->copyFromSourceTable(sqlDbSrc, it->c_str(), "cdr_id", 0, minIdInSrc, useMaxIdInSrc);
+					this->copyFromSourceTable(sqlDbSrc, it->c_str(), "cdr_id", maxDiffId*10, minIdInSrc, useMaxIdInSrc);
 				}
 			}
 			if(is_terminating()) return;
-			this->copyFromSourceTable(sqlDbSrc, "cdr_rtp", "cdr_id", 0, minIdInSrc, useMaxIdInSrc);
+			this->copyFromSourceTable(sqlDbSrc, "cdr_rtp", "cdr_id", maxDiffId*10, minIdInSrc, useMaxIdInSrc);
 			if(is_terminating()) return;
-			this->copyFromSourceTable(sqlDbSrc, "cdr_dtmf", "cdr_id", 0, minIdInSrc, useMaxIdInSrc);
+			this->copyFromSourceTable(sqlDbSrc, "cdr_dtmf", "cdr_id", maxDiffId*10, minIdInSrc, useMaxIdInSrc);
 			if(is_terminating()) return;
-			this->copyFromSourceTable(sqlDbSrc, "cdr_sipresp", "cdr_id", 0, minIdInSrc, useMaxIdInSrc);
+			this->copyFromSourceTable(sqlDbSrc, "cdr_sipresp", "cdr_id", maxDiffId*10, minIdInSrc, useMaxIdInSrc);
 			if(is_terminating()) return;
 			if(_save_sip_history) {
-				this->copyFromSourceTable(sqlDbSrc, "cdr_siphistory", "cdr_id", 0, minIdInSrc, useMaxIdInSrc);
+				this->copyFromSourceTable(sqlDbSrc, "cdr_siphistory", "cdr_id", maxDiffId*10, minIdInSrc, useMaxIdInSrc);
 				if(is_terminating()) return;
 			}
-			this->copyFromSourceTable(sqlDbSrc, "cdr_proxy", "cdr_id", 0, minIdInSrc, useMaxIdInSrc);
+			this->copyFromSourceTable(sqlDbSrc, "cdr_proxy", "cdr_id", maxDiffId*10, minIdInSrc, useMaxIdInSrc);
 			if(is_terminating()) return;
-			this->copyFromSourceTable(sqlDbSrc, "cdr_tar_part", "cdr_id", 0, minIdInSrc, useMaxIdInSrc);
+			this->copyFromSourceTable(sqlDbSrc, "cdr_tar_part", "cdr_id", maxDiffId*10, minIdInSrc, useMaxIdInSrc);
 		}
 		if(string(tableName) == "message") {
 			if(custom_headers_message) {
 				list<string> nextTables = custom_headers_message->getAllNextTables();
 				for(list<string>::iterator it = nextTables.begin(); it != nextTables.end(); it++) {
 					if(is_terminating()) return;
-					this->copyFromSourceTable(sqlDbSrc, it->c_str(), "message_id", 0, minIdInSrc, useMaxIdInSrc);
+					this->copyFromSourceTable(sqlDbSrc, it->c_str(), "message_id", maxDiffId*10, minIdInSrc, useMaxIdInSrc);
 				}
 			}
 		}
