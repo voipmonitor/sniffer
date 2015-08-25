@@ -2781,11 +2781,7 @@ FileZipHandler::eTypeCompress FileZipHandler::convTypeCompress(const char *typeC
 	} else if(!strcmp(_compress_method, "snappy")) {
 		return(FileZipHandler::snappy);
 	} else if(!strcmp(_compress_method, "lzo")) {
-		#ifdef HAVE_LIBLZO
 		return(FileZipHandler::lzo);
-		#else
-		return(FileZipHandler::gzip);
-		#endif //HAVE_LIBLZO
 	}
 	return(FileZipHandler::compress_na);
 }
@@ -2824,11 +2820,7 @@ void FileZipHandler::setTypeCompressDefault() {
 			break;
 		case pcap_rtp:
 		case graph_rtp:
-			#ifdef HAVE_LIBLZO
 			typeCompress = lzo;
-			#else
-			typeCompress = gzip;
-			#endif //HAVE_LIBLZO
 			break;
 		default:
 			typeCompress = gzip;
