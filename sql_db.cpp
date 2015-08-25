@@ -76,6 +76,8 @@ extern char cloud_token[256];
 extern CustomHeaders *custom_headers_cdr;
 extern CustomHeaders *custom_headers_message;
 
+extern int opt_ptime;
+
 int sql_noerror = 0;
 int sql_disable_next_attempt_if_error = 0;
 bool opt_cdr_partition_oldver = false;
@@ -3164,6 +3166,8 @@ bool SqlDb_mysql::createSchema(SqlDb *sourceDb) {
 			`b_rtcp_avgjitter_mult10` smallint unsigned DEFAULT NULL,\
 			`a_last_rtp_from_end` smallint unsigned DEFAULT NULL,\
 			`b_last_rtp_from_end` smallint unsigned DEFAULT NULL,\
+			`a_rtp_ptime` tinyint unsigned DEFAULT NULL,\
+			`b_rtp_ptime` tinyint unsigned DEFAULT NULL,\
 			`payload` int DEFAULT NULL,\
 			`jitter_mult10` mediumint unsigned DEFAULT NULL,\
 			`mos_min_mult10` tinyint unsigned DEFAULT NULL,\
@@ -3316,6 +3320,13 @@ bool SqlDb_mysql::createSchema(SqlDb *sourceDb) {
 			syslog(LOG_WARNING, "!!! You have enabled clippingdetect but the database is not yet upgraded. Run this command in your database: ALTER TABLE cdr ADD caller_clipping_div3 smallint unsigned default NULL, ADD called_clipping_div3 smallint unsigned default NULL;");
 			opt_clippingdetect = 0;
 		}
+	}
+
+	this->query("show columns from cdr where Field='a_rtp_ptime'");
+	int res = this->fetchRow();
+	if(!res) {
+		syslog(LOG_WARNING, "Missing ptime columns - ptime feature is disabled. To enable it run this command in your database (it can take hours and will block database during the alter!): ALTER TABLE cdr ADD a_rtp_ptime tinyint unsigned default NULL, ADD b_rtp_ptime tinyint unsigned default NULL;");
+		opt_ptime = 0;
 	}
 
 	this->query("show columns from cdr where Field='price_operator_mult100' or Field='price_operator_mult1000000'");

@@ -174,6 +174,8 @@ extern int opt_pcap_dump_tar_graph_use_pos;
 extern unsigned int glob_ssl_calls;
 extern bool opt_cdr_partition;
 
+extern int opt_ptime;
+
 
 /* constructor */
 Call::Call(char *call_id, unsigned long call_id_len, time_t time) :
@@ -2267,6 +2269,10 @@ Call::saveToDb(bool enableBatchIfPossible) {
 				rtcp_avgjitter_mult10[i] = (int)round(rtpab[i]->rtcp.avgjitter / get_ticks_bycodec(rtpab[i]->first_codec) * 10);
 				cdr.add(rtcp_avgjitter_mult10[i], c+"_rtcp_avgjitter_mult10");
 			}
+			if(opt_ptime) {
+				cdr.add(rtpab[i]->avg_ptime, c+"_rtp_ptime");
+			}
+
 		}
 		if(seenudptl) {
 			// T.38

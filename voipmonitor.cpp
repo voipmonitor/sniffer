@@ -700,6 +700,8 @@ cConfig CONFIG;
 bool useNewCONFIG = 0;
 bool printConfigStruct = false;
 
+int opt_ptime = 1;
+
 SensorsMap sensorsMap;
 
 

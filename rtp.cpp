@@ -281,6 +281,8 @@ RTP::RTP(int sensor_id)
 	this->_last_ifname[0] = 0;
 	
 	lastTimeSyslog = 0;
+	avg_ptime = 0;
+	avg_ptime_count = 0;
 }
 
 /* destructor */
@@ -1486,6 +1488,9 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 	lastframetype = frame->frametype;
 	last_seq = seq;
 	lastcng = 0;
+
+	avg_ptime_count++;
+	avg_ptime = (avg_ptime * (avg_ptime_count - 1) + packetization) / avg_ptime_count;
 }
 
 /* fill internal structures by the input RTP packet */
