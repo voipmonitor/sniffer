@@ -1414,7 +1414,6 @@ Call *new_invite_register(bool is_ssl, int sip_method, char *data, int datalen, 
 			  ParsePacket *parsePacket){
  
 	unsigned long gettagLimitLen = 0;
-	unsigned int flags = 0;
 	int res;
 	bool anonymous_useRemotePartyID = false;
 	bool anonymous_usePPreferredIdentity = false;
@@ -1571,27 +1570,8 @@ Call *new_invite_register(bool is_ssl, int sip_method, char *data, int datalen, 
 	}
 
 	//flags
-	if(opt_saveSIP)
-		flags |= FLAG_SAVESIP;
-
-	if(opt_saveRTP)
-		flags |= FLAG_SAVERTP;
-
-	if(opt_onlyRTPheader)
-		flags |= FLAG_SAVERTPHEADER;
-
-	if(opt_saveWAV)
-		flags |= FLAG_SAVEWAV;
-
-	if(opt_saveGRAPH)
-		flags |= FLAG_SAVEGRAPH;
-
-	if(opt_skipdefault)
-		flags |= FLAG_SKIPCDR;
-
-	if(opt_hide_message_content)
-		flags |= FLAG_HIDEMESSAGE;
-
+	unsigned int flags = 0;
+	set_global_flags(flags);
 	ipfilter->add_call_flags(&flags, ntohl(saddr), ntohl(daddr));
 	telnumfilter->add_call_flags(&flags, tcaller, tcalled);
 	domainfilter->add_call_flags(&flags, tcaller_domain, tcalled_domain);
@@ -3342,6 +3322,15 @@ rtpcheck:
 	// packet does not belongs to established call, check if it is on SIP port
 	} else {
 		if(opt_rtpnosip) {
+			unsigned int flags = 0;
+			set_global_flags(flags);
+			ipfilter->add_call_flags(&flags, ntohl(saddr), ntohl(daddr));
+			if(flags & FLAG_SKIPCDR) {
+				if(verbosity > 1)
+					syslog(LOG_NOTICE, "call skipped due to ip or tel capture rules\n");
+				return NULL;
+			}
+		 
 			// decoding RTP without SIP signaling is enabled. Check if it is port >= 1024 and if RTP version is == 2
 			char s[256];
 			RTP rtp(-1);
@@ -3370,7 +3359,7 @@ rtpcheck:
 			call->sipcallerport = source;
 			call->sipcalledport = dest;
 			call->type = INVITE;
-			ipfilter->add_call_flags(&(call->flags), ntohl(saddr), ntohl(daddr));
+			call->flags = flags;
 			strncpy(call->fbasename, s, MAX_FNAME - 1);
 			call->seeninvite = true;
 			strcpy(call->callername, "RTP");
@@ -3809,6 +3798,16 @@ Call *process_packet__rtp_nosip(unsigned int saddr, int source, unsigned int dad
 				pcap_block_store *block_store, int block_store_index, int dlt, int sensor_id,
 				pcap_t *handle) {
 	++counter_rtp_packets;
+	
+	unsigned int flags = 0;
+	set_global_flags(flags);
+	ipfilter->add_call_flags(&flags, ntohl(saddr), ntohl(daddr));
+	if(flags & FLAG_SKIPCDR) {
+		if(verbosity > 1)
+			syslog(LOG_NOTICE, "call skipped due to ip or tel capture rules\n");
+		return NULL;
+	}
+	
 	// decoding RTP without SIP signaling is enabled. Check if it is port >= 1024 and if RTP version is == 2
 	char s[256];
 	RTP rtp(-1);
@@ -3832,7 +3831,7 @@ Call *process_packet__rtp_nosip(unsigned int saddr, int source, unsigned int dad
 	call->sipcallerport = source;
 	call->sipcalledport = dest;
 	call->type = INVITE;
-	ipfilter->add_call_flags(&(call->flags), ntohl(saddr), ntohl(daddr));
+	call->flags = flags;
 	strncpy(call->fbasename, s, MAX_FNAME - 1);
 	call->seeninvite = true;
 	strcpy(call->callername, "RTP");

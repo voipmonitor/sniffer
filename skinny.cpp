@@ -1239,6 +1239,7 @@ Call *new_skinny_channel(int state, char *data, int datalen, struct pcap_pkthdr 
 	}
 
 	unsigned int flags = 0;
+	set_global_flags(flags);
 	ipfilter->add_call_flags(&flags, ntohl(saddr), ntohl(daddr));
 	if(flags & FLAG_SKIPCDR) {
 		if(verbosity > 1)
@@ -1255,7 +1256,7 @@ Call *new_skinny_channel(int state, char *data, int datalen, struct pcap_pkthdr 
 	call->sipcallerport = source;
 	call->sipcalledport = dest;
 	call->type = state;
-	call->flags |= flags;
+	call->flags = flags;
 	strncpy(call->fbasename, callidstr, MAX_FNAME - 1);
 
 	// add saddr|daddr into map

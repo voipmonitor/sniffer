@@ -7,27 +7,31 @@
 #include <deque>
 #include <deque>
 
+#include "calltable.h"
 
-#define FLAG_RTP	(1 << 0)
-#define FLAG_NORTP      (1 << 1)
-#define FLAG_SIP	(1 << 2)
-#define FLAG_NOSIP      (1 << 3)
-#define FLAG_REGISTER	(1 << 4)
-#define FLAG_NOREGISTER	(1 << 5)
-#define FLAG_GRAPH	(1 << 6)
-#define FLAG_NOGRAPH    (1 << 7)
-#define FLAG_WAV	(1 << 8)
-#define FLAG_NOWAV      (1 << 9)
-#define FLAG_SKIP       (1 << 10)
-#define FLAG_NOSKIP     (1 << 11)
-#define FLAG_SCRIPT     (1 << 12)
-#define FLAG_NOSCRIPT   (1 << 13)
-#define FLAG_AMOSLQO    (1 << 14)
-#define FLAG_BMOSLQO    (1 << 15)
-#define FLAG_ABMOSLQO   (1 << 16)
-#define FLAG_NOMOSLQO   (1 << 17)
-#define FLAG_HIDEMSG	(1 << 18)
-#define FLAG_SHOWMSG	(1 << 19)
+#define FLAG_RTP_ALL	(1 << 0)
+#define FLAG_RTP_HEAD	(1 << 1)
+#define FLAG_NORTP      (1 << 2)
+#define FLAG_SIP	(1 << 3)
+#define FLAG_NOSIP      (1 << 4)
+#define FLAG_REGISTER	(1 << 5)
+#define FLAG_NOREGISTER	(1 << 6)
+#define FLAG_GRAPH	(1 << 7)
+#define FLAG_NOGRAPH    (1 << 8)
+#define FLAG_AUDIO	(1 << 9)
+#define FLAG_AUDIO_WAV	(1 << 10)
+#define FLAG_AUDIO_OGG	(1 << 11)
+#define FLAG_NOWAV      (1 << 12)
+#define FLAG_SKIP       (1 << 13)
+#define FLAG_NOSKIP     (1 << 14)
+#define FLAG_SCRIPT     (1 << 15)
+#define FLAG_NOSCRIPT   (1 << 16)
+#define FLAG_AMOSLQO    (1 << 17)
+#define FLAG_BMOSLQO    (1 << 18)
+#define FLAG_ABMOSLQO   (1 << 19)
+#define FLAG_NOMOSLQO   (1 << 20)
+#define FLAG_HIDEMSG	(1 << 21)
+#define FLAG_SHOWMSG	(1 << 22)
 
 #define MAX_PREFIX 64
 
@@ -218,3 +222,36 @@ public:
 		__sync_lock_release(&_sync);
 	}
 };
+
+inline void set_global_flags(unsigned int &flags) {
+	extern int opt_saveSIP;
+	extern int opt_saveRTP;
+	extern int opt_onlyRTPheader;
+	extern int opt_saveWAV;
+	extern int opt_audio_format;
+	extern int opt_saveGRAPH;
+	extern int opt_skipdefault;
+	extern int opt_hide_message_content;
+	
+	if(opt_saveSIP) {
+		flags |= FLAG_SAVESIP;
+	}
+	if(opt_saveRTP) {
+		flags |= FLAG_SAVERTP;
+	}
+	if(opt_onlyRTPheader) {
+		flags |= FLAG_SAVERTPHEADER;
+	}
+	if(opt_saveWAV) {
+		flags |= (opt_audio_format == FORMAT_OGG ? FLAG_SAVEAUDIO_OGG : FLAG_SAVEAUDIO_WAV);
+	}
+	if(opt_saveGRAPH) {
+		flags |= FLAG_SAVEGRAPH;
+	}
+	if(opt_skipdefault) {
+		flags |= FLAG_SKIPCDR;
+	}
+	if(opt_hide_message_content) {
+		flags |= FLAG_HIDEMESSAGE;
+	}
+}

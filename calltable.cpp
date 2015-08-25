@@ -47,6 +47,7 @@
 #include "regcache.h"
 #include "fraud.h"
 #include "tar.h"
+#include "filter_mysql.h"
 
 #if HAVE_LIBTCMALLOC    
 #include <gperftools/malloc_extension.h>
@@ -68,7 +69,6 @@ extern int opt_saveRAW;                // save RTP payload RAW data?
 extern int opt_saveWAV;                // save RTP payload RAW data?
 extern int opt_saveGRAPH;	// save GRAPH data to graph file? 
 extern FileZipHandler::eTypeCompress opt_gzipGRAPH;	// compress GRAPH data to graph file? 
-extern int opt_audio_format;	// define format for audio writing (if -W option)
 extern int opt_mos_g729;
 extern int opt_nocdr;
 extern int opt_only_cdr_next;
@@ -1297,13 +1297,10 @@ Call::convertRawToWav() {
 	int adir = 0;
 	int bdir = 0;
 
-	switch(opt_audio_format) {
-	case FORMAT_WAV:
+	if(!(flags & FLAG_FORMATAUDIO_OGG)) {
 		snprintf(out, 1023, "%s/%s/%s.wav", dirname().c_str(), opt_newdir ? "AUDIO" : "", get_fbasename_safe());
-		break;
-	case FORMAT_OGG:
+	} else {
 		snprintf(out, 1023, "%s/%s/%s.ogg", dirname().c_str(), opt_newdir ? "AUDIO" : "", get_fbasename_safe());
-		break;
 	}
 	out[1023] = 0;
 
@@ -1760,44 +1757,35 @@ Call::convertRawToWav() {
 
 	if(adir == 1 && bdir == 1) {
 		// merge caller and called 
-		switch(opt_audio_format) {
-		case FORMAT_WAV:
+		if(!(flags & FLAG_FORMATAUDIO_OGG)) {
 			if(!opt_saveaudio_reversestereo) {
 				wav_mix(wav0, wav1, out, samplerate, 0, opt_saveaudio_stereo);
 			} else {
 				wav_mix(wav1, wav0, out, samplerate, 0, opt_saveaudio_stereo);
 			}
-			break;
-		case FORMAT_OGG:
+		} else {
 			if(!opt_saveaudio_reversestereo) {
 				ogg_mix(wav0, wav1, out, opt_saveaudio_stereo, samplerate, opt_saveaudio_oggquality, 0);
 			} else {
 				ogg_mix(wav1, wav0, out, opt_saveaudio_stereo, samplerate, opt_saveaudio_oggquality, 0);
 			}
-			break;
 		}
 		if(!sverb.noaudiounlink) unlink(wav0);
 		if(!sverb.noaudiounlink) unlink(wav1);
 	} else if(adir == 1) {
 		// there is only caller sound
-		switch(opt_audio_format) {
-		case FORMAT_WAV:
+		if(!(flags & FLAG_FORMATAUDIO_OGG)) {
 			wav_mix(wav0, NULL, out, samplerate, 0, opt_saveaudio_stereo);
-			break;
-		case FORMAT_OGG:
+		} else {
 			ogg_mix(wav0, NULL, out, opt_saveaudio_stereo, samplerate, opt_saveaudio_oggquality, 0);
-			break;
 		}
 		if(!sverb.noaudiounlink) unlink(wav0);
 	} else if(bdir == 1) {
 		// there is only called sound
-		switch(opt_audio_format) {
-		case FORMAT_WAV:
+		if(!(flags & FLAG_FORMATAUDIO_OGG)) {
 			wav_mix(wav1, NULL, out, samplerate, 1, opt_saveaudio_stereo);
-			break;
-		case FORMAT_OGG:
+		} else {
 			ogg_mix(wav1, NULL, out, opt_saveaudio_stereo, samplerate, opt_saveaudio_oggquality, 1);
-			break;
 		}
 		if(!sverb.noaudiounlink) unlink(wav1);
 	}
@@ -3747,8 +3735,7 @@ Calltable::hashfind_by_ip_port(in_addr_t addr, unsigned short port, unsigned int
 
 Call*
 Calltable::add(char *call_id, unsigned long call_id_len, time_t time, u_int32_t saddr, unsigned short port,
-	       pcap_t *handle, int dlt, int sensorId
-) {
+	       pcap_t *handle, int dlt, int sensorId) {
 	Call *newcall = new FILE_LINE Call(call_id, call_id_len, time);
 
 	if(handle) {
@@ -3765,24 +3752,7 @@ Calltable::add(char *call_id, unsigned long call_id_len, time_t time, u_int32_t 
 	newcall->sport = port;
 	
 	//flags
-	if(opt_saveSIP) 
-		newcall->flags |= FLAG_SAVESIP;
-
-	if(opt_saveRTP) 
-		newcall->flags |= FLAG_SAVERTP;
-
-	if(opt_onlyRTPheader)  {
-		newcall->flags |= FLAG_SAVERTPHEADER;
-	}
-
-	if(opt_saveWAV) 
-		newcall->flags |= FLAG_SAVEWAV;
-
-	if(opt_saveGRAPH) 
-		newcall->flags |= FLAG_SAVEGRAPH;
-
-//	if(opt_sip_register) 
-//		newcall->flags |= FLAG_SAVEREGISTER;
+	set_global_flags(newcall->flags);
 
 	string call_idS = string(call_id, call_id_len);
 	lock_calls_listMAP();

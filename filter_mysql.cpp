@@ -35,7 +35,8 @@ void filter_base::loadBaseDataRow(SqlDb_row *sqlRow, filter_db_row_base *baseRow
 unsigned int filter_base::getFlagsFromBaseData(filter_db_row_base *baseRow) {
 	unsigned int flags = 0;
 	
-	if(baseRow->rtp == 1)			flags |= FLAG_RTP;
+	if(baseRow->rtp == 1)			flags |= FLAG_RTP_ALL;
+	else if(baseRow->rtp == 2)		flags |= FLAG_RTP_HEAD;
 	else if(baseRow->rtp == 0)		flags |= FLAG_NORTP;
 	
 	if(baseRow->sip == 1)			flags |= FLAG_SIP;
@@ -47,7 +48,9 @@ unsigned int filter_base::getFlagsFromBaseData(filter_db_row_base *baseRow) {
 	if(baseRow->graph == 1)			flags |= FLAG_GRAPH;
 	else if(baseRow->graph == 0)		flags |= FLAG_NOGRAPH;
 	
-	if(baseRow->wav == 1)			flags |= FLAG_WAV;
+	if(baseRow->wav == 1)			flags |= FLAG_AUDIO;
+	else if(baseRow->wav == 2)		flags |= FLAG_AUDIO_WAV;
+	else if(baseRow->wav == 3)		flags |= FLAG_AUDIO_OGG;
 	else if(baseRow->wav == 0)		flags |= FLAG_NOWAV;
 	
 	if(baseRow->skip == 1)			flags |= FLAG_SKIP;
@@ -68,7 +71,8 @@ unsigned int filter_base::getFlagsFromBaseData(filter_db_row_base *baseRow) {
 }
 
 void filter_base::setCallFlagsFromFilterFlags(unsigned int *callFlags, unsigned int filterFlags) {
-	if(filterFlags & FLAG_RTP)					{*callFlags |= FLAG_SAVERTP; *callFlags &= ~FLAG_SAVERTPHEADER;}
+	if(filterFlags & FLAG_RTP_ALL)					{*callFlags |= FLAG_SAVERTP; *callFlags &= ~FLAG_SAVERTPHEADER;}
+	if(filterFlags & FLAG_RTP_HEAD)					{*callFlags |= FLAG_SAVERTPHEADER; *callFlags &= ~FLAG_SAVERTP;}
 	if(filterFlags & FLAG_NORTP) 					{*callFlags &= ~FLAG_SAVERTP; *callFlags &= ~FLAG_SAVERTPHEADER;}
 	
 	if(filterFlags & FLAG_SIP)					*callFlags |= FLAG_SAVESIP;
@@ -77,8 +81,10 @@ void filter_base::setCallFlagsFromFilterFlags(unsigned int *callFlags, unsigned 
 	if(filterFlags & FLAG_REGISTER)					*callFlags |= FLAG_SAVEREGISTER;
 	if(filterFlags & FLAG_NOREGISTER)				*callFlags &= ~FLAG_SAVEREGISTER;
 	
-	if(filterFlags & FLAG_WAV)					*callFlags |= FLAG_SAVEWAV;
-	if(filterFlags & FLAG_NOWAV)					*callFlags &= ~FLAG_SAVEWAV;
+	if(filterFlags & FLAG_AUDIO)					*callFlags |= FLAG_SAVEAUDIO;
+	if(filterFlags & FLAG_AUDIO_WAV)				{*callFlags |= FLAG_SAVEAUDIO_WAV; *callFlags &= ~FLAG_FORMATAUDIO_OGG;}
+	if(filterFlags & FLAG_AUDIO_OGG)				{*callFlags |= FLAG_SAVEAUDIO_OGG; *callFlags &= ~FLAG_FORMATAUDIO_WAV;}
+	if(filterFlags & FLAG_NOWAV)					*callFlags &= ~FLAG_SAVEAUDIO;
 	
 	if(filterFlags & FLAG_GRAPH)					*callFlags |= FLAG_SAVEGRAPH;
 	if(filterFlags & FLAG_NOGRAPH)					*callFlags &= ~FLAG_SAVEGRAPH;
@@ -89,8 +95,9 @@ void filter_base::setCallFlagsFromFilterFlags(unsigned int *callFlags, unsigned 
 	if(filterFlags & FLAG_SCRIPT)					*callFlags |= FLAG_RUNSCRIPT;
 	if(filterFlags & FLAG_NOSCRIPT)					*callFlags &= ~FLAG_RUNSCRIPT;
 
-	if(filterFlags & FLAG_AMOSLQO || filterFlags & FLAG_ABMOSLQO)	{*callFlags |= FLAG_RUNAMOSLQO; *callFlags |= FLAG_SAVEWAV;}
-	if(filterFlags & FLAG_BMOSLQO || filterFlags & FLAG_ABMOSLQO)	{*callFlags |= FLAG_RUNBMOSLQO; *callFlags |= FLAG_SAVEWAV;}
+	if(filterFlags & FLAG_AMOSLQO)					{*callFlags |= FLAG_RUNAMOSLQO; *callFlags &= ~FLAG_RUNBMOSLQO;}
+	if(filterFlags & FLAG_BMOSLQO)					{*callFlags |= FLAG_RUNBMOSLQO; *callFlags &= ~FLAG_RUNAMOSLQO;}
+	if(filterFlags & FLAG_ABMOSLQO)					{*callFlags |= FLAG_RUNAMOSLQO|FLAG_RUNBMOSLQO;}
 	if(filterFlags & FLAG_NOMOSLQO) 				{*callFlags &= ~FLAG_RUNAMOSLQO; *callFlags &= ~FLAG_RUNBMOSLQO;}
 	
 	if(filterFlags & FLAG_HIDEMSG)					*callFlags |= FLAG_HIDEMESSAGE;

@@ -1193,7 +1193,7 @@ void *storing_cdr( void *dummy ) {
 				if(call->isReadyForWriteCdr()) {
 				
 					call->closeRawFiles();
-					if( (opt_savewav_force || (call->flags & FLAG_SAVEWAV)) && (call->type == INVITE || call->type == SKINNY_NEW) &&
+					if( (opt_savewav_force || (call->flags & FLAG_SAVEAUDIO)) && (call->type == INVITE || call->type == SKINNY_NEW) &&
 					    call->getAllReceivedRtpPackets()) {
 						if(verbosity > 0) printf("converting RAW file to WAV Queue[%d]\n", (int)calltable->calls_queue.size());
 						call->convertRawToWav();
