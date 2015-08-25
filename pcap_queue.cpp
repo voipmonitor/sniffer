@@ -3759,7 +3759,8 @@ PcapQueue_readFromFifo::PcapQueue_readFromFifo(const char *nameQueue, const char
 	this->lastCheckFreeSizeCachedir_timeMS = 0;
 	this->_last_ts.tv_sec = 0;
 	this->_last_ts.tv_usec = 0;
-	this->setEnableMainThread(opt_pcap_queue_compress || is_receiver());
+	this->setEnableMainThread(opt_pcap_queue_compress || is_receiver() ||
+				  (opt_pcap_queue_disk_folder.length() && opt_pcap_queue_store_queue_max_disk_size));
 	this->setEnableWriteThread();
 }
 

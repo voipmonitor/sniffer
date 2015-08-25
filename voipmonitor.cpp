@@ -5046,6 +5046,14 @@ void set_context_config() {
 		sniffer_mode = snifferMode_read_from_interface;
 	}
 
+	if(opt_pcap_queue_receive_from_ip_port || opt_pcap_queue_send_to_ip_port) {
+		if(opt_pcap_queue_compress == -1) {
+			opt_pcap_queue_compress = 1;
+		}
+	} else {
+		opt_pcap_queue_compress = 0;
+	}
+	
 	if(!is_read_from_file_simple() && 
 	   !opt_untar_gui_params && command_line_data.size()) {
 		// restore orig values
@@ -5083,8 +5091,8 @@ void set_context_config() {
 						opt_pcap_queue_bypass_max_size = 50 * 1024 * 1024;
 					}
 				} else {
-					// disable compress - thread0 buffer = 50MB
-					opt_pcap_queue_bypass_max_size = 50 * 1024 * 1024;
+					// disable compress - thread0 buffer not need
+					opt_pcap_queue_bypass_max_size = 0;
 				}
 			} else {
 				// disable disc save - maximum thread0 buffer = 500MB
@@ -5118,10 +5126,6 @@ void set_context_config() {
 		if(!strcmp(ifname, "lo")) {
 			opt_pcap_queue_dequeu_method = 0;
 		}
-	}
-	
-	if(opt_pcap_queue_compress == -1) {
-		opt_pcap_queue_compress = opt_pcap_queue_receive_from_ip_port || opt_pcap_queue_send_to_ip_port;
 	}
 	
 	if(!opt_pcap_split) {
