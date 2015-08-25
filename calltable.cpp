@@ -4367,7 +4367,7 @@ void CustomHeaders::load(SqlDb *sqlDb, bool lock) {
 			ch_data.header = (*iter)[0];
 			bool exists =  false;
 			for(unsigned i = 0; i < custom_headers[0].size(); i++) {
-				if(custom_headers[0][i].header == ch_data.header) {
+				if(!strcasecmp(custom_headers[0][i].header.c_str(), ch_data.header.c_str())) {
 					exists = true;
 					break;
 				}
