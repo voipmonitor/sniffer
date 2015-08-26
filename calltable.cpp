@@ -938,7 +938,10 @@ read:
 				rtp[ssrc_n]->graph.write((char*)&graph_version, 4); //every graph starts with graph_version 
 			}
 		}
-		rtp[ssrc_n]->gfileRAW = NULL;
+		if(rtp[ssrc_n]->gfileRAW) {
+			fclose(rtp[ssrc_n]->gfileRAW);
+			rtp[ssrc_n]->gfileRAW = NULL;
+		}
 		snprintf(rtp[ssrc_n]->basefilename, 1023, "%s/%s/%s.i%d", dirname().c_str(), opt_newdir ? "AUDIO" : "", get_fbasename_safe(), !iscaller);
 		rtp[ssrc_n]->basefilename[1023] = 0;
 
