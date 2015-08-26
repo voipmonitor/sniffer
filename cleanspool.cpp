@@ -332,7 +332,7 @@ void clean_maxpoolsize() {
 
 		q.str( std::string() );
 		q.clear();
-		q << "SELECT SUM(sipsize) AS sipsize, SUM(rtpsize) AS rtpsize, SUM(graphsize) AS graphsize, SUM(regsize) AS regsize FROM files WHERE id_sensor = " << (opt_id_sensor_cleanspool > 0 ? opt_id_sensor_cleanspool : 0);
+		q << "SELECT SUM(sipsize) AS sipsize, SUM(rtpsize) AS rtpsize, SUM(graphsize) as graphsize, SUM(audiosize) AS audiosize, SUM(regsize) AS regsize FROM files WHERE id_sensor = " << (opt_id_sensor_cleanspool > 0 ? opt_id_sensor_cleanspool : 0);
 		if(debugclean) cout << q.str() << "\n";
 		sqlDbCleanspool->query(q.str());
 		SqlDb_row row2 = sqlDbCleanspool->fetchRow();
