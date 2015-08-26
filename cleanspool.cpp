@@ -49,9 +49,6 @@ extern int opt_autocleanspoolminpercent;
 extern int opt_autocleanmingb;
 extern int opt_cleanspool_enable_run_hour_from;
 extern int opt_cleanspool_enable_run_hour_to;
-extern bool opt_autocleanspoolminpercent_configset;
-extern bool opt_autocleanmingb_configset;
-
 
 extern MySqlStore *sqlStore;
 
@@ -59,11 +56,14 @@ SqlDb *sqlDbCleanspool = NULL;
 pthread_t cleanspool_thread = 0;
 bool suspendCleanspool = false;
 
-static unsigned int opt_maxpoolsize_reduk = 0;
+static unsigned int maxpoolsize_set = 0;
+static bool critical_low_space = false;
 
+
+#define DISABLE_CLEANSPOOL (suspendCleanspool && !critical_low_space)
 
 void unlinkfileslist(string fname, string callFrom) {
-	if(suspendCleanspool) {
+	if(DISABLE_CLEANSPOOL) {
 		return;
 	}
  
@@ -94,7 +94,7 @@ void unlinkfileslist(string fname, string callFrom) {
 				}
 			}
 			unlink(buf);
-			if(suspendCleanspool) {
+			if(DISABLE_CLEANSPOOL) {
 				fclose(fd);
 				return;
 			}
@@ -110,7 +110,7 @@ void unlink_dirs(string datehour, int all, int sip, int rtp, int graph, int audi
 		return;
 	}
  
-	if(suspendCleanspool) {
+	if(DISABLE_CLEANSPOOL) {
 		return;
 	}
 
@@ -127,7 +127,7 @@ void unlink_dirs(string datehour, int all, int sip, int rtp, int graph, int audi
 	//unlink all directories
 	stringstream fname;
 
-	for(int i = 0; i < 60 && !suspendCleanspool; i++) {
+	for(int i = 0; i < 60 && !DISABLE_CLEANSPOOL; i++) {
 		char min[8];
 		sprintf(min, "%02d", i);
 
@@ -225,7 +225,7 @@ void unlink_dirs(string datehour, int all, int sip, int rtp, int graph, int audi
 
 void clean_maxpoolsize() {
 
-	if(opt_maxpoolsize == 0) {
+	if(opt_maxpoolsize == 0 && maxpoolsize_set == 0) {
 		return;
 	}
 
@@ -252,12 +252,12 @@ void clean_maxpoolsize() {
 		cout << q.str() << "\n";
 		cout << "total[" << total << "] = " << sipsize << " + " << rtpsize << " + " << graphsize << " + " << audiosize << " + " << regsize 
 		     << " opt_maxpoolsize[" << opt_maxpoolsize;
-		if(opt_maxpoolsize_reduk) {
-			cout << " / reduk: " << opt_maxpoolsize_reduk;
+		if(maxpoolsize_set) {
+			cout << " / reduk: " << maxpoolsize_set;
 		}
 		cout << "]\n";
 	}
-	while(total > (opt_maxpoolsize_reduk ? opt_maxpoolsize_reduk : opt_maxpoolsize)) {
+	while(total > (maxpoolsize_set ? maxpoolsize_set : opt_maxpoolsize)) {
 		// walk all rows ordered by datehour and delete everything 
 		stringstream q;
 		q << "SELECT datehour FROM files WHERE id_sensor = " << (opt_id_sensor_cleanspool > 0 ? opt_id_sensor_cleanspool : 0) << " ORDER BY datehour LIMIT 1";
@@ -283,7 +283,7 @@ void clean_maxpoolsize() {
 		fname.clear();
 		fname << "filesindex/sipsize/" << row["datehour"];
 		unlinkfileslist(fname.str(), "clean_maxpoolsize");
-		if(suspendCleanspool) {
+		if(DISABLE_CLEANSPOOL) {
 			break;
 		}
 
@@ -291,7 +291,7 @@ void clean_maxpoolsize() {
 		fname.clear();
 		fname << "filesindex/rtpsize/" << row["datehour"];
 		unlinkfileslist(fname.str(), "clean_maxpoolsize");
-		if(suspendCleanspool) {
+		if(DISABLE_CLEANSPOOL) {
 			break;
 		}
 
@@ -299,7 +299,7 @@ void clean_maxpoolsize() {
 		fname.clear();
 		fname << "filesindex/graphsize/" << row["datehour"];
 		unlinkfileslist(fname.str(), "clean_maxpoolsize");
-		if(suspendCleanspool) {
+		if(DISABLE_CLEANSPOOL) {
 			break;
 		}
 
@@ -307,7 +307,7 @@ void clean_maxpoolsize() {
 		fname.clear();
 		fname << "filesindex/audiosize/" << row["datehour"];
 		unlinkfileslist(fname.str(), "clean_maxpoolsize");
-		if(suspendCleanspool) {
+		if(DISABLE_CLEANSPOOL) {
 			break;
 		}
 
@@ -315,12 +315,12 @@ void clean_maxpoolsize() {
 		fname.clear();
 		fname << "filesindex/regsize/" << row["datehour"];
 		unlinkfileslist(fname.str(), "clean_maxpoolsize");
-		if(suspendCleanspool) {
+		if(DISABLE_CLEANSPOOL) {
 			break;
 		}
 
 		unlink_dirs(row["datehour"], 2, 2, 2, 2, 2, 2, "clean_maxpoolsize");
-		if(suspendCleanspool) {
+		if(DISABLE_CLEANSPOOL) {
 			break;
 		}
 
@@ -393,7 +393,7 @@ void clean_maxpoolsipsize() {
 		fname.clear();
 		fname << "filesindex/sipsize/" << row["datehour"];
 		unlinkfileslist(fname.str(), "clean_maxpoolsipsize");
-		if(suspendCleanspool) {
+		if(DISABLE_CLEANSPOOL) {
 			break;
 		}
 
@@ -401,12 +401,12 @@ void clean_maxpoolsipsize() {
 		fname.clear();
 		fname << "filesindex/regsize/" << row["datehour"];
 		unlinkfileslist(fname.str(), "clean_maxpoolsipsize");
-		if(suspendCleanspool) {
+		if(DISABLE_CLEANSPOOL) {
 			break;
 		}
 
 		unlink_dirs(row["datehour"], 1, 2, 1, 1, 1, 2, "clean_maxpoolsipsize");
-		if(suspendCleanspool) {
+		if(DISABLE_CLEANSPOOL) {
 			break;
 		}
 
@@ -481,12 +481,12 @@ void clean_maxpoolrtpsize() {
 		fname.clear();
 		fname << "filesindex/rtpsize/" << row["datehour"];
 		unlinkfileslist(fname.str(), "clean_maxpoolrtpsize");
-		if(suspendCleanspool) {
+		if(DISABLE_CLEANSPOOL) {
 			break;
 		}
 
 		unlink_dirs(row["datehour"], 1, 1, 2, 1, 1, 1, "clean_maxpoolrtpsize");
-		if(suspendCleanspool) {
+		if(DISABLE_CLEANSPOOL) {
 			break;
 		}
 
@@ -560,12 +560,12 @@ void clean_maxpoolgraphsize() {
 		fname.clear();
 		fname << "filesindex/graphsize/" << row["datehour"];
 		unlinkfileslist(fname.str(), "clean_maxpoolgraphsize");
-		if(suspendCleanspool) {
+		if(DISABLE_CLEANSPOOL) {
 			break;
 		}
 
 		unlink_dirs(row["datehour"], 1, 1, 1, 2, 1, 1, "clean_maxpoolgraphsize");
-		if(suspendCleanspool) {
+		if(DISABLE_CLEANSPOOL) {
 			break;
 		}
 
@@ -639,12 +639,12 @@ void clean_maxpoolaudiosize() {
 		fname.clear();
 		fname << "filesindex/audiosize/" << row["datehour"];
 		unlinkfileslist(fname.str(), "clean_maxpoolaudiosize");
-		if(suspendCleanspool) {
+		if(DISABLE_CLEANSPOOL) {
 			break;
 		}
 
 		unlink_dirs(row["datehour"], 1, 1, 1, 1, 2, 1, "clean_maxpoolaudiosize");
-		if(suspendCleanspool) {
+		if(DISABLE_CLEANSPOOL) {
 			break;
 		}
 
@@ -698,7 +698,7 @@ void clean_maxpooldays() {
 		fname.clear();
 		fname << "filesindex/sipsize/" << row["datehour"];
 		unlinkfileslist(fname.str(), "clean_maxpooldays");
-		if(suspendCleanspool) {
+		if(DISABLE_CLEANSPOOL) {
 			break;
 		}
 
@@ -706,7 +706,7 @@ void clean_maxpooldays() {
 		fname.clear();
 		fname << "filesindex/rtpsize/" << row["datehour"];
 		unlinkfileslist(fname.str(), "clean_maxpooldays");
-		if(suspendCleanspool) {
+		if(DISABLE_CLEANSPOOL) {
 			break;
 		}
 
@@ -714,7 +714,7 @@ void clean_maxpooldays() {
 		fname.clear();
 		fname << "filesindex/graphsize/" << row["datehour"];
 		unlinkfileslist(fname.str(), "clean_maxpooldays");
-		if(suspendCleanspool) {
+		if(DISABLE_CLEANSPOOL) {
 			break;
 		}
 
@@ -722,7 +722,7 @@ void clean_maxpooldays() {
 		fname.clear();
 		fname << "filesindex/audiosize/" << row["datehour"];
 		unlinkfileslist(fname.str(), "clean_maxpooldays");
-		if(suspendCleanspool) {
+		if(DISABLE_CLEANSPOOL) {
 			break;
 		}
 
@@ -730,12 +730,12 @@ void clean_maxpooldays() {
 		fname.clear();
 		fname << "filesindex/regsize/" << row["datehour"];
 		unlinkfileslist(fname.str(), "clean_maxpooldays");
-		if(suspendCleanspool) {
+		if(DISABLE_CLEANSPOOL) {
 			break;
 		}
 
 		unlink_dirs(row["datehour"], 2, 2, 2, 2, 2, 2, "clean_maxpooldays");
-		if(suspendCleanspool) {
+		if(DISABLE_CLEANSPOOL) {
 			break;
 		}
 
@@ -767,7 +767,7 @@ void clean_maxpoolsipdays() {
 		fname.clear();
 		fname << "filesindex/sipsize/" << row["datehour"];
 		unlinkfileslist(fname.str(), "clean_maxpoolsipdays");
-		if(suspendCleanspool) {
+		if(DISABLE_CLEANSPOOL) {
 			break;
 		}
 
@@ -775,12 +775,12 @@ void clean_maxpoolsipdays() {
 		fname.clear();
 		fname << "filesindex/regsize/" << row["datehour"];
 		unlinkfileslist(fname.str(), "clean_maxpoolsipdays");
-		if(suspendCleanspool) {
+		if(DISABLE_CLEANSPOOL) {
 			break;
 		}
 
 		unlink_dirs(row["datehour"], 1, 2, 1, 1, 1, 2, "clean_maxpoolsipdays");
-		if(suspendCleanspool) {
+		if(DISABLE_CLEANSPOOL) {
 			break;
 		}
 
@@ -821,12 +821,12 @@ void clean_maxpoolrtpdays() {
 		fname.clear();
 		fname << "filesindex/rtpsize/" << row["datehour"];
 		unlinkfileslist(fname.str(), "clean_maxpoolrtpdays");
-		if(suspendCleanspool) {
+		if(DISABLE_CLEANSPOOL) {
 			break;
 		}
 
 		unlink_dirs(row["datehour"], 1, 1, 2, 1, 1, 1, "clean_maxpoolrtpdays");
-		if(suspendCleanspool) {
+		if(DISABLE_CLEANSPOOL) {
 			break;
 		}
 
@@ -870,12 +870,12 @@ void clean_maxpoolgraphdays() {
 		fname << "filesindex/graphsize/" << row["datehour"];
 		if(debugclean) cout << "reading: " << fname.str() << "\n";
 		unlinkfileslist(fname.str(), "clean_maxpoolgraphdays");
-		if(suspendCleanspool) {
+		if(DISABLE_CLEANSPOOL) {
 			break;
 		}
 
 		unlink_dirs(row["datehour"], 1, 1, 1, 2, 1, 1, "clean_maxpoolgraphdays");
-		if(suspendCleanspool) {
+		if(DISABLE_CLEANSPOOL) {
 			break;
 		}
 
@@ -919,12 +919,12 @@ void clean_maxpoolaudiodays() {
 		fname.clear();
 		fname << "filesindex/audiosize/" << row["datehour"];
 		unlinkfileslist(fname.str(), "clean_maxpoolaudiodays");
-		if(suspendCleanspool) {
+		if(DISABLE_CLEANSPOOL) {
 			break;
 		}
 
 		unlink_dirs(row["datehour"], 1, 1, 1, 1, 2, 1, "clean_maxpoolaudiodays");
-		if(suspendCleanspool) {
+		if(DISABLE_CLEANSPOOL) {
 			break;
 		}
 
@@ -1443,67 +1443,6 @@ void reindex_date_hour_start_syslog(string date, string hour) {
 	syslog(LOG_NOTICE, "reindexing files in [%s/%s] start", date.c_str(), hour.c_str());
 }
 
-void check_disk_free_run(bool enableRunCleanSpoolThread) {
-	bool reduk_maxpoolsize = false;
-	double freeSpacePercent = (double)GetFreeDiskSpace(opt_chdir, true) / 100;
-	double freeSpaceGB = (double)GetFreeDiskSpace(opt_chdir) / (1024 * 1024 * 1024);
-	double totalSpaceGB = (double)GetTotalDiskSpace(opt_chdir) / (1024 * 1024 * 1024);
-	if((freeSpacePercent < opt_autocleanspoolminpercent && freeSpaceGB < opt_autocleanmingb) ||
-	   (opt_autocleanspoolminpercent_configset && freeSpacePercent < opt_autocleanspoolminpercent) ||
-	   (opt_autocleanmingb_configset && freeSpaceGB < opt_autocleanmingb)) {
-		syslog(LOG_NOTICE, "low spool disk space - executing filesindex");
-		convert_filesindex();
-		freeSpacePercent = (double)GetFreeDiskSpace(opt_chdir, true) / 100;
-		freeSpaceGB = (double)GetFreeDiskSpace(opt_chdir) / (1024 * 1024 * 1024);
-		if(freeSpacePercent < opt_autocleanspoolminpercent) {
-			SqlDb *sqlDb = createSqlObject();
-			stringstream q;
-			q << "SELECT SUM(coalesce(sipsize,0) + coalesce(rtpsize,0) + coalesce(graphsize,0) + coalesce(audiosize,0)) as sum_size FROM files WHERE id_sensor = " << (opt_id_sensor_cleanspool > 0 ? opt_id_sensor_cleanspool : 0);
-			sqlDb->query(q.str());
-			SqlDb_row row = sqlDb->fetchRow();
-			if(row) {
-				double usedSizeGB = atol(row["sum_size"].c_str()) / (1024 * 1024 * 1024);
-				opt_maxpoolsize_reduk = (usedSizeGB + freeSpaceGB - min(totalSpaceGB * opt_autocleanspoolminpercent / 100, (double)opt_autocleanmingb)) * 1024;
-				if(opt_maxpoolsize_reduk < opt_maxpoolsize * 0.8) {
-					opt_maxpoolsize_reduk = opt_maxpoolsize * 0.8;
-				}
-				syslog(LOG_NOTICE, "low spool disk space - maxpoolsize set to new value: %u MB", opt_maxpoolsize_reduk);
-				if(enableRunCleanSpoolThread) {
-					runCleanSpoolThread();
-				}
-				reduk_maxpoolsize = true;
-			}
-			delete sqlDb;
-		}
-	}
-	if(!reduk_maxpoolsize) {
-		opt_maxpoolsize_reduk = 0;
-	}
-}
-
-static pthread_mutex_t check_disk_free_mutex;
-static bool check_disk_free_mutex_init = false;
-
-void *check_disk_free_thread(void*) {
-	check_disk_free_run(true);
-	pthread_mutex_unlock(&check_disk_free_mutex);
-	return(NULL);
-}
-
-void run_check_disk_free_thread() {
-	if(cleanspool_thread) {
-		return;
-	}
-	if(!check_disk_free_mutex_init) {
-		pthread_mutex_init(&check_disk_free_mutex, NULL);
-		check_disk_free_mutex_init = true;
-	}
-	if(pthread_mutex_trylock(&check_disk_free_mutex) == 0) {
-		pthread_t thread;
-		pthread_create(&thread, NULL, check_disk_free_thread, NULL);
-	}
-}
-
 bool check_exists_act_records_in_files() {
 	bool ok = false;
 	if(!sqlDbCleanspool) {
@@ -1771,7 +1710,7 @@ void check_spooldir_filesindex(const char *path, const char *dirfilter) {
 
 volatile int clean_spooldir_run_processing = 0;
 
-void *clean_spooldir_run(void *dummy) {
+void clean_spooldir_run() {
 
 	if(opt_cleanspool_interval and opt_cleanspool_sizeMB > 0) {
 		opt_maxpoolsize = opt_cleanspool_sizeMB;
@@ -1787,7 +1726,7 @@ void *clean_spooldir_run(void *dummy) {
 			FILE *fdw = fopen(tmpf.c_str(), "w");
 			if(!fdr or !fdw) {
 				syslog(LOG_ERR, "cannot open config file [%s]\n", configfile);
-				return NULL;
+				return;
 			}
 			char buffer[4092];
 			while(!feof(fdr)) {
@@ -1840,7 +1779,7 @@ void *clean_spooldir_run(void *dummy) {
 	
 	clean_spooldir_run_processing = 0;
 
-	return NULL;
+	return;
 }
 
 bool isSetCleanspoolParameters() {
@@ -1855,38 +1794,87 @@ bool isSetCleanspoolParameters() {
 	       opt_maxpoolaudiosize ||
 	       opt_maxpoolaudiodays ||
 	       opt_cleanspool_interval ||
-	       opt_cleanspool_sizeMB);
+	       opt_cleanspool_sizeMB ||
+	       opt_autocleanspoolminpercent ||
+	       opt_autocleanmingb);
 }
 
 void *clean_spooldir(void *dummy) {
 	if(debugclean) syslog(LOG_ERR, "run clean_spooldir()");
 	while(!is_terminating()) {
-		if(!suspendCleanspool) {
-			bool timeOk = false;
-			if(opt_cleanspool_enable_run_hour_from >= 0 &&
-			   opt_cleanspool_enable_run_hour_to >= 0) {
-				time_t now;
-				time(&now);
-				struct tm dateTime = localtime_r(&now);
-				if(opt_cleanspool_enable_run_hour_to >= opt_cleanspool_enable_run_hour_from) {
-					if(dateTime.tm_hour >= opt_cleanspool_enable_run_hour_from &&
-					   dateTime.tm_hour <= opt_cleanspool_enable_run_hour_to) {
-						timeOk = true;
-					}
-				} else {
-					if((dateTime.tm_hour >= opt_cleanspool_enable_run_hour_from && dateTime.tm_hour < 24) ||
-					   dateTime.tm_hour <= opt_cleanspool_enable_run_hour_to) {
-						timeOk = true;
-					}
+		bool timeOk = false;
+		if(opt_cleanspool_enable_run_hour_from >= 0 &&
+		   opt_cleanspool_enable_run_hour_to >= 0) {
+			time_t now;
+			time(&now);
+			struct tm dateTime = localtime_r(&now);
+			if(opt_cleanspool_enable_run_hour_to >= opt_cleanspool_enable_run_hour_from) {
+				if(dateTime.tm_hour >= opt_cleanspool_enable_run_hour_from &&
+				   dateTime.tm_hour <= opt_cleanspool_enable_run_hour_to) {
+					timeOk = true;
 				}
 			} else {
-				timeOk = true;
+				if((dateTime.tm_hour >= opt_cleanspool_enable_run_hour_from && dateTime.tm_hour < 24) ||
+				   dateTime.tm_hour <= opt_cleanspool_enable_run_hour_to) {
+					timeOk = true;
+				}
 			}
-			if(timeOk) {
-				if(debugclean) syslog(LOG_ERR, "run clean_spooldir_run");
-				clean_spooldir_run(NULL);
-				check_disk_free_run(false);
+		} else {
+			timeOk = true;
+		}
+		bool criticalLowSpace = false;
+		long int maxpoolsize = 0;
+		if(opt_autocleanspoolminpercent || opt_autocleanmingb) {
+			double totalSpaceGB = (double)GetTotalDiskSpace(opt_chdir) / (1024 * 1024 * 1024);
+			double freeSpacePercent = (double)GetFreeDiskSpace(opt_chdir, true) / 100;
+			double freeSpaceGB = (double)GetFreeDiskSpace(opt_chdir) / (1024 * 1024 * 1024);
+			int _minPercentForAutoReindex = 1;
+			int _minGbForAutoReindex = 5;
+			if(freeSpacePercent < _minPercentForAutoReindex && 
+			   freeSpaceGB < _minGbForAutoReindex) {
+				syslog(LOG_NOTICE, "low spool disk space - executing filesindex");
+				convert_filesindex();
+				freeSpacePercent = (double)GetFreeDiskSpace(opt_chdir, true) / 100;
+				freeSpaceGB = (double)GetFreeDiskSpace(opt_chdir) / (1024 * 1024 * 1024);
+				criticalLowSpace = true;
 			}
+			if(freeSpacePercent < opt_autocleanspoolminpercent ||
+			   freeSpaceGB < opt_autocleanmingb) {
+				SqlDb *sqlDb = createSqlObject();
+				stringstream q;
+				q << "SELECT SUM(coalesce(sipsize,0) + coalesce(rtpsize,0) + coalesce(graphsize,0) + coalesce(audiosize,0)) as sum_size FROM files WHERE id_sensor = " << (opt_id_sensor_cleanspool > 0 ? opt_id_sensor_cleanspool : 0);
+				sqlDb->query(q.str());
+				SqlDb_row row = sqlDb->fetchRow();
+				if(row) {
+					double usedSizeGB = atol(row["sum_size"].c_str()) / (1024 * 1024 * 1024);
+					maxpoolsize = (usedSizeGB + freeSpaceGB - min(totalSpaceGB * opt_autocleanspoolminpercent / 100, (double)opt_autocleanmingb)) * 1024;
+					if(maxpoolsize > 1000 &&
+					   (!opt_maxpoolsize || maxpoolsize < opt_maxpoolsize)) {
+						if(opt_maxpoolsize && maxpoolsize < opt_maxpoolsize * 0.8) {
+							maxpoolsize = opt_maxpoolsize * 0.8;
+						}
+						syslog(LOG_NOTICE, "%s: %li MB", 
+						       opt_maxpoolsize ?
+							"low spool disk space - maxpoolsize set to new value" :
+							"maxpoolsize set to value",
+						       maxpoolsize);
+					} else {
+						syslog(LOG_ERR, "incorrect set autocleanspoolminpercent and autocleanspoolmingb");
+						maxpoolsize = 0;
+					}
+				}
+				delete sqlDb;
+			}
+		}
+		if((timeOk && !suspendCleanspool) || criticalLowSpace) {
+			if(debugclean) syslog(LOG_ERR, "run clean_spooldir_run");
+			if(maxpoolsize > 1000) {
+				maxpoolsize_set = maxpoolsize;
+			}
+			critical_low_space = criticalLowSpace;
+			clean_spooldir_run();
+			maxpoolsize_set = 0;
+			critical_low_space = false;
 		}
 		for(int i = 0; i < 300 && !is_terminating(); i++) {
 			sleep(1);

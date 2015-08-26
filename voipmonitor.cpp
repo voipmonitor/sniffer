@@ -327,11 +327,8 @@ unsigned int opt_maxpoolgraphdays = 0;
 unsigned int opt_maxpoolaudiosize = 0;
 unsigned int opt_maxpoolaudiodays = 0;
 int opt_maxpool_clean_obsolete = 0;
-int opt_autocleanspool = 1;
 int opt_autocleanspoolminpercent = 1;
-bool opt_autocleanspoolminpercent_configset = false;
 int opt_autocleanmingb = 5;
-bool opt_autocleanmingb_configset = false;
 int opt_cleanspool_enable_run_hour_from = -1;
 int opt_cleanspool_enable_run_hour_to = -1;
 int opt_mysqlloadconfig = 1;
@@ -1122,7 +1119,6 @@ void *storing_cdr( void *dummy ) {
 	time_t dropPartitionAt = 0;
 	time_t createPartitionIpaccAt = 0;
 	time_t createPartitionBillingAgregationAt = 0;
-	time_t checkDiskFreeAt = 0;
 	bool firstIter = true;
 	while(1) {
 		createPartitions.init();
@@ -1155,17 +1151,6 @@ void *storing_cdr( void *dummy ) {
 			createPartitions.createPartitions(!firstIter && opt_partition_operations_in_thread);
 		}
 		firstIter = false;
-		
-		if(opt_autocleanspool &&
-		   is_enable_cleanspool()) {
-			time_t actTime = time(NULL);
-			if(!checkDiskFreeAt) {
-				checkDiskFreeAt = actTime;
-			} else if(actTime - checkDiskFreeAt > 5 * 60) {
-				run_check_disk_free_thread();
-				checkDiskFreeAt = actTime;
-			}
-		}
 		
 		if(request_iptelnum_reload == 1) { reload_capture_rules(); request_iptelnum_reload = 0;}
 		
@@ -4158,7 +4143,6 @@ void cConfig::addConfigItems() {
 		addConfigItem(new cConfigItem_integer("maxpoolaudiodays", &opt_maxpoolaudiodays));
 			advanced();
 			addConfigItem(new cConfigItem_yesno("maxpool_clean_obsolete", &opt_maxpool_clean_obsolete));
-			addConfigItem(new cConfigItem_yesno("autocleanspool", &opt_autocleanspool));
 			addConfigItem(new cConfigItem_integer("autocleanspoolminpercent", &opt_autocleanspoolminpercent));
 			addConfigItem((new cConfigItem_integer("autocleanmingb", &opt_autocleanmingb))
 				->addAlias("autocleanspoolmingb"));
@@ -4491,12 +4475,6 @@ void cConfig::evSetConfigItem(cConfigItem *configItem) {
 	if(configItem->config_name == "cleandatabase_cdr") {
 		opt_cleandatabase_http_enum =
 		opt_cleandatabase_webrtc = opt_cleandatabase_cdr;
-	}
-	if(configItem->config_name == "autocleanspoolminpercent") {
-		opt_autocleanspoolminpercent_configset = true;
-	}
-	if(configItem->config_name == "autocleanmingb") {
-		opt_autocleanmingb_configset = true;
 	}
 	if(configItem->config_name == "id_sensor") {
 		opt_id_sensor_cleanspool = opt_id_sensor;
@@ -5738,17 +5716,12 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "maxpool_clean_obsolete", NULL))) {
 		opt_maxpool_clean_obsolete = yesno(value);
 	}
-	if((value = ini.GetValue("general", "autocleanspool", NULL))) {
-		opt_autocleanspool = yesno(value);
-	}
 	if((value = ini.GetValue("general", "autocleanspoolminpercent", NULL))) {
 		opt_autocleanspoolminpercent = atoi(value);
-		opt_autocleanspoolminpercent_configset = true;
 	}
 	if((value = ini.GetValue("general", "autocleanmingb", NULL)) ||
 	   (value = ini.GetValue("general", "autocleanspoolmingb", NULL))) {
 		opt_autocleanmingb = atoi(value);
-		opt_autocleanmingb_configset = true;
 	}
 	if((value = ini.GetValue("general", "cleanspool_enable_fromto", NULL))) {
 		string fromTo = reg_replace(value, "([0-9]+)[- ]*([0-9]+)", "$1-$2", __FILE__, __LINE__);
