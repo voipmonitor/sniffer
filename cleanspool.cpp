@@ -1802,6 +1802,10 @@ bool isSetCleanspoolParameters() {
 void *clean_spooldir(void *dummy) {
 	if(debugclean) syslog(LOG_ERR, "run clean_spooldir()");
 	while(!is_terminating()) {
+		if(!check_exists_act_records_in_files() ||
+		   !check_exists_act_files_in_filesindex()) {
+			convert_filesindex();
+		}
 		bool timeOk = false;
 		if(opt_cleanspool_enable_run_hour_from >= 0 &&
 		   opt_cleanspool_enable_run_hour_to >= 0) {
