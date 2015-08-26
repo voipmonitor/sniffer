@@ -1450,8 +1450,7 @@ bool check_exists_act_records_in_files() {
 	}
 	char id_sensor_str[10];
 	sprintf(id_sensor_str, "%i", opt_id_sensor_cleanspool > 0 ? opt_id_sensor_cleanspool : 0);
-	sqlDbCleanspool->query(string("select max(calldate) as max_calldate from cdr where calldate > date_add(now(), interval -1 day) and ") +
-			       "id_sensor " + (opt_id_sensor_cleanspool > 0 ? string("=") + id_sensor_str : "is null"));
+	sqlDbCleanspool->query("select max(calldate) as max_calldate from cdr where calldate > date_add(now(), interval -1 day)");
 	SqlDb_row row = sqlDbCleanspool->fetchRow();
 	if(!row || !row["max_calldate"].length()) {
 		return(true);
@@ -1479,8 +1478,7 @@ bool check_exists_act_files_in_filesindex() {
 	}
 	char id_sensor_str[10];
 	sprintf(id_sensor_str, "%i", opt_id_sensor_cleanspool > 0 ? opt_id_sensor_cleanspool : 0);
-	sqlDbCleanspool->query(string("select max(calldate) as max_calldate from cdr where calldate > date_add(now(), interval -1 day) and ") +
-			       "id_sensor " + (opt_id_sensor_cleanspool > 0 ? string("=") + id_sensor_str : "is null"));
+	sqlDbCleanspool->query("select max(calldate) as max_calldate from cdr where calldate > date_add(now(), interval -1 day)");
 	SqlDb_row row = sqlDbCleanspool->fetchRow();
 	if(!row || !row["max_calldate"].length()) {
 		return(true);
