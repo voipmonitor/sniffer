@@ -4696,6 +4696,7 @@ struct sRequestNameCode {
 	{ "RES10X" , RES10X, 1 },
 	{ "RES18X", RES18X, 1 },
 	{ "RES2XX", RES2XX, 1 },
+	{ "RES300", RES300, 1 },
 	{ "RES3XX", RES3XX, 1 },
 	{ "RES401", RES401, 1 },
 	{ "RES403", RES403, 1 },

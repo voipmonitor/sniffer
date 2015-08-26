@@ -2798,12 +2798,12 @@ Call *process_packet(bool is_ssl, u_int64_t packet_number,
 
 			// if the call ends with some of SIP [456]XX response code, we can shorten timeout when the call will be closed 
 //			if((call->saddr == saddr || call->saddr == daddr || merged) &&
-			if (sip_method == RES3XX || IS_SIP_RES4XX(sip_method) || sip_method == RES5XX || sip_method == RES6XX) {
+			if (IS_SIP_RES3XX(sip_method) || IS_SIP_RES4XX(sip_method) || sip_method == RES5XX || sip_method == RES6XX) {
 				if(lastSIPresponseNum != 401 && lastSIPresponseNum != 407 && lastSIPresponseNum != 501 && lastSIPresponseNum != 481 && lastSIPresponseNum != 491) {
 					// save packet 
-					call->destroy_call_at = header->ts.tv_sec + (sip_method == RES3XX ? 300 : 5);
+					call->destroy_call_at = header->ts.tv_sec + (sip_method == RES300 ? 300 : 5);
 
-					if(sip_method == RES3XX) {
+					if(IS_SIP_RES3XX(sip_method)) {
 						// remove all RTP  
 						call->removeFindTables();
 						call->removeRTP();
@@ -3584,9 +3584,15 @@ int process_packet__parse_sip_method(char *data, unsigned int datalen, bool *sip
 			}
 			break;
 		case '3':
-			if(verbosity > 2) 
-				 syslog(LOG_NOTICE,"SIP msg: 3XX\n");
-			sip_method = RES3XX;
+			if ((datalen > 10) && data[9] == '0' && data[10] == '0') {
+				if(verbosity > 2) 
+					 syslog(LOG_NOTICE,"SIP msg: 300\n");
+				sip_method = RES300;
+			} else {
+				if(verbosity > 2) 
+					 syslog(LOG_NOTICE,"SIP msg: 3XX\n");
+				sip_method = RES3XX;
+			}
 			break;
 		case '4':
 			if ((datalen > 10) && data[9] == '0' && data[10] == '1') {
