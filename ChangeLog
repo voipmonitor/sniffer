@@ -1,3 +1,8 @@
+12.1.2 27.08.2015
+=================
+- fix autocleaning feature for files in AUDIO - wav/ogg were not cleaning properly and disk space was leaking (all versions) 
+
+
 12.1.1 26.08.2015
 =================
 - immediately close calls which ends with 301 or 302 SIP response and do not wait 5 minutes which prevents to use all memory (high calls in syslog) 
