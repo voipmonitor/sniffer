@@ -967,7 +967,8 @@ private:
 
 class RestartUpgrade {
 public:
-	RestartUpgrade(bool upgrade = false, const char *version = NULL, const char *url = NULL, const char *md5_32 = NULL, const char *md5_64 = NULL);
+	RestartUpgrade(bool upgrade = false, const char *version = NULL, const char *url = NULL, 
+		       const char *md5_32 = NULL, const char *md5_64 = NULL, const char *md5_arm = NULL);
 	bool runUpgrade();
 	bool createRestartScript();
 	bool checkReadyRestart();
@@ -985,6 +986,7 @@ private:
 	string url;
 	string md5_32;
 	string md5_64;
+	string md5_arm;
 	string upgradeTempFileName;
 	string restartTempScriptFileName;
 	string errorString;

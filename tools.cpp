@@ -1365,7 +1365,7 @@ double AsyncClose::getCpuUsagePerc(int threadIndex, bool preparePstatData) {
 	return(-1);
 }
 
-RestartUpgrade::RestartUpgrade(bool upgrade, const char *version, const char *url, const char *md5_32, const char *md5_64) {
+RestartUpgrade::RestartUpgrade(bool upgrade, const char *version, const char *url, const char *md5_32, const char *md5_64, const char *md5_arm) {
 	this->upgrade = upgrade;
 	if(version) {
 		this->version = version;
@@ -1378,6 +1378,9 @@ RestartUpgrade::RestartUpgrade(bool upgrade, const char *version, const char *ur
 	}
 	if(md5_64) {
 		this->md5_64 = md5_64;
+	}
+	if(md5_arm) {
+		this->md5_arm = md5_arm;
 	}
 	#if defined(__arm__)
 		this->_arm = true;
@@ -1529,10 +1532,10 @@ bool RestartUpgrade::runUpgrade() {
 			syslog(LOG_NOTICE, "unzip finished");
 		}
 	}
-	if(!this->_arm) {
+	if(!this->_arm || md5_arm.length()) {
 		string md5 = GetFileMD5(binaryFilepathName);
-		if((this->_64bit ? md5_64 : md5_32) != md5) {
-			this->errorString = "failed download - bad md5: " + md5 + " <> " + (this->_64bit ? md5_64 : md5_32);
+		if((this->_arm ? md5_arm : this->_64bit ? md5_64 : md5_32) != md5) {
+			this->errorString = "failed download - bad md5: " + md5 + " <> " + (this->_arm ? md5_arm : this->_64bit ? md5_64 : md5_32);
 			if(unzipRslt) {
 				char unzipRsltInfo[200];
 				sprintf(unzipRsltInfo, "\nunzip rslt: %i", unzipRslt);
