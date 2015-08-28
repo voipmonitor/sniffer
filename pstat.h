@@ -3,13 +3,13 @@
 
 
 struct pstat_data {
-    long unsigned int utime_ticks;
-    long int cutime_ticks;
-    long unsigned int stime_ticks;
-    long int cstime_ticks;
-    long unsigned int vsize;	// virtual memory size in bytes
-    long unsigned int rss;	// resident set size in bytes
-    long unsigned int cpu_total_time;
+    long long unsigned int utime_ticks;
+    long long int cutime_ticks;
+    long long unsigned int stime_ticks;
+    long long int cstime_ticks;
+    long long unsigned int vsize;	// virtual memory size in bytes
+    long long unsigned int rss;		// resident set size in bytes
+    long long unsigned int cpu_total_time;
 };
 
 

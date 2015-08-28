@@ -41,10 +41,10 @@ bool pstat_get_data(const int pid, pstat_data* result) {
 		return(false);
 	}
 	memset(result, 0, sizeof(pstat_data));
-	long int rss = 0;
+	long long int rss = 0;
 	if(fscanf(fpstat, 
-		  "%*d %*s %*c %*d %*d %*d %*d %*d %*u %*u %*u %*u %*u %lu"
-		  "%lu %ld %ld %*d %*d %*d %*d %*u %lu %ld",
+		  "%*d %*s %*c %*d %*d %*d %*d %*d %*u %*u %*u %*u %*u %llu"
+		  "%llu %lld %lld %*d %*d %*d %*d %*u %llu %lld",
 			&result->utime_ticks, &result->stime_ticks,
 			&result->cutime_ticks, &result->cstime_ticks, &result->vsize,
 			&rss) == EOF) {
@@ -54,10 +54,10 @@ bool pstat_get_data(const int pid, pstat_data* result) {
 	}
 	fclose(fpstat);
 	result->rss = rss * getpagesize();
-	long unsigned int cpu_time[10];
+	long long unsigned int cpu_time[10];
 	memset(cpu_time, 0, sizeof(cpu_time));
 	if(fscanf(fstat, 
-		  "%*s %lu %lu %lu %lu %lu %lu %lu %lu %lu %lu",
+		  "%*s %llu %llu %llu %llu %llu %llu %llu %llu %llu %llu",
 			&cpu_time[0], &cpu_time[1], &cpu_time[2], &cpu_time[3],
 			&cpu_time[4], &cpu_time[5], &cpu_time[6], &cpu_time[7],
 			&cpu_time[8], &cpu_time[9]) == EOF) {

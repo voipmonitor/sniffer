@@ -5124,7 +5124,7 @@ void *ProcessRtpPacket::outThreadFunction() {
 
 void *ProcessRtpPacket::nextThreadFunction() {
 	this->nextThreadId = get_unix_tid();
-	syslog(LOG_NOTICE, "start ProcessRtpPacket %s next thread %i", this->type == hash ? "hash" : "distribute", this->outThreadId);
+	syslog(LOG_NOTICE, "start ProcessRtpPacket %s next thread %i", this->type == hash ? "hash" : "distribute", this->nextThreadId);
 	int usleepUseconds = 20;
 	unsigned usleepCounter = 0;
 	while(!this->term_processRtp) {
@@ -5214,7 +5214,7 @@ void ProcessRtpPacket::rtp(packet_s *_packet) {
 
 void ProcessRtpPacket::find_hash(packet_s *_packet, bool lock) {
 	_packet->call_info_length = 0;
-	hash_node_call *calls = NULL;;
+	hash_node_call *calls = NULL;
 	_packet->call_info_find_by_dest = false;
 	if(lock) {
 		calltable->lock_calls_hash();
