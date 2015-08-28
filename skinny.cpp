@@ -1589,6 +1589,7 @@ void *handle_skinny2(pcap_pkthdr *header, const u_char *packet, unsigned int sad
 		if ((call = calltable->find_by_call_id(callid, strlen(callid)))){
 
 
+
 			// check if the last character is terminated by \0
 			if(data[MIN(datalen - 1, req.len + 7)] != '\0') break;
 
@@ -1597,79 +1598,49 @@ void *handle_skinny2(pcap_pkthdr *header, const u_char *packet, unsigned int sad
 			char *end = NULL;
 			int i = 0;
 			char *strings[20];
+			for(i = 0; i < 20; i++) strings[i] = NULL;
+			i = 0;
 			while(i < 20 and (end = strchr(cur, '\0'))) {	
+				//printf("i:%u cur[%p] s[%s]\n", i, cur, cur);
 				strings[i] = cur;
 				cur = end + 1;
 				if(cur + 1 > data + datalen) break;
 				i++;
 			}
-			char *callingParty, *calledParty, *callingPartyName;
-			//char *calledPartyName;
+			char *callingParty = NULL, *calledParty = NULL, *callingPartyName = NULL;
 
-			if(req.res == 0) {
-				/*
-				 BASIC 
-					char callingParty];			0
-					char calledParty];			1
-					char originalCalledParty;		2
-					char lastRedirectingParty;		3
-					char callingPartyVoiceMailbox;		4
-					char calledPartyVoiceMailbox;		5
-					char originalCalledPartyVoiceMailbox;	6
-					char lastRedirectingVoiceMailbox;	7
-					char callingPartyName;			8
-					char calledPartyName;			9
-					char originalCalledPartyName;	       10
-					char lastRedirectingPartyName;	       11
-				*/
-				callingParty = strings[0];
-				calledParty = strings[1];
-				callingPartyName = strings[8];
-				//calledPartyName = strings[9];
-			} else if(req.res == 20 or req.res == 17 or req.res == 22 or req.res == 19 or req.res == 18) {
-				 /* CM7 
-					char callingParty];			0
-					char callingPartyVoiceMailbox;		1
-					char calledParty];			2
-					char originalCalledParty;		3
-					char lastRedirectingParty;		4
-					char calledPartyVoiceMailbox;		5
-					char originalCalledPartyVoiceMailbox;	6
-					char lastRedirectingVoiceMailbox;	7
-					char callingPartyName;			8
-					char calledPartyName;			9
-					char originalCalledPartyName;	       10
-					char lastRedirectingPartyName;	       11
+/*
 
-				*/
-				callingParty = strings[0];
-				calledParty = strings[2];
-				callingPartyName = strings[8];
-				//calledPartyName = strings[9];
-			} else {
-				if(verbosity > 0)
-					syslog(LOG_NOTICE, "Unsupported header version CM5CALL_INFO_MESSAGE:[hex %x|dec %d]\n", req.res, req.res);
-				break;
-			}
+			0	callingParty
+			1	AlternateCallingParty_len
+			2	calledParty_len
+			3	originalCalledParty_len
+			4	lastRedirectingParty_len
+			5	cgpnVoiceMailbox_len
+			6	cdpnVoiceMailbox_len
+			7	originalCdpnVoiceMailbox_len
+			8	lastRedirectingVoiceMailbox_len
+			9	callingPartyName_len
+			10	calledPartyName_len
+			11	originalCalledPartyName_len
+			12	lastRedirectingPartyName_len
+*/
+			
+
+			callingParty = strings[0];
+			calledParty = strings[2];
+			callingPartyName = strings[9];
 
 
-#if 0
-			printf("callingParty[%s] [%d]\n", callingParty, req.len);
-			printf("calledParty[%s] [%d]\n", calledParty, req.len);
-			printf("callingPartyName[%s] [%d]\n", callingPartyName, req.len);
-			printf("calledPartyName[%s] [%d]\n", calledPartyName, req.len);
-#endif
-
-
-			if(i > 0) {
+			if(callingParty) {
 				memcpy(call->caller, callingParty, MIN(sizeof(call->caller), strlen(callingParty) + 1));
 				call->caller[sizeof(call->caller) - 1] = 0;
 			}
-			if(i > 1) {
+			if(calledParty) {
 				memcpy(call->called, calledParty, MIN(sizeof(call->called), strlen(calledParty) + 1));
 				call->called[sizeof(call->called) - 1] = 0;
 			}
-			if(i > 8) {
+			if(callingPartyName) {
 				memcpy(call->callername, callingPartyName, MIN(sizeof(call->callername), strlen(callingPartyName) + 1));
 				call->callername[sizeof(call->callername) - 1] = 0;
 			}
@@ -1741,7 +1712,7 @@ void *handle_skinny2(pcap_pkthdr *header, const u_char *packet, unsigned int sad
 			ref = letohl(req.data.startmedia_ip4.conferenceId);
 			ipaddr = letohl(req.data.startmedia_ip4.remoteIp);
 			port = letohl(req.data.startmedia_ip4.remotePort);
-		} else if(req.res == 20 or req.res == 17 or req.res == 18 or req.res == 22 or req.res == 19) {
+		} else if(req.res == 20 or req.res == 17 or req.res == 21 or req.res == 18 or req.res == 22 or req.res == 19) {
 			ref = letohl(req.data.CM7_startmedia_ip4.conferenceId);
 			ipaddr = letohl(req.data.CM7_startmedia_ip4.remoteIp);
 			port = letohl(req.data.CM7_startmedia_ip4.remotePort);
