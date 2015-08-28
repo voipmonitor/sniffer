@@ -1,3 +1,9 @@
+12.1.3 28.08.2015
+=================
+- fix memory detection and small heap on 32bit version 
+- fix CPU% metrics in syslog on 32bit version (all versions) 
+
+
 12.1.2 27.08.2015
 =================
 - fix autocleaning feature for files in AUDIO - wav/ogg were not cleaning properly and disk space was leaking (all versions) 
