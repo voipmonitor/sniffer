@@ -3668,7 +3668,7 @@ std::vector<std::string> parse_cmd_line(const char *cmdLine) {
 u_int64_t getTotalMemory() {
 	struct sysinfo sysInfo;
 	sysinfo(&sysInfo);
-	return(sysInfo.totalram);
+	return((u_int64_t)sysInfo.totalram * (sysInfo.mem_unit ? sysInfo.mem_unit : 1));
 }
 
 string ascii_str(string str) {
