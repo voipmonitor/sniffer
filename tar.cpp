@@ -1737,6 +1737,84 @@ int untar_gui(const char *args) {
  
 }
 
+class c_unlzo_gui_compress_to_gzip : public CompressStream_baseEv {
+public:
+	c_unlzo_gui_compress_to_gzip(FILE *outputFileHandle) {
+		this->outputFileHandle = outputFileHandle;
+	}
+	bool compress_ev(char *data, u_int32_t len, u_int32_t decompress_len, bool format_data) {
+		fwrite(data, 1, len, outputFileHandle);
+		return(true);
+	}
+private:
+	FILE *outputFileHandle;
+};
+
+class c_unlzo_gui_decompress_from_lzo : public CompressStream_baseEv {
+public:
+	c_unlzo_gui_decompress_from_lzo(CompressStream *compressStreamToGzip,
+					c_unlzo_gui_compress_to_gzip *unlzo_gui_compress_to_gzip) {
+		this->compressStreamToGzip = compressStreamToGzip;
+		this->unlzo_gui_compress_to_gzip = unlzo_gui_compress_to_gzip;
+	}
+	bool decompress_ev(char *data, u_int32_t len) {
+		compressStreamToGzip->compress(data, len, false, unlzo_gui_compress_to_gzip);
+		return(true);
+	}
+private:
+	CompressStream *compressStreamToGzip;
+	c_unlzo_gui_compress_to_gzip *unlzo_gui_compress_to_gzip;
+};
+
+int unlzo_gui(const char *args) {
+	char lzoFile[1024] = "";
+	char outputFile[1024] = "";
+	
+	if(sscanf(args, "%s %s", lzoFile, outputFile) != 2) {
+		cerr << "unlzo: bad arguments" << endl;
+		return(1);
+	}
+	
+	cout << lzoFile << endl;
+	cout << outputFile << endl;
+	
+	FILE *lzoFileHandle = fopen(lzoFile, "rb");
+	if(!lzoFileHandle) {
+		cerr << "unlzo: open lzo file " << lzoFile << " failed" << endl;
+		return(1);
+	}
+	FILE *outputFileHandle = fopen(outputFile, "wb");
+	if(!outputFileHandle) {
+		fclose(lzoFileHandle);
+		cerr << "unlzo: open output file " << outputFile << " failed" << endl;
+		return(1);
+	}
+	CompressStream *decompressStreamFromLzo = new FILE_LINE CompressStream(CompressStream::lzo, 1024 * 8, 0);
+	decompressStreamFromLzo->enableForceStream();
+	CompressStream *compressStreamToGzip = new FILE_LINE CompressStream(CompressStream::gzip, 1024 * 8, 0);
+	c_unlzo_gui_compress_to_gzip *unlzo_gui_compress_to_gzip = new FILE_LINE c_unlzo_gui_compress_to_gzip(outputFileHandle);
+	c_unlzo_gui_decompress_from_lzo *unlzo_gui_decompress_from_lzo = new FILE_LINE c_unlzo_gui_decompress_from_lzo(compressStreamToGzip, unlzo_gui_compress_to_gzip);
+	while(!feof(lzoFileHandle)) {
+		char buff[1024 * 8];
+		size_t readSize = fread(buff, 1, sizeof(buff), lzoFileHandle);
+		if(readSize) {
+			decompressStreamFromLzo->decompress(buff, readSize, 0, false, unlzo_gui_decompress_from_lzo);
+		} else {
+			break;
+		}
+	}
+	decompressStreamFromLzo->decompress(NULL, 0, 0, true, unlzo_gui_decompress_from_lzo);
+	compressStreamToGzip->compress(NULL, 0, true, unlzo_gui_compress_to_gzip);
+	delete unlzo_gui_decompress_from_lzo;
+	delete unlzo_gui_compress_to_gzip;
+	delete decompressStreamFromLzo;
+	delete compressStreamToGzip;
+	fclose(lzoFileHandle);
+	fclose(outputFileHandle);
+	
+	return(0);
+}
+
 bool flushTar(const char *tarName) {
 	if(!tarQueue) {
 		return(false);

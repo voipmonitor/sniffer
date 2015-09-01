@@ -690,6 +690,7 @@ bool opt_virtualudppacket = false;
 int opt_test = 0;
 
 char *opt_untar_gui_params = NULL;
+char *opt_unlzo_gui_params = NULL;
 char opt_test_str[1024];
 
 map<int, string> command_line_data;
@@ -1721,7 +1722,7 @@ int main(int argc, char *argv[]) {
 		}
 	}
 	if(!opt_nocdr && 
-	   !opt_untar_gui_params && !printConfigStruct &&
+	   !opt_untar_gui_params && !opt_unlzo_gui_params && !printConfigStruct &&
 	   isSqlDriver("mysql") && opt_mysqlloadconfig) {
 		if(useNewCONFIG) {
 			CONFIG.setFromMysql(true);
@@ -1737,6 +1738,10 @@ int main(int argc, char *argv[]) {
 	if(opt_untar_gui_params) {
 		chdir(opt_chdir);
 		return(untar_gui(opt_untar_gui_params));
+	}
+	if(opt_unlzo_gui_params) {
+		chdir(opt_chdir);
+		return(unlzo_gui(opt_unlzo_gui_params));
 	}
 	
 	if(printConfigStruct) {
@@ -4690,6 +4695,7 @@ void parse_command_line_arguments(int argc, char *argv[]) {
 	    {"skinny", 0, 0, 200},
 	    {"mono", 0, 0, 201},
 	    {"untar-gui", 1, 0, 202},
+	    {"unlzo-gui", 1, 0, 205},
 	    {"new-config", 0, 0, 203},
 	    {"print-config-struct", 0, 0, 204},
 /*
@@ -4738,6 +4744,10 @@ void get_command_line_arguments() {
 			case 202:
 				opt_untar_gui_params = new FILE_LINE char[strlen(optarg) + 1];
 				strcpy(opt_untar_gui_params, optarg);
+				break;
+			case 205:
+				opt_unlzo_gui_params = new FILE_LINE char[strlen(optarg) + 1];
+				strcpy(opt_unlzo_gui_params, optarg);
 				break;
 			case 203:
 				useNewCONFIG = true;
@@ -5033,7 +5043,7 @@ void set_context_config() {
 	}
 	
 	if(!is_read_from_file_simple() && 
-	   !opt_untar_gui_params && command_line_data.size()) {
+	   !opt_untar_gui_params && !opt_unlzo_gui_params && command_line_data.size()) {
 		// restore orig values
 		buffersControl.restoreMaxBufferMemFromOrig();
 		static u_int64_t opt_pcap_queue_store_queue_max_memory_size_orig = 0;
@@ -5232,7 +5242,7 @@ void set_context_config() {
 
 bool check_complete_parameters() {
 	if (!is_read_from_file() && ifname[0] == '\0' && opt_scanpcapdir[0] == '\0' && 
-	    !opt_untar_gui_params && !printConfigStruct && !is_receiver() &&
+	    !opt_untar_gui_params && !opt_unlzo_gui_params && !printConfigStruct && !is_receiver() &&
 	    !opt_test){
                         /* Ruler to assist with keeping help description to max. 80 chars wide:
                                   1         2         3         4         5         6         7         8

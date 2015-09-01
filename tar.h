@@ -424,6 +424,7 @@ void decreaseTartimemap(unsigned int time);
 void increaseTartimemap(unsigned int time);
 
 int untar_gui(const char *args);
+int unlzo_gui(const char *args);
 bool flushTar(const char *tarName);
 
 #endif

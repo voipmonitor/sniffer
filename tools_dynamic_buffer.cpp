@@ -623,6 +623,10 @@ bool CompressStream::decompress(char *data, u_int32_t len, u_int32_t decompress_
 	case snappy: {
 		if(this->forceStream) {
 			this->initDecompress(0);
+			if(len >= 3 && !memcmp(data, "SNA", 3)) {
+				data += 3;
+				len -= 3;
+			}
 			this->snappyDecompressData->add(data, len);
 		} else {
 			this->initDecompress(decompress_len);
@@ -677,6 +681,10 @@ bool CompressStream::decompress(char *data, u_int32_t len, u_int32_t decompress_
 	case lzo: {
 		if(this->forceStream) {
 			this->initDecompress(0);
+			if(len >= 3 && !memcmp(data, "LZO", 3)) {
+				data += 3;
+				len -= 3;
+			}
 			this->lzoDecompressData->add(data, len);
 		} else {
 			this->initDecompress(decompress_len);
