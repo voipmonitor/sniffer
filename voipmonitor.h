@@ -166,6 +166,7 @@ bool is_enable_rtp_threads();
 bool is_enable_cleanspool();
 bool is_receiver();
 bool is_sender();
+int check_set_rtp_threads(int num_rtp_threads);
 
 enum eSnifferMode {
 	snifferMode_na,

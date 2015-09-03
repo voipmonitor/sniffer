@@ -121,7 +121,6 @@ extern regcache *regfailedcache;
 extern MySqlStore *sqlStore;
 extern int global_pcap_dlink;
 extern pcap_t *global_pcap_handle;
-extern int opt_rtpsave_threaded;
 extern int opt_last_rtp_from_end;
 extern int opt_mysqlstore_max_threads_cdr;
 extern int opt_mysqlstore_max_threads_message;
@@ -783,7 +782,7 @@ Call::read_rtcp(unsigned char* data, int datalen, int dataoffset, struct pcap_pk
 		char enable_save_packet, const u_char *packet, char istcp, int dlt, int sensor_id) {
 	parse_rtcp((char*)data, datalen, this);
 
-	if(enable_save_packet && opt_rtpsave_threaded) {
+	if(enable_save_packet) {
 		save_packet(this, header, packet, saddr, sport, daddr, dport, istcp, NULL, (char*)data, datalen, dataoffset, TYPE_RTP, 
 			    false, dlt, sensor_id);
 	}
@@ -971,7 +970,7 @@ read:
 	}
 	
 end:
-	if(enable_save_packet && opt_rtpsave_threaded) {
+	if(enable_save_packet) {
 		if((this->silencerecording || (this->flags & FLAG_SAVERTPHEADER)) && !this->isfax && !record_dtmf) {
 			if(datalen >= RTP_FIXED_HEADERLEN &&
 			   header->caplen > (unsigned)(datalen - RTP_FIXED_HEADERLEN)) {

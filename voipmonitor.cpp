@@ -515,8 +515,9 @@ int opt_promisc = 1;	// put interface to promisc mode?
 char pcapcommand[4092] = "";
 char filtercommand[4092] = "";
 
-int rtp_threaded = 0; // do not enable this until it will be reworked to be thread safe
-int num_threads = 0; // this has to be 1 for now
+int rtp_threaded = 0;
+int num_threads = 0;
+int num_threads_set = 0;
 unsigned int rtpthreadbuffer = 20;	// default 20MB
 unsigned int rtp_qring_length = 0;
 unsigned int rtp_qring_usleep = 1000;
@@ -1697,9 +1698,6 @@ int main(int argc, char *argv[]) {
 	pthread_mutex_init(&tartimemaplock, NULL);
 	pthread_mutex_init(&terminate_packetbuffer_lock, NULL);
 
-	// if the system has more than one CPU enable threading
-	num_threads = sysconf( _SC_NPROCESSORS_ONLN ) - 1;
-	if(num_threads <= 0) num_threads = 1;
 	set_mac();
 
 	umask(0000);
@@ -2195,6 +2193,17 @@ void set_global_vars() {
 int main_init_read() {
 	calltable = new FILE_LINE Calltable;
 	
+	// if the system has more than one CPU enable threading
+	if(opt_rtpsave_threaded) {
+		if(num_threads_set > 0) {
+			num_threads = num_threads_set;
+		} else {
+			num_threads = sysconf( _SC_NPROCESSORS_ONLN ) - 1;
+			if(num_threads <= 0) num_threads = 1;
+		}
+	} else {
+		num_threads = 0;
+	}
 	rtp_threaded = num_threads > 0;
 
 	// check if sniffer will be reading pcap files from dir and if not if it reads from eth interface or read only one file
@@ -2367,7 +2376,7 @@ int main_init_read() {
 	   !is_read_from_file_simple()) {
 		preProcessPacket = new FILE_LINE PreProcessPacket();
 	}
-	if(opt_enable_process_rtp_packet &&
+	if(opt_enable_process_rtp_packet && opt_pcap_split &&
 	   !is_read_from_file_simple()) {
 		processRtpPacketHash = new FILE_LINE ProcessRtpPacket(ProcessRtpPacket::hash, 0);
 		for(int i = 0; i < opt_enable_process_rtp_packet; i++) {
@@ -2644,21 +2653,19 @@ void main_term_read() {
 		sslData = NULL;
 	}
 	
-	if(opt_enable_process_rtp_packet &&
-	   !is_read_from_file_simple()) {
-		if(processRtpPacketHash) {
-			processRtpPacketHash->terminate();
-			delete processRtpPacketHash;
-			processRtpPacketHash = NULL;
-		}
-		for(int i = 0; i < opt_enable_process_rtp_packet; i++) {
-			if(processRtpPacketDistribute[i]) {
-				processRtpPacketDistribute[i]->terminate();
-				delete processRtpPacketDistribute[i];
-				processRtpPacketDistribute[i] = NULL;
-			}
+	if(processRtpPacketHash) {
+		processRtpPacketHash->terminate();
+		delete processRtpPacketHash;
+		processRtpPacketHash = NULL;
+	}
+	for(int i = 0; i < MAX_PROCESS_RTP_PACKET_THREADS; i++) {
+		if(processRtpPacketDistribute[i]) {
+			processRtpPacketDistribute[i]->terminate();
+			delete processRtpPacketDistribute[i];
+			processRtpPacketDistribute[i] = NULL;
 		}
 	}
+	
 	if(preProcessPacket) {
 		preProcessPacket->terminate();
 		delete preProcessPacket;
@@ -4040,7 +4047,7 @@ void cConfig::addConfigItems() {
 				->setMaximum(2000));
 		subgroup("scaling");
 				advanced();
-				addConfigItem((new cConfigItem_integer("rtpthreads", &num_threads))
+				addConfigItem((new cConfigItem_integer("rtpthreads", &num_threads_set))
 					->setIfZeroOrNegative(max(sysconf(_SC_NPROCESSORS_ONLN) - 1, 1l)));
 					expert();
 					addConfigItem(new cConfigItem_yesno("savertp-threaded", &opt_rtpsave_threaded));
@@ -4780,9 +4787,7 @@ void get_command_line_arguments() {
 				opt_pcapdump = 1;
 				break;
 			case 'e':
-				num_threads = atoi(optarg);
-				if(num_threads <= 0) num_threads = sysconf( _SC_NPROCESSORS_ONLN ) - 1;
-				if(num_threads <= 0) num_threads = 1;
+				num_threads_set = check_set_rtp_threads(atoi(optarg));
 				break;
 			case 'E':
 				rtpthreadbuffer = atoi(optarg);
@@ -5769,9 +5774,7 @@ int eval_config(string inistr) {
 		opt_ringbuffer = MIN(atoi(value), 2000);
 	}
 	if((value = ini.GetValue("general", "rtpthreads", NULL))) {
-		num_threads = atoi(value);
-		if(num_threads <= 0) num_threads = sysconf( _SC_NPROCESSORS_ONLN ) - 1;
-		if(num_threads <= 0) num_threads = 1;
+		num_threads_set = check_set_rtp_threads(atoi(value));
 	}
 	if((value = ini.GetValue("general", "rtptimeout", NULL))) {
 		rtptimeout = atoi(value);
@@ -7083,4 +7086,10 @@ bool is_receiver() {
 bool is_sender() {
 	return(!opt_pcap_queue_receive_from_ip_port &&
 	       opt_pcap_queue_send_to_ip_port);
+}
+
+int check_set_rtp_threads(int num_rtp_threads) {
+	if(num_rtp_threads <= 0) num_rtp_threads = sysconf( _SC_NPROCESSORS_ONLN ) - 1;
+	if(num_rtp_threads <= 0) num_rtp_threads = 1;
+	return(num_rtp_threads);
 }

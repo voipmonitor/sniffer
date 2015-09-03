@@ -230,10 +230,10 @@ class TcpReassemblySip {
 public:
 	struct tcp_stream2_s {
 		u_int64_t packet_number;
-		unsigned int saddr;
-		int source; 
-		unsigned int daddr;
-		int dest;
+		u_int32_t saddr;
+		u_int16_t source; 
+		u_int32_t daddr;
+		u_int16_t dest;
 		char *data;
 		int datalen;
 		int dataoffset;
@@ -243,7 +243,6 @@ public:
 		pcap_t *handle;
 		int dlt; 
 		int sensor_id;
-		u_int hash;
 		time_t ts;
 		u_int32_t seq;
 		u_int32_t next_seq;
@@ -251,8 +250,26 @@ public:
 		tcp_stream2_s *next;
 		int lastpsh;
 	};
+	struct stream_id {
+		stream_id(u_int32_t saddr = 0, u_int16_t source = 0, 
+			  u_int32_t daddr = 0, u_int16_t dest = 0) {
+			this->saddr = saddr;
+			this->source = source;
+			this->daddr = daddr; 
+			this->dest = dest;
+		}
+		u_int32_t saddr;
+		u_int16_t source;
+		u_int32_t daddr;
+		u_int16_t dest;
+		bool operator < (const stream_id& other) const {
+			return((this->saddr < other.saddr) ? 1 : (this->saddr > other.saddr) ? 0 :
+			       (this->source < other.source) ? 1 : (this->source > other.source) ? 0 :
+			       (this->daddr < other.daddr) ? 1 : (this->daddr > other.daddr) ? 0 :
+			       (this->dest < other.dest));
+		}
+	};
 public:
-	TcpReassemblySip();
 	void processPacket(
 		u_int64_t packet_number,
 		unsigned int saddr, int source, unsigned int daddr, int dest, char *data, int datalen, int dataoffset,
@@ -262,13 +279,13 @@ public:
 	void clean(time_t ts = 0);
 private:
 	tcp_stream2_s *addPacket(
-		tcp_stream2_s *stream, u_int hash,
+		tcp_stream2_s *stream,
 		u_int64_t packet_number,
 		unsigned int saddr, int source, unsigned int daddr, int dest, char *data, int datalen, int dataoffset,
 		pcap_t *handle, pcap_pkthdr header, const u_char *packet, struct iphdr2 *header_ip,
 		int dlt, int sensor_id);
 	void complete(
-		tcp_stream2_s *stream, u_int hash);
+		tcp_stream2_s *stream, stream_id id);
 	tcp_stream2_s *getLastStreamItem(tcp_stream2_s *stream) {
 		while(stream->next) {
 			stream = stream->next;
@@ -309,8 +326,7 @@ private:
 		return(false);
 	}
 private:
-	tcp_stream2_s *tcp_streams_hashed[MAX_TCPSTREAMS];
-	list<tcp_stream2_s*> tcp_streams_list;
+	map<stream_id, tcp_stream2_s*> tcp_streams;
 };
 
 
