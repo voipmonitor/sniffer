@@ -121,6 +121,10 @@ bool parseEtherHeader(int pcapLinklayerHeaderType, u_char* packet,
 				} while(_protocol == 129);
 				protocol = htons(_protocol);
 				//XXX: this is very ugly hack, please do it right! (it will work for "08 00" which is IPV4 but not for others! (find vlan_header or something)
+			} else if(htons(header_eth->ether_type) == 0x88A8) {
+				// IEEE 8021ad
+				header_ip_offset = 4;
+				protocol = htons(*(u_int16_t*)(packet + sizeof(ether_header) + 2));
 			} else {
 				header_ip_offset = 0;
 				protocol = htons(header_eth->ether_type);
