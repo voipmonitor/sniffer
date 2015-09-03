@@ -1584,7 +1584,7 @@ RTP::update_stats() {
 	s->lastTimeStampJ = getTimestamp();
 
 	// store mark bit in graph file
-	if(getMarker() and owner and (owner->flags & FLAG_SAVEGRAPH) and this->graph.isOpen()) {
+	if(getMarker() and owner and (owner->flags & FLAG_SAVEGRAPH) and this->graph.isOpenOrEnableAutoOpen()) {
 		this->graph.write((char*)&graph_mark, 4);
 	}
 		
@@ -1608,7 +1608,7 @@ RTP::update_stats() {
 		if(owner && (owner->flags & FLAG_SAVEGRAPH)) {
 			nintervals += lost - stats.last_lost;
 			while(nintervals > 20) {
-				if(this->graph.isOpen()) {
+				if(this->graph.isOpenOrEnableAutoOpen()) {
 					this->graph.write((char*)&graph_delimiter, 4);
 				}
 				nintervals -= 20;
@@ -1616,7 +1616,7 @@ RTP::update_stats() {
 		}
 	} else {
 		if(owner && (owner->flags & FLAG_SAVEGRAPH)) {
-			if(this->graph.isOpen()) {
+			if(this->graph.isOpenOrEnableAutoOpen()) {
 				if(nintervals > 20) {
 					/* after 20 packets, send new line */
 					this->graph.write((char*)&graph_delimiter, 4);

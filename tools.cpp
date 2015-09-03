@@ -1091,6 +1091,7 @@ RtpGraphSaver::RtpGraphSaver(RTP *rtp) {
 	this->rtp = rtp;
 	this->handle = NULL;
 	this->existsContent = false;
+	this->enableAutoOpen = false;
 	this->_asyncwrite = opt_pcap_dump_asyncwrite ? 1 : 0;
 }
 
@@ -1126,14 +1127,32 @@ bool RtpGraphSaver::open(const char *fileName, const char *fileNameSpoolRelative
 
 }
 
+void RtpGraphSaver::auto_open(const char *fileName, const char *fileNameSpoolRelative) {
+	this->fileName = fileName;
+	this->fileNameSpoolRelative = fileNameSpoolRelative;
+	this->enableAutoOpen = true;
+}
+
 void RtpGraphSaver::write(char *buffer, int length) {
-	if(this->isOpen()) {
-		this->existsContent = true;
-		this->handle->write(buffer, length);
+	if(!this->isOpen()) {
+		if(this->enableAutoOpen) {
+			this->enableAutoOpen = false;
+			if(this->open(this->fileName.c_str(), this->fileNameSpoolRelative.c_str())) {
+				extern unsigned int graph_version;
+				this->write((char*)&graph_version, 4);
+			} else {
+				return;
+			}
+		} else {
+			return;
+		}
 	}
+	this->existsContent = true;
+	this->handle->write(buffer, length);
 }
 
 void RtpGraphSaver::close(bool updateFilesQueue) {
+	this->enableAutoOpen = false;
 	if(this->isOpen()) {
 		if(this->_asyncwrite == 0) {
 			this->handle->close();

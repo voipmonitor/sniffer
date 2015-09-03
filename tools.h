@@ -604,10 +604,14 @@ public:
 	RtpGraphSaver(class RTP *rtp);
 	~RtpGraphSaver();
 	bool open(const char *fileName, const char *fileNameSpoolRelative);
+	void auto_open(const char *fileName, const char *fileNameSpoolRelative);
 	void write(char *buffer, int length);
 	void close(bool updateFilesQueue = true);
 	bool isOpen() {
 		return(this->handle != NULL);
+	}
+	bool isOpenOrEnableAutoOpen() {
+		return(isOpen() || this->enableAutoOpen);
 	}
 	bool isClose() {
 		return(this->handle == NULL);
@@ -621,6 +625,7 @@ private:
 	class RTP *rtp;
 	FileZipHandler *handle;
 	bool existsContent;
+	bool enableAutoOpen;
 	int _asyncwrite;
 };
 

@@ -112,7 +112,6 @@ extern int opt_filesclean;
 extern int opt_allow_zerossrc;
 extern int opt_cdr_ua_enable;
 extern unsigned int graph_delimiter;
-extern unsigned int graph_version;
 extern int opt_mosmin_f2;
 extern char opt_mos_lqo_bin[1024];
 extern char opt_mos_lqo_ref[1024];
@@ -877,19 +876,6 @@ read:
 	}
 	// adding new RTP source
 	if(ssrc_n < MAX_SSRC_PER_CALL) {
-		// close previouse graph files to save RAM (but only if > 10 
-		if(flags & FLAG_SAVEGRAPH && ssrc_n > 6) {
-			if(iscaller) {
-				if(lastcallerrtp && lastcallerrtp->graph.isOpen()) {
-					lastcallerrtp->graph.close();
-				}
-			} else {
-				if(lastcalledrtp && lastcalledrtp->graph.isOpen()) {
-					lastcalledrtp->graph.close();
-				}
-			}
-		}
-
 		// if previouse RTP streams are present it should be filled by silence to keep it in sync
 		if(iscaller) {
 			last_seq_audiobuffer1 = 0;
@@ -934,9 +920,7 @@ read:
 		}
 		strcpy(rtp[ssrc_n]->gfilename, graphFilePath);
 		if(flags & FLAG_SAVEGRAPH) {
-			if(rtp[ssrc_n]->graph.open(graphFilePath, graphFilePath_spool_relative)) {
-				rtp[ssrc_n]->graph.write((char*)&graph_version, 4); //every graph starts with graph_version 
-			}
+			rtp[ssrc_n]->graph.auto_open(graphFilePath, graphFilePath_spool_relative);
 		}
 		if(rtp[ssrc_n]->gfileRAW) {
 			fclose(rtp[ssrc_n]->gfileRAW);
