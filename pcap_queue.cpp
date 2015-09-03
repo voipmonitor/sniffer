@@ -1549,36 +1549,38 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 		}
 	}
 	extern AsyncClose *asyncClose;
-	vector<double> v_tac_cpu;
-	double last_tac_cpu = 0;
-	bool exists_set_tac_cpu = false;
-	for(int i = 0; i < asyncClose->getCountThreads(); i++) {
-		double tac_cpu = asyncClose->getCpuUsagePerc(i, true);
-		last_tac_cpu = tac_cpu;
-		if(tac_cpu >= 0) {
-			v_tac_cpu.push_back(tac_cpu);
-			exists_set_tac_cpu = true;
-		}
-	}
-	if(exists_set_tac_cpu) {
-		outStrStat << "tacCPU[";
-		for(size_t i = 0; i < v_tac_cpu.size(); i++) {
-			if(i) {
-				outStrStat << '|';
-			}
-			outStrStat << setprecision(1) << v_tac_cpu[i];
-			if (opt_rrd) {
-				rrdtacCPU_zip += v_tac_cpu[i];
+	if(asyncClose) {
+		vector<double> v_tac_cpu;
+		double last_tac_cpu = 0;
+		bool exists_set_tac_cpu = false;
+		for(int i = 0; i < asyncClose->getCountThreads(); i++) {
+			double tac_cpu = asyncClose->getCpuUsagePerc(i, true);
+			last_tac_cpu = tac_cpu;
+			if(tac_cpu >= 0) {
+				v_tac_cpu.push_back(tac_cpu);
+				exists_set_tac_cpu = true;
 			}
 		}
-		outStrStat << "%] ";
-	}
-	extern int opt_pcap_dump_asyncwrite_limit_new_thread;
-	if(last_tac_cpu > opt_pcap_dump_asyncwrite_limit_new_thread) {
-		asyncClose->addThread();
-	}
-	if(last_tac_cpu < 5) {
-		asyncClose->removeThread();
+		if(exists_set_tac_cpu) {
+			outStrStat << "tacCPU[";
+			for(size_t i = 0; i < v_tac_cpu.size(); i++) {
+				if(i) {
+					outStrStat << '|';
+				}
+				outStrStat << setprecision(1) << v_tac_cpu[i];
+				if (opt_rrd) {
+					rrdtacCPU_zip += v_tac_cpu[i];
+				}
+			}
+			outStrStat << "%] ";
+		}
+		extern int opt_pcap_dump_asyncwrite_limit_new_thread;
+		if(last_tac_cpu > opt_pcap_dump_asyncwrite_limit_new_thread) {
+			asyncClose->addThread();
+		}
+		if(last_tac_cpu < 5) {
+			asyncClose->removeThread();
+		}
 	}
 	if(opt_ipaccount) {
 		string ipaccCpu = getIpaccCpuUsagePerc();
