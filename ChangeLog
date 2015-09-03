@@ -1,3 +1,11 @@
+12.2 03.09.2015
+===============
+- fix SIP TCP reassembler which in rare case combine two unreleated SIP packets pieces (all versions) 
+- add support for ieee 8021ad ethernet header (known as QinQ and is an amendment to IEEE standard IEEE 802.1Q-1998) - voipmonitor ignored such packets completely [VS-303]
+- optimize RTP graph file handling 
+- fix crash if async write is not enabled (it is rare if this is disabled) 
+
+
 12.1.4 28.08.2015
 =================
 - fix cisco skinny V21 header version and all other header versions (calls were skipped) 
