@@ -91,7 +91,7 @@ extern IPfilter *ipfilter;
 /* Skinny debugging only available if asterisk configured with --enable-dev-mode */
 #define AST_DEVMODE 1
 #ifdef AST_DEVMODE
-static int skinnydebug = 0;
+static int skinnydebug = 1;
 char dbgcli_buf[256];
 char dbgreg_buf[256];
 char dbgsub_buf[256];
@@ -300,6 +300,14 @@ struct alarm_message {
 };
 
 #define OPEN_RECEIVE_CHANNEL_ACK_MESSAGE 0x0022
+struct open_receive_channel_ack_message_ip4_ver {
+	uint32_t status;
+	uint32_t ipVer;
+	uint32_t ipAddr;
+	char garbage[12];
+	uint32_t port;
+	uint32_t callReference;
+};
 struct open_receive_channel_ack_message_ip4 {
 	uint32_t status;
 	uint32_t ipAddr;
@@ -1059,6 +1067,7 @@ union skinny_data {
 	struct start_media_transmission_message_ip6 startmedia_ip6;
 	struct stop_media_transmission_message stopmedia;
 	struct open_receive_channel_message openreceivechannel;
+	struct open_receive_channel_ack_message_ip4_ver openreceivechannelack_ip4_ver;
 	struct open_receive_channel_ack_message_ip4 openreceivechannelack_ip4;
 	struct open_receive_channel_ack_message_ip6 openreceivechannelack_ip6;
 	struct close_receive_channel_message closereceivechannel;
@@ -1712,7 +1721,7 @@ void *handle_skinny2(pcap_pkthdr *header, const u_char *packet, unsigned int sad
 			ref = letohl(req.data.startmedia_ip4.conferenceId);
 			ipaddr = letohl(req.data.startmedia_ip4.remoteIp);
 			port = letohl(req.data.startmedia_ip4.remotePort);
-		} else if(req.res == 20 or req.res == 17 or req.res == 21 or req.res == 18 or req.res == 22 or req.res == 19) {
+		} else if(req.res >= 17 ) {
 			ref = letohl(req.data.CM7_startmedia_ip4.conferenceId);
 			ipaddr = letohl(req.data.CM7_startmedia_ip4.remoteIp);
 			port = letohl(req.data.CM7_startmedia_ip4.remotePort);
@@ -1920,9 +1929,22 @@ void *handle_skinny2(pcap_pkthdr *header, const u_char *packet, unsigned int sad
 		uint32_t port;
 		uint32_t callReference;
 */
-		unsigned int pid = letohl(req.data.openreceivechannelack_ip4.callReference);
-		unsigned int ipaddr = letohl(req.data.openreceivechannelack_ip4.ipAddr);
-		unsigned int port = letohl(req.data.openreceivechannelack_ip4.port);
+		unsigned int pid;
+		unsigned int ipaddr;
+		unsigned int port;
+
+		//   ProtocolVersion >= 11 include extra field to declare IPv4 (0) / IPv6 (1) */
+		if(req.res >= 11) {
+			pid = letohl(req.data.openreceivechannelack_ip4_ver.callReference);
+			ipaddr = letohl(req.data.openreceivechannelack_ip4_ver.ipAddr);
+			port = letohl(req.data.openreceivechannelack_ip4_ver.port);
+			printf("port[%u]\n", port);
+		} else {
+			pid = letohl(req.data.openreceivechannelack_ip4.callReference);
+			ipaddr = letohl(req.data.openreceivechannelack_ip4.ipAddr);
+			port = letohl(req.data.openreceivechannelack_ip4.port);
+		}
+
 		if(opt_skinny_ignore_rtpip > 0 && opt_skinny_ignore_rtpip == ipaddr) {
 			//ignore_rtpip is enabled and it matches to it - skip tracking this IP RTP 
 			break;
