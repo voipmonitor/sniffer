@@ -95,12 +95,25 @@ typedef struct {
 	unsigned int daddr;
 } dtmfq;
 
+struct s_sdp_flags {
+	s_sdp_flags() {
+		is_fax = 0;
+		rtcp_mux = 0;
+	}
+	int operator != (const s_sdp_flags &other) {
+		return(is_fax != other.is_fax ||
+		       rtcp_mux != other.rtcp_mux);
+	}
+	int16_t is_fax;
+	int16_t rtcp_mux;
+};
+
 struct hash_node_call {
 	hash_node_call *next;
 	Call *call;
 	int iscaller;
 	u_int16_t is_rtcp;
-	u_int16_t is_fax;
+	s_sdp_flags sdp_flags;
 };
 
 struct hash_node {
@@ -116,7 +129,7 @@ struct ip_port_call_info {
 	bool iscaller;
 	char sessid[MAXLEN_SDP_SESSID];
 	u_int32_t sip_src_addr;
-	bool fax;
+	s_sdp_flags sdp_flags;
 };
 
 struct raws_t {
@@ -439,11 +452,11 @@ public:
 	 * 
 	 * @return return 0 on success, 1 if IP and port is duplicated and -1 on failure
 	*/
-	int add_ip_port(in_addr_t sip_src_addr, in_addr_t addr, unsigned short port, char *sessid, char *ua, unsigned long ua_len, bool iscaller, int *rtpmap, bool fax);
+	int add_ip_port(in_addr_t sip_src_addr, in_addr_t addr, unsigned short port, char *sessid, char *ua, unsigned long ua_len, bool iscaller, int *rtpmap, s_sdp_flags sdp_flags);
 	
-	bool refresh_data_ip_port(in_addr_t addr, unsigned short port, bool iscaller, int *rtpmap, bool fax);
+	bool refresh_data_ip_port(in_addr_t addr, unsigned short port, bool iscaller, int *rtpmap, s_sdp_flags sdp_flags);
 	
-	void add_ip_port_hash(in_addr_t sip_src_addr, in_addr_t addr, unsigned short port, char *sessid, char *ua, unsigned long ua_len, bool iscaller, int *rtpmap, bool fax, int allowrelation = 0);
+	void add_ip_port_hash(in_addr_t sip_src_addr, in_addr_t addr, unsigned short port, char *sessid, char *ua, unsigned long ua_len, bool iscaller, int *rtpmap, s_sdp_flags sdp_flags, int allowrelation);
 
 	/**
 	 * @brief get pointer to PcapDumper of the writing pcap file  
@@ -687,7 +700,7 @@ public:
 typedef struct {
 	Call *call;
 	int is_rtcp;
-	int is_fax;
+	s_sdp_flags sdp_flags;
 	int iscaller;
 } Ipportnode;
 
@@ -811,7 +824,7 @@ public:
 	 * @brief add call to hash table
 	 *
 	*/
-	void hashAdd(in_addr_t addr, unsigned short port, Call* call, int iscaller, int isrtcp, int is_fax, int allowrelation = 0);
+	void hashAdd(in_addr_t addr, unsigned short port, Call* call, int iscaller, int isrtcp, s_sdp_flags sdp_flags, int allowrelation);
 
 
 	/**
@@ -825,18 +838,6 @@ public:
 	 *
 	*/
 	void hashRemove(Call *call, in_addr_t addr, unsigned short port);
-
-	/**
-	 * @brief find call
-	 *
-	*/
-	Call *mapfind_by_ip_port(in_addr_t addr, unsigned short port, int *iscaller, int *isrtcp, int *isfax);
-
-	/**
-	 * @brief add call to map table
-	 *
-	*/
-	void mapAdd(in_addr_t addr, unsigned short port, Call* call, int iscaller, int isrtcp, int is_fax);
 
 	/**
 	 * @brief remove call from map

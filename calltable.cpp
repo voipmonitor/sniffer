@@ -601,7 +601,7 @@ Call::dirnamesqlfiles() {
 
 /* add ip adress and port to this call */
 int
-Call::add_ip_port(in_addr_t sip_src_addr, in_addr_t addr, unsigned short port, char *sessid, char *ua, unsigned long ua_len, bool iscaller, int *rtpmap, bool fax) {
+Call::add_ip_port(in_addr_t sip_src_addr, in_addr_t addr, unsigned short port, char *sessid, char *ua, unsigned long ua_len, bool iscaller, int *rtpmap, s_sdp_flags sdp_flags) {
 	if(this->end_call) {
 		return(-1);
 	}
@@ -613,7 +613,7 @@ Call::add_ip_port(in_addr_t sip_src_addr, in_addr_t addr, unsigned short port, c
 	}
 
 	if(ipport_n > 0) {
-		if(this->refresh_data_ip_port(addr, port, iscaller, rtpmap, fax)) {
+		if(this->refresh_data_ip_port(addr, port, iscaller, rtpmap, sdp_flags)) {
 			return 1;
 		}
 	}
@@ -643,7 +643,7 @@ Call::add_ip_port(in_addr_t sip_src_addr, in_addr_t addr, unsigned short port, c
 	this->ip_port[ipport_n].addr = addr;
 	this->ip_port[ipport_n].port = port;
 	this->ip_port[ipport_n].iscaller = iscaller;
-	this->ip_port[ipport_n].fax = fax;
+	this->ip_port[ipport_n].sdp_flags = sdp_flags;
 	if(sessid) {
 		memcpy(this->ip_port[ipport_n].sessid, sessid, MAXLEN_SDP_SESSID);
 	} else {
@@ -656,7 +656,7 @@ Call::add_ip_port(in_addr_t sip_src_addr, in_addr_t addr, unsigned short port, c
 }
 
 bool 
-Call::refresh_data_ip_port(in_addr_t addr, unsigned short port, bool iscaller, int *rtpmap, bool fax) {
+Call::refresh_data_ip_port(in_addr_t addr, unsigned short port, bool iscaller, int *rtpmap, s_sdp_flags sdp_flags) {
 	for(int i = 0; i < ipport_n; i++) {
 		if(this->ip_port[i].addr == addr && this->ip_port[i].port == port) {
 			// reinit rtpmap
@@ -672,13 +672,16 @@ Call::refresh_data_ip_port(in_addr_t addr, unsigned short port, bool iscaller, i
 				*/
 			}
 			forcemark_unlock();
-			if(fax && !this->ip_port[i].fax) {
-				this->ip_port[i].fax = fax;
+			if(sdp_flags != this->ip_port[i].sdp_flags) {
+				if(this->ip_port[i].sdp_flags.is_fax) {
+					sdp_flags.is_fax = 1;
+				}
+				this->ip_port[i].sdp_flags = sdp_flags;
 				calltable->lock_calls_hash();
 				hash_node_call *calls = calltable->hashfind_by_ip_port(addr, port, 0, false);
 				if(calls) {
 					for(hash_node_call *node_call = calls; node_call != NULL; node_call = node_call->next) {
-						node_call->is_fax = fax;
+						node_call->sdp_flags = sdp_flags;
 					}
 				}
 				calltable->unlock_calls_hash();
@@ -690,7 +693,7 @@ Call::refresh_data_ip_port(in_addr_t addr, unsigned short port, bool iscaller, i
 }
 
 void
-Call::add_ip_port_hash(in_addr_t sip_src_addr, in_addr_t addr, unsigned short port, char *sessid, char *ua, unsigned long ua_len, bool iscaller, int *rtpmap, bool fax, int allowrelation) {
+Call::add_ip_port_hash(in_addr_t sip_src_addr, in_addr_t addr, unsigned short port, char *sessid, char *ua, unsigned long ua_len, bool iscaller, int *rtpmap, s_sdp_flags sdp_flags, int allowrelation) {
 	if(this->end_call) {
 		return;
 	}
@@ -703,24 +706,24 @@ Call::add_ip_port_hash(in_addr_t sip_src_addr, in_addr_t addr, unsigned short po
 			    this->ip_port[sessidIndex].port != port ||
 			    this->ip_port[sessidIndex].iscaller != iscaller)) {
 				((Calltable*)calltable)->hashRemove(this, ip_port[sessidIndex].addr, ip_port[sessidIndex].port);
-				((Calltable*)calltable)->hashAdd(addr, port, this, iscaller, 0, fax, allowrelation);
-				if(opt_rtcp) {
+				((Calltable*)calltable)->hashAdd(addr, port, this, iscaller, 0, sdp_flags, allowrelation);
+				if(opt_rtcp && !sdp_flags.rtcp_mux) {
 					((Calltable*)calltable)->hashRemove(this, ip_port[sessidIndex].addr, ip_port[sessidIndex].port + 1);
-					((Calltable*)calltable)->hashAdd(addr, port + 1, this, iscaller, 1, fax);
+					((Calltable*)calltable)->hashAdd(addr, port + 1, this, iscaller, 1, sdp_flags, 0);
 				}
 				//cout << "change ip/port for sessid " << sessid << " ip:" << inet_ntostring(htonl(addr)) << "/" << inet_ntostring(htonl(this->ip_port[sessidIndex].addr)) << " port:" << port << "/" <<  this->ip_port[sessidIndex].port << endl;
 				this->ip_port[sessidIndex].addr = addr;
 				this->ip_port[sessidIndex].port = port;
 				this->ip_port[sessidIndex].iscaller = iscaller;
 			}
-			this->refresh_data_ip_port(addr, port, iscaller, rtpmap, fax);
+			this->refresh_data_ip_port(addr, port, iscaller, rtpmap, sdp_flags);
 			return;
 		}
 	}
-	if(this->add_ip_port(sip_src_addr, addr, port, sessid, ua, ua_len, iscaller, rtpmap, fax) != -1) {
-		((Calltable*)calltable)->hashAdd(addr, port, this, iscaller, 0, fax, allowrelation);
-		if(opt_rtcp) {
-			((Calltable*)calltable)->hashAdd(addr, port + 1, this, iscaller, 1, fax);
+	if(this->add_ip_port(sip_src_addr, addr, port, sessid, ua, ua_len, iscaller, rtpmap, sdp_flags) != -1) {
+		((Calltable*)calltable)->hashAdd(addr, port, this, iscaller, 0, sdp_flags, allowrelation);
+		if(opt_rtcp && !sdp_flags.rtcp_mux) {
+			((Calltable*)calltable)->hashAdd(addr, port + 1, this, iscaller, 1, sdp_flags, 0);
 		}
 	}
 }
@@ -3458,44 +3461,7 @@ Calltable::~Calltable() {
 
 /* add node to hash. collisions are linked list of nodes*/
 void
-Calltable::mapAdd(in_addr_t addr, unsigned short port, Call* call, int iscaller, int is_rtcp, int is_fax) {
-
-	if (ipportmap.find(addr) != ipportmap.end()) {
-		ipportmapIT = ipportmap[addr].find(port);
-		if(ipportmapIT != ipportmap[addr].end()) {
-			// there is already some call which is receiving packets to the same IP:port
-			// this can happen if the old call is waiting for hangup and is still in memory
-			Ipportnode *node = (*ipportmapIT).second;
-			if(call != node->call) {
-				// just replace this IP:port to new call
-				node->call = call;
-				node->iscaller = iscaller;
-				node->is_rtcp = is_rtcp;
-				node->is_fax = is_fax;
-				return;
-			// or it can happen if voipmonitor is sniffing SIP proxy which forwards SIP
-			} else {
-				// packets to another SIP proxy with the same SDP ports
-				// in this case just return 
-				return;
-			}
-		}
-	}
-	
-	// adding to hash at first position
-	Ipportnode *node = new FILE_LINE Ipportnode;
-	memset(node, 0x0, sizeof(Ipportnode));
-	node->call = call;
-	node->iscaller = iscaller;
-	node->is_rtcp = is_rtcp;
-	node->is_fax = is_fax;
-	ipportmap[addr][port] = node;
-}
-
-
-/* add node to hash. collisions are linked list of nodes*/
-void
-Calltable::hashAdd(in_addr_t addr, unsigned short port, Call* call, int iscaller, int is_rtcp, int is_fax, int allowrelation) {
+Calltable::hashAdd(in_addr_t addr, unsigned short port, Call* call, int iscaller, int is_rtcp, s_sdp_flags sdp_flags, int allowrelation) {
 	if(call->end_call) {
 		return;
 	}
@@ -3535,7 +3501,7 @@ Calltable::hashAdd(in_addr_t addr, unsigned short port, Call* call, int iscaller
 				}
 				prev = node_call;
 				count++;
-				node_call->is_fax = is_fax;
+				node_call->sdp_flags = sdp_flags;
 				if(node_call->call == call) {
 					found = 1;
 				}
@@ -3568,7 +3534,7 @@ Calltable::hashAdd(in_addr_t addr, unsigned short port, Call* call, int iscaller
 				node_call_new->call = call;
 				node_call_new->iscaller = iscaller;
 				node_call_new->is_rtcp = is_rtcp;
-				node_call_new->is_fax = is_fax;
+				node_call_new->sdp_flags = sdp_flags;
 
 				//insert at first position
 				node->calls = node_call_new;
@@ -3586,7 +3552,7 @@ Calltable::hashAdd(in_addr_t addr, unsigned short port, Call* call, int iscaller
 	node_call->call = call;
 	node_call->iscaller = iscaller;
 	node_call->is_rtcp = is_rtcp;
-	node_call->is_fax = is_fax;
+	node_call->sdp_flags = sdp_flags;
 
 	node = new FILE_LINE hash_node;
 	memset(node, 0x0, sizeof(hash_node));
@@ -3679,24 +3645,6 @@ Calltable::destroyCallsIfPcapsClosed() {
 		}
 	}
 	this->unlock_calls_deletequeue();
-}
-
-/* find call in hash */
-Call*
-Calltable::mapfind_by_ip_port(in_addr_t addr, unsigned short port, int *iscaller, int *is_rtcp, int *is_fax) {
-
-
-	if (ipportmap.find(addr) != ipportmap.end()) {
-		ipportmapIT = ipportmap[addr].find(port);
-		if(ipportmapIT != ipportmap[addr].end()) {
-			Ipportnode *node = (*ipportmapIT).second;
-			*iscaller = node->iscaller;
-			*is_rtcp = node->is_rtcp;
-			*is_fax = node->is_fax;
-			return node->call;
-		}
-	}
-	return NULL;
 }
 
 /* find call in hash */

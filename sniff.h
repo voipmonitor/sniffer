@@ -448,7 +448,7 @@ public:
 		Call *call;
 		bool iscaller;
 		bool is_rtcp;
-		bool is_fax;
+		s_sdp_flags sdp_flags;
 		bool use_sync;
 	};
 	struct packet_s {

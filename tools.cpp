@@ -2075,13 +2075,13 @@ void ParsePacket::setStdParse() {
 	addNode("m:");
 	addNode("remote-party-id:");
 	extern int opt_passertedidentity;
-    if(opt_passertedidentity) {
+	if(opt_passertedidentity) {
 		addNode("P-Asserted-Identity:");
-    }
+	}
 	extern int opt_ppreferredidentity;
-    if(opt_ppreferredidentity) {
+	if(opt_ppreferredidentity) {
 		addNode("P-Preferred-Identity:");
-    }
+	}
 	addNode("geoposition:");
 	addNode("user-agent:");
 	addNode("authorization:");

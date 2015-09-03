@@ -1002,7 +1002,7 @@ fail_exit:
 }
 
 
-int get_ip_port_from_sdp(char *sdp_text, in_addr_t *addr, unsigned short *port, int *fax, char *sessid){
+int get_ip_port_from_sdp(char *sdp_text, in_addr_t *addr, unsigned short *port, int16_t *fax, char *sessid, int16_t *rtcp_mux){
 	unsigned long l;
 	char *s;
 	char s1[20];
@@ -1010,6 +1010,7 @@ int get_ip_port_from_sdp(char *sdp_text, in_addr_t *addr, unsigned short *port, 
 	unsigned long gettagLimitLen = 0;
 
 	*fax = 0;
+	*rtcp_mux = 0;
 	s = gettag(sdp_text,sdp_text_len, "o=", &l, &gettagLimitLen);
 	if(l == 0) return 1;
 	while(l > 0 && *s != ' ') {
@@ -1046,6 +1047,9 @@ int get_ip_port_from_sdp(char *sdp_text, in_addr_t *addr, unsigned short *port, 
 		} else {
 			*fax = 1;
 		}
+	}
+	if(memmem(sdp_text, sdp_text_len, "a=rtcp-mux", 10)) {
+		*rtcp_mux = 1;
 	}
 	return 0;
 }
@@ -1910,10 +1914,10 @@ void process_sdp(Call *call, int sip_method, unsigned int saddr, int source, uns
 	unsigned short tmp_port;
 	int rtpmap[MAX_RTPMAP];
 	memset(rtpmap, 0, sizeof(int) * MAX_RTPMAP);
-	int fax;
+	s_sdp_flags sdp_flags;
 	char sessid[MAXLEN_SDP_SESSID];
-	if (!get_ip_port_from_sdp(tmp + 1, &tmp_addr, &tmp_port, &fax, sessid)){
-		if(fax) { 
+	if (!get_ip_port_from_sdp(tmp + 1, &tmp_addr, &tmp_port, &sdp_flags.is_fax, sessid, &sdp_flags.rtcp_mux)){
+		if(sdp_flags.is_fax) { 
 			if(verbosity >= 2){
 				syslog(LOG_ERR, "[%s] T38 detected", call->fbasename);
 			}
@@ -1938,14 +1942,14 @@ void process_sdp(Call *call, int sip_method, unsigned int saddr, int source, uns
 			call->handle_dscp(sip_method, header_ip, saddr, daddr, &iscalled, true);
 			//syslog(LOG_ERR, "ADDR: %u port %u iscalled[%d]\n", tmp_addr, tmp_port, iscalled);
 		
-			call->add_ip_port_hash(saddr, tmp_addr, tmp_port, sessid, ua, ua_len, !iscalled, rtpmap, fax);
+			call->add_ip_port_hash(saddr, tmp_addr, tmp_port, sessid, ua, ua_len, !iscalled, rtpmap, sdp_flags, 0);
 			// check if the IP address is listed in nat_aliases
 			in_addr_t alias = 0;
 			if((alias = match_nat_aliases(tmp_addr)) != 0) {
-				call->add_ip_port_hash(saddr, alias, tmp_port, sessid, ua, ua_len, !iscalled, rtpmap, fax);
+				call->add_ip_port_hash(saddr, alias, tmp_port, sessid, ua, ua_len, !iscalled, rtpmap, sdp_flags, 0);
 			}
 			if(opt_sdp_reverse_ipport) {
-				call->add_ip_port_hash(saddr, saddr, tmp_port, sessid, ua, ua_len, !iscalled, rtpmap, fax);
+				call->add_ip_port_hash(saddr, saddr, tmp_port, sessid, ua, ua_len, !iscalled, rtpmap, sdp_flags, 0);
 			}
 		}
 	} else {
@@ -1999,7 +2003,7 @@ Call *process_packet(bool is_ssl, u_int64_t packet_number,
 	Call *call = NULL;
 	int iscaller;
 	int is_rtcp = 0;
-	int is_fax = 0;
+	s_sdp_flags sdp_flags;
 	char *s;
 	unsigned long l;
 	char callidstr[1024],str2[1024];
@@ -3164,8 +3168,8 @@ rtpcheck:
 		for (node_call = (hash_node_call *)calls; node_call != NULL; node_call = node_call->next) {
 			call = node_call->call;
 			iscaller = node_call->iscaller;
-			is_rtcp = node_call->is_rtcp;
-			is_fax = node_call->is_fax;
+			sdp_flags = node_call->sdp_flags;
+			is_rtcp = node_call->is_rtcp || (sdp_flags.rtcp_mux && datalen > 1 && (u_char)data[1] == 0xC8);
 			
 			if(sverb.process_rtp) {
 				++process_rtp_counter;
@@ -3182,7 +3186,7 @@ rtpcheck:
 				call->pcap_drop = pcap_drop_flag;
 			}
 
-			if(!is_rtcp && !is_fax &&
+			if(!is_rtcp && !sdp_flags.is_fax &&
 			   (datalen < RTP_FIXED_HEADERLEN ||
 			    header->caplen <= (unsigned)(datalen - RTP_FIXED_HEADERLEN))) {
 				return(call);
@@ -3200,7 +3204,7 @@ rtpcheck:
 				can_thread = 0;
 			}
 
-			if(is_fax) {
+			if(sdp_flags.is_fax) {
 				call->seenudptl = 1;
 			}
 
@@ -3246,8 +3250,8 @@ rtpcheck:
 			}
 #endif
 			iscaller = node_call->iscaller;
-			is_rtcp = node_call->is_rtcp;
-			is_fax = node_call->is_fax;
+			sdp_flags = node_call->sdp_flags;
+			is_rtcp = node_call->is_rtcp || (sdp_flags.rtcp_mux && datalen > 1 && (u_char)data[1] == 0xC8);
 
 			if(sverb.process_rtp) {
 				++process_rtp_counter;
@@ -3264,7 +3268,7 @@ rtpcheck:
 				call->pcap_drop = pcap_drop_flag;
 			}
 
-			if(!is_rtcp && !is_fax &&
+			if(!is_rtcp && !sdp_flags.is_fax &&
 			   (datalen < RTP_FIXED_HEADERLEN ||
 			    header->caplen <= (unsigned)(datalen - RTP_FIXED_HEADERLEN))) {
 				return(call);
@@ -3282,7 +3286,7 @@ rtpcheck:
 				can_thread = 0;
 			}
 
-			if(is_fax) {
+			if(sdp_flags.is_fax) {
 				call->seenudptl = 1;
 			}
 
@@ -3393,8 +3397,8 @@ rtpcheck:
 				syslog(LOG_NOTICE,"pcap_filename: [%s]\n",str2);
 			}
 
-			call->add_ip_port_hash(saddr, daddr, dest, NULL, s, l, 1, rtpmap, false);
-			call->add_ip_port_hash(saddr, saddr, source, NULL, s, l, 0, rtpmap, false);
+			call->add_ip_port_hash(saddr, daddr, dest, NULL, s, l, 1, rtpmap, s_sdp_flags(), 0);
+			call->add_ip_port_hash(saddr, saddr, source, NULL, s, l, 0, rtpmap, s_sdp_flags(), 0);
 			
 		}
 		// we are not interested in this packet
@@ -3685,14 +3689,14 @@ Call *process_packet__rtp(ProcessRtpPacket::rtp_call_info *call_info,size_t call
 	Call *call;
 	bool iscaller;
 	bool is_rtcp;
-	bool is_fax;
+	s_sdp_flags sdp_flags;
 	Call *rsltCall = NULL;
 	size_t call_info_index;
 	for(call_info_index = 0; call_info_index < call_info_length; call_info_index++) {
 		call = call_info[call_info_index].call;
 		iscaller = call_info[call_info_index].iscaller;
-		is_rtcp = call_info[call_info_index].is_rtcp;
-		is_fax = call_info[call_info_index].is_fax;
+		sdp_flags = call_info[call_info_index].sdp_flags;
+		is_rtcp = call_info[call_info_index].is_rtcp || (sdp_flags.rtcp_mux && datalen > 1 && (u_char)data[1] == 0xC8);
 		
 		if(sverb.process_rtp) {
 			++process_rtp_counter;
@@ -3713,7 +3717,7 @@ Call *process_packet__rtp(ProcessRtpPacket::rtp_call_info *call_info,size_t call
 			call->pcap_drop = pcap_drop_flag;
 		}
 
-		if(!is_rtcp && !is_fax &&
+		if(!is_rtcp && !sdp_flags.is_fax &&
 		   (datalen < RTP_FIXED_HEADERLEN ||
 		    header->caplen <= (unsigned)(datalen - RTP_FIXED_HEADERLEN))) {
 			rsltCall = call;
@@ -3739,7 +3743,7 @@ Call *process_packet__rtp(ProcessRtpPacket::rtp_call_info *call_info,size_t call
 			}
 		}
 
-		if(is_fax) {
+		if(sdp_flags.is_fax) {
 			call->seenudptl = 1;
 		}
 		
@@ -3871,8 +3875,8 @@ Call *process_packet__rtp_nosip(unsigned int saddr, int source, unsigned int dad
 		}
 	}
 
-	call->add_ip_port_hash(saddr, daddr, dest, NULL, s, strlen(s), 1, rtpmap, false);
-	call->add_ip_port_hash(saddr, saddr, source, NULL, s, strlen(s), 0, rtpmap, false);
+	call->add_ip_port_hash(saddr, daddr, dest, NULL, s, strlen(s), 1, rtpmap, s_sdp_flags(), 0);
+	call->add_ip_port_hash(saddr, saddr, source, NULL, s, strlen(s), 0, rtpmap, s_sdp_flags(), 0);
 	
 	return(call);
 }
@@ -5220,7 +5224,7 @@ void ProcessRtpPacket::find_hash(packet_s *_packet, bool lock) {
 			_packet->call_info[_packet->call_info_length].call = node_call->call;
 			_packet->call_info[_packet->call_info_length].iscaller = node_call->iscaller;
 			_packet->call_info[_packet->call_info_length].is_rtcp = node_call->is_rtcp;
-			_packet->call_info[_packet->call_info_length].is_fax = node_call->is_fax;
+			_packet->call_info[_packet->call_info_length].sdp_flags = node_call->sdp_flags;
 			_packet->call_info[_packet->call_info_length].use_sync = false;
 			#if SYNC_CALL_RTP
 			__sync_add_and_fetch(&node_call->call->rtppcaketsinqueue, 1);
