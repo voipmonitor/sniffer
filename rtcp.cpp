@@ -9,8 +9,6 @@
 #include "calltable.h"
 #include "rtp.h"
 
-int debug_rtcp = 0;
-
 //#include "rtcp.h"
 
 /*
@@ -161,7 +159,7 @@ char *dump_rtcp_sr(char *data, unsigned int datalen, int count, Call *call)
 	senderinfo.sender_pkt_cnt = ntohl(senderinfo.sender_pkt_cnt);
 	senderinfo.sender_octet_cnt = ntohl(senderinfo.sender_octet_cnt);
 	
-	if(debug_rtcp) {
+	if(sverb.debug_rtcp) {
 		printf("Sender SSRC [%x]\n", senderinfo.sender_ssrc);
 		printf("Timestamp MSW [%u]\n", senderinfo.timestamp_MSW);
 		printf("Timestamp LSW [%u]\n", senderinfo.timestamp_LSW);
@@ -191,7 +189,7 @@ char *dump_rtcp_sr(char *data, unsigned int datalen, int count, Call *call)
 		RTP *rtp = NULL;
 
 		for(int i = 0; i < call->ssrc_n; i++) {
-			if(call->rtp[i]->ssrc == reportblock.ssrc) {
+			if(call->rtp[i]->ssrc == senderinfo.sender_ssrc) {
 				// found 
 				rtp = call->rtp[i];
 			}
@@ -211,7 +209,7 @@ char *dump_rtcp_sr(char *data, unsigned int datalen, int count, Call *call)
 			rtp->rtcp.avgjitter = (rtp->rtcp.avgjitter * (rtp->rtcp.counter - 1) + reportblock.jitter) / rtp->rtcp.counter;
 		} 
 
-		if(debug_rtcp) {
+		if(sverb.debug_rtcp) {
 			printf("sSSRC [%x]", reportblock.ssrc);
 			printf("	Fraction lost [%u]\n", reportblock.frac_lost);
 			printf("	Packets lost [%d]\n", loss);
@@ -253,7 +251,7 @@ char *dump_rtcp_rr(char *data, int datalen, int count, Call *call)
 	/* Conversions */
 	ssrc = ntohl(ssrc);
 
-	if(debug_rtcp) {
+	if(sverb.debug_rtcp) {
 		printf("SSRC [%u]\n", ssrc);
 	}
 
@@ -298,7 +296,7 @@ char *dump_rtcp_rr(char *data, int datalen, int count, Call *call)
 			rtp->rtcp.avgjitter = (rtp->rtcp.avgjitter * (rtp->rtcp.counter - 1) + reportblock.jitter) / rtp->rtcp.counter;
 		} 
 
-		if(debug_rtcp) {
+		if(sverb.debug_rtcp) {
 			printf("rSSRC [%x]", reportblock.ssrc);
 			printf("	Fraction lost [%u]\n", reportblock.frac_lost);
 			printf("	Packets lost [%d]\n", loss);
@@ -342,7 +340,7 @@ char *dump_rtcp_sdes(char *data, unsigned int datalen, int count)
 			break;
 		}
 		ssrc = ntohl(ssrc);
-		if(debug_rtcp) {
+		if(sverb.debug_rtcp) {
 			printf("SSRC/CSRC [%u]\n", ssrc);
 		}
 		/* Loop through items */
@@ -371,7 +369,7 @@ char *dump_rtcp_sdes(char *data, unsigned int datalen, int count)
 			}
 			string[length] = '\0';
 			
-			if(debug_rtcp) {
+			if(sverb.debug_rtcp) {
 				printf("	Type [%u]\n", type);
 				printf("	Length [%u]\n", length);
 				printf("	SDES [%s]", string);
@@ -437,7 +435,7 @@ void parse_rtcp(char *data, int datalen, Call* call)
 		rtcp.length = ntohs(rtcp.length);
 
 		if(version != 2) {
-			if(debug_rtcp) {
+			if(sverb.debug_rtcp) {
 				printf("[%s] Malformed RTCP packet\n", call->fbasename);
 			}
 			break;
@@ -447,7 +445,7 @@ void parse_rtcp(char *data, int datalen, Call* call)
 		/* Set the number of bytes remaining */
 		//u_int16_t bytes_remaining = 4 * rtcp.length;
 		
-		if(debug_rtcp) {
+		if(sverb.debug_rtcp) {
 			printf("\nRTCP Header\n");
 			printf("Version %d\n", version);
 			printf("Padding %d\n", padding);

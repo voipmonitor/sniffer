@@ -40,6 +40,7 @@ struct sVerbose {
 	int dump_sip;
 	int manager;
 	int scanpcapdir;
+	int debug_rtcp;
 };
 
 #endif

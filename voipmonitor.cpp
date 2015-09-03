@@ -4923,6 +4923,7 @@ void get_command_line_arguments() {
 						else if(verbparams[i] == "dump_sip")			sverb.dump_sip = 1;
 						else if(verbparams[i] == "manager")			sverb.manager = 1;
 						else if(verbparams[i] == "scanpcapdir")			sverb.scanpcapdir = 1;
+						else if(verbparams[i] == "debug_rtcp")			sverb.debug_rtcp = 1;
 					}
 				} }
 				break;
