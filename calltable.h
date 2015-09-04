@@ -569,12 +569,6 @@ public:
 	void removeRTP();
 
 	/**
-	 * @brief remove call from map table
-	 *
-	*/
-	void mapRemove();
-
-	/**
 	 * @brief stop recording packets to pcap file
 	 *
 	*/
@@ -724,8 +718,6 @@ public:
 	map<string, Call*>::iterator skinny_ipTuplesIT; //!< 
 	map<unsigned int, Call*> skinny_partyID; //!< 
 	map<unsigned int, Call*>::iterator skinny_partyIDIT; //!< 
-	map<unsigned int, std::map<unsigned int, Ipportnode*> > ipportmap;
-//	map<unsigned int, std::map<unsigned int, Ipportnode*> >::iterator ipportmapIT;
 	map<unsigned int, Ipportnode*>::iterator ipportmapIT;
 
 	/**
@@ -837,14 +829,8 @@ public:
 	 * @brief remove call from hash
 	 *
 	*/
-	void hashRemove(Call *call, in_addr_t addr, unsigned short port);
+	void hashRemove(Call *call, in_addr_t addr, unsigned short port, bool rtcp = false);
 
-	/**
-	 * @brief remove call from map
-	 *
-	*/
-	void mapRemove(in_addr_t addr, unsigned short port);
-	
 	void destroyCallsIfPcapsClosed();
 	
 	void lock_calls_hash() {

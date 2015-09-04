@@ -336,20 +336,6 @@ Call::Call(char *call_id, unsigned long call_id_len, time_t time) :
 }
 
 void
-Call::mapRemove() {
-	int i;
-	Calltable *ct = (Calltable *)calltable;
-
-	for(i = 0; i < ipport_n; i++) {
-		ct->mapRemove(this->ip_port[i].addr, this->ip_port[i].port);
-		if(opt_rtcp) {
-			ct->mapRemove(this->ip_port[i].addr, this->ip_port[i].port + 1);
-		}
-
-	}
-}
-
-void
 Call::hashRemove() {
 	int i;
 	Calltable *ct = (Calltable *)calltable;
@@ -357,7 +343,7 @@ Call::hashRemove() {
 	for(i = 0; i < ipport_n; i++) {
 		ct->hashRemove(this, this->ip_port[i].addr, this->ip_port[i].port);
 		if(opt_rtcp) {
-			ct->hashRemove(this, this->ip_port[i].addr, this->ip_port[i].port + 1);
+			ct->hashRemove(this, this->ip_port[i].addr, this->ip_port[i].port + 1, true);
 		}
 
 	}
@@ -708,7 +694,7 @@ Call::add_ip_port_hash(in_addr_t sip_src_addr, in_addr_t addr, unsigned short po
 				((Calltable*)calltable)->hashRemove(this, ip_port[sessidIndex].addr, ip_port[sessidIndex].port);
 				((Calltable*)calltable)->hashAdd(addr, port, this, iscaller, 0, sdp_flags, allowrelation);
 				if(opt_rtcp && !sdp_flags.rtcp_mux) {
-					((Calltable*)calltable)->hashRemove(this, ip_port[sessidIndex].addr, ip_port[sessidIndex].port + 1);
+					((Calltable*)calltable)->hashRemove(this, ip_port[sessidIndex].addr, ip_port[sessidIndex].port + 1, true);
 					((Calltable*)calltable)->hashAdd(addr, port + 1, this, iscaller, 1, sdp_flags, 0);
 				}
 				//cout << "change ip/port for sessid " << sessid << " ip:" << inet_ntostring(htonl(addr)) << "/" << inet_ntostring(htonl(this->ip_port[sessidIndex].addr)) << " port:" << port << "/" <<  this->ip_port[sessidIndex].port << endl;
@@ -3566,7 +3552,7 @@ Calltable::hashAdd(in_addr_t addr, unsigned short port, Call* call, int iscaller
 
 /* remove node from hash */
 void
-Calltable::hashRemove(Call *call, in_addr_t addr, unsigned short port) {
+Calltable::hashRemove(Call *call, in_addr_t addr, unsigned short port, bool rtcp) {
 	hash_node *node = NULL, *prev = NULL;
 	hash_node_call *node_call = NULL, *prev_call = NULL;
 	int h;
@@ -3577,7 +3563,7 @@ Calltable::hashRemove(Call *call, in_addr_t addr, unsigned short port) {
 		if (node->addr == addr && node->port == port) {
 			for (node_call = (hash_node_call *)node->calls; node_call != NULL; node_call = node_call->next) {
 				// walk through all calls under the node and check if the call matches
-				if(node_call->call == call) {
+				if(node_call->call == call && !(rtcp && node_call->sdp_flags.rtcp_mux)) {
 					// call matches - remote the call from node->calls
 					if (prev_call == NULL) {
 						node->calls = node_call->next;
@@ -3610,19 +3596,6 @@ Calltable::hashRemove(Call *call, in_addr_t addr, unsigned short port) {
 		prev = node;
 	}
 	unlock_calls_hash();
-}
-
-/* remove node from hash */
-void
-Calltable::mapRemove(in_addr_t addr, unsigned short port) {
-	if (ipportmap.find(addr) != ipportmap.end()) {
-		ipportmapIT = ipportmap[addr].find(port);
-		if(ipportmapIT != ipportmap[addr].end()) {
-			Ipportnode *node = (*ipportmapIT).second;
-			delete node;
-			ipportmap[addr].erase(ipportmapIT);
-		}
-	}
 }
 
 void
