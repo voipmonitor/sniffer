@@ -1,3 +1,9 @@
+12.3 04.09.2015
+===============
+- add support for RTCP muxing (rfc5761) which fixing short graphs in case RTCP is muxed with RTP ports
+- fix support for cisco skinny >= 17 version
+
+
 12.2 03.09.2015
 ===============
 - fix SIP TCP reassembler which in rare case combine two unreleated SIP packets pieces (all versions) 
