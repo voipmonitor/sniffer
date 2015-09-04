@@ -91,7 +91,7 @@ extern IPfilter *ipfilter;
 /* Skinny debugging only available if asterisk configured with --enable-dev-mode */
 #define AST_DEVMODE 1
 #ifdef AST_DEVMODE
-static int skinnydebug = 1;
+static int skinnydebug = 0;
 char dbgcli_buf[256];
 char dbgreg_buf[256];
 char dbgsub_buf[256];
