@@ -95,7 +95,6 @@ extern char opt_mirrorip_dst[20];
 extern int opt_enable_http;
 extern int opt_enable_webrtc;
 extern int opt_enable_ssl;
-extern int opt_tcpreassembly_pb_lock;
 extern int opt_fork;
 extern int opt_id_sensor;
 extern char opt_name_sensor[256];

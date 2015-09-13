@@ -18,7 +18,6 @@
 extern int opt_enable_http;
 extern int opt_enable_webrtc;
 extern int opt_enable_ssl;
-extern int opt_tcpreassembly_pb_lock;
 
 struct pcap_pkthdr_fix_size {
 	uint64_t ts_tv_sec;
@@ -103,7 +102,6 @@ struct pcap_block_store {
 		this->idFileStore = 0;
 		this->filePosition = 0;
 		this->timestampMS = getTimeMS();
-		this->packet_lock = NULL;
 		#if SYNC_PCAP_BLOCK_STORE
 		this->_sync_packet_lock = 0;
 		#else
@@ -114,9 +112,6 @@ struct pcap_block_store {
 	~pcap_block_store() {
 		this->destroy();
 		this->destroyRestoreBuffer();
-		if(this->packet_lock) {
-			delete [] this->packet_lock;
-		}
 	}
 	inline bool add(pcap_pkthdr *header, u_char *packet, int offset, int dlink);
 	inline bool add(pcap_pkthdr_plus *header, u_char *packet);
@@ -157,56 +152,25 @@ struct pcap_block_store {
 	bool uncompress_snappy();
 	bool uncompress_lz4();
 	void lock_packet(int index) {
-		if((opt_enable_http || opt_enable_webrtc || opt_enable_ssl) && opt_tcpreassembly_pb_lock) {
-			this->lock_sync_packet_lock();
-			if(!this->packet_lock) {
-				this->packet_lock = new FILE_LINE bool[this->count];
-				memset(this->packet_lock, 0, this->count * sizeof(bool));
-			}
-			this->packet_lock[index] = true;
-			this->unlock_sync_packet_lock();
-		} else {
-			#if SYNC_PCAP_BLOCK_STORE
-			__sync_add_and_fetch(&this->_sync_packet_lock, 1);
-			#else
-			++this->_sync_packet_lock_p;
-			#endif
-		}
-		
+		#if SYNC_PCAP_BLOCK_STORE
+		__sync_add_and_fetch(&this->_sync_packet_lock, 1);
+		#else
+		++this->_sync_packet_lock_p;
+		#endif
 	}
 	void unlock_packet(int index) {
-		if((opt_enable_http || opt_enable_webrtc || opt_enable_ssl) && opt_tcpreassembly_pb_lock) {
-			this->lock_sync_packet_lock();
-			if(this->packet_lock) {
-				this->packet_lock[index] = false;
-			}
-			this->unlock_sync_packet_lock();
-		} else {
-			#if SYNC_PCAP_BLOCK_STORE
-			__sync_sub_and_fetch(&this->_sync_packet_lock, 1);
-			#else
-			++this->_sync_packet_lock_m;
-			#endif
-		}
+		#if SYNC_PCAP_BLOCK_STORE
+		__sync_sub_and_fetch(&this->_sync_packet_lock, 1);
+		#else
+		++this->_sync_packet_lock_m;
+		#endif
 	}
 	bool enableDestroy() {
-	        if((opt_enable_http || opt_enable_webrtc || opt_enable_ssl) && opt_tcpreassembly_pb_lock) {
-			bool enableDestroy = true;
-			this->lock_sync_packet_lock();
-			bool checkLock = true;
-			if(this->packet_lock &&
-			   memmem(this->packet_lock, this->count * sizeof(bool), &checkLock, sizeof(bool))) {
-				enableDestroy = false;
-			}
-			this->unlock_sync_packet_lock();
-			return(enableDestroy);
-		} else {
-			#if SYNC_PCAP_BLOCK_STORE
-			return(this->_sync_packet_lock == 0);
-			#else
-			return(this->_sync_packet_lock_p == this->_sync_packet_lock_m);
-			#endif
-		}
+		#if SYNC_PCAP_BLOCK_STORE
+		return(this->_sync_packet_lock == 0);
+		#else
+		return(this->_sync_packet_lock_p == this->_sync_packet_lock_m);
+		#endif
 	}
 	
 	void lock_sync_packet_lock() {
@@ -237,7 +201,6 @@ struct pcap_block_store {
 	u_int idFileStore;
 	u_long filePosition;
 	u_long timestampMS;
-	bool *packet_lock;
 	#if SYNC_PCAP_BLOCK_STORE
 	volatile int _sync_packet_lock;
 	#else

@@ -282,7 +282,6 @@ int opt_enable_http = 0;
 int opt_enable_webrtc = 0;
 int opt_enable_ssl = 0;
 unsigned int opt_ssl_link_timeout = 5 * 60;
-int opt_tcpreassembly_pb_lock = 0;
 int opt_tcpreassembly_thread = 1;
 char opt_tcpreassembly_log[1024];
 int opt_allow_zerossrc = 0;

@@ -13,7 +13,6 @@
 #include "heap_safe.h"
 
 
-extern int opt_tcpreassembly_pb_lock;
 extern int opt_tcpreassembly_thread;
 
 
@@ -252,23 +251,23 @@ public:
 	}
 	TcpReassemblyStream_packet(const TcpReassemblyStream_packet &packet) {
 		this->copyFrom(packet);
-		if(!opt_tcpreassembly_pb_lock && packet.data) {
+		if(packet.data) {
 			this->data = new FILE_LINE u_char[packet.datacaplen];
 			memcpy_heapsafe(this->data, packet.data, packet.datacaplen, 
 					__FILE__, __LINE__);
 		}
 	}
 	~TcpReassemblyStream_packet() {
-		if(!opt_tcpreassembly_pb_lock && this->data) {
+		if(this->data) {
 			delete [] this->data;
 		}
 	}
 	TcpReassemblyStream_packet& operator = (const TcpReassemblyStream_packet &packet) {
-		if(!opt_tcpreassembly_pb_lock && this->data) {
+		if(this->data) {
 			delete [] this->data;
 		}
 		this->copyFrom(packet);
-		if(!opt_tcpreassembly_pb_lock && packet.data) {
+		if(packet.data) {
 			this->data = new FILE_LINE u_char[packet.datacaplen];
 			memcpy_heapsafe(this->data, packet.data, packet.datacaplen, 
 					__FILE__, __LINE__);
@@ -281,18 +280,14 @@ public:
 		this->time = time;
 		this->header_tcp = header_tcp;
 		this->next_seq = header_tcp.seq + datalen;
-		if(opt_tcpreassembly_pb_lock) {
-			this->data = data;
+		if(datacaplen) {
+			this->data = new FILE_LINE u_char[datacaplen];
+			memcpy_heapsafe(this->data, this->data,
+					data, block_store ? NULL : data,
+					datacaplen, 
+					__FILE__, __LINE__);
 		} else {
-			if(datacaplen) {
-				this->data = new FILE_LINE u_char[datacaplen];
-				memcpy_heapsafe(this->data, this->data,
-						data, block_store ? NULL : data,
-						datacaplen, 
-						__FILE__, __LINE__);
-			} else {
-				this->data = NULL;
-			}
+			this->data = NULL;
 		}
 		this->datalen = datalen;
 		this->datacaplen = datacaplen;
@@ -300,22 +295,6 @@ public:
 		this->block_store_index = block_store_index;
 	}
 private:
-	void lock_packet() {
-		if(opt_tcpreassembly_pb_lock && this->block_store/* && !locked_packet*/) {
-			//static int countLock;
-			//cout << "COUNT LOCK: " << (++countLock) << endl;
-			this->block_store->lock_packet(this->block_store_index);
-			//locked_packet = true;
-		}
-	}
-	void unlock_packet() {
-		if(opt_tcpreassembly_pb_lock && this->block_store/* && locked_packet*/) {
-			//static int countUnlock;
-			//cout << "COUNT UNLOCK: " << (++countUnlock) << endl;
-			this->block_store->unlock_packet(this->block_store_index);
-			//locked_packet = false;
-		}
-	}
 	void copyFrom(const TcpReassemblyStream_packet &packet) {
 		this->time = packet.time;
 		this->header_tcp = packet.header_tcp;
@@ -348,14 +327,6 @@ friend class TcpReassemblyLink;
 
 class TcpReassemblyStream_packet_var {
 public:
-	~TcpReassemblyStream_packet_var() {
-		if(opt_tcpreassembly_pb_lock) {
-			map<uint32_t, TcpReassemblyStream_packet>::iterator iter;
-			for(iter = this->queuePackets.begin(); iter != this->queuePackets.end(); iter++) {
-				iter->second.unlock_packet();
-			}
-		}
-	}
 	void push(TcpReassemblyStream_packet packet);
 	u_int32_t getNextSeqCheck() {
 		map<uint32_t, TcpReassemblyStream_packet>::iterator iter;
@@ -378,14 +349,6 @@ public:
 		return(true);
 	}
 private:
-	void unlockPackets() {
-		if(opt_tcpreassembly_pb_lock) {
-			map<uint32_t, TcpReassemblyStream_packet>::iterator iter;
-			for(iter = this->queuePackets.begin(); iter != this->queuePackets.end(); iter++) {
-				iter->second.unlock_packet();
-			}
-		}
-	}
 	void cleanState() {
 		map<uint32_t, TcpReassemblyStream_packet>::iterator iter;
 		for(iter = this->queuePackets.begin(); iter != this->queuePackets.end(); iter++) {
@@ -450,11 +413,10 @@ public:
 	       bool enableCheckCompleteContent = false, TcpReassemblyStream *prevHttpStream = NULL, bool enableDebug = false,
 	       u_int32_t forceFirstSeq = 0, bool ignorePsh = false);
 	bool ok2_ec(u_int32_t nextAck, bool enableDebug = false);
-	u_char *complete(u_int32_t *datalen, timeval *time, bool check = false, bool unlockPackets = true,
+	u_char *complete(u_int32_t *datalen, timeval *time, bool check = false,
 			 size_t startIndex = 0, size_t *endIndex = NULL, bool breakIfPsh = false);
-	bool saveCompleteData(bool unlockPackets = true, bool check = false, TcpReassemblyStream *prevHttpStream = NULL);
+	bool saveCompleteData(bool check = false, TcpReassemblyStream *prevHttpStream = NULL);
 	void clearCompleteData();
-	void unlockPackets();
 	void printContent(int level  = 0);
 	bool checkOkPost(TcpReassemblyStream *nextStream = NULL);
 private:

@@ -14,8 +14,6 @@
 using namespace std;
 
 
-#define ENABLE_UNLOCK_PACKET_IN_OK false
-
 #define USE_PACKET_DATALEN true
 #define PACKET_DATALEN(datalen, datacaplen) (USE_PACKET_DATALEN ? datalen : datacaplen)
 
@@ -51,9 +49,6 @@ void TcpReassemblyStream_packet_var::push(TcpReassemblyStream_packet packet) {
 	if(iter == this->queuePackets.end()) {
 		this->queuePackets[packet.next_seq];
 		this->queuePackets[packet.next_seq] = packet;
-		if(opt_tcpreassembly_pb_lock) {
-			packet.lock_packet();
-		}
 	}
 }
 
@@ -144,15 +139,12 @@ int TcpReassemblyStream::ok(bool crazySequence, bool enableSimpleCmpMaxNextSeq, 
 				if(enableCheckCompleteContent) {
 					if(!this->completed_finally || 
 					   link->reassembly->getType() == TcpReassembly::http) {
-						this->saveCompleteData(false, true, prevHttpStream);
+						this->saveCompleteData(true, prevHttpStream);
 					}
 					switch(link->reassembly->getType()) {
 					case TcpReassembly::http:
 						if(this->http_ok) {
 							this->is_ok = true;
-							if(opt_tcpreassembly_pb_lock && ENABLE_UNLOCK_PACKET_IN_OK) {
-								this->unlockPackets();
-							}
 							this->detect_ok_max_next_seq = next_seq;
 							return(1);
 						} else {
@@ -208,7 +200,7 @@ int TcpReassemblyStream::ok(bool crazySequence, bool enableSimpleCmpMaxNextSeq, 
 							this->is_ok = true;
 							if(!this->completed_finally || 
 							   link->reassembly->getType() == TcpReassembly::http) {
-								this->saveCompleteData(ENABLE_UNLOCK_PACKET_IN_OK);
+								this->saveCompleteData();
 							}
 							if(!this->_force_wait_for_next_psh) {
 								this->detect_ok_max_next_seq = next_seq;
@@ -287,7 +279,7 @@ bool TcpReassemblyStream::ok2_ec(u_int32_t nextAck, bool enableDebug) {
 	return(false);
 }
 
-u_char *TcpReassemblyStream::complete(u_int32_t *datalen, timeval *time, bool check, bool unlockPackets,
+u_char *TcpReassemblyStream::complete(u_int32_t *datalen, timeval *time, bool check,
 				      size_t startIndex, size_t *endIndex, bool breakIfPsh) {
 	if(!check && !this->is_ok) {
 		*datalen = 0;
@@ -364,15 +356,10 @@ u_char *TcpReassemblyStream::complete(u_int32_t *datalen, timeval *time, bool ch
 	if(*datalen) {
 		data[*datalen] = 0;
 	}
-	if(!check) {
-		if(opt_tcpreassembly_pb_lock && unlockPackets) {
-			this->unlockPackets();
-		}
-	}
 	return(data);
 }
 
-bool TcpReassemblyStream::saveCompleteData(bool unlockPackets, bool check, TcpReassemblyStream *prevHttpStream) {
+bool TcpReassemblyStream::saveCompleteData(bool check, TcpReassemblyStream *prevHttpStream) {
 	if(this->is_ok || check) {
 		if(this->complete_data.isFill()) {
 			return(true);
@@ -382,7 +369,7 @@ bool TcpReassemblyStream::saveCompleteData(bool unlockPackets, bool check, TcpRe
 			timeval time;
 			switch(this->link->reassembly->getType()) {
 			case TcpReassembly::http:
-				data = this->complete(&datalen, &time, check, unlockPackets);
+				data = this->complete(&datalen, &time, check);
 				if(data) {
 					this->complete_data.setDataTime(data, datalen, time, false);
 					if(datalen > 5 && !memcmp(data, "POST ", 5)) {
@@ -437,7 +424,7 @@ bool TcpReassemblyStream::saveCompleteData(bool unlockPackets, bool check, TcpRe
 				break;
 			case TcpReassembly::webrtc:
 			case TcpReassembly::ssl:
-				data = this->complete(&datalen, &time, check, unlockPackets);
+				data = this->complete(&datalen, &time, check);
 				if(data) {
 					this->complete_data.setDataTime(data, datalen, time, false);
 					return(true);
@@ -451,15 +438,6 @@ bool TcpReassemblyStream::saveCompleteData(bool unlockPackets, bool check, TcpRe
 
 void TcpReassemblyStream::clearCompleteData() {
 	this->complete_data.clearData();
-}
-
-void TcpReassemblyStream::unlockPackets() {
-	if(opt_tcpreassembly_pb_lock) {
-		map<uint32_t, TcpReassemblyStream_packet_var>::iterator iter;
-		for(iter = this->queuePacketVars.begin(); iter != this->queuePacketVars.end(); iter++) {
-			this->queuePacketVars[iter->first].unlockPackets();
-		}
-	}
 }
 
 void TcpReassemblyStream::printContent(int level) {
@@ -1710,8 +1688,7 @@ void TcpReassemblyLink::complete_crazy(bool final, bool eraseCompletedStreams) {
 		   skip_offset + countRequest + countRslt + 1 <= size_ok_streams && 
 		   this->ok_streams[skip_offset + countRequest + countRslt]->direction == TcpReassemblyStream::DIRECTION_TO_DEST) {
 			/*
-			if(!ENABLE_UNLOCK_PACKET_IN_OK &&
-			   countRequest == 1 && this->ok_streams[skip_offset]->http_ok &&
+			if(countRequest == 1 && this->ok_streams[skip_offset]->http_ok &&
 			   this->ok_streams[skip_offset]->http_expect_continue &&
 			   this->ok_streams[skip_offset]->http_content_length &&
 			   (dataItem.datalen > this->ok_streams[skip_offset]->http_content_length + 1 ||
