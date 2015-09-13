@@ -2061,10 +2061,10 @@ void* TcpReassembly::packetThreadFunction(void*) {
 	sPacket packet;
 	while(!is_terminating() || this->ignoreTerminating) {
 		if(packetQueue.pop(&packet)) {
-			packet.block_store->unlock_packet(packet.block_store_index);
 			this->_push(&packet.header, packet.header_ip, packet.packet,
 				    packet.block_store, packet.block_store_index,
 				    packet.handle, packet.dlt, packet.sensor_id);
+			packet.block_store->unlock_packet(packet.block_store_index);
 		} else {
 			usleep(1000);
 		}
