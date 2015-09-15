@@ -693,9 +693,11 @@ Call::add_ip_port_hash(in_addr_t sip_src_addr, in_addr_t addr, unsigned short po
 			    this->ip_port[sessidIndex].iscaller != iscaller)) {
 				((Calltable*)calltable)->hashRemove(this, ip_port[sessidIndex].addr, ip_port[sessidIndex].port);
 				((Calltable*)calltable)->hashAdd(addr, port, this, iscaller, 0, sdp_flags, allowrelation);
-				if(opt_rtcp && !sdp_flags.rtcp_mux) {
+				if(opt_rtcp) {
 					((Calltable*)calltable)->hashRemove(this, ip_port[sessidIndex].addr, ip_port[sessidIndex].port + 1, true);
-					((Calltable*)calltable)->hashAdd(addr, port + 1, this, iscaller, 1, sdp_flags, 0);
+					if(!sdp_flags.rtcp_mux) {
+						((Calltable*)calltable)->hashAdd(addr, port + 1, this, iscaller, 1, sdp_flags, 0);
+					}
 				}
 				//cout << "change ip/port for sessid " << sessid << " ip:" << inet_ntostring(htonl(addr)) << "/" << inet_ntostring(htonl(this->ip_port[sessidIndex].addr)) << " port:" << port << "/" <<  this->ip_port[sessidIndex].port << endl;
 				this->ip_port[sessidIndex].addr = addr;
