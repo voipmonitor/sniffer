@@ -5221,6 +5221,9 @@ void set_context_config() {
 		}
 	}
 	
+	extern int opt_pcap_queue_iface_dedup_separate_threads_extend__ext_mode;
+	opt_pcap_queue_iface_dedup_separate_threads_extend__ext_mode = opt_pcap_queue_iface_alloc_stack ? 0 : 1;
+	
 	_save_sip_history = false;
 	memset(_save_sip_history_request_types, 0, sizeof(_save_sip_history_request_types));
 	_save_sip_history_all_requests = false;

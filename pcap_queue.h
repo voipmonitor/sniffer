@@ -416,10 +416,11 @@ public:
 		delete stack;
 	}
 	bool add(sHeaderPacket *headerPacket) {
-		return(stack->push(headerPacket, false, true));
+		return(stack->push(headerPacket, false, false));
 	}
 	bool get(sHeaderPacket *headerPacket) {
-		return(stack->pop(headerPacket, false, true));
+		extern int opt_pcap_queue_iface_dedup_separate_threads_extend__ext_mode;
+		return(stack->pop(headerPacket, false, opt_pcap_queue_iface_dedup_separate_threads_extend__ext_mode));
 	}
 private:
 	rqueue_quick<sHeaderPacket> *stack;
