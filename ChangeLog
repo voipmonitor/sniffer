@@ -1,3 +1,9 @@
+12.3.1 16.09.2015
+=================
+- fix RTCP race condition introduced in version 12.3 leading to crash
+- fix rare crash when using http tcp reassemble (not used for SIP) 
+
+
 12.3 04.09.2015
 ===============
 - add support for RTCP muxing (rfc5761) which fixing short graphs in case RTCP is muxed with RTP ports
