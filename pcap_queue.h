@@ -380,6 +380,51 @@ private:
 	u_int64_t lastPacketTimeUS;
 };
 
+struct sHeaderPacket {
+	sHeaderPacket(pcap_pkthdr *header = NULL, u_char *packet = NULL) {
+		this->header = header;
+		this->packet = packet;
+	}
+	inline void alloc(size_t snaplen) {
+		header = new FILE_LINE pcap_pkthdr;
+		packet = new FILE_LINE u_char[snaplen];
+	}
+	inline void free() {
+		if(header) {
+			delete header;
+			header = NULL;
+		}
+		if(packet) {
+			delete [] packet;
+			packet = NULL;
+		}
+	}
+	pcap_pkthdr *header;
+	u_char *packet;
+};
+
+class PcapQueue_HeaderPacketStack {
+public:
+	PcapQueue_HeaderPacketStack(unsigned int size) {
+		stack = new rqueue_quick<sHeaderPacket>(size, 0, 0, NULL, false, __FILE__, __LINE__);
+	}
+	~PcapQueue_HeaderPacketStack() {
+		sHeaderPacket headerPacket;
+		while(get(&headerPacket)) {
+			headerPacket.free();
+		}
+		delete stack;
+	}
+	bool add(sHeaderPacket *headerPacket) {
+		return(stack->push(headerPacket, false, true));
+	}
+	bool get(sHeaderPacket *headerPacket) {
+		return(stack->pop(headerPacket, false, true));
+	}
+private:
+	rqueue_quick<sHeaderPacket> *stack;
+};
+
 class PcapQueue_readFromInterfaceThread : protected PcapQueue_readFromInterface_base {
 public:
 	enum eTypeInterfaceThread {
@@ -392,6 +437,7 @@ public:
 	struct hpi {
 		pcap_pkthdr* header;
 		u_char* packet;
+		bool ok_for_header_packet_stack;
 		u_int offset;
 		uint16_t md5[MD5_DIGEST_LENGTH / (sizeof(uint16_t) / sizeof(unsigned char))];
 		volatile uint32_t counter;
@@ -403,7 +449,8 @@ public:
 					  PcapQueue_readFromInterfaceThread *prevThread2 = NULL);
 	~PcapQueue_readFromInterfaceThread();
 protected:
-	inline void push(pcap_pkthdr* header,u_char* packet, u_int offset, uint16_t *md5, int index = 0, uint32_t counter = 0);
+	inline void push(pcap_pkthdr* header,u_char* packet, bool ok_for_header_packet_stack,
+			 u_int offset, uint16_t *md5, int index = 0, uint32_t counter = 0);
 	inline hpi pop(int index = 0, bool moveReadit = true, bool deferDestroy = false);
         inline void moveReadit(int index = 0, bool deferDestroy = false);
 	inline hpi POP(bool moveReadit = true, bool deferDestroy = false);
@@ -466,20 +513,13 @@ private:
 	uint32_t push_counter;
 	uint32_t pop_counter;
 	bool threadDoTerminate;
+	PcapQueue_HeaderPacketStack *headerPacketStack;
 friend void *_PcapQueue_readFromInterfaceThread_threadFunction(void *arg);
 friend class PcapQueue_readFromInterface;
 };
 
 class PcapQueue_readFromInterface : public PcapQueue, protected PcapQueue_readFromInterface_base {
 private: 
-	struct sHeaderPacket {
-		sHeaderPacket(pcap_pkthdr *header = NULL, u_char *packet = NULL) {
-			this->header = header;
-			this->packet = packet;
-		}
-		pcap_pkthdr *header;
-		u_char *packet;
-	};
 	struct sThreadDeleteData {
 		sThreadDeleteData(PcapQueue_readFromInterface *owner) : queuePackets(100000, 1000, 1000, 
 										     NULL, true, 

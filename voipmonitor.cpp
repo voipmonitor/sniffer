@@ -398,6 +398,7 @@ extern int opt_pcap_queue_iface_separate_threads;
 extern int opt_pcap_queue_iface_dedup_separate_threads;
 extern int opt_pcap_queue_iface_dedup_separate_threads_extend;
 extern int opt_pcap_queue_iface_qring_size;
+extern bool opt_pcap_queue_iface_alloc_stack;
 extern int opt_pcap_queue_dequeu_window_length;
 extern int opt_pcap_queue_dequeu_method;
 extern int opt_pcap_dispatch;
@@ -4055,10 +4056,10 @@ void cConfig::addConfigItems() {
 					->setIfZeroOrNegative(max(sysconf(_SC_NPROCESSORS_ONLN) - 1, 1l)));
 					expert();
 					addConfigItem(new cConfigItem_yesno("savertp-threaded", &opt_rtpsave_threaded));
-				advanced();
 				addConfigItem(new cConfigItem_yesno("packetbuffer_compress", &opt_pcap_queue_compress));
 				addConfigItem(new cConfigItem_integer("pcap_queue_dequeu_window_length", &opt_pcap_queue_dequeu_window_length));
 				addConfigItem(new cConfigItem_integer("pcap_queue_iface_qring_size", &opt_pcap_queue_iface_qring_size));
+				addConfigItem(new cConfigItem_yesno("pcap_queue_iface_alloc_stack", &opt_pcap_queue_iface_alloc_stack));
 					expert();
 					addConfigItem(new cConfigItem_integer("pcap_queue_dequeu_method", &opt_pcap_queue_dequeu_method));
 					addConfigItem((new cConfigItem_integer("packetbuffer_block_maxsize", &opt_pcap_queue_block_max_size))
@@ -6513,6 +6514,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "pcap_queue_iface_qring_size", NULL))) {
 		opt_pcap_queue_iface_qring_size = atoi(value);
+	}
+	if((value = ini.GetValue("general", "pcap_queue_iface_alloc_stack", NULL))) {
+		opt_pcap_queue_iface_alloc_stack = yesno(value);
 	}
 	if((value = ini.GetValue("general", "pcap_queue_dequeu_method", NULL))) {
 		opt_pcap_queue_dequeu_method = atoi(value);
