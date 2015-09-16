@@ -159,6 +159,9 @@ extern int opt_savewav_force;
 extern int opt_saveudptl;
 extern nat_aliases_t nat_aliases;
 extern int opt_enable_preprocess_packet;
+extern int opt_enable_process_rtp_packet;
+extern int opt_process_rtp_packets_hash_next_thread;
+extern int opt_process_rtp_packets_hash_next_thread_sem_sync;
 extern unsigned int opt_preprocess_packets_qring_length;
 extern unsigned int opt_preprocess_packets_qring_usleep;
 extern unsigned int opt_process_rtp_packets_qring_length;
@@ -4999,11 +5002,16 @@ ProcessRtpPacket::ProcessRtpPacket(eType type, int indexThread) {
 	__prof__process_packet__rtp = 0;
 	__prof__add_to_rtp_thread_queue = 0;
 	#endif
+	for(int i = 0; i < 2; i++) {
+		sem_sync_next_thread[i].__align = 0;
+	}
+	this->next_thread_handle = 0;
 	pthread_create(&this->out_thread_handle, NULL, _ProcessRtpPacket_outThreadFunction, this);
-	if(type == hash) {
+	if(type == hash && opt_process_rtp_packets_hash_next_thread) {
+		for(int i = 0; i < opt_process_rtp_packets_hash_next_thread_sem_sync; i++) {
+			sem_init(&sem_sync_next_thread[i], 0, 0);
+		}
 		pthread_create(&this->next_thread_handle, NULL, _ProcessRtpPacket_nextThreadFunction, this);
-	} else {
-		this->next_thread_handle = 0;
 	}
 }
 
@@ -5121,12 +5129,18 @@ void *ProcessRtpPacket::nextThreadFunction() {
 	int usleepUseconds = 20;
 	unsigned usleepCounter = 0;
 	while(!this->term_processRtp) {
+		if(sem_sync_next_thread[0].__align) {
+			sem_wait(&sem_sync_next_thread[0]);
+		}
 		if(this->hash_buffer_next_thread_process) {
 			for(unsigned int i = hash_blob_size / 2; i < hash_blob_size; i++) {
 				this->find_hash(qring_item(i), false);
 			}
 			this->hash_buffer_next_thread_process = 0;
 			usleepCounter = 0;
+			if(sem_sync_next_thread[1].__align) {
+				sem_post(&sem_sync_next_thread[1]);
+			}
 		} else {
 			usleep(usleepUseconds * 
 			       (usleepCounter > 1000 ? 20 :
@@ -5154,12 +5168,25 @@ void ProcessRtpPacket::rtp(packet_s *_packet) {
 			}
 		}
 		calltable->lock_calls_hash();
-		this->hash_buffer_next_thread_process = 1;
-		for(unsigned int i = 0; i < hash_blob_size / 2; i++) {
-			this->find_hash(qring_item(i), false);
-		}
-		while(this->hash_buffer_next_thread_process) {
-			usleep(20);
+		if(this->next_thread_handle) {
+			this->hash_buffer_next_thread_process = 1;
+			if(sem_sync_next_thread[0].__align) {
+				sem_post(&sem_sync_next_thread[0]);
+			}
+			for(unsigned int i = 0; i < hash_blob_size / 2; i++) { 
+				this->find_hash(qring_item(i), false); 
+			}
+			if(sem_sync_next_thread[1].__align) {
+				sem_wait(&sem_sync_next_thread[1]);
+			} else {
+				while(this->hash_buffer_next_thread_process) { 
+					usleep(20); 
+				}
+			}
+		} else {
+			for(unsigned int i = 0; i < hash_blob_size; i++) {
+				this->find_hash(qring_item(i), false);
+			}
 		}
 		calltable->unlock_calls_hash();
 		for(unsigned int i = 0; i < hash_blob_size; i++) {
@@ -5268,6 +5295,15 @@ void ProcessRtpPacket::terminate() {
 	this->term_processRtp = true;
 	pthread_join(this->out_thread_handle, NULL);
 	if(this->next_thread_handle) {
+		if(this->sem_sync_next_thread[0].__align) {
+			sem_post(&this->sem_sync_next_thread[0]);
+		}
 		pthread_join(this->next_thread_handle, NULL);
+		for(int i = 0; i < 2; i++) {
+			if(sem_sync_next_thread[i].__align) {
+				sem_destroy(&sem_sync_next_thread[i]);
+				sem_sync_next_thread[i].__align = 0;
+			}
+		}
 	}
 }

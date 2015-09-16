@@ -274,6 +274,8 @@ int opt_skipdefault = 0;
 int opt_filesclean = 1;
 int opt_enable_preprocess_packet = 0;
 int opt_enable_process_rtp_packet = 1;
+int opt_process_rtp_packets_hash_next_thread = 1;
+int opt_process_rtp_packets_hash_next_thread_sem_sync = 0;
 unsigned int opt_preprocess_packets_qring_length = 100;
 unsigned int opt_preprocess_packets_qring_usleep = 10;
 unsigned int opt_process_rtp_packets_qring_length = 500;
@@ -4026,6 +4028,9 @@ void cConfig::addConfigItems() {
 					->addValues("yes:1|y:1|no:0|n:0")
 					->addAlias("enable_process_rtp_packet"));
 					expert();
+					addConfigItem(new cConfigItem_yesno("process_rtp_packets_hash_next_thread", &opt_process_rtp_packets_hash_next_thread));
+					addConfigItem((new cConfigItem_yesno("process_rtp_packets_hash_next_thread_sem_sync", &opt_process_rtp_packets_hash_next_thread_sem_sync))
+						->addValues("2:2"));
 					addConfigItem(new cConfigItem_integer("process_rtp_packets_qring_length", &opt_process_rtp_packets_qring_length));
 					addConfigItem(new cConfigItem_integer("process_rtp_packets_qring_usleep", &opt_process_rtp_packets_qring_usleep));
 						obsolete();
@@ -6459,6 +6464,12 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "enable_process_rtp_packet", NULL)) ||
 	   (value = ini.GetValue("general", "preprocess_rtp_threads", NULL))) {
 		opt_enable_process_rtp_packet = atoi(value) > 1 ? min(atoi(value), MAX_PROCESS_RTP_PACKET_THREADS) : yesno(value);
+	}
+	if((value = ini.GetValue("general", "process_rtp_packets_hash_next_thread", NULL))) {
+		opt_process_rtp_packets_hash_next_thread = yesno(value);
+	}
+	if((value = ini.GetValue("general", "process_rtp_packets_hash_next_thread_sem_sync", NULL))) {
+		opt_process_rtp_packets_hash_next_thread_sem_sync = atoi(value) == 2 ? 2 :yesno(value);
 	}
 	
 	if((value = ini.GetValue("general", "tcpreassembly", NULL)) ||

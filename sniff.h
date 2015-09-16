@@ -8,6 +8,7 @@
 
 #include <queue>
 #include <map>
+#include <semaphore.h>
 
 #include "rqueue.h"
 #include "voipmonitor.h"
@@ -536,6 +537,7 @@ private:
 	bool term_processRtp;
 	volatile int hash_buffer_next_thread_process;
 	volatile unsigned int hash_blob_size;
+	sem_t sem_sync_next_thread[2];
 friend inline void *_ProcessRtpPacket_outThreadFunction(void *arg);
 friend inline void *_ProcessRtpPacket_nextThreadFunction(void *arg);
 };
