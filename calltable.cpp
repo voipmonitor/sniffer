@@ -2109,7 +2109,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		cdr_ua_b.add(sqlEscapeString(b_ua), "ua");
 
 		if(opt_silencedetect) {
-			if(caller_silence > 0 or caller_silence > 0) {
+			if(caller_silence > 0 or caller_noise > 0) {
 				cdr.add(caller_silence * 100 / (caller_silence + caller_noise), "caller_silence");
 			}
 			if(called_silence > 0 or called_noise > 0) {
