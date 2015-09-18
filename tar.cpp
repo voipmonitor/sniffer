@@ -416,8 +416,9 @@ Tar::tar_read(const char *filename, const char *endFilename, u_int32_t recordId,
 			while(!this->readData.end && !this->readData.error && (read_size = read(tar.fd, read_buffer, T_BLOCKSIZE)) > 0) {
 				read_position += read_size;
 				u_int32_t use_len = 0;
+				unsigned int counter_pass = 0;
 				while(use_len < read_size) {
-					if(use_len) {
+					if(counter_pass) {
 						decompressStream->termDecompress();
 					}
 					u_int32_t _use_len = 0;
@@ -425,10 +426,11 @@ Tar::tar_read(const char *filename, const char *endFilename, u_int32_t recordId,
 						decompressFailed = true;
 						break;
 					}
-					use_len += _use_len;
-					if(!use_len) {
+					if(counter_pass && !_use_len) {
 						break;
 					}
+					use_len += _use_len;
+					++counter_pass;
 				}
 				if(decompressFailed) {
 					break;

@@ -563,6 +563,9 @@ bool CompressStream::decompress(char *data, u_int32_t len, u_int32_t decompress_
 			this->setError("decompress_ev failed");
 			return(false);
 		}
+		if(use_len) {
+			*use_len = len;
+		}
 		break;
 	case zip:
 	case gzip:
@@ -676,6 +679,9 @@ bool CompressStream::decompress(char *data, u_int32_t len, u_int32_t decompress_
 				break;
 			}
 		}
+		if(use_len) {
+			*use_len = len;
+		}
 		}
 		break;
 	case lzo: {
@@ -726,6 +732,9 @@ bool CompressStream::decompress(char *data, u_int32_t len, u_int32_t decompress_
 				break;
 			}
 		}
+		if(use_len) {
+			*use_len = len;
+		}
 		}
 		break;
 	case lz4:
@@ -741,6 +750,9 @@ bool CompressStream::decompress(char *data, u_int32_t len, u_int32_t decompress_
 		} else {
 			this->setError("lz4 decompress failed");
 			return(false);
+		}
+		if(use_len) {
+			*use_len = len;
 		}
 		#endif //HAVE_LIBLZ4
 		break;
@@ -760,6 +772,9 @@ bool CompressStream::decompress(char *data, u_int32_t len, u_int32_t decompress_
 		} else {
 			this->setError("lz4 decompress failed");
 			return(false);
+		}
+		if(use_len) {
+			*use_len = len;
 		}
 		#endif //HAVE_LIBLZ4
 		break;
