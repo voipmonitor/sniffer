@@ -4200,24 +4200,8 @@ bool SqlDb_mysql::createSchema(SqlDb *sourceDb) {
 		}
 	}
 	if(opt_cdr_partition && !opt_disable_partition_operations) {
+		this->create_procedure_create_partitions_cdr(!cloud_host.empty());
 		if(!cloud_host.empty()) {
-			this->createProcedure(string(
-			"begin\
-			    call create_partition('cdr', 'day', next_days);\
-			    call create_partition('cdr_next', 'day', next_days);\
-			    call create_partition('cdr_rtp', 'day', next_days);\
-			    call create_partition('cdr_dtmf', 'day', next_days);\
-			    call create_partition('cdr_sipresp', 'day', next_days);") + 
-			    (_save_sip_history ? "call create_partition('cdr_siphistory', 'day', next_days);" : "") +
-			   "call create_partition('cdr_proxy', 'day', next_days);\
-			    call create_partition('cdr_tar_part', 'day', next_days);\
-			    call create_partition('http_jj', 'day', next_days);\
-			    call create_partition('enum_jj', 'day', next_days);\
-			    call create_partition('message', 'day', next_days);\
-			    call create_partition('register_state', 'day', next_days);\
-			    call create_partition('register_failed', 'day', next_days);\
-			 end",
-			"create_partitions_cdr", "(next_days int)", true);
 			if(opt_create_old_partitions > 0 && createdCdrTable) {
 				for(int i = opt_create_old_partitions - 1; i > 0; i--) {
 					char i_str[10];
@@ -4239,24 +4223,6 @@ bool SqlDb_mysql::createSchema(SqlDb *sourceDb) {
 			    call create_partitions_cdr(1);\
 			 end");
 		} else {
-			this->createProcedure(string(
-			"begin\
-			    call create_partition(database_name, 'cdr', 'day', next_days);\
-			    call create_partition(database_name, 'cdr_next', 'day', next_days);\
-			    call create_partition(database_name, 'cdr_rtp', 'day', next_days);\
-			    call create_partition(database_name, 'cdr_dtmf', 'day', next_days);\
-			    call create_partition(database_name, 'cdr_sipresp', 'day', next_days);") +
-			    (_save_sip_history ? "call create_partition(database_name, 'cdr_siphistory', 'day', next_days);" : "") + 
-			   "call create_partition(database_name, 'cdr_proxy', 'day', next_days);\
-			    call create_partition(database_name, 'cdr_tar_part', 'day', next_days);\
-			    call create_partition(database_name, 'http_jj', 'day', next_days);\
-			    call create_partition(database_name, 'enum_jj', 'day', next_days);\
-			    call create_partition(database_name, 'webrtc', 'day', next_days);\
-			    call create_partition(database_name, 'message', 'day', next_days);\
-			    call create_partition(database_name, 'register_state', 'day', next_days);\
-			    call create_partition(database_name, 'register_failed', 'day', next_days);\
-			 end",
-			"create_partitions_cdr", "(database_name char(100), next_days int)", true);
 			if(opt_create_old_partitions > 0 && createdCdrTable) {
 				for(int i = opt_create_old_partitions - 1; i > 0; i--) {
 					char i_str[10];
@@ -4511,6 +4477,47 @@ bool SqlDb_mysql::createSchema(SqlDb *sourceDb) {
 	syslog(LOG_DEBUG, "done");
 	
 	return(true);
+}
+
+void SqlDb_mysql::create_procedure_create_partitions_cdr(bool isCloud) {
+	if(isCloud) {
+		this->createProcedure(string(
+		"begin\
+		    call create_partition('cdr', 'day', next_days);\
+		    call create_partition('cdr_next', 'day', next_days);\
+		    call create_partition('cdr_rtp', 'day', next_days);\
+		    call create_partition('cdr_dtmf', 'day', next_days);\
+		    call create_partition('cdr_sipresp', 'day', next_days);") + 
+		    (_save_sip_history ? "call create_partition('cdr_siphistory', 'day', next_days);" : "") +
+		   "call create_partition('cdr_proxy', 'day', next_days);\
+		    call create_partition('cdr_tar_part', 'day', next_days);\
+		    call create_partition('http_jj', 'day', next_days);\
+		    call create_partition('enum_jj', 'day', next_days);\
+		    call create_partition('message', 'day', next_days);\
+		    call create_partition('register_state', 'day', next_days);\
+		    call create_partition('register_failed', 'day', next_days);\
+		 end",
+		"create_partitions_cdr", "(next_days int)", true);
+	} else {
+		this->createProcedure(string(
+		"begin\
+		    call create_partition(database_name, 'cdr', 'day', next_days);\
+		    call create_partition(database_name, 'cdr_next', 'day', next_days);\
+		    call create_partition(database_name, 'cdr_rtp', 'day', next_days);\
+		    call create_partition(database_name, 'cdr_dtmf', 'day', next_days);\
+		    call create_partition(database_name, 'cdr_sipresp', 'day', next_days);") +
+		    (_save_sip_history ? "call create_partition(database_name, 'cdr_siphistory', 'day', next_days);" : "") + 
+		   "call create_partition(database_name, 'cdr_proxy', 'day', next_days);\
+		    call create_partition(database_name, 'cdr_tar_part', 'day', next_days);\
+		    call create_partition(database_name, 'http_jj', 'day', next_days);\
+		    call create_partition(database_name, 'enum_jj', 'day', next_days);\
+		    call create_partition(database_name, 'webrtc', 'day', next_days);\
+		    call create_partition(database_name, 'message', 'day', next_days);\
+		    call create_partition(database_name, 'register_state', 'day', next_days);\
+		    call create_partition(database_name, 'register_failed', 'day', next_days);\
+		 end",
+		"create_partitions_cdr", "(database_name char(100), next_days int)", true);
+	}
 }
 
 void SqlDb_mysql::checkDbMode() {
@@ -5627,6 +5634,10 @@ void SqlDb_odbc::checkSchema() {
 void createMysqlPartitionsCdr() {
 	syslog(LOG_NOTICE, "create cdr partitions - begin");
 	SqlDb *sqlDb = createSqlObject();
+	SqlDb_mysql *sqlDb_mysql = dynamic_cast<SqlDb_mysql*>(sqlDb);
+	if(sqlDb_mysql) {
+		sqlDb_mysql->create_procedure_create_partitions_cdr(cloud_host[0]);
+	}
 	if(cloud_host[0]) {
 		sqlDb->setMaxQueryPass(1);
 		sqlDb->query(

@@ -230,6 +230,7 @@ public:
 	bool checkLastError(string prefixError, bool sysLog = false,bool clearLastError = false);
 	void clean();
 	bool createSchema(SqlDb *sourceDb = NULL);
+	void create_procedure_create_partitions_cdr(bool isCloud);
 	void createTable(const char *tableName);
 	void checkDbMode();
 	void checkSchema();
