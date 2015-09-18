@@ -1,3 +1,10 @@
+12.3.3 18.09.2015
+=================
+- fix storing NULL instead of 0 when Silence detection enabled and silence were not detected (and silencedetect activated).
+- Added new option silencethreshold for adjustable detection sensitivity
+- fix one more case of pcap unpack from tar.gz (very rare case) 
+
+
 12.3.2 17.09.2015
 =================
 - fix unpackicg pcap from tar.gz in some case (Data not yet written to disk error in GUI) 
