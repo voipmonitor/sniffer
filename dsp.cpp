@@ -140,7 +140,6 @@ static struct progress {
  * no requirement that it be so.  The threshold will accept any value between
  * 0 and 32767.
  */
-#define DEFAULT_THRESHOLD	512
 
 enum busy_detect {
 	BUSY_PERCENT = 10,	/*!< The percentage difference between the two last silence periods */
@@ -1567,11 +1566,12 @@ unsigned int dsp_get_sample_rate(const struct dsp *dsp)
 void * operator new(size_t sizeOfObject, const char *memory_type1, int memory_type2 = 0);
 static struct dsp *__dsp_new(unsigned int sample_rate)
 {
+	extern int opt_silencethreshold;
 	dsp *dsp_new = new (__FILE__, __LINE__) dsp;
 	memset(dsp_new, 0, sizeof(dsp));
 
 	if (dsp_new) {
-		dsp_new->threshold = DEFAULT_THRESHOLD;
+		dsp_new->threshold = opt_silencethreshold;
 		dsp_new->features = DSP_FEATURE_DIGIT_DETECT | DSP_FEATURE_FAX_DETECT | DSP_FEATURE_SILENCE_SUPPRESS;
 		dsp_new->busycount = DSP_HISTORY;
 		dsp_new->digitmode = DSP_DIGITMODE_DTMF;

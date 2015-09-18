@@ -171,9 +171,10 @@ int opt_packetbuffered = 0;	// Make .pcap files writing ‘‘packet-buffered’
 	
 int opt_disableplc = 0 ;	// On or Off packet loss concealment			
 int opt_rrd = 1;
+int opt_silencethreshold = 512; //values range from 1 to 32767 default 512
 int opt_passertedidentity = 0;	//Rewrite caller? If sip invite contain P-Asserted-Identity, caller num/name is overwritten by its values.
 int opt_ppreferredidentity = 0;	//Rewrite caller? If sip invite contain P-Preferred-Identity, caller num/name is overwritten by its values.
-int opt_remotepartyid = 0;	    //Rewrite caller? If sip invite contain header Remote-Party-ID, caller num/name is overwritten by its values.
+int opt_remotepartyid = 0;	//Rewrite caller? If sip invite contain header Remote-Party-ID, caller num/name is overwritten by its values.
 int opt_remotepartypriority = 0;//Defines rewrite caller order. If both headers are set/found and activated ( P-Preferred-Identity,Remote-Party-ID ), rewrite caller primary from Remote-Party-ID header (if set to 1). 
 int opt_fork = 1;		// fork or run foreground 
 int opt_saveSIP = 0;		// save SIP packets to pcap file?
@@ -4252,6 +4253,7 @@ void cConfig::addConfigItems() {
 			addConfigItem(new cConfigItem_yesno("saverfc2833", &opt_saverfc2833));
 			addConfigItem(new cConfigItem_yesno("dtmf2db", &opt_dbdtmf));
 			addConfigItem(new cConfigItem_yesno("inbanddtmf", &opt_inbanddtmf));
+			addConfigItem(new cConfigItem_integer("silencethreshold", &opt_silencethreshold));
 			addConfigItem(new cConfigItem_yesno("silencedetect", &opt_silencedetect));
 			addConfigItem(new cConfigItem_yesno("clippingdetect", &opt_clippingdetect));
 			addConfigItem(new cConfigItem_yesno("norecord-header", &opt_norecord_header));
@@ -5934,6 +5936,9 @@ int eval_config(string inistr) {
 			opt_onlyRTPheader = 1;
 			break;
 		}
+	}
+	if((value = ini.GetValue("general", "silencethreshold", NULL))) {
+		opt_silencethreshold = atoi(value);
 	}
 	if((value = ini.GetValue("general", "silencedetect", NULL))) {
 		opt_silencedetect = yesno(value);
