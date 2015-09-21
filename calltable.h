@@ -689,6 +689,7 @@ private:
 public:
 	bool error_negative_payload_length;
 	bool use_removeRtp;
+	bool use_rtcp_mux;
 };
 
 typedef struct {
@@ -830,6 +831,7 @@ public:
 	 *
 	*/
 	void hashRemove(Call *call, in_addr_t addr, unsigned short port, bool rtcp = false);
+	int hashRemove(Call *call);
 
 	void destroyCallsIfPcapsClosed();
 	

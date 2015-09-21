@@ -331,6 +331,7 @@ Call::Call(char *call_id, unsigned long call_id_len, time_t time) :
 	
 	error_negative_payload_length = false;
 	use_removeRtp = false;
+	use_rtcp_mux = false;
 	
 	is_ssl = false;
 }
@@ -345,7 +346,10 @@ Call::hashRemove() {
 		if(opt_rtcp) {
 			ct->hashRemove(this, this->ip_port[i].addr, this->ip_port[i].port + 1, true);
 		}
-
+	}
+	
+	if(this->use_rtcp_mux && ct->hashRemove(this)) {
+		syslog(LOG_WARNING, "WARNING: incomplete hash cleanup for callid: %s", this->fbasename);
 	}
 }
 
@@ -3599,6 +3603,54 @@ Calltable::hashRemove(Call *call, in_addr_t addr, unsigned short port, bool rtcp
 		prev = node;
 	}
 	unlock_calls_hash();
+}
+
+int
+Calltable::hashRemove(Call *call) {
+	int removeCounter = 0;
+	hash_node *node = NULL, *prev_node = NULL;
+	hash_node_call *node_call = NULL, *prev_node_call = NULL;
+
+	lock_calls_hash();
+	for(int h = 0; h < MAXNODE; h++) {
+		prev_node = NULL;
+		for(node = (hash_node*)calls_hash[h]; node != NULL;) {
+			prev_node_call = NULL;
+			for(node_call = (hash_node_call *)node->calls; node_call != NULL;) {
+				if(node_call->call == call) {
+					++removeCounter;
+					if(prev_node_call == NULL) {
+						node->calls = node_call->next;
+						delete node_call;
+						node_call = node->calls; 
+					} else {
+						prev_node_call->next = node_call->next;
+						delete node_call;
+						node_call = prev_node_call->next;
+					}
+				} else {
+					prev_node_call = node_call;
+					node_call = node_call->next;
+				}
+			}
+			if(node->calls == NULL) {
+				if(prev_node == NULL) {
+					calls_hash[h] = node->next;
+					delete node;
+					node = (hash_node*)calls_hash[h];
+				} else {
+					prev_node->next = node->next;
+					delete node;
+					node = prev_node->next;
+				}
+			} else {
+				prev_node = node;
+				node = node->next;
+			}
+		}
+	}
+	unlock_calls_hash();
+	return(removeCounter);
 }
 
 void
