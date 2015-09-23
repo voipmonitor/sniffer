@@ -367,6 +367,7 @@ public:
 	unsigned int caller_clipping_8k;
 	unsigned int called_clipping_8k;
 	
+	int vlan;
 
 	vector<string> mergecalls;
 

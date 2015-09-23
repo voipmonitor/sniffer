@@ -48,6 +48,7 @@
 #include "fraud.h"
 #include "tar.h"
 #include "filter_mysql.h"
+#include "sniff_inline.h"
 
 #if HAVE_LIBTCMALLOC    
 #include <gperftools/malloc_extension.h>
@@ -328,6 +329,8 @@ Call::Call(char *call_id, unsigned long call_id_len, time_t time) :
 
 	caller_clipping_8k = 0;
 	called_clipping_8k = 0;
+	
+	vlan = -1;
 	
 	error_negative_payload_length = false;
 	use_removeRtp = false;
@@ -775,8 +778,23 @@ Call::get_index_by_sessid(char *sessid, in_addr_t sip_src_addr){
 void
 Call::read_rtcp(unsigned char* data, int datalen, int dataoffset, struct pcap_pkthdr *header, u_int32_t saddr, u_int32_t daddr, unsigned short sport, unsigned short dport, int iscaller,
 		char enable_save_packet, const u_char *packet, char istcp, int dlt, int sensor_id) {
-	parse_rtcp((char*)data, datalen, this);
 
+	extern int opt_vlan_siprtpsame;
+	if(opt_vlan_siprtpsame && this->vlan >= 0) {
+		sll_header *header_sll;
+		ether_header *header_eth;
+		u_int header_ip_offset;
+		int protocol;
+		int vlan;
+		parseEtherHeader(dlt, (u_char*)packet,
+				 header_sll, header_eth, header_ip_offset, protocol, &vlan);
+		if(vlan != this->vlan) {
+			return;
+		}
+	}
+
+	parse_rtcp((char*)data, datalen, this);
+	
 	if(enable_save_packet) {
 		save_packet(this, header, packet, saddr, sport, daddr, dport, istcp, NULL, (char*)data, datalen, dataoffset, TYPE_RTP, 
 			    false, dlt, sensor_id);
@@ -787,6 +805,20 @@ Call::read_rtcp(unsigned char* data, int datalen, int dataoffset, struct pcap_pk
 void
 Call::read_rtp(unsigned char* data, int datalen, int dataoffset, struct pcap_pkthdr *header, struct iphdr2 *header_ip, u_int32_t saddr, u_int32_t daddr, unsigned short sport, unsigned short dport, int iscaller,
 	       char enable_save_packet, const u_char *packet, char istcp, int dlt, int sensor_id, char *ifname) {
+ 
+	extern int opt_vlan_siprtpsame;
+	if(opt_vlan_siprtpsame && this->vlan >= 0) {
+		sll_header *header_sll;
+		ether_header *header_eth;
+		u_int header_ip_offset;
+		int protocol;
+		int vlan;
+		parseEtherHeader(dlt, (u_char*)packet,
+				 header_sll, header_eth, header_ip_offset, protocol, &vlan);
+		if(vlan != this->vlan) {
+			return;
+		}
+	}
 
 	bool record_dtmf = 0;
 

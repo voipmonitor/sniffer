@@ -95,14 +95,25 @@ iphdr2 *convertHeaderIP_GRE(iphdr2 *header_ip) {
 inline 
 #endif
 bool parseEtherHeader(int pcapLinklayerHeaderType, u_char* packet,
-		      sll_header *&header_sll, ether_header *&header_eth, u_int &header_ip_offset, int &protocol) {
+		      sll_header *&header_sll, ether_header *&header_eth, u_int &header_ip_offset, int &protocol, int *vlan) {
+	if(vlan) {
+		*vlan = -1;
+	}
 	switch(pcapLinklayerHeaderType) {
 		case DLT_LINUX_SLL:
 			header_sll = (sll_header*)packet;
 			if(header_sll->sll_protocol == 129) {
 				// VLAN tag
-				protocol = htons(*(u_int16_t*)(packet + sizeof(sll_header) + 2));
-				header_ip_offset = 4;
+				header_ip_offset = 0;
+				u_int16_t _protocol;
+				do {
+					if(vlan) {
+						*vlan = htons(*(u_int16_t*)(packet + sizeof(sll_header) + header_ip_offset)) & 0xFFF;
+					}
+					_protocol = *(u_int16_t*)(packet + sizeof(sll_header) + header_ip_offset + 2);
+					header_ip_offset += 4;
+				} while(_protocol == 129);
+				protocol = htons(_protocol);
 			} else {
 				header_ip_offset = 0;
 				protocol = htons(header_sll->sll_protocol);
@@ -116,6 +127,9 @@ bool parseEtherHeader(int pcapLinklayerHeaderType, u_char* packet,
 				header_ip_offset = 0;
 				u_int16_t _protocol;
 				do {
+					if(vlan) {
+						*vlan = htons(*(u_int16_t*)(packet + sizeof(ether_header) + header_ip_offset)) & 0xFFF;
+					}
 					_protocol = *(u_int16_t*)(packet + sizeof(ether_header) + header_ip_offset + 2);
 					header_ip_offset += 4;
 				} while(_protocol == 129);

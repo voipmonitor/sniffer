@@ -2332,6 +2332,17 @@ Call *process_packet(bool is_ssl, u_int64_t packet_number,
 								   handle, dlt, sensor_id,
 								   &detectUserAgent,
 								   parsePacket ? &parsePacket->parse : &_parse_packet_global);
+					extern int opt_vlan_siprtpsame;
+					if(sip_method == INVITE && opt_vlan_siprtpsame) {
+						sll_header *header_sll;
+						ether_header *header_eth;
+						u_int header_ip_offset;
+						int protocol;
+						int vlan;
+						parseEtherHeader(dlt, (u_char*)packet,
+								 header_sll, header_eth, header_ip_offset, protocol, &vlan);
+						call->vlan = vlan;
+					}
 				}
 				if(call == NULL) {
 					goto endsip;
@@ -3147,6 +3158,7 @@ endsip:
 	}
 
 rtpcheck:
+
 	if(datalen > 2/* && (htons(*(unsigned int*)data) & 0xC000) == 0x8000*/) { // disable condition - failure for udptl (fax)
 	if(processRtpPacketHash) {
 		processRtpPacketHash->push(saddr, source, daddr, dest, 

@@ -256,6 +256,7 @@ char opt_clientmanager[1024] = "";
 int opt_clientmanagerport = 9999;
 int opt_callslimit = 0;
 char opt_silencedmtfseq[16] = "";
+int opt_vlan_siprtpsame = 0;
 char opt_keycheck[1024] = "";
 char opt_convert_char[64] = "";
 int opt_skinny = 0;
@@ -4259,6 +4260,7 @@ void cConfig::addConfigItems() {
 			addConfigItem(new cConfigItem_yesno("norecord-header", &opt_norecord_header));
 			addConfigItem(new cConfigItem_yesno("norecord-dtmf", &opt_norecord_dtmf));
 			addConfigItem(new cConfigItem_string("pauserecordingdtmf", opt_silencedmtfseq, sizeof(opt_silencedmtfseq)));
+			addConfigItem(new cConfigItem_yesno("vlan_siprtpsame", &opt_vlan_siprtpsame));
 		subgroup("NAT");
 			addConfigItem(new cConfigItem_nat_aliases("natalias", &nat_aliases));
 			addConfigItem(new cConfigItem_yesno("sdp_reverse_ipport", &opt_sdp_reverse_ipport));
@@ -6366,6 +6368,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "pauserecordingdtmf", NULL))) {
 		strncpy(opt_silencedmtfseq, value, 15);
+	}
+	if((value = ini.GetValue("general", "vlan_siprtpsame", NULL))) {
+		opt_vlan_siprtpsame = yesno(value);
 	}
 	if((value = ini.GetValue("general", "keycheck", NULL))) {
 		strncpy(opt_keycheck, value, 1024);
