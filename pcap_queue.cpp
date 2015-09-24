@@ -389,7 +389,7 @@ int pcap_block_store::addRestoreChunk(u_char *buffer, size_t size, size_t *offse
 		this->restoreBuffer = restoreBufferNew;
 	}
 	memcpy_heapsafe(this->restoreBuffer + this->restoreBufferSize, this->restoreBuffer,
-			_buffer, _buffer,
+			_buffer, buffer,
 			_size,
 			__FILE__, __LINE__);
 	this->restoreBufferSize += _size;
