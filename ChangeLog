@@ -1,3 +1,8 @@
+12.4.1 24.09.2015
+=================
+- fix 12.4 crashes
+
+
 12.4 24.09.2015
 ===============
 - do not allocate memory for each packet when processing RTP and use fixed allocated memory. It saves 1 CPU core for 1Gbit traffic 
