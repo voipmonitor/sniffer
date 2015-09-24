@@ -3961,6 +3961,17 @@ Calltable::cleanup( time_t currtime ) {
 }
 
 void Call::saveregister() {
+	((Calltable*)calltable)->lock_calls_listMAP();
+        map<string, Call*>::iterator callMAPIT = ((Calltable*)calltable)->calls_listMAP.find(call_id);
+	if(callMAPIT == ((Calltable*)calltable)->calls_listMAP.end()) {
+		syslog(LOG_ERR,"Fatal error REGISTER call_id[%s] not found in callMAPIT", call_id.c_str());
+		((Calltable*)calltable)->unlock_calls_listMAP();
+		return;
+	} else {
+		((Calltable*)calltable)->calls_listMAP.erase(callMAPIT);
+	}
+	((Calltable*)calltable)->unlock_calls_listMAP();
+	
 	removeFindTables();
 	this->pcap.close();
 	this->pcapSip.close();
@@ -3990,15 +4001,6 @@ void Call::saveregister() {
 	((Calltable*)calltable)->lock_calls_queue();
 	((Calltable*)calltable)->calls_queue.push_back(this);
 	((Calltable*)calltable)->unlock_calls_queue();
-
-	((Calltable*)calltable)->lock_calls_listMAP();
-        map<string, Call*>::iterator callMAPIT = ((Calltable*)calltable)->calls_listMAP.find(call_id);
-	if(callMAPIT == ((Calltable*)calltable)->calls_listMAP.end()) {
-		syslog(LOG_ERR,"Fatal error REGISTER call_id[%s] not found in callMAPIT", call_id.c_str());
-	} else {
-		((Calltable*)calltable)->calls_listMAP.erase(callMAPIT);
-	}
-	((Calltable*)calltable)->unlock_calls_listMAP();
 }
 
 void
