@@ -252,6 +252,8 @@ public:
 		double avgdelay;
 	} source;
 
+	bool last_markbit;
+
 	struct dsp *DSP;
 
 	source *s;

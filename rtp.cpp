@@ -283,6 +283,8 @@ RTP::RTP(int sensor_id)
 	lastTimeSyslog = 0;
 	avg_ptime = 0;
 	avg_ptime_count = 0;
+
+	last_markbit = 0;
 }
 
 /* destructor */
@@ -804,10 +806,12 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 
 	seq = getSeqNum();
 
-	if(seq == last_seq) {
-		// ignore duplicated RTP packets
+	if(seq == last_seq and last_markbit == getMarker()) {
+		// ignore duplicated RTP packets unless the second packet has mark bit set but the previous not
 		return;
 	}
+
+	last_markbit = getMarker();
 
 	if(opt_rtp_check_timestamp) {
 		if(this->_last_ts.tv_sec &&
