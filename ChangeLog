@@ -6,6 +6,7 @@
 - fix rctp mux which can lead to crash (>= 12.3) 
 - fix false low MOS score if packet with mark bit has the same seq number as previous packet. 
 - fix adaptive jitterbuffer which did not count packet loss at all (all versions). Fixed jitterbuffers are not affected. 
+- new option vlan_siprtpsame - filter RTP packets by VLAN tag from first SIP packet. This solves situation when sniffing with one sniffer on multiple VLAN (tagged) with the same IP for different PBXs but same IP addresses. Without this configuration RTP packets are mixed togather. 
 
 
 12.3.3 18.09.2015
