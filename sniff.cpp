@@ -2332,6 +2332,9 @@ Call *process_packet(bool is_ssl, u_int64_t packet_number,
 								   handle, dlt, sensor_id,
 								   &detectUserAgent,
 								   parsePacket ? &parsePacket->parse : &_parse_packet_global);
+					if(call == NULL) {
+						goto endsip;
+					}
 					extern int opt_vlan_siprtpsame;
 					if(sip_method == INVITE && opt_vlan_siprtpsame) {
 						sll_header *header_sll;
