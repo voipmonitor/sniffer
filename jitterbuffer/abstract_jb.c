@@ -48,6 +48,9 @@
 #include "../codecs.h"
 #include "../common.h"
 
+#define JB_LONGMAX 2147483647L  
+
+
 extern struct sVerbose sverb;
 
 /*! \brief On and Off plc*/
@@ -538,7 +541,17 @@ static void jb_get_and_deliver(struct ast_channel *chan, struct timeval *mynow)
 
 	now = get_now(jb, NULL, mynow);
 	jb->next = jbimpl->next(jbobj);
-	if (now < jb->next) {
+	//if jb-next return JB_LONGMAX it means the buffer is empty 
+	//if (now < jb->next && jb->next != JB_LONGMAX) {
+
+	if (jb->next == JB_LONGMAX) {
+		//adaptive jitterbuffer is empty - interpolate frame 
+		save_empty_frame(chan);
+		interpolation_len = chan->packetization;
+		if(sverb.jitter) fprintf(stdout, "\tJB_GET[%p] {now=%ld next=%ld}: Interpolated frame with len=%d\n", jb, now, jb->next, interpolation_len);
+		chan->last_loss_burst++;
+		return;
+	} else if (now < jb->next ) {
 		// here we are buffering frames 
 		if(sverb.jitter) fprintf(stdout, "\tJB_GET[%p] {now=%ld}: now < next=%ld (still buffering)\n", jb, now, jb->next);
 		save_empty_frame(chan);
@@ -602,8 +615,8 @@ static void jb_get_and_deliver(struct ast_channel *chan, struct timeval *mynow)
 					if(sverb.jitter) fprintf(stdout, "\tSAVING chan->loss[128] packetization[%d]\n", chan->packetization);
 					chan->last_loss_burst -= 128;
 				}
-				if(sverb.jitter) fprintf(stdout, "\tSAVING chan->loss[%d] packetization[%d]\n", chan->last_loss_burst, chan->packetization);
 				chan->loss[chan->last_loss_burst]++;
+				if(sverb.jitter) fprintf(stdout, "\tSAVING chan->loss[%d] = %d packetization[%d]\n", chan->last_loss_burst, chan->loss[chan->last_loss_burst], chan->packetization);
 			}
 			chan->last_loss_burst = 0;
 			chan->last_seqno = f->seqno;
@@ -983,6 +996,8 @@ static int jb_remove_adaptive(void *jb, struct ast_frame **fout)
 
 static void jb_force_resynch_adaptive(void *jb)
 {
+	jitterbuf *adaptivejb = jb;
+	jb_reset(adaptivejb);
 }
 
 static void jb_empty_and_reset_adaptive(void *jb)

@@ -73,7 +73,6 @@ static void decrement_losspct(jitterbuf *jb)
 
 void jb_reset(jitterbuf *jb) 
 {
-
 	jb_frame *frame;
 	frame = jb->free;
 	while (frame != NULL) {
