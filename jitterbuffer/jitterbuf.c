@@ -73,6 +73,18 @@ static void decrement_losspct(jitterbuf *jb)
 
 void jb_reset(jitterbuf *jb) 
 {
+
+	jb_conf s = jb->info.conf;
+	jb_frame *fr = jb->free;
+	memset(jb, 0, sizeof(*jb));
+	jb->info.conf = s;
+	jb->free = fr;
+
+	/* initialize length */
+	jb->info.current = jb->info.target = JB_TARGET_EXTRA; 
+	jb->info.silence_begin_ts = -1; 
+
+#if 0
 	jb_frame *frame;
 	frame = jb->free;
 	while (frame != NULL) {
@@ -97,6 +109,8 @@ void jb_reset(jitterbuf *jb)
 	/* initialize length */
 	jb->info.current = jb->info.target = JB_TARGET_EXTRA; 
 	jb->info.silence_begin_ts = -1; 
+
+#endif
 }
 
 jitterbuf * jb_new() 
