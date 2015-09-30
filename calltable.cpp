@@ -3526,9 +3526,9 @@ Calltable::hashAdd(in_addr_t addr, unsigned short port, Call* call, int iscaller
 				}
 				prev = node_call;
 				count++;
-				node_call->sdp_flags = sdp_flags;
 				if(node_call->call == call) {
 					found = 1;
+					node_call->sdp_flags = sdp_flags;
 				}
 				node_call = node_call->next;
 			}
