@@ -67,12 +67,12 @@ static int resynch_jb(struct fixed_jb *jb, void *data, long ms, long ts, long no
 
 static inline struct fixed_jb_frame *alloc_jb_frame(struct fixed_jb *jb)
 {
-	return calloc(1, sizeof(struct fixed_jb_frame));
+	return ast_calloc(1, sizeof(struct fixed_jb_frame));
 }
 
 static inline void release_jb_frame(struct fixed_jb *jb, struct fixed_jb_frame *frame)
 {
-	free(frame);
+	ast_free(frame);
 }
 
 static void get_jb_head(struct fixed_jb *jb, struct fixed_jb_frame *frame)
@@ -104,7 +104,7 @@ struct fixed_jb *fixed_jb_new(struct fixed_jb_conf *conf)
 {
 	struct fixed_jb *jb;
 	
-	if (!(jb = calloc(1, sizeof(*jb))))
+	if (!(jb = ast_calloc(1, sizeof(*jb))))
 		return NULL;
 	
 	/* First copy our config */
@@ -139,7 +139,7 @@ void fixed_jb_destroy(struct fixed_jb *jb)
 		return;
 	}
 	
-	free(jb);
+	ast_free(jb);
 }
 
 

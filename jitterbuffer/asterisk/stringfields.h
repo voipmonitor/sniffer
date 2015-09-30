@@ -45,7 +45,7 @@
   \code
   struct sample_fields *sample;
   
-  sample = calloc(1, sizeof(*sample));
+  sample = ast_calloc(1, sizeof(*sample));
   if (sample) {
 	  if (ast_string_field_init(sample, 256)) {
 		  free(sample);
@@ -367,7 +367,7 @@ void __ast_string_field_index_build_va(struct ast_string_field_mgr *mgr,
 	struct ast_string_field_pool *this, *prev; \
 	for (this = (x)->__field_mgr.pool; this; this = prev) { \
 		prev = this->prev; \
-		free(this); \
+		ast_free(this); \
 	} \
 	} while(0)
 

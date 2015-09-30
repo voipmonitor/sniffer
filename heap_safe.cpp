@@ -32,6 +32,10 @@ inline void *_heapsafe_alloc(size_t sizeOfObject) {
 inline void _heapsafe_free(void *pointerToObject) {
 	free(pointerToObject);
 }
+
+inline void *_heapsafe_realloc(void *pointerToObject, size_t sizeOfObject) {
+	return(realloc(pointerToObject, sizeOfObject));
+}
  
 inline void * heapsafe_safe_alloc(size_t sizeOfObject) { 
 	void *pointerToObject = _heapsafe_alloc(sizeOfObject + HEAPSAFE_SAFE_ALLOC_RESERVE * 2);
@@ -283,6 +287,46 @@ inline void heapsafe_free(void *pointerToObject) {
 	}
 }
 
+inline void *heapsafe_safe_realloc(void *pointerToObject, size_t sizeOfObject) {
+	char *_pointerToBegin;
+	if(pointerToObject) {
+		_pointerToBegin = (char*)pointerToObject - HEAPSAFE_SAFE_ALLOC_RESERVE;
+	} else {
+		_pointerToBegin = NULL;
+	}
+	_pointerToBegin = (char*)_heapsafe_realloc(_pointerToBegin, sizeOfObject + HEAPSAFE_SAFE_ALLOC_RESERVE * 2);
+	if(!_pointerToBegin) {
+		HeapSafeAllocError(_HeapSafeErrorNotEnoughMemory);
+	}
+	return(_pointerToBegin + HEAPSAFE_SAFE_ALLOC_RESERVE);
+}
+
+inline void * heapsafe_realloc(void *pointerToObject, size_t sizeOfObject, const char *memory_type1 = NULL, int memory_type2 = 0) { 
+	size_t oldSize = 0;
+	if(pointerToObject) {
+		sHeapSafeMemoryControlBlock *beginMemoryBlock = NULL;
+		if(HeapSafeCheck & _HeapSafeErrorBeginEnd) {
+			beginMemoryBlock = (sHeapSafeMemoryControlBlock*)((unsigned char*)pointerToObject - SIZEOF_MCB);
+			if(HEAPSAFE_CMP_BEGIN_MEMORY_CONTROL_BLOCK(beginMemoryBlock->stringInfo)) {
+				oldSize = beginMemoryBlock->length;
+			}
+		}
+	}
+	if(sizeOfObject <= oldSize) {
+		return(pointerToObject);
+	}
+	void *newPointerToObject = heapsafe_alloc(sizeOfObject, memory_type1, memory_type2);
+	if(newPointerToObject) {
+		if(oldSize) {
+			memcpy(newPointerToObject, pointerToObject, min(oldSize, sizeOfObject));
+		}
+	}
+	if(pointerToObject) {
+		heapsafe_free(pointerToObject);
+	}
+	return(newPointerToObject);
+}
+
 
 void * operator new(size_t sizeOfObject) { 
 	void *newPointer = HeapSafeCheck ?
@@ -350,6 +394,43 @@ void operator delete[](void *pointerToObject) {
 	  heapsafe_free(pointerToObject);
 	else 
 	 _heapsafe_free(pointerToObject);
+}
+
+
+extern "C" {
+void * c_heapsafe_alloc(size_t sizeOfObject, const char *memory_type1, int memory_type2) { 
+	void *newPointer = HeapSafeCheck ?
+			    (HeapSafeCheck & _HeapSafeSafeReserve ?
+			      heapsafe_safe_alloc(sizeOfObject) :
+			      heapsafe_alloc(sizeOfObject, memory_type1, memory_type2)) :
+			    _heapsafe_alloc(sizeOfObject);
+	if(!newPointer) {
+		syslog(LOG_ERR, "allocation failed - size %lu, %s, %i", sizeOfObject, memory_type1 ? memory_type1 : "", memory_type2);
+	}
+	return(newPointer);
+}
+
+void c_heapsafe_free(void *pointerToObject) {
+	if(HeapSafeCheck)
+	 if(HeapSafeCheck & _HeapSafeSafeReserve)
+	  heapsafe_safe_free(pointerToObject);
+	 else
+	  heapsafe_free(pointerToObject);
+	else 
+	 _heapsafe_free(pointerToObject);
+}
+
+void * c_heapsafe_realloc(void *pointerToObject, size_t sizeOfObject, const char *memory_type1, int memory_type2) {
+	void *newPointer = HeapSafeCheck ?
+			    (HeapSafeCheck & _HeapSafeSafeReserve ?
+			      heapsafe_safe_realloc(pointerToObject, sizeOfObject) :
+			      heapsafe_realloc(pointerToObject, sizeOfObject, memory_type1, memory_type2)) :
+			    _heapsafe_realloc(pointerToObject, sizeOfObject);
+	if(!newPointer) {
+		syslog(LOG_ERR, "reallocation failed - size %lu, %s, %i", sizeOfObject, memory_type1 ? memory_type1 : "", memory_type2);
+	}
+	return(newPointer);
+}
 }
 
 

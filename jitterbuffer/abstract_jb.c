@@ -389,11 +389,11 @@ void jb_fixed_flush_deliver(struct ast_channel *chan)
 			//save last frame
 			if(!chan->lastbuf) {
 				chan->lastbufsize = f->datalen > 1600 ? f->datalen : 1600;
-				chan->lastbuf = (char*)malloc(chan->lastbufsize);
+				chan->lastbuf = (char*)ast_malloc(chan->lastbufsize);
 			} else if(chan->lastbufsize < f->datalen) {
-				free(chan->lastbuf);
+				ast_free(chan->lastbuf);
 				chan->lastbufsize = f->datalen;
-				chan->lastbuf = (char*)malloc(chan->lastbufsize);
+				chan->lastbuf = (char*)ast_malloc(chan->lastbufsize);
 			}
 			memcpy(chan->lastbuf, f->data, f->datalen);
 			chan->lastbuflen = f->datalen; 
@@ -590,11 +590,11 @@ static void jb_get_and_deliver(struct ast_channel *chan, struct timeval *mynow)
 				//save last frame
 				if(!chan->lastbuf) {
 					chan->lastbufsize = f->datalen > 1600 ? f->datalen : 1600;
-					chan->lastbuf = (char*)malloc(chan->lastbufsize);
+					chan->lastbuf = (char*)ast_malloc(chan->lastbufsize);
 				} else if(chan->lastbufsize < f->datalen) {
-					free(chan->lastbuf);
+					ast_free(chan->lastbuf);
 					chan->lastbufsize = f->datalen;
-					chan->lastbuf = (char*)malloc(chan->lastbufsize);
+					chan->lastbuf = (char*)ast_malloc(chan->lastbufsize);
 				}
 				memcpy(chan->lastbuf, f->data, f->datalen);
 				chan->lastbuflen = f->datalen;
@@ -712,7 +712,7 @@ static int create_jb(struct ast_channel *chan, struct ast_frame *frr, struct tim
 void ast_jb_destroy(struct ast_channel *chan)
 {
 	if(chan->lastbuf) {
-		free(chan->lastbuf);
+		ast_free(chan->lastbuf);
 		chan->lastbuf = NULL;
 		chan->lastbufsize = 0;
 		chan->lastbuflen = 0;

@@ -187,7 +187,7 @@ struct ast_smoother *ast_smoother_new(int size)
 	struct ast_smoother *s;
 	if (size < 1)
 		return NULL;
-	if ((s = malloc(sizeof(*s))))
+	if ((s = ast_malloc(sizeof(*s))))
 		ast_smoother_reset(s, size);
 	return s;
 }
@@ -294,7 +294,7 @@ struct ast_frame *ast_smoother_read(struct ast_smoother *s)
 
 void ast_smoother_free(struct ast_smoother *s)
 {
-	free(s);
+	ast_free(s);
 }
 
 /*
@@ -302,7 +302,7 @@ static struct ast_frame *ast_frame_header_new(void)
 {
 	struct ast_frame *f;
 
-	if (!(f = calloc(1, sizeof(*f))))
+	if (!(f = ast_calloc(1, sizeof(*f))))
 		return NULL;
 
 	f->mallocd_hdr_len = sizeof(*f);
@@ -318,9 +318,9 @@ static void frame_cache_cleanup(void *data)
 	struct ast_frame *f;
 
 	while ((f = AST_LIST_REMOVE_HEAD(&frames->list, frame_list)))
-		free(f);
+		ast_free(f);
 	
-	free(frames);
+	ast_free(frames);
 }
 #endif
 
@@ -332,14 +332,14 @@ static void __frame_free(struct ast_frame *fr, int cache)
 	
 	if (fr->mallocd & AST_MALLOCD_DATA) {
 		if (fr->data) 
-			free(fr->data - fr->offset);
+			ast_free(fr->data - fr->offset);
 	}
 	if (fr->mallocd & AST_MALLOCD_SRC) {
 		if (fr->src)
-			free((void *) fr->src);
+			ast_free((void *) fr->src);
 	}
 	if (fr->mallocd & AST_MALLOCD_HDR) {
-		free(fr);
+		ast_free(fr);
 	}
 }
 
@@ -375,7 +375,7 @@ struct ast_frame *ast_frdup(const struct ast_frame *f)
 		len += srclen + 1;
 
 	if (!buf) {
-		if (!(buf = calloc(1, len)))
+		if (!(buf = ast_calloc(1, len)))
 			return NULL;
 		out = buf;
 		out->mallocd_hdr_len = len;

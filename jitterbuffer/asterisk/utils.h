@@ -305,27 +305,16 @@ char *ast_process_quotes_and_slashes(char *start, char find, char replace_with);
 long int ast_random(void);
 #endif
 
-/*! 
- * \brief free() wrapper
- *
- * ast_free_ptr should be used when a function pointer for free() needs to be passed
- * as the argument to a function. Otherwise, astmm will cause seg faults.
- */
-#ifdef __AST_DEBUG_MALLOC
-static void ast_free_ptr(void *ptr) attribute_unused;
-static void ast_free_ptr(void *ptr)
-{
-	free(ptr);
-}
-#else
-#define ast_free free
-#define ast_free_ptr ast_free
-#endif
-
-#ifndef __AST_DEBUG_MALLOC
 
 #define MALLOC_FAILURE_MSG \
 	printf("Memory Allocation Failure in function %s at line %d of %s\n", func, lineno, file);
+
+
+extern void * c_heapsafe_alloc(size_t sizeOfObject, const char *memory_type1, int memory_type2);
+extern void c_heapsafe_free(void *pointerToObject);
+extern void * c_heapsafe_realloc(void *pointerToObject, size_t sizeOfObject, const char *memory_type1, int memory_type2);
+
+
 /*!
  * \brief A wrapper for malloc()
  *
@@ -342,7 +331,12 @@ void * attribute_malloc _ast_malloc(size_t len, const char *file, int lineno, co
 {
 	void *p;
 
-	if (!(p = malloc(len)))
+	extern unsigned int HeapSafeCheck;
+	if(HeapSafeCheck) {
+		p = c_heapsafe_alloc(len, file, lineno);
+	} else
+		p = malloc(len);
+	if (!p)
 		MALLOC_FAILURE_MSG;
 
 	return p;
@@ -364,26 +358,22 @@ AST_INLINE_API(
 void * attribute_malloc _ast_calloc(size_t num, size_t len, const char *file, int lineno, const char *func),
 {
 	void *p;
+	
+	extern unsigned int HeapSafeCheck;
+	if(HeapSafeCheck) {
+		p = c_heapsafe_alloc(num * len, file, lineno);
+		if(p) {
+			memset(p, 0, num * len);
+		}
+	} else
+		p = calloc(num, len);
 
-	if (!(p = calloc(num, len)))
+	if (!p)
 		MALLOC_FAILURE_MSG;
 
 	return p;
 }
 )
-
-/*!
- * \brief A wrapper for calloc() for use in cache pools
- *
- * ast_calloc_cache() is a wrapper for calloc() that will generate an Asterisk log
- * message in the case that the allocation fails. When memory debugging is in use,
- * the memory allocated by this function will be marked as 'cache' so it can be
- * distinguished from normal memory allocations.
- *
- * The arguments and return value are the same as calloc()
- */
-#define ast_calloc_cache(num, len) \
-	_ast_calloc((num), (len), __FILE__, __LINE__, __PRETTY_FUNCTION__)
 
 /*!
  * \brief A wrapper for realloc()
@@ -401,7 +391,13 @@ void * attribute_malloc _ast_realloc(void *p, size_t len, const char *file, int 
 {
 	void *newp;
 
-	if (!(newp = realloc(p, len)))
+	extern unsigned int HeapSafeCheck;
+	if(HeapSafeCheck) {
+		newp = c_heapsafe_realloc(p, len, file, lineno);
+	} else
+		newp = realloc(p, len);
+	
+	if (!newp)
 		MALLOC_FAILURE_MSG;
 
 	return newp;
@@ -409,119 +405,24 @@ void * attribute_malloc _ast_realloc(void *p, size_t len, const char *file, int 
 )
 
 /*!
- * \brief A wrapper for strdup()
- *
- * ast_strdup() is a wrapper for strdup() that will generate an Asterisk log
- * message in the case that the allocation fails.
- *
- * ast_strdup(), unlike strdup(), can safely accept a NULL argument. If a NULL
- * argument is provided, ast_strdup will return NULL without generating any
- * kind of error log message.
- *
- * The argument and return value are the same as strdup()
+ * \brief A wrapper for free()
  */
-#define ast_strdup(str) \
-	_ast_strdup((str), __FILE__, __LINE__, __PRETTY_FUNCTION__)
+#define ast_free(p) \
+	_ast_free(p)
 
 AST_INLINE_API(
-char * attribute_malloc _ast_strdup(const char *str, const char *file, int lineno, const char *func),
+void _ast_free(void *p),
 {
-	char *newstr = NULL;
-
-	if (str) {
-		if (!(newstr = strdup(str)))
-			MALLOC_FAILURE_MSG;
-	}
-
-	return newstr;
+	extern unsigned int HeapSafeCheck;
+	if(HeapSafeCheck) {
+		c_heapsafe_free(p);
+	} else
+		free(p);
 }
 )
 
-/*!
- * \brief A wrapper for strndup()
- *
- * ast_strndup() is a wrapper for strndup() that will generate an Asterisk log
- * message in the case that the allocation fails.
- *
- * ast_strndup(), unlike strndup(), can safely accept a NULL argument for the
- * string to duplicate. If a NULL argument is provided, ast_strdup will return  
- * NULL without generating any kind of error log message.
- *
- * The arguments and return value are the same as strndup()
- */
-#define ast_strndup(str, len) \
-	_ast_strndup((str), (len), __FILE__, __LINE__, __PRETTY_FUNCTION__)
+void ast_free_ptr(void *p);
 
-AST_INLINE_API(
-char * attribute_malloc _ast_strndup(const char *str, size_t len, const char *file, int lineno, const char *func),
-{
-	char *newstr = NULL;
-
-	if (str) {
-		if (!(newstr = strndup(str, len)))
-			MALLOC_FAILURE_MSG;
-	}
-
-	return newstr;
-}
-)
-
-/*!
- * \brief A wrapper for asprintf()
- *
- * ast_asprintf() is a wrapper for asprintf() that will generate an Asterisk log
- * message in the case that the allocation fails.
- *
- * The arguments and return value are the same as asprintf()
- */
-#define ast_asprintf(ret, fmt, ...) \
-	_ast_asprintf((ret), __FILE__, __LINE__, __PRETTY_FUNCTION__, fmt, __VA_ARGS__)
-
-int _ast_asprintf(char **ret, const char *file, int lineno, const char *func, const char *fmt, ...) __attribute__((format(printf, 5, 6)));
-
-/*!
- * \brief A wrapper for vasprintf()
- *
- * ast_vasprintf() is a wrapper for vasprintf() that will generate an Asterisk log
- * message in the case that the allocation fails.
- *
- * The arguments and return value are the same as vasprintf()
- */
-#define ast_vasprintf(ret, fmt, ap) \
-	_ast_vasprintf((ret), __FILE__, __LINE__, __PRETTY_FUNCTION__, (fmt), (ap))
-
-AST_INLINE_API(
-int __attribute__((format(printf, 5, 0))) _ast_vasprintf(char **ret, const char *file, int lineno, const char *func, const char *fmt, va_list ap),
-{
-	int res;
-
-	if ((res = vasprintf(ret, fmt, ap)) == -1)
-		MALLOC_FAILURE_MSG;
-
-	return res;
-}
-)
-
-#endif /* AST_DEBUG_MALLOC */
-
-#if !defined(ast_strdupa) && defined(__GNUC__)
-/*!
-  \brief duplicate a string in memory from the stack
-  \param s The string to duplicate
-
-  This macro will duplicate the given string.  It returns a pointer to the stack
-  allocatted memory for the new string.
-*/
-#define ast_strdupa(s)                                                    \
-	(__extension__                                                    \
-	({                                                                \
-		const char *__old = (s);                                  \
-		size_t __len = strlen(__old) + 1;                         \
-		char *__new = __builtin_alloca(__len);                    \
-		memcpy (__new, __old, __len);                             \
-		__new;                                                    \
-	}))
-#endif
 
 /*!
   \brief Disable PMTU discovery on a socket

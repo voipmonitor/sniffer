@@ -1969,6 +1969,10 @@ getwav:
 		char *test = new char[10];
 		delete [] test;
 		delete [] test;
+	} else if(strstr(buf, "memcrash_test_3") != NULL) {
+		char *test = new char[10];
+		delete [] test;
+		test[0] = 1;
 	} else {
 		if ((size = sendvm(client, sshchannel, "command not found\n", 18, 0)) == -1){
 			cerr << "Error sending data to client" << endl;

@@ -385,8 +385,8 @@ static void lock_info_destroy(void *data)
 	}
 
 	pthread_mutex_destroy(&lock_info->lock);
-	free((void *) lock_info->thread_name);
-	free(lock_info);
+	ast_free((void *) lock_info->thread_name);
+	ast_free(lock_info);
 }
 
 /*!
@@ -633,7 +633,7 @@ static int handle_show_locks(int fd, int argc, char *argv[])
 
 	ast_cli(fd, "%s", str->str);
 
-	free(str);
+	ast_free(str);
 
 	return RESULT_SUCCESS;
 }
@@ -1069,11 +1069,11 @@ void circbuf_init(pvt_circbuf *pvt, size_t capacity) {
         pvt->end_index_ = 0;
         pvt->size_ = 0;
         pvt->capacity_ = capacity;
-        pvt->data_ = (char*)malloc(capacity * sizeof(char));
+        pvt->data_ = (char*)ast_malloc(capacity * sizeof(char));
 }
 
 void circbuf_destroy(pvt_circbuf *pvt){
-        free(pvt->data_);
+        ast_free(pvt->data_);
 }
 
 // Return number of bytes read.
@@ -1135,5 +1135,11 @@ size_t circbuf_write(pvt_circbuf *pvt, const char *data, size_t bytes) {
 
 size_t circbuf_size(pvt_circbuf *pvt) { return pvt->size_; }
 size_t circbuf_capacity(pvt_circbuf *pvt) { return pvt->capacity_; }
+
+
+void ast_free_ptr(void *p) {
+	_ast_free(p);
+}
+
 
 #endif

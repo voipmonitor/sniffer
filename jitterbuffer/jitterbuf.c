@@ -117,7 +117,7 @@ jitterbuf * jb_new()
 {
 	jitterbuf *jb;
 
-	if (!(jb = calloc(1, sizeof(*jb)))) 
+	if (!(jb = ast_calloc(1, sizeof(*jb)))) 
 		return NULL;
 
 	jb_reset(jb);
@@ -135,12 +135,12 @@ void jb_destroy(jitterbuf *jb)
 	frame = jb->free;
 	while (frame != NULL) {
 		jb_frame *next = frame->next;
-		free(frame);
+		ast_free(frame);
 		frame = next;
 	}
 
 	/* free ourselves! */ 
-	free(jb);
+	ast_free(jb);
 }
 
 
@@ -369,7 +369,7 @@ static int queue_put(jitterbuf *jb, void *data, const enum jb_frame_type type, l
 
 	if ((frame = jb->free)) {
 		jb->free = frame->next;
-	} else if (!(frame = malloc(sizeof(*frame)))) {
+	} else if (!(frame = ast_malloc(sizeof(*frame)))) {
 		jb_err("cannot allocate frame\n");
 		return 0;
 	}
