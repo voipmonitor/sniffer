@@ -473,44 +473,55 @@ void HeapSafeMemsetError(const char *errorString, const char *file, unsigned int
 std::string getMemoryStat(bool all) {
 	std::ostringstream outStr;
 	if(HeapSafeCheck & _HeapSafeErrorBeginEnd && sverb.memory_stat) {
+		u_int64_t sum = 0;
 		unsigned int tid = get_unix_tid();
 		__sync_fetch_and_add(&threadRecursion[tid], 1);
 		while(__sync_lock_test_and_set(&memoryStat_sync, 1));
 		std::map<std::string, u_int32_t>::iterator iter = memoryStatType.begin();
 		while(iter != memoryStatType.end()) {
 			if(memoryStat[iter->second] > (!all && sverb.memory_stat_ignore_limit ? (unsigned)sverb.memory_stat_ignore_limit : 0)) {
+				u_int64_t memSize = memoryStat[iter->second];
 				outStr << std::fixed
 				       << std::left << std::setw(30) << iter->first << " : " 
-				       << std::right << std::setw(16) << addThousandSeparators(memoryStat[iter->second])
+				       << std::right << std::setw(16) << addThousandSeparators(memSize)
 				       << std::endl;
+				sum += memSize;
 			}
 			++iter;
 		}
 		std::map<u_int64_t, u_int32_t>::iterator iterOther = memoryStatOtherType.begin();
 		while(iterOther != memoryStatOtherType.end()) {
 			if(memoryStatOther[iterOther->second] > (!all && sverb.memory_stat_ignore_limit ? (unsigned)sverb.memory_stat_ignore_limit : 0)) {
+				u_int64_t memSize = memoryStatOther[iterOther->second];
 				outStr << std::fixed
 				       << std::left << memoryStatOtherName[iterOther->second] << " : " 
-				       << std::right << addThousandSeparators(memoryStatOther[iterOther->second])
+				       << std::right << addThousandSeparators(memSize)
 				       << std::endl;
+				sum += memSize;
 			}
 			++iterOther;
 		}
 		__sync_lock_release(&memoryStat_sync);
 		if(memoryStatOtherSum > (!all && sverb.memory_stat_ignore_limit ? (unsigned)sverb.memory_stat_ignore_limit : 0)) {
+			u_int64_t memSize = memoryStatOtherSum;
 			if(MCB_STACK) {
 				outStr << std::fixed
 				       << std::left << "other" << " : " 
-				       << std::right << addThousandSeparators(memoryStatOtherSum)
+				       << std::right << addThousandSeparators(memSize)
 				       << std::endl;
 			} else {
 				outStr << std::fixed
 				       << std::left << std::setw(30) << "other" << " : " 
-				       << std::right << std::setw(16) << addThousandSeparators(memoryStatOtherSum)
+				       << std::right << std::setw(16) << addThousandSeparators(memSize)
 				       << std::endl;
 			}
+			sum += memSize;
 		}
 		__sync_fetch_and_sub(&threadRecursion[tid], 1);
+		outStr << std::fixed
+		       << std::left << std::setw(30) << "sum" << " : " 
+		       << std::right << std::setw(16) << addThousandSeparators(sum)
+		       << std::endl;
 		return(outStr.str());
 	} else {
 		return("memory stat is not activated\n");
