@@ -285,6 +285,8 @@ RTP::RTP(int sensor_id)
 	avg_ptime_count = 0;
 
 	last_markbit = 0;
+
+	skip = false;
 }
 
 /* destructor */

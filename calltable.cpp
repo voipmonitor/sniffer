@@ -1484,6 +1484,26 @@ Call::convertRawToWav() {
 			rawl.codec = codec;
 			rawl.filename = raw;
 
+			// check if this stream is not duplicated in caller or called (ssrc is key). This is workaround for netsapiens sbc which uses the same destination port when forwarding two legs 
+			for(int k = 0; k < ssrc_n; k++) {
+				if(ssrc_index == k or rtp[k]->skip) continue; // do not compare with ourself or already removed RTP
+				if(rtp[ssrc_index]->ssrc == rtp[k]->ssrc) {
+					// found another stream with the same SSRC 
+
+					// check if stream A.srcip:srcport == B.dstip:dstport 
+					if(rtp[ssrc_index]->saddr == rtp[k]->daddr and rtp[ssrc_index]->sport == rtp[k]->dport) {
+						// remove B stream
+						if(verbosity > 1) syslog(LOG_ERR, "Removing stream with SSRC[%x] srcip[long2ip(%u)]:[%u]\n", rtp[k]->ssrc, rtp[k]->saddr, rtp[k]->sport);
+						rtp[k]->skip = true;
+					// check if stream B.srcip:srcport == A.dstip:dstport 
+					} else if(rtp[k]->saddr == rtp[ssrc_index]->daddr and rtp[k]->sport == rtp[ssrc_index]->dport) {
+						// remove A stream
+						if(verbosity > 1) syslog(LOG_ERR, "Removing stream with SSRC[%x] srcip[long2ip(%u)]:[%u]\n", rtp[ssrc_index]->ssrc, rtp[ssrc_index]->saddr, rtp[ssrc_index]->sport);
+						rtp[ssrc_index]->skip = true;
+					}
+				}
+			}
+
 			if(iter > 0) {
 				if(ssrc_index >= ssrc_n ||
 				   last_ssrc_index >= (unsigned)ssrc_n) {
@@ -1500,10 +1520,14 @@ Call::convertRawToWav() {
 					if(!sverb.noaudiounlink) unlink(raw);
 					//syslog(LOG_NOTICE, "ignoring duplicate stream [%s] ssrc[%x] ssrc[%x] ast_tvdiff_ms(lasttv, tv0)=[%d]", raw, rtp[last_ssrc_index]->ssrc, rtp[ssrc_index]->ssrc, ast_tvdiff_ms(lasttv, tv0));
 				} else {
-					raws.push_back(rawl);
+					if(!rtp[rawl.ssrc_index]->skip) {
+						raws.push_back(rawl);
+					}
 				}
 			} else {
-				raws.push_back(rawl);
+				if(!rtp[rawl.ssrc_index]->skip) {
+					raws.push_back(rawl);
+				}
 
 			}
 

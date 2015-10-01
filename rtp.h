@@ -199,6 +199,7 @@ public:
 	int forcemark;
 	char ignore;
 	uint8_t dscp;
+	bool skip;
 
 	/* RTCP data */
 	struct rtcp_t {
