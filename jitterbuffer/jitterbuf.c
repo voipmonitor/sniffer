@@ -78,13 +78,13 @@ void jb_reset(jitterbuf *jb)
 	frame = jb->free;
 	while (frame != NULL) {
 		jb_frame *next = frame->next;
-		free(frame);
+		ast_free(frame);
 		frame = next;
 	}
 	frame = jb->frames;
 	while (frame != NULL) {
 		jb_frame *next = frame->next;
-		free(frame);
+		ast_free(frame);
 		frame = next;
 	}
 	jb->free = NULL;
