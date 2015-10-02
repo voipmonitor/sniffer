@@ -996,8 +996,7 @@ static int jb_remove_adaptive(void *jb, struct ast_frame **fout)
 
 static void jb_force_resynch_adaptive(void *jb)
 {
-	jitterbuf *adaptivejb = jb;
-	jb_reset(adaptivejb);
+	jb_empty_and_reset_adaptive(jb);
 }
 
 static void jb_empty_and_reset_adaptive(void *jb)
