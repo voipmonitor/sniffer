@@ -1,3 +1,8 @@
+12.4.5 1.10.2015
+=================
+- fix memory leak when adaptive jitterbuffer simulator is enabled (which is by default) - all versions >= 12.4
+
+
 12.4.4 1.10.2015
 =================
 - fix audio decode (duplicated sound) for case when the same RTP destination port is used by SIP UA for both legs (workaround for netsapiens)
