@@ -6792,7 +6792,6 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "sip_send", NULL))) {
 		char *pointToPortSeparator = (char*)strchr(value, ':');
 		if(pointToPortSeparator) {
-			opt_nocdr = 1;
 			*pointToPortSeparator = 0;
 			int port = atoi(pointToPortSeparator + 1);
 			if(*value && port) {
