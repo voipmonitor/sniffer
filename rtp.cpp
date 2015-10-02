@@ -285,6 +285,8 @@ RTP::RTP(int sensor_id)
 	avg_ptime_count = 0;
 
 	last_markbit = 0;
+
+	skip = false;
 }
 
 /* destructor */
@@ -1549,26 +1551,6 @@ RTP::update_stats() {
 		s->fdelay += transit;
 	}
 
-	if((lost - stats.last_lost) > 200 and (abs((int)tsdiff2) < 1000)) {
-		// it cannot be loss because difference is < 1000ms and loss is too big. It is probably sequence reset without mark bit 
-		//printf("lost[%d] last_lost[%d] tsdiff2[%f] seq[%lu] rec[%lu] max_seq[%lu] base_seq[%lu] cyc[%lu]\n", lost, stats.last_lost, tsdiff2, seq, s->received, s->max_seq, s->base_seq, s->cycles);
-		lost = 0;
-
-		s->lastTimeStamp = getTimestamp() - samplerate / 1000 * packetization;
-		struct timeval tmp = ast_tvadd(header->ts, ast_samp2tv(packetization, 1000));
-		memcpy(&s->lastTimeRec, &tmp, sizeof(struct timeval));
-		s->cycles = s->cycles - s->base_seq + s->max_seq;
-		s->base_seq = seq;
-		s->max_seq = seq;
-		if(sverb.rtp_set_base_seq) {
-			cout << "RTP - packet_lost - set base_seq #1" 
-			     << " ssrc: " << hex << this->ssrc << dec << " "
-			     << " src: " << inet_ntostring(htonl(saddr)) << " : " << sport
-			     << " dst: " << inet_ntostring(htonl(daddr)) << " : " << dport
-			     << endl;
-		}
-	}
-
 	//printf("seq[%u] adelay[%u]\n", seq, adelay);
 
 	/* Jitterbuffer calculation
@@ -1670,6 +1652,28 @@ RTP::init_seq(u_int16_t seq) {
 /* this function is borrowed from the http://www.ietf.org/rfc/rfc3550.txt */
 int
 RTP::update_seq(u_int16_t seq) {
+
+	struct timeval tsdiff;	
+	double tsdiff2;
+	tsdiff2 = timeval_subtract(&tsdiff, header->ts, s->lastTimeRecJ) ? -timeval2micro(tsdiff)/1000.0 : timeval2micro(tsdiff)/1000.0;
+
+	int lost = int((s->cycles + seq - (s->base_seq + 1)) - s->received);
+//	printf("seq[%u] lost[%u] tsdiff2[%f] tsdiff-sec[%d] tsdiff-miscro[%d] header->ts[%u.%u] s->lastTimeRecJ[%u.%u]\n", seq, lost, tsdiff2, tsdiff.tv_sec, tsdiff.tv_usec, header->ts.tv_sec, header->ts.tv_usec, s->lastTimeRecJ.tv_sec, s->lastTimeRecJ.tv_usec);
+	if((lost - stats.last_lost) > 200 and (abs((int)tsdiff2) < 1000)) {
+		// it cannot be loss because difference is < 1000ms and loss is too big. It is probably sequence reset without mark bit 
+		//printf("lost[%d] last_lost[%d] tsdiff2[%f] seq[%u] rec[%lu] max_seq[%u] base_seq[%u] cyc[%u] nlost[%d]\n", lost, stats.last_lost, tsdiff2, seq, s->received, s->max_seq, s->base_seq, s->cycles, int((s->cycles + s->max_seq - (s->base_seq + 1)) - s->received));
+		s->cycles = s->cycles - s->base_seq + s->max_seq;
+		s->base_seq = seq;
+		s->max_seq = seq;
+		if(sverb.rtp_set_base_seq) {
+			cout << "RTP - packet_lost - set base_seq #1" 
+			     << " ssrc: " << hex << this->ssrc << dec << " "
+			     << " src: " << inet_ntostring(htonl(saddr)) << " : " << sport
+			     << " dst: " << inet_ntostring(htonl(daddr)) << " : " << dport
+			     << endl;
+		}
+	}
+
 	if(first) {
 		first = false;
 		init_seq(seq);
