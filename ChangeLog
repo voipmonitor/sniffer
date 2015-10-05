@@ -2,6 +2,8 @@
 ==============
 - fix low MOS score for AMR NB codec when sending VAD frames
 - add AMR NB audio decode support
+- save 1GB RAM for each 5000 concurrent calls with 1.5% compress ratio tradeoff
+- Added option to disable mysql tables check and upgrade after service start (disable_dbupgradecheck = yes) 
 
 
 12.4.5 1.10.2015
