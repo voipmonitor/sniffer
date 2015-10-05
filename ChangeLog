@@ -1,5 +1,11 @@
+12.5 5.10.2015
+==============
+- fix low MOS score for AMR NB codec when sending VAD frames
+- add AMR NB audio decode support
+
+
 12.4.5 1.10.2015
-=================
+================
 - fix memory leak when adaptive jitterbuffer simulator is enabled (which is by default) - all versions >= 12.4
 
 
