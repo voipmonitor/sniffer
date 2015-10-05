@@ -14,6 +14,9 @@ extern int opt_pcap_dump_tar_rtp_use_pos;
 extern int opt_pcap_dump_tar_graph_use_pos;
 
 
+bool lzo_1_11_compress = true;
+
+
 /* not tested - obsolete ?
 void DynamicBuffer::cout(bool itemSeparator) {
 	DynamicBufferItem *iter = this->first;
@@ -161,7 +164,7 @@ void CompressStream::initCompress() {
 		break;
 	case lzo:
 		if(!this->lzoWrkmem) {
-			this->lzoWrkmem = new FILE_LINE u_char[LZO1X_1_MEM_COMPRESS];
+			this->lzoWrkmem = new FILE_LINE u_char[lzo_1_11_compress ? LZO1X_1_11_MEM_COMPRESS : LZO1X_1_MEM_COMPRESS];
 			createCompressBuffer();
 		}
 		break;
@@ -443,7 +446,9 @@ bool CompressStream::compress(char *data, u_int32_t len, bool flush, CompressStr
 		while(chunk_offset < len) {
 			size_t chunk_len = min((size_t)this->compressBufferLength, (size_t)(len - chunk_offset));
 			lzo_uint compressLength = this->compressBufferBoundLength;
-			int lzoRslt = lzo1x_1_compress((const u_char*)data + chunk_offset, chunk_len, (u_char*)this->compressBuffer, &compressLength, this->lzoWrkmem);
+			int lzoRslt = lzo_1_11_compress ?
+				       lzo1x_1_11_compress((const u_char*)data + chunk_offset, chunk_len, (u_char*)this->compressBuffer, &compressLength, this->lzoWrkmem) :
+				       lzo1x_1_compress((const u_char*)data + chunk_offset, chunk_len, (u_char*)this->compressBuffer, &compressLength, this->lzoWrkmem);
 			if(lzoRslt == LZO_E_OK) {
 				extern unsigned int HeapSafeCheck;
 				if(!this->processed_len && this->autoPrefixFile) {
