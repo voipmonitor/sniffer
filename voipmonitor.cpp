@@ -165,6 +165,7 @@ int debugclean = 0;
 extern Calltable *calltable;
 extern volatile int calls_counter;
 unsigned int opt_openfile_max = 65535;
+int opt_disable_dbupgradecheck = 0; // When voipmonitor started this disable mysql db check/upgrade (if set to 1)
 int opt_packetbuffered = 0;	// Make .pcap files writing ‘‘packet-buffered’’ 
 				// more slow method, but you can use partitialy 
 				// writen file anytime, it will be consistent.
@@ -2033,7 +2034,7 @@ int main(int argc, char *argv[]) {
 				sql_noerror = 0;
 			}
 			sqlDb->checkDbMode();
-			if(!opt_database_backup) {
+			if(!opt_database_backup & !opt_disable_dbupgradecheck) {
 				if(sqlDb->createSchema()) {
 					sqlDb->checkSchema();
 				} else {
@@ -3917,6 +3918,7 @@ void cConfig::addConfigItems() {
 			addConfigItem((new cConfigItem_yesno("query_cache"))
 				->setDefaultValueStr("no"));
 			advanced();
+				addConfigItem(new cConfigItem_yesno("disable_dbupgradecheck", &opt_disable_dbupgradecheck));
 				addConfigItem(new cConfigItem_yesno("only_cdr_next", &opt_only_cdr_next));
 				addConfigItem(new cConfigItem_yesno("check_duplicity_callid_in_next_pass_insert", &opt_cdr_check_duplicity_callid_in_next_pass_insert));
 				addConfigItem(new cConfigItem_yesno("cdr_check_duplicity_callid_in_next_pass_insert", &opt_cdr_check_duplicity_callid_in_next_pass_insert));
@@ -5835,6 +5837,9 @@ int eval_config(string inistr) {
 		if(!opt_nocdr) {
 			opt_nocdr = yesno(value);
 		}
+	}
+	if((value = ini.GetValue("general", "disable_dbupgradecheck", NULL))) {
+		opt_disable_dbupgradecheck  = yesno(value);
 	}
 	if((value = ini.GetValue("general", "only_cdr_next", NULL))) {
 		opt_only_cdr_next = yesno(value);
