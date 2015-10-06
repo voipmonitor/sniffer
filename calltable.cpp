@@ -1770,13 +1770,24 @@ Call::convertRawToWav() {
 				if(opt_keycheck[0] != '\0') {
 					snprintf(cmd, cmd_len, "vmcodecs %s opus \"%s\" \"%s\" 48000", opt_keycheck, rawf->filename.c_str(), wav);
 				} else {
-					snprintf(cmd, cmd_len, "vmcodecs-opus %s a opus \"%s\" \"%s\" 48000", opt_keycheck, rawf->filename.c_str(), wav);
+					snprintf(cmd, cmd_len, "voipmonitor-opus \"%s\" \"%s\" 48000", rawf->filename.c_str(), wav);
 					cout << cmd << "\n";
-					//snprintf(cmd, cmd_len, "voipmonitor-opus \"%s\" \"%s\" 48000", rawf->filename.c_str(), wav);
 				}
 				cmd[cmd_len] = 0;
 				samplerate = 48000;
 				if(verbosity > 1) syslog(LOG_ERR, "Converting OPUS48 to WAV.\n");
+				system(cmd);
+				break;
+			case PAYLOAD_AMR:
+				if(opt_keycheck[0] != '\0') {
+					snprintf(cmd, cmd_len, "vmcodecs %s amrnb \"%s\" \"%s\" 8000", opt_keycheck, rawf->filename.c_str(), wav);
+				} else {
+					snprintf(cmd, cmd_len, "voipmonitor-amrnb \"%s\" \"%s\" 8000", rawf->filename.c_str(), wav);
+					cout << cmd << "\n";
+				}
+				cmd[cmd_len] = 0;
+				samplerate = 8000;
+				if(verbosity > 1) syslog(LOG_ERR, "Converting AMRNB[%s] to WAV[%s].\n", rawf->filename.c_str(), wav);
 				system(cmd);
 				break;
 			default:

@@ -1159,6 +1159,10 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 			   typical sitation is for 60ms packetization and 30ms SID packetization */
 			payload_data = data + sizeof(RTPFixedHeader);
 			sid = (unsigned char)payload_data[0] & 2;
+		} else if(curpayload == PAYLOAD_AMR) {
+			if(payload_len == 7) {
+				sid = 1;
+			}
 		} else {
 			sid = false;
 			default_packetization = 20;
@@ -1371,10 +1375,17 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 				}
 			} else if(curpayload == PAYLOAD_GSM) {
 				curpacketization = payload_len / 33 * 20;
+			} else if(codec == PAYLOAD_AMR) {
+				if(payload_len > 7) {
+					//printf("curpac[%u]\n", curpacketization);
+					curpacketization = (getTimestamp() - last_ts) / 8;
+				} else {
+					curpacketization = packetization;
+				}
 			} else {
 				curpacketization = (getTimestamp() - last_ts) / (samplerate / 1000);
-				if(verbosity > 3) printf("curpacketization[%u] = (getTimestamp()[%u] - last_ts[%u]) / (samplerate[%u] / 1000)\n", curpacketization, getTimestamp(), last_ts, samplerate);
 			}
+			if(verbosity > 3) printf("curpacketization[%u] = (getTimestamp()[%u] - last_ts[%u]) / (samplerate[%u] / 1000)\n", curpacketization, getTimestamp(), last_ts, samplerate);
 
 			if(curpacketization != packetization and curpacketization % 10 == 0 and curpacketization >= 10 and curpacketization <= 120) {
 				if(verbosity > 3) printf("[%x] changing packetization:[%d]->[%d]\n", getSSRC(), curpacketization, packetization);
