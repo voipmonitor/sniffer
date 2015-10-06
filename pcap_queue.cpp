@@ -1874,12 +1874,11 @@ bool PcapQueue::writePcapToFifo(pcap_pkthdr_plus *header, u_char *packet) {
 }
 
 bool PcapQueue::initThread(void *arg, unsigned int arg2, string *error) {
-	return((!this->enableMainThread || this->openFifoForRead(arg, arg2)) &&
-	       (!this->enableWriteThread || this->openFifoForWrite(arg, arg2)));
+	return(!this->enableMainThread || this->openFifoForRead(arg, arg2));
 }
 
 bool PcapQueue::initWriteThread(void *arg, unsigned int arg2) {
-	return(this->openFifoForWrite(arg, arg2));
+	return(!this->enableWriteThread || this->openFifoForWrite(arg, arg2));
 }
 
 bool PcapQueue::openFifoForRead(void *arg, unsigned int arg2) {
