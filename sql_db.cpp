@@ -3686,7 +3686,7 @@ bool SqlDb_mysql::createSchema(SqlDb *sourceDb) {
 			`expires_at`  datetime NULL DEFAULT NULL,\
 			`state`  tinyint unsigned NULL DEFAULT NULL,\
 			`ua_id` int unsigned DEFAULT NULL,\
-			`rrd_avg` int unsigned DEFAULT NULL,\
+			`rrd_avg` mediumint unsigned DEFAULT NULL,\
 			`rrd_count` tinyint unsigned DEFAULT NULL,\
 		PRIMARY KEY (`ID`),\
 		KEY `calldate` (`calldate`),\
@@ -4083,7 +4083,7 @@ bool SqlDb_mysql::createSchema(SqlDb *sourceDb) {
 	
 	//12.5
 	outStrAlter << "ALTER TABLE register \
-		ADD `rrd_avg` int unsigned DEFAULT NULL;" <<endl;
+		ADD `rrd_avg` mediumint unsigned DEFAULT NULL;" <<endl;
 	outStrAlter << "ALTER TABLE register \
 		ADD `rrd_count` tinyint unsigned DEFAULT NULL;" <<endl;
 	outStrAlter << "ALTER TABLE register \
@@ -4378,7 +4378,7 @@ bool SqlDb_mysql::createSchema(SqlDb *sourceDb) {
 				DECLARE _state INT; \
 				DECLARE _expires_at DATETIME; \
 				DECLARE _expired INT; \
-				DECLARE _rrd_avg INT; \
+				DECLARE _rrd_avg MEDIUMINT; \
 				DECLARE _rrd_count TINYINT; \
 				SELECT ID, \
 				       state, \
@@ -4495,7 +4495,7 @@ bool SqlDb_mysql::createSchema(SqlDb *sourceDb) {
 			  IN cdr_ua VARCHAR(255), \
 			  IN fname BIGINT, \
 			  IN id_sensor INT, \
-			  IN regrrddiff INT)",true);
+			  IN regrrddiff MEDIUMINT)",true);  //rrd_avg will be computed inside CALL
 
 	//END SQL SCRIPTS
 
@@ -5404,7 +5404,7 @@ bool SqlDb_odbc::createSchema(SqlDb *sourceDb) {
 			expires_at datetime NULL,\
 			state tinyint NULL,\
    			ua_id int NULL,\
-                        rrd_avg int NULL,\
+                        rrd_avg mediumint NULL,\
                         rrd_count tinyint NULL);\
 		CREATE INDEX calldate ON register (calldate);\
 		CREATE INDEX sipcallerip ON register (sipcallerip);\
