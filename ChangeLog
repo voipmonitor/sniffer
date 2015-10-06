@@ -1,3 +1,8 @@
+12.5.2 6.10.2015
+================
+- do not report packet loss and low MOS score for case where RTP stream changes SSRC back and forth which happens on some rtp proxies or asterisk when call is redirecting 
+
+
 12.5.1 6.10.2015
 ================
 - fix mirroring mode when the receiver can sometimes refuse connection from remote sniffer (broken since >= 12.1) 
