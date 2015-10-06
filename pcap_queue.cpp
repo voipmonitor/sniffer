@@ -185,6 +185,7 @@ int opt_pcap_queue_dequeu_method			= 2;
 int opt_pcap_dispatch					= 0;
 int opt_pcap_queue_iface_dedup_separate_threads_extend__ext_mode
 							= 0;
+int opt_pcap_queue_force_t1_thread			= false;
 
 size_t _opt_pcap_queue_block_offset_inc_size		= opt_pcap_queue_block_max_size / AVG_PACKET_SIZE / 4;
 size_t _opt_pcap_queue_block_restore_buffer_inc_size	= opt_pcap_queue_block_max_size / 4;
@@ -550,18 +551,23 @@ bool pcap_block_store::uncompress_lz4() {
 
 
 pcap_block_store_queue::pcap_block_store_queue() {
+	extern int terminating;
+	this->queueBlock = new FILE_LINE rqueue_quick<pcap_block_store*>(
+				100000,
+				100, 100,
+				&terminating, true,
+				__FILE__, __LINE__);
 	this->countOfBlocks = 0;
 	this->sizeOfBlocks = 0;
 	this->_sync_queue = 0;
 }
 
 pcap_block_store_queue::~pcap_block_store_queue() {
-	this->lock_queue();
-	while(this->queueBlock.size()) {
-		delete this->queueBlock.front();
-		this->queueBlock.pop_front();
+	pcap_block_store* blockStore;
+	while(this->queueBlock->pop(&blockStore, false)) {
+		delete blockStore;
 	}
-	this->unlock_queue();
+	delete this->queueBlock;
 }
 
 
@@ -3297,7 +3303,7 @@ void* PcapQueue_readFromInterface::threadFunction(void *arg, unsigned int arg2) 
 					if(opt_scanpcapdir[0]) {
 						this->pcapEnd = true;
 					} else if(opt_pb_read_from_file[0]) {
-						if(!opt_pcap_queue_compress && this->instancePcapFifo) {
+						if(!opt_pcap_queue_compress && this->instancePcapFifo && !opt_pcap_queue_force_t1_thread) {
 							this->instancePcapFifo->addBlockStoreToPcapStoreQueue(blockStore[blockStoreIndex]);
 						} else {
 							blockStoreBypassQueue->push(blockStore[blockStoreIndex]);
@@ -3369,7 +3375,7 @@ void* PcapQueue_readFromInterface::threadFunction(void *arg, unsigned int arg2) 
 			}
 			for(int i = 0; i < blockStoreCount; i++) {
 				if(fetchPacketOk && i == blockStoreIndex ? blockStore[i]->full : blockStore[i]->isFull_checkTimout()) {
-					if(!opt_pcap_queue_compress && this->instancePcapFifo) {
+					if(!opt_pcap_queue_compress && this->instancePcapFifo && !opt_pcap_queue_force_t1_thread) {
 						this->instancePcapFifo->addBlockStoreToPcapStoreQueue(blockStore[i]);
 					} else {
 						bool _syslog = true;
@@ -3824,7 +3830,8 @@ PcapQueue_readFromFifo::PcapQueue_readFromFifo(const char *nameQueue, const char
 	this->_last_ts.tv_sec = 0;
 	this->_last_ts.tv_usec = 0;
 	this->setEnableMainThread(opt_pcap_queue_compress || is_receiver() ||
-				  (opt_pcap_queue_disk_folder.length() && opt_pcap_queue_store_queue_max_disk_size));
+				  (opt_pcap_queue_disk_folder.length() && opt_pcap_queue_store_queue_max_disk_size) ||
+				  opt_pcap_queue_force_t1_thread);
 	this->setEnableWriteThread();
 }
 
@@ -4124,7 +4131,7 @@ void *PcapQueue_readFromFifo::threadFunction(void *arg, unsigned int arg2) {
 		delete blockStore;
 		
 	} else if(__config_BYPASS_FIFO) {
-		if(opt_pcap_queue_compress) {
+		if(opt_pcap_queue_compress || opt_pcap_queue_force_t1_thread) {
 			pcap_block_store *blockStore;
 			while(!TERMINATING) {
 				blockStore = blockStoreBypassQueue->pop(false);

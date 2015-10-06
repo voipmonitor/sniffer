@@ -467,6 +467,25 @@ public:
 		if(useLock) unlock();
 		return(true);
 	}
+	bool get(typeItem *item) {
+		while(free[readit] == 1) {
+			return(false);
+		}
+		if(binaryBuffer) {
+			memcpy(item, &buffer[readit], sizeof(typeItem));
+		} else {
+			*item = buffer[readit];
+		}
+		return(true);
+	}
+	void moveReadit() {
+		free[readit] = 1;
+		if((readit + 1) == length) {
+			readit = 0;
+		} else {
+			readit++;
+		}
+	}
 	void lock() {
 		while(__sync_lock_test_and_set(&this->_sync_lock, 1));
 	}

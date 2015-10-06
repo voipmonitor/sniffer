@@ -3292,6 +3292,7 @@ bool SqlDb_mysql::createSchema(SqlDb *sourceDb) {
 		}
 	}
 
+
 	if(!opt_cdr_sipport) {
 		this->query("show columns from cdr where Field='sipcallerport'");
 		opt_cdr_sipport = this->fetchRow();
@@ -3685,12 +3686,15 @@ bool SqlDb_mysql::createSchema(SqlDb *sourceDb) {
 			`expires_at`  datetime NULL DEFAULT NULL,\
 			`state`  tinyint unsigned NULL DEFAULT NULL,\
 			`ua_id` int unsigned DEFAULT NULL,\
+			`rrd_avg` mediumint unsigned DEFAULT NULL,\
+			`rrd_count` tinyint unsigned DEFAULT NULL,\
 		PRIMARY KEY (`ID`),\
 		KEY `calldate` (`calldate`),\
 		KEY `sipcallerip` (`sipcallerip`),\
 		KEY `sipcalledip` (`sipcalledip`),\
 		KEY `from_num` (`from_num`),\
-		KEY `digestusername` (`digestusername`)\
+		KEY `digestusername` (`digestusername`),\
+		KEY `rrd_avg` (`rrd_avg`)\
 	) ENGINE=MEMORY DEFAULT CHARSET=latin1 " + compress + ";");
 
 	this->query(string(
@@ -4077,7 +4081,13 @@ bool SqlDb_mysql::createSchema(SqlDb *sourceDb) {
 			ADD PRIMARY KEY (`number`, `number_ip`);" << endl;
 	}
 	
-	// drop old cdr trigger
+	//12.5
+	outStrAlter << "ALTER TABLE register \
+		ADD `rrd_avg` mediumint unsigned DEFAULT NULL;" <<endl;
+	outStrAlter << "ALTER TABLE register \
+		ADD `rrd_count` tinyint unsigned DEFAULT NULL;" <<endl;
+	outStrAlter << "ALTER TABLE register \
+		ADD KEY `rrd_avg` (`rrd_avg`);" << endl;
 	outStrAlter << "drop trigger if exists cdr_bi;" << endl;
 
 	outStrAlter << "end;" << endl;
@@ -4086,6 +4096,8 @@ bool SqlDb_mysql::createSchema(SqlDb *sourceDb) {
 	     << outStrAlter.str() << endl
 	     << "---" << endl;
 	*/
+
+	// drop old cdr trigger
 	this->query(outStrAlter.str());
 	this->query(string("call ") + alter_funcname);
 	this->query(string("drop procedure if exists ") + alter_funcname);
@@ -4366,11 +4378,15 @@ bool SqlDb_mysql::createSchema(SqlDb *sourceDb) {
 				DECLARE _state INT; \
 				DECLARE _expires_at DATETIME; \
 				DECLARE _expired INT; \
+				DECLARE _rrd_avg MEDIUMINT; \
+				DECLARE _rrd_count TINYINT; \
 				SELECT ID, \
 				       state, \
 				       expires_at, \
+				       rrd_avg, \
+				       rrd_count, \
 				       (UNIX_TIMESTAMP(expires_at) < UNIX_TIMESTAMP(calltime)) AS expired \
-				INTO _ID, _state, _expires_at, _expired FROM register \
+				INTO _ID, _state, _expires_at, _rrd_avg, _rrd_count, _expired FROM register \
 				WHERE to_num = called AND to_domain = called_domain AND \
 				      contact_num = contact_num_param AND contact_domain = contact_domain_param \
 				ORDER BY ID DESC LIMIT 1; \
@@ -4428,6 +4444,15 @@ bool SqlDb_mysql::createSchema(SqlDb *sourceDb) {
 						    ua_id = getIdOrInsertUA(cdr_ua);\
 				END IF; \
 				IF ( register_expires > 0 ) THEN \
+					IF ( _rrd_count IS NULL ) THEN \
+						SET _rrd_count = 1; \
+						SET _rrd_avg = regrrddiff; \
+					ELSE \
+						IF (_rrd_count < 10) THEN \
+							SET _rrd_count = _rrd_count + 1; \
+						END IF; \
+						SET _rrd_avg = (_rrd_avg * (_rrd_count - 1) + regrrddiff) / _rrd_count; \
+					END IF; \
 					INSERT INTO `register` \
 						SET `id_sensor` = id_sensor, \
 						    `fname` = fname, \
@@ -4446,7 +4471,9 @@ bool SqlDb_mysql::createSchema(SqlDb *sourceDb) {
 						    `expires` = register_expires, \
 						    state = regstate, \
 						    ua_id = getIdOrInsertUA(cdr_ua), \
-						    `expires_at` = mexpires_at; \
+						    `expires_at` = mexpires_at, \
+						    `rrd_avg` = _rrd_avg, \
+						    `rrd_count` = _rrd_count; \
 				END IF; \
 			END",
 			"PROCESS_SIP_REGISTER", 
@@ -4467,7 +4494,8 @@ bool SqlDb_mysql::createSchema(SqlDb *sourceDb) {
 			  IN register_expires INT, \
 			  IN cdr_ua VARCHAR(255), \
 			  IN fname BIGINT, \
-			  IN id_sensor INT)", true);
+			  IN id_sensor INT, \
+			  IN regrrddiff MEDIUMINT)",true);  //rrd_avg will be computed inside CALL
 
 	//END SQL SCRIPTS
 
@@ -4582,6 +4610,9 @@ void SqlDb_mysql::checkSchema() {
 	extern bool existsColumnCalldateInCdrSipresp;
 	extern bool existsColumnCalldateInCdrSiphistory;
 	extern bool existsColumnCalldateInCdrTarPart;
+	extern bool existsColumnRrdcountInRegister;
+
+
 	sql_disable_next_attempt_if_error = 1;
 	this->query("show columns from cdr_next where Field='calldate'");
 	existsColumnCalldateInCdrNext = this->fetchRow();
@@ -4609,6 +4640,8 @@ void SqlDb_mysql::checkSchema() {
 			}
 		}
 	}
+	this->query("show columns from register where Field='rrd_count'");
+	existsColumnRrdcountInRegister = this->fetchRow();
 	sql_disable_next_attempt_if_error = 0;
 }
 
@@ -5370,12 +5403,15 @@ bool SqlDb_odbc::createSchema(SqlDb *sourceDb) {
 			expires int NULL,\
 			expires_at datetime NULL,\
 			state tinyint NULL,\
-			ua_id int NULL);\
+   			ua_id int NULL,\
+                        rrd_avg mediumint NULL,\
+                        rrd_count tinyint NULL);\
 		CREATE INDEX calldate ON register (calldate);\
 		CREATE INDEX sipcallerip ON register (sipcallerip);\
 		CREATE INDEX sipcalledip ON register (sipcalledip);\
 		CREATE INDEX from_num ON register (from_num);\
-		CREATE INDEX digestusername ON register (digestusername)\
+		CREATE INDEX digestusername ON register (digestusername);\
+		CREATE INDEX rrd_avg ON register (rrd_avg)\
 	END");
 
 	this->query(
