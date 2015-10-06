@@ -2034,11 +2034,16 @@ int main(int argc, char *argv[]) {
 				sql_noerror = 0;
 			}
 			sqlDb->checkDbMode();
-			if(!opt_database_backup & !opt_disable_dbupgradecheck) {
-				if(sqlDb->createSchema()) {
-					sqlDb->checkSchema();
+			//if(!opt_database_backup & !opt_disable_dbupgradecheck) {
+			if(!opt_database_backup) {
+				if (!opt_disable_dbupgradecheck) {
+					if(sqlDb->createSchema()) {
+						sqlDb->checkSchema();
+					} else {
+						connectError = true;
+					}
 				} else {
-					connectError = true;
+					sqlDb->checkSchema();
 				}
 			}
 			sensorsMap.fillSensors();
