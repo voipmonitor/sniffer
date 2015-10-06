@@ -29,24 +29,20 @@ public:
 	pcap_block_store_queue();
 	~pcap_block_store_queue();
 	void push(pcap_block_store* blockStore) {
-		this->lock_queue();
-		this->queueBlock.push_back(blockStore);
-		this->add_sizeOfBlocks(blockStore->getUseSize());
-		this->unlock_queue();
+		if(this->queueBlock->push(&blockStore, true)) {
+			this->add_sizeOfBlocks(blockStore->getUseSize());
+		}
 	}
 	pcap_block_store* pop(bool removeFromFront = true, size_t blockSize = 0) {
 		pcap_block_store* blockStore = NULL;
-		this->lock_queue();
-		if(this->queueBlock.size()) {
-			blockStore = this->queueBlock.front();
+		if(this->queueBlock->get(&blockStore)) {
 			if(removeFromFront) {
-				this->queueBlock.pop_front();
+				this->queueBlock->moveReadit();
 			}
 		}
 		if(blockStore && removeFromFront) {
 			this->sub_sizeOfBlocks(blockSize ? blockSize : blockStore->getUseSize());
 		}
-		this->unlock_queue();
 		return(blockStore);
 	}
 	size_t getUseItems() {
@@ -56,12 +52,6 @@ public:
 		return(this->sizeOfBlocks);
 	}
 private:
-	void lock_queue() {
-		while(__sync_lock_test_and_set(&this->_sync_queue, 1));
-	}
-	void unlock_queue() {
-		__sync_lock_release(&this->_sync_queue);
-	}
 	void add_sizeOfBlocks(size_t size) {
 		__sync_fetch_and_add(&this->sizeOfBlocks, size);
 		__sync_fetch_and_add(&this->countOfBlocks, 1);
@@ -71,7 +61,7 @@ private:
 		__sync_fetch_and_sub(&this->countOfBlocks, 1);
 	}
 private:
-	std::deque<pcap_block_store*> queueBlock;
+	rqueue_quick<pcap_block_store*> *queueBlock;
 	volatile size_t countOfBlocks;
 	volatile size_t sizeOfBlocks;
 	volatile int _sync_queue;

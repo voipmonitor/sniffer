@@ -404,6 +404,7 @@ extern int opt_pcap_queue_iface_qring_size;
 extern bool opt_pcap_queue_iface_alloc_stack;
 extern int opt_pcap_queue_dequeu_window_length;
 extern int opt_pcap_queue_dequeu_method;
+extern int opt_pcap_queue_force_t1_thread;
 extern int opt_pcap_dispatch;
 extern int sql_noerror;
 int opt_cleandatabase_cdr = 0;
@@ -5092,7 +5093,7 @@ void set_context_config() {
 			// old buffer size calculate &&  set size opt_pcap_queue_bypass_max_size
 			if(!opt_pcap_queue_disk_folder.length() || !opt_pcap_queue_store_queue_max_disk_size) {
 				// disable disc save
-				if(opt_pcap_queue_compress) {
+				if(opt_pcap_queue_compress || opt_pcap_queue_force_t1_thread) {
 					// enable compress - maximum thread0 buffer = 100MB, minimum = 50MB
 					opt_pcap_queue_bypass_max_size = opt_pcap_queue_store_queue_max_memory_size / 8;
 					if(opt_pcap_queue_bypass_max_size > 100 * 1024 * 1024) {
