@@ -64,7 +64,6 @@ private:
 	rqueue_quick<pcap_block_store*> *queueBlock;
 	volatile size_t countOfBlocks;
 	volatile size_t sizeOfBlocks;
-	volatile int _sync_queue;
 };
 
 class pcap_file_store {
@@ -252,7 +251,7 @@ protected:
 	virtual bool isMirrorReceiver() {
 		return(false);
 	}
-	void processBeforeAddToPacketBuffer(pcap_pkthdr* header,u_char* packet, u_int offset);
+	inline void processBeforeAddToPacketBuffer(pcap_pkthdr* header,u_char* packet, u_int offset);
 protected:
 	eTypeQueue typeQueue;
 	std::string nameQueue;
@@ -510,6 +509,13 @@ friend class PcapQueue_readFromInterface;
 };
 
 class PcapQueue_readFromInterface : public PcapQueue, protected PcapQueue_readFromInterface_base {
+private:
+	struct delete_packet_info {
+		pcap_pkthdr *header;
+		u_char *packet;
+		bool ok_for_header_packet_stack;
+		int read_thread_index;
+	};
 private: 
 	struct sThreadDeleteData {
 		sThreadDeleteData(PcapQueue_readFromInterface *owner) : queuePackets(100000, 1000, 1000, 
@@ -545,6 +551,7 @@ protected:
 	bool init();
 	bool initThread(void *arg, unsigned int arg2, string *error);
 	void *threadFunction(void *arg, unsigned int arg2);
+	void *writeThreadFunction(void *arg, unsigned int arg2);
 	void *threadDeleteFunction(sThreadDeleteData *threadDeleteData);
 	bool openFifoForWrite(void *arg, unsigned int arg2);
 	bool startCapture(string *error);
@@ -579,6 +586,7 @@ private:
 	int deleteThreadsCount;
 	u_int32_t counterPushDelete;
 	static volatile int _sync_delete;
+	rqueue_quick<delete_packet_info> *delete_packet_qring;
 friend void *_PcapQueue_readFromInterfaceThread_threadDeleteFunction(void *arg);
 };
 
