@@ -1,3 +1,9 @@
+12.6 7.10.2015
+============== 
+- Optimize processing RTP packets where the limit was around 2.5Gbit / 1.2Millinos RTP packets / second  (CPU lowered from 100% to 40% on t0CPU thread). It probably allows to go over 5Gbit (2Millions RTP packets / second) on Xeon E5-2650 v2 
+- Implement round trip time monitoring for SIP REGISTER from initial registration to 200 OK. The value is in register.rrd_avg and it represents last 10 values [VS-172] 
+
+
 12.5.2 6.10.2015
 ================
 - do not report packet loss and low MOS score for case where RTP stream changes SSRC back and forth which happens on some rtp proxies or asterisk when call is redirecting 
