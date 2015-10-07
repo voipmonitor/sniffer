@@ -174,9 +174,9 @@ ip_port opt_pcap_queue_send_to_ip_port;
 ip_port opt_pcap_queue_receive_from_ip_port;
 int opt_pcap_queue_receive_from_port;
 int opt_pcap_queue_receive_dlt 				= DLT_EN10MB;
-int opt_pcap_queue_iface_separate_threads 		= 0;
-int opt_pcap_queue_iface_dedup_separate_threads 	= 0;
-int opt_pcap_queue_iface_dedup_separate_threads_extend	= 0;
+int opt_pcap_queue_iface_separate_threads 		= 1;
+int opt_pcap_queue_iface_dedup_separate_threads 	= 1;
+int opt_pcap_queue_iface_dedup_separate_threads_extend	= 1;
 int opt_pcap_queue_iface_qring_size 			= 5000;
 bool opt_pcap_queue_iface_alloc_stack			= true;
 int opt_pcap_queue_dequeu_window_length			= -1;
@@ -3428,7 +3428,7 @@ void* PcapQueue_readFromInterface::threadFunction(void *arg, unsigned int arg2) 
 				if(this->readThreadsCount) {
 					this->readThreads[minThreadTimeIndex]->moveREADIT();
 				}
-				if(opt_pcap_queue_iface_dedup_separate_threads_extend) {
+				if(this->readThreadsCount && opt_pcap_queue_iface_dedup_separate_threads_extend) {
 					dpi.header = header;
 					dpi.packet = packet;
 					dpi.ok_for_header_packet_stack = ok_for_header_packet_stack;
