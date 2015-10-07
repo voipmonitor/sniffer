@@ -4032,7 +4032,7 @@ void cConfig::addConfigItems() {
 			addConfigItem((new cConfigItem_yesno("threading_mod"))
 				->disableNo()
 				->addValues("1:1|2:2|3:3|4:4")
-				->setDefaultValueStr("1"));
+				->setDefaultValueStr("4"));
 				advanced();
 				addConfigItem((new cConfigItem_integer("preprocess_rtp_threads", &opt_enable_process_rtp_packet))
 					->setMaximum(MAX_PROCESS_RTP_PACKET_THREADS)
@@ -5182,6 +5182,9 @@ void set_context_config() {
 		if(is_receiver()) {
 			opt_pcap_queue_receive_from_ip_port.clear();
 		}
+		opt_pcap_queue_iface_separate_threads = 0;
+		opt_pcap_queue_iface_dedup_separate_threads = 0;
+		opt_pcap_queue_iface_dedup_separate_threads_extend = 0;
 	}
 	
 	if(opt_pcap_dump_tar) {
