@@ -165,6 +165,7 @@ bool existsColumnCalldateInCdrDtmf = true;
 bool existsColumnCalldateInCdrSipresp = true;
 bool existsColumnCalldateInCdrSiphistory = true;
 bool existsColumnCalldateInCdrTarPart = true;
+bool existsColumnRrdcountInRegister = true;
 
 extern int opt_pcap_dump_tar_sip_use_pos;
 extern int opt_pcap_dump_tar_rtp_use_pos;
@@ -238,6 +239,7 @@ Call::Call(char *call_id, unsigned long call_id_len, time_t time) :
 	reg401count = 0;
 	regstate = 0;
 	regresponse = false;
+	regrrddiff = -1;
 	for(int i = 0; i < MAX_SSRC_PER_CALL; i++) {
 		rtp[i] = NULL;
 	}
@@ -2944,6 +2946,7 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 			char tmpregstate[32];
 			char regexpires[32];
 			char idsensor[12];
+			char rrddiff[12];
 			snprintf(ips, 31, "%u", htonl(sipcallerip[0]));
 			ips[31] = 0;
 			snprintf(ipd, 31, "%u", htonl(sipcalledip[0]));
@@ -2954,6 +2957,8 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 			regexpires[31] = 0;
 			snprintf(idsensor, 11, "%d", useSensorId);
 			idsensor[11] = 0;
+			snprintf(rrddiff, 11, "%d", regrrddiff);
+			rrddiff[11] = 0;
 			//stored procedure is much faster and eliminates latency reducing uuuuuuuuuuuuu
 
 			query = "CALL PROCESS_SIP_REGISTER(" + sqlEscapeStringBorder(sqlDateTimeString(calltime())) + ", " +
@@ -2973,59 +2978,106 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 				regexpires + "', " +
 				sqlEscapeStringBorder(a_ua) + ", " +
 				fname + ", " +
-				idsensor +
+				idsensor ;
+			if (existsColumnRrdcountInRegister) {
+				query = query + ", " +
+				rrddiff +
 				")";
+			} else {
+				query = query + ")";
+			}
 			sqlStore->query_lock(query.c_str(), storeId);
 		} else {
-			query = string(
-				"SELECT ID, state, ") +
-				       "UNIX_TIMESTAMP(expires_at) AS expires_at, " +
-				       "_LC_[(UNIX_TIMESTAMP(expires_at) < UNIX_TIMESTAMP(" + sqlEscapeStringBorder(sqlDateTimeString(calltime())) + "))] AS expired " +
-				"FROM " + register_table + " " +
-				"WHERE to_num = " + sqlEscapeStringBorder(called) + " AND to_domain = " + sqlEscapeStringBorder(called_domain) + " AND " +
-				      "contact_num = " + sqlEscapeStringBorder(contact_num) + " AND contact_domain = " + sqlEscapeStringBorder(contact_domain) + 
-				      //" AND digestusername = " + sqlEscapeStringBorder(digest_username) + " " +
-				"ORDER BY ID DESC"; // LIMIT 1 
-//			if(verbosity > 2) cout << query << "\n";
-			{
-			if(!sqlDbSaveCall->query(query)) {
-				syslog(LOG_ERR, "Error: Query [%s] failed.", query.c_str());
-				break;
+			if (existsColumnRrdcountInRegister) {
+				query = string(
+					"SELECT ID, state, rrd_avg, rrd_count, ") +
+					       "UNIX_TIMESTAMP(expires_at) AS expires_at, " +
+					       "_LC_[(UNIX_TIMESTAMP(expires_at) < UNIX_TIMESTAMP(" + sqlEscapeStringBorder(sqlDateTimeString(calltime())) + "))] AS expired " +
+					"FROM " + register_table + " " +
+					"WHERE to_num = " + sqlEscapeStringBorder(called) + " AND to_domain = " + sqlEscapeStringBorder(called_domain) + " AND " +
+					      "contact_num = " + sqlEscapeStringBorder(contact_num) + " AND contact_domain = " + sqlEscapeStringBorder(contact_domain) + 
+					      //" AND digestusername = " + sqlEscapeStringBorder(digest_username) + " " +
+					"ORDER BY ID DESC"; // LIMIT 1 
+	//			if(verbosity > 2) cout << query << "\n";
+			} else {
+				query = string(
+					"SELECT ID, state, ") +
+					       "UNIX_TIMESTAMP(expires_at) AS expires_at, " +
+					       "_LC_[(UNIX_TIMESTAMP(expires_at) < UNIX_TIMESTAMP(" + sqlEscapeStringBorder(sqlDateTimeString(calltime())) + "))] AS expired " +
+					"FROM " + register_table + " " +
+					"WHERE to_num = " + sqlEscapeStringBorder(called) + " AND to_domain = " + sqlEscapeStringBorder(called_domain) + " AND " +
+					      "contact_num = " + sqlEscapeStringBorder(contact_num) + " AND contact_domain = " + sqlEscapeStringBorder(contact_domain) + 
+					"ORDER BY ID DESC";
 			}
 
-			SqlDb_row rsltRow = sqlDbSaveCall->fetchRow();
-			if(rsltRow) {
-				// REGISTER message is already in register table, delete old REGISTER and save the new one 
-				int expired = atoi(rsltRow["expired"].c_str()) == 1;
-				time_t expires_at = atoi(rsltRow["expires_at"].c_str());
-
-				string query = "DELETE FROM " + (string)register_table + " WHERE ID = '" + (rsltRow["ID"]).c_str() + "'";
+			{
 				if(!sqlDbSaveCall->query(query)) {
-					syslog(LOG_WARNING, "Query [%s] failed.", query.c_str());
+					syslog(LOG_ERR, "Error: Query [%s] failed.", query.c_str());
+					break;
 				}
 
-				if(expired) {
-					// the previous REGISTER expired, save to register_state
-					SqlDb_row reg;
-					reg.add(sqlEscapeString(sqlDateTimeString(expires_at).c_str()), "created_at");
-					reg.add(htonl(sipcallerip[0]), "sipcallerip");
-					reg.add(htonl(sipcalledip[0]), "sipcalledip");
-					reg.add(sqlEscapeString(caller), "from_num");
-					reg.add(sqlEscapeString(called), "to_num");
-					reg.add(sqlEscapeString(called_domain), "to_domain");
-					reg.add(sqlEscapeString(contact_num), "contact_num");
-					reg.add(sqlEscapeString(contact_domain), "contact_domain");
-					reg.add(sqlEscapeString(digest_username), "digestusername");
-					reg.add(register_expires, "expires");
-					reg.add(5, "state");
-					reg.add(fname, "fname");
-					reg.add(useSensorId, "id_sensor");
-					reg.add(sqlDbSaveCall->getIdOrInsert(sql_cdr_ua_table, "id", "ua", cdr_ua), "ua_id");
-					sqlDbSaveCall->insert("register_state", reg);
-				}
+				SqlDb_row rsltRow = sqlDbSaveCall->fetchRow();
+				int rrd_avg = regrrddiff;
+				int rrd_count = 1;
 
-				if(atoi(rsltRow["state"].c_str()) != regstate || register_expires == 0) {
-					// state changed or device unregistered, store to register_state
+				if(rsltRow) {
+					// REGISTER message is already in register table, delete old REGISTER and save the new one
+					int expired = atoi(rsltRow["expired"].c_str()) == 1;
+					time_t expires_at = atoi(rsltRow["expires_at"].c_str());
+
+					// compute rrdavgtime [RFC-6076] from regrrddiff - REGISTER->OK and increase count if less than 10.
+					if (existsColumnRrdcountInRegister) {
+						rrd_count = atoi(rsltRow["rrd_count"].c_str());
+						if (rrd_count < 10) rrd_count ++;
+						rrd_avg = (atoi(rsltRow["rrd_avg"].c_str()) * (rrd_count - 1) + regrrddiff) / rrd_count;
+					}
+
+					string query = "DELETE FROM " + (string)register_table + " WHERE ID = '" + (rsltRow["ID"]).c_str() + "'";
+					if(!sqlDbSaveCall->query(query)) {
+						syslog(LOG_WARNING, "Query [%s] failed.", query.c_str());
+					}
+
+					if(expired) {
+						// the previous REGISTER expired, save to register_state
+						SqlDb_row reg;
+						reg.add(sqlEscapeString(sqlDateTimeString(expires_at).c_str()), "created_at");
+						reg.add(htonl(sipcallerip[0]), "sipcallerip");
+						reg.add(htonl(sipcalledip[0]), "sipcalledip");
+						reg.add(sqlEscapeString(caller), "from_num");
+						reg.add(sqlEscapeString(called), "to_num");
+						reg.add(sqlEscapeString(called_domain), "to_domain");
+						reg.add(sqlEscapeString(contact_num), "contact_num");
+						reg.add(sqlEscapeString(contact_domain), "contact_domain");
+						reg.add(sqlEscapeString(digest_username), "digestusername");
+						reg.add(register_expires, "expires");
+						reg.add(5, "state");
+						reg.add(fname, "fname");
+						reg.add(useSensorId, "id_sensor");
+						reg.add(sqlDbSaveCall->getIdOrInsert(sql_cdr_ua_table, "id", "ua", cdr_ua), "ua_id");
+						sqlDbSaveCall->insert("register_state", reg);
+					}
+
+					if(atoi(rsltRow["state"].c_str()) != regstate || register_expires == 0) {
+						// state changed or device unregistered, store to register_state
+						SqlDb_row reg;
+						reg.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "created_at");
+						reg.add(htonl(sipcallerip[0]), "sipcallerip");
+						reg.add(htonl(sipcalledip[0]), "sipcalledip");
+						reg.add(sqlEscapeString(caller), "from_num");
+						reg.add(sqlEscapeString(called), "to_num");
+						reg.add(sqlEscapeString(called_domain), "to_domain");
+						reg.add(sqlEscapeString(contact_num), "contact_num");
+						reg.add(sqlEscapeString(contact_domain), "contact_domain");
+						reg.add(sqlEscapeString(digest_username), "digestusername");
+						reg.add(register_expires, "expires");
+						reg.add(regstate, "state");
+						reg.add(sqlDbSaveCall->getIdOrInsert(sql_cdr_ua_table, "id", "ua", cdr_ua), "ua_id");
+						reg.add(fname, "fname");
+						reg.add(useSensorId, "id_sensor");
+						sqlDbSaveCall->insert("register_state", reg);
+					}
+				} else {
+					// REGISTER message is new, store it to register_state
 					SqlDb_row reg;
 					reg.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "created_at");
 					reg.add(htonl(sipcallerip[0]), "sipcallerip");
@@ -3043,51 +3095,44 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 					reg.add(useSensorId, "id_sensor");
 					sqlDbSaveCall->insert("register_state", reg);
 				}
-			} else {
-				// REGISTER message is new, store it to register_state
-				SqlDb_row reg;
-				reg.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "created_at");
-				reg.add(htonl(sipcallerip[0]), "sipcallerip");
-				reg.add(htonl(sipcalledip[0]), "sipcalledip");
-				reg.add(sqlEscapeString(caller), "from_num");
-				reg.add(sqlEscapeString(called), "to_num");
-				reg.add(sqlEscapeString(called_domain), "to_domain");
-				reg.add(sqlEscapeString(contact_num), "contact_num");
-				reg.add(sqlEscapeString(contact_domain), "contact_domain");
-				reg.add(sqlEscapeString(digest_username), "digestusername");
-				reg.add(register_expires, "expires");
-				reg.add(regstate, "state");
-				reg.add(sqlDbSaveCall->getIdOrInsert(sql_cdr_ua_table, "id", "ua", cdr_ua), "ua_id");
-				reg.add(fname, "fname");
-				reg.add(useSensorId, "id_sensor");
-				sqlDbSaveCall->insert("register_state", reg);
-			}
 
-			// save successfull REGISTER to register table in case expires is not negative
-			if(register_expires > 0) {
-				SqlDb_row reg;
-				reg.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
-				reg.add(htonl(sipcallerip[0]), "sipcallerip");
-				reg.add(htonl(sipcalledip[0]), "sipcalledip");
-				//reg.add(sqlEscapeString(fbasename), "fbasename");
-				reg.add(sqlEscapeString(caller), "from_num");
-				reg.add(sqlEscapeString(callername), "from_name");
-				reg.add(sqlEscapeString(caller_domain), "from_domain");
-				reg.add(sqlEscapeString(called), "to_num");
-				reg.add(sqlEscapeString(called_domain), "to_domain");
-				reg.add(sqlEscapeString(contact_num), "contact_num");
-				reg.add(sqlEscapeString(contact_domain), "contact_domain");
-				reg.add(sqlEscapeString(digest_username), "digestusername");
-				reg.add(sqlEscapeString(digest_realm), "digestrealm");
-				reg.add(sqlDbSaveCall->getIdOrInsert(sql_cdr_ua_table, "id", "ua", cdr_ua), "ua_id");
-				reg.add(register_expires, "expires");
-				reg.add(sqlEscapeString(sqlDateTimeString(calltime() + register_expires).c_str()), "expires_at");
-				reg.add(fname, "fname");
-				reg.add(useSensorId, "id_sensor");
-				reg.add(regstate, "state");
-				int res = sqlDbSaveCall->insert(register_table, reg) <= 0;
-				return res;
-			}
+				// save successfull REGISTER to register table in case expires is not negative
+				if(register_expires > 0) {
+
+
+					SqlDb_row reg;
+					reg.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
+					reg.add(htonl(sipcallerip[0]), "sipcallerip");
+					reg.add(htonl(sipcalledip[0]), "sipcalledip");
+					//reg.add(sqlEscapeString(fbasename), "fbasename");
+					reg.add(sqlEscapeString(caller), "from_num");
+					reg.add(sqlEscapeString(callername), "from_name");
+					reg.add(sqlEscapeString(caller_domain), "from_domain");
+					reg.add(sqlEscapeString(called), "to_num");
+					reg.add(sqlEscapeString(called_domain), "to_domain");
+					reg.add(sqlEscapeString(contact_num), "contact_num");
+					reg.add(sqlEscapeString(contact_domain), "contact_domain");
+					reg.add(sqlEscapeString(digest_username), "digestusername");
+					reg.add(sqlEscapeString(digest_realm), "digestrealm");
+					reg.add(sqlDbSaveCall->getIdOrInsert(sql_cdr_ua_table, "id", "ua", cdr_ua), "ua_id");
+					reg.add(register_expires, "expires");
+					reg.add(sqlEscapeString(sqlDateTimeString(calltime() + register_expires).c_str()), "expires_at");
+					reg.add(fname, "fname");
+					reg.add(useSensorId, "id_sensor");
+					reg.add(regstate, "state");
+					if (existsColumnRrdcountInRegister) {
+						char rrdavg[12];
+						char rrdcount[4];
+						snprintf(rrdavg, 11, "%d", rrd_avg);
+						snprintf(rrdcount, 3, "%d", rrd_count);
+						rrdavg[11] = 0;
+						rrdcount[3] = 0;
+						reg.add(rrdavg,"rrd_avg");
+						reg.add(rrdcount,"rrd_count");
+					}
+					int res = sqlDbSaveCall->insert(register_table, reg) <= 0;
+					return res;
+				}
 			}
 		}
 		break;

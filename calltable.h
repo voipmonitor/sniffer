@@ -230,6 +230,8 @@ public:
 	int reg401count;
 	int regstate;
 	bool regresponse;
+	timeval regrrdstart;		// time of first REGISTER
+	int regrrddiff;			// RRD diff time REGISTER<->OK in [ms]- RFC6076
 	unsigned long long flags1;	//!< bit flags used to store max 64 flags 
 	#if SYNC_CALL_RTP
 	volatile unsigned int rtppcaketsinqueue;

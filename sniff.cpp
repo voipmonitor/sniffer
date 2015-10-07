@@ -1674,6 +1674,14 @@ Call *new_invite_register(bool is_ssl, int sip_method, char *data, int datalen, 
 			call->regcount++;
 			call->destroy_call_at = header->ts.tv_sec + opt_register_timeout;
 
+			// is it first register? set now
+			if (call->regrrddiff == -1) {
+				//struct timeval nowt;
+				//gettimeofday(&nowt, NULL);
+				call->regrrdstart.tv_sec = header->ts.tv_sec;
+				call->regrrdstart.tv_usec = header->ts.tv_usec;
+			}
+
 			// copy contact num <sip:num@domain>
 			s = gettag(data, datalen, "\nUser-Agent:", &l, &gettagLimitLen);
 			if(l && ((unsigned int)l < ((unsigned int)datalen - (s - data)))) {
@@ -2439,6 +2447,9 @@ Call *process_packet(bool is_ssl, u_int64_t packet_number,
                                 if(l && strncmp(s, call->invitecseq, l) == 0) {
 					// registration OK 
 					call->regstate = 1;
+
+					// diff in ms
+					call->regrrddiff = 1000 * (header->ts.tv_sec - call->regrrdstart.tv_sec) + (header->ts.tv_usec - call->regrrdstart.tv_usec) / 1000;
 				} else {
 					// OK to unknown msg close the call
 					call->regstate = 3;
