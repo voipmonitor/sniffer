@@ -6521,6 +6521,8 @@ int eval_config(string inistr) {
 		opt_convert_dlt_sll_to_en10 = yesno(value);
 	}
 	if((value = ini.GetValue("general", "threading_mod", NULL))) {
+		opt_pcap_queue_iface_dedup_separate_threads = 0;
+		opt_pcap_queue_iface_dedup_separate_threads_extend = 0;
 		switch(atoi(value)) {
 		case 2:
 			opt_pcap_queue_iface_separate_threads = 1;
