@@ -452,6 +452,7 @@ void HeapSafeAllocError(int error) {
 				NULL;
 		if(errorString) {
 			syslog(LOG_ERR, "HEAPSAFE ALLOCATION ERROR: %s", errorString);
+			abort();
 		}
 	}
 }
@@ -460,6 +461,7 @@ void HeapSafeMemcpyError(const char *errorString, const char *file, unsigned int
 	if(errorString) {
 		syslog(LOG_ERR, "HEAPSAFE MEMCPY ERROR: %s - %s:%d", errorString, 
 		       file ? file : "unknown source file", line);
+		abort();
 	}
 }
 
@@ -467,6 +469,7 @@ void HeapSafeMemsetError(const char *errorString, const char *file, unsigned int
 	if(errorString) {
 		syslog(LOG_ERR, "HEAPSAFE MEMSET ERROR: %s - %s:%d", errorString, 
 		       file ? file : "unknown source file", line);
+		abort();
 	}
 }
 
@@ -482,7 +485,7 @@ std::string getMemoryStat(bool all) {
 			if(memoryStat[iter->second] > (!all && sverb.memory_stat_ignore_limit ? (unsigned)sverb.memory_stat_ignore_limit : 0)) {
 				u_int64_t memSize = memoryStat[iter->second];
 				outStr << std::fixed
-				       << std::left << std::setw(30) << iter->first << " : " 
+				       << std::left << std::setw(35) << iter->first << " : " 
 				       << std::right << std::setw(16) << addThousandSeparators(memSize)
 				       << std::endl;
 				sum += memSize;
@@ -511,7 +514,7 @@ std::string getMemoryStat(bool all) {
 				       << std::endl;
 			} else {
 				outStr << std::fixed
-				       << std::left << std::setw(30) << "other" << " : " 
+				       << std::left << std::setw(35) << "other" << " : " 
 				       << std::right << std::setw(16) << addThousandSeparators(memSize)
 				       << std::endl;
 			}
@@ -519,7 +522,7 @@ std::string getMemoryStat(bool all) {
 		}
 		__sync_fetch_and_sub(&threadRecursion[tid], 1);
 		outStr << std::fixed
-		       << std::left << std::setw(30) << "sum" << " : " 
+		       << std::left << std::setw(35) << "sum" << " : " 
 		       << std::right << std::setw(16) << addThousandSeparators(sum)
 		       << std::endl;
 		return(outStr.str());

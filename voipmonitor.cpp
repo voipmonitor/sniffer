@@ -404,7 +404,7 @@ extern int opt_pcap_queue_iface_qring_size;
 extern bool opt_pcap_queue_iface_alloc_stack;
 extern int opt_pcap_queue_dequeu_window_length;
 extern int opt_pcap_queue_dequeu_method;
-extern int opt_pcap_queue_force_t1_thread;
+extern int opt_pcap_queue_suppress_t1_thread;
 extern int opt_pcap_dispatch;
 extern int sql_noerror;
 int opt_cleandatabase_cdr = 0;
@@ -5088,8 +5088,8 @@ void set_context_config() {
 			// old buffer size calculate &&  set size opt_pcap_queue_bypass_max_size
 			if(!opt_pcap_queue_disk_folder.length() || !opt_pcap_queue_store_queue_max_disk_size) {
 				// disable disc save
-				if(opt_pcap_queue_compress || opt_pcap_queue_force_t1_thread) {
-					// enable compress - maximum thread0 buffer = 100MB, minimum = 50MB
+				if(opt_pcap_queue_compress || !opt_pcap_queue_suppress_t1_thread) {
+					// enable compress or not suppress t1 thread - maximum thread0 buffer = 100MB, minimum = 50MB
 					opt_pcap_queue_bypass_max_size = opt_pcap_queue_store_queue_max_memory_size / 8;
 					if(opt_pcap_queue_bypass_max_size > 100 * 1024 * 1024) {
 						opt_pcap_queue_bypass_max_size = 100 * 1024 * 1024;
@@ -5097,11 +5097,11 @@ void set_context_config() {
 						opt_pcap_queue_bypass_max_size = 50 * 1024 * 1024;
 					}
 				} else {
-					// disable compress - thread0 buffer not need
+					// disable compress and suppress t1 thread - thread0 buffer not need
 					opt_pcap_queue_bypass_max_size = 0;
 				}
 			} else {
-				// disable disc save - maximum thread0 buffer = 500MB
+				// enable disc save - maximum thread0 buffer = 500MB
 				opt_pcap_queue_bypass_max_size = opt_pcap_queue_store_queue_max_memory_size / 4;
 				if(opt_pcap_queue_bypass_max_size > 500 * 1024 * 1024) {
 					opt_pcap_queue_bypass_max_size = 500 * 1024 * 1024;
