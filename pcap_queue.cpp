@@ -57,8 +57,6 @@
 #define DEBUG_SYNC 		(DEBUG_VERBOSE && false)
 #define DEBUG_SLEEP		(DEBUG_VERBOSE && true)
 #define DEBUG_ALL_PACKETS	(DEBUG_VERBOSE && false)
-#define TEST_PACKETS 		(DEBUG_VERBOSE && false)
-#define VERBOSE_TEST_PACKETS	(TEST_PACKETS && false)
 #define EXTENDED_LOG		(DEBUG_VERBOSE || (VERBOSE && verbosityE > 1))
 #define TERMINATING 		((is_terminating() && this->enableAutoTerminate) || this->threadDoTerminate)
 
@@ -275,7 +273,7 @@ bool pcap_block_store::isFull_checkTimout() {
 	if(this->full) {
 		return(true);
 	}
-	if(this->size && (getTimeMS() - this->timestampMS) >= opt_pcap_queue_block_max_time_ms) {
+	if(this->size && (getTimeMS_rdtsc() - this->timestampMS) >= opt_pcap_queue_block_max_time_ms) {
 		this->full = true;
 		return(true);
 	}
@@ -3351,17 +3349,6 @@ void* PcapQueue_readFromInterface::threadFunction(void *arg, unsigned int arg2) 
 					   !blockStore[blockStoreIndex]->dlink && blockStore[blockStoreIndex]->dlink != this->pcapLinklayerHeaderType) {
 						blockStore[blockStoreIndex]->dlink = this->pcapLinklayerHeaderType;
 					}
-				}
-			}
-			if(fetchPacketOk) {
-				if(!TEST_PACKETS && !this->readThreadsCount) {
-				 
-					/*static int _c = 0;
-					++_c;
-					this->pcapProcess(&header, &packet, &destroy,
-							  false, false, false, false);
-					cout << "-- " << _c << " " << ascii_str(string(ppd.data ? ppd.data : "").substr(0,40)) << endl;*/
-				 
 					res = this->pcapProcess(&header, &packet, &destroy);
 					if(res == -1) {
 						break;
@@ -3382,14 +3369,9 @@ void* PcapQueue_readFromInterface::threadFunction(void *arg, unsigned int arg2) 
 						}
 					}
 				}
+			}
+			if(fetchPacketOk) {
 				++sumPacketsCounterIn[0];
-				if(TEST_PACKETS) {
-					static char buff[101];
-					sprintf(buff, "%0100lu", sumPacketsCounterIn[0]);
-					packet = (u_char*)buff;
-					header->len = 101;
-					header->caplen = 101;
-				}
 				extern SocketSimpleBufferWrite *sipSendSocket;
 				if(sipSendSocket) {
 					this->processBeforeAddToPacketBuffer(header, packet, offset);
@@ -3399,7 +3381,7 @@ void* PcapQueue_readFromInterface::threadFunction(void *arg, unsigned int arg2) 
 				}
 			}
 			for(int i = 0; i < blockStoreCount; i++) {
-				if(fetchPacketOk && i == blockStoreIndex ? blockStore[i]->full : blockStore[i]->isFull_checkTimout()) {
+				if(fetchPacketOk && i == blockStoreIndex ? blockStore[i]->full : !(blockStore[i]->count % 20) && blockStore[i]->isFull_checkTimout()) {
 					if(!opt_pcap_queue_compress && this->instancePcapFifo && opt_pcap_queue_suppress_t1_thread) {
 						this->instancePcapFifo->addBlockStoreToPcapStoreQueue(blockStore[i]);
 					} else {
@@ -3452,7 +3434,7 @@ void* PcapQueue_readFromInterface::threadFunction(void *arg, unsigned int arg2) 
 					dpi.ok_for_header_packet_stack = ok_for_header_packet_stack;
 					dpi.read_thread_index = minThreadTimeIndex;
 					delete_packet_qring->push(&dpi, true);
-				} else if(!TEST_PACKETS && destroy) {
+				} else if(destroy) {
 					sHeaderPacket headerPacket(header, packet);
 					if(opt_pcap_queue_iface_alloc_stack &&
 					   ok_for_header_packet_stack &&
@@ -4326,7 +4308,7 @@ void *PcapQueue_readFromFifo::writeThreadFunction(void *arg, unsigned int arg2) 
 			}
 			if(opt_pcap_queue_dequeu_window_length > 0 &&
 			   (opt_pcap_queue_dequeu_method == 1 || opt_pcap_queue_dequeu_method == 2) &&
-			   (!TEST_PACKETS && !opt_pb_read_from_file[0])) {
+			   (!opt_pb_read_from_file[0])) {
 				if(opt_pcap_queue_dequeu_method == 1) {
 					u_int64_t at = getTimeUS();
 					if(blockStore) {
@@ -4476,27 +4458,15 @@ void *PcapQueue_readFromFifo::writeThreadFunction(void *arg, unsigned int arg2) 
 				if(blockStore) {
 					for(size_t i = 0; i < blockStore->count && !TERMINATING; i++) {
 						++sumPacketsCounterOut[0];
-						if(TEST_PACKETS) {
-							if(VERBOSE_TEST_PACKETS) {
-								cout << "test packet " << (*blockStore)[i].packet << endl;
-							}
-							if(sumPacketsCounterOut[0] != (u_long)atol((char*)(*blockStore)[i].packet)) {
-								cout << endl << endl << "ERROR: BAD PACKET ORDER" << endl << endl;
-								//exit(1);
-								sleep(5);
-								sumPacketsCounterOut[0] = (u_long)atol((char*)(*blockStore)[i].packet);
-							}
-						} else {
-							this->processPacket(
-								(*blockStore)[i].header, 
-								(*blockStore)[i].packet, 
-								blockStore, 
-								i,
-								(*blockStore)[i].header->dlink ? 
-									(*blockStore)[i].header->dlink :
-									blockStore->dlink, 
-								blockStore->sensor_id);
-						}
+						this->processPacket(
+							(*blockStore)[i].header, 
+							(*blockStore)[i].packet, 
+							blockStore, 
+							i,
+							(*blockStore)[i].header->dlink ? 
+								(*blockStore)[i].header->dlink :
+								blockStore->dlink, 
+							blockStore->sensor_id);
 					}
 					this->blockStoreTrash.push_back(blockStore);
 				}
