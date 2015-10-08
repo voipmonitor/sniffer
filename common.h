@@ -41,6 +41,8 @@ struct sVerbose {
 	int manager;
 	int scanpcapdir;
 	int debug_rtcp;
+	int defrag;
+	int dedup;
 };
 
 #endif

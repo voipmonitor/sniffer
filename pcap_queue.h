@@ -393,26 +393,68 @@ struct sHeaderPacket {
 };
 
 class PcapQueue_HeaderPacketStack {
+private:
+	struct sHeaderPacketPool {
+		void free_all() {
+			for(u_int i = 0; i < sizeof(hp) / sizeof(hp[0]); i++) {
+				hp[i].free();
+			}
+		}
+		sHeaderPacket hp[10];
+	};
 public:
 	PcapQueue_HeaderPacketStack(unsigned int size) {
-		stack = new rqueue_quick<sHeaderPacket>(size, 0, 0, NULL, false, __FILE__, __LINE__);
+		hpp_add_size = 0;
+		hpp_get_size = 0;
+		stack = new rqueue_quick<sHeaderPacketPool>(size, 0, 0, NULL, false, __FILE__, __LINE__);
 	}
 	~PcapQueue_HeaderPacketStack() {
-		sHeaderPacket headerPacket;
-		while(get(&headerPacket)) {
-			headerPacket.free();
+		for(u_int i = 0; i < hpp_add_size; i++) {
+			hpp_add.hp[i].free();
+		}
+		for(u_int i = 0; i < hpp_get_size; i++) {
+			hpp_get.hp[sizeof(hpp_get.hp) / sizeof(hpp_get.hp[0]) - i - 1].free();
+		}
+		sHeaderPacket headerPacketPool;
+		while(get(&headerPacketPool)) {
+			headerPacketPool.free();
 		}
 		delete stack;
 	}
 	bool add(sHeaderPacket *headerPacket) {
-		return(stack->push(headerPacket, false, false));
+		if(hpp_add_size == sizeof(hpp_add.hp) / sizeof(hpp_add.hp[0])) {
+			if(stack->push(&hpp_add, false)) {
+				hpp_add.hp[0] = *headerPacket;
+				hpp_add_size = 1;
+				return(true);
+			}
+		} else {
+			hpp_add.hp[hpp_add_size] = *headerPacket;
+			++hpp_add_size;
+			return(true);
+		}
+		return(false);
 	}
 	bool get(sHeaderPacket *headerPacket) {
-		extern int opt_pcap_queue_iface_dedup_separate_threads_extend__ext_mode;
-		return(stack->pop(headerPacket, false, opt_pcap_queue_iface_dedup_separate_threads_extend__ext_mode));
+		if(hpp_get_size) {
+			*headerPacket = hpp_get.hp[sizeof(hpp_get.hp) / sizeof(hpp_get.hp[0]) - hpp_get_size];
+			--hpp_get_size;
+			return(true);
+		} else {
+			if(stack->pop(&hpp_get, false)) {
+				*headerPacket = hpp_get.hp[0];
+				hpp_get_size = sizeof(hpp_get.hp) / sizeof(hpp_get.hp[0]) - 1;
+				return(true);
+			}
+		}
+		return(false);
 	}
 private:
-	rqueue_quick<sHeaderPacket> *stack;
+	sHeaderPacketPool hpp_add;
+	u_int hpp_add_size;
+	sHeaderPacketPool hpp_get;
+	u_int hpp_get_size;
+	rqueue_quick<sHeaderPacketPool> *stack;
 };
 
 class PcapQueue_readFromInterfaceThread : protected PcapQueue_readFromInterface_base {
@@ -441,10 +483,10 @@ public:
 protected:
 	inline void push(pcap_pkthdr* header,u_char* packet, bool ok_for_header_packet_stack,
 			 u_int offset, uint16_t *md5, int index = 0, uint32_t counter = 0);
-	inline hpi pop(int index = 0, bool moveReadit = true, bool deferDestroy = false);
-        inline void moveReadit(int index = 0, bool deferDestroy = false);
-	inline hpi POP(bool moveReadit = true, bool deferDestroy = false);
-	inline void moveREADIT(bool deferDestroy = false);
+	inline hpi pop(int index = 0, bool moveReadit = true);
+        inline void moveReadit(int index = 0);
+	inline hpi POP(bool moveReadit = true);
+	inline void moveREADIT();
 	u_int64_t getTime_usec(int index = 0) {
 		if(this->qring[index][this->readit[index] % this->qringmax].used <= 0) {
 			return(0);
