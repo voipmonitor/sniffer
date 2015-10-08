@@ -392,28 +392,34 @@ struct sHeaderPacket {
 	u_char *packet;
 };
 
+#define PcapQueue_HeaderPacketStack_add_max 3
+#define PcapQueue_HeaderPacketStack_hp_max 100
 class PcapQueue_HeaderPacketStack {
 private:
 	struct sHeaderPacketPool {
 		void free_all() {
-			for(u_int i = 0; i < sizeof(hp) / sizeof(hp[0]); i++) {
+			for(u_int i = 0; i < PcapQueue_HeaderPacketStack_hp_max; i++) {
 				hp[i].free();
 			}
 		}
-		sHeaderPacket hp[10];
+		sHeaderPacket hp[PcapQueue_HeaderPacketStack_hp_max];
 	};
 public:
 	PcapQueue_HeaderPacketStack(unsigned int size) {
-		hpp_add_size = 0;
+		for(int ia = 0; ia < PcapQueue_HeaderPacketStack_add_max; ia++) {
+			hpp_add_size[ia] = 0;
+		}
 		hpp_get_size = 0;
 		stack = new rqueue_quick<sHeaderPacketPool>(size, 0, 0, NULL, false, __FILE__, __LINE__);
 	}
 	~PcapQueue_HeaderPacketStack() {
-		for(u_int i = 0; i < hpp_add_size; i++) {
-			hpp_add.hp[i].free();
+		for(int ia = 0; ia < PcapQueue_HeaderPacketStack_add_max; ia++) {
+			for(u_int i = 0; i < hpp_add_size[ia]; i++) {
+				hpp_add[ia].hp[i].free();
+			}
 		}
 		for(u_int i = 0; i < hpp_get_size; i++) {
-			hpp_get.hp[sizeof(hpp_get.hp) / sizeof(hpp_get.hp[0]) - i - 1].free();
+			hpp_get.hp[PcapQueue_HeaderPacketStack_hp_max - i - 1].free();
 		}
 		sHeaderPacket headerPacketPool;
 		while(get(&headerPacketPool)) {
@@ -421,37 +427,37 @@ public:
 		}
 		delete stack;
 	}
-	bool add(sHeaderPacket *headerPacket) {
-		if(hpp_add_size == sizeof(hpp_add.hp) / sizeof(hpp_add.hp[0])) {
-			if(stack->push(&hpp_add, false)) {
-				hpp_add.hp[0] = *headerPacket;
-				hpp_add_size = 1;
+	bool add(sHeaderPacket *headerPacket, int ia) {
+		if(hpp_add_size[ia] == PcapQueue_HeaderPacketStack_hp_max) {
+			if(stack->push(&hpp_add[ia], false, true)) {
+				hpp_add[ia].hp[0] = *headerPacket;
+				hpp_add_size[ia] = 1;
 				return(true);
 			}
 		} else {
-			hpp_add.hp[hpp_add_size] = *headerPacket;
-			++hpp_add_size;
+			hpp_add[ia].hp[hpp_add_size[ia]] = *headerPacket;
+			++hpp_add_size[ia];
 			return(true);
 		}
 		return(false);
 	}
 	bool get(sHeaderPacket *headerPacket) {
 		if(hpp_get_size) {
-			*headerPacket = hpp_get.hp[sizeof(hpp_get.hp) / sizeof(hpp_get.hp[0]) - hpp_get_size];
+			*headerPacket = hpp_get.hp[PcapQueue_HeaderPacketStack_hp_max - hpp_get_size];
 			--hpp_get_size;
 			return(true);
 		} else {
 			if(stack->pop(&hpp_get, false)) {
 				*headerPacket = hpp_get.hp[0];
-				hpp_get_size = sizeof(hpp_get.hp) / sizeof(hpp_get.hp[0]) - 1;
+				hpp_get_size = PcapQueue_HeaderPacketStack_hp_max - 1;
 				return(true);
 			}
 		}
 		return(false);
 	}
 private:
-	sHeaderPacketPool hpp_add;
-	u_int hpp_add_size;
+	sHeaderPacketPool hpp_add[PcapQueue_HeaderPacketStack_add_max];
+	u_int hpp_add_size[PcapQueue_HeaderPacketStack_add_max];
 	sHeaderPacketPool hpp_get;
 	u_int hpp_get_size;
 	rqueue_quick<sHeaderPacketPool> *stack;

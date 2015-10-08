@@ -2772,13 +2772,17 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void *arg, unsigned int 
 	pcap_pkthdr *header = NULL, *_header = NULL;
 	u_char *packet = NULL, *_packet = NULL;
 	bool ok_for_header_packet_stack = false;
+	bool destroy = false;
 	int res;
 	u_int32_t libpcap_buffer_offset = 0;
 	u_char **libpcap_buffer = NULL;
 	u_char *libpcap_buffer_old = NULL;
 	sHeaderPacket headerPacketRead;
 	while(!(is_terminating() || this->threadDoTerminate)) {
-		bool destroy = false;
+		_header = NULL;
+		_packet = NULL;
+		ok_for_header_packet_stack = false;
+		destroy = false;
 		switch(this->typeThread) {
 		case read: {
 			if(!headerPacketRead.packet) {
@@ -2806,8 +2810,8 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void *arg, unsigned int 
 			if(!libpcap_buffer_offset) {
 				libpcap_buffer = &(((_pcap_linux*)((struct _pcap*)this->pcapHandle)->priv)->oneshot_buffer);
 				libpcap_buffer_offset = (u_char*)libpcap_buffer - (u_char*)this->pcapHandle;
-				if(*libpcap_buffer == packet &&
-				   libpcap_buffer_offset >= 500 && libpcap_buffer_offset < 1000) {
+				if(libpcap_buffer_offset >= 500 && libpcap_buffer_offset < 1000 &&
+				   *libpcap_buffer == packet) {
 					cout << "detect oneshot buffer" << endl;
 					cout << "oneshot buffer: " << hex << (long)*libpcap_buffer << endl;
 					cout << "packet: " << hex << (long)packet << endl;
@@ -2821,10 +2825,14 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void *arg, unsigned int 
 				}
 				syslog(LOG_NOTICE, "find oneshot libpcap buffer : %s", libpcap_buffer ? "success" : "failed");
 			}
+			memcpy(headerPacketRead.header, header, sizeof(pcap_pkthdr));
+			if(!libpcap_buffer) {
+				memcpy(headerPacketRead.packet, packet, header->caplen);
+			}
 			ok_for_header_packet_stack = true;
 			if(!opt_pcap_queue_iface_dedup_separate_threads_extend) {
-				_header = header;
-				_packet = packet;
+				_header = header = headerPacketRead.header;
+				_packet = packet = headerPacketRead.packet;
 				res = this->pcapProcess(&header, &packet, &destroy);
 				if(res == -1) {
 					break;
@@ -2835,14 +2843,14 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void *arg, unsigned int 
 						headerPacketRead.packet = NULL;
 					}
 					continue;
-				} if(packet != _packet) {
-					ok_for_header_packet_stack = false;
+				} else {
+					if(destroy) {
+						ok_for_header_packet_stack = false;
+					}
 				}
-			 
-			}
-			memcpy(headerPacketRead.header, header, sizeof(pcap_pkthdr));
-			if(!libpcap_buffer) {
-				memcpy(headerPacketRead.packet, packet, header->caplen);
+				this->push(header, packet, ok_for_header_packet_stack, this->ppd.header_ip_offset, NULL);
+			} else {
+				this->push(headerPacketRead.header, headerPacketRead.packet, ok_for_header_packet_stack, 0, NULL);
 			}
 			/* check change packet content - disabled
 			if(ip_tot_len && ip_tot_len != ((iphdr2*)(packet_pcap + 14))->tot_len) {
@@ -2854,7 +2862,6 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void *arg, unsigned int 
 				}
 			}
 			*/
-			this->push(headerPacketRead.header, headerPacketRead.packet, ok_for_header_packet_stack, this->ppd.header_ip_offset, NULL);
 			headerPacketRead.packet = NULL;
 			}
 			break;
@@ -2864,11 +2871,9 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void *arg, unsigned int 
 				usleep(100);
 				continue;
 			} else {
-			 
 				header = _header = hpii.header;
 				packet = _packet = hpii.packet;
 				ok_for_header_packet_stack = hpii.ok_for_header_packet_stack;
-				
 				if(opt_pcapdump_all) {
 					if(this->pcapDumpHandle &&
 					   this->pcapDumpLength > opt_pcapdump_all * 1000000ull) {
@@ -2887,7 +2892,6 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void *arg, unsigned int 
 					pcap_dump((u_char*)this->pcapDumpHandle, header, packet);
 					this->pcapDumpLength += header->caplen;
 				}
-
 				if(opt_udpfrag || opt_pcapdump_all) {
 					res = this->pcapProcess(&header, &packet, &destroy,
 								true, false, false, false);
@@ -2899,8 +2903,8 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void *arg, unsigned int 
 							if(header != _header) delete header;
 							if(packet != _packet) delete [] packet;
 						}
-						if(_header) delete _header;
-						if(_packet) delete [] _packet;
+						delete _header;
+						delete [] _packet;
 						this->prevThreads[0]->moveReadit();
 						continue;
 					} else if(packet != _packet) {
@@ -2924,11 +2928,10 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void *arg, unsigned int 
 			if(!hpii.packet) {
 				usleep(100);
 				continue;
-			} else {
-				ok_for_header_packet_stack = hpii.ok_for_header_packet_stack;
-				header = _header = hpii.header;
-				packet = _packet = hpii.packet;
 			}
+			header = _header = hpii.header;
+			packet = _packet = hpii.packet;
+			ok_for_header_packet_stack = hpii.ok_for_header_packet_stack;
 			counter = hpii.counter;
 			if(opt_dup_check) {
 				res = this->pcapProcess(&header, &packet, &destroy,
@@ -2975,14 +2978,13 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void *arg, unsigned int 
 				if(!hpii.packet) {
 					usleep(100);
 					continue;
-				} else {
-					header = _header = hpii.header;
-					packet = _packet = hpii.packet;
-					ok_for_header_packet_stack = hpii.ok_for_header_packet_stack;
+				}
+				header = _header = hpii.header;
+				packet = _packet = hpii.packet;
+				ok_for_header_packet_stack = hpii.ok_for_header_packet_stack;
+				++this->pop_counter;
+				if(!this->pop_counter) {
 					++this->pop_counter;
-					if(!this->pop_counter) {
-						++this->pop_counter;
-					}
 				}
 				if(opt_dup_check) {
 					if(hpii.md5[0]) {
@@ -2999,8 +3001,13 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void *arg, unsigned int 
 							if(header != _header) delete header;
 							if(packet != _packet) delete [] packet;
 						}
-						delete _header;
-						delete [] _packet;
+						if(ok_for_header_packet_stack) {
+							sHeaderPacket headerPacket(_header, _packet);
+							this->readThread->headerPacketStack->add(&headerPacket, 1 + (this->typeThread == md1 ? 0 : 1));
+						} else {
+							delete _header;
+							delete [] _packet;
+						}
 						continue;
 					}
 					this->push(header, packet, ok_for_header_packet_stack, this->ppd.header_ip_offset, NULL);
@@ -3014,20 +3021,21 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void *arg, unsigned int 
 				if(!hpii.packet) {
 					usleep(100);
 					continue;
-				} else {
-					header = hpii.header;
-					packet = hpii.packet;
-					ok_for_header_packet_stack = hpii.ok_for_header_packet_stack;
 				}
+				header = _header = hpii.header;
+				packet = _packet = hpii.packet;
+				ok_for_header_packet_stack = hpii.ok_for_header_packet_stack;
 				res = this->pcapProcess(&header, &packet, &destroy);
 				if(res == -1) {
 					this->prevThreads[0]->moveReadit();
 					break;
 				} else if(res == 0) {
 					if(destroy) {
-						delete header;
-						delete [] packet;
+						if(header != _header) delete header;
+						if(packet != _packet) delete [] packet;
 					}
+					delete _header;
+					delete [] _packet;
 					this->prevThreads[0]->moveReadit();
 					continue;
 				}
@@ -3444,7 +3452,7 @@ void* PcapQueue_readFromInterface::threadFunction(void *arg, unsigned int arg2) 
 					if(ok_for_header_packet_stack &&
 					   this->readThreadsCount && 
 					   this->readThreads[minThreadTimeIndex]->headerPacketStack &&
-					   this->readThreads[minThreadTimeIndex]->headerPacketStack->add(&headerPacket)) {
+					   this->readThreads[minThreadTimeIndex]->headerPacketStack->add(&headerPacket, 0)) {
 						// ok push header & packet to stack
 						// cout << "-" << flush;
 					} else if(!TERMINATING && this->deleteThreadsCount) {
@@ -3541,7 +3549,7 @@ void *PcapQueue_readFromInterface::writeThreadFunction(void *arg, unsigned int a
 		if(dpi.ok_for_header_packet_stack &&
 		   this->readThreadsCount && 
 		   this->readThreads[dpi.read_thread_index]->headerPacketStack &&
-		   this->readThreads[dpi.read_thread_index]->headerPacketStack->add(&headerPacket)) {
+		   this->readThreads[dpi.read_thread_index]->headerPacketStack->add(&headerPacket, 0)) {
 			// ok push header & packet to stack
 			// cout << "-" << flush;
 		} else if(!TERMINATING && this->deleteThreadsCount) {
