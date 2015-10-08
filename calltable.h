@@ -371,6 +371,9 @@ public:
 	
 	int vlan;
 
+	unsigned int lastcallerssrc;
+	unsigned int lastcalledssrc;
+
 	vector<string> mergecalls;
 
 	/**

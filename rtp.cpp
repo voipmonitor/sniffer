@@ -893,7 +893,15 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 		memcpy(&s->lastTimeRec, &tmp, sizeof(struct timeval));
 	}
 
-	if(getMarker()) {
+	unsigned int *lastssrc = iscaller ? 
+		(owner->lastcallerrtp ? &owner->lastcallerrtp->ssrc : NULL) :
+		(owner->lastcalledrtp ? &owner->lastcalledrtp->ssrc : NULL);
+	
+	// if packet has Mark bit OR last frame was not dtmf or current frame is not dtmf and last ssrc is different then current ssrc packet - reset sequence
+	if(getMarker() or
+		(!(lastframetype == AST_FRAME_DTMF and codec != PAYLOAD_TELEVENT) and lastssrc and *lastssrc != ssrc)
+
+	) {
 		s->lastTimeStamp = getTimestamp() - samplerate / 1000 * packetization;
 		struct timeval tmp = ast_tvadd(header->ts, ast_samp2tv(packetization, 1000));
 		memcpy(&s->lastTimeRec, &tmp, sizeof(struct timeval));
@@ -907,6 +915,23 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 			     << " dst: " << inet_ntostring(htonl(daddr)) << " : " << dport
 			     << endl;
 		}
+
+		if((!(lastframetype == AST_FRAME_DTMF and codec != PAYLOAD_TELEVENT) and lastssrc and *lastssrc != ssrc)) {
+			// reset jitter if ssrc changed 
+			if(opt_jitterbuffer_adapt) {
+				ast_jb_empty_and_reset(channel_adapt);
+				ast_jb_destroy(channel_adapt);
+			}
+			if(opt_jitterbuffer_f1) {
+				ast_jb_empty_and_reset(channel_fix1);
+				ast_jb_destroy(channel_fix1);
+			}
+			if(opt_jitterbuffer_f2) {
+				ast_jb_empty_and_reset(channel_fix2);
+				ast_jb_destroy(channel_fix2);
+			}
+		}
+
 	}
 
 	if(lastframetype == AST_FRAME_DTMF and codec != PAYLOAD_TELEVENT) {
