@@ -2845,7 +2845,10 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void *arg, unsigned int 
 			} else {
 				_header = header = headerPacketRead.header;
 				_packet = packet = headerPacketRead.packet;
-				res = this->pcapProcess(&header, &packet, &destroy);
+				res = opt_pcap_queue_iface_dedup_separate_threads ?
+				       this->pcapProcess(&header, &packet, &destroy,
+							 true, false, false, false) :
+				       this->pcapProcess(&header, &packet, &destroy);
 				if(res == -1) {
 					break;
 				} else if(res == 0) {
@@ -3024,7 +3027,8 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void *arg, unsigned int 
 				header = _header = hpii.header;
 				packet = _packet = hpii.packet;
 				ok_for_header_packet_stack = hpii.ok_for_header_packet_stack;
-				res = this->pcapProcess(&header, &packet, &destroy);
+				res = this->pcapProcess(&header, &packet, &destroy,
+							false, true, true, true);
 				if(res == -1) {
 					break;
 				} else if(res == 0) {
