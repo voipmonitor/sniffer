@@ -2830,7 +2830,19 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void *arg, unsigned int 
 				memcpy(headerPacketRead.packet, packet, header->caplen);
 			}
 			ok_for_header_packet_stack = true;
-			if(!opt_pcap_queue_iface_dedup_separate_threads_extend) {
+			/* check change packet content - disabled
+			if(ip_tot_len && ip_tot_len != ((iphdr2*)(packet_pcap + 14))->tot_len) {
+				static u_long lastTimeLogErrBuggyKernel = 0;
+				u_long actTime = getTimeMS(header);
+				if(actTime - 1000 > lastTimeLogErrBuggyKernel) {
+					syslog(LOG_ERR, "SUSPICIOUS CHANGE PACKET CONTENT: buggy kernel - contact support@voipmonitor.org");
+					lastTimeLogErrBuggyKernel = actTime;
+				}
+			}
+			*/
+			if(opt_pcap_queue_iface_dedup_separate_threads_extend) {
+				this->push(headerPacketRead.header, headerPacketRead.packet, ok_for_header_packet_stack, 0, NULL);
+			} else {
 				_header = header = headerPacketRead.header;
 				_packet = packet = headerPacketRead.packet;
 				res = this->pcapProcess(&header, &packet, &destroy);
@@ -2844,29 +2856,17 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void *arg, unsigned int 
 					}
 					continue;
 				} else {
-					if(destroy) {
+					if(packet != _packet) {
 						ok_for_header_packet_stack = false;
 					}
 				}
 				this->push(header, packet, ok_for_header_packet_stack, this->ppd.header_ip_offset, NULL);
-			} else {
-				this->push(headerPacketRead.header, headerPacketRead.packet, ok_for_header_packet_stack, 0, NULL);
 			}
-			/* check change packet content - disabled
-			if(ip_tot_len && ip_tot_len != ((iphdr2*)(packet_pcap + 14))->tot_len) {
-				static u_long lastTimeLogErrBuggyKernel = 0;
-				u_long actTime = getTimeMS(header);
-				if(actTime - 1000 > lastTimeLogErrBuggyKernel) {
-					syslog(LOG_ERR, "SUSPICIOUS CHANGE PACKET CONTENT: buggy kernel - contact support@voipmonitor.org");
-					lastTimeLogErrBuggyKernel = actTime;
-				}
-			}
-			*/
 			headerPacketRead.packet = NULL;
 			}
 			break;
 		case defrag: {
-			hpi hpii = this->prevThreads[0]->pop(0, false);
+			hpi hpii = this->prevThreads[0]->pop();
 			if(!hpii.packet) {
 				usleep(100);
 				continue;
@@ -2896,16 +2896,19 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void *arg, unsigned int 
 					res = this->pcapProcess(&header, &packet, &destroy,
 								true, false, false, false);
 					if(res == -1) {
-						this->prevThreads[0]->moveReadit();
 						break;
 					} else if(res == 0) {
 						if(destroy) {
 							if(header != _header) delete header;
 							if(packet != _packet) delete [] packet;
 						}
-						delete _header;
-						delete [] _packet;
-						this->prevThreads[0]->moveReadit();
+						if(ok_for_header_packet_stack) {
+							sHeaderPacket headerPacket(_header, _packet);
+							this->readThread->headerPacketStack->add(&headerPacket, 1);
+						} else {
+							delete _header;
+							delete [] _packet;
+						}
 						continue;
 					} else if(packet != _packet) {
 						ok_for_header_packet_stack = false;
@@ -2917,14 +2920,13 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void *arg, unsigned int 
 					++this->push_counter;
 				}
 				this->indexDefragQring = this->indexDefragQring ? 0 : 1;
-				this->prevThreads[0]->moveReadit();
 			}
 			}
 			break;
 		case md1:
 		case md2: {
 			uint32_t counter = 0;
-			hpi hpii = this->prevThreads[0]->pop(this->typeThread == md1 ? 0 : 1, false);
+			hpi hpii = this->prevThreads[0]->pop(this->typeThread == md1 ? 0 : 1);
 			if(!hpii.packet) {
 				usleep(100);
 				continue;
@@ -2937,7 +2939,6 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void *arg, unsigned int 
 				res = this->pcapProcess(&header, &packet, &destroy,
 							false, true, false, false);
 				if(res == -1) {
-					this->prevThreads[0]->moveReadit(this->typeThread == md1 ? 0 : 1);
 					break;
 				} else if(res == 0) {
 					if(destroy) {
@@ -2946,12 +2947,10 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void *arg, unsigned int 
 					}
 					delete _header;
 					delete [] _packet; 
-					this->prevThreads[0]->moveReadit(this->typeThread == md1 ? 0 : 1);
 					continue;
 				}
 			}
 			this->push(header, packet, ok_for_header_packet_stack, 0, this->ppd.md5, 0, counter);
-			this->prevThreads[0]->moveReadit(this->typeThread == md1 ? 0 : 1);
 			}
 			break;
 		case dedup: {
@@ -3003,7 +3002,7 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void *arg, unsigned int 
 						}
 						if(ok_for_header_packet_stack) {
 							sHeaderPacket headerPacket(_header, _packet);
-							this->readThread->headerPacketStack->add(&headerPacket, 1 + (this->typeThread == md1 ? 0 : 1));
+							this->readThread->headerPacketStack->add(&headerPacket, 2);
 						} else {
 							delete _header;
 							delete [] _packet;
@@ -3017,7 +3016,7 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void *arg, unsigned int 
 					this->push(header, packet, ok_for_header_packet_stack, this->ppd.header_ip_offset, NULL);
 				}
 			} else {
-				hpi hpii = this->prevThreads[0]->pop(0, false);
+				hpi hpii = this->prevThreads[0]->pop();
 				if(!hpii.packet) {
 					usleep(100);
 					continue;
@@ -3027,20 +3026,22 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void *arg, unsigned int 
 				ok_for_header_packet_stack = hpii.ok_for_header_packet_stack;
 				res = this->pcapProcess(&header, &packet, &destroy);
 				if(res == -1) {
-					this->prevThreads[0]->moveReadit();
 					break;
 				} else if(res == 0) {
 					if(destroy) {
 						if(header != _header) delete header;
 						if(packet != _packet) delete [] packet;
 					}
-					delete _header;
-					delete [] _packet;
-					this->prevThreads[0]->moveReadit();
+					if(ok_for_header_packet_stack) {
+						sHeaderPacket headerPacket(_header, _packet);
+						this->readThread->headerPacketStack->add(&headerPacket, 2);
+					} else {
+						delete _header;
+						delete [] _packet;
+					}
 					continue;
 				}
 				this->push(header, packet, ok_for_header_packet_stack, this->ppd.header_ip_offset, NULL);
-				this->prevThreads[0]->moveReadit();
 			}
 			}
 			break;
