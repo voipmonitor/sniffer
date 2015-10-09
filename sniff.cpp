@@ -93,6 +93,7 @@ queue<pcap_packet*> readpacket_thread_queue;
 extern pthread_mutex_t readpacket_thread_queue_lock;
 #endif
 
+unsigned int defrag_counter = 0;
 unsigned int duplicate_counter = 0;
 extern struct pcap_stat pcapstat;
 int pcapstatresCount = 0;

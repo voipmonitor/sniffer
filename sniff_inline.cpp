@@ -45,6 +45,7 @@ extern char *httpportmatrix;
 extern char *webrtcportmatrix;
 extern TcpReassembly *tcpReassemblyHttp;
 extern TcpReassembly *tcpReassemblyWebrtc;
+extern unsigned int defrag_counter;
 extern unsigned int duplicate_counter;
 
 
@@ -251,7 +252,8 @@ int pcapProcess(pcap_pkthdr** header, u_char** packet, bool *destroy,
 					ppd->header_ip = (iphdr2*)(*packet + ppd->header_ip_offset);
 					*destroy = true;
 					if(sverb.defrag) {
-						cout << "*** DEFRAG 1" << endl;
+						defrag_counter++;
+						cout << "*** DEFRAG 1 " << defrag_counter << endl;
 					}
 				} else {
 					//cout << "pcapProcess exit 002" << endl;
@@ -296,7 +298,8 @@ int pcapProcess(pcap_pkthdr** header, u_char** packet, bool *destroy,
 							}
 							*destroy = true;
 							if(sverb.defrag) {
-								cout << "*** DEFRAG 2" << endl;
+								defrag_counter++;
+								cout << "*** DEFRAG 2 " << defrag_counter << endl;
 							}
 						} else {
 							//cout << "pcapProcess exit 003" << endl;

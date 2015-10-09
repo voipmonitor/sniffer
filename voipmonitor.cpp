@@ -675,8 +675,6 @@ extern ParsePacket _parse_packet_global;
 
 cBuffersControl buffersControl;
 
-int opt_delete_threads = 1;
-
 u_int64_t rdtsc_by_100ms;
 
 char opt_git_folder[1024];
@@ -4097,8 +4095,6 @@ void cConfig::addConfigItems() {
 				advanced();
 				addConfigItem(new cConfigItem_integer("maxpcapsize", &opt_maxpcapsize_mb));
 					expert();
-					addConfigItem((new cConfigItem_integer("delete_threads", &opt_delete_threads))
-						->setMaximum(MAX_THREADS_DELETE));
 					addConfigItem(new cConfigItem_integer("pcap_dump_bufflength", &opt_pcap_dump_bufflength));
 					addConfigItem(new cConfigItem_integer("pcap_dump_writethreads", &opt_pcap_dump_writethreads));
 					addConfigItem(new cConfigItem_yesno("pcap_dump_asyncwrite", &opt_pcap_dump_asyncwrite));
@@ -6890,10 +6886,6 @@ int eval_config(string inistr) {
 	
 	if((value = ini.GetValue("general", "max_buffer_mem", NULL))) {
 		buffersControl.setMaxBufferMem(atol(value) * 1024 * 1024, true);
-	}
-	
-	if((value = ini.GetValue("general", "delete_threads", NULL))) {
-		opt_delete_threads = min(atoi(value), MAX_THREADS_DELETE);
 	}
 	
 	if((value = ini.GetValue("general", "git_folder", NULL))) {
