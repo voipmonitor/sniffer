@@ -2806,20 +2806,36 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void *arg, unsigned int 
 			}
 			*/
 			if(!libpcap_buffer_offset) {
+				cout << "detect oneshot buffer" << endl;
 				libpcap_buffer = &(((_pcap_linux*)((struct _pcap*)this->pcapHandle)->priv)->oneshot_buffer);
 				libpcap_buffer_offset = (u_char*)libpcap_buffer - (u_char*)this->pcapHandle;
-				if(libpcap_buffer_offset >= 500 && libpcap_buffer_offset < 1000 &&
+				bool libpcap_buffer_ok = false;
+				if(libpcap_buffer_offset >= 0 && libpcap_buffer_offset < 1000 &&
 				   *libpcap_buffer == packet) {
-					cout << "detect oneshot buffer" << endl;
+					libpcap_buffer_ok = true;
+					cout << "method 1 success" << endl;
+				} else { 
+					for(int i = 0; i < 1000; i++) {
+						if(*(u_char**)((u_char*)this->pcapHandle + i) == packet) {
+							libpcap_buffer = (u_char**)((u_char*)this->pcapHandle + i);
+							libpcap_buffer_offset = i;
+							libpcap_buffer_ok = true;
+							cout << "method 2 success" << endl;
+							break;
+						}
+					}
+				}
+				if(!libpcap_buffer_ok) {
+					libpcap_buffer = NULL;
+					libpcap_buffer_offset = -1;
+				}
+				if(libpcap_buffer) {
 					cout << "oneshot buffer: " << hex << (long)*libpcap_buffer << endl;
 					cout << "packet: " << hex << (long)packet << endl;
 					cout << dec;
 					cout << "device: " << ((_pcap_linux*)((struct _pcap*)this->pcapHandle)->priv)->device << endl;
 					cout << "offset: " << libpcap_buffer_offset << endl;
 					libpcap_buffer_old = packet;
-				} else {
-					libpcap_buffer = NULL;
-					libpcap_buffer_offset = -1;
 				}
 				syslog(LOG_NOTICE, "find oneshot libpcap buffer : %s", libpcap_buffer ? "success" : "failed");
 			}
