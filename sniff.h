@@ -488,6 +488,7 @@ public:
 	void preparePstatData(bool nextThread = false);
 	double getCpuUsagePerc(bool preparePstatData, bool nextThread = false);
 	void terminate();
+	static void autoStartProcessRtpPacket();
 private:
 	void *outThreadFunction();
 	void *nextThreadFunction();

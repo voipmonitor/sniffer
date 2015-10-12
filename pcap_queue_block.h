@@ -113,7 +113,7 @@ struct pcap_block_store {
 		this->destroy();
 		this->destroyRestoreBuffer();
 	}
-	inline bool add(pcap_pkthdr *header, u_char *packet, int offset, int dlink);
+	inline bool add(pcap_pkthdr *header, u_char *packet, int offset, int dlink, int memcpy_packet_size = 0);
 	inline bool add(pcap_pkthdr_plus *header, u_char *packet);
 	inline bool isFull_checkTimout();
 	pcap_pkthdr_pcap operator [] (size_t indexItem) {

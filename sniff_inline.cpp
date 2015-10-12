@@ -45,6 +45,7 @@ extern char *httpportmatrix;
 extern char *webrtcportmatrix;
 extern TcpReassembly *tcpReassemblyHttp;
 extern TcpReassembly *tcpReassemblyWebrtc;
+extern unsigned int defrag_counter;
 extern unsigned int duplicate_counter;
 
 
@@ -250,6 +251,10 @@ int pcapProcess(pcap_pkthdr** header, u_char** packet, bool *destroy,
 					//cout << "*** packets are reassembled in pcapProcess" << endl;
 					ppd->header_ip = (iphdr2*)(*packet + ppd->header_ip_offset);
 					*destroy = true;
+					if(sverb.defrag) {
+						defrag_counter++;
+						cout << "*** DEFRAG 1 " << defrag_counter << endl;
+					}
 				} else {
 					//cout << "pcapProcess exit 002" << endl;
 					return(0);
@@ -292,6 +297,10 @@ int pcapProcess(pcap_pkthdr** header, u_char** packet, bool *destroy,
 								delete [] packet_old;
 							}
 							*destroy = true;
+							if(sverb.defrag) {
+								defrag_counter++;
+								cout << "*** DEFRAG 2 " << defrag_counter << endl;
+							}
 						} else {
 							//cout << "pcapProcess exit 003" << endl;
 							return(0);
@@ -395,6 +404,9 @@ int pcapProcess(pcap_pkthdr** header, u_char** packet, bool *destroy,
 				if(memcmp(ppd->md5, ppd->prevmd5s + (*ppd->md5 * MD5_DIGEST_LENGTH), MD5_DIGEST_LENGTH) == 0) {
 					//printf("dropping duplicate md5[%s]\n", md5);
 					duplicate_counter++;
+					if(sverb.dedup) {
+						cout << "*** DEDUP " << duplicate_counter << endl;
+					}
 					return(0);
 				}
 				memcpy(ppd->prevmd5s+(*ppd->md5 * MD5_DIGEST_LENGTH), ppd->md5, MD5_DIGEST_LENGTH);

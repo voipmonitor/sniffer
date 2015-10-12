@@ -22,7 +22,6 @@
 #define READ_THREADS_MAX 20
 #define DLT_TYPES_MAX 10
 #define PCAP_QUEUE_NEXT_THREADS_MAX 3
-#define MAX_THREADS_DELETE 3
 
 class pcap_block_store_queue {
 public:
@@ -235,7 +234,7 @@ protected:
 	virtual string pcapDropCountStat_interface() { return(""); }
 	virtual ulong getCountPacketDrop() { return(0); }
 	virtual string getStatPacketDrop() { return(""); }
-	virtual string pcapStatString_cpuUsageReadThreads() { return(""); };
+	virtual string pcapStatString_cpuUsageReadThreads(double *sumMax = NULL) { if(sumMax) *sumMax = 0; return(""); };
 	virtual void initStat_interface() {};
 	int getThreadPid(eTypeThread typeThread);
 	pstat_data *getThreadPstatData(eTypeThread typeThread);
@@ -392,27 +391,75 @@ struct sHeaderPacket {
 	u_char *packet;
 };
 
+#define PcapQueue_HeaderPacketStack_add_max 5
+#define PcapQueue_HeaderPacketStack_hp_max 100
 class PcapQueue_HeaderPacketStack {
+private:
+	struct sHeaderPacketPool {
+		void free_all() {
+			for(u_int i = 0; i < PcapQueue_HeaderPacketStack_hp_max; i++) {
+				hp[i].free();
+			}
+		}
+		sHeaderPacket hp[PcapQueue_HeaderPacketStack_hp_max];
+	};
 public:
 	PcapQueue_HeaderPacketStack(unsigned int size) {
-		stack = new rqueue_quick<sHeaderPacket>(size, 0, 0, NULL, false, __FILE__, __LINE__);
+		for(int ia = 0; ia < PcapQueue_HeaderPacketStack_add_max; ia++) {
+			hpp_add_size[ia] = 0;
+		}
+		hpp_get_size = 0;
+		stack = new rqueue_quick<sHeaderPacketPool>(size, 0, 0, NULL, false, __FILE__, __LINE__);
 	}
 	~PcapQueue_HeaderPacketStack() {
+		for(int ia = 0; ia < PcapQueue_HeaderPacketStack_add_max; ia++) {
+			for(u_int i = 0; i < hpp_add_size[ia]; i++) {
+				hpp_add[ia].hp[i].free();
+			}
+		}
+		for(u_int i = 0; i < hpp_get_size; i++) {
+			hpp_get.hp[PcapQueue_HeaderPacketStack_hp_max - i - 1].free();
+		}
 		sHeaderPacket headerPacket;
-		while(get(&headerPacket)) {
+		while(get_hp(&headerPacket)) {
 			headerPacket.free();
 		}
 		delete stack;
 	}
-	bool add(sHeaderPacket *headerPacket) {
-		return(stack->push(headerPacket, false, false));
+	bool add_hp(sHeaderPacket *headerPacket, int ia) {
+		if(hpp_add_size[ia] == PcapQueue_HeaderPacketStack_hp_max) {
+			if(stack->push(&hpp_add[ia], false, true)) {
+				hpp_add[ia].hp[0] = *headerPacket;
+				hpp_add_size[ia] = 1;
+				return(true);
+			}
+		} else {
+			hpp_add[ia].hp[hpp_add_size[ia]] = *headerPacket;
+			++hpp_add_size[ia];
+			return(true);
+		}
+		return(false);
 	}
-	bool get(sHeaderPacket *headerPacket) {
-		extern int opt_pcap_queue_iface_dedup_separate_threads_extend__ext_mode;
-		return(stack->pop(headerPacket, false, opt_pcap_queue_iface_dedup_separate_threads_extend__ext_mode));
+	bool get_hp(sHeaderPacket *headerPacket) {
+		if(hpp_get_size) {
+			*headerPacket = hpp_get.hp[PcapQueue_HeaderPacketStack_hp_max - hpp_get_size];
+			--hpp_get_size;
+			return(true);
+		} else {
+			if(stack->pop(&hpp_get, false)) {
+				*headerPacket = hpp_get.hp[0];
+				hpp_get_size = PcapQueue_HeaderPacketStack_hp_max - 1;
+				return(true);
+			}
+		}
+		return(false);
 	}
 private:
-	rqueue_quick<sHeaderPacket> *stack;
+	sHeaderPacketPool hpp_add[PcapQueue_HeaderPacketStack_add_max];
+	u_int hpp_add_size[PcapQueue_HeaderPacketStack_add_max];
+	sHeaderPacketPool hpp_get;
+	u_int hpp_get_size;
+	rqueue_quick<sHeaderPacketPool> *stack;
 };
 
 class PcapQueue_readFromInterfaceThread : protected PcapQueue_readFromInterface_base {
@@ -441,10 +488,10 @@ public:
 protected:
 	inline void push(pcap_pkthdr* header,u_char* packet, bool ok_for_header_packet_stack,
 			 u_int offset, uint16_t *md5, int index = 0, uint32_t counter = 0);
-	inline hpi pop(int index = 0, bool moveReadit = true, bool deferDestroy = false);
-        inline void moveReadit(int index = 0, bool deferDestroy = false);
-	inline hpi POP(bool moveReadit = true, bool deferDestroy = false);
-	inline void moveREADIT(bool deferDestroy = false);
+	inline hpi pop(int index = 0, bool moveReadit = true);
+        inline void moveReadit(int index = 0);
+	inline hpi POP(bool moveReadit = true);
+	inline void moveREADIT();
 	u_int64_t getTime_usec(int index = 0) {
 		if(this->qring[index][this->readit[index] % this->qringmax].used <= 0) {
 			return(0);
@@ -516,28 +563,6 @@ private:
 		bool ok_for_header_packet_stack;
 		int read_thread_index;
 	};
-private: 
-	struct sThreadDeleteData {
-		sThreadDeleteData(PcapQueue_readFromInterface *owner) : queuePackets(100000, 1000, 1000, 
-										     NULL, true, 
-										     __FILE__, __LINE__) {
-			threadHandle = (pthread_t)NULL;
-			threadId = NULL;
-			enableMallocTrim = false;
-			enableLock = false;
-			lastMallocTrimTime = 0;
-			counter = 0;
-			this->owner = owner;
-		}
-		pthread_t threadHandle;
-		int *threadId;
-		bool enableMallocTrim;
-		bool enableLock;
-		u_int32_t lastMallocTrimTime;
-		u_int32_t counter;
-		rqueue_quick<sHeaderPacket> queuePackets;
-		PcapQueue_readFromInterface *owner;
-	};
 public:
 	PcapQueue_readFromInterface(const char *nameQueue);
 	virtual ~PcapQueue_readFromInterface();
@@ -552,7 +577,6 @@ protected:
 	bool initThread(void *arg, unsigned int arg2, string *error);
 	void *threadFunction(void *arg, unsigned int arg2);
 	void *writeThreadFunction(void *arg, unsigned int arg2);
-	void *threadDeleteFunction(sThreadDeleteData *threadDeleteData);
 	bool openFifoForWrite(void *arg, unsigned int arg2);
 	bool startCapture(string *error);
 	pcap_t* _getPcapHandle(int dlt) { 
@@ -565,29 +589,18 @@ protected:
 	virtual ulong getCountPacketDrop();
 	virtual string getStatPacketDrop();
 	void initStat_interface();
-	string pcapStatString_cpuUsageReadThreads();
+	string pcapStatString_cpuUsageReadThreads(double *sumMax = NULL);
 	string getInterfaceName(bool simple = false);
-	void pushDelete(sHeaderPacket *headerPacket) {
-		threadsDeleteData[(counterPushDelete++) % deleteThreadsCount]->queuePackets.push(headerPacket, true);
-	}
-	void lock_delete() {
-		while(__sync_lock_test_and_set(&this->_sync_delete, 1));
-	}
-	void unlock_delete() {
-		__sync_lock_release(&this->_sync_delete);
-	}
+private:
+	inline void check_bypass_buffer();
+	inline void delete_header_packet(pcap_pkthdr *header, u_char *packet, int read_thread_index, int packetStackIndex);
 protected:
 	pcap_dumper_t *fifoWritePcapDumper;
 	PcapQueue_readFromInterfaceThread *readThreads[READ_THREADS_MAX];
 	int readThreadsCount;
 	u_long lastTimeLogErrThread0BufferIsFull;
 private:
-	sThreadDeleteData *threadsDeleteData[MAX_THREADS_DELETE];
-	int deleteThreadsCount;
-	u_int32_t counterPushDelete;
-	static volatile int _sync_delete;
-	rqueue_quick<delete_packet_info> *delete_packet_qring;
-friend void *_PcapQueue_readFromInterfaceThread_threadDeleteFunction(void *arg);
+	rqueue_quick<pcap_block_store*> *block_qring;
 };
 
 class PcapQueue_readFromFifo : public PcapQueue {
@@ -735,6 +748,7 @@ friend void *_PcapQueue_readFromFifo_connectionThreadFunction(void *arg);
 
 void PcapQueue_init();
 void PcapQueue_term();
+int getThreadingMode();
 
 
 #endif

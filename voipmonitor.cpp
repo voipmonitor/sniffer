@@ -401,7 +401,6 @@ extern int opt_pcap_queue_iface_separate_threads;
 extern int opt_pcap_queue_iface_dedup_separate_threads;
 extern int opt_pcap_queue_iface_dedup_separate_threads_extend;
 extern int opt_pcap_queue_iface_qring_size;
-extern bool opt_pcap_queue_iface_alloc_stack;
 extern int opt_pcap_queue_dequeu_window_length;
 extern int opt_pcap_queue_dequeu_method;
 extern int opt_pcap_queue_suppress_t1_thread;
@@ -676,8 +675,6 @@ pthread_mutex_t terminate_packetbuffer_lock;
 extern ParsePacket _parse_packet_global;
 
 cBuffersControl buffersControl;
-
-int opt_delete_threads = 1;
 
 u_int64_t rdtsc_by_100ms;
 
@@ -2388,6 +2385,8 @@ int main_init_read() {
 	   !is_read_from_file_simple()) {
 		preProcessPacket = new FILE_LINE PreProcessPacket();
 	}
+	/*
+	autostart if t2cpu > 50%
 	if(opt_enable_process_rtp_packet && opt_pcap_split &&
 	   !is_read_from_file_simple()) {
 		processRtpPacketHash = new FILE_LINE ProcessRtpPacket(ProcessRtpPacket::hash, 0);
@@ -2395,6 +2394,7 @@ int main_init_read() {
 			processRtpPacketDistribute[i] = new FILE_LINE ProcessRtpPacket(ProcessRtpPacket::distribute, i);
 		}
 	}
+	*/
 
 	if(opt_enable_http) {
 		bool setHttpPorts = false;
@@ -4070,7 +4070,6 @@ void cConfig::addConfigItems() {
 				addConfigItem(new cConfigItem_yesno("packetbuffer_compress", &opt_pcap_queue_compress));
 				addConfigItem(new cConfigItem_integer("pcap_queue_dequeu_window_length", &opt_pcap_queue_dequeu_window_length));
 				addConfigItem(new cConfigItem_integer("pcap_queue_iface_qring_size", &opt_pcap_queue_iface_qring_size));
-				addConfigItem(new cConfigItem_yesno("pcap_queue_iface_alloc_stack", &opt_pcap_queue_iface_alloc_stack));
 					expert();
 					addConfigItem(new cConfigItem_integer("pcap_queue_dequeu_method", &opt_pcap_queue_dequeu_method));
 					addConfigItem((new cConfigItem_integer("packetbuffer_block_maxsize", &opt_pcap_queue_block_max_size))
@@ -4100,8 +4099,6 @@ void cConfig::addConfigItems() {
 				advanced();
 				addConfigItem(new cConfigItem_integer("maxpcapsize", &opt_maxpcapsize_mb));
 					expert();
-					addConfigItem((new cConfigItem_integer("delete_threads", &opt_delete_threads))
-						->setMaximum(MAX_THREADS_DELETE));
 					addConfigItem(new cConfigItem_integer("pcap_dump_bufflength", &opt_pcap_dump_bufflength));
 					addConfigItem(new cConfigItem_integer("pcap_dump_writethreads", &opt_pcap_dump_writethreads));
 					addConfigItem(new cConfigItem_yesno("pcap_dump_asyncwrite", &opt_pcap_dump_asyncwrite));
@@ -4615,6 +4612,7 @@ void cConfig::evSetConfigItem(cConfigItem *configItem) {
 		opt_pcap_queue_receive_from_ip_port.set_port(configItem->getValueInt());
 	}
 	if(configItem->config_name == "threading_mod") {
+		opt_pcap_queue_iface_separate_threads = 0;
 		opt_pcap_queue_iface_dedup_separate_threads = 0;
 		opt_pcap_queue_iface_dedup_separate_threads_extend = 0;
 		switch(configItem->getValueInt()) {
@@ -4942,6 +4940,8 @@ void get_command_line_arguments() {
 						else if(verbparams[i] == "manager")			sverb.manager = 1;
 						else if(verbparams[i] == "scanpcapdir")			sverb.scanpcapdir = 1;
 						else if(verbparams[i] == "debug_rtcp")			sverb.debug_rtcp = 1;
+						else if(verbparams[i] == "defrag")			sverb.defrag = 1;
+						else if(verbparams[i] == "dedup")			sverb.dedup = 1;
 					}
 				} }
 				break;
@@ -5236,9 +5236,6 @@ void set_context_config() {
 			 opt_pcap_queue_dequeu_window_length = 1000;
 		}
 	}
-	
-	extern int opt_pcap_queue_iface_dedup_separate_threads_extend__ext_mode;
-	opt_pcap_queue_iface_dedup_separate_threads_extend__ext_mode = opt_pcap_queue_iface_alloc_stack ? 0 : 1;
 	
 	_save_sip_history = false;
 	memset(_save_sip_history_request_types, 0, sizeof(_save_sip_history_request_types));
@@ -6522,6 +6519,7 @@ int eval_config(string inistr) {
 		opt_convert_dlt_sll_to_en10 = yesno(value);
 	}
 	if((value = ini.GetValue("general", "threading_mod", NULL))) {
+		opt_pcap_queue_iface_separate_threads = 0;
 		opt_pcap_queue_iface_dedup_separate_threads = 0;
 		opt_pcap_queue_iface_dedup_separate_threads_extend = 0;
 		switch(atoi(value)) {
@@ -6544,9 +6542,6 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "pcap_queue_iface_qring_size", NULL))) {
 		opt_pcap_queue_iface_qring_size = atoi(value);
-	}
-	if((value = ini.GetValue("general", "pcap_queue_iface_alloc_stack", NULL))) {
-		opt_pcap_queue_iface_alloc_stack = yesno(value);
 	}
 	if((value = ini.GetValue("general", "pcap_queue_dequeu_method", NULL))) {
 		opt_pcap_queue_dequeu_method = atoi(value);
@@ -6895,10 +6890,6 @@ int eval_config(string inistr) {
 	
 	if((value = ini.GetValue("general", "max_buffer_mem", NULL))) {
 		buffersControl.setMaxBufferMem(atol(value) * 1024 * 1024, true);
-	}
-	
-	if((value = ini.GetValue("general", "delete_threads", NULL))) {
-		opt_delete_threads = min(atoi(value), MAX_THREADS_DELETE);
 	}
 	
 	if((value = ini.GetValue("general", "git_folder", NULL))) {
