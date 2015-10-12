@@ -1524,14 +1524,16 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 					outStrStat << "/" << setprecision(1) << t2cpu_process_rtp_packet_out_thread;
 				}
 			}
-		}
-		for(int i = 0; i < MAX_PROCESS_RTP_PACKET_THREADS; i++) {
-			if(processRtpPacketDistribute[i]) {
-				double t2cpu_process_rtp_packet_out_thread = processRtpPacketDistribute[i]->getCpuUsagePerc(true);
-				if(t2cpu_process_rtp_packet_out_thread >= 0) {
-					outStrStat << "/" << setprecision(1) << t2cpu_process_rtp_packet_out_thread;
+			for(int i = 0; i < MAX_PROCESS_RTP_PACKET_THREADS; i++) {
+				if(processRtpPacketDistribute[i]) {
+					double t2cpu_process_rtp_packet_out_thread = processRtpPacketDistribute[i]->getCpuUsagePerc(true);
+					if(t2cpu_process_rtp_packet_out_thread >= 0) {
+						outStrStat << "/" << setprecision(1) << t2cpu_process_rtp_packet_out_thread;
+					}
 				}
 			}
+		} else if(t2cpu > 50) {
+			ProcessRtpPacket::autoStartProcessRtpPacket();
 		}
 		outStrStat << "%] ";
 	}
@@ -3071,6 +3073,9 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void *arg, unsigned int 
 			if(_header) delete _header;
 			if(_packet) delete [] _packet;
 		}
+	}
+	if(headerPacketRead.packet) {
+		headerPacketRead.free();
 	}
 	if(libpcap_buffer_old && libpcap_buffer) {
 		*libpcap_buffer = libpcap_buffer_old;

@@ -2384,6 +2384,8 @@ int main_init_read() {
 	   !is_read_from_file_simple()) {
 		preProcessPacket = new FILE_LINE PreProcessPacket();
 	}
+	/*
+	autostart if t2cpu > 50%
 	if(opt_enable_process_rtp_packet && opt_pcap_split &&
 	   !is_read_from_file_simple()) {
 		processRtpPacketHash = new FILE_LINE ProcessRtpPacket(ProcessRtpPacket::hash, 0);
@@ -2391,6 +2393,7 @@ int main_init_read() {
 			processRtpPacketDistribute[i] = new FILE_LINE ProcessRtpPacket(ProcessRtpPacket::distribute, i);
 		}
 	}
+	*/
 
 	if(opt_enable_http) {
 		bool setHttpPorts = false;

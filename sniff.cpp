@@ -3182,16 +3182,6 @@ rtpcheck:
 					   block_store, block_store_index, dlt, sensor_id,
 					   parsePacket ? parsePacket->hash[0] : tuplehash(saddr, source),
 					   parsePacket ? parsePacket->hash[1] : tuplehash(daddr, dest));
-	} else if(processRtpPacketDistribute[0]) {
-		ProcessRtpPacket *_processRtpPacket = processRtpPacketDistribute[1] ?
-						       processRtpPacketDistribute[min(source, dest) / 2 % opt_enable_process_rtp_packet] :
-						       processRtpPacketDistribute[0];
-		_processRtpPacket->push(saddr, source, daddr, dest, 
-					data, datalen, dataoffset,
-					handle, header, packet, istcp, header_ip,
-					block_store, block_store_index, dlt, sensor_id,
-					parsePacket ? parsePacket->hash[0] : tuplehash(saddr, source),
-					parsePacket ? parsePacket->hash[1] : tuplehash(daddr, dest));
 	} else {
 	if ((calls = calltable->hashfind_by_ip_port(daddr, dest, parsePacket ? parsePacket->hash[1] : 0))){
 		++counter_rtp_packets;
@@ -5333,5 +5323,17 @@ void ProcessRtpPacket::terminate() {
 				sem_sync_next_thread[i].__align = 0;
 			}
 		}
+	}
+}
+
+void ProcessRtpPacket::autoStartProcessRtpPacket() {
+	if(!processRtpPacketHash &&
+	   opt_enable_process_rtp_packet && opt_pcap_split &&
+	   !is_read_from_file_simple()) {
+		ProcessRtpPacket *_processRtpPacketHash = new FILE_LINE ProcessRtpPacket(ProcessRtpPacket::hash, 0);
+		for(int i = 0; i < opt_enable_process_rtp_packet; i++) {
+			processRtpPacketDistribute[i] = new FILE_LINE ProcessRtpPacket(ProcessRtpPacket::distribute, i);
+		}
+		processRtpPacketHash = _processRtpPacketHash;
 	}
 }
