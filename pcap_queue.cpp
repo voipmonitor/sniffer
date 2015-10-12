@@ -173,9 +173,9 @@ ip_port opt_pcap_queue_send_to_ip_port;
 ip_port opt_pcap_queue_receive_from_ip_port;
 int opt_pcap_queue_receive_from_port;
 int opt_pcap_queue_receive_dlt 				= DLT_EN10MB;
-int opt_pcap_queue_iface_separate_threads 		= 1;
-int opt_pcap_queue_iface_dedup_separate_threads 	= 1;
-int opt_pcap_queue_iface_dedup_separate_threads_extend	= 1;
+int opt_pcap_queue_iface_separate_threads 		= 0;
+int opt_pcap_queue_iface_dedup_separate_threads 	= 0;
+int opt_pcap_queue_iface_dedup_separate_threads_extend	= 0;
 int opt_pcap_queue_iface_qring_size 			= 5000;
 int opt_pcap_queue_dequeu_window_length			= -1;
 int opt_pcap_queue_dequeu_method			= 2;
@@ -1474,7 +1474,8 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 	ostringstream outStrStat;
 	outStrStat << fixed;
 	if(this->instancePcapHandle) {
-		outStrStat << this->instancePcapHandle->pcapStatString_cpuUsageReadThreads();
+		double sumMaxReadThreads;
+		outStrStat << this->instancePcapHandle->pcapStatString_cpuUsageReadThreads(&sumMaxReadThreads);
 		double t0cpu = this->instancePcapHandle->getCpuUsagePerc(mainThread, true);
 		double t0cpuWrite = this->instancePcapHandle->getCpuUsagePerc(writeThread, true);
 		double t0cpuNextThreads[PCAP_QUEUE_NEXT_THREADS_MAX];
@@ -1493,6 +1494,9 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 			}
 			outStrStat << "%] ";
 			if (opt_rrd) rrdtCPU_t0 = t0cpu;
+		}
+		if((sumMaxReadThreads > 60 || t0cpu > 60) && getThreadingMode() < 4) {
+			syslog(LOG_WARNING, "warning - reading process (t0CPU) needs to be threaded - try to set threading_mod to %i", getThreadingMode() + 1); 
 		}
 	}
 	string t1cpu = this->getCpuUsage(false, true);
@@ -1532,7 +1536,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 					}
 				}
 			}
-		} else if(t2cpu > 50) {
+		} else if(t2cpu > 60) {
 			ProcessRtpPacket::autoStartProcessRtpPacket();
 		}
 		outStrStat << "%] ";
@@ -3737,15 +3741,20 @@ void PcapQueue_readFromInterface::initStat_interface() {
 	}
 }
 
-string PcapQueue_readFromInterface::pcapStatString_cpuUsageReadThreads() {
+string PcapQueue_readFromInterface::pcapStatString_cpuUsageReadThreads(double *sumMax) {
 	ostringstream outStrStat;
 	outStrStat << fixed;
+	if(sumMax) {
+		*sumMax  = 0;
+	}
 	for(int i = 0; i < this->readThreadsCount; i++) {
 		if(this->readThreads[i]->threadInitFailed) {
 			continue;
 		}
+		double sum = 0;
 		double ti_cpu = this->readThreads[i]->getCpuUsagePerc(true);
 		if(ti_cpu >= 0) {
+			sum += ti_cpu;
 			outStrStat << "t0i_" << this->readThreads[i]->interfaceName << "_CPU[" << setprecision(1) << ti_cpu;
 			if(sverb.qring_stat) {
 				string qringFillingPerc = this->readThreads[i]->getQringFillingPerc();
@@ -3756,6 +3765,7 @@ string PcapQueue_readFromInterface::pcapStatString_cpuUsageReadThreads() {
 			if(this->readThreads[i]->defragThread) {
 				double tid_cpu = this->readThreads[i]->defragThread->getCpuUsagePerc(true);
 				if(tid_cpu >= 0) {
+					sum += tid_cpu;
 					outStrStat << "%/" << setprecision(1) << tid_cpu;
 					if(sverb.qring_stat) {
 						string qringFillingPerc = this->readThreads[i]->defragThread->getQringFillingPerc();
@@ -3768,6 +3778,7 @@ string PcapQueue_readFromInterface::pcapStatString_cpuUsageReadThreads() {
 			if(this->readThreads[i]->md1Thread) {
 				double tid_cpu = this->readThreads[i]->md1Thread->getCpuUsagePerc(true);
 				if(tid_cpu >= 0) {
+					sum += tid_cpu;
 					outStrStat << "%/" << setprecision(1) << tid_cpu;
 					if(sverb.qring_stat) {
 						string qringFillingPerc = this->readThreads[i]->md1Thread->getQringFillingPerc();
@@ -3780,6 +3791,7 @@ string PcapQueue_readFromInterface::pcapStatString_cpuUsageReadThreads() {
 			if(this->readThreads[i]->md2Thread) {
 				double tid_cpu = this->readThreads[i]->md2Thread->getCpuUsagePerc(true);
 				if(tid_cpu >= 0) {
+					sum += tid_cpu;
 					outStrStat << "%/" << setprecision(1) << tid_cpu;
 					if(sverb.qring_stat) {
 						string qringFillingPerc = this->readThreads[i]->md2Thread->getQringFillingPerc();
@@ -3792,6 +3804,7 @@ string PcapQueue_readFromInterface::pcapStatString_cpuUsageReadThreads() {
 			if(this->readThreads[i]->dedupThread) {
 				double tid_cpu = this->readThreads[i]->dedupThread->getCpuUsagePerc(true);
 				if(tid_cpu >= 0) {
+					sum += tid_cpu;
 					outStrStat << "%/" << setprecision(1) << tid_cpu;
 					if(sverb.qring_stat) {
 						string qringFillingPerc = this->readThreads[i]->dedupThread->getQringFillingPerc();
@@ -3802,6 +3815,9 @@ string PcapQueue_readFromInterface::pcapStatString_cpuUsageReadThreads() {
 				}
 			}
 			outStrStat << "%] ";
+			if(sumMax && sum > *sumMax) {
+				*sumMax = sum;
+			}
 		}
 	}
 	return(outStrStat.str());
@@ -5097,4 +5113,16 @@ void PcapQueue_init() {
 
 void PcapQueue_term() {
 	delete blockStoreBypassQueue;
+}
+
+int getThreadingMode() {
+	if(opt_pcap_queue_iface_separate_threads) {
+		if(opt_pcap_queue_iface_dedup_separate_threads) {
+			return(opt_pcap_queue_iface_dedup_separate_threads_extend ? 4 : 3);
+		} else {
+			return(2);
+		}
+	} else {
+		return(1);
+	}
 }

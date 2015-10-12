@@ -234,7 +234,7 @@ protected:
 	virtual string pcapDropCountStat_interface() { return(""); }
 	virtual ulong getCountPacketDrop() { return(0); }
 	virtual string getStatPacketDrop() { return(""); }
-	virtual string pcapStatString_cpuUsageReadThreads() { return(""); };
+	virtual string pcapStatString_cpuUsageReadThreads(double *sumMax = NULL) { if(sumMax) *sumMax = 0; return(""); };
 	virtual void initStat_interface() {};
 	int getThreadPid(eTypeThread typeThread);
 	pstat_data *getThreadPstatData(eTypeThread typeThread);
@@ -589,7 +589,7 @@ protected:
 	virtual ulong getCountPacketDrop();
 	virtual string getStatPacketDrop();
 	void initStat_interface();
-	string pcapStatString_cpuUsageReadThreads();
+	string pcapStatString_cpuUsageReadThreads(double *sumMax = NULL);
 	string getInterfaceName(bool simple = false);
 private:
 	inline void check_bypass_buffer();
@@ -748,6 +748,7 @@ friend void *_PcapQueue_readFromFifo_connectionThreadFunction(void *arg);
 
 void PcapQueue_init();
 void PcapQueue_term();
+int getThreadingMode();
 
 
 #endif
