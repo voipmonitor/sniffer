@@ -21,7 +21,11 @@ using namespace std;
 
 int get_ticks_bycodec(int);
 
-void burstr_calculate(struct ast_channel *chan, u_int32_t received, double *burstr, double *lossr);
+void burstr_calculate(struct ast_channel *chan, u_int32_t received, double *burstr, double *lossr, int lastinterval);
+int calculate_mos_fromrtp(RTP *rtp, int jittertype, int lastinterval);
+double calculate_mos_g711(double ppl, double burstr, int version);
+double calculate_mos(double ppl, double burstr, int codec, unsigned int received);
+
 
 /*
 
@@ -200,6 +204,8 @@ public:
 	char ignore;
 	uint8_t dscp;
 	bool skip;
+	unsigned int last_mos_time;
+	char save_mos_graph_wait;
 
 	/* RTCP data */
 	struct rtcp_t {
@@ -254,6 +260,9 @@ public:
 	} source;
 
 	bool last_markbit;
+	unsigned char last_interval_mosf1;
+	unsigned char last_interval_mosf2;
+	unsigned char last_interval_mosAD;
 
 	struct dsp *DSP;
 
@@ -449,6 +458,8 @@ public:
 	 * @return count of lost packets
 	*/
 	u_int32_t getLost() { return s->probation ? 0 : ((s->cycles + s->max_seq) - s->base_seq + 1) - s->received; };
+
+	void save_mos_graph(bool delimiter);
 	
 	inline void clearAudioBuff(Call *call, ast_channel *channel);
 

@@ -16,6 +16,7 @@ Each Call class contains two RTP classes.
 #include <sys/types.h>
 #include <syslog.h>
 #include <errno.h>
+#include <math.h>
 
 #include <pcap.h>
 
@@ -29,6 +30,7 @@ Each Call class contains two RTP classes.
 #include "codec_alaw.h"
 #include "codec_ulaw.h"
 #include "flags.h"
+#include "mos_g729.h"   
 
 #include "jitterbuffer/asterisk/channel.h"
 #include "jitterbuffer/asterisk/frame.h"
@@ -46,10 +48,13 @@ extern int opt_jitterbuffer_adapt;         // turns off/on jitterbuffer simulato
 extern char opt_cachedir[1024];
 extern int opt_savewav_force;
 extern int opt_rtp_check_timestamp;
+extern int opt_mos_g729;
+
 int dtmfdebug = 0;
 
 extern unsigned int graph_delimiter;
 extern unsigned int graph_mark;
+extern unsigned int graph_mos;
 extern int opt_faxt30detect;
 extern int opt_inbanddtmf;
 extern int opt_silencedetect;
@@ -201,6 +206,9 @@ RTP::RTP(int sensor_id)
 	ssrc2 = 0;
 	gfilename[0] = '\0';
 	gfileRAW = NULL;
+	last_interval_mosf1 = 0;
+	last_interval_mosf2 = 0;
+	last_interval_mosAD = 0;
 
 	channel_fix1 = new FILE_LINE ast_channel;
 	memset(channel_fix1, 0, sizeof(ast_channel));
@@ -241,6 +249,8 @@ RTP::RTP(int sensor_id)
 	channel_record->lastbuflen = 0;
 	channel_record->resync = 0;
 	channel_record->audiobuf = NULL;
+	last_mos_time = 0;
+	save_mos_graph_wait = false;
 
 	//channel->name = "SIP/fixed";
 	frame = new FILE_LINE ast_frame;
@@ -289,13 +299,77 @@ RTP::RTP(int sensor_id)
 	skip = false;
 }
 
+
+void
+RTP::save_mos_graph(bool delimiter) {
+	Call *owner = (Call*)call_owner;
+
+	if(owner and (owner->flags & FLAG_SAVEGRAPH) and this->graph.isOpenOrEnableAutoOpen()) {
+		this->graph.write((char*)&graph_mos, 4);
+	}
+
+	if(opt_jitterbuffer_f1 and channel_fix1) {
+		last_interval_mosf1 = calculate_mos_fromrtp(this, 1, 1);
+		if(verbosity > 1) printf("mosf1[%d] ssrc[%x] time[%u] seq[%u]\n", last_interval_mosf1, ssrc, (unsigned int)header->ts.tv_sec, seq);
+
+		if(owner and (owner->flags & FLAG_SAVEGRAPH) and this->graph.isOpenOrEnableAutoOpen()) {
+			this->graph.write((char*)&last_interval_mosf1, 1);
+		}
+		// reset 10 second MOS stats
+		memcpy(channel_fix1->last_interval_loss, channel_fix1->loss, sizeof(unsigned short int) * 128);
+	} else {
+		last_interval_mosf1 = 0;
+		if(owner and (owner->flags & FLAG_SAVEGRAPH) and this->graph.isOpenOrEnableAutoOpen()) {
+			this->graph.write((char*)&last_interval_mosf1, 1);
+		}
+	}
+	if(opt_jitterbuffer_f2 and channel_fix2) {
+		last_interval_mosf2 = calculate_mos_fromrtp(this, 2, 1);
+		//if(verbosity > 1) printf("mosf2[%d]\n", last_interval_mosf2);
+		if(owner and (owner->flags & FLAG_SAVEGRAPH) and this->graph.isOpenOrEnableAutoOpen()) {
+			this->graph.write((char*)&last_interval_mosf2, 1);
+		}
+		// reset 10 second MOS stats
+		memcpy(channel_fix2->last_interval_loss, channel_fix2->loss, sizeof(unsigned short int) * 128);
+	} else {
+		last_interval_mosf2 = 0;
+		if(owner and (owner->flags & FLAG_SAVEGRAPH) and this->graph.isOpenOrEnableAutoOpen()) {
+			this->graph.write((char*)&last_interval_mosf2, 1);
+		}
+	}
+	if(opt_jitterbuffer_adapt and channel_adapt) {
+		last_interval_mosAD = calculate_mos_fromrtp(this, 3, 1);
+		//if(verbosity > 1) printf("mosAD[%d]\n", last_interval_mosAD);
+		if(owner and (owner->flags & FLAG_SAVEGRAPH) and this->graph.isOpenOrEnableAutoOpen()) {
+			this->graph.write((char*)&last_interval_mosAD, 1);
+		}
+		// reset 10 second MOS stats
+		memcpy(channel_adapt->last_interval_loss, channel_adapt->loss, sizeof(unsigned short int) * 128);
+	} else {
+		last_interval_mosAD = 0;
+		if(owner and (owner->flags & FLAG_SAVEGRAPH) and this->graph.isOpenOrEnableAutoOpen()) {
+			this->graph.write((char*)&last_interval_mosAD, 1);
+		}
+	}
+	// align to 4 byte
+	char zero = 0;
+	if(owner and (owner->flags & FLAG_SAVEGRAPH) and this->graph.isOpenOrEnableAutoOpen()) {
+		this->graph.write((char*)&zero, 1);
+	}
+	
+	if(delimiter) {
+		if(owner and (owner->flags & FLAG_SAVEGRAPH) and this->graph.isOpenOrEnableAutoOpen()) {
+			this->graph.write((char*)&graph_delimiter, 4);
+		}
+	}
+}
+
 /* destructor */
 RTP::~RTP() {
 	/*
 	if(packetization)
 		RTP::dump();
 	*/
-	//Call *owner = (Call*)call_owner;
 
 	if(verbosity > 9) {
 		RTP::dump();
@@ -723,6 +797,10 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 	this->dport = dport;
 	this->sport = sport;
 	this->ignore = 0;
+
+	if(last_mos_time == 0) { 
+		last_mos_time = header->ts.tv_sec;
+	}
 
 	if(sverb.ssrc and getSSRC() != sverb.ssrc) return;
 	
@@ -1531,6 +1609,22 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 
 	avg_ptime_count++;
 	avg_ptime = (avg_ptime * (avg_ptime_count - 1) + packetization) / avg_ptime_count;
+
+	// write MOS to .graph every 10 seconds and reset jitter last mos interval
+	if((last_mos_time + 10 < header->ts.tv_sec) or save_mos_graph_wait) {
+		if(save_mos_graph_wait > 1) {
+			save_mos_graph_wait--;
+		} else {
+			if(!save_mos_graph_wait and ((header->ts.tv_sec - last_mos_time) > 10)) {
+				//wait one more frame 
+				save_mos_graph_wait = 10; // wait 10 packets
+			} else {
+				save_mos_graph_wait = false;
+				save_mos_graph(false);
+				last_mos_time = header->ts.tv_sec;
+			}
+		}
+	}
 }
 
 /* fill internal structures by the input RTP packet */
@@ -1773,13 +1867,19 @@ RTP::update_seq(u_int16_t seq) {
 	return 1;
 }	
 
-void burstr_calculate(struct ast_channel *chan, u_int32_t received, double *burstr, double *lossr) {
+void burstr_calculate(struct ast_channel *chan, u_int32_t received, double *burstr, double *lossr, int lastinterval) {
 	int lost = 0;
 	int bursts = 0;
 	for(int i = 0; i < 128; i++) {
-		lost += i * chan->loss[i];
-		bursts += chan->loss[i];
-		if((verbosity > 4 or sverb.jitter) and chan->loss[i] > 0) printf("bc loss[%d]: %d\t", i, chan->loss[i]);
+		if(lastinterval) {
+			lost += i * (chan->loss[i] - chan->last_interval_loss[i]);
+			bursts += chan->loss[i] - chan->last_interval_loss[i];
+			if((verbosity > 4 or sverb.jitter) and (chan->loss[i] - chan->last_interval_loss[i]) > 0) printf("bc loss[%d]: %d\t", i, chan->loss[i] - chan->last_interval_loss[i]);
+		} else {
+			lost += i * chan->loss[i];
+			bursts += chan->loss[i];
+			if((verbosity > 4 or sverb.jitter) and chan->loss[i] > 0) printf("bc loss[%d]: %d\t", i, chan->loss[i]);
+		}
 	}
 
 	if(lost < 5) {
@@ -1831,17 +1931,17 @@ RTP::dump() {
 
 	double burstr, lossr;
 	printf("jitter stats:\n");
-	burstr_calculate(channel_fix1, s->received, &burstr, &lossr);
+	burstr_calculate(channel_fix1, s->received, &burstr, &lossr, 1);
 	//printf("s->received: %d, loss: %d, bursts: %d\n", s->received, lost, bursts);
 	printf("fix(50/50)\tloss rate:\t%f\n", lossr);
 	printf("fix(50/50)\tburst rate:\t%f\n", burstr);
 
-	burstr_calculate(channel_fix2, s->received, &burstr, &lossr);
+	burstr_calculate(channel_fix2, s->received, &burstr, &lossr, 1);
 	//printf("s->received: %d, loss: %d, bursts: %d\n", s->received, lost, bursts);
 	printf("fix(200/200)\tloss rate:\t%f\n", lossr);
 	printf("fix(200/200)\tburst rate:\t%f\n", burstr);
 
-	burstr_calculate(channel_adapt, s->received, &burstr, &lossr);
+	burstr_calculate(channel_adapt, s->received, &burstr, &lossr, 1);
 	//printf("s->received: %d, loss: %d, bursts: %d\n", s->received, lost, bursts);
 	printf("adapt(500/500)\tloss rate:\t%f\n", lossr);
 	printf("adapt(500/500)\tburst rate:\t%f\n", burstr);
@@ -1859,4 +1959,84 @@ void RTP::clearAudioBuff(Call *call, ast_channel *channel) {
 		}
 	}
 }
+
+double calculate_mos_g711(double ppl, double burstr, int version) {
+	double r;
+	double bpl = 8.47627; //mos = -4.23836 + 0.29873 * r - 0.00416744 * r * r + 0.0000209855 * r * r * r;
+	double mos;
+
+	if(ppl == 0 or burstr == 0) {
+		return 4.5;
+	}
+
+	if(ppl > 0.5) {
+		return 1;
+	}
+
+	switch(version) {
+	case 1:
+	case 2:
+	default:
+		// this mos is calculated for G.711 and PLC
+		bpl = 17.2647;
+		r = 93.2062077233 - 95.0 * (ppl*100/(ppl*100/burstr + bpl));
+		mos = 2.06405 + 0.031738 * r - 0.000356641 * r * r + 2.93143 * pow(10,-6) * r * r * r;
+		if(mos < 1)	    
+			return 1;      
+		if(mos > 4.5)   
+			return 4.5;
+	}
+
+	return mos;
+}
+
+double calculate_mos(double ppl, double burstr, int codec, unsigned int received) {
+	if(codec == PAYLOAD_G729) {
+		if(opt_mos_g729) {
+			if(received < 100) {
+				return 3.92;
+			}
+			return (double)mos_g729((long double)ppl, (long double)burstr);
+		} else {
+			if(received < 100) {
+				return 4.5;
+			}
+			return calculate_mos_g711(ppl, burstr, 2);
+		}
+	} else {
+		if(received < 100) {
+			return 4.5;
+		}
+		return calculate_mos_g711(ppl, burstr, 2); 
+	}       
+}		
+
+int calculate_mos_fromrtp(RTP *rtp, int jittertype, int lastinterval) {
+	double burstr, lossr;
+	switch(jittertype) {
+	case 1: 
+		if(rtp->channel_fix1) {
+			burstr_calculate(rtp->channel_fix1, rtp->stats.received, &burstr, &lossr, lastinterval);
+		} else {
+			return 45;
+		}
+		break;  
+	case 2: 
+		if(rtp->channel_fix2) {
+			burstr_calculate(rtp->channel_fix2, rtp->stats.received, &burstr, &lossr, lastinterval);
+		} else {
+			return 45;
+		}
+		break;  
+	case 3: 
+		if(rtp->channel_adapt) {
+			burstr_calculate(rtp->channel_adapt, rtp->stats.received, &burstr, &lossr, lastinterval);
+		} else {
+			return 45;
+		}
+		break;  
+	}       
+	int mos = (int)round(calculate_mos(lossr, burstr, rtp->first_codec, rtp->stats.received) * 10);
+	return mos;
+}       
 

@@ -415,6 +415,7 @@ int opt_cleandatabase_register_failed = 0;
 unsigned int graph_delimiter = GRAPH_DELIMITER;
 unsigned int graph_version = GRAPH_VERSION;
 unsigned int graph_mark = GRAPH_MARK;
+unsigned int graph_mos = GRAPH_MOS;
 int opt_mos_lqo = 0;
 
 bool opt_cdr_partition = 1;

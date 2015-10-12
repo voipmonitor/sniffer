@@ -561,6 +561,7 @@ Call::closeRawFiles() {
 		// close GRAPH files
 		if(opt_saveGRAPH || (flags & FLAG_SAVEGRAPH)) {
 			if(rtp[i]->graph.isOpen()) {
+				rtp[i]->save_mos_graph(true);
 				rtp[i]->graph.close();
 			}
 		}
@@ -1073,58 +1074,6 @@ void Call::stoprecording() {
 	}
 }
 		
-double calculate_mos_g711(double ppl, double burstr, int version) {
-	double r;
-	double bpl = 8.47627; //mos = -4.23836 + 0.29873 * r - 0.00416744 * r * r + 0.0000209855 * r * r * r;
-	double mos;
-
-	if(ppl == 0 or burstr == 0) {
-		return 4.5;
-	}
-
-	if(ppl > 0.5) {
-		return 1;
-	}
-	
-	switch(version) {
-	case 1:
-	case 2:
-	default:
-		// this mos is calculated for G.711 and PLC
-		bpl = 17.2647;
-		r = 93.2062077233 - 95.0 * (ppl*100/(ppl*100/burstr + bpl));
-		mos = 2.06405 + 0.031738 * r - 0.000356641 * r * r + 2.93143 * pow(10,-6) * r * r * r;
-		if(mos < 1)
-			return 1;
-		if(mos > 4.5)
-			return 4.5;
-	}
-
-	return mos;
-}
-
-
-double calculate_mos(double ppl, double burstr, int codec, unsigned int received) {
-	if(codec == PAYLOAD_G729) {
-		if(opt_mos_g729) {
-			if(received < 100) {
-				return 3.92;
-			}
-			return (double)mos_g729((long double)ppl, (long double)burstr);
-		} else {
-			if(received < 100) {
-				return 4.5;
-			}
-			return calculate_mos_g711(ppl, burstr, 2);
-		}
-	} else {
-		if(received < 100) {
-			return 4.5;
-		}
-		return calculate_mos_g711(ppl, burstr, 2);
-	}
-}
-
 int convertALAW2WAV(const char *fname1, char *fname3, int maxsamplerate) {
 	unsigned char *bitstream_buf1;
 	int16_t buf_out1;
@@ -2275,7 +2224,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 
 			// calculate lossrate and burst rate
 			double burstr, lossr;
-			burstr_calculate(rtpab[i]->channel_fix1, rtpab[i]->stats.received, &burstr, &lossr);
+			burstr_calculate(rtpab[i]->channel_fix1, rtpab[i]->stats.received, &burstr, &lossr, 0);
 			//cdr.add(lossr, c+"_lossr_f1");
 			//cdr.add(burstr, c+"_burstr_f1");
 			int mos_f1_mult10 = (int)round(calculate_mos(lossr, burstr, rtpab[i]->first_codec, rtpab[i]->stats.received) * 10);
@@ -2285,7 +2234,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			}
 
 			// Jitterbuffer MOS statistics
-			burstr_calculate(rtpab[i]->channel_fix2, rtpab[i]->stats.received, &burstr, &lossr);
+			burstr_calculate(rtpab[i]->channel_fix2, rtpab[i]->stats.received, &burstr, &lossr, 0);
 			//cdr.add(lossr, c+"_lossr_f2");
 			//cdr.add(burstr, c+"_burstr_f2");
 			int mos_f2_mult10 = (int)round(calculate_mos(lossr, burstr, rtpab[i]->first_codec, rtpab[i]->stats.received) * 10);
@@ -2294,7 +2243,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 				mos_min_mult10[i] = mos_f2_mult10;
 			}
 
-			burstr_calculate(rtpab[i]->channel_adapt, rtpab[i]->stats.received, &burstr, &lossr);
+			burstr_calculate(rtpab[i]->channel_adapt, rtpab[i]->stats.received, &burstr, &lossr, 0);
 			//cdr.add(lossr, c+"_lossr_adapt");
 			//cdr.add(burstr, c+"_burstr_adapt");
 			int mos_adapt_mult10 = (int)round(calculate_mos(lossr, burstr, rtpab[i]->first_codec, rtpab[i]->stats.received) * 10);
