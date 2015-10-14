@@ -335,7 +335,7 @@ RTP::save_mos_graph(bool delimiter) {
 			mosf1_min = last_interval_mosf1;
 		}
 		mosf1_avg = ((mosf1_avg * mos_counter) + last_interval_mosf1) / (mos_counter + 1);
-		if(sverb.graph) printf("rtp[%p] ts[%u] ssrc[%x] mosf1_avg[%f] mosf1[%u]\n", this, header->ts.tv_sec, ssrc, mosf1_avg, last_interval_mosf1);
+//		if(sverb.graph) printf("rtp[%p] saddr[%s] ts[%u] ssrc[%x] mosf1_avg[%f] mosf1[%u]\n", this, inet_ntostring(htonl(saddr)).c_str(), header->ts.tv_sec, ssrc, mosf1_avg, last_interval_mosf1);
 	} else {
 		last_interval_mosf1 = 4.5;
 		mosf1_min = 4.5;
@@ -356,7 +356,7 @@ RTP::save_mos_graph(bool delimiter) {
 			mosf2_min = last_interval_mosf2;
 		}
 		mosf2_avg = ((mosf2_avg * mos_counter) + last_interval_mosf2) / (mos_counter + 1);
-		if(sverb.graph) printf("rtp[%p] ts[%u] ssrc[%x] mosf2_avg[%f] mosf2[%u]\n", this, header->ts.tv_sec, ssrc, mosf2_avg, last_interval_mosf2);
+//		if(sverb.graph) printf("rtp[%p] saddr[%s] ts[%u] ssrc[%x] mosf2_avg[%f] mosf2[%u]\n", this, inet_ntostring(htonl(saddr)).c_str(), header->ts.tv_sec, ssrc, mosf2_avg, last_interval_mosf2);
 	} else {
 		last_interval_mosf2 = 4.5;
 		mosf2_min = 4.5;
@@ -377,7 +377,7 @@ RTP::save_mos_graph(bool delimiter) {
 			mosAD_min = last_interval_mosAD;
 		}
 		mosAD_avg = ((mosAD_avg * mos_counter) + last_interval_mosAD) / (mos_counter + 1);
-		if(sverb.graph) printf("rtp[%p] ts[%u] ssrc[%x] mosAD_avg[%f] mosAD[%u]\n", this, header->ts.tv_sec, ssrc, mosAD_avg, last_interval_mosAD);
+//		if(sverb.graph) printf("rtp[%p] saddr[%s] ts[%u] ssrc[%x] mosAD_avg[%f] mosAD[%u]\n", this, inet_ntostring(htonl(saddr)).c_str(), header->ts.tv_sec, ssrc, mosAD_avg, last_interval_mosAD);
 	} else {
 		last_interval_mosAD = 4.5;
 		mosAD_min = 4.5;
@@ -399,7 +399,7 @@ RTP::save_mos_graph(bool delimiter) {
 	}
 	mos_counter++;
 
-	if(sverb.graph) printf("ssrc[%x] time[%u] seq[%u] \nMOS F1 cur[%d] min[%d] avg[%f]\nMOS F2 cur[%d] min[%d] avg[%f]\nMOS AD cur[%d] min[%d] avg[%f]\n ------\n", ssrc, (unsigned int)header->ts.tv_sec, seq, 
+	if(sverb.graph) printf("rtp[%p] saddr[%s] ssrc[%x] time[%u] seq[%u] \nMOS F1 cur[%d] min[%d] avg[%f]\nMOS F2 cur[%d] min[%d] avg[%f]\nMOS AD cur[%d] min[%d] avg[%f]\n ------\n", this, inet_ntostring(htonl(saddr)).c_str(), ssrc, (unsigned int)header->ts.tv_sec, seq, 
 		last_interval_mosf1, mosf1_min, mosf1_avg,
 		last_interval_mosf2, mosf2_min, mosf2_avg,
 		last_interval_mosAD, mosAD_min, mosAD_avg
@@ -1019,13 +1019,18 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 	unsigned int *lastssrc = iscaller ? 
 		(owner->lastcallerrtp ? &owner->lastcallerrtp->ssrc : NULL) :
 		(owner->lastcalledrtp ? &owner->lastcalledrtp->ssrc : NULL);
+
+	RTP *lastrtp = iscaller ?
+		(owner->lastcallerrtp ? owner->lastcallerrtp : NULL) :
+		(owner->lastcalledrtp ? owner->lastcalledrtp : NULL);
 	
-	// if packet has Mark bit OR last frame was not dtmf or current frame is not dtmf and last ssrc is different then current ssrc packet - reset sequence
+	// if packet has Mark bit OR last frame was not dtmf and current frame is voice and last ssrc is different then current ssrc packet AND (last RTP saddr == current RTP saddr)  - reset
 	if(getMarker() or
-		(!(lastframetype == AST_FRAME_DTMF and codec != PAYLOAD_TELEVENT) and lastssrc and *lastssrc != ssrc)
+		(!(lastframetype == AST_FRAME_DTMF and codec != PAYLOAD_TELEVENT) and lastssrc and *lastssrc != ssrc and lastrtp->saddr == this->saddr)
+
 
 	) {
-		if(sverb.graph) printf("rtp[%p] mark[%u] lastframetype[%u] codec[%u] lastssrc[%x] ssrc[%x] iscaller[%u]\n", this, getMarker(), lastframetype, codec, (lastssrc ? *lastssrc : 0), ssrc, iscaller);
+		if(sverb.graph) printf("rtp[%p] mark[%u] lastframetype[%u] codec[%u] lastssrc[%x] ssrc[%x] iscaller[%u] lastframetype[%u][%u] codec[%u]\n", this, getMarker(), lastframetype, codec, (lastssrc ? *lastssrc : 0), ssrc, iscaller, lastframetype, AST_FRAME_DTMF, codec);
 
 		resetgraph = true;
 
@@ -1347,6 +1352,12 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 				} else if(payload_len == 24*3) {
 					packetization = 90;
 				}
+			} else if(codec == PAYLOAD_ILBC) {
+				if(payload_len % 50 == 0) {
+					packetization = 30 * payload_len / 50;
+				} else {
+					packetization = (getTimestamp() - last_ts) / (samplerate / 1000);
+				}
 			} else {
 				packetization = (getTimestamp() - last_ts) / (samplerate / 1000);
 			}
@@ -1406,6 +1417,12 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 					} else {
 						packetization = channel_record->packetization = default_packetization;
 					}
+				} else if(codec == PAYLOAD_ILBC) {
+					if(payload_len % 50 == 0) {
+						packetization = channel_record->packetization = 30 * payload_len / 50;
+					} else {
+						packetization = channel_record->packetization = default_packetization;
+					}
 				} else {
 					packetization = channel_record->packetization = default_packetization;
 				}
@@ -1429,6 +1446,12 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 					packetization = 10;
 				} else {
 					packetization = (getTimestamp() - last_ts) / 8;
+				}
+			} else if(codec == PAYLOAD_ILBC) {
+				if(payload_len % 50 == 0) {
+					packetization = 30 * payload_len / 50;
+				} else {
+					packetization = default_packetization;
 				}
 			} else {
 				packetization = (getTimestamp() - last_ts) / (samplerate / 1000);
@@ -1492,6 +1515,12 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 					} else {
 						packetization = channel_record->packetization = default_packetization;
 					}
+				} else if(codec == PAYLOAD_ILBC) {
+					if(payload_len % 50 == 0) {
+						packetization = channel_record->packetization = 30 * payload_len / 50;
+					} else {
+						packetization = channel_record->packetization = default_packetization;
+					}
 				} else {
 					packetization = channel_record->packetization = default_packetization;
 				}
@@ -1519,6 +1548,12 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 				} else {
 					curpacketization = (getTimestamp() - last_ts) / 8;
 				}
+			} else if(codec == PAYLOAD_ILBC) {
+				if(payload_len % 50 == 0) {
+					curpacketization = 30 * payload_len / 50;
+				} else {
+					curpacketization = default_packetization;
+				}
 			} else if(curpayload == PAYLOAD_G723) {
 				if(payload_len == 24) {
 					curpacketization = 30;	
@@ -1544,7 +1579,7 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 			} else {
 				curpacketization = (getTimestamp() - last_ts) / (samplerate / 1000);
 			}
-			if(verbosity > 3) printf("curpacketization[%u] = (getTimestamp()[%u] - last_ts[%u]) / (samplerate[%u] / 1000)\n", curpacketization, getTimestamp(), last_ts, samplerate);
+			if(verbosity > 3) printf("curpacketization[%u] = (getTimestamp()[%u] - last_ts[%u]) / (samplerate[%u] / 1000) pl[%u] curpayload[%u]\n", curpacketization, getTimestamp(), last_ts, samplerate, payload_len, curpayload);
 
 			if(curpacketization != packetization and curpacketization % 10 == 0 and curpacketization >= 10 and curpacketization <= 120) {
 				if(verbosity > 3) printf("[%x] changing packetization:[%d]->[%d]\n", getSSRC(), curpacketization, packetization);
