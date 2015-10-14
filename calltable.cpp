@@ -221,6 +221,11 @@ Call::Call(char *call_id, unsigned long call_id_len, time_t time) :
 	progress_time = 0;
 	first_rtp_time = 0;
 	connect_time = 0;
+	first_invite_time_usec = 0;
+	first_response_100_time_usec = 0;
+	first_response_xxx_time_usec = 0;
+	first_message_time_usec = 0;
+	first_response_200_time_usec = 0;
 	a_ua[0] = '\0';
 	b_ua[0] = '\0';
 	memset(rtpmap, 0, sizeof(rtpmap));
@@ -1869,6 +1874,7 @@ int
 Call::saveToDb(bool enableBatchIfPossible) {
  
 	extern bool exists_columns_cdr_reason;
+	extern bool exists_columns_cdr_response_time;
 
 	if(!sqlDbSaveCall) {
 		sqlDbSaveCall = createSqlObject();
@@ -2070,6 +2076,14 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		}
 		if(reason_q850_cause) {
 			cdr.add(reason_q850_cause, "reason_q850_cause");
+		}
+	}
+	if(exists_columns_cdr_response_time && this->first_invite_time_usec) {
+		if(this->first_response_100_time_usec) {
+			cdr.add(MIN(65535, round((this->first_response_100_time_usec - this->first_invite_time_usec) / 1000.0)), "response_time_100");
+		}
+		if(this->first_response_xxx_time_usec) {
+			cdr.add(MIN(65535, round((this->first_response_xxx_time_usec - this->first_invite_time_usec) / 1000.0)), "response_time_xxx");
 		}
 	}
 
@@ -3253,6 +3267,8 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 
 int
 Call::saveMessageToDb(bool enableBatchIfPossible) {
+ 
+	extern bool exists_column_message_response_time;
 
 	if(!sqlDbSaveCall) {
 		sqlDbSaveCall = createSqlObject();
@@ -3305,6 +3321,13 @@ Call::saveMessageToDb(bool enableBatchIfPossible) {
 	}
 
 	cdr.add(lastSIPresponseNum, "lastSIPresponseNum");
+	
+	if(exists_column_message_response_time && this->first_message_time_usec) {
+		if(this->first_response_200_time_usec) {
+			cdr.add(MIN(65535, round((this->first_response_200_time_usec - this->first_message_time_usec) / 1000.0)), "response_time");
+		}
+	}
+
 /*
 	if(strlen(match_header)) {
 		cdr_next.add(sqlEscapeString(match_header), "match_header");
