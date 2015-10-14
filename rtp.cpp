@@ -883,25 +883,30 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 		return;
 	}
 
-	if(owner) {
+       if(owner) {
 		owner->forcemark_lock();
-		for(int i = 0; i < 2; i++) {
-			size_t _forcemark_size = owner->forcemark_time[i].size();
-			if(_forcemark_size) {
-				u_int64_t _forcemark_time = owner->forcemark_time[i].front();
-				u_int64_t _header_time = header->ts.tv_sec  * 1000000ull + header->ts.tv_usec;
-				if(_forcemark_time < _header_time) {
+		bool nextcycle = false;
+		do {
+			nextcycle = false;
+			for(int i = 0; i < 2; i++) {
+				size_t _forcemark_size = owner->forcemark_time[i].size();
+				if(_forcemark_size) {
+					u_int64_t _forcemark_time = owner->forcemark_time[i].front();
+					u_int64_t _header_time = header->ts.tv_sec  * 1000000ull + header->ts.tv_usec;
+					if(_forcemark_time < _header_time) {
 					/*
-					cout << "set forcemark " << _forcemark_time 
-					     << " header time " << _header_time 
-					     << " forcemarks size " << _forcemark_size
-					     << endl;
+						cout << "set forcemark " << _forcemark_time 
+						     << " header time " << _header_time 
+						     << " forcemarks size " << _forcemark_size
+						     << " seq " << seq << endl;
+						owner->forcemark[i] = 1;
+						owner->forcemark_time[i].pop();
+						nextcycle = true;
 					*/
-					owner->forcemark[i] = 1;
-					owner->forcemark_time[i].pop();
+					}
 				}
 			}
-		}
+		} while(nextcycle);
 		owner->forcemark_unlock();
 	}
 

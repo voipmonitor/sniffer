@@ -873,10 +873,7 @@ Call::read_rtp(unsigned char* data, int datalen, int dataoffset, struct pcap_pkt
 */
 
 			if(
-#if RTP_BY_SRC_IP
-			    rtp[i]->saddr == saddr
-#endif
-			   && rtp[i]->dport == dport
+			    (rtp[i]->saddr == saddr and rtp[i]->dport == dport) or (rtp[i]->saddr == saddr and rtp[i]->sport == sport)
 
 			   ) {
 				//if(verbosity > 1) printf("found seq[%u] saddr[%u] dport[%u]\n", tmprtp.getSeqNum(), saddr, dport);

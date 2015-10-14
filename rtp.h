@@ -487,6 +487,7 @@ private:
 	inline RTPFixedHeader* getHeader() const { return reinterpret_cast<RTPFixedHeader*>(data); }
 	
 	void update_stats();
+	void update_graph_silence();
 
 	void init_seq(u_int16_t seq);
 	int update_seq(u_int16_t seq);
