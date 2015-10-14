@@ -169,6 +169,7 @@ public:
 	static void addDelayQuery(u_int32_t delay_ms);
 	static u_int32_t getAvgDelayQuery();
 	static void resetDelayQuery();
+	void logNeedAlter(string table, string reason, string alter);
 protected:
 	string conn_server;
 	string conn_server_ip;

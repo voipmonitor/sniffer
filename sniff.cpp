@@ -2330,6 +2330,24 @@ Call *process_packet(bool is_ssl, u_int64_t packet_number,
 			}
 		}
 	
+		if(call && lastSIPresponseNum && IS_SIP_RESXXX(sip_method)) {
+			if(call->first_invite_time_usec) {
+				if(lastSIPresponseNum == 100) {
+					if(!call->first_response_100_time_usec) {
+						call->first_response_100_time_usec = header->ts.tv_sec * 1000000ull + header->ts.tv_usec;
+					}
+				} else {
+					if(!call->first_response_xxx_time_usec) {
+						call->first_response_xxx_time_usec = header->ts.tv_sec * 1000000ull + header->ts.tv_usec;
+					}
+				}
+			} else if(call->first_message_time_usec && lastSIPresponseNum == 200) {
+				if(!call->first_response_200_time_usec) {
+					call->first_response_200_time_usec = header->ts.tv_sec * 1000000ull + header->ts.tv_usec;
+				}
+			}
+		}
+		
 		if (!call){
 			// packet does not belongs to any call yet
 			if (sip_method == INVITE || sip_method == MESSAGE || (opt_sip_register && sip_method == REGISTER)) {
@@ -2358,6 +2376,10 @@ Call *process_packet(bool is_ssl, u_int64_t packet_number,
 				}
 				if(call == NULL) {
 					goto endsip;
+				} else if(sip_method == INVITE && !call->first_invite_time_usec) {
+					call->first_invite_time_usec = header->ts.tv_sec * 1000000ull + header->ts.tv_usec;
+				} else if(sip_method == MESSAGE && !call->first_message_time_usec) {
+					call->first_message_time_usec = header->ts.tv_sec * 1000000ull + header->ts.tv_usec;
 				}
 			} else {
 				// SIP packet does not belong to any call and it is not INVITE 

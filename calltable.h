@@ -264,6 +264,12 @@ public:
 	std::queue <short int> spybuffer;
 	std::queue <char> spybufferchar;
 	std::queue <dtmfq> dtmf_history;
+	
+	u_int64_t first_invite_time_usec;
+	u_int64_t first_response_100_time_usec;
+	u_int64_t first_response_xxx_time_usec;
+	u_int64_t first_message_time_usec;
+	u_int64_t first_response_200_time_usec;
 
 	uint8_t	caller_sipdscp;
 	uint8_t	called_sipdscp;

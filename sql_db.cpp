@@ -83,6 +83,8 @@ int sql_disable_next_attempt_if_error = 0;
 bool opt_cdr_partition_oldver = false;
 bool exists_column_message_content_length = false;
 bool exists_columns_cdr_reason = false;
+bool exists_columns_cdr_response_time = false;
+bool exists_column_message_response_time = false;
 
 
 string SqlDb_row::operator [] (const char *fieldName) {
@@ -604,6 +606,17 @@ u_int32_t SqlDb::getAvgDelayQuery() {
 void SqlDb::resetDelayQuery() {
 	delayQuery_sum_ms = 0;
 	delayQuery_count = 0;
+}
+
+void SqlDb::logNeedAlter(string table, string reason, string alter) {
+	string msg = 
+		"!!! You need to alter " + table + " database table and add new columns to support " + reason + ". "
+		"This operation can take hours based on ammount of data, CPU and I/O speed of your server. "
+		"The alter table will prevent the database to insert new rows and will probably block other operations. "
+		"It is recommended to alter the table in non working hours. "
+		"Login to the mysql voipmonitor database (mysql -uroot voipmonitor) and run on the CLI> " +
+		alter;
+	syslog(LOG_WARNING, msg.c_str());
 }
 
 volatile u_int64_t SqlDb::delayQuery_sum_ms = 0;
@@ -3194,6 +3207,8 @@ bool SqlDb_mysql::createSchema(SqlDb *sourceDb) {
 			`called_silence` tinyint unsigned DEFAULT NULL,\
 			`caller_silence_end` smallint unsigned DEFAULT NULL,\
 			`called_silence_end` smallint unsigned DEFAULT NULL,\
+			`response_time_100` smallint unsigned DEFAULT NULL,\
+			`response_time_xxx` smallint unsigned DEFAULT NULL,\
 			`id_sensor` smallint unsigned DEFAULT NULL,") + 
 			(get_customers_pn_query[0] ?
 				"`caller_customer_id` int DEFAULT NULL,\
@@ -3334,14 +3349,10 @@ bool SqlDb_mysql::createSchema(SqlDb *sourceDb) {
 	if(!this->fetchRow()) {
 		this->query("show tables like 'billing'");
 		if(this->fetchRow()) {
-			syslog(LOG_WARNING, (string(
-					    "!!! You need to alter cdr database table and add new columns to support billing feature. "
-					    "This operation can take hours based on ammount of data, CPU and I/O speed of your server. "
-					    "The alter table will prevent the database to insert new rows and will probably block other operations. "
-					    "It is recommended to alter the table in non working hours. "
-					    "Login to the mysql voipmonitor database (mysql -uroot voipmonitor) and run on the CLI> "
-					    "ALTER TABLE cdr ") +
-					    (existsExtPrecisionBilling ?
+			this->logNeedAlter("cdr",
+					   "billing feature",
+					   string("ALTER TABLE cdr ") +
+					   (existsExtPrecisionBilling ?
 						"ADD COLUMN price_operator_mult100 INT UNSIGNED, "
 						"ADD COLUMN price_operator_currency_id TINYINT UNSIGNED, "
 						"ADD COLUMN price_customer_mult100 INT UNSIGNED, "
@@ -3349,7 +3360,7 @@ bool SqlDb_mysql::createSchema(SqlDb *sourceDb) {
 						"ADD COLUMN price_operator_mult1000000 BIGINT UNSIGNED, "
 						"ADD COLUMN price_operator_currency_id TINYINT UNSIGNED, "
 						"ADD COLUMN price_customer_mult1000000 BIGINT UNSIGNED, "
-						"ADD COLUMN price_customer_currency_id TINYINT UNSIGNED;")).c_str());
+						"ADD COLUMN price_customer_currency_id TINYINT UNSIGNED;"));
 		}
 	}
 	
@@ -3367,20 +3378,38 @@ bool SqlDb_mysql::createSchema(SqlDb *sourceDb) {
 		}
 	}
 	if(missing_column_cdr_reason) {
-		syslog(LOG_WARNING, "!!! You need to alter cdr database table and add new columns to support SIP header 'reason'. "
-				    "This operation can take hours based on ammount of data, CPU and I/O speed of your server. "
-				    "The alter table will prevent the database to insert new rows and will probably block other operations. "
-				    "It is recommended to alter the table in non working hours. "
-				    "Login to the mysql voipmonitor database (mysql -uroot voipmonitor) and run on the CLI> "
-				    "ALTER TABLE cdr "
-				    "ADD COLUMN reason_sip_cause smallint unsigned DEFAULT NULL, "
-				    "ADD COLUMN reason_sip_text_id mediumint unsigned DEFAULT NULL, "
-				    "ADD COLUMN reason_q850_cause smallint unsigned DEFAULT NULL, "
-				    "ADD COLUMN reason_q850_text_id mediumint unsigned DEFAULT NULL, "
-				    "ADD KEY reason_sip_text_id (reason_sip_text_id), "
-				    "ADD KEY reason_q850_text_id (reason_q850_text_id);");
+		this->logNeedAlter("cdr",
+				   "SIP header 'reason'",
+				   "ALTER TABLE cdr "
+				   "ADD COLUMN reason_sip_cause smallint unsigned DEFAULT NULL, "
+				   "ADD COLUMN reason_sip_text_id mediumint unsigned DEFAULT NULL, "
+				   "ADD COLUMN reason_q850_cause smallint unsigned DEFAULT NULL, "
+				   "ADD COLUMN reason_q850_text_id mediumint unsigned DEFAULT NULL, "
+				   "ADD KEY reason_sip_text_id (reason_sip_text_id), "
+				   "ADD KEY reason_q850_text_id (reason_q850_text_id);");
 	} else {
 		exists_columns_cdr_reason = true;
+	}
+	
+	const char *cdrResponseTime[] = {
+		"response_time_100",
+		"response_time_xxx"
+	};
+	bool missing_column_cdr_response_time = false;
+	for(unsigned int i = 0; i < sizeof(cdrResponseTime) / sizeof(cdrResponseTime[0]); i++) {
+		this->query(string("show columns from cdr where Field='") + cdrResponseTime[i] + "'");
+		if(!this->fetchRow()) {
+			missing_column_cdr_response_time = true;
+		}
+	}
+	if(missing_column_cdr_response_time) {
+		this->logNeedAlter("cdr",
+				   "SIP response time",
+				   "ALTER TABLE cdr "
+				   "ADD COLUMN response_time_100 smallint unsigned DEFAULT NULL, "
+				   "ADD COLUMN response_time_xxx smallint unsigned DEFAULT NULL;");
+	} else {
+		exists_columns_cdr_response_time = true;
 	}
 
 	this->query(string(
@@ -3618,7 +3647,8 @@ bool SqlDb_mysql::createSchema(SqlDb *sourceDb) {
 			`b_ua_id` int unsigned DEFAULT NULL,\
 			`fbasename` varchar(255) DEFAULT NULL,\
 			`message` MEDIUMTEXT CHARACTER SET utf8,\
-			`content_length` MEDIUMINT DEFAULT NULL,") +
+			`content_length` MEDIUMINT DEFAULT NULL,\
+			`response_time` SMALLINT UNSIGNED DEFAULT NULL,") +
 		(opt_cdr_partition ? 
 			"PRIMARY KEY (`ID`, `calldate`)," :
 			"PRIMARY KEY (`ID`),") + 
@@ -3664,6 +3694,16 @@ bool SqlDb_mysql::createSchema(SqlDb *sourceDb) {
 
 	this->query("show columns from message where Field='content_length'");
 	exists_column_message_content_length = this->fetchRow();
+	
+	this->query("show columns from message where Field='response_time'");
+	if(!this->fetchRow()) {
+		this->logNeedAlter("message",
+				   "SIP response time",
+				   "ALTER TABLE message "
+				   "ADD COLUMN response_time smallint unsigned DEFAULT NULL;");
+	} else {
+		exists_column_message_response_time = true;
+	}
 
 	this->query(
 	"CREATE TABLE IF NOT EXISTS `register` (\
@@ -5191,6 +5231,8 @@ bool SqlDb_odbc::createSchema(SqlDb *sourceDb) {
 			called_silence tinyint NULL,\
 			caller_silence_end smallint NULL,\
 			called_silence_end smallint NULL,\
+			response_time_100 smallint NULL,\
+			response_time_xxx smallint NULL,\
 			id_sensor smallint NULL,);\
 		CREATE INDEX calldate ON cdr (calldate);\
 		CREATE INDEX callend ON cdr (callend);\
@@ -5362,7 +5404,9 @@ bool SqlDb_odbc::createSchema(SqlDb *sourceDb) {
 			b_ua_id int NULL\
 				FOREIGN KEY REFERENCES cdr_ua (id),\
 			fbasename varchar(255) NULL,\
-			message MEDIUMTEXT);\
+			message MEDIUMTEXT,\
+			content_length int NULL,\
+			response_time smallint NULL);\
 		CREATE INDEX calldate ON message (calldate);\
 		CREATE INDEX caller ON message (caller);\
 		CREATE INDEX caller_domain ON message (caller_domain);\
