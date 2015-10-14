@@ -561,7 +561,9 @@ Call::closeRawFiles() {
 		// close GRAPH files
 		if(opt_saveGRAPH || (flags & FLAG_SAVEGRAPH)) {
 			if(rtp[i]->graph.isOpen()) {
-				rtp[i]->save_mos_graph(true);
+				if((rtp[i]->last_mos_time + 4 < rtp[i]->_last_ts.tv_sec)) {
+					rtp[i]->save_mos_graph(true);
+				}
 				rtp[i]->graph.close();
 			}
 		}
@@ -856,49 +858,75 @@ Call::read_rtp(unsigned char* data, int datalen, int dataoffset, struct pcap_pkt
 	}
 
 	for(int i = 0; i < ssrc_n; i++) {
-		if(rtp[i]->ssrc2 == curSSRC 
-#if RTP_BY_SRC_IP
-		   && rtp[i]->saddr == saddr
-#endif
-		   && rtp[i]->dport == dport
-
-		   ) {
-			// found 
-			if(opt_dscp) {
-				rtp[i]->dscp = header_ip->tos >> 2;
-				if(sverb.dscp) {
-					cout << "rtpdscp " << (int)(header_ip->tos>>2) << endl;
-				}
+		if(rtp[i]->ssrc2 == curSSRC) {
+/*
+			if(rtp[i]->last_seq == tmprtp.getSeqNum()) {
+				//ignore duplicated RTP with the same sequence
+				//if(verbosity > 1) printf("ignoring lastseq[%u] seq[%u] saddr[%u] dport[%u]\n", rtp[i]->last_seq, tmprtp.getSeqNum(), saddr, dport);
+				goto end;
 			}
-			
-			// check if codec did not changed but ignore payload 13 and 19 which is CNG and 101 which is DTMF
-			int oldcodec = rtp[i]->codec;
-			if(curpayload == 13 or curpayload == 19 or rtp[i]->codec == PAYLOAD_TELEVENT or rtp[i]->payload2 == curpayload) {
-				goto read;
-			} else {
-				//codec changed, check if it is not DTMF 
-				if(curpayload >= 96 && curpayload <= 127) {
-					for(int j = 0; j < MAX_RTPMAP; j++) {
-						if(rtp[i]->rtpmap[j] != 0 && curpayload == rtp[i]->rtpmap[j] / 1000) {
-							rtp[i]->codec = rtp[i]->rtpmap[j] - curpayload * 1000;
+*/
+
+			if(
+#if RTP_BY_SRC_IP
+			    rtp[i]->saddr == saddr
+#endif
+			   && rtp[i]->dport == dport
+
+			   ) {
+				//if(verbosity > 1) printf("found seq[%u] saddr[%u] dport[%u]\n", tmprtp.getSeqNum(), saddr, dport);
+				// found 
+				if(opt_dscp) {
+					rtp[i]->dscp = header_ip->tos >> 2;
+					if(sverb.dscp) {
+						cout << "rtpdscp " << (int)(header_ip->tos>>2) << endl;
+					}
+				}
+				
+				// check if codec did not changed but ignore payload 13 and 19 which is CNG and 101 which is DTMF
+				int oldcodec = rtp[i]->codec;
+				if(curpayload == 13 or curpayload == 19 or rtp[i]->codec == PAYLOAD_TELEVENT or rtp[i]->payload2 == curpayload) {
+					goto read;
+				} else {
+					// check if the stream started with DTMF
+					if(rtp[i]->payload2 >= 96 && rtp[i]->payload2 <= 127) {
+						for(int j = 0; j < MAX_RTPMAP; j++) {
+							if(rtp[i]->rtpmap[j] != 0 && rtp[i]->payload2 == rtp[i]->rtpmap[j] / 1000) {
+								if((rtp[i]->rtpmap[j] - rtp[i]->payload2 * 1000) == PAYLOAD_TELEVENT) {
+									//it is DTMF 
+									rtp[i]->payload2 = curpayload;
+									goto read;
+								}
+							}
 						}
 					}
-				} else {
-					rtp[i]->codec = curpayload;
-				}
-				if(rtp[i]->codec == PAYLOAD_TELEVENT) {
-read:
-					rtp[i]->read(data, datalen, header, saddr, daddr, sport, dport, seeninviteok, sensor_id, ifname);
-					if(iscaller) {
-						lastcallerrtp = rtp[i];
+
+					//codec changed, check if it is not DTMF 
+					if(curpayload >= 96 && curpayload <= 127) {
+						for(int j = 0; j < MAX_RTPMAP; j++) {
+							if(rtp[i]->rtpmap[j] != 0 && curpayload == rtp[i]->rtpmap[j] / 1000) {
+								rtp[i]->codec = rtp[i]->rtpmap[j] - curpayload * 1000;
+							}
+						}
 					} else {
-						lastcalledrtp = rtp[i];
+						rtp[i]->codec = curpayload;
 					}
-					goto end;
-				} else if(oldcodec != rtp[i]->codec){
-					//codec changed and it is not DTMF, reset ssrc so the stream will not match and new one is used
-					//printf("mchange [%d] [%d]\n", rtp[i]->codec, curpayload);
-					rtp[i]->ssrc2 = 0;
+					if(rtp[i]->codec == PAYLOAD_TELEVENT) {
+read:
+						rtp[i]->read(data, datalen, header, saddr, daddr, sport, dport, seeninviteok, sensor_id, ifname);
+						if(rtp[i]->iscaller) {
+							lastcallerrtp = rtp[i];
+						} else {
+							lastcalledrtp = rtp[i];
+						}
+						goto end;
+					} else if(oldcodec != rtp[i]->codec){
+						//codec changed and it is not DTMF, reset ssrc so the stream will not match and new one is used
+						//if(verbosity > 1) printf("mchange [%d] [%d]\n", rtp[i]->codec, curpayload);
+						rtp[i]->ssrc2 = 0;
+					} else {
+						//if(verbosity > 1) printf("wtf lastseq[%u] seq[%u] saddr[%u] dport[%u] oldcodec[%u] rtp[i]->codec[%u] rtp[i]->payload2[%u] curpayload[%u]\n", rtp[i]->last_seq, tmprtp.getSeqNum(), saddr, dport, oldcodec, rtp[i]->codec, rtp[i]->payload2, curpayload);
+					}
 				}
 			}
 		}
@@ -976,6 +1004,7 @@ read:
 		}
 
 		rtp[ssrc_n]->read(data, datalen, header, saddr, daddr, sport, dport, seeninviteok, sensor_id, ifname);
+		if(sverb.check_is_caller_called) printf("new rtp[%p] ssrc[%x] seq[%u] saddr[%s] dport[%u] iscaller[%u]\n", rtp[ssrc_n], curSSRC, rtp[ssrc_n]->seq, inet_ntostring(htonl(saddr)).c_str(), dport, rtp[ssrc_n]->iscaller);
 		this->rtp[ssrc_n]->ssrc = this->rtp[ssrc_n]->ssrc2 = curSSRC;
 		this->rtp[ssrc_n]->payload2 = curpayload;
 
@@ -1435,22 +1464,53 @@ Call::convertRawToWav() {
 			rawl.codec = codec;
 			rawl.filename = raw;
 
-			// check if this stream is not duplicated in caller or called (ssrc is key). This is workaround for netsapiens sbc which uses the same destination port when forwarding two legs 
-			for(int k = 0; k < ssrc_n; k++) {
-				if(ssrc_index == k or rtp[k]->skip) continue; // do not compare with ourself or already removed RTP
-				if(rtp[ssrc_index]->ssrc == rtp[k]->ssrc) {
+			Call *owner = (Call*)rtp[ssrc_index]->call_owner;
+
+			//check for SSRC duplicity  - walk all RTP 
+			RTP *A = rtp[ssrc_index];
+			RTP *B = NULL;
+			RTP *C = NULL;
+			for(int k = 0; owner and k < ssrc_n; k++) {
+				B = rtp[k];
+				if(A == B or A->skip or B->skip) continue; // do not compare with ourself or already removed RTP
+				if(A->ssrc == B->ssrc) {
 					// found another stream with the same SSRC 
 
-					// check if stream A.srcip:srcport == B.dstip:dstport 
-					if(rtp[ssrc_index]->saddr == rtp[k]->daddr and rtp[ssrc_index]->sport == rtp[k]->dport) {
-						// remove B stream
-						if(verbosity > 1) syslog(LOG_ERR, "Removing stream with SSRC[%x] srcip[long2ip(%u)]:[%u]\n", rtp[k]->ssrc, rtp[k]->saddr, rtp[k]->sport);
-						rtp[k]->skip = true;
-					// check if stream B.srcip:srcport == A.dstip:dstport 
-					} else if(rtp[k]->saddr == rtp[ssrc_index]->daddr and rtp[k]->sport == rtp[ssrc_index]->dport) {
-						// remove A stream
-						if(verbosity > 1) syslog(LOG_ERR, "Removing stream with SSRC[%x] srcip[long2ip(%u)]:[%u]\n", rtp[ssrc_index]->ssrc, rtp[ssrc_index]->saddr, rtp[ssrc_index]->sport);
-						rtp[ssrc_index]->skip = true;
+					if(owner->get_index_by_ip_port(A->daddr, A->dport) >= 0) {
+						//A.daddr is in SDP
+						if(owner->get_index_by_ip_port(B->daddr, B->dport) >= 0) {
+							//B.daddr is also in SDP now we have to decide if A or B will be removed. Check if we remove B if there will be still B.dst in some other RTP stream 
+							bool test = false;
+							for(int i = 0; i < ssrc_n; i++) {
+								C = rtp[i];
+								if(C->skip or C == B or C->codec != B->codec) continue; 
+								if(B->daddr == C->daddr){
+									// we have found another stream C with the same B.daddr so we can remove the stream B
+									test = true;
+									break;
+								}
+							}
+							if(test) {
+								B->skip = true;
+								if(verbosity > 1) syslog(LOG_ERR, "Removing stream with SSRC[%x] srcip[%s]:[%u]->[%s]:[%u] iscaller[%u] index[%u] 0\n", 
+									B->ssrc, inet_ntostring(htonl(B->saddr)).c_str(), B->sport, inet_ntostring(htonl(B->saddr)).c_str(), B->dport, B->iscaller, k);
+							} else {
+								// test is not true which means that if we remove B there will be no other stream with the B.daddr so we can remove A
+								A->skip = true;
+								if(verbosity > 1) syslog(LOG_ERR, "Removing stream with SSRC[%x] srcip[%s]:[%u]->[%s]:[%u] iscaller[%u] index[%u] 1\n", 
+									A->ssrc, inet_ntostring(htonl(A->saddr)).c_str(), A->sport, inet_ntostring(htonl(A->saddr)).c_str(), A->dport, A->iscaller, k);
+							}
+						} else {
+							// B.daddr is not in SDP so we can remove B because A.dst is in SDP 
+							B->skip = 1;
+							if(verbosity > 1) syslog(LOG_ERR, "Removing stream with SSRC[%x] srcip[%s]:[%u]->[%s]:[%u] iscaller[%u] index[%u] 2\n", 
+								B->ssrc, inet_ntostring(htonl(B->saddr)).c_str(), B->sport, inet_ntostring(htonl(B->saddr)).c_str(), B->dport, B->iscaller, k);
+						}
+					} else {
+						//A.daddr is not in SDP so we can remove that stream 
+						A->skip = 1;
+						if(verbosity > 1) syslog(LOG_ERR, "Removing stream with SSRC[%x] srcip[%s]:[%u]->[%s]:[%u] iscaller[%u] index[%u] 3\n", 
+							A->ssrc, inet_ntostring(htonl(A->saddr)).c_str(), A->sport, inet_ntostring(htonl(A->saddr)).c_str(), A->dport, A->iscaller, k);
 					}
 				}
 			}
@@ -1494,12 +1554,12 @@ Call::convertRawToWav() {
 		for (std::list<raws_t>::const_iterator rawf = raws.begin(), end = raws.end(); rawf != end; ++rawf) {
 			switch(rawf->codec) {
 			case PAYLOAD_PCMA:
-				if(verbosity > 1) syslog(LOG_ERR, "Converting PCMA to WAV.\n");
+				if(verbosity > 1) syslog(LOG_ERR, "Converting PCMA to WAV ssrc[%x] wav[%s] index[%u]\n", rtp[rawf->ssrc_index]->ssrc, wav, rawf->ssrc_index);
 				convertALAW2WAV(rawf->filename.c_str(), wav, maxsamplerate);
 				samplerate = 8000;
 				break;
 			case PAYLOAD_PCMU:
-				if(verbosity > 1) syslog(LOG_ERR, "Converting PCMU to WAV.\n");
+				if(verbosity > 1) syslog(LOG_ERR, "Converting PCMU to WAV ssrc[%x] wav[%s] index[%u]\n", rtp[rawf->ssrc_index]->ssrc, wav, rawf->ssrc_index);
 				convertULAW2WAV(rawf->filename.c_str(), wav, maxsamplerate);
 				samplerate = 8000;
 				break;
@@ -2222,31 +2282,30 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			// store source addr
 			cdr.add(htonl(rtpab[i]->saddr), c+"_saddr");
 
-			// calculate lossrate and burst rate
+			// calculate MOS score for fixed 50ms 
 			double burstr, lossr;
 			burstr_calculate(rtpab[i]->channel_fix1, rtpab[i]->stats.received, &burstr, &lossr, 0);
-			//cdr.add(lossr, c+"_lossr_f1");
-			//cdr.add(burstr, c+"_burstr_f1");
-			int mos_f1_mult10 = (int)round(calculate_mos(lossr, burstr, rtpab[i]->first_codec, rtpab[i]->stats.received) * 10);
+			//int mos_f1_mult10 = (int)round(calculate_mos(lossr, burstr, rtpab[i]->first_codec, rtpab[i]->stats.received) * 10);
+			int mos_f1_mult10 = (int)round(rtpab[i]->mosf1_avg);
 			cdr.add(mos_f1_mult10, c+"_mos_f1_mult10");
 			if(mos_f1_mult10) {
 				mos_min_mult10[i] = mos_f1_mult10;
 			}
 
-			// Jitterbuffer MOS statistics
+			// calculate MOS score for fixed 200ms 
 			burstr_calculate(rtpab[i]->channel_fix2, rtpab[i]->stats.received, &burstr, &lossr, 0);
-			//cdr.add(lossr, c+"_lossr_f2");
-			//cdr.add(burstr, c+"_burstr_f2");
-			int mos_f2_mult10 = (int)round(calculate_mos(lossr, burstr, rtpab[i]->first_codec, rtpab[i]->stats.received) * 10);
+			//int mos_f2_mult10 = (int)round(calculate_mos(lossr, burstr, rtpab[i]->first_codec, rtpab[i]->stats.received) * 10);
+			int mos_f2_mult10 = (int)round(rtpab[i]->mosf2_avg);
 			cdr.add(mos_f2_mult10, c+"_mos_f2_mult10");
 			if(mos_f2_mult10 && (mos_min_mult10[i] < 0 || mos_f2_mult10 < mos_min_mult10[i])) {
 				mos_min_mult10[i] = mos_f2_mult10;
 			}
 
+			// calculate MOS score for adaptive 500ms 
 			burstr_calculate(rtpab[i]->channel_adapt, rtpab[i]->stats.received, &burstr, &lossr, 0);
-			//cdr.add(lossr, c+"_lossr_adapt");
-			//cdr.add(burstr, c+"_burstr_adapt");
-			int mos_adapt_mult10 = (int)round(calculate_mos(lossr, burstr, rtpab[i]->first_codec, rtpab[i]->stats.received) * 10);
+			//int mos_adapt_mult10 = (int)round(calculate_mos(lossr, burstr, rtpab[i]->first_codec, rtpab[i]->stats.received) * 10);
+			int mos_adapt_mult10 = (int)round(rtpab[i]->mosAD_avg);
+			int mos_adapt_min_mult10 = (int)round(rtpab[i]->mosAD_min);
 			cdr.add(mos_adapt_mult10, c+"_mos_adapt_mult10");
 			if(mos_adapt_mult10 && (mos_min_mult10[i] < 0 || mos_adapt_mult10 < mos_min_mult10[i])) {
 				mos_min_mult10[i] = mos_adapt_mult10;
@@ -4193,16 +4252,23 @@ Call::check_is_caller_called(int sip_method, unsigned int saddr, unsigned int da
 			}
 		}
 	}
+
+		//180/183 are always coming from called (or at least it should) 
+		if(sip_method == 180) {
+			*iscaller = 1;
+			_iscalled = 0;
+		}
 	if(iscalled) {
 		*iscalled = _iscalled;
 	}
 	if(sverb.check_is_caller_called) {
-		cout << "check_is_caller_called: " 
+		cout << "check_is_caller_called: sip_method:" << sip_method << " "
 		     << inet_ntostring(htonl(saddr)) << " -> " << inet_ntostring(htonl(daddr))
 		     << " = " << (*iscaller ? "caller" : (_iscalled ? "called" : "undefine"))
 		     << debug_str_set
 		     << debug_str_cmp
 		     << endl;
+		
 	}
 	return(*iscaller || _iscalled);
 	

@@ -2,6 +2,7 @@
 #define COMMON_H
 
 struct sVerbose {
+	int graph;
 	int process_rtp;
 	int read_rtp;
 	int rtp_set_base_seq;

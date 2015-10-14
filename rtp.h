@@ -205,7 +205,18 @@ public:
 	uint8_t dscp;
 	bool skip;
 	unsigned int last_mos_time;
+	uint8_t	mosf1_min;
+	uint8_t	mosf2_min;
+	uint8_t	mosAD_min;
+	float	mosf1_avg;
+	float	mosf2_avg;
+	float	mosAD_avg;
+	uint32_t	mos_counter;
 	char save_mos_graph_wait;
+	timeval _last_ts;
+	timeval last_voice_frame_ts;
+	uint32_t last_voice_frame_timestamp;
+	bool	resetgraph;
 
 	/* RTCP data */
 	struct rtcp_t {
@@ -482,7 +493,6 @@ private:
 
 	int sensor_id;
 	
-	timeval _last_ts;
 	int _last_sensor_id;
 	char _last_ifname[10];
 	
