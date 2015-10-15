@@ -1948,6 +1948,8 @@ void process_sdp(Call *call, int sip_method, unsigned int saddr, int source, uns
 			(call->saddr == daddr && call->sport == dest))))
 			{
 
+			//printf("sdp [%u] port[%u]\n", tmp_addr, tmp_port);
+
 			// store RTP stream
 			get_rtpmap_from_sdp(tmp + 1, datalen - (tmp + 1 - data), rtpmap);
 
@@ -2634,10 +2636,12 @@ Call *process_packet(bool is_ssl, u_int64_t packet_number,
 
 			// check if it is BYE or OK(RES2XX)
 			if(sip_method == INVITE) {
+				/* festr - 14.03.2015 - this prevents some type of call to process call in case of call merging
 				if(!call->seenbye) {
+				*/
+					call->seenbye = 0;
 					call->destroy_call_at = 0;
 					call->destroy_call_at_bye = 0;
-				}
 				if(call->lastSIPresponseNum == 487) {
 					call->new_invite_after_lsr487 = true;
 				}
@@ -4312,7 +4316,7 @@ void readdump_libpcap(pcap_t *handle) {
 	u_int64_t packet_counter = 0;
 
 	global_pcap_dlink = pcap_datalink(handle);
-	if(verbosity > 0) {
+	if(verbosity > 2) {
 		syslog(LOG_NOTICE, "DLT: %i", global_pcap_dlink);
 	}
 

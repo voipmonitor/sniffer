@@ -64,11 +64,11 @@ LIBS2 = @LIBS2@
 
 shared: LDFLAGS += -Wl,--allow-multiple-definition
 shared: cleantest $(objects) 
-	${CXX} $(objects) ${LDFLAGS} -o voipmonitor ${LIBS} ${LIBS_PATH}
+	${CXX} $(objects) ${LDFLAGS} -o voipmonitor ${LIBS_PATH} ${LIBS}
 
 static: LDFLAGS += -Wl,--allow-multiple-definition
 static: cleantest $(objects) 
-	${CXX} $(objects) ${LDFLAGS} -o voipmonitor ${STATIC_LIBS} ${LIBS_PATH}
+	${CXX} $(objects) ${LDFLAGS} -o voipmonitor ${LIBS_PATH} ${STATIC_LIBS}
 
 core2: cleantest static
 

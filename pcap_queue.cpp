@@ -2298,7 +2298,7 @@ bool PcapQueue_readFromInterface_base::startCapture(string *error) {
 		goto failed;
 	}
 	global_pcap_dlink = this->pcapLinklayerHeaderType;
-	syslog(LOG_NOTICE, "DLT - %s: %i", this->getInterfaceName().c_str(), this->pcapLinklayerHeaderType);
+//	syslog(LOG_NOTICE, "DLT - %s: %i", this->getInterfaceName().c_str(), this->pcapLinklayerHeaderType);
 	if(opt_pcapdump) {
 		char pname[1024];
 		sprintf(pname, "/var/spool/voipmonitor/voipmonitordump-%s-%u.pcap", this->interfaceName.c_str(), (unsigned int)time(NULL));

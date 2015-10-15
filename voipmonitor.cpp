@@ -414,6 +414,9 @@ int opt_cleandatabase_register_failed = 0;
 unsigned int graph_delimiter = GRAPH_DELIMITER;
 unsigned int graph_version = GRAPH_VERSION;
 unsigned int graph_mark = GRAPH_MARK;
+unsigned int graph_mos = GRAPH_MOS;
+unsigned int graph_silence = GRAPH_SILENCE;
+unsigned int graph_event = GRAPH_EVENT;
 int opt_mos_lqo = 0;
 
 bool opt_cdr_partition = 1;
@@ -2013,7 +2016,7 @@ int main(int argc, char *argv[]) {
 		}
 	};
 
-	cout << "SQL DRIVER: " << sql_driver << endl;
+	//cout << "SQL DRIVER: " << sql_driver << endl;
 	if(!opt_nocdr &&
 	   !is_sender()) {
 		bool connectError = false;
@@ -4887,6 +4890,7 @@ void get_command_line_arguments() {
 						} 
 					} else {
 						if(verbparams[i] == "process_rtp")			sverb.process_rtp = 1;
+						else if(verbparams[i] == "graph")			sverb.graph = 1;
 						else if(verbparams[i] == "read_rtp")			sverb.read_rtp = 1;
 						else if(verbparams[i] == "rtp_set_base_seq")		sverb.rtp_set_base_seq = 1;
 						else if(verbparams[i] == "check_is_caller_called")	sverb.check_is_caller_called = 1;

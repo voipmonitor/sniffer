@@ -3161,6 +3161,12 @@ bool SqlDb_mysql::createSchema(SqlDb *sourceDb) {
 			`b_d300` mediumint unsigned DEFAULT NULL,\
 			`a_mos_lqo_mult10` tinyint unsigned DEFAULT NULL,\
 			`b_mos_lqo_mult10` tinyint unsigned DEFAULT NULL,\
+			`a_mos_f1_min_mult10` tinyint unsigned DEFAULT NULL,\
+			`a_mos_f2_min_mult10` tinyint unsigned DEFAULT NULL,\
+			`a_mos_adapt_min_mult10` tinyint unsigned DEFAULT NULL,\
+			`b_mos_f1_min_mult10` tinyint unsigned DEFAULT NULL,\
+			`b_mos_f2_min_mult10` tinyint unsigned DEFAULT NULL,\
+			`b_mos_adapt_min_mult10` tinyint unsigned DEFAULT NULL,\
 			`a_mos_f1_mult10` tinyint unsigned DEFAULT NULL,\
 			`a_mos_f2_mult10` tinyint unsigned DEFAULT NULL,\
 			`a_mos_adapt_mult10` tinyint unsigned DEFAULT NULL,\
