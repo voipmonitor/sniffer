@@ -899,16 +899,17 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 						     << " header time " << _header_time 
 						     << " forcemarks size " << _forcemark_size
 						     << " seq " << seq << endl;
+					*/
 						owner->forcemark[i] = 1;
 						owner->forcemark_time[i].pop();
 						nextcycle = true;
-					*/
 					}
 				}
 			}
 		} while(nextcycle);
 		owner->forcemark_unlock();
-	}
+	}	       
+
 
 	int payload_len = get_payload_len();
 	if(payload_len < 0) {
