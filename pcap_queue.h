@@ -288,6 +288,8 @@ private:
 	u_int64_t counter_sip_message_packets_old;
 	u_int64_t counter_rtp_packets_old;
 	u_int64_t counter_all_packets_old;
+	u_long lastTimeLogErrPcapNextExNullPacket;
+	u_long lastTimeLogErrPcapNextExErrorReading;
 friend void *_PcapQueue_threadFunction(void *arg);
 friend void *_PcapQueue_writeThreadFunction(void *arg);
 };
@@ -366,6 +368,8 @@ private:
 	u_int _last_ps_ifdrop;
 	u_long countPacketDrop;
 	u_int64_t lastPacketTimeUS;
+	u_long lastTimeLogErrPcapNextExNullPacket;
+	u_long lastTimeLogErrPcapNextExErrorReading;
 };
 
 struct sHeaderPacket {
