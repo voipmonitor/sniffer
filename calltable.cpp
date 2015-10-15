@@ -874,6 +874,7 @@ Call::read_rtp(unsigned char* data, int datalen, int dataoffset, struct pcap_pkt
 
 			if(
 			    (rtp[i]->saddr == saddr and rtp[i]->dport == dport) or (rtp[i]->saddr == saddr and rtp[i]->sport == sport)
+//				or (rtp[i]->daddr == saddr and rtp[i]->dport == sport)
 
 			   ) {
 				//if(verbosity > 1) printf("found seq[%u] saddr[%u] dport[%u]\n", tmprtp.getSeqNum(), saddr, dport);
@@ -1473,6 +1474,7 @@ Call::convertRawToWav() {
 			RTP *B = NULL;
 			RTP *C = NULL;
 			for(int k = 0; owner and k < ssrc_n; k++) {
+				if(A->skip and !sverb.noaudiounlink) unlink(raw); //unlink raw if A is marked to skip 
 				B = rtp[k];
 				if(A == B or A->skip or B->skip) continue; // do not compare with ourself or already removed RTP
 				if(A->ssrc == B->ssrc) {
@@ -1499,6 +1501,7 @@ Call::convertRawToWav() {
 							} else {
 								// test is not true which means that if we remove B there will be no other stream with the B.daddr so we can remove A
 								A->skip = true;
+								if(!sverb.noaudiounlink) unlink(raw);
 								if(verbosity > 1) syslog(LOG_ERR, "Removing stream with SSRC[%x] srcip[%s]:[%u]->[%s]:[%u] iscaller[%u] index[%u] 1\n", 
 									A->ssrc, inet_ntostring(htonl(A->saddr)).c_str(), A->sport, inet_ntostring(htonl(A->saddr)).c_str(), A->dport, A->iscaller, k);
 							}
@@ -1510,7 +1513,9 @@ Call::convertRawToWav() {
 						}
 					} else {
 						//A.daddr is not in SDP so we can remove that stream 
+					if(!sverb.noaudiounlink) unlink(raw);
 						A->skip = 1;
+						if(!sverb.noaudiounlink) unlink(raw);
 						if(verbosity > 1) syslog(LOG_ERR, "Removing stream with SSRC[%x] srcip[%s]:[%u]->[%s]:[%u] iscaller[%u] index[%u] 3\n", 
 							A->ssrc, inet_ntostring(htonl(A->saddr)).c_str(), A->sport, inet_ntostring(htonl(A->saddr)).c_str(), A->dport, A->iscaller, k);
 					}

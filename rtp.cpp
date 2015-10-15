@@ -1830,29 +1830,40 @@ RTP::update_stats() {
 		uint32_t diff = (uint32_t)tsdiff2;
 		this->graph.write((char*)&graph_mark, 4);
 		this->graph.write((char*)&diff, 4);
-		if(sverb.graph) printf("rtp[%p] ssrc[%x] seq[%u] silence[%u]ms mark\n", this, getSSRC(), seq, diff);
+		if(sverb.graph) printf("rtp[%p] ssrc[%x] seq[%u] silence[%u]ms transit[%llf] avgdelay[%f] mark\n", this, getSSRC(), seq, diff, transit, s->avgdelay);
 
 		//s->fdelay = 0;
-		s->fdelay -= transit;
+		//s->fdelay -= transit;
+		s->fdelay = s->avgdelay;
 		adelay = 0;
-		
 	} else if(resetgraph and owner and (owner->flags & FLAG_SAVEGRAPH) and this->graph.isOpenOrEnableAutoOpen()) {
 		uint32_t diff = (uint32_t)tsdiff2;
 		this->graph.write((char*)&graph_silence, 4);
 		this->graph.write((char*)&diff, 4);
-		if(sverb.graph) printf("rtp[%p] ssrc[%x] seq[%u] silence[%u]ms\n", this, getSSRC(), seq, diff);
+		if(sverb.graph) printf("rtp[%p] ssrc[%x] seq[%u] silence[%u]ms avgdelay[%f]\n", this, getSSRC(), seq, diff, s->avgdelay);
 
 		//s->fdelay = 0;
-		s->fdelay -= transit;
+		s->fdelay = s->avgdelay;
+		//s->fdelay -= transit;
 		adelay = 0;
 	}
+
+	// keep average only for last 30 packets
+	int lastpackets = 30;
+	if(counter > lastpackets) {
+		s->avgdelay = (lastpackets * s->avgdelay - avgdelays[counter % lastpackets] + s->fdelay) / lastpackets;
+	} else {
+		s->avgdelay = ((s->avgdelay * (double)(counter)) + s->fdelay ) / (double)(counter + 1);
+	}
+	avgdelays[counter % lastpackets] = s->fdelay;
+	//s->avgdelay = ((s->avgdelay * (long double)(counter)) + s->fdelay ) / (double)(counter + 1);
+
 	
 	/* Jitterbuffer calculation
 	 * J(1) = J(0) + (|D(0,1)| - J(0))/16 */
 	double jitter = s->prevjitter + (double)(((transit < 0) ? -transit : transit) - s->prevjitter)/16. ;
 	s->prevjitter = jitter;
 
-	s->avgdelay = ((s->avgdelay * (long double)(counter)) + transit ) / (double)(counter + 1);
 	counter++;
 	stats.avgjitter = ((stats.avgjitter * ( stats.received - 1 )  + jitter )) / (double)stats.received;
 	//printf("jitter[%f] avg[%llf] [%u] [%u]\n", jitter, stats.avgjitter, stats.received, s->received);

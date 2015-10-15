@@ -270,6 +270,8 @@ public:
 		double avgdelay;
 	} source;
 
+	float avgdelays[30];
+
 	bool last_markbit;
 	unsigned char last_interval_mosf1;
 	unsigned char last_interval_mosf2;
