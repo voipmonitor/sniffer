@@ -1187,11 +1187,16 @@ void *storing_cdr( void *dummy ) {
 				
 				if(call->isReadyForWriteCdr()) {
 				
+					bool needConvertToWavInThread = false;
 					call->closeRawFiles();
 					if( (opt_savewav_force || (call->flags & FLAG_SAVEAUDIO)) && (call->type == INVITE || call->type == SKINNY_NEW) &&
 					    call->getAllReceivedRtpPackets()) {
-						if(verbosity > 0) printf("converting RAW file to WAV Queue[%d]\n", (int)calltable->calls_queue.size());
-						call->convertRawToWav();
+						if(is_read_from_file()) {
+							if(verbosity > 0) printf("converting RAW file to WAV Queue[%d]\n", (int)calltable->calls_queue.size());
+							call->convertRawToWav();
+						} else {
+							needConvertToWavInThread = true;
+						}
 					}
 
 					regfailedcache->prunecheck(call->first_packet_time);
@@ -1214,9 +1219,17 @@ void *storing_cdr( void *dummy ) {
 					calltable->lock_calls_queue();
 					calltable->calls_queue.erase(calltable->calls_queue.begin() + calls_queue_position);
 					--calls_queue_size;
-					calltable->lock_calls_deletequeue();
-					calltable->calls_deletequeue.push_back(call);
-					calltable->unlock_calls_deletequeue();
+					
+					if(needConvertToWavInThread) {
+						calltable->lock_calls_audioqueue();
+						calltable->audio_queue.push_back(call);
+						calltable->processCallsInAudioQueue(false);
+						calltable->unlock_calls_audioqueue();
+					} else {
+						calltable->lock_calls_deletequeue();
+						calltable->calls_deletequeue.push_back(call);
+						calltable->unlock_calls_deletequeue();
+					}
 					storingCdrLastWriteAt = getActDateTimeF();
 				} else {
 					calltable->lock_calls_queue();
@@ -1246,6 +1259,30 @@ void *storing_cdr( void *dummy ) {
 	if(verbosity && !opt_nocdr) {
 		syslog(LOG_NOTICE, "terminated - storing cdr / message / register");
 	}
+	int _terminating = terminating;
+	while(terminating == _terminating) {
+		calltable->lock_calls_audioqueue();
+		size_t callsInAudioQueue = calltable->audio_queue.size();
+		calltable->unlock_calls_audioqueue();
+		if(!callsInAudioQueue) {
+			break;
+		}
+		syslog(LOG_NOTICE, "wait for convert audio for %lu calls (or next terminating)", callsInAudioQueue);
+		for(int i = 0; i < 10 && terminating == _terminating; i++) {
+			usleep(100000);
+		}
+	}
+	calltable->setAudioQueueTerminating();
+	while(true) {
+		calltable->lock_calls_audioqueue();
+		size_t audioQueueThreads = calltable->getCountAudioQueueThreads();
+		calltable->unlock_calls_audioqueue();
+		if(!audioQueueThreads) {
+			break;
+		}
+		usleep(100000);
+	}
+	
 	return NULL;
 }
 
@@ -2767,6 +2804,12 @@ void main_term_read() {
 	while(calltable->calls_queue.size() != 0) {
 			call = calltable->calls_queue.front();
 			calltable->calls_queue.pop_front();
+			delete call;
+			calls_counter--;
+	}
+	while(calltable->audio_queue.size() != 0) {
+			call = calltable->audio_queue.front();
+			calltable->audio_queue.pop_front();
 			delete call;
 			calls_counter--;
 	}

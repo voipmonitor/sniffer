@@ -1150,6 +1150,13 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 		outStr << fixed;
 		if(!this->isMirrorSender()) {
 			outStr << "calls[" << calltable->calls_listMAP.size() << "][" << calls_counter << "]";
+			calltable->lock_calls_audioqueue();
+			size_t audioQueueSize = calltable->audio_queue.size();
+			if(audioQueueSize) {
+				size_t audioQueueThreads = calltable->getCountAudioQueueThreads();
+				outStr << "[" << audioQueueSize << "/" << audioQueueThreads <<"]";
+			}
+			calltable->unlock_calls_audioqueue();
 #ifdef HAVE_LIBGNUTLS
 			extern string getSslStat();
 			string sslStat = getSslStat();

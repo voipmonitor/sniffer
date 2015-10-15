@@ -715,8 +715,18 @@ typedef struct {
   * This class implements operations on Call list
 */
 class Calltable {
+private:
+	struct sAudioQueueThread {
+		sAudioQueueThread() {
+			thread_handle = 0;
+			thread_id = 0;
+		}
+		pthread_t thread_handle;
+		int thread_id;
+	};
 public:
 	deque<Call*> calls_queue; //!< this queue is used for asynchronous storing CDR by the worker thread
+	deque<Call*> audio_queue; //!< this queue is used for asynchronous audio convert by the worker thread
 	deque<Call*> calls_deletequeue; //!< this queue is used for asynchronous storing CDR by the worker thread
 	queue<string> files_queue; //!< this queue is used for asynchronous storing CDR by the worker thread
 	queue<string> files_sqlqueue; //!< this queue is used for asynchronous storing CDR by the worker thread
@@ -757,6 +767,7 @@ public:
 	 *
 	*/
 	void lock_calls_queue() { pthread_mutex_lock(&qlock); };
+	void lock_calls_audioqueue() { pthread_mutex_lock(&qaudiolock); };
 	void lock_calls_deletequeue() { pthread_mutex_lock(&qdellock); };
 	void lock_files_queue() { pthread_mutex_lock(&flock); };
 	void lock_calls_listMAP() { pthread_mutex_lock(&calls_listMAPlock); };
@@ -767,6 +778,7 @@ public:
 	 *
 	*/
 	void unlock_calls_queue() { pthread_mutex_unlock(&qlock); };
+	void unlock_calls_audioqueue() { pthread_mutex_unlock(&qaudiolock); };
 	void unlock_calls_deletequeue() { pthread_mutex_unlock(&qdellock); };
 	void unlock_files_queue() { pthread_mutex_unlock(&flock); };
 	void unlock_calls_listMAP() { pthread_mutex_unlock(&calls_listMAPlock); };
@@ -843,6 +855,15 @@ public:
 	*/
 	void hashRemove(Call *call, in_addr_t addr, unsigned short port, bool rtcp = false);
 	int hashRemove(Call *call);
+	
+	void processCallsInAudioQueue(bool lock = true);
+	static void *processAudioQueueThread(void *);
+	size_t getCountAudioQueueThreads() {
+		return(audioQueueThreads.size());
+	}
+	void setAudioQueueTerminating() {
+		audioQueueTerminating = 1;
+	}
 
 	void destroyCallsIfPcapsClosed();
 	
@@ -854,6 +875,7 @@ public:
 	}
 private:
 	pthread_mutex_t qlock;		//!< mutex locking calls_queue
+	pthread_mutex_t qaudiolock;	//!< mutex locking calls_audioqueue
 	pthread_mutex_t qdellock;	//!< mutex locking calls_deletequeue
 	pthread_mutex_t flock;		//!< mutex locking calls_queue
 	pthread_mutex_t calls_listMAPlock;
@@ -862,6 +884,10 @@ private:
 
 	void *calls_hash[MAXNODE];
 	volatile int _sync_lock_calls_hash;
+	
+	list<sAudioQueueThread*> audioQueueThreads;
+	unsigned int audioQueueThreadsMax;
+	int audioQueueTerminating;
 };
 
 
