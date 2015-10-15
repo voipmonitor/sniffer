@@ -1585,7 +1585,14 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 			} else {
 				curpacketization = (getTimestamp() - last_ts) / (samplerate / 1000);
 			}
+
+			if(curpacketization < 10) {
+				// it cannot be, reset it to 20
+				curpacketization = default_packetization;
+			}
+
 			if(verbosity > 3) printf("curpacketization[%u] = (getTimestamp()[%u] - last_ts[%u]) / (samplerate[%u] / 1000) pl[%u] curpayload[%u]\n", curpacketization, getTimestamp(), last_ts, samplerate, payload_len, curpayload);
+
 
 			if(curpacketization != packetization and curpacketization % 10 == 0 and curpacketization >= 10 and curpacketization <= 120) {
 				if(verbosity > 3) printf("[%x] changing packetization:[%d]->[%d]\n", getSSRC(), curpacketization, packetization);

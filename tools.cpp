@@ -1140,8 +1140,6 @@ void RtpGraphSaver::write(char *buffer, int length) {
 			if(this->open(this->fileName.c_str(), this->fileNameSpoolRelative.c_str())) {
 				extern unsigned int graph_version;
 				this->write((char*)&graph_version, 4);
-				uint16_t packetization = uint16_t(this->rtp->packetization);
-				this->write((char*)&packetization, 2);
 			} else {
 				return;
 			}
@@ -1156,6 +1154,8 @@ void RtpGraphSaver::write(char *buffer, int length) {
 void RtpGraphSaver::close(bool updateFilesQueue) {
 	this->enableAutoOpen = false;
 	if(this->isOpen()) {
+		uint16_t packetization = uint16_t(this->rtp->packetization);
+		this->write((char*)&packetization, 2);
 		if(this->_asyncwrite == 0) {
 			this->handle->close();
 			delete this->handle;
