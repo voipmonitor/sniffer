@@ -973,6 +973,8 @@ PcapQueue::PcapQueue(eTypeQueue typeQueue, const char *nameQueue) {
 	this->counter_sip_message_packets_old = 0;
 	this->counter_rtp_packets_old = 0;
 	this->counter_all_packets_old = 0;
+	this->lastTimeLogErrPcapNextExNullPacket = 0;
+	this->lastTimeLogErrPcapNextExErrorReading = 0;
 }
 
 PcapQueue::~PcapQueue() {
@@ -1823,12 +1825,20 @@ int PcapQueue::pcap_next_ex_queue(pcap_t *pcapHandle, pcap_pkthdr** header, u_ch
 	int res = ::pcap_next_ex(pcapHandle, header, (const u_char**)packet);
 	if(!packet && res != -2) {
 		if(VERBOSE) {
-			syslog(LOG_NOTICE,"packetbuffer %s: NULL PACKET, pcap response is %d", this->nameQueue.c_str(), res);
+			u_long actTime = getTimeMS();
+			if(actTime - 1000 > this->lastTimeLogErrPcapNextExNullPacket) {
+				syslog(LOG_NOTICE,"packetbuffer %s: NULL PACKET, pcap response is %d", this->nameQueue.c_str(), res);
+				this->lastTimeLogErrPcapNextExNullPacket = actTime;
 			}
+		}
 		return(0);
 	} else if(res == -1) {
 		if(VERBOSE) {
-			syslog (LOG_NOTICE,"packetbuffer %s: error reading packets", this->nameQueue.c_str());
+			u_long actTime = getTimeMS();
+			if(actTime - 1000 > this->lastTimeLogErrPcapNextExErrorReading) {
+				syslog(LOG_NOTICE,"packetbuffer %s: error reading packets", this->nameQueue.c_str());
+				this->lastTimeLogErrPcapNextExErrorReading = actTime;
+			}
 		}
 		return(0);
 	} else if(res == -2) {
@@ -2164,6 +2174,8 @@ PcapQueue_readFromInterface_base::PcapQueue_readFromInterface_base(const char *i
 	this->_last_ps_ifdrop = 0;
 	this->countPacketDrop = 0;
 	this->lastPacketTimeUS = 0;
+	this->lastTimeLogErrPcapNextExNullPacket = 0;
+	this->lastTimeLogErrPcapNextExErrorReading = 0;
 }
 
 void PcapQueue_readFromInterface_base::setInterfaceName(const char *interfaceName) {
@@ -2310,12 +2322,20 @@ inline int PcapQueue_readFromInterface_base::pcap_next_ex_iface(pcap_t *pcapHand
 	int res = ::pcap_next_ex(pcapHandle, header, (const u_char**)packet);
 	if(!packet && res != -2) {
 		if(VERBOSE) {
-			syslog(LOG_NOTICE,"packetbuffer - %s: NULL PACKET, pcap response is %d", this->getInterfaceName().c_str(), res);
+			u_long actTime = getTimeMS();
+			if(actTime - 1000 > this->lastTimeLogErrPcapNextExNullPacket) {
+				syslog(LOG_NOTICE,"packetbuffer - %s: NULL PACKET, pcap response is %d", this->getInterfaceName().c_str(), res);
+				this->lastTimeLogErrPcapNextExNullPacket = actTime;
 			}
+		}
 		return(0);
 	} else if(res == -1) {
 		if(VERBOSE) {
-			syslog (LOG_NOTICE,"packetbuffer - %s: error reading packets", this->getInterfaceName().c_str());
+			u_long actTime = getTimeMS();
+			if(actTime - 1000 > this->lastTimeLogErrPcapNextExErrorReading) {
+				syslog(LOG_NOTICE,"packetbuffer - %s: error reading packets", this->getInterfaceName().c_str());
+				this->lastTimeLogErrPcapNextExErrorReading = actTime;
+			}
 		}
 		return(0);
 	} else if(res == -2) {
