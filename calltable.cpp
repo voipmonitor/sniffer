@@ -3825,7 +3825,7 @@ void *Calltable::processAudioQueueThread(void *audioQueueThread) {
 		}
 		calltable->unlock_calls_audioqueue();
 		if(call) {
-			if(verbosity > 0) printf("converting RAW file to WAV %s", call->fbasename);
+			if(verbosity > 0) printf("converting RAW file to WAV %s\n", call->fbasename);
 			call->convertRawToWav();
 			calltable->lock_calls_deletequeue();
 			calltable->calls_deletequeue.push_back(call);
