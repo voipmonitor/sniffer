@@ -3573,6 +3573,7 @@ Call::addTarPos(u_int64_t pos, int type) {
 /* constructor */
 Calltable::Calltable() {
 	pthread_mutex_init(&qlock, NULL);
+	pthread_mutex_init(&qaudiolock, NULL);
 	pthread_mutex_init(&qdellock, NULL);
 	pthread_mutex_init(&flock, NULL);
 
@@ -3581,11 +3582,15 @@ Calltable::Calltable() {
 
 	memset(calls_hash, 0x0, sizeof(calls_hash));
 	_sync_lock_calls_hash = 0;
+	
+	audioQueueThreadsMax = min(max(2l, sysconf( _SC_NPROCESSORS_ONLN ) - 1), 10l);
+	audioQueueTerminating = 0;
 };
 
 /* destructor */
 Calltable::~Calltable() {
 	pthread_mutex_destroy(&qlock);
+	pthread_mutex_destroy(&qaudiolock);
 	pthread_mutex_destroy(&qdellock);
 	pthread_mutex_destroy(&flock);
 	pthread_mutex_destroy(&calls_listMAPlock);
@@ -3791,6 +3796,49 @@ Calltable::hashRemove(Call *call) {
 	}
 	unlock_calls_hash();
 	return(removeCounter);
+}
+
+void Calltable::processCallsInAudioQueue(bool lock) {
+	if(lock) {
+		lock_calls_audioqueue();
+	}
+	if(audio_queue.size() && 
+	   audio_queue.size() > audioQueueThreads.size() && 
+	   audioQueueThreads.size() < audioQueueThreadsMax) {
+		sAudioQueueThread *audioQueueThread = new FILE_LINE sAudioQueueThread();
+		audioQueueThreads.push_back(audioQueueThread);
+		pthread_create(&audioQueueThread->thread_handle, NULL, this->processAudioQueueThread, audioQueueThread);
+	}
+	if(lock) {
+		unlock_calls_audioqueue();
+	}
+}
+
+void *Calltable::processAudioQueueThread(void *audioQueueThread) {
+	((sAudioQueueThread*)audioQueueThread)->thread_id = get_unix_tid();
+	while(!calltable->audioQueueTerminating) {
+		calltable->lock_calls_audioqueue();
+		Call *call = NULL;
+		if(calltable->audio_queue.size()) {
+			call = calltable->audio_queue.front();
+			calltable->audio_queue.pop_front();
+		}
+		calltable->unlock_calls_audioqueue();
+		if(call) {
+			if(verbosity > 0) printf("converting RAW file to WAV %s", call->fbasename);
+			call->convertRawToWav();
+			calltable->lock_calls_deletequeue();
+			calltable->calls_deletequeue.push_back(call);
+			calltable->unlock_calls_deletequeue();
+		} else {
+			break;
+		}
+	}
+	calltable->lock_calls_audioqueue();
+	calltable->audioQueueThreads.remove((sAudioQueueThread*)audioQueueThread);
+	calltable->unlock_calls_audioqueue();
+	delete (sAudioQueueThread*)audioQueueThread;
+	return(NULL);
 }
 
 void
