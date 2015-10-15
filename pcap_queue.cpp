@@ -1504,8 +1504,15 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 			outStrStat << "%] ";
 			if (opt_rrd) rrdtCPU_t0 = t0cpu;
 		}
+		static int countOccurencesForWarning = 0;
 		if((sumMaxReadThreads > 60 || t0cpu > 60) && getThreadingMode() < 4) {
+			++countOccurencesForWarning;
+		} else if(countOccurencesForWarning > 0) {
+			--countOccurencesForWarning;
+		}
+		if(countOccurencesForWarning >= 3) {
 			syslog(LOG_WARNING, "warning - reading process (t0CPU) needs to be threaded - try to set threading_mod to %i", getThreadingMode() + 1); 
+			countOccurencesForWarning = 0;
 		}
 	}
 	string t1cpu = this->getCpuUsage(false, true);
