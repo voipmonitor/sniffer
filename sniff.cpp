@@ -2923,10 +2923,12 @@ Call *process_packet(bool is_ssl, u_int64_t packet_number,
 						call->proxies.push_back(call->sipcalledip[0]);
 					}
 					call->sipcalledip[0] = daddr;
+					call->sipcalledport = dest;
 					call->lastsipcallerip = saddr;
 				} else if(call->lastsipcallerip == saddr) {
 					// update sipcalledip to this new one
 					call->sipcalledip[0] = daddr;
+					call->sipcalledport = dest;
 					call->lastsipcallerip = saddr;
 				}
 			}
