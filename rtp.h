@@ -217,6 +217,7 @@ public:
 	timeval last_voice_frame_ts;
 	uint32_t last_voice_frame_timestamp;
 	bool	resetgraph;
+	bool	mos_processed;
 
 	/* RTCP data */
 	struct rtcp_t {

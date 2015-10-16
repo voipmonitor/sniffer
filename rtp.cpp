@@ -261,6 +261,7 @@ RTP::RTP(int sensor_id)
 	channel_record->resync = 0;
 	channel_record->audiobuf = NULL;
 	last_mos_time = 0;
+	mos_processed = false;
 	save_mos_graph_wait = false;
 
 	last_voice_frame_ts.tv_sec = 0;
@@ -337,9 +338,9 @@ RTP::save_mos_graph(bool delimiter) {
 		mosf1_avg = ((mosf1_avg * mos_counter) + last_interval_mosf1) / (mos_counter + 1);
 //		if(sverb.graph) printf("rtp[%p] saddr[%s] ts[%u] ssrc[%x] mosf1_avg[%f] mosf1[%u]\n", this, inet_ntostring(htonl(saddr)).c_str(), header->ts.tv_sec, ssrc, mosf1_avg, last_interval_mosf1);
 	} else {
-		last_interval_mosf1 = 4.5;
-		mosf1_min = 4.5;
-		mosf1_avg = 4.5;
+		last_interval_mosf1 = 45;
+		mosf1_min = 45;
+		mosf1_avg = 45;
 		if(owner and (owner->flags & FLAG_SAVEGRAPH) and this->graph.isOpenOrEnableAutoOpen()) {
 			this->graph.write((char*)&last_interval_mosf1, 1);
 		}
@@ -358,9 +359,9 @@ RTP::save_mos_graph(bool delimiter) {
 		mosf2_avg = ((mosf2_avg * mos_counter) + last_interval_mosf2) / (mos_counter + 1);
 //		if(sverb.graph) printf("rtp[%p] saddr[%s] ts[%u] ssrc[%x] mosf2_avg[%f] mosf2[%u]\n", this, inet_ntostring(htonl(saddr)).c_str(), header->ts.tv_sec, ssrc, mosf2_avg, last_interval_mosf2);
 	} else {
-		last_interval_mosf2 = 4.5;
-		mosf2_min = 4.5;
-		mosf2_avg = 4.5;
+		last_interval_mosf2 = 45;
+		mosf2_min = 45;
+		mosf2_avg = 45;
 		if(owner and (owner->flags & FLAG_SAVEGRAPH) and this->graph.isOpenOrEnableAutoOpen()) {
 			this->graph.write((char*)&last_interval_mosf2, 1);
 		}
@@ -379,9 +380,9 @@ RTP::save_mos_graph(bool delimiter) {
 		mosAD_avg = ((mosAD_avg * mos_counter) + last_interval_mosAD) / (mos_counter + 1);
 //		if(sverb.graph) printf("rtp[%p] saddr[%s] ts[%u] ssrc[%x] mosAD_avg[%f] mosAD[%u]\n", this, inet_ntostring(htonl(saddr)).c_str(), header->ts.tv_sec, ssrc, mosAD_avg, last_interval_mosAD);
 	} else {
-		last_interval_mosAD = 4.5;
-		mosAD_min = 4.5;
-		mosAD_avg = 4.5;
+		last_interval_mosAD = 45;
+		mosAD_min = 45;
+		mosAD_avg = 45;
 		if(owner and (owner->flags & FLAG_SAVEGRAPH) and this->graph.isOpenOrEnableAutoOpen()) {
 			this->graph.write((char*)&last_interval_mosAD, 1);
 		}
@@ -1715,6 +1716,7 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 
 	// write MOS to .graph every 10 seconds and reset jitter last mos interval
 	if((last_mos_time + 10 < header->ts.tv_sec) or save_mos_graph_wait) {
+		mos_processed = true;
 		if(save_mos_graph_wait > 1) {
 			save_mos_graph_wait--;
 		} else {
