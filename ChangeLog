@@ -1,3 +1,8 @@
+14.0 16.10.2015
+===============
+- 
+
+
 12.6 7.10.2015
 ============== 
 - Optimize processing RTP packets where the limit was around 2.5Gbit / 1.2Millinos RTP packets / second  (CPU lowered from 100% to 40% on t0CPU thread). It probably allows to go over 5Gbit (2Millions RTP packets / second) on Xeon E5-2650 v2 
