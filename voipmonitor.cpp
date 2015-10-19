@@ -318,6 +318,7 @@ regcache *regfailedcache;
 int opt_onewaytimeout = 15;
 int opt_saveaudio_reversestereo = 0;
 float opt_saveaudio_oggquality = 0.4;
+int opt_audioqueue_threads_max = 10;
 int opt_saveaudio_stereo = 1;
 int opt_register_timeout = 5;
 unsigned int opt_maxpoolsize = 0;
@@ -4192,6 +4193,7 @@ void cConfig::addConfigItems() {
 				addConfigItem(new cConfigItem_yesno("saveaudio_stereo", &opt_saveaudio_stereo));
 				addConfigItem(new cConfigItem_yesno("saveaudio_reversestereo", &opt_saveaudio_reversestereo));
 				addConfigItem(new cConfigItem_float("ogg_quality", &opt_saveaudio_oggquality));
+				addConfigItem(new cConfigItem_integer("audioqueue_threads_max", &opt_audioqueue_threads_max));
 					expert();
 					addConfigItem(new cConfigItem_yesno("plcdisable", &opt_disableplc));
 		setDisableIfEnd();
@@ -6630,6 +6632,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "ogg_quality", NULL))) {
 		opt_saveaudio_oggquality = atof(value);
+	}
+	if((value = ini.GetValue("general", "audioqueue_threads_max", NULL))) {
+		opt_audioqueue_threads_max = atoi(value);
 	}
 	if((value = ini.GetValue("general", "mysqlloadconfig", NULL))) {
 		opt_mysqlloadconfig = yesno(value);

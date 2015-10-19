@@ -19,6 +19,7 @@
 #include <sys/ioctl.h>
 #include <sys/types.h>
 #include <sys/socket.h>
+#include <sys/resource.h>
 #include <net/if.h>
 
 #include <iostream>
@@ -3588,7 +3589,8 @@ Calltable::Calltable() {
 	memset(calls_hash, 0x0, sizeof(calls_hash));
 	_sync_lock_calls_hash = 0;
 	
-	audioQueueThreadsMax = min(max(2l, sysconf( _SC_NPROCESSORS_ONLN ) - 1), 10l);
+	extern int opt_audioqueue_threads_max;
+	audioQueueThreadsMax = min(max(2l, sysconf( _SC_NPROCESSORS_ONLN ) - 1), (long)opt_audioqueue_threads_max);
 	audioQueueTerminating = 0;
 };
 
@@ -3821,6 +3823,7 @@ void Calltable::processCallsInAudioQueue(bool lock) {
 
 void *Calltable::processAudioQueueThread(void *audioQueueThread) {
 	((sAudioQueueThread*)audioQueueThread)->thread_id = get_unix_tid();
+	setpriority(PRIO_PROCESS, ((sAudioQueueThread*)audioQueueThread)->thread_id, 20);
 	while(!calltable->audioQueueTerminating) {
 		calltable->lock_calls_audioqueue();
 		Call *call = NULL;
