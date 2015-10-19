@@ -397,8 +397,8 @@ void jb_fixed_flush_deliver(struct ast_channel *chan)
 			}
 			memcpy(chan->lastbuf, f->data, f->datalen);
 			chan->lastbuflen = f->datalen; 
-			ast_frfree(f);
 		}       
+		ast_frfree(f);
 	}
 }       
 

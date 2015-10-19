@@ -54,6 +54,7 @@ extern int opt_read_from_file;
 extern char opt_pb_read_from_file[256];
 extern int opt_enable_fraud;
 extern bool _save_sip_history;
+extern bool exists_column_cdr_mosmin;
 
 extern char sql_driver[256];
 
@@ -77,6 +78,7 @@ extern CustomHeaders *custom_headers_cdr;
 extern CustomHeaders *custom_headers_message;
 
 extern int opt_ptime;
+
 
 int sql_noerror = 0;
 int sql_disable_next_attempt_if_error = 0;
@@ -4137,6 +4139,24 @@ bool SqlDb_mysql::createSchema(SqlDb *sourceDb) {
 	outStrAlter << "drop trigger if exists cdr_bi;" << endl;
 
 	outStrAlter << "end;" << endl;
+
+
+	//14.0
+	this->query("show columns from cdr where Field='a_mos_f1_min_mult10'");
+	if(!this->fetchRow()) {
+		exists_column_cdr_mosmin = false;
+		this->logNeedAlter("cdr",
+				   "SIP header 'reason'",
+				   "ALTER TABLE cdr "
+					"ADD COLUMN a_mos_f1_min_mult10 tinyint unsigned DEFAULT NULL, "
+					"ADD COLUMN a_mos_f2_min_mult10 tinyint unsigned DEFAULT NULL, "
+					"ADD COLUMN a_mos_adapt_min_mult10 tinyint unsigned DEFAULT NULL, "
+					"ADD COLUMN b_mos_f1_min_mult10 tinyint unsigned DEFAULT NULL, "
+					"ADD COLUMN b_mos_f2_min_mult10 tinyint unsigned DEFAULT NULL, "
+					"ADD COLUMN b_mos_adapt_min_mult10 tinyint unsigned DEFAULT NULL;");
+	}
+
+
 	/*
 	cout << "alter procedure" << endl
 	     << outStrAlter.str() << endl

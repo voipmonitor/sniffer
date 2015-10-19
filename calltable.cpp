@@ -139,6 +139,7 @@ extern CustomHeaders *custom_headers_message;
 extern int opt_custom_headers_last_value;
 extern bool _save_sip_history;
 extern int opt_saveudptl;
+extern bool exists_column_cdr_mosmin;
 
 volatile int calls_counter = 0;
 
@@ -567,7 +568,7 @@ Call::closeRawFiles() {
 		// close GRAPH files
 		if(opt_saveGRAPH || (flags & FLAG_SAVEGRAPH)) {
 			if(rtp[i]->graph.isOpen()) {
-				if((rtp[i]->last_mos_time + 4 < rtp[i]->_last_ts.tv_sec)) {
+				if(!rtp[i]->mos_processed or (rtp[i]->last_mos_time + 4 < rtp[i]->_last_ts.tv_sec)) {
 					rtp[i]->save_mos_graph(true);
 				}
 				rtp[i]->graph.close();
@@ -2303,10 +2304,13 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			double burstr, lossr;
 			burstr_calculate(rtpab[i]->channel_fix1, rtpab[i]->stats.received, &burstr, &lossr, 0);
 			//int mos_f1_mult10 = (int)round(calculate_mos(lossr, burstr, rtpab[i]->first_codec, rtpab[i]->stats.received) * 10);
-			int mos_f1_mult10 = (int)round(rtpab[i]->mosf1_avg);
+			int mos_f1_mult10 = (int)rtpab[i]->mosf1_avg;
 			cdr.add(mos_f1_mult10, c+"_mos_f1_mult10");
 			if(mos_f1_mult10) {
 				mos_min_mult10[i] = mos_f1_mult10;
+			}
+			if(exists_column_cdr_mosmin and rtpab[i]->mosf1_min != -1) {
+				cdr.add(rtpab[i]->mosf1_min, c+"_mos_f1_min_mult10");
 			}
 
 			// calculate MOS score for fixed 200ms 
@@ -2317,15 +2321,20 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			if(mos_f2_mult10 && (mos_min_mult10[i] < 0 || mos_f2_mult10 < mos_min_mult10[i])) {
 				mos_min_mult10[i] = mos_f2_mult10;
 			}
+			if(exists_column_cdr_mosmin and rtpab[i]->mosf2_min != -1) {
+				cdr.add(rtpab[i]->mosf2_min, c+"_mos_f2_min_mult10");
+			}
 
 			// calculate MOS score for adaptive 500ms 
 			burstr_calculate(rtpab[i]->channel_adapt, rtpab[i]->stats.received, &burstr, &lossr, 0);
 			//int mos_adapt_mult10 = (int)round(calculate_mos(lossr, burstr, rtpab[i]->first_codec, rtpab[i]->stats.received) * 10);
 			int mos_adapt_mult10 = (int)round(rtpab[i]->mosAD_avg);
-			int mos_adapt_min_mult10 = (int)round(rtpab[i]->mosAD_min);
 			cdr.add(mos_adapt_mult10, c+"_mos_adapt_mult10");
 			if(mos_adapt_mult10 && (mos_min_mult10[i] < 0 || mos_adapt_mult10 < mos_min_mult10[i])) {
 				mos_min_mult10[i] = mos_adapt_mult10;
+			}
+			if(exists_column_cdr_mosmin and rtpab[i]->mosAD_min != -1) {
+				cdr.add(rtpab[i]->mosAD_min, c+"_mos_adapt_min_mult10");
 			}
 
 			if(mos_f2_mult10 && opt_mosmin_f2) {
