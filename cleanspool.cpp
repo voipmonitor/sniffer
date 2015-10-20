@@ -1757,11 +1757,6 @@ void clean_spooldir_run() {
 		}
 	}
 	
-	if(!check_exists_act_records_in_files() ||
-	   !check_exists_act_files_in_filesindex()) {
-		convert_filesindex("call from clean_spooldir_run - not exists act records in files and act files in filesindex");
-	}
-	
 	clean_spooldir_run_processing = 1;
 
 	clean_maxpoolsize();
