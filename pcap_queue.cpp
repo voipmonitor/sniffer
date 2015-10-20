@@ -188,7 +188,6 @@ size_t _opt_pcap_queue_block_restore_buffer_inc_size	= opt_pcap_queue_block_max_
 
 int pcap_drop_flag = 0;
 int enable_bad_packet_order_warning = 0;
-bool exists_thread_delete = 0;
 
 static pcap_block_store_queue *blockStoreBypassQueue; 
 

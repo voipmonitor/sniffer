@@ -1065,7 +1065,15 @@ void clean_obsolete_dirs(const char *path) {
 	closedir(dp);
 }
 
-void convert_filesindex() {
+void convert_filesindex(const char *reason) {
+	static u_long lastCall_convert_filesindex = 0; 
+	u_long actTime = getTimeMS();
+	if(actTime - lastCall_convert_filesindex < 5 * 60) {
+		syslog(LOG_NOTICE,"suppress run convert_filesindex - last run before %lus", actTime - lastCall_convert_filesindex);
+		return;
+	}
+	lastCall_convert_filesindex = actTime;
+ 
 	string path = "./";
 	dirent* de;
 	DIR* dp;
@@ -1074,7 +1082,7 @@ void convert_filesindex() {
 	if(!dp) {
 		return;
 	}
-	syslog(LOG_NOTICE, "reindexing start");
+	syslog(LOG_NOTICE, "reindexing start%s%s", reason ? " - " : "", reason ? reason : "");
 	char id_sensor_str[10];
 	sprintf(id_sensor_str, "%i", opt_id_sensor_cleanspool > 0 ? opt_id_sensor_cleanspool : 0);
 	string q = string("DELETE FROM files WHERE id_sensor=") + id_sensor_str;
@@ -1717,7 +1725,7 @@ void clean_spooldir_run() {
 
 			syslog(LOG_NOTICE, "converting [%s] cleanspool_interval and cleanspool_size to maxpoolsize\n", configfile);
 
-			convert_filesindex();
+			convert_filesindex("convert configuration");
 
 			string tmpf = "/tmp/VM_pRjSYLAyx.conf";
 			FILE *fdr = fopen(configfile, "r");
@@ -1751,7 +1759,7 @@ void clean_spooldir_run() {
 	
 	if(!check_exists_act_records_in_files() ||
 	   !check_exists_act_files_in_filesindex()) {
-		convert_filesindex();
+		convert_filesindex("call from clean_spooldir_run - not exists act records in files and act files in filesindex");
 	}
 	
 	clean_spooldir_run_processing = 1;
@@ -1802,7 +1810,7 @@ void *clean_spooldir(void *dummy) {
 	while(!is_terminating()) {
 		if(!check_exists_act_records_in_files() ||
 		   !check_exists_act_files_in_filesindex()) {
-			convert_filesindex();
+			convert_filesindex("call from clean_spooldir - not exists act records in files and act files in filesindex");
 		}
 		bool timeOk = false;
 		if(opt_cleanspool_enable_run_hour_from >= 0 &&
@@ -1834,8 +1842,8 @@ void *clean_spooldir(void *dummy) {
 			int _minGbForAutoReindex = 5;
 			if(freeSpacePercent < _minPercentForAutoReindex && 
 			   freeSpaceGB < _minGbForAutoReindex) {
-				syslog(LOG_NOTICE, "low spool disk space - executing filesindex");
-				convert_filesindex();
+				syslog(LOG_NOTICE, "low spool disk space - executing convert_filesindex");
+				convert_filesindex("call from clean_spooldir - low spool disk space");
 				freeSpacePercent = (double)GetFreeDiskSpace(opt_chdir, true) / 100;
 				freeSpaceGB = (double)GetFreeDiskSpace(opt_chdir) / (1024 * 1024 * 1024);
 				criticalLowSpace = true;

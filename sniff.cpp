@@ -3543,10 +3543,7 @@ void process_packet__cleanup(pcap_pkthdr *header, pcap_t *handle) {
 	malloc_trim, try searching for a similar function.
 	*/
 #ifndef FREEBSD
-	extern bool exists_thread_delete;
-	if(!exists_thread_delete) {
-		malloc_trim(0);
-	}
+	malloc_trim(0);
 #endif
 }
 
