@@ -151,6 +151,14 @@ struct pcap_block_store {
 	inline bool uncompress(compress_method method = compress_method_default);
 	bool uncompress_snappy();
 	bool uncompress_lz4();
+	bool check_offsets() {
+		for(size_t i = 0; i < this->offsets_size - 1; i++) {
+			if(this->offsets[i] >= this->offsets[i + 1]) {
+				return(false);
+			}
+		}
+		return(this->offsets[this->offsets_size - 1] < this->size);
+	}
 	void lock_packet(int index) {
 		#if SYNC_PCAP_BLOCK_STORE
 		__sync_add_and_fetch(&this->_sync_packet_lock, 1);
