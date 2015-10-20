@@ -1067,7 +1067,7 @@ void clean_obsolete_dirs(const char *path) {
 
 void convert_filesindex(const char *reason) {
 	static u_long lastCall_convert_filesindex = 0; 
-	u_long actTime = getTimeMS();
+	u_long actTime = getTimeS();
 	if(actTime - lastCall_convert_filesindex < 5 * 60) {
 		syslog(LOG_NOTICE,"suppress run convert_filesindex - last run before %lus", actTime - lastCall_convert_filesindex);
 		return;
