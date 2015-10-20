@@ -69,7 +69,7 @@ struct fixed_jb;
 
 /* jb interface */
 
-struct fixed_jb * fixed_jb_new(struct fixed_jb_conf *conf);
+struct fixed_jb * fixed_jb_new(struct fixed_jb_conf *conf, struct ast_channel *chan);
 
 void fixed_jb_destroy(struct fixed_jb *jb);
 

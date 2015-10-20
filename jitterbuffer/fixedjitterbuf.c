@@ -35,6 +35,7 @@
 #include <syslog.h>
 
 #include "asterisk/utils.h"
+#include "asterisk/channel.h"
 #include "fixedjitterbuf.h"
 
 #undef FIXED_JB_DEBUG
@@ -57,6 +58,7 @@ struct fixed_jb
 	long delay;
 	long next_delivery;
 	int force_resynch;
+	struct ast_channel *chan;
 };
 
 
@@ -100,12 +102,14 @@ static void get_jb_head(struct fixed_jb *jb, struct fixed_jb_frame *frame)
 }
 
 
-struct fixed_jb *fixed_jb_new(struct fixed_jb_conf *conf)
+struct fixed_jb *fixed_jb_new(struct fixed_jb_conf *conf, struct ast_channel *chan)
 {
 	struct fixed_jb *jb;
 	
 	if (!(jb = ast_calloc(1, sizeof(*jb))))
 		return NULL;
+
+	jb->chan = chan;
 	
 	/* First copy our config */
 	memcpy(&jb->conf, conf, sizeof(struct fixed_jb_conf));
@@ -264,6 +268,7 @@ int fixed_jb_put(struct fixed_jb *jb, void *data, long ms, long ts, long now)
 		/* should drop the frame, but let first resynch_jb() check if this is not a jump in ts, or
 		   the force resynch flag was not set. */
 		if(debug) fprintf(stdout, "put: delivery < jb->next_delivery\n");
+		jb->chan->last_loss_burst++;
 		return resynch_jb(jb, data, ms, ts, now);
 	}
 	

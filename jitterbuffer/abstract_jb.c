@@ -826,7 +826,7 @@ static void * jb_create_fixed(struct ast_jb_conf *general_config, long resynch_t
 	conf.jbsize = chan->jitter_max;
 	conf.resync_threshold = chan->jitter_resync_threshold;
 
-	return fixed_jb_new(&conf);
+	return fixed_jb_new(&conf, chan);
 }
 
 static void jb_destroy_fixed(void *jb)
