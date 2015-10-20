@@ -188,7 +188,6 @@ size_t _opt_pcap_queue_block_restore_buffer_inc_size	= opt_pcap_queue_block_max_
 
 int pcap_drop_flag = 0;
 int enable_bad_packet_order_warning = 0;
-bool exists_thread_delete = 0;
 
 static pcap_block_store_queue *blockStoreBypassQueue; 
 
@@ -347,7 +346,7 @@ void pcap_block_store::restoreFromSaveBuffer(u_char *saveBuffer) {
 	this->count = header->count;
 	this->dlink = header->dlink;
 	this->sensor_id = header->sensor_id;
-	strcpy(this->ifname, header->ifname);
+	strncpy(this->ifname, header->ifname, sizeof(header->ifname));
 	if(this->offsets) {
 		delete [] this->offsets;
 	}
@@ -4192,17 +4191,24 @@ void *PcapQueue_readFromFifo::threadFunction(void *arg, unsigned int arg2) {
 							while(offsetBuffer < bufferLen) {
 								if(blockStore->addRestoreChunk(buffer, bufferLen, &offsetBuffer)) {
 									endBlock = true;
-									while(!this->pcapStoreQueue.push(blockStore, false)) {
-										if(TERMINATING || forceStop) {
-											break;
-										} else {
-											usleep(1000);
+									if(blockStore->check_offsets()) {
+										while(!this->pcapStoreQueue.push(blockStore, false)) {
+											if(TERMINATING || forceStop) {
+												break;
+											} else {
+												usleep(1000);
+											}
 										}
+										sumPacketsCounterIn[0] += blockStore->count;
+										sumPacketsSize[0] += blockStore->size;
+										sumPacketsSizeCompress[0] += blockStore->size_compress;
+										++sumBlocksCounterIn[0];
+									} else {
+										delete blockStore;
+										syslog(LOG_ERR, "receive bad packetbuffer block in conection %s - %i",
+										       this->packetServerConnections[arg2]->socketClientIP.c_str(), 
+										       this->packetServerConnections[arg2]->socketClientInfo.sin_port);
 									}
-									sumPacketsCounterIn[0] += blockStore->count;
-									sumPacketsSize[0] += blockStore->size;
-									sumPacketsSizeCompress[0] += blockStore->size_compress;
-									++sumBlocksCounterIn[0];
 									blockStore = new FILE_LINE pcap_block_store;
 								} else {
 									offsetBuffer = bufferLen;
