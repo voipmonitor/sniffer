@@ -2265,25 +2265,25 @@ RTPstat::update(uint32_t saddr, uint32_t time, uint8_t mosf1, uint8_t mosf2, uin
 		if(node->mosf1_min > mosf1) {
 			node->mosf1_min = mosf1;
 		}
-		node->mosf1_avg = ((node->mosf1_avg / node->counter ) + mosf1) / (node->counter + 1);
+		node->mosf1_avg = ((node->mosf1_avg * node->counter ) + mosf1) / (node->counter + 1);
 		if(node->mosf2_min > mosf2) {
 			node->mosf2_min = mosf2;
 		}
-		node->mosf1_avg = ((node->mosf1_avg / node->counter ) + mosf1) / (node->counter + 1);
+		node->mosf1_avg = ((node->mosf1_avg * node->counter ) + mosf1) / (node->counter + 1);
 		if(node->mosAD_min > mosAD) {
 			node->mosAD_min = mosAD;
 		}
-		node->mosAD_avg = ((node->mosAD_avg / node->counter ) + mosAD) / (node->counter + 1);
+		node->mosAD_avg = ((node->mosAD_avg * node->counter ) + mosAD) / (node->counter + 1);
 
 		if(node->jitter_max < jitter) {
 			node->jitter_max = jitter;
 		}
-		node->jitter_avg = ((node->jitter_avg / node->counter ) + jitter) / (node->counter + 1);
+		node->jitter_avg = ((node->jitter_avg * node->counter ) + jitter) / (node->counter + 1);
 
 		if(node->loss_max < loss) {
 			node->loss_max = loss;
 		}
-		node->loss_avg = ((node->loss_avg / node->counter ) + loss) / (node->counter + 1);
+		node->loss_avg = ((node->loss_avg * node->counter ) + loss) / (node->counter + 1);
 
 		node->counter++;
 	}
