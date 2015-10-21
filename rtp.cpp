@@ -2224,10 +2224,10 @@ int calculate_mos_fromrtp(RTP *rtp, int jittertype, int lastinterval) {
 void
 RTPstat::update(uint32_t saddr, uint32_t time, uint8_t mosf1, uint8_t mosf2, uint8_t mosAD, uint16_t jitter, uint16_t loss) {
 
-	uint32_t curtime = time % mod;
+	uint32_t curtime = time / mod;
 
 	if(lasttime == 0) {
-		lasttime = curtime % mod;
+		lasttime = curtime;
 	}
 
 	if(lasttime != curtime) {
@@ -2244,7 +2244,7 @@ RTPstat::update(uint32_t saddr, uint32_t time, uint8_t mosf1, uint8_t mosf2, uin
 	if(saddr_map_it == saddr_map.end()){
 		// not found
 		node_t node;
-		node.time = time;
+		node.time = curtime;
 		node.mosf1_min = mosf1;
 		node.mosf1_avg = mosf1;
 		node.mosf2_min = mosf2;
