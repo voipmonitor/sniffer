@@ -502,4 +502,48 @@ private:
 	
 	u_long lastTimeSyslog;
 };
+
+
+class RTPstat {
+	typedef struct {
+		uint32_t 	time;		// seconds since unix epoch of the last update 
+		uint8_t 	mosf1_min;
+		float 		mosf1_avg;
+		uint8_t 	mosf2_min;
+		float 		mosf2_avg;
+		uint8_t 	mosAD_min;
+		float 		mosAD_avg;
+		uint16_t 	jitter_max;
+		float 		jitter_avg;
+		uint16_t 	loss_max;
+		float	 	loss_avg;
+		uint32_t	counter;	// will be reset with every update 
+		uint32_t	refcount;	// reference count to RTP class for cleaning purpose 
+	} node_t;
+public:
+	RTPstat() {
+		lasttime = 0;
+		pthread_mutex_init(&mlock, NULL);
+		mod = 10;
+	}
+	~RTPstat() {
+		pthread_mutex_destroy(&mlock);
+	}
+	void lock() {
+		pthread_mutex_lock(&mlock);
+	}
+	void unlock() {
+		pthread_mutex_unlock(&mlock);
+	}
+	void update(uint32_t saddr, uint32_t time, uint8_t mosf1, uint8_t mosf2, uint8_t mosAD, uint16_t jitter, uint16_t loss);
+	void flush_and_clean();
+
+private:
+	map<uint32_t, node_t>	saddr_map;
+	map<uint32_t, node_t>::iterator	saddr_map_it;
+	int mod;
+	pthread_mutex_t mlock;
+	uint32_t lasttime;
+};
+
 #endif

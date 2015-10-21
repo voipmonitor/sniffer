@@ -31,11 +31,14 @@ Each Call class contains two RTP classes.
 #include "codec_ulaw.h"
 #include "flags.h"
 #include "mos_g729.h"   
+#include "sql_db.h"   
 
 #include "jitterbuffer/asterisk/channel.h"
 #include "jitterbuffer/asterisk/frame.h"
 #include "jitterbuffer/asterisk/abstract_jb.h"
 #include "jitterbuffer/asterisk/strings.h"
+
+int dtmfdebug = 0;
 
 extern int verbosity;
 extern int opt_saveRAW;                //save RTP payload RAW data?
@@ -49,9 +52,6 @@ extern char opt_cachedir[1024];
 extern int opt_savewav_force;
 extern int opt_rtp_check_timestamp;
 extern int opt_mos_g729;
-
-int dtmfdebug = 0;
-
 extern unsigned int graph_delimiter;
 extern unsigned int graph_mark;
 extern unsigned int graph_mos;
@@ -63,7 +63,11 @@ extern int opt_silencedetect;
 extern int opt_clippingdetect;
 extern char opt_pb_read_from_file[256];
 extern int opt_read_from_file;
+extern SqlDb *sqlDbSaveCall;
+extern int opt_mysqlstore_max_threads_cdr;
+extern MySqlStore *sqlStore;
 
+RTPstat rtp_stat;
 
 using namespace std;
 
@@ -405,6 +409,8 @@ RTP::save_mos_graph(bool delimiter) {
 		last_interval_mosf2, mosf2_min, mosf2_avg,
 		last_interval_mosAD, mosAD_min, mosAD_avg
 	);
+
+	rtp_stat.update(saddr, header->ts.tv_sec, last_interval_mosf1, last_interval_mosf2, last_interval_mosAD, 0, 0);
 }
 
 /* destructor */
@@ -1832,7 +1838,7 @@ RTP::update_stats() {
 		uint32_t diff = (uint32_t)tsdiff2;
 		this->graph.write((char*)&graph_mark, 4);
 		this->graph.write((char*)&diff, 4);
-		if(sverb.graph) printf("rtp[%p] ssrc[%x] seq[%u] silence[%u]ms transit[%llf] avgdelay[%f] mark\n", this, getSSRC(), seq, diff, transit, s->avgdelay);
+		if(sverb.graph) printf("rtp[%p] ssrc[%x] seq[%u] silence[%u]ms transit[%Lf] avgdelay[%f] mark\n", this, getSSRC(), seq, diff, transit, s->avgdelay);
 
 		//s->fdelay = 0;
 		//s->fdelay -= transit;
@@ -1851,7 +1857,7 @@ RTP::update_stats() {
 	}
 
 	// keep average only for last 30 packets
-	int lastpackets = 30;
+	uint32_t lastpackets = 30;
 	if(counter > lastpackets) {
 		s->avgdelay = (lastpackets * s->avgdelay - avgdelays[counter % lastpackets] + s->fdelay) / lastpackets;
 	} else {
@@ -2212,3 +2218,126 @@ int calculate_mos_fromrtp(RTP *rtp, int jittertype, int lastinterval) {
 	return mos;
 }       
 
+void
+RTPstat::update(uint32_t saddr, uint32_t time, uint8_t mosf1, uint8_t mosf2, uint8_t mosAD, uint16_t jitter, uint16_t loss) {
+
+	uint32_t curtime = time % mod;
+
+	if(lasttime == 0) {
+		lasttime = curtime % mod;
+	}
+
+	if(lasttime != curtime) {
+		flush_and_clean();
+		lasttime = curtime;
+	}
+
+	map<uint32_t, node_t>::iterator saddr_map_it;
+
+	lock();
+
+	saddr_map_it = saddr_map.find(saddr);
+
+	if(saddr_map_it == saddr_map.end()){
+		// not found
+		node_t node;
+		node.time = time;
+		node.mosf1_min = mosf1;
+		node.mosf1_avg = mosf1;
+		node.mosf2_min = mosf2;
+		node.mosf2_avg = mosf2;
+		node.mosAD_min = mosAD;
+		node.mosAD_avg = mosAD;
+		node.jitter_max = jitter;
+		node.jitter_avg = jitter;
+		node.loss_max = loss;
+		node.loss_avg = loss;
+		node.counter = 1;
+
+		saddr_map[saddr] = node;
+	} else {
+		// found
+		node_t *node = &(saddr_map_it->second);
+
+		if(node->mosf1_min > mosf1) {
+			node->mosf1_min = mosf1;
+		}
+		node->mosf1_avg = ((node->mosf1_avg / node->counter ) + mosf1) / (node->counter + 1);
+		if(node->mosf2_min > mosf2) {
+			node->mosf2_min = mosf2;
+		}
+		node->mosf1_avg = ((node->mosf1_avg / node->counter ) + mosf1) / (node->counter + 1);
+		if(node->mosAD_min > mosAD) {
+			node->mosAD_min = mosAD;
+		}
+		node->mosAD_avg = ((node->mosAD_avg / node->counter ) + mosAD) / (node->counter + 1);
+
+		if(node->jitter_max < jitter) {
+			node->jitter_max = jitter;
+		}
+		node->jitter_avg = ((node->jitter_avg / node->counter ) + jitter) / (node->counter + 1);
+
+		if(node->loss_max < loss) {
+			node->loss_max = loss;
+		}
+		node->loss_avg = ((node->loss_avg / node->counter ) + loss) / (node->counter + 1);
+
+		node->counter++;
+	}
+
+	unlock();
+}
+
+/*
+
+walk through saddr_map (all RTP source IPs) and store result to the datbase 
+
+*/
+void
+RTPstat::flush_and_clean() {
+	lock();
+
+	map<uint32_t, node_t>::iterator it;
+	string query_str;
+
+	if(!sqlDbSaveCall) {
+		sqlDbSaveCall = createSqlObject();
+	}
+
+	for(it = saddr_map.begin(); it != saddr_map.end(); it++) {
+		node_t *node = &it->second;
+		SqlDb_row cdr_stat;
+		// create queries 
+		cdr_stat.add(sqlDateTimeString(node->time), "time");
+		cdr_stat.add(it->first, "saddr");
+		cdr_stat.add(node->mosf1_min, "mosf1_min");
+		cdr_stat.add((int)(node->mosf1_avg), "mosf1_avg");
+		cdr_stat.add(node->mosf2_min, "mosf2_min");
+		cdr_stat.add((int)(node->mosf2_avg), "mosf2_avg");
+		cdr_stat.add(node->mosAD_min, "mosAD_min");
+		cdr_stat.add((int)(node->mosAD_avg), "mosAD_avg");
+		cdr_stat.add(node->jitter_max, "jitter_max");
+		cdr_stat.add((int)(node->jitter_avg), "jitter_avg");
+		cdr_stat.add((int)(node->loss_max * 10), "loss_max_mult10");
+		cdr_stat.add((int)(node->loss_avg * 10), "loss_avg_mult10");
+		cdr_stat.add(node->counter, "counter");
+		query_str += sqlDbSaveCall->insertQuery("rtp_stat", cdr_stat) + ";";
+	}
+
+	saddr_map.clear();
+	unlock();
+
+	//TODO enableBatchIfPossible
+	if(isSqlDriver("mysql")) {
+		static unsigned int counterSqlStore = 0;
+		int storeId = STORE_PROC_ID_CDR_1 +
+			      (opt_mysqlstore_max_threads_cdr > 1 &&
+			       sqlStore->getSize(STORE_PROC_ID_CDR_1) > 1000 ?
+				counterSqlStore % opt_mysqlstore_max_threads_cdr :
+				0);
+		//cout << query_str << "\n";
+		
+		++counterSqlStore;
+		sqlStore->query_lock(query_str.c_str(), storeId);
+	}
+}

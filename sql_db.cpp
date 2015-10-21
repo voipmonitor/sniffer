@@ -2781,6 +2781,7 @@ bool SqlDb_mysql::createSchema(SqlDb *sourceDb) {
 		 "cdr_sipresp",
 		 "cdr_siphistory",
 		 "cdr_tar_part"
+		 "rtp_stat"
 	};
 
 	string compress = "";
@@ -3079,6 +3080,33 @@ bool SqlDb_mysql::createSchema(SqlDb *sourceDb) {
 			}
 		}
 	}
+
+	this->query(string(
+	"CREATE TABLE IF NOT EXISTS `rtp_stat` (\
+			`time` datetime NOT NULL,\
+			`saddr` int unsigned NOT NULL,\
+			`mosf1_min` tinyint unsigned NOT NULL,\
+			`mosf1_avg` tinyint unsigned NOT NULL,\
+			`mosf2_min` tinyint unsigned NOT NULL,\
+			`mosf2_avg` tinyint unsigned NOT NULL,\
+			`mosAD_min` tinyint unsigned NOT NULL,\
+			`mosAD_avg` tinyint unsigned NOT NULL,\
+			`jitter_max` smallint unsigned NOT NULL,\
+			`jitter_avg` smallint unsigned NOT NULL,\
+			`loss_max_mult10` smallint unsigned NOT NULL,\
+			`loss_avg_mult10` smallint unsigned NOT NULL,\
+			`counter` mediumint unsigned NOT NULL,\
+			PRIMARY KEY (`time`, `saddr`),\
+			KEY `time` (`time`)\
+	) ENGINE=InnoDB DEFAULT CHARSET=latin1 " + compress +  
+	(opt_cdr_partition ?
+		(opt_cdr_partition_oldver ? 
+			string(" PARTITION BY RANGE (to_days(`time`))(\
+				 PARTITION ") + partDayName + " VALUES LESS THAN (to_days('" + limitDay + "')) engine innodb)" :
+			string(" PARTITION BY RANGE COLUMNS(`time`)(\
+				 PARTITION ") + partDayName + " VALUES LESS THAN ('" + limitDay + "') engine innodb)") :
+		"")
+	));
 	
 	this->query(string(
 	"CREATE TABLE IF NOT EXISTS `cdr` (\
@@ -4585,6 +4613,7 @@ void SqlDb_mysql::create_procedure_create_partitions_cdr(bool isCloud) {
 		    (_save_sip_history ? "call create_partition('cdr_siphistory', 'day', next_days);" : "") +
 		   "call create_partition('cdr_proxy', 'day', next_days);\
 		    call create_partition('cdr_tar_part', 'day', next_days);\
+		    call create_partition('rtp_stat', 'day', next_days);\
 		    call create_partition('http_jj', 'day', next_days);\
 		    call create_partition('enum_jj', 'day', next_days);\
 		    call create_partition('message', 'day', next_days);\
@@ -4603,6 +4632,7 @@ void SqlDb_mysql::create_procedure_create_partitions_cdr(bool isCloud) {
 		    (_save_sip_history ? "call create_partition(database_name, 'cdr_siphistory', 'day', next_days);" : "") + 
 		   "call create_partition(database_name, 'cdr_proxy', 'day', next_days);\
 		    call create_partition(database_name, 'cdr_tar_part', 'day', next_days);\
+		    call create_partition(database_name, 'rtp_stat', 'day', next_days);\
 		    call create_partition(database_name, 'http_jj', 'day', next_days);\
 		    call create_partition(database_name, 'enum_jj', 'day', next_days);\
 		    call create_partition(database_name, 'webrtc', 'day', next_days);\
@@ -4780,10 +4810,12 @@ void SqlDb_mysql::copyFromSourceTable(SqlDb_mysql *sqlDbSrc, const char *tableNa
 		    string(tableName) == "http_jj" ||
 		    string(tableName) == "enum_jj" ||
 		    string(tableName) == "message" ||
+		    string(tableName) == "rtp_stat" ||
 		    string(tableName) == "register_state" ||
 		    string(tableName) == "register_failed")) {
 			string timeColumn = (string(tableName) == "cdr" || string(tableName) == "message") ? "calldate" : 
-					    (string(tableName) == "http_jj" || string(tableName) == "enum_jj") ? "timestamp" : "created_at";
+					    (string(tableName) == "http_jj" || string(tableName) == "enum_jj") ? "timestamp" : 
+					    (string(tableName) == "rtp_stat") ? "time" : "created_at";
 			sqlDbSrc->query(string("select min(") + id + ") as min_id from " + tableName +
 					" where " + timeColumn + " = " + 
 					"(select min(" + timeColumn + ") from " + tableName + " where " + timeColumn + " > '" + opt_database_backup_from_date + "')");
@@ -4897,6 +4929,7 @@ void SqlDb_mysql::copyFromSourceGuiTables(SqlDb_mysql *sqlDbSrc) {
 		"cdr_next_*",
 		"message_next_*",
 		"http_jj",
+		"rtp_stat",
 		"enum_jj",
 		"webrtc",
 		"register",
@@ -5005,6 +5038,7 @@ vector<string> SqlDb_mysql::getSourceTables(int typeTables) {
 		if(opt_enable_http_enum_tables) tables.push_back("enum_jj");
 		if(opt_enable_webrtc_table) tables.push_back("webrtc");
 		tables.push_back("message");
+		tables.push_back("rtp_stat");
 		if(typeTables & tt_child) {
 			if(custom_headers_message) {
 				list<string> nextTables = custom_headers_message->getAllNextTables();
@@ -5872,6 +5906,7 @@ void dropMysqlPartitionsCdr() {
 				sqlDb->query("ALTER TABLE cdr_tar_part DROP PARTITION " + partitions[i]);
 				sqlDb->query("ALTER TABLE cdr_proxy DROP PARTITION " + partitions[i]);
 				sqlDb->query("ALTER TABLE message DROP PARTITION " + partitions[i]);
+				sqlDb->query("ALTER TABLE rtp_stat DROP PARTITION " + partitions[i]);
 			}
 		}
 		if(opt_enable_http_enum_tables && opt_cleandatabase_http_enum > 0) {
