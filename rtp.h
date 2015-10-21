@@ -218,6 +218,7 @@ public:
 	uint32_t last_voice_frame_timestamp;
 	bool	resetgraph;
 	bool	mos_processed;
+	double	jitter;
 
 	/* RTCP data */
 	struct rtcp_t {
