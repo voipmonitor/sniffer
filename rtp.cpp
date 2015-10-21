@@ -66,6 +66,7 @@ extern int opt_read_from_file;
 extern SqlDb *sqlDbSaveCall;
 extern int opt_mysqlstore_max_threads_cdr;
 extern MySqlStore *sqlStore;
+extern int opt_id_sensor;
 
 RTPstat rtp_stat;
 
@@ -2337,6 +2338,10 @@ RTPstat::flush_and_clean(map<uint32_t, node_t> *cmap) {
 		node_t *node = &it->second;
 		SqlDb_row cdr_stat;
 		// create queries 
+		if(opt_id_sensor > -1) {
+			cdr_stat.add(opt_id_sensor, "id_sensor");
+		};
+		cdr_stat.add(sqlDateTimeString(node->time), "time");
 		cdr_stat.add(sqlDateTimeString(node->time), "time");
 		cdr_stat.add(htonl(it->first), "saddr");
 		cdr_stat.add(node->mosf1_min, "mosf1_min");

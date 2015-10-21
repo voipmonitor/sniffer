@@ -3083,6 +3083,7 @@ bool SqlDb_mysql::createSchema(SqlDb *sourceDb) {
 
 	this->query(string(
 	"CREATE TABLE IF NOT EXISTS `rtp_stat` (\
+			`id_sensor` smallint unsigned DEFAULT NULL,\
 			`time` datetime NOT NULL,\
 			`saddr` int unsigned NOT NULL,\
 			`mosf1_min` tinyint unsigned NOT NULL,\
@@ -3096,7 +3097,7 @@ bool SqlDb_mysql::createSchema(SqlDb *sourceDb) {
 			`loss_max_mult10` smallint unsigned NOT NULL,\
 			`loss_avg_mult10` smallint unsigned NOT NULL,\
 			`counter` mediumint unsigned NOT NULL,\
-			PRIMARY KEY (`time`, `saddr`),\
+			PRIMARY KEY (`time`, `saddr`, `id_sensor`),\
 			KEY `time` (`time`)\
 	) ENGINE=InnoDB DEFAULT CHARSET=latin1 " + compress +  
 	(opt_cdr_partition ?
