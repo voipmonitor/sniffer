@@ -2330,7 +2330,7 @@ RTPstat::flush_and_clean(map<uint32_t, node_t> *cmap) {
 		SqlDb_row cdr_stat;
 		// create queries 
 		cdr_stat.add(sqlDateTimeString(node->time), "time");
-		cdr_stat.add(it->first, "saddr");
+		cdr_stat.add(htonl(it->first), "saddr");
 		cdr_stat.add(node->mosf1_min, "mosf1_min");
 		cdr_stat.add((int)(node->mosf1_avg), "mosf1_avg");
 		cdr_stat.add(node->mosf2_min, "mosf2_min");
