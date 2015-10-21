@@ -2226,25 +2226,43 @@ RTPstat::update(uint32_t saddr, uint32_t time, uint8_t mosf1, uint8_t mosf2, uin
 
 	uint32_t curtime = time / mod;
 
-	if(lasttime == 0) {
-		lasttime = curtime;
+	if(lasttime1 == 0) {
+		lasttime1 = curtime;
+		lasttime2 = curtime;
 	}
 
-	if(lasttime != curtime) {
-		flush_and_clean();
-		lasttime = curtime;
+
+	if(curtime < lasttime1) {
+		// update time is too old - discard
+		return;
+	} else if(curtime < lasttime2) {
+		// update time belongs to previous interval
+		cmap = maps[0];
+	} else if(curtime == lasttime2) {
+		// update time belongs to current interval 
+		cmap = maps[1];
+	} else {
+		// update time is new - shift maps left and flush the left one 
+		lasttime1 = lasttime2;
+		lasttime2 = curtime;
+		flush_and_clean(maps[0]);
+		// swap maps 
+		saddr_map_tmp = maps[0];
+		maps[0] = maps[1];
+		maps[1] = saddr_map_tmp;
+		cmap = maps[1];
 	}
 
 	map<uint32_t, node_t>::iterator saddr_map_it;
 
 	lock();
 
-	saddr_map_it = saddr_map.find(saddr);
+	saddr_map_it = cmap->find(saddr);
 
-	if(saddr_map_it == saddr_map.end()){
+	if(saddr_map_it == cmap->end()){
 		// not found
 		node_t node;
-		node.time = curtime;
+		node.time = curtime * mod;
 		node.mosf1_min = mosf1;
 		node.mosf1_avg = mosf1;
 		node.mosf2_min = mosf2;
@@ -2257,7 +2275,7 @@ RTPstat::update(uint32_t saddr, uint32_t time, uint8_t mosf1, uint8_t mosf2, uin
 		node.loss_avg = loss;
 		node.counter = 1;
 
-		saddr_map[saddr] = node;
+		(*cmap)[saddr] = node;
 	} else {
 		// found
 		node_t *node = &(saddr_map_it->second);
@@ -2297,7 +2315,7 @@ walk through saddr_map (all RTP source IPs) and store result to the datbase
 
 */
 void
-RTPstat::flush_and_clean() {
+RTPstat::flush_and_clean(map<uint32_t, node_t> *cmap) {
 	lock();
 
 	map<uint32_t, node_t>::iterator it;
@@ -2307,7 +2325,7 @@ RTPstat::flush_and_clean() {
 		sqlDbSaveCall = createSqlObject();
 	}
 
-	for(it = saddr_map.begin(); it != saddr_map.end(); it++) {
+	for(it = cmap->begin(); it != cmap->end(); it++) {
 		node_t *node = &it->second;
 		SqlDb_row cdr_stat;
 		// create queries 
@@ -2327,7 +2345,7 @@ RTPstat::flush_and_clean() {
 		query_str += sqlDbSaveCall->insertQuery("rtp_stat", cdr_stat) + ";";
 	}
 
-	saddr_map.clear();
+	cmap->clear();
 	unlock();
 
 	//TODO enableBatchIfPossible

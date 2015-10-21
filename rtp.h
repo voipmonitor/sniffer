@@ -523,9 +523,11 @@ class RTPstat {
 	} node_t;
 public:
 	RTPstat() {
-		lasttime = 0;
+		lasttime1 = lasttime2 = 0;
 		pthread_mutex_init(&mlock, NULL);
 		mod = 10;
+		maps[0] = &saddr_map[0];
+		maps[1] = &saddr_map[1];
 	}
 	~RTPstat() {
 		pthread_mutex_destroy(&mlock);
@@ -537,14 +539,18 @@ public:
 		pthread_mutex_unlock(&mlock);
 	}
 	void update(uint32_t saddr, uint32_t time, uint8_t mosf1, uint8_t mosf2, uint8_t mosAD, uint16_t jitter, uint16_t loss);
-	void flush_and_clean();
+	void flush_and_clean(map<uint32_t, node_t> *map);
 
 private:
-	map<uint32_t, node_t>	saddr_map;
+	map<uint32_t, node_t>	saddr_map[2];
+	map<uint32_t, node_t>	*saddr_map_tmp;
+	map<uint32_t, node_t>	*cmap;
+	map<uint32_t, node_t>	*maps[2];
 	map<uint32_t, node_t>::iterator	saddr_map_it;
 	int mod;
 	pthread_mutex_t mlock;
-	uint32_t lasttime;
+	uint32_t lasttime1;
+	uint32_t lasttime2;
 };
 
 #endif
