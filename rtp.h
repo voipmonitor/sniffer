@@ -219,6 +219,8 @@ public:
 	bool	resetgraph;
 	bool	mos_processed;
 	double	jitter;
+	uint32_t last_stat_lost;
+	uint32_t last_stat_received;
 
 	/* RTCP data */
 	struct rtcp_t {
