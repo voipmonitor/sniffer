@@ -5934,15 +5934,11 @@ void createMysqlPartitionsRtpStat() {
 			string("call create_partition_v2('rtp_stat', 'day', 0, ") + (opt_rtp_stat_partition_oldver ? "true" : "false") + ");");
 		sqlDb->query(
 			string("call create_partition_v2('rtp_stat', 'day', 1, ") + (opt_rtp_stat_partition_oldver ? "true" : "false") + ");");
-		sqlDb->query(
-			string("call create_partition_v2('rtp_stat', 'day', 2, ") + (opt_rtp_stat_partition_oldver ? "true" : "false") + ");");
 	} else {
 		sqlDb->query(
 			string("call `") + mysql_database + "`.create_partition_v2('" + mysql_database + "', 'rtp_stat', 'day', 0, " + (opt_rtp_stat_partition_oldver ? "true" : "false") + ");");
 		sqlDb->query(
 			string("call `") + mysql_database + "`.create_partition_v2('" + mysql_database + "', 'rtp_stat', 'day', 1, " + (opt_rtp_stat_partition_oldver ? "true" : "false") + ");");
-		sqlDb->query(
-			string("call `") + mysql_database + "`.create_partition_v2('" + mysql_database + "', 'rtp_stat', 'day', 2, " + (opt_rtp_stat_partition_oldver ? "true" : "false") + ");");
 	}
 	delete sqlDb;
 	syslog(LOG_NOTICE, "create rtp_stat partitions - end");
