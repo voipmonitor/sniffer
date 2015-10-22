@@ -573,7 +573,7 @@ void save_packet(Call *call, struct pcap_pkthdr *header, const u_char *packet,
 			if(call->getPcapRtp()->isOpen()){
 				call->set_last_packet_time(header->ts.tv_sec);
 				call->getPcapRtp()->dump(header, packet, dlt);
-			} else {
+			} else if(enable_save_rtp(call)) {
 				char pcapFilePath_spool_relative[1024];
 				snprintf(pcapFilePath_spool_relative , 1023, "%s/%s/%s.pcap", call->dirname().c_str(), opt_newdir ? "RTP" : "", call->get_fbasename_safe());
 				pcapFilePath_spool_relative[1023] = 0;
@@ -615,6 +615,9 @@ inline void save_sip_packet(Call *call, struct pcap_pkthdr *header, const u_char
 			    int istcp, iphdr2 *header_ip, char *data, unsigned int sipDatalen, unsigned int dataoffset, int type, 
 			    unsigned int datalen, unsigned int sipOffset,
 			    int forceSip, int dlt, int sensor_id) {
+	if(!enable_save_sip(call)) {
+		return;
+	}
 	if(istcp && 
 	   sipDatalen && (sipDatalen < datalen || sipOffset) &&
 	   (unsigned)datalen + sipOffset < header->caplen) {
@@ -1856,7 +1859,8 @@ Call *new_invite_register(bool is_ssl, int sip_method, char *data, int datalen, 
 				strcpy(str2, pcapFilePath_spool_relative);
 			}
 			call->pcapfilename = call->sip_pcapfilename = pcapFilePath_spool_relative;
-			if(call->getPcapSip()->open(str2, pcapFilePath_spool_relative, call->useHandle, call->useDlt)) {
+			if(enable_save_sip(call) &&
+			   call->getPcapSip()->open(str2, pcapFilePath_spool_relative, call->useHandle, call->useDlt)) {
 				if(verbosity > 3) {
 					syslog(LOG_NOTICE,"pcap_filename: [%s]\n", str2);
 				}
@@ -3261,12 +3265,12 @@ rtpcheck:
 				if(rtp_threaded && can_thread) {
 					add_to_rtp_thread_queue(call, (unsigned char*) data, datalen, dataoffset, header, saddr, daddr, source, dest, iscaller, is_rtcp,
 								block_store, block_store_index, 
-								opt_saveRTP || opt_saveRTCP, 
+								enable_save_rtcp(call), 
 								packet, istcp, dlt, sensor_id,
 								false);
 				} else {
 					call->read_rtcp((unsigned char*) data, datalen, dataoffset, header, saddr, daddr, source, dest, iscaller,
-							opt_saveRTP || opt_saveRTCP, 
+							enable_save_rtcp(call), 
 							packet, istcp, dlt, sensor_id);
 				}
 				return call;
@@ -3343,12 +3347,12 @@ rtpcheck:
 				if(rtp_threaded && can_thread) {
 					add_to_rtp_thread_queue(call, (unsigned char*) data, datalen, dataoffset, header, saddr, daddr, source, dest, !iscaller, is_rtcp,
 								block_store, block_store_index, 
-								opt_saveRTP || opt_saveRTCP, 
+								enable_save_rtcp(call), 
 								packet, istcp, dlt, sensor_id,
 								false);
 				} else {
 					call->read_rtcp((unsigned char*) data, datalen, dataoffset, header, saddr, daddr, source, dest, !iscaller,
-							opt_saveRTP || opt_saveRTCP,
+							enable_save_rtcp(call),
 							packet, istcp, dlt, sensor_id);
 				}
 				return call;
@@ -3797,13 +3801,13 @@ Call *process_packet__rtp(ProcessRtpPacket::rtp_call_info *call_info,size_t call
 			if(rtp_threaded && can_thread) {
 				add_to_rtp_thread_queue(call, (unsigned char*) data, datalen, dataoffset, header, saddr, daddr, source, dest, iscaller, is_rtcp,
 							block_store, block_store_index, 
-							opt_saveRTP || opt_saveRTCP, 
+							enable_save_rtcp(call), 
 							packet, istcp, dlt, sensor_id,
 							preSyncRtp);
 				call_info[call_info_index].use_sync = true;
 			} else {
 				call->read_rtcp((unsigned char*) data, datalen, dataoffset, header, saddr, daddr, source, dest, iscaller,
-						opt_saveRTP || opt_saveRTCP, 
+						enable_save_rtcp(call), 
 						packet, istcp, dlt, sensor_id);
 			}
 			rsltCall = call;
