@@ -518,7 +518,7 @@ class RTPstat {
 		float 		mosAD_avg;
 		uint16_t 	jitter_max;
 		float 		jitter_avg;
-		uint16_t 	loss_max;
+		float	 	loss_max;
 		float	 	loss_avg;
 		uint32_t	counter;	// will be reset with every update 
 		uint32_t	refcount;	// reference count to RTP class for cleaning purpose 
