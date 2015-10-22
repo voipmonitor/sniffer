@@ -801,14 +801,14 @@ int parse_command(char *buf, int size, int client, int eof, ManagerClientThread 
 					    (call->lastcallerrtp ? call->lastcallerrtp->last_interval_mosf2 : 45),
 					    (call->lastcallerrtp ? call->lastcallerrtp->last_interval_mosAD : 45),
 					    (call->lastcallerrtp ? (int)(round(call->lastcallerrtp->jitter)) : 0),
-					    (call->lastcallerrtp ? (float)((double)call->lastcallerrtp->stats.lost / ((double)call->lastcallerrtp->stats.received + (double)call->lastcallerrtp->stats.lost) * 100.0) : 0),
+					    (call->lastcallerrtp and call->lastcallerrtp->stats.received ? (float)((double)call->lastcallerrtp->stats.lost / ((double)call->lastcallerrtp->stats.received + (double)call->lastcallerrtp->stats.lost) * 100.0) : 0),
 					    (call->lastcallerrtp ? (float)(call->lastcallerrtp->last_stat_loss_perc_mult10) : 0),
 						//called
 					    (call->lastcalledrtp ? call->lastcalledrtp->last_interval_mosf1 : 45),
 					    (call->lastcalledrtp ? call->lastcalledrtp->last_interval_mosf2 : 45),
 					    (call->lastcalledrtp ? call->lastcalledrtp->last_interval_mosAD : 45),
 					    (call->lastcalledrtp ? (int)round(call->lastcalledrtp->jitter) : 0),
-					    (call->lastcalledrtp ? (float)((double)call->lastcalledrtp->stats.lost / ((double)call->lastcalledrtp->stats.received + (double)call->lastcalledrtp->stats.lost) * 100.0) : 0),
+					    (call->lastcalledrtp and call->lastcalledrtp->stats.received > 50 ? (float)((double)call->lastcalledrtp->stats.lost / ((double)call->lastcalledrtp->stats.received + (double)call->lastcalledrtp->stats.lost) * 100.0) : 0),
 					    (call->lastcalledrtp ? (float)(call->lastcalledrtp->last_stat_loss_perc_mult10) : 0));
 			if((resbuflen + outbuflen) > resbufalloc) {
 				char *resbufnew = new FILE_LINE char[resbufalloc + 32 * 1024];

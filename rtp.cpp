@@ -214,9 +214,9 @@ RTP::RTP(int sensor_id)
 	ssrc2 = 0;
 	gfilename[0] = '\0';
 	gfileRAW = NULL;
-	last_interval_mosf1 = 0;
-	last_interval_mosf2 = 0;
-	last_interval_mosAD = 0;
+	last_interval_mosf1 = 45;
+	last_interval_mosf2 = 45;
+	last_interval_mosAD = 45;
 	mosf1_min -= 1;
 	mosf2_min -= 1;
 	mosAD_min -= 1;
