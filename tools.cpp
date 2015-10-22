@@ -2506,6 +2506,7 @@ FileZipHandler::FileZipHandler(int bufferLength, int enableAsyncWrite, eTypeComp
 	this->call = call;
 	this->time = call ? call->calltime() : 0;
 	this->size = 0;
+	this->existsData = false;
 	this->counter = ++scounter;
 	this->userData = 0;
 	this->typeFile = typeFile;
@@ -2628,6 +2629,9 @@ bool FileZipHandler::writeToBuffer(char *data, int length) {
 }
 
 bool FileZipHandler::writeToFile(char *data, int length, bool force) {
+	if(!existsData) {
+		return(true);
+	}
 	if(enableAsyncWrite && !force) {
 		if(dumpHandler) {
 			asyncClose->addWrite((pcap_dumper_t*)this, data, length);
@@ -2641,6 +2645,9 @@ bool FileZipHandler::writeToFile(char *data, int length, bool force) {
 }
 
 bool FileZipHandler::_writeToFile(char *data, int length, bool flush) {
+	if(!existsData) {
+		return(true);
+	}
 	if(!this->error.empty()) {
 		return(false);
 	}
@@ -2898,7 +2905,7 @@ pcap_dumper_t *__pcap_dump_open(pcap_t *p, const char *fname, int linktype, stri
 			hdr.snaplen = 10000;
 			hdr.sigfigs = 0;
 			hdr.linktype = linktype;
-			handler->write((char *)&hdr, sizeof(hdr));
+			handler->write((char *)&hdr, sizeof(hdr), true);
 			return((pcap_dumper_t*)handler);
 		} else {
 			handler->setError();

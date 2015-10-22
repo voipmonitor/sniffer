@@ -463,7 +463,10 @@ public:
 	virtual ~FileZipHandler();
 	bool open(const char *fileName, int permission = 0666);
 	void close();
-	bool write(char *data, int length) {
+	bool write(char *data, int length, bool isHeader = false) {
+		if(!isHeader && length) {
+			existsData = true;
+		}
 		return(this->buffer ?
 			this->writeToBuffer(data, length) :
 			this->writeToFile(data, length));
@@ -514,6 +517,7 @@ public:
 	Call *call;
 	int time;
 	u_int64_t size;
+	bool existsData;
 	u_int64_t counter;
 	static u_int64_t scounter;
 	u_int32_t userData;
