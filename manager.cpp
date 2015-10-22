@@ -1491,7 +1491,8 @@ int parse_command(char *buf, int size, int client, int eof, ManagerClientThread 
 		string rslt;
 
 		sscanf(buf, "file_exists %s", filename);
-		if(FileExists(filename)) {
+		int error_code;
+		if(FileExists(filename, &error_code)) {
 			size = file_exists(filename);
 			char size_str[20];
 			sprintf(size_str, "%d", size);
@@ -1512,7 +1513,7 @@ int parse_command(char *buf, int size, int client, int eof, ManagerClientThread 
 				}
 			}
 		} else {
-			rslt = "not_exists";
+			rslt = error_code == EACCES ? "permission_denied" : "not_exists";
 		}
 		sendvm(client, sshchannel, rslt.c_str(), rslt.length(), 0);
 		return 0;
