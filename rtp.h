@@ -221,6 +221,7 @@ public:
 	double	jitter;
 	uint32_t last_stat_lost;
 	uint32_t last_stat_received;
+	double last_stat_loss_perc_mult10;
 
 	/* RTCP data */
 	struct rtcp_t {

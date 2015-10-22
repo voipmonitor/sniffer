@@ -228,6 +228,7 @@ RTP::RTP(int sensor_id)
 	jitter = 0;
 	last_stat_lost = 0;
 	last_stat_received = 0;
+	last_stat_loss_perc_mult10 = 0;
 
 	channel_fix1 = new FILE_LINE ast_channel;
 	memset(channel_fix1, 0, sizeof(ast_channel));
@@ -418,11 +419,12 @@ RTP::save_mos_graph(bool delimiter) {
 	uint32_t lost = stats.lost - last_stat_lost;
 	uint32_t received = stats.received - last_stat_received;
 
-	double packet_loss_perc_mult10 = (double)lost / ((double)received + (double)lost) * 100.0;
 	last_stat_lost = lost;
 	last_stat_received = received;
 
-	rtp_stat.update(saddr, header->ts.tv_sec, last_interval_mosf1, last_interval_mosf2, last_interval_mosAD, jitter, packet_loss_perc_mult10);
+	last_stat_loss_perc_mult10 = (double)lost / ((double)received + (double)lost) * 100.0;
+
+	rtp_stat.update(saddr, header->ts.tv_sec, last_interval_mosf1, last_interval_mosf2, last_interval_mosAD, jitter, last_stat_loss_perc_mult10);
 }
 
 /* destructor */
