@@ -228,6 +228,7 @@ RTP::RTP(int sensor_id)
 	jitter = 0;
 	last_stat_lost = 0;
 	last_stat_received = 0;
+	last_stat_loss_perc_mult10 = 0;
 
 	channel_fix1 = new FILE_LINE ast_channel;
 	memset(channel_fix1, 0, sizeof(ast_channel));
@@ -418,11 +419,12 @@ RTP::save_mos_graph(bool delimiter) {
 	uint32_t lost = stats.lost - last_stat_lost;
 	uint32_t received = stats.received - last_stat_received;
 
-	int packet_loss_perc_mult10 = (int)round((double)lost / ((double)received + (double)lost) * 100.0);
 	last_stat_lost = lost;
 	last_stat_received = received;
 
-	rtp_stat.update(saddr, header->ts.tv_sec, last_interval_mosf1, last_interval_mosf2, last_interval_mosAD, jitter, packet_loss_perc_mult10);
+	last_stat_loss_perc_mult10 = (double)lost / ((double)received + (double)lost) * 100.0;
+
+	rtp_stat.update(saddr, header->ts.tv_sec, last_interval_mosf1, last_interval_mosf2, last_interval_mosAD, jitter, last_stat_loss_perc_mult10);
 }
 
 /* destructor */
@@ -2231,7 +2233,7 @@ int calculate_mos_fromrtp(RTP *rtp, int jittertype, int lastinterval) {
 }       
 
 void
-RTPstat::update(uint32_t saddr, uint32_t time, uint8_t mosf1, uint8_t mosf2, uint8_t mosAD, uint16_t jitter, uint16_t loss) {
+RTPstat::update(uint32_t saddr, uint32_t time, uint8_t mosf1, uint8_t mosf2, uint8_t mosAD, uint16_t jitter, double loss) {
 
 	uint32_t curtime = time / mod;
 
@@ -2310,7 +2312,7 @@ RTPstat::update(uint32_t saddr, uint32_t time, uint8_t mosf1, uint8_t mosf2, uin
 		if(node->loss_max < loss) {
 			node->loss_max = loss;
 		}
-		node->loss_avg = ((node->loss_avg * node->counter ) + loss) / (node->counter + 1);
+		node->loss_avg = ((node->loss_avg * node->counter ) + loss) / (node->counter + 1.0);
 
 		node->counter++;
 	}
@@ -2352,8 +2354,8 @@ RTPstat::flush_and_clean(map<uint32_t, node_t> *cmap) {
 		cdr_stat.add((int)(node->mosAD_avg), "mosAD_avg");
 		cdr_stat.add(node->jitter_max, "jitter_max");
 		cdr_stat.add((int)(node->jitter_avg), "jitter_avg");
-		cdr_stat.add((int)(node->loss_max * 10), "loss_max_mult10");
-		cdr_stat.add((int)(node->loss_avg * 10), "loss_avg_mult10");
+		cdr_stat.add((int)round(node->loss_max * 10), "loss_max_mult10");
+		cdr_stat.add((int)round(node->loss_avg * 10), "loss_avg_mult10");
 		cdr_stat.add(node->counter, "counter");
 		query_str += sqlDbSaveCall->insertQuery("rtp_stat", cdr_stat) + ";";
 	}

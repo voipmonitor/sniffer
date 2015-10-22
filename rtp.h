@@ -221,6 +221,7 @@ public:
 	double	jitter;
 	uint32_t last_stat_lost;
 	uint32_t last_stat_received;
+	double last_stat_loss_perc_mult10;
 
 	/* RTCP data */
 	struct rtcp_t {
@@ -518,7 +519,7 @@ class RTPstat {
 		float 		mosAD_avg;
 		uint16_t 	jitter_max;
 		float 		jitter_avg;
-		uint16_t 	loss_max;
+		float	 	loss_max;
 		float	 	loss_avg;
 		uint32_t	counter;	// will be reset with every update 
 		uint32_t	refcount;	// reference count to RTP class for cleaning purpose 
@@ -540,7 +541,7 @@ public:
 	void unlock() {
 		pthread_mutex_unlock(&mlock);
 	}
-	void update(uint32_t saddr, uint32_t time, uint8_t mosf1, uint8_t mosf2, uint8_t mosAD, uint16_t jitter, uint16_t loss);
+	void update(uint32_t saddr, uint32_t time, uint8_t mosf1, uint8_t mosf2, uint8_t mosAD, uint16_t jitter, double loss);
 	void flush_and_clean(map<uint32_t, node_t> *map);
 
 private:
