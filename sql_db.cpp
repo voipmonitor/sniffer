@@ -83,10 +83,12 @@ extern int opt_ptime;
 int sql_noerror = 0;
 int sql_disable_next_attempt_if_error = 0;
 bool opt_cdr_partition_oldver = false;
+bool opt_rtp_stat_partition_oldver = false;
 bool exists_column_message_content_length = false;
 bool exists_columns_cdr_reason = false;
 bool exists_columns_cdr_response_time = false;
 bool exists_column_message_response_time = false;
+SqlDb::eSupportPartitions supportPartitions = SqlDb::_supportPartitions_ok;
 
 
 string SqlDb_row::operator [] (const char *fieldName) {
@@ -2781,7 +2783,6 @@ bool SqlDb_mysql::createSchema(SqlDb *sourceDb) {
 		 "cdr_sipresp",
 		 "cdr_siphistory",
 		 "cdr_tar_part"
-		 "rtp_stat"
 	};
 
 	string compress = "";
@@ -3099,15 +3100,14 @@ bool SqlDb_mysql::createSchema(SqlDb *sourceDb) {
 			`counter` mediumint unsigned NOT NULL,\
 			PRIMARY KEY (`time`, `saddr`, `id_sensor`),\
 			KEY `time` (`time`)\
-	) ENGINE=InnoDB DEFAULT CHARSET=latin1 " + compress +  
-	(opt_cdr_partition ?
-		(opt_cdr_partition_oldver ? 
+	) ENGINE=InnoDB DEFAULT CHARSET=latin1 ") + compress +  
+	(supportPartitions != _supportPartitions_na ?
+		(opt_rtp_stat_partition_oldver ? 
 			string(" PARTITION BY RANGE (to_days(`time`))(\
 				 PARTITION ") + partDayName + " VALUES LESS THAN (to_days('" + limitDay + "')) engine innodb)" :
 			string(" PARTITION BY RANGE COLUMNS(`time`)(\
 				 PARTITION ") + partDayName + " VALUES LESS THAN ('" + limitDay + "') engine innodb)") :
-		"")
-	));
+		""));
 	
 	this->query(string(
 	"CREATE TABLE IF NOT EXISTS `cdr` (\
@@ -4306,6 +4306,119 @@ bool SqlDb_mysql::createSchema(SqlDb *sourceDb) {
 			"create_partition", "(database_name char(100), table_name char(100), type_part char(10), next_days int)", true);
 		}
 	}
+	if(!opt_disable_partition_operations) {
+		if(!cloud_host.empty()) {
+			this->createProcedure(
+			"begin\
+			    declare part_date date;\
+			    declare part_limit date;\
+			    declare part_limit_int int;\
+			    declare part_name char(100);\
+			    declare create_part_query varchar(1000);\
+			    set part_date =  date_add(date(now()), interval next_days day);\
+			    if(type_part = 'month') then\
+			       set part_date = date_add(part_date, interval -(day(part_date)-1) day);\
+			       set part_limit = date_add(part_date, interval 1 month);\
+			       set part_name = concat('p', date_format(part_date, '%y%m'));\
+			    else\
+			       set part_limit = date_add(part_date, interval 1 day);\
+			       set part_name = concat('p', date_format(part_date, '%y%m%d'));\
+			    end if;\
+			    set part_limit_int = to_days(part_limit);\
+			    set create_part_query = concat(\
+			       'alter table `',\
+			       table_name,\
+			       '` add partition (partition ',\
+			       part_name,\
+			       if(old_ver_partition,\
+				  ' VALUES LESS THAN (',\
+				  ' VALUES LESS THAN (\\''),\
+			       if(old_ver_partition,\
+				  part_limit_int,\
+				  part_limit),\
+			       if(old_ver_partition,\
+				  '',\
+				  '\\''),\
+			       '))'\
+			       );\
+			    set @_create_part_query = create_part_query;\
+			    prepare stmt FROM @_create_part_query;\
+			    execute stmt;\
+			    deallocate prepare stmt;\
+			 end",
+			"create_partition_v2", "(table_name char(100), type_part char(10), next_days int, old_ver_partition bool)", true);
+		} else {
+			this->createProcedure(
+			"begin\
+			    declare part_date date;\
+			    declare part_limit date;\
+			    declare part_limit_int int;\
+			    declare part_name char(100);\
+			    declare test_exists_any_part_query varchar(1000);\
+			    declare test_exists_part_query varchar(1000);\
+			    declare create_part_query varchar(1000);\
+			    set test_exists_any_part_query = concat(\
+			       'set @_exists_any_part = exists (select * from information_schema.partitions where table_schema=\\'',\
+			       database_name,\
+			       '\\' and table_name = \\'',\
+			       table_name,\
+			       '\\' and partition_name is not null)');\
+			    set @_test_exists_any_part_query = test_exists_any_part_query;\
+			    prepare stmt FROM @_test_exists_any_part_query;\
+			    execute stmt;\
+			    deallocate prepare stmt;\
+			    if(@_exists_any_part) then\
+			       set part_date =  date_add(date(now()), interval next_days day);\
+			       if(type_part = 'month') then\
+				  set part_date = date_add(part_date, interval -(day(part_date)-1) day);\
+				  set part_limit = date_add(part_date, interval 1 month);\
+				  set part_name = concat('p', date_format(part_date, '%y%m'));\
+			       else\
+				  set part_limit = date_add(part_date, interval 1 day);\
+				  set part_name = concat('p', date_format(part_date, '%y%m%d'));\
+			       end if;\
+			       set part_limit_int = to_days(part_limit);\
+			       set test_exists_part_query = concat(\
+				  'set @_exists_part = exists (select * from information_schema.partitions where table_schema=\\'',\
+				  database_name,\
+				  '\\' and table_name = \\'',\
+				  table_name,\
+				  '\\' and partition_name = \\'',\
+				  part_name,\
+				  '\\')');\
+			       set @_test_exists_part_query = test_exists_part_query;\
+			       prepare stmt FROM @_test_exists_part_query;\
+			       execute stmt;\
+			       deallocate prepare stmt;\
+			       if(not @_exists_part) then\
+				  set create_part_query = concat(\
+				     'alter table ',\
+				     if(database_name is not null, concat('`', database_name, '`.'), ''),\
+				     '`',\
+				     table_name,\
+				     '` add partition (partition ',\
+				     part_name,\
+				     if(old_ver_partition,\
+					' VALUES LESS THAN (',\
+					' VALUES LESS THAN (\\''),\
+				     if(old_ver_partition,\
+					part_limit_int,\
+					part_limit),\
+				     if(old_ver_partition,\
+					'',\
+					'\\''),\
+				     '))'\
+				     );\
+				  set @_create_part_query = create_part_query;\
+				  prepare stmt FROM @_create_part_query;\
+				  execute stmt;\
+				  deallocate prepare stmt;\
+			       end if;\
+			    end if;\
+			 end",
+			"create_partition_v2", "(database_name char(100), table_name char(100), type_part char(10), next_days int, old_ver_partition bool)", true);
+		}
+	}
 	if(opt_cdr_partition && !opt_disable_partition_operations) {
 		this->create_procedure_create_partitions_cdr(!cloud_host.empty());
 		if(!cloud_host.empty()) {
@@ -4614,7 +4727,6 @@ void SqlDb_mysql::create_procedure_create_partitions_cdr(bool isCloud) {
 		    (_save_sip_history ? "call create_partition('cdr_siphistory', 'day', next_days);" : "") +
 		   "call create_partition('cdr_proxy', 'day', next_days);\
 		    call create_partition('cdr_tar_part', 'day', next_days);\
-		    call create_partition('rtp_stat', 'day', next_days);\
 		    call create_partition('http_jj', 'day', next_days);\
 		    call create_partition('enum_jj', 'day', next_days);\
 		    call create_partition('message', 'day', next_days);\
@@ -4633,7 +4745,6 @@ void SqlDb_mysql::create_procedure_create_partitions_cdr(bool isCloud) {
 		    (_save_sip_history ? "call create_partition(database_name, 'cdr_siphistory', 'day', next_days);" : "") + 
 		   "call create_partition(database_name, 'cdr_proxy', 'day', next_days);\
 		    call create_partition(database_name, 'cdr_tar_part', 'day', next_days);\
-		    call create_partition(database_name, 'rtp_stat', 'day', next_days);\
 		    call create_partition(database_name, 'http_jj', 'day', next_days);\
 		    call create_partition(database_name, 'enum_jj', 'day', next_days);\
 		    call create_partition(database_name, 'webrtc', 'day', next_days);\
@@ -4662,20 +4773,35 @@ void SqlDb_mysql::checkDbMode() {
 			}
 		}
 	}
-	if(opt_cdr_partition && !cloud_host[0]) {
+	if(!cloud_host[0]) {
 		if(this->getDbMajorVersion() * 100 + this->getDbMinorVersion() <= 500) {
-			opt_cdr_partition = false;
-			syslog(LOG_NOTICE, "mysql <= 5.0 does not know partitions - we recommend to upgrade mysql");
+			supportPartitions = _supportPartitions_na;
+			if(opt_cdr_partition) {
+				opt_cdr_partition = false;
+				syslog(LOG_NOTICE, "mysql <= 5.0 does not know partitions - we recommend to upgrade mysql");
+			}
 		} else { 
 			if(this->getDbMajorVersion() * 100 + this->getDbMinorVersion() <= 501) {
-				opt_cdr_partition_oldver = true;
-				syslog(LOG_NOTICE, "mysql <= 5.1 - use old mode partitions");
-			} else {
-				this->query(string("select partition_description from information_schema.partitions where table_schema='") +mysql_database + 
-					    "' and table_name like 'cdr%' and partition_description is not null and  partition_description regexp '^[0-9]+$' limit 1");
-				if(this->fetchRow()) {
+				supportPartitions = _supportPartitions_oldver;
+				if(opt_cdr_partition) {
 					opt_cdr_partition_oldver = true;
-					syslog(LOG_NOTICE, "database contain old mode partitions");
+					syslog(LOG_NOTICE, "mysql <= 5.1 - use old mode partitions");
+				}
+			} else {
+				if(opt_cdr_partition) {
+					this->query(string("select partition_description from information_schema.partitions where table_schema='") +mysql_database + 
+						    "' and table_name like 'cdr%' and partition_description is not null and  partition_description regexp '^[0-9]+$' limit 1");
+					if(this->fetchRow()) {
+						opt_cdr_partition_oldver = true;
+						syslog(LOG_NOTICE, "database contain old mode partitions");
+					}
+				}
+				
+				this->query(string("select partition_description from information_schema.partitions where table_schema='") +mysql_database + 
+						   "' and table_name = 'rtp_stat' and partition_description is not null and  partition_description regexp '^[0-9]+$' limit 1");
+				if(this->fetchRow()) {
+					opt_rtp_stat_partition_oldver = true;
+					syslog(LOG_NOTICE, "table rtp_stat contain old mode partitions");
 				}
 			}
 		}
@@ -4811,12 +4937,11 @@ void SqlDb_mysql::copyFromSourceTable(SqlDb_mysql *sqlDbSrc, const char *tableNa
 		    string(tableName) == "http_jj" ||
 		    string(tableName) == "enum_jj" ||
 		    string(tableName) == "message" ||
-		    string(tableName) == "rtp_stat" ||
 		    string(tableName) == "register_state" ||
 		    string(tableName) == "register_failed")) {
 			string timeColumn = (string(tableName) == "cdr" || string(tableName) == "message") ? "calldate" : 
 					    (string(tableName) == "http_jj" || string(tableName) == "enum_jj") ? "timestamp" : 
-					    (string(tableName) == "rtp_stat") ? "time" : "created_at";
+					    "created_at";
 			sqlDbSrc->query(string("select min(") + id + ") as min_id from " + tableName +
 					" where " + timeColumn + " = " + 
 					"(select min(" + timeColumn + ") from " + tableName + " where " + timeColumn + " > '" + opt_database_backup_from_date + "')");
@@ -5039,7 +5164,6 @@ vector<string> SqlDb_mysql::getSourceTables(int typeTables) {
 		if(opt_enable_http_enum_tables) tables.push_back("enum_jj");
 		if(opt_enable_webrtc_table) tables.push_back("webrtc");
 		tables.push_back("message");
-		tables.push_back("rtp_stat");
 		if(typeTables & tt_child) {
 			if(custom_headers_message) {
 				list<string> nextTables = custom_headers_message->getAllNextTables();
@@ -5801,6 +5925,29 @@ void createMysqlPartitionsCdr() {
 	syslog(LOG_NOTICE, "create cdr partitions - end");
 }
 
+void createMysqlPartitionsRtpStat() {
+	syslog(LOG_NOTICE, "create rtp_stat partitions - begin");
+	SqlDb *sqlDb = createSqlObject();
+	if(cloud_host[0]) {
+		sqlDb->setMaxQueryPass(1);
+		sqlDb->query(
+			string("call create_partition_v2('rtp_stat', 'day', 0, ") + (opt_rtp_stat_partition_oldver ? "true" : "false") + ");");
+		sqlDb->query(
+			string("call create_partition_v2('rtp_stat', 'day', 1, ") + (opt_rtp_stat_partition_oldver ? "true" : "false") + ");");
+		sqlDb->query(
+			string("call create_partition_v2('rtp_stat', 'day', 2, ") + (opt_rtp_stat_partition_oldver ? "true" : "false") + ");");
+	} else {
+		sqlDb->query(
+			string("call `") + mysql_database + "`.create_partition_v2('" + mysql_database + "', 'rtp_stat', 'day', 0, " + (opt_rtp_stat_partition_oldver ? "true" : "false") + ");");
+		sqlDb->query(
+			string("call `") + mysql_database + "`.create_partition_v2('" + mysql_database + "', 'rtp_stat', 'day', 1, " + (opt_rtp_stat_partition_oldver ? "true" : "false") + ");");
+		sqlDb->query(
+			string("call `") + mysql_database + "`.create_partition_v2('" + mysql_database + "', 'rtp_stat', 'day', 2, " + (opt_rtp_stat_partition_oldver ? "true" : "false") + ");");
+	}
+	delete sqlDb;
+	syslog(LOG_NOTICE, "create rtp_stat partitions - end");
+}
+
 void createMysqlPartitionsIpacc() {
 	SqlDb *sqlDb = createSqlObject();
 	syslog(LOG_NOTICE, "create ipacc partitions - begin");
@@ -5860,7 +6007,7 @@ void dropMysqlPartitionsCdr() {
 	   (opt_enable_webrtc_table && opt_cleandatabase_webrtc > 0) ||
 	   opt_cleandatabase_register_state > 0 ||
 	   opt_cleandatabase_register_failed > 0) {
-		syslog(LOG_NOTICE, "drop old partitions - begin");
+		syslog(LOG_NOTICE, "drop old partitions cdr - begin");
 		SqlDb *sqlDb = createSqlObject();
 		sqlDb->setDisableLogError();
 		sqlDb->setDisableNextAttemptIfError();
@@ -5907,7 +6054,6 @@ void dropMysqlPartitionsCdr() {
 				sqlDb->query("ALTER TABLE cdr_tar_part DROP PARTITION " + partitions[i]);
 				sqlDb->query("ALTER TABLE cdr_proxy DROP PARTITION " + partitions[i]);
 				sqlDb->query("ALTER TABLE message DROP PARTITION " + partitions[i]);
-				sqlDb->query("ALTER TABLE rtp_stat DROP PARTITION " + partitions[i]);
 			}
 		}
 		if(opt_enable_http_enum_tables && opt_cleandatabase_http_enum > 0) {
@@ -6034,6 +6180,53 @@ void dropMysqlPartitionsCdr() {
 				syslog(LOG_NOTICE, "DROP REGISTER_FAILED PARTITION %s", partitions[i].c_str());
 				sqlDb->query("ALTER TABLE register_failed DROP PARTITION " + partitions[i]);
 			}
+		}
+		++counterDropPartitions;
+		delete sqlDb;
+		syslog(LOG_NOTICE, "drop old partitions cdr - end");
+	}
+}
+
+void dropMysqlPartitionsRtpStat() {
+	extern int opt_cleandatabase_rtp_stat;
+	static unsigned long counterDropPartitions = 0;
+	if(opt_cleandatabase_rtp_stat > 0) {
+		syslog(LOG_NOTICE, "drop old partitions rtp_stat - begin");
+		SqlDb *sqlDb = createSqlObject();
+		sqlDb->setDisableLogError();
+		sqlDb->setDisableNextAttemptIfError();
+		time_t act_time = time(NULL);
+		time_t prev_day_time = act_time - opt_cleandatabase_rtp_stat * 24 * 60 * 60;
+		struct tm prevDayTime = localtime_r(&prev_day_time);
+		char limitPartName[20] = "";
+		strftime(limitPartName, sizeof(limitPartName), "p%y%m%d", &prevDayTime);
+		vector<string> partitions;
+		if(counterDropPartitions == 0) {
+			if(cloud_host[0]) {
+				sqlDb->query("explain partitions select * from rtp_stat");
+				SqlDb_row row = sqlDb->fetchRow();
+				if(row) {
+					vector<string> exists_partitions = split(row["partitions"], ',');
+					for(size_t i = 0; i < exists_partitions.size(); i++) {
+						if(exists_partitions[i] <= limitPartName) {
+							partitions.push_back(exists_partitions[i]);
+						}
+					}
+				}
+			} else {
+				sqlDb->query(string("select partition_name from information_schema.partitions where table_schema='") + 
+					     mysql_database+ "' and table_name='rtp_stat' and partition_name<='" + limitPartName+ "' order by partition_name");
+				SqlDb_row row;
+				while((row = sqlDb->fetchRow())) {
+					partitions.push_back(row["partition_name"]);
+				}
+			}
+		} else {
+			partitions.push_back(limitPartName);
+		}
+		for(size_t i = 0; i < partitions.size(); i++) {
+			syslog(LOG_NOTICE, "DROP RTP_STAT PARTITION %s", partitions[i].c_str());
+			sqlDb->query("ALTER TABLE rtp_stat DROP PARTITION " + partitions[i]);
 		}
 		++counterDropPartitions;
 		delete sqlDb;

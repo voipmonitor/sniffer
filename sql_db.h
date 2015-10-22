@@ -69,6 +69,12 @@ private:
 
 class SqlDb {
 public:
+	enum eSupportPartitions {
+		_supportPartitions_na,
+		_supportPartitions_ok,
+		_supportPartitions_oldver
+	};
+public:
 	SqlDb();
 	virtual ~SqlDb();
 	void setConnectParameters(string server, string user, string password, string database = "", u_int16_t port = 0, bool showversion = true);
@@ -603,8 +609,10 @@ string prepareQueryForPrintf(const char *query);
 string prepareQueryForPrintf(string &query);
 
 void createMysqlPartitionsCdr();
+void createMysqlPartitionsRtpStat();
 void createMysqlPartitionsIpacc();
 void createMysqlPartitionsBillingAgregation();
 void dropMysqlPartitionsCdr();
+void dropMysqlPartitionsRtpStat();
 
 #endif

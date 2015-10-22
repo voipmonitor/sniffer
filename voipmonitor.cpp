@@ -412,6 +412,7 @@ int opt_cleandatabase_http_enum = 0;
 int opt_cleandatabase_webrtc = 0;
 int opt_cleandatabase_register_state = 0;
 int opt_cleandatabase_register_failed = 0;
+int opt_cleandatabase_rtp_stat = 2;
 unsigned int graph_delimiter = GRAPH_DELIMITER;
 unsigned int graph_version = GRAPH_VERSION;
 unsigned int graph_mark = GRAPH_MARK;
@@ -1083,11 +1084,15 @@ public:
 	void init() {
 		createCdr = false;
 		dropCdr = false;
+		createRtpStat = false;
+		dropRtpStat = false;
 		createIpacc = false;
 		createBilling = false;
 	}
 	bool isSet() {
-		return(createCdr || dropCdr || createIpacc || createBilling);
+		return(createCdr || dropCdr || 
+		       createRtpStat || dropRtpStat ||
+		       createIpacc || createBilling);
 	}
 	void createPartitions(bool inThread = false) {
 		if(isSet()) {
@@ -1103,6 +1108,8 @@ public:
 public:
 	bool createCdr;
 	bool dropCdr;
+	bool createRtpStat;
+	bool dropRtpStat;
 	bool createIpacc;
 	bool createBilling;
 } createPartitions;
@@ -1114,6 +1121,12 @@ void *sCreatePartitions::_createPartitions(void *arg) {
 	}
 	if(createPartitions->dropCdr) {
 		dropMysqlPartitionsCdr();
+	}
+	if(createPartitions->createRtpStat) {
+		createMysqlPartitionsRtpStat();
+	}
+	if(createPartitions->dropRtpStat) {
+		dropMysqlPartitionsRtpStat();
 	}
 	if(createPartitions->createIpacc) {
 		createMysqlPartitionsIpacc();
@@ -1129,6 +1142,8 @@ void *storing_cdr( void *dummy ) {
 	Call *call;
 	time_t createPartitionAt = 0;
 	time_t dropPartitionAt = 0;
+	time_t createPartitionRtpStatAt = 0;
+	time_t dropPartitionRtpStatAt = 0;
 	time_t createPartitionIpaccAt = 0;
 	time_t createPartitionBillingAgregationAt = 0;
 	bool firstIter = true;
@@ -1143,6 +1158,17 @@ void *storing_cdr( void *dummy ) {
 			if(actTime - dropPartitionAt > 12 * 3600) {
 				createPartitions.dropCdr = true;
 				dropPartitionAt = actTime;
+			}
+		}
+		if(!opt_nocdr and !opt_disable_partition_operations and isSqlDriver("mysql")) {
+			time_t actTime = time(NULL);
+			if(actTime - createPartitionRtpStatAt > 12 * 3600) {
+				createPartitions.createRtpStat = true;
+				createPartitionRtpStatAt = actTime;
+			}
+			if(actTime - dropPartitionRtpStatAt > 12 * 3600) {
+				createPartitions.dropRtpStat = true;
+				dropPartitionRtpStatAt = actTime;
 			}
 		}
 		if(!opt_nocdr and opt_ipaccount and !opt_disable_partition_operations and isSqlDriver("mysql")) {
@@ -4030,6 +4056,7 @@ void cConfig::addConfigItems() {
 			addConfigItem(new cConfigItem_integer("cleandatabase_webrtc", &opt_cleandatabase_webrtc));
 			addConfigItem(new cConfigItem_integer("cleandatabase_register_state", &opt_cleandatabase_register_state));
 			addConfigItem(new cConfigItem_integer("cleandatabase_register_failed", &opt_cleandatabase_register_failed));
+			addConfigItem(new cConfigItem_integer("cleandatabase_rtp_stat", &opt_cleandatabase_rtp_stat));
 		subgroup("backup");
 				advanced();
 				addConfigItem(new cConfigItem_string("database_backup_from_date", opt_database_backup_from_date, sizeof(opt_database_backup_from_date)));
@@ -5764,6 +5791,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "cleandatabase_register_failed", NULL))) {
 		opt_cleandatabase_register_failed = atoi(value);
+	}
+	if((value = ini.GetValue("general", "cleandatabase_rtp_stat", NULL))) {
+		opt_cleandatabase_rtp_stat = atoi(value);
 	}
 	if((value = ini.GetValue("general", "cleanspool_interval", NULL))) {
 		opt_cleanspool_interval = atoi(value);
