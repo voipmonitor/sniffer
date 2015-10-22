@@ -418,7 +418,7 @@ RTP::save_mos_graph(bool delimiter) {
 	uint32_t lost = stats.lost - last_stat_lost;
 	uint32_t received = stats.received - last_stat_received;
 
-	double packet_loss_perc_mult10 = (int)round((double)lost / (received + lost) * 100.0 * 10.0);
+	int packet_loss_perc_mult10 = (int)round((double)lost / ((double)received + (double)lost) * 100.0);
 	last_stat_lost = lost;
 	last_stat_received = received;
 
