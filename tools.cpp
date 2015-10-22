@@ -235,7 +235,7 @@ bool DirExists(char *strFilename) {
 	}
 }
 
-bool FileExists(char *strFilename) {
+bool FileExists(char *strFilename, int *error_code) {
 	struct stat stFileInfo;
 	int intStat;
 
@@ -244,6 +244,9 @@ bool FileExists(char *strFilename) {
 	if(intStat == 0) {
 		// We were able to get the file attributes 
 		// so the file obviously exists. 
+		if(error_code) {
+			*error_code = 0;
+		}
 		return true;
 	} else {
 		// We were not able to get the file attributes. 
@@ -252,6 +255,9 @@ bool FileExists(char *strFilename) {
 		// need to do that level of checking, lookup the 
 		// return values of stat which will give you 
 		// more details on why stat failed. 
+		if(error_code) {
+			*error_code = errno;
+		}
 		return false;
 	}
 }

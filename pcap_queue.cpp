@@ -2548,25 +2548,25 @@ PcapQueue_readFromInterfaceThread::PcapQueue_readFromInterfaceThread(const char 
 
 PcapQueue_readFromInterfaceThread::~PcapQueue_readFromInterfaceThread() {
 	if(this->defragThread) {
-		while(!this->defragThread->isTerminated()) {
+		while(this->defragThread->threadInitOk && !this->defragThread->isTerminated()) {
 			usleep(100000);
 		}
 		delete this->defragThread;
 	}
 	if(this->md1Thread) {
-		while(!this->md1Thread->isTerminated()) {
+		while(this->md1Thread->threadInitOk && !this->md1Thread->isTerminated()) {
 			usleep(100000);
 		}
 		delete this->md1Thread;
 	}
 	if(this->md2Thread) {
-		while(!this->md2Thread->isTerminated()) {
+		while(this->md2Thread->threadInitOk && !this->md2Thread->isTerminated()) {
 			usleep(100000);
 		}
 		delete this->md2Thread;
 	}
 	if(this->dedupThread) {
-		while(!this->dedupThread->isTerminated()) {
+		while(this->dedupThread->threadInitOk && !this->dedupThread->isTerminated()) {
 			usleep(100000);
 		}
 		delete this->dedupThread;
@@ -2799,11 +2799,11 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void *arg, unsigned int 
 			this->md2Thread->pcapLinklayerHeaderType = this->pcapLinklayerHeaderType;
 		}
 	} else {
-		while(this->readThread->threadInitOk != 2) {
-			if(is_terminating()) {
-				return(NULL);
-			}
+		while(!is_terminating() && this->readThread->threadInitOk != 2) {
 			usleep(1000);
+		}
+		if(is_terminating()) {
+			return(NULL);
 		}
 	}
 	pcap_pkthdr *header = NULL, *_header = NULL;

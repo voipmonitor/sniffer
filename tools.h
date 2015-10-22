@@ -306,7 +306,7 @@ string GetDataMD5(u_char *data, u_int32_t datalen,
 		  u_char *data3 = NULL, u_int32_t data3len = 0);
 string GetStringSHA256(std::string str);
 bool DirExists(char *strFilename);
-bool FileExists(char *strFilename);
+bool FileExists(char *strFilename, int *error_code = NULL);
 void ntoa(char *res, unsigned int addr);
 string escapeshellR(string &);
 time_t stringToTime(const char *timeStr);
