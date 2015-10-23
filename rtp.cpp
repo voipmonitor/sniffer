@@ -229,6 +229,7 @@ RTP::RTP(int sensor_id)
 	last_stat_lost = 0;
 	last_stat_received = 0;
 	last_stat_loss_perc_mult10 = 0;
+	codecchanged = false;
 
 	channel_fix1 = new FILE_LINE ast_channel;
 	memset(channel_fix1, 0, sizeof(ast_channel));
@@ -668,6 +669,7 @@ RTP::jitterbuffer(struct ast_channel *channel, int savePayload) {
 		if(codec == PAYLOAD_G723) {
 			// voipmonitor does not handle SID packets well (silence packets) it causes out of sync
 			if((unsigned char)payload_data[0] & 2)  {
+
 				/* check if jitterbuffer is already created. If not we have to create it because 
 				   if call starts with SID packets first it will than cause out of sync calls 
 				*/
@@ -891,7 +893,7 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 */
 		return;
 	}
-	
+
 	if(this->first_packet_time == 0 and this->first_packet_usec == 0) {
 		this->first_packet_time = header->ts.tv_sec;
 		this->first_packet_usec = header->ts.tv_usec;
@@ -1210,7 +1212,8 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 	}
 
 	// codec changed 
-	if(curpayload != prev_payload and codec != PAYLOAD_TELEVENT and prev_codec != PAYLOAD_TELEVENT and codec != 13 and codec != 19 and prev_codec != 13 and prev_codec != 19) {
+	if(curpayload != prev_payload and codec != PAYLOAD_TELEVENT and (prev_codec != PAYLOAD_TELEVENT or !codecchanged) and codec != 13 and codec != 19 and prev_codec != 13 and prev_codec != 19) {
+		codecchanged = true;
 		switch(codec) {
 		case PAYLOAD_SILK12:
 		case PAYLOAD_OPUS12:
@@ -1396,7 +1399,7 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 
 #if 1
 		// new way of getting packetization from packet datalen 
-		if(curpayload == PAYLOAD_PCMU or curpayload == PAYLOAD_PCMA or curpayload == PAYLOAD_GSM or curpayload == PAYLOAD_G722) {
+		if(curpayload == PAYLOAD_PCMU or curpayload == PAYLOAD_PCMA or curpayload == PAYLOAD_GSM or curpayload == PAYLOAD_G722 or curpayload == PAYLOAD_G723) {
 
 			int apacketization = 0;
 			switch(curpayload) {
@@ -1409,6 +1412,15 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 				break;
 			case PAYLOAD_G722:
 				apacketization = payload_len / 8;
+				break;
+			case PAYLOAD_G723:
+				if(payload_len == 24) {
+					apacketization = 30;
+				} else if(payload_len == 24*2) {
+					apacketization = 60;
+				} else if(payload_len == 24*3) {
+					apacketization = 90;
+				}
 				break;
 			}
 
@@ -1449,6 +1461,14 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 						packetization = channel_record->packetization = 30 * payload_len / 50;
 					} else {
 						packetization = channel_record->packetization = default_packetization;
+					}
+				} else if(curpayload == PAYLOAD_G723) {
+					if(payload_len == 24) {
+						packetization = channel_record->packetization = 30;
+					} else if(payload_len == 24*2) {
+						packetization = channel_record->packetization = 60;
+					} else if(payload_len == 24*3) {
+						packetization = channel_record->packetization = 90;
 					}
 				} else {
 					packetization = channel_record->packetization = default_packetization;
@@ -1548,6 +1568,14 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 					} else {
 						packetization = channel_record->packetization = default_packetization;
 					}
+				} else if(curpayload == PAYLOAD_G723) {
+					if(payload_len == 24) {
+						packetization = channel_record->packetization = 30;
+					} else if(payload_len == 24*2) {
+						packetization = channel_record->packetization = 60;
+					} else if(payload_len == 24*3) {
+						packetization = channel_record->packetization = 90;
+					}
 				} else {
 					packetization = channel_record->packetization = default_packetization;
 				}
@@ -1589,6 +1617,10 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 				} else if(payload_len == 24*3) {
 					curpacketization = 90;
 				}
+				if((unsigned char)*(data + sizeof(RTPFixedHeader)) & 2) {
+					//it is sid data - do not change packetization
+					curpacketization = last_packetization;
+				}
 			} else if(curpayload == PAYLOAD_PCMU or curpayload == PAYLOAD_PCMA or curpayload == PAYLOAD_G722) {
 				if((payload_len / 8) >= 20) {
 					// do not change packetization to 10ms frames. Case g711_20_10_sync.pcap
@@ -1612,7 +1644,7 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 				curpacketization = default_packetization;
 			}
 
-			if(verbosity > 3) printf("curpacketization[%u] = (getTimestamp()[%u] - last_ts[%u]) / (samplerate[%u] / 1000) pl[%u] curpayload[%u]\n", curpacketization, getTimestamp(), last_ts, samplerate, payload_len, curpayload);
+			if(verbosity > 3) printf("curpacketization[%u] = (getTimestamp()[%u] - last_ts[%u]) / (samplerate[%u] / 1000) pl[%u] curpayload[%u] seq[%u]\n", curpacketization, getTimestamp(), last_ts, samplerate, payload_len, curpayload, seq);
 
 
 			if(curpacketization != packetization and curpacketization % 10 == 0 and curpacketization >= 10 and curpacketization <= 120) {
@@ -1620,6 +1652,17 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 				channel_fix1->packetization = channel_fix2->packetization = channel_adapt->packetization = channel_record->packetization = packetization = curpacketization;
 			}
 
+			last_packetization = curpacketization;
+		}
+		if(curpayload == PAYLOAD_G723) {
+			if(payload_len == 24) {
+				packetization = 30;	
+			} else if(payload_len == 24*2) {
+				packetization = 60;
+			} else if(payload_len == 24*3) {
+				packetization = 90;
+			}
+			channel_fix1->packetization = channel_fix2->packetization = channel_adapt->packetization = channel_record->packetization = packetization;
 		}
 		//printf("packetization [%d]\n", packetization);
 		if(opt_jitterbuffer_f1)
