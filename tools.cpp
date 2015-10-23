@@ -3119,6 +3119,12 @@ char *strlwr(char *string, u_int32_t maxLength) {
 	return(string);
 }
 
+string intToString(u_int64_t i) {
+	ostringstream outStr;
+	outStr << i;
+	return(outStr.str());
+}
+
 AutoDeleteAtExit GlobalAutoDeleteAtExit;
 
 void AutoDeleteAtExit::add(const char *file) {
@@ -3735,19 +3741,22 @@ void SensorsMap::fillSensors(SqlDb *sqlDb) {
 		}
 		_createSqlObject = true;
 	}
-	sqlDb->query("select id_sensor, name from sensors");
-	SqlDb_row row;
-	lock();
-	sensors.clear();
-	while(row = sqlDb->fetchRow()) {
-		int idSensor = atoi(row["id_sensor"].c_str());
-		sSensorName name;
-		name.name = row["name"];
-		name.name_file = row["name"];
-		prepare_string_to_filename((char*)name.name_file.c_str(), name.name_file.length());
-		sensors[idSensor] = name;
+	sqlDb->query("show tables like 'sensors'");
+	if(sqlDb->fetchRow()) {
+		sqlDb->query("select id_sensor, name from sensors");
+		SqlDb_row row;
+		lock();
+		sensors.clear();
+		while(row = sqlDb->fetchRow()) {
+			int idSensor = atoi(row["id_sensor"].c_str());
+			sSensorName name;
+			name.name = row["name"];
+			name.name_file = row["name"];
+			prepare_string_to_filename((char*)name.name_file.c_str(), name.name_file.length());
+			sensors[idSensor] = name;
+		}
+		unlock();
 	}
-	unlock();
 	if(_createSqlObject) {
 		delete sqlDb;
 	}

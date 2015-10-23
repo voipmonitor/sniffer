@@ -155,7 +155,7 @@ inline void clear_terminating() {
 	extern int terminating;
 	terminating = 0;
 }
-inline bool is_terminating() {
+inline int is_terminating() {
 	extern int terminating;
 	return(terminating);
 }

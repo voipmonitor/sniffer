@@ -244,8 +244,16 @@ public:
 	bool checkSourceTables();
 	void copyFromSourceTablesMinor(SqlDb_mysql *sqlDbSrc);
 	void copyFromSourceTablesMain(SqlDb_mysql *sqlDbSrc);
-	void copyFromSourceTable(SqlDb_mysql *sqlDbSrc, const char *tableName, const char *id = NULL, unsigned long maxDiffId = 0, 
-				 unsigned long minIdInSrc = 1, unsigned long useMaxIdInSrc = 0);
+	void copyFromSourceTable(SqlDb_mysql *sqlDbSrc, 
+				 const char *tableName, 
+				 unsigned long limit);
+	void copyFromSourceTableSlave(SqlDb_mysql *sqlDbSrc,
+				      const char *masterTableName, const char *slaveTableName,
+				      const char *slaveIdToMasterColumn, 
+				      const char *masterCalldateColumn, const char *slaveCalldateColumn,
+				      u_int64_t useMinIdMaster, u_int64_t useMaxIdMaster,
+				      unsigned long limit);
+	
 	void copyFromSourceGuiTables(SqlDb_mysql *sqlDbSrc);
 	void copyFromSourceGuiTable(SqlDb_mysql *sqlDbSrc, const char *tableName);
 	vector<string> getSourceTables(int typeTables = tt_all);

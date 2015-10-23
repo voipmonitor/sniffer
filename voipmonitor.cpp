@@ -957,6 +957,11 @@ void *database_backup(void *dummy) {
 		}
 		delete sqlDbSrc;
 		
+		while(is_terminating() < 2 && sqlStore->getAllSize()) {
+			syslog(LOG_NOTICE, "flush sqlStore");
+			sleep(1);
+		}
+		
 		syslog(LOG_NOTICE, "-- END BACKUP PROCESS");
 		
 		if(sverb.memory_stat_log) {
@@ -968,13 +973,14 @@ void *database_backup(void *dummy) {
 		}
 	}
 	sqlStore->setEnableTerminatingIfSqlError(0, true);
-	while(sqlStore->getAllSize()) {
+	while(is_terminating() < 2 && sqlStore->getAllSize()) {
 		syslog(LOG_NOTICE, "flush sqlStore");
 		sleep(1);
 	}
 	sqlStore->setEnableTerminatingIfEmpty(0, true);
 	delete sqlDb;
 	delete sqlStore;
+	sqlStore = NULL;
 	return NULL;
 }
 

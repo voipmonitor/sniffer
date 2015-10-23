@@ -331,6 +331,7 @@ void find_and_replace(string &source, const string find, string replace);
 string find_and_replace(const char *source, const char *find, const char *replace);
 bool isLocalIP(u_int32_t ip);
 char *strlwr(char *string, u_int32_t maxLength = 0);
+string intToString(u_int64_t i);
 
 class CircularBuffer
 {
