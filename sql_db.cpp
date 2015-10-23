@@ -588,6 +588,14 @@ void SqlDb::setEnableLogError() {
 	this->disableLogError = false;
 }
 
+void SqlDb::setDisableLogError(bool disableLogError) {
+	this->disableLogError = disableLogError;
+}
+
+bool SqlDb::getDisableLogError() {
+	return(this->disableLogError);
+}
+
 void SqlDb::setSilentConnect() {
 	this->silentConnect = true;;
 }
@@ -4420,50 +4428,13 @@ bool SqlDb_mysql::createSchema(SqlDb *sourceDb) {
 		}
 	}
 	if(opt_cdr_partition && !opt_disable_partition_operations) {
-		this->create_procedure_create_partitions_cdr(!cloud_host.empty());
-		if(!cloud_host.empty()) {
-			if(opt_create_old_partitions > 0 && createdCdrTable) {
-				for(int i = opt_create_old_partitions - 1; i > 0; i--) {
-					char i_str[10];
-					sprintf(i_str, "%i", i);
-					this->query(string(
-					"call create_partitions_cdr('-") + i_str + ");");
-				}
+		if(opt_create_old_partitions > 0 && createdCdrTable) {
+			for(int i = opt_create_old_partitions - 1; i > 0; i--) {
+				_createMysqlPartitionsCdr(-i, this);
 			}
-			this->query(
-			"call create_partitions_cdr(0);");
-			this->query(
-			"call create_partitions_cdr(1);");
-			this->query(
-			"drop event if exists cdr_add_partition");
-			this->query(
-			"create event if not exists cdr_add_partition\
-			 on schedule every 1 hour do\
-			 begin\
-			    call create_partitions_cdr(1);\
-			 end");
-		} else {
-			if(opt_create_old_partitions > 0 && createdCdrTable) {
-				for(int i = opt_create_old_partitions - 1; i > 0; i--) {
-					char i_str[10];
-					sprintf(i_str, "%i", i);
-					this->query(string(
-					"call `") + mysql_database + "`.create_partitions_cdr('" + mysql_database + "', -" + i_str + ");");
-				}
-			}
-			this->query(string(
-			"call `") + mysql_database + "`.create_partitions_cdr('" + mysql_database + "', 0);");
-			this->query(string(
-			"call `") + mysql_database + "`.create_partitions_cdr('" + mysql_database + "', 1);");
-			this->query(
-			"drop event if exists cdr_add_partition");
-			this->query(string(
-			"create event if not exists cdr_add_partition\
-			 on schedule every 1 hour do\
-			 begin\
-			    call `") + mysql_database + "`.create_partitions_cdr('" + mysql_database + "', 1);\
-			 end");
 		}
+		_createMysqlPartitionsCdr(0, this);
+		_createMysqlPartitionsCdr(1, this);
 	}
 	if(opt_ipaccount && !opt_disable_partition_operations) {
 		if(!cloud_host.empty()) {
@@ -4713,47 +4684,6 @@ bool SqlDb_mysql::createSchema(SqlDb *sourceDb) {
 	syslog(LOG_DEBUG, "done");
 	
 	return(true);
-}
-
-void SqlDb_mysql::create_procedure_create_partitions_cdr(bool isCloud) {
-	if(isCloud) {
-		this->createProcedure(string(
-		"begin\
-		    call create_partition('cdr', 'day', next_days);\
-		    call create_partition('cdr_next', 'day', next_days);\
-		    call create_partition('cdr_rtp', 'day', next_days);\
-		    call create_partition('cdr_dtmf', 'day', next_days);\
-		    call create_partition('cdr_sipresp', 'day', next_days);") + 
-		    (_save_sip_history ? "call create_partition('cdr_siphistory', 'day', next_days);" : "") +
-		   "call create_partition('cdr_proxy', 'day', next_days);\
-		    call create_partition('cdr_tar_part', 'day', next_days);\
-		    call create_partition('http_jj', 'day', next_days);\
-		    call create_partition('enum_jj', 'day', next_days);\
-		    call create_partition('message', 'day', next_days);\
-		    call create_partition('register_state', 'day', next_days);\
-		    call create_partition('register_failed', 'day', next_days);\
-		 end",
-		"create_partitions_cdr", "(next_days int)", true);
-	} else {
-		this->createProcedure(string(
-		"begin\
-		    call create_partition(database_name, 'cdr', 'day', next_days);\
-		    call create_partition(database_name, 'cdr_next', 'day', next_days);\
-		    call create_partition(database_name, 'cdr_rtp', 'day', next_days);\
-		    call create_partition(database_name, 'cdr_dtmf', 'day', next_days);\
-		    call create_partition(database_name, 'cdr_sipresp', 'day', next_days);") +
-		    (_save_sip_history ? "call create_partition(database_name, 'cdr_siphistory', 'day', next_days);" : "") + 
-		   "call create_partition(database_name, 'cdr_proxy', 'day', next_days);\
-		    call create_partition(database_name, 'cdr_tar_part', 'day', next_days);\
-		    call create_partition(database_name, 'http_jj', 'day', next_days);\
-		    call create_partition(database_name, 'enum_jj', 'day', next_days);\
-		    call create_partition(database_name, 'webrtc', 'day', next_days);\
-		    call create_partition(database_name, 'message', 'day', next_days);\
-		    call create_partition(database_name, 'register_state', 'day', next_days);\
-		    call create_partition(database_name, 'register_failed', 'day', next_days);\
-		 end",
-		"create_partitions_cdr", "(database_name char(100), next_days int)", true);
-	}
 }
 
 void SqlDb_mysql::checkDbMode() {
@@ -5995,24 +5925,15 @@ void SqlDb_odbc::checkDbMode() {
 void SqlDb_odbc::checkSchema() {
 }
 
-void createMysqlPartitionsCdr() {
+void createMysqlPartitionsCdr(SqlDb *sqlDb) {
 	syslog(LOG_NOTICE, "create cdr partitions - begin");
-	SqlDb *sqlDb = createSqlObject();
-	SqlDb_mysql *sqlDb_mysql = dynamic_cast<SqlDb_mysql*>(sqlDb);
-	if(sqlDb_mysql) {
-		sqlDb_mysql->create_procedure_create_partitions_cdr(cloud_host[0]);
+	bool _createSqlObject = false;
+	if(!sqlDb) {
+		sqlDb = createSqlObject();
+		_createSqlObject = true;
 	}
-	if(cloud_host[0]) {
-		sqlDb->setMaxQueryPass(1);
-		sqlDb->query(
-			"call create_partitions_cdr(0);");
-		sqlDb->query(
-			"call create_partitions_cdr(1);");
-	} else {
-		sqlDb->query(
-			string("call `") + mysql_database + "`.create_partitions_cdr('" + mysql_database + "', 0);");
-		sqlDb->query(
-			string("call `") + mysql_database + "`.create_partitions_cdr('" + mysql_database + "', 1);");
+	for(int day = 0; day < 2; day++) {
+		_createMysqlPartitionsCdr(day, sqlDb);
 	}
 	if(custom_headers_cdr) {
 		custom_headers_cdr->createMysqlPartitions(sqlDb);
@@ -6020,8 +5941,57 @@ void createMysqlPartitionsCdr() {
 	if(custom_headers_message) {
 		custom_headers_message->createMysqlPartitions(sqlDb);
 	}
-	delete sqlDb;
+	if(_createSqlObject) {
+		delete sqlDb;
+	}
 	syslog(LOG_NOTICE, "create cdr partitions - end");
+}
+
+void _createMysqlPartitionsCdr(int day, SqlDb *sqlDb) {
+	bool _createSqlObject = false;
+	if(!sqlDb) {
+		sqlDb = createSqlObject();
+		_createSqlObject = true;
+	}
+	vector<string> tablesForCreatePartitions;
+	tablesForCreatePartitions.push_back("cdr");
+	tablesForCreatePartitions.push_back("cdr_next");
+	tablesForCreatePartitions.push_back("cdr_rtp");
+	tablesForCreatePartitions.push_back("cdr_dtmf");
+	tablesForCreatePartitions.push_back("cdr_sipresp");
+	if(_save_sip_history) {
+		tablesForCreatePartitions.push_back("cdr_siphistory");
+	}
+	tablesForCreatePartitions.push_back("cdr_proxy");
+	tablesForCreatePartitions.push_back("cdr_tar_part");
+	tablesForCreatePartitions.push_back("http_jj");
+	tablesForCreatePartitions.push_back("enum_jj");
+	tablesForCreatePartitions.push_back("message");
+	tablesForCreatePartitions.push_back("register_state");
+	tablesForCreatePartitions.push_back("register_failed");
+	if(cloud_host[0]) {
+		bool disableLogErrorOld = sqlDb->getDisableLogError();
+		sqlDb->setDisableLogError(true);
+		unsigned int maxQueryPassOld = sqlDb->getMaxQueryPass();
+		sqlDb->setMaxQueryPass(1);
+		for(size_t i = 0; i < tablesForCreatePartitions.size(); i++) {
+			sqlDb->query(
+				string("call create_partition_v2('") + tablesForCreatePartitions[i] + "', " + 
+				       "'day', " + intToString(day) + ", " + 
+				       (opt_rtp_stat_partition_oldver ? "true" : "false") + ");");
+		}
+		sqlDb->setMaxQueryPass(maxQueryPassOld);
+		sqlDb->setDisableLogError(disableLogErrorOld);
+	} else {
+		for(size_t i = 0; i < tablesForCreatePartitions.size(); i++) {
+			sqlDb->query(string("call `") + mysql_database + "`.create_partition_v2('" + mysql_database + "', '" + tablesForCreatePartitions[i] + "', " + 
+				     "'day', " + intToString(day) + ", " + 
+				     (opt_rtp_stat_partition_oldver ? "true" : "false") + ");");
+		}
+	}
+	if(_createSqlObject) {
+		delete sqlDb;
+	}
 }
 
 void createMysqlPartitionsRtpStat() {

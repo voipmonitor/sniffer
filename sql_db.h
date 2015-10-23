@@ -142,6 +142,9 @@ public:
 	void setMaxQueryPass(unsigned int maxQueryPass) {
 		this->maxQueryPass = maxQueryPass;
 	}
+	unsigned int getMaxQueryPass() {
+		return(this->maxQueryPass);
+	}
 	virtual void cleanFields();
 	virtual void clean() = 0;
 	virtual bool createSchema(SqlDb *sourceDb = NULL) = 0;
@@ -167,6 +170,8 @@ public:
 	void setEnableNextAttemptIfError();
 	void setDisableLogError();
 	void setEnableLogError();
+	void setDisableLogError(bool disableLogError);
+	bool getDisableLogError();
 	void setSilentConnect();
 	bool isCloud() {
 		return(!cloud_host.empty());
@@ -237,7 +242,6 @@ public:
 	bool checkLastError(string prefixError, bool sysLog = false,bool clearLastError = false);
 	void clean();
 	bool createSchema(SqlDb *sourceDb = NULL);
-	void create_procedure_create_partitions_cdr(bool isCloud);
 	void createTable(const char *tableName);
 	void checkDbMode();
 	void checkSchema();
@@ -616,7 +620,8 @@ void prepareQuery(string subtypeDb, string &query, bool base, int nextPassQuery)
 string prepareQueryForPrintf(const char *query);
 string prepareQueryForPrintf(string &query);
 
-void createMysqlPartitionsCdr();
+void createMysqlPartitionsCdr(SqlDb *sqlDb = NULL);
+void _createMysqlPartitionsCdr(int day, SqlDb *sqlDb = NULL);
 void createMysqlPartitionsRtpStat();
 void createMysqlPartitionsIpacc();
 void createMysqlPartitionsBillingAgregation();

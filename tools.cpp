@@ -3119,6 +3119,12 @@ char *strlwr(char *string, u_int32_t maxLength) {
 	return(string);
 }
 
+string intToString(int i) {
+	ostringstream outStr;
+	outStr << i;
+	return(outStr.str());
+}
+
 string intToString(u_int64_t i) {
 	ostringstream outStr;
 	outStr << i;
