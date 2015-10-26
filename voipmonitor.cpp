@@ -1143,6 +1143,40 @@ void *sCreatePartitions::_createPartitions(void *arg) {
 	return(NULL);
 }
 
+class sCheckIdCdrChildTables {
+public:
+	sCheckIdCdrChildTables() {
+		init();
+	}
+	void init() {
+		check = false;
+	}
+	bool isSet() {
+		return(check);
+	}
+	void checkIdCdrChildTables(bool inThread = false) {
+		if(isSet()) {
+			if(inThread) {
+				pthread_t thread;
+				pthread_create(&thread, NULL, _checkIdCdrChildTables, this);
+			} else {
+				_checkIdCdrChildTables(this);
+			}
+		}
+	}
+	static void *_checkIdCdrChildTables(void *arg);
+public:
+	bool check;
+} checkIdCdrChildTables;
+
+void *sCheckIdCdrChildTables::_checkIdCdrChildTables(void *arg) {
+	sCheckIdCdrChildTables *checkIdCdrChildTables = (sCheckIdCdrChildTables*)arg;
+	if(checkIdCdrChildTables->check) {
+		checkMysqlIdCdrChildTables();
+	}
+	return(NULL);
+}
+
 /* cycle calls_queue and save it to MySQL */
 void *storing_cdr( void *dummy ) {
 	Call *call;
@@ -1195,12 +1229,16 @@ void *storing_cdr( void *dummy ) {
 		if(createPartitions.isSet()) {
 			createPartitions.createPartitions(!firstIter && opt_partition_operations_in_thread);
 		}
+		checkIdCdrChildTables.init();
 		if(opt_cdr_partition and !opt_disable_partition_operations) {
 			time_t actTime = time(NULL);
 			if(actTime - checkMysqlIdCdrChildTablesAt > 1 * 3600) {
-				checkMysqlIdCdrChildTables();
+				checkIdCdrChildTables.check = true;
 				checkMysqlIdCdrChildTablesAt = actTime;
 			}
+		}
+		if(checkIdCdrChildTables.isSet()) {
+			checkIdCdrChildTables.checkIdCdrChildTables(!firstIter && opt_partition_operations_in_thread);
 		}
 		firstIter = false;
 		
