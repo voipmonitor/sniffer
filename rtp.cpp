@@ -2400,7 +2400,7 @@ RTPstat::flush_and_clean(map<uint32_t, node_t> *cmap) {
 		cdr_stat.add((int)round(node->loss_max * 10), "loss_max_mult10");
 		cdr_stat.add((int)round(node->loss_avg * 10), "loss_avg_mult10");
 		cdr_stat.add(node->counter, "counter");
-		query_str += sqlDbSaveCall->insertQuery("rtp_stat", cdr_stat) + ";";
+		query_str += sqlDbSaveCall->insertQuery("rtp_stat", cdr_stat, false, false, true) + ";";
 	}
 
 	cmap->clear();
